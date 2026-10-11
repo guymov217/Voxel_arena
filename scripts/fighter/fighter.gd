@@ -92,6 +92,9 @@ var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
+var body := {}                    # Body: old wounds, lost limbs, prosthetics, eyes (the campaign)
+var fixed_hand := {"R": false, "L": false}   # a blade arm: the weapon cannot leave that hand
+var eye_floor := 0.0               # an eye lost: the aim never quite steadies
 var crawling := false
 var eye_hurt := 0.0
 var strip_clock := 0.0
@@ -188,19 +191,140 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	for p in parts:
 		for id in loadout.get("armor", []):
 			_add_armor(p, id)
+	if opts.get("body") is Dictionary:
+		apply_body(opts.body)
 	var main = loadout.get("main")
 	var off = loadout.get("off")
+	# A blade arm carries its own blade; a hook carries nothing.
+	for side in ["R", "L"]:
+		var fore: VoxelPart = arm[side].fore
+		if fore.prosthetic == "blade":
+			equip(side, BLADE_ARM)
+			fixed_hand[side] = true
+		if fore.prosthetic != "":
+			if side == "R":
+				main = null
+			else:
+				off = null
 	if main is String:
 		main = Data.preset(main)
 	if off is String:
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty():
 		equip("R", main)
-		if main.get("twoHanded", false):
+		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing:
 			two_handed = true
 			_attach_off_hand(weapons.R)
-	if off is Dictionary and not off.is_empty() and not two_handed:
+	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
 		equip("L", off)
+
+## The blade the physician rivets to a stump: a short, broad iron blade on a socket.
+const BLADE_ARM := {"name": "Blade arm", "kind": "weapon", "sharpness": 0.85, "voxels": [
+	[0, 0, 0, "iron", "grip"], [0, 1, 0, "iron", "grip"], [0, 2, 0, "iron", "grip"], [-1, 3, 0, "iron", "blunt"], [0, 3, 0, "iron", "blunt"], [1, 3, 0, "iron", "blunt"],
+	[0, 4, 0, "steel", "edge"], [0, 5, 0, "steel", "edge"], [0, 6, 0, "steel", "edge"], [0, 7, 0, "steel", "edge"], [0, 8, 0, "steel", "edge"], [0, 9, 0, "steel", "edge"],
+	[0, 10, 0, "steel", "edge"], [0, 11, 0, "steel", "edge"], [0, 12, 0, "steel", "edge"], [0, 13, 0, "steel", "edge"], [0, 14, 0, "steel", "edge"], [0, 15, 0, "steel", "edge"],
+	[0, 16, 0, "steel", "edge"], [0, 17, 0, "steel", "edge"], [0, 18, 0, "steel", "point"]]}
+
+## The body a campaign has left him (Body): old wounds as healed dents, lost limbs gone with
+## their stumps closed, prosthetics where the physician fitted them, a lost or a glass eye.
+func apply_body(b: Dictionary) -> void:
+	body = Body.sanitize(b)
+	for n in body.scars:
+		var p: VoxelPart = by_name.get(n)
+		if p:
+			p.scar(body.scars[n])
+	for n in body.missing:
+		var p: VoxelPart = by_name.get(n)
+		if p and not p.missing:
+			_make_missing(p)
+	for n in body.prosthetics:
+		var p: VoxelPart = by_name.get(n)
+		if p:
+			_fit_prosthetic(p, String(body.prosthetics[n]))
+	for s in body.eyes:
+		var ev := Body.eye_voxels(head, s)
+		if body.eyes[s] == "glass":
+			for i in ev:
+				head.colors[i] = Color(0.86, 0.9, 0.95) if head.fy[i] % 2 == 1 else Color(0.25, 0.42, 0.6)
+			head.refresh_colors(ev)
+			eye_floor += 0.08
+		else:
+			head.scar(ev)
+			eye_floor += 0.3
+	for p in parts:
+		if p.alive_count < p.fx.size() or p.prosthetic != "":
+			p.resync_later()
+
+## A limb lost in an earlier fight: not there at all, and the stump long since healed.
+func _make_missing(part: VoxelPart) -> void:
+	var stack := [part]
+	while not stack.is_empty():
+		var p: VoxelPart = stack.pop_back()
+		p.missing = true
+		p.severed = true
+		p.hp = 0.0
+		p.visible = false
+		p.freeze = true
+		p.collision_layer = 0
+		p.collision_mask = 0
+		if p.joint:
+			p.joint.queue_free()
+			p.joint = null
+		stack.append_array(p.child_parts)
+	var par: VoxelPart = part.parent_part
+	if par and not par.missing:
+		var pt := par.anchor_point(part)
+		var r := par.vf * par.part_scale * 2.6
+		var near := []
+		for i in par.fx.size():
+			if par.alive[i] and par.local_of(i).distance_to(pt) < r:
+				par.colors[i] = par.colors[i].lerp(VoxelPart.SCAR, 0.6)
+				near.append(i)
+		par.refresh_colors(near)
+
+## A prosthetic in the part's place: the part is reshaped (wood or iron, thinner) and works
+## only so well (VoxelPart.function), and it does not bleed.
+func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
+	p.prosthetic = kind
+	p.missing = false
+	var cx := (p.grid.x - 1) * 0.5
+	var cz := (p.grid.z - 1) * 0.5
+	var top := p.grid.y - 1
+	var cuff_from := int(top * 0.72)
+	var drop := []
+	var paint := []
+	for i in p.fx.size():
+		var dx := absf(p.fx[i] - cx)
+		var dz := absf(p.fz[i] - cz)
+		var y: int = p.fy[i]
+		if y >= cuff_from:
+			# The leather cuff strapped over the stump, an iron band round it.
+			p.colors[i] = Color(0.33, 0.21, 0.11) if y != cuff_from else Color(0.45, 0.47, 0.5)
+			paint.append(i)
+			continue
+		var keep := false
+		match kind:
+			"peg":
+				keep = dx < 1.3 and dz < 1.3 or (y > cuff_from - 3 and dx < 2.2 and dz < 2.2)
+				if keep:
+					p.colors[i] = Color(0.55, 0.38, 0.2) if (y / 2) % 2 == 0 else Color(0.48, 0.32, 0.17)
+			"hook":
+				var rod := dx < 0.8 and dz < 0.8 and y > 3
+				var curve := y <= 3 and dx < 0.8 and p.fz[i] >= cz and p.fz[i] - cz < 3.0 - absf(y - 1.5)
+				keep = rod or curve
+				if keep:
+					p.colors[i] = Color(0.5, 0.52, 0.56)
+			"blade":
+				keep = dx < 1.3 and dz < 1.3 and y > top * 0.35
+				if keep:
+					p.colors[i] = Color(0.42, 0.44, 0.48)
+		if keep:
+			paint.append(i)
+		else:
+			drop.append(i)
+	p.refresh_colors(paint)
+	p.remove_voxels(drop, false)
+	p.bleed = 0.0
 
 func _make_pin(p: VoxelPart) -> void:
 	var j := PinJoint3D.new()
@@ -304,6 +428,8 @@ func release(side: String) -> Weapon:
 	var w: Weapon = weapons[side]
 	if not w:
 		return null
+	if fixed_hand[side] and not arm[side].fore.severed:
+		return null
 	if weapon_joints[side]:
 		weapon_joints[side].queue_free()
 		weapon_joints[side] = null
@@ -336,7 +462,7 @@ func toggle_grip() -> Variant:
 		two_handed = false
 		return "one"
 	var fore: VoxelPart = arm.L.fore
-	if weapons.L or fore.severed or fore.hanging or fore.missing or arm.L.upper.severed or arm.L.upper.hanging:
+	if weapons.L or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or fixed_hand.R:
 		return null
 	two_handed = true
 	_attach_off_hand(w)
@@ -397,7 +523,7 @@ func grab_nearest(list: Array) -> Weapon:
 ## Takes `w` into the hand on `side`: the grip moved into the palm and welded there.
 func pick_up(side: String, w: Weapon) -> bool:
 	var fore: VoxelPart = arm[side].fore
-	if weapons[side] or fore.severed or fore.missing:
+	if weapons[side] or fore.severed or fore.missing or fore.prosthetic != "":
 		return false
 	if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
 		w.forget_owner()
@@ -450,7 +576,7 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	if not alive or arm_func(side) < 0.2:
 		return null
 	var w: Weapon = weapons[side]
-	if not w or w.is_shield or (side == "L" and two_handed):
+	if not w or w.is_shield or (side == "L" and two_handed) or fixed_hand[side]:
 		return null
 	var from := w.global_transform * w.center_of_mass
 	var arm_f := arm_func(side)
@@ -635,7 +761,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
 	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
 	stagger = maxf(0.0, stagger - dt * 1.6)
-	eye_hurt = maxf(0.0, eye_hurt - dt * 0.01)
+	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
 	concussion = maxf(float(mods.drunk), concussion - dt * 0.05)
 	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0):
@@ -1005,6 +1131,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var m_eff := (fore.nominal_mass + upper.nominal_mass * 0.5) + (w.mass if w else 0.0)
 	var load := (w.mass * 0.22 + float(w.stats.get("inertia", 0.0)) * 0.9) / (float(mods.strength) * sqrt(S) * (1.7 if two_handed else 1.0)) if w else 0.0
 	var hnd := 1.0 / (1.0 + load)
+	if fixed_hand[side]:
+		hnd *= 0.6   # no wrist, no fingers: the blade goes where the stump drags it
 	handling[side] = hnd
 	var hand_goal := target_w
 	var shoulder_w = t_pos + t_rot * shoulder[side]
@@ -1314,6 +1442,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var absorb := minf(0.85, 0.3 + 0.55 * h)
 		J *= 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
 		res.armor = true
+	var bleed_before := part.bleed
 	var dmg := 0.0
 	var remove := []
 	var vfs := part.vf * part.part_scale
@@ -1414,6 +1543,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			var push: float = minf(90.0 if hit.get("thrown", false) else 55.0, J * (2.4 if hit.get("thrown", false) else 1.4)) * MS * S
 			var dv: Vector3 = hit.dir
 			torso.apply_central_impulse(Vector3(dv.x * push, 0, dv.z * push))
+	if part.prosthetic != "":
+		part.bleed = bleed_before
+		dmg *= 0.5
 	var soak := pow(S, 1.5) * float(mods.toughness)
 	dmg *= part.mult / soak * (0.75 if part == torso or part == head else 1.0)
 	if boss:

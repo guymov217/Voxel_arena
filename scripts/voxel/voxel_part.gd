@@ -46,6 +46,7 @@ var stump := false
 var stump_t := 0.0
 var flinch_t := 0.0
 var missing := false
+var prosthetic := ""               # "peg", "hook", "blade": what the physician fitted in its place
 var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
 var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
@@ -179,17 +180,61 @@ func refresh_colors(indices: Array = []) -> void:
 		_write_colors(jaw_mm, jaw)
 
 static func _write_colors(m: MultiMesh, rows: Array) -> void:
-	var buf := m.buffer
-	if buf.size() < m.instance_count * 16:
-		# No renderer (headless): there is no buffer to write.
-		for r in rows:
-			m.set_instance_color(r[0], r[1])
-		return
+	# Per instance: with physics interpolation on, a whole-buffer write did not always reach the
+	# screen (the part's box is fixed by custom_aabb, so single writes no longer cull it).
 	for r in rows:
-		var b: int = int(r[0]) * 16 + 12
-		var c: Color = r[1]
-		buf[b] = c.r; buf[b + 1] = c.g; buf[b + 2] = c.b; buf[b + 3] = c.a
-	m.buffer = buf
+		m.set_instance_color(r[0], r[1])
+
+## Draws every voxel again from `alive` and `colors`. Changes made before the part's first
+## frame on screen were lost when the interpolated multimesh first drew (an old wound, a
+## prosthetic fitted at spawn): they are put back with this once it has been drawn.
+func resync() -> void:
+	if mm == null:
+		return
+	var main_on := []
+	var main_off := []
+	var cols := []
+	for i in fx.size():
+		if jaw_slot.has(i):
+			continue
+		(main_on if alive[i] else main_off).append([i, local_of(i)])
+		cols.append([i, colors[i]])
+	_write_shown(mm, main_on, true)
+	_write_shown(mm, main_off, false)
+	_write_colors(mm, cols)
+
+func resync_later() -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(self):
+		resync()
+
+## Old wounds (Body): the voxels a fight took stay gone, the hole healed over into a dent the
+## shape of the blow, its rim the pale, shiny pink of scar tissue. No blood, no smear.
+const SCAR := Color(0.78, 0.5, 0.47)
+func scar(indices: Array) -> void:
+	var gone := {}
+	for i in indices:
+		if i >= 0 and i < fx.size():
+			gone[Vector3i(fx[i], fy[i], fz[i])] = true
+	if gone.is_empty():
+		return
+	remove_voxels(indices, false)
+	var touched := []
+	for i in fx.size():
+		if alive[i] == 0:
+			continue
+		var c := Vector3i(fx[i], fy[i], fz[i])
+		var near := 0
+		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			if gone.has(c + d):
+				near += 1
+		if near > 0:
+			colors[i] = colors[i].lerp(SCAR, 0.45 + 0.1 * minf(3.0, near))
+			touched.append(i)
+	refresh_colors(touched)
 
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
@@ -224,7 +269,10 @@ func function() -> float:
 		return 0.03
 	if fractured:
 		return 0.1
-	return clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
+	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
+	if prosthetic != "":
+		fn = minf(fn, float(Body.PROSTHETIC_FN.get(prosthetic, 0.7)))
+	return fn
 
 ## Knocks out voxels; returns [{p: world position, color}].
 func remove_voxels(indices: Array, smear := true) -> Array:
@@ -269,18 +317,8 @@ func set_shown(indices: Array, on: bool) -> void:
 
 static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
 	var k := 1.0 if on else 0.0
-	var buf := m.buffer
-	if buf.size() < m.instance_count * 16:
-		for r in rows:
-			m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
-		return
 	for r in rows:
-		var b: int = int(r[0]) * 16
-		var o: Vector3 = r[1]
-		buf[b] = k; buf[b + 1] = 0.0; buf[b + 2] = 0.0; buf[b + 3] = o.x * k
-		buf[b + 4] = 0.0; buf[b + 5] = k; buf[b + 6] = 0.0; buf[b + 7] = o.y * k
-		buf[b + 8] = 0.0; buf[b + 9] = 0.0; buf[b + 10] = k; buf[b + 11] = o.z * k
-	m.buffer = buf
+		m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
 
 ## A biting head's lower jaw on a hinge at the back of the mouth (`jw` gives where, as fractions
 ## of the head's depth and height): its voxels are drawn in their own multimesh under a pivot,

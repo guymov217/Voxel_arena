@@ -30,6 +30,7 @@ var inputs := {}                # id -> last input
 var my_name := "Gladiator"
 var my_loadout := {}
 var my_kit := {}
+var my_body := {}
 var steam: Object = null
 var steam_ready := false
 var lobby_id := 0
@@ -188,7 +189,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected() -> void:
 	connected.emit()
-	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit})
+	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit, "body": my_body})
 
 func send_all(type: String, data, reliable := true) -> void:
 	if not active():
@@ -245,7 +246,7 @@ func _receive(type: String, data, from: int) -> void:
 		match type:
 			"hello":
 				if data is Dictionary:
-					var info := {"name": String(data.get("name", "Guest")).left(24), "loadout": data.get("loadout", {}) if data.get("loadout") is Dictionary else {}, "kit": sanitize_kit(data.get("kit"))}
+					var info := {"name": String(data.get("name", "Guest")).left(24), "loadout": data.get("loadout", {}) if data.get("loadout") is Dictionary else {}, "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
 					peers[from] = info
 					peer_joined.emit(from, info)
 				return

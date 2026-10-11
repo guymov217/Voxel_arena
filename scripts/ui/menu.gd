@@ -39,6 +39,7 @@ func _ready() -> void:
 		set_fullscreen(true)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
+	Net.my_body = body()
 	_net_loadout()
 	if Sfx.music:
 		Sfx.music.volume = float(Save.get_value("settings", {}).get("music", 0.5))
@@ -191,6 +192,15 @@ func look_armor(l: Dictionary) -> Array:
 			a.append(id)
 	return a
 
+## The gladiator's body in the campaign (Body): old wounds, lost limbs, prosthetics, eyes.
+func body() -> Dictionary:
+	return Body.sanitize(Save.get_value("body", {}))
+
+func set_body(b: Dictionary) -> void:
+	var clean := Body.sanitize(b)
+	Save.set_value("body", clean)
+	Net.my_body = clean
+
 func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)
 	Save.set_value("kit", clean)
@@ -230,6 +240,7 @@ func show_screen(s: String, msg := "") -> void:
 		"training": _training(v)
 		"yard": _yard(v)
 		"market": _market(v)
+		"physician": _physician(v)
 		"fights": _fights(v)
 		"mp": _mp(v)
 		"room": _room(v)
@@ -589,7 +600,8 @@ func _yard(v: VBoxContainer) -> void:
 		btn.disabled = int(b.price) > coins() + Arms.value(arms().main if b.slot == "main" else arms().off) / 2
 		grid.add_child(btn)
 	var st := int(Save.get_value("stage", 1))
-	_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("Main menu", func(): show_screen("main"))])
+	v.add_child(UIStyle.label("Your body: " + Body.summary(body()), 15, UIStyle.MUTED))
+	_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("The physician", func(): show_screen("physician")), UIStyle.button("Main menu", func(): show_screen("main"))])
 
 ## Every other way to fight (game.js modes, partyModes.js).
 func _fights(v: VBoxContainer) -> void:
@@ -898,6 +910,80 @@ func _market_card(id: String, it: Dictionary, have: int) -> Control:
 	col.add_child(b)
 	return card
 
+## The physician's stall in the yard: the same treatments as between rounds.
+func _physician(v: VBoxContainer) -> void:
+	_doctor_panel(v, body(), [], int(Save.get_value("stage", 1)), func(nb):
+		set_body(nb)
+		show_screen("yard"), "Back to the smith", func(nb):
+		set_body(nb)
+		show_screen("physician"))
+
+## Between rounds: a player who lost a limb or an eye is taken to the physician (an overlay on
+## the paused arena). `done` gets the body he leaves with.
+func _doctor_visit(b: Dictionary, news: Array, stage_: int, done: Callable) -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var cur := [b]
+	var build := func(rebuild: Callable) -> void:
+		for c in layer.get_children():
+			c.queue_free()
+		var cc := CenterContainer.new()
+		cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		cc.theme = UIStyle.theme()
+		layer.add_child(cc)
+		var p := PanelContainer.new()
+		cc.add_child(p)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 8)
+		p.add_child(v)
+		_doctor_panel(v, cur[0], news, stage_, func(nb):
+			layer.queue_free()
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			done.call(nb), "Back to the arena", func(nb):
+			cur[0] = nb
+			rebuild.call(rebuild))
+	build.call(build)
+
+func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, done: Callable, done_text: String, changed: Callable) -> void:
+	v.custom_minimum_size = Vector2(420, 0)
+	v.add_child(UIStyle.title("The physician", 30))
+	var state := Body.summary(b)
+	if not news.is_empty():
+		state = ", ".join(news.map(func(n): return str(n)))
+		state = state.left(1).to_upper() + state.substr(1)
+	v.add_child(UIStyle.label(state, 15, Color(1, 0.62, 0.5) if not news.is_empty() else UIStyle.MUTED))
+	for o in Body.offers(b, stage_):
+		var price := int(o.price)
+		var id := String(o.id)
+		var row := HBoxContainer.new()
+		row.tooltip_text = String(o.desc)
+		var name_l := UIStyle.label(String(o.name), 16)
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		name_l.tooltip_text = String(o.desc)
+		name_l.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(name_l)
+		var btn := UIStyle.button("%d" % price, func():
+			if price > coins():
+				return
+			add_coins(-price)
+			if Sfx:
+				Sfx.play("pickup", Vector3.ZERO, 0.6)
+			changed.call(Body.apply(b, id)))
+		btn.disabled = price > coins()
+		btn.custom_minimum_size = Vector2(80, 0)
+		btn.tooltip_text = String(o.desc)
+		row.add_child(btn)
+		v.add_child(row)
+	var foot := HBoxContainer.new()
+	var purse := UIStyle.label("%d denarii" % coins(), 14, UIStyle.BRONZE)
+	purse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(purse)
+	foot.add_child(UIStyle.button(done_text, func(): done.call(b), true))
+	v.add_child(foot)
+
 func _pay(r: Dictionary) -> void:
 	if r.has("error"):
 		show_screen("yard", r.error)
@@ -1069,6 +1155,9 @@ func start(opts: Dictionary) -> void:
 	if opts.mode == "campaign":
 		opts.loadout = {"main": lo.main, "off": lo.off}
 		opts.worn = lo.worn
+		if int(opts.get("stage", 1)) <= 1:
+			set_body(Body.empty())
+		opts.body = body()
 	else:
 		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
 	if opts.get("autopilot", false):
@@ -1092,7 +1181,7 @@ func start(opts: Dictionary) -> void:
 		for id in Net.peers:
 			var pl: Dictionary = Net.peers[id].get("loadout", {})
 			var pk := peer_look(pl)
-			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor} if not pl.is_empty() else {"main": "gladius"}})
+			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if int(opts.get("stage", 1)) > 1 else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor} if not pl.is_empty() else {"main": "gladius"}})
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
 		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
@@ -1106,6 +1195,7 @@ func start(opts: Dictionary) -> void:
 		match_.input.left_handed = bool(st.get("leftHanded", false))
 		match_.input.invert_y = bool(st.get("invertY", false))
 	match_.finished.connect(_on_finished)
+	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
 	world_root.add_child(hud)
 	visible = false
@@ -1302,6 +1392,8 @@ func _on_finished(r: Dictionary) -> void:
 	if match_ and match_.me and match_.role != "guest" and mode != "circus":
 		set_kit(match_.me.get("inventory", kit()))
 	if mode == "campaign" and match_ and match_.role != "guest":
+		if r.get("body") is Dictionary:
+			set_body(r.body)
 		set_arms(Arms.add_wear(arms(), r.get("wear", {})))
 		if r.won:
 			add_coins(int(r.pay))
@@ -1333,6 +1425,8 @@ func _on_net(type: String, data, _from: int) -> void:
 				world_root.add_child(match_)
 				var ids: Array = (data.get("decrees", []) as Array).filter(func(i): return not Decrees.by_id(str(i)).is_empty()) if data.get("decrees") is Array else []
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
+				if data.mode == "campaign" and int(data.stage) <= 1:
+					set_body(Body.empty())
 				match_.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
 				match_.finished.connect(_on_finished)
 				hud = Hud.new(match_)
@@ -1342,6 +1436,21 @@ func _on_net(type: String, data, _from: int) -> void:
 		"spawn":
 			if match_:
 				match_.guest_spawn(data)
+		"despawn":
+			if match_ and data is Dictionary:
+				match_.guest_despawn(int(data.get("id", -1)))
+		"body":
+			# The host's word on what the stage left on me (a fall: whole again).
+			if data is Dictionary and not Net.is_host():
+				set_body(data)
+		"doctor":
+			if data is Dictionary and not Net.is_host():
+				_doctor_visit(Body.sanitize(data.get("body", {})), (data.get("news", []) as Array).map(func(x): return str(x).left(80)) if data.get("news") is Array else [], int(data.get("stage", 1)), func(nb): Net.send_host("doctor_done", nb))
+		"doctor_done":
+			if match_ and Net.is_host() and data is Dictionary:
+				for e in match_.humans():
+					if e.kind == "remote" and int(e.peer) == _from:
+						match_.doctor_done(e.id, Body.sanitize(data))
 		"snap":
 			if match_:
 				match_.apply_snapshot(data)

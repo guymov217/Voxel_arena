@@ -45,6 +45,7 @@ var hurt := 0.0
 var last_blood := 100.0
 var popups: Control
 var crosshair: Control
+var blind := {}
 var charge_bar: Control
 var charge := 0.0
 var font_title: Font
@@ -121,6 +122,24 @@ func _build_vignette() -> void:
 	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vignette.modulate.a = 0.0
 	root.add_child(vignette)
+	# A lost eye: that side of the world goes dark (a glass eye gives most of it back).
+	for side in ["R", "L"]:
+		var bg := Gradient.new()
+		bg.set_color(0, Color(0, 0, 0, 0.0))
+		bg.add_point(0.45, Color(0, 0, 0, 0.0))
+		bg.set_color(bg.get_point_count() - 1, Color(0, 0, 0, 0.96))
+		var bt := GradientTexture2D.new()
+		bt.gradient = bg
+		bt.fill_from = Vector2(0.0 if side == "R" else 1.0, 0.5)
+		bt.fill_to = Vector2(1.0 if side == "R" else 0.0, 0.5)
+		var r := TextureRect.new()
+		r.texture = bt
+		r.stretch_mode = TextureRect.STRETCH_SCALE
+		r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		r.visible = false
+		root.add_child(r)
+		blind[side] = r
 
 func _bar(color: Color, width := 210) -> Control:
 	var c := Control.new()
@@ -426,6 +445,10 @@ func _process(dt: float) -> void:
 	var f = me.f if me and is_instance_valid(me.f) else null
 	if f:
 		_ease_bar("blood", f.blood / 100.0, dt)
+		for s in blind:
+			var ey: String = f.body.get("eyes", {}).get(s, "") if f.body is Dictionary else ""
+			blind[s].visible = ey != ""
+			blind[s].modulate.a = 1.0 if ey == "lost" else 0.25
 		_ease_bar("stamina", f.stamina / 100.0, dt)
 		_ease_bar("favor", match_.spectacle.get_favor(f) / 100.0, dt)
 		# Hurt: the red at the edges flares with every loss of blood, and beats when it runs low.

@@ -8,6 +8,9 @@ signal feed(text: String)
 signal banner(text: String, sub: String)
 signal finished(result: Dictionary)
 signal station(id: String)
+## The campaign's physician: a player lost a limb or an eye this round (Body). The menu shows
+## the local one; the host asks a guest over the network.
+signal doctor(e: Dictionary, body: Dictionary, news: Array)
 
 const ENEMY_TEAM := 1
 const TICK := 1.0 / 120.0
@@ -25,6 +28,8 @@ var entities: Array = []        # {id, f, kind, team, bot, peer, boss, spec}
 var me = null
 var over := false
 var between := 0.0
+var doctor_wait := {}            # entity id -> true while that player is at the physician
+var doctor_t := 0.0
 var time := 0.0
 var tick := 0
 var stage_info: Dictionary = {}
@@ -177,10 +182,11 @@ func setup(opts: Dictionary) -> void:
 		return
 	# Players: the local one, then a fighter for every friend in the room.
 	var lo: Dictionary = opts.get("loadout", {"main": "gladius", "off": "roundShield"})
-	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {})})
+	var campaign := mode == "campaign"
+	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign else null})
 	me.inventory = opts.get("inventory", {})
 	for p in opts.get("peers", []):
-		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin")})
+		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if campaign else null})
 		pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	players_count = 1 + opts.get("peers", []).size()
 	# Tests and attract mode: the player's fighter fights by itself.
@@ -229,6 +235,8 @@ func spawn_fighter(spec: Dictionary):
 		opts["team_color"] = Color.hex(int(spec.color) << 8 | 0xff)
 	elif spec.team == ENEMY_TEAM:
 		opts["team_color"] = Color(0.19, 0.19, 0.19)
+	if spec.get("body") is Dictionary:
+		opts["body"] = Body.sanitize(spec.body)
 	f.build(spec.pos, spec.get("yaw", 0.0), _resolve_loadout(spec.loadout), opts)
 	# Chips the weapons came in with (the campaign's arms, unmended).
 	for side in spec.get("worn", {}):
@@ -818,6 +826,12 @@ func _check_round(dt: float) -> void:
 	if modes:
 		modes.check(dt)
 		return
+	if not doctor_wait.is_empty():
+		# Nobody fights on while a man is at the physician (a guest who never answers is let go).
+		doctor_t += dt
+		if doctor_t < 150.0:
+			return
+		doctor_wait.clear()
 	if between > 0.0:
 		between -= dt
 		if between <= 0.0:
@@ -851,6 +865,8 @@ func _check_round(dt: float) -> void:
 			if round + 1 < int(stage_info.get("rounds", []).size()):
 				between = 2.5
 				feed.emit("Round %d won" % (round + 1))
+				if role != "guest":
+					_round_wounds()
 				return
 			var pay := int(stage_info.get("stagePay", 30)) + round_pay
 			_end(true, "Stage %d cleared" % stage, "%d denarii each. Back to the yard: spend, mend, gear up." % pay, pay)
@@ -886,6 +902,14 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 			elif me.f.arm[side].fore.severed:
 				wear[side] = "lost"
 	var result := {"won": won, "stage": stage, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	if mode == "campaign" and role != "guest":
+		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are.
+		var bodies := final_bodies() if won else {}
+		result["body"] = bodies.get(me.id, Body.empty()) if me else Body.empty()
+		if role == "host":
+			for e in humans():
+				if e.kind == "remote":
+					Net.send_to(int(e.peer), "body", bodies.get(e.id, Body.empty()))
 	if me and is_instance_valid(me.f) and me.f.alive:
 		mission_event("survive")
 		if won and me.f.blood > 66.0:
@@ -1006,6 +1030,80 @@ func aim_point(f: Fighter) -> Vector3:
 		hit = space.intersect_ray(q)
 		o = from
 	return hit.position if not hit.is_empty() else o + dir * 40.0
+
+# ---------- The body between rounds (Body) ----------
+
+## After a won round: what it left on every player. One who lost a limb or an eye goes to the
+## physician before the next round (the local one in the menu, a guest on his own screen).
+func _round_wounds() -> void:
+	for e in humans():
+		if not is_instance_valid(e.f) or not e.f.alive:
+			continue
+		var r := Body.merge(e.f.body, Body.snapshot(e.f))
+		e.f.body = r.body
+		for n in r.news:
+			feed.emit("%s: %s" % [e.f.display_name, n])
+		if r.doctor:
+			doctor_wait[e.id] = true
+			doctor_t = 0.0
+			if e.kind == "remote" and role == "host":
+				Net.send_to(int(e.peer), "doctor", {"body": r.body, "news": r.news, "stage": stage})
+			else:
+				doctor.emit(e, r.body, r.news)
+
+## Back from the physician with `body`: he goes into the next round rebuilt with it.
+func doctor_done(id: int, body_: Dictionary) -> void:
+	var e = entity_by_id(id)
+	doctor_wait.erase(id)
+	if e == null or not is_instance_valid(e.f):
+		return
+	rebuild(e, Body.sanitize(body_))
+
+## The same man spawned again with another body (a prosthetic fitted between rounds): where he
+## stood, with the blood he had (the physician stopped the bleeding).
+func rebuild(e: Dictionary, body_: Dictionary) -> void:
+	var old: Fighter = e.f
+	var spec: Dictionary = e.spec.duplicate(true)
+	spec.body = body_
+	spec.id = e.id
+	spec.pos = Vector3(old.torso.global_position.x, 0, old.torso.global_position.z)
+	spec.yaw = old.yaw
+	var blood := maxf(old.blood, 55.0)
+	_remove_entity(e)
+	if role == "host":
+		Net.send_all("despawn", {"id": e.id})
+	var ne = spawn_fighter(spec)
+	ne.f.blood = blood
+	for k in ["inventory", "peer", "bot", "gadgets"]:
+		if e.has(k):
+			ne[k] = e[k]
+	if me == e:
+		me = ne
+
+func _remove_entity(e: Dictionary) -> void:
+	entities.erase(e)
+	if is_instance_valid(e.f):
+		combat.fighters.erase(e.f)
+		for w in e.f.weapons.values():
+			if w and is_instance_valid(w):
+				w.queue_free()
+		e.f.queue_free()
+
+## A guest drops the fighter the host is about to send again.
+func guest_despawn(id: int) -> void:
+	var e = entity_by_id(id)
+	if e:
+		_remove_entity(e)
+		if me == e:
+			me = null
+
+## Every player's body at the end of the stage: {entity id: body}, read off what is left of them.
+func final_bodies() -> Dictionary:
+	var out := {}
+	for e in humans():
+		if is_instance_valid(e.f):
+			out[e.id] = Body.merge(e.f.body, Body.snapshot(e.f)).body if e.f.alive else Body.empty()
+	return out
 
 func entity_of(f) -> Variant:
 	for e in entities:
@@ -1130,13 +1228,41 @@ func _update_breaths(dt: float) -> void:
 		get_tree().create_timer(br.ps.lifetime + 0.3, false).timeout.connect(br.ps.queue_free)
 		breaths.erase(br)
 
+## An elephant brings a forefoot down (character.js beastStomp): everyone near is knocked off
+## his feet, and the part of him the foot lands on is crushed flat, a crater of voxels the
+## size of the foot.
 func _stomp(b: Beast) -> void:
+	sfx("thud", b.torso.global_position, 1.5)
+	var fwd := PD.quat_of(b.torso) * Vector3(0, 0, 1)
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var front: Vector3 = b.torso.global_position + fwd * (b.torso.half_ext.z * 1.2)
+	front.y = 0.1
+	if fx:
+		fx.burst("dust", front, 30, Vector3.UP)
 	for e in entities:
-		if e.team == ENEMY_TEAM or not e.f.alive:
+		if e.team == ENEMY_TEAM or not e.f.alive or e.f == b or e.f is Beast:
 			continue
-		if e.f.torso.global_position.distance_to(b.torso.global_position) < 2.5 * b.S:
-			e.f.fall(1.5, true)
-			e.f.apply_hit(e.f.torso, {"impulse": 20.0, "type": "blunt", "point": e.f.torso.global_position, "dir": Vector3.DOWN})
+		var c = e.f
+		var tp: Vector3 = c.torso.global_position
+		if Vector2(tp.x - front.x, tp.z - front.z).length() > 2.4 * maxf(1.0, b.S * 0.6):
+			continue
+		# The part nearest under the foot takes it.
+		var part: VoxelPart = c.torso
+		var best := INF
+		for p in c.parts:
+			if p.severed:
+				continue
+			var d: float = Vector2(p.global_position.x - front.x, p.global_position.z - front.z).length() + p.global_position.y * 0.4
+			if d < best:
+				best = d
+				part = p
+		var at: Vector3 = part.global_position + Vector3(0, part.half_ext.y * 0.5, 0)
+		var wasa: bool = c.alive
+		var res: Dictionary = c.apply_hit(part, {"impulse": 26.0, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.12, 0.07 * sqrt(b.S)), "heavy": 0.8})
+		c.last_attacker = b
+		c.fall(2.0, true)
+		combat.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": 26.0, "type": "blunt", "char": c, "part": part, "attacker": b, "res": res, "killed": wasa and not c.alive})
 
 # ---------- Network (host side snapshots, guest side drawing) ----------
 
