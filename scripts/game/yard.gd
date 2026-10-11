@@ -1,0 +1,101 @@
+class_name Yard
+## The Ludus yard (yard.js): where the gladiators wait between fights. A walkable hub with its
+## stations (the arena gate, the smith, the market, the mission board), training dummies,
+## throwing targets and a shoving ring; and the progression the yard pays out: missions for the
+## next fight, denarii and reputation, and the ranks that reputation buys.
+
+const STATIONS := {
+	"gate": {"p": Vector3(0, 0, 11.5), "r": 1.8, "label": "The arena gate", "hint": "G: choose the fight and go"},
+	"smith": {"p": Vector3(-9.5, 0, 5), "r": 1.4, "label": "The smith", "hint": "G: buy, mend and reshape your weapons"},
+	"market": {"p": Vector3(9.5, 0, 5), "r": 1.4, "label": "The market", "hint": "G: buy pots, bread and gadgets"},
+	"board": {"p": Vector3(0, 0, -11), "r": 1.4, "label": "The mission board", "hint": "G: your missions for the next fight"},
+}
+const DUMMIES := [Vector3(-8, 0, -5), Vector3(-10.5, 0, -2)]
+const TARGETS := [Vector3(12.6, 1.5, -3), Vector3(11.6, 1.5, -6.5), Vector3(10.2, 1.5, -9.5)]
+const RING := {"p": Vector3(5, 0, -6), "r": 2.4}
+
+static func station_at(p: Vector3) -> String:
+	for id in STATIONS:
+		if Vector2(p.x - STATIONS[id].p.x, p.z - STATIONS[id].p.z).length() < float(STATIONS[id].r):
+			return id
+	return ""
+
+## Points for a throw by how close to the middle of the board it struck.
+static func target_score(dist: float) -> int:
+	return 10 if dist < 0.15 else (5 if dist < 0.3 else (2 if dist < 0.5 else 0))
+
+static func in_ring(p: Vector3) -> bool:
+	return Vector2(p.x - RING.p.x, p.z - RING.p.z).length() < float(RING.r)
+
+# ---------- Ranks ----------
+## Reputation is earned in fights and from missions; it never goes down.
+const RANKS := [
+	{"id": "tiro", "name": "Tiro", "rep": 0, "perk": "A recruit. The throwables are yours to buy."},
+	{"id": "gladiator", "name": "Gladiator", "rep": 150, "perk": "The crowd starts to know your name."},
+	{"id": "veteran", "name": "Veteran", "rep": 400, "perk": "Heavy armour is for sale to you."},
+	{"id": "champion", "name": "Champion", "rep": 900, "perk": "Missions pay half again."},
+	{"id": "rudiarius", "name": "Rudiarius", "rep": 1800, "perk": "Given the wooden sword: free. Every mission pays double."},
+]
+
+static func rank_of(rep: int) -> Dictionary:
+	var idx := 0
+	for i in RANKS.size():
+		if rep >= int(RANKS[i].rep):
+			idx = i
+	var r: Dictionary = RANKS[idx].duplicate()
+	r["index"] = idx
+	r["next"] = RANKS[idx + 1] if idx + 1 < RANKS.size() else null
+	return r
+
+static func mission_pay(rep: int) -> float:
+	return [1.0, 1.0, 1.0, 1.5, 2.0][rank_of(rep).index]
+
+# ---------- Missions ----------
+## Three for the next fight; `count` events of `kind` complete one.
+const MISSIONS := {
+	"kill2": {"text": "Kill two enemies", "kind": "kill", "count": 2, "coins": 30, "rep": 20},
+	"sever": {"text": "Cut a limb off an enemy", "kind": "sever", "count": 1, "coins": 35, "rep": 25},
+	"fists": {"text": "Land 8 punches", "kind": "punch", "count": 8, "coins": 30, "rep": 20},
+	"head": {"text": "Hit an enemy in the head 5 times", "kind": "head", "count": 5, "coins": 30, "rep": 20},
+	"throwKill": {"text": "Kill an enemy with something thrown", "kind": "throwKill", "count": 1, "coins": 50, "rep": 35},
+	"shove": {"text": "Shove enemies 4 times", "kind": "shove", "count": 4, "coins": 25, "rep": 15},
+	"survive": {"text": "Be standing at the end of the fight", "kind": "survive", "count": 1, "coins": 25, "rep": 20},
+	"bigOne": {"text": "Help bring down a giant or a boss", "kind": "bigKill", "count": 1, "coins": 60, "rep": 45},
+	"untouched": {"text": "Win having lost less than a third of your blood", "kind": "clean", "count": 1, "coins": 45, "rep": 30},
+}
+
+static func roll_missions(seed_: int, n := 3) -> Array:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_
+	var ids: Array = MISSIONS.keys()
+	var out := []
+	while out.size() < mini(n, ids.size()):
+		out.append({"id": ids.pop_at(r.randi_range(0, ids.size() - 1)), "n": 0})
+	return out
+
+## Counts from a fight applied to the missions; returns the ones completed this fight.
+static func apply_counts(missions: Array, counts: Dictionary) -> Array:
+	var done := []
+	for ms in missions:
+		var d: Dictionary = MISSIONS.get(ms.id, {})
+		if d.is_empty() or ms.get("done", false):
+			continue
+		ms.n = mini(int(d.count), int(ms.n) + int(counts.get(d.kind, 0)))
+		if int(ms.n) >= int(d.count):
+			ms.done = true
+			done.append(ms.id)
+	return done
+
+## What the finished missions pay: {coins, rep}.
+static func payout(ids: Array, rep: int) -> Dictionary:
+	var k := mission_pay(rep)
+	var c := 0
+	var r := 0
+	for id in ids:
+		c += int(round(int(MISSIONS[id].coins) * k))
+		r += int(MISSIONS[id].rep)
+	return {"coins": c, "rep": r}
+
+## Reputation from a fight itself: something for showing up, more for winning and for kills.
+static func fight_rep(won: bool, kills: int, boss: bool) -> int:
+	return (10 if won else 3) + kills * 4 + (25 if boss and won else 0)

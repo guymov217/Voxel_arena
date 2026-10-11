@@ -44,6 +44,11 @@ godot --headless --path . -- --test test_fight   # one suite
   recruit to beat (`scripts/game/tutorial.gd`).
 - **Controls**: rebindable keys (Settings → Controls) and gamepad support. The left stick walks,
   the right stick looks, and a held trigger turns the right stick into that hand.
+- **The Ludus yard**: a walkable hub (`scripts/game/yard.gd`, `yard_play.gd`). It has stations
+  (the arena gate, the smith, the market and the mission board; press G at one), two training
+  dummies that never fall, three throwing boards that score a throw, and a shoving ring with a
+  champion to push out. Three missions per fight pay denarii and reputation, and reputation
+  earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
@@ -62,7 +67,6 @@ godot --headless --path . -- --test test_fight   # one suite
 
 ## Still to come
 
-- The lobby hub and its minigames.
 
 ## The C++ voxel core (GDExtension)
 

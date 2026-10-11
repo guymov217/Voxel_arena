@@ -430,7 +430,7 @@ func _process(dt: float) -> void:
 		for s in slots:
 			s.panel.visible = false
 	match_.spectacle.events.clear()
-	status_label.text = ("Stage %d · round %d of 3" % [match_.stage, match_.round + 1]) if match_.mode == "campaign" else (match_.circus_status() if match_.mode == "circus" else (match_.modes.status() if match_.modes else match_.mode.capitalize()))
+	status_label.text = ("Stage %d · round %d of 3" % [match_.stage, match_.round + 1]) if match_.mode == "campaign" else (match_.circus_status() if match_.mode == "circus" else (match_.yard.hint if match_.yard else (match_.modes.status() if match_.modes else match_.mode.capitalize())))
 	decree_label.text = ("Decrees: " + " · ".join(match_.dec.names)) if not match_.dec.names.is_empty() else ""
 	if match_.tut:
 		if tut_panel == null:

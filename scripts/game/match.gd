@@ -7,6 +7,7 @@ extends Node3D
 signal feed(text: String)
 signal banner(text: String, sub: String)
 signal finished(result: Dictionary)
+signal station(id: String)
 
 const ENEMY_TEAM := 1
 const TICK := 1.0 / 120.0
@@ -55,6 +56,9 @@ var hero_cam := {}              # {pos, look}: a fixed shot instead of the orbit
 var rules: BoutRules = null     # Bread & Circuses: the bout's special rules
 var killcam: KillCam = null
 var tut: Tutorial = null
+var yard: YardPlay = null
+var mcount := {}                # mission events by the local player this fight
+var hit_by_me := {}
 var last_local_inp := {}
 var last_hit_of := {}           # fighter -> the last hit it took (for the kill cam)
 var circus := {}                # {bout, day, bout_index, mods, fortune}
@@ -157,6 +161,10 @@ func setup(opts: Dictionary) -> void:
 			tut.setup()
 	elif mode == "circus":
 		_setup_circus(opts)
+	elif mode == "yard":
+		yard = YardPlay.new(self)
+		yard.setup()
+		_banner("The Ludus yard", "Walk to a station and press G · dummies, throwing boards and the shoving ring to play")
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names))
 	spectacle.on_round_start()
@@ -334,6 +342,12 @@ func apply_decree(d: Dictionary) -> void:
 	_banner(String(d.get("name", "")), String(d.get("desc", "")))
 	sfx("horn", Vector3.ZERO, 1.0)
 
+## Something the local player did that a mission may count (yard.js missionEvent).
+func mission_event(kind: String, n := 1) -> void:
+	if mode == "yard" or mode == "training" or role == "guest":
+		return
+	mcount[kind] = int(mcount.get(kind, 0)) + n
+
 func circus_status() -> String:
 	var head := "Day %s · bout %d" % [["I", "II", "III", "IV", "V", "VI", "VII"][clampi(int(circus.get("day", 0)), 0, 6)], int(circus.get("bout_index", 0)) + 1]
 	var s := rules.status() if rules else ""
@@ -445,6 +459,8 @@ func _physics_process(dt: float) -> void:
 	spectacle.update(dt)
 	if rules and not over:
 		rules.update(dt)
+	if yard:
+		yard.update(dt, last_local_inp)
 	if tut and not over:
 		tut.update(dt, last_local_inp)
 		if tut.finished:
@@ -735,6 +751,8 @@ func _check_round(dt: float) -> void:
 				else:
 					spawn_fighter(spec)
 		return
+	if mode == "yard":
+		return
 	if mode == "circus":
 		_check_circus(alive_h, alive_e)
 		return
@@ -782,6 +800,11 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 			elif me.f.arm[side].fore.severed:
 				wear[side] = "lost"
 	var result := {"won": won, "stage": stage, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	if me and is_instance_valid(me.f) and me.f.alive:
+		mission_event("survive")
+		if won and me.f.blood > 66.0:
+			mission_event("clean")
+	result["missions"] = mcount.duplicate()
 	if mode == "circus":
 		result["circus"] = true
 		result["coins"] = rules.coins if rules else 0
@@ -810,6 +833,15 @@ func _on_hit(h: Dictionary) -> void:
 		last_hit_of[h.char] = h
 	if tut:
 		tut.on_hit(h)
+	if me and h.get("attacker") == me.f and h.get("char") is Fighter and h.char.team != me.f.team:
+		hit_by_me[h.char] = true
+		if h.get("punch", false):
+			mission_event("punch")
+		if h.get("part") == h.char.head:
+			mission_event("head")
+		var res = h.get("res")
+		if res is Dictionary and not res.get("severed", []).is_empty():
+			mission_event("sever", res.severed.size())
 	if role != "guest":
 		spectacle.on_hit(h)
 	# Blood where it struck (a party of colours under Confetti Blood), and on the sand below.
@@ -834,6 +866,13 @@ func _on_death(f: Fighter, cause: String) -> void:
 		spectacle.on_death(f)
 	if killcam:
 		killcam.on_death(f, cause, last_hit_of.get(f, {}))
+	if me and f != me.f and f.last_attacker == me.f:
+		mission_event("kill")
+		var lw = last_hit_of.get(f, {}).get("weapon")
+		if lw != null and is_instance_valid(lw) and lw.holder == null:
+			mission_event("throwKill")
+	if me and (f.boss or f.S >= 1.8) and hit_by_me.has(f):
+		mission_event("bigKill")
 	if f.kind != "beast" or not Data.beasts.get(f.get("species") if f.get("species") else "", {}).get("bloodless", false):
 		fx.pool(f.torso.global_position, 1.4 * f.S, 8.0)
 		arena.set_excitement(1.0)

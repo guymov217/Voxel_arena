@@ -349,6 +349,8 @@ func shove(e: Dictionary) -> bool:
 	if best == null:
 		return true
 	var t: Fighter = best.f
+	if e == m.me and t.team != c.team and m.has_method("mission_event"):
+		m.mission_event("shove")
 	var dir: Vector3 = t.torso.global_position - c.torso.global_position
 	dir.y = 0.0
 	dir = dir.normalized()

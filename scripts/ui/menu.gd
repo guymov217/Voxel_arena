@@ -195,6 +195,9 @@ func set_kit(k: Dictionary) -> void:
 
 func show_screen(s: String, msg := "") -> void:
 	var was := screen
+	if s == "main" and in_yard():
+		_end_match()
+		hub = false
 	screen = s
 	if backdrop and backdrop.hero and (was == "gladiator") != (s == "gladiator"):
 		_dress_hero()
@@ -203,6 +206,8 @@ func show_screen(s: String, msg := "") -> void:
 	if Sfx.music and match_ == null:
 		Sfx.music.set_state("yard" if ["yard", "market", "circus_market"].has(s) else "menu")
 	var v := _clear()
+	if in_yard():
+		v.add_child(UIStyle.button("◀  Back to the yard  (Esc)", _close_overlay, true))
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
 	panel.custom_minimum_size.x = 520 if s == "main" else 760
 	# Each screen slides in.
@@ -225,6 +230,8 @@ func show_screen(s: String, msg := "") -> void:
 		"gladiator": _gladiator(v)
 		"circus": _circus(v)
 		"controls": _controls(v)
+		"gate": _gate(v)
+		"missions": _missions(v)
 		"circus_market": _circus_market(v)
 	if backdrop and backdrop.hero:
 		_frame_hero()
@@ -281,7 +288,7 @@ func _main(v: VBoxContainer) -> void:
 		UIStyle.menu_button(("Continue · stage %d" % st) if st > 1 else "Begin the campaign", func(): start({"mode": "campaign", "stage": st}), true),
 		UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")),
 		UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")),
-		UIStyle.menu_button("The yard & the smith", func(): show_screen("yard")),
+		UIStyle.menu_button("The Ludus yard", enter_yard),
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
 		UIStyle.menu_button("Training", func(): show_screen("training")),
 		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
@@ -311,6 +318,110 @@ func _main(v: VBoxContainer) -> void:
 	nrow.alignment = BoxContainer.ALIGNMENT_CENTER
 
 var rebinding := ""
+var hub := false                 # in the walkable yard, or coming back to it after a fight
+
+func in_yard() -> bool:
+	return match_ != null and is_instance_valid(match_) and match_.mode == "yard"
+
+## The Ludus yard: walk between the stations; G at one opens it over the yard.
+func enter_yard(banner_text := "") -> void:
+	hub = true
+	var lo := Arms.loadout(arms())
+	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "gladius", "off": lo.off if lo.off else "roundShield"}, "decrees": [], "hazards": []})
+	match_.station.connect(_open_station)
+	if Sfx.music:
+		Sfx.music.set_state("yard")
+	if banner_text != "":
+		match_._banner("Back in the yard", banner_text)
+
+func _open_station(id: String) -> void:
+	if visible:
+		return
+	visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if match_.input:
+		match_.input.enabled = false
+	match id:
+		"smith": show_screen("yard")
+		"market": show_screen("market")
+		"board": show_screen("missions")
+		"gate": show_screen("gate")
+
+func _close_overlay() -> void:
+	visible = false
+	if match_ and match_.input:
+		match_.input.enabled = true
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _gate(v: VBoxContainer) -> void:
+	v.add_child(UIStyle.title("The arena gate", 34))
+	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
+	var st := int(Save.get_value("stage", 1))
+	v.add_child(UIStyle.button("The Campaign · stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
+	v.add_child(UIStyle.button("Bread & Circuses", func():
+		_end_match()
+		show_screen("circus")))
+	v.add_child(UIStyle.button("Fights and party modes", func():
+		_end_match()
+		show_screen("fights")))
+	v.add_child(UIStyle.button("Leave the yard (main menu)", func(): show_screen("main")))
+
+func missions() -> Array:
+	var ms = Save.get_value("missions", [])
+	if not (ms is Array) or ms.is_empty():
+		ms = Yard.roll_missions(randi())
+		Save.set_value("missions", ms)
+	return ms
+
+func _missions(v: VBoxContainer) -> void:
+	var rep := int(Save.get_value("rep", 0))
+	var rk := Yard.rank_of(rep)
+	v.add_child(UIStyle.title("The mission board", 34))
+	var nxt = rk.next
+	v.add_child(UIStyle.label("Rank: %s · reputation %d%s" % [rk.name, rep, (" · %s at %d" % [nxt.name, int(nxt.rep)]) if nxt else " · the highest rank"], 16, UIStyle.GOLD))
+	v.add_child(UIStyle.label(String(rk.perk), 14, UIStyle.MUTED))
+	if nxt:
+		var bar := ProgressBar.new()
+		bar.min_value = float(rk.rep)
+		bar.max_value = float(nxt.rep)
+		bar.value = float(rep)
+		bar.custom_minimum_size = Vector2(500, 14)
+		bar.show_percentage = false
+		v.add_child(bar)
+	v.add_child(UIStyle.label("For the next fight:", 15, UIStyle.TEXT))
+	for ms in missions():
+		var d: Dictionary = Yard.MISSIONS.get(ms.id, {})
+		if d.is_empty():
+			continue
+		v.add_child(UIStyle.label("%s  %s  (%d/%d) · %d denarii, %d reputation" % ["✔" if ms.get("done", false) else "·", d.text, int(ms.n), int(d.count), int(round(int(d.coins) * Yard.mission_pay(rep))), int(d.rep)], 15, Color(0.6, 0.95, 0.5) if ms.get("done", false) else UIStyle.TEXT))
+
+## A fight is over: count what it did toward the missions, pay them, and the reputation.
+func _settle_missions(r: Dictionary, mode: String) -> String:
+	if mode == "yard" or mode == "training":
+		return ""
+	var ms := missions()
+	var done := Yard.apply_counts(ms, r.get("missions", {}))
+	var rep := int(Save.get_value("rep", 0))
+	var kills_me := int(r.get("kills", {}).get(Save.get_value("name", "Gladiator"), 0))
+	var gain := Yard.fight_rep(r.get("won", false), kills_me, r.get("boss", false))
+	var pay := Yard.payout(done, rep)
+	gain += int(pay.rep)
+	add_coins(int(pay.coins))
+	var before := Yard.rank_of(rep)
+	Save.set_value("rep", rep + gain)
+	var after := Yard.rank_of(rep + gain)
+	# Finished missions make room for new ones.
+	var keep: Array = ms.filter(func(x): return not x.get("done", false))
+	var fresh := Yard.roll_missions(randi(), 6).filter(func(x): return not keep.any(func(k): return k.id == x.id))
+	while keep.size() < 3 and not fresh.is_empty():
+		keep.append(fresh.pop_front())
+	Save.set_value("missions", keep)
+	var text := "+%d reputation" % gain
+	if not done.is_empty():
+		text += " · missions done: %s (+%d denarii)" % [", ".join(done.map(func(id): return Yard.MISSIONS[id].text)), int(pay.coins)]
+	if after.index > before.index:
+		text += " · NEW RANK: %s!" % after.name
+	return text
 
 func bindings() -> Dictionary:
 	var b = Save.get_value("settings", {}).get("bindings", {})
@@ -1061,6 +1172,7 @@ func _on_finished(r: Dictionary) -> void:
 	var mode := match_.mode if match_ else "campaign"
 	if match_ and match_.tut and match_.tut.finished:
 		Save.set_value("tutorial_done", true)
+	var mission_text := _settle_missions(r, match_.mode if match_ else "")
 	if mode == "circus" and match_ and match_.role != "guest":
 		var inv: Dictionary = match_.me.get("inventory", {}) if match_.me else {}
 		_end_match()
@@ -1086,7 +1198,10 @@ func _on_finished(r: Dictionary) -> void:
 	if Net.active() and not Net.is_host():
 		show_screen("room")
 	else:
-		show_screen("yard" if mode == "campaign" else "main")
+		if hub:
+			enter_yard(((last_result.get("text", "") + " · ") if mode == "campaign" and last_result.get("text", "") != "" else "") + mission_text)
+		else:
+			show_screen("yard" if mode == "campaign" else "main", mission_text)
 
 func _on_net(type: String, data, _from: int) -> void:
 	match type:
@@ -1130,6 +1245,9 @@ func _on_net(type: String, data, _from: int) -> void:
 				match_.finished.emit({"won": data.won, "stage": match_.stage, "pay": data.pay})
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and in_yard() and visible:
+		_close_overlay()
+		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
 		_toggle_pause()
 
