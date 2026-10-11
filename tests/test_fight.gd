@@ -119,3 +119,51 @@ func test_throws_wind_up_and_fly_true() -> void:
 	for k in ["gladius", "axe"]:
 		t.check(spins[k][0] > 5.0 and spins[k][1] < 0.2, "the %s turns end over end (spin %.1f, along the flight %.2f)" % [k, spins[k][0], spins[k][1]])
 	w.queue_free()
+
+## H takes the off hand onto the haft and lets go again.
+func test_h_switches_the_grip() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "gladius"}, {"name": "A"})
+	await _step(w, 60, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
+	t.check(not f.two_handed, "one hand to begin with")
+	await _step(w, 1, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "grip": true})
+	await _step(w, 60, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
+	t.check(f.two_handed and f.weapon_joints.L != null, "both hands on it after H")
+	t.check(f.hand_world("L").distance_to(f.weapons.R.global_transform * f.weapons.R.grip_off) < 0.12, "the off hand is on the haft")
+	await _step(w, 1, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "grip": true})
+	await _step(w, 10, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
+	t.check(not f.two_handed and f.weapons.R != null, "one hand again, the sword still held")
+	w.queue_free()
+
+## Cut through at the waist, a man comes apart: the pelvis and legs go as a half of their own,
+## he goes down and bleeds out. With both shins smashed he cannot stand, and crawls on his arms.
+func test_a_man_cut_in_half_falls_and_smashed_legs_mean_crawling() -> void:
+	var w := _world()
+	var a := w.fighter(Vector3(0, 0, 0), 0.0, {}, {"name": "A"})
+	await _step(w, 60, func(_f, _i): return {})
+	var torso: VoxelPart = a.torso
+	var p: Vector3 = torso.global_position + Vector3(0.24, -0.1, 0)
+	var res: Dictionary = a.apply_hit(torso, {"impulse": 70.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "point": p, "dir": Vector3(-1, 0, 0), "axis": Vector3(0, 0, 1), "edge": Vector3(-1, 0, 0), "heavy": 1.0})
+	for i in 3:
+		var pp: Vector3 = torso.global_position + Vector3(0.24, -0.1 + 0.02 * i, 0)
+		var r2: Dictionary = a.apply_hit(torso, {"impulse": 70.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "point": pp, "dir": Vector3(-1, 0, 0), "axis": Vector3(0, 0, 1), "edge": Vector3(-1, 0, 0), "heavy": 1.0})
+		if not r2.get("halved", []).is_empty():
+			res = r2
+	await _step(w, 30, func(_f, _i): return {})
+	t.check(not res.get("halved", []).is_empty(), "the legs went with the lower half (%s)" % [res.get("halved", [])])
+	t.check(a.by_name.thighL.severed and a.by_name.thighR.severed, "both legs are off him")
+	t.check(a.state != "stand" and a.blood <= 40.0, "he is down (%s) and bleeding out (%.0f)" % [a.state, a.blood])
+	# Another man: both shins smashed to splinters (left on, useless).
+	var b := w.fighter(Vector3(4, 0, 0), 0.0, {}, {"name": "B"})
+	await _step(w, 60, func(_f, _i): return {})
+	for n in ["shinL", "shinR"]:
+		var sh: VoxelPart = b.by_name[n]
+		sh.fractured = true
+		sh.hp = 5.0
+	t.check(not b.can_stand(), "two smashed shins cannot hold him up")
+	await _step(w, 120, func(_f, _i): return {})
+	t.eq(b.state, "down", "down he goes")
+	var z0: float = b.torso.global_position.z
+	await _step(w, 360, func(_f, _i): return {"mz": 1.0})
+	t.check(b.crawling or b.torso.global_position.z - z0 > 0.4, "and crawls forward (%.2f m)" % (b.torso.global_position.z - z0))
+	w.queue_free()

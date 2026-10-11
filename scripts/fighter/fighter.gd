@@ -23,7 +23,7 @@ const LEG_MASS := 0.5
 ## stiff joint motors; torque-driven legs lag their targets, so less here).
 const ANCHOR_K := 4.0
 const CENTER_K := 3.0
-const LEG_WN := 80.0
+const LEG_WN := 30.0
 ## How much of the leg drive pushes back on the torso (Rapier's joint motors are solved with the
 ## joints; a torque drive's full reaction fights the balance when the body lies on its side).
 const LEG_REACT := 0.35
@@ -92,6 +92,8 @@ var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
+var crawling := false
+var crawl_phase := 0.0
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
 var net_mesh: MeshInstance3D = null
@@ -308,6 +310,26 @@ func release(side: String) -> Weapon:
 		Combat.current.loose_weapons.append(w)
 	return w
 
+## H: the off hand takes hold of the main weapon's haft too, or lets go of it (character.js
+## toggleGrip). Two hands: more power and better control of a heavy weapon; one: the off hand
+## is free. Returns "one", "two" or null.
+func toggle_grip() -> Variant:
+	var w: Weapon = weapons.R
+	if not w or w.is_shield or not alive or w.design.get("chain") != null:
+		return null
+	if two_handed:
+		if weapon_joints.L:
+			weapon_joints.L.queue_free()
+			weapon_joints.L = null
+		two_handed = false
+		return "one"
+	var fore: VoxelPart = arm.L.fore
+	if weapons.L or fore.severed or fore.hanging or fore.missing or arm.L.upper.severed or arm.L.upper.hanging:
+		return null
+	two_handed = true
+	_attach_off_hand(w)
+	return "two"
+
 ## Slowed for `seconds` to `factor` of the pace (ice, honey, poison); a weaker slow does not
 ## replace a stronger one.
 func slow(seconds: float, factor: float) -> void:
@@ -463,8 +485,14 @@ func arm_func(side: String) -> float:
 		return 0.0
 	return minf(a.upper.function(), a.fore.function())
 
+## Whether the legs can hold him up: one good leg will do (he hops), two battered ones will
+## not; neither will bleeding out or a head too rung to balance. Down, he crawls.
 func can_stand() -> bool:
-	return leg_func("L") > 0.05 or leg_func("R") > 0.05
+	var l := leg_func("L")
+	var r := leg_func("R")
+	if bool(mods.get("cyclops", false)) and (l <= 0.0 or r <= 0.0):
+		return false
+	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 18.0 and concussion < 0.85
 
 func is_active() -> bool:
 	return state != "dead"
@@ -496,6 +524,23 @@ func pd_relative(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: floa
 	var err := PD.rot_error(desired, PD.quat_of(part))
 	var rel := part.angular_velocity - parent.angular_velocity
 	var tq := PD.torque_for(part, err * (wn * wn) - rel * (2.0 * zeta * wn), boost * ip / (ic + ip))
+	tq = PD.clamp_len(tq, max_t)
+	part.apply_torque_impulse(tq * dt)
+	parent.apply_torque_impulse(-tq * dt * react)
+
+## The legs' joint drive (character.js motorRel, which used Rapier's implicit motors). A torque
+## PD stepped at 120 Hz with the leg's gains chattered every frame (the knee's acceleration
+## flipped sign at the step rate, so the legs shook and the feet skated). This one steers the
+## joint's relative angular velocity toward a target set by the angle error and closes only part
+## of the gap each step, so it can never overshoot and never chatters, however stiff.
+func motor_rel(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float, max_t: float, dt: float, react := 1.0) -> void:
+	if part.severed or wn <= 0.0:
+		return
+	var desired := PD.quat_of(parent) * rel_q
+	var err := PD.rot_error(desired, PD.quat_of(part))
+	var rel := part.angular_velocity - parent.angular_velocity
+	var v_des := PD.clamp_len(err * wn, 16.0)
+	var tq := PD.torque_for(part, (v_des - rel) / dt, 1.0) * 0.6
 	tq = PD.clamp_len(tq, max_t)
 	part.apply_torque_impulse(tq * dt)
 	parent.apply_torque_impulse(-tq * dt * react)
@@ -554,6 +599,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		elif state == "down":
 			down_timer = maxf(down_timer, 0.4)
 	var inp: Dictionary = inp_in if live and not limp else {}
+	if inp.get("grip", false) and state == "stand":
+		toggle_grip()
 	var t_pos: Vector3 = torso.global_position
 	var t_rot: Quaternion = PD.quat_of(torso)
 	var yaw_q := Quaternion(UP, yaw)
@@ -689,6 +736,16 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if inp.get("jump", false) and stamina > 15.0:
 			torso.apply_central_impulse(Vector3(0, total_mass * 4.2 * maxf(0.3, leg_avg), 0))
 			stamina -= 15.0
+	# Down but alive: drag yourself along on your arms, slowly, slower still the worse you are.
+	crawling = false
+	if live and state == "down" and grounded and move_local.length_squared() > 0.05 and net_timer <= 0.0:
+		var crawl_speed := 0.75 * sqrt(S) * (0.35 + 0.65 * heavy) * (0.5 + 0.5 * (arm_func("L") + arm_func("R")) * 0.5)
+		var cw: Vector3 = yaw_q * move_local * crawl_speed
+		var ixc := Vector2(cw.x - lv.x, cw.z - lv.z).limit_length(3.0) * 26.0 * total_mass * dt
+		torso.apply_central_impulse(Vector3(ixc.x, 0, ixc.y))
+		crawl_phase += dt * 4.5
+		crawling = true
+		stamina_use += 3.0 * dt
 	v_smooth = v_smooth.lerp(Vector3(lv.x, 0, lv.z), minf(1.0, dt * 10.0))
 	var h_speed := Vector2(v_smooth.x, v_smooth.z).length()
 	var step_len: float = minf(0.66, 0.28 + 0.12 * h_speed) * S
@@ -824,9 +881,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			thigh_q = Quaternion(Vector3(1, 0, 0), -0.75).slerp(thigh_q, k)
 			bend = 1.6 * (1.0 - k) + bend * k
 		var snap: bool = kicking
-		pd_relative(thigh, torso, thigh_q, LEG_WN * sqrt(f), 0.9, (1400.0 if snap else 900.0) * f * MS * S, dt, 3.0, LEG_REACT)
+		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
-			pd_relative(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), 0.9, (700.0 if snap else 600.0) * f * MS * S, dt, 3.0)
+			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
 
 	# ----- Arms and weapons -----
 	var power: bool = inp.get("power", false) and stamina > 3.0
@@ -877,6 +934,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		jab = -0.9 * jk / 0.12 if jk < 0.12 else (1.8 if jk < 0.6 else 1.8 * (1.0 - (jk - 0.6) / 0.4))
 	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0)))
 	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
+	if crawling:
+		# The arms reach ahead and haul, one after the other.
+		down_hp = {"x": 0.35 if side == "R" else -0.35, "y": 0.55 + 0.45 * sin(crawl_phase + (0.0 if side == "R" else PI))}
+		thrust = 0.5
 	# Throwing: drawn back high behind the shoulder while F is held (further the longer it is
 	# held) or a bot winds up, then whipped forward and across in the follow-through.
 	var t_side := ("L" if not weapons.L else "R") if held_item != null else ("R" if weapons.R and not weapons.R.is_shield else "L")
@@ -982,6 +1043,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if w and w.holder == self and not w.is_shield:
 		_keep_weapon_out(w, dt)
 
+func arm_of(w: Weapon) -> Dictionary:
+	return arm.R if weapons.R == w else arm.L
+
 ## Caps one component (0 = x, 1 = y) of a unit direction, keeping it a unit direction: the
 ## other components take up the rest in their own proportion.
 static func _limit_dir(e: Vector3, axis: int, mx: float) -> Vector3:
@@ -1015,11 +1079,15 @@ func _keep_weapon_out(w: Weapon, dt: float) -> void:
 		var p := base + ab * k
 		var d := p - c
 		d.y *= 0.7
-		var r := (0.15 if part == head else 0.2) * S
+		var r := (0.2 if part == head else 0.22) * S
 		var dist := d.length()
 		if dist >= r or dist < 1e-4:
 			continue
-		w.apply_impulse(d / dist * ((r - dist) / r * 900.0 * (w.mass + 0.8)) * dt, p - w.global_position)
+		# Welded in the hand, the blade only moves if the forearm goes with it.
+		var push: Vector3 = d / dist * ((r - dist) / r * 900.0 * (w.mass + 0.8)) * dt
+		w.apply_impulse(push, p - w.global_position)
+		if w.welded:
+			arm_of(w).fore.apply_impulse(push * 0.6, hand_world("R" if weapons.R == w else "L") - arm_of(w).fore.global_position)
 
 ## A big blade left behind its wielder's back, with the arm too weak to haul it round, is swung
 ## back over the shoulder after a moment (sooner the heavier it is).
@@ -1372,6 +1440,11 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 	var before := part.alive_count
 	var cut_off = null
 	for lump in part.loose_lumps():
+		# The torso: a lump with limbs rooted in it (the pelvis with the legs, a shoulder with
+		# its arm) comes away as a half, limbs and all; so does any big piece.
+		if part == torso and not detached and (part.near_child_anchor(lump) or lump.size() > 0.25 * before):
+			_drop_half(part, lump, res, dir)
+			continue
 		var amputation: bool = not detached and part != torso and (part.near_child_anchor(lump) or lump.size() >= 0.4 * before or lump.size() == before)
 		if amputation and (cut_off == null or lump.size() > cut_off.size()):
 			cut_off = lump
@@ -1387,6 +1460,80 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		sever(part, res, cut_off)
 	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)):
 		hang(part, res)
+
+## A half: a lump of the torso cut clean away with the limbs rooted in it. The lump becomes a
+## body of its own and the limbs are jointed onto it, so a man cut through at the waist leaves
+## his legs standing (for a moment) on a pelvis and goes down on his hands; cut down the middle,
+## a side with its arm and leg goes one way and he the other. It is the end of him, soon.
+func _drop_half(part: VoxelPart, lump: PackedInt32Array, res: Dictionary, dir: Vector3) -> void:
+	var carried := []
+	for ch in part.child_parts:
+		if ch != head and not ch.severed and not ch.missing and part.lump_holds(lump, ch):
+			carried.append(ch)
+	var fraction := float(lump.size()) / maxf(1.0, part.fx.size())
+	var idx := Array(lump)
+	var at := {}
+	for ch in carried:
+		at[ch] = part.global_transform * ch.pa
+	var vox := part.remove_voxels(idx, false)
+	res.removed.append({"part": part, "indices": idx, "voxels": vox, "chunk": true})
+	var piece = Chunk.spawn(part, vox, dir) if not part.freeze else null
+	if piece:
+		piece.angular_velocity = Vector3.ZERO
+		piece.mass = maxf(piece.mass, part.nominal_mass * fraction)
+		piece.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_DEBRIS
+		piece.angular_damp = 0.3
+	var names := []
+	for ch in carried:
+		names.append(ch.part_name)
+		detach_limb(ch, res)
+		if piece:
+			var pieces := [ch]
+			var stack := [ch]
+			while not stack.is_empty():
+				var c: VoxelPart = stack.pop_back()
+				for cc in c.child_parts:
+					pieces.append(cc)
+					stack.append(cc)
+			for pc in pieces:
+				piece.add_collision_exception_with(pc)
+			var j := PinJoint3D.new()
+			add_child(j)
+			j.global_position = at[ch]
+			j.node_a = piece.get_path()
+			j.node_b = ch.get_path()
+			ch.joint = j
+	# Nothing holds a half up: the whole piece, limbs and all, topples with the blow as one,
+	# turning about the ground under it, and the limbs on it go slack and slide.
+	if piece:
+		var d := Vector3(dir.x, 0, dir.z)
+		d = Vector3(1, 0, 0) if d.length_squared() < 1e-4 else d.normalized()
+		var wv := UP.cross(d) * 3.5
+		var bodies: Array = [piece]
+		for ch in carried:
+			var stack2 := [ch]
+			while not stack2.is_empty():
+				var c: VoxelPart = stack2.pop_back()
+				bodies.append(c)
+				var pm := PhysicsMaterial.new()
+				pm.friction = 0.3
+				c.physics_material_override = pm
+				stack2.append_array(c.child_parts)
+		var pivot: Vector3 = piece.global_position
+		for b in bodies:
+			pivot.y = minf(pivot.y, b.global_position.y - 0.2 * S)
+		pivot.y = maxf(0.0, pivot.y)
+		for b in bodies:
+			var r: Vector3 = b.global_position - pivot
+			b.linear_velocity = wv.cross(r) + d * 0.6
+			b.angular_velocity = Vector3(wv.x, 0, wv.z)
+	res.halved = res.get("halved", []) + names
+	blood = minf(blood, 40.0)
+	part.bleed += 6.0
+	pain = 1.0
+	stagger = 1.0
+	if state == "stand":
+		fall(99.0, true)
 
 func hang(part: VoxelPart, res: Dictionary) -> void:
 	if part.hanging or part.severed:

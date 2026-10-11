@@ -558,6 +558,15 @@ func anchor_point(child: VoxelPart) -> Vector3:
 	var hx := half_ext / 0.95
 	return Vector3(clampf(p.x, -hx.x, hx.x), clampf(p.y, -hx.y, hx.y), clampf(p.z, -hx.z, hx.z))
 
+## Whether a lump holds the root of `child` (its joint point is inside it).
+func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:
+	var pt := anchor_point(child)
+	var r := vf * part_scale * 2.2
+	for i in lump:
+		if local_of(i).distance_to(pt) < r:
+			return true
+	return false
+
 func near_child_anchor(lump: PackedInt32Array) -> bool:
 	var pts := []
 	for c in child_parts:

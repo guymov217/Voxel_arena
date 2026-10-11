@@ -29,8 +29,8 @@ var throw_charge := 0.0
 var _digits_held := {}
 ## Presses that act once (a jump, a grab): latched between frames until the input is sampled,
 ## and sent to the host reliably.
-const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote"]
-const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote"]
+const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "grip"]
+const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote", "grip"]
 const PAD := {"jump": JOY_BUTTON_A, "kick": JOY_BUTTON_B, "grab": JOY_BUTTON_X, "throw": JOY_BUTTON_Y, "shove": JOY_BUTTON_LEFT_SHOULDER,
 	"thrust": JOY_BUTTON_RIGHT_SHOULDER, "sprint": JOY_BUTTON_LEFT_STICK, "crouch": JOY_BUTTON_RIGHT_STICK, "taunt": JOY_BUTTON_BACK}
 const PAD_ITEMS := [JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT]
@@ -240,6 +240,7 @@ func sample(dt: float) -> Dictionary:
 		"taunt": pressed("taunt"),
 		"shove": pressed("shove"),
 		"emote": pressed("emote"),
+		"grip": pressed("grip"),
 		"limp": held("limp"),
 		"useItem": use_item,
 	}

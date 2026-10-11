@@ -239,7 +239,7 @@ func _on_view_input(e: InputEvent) -> void:
 func _click(at: Vector2, add: bool) -> void:
 	var from := cam.project_ray_origin(at)
 	var to := from + cam.project_ray_normal(at) * 20.0
-	var hit := viewport.world_3d.direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
+	var hit := viewport.find_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
 	if hit.is_empty():
 		return
 	var cs = hit.collider.shape_owner_get_owner(hit.collider.shape_find_owner(hit.shape))
