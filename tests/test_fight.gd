@@ -167,3 +167,30 @@ func test_a_man_cut_in_half_falls_and_smashed_legs_mean_crawling() -> void:
 	await _step(w, 360, func(_f, _i): return {"mz": 1.0})
 	t.check(b.crawling or b.torso.global_position.z - z0 > 0.4, "and crawls forward (%.2f m)" % (b.torso.global_position.z - z0))
 	w.queue_free()
+
+## Blow after blow into the same cut goes deeper each time (the blade follows the wound) until
+## the limb comes off; armour is knocked off where it is struck, plate by plate.
+func test_blows_follow_the_wound_and_knock_armour_off() -> void:
+	var w := _world()
+	var a := w.fighter(Vector3(0, 0, 0), 0.0, {"armor": ["manica"]}, {"name": "A"})
+	await _step(w, 60, func(_f, _i): return {})
+	var th: VoxelPart = a.by_name.thighL
+	var cuts := 0
+	var gone := []
+	for i in 8:
+		if th.severed:
+			break
+		var p: Vector3 = th.global_position + PD.quat_of(th) * Vector3(th.half_ext.x * 1.05, 0, 0)
+		var dir := (th.global_position - p).normalized()
+		var res: Dictionary = a.apply_hit(th, {"impulse": 16.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": p, "dir": dir, "axis": PD.quat_of(th) * Vector3(0, 0, 1), "edge": dir, "heavy": 0.0})
+		cuts += 1
+		gone.append(res.removed.reduce(func(s, r): return s + r.indices.size(), 0))
+	t.check(th.severed, "the thigh came off in %d blows (voxels per blow %s)" % [cuts, gone])
+	t.check(cuts >= 2, "not in one ordinary blow")
+	var up: VoxelPart = a.by_name.upperArmR
+	var ad: Dictionary = up.get_meta("armor")[0]
+	var before: int = ad.alive
+	var pa: Vector3 = up.global_position + PD.quat_of(up) * Vector3(-up.half_ext.x * 1.1, 0, 0)
+	var r2: Dictionary = a.apply_hit(up, {"impulse": 40.0, "type": "blunt", "hardness": 0.8, "point": pa, "dir": (up.global_position - pa).normalized()})
+	t.check(r2.get("armor", false) and ad.alive < before and ad.alive > 0, "plates knocked off where it struck (%d -> %d of %d)" % [before, ad.alive, ad.pts.size()])
+	w.queue_free()

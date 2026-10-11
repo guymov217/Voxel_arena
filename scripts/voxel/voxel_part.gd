@@ -46,6 +46,8 @@ var stump := false
 var stump_t := 0.0
 var flinch_t := 0.0
 var missing := false
+var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
+var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
 var heat := {}                   # voxel -> how charred (or melted) it is
 var flames: GPUParticles3D = null
@@ -606,8 +608,9 @@ func thin_ratio() -> float:
 	var mn := 1.0
 	for k in range(1, last):
 		var i: int = order[k]
-		if full[i] > 0:
-			mn = minf(mn, float(live[i]) / full[i])
+		if full[i] > 0 and float(live[i]) / full[i] < mn:
+			mn = float(live[i]) / full[i]
+			thin_layer = [ax, i]
 	return mn
 
 ## Voxels whose centre is within `r` of a local point.

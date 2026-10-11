@@ -93,6 +93,8 @@ var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
 var crawling := false
+var eye_hurt := 0.0
+var strip_clock := 0.0
 var crawl_phase := 0.0
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
@@ -230,9 +232,19 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 		mmesh.set_instance_transform(i, Transform3D(Basis(), Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S))
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mmesh
+	# A fixed box: plates knocked off one by one must not shrink it and cull the rest.
+	var ext := Vector3(p.dims.x + 2, p.dims.y + 2, p.dims.z + 2) * V * S * 0.5
+	inst.custom_aabb = AABB(-ext, ext * 2.0)
+	mmesh.custom_aabb = inst.custom_aabb
 	inst.name = "Armor_" + id
 	p.add_child(inst)
-	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "alive": cells.size(), "node": inst}])
+	var pts := []
+	for c in cells:
+		pts.append(Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S)
+	var on := PackedByteArray()
+	on.resize(cells.size())
+	on.fill(1)
+	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst}])
 
 func hand_world(side: String) -> Vector3:
 	return arm[side].fore.global_transform * hand_point
@@ -623,6 +635,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
 	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
 	stagger = maxf(0.0, stagger - dt * 1.6)
+	eye_hurt = maxf(0.0, eye_hurt - dt * 0.01)
+	_tear_strips(dt)
 	concussion = maxf(float(mods.drunk), concussion - dt * 0.05)
 	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0):
 		die("decap" if head.severed else ("bleed" if blood <= 0.0 else "wounds"))
@@ -954,6 +968,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		hp_used = {"x": 0.3, "y": 0.45}
 	hand_input[side] = hp_used
 	var target := hand_target_local(side, hp_used, thrust)
+	# A hurt arm trembles and wanders, more the worse it is; a hurt eye throws the aim off too.
+	var arm_hurt := 1.0 - minf(1.0, arm_func(side) / 0.85)
+	var shake := maxf(0.0, arm_hurt - 0.1) * 0.09 + eye_hurt * 0.04
+	if shake > 0.002:
+		target.x += (sin(time * 13.7 + slot * 3) + 0.5 * sin(time * 29.3)) * shake * S
+		target.y += (cos(time * 11.1 + side.length()) + 0.5 * sin(time * 23.9)) * shake * S
 	if concussion > 0.1:
 		target.x += sin(time * 3.1 + slot) * concussion * 0.25
 		target.y += cos(time * 2.3) * concussion * 0.2
@@ -1274,19 +1294,25 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var basis_inv := part.global_transform.basis.orthonormalized().inverse()
 	var ld: Vector3 = (basis_inv * (hit.dir as Vector3)).normalized()
 	var la: Vector3 = (basis_inv * (hit.get("axis", hit.dir) as Vector3)).normalized()
-	# Armour takes it first.
-	var armor: Array = part.get_meta("armor", [])
-	if not armor.is_empty() and not detached:
-		var a: Dictionary = armor[0]
-		var h: float = Data.material(a.mat).get("hardness", 0.6)
+	# Armour takes it first, where there is armour (character.js armorNear): the blow knocks
+	# off the plates nearest it, the harder the more, and a bare spot is not covered any more.
+	var near := [] if detached else _armor_near(part, lp, V * S * 1.7)
+	if not near.is_empty():
+		var a0: Dictionary = near[0][0]
+		var h: float = Data.material(a0.mat).get("hardness", 0.6)
 		var force := J * (0.6 if type == "blunt" else 1.0) * (1.0 + 0.6 * heavy)
-		if force > 10.0 * h and a.alive > 0:
-			a.alive = maxi(0, int(a.alive) - (1 + int(force / (12.0 * h))))
-			if a.alive <= 0:
-				a.node.queue_free()
-				armor.remove_at(0)
-				res.armor_off = true
-		J *= 1.0 - minf(0.85, 0.3 + 0.55 * h) * (0.55 if type == "blunt" else 1.0)
+		var nk := mini(4 + roundi(3.0 * heavy), 1 + int(force / (12.0 * h))) if force > 10.0 * h else 0
+		for k in mini(nk, near.size()):
+			var ad: Dictionary = near[k][0]
+			var ci: int = near[k][1]
+			ad.on[ci] = 0
+			ad.alive -= 1
+			if ad.node and is_instance_valid(ad.node):
+				ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		if nk > 0:
+			res.armor_hit = nk
+		var absorb := minf(0.85, 0.3 + 0.55 * h)
+		J *= 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
 		res.armor = true
 	var dmg := 0.0
 	var remove := []
@@ -1310,11 +1336,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				n = Vector3(1, 0, 0)
 			n = n.normalized()
 			var span := (0.24 + 0.08 * heavy) * S
+			# A blade follows the wound: a second blow into an open cut starts where the first
+			# one stopped, so a thick limb is chopped through blow by blow instead of each one
+			# only scraping the same mouth of the wound.
+			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
 					continue
 				var d := part.local_of(i) - lp
-				if abs(d.dot(n)) < width and d.dot(ld) > -V * S and d.dot(ld) < depth + hollow and abs(d.dot(la)) < span:
+				if abs(d.dot(n)) < width and d.dot(ld) > -V * S and d.dot(ld) < depth + open and abs(d.dot(la)) < span:
 					remove.append(i)
 	elif type == "point":
 		var eff := hardness * sharpness * maxf(0.15, la.dot(ld))
@@ -1323,12 +1353,13 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var depth: float = minf(0.3 + 0.2 * heavy, 0.02 * J * eff * (1.0 + 0.8 * heavy)) * S
 		if J * eff > 2.5:
 			var r := vfs * (1.1 + 0.6 * heavy)
+			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
 					continue
 				var d := part.local_of(i) - lp
 				var along := d.dot(la)
-				if along > -V * S and along < depth + hollow and (d - la * along).length() < r:
+				if along > -V * S and along < depth + open and (d - la * along).length() < r:
 					remove.append(i)
 	else:
 		dmg = J * 1.5
@@ -1369,6 +1400,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		dmg *= 1.0 + minf(1.0, hollow / 0.1)
 	if part == torso or part == head:
 		stagger = minf(1.0, stagger + J * 0.007)
+	# A blow across the face near the eyes: the view closes in from the edges (players), the
+	# aim wanders (everyone). It heals a little over the fight.
+	if part == head and not detached and lp.z > V * S * 0.5 and absf(lp.y - V * S * 0.6) < V * S * 1.6 and J > 5.0:
+		eye_hurt = minf(1.0, eye_hurt + J * (0.012 if type == "blunt" else 0.025))
+	if not detached and part.parent_part and part.parent_part != torso:
+		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + J * 0.005)
 	if not detached:
 		stagger = minf(1.0, stagger + J * 0.0056 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))))
 		part.flinch_t = maxf(part.flinch_t, minf(0.45, 0.12 + J * 0.01))
@@ -1414,6 +1451,46 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	hit_taken.emit(self, res)
 	return res
 
+## The armour plates within `r` of a part-local point, nearest first: [[piece, cell index]].
+func _armor_near(part: VoxelPart, lp: Vector3, r: float) -> Array:
+	var out := []
+	for ad in part.get_meta("armor", []):
+		for i in ad.pts.size():
+			if ad.on[i]:
+				var d: float = (ad.pts[i] as Vector3).distance_to(lp)
+				if d < r:
+					out.append([ad, i, d])
+	out.sort_custom(func(x, y): return x[2] < y[2])
+	return out
+
+## How deep a wound already goes in from `lp` along `ld` (character.js wound): the farthest dead
+## voxel inside the blade's slab (or the point's bore, when `n` is zero), counted only while the
+## hole is open all the way from the surface (a cavity deeper in, from another cut, is not reached).
+func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, step: float) -> float:
+	var seen := []
+	var slab := n != Vector3.ZERO
+	for i in part.fx.size():
+		if part.alive[i]:
+			continue
+		var d := part.local_of(i) - lp
+		var along := d.dot(ld)
+		if along <= 0.0:
+			continue
+		if slab:
+			if absf(d.dot(n)) >= width or absf(d.dot(la)) >= span:
+				continue
+		elif (d - ld * along).length() >= width:
+			continue
+		seen.append(along)
+	seen.sort()
+	var deepest := 0.0
+	var gap := maxf(step, part.vf * part.part_scale * 2.0)
+	for a in seen:
+		if a > deepest + gap:
+			break
+		deepest = a
+	return deepest
+
 ## How deep an open hole goes under a blow at `lp` heading `ld` (0 on whole skin).
 func _hollow(part: VoxelPart, lp: Vector3, ld: Vector3, width: float) -> float:
 	var seen := []
@@ -1452,7 +1529,7 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 			# A lump cut loose falls as a real piece (a guest's puppet only loses the voxels).
 			var idx := Array(lump)
 			var vox := part.remove_voxels(idx, false)
-			var piece = Chunk.spawn(part, vox, dir) if not part.freeze else null
+			var piece = Chunk.spawn(part, vox, dir) if not part.freeze and idx.size() > 2 else null
 			res.removed.append({"part": part, "indices": idx, "voxels": vox, "chunk": piece != null})
 	if cut_off == null and not detached and part != torso and part.alive_count == 0:
 		cut_off = PackedInt32Array()
@@ -1534,6 +1611,44 @@ func _drop_half(part: VoxelPart, lump: PackedInt32Array, res: Dictionary, dir: V
 	stagger = 1.0
 	if state == "stand":
 		fall(99.0, true)
+
+## A limb left on a strip of a few voxels does not hold for long: the thinner the strip, the
+## gentler the swing that tears it off (character.js tearStrips).
+func _tear_strips(dt: float) -> void:
+	strip_clock += dt
+	if strip_clock < 0.15:
+		return
+	strip_clock = 0.0
+	for p in parts:
+		if not p.hanging or p.severed or p.parent_part == null or p.freeze:
+			continue
+		var thin: float = p.thin_ratio()
+		var w: float = (p.angular_velocity - p.parent_part.angular_velocity).length()
+		var lv: float = (p.linear_velocity - p.parent_part.linear_velocity).length() / sqrt(S)
+		p.hang_t += 0.15
+		if p.hang_t < 0.6:
+			continue
+		if (thin < 0.06 and (w > 5.0 or lv > 2.8)) or (thin < 0.15 and (w > 9.0 or lv > 4.5)) or (thin < 0.3 and (w > 16.0 or lv > 8.0)):
+			_tear_off(p)
+
+func _tear_off(part: VoxelPart) -> void:
+	var tl = part.thin_layer
+	if tl == null:
+		return
+	var strip := []
+	for i in part.fx.size():
+		if not part.alive[i]:
+			continue
+		var k: int = part.fx[i] if tl[0] == 0 else (part.fy[i] if tl[0] == 1 else part.fz[i])
+		if k == tl[1]:
+			strip.append(i)
+	if strip.is_empty():
+		return
+	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	res.removed.append({"part": part, "indices": strip, "voxels": part.remove_voxels(strip)})
+	var dir := part.linear_velocity.normalized() if part.linear_velocity.length_squared() > 1e-4 else Vector3.DOWN
+	break_loose(part, res, dir, false)
+	hit_taken.emit(self, res)
 
 func hang(part: VoxelPart, res: Dictionary) -> void:
 	if part.hanging or part.severed:
