@@ -31,6 +31,8 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
 	_net_loadout()
+	if Sfx.music:
+		Sfx.music.volume = float(Save.get_value("settings", {}).get("music", 0.5))
 	world_root = Node3D.new()
 	get_parent().add_child.call_deferred(world_root)
 	bg = ColorRect.new()
@@ -198,6 +200,8 @@ func show_screen(s: String, msg := "") -> void:
 		_dress_hero()
 	visible = true
 	_backdrop_on.call_deferred()
+	if Sfx.music and match_ == null:
+		Sfx.music.set_state("yard" if ["yard", "market", "circus_market"].has(s) else "menu")
 	var v := _clear()
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
 	panel.custom_minimum_size.x = 520 if s == "main" else 760
@@ -220,6 +224,7 @@ func show_screen(s: String, msg := "") -> void:
 		"options": _options(v)
 		"gladiator": _gladiator(v)
 		"circus": _circus(v)
+		"controls": _controls(v)
 		"circus_market": _circus_market(v)
 	if backdrop and backdrop.hero:
 		_frame_hero()
@@ -291,6 +296,10 @@ func _main(v: VBoxContainer) -> void:
 		var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tw.tween_interval(0.12 + i * 0.06)
 		tw.tween_property(b, "modulate:a", 1.0, 0.3)
+	if not Save.get_value("tutorial_done", false):
+		var nb := UIStyle.button("New here? The tutorial takes two minutes", _tutorial)
+		nb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(nb)
 	var name_edit := LineEdit.new()
 	name_edit.text = Save.get_value("name", "Gladiator")
 	name_edit.max_length = 24
@@ -301,8 +310,72 @@ func _main(v: VBoxContainer) -> void:
 	var nrow := _row(v, [UIStyle.label("Gladiator", 15, UIStyle.TEXT), name_edit, UIStyle.label("Purse: %d denarii" % coins(), 15, UIStyle.TEXT)])
 	nrow.alignment = BoxContainer.ALIGNMENT_CENTER
 
+var rebinding := ""
+
+func bindings() -> Dictionary:
+	var b = Save.get_value("settings", {}).get("bindings", {})
+	return b if b is Dictionary else {}
+
+func _controls(v: VBoxContainer) -> void:
+	panel.custom_minimum_size.x = 900
+	v.add_child(UIStyle.title("Controls", 34))
+	v.add_child(UIStyle.label("Click a key, then press the new one (Esc cancels). Gamepad: left stick walks, right stick looks; hold the right trigger and the right stick moves the sword hand, the left trigger the shield hand. A jump, B kick, X grab, Y throw, LB shove, RB thrust, D-pad uses the kit.", 14, UIStyle.MUTED))
+	var cur: Dictionary = Data.controls.get("defaults", {}).duplicate()
+	var mine := bindings()
+	for k in mine:
+		cur[k] = mine[k]
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 6)
+	v.add_child(grid)
+	for a in Data.controls.get("actions", []):
+		var id: String = a.id
+		if not cur.has(id):
+			continue
+		var lbl := UIStyle.label(String(a.label), 14)
+		lbl.custom_minimum_size = Vector2(250, 0)
+		grid.add_child(lbl)
+		var b := UIStyle.button("Press a key…" if rebinding == id else PlayerInput.label_of(String(cur[id])), func():
+			rebinding = id
+			show_screen("controls"))
+		b.custom_minimum_size = Vector2(150, 0)
+		grid.add_child(b)
+	_row(v, [UIStyle.button("Reset to defaults", func():
+		_set_opt("bindings", {})
+		show_screen("controls", "Back to the defaults")), UIStyle.button("Done", func(): show_screen("options"), true)])
+
+func _input(e: InputEvent) -> void:
+	if rebinding == "" or not (e is InputEventKey) or not e.pressed:
+		return
+	get_viewport().set_input_as_handled()
+	var id := rebinding
+	rebinding = ""
+	if e.keycode == KEY_ESCAPE:
+		show_screen("controls")
+		return
+	var code := PlayerInput.code_of(e.physical_keycode if e.physical_keycode != KEY_NONE else e.keycode)
+	if code == "":
+		show_screen("controls", "That key cannot be bound")
+		return
+	var b := bindings().duplicate()
+	var cur: Dictionary = Data.controls.get("defaults", {}).duplicate()
+	for k in b:
+		cur[k] = b[k]
+	# A key does one thing: whatever had it swaps to this action's old key.
+	for other in cur:
+		if other != id and cur[other] == code:
+			b[other] = cur[id]
+	b[id] = code
+	_set_opt("bindings", b)
+	show_screen("controls", "%s: %s" % [id, PlayerInput.label_of(code)])
+
+func _tutorial() -> void:
+	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
+
 func _training(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("Training", 34))
+	v.add_child(UIStyle.button("The tutorial: eight short steps, two minutes" + (" (done)" if Save.get_value("tutorial_done", false) else ""), _tutorial, not Save.get_value("tutorial_done", false)))
 	v.add_child(UIStyle.label("A private arena. Set up the sparring partner and go; it comes back when beaten.", 14, UIStyle.MUTED))
 	var who := OptionButton.new()
 	var keys := ["gladiator"] + Data.beasts.keys()
@@ -710,6 +783,18 @@ func _options(v: VBoxContainer) -> void:
 		_set_opt("volume", x)
 		Sfx.volume = x)
 	_row(v, [UIStyle.label("Sound", 15), vol])
+	var mus := HSlider.new()
+	mus.min_value = 0.0
+	mus.max_value = 1.0
+	mus.step = 0.05
+	mus.value = float(st.get("music", 0.5))
+	mus.custom_minimum_size = Vector2(300, 0)
+	mus.value_changed.connect(func(x):
+		_set_opt("music", x)
+		if Sfx.music:
+			Sfx.music.set_volume(x))
+	_row(v, [UIStyle.label("Music", 15), mus])
+	v.add_child(UIStyle.button("Controls: rebind keys · gamepad", func(): show_screen("controls")))
 	var q := OptionButton.new()
 	var levels := ["low", "medium", "high", "ultra"]
 	for l in levels:
@@ -784,6 +869,7 @@ func start(opts: Dictionary) -> void:
 	match_.setup(opts)
 	var st: Dictionary = Save.get_value("settings", {})
 	if match_.input:
+		match_.input.setup_actions(bindings())
 		match_.input.sensitivity = float(st.get("sensitivity", 1.0))
 		match_.input.left_handed = bool(st.get("leftHanded", false))
 		match_.input.invert_y = bool(st.get("invertY", false))
@@ -792,6 +878,8 @@ func start(opts: Dictionary) -> void:
 	world_root.add_child(hud)
 	visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if Sfx.music:
+		Sfx.music.set_state("boss" if match_.enemies().any(func(e): return e.get("boss", false)) else "fight")
 
 func _backdrop_on() -> void:
 	if backdrop or match_ or not visible or DisplayServer.get_name() == "headless" or not world_root.is_inside_tree():
@@ -971,6 +1059,8 @@ func _end_match() -> void:
 func _on_finished(r: Dictionary) -> void:
 	await get_tree().create_timer(3.5).timeout
 	var mode := match_.mode if match_ else "campaign"
+	if match_ and match_.tut and match_.tut.finished:
+		Save.set_value("tutorial_done", true)
 	if mode == "circus" and match_ and match_.role != "guest":
 		var inv: Dictionary = match_.me.get("inventory", {}) if match_.me else {}
 		_end_match()

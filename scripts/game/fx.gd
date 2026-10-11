@@ -67,7 +67,8 @@ static func texture(kind: String) -> Texture2D:
 # ---------- Particles ----------
 
 const KINDS := {
-	"blood": {"color": Color(0.42, 0.02, 0.02), "life": 0.9, "speed": [1.5, 4.0], "spread": 55.0, "gravity": -9.8, "size": [0.02, 0.045], "tex": "spark", "drag": 0.3, "shade": true},
+	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "spark", "drag": 0.3, "shade": true},
+	"bloodmist": {"color": Color(0.5, 0.03, 0.03, 0.55), "life": 0.5, "speed": [0.5, 1.6], "spread": 60.0, "gravity": -2.0, "size": [0.08, 0.2], "tex": "soft", "drag": 2.0, "grow": 1.6, "shade": true},
 	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "spark", "emit": 6.0, "add": true},
 	"dust": {"color": Color(0.78, 0.68, 0.5, 0.55), "life": 1.6, "speed": [0.4, 1.8], "spread": 80.0, "gravity": 0.3, "size": [0.25, 0.6], "tex": "soft", "drag": 1.5, "grow": 2.2},
 	"smoke": {"color": Color(0.22, 0.2, 0.19, 0.5), "life": 2.4, "speed": [0.2, 0.8], "spread": 30.0, "gravity": 0.9, "size": [0.2, 0.45], "tex": "soft", "drag": 0.8, "grow": 2.5},
@@ -75,7 +76,7 @@ const KINDS := {
 	"brazier": {"color": Color(1.0, 0.55, 0.15), "life": 0.9, "speed": [0.6, 1.6], "spread": 18.0, "gravity": 2.5, "size": [0.18, 0.36], "tex": "soft", "emit": 5.0, "add": true, "shrink": true},
 	"confetti": {"color": Color(1, 1, 1), "life": 2.0, "speed": [2.0, 5.0], "spread": 60.0, "gravity": -3.0, "size": [0.03, 0.05], "tex": "", "drag": 1.2, "confetti": true},
 	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "spark", "emit": 1.5},
-	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.55, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "add": true, "shrink": true, "drag": 2.5},
+	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.7, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "drag": 3.0},
 	"embers": {"color": Color(1.0, 0.6, 0.25), "life": 4.0, "speed": [0.15, 0.5], "spread": 180.0, "gravity": 0.22, "size": [0.008, 0.018], "tex": "spark", "emit": 5.0, "add": true, "drag": 0.3},
 	"petals": {"color": Color(0.62, 0.05, 0.06), "life": 6.0, "speed": [0.2, 0.6], "spread": 180.0, "gravity": -0.35, "size": [0.025, 0.045], "tex": "", "drag": 1.6},
 	"debris": {"color": Color(0.6, 0.5, 0.4), "life": 1.2, "speed": [1.0, 4.0], "spread": 80.0, "gravity": -9.8, "size": [0.025, 0.05], "tex": "", "shade": true},
@@ -116,6 +117,11 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 	var col: Color = k.color
 	g.set_color(0, col)
 	g.set_color(1, Color(col.r, col.g, col.b, 0.0) if kind != "blood" else Color(col.r * 0.6, 0, 0, 0.8))
+	if kind == "blastfire":
+		g.set_color(0, Color(1.0, 0.97, 0.75))
+		g.add_point(0.18, Color(1.0, 0.62, 0.15, 1.0))
+		g.add_point(0.5, Color(0.55, 0.16, 0.05, 0.85))
+		g.set_color(g.get_point_count() - 1, Color(0.12, 0.09, 0.08, 0.0))
 	if kind == "fire" or kind == "brazier":
 		g.set_color(0, Color(1.0, 0.9, 0.5))
 		g.add_point(0.4, Color(1.0, 0.45, 0.1, 0.9))

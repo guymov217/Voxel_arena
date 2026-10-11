@@ -53,6 +53,10 @@ var hero: Fighter = null        # the menu's champion, posing in front of the fi
 var hero_inp := {}
 var hero_cam := {}              # {pos, look}: a fixed shot instead of the orbit
 var rules: BoutRules = null     # Bread & Circuses: the bout's special rules
+var killcam: KillCam = null
+var tut: Tutorial = null
+var last_local_inp := {}
+var last_hit_of := {}           # fighter -> the last hit it took (for the kill cam)
 var circus := {}                # {bout, day, bout_index, mods, fortune}
 
 ## The menu's champion: a fighter outside the fight (no bot, not a target) who just stands.
@@ -91,6 +95,9 @@ func setup(opts: Dictionary) -> void:
 	add_child(throwables)
 	items.on_event = throwables.on_item
 	spectacle = Spectacle.new(self)
+	if (not headless or opts.get("killcam", false)) and role != "guest" and not opts.get("autopilot", false) and not attract:
+		killcam = KillCam.new(self)
+		add_child(killcam)
 	hazards = Hazards.new()
 	add_child(hazards)
 	# The Emperor's decrees: chosen by the host (or the test), told to the guests with "start".
@@ -145,6 +152,9 @@ func setup(opts: Dictionary) -> void:
 		_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
 	elif mode == "training":
 		_spawn_training()
+		if opts.get("tutorial", false):
+			tut = Tutorial.new(self)
+			tut.setup()
 	elif mode == "circus":
 		_setup_circus(opts)
 	if not decrees.is_empty():
@@ -382,6 +392,7 @@ func _physics_process(dt: float) -> void:
 					inp = e.bot.update(dt, tl.f if tl else null, _world_of(e))
 				else:
 					inp = input.sample(dt) if input else {}
+					last_local_inp = inp
 					if inp.has("look"):
 						f.yaw = float(inp.look.yaw)
 			"remote":
@@ -434,6 +445,10 @@ func _physics_process(dt: float) -> void:
 	spectacle.update(dt)
 	if rules and not over:
 		rules.update(dt)
+	if tut and not over:
+		tut.update(dt, last_local_inp)
+		if tut.finished:
+			_end(true, "You are ready", "That is all there is to it. The campaign waits at the gate.")
 	hazards.update(dt)
 	if lion_t > 0.0:
 		lion_t -= dt
@@ -672,6 +687,8 @@ func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false) 
 	arena.set_excitement(maxf(arena.excitement, minf(1.0, J / 45.0 + (0.6 if severed else 0.0))))
 	var n := int(clampf(J * (1.6 if type == "edge" else (1.2 if type == "point" else 0.5)), 4.0, 140.0)) + (120 if severed else 0)
 	fx.burst("confetti" if dec.confetti else "blood", p, n, (dir + Vector3(0, 0.6, 0)).normalized(), 0.8 + J / 40.0)
+	if J > 8.0 and not dec.confetti and type != "blunt":
+		fx.burst("bloodmist", p, int(clampf(J * 0.5, 4.0, 40.0)), (dir + Vector3(0, 0.3, 0)).normalized())
 	if J > 12.0 and not dec.confetti:
 		fx.mark("blood", Vector3(p.x + dir.x * 0.4, 0, p.z + dir.z * 0.4), clampf(0.15 + J * 0.012, 0.2, 0.9) * (1.8 if severed else 1.0))
 
@@ -749,6 +766,8 @@ func _check_circus(alive_h: Array, alive_e: Array) -> void:
 
 func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
 	over = true
+	if Sfx.music and not headless and not attract:
+		Sfx.music.set_state("victory" if won else "off")
 	_banner(text, sub)
 	var wear := {}
 	if me:
@@ -770,6 +789,11 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		result["time"] = time
 	if role == "host":
 		Net.send_all("end", {"won": won, "text": text, "sub": sub, "pay": pay})
+	if killcam:
+		# Let the last blow play out on tape, then show the best kill of the match.
+		await get_tree().create_timer(KillCam.AFTER + 0.2).timeout
+		if killcam.has_clip():
+			await killcam.play(func(): pass)
 	finished.emit(result)
 
 # ---------- Events ----------
@@ -782,6 +806,10 @@ func _banner(text: String, sub: String) -> void:
 func _on_hit(h: Dictionary) -> void:
 	if rules and role != "guest":
 		rules.on_hit(h)
+	if h.get("char"):
+		last_hit_of[h.char] = h
+	if tut:
+		tut.on_hit(h)
 	if role != "guest":
 		spectacle.on_hit(h)
 	# Blood where it struck (a party of colours under Confetti Blood), and on the sand below.
@@ -804,6 +832,8 @@ func _on_hit(h: Dictionary) -> void:
 func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":
 		spectacle.on_death(f)
+	if killcam:
+		killcam.on_death(f, cause, last_hit_of.get(f, {}))
 	if f.kind != "beast" or not Data.beasts.get(f.get("species") if f.get("species") else "", {}).get("bloodless", false):
 		fx.pool(f.torso.global_position, 1.4 * f.S, 8.0)
 		arena.set_excitement(1.0)

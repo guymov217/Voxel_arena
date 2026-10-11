@@ -33,6 +33,10 @@ var plate_trail := 1.0
 var plate_val := 1.0
 var plate_target = null
 var decree_label: Label
+var tut_panel: PanelContainer
+var tut_title: Label
+var tut_text: Label
+var tut_step: Label
 var status_label: Label
 var slots: Array = []
 var held_label: Label
@@ -301,6 +305,30 @@ func _build_corner() -> void:
 	decree_label = _label("", 14, BRONZE)
 	v.add_child(decree_label)
 
+## The tutorial's card at the top: the step, what to do, a tick when it is done.
+func _build_tutorial() -> void:
+	tut_panel = PanelContainer.new()
+	tut_panel.add_theme_stylebox_override("panel", _style(Color(0.07, 0.05, 0.035, 0.86), BRONZE, 10))
+	tut_panel.anchor_left = 0.5
+	tut_panel.anchor_right = 0.5
+	tut_panel.offset_left = -330
+	tut_panel.offset_right = 330
+	tut_panel.offset_top = 96
+	tut_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tut_panel.visible = false
+	root.add_child(tut_panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	tut_panel.add_child(v)
+	tut_step = _label("", 12, BRONZE)
+	v.add_child(tut_step)
+	tut_title = _label("", 22, TEXT, true)
+	v.add_child(tut_title)
+	tut_text = _label("", 15, TEXT)
+	tut_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tut_text.custom_minimum_size = Vector2(620, 0)
+	v.add_child(tut_text)
+
 func _build_crosshair() -> void:
 	crosshair = Control.new()
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
@@ -404,6 +432,15 @@ func _process(dt: float) -> void:
 	match_.spectacle.events.clear()
 	status_label.text = ("Stage %d · round %d of 3" % [match_.stage, match_.round + 1]) if match_.mode == "campaign" else (match_.circus_status() if match_.mode == "circus" else (match_.modes.status() if match_.modes else match_.mode.capitalize()))
 	decree_label.text = ("Decrees: " + " · ".join(match_.dec.names)) if not match_.dec.names.is_empty() else ""
+	if match_.tut:
+		if tut_panel == null:
+			_build_tutorial()
+		var tv: Dictionary = match_.tut.view()
+		tut_panel.visible = true
+		tut_step.text = "TUTORIAL · STEP %d OF %d" % [mini(int(tv.step) + 1, int(tv.total)), int(tv.total)]
+		tut_title.text = ("✔ " if tv.get("ok", false) else "") + String(tv.title)
+		tut_title.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if tv.get("ok", false) else TEXT)
+		tut_text.text = String(tv.text)
 	# The enemy in front of you.
 	var t = match_.nearest_enemy(me) if me else null
 	if t and is_instance_valid(t.f):

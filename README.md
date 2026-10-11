@@ -34,6 +34,16 @@ godot --headless --path . -- --test test_fight   # one suite
   the Emperor's whims, hot potato, escorting the senator, holding the circle, and bringing back a
   head. Gold buys pots between bouts, and a god offers a blessing after each day (Fortuna spins a
   wheel). Between runs you buy ludus upgrades. There are also the Daily Games and a Hall of Fame.
+- **The kill cam**: the match is recorded at 30 Hz. Every kill is scored for style (a head off,
+  a throw, a punch, a giant brought down), and when the match ends the best one replays in slow
+  motion, letterboxed, with a caption (`scripts/game/killcam.gd`).
+- **Music**: a procedural band (frame drum, riq, drone, lyre, horn) in the Phrygian dominant. It
+  has a loop for each state (menu, yard, fight, boss, victory), rendered on a thread and
+  cross-faded (`scripts/autoload/music.gd`).
+- **The tutorial**: eight steps in the training ring, each ticked off as soon as you do it, then a
+  recruit to beat (`scripts/game/tutorial.gd`).
+- **Controls**: rebindable keys (Settings → Controls) and gamepad support. The left stick walks,
+  the right stick looks, and a held trigger turns the right stick into that hand.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
@@ -53,7 +63,6 @@ godot --headless --path . -- --test test_fight   # one suite
 ## Still to come
 
 - The lobby hub and its minigames.
-- The kill cam, music, the tutorial, key rebinding and gamepad support.
 
 ## The C++ voxel core (GDExtension)
 

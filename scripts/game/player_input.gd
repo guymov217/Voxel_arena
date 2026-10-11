@@ -4,6 +4,8 @@ extends Node
 ## (and turns the fighter); holding the left button the mouse IS the main hand, sliding it
 ## across a pane in front of the body and up and down; the right button moves the shield or off
 ## hand; both move both. Keys from the web game's bindings (controls.json), rebindable.
+## A gamepad works too: the left stick walks, the right stick looks; holding the right trigger
+## the right stick IS the main hand, the left trigger the off hand, both triggers both.
 
 var main := {"x": 0.1, "y": 0.15}
 var off := {"x": -0.35, "y": 0.1}
@@ -29,6 +31,13 @@ var _digits_held := {}
 ## and sent to the host reliably.
 const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote"]
 const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote"]
+const PAD := {"jump": JOY_BUTTON_A, "kick": JOY_BUTTON_B, "grab": JOY_BUTTON_X, "throw": JOY_BUTTON_Y, "shove": JOY_BUTTON_LEFT_SHOULDER,
+	"thrust": JOY_BUTTON_RIGHT_SHOULDER, "sprint": JOY_BUTTON_LEFT_STICK, "crouch": JOY_BUTTON_RIGHT_STICK, "taunt": JOY_BUTTON_BACK}
+const PAD_ITEMS := [JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT]
+var pad_move := Vector2.ZERO
+var pad_r := false
+var pad_l := false
+var _pad_items_held := {}
 
 func _ready() -> void:
 	setup_actions()
@@ -48,6 +57,10 @@ func setup_actions(custom := {}) -> void:
 			var ev := InputEventKey.new()
 			ev.physical_keycode = key
 			InputMap.action_add_event(act, ev)
+		if PAD.has(id):
+			var jb := InputEventJoypadButton.new()
+			jb.button_index = PAD[id]
+			InputMap.action_add_event(act, jb)
 
 static func _keycode(code: String) -> Key:
 	if code.begins_with("Key") and code.length() == 4:
@@ -69,6 +82,34 @@ static func _keycode(code: String) -> Key:
 	if code.begins_with("F") and code.length() <= 3:
 		return OS.find_keycode_from_string(code)
 	return KEY_NONE
+
+## The binding code for a key pressed now ("KeyW", "Space", "ShiftLeft"...), or "" if none.
+static func code_of(key: Key) -> String:
+	match key:
+		KEY_SPACE: return "Space"
+		KEY_SHIFT: return "ShiftLeft"
+		KEY_CTRL: return "ControlLeft"
+		KEY_ALT: return "AltLeft"
+		KEY_TAB: return "Tab"
+		KEY_ENTER: return "Enter"
+		KEY_QUOTELEFT: return "Backquote"
+		KEY_UP: return "ArrowUp"
+		KEY_DOWN: return "ArrowDown"
+		KEY_LEFT: return "ArrowLeft"
+		KEY_RIGHT: return "ArrowRight"
+	if key >= KEY_A and key <= KEY_Z:
+		return "Key" + OS.get_keycode_string(key)
+	if key >= KEY_0 and key <= KEY_9:
+		return "Digit" + OS.get_keycode_string(key)
+	if key >= KEY_F1 and key <= KEY_F12:
+		return OS.get_keycode_string(key)
+	return ""
+
+## How a binding reads on a button: "W", "Space", "Shift".
+static func label_of(code: String) -> String:
+	if code.begins_with("Key") or code.begins_with("Digit"):
+		return code.trim_prefix("Key").trim_prefix("Digit")
+	return code.trim_suffix("Left").trim_suffix("Right").replace("Arrow", "↑ " if code == "ArrowUp" else "").replace("Control", "Ctrl")
 
 func held(id: String) -> bool:
 	var act := "va_" + id
@@ -126,24 +167,65 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
+## The gamepad, read once a step: sticks and triggers (buttons come through the input actions).
+func _pad(dt: float) -> void:
+	var pads := Input.get_connected_joypads()
+	if pads.is_empty():
+		pad_move = Vector2.ZERO
+		pad_r = false
+		pad_l = false
+		return
+	var d: int = pads[0]
+	var dz := func(v: float) -> float: return 0.0 if absf(v) < 0.18 else (v - signf(v) * 0.18) / 0.82
+	pad_move = Vector2(dz.call(Input.get_joy_axis(d, JOY_AXIS_LEFT_X)), dz.call(Input.get_joy_axis(d, JOY_AXIS_LEFT_Y)))
+	var rt := Input.get_joy_axis(d, JOY_AXIS_TRIGGER_RIGHT) > 0.3
+	var lt := Input.get_joy_axis(d, JOY_AXIS_TRIGGER_LEFT) > 0.3
+	if left_handed:
+		var sw := rt
+		rt = lt
+		lt = sw
+	if rt and not pad_r:
+		jab_r = true
+	if lt and not pad_l:
+		jab_l = true
+	pad_r = rt
+	pad_l = lt
+	var rs := Vector2(dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_X)), dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_Y)))
+	if not (pad_r or pad_l):
+		look_yaw -= rs.x * dt * 2.6 * sensitivity * sens_x
+		look_pitch = clampf(look_pitch - rs.y * dt * 1.8 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.35, 1.35)
+	else:
+		for hh in ([main] if pad_r else []) + ([off] if pad_l else []):
+			var lim := 2.0 if hh == main else 1.2
+			hh.x = clampf(hh.x + rs.x * dt * 3.2 * sensitivity, -lim, lim)
+			hh.y = clampf(hh.y - rs.y * dt * 3.2 * sensitivity, -1.6, 1.6)
+	for i in PAD_ITEMS.size():
+		var down := Input.is_joy_button_pressed(d, PAD_ITEMS[i])
+		if down and not _pad_items_held.get(i, false):
+			use_item = i
+		_pad_items_held[i] = down
+
 ## The input for this step, in the same shape as the web game's.
 func sample(dt: float) -> Dictionary:
-	if not lmb:
+	_pad(dt)
+	var hand_r := lmb or pad_r
+	var hand_l := rmb or pad_l
+	if not hand_r:
 		main.x += (0.1 - main.x) * minf(1.0, dt * 2.5)
 		main.y += (0.15 - main.y) * minf(1.0, dt * 2.5)
-	if not rmb:
+	if not hand_l:
 		off.x += (-0.35 - off.x) * minf(1.0, dt * 2.0)
 		off.y += (0.1 - off.y) * minf(1.0, dt * 2.0)
 	var want := 1.0 if held("thrust") else 0.0
 	thrust += (want - thrust) * minf(1.0, dt * 10.0)
 	var inp := {
-		"mx": clampf((1.0 if held("left") else 0.0) - (1.0 if held("right") else 0.0), -1.0, 1.0),
-		"mz": clampf((1.0 if held("forward") else 0.0) - (1.0 if held("back") else 0.0), -1.0, 1.0),
+		"mx": clampf((1.0 if held("left") else 0.0) - (1.0 if held("right") else 0.0) - pad_move.x, -1.0, 1.0),
+		"mz": clampf((1.0 if held("forward") else 0.0) - (1.0 if held("back") else 0.0) - pad_move.y, -1.0, 1.0),
 		"main": main.duplicate(),
 		"off": off.duplicate(),
-		"thrust": 0.0 if rmb and not lmb else thrust,
-		"offThrust": thrust if rmb else 0.0,
-		"power": lmb or rmb,
+		"thrust": 0.0 if hand_l and not hand_r else thrust,
+		"offThrust": thrust if hand_l else 0.0,
+		"power": hand_r or hand_l,
 		"jabR": jab_r,
 		"jabL": jab_l,
 		"twist": twist,
@@ -154,7 +236,7 @@ func sample(dt: float) -> Dictionary:
 		"kick": pressed("kick"),
 		"grab": pressed("grab"),
 		# G with a mouse button held grabs with that hand (both buttons: both hands).
-		"grabHands": "both" if lmb and rmb else ("R" if lmb else ("L" if rmb else null)),
+		"grabHands": "both" if hand_r and hand_l else ("R" if hand_r else ("L" if hand_l else null)),
 		"taunt": pressed("taunt"),
 		"shove": pressed("shove"),
 		"emote": pressed("emote"),

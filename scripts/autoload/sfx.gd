@@ -14,12 +14,15 @@ const TAKES := 3
 var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
+var music: Music = null
 const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	_buses()
+	music = Music.new()
+	add_child(music)
 	for i in 16:
 		var p := AudioStreamPlayer3D.new()
 		p.max_distance = 40.0
