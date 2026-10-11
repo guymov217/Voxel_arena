@@ -27,6 +27,10 @@ func _ready() -> void:
 		[lion, "beastBody", "edge", 40.0, 0.9], [lion, "beastBody", "blunt", 45.0, 0.0], [lion, "beastHead", "edge", 35.0, 0.8],
 		[lion, "legFLLo", "edge", 60.0, 1.0], [lion, "tail", "edge", 40.0, 1.0],
 	]
+	# Held still for the photos (the damage is the game's own; only the bodies are pinned).
+	for f in [man, lion]:
+		for p in f.parts:
+			p.freeze = true
 	var before := {}
 	for f in [man, lion]:
 		before[f] = f.parts.reduce(func(a, p): return a + p.alive_count, 0)
@@ -40,6 +44,12 @@ func _ready() -> void:
 		var dir := (part.global_position - p).normalized()
 		var axis := dir.cross(Vector3.UP).normalized() if b[2] == "edge" else dir
 		var res: Dictionary = f.apply_hit(part, {"impulse": b[3], "type": b[2], "hardness": 0.9, "sharpness": b[4], "point": p, "dir": dir, "axis": axis if b[2] == "edge" else dir, "edge": dir, "heavy": 0.6 if b[3] > 40.0 else 0.2})
+		for q in res.severed:
+			var stack := [q]
+			while not stack.is_empty():
+				var c: VoxelPart = stack.pop_back()
+				c.freeze = false
+				stack.append_array(c.child_parts)
 		if m.fx and not res.removed.is_empty():
 			m.fx.burst("blood", p, 30, -dir)
 		for i in 8:
@@ -53,7 +63,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(out.path_join("dmg_%02d_%s_%s.png" % [blows.find(b), f.display_name, b[1]]))
 		print("blow %s %s %s: -%d voxels, cut off %s" % [f.display_name, b[1], b[2], res.removed.reduce(func(a, r): return a + r.indices.size(), 0), res.severed.map(func(q): return q.part_name)])
-	for i in 90:
+	for i in 30:
 		await get_tree().physics_frame
 	for f in [man, lion]:
 		var now: int = f.parts.reduce(func(a, p): return a + p.alive_count, 0)
@@ -61,14 +71,14 @@ func _ready() -> void:
 	for f in [man, lion]:
 		for p in f.parts:
 			print("%s %s alive %d/%d vis %s mmi %s aabb %s pos %s sev %s" % [f.display_name, p.part_name, p.alive_count, p.fx.size(), p.visible, p.mmi.visible if p.mmi else null, p.mm.get_aabb() if p.mm else null, p.global_position, p.severed])
-	for v in [["dmg_gladiator_a", man, Vector3(0.9, 1.3, 0.9)], ["dmg_gladiator_b", man, Vector3(-1.0, 1.1, -0.8)], ["dmg_lion", lion, Vector3(1.6, 1.4, 2.0)]]:
+	for v in [["dmg_gladiator_a", man, Vector3(0.5, 0.15, 1.0)], ["dmg_gladiator_b", man, Vector3(-0.6, 0.2, 1.0)], ["dmg_lion", lion, Vector3(-1.0, 0.35, -0.6)]]:
 		var box := AABB(v[1].torso.global_position, Vector3.ZERO)
 		for p in v[1].parts:
-			if not p.severed:
+			if not p.severed and p.part_name != "tail" and p.part_name != "tailTip" and p.part_name != "tuft":
 				box = box.merge(AABB(p.global_position - p.half_ext, p.half_ext * 2.0))
 		var c: Vector3 = box.get_center()
 		cam.fov = 45.0
-		cam.global_position = c + v[2].normalized() * (box.size.length() * 1.1 + 0.4)
+		cam.global_position = c + v[2].normalized() * (box.size.length() * 0.85 + 0.2)
 		cam.look_at(c, Vector3.UP)
 		await get_tree().process_frame
 		await get_tree().process_frame
