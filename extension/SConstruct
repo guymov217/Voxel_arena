@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+# Builds the Godot port's voxel core extension (VoxelCore) against godot-cpp, branch 4.4, checked
+# out next to this file or wherever GODOT_CPP points. The library lands in native/bin/,
+# where native/voxel_core.gdextension finds it:
+#   git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
+#   scons platform=<linux|windows|macos> target=<template_debug|template_release>
+import os
+
+# Bind only the engine classes the extension uses: a fraction of godot-cpp's compile time.
+if "build_profile" not in ARGUMENTS:
+    ARGUMENTS["build_profile"] = File("build_profile.json").abspath
+env = SConscript(os.environ.get("GODOT_CPP", "godot-cpp") + "/SConstruct")
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+if env["platform"] == "macos":
+    lib = env.SharedLibrary("../native/bin/libvoxelcore.{}.{}.framework/libvoxelcore.{}.{}".format(env["platform"], env["target"], env["platform"], env["target"]), source=sources)
+else:
+    lib = env.SharedLibrary("../native/bin/libvoxelcore{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
+Default(lib)

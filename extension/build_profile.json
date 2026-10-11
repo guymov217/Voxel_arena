@@ -1,0 +1,3 @@
+{
+	"enabled_classes": ["Object", "RefCounted", "OS", "FileAccess", "Image", "Mutex", "Semaphore", "WorkerThreadPool", "XMLParser", "ClassDBSingleton", "EditorPlugin"]
+}

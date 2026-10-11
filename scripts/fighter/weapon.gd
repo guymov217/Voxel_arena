@@ -1,0 +1,505 @@
+class_name Weapon
+extends RigidBody3D
+## A weapon (or shield) built from a voxel design: each voxel has a material and a job (edge,
+## point, blunt, grip). Voxels of the same material and job are merged into boxes, the body's
+## weight and inertia come from the voxels, and hard knocks chip voxels off (weapon.js and
+## durability.js in the web game).
+
+const CHIP_THRESHOLDS := [20.0, 38.0, 60.0]
+
+var design: Dictionary = {}
+var stats: Dictionary = {}
+var vs := 0.04                     # voxel size (scaled)
+var vox: Array = []                # [x, y, z, mat, type]
+var alive := PackedByteArray()
+var box_of: Array = []             # voxel index -> box dict
+var holder: Node = null            # the Fighter holding it
+var thrower: Node = null
+var thrown_t := 0.0
+var own_by: Node = null            # the fighter it just left, ignored for `own_t` more
+var own_t := 0.0
+var is_shield := false
+var welded := false
+var grip_t := 0.0
+var grip_main := Vector3.ZERO      # local
+var grip_off := Vector3.ZERO
+var reach := 0.6
+var mm: MultiMesh
+var net_id := -1
+var _next_box := 0
+# A head on a chain (flail, nunchaku, meteor hammer, whip): links and a head of their own,
+# swinging on ball joints from the top of the handle.
+const CHAIN_LINK := 0.07
+var chain_links: Array = []
+var chain_head: Weapon = null
+var chain_parent: Weapon = null
+var chain_len := 0.07
+var chain_anchor := Vector3.ZERO
+var head_anchor := Vector3.ZERO
+var mass_scale := 1.0
+var is_hazard := false             # a trap: a weapon nobody holds, moved by the arena
+var hazard_vel := Vector3.ZERO
+var hazard_spin := Vector3.ZERO
+var last_side := ""
+var wscale := 1.0
+
+static var _material: StandardMaterial3D
+
+func setup(d: Dictionary, scale_ := 1.0) -> void:
+	design = d.duplicate(true)
+	wscale = scale_
+	mass_scale = float(d.get("massScale", 1.0))
+	name = "Weapon_" + str(d.get("name", "weapon")).replace(" ", "_")
+	is_shield = d.get("kind", "weapon") == "shield"
+	vs = Data.weapon_voxel * scale_
+	vox = d.get("voxels", [])
+	alive.resize(vox.size())
+	alive.fill(1)
+	box_of.resize(vox.size())
+	# Weight, centre and inertia from the voxels.
+	var m := 0.0
+	var com := Vector3.ZERO
+	for v in vox:
+		var mv: float = Data.material(v[3]).get("mass", 0.02) * scale_ * scale_ * mass_scale
+		m += mv
+		com += Vector3(v[0], v[1], v[2]) * vs * mv
+	m = maxf(0.05, m)
+	com /= m
+	var ix := 0.0; var iy := 0.0; var iz := 0.0
+	for v in vox:
+		var mv: float = Data.material(v[3]).get("mass", 0.02) * scale_ * scale_ * mass_scale
+		var r := Vector3(v[0], v[1], v[2]) * vs - com
+		ix += mv * (r.y * r.y + r.z * r.z + vs * vs / 6.0)
+		iy += mv * (r.x * r.x + r.z * r.z + vs * vs / 6.0)
+		iz += mv * (r.x * r.x + r.y * r.y + vs * vs / 6.0)
+	mass = m
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = com
+	inertia = Vector3(maxf(ix, 1e-4), maxf(iy, 1e-4), maxf(iz, 1e-4))
+	stats = d.get("stats", {}).duplicate()
+	stats["mass"] = m
+	reach = float(stats.get("reach", 0.6)) * scale_
+	var grips := _grip_points()
+	grip_main = grips[0] * vs
+	grip_off = grips[1] * vs
+	can_sleep = false
+	contact_monitor = true
+	max_contacts_reported = 8
+	continuous_cd = true
+	collision_layer = VoxelPart.LAYER_WEAPON
+	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
+	var all := []
+	for i in vox.size():
+		all.append(i)
+	for b in _build_boxes(all):
+		_add_box(b)
+	_build_mesh()
+
+func _grip_points() -> Array:
+	var grips := []
+	for v in vox:
+		if v[4] == "grip":
+			grips.append(v)
+	if grips.is_empty():
+		var c := Vector3(0, 0, 0)
+		return [c, c + Vector3(0, -2, 0)]
+	grips.sort_custom(func(a, b): return a[1] < b[1])
+	var avg := func(list: Array) -> Vector3:
+		var p := Vector3.ZERO
+		for g in list:
+			p += Vector3(g[0], g[1], g[2])
+		return p / float(maxi(1, list.size()))
+	if not design.get("twoHanded", false) or grips.size() < 2:
+		var mid: Vector3 = avg.call(grips)
+		return [mid, mid + Vector3(0, -2, 0)]
+	var top := grips.slice(int(grips.size() / 2))
+	var bottom := grips.slice(0, maxi(1, int(grips.size() / 3)))
+	return [avg.call(top), avg.call(bottom)]
+
+# ---------- Boxes ----------
+
+func _kind(i: int) -> String:
+	return "%s|%s" % [vox[i][3], vox[i][4]]
+
+func _build_boxes(indices: Array) -> Array:
+	var at := {}
+	for i in indices:
+		at[Vector3i(vox[i][0], vox[i][1], vox[i][2])] = i
+	var used := {}
+	var out := []
+	var list := indices.duplicate()
+	list.sort_custom(func(a, b):
+		var va: Array = vox[a]; var vb: Array = vox[b]
+		if va[2] != vb[2]: return va[2] < vb[2]
+		if va[1] != vb[1]: return va[1] < vb[1]
+		return va[0] < vb[0])
+	for i in list:
+		if used.has(i):
+			continue
+		var k := _kind(i)
+		var x0: int = vox[i][0]; var y0: int = vox[i][1]; var z0: int = vox[i][2]
+		var ok := func(x: int, y: int, z: int) -> bool:
+			var j = at.get(Vector3i(x, y, z), -1)
+			return j >= 0 and not used.has(j) and _kind(j) == k
+		var x1 := x0
+		while ok.call(x1 + 1, y0, z0):
+			x1 += 1
+		var row := func(y: int, z: int) -> bool:
+			for x in range(x0, x1 + 1):
+				if not ok.call(x, y, z):
+					return false
+			return true
+		var y1 := y0
+		while row.call(y1 + 1, z0):
+			y1 += 1
+		var slab := func(z: int) -> bool:
+			for y in range(y0, y1 + 1):
+				if not row.call(y, z):
+					return false
+			return true
+		var z1 := z0
+		while slab.call(z1 + 1):
+			z1 += 1
+		var members := []
+		for z in range(z0, z1 + 1):
+			for y in range(y0, y1 + 1):
+				for x in range(x0, x1 + 1):
+					var j: int = at[Vector3i(x, y, z)]
+					used[j] = true
+					members.append(j)
+		_next_box += 1
+		out.append({"id": _next_box, "min": Vector3i(x0, y0, z0), "max": Vector3i(x1, y1, z1), "indices": members, "mat": vox[i][3], "type": vox[i][4], "shape": null})
+	return out
+
+func _add_box(b: Dictionary) -> void:
+	for i in b.indices:
+		box_of[i] = b
+	var cs := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	var mn: Vector3i = b.min; var mx: Vector3i = b.max
+	shape.size = Vector3(mx.x - mn.x + 1, mx.y - mn.y + 1, mx.z - mn.z + 1) * vs
+	cs.shape = shape
+	cs.position = Vector3(mn.x + mx.x, mn.y + mx.y, mn.z + mx.z) * 0.5 * vs
+	cs.set_meta("box", b)
+	add_child(cs)
+	b.shape = cs
+
+func _drop_box(b: Dictionary) -> void:
+	if b.shape:
+		b.shape.queue_free()
+		remove_child(b.shape)
+		b.shape = null
+
+## The box a contact touched (from a shape index on this body).
+func box_for_shape(shape_idx: int) -> Dictionary:
+	var owner_id := shape_find_owner(shape_idx)
+	var node = shape_owner_get_owner(owner_id)
+	if node and node.has_meta("box"):
+		return node.get_meta("box")
+	return {}
+
+## The voxel of a box nearest a world point (which one a blow chipped).
+func voxel_near(b: Dictionary, p: Vector3) -> int:
+	var lp := global_transform.affine_inverse() * p / vs
+	var best := -1
+	var bd := INF
+	for i in b.get("indices", []):
+		if alive[i] == 0:
+			continue
+		var v: Array = vox[i]
+		var d := Vector3(v[0], v[1], v[2]).distance_squared_to(lp)
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+# ---------- Drawing ----------
+
+static func voxel_color(mat: String, type: String) -> Color:
+	var c := Color.hex(int(Data.material(mat).get("color", 0xffffff)) << 8 | 0xff)
+	if type == "edge":
+		c = c.lightened(0.12)
+	elif type == "point":
+		c = c.lightened(0.18)
+	return c
+
+func _build_mesh() -> void:
+	if _material == null:
+		_material = StandardMaterial3D.new()
+		_material.vertex_color_use_as_albedo = true
+		_material.vertex_color_is_srgb = true
+		_material.roughness = 0.35
+		_material.metallic_specular = 0.7
+		_material.metallic = 0.35
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE * vs * 0.98
+	bm.material = _material
+	mm = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = bm
+	mm.instance_count = vox.size()
+	for i in vox.size():
+		var v: Array = vox[i]
+		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(v[0], v[1], v[2]) * vs))
+		mm.set_instance_color(i, voxel_color(v[3], v[4]))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+
+# ---------- Wear ----------
+
+func remove_voxels(indices: Array) -> Array:
+	var out := []
+	var touched := {}
+	for i in indices:
+		if i < 0 or i >= vox.size() or alive[i] == 0:
+			continue
+		alive[i] = 0
+		var v: Array = vox[i]
+		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4])})
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3(v[0], v[1], v[2]) * vs))
+		if box_of[i]:
+			touched[box_of[i].id] = box_of[i]
+	for b in touched.values():
+		_drop_box(b)
+		var left := []
+		for i in b.indices:
+			if box_of[i] != null and box_of[i].id == b.id:
+				box_of[i] = null
+			if alive[i]:
+				left.append(i)
+		for nb in _build_boxes(left):
+			_add_box(nb)
+	return out
+
+func alive_count() -> int:
+	var n := 0
+	for a in alive:
+		n += a
+	return n
+
+## Voxels a knock of `score` takes off around voxel `index` (grip voxels are tougher).
+func chip_indices(index: int, score: float) -> Array:
+	if index < 0 or alive[index] == 0:
+		return []
+	var v: Array = vox[index]
+	if v[4] == "grip":
+		score *= 0.5
+	if score < CHIP_THRESHOLDS[0]:
+		return []
+	var r := 1.5 if score >= CHIP_THRESHOLDS[2] else (1.0 if score >= CHIP_THRESHOLDS[1] else 0.0)
+	var out := []
+	for i in vox.size():
+		if alive[i] and Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(Vector3(v[0], v[1], v[2])) <= r:
+			out.append(i)
+	return out
+
+static func chip_score(j: float, own_hardness: float, other_hardness: float) -> float:
+	return (j * (0.4 + other_hardness)) / (own_hardness + 0.15)
+
+func grip_world() -> Vector3:
+	return global_transform * grip_main
+
+func velocity_at(p: Vector3) -> Vector3:
+	return linear_velocity + angular_velocity.cross(p - global_transform * center_of_mass)
+
+func set_held_by(f: Node) -> void:
+	holder = f
+	if f:
+		collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
+
+## Out of the hand long enough: it no longer passes through the body that let it go.
+func forget_owner() -> void:
+	if own_by and is_instance_valid(own_by):
+		for b in bodies():
+			if not (b is PhysicsBody3D):
+				continue
+			for p in own_by.parts:
+				b.remove_collision_exception_with(p)
+			for o in own_by.weapons.values():
+				if o and o != self:
+					b.remove_collision_exception_with(o)
+	own_by = null
+	own_t = 0.0
+
+func _physics_process(dt: float) -> void:
+	if chain_head:
+		# The head hits for whoever swings the handle.
+		chain_head.holder = holder
+		chain_head.thrower = thrower
+		chain_head.thrown_t = thrown_t
+		guard_chain()
+	if thrown_t > 0.0:
+		thrown_t -= dt
+	if own_t > 0.0:
+		own_t -= dt
+		if own_t <= 0.0 and holder == null:
+			forget_owner()
+
+## How it flies when thrown (weaponDesign.js): a throwing axe spins, a javelin flies point first.
+static func spins_in_flight(d: Dictionary) -> bool:
+	if not d.get("throwable", false) or d.get("voxels", []).is_empty():
+		return false
+	if d.get("spins", false):
+		return true
+	var xs := []; var zs := []
+	for v in d.voxels:
+		xs.append(v[0]); zs.append(v[2])
+	return maxi(xs.max() - xs.min(), zs.max() - zs.min()) + 1 >= 4
+
+static func flies_point_first(d: Dictionary) -> bool:
+	if d.is_empty():
+		return false
+	if d.get("throwable", false):
+		return not spins_in_flight(d)
+	if d.get("kind", "weapon") == "shield" or d.get("chain") or d.get("voxels", []).is_empty():
+		return false
+	var ys := []; var xs := []; var zs := []
+	for v in d.voxels:
+		ys.append(v[1]); xs.append(v[0]); zs.append(v[2])
+	var top: int = ys.max()
+	var length: int = top - int(ys.min()) + 1
+	var wide: int = maxi(xs.max() - xs.min(), zs.max() - zs.min()) + 1
+	if length < 30 or wide > 5:
+		return false
+	for v in d.voxels:
+		if v[1] >= top - 1 and v[4] == "point":
+			return true
+	return false
+
+# ---------- Chains ----------
+
+## Every body of the weapon: the handle, and a chain weapon's links and head.
+func bodies() -> Array:
+	var out: Array = [self]
+	out.append_array(chain_links)
+	if chain_head:
+		out.append(chain_head)
+	return out
+
+## Lays out the chain straight up from the handle as it stands now and joins it up. Called
+## once the handle is placed (Fighter.equip, or a weapon spawned loose).
+func build_chain() -> void:
+	var c = design.get("chain")
+	if not (c is Dictionary) or chain_head != null or not is_inside_tree():
+		return
+	var whip: bool = c.get("whip", false)
+	chain_len = CHAIN_LINK * wscale
+	if c.get("anchor") is Array:
+		chain_anchor = Vector3(c.anchor[0], c.anchor[1], c.anchor[2]) * vs
+	else:
+		var top: Array = vox[0]
+		for v in vox:
+			if v[1] > top[1]:
+				top = v
+		chain_anchor = Vector3(top[0], top[1] + 0.5, top[2]) * vs
+	var hv: Array = c.head.voxels
+	var bottom: Array = hv[0]
+	for v in hv:
+		if v[1] < bottom[1]:
+			bottom = v
+	head_anchor = Vector3(bottom[0], bottom[1] - 0.5, bottom[2]) * vs
+	var head_mass := 0.0
+	for v in hv:
+		head_mass += float(Data.material(v[3]).get("mass", 0.02)) * wscale * wscale
+	var link_mesh := SphereMesh.new()
+	link_mesh.radius = vs * 0.45
+	link_mesh.height = vs * 0.9
+	link_mesh.radial_segments = 6
+	link_mesh.rings = 3
+	var lm := StandardMaterial3D.new()
+	lm.albedo_color = Color.hex(0x5a3a22ff if whip else 0x8a8f96ff)
+	lm.metallic = 0.0 if whip else 0.7
+	lm.roughness = 0.5
+	link_mesh.material = lm
+	var q := global_transform.basis.get_rotation_quaternion()
+	var up := q * Vector3.UP
+	var start := global_transform * chain_anchor
+	var prev: RigidBody3D = self
+	for i in int(c.links):
+		var b := RigidBody3D.new()
+		b.name = "%s_link%d" % [name, i]
+		var cs := CollisionShape3D.new()
+		var sh := SphereShape3D.new()
+		sh.radius = vs * 0.4
+		cs.shape = sh
+		b.add_child(cs)
+		var mi := MeshInstance3D.new()
+		mi.mesh = link_mesh
+		b.add_child(mi)
+		# Links much lighter than the head let the joints stretch: they get a share of its weight.
+		b.mass = 0.1 if whip else maxf(0.2, 0.35 * head_mass)
+		b.linear_damp = 0.3
+		b.angular_damp = 1.0
+		b.continuous_cd = true
+		b.can_sleep = false
+		b.collision_layer = 0
+		b.collision_mask = VoxelPart.LAYER_WORLD
+		get_parent().add_child(b)
+		b.global_transform = Transform3D(Basis(q), start + up * chain_len * (i + 0.5))
+		_pin(prev, b, start + up * chain_len * i)
+		chain_links.append(b)
+		prev = b
+	var head := Weapon.new()
+	head.chain_parent = self
+	head.setup({"name": design.get("name", "chain"), "voxels": hv, "sharpness": design.get("sharpness", 0.0), "serrated": design.get("serrated", false), "massScale": 0.3 if whip else 1.0, "dmgScale": design.get("dmgScale", Data.damage_tuning.get(Combat._preset_key(design), 1.0))}, wscale)
+	head.linear_damp = 0.05
+	head.angular_damp = 0.4
+	get_parent().add_child(head)
+	var end := start + up * chain_len * int(c.links)
+	head.global_transform = Transform3D(Basis(q), end - q * head_anchor)
+	head.add_collision_exception_with(self)
+	_pin(prev, head, end)
+	chain_head = head
+	tree_exiting.connect(_free_chain)
+
+func _pin(a: RigidBody3D, b: RigidBody3D, at: Vector3) -> void:
+	var j := PinJoint3D.new()
+	b.add_child(j)
+	j.global_position = at
+	j.node_a = a.get_path()
+	j.node_b = b.get_path()
+
+func _free_chain() -> void:
+	for b in chain_links:
+		if is_instance_valid(b):
+			b.queue_free()
+	if chain_head and is_instance_valid(chain_head):
+		chain_head.queue_free()
+	chain_links = []
+	chain_head = null
+
+## A chain the solver has torn apart (stretched far past its length, or flung at absurd speed)
+## is laid straight again from the handle; ordinary fast links are held under a limit.
+func guard_chain() -> void:
+	if chain_head == null:
+		return
+	var t := global_position
+	var reach_ := chain_len * (chain_links.size() + 2) * 2.0 + 0.5
+	var broken := false
+	for b in chain_links + [chain_head]:
+		var p: Vector3 = b.global_position
+		var sp: float = b.linear_velocity.length()
+		if not is_finite(sp) or not p.is_finite() or p.distance_to(t) > reach_:
+			broken = true
+			break
+		if sp > 40.0:
+			b.linear_velocity *= 40.0 / sp
+	if not broken:
+		return
+	var q := global_transform.basis.get_rotation_quaternion()
+	var up := q * Vector3.UP
+	var start := global_transform * chain_anchor
+	for i in chain_links.size():
+		var b: RigidBody3D = chain_links[i]
+		b.global_transform = Transform3D(Basis(q), start + up * chain_len * (i + 0.5))
+		b.linear_velocity = linear_velocity
+		b.angular_velocity = Vector3.ZERO
+	chain_head.global_transform = Transform3D(Basis(q), start + up * chain_len * chain_links.size() - q * head_anchor)
+	chain_head.linear_velocity = linear_velocity
+	chain_head.angular_velocity = Vector3.ZERO
+
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if Combat.current and state.get_contact_count() > 0:
+		Combat.current.report(self, state)

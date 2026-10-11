@@ -1,0 +1,85 @@
+name: Builds
+
+# Builds the C++ voxel core and exports the game for Windows, Linux and macOS. Run it from the
+# Actions tab (or push a tag like v0.1); each build is attached to the run as a download.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  # The C++ voxel core (extension/): Linux and Windows (MinGW) on Ubuntu, a universal library on macOS.
+  native:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platforms: linux windows
+          - os: macos-latest
+            platforms: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build
+        working-directory: extension
+        run: |
+          pip install scons==4.8.1
+          git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
+          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq mingw-w64; fi
+          for p in ${{ matrix.platforms }}; do
+            extra=""; [ "$p" = "windows" ] && extra="use_mingw=yes"
+            [ "$p" = "macos" ] && extra="arch=universal"
+            scons -j4 platform=$p target=template_release $extra
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}
+          path: native/bin/
+
+  export:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native/bin/
+          merge-multiple: true
+      - name: Install Godot and the export templates
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          curl -sSLo godot.zip $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          curl -sSLo templates.tpz $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q godot.zip && mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          dir=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p $dir && unzip -q templates.tpz && mv templates/* $dir/
+      - name: Import and test
+        run: |
+          godot --headless --path . --import || true
+          GODOT=/usr/local/bin/godot sh run_tests.sh
+      - name: Export
+        run: |
+          mkdir -p build/windows build/linux build/macos
+          godot --headless --path . --export-release "Windows Desktop" build/windows/VoxelArena.exe
+          godot --headless --path . --export-release "Linux" build/linux/VoxelArena.x86_64
+          godot --headless --path . --export-release "macOS" build/macos/VoxelArena.zip
+          ls -la build/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxel-arena-godot-windows
+          path: build/windows/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxel-arena-godot-linux
+          path: build/linux/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxel-arena-godot-macos
+          path: build/macos/

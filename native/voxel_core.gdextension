@@ -1,0 +1,10 @@
+[configuration]
+
+entry_symbol = "voxel_core_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+
+linux.x86_64 = "res://native/bin/libvoxelcore.linux.template_release.x86_64.so"
+windows.x86_64 = "res://native/bin/libvoxelcore.windows.template_release.x86_64.dll"
+macos = "res://native/bin/libvoxelcore.macos.template_release.framework"

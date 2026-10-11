@@ -1,0 +1,486 @@
+class_name VoxelPart
+extends RigidBody3D
+## One body part (a forearm, a head, a beast's leg): a rigid body made of fine voxels that can
+## be knocked out, cut through and burnt. Its weight sits on its own box; once a blow opens a
+## hole in it, boxes over the flesh that is left take over the collisions, so a blade can sink
+## into the wound it cut (as in the web game's character.js).
+
+const LAYER_WORLD := 1
+const LAYER_BODY := 2
+const LAYER_WEAPON := 4
+const LAYER_DEBRIS := 8
+
+const SMEAR := Color(0.306, 0.039, 0.039)
+const BRUISE := Color(0.29, 0.157, 0.282)
+
+var fighter: Node = null          # the Fighter or Beast it belongs to
+var def: Dictionary = {}
+var part_name := ""
+var label := ""
+var dims := Vector3i.ONE          # body voxels
+var grid := Vector3i.ONE          # fine voxels
+var vf := 0.0275                  # fine voxel size, unscaled
+var part_scale := 1.0
+var mult := 1.0
+var nominal_mass := 1.0
+
+var fx := PackedInt32Array()
+var fy := PackedInt32Array()
+var fz := PackedInt32Array()
+var colors := PackedColorArray()
+var alive := PackedByteArray()
+var bone := PackedByteArray()
+var alive_count := 0
+
+var hp := 100.0
+var bleed := 0.0
+var severed := false
+var hanging := false
+var fractured := false
+var stump := false
+var stump_t := 0.0
+var flinch_t := 0.0
+var missing := false
+var spots: Array = []           # fire and acid where they struck (fire.gd)
+var heat := {}                   # voxel -> how charred (or melted) it is
+var flames: GPUParticles3D = null
+var stuck: Array = []            # arrows and darts in it
+var wielder: Node = null         # a severed limb someone picked up to hit people with
+var thrown_t := 0.0
+var thrown_by: Node = null
+var parent_part: VoxelPart = null
+var child_parts: Array = []
+var joint: Joint3D = null
+var pa := Vector3.ZERO           # joint point on the parent (parent frame)
+var ca := Vector3.ZERO           # joint point on this part (own frame)
+
+var mm: MultiMesh
+var mmi: MultiMeshInstance3D
+var main_shape: CollisionShape3D
+var boxes: Array = []            # CollisionShape3D, while the part has holes
+var split := false
+var half_ext := Vector3.ONE
+
+static var _box_mesh_cache := {}
+static var _material: StandardMaterial3D
+
+## `voxels`: [[fx, fy, fz, Color, bone], ...] on the fine grid.
+func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
+	fighter = owner_node
+	def = d
+	part_name = d.get("name", "part")
+	label = d.get("label", part_name)
+	name = part_name
+	var dd: Array = d.get("dims", [1, 1, 1])
+	dims = Vector3i(int(dd[0]), int(dd[1]), int(dd[2]))
+	var g: Array = d.get("grid", [dims.x * Data.body_res, dims.y * Data.body_res, dims.z * Data.body_res])
+	grid = Vector3i(int(g[0]), int(g[1]), int(g[2]))
+	vf = Data.body_voxel / Data.body_res
+	part_scale = scale_
+	mult = float(d.get("mult", 1.0))
+	nominal_mass = mass_
+	if d.get("pa") != null:
+		pa = _v3(d.pa) * scale_
+	if d.get("ca") != null:
+		ca = _v3(d.ca) * scale_
+	var n := voxels.size()
+	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n)
+	for i in n:
+		var v: Array = voxels[i]
+		fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
+		# A little grain voxel to voxel (skin, cloth and fur are never one flat colour).
+		var c: Color = v[3]
+		var k := 1.0 + (float(hash(Vector3i(fx[i], fy[i], fz[i]) + Vector3i(dims.x, dims.y, dims.z) * 131) % 1000) / 1000.0 - 0.5) * 0.09
+		colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
+		bone[i] = 1 if v[4] else 0
+		alive[i] = 1
+	alive_count = n
+	# Physics: the box carries the weight; inertia from the whole box, centred, so a dent never
+	# changes how the part swings.
+	mass = maxf(0.05, mass_)
+	half_ext = Vector3(dims.x, dims.y, dims.z) * Data.body_voxel * scale_ * 0.5 * 0.95
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = Vector3.ZERO
+	var s := half_ext * 2.0
+	inertia = Vector3(s.y * s.y + s.z * s.z, s.x * s.x + s.z * s.z, s.x * s.x + s.y * s.y) * mass / 12.0
+	can_sleep = false
+	contact_monitor = true
+	max_contacts_reported = 8
+	main_shape = CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = half_ext * 2.0
+	main_shape.shape = box
+	add_child(main_shape)
+	_build_mesh()
+
+static func _v3(a) -> Vector3:
+	return Vector3(float(a[0]), float(a[1]), float(a[2]))
+
+# ---------- Drawing ----------
+
+func local_of(i: int) -> Vector3:
+	return Vector3((fx[i] - (grid.x - 1) * 0.5) * vf, (fy[i] - (grid.y - 1) * 0.5) * vf, (fz[i] - (grid.z - 1) * 0.5) * vf) * part_scale
+
+func world_of(i: int) -> Vector3:
+	return global_transform * local_of(i)
+
+func _build_mesh() -> void:
+	if _material == null:
+		_material = StandardMaterial3D.new()
+		_material.vertex_color_use_as_albedo = true
+		_material.vertex_color_is_srgb = true
+		_material.roughness = 0.8
+		_material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		_material.rim_enabled = true
+		_material.rim = 0.25
+		_material.rim_tint = 0.6
+	var key := snappedf(vf * part_scale, 0.0001)
+	if not _box_mesh_cache.has(key):
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * vf * part_scale * 0.98
+		bm.material = _material
+		_box_mesh_cache[key] = bm
+	mm = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = _box_mesh_cache[key]
+	mm.instance_count = fx.size()
+	for i in fx.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
+		mm.set_instance_color(i, colors[i])
+	mmi = MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+
+func refresh_colors(indices: Array = []) -> void:
+	if indices.is_empty():
+		for i in fx.size():
+			mm.set_instance_color(i, colors[i])
+	else:
+		for i in indices:
+			mm.set_instance_color(i, colors[i])
+
+## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
+func wound(lp: Vector3, r: float, kind := "blood") -> int:
+	var target := BRUISE if kind == "bruise" else SMEAR
+	var mx := 0.55 if kind == "bruise" else 0.9
+	var touched := []
+	for i in fx.size():
+		if alive[i] == 0:
+			continue
+		var d := local_of(i).distance_to(lp)
+		if d >= r:
+			continue
+		var k := mx * pow(1.0 - d / r, 0.6)
+		if k < 0.08:
+			continue
+		colors[i] = colors[i].lerp(target, k)
+		touched.append(i)
+	refresh_colors(touched)
+	return touched.size()
+
+# ---------- Losing voxels ----------
+
+var integrity: float:
+	get:
+		return float(alive_count) / maxf(1, fx.size())
+
+## How well it still works, 0..1 (0 when severed).
+func function() -> float:
+	if severed:
+		return 0.0
+	if hanging:
+		return 0.03
+	if fractured:
+		return 0.1
+	return clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
+
+## Knocks out voxels; returns [{p: world position, color}].
+func remove_voxels(indices: Array, smear := true) -> Array:
+	var out := []
+	var done := []
+	var centre := Vector3.ZERO
+	for i in indices:
+		if i < 0 or i >= fx.size() or alive[i] == 0:
+			continue
+		alive[i] = 0
+		alive_count -= 1
+		done.append(i)
+		out.append({"p": world_of(i), "color": colors[i]})
+		centre += local_of(i)
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), local_of(i)))
+	if out.is_empty():
+		return out
+	if smear:
+		centre /= out.size()
+		wound(centre, vf * part_scale * (2.2 + pow(out.size(), 1.0 / 3.0) * 0.8), "blood")
+	fit_collider()
+	if fighter and fighter.has_method("on_part_voxels_lost"):
+		fighter.on_part_voxels_lost(self, done, out)
+	return out
+
+## Puts voxels back (a mended limb in a replay, a net message out of order).
+func restore_voxels(indices: Array) -> void:
+	for i in indices:
+		if i >= 0 and i < fx.size() and alive[i] == 0:
+			alive[i] = 1
+			alive_count += 1
+			mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
+	fit_collider()
+
+## The collision shape follows the flesh once the part has a hole (see the class comment).
+func fit_collider() -> void:
+	var w := dims.x; var h := dims.y; var d := dims.z
+	var n := w * h * d
+	var res := Data.body_res
+	var total := PackedInt32Array(); total.resize(n)
+	var live := PackedInt32Array(); live.resize(n)
+	for i in fx.size():
+		var c := int(fx[i] / res) + w * (int(fy[i] / res) + h * int(fz[i] / res))
+		if c < 0 or c >= n:
+			continue
+		total[c] += 1
+		if alive[i]:
+			live[c] += 1
+	var solid := PackedByteArray(); solid.resize(n)
+	var holes := 0
+	var any := 0
+	for c in n:
+		solid[c] = 1 if (total[c] > 0 and live[c] * 2 >= total[c]) else 0
+		if total[c] > 0 and solid[c] == 0:
+			holes += 1
+		any += solid[c]
+	if holes == 0:
+		if split:
+			_drop_boxes(true)
+		return
+	if any == 0:
+		for c in n:
+			solid[c] = 1 if live[c] > 0 else 0
+	var fleshy := solid.duplicate()
+	for z in d:
+		for y in h:
+			for x in w:
+				var c := x + w * (y + h * z)
+				if total[c] > 0:
+					continue
+				solid[c] = 1 if (_nb(fleshy, w, h, d, x - 1, y, z) or _nb(fleshy, w, h, d, x + 1, y, z) or _nb(fleshy, w, h, d, x, y - 1, z) or _nb(fleshy, w, h, d, x, y + 1, z) or _nb(fleshy, w, h, d, x, y, z - 1) or _nb(fleshy, w, h, d, x, y, z + 1)) else 0
+	_drop_boxes(false)
+	split = true
+	main_shape.disabled = true
+	var k := half_ext * 2.0 / Vector3(w, h, d)
+	for b in Greedy.boxes(w, h, d, solid):
+		var cs := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k
+		cs.shape = shape
+		cs.position = Vector3((b[0] + b[3] + 1) * 0.5 - w * 0.5, (b[1] + b[4] + 1) * 0.5 - h * 0.5, (b[2] + b[5] + 1) * 0.5 - d * 0.5) * k
+		add_child(cs)
+		boxes.append(cs)
+
+func _nb(f: PackedByteArray, w: int, h: int, d: int, x: int, y: int, z: int) -> bool:
+	return x >= 0 and y >= 0 and z >= 0 and x < w and y < h and z < d and f[x + w * (y + h * z)] != 0
+
+func _drop_boxes(whole: bool) -> void:
+	for cs in boxes:
+		cs.queue_free()
+		remove_child(cs)
+	boxes.clear()
+	if whole:
+		split = false
+		main_shape.disabled = false
+
+func shape_count() -> int:
+	return boxes.size() if split else 1
+
+# ---------- Coming apart ----------
+
+## The axis the part hangs from (0 x, 1 y, 2 z) and whether its joint is at the high end.
+func _root_axis() -> Array:
+	var r: Vector3 = ca / maxf(0.0001, part_scale)
+	var ax := 1
+	if abs(r.x) > abs(r[ax]): ax = 0
+	if abs(r.z) > abs(r[ax]): ax = 2
+	return [ax, r[ax] > 0.0]
+
+## Alive voxels no longer connected (face to face) to where the part is held on: the joint face,
+## or for a part held by nothing (a torso, a beast's body, a limb already off) the biggest lump.
+func loose_lumps() -> Array:
+	var wf := grid.x; var hf := grid.y; var df := grid.z
+	var n := wf * hf * df
+	var cell := PackedInt32Array(); cell.resize(n)
+	var mark := PackedByteArray(); mark.resize(n)
+	var count := 0
+	for i in fx.size():
+		if alive[i]:
+			cell[(fx[i] * hf + fy[i]) * df + fz[i]] = i + 1
+			count += 1
+	if count == 0:
+		return []
+	var held := 0
+	var has_joint := def.get("ca") != null or def.get("root") != null
+	var nc := Greedy.core()
+	if nc:
+		var nax := -1
+		var nedge := 0
+		if has_joint and not severed:
+			var nra := _root_axis()
+			nax = nra[0]
+			nedge = [wf, hf, df][nax] - 1 if nra[1] else 0
+		return nc.loose_lumps(cell, wf, hf, df, nax, nedge)
+	if has_joint and not severed:
+		var ra := _root_axis()
+		var ax: int = ra[0]
+		var dim: int = [wf, hf, df][ax]
+		var edge: int = dim - 1 if ra[1] else 0
+		var seeds := PackedInt32Array()
+		for c in n:
+			if cell[c] == 0:
+				continue
+			var k: int = int(c / (hf * df)) if ax == 0 else (int((c % (hf * df)) / df) if ax == 1 else c % df)
+			if abs(k - edge) <= 1:
+				seeds.append(c)
+		held = _flood(cell, mark, seeds, 1, wf, hf, df).size()
+	else:
+		var best := -1
+		var best_size := 0
+		var tag := 2
+		for c in n:
+			if cell[c] == 0 or mark[c] != 0:
+				continue
+			var lump := _flood(cell, mark, PackedInt32Array([c]), tag, wf, hf, df)
+			if lump.size() > best_size:
+				best_size = lump.size()
+				best = tag
+			tag = 2 if tag == 255 else tag + 1
+		for c in n:
+			mark[c] = 1 if mark[c] == best else 0
+		held = best_size
+	if held == count:
+		return []
+	var lumps := []
+	for c in n:
+		if cell[c] != 0 and mark[c] == 0:
+			lumps.append(_flood(cell, mark, PackedInt32Array([c]), 3, wf, hf, df))
+	return lumps
+
+func _flood(cell: PackedInt32Array, mark: PackedByteArray, starts: PackedInt32Array, tag: int, wf: int, hf: int, df: int) -> PackedInt32Array:
+	var q := PackedInt32Array()
+	for c in starts:
+		if cell[c] != 0 and mark[c] == 0:
+			mark[c] = tag
+			q.append(c)
+	var out := PackedInt32Array()
+	var head := 0
+	var sx := hf * df
+	var sy := df
+	while head < q.size():
+		var c := q[head]
+		head += 1
+		out.append(cell[c] - 1)
+		var x := int(c / sx)
+		var y := int((c % sx) / sy)
+		var z := c % sy
+		for nb in [[x > 0, c - sx], [x < wf - 1, c + sx], [y > 0, c - sy], [y < hf - 1, c + sy], [z > 0, c - 1], [z < df - 1, c + 1]]:
+			if nb[0]:
+				var m: int = nb[1]
+				if cell[m] != 0 and mark[m] == 0:
+					mark[m] = tag
+					q.append(m)
+	return out
+
+## Where a child is jointed on, pulled onto this part's flesh.
+func anchor_point(child: VoxelPart) -> Vector3:
+	var p := child.pa
+	var hx := half_ext / 0.95
+	return Vector3(clampf(p.x, -hx.x, hx.x), clampf(p.y, -hx.y, hx.y), clampf(p.z, -hx.z, hx.z))
+
+func near_child_anchor(lump: PackedInt32Array) -> bool:
+	var pts := []
+	for c in child_parts:
+		if not c.severed:
+			pts.append(anchor_point(c))
+	if pts.is_empty():
+		return false
+	var r := vf * part_scale * 2.2
+	for i in lump:
+		var lp := local_of(i)
+		for pt in pts:
+			if lp.distance_to(pt) < r:
+				return true
+	return false
+
+## How much is left of the thinnest cross-section between the joint and the far end (0..1).
+func thin_ratio() -> float:
+	if def.get("ca") == null:
+		return 1.0
+	var ra := _root_axis()
+	var ax: int = ra[0]
+	var n: int = [grid.x, grid.y, grid.z][ax]
+	var full := PackedInt32Array(); full.resize(n)
+	var live := PackedInt32Array(); live.resize(n)
+	for i in fx.size():
+		var k: int = fx[i] if ax == 0 else (fy[i] if ax == 1 else fz[i])
+		full[k] += 1
+		if alive[i]:
+			live[k] += 1
+	var order := range(n)
+	if ra[1]:
+		order.reverse()
+	var last := -1
+	for k in order.size():
+		if live[order[k]] > 0:
+			last = k
+	var mn := 1.0
+	for k in range(1, last):
+		var i: int = order[k]
+		if full[i] > 0:
+			mn = minf(mn, float(live[i]) / full[i])
+	return mn
+
+## Voxels whose centre is within `r` of a local point.
+func voxels_near(lp: Vector3, r: float) -> Array:
+	var out := []
+	for i in fx.size():
+		if alive[i] and local_of(i).distance_to(lp) < r:
+			out.append(i)
+	return out
+
+## Velocity of a world point on this body.
+## Tongues of flame over the burning spots (GPU particles, where there is a screen).
+func set_flames(on: bool) -> void:
+	if Fx.current == null or Fx.current.headless:
+		return
+	if on and flames == null:
+		flames = Fx.current.emitter("fire", self, 40, 0.07 * part_scale)
+		if flames:
+			var smoke := Fx.current.emitter("smoke", flames, 10, 0.05 * part_scale)
+			if smoke:
+				smoke.emitting = true
+	if flames:
+		flames.emitting = on
+		for s in spots:
+			if s.kind == "fire" and s.t > 0.0:
+				flames.position = s.lp
+				break
+
+## An arrow (or a dart) left standing in the part where it went in.
+func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
+	if stuck.size() >= 6:
+		return
+	var vis := Items.visual(type)
+	add_child(vis)
+	var lp: Vector3 = global_transform.affine_inverse() * world_p
+	var ld: Vector3 = (global_transform.basis.orthonormalized().inverse() * dir).normalized()
+	vis.position = lp - ld * 0.12
+	if absf(ld.dot(Vector3.UP)) < 0.99:
+		vis.look_at_from_position(vis.position, vis.position + ld, Vector3.UP)
+		vis.position = lp - ld * 0.12
+	stuck.append(vis)
+
+func velocity_at(p: Vector3) -> Vector3:
+	return linear_velocity + angular_velocity.cross(p - global_position)
+
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if Combat.current and state.get_contact_count() > 0:
+		Combat.current.report(self, state)
