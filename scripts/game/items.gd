@@ -24,6 +24,7 @@ const TYPES := {
 	"pot_discus": {"size": 0.12, "projectile": true, "discus": true}, "pot_bignet": {"size": 0.3, "projectile": true},
 	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true},
 	"arrow_loose": {"size": 0.06, "debris": true},
+	"caltrop": {"size": 0.06},
 	"ball": {"size": 0.28, "rolling": true, "ball": true},
 }
 
@@ -92,6 +93,11 @@ static func visual(type: String) -> Node3D:
 			_box(g, 0.04, 0.03, 0.3, 0xc9d1d9, 0, 0, 0.12); _box(g, 0.3, 0.03, 0.04, 0xc9d1d9, 0.12); _box(g, 0.06, 0.05, 0.06, 0x8b5a2b)
 		"cheese":
 			_box(g, 0.12, 0.42, 0.42, 0xf2c94c)
+		"caltrop":
+			# Four iron spikes, one always pointing up.
+			_box(g, 0.014, 0.08, 0.014, 0x5b5f66, 0, 0.03, 0)
+			_box(g, 0.07, 0.014, 0.014, 0x5b5f66, 0.02, -0.01, 0)
+			_box(g, 0.014, 0.014, 0.07, 0x5b5f66, -0.01, -0.01, 0.02)
 		"bandage":
 			_box(g, 0.16, 0.12, 0.12, 0xf2ecdc); _box(g, 0.17, 0.04, 0.04, 0xd8cfb8); _box(g, 0.06, 0.012, 0.2, 0xf2ecdc, 0.03, -0.065, 0.06)
 		"ball":
@@ -296,12 +302,35 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 					_emit({"kind": "slip", "type": it.type, "char": c, "item": it, "p": it.p})
 					remove(it)
 					break
+			elif it.type == "caltrop":
+				# A sole coming down on it (the man's weight drives the spike in and it stays in
+				# his foot), or a body lying on it.
+				var sp = _foot_on(c, it.p)
+				if sp != null:
+					_emit({"kind": "caltrop", "type": it.type, "char": c, "part": sp, "item": it, "p": it.p})
+					remove(it)
+					break
 			elif c.kind != "beast":
 				var t: Vector3 = c.torso.global_position
 				if Vector2(t.x - it.p.x, t.z - it.p.z).length() < 0.55:
 					_emit({"kind": "eat", "type": it.type, "char": c, "item": it, "p": it.p})
 					remove(it)
 					break
+
+func _foot_on(c, p: Vector3):
+	var s: float = c.S
+	if c.state == "stand":
+		for n in ["shinL", "shinR"]:
+			var sp = c.by_name.get(n)
+			if sp and not sp.severed:
+				var foot: Vector3 = sp.global_transform * Vector3(0, -sp.half_ext.y * 0.9, 0)
+				if Vector2(foot.x - p.x, foot.z - p.z).length() < 0.1 * s and foot.y < 0.2 * s:
+					return sp
+		return null
+	for q in c.parts:
+		if not q.severed and q.global_position.distance_to(p) < q.half_ext.length() * 0.8:
+			return q
+	return null
 
 func _near_feet(c, p: Vector3, r: float) -> bool:
 	for n in ["shinL", "shinR"]:

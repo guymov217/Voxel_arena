@@ -117,3 +117,27 @@ func test_an_elephant_stomp_crushes_what_it_lands_on() -> void:
 	t.check(before - after >= 20, "a crater crushed into him (%d voxels)" % (before - after))
 	t.check(v.state != "stand", "and he is knocked off his feet")
 	m.queue_free()
+
+func test_on_one_leg_he_hops() -> void:
+	var m := _match()
+	var e = m.spawn_fighter({"kind": "bot", "name": "H", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 1, "pos": Vector3(4, 0, 3), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {"mz": 1.0}
+	var f: Fighter = e.f
+	await _steps(2)
+	f.detach_limb(f.by_name.shinL, {"removed": [], "severed": []})
+	var p0 := f.torso.global_position
+	var lo := INF
+	var hi := -INF
+	for i in 600:
+		f.blood = 100.0
+		for p in f.parts:
+			p.bleed = 0.0
+		await get_tree().physics_frame
+		if i > 240:
+			lo = minf(lo, f.torso.global_position.y)
+			hi = maxf(hi, f.torso.global_position.y)
+	t.eq(f.state, "stand", "he keeps his one foot")
+	t.check(f.torso.global_position.distance_to(p0) > 1.5, "and gets on, hop by hop")
+	t.check(hi - lo > 0.05, "rising and dropping with each hop (%.2f m)" % (hi - lo))
+	m.queue_free()

@@ -10,6 +10,7 @@ const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "p
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
 const THROW_SPEED := {"pot_anvil": 6.0, "pot_harpoon": 16.0, "pot_discus": 15.0, "pot_bola": 13.0}
 const NAILS := 30
+const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
 	"oil": Color(0.16, 0.23, 0.06, 0.7), "honey": Color(0.91, 0.63, 0.13, 0.75), "smoke": Color(0.6, 0.6, 0.6, 0.5)}
 
@@ -186,7 +187,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.fx.burst("sparks", p, 120, Vector3.UP, 2.0)
 				m.fx.burst("debris", p, 50, Vector3.UP, 1.6)
 				m.fx.mark("scorch", p, 2.6)
-			blast(p, 3.5, 24.0, owner_)
+			blast(p, 3.8, 44.0, owner_)
 			for x in _near(p, 3.5):
 				var c = x.c
 				var f: float = 1.0 - x.d / 3.5
@@ -230,7 +231,12 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				add_zone("acid", Vector3(p.x, 0, p.z), 0.8, 10.0, owner_)
 			splash_burning(p, dir, 36, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null, "acid")
 		"pot_caltrops":
-			add_zone("caltrops", Vector3(p.x, 0, p.z), 1.4, 25.0, owner_)
+			# The pot bursts and scatters real caltrops over the sand: each lands with a spike
+			# up, and whoever walks over them (anyone) gets one in the foot.
+			for i in CALTROPS:
+				var a := randf() * TAU
+				var out := 1.2 + randf() * 3.4
+				m.items.spawn("caltrop", Vector3(p.x + cos(a) * 0.08, maxf(0.2, p.y), p.z + sin(a) * 0.08), Vector3(cos(a) * out, 1.0 + randf() * 2.5, sin(a) * out), owner_)
 			m.feed.emit("Caltrops all over the sand. Watch your step.")
 		"pot_bees":
 			m.sfx("slap", p)
@@ -401,7 +407,9 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part) -> void:
 	if type == "pot_bolt":
 		part.bleed += 1.0
 	if type == "nail":
-		part.bleed += 0.2
+		part.bleed += 0.3
+		if not headless:
+			part.stick("nail", p, hdir)
 	if arrow:
 		part.bleed += 1.5 / maxf(1.0, c.S * 0.6)
 		if not headless:
@@ -444,6 +452,25 @@ func on_item(ev: Dictionary) -> void:
 				"coin":
 					m.feed.emit("%s pockets a gold coin" % c.display_name)
 					m.on_coin(c)
+		"caltrop":
+			var part: VoxelPart = ev.part
+			var foot: bool = part.def.get("leg", false) and c.state == "stand"
+			var Jc := 7.0 * sqrt(float(c.S)) if foot else 4.0
+			var was: bool = c.alive
+			var res: Dictionary = c.apply_hit(part, {"impulse": Jc, "type": "point", "hardness": 0.95, "sharpness": 1.0, "point": ev.p, "dir": Vector3.UP, "axis": Vector3.UP})
+			part.bleed += 0.8
+			if not headless:
+				part.stick("caltrop", ev.p, Vector3.UP)
+			if foot:
+				# He snatches the foot up and hops: slower for a while, the leg buckling under him.
+				c.slow(2.5, 0.5)
+				part.flinch_t = maxf(part.flinch_t, 0.8)
+				c.stagger = minf(1.0, c.stagger + 0.35 / float(c.S))
+				m.feed.emit("%s steps on a caltrop!" % c.display_name)
+				m.crowd_add(c, -2, "caltrop")
+			if owner_ and owner_ != c:
+				c.last_attacker = owner_
+			m.report_hit({"kind": "hit", "p": ev.p, "dir": Vector3.UP, "J": Jc, "type": "point", "char": c, "part": part, "attacker": owner_, "res": res, "killed": was and not c.alive})
 		"slip":
 			c.fall(1.6, true)
 			c.torso.apply_central_impulse(Vector3(0, 30.0, 0))

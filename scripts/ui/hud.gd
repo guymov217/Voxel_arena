@@ -503,7 +503,7 @@ func _process(dt: float) -> void:
 	var t = match_.nearest_enemy(me) if me else null
 	if t and is_instance_valid(t.f):
 		plate.visible = true
-		var val: float = clampf(t.f.total_hp() / maxf(1.0, t.f.parts.size() * 100.0), 0.0, 1.0)
+		var val: float = t.f.vitality()
 		if plate_target != t.f:
 			plate_target = t.f
 			plate_trail = val

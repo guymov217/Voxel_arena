@@ -23,7 +23,11 @@ var down_t := 0.0
 var flying := false
 var rng := RandomNumberGenerator.new()
 var on_breath: Callable
+var on_venom: Callable               # (beast, victim, part, point): poison where it struck
+const VENOMOUS := {"scorpion": "sting", "manticore": "sting", "spider": "bite", "python": "bite", "basilisk": "bite"}
+var coil_cool := 0.0
 var on_stomp: Callable
+var on_roar: Callable
 # Animation: the parts that move on their own joints (necks, heads, tails, wings, trunks,
 # pincers, the coils of a snake), their rest pose against their parent and how far they bend.
 var anim: Array = []                 # [{part, role, rest: Quaternion, lim, i}]
@@ -137,10 +141,21 @@ func on_severed(part: VoxelPart) -> void:
 	if part == head and not sp.get("multiHead", false):
 		die("decap")
 
+func vitality() -> float:
+	if not alive:
+		return 0.0
+	var h := head.hp
+	if sp.get("multiHead", false):
+		h = 0.0
+		for hh in heads_left():
+			h = maxf(h, hh.hp)
+	return clampf(minf(minf(h, torso.hp), blood) / 100.0, 0.0, 1.0)
+
 func die(cause := "") -> void:
 	if state == "dead":
 		return
 	state = "dead"
+	_release_coil()
 	hug = null
 	flying = false
 	# Tip it over on its side instead of leaving it standing.
@@ -209,6 +224,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	ai.dodge_cool -= dt
 	ai.roar_cool -= dt
 	ai.breath_cool -= dt
+	ai.rear_cool = float(ai.get("rear_cool", 0.0)) - dt
+	coil_cool -= dt
 	if ai.mode == "charge" and sp.ai == "charger":
 		yaw = ai.charge_yaw
 	var turn := 1.2 if sp.ai == "path" else (2.5 if flying else 6.0)
@@ -233,6 +250,10 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			roll = sin(gait * 0.8) * 0.08
 			pitch = 0.12 + sin(gait * 1.6) * 0.1
 			K = 4.0
+		elif float(ai.get("rear", 0.0)) > 0.0:
+			# Rearing: nose to the sky on the hind legs, then pitching forward onto the prey.
+			pitch = -0.95 if float(ai.rear) > 0.4 else 0.35
+			K = 6.0
 		elif flying:
 			var wfl := wing_fns()
 			roll = -yaw_rate * 0.25 + (wfl.y - wfl.x) * 0.6   # a hurt wing drops that side
@@ -278,9 +299,15 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		to.y = 0
 		dist = to.length()
 		to = to.normalized()
-	match String(sp.ai):
+	var coiling: bool = hug != null and hug.get("coil", false) and is_instance_valid(hug.target)
+	if coiling:
+		_coil(dt)
+	match "" if coiling else String(sp.ai):
 		"hunter":
 			want = _hunt(dt, t, to, dist, hurt, collapsed, legs_left, grounded, h_want, dist_g, mass)
+			# A python that gets close throws its coils round the man even without a bite.
+			if species == "python" and t and hug == null and coil_cool <= 0.0 and dist < 1.3 * S + 0.6 and fn_of(["coil"]) > 0.3 and rng.randf() < dt * 1.5:
+				_start_coil(t)
 		"charger":
 			if t:
 				if ai.mode == "aim":
@@ -306,9 +333,33 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					want = -to * 1.5
 					if ai.t <= 0.0:
 						ai.mode = "stalk"
+				elif float(ai.get("rear", 0.0)) > 0.0:
+					# Up on the hind legs, forepaws raised over the man; then down on him, both
+					# paws raking as the weight comes down.
+					ai.rear = float(ai.rear) - dt
+					want = to * 1.2 * hurt
+					if ai.rear < 0.4 and not ai.get("slammed", false):
+						ai.slammed = true
+						for n in ["legFL", "legFR"]:
+							if by_name.has(n) and not leg_gone(by_name[n]):
+								_strike(by_name[n], 0.45, 0.0)
+								var lo := lower_of(by_name[n])
+								if lo:
+									lo.apply_central_impulse(((t.torso.global_position - lo.global_position).normalized() + Vector3(0, -0.6, 0)) * 26.0 * S)
+						torso.apply_central_impulse((to + Vector3(0, -0.4, 0)) * mass * 2.2)
+					if ai.rear <= 0.0:
+						ai.mode = "stalk"
+						ai.bite_cool = 1.2
 				else:
 					want = to * float(sp.speed) * hurt
-					if dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
+					if species == "bear" and dist < 2.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
+						ai.rear = 1.15
+						ai.rear_cool = 4.0 + rng.randf() * 2.0
+						ai.slammed = false
+						for n in ["legFL", "legFR"]:
+							if by_name.has(n) and not leg_gone(by_name[n]):
+								_strike(by_name[n], 0.7, 0.0)
+					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
 						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
@@ -322,6 +373,17 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			var ang := atan2(pos.x, pos.z) + 0.25
 			want = (Vector3(sin(ang) * 6.0, 0, cos(ang) * 6.0) - Vector3(pos.x, 0, pos.z)).normalized() * float(sp.speed) * hurt
 			yaw = atan2(want.x, want.z)
+			# A mammoth does not keep to its circle: it goes for whoever is in the arena with it,
+			# and now and then charges, trumpeting, tusks first.
+			if species == "mammoth" and t and dist < 18.0 * S:
+				ai.charge_t = float(ai.get("charge_t", 0.0)) - dt
+				if float(ai.charge_t) < -5.0 and dist > 3.0 * S:
+					ai.charge_t = 1.8
+					if on_roar.is_valid():
+						on_roar.call(self)
+				var spd := float(sp.speed) * (2.6 if float(ai.charge_t) > 0.0 else 1.5)
+				want = to * spd * hurt
+				yaw = atan2(to.x, to.z)
 			if t and dist < 3.2 * S * 0.6 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
 				ai.bite_cool = 4.0
 				ai.stomp = 0.7
@@ -452,6 +514,73 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 		if true:
 			h.apply_central_impulse(Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S))
 	ai.bite_cool = float(sp.cooldown) * (1.0 + injury)
+
+## A python round a man (character.js has no constrictor; this is new): its coils wrap the
+## body and close on it. The squeeze is a force, the snake's weight and the pull of its muscle,
+## on the chest it is wrapped round: the pressure that makes crushes ribs, stops the breath and
+## pins the arms, and grows as the coils tighten. He can wrench free while he still has the
+## strength (his stamina and his blows on the coils).
+func _start_coil(c) -> void:
+	hug = {"target": c, "t": 7.0, "tick": 0.45, "stagger0": stagger, "coil": true, "tight": 0.0}
+	if c.has_method("fall") and c.state == "stand":
+		c.stagger = minf(1.0, c.stagger + 0.5)
+
+func _coil(dt: float) -> void:
+	var tgt = hug.target
+	hug.t -= dt
+	hug.tick -= dt
+	hug.tight = minf(1.0, float(hug.tight) + dt / 2.5)
+	var tc: Vector3 = tgt.torso.global_position
+	var r: float = tgt.torso.half_ext.x * 1.25 + 0.06 * S
+	var coils: Array = parts.filter(func(p): return (String(p.part_name).begins_with("coil") or p.part_name == "tailTip" or p == torso) and not p.severed)
+	var i := 0
+	for p in coils:
+		# Each segment is pulled onto its turn of a spiral round his chest.
+		var a: float = time * 0.6 + i * 2.1
+		var at: Vector3 = tc + Vector3(cos(a) * r, -0.25 * tgt.S + i * 0.16 * tgt.S, sin(a) * r)
+		var err: Vector3 = at - p.global_position
+		p.apply_central_impulse((err * 60.0 - p.linear_velocity * 8.0) * p.mass * dt)
+		i += 1
+	# The squeeze: weight and muscle on the area of chest the coils cover.
+	var m_snake := 0.0
+	for p in parts:
+		if not p.severed:
+			m_snake += p.mass
+	var muscle := fn_of(["coil"]) * (0.4 + 0.6 * float(hug.tight))
+	var force := m_snake * gravity * 2.5 * muscle
+	var area: float = 2.0 * PI * r * (0.16 * tgt.S * coils.size())
+	var pressure := force / maxf(0.05, area)          # N/m^2
+	# He is held: no breath, arms pinned to his sides.
+	tgt.stamina = maxf(0.0, tgt.stamina - pressure * 0.004 * dt)
+	tgt.stagger = maxf(tgt.stagger, 0.6)
+	if tgt.state == "stand" and float(hug.tight) > 0.5:
+		tgt.fall(2.0, true)
+	if hug.tick <= 0.0 and tgt.alive:
+		hug.tick = 0.45
+		var J := clampf(pressure / 220.0, 3.0, 45.0)
+		var parts_hit := [tgt.torso]
+		for n in ["upperArmR", "upperArmL"]:
+			var q = tgt.by_name.get(n)
+			if q and not q.severed:
+				parts_hit.append(q)
+		var part: VoxelPart = parts_hit[rng.randi() % parts_hit.size()]
+		var at2: Vector3 = part.global_position + (part.global_position - tc).normalized() * part.half_ext.x
+		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.4, "sharpness": 0.0, "point": at2, "dir": (tc - at2).normalized(), "crush": minf(0.09, 0.02 + J * 0.0015) if J > 18.0 else 0.0})
+		tgt.last_attacker = self
+		if Combat.current:
+			Combat.current.hit.emit({"kind": "hit", "p": at2, "dir": (tc - at2).normalized(), "J": J, "type": "blunt", "char": tgt, "part": part, "attacker": self, "res": res, "killed": not tgt.alive})
+	# Wrenched free: his struggle (what breath he has left), blows that stagger the snake, or
+	# coils too cut up to hold.
+	var escape: float = tgt.stamina / 100.0 * float(tgt.mods.get("strength", 1.0)) * 0.04 * dt * 60.0 / maxf(0.3, muscle)
+	if hug.t <= 0.0 or not tgt.alive or stagger > float(hug.stagger0) + 0.45 or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt:
+		_release_coil()
+
+func _release_coil() -> void:
+	if hug != null and hug.get("coil", false):
+		hug = null
+		coil_cool = 4.0
+		ai.mode = "recover"
+		ai.t = 1.2
 
 func _squeeze(dt: float) -> void:
 	hug.t -= dt
@@ -607,6 +736,15 @@ func _process(dt: float) -> void:
 ## them a while, or falls.
 func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	jaw_t = minf(jaw_t, 0.14)
+	# Venom: a scorpion's (or a manticore's) sting, a spider's or a snake's fangs.
+	var kind: String = VENOMOUS.get(species, "")
+	var c = vic.fighter
+	if c and not vic.severed and kind != "" and ((kind == "sting" and att.part_name == "stinger") or (kind == "bite" and heads.has(att))):
+		if on_venom.is_valid():
+			on_venom.call(self, c, vic, vic.global_position)
+	# A python that has its fangs in a man throws its coils round him.
+	if species == "python" and heads.has(att) and c and c.alive and hug == null and coil_cool <= 0.0 and fn_of(["coil"]) > 0.3:
+		_start_coil(c)
 	var torn := []
 	for r in res.get("removed", []):
 		if not r.get("chunk", false) and r.part == vic:
@@ -662,8 +800,9 @@ func _setup_anim() -> void:
 		if role == "":
 			continue
 		var lim: float = ROLE_LIM[role]
-		# Necks and heads may bend much further when they strike than when they idle.
-		var jlim := 1.25 if role == "neck" or role == "head" else lim
+		# Necks and heads may bend much further when they strike than when they idle; a
+		# scorpion's tail curls right up over its back.
+		var jlim := 1.25 if role == "neck" or role == "head" else (1.35 if role == "tail" and by_name.has("stinger") else lim)
 		if p.joint is Generic6DOFJoint3D:
 			var j: Generic6DOFJoint3D = p.joint
 			for ax in ["x", "y", "z"]:
@@ -677,7 +816,10 @@ func _setup_anim() -> void:
 			carried += c.mass
 			stack.append_array(c.child_parts)
 		var reach := maxf(p.half_ext.x, maxf(p.half_ext.y, p.half_ext.z)) * 2.0
-		anim.append({"part": p, "role": role, "rest": PD.quat_of(p.parent_part).inverse() * PD.quat_of(p), "i": anim.size(), "max_t": 60.0 * carried * reach + 20.0})
+		var mt := 60.0 * carried * reach + 20.0
+		if role == "tail" and by_name.has("stinger"):
+			mt *= 5.0   # it holds the whole arched tail and the sting up over the back
+		anim.append({"part": p, "role": role, "rest": PD.quat_of(p.parent_part).inverse() * PD.quat_of(p), "i": anim.size(), "max_t": mt})
 
 ## Drives every animated joint: breathing, looking at the prey, tails swaying and lashing,
 ## snakes' bodies travelling in waves, wings beating or flaring, trunks swinging, and the
@@ -700,9 +842,14 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		var off := Vector3.ZERO
 		match role:
 			"tail":
-				var k := 0.18 + (0.22 if moving else 0.0) + (0.3 if threat or ai.mode == "charge" else 0.0)
-				off.y = sin(time * (2.4 if moving else 1.1) - i * 0.8) * k - yaw_rate * 0.12
-				off.x = 0.04 * breath
+				if by_name.has("stinger"):
+					# Arched up over the back, the sting poised above the head, swaying.
+					off.x = 1.0 + 0.05 * sin(time * 1.3 + i)
+					off.y = sin(time * 0.9 - i * 0.6) * 0.12 + track * 0.25
+				else:
+					var k := 0.18 + (0.22 if moving else 0.0) + (0.3 if threat or ai.mode == "charge" else 0.0)
+					off.y = sin(time * (2.4 if moving else 1.1) - i * 0.8) * k - yaw_rate * 0.12
+					off.x = 0.04 * breath
 			"coil":
 				off.y = sin(gait * 1.3 - i * 1.5) * (0.6 if moving else 0.1) + sin(time * 0.5 + i) * 0.05
 			"neck":
@@ -731,6 +878,8 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 			"claw":
 				off.y = signf(p.pa.x) * (0.15 + 0.15 * sin(time * 3.0 + i))
 		var lim: float = ROLE_LIM[role]
+		if role == "tail" and by_name.has("stinger"):
+			lim = 1.3
 		var wn: float = ROLE_WN[role]
 		var st: float = strikes.get(p, 0.0)
 		if st > 0.0:
@@ -740,7 +889,11 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		if p.flinch_t > 0.0:
 			off.x -= p.flinch_t * 0.9
 		off = off.clamp(Vector3(-lim, -lim, -lim), Vector3(lim, lim, lim)) * (0.3 + 0.7 * p.function())
-		pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
+		if role == "tail" and by_name.has("stinger"):
+			# The arched tail carries the whole chain and the sting: held like a leg, not swung.
+			motor_rel(p, p.parent_part, Quaternion.from_euler(off) * a.rest, 14.0, a.max_t, dt, 0.5)
+		else:
+			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
 
 func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: float) -> Vector3:
 	match role:
@@ -760,7 +913,7 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: flo
 				return Vector3(-0.3, 0, 0)                                              # the horn toss
 			return Vector3(0.45, track * 0.3, 0)                                        # a bite
 		"tail":
-			return Vector3(0.6, 0, 0)                                                  # the sting over the back
+			return Vector3(0.3, track * 0.3, 0)                                        # the sting driven forward over the back
 		"claw":
 			return Vector3(0, -signf(p.pa.x) * 0.45, 0)                                # the pincer snaps shut
 		"arm":
@@ -769,6 +922,7 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: flo
 
 func _strike(p: VoxelPart, t_: float, cool: float) -> void:
 	strikes[p] = t_
+	p.set_meta("stung", false)
 	strike_cool[p] = cool
 	if p.jaw_pivot:
 		jaw_t = JAW_T
@@ -781,8 +935,37 @@ func _strike(p: VoxelPart, t_: float, cool: float) -> void:
 		var lo := lower_of(p)
 		if lo:
 			lo.def["bite"] = true
+			lo.def["claw"] = SWIPERS.has(species)
+
+## The sting's tip is a needle: its little collider rarely meets a body square on, so while the
+## sting is driving, the tip reaching flesh is the blow (a point, as hard as the scorpion's
+## strike), once per sting.
+func _sting_reach() -> void:
+	if not by_name.has("stinger") or not strikes.has(by_name.stinger) or target == null or not is_instance_valid(target) or not target.alive:
+		return
+	var stg: VoxelPart = by_name.stinger
+	if stg.get_meta("stung", false):
+		return
+	var tip: Vector3 = stg.global_transform * Vector3(0, -stg.half_ext.y, stg.half_ext.z)
+	for q in target.parts:
+		if q.severed:
+			continue
+		var lp: Vector3 = q.global_transform.affine_inverse() * tip
+		var e: Vector3 = q.half_ext + Vector3.ONE * 0.06 * S
+		if absf(lp.x) < e.x and absf(lp.y) < e.y and absf(lp.z) < e.z:
+			stg.set_meta("stung", true)
+			var dir: Vector3 = (q.global_position - tip).normalized()
+			var J := bite_power * 0.8
+			var was: bool = target.alive
+			var res: Dictionary = target.apply_hit(q, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": tip, "dir": dir, "axis": dir})
+			target.last_attacker = self
+			if Combat.current:
+				Combat.current.hit.emit({"kind": "hit", "att_part": stg, "p": tip, "dir": dir, "J": J, "type": "point", "char": target, "part": q, "attacker": self, "res": res, "killed": was and not target.alive, "bite": true})
+			bit(stg, q, res, dir)
+			return
 
 func _tick_strikes(dt: float) -> void:
+	_sting_reach()
 	for p in strike_cool.keys():
 		strike_cool[p] -= dt
 	for p in strikes.keys():
@@ -793,6 +976,7 @@ func _tick_strikes(dt: float) -> void:
 				var lo := lower_of(p)
 				if lo:
 					lo.def["bite"] = false
+					lo.def["claw"] = false
 
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)

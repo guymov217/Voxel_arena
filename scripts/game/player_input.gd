@@ -15,6 +15,7 @@ var lmb := false
 var rmb := false
 var thrust := 0.0
 var twist := 0.0
+var twist_l := 0.0   # the off hand's edge turn: the wheel turns whichever hand is held
 var jab_r := false
 var jab_l := false
 var enabled := true
@@ -145,10 +146,12 @@ func _unhandled_input(e: InputEvent) -> void:
 			rmb = b.pressed
 			if b.pressed:
 				jab_l = true
-		elif b.button_index == MOUSE_BUTTON_WHEEL_UP and b.pressed:
-			twist = clampf(twist + 0.25, -PI, PI)
-		elif b.button_index == MOUSE_BUTTON_WHEEL_DOWN and b.pressed:
-			twist = clampf(twist - 0.25, -PI, PI)
+		elif (b.button_index == MOUSE_BUTTON_WHEEL_UP or b.button_index == MOUSE_BUTTON_WHEEL_DOWN) and b.pressed:
+			var dw := 0.25 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -0.25
+			if rmb and not lmb:
+				twist_l = clampf(twist_l - dw, -PI, PI)
+			else:
+				twist = clampf(twist + dw, -PI, PI)
 		if b.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -161,7 +164,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			return
 		var s := 0.0024 * sensitivity
 		for hh in ([main, off] if both else [h]):
-			var lim := 2.0 if hh == main else 1.2
+			var lim := 2.0
 			hh.x = clampf(hh.x + m.relative.x * s, -lim, lim)
 			hh.y = clampf(hh.y - m.relative.y * s, -1.6, 1.6)
 	elif e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
@@ -196,7 +199,7 @@ func _pad(dt: float) -> void:
 		look_pitch = clampf(look_pitch - rs.y * dt * 1.8 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.35, 1.35)
 	else:
 		for hh in ([main] if pad_r else []) + ([off] if pad_l else []):
-			var lim := 2.0 if hh == main else 1.2
+			var lim := 2.0
 			hh.x = clampf(hh.x + rs.x * dt * 3.2 * sensitivity, -lim, lim)
 			hh.y = clampf(hh.y - rs.y * dt * 3.2 * sensitivity, -1.6, 1.6)
 	for i in PAD_ITEMS.size():
@@ -229,6 +232,7 @@ func sample(dt: float) -> Dictionary:
 		"jabR": jab_r,
 		"jabL": jab_l,
 		"twist": twist,
+		"offTwist": twist_l,
 		"look": {"yaw": look_yaw, "pitch": look_pitch},
 		"sprint": held("sprint"),
 		"crouch": held("crouch"),
@@ -271,7 +275,7 @@ static func pack(inp: Dictionary) -> Array:
 			bits |= 1 << i
 	var gh = inp.get("grabHands")
 	bits |= (1 if gh == "R" else (2 if gh == "L" else (3 if gh == "both" else 0))) << 14
-	return [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1))]
+	return [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01)]
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp"]
 
@@ -294,4 +298,5 @@ static func unpack(a: Array) -> Dictionary:
 	out.grabHands = [null, "R", "L", "both"][(bits >> 14) & 3]
 	out.throwPower = clampf(float(a[12]), 0.0, 1.0) if a.size() > 12 else 0.8
 	out.useItem = clampi(int(a[13]), -1, 8) if a.size() > 13 else -1
+	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0
 	return out

@@ -237,6 +237,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		cap = 40.0
 	elif bite:
 		cap = float(att.fighter.get("bite_power")) if att.fighter.get("bite_power") != null else 45.0
+		if att.def.get("claw", false):
+			cap *= 1.4   # a swipe has the whole foreleg and shoulder behind it
 	else:
 		cap = 30.0 if kick else (22.0 if jabbing else 17.0)
 	var J := minf(cap, maxf(g.J, m_eff * speed))
@@ -296,6 +298,14 @@ func _blow(g: Dictionary) -> Dictionary:
 		hardness = 0.4
 		attacker = att.wielder if att.wielder else att.thrown_by
 		thrown = att.wielder == null
+	elif bite and att.def.get("claw", false):
+		# A paw's claws rake like knives: a cut along the swing, as deep as the blow drives it.
+		typ = "edge"
+		hardness = 0.9
+		sharpness = 0.95
+		edge = dir
+		axis = PD.quat_of(att) * Vector3(0, -1, 0)
+		attacker = att.fighter
 	elif bite:
 		typ = "point"
 		hardness = 0.9
@@ -307,7 +317,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var was_alive: bool = vic_char.alive
 	# A bite takes a mouthful: the teeth close on a lump the size of the jaws, and tear it out.
-	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 else 0.0
+	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 and not att.def.get("claw", false) else 0.0
 	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
@@ -342,7 +352,7 @@ func _blow(g: Dictionary) -> Dictionary:
 			var chips: Array = att.chip_indices(idx, Weapon.chip_score(J * float(Data.material(g.mat).brittle), mat_h, vh))
 			if not chips.is_empty():
 				chip = {"indices": chips, "voxels": att.remove_voxels(chips)}
-	return {"kind": "hit", "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
+	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
 
 static func _is_club(p) -> bool:
 	return p is VoxelPart and p.severed and (p.wielder != null or p.thrown_t > 0.0)

@@ -500,7 +500,7 @@ func _training(v: VBoxContainer) -> void:
 	var who: Array = ["none", "gladiator"] + Data.beasts.keys()
 	pick.call("Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else Data.beasts[k].name)), "enemy")
 	pick.call("How many", [1, 2, 3], ["One", "Two", "Three"], "count")
-	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger"]
+	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "whip", "bow", "crossbow"]
 	pick.call("Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
 	pick.call("Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
 	var diff := HSlider.new()
@@ -513,7 +513,7 @@ func _training(v: VBoxContainer) -> void:
 	_row(v, [UIStyle.label("Difficulty", 15), diff])
 	v.add_child(UIStyle.label("YOU", 13, UIStyle.BRONZE))
 	var built: Dictionary = Save.get_value("training_weapon", {})
-	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger"]
+	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "nunchaku", "meteorHammer", "whip", "plank", "chicken", "bow", "crossbow", "ram"]
 	pick.call("Main hand", mains, mains.map(func(k): return ("Your forged weapon: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	pick.call("Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
 	v.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))

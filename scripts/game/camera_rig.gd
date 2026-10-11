@@ -23,7 +23,12 @@ func orbit(center: Vector3, dt: float) -> void:
 	global_position = pos
 	look_at(look, Vector3.UP)
 
-func follow(f, yaw: float, pitch: float, dt: float) -> void:
+## While a throw is wound up the camera closes in over the right shoulder and narrows, so the
+## mark sits under the crosshair and the arc is easy to judge.
+var aim_k := 0.0
+func follow(f, yaw: float, pitch: float, dt: float, aiming := false) -> void:
+	aim_k = move_toward(aim_k, 1.0 if aiming else 0.0, dt * 4.0)
+	fov = lerpf(65.0, 50.0, aim_k)
 	if f == null or not is_instance_valid(f):
 		var a := Time.get_ticks_msec() / 1000.0 * 0.15
 		pos = pos.lerp(Vector3(sin(a) * 9.0, 3.5, cos(a) * 9.0), minf(1.0, dt * 2.0))
@@ -33,8 +38,8 @@ func follow(f, yaw: float, pitch: float, dt: float) -> void:
 		var base: Vector3 = (f.torso if f.alive else f.head).get_global_transform_interpolated().origin
 		var fwd := Vector3(sin(yaw), 0, cos(yaw))
 		var right := Vector3(-cos(yaw), 0, sin(yaw))
-		var back := 2.6 * S * cos(pitch * 0.6)
-		var want := base + Vector3(0, 0.75 * S - sin(pitch) * 1.6 * S, 0) - fwd * back + right * 0.35 * S
+		var back := lerpf(2.6, 1.7, aim_k) * S * cos(pitch * 0.6)
+		var want := base + Vector3(0, lerpf(0.75, 0.62, aim_k) * S - sin(pitch) * 1.6 * S, 0) - fwd * back + right * lerpf(0.35, 0.62, aim_k) * S
 		want.y = maxf(0.3, want.y)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
 		look = base + fwd * 2.0 * S + Vector3(0, 0.35 * S + sin(pitch) * 2.0 * S, 0)

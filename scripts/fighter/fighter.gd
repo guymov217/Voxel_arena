@@ -100,6 +100,7 @@ var crawling := false
 var eye_hurt := 0.0
 var strip_clock := 0.0
 var crawl_phase := 0.0
+var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
 var net_mesh: MeshInstance3D = null
@@ -607,7 +608,21 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 			q = q * Quaternion(UP, PI)
 		w.global_transform = Transform3D(Basis(q), from - q * w.center_of_mass)
 		w.angular_damp = 0.03
-		w.angular_velocity = sd * -(15.5 if Weapon.spins_in_flight(w.design) else clampf(5.0 + 9.0 / sqrt(maxf(0.3, w.mass)), 6.0, 15.5))
+		var spin := 15.5 if Weapon.spins_in_flight(w.design) else clampf(5.0 + 9.0 / sqrt(maxf(0.3, w.mass)), 6.0, 15.5)
+		# A thrower times the turns to the distance (axe throwing): whole turns over the flight,
+		# so the blade comes round edge first at the mark. A hurried, weak throw misjudges it.
+		var hs := Vector2(vel.x, vel.z).length()
+		if hs > 0.5:
+			# It lands when its head reaches the front of the man, not when it gets to his middle.
+			var span: float = w.mm.get_aabb().size.y * 0.5 if w.mm else 0.3
+			var tof := maxf(0.02, Vector2(aim_at.x - from.x, aim_at.z - from.z).length() - span - 0.12) / hs
+			var turns := roundf(spin * tof / TAU)
+			if turns >= 1.0:
+				spin = clampf(TAU * turns / tof, 4.0, 20.0)
+			elif tof > 0.05:
+				spin = clampf(TAU * 0.04 / tof, 0.0, 4.0)   # too close for a turn: thrown flat, edge on
+			spin *= 1.0 + randf_range(-1.0, 1.0) * (0.03 + 0.12 * (1.0 - power) + 0.1 * (1.0 - arm_f))
+		w.angular_velocity = sd * -spin
 	w.thrower = self
 	w.thrown_t = 3.0
 	stamina = maxf(0.0, stamina - (6.0 + 8.0 * power) * (0.6 + 0.15 * minf(6.0, w.mass)))
@@ -823,6 +838,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var lv0 := torso.linear_velocity
 	var walk_amt: float = minf(1.0, Vector2(lv0.x, lv0.z).length() / 2.5)
 	var bob := 0.035 * S * walk_amt * (0.5 - 0.5 * cos(2.0 * gait_phase)) if standing else 0.0
+	# On one leg he cannot walk: he hops, a push off the good leg and a short flight, and only
+	# the push moves him on. Standing on it he sways, catching his balance.
+	var hop_k := 0.0
+	var wants_move := Vector2(float(inp.get("mx", 0.0)), float(inp.get("mz", 0.0))).length_squared() > 0.05
+	if one_leg and standing and not rising and wants_move:
+		hop_phase = fmod(hop_phase + dt * 2.3 * (0.6 + 0.4 * stamina / 100.0), 1.0)
+		hop_k = maxf(0.0, sin(hop_phase * TAU))
+		bob = 0.22 * S * hop_k
+		stamina_use += 4.0 * dt
+	else:
+		hop_phase = 0.0
 	var grounded := false
 	var ground_y := 0.0
 	if hit:
@@ -874,6 +900,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			move_world += PD.clamp_len(off * CENTER_K, 1.0)
 	if grounded and standing:
 		var accel := (9.0 + 12.0 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
+		if one_leg:
+			accel *= (0.2 + 2.2 * hop_k) if hop_phase > 0.0 else 1.0
 		var ix := Vector2(move_world.x - lv.x, move_world.z - lv.z).limit_length(6.0) * accel * total_mass * dt
 		torso.apply_central_impulse(Vector3(ix.x, 0, ix.y))
 		if sprint:
@@ -905,7 +933,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
 		var lean := Quaternion(Vector3(1, 0, 0), (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + kneel_lean)
 		if h_speed < 0.4 and live:
-			lean = Quaternion(Vector3(0, 0, 1), 0.01 * sin(time * 0.6 + slot * 2)) * Quaternion(Vector3(1, 0, 0), 0.012 * sin(time * 0.9 + slot)) * lean
+			var sway := 7.0 if one_leg else 1.0
+			lean = Quaternion(Vector3(0, 0, 1), 0.01 * sway * sin(time * 0.6 * sqrt(sway) + slot * 2)) * Quaternion(Vector3(1, 0, 0), 0.012 * sway * sin(time * 0.9 * sqrt(sway) + slot)) * lean
 		var twist := 0.0
 		for s in ["R", "L"]:
 			var t: float = jab_t[s]
@@ -977,7 +1006,16 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var half := int(floor(gait_phase / PI))
 			var my_swing = (half % 2 == 0) == (side == "L")
 			var moving := h_speed > 0.25
-			if moving and my_swing and not ft.swing and ft.half != half:
+			if hop_phase > 0.0:
+				# Hopping: the good foot stays under him, leaves the sand at the top of each hop
+				# and lands a little ahead; the stump does not step.
+				ft.swing = false
+				ft.anchor = neutral + move_dir * step_len * 0.25
+				if leg_func(side) < 0.1:
+					ft.anchor = (ft.anchor as Vector3) + Vector3(0, 0.25 * S, 0)
+				ft.from = ft.anchor
+				ft.land = ft.anchor
+			elif moving and my_swing and not ft.swing and ft.half != half:
 				ft.half = half
 				ft.swing = true
 				ft.from = ft.anchor
@@ -1002,6 +1040,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				ft.land = neutral
 			var ease: float = ft.s * ft.s * (3.0 - 2.0 * ft.s)
 			var target: Vector3 = (ft.from as Vector3).lerp(ft.land, ease) + Vector3(0, sin(PI * ft.s) * (0.08 + 0.06 * move_amt) * S, 0) if ft.swing else ft.anchor
+			if hop_phase > 0.0 and hop_k > 0.6:
+				target.y += (hop_k - 0.6) * 0.2 * S   # the foot tucks up at the top of the hop
 			var hf := t_inv * (target - hip)
 			var d := hf.length()
 			var max_d := (l1 + l2) * 0.985
@@ -1108,6 +1148,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if concussion > 0.1:
 		target.x += sin(time * 3.1 + slot) * concussion * 0.25
 		target.y += cos(time * 2.3) * concussion * 0.2
+	target = _clear_body(target, yaw_q, t_pos)
 	var target_w := t_pos + yaw_q * target
 	# The hand moves like an arm: limited speed and acceleration toward the mouse's mark.
 	var lead = hand_lead[side]
@@ -1154,13 +1195,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
 		# The elbow never folds in through the chest: in the body's frame it stays on its own
 		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.12 S above it.
-		if side_sign > 0.0:
-			e_local.x = -e_local.x
-		e_local = _limit_dir(e_local, 0, 0.22 * S / lu)
-		if side_sign > 0.0:
-			e_local.x = -e_local.x
-		e_local = _limit_dir(e_local, 1, 0.12 * S / lu)
-		var elbow_dir = (t_rot * e_local).normalized()
+		var elbow_dir = _elbow_dir(side, e_local, lu, t_rot)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
 		var m_load := (fore.nominal_mass + w.mass) * lu * lu
@@ -1181,8 +1216,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		pd_axis(fore, Vector3(0, -1, 0), dir, 26.0 if out else 10.0, 0.8, (220.0 if out else 60.0) * af * MS * S, dt)
 		pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 30.0 * MS, dt)
 	else:
-		pd_axis(upper, Vector3(0, -1, 0), (dir + Vector3(0, -0.35, 0)).normalized(), 14.0, 0.8, 90.0 * af * MS * S, dt)
-		pd_axis(fore, Vector3(0, -1, 0), dir, 10.0, 0.8, 60.0 * af * MS * S, dt)
+		# A shield or an empty hand: the same elbow as a weapon arm, mirrored for the left, so
+		# the arm never folds in through the chest whichever hand it is.
+		var lu := UPPER_LEN * S
+		var e_dir := _elbow_dir(side, t_rot.inverse() * (dir + Vector3(0, -0.35, 0)).normalized(), lu, t_rot)
+		var elbow = shoulder_w + e_dir * lu
+		var f_dir = (target_w - elbow).normalized() if (target_w - elbow).length_squared() > 1e-6 else dir
+		pd_axis(upper, Vector3(0, -1, 0), e_dir, 14.0, 0.8, 90.0 * af * MS * S, dt)
+		pd_axis(fore, Vector3(0, -1, 0), f_dir, 10.0, 0.8, 60.0 * af * MS * S, dt)
 		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
 		pd_twist(fore, upper, 1.0 * MS, 0.2 * MS, 8.0 * MS, dt)
 		if w and w.is_shield:
@@ -1195,6 +1236,62 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
 	if w and w.holder == self and not w.is_shield:
 		_keep_weapon_out(w, dt)
+	_keep_arm_out(side, dt)
+
+## An arm never passes through its own chest or head (the body's parts do not collide with each
+## other): the elbow, the forearm and the hand are pushed back out of the torso and the head,
+## out the front, or out to the arm's own side if they are behind the middle.
+func _keep_arm_out(side: String, dt: float) -> void:
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	var out_x := -1.0 if side == "R" else 1.0
+	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)], [fo, fo.global_position], [fo, hand_world(side)]]
+	for body in [torso, head]:
+		if body.severed:
+			continue
+		var bt: Transform3D = body.global_transform
+		var bq := PD.quat_of(body)
+		var e: Vector3 = body.half_ext + Vector3(0.035, 0.0, 0.035) * S
+		for pp in pts:
+			var l: Vector3 = bt.affine_inverse() * (pp[1] as Vector3)
+			if absf(l.x) >= e.x or absf(l.y) >= e.y or absf(l.z) >= e.z:
+				continue
+			var front := e.z - l.z
+			var aside := e.x - l.x * out_x
+			var push := Vector3(0, 0, front) if front < aside or l.z > 0.0 else Vector3(out_x * aside, 0, 0)
+			var part: VoxelPart = pp[0]
+			var v_out := (bq * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
+			var m_eff: float = fo.nominal_mass + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
+			var acc: float = push.length() * 4000.0 - minf(0.0, v_out) * 40.0
+			part.apply_impulse(bq * push.normalized() * acc * m_eff * dt, (pp[1] as Vector3) - part.global_position)
+
+## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
+## side of the body (at most 0.22 S across the shoulder line) and at most 0.12 S above the
+## shoulder, the same for both arms, mirrored.
+func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion) -> Vector3:
+	var flip := side == "L"
+	if flip:
+		e_local.x = -e_local.x
+	e_local = _limit_dir(e_local.normalized(), 0, 0.22 * S / lu)
+	if flip:
+		e_local.x = -e_local.x
+	e_local = _limit_dir(e_local, 1, 0.12 * S / lu)
+	return (t_rot * e_local).normalized()
+
+## A hand's mark (in the yaw frame, from the torso) moved out of the torso and the head to the
+## front of them: neither hand is ever pulled in through its own body.
+func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3) -> Vector3:
+	var th: Vector3 = torso.half_ext
+	var tz := th.z + 0.09 * S
+	if target.y < th.y and target.y > -th.y * 1.1 and absf(target.x) < th.x + 0.05 * S and target.z < tz:
+		target.z = tz
+	if not head.severed:
+		var hh: Vector3 = head.half_ext
+		var hl := yaw_q.inverse() * (head.global_position - t_pos)
+		var hz := hl.z + hh.z + 0.09 * S
+		if absf(target.x - hl.x) < hh.x + 0.05 * S and absf(target.y - hl.y) < hh.y + 0.05 * S and target.z < hz:
+			target.z = hz
+	return target
 
 func arm_of(w: Weapon) -> Dictionary:
 	return arm.R if weapons.R == w else arm.L
@@ -1304,8 +1401,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		var fz := yaw_q * Vector3(0, 0, 1)
 		ed = fz - axis * axis.dot(fz)
 	ed = ed.normalized()
-	if side == "R":
-		ed = ed.rotated(axis, float(inp.get("twist", 0.0)))
+	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
 	var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
 	var tvl := tv.length()
 	if tvl > 0.7:
@@ -1896,6 +1992,13 @@ func apply_status(s: Dictionary) -> void:
 	var hps: Array = s.get("hp", [])
 	for i in mini(hps.size(), parts.size()):
 		parts[i].hp = hps[i]
+
+## How far from death he is, 0..1 (the enemy's health plate): what kills him is the head, the
+## torso or the blood running out, whichever is nearest.
+func vitality() -> float:
+	if not alive:
+		return 0.0
+	return clampf(minf(minf(head.hp, torso.hp), blood) / 100.0, 0.0, 1.0)
 
 func total_hp() -> float:
 	var t := 0.0
