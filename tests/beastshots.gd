@@ -46,21 +46,25 @@ func _ready() -> void:
 				print("thigh ", p.part_name, " top ", snappedf((p.global_transform * Vector3(0, p.half_ext.y, 0)).y, 0.001), " body bottom ", snappedf(f.torso.global_position.y - f.torso.half_ext.y, 0.001), " hip ", snappedf((f.torso.global_transform * p.pa).y, 0.001))
 				break
 		print("feet ", sp, " ", feet, " torso ", snappedf(f.torso.global_position.y, 0.001))
-		var c := box.get_center()
-		var r := box.size.length() * 0.5
-		if OS.get_environment("SHOT_HEAD") != "" and f.head:
-			c = f.head.global_position
-			r = f.head.half_ext.length() * 1.6
+		var views := [["", float(OS.get_environment("SHOT_ANGLE")) if OS.get_environment("SHOT_ANGLE") != "" else 0.75, OS.get_environment("SHOT_HEAD") != ""]]
+		if OS.get_environment("SHOT_VIEWS") != "":
+			views = [["_q", 0.75, false], ["_s", PI / 2, false], ["_f", 0.0, false], ["_b", PI, false], ["_h", 0.6, true]]
 		var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
-		var look := fwd.rotated(Vector3.UP, float(OS.get_environment("SHOT_ANGLE")) if OS.get_environment("SHOT_ANGLE") != "" else 0.75)
-		cam.fov = 45.0
-		cam.global_position = c + look * ((0.0 if OS.get_environment("SHOT_HEAD") != "" else 0.6) + r * 2.0) + Vector3(0, r * 0.18, 0)
-		cam.look_at(c, Vector3.UP)
-		await get_tree().process_frame
-		await get_tree().process_frame
-		var nm := "beast_%02d_%s" % [n, sp]
-		get_viewport().get_texture().get_image().save_png(out.path_join(nm + ".png"))
-		print("saved ", nm)
+		for v in views:
+			var c := box.get_center()
+			var r := box.size.length() * 0.5
+			if v[2] and f.head:
+				c = f.head.global_position
+				r = f.head.half_ext.length() * 1.6
+			var look := fwd.rotated(Vector3.UP, float(v[1]))
+			cam.fov = 45.0
+			cam.global_position = c + look * ((0.0 if v[2] else 0.6) + r * 2.0) + Vector3(0, r * 0.18, 0)
+			cam.look_at(c, Vector3.UP)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var nm := "beast_%02d_%s%s" % [n, sp, v[0]]
+			get_viewport().get_texture().get_image().save_png(out.path_join(nm + ".png"))
+			print("saved ", nm)
 		m.entities.erase(e)
 		m.combat.fighters.erase(f)
 		f.queue_free()
