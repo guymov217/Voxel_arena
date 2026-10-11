@@ -24,6 +24,15 @@ var flying := false
 var rng := RandomNumberGenerator.new()
 var on_breath: Callable
 var on_stomp: Callable
+# Animation: the parts that move on their own joints (necks, heads, tails, wings, trunks,
+# pincers, the coils of a snake), their rest pose against their parent and how far they bend.
+var anim: Array = []                 # [{part, role, rest: Quaternion, lim, i}]
+var strikes := {}                    # part -> seconds left of its strike (a bite, a sting, a swipe)
+var strike_cool := {}                # part -> seconds until it may strike again
+var regrown := {}                    # hydra: part -> voxels regrown so far
+var base_bite := 45.0
+const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
+const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing": 20.0, "trunk": 14.0, "arm": 22.0, "claw": 26.0}
 
 func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> void:
 	kind = "beast"
@@ -44,6 +53,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	yaw = yaw_
 	height = float(sp.height) * S
 	bite_power = float(sp.get("bite", 45.0))
+	base_bite = bite_power
 	var yaw_q := Quaternion(UP, yaw)
 	for d in sp.parts:
 		var voxels := []
@@ -87,6 +97,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			heads.append(p)
 		if float(p.def.get("wing", 0)) != 0.0:
 			wings.append(p)
+	_setup_anim()
 	ai = {"mode": "aim" if sp.ai == "charger" else "stalk", "t": 1.5 + rng.randf() * 1.5, "circle": 1.0 if rng.randf() < 0.5 else -1.0, "bite_cool": 2.5, "roar_cool": 4.0, "dodge_cool": 0.0, "breath_cool": 3.0, "fly_cool": 6.0, "alt": 0.0}
 
 func heads_left() -> Array:
@@ -172,7 +183,10 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var collapsed: bool = (legs.size() > 0 and legs_left <= legs.size() / 2.0) or (legs.size() > 0 and blood < 22.0)
 	var missing := legs.size() - legs_left
 	var crouching := 0.78 if ai.mode == "crouch" else (1.15 if ai.mode == "breathe" else 1.0)
+	if strikes.has(head) and head.parent_part != torso:
+		crouching = 0.8   # a long-necked beast drops its forequarters into a downward strike
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
+	h_want *= 1.0 + 0.008 * sin(time * 1.7 / sqrt(S) + slot)   # breathing
 	var dist_g: float = pos.y - hit.position.y if hit else 99.0
 	var grounded: bool = hit and dist_g < maxf(h_want, height) + 0.25 * S
 	if flying:
@@ -215,7 +229,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			pitch = 0.12 + sin(gait * 1.6) * 0.1
 			K = 4.0
 		elif flying:
-			roll = -yaw_rate * 0.25
+			var wfl := wing_fns()
+			roll = -yaw_rate * 0.25 + (wfl.y - wfl.x) * 0.6   # a hurt wing drops that side
 			pitch = 0.35 if ai.mode == "swoop" else -0.08
 			K = 5.0
 		else:
@@ -237,7 +252,20 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var down := down_t > 0.0
 	var want := Vector3.ZERO
 	var hurt: float = 0.0 if down else heavy * (0.5 + 0.5 * torso.function()) * (0.18 if collapsed else (maxf(0.25, pow(float(legs_left) / maxf(1.0, legs.size()), 1.5)) if missing > 0 else 0.4 + 0.6 * lp))
-	var t := target
+	# A bite is only as strong as the best head left to bite with; with no working head the beast
+	# can neither see its prey nor attack it.
+	var biters := biting_heads()
+	var best_head := 0.0
+	for h in biters:
+		best_head = maxf(best_head, h.function())
+	bite_power = base_bite * best_head
+	if by_name.has("stinger") or by_name.has("clawL"):
+		bite_power = maxf(bite_power, base_bite * 0.8 * maxf(fn_of(["stinger"]), fn_of(["claw"])))
+	if species == "python" or species == "basilisk":
+		hurt *= 0.35 + 0.65 * fn_of(["coil", "tailTip", "neck"])   # a cut-up body slithers badly
+	elif species == "crocodile":
+		hurt *= 0.6 + 0.4 * fn_of(["tail"])                       # the tail drives it through the water and the sand
+	var t := target if heads_left().size() > 0 and (sp.get("multiHead", false) or part_ok(head, 0.1)) else null
 	var to := Vector3.ZERO
 	var dist := INF
 	if t and t.alive:
@@ -252,10 +280,11 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			if t:
 				if ai.mode == "aim":
 					if ai.t <= 0.0:
-						ai.mode = "charge"; ai.t = 1.6; ai.charge_yaw = atan2(to.x, to.z)
+						# Broken horns shorten the run; hurt forelegs make it slower and wobblier.
+						ai.mode = "charge"; ai.t = 1.6 * (0.55 + 0.45 * horn_fn()); ai.charge_yaw = atan2(to.x, to.z) + (1.0 - front_fn()) * rng.randf_range(-0.35, 0.35)
 					yaw = atan2(to.x, to.z)
 				elif ai.mode == "charge":
-					want = Vector3(sin(ai.charge_yaw), 0, cos(ai.charge_yaw)) * float(sp.speed) * hurt
+					want = Vector3(sin(ai.charge_yaw), 0, cos(ai.charge_yaw)) * float(sp.speed) * hurt * (0.3 + 0.7 * front_fn())
 					if ai.t <= 0.0:
 						ai.mode = "recover"; ai.t = 1.4
 				else:
@@ -274,7 +303,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						ai.mode = "stalk"
 				else:
 					want = to * float(sp.speed) * hurt
-					if dist < 1.5 * S and ai.bite_cool <= 0.0:
+					if dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
 						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
@@ -288,7 +317,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			var ang := atan2(pos.x, pos.z) + 0.25
 			want = (Vector3(sin(ang) * 6.0, 0, cos(ang) * 6.0) - Vector3(pos.x, 0, pos.z)).normalized() * float(sp.speed) * hurt
 			yaw = atan2(want.x, want.z)
-			if t and dist < 3.2 * S * 0.6 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3:
+			if t and dist < 3.2 * S * 0.6 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
 				ai.bite_cool = 4.0
 				ai.stomp = 0.7
 			if ai.get("stomp", 0.0) > 0.0:
@@ -300,6 +329,10 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	if grounded and stagger < 0.5 and not down:
 		var kk := (3.0 if sp.ai == "path" else 6.0) * (0.45 if legs.size() > 0 and not collapsed else 1.0)
 		torso.apply_central_impulse(Vector3(want.x - lv.x, 0, want.z - lv.z) * mass * kk * dt)
+	_abilities(dt, t, to, dist, cur)
+	_animate(dt, moving, yaw_rate, to, dist, cur)
+	if species == "hydra":
+		_regrow(dt)
 	_drive_legs(dt, Vector2(lv.x, lv.z).length(), collapsed, down, moving)
 	gait += dt * (maxf(1.2, Vector2(lv.x, lv.z).length()) if moving else 0.0) * 4.6 / S
 
@@ -311,23 +344,26 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 	var spd: float = float(sp.speed)
 	if sp.get("flies", false) and not flying:
 		ai.fly_cool -= dt
-		if not collapsed and legs_left == legs.size() and wings.all(func(w): return not w.severed) and (ai.mode == "stalk" or ai.mode == "recover") and ai.fly_cool <= 0.0:
+		if not collapsed and legs_left == legs.size() and can_fly() and (ai.mode == "stalk" or ai.mode == "recover") and ai.fly_cool <= 0.0:
 			flying = true
 			ai.mode = "fly"; ai.t = 2.0; ai.alt = 2.4 * S; ai.fly_t = 9.0 + rng.randf() * 5.0
 			return want
 	if flying:
 		ai.fly_t -= dt
-		if wings.any(func(w): return w.severed):
+		var wfl := wing_fns()
+		if minf(wfl.x, wfl.y) < 0.35:
+			# Not enough wing left to stay up: down it comes, and fights on the ground.
 			flying = false
+			ai.mode = "stalk"; ai.t = 1.0; ai.fly_cool = 999.0 if wings.any(func(w): return w.severed) else 12.0
 			return want
 		if ai.mode == "fly":
 			var r := 4.5 * S
 			var tangent := Vector3(-to.z, 0, to.x) * float(ai.circle)
 			want = tangent * spd * 0.9 + to * (3.0 if dist > r * 1.3 else (-3.0 if dist < r * 0.8 else 0.0))
-			ai.alt = 2.4 * S
+			ai.alt = 2.4 * S * minf(1.0, 0.4 + minf(wfl.x, wfl.y))
 			if ai.t <= 0.0 and dist < r * 1.5:
 				ai.mode = "swoop"; ai.t = 2.2
-				ai.swoop_kind = "fire" if sp.breath != null and ai.breath_cool <= 0.0 else "dive"
+				ai.swoop_kind = "fire" if sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() else "dive"
 			if ai.fly_t <= 0.0:
 				ai.mode = "landing"; ai.alt = 0.3; ai.t = 2.0
 		elif ai.mode == "swoop":
@@ -356,7 +392,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = side * 2.2 + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
 			if swing > 4.5 and dist < 2.8 * S and ai.dodge_cool <= 0.0:
 				ai.mode = "dodge"; ai.t = 0.35; ai.dodge_cool = 1.4
-			elif sp.breath != null and ai.breath_cool <= 0.0 and dist < float(sp.breathRange) * S * 0.8 and dist > 0.7 * S:
+			elif sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() and dist < float(sp.breathRange) * S * 0.8 and dist > 0.7 * S:
 				ai.mode = "breathe"; ai.t = 0.7
 			elif ai.t <= 0.0:
 				var roll := rng.randf()
@@ -364,6 +400,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 					ai.mode = "feint"; ai.t = 0.3
 				elif roll < 0.4:
 					ai.mode = "snarl"; ai.t = 0.5
+				elif hind_fn() < 0.45 or injury > 0.6:
+					ai.mode = "feint"; ai.t = 0.4   # too hurt to pounce: it rushes in on the ground
 				else:
 					ai.mode = "crouch"; ai.t = 0.45
 		"feint":
@@ -390,7 +428,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.bite_cool = maxf(ai.bite_cool, 1.2); ai.circle = -ai.circle
 			elif dist < 1.1 + 0.6 * S and ai.bite_cool <= 0.0:
 				_lunge(to, mass, collapsed)
-				ai.mode = "recover"; ai.t = 1.1
+				ai.mode = "recover"; ai.t = 1.1 * (1.0 + injury * 1.5)   # a hurt hunter backs off longer
 			elif ai.t <= 0.0:
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf() * 1.5
 		_:
@@ -402,10 +440,11 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 	return want
 
 func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
-	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury)
+	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury) * (0.35 + 0.65 * hind_fn())
 	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed else 1.2), to.z * mass * k))
-	for h in heads:
-		if not h.severed:
+	for h in biting_heads():
+		_strike(h, 0.35, 0.0)
+		if true:
 			h.apply_central_impulse(Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S))
 	ai.bite_cool = float(sp.cooldown) * (1.0 + injury)
 
@@ -418,7 +457,7 @@ func _squeeze(dt: float) -> void:
 		var p: Vector3 = tgt.torso.global_position
 		tgt.apply_hit(tgt.torso, {"impulse": 7.0, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": Vector3.DOWN})
 		tgt.last_attacker = self
-	if hug.t <= 0.0 or not tgt.alive or stagger > hug.stagger0 + 0.35:
+	if hug.t <= 0.0 or not tgt.alive or stagger > hug.stagger0 + 0.35 or front_fn() < 0.3 or not part_ok(head, 0.1):
 		hug = null
 		ai.bite_cool = 3.0
 		ai.mode = "recover"
@@ -426,7 +465,7 @@ func _squeeze(dt: float) -> void:
 
 ## Fire (or venom) in a cone in front of the head.
 func _breathe() -> void:
-	if on_breath.is_valid():
+	if on_breath.is_valid() and can_breathe():
 		on_breath.call(self, String(sp.breath), float(sp.breathRange) * S)
 
 func _stomp() -> void:
@@ -458,6 +497,15 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 			knee = 0.06 + maxf(0.0, -cos(phase)) * amp * 1.9
 		else:
 			hip = 0.03 * sin(time * 1.1 + i * 1.7)
+		# A hurt leg steps short; a struck one buckles for a moment; a swiping one lashes forward.
+		var lf := fn_of([leg.part_name])
+		hip *= 0.35 + 0.65 * lf
+		var lo0 := lower_of(leg)
+		var fl: float = maxf(leg.flinch_t, lo0.flinch_t if lo0 else 0.0)
+		if fl > 0.0:
+			hip += fl * 0.6; knee += fl * 0.8
+		if strikes.has(leg):
+			hip = -1.1 * (0.5 + 0.5 * lf); knee = 0.25; wn = 60.0
 		var splay: float = float(leg.def.get("splay", 0.0))
 		if leg.hanging:
 			continue
@@ -465,3 +513,324 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		var lo := lower_of(leg)
 		if lo and not lo.severed and not lo.hanging:
 			pd_relative(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), wn, 0.9, max_t * 0.7, dt, 3.0, LEG_REACT)
+
+# ---------- What still works ----------
+# Behaviour follows the voxels that are left: every group of parts is judged by how well its
+# parts still work (VoxelPart.function: hp, the voxels it still has, whether it hangs or is off),
+# never by a single chipped voxel.
+
+## How well the parts whose names start with one of `prefixes` work together, 0..1 (a severed
+## one counts as 0). 1 when the species has no such parts.
+func fn_of(prefixes: Array) -> float:
+	var n := 0
+	var s := 0.0
+	for p in parts:
+		for pre in prefixes:
+			if String(p.part_name).begins_with(pre):
+				n += 1
+				s += 0.0 if p.severed else p.function()
+				break
+	return s / n if n > 0 else 1.0
+
+func front_fn() -> float:
+	return fn_of(["legFL", "legFR"])
+
+func hind_fn() -> float:
+	return fn_of(["legBL", "legBR"]) if by_name.has("legBL") else front_fn()
+
+func part_ok(p: VoxelPart, need := 0.25) -> bool:
+	return p != null and not p.severed and not p.hanging and p.hp > 0.0 and p.function() > need
+
+## The heads that can still bite, and how well the best of them does.
+func biting_heads() -> Array:
+	return heads.filter(func(h): return h.def.get("bite", false) and part_ok(h, 0.15))
+
+func horn_fn() -> float:
+	return fn_of(["horn", "tusk"])
+
+func wing_fns() -> Vector2:
+	var l := 1.0
+	var r := 1.0
+	for w in wings:
+		var f: float = 0.0 if w.severed else w.function()
+		if float(w.def.wing) < 0.0:
+			l = f
+		else:
+			r = f
+	return Vector2(l, r)
+
+func can_fly() -> bool:
+	var w := wing_fns()
+	return not wings.is_empty() and minf(w.x, w.y) > 0.5
+
+## Where fire or venom comes from: the chimera breathes through its goat head.
+func breath_part() -> VoxelPart:
+	if by_name.has("goatHead"):
+		return by_name.goatHead
+	return head
+
+func can_breathe() -> bool:
+	var b := breath_part()
+	var neck_ok := not by_name.has("neck") or part_ok(by_name.neck, 0.2)
+	return part_ok(b, 0.3) and neck_ok
+
+# ---------- Animation ----------
+
+func _setup_anim() -> void:
+	for p in parts:
+		if p == torso or p.parent_part == null or p.def.get("leg", false):
+			continue
+		var n: String = p.part_name
+		var role := ""
+		if float(p.def.get("wing", 0)) != 0.0 or n.begins_with("wing"):
+			role = "wing"
+		elif n.begins_with("coil") or ((species == "python" or species == "basilisk") and n == "tailTip"):
+			role = "coil"
+		elif n.begins_with("tail") and n != "tailFin":
+			role = "tail"
+		elif n.begins_with("neck") or n == "goatNeck":
+			role = "neck"
+		elif p == head or p.def.get("head", false):
+			role = "head"
+		elif n.begins_with("trunk"):
+			role = "trunk"
+		elif n.begins_with("arm"):
+			role = "arm"
+		elif n.begins_with("claw"):
+			role = "claw"
+		if role == "":
+			continue
+		var lim: float = ROLE_LIM[role]
+		# Necks and heads may bend much further when they strike than when they idle.
+		var jlim := 1.25 if role == "neck" or role == "head" else lim
+		if p.joint is Generic6DOFJoint3D:
+			var j: Generic6DOFJoint3D = p.joint
+			for ax in ["x", "y", "z"]:
+				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -jlim)
+				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, jlim)
+		# Strong enough to hold up everything hanging off it (a neck carries its head).
+		var carried := 0.0
+		var stack := [p]
+		while not stack.is_empty():
+			var c: VoxelPart = stack.pop_back()
+			carried += c.mass
+			stack.append_array(c.child_parts)
+		var reach := maxf(p.half_ext.x, maxf(p.half_ext.y, p.half_ext.z)) * 2.0
+		anim.append({"part": p, "role": role, "rest": PD.quat_of(p.parent_part).inverse() * PD.quat_of(p), "i": anim.size(), "max_t": 60.0 * carried * reach + 20.0})
+
+## Drives every animated joint: breathing, looking at the prey, tails swaying and lashing,
+## snakes' bodies travelling in waves, wings beating or flaring, trunks swinging, and the
+## strikes on top. Each part moves on its own surviving voxels; a part that hangs or is off
+## is left to the physics, and a damaged one moves less.
+func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float, cur: float) -> void:
+	var breath := sin(time * 1.7 / sqrt(S) + slot)
+	var track := 0.0
+	if dist < INF:
+		var dy := atan2(to.x, to.z) - cur
+		track = clampf(atan2(sin(dy), cos(dy)), -0.9, 0.9)
+	var wf := wing_fns()
+	var threat: bool = ai.mode == "crouch" or ai.mode == "snarl" or ai.mode == "breathe" or ai.mode == "aim"
+	for a in anim:
+		var p: VoxelPart = a.part
+		if p.severed or p.hanging or p.parent_part.severed:
+			continue
+		var role: String = a.role
+		var i: int = a.i
+		var off := Vector3.ZERO
+		match role:
+			"tail":
+				var k := 0.18 + (0.22 if moving else 0.0) + (0.3 if threat or ai.mode == "charge" else 0.0)
+				off.y = sin(time * (2.4 if moving else 1.1) - i * 0.8) * k - yaw_rate * 0.12
+				off.x = 0.04 * breath
+			"coil":
+				off.y = sin(gait * 1.3 - i * 1.5) * (0.6 if moving else 0.1) + sin(time * 0.5 + i) * 0.05
+			"neck":
+				off.y = track * 0.45 + sin(time * 0.9 + i * 1.7) * 0.08 + yaw_rate * 0.08
+				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0)
+			"head":
+				off.y = track * (0.4 if p.parent_part == torso else 0.25) + sin(time * 0.7 + i * 2.1) * 0.06
+				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0)
+			"wing":
+				var side := signf(float(p.def.get("wing", 0))) if float(p.def.get("wing", 0)) != 0.0 else signf(p.pa.x)
+				var wfn: float = wf.x if side < 0.0 else wf.y
+				if flying:
+					off.z = side * sin(time * 6.5) * 0.8 * wfn
+				elif species == "ostrich":
+					off.z = side * (sin(gait * 2.0) * 0.3 if moving else 0.05 * breath)
+				elif threat:
+					off.z = -side * 0.35
+				else:
+					off.z = side * (0.2 + 0.03 * breath)
+			"trunk":
+				off.x = sin(time * 0.8 + i) * 0.22 - (0.7 if ai.get("stomp", 0.0) > 0.0 else 0.0)
+				off.y = sin(time * 0.55 + i) * 0.25
+			"arm":
+				off.y = -track * 0.3 * signf(p.pa.x)
+				off.x = -0.25 if dist < 2.5 * S else 0.0
+			"claw":
+				off.y = signf(p.pa.x) * (0.15 + 0.15 * sin(time * 3.0 + i))
+		var lim: float = ROLE_LIM[role]
+		var wn: float = ROLE_WN[role]
+		var st: float = strikes.get(p, 0.0)
+		if st > 0.0:
+			off += _strike_pose(p, role, st, track, dist)
+			if role == "neck" or role == "head":
+				lim = 1.2
+		if p.flinch_t > 0.0:
+			off.x -= p.flinch_t * 0.9
+		off = off.clamp(Vector3(-lim, -lim, -lim), Vector3(lim, lim, lim)) * (0.3 + 0.7 * p.function())
+		pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
+
+func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: float) -> Vector3:
+	match role:
+		"neck":
+			# Dip the neck as far as it takes to bring the head down to the prey.
+			var drop := 0.0
+			if target and is_instance_valid(target):
+				var hd: VoxelPart = p.child_parts[0] if not p.child_parts.is_empty() else p
+				drop = clampf((hd.global_position.y - target.torso.global_position.y) / maxf(0.5, p.half_ext.y * 2.0 + 0.3), 0.0, 1.2)
+			return Vector3(0.3 + drop, track * 0.3, 0)
+		"head":
+			if species == "boar" or species == "elephant" or species == "mammoth":
+				return Vector3(0.1, signf(float(ai.get("sweep", 1.0))) * (0.6 - st), 0)   # a tusk sweep
+			if species == "bull" or species == "rhino" or species == "goat":
+				return Vector3(-0.6, 0, 0)                                              # the horn toss
+			return Vector3(0.45, track * 0.3, 0)                                        # a bite
+		"tail":
+			return Vector3(0.6, 0, 0)                                                  # the sting over the back
+		"claw":
+			return Vector3(0, -signf(p.pa.x) * 0.45, 0)                                # the pincer snaps shut
+		"arm":
+			return Vector3(-0.4, 0, 0)
+	return Vector3.ZERO
+
+func _strike(p: VoxelPart, t_: float, cool: float) -> void:
+	strikes[p] = t_
+	strike_cool[p] = cool
+	# A head on a neck strikes with the neck: it dips and drives forward with it.
+	var nk := p.parent_part
+	if nk and not nk.severed and String(nk.part_name).begins_with("neck"):
+		strikes[nk] = t_
+	# A paw or a foot only hurts while it swings.
+	if p.def.get("leg", false):
+		var lo := lower_of(p)
+		if lo:
+			lo.def["bite"] = true
+
+func _tick_strikes(dt: float) -> void:
+	for p in strike_cool.keys():
+		strike_cool[p] -= dt
+	for p in strikes.keys():
+		strikes[p] -= dt
+		if strikes[p] <= 0.0 or not is_instance_valid(p) or p.severed:
+			strikes.erase(p)
+			if is_instance_valid(p) and p.def.get("leg", false):
+				var lo := lower_of(p)
+				if lo:
+					lo.def["bite"] = false
+
+func _ready_to_strike(p: VoxelPart) -> bool:
+	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)
+
+const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich"]
+
+## The attacks each body can still make, each needing the parts it is made with.
+func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
+	_tick_strikes(dt)
+	if t == null or not t.alive or flying or hug != null or down_t > 0.0:
+		return
+	var facing := Vector3(sin(cur), 0, cos(cur)).dot(to)
+	var reach: float = torso.half_ext.z + head.half_ext.z * 2.0 + 0.5
+	var tp: Vector3 = t.torso.global_position
+	# Many heads: each snaps on its own, when it is in reach and ready, so the bites come staggered.
+	if sp.get("multiHead", false):
+		for h in heads:
+			var reach_h: float = (h.parent_part.half_ext.y * 2.0 if h.parent_part != torso else 0.0) + h.half_ext.z * 2.0 + 0.4
+			if h.def.get("bite", false) and part_ok(h, 0.2) and _ready_to_strike(h) and Vector2(h.global_position.x - tp.x, h.global_position.z - tp.z).length() < reach_h:
+				_strike(h, 0.5, 1.0 + rng.randf() * 1.2)
+				h.apply_central_impulse((tp - h.global_position).normalized() * 28.0 * S + Vector3(0, 6.0, 0))
+	# A head on a long neck (a dragon's, an ostrich's, a rearing snake's) strikes down at the
+	# prey on its own when it is in reach of the neck, without the whole body lunging.
+	if not sp.get("multiHead", false) and head.parent_part != torso and part_ok(head, 0.2) and _ready_to_strike(head):
+		var nk: VoxelPart = head.parent_part
+		var hp := head.global_position
+		var flat := Vector2(hp.x - tp.x, hp.z - tp.z).length()
+		if flat < (nk.half_ext.y * 2.0 + head.half_ext.z * 2.0) * 1.1 and part_ok(nk, 0.2):
+			_strike(head, 0.6, 1.3 + rng.randf() * 0.8)
+			head.apply_central_impulse((tp - hp).normalized() * 25.0 * S)
+	# The sting: the tail arches forward over the back and the stinger drives at the prey.
+	if by_name.has("stinger"):
+		var stg: VoxelPart = by_name.stinger
+		var chain_ok := fn_of(["tail"]) > 0.3
+		if part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and dist < reach * 1.3 and facing > 0.3:
+			_strike(stg, 0.45, 2.2 + rng.randf())
+			for n in ["tail", "tail2", "tail3"]:
+				if by_name.has(n) and part_ok(by_name[n], 0.1):
+					strikes[by_name[n]] = 0.45
+			stg.apply_central_impulse((tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * 30.0 * S)
+	# Pincers snap at whatever is in front of them.
+	for n in ["clawL", "clawR"]:
+		if by_name.has(n):
+			var c: VoxelPart = by_name[n]
+			if part_ok(c, 0.2) and _ready_to_strike(c) and c.global_position.distance_to(tp) < 0.9 * S:
+				_strike(c, 0.25, 0.9 + rng.randf() * 0.6)
+				c.apply_central_impulse((tp - c.global_position).normalized() * 18.0 * S)
+	# A forepaw swipe (or the ostrich's kick): a working front leg lashes out.
+	if SWIPERS.has(species) and dist < reach * 1.1 and facing > 0.5:
+		var best: VoxelPart = null
+		var best_f := 0.35
+		for n in ["legFL", "legFR"]:
+			if by_name.has(n):
+				var l: VoxelPart = by_name[n]
+				var f := fn_of([n])
+				if not leg_gone(l) and f > best_f and _ready_to_strike(l):
+					best = l
+					best_f = f
+		if best and rng.randf() < dt * 2.0:
+			_strike(best, 0.35, 1.6 + rng.randf())
+			var lo := lower_of(best)
+			if lo:
+				lo.apply_central_impulse((tp - lo.global_position).normalized() * 20.0 * S * best_f)
+	# Tusks sweep sideways, horns toss upward, both only with something left of them.
+	if (species == "boar" or species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 1.2 and facing > 0.4:
+		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
+		_strike(head, 0.5, 2.0 + rng.randf())
+	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach and facing > 0.6:
+		_strike(head, 0.35, 1.8 + rng.randf())
+		head.apply_central_impulse(Vector3(0, 18.0 * S * horn_fn(), 0))
+
+## The hydra's wounds close: voxels grow back, a few at a time, on necks and heads that are still
+## on, next to flesh that is still there, never on burnt flesh and never more than half of what
+## was lost. A head cut off stays off: no new heads.
+func _regrow(dt: float) -> void:
+	ai.regrow_t = float(ai.get("regrow_t", 0.6)) - dt
+	if ai.regrow_t > 0.0:
+		return
+	ai.regrow_t = 0.6
+	for p in parts:
+		var n: String = p.part_name
+		if p.severed or p.hanging or not (n.begins_with("neck") or n.begins_with("head") or p == head) or not p.spots.is_empty():
+			continue
+		var lost: int = p.fx.size() - p.alive_count
+		var done: int = regrown.get(p, 0)
+		if lost <= 0 or done >= int(p.fx.size() * 0.5):
+			continue
+		var live := {}
+		for i in p.fx.size():
+			if p.alive[i]:
+				live[Vector3i(p.fx[i], p.fy[i], p.fz[i])] = true
+		var back := PackedInt32Array()
+		for i in p.fx.size():
+			if p.alive[i]:
+				continue
+			var c := Vector3i(p.fx[i], p.fy[i], p.fz[i])
+			for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				if live.has(c + d):
+					back.append(i)
+					break
+			if back.size() >= 4:
+				break
+		if not back.is_empty():
+			p.restore_voxels(back)
+			regrown[p] = done + back.size()
+			p.hp = minf(100.0, p.hp + 2.0)

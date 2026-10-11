@@ -908,8 +908,9 @@ func entity_by_id(id: int) -> Variant:
 
 ## Fire or venom from a beast's head: everyone in a cone in front of it gets it.
 func _breath(b: Beast, kind_: String, rng_: float) -> void:
-	var hp: Vector3 = b.head.global_position
-	var fwd := PD.quat_of(b.head) * Vector3(0, 0, 1)
+	var from: VoxelPart = b.breath_part()
+	var hp: Vector3 = from.global_position
+	var fwd := PD.quat_of(from) * Vector3(0, 0, 1)
 	feed.emit("%s breathes %s!" % [b.display_name, kind_])
 	for e in entities:
 		if e.team == ENEMY_TEAM or not e.f.alive:
