@@ -19,6 +19,11 @@ func _ready() -> void:
 		if only != "" and only != sp:
 			continue
 		var e = m.spawn_beast({"beast": sp, "team": Match.ENEMY_TEAM, "pos": Vector3(0, 0.1, 2.0), "yaw": PI * 0.85, "harmless": true})
+		# A portrait: it stands still.
+		e.f.sp = e.f.sp.duplicate()
+		e.f.sp.speed = 0.0
+		e.f.sp.lunge = 0.0
+		e.f.sp.ai = "statue"
 		for i in 150:
 			await get_tree().physics_frame
 		var f = e.f
@@ -27,12 +32,29 @@ func _ready() -> void:
 		for p in f.parts:
 			if is_instance_valid(p) and not p.severed:
 				box = box.merge(AABB(p.global_position - p.half_ext, p.half_ext * 2.0))
+		var feet := []
+		for p in f.parts:
+			if is_instance_valid(p) and p.def.get("lower", false):
+				var lo := INF
+				for sx in [-1, 1]:
+					for sy in [-1, 1]:
+						for sz in [-1, 1]:
+							lo = minf(lo, (p.global_transform * (p.half_ext * Vector3(sx, sy, sz))).y)
+				feet.append(snappedf(lo, 0.001))
+		for p in f.parts:
+			if is_instance_valid(p) and p.def.get("leg", false) and not p.def.get("lower", false):
+				print("thigh ", p.part_name, " top ", snappedf((p.global_transform * Vector3(0, p.half_ext.y, 0)).y, 0.001), " body bottom ", snappedf(f.torso.global_position.y - f.torso.half_ext.y, 0.001), " hip ", snappedf((f.torso.global_transform * p.pa).y, 0.001))
+				break
+		print("feet ", sp, " ", feet, " torso ", snappedf(f.torso.global_position.y, 0.001))
 		var c := box.get_center()
 		var r := box.size.length() * 0.5
+		if OS.get_environment("SHOT_HEAD") != "" and f.head:
+			c = f.head.global_position
+			r = f.head.half_ext.length() * 1.6
 		var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
-		var look := fwd.rotated(Vector3.UP, 0.75)
+		var look := fwd.rotated(Vector3.UP, float(OS.get_environment("SHOT_ANGLE")) if OS.get_environment("SHOT_ANGLE") != "" else 0.75)
 		cam.fov = 45.0
-		cam.global_position = c + look * (0.6 + r * 2.3) + Vector3(0, r * 0.35, 0)
+		cam.global_position = c + look * ((0.0 if OS.get_environment("SHOT_HEAD") != "" else 0.6) + r * 2.0) + Vector3(0, r * 0.18, 0)
 		cam.look_at(c, Vector3.UP)
 		await get_tree().process_frame
 		await get_tree().process_frame
