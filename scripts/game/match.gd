@@ -480,6 +480,8 @@ func _physics_process(dt: float) -> void:
 					inp = e.bot.update(dt, tl.f if tl else null, _world_of(e))
 				else:
 					inp = input.sample(dt) if input else {}
+					if cam and (float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false)):
+						inp.aimAt = aim_point(f)
 					last_local_inp = inp
 					if inp.has("look"):
 						f.yaw = float(inp.look.yaw)
@@ -977,6 +979,33 @@ func _send_weapon_vox(w: Weapon, idx: Array) -> void:
 		for side in ["R", "L"]:
 			if e.f.weapons.get(side) == w:
 				Net.send_all("wvox", {"id": e.id, "side": side, "idx": idx})
+
+## The point under the crosshair (game.js aimPoint): a ray from the camera through the middle
+## of the screen, past the player's own body and weapons. Backed up against the wall the camera
+## is outside it, so anything nearer than his own head is behind him: cast again from the head.
+func aim_point(f: Fighter) -> Vector3:
+	var dir := -cam.global_basis.z
+	var o := cam.global_position
+	var mine := []
+	for p in f.parts:
+		mine.append(p.get_rid())
+	for w in f.weapons.values():
+		if w:
+			for b in w.bodies():
+				mine.append(b.get_rid())
+	var space := f.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(o, o + dir * 80.0)
+	q.exclude = mine
+	var hit := space.intersect_ray(q)
+	var head: Vector3 = f.head.global_position
+	var to_head := maxf(0.0, (head - o).dot(dir))
+	if not hit.is_empty() and (hit.position - o).dot(dir) < to_head + 0.1:
+		var from := head + dir * 0.25
+		q = PhysicsRayQueryParameters3D.create(from, from + dir * 80.0)
+		q.exclude = mine
+		hit = space.intersect_ray(q)
+		o = from
+	return hit.position if not hit.is_empty() else o + dir * 40.0
 
 func entity_of(f) -> Variant:
 	for e in entities:

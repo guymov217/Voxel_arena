@@ -92,13 +92,24 @@ static func visual(type: String) -> Node3D:
 			_box(g, 0.04, 0.03, 0.3, 0xc9d1d9, 0, 0, 0.12); _box(g, 0.3, 0.03, 0.04, 0xc9d1d9, 0.12); _box(g, 0.06, 0.05, 0.06, 0x8b5a2b)
 		"cheese":
 			_box(g, 0.12, 0.42, 0.42, 0xf2c94c)
+		"bandage":
+			_box(g, 0.16, 0.12, 0.12, 0xf2ecdc); _box(g, 0.17, 0.04, 0.04, 0xd8cfb8); _box(g, 0.06, 0.012, 0.2, 0xf2ecdc, 0.03, -0.065, 0.06)
 		"ball":
 			_box(g, 0.26, 0.28, 0.26, 0xd9a37a); _box(g, 0.27, 0.08, 0.27, 0x2b1d14, 0, 0.12, 0); _box(g, 0.05, 0.05, 0.03, 0x111111, 0.06, 0.02, 0.13); _box(g, 0.05, 0.05, 0.03, 0x111111, -0.06, 0.02, 0.13)
 		_:
+			# A clay pot: a round belly, shoulders, a neck, a painted band and a sealed lid in
+			# the colour of what is inside.
 			var pot = TYPES.get(type, {}).get("pot")
-			_box(g, 0.16, 0.18, 0.16, 0x9a6a3a)
+			_box(g, 0.13, 0.04, 0.13, 0x8a5a30, 0, -0.07, 0)
+			_box(g, 0.17, 0.1, 0.17, 0x9a6a3a, 0, -0.01, 0)
+			_box(g, 0.14, 0.12, 0.19, 0x9a6a3a, 0, -0.01, 0)
+			_box(g, 0.19, 0.12, 0.14, 0x9a6a3a, 0, -0.01, 0)
+			_box(g, 0.13, 0.04, 0.13, 0xa87442, 0, 0.065, 0)
+			_box(g, 0.07, 0.04, 0.07, 0x8a5a30, 0, 0.1, 0)
 			if pot != null:
-				_box(g, 0.1, 0.06, 0.1, int(pot), 0, 0.12, 0)
+				_box(g, 0.195, 0.03, 0.145, int(pot), 0, 0.0, 0)
+				_box(g, 0.145, 0.03, 0.195, int(pot), 0, 0.0, 0)
+				_box(g, 0.09, 0.03, 0.09, int(pot), 0, 0.13, 0)
 	return g
 
 func spawn(type: String, pos: Vector3, vel := Vector3.ZERO, owner_: Node = null, id := -1) -> Dictionary:

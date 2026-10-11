@@ -462,26 +462,63 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 				took = grab_limb(e)
 			if took == null:
 				took = grab_person(e, inp)
-		if inp.get("throw", false) and c.alive and c.held_item != null:
-			m.throwables.throw_held(e, inp)
-		elif inp.get("throw", false) and c.alive:
-			var side := "R" if c.weapons.R and not c.weapons.R.is_shield else "L"
-			var player: bool = e.kind == "local" or e.kind == "remote"
-			var look = inp.get("look")
-			var dir = null
-			var tgt = null
-			if player and look != null:
-				dir = Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
-			else:
-				var o = m.nearest_enemy(e)
-				tgt = o.f.torso.global_position + Vector3(0, 0.25, 0) if o else null
-			if c.throw_weapon(side, tgt, clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0), dir):
-				m.sfx("whoosh", c.hand_world(side))
+		# A throw is a movement, not a teleport: the arm (already drawn back while F was held, or
+		# drawn back now for a bot) whips forward and the thing leaves the hand partway through.
+		if inp.get("throw", false) and c.alive and not e.has("throw_q"):
+			var side: String = ("L" if not c.weapons.L else "R") if c.held_item != null else ("R" if c.weapons.R and not c.weapons.R.is_shield else "L")
+			if c.held_item != null or c.weapons.get(side):
+				var player: bool = e.kind == "local" or e.kind == "remote"
+				e.throw_q = {"inp": inp.duplicate(), "t": 0.09 if player else 0.45, "side": side}
+				c.throw_anim = {"side": side, "phase": "follow" if player else "wind", "t": 0.4 if player else 0.45}
+		if e.has("throw_q"):
+			e.throw_q.t -= dt
+			if e.throw_q.t <= 0.0:
+				var q: Dictionary = e.throw_q
+				e.erase("throw_q")
+				if c.alive:
+					_throw(e, q.inp)
+					c.throw_anim = {"side": q.side, "phase": "follow", "t": 0.35}
 	if inp.get("taunt", false):
 		taunt(e)
 	if inp.get("shove", false):
 		shove(e)
 	return inp
+
+## Lets go of whatever is in the throwing hand: players at the crosshair (the point their
+## camera looks at), bots at their enemy.
+func _throw(e: Dictionary, inp: Dictionary) -> void:
+	var c = e.f
+	if c.held_item != null:
+		m.throwables.throw_held(e, inp)
+		return
+	var side := "R" if c.weapons.R and not c.weapons.R.is_shield else "L"
+	var player: bool = e.kind == "local" or e.kind == "remote"
+	var look = inp.get("look")
+	var dir = null
+	var tgt = null
+	if player and inp.get("aimAt") is Vector3:
+		tgt = aim_ahead(c, inp.aimAt, look)
+	elif player and look != null:
+		dir = Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
+	else:
+		var o = m.nearest_enemy(e)
+		tgt = o.f.torso.global_position + Vector3(0, 0.25, 0) if o else null
+	if c.throw_weapon(side, tgt, clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0), dir):
+		m.sfx("whoosh", c.hand_world(side))
+
+## A mark behind the thrower (the wall at his back) is never thrown at: it is moved to a few
+## strides ahead where he looks.
+static func aim_ahead(c, at: Vector3, look) -> Vector3:
+	if look == null:
+		return at
+	var fwd := Vector3(sin(look.yaw), 0, cos(look.yaw))
+	var hp: Vector3 = c.head.global_position
+	if (at - hp).dot(fwd) < -0.3:
+		var d := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
+		var p := hp + d * 4.0
+		p.y = maxf(0.05, minf(at.y, hp.y))
+		return p
+	return at
 
 func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 	var c: Fighter = e.f

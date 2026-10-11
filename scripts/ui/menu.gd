@@ -195,6 +195,10 @@ func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)
 	Save.set_value("kit", clean)
 	Net.my_kit = clean
+	# Bought in the yard: the gladiator walking about in it has it in his bag at once (and the
+	# yard ending does not write the old bag back over the purchase).
+	if match_ and is_instance_valid(match_) and match_.me and match_.mode == "yard":
+		match_.me.inventory = clean.duplicate()
 
 func show_screen(s: String, msg := "") -> void:
 	var was := screen
@@ -787,45 +791,112 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 			_circus_close(run, String(r.get("killer", "the arena")))
 			show_screen("circus", "You fell on day %s. %s" % [ROMAN[clampi(int(run.day), 0, 6)], last_result.text])
 
+## The market (yardUI.js): every product on a card with its own model, what it does, how it is
+## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
+const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"], ["self", "Supplies"]]
+const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Press its number to take it in hand, hold F to aim, let go to throw"}
+const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery"]
+var market_tab := "throw"
+
+static func kit_use(id: String) -> String:
+	return "self" if ["bandage", "bread", "wine"].has(id) else ("place" if ["bananas", "cheese"].has(id) else "throw")
+
 func _market(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
 	v.add_child(UIStyle.title("The market", 36))
-	v.add_child(UIStyle.label("Purse: %d denarii · in a fight, keys 1 to 8 use your kit (pots go into the free hand: hold F to aim)" % coins(), 15, UIStyle.BRONZE))
 	var k := kit()
+	var bag := []
+	for id in k:
+		if int(k[id]) > 0:
+			bag.append("%s ×%d" % [Data.shop.throwables.get(id, {}).get("name", id), int(k[id])])
+	v.add_child(UIStyle.label("Purse: %d denarii · %s" % [coins(), ("In your bag: " + ", ".join(bag)) if not bag.is_empty() else "Your bag is empty"], 15, UIStyle.BRONZE))
+	v.add_child(UIStyle.label("Everything here comes with you into every fight: keys 1 to 9 use it.", 13, UIStyle.MUTED))
+	var tabs: Array = []
+	for t in MARKET_TABS:
+		var tab_id: String = t[0]
+		var tb := UIStyle.button(t[1], func():
+			market_tab = tab_id
+			show_screen("market"), tab_id == market_tab)
+		tabs.append(tb)
+	_row(v, tabs)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(760, 420)
+	scroll.custom_minimum_size = Vector2(900, 470)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(scroll)
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 16)
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
 	scroll.add_child(grid)
 	var table: Dictionary = Data.shop.get("throwables", {})
 	for id in table:
-		var it: Dictionary = table[id]
-		var have := int(k.get(id, 0))
-		var row := HBoxContainer.new()
-		var lbl := UIStyle.label("%s%s" % [it.name, (" ×%d" % have) if have else ""], 15)
-		lbl.custom_minimum_size = Vector2(190, 0)
-		lbl.tooltip_text = it.get("desc", "")
-		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.add_child(lbl)
-		var b := UIStyle.button("Buy · %d" % int(it.price), func():
-			var k2 := kit()
-			if int(it.price) > coins():
-				show_screen("market", "Not enough denarii")
-				return
-			if int(k2.get(id, 0)) >= 9:
-				show_screen("market", "You can carry no more of those")
-				return
-			add_coins(-int(it.price))
-			k2[id] = int(k2.get(id, 0)) + 1
-			set_kit(k2)
-			show_screen("market"))
-		b.disabled = int(it.price) > coins()
-		b.tooltip_text = it.get("desc", "")
-		row.add_child(b)
-		grid.add_child(row)
+		if kit_use(id) != market_tab:
+			continue
+		grid.add_child(_market_card(id, table[id], int(k.get(id, 0))))
 	_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
+
+func _market_card(id: String, it: Dictionary, have: int) -> Control:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(286, 0)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+	st.border_color = UIStyle.BRONZE if have > 0 else UIStyle.BRONZE_DARK
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(6)
+	st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 8; st.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", st)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	# The model, on a dark medallion, with how many are in the bag.
+	var pic := PanelContainer.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.05, 0.04, 0.03, 0.9)
+	ps.set_corner_radius_all(40)
+	pic.add_theme_stylebox_override("panel", ps)
+	pic.custom_minimum_size = Vector2(84, 84)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var tex := TextureRect.new()
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.custom_minimum_size = Vector2(84, 84)
+	pic.add_child(tex)
+	if have > 0:
+		var own := UIStyle.label("×%d" % have, 13, UIStyle.GOLD)
+		own.size_flags_vertical = Control.SIZE_SHRINK_END
+		own.size_flags_horizontal = Control.SIZE_SHRINK_END
+		pic.add_child(own)
+	row.add_child(pic)
+	tex.tree_entered.connect(func(): Thumbs.item(tex, id), CONNECT_ONE_SHOT)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 3)
+	row.add_child(col)
+	col.add_child(UIStyle.label(String(it.name), 16, UIStyle.TEXT))
+	var d := UIStyle.label(String(it.get("desc", "")), 12, UIStyle.MUTED)
+	d.custom_minimum_size = Vector2(170, 0)
+	col.add_child(d)
+	col.add_child(UIStyle.label(MARKET_USE[kit_use(id)], 11, UIStyle.BRONZE))
+	if FRIENDLY_FIRE.has(id):
+		col.add_child(UIStyle.label("Hurts friends too", 11, Color(0.95, 0.55, 0.4)))
+	var price := int(it.price)
+	var b := UIStyle.button("Buy · %d denarii" % price if have < 9 else "Bag full (9)", func():
+		var k2 := kit()
+		if price > coins():
+			show_screen("market", "Not enough denarii")
+			return
+		if int(k2.get(id, 0)) >= 9:
+			show_screen("market", "You can carry no more of those")
+			return
+		add_coins(-price)
+		k2[id] = int(k2.get(id, 0)) + 1
+		set_kit(k2)
+		if Sfx:
+			Sfx.play("pickup", Vector3.ZERO, 0.6)
+		show_screen("market"), price <= coins() and have < 9)
+	b.disabled = price > coins() or have >= 9
+	col.add_child(b)
+	return card
 
 func _pay(r: Dictionary) -> void:
 	if r.has("error"):

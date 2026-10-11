@@ -121,7 +121,7 @@ func pressed(id: String) -> bool:
 var use_item := -1
 
 func _process(_dt: float) -> void:
-	for n in 8:
+	for n in 9:
 		if Input.is_physical_key_pressed(KEY_1 + n) and not _edges.get("digit%d" % n, false) and not _digits_held.get(n, false):
 			use_item = n
 		_digits_held[n] = Input.is_physical_key_pressed(KEY_1 + n)
@@ -292,5 +292,5 @@ static func unpack(a: Array) -> Dictionary:
 		out[BITS[i]] = bits & (1 << i) != 0
 	out.grabHands = [null, "R", "L", "both"][(bits >> 14) & 3]
 	out.throwPower = clampf(float(a[12]), 0.0, 1.0) if a.size() > 12 else 0.8
-	out.useItem = clampi(int(a[13]), -1, 7) if a.size() > 13 else -1
+	out.useItem = clampi(int(a[13]), -1, 8) if a.size() > 13 else -1
 	return out

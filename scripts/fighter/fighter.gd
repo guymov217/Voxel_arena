@@ -92,6 +92,7 @@ var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
+var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
 var net_mesh: MeshInstance3D = null
 
@@ -430,7 +431,9 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 		var q := Quaternion(UP, vel.normalized())
 		w.global_transform = Transform3D(Basis(q), from - q * w.center_of_mass)
 		w.angular_velocity = Vector3.ZERO
-	elif Weapon.spins_in_flight(w.design):
+	else:
+		# A spear flies straight; anything else (an axe, a sword, a chair) turns end over end in
+		# the plane it flies in: blade up, spinning about the side axis, a heavy one slower.
 		var sd := vel.cross(UP)
 		sd = Vector3(1, 0, 0) if sd.length_squared() < 1e-6 else sd.normalized()
 		var fw := Vector3(vel.x, 0, vel.z).normalized()
@@ -439,10 +442,7 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 			q = q * Quaternion(UP, PI)
 		w.global_transform = Transform3D(Basis(q), from - q * w.center_of_mass)
 		w.angular_damp = 0.03
-		w.angular_velocity = sd * -15.5
-	else:
-		var spin := vel.cross(UP).normalized() * -minf(16.0, 4.0 + 10.0 / sqrt(maxf(0.3, w.mass)))
-		w.angular_velocity = spin
+		w.angular_velocity = sd * -(15.5 if Weapon.spins_in_flight(w.design) else clampf(5.0 + 9.0 / sqrt(maxf(0.3, w.mass)), 6.0, 15.5))
 	w.thrower = self
 	w.thrown_t = 3.0
 	stamina = maxf(0.0, stamina - (6.0 + 8.0 * power) * (0.6 + 0.15 * minf(6.0, w.mass)))
@@ -533,6 +533,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var live := state != "dead"
 	shove_t = maxf(0.0, shove_t - dt)
 	slow_timer = maxf(0.0, slow_timer - dt)
+	if throw_anim != null:
+		throw_anim.t -= dt
+		if throw_anim.t <= 0.0:
+			throw_anim = null
 	if net_timer > 0.0:
 		net_timer -= dt
 		if net_timer <= 0.0:
@@ -873,6 +877,16 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		jab = -0.9 * jk / 0.12 if jk < 0.12 else (1.8 if jk < 0.6 else 1.8 * (1.0 - (jk - 0.6) / 0.4))
 	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0)))
 	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
+	# Throwing: drawn back high behind the shoulder while F is held (further the longer it is
+	# held) or a bot winds up, then whipped forward and across in the follow-through.
+	var t_side := ("L" if not weapons.L else "R") if held_item != null else ("R" if weapons.R and not weapons.R.is_shield else "L")
+	var ta = throw_anim
+	var charging := float(inp.get("charging", 0.0))
+	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and state == "stand")
+	var following: bool = ta != null and ta.side == side and ta.phase == "follow"
+	if down_hp == null and (winding or following):
+		down_hp = {"x": (0.55 if side == "R" else -0.55), "y": 1.5} if winding else {"x": (-0.7 if side == "R" else 0.7), "y": -0.25}
+		thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
 	var hp_used: Dictionary = down_hp if down_hp != null else hp
 	# A bow is held out at the shoulder, stave upright, whatever the mouse does.
 	if down_hp == null and side == "R" and w and str(w.design.get("shoots", "")) == "arrow":

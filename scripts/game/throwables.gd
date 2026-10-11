@@ -660,6 +660,8 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
 	var reach := 4.0 + 10.0 * power
 	var aim: Vector3 = c.head.global_position + dir * reach
+	if inp.get("aimAt") is Vector3:
+		aim = Social.aim_ahead(c, inp.aimAt, look)
 	aim.y = maxf(0.1, aim.y)
 	throw_type(c, h.type, aim, null)
 

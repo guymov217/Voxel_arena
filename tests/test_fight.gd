@@ -97,3 +97,25 @@ func test_the_arm_keeps_to_its_side() -> void:
 	t.check(worst_x < 0.03 * f.S, "the right elbow stays right of the chest (x %.2f)" % worst_x)
 	t.check(inside < 10, "the blade stays out of his own chest (%d samples inside)" % inside)
 	w.queue_free()
+
+## Holding F draws the arm back above the shoulder; a spear then flies point first, and a sword
+## or an axe turns end over end about its side axis.
+func test_throws_wind_up_and_fly_true() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "gladius"}, {"name": "A"})
+	await _step(w, 120, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
+	var rest_y: float = f.hand_world("R").y - f.torso.global_position.y
+	await _step(w, 60, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "charging": 0.8})
+	var wound_y: float = f.hand_world("R").y - f.torso.global_position.y
+	t.check(wound_y > rest_y + 0.2 * f.S, "the arm is drawn back high (hand %.2f -> %.2f)" % [rest_y, wound_y])
+	var spins := {}
+	for k in ["gladius", "axe", "spear"]:
+		var g := w.fighter(Vector3(4.0 + spins.size() * 2.0, 0, 0), 0.0, {"main": k}, {"name": k})
+		await _step(w, 60, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
+		var wp: Weapon = g.throw_weapon("R", null, 0.9, Vector3(0, 0.1, 1).normalized())
+		var v := wp.linear_velocity
+		spins[k] = [wp.angular_velocity.length(), absf(wp.angular_velocity.normalized().dot(v.normalized()))]
+	t.check(spins.spear[0] < 1.0, "the spear flies straight (spin %.1f)" % spins.spear[0])
+	for k in ["gladius", "axe"]:
+		t.check(spins[k][0] > 5.0 and spins[k][1] < 0.2, "the %s turns end over end (spin %.1f, along the flight %.2f)" % [k, spins[k][0], spins[k][1]])
+	w.queue_free()

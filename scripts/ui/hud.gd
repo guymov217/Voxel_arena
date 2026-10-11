@@ -45,6 +45,8 @@ var hurt := 0.0
 var last_blood := 100.0
 var popups: Control
 var crosshair: Control
+var charge_bar: Control
+var charge := 0.0
 var font_title: Font
 
 func _init(m: Match) -> void:
@@ -232,28 +234,38 @@ func _build_hotbar() -> void:
 	h.anchor_right = 0.5
 	h.anchor_top = 1.0
 	h.anchor_bottom = 1.0
-	h.offset_left = -300
-	h.offset_right = 300
-	h.offset_top = -76
+	h.offset_left = -340
+	h.offset_right = 340
+	h.offset_top = -84
 	h.alignment = BoxContainer.ALIGNMENT_CENTER
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(h)
-	for i in 8:
+	for i in 9:
 		var p := PanelContainer.new()
-		p.custom_minimum_size = Vector2(64, 56)
+		p.custom_minimum_size = Vector2(68, 68)
 		p.add_theme_stylebox_override("panel", _style(Color(0.07, 0.05, 0.035, 0.72), BRONZE_DIM, 8))
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var v := VBoxContainer.new()
-		v.add_theme_constant_override("separation", 0)
-		p.add_child(v)
-		var num := _label(str(i + 1), 11, BRONZE)
-		v.add_child(num)
-		var nm := _label("", 11, TEXT)
+		var pic := TextureRect.new()
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.custom_minimum_size = Vector2(56, 56)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		p.add_child(pic)
+		var num := _label(str(i + 1), 12, BRONZE)
+		num.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		num.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		p.add_child(num)
+		var cnt := _label("", 12, TEXT)
+		cnt.size_flags_vertical = Control.SIZE_SHRINK_END
+		cnt.size_flags_horizontal = Control.SIZE_SHRINK_END
+		p.add_child(cnt)
+		var nm := _label("", 10, TEXT)
+		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		nm.custom_minimum_size = Vector2(56, 0)
-		v.add_child(nm)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		p.add_child(nm)
 		h.add_child(p)
-		slots.append({"panel": p, "name": nm})
+		slots.append({"panel": p, "name": nm, "pic": pic, "count": cnt, "id": ""})
 	held_label = _label("", 14, BRONZE)
 	held_label.anchor_left = 0.5
 	held_label.anchor_right = 0.5
@@ -337,6 +349,16 @@ func _build_crosshair() -> void:
 		crosshair.draw_arc(Vector2.ZERO, 7.0, 0, TAU, 24, Color(1, 1, 1, 0.55), 1.5)
 		crosshair.draw_circle(Vector2.ZERO, 1.5, Color(1, 1, 1, 0.8)))
 	root.add_child(crosshair)
+	charge_bar = Control.new()
+	charge_bar.set_anchors_preset(Control.PRESET_CENTER)
+	charge_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	charge_bar.position.y += 60
+	charge_bar.draw.connect(func():
+		charge_bar.draw_rect(Rect2(-60, 0, 120, 8), Color(0, 0, 0, 0.55))
+		charge_bar.draw_rect(Rect2(-60, 0, 120.0 * charge, 8), Color(1.0, 0.84 - 0.5 * charge, 0.42 - 0.2 * charge))
+		charge_bar.draw_rect(Rect2(-60, 0, 120, 8), Color(1, 1, 1, 0.4), false, 1.0))
+	charge_bar.visible = false
+	root.add_child(charge_bar)
 
 # ---------- Events ----------
 
@@ -391,6 +413,11 @@ func _ease_bar(key: String, v: float, dt: float) -> void:
 	b.queue_redraw()
 
 func _process(dt: float) -> void:
+	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
+	charge_bar.visible = ch > 0.0
+	if ch != charge:
+		charge = ch
+		charge_bar.queue_redraw()
 	if banner_t > 0.0:
 		banner_t -= dt
 		if banner_t < 0.6:
@@ -416,10 +443,18 @@ func _process(dt: float) -> void:
 				popup("+%d %s" % [ev.amount, ev.reason])
 		var inv: Dictionary = me.get("inventory", {})
 		var bar := Throwables.hotbar_of(inv)
-		for i in 8:
+		for i in slots.size():
 			var s: Dictionary = slots[i]
 			if i < bar.size():
-				s.name.text = "%s\n×%d" % [Data.shop.throwables[bar[i]].name, int(inv[bar[i]])]
+				var id: String = bar[i]
+				if s.id != id:
+					s.id = id
+					s.pic.texture = null
+					Thumbs.item(s.pic, id)
+				s.count.text = "×%d" % int(inv[id])
+				# The name shows until the picture is made (and always without a renderer).
+				s.name.text = "" if s.pic.texture else String(Data.shop.throwables[id].name)
+				s.panel.tooltip_text = String(Data.shop.throwables[id].name)
 				s.panel.visible = true
 			else:
 				s.panel.visible = false

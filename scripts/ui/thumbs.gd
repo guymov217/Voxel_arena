@@ -12,6 +12,7 @@ var vp: SubViewport
 var cam: Camera3D
 var queue: Array = []        # [{key, build: Callable, rects: [TextureRect]}]
 var busy := false
+var warm := false
 
 ## Puts the picture for `key` on `rect` (now if it is made, else when it is). `build` returns
 ## a Node3D with the model. Nothing is drawn without a renderer (headless).
@@ -23,7 +24,7 @@ static func put(rect: TextureRect, key: String, build: Callable) -> void:
 		return
 	if _studio == null or not is_instance_valid(_studio):
 		_studio = Thumbs.new()
-		rect.get_tree().root.add_child(_studio)
+		rect.get_tree().root.add_child.call_deferred(_studio)
 	for q in _studio.queue:
 		if q.key == key:
 			q.rects.append(rect)
@@ -94,6 +95,11 @@ func _make(q: Dictionary) -> void:
 	cam.look_at(c, Vector3.UP)
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
+	if not warm:
+		# The studio's first frame comes out before its world is set up: shoot it again.
+		warm = true
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
 	var tex := ImageTexture.create_from_image(vp.get_texture().get_image())
 	cache[q.key] = tex
 	for rect in q.rects:

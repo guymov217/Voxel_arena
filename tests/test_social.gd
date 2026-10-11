@@ -113,7 +113,10 @@ func test_a_dropped_weapon_is_picked_up_and_thrown() -> void:
 	await _steps(60)
 	var x0: float = a.f.torso.global_position.z
 	act[0] = "throw"
+	# A bot draws the arm back first (0.45 s), then lets go.
 	await _steps(3)
+	t.check(a.f.weapons.R == w and a.f.throw_anim != null and a.f.throw_anim.phase == "wind", "it winds up first")
+	await _steps(60)
 	t.check(a.f.weapons.R == null, "it left the hand")
 	t.check(w.thrown_t > 0.0 and w.thrower == a.f, "it flies as a thrown weapon")
 	await _steps(30)
