@@ -31,6 +31,8 @@ var strikes := {}                    # part -> seconds left of its strike (a bit
 var strike_cool := {}                # part -> seconds until it may strike again
 var regrown := {}                    # hydra: part -> voxels regrown so far
 var base_bite := 45.0
+var jaw_t := 0.0                     # counts down from JAW_T through a bite
+var breath_t := 0.0                  # the mouth held wide while fire or venom pours out
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
 const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing": 20.0, "trunk": 14.0, "arm": 22.0, "claw": 26.0}
 
@@ -98,6 +100,9 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		if float(p.def.get("wing", 0)) != 0.0:
 			wings.append(p)
 	_setup_anim()
+	for p in parts:
+		if p.def.get("bite", false) and p.def.get("jaw") is Dictionary:
+			p.build_jaw(p.def.jaw)
 	ai = {"mode": "aim" if sp.ai == "charger" else "stalk", "t": 1.5 + rng.randf() * 1.5, "circle": 1.0 if rng.randf() < 0.5 else -1.0, "bite_cool": 2.5, "roar_cool": 4.0, "dodge_cool": 0.0, "breath_cool": 3.0, "fly_cool": 6.0, "alt": 0.0}
 
 func heads_left() -> Array:
@@ -466,6 +471,7 @@ func _squeeze(dt: float) -> void:
 ## Fire (or venom) in a cone in front of the head.
 func _breathe() -> void:
 	if on_breath.is_valid() and can_breathe():
+		breath_t = 1.0
 		on_breath.call(self, String(sp.breath), float(sp.breathRange) * S)
 
 func _stomp() -> void:
@@ -575,6 +581,61 @@ func can_breathe() -> bool:
 	return part_ok(b, 0.3) and neck_ok
 
 # ---------- Animation ----------
+
+## The jaws, drawing only (host and guests alike): they gape on the lunge and snap shut on the
+## bite, hang wide while it breathes, open a little in a snarl or a hold, and hang open dead.
+func _process(dt: float) -> void:
+	jaw_t = maxf(0.0, jaw_t - dt)
+	breath_t = maxf(0.0, breath_t - dt)
+	var k := jaw_t / JAW_T
+	var gape := 0.0
+	if not alive:
+		gape = 0.35
+	elif breath_t > 0.0:
+		gape = 0.85
+	elif hug != null:
+		gape = 0.3 + 0.25 * maxf(0.0, sin(time * 6.0))
+	elif jaw_t > 0.0:
+		gape = 0.75 * minf(1.0, (1.0 - k) / 0.35) if k > 0.3 else 0.75 * (k / 0.3)
+	elif ai.get("mode", "") == "snarl" or ai.get("mode", "") == "breathe" or ai.get("mode", "") == "crouch":
+		gape = 0.35 if ai.mode != "breathe" else 0.6
+	for p in heads:
+		if not p.severed:
+			p.set_gape(gape, dt)
+
+## A bite landed (combat): the jaws snap shut on it, and what the teeth tore out hangs from
+## them a while, or falls.
+func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
+	jaw_t = minf(jaw_t, 0.14)
+	var torn := []
+	for r in res.get("removed", []):
+		if not r.get("chunk", false) and r.part == vic:
+			torn.append_array(r.voxels)
+	if torn.size() < 3 or vic.severed or vic.freeze:
+		return
+	var hold: Node3D = att.jaw_pivot if att.jaw_pivot and rng.randf() < 0.6 else null
+	var at := Vector3.ZERO
+	if hold:
+		var gz: int = att.grid.z
+		var z0 := int(floor(gz * float(att.def.jaw.get("from", 0.6))))
+		at = Vector3(0, att.vf * att.part_scale * 1.2, (gz - z0) * att.vf * att.part_scale * 0.7)
+	if Chunk.spawn(vic, torn, dir, hold, at, 1.5 + rng.randf() * 2.0):
+		for r in res.removed:
+			if r.part == vic:
+				r.chunk = true
+		res.torn = torn.size()
+		res.mouthful = hold != null
+
+func status() -> Dictionary:
+	var s := super.status()
+	s.jaw = snappedf(maxf(jaw_t, breath_t), 0.01)
+	return s
+
+func apply_status(s: Dictionary) -> void:
+	super.apply_status(s)
+	var j := float(s.get("jaw", 0.0))
+	if j > jaw_t and j <= 1.0:
+		jaw_t = minf(JAW_T, j)
 
 func _setup_anim() -> void:
 	for p in parts:
@@ -709,6 +770,8 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: flo
 func _strike(p: VoxelPart, t_: float, cool: float) -> void:
 	strikes[p] = t_
 	strike_cool[p] = cool
+	if p.jaw_pivot:
+		jaw_t = JAW_T
 	# A head on a neck strikes with the neck: it dips and drives forward with it.
 	var nk := p.parent_part
 	if nk and not nk.severed and String(nk.part_name).begins_with("neck"):

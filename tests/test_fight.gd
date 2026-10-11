@@ -67,3 +67,33 @@ func test_two_bots_fight() -> void:
 		t.check(is_finite(f.torso.global_position.y), "physics stayed sane")
 	print("   duel: hits=%d lost=%.0f A=%s B=%s" % [hits[0], lost, a.state, b.state])
 	w.queue_free()
+
+## Swept hard across the body and back, the sword arm bends like an arm: the elbow stays on its
+## own side of the chest, and the blade never passes through its owner's torso.
+func test_the_arm_keeps_to_its_side() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "longsword"}, {"name": "A"})
+	var worst_x := -1.0
+	var inside := 0
+	await _step(w, 720, func(_f, i):
+		var ph := fmod(i / 120.0 * 0.5, 1.0)
+		var x := -2.0 + 4.0 * absf(ph * 2.0 - 1.0)
+		return {"main": {"x": x, "y": 0.2 if i % 240 < 120 else -0.4}, "power": true})
+	for i in 480:
+		var ph := fmod(i / 120.0 * 0.7, 1.0)
+		f.control(1.0 / 120.0, {"main": {"x": -2.0 + 4.0 * absf(ph * 2.0 - 1.0), "y": 0.3}, "power": true})
+		await get_tree().physics_frame
+		var inv := PD.quat_of(f.torso).inverse()
+		var elbow: Vector3 = inv * (f.arm.R.fore.global_transform * f.arm.R.fore.ca - f.torso.global_position)
+		worst_x = maxf(worst_x, elbow.x)
+		var wpn: Weapon = f.weapons.R
+		var q := PD.quat_of(wpn)
+		for k in 6:
+			var p: Vector3 = wpn.global_position + q * Vector3(0, wpn.reach * (0.2 + 0.16 * k), 0)
+			var d: Vector3 = inv * (p - f.torso.global_position)
+			if absf(d.x) < f.torso.half_ext.x * 0.8 and absf(d.y) < f.torso.half_ext.y * 0.8 and absf(d.z) < f.torso.half_ext.z * 0.8:
+				inside += 1
+	t.eq(f.state, "stand", "still on his feet")
+	t.check(worst_x < 0.03 * f.S, "the right elbow stays right of the chest (x %.2f)" % worst_x)
+	t.check(inside < 10, "the blade stays out of his own chest (%d samples inside)" % inside)
+	w.queue_free()

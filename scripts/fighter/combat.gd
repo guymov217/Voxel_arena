@@ -306,7 +306,11 @@ func _blow(g: Dictionary) -> Dictionary:
 	if attacker == vic_char:
 		return {}
 	var was_alive: bool = vic_char.alive
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false)})
+	# A bite takes a mouthful: the teeth close on a lump the size of the jaws, and tear it out.
+	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 else 0.0
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush})
+	if bite and att.fighter.has_method("bit"):
+		att.fighter.bit(att, vic, res, dir)
 	if attacker:
 		vic_char.last_attacker = attacker
 	if punch and not vic.severed:

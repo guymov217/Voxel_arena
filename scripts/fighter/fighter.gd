@@ -22,6 +22,7 @@ const LEG_MASS := 0.5
 ## How hard the body is pulled back over its planted feet (14 in the web game, whose legs are
 ## stiff joint motors; torque-driven legs lag their targets, so less here).
 const ANCHOR_K := 4.0
+const CENTER_K := 3.0
 const LEG_WN := 80.0
 ## How much of the leg drive pushes back on the torso (Rapier's joint motors are solved with the
 ## joints; a torque drive's full reaction fights the balance when the body lies on its side).
@@ -29,6 +30,7 @@ const LEG_REACT := 0.35
 const GRAVITY := 9.81
 const UP := Vector3.UP
 const GRIP_Q := Quaternion(Vector3(1, 0, 0), PI)
+var behind_t := {"R": 0.0, "L": 0.0}
 const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
 
 signal died(fighter: Fighter, cause: String)
@@ -663,6 +665,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			planted += 1
 		if planted > 0:
 			move_world += PD.clamp_len(anchor_v / planted, 1.5)
+		# The weight sits over the feet: with both planted, the hips are drawn over the point
+		# between them (standing still, every way; walking, only sideways, which also keeps the
+		# walk straight). Godot's joint torques, unlike Rapier's motors, let the body creep off
+		# its feet and glide as if it hovered.
+		if planted == 2 and feet.L and feet.R:
+			var mid: Vector3 = ((feet.L.anchor as Vector3) + (feet.R.anchor as Vector3)) * 0.5
+			var off := Vector3(mid.x - t_pos.x, 0, mid.z - t_pos.z)
+			if move_local.length_squared() > 0.01:
+				var side_w := yaw_q * Vector3(1, 0, 0)
+				off = side_w * off.dot(side_w)
+			move_world += PD.clamp_len(off * CENTER_K, 1.0)
 	if grounded and standing:
 		var accel := (9.0 + 12.0 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
 		var ix := Vector2(move_world.x - lv.x, move_world.z - lv.z).limit_length(6.0) * accel * total_mass * dt
@@ -911,9 +924,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		if e_local.length_squared() < 1e-6:
 			e_local = Vector3(side_sign * 0.3, -1, -0.3)
 		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
-		e_local.y = minf(e_local.y, 0.12 * S / lu)
-		if side_sign < 0.0:
-			e_local.x = minf(e_local.x, 0.22 * S / lu) if false else e_local.x
+		# The elbow never folds in through the chest: in the body's frame it stays on its own
+		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.12 S above it.
+		if side_sign > 0.0:
+			e_local.x = -e_local.x
+		e_local = _limit_dir(e_local, 0, 0.22 * S / lu)
+		if side_sign > 0.0:
+			e_local.x = -e_local.x
+		e_local = _limit_dir(e_local, 1, 0.12 * S / lu)
 		var elbow_dir = (t_rot * e_local).normalized()
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
@@ -922,6 +940,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up))
 		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
 		_drive_forearm(side, w, fore_q, strength, dt)
+		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
 		var wmax := 30.0
 		if w.angular_velocity.length() > wmax:
 			var k := wmax / w.angular_velocity.length()
@@ -946,6 +965,75 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	F = PD.clamp_len(F, 1150.0 * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0))
 	fore.apply_impulse(F * dt, hand_w - fore.global_position)
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
+	if w and w.holder == self and not w.is_shield:
+		_keep_weapon_out(w, dt)
+
+## Caps one component (0 = x, 1 = y) of a unit direction, keeping it a unit direction: the
+## other components take up the rest in their own proportion.
+static func _limit_dir(e: Vector3, axis: int, mx: float) -> Vector3:
+	if e[axis] <= mx:
+		return e
+	e[axis] = mx
+	var rest := sqrt(maxf(0.0, 1.0 - mx * mx))
+	var o: Array = [1, 2] if axis == 0 else [0, 2]
+	var l := Vector2(e[o[0]], e[o[1]]).length()
+	if l < 1e-4:
+		e[o[0]] = -rest * 0.8 if axis == 0 else 0.0
+		e[o[1]] = -rest * (0.6 if axis == 0 else 1.0)
+	else:
+		e[o[0]] *= rest / l
+		e[o[1]] *= rest / l
+	return e
+
+## A held blade never passes through its owner: own parts do not collide with own weapons, so
+## when the hand-to-tip line comes inside the torso or head it is pushed back out.
+func _keep_weapon_out(w: Weapon, dt: float) -> void:
+	var q := PD.quat_of(w)
+	var from := w.global_position
+	var tip := from + q * Vector3(0, w.reach, 0)
+	var base := from + q * Vector3(0, -0.15, 0)
+	var ab := tip - base
+	for part in [torso, head]:
+		if part.severed:
+			continue
+		var c: Vector3 = part.global_position
+		var k := clampf((c - base).dot(ab) / maxf(1e-6, ab.length_squared()), 0.0, 1.0)
+		var p := base + ab * k
+		var d := p - c
+		d.y *= 0.7
+		var r := (0.15 if part == head else 0.2) * S
+		var dist := d.length()
+		if dist >= r or dist < 1e-4:
+			continue
+		w.apply_impulse(d / dist * ((r - dist) / r * 900.0 * (w.mass + 0.8)) * dt, p - w.global_position)
+
+## A big blade left behind its wielder's back, with the arm too weak to haul it round, is swung
+## back over the shoulder after a moment (sooner the heavier it is).
+func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t_rot: Quaternion, dt: float) -> void:
+	if not w.welded:
+		behind_t[side] = 0.0
+		return
+	var inv := t_rot.inverse()
+	var wrot := PD.quat_of(w)
+	var tip := inv * (w.global_position + wrot * Vector3(0, w.reach * 0.85, 0) - t_pos)
+	var want := (fore_q * GRIP_Q) * Vector3(0, 1, 0)
+	var want_l := inv * want
+	var heavy := clampf((w.mass - 2.0) / 5.0, 0.0, 1.0)
+	var behind := tip.z < -(0.12 - 0.08 * heavy) * S
+	behind_t[side] = behind_t[side] + dt if behind else 0.0
+	var pulling := want_l.z > -0.2
+	if behind_t[side] < ((0.6 - 0.35 * heavy) if pulling else (1.2 - 0.5 * heavy)):
+		return
+	if not pulling:
+		want = t_rot * Vector3(0.15, 0.55, 1).normalized()
+	var cur := wrot * Vector3(0, 1, 0)
+	var axis := cur.cross(want)
+	if axis.length_squared() < 1e-6:
+		axis = t_rot * Vector3(0, 1, 0)
+	var ang := acos(clampf(cur.dot(want), -1.0, 1.0))
+	var av := axis.normalized() * minf(9.0, 5.0 * ang + 2.0) + torso.angular_velocity
+	w.angular_velocity = av
+	arm[side].fore.angular_velocity = av
 
 ## The hand moves on a flat pane in front of the body, Half Sword style.
 func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
@@ -1180,6 +1268,21 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				if part.alive[i] and part.local_of(i).distance_to(at) < r:
 					remove.append(i)
 			part.bleed += J * 0.02
+	# A crushing bite (or weight) smashes a crater whatever kind of blow it is; what it breaks
+	# loose falls away as pieces.
+	var crush: float = float(hit.get("crush", 0.0))
+	if crush > 0.0:
+		for i in part.fx.size():
+			if part.alive[i] and part.local_of(i).distance_to(lp) < crush:
+				remove.append(i)
+		part.bleed += J * 0.03
+	# Every cut or stab that lands takes something with it: under the threshold for a real wound
+	# it still nicks a few voxels out at the point it struck, more the harder it came in.
+	if remove.is_empty() and not detached and type != "blunt" and J * hardness * sharpness > 1.0:
+		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08))
+		for i in part.fx.size():
+			if part.alive[i] and part.local_of(i).distance_to(lp) < rn:
+				remove.append(i)
 	if hollow > 0.0 and not detached:
 		dmg *= 1.0 + minf(1.0, hollow / 0.1)
 	if part == torso or part == head:
@@ -1259,8 +1362,11 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		if amputation and (cut_off == null or lump.size() > cut_off.size()):
 			cut_off = lump
 		elif not amputation:
+			# A lump cut loose falls as a real piece (a guest's puppet only loses the voxels).
 			var idx := Array(lump)
-			res.removed.append({"part": part, "indices": idx, "voxels": part.remove_voxels(idx, false)})
+			var vox := part.remove_voxels(idx, false)
+			var piece = Chunk.spawn(part, vox, dir) if not part.freeze else null
+			res.removed.append({"part": part, "indices": idx, "voxels": vox, "chunk": piece != null})
 	if cut_off == null and not detached and part != torso and part.alive_count == 0:
 		cut_off = PackedInt32Array()
 	if cut_off != null:

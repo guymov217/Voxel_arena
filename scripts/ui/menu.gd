@@ -12,12 +12,19 @@ var pause_layer: CanvasLayer
 var last_result := {}
 var in_room := false
 var room_list: VBoxContainer
-var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5}
+var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
 var backdrop: Match = null      # bots fighting behind the menus, seen by an orbiting camera
 var bg: ColorRect
 var shade: TextureRect
 var panel_style: StyleBoxFlat
 const HERO_POS := Vector3(-1.45, 0, -9.7)
+## Bread & Circuses is set aside for now (its screens and code stay, ready to come back).
+const SHOW_CIRCUS := false
+
+## The walkable Ludus yard is for testing only: `-- --admin` on the command line (or "admin"
+## in the save) shows it; players go from fight to the smith.
+static func admin() -> bool:
+	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
 const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e]
 const LOOK_SLOTS := {
 	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana"],
@@ -28,6 +35,8 @@ const LOOK_SLOTS := {
 
 func _ready() -> void:
 	theme = UIStyle.theme()
+	if bool(Save.get_value("settings", {}).get("fullscreen", false)):
+		set_fullscreen(true)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
 	_net_loadout()
@@ -271,15 +280,19 @@ func _main(v: VBoxContainer) -> void:
 	v.add_child(col)
 	var buttons := [
 		UIStyle.menu_button(("Continue · stage %d" % st) if st > 1 else "Begin the campaign", func(): start({"mode": "campaign", "stage": st}), true),
-		UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")),
-		UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")),
-		UIStyle.menu_button("The Ludus yard", enter_yard),
+	]
+	if SHOW_CIRCUS:
+		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
+	buttons.append(UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")))
+	if admin():
+		buttons.append(UIStyle.menu_button("The Ludus yard (admin)", enter_yard))
+	buttons.append_array([
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
 		UIStyle.menu_button("Training", func(): show_screen("training")),
 		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
 		UIStyle.menu_button("Settings", func(): show_screen("options")),
 		UIStyle.menu_button("Quit", func(): get_tree().quit()),
-	]
+	])
 	for i in buttons.size():
 		var b: Button = buttons[i]
 		col.add_child(b)
@@ -330,9 +343,10 @@ func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
 	var st := int(Save.get_value("stage", 1))
 	v.add_child(UIStyle.button("The Campaign · stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
-	v.add_child(UIStyle.button("Bread & Circuses", func():
-		_end_match()
-		show_screen("circus")))
+	if SHOW_CIRCUS:
+		v.add_child(UIStyle.button("Bread & Circuses", func():
+			_end_match()
+			show_screen("circus")))
 	v.add_child(UIStyle.button("Fights and party modes", func():
 		_end_match()
 		show_screen("fights")))
@@ -457,23 +471,23 @@ func _tutorial() -> void:
 	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
 
 func _training(v: VBoxContainer) -> void:
+	training.merge(Save.get_value("training", {}), true)
 	v.add_child(UIStyle.title("Training", 34))
-	v.add_child(UIStyle.button("The tutorial: eight short steps, two minutes" + (" (done)" if Save.get_value("tutorial_done", false) else ""), _tutorial, not Save.get_value("tutorial_done", false)))
-	v.add_child(UIStyle.label("A private arena. Set up the sparring partner and go; it comes back when beaten.", 14, UIStyle.MUTED))
-	var who := OptionButton.new()
-	var keys := ["gladiator"] + Data.beasts.keys()
-	for k in keys:
-		who.add_item("Gladiator" if k == "gladiator" else Data.beasts[k].name)
-	who.select(keys.find(training.enemy))
-	who.item_selected.connect(func(i): training.enemy = keys[i])
-	_row(v, [UIStyle.label("Who", 15), who])
-	var wpn := OptionButton.new()
-	var weapons := ["gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "random"]
-	for k in weapons:
-		wpn.add_item(Data.preset(k).get("name", "Random") if k != "random" else "Random")
-	wpn.select(weapons.find(training.weapon))
-	wpn.item_selected.connect(func(i): training.weapon = weapons[i])
-	_row(v, [UIStyle.label("Their weapon", 15), wpn])
+	v.add_child(UIStyle.button("Tutorial", _tutorial))
+	var pick := func(label_: String, keys: Array, names: Array, key: String) -> void:
+		var o := OptionButton.new()
+		for n in names:
+			o.add_item(n)
+		o.select(maxi(0, keys.find(training.get(key))))
+		o.item_selected.connect(func(i): training[key] = keys[i])
+		_row(v, [UIStyle.label(label_, 15), o])
+	v.add_child(UIStyle.label("THE ENEMY", 13, UIStyle.BRONZE))
+	var who: Array = ["none", "gladiator"] + Data.beasts.keys()
+	pick.call("Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else Data.beasts[k].name)), "enemy")
+	pick.call("How many", [1, 2, 3], ["One", "Two", "Three"], "count")
+	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger"]
+	pick.call("Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
+	pick.call("Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
 	var diff := HSlider.new()
 	diff.min_value = 0.1
 	diff.max_value = 1.0
@@ -482,7 +496,53 @@ func _training(v: VBoxContainer) -> void:
 	diff.custom_minimum_size = Vector2(300, 0)
 	diff.value_changed.connect(func(x): training.difficulty = x)
 	_row(v, [UIStyle.label("Difficulty", 15), diff])
-	_row(v, [UIStyle.button("Start training", func(): start({"mode": "training", "training": training.duplicate()}), true), UIStyle.button("Back", func(): show_screen("main"))])
+	v.add_child(UIStyle.label("YOU", 13, UIStyle.BRONZE))
+	var built: Dictionary = Save.get_value("training_weapon", {})
+	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger"]
+	pick.call("Main hand", mains, mains.map(func(k): return ("Your forged weapon: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
+	pick.call("Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
+	v.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
+	var imm := CheckBox.new()
+	imm.text = "I cannot die"
+	imm.button_pressed = training.immortal
+	imm.toggled.connect(func(x): training.immortal = x)
+	var res := CheckBox.new()
+	res.text = "The enemy comes back"
+	res.button_pressed = training.respawn
+	res.toggled.connect(func(x): training.respawn = x)
+	_row(v, [imm, res])
+	_row(v, [UIStyle.button("Start training", _start_training, true), UIStyle.button("Back", func(): show_screen("main"))])
+
+func _training_loadout() -> Dictionary:
+	var lo := Arms.loadout(arms())
+	var built: Dictionary = Save.get_value("training_weapon", {})
+	var m = training.my_main
+	var main = (built if not built.is_empty() else "gladius") if m == "built" else (lo.main if m == "campaign" else ("" if m == "fists" else m))
+	var o = training.my_off
+	var off = lo.off if o == "campaign" else ("" if o == "none" else o)
+	if main is Dictionary and main.get("twoHanded", false):
+		off = ""
+	return {"main": main if main != null else "", "off": off if off != null else ""}
+
+func _start_training() -> void:
+	Save.set_value("training", training)
+	start({"mode": "training", "training": training.duplicate(), "loadout_override": _training_loadout()})
+
+## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
+func _training_forge() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	var base: Dictionary = Save.get_value("training_weapon", {})
+	if base.is_empty():
+		base = Data.preset("gladius").duplicate(true)
+	f.free_build = true
+	f.open(base, 999999, func(design, _cost):
+		if design != null:
+			Save.set_value("training_weapon", design)
+			training.my_main = "built"
+		f.queue_free()
+		show_screen("training"))
+	visible = true
 
 # ---------- The yard: the smith ----------
 
@@ -885,6 +945,13 @@ func _options(v: VBoxContainer) -> void:
 	q.select(maxi(0, levels.find(str(st.get("quality", "high")))))
 	q.item_selected.connect(func(i): _set_opt("quality", levels[i]))
 	_row(v, [UIStyle.label("Graphics", 15), q, UIStyle.label("Low: no shadows or effects lighting. Ultra: global illumination and fog.", 13, UIStyle.MUTED)])
+	var fs := CheckBox.new()
+	fs.text = "Full screen (F11)"
+	fs.button_pressed = bool(st.get("fullscreen", false))
+	fs.toggled.connect(func(x):
+		_set_opt("fullscreen", x)
+		set_fullscreen(x))
+	v.add_child(fs)
 	var lh := CheckBox.new()
 	lh.text = "Left-handed (the right button swings the main weapon)"
 	lh.button_pressed = bool(st.get("leftHanded", false))
@@ -904,6 +971,17 @@ func _options(v: VBoxContainer) -> void:
 	_row(v, [UIStyle.label("The Emperor's decrees (arena duels)", 15), dsel])
 	v.add_child(UIStyle.label("Controls: mouse looks; hold left button and move the mouse to swing the main hand, right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, wheel turns the blade, Esc frees the mouse.", 13, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+
+static func set_fullscreen(on: bool) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_F11:
+		var on := DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
+		_set_opt("fullscreen", on)
+		set_fullscreen(on)
 
 func _set_opt(k: String, val) -> void:
 	var st: Dictionary = Save.get_value("settings", {})
@@ -1040,7 +1118,7 @@ func _dress_hero() -> void:
 	var armor := look_armor(lk)
 	if screen != "gladiator":
 		armor = ["goldHelmet", "goldLorica", "manica", "greaves"] + armor
-	backdrop.add_hero(HERO_POS, -2.5, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin])
+	backdrop.add_hero(HERO_POS, -2.5, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator")
 
 ## The title shot, or a close look at the champion while he is being dressed.
 func _frame_hero() -> void:

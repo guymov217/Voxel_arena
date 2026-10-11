@@ -21,6 +21,7 @@ var orbit := Vector2(0.6, 0.35)
 var dist := 1.6
 var cost_label: Label
 var dragging := false
+var free_build := false   # training: nothing costs anything
 const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather"]
 const JOBS := ["edge", "point", "blunt", "grip"]
 
@@ -212,6 +213,8 @@ func _rebuild() -> void:
 	var delta := _value_now() - original_value
 	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
 	cost_label.text += "  (purse %d) · %d voxels" % [purse, cells.size()]
+	if free_build:
+		cost_label.text = "%d voxels" % cells.size()
 
 func _place_camera() -> void:
 	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO)

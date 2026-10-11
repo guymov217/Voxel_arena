@@ -275,9 +275,10 @@ func remove_voxels(indices: Array) -> Array:
 			touched[box_of[i].id] = box_of[i]
 	if not hidden.is_empty():
 		var buf := mm.buffer
-		for k in hidden:
-			buf[k] = 0.0
-		mm.buffer = buf
+		if buf.size() >= vox.size() * 16:
+			for k in hidden:
+				buf[k] = 0.0
+			mm.buffer = buf
 	for b in touched.values():
 		_drop_box(b)
 		var left := []

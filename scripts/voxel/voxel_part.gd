@@ -29,6 +29,11 @@ var fy := PackedInt32Array()
 var fz := PackedInt32Array()
 var colors := PackedColorArray()
 var alive := PackedByteArray()
+var jaw_pivot: Node3D = null     # a biting head's hinged lower jaw (drawing only)
+var jaw_mouth: Node3D = null
+var jaw_mm: MultiMesh = null
+var jaw_slot := {}               # voxel index -> its slot in jaw_mm
+var jaw_angle := 0.0
 var bone := PackedByteArray()
 var alive_count := 0
 
@@ -159,13 +164,30 @@ func _build_mesh() -> void:
 
 func refresh_colors(indices: Array = []) -> void:
 	# Through the buffer, like set_shown: per-instance writes made the part vanish.
-	var buf := mm.buffer
 	var list: Array = indices if not indices.is_empty() else range(fx.size())
+	var main := []
+	var jaw := []
 	for i in list:
-		var b: int = i * 16 + 12
-		var c: Color = colors[i]
+		if jaw_slot.has(i):
+			jaw.append([jaw_slot[i], colors[i]])
+		else:
+			main.append([i, colors[i]])
+	_write_colors(mm, main)
+	if jaw_mm:
+		_write_colors(jaw_mm, jaw)
+
+static func _write_colors(m: MultiMesh, rows: Array) -> void:
+	var buf := m.buffer
+	if buf.size() < m.instance_count * 16:
+		# No renderer (headless): there is no buffer to write.
+		for r in rows:
+			m.set_instance_color(r[0], r[1])
+		return
+	for r in rows:
+		var b: int = int(r[0]) * 16 + 12
+		var c: Color = r[1]
 		buf[b] = c.r; buf[b + 1] = c.g; buf[b + 2] = c.b; buf[b + 3] = c.a
-	mm.buffer = buf
+	m.buffer = buf
 
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
@@ -230,17 +252,135 @@ func remove_voxels(indices: Array, smear := true) -> Array:
 ## floats then 4 colour floats per voxel). Setting a single instance's transform after the first
 ## frame made Godot drop the whole part from the screen, which hid every wounded body part.
 func set_shown(indices: Array, on: bool) -> void:
-	var buf := mm.buffer
+	var main := []
+	var jaw := []
 	for i in indices:
 		if i < 0 or i >= fx.size():
 			continue
-		var b: int = i * 16
-		var o := local_of(i)
-		var k := 1.0 if on else 0.0
+		if jaw_slot.has(i):
+			jaw.append([jaw_slot[i], local_of(i) - jaw_pivot.position])
+		else:
+			main.append([i, local_of(i)])
+	_write_shown(mm, main, on)
+	if jaw_mm:
+		_write_shown(jaw_mm, jaw, on)
+
+static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
+	var k := 1.0 if on else 0.0
+	var buf := m.buffer
+	if buf.size() < m.instance_count * 16:
+		for r in rows:
+			m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
+		return
+	for r in rows:
+		var b: int = int(r[0]) * 16
+		var o: Vector3 = r[1]
 		buf[b] = k; buf[b + 1] = 0.0; buf[b + 2] = 0.0; buf[b + 3] = o.x * k
 		buf[b + 4] = 0.0; buf[b + 5] = k; buf[b + 6] = 0.0; buf[b + 7] = o.y * k
 		buf[b + 8] = 0.0; buf[b + 9] = 0.0; buf[b + 10] = k; buf[b + 11] = o.z * k
-	mm.buffer = buf
+	m.buffer = buf
+
+## A biting head's lower jaw on a hinge at the back of the mouth (`jw` gives where, as fractions
+## of the head's depth and height): its voxels are drawn in their own multimesh under a pivot,
+## with a dark gullet and teeth on the skull that show when it opens. Drawing only: the head's
+## voxels, wounds and collider are untouched.
+func build_jaw(jw: Dictionary) -> void:
+	if jaw_pivot != null or jw.is_empty():
+		return
+	# The lower jaw is the bottom of the snout: the voxels in front of `from` (of the depth), in
+	# the lower 40% of the height they span there (the heads were remodelled after the web's
+	# fixed jaw heights were set, so the cut follows each head's own snout).
+	var z0 := int(floor(grid.z * float(jw.get("from", 0.6))))
+	var ylo := 1 << 30
+	var yhi := -1
+	for i in fx.size():
+		if fz[i] >= z0:
+			ylo = mini(ylo, fy[i])
+			yhi = maxi(yhi, fy[i])
+	if yhi < 0:
+		return
+	var y1 := ylo + maxi(1, int(ceil((yhi - ylo + 1) * 0.4)))
+	var idx := []
+	for i in fx.size():
+		if fz[i] >= z0 and fy[i] < y1:
+			idx.append(i)
+	if idx.size() < 4:
+		return
+	var sc := vf * part_scale
+	jaw_pivot = Node3D.new()
+	jaw_pivot.name = "Jaw"
+	jaw_pivot.position = Vector3(0, (y1 - (grid.y - 1) * 0.5) * sc, (z0 - (grid.z - 1) * 0.5) * sc)
+	add_child(jaw_pivot)
+	var main := []
+	for i in idx:
+		main.append([i, local_of(i)])
+	_write_shown(mm, main, false)
+	jaw_mm = MultiMesh.new()
+	jaw_mm.transform_format = MultiMesh.TRANSFORM_3D
+	jaw_mm.use_colors = true
+	jaw_mm.mesh = mm.mesh
+	jaw_mm.instance_count = idx.size()
+	for s in idx.size():
+		var i: int = idx[s]
+		jaw_slot[i] = s
+		var k := 1.0 if alive[i] else 0.0
+		jaw_mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ONE * k), (local_of(i) - jaw_pivot.position) * k))
+		jaw_mm.set_instance_color(s, colors[i])
+	var ext := Vector3(grid.x, grid.y, grid.z) * sc + Vector3.ONE * sc
+	jaw_mm.custom_aabb = AABB(-ext, ext * 2.0)
+	var jm := MultiMeshInstance3D.new()
+	jm.multimesh = jaw_mm
+	jm.custom_aabb = jaw_mm.custom_aabb
+	jaw_pivot.add_child(jm)
+	# The gullet and the upper teeth sit on the skull; the lower teeth ride on the jaw.
+	# Sized to the jaw itself, so nothing pokes out of a narrow snout.
+	var xlo := 1 << 30
+	var xhi := -1
+	var zhi := -1
+	for i in idx:
+		xlo = mini(xlo, fx[i])
+		xhi = maxi(xhi, fx[i])
+		zhi = maxi(zhi, fz[i])
+	var length := (zhi - z0) * sc * 0.85
+	var wide := (xhi - xlo + 1) * sc * 0.6
+	jaw_mouth = Node3D.new()
+	jaw_mouth.position = jaw_pivot.position
+	jaw_mouth.visible = false
+	add_child(jaw_mouth)
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color8(0x4a, 0x0e, 0x0e)
+	gm.roughness = 0.9
+	var gullet := MeshInstance3D.new()
+	var gb := BoxMesh.new()
+	gb.size = Vector3(wide, sc * 1.0, length)
+	gb.material = gm
+	gullet.mesh = gb
+	gullet.position = Vector3(((xlo + xhi) * 0.5 - (grid.x - 1) * 0.5) * sc, sc * 0.5, length * 0.5)
+	jaw_mouth.add_child(gullet)
+	var tm := StandardMaterial3D.new()
+	tm.albedo_color = Color8(0xf2, 0xec, 0xdc)
+	tm.roughness = 0.5
+	var tb := BoxMesh.new()
+	tb.size = Vector3(sc * 0.5, sc * 0.9, sc * 0.5)
+	tb.material = tm
+	for n in 4:
+		var x := (n / 3.0 - 0.5) * wide * 0.8
+		var up := MeshInstance3D.new()
+		up.mesh = tb
+		up.position = Vector3(x, sc * 0.7, length - sc * 0.4)
+		jaw_mouth.add_child(up)
+		var lo := MeshInstance3D.new()
+		lo.mesh = tb
+		lo.position = Vector3(x, sc * 0.4, length - sc * 0.5)
+		jaw_pivot.add_child(lo)
+
+## Opens the jaw toward `gape` radians (smoothly).
+func set_gape(gape: float, dt: float) -> void:
+	if jaw_pivot == null:
+		return
+	jaw_angle += (gape - jaw_angle) * minf(1.0, dt * 18.0)
+	jaw_pivot.basis = Basis(Vector3.RIGHT, jaw_angle)
+	jaw_mouth.visible = jaw_angle > 0.08
 
 ## Puts voxels back (a mended limb in a replay, a net message out of order).
 func restore_voxels(indices: Array) -> void:

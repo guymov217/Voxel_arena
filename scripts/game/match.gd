@@ -49,6 +49,7 @@ var hazard_specs: Array = []
 var modes: Modes = null
 var fx: Fx
 var drip_t := 0.0
+var breaths: Array = []
 var attract := false            # the menu backdrop: bots only, an orbiting camera
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
 var hero_inp := {}
@@ -64,9 +65,20 @@ var last_hit_of := {}           # fighter -> the last hit it took (for the kill 
 var circus := {}                # {bout, day, bout_index, mods, fortune}
 
 ## The menu's champion: a fighter outside the fight (no bot, not a target) who just stands.
-func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = null) -> Fighter:
-	if hero and is_instance_valid(hero):
-		hero.queue_free()
+## `still`: a mannequin for the dressing screen. He settles once, then stands frozen; dressed
+## again, the new body takes the old one's exact pose (parts and weapons) and stays frozen, so
+## nothing jitters, falls or flings its weapons when a choice changes.
+func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = null, still := false) -> Fighter:
+	var pose := {}
+	var old = hero if hero and is_instance_valid(hero) else null
+	if old and still and old.get_meta("frozen", false):
+		for p in old.parts:
+			pose[p.part_name] = p.global_transform
+		for side in old.weapons:
+			if old.weapons[side]:
+				pose["w" + side] = old.weapons[side].global_transform
+	if old:
+		old.queue_free()
 	hero = Fighter.new()
 	add_child(hero)
 	var o := {"name": "Champion", "slot": 7, "team": 9, "team_color": color}
@@ -74,7 +86,31 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 		o["skin"] = int(skin)
 	hero.build(pos, yaw_, _resolve_loadout(lo), o)
 	hero.set_meta("anchor", hero.torso.global_position)
+	hero.set_meta("still", still)
+	hero_still_t = 1.6 if still else -1.0
+	if not pose.is_empty():
+		for p in hero.parts:
+			if pose.has(p.part_name):
+				p.global_transform = pose[p.part_name]
+		for side in hero.weapons:
+			if hero.weapons[side] and pose.has("w" + side):
+				hero.weapons[side].global_transform = pose["w" + side]
+		_freeze_hero(true)
 	return hero
+
+var hero_still_t := -1.0
+
+func _freeze_hero(on: bool) -> void:
+	var bodies: Array = hero.parts.duplicate()
+	for side in hero.weapons:
+		if hero.weapons[side]:
+			bodies.append(hero.weapons[side])
+	for b in bodies:
+		b.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		b.freeze = on
+		b.linear_velocity = Vector3.ZERO
+		b.angular_velocity = Vector3.ZERO
+	hero.set_meta("frozen", on)
 
 func setup(opts: Dictionary) -> void:
 	mode = opts.get("mode", "campaign")
@@ -353,24 +389,62 @@ func circus_status() -> String:
 	var s := rules.status() if rules else ""
 	return head + ((" · " + s) if s != "" else "")
 
+## A sparring partner told not to fight (game.js trainingBehaviour): a dummy stands and faces
+## you, a walker moves about without ever swinging, a defender keeps the shield up, sword still.
+func _training_calm(e: Dictionary, inp: Dictionary, tgt) -> Dictionary:
+	var calm := inp.duplicate()
+	for k in ["power", "kick", "shove", "throw", "grab", "jump", "trip"]:
+		calm[k] = false
+	calm.thrust = 0.0
+	calm.offThrust = 0.0
+	calm.main = {"x": 0.1, "y": 0.25}
+	if tgt:
+		calm.faceAt = tgt.f.torso.global_position
+	match String(e.training):
+		"still":
+			calm.mx = 0.0; calm.mz = 0.0; calm.sprint = false
+		"defends":
+			calm.off = {"x": -0.2, "y": 0.35}
+	return calm
+
+## In training you cannot die if you chose so: blood refills and nothing bleeds (game.js trainingTick).
+func _training_tick(dt: float) -> void:
+	if not training.get("immortal", true) or me == null or not is_instance_valid(me.f):
+		return
+	var f: Fighter = me.f
+	f.blood = minf(100.0, f.blood + 40.0 * dt)
+	for p in f.parts:
+		p.bleed = 0.0
+
 func _spawn_training() -> void:
 	var who: String = training.get("enemy", "gladiator")
 	for i in int(training.get("count", 1)):
 		var pos := Vector3(i * 1.5, 0.1, 5.0)
 		if who == "none":
 			break
+		var e
 		if Data.beasts.has(who):
-			spawn_beast({"beast": who, "team": ENEMY_TEAM, "pos": pos, "yaw": PI})
+			e = spawn_beast({"beast": who, "team": ENEMY_TEAM, "pos": pos, "yaw": PI})
 		else:
 			var w: String = training.get("weapon", "gladius")
-			spawn_fighter({"kind": "bot", "name": "Sparring partner", "loadout": {"main": w if w != "random" else ["gladius", "axe", "spear", "mace"][rng.randi_range(0, 3)]}, "team": ENEMY_TEAM, "pos": pos, "yaw": PI, "diff": float(training.get("difficulty", 0.5)), "personality": "standard"})
+			if w == "random":
+				w = ["gladius", "axe", "spear", "mace"][rng.randi_range(0, 3)]
+			e = spawn_fighter({"kind": "bot", "name": "Sparring partner", "loadout": {"main": "" if w == "fists" else w, "off": ""}, "team": ENEMY_TEAM, "pos": pos, "yaw": PI, "diff": float(training.get("difficulty", 0.5)), "personality": "standard"})
+		if e:
+			e.training = String(training.get("behaviour", "fights"))
 
 # ---------- The loop ----------
 
 func _physics_process(dt: float) -> void:
 	time += dt
 	tick += 1
-	if hero and is_instance_valid(hero):
+	if hero and is_instance_valid(hero) and hero.get_meta("frozen", false):
+		pass
+	elif hero and is_instance_valid(hero):
+		if hero_still_t > 0.0:
+			hero_still_t -= dt
+			if hero_still_t <= 0.0:
+				_freeze_hero(true)
 		hero.control(dt, hero_inp)
 		# He holds his mark: a soft spring on the torso, so the balance never walks him off.
 		var d: Vector3 = hero.get_meta("anchor") - hero.torso.global_position
@@ -423,9 +497,13 @@ func _physics_process(dt: float) -> void:
 					f.yaw = atan2(d.x, d.z)
 					f.gaze = tgt.f.head.global_position
 				inp = e.bot.update(dt, tgt.f if tgt else null, _world_of(e))
+				if e.get("training", "fights") != "fights":
+					inp = _training_calm(e, inp, tgt)
 			"beast":
 				var tb = nearest_enemy(e)
 				f.target = tb.f if tb else null
+				if e.get("training", "fights") != "fights":
+					f.target = null   # a beast told not to fight stands its ground
 		if e.kind == "bot" and e.get("ball_target") is Vector3:
 			var bt: Vector3 = e.ball_target
 			var bd := Vector2(bt.x - f.torso.global_position.x, bt.z - f.torso.global_position.z).length()
@@ -634,6 +712,12 @@ func guest_message(type: String, data) -> void:
 		"zone":
 			if data is Dictionary and Throwables.ZONE_COLORS.has(str(data.get("type"))) and data.get("p") is Array:
 				throwables.add_zone(str(data.type), Vector3(data.p[0], data.p[1], data.p[2]), clampf(float(data.r), 0.1, 5.0), clampf(float(data.t), 0.0, 30.0))
+		"breath":
+			if data is Dictionary and data.get("d") is Array and (data.d as Array).size() == 3:
+				var eb = entity_by_id(int(data.get("id", -1)))
+				var bd := Vector3(float(data.d[0]), float(data.d[1]), float(data.d[2]))
+				if eb and eb.f is Beast and bd.length_squared() > 0.01:
+					breath_at(eb.f, "venom" if data.get("kind") == "venom" else "fire", bd.normalized(), clampf(float(data.get("r", 6.0)), 1.0, 30.0), 0.9)
 		"spot":
 			if data is Dictionary:
 				var e = entity_by_id(int(data.get("id", -1)))
@@ -746,10 +830,10 @@ func _check_round(dt: float) -> void:
 				e.respawned = true
 				var spec: Dictionary = e.spec.duplicate()
 				spec.erase("id")
-				if e.kind == "beast":
-					spawn_beast(spec)
-				else:
-					spawn_fighter(spec)
+				var ne = spawn_beast(spec) if e.kind == "beast" else spawn_fighter(spec)
+				if ne:
+					ne.training = e.get("training", "fights")
+		_training_tick(dt)
 		return
 	if mode == "yard":
 		return
@@ -906,21 +990,116 @@ func entity_by_id(id: int) -> Variant:
 			return e
 	return null
 
-## Fire or venom from a beast's head: everyone in a cone in front of it gets it.
+## Fire (or venom) breathed in a cone in front of the beast: a stream out of the jaws, burning
+## patches on the sand, and everyone standing in it hit and set alight (or eaten by the venom).
 func _breath(b: Beast, kind_: String, rng_: float) -> void:
 	var from: VoxelPart = b.breath_part()
-	var hp: Vector3 = from.global_position
-	var fwd := PD.quat_of(from) * Vector3(0, 0, 1)
-	feed.emit("%s breathes %s!" % [b.display_name, kind_])
+	var mouth: Vector3 = from.global_position
+	var fwd := PD.quat_of(b.torso) * Vector3(0, 0, 1)
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var aim := (fwd + Vector3(0, -0.12, 0)).normalized()
+	if b.flying and is_instance_valid(b.target):
+		aim = (Vector3(b.target.global_position.x, 0.3, b.target.global_position.z) - mouth).normalized()
+	breath_at(b, kind_, aim, rng_, 0.9)
+	if role == "host":
+		var e0 = entity_of(b)
+		if e0:
+			Net.send_all("breath", {"id": e0.id, "kind": kind_, "d": [aim.x, aim.y, aim.z], "r": rng_})
+	sfx("whoosh", mouth, 1.5)
+	if kind_ == "fire":
+		for i in range(1, 4):
+			var zp := mouth + fwd * (rng_ * i / 3.0)
+			throwables.add_zone("fire", Vector3(zp.x, 0.1, zp.z), 0.9 + 0.3 * i, 4.0, b)
+	feed.emit(("%s spits venom!" if kind_ == "venom" else "%s breathes FIRE!") % b.display_name)
 	for e in entities:
-		if e.team == ENEMY_TEAM or not e.f.alive:
+		var c = e.f
+		if c == b or not c.alive or c is Beast:
 			continue
-		var to: Vector3 = e.f.torso.global_position - hp
-		if to.length() < rng_ and fwd.dot(to.normalized()) > 0.75:
-			var part: VoxelPart = e.f.torso
-			e.f.apply_hit(part, {"impulse": 14.0, "type": "blunt", "hardness": 0.3, "point": part.global_position, "dir": to.normalized()})
-			part.bleed += 1.5
-			part.wound(Vector3.ZERO, 0.12, "blood")
+		var d: Vector3 = c.torso.global_position - mouth
+		d.y = 0.0
+		if d.length() > rng_ or d.normalized().dot(fwd) < 0.6:
+			continue
+		var part: VoxelPart = c.torso
+		c.apply_hit(part, {"impulse": 10.0 if kind_ == "venom" else 16.0, "type": "blunt", "hardness": 0.2, "sharpness": 0.0, "point": part.global_position, "dir": fwd})
+		if kind_ == "venom":
+			for pp in c.parts:
+				if not pp.severed:
+					pp.bleed += 3.0
+			c.slow(4.0, 0.55)
+		# It catches whatever it washes over: the chest, the face and a limb or two, on the side
+		# turned to the beast.
+		var live: Array = c.parts.filter(func(pp): return not pp.severed)
+		for pp in [c.torso, c.head, live.pick_random(), live.pick_random()]:
+			if pp and not pp.severed:
+				add_spot(c, pp, "fire" if kind_ == "fire" else "acid", 4.0, b, pp.global_position - fwd * 0.2 * c.S)
+		c.last_attacker = b
+
+## The stream itself, drawn on every screen: flames (or venom) poured out of the mouth along
+## `dir` for `secs`, following the head as it moves.
+func breath_at(b: Beast, kind_: String, dir: Vector3, rng_: float, secs: float) -> void:
+	if headless or fx == null or fx.headless:
+		return
+	var fire := kind_ != "venom"
+	var life := 0.55
+	var pm: ParticleProcessMaterial = Fx._process_mat("blastfire" if fire else "acid").duplicate()
+	pm.direction = dir
+	pm.spread = 9.0
+	pm.initial_velocity_min = rng_ / life * 0.75
+	pm.initial_velocity_max = rng_ / life * 1.05
+	pm.gravity = Vector3(0, 2.0 if fire else -6.0, 0)
+	pm.damping_min = 0.0
+	pm.damping_max = rng_ * 0.4
+	pm.collision_mode = ParticleProcessMaterial.COLLISION_DISABLED
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.08 * b.S
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.25))
+	grow.add_point(Vector2(0.6, 1.0))
+	grow.add_point(Vector2(1, 0.7))
+	var gt := CurveTexture.new()
+	gt.curve = grow
+	pm.scale_curve = gt
+	pm.scale_min = 0.6 + rng_ * 0.08
+	pm.scale_max = 1.0 + rng_ * 0.14
+	var ps := GPUParticles3D.new()
+	ps.amount = 260 if fx.quality != "low" else 90
+	ps.lifetime = life
+	ps.local_coords = false
+	ps.process_material = pm
+	ps.draw_pass_1 = Fx._draw_mesh("blastfire" if fire else "acid")
+	ps.visibility_aabb = AABB(Vector3.ONE * -rng_ * 1.2, Vector3.ONE * rng_ * 2.4)
+	fx.add_child(ps)
+	ps.global_position = b.breath_part().global_position
+	ps.emitting = true
+	var light: OmniLight3D = null
+	if fire:
+		light = OmniLight3D.new()
+		light.light_color = Color(1.0, 0.55, 0.2)
+		light.light_energy = 6.0
+		light.omni_range = rng_ * 0.9
+		fx.add_child(light)
+	breaths.append({"b": b, "ps": ps, "pm": pm, "light": light, "dir": dir, "t": secs, "range": rng_, "fire": fire})
+
+func _update_breaths(dt: float) -> void:
+	for br in breaths.duplicate():
+		br.t -= dt
+		var b = br.b
+		var ok: bool = is_instance_valid(b) and not b.breath_part().severed
+		if ok and br.t > 0.0:
+			var mouth: Vector3 = b.breath_part().global_position
+			br.ps.global_position = mouth
+			if br.light:
+				br.light.global_position = mouth + br.dir * br.range * 0.4
+				br.light.light_energy = 4.0 + randf() * 4.0
+			if br.fire and randf() < 0.3:
+				fx.burst("smoke", mouth + br.dir * br.range * randf_range(0.4, 1.0), 2, Vector3.UP)
+			continue
+		br.ps.emitting = false
+		if br.light:
+			br.light.queue_free()
+		get_tree().create_timer(br.ps.lifetime + 0.3, false).timeout.connect(br.ps.queue_free)
+		breaths.erase(br)
 
 func _stomp(b: Beast) -> void:
 	for e in entities:
@@ -980,6 +1159,7 @@ func guest_wvox(m: Dictionary) -> void:
 		e.f.weapons[m.side].remove_voxels(m.idx)
 
 func _process(dt: float) -> void:
+	_update_breaths(dt)
 	# A bleeding man leaves a trail of drops on the sand.
 	drip_t -= dt
 	if drip_t <= 0.0 and not headless:
