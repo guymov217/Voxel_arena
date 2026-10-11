@@ -38,8 +38,9 @@ func _ready() -> void:
 			await get_tree().process_frame
 		b.breath_t = 1.0
 		await _shot(cam, out, "jaw_%s_open" % sp)
-		var fw := PD.quat_of(b.torso) * Vector3(0, 0, 1)
-		cam.global_position = c + fw * (0.9 + h.half_ext.length() * 2.5) + side * 0.5 * maxf(1.0, b.S) + Vector3(0, 0.1, 0)
+		var hq := PD.quat_of(h)
+		c = h.global_position
+		cam.global_position = c + hq * Vector3(0.35, 0.1, 1.0).normalized() * (h.half_ext.length() * 3.2 + 0.3)
 		cam.look_at(c, Vector3.UP)
 		b.breath_t = 1.0
 		await _shot(cam, out, "jaw_%s_front" % sp)

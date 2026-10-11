@@ -94,7 +94,8 @@ var bee_timer := 0.0
 var wine_timer := 0.0
 var body := {}                    # Body: old wounds, lost limbs, prosthetics, eyes (the campaign)
 var fixed_hand := {"R": false, "L": false}   # a blade arm: the weapon cannot leave that hand
-var eye_floor := 0.0               # an eye lost: the aim never quite steadies
+var eye_floor := 0.0
+var stuck_load := 0.0              # the weight of the blades stuck in him               # an eye lost: the aim never quite steadies
 var crawling := false
 var eye_hurt := 0.0
 var strip_clock := 0.0
@@ -527,6 +528,8 @@ func pick_up(side: String, w: Weapon) -> bool:
 		return false
 	if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
 		w.forget_owner()
+	if w.stuck != null:
+		w.unstick()
 	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * GRIP_Q
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
@@ -560,7 +563,9 @@ func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8,
 	var dy := d.y
 	var g := gravity
 	var disc := pow(v, 4) - g * (g * dx * dx + 2.0 * dy * v * v)
-	var theta := atan2(v * v - sqrt(disc), g * dx) if disc >= 0.0 else PI / 4.0
+	# Out of reach (a mark on the far wall, the sky, a weak throw): it goes along the line it was
+	# aimed, a little above it, never off on a 45-degree lob somewhere else.
+	var theta := atan2(v * v - sqrt(disc), g * dx) if disc >= 0.0 else atan2(dy, dx) + 0.05
 	var yaw_ := atan2(d.x, d.z)
 	var pitch := theta
 	if scatter > 0.0:
@@ -838,7 +843,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
-	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
 	var planted := 0
@@ -1481,7 +1486,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		part.bleed += dmg * 0.07
 		var depth: float = minf(0.3 + 0.2 * heavy, 0.02 * J * eff * (1.0 + 0.8 * heavy)) * S
 		if J * eff > 2.5:
-			var r := vfs * (1.1 + 0.6 * heavy)
+			var r := V * S * (1.2 + 0.5 * heavy)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
@@ -1823,9 +1828,16 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		p.hp = 0.0
 		p.collision_layer = VoxelPart.LAYER_DEBRIS
 		p.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
-		for o in parts:
-			if not pieces.has(o):
-				p.remove_collision_exception_with(o)
+	# The piece still overlaps the stump it came off: meeting its owner's body at once, the
+	# solver flung it across the arena. It falls clear first, then it is a thing in the world.
+	if is_inside_tree():
+		get_tree().create_timer(0.7, false, true).timeout.connect(func():
+			for p in pieces:
+				if not is_instance_valid(p):
+					continue
+				for o in parts:
+					if is_instance_valid(o) and not pieces.has(o):
+						p.remove_collision_exception_with(o))
 	if part.joint:
 		part.joint.queue_free()
 		part.joint = null

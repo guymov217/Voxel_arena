@@ -177,6 +177,7 @@ func test_attacks_stay_physical() -> void:
 	for k in Data.beasts:
 		if k == "goat":
 			continue
+		seed(hash(k))
 		var w := _world()
 		var man := w.fighter(Vector3(0, 0, 0), PI, {}, {"name": "Man", "slot": 0})
 		var b: Beast
@@ -190,6 +191,7 @@ func test_attacks_stay_physical() -> void:
 		var vmax := 0.0
 		var ymax := 0.0
 		var gap := 0.0
+		var gap_at := ""
 		var finite := true
 		for s in int(6.0 / DT):
 			man.control(DT, {})
@@ -210,7 +212,7 @@ func test_attacks_stay_physical() -> void:
 					if p.joint and p.parent_part and not p.parent_part.severed and p.def.get("ca") != null:
 						gap = maxf(gap, (p.parent_part.global_transform * p.pa).distance_to(p.global_transform * p.ca))
 		if not finite or vmax > 20.0 or ymax > 3.0 or gap > 0.12 * maxf(1.0, b.S):
-			bad.append("%s v %.1f y %.1f gap %.2f%s" % [k, vmax, ymax, gap, "" if finite else " NaN"])
+			bad.append("%s v %.1f y %.1f gap %.2f at %s%s" % [k, vmax, ymax, gap, gap_at, "" if finite else " NaN"])
 		w.queue_free()
 		await get_tree().process_frame
 	t.check(bad.is_empty(), "unphysical: " + ", ".join(bad))

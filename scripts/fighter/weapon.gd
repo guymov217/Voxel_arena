@@ -245,6 +245,7 @@ func _build_mesh() -> void:
 		mm.set_instance_color(i, voxel_color(v[3], v[4]))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
+	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # see VoxelPart
 	# Fixed box: chipped voxels are scaled to nothing, which would shrink the auto box (see VoxelPart).
 	var lo := Vector3.INF
 	var hi := -Vector3.INF
@@ -274,11 +275,10 @@ func remove_voxels(indices: Array) -> Array:
 		if box_of[i]:
 			touched[box_of[i].id] = box_of[i]
 	if not hidden.is_empty():
-		var buf := mm.buffer
-		if buf.size() >= vox.size() * 16:
-			for k in hidden:
-				buf[k] = 0.0
-			mm.buffer = buf
+		# Per instance (a whole-buffer write did not reach the screen with physics interpolation
+		# on; the fixed custom_aabb keeps single writes from culling the weapon).
+		for k in range(0, hidden.size(), 12):
+			mm.set_instance_transform(int(hidden[k] / 16), Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 	for b in touched.values():
 		_drop_box(b)
 		var left := []
@@ -356,6 +356,48 @@ func _physics_process(dt: float) -> void:
 			forget_owner()
 
 ## How it flies when thrown (weaponDesign.js): a throwing axe spins, a javelin flies point first.
+## A thrown blade or point that bit deep stays in the body it struck (weapon.js impale): welded
+## to that part at the wound, its weight hanging off the limb, until someone pulls it out (G)
+## or the part comes off.
+var stuck = null   # {char, part, joint, mass}
+
+func impale(c, part: VoxelPart, point: Vector3) -> bool:
+	if stuck != null or holder != null or not chain_links.is_empty() or part == null or part.severed or not is_inside_tree():
+		return false
+	# Drive it a hand's width in along its flight before it sets: it sits in the wound.
+	var sp := linear_velocity.length()
+	if sp > 0.5:
+		global_position += linear_velocity * (0.1 * float(c.S) / sp)
+	linear_velocity = part.linear_velocity
+	angular_velocity = part.angular_velocity
+	for p in c.parts:
+		add_collision_exception_with(p)
+	var j := Generic6DOFJoint3D.new()
+	c.add_child(j)
+	j.global_position = point
+	j.node_a = part.get_path()
+	j.node_b = get_path()
+	thrown_t = 0.0
+	stuck = {"char": c, "part": part, "joint": j, "mass": mass}
+	c.stuck_load += mass
+	return true
+
+func unstick() -> void:
+	if stuck == null:
+		return
+	var st: Dictionary = stuck
+	stuck = null
+	if is_instance_valid(st.joint):
+		st.joint.queue_free()
+	if is_instance_valid(st.char):
+		st.char.stuck_load = maxf(0.0, st.char.stuck_load - float(st.mass))
+		var cc = st.char
+		get_tree().create_timer(0.5, false, true).timeout.connect(func():
+			if is_instance_valid(cc) and is_instance_valid(self) and holder != cc:
+				for p in cc.parts:
+					if is_instance_valid(p):
+						remove_collision_exception_with(p))
+
 static func spins_in_flight(d: Dictionary) -> bool:
 	if not d.get("throwable", false) or d.get("voxels", []).is_empty():
 		return false

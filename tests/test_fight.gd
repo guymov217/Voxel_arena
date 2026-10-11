@@ -194,3 +194,33 @@ func test_blows_follow_the_wound_and_knock_armour_off() -> void:
 	var r2: Dictionary = a.apply_hit(up, {"impulse": 40.0, "type": "blunt", "hardness": 0.8, "point": pa, "dir": (up.global_position - pa).normalized()})
 	t.check(r2.get("armor", false) and ad.alive < before and ad.alive > 0, "plates knocked off where it struck (%d -> %d of %d)" % [before, ad.alive, ad.pts.size()])
 	w.queue_free()
+
+## Thrown at a man four metres off, a blade or a point lands where it was aimed, hurts by its
+## speed and sharpness, and one that bites deep stays stuck in him.
+func test_thrown_weapons_hurt_and_stick() -> void:
+	var report := []
+	var stuck := 0
+	var landed := 0
+	for k in ["gladius", "axe", "spear", "dagger", "javelin"]:
+		var w := _world()
+		var a := w.fighter(Vector3(0, 0, 0), 0.0, {"main": k}, {"name": "A", "slot": 0})
+		var b := w.fighter(Vector3(0, 0, 4.0), PI, {}, {"name": "B", "slot": 1})
+		await _step(w, 90, func(_f, _i): return {"main": {"x": 0.1, "y": 0.2}})
+		var hits := []
+		w.combat.hit.connect(func(h): if h.char == b: hits.append(h))
+		var wp: Weapon = a.throw_weapon("R", b.torso.global_position, 1.0)
+		await _step(w, 90, func(_f, _i): return {})
+		var removed := 0
+		var J := 0.0
+		for h in hits:
+			removed += h.res.removed.reduce(func(s, r): return s + r.indices.size(), 0)
+			J = maxf(J, h.J)
+		if not hits.is_empty():
+			landed += 1
+		if wp.stuck != null:
+			stuck += 1
+		report.append("%s J %.0f -%d voxels%s" % [k, J, removed, " stuck" if wp.stuck != null else ""])
+		w.queue_free()
+	print("   throws: ", ", ".join(report))
+	t.check(landed >= 4, "the throws land where they were aimed (%d of 5)" % landed)
+	t.check(stuck >= 2, "points and edges that bite deep stay in (%d)" % stuck)

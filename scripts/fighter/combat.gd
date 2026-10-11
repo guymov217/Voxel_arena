@@ -313,6 +313,12 @@ func _blow(g: Dictionary) -> Dictionary:
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:
 		vic_char.last_attacker = attacker
+	# A thrown blade that lands edge-on, or a point that lands point first, and bites deep
+	# enough stays in the wound (combat.js).
+	if thrown and is_weapon and not vic.severed and J > 9.0:
+		var keen: float = hardness * sharpness
+		if keen > 0.4 and (g.type == "point" or (g.type == "edge" and not res.get("slid", false))) and att.has_method("impale") and att.impale(vic_char, vic, p):
+			res.impaled = true
 	if punch and not vic.severed:
 		vic.bleed += J * (0.05 if vic == vic_char.head else 0.015)
 		if vic == vic_char.head:

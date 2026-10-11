@@ -158,6 +158,10 @@ func _build_mesh() -> void:
 		mm.set_instance_color(i, colors[i])
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
+	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
+	# built with, so every hole, cut and knocked-off piece stayed invisible. The part's body
+	# moves it at the physics rate.
+	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	# A fixed box the size of the whole part: knocking voxels out (scaling them to nothing) makes
 	# Godot shrink the multimesh's own box to a sliver, and the part was then culled off screen.
 	var ext := Vector3(grid.x, grid.y, grid.z) * vf * part_scale * 0.5 + Vector3.ONE * vf * part_scale
@@ -340,6 +344,23 @@ func build_jaw(jw: Dictionary) -> void:
 	if yhi < 0:
 		return
 	var y1 := ylo + maxi(1, int(ceil((yhi - ylo + 1) * 0.4)))
+	# The jaw opens on the mouth painted on the face (a dark line across the front of the snout),
+	# so there is one mouth, where it was drawn: the row with the most dark voxels at the front.
+	var front_z := -1
+	for i in fx.size():
+		front_z = maxi(front_z, fz[i])
+	var dark := {}
+	for i in fx.size():
+		if fz[i] >= front_z - 1 and fy[i] < (ylo + yhi) / 2 + 2:
+			var c: Color = colors[i]
+			if c.get_luminance() < 0.16:
+				dark[fy[i]] = int(dark.get(fy[i], 0)) + 1
+	var best_row := -1
+	for y in dark:
+		if dark[y] >= 3 and (best_row < 0 or dark[y] > dark[best_row]):
+			best_row = y
+	if best_row > ylo:
+		y1 = best_row
 	var idx := []
 	for i in fx.size():
 		if fz[i] >= z0 and fy[i] < y1:
@@ -370,6 +391,7 @@ func build_jaw(jw: Dictionary) -> void:
 	jaw_mm.custom_aabb = AABB(-ext, ext * 2.0)
 	var jm := MultiMeshInstance3D.new()
 	jm.multimesh = jaw_mm
+	jm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	jm.custom_aabb = jaw_mm.custom_aabb
 	jaw_pivot.add_child(jm)
 	# The gullet and the upper teeth sit on the skull; the lower teeth ride on the jaw.
@@ -522,7 +544,14 @@ func loose_lumps() -> Array:
 		return []
 	var held := 0
 	var has_joint := def.get("ca") != null or def.get("root") != null
-	var nc := Greedy.core()
+	# The torso is held by the neck (character.js looseLumps): the lump with the most flesh
+	# round the head's joint is the body, whatever is bigger; a pelvis cut free is the piece.
+	var head_c: VoxelPart = null
+	if part_name == "torso":
+		for ch in child_parts:
+			if ch.part_name == "head" and not ch.severed:
+				head_c = ch
+	var nc := Greedy.core() if head_c == null else null
 	if nc:
 		var nax := -1
 		var nedge := 0
@@ -548,6 +577,10 @@ func loose_lumps() -> Array:
 		var best := -1
 		var best_size := 0
 		var tag := 2
+		var neck := head_c.pa if head_c else Vector3.ZERO
+		var best_neck := -1
+		var best_neck_n := 0
+		var rn := vf * part_scale * 2.5
 		for c in n:
 			if cell[c] == 0 or mark[c] != 0:
 				continue
@@ -555,7 +588,21 @@ func loose_lumps() -> Array:
 			if lump.size() > best_size:
 				best_size = lump.size()
 				best = tag
+			if head_c:
+				var at := 0
+				for i in lump:
+					if local_of(i).distance_to(neck) < rn:
+						at += 1
+				if at > best_neck_n:
+					best_neck_n = at
+					best_neck = tag
 			tag = 2 if tag == 255 else tag + 1
+		if best_neck >= 0:
+			best = best_neck
+			best_size = 0
+			for c in n:
+				if mark[c] == best:
+					best_size += 1
 		for c in n:
 			mark[c] = 1 if mark[c] == best else 0
 		held = best_size
