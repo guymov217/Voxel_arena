@@ -8,6 +8,7 @@ extends Node
 var menu
 var out := ""
 var big: Dictionary = {}
+var want_j := 30.0
 
 func _ready() -> void:
 	out = OS.get_environment("SHOT_DIR")
@@ -84,7 +85,7 @@ func _frame(m: Match, c: Vector3, across: Vector3, dist: float, fov: float, up :
 	m.cam.look_at(c, Vector3.UP)
 
 func _on_hit(h: Dictionary) -> void:
-	if big.is_empty() and h.get("weapon") != null and float(h.get("J", 0.0)) > 32.0 and h.get("type") == "edge" and h.get("p") is Vector3:
+	if big.is_empty() and h.get("weapon") != null and float(h.get("J", 0.0)) > want_j and ["edge", "point"].has(h.get("type")) and h.get("p") is Vector3:
 		big = h
 
 ## A blade lands: wait for a hard cut, let the blood fly for a few ticks, stop time, frame it close.
@@ -94,9 +95,12 @@ func _strike() -> void:
 	big = {}
 	m.combat.hit.connect(_on_hit)
 	var waited := 0
+	want_j = 30.0
 	while big.is_empty() and waited < 120 * 60:
 		await get_tree().physics_frame
 		waited += 1
+		if waited % 900 == 0:
+			want_j *= 0.75
 	await _ticks(5)
 	_freeze(true)
 	var a = big.attacker
@@ -125,7 +129,7 @@ func _pot(nm: String, type: String) -> void:
 	if type == "pot_thunder":
 		var at := Vector3(c.x, 0.25, c.z)
 		m.throwables.explode(type, at, null)
-		await _ticks(7)
+		await _ticks(13)
 		_freeze(true)
 		_frame(m, c + Vector3(0, 0.3, 0), pb.torso.global_position - pa.torso.global_position, 4.6, 55.0, 0.5)
 	else:

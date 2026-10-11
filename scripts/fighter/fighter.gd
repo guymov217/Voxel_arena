@@ -1063,6 +1063,19 @@ func fall(duration: float, force := false) -> void:
 	down_timer = duration
 	set_standing(false)
 
+## Moves the whole body (every part, its weapons) so the torso stands over `p`, at rest.
+func teleport(p: Vector3) -> void:
+	var off := Vector3(p.x, 0.0, p.z) - Vector3(torso.global_position.x, 0.0, torso.global_position.z)
+	var bodies: Array = parts.duplicate()
+	for side in weapons:
+		if weapons[side]:
+			bodies.append(weapons[side])
+	for b in bodies:
+		if is_instance_valid(b):
+			b.global_position += off
+			b.linear_velocity = Vector3.ZERO
+			b.angular_velocity = Vector3.ZERO
+
 func die(cause := "") -> void:
 	if state == "dead":
 		return

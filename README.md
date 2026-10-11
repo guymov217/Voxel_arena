@@ -29,6 +29,11 @@ godot --headless --path . -- --test test_fight   # one suite
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath.
 - **The campaign**: stages of three rounds, pay, bosses on the same tables, checkpoints and
   persistent weapon wear.
+- **Bread & Circuses**: the seven-day campaign (`scripts/game/circus.gd`). Every day has its
+  bouts and bosses. The special bouts are in `scripts/game/bout_rules.gd`: gold rush, chariots,
+  the Emperor's whims, hot potato, escorting the senator, holding the circle, and bringing back a
+  head. Gold buys pots between bouts, and a god offers a blessing after each day (Fortuna spins a
+  wheel). Between runs you buy ludus upgrades. There are also the Daily Games and a Hall of Fame.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
@@ -47,8 +52,6 @@ godot --headless --path . -- --test test_fight   # one suite
 
 ## Still to come
 
-- The 7-day "Bread & Circuses" campaign, with its special bouts, blessings, fortunes, ludus
-  upgrades and the Hall of Fame. Its data is already in `data/modes.json`.
 - The lobby hub and its minigames.
 - The kill cam, music, the tutorial, key rebinding and gamepad support.
 

@@ -219,6 +219,8 @@ func show_screen(s: String, msg := "") -> void:
 		"room": _room(v)
 		"options": _options(v)
 		"gladiator": _gladiator(v)
+		"circus": _circus(v)
+		"circus_market": _circus_market(v)
 	if backdrop and backdrop.hero:
 		_frame_hero()
 
@@ -272,6 +274,7 @@ func _main(v: VBoxContainer) -> void:
 	v.add_child(col)
 	var buttons := [
 		UIStyle.menu_button(("Continue · stage %d" % st) if st > 1 else "Begin the campaign", func(): start({"mode": "campaign", "stage": st}), true),
+		UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")),
 		UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")),
 		UIStyle.menu_button("The yard & the smith", func(): show_screen("yard")),
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
@@ -382,6 +385,192 @@ func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
 ## The market (market.js): pots, food and tricks for the kit, used in a fight with 1 to 8.
+# ---------- Bread & Circuses ----------
+
+func circus_run():
+	var r = Save.get_value("circus_run", null)
+	return r if r is Dictionary and not r.is_empty() and not r.get("over", false) else null
+
+func ludus() -> Dictionary:
+	var l = Save.get_value("ludus", {})
+	var out := Circus.empty_ludus()
+	if l is Dictionary:
+		out.denarii = int(l.get("denarii", 0))
+		out.runs = int(l.get("runs", 0))
+		out.levels = l.get("levels", {}) if l.get("levels") is Dictionary else {}
+	return out
+
+const ROMAN := ["I", "II", "III", "IV", "V", "VI", "VII"]
+
+func _circus(v: VBoxContainer) -> void:
+	panel.custom_minimum_size.x = 820
+	v.add_child(UIStyle.label("SEVEN DAYS · THE EMPEROR'S GAMES", 13, UIStyle.BRONZE))
+	var t := UIStyle.title("BREAD & CIRCUSES", 40)
+	t.add_theme_font_override("font", UIStyle.serif(3))
+	t.add_theme_color_override("font_color", UIStyle.GOLD)
+	v.add_child(t)
+	var run = circus_run()
+	if run == null:
+		_circus_lobby(v)
+		return
+	if not run.get("pending_blessing", []).is_empty():
+		v.add_child(UIStyle.title("The gods are watching", 26))
+		v.add_child(UIStyle.label("Day %s is over. Pick one blessing for the rest of the run." % ROMAN[clampi(int(run.day) - 1, 0, 6)], 15, UIStyle.MUTED))
+		for id in run.pending_blessing:
+			var b: Dictionary = Circus.blessings().get(id, {})
+			var btn := UIStyle.button("%s: %s" % [b.get("name", id), b.get("desc", "")], func():
+				var r2 = circus_run()
+				Circus.grant(r2, id)
+				Save.set_value("circus_run", r2)
+				show_screen("circus", "%s blesses you" % b.get("name", id)), true)
+			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			v.add_child(btn)
+		return
+	var day: Dictionary = Circus.days()[int(run.day)]
+	v.add_child(UIStyle.title("Day %s · %s" % [ROMAN[int(run.day)], day.get("theme", "")], 26))
+	for i in day.bouts.size():
+		var b: Dictionary = day.bouts[i]
+		var mark := "✔" if i < int(run.bout) else ("▶" if i == int(run.bout) else "·")
+		var col := UIStyle.MUTED if i < int(run.bout) else (UIStyle.GOLD if i == int(run.bout) else UIStyle.TEXT)
+		v.add_child(UIStyle.label("%s  %s%s" % [mark, b.name, "  · boss" if b.get("boss", false) else ""], 16, col))
+	var bout := Circus.current(run)
+	v.add_child(UIStyle.label(String(bout.get("intro", "")), 15, UIStyle.TEXT))
+	var bl: Array = run.blessings.map(func(id): return Circus.blessings().get(id, {}).get("name", id))
+	var inv: Array = []
+	for id in run.inventory:
+		if int(run.inventory[id]) > 0:
+			inv.append("%s ×%d" % [Data.shop.get("throwables", {}).get(id, {}).get("name", id), int(run.inventory[id])])
+	v.add_child(UIStyle.label("Gold: %d · blessings: %s · kit: %s%s" % [int(run.gold), ", ".join(bl) if not bl.is_empty() else "none yet",
+		", ".join(inv) if not inv.is_empty() else "empty", " · DAILY GAMES" if run.get("daily", false) else ""], 14, UIStyle.BRONZE))
+	_row(v, [UIStyle.button("Fight: %s" % bout.get("name", ""), _circus_fight, true), UIStyle.button("The market", func(): show_screen("circus_market")),
+		UIStyle.button("Give up the run", func():
+			var r2 = circus_run()
+			r2.over = true
+			_circus_close(r2, "gave up")
+			show_screen("circus", "You walk out of the arena. The ludus keeps what you earned.")),
+		UIStyle.button("Main menu", func(): show_screen("main"))])
+
+func _circus_lobby(v: VBoxContainer) -> void:
+	var lu := ludus()
+	v.add_child(UIStyle.label("Seven days of bouts, beasts and bosses for the Emperor. Gold buys pots between bouts; after each day a god offers a blessing. Fall once and the run is over.", 15, UIStyle.TEXT))
+	_row(v, [UIStyle.button("Begin a new run", func():
+		Save.set_value("circus_run", Circus.new_run(ludus()))
+		show_screen("circus", "Day I begins"), true),
+		UIStyle.button("The Daily Games · %s" % Circus.daily_label(), func():
+			Save.set_value("circus_run", Circus.new_run(ludus(), true))
+			show_screen("circus", "Today's games: the same bouts, decrees and blessings for everyone"))])
+	v.add_child(UIStyle.title("The ludus · %d denarii" % int(lu.denarii), 24))
+	for id in Circus.ludus_upgrades():
+		var u: Dictionary = Circus.ludus_upgrades()[id]
+		var lvl := int(lu.levels.get(id, 0))
+		var maxed := lvl >= int(u.get("max", 1))
+		var b := UIStyle.button(("%s (%d/%d) · maxed" % [u.name, lvl, int(u.max)]) if maxed else ("%s (%d/%d) · %d" % [u.name, lvl, int(u.max), Circus.ludus_price(id, lvl)]), func():
+			var l2 := ludus()
+			var why = Circus.buy_upgrade(l2, id)
+			Save.set_value("ludus", l2)
+			show_screen("circus", why if why != null else "%s bought" % u.name))
+		b.tooltip_text = u.get("desc", "")
+		b.disabled = maxed
+		_row(v, [b, UIStyle.label(String(u.get("desc", "")), 13, UIStyle.MUTED)])
+	var hall: Array = Save.get_value("hall", [])
+	if not hall.is_empty():
+		v.add_child(UIStyle.title("Hall of Fame", 24))
+		for i in mini(5, hall.size()):
+			var h: Dictionary = hall[i]
+			v.add_child(UIStyle.label("%d. %s · %s · %d bouts, %d kills%s" % [i + 1, h.name, "crowned by the Emperor" if h.won else "fell on day %s to %s" % [ROMAN[clampi(int(h.day) - 1, 0, 6)], h.get("fate", "the arena")], int(h.bouts), int(h.kills), " · daily" if h.get("daily", false) else ""], 14, UIStyle.GOLD if h.won else UIStyle.TEXT))
+	_row(v, [UIStyle.button("Main menu", func(): show_screen("main"))])
+
+func _circus_market(v: VBoxContainer) -> void:
+	var run = circus_run()
+	if run == null:
+		show_screen("circus")
+		return
+	v.add_child(UIStyle.title("The market", 32))
+	v.add_child(UIStyle.label("Gold: %d · what you buy is used in the next bouts (keys 1 to 8)" % int(run.gold), 15, UIStyle.BRONZE))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(780, 400)
+	v.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	scroll.add_child(grid)
+	var table: Dictionary = Data.shop.get("throwables", {})
+	for id in table:
+		var it: Dictionary = table[id]
+		var price := int(round(int(it.price) * 0.6))
+		var have := int(run.inventory.get(id, 0))
+		var lbl := UIStyle.label("%s%s" % [it.name, (" ×%d" % have) if have else ""], 15)
+		lbl.custom_minimum_size = Vector2(190, 0)
+		lbl.tooltip_text = it.get("desc", "")
+		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		var b := UIStyle.button("Buy · %d gold" % price, func():
+			var r2 = circus_run()
+			if int(r2.gold) < price:
+				show_screen("circus_market", "Not enough gold")
+				return
+			if int(r2.inventory.get(id, 0)) >= 9:
+				show_screen("circus_market", "You can carry no more of those")
+				return
+			r2.gold = int(r2.gold) - price
+			r2.inventory[id] = int(r2.inventory.get(id, 0)) + 1
+			Save.set_value("circus_run", r2)
+			show_screen("circus_market"))
+		var row := HBoxContainer.new()
+		row.add_child(lbl)
+		row.add_child(b)
+		grid.add_child(row)
+	_row(v, [UIStyle.button("Back to the games", func(): show_screen("circus"), true)])
+
+func _circus_fight() -> void:
+	var run = circus_run()
+	if run == null:
+		return
+	var bout := Circus.current(run)
+	var bm := Circus.blessing_mods(run, Circus.rng_for(run, "fortune"))
+	var ids: Array = (bout.get("decrees", []) as Array).duplicate()
+	if run.get("daily", false):
+		for d in Decrees.roll(0.7, 1, Circus.rng_for(run, "decree")):
+			if not ids.has(d.id):
+				ids.append(d.id)
+	var lo := {"main": "chicken" if bm.fortune and bm.fortune.get("chicken", false) else "gladius", "off": "roundShield"}
+	start({"mode": "circus", "loadout_override": lo, "mods": bm.mods, "inventory_override": run.inventory.duplicate(), "decrees": ids, "hazards": BoutRules.hazards_for(bout),
+		"circus": {"bout": bout, "day": int(run.day), "bout_index": int(run.bout), "fortune": bm.fortune}})
+
+## A run is over: the ludus keeps its share, the Hall of Fame remembers it.
+func _circus_close(run: Dictionary, fate: String) -> void:
+	var lu := ludus()
+	var pay := Circus.payout(run)
+	lu.denarii = int(lu.denarii) + pay
+	lu.runs = int(lu.runs) + 1
+	Save.set_value("ludus", lu)
+	Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"), run, fate))
+	Save.set_value("circus_run", null)
+	last_result = {"text": "The ludus earns %d denarii from this run." % pay}
+
+func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
+	var run = circus_run()
+	if run == null:
+		show_screen("circus")
+		return
+	run.inventory = Net.sanitize_kit(inv)
+	var kills_me := int(r.get("kills", {}).get(Save.get_value("name", "Gladiator"), 0))
+	var pay := Circus.reward(run, kills_me, float(r.get("favor", 0.0)), float(r.get("time", 999.0)) < 60.0) + 4 * int(r.get("coins", 0)) if r.won else 0
+	var state := Circus.finish(run, r.won, kills_me, pay)
+	Save.set_value("circus_run", run)
+	match state:
+		"next":
+			show_screen("circus", "Victory! +%d gold" % pay)
+		"dayEnd":
+			show_screen("circus", "Victory! +%d gold. The day is done." % pay)
+		"spared":
+			show_screen("circus", "PLUTO SAYS NO: you are sent back from the underworld. Fight the bout again.")
+		"victory":
+			_circus_close(run, "")
+			show_screen("circus", "THE EMPEROR CROWNS YOU! Seven days, and you still stand. " + last_result.text)
+		"wipe":
+			_circus_close(run, String(r.get("killer", "the arena")))
+			show_screen("circus", "You fell on day %s. %s" % [ROMAN[clampi(int(run.day), 0, 6)], last_result.text])
+
 func _market(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
 	v.add_child(UIStyle.title("The market", 36))
@@ -564,7 +753,7 @@ func start(opts: Dictionary) -> void:
 		opts.loadout = {"main": lo.main, "off": lo.off}
 		opts.worn = lo.worn
 	else:
-		opts.loadout = {"main": "gladius", "off": "roundShield"}
+		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
 	if opts.get("autopilot", false):
 		opts.autopilot = true
 	var lk := look()
@@ -572,7 +761,7 @@ func start(opts: Dictionary) -> void:
 	opts.loadout.armor = opts.loadout.get("armor", []) + look_armor(lk)
 	opts.skin = Fighter.SKINS[lk.skin]
 	opts.color = CLOTH[lk.cloth]
-	opts.inventory = kit()
+	opts.inventory = opts.get("inventory_override", kit())
 	# The decrees are drawn here, so the guests can be told them before anyone is spawned.
 	if (opts.mode == "duel" or opts.mode == "chaos") and not opts.has("decrees"):
 		var setting: String = Save.get_value("settings", {}).get("decrees", "sometimes")
@@ -588,7 +777,7 @@ func start(opts: Dictionary) -> void:
 			var pk := peer_look(pl)
 			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor} if not pl.is_empty() else {"main": "gladius"}})
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", [])})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
 		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
@@ -782,7 +971,12 @@ func _end_match() -> void:
 func _on_finished(r: Dictionary) -> void:
 	await get_tree().create_timer(3.5).timeout
 	var mode := match_.mode if match_ else "campaign"
-	if match_ and match_.me and match_.role != "guest":
+	if mode == "circus" and match_ and match_.role != "guest":
+		var inv: Dictionary = match_.me.get("inventory", {}) if match_.me else {}
+		_end_match()
+		_circus_finished(r, inv)
+		return
+	if match_ and match_.me and match_.role != "guest" and mode != "circus":
 		set_kit(match_.me.get("inventory", kit()))
 	if mode == "campaign" and match_ and match_.role != "guest":
 		set_arms(Arms.add_wear(arms(), r.get("wear", {})))
@@ -813,7 +1007,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				world_root.add_child(match_)
 				var ids: Array = (data.get("decrees", []) as Array).filter(func(i): return not Decrees.by_id(str(i)).is_empty()) if data.get("decrees") is Array else []
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
-				match_.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "decrees": ids, "hazards": hz})
+				match_.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
 				match_.finished.connect(_on_finished)
 				hud = Hud.new(match_)
 				world_root.add_child(hud)

@@ -180,9 +180,11 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.sfx("thud", p, 1.0)
 			flash(p, Color(1.0, 0.8, 0.55), 14.0, 10.0)
 			if m.fx:
-				m.fx.burst("dust", p, 60, Vector3.UP, 1.4)
-				m.fx.burst("smoke", p + Vector3(0, 0.3, 0), 30)
-				m.fx.burst("sparks", p, 80, Vector3.UP, 1.5)
+				m.fx.burst("blastfire", p + Vector3(0, 0.25, 0), 70, Vector3.UP)
+				m.fx.burst("dust", p, 140, Vector3.UP, 2.2)
+				m.fx.burst("smoke", p + Vector3(0, 0.4, 0), 50, Vector3.UP, 1.5)
+				m.fx.burst("sparks", p, 120, Vector3.UP, 2.0)
+				m.fx.burst("debris", p, 50, Vector3.UP, 1.6)
 				m.fx.mark("scorch", p, 2.6)
 			blast(p, 3.5, 24.0, owner_)
 			for x in _near(p, 3.5):

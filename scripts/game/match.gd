@@ -52,6 +52,8 @@ var attract := false            # the menu backdrop: bots only, an orbiting came
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
 var hero_inp := {}
 var hero_cam := {}              # {pos, look}: a fixed shot instead of the orbit
+var rules: BoutRules = null     # Bread & Circuses: the bout's special rules
+var circus := {}                # {bout, day, bout_index, mods, fortune}
 
 ## The menu's champion: a fighter outside the fight (no bot, not a target) who just stands.
 func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = null) -> Fighter:
@@ -71,6 +73,7 @@ func setup(opts: Dictionary) -> void:
 	stage = int(opts.get("stage", 1))
 	role = opts.get("role", "local")
 	training = opts.get("training", {})
+	circus = opts.get("circus", {})
 	headless = opts.get("headless", false)
 	rng.seed = int(opts.get("seed", stage * 1009 + 7))
 	fx = Fx.new(headless)
@@ -127,7 +130,7 @@ func setup(opts: Dictionary) -> void:
 		return
 	# Players: the local one, then a fighter for every friend in the room.
 	var lo: Dictionary = opts.get("loadout", {"main": "gladius", "off": "roundShield"})
-	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color")})
+	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {})})
 	me.inventory = opts.get("inventory", {})
 	for p in opts.get("peers", []):
 		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin")})
@@ -142,6 +145,8 @@ func setup(opts: Dictionary) -> void:
 		_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
 	elif mode == "training":
 		_spawn_training()
+	elif mode == "circus":
+		_setup_circus(opts)
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names))
 	spectacle.on_round_start()
@@ -188,7 +193,7 @@ func spawn_fighter(spec: Dictionary):
 func spawn_beast(spec: Dictionary):
 	var b := Beast.new()
 	add_child(b)
-	b.build_beast(spec.beast, spec.pos, spec.get("yaw", 0.0), {"name": spec.get("name", Data.beasts.get(spec.beast, {}).get("name", spec.beast)), "scale": spec.get("scale", Data.beasts.get(spec.beast, {}).get("scale", 1.0)), "boss": spec.get("boss", false), "team": spec.team, "seed": rng.randi()})
+	b.build_beast(spec.beast, spec.pos, spec.get("yaw", 0.0), {"name": spec.get("name", Data.beasts.get(spec.beast, {}).get("name", spec.beast)), "scale": spec.scale if spec.get("scale") != null else Data.beasts.get(spec.beast, {}).get("scale", 1.0), "boss": spec.get("boss", false), "team": spec.team, "seed": rng.randi()})
 	b.gravity = dec.gravity
 	b.on_breath = _breath
 	b.on_stomp = _stomp
@@ -252,6 +257,9 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var lo: Dictionary = los[rng.randi_range(0, los.size() - 1)]
 	var main: Dictionary = temper(Data.preset(lo.main), g.get("temper")) if lo.get("main") else {}
 	var off: Dictionary = temper(Data.preset(lo.off), g.get("temper")) if lo.get("off") else {}
+	if en.get("loadout") is String and en.loadout != "":
+		main = Data.preset(en.loadout)
+		off = {}
 	var armor: Array = lo.get("armor", []).duplicate()
 	for x in g.get("armor", []):
 		if not armor.has(x):
@@ -280,6 +288,46 @@ func _spawn_round(r: int) -> void:
 			spawn_beast(spec)
 		else:
 			spawn_fighter(spec)
+
+## A Bread & Circuses bout: its enemies (one more for every extra player), its rules, its intro.
+func _setup_circus(opts: Dictionary) -> void:
+	circus = opts.get("circus", {})
+	var bout: Dictionary = circus.get("bout", {})
+	var list := Circus.scaled_enemies(bout, players_count)
+	for i in list.size():
+		var spec := enemy_spec(list[i], i, list.size())
+		if spec.kind == "beast":
+			spawn_beast(spec)
+		else:
+			spawn_fighter(spec)
+	rules = BoutRules.new(self, bout)
+	rules.setup()
+	_banner(String(bout.get("name", "Bout")), String(bout.get("intro", "")))
+	if circus.get("fortune"):
+		feed.emit(String(circus.fortune.get("text", "")))
+
+## A decree in the middle of a bout (the Emperor's Whims).
+func apply_decree(d: Dictionary) -> void:
+	if d.is_empty():
+		return
+	decrees.append(d)
+	dec = Decrees.combine(decrees)
+	PhysicsServer3D.area_set_param(get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, dec.gravity)
+	Engine.time_scale = dec.timeScale
+	combat.chip_mult = dec.chip
+	for e in entities:
+		if is_instance_valid(e.f):
+			e.f.gravity = dec.gravity
+			for k in d.get("mods", {}):
+				if k != "weaponScale" and k != "bodyScale":
+					e.f.mods[k] = d.mods[k]
+	_banner(String(d.get("name", "")), String(d.get("desc", "")))
+	sfx("horn", Vector3.ZERO, 1.0)
+
+func circus_status() -> String:
+	var head := "Day %s · bout %d" % [["I", "II", "III", "IV", "V", "VI", "VII"][clampi(int(circus.get("day", 0)), 0, 6)], int(circus.get("bout_index", 0)) + 1]
+	var s := rules.status() if rules else ""
+	return head + ((" · " + s) if s != "" else "")
 
 func _spawn_training() -> void:
 	var who: String = training.get("enemy", "gladiator")
@@ -384,6 +432,8 @@ func _physics_process(dt: float) -> void:
 	if modes:
 		modes.update(dt, local_inp)
 	spectacle.update(dt)
+	if rules and not over:
+		rules.update(dt)
 	hazards.update(dt)
 	if lion_t > 0.0:
 		lion_t -= dt
@@ -488,8 +538,9 @@ func spawn_loose_weapon(design: Dictionary, pos: Vector3) -> Weapon:
 	return w
 
 ## A coin picked up off the sand (the crowd module pays it).
-func on_coin(_c) -> void:
-	pass
+func on_coin(c) -> void:
+	if rules:
+		rules.on_coin(c)
 
 ## Host: loose weapons get a number and the guests are told when one is dropped, thrown,
 ## spawned or picked up.
@@ -667,6 +718,9 @@ func _check_round(dt: float) -> void:
 				else:
 					spawn_fighter(spec)
 		return
+	if mode == "circus":
+		_check_circus(alive_h, alive_e)
+		return
 	if alive_h.is_empty():
 		_end(false, "You fall", "The crowd moves on. A fall sends you back to the checkpoint.")
 		return
@@ -681,6 +735,17 @@ func _check_round(dt: float) -> void:
 			_end(true, "Stage %d cleared" % stage, "%d denarii each. Back to the yard: spend, mend, gear up." % pay, pay)
 		else:
 			_end(true, "Victory", "")
+
+func _check_circus(alive_h: Array, alive_e: Array) -> void:
+	if alive_h.is_empty():
+		_end(false, "DEFEAT", "The Emperor turns his thumb down")
+		return
+	var r := rules.check() if rules else ""
+	var won := r == "win" or (r == "" and rules != null and rules.default_rule() and alive_e.filter(func(e): return not e.get("harmless", false)).is_empty())
+	if r == "lose":
+		_end(false, "DEFEAT", "The Emperor turns his thumb down")
+	elif won:
+		_end(true, "VICTORY!", "The crowd roars your name")
 
 func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
 	over = true
@@ -698,6 +763,11 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 			elif me.f.arm[side].fore.severed:
 				wear[side] = "lost"
 	var result := {"won": won, "stage": stage, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	if mode == "circus":
+		result["circus"] = true
+		result["coins"] = rules.coins if rules else 0
+		result["favor"] = spectacle.get_favor(me.f) if me and is_instance_valid(me.f) else 0.0
+		result["time"] = time
 	if role == "host":
 		Net.send_all("end", {"won": won, "text": text, "sub": sub, "pay": pay})
 	finished.emit(result)
@@ -710,6 +780,8 @@ func _banner(text: String, sub: String) -> void:
 		Net.send_all("banner", {"text": text, "sub": sub})
 
 func _on_hit(h: Dictionary) -> void:
+	if rules and role != "guest":
+		rules.on_hit(h)
 	if role != "guest":
 		spectacle.on_hit(h)
 	# Blood where it struck (a party of colours under Confetti Blood), and on the sand below.

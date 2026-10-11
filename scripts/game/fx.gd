@@ -75,6 +75,7 @@ const KINDS := {
 	"brazier": {"color": Color(1.0, 0.55, 0.15), "life": 0.9, "speed": [0.6, 1.6], "spread": 18.0, "gravity": 2.5, "size": [0.18, 0.36], "tex": "soft", "emit": 5.0, "add": true, "shrink": true},
 	"confetti": {"color": Color(1, 1, 1), "life": 2.0, "speed": [2.0, 5.0], "spread": 60.0, "gravity": -3.0, "size": [0.03, 0.05], "tex": "", "drag": 1.2, "confetti": true},
 	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "spark", "emit": 1.5},
+	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.55, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "add": true, "shrink": true, "drag": 2.5},
 	"embers": {"color": Color(1.0, 0.6, 0.25), "life": 4.0, "speed": [0.15, 0.5], "spread": 180.0, "gravity": 0.22, "size": [0.008, 0.018], "tex": "spark", "emit": 5.0, "add": true, "drag": 0.3},
 	"petals": {"color": Color(0.62, 0.05, 0.06), "life": 6.0, "speed": [0.2, 0.6], "spread": 180.0, "gravity": -0.35, "size": [0.025, 0.045], "tex": "", "drag": 1.6},
 	"debris": {"color": Color(0.6, 0.5, 0.4), "life": 1.2, "speed": [1.0, 4.0], "spread": 80.0, "gravity": -9.8, "size": [0.025, 0.05], "tex": "", "shade": true},
