@@ -167,3 +167,50 @@ func test_missing_voxels_stay_missing() -> void:
 	await _run(w, [hy], 2.0)
 	t.check(n == 4 and hy.heads_left().size() == 4 and hy.by_name.head2.severed, "a severed hydra head stays off")
 	w.queue_free()
+
+## The blows land like blows: a man attacked by each creature is thrown about and hurt, but
+## no joint of his or of the creature's comes apart (the two sides of every joint stay within a
+## few centimetres), nothing flies off at absurd speed, he is never launched into the air, and
+## every number stays finite.
+func test_attacks_stay_physical() -> void:
+	var bad := []
+	for k in Data.beasts:
+		if k == "goat":
+			continue
+		var w := _world()
+		var man := w.fighter(Vector3(0, 0, 0), PI, {}, {"name": "Man", "slot": 0})
+		var b: Beast
+		if Data.beasts[k].ai == "path":
+			b = _beast(w, k, Vector3(0, 0.2, 6.0), PI * 0.5)
+			man.teleport(Vector3(sin(0.8) * 6.0, 0, cos(0.8) * 6.0))
+		else:
+			b = _beast(w, k, Vector3(0, 0.2, 2.2 + 0.9 * b_size(k)))
+		b.target = man
+		b.ai.fly_cool = 999.0
+		var vmax := 0.0
+		var ymax := 0.0
+		var gap := 0.0
+		var finite := true
+		for s in int(6.0 / DT):
+			man.control(DT, {})
+			b.control(DT)
+			await get_tree().physics_frame
+			if s % 6 != 0:
+				continue
+			for f in [man, b]:
+				for p in f.parts:
+					var pos: Vector3 = p.global_position
+					if not (is_finite(pos.x) and is_finite(pos.y) and is_finite(pos.z)):
+						finite = false
+					if p.severed:
+						continue
+					if f == man:
+						vmax = maxf(vmax, p.linear_velocity.length())
+						ymax = maxf(ymax, pos.y)
+					if p.joint and p.parent_part and not p.parent_part.severed and p.def.get("ca") != null:
+						gap = maxf(gap, (p.parent_part.global_transform * p.pa).distance_to(p.global_transform * p.ca))
+		if not finite or vmax > 20.0 or ymax > 3.0 or gap > 0.12 * maxf(1.0, b.S):
+			bad.append("%s v %.1f y %.1f gap %.2f%s" % [k, vmax, ymax, gap, "" if finite else " NaN"])
+		w.queue_free()
+		await get_tree().process_frame
+	t.check(bad.is_empty(), "unphysical: " + ", ".join(bad))

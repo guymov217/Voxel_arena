@@ -150,15 +150,22 @@ func _build_mesh() -> void:
 		mm.set_instance_color(i, colors[i])
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
+	# A fixed box the size of the whole part: knocking voxels out (scaling them to nothing) makes
+	# Godot shrink the multimesh's own box to a sliver, and the part was then culled off screen.
+	var ext := Vector3(grid.x, grid.y, grid.z) * vf * part_scale * 0.5 + Vector3.ONE * vf * part_scale
+	mmi.custom_aabb = AABB(-ext, ext * 2.0)
+	mm.custom_aabb = AABB(-ext, ext * 2.0)
 	add_child(mmi)
 
 func refresh_colors(indices: Array = []) -> void:
-	if indices.is_empty():
-		for i in fx.size():
-			mm.set_instance_color(i, colors[i])
-	else:
-		for i in indices:
-			mm.set_instance_color(i, colors[i])
+	# Through the buffer, like set_shown: per-instance writes made the part vanish.
+	var buf := mm.buffer
+	var list: Array = indices if not indices.is_empty() else range(fx.size())
+	for i in list:
+		var b: int = i * 16 + 12
+		var c: Color = colors[i]
+		buf[b] = c.r; buf[b + 1] = c.g; buf[b + 2] = c.b; buf[b + 3] = c.a
+	mm.buffer = buf
 
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
@@ -208,9 +215,9 @@ func remove_voxels(indices: Array, smear := true) -> Array:
 		done.append(i)
 		out.append({"p": world_of(i), "color": colors[i]})
 		centre += local_of(i)
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), local_of(i)))
 	if out.is_empty():
 		return out
+	set_shown(done, false)
 	if smear:
 		centre /= out.size()
 		wound(centre, vf * part_scale * (2.2 + pow(out.size(), 1.0 / 3.0) * 0.8), "blood")
@@ -219,13 +226,29 @@ func remove_voxels(indices: Array, smear := true) -> Array:
 		fighter.on_part_voxels_lost(self, done, out)
 	return out
 
+## Shows or hides voxels by writing the multimesh's instance buffer in one go (12 transform
+## floats then 4 colour floats per voxel). Setting a single instance's transform after the first
+## frame made Godot drop the whole part from the screen, which hid every wounded body part.
+func set_shown(indices: Array, on: bool) -> void:
+	var buf := mm.buffer
+	for i in indices:
+		if i < 0 or i >= fx.size():
+			continue
+		var b: int = i * 16
+		var o := local_of(i)
+		var k := 1.0 if on else 0.0
+		buf[b] = k; buf[b + 1] = 0.0; buf[b + 2] = 0.0; buf[b + 3] = o.x * k
+		buf[b + 4] = 0.0; buf[b + 5] = k; buf[b + 6] = 0.0; buf[b + 7] = o.y * k
+		buf[b + 8] = 0.0; buf[b + 9] = 0.0; buf[b + 10] = k; buf[b + 11] = o.z * k
+	mm.buffer = buf
+
 ## Puts voxels back (a mended limb in a replay, a net message out of order).
 func restore_voxels(indices: Array) -> void:
 	for i in indices:
 		if i >= 0 and i < fx.size() and alive[i] == 0:
 			alive[i] = 1
 			alive_count += 1
-			mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
+	set_shown(indices, true)
 	fit_collider()
 
 ## The collision shape follows the flesh once the part has a hole (see the class comment).

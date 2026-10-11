@@ -93,12 +93,6 @@ func _ready() -> void:
 	ps.content_margin_left = 32; ps.content_margin_right = 32; ps.content_margin_top = 26; ps.content_margin_bottom = 26
 	panel_style = ps
 	col.add_child(panel)
-	var credit := UIStyle.label("LIVE FROM THE ARENA · the bots behind this menu are really fighting", 12, Color(1, 1, 1, 0.45))
-	credit.anchor_left = 1.0; credit.anchor_right = 1.0; credit.anchor_top = 1.0; credit.anchor_bottom = 1.0
-	credit.offset_left = -560; credit.offset_right = -24; credit.offset_top = -34; credit.offset_bottom = -12
-	credit.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	credit.name = "Credit"
-	add_child(credit)
 	var ver := UIStyle.label("v%s · Godot %s" % [ProjectSettings.get_setting("application/config/version", "0.1"), Engine.get_version_info().string], 12, Color(1, 1, 1, 0.45))
 	ver.anchor_left = 1.0; ver.anchor_right = 1.0
 	ver.offset_left = -420; ver.offset_right = -20; ver.offset_top = 12; ver.offset_bottom = 34
@@ -264,15 +258,6 @@ func _main(v: VBoxContainer) -> void:
 	glint.tween_interval(3.5)
 	glint.tween_property(t, "self_modulate", Color(1.3, 1.22, 1.05), 0.25)
 	glint.tween_property(t, "self_modulate", Color.WHITE, 0.7)
-	var sub := Label.new()
-	sub.text = "BLOOD  ·  SAND  ·  VOXELS"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_override("font", UIStyle.serif(9))
-	sub.add_theme_font_size_override("font_size", 19)
-	sub.add_theme_color_override("font_color", Color(0.93, 0.87, 0.76))
-	sub.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	sub.add_theme_constant_override("shadow_offset_y", 2)
-	head.add_child(sub)
 	var rule := Ornament.new("rule", Vector2(380, 22))
 	rule.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	head.add_child(rule)
@@ -303,19 +288,6 @@ func _main(v: VBoxContainer) -> void:
 		var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tw.tween_interval(0.12 + i * 0.06)
 		tw.tween_property(b, "modulate:a", 1.0, 0.3)
-	if not Save.get_value("tutorial_done", false):
-		var nb := UIStyle.button("New here? The tutorial takes two minutes", _tutorial)
-		nb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		v.add_child(nb)
-	var name_edit := LineEdit.new()
-	name_edit.text = Save.get_value("name", "Gladiator")
-	name_edit.max_length = 24
-	name_edit.custom_minimum_size = Vector2(240, 0)
-	name_edit.text_changed.connect(func(tx):
-		Save.set_value("name", tx)
-		Net.my_name = tx)
-	var nrow := _row(v, [UIStyle.label("Gladiator", 15, UIStyle.TEXT), name_edit, UIStyle.label("Purse: %d denarii" % coins(), 15, UIStyle.TEXT)])
-	nrow.alignment = BoxContainer.ALIGNMENT_CENTER
 
 var rebinding := ""
 var hub := false                 # in the walkable yard, or coming back to it after a fight

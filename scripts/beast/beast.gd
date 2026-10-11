@@ -693,8 +693,10 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: flo
 		"head":
 			if species == "boar" or species == "elephant" or species == "mammoth":
 				return Vector3(0.1, signf(float(ai.get("sweep", 1.0))) * (0.6 - st), 0)   # a tusk sweep
-			if species == "bull" or species == "rhino" or species == "goat":
-				return Vector3(-0.6, 0, 0)                                              # the horn toss
+			if species == "rhino":
+				return Vector3(0.12, track * 0.3, 0)                                   # a forward horn thrust, low
+			if species == "bull" or species == "goat":
+				return Vector3(-0.3, 0, 0)                                              # the horn toss
 			return Vector3(0.45, track * 0.3, 0)                                        # a bite
 		"tail":
 			return Vector3(0.6, 0, 0)                                                  # the sting over the back
@@ -796,8 +798,11 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
 		_strike(head, 0.5, 2.0 + rng.randf())
 	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach and facing > 0.6:
+		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
+		# man is thrown about like by a bull, not launched into the air.
 		_strike(head, 0.35, 1.8 + rng.randf())
-		head.apply_central_impulse(Vector3(0, 18.0 * S * horn_fn(), 0))
+		if species != "rhino":
+			head.apply_central_impulse(Vector3(0, 4.0 * S * horn_fn(), 0))
 
 ## The hydra's wounds close: voxels grow back, a few at a time, on necks and heads that are still
 ## on, next to flesh that is still there, never on burnt flesh and never more than half of what

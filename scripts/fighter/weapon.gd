@@ -245,6 +245,15 @@ func _build_mesh() -> void:
 		mm.set_instance_color(i, voxel_color(v[3], v[4]))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
+	# Fixed box: chipped voxels are scaled to nothing, which would shrink the auto box (see VoxelPart).
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for v in vox:
+		var q := Vector3(v[0], v[1], v[2]) * vs
+		lo = lo.min(q); hi = hi.max(q)
+	if not vox.is_empty():
+		mmi.custom_aabb = AABB(lo - Vector3.ONE * vs, hi - lo + Vector3.ONE * vs * 2.0)
+		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
 
 # ---------- Wear ----------
@@ -252,15 +261,23 @@ func _build_mesh() -> void:
 func remove_voxels(indices: Array) -> Array:
 	var out := []
 	var touched := {}
+	var hidden := []   # buffer slots to zero (see VoxelPart.set_shown: single-instance writes hid the mesh)
 	for i in indices:
 		if i < 0 or i >= vox.size() or alive[i] == 0:
 			continue
 		alive[i] = 0
 		var v: Array = vox[i]
 		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4])})
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3(v[0], v[1], v[2]) * vs))
+		var b: int = i * 16
+		var buf_i := [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11]
+		hidden.append_array(buf_i)
 		if box_of[i]:
 			touched[box_of[i].id] = box_of[i]
+	if not hidden.is_empty():
+		var buf := mm.buffer
+		for k in hidden:
+			buf[k] = 0.0
+		mm.buffer = buf
 	for b in touched.values():
 		_drop_box(b)
 		var left := []
