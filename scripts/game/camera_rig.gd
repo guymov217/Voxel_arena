@@ -56,7 +56,11 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null)
 		clear_k = move_toward(clear_k, 1.0 if blocked else 0.0, dt * (2.5 if blocked else 0.8))
 		want += (right * 0.55 + Vector3(0, 0.3, 0)) * S * clear_k * (1.0 - aim_k)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
-		look = base + fwd * 2.0 * S + Vector3(0, 0.35 * S + sin(pitch) * 2.0 * S, 0)
+		# The view looks where the mouse points: all the way down at the sand at your feet,
+		# or up at the stands (it used to look at a point two strides ahead, and looking down
+		# hardly tilted it).
+		var vp := clampf(pitch - 0.12, -1.45, 1.4)
+		look = pos + (fwd * cos(vp) + Vector3(0, sin(vp), 0)) * 6.0 * S
 	global_position = pos
 	if pos.distance_to(look) > 0.01:
 		look_at(look, Vector3.UP)

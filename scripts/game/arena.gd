@@ -92,9 +92,9 @@ func _build_visuals() -> void:
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	e.ambient_light_sky_contribution = 0.55
 	e.ambient_light_color = Color(0.85, 0.72, 0.55)
-	e.ambient_light_energy = 0.75 if day else 0.3
+	e.ambient_light_energy = 0.6 if day else 0.27
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.95
+	e.tonemap_exposure = 0.82
 	e.tonemap_white = 6.0
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 1.0
@@ -105,7 +105,7 @@ func _build_visuals() -> void:
 	add_child(we)
 	env = e
 	sun = DirectionalLight3D.new()
-	sun.light_energy = 1.9 if day else 0.25
+	sun.light_energy = 1.65 if day else 0.25
 	sun.light_color = Color(1.0, 0.9, 0.74) if day else Color(0.5, 0.56, 0.75)
 	sun.rotation = Vector3(deg_to_rad(-48), deg_to_rad(35), 0)
 	add_child(sun)

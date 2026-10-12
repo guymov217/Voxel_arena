@@ -117,10 +117,14 @@ func _freeze_hero(on: bool) -> void:
 		b.angular_velocity = Vector3.ZERO
 	hero.set_meta("frozen", on)
 
+## The smooth skin over the bodies (VoxelSkin) is set aside for now: bodies are drawn as plain
+## voxels whatever the saved setting. True brings back the menu option and the smooth default.
+const SMOOTH_BODIES_OFFERED := false
+
 func setup(opts: Dictionary) -> void:
 	# Bodies smooth-skinned or as plain voxels (Settings, Graphics; VA_BODIES overrides).
-	var bodies := OS.get_environment("VA_BODIES") if OS.has_environment("VA_BODIES") else str(Save.get_value("settings", {}).get("bodies", "smooth"))
-	VoxelPart.smooth_skin = bodies != "blocky"
+	var bodies := OS.get_environment("VA_BODIES") if OS.has_environment("VA_BODIES") else (str(Save.get_value("settings", {}).get("bodies", "smooth")) if SMOOTH_BODIES_OFFERED else "blocky")
+	VoxelPart.smooth_skin = bodies == "smooth"
 	mode = opts.get("mode", "campaign")
 	stage = int(opts.get("stage", 1))
 	role = opts.get("role", "local")

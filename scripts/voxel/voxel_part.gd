@@ -72,8 +72,9 @@ var half_ext := Vector3.ONE
 static var _box_mesh_cache := {}
 static var _material: StandardMaterial3D
 ## Bodies drawn as a smooth skin over their voxels (VoxelSkin) instead of the voxel boxes; the
-## voxels are still what is hit, cut and simulated. Set from the settings ("bodies").
-static var smooth_skin := true
+## voxels are still what is hit, cut and simulated. Set from the settings ("bodies"). Off for
+## now (kept for later: SMOOTH_BODIES_DEFAULT in match.gd and the menu's Bodies row).
+static var smooth_skin := false
 static var _skin_material: StandardMaterial3D
 var skin: MeshInstance3D = null
 var _skin_dirty := false

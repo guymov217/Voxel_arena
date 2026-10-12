@@ -95,7 +95,13 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	for p in parts:
 		if p.parent_part:
 			var at: Vector3 = p.parent_part.global_transform * p.pa
-			p.joint = _joint_at(p.parent_part, p, at, not p.def.get("leg", false))
+			if p.def.get("leg", false):
+				# A leg swings fore and aft at the hip or the knee, a little out to the side,
+				# and hardly twists: on a free ball joint the elephant's legs spun round on
+				# their own length.
+				_make_limited(p, [[-1.4, 1.4], [-0.12, 0.12], [-0.35, 0.35]])
+			else:
+				p.joint = _joint_at(p.parent_part, p, at, true)
 	for p in parts:
 		if p.def.get("leg", false) and not p.def.get("lower", false):
 			legs.append(p)

@@ -354,6 +354,7 @@ func knock(index: int, score: float) -> Dictionary:
 	if idx.is_empty():
 		return {}
 	var voxels := remove_voxels(idx)
+	Chunk.spawn(self, voxels.duplicate(), Vector3.UP)   # the chips fly off
 	var pieces := split_plan()
 	var fell := []
 	for pc in pieces:

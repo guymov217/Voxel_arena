@@ -171,7 +171,7 @@ func _mouse(e: InputEvent) -> void:
 		var h = main if lmb else (off if rmb else null)
 		if h == null or aiming:
 			look_yaw -= m.relative.x * 0.0013 * sensitivity * sens_x
-			look_pitch = clampf(look_pitch - m.relative.y * 0.0011 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.35, 1.35)
+			look_pitch = clampf(look_pitch - m.relative.y * 0.0011 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
 			return
 		var s := 0.0024 * sensitivity
 		for hh in ([main, off] if both else [h]):
@@ -207,7 +207,7 @@ func _pad(dt: float) -> void:
 	var rs := Vector2(dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_X)), dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_Y)))
 	if not (pad_r or pad_l):
 		look_yaw -= rs.x * dt * 2.6 * sensitivity * sens_x
-		look_pitch = clampf(look_pitch - rs.y * dt * 1.8 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.35, 1.35)
+		look_pitch = clampf(look_pitch - rs.y * dt * 1.8 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
 	else:
 		for hh in ([main] if pad_r else []) + ([off] if pad_l else []):
 			var lim := 2.0

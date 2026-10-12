@@ -80,7 +80,7 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		ch.linear_velocity = part.velocity_at(c) + dir * 1.5 + Vector3(0, 0.8, 0)
 		ch.angular_velocity = Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 8.0
 	all.append(ch)
-	var cap := 16 if Fx.current and Fx.current.quality == "low" else 60
+	var cap := 40 if Fx.current and Fx.current.quality == "low" else 160
 	while all.size() > cap:
 		var old = all.pop_front()
 		if is_instance_valid(old):
