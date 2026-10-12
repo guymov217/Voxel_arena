@@ -263,6 +263,11 @@ func _blow(g: Dictionary) -> Dictionary:
 		J *= 0.15 + 0.85 * minf(1.0, swing / 3.5)
 		J *= 0.75 + 0.25 * minf(2.4, swing / 4.0)
 		heavy = clampf((swing - 4.0) / 6.0, 0.0, 1.0)
+	elif is_weapon and att.thrown_t > 0.0 and not att.is_hazard:
+		# Thrown: the blow is its momentum, in proportion to how hard it was thrown (the speed
+		# it lands at) and to how heavy it is; a dagger stings, a hammer flattens.
+		J = minf(90.0, (0.5 + att.mass) * speed * 0.95)
+		heavy = clampf((att.mass * speed - 20.0) / 40.0, 0.0, 1.0)
 	if is_weapon:
 		var key_name := _preset_key(att.design)
 		J *= float(att.design.get("dmgScale", Data.damage_tuning.get(key_name, 1.0)))

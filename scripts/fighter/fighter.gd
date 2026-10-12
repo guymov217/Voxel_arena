@@ -30,6 +30,15 @@ const LEG_REACT := 0.35
 const GRAVITY := 9.81
 const UP := Vector3.UP
 const GRIP_Q := Quaternion(Vector3(1, 0, 0), PI)
+## A bow is not a blade (character.js BOW_Q): its arrow direction (+x) runs along the forearm
+## toward the target and the stave (+y) stands across it.
+const BOW_Q := Quaternion(Vector3(1, 0, 0), PI) * Quaternion(Vector3(0, 0, 1), PI / 2.0)
+
+static func grip_q(w) -> Quaternion:
+	return BOW_Q if w and str(w.design.get("shoots", "")) == "arrow" else GRIP_Q
+
+static func is_bow(w) -> bool:
+	return w != null and str(w.design.get("shoots", "")) == "arrow"
 var behind_t := {"R": 0.0, "L": 0.0}
 const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
 
@@ -129,6 +138,7 @@ var hand_point := HAND_POINT
 var torso_y := TORSO_Y
 var arm_reach := ARM_REACH
 var gaze = null                 # a world point the head turns to (bots)
+var off_goal = null             # a world point the free off hand reaches for: a bow's string, a crossbow's to cock
 var space: PhysicsDirectSpaceState3D
 
 # ---------- Building ----------
@@ -386,7 +396,7 @@ func equip(side: String, design: Dictionary) -> void:
 	if w.is_shield:
 		rot = Quaternion(UP, yaw)
 	else:
-		rot = PD.quat_of(fore) * GRIP_Q
+		rot = PD.quat_of(fore) * grip_q(w)
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
 	w.build_chain()
@@ -419,8 +429,8 @@ func _joint_at(a: RigidBody3D, b: RigidBody3D, at: Vector3, fixed: bool) -> Join
 	return j
 
 func _attach_off_hand(w: Weapon) -> void:
-	if not w:
-		return
+	if not w or is_bow(w):
+		return   # the off hand of an archer draws the string; it does not hold the stave
 	var fore: VoxelPart = arm.L.fore
 	var at := w.global_transform * w.grip_off
 	fore.global_position += at - hand_world("L")
@@ -531,7 +541,7 @@ func pick_up(side: String, w: Weapon) -> bool:
 		w.forget_owner()
 	if w.stuck != null:
 		w.unstick()
-	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * GRIP_Q
+	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w)
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
 	w.linear_velocity = fore.linear_velocity
@@ -557,8 +567,8 @@ func pick_up(side: String, w: Weapon) -> bool:
 func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8, javelin := false, scatter := 0.0, arm_f := 1.0) -> Vector3:
 	var m_arm := 2.5 * pow(S, 2.5)
 	var tired := 0.65 + 0.35 * minf(1.0, stamina / 100.0)
-	var v_hand := (26.0 if javelin else 20.0) * sqrt(S) * float(mods.strength) * (0.5 + 0.5 * arm_f) * (1.0 - 0.5 * injury) * (0.4 + 0.6 * power) * tired
-	var v := minf(32.0, v_hand * sqrt(m_arm / (m_arm + maxf(0.05, mass_))))
+	var v_hand := (31.0 if javelin else 24.0) * sqrt(S) * float(mods.strength) * (0.5 + 0.5 * arm_f) * (1.0 - 0.5 * injury) * (0.4 + 0.6 * power) * tired
+	var v := minf(38.0, v_hand * sqrt(m_arm / (m_arm + maxf(0.05, mass_))))
 	var d := aim_at - from
 	var dx := maxf(0.01, Vector2(d.x, d.z).length())
 	var dy := d.y
@@ -1097,7 +1107,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# Caught by that arm: it cannot swing until it is wrenched free.
 	if pinned_arm == side and is_instance_valid(grabbed_by):
 		af *= 0.12
-	if side == "L" and two_handed:
+	if side == "L" and two_handed and not (off_goal != null and is_bow(weapons.R)):
 		var hand_l := hand_world("L")
 		var sh_l = t_pos + t_rot * shoulder.L
 		var dir_l = (hand_l - sh_l).normalized()
@@ -1135,8 +1145,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
 	var hp_used: Dictionary = down_hp if down_hp != null else hp
 	# A bow is held out at the shoulder, stave upright, whatever the mouse does.
-	if down_hp == null and side == "R" and w and str(w.design.get("shoots", "")) == "arrow":
-		hp_used = {"x": 0.3, "y": 0.45}
+	if down_hp == null and side == "R" and w and w.design.has("shoots"):
+		var ap := _shoot_pitch(inp)
+		hp_used = {"x": 0.3 if is_bow(w) else 0.15, "y": clampf((0.45 if is_bow(w) else 0.38) + ap * 0.9, -0.4, 1.4)}
+		thrust = 0.6 if is_bow(w) else 0.3
 	hand_input[side] = hp_used
 	var target := hand_target_local(side, hp_used, thrust)
 	# A hurt arm trembles and wanders, more the worse it is; a hurt eye throws the aim off too.
@@ -1150,6 +1162,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		target.y += cos(time * 2.3) * concussion * 0.2
 	target = _clear_body(target, yaw_q, t_pos)
 	var target_w := t_pos + yaw_q * target
+	# The off hand at work on a bow or a crossbow: on the string, wherever that is.
+	if side == "L" and off_goal != null and not w and down_hp == null:
+		target_w = off_goal
 	# The hand moves like an arm: limited speed and acceleration toward the mouse's mark.
 	var lead = hand_lead[side]
 	if lead != null and (lead as Vector3).distance_to(target_w) < 2.5 * S:
@@ -1184,7 +1199,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var shoulder_w = t_pos + t_rot * shoulder[side]
 	var dir = (target_w - shoulder_w).normalized()
 	if w and not w.is_shield and weapon_joints[side]:
-		var fore_q := weapon_aim(side, w, target_w, t_pos, yaw_q, inp, dt) * GRIP_Q.inverse()
+		var fore_q := weapon_aim(side, w, target_w, t_pos, yaw_q, inp, dt) * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
 		var lf := FORE_LEN * S
@@ -1264,6 +1279,50 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			var m_eff: float = fo.nominal_mass + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
 			var acc: float = push.length() * 4000.0 - minf(0.0, v_out) * 40.0
 			part.apply_impulse(bq * push.normalized() * acc * m_eff * dt, (pp[1] as Vector3) - part.global_position)
+
+## Where a bow or a crossbow points: at the player's crosshair (aimAt), a bot's target (gaze),
+## or straight ahead. A bow lies with the arrow (+x) on that line and the stave upright; a
+## crossbow's stock (+y) is on it. Slewed at the weapon's rate, like any held weapon.
+func _shoot_point(inp: Dictionary) -> Vector3:
+	if inp.get("aimAt") is Vector3:
+		return inp.aimAt
+	if gaze != null:
+		return gaze
+	return torso.global_position + Vector3(sin(yaw), 0.3, cos(yaw)) * 10.0
+
+func _shoot_pitch(inp: Dictionary) -> float:
+	var d := _shoot_point(inp) - (torso.global_position + Vector3(0, 0.3 * S, 0))
+	return atan2(d.y, Vector2(d.x, d.z).length())
+
+func _shooter_aim(side: String, w: Weapon, inp: Dictionary, yaw_q: Quaternion, dt: float) -> Quaternion:
+	var from := hand_world(side)
+	var dir := _shoot_point(inp) - from
+	if dir.length_squared() < 1e-4:
+		dir = yaw_q * Vector3(0, 0, 1)
+	dir = dir.normalized()
+	var side_v := dir.cross(UP)
+	if side_v.length_squared() < 1e-4:
+		side_v = yaw_q * Vector3(1, 0, 0)
+	side_v = side_v.normalized()
+	var up_v := side_v.cross(dir).normalized()
+	var desired: Quaternion
+	if is_bow(w):
+		# x along the shot, y the stave (tipped a little, as archers cant it), z across.
+		var stave := up_v.rotated(dir, -0.18)
+		desired = PD.quat_from_axes(dir, stave, dir.cross(stave).normalized())
+	else:
+		desired = PD.quat_from_axes(side_v, dir, side_v.cross(dir).normalized())
+	var prev = aim_q[side]
+	if prev != null:
+		var step := PD.rot_error(desired, prev)
+		var wmax := 14.0 * (0.45 + 0.55 * float(handling[side]))
+		var rate := step.length() / dt
+		if rate > wmax:
+			step *= wmax / rate
+			var ang := step.length()
+			desired = Quaternion(step / ang, ang) * (prev as Quaternion)
+	aim_q[side] = desired
+	return desired
 
 ## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
 ## side of the body (at most 0.22 S across the shoulder line) and at most 0.12 S above the
@@ -1348,7 +1407,7 @@ func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t
 	var inv := t_rot.inverse()
 	var wrot := PD.quat_of(w)
 	var tip := inv * (w.global_position + wrot * Vector3(0, w.reach * 0.85, 0) - t_pos)
-	var want := (fore_q * GRIP_Q) * Vector3(0, 1, 0)
+	var want := (fore_q * grip_q(w)) * Vector3(0, 1, 0)
 	var want_l := inv * want
 	var heavy := clampf((w.mass - 2.0) / 5.0, 0.0, 1.0)
 	var behind := tip.z < -(0.12 - 0.08 * heavy) * S
@@ -1383,6 +1442,8 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 ## Where the blade should point: elevation from the hand's height, yaw from a pivot behind the
 ## hand, the edge leading the stroke; slewed at the rate the weapon allows.
 func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_q: Quaternion, inp: Dictionary, dt: float) -> Quaternion:
+	if w.design.has("shoots") and not w.design.get("chain"):
+		return _shooter_aim(side, w, inp, yaw_q, dt)
 	var local := (yaw_q.inverse() * (target_w - t_pos)) / S
 	var hy := float(hand_input[side].get("y", 0.15))
 	var elev := clampf((0.6 if hy >= 0.0 else 0.85) * hy, -1.45, 1.45)

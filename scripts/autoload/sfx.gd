@@ -15,7 +15,7 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0}
+const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -163,6 +163,12 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = (lp + (0.0 if kind == "cheer" else 0.25 * sin(TAU * 120.0 * t * (1.0 - 0.3 * t / L)))) * env * 0.9
 			"honk":
 				s = (1.0 if fmod(t * 233.0, 1.0) < 0.5 else -1.0) * 0.35 * minf(1.0, t * 40.0) * minf(1.0, (0.45 - t) * 20.0)
+			"draw":
+				# A bow string creaking back.
+				lp += (rng.randf_range(-1, 1) - lp) * 0.08
+				s = (lp * 0.6 + 0.25 * sin(TAU * (140.0 + 90.0 * t) * t)) * sin(PI * t / 0.5) * 0.7
+			"twang":
+				s = (sin(TAU * 196.0 * tone * t) + 0.5 * sin(TAU * 392.0 * tone * t) * exp(-t * 18.0)) * exp(-t * 11.0) * 0.55
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"bell":

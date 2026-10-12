@@ -8,7 +8,7 @@ extends Node3D
 const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "pot_sand", "greekFire": "pot_fire", "vitriol": "pot_acid", "beehive": "pot_bees",
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
-const THROW_SPEED := {"pot_anvil": 6.0, "pot_harpoon": 16.0, "pot_discus": 15.0, "pot_bola": 13.0}
+const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
 const NAILS := 30
 const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
@@ -703,7 +703,7 @@ func throw_type(c, type: String, aim: Vector3, _dir) -> void:
 	elif type == "boomerang":
 		m.items.throw_at("boomerang", from, aim, c, 12.0, 0.0)
 	else:
-		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 12.0))
+		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 14.5))
 	m.sfx("whoosh", from)
 
 # ---------- Weapons that shoot ----------
@@ -716,6 +716,7 @@ func update_shooters(dt: float) -> void:
 		var c = e.f
 		if c.kind == "beast" or not c.alive:
 			continue
+		c.off_goal = null
 		for side in ["R", "L"]:
 			var w = c.weapons.get(side)
 			if w == null or not w.design.has("shoots"):
@@ -725,7 +726,13 @@ func update_shooters(dt: float) -> void:
 				"arrow":
 					_draw_bow(e, w, inp, dt)
 				"bolt":
-					_crossbow(e, w, float(inp.get("thrust" if side == "R" else "offThrust", 0.0)), dt)
+					# A thrust, or (a player) a click of that hand's button.
+					var click := false
+					if e.kind == "local" or e.kind == "remote":
+						var pw: bool = inp.get("power", false)
+						click = pw and not w.get_meta("pw", false)
+						w.set_meta("pw", pw)
+					_crossbow(e, w, 1.0 if click else float(inp.get("thrust" if side == "R" else "offThrust", 0.0)), dt, inp)
 				"flame":
 					_flame(e, w, float(inp.get("thrust" if side == "R" else "offThrust", 0.0)), dt)
 
@@ -739,13 +746,17 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var draw: float = w.get_meta("draw", 0.0)
 	var hold_t: float = w.get_meta("hold_t", 0.0)
 	if held:
+		if draw <= 0.0:
+			m.sfx("draw", w.global_position, 0.6)
 		draw = minf(1.0, draw + dt / draw_time)
 		hold_t += dt
 		if draw >= 1.0:
 			c.stamina = maxf(0.0, c.stamina - 6.0 * dt)
 		w.set_meta("draw", draw)
 		w.set_meta("hold_t", hold_t)
+		_show_draw(w, c, draw)
 		return
+	_show_draw(w, c, 0.0)
 	w.set_meta("draw", 0.0)
 	w.set_meta("hold_t", 0.0)
 	if draw <= 0.2:
@@ -754,7 +765,23 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var vel: Vector3
 	var look = inp.get("look")
 	var player: bool = e.kind == "local" or e.kind == "remote"
-	if player and look != null:
+	if player and inp.get("aimAt") is Vector3:
+		# Where the crosshair sits, allowing for the drop over the distance (weaponFx.js): a
+		# short draw, a long hold or a tired arm scatters it a little.
+		var speed := 10.0 + 18.0 * draw
+		var dd: Vector3 = (inp.aimAt as Vector3) - from
+		var dist := dd.length()
+		var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
+		var wobble: float = (0.004 + 0.02 * (1.0 - draw) + 0.012 * minf(1.0, maxf(0.0, hold_t - 1.2) / 2.5) + 0.015 * tired) * (1.0 if c.state == "stand" else 2.0)
+		var a1 := randf() * TAU
+		var r1 := sqrt(randf()) * wobble
+		var sd := Vector3(dd.z, 0, -dd.x).normalized()
+		var upv := sd.cross(dd).normalized()
+		dd += sd * cos(a1) * r1 * dist + upv * sin(a1) * r1 * dist
+		var t := maxf(0.1, dist / speed)
+		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
+		from += dd.normalized() * 0.5
+	elif player and look != null:
 		var speed := 12.0 + 22.0 * draw
 		var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
 		var wobble: float = (0.004 + 0.02 * (1.0 - draw) + 0.012 * minf(1.0, maxf(0.0, hold_t - 1.2) / 2.5) + 0.015 * tired) * (1.0 if c.state == "stand" else 2.0)
@@ -774,8 +801,37 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var type: String = ("pot_arrow_" + str(gem)) if gem != null and Items.TYPES.has("pot_arrow_" + str(gem)) else "pot_arrow"
 	var it: Dictionary = m.items.spawn(type, from, vel, c)
 	it.power = draw
-	m.sfx("whoosh", from)
+	m.sfx("twang", from)
+	m.sfx("whoosh", from, 0.6)
 	c.stamina = maxf(0.0, c.stamina - 5.0)
+
+## The crossbow's string and bolt: `k` 0 just shot (the string slack at the prod, no bolt) to
+## 1 cocked and loaded. In between the free off hand works the string back to the latch.
+func _show_cock(w: Weapon, c, k: float) -> void:
+	var vs: float = w.vs
+	var latch_y := 15.0 * vs
+	var prod_y := 18.0 * vs
+	# Hand to the string at the prod (first fifth), haul it to the latch, lay the bolt (last fifth).
+	var pull := clampf((k - 0.2) / 0.6, 0.0, 1.0)
+	var sy := lerpf(prod_y, latch_y, pull * pull * (3.0 - 2.0 * pull))
+	if k < 1.0 and c.weapons.L == null and c.arm.L.fore.function() > 0.2:
+		c.off_goal = w.global_transform * Vector3(0, sy if k > 0.2 else prod_y, 0.0)
+	if Fx.current == null or Fx.current.headless:
+		return
+	var vis: Node3D = w.get_node_or_null("CockVis")
+	if vis == null:
+		var bolt := Items.visual("pot_bolt")
+		vis = _cords_node(w, bolt)
+		vis.name = "CockVis"
+		bolt.basis = Basis(Vector3(1, 0, 0), -PI / 2.0)   # its nose (+z) up the stock (+y)
+	# The voxel string is the cocked one; while cocking it is drawn by the cords instead.
+	_set_cords(vis, Vector3(-7.0 * vs, latch_y, 0), Vector3(7.0 * vs, latch_y, 0), Vector3(0, sy, 0))
+	(vis.get_child(0) as Node3D).visible = k < 1.0
+	(vis.get_child(1) as Node3D).visible = k < 1.0
+	var bolt_n: Node3D = vis.get_child(2)
+	bolt_n.visible = k >= 0.85
+	bolt_n.position = Vector3(0, latch_y + 0.17, 0.04)
+	w.set_string_hidden(k < 1.0)
 
 func _tip(w: Weapon) -> Array:
 	var top := -999
@@ -784,16 +840,85 @@ func _tip(w: Weapon) -> Array:
 	var q := w.global_transform.basis.get_rotation_quaternion()
 	return [w.global_transform * Vector3(0, (top + 1) * w.vs, 0), q * Vector3.UP]
 
-func _crossbow(e: Dictionary, w: Weapon, thrust: float, dt: float) -> void:
+## The drawn bow (weaponFx.js showDraw): the string pulled back to the nock with an arrow laid
+## on it, and the off hand there pulling. The stave runs up the bow's y, the string on its -x
+## side, the arrow flies out along +x.
+func _show_draw(w: Weapon, c, d: float) -> void:
+	var vs: float = w.vs
+	var ys := []
+	var sx := 0.0
+	for v in w.design.voxels:
+		if v[3] == "leather" and v[0] < 0:
+			ys.append(v[1])
+			sx = minf(sx, v[0])
+	var y0: float = (ys.min() if not ys.is_empty() else 2) * vs
+	var y1: float = (ys.max() if not ys.is_empty() else 18) * vs
+	sx *= vs
+	var pull := sx - d * 7.0 * vs
+	var ym := (y0 + y1) * 0.5
+	var nock := Vector3(pull, ym, 0)
+	c.off_goal = w.global_transform * nock
+	if Fx.current == null or Fx.current.headless:
+		return
+	var vis: Node3D = w.get_node_or_null("DrawVis")
+	if vis == null:
+		vis = _cords_node(w, Items.visual(("pot_arrow_" + str(w.design.gem)) if w.design.get("gem") != null else "pot_arrow"))
+		vis.name = "DrawVis"
+		var ar: Node3D = vis.get_child(2)
+		ar.basis = Basis(Vector3.UP, PI / 2.0)   # its nose (+z) along the shot (+x)
+	vis.visible = d > 0.0
+	if d <= 0.0:
+		return
+	_set_cords(vis, Vector3(sx, y0, 0), Vector3(sx, y1, 0), nock)
+	(vis.get_child(2) as Node3D).position = Vector3(pull + 0.3, ym, 0)
+
+## Two cords from the string's ends to the nock, and (third child) what lies on the string.
+func _cords_node(w: Weapon, load_vis: Node3D) -> Node3D:
+	var vis := Node3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.94, 0.91, 0.82)
+	mat.roughness = 0.9
+	for i in 2:
+		var cm := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.014, 0.014, 1.0)
+		bm.material = mat
+		cm.mesh = bm
+		cm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		vis.add_child(cm)
+	load_vis.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	vis.add_child(load_vis)
+	vis.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	w.add_child(vis)
+	return vis
+
+func _set_cords(vis: Node3D, a: Vector3, b: Vector3, nock: Vector3) -> void:
+	for i in 2:
+		var end: Vector3 = a if i == 0 else b
+		var seg := nock - end
+		var cord: MeshInstance3D = vis.get_child(i)
+		var l := maxf(0.01, seg.length())
+		var z := seg / l
+		var x := z.cross(Vector3.UP if absf(z.y) < 0.95 else Vector3.RIGHT).normalized()
+		cord.transform = Transform3D(Basis(x, z.cross(x), z * l), end + seg * 0.5)
+
+## A crossbow (weaponFx.js shoot, extended): after each bolt the string is cocked again, the
+## off hand hauling it back from the prod to the latch while the bolt is laid in, and only then
+## can it shoot. A player shoots where the crosshair is, allowing for the drop; a bot at its man.
+const CROSSBOW_RELOAD := 2.2
+func _crossbow(e: Dictionary, w: Weapon, thrust: float, dt: float, inp := {}) -> void:
 	var c = e.f
 	var reload: float = maxf(0.0, w.get_meta("reload", 0.0) - dt)
 	w.set_meta("reload", reload)
+	_show_cock(w, c, 1.0 - reload / CROSSBOW_RELOAD if reload > 0.0 else 1.0)
 	if thrust < 0.6 or reload > 0.0:
 		return
 	var td := _tip(w)
-	w.set_meta("reload", 2.2)
+	w.set_meta("reload", CROSSBOW_RELOAD)
 	var tgt = m.nearest_enemy(e)
 	var aim: Vector3 = tgt.f.torso.global_position if tgt else td[0] + td[1] * 8.0
+	if (e.kind == "local" or e.kind == "remote") and inp.get("aimAt") is Vector3:
+		aim = inp.aimAt
 	m.items.throw_at("pot_bolt", td[0], aim, c, 22.0)
 	m.sfx("clang", td[0], 0.4)
 	c.stamina = maxf(0.0, c.stamina - 8.0)

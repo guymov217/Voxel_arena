@@ -49,6 +49,7 @@ func test_nails_fly_all_round_and_stick() -> void:
 	m.queue_free()
 
 func test_caltrops_scatter_and_wound_the_foot_that_steps_on_one() -> void:
+	seed(7)
 	var m := _match()
 	m.me.f.teleport(Vector3(0, 0, -12))
 	m.throwables.explode("pot_caltrops", Vector3(0, 0.3, 2.0), m.me.f)

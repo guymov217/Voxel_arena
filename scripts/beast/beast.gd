@@ -521,7 +521,7 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 ## pins the arms, and grows as the coils tighten. He can wrench free while he still has the
 ## strength (his stamina and his blows on the coils).
 func _start_coil(c) -> void:
-	hug = {"target": c, "t": 7.0, "tick": 0.45, "stagger0": stagger, "coil": true, "tight": 0.0}
+	hug = {"target": c, "t": 7.0, "tick": 0.25, "stagger0": stagger, "coil": true, "tight": 0.0}
 	if c.has_method("fall") and c.state == "stand":
 		c.stagger = minf(1.0, c.stagger + 0.5)
 
@@ -572,7 +572,8 @@ func _coil(dt: float) -> void:
 	# Wrenched free: his struggle (what breath he has left), blows that stagger the snake, or
 	# coils too cut up to hold.
 	var escape: float = tgt.stamina / 100.0 * float(tgt.mods.get("strength", 1.0)) * 0.04 * dt * 60.0 / maxf(0.3, muscle)
-	if hug.t <= 0.0 or not tgt.alive or stagger > float(hug.stagger0) + 0.45 or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt:
+	# (A snake just wrapped round him is not shaken off by the first knock: only after a second.)
+	if hug.t <= 0.0 or not tgt.alive or (hug.t < 6.0 and stagger > float(hug.stagger0) + 0.45) or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt:
 		_release_coil()
 
 func _release_coil() -> void:

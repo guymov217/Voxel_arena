@@ -517,6 +517,7 @@ func _training(v: VBoxContainer) -> void:
 	pick.call("Main hand", mains, mains.map(func(k): return ("Your forged weapon: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	pick.call("Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
 	v.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
+	_training_bag(v)
 	var imm := CheckBox.new()
 	imm.text = "I cannot die"
 	imm.button_pressed = training.immortal
@@ -541,7 +542,71 @@ func _training_loadout() -> Dictionary:
 
 func _start_training() -> void:
 	Save.set_value("training", training)
-	start({"mode": "training", "training": training.duplicate(), "loadout_override": _training_loadout()})
+	var opts := {"mode": "training", "training": training.duplicate(), "loadout_override": _training_loadout()}
+	var bag := _bag_clean(training.get("bag", {}))
+	if not bag.is_empty():
+		opts.inventory_override = bag
+	start(opts)
+
+## The market's wares to try out in training, free: what is taken, how many of each (up to 9
+## kinds, one for each number key).
+const TRAINING_BAG_MAX := 9
+func _bag_clean(raw) -> Dictionary:
+	var out := {}
+	if raw is Dictionary:
+		var table: Dictionary = Data.shop.get("throwables", {})
+		for id in raw:
+			var n := clampi(int(raw[id]), 0, 9)
+			if table.has(str(id)) and n > 0 and out.size() < TRAINING_BAG_MAX:
+				out[str(id)] = n
+	return out
+
+func _training_bag(v: VBoxContainer) -> void:
+	var bag := _bag_clean(training.get("bag", {}))
+	training.bag = bag
+	v.add_child(UIStyle.label("YOUR BAG · free in training, keys 1 to 9 (%d of %d kinds)" % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(900, 150)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 6)
+	scroll.add_child(grid)
+	var table: Dictionary = Data.shop.get("throwables", {})
+	for id in table:
+		var have := int(bag.get(id, 0))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(32, 32)
+		row.add_child(tex)
+		Thumbs.item(tex, id)
+		var nm := UIStyle.label(str(table[id].get("name", id)), 13, UIStyle.TEXT if have > 0 else UIStyle.MUTED)
+		nm.custom_minimum_size = Vector2(120, 0)
+		nm.tooltip_text = str(table[id].get("desc", ""))
+		nm.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(nm)
+		var item_id: String = id
+		var minus := UIStyle.button("−", func():
+			var b: Dictionary = training.bag
+			b[item_id] = maxi(0, int(b.get(item_id, 0)) - 1)
+			if int(b[item_id]) == 0:
+				b.erase(item_id)
+			show_screen("training"))
+		minus.disabled = have == 0
+		row.add_child(minus)
+		row.add_child(UIStyle.label(str(have), 14, UIStyle.GOLD if have > 0 else UIStyle.MUTED))
+		var plus := UIStyle.button("+", func():
+			var b: Dictionary = training.bag
+			b[item_id] = mini(9, int(b.get(item_id, 0)) + 1)
+			show_screen("training"))
+		plus.disabled = have >= 9 or (have == 0 and bag.size() >= TRAINING_BAG_MAX)
+		row.add_child(plus)
+		grid.add_child(row)
 
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
 func _training_forge() -> void:
@@ -1147,7 +1212,10 @@ func _set_opt(k: String, val) -> void:
 
 # ---------- Matches ----------
 
+var last_start := {}   # what the match running now was started with (R plays it again)
+
 func start(opts: Dictionary) -> void:
+	last_start = opts.duplicate(true)
 	_end_match()
 	var a := arms()
 	var lo := Arms.loadout(a)
@@ -1379,7 +1447,10 @@ func _end_match() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _on_finished(r: Dictionary) -> void:
+	var was := match_
 	await get_tree().create_timer(3.5).timeout
+	if match_ != was:
+		return   # restarted (R) in the meantime
 	var mode := match_.mode if match_ else "campaign"
 	if match_ and match_.tut and match_.tut.finished:
 		Save.set_value("tutorial_done", true)
@@ -1475,6 +1546,11 @@ func _on_net(type: String, data, _from: int) -> void:
 				match_.finished.emit({"won": data.won, "stage": match_.stage, "pay": data.pay})
 
 func _unhandled_input(e: InputEvent) -> void:
+	# R: the stage (the bout, the training) again from the start. Alone only: in a room the
+	# host's match is everyone's.
+	if e.is_action_pressed("va_restart") and not e.is_echo() and match_ and not visible and pause_layer == null and not Net.active() and not last_start.is_empty() and not in_yard():
+		start(last_start.duplicate(true))
+		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and in_yard() and visible:
 		_close_overlay()
 		return

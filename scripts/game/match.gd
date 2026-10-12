@@ -489,8 +489,12 @@ func _physics_process(dt: float) -> void:
 						f.yaw = atan2(dl.x, dl.z)
 					inp = e.bot.update(dt, tl.f if tl else null, _world_of(e))
 				else:
+					var shooter := _shooter_of(f)
+					if input:
+						input.aiming = shooter != null or input.held("throw")
+						_bow_sway(f, shooter, dt)
 					inp = input.sample(dt) if input else {}
-					if cam and (float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false)):
+					if cam and (shooter != null or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false)):
 						inp.aimAt = aim_point(f)
 					last_local_inp = inp
 					if inp.has("look"):
@@ -1009,50 +1013,35 @@ func _send_weapon_vox(w: Weapon, idx: Array) -> void:
 ## The point under the crosshair (game.js aimPoint): a ray from the camera through the middle
 ## of the screen, past the player's own body and weapons. Backed up against the wall the camera
 ## is outside it, so anything nearer than his own head is behind him: cast again from the head.
-## The throw being wound up: a dotted arc from the hand to the mark and a ring where it lands.
-var aim_arc: MeshInstance3D
-func _aim_arc(f) -> void:
-	if f == null or not (last_local_inp.get("aimAt") is Vector3):
-		if aim_arc:
-			aim_arc.visible = false
-		return
-	if aim_arc == null:
-		aim_arc = MeshInstance3D.new()
-		aim_arc.mesh = ImmediateMesh.new()
-		aim_arc.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-		aim_arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.vertex_color_use_as_albedo = true
-		mat.no_depth_test = true
-		aim_arc.material_override = mat
-		add_child(aim_arc)
-	aim_arc.visible = true
-	var to: Vector3 = last_local_inp.aimAt
-	var side := ("L" if not f.weapons.L else "R") if f.held_item != null else ("R" if f.weapons.R and not f.weapons.R.is_shield else "L")
-	var from: Vector3 = f.hand_world(side)
-	var k := float(last_local_inp.get("charging", 0.0))
-	var lift := minf(2.5, from.distance_to(to) * 0.12) * (1.15 - 0.5 * k)
-	var im: ImmediateMesh = aim_arc.mesh
-	im.clear_surfaces()
-	im.surface_begin(Mesh.PRIMITIVE_LINES)
-	var col := Color(1.0, 0.85, 0.45, 0.35 + 0.5 * k)
-	var n := 24
-	for i in n:
-		if i % 2 == 1:
-			continue
-		for j in [i, i + 1]:
-			var u: float = float(j) / n
-			im.surface_set_color(col)
-			im.surface_add_vertex(from.lerp(to, u) + Vector3(0, 4.0 * lift * u * (1.0 - u), 0))
-	var r := 0.25 + 0.2 * (1.0 - k)
-	for i in 20:
-		for j in [i, i + 1]:
-			var a: float = TAU * j / 20.0
-			im.surface_set_color(col)
-			im.surface_add_vertex(to + Vector3(cos(a) * r, 0.03, sin(a) * r))
-	im.surface_end()
+## The bow or crossbow in a fighter's hands, if any (the hand that shoots).
+func _shooter_of(f) -> Weapon:
+	if f == null or not is_instance_valid(f) or not f.alive:
+		return null
+	for side in ["R", "L"]:
+		var w = f.weapons[side]
+		if w and (str(w.design.get("shoots", "")) == "arrow" or str(w.design.get("shoots", "")) == "bolt"):
+			return w
+	return null
+
+## A drawn bow is not a tripod (game.js): the view drifts while the string is back, a little on
+## a fresh full draw, more the longer it is held, the more tired and hurt the archer is. A drift
+## to fight with the mouse, not a jolt.
+var bow_sway := {"y": 0.0, "p": 0.0, "a": 0.0}
+func _bow_sway(f, w, dt: float) -> void:
+	var want := 0.0
+	if w and str(w.design.get("shoots", "")) == "arrow":
+		var draw: float = w.get_meta("draw", 0.0)
+		var hold: float = w.get_meta("hold_t", 0.0)
+		if draw > 0.0:
+			var tired: float = 1.0 - minf(1.0, f.stamina / 100.0)
+			want = (0.007 + 0.012 * draw + 0.045 * minf(1.0, maxf(0.0, hold - 0.8) / 3.0) + 0.022 * tired) * (1.0 if f.state == "stand" else 2.0) * (1.0 + float(f.eye_hurt) + 0.6 * (1.0 - minf(1.0, f.arm_func("L"))))
+	bow_sway.a += (want - bow_sway.a) * minf(1.0, dt * (2.5 if want > bow_sway.a else 6.0))
+	var ny: float = bow_sway.a * (sin(time * 1.3) + 0.6 * sin(time * 3.1 + 1.0) + 0.25 * sin(time * 9.7))
+	var np: float = bow_sway.a * 0.8 * (cos(time * 1.1) + 0.5 * sin(time * 2.7 + 2.0) + 0.25 * cos(time * 11.3))
+	input.look_yaw += ny - bow_sway.y
+	input.look_pitch += np - bow_sway.p
+	bow_sway.y = ny
+	bow_sway.p = np
 
 func aim_point(f: Fighter) -> Vector3:
 	var dir := -cam.global_basis.z
@@ -1406,8 +1395,9 @@ func _process(dt: float) -> void:
 		var yaw := input.look_yaw if input else 0.0
 		var pitch := input.look_pitch if input else 0.0
 		var aiming: bool = f != null and is_instance_valid(f) and f.alive and last_local_inp is Dictionary and float(last_local_inp.get("charging", 0.0)) > 0.0
-		cam.follow(f, yaw, pitch, dt, aiming)
-		_aim_arc(f if aiming else null)
+		var sh := _shooter_of(f)
+		var sighting: bool = sh != null and (float(sh.get_meta("draw", 0.0)) > 0.0 or str(sh.design.get("shoots", "")) == "bolt")
+		cam.follow(f, yaw, pitch, dt, aiming or sighting)
 	if role == "guest" and input and Net.active():
 		if tick % 4 == 0:
 			var gi := input.sample(dt * 4.0)

@@ -257,6 +257,18 @@ func _build_mesh() -> void:
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
 
+## Hides (or shows again) the leather string voxels, while a crossbow's string is drawn by
+## cords instead (being cocked). Only the picture: the voxels are still there.
+var _string_hidden := false
+func set_string_hidden(on: bool) -> void:
+	if on == _string_hidden or mm == null:
+		return
+	_string_hidden = on
+	for i in vox.size():
+		if vox[i][3] == "leather" and alive[i]:
+			var v: Array = vox[i]
+			mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO) if on else Basis(), Vector3(v[0], v[1], v[2]) * vs))
+
 # ---------- Wear ----------
 
 func remove_voxels(indices: Array) -> Array:

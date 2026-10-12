@@ -15,6 +15,7 @@ var lmb := false
 var rmb := false
 var thrust := 0.0
 var twist := 0.0
+var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
 var twist_l := 0.0   # the off hand's edge turn: the wheel turns whichever hand is held
 var jab_r := false
 var jab_l := false
@@ -158,7 +159,7 @@ func _unhandled_input(e: InputEvent) -> void:
 		var m := e as InputEventMouseMotion
 		var both := lmb and rmb
 		var h = main if lmb else (off if rmb else null)
-		if h == null:
+		if h == null or aiming:
 			look_yaw -= m.relative.x * 0.0013 * sensitivity * sens_x
 			look_pitch = clampf(look_pitch - m.relative.y * 0.0011 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.35, 1.35)
 			return
