@@ -78,7 +78,8 @@ func stage(n: int, players: int = 1) -> Dictionary:
 ## time. Every boss stage brings its boss (the Cyclops, the Minotaur, Polyphemus the giant, the
 ## Hydra, the Dragon...); every third stage a beast comes through the gate instead of a man,
 ## from the wolf at the start to the monsters late on; the rest are the stage's strongest
-## gladiator. A party of several fights it together, the foe made tougher for each friend.
+## gladiator. A party (co-op) fights it together: each friend gets a foe of his own (other men
+## from the stage, or a pack of the beast), and a boss comes alone, the tougher for each friend.
 const LADDER_BEASTS := ["wolf", "boar", "hyena", "goat", "lion", "bear", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var rounds: Array = st.get("rounds", [])
@@ -105,14 +106,30 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 		if foe.is_empty():
 			foe = (rounds[rounds.size() - 1][0] as Dictionary).duplicate(true)
 		foe.erase("boss")
-	if players > 1:
+	var foes: Array = [foe]
+	if players > 1 and (st.get("boss", false) or foe.get("boss", false)):
 		var m: Dictionary = foe.get("mods", {}).duplicate()
 		m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.6 * (players - 1))
+		m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.12 * (players - 1))
 		foe["mods"] = m
+	elif players > 1:
+		# Every friend his own man: the stage's other gladiators, latest waves first.
+		var pool: Array = []
+		for r in range(rounds.size() - 1, -1, -1):
+			for en in rounds[r]:
+				if en.has("e") and not en.get("boss", false) and en.e != foe.get("e"):
+					pool.append(en)
+		for i in players - 1:
+			if foe.has("beast") or pool.is_empty():
+				foes.append(foe.duplicate(true))
+			else:
+				var o: Dictionary = (pool[i % pool.size()] as Dictionary).duplicate(true)
+				o.erase("boss")
+				foes.append(o)
 	var name := String(foe.get("title", foe.get("name", "")))
 	if name == "":
 		name = String(beasts.get(foe.beast, {}).get("name", foe.beast)) if foe.has("beast") else String(enemy_type(String(foe.get("e", ""))).get("label", String(foe.get("e", "a gladiator")).capitalize()))
-	st["rounds"] = [[foe]]
+	st["rounds"] = [foes]
 	st["duel"] = true
 	st["foe_name"] = name
 	st["title"] = String(foe.get("title", "Bout %d" % n))

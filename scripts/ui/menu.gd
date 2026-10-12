@@ -358,10 +358,18 @@ func _close_overlay() -> void:
 func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The arena gate", 34))
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
-	var st := int(Save.get_value("stage", 1))
-	var nxt := Data.stage(st)
-	v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
-	v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
+	if Net.active() and Net.is_host() and not Net.peers.is_empty():
+		var cs := int(Save.get_value("coop_stage", 1))
+		var cn := Data.stage(cs, 1 + Net.peers.size())
+		v.add_child(UIStyle.label("Next co-op bout: %s · %s" % [cn.get("title", "Bout %d" % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
+		v.add_child(UIStyle.button("The co-op campaign · bout %d (all of you)" % cs, func(): start({"mode": "coop", "role": "host"}), true))
+	elif Net.active() and not Net.is_host():
+		v.add_child(UIStyle.label("The host leads the party through the gate.", 15, UIStyle.MUTED))
+	else:
+		var st := int(Save.get_value("stage", 1))
+		var nxt := Data.stage(st)
+		v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
+		v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
 	if SHOW_CIRCUS:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
@@ -1253,8 +1261,11 @@ func _room(v: VBoxContainer) -> void:
 	for id in Net.peers:
 		v.add_child(UIStyle.label("· %s" % Net.peers[id].name, 16))
 	if Net.is_host():
-		var st := int(Save.get_value("stage", 1))
-		v.add_child(UIStyle.button("Start the campaign together · stage %d" % st, func(): start({"mode": "campaign", "stage": st, "role": "host"}), true))
+		var cs := int(Save.get_value("coop_stage", 1))
+		var nb := Data.stage(cs, 1 + Net.peers.size())
+		v.add_child(UIStyle.label("Co-op campaign: bout %d · %s" % [cs, nb.get("foe_name", "")], 15, UIStyle.GOLD))
+		v.add_child(UIStyle.button("Start the co-op campaign · bout %d" % cs, func(): start({"mode": "coop", "role": "host"}), true))
+		v.add_child(UIStyle.button("Into the yard together (shop, heal, play)", func(): enter_yard()))
 	v.add_child(UIStyle.button("Leave", func():
 		Net.leave()
 		in_room = false
@@ -1398,6 +1409,16 @@ func _set_opt(k: String, val) -> void:
 var last_start := {}   # what the match running now was started with (R plays it again)
 
 func start(opts: Dictionary) -> void:
+	# Co-op is the campaign for a party: the same ladder of bouts, foes for every friend, its
+	# own progress (it does not move your solo campaign on).
+	if opts.get("mode") == "coop":
+		opts.mode = "campaign"
+		opts.coop = true
+		opts.stage = int(Save.get_value("coop_stage", 1))
+	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
+	# campaign: the guests are sent the start and join as themselves.
+	if not opts.has("role") and Net.active() and Net.is_host() and not Net.peers.is_empty() and not ["training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
+		opts.role = "host"
 	last_start = opts.duplicate(true)
 	_end_match()
 	var a := arms()
@@ -1434,7 +1455,7 @@ func start(opts: Dictionary) -> void:
 			var pk := peer_look(pl)
 			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if int(opts.get("stage", 1)) > 1 else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor} if not pl.is_empty() else {"main": "gladius"}})
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
 		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
@@ -1652,18 +1673,20 @@ func _on_finished(r: Dictionary) -> void:
 	if match_ and match_.me and match_.role != "guest" and mode != "circus":
 		set_kit(match_.me.get("inventory", kit()))
 	if mode == "campaign" and match_ and match_.role != "guest":
+		var sk := "coop_stage" if r.get("coop", false) else "stage"
+		var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
 		if r.get("body") is Dictionary:
 			set_body(r.body)
 		set_arms(Arms.add_wear(arms(), r.get("wear", {})))
 		if r.won:
 			add_coins(int(r.pay))
 			if r.get("checkpoint") != null:
-				Save.set_value("checkpoint", int(r.checkpoint))
-			Save.set_value("stage", int(r.stage) + 1)
+				Save.set_value(ck, int(r.checkpoint))
+			Save.set_value(sk, int(r.stage) + 1)
 			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
 		else:
-			var back := int(Save.get_value("checkpoint", 1))
-			Save.set_value("stage", back)
+			var back := int(Save.get_value(ck, 1))
+			Save.set_value(sk, back)
 			if back <= 1:
 				set_arms(Arms.empty())
 			last_result = {"text": "You fell. Back to stage %d." % back}
@@ -1689,7 +1712,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
-				match_.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
 				match_.finished.connect(_on_finished)
 				hud = Hud.new(match_)
 				world_root.add_child(hud)

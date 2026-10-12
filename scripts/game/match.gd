@@ -18,6 +18,7 @@ const SNAP_EVERY := 5           # snapshots at 24 Hz
 
 var mode := "campaign"
 var stage := 1
+var coop := false   # the co-op ladder: a campaign of its own for a party, saved apart
 var round := 0
 var role := "local"             # local | host | guest
 var arena: Arena
@@ -128,6 +129,7 @@ func setup(opts: Dictionary) -> void:
 	VoxelPart.smooth_skin = bodies == "smooth"
 	mode = opts.get("mode", "campaign")
 	stage = int(opts.get("stage", 1))
+	coop = bool(opts.get("coop", false))
 	role = opts.get("role", "local")
 	training = opts.get("training", {})
 	circus = opts.get("circus", {})
@@ -945,7 +947,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 				wear[side] = lost
 			elif me.f.arm[side].fore.severed:
 				wear[side] = "lost"
-	var result := {"won": won, "stage": stage, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	var result := {"won": won, "stage": stage, "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
 	if mode == "campaign" and role != "guest":
 		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are.
 		var bodies := final_bodies() if won else {}

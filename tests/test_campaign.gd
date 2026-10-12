@@ -92,3 +92,12 @@ func test_the_ladder_brings_beasts_bosses_and_the_giant() -> void:
 		last_diff = d
 	t.check(beasts >= 10, "beasts come through the gate in their turn (%d of 40)" % beasts)
 	t.check(bosses.has("giant") and bosses.has("cyclops") and bosses.has("dragon"), "the bosses come, the giant among them (%s)" % [bosses])
+
+func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
+	for n in [1, 2, 3, 5, 6]:
+		var st := Data.stage(n, 3)
+		t.eq(st.rounds.size(), 1, "co-op bout %d is one fight" % n)
+		t.eq(st.rounds[0].size(), 3, "three friends, three foes in bout %d" % n)
+	var boss := Data.stage(4, 3)
+	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
+	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")

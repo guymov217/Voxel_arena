@@ -7,7 +7,7 @@ extends RefCounted
 
 const TEAM_COLORS := [0xa02020, 0x2050b0, 0x208040, 0xc0a020, 0x8030a0, 0x20a0a0, 0xd06020, 0x606060]
 const ALL := ["duel", "bo3", "ffa", "chaos", "pvp", "coop", "gauntlet", "hunt", "teams", "king", "emperor", "hill", "lastLimb", "headball"]
-const TITLES := {"duel": "Test fight!", "bo3": "Duel: best of three!", "ffa": "Free for all!", "chaos": "Chaos!", "pvp": "Players brawl!", "coop": "Co-op vs the bots!",
+const TITLES := {"duel": "Test fight!", "bo3": "Duel: best of three!", "ffa": "Free for all!", "chaos": "Chaos!", "pvp": "Players brawl!", "coop": "Co-op campaign!",
 	"gauntlet": "Survive the waves!", "hunt": "Monster Hunt!", "teams": "Red vs Blue!", "king": "King of the Arena!", "emperor": "The Emperor watches!",
 	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "headball": "Head Football!"}
 const LABELS := {"teams": "Teams: players and bots split up", "hill": "Hold the circle alone for 20 s", "lastLimb": "The Emperor removes a limb from everyone every 15 s",
