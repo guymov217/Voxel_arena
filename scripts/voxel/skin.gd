@@ -5,8 +5,9 @@ class_name VoxelSkin
 ## where the surface crosses that cell's edges, relaxed toward its neighbours a couple of times;
 ## a quad across every voxel face between solid and empty; colours from the voxels around.
 
-const RELAX := 2          # smoothing passes
-const RELAX_K := 0.5      # how far each pass pulls a vertex toward its neighbours' mean
+const RELAX := 1          # smoothing passes (one keeps the shape crisp, more turns it to soap)
+const RELAX_K := 0.55     # how far each pass pulls a vertex toward its neighbours' mean
+const CRISP := true       # each face in the colour of the voxel under it: sharp colour borders
 
 ## The skin of `part`'s living voxels, leaving out the ones `skip` holds (a hinged jaw drawn on
 ## its own). Null when nothing is left to draw.
@@ -66,6 +67,7 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 				cell.append(base)
 	# Quads: a solid voxel next to an empty one across +x, +y or +z.
 	var idx := PackedInt32Array()
+	var qcol := PackedInt32Array()   # the solid voxel each quad covers
 	var nb := []
 	nb.resize(verts.size())
 	for i in nb.size():
@@ -104,6 +106,7 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 						idx.append_array([q[0], q[2], q[1], q[0], q[3], q[2]])
 					else:
 						idx.append_array([q[0], q[1], q[2], q[0], q[2], q[3]])
+					qcol.append(who[k] if a else who[k2])
 					for s in 4:
 						var p0: int = q[s]
 						var p1: int = q[(s + 1) % 4]
@@ -155,6 +158,37 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 		norms[idx[t + 2]] += fn
 	for i in norms.size():
 		norms[i] = norms[i].normalized() if norms[i].length_squared() > 1e-12 else Vector3.UP
+	if CRISP:
+		# Every quad its own four corners, in its voxel's colour (the shape and the shading
+		# stay smooth, shared normals; only the colour no longer runs from voxel to voxel).
+		var v2 := PackedVector3Array()
+		var n2 := PackedVector3Array()
+		var c2 := PackedColorArray()
+		var i2 := PackedInt32Array()
+		v2.resize(qcol.size() * 4)
+		n2.resize(qcol.size() * 4)
+		c2.resize(qcol.size() * 4)
+		i2.resize(idx.size())
+		for qi in qcol.size():
+			var vi: int = qcol[qi]
+			var col: Color = part.colors[vi] / part.grain(vi)
+			col.a = 1.0
+			var t := qi * 6
+			# The quad's two triangles keep their winding; its four corners are copied.
+			var local := {}
+			for j in 6:
+				var o: int = idx[t + j]
+				if not local.has(o):
+					var nv := qi * 4 + local.size()
+					local[o] = nv
+					v2[nv] = verts[o]
+					n2[nv] = norms[o]
+					c2[nv] = col
+				i2[t + j] = local[o]
+		verts = v2
+		norms = n2
+		cols = c2
+		idx = i2
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts

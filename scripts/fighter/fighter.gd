@@ -114,6 +114,7 @@ var crawl_phase := 0.0
 var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x sharpness)
+var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust (0 none)
 var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
 var thrust_aim := {"R": null, "L": null}   # {dir, k}: a thrust's point toward the crosshair
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
@@ -1386,6 +1387,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			weapon_joints.L.queue_free()
 			weapon_joints.L = null
 		two_handed = false
+	# Winding up a throw and letting it go, the hand closes hard on the weapon: it is held
+	# firm and drawn back with the arm instead of wobbling in the fist.
+	if winding or following:
+		strength *= 1.8
+	thrust_amt[side] = clampf(thrust, 0.0, 1.5) if down_hp == null else 0.0
 	var spear: bool = w != null and Weapon.flies_point_first(w.design) and held_item == null
 	throw_pose[side] = spear and down_hp == null and (winding or following)
 	if down_hp == null and (winding or following):
@@ -1469,10 +1475,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var dir = (target_w - shoulder_w).normalized()
 	if w and not w.is_shield and weapon_joints[side]:
 		var w_aim := weapon_aim(side, w, target_w, t_pos, yaw_q, inp, dt)
-		if side == "R" and two_handed and weapon_joints.L and (is_spear(w) or thrust_aim[side] != null) and not throw_pose[side]:
-			# A spear in both hands: the front hand sits ahead of its own shoulder on the line,
-			# the back hand behind it down the shaft, and a thrust drives both along it.
-			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08, -0.2, 0.4 + 0.3 * clampf(thrust, -1.0, 1.0)) * S)
+		if side == "R" and two_handed and weapon_joints.L and not throw_pose[side]:
+			# Both hands on one haft: the front hand is the pivot. It sits ahead of its own
+			# shoulder (lower for a low guard or a blow at a man on the sand, aside with the
+			# sweep), the back hand behind it down the shaft, and a thrust drives both along it.
+			# So the off hand is never stretched across the body, and the head goes wherever the
+			# mouse sends it, up, down or round.
+			var hp2: Dictionary = hand_input[side]
+			var hy2 := clampf(float(hp2.get("y", 0.0)), -1.6, 1.6)
+			var low2 := clampf((-hy2 - 0.3) / 1.0, 0.0, 1.0)
+			var high2 := clampf(hy2 / 1.4, 0.0, 1.0)
+			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.25 * high2, 0.4 - 0.12 * low2 + 0.3 * clampf(thrust, -1.0, 1.0)) * S)
 			target_w = front - w_aim * (w.grip_off - w.grip_main)
 		var fore_q := w_aim * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
@@ -1534,7 +1547,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var kd := 2.1 * sqrt(300.0 * (0.5 + 0.5 * hnd)) * (1.1 if power else 1.0)
 	var F = ((hand_goal - hand_w) * (300.0 * (0.5 + 0.5 * hnd)) + (target_vel[side] - hand_vel) * kd) * m_eff
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
-	F = PD.clamp_len(F, 1150.0 * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0))
+	F = PD.clamp_len(F, 1150.0 * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0) * (1.0 + (0.08 * minf(8.0, w.mass) if w else 0.0)))
 	fore.apply_impulse(F * dt, hand_w - fore.global_position)
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
 	if w and w.holder == self and not w.is_shield:
@@ -1726,7 +1739,10 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
 	var y := (-0.08 + (hy * 0.42 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
 	var cross: float = maxf(0.0, -float(hp.get("x", 0.0))) if side == "R" else maxf(0.0, float(hp.get("x", 0.0)))
-	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5)) * S
+	# A low guard or a blow at a man on the sand: the hands come in under the shoulders, so
+	# the blade can hang point down in front instead of being held out level.
+	var low := clampf((-hy - 0.5) / 0.9, 0.0, 1.0) if fist == 0.0 else 0.0
+	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) - 0.2 * low) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
 	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * 0.97 * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
@@ -1746,11 +1762,11 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	if flat.length_squared() < 1e-4:
 		flat = Vector3(0, 0, 1)
 	flat = flat.normalized()
-	if two_handed and side == "R" and not is_spear(w):
-		# Both hands on the haft: the hands stay in front of the chest and the wrists and
-		# forearms carry the blade round, so its sweep comes from the mouse itself (well past
-		# 80 degrees either way), not from how far across the body the hands can get.
-		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * 0.72
+	if not is_spear(w):
+		# The sweep comes from the mouse itself, the wrists and forearms carrying the blade round
+		# (near 90 degrees either way), not from how far the hands can get: in one hand or two,
+		# light or heavy, every blade sweeps as wide.
+		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * 0.75
 		flat = Vector3(sin(sweep), 0, cos(sweep))
 	var axis := yaw_q * Vector3(flat.x * cos(elev), sin(elev), flat.z * cos(elev))
 	if is_spear(w) and not throw_pose[side]:
@@ -1763,10 +1779,10 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 			var pt := clampf(float(lk.get("pitch", 0.0)), -0.9, 0.9) * 0.8
 			base = Vector3(sin(float(lk.yaw)) * cos(pt), sin(pt), cos(float(lk.yaw)) * cos(pt))
 		var hx := clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0)
-		axis = base.rotated(Vector3.UP, -hx * 0.3)
+		axis = base.rotated(Vector3.UP, -hx * 0.6)
 		var side_ax := axis.cross(Vector3.UP).normalized()
 		if side_ax.length_squared() > 1e-4:
-			axis = axis.rotated(side_ax, clampf(hy, -1.6, 1.6) * 0.35).normalized()
+			axis = axis.rotated(side_ax, clampf(hy, -1.6, 1.6) * 0.55).normalized()
 	var ta = thrust_aim[side]
 	if ta != null:
 		axis = axis.slerp(ta.dir, ta.k).normalized()
@@ -1820,7 +1836,11 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	var along := rot * Vector3(0, -1, 0)
 	var twist_a := along * alpha.dot(along)
 	var tq := PD.torque_for(fore, alpha - twist_a, i_asm / PD.inertia_of(fore)) + PD.torque_for(fore, twist_a, 1.5)
-	tq = PD.clamp_len(tq, 90.0 * strength * MS * S * float(mods.strength))
+	# A fighter puts his body into a heavy weapon: the torque he can turn it with grows with how
+	# hard it is to turn (a hammer head far out on its haft), so it moves with his hands under
+	# control instead of trailing behind them.
+	var heft := clampf(i_wpn / (MS * S * S * 0.6), 0.0, 6.0)
+	tq = PD.clamp_len(tq, 90.0 * strength * MS * S * float(mods.strength) * (1.0 + 0.45 * heft))
 	var mg := w.mass * gravity * minf(1.0, strength * 2.0)
 	tq += Vector3(-lever.z * mg, 0, lever.x * mg)
 	var f := i_fore / i_asm
@@ -1882,7 +1902,8 @@ func _drive_wrist(side: String, w: Weapon, w_aim: Quaternion, strength: float, d
 	var i_ax := maxf(1e-4, la.x * la.x * w.inertia.x + la.y * la.y * w.inertia.y + la.z * la.z * w.inertia.z)
 	var wn := 22.0
 	var t := (ang * wn * wn - spin * 2.0 * wn) * i_ax
-	t = clampf(t, -14.0 * maxf(0.3, strength) * MS * S, 14.0 * maxf(0.3, strength) * MS * S)
+	var grip_k := 3.0 if throw_pose[side] or (throw_anim != null and throw_anim.side == side) else 1.0
+	t = clampf(t, -14.0 * grip_k * maxf(0.3, strength) * MS * S, 14.0 * grip_k * maxf(0.3, strength) * MS * S)
 	w.apply_torque_impulse(ax * t * dt)
 	fore.apply_torque_impulse(-ax * t * dt)
 

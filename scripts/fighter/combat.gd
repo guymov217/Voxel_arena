@@ -264,6 +264,15 @@ func _blow(g: Dictionary) -> Dictionary:
 		J *= 0.15 + 0.85 * minf(1.0, swing / 3.5)
 		J *= 0.75 + 0.25 * minf(2.4, swing / 4.0)
 		heavy = clampf((swing - 4.0) / 6.0, 0.0, 1.0)
+		# A thrust is the whole body behind the point, not a hand's speed: driven home along the
+		# blade it lands far harder than its speed says (the web game's lunge).
+		var t_side: String = "R" if att.holder.weapons.R == att else "L"
+		var th: float = float(att.holder.thrust_amt.get(t_side, 0.0)) if "thrust_amt" in att.holder else 0.0
+		if th > 0.3 and g.type == "point":
+			var along := absf(closing.dot(PD.quat_of(att) * Vector3.UP))
+			if along > 0.5:
+				J = maxf(J, minf(55.0, (12.0 + 10.0 * th) * along * minf(1.0, swing / 2.0 + 0.4))) * (1.0 + 0.6 * th * along)
+				heavy = maxf(heavy, 0.4 * th)
 	elif is_weapon and att.thrown_t > 0.0 and not att.is_hazard:
 		# Thrown: the blow is its momentum, in proportion to how hard it was thrown (the speed
 		# it lands at) and to how heavy it is; a dagger stings, a hammer flattens.

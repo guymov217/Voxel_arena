@@ -104,7 +104,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 		fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
 		# A little grain voxel to voxel (skin, cloth and fur are never one flat colour).
 		var c: Color = v[3]
-		var k := 1.0 + (float(hash(Vector3i(fx[i], fy[i], fz[i]) + Vector3i(dims.x, dims.y, dims.z) * 131) % 1000) / 1000.0 - 0.5) * 0.09
+		var k := grain(i)
 		colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
 		bone[i] = 1 if v[4] else 0
 		alive[i] = 1
@@ -126,6 +126,11 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 	main_shape.shape = box
 	add_child(main_shape)
 	_build_mesh()
+
+## The little brightness grain voxel to voxel (skin, cloth and fur are never one flat colour on
+## blocks); the smooth skin takes it back out.
+func grain(i: int) -> float:
+	return 1.0 + (float(hash(Vector3i(fx[i], fy[i], fz[i]) + Vector3i(dims.x, dims.y, dims.z) * 131) % 1000) / 1000.0 - 0.5) * 0.09
 
 static func _v3(a) -> Vector3:
 	return Vector3(float(a[0]), float(a[1]), float(a[2]))
