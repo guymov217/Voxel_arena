@@ -118,6 +118,9 @@ func _freeze_hero(on: bool) -> void:
 	hero.set_meta("frozen", on)
 
 func setup(opts: Dictionary) -> void:
+	# Bodies smooth-skinned or as plain voxels (Settings, Graphics; VA_BODIES overrides).
+	var bodies := OS.get_environment("VA_BODIES") if OS.has_environment("VA_BODIES") else str(Save.get_value("settings", {}).get("bodies", "smooth"))
+	VoxelPart.smooth_skin = bodies != "blocky"
 	mode = opts.get("mode", "campaign")
 	stage = int(opts.get("stage", 1))
 	role = opts.get("role", "local")

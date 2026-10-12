@@ -1218,6 +1218,12 @@ func _options(v: VBoxContainer) -> void:
 	q.select(maxi(0, levels.find(str(st.get("quality", "high")))))
 	q.item_selected.connect(func(i): _set_opt("quality", levels[i]))
 	_row(v, [UIStyle.label("Graphics", 15), q, UIStyle.label("Low: no shadows or effects lighting. Ultra: global illumination and fog.", 13, UIStyle.MUTED)])
+	var bo := OptionButton.new()
+	bo.add_item("Smooth")
+	bo.add_item("Blocky voxels")
+	bo.select(1 if str(st.get("bodies", "smooth")) == "blocky" else 0)
+	bo.item_selected.connect(func(i): _set_opt("bodies", "blocky" if i == 1 else "smooth"))
+	_row(v, [UIStyle.label("Bodies", 15), bo, UIStyle.label("Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.", 13, UIStyle.MUTED)])
 	var dm := OptionButton.new()
 	for d in DISPLAY_MODES:
 		dm.add_item(d[1])

@@ -71,6 +71,12 @@ var half_ext := Vector3.ONE
 
 static var _box_mesh_cache := {}
 static var _material: StandardMaterial3D
+## Bodies drawn as a smooth skin over their voxels (VoxelSkin) instead of the voxel boxes; the
+## voxels are still what is hit, cut and simulated. Set from the settings ("bodies").
+static var smooth_skin := true
+static var _skin_material: StandardMaterial3D
+var skin: MeshInstance3D = null
+var _skin_dirty := false
 
 ## `voxels`: [[fx, fy, fz, Color, bone], ...] on the fine grid.
 func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
@@ -168,6 +174,41 @@ func _build_mesh() -> void:
 	mmi.custom_aabb = AABB(-ext, ext * 2.0)
 	mm.custom_aabb = AABB(-ext, ext * 2.0)
 	add_child(mmi)
+	if smooth_skin and DisplayServer.get_name() != "headless":
+		make_skin()
+
+## Draws the part as a smooth skin (the voxel boxes hidden), built now and again whenever its
+## voxels change.
+func make_skin() -> void:
+	if _skin_material == null:
+		_skin_material = _material.duplicate()
+		_skin_material.roughness = 0.72
+	skin = MeshInstance3D.new()
+	skin.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	skin.material_override = _skin_material
+	skin.custom_aabb = mmi.custom_aabb
+	add_child(skin)
+	mmi.visible = false
+	rebuild_skin()
+
+func rebuild_skin() -> void:
+	_skin_dirty = false
+	if skin == null:
+		return
+	skin.mesh = VoxelSkin.build(self, jaw_slot)
+
+func _mark_skin() -> void:
+	if skin != null and not _skin_dirty:
+		_skin_dirty = true
+		_rebuild_skin_soon()
+
+func _rebuild_skin_soon() -> void:
+	if not is_inside_tree():
+		return
+	# Once a frame at most, however many voxels a blow knocked out.
+	await get_tree().process_frame
+	if is_instance_valid(self) and _skin_dirty:
+		rebuild_skin()
 
 func refresh_colors(indices: Array = []) -> void:
 	# Through the buffer, like set_shown: per-instance writes made the part vanish.
@@ -182,6 +223,7 @@ func refresh_colors(indices: Array = []) -> void:
 	_write_colors(mm, main)
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
+	_mark_skin()
 
 static func _write_colors(m: MultiMesh, rows: Array) -> void:
 	# Per instance: with physics interpolation on, a whole-buffer write did not always reach the
@@ -206,6 +248,7 @@ func resync() -> void:
 	_write_shown(mm, main_on, true)
 	_write_shown(mm, main_off, false)
 	_write_colors(mm, cols)
+	_mark_skin()
 
 func resync_later() -> void:
 	if not is_inside_tree():
@@ -316,6 +359,7 @@ func set_shown(indices: Array, on: bool) -> void:
 		else:
 			main.append([i, local_of(i)])
 	_write_shown(mm, main, on)
+	_mark_skin()
 	if jaw_mm:
 		_write_shown(jaw_mm, jaw, on)
 		if not jaw.is_empty():
@@ -406,6 +450,7 @@ func build_jaw(jw: Dictionary) -> void:
 	jm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	jm.custom_aabb = jaw_mm.custom_aabb
 	jaw_pivot.add_child(jm)
+	_mark_skin()   # the jaw is drawn on its own now
 	# The gullet and the upper teeth sit on the skull; the lower teeth ride on the jaw.
 	# Sized to the jaw itself, so nothing pokes out of a narrow snout.
 	var xlo := 1 << 30
