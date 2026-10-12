@@ -137,7 +137,7 @@ var lead_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var prev_target := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
-var body_mass := 70.0   # the whole fighter and what he carries (kg), from the support spring
+var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var stroke_dir := {"R": null, "L": null}   # which way the stroke is going, across the blade
 var stroke_idle := {"R": 0.0, "L": 0.0}
@@ -284,6 +284,15 @@ func apply_body(b: Dictionary) -> void:
 		var p: VoxelPart = by_name.get(n)
 		if p:
 			p.scar(body.scars[n])
+	# The last fight's wounds are still open: blood round each, not yet the pink of a scar.
+	for n in body.get("fresh", {}):
+		var fp: VoxelPart = by_name.get(n)
+		if fp and not (body.fresh[n] as Array).is_empty():
+			var c := Vector3.ZERO
+			for i in body.fresh[n]:
+				c += fp.local_of(int(i))
+			c /= float(body.fresh[n].size())
+			fp.wound(c, fp.vf * fp.part_scale * (2.5 + sqrt(float(body.fresh[n].size())) * 0.6), "blood")
 	for n in body.missing:
 		var p: VoxelPart = by_name.get(n)
 		if p and not p.missing:
@@ -1062,10 +1071,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	for p in parts:
 		if not p.severed:
 			total_mass += p.nominal_mass / (LEG_MASS if p.def.get("leg", false) else 1.0)
+	body_mass = total_mass
 	for w in weapons.values():
 		if w:
 			total_mass += w.mass
-	body_mass = total_mass
 	var ray := PhysicsRayQueryParameters3D.create(t_pos, t_pos + Vector3(0, -2.2 * S, 0), VoxelPart.LAYER_WORLD)
 	var hit := space.intersect_ray(ray)
 	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, low_hand * 0.9))
@@ -1609,6 +1618,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# a man on the sand (or the sand itself) with an arm's whole drive lifted the striker off
 	# his feet and flung him up.
 	F.y = maxf(F.y, -0.35 * body_mass * gravity)
+	# Nor pull up harder than a man can lift: a giant's weapon resting on the sand is dragged,
+	# not hauled up, and the arm straining at it no longer hoists its wielder off his feet.
+	F.y = minf(F.y, (fore.nominal_mass + upper.nominal_mass * 0.5) * gravity + 0.45 * body_mass * gravity * float(mods.strength))
 	fore.apply_impulse(F * dt, hand_w - fore.global_position)
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
 	if w and w.holder == self and not w.is_shield:
@@ -1914,19 +1926,27 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 				es = 1.0 if prev_ed.dot(lead) >= 0.0 else -1.0
 			ed = lead * es
 	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
+	var prev = aim_q[side]
+	if prev != null:
+		# Only the blade's line is held to the speed the weapon allows; turning the edge about
+		# the line is the wrist's, and does not eat into the sweep (when the stroke turned back
+		# and the edge rolled over to lead it, the sweep stalled while it did).
+		var h: float = handling[side]
+		var wmax := 34.0 * (0.45 + 0.55 * h) * (1.2 if inp.get("power", false) else 1.0)
+		var pa: Vector3 = (prev as Quaternion) * Vector3.UP
+		var ang := pa.angle_to(axis)
+		if ang > wmax * dt and ang > 1e-5:
+			var rax := pa.cross(axis)
+			if rax.length_squared() > 1e-10:
+				axis = (pa.rotated(rax.normalized(), wmax * dt)).normalized()
+				ed -= axis * ed.dot(axis)
+				if ed.length_squared() < 1e-6:
+					ed = ((prev as Quaternion) * Vector3.RIGHT)
+					ed -= axis * ed.dot(axis)
+				ed = ed.normalized()
 	var z := ed.cross(axis).normalized()
 	var e := axis.cross(z)
 	var desired := PD.quat_from_axes(e, axis, z)
-	var prev = aim_q[side]
-	if prev != null:
-		var step := PD.rot_error(desired, prev)
-		var h: float = handling[side]
-		var wmax := 34.0 * (0.45 + 0.55 * h) * (1.2 if inp.get("power", false) else 1.0)
-		var rate := step.length() / dt
-		if rate > wmax:
-			step *= wmax / rate
-			var ang := step.length()
-			desired = Quaternion(step / ang, ang) * (prev as Quaternion)
 	aim_q[side] = desired
 	return desired
 

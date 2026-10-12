@@ -76,7 +76,10 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		var no_ground: bool = d.leg and not d.lower
 		p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | (0 if no_ground else VoxelPart.LAYER_WORLD)
 		var pm := PhysicsMaterial.new()
-		pm.friction = 1.1 if d.lower else 0.8
+		# A paw grips, but on four legs a mistimed step slides rather than folding the leg back
+		# under; a two-legged runner (the ostrich) needs all the grip it can get.
+		var bipedal: bool = sp.parts.filter(func(q): return q.get("leg", false) and q.get("lower", false)).size() <= 2
+		pm.friction = (1.1 if bipedal else 0.7) if d.lower else 0.8
 		p.physics_material_override = pm
 		add_child(p)
 		var r: Array = d.rot
@@ -123,6 +126,23 @@ func _box_low(p: VoxelPart) -> float:
 	var b := p.global_transform
 	var h := p.half_ext
 	return b.origin.y - absf(b.basis.x.y) * h.x - absf(b.basis.y.y) * h.y - absf(b.basis.z.y) * h.z
+
+## How far a leg swings fore and aft at a speed (radians), wider the faster it goes.
+func stride_amp(speed: float) -> float:
+	return 0.42 * minf(1.0, 0.35 + speed / (2.5 * S)) + 0.2 * clampf((speed - 2.5 * S) / (4.0 * S), 0.0, 1.0)
+
+## Hip to sole of a leg, the upper and the lower part together.
+func leg_len() -> float:
+	if _leg_len > 0.0:
+		return _leg_len
+	for l in legs:
+		var lo := lower_of(l)
+		_leg_len = l.half_ext.y * 2.0 + (lo.half_ext.y * 2.0 if lo else 0.0)
+		break
+	if _leg_len <= 0.0:
+		_leg_len = 0.5 * S
+	return _leg_len
+var _leg_len := 0.0
 
 func lower_of(leg: VoxelPart) -> VoxelPart:
 	return by_name.get(leg.part_name + "Lo")
@@ -215,7 +235,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var heavy := 1.0 - 0.5 * injury
 	var collapsed: bool = (legs.size() > 0 and legs_left <= legs.size() / 2.0) or (legs.size() > 0 and blood < 22.0)
 	var missing := legs.size() - legs_left
-	var crouching := 0.78 if ai.mode == "crouch" else (1.15 if ai.mode == "breathe" else 1.0)
+	var crouching := 0.93 if ai.mode == "crouch" else (1.15 if ai.mode == "breathe" else 1.0)
 	if strikes.has(head) and head.parent_part != torso:
 		crouching = 0.8   # a long-necked beast drops its forequarters into a downward strike
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
@@ -433,7 +453,12 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	if species == "hydra":
 		_regrow(dt)
 	_drive_legs(dt, Vector2(lv.x, lv.z).length(), collapsed, down, moving)
-	gait += dt * (maxf(1.2, Vector2(lv.x, lv.z).length()) if moving else 0.0) * 4.6 / S
+	# The legs step as fast as the ground goes by: each foot down covers the ground the body
+	# travels in that half stride, so it stands while the body goes over it (at a fixed pace
+	# per speed the long-bodied, short-legged ones dragged their feet along the sand).
+	var spd := Vector2(lv.x, lv.z).length()
+	var sweep := 2.0 * leg_len() * sin(stride_amp(spd))
+	gait += dt * (maxf(maxf(1.2, spd) * 4.6 / S, PI * spd / maxf(0.08, sweep)) if moving else 0.0)
 
 func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool, legs_left: int, grounded: bool, h_want: float, dist_g: float, mass: float) -> Vector3:
 	var want := Vector3.ZERO
@@ -660,11 +685,17 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		elif collapsed:
 			hip = sin(gait * 2.2 + off) * 0.55; knee = 0.35 + cos(gait * 2.2 + off) * 0.3; wn = 45.0
 		elif moving:
-			var amp := 0.42 * minf(1.0, 0.35 + speed / (2.5 * S))
+			var amp := stride_amp(speed)
 			hip = sin(phase) * amp
 			knee = 0.06 + maxf(0.0, -cos(phase)) * amp * 1.9
+			if ai.mode == "crouch":
+				# Stalking low: the legs bent, hip forward over the knee, still stepping (it
+				# folded its legs back under it and slid along the sand on them).
+				hip += 0.1
+				knee += 0.12
 		else:
-			hip = 0.03 * sin(time * 1.1 + i * 1.7)
+			hip = 0.03 * sin(time * 1.1 + i * 1.7) + (0.1 if ai.mode == "crouch" else 0.0)
+			knee = 0.06 + (0.12 if ai.mode == "crouch" else 0.0)
 		# A hurt leg steps short; a struck one buckles for a moment; a swiping one lashes forward.
 		var lf := fn_of([leg.part_name])
 		hip *= 0.35 + 0.65 * lf

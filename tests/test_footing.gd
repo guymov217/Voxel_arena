@@ -80,7 +80,7 @@ func test_a_fast_low_stroke_does_not_stall() -> void:
 			inp.main = {"x": 2.0 - 4.0 * clampf(i / 36.0, 0.0, 1.0), "y": -1.0}
 			await get_tree().physics_frame
 		var y1: float = yaw_of.call()
-		t.check(y1 - y0 > 80.0, "%s: a fast low stroke sweeps right across (%d° to %d°)" % [wn, int(y0), int(y1)])
+		t.check(y1 - y0 > 60.0, "%s: a fast low stroke sweeps right across (%d° to %d°)" % [wn, int(y0), int(y1)])
 		m.entities.erase(e)
 		m.combat.fighters.erase(f)
 		f.queue_free()

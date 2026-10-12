@@ -6,18 +6,30 @@ class_name Yard
 
 const STATIONS := {
 	"gate": {"p": Vector3(0, 0, 11.5), "r": 1.8, "label": "The arena gate", "hint": "G: choose the fight and go"},
-	"smith": {"p": Vector3(-9.5, 0, 5), "r": 1.4, "label": "The smith", "hint": "G: buy, mend and reshape your weapons"},
-	"market": {"p": Vector3(9.5, 0, 5), "r": 1.4, "label": "The market", "hint": "G: buy pots, bread and gadgets"},
+	"smith": {"p": Vector3(-9.5, 0, 5), "r": 2.0, "label": "The smith", "hint": "E: talk to the smith · buy, mend and reshape your weapons", "npc": {"name": "Vulcanus the smith", "main": "warhammer", "color": 0x4a3020}},
+	"market": {"p": Vector3(9.5, 0, 5), "r": 2.0, "label": "The market", "hint": "E: talk to the trader · pots, bread and gadgets", "npc": {"name": "Mercator the trader", "main": "", "color": 0x2a5a8a}},
 	"board": {"p": Vector3(0, 0, -11), "r": 1.4, "label": "The mission board", "hint": "G: your missions for the next fight"},
-	"physician": {"p": Vector3(-5, 0, -10), "r": 1.4, "label": "The physician", "hint": "G: heal your wounds, fit a prosthetic"},
+	"physician": {"p": Vector3(-5, 0, -10), "r": 2.0, "label": "The physician", "hint": "E: talk to the physician · stitch your wounds, fit a prosthetic", "npc": {"name": "Galen the physician", "main": "", "color": 0xe8e0d0}},
 }
 const DUMMIES := [Vector3(-8, 0, -5), Vector3(-10.5, 0, -2)]
 const TARGETS := [Vector3(12.6, 1.5, -3), Vector3(11.6, 1.5, -6.5), Vector3(10.2, 1.5, -9.5)]
 const RING := {"p": Vector3(5, 0, -6), "r": 2.4}
 
-static func station_at(p: Vector3) -> String:
+## The mission board is put away for now (its missions still count, quietly).
+const SHOW_BOARD := false
+
+## The stations standing in the yard.
+static func stations() -> Dictionary:
+	var out := {}
 	for id in STATIONS:
-		if Vector2(p.x - STATIONS[id].p.x, p.z - STATIONS[id].p.z).length() < float(STATIONS[id].r):
+		if id != "board" or SHOW_BOARD:
+			out[id] = STATIONS[id]
+	return out
+
+static func station_at(p: Vector3) -> String:
+	var st := stations()
+	for id in st:
+		if Vector2(p.x - st[id].p.x, p.z - st[id].p.z).length() < float(st[id].r):
 			return id
 	return ""
 

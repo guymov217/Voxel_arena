@@ -1,5 +1,6 @@
 class_name Hud
 extends CanvasLayer
+const SHOW_CROWD := false
 ## The fight's overlay: your body drawn part by part (bruised, cut, burning, gone), blood,
 ## breath and the crowd's favour as framed bars that ease and pulse, the kit in eight slots,
 ## the enemy's name plate with a trail on his health, the decrees, a feed of what happens, a
@@ -162,9 +163,9 @@ func _build_vignette() -> void:
 		root.add_child(r)
 		blind[side] = r
 
-func _bar(color: Color, width := 210) -> Control:
+func _bar(color: Color, width := 150) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(width, 14)
+	c.custom_minimum_size = Vector2(width, 10)
 	c.set_meta("color", color)
 	c.set_meta("value", 1.0)
 	c.set_meta("shown", 1.0)
@@ -188,15 +189,15 @@ func _build_body_panel() -> void:
 	panel.add_theme_stylebox_override("panel", _style(PANEL_BG, BRONZE_DIM, 12))
 	panel.anchor_top = 1.0
 	panel.anchor_bottom = 1.0
-	panel.offset_left = 18
-	panel.offset_top = -190
+	panel.offset_left = 14
+	panel.offset_top = -140
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(panel)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	panel.add_child(row)
 	var fig := Control.new()
-	fig.custom_minimum_size = Vector2(72, 132)
+	fig.custom_minimum_size = Vector2(50, 92)
 	fig.draw.connect(func(): _draw_body(fig))
 	row.add_child(fig)
 	body_rects["fig"] = fig
@@ -204,14 +205,20 @@ func _build_body_panel() -> void:
 	col.add_theme_constant_override("separation", 3)
 	row.add_child(col)
 	for k in [["blood", "BLOOD", Color(0.72, 0.1, 0.08)], ["stamina", "BREATH", Color(0.86, 0.68, 0.28)], ["favor", "THE CROWD", Color(0.95, 0.82, 0.4)]]:
-		col.add_child(_label(k[1], 11, MUTED))
+		var lb := _label(k[1], 11, MUTED)
+		col.add_child(lb)
 		var b := _bar(k[2])
 		col.add_child(b)
 		bars[k[0]] = b
+		# The crowd's favour meter is kept off the screen (the crowd still cheers and pays).
+		if k[0] == "favor" and not SHOW_CROWD:
+			lb.visible = false
+			b.visible = false
 	status_label = _label("", 13, MUTED)
 	col.add_child(status_label)
 
 func _draw_body(fig: Control) -> void:
+	fig.draw_set_transform(Vector2.ZERO, 0.0, Vector2(50.0 / 72.0, 92.0 / 132.0))   # the figure drawn small
 	var me = match_.me
 	var f = me.f if me and is_instance_valid(me.f) else null
 	var t := Time.get_ticks_msec() / 1000.0
@@ -274,21 +281,21 @@ func _build_hotbar() -> void:
 	h.anchor_right = 0.5
 	h.anchor_top = 1.0
 	h.anchor_bottom = 1.0
-	h.offset_left = -340
-	h.offset_right = 340
-	h.offset_top = -84
+	h.offset_left = -250
+	h.offset_right = 250
+	h.offset_top = -62
 	h.alignment = BoxContainer.ALIGNMENT_CENTER
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(h)
 	for i in 9:
 		var p := PanelContainer.new()
-		p.custom_minimum_size = Vector2(68, 68)
+		p.custom_minimum_size = Vector2(50, 50)
 		p.add_theme_stylebox_override("panel", _style(Color(0.07, 0.05, 0.035, 0.72), BRONZE_DIM, 8))
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var pic := TextureRect.new()
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		pic.custom_minimum_size = Vector2(56, 56)
+		pic.custom_minimum_size = Vector2(40, 40)
 		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		p.add_child(pic)
 		var num := _label(str(i + 1), 12, BRONZE)
@@ -511,7 +518,7 @@ func _process(dt: float) -> void:
 		for s in slots:
 			s.panel.visible = false
 	match_.spectacle.events.clear()
-	status_label.text = ("Stage %d · round %d of 3" % [match_.stage, match_.round + 1]) if match_.mode == "campaign" else (match_.circus_status() if match_.mode == "circus" else (match_.yard.hint if match_.yard else (match_.modes.status() if match_.modes else match_.mode.capitalize())))
+	status_label.text = (("%sBout %d · %s" % ["Co-op · " if match_.coop else "", match_.stage, match_.stage_info.get("foe_name", "")]) if match_.stage_info.get("duel", false) else ("Stage %d · round %d of 3" % [match_.stage, match_.round + 1])) if match_.mode == "campaign" else (match_.circus_status() if match_.mode == "circus" else (match_.yard.hint if match_.yard else (match_.modes.status() if match_.modes else match_.mode.capitalize())))
 	decree_label.text = ("Decrees: " + " · ".join(match_.dec.names)) if not match_.dec.names.is_empty() else ""
 	if match_.tut:
 		if tut_panel == null:

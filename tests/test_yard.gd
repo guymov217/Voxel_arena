@@ -34,8 +34,8 @@ func test_the_yard_plays() -> void:
 	m.station.connect(func(id): opened.append(id))
 	m.me.f.teleport(Yard.STATIONS.market.p)
 	await _steps(5)
-	m.yard.update(0.01, {"grab": true})
-	t.check(opened.has("market"), "G at the market opens it")
+	m.yard.update(0.01, {"talk": true})
+	t.check(opened.has("market"), "E by the trader opens the market")
 	var d = m.yard.dummies[0]
 	d.blood = 1.0
 	await _steps(2)

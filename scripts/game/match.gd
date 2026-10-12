@@ -193,10 +193,10 @@ func setup(opts: Dictionary) -> void:
 	# Players: the local one, then a fighter for every friend in the room.
 	var lo: Dictionary = opts.get("loadout", {"main": "gladius", "off": "roundShield"})
 	var campaign := mode == "campaign"
-	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign else null})
+	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign or mode == "yard" else null})
 	me.inventory = opts.get("inventory", {})
 	for p in opts.get("peers", []):
-		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if campaign else null})
+		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
 		pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	players_count = 1 + opts.get("peers", []).size()
 	# Tests and attract mode: the player's fighter fights by itself.
@@ -529,6 +529,10 @@ func _physics_process(dt: float) -> void:
 						input.aiming = shooter != null or input.held("throw")
 						_bow_sway(f, shooter, dt)
 					inp = input.sample(dt) if input else {}
+					# In the yard E by a stall's keeper is a word with him, not a kick.
+					if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
+						inp.kick = false
+						inp.talk = true
 					if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
 						inp.aimAt = aim_point(f)
 					last_local_inp = inp

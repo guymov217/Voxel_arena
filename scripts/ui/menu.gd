@@ -202,8 +202,15 @@ func body() -> Dictionary:
 
 func set_body(b: Dictionary) -> void:
 	var clean := Body.sanitize(b)
+	var was := Body.sanitize(Save.get_value("body", {}))
 	Save.set_value("body", clean)
 	Net.my_body = clean
+	# Stitched in the yard: the wounds close on him there and then.
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and clean.fresh.is_empty():
+		for n in was.fresh:
+			var p = match_.me.f.by_name.get(n)
+			if p:
+				p.restore_voxels(was.fresh[n])
 
 func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)
@@ -332,7 +339,9 @@ func in_yard() -> bool:
 func enter_yard(banner_text := "") -> void:
 	hub = true
 	var lo := Arms.loadout(arms())
-	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "gladius", "off": lo.off if lo.off else "roundShield"}, "decrees": [], "hazards": []})
+	# He walks about the yard as the last fight left him: his wounds on him (nobody bleeds out
+	# here), for the physician to see to.
+	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "gladius", "off": lo.off if lo.off else "roundShield"}, "decrees": [], "hazards": [], "body": body()})
 	match_.station.connect(_open_station)
 	if Sfx.music:
 		Sfx.music.set_state("yard")
@@ -1148,7 +1157,7 @@ func _physician(v: VBoxContainer) -> void:
 		if yard:
 			_close_overlay()
 		else:
-			show_screen("yard"), "Leave the physician" if yard else "Back to the smith", func(nb):
+			show_screen("yard"), "" if yard else "Back", func(nb):
 		set_body(nb)
 		show_screen("physician"))
 
@@ -1215,7 +1224,8 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 	var purse := UIStyle.label("%d denarii" % coins(), 14, UIStyle.BRONZE)
 	purse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(purse)
-	foot.add_child(UIStyle.button(done_text, func(): done.call(b), true))
+	if done_text != "":
+		foot.add_child(UIStyle.button(done_text, func(): done.call(b), true))
 	v.add_child(foot)
 
 func _pay(r: Dictionary) -> void:
@@ -1790,7 +1800,8 @@ func _on_net(type: String, data, _from: int) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	# R: the stage (the bout, the training) again from the start. Alone only: in a room the
 	# host's match is everyone's.
-	if e.is_action_pressed("va_restart") and not e.is_echo() and match_ and not visible and pause_layer == null and not Net.active() and not last_start.is_empty() and not in_yard():
+	# (Not in the campaign: a bout there is not taken back; Esc offers a fresh campaign instead.)
+	if e.is_action_pressed("va_restart") and not e.is_echo() and match_ and not visible and pause_layer == null and not Net.active() and not last_start.is_empty() and not in_yard() and String(last_start.get("mode", "")) != "campaign":
 		start(last_start.duplicate(true))
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and in_yard() and visible:
@@ -1798,6 +1809,14 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
 		_toggle_pause()
+
+## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
+func restart_campaign() -> void:
+	Save.set_value("stage", 1)
+	Save.set_value("checkpoint", 1)
+	set_body(Body.empty())
+	set_arms(Arms.empty())
+	start({"mode": "campaign", "stage": 1})
 
 func _toggle_pause() -> void:
 	if pause_layer:
@@ -1821,6 +1840,18 @@ func _toggle_pause() -> void:
 	p.add_child(v)
 	v.add_child(UIStyle.title("Paused", 30))
 	v.add_child(UIStyle.button("Back to the fight", _toggle_pause, true))
+	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and not Net.active():
+		# Twice, to be sure: the whole campaign over from bout 1, whole of body, bare of arms.
+		var rb := UIStyle.button("Restart the campaign", func(): pass)
+		rb.pressed.connect(func():
+			if not rb.has_meta("armed"):
+				rb.set_meta("armed", true)
+				rb.text = "Click again: start over from bout 1 (all progress lost)"
+				return
+			_toggle_pause()
+			get_tree().paused = false
+			restart_campaign())
+		v.add_child(rb)
 	v.add_child(UIStyle.button("Leave the fight", func():
 		_toggle_pause()
 		get_tree().paused = false

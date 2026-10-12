@@ -14,6 +14,8 @@ var best_throw := 0
 var hint := ""
 var at := ""
 var signs: Array = []
+var keepers: Array = []
+var last_at := "gate"   # where the player stood last tick (he starts by the gate: no walk-in then)   # the stall keepers (smith, trader, physician)
 
 func _init(match_: Node) -> void:
 	m = match_
@@ -31,12 +33,26 @@ func setup() -> void:
 	c.drive = _champ_input
 	c.harmless = true
 	champ = c.f
+	# The smith, the trader and the physician, each at his stall, turned to the yard.
+	for id in Yard.stations():
+		var s: Dictionary = Yard.STATIONS[id]
+		if not s.has("npc"):
+			continue
+		var p: Vector3 = s.p
+		var yaw := atan2(-p.x, -p.z)
+		var n = m.spawn_fighter({"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": ""}, "team": Match.ENEMY_TEAM,
+			"pos": p + Vector3(0, 0.02, 0), "yaw": yaw, "mods": {"toughness": 5.0}, "color": s.npc.color})
+		n.drive = func(_e): return {"look": {"yaw": yaw, "pitch": 0.0}}
+		n.harmless = true
+		keepers.append(n.f)
 	if m.headless:
 		return
-	for id in Yard.STATIONS:
+	for id in Yard.stations():
 		var s: Dictionary = Yard.STATIONS[id]
-		_ring(s.p, float(s.r), Color(1.0, 0.8, 0.35, 0.8))
-		_sign(s.p + Vector3(0, 2.4, 0), String(s.label))
+		# A stall is kept by someone you talk to; only the gate is a place to walk into.
+		if not s.has("npc"):
+			_ring(s.p, float(s.r), Color(1.0, 0.8, 0.35, 0.8))
+		_sign(s.p + Vector3(0, 2.6, 0), String(s.label))
 	_ring(Yard.RING.p, float(Yard.RING.r), Color(0.75, 0.3, 0.95, 0.85))
 	_sign(Yard.RING.p + Vector3(0, 2.2, 0), "The shoving ring")
 	for p in Yard.TARGETS:
@@ -119,7 +135,7 @@ func _board(p: Vector3) -> void:
 
 ## Once a tick on the host: nobody bleeds out, the stations, the boards, the ring.
 func update(_dt: float, local_inp: Dictionary) -> void:
-	for d in dummies:
+	for d in dummies + keepers:
 		if is_instance_valid(d):
 			d.blood = 100.0
 	for e in m.humans():
@@ -131,8 +147,11 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 	_boards()
 	if m.me and is_instance_valid(m.me.f):
 		at = Yard.station_at(m.me.f.torso.global_position)
-		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · walk to a station and press G · dummies, throwing boards and the shoving ring to play"
-		if at != "" and local_inp.get("grab", false):
+		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader or the physician · the gate leads to the arena"
+		# E talks to a stall's keeper; the gate is walked into (G there as well).
+		var walked_in: bool = at == "gate" and last_at != "gate"
+		last_at = at
+		if at != "" and (walked_in or local_inp.get("talk", false) or (local_inp.get("grab", false) and not Yard.STATIONS[at].has("npc"))):
 			m.station.emit(at)
 
 func _ring_rule(dt: float) -> void:

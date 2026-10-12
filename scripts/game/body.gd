@@ -25,7 +25,7 @@ const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
 
 static func empty() -> Dictionary:
-	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0}
+	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}}
 
 static func part_names() -> Array:
 	return Data.body_parts.map(func(d): return String(d.name))
@@ -86,6 +86,21 @@ static func sanitize(raw) -> Dictionary:
 			b.scars.erase(c)
 	for k in b.prosthetics:
 		b.scars.erase(k)
+	# The wounds of the last fight, still open: a part of its scars the physician can still close.
+	var fr = raw.get("fresh", {})
+	if fr is Dictionary:
+		for k in fr:
+			var n := str(k)
+			if b.scars.has(n) and fr[k] is Array:
+				var have := {}
+				for i in b.scars[n]:
+					have[int(i)] = true
+				var keep := []
+				for i in fr[k]:
+					if have.has(int(i)) and not keep.has(int(i)):
+						keep.append(int(i))
+				if not keep.is_empty():
+					b.fresh[n] = keep
 	return b
 
 ## Every part hanging off `name` (a lost thigh takes the shin with it).
@@ -157,6 +172,9 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 			news.append(("lost the %s" % label(n)) if had == "" else ("the %s was knocked off" % PROSTHETICS[had].name.to_lower()))
 			doctor = doctor or n.begins_with("forearm") or n.begins_with("upperArm") or n.begins_with("shin") or n.begins_with("thigh")
 		b.missing.append(n)
+	# Last fight's wounds left unstitched have healed over into scars for good; this fight's
+	# are fresh, for the physician to close.
+	b.fresh = {}
 	for n in snap.get("holes", {}):
 		if b.missing.has(n):
 			continue
@@ -165,11 +183,15 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 		var seen := {}
 		for i in old:
 			seen[i] = true
+		var new_ones := []
 		for i in snap.holes[n]:
 			if not seen.has(i):
 				old.append(i)
+				new_ones.append(i)
 				seen[i] = true
 		b.scars[n] = old
+		if not new_ones.is_empty():
+			b.fresh[n] = new_ones
 		if old.size() > had:
 			news.append("a new scar on the %s" % label(n))
 	for s in snap.get("eyes_lost", []):
@@ -224,6 +246,11 @@ static func offers(body: Dictionary, stage: int) -> Array:
 	for s in ["R", "L"]:
 		if b.eyes.get(s, "") == "lost":
 			out.append({"id": "glassEye:%s" % s, "name": "Glass eye (%s)" % ("right" if s == "R" else "left"), "desc": PROSTHETICS.glassEye.desc, "price": PROSTHETICS.glassEye.price})
+	var fresh_n := 0
+	for n in b.fresh:
+		fresh_n += b.fresh[n].size()
+	if fresh_n > 0:
+		out.append({"id": "stitch:all", "name": "Stitch and dress your wounds", "desc": "The cuts and the crushed flesh of your last fight, cleaned, stitched and bound: they heal without a mark. Left alone, they scar over for good.", "price": stitch_price(b)})
 	if not b.scars.is_empty() and medicine_in_stock(stage):
 		var worst := ""
 		for n in b.scars:
@@ -250,10 +277,28 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 				b.eyes[n] = "glass"
 		"medicine":
 			b.scars.erase(n)
+		"stitch":
+			for p in b.fresh:
+				var gone := {}
+				for i in b.fresh[p]:
+					gone[int(i)] = true
+				b.scars[p] = (b.scars.get(p, []) as Array).filter(func(i): return not gone.has(int(i)))
+				if (b.scars[p] as Array).is_empty():
+					b.scars.erase(p)
+			b.fresh = {}
 	return sanitize(b)
 
-static func price_of(id: String) -> int:
+## What stitching the fresh wounds costs: a little for a scratch, more for a man cut to ribbons.
+static func stitch_price(b: Dictionary) -> int:
+	var n := 0
+	for p in b.get("fresh", {}):
+		n += (b.fresh[p] as Array).size()
+	return clampi(15 + n / 6, 15, 160)
+
+static func price_of(id: String, body := {}) -> int:
 	var kind := id.split(":")[0]
+	if kind == "stitch":
+		return stitch_price(sanitize(body))
 	if kind == "medicine":
 		return MEDICINE_PRICE
 	return int(PROSTHETICS.get(kind, {}).get("price", 0))
