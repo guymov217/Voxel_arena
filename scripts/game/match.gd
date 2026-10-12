@@ -259,6 +259,13 @@ func spawn_fighter(spec: Dictionary):
 	_register(e)
 	return e
 
+## The body turns after the eyes, not in jumps with every twitch of the mouse: it closes most
+## of the gap in a few steps, never faster than a fighter can wheel round, and the arms and the
+## blade (aimed in the body's frame) come round with it.
+static func ease_yaw(cur: float, to: float, dt: float) -> float:
+	var d := wrapf(to - cur, -PI, PI)
+	return cur + clampf(d * minf(1.0, dt * 16.0), -11.0 * dt, 11.0 * dt)
+
 func spawn_beast(spec: Dictionary):
 	var b := Beast.new()
 	add_child(b)
@@ -520,11 +527,11 @@ func _physics_process(dt: float) -> void:
 						inp.aimAt = aim_point(f)
 					last_local_inp = inp
 					if inp.has("look"):
-						f.yaw = float(inp.look.yaw)
+						f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 			"remote":
 				inp = Net.input_of(e.peer)
 				if inp.has("look"):
-					f.yaw = float(inp.look.yaw)
+					f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 					# A guest's thrust goes along their eyes (their crosshair is not sent).
 					if float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0:
 						var lk: Dictionary = inp.look

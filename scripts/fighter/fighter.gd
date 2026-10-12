@@ -137,6 +137,9 @@ var lead_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var prev_target := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
+var ground_level := 0.0   # the sand under the fighter, from the stance ray
+var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
+var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
@@ -856,14 +859,14 @@ func is_active() -> bool:
 
 # ---------- PD drives ----------
 
-func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta: float, max_t: float, dt: float, scale := 1.0) -> void:
+func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta: float, max_t: float, dt: float, scale := 1.0, w_des := Vector3.ZERO) -> void:
 	if part.severed or wn <= 0.0 or max_t <= 0.0:
 		return
 	var kp := wn * wn
 	var kd := 2.0 * zeta * wn
 	var cur := PD.quat_of(part) * local_axis
 	var err := PD.dir_error(cur, des.normalized())
-	var alpha := err * kp - part.angular_velocity * kd
+	var alpha := err * kp - (part.angular_velocity - w_des) * kd
 	var tq: Vector3
 	if scale != 1.0:
 		var tw := cur * alpha.dot(cur)
@@ -1055,6 +1058,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if hit:
 		var dist = t_pos.y - hit.position.y
 		ground_y = hit.position.y
+		ground_level = ground_y
 		var run_low := 0.06 * minf(1.0, walk_amt * 2.5 / 3.5)
 		var desired := torso_y * (0.95 - run_low) * (1.0 - crouch * 0.22 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
 		# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
@@ -1156,7 +1160,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 
 	# ----- Upright balance -----
 	if standing:
-		var balance: float = minf(1.0, (0.25 + 0.75 * minf(1.0, leg_avg * 1.3)) * (1.0 - stagger * 0.85) * conc_f) * stand_f
+		var balance: float = minf(1.0, (0.25 + 0.75 * minf(1.0, leg_avg * 1.3)) * (1.0 - stagger * 0.6) * sqrt(conc_f)) * stand_f
 		var low_lean := low_hand * 0.42 / sqrt(maxf(1.0, S))
 		low_hand = 0.0
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
@@ -1333,13 +1337,15 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var a: Dictionary = arm[side]
 	var upper: VoxelPart = a.upper
 	var fore: VoxelPart = a.fore
+	var e_was = elbow_prev[side]   # last step's elbow line, only while a weapon arm drives on
+	elbow_prev[side] = null
 	if upper.severed or fore.severed or upper.hanging or fore.hanging or not live:
 		if not live and fore.has_meta("elbow_set"):
 			_hold_elbow(side, 0.0, false, dt)
 		return
 	var af := arm_func(side)
 	if fore.flinch_t > 0.0 or upper.flinch_t > 0.0:
-		af *= 0.35
+		af *= 0.6
 	# Caught by that arm: it cannot swing until it is wrenched free.
 	if pinned_arm == side and is_instance_valid(grabbed_by):
 		af *= 0.12
@@ -1476,7 +1482,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var shoulder_w = t_pos + t_rot * shoulder[side]
 	var dir = (target_w - shoulder_w).normalized()
 	if w and not w.is_shield and weapon_joints[side]:
+		var q_was = aim_q[side]
 		var w_aim := weapon_aim(side, w, target_w, t_pos, yaw_q, inp, dt)
+		# The arm is damped toward the turn the mouse asks for, not toward standing still: damped
+		# to rest it trailed a fast stroke by a tenth of a second and ran out of drive near the end.
+		var w_ff: Vector3 = PD.clamp_len(PD.rot_error(w_aim, q_was) / dt, 30.0) if q_was != null else Vector3.ZERO
+		aim_w[side] = (aim_w[side] as Vector3).lerp(w_ff, 0.5)
 		if side == "R" and two_handed and weapon_joints.L and not throw_pose[side]:
 			# Both hands on one haft: the front hand is the pivot. It sits ahead of its own
 			# shoulder (lower for a low guard or a blow at a man on the sand, aside with the
@@ -1505,7 +1516,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		hand_goal = elbow + fore_dir * lf
 		var m_load := (fore.nominal_mass + w.mass) * lu * lu
 		var k_up := 1.0 + m_load / PD.inertia_of(upper)
-		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up))
+		var up_ff: Vector3 = PD.clamp_len((e_was as Vector3).cross(elbow_dir) / dt, 25.0) if e_was != null else Vector3.ZERO
+		elbow_prev[side] = elbow_dir
+		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up), up_ff)
 		# The upper arm does not roll on its own length under a swing: the elbow keeps pointing
 		# down and out, the hinge where it belongs.
 		pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 25.0 * MS, dt)
@@ -1747,7 +1760,11 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# of the bent chest (held in under it, they folded the elbow to keep out of it), so the arm
 	# stays straight and the point goes down to the sand.
 	var low := clampf((-hy - 0.5) / 0.9, 0.0, 1.0) if fist == 0.0 else 0.0
-	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low) * S
+	# A short weapon (a dagger, a stick) has to be taken all the way down to a man on the sand:
+	# the shorter it is, the lower the hand goes, the body stooping and the knees bending with it.
+	var short := clampf((0.95 - float(weapons[side].reach)) / 0.5, 0.0, 1.0) if weapons[side] and not weapons[side].is_shield else 0.0
+	y -= 0.3 * low * short * S
+	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
 	# Never round behind the back (only a throw is drawn back there on purpose).
 	if thrust > -0.5:
@@ -1803,12 +1820,22 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 			var keep := sqrt(maxf(0.0, 1.0 - 0.15 * 0.15))
 			flat2 = flat2.normalized() * keep if flat2.length() > 1e-4 else Vector2(0, keep)
 			axis = yaw_q * Vector3(flat2.x, flat2.y, -0.15)
+	if not throwing[side] and not is_spear(w):
+		# A low blow skims the sand instead of ploughing into it: the point is let down no lower
+		# than a hand's breadth above the ground (a sweep with the tip dug in stuck fast there).
+		var floor_gap := hand_world(side).y - (ground_level + (0.13 + 0.035 * minf(4.0, w.mass)) * S)   # a heavy head sags below its aim
+		var reach_w := maxf(0.2, w.reach + 0.04 * S)
+		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:
+			var ny := clampf(-floor_gap / reach_w, -1.0, 0.0)
+			var hz := Vector3(axis.x, 0, axis.z)
+			hz = hz.normalized() if hz.length_squared() > 1e-6 else yaw_q * Vector3(0, 0, 1)
+			axis = hz * sqrt(1.0 - ny * ny) + Vector3(0, ny, 0)
 	if throw_pose[side]:
 		# A spear being thrown points where it will go, at the mark (or ahead and a touch up).
 		var at = inp.get("aimAt")
 		var fly: Vector3 = ((at as Vector3) - target_w).normalized() if at is Vector3 and (at as Vector3).distance_to(target_w) > 0.5 else yaw_q * Vector3(0, 0.17, 1).normalized()
 		axis = (fly + Vector3(0, 0.08, 0)).normalized()
-	low_hand = maxf(low_hand, maxf(0.0, -elev - 0.2))
+	low_hand = maxf(low_hand, maxf(0.0, -elev - 0.2) * (1.0 + 0.8 * clampf((0.95 - w.reach) / 0.5, 0.0, 1.0)))
 	var raise_k := smoothstep(0.5, 1.2, elev)
 	var ed := yaw_q * Vector3((1.0 if side == "R" else -1.0) * (1.0 - raise_k), 0, raise_k)
 	ed -= axis * ed.dot(axis)
@@ -1843,7 +1870,7 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	var rot := PD.quat_of(fore)
 	var err := PD.rot_error(fore_q, rot)
 	var wn := 16.0
-	var alpha := PD.clamp_len(err * (wn * wn) - fore.angular_velocity * (2.0 * 0.8 * wn), 460.0 * (0.6 + 0.4 * strength) * float(mods.strength))
+	var alpha := PD.clamp_len(err * (wn * wn) - (fore.angular_velocity - (aim_w[side] as Vector3)) * (2.0 * 0.8 * wn), 460.0 * (0.6 + 0.4 * strength) * float(mods.strength))
 	var hand_w := hand_world(side)
 	var com_w := w.global_transform * w.center_of_mass
 	var lever := com_w - hand_w
@@ -2058,7 +2085,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var eff := hardness * sharpness * (0.12 + 0.88 * pow(align, 1.5))
 		dmg = J * 2.4 * eff + (J * 0.6 if align < 0.35 else 0.0)
 		if align < 0.35:
-			stagger = minf(1.0, stagger + J * 0.01)
+			stagger = minf(1.0, stagger + J * 0.006)
 			res.slid = true
 		part.bleed += dmg * 0.05 * (2.0 if hit.get("serrated", false) else 1.0)
 		var big: float = maxf(1.0, S)
@@ -2112,9 +2139,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
 		# hammer in earnest is as dangerous as a blade, only in a different way.
 		dmg = J * 1.9
-		stagger = minf(1.0, stagger + J * 0.018)
+		stagger = minf(1.0, stagger + J * 0.011)
 		if part == head:
-			concussion = minf(1.0, concussion + J * 0.022)
+			concussion = minf(1.0, concussion + J * 0.015)
 		if part == torso and lp.y < 0.0 and J > 8.0 and not detached:
 			stamina = maxf(0.0, stamina - J * 1.3)
 			res.winded = true
@@ -2151,7 +2178,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if hollow > 0.0 and not detached:
 		dmg *= 1.0 + minf(1.0, hollow / 0.1)
 	if part == torso or part == head:
-		stagger = minf(1.0, stagger + J * 0.007)
+		stagger = minf(1.0, stagger + J * 0.004)
 	# A blow across the face near the eyes: the view closes in from the edges (players), the
 	# aim wanders (everyone). It heals a little over the fight.
 	if part == head and not detached and lp.z > V * S * 0.5 and absf(lp.y - V * S * 0.6) < V * S * 1.6 and J > 5.0:
@@ -2160,11 +2187,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + J * 0.005)
 	if not detached:
 		# A wrecked trunk holds him up worse: every blow rocks him more.
-		stagger = minf(1.0, stagger + J * 0.0056 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
-		part.flinch_t = maxf(part.flinch_t, minf(0.45, 0.12 + J * 0.01))
+		stagger = minf(1.0, stagger + J * 0.0035 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
+		part.flinch_t = maxf(part.flinch_t, minf(0.3, 0.08 + J * 0.006))
 		if push_t <= 0.0 and J > 4.0:
 			push_t = 0.3
-			var push: float = minf(90.0 if hit.get("thrown", false) else 55.0, J * (2.4 if hit.get("thrown", false) else 1.4)) * MS * S
+			# A fighter takes a blow and fights on: it rocks him, it does not bowl him over.
+			var push: float = minf(60.0 if hit.get("thrown", false) else 32.0, J * (1.6 if hit.get("thrown", false) else 0.8)) * MS * S
 			var dv: Vector3 = hit.dir
 			torso.apply_central_impulse(Vector3(dv.x * push, 0, dv.z * push))
 	if part.prosthetic != "":
@@ -2186,7 +2214,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var steady: bool = bool(mods.get("unstoppable", false)) and blood > 40.0
 	if concussion > 0.85 and state == "stand" and not steady:
 		fall(3.0)
-	if stagger > 0.95 and J >= 10.0 and state == "stand" and not steady:
+	if stagger > 0.95 and J >= 16.0 and state == "stand" and not steady:
 		fall(1.5)
 	if remove.is_empty() and not detached and J > 3.0:
 		var bruise := type == "blunt"

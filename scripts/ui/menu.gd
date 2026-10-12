@@ -12,6 +12,7 @@ var pause_layer: CanvasLayer
 var last_result := {}
 var in_room := false
 var room_list: VBoxContainer
+var _training_loaded := false
 var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
 var backdrop: Match = null      # bots fighting behind the menus, seen by an orbiting camera
 var bg: ColorRect
@@ -485,7 +486,11 @@ func _tutorial() -> void:
 	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
 
 func _training(v: VBoxContainer) -> void:
-	training.merge(Save.get_value("training", {}), true)
+	# The saved choices once; after that the screen is redrawn from what is being picked (each
+	# redraw read the save back over it, and a + or − in the bag came to nothing).
+	if not _training_loaded:
+		training.merge(Save.get_value("training", {}), true)
+		_training_loaded = true
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 16)
 	var tt := UIStyle.title("Training", 34)
@@ -641,6 +646,7 @@ func _training_bag(v: VBoxContainer) -> void:
 			b[item_id] = maxi(0, int(b.get(item_id, 0)) - 1)
 			if int(b[item_id]) == 0:
 				b.erase(item_id)
+			Save.set_value("training", training)
 			show_screen("training"))
 		minus.custom_minimum_size = Vector2(36, 34)
 		minus.disabled = have == 0
@@ -652,6 +658,7 @@ func _training_bag(v: VBoxContainer) -> void:
 		var plus := UIStyle.button("+", func():
 			var b: Dictionary = training.bag
 			b[item_id] = mini(9, int(b.get(item_id, 0)) + 1)
+			Save.set_value("training", training)
 			show_screen("training"))
 		plus.custom_minimum_size = Vector2(36, 34)
 		plus.disabled = have >= 9 or (have == 0 and bag.size() >= TRAINING_BAG_MAX)

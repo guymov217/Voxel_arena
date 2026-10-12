@@ -58,6 +58,21 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		ch.mass = maxf(0.05, voxels.size() * 0.0004 * pow(part.part_scale, 3.0) * float(part.fighter.MS if part.fighter else 1.0))
 	ch.collision_layer = VoxelPart.LAYER_DEBRIS
 	ch.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
+	# A piece starts inside what it came off: never against that body (or the blade it chipped
+	# from and the hands holding it), or the push out of it threw a fighter off his feet at
+	# every voxel a blow took.
+	var own: Array = []
+	if wpn:
+		own.append_array(part.bodies())
+		if part.holder and part.holder.get("parts"):
+			own.append_array(part.holder.parts)
+	elif part.get("fighter") and part.fighter.get("parts"):
+		own.append_array(part.fighter.parts)
+	else:
+		own.append(part)
+	for b in own:
+		if b is PhysicsBody3D and is_instance_valid(b):
+			ch.add_collision_exception_with(b)
 	ch.linear_damp = 0.2
 	ch.angular_damp = 0.8
 	var pm := PhysicsMaterial.new()

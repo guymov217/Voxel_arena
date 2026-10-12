@@ -17,6 +17,7 @@ var gait := 0.0
 var ai := {}
 var target: Node3D = null
 var height := 0.8
+var ride_adj := 0.0   # how far the body is let down so the feet stand on the sand
 var bite_power := 45.0
 var hug = null
 var down_t := 0.0
@@ -118,6 +119,11 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 func heads_left() -> Array:
 	return heads.filter(func(h): return not h.severed and h.hp > 0.0)
 
+func _box_low(p: VoxelPart) -> float:
+	var b := p.global_transform
+	var h := p.half_ext
+	return b.origin.y - absf(b.basis.x.y) * h.x - absf(b.basis.y.y) * h.y - absf(b.basis.z.y) * h.z
+
 func lower_of(leg: VoxelPart) -> VoxelPart:
 	return by_name.get(leg.part_name + "Lo")
 
@@ -214,6 +220,20 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
 	h_want *= 1.0 + 0.008 * sin(time * 1.7 / sqrt(S) + slot)   # breathing
 	var dist_g: float = pos.y - hit.position.y if hit else 99.0
+	# The feet on the sand, never over it: the body rides lower until the legs it stands on
+	# reach the ground (a species' height a little over its legs' reach held it hovering).
+	if hit and not flying and not collapsed and legs.size() > 0:
+		var gap := 0.0
+		var nf := 0
+		for l in legs:
+			if leg_gone(l) or strikes.has(l):
+				continue
+			var ft: VoxelPart = lower_of(l) if lower_of(l) else l
+			gap += _box_low(ft) - hit.position.y
+			nf += 1
+		if nf > 0:
+			ride_adj = clampf(ride_adj + (gap / nf) * minf(1.0, dt * 6.0), -0.04 * S, 0.35 * height)
+	h_want -= ride_adj
 	var grounded: bool = hit and dist_g < maxf(h_want, height) + 0.25 * S
 	if flying:
 		var want_y: float = float(ai.alt) * (1.0 - 0.5 * injury)
