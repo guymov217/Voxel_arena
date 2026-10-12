@@ -84,13 +84,9 @@ func _build_visuals() -> void:
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
 	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.3, 0.5, 0.82) if day else Color(0.02, 0.03, 0.08)
-	sm.sky_horizon_color = Color(0.82, 0.78, 0.7) if day else Color(0.06, 0.07, 0.15)
-	sm.ground_horizon_color = Color(0.62, 0.52, 0.4)
-	sm.ground_bottom_color = Color(0.3, 0.24, 0.17)
-	sm.sun_angle_max = 20.0
-	sky.sky_material = sm
+	sky.sky_material = sky_material(day)
+	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	e.background_mode = Environment.BG_SKY
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
@@ -126,20 +122,76 @@ func _build_visuals() -> void:
 	plane.bottom_radius = RADIUS
 	plane.height = 0.02
 	plane.radial_segments = 96
-	var smat := StandardMaterial3D.new()
-	smat.albedo_color = Color(0.86, 0.78, 0.66)
-	smat.albedo_texture = _noise_texture(0.05, Color(0.78, 0.68, 0.52), Color(0.68, 0.57, 0.42), 3)
-	smat.normal_enabled = true
-	smat.normal_texture = _noise_texture(0.25, Color.WHITE, Color.BLACK, 11, true)
-	smat.normal_scale = 0.35
-	smat.uv1_scale = Vector3(26, 26, 26)
-	smat.roughness = 1.0
+	var smat := surface_material("sand", 0.45, 1.0)
+	smat.albedo_color = Color(1.0, 0.97, 0.93)
+	smat.normal_scale = 0.9
 	plane.material = smat
 	sand.mesh = plane
 	sand.position = Vector3(0, -0.01, 0)
 	add_child(sand)
 	_build_walls()
 	_build_torches(day)
+	var atm := Atmosphere.new()
+	add_child(atm)
+	atm.build(self, day, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
+
+## The sky: a shader with drifting clouds and the sun's glare; at night a photographed starfield.
+static func sky_material(day: bool) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/sky.gdshader")
+	var n := FastNoiseLite.new()
+	n.seed = 5
+	n.frequency = 0.012
+	n.fractal_octaves = 3
+	var nt := NoiseTexture2D.new()
+	nt.width = 512
+	nt.height = 512
+	nt.seamless = true
+	nt.generate_mipmaps = true
+	nt.noise = n
+	m.set_shader_parameter("clouds_noise", nt)
+	if day:
+		m.set_shader_parameter("night", 0.0)
+	else:
+		m.set_shader_parameter("night", 1.0)
+		m.set_shader_parameter("top_color", Color(0.01, 0.015, 0.04))
+		m.set_shader_parameter("horizon_color", Color(0.06, 0.07, 0.13))
+		m.set_shader_parameter("ground_color", Color(0.03, 0.03, 0.04))
+		m.set_shader_parameter("cover", 0.3)
+		m.set_shader_parameter("stars", load_texture("res://art/sky/night_stars.jpg"))
+	return m
+
+## A texture from art/: the imported resource, or (in a checkout that was never opened in the
+## editor) the image file itself.
+static func load_texture(path: String) -> Texture2D:
+	if ResourceLoader.exists(path):
+		return load(path)
+	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
+	if img == null or img.is_empty():
+		return null
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+static var _surfaces := {}
+## A tiling surface from art/textures (sand, stone), laid on in world space so it never
+## stretches: `per_m` repeats a metre.
+static func surface_material(name_: String, per_m: float, rough: float) -> StandardMaterial3D:
+	var key := "%s:%.3f" % [name_, per_m]
+	if _surfaces.has(key):
+		return _surfaces[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load_texture("res://art/textures/%s_albedo.png" % name_)
+	var nt := load_texture("res://art/textures/%s_normal.png" % name_)
+	if nt:
+		m.normal_enabled = true
+		m.normal_texture = nt
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * per_m
+	m.roughness = rough
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_surfaces[key] = m
+	return m
 
 ## A tiling noise texture: colour between `a` and `b`, or a normal map.
 static func _noise_texture(freq: float, a: Color, b: Color, seed_: int, normal := false) -> NoiseTexture2D:
@@ -209,16 +261,11 @@ func _process(_dt: float) -> void:
 ## The wall: a painted podium ring with banners, then tiers of stands and an arcade.
 func _build_walls() -> void:
 	# The wall: a painted podium ring with banners, then tiers of stands and an arcade.
-	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.93, 0.89, 0.8)
-	wall_mat.albedo_texture = _noise_texture(0.08, Color(0.95, 0.91, 0.83), Color(0.72, 0.66, 0.58), 21)
-	wall_mat.uv1_scale = Vector3(2, 2, 2)
-	wall_mat.roughness = 0.9
+	var wall_mat := surface_material("stone", 0.24, 0.9)
 	var band_mat := StandardMaterial3D.new()
 	band_mat.albedo_color = Color(0.55, 0.12, 0.1)
-	var stand_mat := StandardMaterial3D.new()
-	stand_mat.albedo_color = Color(0.82, 0.77, 0.66)
-	stand_mat.albedo_texture = wall_mat.albedo_texture
+	var stand_mat: StandardMaterial3D = surface_material("stone", 0.6, 0.92).duplicate()
+	stand_mat.albedo_color = Color(0.88, 0.84, 0.76)
 	for i in 72:
 		var a := float(i) / 72.0 * TAU
 		var seg := MeshInstance3D.new()
@@ -326,10 +373,7 @@ func _build_crowd() -> void:
 ## Above and round the stands: an arcade of columns, the striped awning (velarium), flags on
 ## poles, the Emperor's box under a purple canopy, and the two great gates.
 func _build_upper() -> void:
-	var stone := StandardMaterial3D.new()
-	stone.albedo_color = Color(0.86, 0.81, 0.72)
-	stone.albedo_texture = _noise_texture(0.08, Color(0.95, 0.91, 0.83), Color(0.72, 0.66, 0.58), 21)
-	stone.roughness = 0.9
+	var stone: StandardMaterial3D = surface_material("stone", 0.5, 0.9)
 	var top_r := RADIUS + 1.4 + 5 * 1.3 + 1.2
 	var cols := 48
 	var cm := BoxMesh.new()
