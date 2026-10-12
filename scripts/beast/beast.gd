@@ -38,6 +38,7 @@ var regrown := {}                    # hydra: part -> voxels regrown so far
 var base_bite := 45.0
 var jaw_t := 0.0                     # counts down from JAW_T through a bite
 var breath_t := 0.0                  # the mouth held wide while fire or venom pours out
+const NECK_DIP := 2.0
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
 const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing": 20.0, "trunk": 14.0, "arm": 22.0, "claw": 26.0}
 
@@ -872,6 +873,11 @@ func _setup_anim() -> void:
 			for ax in ["x", "y", "z"]:
 				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -jlim)
 				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, jlim)
+			if role == "neck":
+				# A neck bows far forward to bring the jaws down to the prey; it does not fold
+				# back flat along the spine.
+				j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.3)
+				j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, NECK_DIP)
 		# Strong enough to hold up everything hanging off it (a neck carries its head).
 		var carried := 0.0
 		var stack := [p]
@@ -883,7 +889,11 @@ func _setup_anim() -> void:
 		var mt := 60.0 * carried * reach + 20.0
 		if role == "tail" and by_name.has("stinger"):
 			mt *= 5.0   # it holds the whole arched tail and the sting up over the back
-		anim.append({"part": p, "role": role, "rest": PD.quat_of(p.parent_part).inverse() * PD.quat_of(p), "i": anim.size(), "max_t": mt})
+		var rest := PD.quat_of(p.parent_part).inverse() * PD.quat_of(p)
+		# A neck modelled leaning far back over the spine is carried more upright.
+		var up := rest * Vector3.UP
+		var lean := maxf(0.0, atan2(-up.z, up.y) - 0.35) if role == "neck" else 0.0
+		anim.append({"part": p, "role": role, "rest": rest, "i": anim.size(), "max_t": mt, "lean": lean})
 
 ## Drives every animated joint: breathing, looking at the prey, tails swaying and lashing,
 ## snakes' bodies travelling in waves, wings beating or flaring, trunks swinging, and the
@@ -918,7 +928,7 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				off.y = sin(gait * 1.3 - i * 1.5) * (0.6 if moving else 0.1) + sin(time * 0.5 + i) * 0.05
 			"neck":
 				off.y = track * 0.45 + sin(time * 0.9 + i * 1.7) * 0.08 + yaw_rate * 0.08
-				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0)
+				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0) + float(a.lean)
 			"head":
 				off.y = track * (0.4 if p.parent_part == torso else 0.25) + sin(time * 0.7 + i * 2.1) * 0.06
 				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0)
@@ -944,12 +954,14 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		var lim: float = ROLE_LIM[role]
 		if role == "tail" and by_name.has("stinger"):
 			lim = 1.3
+		if role == "neck" or role == "head":
+			_hold_up(p, a.max_t, dt)
 		var wn: float = ROLE_WN[role]
 		var st: float = strikes.get(p, 0.0)
 		if st > 0.0:
 			off += _strike_pose(p, role, st, track, dist)
 			if role == "neck" or role == "head":
-				lim = 1.2
+				lim = NECK_DIP if role == "neck" else 1.2
 		if p.flinch_t > 0.0:
 			off.x -= p.flinch_t * 0.9
 		off = off.clamp(Vector3(-lim, -lim, -lim), Vector3(lim, lim, lim)) * (0.3 + 0.7 * p.function())
@@ -959,6 +971,22 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		else:
 			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
 
+## A neck holds up its head against gravity: the drive alone only knows the neck's own weight,
+## and a long neck under a heavy head sank back flat along the spine.
+func _hold_up(p: VoxelPart, max_t: float, dt: float) -> void:
+	var jp: Vector3 = p.parent_part.global_transform * p.pa
+	var tq := Vector3.ZERO
+	var stack := [p]
+	while not stack.is_empty():
+		var c: VoxelPart = stack.pop_back()
+		if c.severed:
+			continue
+		tq += (c.global_position - jp).cross(Vector3(0.0, c.mass * gravity, 0.0))
+		stack.append_array(c.child_parts)
+	tq = PD.clamp_len(tq * (0.3 + 0.7 * p.function()), max_t)
+	p.apply_torque_impulse(tq * dt)
+	p.parent_part.apply_torque_impulse(-tq * dt)
+
 func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: float) -> Vector3:
 	match role:
 		"neck":
@@ -966,7 +994,7 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: flo
 			var drop := 0.0
 			if target and is_instance_valid(target):
 				var hd: VoxelPart = p.child_parts[0] if not p.child_parts.is_empty() else p
-				drop = clampf((hd.global_position.y - target.torso.global_position.y) / maxf(0.5, p.half_ext.y * 2.0 + 0.3), 0.0, 1.2)
+				drop = clampf((hd.global_position.y - target.torso.global_position.y) / maxf(0.5, p.half_ext.y * 2.0 + 0.3), 0.0, NECK_DIP - 0.3)
 			return Vector3(0.3 + drop, track * 0.3, 0)
 		"head":
 			if species == "boar" or species == "elephant" or species == "mammoth":

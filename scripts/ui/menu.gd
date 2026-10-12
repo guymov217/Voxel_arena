@@ -37,6 +37,8 @@ const LOOK_SLOTS := {
 func _ready() -> void:
 	theme = UIStyle.theme()
 	apply_display(Save.get_value("settings", {}))
+	# Resized, moved to another screen, or full screen: the automatic resolution follows.
+	get_tree().root.size_changed.connect(func(): apply_render_scale(Save.get_value("settings", {})))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
 	Net.my_body = body()
@@ -223,8 +225,10 @@ func set_kit(k: Dictionary) -> void:
 
 func show_screen(s: String, msg := "") -> void:
 	var was := screen
-	if s == "main" and in_yard():
-		_end_match()
+	if s == "main":
+		# Back at the main menu he has left the yard: a fight picked from here ends here.
+		if in_yard():
+			_end_match()
 		hub = false
 	screen = s
 	if backdrop and backdrop.hero and (was == "gladiator") != (s == "gladiator"):
@@ -234,8 +238,11 @@ func show_screen(s: String, msg := "") -> void:
 	if Sfx.music and match_ == null:
 		Sfx.music.set_state("yard" if ["yard", "market", "circus_market"].has(s) else "menu")
 	var v := _clear()
-	if in_yard():
-		v.add_child(UIStyle.button("◀  Leave the %s  (Esc)" % {"market": "market", "yard": "smith", "physician": "physician", "missions": "board", "gate": "gate"}.get(s, "stall"), _close_overlay, true))
+	if in_yard() or s == "yard":
+		# The one way out of a stall; the smith seen from anywhere else leads into the yard.
+		v.add_child(UIStyle.button("◀  Leave the %s  (Esc)" % {"market": "market", "yard": "smith", "physician": "physician", "missions": "board", "gate": "gate"}.get(s, "stall"), _close_overlay if in_yard() else func(): enter_yard(), true))
+		if in_yard() and hud:
+			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
 	panel.custom_minimum_size.x = 520 if s == "main" else (1180 if s == "training" else 760)
 	# Each screen slides in.
@@ -570,8 +577,9 @@ func _training(v: VBoxContainer) -> void:
 		o.item_selected.connect(func(i): training[key] = keys[i])
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")
-	var who: Array = ["none", "gladiator"] + Data.beasts.keys()
-	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else Data.beasts[k].name)), "enemy")
+	var foes: Array = Data.campaign.enemies.keys().map(func(k): return "foe:" + k)
+	var who: Array = ["none", "gladiator"] + foes + Data.beasts.keys()
+	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else Data.beasts[k].name))), "enemy")
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
 	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "whip", "bow", "crossbow"]
 	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
@@ -724,7 +732,7 @@ func _training_forge() -> void:
 # ---------- The yard: the smith ----------
 
 func _yard(v: VBoxContainer) -> void:
-	panel.custom_minimum_size.x = 1000
+	panel.custom_minimum_size.x = clampf(get_viewport_rect().size.x - 130.0, 640.0, 1000.0)
 	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
 	v.add_child(UIStyle.title("The smith", 36))
 	if not last_result.is_empty():
@@ -763,52 +771,68 @@ func _yard(v: VBoxContainer) -> void:
 				b.tooltip_text = Arms.UPGRADES[id].desc
 				acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
-	v.add_child(UIStyle.label("Buy a base · click one (your old one is taken in part exchange for half its worth)", 14, UIStyle.MUTED))
+	v.add_child(UIStyle.label("Weapons for sale · your old one is taken in part exchange for half its worth", 14, UIStyle.MUTED))
+	# The rack fills what is left of the window, however small it is, and scrolls; the screen
+	# itself never runs off the edge.
+	var vp := get_viewport_rect().size
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 330)
+	scroll.custom_minimum_size = Vector2(0, clampf(vp.y - 470.0, 170.0, 520.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(scroll)
 	var grid := GridContainer.new()
-	grid.columns = 6
+	grid.columns = clampi(int((panel.custom_minimum_size.x - 64.0) / 156.0), 2, 6)
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
+	var tile_st := StyleBoxFlat.new()
+	tile_st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+	tile_st.border_color = UIStyle.BRONZE_DARK
+	tile_st.set_border_width_all(1)
+	tile_st.set_corner_radius_all(8)
+	tile_st.content_margin_left = 6; tile_st.content_margin_right = 6; tile_st.content_margin_top = 6; tile_st.content_margin_bottom = 6
 	for b in Arms.bases():
 		var key: String = b.key
 		var trade := Arms.value(arms().main if b.slot == "main" else arms().off) / 2
+		var cost := maxi(0, int(b.price) - trade)
 		var afford: bool = int(b.price) <= coins() + trade
-		var tile := Button.new()
-		tile.custom_minimum_size = Vector2(150, 160)
-		tile.disabled = not afford
-		tile.tooltip_text = "%s · %s hand · %d denarii%s" % [b.name, "main" if b.slot == "main" else "off", int(b.price), "" if afford else " (not enough in your purse)"]
-		tile.pressed.connect(func(): _pay(Arms.buy(arms(), key)))
+		var tile := PanelContainer.new()
+		tile.add_theme_stylebox_override("panel", tile_st)
+		tile.custom_minimum_size = Vector2(146, 0)
+		tile.tooltip_text = "%s · %s hand" % [b.name, "main" if b.slot == "main" else "off"]
 		var box := VBoxContainer.new()
-		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		box.add_theme_constant_override("separation", 2)
+		box.add_theme_constant_override("separation", 3)
 		tile.add_child(box)
 		var tex := TextureRect.new()
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 104)
-		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tex.custom_minimum_size = Vector2(0, 84)
 		tex.modulate = Color.WHITE if afford else Color(1, 1, 1, 0.45)
 		box.add_child(tex)
 		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(nm)
-		var pr := UIStyle.label("%d denarii" % int(b.price), 13, UIStyle.GOLD if afford else UIStyle.MUTED)
+		var pr := UIStyle.label("%d denarii" % cost, 13, UIStyle.GOLD if afford else UIStyle.MUTED)
+		if trade > 0:
+			tile.tooltip_text += " · %d denarii, less %d for your old one" % [int(b.price), trade]
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		pr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(pr)
+		var buy := UIStyle.button("Buy", func(): _pay(Arms.buy(arms(), key)), afford)
+		buy.disabled = not afford
+		buy.tooltip_text = "" if afford else "Not enough in your purse"
+		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-	var st := int(Save.get_value("stage", 1))
-	v.add_child(UIStyle.label("Your body: " + Body.summary(body()), 15, UIStyle.MUTED))
-	# In the yard each stall is its own place: the way out is the one button at the top.
-	if not in_yard():
-		_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("The physician", func(): show_screen("physician")), UIStyle.button("Main menu", func(): show_screen("main"))])
+	_fit_height.call_deferred(scroll)
+
+## Once laid out: a screen taller than the window gives the difference back from its scrolling
+## list, so the whole of it stays on the screen at any window size.
+func _fit_height(scroll: ScrollContainer) -> void:
+	await get_tree().process_frame
+	if not is_instance_valid(scroll) or not is_instance_valid(panel):
+		return
+	var over := panel.size.y - (get_viewport_rect().size.y - 90.0)
+	if over > 0.0:
+		scroll.custom_minimum_size.y = maxf(140.0, scroll.custom_minimum_size.y - over)
 
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
@@ -1365,14 +1389,24 @@ func _options(v: VBoxContainer) -> void:
 		_set_opt("display", DISPLAY_MODES[i][0])
 		apply_display(Save.get_value("settings", {})))
 	var ws := OptionButton.new()
-	for w in WINDOW_SIZES:
-		ws.add_item("%d × %d" % [w.x, w.y])
-	ws.select(maxi(0, WINDOW_SIZES.find(Vector2i(st.get("windowW", 1600), st.get("windowH", 900)))))
+	var sizes := window_sizes()
+	var scr := DisplayServer.screen_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1920, 1080)
+	for w in sizes:
+		ws.add_item(("%d × %d (this screen)" if w == scr else "%d × %d") % [w.x, w.y])
+	ws.select(maxi(0, sizes.find(Vector2i(st.get("windowW", 1600), st.get("windowH", 900)))))
 	ws.item_selected.connect(func(i):
-		_set_opt("windowW", WINDOW_SIZES[i].x)
-		_set_opt("windowH", WINDOW_SIZES[i].y)
+		_set_opt("windowW", sizes[i].x)
+		_set_opt("windowH", sizes[i].y)
 		apply_display(Save.get_value("settings", {})))
 	_row(v, [UIStyle.label("Display (F11 toggles)", 15), dm, UIStyle.label("Window", 15), ws])
+	var rs := OptionButton.new()
+	for r in RENDER_SCALES:
+		rs.add_item(r[1])
+	rs.select(maxi(0, RENDER_SCALES.map(func(r): return r[0]).find(str(st.get("renderScale", "auto")))))
+	rs.item_selected.connect(func(i):
+		_set_opt("renderScale", RENDER_SCALES[i][0])
+		apply_render_scale(Save.get_value("settings", {})))
+	_row(v, [UIStyle.label("3D resolution", 15), rs, UIStyle.label("Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.", 13, UIStyle.MUTED)])
 	var lh := CheckBox.new()
 	lh.text = "Left-handed (the right button swings the main weapon)"
 	lh.button_pressed = bool(st.get("leftHanded", false))
@@ -1394,7 +1428,39 @@ func _options(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
 const DISPLAY_MODES := [["fullscreen", "Full screen"], ["exclusive", "Full screen (exclusive)"], ["maximized", "Window, maximized"], ["windowed", "Window"]]
-const WINDOW_SIZES := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+# The common screens of today: 16:9, 16:10, 21:9 and 32:9, laptop to 4K. The menu offers the
+# ones that fit this screen, and the screen's own size.
+const WINDOW_SIZES := [Vector2i(1280, 720), Vector2i(1280, 800), Vector2i(1366, 768), Vector2i(1440, 900), Vector2i(1536, 864), Vector2i(1600, 900),
+	Vector2i(1680, 1050), Vector2i(1920, 1080), Vector2i(1920, 1200), Vector2i(2560, 1080), Vector2i(2560, 1440), Vector2i(2560, 1600),
+	Vector2i(3440, 1440), Vector2i(3840, 1600), Vector2i(3840, 2160), Vector2i(5120, 1440), Vector2i(5120, 2160)]
+const RENDER_SCALES := [["auto", "Auto"], ["1.0", "100%"], ["0.85", "85%"], ["0.75", "75%"], ["0.6", "60%"], ["0.5", "50%"]]
+
+## The window sizes to choose from on this screen: those that fit, and the screen itself.
+static func window_sizes() -> Array:
+	var out := []
+	var scr := DisplayServer.screen_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1920, 1080)
+	for w in WINDOW_SIZES:
+		if w.x <= scr.x and w.y <= scr.y:
+			out.append(w)
+	if not out.has(scr):
+		out.append(scr)
+	return out
+
+## The 3D picture's resolution: the whole of it up to about 1440p, then drawn smaller and
+## sharpened up (FSR) so a 4K or a 5K screen keeps its frame rate; the menus stay sharp.
+static func apply_render_scale(st: Dictionary) -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root if Engine.get_main_loop() is SceneTree else null
+	if root == null:
+		return
+	var pick := str(st.get("renderScale", "auto"))
+	var k := 1.0
+	if pick == "auto":
+		var px := float(root.size.x) * float(root.size.y)
+		k = clampf(sqrt(2560.0 * 1440.0 / maxf(1.0, px)), 0.6, 1.0)
+	else:
+		k = clampf(float(pick), 0.5, 1.0)
+	root.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if k >= 0.999 else Viewport.SCALING_3D_MODE_FSR
+	root.scaling_3d_scale = k
 
 ## The display mode in the settings (older saves had a fullscreen flag; a new one starts full screen).
 static func display_mode(st: Dictionary) -> String:
@@ -1407,6 +1473,9 @@ static func display_mode(st: Dictionary) -> String:
 static func apply_display(st: Dictionary) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	# Smaller than this nothing on the screen can be read.
+	DisplayServer.window_set_min_size(Vector2i(960, 540))
+	apply_render_scale.call_deferred(st)
 	match display_mode(st):
 		"fullscreen":
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)

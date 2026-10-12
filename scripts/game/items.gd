@@ -183,6 +183,10 @@ func hit_char(p: Vector3, chars: Array, r: float, owner_, any_part: bool):
 	for c in chars:
 		if not is_instance_valid(c) or not c.alive or c == owner_:
 			continue
+		# Nowhere near this body at all: no part of it to test (a hail of nails tested every
+		# part of every body at every sub-step).
+		if c.torso.global_position.distance_squared_to(p) > pow(3.2 * float(c.S) + r, 2.0):
+			continue
 		var parts: Array = c.parts if any_part else [c.head, c.torso]
 		for part in parts:
 			if part == null or part.severed:

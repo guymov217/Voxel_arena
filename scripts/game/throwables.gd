@@ -408,7 +408,22 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	var headshot: bool = part == c.head and (arrow or type == "pot_bolt")
 	# An arrow strikes as hard as the bow was drawn (a half draw stings, a full one goes deep);
 	# a crossbow's bolt always has the whole of the prod behind it.
-	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else (4.0 if type == "nail" else 10.0))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
+	if type == "nail":
+		# A nail is a sting, not a stab: it goes in and stays, it bleeds a little. Out of one
+		# burst only the first dozen in a body count; the rest just stick (a dragon catches half
+		# the hail, and every nail at full weight bled it dry in seconds and stalled the game).
+		var now := Time.get_ticks_msec()
+		var nh: Array = c.get_meta("nail_hits", [0, 0])
+		if now - int(nh[0]) > 1500:
+			nh = [now, 0]
+		nh[1] = int(nh[1]) + 1
+		c.set_meta("nail_hits", nh)
+		if int(nh[1]) <= 12:
+			_hit(c, part, 1.2, "point", p, hdir, owner_)
+			part.bleed += 0.06 / maxf(1.0, c.S)
+		part.stick("nail", p, hdir)
+		return
+	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0)) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	_hit(c, part, J, "point", p, hdir, owner_)
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + 0.5)
@@ -416,9 +431,6 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	if type == "pot_bolt":
 		part.bleed += 1.0
 		part.stick("pot_bolt", p, hdir)
-	if type == "nail":
-		part.bleed += 0.3
-		part.stick("nail", p, hdir)
 	if arrow:
 		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.0)) / maxf(1.0, c.S * 0.6)
 		part.stick(type, p, hdir)

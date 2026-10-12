@@ -51,3 +51,13 @@ func test_the_yard_plays() -> void:
 	await _steps(240)
 	t.check(not m.over, "the yard never ends")
 	m.queue_free()
+
+## Training offers the campaign's foes too: the giant comes as he does in the campaign.
+func test_training_brings_the_giant() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "foe:giant", "count": 1}, "decrees": [], "hazards": [], "headless": true})
+	await _steps(30)
+	var en: Array = m.enemies()
+	t.check(en.size() == 1 and en[0].f.boss and en[0].f.S > 3.0, "the giant stands in the training ring (%s)" % [en[0].f.display_name if en.size() else "nobody"])
+	m.queue_free()

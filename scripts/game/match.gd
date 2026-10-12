@@ -461,6 +461,7 @@ func _training_tick(dt: float) -> void:
 	for p in f.parts:
 		p.bleed = 0.0
 
+const TRAINING_BOSSES := ["cyclops", "giant", "minotaur", "titan"]
 func _spawn_training() -> void:
 	var who: String = training.get("enemy", "gladiator")
 	for i in int(training.get("count", 1)):
@@ -470,6 +471,14 @@ func _spawn_training() -> void:
 		var e
 		if Data.beasts.has(who):
 			e = spawn_beast({"beast": who, "team": ENEMY_TEAM, "pos": pos, "yaw": PI})
+		elif who.begins_with("foe:"):
+			# A campaign foe as he comes in the campaign, his own arms and size: the giant, the
+			# Cyclops, a troll, an archer.
+			var key := who.trim_prefix("foe:")
+			var spec := enemy_spec({"e": key, "boss": TRAINING_BOSSES.has(key)}, 0, 1)
+			spec.pos = Vector3(i * 3.0, 0.1, 6.0 if TRAINING_BOSSES.has(key) else 5.0)
+			spec.yaw = PI
+			e = spawn_fighter(spec)
 		else:
 			var w: String = training.get("weapon", "gladius")
 			if w == "random":
