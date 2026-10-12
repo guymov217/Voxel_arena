@@ -11,7 +11,7 @@ scripts/            game code: fighter/, beast/, voxel/, game/ (match, modes, fx
 data/*.json         game tables (weapons, materials, body, beasts, campaign, shop, modes)
 shaders/            crowd and flag shaders
 tests/              test_*.gd suites, plus probes (steamshots, beastshots, momentshots, net_host...)
-native/             voxel_core.gdextension; the built library goes in native/bin/ (not committed)
+native/             voxel_core.gdextension.in (copied to .gdextension where the library is built); the built library goes in native/bin/ (not committed)
 extension/          C++ source of the voxel core (godot-cpp 4.4, scons); has a .gdignore
 .github/workflows/  builds the extension and exports Windows, Linux and macOS
 ```

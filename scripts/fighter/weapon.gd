@@ -77,6 +77,8 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	center_of_mass = com
 	inertia = Vector3(maxf(ix, 1e-4), maxf(iy, 1e-4), maxf(iz, 1e-4))
 	stats = d.get("stats", {}).duplicate()
+	if stats.is_empty() and not vox.is_empty():
+		stats = ForgeLib.compute_stats(d)   # a forged weapon: its reach, speed and edges from its voxels
 	stats["mass"] = m
 	reach = float(stats.get("reach", 0.6)) * scale_
 	var grips := _grip_points()

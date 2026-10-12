@@ -1373,6 +1373,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 ## An arm never passes through its own chest or head (the body's parts do not collide with each
 ## other): the elbow, the forearm and the hand are pushed back out of the torso and the head,
 ## out the front, or out to the arm's own side if they are behind the middle.
+const ARM_OUT_K := 900.0
 func _keep_arm_out(side: String, dt: float) -> void:
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
@@ -1385,7 +1386,7 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			continue
 		var bt: Transform3D = body.global_transform
 		var bq := PD.quat_of(body)
-		var e: Vector3 = body.half_ext + Vector3(0.035, 0.0, 0.035) * S
+		var e: Vector3 = body.half_ext + Vector3(0.02, 0.0, 0.02) * S
 		for pp in pts:
 			var l: Vector3 = bt.affine_inverse() * (pp[1] as Vector3)
 			if absf(l.x) >= e.x or absf(l.y) >= e.y or absf(l.z) >= e.z:
@@ -1396,7 +1397,9 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			var part: VoxelPart = pp[0]
 			var v_out := (bq * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
 			var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
-			var acc: float = push.length() * 4000.0 - minf(0.0, v_out) * 40.0
+			# A soft, critically damped push (a stiff one fought a two-handed grip and set the
+			# hands buzzing at the hilt).
+			var acc: float = push.length() * ARM_OUT_K - minf(0.0, v_out) * 2.0 * sqrt(ARM_OUT_K)
 			part.apply_impulse(bq * push.normalized() * acc * m_eff * dt, (pp[1] as Vector3) - part.global_position)
 
 ## Where a bow or a crossbow points: at the player's crosshair (aimAt), a bot's target (gaze),

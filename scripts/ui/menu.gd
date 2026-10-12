@@ -35,8 +35,7 @@ const LOOK_SLOTS := {
 
 func _ready() -> void:
 	theme = UIStyle.theme()
-	if bool(Save.get_value("settings", {}).get("fullscreen", false)):
-		set_fullscreen(true)
+	apply_display(Save.get_value("settings", {}))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
 	Net.my_body = body()
@@ -226,7 +225,7 @@ func show_screen(s: String, msg := "") -> void:
 	if in_yard():
 		v.add_child(UIStyle.button("◀  Back to the yard  (Esc)", _close_overlay, true))
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
-	panel.custom_minimum_size.x = 520 if s == "main" else 760
+	panel.custom_minimum_size.x = 520 if s == "main" else (1180 if s == "training" else 760)
 	# Each screen slides in.
 	panel.modulate.a = 0.0
 	panel.position.x = -24.0
@@ -457,7 +456,7 @@ func _controls(v: VBoxContainer) -> void:
 		_set_opt("bindings", {})
 		show_screen("controls", "Back to the defaults")), UIStyle.button("Done", func(): show_screen("options"), true)])
 
-func _input(e: InputEvent) -> void:
+func _input_more(e: InputEvent) -> void:
 	if rebinding == "" or not (e is InputEventKey) or not e.pressed:
 		return
 	get_viewport().set_input_as_handled()
@@ -487,37 +486,68 @@ func _tutorial() -> void:
 
 func _training(v: VBoxContainer) -> void:
 	training.merge(Save.get_value("training", {}), true)
-	v.add_child(UIStyle.title("Training", 34))
-	v.add_child(UIStyle.button("Tutorial", _tutorial))
-	var pick := func(label_: String, keys: Array, names: Array, key: String) -> void:
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	var tt := UIStyle.title("Training", 34)
+	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tt)
+	head.add_child(UIStyle.button("Tutorial", _tutorial))
+	v.add_child(head)
+	# Two columns: who you face and what you carry on the left, the bag on the right.
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 28)
+	v.add_child(cols)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 6)
+	left.custom_minimum_size = Vector2(520, 0)
+	cols.add_child(left)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 6)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	var form := func(title: String) -> GridContainer:
+		left.add_child(UIStyle.label(title, 13, UIStyle.BRONZE))
+		var g := GridContainer.new()
+		g.columns = 2
+		g.add_theme_constant_override("h_separation", 14)
+		g.add_theme_constant_override("v_separation", 8)
+		left.add_child(g)
+		return g
+	var pick := func(g: GridContainer, label_: String, keys: Array, names: Array, key: String) -> void:
+		var l := UIStyle.label(label_, 15)
+		l.custom_minimum_size = Vector2(130, 0)
+		g.add_child(l)
 		var o := OptionButton.new()
+		o.custom_minimum_size = Vector2(360, 0)
+		o.fit_to_longest_item = false
 		for n in names:
 			o.add_item(n)
 		o.select(maxi(0, keys.find(training.get(key))))
 		o.item_selected.connect(func(i): training[key] = keys[i])
-		_row(v, [UIStyle.label(label_, 15), o])
-	v.add_child(UIStyle.label("THE ENEMY", 13, UIStyle.BRONZE))
+		g.add_child(o)
+	var ge: GridContainer = form.call("THE ENEMY")
 	var who: Array = ["none", "gladiator"] + Data.beasts.keys()
-	pick.call("Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else Data.beasts[k].name)), "enemy")
-	pick.call("How many", [1, 2, 3], ["One", "Two", "Three"], "count")
+	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else Data.beasts[k].name)), "enemy")
+	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
 	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "whip", "bow", "crossbow"]
-	pick.call("Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
-	pick.call("Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
+	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
+	pick.call(ge, "Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
+	var dl := UIStyle.label("Difficulty", 15)
+	ge.add_child(dl)
 	var diff := HSlider.new()
 	diff.min_value = 0.1
 	diff.max_value = 1.0
 	diff.step = 0.05
 	diff.value = training.difficulty
-	diff.custom_minimum_size = Vector2(300, 0)
+	diff.custom_minimum_size = Vector2(360, 24)
 	diff.value_changed.connect(func(x): training.difficulty = x)
-	_row(v, [UIStyle.label("Difficulty", 15), diff])
-	v.add_child(UIStyle.label("YOU", 13, UIStyle.BRONZE))
+	ge.add_child(diff)
+	var gy: GridContainer = form.call("YOU")
 	var built: Dictionary = Save.get_value("training_weapon", {})
 	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "nunchaku", "meteorHammer", "whip", "plank", "chicken", "bow", "crossbow", "ram"]
-	pick.call("Main hand", mains, mains.map(func(k): return ("Your forged weapon: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
-	pick.call("Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
-	v.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
-	_training_bag(v)
+	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
+	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
+	left.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
 	var imm := CheckBox.new()
 	imm.text = "I cannot die"
 	imm.button_pressed = training.immortal
@@ -526,8 +556,10 @@ func _training(v: VBoxContainer) -> void:
 	res.text = "The enemy comes back"
 	res.button_pressed = training.respawn
 	res.toggled.connect(func(x): training.respawn = x)
-	_row(v, [imm, res])
-	_row(v, [UIStyle.button("Start training", _start_training, true), UIStyle.button("Back", func(): show_screen("main"))])
+	_row(left, [imm, res])
+	_training_bag(right)
+	var go := _row(v, [UIStyle.button("Start training", _start_training, true), UIStyle.button("Back", func(): show_screen("main"))])
+	go.alignment = BoxContainer.ALIGNMENT_END
 
 func _training_loadout() -> Dictionary:
 	var lo := Arms.loadout(arms())
@@ -564,49 +596,68 @@ func _bag_clean(raw) -> Dictionary:
 func _training_bag(v: VBoxContainer) -> void:
 	var bag := _bag_clean(training.get("bag", {}))
 	training.bag = bag
-	v.add_child(UIStyle.label("YOUR BAG · free in training, keys 1 to 9 (%d of %d kinds)" % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
+	v.add_child(UIStyle.label("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds" % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(900, 150)
+	scroll.custom_minimum_size = Vector2(0, 470)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(scroll)
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 6)
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(grid)
 	var table: Dictionary = Data.shop.get("throwables", {})
 	for id in table:
 		var have := int(bag.get(id, 0))
+		var item_id: String = id
+		var tile := PanelContainer.new()
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+		st.border_color = UIStyle.GOLD if have > 0 else UIStyle.BRONZE_DARK
+		st.set_border_width_all(1)
+		st.set_corner_radius_all(6)
+		st.content_margin_left = 8; st.content_margin_right = 8; st.content_margin_top = 4; st.content_margin_bottom = 4
+		tile.add_theme_stylebox_override("panel", st)
+		tile.tooltip_text = str(table[id].get("desc", ""))
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
+		row.add_theme_constant_override("separation", 8)
+		tile.add_child(row)
 		var tex := TextureRect.new()
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(32, 32)
+		tex.custom_minimum_size = Vector2(40, 40)
 		row.add_child(tex)
-		Thumbs.item(tex, id)
-		var nm := UIStyle.label(str(table[id].get("name", id)), 13, UIStyle.TEXT if have > 0 else UIStyle.MUTED)
-		nm.custom_minimum_size = Vector2(120, 0)
-		nm.tooltip_text = str(table[id].get("desc", ""))
-		nm.mouse_filter = Control.MOUSE_FILTER_PASS
+		var nm := UIStyle.label(str(table[id].get("name", id)), 15, UIStyle.TEXT if have > 0 else UIStyle.MUTED)
+		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.custom_minimum_size = Vector2(150, 0)
+		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(nm)
-		var item_id: String = id
 		var minus := UIStyle.button("−", func():
 			var b: Dictionary = training.bag
 			b[item_id] = maxi(0, int(b.get(item_id, 0)) - 1)
 			if int(b[item_id]) == 0:
 				b.erase(item_id)
 			show_screen("training"))
+		minus.custom_minimum_size = Vector2(36, 34)
 		minus.disabled = have == 0
 		row.add_child(minus)
-		row.add_child(UIStyle.label(str(have), 14, UIStyle.GOLD if have > 0 else UIStyle.MUTED))
+		var cnt := UIStyle.label(str(have), 17, UIStyle.GOLD if have > 0 else UIStyle.MUTED)
+		cnt.custom_minimum_size = Vector2(26, 0)
+		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(cnt)
 		var plus := UIStyle.button("+", func():
 			var b: Dictionary = training.bag
 			b[item_id] = mini(9, int(b.get(item_id, 0)) + 1)
 			show_screen("training"))
+		plus.custom_minimum_size = Vector2(36, 34)
 		plus.disabled = have >= 9 or (have == 0 and bag.size() >= TRAINING_BAG_MAX)
 		row.add_child(plus)
-		grid.add_child(row)
+		grid.add_child(tile)
+		Thumbs.item(tex, id)   # once it is in the tree, so the picture can be made for it
 
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
 func _training_forge() -> void:
@@ -1167,13 +1218,22 @@ func _options(v: VBoxContainer) -> void:
 	q.select(maxi(0, levels.find(str(st.get("quality", "high")))))
 	q.item_selected.connect(func(i): _set_opt("quality", levels[i]))
 	_row(v, [UIStyle.label("Graphics", 15), q, UIStyle.label("Low: no shadows or effects lighting. Ultra: global illumination and fog.", 13, UIStyle.MUTED)])
-	var fs := CheckBox.new()
-	fs.text = "Full screen (F11)"
-	fs.button_pressed = bool(st.get("fullscreen", false))
-	fs.toggled.connect(func(x):
-		_set_opt("fullscreen", x)
-		set_fullscreen(x))
-	v.add_child(fs)
+	var dm := OptionButton.new()
+	for d in DISPLAY_MODES:
+		dm.add_item(d[1])
+	dm.select(maxi(0, DISPLAY_MODES.map(func(d): return d[0]).find(display_mode(st))))
+	dm.item_selected.connect(func(i):
+		_set_opt("display", DISPLAY_MODES[i][0])
+		apply_display(Save.get_value("settings", {})))
+	var ws := OptionButton.new()
+	for w in WINDOW_SIZES:
+		ws.add_item("%d × %d" % [w.x, w.y])
+	ws.select(maxi(0, WINDOW_SIZES.find(Vector2i(st.get("windowW", 1600), st.get("windowH", 900)))))
+	ws.item_selected.connect(func(i):
+		_set_opt("windowW", WINDOW_SIZES[i].x)
+		_set_opt("windowH", WINDOW_SIZES[i].y)
+		apply_display(Save.get_value("settings", {})))
+	_row(v, [UIStyle.label("Display (F11 toggles)", 15), dm, UIStyle.label("Window", 15), ws])
 	var lh := CheckBox.new()
 	lh.text = "Left-handed (the right button swings the main weapon)"
 	lh.button_pressed = bool(st.get("leftHanded", false))
@@ -1194,16 +1254,49 @@ func _options(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Controls: mouse looks; hold left button and move the mouse to swing the main hand, right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, wheel turns the blade, Esc frees the mouse.", 13, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
-static func set_fullscreen(on: bool) -> void:
+const DISPLAY_MODES := [["fullscreen", "Full screen"], ["exclusive", "Full screen (exclusive)"], ["maximized", "Window, maximized"], ["windowed", "Window"]]
+const WINDOW_SIZES := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+
+## The display mode in the settings (older saves had a fullscreen flag; a new one starts full screen).
+static func display_mode(st: Dictionary) -> String:
+	if st.has("display"):
+		return str(st.display)
+	if st.has("fullscreen"):
+		return "fullscreen" if st.fullscreen else "windowed"
+	return "fullscreen"
+
+static func apply_display(st: Dictionary) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
+	match display_mode(st):
+		"fullscreen":
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		"exclusive":
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+		"maximized":
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+		_:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			var sz := Vector2i(int(st.get("windowW", 1600)), int(st.get("windowH", 900)))
+			var screen := DisplayServer.screen_get_usable_rect().size
+			sz = Vector2i(mini(sz.x, screen.x), mini(sz.y, screen.y))
+			DisplayServer.window_set_size(sz)
+			DisplayServer.window_set_position(DisplayServer.screen_get_usable_rect().position + (screen - sz) / 2)
 
-func _unhandled_key_input(e: InputEvent) -> void:
+static func set_fullscreen(on: bool) -> void:
+	var st: Dictionary = Save.get_value("settings", {})
+	st.display = "fullscreen" if on else "windowed"
+	Save.set_value("settings", st)
+	apply_display(st)
+
+## F11 anywhere (in a fight too): full screen or back to the window.
+func _input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_F11:
-		var on := DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
-		_set_opt("fullscreen", on)
+		var on := DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN and DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
 		set_fullscreen(on)
+		get_viewport().set_input_as_handled()
+		return
+	_input_more(e)
 
 func _set_opt(k: String, val) -> void:
 	var st: Dictionary = Save.get_value("settings", {})

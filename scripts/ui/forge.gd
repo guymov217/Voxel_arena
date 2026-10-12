@@ -1,39 +1,88 @@
 extends Control
-## The forge (editor.js, paid mode): the weapon on the anvil, voxel by voxel. Left click adds a
-## voxel of the chosen material and job against the face you point at, right click takes one
-## off; each added voxel costs its material's price, each taken off refunds it. Take it from
-## the smith when you are done.
+## The forge (editor.js): two ways to make a weapon, the weapon live on the anvil in the middle.
+##  - Cards: pick a base (a gladius, an axe, a bow...), then up to two twists dealt from the deck
+##    (longer, serrated, ice, a fish...); the smith builds it.
+##  - Voxels: build it block by block: build on a face, paint, erase, draw a line or a box, with
+##    mirror symmetry, undo, auto-sharpen, auto-grip and "surprise me".
+## Its speed, damage and reach are shown as three bars, with the smith's opinion and what the
+## training dummy would say. In the campaign every voxel costs its material's price (taken off,
+## refunded); in training it is free. Take it from the smith when you are done.
 
 var design: Dictionary
 var original_value := 0
 var purse := 0
 var done: Callable
+var free_build := false   # training: nothing costs anything
+
 var mat := "steel"
 var job := "edge"
+var tool := "build"
+var mirror := true
+var mode := "cards"
+var base_key := ""
+var picks: Array = []
+var dealt: Array = []
+var rng := RandomNumberGenerator.new()
+var undo_stack: Array = []
+var redo_stack: Array = []
+var line_from = null       # the first cell of a line or a box being drawn
+
 var viewport: SubViewport
 var cam: Camera3D
 var weapon_root: Node3D
 var anvil: MeshInstance3D
 var floor_: MeshInstance3D
+var ghost: MeshInstance3D
 var framed := false
 var cells := {}                 # Vector3i -> [mat, job]
 var orbit := Vector2(0.6, 0.35)
 var dist := 1.6
-var cost_label: Label
 var dragging := false
-var free_build := false   # training: nothing costs anything
-const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather"]
+var idle_t := 0.0
+var swing_t := -1.0
+
+var side_box: VBoxContainer
+var mode_row: HBoxContainer
+var mode_box: VBoxContainer
+var name_edit: LineEdit
+var bars: Control
+var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
+var says: Label
+var verdict: Label
+var cost_label: Label
+
+const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather", "rubber", "fish", "ice", "explosive", "spring", "glue", "feather", "magnet"]
 const JOBS := ["edge", "point", "blunt", "grip"]
+const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"]]
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	design = d.duplicate(true)
 	purse = coins
 	done = cb
+	rng.randomize()
 	original_value = Arms.value(design)
-	for v in design.voxels:
-		cells[Vector3i(v[0], v[1], v[2])] = [v[3], v[4]]
+	_load_cells(design)
 	_build_ui()
+	_show_mode(mode)
 	_rebuild()
+
+func _load_cells(d: Dictionary) -> void:
+	cells.clear()
+	for v in d.voxels:
+		cells[Vector3i(v[0], v[1], v[2])] = [v[3], v[4]]
+
+func _design_now() -> Dictionary:
+	var out := design.duplicate(true)
+	var vox := []
+	for k in cells:
+		vox.append([k.x, k.y, k.z, cells[k][0], cells[k][1]])
+	out.voxels = vox
+	out.erase("stats")
+	if name_edit and name_edit.text.strip_edges() != "":
+		out.name = name_edit.text.strip_edges().substr(0, 32)
+	return out
+
+# ---------- UI ----------
 
 func _build_ui() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -46,32 +95,52 @@ func _build_ui() -> void:
 	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(h)
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(360, 0)
+	frame.custom_minimum_size = Vector2(450, 0)
 	h.add_child(frame)
-	var side := VBoxContainer.new()
-	side.add_theme_constant_override("separation", 10)
-	frame.add_child(side)
-	var t := UIStyle.title("THE FORGE", 40)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	frame.add_child(scroll)
+	side_box = VBoxContainer.new()
+	side_box.add_theme_constant_override("separation", 8)
+	side_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(side_box)
+	var t := UIStyle.title("THE FORGE", 36)
 	t.add_theme_font_override("font", UIStyle.serif(3))
 	t.add_theme_color_override("font_color", UIStyle.GOLD)
-	side.add_child(t)
-	side.add_child(UIStyle.label("Left click: add a voxel against the face you point at. Right click: take one off. Drag with the middle button to turn the weapon, wheel to zoom.", 13, UIStyle.MUTED))
-	var m := OptionButton.new()
-	for x in MATS:
-		m.add_item("%s · %d" % [Data.material(x).get("name", x), Arms.voxel_price(x)])
-	m.item_selected.connect(func(i): mat = MATS[i])
-	side.add_child(UIStyle.label("Material", 14, UIStyle.MUTED))
-	side.add_child(m)
-	var j := OptionButton.new()
-	for x in JOBS:
-		j.add_item(x.capitalize())
-	j.item_selected.connect(func(i): job = JOBS[i])
-	side.add_child(UIStyle.label("Job", 14, UIStyle.MUTED))
-	side.add_child(j)
+	side_box.add_child(t)
+	mode_row = HBoxContainer.new()
+	for m in [["cards", "Cards: base and twists"], ["voxels", "Voxels: block by block"]]:
+		var key: String = m[0]
+		var b := UIStyle.button(m[1], func(): _show_mode(key))
+		b.toggle_mode = true
+		b.set_meta("mode", key)
+		mode_row.add_child(b)
+	side_box.add_child(mode_row)
+	name_edit = LineEdit.new()
+	name_edit.placeholder_text = "Name it"
+	name_edit.max_length = 32
+	name_edit.text = str(design.get("name", ""))
+	side_box.add_child(name_edit)
+	bars = Control.new()
+	bars.custom_minimum_size = Vector2(400, 64)
+	bars.draw.connect(_draw_bars)
+	side_box.add_child(bars)
+	says = UIStyle.label("", 14, UIStyle.TEXT)
+	says.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	side_box.add_child(says)
+	verdict = UIStyle.label("", 13, UIStyle.MUTED)
+	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	side_box.add_child(verdict)
+	mode_box = VBoxContainer.new()
+	mode_box.add_theme_constant_override("separation", 6)
+	side_box.add_child(mode_box)
 	cost_label = UIStyle.label("", 16, UIStyle.BRONZE)
-	side.add_child(cost_label)
-	side.add_child(UIStyle.button("Pay and take it", _take, true))
-	side.add_child(UIStyle.button("Leave it as it was", func(): done.call(null, 0)))
+	side_box.add_child(cost_label)
+	var end := HBoxContainer.new()
+	end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
+	end.add_child(UIStyle.button("Swing it", func(): swing_t = 0.0))
+	end.add_child(UIStyle.button("Leave it as it was", func(): done.call(null, 0)))
+	side_box.add_child(end)
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
 	svc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -81,8 +150,11 @@ func _build_ui() -> void:
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
 	viewport.msaa_3d = Viewport.MSAA_4X
-	# A smithy at night: a dark room, the forge's orange glow from one side, a cool rim light
-	# from behind, and the weapon standing over a stone anvil.
+	_build_smithy()
+
+## A smithy at night: a dark room, the forge's orange glow from one side, a cool rim light from
+## behind, and the weapon standing over a stone anvil.
+func _build_smithy() -> void:
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
@@ -151,12 +223,270 @@ func _build_ui() -> void:
 	fp.material = fm
 	floor_.mesh = fp
 	viewport.add_child(floor_)
+	ghost = MeshInstance3D.new()
+	var gb := BoxMesh.new()
+	gb.size = Vector3.ONE * Data.weapon_voxel * 1.02
+	var gm := StandardMaterial3D.new()
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.albedo_color = Color(1, 1, 1, 0.35)
+	gb.material = gm
+	ghost.mesh = gb
+	ghost.visible = false
+	viewport.add_child(ghost)
+
+func _show_mode(m: String) -> void:
+	mode = m
+	for c in mode_box.get_children():
+		c.queue_free()
+	for b in mode_row.get_children():
+		b.button_pressed = b.get_meta("mode") == m
+	if m == "cards":
+		_cards_ui()
+	else:
+		_voxels_ui()
+	ghost.visible = false
+	line_from = null
+	_update_texts()
+
+func _cards_ui() -> void:
+	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	mode_box.add_child(grid)
+	for k in ForgeLib.BASES:
+		var key: String = k
+		var b := UIStyle.button(ForgeLib.BASES[k].label, func(): _pick_base(key))
+		b.tooltip_text = ForgeLib.BASES[k].blurb
+		b.toggle_mode = true
+		b.button_pressed = key == base_key
+		b.custom_minimum_size = Vector2(135, 0)
+		grid.add_child(b)
+	if base_key == "":
+		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil.", 13, UIStyle.MUTED))
+		return
+	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS  (▲▼ speed · damage · reach)" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
+	var cards := GridContainer.new()
+	cards.columns = 2
+	mode_box.add_child(cards)
+	var seed_ := rng.seed
+	var now := ForgeLib.three_bars(ForgeLib.compute_stats(_trial(picks, seed_)))
+	for k in dealt:
+		var key: String = k
+		var mdef: Dictionary = ForgeLib.MODIFIERS[k]
+		# What it would do to the three bars, as arrows.
+		var trial := picks.duplicate()
+		if not trial.has(key):
+			trial = (trial + [key]).slice(-ForgeLib.MAX_PICKS)
+		var after := ForgeLib.three_bars(ForgeLib.compute_stats(_trial(trial, seed_)))
+		var arrows := ""
+		for bk in ["speed", "damage", "reach"]:
+			var dv: float = after[bk] - now[bk]
+			arrows += ("▲" if dv > 0.03 else ("▼" if dv < -0.03 else "·"))
+		var b := UIStyle.button("%s  %s" % [mdef.label, arrows], func(): _toggle_pick(key))
+		b.tooltip_text = mdef.blurb
+		b.toggle_mode = true
+		b.button_pressed = picks.has(key)
+		b.custom_minimum_size = Vector2(205, 0)
+		cards.add_child(b)
+	var row := HBoxContainer.new()
+	row.add_child(UIStyle.button("Deal again", func():
+		dealt = ForgeLib.deal_modifiers(base_key, rng)
+		picks = picks.filter(func(p): return dealt.has(p))
+		_from_cards()
+		_show_mode("cards")))
+	row.add_child(UIStyle.button("Customize the voxels", func(): _show_mode("voxels")))
+	mode_box.add_child(row)
+
+## The weapon these cards would make (the same dice for a silly base, so the arrows compare).
+func _trial(mods: Array, seed_: int) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_
+	return ForgeLib.build_from_cards(base_key, mods, r)
+
+func _pick_base(k: String) -> void:
+	base_key = k
+	picks = []
+	dealt = ForgeLib.deal_modifiers(k, rng)
+	rng.seed = randi()
+	_from_cards()
+	_show_mode("cards")
+
+func _toggle_pick(k: String) -> void:
+	if picks.has(k):
+		picks.erase(k)
+	else:
+		picks.append(k)
+		if picks.size() > ForgeLib.MAX_PICKS:
+			picks.pop_front()
+	_from_cards()
+	_show_mode("cards")
+
+func _from_cards() -> void:
+	_push_undo()
+	var d := _trial(picks, rng.seed)
+	for k in ["kind", "twoHanded", "throwable", "spins", "shoots", "sharpness", "serrated", "gem", "name", "stats", "chain", "balance", "grips"]:
+		design.erase(k)
+	design.merge(d, true)
+	_load_cells(d)
+	name_edit.text = d.name
+	framed = false
+	_rebuild()
+
+func _voxels_ui() -> void:
+	mode_box.add_child(UIStyle.label("TOOL · left click in the view; middle drag turns it, wheel zooms", 13, UIStyle.BRONZE))
+	var trow := GridContainer.new()
+	trow.columns = 5
+	for td in TOOLS:
+		var key: String = td[0]
+		var b := UIStyle.button(td[1], func():
+			tool = key
+			line_from = null
+			_show_mode("voxels"))
+		b.toggle_mode = true
+		b.button_pressed = tool == key
+		b.tooltip_text = td[2]
+		trow.add_child(b)
+	mode_box.add_child(trow)
+	var mir := CheckBox.new()
+	mir.text = "Mirror (both sides at once)"
+	mir.button_pressed = mirror
+	mir.toggled.connect(func(x): mirror = x)
+	mode_box.add_child(mir)
+	mode_box.add_child(UIStyle.label("MATERIAL" + ("" if free_build else " · price per voxel"), 13, UIStyle.BRONZE))
+	var mg := GridContainer.new()
+	mg.columns = 4
+	for m in MATS:
+		var key: String = m
+		var b := Button.new()
+		b.text = m.capitalize() + ("" if free_build else " %d" % Arms.voxel_price(m))
+		b.tooltip_text = str(Data.material(m).get("name", m))
+		b.toggle_mode = true
+		b.button_pressed = mat == key
+		b.add_theme_color_override("font_color", Weapon.voxel_color(m, "blunt").lightened(0.25))
+		b.add_theme_font_size_override("font_size", 13)
+		b.pressed.connect(func():
+			mat = key
+			_show_mode("voxels"))
+		mg.add_child(b)
+	mode_box.add_child(mg)
+	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
+	var jr := HBoxContainer.new()
+	for j in JOBS:
+		var key: String = j
+		var b := UIStyle.button(j.capitalize(), func():
+			job = key
+			_show_mode("voxels"))
+		b.toggle_mode = true
+		b.button_pressed = job == key
+		jr.add_child(b)
+	mode_box.add_child(jr)
+	var ar := GridContainer.new()
+	ar.columns = 3
+	ar.add_child(UIStyle.button("Undo", _undo))
+	ar.add_child(UIStyle.button("Redo", _redo))
+	ar.add_child(UIStyle.button("Clear", func():
+		_push_undo()
+		var keep: Dictionary = {}
+		for k in cells:
+			if cells[k][1] == "grip":
+				keep[k] = cells[k]
+		if keep.is_empty() and not cells.is_empty():
+			var first = cells.keys()[0]
+			keep[first] = cells[first]
+		cells = keep
+		_rebuild()))
+	ar.add_child(UIStyle.button("Auto-sharpen", func():
+		_push_undo()
+		var d := _design_now()
+		ForgeLib.auto_sharpen(d)
+		_load_cells(d)
+		_rebuild()))
+	ar.add_child(UIStyle.button("Auto-grip", func():
+		_push_undo()
+		var d := _design_now()
+		ForgeLib.auto_grip(d)
+		_load_cells(d)
+		_rebuild()))
+	ar.add_child(UIStyle.button("Surprise me", func():
+		_push_undo()
+		var d := ForgeLib.surprise_weapon(rng)
+		for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
+			design.erase(k)
+		design.merge(d, true)
+		_load_cells(d)
+		name_edit.text = d.name
+		framed = false
+		_rebuild()))
+	mode_box.add_child(ar)
+	var opts := HBoxContainer.new()
+	var two := CheckBox.new()
+	two.text = "Two-handed"
+	two.button_pressed = design.get("twoHanded", false)
+	two.toggled.connect(func(x):
+		design.twoHanded = x
+		_update_texts())
+	opts.add_child(two)
+	var thr := CheckBox.new()
+	thr.text = "Throwable"
+	thr.button_pressed = design.get("throwable", false)
+	thr.toggled.connect(func(x):
+		design.throwable = x
+		_update_texts())
+	opts.add_child(thr)
+	mode_box.add_child(opts)
+	var sl := HSlider.new()
+	sl.min_value = 0.0
+	sl.max_value = 1.0
+	sl.step = 0.05
+	sl.value = float(design.get("sharpness", 0.8))
+	sl.custom_minimum_size = Vector2(220, 0)
+	sl.value_changed.connect(func(x):
+		design.sharpness = x
+		_update_texts())
+	var sr := HBoxContainer.new()
+	sr.add_child(UIStyle.label("Sharpness", 14, UIStyle.MUTED))
+	sr.add_child(sl)
+	mode_box.add_child(sr)
+	var cl := UIStyle.label("", 13, UIStyle.MUTED)
+	cl.set_meta("checklist", true)
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mode_box.add_child(cl)
+
+func _draw_bars() -> void:
+	var y := 2.0
+	var font := UIStyle.serif(1)
+	for k in ["speed", "damage", "reach"]:
+		bars.draw_string(font, Vector2(0, y + 14), k.capitalize(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
+		bars.draw_rect(Rect2(80, y + 3, 300, 12), Color(0, 0, 0, 0.5))
+		bars.draw_rect(Rect2(80, y + 3, 300.0 * float(bar_vals[k]), 12), Color(0.85, 0.32, 0.2) if k == "damage" else UIStyle.GOLD)
+		y += 20.0
+
+func _update_texts() -> void:
+	if bars == null:
+		return
+	var d := _design_now()
+	var st := ForgeLib.compute_stats(d)
+	bar_vals = ForgeLib.three_bars(st)
+	bars.queue_redraw()
+	says.text = "The smith: \"%s\"" % ForgeLib.blacksmith_says(d, st)
+	verdict.text = "The dummy: %s  ·  %.1f kg, %d voxels" % [ForgeLib.dummy_verdict(d, st), st.mass, cells.size()]
+	for c in mode_box.get_children():
+		if c.has_meta("checklist"):
+			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + i.text))
+	var delta := _value_now() - original_value
+	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
+	cost_label.text += "  (purse %d)" % purse
+	if free_build:
+		cost_label.text = "Free in training"
 
 func _value_now() -> int:
 	var s := 0
 	for c in cells.values():
 		s += Arms.voxel_price(c[0])
 	return s
+
+# ---------- The weapon on the anvil ----------
 
 func _rebuild() -> void:
 	for c in weapon_root.get_children():
@@ -202,7 +532,6 @@ func _rebuild() -> void:
 		low = minf(low, float(k.y) * vs)
 	anvil.position = Vector3(centre.x, (low if low < INF else 0.0) - vs * 0.5 - 0.11, centre.z)
 	floor_.position = anvil.position - Vector3(0, 0.11, 0)
-	# The first time: back off just enough to see the whole weapon.
 	if not framed and cells.size():
 		framed = true
 		var ext := 0.0
@@ -210,66 +539,195 @@ func _rebuild() -> void:
 			ext = maxf(ext, (Vector3(k) * vs - centre).length())
 		dist = clampf(ext * 1.75 + 0.12, 0.35, 3.0)
 	_place_camera()
-	var delta := _value_now() - original_value
-	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
-	cost_label.text += "  (purse %d) · %d voxels" % [purse, cells.size()]
-	if free_build:
-		cost_label.text = "%d voxels" % cells.size()
+	_update_texts()
 
 func _place_camera() -> void:
 	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO)
 	cam.global_position = c + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
 	cam.look_at(c)
 
+func _process(dt: float) -> void:
+	if viewport == null:
+		return
+	idle_t += dt
+	if idle_t > 4.0 and not dragging and swing_t < 0.0:
+		orbit.x += dt * 0.25   # left alone, it turns slowly on the anvil
+		_place_camera()
+	# Swing it: the weapon swept round its grip at the speed it would really swing.
+	if swing_t >= 0.0:
+		var d := _design_now()
+		var st := ForgeLib.compute_stats(d)
+		var dur := clampf(6.0 / maxf(1.0, float(st.swingSpeed)), 0.25, 1.6)
+		swing_t += dt
+		var k := minf(1.0, swing_t / dur)
+		var g = ForgeLib.grip_points(d)
+		var pivot: Vector3 = (g.main if g != null else Vector3.ZERO) * Data.weapon_voxel
+		var ang := -1.6 + 2.8 * (k * k * (3.0 - 2.0 * k))
+		var b := Basis(Vector3(1, 0, 0), ang)
+		weapon_root.transform = Transform3D(b, pivot - b * pivot)
+		if k >= 1.0:
+			swing_t = -1.0
+			weapon_root.transform = Transform3D.IDENTITY
+
 func _on_view_input(e: InputEvent) -> void:
+	idle_t = 0.0
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			dist = maxf(0.4, dist * 0.9); _place_camera()
+			dist = maxf(0.3, dist * 0.9)
+			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(5.0, dist * 1.1); _place_camera()
-		elif e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT:
-			_click(e.position, e.button_index == MOUSE_BUTTON_LEFT)
-	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_MIDDLE:
+			dist = minf(5.0, dist * 1.1)
+			_place_camera()
+		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
+			_click(e.position)
+		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels":
+			_erase_at(e.position)
+	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and mode == "cards")):
 		dragging = e.pressed
-	if e is InputEventMouseMotion and dragging:
-		orbit.x -= e.relative.x * 0.01
-		orbit.y = clampf(orbit.y + e.relative.y * 0.01, -1.4, 1.4)
-		_place_camera()
+	if e is InputEventMouseMotion:
+		if dragging:
+			orbit.x -= e.relative.x * 0.01
+			orbit.y = clampf(orbit.y + e.relative.y * 0.01, -1.4, 1.4)
+			_place_camera()
+		elif mode == "voxels":
+			_hover(e.position)
 
-func _click(at: Vector2, add: bool) -> void:
+## Where the mouse points: the voxel under it and the empty cell on the face it points at (or,
+## off the weapon, the cell on the weapon's own flat plane).
+func _aim(at: Vector2) -> Dictionary:
 	var from := cam.project_ray_origin(at)
-	var to := from + cam.project_ray_normal(at) * 20.0
-	var hit := viewport.find_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
-	if hit.is_empty():
+	var dir := cam.project_ray_normal(at)
+	var hit := viewport.find_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + dir * 20.0))
+	var vs := Data.weapon_voxel
+	if not hit.is_empty():
+		var cs = hit.collider.shape_owner_get_owner(hit.collider.shape_find_owner(hit.shape))
+		if cs != null and cs.has_meta("cell"):
+			var cell: Vector3i = cs.get_meta("cell")
+			var n: Vector3 = hit.normal
+			return {"hit": cell, "place": cell + Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))}
+	if absf(dir.z) > 1e-4:
+		var t := -from.z / dir.z
+		if t > 0.0:
+			var p := from + dir * t
+			return {"hit": null, "place": Vector3i(roundi(p.x / vs), roundi(p.y / vs), 0)}
+	return {}
+
+func _hover(at: Vector2) -> void:
+	var a := _aim(at)
+	var c = null
+	if not a.is_empty():
+		c = a.get("hit") if tool == "paint" or tool == "erase" else a.get("place")
+	ghost.visible = c != null
+	if c != null:
+		ghost.position = Vector3(c) * Data.weapon_voxel
+		var col := Color(1, 0.3, 0.3, 0.45) if tool == "erase" else Weapon.voxel_color(mat, job)
+		col.a = 0.5
+		(ghost.mesh.material as StandardMaterial3D).albedo_color = col
+
+func _mirrored(list: Array) -> Array:
+	if not mirror:
+		return list
+	var out := list.duplicate()
+	for c in list:
+		if c.x != 0:
+			var m := Vector3i(-c.x, c.y, c.z)
+			if not out.has(m):
+				out.append(m)
+	return out
+
+func _click(at: Vector2) -> void:
+	var a := _aim(at)
+	if a.is_empty():
 		return
-	var cs = hit.collider.shape_owner_get_owner(hit.collider.shape_find_owner(hit.shape))
-	if cs == null or not cs.has_meta("cell"):
+	match tool:
+		"build":
+			_place(_mirrored([a.place]))
+		"paint":
+			if a.hit != null:
+				_push_undo()
+				for c in _mirrored([a.hit]):
+					if cells.has(c):
+						cells[c] = [mat, job]
+				_rebuild()
+		"erase":
+			if a.hit != null:
+				_remove(_mirrored([a.hit]))
+		"line", "box":
+			var c: Vector3i = a.place
+			if line_from == null:
+				line_from = c
+				cost_label.text = "Now click the other end"
+			else:
+				var list := ForgeLib.line_cells(line_from, c) if tool == "line" else ForgeLib.box_cells(line_from, c)
+				line_from = null
+				_place(_mirrored(list))
+
+func _erase_at(at: Vector2) -> void:
+	var a := _aim(at)
+	if not a.is_empty() and a.hit != null:
+		_remove(_mirrored([a.hit]))
+
+func _place(list: Array) -> void:
+	var add := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
+	if add.is_empty():
 		return
-	var cell: Vector3i = cs.get_meta("cell")
-	if add:
-		var n: Vector3 = hit.normal
-		var nc := cell + Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))
-		if cells.has(nc) or cells.size() >= 400:
-			return
-		if _value_now() + Arms.voxel_price(mat) - original_value > purse:
-			cost_label.text = "Not enough denarii for that"
-			return
-		cells[nc] = [mat, job]
-	else:
-		if cells.size() <= 1:
-			return
-		cells.erase(cell)
+	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
+		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
+		return
+	if not free_build and _value_now() + Arms.voxel_price(mat) * add.size() - original_value > purse:
+		cost_label.text = "Not enough denarii for that"
+		return
+	_push_undo()
+	for c in add:
+		cells[c] = [mat, job]
 	_rebuild()
 
-func _take() -> void:
-	var has_grip := cells.values().any(func(c): return c[1] == "grip")
-	if not has_grip:
-		cost_label.text = "It needs a grip to be held"
+func _remove(list: Array) -> void:
+	var gone := list.filter(func(c): return cells.has(c))
+	if gone.is_empty() or cells.size() - gone.size() < 1:
 		return
-	var vox := []
-	for k in cells:
-		vox.append([k.x, k.y, k.z, cells[k][0], cells[k][1]])
-	design.voxels = vox
-	design.erase("stats")
-	var cost := _value_now() - original_value
-	done.call(design, cost)
+	_push_undo()
+	for c in gone:
+		cells.erase(c)
+	_rebuild()
+
+func _push_undo() -> void:
+	undo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	if undo_stack.size() > 80:
+		undo_stack.pop_front()
+	redo_stack.clear()
+
+func _undo() -> void:
+	if undo_stack.is_empty():
+		return
+	redo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	var s: Array = undo_stack.pop_back()
+	cells = s[0]
+	design = s[1]
+	_rebuild()
+
+func _redo() -> void:
+	if redo_stack.is_empty():
+		return
+	undo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	var s: Array = redo_stack.pop_back()
+	cells = s[0]
+	design = s[1]
+	_rebuild()
+
+func _unhandled_key_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:
+		if e.shift_pressed:
+			_redo()
+		else:
+			_undo()
+
+func _take() -> void:
+	var d := _design_now()
+	var st := ForgeLib.compute_stats(d)
+	if not st.hasGrip:
+		cost_label.text = "It needs a grip to be held (Auto-grip finds one)"
+		return
+	d.stats = st
+	var cost := 0 if free_build else _value_now() - original_value
+	done.call(d, cost)

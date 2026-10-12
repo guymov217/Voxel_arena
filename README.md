@@ -72,16 +72,19 @@ godot --headless --path . -- --test test_fight   # one suite
 
 The hot voxel loops run in C++ when the extension is built: greedy box merging for the
 colliders (about 8× faster) and the flood fill that finds the lumps a blow knocks loose. The source
-is in `extension/`. `native/voxel_core.gdextension` loads the library, and
-`scripts/voxel/greedy.gd` falls back to GDScript when it is absent. `tests/test_native.gd` checks
-that both give the same results. To build it for Linux:
+is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
+plain checkout runs without it (and the editor does not complain about a missing library).
+`tests/test_native.gd` checks that both give the same results. To build it for Linux, then load it:
 
 ```bash
 cd extension
 git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
 pip install scons
 scons platform=linux target=template_release      # or windows use_mingw=yes, or macos
+cp ../native/voxel_core.gdextension.in ../native/voxel_core.gdextension
 ```
+
+The release builds (GitHub Actions) build it for Windows, Linux and macOS and load it.
 
 The CI workflow builds it for all three platforms before exporting.
 

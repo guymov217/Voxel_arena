@@ -52,6 +52,8 @@ jobs:
           pattern: native-*
           path: native/bin/
           merge-multiple: true
+      - name: Load the native library (it is built for every platform here)
+        run: cp native/voxel_core.gdextension.in native/voxel_core.gdextension
       - name: Install Godot and the export templates
         run: |
           base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable

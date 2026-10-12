@@ -1,1 +1,5 @@
 bin/
+# Made from voxel_core.gdextension.in where the library is built (CI, or a local build):
+# without it the game runs the GDScript fallback and the editor stays quiet.
+voxel_core.gdextension
+voxel_core.gdextension.uid

@@ -60,7 +60,12 @@ func test_a_campaign_stage_plays_through() -> void:
 		rounds_seen[m.round] = true
 		if not result.is_empty():
 			break
-	t.check(not result.is_empty(), "the stage ended (round %d)" % m.round)
+	var who := []
+	for e in m.entities:
+		if is_instance_valid(e.f):
+			var tp: Vector3 = e.f.torso.global_position
+			who.append("%s %s blood %.0f stamina %.0f at (%.1f, %.1f)" % [e.f.display_name, e.f.state, e.f.blood, e.f.stamina, tp.x, tp.z])
+	t.check(not result.is_empty(), "the stage ended (round %d; %s)" % [m.round, ", ".join(who)])
 	if not result.is_empty():
 		print("   stage 1: won=%s pay=%d rounds=%s kills=%s" % [result[0].won, result[0].pay, str(rounds_seen.keys()), str(result[0].kills)])
 		if result[0].won:
