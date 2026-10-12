@@ -9,7 +9,7 @@ const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "p
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
 const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
-const NAILS := 30
+const NAILS := 70
 const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
 	"oil": Color(0.16, 0.23, 0.06, 0.7), "honey": Color(0.91, 0.63, 0.13, 0.75), "smoke": Color(0.6, 0.6, 0.6, 0.5)}
@@ -189,7 +189,7 @@ func shatter(p: Vector3, type: String, dir = null) -> void:
 	if p.y < 0.6:
 		fx.mark("splat", Vector3(p.x, 0.01, p.z), 0.6)
 
-func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null) -> void:
+func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null, power := 1.0) -> void:
 	var pot := type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
 	if pot:
 		shatter(p, type, dir)
@@ -220,20 +220,18 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.feed.emit("BOOM!")
 		"pot_nail":
 			m.sfx("clang", p, 0.6)
-			# The pot bursts into nails flying out all round; broken on a man, most of the ones that
-			# would go back into him fly the other way.
-			var off := Vector3.ZERO
-			if hit_char:
-				off = p - hit_char.torso.global_position
-				off.y = 0.0
-				off = off.normalized() if off.length_squared() > 1e-6 else Vector3.ZERO
+			# The pot bursts into a hail of nails, flying on with the pot and out all round. Each
+			# is a real little dart: it goes in only where it meets a body and stays in it. The
+			# man it broke on takes the nails that go his way.
+			var fwd: Vector3 = (dir as Vector3).normalized() if dir is Vector3 and (dir as Vector3).length_squared() > 1e-4 else Vector3.ZERO
 			for i in NAILS:
 				var a := randf() * TAU
-				var y := -0.15 + randf() * 0.7
+				var y := -0.2 + randf() * 0.6
 				var d := Vector3(cos(a) * sqrt(1.0 - y * y), y, sin(a) * sqrt(1.0 - y * y))
-				if off != Vector3.ZERO and d.dot(off) < 0.0 and randf() < 0.75:
-					d -= off * 2.0 * d.dot(off)
-				var it: Dictionary = m.items.spawn("nail", Vector3(p.x, maxf(0.15, p.y), p.z) + d * 0.12, d * (20.0 + randf() * 12.0), owner_)
+				if fwd != Vector3.ZERO and randf() < 0.45:
+					d = (d * 0.55 + fwd).normalized()   # carried on the way the pot was going
+				var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06
+				var it: Dictionary = m.items.spawn("nail", from, d * (22.0 + randf() * 14.0), owner_)
 				it.from_char = hit_char
 		"pot_sand":
 			add_zone("sand", p, 3.2, 6.0, owner_)
@@ -326,18 +324,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.feed.emit("CHICKENS EVERYWHERE!")
 			if owner_:
 				m.crowd_add(owner_, 10, "chickens")
-		"pot_anvil":
-			m.sfx("thud", p, 1.0)
-			burst(p, Color(0.8, 0.71, 0.54), 20, 2.4, 0.9, 0.07, 0.3)
-			for x in _near(p, 1.3):
-				var c = x.c
-				var part: VoxelPart = c.head if c.head and c.head.global_position.distance_to(p) < 0.5 else c.torso
-				_hit(c, part, 45.0 * (1.0 - x.d / 2.6), "blunt", part.global_position, Vector3.DOWN, owner_, {"hardness": 1.0})
-				if c.state == "stand":
-					c.fall(2.5)
-				m.feed.emit("An anvil landed on %s. Classic." % c.display_name)
-				if owner_:
-					m.crowd_add(owner_, 10, "anvil")
 		"pot_harpoon":
 			var hv = hit_char if hit_char and hit_char != owner_ else null
 			if hv == null:
@@ -359,7 +345,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.feed.emit("%s reeled in %s!" % [owner_.display_name, hv.display_name])
 				m.crowd_add(owner_, 8, "catch of the day")
 		"pot_bolt", "pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_dart", "nail":
-			_dart(type, p, owner_, dir, hit_char, hit_part)
+			_dart(type, p, owner_, dir, hit_char, hit_part, power)
 		"pot_discus":
 			m.sfx("clang", p, 0.5)
 			var dv = _near(p, 1.1)
@@ -389,7 +375,10 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			if hit_char:
 				hit_char.set_net(true, 3.0)
 
-func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part) -> void:
+func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1.0) -> void:
+	# A nail only wounds what it actually met: one that reaches the sand lies there.
+	if type == "nail" and (hit_char == null or hit_part == null):
+		return
 	if type == "pot_arrow_fire":
 		add_zone("fire", Vector3(p.x, 0.0, p.z), 0.8, 3.0, owner_)
 	var c = hit_char if hit_char and hit_char.alive and hit_char != owner_ else null
@@ -416,21 +405,22 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part) -> void:
 	var was_alive: bool = c.alive
 	var arrow := type.begins_with("pot_arrow")
 	var headshot: bool = part == c.head and (arrow or type == "pot_bolt")
-	var J := (16.0 if type == "pot_bolt" else (14.0 if arrow else (6.0 if type == "nail" else 10.0))) * ((1.3 if c.S >= 1.5 else 2.4) if headshot else 1.0)
+	# An arrow strikes as hard as the bow was drawn (a half draw stings, a full one goes deep);
+	# a crossbow's bolt always has the whole of the prod behind it.
+	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else (4.0 if type == "nail" else 10.0))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	_hit(c, part, J, "point", p, hdir, owner_)
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + 0.5)
 		m.feed.emit("HEADSHOT! %s%s's head%s" % [(owner_.display_name + " puts one in ") if owner_ else "", c.display_name, ". Down and out." if was_alive and not c.alive else ""])
 	if type == "pot_bolt":
 		part.bleed += 1.0
+		part.stick("pot_bolt", p, hdir)
 	if type == "nail":
 		part.bleed += 0.3
-		if not headless:
-			part.stick("nail", p, hdir)
+		part.stick("nail", p, hdir)
 	if arrow:
-		part.bleed += 1.5 / maxf(1.0, c.S * 0.6)
-		if not headless:
-			part.stick(type, p, hdir)
+		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.0)) / maxf(1.0, c.S * 0.6)
+		part.stick(type, p, hdir)
 	if type == "pot_arrow_fire":
 		m.add_spot(c, part, "fire", 4.0, owner_, p)
 	if type == "pot_arrow_poison":
@@ -448,6 +438,28 @@ func on_item(ev: Dictionary) -> void:
 	var it: Dictionary = ev.item
 	var owner_ = it.get("owner")
 	match ev.kind:
+		"strike":
+			# A heavy thing's blow is its momentum: 30 kg of iron at a walking throw's speed
+			# crushes what it lands on and puts a man down.
+			var part: VoxelPart = ev.part
+			var spd: float = ev.speed
+			var J := minf(95.0, float(ev.mass) * spd * 0.42)
+			m.sfx("thud", ev.p, 1.0)
+			burst(ev.p, Color(0.6, 0.5, 0.4), 14, 2.0)
+			if part and c and c.alive:
+				_hit(c, part, J, "blunt", ev.p, ev.dir, owner_, {"hardness": 1.0})
+				var push: Vector3 = (ev.dir as Vector3) * float(ev.mass) * spd * 0.35
+				c.torso.apply_central_impulse(Vector3(push.x, maxf(0.0, push.y), push.z))
+				if c.state == "stand" and J > 25.0 and not c.mods.get("unstoppable", false):
+					c.fall(2.0)
+				m.feed.emit("An anvil hits %s. Classic." % c.display_name)
+				if owner_ and owner_ != c:
+					m.crowd_add(owner_, 10, "anvil")
+		"land":
+			m.sfx("thud", ev.p, minf(1.0, float(ev.speed) / 8.0))
+			if m.fx:
+				m.fx.burst("dust", ev.p, 16, Vector3.UP, 0.8)
+				m.fx.mark("crater", ev.p, 0.5)
 		"splat":
 			if ev.type == "tomato":
 				if c:
@@ -455,7 +467,7 @@ func on_item(ev: Dictionary) -> void:
 					m.crowd_add(c, -2, "tomato")
 				burst(ev.p, Color(0.82, 0.16, 0.11), 10, 1.5, 0.5, 0.03)
 			else:
-				explode(ev.type, ev.p, owner_, ev.get("dir"), c, ev.get("part"))
+				explode(ev.type, ev.p, owner_, ev.get("dir"), c, ev.get("part"), float(it.get("power", 1.0)))
 		"eat":
 			match ev.type:
 				"bread":
@@ -770,16 +782,22 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var ys := []
 	for v in w.design.voxels:
 		ys.append(v[1])
-	var draw_time := 0.5 + (int(ys.max()) - int(ys.min())) * 0.025
+	# A war bow is hard work: a long pull (longer the longer the limbs, slower tired), a pause to
+	# nock the next arrow after each shot, and a full draw held costs breath fast.
+	var draw_time := (0.9 + (int(ys.max()) - int(ys.min())) * 0.035) * (1.0 + 0.6 * (1.0 - minf(1.0, c.stamina / 100.0)))
+	var nock: float = maxf(0.0, float(w.get_meta("nock", 0.0)) - dt)
+	w.set_meta("nock", nock)
 	var draw: float = w.get_meta("draw", 0.0)
 	var hold_t: float = w.get_meta("hold_t", 0.0)
+	if held and nock > 0.0 and draw <= 0.0:
+		return
 	if held:
 		if draw <= 0.0:
 			m.sfx("draw", w.global_position, 0.6)
 		draw = minf(1.0, draw + dt / draw_time)
 		hold_t += dt
 		if draw >= 1.0:
-			c.stamina = maxf(0.0, c.stamina - 6.0 * dt)
+			c.stamina = maxf(0.0, c.stamina - 12.0 * dt)
 		w.set_meta("draw", draw)
 		w.set_meta("hold_t", hold_t)
 		_show_draw(w, c, draw)
@@ -789,6 +807,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	w.set_meta("hold_t", 0.0)
 	if draw <= 0.2:
 		return
+	w.set_meta("nock", 0.8)
 	var from: Vector3 = w.global_transform * w.center_of_mass + Vector3(0, 0.15, 0)
 	var vel: Vector3
 	var look = inp.get("look")
@@ -796,11 +815,10 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	if player and inp.get("aimAt") is Vector3:
 		# Where the crosshair sits, allowing for the drop over the distance (weaponFx.js): a
 		# short draw, a long hold or a tired arm scatters it a little.
-		var speed := 10.0 + 18.0 * draw
+		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
 		var dd: Vector3 = (inp.aimAt as Vector3) - from
 		var dist := dd.length()
-		var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
-		var wobble: float = (0.004 + 0.02 * (1.0 - draw) + 0.012 * minf(1.0, maxf(0.0, hold_t - 1.2) / 2.5) + 0.015 * tired) * (1.0 if c.state == "stand" else 2.0)
+		var wobble := _bow_wobble(c, draw, hold_t)
 		var a1 := randf() * TAU
 		var r1 := sqrt(randf()) * wobble
 		var sd := Vector3(dd.z, 0, -dd.x).normalized()
@@ -810,9 +828,8 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
 		from += dd.normalized() * 0.5
 	elif player and look != null:
-		var speed := 12.0 + 22.0 * draw
-		var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
-		var wobble: float = (0.004 + 0.02 * (1.0 - draw) + 0.012 * minf(1.0, maxf(0.0, hold_t - 1.2) / 2.5) + 0.015 * tired) * (1.0 if c.state == "stand" else 2.0)
+		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		var wobble := _bow_wobble(c, draw, hold_t)
 		var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch) + 0.06, cos(look.yaw) * cos(look.pitch)).normalized()
 		dir = dir.rotated(Vector3.UP, randf_range(-wobble, wobble)).normalized()
 		dir.y += randf_range(-wobble, wobble)
@@ -822,7 +839,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		var tgt = m.nearest_enemy(e)
 		var aim: Vector3 = tgt.f.torso.global_position + Vector3(0, 0.2, 0) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
 		var dd := aim - from
-		var t := maxf(0.15, dd.length() / (12.0 + 22.0 * draw))
+		var t := maxf(0.15, dd.length() / (ARROW_SPEED.x + ARROW_SPEED.y * draw))
 		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
 		from += dd.normalized() * 0.5
 	var gem = w.design.get("gem")
@@ -831,7 +848,20 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	it.power = draw
 	m.sfx("twang", from)
 	m.sfx("whoosh", from, 0.6)
-	c.stamina = maxf(0.0, c.stamina - 5.0)
+	c.stamina = maxf(0.0, c.stamina - 9.0)
+
+## Arrows fly fast and near straight (a dropping lob was the old slow arrow): speed at no draw
+## plus what a full draw adds, m/s.
+const ARROW_SPEED := Vector2(20.0, 38.0)
+const BOLT_SPEED := 58.0
+
+## How far off the mark the arrow may go: a short draw, a full draw held too long (the arm
+## shakes from about a second), a tired archer, one on the move or on the ground.
+func _bow_wobble(c, draw: float, hold_t: float) -> float:
+	var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
+	var lv: Vector3 = c.torso.linear_velocity
+	var moving := minf(1.0, Vector2(lv.x, lv.z).length() / 3.0)
+	return (0.008 + 0.045 * (1.0 - draw) + 0.03 * minf(1.0, maxf(0.0, hold_t - 1.0) / 2.0) + 0.03 * tired + 0.03 * moving) * (1.0 if c.state == "stand" else 2.0)
 
 ## The crossbow's string and bolt: `k` 0 just shot (the string slack at the prod, no bolt) to
 ## 1 cocked and loaded. In between the free off hand works the string back to the latch.
@@ -947,7 +977,8 @@ func _crossbow(e: Dictionary, w: Weapon, thrust: float, dt: float, inp := {}) ->
 	var aim: Vector3 = tgt.f.torso.global_position if tgt else td[0] + td[1] * 8.0
 	if (e.kind == "local" or e.kind == "remote") and inp.get("aimAt") is Vector3:
 		aim = inp.aimAt
-	m.items.throw_at("pot_bolt", td[0], aim, c, 22.0)
+	var bolt: Dictionary = m.items.throw_flat("pot_bolt", td[0], aim, c, BOLT_SPEED)
+	bolt.power = 1.0
 	m.sfx("clang", td[0], 0.4)
 	c.stamina = maxf(0.0, c.stamina - 8.0)
 

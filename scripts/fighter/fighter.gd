@@ -114,6 +114,7 @@ var crawl_phase := 0.0
 var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x sharpness)
+var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
 var thrust_aim := {"R": null, "L": null}   # {dir, k}: a thrust's point toward the crosshair
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
@@ -429,6 +430,35 @@ func _lock_elbow_straight(side: String, on: bool) -> void:
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.06)
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, 0.06)
 
+## A committed swing (the button held, the hand on its way) is made with a set elbow: its bend
+## is held in a narrow window that follows the bend the aim wants only slowly, so a heavy head
+## (a warhammer) swings on the whole arm from the shoulder instead of folding the elbow.
+const ELBOW_SET_RATE := 0.5   # rad/s the set bend may follow the aim
+func _hold_elbow(side: String, want_bend: float, on: bool, dt: float) -> void:
+	var fore: VoxelPart = arm[side].fore
+	var upper: VoxelPart = arm[side].upper
+	if not (fore.joint is Generic6DOFJoint3D) or fore.severed or upper.severed or fore.hanging or upper.hanging or bool(fore.get_meta("elbow_locked", false)):
+		return
+	var j: Generic6DOFJoint3D = fore.joint
+	var held = fore.get_meta("elbow_set", null)
+	if not on:
+		if held != null:
+			fore.remove_meta("elbow_set")
+			j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.05)
+			j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, ELBOW_BEND)
+		return
+	var cur: float
+	if held == null:
+		cur = (PD.quat_of(upper) * Vector3.DOWN).angle_to(PD.quat_of(fore) * Vector3.DOWN)
+	else:
+		# Straightening into the blow is quick (a heavy weapon is struck with the arms
+		# extending); giving way to more bend is slow.
+		var goal := clampf(want_bend, 0.0, ELBOW_BEND)
+		cur = move_toward(float(held), goal, (3.0 if goal < float(held) else ELBOW_SET_RATE) * dt)
+	fore.set_meta("elbow_set", cur)
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, maxf(-0.05, cur - 0.07))
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, minf(ELBOW_BEND, cur + 0.07))
+
 ## The elbow is a hinge, not a ball: the forearm bends forward (up to ~150 degrees) and turns
 ## about its own length (the wrist, +-75), but it cannot swing sideways or spin round the upper
 ## arm. So a swung weapon is carried by the whole arm instead of flapping on a loose joint.
@@ -736,7 +766,9 @@ func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8,
 ## F: the weapon in `side`'s hand flies at `target` (or along `dir`): point first if it is a
 ## javelin, end over end if it is a throwing axe, tumbling otherwise.
 func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weapon:
-	if not alive or arm_func(side) < 0.2:
+	# A hurt arm still throws (a fractured one at a tenth of its strength), only weakly: once
+	# a single cracked bone was enough to make F do nothing at all.
+	if not alive or arm_func(side) < 0.05:
 		return null
 	var w: Weapon = weapons[side]
 	if not w or w.is_shield or (side == "L" and two_handed) or fixed_hand[side]:
@@ -1290,6 +1322,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var upper: VoxelPart = a.upper
 	var fore: VoxelPart = a.fore
 	if upper.severed or fore.severed or upper.hanging or fore.hanging or not live:
+		if not live and fore.has_meta("elbow_set"):
+			_hold_elbow(side, 0.0, false, dt)
 		return
 	var af := arm_func(side)
 	if fore.flinch_t > 0.0 or upper.flinch_t > 0.0:
@@ -1322,6 +1356,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# button held, or a jab, locks the elbow rigid, so the forearm goes where the upper arm
 	# drives it and the punch lands with the whole arm behind it.
 	_lock_elbow_straight(side, not w and state == "stand" and (power or jab_t[side] > 0.0) and af > 0.25 and held_item == null and not crawling)
+	if not (w and not w.is_shield and weapon_joints[side]):
+		_hold_elbow(side, 0.0, false, dt)
 	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
 	if crawling:
 		# The arms reach ahead and haul, one after the other.
@@ -1334,9 +1370,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var charging := float(inp.get("charging", 0.0))
 	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and state == "stand")
 	var following: bool = ta != null and ta.side == side and ta.phase == "follow"
+	var spear: bool = w != null and Weapon.flies_point_first(w.design) and held_item == null
+	throw_pose[side] = spear and down_hp == null and (winding or following)
 	if down_hp == null and (winding or following):
-		down_hp = {"x": (0.55 if side == "R" else -0.55), "y": 1.5} if winding else {"x": (-0.7 if side == "R" else 0.7), "y": -0.25}
-		thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
+		if spear:
+			# A spear: drawn back level above the shoulder, point at the mark, then driven
+			# straight forward and a little down along the line it will fly.
+			down_hp = {"x": (0.45 if side == "R" else -0.45), "y": 1.05} if winding else {"x": (-0.15 if side == "R" else 0.15), "y": 0.55}
+			thrust = -1.3 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.4
+		else:
+			down_hp = {"x": (0.55 if side == "R" else -0.55), "y": 1.5} if winding else {"x": (-0.7 if side == "R" else 0.7), "y": -0.25}
+			thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
 	var hp_used: Dictionary = down_hp if down_hp != null else hp
 	# A bow is held out at the shoulder, stave upright, whatever the mouse does.
 	if down_hp == null and side == "R" and w and w.design.has("shoots"):
@@ -1419,7 +1463,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			e_local = Vector3(side_sign * 0.3, -1, -0.3)
 		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
 		# The elbow never folds in through the chest: in the body's frame it stays on its own
-		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.12 S above it.
+		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
 		var elbow_dir = _elbow_dir(side, e_local, lu, t_rot)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
@@ -1427,6 +1471,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var k_up := 1.0 + m_load / PD.inertia_of(upper)
 		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up))
 		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
+		# On the way, or the weapon still carrying its swing (a hammer head's momentum at the
+		# end of a blow is just what folds a loose elbow).
+		var swinging: bool = power and state == "stand" and (target_vel[side].length() > 1.6 * S or w.angular_velocity.length() * w.reach > 2.5 * S) and w.design.get("chain") == null and not w.design.has("shoots")
+		var want_bend := elbow_dir.angle_to(fore_dir)
+		if w.mass > 2.5:
+			want_bend = minf(want_bend, 0.9)
+		_hold_elbow(side, want_bend, swinging, dt)
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if has_wrist(w):
@@ -1544,8 +1595,8 @@ func _shooter_aim(side: String, w: Weapon, inp: Dictionary, yaw_q: Quaternion, d
 	return desired
 
 ## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
-## side of the body (at most 0.22 S across the shoulder line) and at most 0.12 S above the
-## shoulder, the same for both arms, mirrored.
+## side of the body (at most 0.22 S across the shoulder line) and at most 0.28 S above the
+## shoulder (high enough for an overhead blow), the same for both arms, mirrored.
 func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion) -> Vector3:
 	var flip := side == "L"
 	if flip:
@@ -1553,7 +1604,7 @@ func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion) ->
 	e_local = _limit_dir(e_local.normalized(), 0, 0.22 * S / lu)
 	if flip:
 		e_local.x = -e_local.x
-	e_local = _limit_dir(e_local, 1, 0.12 * S / lu)
+	e_local = _limit_dir(e_local, 1, 0.28 * S / lu)
 	return (t_rot * e_local).normalized()
 
 ## A hand's mark (in the yaw frame, from the torso) moved out of the torso and the head to the
@@ -1648,10 +1699,10 @@ func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t
 ## The hand moves on a flat pane in front of the body, Half Sword style.
 func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var sh: Vector3 = shoulder[side]
-	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * (0.3 if two_handed and side == "R" else 0.42) * S
+	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * (0.36 if two_handed and side == "R" else 0.5) * S
 	var fist := 0.12 if not weapons[side] else 0.0
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
-	var y := (-0.08 + (hy * 0.36 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
+	var y := (-0.08 + (hy * 0.42 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
 	var cross: float = maxf(0.0, -float(hp.get("x", 0.0))) if side == "R" else maxf(0.0, float(hp.get("x", 0.0)))
 	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5)) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
@@ -1665,7 +1716,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		return _shooter_aim(side, w, inp, yaw_q, dt)
 	var local := (yaw_q.inverse() * (target_w - t_pos)) / S
 	var hy := float(hand_input[side].get("y", 0.15))
-	var elev := clampf((0.78 if hy >= 0.0 else 0.85) * hy, -1.45, 1.2 if two_handed else 1.45)
+	var elev := clampf((0.92 if hy >= 0.0 else 1.0) * hy, -1.45, 1.3 if two_handed else 1.5)
 	# Both hands on the haft swing it about the middle of the chest, one about its own shoulder.
 	var shx: float = 0.0 if two_handed else shoulder[side].x / S
 	var pivot := Vector3(shx + (local.x - shx) * 0.2, local.y, local.z - 0.28)
@@ -1677,6 +1728,11 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	var ta = thrust_aim[side]
 	if ta != null:
 		axis = axis.slerp(ta.dir, ta.k).normalized()
+	if throw_pose[side]:
+		# A spear being thrown points where it will go, at the mark (or ahead and a touch up).
+		var at = inp.get("aimAt")
+		var fly: Vector3 = ((at as Vector3) - target_w).normalized() if at is Vector3 and (at as Vector3).distance_to(target_w) > 0.5 else yaw_q * Vector3(0, 0.17, 1).normalized()
+		axis = (fly + Vector3(0, 0.08, 0)).normalized()
 	low_hand = maxf(low_hand, maxf(0.0, -elev - 0.2))
 	var raise_k := smoothstep(0.5, 1.2, elev)
 	var ed := yaw_q * Vector3((1.0 if side == "R" else -1.0) * (1.0 - raise_k), 0, raise_k)
@@ -1906,6 +1962,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# of a keen blade still goes through a limb in one).
 		var bite := J * eff * (1.0 + 0.8 * heavy)
 		var depth: float = minf(0.36 + 0.24 * heavy, 0.017 * bite * clampf(bite / 22.0, 0.35, 1.0)) * S / pow(big, 1.5)
+		# No one blow goes through: at most a share of how thick the part is there (a light cut
+		# a sixth, the hardest a little over half). Through comes from blows into the same wound,
+		# each one carrying on from where the last one stopped (_wound below).
+		var thick := 2.0 * (absf(ld.x) * part.half_ext.x + absf(ld.y) * part.half_ext.y + absf(ld.z) * part.half_ext.z)
+		depth = minf(depth, thick * (0.15 + 0.4 * clampf(bite / 60.0, 0.0, 1.0)))
 		var width := vfs * (0.75 + 0.5 * heavy)
 		if J * eff > 3.0 * big:
 			var n := la.cross(ld)
@@ -1916,8 +1977,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# A blade follows the wound: a second blow into an open cut starts where the first
 			# one stopped, so a thick limb is chopped through blow by blow instead of each one
 			# only scraping the same mouth of the wound.
-			# A light touch only goes as far into the wound as its own weight carries it.
-			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth) * minf(1.0, J * eff / 9.0)
+			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
 					continue
@@ -1929,6 +1989,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		dmg = J * 2.8 * eff
 		part.bleed += dmg * 0.07
 		var depth: float = minf(0.3 + 0.2 * heavy, 0.02 * J * eff * (1.0 + 0.8 * heavy)) * S
+		# A stab or a thrown point goes in, it rarely comes out the far side: at most a share of
+		# the thickness along its line (a thrown one less, the shaft takes the blow's way off).
+		var stab := J * eff * (1.0 + 0.8 * heavy)
+		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z)
+		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0)) * (0.75 if hit.get("thrown", false) else 1.0))
 		if J * eff > 2.5:
 			var r := V * S * (1.2 + 0.5 * heavy)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)

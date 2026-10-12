@@ -725,17 +725,28 @@ func set_flames(on: bool) -> void:
 				break
 
 ## An arrow (or a dart) left standing in the part where it went in.
+## Something sharp left in the part where it went in, along the way it was going: an arrow
+## stands well out of the wound, a nail is driven in up to its head.
 func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
-	if stuck.size() >= 6:
+	var nail := type == "nail"
+	if stuck.size() >= (40 if nail else 12):
 		return
 	var vis := Items.visual(type)
 	add_child(vis)
 	var lp: Vector3 = global_transform.affine_inverse() * world_p
 	var ld: Vector3 = (global_transform.basis.orthonormalized().inverse() * dir).normalized()
-	vis.position = lp - ld * 0.12
-	if absf(ld.dot(Vector3.UP)) < 0.99:
-		vis.look_at_from_position(vis.position, vis.position + ld, Vector3.UP)
-		vis.position = lp - ld * 0.12
+	# Where it entered: back along its line to the surface of the part's box.
+	var back := 0.3
+	for k in 3:
+		var v := -ld[k]
+		if absf(v) > 1e-4:
+			back = minf(back, maxf(0.0, ((half_ext[k] if v > 0.0 else -half_ext[k]) - lp[k]) / v))
+	var entry := lp - ld * back
+	# The models' points are at +z: laid along the way it flew (in the part's own frame), point
+	# first into the wound, the head, fletching or butt standing out.
+	var out := 0.025 if nail else (0.24 if type.begins_with("pot_arrow") else (0.1 if type == "pot_bolt" else 0.12))
+	var up := Vector3.UP if absf(ld.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+	vis.transform = Transform3D(Basis.looking_at(-ld, up), entry - ld * out)
 	stuck.append(vis)
 
 func velocity_at(p: Vector3) -> Vector3:

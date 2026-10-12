@@ -16,7 +16,7 @@ const TYPES := {
 	"pot_bola": {"size": 0.14, "projectile": true}, "pot_oil": {"size": 0.18, "projectile": true, "pot": 0x6b7a2a},
 	"pot_garum": {"size": 0.16, "projectile": true, "pot": 0x8a6a2a}, "pot_honey": {"size": 0.16, "projectile": true, "pot": 0xe8a020},
 	"pot_smoke": {"size": 0.16, "projectile": true, "pot": 0x777777}, "pot_mystery": {"size": 0.2, "projectile": true, "pot": 0xd04aa0},
-	"pot_chickens": {"size": 0.2, "projectile": true, "pot": 0xf7d32a}, "pot_anvil": {"size": 0.22, "projectile": true},
+	"pot_chickens": {"size": 0.2, "projectile": true, "pot": 0xf7d32a}, "pot_anvil": {"size": 0.22, "projectile": true, "heavy": 30.0},
 	"pot_harpoon": {"size": 0.12, "projectile": true}, "pot_dart": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_bolt": {"size": 0.08, "projectile": true, "dart": true}, "nail": {"size": 0.03, "projectile": true, "dart": true},
 	"pot_arrow": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_fire": {"size": 0.08, "projectile": true, "dart": true},
@@ -227,15 +227,36 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 				if it.type == "tomato" or def.get("projectile", false):
 					var r: float = 0.45 if it.type == "net" or it.type == "pot_bignet" else (0.16 if it.dart else size * 0.6 + 0.04)
 					hit = hit_char(it.p, chars, r, null if it.get("bounced", false) or it.get("returning", false) else it.owner, true)
+					if hit and it.get("struck", {}).has(hit.char):
+						hit = null   # a heavy thing hits a man once, then drops off him
 					if hit:
 						break
 			if it.node:
 				_face(it)
 				if not it.dart:
 					it.node.rotation += it.spin * dt
+			if hit and def.has("heavy"):
+				# Something heavy (an anvil) does not burst: it strikes with its weight and speed,
+				# loses most of its way in the man and falls off him to the sand.
+				_emit({"kind": "strike", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized(), "speed": it.vel.length(), "mass": def.heavy})
+				if not it.has("struck"):
+					it.struck = {}
+				it.struck[hit.char] = true
+				it.vel = it.vel * 0.15
+				continue
 			if hit:
 				_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized()})
 				remove(it)
+				continue
+			if it.p.y <= size / 2.0 and def.has("heavy"):
+				it.p.y = size / 2.0
+				if it.vel.length() > 2.0:
+					_emit({"kind": "land", "type": it.type, "char": null, "item": it, "p": it.p, "speed": it.vel.length()})
+				it.vel = Vector3.ZERO
+				it.grounded = true
+				if it.node:
+					it.node.position = it.p
+					it.node.rotation = Vector3(0, it.node.rotation.y, 0)
 				continue
 			if it.p.y <= size / 2.0:
 				it.p.y = size / 2.0
