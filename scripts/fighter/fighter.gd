@@ -440,7 +440,7 @@ func _hold_elbow(side: String, want_bend: float, on: bool, dt: float) -> void:
 	if not (fore.joint is Generic6DOFJoint3D) or fore.severed or upper.severed or fore.hanging or upper.hanging or bool(fore.get_meta("elbow_locked", false)):
 		return
 	var j: Generic6DOFJoint3D = fore.joint
-	var held = fore.get_meta("elbow_set", null)
+	var held = fore.get_meta("elbow_set") if fore.has_meta("elbow_set") else null
 	if not on:
 		if held != null:
 			fore.remove_meta("elbow_set")
