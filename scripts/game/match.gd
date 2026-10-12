@@ -309,10 +309,14 @@ static func temper(design: Dictionary, t) -> Dictionary:
 	return d
 
 ## An enemy from a campaign entry: the type's kit plus the stage's armour, temper and skill.
+## They come in through the gates (east and west, by turns), never out of thin air at your
+## back: each a little way inside the gate it came through, the ones after it behind it.
 func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
-	var a := (i - (total - 1) / 2.0) * 0.55 + PI
-	var rad := 8.0 if en.get("boss", false) else 7.0
-	var pos := Vector3(sin(a) * rad, 0.1, cos(a) * rad)
+	var gx := 1.0 if i % 2 == 0 else -1.0
+	var row := i / 2
+	var big: bool = en.has("beast") or en.get("boss", false)
+	var depth := (3.2 if big else 1.6) + row * 1.1
+	var pos := Vector3(gx * (Arena.RADIUS - depth), 0.1, (0.6 if row % 2 else -0.6) if total > 2 else 0.0)
 	if en.has("beast"):
 		return {"kind": "beast", "beast": en.beast, "scale": en.get("scale"), "name": en.get("name", Data.beasts.get(en.beast, {}).get("name", en.beast)), "boss": en.get("boss", false), "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z)}
 	var t := Data.enemy_type(en.get("e", "recruit"))
@@ -352,6 +356,16 @@ func _spawn_round(r: int) -> void:
 			spawn_beast(spec)
 		else:
 			spawn_fighter(spec)
+	_open_gates(list.size())
+
+## The gates swing open as a wave comes in, with a blast of the horn.
+func _open_gates(n: int) -> void:
+	if arena and arena.has_method("open_gate"):
+		arena.open_gate(1)
+		if n > 1:
+			arena.open_gate(-1)
+	if n > 0:
+		sfx("horn", Vector3(Arena.RADIUS, 2.0, 0), 0.6)
 
 ## A Bread & Circuses bout: its enemies (one more for every extra player), its rules, its intro.
 func _setup_circus(opts: Dictionary) -> void:
@@ -364,6 +378,7 @@ func _setup_circus(opts: Dictionary) -> void:
 			spawn_beast(spec)
 		else:
 			spawn_fighter(spec)
+	_open_gates(list.size())
 	rules = BoutRules.new(self, bout)
 	rules.setup()
 	_banner(String(bout.get("name", "Bout")), String(bout.get("intro", "")))
@@ -494,7 +509,7 @@ func _physics_process(dt: float) -> void:
 						input.aiming = shooter != null or input.held("throw")
 						_bow_sway(f, shooter, dt)
 					inp = input.sample(dt) if input else {}
-					if cam and (shooter != null or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false)):
+					if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
 						inp.aimAt = aim_point(f)
 					last_local_inp = inp
 					if inp.has("look"):
@@ -503,6 +518,10 @@ func _physics_process(dt: float) -> void:
 				inp = Net.input_of(e.peer)
 				if inp.has("look"):
 					f.yaw = float(inp.look.yaw)
+					# A guest's thrust goes along their eyes (their crosshair is not sent).
+					if float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0:
+						var lk: Dictionary = inp.look
+						inp.aimAt = f.head.global_position + Vector3(sin(float(lk.yaw)) * cos(float(lk.pitch)), sin(float(lk.pitch)), cos(float(lk.yaw)) * cos(float(lk.pitch))) * 6.0
 			"bot":
 				var tgt = nearest_enemy(e)
 				var mt = e.get("manual_target")
@@ -537,6 +556,7 @@ func _physics_process(dt: float) -> void:
 		if inp.get("ability") is Dictionary:
 			use_ability(f, inp.ability)
 		if int(inp.get("useItem", -1)) >= 0:
+			e.last_aim = inp.get("aimAt")
 			throwables.use_item(e, int(inp.useItem))
 		if inp.get("faceAt") is Vector3:
 			var fd: Vector3 = inp.faceAt - f.torso.global_position
@@ -1397,7 +1417,12 @@ func _process(dt: float) -> void:
 		var aiming: bool = f != null and is_instance_valid(f) and f.alive and last_local_inp is Dictionary and float(last_local_inp.get("charging", 0.0)) > 0.0
 		var sh := _shooter_of(f)
 		var sighting: bool = sh != null and (float(sh.get_meta("draw", 0.0)) > 0.0 or str(sh.design.get("shoots", "")) == "bolt")
-		cam.follow(f, yaw, pitch, dt, aiming or sighting)
+		var foe = null
+		if me and f != null and is_instance_valid(f) and f.alive:
+			var ne = nearest_enemy(me)
+			if ne and is_instance_valid(ne.f):
+				foe = ne.f.torso.global_position + Vector3(0, 0.25, 0)
+		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
 	if role == "guest" and input and Net.active():
 		if tick % 4 == 0:
 			var gi := input.sample(dt * 4.0)

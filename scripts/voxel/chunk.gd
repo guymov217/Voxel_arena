@@ -13,10 +13,12 @@ var held_on: Node3D = null
 var half := Vector3.ONE * 0.02
 
 ## `voxels` are what VoxelPart.remove_voxels returned ({p: world position, color}).
-static func spawn(part: VoxelPart, voxels: Array, dir: Vector3, hold: Node3D = null, hold_at := Vector3.ZERO, hold_for := 2.0) -> Chunk:
+## `part` may also be a Weapon: a piece that broke off it.
+static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null, hold_at := Vector3.ZERO, hold_for := 2.0) -> Chunk:
 	if voxels.is_empty() or not is_instance_valid(part) or not part.is_inside_tree() or part.mm == null:
 		return null
-	var host: Node = part.get_parent().get_parent() if part.get_parent() else null
+	var wpn := part is Weapon
+	var host: Node = (part.get_parent() if wpn else part.get_parent().get_parent()) if part.get_parent() else null
 	if host == null:
 		return null
 	var c := Vector3.ZERO
@@ -42,7 +44,7 @@ static func spawn(part: VoxelPart, voxels: Array, dir: Vector3, hold: Node3D = n
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	ch.add_child(mmi)
-	var vs: float = part.vf * part.part_scale
+	var vs: float = part.vs if wpn else part.vf * part.part_scale
 	ch.half = ((hi - lo) * 0.5 + Vector3.ONE * vs * 0.5).max(Vector3.ONE * 0.01)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -50,7 +52,10 @@ static func spawn(part: VoxelPart, voxels: Array, dir: Vector3, hold: Node3D = n
 	shape.shape = box
 	shape.position = (hi + lo) * 0.5
 	ch.add_child(shape)
-	ch.mass = maxf(0.05, voxels.size() * 0.0004 * pow(part.part_scale, 3.0) * float(part.fighter.MS if part.fighter else 1.0))
+	if wpn:
+		ch.mass = maxf(0.05, part.mass * float(voxels.size()) / maxf(1.0, float(part.alive_count() + voxels.size())))
+	else:
+		ch.mass = maxf(0.05, voxels.size() * 0.0004 * pow(part.part_scale, 3.0) * float(part.fighter.MS if part.fighter else 1.0))
 	ch.collision_layer = VoxelPart.LAYER_DEBRIS
 	ch.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
 	ch.linear_damp = 0.2

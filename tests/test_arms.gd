@@ -93,3 +93,54 @@ func test_limp_and_dead_arms_stay_out_of_the_body() -> void:
 	t.eq(f.state, "dead", "he bled out")
 	t.check(worst < 0.05, "and dead, they still do (deepest %.3f m)" % worst)
 	m.queue_free()
+
+## J: the sword goes to the left hand and the shield to the right, both held at the palm, and
+## back again; a two-handed grip refuses.
+func test_weapons_swap_hands() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var e = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 1, "pos": Vector3(5, 0, 0), "yaw": 0.0})
+	e.erase("bot")
+	var inp := {"main": {"x": 0.2, "y": 0.2}, "off": {"x": -0.35, "y": 0.1}, "power": false}
+	e.drive = func(_e): return inp
+	var f: Fighter = e.f
+	for i in 60:
+		await get_tree().physics_frame
+	var sword: Weapon = f.weapons.R
+	var shield: Weapon = f.weapons.L
+	inp.swap = true
+	await get_tree().physics_frame
+	inp.erase("swap")
+	for i in 60:
+		await get_tree().physics_frame
+	t.check(f.weapons.L == sword and f.weapons.R == shield, "the sword is in the left hand and the shield in the right")
+	t.check(sword.grip_world().distance_to(f.hand_world("L")) < 0.08 and sword.holder == f, "the sword is held at the left palm (%.3f m off)" % sword.grip_world().distance_to(f.hand_world("L")))
+	t.check(f.swap_hands() and f.weapons.R == sword, "and back again")
+	m.queue_free()
+
+## The wheel turns the edge: the blade rolls in the hand to whatever twist is set, half a turn
+## included.
+func test_wheel_turns_the_edge() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var e = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {"main": "gladius", "off": ""}, "team": 1, "pos": Vector3(5, 0, 0), "yaw": 0.0})
+	e.erase("bot")
+	var inp := {"main": {"x": 0.4, "y": 0.4}, "off": {"x": -0.35, "y": 0.1}, "power": true, "twist": 0.0}
+	e.drive = func(_e): return inp
+	var f: Fighter = e.f
+	for i in 100:
+		await get_tree().physics_frame
+	for tw in [1.6, 3.1, -1.6]:
+		inp.twist = tw
+		for i in 90:
+			await get_tree().physics_frame
+		var w: Weapon = f.weapons.R
+		var q := PD.quat_of(w)
+		var ax := q * Vector3.UP
+		var want: Vector3 = (f.aim_q.R as Quaternion) * Vector3.RIGHT
+		want -= ax * want.dot(ax)
+		var off := rad_to_deg((q * Vector3.RIGHT).angle_to(want))
+		t.check(off < 15.0, "twist %.1f: the edge is where the wheel set it (%.0f° off)" % [tw, off])
+	m.queue_free()

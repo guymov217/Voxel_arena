@@ -26,7 +26,8 @@ func orbit(center: Vector3, dt: float) -> void:
 ## While a throw is wound up the camera closes in over the right shoulder and narrows, so the
 ## mark sits under the crosshair and the arc is easy to judge.
 var aim_k := 0.0
-func follow(f, yaw: float, pitch: float, dt: float, aiming := false) -> void:
+var clear_k := 0.0   # 0..1: how far the camera has slid out over the shoulder to see past its own fighter
+func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null) -> void:
 	aim_k = move_toward(aim_k, 1.0 if aiming else 0.0, dt * 4.0)
 	fov = lerpf(65.0, 50.0, aim_k)
 	if f == null or not is_instance_valid(f):
@@ -39,8 +40,21 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false) -> void:
 		var fwd := Vector3(sin(yaw), 0, cos(yaw))
 		var right := Vector3(-cos(yaw), 0, sin(yaw))
 		var back := lerpf(2.6, 2.0, aim_k) * S * cos(pitch * 0.6)
-		var want := base + Vector3(0, lerpf(0.75, 0.95, aim_k) * S - sin(pitch) * 1.6 * S, 0) - fwd * back + right * lerpf(0.35, 1.05, aim_k) * S
+		var want := base + Vector3(0, lerpf(0.75, 0.95, aim_k) * S - sin(pitch) * 1.6 * S, 0) - fwd * back + right * lerpf(0.55, 1.05, aim_k) * S
 		want.y = maxf(0.3, want.y)
+		# The foe is never behind your own back: when the line from the camera to him runs
+		# through your head or shoulders, the camera slides further out over the right shoulder
+		# and a little up until he is in the clear.
+		var blocked := false
+		if foe is Vector3 and f.alive:
+			for body in [f.head, f.torso]:
+				var c: Vector3 = body.get_global_transform_interpolated().origin
+				var to: Vector3 = (foe as Vector3) - want
+				var k := clampf((c - want).dot(to) / maxf(1e-4, to.length_squared()), 0.0, 1.0)
+				if k > 0.0 and k < 1.0 and (want + to * k).distance_to(c) < 0.42 * S:
+					blocked = true
+		clear_k = move_toward(clear_k, 1.0 if blocked else 0.0, dt * (2.5 if blocked else 0.8))
+		want += (right * 0.55 + Vector3(0, 0.3, 0)) * S * clear_k * (1.0 - aim_k)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
 		look = base + fwd * 2.0 * S + Vector3(0, 0.35 * S + sin(pitch) * 2.0 * S, 0)
 	global_position = pos

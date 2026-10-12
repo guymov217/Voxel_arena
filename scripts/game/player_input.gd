@@ -31,8 +31,8 @@ var throw_charge := 0.0
 var _digits_held := {}
 ## Presses that act once (a jump, a grab): latched between frames until the input is sampled,
 ## and sent to the host reliably.
-const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "grip"]
-const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote", "grip"]
+const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "grip", "swap"]
+const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote", "grip", "swap"]
 const PAD := {"jump": JOY_BUTTON_A, "kick": JOY_BUTTON_B, "grab": JOY_BUTTON_X, "throw": JOY_BUTTON_Y, "shove": JOY_BUTTON_LEFT_SHOULDER,
 	"thrust": JOY_BUTTON_RIGHT_SHOULDER, "sprint": JOY_BUTTON_LEFT_STICK, "crouch": JOY_BUTTON_RIGHT_STICK, "taunt": JOY_BUTTON_BACK}
 const PAD_ITEMS := [JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT]
@@ -132,9 +132,20 @@ func _process(_dt: float) -> void:
 		if InputMap.has_action(act) and Input.is_action_just_pressed(act):
 			_edges[id] = true
 
+## A click on the game (no menu took it) catches the mouse for the fight.
 func _unhandled_input(e: InputEvent) -> void:
-	if not enabled:
-		return
+	if enabled and e is InputEventMouseButton and e.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_mouse(e)
+
+## Once the mouse is caught the hands read it before anything on screen can: the cursor sits
+## at the middle of the view, and a HUD panel there once swallowed a button's release or the
+## motion, and the hand on it stopped answering.
+func _input(e: InputEvent) -> void:
+	if enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		_mouse(e)
+
+func _mouse(e: InputEvent) -> void:
 	if e is InputEventMouseButton:
 		var b := e as InputEventMouseButton
 		var main_btn := MOUSE_BUTTON_RIGHT if left_handed else MOUSE_BUTTON_LEFT
@@ -149,12 +160,11 @@ func _unhandled_input(e: InputEvent) -> void:
 				jab_l = true
 		elif (b.button_index == MOUSE_BUTTON_WHEEL_UP or b.button_index == MOUSE_BUTTON_WHEEL_DOWN) and b.pressed:
 			var dw := 0.25 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -0.25
+			# Round and round, like the web game: past half a turn it comes back the other way.
 			if rmb and not lmb:
-				twist_l = clampf(twist_l - dw, -PI, PI)
+				twist_l = wrapf(twist_l - dw, -PI, PI)
 			else:
-				twist = clampf(twist + dw, -PI, PI)
-		if b.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+				twist = wrapf(twist + dw, -PI, PI)
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var m := e as InputEventMouseMotion
 		var both := lmb and rmb
@@ -212,6 +222,9 @@ func _pad(dt: float) -> void:
 ## The input for this step, in the same shape as the web game's.
 func sample(dt: float) -> Dictionary:
 	_pad(dt)
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		lmb = false   # let go of the mouse with a button down: its release never reaches us
+		rmb = false
 	var hand_r := lmb or pad_r
 	var hand_l := rmb or pad_l
 	if not hand_r:
@@ -246,6 +259,7 @@ func sample(dt: float) -> Dictionary:
 		"shove": pressed("shove"),
 		"emote": pressed("emote"),
 		"grip": pressed("grip"),
+		"swap": pressed("swap"),
 		"limp": held("limp"),
 		"useItem": use_item,
 	}
@@ -278,7 +292,7 @@ static func pack(inp: Dictionary) -> Array:
 	bits |= (1 if gh == "R" else (2 if gh == "L" else (3 if gh == "both" else 0))) << 14
 	return [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01)]
 
-const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp"]
+const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
 
 static func has_one_shot(inp: Dictionary) -> bool:
 	if int(inp.get("useItem", -1)) >= 0:

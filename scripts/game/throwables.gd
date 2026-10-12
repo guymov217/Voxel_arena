@@ -171,11 +171,28 @@ func _update_drops(dt: float) -> void:
 
 ## A pot (or an arrow, a dart, a stone) went off at `p`: on `hit_char`'s `hit_part` if it
 ## struck someone, else on the sand.
+## Every pot breaks like a pot, whatever was in it: glazed shards flung off the way it was going
+## and bouncing on the sand, a puff of clay dust, a splash of what it held, a crack of clay.
+const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_sand": Color(0.86, 0.76, 0.52), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5)}
+func shatter(p: Vector3, type: String, dir = null) -> void:
+	m.sfx("shatter", p, 1.0)
+	var fx: Fx = m.fx
+	if fx == null:
+		return
+	var glaze := Color.hex(int(Items.TYPES.get(type, {}).get("pot", 0x8a6a4a)) << 8 | 0xff)
+	var d: Vector3 = (dir as Vector3) if dir is Vector3 and (dir as Vector3).length_squared() > 1e-4 else Vector3.UP
+	var fling := (d.normalized() * Vector3(1, 0, 1) + Vector3(0, 1.2, 0)).normalized()
+	fx.burst("debris", p, 28, fling, 1.2, glaze.darkened(0.15))
+	fx.burst("debris", p, 14, Vector3.UP, 0.8, Color(0.7, 0.45, 0.3))   # the bare clay inside
+	fx.burst("dust", p, 18, Vector3.UP, 0.8, Color(0.72, 0.55, 0.4, 0.5))
+	fx.burst("bloodmist", p + Vector3(0, 0.1, 0), 16, fling, 1.0, Color(CONTENTS.get(type, glaze), 0.6))
+	if p.y < 0.6:
+		fx.mark("splat", Vector3(p.x, 0.01, p.z), 0.6)
+
 func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null) -> void:
 	var pot := type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
 	if pot:
-		var glaze = Items.TYPES.get(type, {}).get("pot", 0x8a6a4a)
-		burst(p, Color.hex(int(glaze) << 8 | 0xff), 16, 3.0, 0.8, 0.04)
+		shatter(p, type, dir)
 	match type:
 		"pot_thunder":
 			m.sfx("thud", p, 1.0)
@@ -650,7 +667,10 @@ func use_item(e: Dictionary, slot: int) -> bool:
 		_:
 			var tgt = m.nearest_enemy(e)
 			var aim: Vector3 = tgt.f.torso.global_position if tgt else c.torso.global_position + fwd * 6.0
-			throw_type(c, hand_type, aim, null)
+			var ia = e.get("last_aim")
+			if player and ia is Vector3:
+				aim = ia   # a player's pot goes to the crosshair
+			throw_type(c, hand_type, aim, null, player)
 	return true
 
 ## A pot readied in the free hand (the left, or the right if the left is busy): held where it
@@ -690,18 +710,26 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	if inp.get("aimAt") is Vector3:
 		aim = Social.aim_ahead(c, inp.aimAt, look)
 	aim.y = maxf(0.1, aim.y)
-	throw_type(c, h.type, aim, null)
+	throw_type(c, h.type, aim, null, true, power)
 
-func throw_type(c, type: String, aim: Vector3, _dir) -> void:
+## `straight`: a player's throw flies along the line to the crosshair (the flat one of the two
+## arcs that reach it, or along the line itself when it is out of reach), never a lob.
+func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power := 0.8) -> void:
 	var from: Vector3 = c.hand_world("L" if not c.weapons.L else "R") + Vector3(0, 0.3, 0)
 	if type == "pot_dart":
 		var fwd: Vector3 = (aim - from)
 		fwd.y = 0.0
 		fwd = fwd.normalized()
 		for i in [-1, 0, 1]:
-			m.items.throw_at("pot_dart", from, aim + Vector3(fwd.z * i * 0.5, i * 0.15, -fwd.x * i * 0.5), c, 15.0)
+			var da := aim + Vector3(fwd.z * i * 0.5, i * 0.15, -fwd.x * i * 0.5)
+			if straight:
+				m.items.throw_flat("pot_dart", from, da, c, 19.0)
+			else:
+				m.items.throw_at("pot_dart", from, da, c, 15.0)
 	elif type == "boomerang":
 		m.items.throw_at("boomerang", from, aim, c, 12.0, 0.0)
+	elif straight:
+		m.items.throw_flat(type, from, aim, c, float(THROW_SPEED.get(type, 14.5)) * (0.8 + 0.35 * power))
 	else:
 		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 14.5))
 	m.sfx("whoosh", from)

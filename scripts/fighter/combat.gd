@@ -203,10 +203,11 @@ func _clang(g: Dictionary, out: Array) -> void:
 		if pair[1].is_empty():
 			continue
 		var idx := w.voxel_near(pair[1], g.p)
-		var chips := w.chip_indices(idx, Weapon.chip_score(g.J * chip_mult, pair[2], pair[3]))
-		if not chips.is_empty():
-			var removed := w.remove_voxels(chips)
-			out.append({"kind": "chip", "weapon": w, "indices": chips, "voxels": removed, "p": g.p})
+		# Steel on steel takes the edge off both blades, the harder the other the more.
+		w.wear_edge(minf(0.05, g.J * pair[3] * 0.0007))
+		var k := w.knock(idx, Weapon.chip_score(g.J * chip_mult, pair[2], pair[3]))
+		if not k.is_empty():
+			out.append({"kind": "chip", "weapon": w, "indices": k.indices, "voxels": k.voxels, "p": g.p, "broke": k.broke})
 
 func _blow(g: Dictionary) -> Dictionary:
 	var vic: VoxelPart = g.vic
@@ -293,7 +294,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		thrown = att.holder == null and att.thrown_t > 0.0
 		typ = "blunt" if g.type == "grip" else g.type
 		hardness = Data.material(g.mat).get("hardness", 0.5)
-		sharpness = float(att.design.get("sharpness", 0.0))
+		sharpness = float(att.design.get("sharpness", 0.0)) * att.keenness()
 		var q := PD.quat_of(att)
 		axis = q * Vector3.UP
 		edge = q * Vector3.RIGHT
@@ -353,10 +354,14 @@ func _blow(g: Dictionary) -> Dictionary:
 		var vh := 0.5
 		var idx: int = att.voxel_near(g.box, p)
 		var mat_h: float = Data.material(g.mat).get("hardness", 0.5)
-		if Data.material(g.mat).get("brittle", 0.0) > 0.0:
-			var chips: Array = att.chip_indices(idx, Weapon.chip_score(J * float(Data.material(g.mat).brittle), mat_h, vh))
-			if not chips.is_empty():
-				chip = {"indices": chips, "voxels": att.remove_voxels(chips)}
+		# Every cut and stab blunts the edge a little (bone, armour, the sand of a fall).
+		if typ != "blunt":
+			att.wear_edge(minf(0.03, J * 0.00028 * (2.0 if res.get("armor", false) else 1.0)))
+		var brittle: float = float(Data.material(g.mat).get("brittle", 0.0))
+		# A blow tires the metal where it lands even when nothing gives (a brittle blade more).
+		var k: Dictionary = att.knock(idx, Weapon.chip_score(J * maxf(0.25, brittle) * chip_mult, mat_h, vh))
+		if not k.is_empty():
+			chip = {"indices": k.indices, "voxels": k.voxels, "broke": k.broke}
 	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
 
 static func _is_club(p) -> bool:

@@ -15,7 +15,7 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4}
+const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -169,6 +169,12 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = (lp * 0.6 + 0.25 * sin(TAU * (140.0 + 90.0 * t) * t)) * sin(PI * t / 0.5) * 0.7
 			"twang":
 				s = (sin(TAU * 196.0 * tone * t) + 0.5 * sin(TAU * 392.0 * tone * t) * exp(-t * 18.0)) * exp(-t * 11.0) * 0.55
+			"shatter":
+				# Clay giving way: a dull knock, then a rattle of bright little cracks.
+				var hp2 := rng.randf_range(-1, 1) - lp
+				lp += hp2 * 0.6
+				var crackle := hp2 * (0.6 if rng.randf() < 0.18 * exp(-t * 6.0) + 0.02 else 0.12) * exp(-t * 7.0)
+				s = (sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + crackle * 1.4)
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"bell":

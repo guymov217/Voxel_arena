@@ -311,6 +311,121 @@ func alive_count() -> int:
 		n += a
 	return n
 
+## Wear over a fight: every knock tires the metal around where it landed (`fatigue`), so the
+## spot that takes the most blows is the one that chips and, in the end, breaks; an edge loses
+## its keenness with every cut and every clang (`dull`, shown as a rusty dulling of the edge).
+var fatigue := PackedFloat32Array()
+var dull := 0.0
+var _dull_shown := 0.0
+const DULL_MAX := 0.65
+
+## How keen the edge still is, as a share of the smith's: 1 fresh from the forge.
+func keenness() -> float:
+	return 1.0 - dull
+
+func wear_edge(amount: float) -> void:
+	if amount <= 0.0 or float(design.get("sharpness", 0.0)) <= 0.0:
+		return
+	dull = minf(DULL_MAX, dull + amount)
+	if dull - _dull_shown >= 0.04 and mm:
+		_dull_shown = dull
+		var rust := Color(0.42, 0.3, 0.22)
+		for i in vox.size():
+			if alive[i] and (vox[i][4] == "edge" or vox[i][4] == "point"):
+				mm.set_instance_color(i, voxel_color(vox[i][3], vox[i][4]).lerp(rust, dull * 0.75))
+
+## A knock of `score` on voxel `index`: tires the metal round it, chips what gives way (the
+## web game's sparing chip: a sound weapon keeps in one piece) and, once it is battered, breaks
+## it where it is weakest, the piece away from the hand falling off. Returns the removed
+## indices and their voxels ({} if nothing came off).
+func knock(index: int, score: float) -> Dictionary:
+	if index < 0 or index >= vox.size() or alive[index] == 0:
+		return {}
+	if fatigue.size() != vox.size():
+		fatigue.resize(vox.size())
+	var v0 := Vector3(vox[index][0], vox[index][1], vox[index][2])
+	var eff := score + fatigue[index]
+	for i in vox.size():
+		if alive[i]:
+			var d := Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(v0)
+			if d <= 1.5:
+				fatigue[i] += score * (0.3 if d < 0.5 else 0.12)
+	var idx := sparing(chip_indices(index, eff))
+	if idx.is_empty():
+		return {}
+	var voxels := remove_voxels(idx)
+	var pieces := split_plan()
+	var fell := []
+	for pc in pieces:
+		var pv := remove_voxels(pc)
+		idx.append_array(pc)
+		voxels.append_array(pv)
+		fell.append(pv)
+	for pv in fell:
+		Chunk.spawn(self, pv, Vector3.DOWN)
+	return {"indices": idx, "voxels": voxels, "broke": not pieces.is_empty()}
+
+## The 6-connected pieces of what is left.
+func components() -> Array:
+	var at := {}
+	for i in vox.size():
+		if alive[i]:
+			at[Vector3i(vox[i][0], vox[i][1], vox[i][2])] = i
+	var seen := {}
+	var out := []
+	for k in at:
+		if seen.has(k):
+			continue
+		var comp := []
+		var stack := [k]
+		seen[k] = true
+		while not stack.is_empty():
+			var c: Vector3i = stack.pop_back()
+			comp.append(at[c])
+			for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				var n: Vector3i = c + d
+				if at.has(n) and not seen.has(n):
+					seen[n] = true
+					stack.append(n)
+		out.append(comp)
+	return out
+
+## durability.js sparingChip: while it has lost less than a quarter of itself, only the voxels
+## whose loss leaves it in one piece come off, unless the metal there is worn out (knocked in
+## that one place over and over): there it gives way, and the blade breaks at its worst spot.
+const FATIGUE_BREAK := 60.0
+func sparing(idx: Array) -> Array:
+	if idx.is_empty() or vox.size() - alive_count() >= vox.size() * 0.25:
+		return idx
+	var before := components().size()
+	var ok := []
+	for i in idx:
+		if alive[i] == 0:
+			continue
+		alive[i] = 0
+		if components().size() <= before or (fatigue.size() > i and fatigue[i] >= FATIGUE_BREAK):
+			ok.append(i)
+		else:
+			alive[i] = 1
+	for i in ok:
+		alive[i] = 1
+	return ok
+
+## durability.js splitPlan: the piece with the grip (nearest the hand) stays, the rest fall off.
+func split_plan() -> Array:
+	var comps := components()
+	if comps.size() <= 1:
+		return []
+	var gl := grip_main / vs
+	var score := func(c: Array) -> float:
+		var has_grip := c.any(func(i): return vox[i][4] == "grip")
+		var near := INF
+		for i in c:
+			near = minf(near, Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(gl))
+		return (0.0 if has_grip else 1000.0) + near - c.size() * 0.001
+	comps.sort_custom(func(a, b): return score.call(a) < score.call(b))
+	return comps.slice(1)
+
 ## Voxels a knock of `score` takes off around voxel `index` (grip voxels are tougher).
 func chip_indices(index: int, score: float) -> Array:
 	if index < 0 or alive[index] == 0:

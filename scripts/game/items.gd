@@ -138,6 +138,17 @@ func throw_at(type: String, from: Vector3, target: Vector3, owner_: Node, speed 
 	var t := maxf(0.2, Vector2(d.x, d.z).length() / speed)
 	return spawn(type, from, Vector3(d.x / t, (d.y + 0.5 * gravity * t * t) / t, d.z / t), owner_)
 
+## Thrown at `speed` along the flat arc to `target` (the low one of the two), or straight along
+## the line a touch above it when the target is out of reach: a pot goes where it is aimed.
+func throw_flat(type: String, from: Vector3, target: Vector3, owner_: Node, speed: float, gravity := 9.81) -> Dictionary:
+	var d := target - from
+	var dx := maxf(0.01, Vector2(d.x, d.z).length())
+	var v2 := speed * speed
+	var disc := v2 * v2 - gravity * (gravity * dx * dx + 2.0 * d.y * v2)
+	var pitch := atan2(v2 - sqrt(disc), gravity * dx) if disc >= 0.0 else atan2(d.y, dx) + 0.04
+	var yaw := atan2(d.x, d.z)
+	return spawn(type, from, Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * speed, owner_)
+
 ## Thrown in from the stands to land at `target` after `t` seconds.
 func throw_from_stands(type: String, target: Vector3, t := 1.2, gravity := 9.81) -> Dictionary:
 	var a := randf() * TAU

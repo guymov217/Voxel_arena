@@ -172,8 +172,9 @@ static func _draw_mesh(kind: String) -> Mesh:
 	_draw_meshes[kind] = mesh
 	return mesh
 
-## A one-shot burst of `n` particles of `kind` at `p`, flung along `dir` (up if none).
-func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0) -> void:
+## A one-shot burst of `n` particles of `kind` at `p`, flung along `dir` (up if none), in
+## `tint` instead of the kind's own colour when one is given (alpha above zero).
+func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0, tint := Color(0, 0, 0, 0)) -> void:
 	if headless or n <= 0 or not KINDS.has(kind):
 		return
 	if quality == "low":
@@ -184,6 +185,15 @@ func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0
 	ps.amount = mini(n, 400)
 	ps.lifetime = KINDS[kind].life
 	ps.process_material = _process_mat(kind)
+	if tint.a > 0.0:
+		var pm: ParticleProcessMaterial = _process_mat(kind).duplicate()
+		var g := Gradient.new()
+		g.set_color(0, tint)
+		g.set_color(1, Color(tint.r, tint.g, tint.b, 0.0))
+		var gt := GradientTexture1D.new()
+		gt.gradient = g
+		pm.color_ramp = gt
+		ps.process_material = pm
 	ps.draw_pass_1 = _draw_mesh(kind)
 	ps.speed_scale = 1.0
 	ps.fixed_fps = 0

@@ -497,6 +497,11 @@ func _build_upper() -> void:
 	iron.metallic = 0.8
 	iron.roughness = 0.45
 	for gx in [-1.0, 1.0]:
+		# Each gate is a door on a hinge at its north post (it swings open when a wave comes in).
+		var door := Node3D.new()
+		add_child(door)
+		door.position = Vector3(gx * (RADIUS - 0.05), 0, -1.3)
+		gates[int(gx)] = door
 		# Planks of slightly different shades, two iron bands with studs.
 		for k in 6:
 			var plank := MeshInstance3D.new()
@@ -506,16 +511,16 @@ func _build_upper() -> void:
 			pmat.albedo_color = Color(1, 1, 1).darkened(0.08 * ((k * 7) % 3))
 			pm.material = pmat
 			plank.mesh = pm
-			add_child(plank)
-			plank.position = Vector3(gx * (RADIUS - 0.05), 1.2, -1.08 + k * 0.435)
+			door.add_child(plank)
+			plank.position = Vector3(0, 1.2, 0.22 + k * 0.435)
 		for by in [0.55, 1.85]:
 			var band := MeshInstance3D.new()
 			var bdm := BoxMesh.new()
 			bdm.size = Vector3(0.28, 0.12, 2.62)
 			bdm.material = iron
 			band.mesh = bdm
-			add_child(band)
-			band.position = Vector3(gx * (RADIUS - 0.07), by, 0)
+			door.add_child(band)
+			band.position = Vector3(-gx * 0.02, by, 1.3)
 			for k in 6:
 				var stud := MeshInstance3D.new()
 				var sm := SphereMesh.new()
@@ -523,8 +528,8 @@ func _build_upper() -> void:
 				sm.height = 0.07
 				sm.material = iron
 				stud.mesh = sm
-				add_child(stud)
-				stud.position = Vector3(gx * (RADIUS - 0.22), by, -1.08 + k * 0.435)
+				door.add_child(stud)
+				stud.position = Vector3(-gx * 0.17, by, 0.22 + k * 0.435)
 		var arch := MeshInstance3D.new()
 		var am := BoxMesh.new()
 		am.size = Vector3(0.6, 0.5, 3.4)
@@ -532,6 +537,17 @@ func _build_upper() -> void:
 		arch.mesh = am
 		add_child(arch)
 		arch.position = Vector3(gx * (RADIUS + 0.1), 2.55, 0)
+
+## Swings the east (1) or west (-1) gate open inward for `hold` seconds, then shut again.
+var gates := {}
+func open_gate(side: int, hold := 3.5) -> void:
+	var door: Node3D = gates.get(side)
+	if door == null or not is_inside_tree():
+		return
+	var tw := create_tween()
+	tw.tween_property(door, "rotation:y", -float(side) * 1.45, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(hold)
+	tw.tween_property(door, "rotation:y", 0.0, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _exit_tree() -> void:
 	if crowd_mat:
