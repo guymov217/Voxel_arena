@@ -9,6 +9,7 @@ const STATIONS := {
 	"smith": {"p": Vector3(-9.5, 0, 5), "r": 1.4, "label": "The smith", "hint": "G: buy, mend and reshape your weapons"},
 	"market": {"p": Vector3(9.5, 0, 5), "r": 1.4, "label": "The market", "hint": "G: buy pots, bread and gadgets"},
 	"board": {"p": Vector3(0, 0, -11), "r": 1.4, "label": "The mission board", "hint": "G: your missions for the next fight"},
+	"physician": {"p": Vector3(-5, 0, -10), "r": 1.4, "label": "The physician", "hint": "G: heal your wounds, fit a prosthetic"},
 }
 const DUMMIES := [Vector3(-8, 0, -5), Vector3(-10.5, 0, -2)]
 const TARGETS := [Vector3(12.6, 1.5, -3), Vector3(11.6, 1.5, -6.5), Vector3(10.2, 1.5, -9.5)]

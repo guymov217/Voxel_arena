@@ -68,6 +68,7 @@ static func texture(kind: String) -> Texture2D:
 
 const KINDS := {
 	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "spark", "drag": 0.3, "shade": true},
+	"drip": {"color": Color(0.45, 0.01, 0.01), "life": 1.1, "speed": [0.05, 0.35], "spread": 25.0, "gravity": -9.8, "size": [0.022, 0.045], "tex": "spark", "emit": 1.0, "shade": true},
 	"bloodmist": {"color": Color(0.5, 0.03, 0.03, 0.55), "life": 0.5, "speed": [0.5, 1.6], "spread": 60.0, "gravity": -2.0, "size": [0.08, 0.2], "tex": "soft", "drag": 2.0, "grow": 1.6, "shade": true},
 	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "spark", "emit": 6.0, "add": true},
 	"dust": {"color": Color(0.78, 0.68, 0.5, 0.55), "life": 1.6, "speed": [0.4, 1.8], "spread": 80.0, "gravity": 0.3, "size": [0.25, 0.6], "tex": "soft", "drag": 1.5, "grow": 2.2},
@@ -96,7 +97,7 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 	pm.damping_max = k.get("drag", 0.0) * 1.5
 	pm.scale_min = 1.0
 	pm.scale_max = k.size[1] / k.size[0]
-	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind == "blood" or kind == "acid" else ParticleProcessMaterial.COLLISION_RIGID
+	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind == "blood" or kind == "acid" or kind == "drip" else ParticleProcessMaterial.COLLISION_RIGID
 	pm.collision_bounce = 0.2
 	if k.get("grow", 0.0) > 0.0:
 		var c := Curve.new()

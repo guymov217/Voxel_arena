@@ -24,6 +24,7 @@ var arena: Arena
 var combat: Combat
 var cam: CameraRig
 var input: PlayerInput
+var my_hit := {}               # where the player last struck a foe: {p, f, t}
 var entities: Array = []        # {id, f, kind, team, bot, peer, boss, spec}
 var me = null
 var over := false
@@ -202,7 +203,10 @@ func setup(opts: Dictionary) -> void:
 	if mode == "campaign":
 		stage_info = Data.stage(stage, players_count)
 		_spawn_round(0)
-		_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
+		if stage_info.get("duel", false):
+			_banner(stage_info.get("title", "Bout %d" % stage), "One on one: %s" % stage_info.get("foe_name", "your opponent"))
+		else:
+			_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
 	elif mode == "training":
 		_spawn_training()
 		if opts.get("tutorial", false):
@@ -909,7 +913,7 @@ func _check_round(dt: float) -> void:
 					_round_wounds()
 				return
 			var pay := int(stage_info.get("stagePay", 30)) + round_pay
-			_end(true, "Stage %d cleared" % stage, "%d denarii each. Back to the yard: spend, mend, gear up." % pay, pay)
+			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, "%d denarii each. Back to the yard: spend, mend, gear up." % pay, pay)
 		else:
 			_end(true, "Victory", "")
 
@@ -963,8 +967,12 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	if role == "host":
 		Net.send_all("end", {"won": won, "text": text, "sub": sub, "pay": pay})
 	if killcam:
-		# Let the last blow play out on tape, then show the best kill of the match.
-		await get_tree().create_timer(KillCam.AFTER + 0.2).timeout
+		# Let the last blow play out on tape (only as long as it still needs), then show the
+		# best kill of the match; with nothing to show, straight on (a dead pause of near two
+		# seconds after every round felt like the game had hung).
+		var left := killcam.tape_left()
+		if left > 0.0:
+			await get_tree().create_timer(left + 0.05).timeout
 		if killcam.has_clip():
 			await killcam.play(func(): pass)
 	finished.emit(result)
@@ -985,6 +993,8 @@ func _on_hit(h: Dictionary) -> void:
 		tut.on_hit(h)
 	if me and h.get("attacker") == me.f and h.get("char") is Fighter and h.char.team != me.f.team:
 		hit_by_me[h.char] = true
+		if h.get("p") is Vector3:
+			my_hit = {"p": h.p, "f": h.char, "t": time}
 		if h.get("punch", false):
 			mission_event("punch")
 		if h.get("part") == h.char.head:
@@ -1435,7 +1445,16 @@ func _process(dt: float) -> void:
 		if me and f != null and is_instance_valid(f) and f.alive:
 			var ne = nearest_enemy(me)
 			if ne and is_instance_valid(ne.f):
-				foe = ne.f.torso.global_position + Vector3(0, 0.25, 0)
+				# What the camera keeps in view: the foe from head to feet, and where you last
+				# struck him (for a moment after the blow).
+				var of: Fighter = ne.f
+				var low := of.torso.global_position
+				for p in of.parts:
+					if not p.severed and p.global_position.y < low.y:
+						low = p.global_position
+				foe = [of.torso.global_position + Vector3(0, 0.25, 0), of.head.global_position + Vector3(0, 0.15 * of.S, 0) if not of.head.severed else of.torso.global_position, low]
+				if not my_hit.is_empty() and time - float(my_hit.t) < 1.5 and my_hit.f == of:
+					foe.append(my_hit.p)
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
 	if role == "guest" and input and Net.active():
 		if tick % 4 == 0:

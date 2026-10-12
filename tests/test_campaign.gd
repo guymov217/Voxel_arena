@@ -1,12 +1,15 @@
 extends Node
-## The campaign's flow: a stage's three rounds from the tables, pay, the smith's arithmetic.
+## The campaign's flow: the web game's stage tables, each stage played as a single bout (one
+## foe, harder every time, beasts and bosses in their turn), pay, the smith's arithmetic.
 
 var t
 
 func test_stage_tables_match_the_web_game() -> void:
 	for n in [1, 4, 8, 12, 20, 64]:
 		var st := Data.stage(n, 1)
-		t.eq(st.rounds.size(), 3, "stage %d has three rounds" % n)
+		t.eq(Data.campaign.stages[n - 1].byPlayers["1"].rounds.size(), 3, "stage %d has three rounds in the tables" % n)
+		t.eq(st.rounds.size(), 1, "stage %d is one bout" % n)
+		t.eq(st.rounds[0].size(), 1, "against one foe")
 		t.eq(st.boss, n % 4 == 0, "stage %d boss flag" % n)
 		t.check(int(st.stagePay) > 0, "stage %d pays" % n)
 	var more := Data.stage(6, 4)
@@ -69,6 +72,23 @@ func test_a_campaign_stage_plays_through() -> void:
 	if not result.is_empty():
 		print("   stage 1: won=%s pay=%d rounds=%s kills=%s" % [result[0].won, result[0].pay, str(rounds_seen.keys()), str(result[0].kills)])
 		if result[0].won:
-			t.eq(rounds_seen.size(), 3, "all three rounds were fought")
+			t.eq(rounds_seen.size(), 1, "the bout was fought")
 			t.check(result[0].pay > 0, "it paid")
 	m.queue_free()
+
+func test_the_ladder_brings_beasts_bosses_and_the_giant() -> void:
+	var beasts := 0
+	var bosses := []
+	var last_diff := 0.0
+	for n in range(1, 41):
+		var st := Data.stage(n, 1)
+		var foe: Dictionary = st.rounds[0][0]
+		if foe.has("beast"):
+			beasts += 1
+		if st.boss:
+			bosses.append(str(foe.get("e", foe.get("beast", ""))))
+		var d := float(st.gear.get("diff", 1.0))
+		t.check(d >= last_diff - 1e-6, "bout %d is no easier than the one before (%.2f)" % [n, d])
+		last_diff = d
+	t.check(beasts >= 10, "beasts come through the gate in their turn (%d of 40)" % beasts)
+	t.check(bosses.has("giant") and bosses.has("cyclops") and bosses.has("dragon"), "the bosses come, the giant among them (%s)" % [bosses])

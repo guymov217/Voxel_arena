@@ -117,6 +117,13 @@ func _cut(k: Dictionary) -> void:
 		return
 	best = {"score": sc.score, "caption": sc.caption, "frames": clip, "t_blow": k.t, "killer": k.killer_node, "victim": k.victim_node}
 
+## How long the last kill still needs on tape before it can be cut (0 when nothing waits).
+func tape_left() -> float:
+	var left := 0.0
+	for k in pending:
+		left = maxf(left, AFTER - (m.time - float(k.t)))
+	return maxf(0.0, left)
+
 ## Whether there is a clip worth showing; the kill must have been on tape long enough.
 func has_clip(min_score := 25.0) -> bool:
 	for k in pending.duplicate():
@@ -171,13 +178,16 @@ func play(done: Callable) -> void:
 			c = pv.torso.global_position
 			if pk and is_instance_valid(pk) and pk != pv:
 				c = (c + pk.torso.global_position) * 0.5
+		# Any key or a click skips it.
+		if Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ESCAPE) or Input.is_key_pressed(KEY_ENTER) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			break
 		orbit += dt * speed * 0.35
 		if cam:
 			cam.fov = 45.0
 			cam.global_position = c + Vector3(sin(orbit) * 3.2, 0.7, cos(orbit) * 3.2)
 			cam.look_at(c, Vector3.UP)
 		await tree.process_frame
-	await tree.create_timer(0.8, true).timeout
+	await tree.create_timer(0.3, true).timeout
 	if overlay:
 		overlay.queue_free()
 		overlay = null

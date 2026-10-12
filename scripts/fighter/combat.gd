@@ -228,7 +228,9 @@ func _blow(g: Dictionary) -> Dictionary:
 	var jabbing: bool = punch and att.fighter.jab_t.get(att.part_name.right(1), 0.0) > 0.0
 	var m_eff: float
 	if is_weapon or club:
-		m_eff = 1.0 + 0.874 * pow(maxf(0.05, att.mass), 0.6)
+		# The bigger the weapon, the harder it lands: its weight is most of the blow (a stick or
+		# a dagger a little over half a gladius's, a hammer twice), the arm's share small.
+		m_eff = 0.3 + 1.15 * pow(maxf(0.05, att.mass), 0.6)
 	else:
 		m_eff = 5.0 if bite else (4.5 if kick else (3.2 if jabbing else 2.4))
 	var cap: float
@@ -281,6 +283,10 @@ func _blow(g: Dictionary) -> Dictionary:
 	if is_weapon:
 		var key_name := _preset_key(att.design)
 		J *= float(att.design.get("dmgScale", Data.damage_tuning.get(key_name, 1.0)))
+		# Size counts on top: a small weapon (a stick, a dagger) lands lighter than a sword, a
+		# great one heavier, whatever speed it comes in at (the edge, a point and wear still
+		# decide what the blow does when it lands).
+		J *= clampf(pow(maxf(0.05, att.mass) / 1.7, 0.3), 0.55, 1.35)
 	if J < (4.0 if is_weapon else 3.0):
 		return {}
 	var key := "%d:%d" % [att.get_instance_id(), vic.get_instance_id()]

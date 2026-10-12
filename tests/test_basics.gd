@@ -9,7 +9,8 @@ func test_data_is_the_web_games() -> void:
 	t.check(Data.beasts.has("dragon") and Data.beasts.size() >= 24, "beasts")
 	var st := Data.stage(4, 1)
 	t.check(st.boss, "stage 4 is a boss")
-	t.eq(st.rounds.size(), 3, "three rounds a stage")
+	t.eq(Data.campaign.stages[3].byPlayers["1"].rounds.size(), 3, "three rounds a stage in the web game's tables")
+	t.eq(st.rounds.size(), 1, "the campaign plays each stage as one bout")
 	t.check(Data.campaign.enemies.has("hoplite"), "enemy types")
 
 func test_greedy_merges_a_full_block_into_one_box() -> void:

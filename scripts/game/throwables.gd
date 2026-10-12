@@ -9,7 +9,7 @@ const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "p
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
 const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
-const NAILS := 70
+const NAILS := 96
 const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
 	"oil": Color(0.16, 0.23, 0.06, 0.7), "honey": Color(0.91, 0.63, 0.13, 0.75), "smoke": Color(0.6, 0.6, 0.6, 0.5)}
@@ -220,15 +220,16 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.feed.emit("BOOM!")
 		"pot_nail":
 			m.sfx("clang", p, 0.6)
-			# The pot bursts into a hail of nails, flying on with the pot and out all round. Each
+			# The pot bursts into a hail of nails flying out every way, up, down and all round
+			# (a few carried on with the pot). Each
 			# is a real little dart: it goes in only where it meets a body and stays in it. The
 			# man it broke on takes the nails that go his way.
 			var fwd: Vector3 = (dir as Vector3).normalized() if dir is Vector3 and (dir as Vector3).length_squared() > 1e-4 else Vector3.ZERO
 			for i in NAILS:
 				var a := randf() * TAU
-				var y := -0.2 + randf() * 0.6
+				var y := -0.55 + randf() * 1.45
 				var d := Vector3(cos(a) * sqrt(1.0 - y * y), y, sin(a) * sqrt(1.0 - y * y))
-				if fwd != Vector3.ZERO and randf() < 0.45:
+				if fwd != Vector3.ZERO and randf() < 0.2:
 					d = (d * 0.55 + fwd).normalized()   # carried on the way the pot was going
 				var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06
 				var it: Dictionary = m.items.spawn("nail", from, d * (22.0 + randf() * 14.0), owner_)

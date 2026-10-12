@@ -184,6 +184,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	for p in parts:
 		bleed += p.bleed
 		p.bleed = maxf(0.0, p.bleed - dt * 0.1)
+		p.update_drips()
 		if p.flinch_t > 0.0:
 			p.flinch_t -= dt
 	if torso.stump:
@@ -222,7 +223,12 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var dist_g: float = pos.y - hit.position.y if hit else 99.0
 	# The feet on the sand, never over it: the body rides lower until the legs it stands on
 	# reach the ground (a species' height a little over its legs' reach held it hovering).
-	if hit and not flying and not collapsed and legs.size() > 0:
+	# (Not while it strikes or charges: let down in mid-attack, its head came in under a man
+	# and threw him high.)
+	var attacking: bool = not strikes.is_empty() or ai.mode == "charge"
+	if attacking:
+		ride_adj = move_toward(ride_adj, 0.0, dt * 0.3)
+	if hit and not flying and not collapsed and legs.size() > 0 and not attacking:
 		var gap := 0.0
 		var nf := 0
 		for l in legs:
@@ -1074,7 +1080,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach and facing > 0.6:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
-		_strike(head, 0.35, 1.8 + rng.randf())
+		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf())
 		if species != "rhino":
 			head.apply_central_impulse(Vector3(0, 4.0 * S * horn_fn(), 0))
 

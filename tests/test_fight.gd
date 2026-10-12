@@ -144,8 +144,11 @@ func test_a_man_cut_in_half_falls_and_smashed_legs_mean_crawling() -> void:
 	var torso: VoxelPart = a.torso
 	var p: Vector3 = torso.global_position + Vector3(0.24, -0.1, 0)
 	var res: Dictionary = a.apply_hit(torso, {"impulse": 70.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "point": p, "dir": Vector3(-1, 0, 0), "axis": Vector3(0, 0, 1), "edge": Vector3(-1, 0, 0), "heavy": 1.0})
-	for i in 3:
-		var pp: Vector3 = torso.global_position + Vector3(0.24, -0.1 + 0.02 * i, 0)
+	# A trunk takes many full blows into one wound before it comes apart.
+	for i in 12:
+		if not res.get("halved", []).is_empty():
+			break
+		var pp: Vector3 = torso.global_position + Vector3(0.24, -0.1 + 0.005 * (i % 3), 0)
 		var r2: Dictionary = a.apply_hit(torso, {"impulse": 70.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "point": pp, "dir": Vector3(-1, 0, 0), "axis": Vector3(0, 0, 1), "edge": Vector3(-1, 0, 0), "heavy": 1.0})
 		if not r2.get("halved", []).is_empty():
 			res = r2

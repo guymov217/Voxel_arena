@@ -137,6 +137,7 @@ var lead_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var prev_target := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
+var body_mass := 70.0   # the whole fighter and what he carries (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
@@ -980,6 +981,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	for p in parts:
 		bleed += p.bleed
 		p.bleed = maxf(0.0, p.bleed - dt * 0.08)
+		p.update_drips()
 		if p.stump:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
@@ -1030,6 +1032,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	for w in weapons.values():
 		if w:
 			total_mass += w.mass
+	body_mass = total_mass
 	var ray := PhysicsRayQueryParameters3D.create(t_pos, t_pos + Vector3(0, -2.2 * S, 0), VoxelPart.LAYER_WORLD)
 	var hit := space.intersect_ray(ray)
 	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, low_hand * 0.9))
@@ -1259,7 +1262,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				ft.s = minf(1.0, ft.s + dt * rate)
 				if ft.s >= 1.0 or (moving and not my_swing):
 					ft.swing = false
-					ft.anchor = ft.land
+					# Walking, it stays where it actually came down (short of the mark, it used to be
+					# drawn on along the sand to it, and the planted foot skated). A step taken to
+					# catch his balance still goes to its mark.
+					var sole_at := shin.global_transform * Vector3(0, -4 * V * S, 0)
+					ft.anchor = Vector3(sole_at.x, (ft.land as Vector3).y, sole_at.z) if moving and wants_move and not shin.severed and sole_at.distance_to(ft.land) < 0.35 * S else ft.land
 			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S:
 				ft.swing = true
 				ft.from = ft.anchor
@@ -1565,6 +1572,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var F = ((hand_goal - hand_w) * (300.0 * (0.5 + 0.5 * hnd)) + (target_vel[side] - hand_vel) * kd) * m_eff
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
 	F = PD.clamp_len(F, 1150.0 * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0) * (1.0 + (0.08 * minf(8.0, w.mass) if w else 0.0)))
+	# The hands never press down harder than a share of the body's own weight: bearing down on
+	# a man on the sand (or the sand itself) with an arm's whole drive lifted the striker off
+	# his feet and flung him up.
+	F.y = maxf(F.y, -0.35 * body_mass * gravity)
 	fore.apply_impulse(F * dt, hand_w - fore.global_position)
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
 	if w and w.holder == self and not w.is_shield:
@@ -1846,7 +1857,8 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
 	var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
 	var tvl := tv.length()
-	if tvl > 0.7:
+	# A player's edge stays exactly where the wheel set it; a bot's leans into its stroke.
+	if tvl > 0.7 and not inp.has("twist" if side == "R" else "offTwist"):
 		var lean := atan2(ed.cross(tv).dot(axis), ed.dot(tv))
 		ed = ed.rotated(axis, clampf(lean, -0.52, 0.52) * minf(1.0, tvl / 3.0))
 	var z := ed.cross(axis).normalized()
@@ -1940,14 +1952,20 @@ func _drive_wrist(side: String, w: Weapon, w_aim: Quaternion, strength: float, d
 		return
 	var cur := q * Vector3.RIGHT
 	var ang := atan2(cur.cross(want).dot(ax), cur.dot(want.normalized()))
-	var spin := (w.angular_velocity - fore.angular_velocity).dot(ax)
+	var spin := (w.angular_velocity - fore.angular_velocity).dot(ax) - ((aim_w[side] as Vector3) - fore.angular_velocity).dot(ax)
 	var b := w.global_transform.basis.orthonormalized()
 	var la := b.inverse() * ax
 	var i_ax := maxf(1e-4, la.x * la.x * w.inertia.x + la.y * la.y * w.inertia.y + la.z * la.z * w.inertia.z)
-	var wn := 22.0
+	# Held firm at the angle the wheel set, through the swing and the knocks of a blow: a stiffer
+	# grip, and as strong as the head is hard to turn (an axe head off its haft's line).
+	var wn := 34.0
 	var t := (ang * wn * wn - spin * 2.0 * wn) * i_ax
 	var grip_k := 3.0 if throw_pose[side] or (throw_anim != null and throw_anim.side == side) else 1.0
-	t = clampf(t, -14.0 * grip_k * maxf(0.3, strength) * MS * S, 14.0 * grip_k * maxf(0.3, strength) * MS * S)
+	# A head off the haft's line (an axe) is turned by its own weight: the grip holds against it.
+	var lever := (w.global_transform * w.center_of_mass) - w.global_position
+	t -= lever.cross(Vector3(0, -w.mass * gravity, 0)).dot(ax)
+	var t_max := maxf(30.0 * MS * S, i_ax * wn * wn * 1.2) * grip_k * maxf(0.3, strength)
+	t = clampf(t, -t_max, t_max)
 	w.apply_torque_impulse(ax * t * dt)
 	fore.apply_torque_impulse(-ax * t * dt)
 
@@ -2092,12 +2110,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A light cut only opens the skin; the depth climbs faster than the blow (a full swing
 		# of a keen blade still goes through a limb in one).
 		var bite := J * eff * (1.0 + 0.8 * heavy)
-		var depth: float = minf(0.36 + 0.24 * heavy, 0.017 * bite * clampf(bite / 22.0, 0.35, 1.0)) * S / pow(big, 1.5)
+		var depth: float = minf(0.3 + 0.2 * heavy, 0.011 * bite * clampf(bite / 30.0, 0.3, 1.0)) * S / pow(big, 1.5)
 		# No one blow goes through: at most a share of how thick the part is there (a light cut
 		# a sixth, the hardest a little over half). Through comes from blows into the same wound,
 		# each one carrying on from where the last one stopped (_wound below).
 		var thick := 2.0 * (absf(ld.x) * part.half_ext.x + absf(ld.y) * part.half_ext.y + absf(ld.z) * part.half_ext.z)
-		depth = minf(depth, thick * (0.15 + 0.4 * clampf(bite / 60.0, 0.0, 1.0)))
+		# The trunk is the hardest to cut through: ribs, spine and a body's depth of flesh (a man,
+		# a beast or a monster); it takes many hard blows in one wound to halve one.
+		var trunk := 0.55 if part == torso or part == head else 1.0
+		depth = minf(depth, thick * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
 		var width := vfs * (0.75 + 0.5 * heavy)
 		if J * eff > 3.0 * big:
 			var n := la.cross(ld)
@@ -2124,7 +2145,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# the thickness along its line (a thrown one less, the shaft takes the blow's way off).
 		var stab := J * eff * (1.0 + 0.8 * heavy)
 		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z)
-		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0)) * (0.75 if hit.get("thrown", false) else 1.0))
+		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0)) * (0.75 if hit.get("thrown", false) else 1.0) * (0.6 if part == torso or part == head else 1.0))
 		if J * eff > 2.5:
 			var r := V * S * (1.2 + 0.5 * heavy)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
@@ -2138,7 +2159,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	else:
 		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
 		# hammer in earnest is as dangerous as a blade, only in a different way.
-		dmg = J * 1.9
+		# Hard and heavy hurts more than soft and light: a steel mace far more than a wooden stick.
+		dmg = J * 1.9 * (0.55 + 0.6 * clampf(hardness, 0.0, 1.0))
 		stagger = minf(1.0, stagger + J * 0.011)
 		if part == head:
 			concussion = minf(1.0, concussion + J * 0.015)
@@ -2176,7 +2198,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if part.alive[i] and part.local_of(i).distance_to(lp) < rn:
 				remove.append(i)
 	if hollow > 0.0 and not detached:
-		dmg *= 1.0 + minf(1.0, hollow / 0.1)
+		dmg *= 1.0 + minf(0.4 if type == "blunt" else 1.0, hollow / 0.1)
 	if part == torso or part == head:
 		stagger = minf(1.0, stagger + J * 0.004)
 	# A blow across the face near the eyes: the view closes in from the edges (players), the
@@ -2210,6 +2232,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		dmg = 0.0
 	part.hp = maxf(0.0, part.hp - dmg)
 	res.dmg = dmg
+	# Blood runs from every cut and stab that opened the skin (a bruise does not bleed).
+	if not detached and type != "blunt" and part.bleed > 0.05:
+		part.add_drip(lp.clamp(-part.half_ext, part.half_ext))
 	pain = minf(1.0, pain + dmg / 70.0)
 	var steady: bool = bool(mods.get("unstoppable", false)) and blood > 40.0
 	if concussion > 0.85 and state == "stand" and not steady:
@@ -2413,6 +2438,7 @@ func _drop_half(part: VoxelPart, lump: PackedInt32Array, res: Dictionary, dir: V
 
 ## A limb left on a strip of a few voxels does not hold for long: the thinner the strip, the
 ## gentler the swing that tears it off (character.js tearStrips).
+static var tear_strips := false
 func _tear_strips(dt: float) -> void:
 	strip_clock += dt
 	if strip_clock < 0.15:
@@ -2427,7 +2453,9 @@ func _tear_strips(dt: float) -> void:
 		p.hang_t += 0.15
 		if p.hang_t < 0.6:
 			continue
-		if (thin < 0.06 and (w > 5.0 or lv > 2.8)) or (thin < 0.15 and (w > 9.0 or lv > 4.5)) or (thin < 0.3 and (w > 16.0 or lv > 8.0)):
+		# Nothing comes off unless the blows cut it free: a limb on a strip hangs, useless, until
+		# a blade takes the last of it (it used to tear the strip off itself with a swing).
+		if tear_strips and ((thin < 0.06 and (w > 5.0 or lv > 2.8)) or (thin < 0.15 and (w > 9.0 or lv > 4.5)) or (thin < 0.3 and (w > 16.0 or lv > 8.0))):
 			_tear_off(p)
 
 func _tear_off(part: VoxelPart) -> void:
@@ -2506,6 +2534,7 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		part.joint = null
 	if part.parent_part:
 		part.parent_part.stump = true
+		part.parent_part.add_drip(part.parent_part.anchor_point(part))
 		part.parent_part.stump_t = 0.0
 	for side in arm:
 		if pieces.has(arm[side].fore) and weapons[side]:

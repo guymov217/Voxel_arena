@@ -29,7 +29,7 @@ func test_every_chain_weapon_hangs_together() -> void:
 		t.check(wp != null and wp.chain_head != null, "%s has a chain head" % keys[i])
 		if wp == null or wp.chain_head == null:
 			continue
-		t.eq(wp.chain_links.size(), int(wp.design.chain.links), "%s has all its links" % keys[i])
+		t.eq(wp.chain_links.size(), Weapon.links_of(wp.design), "%s has all its links" % keys[i])
 		var full := wp.chain_len * (wp.chain_links.size() + 1) + 0.4
 		var d := (wp.chain_head.global_transform * wp.head_anchor).distance_to(wp.global_transform * wp.chain_anchor)
 		t.check(d < full, "%s head stays on its chain (%.2f m of at most %.2f)" % [keys[i], d, full])
@@ -82,5 +82,5 @@ func test_a_hard_swung_whip_and_meteor_hammer_never_come_apart() -> void:
 		return {"main": {"x": 1.8 * sin(ph * TAU), "y": 0.7 + 0.7 * cos(ph * TAU * 1.3)}, "power": true, "thrust": 0.5 + 0.5 * sin(ph * 5.0)})
 	for i in keys.size():
 		t.check(worst[i] < 1.12, "%s, whirled hard, stays on its chain (at worst %.2f of its length)" % [keys[i], worst[i]])
-		t.check(men[i].weapons.R.chain_links.size() == int(men[i].weapons.R.design.chain.links), "%s keeps every link" % keys[i])
+		t.check(men[i].weapons.R.chain_links.size() == Weapon.links_of(men[i].weapons.R.design), "%s keeps every link" % keys[i])
 	w.queue_free()

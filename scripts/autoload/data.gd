@@ -72,7 +72,52 @@ func stage(n: int, players: int = 1) -> Dictionary:
 	out["boss"] = row.get("boss", false)
 	out["checkpoint"] = row.get("checkpoint", null)
 	out["gear"] = row.get("gear", {})
-	return out
+	return duel(out, players)
+
+## The campaign is a ladder of single bouts: each stage one opponent, one on one, harder every
+## time. Every boss stage brings its boss (the Cyclops, the Minotaur, Polyphemus the giant, the
+## Hydra, the Dragon...); every third stage a beast comes through the gate instead of a man,
+## from the wolf at the start to the monsters late on; the rest are the stage's strongest
+## gladiator. A party of several fights it together, the foe made tougher for each friend.
+const LADDER_BEASTS := ["wolf", "boar", "hyena", "goat", "lion", "bear", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
+func duel(st: Dictionary, players := 1) -> Dictionary:
+	var rounds: Array = st.get("rounds", [])
+	if rounds.is_empty():
+		return st
+	var n := int(st.get("n", 1))
+	var gear: Dictionary = st.get("gear", {})
+	var foe: Dictionary = {}
+	if st.get("boss", false):
+		for en in rounds[rounds.size() - 1]:
+			if en.get("boss", false):
+				foe = en.duplicate(true)
+	if foe.is_empty() and n % 3 == 0:
+		var bid: String = LADDER_BEASTS[mini(n / 3 - 1, LADDER_BEASTS.size() - 1)]
+		if beasts.has(bid):
+			foe = {"beast": bid, "gear": gear}
+	if foe.is_empty():
+		# The stage's hardest man: the first gladiator of its last wave (the latest wave
+		# that has one, beasts left to their own stages).
+		for r in range(rounds.size() - 1, -1, -1):
+			for en in rounds[r]:
+				if foe.is_empty() and en.has("e") and not en.get("boss", false):
+					foe = (en as Dictionary).duplicate(true)
+		if foe.is_empty():
+			foe = (rounds[rounds.size() - 1][0] as Dictionary).duplicate(true)
+		foe.erase("boss")
+	if players > 1:
+		var m: Dictionary = foe.get("mods", {}).duplicate()
+		m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.6 * (players - 1))
+		foe["mods"] = m
+	var name := String(foe.get("title", foe.get("name", "")))
+	if name == "":
+		name = String(beasts.get(foe.beast, {}).get("name", foe.beast)) if foe.has("beast") else String(enemy_type(String(foe.get("e", ""))).get("label", String(foe.get("e", "a gladiator")).capitalize()))
+	st["rounds"] = [[foe]]
+	st["duel"] = true
+	st["foe_name"] = name
+	st["title"] = String(foe.get("title", "Bout %d" % n))
+	st["stagePay"] = int(st.get("stagePay", 30)) + int(st.get("roundPay", 10)) * 2
+	return st
 
 func enemy_type(id: String) -> Dictionary:
 	return campaign.get("enemies", {}).get(id, {})

@@ -30,6 +30,14 @@ var _next_box := 0
 # A head on a chain (flail, nunchaku, meteor hammer, whip): links and a head of their own,
 # swinging on ball joints from the top of the handle.
 const CHAIN_LINK := 0.07
+const MAX_LINKS := 10.0
+
+## How many links a chain design is built with (a long one gets fewer, longer links).
+static func links_of(d: Dictionary) -> int:
+	var c = d.get("chain")
+	if not (c is Dictionary):
+		return 0
+	return int(round(float(c.links) / ceili(float(c.links) / MAX_LINKS)))
 var chain_links: Array = []
 var chain_head: Weapon = null
 var chain_parent: Weapon = null
@@ -575,7 +583,11 @@ func build_chain() -> void:
 	if not (c is Dictionary) or chain_head != null or not is_inside_tree():
 		return
 	var whip: bool = c.get("whip", false)
-	chain_len = CHAIN_LINK * wscale
+	# A long chain is laid as fewer, longer links (the same length in all): two dozen little
+	# links on pins are more than the solver can hold together, and the whip thrashed.
+	var per := ceili(float(c.links) / MAX_LINKS)
+	var n_links := links_of(design)
+	chain_len = CHAIN_LINK * wscale * per
 	if c.get("anchor") is Array:
 		chain_anchor = Vector3(c.anchor[0], c.anchor[1], c.anchor[2]) * vs
 	else:
@@ -607,7 +619,7 @@ func build_chain() -> void:
 	var up := q * Vector3.UP
 	var start := global_transform * chain_anchor
 	var prev: RigidBody3D = self
-	for i in int(c.links):
+	for i in n_links:
 		var b := RigidBody3D.new()
 		b.name = "%s_link%d" % [name, i]
 		var cs := CollisionShape3D.new()
@@ -619,7 +631,7 @@ func build_chain() -> void:
 		mi.mesh = link_mesh
 		b.add_child(mi)
 		# Links much lighter than the head let the joints stretch: they get a share of its weight.
-		b.mass = 0.1 if whip else maxf(0.2, 0.35 * head_mass)
+		b.mass = (0.1 if whip else maxf(0.2, 0.35 * head_mass)) * per
 		b.linear_damp = 0.3
 		b.angular_damp = 1.0
 		b.continuous_cd = true
@@ -637,7 +649,7 @@ func build_chain() -> void:
 	head.linear_damp = 0.05
 	head.angular_damp = 0.4
 	get_parent().add_child(head)
-	var end := start + up * chain_len * int(c.links)
+	var end := start + up * chain_len * n_links
 	head.global_transform = Transform3D(Basis(q), end - q * head_anchor)
 	head.add_collision_exception_with(self)
 	_pin(prev, head, end)
@@ -693,17 +705,24 @@ func guard_chain() -> void:
 
 ## A chain is a rope, not elastic: the pin joints between light links and a heavy head stretch
 ## under a hard swing (and that is what let them come apart). So every step, from the handle
-## out, each link is kept within its length of the one before, and so is the head; what is
-## stretched is pulled back and its speed away from the chain is taken off.
+## out, a link drawn well past its length from the one before is brought back to it and its
+## speed away from the chain is taken off. Only past some slack: the joints always give a few
+## per cent, and held to their exact length every step the links fought the joints, buzzed at
+## a hundred metres a second and the whip thrashed even hanging still.
+const ROPE_SLACK := 1.15
 func _rope() -> void:
-	var prev_p := global_transform * chain_anchor
-	var prev_v := velocity_at(prev_p)
-	var seg := chain_len * 0.5   # handle anchor to the first link's middle
-	for b in chain_links:
+	if chain_links.is_empty():
+		return
+	# From the first link out (the pin on the handle itself is left to the joint: it gives
+	# a little more there, and pulled back each step the first link set the whole whip shaking).
+	var prev_p: Vector3 = chain_links[0].global_position
+	var prev_v: Vector3 = chain_links[0].linear_velocity
+	var seg := chain_len
+	for b in chain_links.slice(1):
 		var p: Vector3 = b.global_position
 		var d := p - prev_p
 		var l := d.length()
-		var mx := seg * 1.03
+		var mx := seg * ROPE_SLACK
 		if l > mx and l > 1e-6:
 			var n := d / l
 			b.global_position = prev_p + n * mx
@@ -717,7 +736,7 @@ func _rope() -> void:
 	var hp := chain_head.global_transform * head_anchor
 	var dh := hp - prev_p
 	var lh := dh.length()
-	var mxh := chain_len * 0.5 * 1.03
+	var mxh := chain_len * 0.5 * ROPE_SLACK
 	if lh > mxh and lh > 1e-6:
 		var nh := dh / lh
 		chain_head.global_position -= nh * (lh - mxh)

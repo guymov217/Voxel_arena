@@ -294,7 +294,8 @@ func _main(v: VBoxContainer) -> void:
 	col.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(col)
 	var buttons := [
-		UIStyle.menu_button(("Continue · stage %d" % st) if st > 1 else "Begin the campaign", func(): start({"mode": "campaign", "stage": st}), true),
+		# A campaign under way goes on from the yard, the lobby between bouts.
+		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard() if int(Save.get_value("stage", 1)) > 1 else start({"mode": "campaign", "stage": 1}), true),
 	]
 	if SHOW_CIRCUS:
 		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
@@ -345,6 +346,7 @@ func _open_station(id: String) -> void:
 		"smith": show_screen("yard")
 		"market": show_screen("market")
 		"board": show_screen("missions")
+		"physician": show_screen("physician")
 		"gate": show_screen("gate")
 
 func _close_overlay() -> void:
@@ -357,7 +359,9 @@ func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The arena gate", 34))
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
 	var st := int(Save.get_value("stage", 1))
-	v.add_child(UIStyle.button("The Campaign · stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
+	var nxt := Data.stage(st)
+	v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
+	v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
 	if SHOW_CIRCUS:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
@@ -685,46 +689,117 @@ func _training_forge() -> void:
 # ---------- The yard: the smith ----------
 
 func _yard(v: VBoxContainer) -> void:
+	panel.custom_minimum_size.x = 1000
 	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
 	v.add_child(UIStyle.title("The smith", 36))
 	if not last_result.is_empty():
 		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
 	v.add_child(UIStyle.label("Purse: %d denarii" % coins(), 18, UIStyle.BRONZE))
 	var a := arms()
+	# Your arms, as they are: a picture of each with what the smith can do to it.
+	var mine := HBoxContainer.new()
+	mine.add_theme_constant_override("separation", 14)
+	v.add_child(mine)
 	for side in ["R", "L"]:
 		var d = a.main if side == "R" else a.off
-		var box := VBoxContainer.new()
-		v.add_child(box)
+		var card := _smith_card(d, ("Main hand" if side == "R" else "Off hand"), "arm:%s:%s" % [side, str(d.hash()) if d != null else "none"], 128)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mine.add_child(card)
+		var col: VBoxContainer = card.get_meta("col")
 		if d == null:
-			box.add_child(UIStyle.label("Off hand: empty (buy a shield below)", 15, UIStyle.MUTED))
+			col.add_child(UIStyle.label("Empty: buy a shield or a dagger below", 14, UIStyle.MUTED))
 			continue
 		var cond := int(Arms.condition(a, side) * 100.0)
-		box.add_child(UIStyle.label("%s: %s · %d voxels · condition %d%%" % ["Main hand" if side == "R" else "Off hand", d.get("name", "?"), d.voxels.size(), cond], 16))
-		var items := []
+		col.add_child(UIStyle.label("%s · %d voxels · condition %d%%" % [d.get("name", "?"), d.voxels.size(), cond], 15, UIStyle.GOLD if cond >= 80 else (UIStyle.TEXT if cond >= 40 else Color(1, 0.55, 0.45))))
+		var acts := HFlowContainer.new()
+		acts.add_theme_constant_override("h_separation", 6)
+		acts.add_theme_constant_override("v_separation", 6)
+		col.add_child(acts)
 		var rc := Arms.repair_cost(a, side)
 		var mend := UIStyle.button("Mend (%d)" % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
 		mend.disabled = rc == 0 or rc > coins()
-		items.append(mend)
+		mend.tooltip_text = "The smith puts back every voxel it has lost."
+		acts.add_child(mend)
 		for id in Arms.UPGRADES:
 			if Arms.can_upgrade(id, d):
 				var price := Arms.upgrade_price(id, d)
 				var b := UIStyle.button("%s (%d)" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
 				b.disabled = price > coins()
 				b.tooltip_text = Arms.UPGRADES[id].desc
-				items.append(b)
-		items.append(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
-		_row(box, items)
-	v.add_child(UIStyle.label("Buy a base (your old one is taken in part exchange for half its worth)", 14, UIStyle.MUTED))
+				acts.add_child(b)
+		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
+	v.add_child(UIStyle.label("Buy a base · click one (your old one is taken in part exchange for half its worth)", 14, UIStyle.MUTED))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 330)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
 	var grid := GridContainer.new()
-	grid.columns = 4
-	v.add_child(grid)
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	scroll.add_child(grid)
 	for b in Arms.bases():
-		var btn := UIStyle.button("%s · %d" % [b.name, b.price], func(): _pay(Arms.buy(arms(), b.key)))
-		btn.disabled = int(b.price) > coins() + Arms.value(arms().main if b.slot == "main" else arms().off) / 2
-		grid.add_child(btn)
+		var key: String = b.key
+		var trade := Arms.value(arms().main if b.slot == "main" else arms().off) / 2
+		var afford: bool = int(b.price) <= coins() + trade
+		var tile := Button.new()
+		tile.custom_minimum_size = Vector2(150, 160)
+		tile.disabled = not afford
+		tile.tooltip_text = "%s · %s hand · %d denarii%s" % [b.name, "main" if b.slot == "main" else "off", int(b.price), "" if afford else " (not enough in your purse)"]
+		tile.pressed.connect(func(): _pay(Arms.buy(arms(), key)))
+		var box := VBoxContainer.new()
+		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_theme_constant_override("separation", 2)
+		tile.add_child(box)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(0, 104)
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tex.modulate = Color.WHITE if afford else Color(1, 1, 1, 0.45)
+		box.add_child(tex)
+		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(nm)
+		var pr := UIStyle.label("%d denarii" % int(b.price), 13, UIStyle.GOLD if afford else UIStyle.MUTED)
+		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(pr)
+		grid.add_child(tile)
+		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
 	var st := int(Save.get_value("stage", 1))
 	v.add_child(UIStyle.label("Your body: " + Body.summary(body()), 15, UIStyle.MUTED))
 	_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("The physician", func(): show_screen("physician")), UIStyle.button("Main menu", func(): show_screen("main"))])
+
+## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
+func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
+	var card := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+	st.border_color = UIStyle.BRONZE_DARK
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(8)
+	st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 8; st.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", st)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	card.add_child(row)
+	var tex := TextureRect.new()
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.custom_minimum_size = Vector2(pic, pic)
+	row.add_child(tex)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 6)
+	row.add_child(col)
+	col.add_child(UIStyle.label(title.to_upper(), 12, UIStyle.BRONZE))
+	card.set_meta("col", col)
+	if d is Dictionary:
+		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
+	return card
 
 ## Every other way to fight (game.js modes, partyModes.js).
 func _fights(v: VBoxContainer) -> void:
@@ -1556,7 +1631,13 @@ func _end_match() -> void:
 
 func _on_finished(r: Dictionary) -> void:
 	var was := match_
-	await get_tree().create_timer(3.5).timeout
+	# A moment on the banner (any key or a click goes straight on), not a long wait with
+	# nothing happening.
+	var wait_until := Time.get_ticks_msec() + 1600
+	while Time.get_ticks_msec() < wait_until and match_ == was:
+		await get_tree().process_frame
+		if Time.get_ticks_msec() > wait_until - 1300 and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER) or Input.is_key_pressed(KEY_ESCAPE) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)):
+			break
 	if match_ != was:
 		return   # restarted (R) in the meantime
 	var mode := match_.mode if match_ else "campaign"
@@ -1590,7 +1671,9 @@ func _on_finished(r: Dictionary) -> void:
 	if Net.active() and not Net.is_host():
 		show_screen("room")
 	else:
-		if hub:
+		# Between bouts of the campaign the gladiator goes back to the yard, the lobby: the
+		# smith, the market, the physician, friends, and the gate to the next bout.
+		if hub or mode == "campaign":
 			enter_yard(((last_result.get("text", "") + " · ") if mode == "campaign" and last_result.get("text", "") != "" else "") + mission_text)
 		else:
 			show_screen("yard" if mode == "campaign" else "main", mission_text)

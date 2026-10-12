@@ -43,6 +43,7 @@ var severed := false
 var hanging := false
 var fractured := false
 var stump := false
+var drips: Array = []   # {node: GPUParticles3D, lp: Vector3}: where blood runs from its wounds
 var stump_t := 0.0
 var flinch_t := 0.0
 var missing := false
@@ -288,6 +289,41 @@ func scar(indices: Array) -> void:
 			colors[i] = colors[i].lerp(SCAR, 0.45 + 0.1 * minf(3.0, near))
 			touched.append(i)
 	refresh_colors(touched)
+
+## Blood runs from a wound at `lp` (part-local) for as long as the part bleeds: a dripping
+## emitter there, at most a few per part (a new wound near an old one shares its drip).
+const MAX_DRIPS := 4
+func add_drip(lp: Vector3) -> void:
+	if Fx.current == null or Fx.current.headless or freeze or severed:
+		return
+	for d in drips:
+		if is_instance_valid(d.node) and (d.lp as Vector3).distance_to(lp) < vf * part_scale * 3.0:
+			return
+	if drips.size() >= MAX_DRIPS:
+		var old = drips.pop_front()
+		if is_instance_valid(old.node):
+			old.node.queue_free()
+	var ps: GPUParticles3D = Fx.current.emitter("drip", self, 26, vf * part_scale * 0.8)
+	if ps == null:
+		return
+	ps.position = lp
+	drips.append({"node": ps, "lp": lp})
+
+## The drips follow how hard the part bleeds: heavier while it pours, gone once it has closed.
+func update_drips() -> void:
+	if drips.is_empty():
+		return
+	var flow := clampf((bleed + (2.0 if stump else 0.0)) / 1.2, 0.0, 1.0)
+	for i in range(drips.size() - 1, -1, -1):
+		var d = drips[i]
+		if not is_instance_valid(d.node) or severed:
+			if is_instance_valid(d.node):
+				d.node.queue_free()
+			drips.remove_at(i)
+			continue
+		var ps: GPUParticles3D = d.node
+		ps.emitting = flow > 0.03
+		ps.amount_ratio = clampf(0.15 + flow, 0.15, 1.0)
 
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
