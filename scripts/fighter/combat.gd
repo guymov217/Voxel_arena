@@ -279,6 +279,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		# Thrown: the blow is its momentum, in proportion to how hard it was thrown (the speed
 		# it lands at) and to how heavy it is; a dagger stings, a hammer flattens.
 		J = minf(90.0, (0.5 + att.mass) * speed * 0.95)
+		if att.is_shield:
+			J *= 0.5   # a flat board spinning in: it knocks a man about more than it breaks him
 		heavy = clampf((att.mass * speed - 20.0) / 40.0, 0.0, 1.0)
 	if is_weapon:
 		var key_name := _preset_key(att.design)

@@ -465,7 +465,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		# A throw is a movement, not a teleport: the arm (already drawn back while F was held, or
 		# drawn back now for a bot) whips forward and the thing leaves the hand partway through.
 		if inp.get("throw", false) and c.alive and not e.has("throw_q"):
-			var side: String = ("L" if not c.weapons.L else "R") if c.held_item != null else ("R" if c.weapons.R and not c.weapons.R.is_shield else "L")
+			var side: String = ("L" if not c.weapons.L else "R") if c.held_item != null else throw_side(c, inp)
 			if c.held_item != null or c.weapons.get(side):
 				var player: bool = e.kind == "local" or e.kind == "remote"
 				e.throw_q = {"inp": inp.duplicate(), "t": 0.09 if player else 0.45, "side": side}
@@ -476,7 +476,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 				var q: Dictionary = e.throw_q
 				e.erase("throw_q")
 				if c.alive:
-					_throw(e, q.inp)
+					_throw(e, q.inp, q.side)
 					c.throw_anim = {"side": q.side, "phase": "follow", "t": 0.35}
 	if inp.get("taunt", false):
 		taunt(e)
@@ -486,12 +486,13 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 
 ## Lets go of whatever is in the throwing hand: players at the crosshair (the point their
 ## camera looks at), bots at their enemy.
-func _throw(e: Dictionary, inp: Dictionary) -> void:
+func _throw(e: Dictionary, inp: Dictionary, side := "") -> void:
 	var c = e.f
 	if c.held_item != null:
 		m.throwables.throw_held(e, inp)
 		return
-	var side := "R" if c.weapons.R and not c.weapons.R.is_shield else "L"
+	if side == "" or not c.weapons.get(side):
+		side = throw_side(c, inp)
 	var player: bool = e.kind == "local" or e.kind == "remote"
 	var look = inp.get("look")
 	var dir = null
@@ -505,6 +506,13 @@ func _throw(e: Dictionary, inp: Dictionary) -> void:
 		tgt = o.f.torso.global_position + Vector3(0, 0.25, 0) if o else null
 	if c.throw_weapon(side, tgt, clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0), dir):
 		m.sfx("whoosh", c.hand_world(side))
+
+## Which hand throws: the main weapon first; the shield once the main hand is empty, or at
+## once with the off hand's button held.
+static func throw_side(c, inp: Dictionary) -> String:
+	if inp.get("throwOff", false) and c.weapons.L:
+		return "L"
+	return "R" if c.weapons.R else "L"
 
 ## A mark behind the thrower (the wall at his back) is never thrown at: it is moved to a few
 ## strides ahead where he looks.

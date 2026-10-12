@@ -154,6 +154,10 @@ func arms() -> Dictionary:
 func set_arms(a: Dictionary) -> void:
 	Save.set_value("arms", a)
 	_net_loadout()
+	# Bought in the yard: in his hands at once, there and then.
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
+		var lo := Arms.loadout(Arms.sanitize(a))
+		match_.me.f.rearm(lo.main, lo.off)
 
 func kit() -> Dictionary:
 	return Net.sanitize_kit(Save.get_value("kit", {}))
@@ -224,7 +228,7 @@ func show_screen(s: String, msg := "") -> void:
 		Sfx.music.set_state("yard" if ["yard", "market", "circus_market"].has(s) else "menu")
 	var v := _clear()
 	if in_yard():
-		v.add_child(UIStyle.button("◀  Back to the yard  (Esc)", _close_overlay, true))
+		v.add_child(UIStyle.button("◀  Leave the %s  (Esc)" % {"market": "market", "yard": "smith", "physician": "physician", "missions": "board", "gate": "gate"}.get(s, "stall"), _close_overlay, true))
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
 	panel.custom_minimum_size.x = 520 if s == "main" else (1180 if s == "training" else 760)
 	# Each screen slides in.
@@ -338,10 +342,22 @@ func enter_yard(banner_text := "") -> void:
 func _open_station(id: String) -> void:
 	if visible:
 		return
+	# Alone, the gate is the way to the next bout: through it and into the arena, no menu.
+	# A room's host gets the gate's menu (the co-op campaign or another mode for everyone).
+	if id == "gate" and not (Net.active() and not Net.peers.is_empty()):
+		var st := int(Save.get_value("stage", 1))
+		start({"mode": "campaign", "stage": st})
+		return
+	if id == "gate" and Net.active() and not Net.is_host():
+		match_._banner("The arena gate", "The host leads the party through")
+		return
 	visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if match_.input:
 		match_.input.enabled = false
+	# The fight's HUD (blood, breath, the crowd, the item bar) goes while a stall is open.
+	if hud:
+		hud.visible = false
 	match id:
 		"smith": show_screen("yard")
 		"market": show_screen("market")
@@ -351,6 +367,8 @@ func _open_station(id: String) -> void:
 
 func _close_overlay() -> void:
 	visible = false
+	if hud:
+		hud.visible = true
 	if match_ and match_.input:
 		match_.input.enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -374,7 +392,7 @@ func _gate(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
 			show_screen("circus")))
-	v.add_child(UIStyle.button("Fights and party modes", func():
+	v.add_child(UIStyle.button("Another mode for the room (party modes)" if Net.active() and not Net.peers.is_empty() else "Fights and party modes", func():
 		_end_match()
 		show_screen("fights")))
 	v.add_child(UIStyle.button("Leave the yard (main menu)", func(): show_screen("main")))
@@ -779,7 +797,9 @@ func _yard(v: VBoxContainer) -> void:
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
 	var st := int(Save.get_value("stage", 1))
 	v.add_child(UIStyle.label("Your body: " + Body.summary(body()), 15, UIStyle.MUTED))
-	_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("The physician", func(): show_screen("physician")), UIStyle.button("Main menu", func(): show_screen("main"))])
+	# In the yard each stall is its own place: the way out is the one button at the top.
+	if not in_yard():
+		_row(v, [UIStyle.button("To the gate: stage %d" % st, func(): start({"mode": "campaign", "stage": st}), true), UIStyle.button("The market", func(): show_screen("market")), UIStyle.button("The physician", func(): show_screen("physician")), UIStyle.button("Main menu", func(): show_screen("main"))])
 
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
@@ -820,7 +840,10 @@ func _fights(v: VBoxContainer) -> void:
 		var b := UIStyle.button(Modes.TITLES[k].trim_suffix("!"), func(): start({"mode": k}))
 		b.tooltip_text = Modes.LABELS.get(k, "")
 		grid.add_child(b)
-	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+	if Net.active() and Net.is_host() and not Net.peers.is_empty():
+		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
+	else:
+		v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
 ## The market (market.js): pots, food and tricks for the kit, used in a fight with 1 to 8.
 # ---------- Bread & Circuses ----------
@@ -1051,7 +1074,8 @@ func _market(v: VBoxContainer) -> void:
 		if kit_use(id) != market_tab:
 			continue
 		grid.add_child(_market_card(id, table[id], int(k.get(id, 0))))
-	_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
+	if not in_yard():
+		_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
 
 func _market_card(id: String, it: Dictionary, have: int) -> Control:
 	var card := PanelContainer.new()
@@ -1118,9 +1142,13 @@ func _market_card(id: String, it: Dictionary, have: int) -> Control:
 
 ## The physician's stall in the yard: the same treatments as between rounds.
 func _physician(v: VBoxContainer) -> void:
+	var yard := in_yard()
 	_doctor_panel(v, body(), [], int(Save.get_value("stage", 1)), func(nb):
 		set_body(nb)
-		show_screen("yard"), "Back to the smith", func(nb):
+		if yard:
+			_close_overlay()
+		else:
+			show_screen("yard"), "Leave the physician" if yard else "Back to the smith", func(nb):
 		set_body(nb)
 		show_screen("physician"))
 
@@ -1696,7 +1724,7 @@ func _on_finished(r: Dictionary) -> void:
 	else:
 		# Between bouts of the campaign the gladiator goes back to the yard, the lobby: the
 		# smith, the market, the physician, friends, and the gate to the next bout.
-		if hub or mode == "campaign":
+		if hub or mode == "campaign" or (Net.active() and Net.is_host() and not Net.peers.is_empty()):
 			enter_yard(((last_result.get("text", "") + " · ") if mode == "campaign" and last_result.get("text", "") != "" else "") + mission_text)
 		else:
 			show_screen("yard" if mode == "campaign" else "main", mission_text)

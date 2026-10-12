@@ -139,6 +139,8 @@ var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
 var body_mass := 70.0   # the whole fighter and what he carries (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
+var stroke_dir := {"R": null, "L": null}   # which way the stroke is going, across the blade
+var stroke_idle := {"R": 0.0, "L": 0.0}
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
@@ -238,6 +240,28 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	if off is String:
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty():
+		equip("R", main)
+		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing:
+			two_handed = true
+			_attach_off_hand(weapons.R)
+	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
+		equip("L", off)
+
+## Takes up a new set of arms where he stands (bought at the smith in the yard): what is in his
+## hands now is put away, the new ones are in them at once.
+func rearm(main, off) -> void:
+	for side in ["R", "L"]:
+		var old: Weapon = weapons[side]
+		if old and not fixed_hand[side]:
+			release(side)
+			if Combat.current:
+				Combat.current.loose_weapons.erase(old)
+			old.queue_free()
+	if main is String:
+		main = Data.preset(main)
+	if off is String:
+		off = Data.preset(off)
+	if main is Dictionary and not main.is_empty() and not weapons.R:
 		equip("R", main)
 		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing:
 			two_handed = true
@@ -785,7 +809,7 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	if not alive or arm_func(side) < 0.05:
 		return null
 	var w: Weapon = weapons[side]
-	if not w or w.is_shield or (side == "L" and two_handed) or fixed_hand[side]:
+	if not w or (side == "L" and two_handed) or fixed_hand[side]:
 		return null
 	var from := w.global_transform * w.center_of_mass
 	var arm_f := arm_func(side)
@@ -793,10 +817,19 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	var fwd := Vector3(sin(yaw), 0, cos(yaw))
 	var aim_at: Vector3 = target if target != null else from + (dir if dir != null else fwd) * 20.0
 	var scatter := 0.006 + 0.03 * (1.0 - power) + 0.004 * minf(6.0, w.mass) + 0.02 * (1.0 - arm_f)
-	var point_first := Weapon.flies_point_first(w.design)
+	var point_first := Weapon.flies_point_first(w.design) and not w.is_shield
 	var vel := launch_velocity(from, aim_at, w.mass, power, point_first, scatter, arm_f)
 	w.linear_velocity = vel
-	if point_first:
+	if w.is_shield:
+		# A shield goes like a discus: flat, face up, spinning, rim first into the man.
+		var sd0 := vel.cross(UP)
+		sd0 = Vector3(1, 0, 0) if sd0.length_squared() < 1e-6 else sd0.normalized()
+		var fw0 := Vector3(vel.x, 0, vel.z).normalized() if Vector2(vel.x, vel.z).length() > 0.01 else Vector3(0, 0, 1)
+		var qs := PD.quat_from_axes(sd0, fw0, sd0.cross(fw0).normalized())
+		w.global_transform = Transform3D(Basis(qs), from - qs * w.center_of_mass)
+		w.angular_damp = 0.05
+		w.angular_velocity = (qs * Vector3(0, 0, 1)) * 16.0
+	elif point_first:
 		var q := Quaternion(UP, vel.normalized())
 		w.global_transform = Transform3D(Basis(q), from - q * w.center_of_mass)
 		w.angular_velocity = Vector3.ZERO
@@ -1854,13 +1887,33 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		var fz := yaw_q * Vector3(0, 0, 1)
 		ed = fz - axis * axis.dot(fz)
 	ed = ed.normalized()
-	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
+	# The edge leads the stroke: whichever way the hand sweeps, the cutting edge faces where
+	# the blade is going (an axe's bit, not the back of its head), and the wheel's twist is
+	# set from there. The stroke's way is held through the blow and a moment after (the hand
+	# slowing on the impact does not turn the blade), and a sweep the other way turns it over.
 	var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
 	var tvl := tv.length()
-	# A player's edge stays exactly where the wheel set it; a bot's leans into its stroke.
-	if tvl > 0.7 and not inp.has("twist" if side == "R" else "offTwist"):
-		var lean := atan2(ed.cross(tv).dot(axis), ed.dot(tv))
-		ed = ed.rotated(axis, clampf(lean, -0.52, 0.52) * minf(1.0, tvl / 3.0))
+	if tvl > 0.9:
+		var nd := tv / tvl
+		var sd = stroke_dir[side]
+		stroke_dir[side] = nd if sd == null or (sd as Vector3).dot(nd) < -0.2 else (sd as Vector3).slerp(nd, minf(1.0, dt * 10.0)).normalized()
+		stroke_idle[side] = 0.0
+	else:
+		stroke_idle[side] += dt
+		if stroke_idle[side] > 0.6:
+			stroke_dir[side] = null
+	if stroke_dir[side] != null and not is_spear(w):
+		var lead: Vector3 = stroke_dir[side]
+		lead -= axis * lead.dot(axis)
+		if lead.length_squared() > 1e-4:
+			lead = lead.normalized()
+			var es := w.edge_side()
+			if es == 0.0:
+				# Sharp both sides: the nearer side leads, no needless turn of the blade.
+				var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else ed
+				es = 1.0 if prev_ed.dot(lead) >= 0.0 else -1.0
+			ed = lead * es
+	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
 	var z := ed.cross(axis).normalized()
 	var e := axis.cross(z)
 	var desired := PD.quat_from_axes(e, axis, z)

@@ -33,6 +33,21 @@ const CHAIN_LINK := 0.07
 const MAX_LINKS := 10.0
 
 ## How many links a chain design is built with (a long one gets fewer, longer links).
+## Which way the cutting edge faces across the blade, along the weapon's local x: +1 or -1
+## for an axe's single edge, 0 for a blade sharp on both sides (or none at all).
+func edge_side() -> float:
+	if has_meta("edge_side"):
+		return float(get_meta("edge_side"))
+	var sx := 0.0
+	var n := 0
+	for v in vox:
+		if str(v[4]) == "edge":
+			sx += float(v[0])
+			n += 1
+	var side := 0.0 if n == 0 or absf(sx / n) < 0.5 else signf(sx)
+	set_meta("edge_side", side)
+	return side
+
 static func links_of(d: Dictionary) -> int:
 	var c = d.get("chain")
 	if not (c is Dictionary):
@@ -686,8 +701,14 @@ func guard_chain() -> void:
 		if not is_finite(sp) or not p.is_finite() or p.distance_to(t) > reach_:
 			broken = true
 			break
-		if sp > 40.0:
-			b.linear_velocity *= 40.0 / sp
+		# A head on a chain goes about as fast as a strong arm whirls it, not like a shot: a
+		# light whip's tip may crack faster, a flail's ball or a meteor hammer's weight may not.
+		var cap := 30.0 if design.chain.get("whip", false) else 17.0
+		if sp > cap:
+			b.linear_velocity *= cap / sp
+		var av: float = b.angular_velocity.length()
+		if av > 25.0:
+			b.angular_velocity *= 25.0 / av
 	if not broken:
 		_rope()
 		return
@@ -746,5 +767,11 @@ func _rope() -> void:
 			chain_head.linear_velocity -= nh * awayh
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	# A chain's head is held to its speed inside the step too, not only between steps.
+	if chain_parent and is_instance_valid(chain_parent) and chain_parent.design.get("chain") is Dictionary:
+		var cap := 30.0 if chain_parent.design.chain.get("whip", false) else 17.0
+		var sp := state.linear_velocity.length()
+		if sp > cap:
+			state.linear_velocity *= cap / sp
 	if Combat.current and state.get_contact_count() > 0:
 		Combat.current.report(self, state)
