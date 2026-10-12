@@ -559,6 +559,7 @@ func guard_chain() -> void:
 		if sp > 40.0:
 			b.linear_velocity *= 40.0 / sp
 	if not broken:
+		_rope()
 		return
 	var q := global_transform.basis.get_rotation_quaternion()
 	var up := q * Vector3.UP
@@ -571,6 +572,41 @@ func guard_chain() -> void:
 	chain_head.global_transform = Transform3D(Basis(q), start + up * chain_len * chain_links.size() - q * head_anchor)
 	chain_head.linear_velocity = linear_velocity
 	chain_head.angular_velocity = Vector3.ZERO
+
+## A chain is a rope, not elastic: the pin joints between light links and a heavy head stretch
+## under a hard swing (and that is what let them come apart). So every step, from the handle
+## out, each link is kept within its length of the one before, and so is the head; what is
+## stretched is pulled back and its speed away from the chain is taken off.
+func _rope() -> void:
+	var prev_p := global_transform * chain_anchor
+	var prev_v := velocity_at(prev_p)
+	var seg := chain_len * 0.5   # handle anchor to the first link's middle
+	for b in chain_links:
+		var p: Vector3 = b.global_position
+		var d := p - prev_p
+		var l := d.length()
+		var mx := seg * 1.03
+		if l > mx and l > 1e-6:
+			var n := d / l
+			b.global_position = prev_p + n * mx
+			var rv: Vector3 = b.linear_velocity - prev_v
+			var away := rv.dot(n)
+			if away > 0.0:
+				b.linear_velocity -= n * away
+		prev_p = b.global_position
+		prev_v = b.linear_velocity
+		seg = chain_len
+	var hp := chain_head.global_transform * head_anchor
+	var dh := hp - prev_p
+	var lh := dh.length()
+	var mxh := chain_len * 0.5 * 1.03
+	if lh > mxh and lh > 1e-6:
+		var nh := dh / lh
+		chain_head.global_position -= nh * (lh - mxh)
+		var rvh: Vector3 = chain_head.linear_velocity - prev_v
+		var awayh := rvh.dot(nh)
+		if awayh > 0.0:
+			chain_head.linear_velocity -= nh * awayh
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if Combat.current and state.get_contact_count() > 0:

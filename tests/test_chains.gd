@@ -63,3 +63,24 @@ func test_a_torn_chain_is_laid_straight() -> void:
 	var d := wp.chain_head.global_position.distance_to(wp.global_position)
 	t.check(d < 3.0, "the head came back to the handle (%.1f m)" % d)
 	w.queue_free()
+
+func test_a_hard_swung_whip_and_meteor_hammer_never_come_apart() -> void:
+	var w := _world()
+	var keys := ["whip", "meteorHammer"]
+	var men := []
+	for i in keys.size():
+		men.append(w.fighter(Vector3(i * 4.0 - 2.0, 0, 0), 0.0, {"main": keys[i]}, {"name": keys[i], "slot": i}))
+	var worst := [0.0, 0.0]
+	await _step(w, 960, func(f, i):
+		var k := men.find(f)
+		var wp: Weapon = f.weapons.R
+		if wp and wp.chain_head:
+			var full := wp.chain_len * (wp.chain_links.size() + 1)
+			var d := (wp.chain_head.global_transform * wp.head_anchor).distance_to(wp.global_transform * wp.chain_anchor)
+			worst[k] = maxf(worst[k], d / full)
+		var ph: float = i / 120.0 * 1.6
+		return {"main": {"x": 1.8 * sin(ph * TAU), "y": 0.7 + 0.7 * cos(ph * TAU * 1.3)}, "power": true, "thrust": 0.5 + 0.5 * sin(ph * 5.0)})
+	for i in keys.size():
+		t.check(worst[i] < 1.12, "%s, whirled hard, stays on its chain (at worst %.2f of its length)" % [keys[i], worst[i]])
+		t.check(men[i].weapons.R.chain_links.size() == int(men[i].weapons.R.design.chain.links), "%s keeps every link" % keys[i])
+	w.queue_free()

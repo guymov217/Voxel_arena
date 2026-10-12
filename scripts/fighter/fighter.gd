@@ -193,9 +193,12 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	torso = by_name.torso
 	head = by_name.head
 	arm = {"R": {"upper": by_name.upperArmR, "fore": by_name.forearmR}, "L": {"upper": by_name.upperArmL, "fore": by_name.forearmL}}
+	# A body does not pass through itself: only parts joined to each other (they overlap at the
+	# joint) ignore one another, and the two legs while he is up (a stride brushes one past the
+	# other). The joints have a body's limits, so a joined part cannot fold into its neighbour.
 	for a in parts:
 		for b in parts:
-			if a != b:
+			if a != b and (a.parent_part == b or b.parent_part == a or (_is_leg(a) and _is_leg(b))):
 				a.add_collision_exception_with(b)
 	for p in parts:
 		if p.parent_part:
@@ -338,12 +341,80 @@ func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
 	p.remove_voxels(drop, false)
 	p.bleed = 0.0
 
+static func _is_leg(p) -> bool:
+	return String(p.part_name).begins_with("thigh") or String(p.part_name).begins_with("shin")
+
+## Down or dead the legs are a ragdoll's: they knock against each other instead of passing.
+func _legs_apart(on: bool) -> void:
+	for a in parts:
+		if not _is_leg(a) or a.severed:
+			continue
+		for b in parts:
+			if b == a or not _is_leg(b) or b.severed or a.parent_part == b or b.parent_part == a:
+				continue
+			if String(a.part_name).right(1) == String(b.part_name).right(1):
+				continue
+			if on:
+				a.remove_collision_exception_with(b)
+			else:
+				a.add_collision_exception_with(b)
+
+## Joint limits, in the parent's frame at rest (everything hanging straight down), in the sense
+## Godot's 6DOF joint measures them (the bend of an elbow is +x). [x, y, z] as [lo, hi].
+const JOINT_LIMITS := {
+	"head": [[-0.55, 0.65], [-1.25, 1.25], [-0.45, 0.45]],
+	"thigh": [[-0.6, 2.2], [-0.7, 0.7], [-0.75, 0.75]],
+	"shin": [[-2.5, 0.05], [-0.25, 0.25], [-0.06, 0.06]],
+}
+
 func _make_pin(p: VoxelPart) -> void:
+	var n := String(p.part_name)
+	if n.begins_with("forearm"):
+		_make_elbow(p)
+		return
+	var key := "head" if n == "head" else ("thigh" if n.begins_with("thigh") else ("shin" if n.begins_with("shin") else ""))
+	if key != "":
+		_make_limited(p, JOINT_LIMITS[key])
+		return
 	var j := PinJoint3D.new()
 	add_child(j)
 	j.global_position = p.parent_part.global_transform * p.pa
 	j.node_a = p.parent_part.get_path()
 	j.node_b = p.get_path()
+	p.joint = j
+
+func _make_limited(p: VoxelPart, lim: Array) -> void:
+	var j := Generic6DOFJoint3D.new()
+	add_child(j)
+	j.global_transform = Transform3D(p.parent_part.global_transform.basis.orthonormalized(), p.parent_part.global_transform * p.pa)
+	j.node_a = p.parent_part.get_path()
+	j.node_b = p.get_path()
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, lim[0][0])
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, lim[0][1])
+	j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, lim[1][0])
+	j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, lim[1][1])
+	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, lim[2][0])
+	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, lim[2][1])
+	p.joint = j
+
+## The elbow is a hinge, not a ball: the forearm bends forward (up to ~150 degrees) and turns
+## about its own length (the wrist, +-75), but it cannot swing sideways or spin round the upper
+## arm. So a swung weapon is carried by the whole arm instead of flapping on a loose joint.
+## The joint frame is the upper arm's at rest (arm straight down): x is the hinge.
+const ELBOW_BEND := 2.6
+const ELBOW_TURN := 1.3
+func _make_elbow(p: VoxelPart) -> void:
+	var j := Generic6DOFJoint3D.new()
+	add_child(j)
+	j.global_transform = Transform3D(p.parent_part.global_transform.basis.orthonormalized(), p.parent_part.global_transform * p.pa)
+	j.node_a = p.parent_part.get_path()
+	j.node_b = p.get_path()
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.05)
+	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, ELBOW_BEND)
+	j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -ELBOW_TURN)
+	j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, ELBOW_TURN)
+	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.06)
+	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, 0.06)
 	p.joint = j
 
 func _add_armor(p: VoxelPart, id: String) -> void:
@@ -1086,6 +1157,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 9.0 * dt
 	for side in ["R", "L"]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
+		# Whatever the arm is doing (swinging, limp, hanging by a strip, on a corpse), it never
+		# passes into its own chest or head.
+		if not arm[side].upper.severed:
+			_keep_arm_out(side, dt)
 
 	var sw: Weapon = weapons.R
 	if sw and not sw.is_shield:
@@ -1218,6 +1293,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up))
 		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
 		_drive_forearm(side, w, fore_q, strength, dt)
+		_lock_elbow(side, w, fore_q, strength, dt)
 		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
 		var wmax := 30.0
 		if w.angular_velocity.length() > wmax:
@@ -1243,7 +1319,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		pd_twist(fore, upper, 1.0 * MS, 0.2 * MS, 8.0 * MS, dt)
 		if w and w.is_shield:
 			_orient_shield(w, target_w, t_pos, yaw_q, strength, dt)
-	var kd := (40.0 if power else 32.0) * (0.85 + 0.15 * hnd) * minf(1.0, 3.0 / m_eff)
+	# Damped to the critical whatever the weapon weighs (a heavy head once got less damping and
+	# the arm bounced it about like a whip): the hand settles on its mark instead of overshooting.
+	var kd := 2.1 * sqrt(300.0 * (0.5 + 0.5 * hnd)) * (1.1 if power else 1.0)
 	var F = ((hand_goal - hand_w) * (300.0 * (0.5 + 0.5 * hnd)) + (target_vel[side] - hand_vel) * kd) * m_eff
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
 	F = PD.clamp_len(F, 1150.0 * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0))
@@ -1251,7 +1329,6 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
 	if w and w.holder == self and not w.is_shield:
 		_keep_weapon_out(w, dt)
-	_keep_arm_out(side, dt)
 
 ## An arm never passes through its own chest or head (the body's parts do not collide with each
 ## other): the elbow, the forearm and the hand are pushed back out of the torso and the head,
@@ -1260,7 +1337,9 @@ func _keep_arm_out(side: String, dt: float) -> void:
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
 	var out_x := -1.0 if side == "R" else 1.0
-	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)], [fo, fo.global_position], [fo, hand_world(side)]]
+	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)], [up, up.global_position]]
+	if not fo.severed:
+		pts.append_array([[fo, fo.global_position], [fo, hand_world(side)]])
 	for body in [torso, head]:
 		if body.severed:
 			continue
@@ -1276,7 +1355,7 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			var push := Vector3(0, 0, front) if front < aside or l.z > 0.0 else Vector3(out_x * aside, 0, 0)
 			var part: VoxelPart = pp[0]
 			var v_out := (bq * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
-			var m_eff: float = fo.nominal_mass + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
+			var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
 			var acc: float = push.length() * 4000.0 - minf(0.0, v_out) * 40.0
 			part.apply_impulse(bq * push.normalized() * acc * m_eff * dt, (pp[1] as Vector3) - part.global_position)
 
@@ -1506,6 +1585,35 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	fore.apply_torque_impulse(tq * dt * f)
 	w.apply_torque_impulse(tq * dt * (1.0 - f))
 
+## A fighter's elbow is held, not left to flap: the forearm (and the weapon welded to it) is
+## steered relative to the upper arm, its bend changing no faster than a trained arm would
+## change it, the reaction going into the upper arm. So the arm swings as one lever from the
+## shoulder, like real technique, and a heavy head cannot whip it about.
+const ELBOW_DAMP := 45.0
+const ELBOW_PULL := 40.0
+func _lock_elbow(side: String, w: Weapon, fore_q: Quaternion, strength: float, dt: float) -> void:
+	var fore: VoxelPart = arm[side].fore
+	var upper: VoxelPart = arm[side].upper
+	var ax := PD.quat_of(fore) * Vector3(0, -1, 0)
+	# Only the bend: the twist about the forearm is the wrist's business (handled above).
+	var err := PD.rot_error(fore_q, PD.quat_of(fore))
+	err -= ax * err.dot(ax)
+	var rel := fore.angular_velocity - upper.angular_velocity
+	rel -= ax * rel.dot(ax)
+	var hand_w := hand_world(side)
+	var lever := (w.global_transform * w.center_of_mass) - hand_w
+	var i_fore := PD.inertia_of(fore) + fore.nominal_mass * pow(FORE_LEN * S * 0.5, 2)
+	var i_asm := i_fore + PD.inertia_of(w) + w.mass * lever.length_squared()
+	# The bend is between two bodies: sized on their combined (reduced) inertia.
+	var i_up := PD.inertia_of(upper) + upper.nominal_mass * pow(UPPER_LEN * S * 0.5, 2)
+	var i_red := i_asm * i_up / (i_asm + i_up)
+	# A damper on the bend, with a gentle pull toward the bend the aim wants: the elbow does
+	# not flex fast unless the fighter means it, so a swing is one lever from the shoulder.
+	var tq := (err * ELBOW_PULL - rel * ELBOW_DAMP) * i_red
+	tq = PD.clamp_len(tq, 260.0 * maxf(0.3, strength) * MS * S * float(mods.strength))
+	fore.apply_torque_impulse(tq * dt)
+	upper.apply_torque_impulse(-tq * dt)
+
 func _orient_shield(w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_q: Quaternion, strength: float, dt: float) -> void:
 	var fwd := yaw_q * Vector3(0, 0, 1)
 	var out := target_w - t_pos
@@ -1524,6 +1632,7 @@ func set_standing(on: bool) -> void:
 		state = "stand"
 		stood_at = time
 	_legs_touch_ground(not on)
+	_legs_apart(not on)
 
 ## Standing (and getting up) the legs are held by the support spring, not the sand; lying, they
 ## rest on it.

@@ -1,5 +1,5 @@
 extends Node
-## Both arms are the same arm, mirrored: neither the hand, the forearm nor the elbow of either
+## No limb passes into its own body (limp, down or dead too). Both arms are the same arm, mirrored: neither the hand, the forearm nor the elbow of either
 ## ever goes in through its own chest or head, wherever the mouse sends the hand.
 
 var t
@@ -44,4 +44,52 @@ func test_neither_arm_goes_through_the_body() -> void:
 		m.combat.fighters.erase(f)
 		f.queue_free()
 		await get_tree().physics_frame
+	m.queue_free()
+
+func _worst_in_body(f: Fighter) -> float:
+	var worst := 0.0
+	for sd in ["R", "L"]:
+		var pts := [f.arm[sd].upper.global_transform * Vector3(0, -f.arm[sd].upper.half_ext.y, 0)]
+		if not f.arm[sd].fore.severed:
+			pts.append_array([f.arm[sd].fore.global_position, f.hand_world(sd)])
+		for pt in pts:
+			for body in [f.torso, f.head]:
+				if body.severed:
+					continue
+				var l: Vector3 = body.global_transform.affine_inverse() * pt
+				worst = maxf(worst, minf(body.half_ext.x - absf(l.x), minf(body.half_ext.y - absf(l.y), body.half_ext.z - absf(l.z))))
+	# The head and the legs: no part's middle inside the chest.
+	for q in [f.head, f.by_name.shinL, f.by_name.shinR, f.by_name.thighL, f.by_name.thighR]:
+		if q.severed:
+			continue
+		var l: Vector3 = f.torso.global_transform.affine_inverse() * q.global_position
+		var th: Vector3 = f.torso.half_ext
+		worst = maxf(worst, minf(th.x - absf(l.x), minf(th.y - absf(l.y), th.z - absf(l.z))))
+	return worst
+
+func test_limp_and_dead_arms_stay_out_of_the_body() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var e = m.spawn_fighter({"kind": "bot", "name": "D", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 1, "pos": Vector3(5, 0, 0), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var f: Fighter = e.f
+	for i in 60:
+		await get_tree().physics_frame
+	f.fall(99.0, true)
+	var worst := 0.0
+	for i in 360:
+		await get_tree().physics_frame
+		if i > 30:
+			worst = maxf(worst, _worst_in_body(f))
+	t.check(worst < 0.05, "knocked down and limp, no limb lies inside the chest (deepest %.3f m)" % worst)
+	f.blood = 0.0
+	worst = 0.0
+	for i in 360:
+		await get_tree().physics_frame
+		if i > 60:
+			worst = maxf(worst, _worst_in_body(f))
+	t.eq(f.state, "dead", "he bled out")
+	t.check(worst < 0.05, "and dead, they still do (deepest %.3f m)" % worst)
 	m.queue_free()
