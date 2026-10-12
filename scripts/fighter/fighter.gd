@@ -23,6 +23,8 @@ const LEG_MASS := 0.5
 ## stiff joint motors; torque-driven legs lag their targets, so less here).
 const ANCHOR_K := 4.0
 const CENTER_K := 3.0
+const STANCE_K := 2.5   # how hard the hips are drawn over the foot that bears the weight
+const FOOT_HOLD := 900.0  # a planted foot's grip on the sand
 const LEG_WN := 30.0
 ## How much of the leg drive pushes back on the torso (Rapier's joint motors are solved with the
 ## joints; a torque drive's full reaction fights the balance when the body lies on its side).
@@ -109,6 +111,7 @@ var crawling := false
 var eye_hurt := 0.0
 var strip_clock := 0.0
 var crawl_phase := 0.0
+var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
@@ -937,6 +940,25 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		ground_y = hit.position.y
 		var run_low := 0.06 * minf(1.0, walk_amt * 2.5 / 3.5)
 		var desired := torso_y * (0.95 - run_low) * (1.0 - crouch * 0.22 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
+		# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
+		# reaches from the foot planted on the sand to the hip (an inverted pendulum: up as the body
+		# passes over the foot, down as the stride opens). Never higher than the legs reach, so
+		# a planted foot always stands on the sand.
+		if state == "stand" and not one_leg and hop_phase <= 0.0:
+			var pend := INF
+			var reach_l := 16.0 * V * S * (0.965 - crouch * 0.12 - run_low * 0.5)
+			for sd in ["L", "R"]:
+				var ftp = feet[sd]
+				if ftp == null or ftp.swing or by_name["shin" + sd].severed:
+					continue
+				var hip_w: Vector3 = t_pos + t_rot * by_name["thigh" + sd].pa
+				var dxz := Vector2(hip_w.x - ftp.anchor.x, hip_w.z - ftp.anchor.z).length()
+				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
+				pend = minf(pend, ground_y + hh + (t_pos.y - hip_w.y))
+			if pend < INF:
+				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2))
+			if stance_h > 0.0:
+				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
 		grounded = dist < desired + 0.25
 		if grounded and support > 0.0:
 			var vy := torso.linear_velocity.y
@@ -972,6 +994,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# between them (standing still, every way; walking, only sideways, which also keeps the
 		# walk straight). Godot's joint torques, unlike Rapier's motors, let the body creep off
 		# its feet and glide as if it hovered.
+		# On one foot the weight goes over it: the hips swing across to stand above it.
+		if planted == 1 and move_local.length_squared() > 0.01:
+			for sd in ["L", "R"]:
+				var fs = feet[sd]
+				if fs and not fs.swing and not by_name["shin" + sd].severed:
+					var side_w2 := yaw_q * Vector3(1, 0, 0)
+					var off1 := Vector3(fs.anchor.x - t_pos.x, 0, fs.anchor.z - t_pos.z)
+					move_world += PD.clamp_len(side_w2 * off1.dot(side_w2) * 0.6 * STANCE_K, 0.25)
 		if planted == 2 and feet.L and feet.R:
 			var mid: Vector3 = ((feet.L.anchor as Vector3) + (feet.R.anchor as Vector3)) * 0.5
 			var off := Vector3(mid.x - t_pos.x, 0, mid.z - t_pos.z)
@@ -980,7 +1010,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				off = side_w * off.dot(side_w)
 			move_world += PD.clamp_len(off * CENTER_K, 1.0)
 	if grounded and standing:
-		var accel := (9.0 + 12.0 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
+		# He moves himself by pushing off the sand: with no foot down there is next to nothing to push on.
+		var accel := (2.5 + 18.5 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
 		if one_leg:
 			accel *= (0.2 + 2.2 * hop_k) if hop_phase > 0.0 else 1.0
 		var ix := Vector2(move_world.x - lv.x, move_world.z - lv.z).limit_length(6.0) * accel * total_mass * dt
@@ -1002,7 +1033,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 3.0 * dt
 	v_smooth = v_smooth.lerp(Vector3(lv.x, 0, lv.z), minf(1.0, dt * 10.0))
 	var h_speed := Vector2(v_smooth.x, v_smooth.z).length()
-	var step_len: float = minf(0.66, 0.28 + 0.12 * h_speed) * S
+	var step_len: float = (minf(1.0, 0.3 + 0.17 * h_speed) if sprint else minf(0.66, 0.28 + 0.12 * h_speed)) * S
 	if h_speed > 0.25:
 		gait_phase += dt * h_speed * PI / step_len
 
@@ -1108,7 +1139,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				if ft.s >= 1.0 or (moving and not my_swing):
 					ft.swing = false
 					ft.anchor = ft.land
-			elif ft.slip > (0.3 if moving else 0.18) * S:
+			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S:
 				ft.swing = true
 				ft.from = ft.anchor
 				ft.s = 0.0
@@ -1147,6 +1178,15 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			thigh_q = Quaternion(Vector3(1, 0, 0), -0.75).slerp(thigh_q, k)
 			bend = 1.6 * (1.0 - k) + bend * k
 		var snap: bool = kicking
+		# A foot down holds the sand (friction): it stays where it was put while the body goes
+		# over it, instead of skating along under it.
+		if standing and grounded and not kicking and feet[side] and not feet[side].swing and not shin.severed and not shin.hanging and not rising:
+			var sole := shin.global_transform * Vector3(0, -4 * V * S, 0)
+			var goal: Vector3 = feet[side].anchor
+			var sv := shin.velocity_at(sole)
+			var fh := Vector3((goal.x - sole.x) * FOOT_HOLD - sv.x * 60.0, minf(0.0, (goal.y - sole.y) * FOOT_HOLD - sv.y * 60.0), (goal.z - sole.z) * FOOT_HOLD - sv.z * 60.0)
+			fh = PD.clamp_len(fh * (shin.nominal_mass + thigh.nominal_mass * 0.5), 260.0 * f * MS * S)
+			shin.apply_impulse(fh * dt, sole - shin.global_position)
 		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
 			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)

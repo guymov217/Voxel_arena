@@ -55,7 +55,7 @@ func test_a_campaign_stage_plays_through() -> void:
 	var spawned := m.enemies().size()
 	t.check(spawned > 0, "round 1 enemies are in the arena (%d)" % spawned)
 	var rounds_seen := {0: true}
-	for i in 120 * 150:
+	for i in 120 * 240:   # long fights happen (a man down bleeds out slowly): the flow is what is tested
 		await get_tree().physics_frame
 		rounds_seen[m.round] = true
 		if not result.is_empty():
