@@ -59,7 +59,7 @@ func flash(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> void:
 
 func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vector3, owner_, extra := {}) -> Dictionary:
 	var was_alive: bool = c.alive
-	var h := {"impulse": J, "type": type, "hardness": extra.get("hardness", 0.9 if type == "point" else 0.6), "sharpness": extra.get("sharpness", 0.9 if type == "point" else 0.0), "point": point, "dir": dir, "axis": dir}
+	var h := {"impulse": J, "type": type, "hardness": extra.get("hardness", 0.9 if type == "point" else 0.6), "sharpness": extra.get("sharpness", 0.9 if type == "point" else 0.0), "point": point, "dir": dir, "axis": dir, "crush": extra.get("crush", 0.0), "heavy": extra.get("heavy", 0.0)}
 	var res: Dictionary = c.apply_hit(part, h)
 	if owner_ and owner_ != c:
 		c.last_attacker = owner_
@@ -447,7 +447,9 @@ func on_item(ev: Dictionary) -> void:
 			m.sfx("thud", ev.p, 1.0)
 			burst(ev.p, Color(0.6, 0.5, 0.4), 14, 2.0)
 			if part and c and c.alive:
-				_hit(c, part, J, "blunt", ev.p, ev.dir, owner_, {"hardness": 1.0})
+				# It crushes what it lands on: a dent the size of the blow, flesh and bone.
+				var crush := minf(0.12, 0.03 + J * 0.0009) * sqrt(float(c.S))
+				_hit(c, part, J, "blunt", ev.p, ev.dir, owner_, {"hardness": 1.0, "crush": crush, "heavy": clampf(J / 60.0, 0.0, 1.0)})
 				var push: Vector3 = (ev.dir as Vector3) * float(ev.mass) * spd * 0.35
 				c.torso.apply_central_impulse(Vector3(push.x, maxf(0.0, push.y), push.z))
 				if c.state == "stand" and J > 25.0 and not c.mods.get("unstoppable", false):

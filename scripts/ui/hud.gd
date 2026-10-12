@@ -41,6 +41,7 @@ var status_label: Label
 var slots: Array = []
 var held_label: Label
 var vignette: TextureRect
+var sight: TextureRect
 var hurt := 0.0
 var last_blood := 100.0
 var popups: Control
@@ -122,6 +123,26 @@ func _build_vignette() -> void:
 	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vignette.modulate.a = 0.0
 	root.add_child(vignette)
+	# Sight knocked about (a blow across the eyes, the head cut or crushed): the view closes
+	# in from the edges, as much as the eyes are hurt.
+	var sg := Gradient.new()
+	sg.set_color(0, Color(0, 0, 0, 0.0))
+	sg.add_point(0.35, Color(0, 0, 0, 0.0))
+	sg.set_color(sg.get_point_count() - 1, Color(0, 0, 0, 0.97))
+	var st := GradientTexture2D.new()
+	st.gradient = sg
+	st.fill = GradientTexture2D.FILL_RADIAL
+	st.fill_from = Vector2(0.5, 0.5)
+	st.fill_to = Vector2(0.95, 0.5)
+	st.width = 256
+	st.height = 256
+	sight = TextureRect.new()
+	sight.texture = st
+	sight.stretch_mode = TextureRect.STRETCH_SCALE
+	sight.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sight.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sight.modulate.a = 0.0
+	root.add_child(sight)
 	# A lost eye: that side of the world goes dark (a glass eye gives most of it back).
 	for side in ["R", "L"]:
 		var bg := Gradient.new()
@@ -459,6 +480,7 @@ func _process(dt: float) -> void:
 		var low := clampf((35.0 - f.blood) / 35.0, 0.0, 1.0)
 		var beat := low * (0.35 + 0.25 * maxf(0.0, sin(Time.get_ticks_msec() / 1000.0 * 6.0)))
 		vignette.modulate.a = clampf(maxf(hurt * 0.8, beat) + (0.6 if not f.alive else 0.0), 0.0, 1.0)
+		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3, 0.0, 0.95)
 		body_rects.fig.queue_redraw()
 		# The crowd's cheers for you.
 		for ev in match_.spectacle.events:
@@ -485,6 +507,7 @@ func _process(dt: float) -> void:
 		held_label.text = ("In hand: %s · hold F to aim, let go to throw" % String(held.type).trim_prefix("pot_").capitalize()) if held else ""
 	else:
 		vignette.modulate.a = 0.0
+		sight.modulate.a = 0.0
 		for s in slots:
 			s.panel.visible = false
 	match_.spectacle.events.clear()

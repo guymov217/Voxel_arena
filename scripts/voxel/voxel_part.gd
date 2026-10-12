@@ -318,6 +318,18 @@ func set_shown(indices: Array, on: bool) -> void:
 	_write_shown(mm, main, on)
 	if jaw_mm:
 		_write_shown(jaw_mm, jaw, on)
+		if not jaw.is_empty():
+			# The teeth and the gullet go with the jaw: hacked mostly away, nothing floats there.
+			var left := 0
+			for i in jaw_slot:
+				left += alive[i]
+			var keep := left > jaw_slot.size() * 0.35
+			for c in jaw_pivot.get_children():
+				if c is MeshInstance3D:
+					c.visible = keep
+			if jaw_mouth:
+				for c in jaw_mouth.get_children():
+					c.visible = keep
 
 static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
 	var k := 1.0 if on else 0.0

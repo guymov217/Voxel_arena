@@ -37,6 +37,7 @@ func test_a_thunder_pot_is_a_real_blast() -> void:
 	m.queue_free()
 
 func test_nails_fly_all_round_and_stick() -> void:
+	seed(5)
 	var m := _match()
 	m.me.f.teleport(Vector3(0, 0, -12))
 	var v := _victim(m, Vector3(0, 0, 1.0), func(_e): return {})
@@ -82,6 +83,7 @@ func test_an_anvil_strikes_hard_and_lies_where_it_falls() -> void:
 	var it: Dictionary = m.items.throw_flat("pot_anvil", Vector3(0, 1.3, 0.3), v.torso.global_position, m.me.f, 8.0)
 	await _steps(150)
 	t.check(hp0 - v.total_hp() > 15.0, "it hurts him badly (%.0f hp)" % (hp0 - v.total_hp()))
+	t.check(_lost(v) >= 8, "and crushes the flesh it lands on (%d voxels)" % _lost(v))
 	t.check(m.items.list.has(it), "the anvil is still there, not shattered")
 	t.check(it.grounded and float(it.p.y) < 0.3 and Vector2(it.p.x, it.p.z).distance_to(Vector2(0, 2.0)) < 1.5, "it dropped at his feet (%s)" % str(it.p))
 	m.queue_free()

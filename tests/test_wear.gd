@@ -84,3 +84,33 @@ func test_a_thrown_pot_flies_flat_at_the_mark() -> void:
 		t.check(off < 15.0, "to %s it leaves within %.0f° of the line to the mark" % [target, off])
 		m.items.remove(it)
 	m.queue_free()
+
+## What is cut or crushed away tells: the head's loss closes in the view for good, a stove-in
+## chest gets its breath back slowly, a hurt arm swings weaker; and a hard blunt blow leaves a
+## crater, not just a number.
+func test_lost_voxels_take_function_with_them() -> void:
+	var m := _match()
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": PI})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var f: Fighter = e.f
+	for i in 10:
+		await get_tree().physics_frame
+	var torso0 := f.torso.function()
+	var arm0 := f.arm_func("R")
+	var n0 := f.torso.alive_count
+	var tf := f.torso.global_transform
+	f.apply_hit(f.torso, {"impulse": 22.0, "type": "blunt", "hardness": 0.9, "point": tf * Vector3(0, 0, f.torso.half_ext.z), "dir": -(tf.basis * Vector3.BACK).normalized(), "heavy": 0.3})
+	t.check(f.torso.alive_count < n0, "a hard blunt blow crushes a crater (%d voxels)" % (n0 - f.torso.alive_count))
+	for k in 4:
+		var hf := f.head.global_transform
+		f.apply_hit(f.head, {"impulse": 40.0, "type": "edge", "hardness": 0.8, "sharpness": 0.9, "point": hf * Vector3(f.head.half_ext.x, 0, 0), "dir": -(hf.basis * Vector3.RIGHT).normalized(), "axis": hf.basis * Vector3.FORWARD, "edge": -(hf.basis * Vector3.RIGHT).normalized()})
+		if f.head.severed or not f.alive:
+			break
+	t.check(f.eye_floor > 0.05, "a head cut into keeps the view narrowed (%.2f)" % f.eye_floor)
+	for k in 3:
+		var af: Transform3D = f.arm.R.upper.global_transform
+		f.apply_hit(f.arm.R.upper, {"impulse": 30.0, "type": "edge", "hardness": 0.8, "sharpness": 0.9, "point": af * Vector3(f.arm.R.upper.half_ext.x, 0, 0), "dir": -(af.basis * Vector3.RIGHT).normalized(), "axis": af.basis * Vector3.FORWARD, "edge": -(af.basis * Vector3.RIGHT).normalized()})
+	t.check(f.arm_func("R") < arm0 * 0.85, "a cut-up arm is a weaker arm (%.2f of %.2f)" % [f.arm_func("R"), arm0])
+	t.check(f.torso.function() < torso0, "and the crushed chest works worse (%.2f of %.2f)" % [f.torso.function(), torso0])
+	m.queue_free()

@@ -568,6 +568,14 @@ func _grip_joint(fore: VoxelPart, w: Weapon, hand: Vector3) -> Joint3D:
 	j.node_b = w.get_path()
 	return j
 
+## A long pointed shaft (spear, javelin, trident): held and thrust point first.
+static func is_spear(w) -> bool:
+	if w == null:
+		return false
+	if not w.has_meta("spear"):
+		w.set_meta("spear", Weapon.flies_point_first(w.design) and w.design.get("chain") == null)
+	return bool(w.get_meta("spear"))
+
 static func has_wrist(w) -> bool:
 	return w != null and not w.is_shield and not w.design.has("shoots") and w.design.get("chain") == null
 
@@ -1315,6 +1323,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	var still := Vector2(v_smooth.x, v_smooth.z).length() < 0.4
 	var regen := 3.0 if stamina_use > 0.02 * dt * 60.0 else (18.0 if still else 9.0)
+	# A chest cut open or stove in: he gets his breath back slowly.
+	regen *= 0.35 + 0.65 * torso.function()
 	stamina = clampf(stamina - stamina_use + regen * heavy * dt, 0.0, 100.0)
 
 func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
@@ -1370,6 +1380,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var charging := float(inp.get("charging", 0.0))
 	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and state == "stand")
 	var following: bool = ta != null and ta.side == side and ta.phase == "follow"
+	# A throw is made with one hand: the off hand lets go of the haft as the arm draws back.
+	if (winding or following) and side == "R" and two_handed and held_item == null:
+		if weapon_joints.L:
+			weapon_joints.L.queue_free()
+			weapon_joints.L = null
+		two_handed = false
 	var spear: bool = w != null and Weapon.flies_point_first(w.design) and held_item == null
 	throw_pose[side] = spear and down_hp == null and (winding or following)
 	if down_hp == null and (winding or following):
@@ -1453,6 +1469,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var dir = (target_w - shoulder_w).normalized()
 	if w and not w.is_shield and weapon_joints[side]:
 		var w_aim := weapon_aim(side, w, target_w, t_pos, yaw_q, inp, dt)
+		if side == "R" and two_handed and weapon_joints.L and (is_spear(w) or thrust_aim[side] != null) and not throw_pose[side]:
+			# A spear in both hands: the front hand sits ahead of its own shoulder on the line,
+			# the back hand behind it down the shaft, and a thrust drives both along it.
+			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08, -0.2, 0.4 + 0.3 * clampf(thrust, -1.0, 1.0)) * S)
+			target_w = front - w_aim * (w.grip_off - w.grip_main)
 		var fore_q := w_aim * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
@@ -1473,7 +1494,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
 		# On the way, or the weapon still carrying its swing (a hammer head's momentum at the
 		# end of a blow is just what folds a loose elbow).
-		var swinging: bool = power and state == "stand" and (target_vel[side].length() > 1.6 * S or w.angular_velocity.length() * w.reach > 2.5 * S) and w.design.get("chain") == null and not w.design.has("shoots")
+		# (Not in a thrust: the arm has to straighten along the line.)
+		var swinging: bool = power and state == "stand" and thrust < 0.05 and (target_vel[side].length() > 1.6 * S or w.angular_velocity.length() * w.reach > 2.5 * S) and w.design.get("chain") == null and not w.design.has("shoots")
 		var want_bend := elbow_dir.angle_to(fore_dir)
 		if w.mass > 2.5:
 			want_bend = minf(want_bend, 0.9)
@@ -1699,7 +1721,7 @@ func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t
 ## The hand moves on a flat pane in front of the body, Half Sword style.
 func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var sh: Vector3 = shoulder[side]
-	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * (0.36 if two_handed and side == "R" else 0.5) * S
+	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * (0.22 if two_handed and side == "R" else 0.5) * S
 	var fist := 0.12 if not weapons[side] else 0.0
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
 	var y := (-0.08 + (hy * 0.42 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
@@ -1724,7 +1746,27 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	if flat.length_squared() < 1e-4:
 		flat = Vector3(0, 0, 1)
 	flat = flat.normalized()
+	if two_handed and side == "R" and not is_spear(w):
+		# Both hands on the haft: the hands stay in front of the chest and the wrists and
+		# forearms carry the blade round, so its sweep comes from the mouse itself (well past
+		# 80 degrees either way), not from how far across the body the hands can get.
+		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * 0.72
+		flat = Vector3(sin(sweep), 0, cos(sweep))
 	var axis := yaw_q * Vector3(flat.x * cos(elev), sin(elev), flat.z * cos(elev))
+	if is_spear(w) and not throw_pose[side]:
+		# A spear is held couched, its point on the line the fighter looks along; the mouse
+		# moves the point about that line (up for an overhand grip, aside to cover), it does
+		# not tilt the shaft up like a sword blade.
+		var lk = inp.get("look")
+		var base: Vector3 = yaw_q * Vector3(0, 0, 1)
+		if lk is Dictionary:
+			var pt := clampf(float(lk.get("pitch", 0.0)), -0.9, 0.9) * 0.8
+			base = Vector3(sin(float(lk.yaw)) * cos(pt), sin(pt), cos(float(lk.yaw)) * cos(pt))
+		var hx := clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0)
+		axis = base.rotated(Vector3.UP, -hx * 0.3)
+		var side_ax := axis.cross(Vector3.UP).normalized()
+		if side_ax.length_squared() > 1e-4:
+			axis = axis.rotated(side_ax, clampf(hy, -1.6, 1.6) * 0.35).normalized()
 	var ta = thrust_aim[side]
 	if ta != null:
 		axis = axis.slerp(ta.dir, ta.k).normalized()
@@ -2005,20 +2047,23 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				if along > -V * S and along < depth + open and (d - la * along).length() < r:
 					remove.append(i)
 	else:
-		dmg = J * 1.5
+		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
+		# hammer in earnest is as dangerous as a blade, only in a different way.
+		dmg = J * 1.9
 		stagger = minf(1.0, stagger + J * 0.018)
 		if part == head:
 			concussion = minf(1.0, concussion + J * 0.022)
 		if part == torso and lp.y < 0.0 and J > 8.0 and not detached:
 			stamina = maxf(0.0, stamina - J * 1.3)
 			res.winded = true
-		if not detached and J > 20.0 and not part.fractured and part != torso and part != head and randf() < (J - 18.0) * 0.05 * (1.0 + heavy) / float(mods.toughness):
+		if not detached and J > 16.0 and not part.fractured and part != torso and part != head and randf() < (J - 14.0) * 0.06 * (1.0 + heavy) / float(mods.toughness):
 			part.fractured = true
 			part.bleed += 0.5
 			part.wound(lp, minf(0.16, 0.08 + J * 0.002) * S, "bruise")
 			res.fractured = part
-		if J > 16.0 or (hollow > 0.0 and J > 10.0):
-			var r: float = (minf(0.075 + 0.04 * heavy, 0.04 + maxf(0.0, J - 16.0) * 0.003 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * S
+		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
+		if J > 9.0 or (hollow > 0.0 and J > 6.0):
+			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * S
 			var at := lp + ld * hollow
 			for i in part.fx.size():
 				if part.alive[i] and part.local_of(i).distance_to(at) < r:
@@ -2028,8 +2073,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# loose falls away as pieces.
 	var crush: float = float(hit.get("crush", 0.0))
 	if crush > 0.0:
+		# From the nearest point of the part (a heavy thing's middle may be outside it).
+		var cp := lp.clamp(-part.half_ext, part.half_ext)
 		for i in part.fx.size():
-			if part.alive[i] and part.local_of(i).distance_to(lp) < crush:
+			if part.alive[i] and part.local_of(i).distance_to(cp) < crush:
 				remove.append(i)
 		part.bleed += J * 0.03
 	# Every cut or stab that lands takes something with it: under the threshold for a real wound
@@ -2050,7 +2097,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if not detached and part.parent_part and part.parent_part != torso:
 		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + J * 0.005)
 	if not detached:
-		stagger = minf(1.0, stagger + J * 0.0056 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))))
+		# A wrecked trunk holds him up worse: every blow rocks him more.
+		stagger = minf(1.0, stagger + J * 0.0056 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
 		part.flinch_t = maxf(part.flinch_t, minf(0.45, 0.12 + J * 0.01))
 		if push_t <= 0.0 and J > 4.0:
 			push_t = 0.3
@@ -2088,6 +2136,13 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			remove = remove.slice(0, 80 * 8)
 		var voxels := part.remove_voxels(remove)
 		res.removed.append({"part": part, "indices": remove, "voxels": voxels})
+		# What is gone from the head takes sight with it, and stays gone: the view closes in
+		# (players) and the aim wanders (everyone), more the more of the head is lost.
+		if part == head and not detached:
+			var lost := 1.0 - part.integrity
+			eye_floor = maxf(eye_floor, minf(0.85, lost * 1.6))
+			eye_hurt = maxf(eye_hurt, eye_floor)
+			concussion = minf(1.0, concussion + float(remove.size()) / maxf(1.0, float(part.fx.size())) * 1.5)
 		break_loose(part, res, hit.dir, detached)
 		if not part.severed and part.integrity < 0.4:
 			part.hp = 0.0
