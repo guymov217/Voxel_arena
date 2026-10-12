@@ -364,7 +364,7 @@ func function() -> float:
 	return fn
 
 ## Knocks out voxels; returns [{p: world position, color}].
-func remove_voxels(indices: Array, smear := true) -> Array:
+func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	var out := []
 	var done := []
 	var centre := Vector3.ZERO
@@ -383,7 +383,7 @@ func remove_voxels(indices: Array, smear := true) -> Array:
 		centre /= out.size()
 		wound(centre, vf * part_scale * (2.2 + pow(out.size(), 1.0 / 3.0) * 0.8), "blood")
 	fit_collider()
-	if fighter and fighter.has_method("on_part_voxels_lost"):
+	if notify and fighter and fighter.has_method("on_part_voxels_lost"):
 		fighter.on_part_voxels_lost(self, done, out)
 	return out
 
@@ -629,14 +629,20 @@ func _root_axis() -> Array:
 
 ## Alive voxels no longer connected (face to face) to where the part is held on: the joint face,
 ## or for a part held by nothing (a torso, a beast's body, a limb already off) the biggest lump.
-func loose_lumps() -> Array:
+## `ignore`: voxels to count as gone for the test (the lips of a cut, to find what hangs by them).
+func loose_lumps(ignore := PackedInt32Array()) -> Array:
 	var wf := grid.x; var hf := grid.y; var df := grid.z
 	var n := wf * hf * df
 	var cell := PackedInt32Array(); cell.resize(n)
 	var mark := PackedByteArray(); mark.resize(n)
 	var count := 0
+	var skip := PackedByteArray()
+	if not ignore.is_empty():
+		skip.resize(fx.size())
+		for i in ignore:
+			skip[i] = 1
 	for i in fx.size():
-		if alive[i]:
+		if alive[i] and (skip.is_empty() or skip[i] == 0):
 			cell[(fx[i] * hf + fy[i]) * df + fz[i]] = i + 1
 			count += 1
 	if count == 0:

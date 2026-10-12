@@ -2193,6 +2193,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var trunk := 0.55 if part == torso or part == head else 1.0
 		depth = minf(depth, thick * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
 		var width := vfs * (0.75 + 0.5 * heavy)
+		# A blow that cuts at all goes at least one layer of voxels deeper into the wound: shorter
+		# than a voxel, the same light blows only ever scraped the same mouth of it.
+		depth = maxf(depth, vfs * 1.1)
 		if J * eff > 3.0 * big:
 			var n := la.cross(ld)
 			if n.length_squared() < 1e-4:
@@ -2335,6 +2338,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			eye_hurt = maxf(eye_hurt, eye_floor)
 			concussion = minf(1.0, concussion + float(remove.size()) / maxf(1.0, float(part.fx.size())) * 1.5)
 		break_loose(part, res, hit.dir, detached)
+		_check_flaps(res)
 		if not part.severed and part.integrity < 0.4:
 			part.hp = 0.0
 	if part == head and part.hp <= 0.0:
@@ -2404,6 +2408,129 @@ func _hollow(part: VoxelPart, lp: Vector3, ld: Vector3, width: float) -> float:
 		deepest = a
 	return deepest
 
+## Flaps: a lump of a part cut almost free (a piece of the scalp, a slice of a thigh, a beast's
+## jowl) hangs on by the few voxels left at the cut, its own little body on a loose joint,
+## swinging and flapping with every move, until a blow cuts the strip it hangs by.
+var flaps: Array = []
+const MAX_FLAPS := 8
+const FLAP_MIN := 8
+
+func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
+	var cut := []
+	for r in res.removed:
+		if r.part == part:
+			cut.append_array(r.indices)
+	var made := false
+	if part.freeze or part.severed or part.hanging or cut.is_empty() or flaps.size() >= MAX_FLAPS or not part.is_inside_tree():
+		return false
+	var wf: int = part.grid.x
+	var hf: int = part.grid.y
+	var df: int = part.grid.z
+	var cellmap := PackedInt32Array()
+	cellmap.resize(wf * hf * df)
+	for i in part.fx.size():
+		if part.alive[i]:
+			cellmap[(part.fx[i] * hf + part.fy[i]) * df + part.fz[i]] = i + 1
+	# The lips of the cut: the flesh left within two voxels of what was just taken.
+	var lips := {}
+	for i in cut:
+		var x: int = part.fx[i]
+		var y: int = part.fy[i]
+		var z: int = part.fz[i]
+		for dx in range(-2, 3):
+			for dy in range(-2, 3):
+				for dz in range(-2, 3):
+					if absi(dx) + absi(dy) + absi(dz) > 2:
+						continue
+					var xx := x + dx
+					var yy := y + dy
+					var zz := z + dz
+					if xx < 0 or yy < 0 or zz < 0 or xx >= wf or yy >= hf or zz >= df:
+						continue
+					var k := cellmap[(xx * hf + yy) * df + zz]
+					if k > 0:
+						lips[k - 1] = true
+	if lips.is_empty():
+		return false
+	var lip_list := PackedInt32Array(lips.keys())
+	# What would come away if the lips were gone hangs by them alone.
+	for lump in part.loose_lumps(lip_list):
+		if lump.size() < FLAP_MIN or lump.size() > 0.6 * part.alive_count or part.near_child_anchor(lump):
+			continue
+		var inside := {}
+		for i in lump:
+			inside[i] = true
+		var link := PackedInt32Array()
+		for i in lip_list:
+			var x: int = part.fx[i]
+			var y: int = part.fy[i]
+			var z: int = part.fz[i]
+			for nb in [[x - 1, y, z], [x + 1, y, z], [x, y - 1, z], [x, y + 1, z], [x, y, z - 1], [x, y, z + 1]]:
+				if nb[0] < 0 or nb[1] < 0 or nb[2] < 0 or nb[0] >= wf or nb[1] >= hf or nb[2] >= df:
+					continue
+				var k := cellmap[(nb[0] * hf + nb[1]) * df + nb[2]]
+				if k > 0 and inside.has(k - 1):
+					link.append(i)
+					break
+		# Only a real strip: a few voxels, not a broad bridge of flesh.
+		if link.is_empty() or link.size() > maxi(6, int(lump.size() * 0.2)):
+			continue
+		var idx := Array(lump)
+		# Not told to the guests yet: for them it stays on the part until it drops.
+		var vox := part.remove_voxels(idx, false, false)
+		var ch := Chunk.spawn(part, vox, Vector3.ZERO)
+		if ch == null:
+			on_part_voxels_lost(part, idx, vox)
+			continue
+		ch.linear_velocity = part.velocity_at(ch.global_position)
+		ch.angular_velocity = part.angular_velocity
+		var at := Vector3.ZERO
+		for i in link:
+			at += part.world_of(i)
+		at /= float(link.size())
+		var out := ch.global_position - at
+		var xa := out.normalized() if out.length() > 1e-4 else Vector3.DOWN
+		var ya := xa.cross(Vector3.FORWARD if absf(xa.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+		var j := ConeTwistJoint3D.new()
+		ch.get_parent().add_child(j)
+		j.global_transform = Transform3D(Basis(xa, ya, xa.cross(ya)), at)
+		j.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, deg_to_rad(75.0))
+		j.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, deg_to_rad(35.0))
+		j.set_param(ConeTwistJoint3D.PARAM_SOFTNESS, 0.9)
+		j.node_a = part.get_path()
+		j.node_b = ch.get_path()
+		ch.flap_of = part
+		ch.flap_joint = j
+		# It swings against the flesh it hangs from rather than through it.
+		ch.remove_collision_exception_with(part)
+		ch.collision_mask |= VoxelPart.LAYER_BODY
+		flaps.append({"chunk": ch, "part": part, "link": link, "idx": idx})
+		res.flapped = true
+		made = true
+		if flaps.size() >= MAX_FLAPS:
+			break
+	return made
+
+## A flap whose strip has been cut through (most of the voxels it hung by gone) drops off.
+func _check_flaps(res: Dictionary) -> void:
+	for fl in flaps.duplicate():
+		var ch = fl.chunk
+		if not is_instance_valid(ch) or ch.flap_of == null:
+			flaps.erase(fl)
+			continue
+		var p: VoxelPart = fl.part
+		var left := 0
+		for i in fl.link:
+			if p.alive[i]:
+				left += 1
+		if left * 3 < (fl.link as PackedInt32Array).size():
+			ch.let_go()
+			ch.linear_velocity += Vector3(0, -0.5, 0)
+			flaps.erase(fl)
+			# The guests drop it now (it stayed on the part for them while it hung).
+			on_part_voxels_lost(p, fl.idx, [])
+			res.flap_off = true
+
 ## After voxels are gone: a lump cut off falls away; a limb cut clean through comes off; a limb
 ## left on a thin strip hangs.
 func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := false) -> void:
@@ -2432,6 +2559,8 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		cut_off = PackedInt32Array()
 	if cut_off != null:
 		sever(part, res, cut_off)
+	elif not detached and _make_flaps(part, res):
+		pass   # what was nearly off hangs on as a flap; the rest of the part is whole enough
 	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)):
 		hang(part, res)
 

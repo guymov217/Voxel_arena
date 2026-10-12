@@ -11,6 +11,8 @@ var t := 0.0
 var held_for := 0.0
 var held_on: Node3D = null
 var half := Vector3.ONE * 0.02
+var flap_of: Node3D = null      # still hanging off this part by a strip of flesh
+var flap_joint: Joint3D = null
 
 ## `voxels` are what VoxelPart.remove_voxels returned ({p: world position, color}).
 ## `part` may also be a Weapon: a piece that broke off it.
@@ -97,12 +99,32 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 	all.append(ch)
 	var cap := 40 if Fx.current and Fx.current.quality == "low" else 160
 	while all.size() > cap:
-		var old = all.pop_front()
+		# The oldest that lies on the sand goes first; a flap still hanging on a body stays.
+		var k := 0
+		while k < all.size() - 1 and is_instance_valid(all[k]) and all[k].flap_of != null:
+			k += 1
+		var old = all.pop_at(k)
 		if is_instance_valid(old):
 			old.queue_free()
 	return ch
 
+## The strip it hung by is cut (or the body is gone): it falls away as a piece like any other.
+func let_go() -> void:
+	if flap_joint and is_instance_valid(flap_joint):
+		flap_joint.queue_free()
+	flap_joint = null
+	if flap_of and is_instance_valid(flap_of):
+		add_collision_exception_with(flap_of)
+	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
+	flap_of = null
+	t = 0.0
+
 func _physics_process(dt: float) -> void:
+	if flap_of != null:
+		if not is_instance_valid(flap_of) or not flap_of.is_inside_tree():
+			let_go()
+		else:
+			return   # hanging on: it swings and does not age
 	t += dt
 	if held_on:
 		held_for -= dt
