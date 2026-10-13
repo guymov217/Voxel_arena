@@ -66,7 +66,6 @@ var hazard_spin := Vector3.ZERO
 var last_side := ""
 var wscale := 1.0
 
-static var _material: StandardMaterial3D
 
 func setup(d: Dictionary, scale_ := 1.0) -> void:
 	design = d.duplicate(true)
@@ -295,25 +294,20 @@ static func voxel_color(mat: String, type: String) -> Color:
 	return c
 
 func _build_mesh() -> void:
-	if _material == null:
-		_material = StandardMaterial3D.new()
-		_material.vertex_color_use_as_albedo = true
-		_material.vertex_color_is_srgb = true
-		_material.roughness = 0.35
-		_material.metallic_specular = 0.7
-		_material.metallic = 0.35
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE * vs * 0.98
-	bm.material = _material
+	bm.material = VoxelPart.body_material()
 	mm = MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
+	mm.use_custom_data = true
 	mm.mesh = bm
 	mm.instance_count = vox.size()
 	for i in vox.size():
 		var v: Array = vox[i]
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(v[0], v[1], v[2]) * vs))
 		mm.set_instance_color(i, voxel_color(v[3], v[4]))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(v[3]))))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # see VoxelPart
@@ -327,6 +321,52 @@ func _build_mesh() -> void:
 		mmi.custom_aabb = AABB(lo - Vector3.ONE * vs, hi - lo + Vector3.ONE * vs * 2.0)
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
+
+# ---------- Burning and poisoned (only the look) ----------
+
+var _burn := Vector2i.ZERO          # what is shown now: x fire, y poison
+var _burn_fx: GPUParticles3D = null
+var _poison_fx: GPUParticles3D = null
+
+## Shows the weapon burning (lying in fire) and/or poisoned (in acid): its voxels glow as their
+## stuff burns (wood and leather well, metal a dull red-hot), flames, embers or fumes of the kind
+## its main material gives off. Nothing about the weapon itself changes.
+func set_burn(fire: bool, poison: bool) -> void:
+	var want := Vector2i(1 if fire else 0, 1 if poison else 0)
+	if want == _burn or mm == null or not mm.use_custom_data:
+		return
+	_burn = want
+	for i in vox.size():
+		var mat := str(vox[i][3])
+		var k := VoxelPart.kind_of_material(mat)
+		var heat := 0.0
+		if fire:
+			match BurnFx.surface_of_kind(k):
+				"wood", "cloth": heat = 0.9
+				"metal": heat = 0.35
+				_: heat = 0.2
+		mm.set_instance_custom_data(i, Color(float(k) / 16.0, heat, 0.7 if poison else 0.0, 1.0))
+	var surface := _main_surface()
+	var size := clampf(reach * 1.6, 0.6, 3.0)
+	if fire and _burn_fx == null:
+		_burn_fx = BurnFx.make(self, surface, true, size)
+	if poison and _poison_fx == null:
+		_poison_fx = BurnFx.make(self, surface, false, size)
+	BurnFx.set_on(_burn_fx, fire)
+	BurnFx.set_on(_poison_fx, poison)
+
+## What most of the weapon's living voxels are made of, as a BurnFx surface.
+func _main_surface() -> String:
+	var count := {}
+	for i in vox.size():
+		if alive[i]:
+			var s := BurnFx.surface_of_material(str(vox[i][3]))
+			count[s] = int(count.get(s, 0)) + 1
+	var best := "metal"
+	for s in count:
+		if count[s] > int(count.get(best, 0)):
+			best = s
+	return best
 
 ## Hides (or shows again) the leather string voxels, while a crossbow's string is drawn by
 ## cords instead (being cocked). Only the picture: the voxels are still there.

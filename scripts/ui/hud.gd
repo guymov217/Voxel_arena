@@ -569,6 +569,8 @@ func _ease_bar(key: String, v: float, dt: float) -> void:
 	b.queue_redraw()
 
 func _process(dt: float) -> void:
+	if not is_instance_valid(match_):
+		return
 	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
 	charge_bar.visible = ch > 0.0
 	if ch != charge:

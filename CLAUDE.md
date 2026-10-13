@@ -9,7 +9,9 @@ a weapon forge, 24 beasts and host-authoritative multiplayer (GodotSteam or ENet
 project.godot       the Godot project (this folder is res://)
 scripts/            game code: fighter/, beast/, voxel/, game/ (match, modes, fx...), ui/, net/, autoload/
 data/*.json         game tables (weapons, materials, body, beasts, campaign, shop, modes)
-shaders/            crowd and flag shaders
+shaders/            crowd, flag, sky and voxel shaders (voxel.gdshader: the arena art; voxel_body: bodies, armour, weapons)
+art/voxel/          the arena and its props as .glb, made by tools/gen_voxel_art.py (do not hand-edit; rebuild)
+tools/              gen_voxel_art.py + voxlib.py (the voxel art), gen_textures.py
 tests/              test_*.gd suites, plus probes (steamshots, beastshots, momentshots, net_host...)
 native/             voxel_core.gdextension.in (copied to .gdextension where the library is built); the built library goes in native/bin/ (not committed)
 extension/          C++ source of the voxel core (godot-cpp 4.4, scons); has a .gdignore
@@ -36,3 +38,8 @@ velocities; compare numbers or names, never whole nodes).
   message (Match.guest_message) and is sanitized on arrival.
 - `scripts/voxel/greedy.gd` uses the C++ VoxelCore when it is loaded and falls back to GDScript;
   keep both in step (tests/test_native.gd).
+- The arena's art is voxel models (art/voxel/*.glb) built by `python3 tools/gen_voxel_art.py`
+  (numpy, numba, pillow). Each surface is named `<material>@<voxel cm>`; VoxelArt
+  (scripts/game/voxel_art.gd) gives it the voxel shader. The layout numbers in the tool (tiers,
+  gates, the box) must match arena.gd. Without the files the old box-built arena is drawn.
+  `-- --probe artshots` renders the views.

@@ -223,6 +223,7 @@ func _build_smithy() -> void:
 	fp.material = fm
 	floor_.mesh = fp
 	viewport.add_child(floor_)
+	_dress_smithy()
 	ghost = MeshInstance3D.new()
 	var gb := BoxMesh.new()
 	gb.size = Vector3.ONE * Data.weapon_voxel * 1.02
@@ -234,6 +235,33 @@ func _build_smithy() -> void:
 	ghost.mesh = gb
 	ghost.visible = false
 	viewport.add_child(ghost)
+
+## The voxel smithy round the anvil (art/voxel): a stone anvil block in place of the plain box,
+## a flagstone floor, and in the gloom behind it the hearth, a rack of arms, jars and crates.
+## They ride on the floor, which follows the weapon's height.
+func _dress_smithy() -> void:
+	var block := VoxelArt.make("forge_anvil")
+	if block:
+		anvil.mesh = null
+		anvil.add_child(block)
+	var tex := Arena.load_texture("res://art/textures/flagstone_voxel.png")
+	if tex:
+		var fm := StandardMaterial3D.new()
+		fm.albedo_texture = tex
+		fm.uv1_triplanar = true
+		fm.uv1_world_triplanar = true
+		fm.uv1_scale = Vector3.ONE / 6.4
+		fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+		fm.roughness = 0.92
+		(floor_.mesh as PlaneMesh).material = fm
+	# Far enough out that the orbiting camera (up to 3 m away) never ends up inside them.
+	VoxelArt.place(floor_, "smithy", Vector3(-3.1, 0, 2.7), deg_to_rad(130))
+	VoxelArt.place(floor_, "weapon_rack", Vector3(3.3, 0, 2.7), deg_to_rad(-130))
+	VoxelArt.place(floor_, "amphora", Vector3(2.0, 0, 3.6), 0.4)
+	VoxelArt.place(floor_, "amphora_wide", Vector3(2.5, 0, 3.4), 1.2)
+	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0, 3.7), 0.3)
+	VoxelArt.place(floor_, "crate", Vector3(-0.9, 0, 4.0), 1.0)
+	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0.6, 3.7), 0.9)
 
 func _show_mode(m: String) -> void:
 	mode = m

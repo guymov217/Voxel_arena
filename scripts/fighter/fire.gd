@@ -79,10 +79,12 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 		if active.is_empty():
 			p.spots = []
 			p.set_flames(false)
+			p.set_poison(false)
 			continue
 		var fire := active.any(func(s): return s.kind == "fire")
 		var acid_on := active.any(func(s): return s.kind == "acid")
 		p.set_flames(fire)
+		p.set_poison(acid_on)
 		if host and not p.severed:
 			p.hp = maxf(0.0, p.hp - dt * ((8.0 if fire else 0.0) + (6.0 if acid_on else 0.0)) / soak)
 			c.blood = maxf(0.0, c.blood - dt * (0.9 if acid_on else 0.6))

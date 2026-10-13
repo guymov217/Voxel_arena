@@ -176,6 +176,11 @@ func _potato(dt: float) -> void:
 			sm.material = mat
 			bomb_mesh.mesh = sm
 			m.add_child(bomb_mesh)
+			# The voxel bomb round the glowing core; the core shrinks to the fuse's burning tip.
+			var vb := VoxelArt.place(bomb_mesh, "bomb", Vector3(-0.025, -0.205, 0.0))
+			if vb:
+				sm.radius = 0.035
+				sm.height = 0.07
 		bomb_mesh.global_position = h.head.global_position + Vector3(0, 0.38 * h.S, 0)
 		var mat2: StandardMaterial3D = bomb_mesh.mesh.material
 		mat2.emission_energy_multiplier = 0.5 + 2.5 * (0.5 + 0.5 * sin(m.time * (6.0 + 30.0 / maxf(0.5, bomb.fuse))))

@@ -57,6 +57,7 @@ func setup() -> void:
 	_sign(Yard.RING.p + Vector3(0, 2.2, 0), "The shoving ring")
 	for p in Yard.TARGETS:
 		_board(p)
+	_dress_stations()
 	_sign(Yard.TARGETS[1] + Vector3(-0.8, 1.3, 0), "Throwing boards")
 
 func _champ_input(_e) -> Dictionary:
@@ -82,7 +83,30 @@ func _ring(p: Vector3, r: float, color: Color) -> void:
 	m.add_child(mi)
 	mi.global_position = p + Vector3(0, 0.03, 0)
 
+## The stations' furniture, just behind each station's ring (toward the wall), facing the
+## middle: the smith's hearth and anvil, the market stall, the mission board, the physician's
+## table. Only looks; nothing here collides.
+const STATION_PROPS := {"smith": "smithy", "market": "market_stall", "board": "notice_board", "physician": "physician"}
+
+func _dress_stations() -> void:
+	for id in STATION_PROPS:
+		var sp: Vector3 = Yard.STATIONS[id].p
+		var out := Vector3(sp.x, 0, sp.z).normalized()
+		var p := sp + out * (float(Yard.STATIONS[id].r) + 0.9)
+		var n := VoxelArt.place(m, STATION_PROPS[id], p, VoxelArt.facing_centre(p))
+		if n and id == "smith":
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.5, 0.2)
+			l.light_energy = 2.0
+			l.omni_range = 3.5
+			n.add_child(l)
+			l.position = Vector3(-0.8, 1.1, 0.0)
+
 func _sign(p: Vector3, text: String) -> void:
+	if VoxelArt.place(m, "sign_post", Vector3(p.x, 0, p.z), VoxelArt.facing_centre(p)) != null:
+		p.y = maxf(p.y, 2.45)
+		_label(p, text)
+		return
 	var post := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.08, p.y - 0.2, 0.08)
@@ -92,6 +116,9 @@ func _sign(p: Vector3, text: String) -> void:
 	post.mesh = bm
 	m.add_child(post)
 	post.global_position = Vector3(p.x, (p.y - 0.2) * 0.5, p.z)
+	_label(p, text)
+
+func _label(p: Vector3, text: String) -> void:
 	var l := Label3D.new()
 	l.text = text
 	l.font = UIStyle.serif(2)
@@ -110,6 +137,9 @@ func _board(p: Vector3) -> void:
 	m.add_child(root)
 	root.global_position = p
 	root.look_at(Vector3(0, p.y, 0), Vector3.UP)
+	# The voxel target faces -z, as look_at turns it: toward the middle.
+	if VoxelArt.place(root, "target", Vector3.ZERO) != null:
+		return
 	var rings := [[0.5, Color(0.92, 0.88, 0.8)], [0.3, Color(0.7, 0.12, 0.1)], [0.15, Color(0.95, 0.85, 0.3)]]
 	for i in rings.size():
 		var mi := MeshInstance3D.new()

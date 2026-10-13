@@ -35,19 +35,36 @@ var on_event: Callable
 
 static var _mats := {}
 
-static func _mat(color: int) -> StandardMaterial3D:
-	if not _mats.has(color):
-		var m := StandardMaterial3D.new()
-		m.albedo_color = Color.hex(color << 8 | 0xff)
-		m.roughness = 0.8
-		_mats[color] = m
-	return _mats[color]
+## An item box's look: the voxel shader (shaders/voxel_body.gdshader) in its colour, shaded as
+## what the colour says it is (grey: iron; gold: metal; browns: wood; the rest matte), with the
+## box's edges a shade darker.
+static func _mat(color: int, size := Vector3.ZERO) -> ShaderMaterial:
+	var key := "%d:%s" % [color, size]
+	if not _mats.has(key):
+		var c := Color.hex(color << 8 | 0xff)
+		var m := ShaderMaterial.new()
+		m.shader = load("res://shaders/voxel_body.gdshader")
+		m.set_shader_parameter("tint", c)
+		m.set_shader_parameter("box_half", size * 0.5)
+		m.set_shader_parameter("force_kind", _kind_of_color(c))
+		_mats[key] = m
+	return _mats[key]
+
+static func _kind_of_color(c: Color) -> int:
+	var sat := c.s
+	if sat < 0.18 and c.v < 0.8:
+		return 3            # iron, steel
+	if c.h > 0.1 and c.h < 0.16 and sat > 0.6 and c.v > 0.85:
+		return 4            # gold
+	if c.h < 0.1 and sat > 0.4 and c.v < 0.7:
+		return 5            # wood, clay
+	return 2
 
 static func _box(g: Node3D, w: float, h: float, d: float, color: int, x := 0.0, y := 0.0, z := 0.0) -> void:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(w, h, d)
-	bm.material = _mat(color)
+	bm.material = _mat(color, bm.size)
 	mi.mesh = bm
 	mi.position = Vector3(x, y, z)
 	g.add_child(mi)

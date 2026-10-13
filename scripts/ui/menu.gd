@@ -1723,6 +1723,8 @@ func _stage_hero() -> void:
 	b.fx.emitter("embers", drift, 60, 2.6)
 	b.fx.emitter("petals", drift, 14, 2.8)
 	# The column and its banner, just off the left of the shot.
+	if VoxelArt.place(b, "column", Vector3(3.4, 0.0, -8.4), 0.4) != null and VoxelArt.place(b, "banner", Vector3(2.75, 1.1, -8.75), PI) != null:
+		return
 	var stone := StandardMaterial3D.new()
 	stone.albedo_color = Color(0.5, 0.45, 0.4)
 	stone.roughness = 0.9

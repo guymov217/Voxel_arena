@@ -51,9 +51,10 @@ var torches: Array = []
 static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -> void:
 	var lv: int = {"low": 0, "medium": 1, "high": 2, "ultra": 3}.get(q, 2)
 	e.ssao_enabled = lv >= 1
-	e.ssao_radius = 0.8
-	e.ssao_intensity = 2.2
-	e.ssao_power = 1.4
+	e.ssao_radius = 1.0
+	e.ssao_intensity = 2.8
+	e.ssao_power = 1.6
+	e.ssao_light_affect = 0.15
 	e.ssao_detail = 0.6
 	e.ssil_enabled = lv >= 2
 	e.ssil_intensity = 0.8
@@ -62,8 +63,8 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	e.sdfgi_energy = 0.8
 	e.sdfgi_cascades = 4
 	e.glow_enabled = lv >= 1
-	e.glow_intensity = 0.7
-	e.glow_bloom = 0.05
+	e.glow_intensity = 0.85
+	e.glow_bloom = 0.08
 	e.glow_hdr_threshold = 1.1
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	e.volumetric_fog_enabled = lv >= 2
@@ -76,7 +77,7 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	if sun_:
 		sun_.shadow_enabled = true
 		sun_.directional_shadow_max_distance = 40.0 if lv >= 2 else 25.0
-		sun_.shadow_blur = 1.5
+		sun_.shadow_blur = 1.0
 		sun_.light_volumetric_fog_energy = 1.4
 
 func _build_visuals() -> void:
@@ -94,11 +95,11 @@ func _build_visuals() -> void:
 	e.ambient_light_color = Color(0.85, 0.72, 0.55)
 	e.ambient_light_energy = 0.6 if day else 0.27
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.82
+	e.tonemap_exposure = 0.88
 	e.tonemap_white = 6.0
 	e.adjustment_enabled = true
-	e.adjustment_saturation = 1.0
-	e.adjustment_contrast = 1.05
+	e.adjustment_saturation = 1.08
+	e.adjustment_contrast = 1.12
 	e.fog_density = 0.004 if day else 0.02
 	e.fog_light_color = Color(0.82, 0.74, 0.6)
 	we.environment = e
@@ -122,10 +123,7 @@ func _build_visuals() -> void:
 	plane.bottom_radius = RADIUS
 	plane.height = 0.02
 	plane.radial_segments = 96
-	var smat := surface_material("sand", 0.45, 1.0)
-	smat.albedo_color = Color(1.0, 0.97, 0.93)
-	smat.normal_scale = 0.9
-	plane.material = smat
+	plane.material = sand_material()
 	sand.mesh = plane
 	sand.position = Vector3(0, -0.01, 0)
 	add_child(sand)
@@ -134,6 +132,27 @@ func _build_visuals() -> void:
 	var atm := Atmosphere.new()
 	add_child(atm)
 	atm.build(self, day, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
+
+## The sand as 10 cm voxels seen from above (art/textures/sand_voxel.png, 32 m across, one
+## texel a voxel): laid on in world space, unfiltered so every voxel stays crisp. Falls back to
+## the old raked sand when the voxel texture is missing.
+static func sand_material() -> StandardMaterial3D:
+	var tex := load_texture("res://art/textures/sand_voxel.png")
+	if tex == null:
+		var old := surface_material("sand", 0.45, 1.0)
+		old.albedo_color = Color(1.0, 0.97, 0.93)
+		old.normal_scale = 0.9
+		return old
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / 32.0
+	m.uv1_offset = Vector3(0.5, 0.5, 0.5)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+	m.roughness = 0.97
+	m.specular = 0.25
+	return m
 
 ## The sky: a shader with drifting clouds and the sun's glare; at night a photographed starfield.
 static func sky_material(day: bool) -> ShaderMaterial:
@@ -223,15 +242,16 @@ func _build_torches(day: bool) -> void:
 	for i in 8:
 		var a := (i + 0.5) / 8.0 * TAU
 		var p := Vector3(sin(a) * (RADIUS - 0.6), 0.0, cos(a) * (RADIUS - 0.6))
-		var stand := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.28
-		cm.bottom_radius = 0.06
-		cm.height = 1.5
-		cm.material = bowl_mat
-		stand.mesh = cm
-		add_child(stand)
-		stand.position = p + Vector3(0, 0.75, 0)
+		if VoxelArt.place(self, "brazier", p, a + PI) == null:
+			var stand := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.28
+			cm.bottom_radius = 0.06
+			cm.height = 1.5
+			cm.material = bowl_mat
+			stand.mesh = cm
+			add_child(stand)
+			stand.position = p + Vector3(0, 0.75, 0)
 		var l := OmniLight3D.new()
 		l.light_color = Color(1.0, 0.62, 0.3)
 		l.light_energy = 1.2 if day else 3.0
@@ -259,8 +279,20 @@ func _process(_dt: float) -> void:
 		l.light_energy = l.light_energy * 0.8 + 0.2 * ((1.2 if theme != "night" else 3.0) * (0.85 + 0.15 * sin(t * 11.0 + i * 1.7) + 0.08 * sin(t * 23.0 + i)))
 
 ## The wall: a painted podium ring with banners, then tiers of stands and an arcade.
+## True once the voxel bowl (art/voxel/arena.glb) is in: the wall, the stands with their aisles,
+## the gatehouses, the Emperor's box and the arcade, all one model.
+var voxel := false
+
 func _build_walls() -> void:
-	# The wall: a painted podium ring with banners, then tiers of stands and an arcade.
+	var bowl := VoxelArt.make("arena")
+	if bowl:
+		bowl.name = "Bowl"
+		add_child(bowl)
+		voxel = true
+		_build_props()
+		_build_crowd()
+		return
+	# Without it, the old wall: a painted podium ring with banners, then tiers of stands and an arcade.
 	var wall_mat := surface_material("stone", 0.24, 0.9)
 	var band_mat := StandardMaterial3D.new()
 	band_mat.albedo_color = Color(0.55, 0.12, 0.1)
@@ -314,20 +346,44 @@ static func _spectator_mesh() -> ArrayMesh:
 			var du := u * h
 			var dv := v * h
 			var q := [o - du - dv, o + du - dv, o + du + dv, o - du + dv]
+			# A baked shade (UV2.y): lit from above, shadowed below, darker toward the box's foot.
+			var face := 1.0 if n.y > 0.5 else (0.6 if n.y < -0.5 else 0.86)
 			for idx in [0, 1, 2, 0, 2, 3]:
+				var low: float = 0.82 if (q[idx] as Vector3).y < c.y else 1.0
 				st.set_normal(n)
-				st.set_color(Color(shade, shade, shade))
-				st.set_uv2(Vector2(tag, 0))
+				st.set_color(Color(1, 1, 1))
+				st.set_uv2(Vector2(tag, face * low * shade))
 				st.add_vertex(q[idx])
-	box.call(Vector3(0, 0.3, 0), Vector3(0.14, 0.17, 0.09), 0.0, 1.0)
-	box.call(Vector3(0, 0.6, 0), Vector3(0.09, 0.1, 0.09), 1.0, 1.0)
-	box.call(Vector3(-0.19, 0.3, 0), Vector3(0.04, 0.14, 0.05), 2.0, 1.0)
+	box.call(Vector3(0, 0.3, 0), Vector3(0.14, 0.17, 0.09), 0.0, 1.0)            # tunic
+	box.call(Vector3(0, 0.6, 0), Vector3(0.09, 0.1, 0.09), 1.0, 1.0)             # head
+	box.call(Vector3(-0.19, 0.3, 0), Vector3(0.04, 0.14, 0.05), 2.0, 1.0)        # arms
 	box.call(Vector3(0.19, 0.3, 0), Vector3(0.04, 0.14, 0.05), 3.0, 1.0)
-	box.call(Vector3(0, 0.07, 0.04), Vector3(0.12, 0.07, 0.1), 4.0, 1.0)
+	box.call(Vector3(0, 0.07, 0.04), Vector3(0.12, 0.07, 0.1), 4.0, 1.0)         # legs
+	box.call(Vector3(0, 0.69, -0.005), Vector3(0.095, 0.03, 0.095), 5.0, 1.0)    # hair
+	box.call(Vector3(0, 0.62, -0.075), Vector3(0.095, 0.06, 0.025), 5.0, 1.0)
+	box.call(Vector3(0, 0.73, 0), Vector3(0.13, 0.012, 0.13), 6.0, 1.0)          # hat
+	box.call(Vector3(0, 0.765, 0), Vector3(0.08, 0.03, 0.08), 6.0, 1.0)
+	box.call(Vector3(0, 0.17, 0), Vector3(0.145, 0.02, 0.095), 7.0, 1.0)         # belt
+	box.call(Vector3(-0.035, 0.615, 0.092), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)   # eyes
+	box.call(Vector3(0.035, 0.615, 0.092), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)
+	box.call(Vector3(0.06, 0.34, 0.093), Vector3(0.05, 0.15, 0.005), 9.0, 1.0)   # sash
 	return st.commit()
 
 func set_excitement(x: float) -> void:
 	excitement = clampf(x, 0.0, 1.0)
+
+## Whether a spectator can sit at angle a on the tier at radius rr of the voxel bowl: not on the
+## aisles' stairs, the gatehouses or the Emperor's box.
+static func _seat_free(a: float, rr: float) -> bool:
+	var step := deg_to_rad(30.0)
+	if absf(fposmod(a - deg_to_rad(15.0) + step / 2.0, step) - step / 2.0) * rr < 0.55:
+		return false
+	var p := Vector2(sin(a) * rr, cos(a) * rr)
+	if absf(p.x) > 13.0 and absf(p.y) < 2.7 and rr < 19.0:
+		return false
+	if absf(p.x) < 2.9 and p.y > 15.0 and rr < 19.5:
+		return false
+	return true
 
 func _build_crowd() -> void:
 	var mm := MultiMesh.new()
@@ -353,12 +409,15 @@ func _build_crowd() -> void:
 				continue
 			var a := float(i) / n * TAU + rng.randf() * 0.012
 			var sc := 1.25 + rng.randf() * 0.25
+			if voxel and not _seat_free(a, rr):
+				continue
 			# Facing the sand (the mesh looks along +z).
 			var basis := Basis(Vector3.UP, a + PI).scaled(Vector3.ONE * sc)
 			var tun: Color = tunics[rng.randi_range(0, tunics.size() - 1)]
 			tun = tun.lerp(Color.from_hsv(rng.randf(), 0.5, 0.6), 0.25)
 			var sk: Color = skins[rng.randi_range(0, skins.size() - 1)]
-			list.append([Transform3D(basis, Vector3(sin(a) * (rr - 0.1), 2.55 + t * 0.7, cos(a) * (rr - 0.1))), tun, Color(sk.r, sk.g, sk.b, rng.randf())])
+			var seat_y := (2.6 if voxel else 2.55) + t * 0.7
+			list.append([Transform3D(basis, Vector3(sin(a) * (rr - 0.1), seat_y, cos(a) * (rr - 0.1))), tun, Color(sk.r, sk.g, sk.b, rng.randf())])
 	mm.instance_count = list.size()
 	for i in list.size():
 		mm.set_instance_transform(i, list[i][0])
@@ -382,7 +441,7 @@ func _build_upper() -> void:
 	var bm := BoxMesh.new()
 	bm.size = Vector3(TAU * top_r / cols + 0.05, 0.5, 0.6)
 	bm.material = stone
-	for i in cols:
+	for i in (0 if voxel else cols):
 		var a := float(i) / cols * TAU
 		var col := MeshInstance3D.new()
 		col.mesh = cm
@@ -401,6 +460,8 @@ func _build_upper() -> void:
 	aw.set_shader_parameter("color_b", Color(0.62, 0.14, 0.1))
 	aw.set_shader_parameter("stripes", 6.0)
 	aw.set_shader_parameter("wave", 0.12)
+	if voxel:
+		aw.set_shader_parameter("cells", Vector2(45, 60))
 	for i in 24:
 		if i % 4 == 3:
 			continue
@@ -418,20 +479,23 @@ func _build_upper() -> void:
 	# Flags on poles along the top.
 	for i in 16:
 		var a := float(i) / 16.0 * TAU
-		var pole := MeshInstance3D.new()
-		var pmesh := CylinderMesh.new()
-		pmesh.top_radius = 0.04
-		pmesh.bottom_radius = 0.05
-		pmesh.height = 2.6
-		pole.mesh = pmesh
-		add_child(pole)
 		var base := Vector3(sin(a) * (top_r + 0.3), 10.7, cos(a) * (top_r + 0.3))
-		pole.position = base
+		if not voxel:
+			var pole := MeshInstance3D.new()
+			var pmesh := CylinderMesh.new()
+			pmesh.top_radius = 0.04
+			pmesh.bottom_radius = 0.05
+			pmesh.height = 2.6
+			pole.mesh = pmesh
+			add_child(pole)
+			pole.position = base
 		var fm := ShaderMaterial.new()
 		fm.shader = flag_shader
 		fm.set_shader_parameter("color_a", [Color(0.62, 0.12, 0.1), Color(0.45, 0.2, 0.5), Color(0.8, 0.62, 0.2)][i % 3])
 		fm.set_shader_parameter("color_b", Color(0.95, 0.8, 0.35))
 		fm.set_shader_parameter("wave", 0.15)
+		if voxel:
+			fm.set_shader_parameter("cells", Vector2(12, 7))
 		var fl := MeshInstance3D.new()
 		var fq := PlaneMesh.new()
 		fq.size = Vector2(1.2, 0.7)
@@ -451,35 +515,38 @@ func _build_upper() -> void:
 	gold.metallic = 0.9
 	gold.roughness = 0.3
 	var box_p := Vector3(0, 3.4, RADIUS + 2.2)
-	var plat := MeshInstance3D.new()
-	var pbm := BoxMesh.new()
-	pbm.size = Vector3(4.5, 0.4, 2.6)
-	pbm.material = stone
-	plat.mesh = pbm
-	add_child(plat)
-	plat.position = box_p
-	var can := MeshInstance3D.new()
-	var cbm := BoxMesh.new()
-	cbm.size = Vector3(4.8, 0.15, 2.9)
-	cbm.material = purple
-	can.mesh = cbm
-	add_child(can)
-	can.position = box_p + Vector3(0, 2.6, 0)
-	for sx in [-2.2, 2.2]:
-		for sz in [-1.2, 1.2]:
-			var post := MeshInstance3D.new()
-			var pc := BoxMesh.new()
-			pc.size = Vector3(0.18, 2.6, 0.18)
-			pc.material = gold
-			post.mesh = pc
-			add_child(post)
-			post.position = box_p + Vector3(sx, 1.3, sz)
+	if not voxel:
+		var plat := MeshInstance3D.new()
+		var pbm := BoxMesh.new()
+		pbm.size = Vector3(4.5, 0.4, 2.6)
+		pbm.material = stone
+		plat.mesh = pbm
+		add_child(plat)
+		plat.position = box_p
+		var can := MeshInstance3D.new()
+		var cbm := BoxMesh.new()
+		cbm.size = Vector3(4.8, 0.15, 2.9)
+		cbm.material = purple
+		can.mesh = cbm
+		add_child(can)
+		can.position = box_p + Vector3(0, 2.6, 0)
+		for sx in [-2.2, 2.2]:
+			for sz in [-1.2, 1.2]:
+				var post := MeshInstance3D.new()
+				var pc := BoxMesh.new()
+				pc.size = Vector3(0.18, 2.6, 0.18)
+				pc.material = gold
+				post.mesh = pc
+				add_child(post)
+				post.position = box_p + Vector3(sx, 1.3, sz)
 	var drape := ShaderMaterial.new()
 	drape.shader = flag_shader
 	drape.set_shader_parameter("color_a", Color(0.42, 0.12, 0.4))
 	drape.set_shader_parameter("color_b", Color(0.9, 0.72, 0.3))
 	drape.set_shader_parameter("stripes", 1.2)
 	drape.set_shader_parameter("wave", 0.03)
+	if voxel:
+		drape.set_shader_parameter("cells", Vector2(46, 14))
 	var dm := MeshInstance3D.new()
 	var dq := PlaneMesh.new()
 	dq.size = Vector2(4.6, 1.4)
@@ -502,6 +569,8 @@ func _build_upper() -> void:
 		add_child(door)
 		door.position = Vector3(gx * (RADIUS - 0.05), 0, -1.3)
 		gates[int(gx)] = door
+		if voxel and VoxelArt.place(door, "gate_door", Vector3.ZERO) != null:
+			continue
 		# Planks of slightly different shades, two iron bands with studs.
 		for k in 6:
 			var plank := MeshInstance3D.new()
@@ -537,6 +606,35 @@ func _build_upper() -> void:
 		arch.mesh = am
 		add_child(arch)
 		arch.position = Vector3(gx * (RADIUS + 0.1), 2.55, 0)
+
+## The voxel bowl's furnishings, all out of reach of the fight: statues on the arcade and on the
+## gatehouses, the Emperor's throne, and in each gate tunnel a rack of spears, jars and crates
+## with a torch burning deep inside.
+func _build_props() -> void:
+	for i in 8:
+		var a := deg_to_rad(15.0 + 45.0 * i)
+		var p := Vector3(sin(a) * 24.1, 10.0, cos(a) * 24.1)
+		VoxelArt.place(self, "statue", p, VoxelArt.facing_centre(p))
+	for gx in [-1.0, 1.0]:
+		for gz in [-1.9, 1.9]:
+			VoxelArt.place(self, "statue", Vector3(gx * 15.6, 4.0, gz), -gx * PI / 2.0)
+		VoxelArt.place(self, "weapon_rack", Vector3(gx * 16.9, 0, -1.12), 0.0)
+		VoxelArt.place(self, "amphora", Vector3(gx * 16.4, 0, 1.08), 0.3)
+		VoxelArt.place(self, "amphora_wide", Vector3(gx * 16.9, 0, 1.05), 1.1)
+		VoxelArt.place(self, "crate", Vector3(gx * 17.7, 0, 0.98), 0.2)
+		VoxelArt.place(self, "crate", Vector3(gx * 17.75, 0.6, 1.0), 0.9)
+		var tl := OmniLight3D.new()
+		tl.light_color = Color(1.0, 0.55, 0.25)
+		tl.light_energy = 1.6
+		tl.omni_range = 3.6
+		tl.omni_attenuation = 1.4
+		add_child(tl)
+		tl.position = Vector3(gx * 18.0, 1.9, 0.0)
+	for sx in [-2.9, 2.9]:
+		VoxelArt.place(self, "statue", Vector3(sx, 2.6, 16.4), PI)
+	VoxelArt.place(self, "throne", Vector3(0, 3.6, 17.9), PI)
+	VoxelArt.place(self, "amphora", Vector3(-1.9, 3.6, 18.2), 0.0)
+	VoxelArt.place(self, "amphora_wide", Vector3(1.9, 3.6, 18.2), 0.5)
 
 ## Swings the east (1) or west (-1) gate open inward for `hold` seconds, then shut again.
 var gates := {}

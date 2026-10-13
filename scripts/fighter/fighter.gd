@@ -183,12 +183,26 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		var voxels := []
 		for v in d.voxels:
 			var c: Color
+			var kind := 2
 			match int(v[3]):
-				1: c = (sk_lin * float(v[4])).linear_to_srgb()
-				2: c = (tm_lin * float(v[4])).linear_to_srgb()
-				_: c = Color.hex(int(v[4]) << 8 | 0xff)
+				1:
+					c = (sk_lin * float(v[4])).linear_to_srgb()
+					kind = 0
+				2:
+					c = (tm_lin * float(v[4])).linear_to_srgb()
+					kind = 1
+				_:
+					c = Color.hex(int(v[4]) << 8 | 0xff)
+					kind = VoxelPart.kind_of_body_color(c)
+			# Only how he looks: muscles, a nose, folds in the cloth, whites to the eyes.
+			if int(v[3]) == 1 or int(v[3]) == 2:
+				var lin := c.srgb_to_linear()
+				var k := style_shade(d.name, int(v[0]), int(v[1]), int(v[2]), d.grid, int(v[3]))
+				c = Color(lin.r * k, lin.g * k, lin.b * k).linear_to_srgb()
+			elif d.name == "head" and int(v[4]) == 0 and int(v[2]) == int(d.grid[2]) - 1 and (int(v[0]) == 2 or int(v[0]) == 7) and int(v[1]) >= 6 and int(v[1]) <= 7:
+				c = Color(0.9, 0.88, 0.82)
 			c.a = 1.0
-			voxels.append([v[0], v[1], v[2], c, v[5]])
+			voxels.append([v[0], v[1], v[2], c, v[5], kind])
 		var p := VoxelPart.new()
 		var m: float = float(d.mass) * MS * (LEG_MASS if d.leg else 1.0)
 		p.setup(self, d, voxels, S, m)
@@ -246,6 +260,69 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
 		equip("L", off)
+
+## The shading painted on a body voxel (skin type 1, cloth type 2), as a brightness factor on
+## its colour: the brow, nose and chin of the face; pecs, breastbone, abs and navel on the chest,
+## the spine and shoulder blades behind; limbs lighter toward the top, kneecaps; cloth in folds
+## with a darker hem. Front is +z. Only the look: nothing reads it back.
+static func style_shade(part: String, x: int, y: int, z: int, g: Array, type: int) -> float:
+	var gx := int(g[0])
+	var gy := int(g[1])
+	var gz := int(g[2])
+	var front := z == gz - 1
+	var back := z == 0
+	var side := x == 0 or x == gx - 1
+	var k := 1.0
+	if type == 2:
+		if (front or back) and x % 4 == 0:
+			k *= 0.92
+		if side and y % 4 == 0:
+			k *= 0.93
+		if part.begins_with("thigh") and y == 10:
+			k *= 0.72
+		return k
+	if side:
+		k *= 0.93
+	match part:
+		"head":
+			if front:
+				if (x == 4 or x == 5) and y >= 4 and y <= 6:
+					k *= 1.08
+				elif (x == 3 or x == 6) and y == 4:
+					k *= 0.86
+				elif y == 8:
+					k *= 0.9
+				elif y <= 1:
+					k *= 0.92
+			elif back:
+				k *= 0.92
+		"torso":
+			var mid := x == 7 or x == 8
+			if front:
+				if y == 15 and x >= 2 and x <= 13 and not mid:
+					k *= 0.84
+				elif (y == 17 or y == 18) and not mid and x >= 2 and x <= 13:
+					k *= 1.04
+				elif mid and y >= 10 and y <= 17:
+					k *= 0.9
+				elif (y == 10 or y == 12) and x >= 4 and x <= 11:
+					k *= 0.9
+				elif mid and y == 9:
+					k *= 0.78
+				if y == 20:
+					k *= 1.05
+			elif back:
+				if mid and y >= 8 and y <= 20:
+					k *= 0.9
+				elif y >= 16 and y <= 18 and ((x >= 3 and x <= 5) or (x >= 10 and x <= 12)):
+					k *= 1.05
+				elif y == 15 and ((x >= 3 and x <= 5) or (x >= 10 and x <= 12)):
+					k *= 0.9
+		_:
+			k *= 0.94 + 0.08 * float(y) / float(maxi(1, gy - 1))
+			if part.begins_with("shin") and front and y >= 13 and (x == 3 or x == 4):
+				k *= 1.07
+	return k
 
 ## Takes up a new set of arms where he stands (bought at the smith in the yard): what is in his
 ## hands now is put away, the new ones are in them at once.
@@ -523,22 +600,23 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	var cells: Array = a.get("parts", {}).get(p.part_name, [])
 	if cells.is_empty():
 		return
-	var col := Weapon.voxel_color(a.get("mat", "iron"), "blunt")
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3.ONE * V * S * 0.98
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = col
-	var hide: bool = a.get("mat", "iron") == "leather"
-	mat.metallic = 0.0 if hide else 0.6
-	mat.roughness = 0.85 if hide else 0.35
-	mesh.material = mat
+	# Each cell its own colour and stuff (ArmorStyle): strands of hair, woven straw, plates
+	# with a rim and rivets, a crown's stones, a cape's folds. Only the look.
+	mesh.material = VoxelPart.body_material()
+	var looks := ArmorStyle.cells(id, a, cells, ArmorStyle.base_color(id, a, skin))
 	var mmesh := MultiMesh.new()
 	mmesh.transform_format = MultiMesh.TRANSFORM_3D
+	mmesh.use_colors = true
+	mmesh.use_custom_data = true
 	mmesh.mesh = mesh
 	mmesh.instance_count = cells.size()
 	for i in cells.size():
 		var c: Array = cells[i]
 		mmesh.set_instance_transform(i, Transform3D(Basis(), Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S))
+		mmesh.set_instance_color(i, looks[i][0])
+		mmesh.set_instance_custom_data(i, VoxelPart.kind_data(int(looks[i][1])))
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mmesh
 	# A fixed box: plates knocked off one by one must not shrink it and cull the rest.

@@ -67,6 +67,8 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		var voxels := []
 		for v in d.voxels:
 			voxels.append([v[0], v[1], v[2], Color.hex(int(v[3]) << 8 | 0xff), v[4]])
+		# Only how it looks: fur, scales or shell, markings, bone, eyes (BeastStyle).
+		voxels = BeastStyle.style_part(species, str(d.name), d.get("grid", [1, 1, 1]), voxels)
 		var p := VoxelPart.new()
 		var dd: Dictionary = d.duplicate()
 		dd.erase("voxels")

@@ -39,8 +39,12 @@ static func texture(kind: String) -> Texture2D:
 	var noise := FastNoiseLite.new()
 	noise.seed = hash(kind)
 	noise.frequency = 0.09
-	for y in n:
-		for x in n:
+	# Stains are drawn in blocks (16 across), the way the voxel sand is.
+	var blocky := kind == "splat" or kind == "ring"
+	for yy in n:
+		for xx in n:
+			var x := (xx / 4) * 4 + 2 if blocky else xx
+			var y := (yy / 4) * 4 + 2 if blocky else yy
 			var dx := (x - n / 2.0 + 0.5) / (n / 2.0)
 			var dy := (y - n / 2.0 + 0.5) / (n / 2.0)
 			var r := sqrt(dx * dx + dy * dy)
@@ -65,7 +69,9 @@ static func texture(kind: String) -> Texture2D:
 					var w := 0.18 + 0.62 * pow(ny, 0.7) + 0.12 * noise.get_noise_2d(x * 1.5, y * 0.8)
 					a = clampf(1.0 - absf(dx) / maxf(0.05, w), 0.0, 1.0) * clampf(ny * 1.4, 0.0, 1.0) * clampf((1.0 - ny) * 5.0, 0.0, 1.0)
 					a = sqrt(a)
-			img.set_pixel(x, y, Color(1, 1, 1, a))
+			if kind == "splat":
+				a = 0.92 if a > 0.35 else 0.0
+			img.set_pixel(xx, yy, Color(1, 1, 1, a))
 	var t := ImageTexture.create_from_image(img)
 	_textures[kind] = t
 	return t
@@ -73,25 +79,33 @@ static func texture(kind: String) -> Texture2D:
 # ---------- Particles ----------
 
 const KINDS := {
-	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "spark", "drag": 0.3, "shade": true},
-	"drip": {"color": Color(0.45, 0.01, 0.01), "life": 1.1, "speed": [0.05, 0.35], "spread": 25.0, "gravity": -9.8, "size": [0.022, 0.045], "tex": "spark", "emit": 1.0, "shade": true},
+	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "", "drag": 0.3, "shade": true},
+	"drip": {"color": Color(0.45, 0.01, 0.01), "life": 1.1, "speed": [0.05, 0.35], "spread": 25.0, "gravity": -9.8, "size": [0.022, 0.045], "tex": "", "shade": true},
 	"bloodmist": {"color": Color(0.5, 0.03, 0.03, 0.55), "life": 0.5, "speed": [0.5, 1.6], "spread": 60.0, "gravity": -2.0, "size": [0.08, 0.2], "tex": "soft", "drag": 2.0, "grow": 1.6, "shade": true},
-	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "spark", "emit": 6.0, "add": true},
+	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "", "emit": 6.0, "add": true},
 	"dust": {"color": Color(0.78, 0.68, 0.5, 0.55), "life": 1.6, "speed": [0.4, 1.8], "spread": 80.0, "gravity": 0.3, "size": [0.25, 0.6], "tex": "soft", "drag": 1.5, "grow": 2.2},
 	"smoke": {"color": Color(0.22, 0.2, 0.19, 0.5), "life": 2.4, "speed": [0.2, 0.8], "spread": 30.0, "gravity": 0.9, "size": [0.2, 0.45], "tex": "soft", "drag": 0.8, "grow": 2.5},
-	"fire": {"color": Color(1.0, 0.55, 0.15), "life": 0.6, "speed": [0.3, 1.2], "spread": 25.0, "gravity": 2.2, "size": [0.08, 0.18], "tex": "soft", "emit": 4.0, "add": true, "shrink": true},
-	"brazier": {"color": Color(1.0, 0.55, 0.15), "life": 0.9, "speed": [0.6, 1.6], "spread": 18.0, "gravity": 2.5, "size": [0.18, 0.36], "tex": "soft", "emit": 5.0, "add": true, "shrink": true},
+	"fire": {"color": Color(1.0, 0.55, 0.15), "life": 0.6, "speed": [0.3, 1.2], "spread": 25.0, "gravity": 2.2, "size": [0.045, 0.085], "tex": "", "emit": 3.0, "shrink": true},
+	"brazier": {"color": Color(1.0, 0.55, 0.15), "life": 0.9, "speed": [0.6, 1.6], "spread": 18.0, "gravity": 2.5, "size": [0.07, 0.13], "tex": "", "emit": 3.2, "shrink": true},
 	"confetti": {"color": Color(1, 1, 1), "life": 2.0, "speed": [2.0, 5.0], "spread": 60.0, "gravity": -3.0, "size": [0.03, 0.05], "tex": "", "drag": 1.2, "confetti": true},
-	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "spark", "emit": 1.5},
-	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.7, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "drag": 3.0},
-	"pool_fire": {"color": Color(1.0, 0.5, 0.12), "life": 0.7, "speed": [0.3, 0.9], "spread": 12.0, "gravity": 3.0, "size": [0.26, 0.55], "tex": "flame", "emit": 3.0, "shrink": true},
+	"pool_fire": {"color": Color(1.0, 0.5, 0.12), "life": 0.7, "speed": [0.3, 0.9], "spread": 12.0, "gravity": 3.0, "size": [0.07, 0.13], "tex": "", "emit": 3.0, "shrink": true},
 	"fire_smoke": {"color": Color(0.09, 0.08, 0.075, 0.9), "life": 2.8, "speed": [0.5, 1.1], "spread": 14.0, "gravity": 0.9, "size": [0.3, 0.55], "tex": "soft", "drag": 0.5, "grow": 3.0},
 	"pool_smoke": {"color": Color(0.12, 0.1, 0.09, 0.55), "life": 3.0, "speed": [0.6, 1.4], "spread": 20.0, "gravity": 0.6, "size": [0.35, 0.8], "tex": "soft", "drag": 0.4},
-	"blade_fire": {"color": Color(1.0, 0.45, 0.08), "life": 0.42, "speed": [0.25, 0.8], "spread": 30.0, "gravity": 2.8, "size": [0.06, 0.13], "tex": "soft", "emit": 9.0, "add": true, "shrink": true},
-	"venom": {"color": Color(0.45, 0.85, 0.2), "life": 0.9, "speed": [0.02, 0.2], "spread": 25.0, "gravity": -7.0, "size": [0.014, 0.03], "tex": "spark", "emit": 1.6},
-	"frost": {"color": Color(0.72, 0.9, 1.0, 0.9), "life": 0.9, "speed": [0.05, 0.35], "spread": 180.0, "gravity": -0.4, "size": [0.01, 0.024], "tex": "spark", "emit": 2.5, "add": true, "drag": 0.5},
-	"embers": {"color": Color(1.0, 0.6, 0.25), "life": 4.0, "speed": [0.15, 0.5], "spread": 180.0, "gravity": 0.22, "size": [0.008, 0.018], "tex": "spark", "emit": 5.0, "add": true, "drag": 0.3},
+	"blade_fire": {"color": Color(1.0, 0.45, 0.08), "life": 0.42, "speed": [0.25, 0.8], "spread": 30.0, "gravity": 2.8, "size": [0.025, 0.045], "tex": "", "emit": 9.0, "add": true, "shrink": true},
+	"venom": {"color": Color(0.45, 0.85, 0.2), "life": 0.9, "speed": [0.02, 0.2], "spread": 25.0, "gravity": -7.0, "size": [0.014, 0.03], "tex": "", "emit": 1.6},
+	"frost": {"color": Color(0.72, 0.9, 1.0, 0.9), "life": 0.9, "speed": [0.05, 0.35], "spread": 180.0, "gravity": -0.4, "size": [0.01, 0.024], "tex": "", "emit": 2.5, "add": true, "drag": 0.5},
+	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "", "emit": 1.5},
+	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.7, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.14, 0.32], "tex": "", "emit": 2.0, "drag": 3.0, "flare": true},
+	"poison": {"color": Color(0.45, 0.9, 0.2), "life": 1.5, "speed": [0.08, 0.45], "spread": 35.0, "gravity": 0.45, "size": [0.03, 0.06], "tex": "", "emit": 1.4, "drag": 0.6, "shrink": true},
+	"embers": {"color": Color(1.0, 0.6, 0.25), "life": 4.0, "speed": [0.15, 0.5], "spread": 180.0, "gravity": 0.22, "size": [0.01, 0.02], "tex": "", "emit": 5.0, "add": true, "drag": 0.3},
 	"petals": {"color": Color(0.62, 0.05, 0.06), "life": 6.0, "speed": [0.2, 0.6], "spread": 180.0, "gravity": -0.35, "size": [0.025, 0.045], "tex": "", "drag": 1.6},
+	"sandgrain": {"color": Color(0.86, 0.74, 0.52), "life": 1.4, "speed": [0.8, 2.6], "spread": 70.0, "gravity": -5.0, "size": [0.022, 0.045], "tex": "", "drag": 0.9, "shrink": true},
+	"sandcloud": {"color": Color(0.84, 0.72, 0.5), "life": 2.6, "speed": [0.2, 0.9], "spread": 180.0, "gravity": -0.15, "size": [0.045, 0.1], "tex": "", "drag": 0.4, "swirl": true},
+	"bees": {"color": Color(0.95, 0.75, 0.1), "life": 0.7, "speed": [1.2, 2.6], "spread": 180.0, "gravity": 0.0, "size": [0.04, 0.05], "tex": "", "drag": 2.5, "buzz": true},
+	"ash": {"color": Color(0.16, 0.15, 0.14), "life": 2.4, "speed": [0.3, 0.9], "spread": 40.0, "gravity": 0.7, "size": [0.015, 0.03], "tex": "", "drag": 0.8, "swirl": true},
+	"lowfire": {"color": Color(1.0, 0.55, 0.15), "life": 0.35, "speed": [0.1, 0.45], "spread": 30.0, "gravity": 1.4, "size": [0.025, 0.045], "tex": "", "emit": 3.0, "shrink": true},
+	"fumes": {"color": Color(0.45, 0.8, 0.25, 0.35), "life": 1.8, "speed": [0.1, 0.4], "spread": 30.0, "gravity": 0.5, "size": [0.08, 0.2], "tex": "soft", "drag": 0.8, "grow": 2.2, "shade": true},
+	"poisondrip": {"color": Color(0.4, 0.85, 0.15), "life": 0.9, "speed": [0.02, 0.15], "spread": 20.0, "gravity": -9.8, "size": [0.02, 0.035], "tex": "", "emit": 0.8},
 	"debris": {"color": Color(0.6, 0.5, 0.4), "life": 1.2, "speed": [1.0, 4.0], "spread": 80.0, "gravity": -9.8, "size": [0.025, 0.05], "tex": "", "shade": true},
 }
 
@@ -109,9 +123,39 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 	pm.damping_max = k.get("drag", 0.0) * 1.5
 	pm.scale_min = 1.0
 	pm.scale_max = k.size[1] / k.size[0]
-	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind == "blood" or kind == "acid" or kind == "drip" else ParticleProcessMaterial.COLLISION_RIGID
+	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind in ["blood", "acid", "drip", "poisondrip"] else ParticleProcessMaterial.COLLISION_RIGID
 	pm.collision_bounce = 0.2
-	if k.get("grow", 0.0) > 0.0:
+	if k.get("swirl", false):
+		pm.turbulence_enabled = true
+		pm.turbulence_noise_strength = 2.0
+		pm.turbulence_noise_scale = 1.6
+		pm.turbulence_influence_min = 0.12
+		pm.turbulence_influence_max = 0.3
+		var cs := Curve.new()
+		cs.add_point(Vector2(0, 0.0))
+		cs.add_point(Vector2(0.15, 1.0))
+		cs.add_point(Vector2(0.8, 1.0))
+		cs.add_point(Vector2(1, 0.0))
+		var cts := CurveTexture.new()
+		cts.curve = cs
+		pm.scale_curve = cts
+	if k.get("buzz", false):
+		pm.turbulence_enabled = true
+		pm.turbulence_noise_strength = 6.0
+		pm.turbulence_noise_scale = 0.8
+		pm.turbulence_noise_speed_random = 1.0
+		pm.turbulence_influence_min = 0.4
+		pm.turbulence_influence_max = 0.8
+	if k.get("flare", false):
+		var cf := Curve.new()
+		cf.add_point(Vector2(0, 0.5))
+		cf.add_point(Vector2(0.3, 1.2))
+		cf.add_point(Vector2(1, 0.0))
+		cf.max_value = 1.2
+		var ctf := CurveTexture.new()
+		ctf.curve = cf
+		pm.scale_curve = ctf
+	elif k.get("grow", 0.0) > 0.0:
 		var c := Curve.new()
 		c.add_point(Vector2(0, 0.5))
 		c.add_point(Vector2(1, k.grow))
@@ -140,8 +184,39 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 		g.add_point(0.3, Color(1.0, 0.55, 0.12, 0.95))
 		g.add_point(0.7, Color(0.75, 0.18, 0.04, 0.7))
 		g.set_color(g.get_point_count() - 1, Color(0.2, 0.06, 0.03, 0.0))
+	if kind == "lowfire":
+		g.set_color(0, Color(0.55, 0.75, 1.0))
+		g.add_point(0.3, Color(1.0, 0.6, 0.2))
+		g.set_color(g.get_point_count() - 1, Color(0.4, 0.1, 0.04, 0.0))
+	if kind == "ash":
+		g.set_color(0, Color(0.9, 0.4, 0.12))
+		g.add_point(0.15, Color(0.2, 0.18, 0.16))
+		g.set_color(g.get_point_count() - 1, Color(0.4, 0.38, 0.35, 0.0))
+	if kind == "bees":
+		g.set_color(0, Color(0.95, 0.75, 0.1))
+		g.set_color(1, Color(0.95, 0.75, 0.1))
+		var stripes := Gradient.new()
+		stripes.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
+		stripes.set_color(0, Color(0.95, 0.75, 0.1))
+		stripes.add_point(0.6, Color(0.08, 0.06, 0.04))
+		var bt := GradientTexture1D.new()
+		bt.gradient = stripes
+		pm.color_initial_ramp = bt
+	if kind == "sandgrain" or kind == "sandcloud":
+		g.set_color(0, Color(0.9, 0.79, 0.57))
+		g.set_color(1, Color(0.7, 0.58, 0.4, 0.0))
+		var shades := Gradient.new()
+		shades.set_color(0, Color(0.78, 0.64, 0.44))
+		shades.set_color(1, Color(1.0, 0.9, 0.7))
+		var st := GradientTexture1D.new()
+		st.gradient = shades
+		pm.color_initial_ramp = st
+	if kind == "poison":
+		g.set_color(0, Color(0.6, 0.95, 0.25))
+		g.add_point(0.5, Color(0.3, 0.7, 0.12, 0.9))
+		g.set_color(g.get_point_count() - 1, Color(0.1, 0.3, 0.05, 0.0))
 	if kind == "fire" or kind == "brazier":
-		g.set_color(0, Color(1.0, 0.9, 0.5))
+		g.set_color(0, Color(1.0, 0.78, 0.32))
 		g.add_point(0.4, Color(1.0, 0.45, 0.1, 0.9))
 		g.set_color(g.get_point_count() - 1, Color(0.3, 0.1, 0.05, 0.0))
 	var gt := GradientTexture1D.new()
@@ -170,9 +245,17 @@ static func _draw_mesh(kind: String) -> Mesh:
 	mat.vertex_color_use_as_albedo = true
 	var mesh: PrimitiveMesh
 	if k.tex == "":
+		# Little voxels: blood, sparks, embers, fire, poison, chips and confetti fly as cubes,
+		# the glowing ones lit in their own colour as it changes.
 		mesh = BoxMesh.new()
 		(mesh as BoxMesh).size = Vector3.ONE * k.size[0]
-		mat.roughness = 0.6
+		var vm := ShaderMaterial.new()
+		vm.shader = load("res://shaders/voxel_particle.gdshader")
+		vm.set_shader_parameter("emit", float(k.get("emit", 0.0)))
+		vm.set_shader_parameter("roughness", 0.3 if kind in ["blood", "drip", "acid", "poison", "poisondrip"] else 0.6)
+		mesh.material = vm
+		_draw_meshes[kind] = mesh
+		return mesh
 	else:
 		mesh = QuadMesh.new()
 		(mesh as QuadMesh).size = Vector2.ONE * k.size[0] * 2.0
@@ -195,6 +278,9 @@ static func _draw_mesh(kind: String) -> Mesh:
 func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0, tint := Color(0, 0, 0, 0)) -> void:
 	if headless or n <= 0 or not KINDS.has(kind):
 		return
+	if kind == "dust":
+		# Sand kicked up comes in grains: voxels flung out under the soft puff.
+		burst("sandgrain", p, maxi(4, n / 2), dir, speed_mul)
 	if quality == "low":
 		n = maxi(1, n / 3)
 	var ps := GPUParticles3D.new()

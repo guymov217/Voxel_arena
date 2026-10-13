@@ -57,7 +57,9 @@ godot --headless --path . -- --test test_fight   # one suite
   and drops from the stands.
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
   A gladiator editor (name, skin, cloth, hat, hair, beard, cape). The HUD, menus and options.
-- **Graphics**: physics interpolation, GPU particles (blood, sparks, dust, smoke, fire, embers),
+- **Graphics**: the arena in 10 cm voxels in the manner of Teardown (the bowl, gatehouses, the
+  Emperor's box, the arcade and the props are models built by `tools/gen_voxel_art.py`), bodies,
+  armour and weapons shaded by what each voxel is made of. Physics interpolation, GPU particles (blood, sparks, dust, smoke, fire, embers),
   decals for blood and scorch marks, SSAO, SSIL, SDFGI, volumetric fog and glow by quality
   level. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a

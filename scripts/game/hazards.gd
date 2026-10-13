@@ -69,6 +69,9 @@ func _spikes(s: Dictionary) -> void:
 	plate.mesh = bm
 	add_child(plate)
 	plate.global_position = Vector3(s.x, 0.02, s.z)
+	# The voxel plate sits on it; the old plate shows as a rim round it, red when the spikes come.
+	if VoxelArt.place(plate, "spike_plate", Vector3(0, -0.015, 0)) != null:
+		bm.size = Vector3(1.3, 0.03, 1.3)
 	w.global_position = Vector3(s.x, -0.42, s.z)
 	list.append({"type": "spikes", "w": w, "plate": plate, "x": s.x, "z": s.z, "phase": s.phase, "y": -0.42})
 

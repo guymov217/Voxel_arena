@@ -53,7 +53,7 @@ var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
 var heat := {}                   # voxel -> how charred (or melted) it is
 var flames: GPUParticles3D = null
-var flame_smoke: GPUParticles3D = null
+var poison_fx: GPUParticles3D = null   # green voxels rising off where acid or venom eats in
 var stuck: Array = []            # arrows and darts in it
 var wielder: Node = null         # a severed limb someone picked up to hit people with
 var thrown_t := 0.0
@@ -73,6 +73,10 @@ var half_ext := Vector3.ONE
 
 static var _box_mesh_cache := {}
 static var _material: StandardMaterial3D
+## The voxel boxes' look (shaders/voxel_body.gdshader): each voxel's kind of stuff in its
+## instance data (skin, cloth, leather, metal...; see the shader).
+static var _body_material: ShaderMaterial
+var kinds := PackedByteArray()   # per voxel, what it is made of (only how it is drawn)
 ## Bodies drawn as a smooth skin over their voxels (VoxelSkin) instead of the voxel boxes; the
 ## voxels are still what is hit, cut and simulated. Set from the settings ("bodies"). Off for
 ## now (kept for later: SMOOTH_BODIES_DEFAULT in match.gd and the menu's Bodies row).
@@ -101,7 +105,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 	if d.get("ca") != null:
 		ca = _v3(d.ca) * scale_
 	var n := voxels.size()
-	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n)
+	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n); kinds.resize(n)
 	for i in n:
 		var v: Array = voxels[i]
 		fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
@@ -110,6 +114,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 		var k := grain(i)
 		colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
 		bone[i] = 1 if v[4] else 0
+		kinds[i] = int(v[5]) if v.size() > 5 else 8
 		alive[i] = 1
 	alive_count = n
 	# Physics: the box carries the weight; inertia from the whole box, centred, so a dent never
@@ -134,6 +139,46 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 ## blocks); the smooth skin takes it back out.
 func grain(i: int) -> float:
 	return 1.0 + (float(hash(Vector3i(fx[i], fy[i], fz[i]) + Vector3i(dims.x, dims.y, dims.z) * 131) % 1000) / 1000.0 - 0.5) * 0.09
+
+## The shared material of every voxel box (bodies, armour, weapons), or one with every box
+## drawn as `force` (an armour plate's metal...).
+static var _forced := {}
+static func body_material(force := -1) -> ShaderMaterial:
+	if force < 0:
+		if _body_material == null:
+			_body_material = ShaderMaterial.new()
+			_body_material.shader = load("res://shaders/voxel_body.gdshader")
+		return _body_material
+	if not _forced.has(force):
+		var m := ShaderMaterial.new()
+		m.shader = load("res://shaders/voxel_body.gdshader")
+		m.set_shader_parameter("force_kind", force)
+		_forced[force] = m
+	return _forced[force]
+
+## A voxel kind as MultiMesh custom data (the shader reads r * 16; a = 1 marks it set).
+static func kind_data(k: int) -> Color:
+	return Color(float(k) / 16.0, 0.0, 0.0, 1.0)
+
+## What a material (data/materials.json) is drawn as: see shaders/voxel_body.gdshader.
+static func kind_of_material(mat: String) -> int:
+	match mat:
+		"steel", "iron", "lead", "magnet", "spring": return 3
+		"gold", "bronze": return 4
+		"wood": return 5
+		"bone", "stone": return 6
+		"ruby", "emerald", "sapphire", "ice", "glue": return 7
+		"leather", "rubber", "feather", "fish": return 2
+	return 2
+
+## What a fixed body colour is (data/body.json): red flesh under the skin, pale bone, the rest
+## (eyes, mouth, belt, sandals) leather-like.
+static func kind_of_body_color(c: Color) -> int:
+	if c.r > 0.3 and c.r > c.g * 2.2 and c.r > c.b * 2.2:
+		return 9
+	if c.get_luminance() > 0.75:
+		return 6
+	return 2
 
 static func _v3(a) -> Vector3:
 	return Vector3(float(a[0]), float(a[1]), float(a[2]))
@@ -160,16 +205,18 @@ func _build_mesh() -> void:
 	if not _box_mesh_cache.has(key):
 		var bm := BoxMesh.new()
 		bm.size = Vector3.ONE * vf * part_scale * 0.98
-		bm.material = _material
+		bm.material = body_material()
 		_box_mesh_cache[key] = bm
 	mm = MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
+	mm.use_custom_data = true
 	mm.mesh = _box_mesh_cache[key]
 	mm.instance_count = fx.size()
 	for i in fx.size():
 		mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
 		mm.set_instance_color(i, colors[i])
+		mm.set_instance_custom_data(i, kind_data(kinds[i]))
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
@@ -231,7 +278,84 @@ func refresh_colors(indices: Array = []) -> void:
 	_write_colors(mm, main)
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
+	_write_glow(list)
 	_mark_skin()
+
+# ---------- Fire and poison on the voxels themselves (only how they look) ----------
+
+var glowing := {}   # voxel -> Vector2(fire, poison) last written to its instance data
+
+## Lights the voxels that fire or poison is working on (see Fire.tick, which heats them):
+## burning ones glow and flicker orange in the shader, poisoned ones glow a sickly green. The
+## nearest live spot says which; how hot (Fire's `heat`) says how much.
+func _write_glow(list: Array) -> void:
+	if mm == null or not mm.use_custom_data:
+		return
+	var live := spots.filter(func(s): return s.t > 0.0)
+	if live.is_empty() and glowing.is_empty():
+		return
+	var reach := vf * part_scale * 8.0
+	for i in list:
+		var h: float = heat.get(i, 0.0)
+		var g := Vector2.ZERO
+		if h > 0.0 and alive[i] and not live.is_empty():
+			var best = null
+			var bd := INF
+			var lp := local_of(i)
+			for s in live:
+				var d: float = lp.distance_to(s.lp)
+				if d < bd:
+					bd = d
+					best = s
+			if best != null and bd < reach:
+				if best.kind == "fire":
+					g.x = clampf(h / 1.2, 0.15, 1.0)
+				else:
+					g.y = clampf(h / 0.8, 0.2, 1.0)
+		if g == Vector2.ZERO and not glowing.has(i):
+			continue
+		_set_status(i, g)
+
+func _set_status(i: int, g: Vector2) -> void:
+	var c := Color(float(kinds[i]) / 16.0, g.x, g.y, 1.0)
+	if jaw_slot.has(i):
+		if jaw_mm:
+			jaw_mm.set_instance_custom_data(jaw_slot[i], c)
+	else:
+		mm.set_instance_custom_data(i, c)
+	if g == Vector2.ZERO:
+		glowing.erase(i)
+	else:
+		glowing[i] = g
+
+## What the part is made of where the first live spot of `kind` is: the nearest living voxel's
+## kind of stuff (skin, cloth, fur...), as a BurnFx surface.
+func _surface_at_spot(kind: String) -> String:
+	for s in spots:
+		if s.kind == kind and s.t > 0.0:
+			var best := -1
+			var bd := INF
+			for i in fx.size():
+				if alive[i]:
+					var d := local_of(i).distance_squared_to(s.lp)
+					if d < bd:
+						bd = d
+						best = i
+			if best >= 0:
+				return BurnFx.surface_of_kind(kinds[best])
+	return "flesh"
+
+## Puts out one kind of glow (1 fire, 2 poison) on every voxel that has it.
+func _clear_glow(channel: int) -> void:
+	if mm == null:
+		return
+	for i in glowing.keys():
+		var g: Vector2 = glowing[i]
+		if channel == 1:
+			g.x = 0.0
+		else:
+			g.y = 0.0
+		_set_status(i, g)
 
 static func _write_colors(m: MultiMesh, rows: Array) -> void:
 	# Per instance: with physics interpolation on, a whole-buffer write did not always reach the
@@ -478,6 +602,7 @@ func build_jaw(jw: Dictionary) -> void:
 	jaw_mm = MultiMesh.new()
 	jaw_mm.transform_format = MultiMesh.TRANSFORM_3D
 	jaw_mm.use_colors = true
+	jaw_mm.use_custom_data = true
 	jaw_mm.mesh = mm.mesh
 	jaw_mm.instance_count = idx.size()
 	for s in idx.size():
@@ -486,6 +611,7 @@ func build_jaw(jw: Dictionary) -> void:
 		var k := 1.0 if alive[i] else 0.0
 		jaw_mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ONE * k), (local_of(i) - jaw_pivot.position) * k))
 		jaw_mm.set_instance_color(s, colors[i])
+		jaw_mm.set_instance_custom_data(s, kind_data(kinds[i]))
 	var ext := Vector3(grid.x, grid.y, grid.z) * sc + Vector3.ONE * sc
 	jaw_mm.custom_aabb = AABB(-ext, ext * 2.0)
 	var jm := MultiMeshInstance3D.new()
@@ -818,17 +944,30 @@ func set_flames(on: bool) -> void:
 	if Fx.current == null or Fx.current.headless:
 		return
 	if on and flames == null:
-		flames = Fx.current.emitter("fire", self, 40, 0.07 * part_scale)
-		if flames:
-			flame_smoke = Fx.current.emitter("smoke", flames, 10, 0.05 * part_scale)
+		flames = BurnFx.make(self, _surface_at_spot("fire"), true, part_scale)
 	if flames:
-		flames.emitting = on
-		# The smoke goes out with the fire (it went on rising off a limb long put out).
-		if flame_smoke:
-			flame_smoke.emitting = on
+		if flames.emitting and not on:
+			_clear_glow(1)
+		BurnFx.set_on(flames, on)
 		for s in spots:
 			if s.kind == "fire" and s.t > 0.0:
 				flames.position = s.lp
+				break
+
+## Green bubbles of poison rising off the part while acid or venom eats into it (only how it
+## looks; Fire.tick does the harm).
+func set_poison(on: bool) -> void:
+	if Fx.current == null or Fx.current.headless:
+		return
+	if on and poison_fx == null:
+		poison_fx = BurnFx.make(self, _surface_at_spot("acid"), false, part_scale)
+	if poison_fx:
+		if poison_fx.emitting and not on:
+			_clear_glow(2)
+		BurnFx.set_on(poison_fx, on)
+		for s in spots:
+			if s.kind == "acid" and s.t > 0.0:
+				poison_fx.position = s.lp
 				break
 
 ## An arrow (or a dart) left standing in the part where it went in.

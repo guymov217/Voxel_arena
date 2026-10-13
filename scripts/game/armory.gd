@@ -48,7 +48,8 @@ static func extra(body_parts: Array) -> Dictionary:
 		dims[p.name] = p.dims
 	var out := {}
 	var piece := func(id: String, name: String, mat: String, parts: Dictionary) -> void:
-		out[id] = {"name": name, "mat": mat, "color": null, "parts": parts}
+		# Plate steel a shade darker than a blade's polished edge, so it reads as armour.
+		out[id] = {"name": name, "mat": mat, "color": 0x8c939b if mat == "steel" else null, "parts": parts}
 	var both := func(a: String, b: String, f: Callable) -> Dictionary:
 		return {a: f.call(dims[a]), b: f.call(dims[b])}
 	piece.call("leatherCap", "Leather cap", "leather", {"head": _wrap(dims.head, 4, 5, "all") + _cap(dims.head)})

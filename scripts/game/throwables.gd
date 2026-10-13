@@ -419,12 +419,15 @@ static func _puddle_tex() -> ImageTexture:
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	var noise := FastNoiseLite.new()
 	noise.frequency = 0.09
-	for y in n:
-		for x in n:
+	# In blocks (16 across), the way the voxel sand is.
+	for yy in n:
+		for xx in n:
+			var x := (xx / 4) * 4 + 2
+			var y := (yy / 4) * 4 + 2
 			var d := Vector2(x - n * 0.5 + 0.5, y - n * 0.5 + 0.5).length() / (n * 0.5)
 			var edge := 0.78 + 0.16 * noise.get_noise_2d(x, y)
-			var a := clampf((edge - d) / 0.22 + 0.5, 0.0, 1.0)
-			img.set_pixel(x, y, Color(1, 1, 1, a))
+			var a := 0.9 if (edge - d) / 0.22 + 0.5 > 0.5 else 0.0
+			img.set_pixel(xx, yy, Color(1, 1, 1, a))
 	_ptex = ImageTexture.create_from_image(img)
 	return _ptex
 
@@ -444,6 +447,7 @@ func _draw_wet(dt: float) -> void:
 		mat.roughness = 0.45
 		mat.metallic_specular = 0.35
 		mat.albedo_texture = _puddle_tex()
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		pm.material = mat
 		_wet_mm = _mm(pm, MAX_CELLS)
 		_wet_light = OmniLight3D.new()
@@ -954,6 +958,11 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		if type == "sand" or type == "smoke":
 			mat.albedo_color.a = 0.3
 		cm.material = mat
+		if type == "fire" or type == "acid" or type == "oil" or type == "honey":
+			cm.material = _zone_material(type, r)
+			# Room for the splash's lobes and droplets (the shader draws the shape inside).
+			cm.top_radius = r * 1.7
+			cm.bottom_radius = r * 1.7
 		mi.mesh = cm
 		add_child(mi)
 		mi.global_position = Vector3(p.x, 0.8 if type == "sand" or type == "smoke" else 0.02, p.z)
@@ -970,9 +979,86 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", z.node, int(clampf(r * 26.0, 8.0, 40.0)), r * 0.6)
 		if sm:
 			sm.position = Vector3(0, 0.4, 0)
+	if m.fx and type == "sand" and z.node:
+		# The cloud itself: voxel grains of sand turning in the air, and the haze thinner.
+		(z.node.mesh.material as StandardMaterial3D).albedo_color.a = 0.2
+		var sc: GPUParticles3D = m.fx.emitter("sandcloud", z.node, int(clampf(r * 150.0, 80.0, 500.0)), r * 0.85)
+		if sc:
+			var spm := sc.process_material as ParticleProcessMaterial
+			spm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+			spm.emission_box_extents = Vector3(r * 0.8, 0.75, r * 0.8)
+			sc.emitting = true
+	if m.fx and type == "acid" and z.node:
+		var pz: GPUParticles3D = m.fx.emitter("poison", z.node, int(clampf(r * 30.0, 8.0, 60.0)), r * 0.8)
+		if pz:
+			pz.emitting = true
 	if m.role == "host":
 		Net.send_all("zone", {"type": type, "p": [p.x, p.y, p.z], "r": r, "t": t})
 	return z
+
+## Weapons near the ground in a fire or acid pool, held or loose, burn or fume; so do items
+## lying in one (food and cloth flare and smoke, metal glows). Drawing only.
+func _show_burning() -> void:
+	var ws: Array = m.combat.loose_weapons.duplicate() if m.combat else []
+	for e in m.entities:
+		if e.f and e.f.get("weapons") is Dictionary:
+			for side in e.f.weapons:
+				if e.f.weapons[side]:
+					ws.append(e.f.weapons[side])
+	for w in ws:
+		if not is_instance_valid(w) or w.is_hazard:
+			continue
+		var p: Vector3 = w.global_position
+		var low := p.y < 0.7
+		w.set_burn(low and inside("fire", p), low and inside("acid", p))
+	_burn_items()
+
+## Items (m.items) lying in fire or acid: each gets its flames or fumes once.
+func _burn_items() -> void:
+	if m.items == null:
+		return
+	for it in m.items.list:
+		var n = it.get("node")
+		if n == null or not is_instance_valid(n) or n.has_meta("burning"):
+			continue
+		var p: Vector3 = it.p
+		if p.y > 0.5:
+			continue
+		var fire := inside("fire", p)
+		var acid := inside("acid", p)
+		if not fire and not acid:
+			continue
+		var metal: bool = str(it.type) in ["coin", "rock", "nail", "caltrop", "pot_anvil", "pot_discus", "boomerang"]
+		var e := BurnFx.make(n, "metal" if metal else "cloth", fire, 0.5)
+		if e:
+			n.set_meta("burning", true)
+
+## A burning or poisoned patch drawn on the sand's voxel grid (shaders/zone.gdshader).
+static func _zone_material(type: String, r: float) -> ShaderMaterial:
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/zone.gdshader")
+	sm.set_shader_parameter("radius", r)
+	if type == "fire":
+		sm.set_shader_parameter("color_a", Color(1.0, 0.72, 0.25, 0.9))
+		sm.set_shader_parameter("color_b", Color(0.45, 0.07, 0.02, 0.75))
+		sm.set_shader_parameter("glow", 2.2)
+		sm.set_shader_parameter("speed", 6.0)
+	elif type == "oil":
+		sm.set_shader_parameter("color_a", Color(0.22, 0.26, 0.12, 0.9))
+		sm.set_shader_parameter("color_b", Color(0.06, 0.07, 0.03, 0.85))
+		sm.set_shader_parameter("glow", 0.15)
+		sm.set_shader_parameter("speed", 0.6)
+	elif type == "honey":
+		sm.set_shader_parameter("color_a", Color(1.0, 0.75, 0.25, 0.92))
+		sm.set_shader_parameter("color_b", Color(0.75, 0.42, 0.06, 0.85))
+		sm.set_shader_parameter("glow", 0.35)
+		sm.set_shader_parameter("speed", 0.4)
+	else:
+		sm.set_shader_parameter("color_a", Color(0.62, 0.95, 0.25, 0.85))
+		sm.set_shader_parameter("color_b", Color(0.16, 0.36, 0.06, 0.7))
+		sm.set_shader_parameter("glow", 0.9)
+		sm.set_shader_parameter("speed", 2.0)
+	return sm
 
 func inside(type: String, pos: Vector3) -> bool:
 	for z in zones:
@@ -995,7 +1081,7 @@ func update(dt: float) -> void:
 	for z in zones.duplicate():
 		z.t -= dt
 		z.tick -= dt
-		if z.node and z.type == "fire":
+		if z.node and z.type == "fire" and z.node.mesh.material is StandardMaterial3D:
 			z.node.mesh.material.albedo_color.a = 0.4 + sin(m.time * 20.0) * 0.1
 		if m.role != "guest" and z.tick <= 0.0:
 			z.tick = 0.6 if z.type == "caltrops" else 0.5
@@ -1043,6 +1129,24 @@ func update(dt: float) -> void:
 			if z.node:
 				z.node.queue_free()
 			zones.erase(z)
+	# A swarm of voxel bees round whoever they cover (only the look; drawn wherever the timer runs).
+	if not headless and m.fx:
+		for e in m.entities:
+			var bc = e.f
+			if not is_instance_valid(bc) or bc.torso == null:
+				continue
+			var swarm = bc.get_meta("bee_swarm") if bc.has_meta("bee_swarm") else null
+			var want: bool = bc.bee_timer > 0.0 and bc.alive
+			if want and swarm == null:
+				swarm = m.fx.emitter("bees", bc.torso, 70, 0.45)
+				if swarm:
+					swarm.local_coords = true
+					bc.set_meta("bee_swarm", swarm)
+			if swarm and is_instance_valid(swarm):
+				swarm.emitting = want
+	# Weapons and items lying in a fire or a pool of acid look it (only the look).
+	if not headless and m.fx and not zones.is_empty():
+		_show_burning()
 	# Bees sting the man they cover now and then.
 	if m.role != "guest":
 		for e in m.entities:
