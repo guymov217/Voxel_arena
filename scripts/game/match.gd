@@ -512,6 +512,7 @@ func _physics_process(dt: float) -> void:
 		var v: Vector3 = hero.torso.linear_velocity
 		hero.torso.apply_central_force(Vector3(d.x * 600.0 - v.x * 60.0, 0, d.z * 600.0 - v.z * 60.0) * hero.torso.mass)
 	if role == "guest":
+		_update_streams(dt)
 		throwables.update(dt)
 		for e in entities:
 			if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
@@ -629,6 +630,7 @@ func _physics_process(dt: float) -> void:
 		_sync_loose()
 	var chars := entities.map(func(x): return x.f).filter(func(x): return is_instance_valid(x))
 	items.update(dt, chars)
+	_update_streams(dt)
 	throwables.update(dt)
 	throwables.update_shooters(dt)
 	for e in entities:
@@ -788,12 +790,23 @@ func guest_message(type: String, data) -> void:
 		"zone":
 			if data is Dictionary and Throwables.ZONE_COLORS.has(str(data.get("type"))) and data.get("p") is Array:
 				throwables.add_zone(str(data.type), Vector3(data.p[0], data.p[1], data.p[2]), clampf(float(data.r), 0.1, 5.0), clampf(float(data.t), 0.0, 30.0))
+		"splash":
+			# The host's firebomb: the same drops fly here (for the eye; the host's burn).
+			if data is Dictionary and data.get("p") is Array and (data.p as Array).size() == 3 and data.get("d") is Array and (data.d as Array).size() == 3:
+				throwables.splash_burning(Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])), Vector3(float(data.d[0]), float(data.d[1]), float(data.d[2])), clampi(int(data.get("n", 48)), 1, 80), null, null, null, "acid" if str(data.get("k")) == "acid" else "fire", int(data.get("s", 0)), true)
+		"wet":
+			if data is Dictionary and data.get("c") is Array:
+				throwables.set_wet(data.c)
 		"breath":
 			if data is Dictionary and data.get("d") is Array and (data.d as Array).size() == 3:
 				var eb = entity_by_id(int(data.get("id", -1)))
 				var bd := Vector3(float(data.d[0]), float(data.d[1]), float(data.d[2]))
 				if eb and eb.f is Beast and bd.length_squared() > 0.01:
 					breath_at(eb.f, "venom" if data.get("kind") == "venom" else "fire", bd.normalized(), clampf(float(data.get("r", 6.0)), 1.0, 30.0), 0.9)
+					var mk: Vector3 = eb.f.breath_part().global_position + bd.normalized() * 4.0
+					if data.get("m") is Array and (data.m as Array).size() == 3:
+						mk = Vector3(float(data.m[0]), float(data.m[1]), float(data.m[2]))
+					stream(eb.f, "venom" if data.get("kind") == "venom" else "fire", mk, clampf(float(data.get("r", 6.0)), 1.0, 30.0), 0.9)
 		"spot":
 			if data is Dictionary:
 				var e = entity_by_id(int(data.get("id", -1)))
@@ -1279,39 +1292,62 @@ func _breath(b: Beast, kind_: String, rng_: float) -> void:
 	var aim := (fwd + Vector3(0, -0.12, 0)).normalized()
 	if b.flying and is_instance_valid(b.target):
 		aim = (Vector3(b.target.global_position.x, 0.3, b.target.global_position.z) - mouth).normalized()
+	# Where it is meant to land: on the prey if it is in reach, else ahead on the sand.
+	var mark := mouth + aim * rng_ * 0.8
+	var prey = null
+	if is_instance_valid(b.target) and b.target.get("torso") and (b.target.torso.global_position - mouth).length() < rng_ * 1.4:
+		mark = b.target.torso.global_position
+		prey = b.target
+	aim = lofted(mouth, mark, stream_speed(rng_))
 	breath_at(b, kind_, aim, rng_, 0.9)
+	stream(b, kind_, mark, rng_, 0.9, prey)
 	if role == "host":
 		var e0 = entity_of(b)
 		if e0:
-			Net.send_all("breath", {"id": e0.id, "kind": kind_, "d": [aim.x, aim.y, aim.z], "r": rng_})
+			Net.send_all("breath", {"id": e0.id, "kind": kind_, "d": [aim.x, aim.y, aim.z], "r": rng_, "m": [snappedf(mark.x, 0.01), snappedf(mark.y, 0.01), snappedf(mark.z, 0.01)]})
 	sfx("whoosh", mouth, 1.5)
-	if kind_ == "fire":
-		for i in range(1, 4):
-			var zp := mouth + fwd * (rng_ * i / 3.0)
-			throwables.add_zone("fire", Vector3(zp.x, 0.1, zp.z), 0.9 + 0.3 * i, 4.0, b)
 	feed.emit(("%s spits venom!" if kind_ == "venom" else "%s breathes FIRE!") % b.display_name)
-	for e in entities:
-		var c = e.f
-		if c == b or not c.alive or c is Beast:
+
+## The breath itself: burning fuel (or venom) poured out of the mouth as globs for `secs`, each
+## on its own flight (the way the head points, gravity, the air), so it is only where it lands
+## that burns: the man it splashes, the shield he puts in the way, the wall behind him, a
+## burning streak along the sand. On every screen; only the host's globs do harm.
+var streams: Array = []
+static func stream_speed(rng_: float) -> float:
+	return clampf(rng_ * 1.7, 6.0, 16.0)
+
+## The way to aim a stream of `speed` from `from` so it falls on `to`.
+static func lofted(from: Vector3, to: Vector3, speed: float) -> Vector3:
+	var t := from.distance_to(to) / maxf(1.0, speed * 0.92)
+	return (to + Vector3(0, 0.5 * 9.81 * t * t, 0) - from).normalized()
+
+func stream(b: Beast, kind_: String, mark: Vector3, rng_: float, secs: float, prey = null) -> void:
+	streams.append({"b": b, "kind": "acid" if kind_ == "venom" else "fire", "mark": mark, "prey": prey, "speed": stream_speed(rng_), "t": secs, "acc": 0.0})
+
+func _update_streams(dt: float) -> void:
+	for st in streams.duplicate():
+		st.t -= dt
+		var b = st.b
+		if st.t <= 0.0 or not is_instance_valid(b) or not b.alive or b.breath_part().severed:
+			streams.erase(st)
 			continue
-		var d: Vector3 = c.torso.global_position - mouth
-		d.y = 0.0
-		if d.length() > rng_ or d.normalized().dot(fwd) < 0.6:
-			continue
-		var part: VoxelPart = c.torso
-		c.apply_hit(part, {"impulse": 10.0 if kind_ == "venom" else 16.0, "type": "blunt", "hardness": 0.2, "sharpness": 0.0, "point": part.global_position, "dir": fwd})
-		if kind_ == "venom":
-			for pp in c.parts:
-				if not pp.severed:
-					pp.bleed += 3.0
-			c.slow(4.0, 0.55)
-		# It catches whatever it washes over: the chest, the face and a limb or two, on the side
-		# turned to the beast.
-		var live: Array = c.parts.filter(func(pp): return not pp.severed)
-		for pp in [c.torso, c.head, live.pick_random(), live.pick_random()]:
-			if pp and not pp.severed:
-				add_spot(c, pp, "fire" if kind_ == "fire" else "acid", 4.0, b, pp.global_position - fwd * 0.2 * c.S)
-		c.last_attacker = b
+		var head: VoxelPart = b.breath_part()
+		# It hoses the prey: the mark follows him (a beat behind, so a quick man can get out
+		# from under it), and the stream is lofted from the mouth onto the mark.
+		var prey = st.prey
+		if prey != null and is_instance_valid(prey) and prey.alive:
+			st.mark = (st.mark as Vector3).move_toward(prey.torso.global_position, dt * 3.5)
+		var mouth: Vector3 = head.global_position
+		var dir := lofted(mouth, st.mark, st.speed)
+		mouth += dir * head.half_ext.z
+		st.acc += dt * 55.0
+		while st.acc >= 1.0:
+			st.acc -= 1.0
+			var a := randf() * TAU
+			var side := dir.cross(Vector3.UP if absf(dir.y) < 0.95 else Vector3.RIGHT).normalized()
+			var up := side.cross(dir)
+			var off := (side * cos(a) + up * sin(a)) * randf() * 0.12
+			throwables.spit(st.kind, mouth, (dir + off).normalized() * st.speed * randf_range(0.85, 1.1) + head.linear_velocity * 0.25, b, role == "guest")
 
 ## The stream itself, drawn on every screen: flames (or venom) poured out of the mouth along
 ## `dir` for `secs`, following the head as it moves.

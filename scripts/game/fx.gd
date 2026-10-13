@@ -59,6 +59,12 @@ static func texture(kind: String) -> Texture2D:
 					a = clampf(1.0 - r, 0.0, 1.0) * (0.6 + 0.4 * noise.get_noise_2d(x * 2.0, y * 2.0))
 				"spark":
 					a = clampf(1.0 - r * 1.6, 0.0, 1.0)
+				"flame":
+					# A tongue of flame: narrow and ragged at the top, full at the root.
+					var ny := (dy + 1.0) * 0.5
+					var w := 0.18 + 0.62 * pow(ny, 0.7) + 0.12 * noise.get_noise_2d(x * 1.5, y * 0.8)
+					a = clampf(1.0 - absf(dx) / maxf(0.05, w), 0.0, 1.0) * clampf(ny * 1.4, 0.0, 1.0) * clampf((1.0 - ny) * 5.0, 0.0, 1.0)
+					a = sqrt(a)
 			img.set_pixel(x, y, Color(1, 1, 1, a))
 	var t := ImageTexture.create_from_image(img)
 	_textures[kind] = t
@@ -78,6 +84,8 @@ const KINDS := {
 	"confetti": {"color": Color(1, 1, 1), "life": 2.0, "speed": [2.0, 5.0], "spread": 60.0, "gravity": -3.0, "size": [0.03, 0.05], "tex": "", "drag": 1.2, "confetti": true},
 	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "spark", "emit": 1.5},
 	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.7, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "drag": 3.0},
+	"pool_fire": {"color": Color(1.0, 0.5, 0.12), "life": 0.7, "speed": [0.3, 0.9], "spread": 12.0, "gravity": 3.0, "size": [0.26, 0.55], "tex": "flame", "emit": 3.0, "shrink": true},
+	"pool_smoke": {"color": Color(0.12, 0.1, 0.09, 0.55), "life": 3.0, "speed": [0.6, 1.4], "spread": 20.0, "gravity": 0.6, "size": [0.35, 0.8], "tex": "soft", "drag": 0.4},
 	"blade_fire": {"color": Color(1.0, 0.45, 0.08), "life": 0.42, "speed": [0.25, 0.8], "spread": 30.0, "gravity": 2.8, "size": [0.06, 0.13], "tex": "soft", "emit": 9.0, "add": true, "shrink": true},
 	"venom": {"color": Color(0.45, 0.85, 0.2), "life": 0.9, "speed": [0.02, 0.2], "spread": 25.0, "gravity": -7.0, "size": [0.014, 0.03], "tex": "spark", "emit": 1.6},
 	"frost": {"color": Color(0.72, 0.9, 1.0, 0.9), "life": 0.9, "speed": [0.05, 0.35], "spread": 180.0, "gravity": -0.4, "size": [0.01, 0.024], "tex": "spark", "emit": 2.5, "add": true, "drag": 0.5},
@@ -126,6 +134,11 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 		g.add_point(0.18, Color(1.0, 0.62, 0.15, 1.0))
 		g.add_point(0.5, Color(0.55, 0.16, 0.05, 0.85))
 		g.set_color(g.get_point_count() - 1, Color(0.12, 0.09, 0.08, 0.0))
+	if kind == "pool_fire":
+		g.set_color(0, Color(1.0, 0.95, 0.65, 1.0))
+		g.add_point(0.3, Color(1.0, 0.55, 0.12, 0.95))
+		g.add_point(0.7, Color(0.75, 0.18, 0.04, 0.7))
+		g.set_color(g.get_point_count() - 1, Color(0.2, 0.06, 0.03, 0.0))
 	if kind == "fire" or kind == "brazier":
 		g.set_color(0, Color(1.0, 0.9, 0.5))
 		g.add_point(0.4, Color(1.0, 0.45, 0.1, 0.9))

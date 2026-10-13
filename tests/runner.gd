@@ -14,7 +14,7 @@ func run(only: String) -> void:
 			files.append(f)
 	files.sort()
 	for f in files:
-		if only != "" and not f.contains(only):
+		if only != "" and not (only.split(",") as Array).any(func(o): return f.contains(o)):
 			continue
 		var suite = load("res://tests/" + f).new()
 		suite.set("t", self)

@@ -106,66 +106,455 @@ func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
 				continue
 			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6})
 
-## Greek fire (or vitriol) breaks like a bottle: a spray of drops flying on their own momentum,
-## and whatever a drop lands on catches where it landed (a body part, or the sand, where it pools).
-func splash_burning(p: Vector3, dir, n: int, owner_, hit_part, hit_char, kind := "fire") -> void:
-	var away := Vector3.UP
-	if hit_part:
-		away = p - hit_part.global_position
-		away.y = 0.0
-		away = away.normalized() if away.length_squared() > 1e-4 else Vector3.UP
-	var carry: Vector3 = (dir as Vector3) * 0.35 if dir != null else Vector3.ZERO
+## Greek fire (or vitriol) breaks like a firebomb: the liquid bursts out mostly the way the pot
+## was flying and fans out along whatever it hit, flying as drops on their own momentum. A drop
+## that meets a body clings and catches there, and some of it runs on down him; one that meets a
+## wall runs down the wall; one that meets the floor (or a table, a crate) skates along it as a
+## sheet, wetting the ground as it goes. What is on the ground spreads from wet to dry, thins
+## out, and burns (or eats) until its fuel is spent.
+const POT_FUEL := 7.0          # what one pot holds
+func splash_burning(p: Vector3, dir, n: int, owner_, hit_part, hit_char, kind := "fire", seed_ := -1, visual := false) -> void:
+	var rng := RandomNumberGenerator.new()
+	if seed_ >= 0:
+		rng.seed = seed_
+	else:
+		rng.randomize()
+		seed_ = int(rng.seed % 1000000)
+	var fwd: Vector3 = (dir as Vector3).normalized() if dir is Vector3 and (dir as Vector3).length_squared() > 1e-4 else Vector3.ZERO
+	# The face it broke on: a body (away from him), the ground, or a wall.
+	var face := Vector3.UP
+	if hit_part and is_instance_valid(hit_part):
+		face = p - hit_part.global_position
+		face = face.normalized() if face.length_squared() > 1e-4 else -fwd
+	elif p.y > 0.3 and fwd != Vector3.ZERO:
+		var hit := _ray(p - fwd * 0.3, p + fwd * 0.4)
+		if not hit.is_empty():
+			face = hit.normal
+	var speed := 8.0
+	# Momentum along the face carries on; into the face it is mostly lost.
+	var along := fwd - face * fwd.dot(face)
 	for i in n:
-		var a := randf() * TAU
-		var up := randf()
-		var v := (Vector3(cos(a), 0, sin(a)) * sqrt(1.0 - up * up) + Vector3(0, up, 0)).normalized()
-		v = v.lerp(away, 0.45).normalized() * (1.2 + randf() * 2.6) + carry
-		drops.append({"p": p + Vector3(randf_range(-0.04, 0.04), 0.04, randf_range(-0.04, 0.04)), "v": v, "fuel": 0.35 + randf() * 0.65, "life": 2.5, "owner": owner_, "acid": kind == "acid", "from": hit_char, "age": 0.0})
-	if hit_part and hit_char and hit_char.alive:
-		m.add_spot(hit_char, hit_part, kind, 6.0, owner_, p)
+		var a := rng.randf() * TAU
+		var spread := Vector3(cos(a), 0, sin(a))
+		spread = (spread - face * spread.dot(face)).normalized() if absf(face.y) < 0.99 else spread
+		var v := along * speed * (0.35 + 0.55 * rng.randf()) + spread * speed * (0.15 + 0.4 * rng.randf()) + face * (0.4 + 1.4 * rng.randf())
+		drops.append({"p": p + face * 0.03 + Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.04, 0.04)), "v": v, "fuel": POT_FUEL / n * (0.5 + rng.randf()),
+			"owner": owner_, "acid": kind == "acid", "from": hit_char, "age": 0.0, "slide": false, "y": 0.0, "visual": visual, "skip": null})
+	if not visual:
+		if hit_part and hit_char and hit_char.alive:
+			m.add_spot(hit_char, hit_part, kind, 6.0, owner_, p)
+		if m.role == "host":
+			Net.send_all("splash", {"p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)], "d": [snappedf(fwd.x, 0.01), snappedf(fwd.y, 0.01), snappedf(fwd.z, 0.01)], "k": kind, "n": n, "s": seed_})
 	burst(p, Color(1.0, 0.5, 0.1) if kind == "fire" else Color(0.56, 0.83, 0.23), 24, 2.5, 0.6, 0.04)
+	if kind == "fire":
+		# The whump of it catching.
+		flash(p, Color(1.0, 0.55, 0.2), 7.0, 6.0)
+		if m.fx:
+			m.fx.burst("blastfire", p + Vector3(0, 0.2, 0), 30, Vector3.UP, 0.8)
+
+## One glob of a breath: burning fuel (or venom) flying from `p` at `v`.
+func spit(kind: String, p: Vector3, v: Vector3, owner_, visual := false) -> void:
+	if drops.size() > 600:
+		return
+	drops.append({"p": p, "v": v, "fuel": 0.05, "owner": owner_, "acid": kind == "acid", "from": owner_, "age": 0.0, "slide": false, "y": 0.0, "visual": visual, "skip": null, "glob": true})
+
+## What a splash meets in the world: the ground, walls, crates, and a shield or blade held up.
+func _ray(a: Vector3, b: Vector3) -> Dictionary:
+	if not is_inside_tree():
+		return {}
+	var q := PhysicsRayQueryParameters3D.create(a, b, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON)
+	q.hit_from_inside = false
+	return get_world_3d().direct_space_state.intersect_ray(q)
 
 func _update_drops(dt: float) -> void:
 	for d in drops.duplicate():
-		d.life -= dt
 		d.age += dt
 		var from: Vector3 = d.p
-		d.v.y -= 9.81 * dt
-		d.v *= pow(0.7, dt)
-		d.p += d.v * dt
-		var done: bool = d.life <= 0.0
-		if not done:
-			# Did it land on someone between the last spot and this one?
-			for e in m.entities:
-				var c = e.f
-				if not c.alive or (c == d.from and d.age < 0.3):
-					continue
-				for part in c.parts:
-					if part.severed:
-						continue
-					if Social.box_distance(part, d.p) < 0.03:
-						if d.acid:
-							m.add_spot(c, part, "acid", 1.5 + 3.0 * d.fuel, d.owner, d.p)
-						else:
-							m.add_spot(c, part, "fire", 1.5 + 3.0 * d.fuel, d.owner, d.p)
-						done = true
-						break
-				if done:
-					break
-		if not done and d.p.y <= 0.02:
-			# On the sand it pools (a small fire or puddle, feeding one already there).
-			var pool = null
-			for z in zones:
-				if z.type == ("acid" if d.acid else "fire") and Vector2(z.p.x - d.p.x, z.p.z - d.p.z).length() < z.r:
-					pool = z
-					break
-			if pool:
-				pool.t = maxf(pool.t, 3.0 + 4.0 * d.fuel)
-			elif randf() < 0.35:
-				add_zone("acid" if d.acid else "fire", Vector3(d.p.x, 0, d.p.z), 0.35 + 0.25 * d.fuel, 3.0 + 4.0 * d.fuel, d.owner)
-			done = true
+		var done := false
+		if d.slide:
+			# A sheet on a surface: it slows as it wets the ground, leaving fuel along its way.
+			var sp: float = Vector3(d.v.x, 0, d.v.z).length()
+			d.v *= exp(-3.0 * dt)
+			d.p += Vector3(d.v.x, 0, d.v.z) * dt
+			d.p.y = d.y + 0.01
+			var left: float = d.fuel * minf(1.0, dt * 3.0)
+			d.fuel -= left
+			_deposit(d, d.p, left)
+			# Off the edge of a crate: it falls again.
+			if _ray(d.p + Vector3(0, 0.05, 0), d.p - Vector3(0, 0.12, 0)).is_empty() and d.y > 0.05:
+				d.slide = false
+			if sp < 0.25 or d.fuel < 0.01:
+				_deposit(d, d.p, d.fuel)
+				done = true
+		else:
+			d.v.y -= 9.81 * dt
+			d.v *= pow(0.85, dt)
+			d.p += d.v * dt
+			# On someone: it clings there, and part of it runs on down him.
+			var body := _drop_on_body(d)
+			if not body.is_empty():
+				var c = body.c
+				var part: VoxelPart = body.part
+				if not d.visual:
+					m.add_spot(c, part, "acid" if d.acid else "fire", 1.5 + 3.0 * minf(1.0, d.fuel * 4.0), d.owner, d.p)
+					if d.get("glob", false):
+						# A breath's stream has weight: it shoves what it pours onto.
+						part.apply_central_impulse(d.v * 0.04 * float(c.MS))
+						if d.owner and d.owner != c:
+							c.last_attacker = d.owner
+				if randf() < 0.5:
+					d.v = part.velocity_at(d.p) * 0.5 + Vector3(0, -0.6, 0)
+					d.fuel *= 0.5
+					d.skip = part
+					d.from = null
+				else:
+					done = true
+			elif d.p.y < 3.0 or d.age > 0.05:
+				var hit := _ray(from, d.p)
+				if not hit.is_empty():
+					var nrm: Vector3 = hit.normal
+					if nrm.y > 0.6:
+						# A floor or the top of something: it lands and runs on along it.
+						d.slide = true
+						d.y = hit.position.y
+						d.p = hit.position
+						d.v = (d.v - nrm * d.v.dot(nrm)) * 0.7
+						_deposit(d, d.p, d.fuel * 0.25)
+						d.fuel *= 0.75
+					else:
+						# A wall: it splashes on it and runs down it.
+						_wall_mark(hit.position, nrm, d.acid)
+						d.p = hit.position + nrm * 0.03
+						d.v = (d.v - nrm * d.v.dot(nrm)) * 0.15 + Vector3(0, -0.5, 0)
+			if not d.slide and d.p.y <= 0.0:
+				d.slide = true
+				d.y = 0.0
+			if d.age > 6.0:
+				done = true
 		if done:
 			drops.erase(d)
+	_draw_drops()
+
+func _drop_on_body(d: Dictionary) -> Dictionary:
+	for e in m.entities:
+		var c = e.f
+		if not c.alive or (c == d.from and d.age < 0.3):
+			continue
+		if c.torso.global_position.distance_squared_to(d.p) > pow(3.2 * float(c.S), 2.0):
+			continue
+		for part in c.parts:
+			if part.severed or part == d.skip:
+				continue
+			if Social.box_distance(part, d.p) < 0.03:
+				return {"c": c, "part": part}
+	return {}
+
+# ---------- Liquid on the ground ----------
+
+const CELL := 0.22
+const FILM := 0.1          # thinner than this it no longer runs
+const MAX_CELLS := 700
+var wet := {}              # Vector3i(x, level, z) -> {"k": "fire"|"acid", "f": fuel, "y": height, "owner"}
+var _wet_t := 0.0
+var _wet_hurt := 0.0
+var _wet_send := 0.0
+var _wet_mm: MultiMeshInstance3D
+var _drop_mm: MultiMeshInstance3D
+var _wet_light: OmniLight3D
+var _wall_marks := 0
+var _wall_fires := 0
+
+static func _key(p: Vector3) -> Vector3i:
+	return Vector3i(floori(p.x / CELL), roundi(p.y / 0.4), floori(p.z / CELL))
+
+func _deposit(d: Dictionary, p: Vector3, amount: float) -> void:
+	if d.visual or m.role == "guest" or amount <= 0.0:
+		return
+	add_liquid("acid" if d.acid else "fire", p, amount, d.owner)
+
+func add_liquid(kind: String, p: Vector3, amount: float, owner_ = null) -> void:
+	var k := _key(p)
+	var c = wet.get(k)
+	if c == null:
+		if wet.size() >= MAX_CELLS:
+			return
+		c = {"k": kind, "f": 0.0, "y": p.y, "owner": owner_}
+		wet[k] = c
+	c.f += amount
+	c.k = kind
+	if owner_:
+		c.owner = owner_
+
+func _update_wet(dt: float) -> void:
+	if m.role != "guest":
+		_wet_t += dt
+		if _wet_t >= 0.1:
+			var step := _wet_t
+			_wet_t = 0.0
+			# It runs from wet to drier ground beside it (walls stop it), thinning out.
+			var flow := {}
+			for k in wet:
+				var c: Dictionary = wet[k]
+				if c.f <= FILM:
+					continue
+				for o in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+					var nk: Vector3i = k + o
+					var n = wet.get(nk)
+					var nf: float = n.f if n != null else 0.0
+					if c.f - nf <= 0.02:
+						continue
+					if n == null:
+						var cp := Vector3((k.x + 0.5) * CELL, c.y + 0.08, (k.z + 0.5) * CELL)
+						var np := Vector3((nk.x + 0.5) * CELL, c.y + 0.08, (nk.z + 0.5) * CELL)
+						if not _ray(cp, np).is_empty() or _ray(np + Vector3(0, 0.1, 0), np - Vector3(0, 0.25, 0)).is_empty() and c.y > 0.05:
+							continue
+					var amt: float = (c.f - nf) * 0.06 * minf(1.0, step * 10.0)
+					flow[k] = flow.get(k, 0.0) - amt
+					flow[nk] = flow.get(nk, 0.0) + amt
+					if n == null and not wet.has(nk) and wet.size() < MAX_CELLS:
+						wet[nk] = {"k": c.k, "f": 0.0, "y": c.y, "owner": c.owner}
+			for k in flow:
+				if wet.has(k):
+					wet[k].f += flow[k]
+			# Fire eats its fuel, faster where it is thick; vitriol soaks away slowly.
+			for k in wet.keys():
+				var c: Dictionary = wet[k]
+				c.f -= step * (0.008 + 0.05 * c.f if c.k == "fire" else 0.004 + 0.02 * c.f)
+				if c.f < 0.012:
+					wet.erase(k)
+		_wet_hurt -= dt
+		if _wet_hurt <= 0.0 and not wet.is_empty():
+			_wet_hurt = 0.4
+			_wet_burns()
+		_wet_send -= dt
+		if m.role == "host" and _wet_send <= 0.0 and (not wet.is_empty() or _wet_mm and _wet_mm.multimesh.visible_instance_count > 0):
+			_wet_send = 0.35
+			var cells := []
+			for k in wet:
+				var c: Dictionary = wet[k]
+				cells.append([k.x, k.y, k.z, roundi(c.y * 100.0), roundi(c.f * 100.0), 0 if c.k == "fire" else 1])
+			Net.send_all("wet", {"c": cells.slice(0, MAX_CELLS)}, false)
+	_draw_wet(dt)
+
+## What lies in a burning (or corrosive) pool catches: feet and shins of a man standing in it,
+## all of a man lying in it.
+func _wet_burns() -> void:
+	for e in m.entities:
+		var c = e.f
+		if not c.alive:
+			continue
+		var lying: bool = c.state != "stand"
+		for part in c.parts:
+			if part.severed:
+				continue
+			var pp: Vector3 = part.global_position
+			var cell = wet.get(_key(Vector3(pp.x, pp.y - (0.0 if lying else 0.6 * c.S), pp.z)))
+			if cell == null:
+				cell = wet.get(_key(Vector3(pp.x, 0.0, pp.z)))
+			if cell == null or cell.f < 0.04:
+				continue
+			if pp.y - cell.y > (0.45 if lying else 0.5) * c.S + 0.15:
+				continue
+			if randf() < 0.6:
+				m.add_spot(c, part, cell.k, 2.0 + 2.0 * minf(1.0, cell.f), cell.owner, Vector3(pp.x, cell.y, pp.z))
+		if wet.has(_key(Vector3(c.torso.global_position.x, 0.0, c.torso.global_position.z))) and wet[_key(Vector3(c.torso.global_position.x, 0.0, c.torso.global_position.z))].k == "fire":
+			c.blood = maxf(0.0, c.blood - 0.4)
+
+## The guests are told the pools: they draw them, the host burns with them.
+func set_wet(cells: Array) -> void:
+	wet.clear()
+	for r in cells.slice(0, MAX_CELLS):
+		if r is Array and r.size() == 6:
+			wet[Vector3i(int(r[0]), int(r[1]), int(r[2]))] = {"y": float(r[3]) / 100.0, "f": clampf(float(r[4]) / 100.0, 0.0, 20.0), "k": "fire" if int(r[5]) == 0 else "acid", "owner": null}
+
+func _mm(color_mesh: Mesh, cap: int) -> MultiMeshInstance3D:
+	var mi := MultiMeshInstance3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = color_mesh
+	mm.instance_count = cap
+	mm.visible_instance_count = 0
+	mi.multimesh = mm
+	mi.custom_aabb = AABB(Vector3(-40, -2, -40), Vector3(80, 12, 80))
+	mm.custom_aabb = mi.custom_aabb
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	return mi
+
+func _draw_drops() -> void:
+	if headless:
+		return
+	if _drop_mm == null:
+		var sm := SphereMesh.new()
+		sm.radius = 0.022
+		sm.height = 0.044
+		sm.radial_segments = 6
+		sm.rings = 3
+		var mat := StandardMaterial3D.new()
+		mat.vertex_color_use_as_albedo = true
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		sm.material = mat
+		_drop_mm = _mm(sm, 400)
+	var mm := _drop_mm.multimesh
+	var n := mini(drops.size(), mm.instance_count)
+	for i in n:
+		var d: Dictionary = drops[i]
+		var s := 1.0 if not d.slide else 0.7
+		var v: Vector3 = d.v
+		var stretch := clampf(v.length() * 0.06, 1.0, 2.6)
+		var b := Basis.IDENTITY
+		if v.length_squared() > 0.01 and absf(v.normalized().dot(Vector3.UP)) < 0.99:
+			b = Basis.looking_at(v.normalized(), Vector3.UP)
+		mm.set_instance_transform(i, Transform3D(b.scaled(Vector3(s, s, s * stretch)), d.p))
+		mm.set_instance_color(i, Color(0.56, 0.86, 0.22) if d.acid else Color(1.0, 0.62, 0.2))
+	mm.visible_instance_count = n
+
+## A blot of liquid: solid in the middle, soft and a little ragged at the rim.
+static var _ptex: ImageTexture
+static func _puddle_tex() -> ImageTexture:
+	if _ptex:
+		return _ptex
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var noise := FastNoiseLite.new()
+	noise.frequency = 0.09
+	for y in n:
+		for x in n:
+			var d := Vector2(x - n * 0.5 + 0.5, y - n * 0.5 + 0.5).length() / (n * 0.5)
+			var edge := 0.78 + 0.16 * noise.get_noise_2d(x, y)
+			var a := clampf((edge - d) / 0.22 + 0.5, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	_ptex = ImageTexture.create_from_image(img)
+	return _ptex
+
+const FLAMES := 26
+var _flame_pool: Array = []
+var _smoke: Node3D
+var _flame_t := 0.0
+func _draw_wet(dt: float) -> void:
+	if headless:
+		return
+	if _wet_mm == null:
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(CELL * 2.3, CELL * 2.3)
+		var mat := StandardMaterial3D.new()
+		mat.vertex_color_use_as_albedo = true
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.roughness = 0.45
+		mat.metallic_specular = 0.35
+		mat.albedo_texture = _puddle_tex()
+		pm.material = mat
+		_wet_mm = _mm(pm, MAX_CELLS)
+		_wet_light = OmniLight3D.new()
+		_wet_light.light_color = Color(1.0, 0.55, 0.2)
+		_wet_light.shadow_enabled = false
+		add_child(_wet_light)
+	var mm := _wet_mm.multimesh
+	var i := 0
+	var heat := 0.0
+	var centre := Vector3.ZERO
+	var t := Time.get_ticks_msec() / 1000.0
+	var burning := []
+	for k in wet:
+		if i >= mm.instance_count:
+			break
+		var c: Dictionary = wet[k]
+		var at := Vector3((k.x + 0.5) * CELL, c.y + 0.05 + 0.003 * (i % 3), (k.z + 0.5) * CELL)
+		var s := clampf(0.8 + sqrt(c.f) * 0.7, 0.8, 1.5)
+		var rot := float((k.x * 73856093) ^ (k.z * 19349663)) * 0.001
+		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, rot).scaled(Vector3(s, 1, s)), at))
+		var a := clampf(0.4 + c.f * 4.0, 0.4, 0.92)
+		if c.k == "fire":
+			# Pitch soaked into the sand: dark and glossy, glowing where it burns hot.
+			var glow := clampf(c.f * 1.5, 0.0, 0.6) * (0.8 + 0.2 * sin(t * 11.0 + k.x * 1.7 + k.z * 2.3))
+			mm.set_instance_color(i, Color(0.1 + 0.6 * glow, 0.045 + 0.2 * glow, 0.02, a))
+			heat += c.f
+			centre += at * c.f
+			burning.append([c.f, at])
+		else:
+			mm.set_instance_color(i, Color(0.45, 0.85, 0.15, a * 0.85))
+		i += 1
+	mm.visible_instance_count = i
+	_place_flames(burning, dt)
+	if heat > 0.6 and m.fx:
+		# A big fire smokes: black pitch smoke rising off the middle of it.
+		if _smoke == null:
+			_smoke = Node3D.new()
+			add_child(_smoke)
+			m.fx.emitter("pool_smoke", _smoke, 30, 0.6)
+		_smoke.visible = true
+		_smoke.global_position = centre / heat + Vector3(0, 0.6, 0)
+	elif _smoke:
+		_smoke.visible = false
+	if _wet_light:
+		_wet_light.visible = heat > 0.05
+		if heat > 0.05:
+			_wet_light.global_position = centre / heat + Vector3(0, 1.3, 0)
+			_wet_light.light_energy = clampf(heat * 0.25, 0.4, 2.2) * (0.85 + 0.15 * sin(t * 17.0))
+			_wet_light.omni_range = clampf(2.5 + sqrt(heat) * 1.5, 2.5, 8.0)
+
+## Flames stand where the pool burns thickest: a few dozen fires moved onto the hottest spots,
+## each as tall as the fuel under it.
+func _place_flames(burning: Array, dt: float) -> void:
+	_flame_t -= dt
+	if _flame_t > 0.0 or m.fx == null:
+		return
+	_flame_t = 0.25
+	burning.sort_custom(func(x, y): return x[0] > y[0])
+	var chosen := []
+	for b in burning:
+		if chosen.size() >= FLAMES:
+			break
+		if chosen.all(func(o): return (o[1] as Vector3).distance_to(b[1]) > 0.42):
+			chosen.append(b)
+	while _flame_pool.size() < chosen.size():
+		var holder := Node3D.new()
+		add_child(holder)
+		var ps: GPUParticles3D = m.fx.emitter("pool_fire", holder, 20, 0.24)
+		if ps == null:
+			holder.queue_free()
+			break
+		_flame_pool.append({"node": holder, "ps": ps})
+	for j in _flame_pool.size():
+		var fl: Dictionary = _flame_pool[j]
+		var ps: GPUParticles3D = fl.ps
+		if j < chosen.size():
+			fl.node.global_position = chosen[j][1]
+			ps.emitting = true
+			ps.amount_ratio = clampf(0.3 + chosen[j][0] * 1.5, 0.3, 1.0)
+			ps.speed_scale = clampf(0.8 + chosen[j][0], 0.8, 1.6)
+		else:
+			ps.emitting = false
+
+## A splash on a wall: a scorch (or a green stain) where it hit, and for fire a lick of flame.
+func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
+	if headless or _wall_marks > 60 or m.fx == null:
+		return
+	_wall_marks += 1
+	var dcl := Decal.new()
+	dcl.texture_albedo = m.fx.texture("splat")
+	dcl.modulate = Color(0.45, 0.75, 0.2, 0.85) if acid else Color(0.08, 0.06, 0.05, 0.8)
+	dcl.size = Vector3(0.35, 0.3, 0.35)
+	add_child(dcl)
+	var up := n
+	var side := up.cross(Vector3.UP if absf(up.y) < 0.9 else Vector3.RIGHT).normalized()
+	dcl.global_transform = Transform3D(Basis(side, up, side.cross(up)), p)
+	get_tree().create_timer(20.0, false).timeout.connect(func():
+		if is_instance_valid(dcl):
+			dcl.queue_free()
+		_wall_marks -= 1)
+	if not acid and _wall_fires < 8:
+		# A lick of flame on the wall where it struck, burning out in a few seconds.
+		var holder := Node3D.new()
+		add_child(holder)
+		holder.global_position = p + n * 0.06
+		var ps: GPUParticles3D = m.fx.emitter("fire", holder, 14, 0.12)
+		_wall_fires += 1
+		get_tree().create_timer(2.0 + randf() * 2.0, false).timeout.connect(func():
+			_wall_fires -= 1
+			if is_instance_valid(holder):
+				holder.queue_free())
 
 # ---------- What breaks where ----------
 
@@ -238,14 +627,17 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			add_zone("sand", p, 3.2, 6.0, owner_)
 			m.sfx("slap", p)
 		"pot_fire":
+			# Broken on the ground, most of it is a pool there at once; the rest flies.
 			if p.y < 0.35 or hit_char == null:
-				add_zone("fire", Vector3(p.x, 0, p.z), 0.9, 6.0, owner_)
-			splash_burning(p, dir, 36, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null)
+				for k in 9:
+					add_liquid("fire", Vector3(p.x + randf_range(-0.25, 0.25), _floor_y(p), p.z + randf_range(-0.25, 0.25)), 0.25, owner_)
+			splash_burning(p, dir, 48, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null)
 			m.sfx("slash", p, 1.0)
 		"pot_acid":
 			if p.y < 0.35 or hit_char == null:
-				add_zone("acid", Vector3(p.x, 0, p.z), 0.8, 10.0, owner_)
-			splash_burning(p, dir, 36, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null, "acid")
+				for k in 9:
+					add_liquid("acid", Vector3(p.x + randf_range(-0.25, 0.25), _floor_y(p), p.z + randf_range(-0.25, 0.25)), 0.3, owner_)
+			splash_burning(p, dir, 48, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null, "acid")
 		"pot_caltrops":
 			# The pot bursts and scatters real caltrops over the sand: each lands with a spike
 			# up, and whoever walks over them (anyone) gets one in the foot.
@@ -575,8 +967,14 @@ func inside(type: String, pos: Vector3) -> bool:
 func impaired(c) -> bool:
 	return c.bee_timer > 0.0 or inside("sand", c.torso.global_position) or inside("smoke", c.torso.global_position)
 
+## The height of what is under `p` (the sand, or the crate it broke on).
+func _floor_y(p: Vector3) -> float:
+	var hit := _ray(p + Vector3(0, 0.3, 0), p - Vector3(0, 1.5, 0))
+	return float(hit.position.y) if not hit.is_empty() else 0.0
+
 func update(dt: float) -> void:
 	_update_drops(dt)
+	_update_wet(dt)
 	for z in zones.duplicate():
 		z.t -= dt
 		z.tick -= dt
@@ -646,6 +1044,7 @@ func clear() -> void:
 			z.node.queue_free()
 	zones.clear()
 	drops.clear()
+	wet.clear()
 
 # ---------- The hotbar ----------
 
