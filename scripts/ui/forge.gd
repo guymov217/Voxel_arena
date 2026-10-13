@@ -325,7 +325,7 @@ func _toggle_pick(k: String) -> void:
 func _from_cards() -> void:
 	_push_undo()
 	var d := _trial(picks, rng.seed)
-	for k in ["kind", "twoHanded", "throwable", "spins", "shoots", "sharpness", "serrated", "gem", "name", "stats", "chain", "balance", "grips"]:
+	for k in ["kind", "twoHanded", "throwable", "spins", "shoots", "sharpness", "serrated", "gem", "name", "stats", "chain", "balance", "grips", "imbue"]:
 		design.erase(k)
 	design.merge(d, true)
 	_load_cells(d)

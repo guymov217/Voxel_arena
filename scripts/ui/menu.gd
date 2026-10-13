@@ -164,6 +164,16 @@ func set_arms(a: Dictionary) -> void:
 func kit() -> Dictionary:
 	return Net.sanitize_kit(Save.get_value("kit", {}))
 
+## The armour bought at the smith and worn into every bout of the campaign (and about the yard).
+func worn_armor() -> Array:
+	return Armory.sanitize(Save.get_value("armor_worn", []))
+
+func set_worn_armor(a: Array) -> void:
+	Save.set_value("armor_worn", Armory.sanitize(a))
+	_net_loadout()
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
+		match_.me.f.set_armor_pieces(worn_armor())
+
 ## The player's own gladiator: skin, cloth colour and the cosmetic pieces (no armour: that is
 ## bought). Saved as indices, so an old or hand-edited save cannot name anything that is not there.
 func look() -> Dictionary:
@@ -178,6 +188,7 @@ func _net_loadout() -> void:
 	var lo := Arms.loadout(arms())
 	var lk := look()
 	lo["look"] = look_armor(lk)
+	lo["gear"] = worn_armor()
 	lo["skin"] = Fighter.SKINS[lk.skin]
 	Net.my_loadout = lo
 
@@ -188,7 +199,7 @@ func peer_look(pl: Dictionary) -> Dictionary:
 		ok += LOOK_SLOTS[k]
 	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, 4) if pl.get("look") is Array else []
 	var sk = pl.get("skin")
-	return {"armor": arm, "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null}
+	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null}
 
 func look_armor(l: Dictionary) -> Array:
 	var a := []
@@ -738,6 +749,16 @@ func _yard(v: VBoxContainer) -> void:
 	if not last_result.is_empty():
 		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
 	v.add_child(UIStyle.label("Purse: %d denarii" % coins(), 18, UIStyle.BRONZE))
+	var tabs: Array = []
+	for t in [["weapons", "Weapons & coatings"], ["armour", "Armour"]]:
+		var tab_id: String = t[0]
+		tabs.append(UIStyle.button(t[1], func():
+			smith_tab = tab_id
+			show_screen("yard"), tab_id == smith_tab))
+	_row(v, tabs)
+	if smith_tab == "armour":
+		_smith_armour(v)
+		return
 	var a := arms()
 	# Your arms, as they are: a picture of each with what the smith can do to it.
 	var mine := HBoxContainer.new()
@@ -753,7 +774,8 @@ func _yard(v: VBoxContainer) -> void:
 			col.add_child(UIStyle.label("Empty: buy a shield or a dagger below", 14, UIStyle.MUTED))
 			continue
 		var cond := int(Arms.condition(a, side) * 100.0)
-		col.add_child(UIStyle.label("%s · %d voxels · condition %d%%" % [d.get("name", "?"), d.voxels.size(), cond], 15, UIStyle.GOLD if cond >= 80 else (UIStyle.TEXT if cond >= 40 else Color(1, 0.55, 0.45))))
+		var coat: String = Arms.COATING_NAMES.get(d.get("imbue", ""), "")
+		col.add_child(UIStyle.label("%s%s · %d voxels · condition %d%%" % [d.get("name", "?"), (" · " + coat) if coat != "" else "", d.voxels.size(), cond], 15, UIStyle.GOLD if cond >= 80 else (UIStyle.TEXT if cond >= 40 else Color(1, 0.55, 0.45))))
 		var acts := HFlowContainer.new()
 		acts.add_theme_constant_override("h_separation", 6)
 		acts.add_theme_constant_override("v_separation", 6)
@@ -834,6 +856,88 @@ func _fit_height(scroll: ScrollContainer) -> void:
 	if over > 0.0:
 		scroll.custom_minimum_size.y = maxf(140.0, scroll.custom_minimum_size.y - over)
 
+var smith_tab := "weapons"
+
+const ARMOUR_PARTS := {"head": "head", "torso": "body", "upperArmR": "arms", "upperArmL": "arms", "forearmR": "forearms", "forearmL": "forearms", "thighR": "thighs", "thighL": "thighs", "shinR": "shins", "shinL": "shins"}
+
+## The armourer's rack: every piece with a figure showing what it covers, what it is made of, and
+## Buy (it replaces what it clashes with, sold back for half) or Take off.
+func _smith_armour(v: VBoxContainer) -> void:
+	var worn := worn_armor()
+	v.add_child(UIStyle.label(("Worn: " + ", ".join(worn.map(func(i): return String(Data.armor[i].name)))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
+	var vp := get_viewport_rect().size
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, clampf(vp.y - 330.0, 200.0, 640.0))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = clampi(int((panel.custom_minimum_size.x - 64.0) / 330.0), 1, 3)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	scroll.add_child(grid)
+	for r in Armory.SHOP:
+		var id: String = r[0]
+		var a: Dictionary = Data.armor.get(id, {})
+		if a.is_empty():
+			continue
+		var on := worn.has(id)
+		var card := _smith_card(null, "", "", 0)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var row: HBoxContainer = card.get_child(0)
+		var fig := Control.new()
+		fig.custom_minimum_size = Vector2(58, 106)
+		var covered: Array = Armory.parts_of(id)
+		var mc := Weapon.voxel_color(a.get("mat", "iron"), "blunt")
+		fig.draw.connect(func():
+			fig.draw_set_transform(Vector2(1, 1), 0.0, Vector2(0.78, 0.78))
+			for k in Hud.LAYOUT:
+				var rr: Rect2 = Hud.LAYOUT[k]
+				var sb := StyleBoxFlat.new()
+				sb.set_corner_radius_all(4 if k != "head" else 10)
+				sb.bg_color = mc if covered.has(k) else Color(1, 1, 1, 0.08)
+				sb.border_color = Color(1, 1, 1, 0.25) if covered.has(k) else Color(1, 1, 1, 0.06)
+				sb.set_border_width_all(1)
+				fig.draw_style_box(sb, rr.grow(-1.0)))
+		row.add_child(fig)
+		row.move_child(fig, 0)
+		var col: VBoxContainer = card.get_meta("col")
+		col.add_child(UIStyle.label(String(a.name), 16, UIStyle.GOLD if on else UIStyle.TEXT))
+		var where := []
+		for k in covered:
+			if not where.has(ARMOUR_PARTS.get(k, k)):
+				where.append(ARMOUR_PARTS.get(k, k))
+		col.add_child(UIStyle.label("%s · %s" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where)], 12, UIStyle.BRONZE))
+		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "")), 12, UIStyle.MUTED))
+		var price := Armory.price(id)
+		if on:
+			col.add_child(UIStyle.button("Worn · take off (+%d)" % (price / 2), func():
+				var t := Armory.take_off(worn_armor(), id)
+				if not t.has("error"):
+					add_coins(-int(t.cost))
+					set_worn_armor(t.worn)
+				show_screen("yard")))
+		else:
+			var b := Armory.buy(worn, id)
+			var cost: int = int(b.get("cost", price))
+			var swaps := worn.filter(func(o): return Armory.clashes(o, id))
+			if not swaps.is_empty():
+				col.add_child(UIStyle.label("Replaces your %s (taken in part exchange)" % String(Data.armor[swaps[0]].name).to_lower(), 12, UIStyle.MUTED))
+			var btn := UIStyle.button(("Buy · %d denarii" % cost) if cost > 0 else ("Swap · %d denarii back" % -cost), func():
+				var t := Armory.buy(worn_armor(), id)
+				if t.has("error"):
+					show_screen("yard", t.error)
+				elif int(t.cost) > coins():
+					show_screen("yard", "Not enough denarii")
+				else:
+					add_coins(-int(t.cost))
+					set_worn_armor(t.worn)
+					show_screen("yard"), true)
+			btn.disabled = cost > coins()
+			col.add_child(btn)
+		grid.add_child(card)
+	_fit_height.call_deferred(scroll)
+
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -856,7 +960,8 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 6)
 	row.add_child(col)
-	col.add_child(UIStyle.label(title.to_upper(), 12, UIStyle.BRONZE))
+	if title != "":
+		col.add_child(UIStyle.label(title.to_upper(), 12, UIStyle.BRONZE))
 	card.set_meta("col", col)
 	if d is Dictionary:
 		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
@@ -1544,6 +1649,9 @@ func start(opts: Dictionary) -> void:
 	var lk := look()
 	opts.loadout = opts.loadout.duplicate()
 	opts.loadout.armor = opts.loadout.get("armor", []) + look_armor(lk)
+	var geared: bool = opts.mode == "campaign" or opts.mode == "yard"
+	if geared:
+		opts.loadout.armor += worn_armor()
 	opts.skin = Fighter.SKINS[lk.skin]
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())
@@ -1560,7 +1668,7 @@ func start(opts: Dictionary) -> void:
 		for id in Net.peers:
 			var pl: Dictionary = Net.peers[id].get("loadout", {})
 			var pk := peer_look(pl)
-			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if int(opts.get("stage", 1)) > 1 else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor} if not pl.is_empty() else {"main": "gladius"}})
+			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if int(opts.get("stage", 1)) > 1 else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else [])} if not pl.is_empty() else {"main": "gladius"}})
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
 		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
@@ -1779,6 +1887,9 @@ func _on_finished(r: Dictionary) -> void:
 		return
 	if match_ and match_.me and match_.role != "guest" and mode != "circus":
 		set_kit(match_.me.get("inventory", kit()))
+	if mode == "campaign" and match_ and match_.role == "guest":
+		# A guest's own sword takes its knocks too: the host does not keep it, he does.
+		set_arms(Arms.add_wear(arms(), match_.my_wear()))
 	if mode == "campaign" and match_ and match_.role != "guest":
 		var sk := "coop_stage" if r.get("coop", false) else "stage"
 		var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -1796,6 +1907,7 @@ func _on_finished(r: Dictionary) -> void:
 			Save.set_value(sk, back)
 			if back <= 1:
 				set_arms(Arms.empty())
+				set_worn_armor([])
 			last_result = {"text": "You fell. Back to stage %d." % back}
 	_end_match()
 	if Net.active() and not Net.is_host():
@@ -1885,6 +1997,7 @@ func restart_campaign() -> void:
 	Save.set_value("checkpoint", 1)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
+	set_worn_armor([])
 	start({"mode": "campaign", "stage": 1})
 
 func _toggle_pause() -> void:

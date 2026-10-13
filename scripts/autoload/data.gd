@@ -40,6 +40,8 @@ func load_all() -> void:
 	body_parts = b.get("parts", [])
 	lobes = b.get("lobes", {})
 	armor = _read("armor")
+	# The armourer's newer pieces, shaped round this body.
+	armor.merge(Armory.extra(body_parts))
 	beasts = _read("beasts")
 	campaign = _read("campaign")
 	shop = _read("shop")

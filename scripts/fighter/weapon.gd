@@ -119,6 +119,47 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	for b in _build_boxes(all):
 		_add_box(b)
 	_build_mesh()
+	_coat()
+
+## A coated weapon looks it: the edge tinted, and flames, drips of venom or a breath of frost
+## along it as it moves (left behind in the air by a swing).
+const COAT_TINT := {"venom": Color(0.42, 0.85, 0.22), "fire": Color(1.0, 0.32, 0.04), "frost": Color(0.62, 0.86, 1.0)}
+const COAT_FX := {"venom": ["venom", 6], "fire": ["blade_fire", 28], "frost": ["frost", 8]}
+func _coat() -> void:
+	var c: String = design.get("imbue", "")
+	if not COAT_TINT.has(c) or vox.is_empty():
+		return
+	var pts := []
+	for i in vox.size():
+		if vox[i][4] == "edge" or vox[i][4] == "point":
+			pts.append(i)
+	if pts.is_empty():
+		for i in vox.size():
+			if vox[i][4] != "grip":
+				pts.append(i)
+	if pts.is_empty():
+		return
+	for i in pts:
+		mm.set_instance_color(i, voxel_color(vox[i][3], vox[i][4]).lerp(COAT_TINT[c], 0.55 if c == "fire" else 0.4))
+	if Fx.current == null:
+		return
+	if c == "fire" and Fx.current.quality != "low":
+		# The burning head lights what is round it.
+		var glow := OmniLight3D.new()
+		glow.light_color = Color(1.0, 0.55, 0.2)
+		glow.light_energy = 1.2
+		glow.omni_range = 1.6
+		glow.shadow_enabled = false
+		var mid: int = pts[pts.size() / 2]
+		glow.position = Vector3(vox[mid][0], vox[mid][1], vox[mid][2]) * vs
+		add_child(glow)
+	var g := grip_main
+	pts.sort_custom(func(a, b): return (Vector3(vox[a][0], vox[a][1], vox[a][2]) * vs).distance_squared_to(g) < (Vector3(vox[b][0], vox[b][1], vox[b][2]) * vs).distance_squared_to(g))
+	for q in [0.3, 0.65, 1.0]:
+		var i: int = pts[int(q * (pts.size() - 1))]
+		var ps := Fx.current.emitter(COAT_FX[c][0], self, COAT_FX[c][1], vs * 2.0)
+		if ps:
+			ps.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
 
 func _grip_points() -> Array:
 	var grips := []
@@ -660,7 +701,7 @@ func build_chain() -> void:
 		prev = b
 	var head := Weapon.new()
 	head.chain_parent = self
-	head.setup({"name": design.get("name", "chain"), "voxels": hv, "sharpness": design.get("sharpness", 0.0), "serrated": design.get("serrated", false), "massScale": 0.3 if whip else 1.0, "dmgScale": design.get("dmgScale", Data.damage_tuning.get(Combat._preset_key(design), 1.0))}, wscale)
+	head.setup({"name": design.get("name", "chain"), "voxels": hv, "sharpness": design.get("sharpness", 0.0), "serrated": design.get("serrated", false), "imbue": design.get("imbue", ""), "massScale": 0.3 if whip else 1.0, "dmgScale": design.get("dmgScale", Data.damage_tuning.get(Combat._preset_key(design), 1.0))}, wscale)
 	head.linear_damp = 0.05
 	head.angular_damp = 0.4
 	get_parent().add_child(head)

@@ -528,8 +528,9 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	mesh.size = Vector3.ONE * V * S * 0.98
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = col
-	mat.metallic = 0.6
-	mat.roughness = 0.35
+	var hide: bool = a.get("mat", "iron") == "leather"
+	mat.metallic = 0.0 if hide else 0.6
+	mat.roughness = 0.85 if hide else 0.35
 	mesh.material = mat
 	var mmesh := MultiMesh.new()
 	mmesh.transform_format = MultiMesh.TRANSFORM_3D
@@ -553,6 +554,28 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	on.resize(cells.size())
 	on.fill(1)
 	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst}])
+
+## The armourer's pieces worn now: those not in `ids` come off, the missing ones go on (in the
+## yard, bought or taken off at the smith). Cosmetic pieces are left alone.
+func set_armor_pieces(ids: Array) -> void:
+	for p in parts:
+		var keep := []
+		for ad in p.get_meta("armor", []):
+			if Armory.sold(ad.id) and not ids.has(ad.id):
+				if ad.node and is_instance_valid(ad.node):
+					ad.node.queue_free()
+			else:
+				keep.append(ad)
+		p.set_meta("armor", keep)
+	for id in ids:
+		var on := false
+		for p in parts:
+			if (p.get_meta("armor", []) as Array).any(func(ad): return ad.id == id):
+				on = true
+		if not on:
+			for p in parts:
+				if not p.severed:
+					_add_armor(p, id)
 
 func hand_world(side: String) -> Vector3:
 	return arm[side].fore.global_transform * hand_point

@@ -345,6 +345,13 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var lo: Dictionary = los[rng.randi_range(0, los.size() - 1)]
 	var main: Dictionary = temper(Data.preset(lo.main), g.get("temper")) if lo.get("main") else {}
 	var off: Dictionary = temper(Data.preset(lo.off), g.get("temper")) if lo.get("off") else {}
+	# Later in the campaign foes come with coated weapons; the fire-thrower's always burns.
+	var coat := "fire" if en.get("e", "") == "pyro" else ""
+	if coat == "" and mode == "campaign" and stage >= 12 and rng.randf() < clampf((stage - 10) * 0.025, 0.0, 0.45):
+		coat = Arms.COATINGS[rng.randi_range(0, Arms.COATINGS.size() - 1)]
+	if coat != "" and not main.is_empty() and Arms.can_upgrade(coat, main):
+		main = main.duplicate(true)
+		main.imbue = coat
 	if en.get("loadout") is String and en.loadout != "":
 		main = Data.preset(en.loadout)
 		off = {}
@@ -943,16 +950,14 @@ func _check_circus(alive_h: Array, alive_e: Array) -> void:
 	elif won:
 		_end(true, "VICTORY!", "The crowd roars your name")
 
-func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
-	over = true
-	if Sfx.music and not headless and not attract:
-		Sfx.music.set_state("victory" if won else "off")
-	_banner(text, sub)
+## What the fight did to my arms, for the smith: the voxels knocked off each weapon in hand, or
+## "lost" for one that went with the arm holding it.
+func my_wear() -> Dictionary:
 	var wear := {}
-	if me:
+	if me and is_instance_valid(me.f):
 		for side in ["R", "L"]:
 			var w = me.f.weapons.get(side)
-			if w:
+			if w and is_instance_valid(w):
 				var lost := []
 				for i in w.alive.size():
 					if w.alive[i] == 0:
@@ -960,6 +965,14 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 				wear[side] = lost
 			elif me.f.arm[side].fore.severed:
 				wear[side] = "lost"
+	return wear
+
+func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
+	over = true
+	if Sfx.music and not headless and not attract:
+		Sfx.music.set_state("victory" if won else "off")
+	_banner(text, sub)
+	var wear := my_wear()
 	var result := {"won": won, "stage": stage, "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
 	if mode == "campaign" and role != "guest":
 		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are.
@@ -1026,6 +1039,8 @@ func _on_hit(h: Dictionary) -> void:
 		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty())
 		if role == "host":
 			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty()}, false)
+	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
+		_coating(h)
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
@@ -1035,6 +1050,47 @@ func _on_hit(h: Dictionary) -> void:
 		Sfx.play("slash" if h.type == "edge" else ("stab" if h.type == "point" else "thud"), h.p, minf(1.0, h.J / 30.0))
 	if role == "host" and h.get("chip", {}).get("indices", []).size() > 0:
 		_send_weapon_vox(h.weapon, h.chip.indices)
+
+## A coated weapon's blow: a burning one sets alight what it strikes, venom poisons (only a cut
+## or a stab lets it in), frost slows and saps the breath. Not more than twice a second on a man.
+func _coating(h: Dictionary) -> void:
+	var c = h.get("char")
+	var part = h.get("part")
+	if not (c is Fighter) or not c.alive or not (part is VoxelPart) or part.severed or c == h.get("attacker") or float(h.get("J", 0.0)) < 4.0:
+		return
+	if time - float(c.get_meta("coat_t", -9.0)) < 0.5:
+		return
+	c.set_meta("coat_t", time)
+	var kind: String = h.weapon.design.imbue
+	var p: Vector3 = h.p if h.get("p") is Vector3 else part.global_position
+	var say := time - float(c.get_meta("coat_say", -9.0)) > 4.0
+	match kind:
+		"fire":
+			add_spot(c, part, "fire", 3.0, h.get("attacker"), p)
+			if fx:
+				fx.flash(p, Color(1.0, 0.5, 0.15), 3.0, 3.0)
+			if say:
+				feed.emit("%s is set alight!" % c.display_name)
+		"venom":
+			if h.get("type", "blunt") == "blunt":
+				return
+			part.bleed += 0.6
+			c.slow(3.5, 0.75)
+			c.pain = minf(1.0, c.pain + 0.12)
+			c.stamina = maxf(0.0, c.stamina - 6.0)
+			if fx:
+				fx.burst("venom", p, 14, h.get("dir", Vector3.UP), 1.5)
+			if say:
+				feed.emit("%s is poisoned!" % c.display_name)
+		"frost":
+			c.slow(3.0, 0.5)
+			c.stamina = maxf(0.0, c.stamina - 10.0)
+			if fx:
+				fx.burst("frost", p, 22, Vector3.UP, 1.5)
+			if say:
+				feed.emit("%s is chilled to the bone!" % c.display_name)
+	if say:
+		c.set_meta("coat_say", time)
 
 func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":

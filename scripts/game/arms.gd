@@ -106,7 +106,13 @@ static func condition(a: Dictionary, side: String) -> float:
 const UPGRADES := {
 	"whetstone": {"label": "Hone the edge", "desc": "A sharper edge and point: cuts and thrusts go deeper (+10% sharpness)."},
 	"temper": {"label": "Temper the blade", "desc": "Bronze and iron reforged as steel: harder, holds an edge, chips less."},
+	"venom": {"label": "Coat with venom", "desc": "Snake venom on the edge: every cut poisons. The wound bleeds more, the poisoned man slows and weakens."},
+	"fire": {"label": "Pitch and fire", "desc": "Pitch on the head, set alight: it burns as you fight, and sets alight what it strikes."},
+	"frost": {"label": "Frost rune", "desc": "A rune of the north: every blow chills to the bone, slowing the man it lands on and sapping his breath."},
 }
+## The coatings: one at a time on a weapon (a new one replaces the old).
+const COATINGS := ["venom", "fire", "frost"]
+const COATING_NAMES := {"venom": "Venom", "fire": "Burning", "frost": "Frost"}
 
 static func upgrade_price(id: String, d: Dictionary) -> int:
 	match id:
@@ -117,11 +123,21 @@ static func upgrade_price(id: String, d: Dictionary) -> int:
 				if v[4] != "grip" and (v[3] == "bronze" or v[3] == "iron"):
 					n += 1
 			return 15 + int(round(n * 1.5))
+		"venom": return 60
+		"fire": return 75
+		"frost": return 65
 	return 0
 
 static func can_upgrade(id: String, d) -> bool:
 	if not (d is Dictionary) or d.get("kind", "weapon") == "shield":
 		return id == "temper" and d is Dictionary and upgrade_price("temper", d) > 15
+	if COATINGS.has(id):
+		# Venom wants an edge or a point to go in by; fire and frost go on anything that hits.
+		if d.get("imbue", "") == id or d.get("shoots", false):
+			return false
+		if id == "venom":
+			return d.voxels.any(func(v): return v[4] == "edge" or v[4] == "point")
+		return true
 	match id:
 		"whetstone":
 			var edged := false
@@ -146,6 +162,8 @@ static func upgrade(a: Dictionary, side: String, id: String) -> Dictionary:
 		"temper":
 			d = Match.temper(d, "steel")
 			arms[slot] = d
+		"venom", "fire", "frost":
+			d.imbue = id
 	return {"arms": arms, "cost": cost}
 
 ## The loadout a fight is built from, with the chips marked to knock off.

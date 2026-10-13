@@ -114,3 +114,32 @@ func test_lost_voxels_take_function_with_them() -> void:
 	t.check(f.arm_func("R") < arm0 * 0.85, "a cut-up arm is a weaker arm (%.2f of %.2f)" % [f.arm_func("R"), arm0])
 	t.check(f.torso.function() < torso0, "and the crushed chest works worse (%.2f of %.2f)" % [f.torso.function(), torso0])
 	m.queue_free()
+
+## What a fight knocks off the sword stays off: the fight reports it, the smith shows it (and
+## charges to mend it), and the next fight starts with it gone until it is mended.
+func test_chips_from_a_fight_go_to_the_smith_and_into_the_next_fight() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 2, "headless": true, "loadout": {"main": "gladius", "off": ""}})
+	var w: Weapon = m.me.f.weapons.R
+	var blade := []
+	for i in w.vox.size():
+		if w.vox[i][4] != "grip":
+			blade.append(i)
+	w.remove_voxels(blade.slice(0, 6))
+	var wear: Dictionary = m.my_wear()
+	t.eq((wear.get("R", []) as Array).size(), 6, "the fight reports the six voxels it knocked off")
+	m.queue_free()
+	var a := Arms.empty()
+	a.main = Data.preset("gladius").duplicate(true)
+	a = Arms.add_wear(a, wear)
+	t.check(Arms.repair_cost(a, "R") > 0 and Arms.condition(a, "R") < 1.0, "the smith sees the damage and asks to mend it (%d denarii)" % Arms.repair_cost(a, "R"))
+	var lo := Arms.loadout(a)
+	var m2 := Match.new()
+	add_child(m2)
+	m2.setup({"mode": "campaign", "stage": 2, "headless": true, "loadout": {"main": lo.main, "off": lo.off}, "worn": lo.worn})
+	var w2: Weapon = m2.me.f.weapons.R
+	t.eq(w2.vox.size() - w2.alive_count(), 6, "and the next fight starts with those voxels gone")
+	m2.queue_free()
+	var mended := Arms.repair(a, "R")
+	t.eq(Arms.condition(mended.arms, "R"), 1.0, "mended, it is whole again")
