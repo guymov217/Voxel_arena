@@ -372,3 +372,43 @@ func test_blood_runs_down_from_a_wound() -> void:
 	var n1: int = below.call()
 	t.check(n1 >= n0 + 3, "the skin below the wound reddens as the blood runs down (%d -> %d)" % [n0, n1])
 	m.queue_free()
+
+# ---------- Beasts ----------
+
+func _beast(sp: String) -> Array:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -10))
+	var e = m.spawn_beast({"beast": sp, "team": Match.ENEMY_TEAM, "pos": Vector3(0, 0.1, 3.0), "yaw": PI, "harmless": true})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	return [m, e.f]
+
+func test_beasts_have_insides_but_not_the_shelled_ones() -> void:
+	for sp in ["lion", "bull", "dragon"]:
+		var r := _beast(sp)
+		var b: Beast = r[1]
+		var got := []
+		for o in [Anatomy.HEART, Anatomy.LUNG_L, Anatomy.LIVER, Anatomy.GUTS, Anatomy.BRAIN]:
+			if b.organ_total.get(o, 0) >= 6:
+				got.append(Anatomy.organ_name(o))
+		t.check(got.size() == 5, "the %s has heart, lungs, liver, guts and brain (%s)" % [sp, got])
+		r[0].queue_free()
+	var r2 := _beast("scorpion")
+	t.check((r2[1] as Beast).organ_total.is_empty(), "a scorpion's shell holds none")
+	r2[0].queue_free()
+
+func test_a_lions_torn_heart_kills_it_a_little_slower_than_a_man() -> void:
+	var r := _beast("lion")
+	var m: Match = r[0]
+	var b: Beast = r[1]
+	var died := []
+	b.died.connect(func(_f, c): died.append(c))
+	await _steps(30)
+	b.torso.remove_voxels(_of(b.torso, Anatomy.HEART, 0.5))
+	await _steps(120 * 2)
+	t.check(b.alive, "two seconds on it still lives")
+	await _steps(120 * 8)
+	t.check(not b.alive and (died.has("heart") or died.has("wounds")), "then it dies of it (%s)" % [died])
+	m.queue_free()

@@ -69,6 +69,15 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			voxels.append([v[0], v[1], v[2], Color.hex(int(v[3]) << 8 | 0xff), v[4]])
 		# Only how it looks: fur, scales or shell, markings, bone, eyes (BeastStyle).
 		voxels = BeastStyle.style_part(species, str(d.name), d.get("grid", [1, 1, 1]), voxels)
+		# The organs inside (Anatomy.dress_beasts): wet flesh, their id carried with each voxel.
+		var plain := Anatomy.gore() == "reduced"
+		for i in voxels.size():
+			var organ: int = int(d.voxels[i][5]) if d.voxels[i].size() > 5 else 0
+			if organ != Anatomy.NONE:
+				voxels[i][5] = 9
+				if plain:
+					voxels[i][3] = BeastStyle.FLESH_A
+			voxels[i].append(organ)
 		var p := VoxelPart.new()
 		var dd: Dictionary = d.duplicate()
 		dd.erase("voxels")
@@ -95,6 +104,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			p.parent_part.child_parts.append(p)
 	torso = by_name.beastBody
 	head = by_name.beastHead
+	_count_organs()
 	for a in parts:
 		for b in parts:
 			if a != b:
@@ -204,15 +214,18 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	time += dt
 	space = get_world_3d().direct_space_state
 	var bleed := 0.0
+	var beat := 0.5 + 0.5 * sin(time * TAU * 1.1) if alive and blood > 5.0 and heart_t < 0.0 else 0.0
 	for p in parts:
-		bleed += p.bleed
+		bleed += p.bleed + p.artery
 		p.bleed = maxf(0.0, p.bleed - dt * 0.1)
 		p.update_drips()
+		p.update_blood(dt, beat)
 		if p.flinch_t > 0.0:
 			p.flinch_t -= dt
 	if torso.stump:
 		bleed += 2.5
 	blood = maxf(0.0, blood - bleed * 0.3 / (S * S) * dt)
+	_organs_tick(dt)
 	stagger = maxf(0.0, stagger - dt * 1.5)
 	if push_t > 0.0:
 		push_t -= dt

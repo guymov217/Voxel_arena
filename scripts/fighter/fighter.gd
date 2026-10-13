@@ -2945,7 +2945,8 @@ func _organ_lost(part: VoxelPart, indices: Array) -> void:
 	var n_lung: int = lost.get(Anatomy.LUNG_R, 0) + lost.get(Anatomy.LUNG_L, 0)
 	torso.bleed += n_heart * 2.5 + lost.get(Anatomy.LIVER, 0) * 0.7 + n_lung * 0.2 + lost.get(Anatomy.STOMACH, 0) * 0.3 + lost.get(Anatomy.GUTS, 0) * 0.15
 	if n_heart > 0 and heart_t < 0.0 and organ_health(Anatomy.HEART) < 0.75:
-		heart_t = 3.0 if organ_health(Anatomy.HEART) > 0.4 else 1.2
+		# A big beast's heart takes longer to stop than a man's.
+		heart_t = (3.0 if organ_health(Anatomy.HEART) > 0.4 else 1.2) * clampf(torso.nominal_mass / 32.0, 1.0, 6.0)
 	if n_lung > 0:
 		stamina = minf(stamina, breath_cap())
 	if lost.has(Anatomy.BRAIN):
@@ -3094,7 +3095,9 @@ func _organs_tick(dt: float) -> void:
 		if heart_t <= 0.0:
 			die("heart")
 			return
-	if organ_health(Anatomy.BRAIN) < 0.6:
+	# (A many-headed monster lives on without one of its heads' brains.)
+	var many: bool = get("sp") is Dictionary and get("sp").get("multiHead", false)
+	if organ_health(Anatomy.BRAIN) < 0.6 and not many:
 		die("brain")
 
 # ---------- Bones ----------

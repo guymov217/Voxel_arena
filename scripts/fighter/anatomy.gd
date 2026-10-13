@@ -128,17 +128,64 @@ static func dress(body_parts: Array) -> void:
 				if id == NONE:
 					id = bone_at(name, int(v[0]), int(v[1]), int(v[2]))
 			if id != NONE:
-				var c := Color.hex(int(INFO[id].color) << 8 | 0xff)
-				# Guts in coils, lungs spongy, the rest a little mottled.
-				var k := 1.0
-				if id == GUTS:
-					k = 0.82 if (int(v[0]) + int(v[1]) * 2) % 3 == 0 else 1.0
-				elif (int(v[0]) * 7 + int(v[1]) * 3 + int(v[2]) * 5) % 4 == 0:
-					k = 0.9
-				v[4] = (int(c.r8 * k) << 16) | (int(c.g8 * k) << 8) | int(c.b8 * k)
+				v[4] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]))
 				if is_bone(id):
 					v[5] = 1
 			if v.size() < 7:
 				v.append(id)
 			else:
 				v[6] = id
+
+## An organ's colour at a cell: guts in coils, lungs spongy, the rest a little mottled.
+static func _organ_rgb(id: int, x: int, y: int, z: int) -> int:
+	var c := Color.hex(int(INFO[id].color) << 8 | 0xff)
+	var k := 1.0
+	if id == GUTS:
+		k = 0.82 if (x + y * 2) % 3 == 0 else 1.0
+	elif (x * 7 + y * 3 + z * 5) % 4 == 0:
+		k = 0.9
+	return (int(c.r8 * k) << 16) | (int(c.g8 * k) << 8) | int(c.b8 * k)
+
+## Species whose insides are not a beast's (a shell of chitin round a different body): no organs.
+const NO_ORGANS := ["scorpion", "spider"]
+
+## The organs of a beast, by proportion of its body (beastBody: x across, y up, z along it, the
+## head at +z) and its head: the heart low in the chest, the lungs above it, the liver behind,
+## the guts in the belly, the brain at the back of the skull. Plain red flesh only.
+static func beast_organ_at(part: String, g: Array, x: int, y: int, z: int) -> int:
+	var u := (float(x) + 0.5) / float(g[0])
+	var v := (float(y) + 0.5) / float(g[1])
+	var w := (float(z) + 0.5) / float(g[2])
+	if part == "beastBody":
+		var mid := absf(u - 0.5)
+		if w > 0.6 and w < 0.74 and v > 0.25 and v < 0.48 and mid < 0.14:
+			return HEART
+		if w > 0.55 and w < 0.82 and v >= 0.42 and v < 0.78 and mid > 0.06 and mid < 0.36:
+			return LUNG_R if u < 0.5 else LUNG_L
+		if w > 0.44 and w <= 0.58 and v > 0.22 and v < 0.6 and mid < 0.34:
+			return LIVER
+		if w > 0.16 and w <= 0.44 and v > 0.12 and v < 0.52 and mid < 0.36:
+			return GUTS
+	elif part == "beastHead":
+		if w > 0.12 and w < 0.45 and v > 0.5 and v < 0.85 and absf(u - 0.5) < 0.22:
+			return BRAIN
+	return NONE
+
+## Lays the organs into the beasts' bodies (Data.load_all): an organ id as the 6th field of every
+## voxel of beasts.json ([x, y, z, colour, bone, organ]).
+static func dress_beasts(beasts: Dictionary) -> void:
+	for key in beasts:
+		var none: bool = key in NO_ORGANS
+		for d in beasts[key].get("parts", []):
+			var name := str(d.name)
+			var g: Array = d.get("grid", [1, 1, 1])
+			for v in d.voxels:
+				var id := NONE
+				if not none and not v[4] and _is_flesh(int(v[3])):
+					id = beast_organ_at(name, g, int(v[0]), int(v[1]), int(v[2]))
+				if id != NONE:
+					v[3] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]))
+				if v.size() < 6:
+					v.append(id)
+				else:
+					v[5] = id
