@@ -255,7 +255,7 @@ func show_screen(s: String, msg := "") -> void:
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
-	panel.custom_minimum_size.x = 520 if s == "main" else (1180 if s == "training" else 760)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" else 760), 0)
 	# Each screen slides in.
 	panel.modulate.a = 0.0
 	panel.position.x = -24.0
@@ -743,39 +743,73 @@ func _training_forge() -> void:
 # ---------- The yard: the smith ----------
 
 func _yard(v: VBoxContainer) -> void:
-	panel.custom_minimum_size.x = clampf(get_viewport_rect().size.x - 130.0, 640.0, 1000.0)
-	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
-	v.add_child(UIStyle.title("The smith", 36))
-	if not last_result.is_empty():
-		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
-	v.add_child(UIStyle.label("Purse: %d denarii" % coins(), 18, UIStyle.BRONZE))
+	# The smith takes the whole window: a header, then your arms on the left and the rack on
+	# the right, each scrolling on its own so nothing is ever cut off.
+	var vp := get_viewport_rect().size
+	panel.custom_minimum_size = Vector2(maxf(640.0, vp.x - 144.0), maxf(420.0, vp.y - 80.0))
+	if v.get_child_count() > 0 and v.get_child(0) is Button:
+		v.get_child(0).size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	v.add_child(head)
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", 0)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(names)
+	names.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
+	names.add_child(UIStyle.title("The smith", 36))
+	var right := VBoxContainer.new()
+	right.alignment = BoxContainer.ALIGNMENT_END
+	right.add_theme_constant_override("separation", 6)
+	head.add_child(right)
+	var purse := UIStyle.label("Purse: %d denarii" % coins(), 18, UIStyle.GOLD)
+	purse.autowrap_mode = TextServer.AUTOWRAP_OFF
+	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	right.add_child(purse)
 	var tabs: Array = []
 	for t in [["weapons", "Weapons & coatings"], ["armour", "Armour"]]:
 		var tab_id: String = t[0]
 		tabs.append(UIStyle.button(t[1], func():
 			smith_tab = tab_id
 			show_screen("yard"), tab_id == smith_tab))
-	_row(v, tabs)
+	_row(right, tabs).alignment = BoxContainer.ALIGNMENT_END
+	if not last_result.is_empty():
+		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
+	v.add_child(HSeparator.new())
+	var inner_w := panel.custom_minimum_size.x - 64.0
 	if smith_tab == "armour":
-		_smith_armour(v)
+		_smith_armour(v, inner_w)
 		return
 	var a := arms()
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 20)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(body)
 	# Your arms, as they are: a picture of each with what the smith can do to it.
-	var mine := HBoxContainer.new()
-	mine.add_theme_constant_override("separation", 14)
-	v.add_child(mine)
+	var left_w := clampf(inner_w * 0.36, 330.0, 500.0)
+	var left := VBoxContainer.new()
+	left.custom_minimum_size.x = left_w
+	left.add_theme_constant_override("separation", 8)
+	body.add_child(left)
+	left.add_child(UIStyle.label("YOUR ARMS", 13, UIStyle.BRONZE))
+	var lscroll := _smith_scroll(left)
+	var mine := VBoxContainer.new()
+	mine.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mine.add_theme_constant_override("separation", 10)
+	lscroll.add_child(mine)
 	for side in ["R", "L"]:
 		var d = a.main if side == "R" else a.off
-		var card := _smith_card(d, ("Main hand" if side == "R" else "Off hand"), "arm:%s:%s" % [side, str(d.hash()) if d != null else "none"], 128)
+		var card := _smith_card(d, ("Main hand" if side == "R" else "Off hand"), "arm:%s:%s" % [side, str(d.hash()) if d != null else "none"], 104)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mine.add_child(card)
 		var col: VBoxContainer = card.get_meta("col")
 		if d == null:
-			col.add_child(UIStyle.label("Empty: buy a shield or a dagger below", 14, UIStyle.MUTED))
+			col.add_child(UIStyle.label("Empty: buy a shield or a dagger from the rack", 14, UIStyle.MUTED))
 			continue
 		var cond := int(Arms.condition(a, side) * 100.0)
 		var coat: String = Arms.COATING_NAMES.get(d.get("imbue", ""), "")
-		col.add_child(UIStyle.label("%s%s · %d voxels · condition %d%%" % [d.get("name", "?"), (" · " + coat) if coat != "" else "", d.voxels.size(), cond], 15, UIStyle.GOLD if cond >= 80 else (UIStyle.TEXT if cond >= 40 else Color(1, 0.55, 0.45))))
+		col.add_child(UIStyle.label(str(d.get("name", "?")), 17, UIStyle.TEXT))
+		col.add_child(UIStyle.label("%s%d voxels · condition %d%%" % [(coat + " · ") if coat != "" else "", d.voxels.size(), cond], 13, UIStyle.GOLD if cond >= 80 else (UIStyle.MUTED if cond >= 40 else Color(1, 0.55, 0.45))))
 		var acts := HFlowContainer.new()
 		acts.add_theme_constant_override("h_separation", 6)
 		acts.add_theme_constant_override("v_separation", 6)
@@ -793,16 +827,18 @@ func _yard(v: VBoxContainer) -> void:
 				b.tooltip_text = Arms.UPGRADES[id].desc
 				acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
-	v.add_child(UIStyle.label("Weapons for sale · your old one is taken in part exchange for half its worth", 14, UIStyle.MUTED))
-	# The rack fills what is left of the window, however small it is, and scrolls; the screen
-	# itself never runs off the edge.
-	var vp := get_viewport_rect().size
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, clampf(vp.y - 470.0, 170.0, 520.0))
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	v.add_child(scroll)
+	body.add_child(VSeparator.new())
+	var rack := VBoxContainer.new()
+	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rack.add_theme_constant_override("separation", 8)
+	body.add_child(rack)
+	rack.add_child(UIStyle.label("WEAPONS FOR SALE", 13, UIStyle.BRONZE))
+	rack.add_child(UIStyle.label("Your old one is taken in part exchange for half its worth.", 13, UIStyle.MUTED))
+	var scroll := _smith_scroll(rack)
+	var rack_w := inner_w - left_w - 60.0
 	var grid := GridContainer.new()
-	grid.columns = clampi(int((panel.custom_minimum_size.x - 64.0) / 156.0), 2, 6)
+	grid.columns = clampi(int(rack_w / 166.0), 2, 8)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
@@ -811,7 +847,7 @@ func _yard(v: VBoxContainer) -> void:
 	tile_st.border_color = UIStyle.BRONZE_DARK
 	tile_st.set_border_width_all(1)
 	tile_st.set_corner_radius_all(8)
-	tile_st.content_margin_left = 6; tile_st.content_margin_right = 6; tile_st.content_margin_top = 6; tile_st.content_margin_bottom = 6
+	tile_st.content_margin_left = 8; tile_st.content_margin_right = 8; tile_st.content_margin_top = 8; tile_st.content_margin_bottom = 8
 	for b in Arms.bases():
 		var key: String = b.key
 		var trade := Arms.value(arms().main if b.slot == "main" else arms().off) / 2
@@ -820,20 +856,21 @@ func _yard(v: VBoxContainer) -> void:
 		var tile := PanelContainer.new()
 		tile.add_theme_stylebox_override("panel", tile_st)
 		tile.custom_minimum_size = Vector2(146, 0)
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tile.tooltip_text = "%s · %s hand" % [b.name, "main" if b.slot == "main" else "off"]
 		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 3)
+		box.add_theme_constant_override("separation", 4)
 		tile.add_child(box)
 		var tex := TextureRect.new()
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 84)
+		tex.custom_minimum_size = Vector2(0, 96)
 		tex.modulate = Color.WHITE if afford else Color(1, 1, 1, 0.45)
 		box.add_child(tex)
 		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(nm)
-		var pr := UIStyle.label("%d denarii" % cost, 13, UIStyle.GOLD if afford else UIStyle.MUTED)
+		var pr := UIStyle.label("%d denarii · %s hand" % [cost, "main" if b.slot == "main" else "off"], 12, UIStyle.GOLD if afford else UIStyle.MUTED)
 		if trade > 0:
 			tile.tooltip_text += " · %d denarii, less %d for your old one" % [int(b.price), trade]
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -844,17 +881,15 @@ func _yard(v: VBoxContainer) -> void:
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-	_fit_height.call_deferred(scroll)
 
-## Once laid out: a screen taller than the window gives the difference back from its scrolling
-## list, so the whole of it stays on the screen at any window size.
-func _fit_height(scroll: ScrollContainer) -> void:
-	await get_tree().process_frame
-	if not is_instance_valid(scroll) or not is_instance_valid(panel):
-		return
-	var over := panel.size.y - (get_viewport_rect().size.y - 90.0)
-	if over > 0.0:
-		scroll.custom_minimum_size.y = maxf(140.0, scroll.custom_minimum_size.y - over)
+## A list on the smith's screen that takes what height is left and scrolls within it.
+func _smith_scroll(parent: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 120)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	parent.add_child(scroll)
+	return scroll
 
 var smith_tab := "weapons"
 
@@ -862,16 +897,12 @@ const ARMOUR_PARTS := {"head": "head", "torso": "body", "upperArmR": "arms", "up
 
 ## The armourer's rack: every piece with a figure showing what it covers, what it is made of, and
 ## Buy (it replaces what it clashes with, sold back for half) or Take off.
-func _smith_armour(v: VBoxContainer) -> void:
+func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 	var worn := worn_armor()
 	v.add_child(UIStyle.label(("Worn: " + ", ".join(worn.map(func(i): return String(Data.armor[i].name)))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
-	var vp := get_viewport_rect().size
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, clampf(vp.y - 330.0, 200.0, 640.0))
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	v.add_child(scroll)
+	var scroll := _smith_scroll(v)
 	var grid := GridContainer.new()
-	grid.columns = clampi(int((panel.custom_minimum_size.x - 64.0) / 330.0), 1, 3)
+	grid.columns = clampi(int((inner_w - 16.0) / 340.0), 1, 5)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
@@ -936,7 +967,6 @@ func _smith_armour(v: VBoxContainer) -> void:
 			btn.disabled = cost > coins()
 			col.add_child(btn)
 		grid.add_child(card)
-	_fit_height.call_deferred(scroll)
 
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
@@ -1768,14 +1798,20 @@ func _dress_hero() -> void:
 	var armor := look_armor(lk)
 	if screen != "gladiator":
 		armor = ["goldHelmet", "goldLorica", "manica", "greaves"] + armor
-	backdrop.add_hero(HERO_POS, -2.5, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator")
+	# He stands facing the camera of the screen he is on (a touch turned, his sword side forward),
+	# not side-on to it.
+	var cam_at: Vector3 = _hero_cam().pos
+	var yaw := atan2(cam_at.x - HERO_POS.x, cam_at.z - HERO_POS.z) - 0.2
+	backdrop.add_hero(HERO_POS, yaw, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator")
 
 ## The title shot, or a close look at the champion while he is being dressed.
 func _frame_hero() -> void:
+	backdrop.hero_cam = _hero_cam()
+
+func _hero_cam() -> Dictionary:
 	if screen == "gladiator":
-		backdrop.hero_cam = {"pos": HERO_POS + Vector3(1.9, 1.35, -2.6), "look": HERO_POS + Vector3(0.55, 1.05, 0)}
-	else:
-		backdrop.hero_cam = {"pos": Vector3(0.0, 1.05, -13.3), "look": Vector3(-0.35, 1.5, -3.0)}
+		return {"pos": HERO_POS + Vector3(1.9, 1.35, -2.6), "look": HERO_POS + Vector3(0.55, 1.05, 0)}
+	return {"pos": Vector3(0.0, 1.05, -13.3), "look": Vector3(-0.35, 1.5, -3.0)}
 
 func _gladiator(v: VBoxContainer) -> void:
 	panel.custom_minimum_size.x = 620

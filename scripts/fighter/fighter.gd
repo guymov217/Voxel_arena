@@ -146,6 +146,8 @@ var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
+var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
+var power_now := false                     # the swing button, this step (for the hand's target)
 var low_hand := 0.0
 var shoulder := {"R": SHOULDER_R, "L": SHOULDER_L}
 var hand_point := HAND_POINT
@@ -570,7 +572,7 @@ func _hold_elbow(side: String, want_bend: float, on: bool, dt: float) -> void:
 		# Straightening into the blow is quick (a heavy weapon is struck with the arms
 		# extending); giving way to more bend is slow.
 		var goal := clampf(want_bend, 0.0, ELBOW_BEND)
-		cur = move_toward(float(held), goal, (3.0 if goal < float(held) else ELBOW_SET_RATE) * dt)
+		cur = move_toward(float(held), goal, (6.0 if goal < float(held) else ELBOW_SET_RATE) * dt)
 	fore.set_meta("elbow_set", cur)
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, maxf(-0.05, cur - 0.07))
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, minf(ELBOW_BEND, cur + 0.07))
@@ -1509,6 +1511,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		fore.apply_impulse(Vector3(0, m_arm * gravity * minf(1.0, af * 1.2) * dt, 0), hand_l - fore.global_position)
 		return
 	var w: Weapon = weapons[side]
+	power_now = power
 	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3)
 	var hp: Dictionary = inp.get("main" if side == "R" else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1})
 	if not w and inp.get("jabR" if side == "R" else "jabL", false) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
@@ -1561,6 +1564,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		else:
 			down_hp = {"x": (0.55 if side == "R" else -0.55), "y": 1.5} if winding else {"x": (-0.7 if side == "R" else 0.7), "y": -0.25}
 			thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
+	# The other arm keeps clear of a throw: out to the side and down as a counterweight, not
+	# reaching along the haft (it looked as if both hands threw it).
+	var other := "L" if side == "R" else "R"
+	if down_hp == null and not weapons[side] and held_item == null and (throwing[other] or (ta != null and ta.side == other)):
+		down_hp = {"x": (0.9 if side == "R" else -0.9), "y": -0.35}
+		thrust = 0.0
 	var hp_used: Dictionary = down_hp if down_hp != null else hp
 	# A bow is held out at the shoulder, stave upright, whatever the mouse does.
 	if down_hp == null and side == "R" and w and w.design.has("shoots"):
@@ -1672,11 +1681,18 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# The upper arm does not roll on its own length under a swing: the elbow keeps pointing
 		# down and out, the hinge where it belongs.
 		pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 25.0 * MS, dt)
-		# The whole time the swing button is held (not in a thrust: the arm has to straighten
-		# along the line).
-		var swinging: bool = power and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
+		# A swing locks the elbow: the whole time the swing button is held, and through any fast
+		# stroke of the hand (button or not) and a moment after it, so the weight of the head
+		# (a warhammer most) is carried round on the straight arm from the shoulder instead of
+		# folding the elbow and stopping dead in mid-flight. Not in a thrust: the arm has to
+		# straighten along the line.
+		if target_vel[side].length() > 1.2 * S:
+			swing_hold[side] = 0.35
+		else:
+			swing_hold[side] = maxf(0.0, swing_hold[side] - dt)
+		var swinging: bool = (power or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
 		# A swing is made with the arm near straight, light weapon or heavy.
-		var want_bend := minf(elbow_dir.angle_to(fore_dir), 0.7)
+		var want_bend := minf(elbow_dir.angle_to(fore_dir), 0.35)
 		_hold_elbow(side, want_bend, swinging, dt)
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
@@ -1926,6 +1942,11 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# Never round behind the back (only a throw is drawn back there on purpose).
 	if thrust > -0.5:
 		d.z = maxf(d.z, 0.12 * S)
+	# A weapon swung (the button held, or a fast stroke) goes out at the end of a straight arm:
+	# held in close the elbow had to bend to reach it, and a heavy head folded it further.
+	var w_side = weapons[side]
+	if w_side and not w_side.is_shield and absf(thrust) < 0.05 and (power_now or swing_hold[side] > 0.0) and d.length() > 1e-4:
+		d = d.normalized() * maxf(d.length(), arm_reach * 0.92)
 	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * 0.97 * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
 
@@ -1978,9 +1999,13 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 			flat2 = flat2.normalized() * keep if flat2.length() > 1e-4 else Vector2(0, keep)
 			axis = yaw_q * Vector3(flat2.x, flat2.y, -0.15)
 	if not throwing[side] and not is_spear(w):
-		# A low blow skims the sand instead of ploughing into it: the point is let down no lower
-		# than a hand's breadth above the ground (a sweep with the tip dug in stuck fast there).
-		var floor_gap := hand_world(side).y - (ground_level + (0.13 + 0.035 * minf(4.0, w.mass)) * S)   # a heavy head sags below its aim
+		# A low blow comes down to the sand and skims it instead of ploughing in (a sweep with the
+		# tip dug in stuck fast there): the point is let down to just above the ground (a heavy
+		# head sags a little below its aim). Measured from where the hand is going, the lowest it
+		# gets in the stroke, not where it is on the way: from there the limit climbed as the hand
+		# came down and pulled the falling blade back up, braking every chop halfway.
+		var hand_low := minf(hand_world(side).y, target_w.y)
+		var floor_gap := hand_low - (ground_level + (0.05 + 0.015 * minf(4.0, w.mass)) * S)
 		var reach_w := maxf(0.2, w.reach + 0.04 * S)
 		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:
 			var ny := clampf(-floor_gap / reach_w, -1.0, 0.0)
