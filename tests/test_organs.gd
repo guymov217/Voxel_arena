@@ -271,7 +271,7 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 	var res: Dictionary = await _open_belly(v)
 	t.check(v.guts_out and spilled.size() == 1, "slashes across the belly open it and the guts come out (%s)" % [spilled])
 	var rope: GutRope = GutRope.ropes.back() if not GutRope.ropes.is_empty() else null
-	t.check(rope != null and rope.links.size() >= GutRope.FIRST_LINKS, "as a long chain of links (%d)" % (rope.links.size() if rope else 0))
+	t.check(rope != null and rope.links.size() >= GutRope.FIRST_LINKS, "as a chain of links (%d)" % (rope.links.size() if rope else 0))
 	if rope:
 		var hl: Vector3 = rope.links[1].half
 		var dims := [hl.x, hl.y, hl.z]
@@ -286,6 +286,7 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 	var last: Chunk = rope.links.back()
 	t.check(is_instance_valid(first) and first.flap_of == v.torso and first.global_position.distance_to(v.torso.global_position) < 0.6, "two seconds on they still hang from him")
 	t.check(last.global_position.y < first.global_position.y, "hanging down (%.2f under %.2f)" % [last.global_position.y, first.global_position.y])
+	t.check(rope.links.size() > GutRope.FIRST_LINKS + 3, "more of them poured out under their weight (%d links)" % rope.links.size())
 	# A blade swung through a link cuts the chain there.
 	var mid: Chunk = rope.links[rope.links.size() / 2]
 	var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), mid.global_position + Vector3(0.4, 0, 0))

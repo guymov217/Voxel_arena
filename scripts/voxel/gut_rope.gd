@@ -8,7 +8,8 @@ extends Node
 ## another length slides out of the wound, until the belly is empty. Once the body is gone the
 ## whole chain falls loose and ages away like any other piece.
 
-const FIRST_LINKS := 16    # out at once when the belly opens (long enough to heap on the sand)
+const FIRST_LINKS := 5     # out at once when the belly opens; the rest pour out under their weight
+const POUR_T := 0.12       # one more length slides out this often while the chain hangs clear of the sand
 const MAX_LINKS := 28      # all a belly holds
 const LINK_VOX := 12       # voxels of gut a link is made of (2 x 2 x 3)
 const LINK_MASS := 0.1
@@ -22,6 +23,7 @@ var anchor := Vector3.ZERO     # the wound, in the torso's frame
 var axis := Vector3(0, 0, 1)   # the torso's axis nearest the way out of the wound
 var links: Array = []          # Chunk, from the wound outward
 var _seed := 0
+var _pour := 0.0
 
 ## Out through the wound at `at` (world), heading `out`: one link per group of the torso's gut
 ## voxels (each group taken out of the torso). Null with nothing to show it on.
@@ -71,7 +73,10 @@ func _add_link(group: Array, at_wound: bool) -> void:
 	var n := colors.size()
 	var length := ceili(n / 4.0)
 	var k := 0 if at_wound else links.size()
-	var start := anchor + along * vs * (0.5 + float(k * length))
+	# Hung from the wound one under the other (straight down, a little out from the belly so they
+	# clear his thighs), not stood out from him in a long rod that sprang off as it fell.
+	var down_l := (tor.global_transform.basis.orthonormalized().inverse() * Vector3.DOWN).normalized()
+	var start := anchor + along * vs * (0.5 + 0.35 * float(k)) + down_l * vs * 2.3 * float(k)
 	var voxels := []
 	var gt := tor.global_transform
 	for i in n:
@@ -90,9 +95,8 @@ func _add_link(group: Array, at_wound: bool) -> void:
 	if ch == null:
 		return
 	ch.mass = LINK_MASS * pow(tor.part_scale, 3.0)
-	# Each length tumbles out its own way, so they fall in loops, not a straight drop.
-	var side := Vector3(float(hash(_seed * 7) % 200) / 100.0 - 1.0, 0.0, float(hash(_seed * 13) % 200) / 100.0 - 1.0)
-	ch.linear_velocity = tor.linear_velocity + out_w * 0.8 + side * 0.9
+	# They slide out and fall, under their own weight only (thrown out of him, they leapt).
+	ch.linear_velocity = tor.linear_velocity + out_w * 0.15
 	ch.angular_velocity = Vector3.ZERO
 	# They heap on the sand and on each other, hang over his legs (not through them), and a blade
 	# passing through is felt. Only the trunk they come out of is let through.
@@ -158,6 +162,15 @@ func _physics_process(dt: float) -> void:
 			if b is Weapon and (b.holder != null or b.thrown_t > 0.0) and (b.linear_velocity - ch.linear_velocity).length() > CUT_SPEED:
 				ch.let_go()
 				break
+	# Hanging clear of the sand, their weight draws the next length out after them: they pour
+	# out of the wound until the end lies on the ground.
+	_pour -= dt
+	if attached >= 1 and attached == links.size() and links.size() < MAX_LINKS and fighter and fighter.has_method("pull_guts") and _pour <= 0.0:
+		var end_: Chunk = links[attached - 1]
+		if end_.global_position.y > torso.vf * torso.part_scale * 3.0:
+			_pour = POUR_T
+			fighter.pull_guts()
+			return
 	# Pulled taut: the end of what still hangs on him lies far from the wound.
 	if attached >= 2 and links.size() < MAX_LINKS and fighter and fighter.has_method("pull_guts"):
 		var tail: Chunk = links[attached - 1]
