@@ -391,7 +391,7 @@ func remove_voxels(indices: Array) -> Array:
 			continue
 		alive[i] = 0
 		var v: Array = vox[i]
-		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4])})
+		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3]))})
 		var b: int = i * 16
 		var buf_i := [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11]
 		hidden.append_array(buf_i)

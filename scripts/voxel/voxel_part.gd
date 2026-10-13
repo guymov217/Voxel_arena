@@ -586,7 +586,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 		alive[i] = 0
 		alive_count -= 1
 		done.append(i)
-		out.append({"p": world_of(i), "color": colors[i]})
+		out.append({"p": world_of(i), "color": colors[i], "kind": kinds[i]})
 		centre += local_of(i)
 	if out.is_empty():
 		return out

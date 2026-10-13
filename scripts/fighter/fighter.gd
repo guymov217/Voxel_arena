@@ -3016,7 +3016,10 @@ func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void
 ## of their own voxels, hanging and swinging (GutRope; with gore reduced they are only lost). It
 ## bleeds hard, it hurts, it takes the breath. Once per body. A beast's belly the same.
 signal guts_spilled(fighter: Fighter, groups: Array, at: Vector3, out: Vector3)
-const SPILL_EXPOSED := 14
+signal guts_pulled(fighter: Fighter, group: Array)
+var guts_queue: Array = []        # the lengths still in the belly, nearest the wound first
+var gut_rope: GutRope = null
+const SPILL_EXPOSED := 24
 var guts_out := false
 
 func _cells(p: VoxelPart) -> Dictionary:
@@ -3042,12 +3045,24 @@ func _check_belly(res: Dictionary) -> void:
 		var open := false
 		for d in _NB:
 			var j = cells.get(c + d)
-			if j != null and not torso.alive[j] and torso.organ[j] != Anatomy.GUTS:
+			if j != null and not torso.alive[j]:
 				open = true
 				out += Vector3(d)
 		if open:
 			exposed.append(i)
-	if exposed.size() < SPILL_EXPOSED:
+	# Bared over enough of them, and wide open (a long slash, not a deep stab's narrow hole).
+	if exposed.size() < maxi(SPILL_EXPOSED, int(organ_total.get(Anatomy.GUTS, 0) * 0.07)):
+		return
+	var lo_c := Vector3i(1 << 20, 1 << 20, 1 << 20)
+	var hi_c := -lo_c
+	for i in exposed:
+		var c := Vector3i(torso.fx[i], torso.fy[i], torso.fz[i])
+		lo_c = Vector3i(mini(lo_c.x, c.x), mini(lo_c.y, c.y), mini(lo_c.z, c.z))
+		hi_c = Vector3i(maxi(hi_c.x, c.x), maxi(hi_c.y, c.y), maxi(hi_c.z, c.z))
+	var span := hi_c - lo_c
+	var ax := out.abs()
+	var wide := maxi(span.y, span.z) if ax.x >= ax.y and ax.x >= ax.z else (maxi(span.x, span.z) if ax.y >= ax.z else maxi(span.x, span.y))
+	if wide < 6:
 		return
 	guts_out = true
 	var centre := Vector3.ZERO
@@ -3061,11 +3076,17 @@ func _check_belly(res: Dictionary) -> void:
 		if torso.organ[i] == Anatomy.GUTS and torso.alive[i]:
 			guts.append(i)
 	guts.sort_custom(func(a, b): return torso.local_of(a).distance_squared_to(centre) < torso.local_of(b).distance_squared_to(centre))
-	guts = guts.slice(0, GutRope.MAX_SEGS * GutRope.SEG_VOX)
+	guts = guts.slice(0, GutRope.MAX_LINKS * GutRope.LINK_VOX)
 	var groups := []
-	for k in range(0, guts.size(), GutRope.SEG_VOX):
-		groups.append(guts.slice(k, k + GutRope.SEG_VOX))
-	_organ_lost(torso, guts)
+	for k in range(0, guts.size(), GutRope.LINK_VOX):
+		groups.append(guts.slice(k, k + GutRope.LINK_VOX))
+	# A first length comes out at once; the rest stays in until it is pulled out (pull_guts).
+	guts_queue = groups.slice(GutRope.FIRST_LINKS)
+	groups = groups.slice(0, GutRope.FIRST_LINKS)
+	var flat := []
+	for g in groups:
+		flat += g
+	_organ_lost(torso, flat)
 	torso.bleed += 3.0
 	pain = 1.0
 	stamina = maxf(0.0, stamina - 30.0)
@@ -3079,12 +3100,28 @@ func _check_belly(res: Dictionary) -> void:
 ## Takes the links out of the torso: a hanging chain with gore on, plainly gone without.
 func spill_guts(groups: Array, at: Vector3, out: Vector3) -> void:
 	guts_out = true
-	if Anatomy.gore() == "full" and GutRope.spill(self, groups, at, out) != null:
-		return
+	if Anatomy.gore() == "full":
+		gut_rope = GutRope.spill(self, groups, at, out)
+		if gut_rope:
+			return
 	var flat := []
 	for g in groups:
 		flat += g
 	torso.remove_voxels(flat, true, false)
+
+## The chain hanging out of him pulled taut (GutRope): another length slides out of the wound.
+func pull_guts() -> void:
+	if guts_queue.is_empty():
+		return
+	var g: Array = guts_queue.pop_front()
+	_organ_lost(torso, g)
+	torso.bleed += 0.4
+	pain = minf(1.0, pain + 0.15)
+	if gut_rope and is_instance_valid(gut_rope):
+		gut_rope.pull(g)
+	else:
+		torso.remove_voxels(g, true, false)
+	guts_pulled.emit(self, g)
 
 ## Every tick (the host): the heart's last seconds, a brain too broken to go on.
 func _organs_tick(dt: float) -> void:

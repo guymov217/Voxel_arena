@@ -271,18 +271,23 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 	var res: Dictionary = await _open_belly(v)
 	t.check(v.guts_out and spilled.size() == 1, "slashes across the belly open it and the guts come out (%s)" % [spilled])
 	var rope: GutRope = GutRope.ropes.back() if not GutRope.ropes.is_empty() else null
-	t.check(rope != null and rope.segs.size() >= 4, "as a chain of links (%d)" % (rope.segs.size() if rope else 0))
+	t.check(rope != null and rope.links.size() >= GutRope.FIRST_LINKS, "as a long chain of links (%d)" % (rope.links.size() if rope else 0))
+	if rope:
+		var hl: Vector3 = rope.links[1].half
+		var dims := [hl.x, hl.y, hl.z]
+		dims.sort()
+		t.check(dims[2] > dims[1] * 1.3, "each a length of tube, longer than it is thick (%s)" % [hl])
 	if rope == null:
 		m.queue_free()
 		return
-	t.check(rope.segs.all(func(c): return c is Chunk and not c.freeze), "each a free body of its own")
+	t.check(rope.links.all(func(c): return c is Chunk and not c.freeze), "each a free body of its own")
 	await _steps(120 * 2)
-	var first: Chunk = rope.segs[0]
-	var last: Chunk = rope.segs.back()
+	var first: Chunk = rope.links[0]
+	var last: Chunk = rope.links.back()
 	t.check(is_instance_valid(first) and first.flap_of == v.torso and first.global_position.distance_to(v.torso.global_position) < 0.6, "two seconds on they still hang from him")
 	t.check(last.global_position.y < first.global_position.y, "hanging down (%.2f under %.2f)" % [last.global_position.y, first.global_position.y])
 	# A blade swung through a link cuts the chain there.
-	var mid: Chunk = rope.segs[rope.segs.size() / 2]
+	var mid: Chunk = rope.links[rope.links.size() / 2]
 	var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), mid.global_position + Vector3(0.4, 0, 0))
 	var blade := Vector3.ZERO
 	for vv in w.vox:
@@ -295,10 +300,34 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 		w.thrown_t = 1.0
 		w.linear_velocity = Vector3(-8, 0, 0)
 		await get_tree().physics_frame
-		if rope.segs.any(func(c): return is_instance_valid(c) and c.flap_of == null):
+		if rope.links.any(func(c): return is_instance_valid(c) and c.flap_of == null):
 			cut = true
 			break
 	t.check(cut, "a blade through the chain cuts it")
+	m.queue_free()
+
+func test_guts_pulled_taut_come_further_out() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	await _open_belly(v)
+	var rope: GutRope = v.gut_rope
+	t.check(rope != null and not v.guts_queue.is_empty(), "the belly opens with more still in it (%d left)" % v.guts_queue.size())
+	if rope == null:
+		m.queue_free()
+		return
+	await _steps(120)
+	var n0 := rope.links.size()
+	var tail: Chunk = rope.links.back()
+	# The end lies held where it is while he goes off.
+	tail.freeze = true
+	for i in 60:
+		v.teleport(v.torso.global_position * Vector3(1, 0, 1) + Vector3(0, 0, -0.04))
+		v.blood = 100.0
+		v.heart_t = -1.0
+		await get_tree().physics_frame
+	t.check(rope.links.size() > n0, "pulled taut, more of them slide out (%d -> %d)" % [n0, rope.links.size()])
 	m.queue_free()
 
 func test_reduced_gore_spills_nothing_but_hurts_the_same() -> void:
@@ -412,3 +441,34 @@ func test_a_lions_torn_heart_kills_it_a_little_slower_than_a_man() -> void:
 	await _steps(120 * 8)
 	t.check(not b.alive and (died.has("heart") or died.has("wounds")), "then it dies of it (%s)" % [died])
 	m.queue_free()
+
+func test_a_stab_in_the_belly_spills_nothing_a_lions_slashed_belly_does() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var tor := v.torso
+	for k in 3:
+		tor.hp = 1000.0
+		var gt := tor.global_transform
+		var fwd := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(tor, {"impulse": 45.0, "type": "point", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(0.0, -tor.half_ext.y * 0.4, tor.half_ext.z), "dir": -fwd, "axis": -fwd})
+		await _steps(4)
+	t.check(not v.guts_out and v.organ_health(Anatomy.GUTS) < 1.0, "a stab reaches the guts but leaves no way out for them")
+	m.queue_free()
+	var rb := _beast("lion")
+	var lion: Beast = rb[1]
+	await _steps(30)
+	var lt := lion.torso
+	var k2 := 0
+	while not lion.guts_out and k2 < 8:
+		lt.hp = 1000.0
+		lion.blood = 100.0
+		var g2 := lt.global_transform
+		var bx := g2.basis.orthonormalized()
+		var into := bx * Vector3(0, 1, 0)
+		lion.apply_hit(lt, {"impulse": 60.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": g2 * Vector3(0, -lt.half_ext.y, -lt.half_ext.z * 0.4), "dir": into, "axis": bx * Vector3(0, 0, 1), "edge": into})
+		k2 += 1
+		await _steps(4)
+	t.check(lion.guts_out and lion.gut_rope != null, "a lion's belly slashed open spills its guts (%d)" % k2)
+	rb[0].queue_free()

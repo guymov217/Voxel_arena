@@ -294,6 +294,10 @@ func _register(e: Dictionary) -> void:
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
+	e.f.guts_pulled.connect(func(f, g):
+		var en = entity_of(f)
+		if role == "host" and en:
+			Net.send_all("gutp", {"id": en.id, "g": g}))
 	if role == "host":
 		Net.send_all("spawn", _spawn_msg(e))
 
@@ -761,6 +765,17 @@ func _sync_loose() -> void:
 ## Guests: what the host sends besides spawns and snapshots.
 func guest_message(type: String, data) -> void:
 	match type:
+		"gutp":
+			# Another length pulled out of a belly already open (sanitized like "guts").
+			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
+			if e == null or not (e.f is Fighter) or not e.f.guts_out or not (data.get("g") is Array):
+				return
+			var n: int = e.f.torso.fx.size()
+			var g: Array = (data.g as Array).slice(0, GutRope.LINK_VOX).map(func(i): return clampi(int(i), 0, n - 1))
+			if e.f.gut_rope and is_instance_valid(e.f.gut_rope):
+				e.f.gut_rope.pull(g)
+			else:
+				e.f.torso.remove_voxels(g, true, false)
 		"guts":
 			# Sanitized: a known fighter, at most the chain's links of the torso's own voxels.
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
@@ -768,9 +783,9 @@ func guest_message(type: String, data) -> void:
 				return
 			var n: int = e.f.torso.fx.size()
 			var groups := []
-			for g in (data.g as Array).slice(0, GutRope.MAX_SEGS):
+			for g in (data.g as Array).slice(0, GutRope.FIRST_LINKS):
 				if g is Array:
-					groups.append((g as Array).slice(0, GutRope.SEG_VOX * 2).map(func(i): return clampi(int(i), 0, n - 1)))
+					groups.append((g as Array).slice(0, GutRope.LINK_VOX).map(func(i): return clampi(int(i), 0, n - 1)))
 			var o := Vector3(float(data.o[0]), float(data.o[1]), float(data.o[2]))
 			e.f.spill_guts(groups, Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])), o.normalized() if o.length_squared() > 1e-6 else Vector3.FORWARD)
 		"wloose":

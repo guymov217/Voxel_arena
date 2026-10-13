@@ -31,7 +31,10 @@ func _slash(v: Fighter, part: VoxelPart, local: Vector3, along: Vector3, J := 45
 	v.heart_t = -1.0
 	var gt := part.global_transform
 	var bx := gt.basis.orthonormalized()
-	var into := -(bx * local.normalized())
+	# Straight in through the face it lands on.
+	var q := local / part.half_ext
+	var face := Vector3(signf(q.x), 0, 0) if absf(q.x) >= absf(q.y) and absf(q.x) >= absf(q.z) else (Vector3(0, signf(q.y), 0) if absf(q.y) >= absf(q.z) else Vector3(0, 0, signf(q.z)))
+	var into := -(bx * face)
 	return v.apply_hit(part, {"impulse": J, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * local, "dir": into, "axis": bx * along, "edge": into})
 
 func _ready() -> void:
@@ -68,12 +71,24 @@ func _ready() -> void:
 		_slash(b, b.torso, Vector3(0.0, -b.torso.half_ext.y * 0.4, b.torso.half_ext.z), Vector3(1, 0, 0))
 		k += 1
 		await _steps(4)
+	print("man guts out: ", b.guts_out, " after ", k, " rope ", b.gut_rope != null)
 	b.blood = 100.0
 	await _steps(120 * 2)
 	tp = b.torso.global_position
 	fwd = PD.quat_of(b.torso) * Vector3(0, 0, 1)
 	_look(tp + Vector3(0, -0.2, 0), tp + fwd * 1.6 + Vector3(0.7, 0.1, 0))
 	await _save("guts")
+	# From above, a little further on: where the length of them lies.
+	await _steps(120)
+	var gc := Vector3.ZERO
+	var rope: GutRope = b.gut_rope
+	if rope:
+		for ch in rope.links:
+			gc += ch.global_position
+		gc /= float(maxi(1, rope.links.size()))
+		print("guts links ", rope.links.size(), " centre ", gc)
+	_look(gc, gc + Vector3(0.5, 1.6, 0.9))
+	await _save("guts_top")
 	# 3. Blood run down his chest from a cut, a few seconds on.
 	_slash(b, b.torso, Vector3(b.torso.half_ext.x * 0.5, b.torso.half_ext.y * 0.55, b.torso.half_ext.z), Vector3(1, 0, 0), 22.0)
 	b.torso.bleed = 2.0
@@ -122,10 +137,11 @@ func _ready() -> void:
 	await _steps(90)
 	var n := 0
 	while not lion.guts_out and n < 14:
-		_slash(lion, lion.torso, Vector3(0, -lion.torso.half_ext.y, -lion.torso.half_ext.z * 0.2), Vector3(0, 0, 1), 60.0)
+		_slash(lion, lion.torso, Vector3(0, -lion.torso.half_ext.y, -lion.torso.half_ext.z * 0.4), Vector3(0, 0, 1), 60.0)
 		lion.blood = 100.0
 		n += 1
 		await _steps(4)
+	print("lion guts out: ", lion.guts_out, " links ", lion.gut_rope.links.size() if lion.gut_rope else 0)
 	await _steps(120 * 2)
 	var lp := lion.torso.global_position
 	_look(lp + Vector3(0, -0.3, 0), lp + Vector3(0.6, 0.2, 2.6))
