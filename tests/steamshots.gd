@@ -33,6 +33,8 @@ func _ready() -> void:
 		{"name": "07_red_vs_blue", "opts": {"mode": "teams"}, "J": 30.0, "cam": "wide"},
 		{"name": "08_in_the_fight", "opts": {"mode": "duel"}, "J": 20.0, "cam": "player"},
 	]
+	for i in 30:
+		await get_tree().process_frame
 	for sc in scenes:
 		if only != "" and only != sc.name:
 			continue
