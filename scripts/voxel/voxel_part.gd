@@ -53,6 +53,7 @@ var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
 var heat := {}                   # voxel -> how charred (or melted) it is
 var flames: GPUParticles3D = null
+var flame_smoke: GPUParticles3D = null
 var stuck: Array = []            # arrows and darts in it
 var wielder: Node = null         # a severed limb someone picked up to hit people with
 var thrown_t := 0.0
@@ -819,11 +820,12 @@ func set_flames(on: bool) -> void:
 	if on and flames == null:
 		flames = Fx.current.emitter("fire", self, 40, 0.07 * part_scale)
 		if flames:
-			var smoke := Fx.current.emitter("smoke", flames, 10, 0.05 * part_scale)
-			if smoke:
-				smoke.emitting = true
+			flame_smoke = Fx.current.emitter("smoke", flames, 10, 0.05 * part_scale)
 	if flames:
 		flames.emitting = on
+		# The smoke goes out with the fire (it went on rising off a limb long put out).
+		if flame_smoke:
+			flame_smoke.emitting = on
 		for s in spots:
 			if s.kind == "fire" and s.t > 0.0:
 				flames.position = s.lp

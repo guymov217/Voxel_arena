@@ -515,7 +515,11 @@ func _place_flames(burning: Array, dt: float) -> void:
 		if ps == null:
 			holder.queue_free()
 			break
-		_flame_pool.append({"node": holder, "ps": ps})
+		# Every flame smokes, a little; the big plume over a large fire is on top of it.
+		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", holder, 14, 0.2)
+		if sm:
+			sm.position = Vector3(0, 0.55, 0)
+		_flame_pool.append({"node": holder, "ps": ps, "smoke": sm})
 	for j in _flame_pool.size():
 		var fl: Dictionary = _flame_pool[j]
 		var ps: GPUParticles3D = fl.ps
@@ -524,8 +528,13 @@ func _place_flames(burning: Array, dt: float) -> void:
 			ps.emitting = true
 			ps.amount_ratio = clampf(0.3 + chosen[j][0] * 1.5, 0.3, 1.0)
 			ps.speed_scale = clampf(0.8 + chosen[j][0], 0.8, 1.6)
+			if fl.smoke:
+				fl.smoke.emitting = true
+				fl.smoke.amount_ratio = clampf(0.25 + chosen[j][0] * 2.0, 0.25, 1.0)
 		else:
 			ps.emitting = false
+			if fl.smoke:
+				fl.smoke.emitting = false
 
 ## A splash on a wall: a scorch (or a green stain) where it hit, and for fire a lick of flame.
 func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
@@ -550,6 +559,9 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 		add_child(holder)
 		holder.global_position = p + n * 0.06
 		var ps: GPUParticles3D = m.fx.emitter("fire", holder, 14, 0.12)
+		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", holder, 6, 0.1)
+		if sm:
+			sm.position = Vector3(0, 0.25, 0)
 		_wall_fires += 1
 		get_tree().create_timer(2.0 + randf() * 2.0, false).timeout.connect(func():
 			_wall_fires -= 1
@@ -953,6 +965,11 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		var fl: GPUParticles3D = m.fx.emitter("fire", z.node, int(clampf(r * 40.0, 12.0, 80.0)), r * 0.8)
 		if fl:
 			fl.emitting = true
+	if m.fx and type == "fire" and t > 1.0 and z.node:
+		# Smoke off it, as much as the fire is big.
+		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", z.node, int(clampf(r * 26.0, 8.0, 40.0)), r * 0.6)
+		if sm:
+			sm.position = Vector3(0, 0.4, 0)
 	if m.role == "host":
 		Net.send_all("zone", {"type": type, "p": [p.x, p.y, p.z], "r": r, "t": t})
 	return z

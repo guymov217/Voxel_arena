@@ -160,6 +160,11 @@ func _coat() -> void:
 		var ps := Fx.current.emitter(COAT_FX[c][0], self, COAT_FX[c][1], vs * 2.0)
 		if ps:
 			ps.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
+		# Burning pitch smokes: a thin trail of it off the blade.
+		if c == "fire" and q > 0.5:
+			var sm := Fx.current.emitter("fire_smoke", self, 10, vs * 2.0)
+			if sm:
+				sm.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
 
 func _grip_points() -> Array:
 	var grips := []

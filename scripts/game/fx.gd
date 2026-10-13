@@ -85,6 +85,7 @@ const KINDS := {
 	"acid": {"color": Color(0.56, 0.83, 0.23, 0.8), "life": 0.9, "speed": [1.0, 3.0], "spread": 60.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "spark", "emit": 1.5},
 	"blastfire": {"color": Color(1.0, 0.62, 0.22), "life": 0.7, "speed": [2.5, 6.5], "spread": 180.0, "gravity": 1.5, "size": [0.35, 0.8], "tex": "soft", "drag": 3.0},
 	"pool_fire": {"color": Color(1.0, 0.5, 0.12), "life": 0.7, "speed": [0.3, 0.9], "spread": 12.0, "gravity": 3.0, "size": [0.26, 0.55], "tex": "flame", "emit": 3.0, "shrink": true},
+	"fire_smoke": {"color": Color(0.09, 0.08, 0.075, 0.9), "life": 2.8, "speed": [0.5, 1.1], "spread": 14.0, "gravity": 0.9, "size": [0.3, 0.55], "tex": "soft", "drag": 0.5, "grow": 3.0},
 	"pool_smoke": {"color": Color(0.12, 0.1, 0.09, 0.55), "life": 3.0, "speed": [0.6, 1.4], "spread": 20.0, "gravity": 0.6, "size": [0.35, 0.8], "tex": "soft", "drag": 0.4},
 	"blade_fire": {"color": Color(1.0, 0.45, 0.08), "life": 0.42, "speed": [0.25, 0.8], "spread": 30.0, "gravity": 2.8, "size": [0.06, 0.13], "tex": "soft", "emit": 9.0, "add": true, "shrink": true},
 	"venom": {"color": Color(0.45, 0.85, 0.2), "life": 0.9, "speed": [0.02, 0.2], "spread": 25.0, "gravity": -7.0, "size": [0.014, 0.03], "tex": "spark", "emit": 1.6},
