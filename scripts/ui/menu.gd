@@ -1512,6 +1512,12 @@ func _options(v: VBoxContainer) -> void:
 		_set_opt("renderScale", RENDER_SCALES[i][0])
 		apply_render_scale(Save.get_value("settings", {})))
 	_row(v, [UIStyle.label("3D resolution", 15), rs, UIStyle.label("Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.", 13, UIStyle.MUTED)])
+	var gore := OptionButton.new()
+	gore.add_item("Full")
+	gore.add_item("Reduced")
+	gore.select(1 if str(st.get("gore", "full")) == "reduced" else 0)
+	gore.item_selected.connect(func(k): _set_opt("gore", "reduced" if k == 1 else "full"))
+	_row(v, [UIStyle.label("Gore", 15), gore, UIStyle.label("Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.", 13, UIStyle.MUTED)])
 	var lh := CheckBox.new()
 	lh.text = "Left-handed (the right button swings the main weapon)"
 	lh.button_pressed = bool(st.get("leftHanded", false))
@@ -1969,7 +1975,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts":
 			if match_:
 				match_.guest_message(type, data)
 		"end":

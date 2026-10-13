@@ -293,6 +293,7 @@ func _register(e: Dictionary) -> void:
 	combat.fighters.append(e.f)
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
+	e.f.guts_spilled.connect(_on_guts_spilled)
 	if role == "host":
 		Net.send_all("spawn", _spawn_msg(e))
 
@@ -758,6 +759,18 @@ func _sync_loose() -> void:
 ## Guests: what the host sends besides spawns and snapshots.
 func guest_message(type: String, data) -> void:
 	match type:
+		"guts":
+			# Sanitized: a known fighter, at most the chain's links of the torso's own voxels.
+			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
+			if e == null or not (e.f is Fighter) or e.f.guts_out or not (data.get("g") is Array) or not (data.get("p") is Array) or not (data.get("o") is Array) or data.p.size() != 3 or data.o.size() != 3:
+				return
+			var n: int = e.f.torso.fx.size()
+			var groups := []
+			for g in (data.g as Array).slice(0, GutRope.MAX_SEGS):
+				if g is Array:
+					groups.append((g as Array).slice(0, GutRope.SEG_VOX * 2).map(func(i): return clampi(int(i), 0, n - 1)))
+			var o := Vector3(float(data.o[0]), float(data.o[1]), float(data.o[2]))
+			e.f.spill_guts(groups, Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])), o.normalized() if o.length_squared() > 1e-6 else Vector3.FORWARD)
 		"wloose":
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
 			if e and (data.side == "R" or data.side == "L") and e.f.weapons.get(data.side):
@@ -1131,6 +1144,14 @@ func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array
 	var e = entity_of(f)
 	if e:
 		Net.send_all("vox", {"id": e.id, "part": part_index, "idx": indices})
+
+## The host tells the guests whose guts came out, which voxels and where: each draws the chain.
+func _on_guts_spilled(f: Fighter, groups: Array, at: Vector3, out: Vector3) -> void:
+	if role != "host":
+		return
+	var e = entity_of(f)
+	if e:
+		Net.send_all("guts", {"id": e.id, "g": groups, "p": [snappedf(at.x, 0.001), snappedf(at.y, 0.001), snappedf(at.z, 0.001)], "o": [snappedf(out.x, 0.01), snappedf(out.y, 0.01), snappedf(out.z, 0.01)]})
 
 func _send_weapon_vox(w: Weapon, idx: Array) -> void:
 	for e in entities:

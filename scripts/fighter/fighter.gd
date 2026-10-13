@@ -178,6 +178,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	name = display_name.replace(" ", "_")
 	var yaw_q := Quaternion(UP, yaw)
 	var sk_lin := skin.srgb_to_linear()
+	var plain_insides := Anatomy.gore() == "reduced"
 	var tm_lin := team_color.srgb_to_linear()
 	for d in Data.body_parts:
 		var voxels := []
@@ -205,6 +206,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			var organ: int = int(v[6]) if v.size() > 6 else 0
 			if organ != Anatomy.NONE and not Anatomy.is_bone(organ):
 				kind = 9
+				if plain_insides:
+					c = Color.hex(0x9e1b1bff)
 			voxels.append([v[0], v[1], v[2], c, v[5], kind, organ])
 		var p := VoxelPart.new()
 		var m: float = float(d.mass) * MS * (LEG_MASS if d.leg else 1.0)
@@ -2452,6 +2455,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			concussion = minf(1.0, concussion + float(remove.size()) / maxf(1.0, float(part.fx.size())) * 1.5)
 		break_loose(part, res, hit.dir, detached)
 		_check_flaps(res)
+		if part == torso and not detached and type != "blunt":
+			_check_belly(res)
 		if not part.severed and part.integrity < 0.4:
 			part.hp = 0.0
 	if part == head and part.hp <= 0.0:
@@ -2460,6 +2465,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		die("wounds")
 	if not organs_hit.is_empty():
 		res.organs = organs_hit.map(func(o): return Anatomy.organ_name(o))
+		if res.get("spilled", false) and not res.organs.has("guts"):
+			res.organs.append("guts")
 	hit_taken.emit(self, res)
 	return res
 
@@ -2986,6 +2993,80 @@ func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void
 			torso.bleed += k * 3.0
 		Anatomy.BRAIN:
 			concussion = minf(1.0, concussion + k)
+
+## The belly opened wide enough to let the guts out: they come out through the wound as a chain
+## of their own voxels, hanging and swinging (GutRope; with gore reduced they are only lost). It
+## bleeds hard, it hurts, it takes the breath. Once per body. A beast's belly the same.
+signal guts_spilled(fighter: Fighter, groups: Array, at: Vector3, out: Vector3)
+const SPILL_EXPOSED := 14
+var guts_out := false
+
+func _cells(p: VoxelPart) -> Dictionary:
+	if not p.has_meta("cells"):
+		var m := {}
+		for i in p.fx.size():
+			m[Vector3i(p.fx[i], p.fy[i], p.fz[i])] = i
+		p.set_meta("cells", m)
+	return p.get_meta("cells")
+
+const _NB := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+
+func _check_belly(res: Dictionary) -> void:
+	if guts_out or torso.severed or not organ_total.has(Anatomy.GUTS):
+		return
+	var cells := _cells(torso)
+	var exposed := []
+	var out := Vector3.ZERO
+	for i in torso.organ.size():
+		if torso.organ[i] != Anatomy.GUTS or not torso.alive[i]:
+			continue
+		var c := Vector3i(torso.fx[i], torso.fy[i], torso.fz[i])
+		var open := false
+		for d in _NB:
+			var j = cells.get(c + d)
+			if j != null and not torso.alive[j] and torso.organ[j] != Anatomy.GUTS:
+				open = true
+				out += Vector3(d)
+		if open:
+			exposed.append(i)
+	if exposed.size() < SPILL_EXPOSED:
+		return
+	guts_out = true
+	var centre := Vector3.ZERO
+	for i in exposed:
+		centre += torso.local_of(i)
+	centre /= float(exposed.size())
+	var lout := out.normalized() if out.length_squared() > 1e-6 else Vector3(0, 0, 1)
+	# The coils nearest the wound first, in links of a few voxels each.
+	var guts := []
+	for i in torso.organ.size():
+		if torso.organ[i] == Anatomy.GUTS and torso.alive[i]:
+			guts.append(i)
+	guts.sort_custom(func(a, b): return torso.local_of(a).distance_squared_to(centre) < torso.local_of(b).distance_squared_to(centre))
+	guts = guts.slice(0, GutRope.MAX_SEGS * GutRope.SEG_VOX)
+	var groups := []
+	for k in range(0, guts.size(), GutRope.SEG_VOX):
+		groups.append(guts.slice(k, k + GutRope.SEG_VOX))
+	_organ_lost(torso, guts)
+	torso.bleed += 3.0
+	pain = 1.0
+	stamina = maxf(0.0, stamina - 30.0)
+	stagger = minf(1.0, stagger + 0.5)
+	res.spilled = true
+	var at := torso.global_transform * (centre + lout * torso.vf * torso.part_scale * 2.0)
+	var wout := (torso.global_transform.basis.orthonormalized() * lout).normalized()
+	spill_guts(groups, at, wout)
+	guts_spilled.emit(self, groups, at, wout)
+
+## Takes the links out of the torso: a hanging chain with gore on, plainly gone without.
+func spill_guts(groups: Array, at: Vector3, out: Vector3) -> void:
+	guts_out = true
+	if Anatomy.gore() == "full" and GutRope.spill(self, groups, at, out) != null:
+		return
+	var flat := []
+	for g in groups:
+		flat += g
+	torso.remove_voxels(flat, true, false)
 
 ## Every tick (the host): the heart's last seconds, a brain too broken to go on.
 func _organs_tick(dt: float) -> void:

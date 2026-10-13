@@ -29,6 +29,14 @@ const INFO := {
 static func is_bone(id: int) -> bool:
 	return id == SPINE or id == RIBS or id == PELVIS or id == SKULL
 
+## The gore setting (Settings): "full" shows the insides as they are (organ colours, guts that
+## spill, bone through an open break); "reduced" draws the insides as plain flesh and lets
+## nothing spill. Only the look: the wounds do the same either way, so every player in a match
+## fights the same fight.
+static func gore() -> String:
+	var s = Save.get_value("settings", {})
+	return "reduced" if s is Dictionary and s.get("gore", "full") == "reduced" else "full"
+
 static func organ_name(id: int) -> String:
 	return INFO.get(id, {}).get("name", "")
 

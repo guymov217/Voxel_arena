@@ -242,3 +242,81 @@ func test_cracked_ribs_take_the_breath_a_cracked_skull_rings_worse() -> void:
 	v.apply_hit(v.head, {"impulse": 15.0, "type": "blunt", "hardness": 0.5, "point": gh2 * Vector3(v.head.half_ext.x, 0.05, 0), "dir": -(gh2.basis.orthonormalized() * Vector3(1, 0, 0))})
 	t.check(v.concussion > 15.0 * 0.8 * 0.015 * 1.5, "and the same blow rings it worse now (%.2f)" % v.concussion)
 	m.queue_free()
+
+# ---------- Guts ----------
+
+## Slashes across the belly, low and in front, until the guts come out (or 10 blows).
+func _open_belly(v: Fighter) -> Dictionary:
+	var tor := v.torso
+	var res := {}
+	var k := 0
+	while not v.guts_out and k < 10:
+		tor.hp = 1000.0
+		v.heart_t = -1.0
+		var gt := tor.global_transform
+		var bx := gt.basis.orthonormalized()
+		var fwd := bx * Vector3(0, 0, 1)
+		res = v.apply_hit(tor, {"impulse": 45.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(0.0, -tor.half_ext.y * 0.4, tor.half_ext.z), "dir": -fwd, "axis": bx * Vector3(1, 0, 0), "edge": -fwd})
+		k += 1
+		await _steps(4)
+	return res
+
+func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var spilled := []
+	v.guts_spilled.connect(func(_f, g, _a, _o): spilled.append(g.size()))
+	var res: Dictionary = await _open_belly(v)
+	t.check(v.guts_out and spilled.size() == 1, "slashes across the belly open it and the guts come out (%s)" % [spilled])
+	var rope: GutRope = GutRope.ropes.back() if not GutRope.ropes.is_empty() else null
+	t.check(rope != null and rope.segs.size() >= 4, "as a chain of links (%d)" % (rope.segs.size() if rope else 0))
+	if rope == null:
+		m.queue_free()
+		return
+	t.check(rope.segs.all(func(c): return c is Chunk and not c.freeze), "each a free body of its own")
+	await _steps(120 * 2)
+	var first: Chunk = rope.segs[0]
+	var last: Chunk = rope.segs.back()
+	t.check(is_instance_valid(first) and first.flap_of == v.torso and first.global_position.distance_to(v.torso.global_position) < 0.6, "two seconds on they still hang from him")
+	t.check(last.global_position.y < first.global_position.y, "hanging down (%.2f under %.2f)" % [last.global_position.y, first.global_position.y])
+	# A blade swung through a link cuts the chain there.
+	var mid: Chunk = rope.segs[rope.segs.size() / 2]
+	var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), mid.global_position + Vector3(0.4, 0, 0))
+	var blade := Vector3.ZERO
+	for vv in w.vox:
+		blade += Vector3(vv[0], vv[1], vv[2]) * w.vs
+	blade /= float(w.vox.size())
+	var cut := false
+	for i in 40:
+		# Swept through the link, blade first, faster than a cut needs.
+		w.global_position = mid.global_position + Vector3(0.3 - i * 0.03, 0, 0) - w.global_transform.basis * blade
+		w.thrown_t = 1.0
+		w.linear_velocity = Vector3(-8, 0, 0)
+		await get_tree().physics_frame
+		if rope.segs.any(func(c): return is_instance_valid(c) and c.flap_of == null):
+			cut = true
+			break
+	t.check(cut, "a blade through the chain cuts it")
+	m.queue_free()
+
+func test_reduced_gore_spills_nothing_but_hurts_the_same() -> void:
+	var st: Dictionary = Save.get_value("settings", {}).duplicate()
+	var keep = st.get("gore", null)
+	st["gore"] = "reduced"
+	Save.set_value("settings", st)
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var ropes := GutRope.ropes.size()
+	t.check(v.torso.colors[_of(v.torso, Anatomy.HEART)[0]].r > 0.45, "the insides plain flesh")
+	await _open_belly(v)
+	t.check(v.guts_out and GutRope.ropes.size() == ropes and v.organ_health(Anatomy.GUTS) < 1.0, "the guts are lost, nothing hangs (%.2f)" % v.organ_health(Anatomy.GUTS))
+	if keep == null:
+		st.erase("gore")
+	else:
+		st["gore"] = keep
+	Save.set_value("settings", st)
+	m.queue_free()
