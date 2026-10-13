@@ -202,7 +202,10 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			elif d.name == "head" and int(v[4]) == 0 and int(v[2]) == int(d.grid[2]) - 1 and (int(v[0]) == 2 or int(v[0]) == 7) and int(v[1]) >= 6 and int(v[1]) <= 7:
 				c = Color(0.9, 0.88, 0.82)
 			c.a = 1.0
-			voxels.append([v[0], v[1], v[2], c, v[5], kind])
+			var organ: int = int(v[6]) if v.size() > 6 else 0
+			if organ != Anatomy.NONE and organ != Anatomy.SPINE:
+				kind = 9
+			voxels.append([v[0], v[1], v[2], c, v[5], kind, organ])
 		var p := VoxelPart.new()
 		var m: float = float(d.mass) * MS * (LEG_MASS if d.leg else 1.0)
 		p.setup(self, d, voxels, S, m)
@@ -220,6 +223,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			p.parent_part.child_parts.append(p)
 	torso = by_name.torso
 	head = by_name.head
+	_count_organs()
 	arm = {"R": {"upper": by_name.upperArmR, "fore": by_name.forearmR}, "L": {"upper": by_name.upperArmL, "fore": by_name.forearmL}}
 	# A body does not pass through itself: only parts joined to each other (they overlap at the
 	# joint) ignore one another, and the two legs while he is up (a stride brushes one past the
@@ -981,13 +985,13 @@ func leg_func(side: String) -> float:
 	var s: VoxelPart = by_name["shin" + side]
 	if t.severed or s.severed:
 		return 0.0
-	return minf(t.function(), s.function())
+	return minf(t.function(), s.function()) * cord_legs
 
 func arm_func(side: String) -> float:
 	var a: Dictionary = arm[side]
 	if a.upper.severed or a.fore.severed:
 		return 0.0
-	return minf(a.upper.function(), a.fore.function())
+	return minf(a.upper.function(), a.fore.function()) * cord_arms
 
 ## Whether the legs can hold him up: one good leg will do (he hops), two battered ones will
 ## not; neither will bleeding out or a head too rung to balance. Down, he crawls.
@@ -1129,6 +1133,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
 	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
+	_organs_tick(dt)
 	stagger = maxf(0.0, stagger - dt * 1.6)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
@@ -1481,7 +1486,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var regen := 3.0 if stamina_use > 0.02 * dt * 60.0 else (18.0 if still else 9.0)
 	# A chest cut open or stove in: he gets his breath back slowly.
 	regen *= 0.35 + 0.65 * torso.function()
-	stamina = clampf(stamina - stamina_use + regen * heavy * dt, 0.0, 100.0)
+	# Torn lungs draw breath slower and fill no further than they still can.
+	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs()) * dt, 0.0, maxf(stamina - stamina_use, breath_cap()))
 
 func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
 	var a: Dictionary = arm[side]
@@ -2233,6 +2239,7 @@ func die(cause := "") -> void:
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	organs_hit = []
 	var detached := part.severed
 	var keep_stagger := stagger
 	var keep_conc := concussion
@@ -2341,6 +2348,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		stagger = minf(1.0, stagger + J * 0.011)
 		if part == head:
 			concussion = minf(1.0, concussion + J * 0.015)
+		if (part == torso or part == head) and not detached:
+			_bruise_organs(part, lp, ld, J)
 		if part == torso and lp.y < 0.0 and J > 8.0 and not detached:
 			stamina = maxf(0.0, stamina - J * 1.3)
 			res.winded = true
@@ -2446,6 +2455,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		die("ko")
 	if part == torso and part.hp <= 0.0:
 		die("wounds")
+	if not organs_hit.is_empty():
+		res.organs = organs_hit.map(func(o): return Anatomy.organ_name(o))
 	hit_taken.emit(self, res)
 	return res
 
@@ -2853,7 +2864,137 @@ func on_severed(part: VoxelPart) -> void:
 signal voxels_lost(fighter: Fighter, part_index: int, indices: Array, voxels: Array)
 
 func on_part_voxels_lost(part: VoxelPart, indices: Array, out: Array) -> void:
+	if part == torso or part == head:
+		_organ_lost(part, indices)
 	voxels_lost.emit(self, parts.find(part), indices, out)
+
+# ---------- Organs ----------
+# What is inside (Anatomy): each organ as voxels of the torso or the head. What is lost of each
+# decides what it does to him: a torn heart kills in seconds, the lungs take his breath, the
+# liver bleeds hard, a cut spinal cord takes the legs (or the arms too, high up), the brain
+# fells him. A hard blunt blow bruises what lies under it without breaking the skin.
+
+var organ_total := {}     # organ id -> voxels it has
+var organ_lost := {}      # organ id -> voxels lost
+var organ_bruise := {}    # organ id -> 0..1 of harm done inside by blunt blows
+var organs_hit: Array = []  # the organs the blow being dealt with reached (apply_hit's res)
+var heart_t := -1.0       # seconds left to live once the heart is torn (-1: whole)
+var cord_legs := 1.0      # how much the spinal cord still carries to the legs, 0..1
+var cord_arms := 1.0      # and to the arms (cut above the shoulder blades)
+
+func _count_organs() -> void:
+	organ_total = {}
+	for p in [torso, head]:
+		for i in p.organ.size():
+			var o: int = p.organ[i]
+			if o != Anatomy.NONE:
+				organ_total[o] = int(organ_total.get(o, 0)) + 1
+
+## 0..1: how much of an organ is left whole (voxels and bruising both).
+func organ_health(id: int) -> float:
+	var n: int = organ_total.get(id, 0)
+	if n == 0:
+		return 1.0
+	return clampf(1.0 - float(organ_lost.get(id, 0)) / float(n) - float(organ_bruise.get(id, 0.0)), 0.0, 1.0)
+
+## Both lungs together: how much breath he can still draw.
+func lungs() -> float:
+	return (organ_health(Anatomy.LUNG_R) + organ_health(Anatomy.LUNG_L)) * 0.5
+
+func _organ_lost(part: VoxelPart, indices: Array) -> void:
+	var lost := {}
+	for i in indices:
+		var o: int = part.organ[i]
+		if o != Anatomy.NONE:
+			lost[o] = int(lost.get(o, 0)) + 1
+	if lost.is_empty():
+		return
+	for o in lost:
+		organ_lost[o] = int(organ_lost.get(o, 0)) + lost[o]
+		if not organs_hit.has(o):
+			organs_hit.append(o)
+	# What runs out of each (into the torso's bleeding), as much as was torn.
+	var n_heart: int = lost.get(Anatomy.HEART, 0)
+	var n_lung: int = lost.get(Anatomy.LUNG_R, 0) + lost.get(Anatomy.LUNG_L, 0)
+	torso.bleed += n_heart * 2.5 + lost.get(Anatomy.LIVER, 0) * 0.7 + n_lung * 0.2 + lost.get(Anatomy.STOMACH, 0) * 0.3 + lost.get(Anatomy.GUTS, 0) * 0.15
+	if n_heart > 0 and heart_t < 0.0 and organ_health(Anatomy.HEART) < 0.75:
+		heart_t = 3.0 if organ_health(Anatomy.HEART) > 0.4 else 1.2
+	if n_lung > 0:
+		stamina = minf(stamina, breath_cap())
+	if lost.has(Anatomy.BRAIN):
+		concussion = minf(1.0, concussion + 0.12 * lost[Anatomy.BRAIN])
+	if lost.has(Anatomy.SPINE):
+		_read_cord()
+
+## Where the spinal cord is cut through: a level of the spine (its 2 x 2 voxels) with 3 of 4
+## gone severs it there. Below the shoulder blades it takes the legs; above them the arms
+## weaken as well. Nicked, it only weakens what is below.
+func _read_cord() -> void:
+	var levels := {}
+	for i in torso.organ.size():
+		if torso.organ[i] == Anatomy.SPINE and not torso.alive[i]:
+			levels[torso.fy[i]] = int(levels.get(torso.fy[i], 0)) + 1
+	var legs := 1.0
+	var arms := 1.0
+	for y in levels:
+		var gone: int = levels[y]
+		if gone >= 3:
+			legs = 0.0
+			if y >= 16:
+				arms = minf(arms, 0.35)
+		else:
+			legs = minf(legs, 1.0 - 0.2 * gone)
+	cord_legs = minf(cord_legs, legs)
+	cord_arms = minf(cord_arms, arms)
+
+## The top of his breath: torn lungs fill no further.
+func breath_cap() -> float:
+	return 100.0 * (0.3 + 0.7 * lungs())
+
+## A hard blunt blow to the trunk or the head bruises the organ under it (no skin broken): a
+## kicked liver bleeds inside, crushed ribs take the breath, a skull blow shakes the brain.
+func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void:
+	if J < 12.0:
+		return
+	var best := Anatomy.NONE
+	var bd := INF
+	var deep := lp + ld * part.half_ext.length() * 0.45
+	for i in part.organ.size():
+		var o: int = part.organ[i]
+		if o == Anatomy.NONE or o == Anatomy.SPINE or not part.alive[i]:
+			continue
+		var d := part.local_of(i).distance_squared_to(deep)
+		if d < bd:
+			bd = d
+			best = o
+	if best == Anatomy.NONE or bd > pow(part.half_ext.length() * 0.6, 2.0):
+		return
+	var k := minf(0.3, (J - 12.0) * 0.008) / float(mods.toughness)
+	organ_bruise[best] = minf(0.9, float(organ_bruise.get(best, 0.0)) + k)
+	if not organs_hit.has(best):
+		organs_hit.append(best)
+	match best:
+		Anatomy.LIVER, Anatomy.STOMACH, Anatomy.GUTS:
+			torso.bleed += k * 6.0
+			pain = minf(1.0, pain + k)
+		Anatomy.LUNG_R, Anatomy.LUNG_L:
+			stamina = minf(stamina, breath_cap())
+		Anatomy.HEART:
+			torso.bleed += k * 3.0
+		Anatomy.BRAIN:
+			concussion = minf(1.0, concussion + k)
+
+## Every tick (the host): the heart's last seconds, a brain too broken to go on.
+func _organs_tick(dt: float) -> void:
+	if state == "dead":
+		return
+	if heart_t >= 0.0:
+		heart_t -= dt
+		if heart_t <= 0.0:
+			die("heart")
+			return
+	if organ_health(Anatomy.BRAIN) < 0.6:
+		die("brain")
 
 ## Freezes every body: a guest only draws what the host simulates.
 func make_puppet() -> void:

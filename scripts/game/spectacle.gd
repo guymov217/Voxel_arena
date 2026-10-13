@@ -25,6 +25,13 @@ const LINES := {
 	"firstBlood": ["FIRST BLOOD! {a} opens the account.", "And {a} draws first blood! The crowd approves.", "{a} strikes first. Someone wake up the Emperor."],
 	"decap": ["OFF WITH THE HEAD! {v} will not be needing a helmet.", "A clean cut! {v}'s head goes one way, the rest goes the other.", "DECAPITATION! {a} sends {v}'s head to the stands."],
 	"limb": ["{v} loses a {part}! That's going to leave a mark.", "There goes {v}'s {part}. The surgeons sigh.", "{a} relieves {v} of a {part}. The crowd wants more."],
+	"heart": ["THROUGH THE HEART! {v} has seconds left, and knows it.", "{a} finds {v}'s heart. The crowd holds its breath.", "Right in the heart! {v} is already a statue."],
+	"lung": ["{a} opens {v}'s lung! Listen to that wheeze.", "{v} is breathing through the wrong hole now.", "A lung for {a}! {v} will not be running far."],
+	"liver": ["{a} carves into {v}'s liver. That one bleeds and bleeds.", "The liver! {v}'s wine days are over."],
+	"guts": ["{a} opens {v}'s belly! Mind your step down there.", "{v}'s guts see the sun. The front rows regret their seats."],
+	"stomach": ["{a} skewers {v}'s stomach. Lunch is cancelled."],
+	"spine": ["{a} cuts {v}'s spine! Those legs belong to nobody now.", "THE SPINE! {v} folds like a wet sail."],
+	"brain": ["{a} into the brain! {v} forgets what day it is. Forever.", "That blow reached {v}'s brain. Goodnight."],
 	"bigHit": ["WHAT A HIT! {a} nearly folds {v} in half.", "OOOH! {v} felt that one in the afterlife.", "{a} with the mighty blow! The Emperor spills his wine."],
 	"kill": ["{v} is down for good. {a} takes the kill.", "{a} finishes {v}! The sand drinks again.", "Farewell, {v}. {a} sends their regards."],
 	"double": ["DOUBLE KILL! {a} is on a rampage!", "Two down for {a}! Someone check if that is legal."],
@@ -154,6 +161,13 @@ func on_hit(h: Dictionary) -> void:
 			add(a, 20, "Dismembered!")
 	if h.get("killed", false):
 		add(a, 45 if v.kind == "beast" else 25, "Beast slayer!" if v.kind == "beast" else "Kill!")
+	var organs: Array = res.get("organs", [])
+	for o in organs:
+		match o:
+			"heart": add(a, 30, "Heart strike!")
+			"spine": add(a, 25, "Spine cut!")
+			"brain": add(a, 30, "Brain strike!")
+			_: add(a, 8, "")
 	# The announcer.
 	var ea = m.entity_of(a)
 	var ev = m.entity_of(v)
@@ -162,6 +176,11 @@ func on_hit(h: Dictionary) -> void:
 		say("firstBlood", a, null, "", false, 0.0)
 	if ea and ev and ea.team == ev.team and J > 5.0 and not ev.get("harmless", false):
 		say("friendly", a, v, "", false, 6.0)
+	# Inside: the worst organ the blow reached, once per organ and victim in a while.
+	for o in ["heart", "brain", "spine", "lung", "liver", "guts", "stomach"]:
+		if organs.has(o) and LINES.has(o):
+			say(o, a, v, "", o == "heart" or o == "spine", 8.0)
+			break
 	if not severed.is_empty():
 		var sp: VoxelPart = severed[0]
 		if sp.part_name == "head":

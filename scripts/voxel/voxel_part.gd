@@ -35,6 +35,7 @@ var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
 var jaw_angle := 0.0
 var bone := PackedByteArray()
+var organ := PackedByteArray()     # per voxel, the organ it is part of (Anatomy; 0 none)
 var alive_count := 0
 
 var hp := 100.0
@@ -85,7 +86,7 @@ static var _skin_material: StandardMaterial3D
 var skin: MeshInstance3D = null
 var _skin_dirty := false
 
-## `voxels`: [[fx, fy, fz, Color, bone], ...] on the fine grid.
+## `voxels`: [[fx, fy, fz, Color, bone, kind, organ], ...] on the fine grid (kind and organ optional).
 func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
 	fighter = owner_node
 	def = d
@@ -105,7 +106,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 	if d.get("ca") != null:
 		ca = _v3(d.ca) * scale_
 	var n := voxels.size()
-	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n); kinds.resize(n)
+	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n); kinds.resize(n); organ.resize(n)
 	for i in n:
 		var v: Array = voxels[i]
 		fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
@@ -115,6 +116,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 		colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
 		bone[i] = 1 if v[4] else 0
 		kinds[i] = int(v[5]) if v.size() > 5 else 8
+		organ[i] = int(v[6]) if v.size() > 6 else 0
 		alive[i] = 1
 	alive_count = n
 	# Physics: the box carries the weight; inertia from the whole box, centred, so a dent never

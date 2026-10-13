@@ -1,0 +1,144 @@
+extends Node
+## The organs inside (Anatomy): voxels of their own in the trunk and the head, and what losing
+## each does: a torn heart kills in seconds, torn lungs cap the breath, a cut spinal cord takes
+## the legs, a broken brain fells him; a stab reaches what is under the skin, a hard blunt blow
+## bruises it.
+
+var t
+
+func _steps(n: int) -> void:
+	for i in n:
+		await get_tree().physics_frame
+
+func _victim() -> Array:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -8))
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0.1, 0), "yaw": PI})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	return [m, e.f]
+
+## The voxels of `organ` in `part`, a share of them (nearest the front first).
+func _of(part: VoxelPart, organ: int, share := 1.0) -> Array:
+	var out := []
+	for i in part.organ.size():
+		if part.organ[i] == organ and part.alive[i]:
+			out.append(i)
+	out.sort_custom(func(a, b): return part.fz[a] > part.fz[b])
+	return out.slice(0, ceili(out.size() * share))
+
+func test_the_organs_lie_inside_the_skin() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	var names := []
+	for o in [Anatomy.HEART, Anatomy.LUNG_R, Anatomy.LUNG_L, Anatomy.LIVER, Anatomy.STOMACH, Anatomy.GUTS, Anatomy.SPINE]:
+		t.check(_of(v.torso, o).size() >= 8, "the trunk has its %s (%d voxels)" % [Anatomy.organ_name(o), _of(v.torso, o).size()])
+	t.check(_of(v.head, Anatomy.BRAIN).size() >= 40, "the head has its brain (%d)" % _of(v.head, Anatomy.BRAIN).size())
+	var on_skin := 0
+	for p in [v.torso, v.head]:
+		for i in p.organ.size():
+			if p.organ[i] != Anatomy.NONE and (p.fx[i] == 0 or p.fy[i] == 0 or p.fz[i] == 0 or p.fx[i] == p.grid.x - 1 or p.fy[i] == p.grid.y - 1 or p.fz[i] == p.grid.z - 1):
+				on_skin += 1
+	t.check(on_skin == 0, "no organ on the skin (%d)" % on_skin)
+	t.check(v.torso.kinds[_of(v.torso, Anatomy.HEART)[0]] == 9 and v.torso.bone[_of(v.torso, Anatomy.SPINE)[0]] == 1, "organs drawn as wet flesh, the spine as bone")
+	m.queue_free()
+
+func test_a_torn_heart_kills_in_seconds() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	var why := []
+	v.died.connect(func(_f, cause): why.append(cause))
+	await _steps(30)
+	v.torso.remove_voxels(_of(v.torso, Anatomy.HEART, 0.5))
+	await _steps(60)
+	t.check(v.alive, "a heartbeat later he still stands")
+	await _steps(120 * 4)
+	t.check(not v.alive and why == ["heart"], "a few seconds later the heart has stopped (%s)" % [why])
+	m.queue_free()
+
+func test_torn_lungs_cap_the_breath() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	v.torso.remove_voxels(_of(v.torso, Anatomy.LUNG_R, 0.7) + _of(v.torso, Anatomy.LUNG_L, 0.7))
+	v.torso.bleed = 0.0
+	await _steps(120 * 3)
+	t.check(v.alive and v.breath_cap() < 60.0 and v.stamina <= v.breath_cap() + 0.5, "the breath fills no higher than the lungs allow (%.0f of %.0f)" % [v.stamina, v.breath_cap()])
+	m.queue_free()
+
+func test_a_cut_spinal_cord_takes_the_legs() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(60)
+	t.check(v.state == "stand", "he stands to begin with")
+	var level := []
+	for i in _of(v.torso, Anatomy.SPINE):
+		if v.torso.fy[i] == 8:
+			level.append(i)
+	v.torso.remove_voxels(level)
+	v.torso.bleed = 0.0
+	await _steps(120 * 2)
+	t.check(v.cord_legs == 0.0 and not v.can_stand() and v.state != "stand", "the legs fail him (cord %.1f, %s)" % [v.cord_legs, v.state])
+	t.check(v.cord_arms == 1.0 and v.arm_func("R") > 0.5, "the arms still work below a low cut (%.2f)" % v.arm_func("R"))
+	m.queue_free()
+
+func test_a_broken_brain_fells_him() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	var why := []
+	v.died.connect(func(_f, cause): why.append(cause))
+	await _steps(30)
+	v.head.remove_voxels(_of(v.head, Anatomy.BRAIN, 0.2))
+	await _steps(30)
+	t.check(v.alive and v.concussion > 0.5, "a bit of it: he is badly rung (%.2f)" % v.concussion)
+	v.head.remove_voxels(_of(v.head, Anatomy.BRAIN, 0.4))
+	await _steps(30)
+	t.check(not v.alive and why == ["brain"], "half of it: he is dead (%s)" % [why])
+	m.queue_free()
+
+func test_a_stab_in_the_chest_reaches_the_heart() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var tor := v.torso
+	# The heart's middle, and a thrust at it from in front.
+	var c := Vector3.ZERO
+	var hv := _of(tor, Anatomy.HEART)
+	for i in hv:
+		c += tor.local_of(i)
+	c /= float(hv.size())
+	var gt := tor.global_transform
+	var fwd := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+	var got := []
+	var k := 0
+	while not got.has("heart") and k < 8:
+		tor.hp = 1000.0
+		var res: Dictionary = v.apply_hit(tor, {"impulse": 40.0, "type": "point", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(c.x, c.y, tor.half_ext.z), "dir": -fwd, "axis": -fwd})
+		got += res.get("organs", [])
+		k += 1
+		await _steps(4)
+	t.check(got.has("heart"), "thrusts at the heart reach it (%d, %s)" % [k, got])
+	m.queue_free()
+
+func test_a_hard_blow_to_the_belly_bruises_inside() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var tor := v.torso
+	var gt := tor.global_transform
+	var fwd := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+	var bleed0 := tor.bleed
+	var res: Dictionary = v.apply_hit(tor, {"impulse": 35.0, "type": "blunt", "hardness": 0.8, "point": gt * Vector3(-0.05, -0.12, tor.half_ext.z), "dir": -fwd})
+	var inside: Array = res.get("organs", [])
+	t.check(inside.any(func(o): return o in ["liver", "guts", "stomach"]), "a hammer to the belly bruises what is under it (%s)" % [inside])
+	t.check(tor.bleed > bleed0 and v.organ_bruise.values().any(func(b): return b > 0.0), "and it bleeds inside (%.2f)" % (tor.bleed - bleed0))
+	m.queue_free()
