@@ -1202,7 +1202,7 @@ func use_item(e: Dictionary, slot: int) -> bool:
 			c.mods.drunk = maxf(float(c.mods.drunk), 0.3)
 		"cheese":
 			var cp: Vector3 = c.torso.global_position + fwd * 0.8
-			var it: Dictionary = m.items.spawn("cheese", Vector3(cp.x, 0.12, cp.z), fwd * 7.0, c)
+			var it: Dictionary = m.items.spawn("cheese", Vector3(cp.x, 0.21, cp.z), fwd * 7.0, c)   # on its edge on the sand
 			it.grounded = true
 			m.feed.emit("%s bowled a cheese wheel" % c.display_name)
 		"bananas":

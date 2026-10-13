@@ -2004,8 +2004,12 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		# head sags a little below its aim). Measured from where the hand is going, the lowest it
 		# gets in the stroke, not where it is on the way: from there the limit climbed as the hand
 		# came down and pulled the falling blade back up, braking every chop halfway.
+		# Close over the sand only in a chop, the hand coming down fast; a sideways sweep keeps
+		# the point higher, as dragged along the sand a long blade stalled in it.
 		var hand_low := minf(hand_world(side).y, target_w.y)
-		var floor_gap := hand_low - (ground_level + (0.05 + 0.015 * minf(4.0, w.mass)) * S)
+		var chop := clampf(-target_vel[side].y / (1.5 * S), 0.0, 1.0)
+		var margin := lerpf(0.13 + 0.035 * minf(4.0, w.mass), 0.05 + 0.015 * minf(4.0, w.mass), chop)
+		var floor_gap := hand_low - (ground_level + margin * S)
 		var reach_w := maxf(0.2, w.reach + 0.04 * S)
 		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:
 			var ny := clampf(-floor_gap / reach_w, -1.0, 0.0)

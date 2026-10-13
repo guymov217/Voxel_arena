@@ -14,6 +14,10 @@ var legs: Array = []
 var heads: Array = []
 var wings: Array = []
 var gait := 0.0
+const LEG_MOTOR_SIGN := -1.0   # Jolt's joint motor turns the child the other way round the axis
+var gait_rate := 0.0     # how fast the stride turns over (rad/s)
+var ground_y := 0.0      # the sand under the body, for where the feet go
+var ground_ok := false
 var ai := {}
 var target: Node3D = null
 var height := 0.8
@@ -37,6 +41,7 @@ var strike_cool := {}                # part -> seconds until it may strike again
 var regrown := {}                    # hydra: part -> voxels regrown so far
 var base_bite := 45.0
 var jaw_t := 0.0                     # counts down from JAW_T through a bite
+var breath_mark = null   # where a breath being poured is meant to land: it turns to it (Match)
 var breath_t := 0.0                  # the mouth held wide while fire or venom pours out
 const NECK_DIP := 2.0
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
@@ -244,19 +249,27 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
 	h_want *= 1.0 + 0.008 * sin(time * 1.7 / sqrt(S) + slot)   # breathing
 	var dist_g: float = pos.y - hit.position.y if hit else 99.0
+	ground_ok = not hit.is_empty() and dist_g < height * 2.0
+	if ground_ok:
+		ground_y = hit.position.y
 	# The feet on the sand, never over it: the body rides lower until the legs it stands on
 	# reach the ground (a species' height a little over its legs' reach held it hovering).
 	# (Not while it strikes or charges: let down in mid-attack, its head came in under a man
 	# and threw him high.)
-	var attacking: bool = not strikes.is_empty() or ai.mode == "charge"
+	# A runner's charge is a run like any other: held up at full height it ran with its feet
+	# off the sand, paddling the air.
+	var attacking: bool = not strikes.is_empty() or (ai.mode == "charge" and sp.ai == "charger")
 	if attacking:
 		ride_adj = move_toward(ride_adj, 0.0, dt * 0.3)
 	if hit and not flying and not collapsed and legs.size() > 0 and not attacking:
 		var gap := 0.0
 		var nf := 0
-		for l in legs:
+		for li in legs.size():
+			var l: VoxelPart = legs[li]
 			if leg_gone(l) or strikes.has(l):
 				continue
+			if gait_rate > 0.0 and fposmod(_leg_phase(li) + PI * 0.5, TAU) >= PI:
+				continue   # a foot in the air, being carried forward
 			var ft: VoxelPart = lower_of(l) if lower_of(l) else l
 			gap += _box_low(ft) - hit.position.y
 			nf += 1
@@ -264,13 +277,22 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			ride_adj = clampf(ride_adj + (gap / nf) * minf(1.0, dt * 6.0), -0.04 * S, 0.35 * height)
 	h_want -= ride_adj
 	var grounded: bool = hit and dist_g < maxf(h_want, height) + 0.25 * S
+	if hit and not grounded and not flying:
+		# Reared up on legs that hold it, the body is high over the sand but the feet are on it.
+		for l in legs:
+			var ft: VoxelPart = lower_of(l) if lower_of(l) else l
+			if not leg_gone(l) and _box_low(ft) - hit.position.y < 0.08 * S:
+				grounded = true
+				break
 	if flying:
 		var want_y: float = float(ai.alt) * (1.0 - 0.5 * injury)
 		torso.apply_central_impulse(Vector3(0, mass * (gravity + 6.0 * (want_y - pos.y) - 3.0 * lv.y) * dt, 0))
 	elif grounded:
 		var support := 0.4 if legs.size() > 0 and not collapsed and not down_t > 0.0 else 1.0
 		var f := mass * (gravity * support + (70.0 if support < 1.0 else 120.0) * (h_want - dist_g) - 15.0 * lv.y)
-		torso.apply_central_impulse(Vector3(0, maxf(0.0, f) * dt, 0))
+		# Over its height the help it gets is taken back, so it weighs its full weight on its
+		# legs (held at 0.4 g by this spring it was light, and each stride bounced it up off them).
+		torso.apply_central_impulse(Vector3(0, maxf(0.0 if support >= 1.0 else -gravity * support * mass, f) * dt, 0))
 	var q := PD.quat_of(torso)
 	var fwd_v := q * Vector3(0, 0, 1)
 	var cur := atan2(fwd_v.x, fwd_v.z)
@@ -284,6 +306,9 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	if ai.mode == "charge" and sp.ai == "charger":
 		yaw = ai.charge_yaw
 	var turn := 1.2 if sp.ai == "path" else (2.5 if flying else 6.0)
+	if breath_mark is Vector3:
+		# Pouring fire it turns to where it pours, so the stream leaves the jaws onto the mark.
+		yaw = atan2((breath_mark as Vector3).x - pos.x, (breath_mark as Vector3).z - pos.z)
 	var dy := atan2(sin(yaw - cur), cos(yaw - cur))
 	var yaw_rate := clampf(dy * turn, -3.0, 3.0)
 	# Balance: the body rests on the legs that are left; down or collapsed it lies over.
@@ -392,7 +417,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					# Up on the hind legs, forepaws raised over the man; then down on him, both
 					# paws raking as the weight comes down.
 					ai.rear = float(ai.rear) - dt
-					want = to * 1.2 * hurt
+					want = to * (2.6 if dist > 1.0 * S else 1.2) * hurt   # it comes on at him on its hind legs
 					if ai.rear < 0.4 and not ai.get("slammed", false):
 						ai.slammed = true
 						for n in ["legFL", "legFR"]:
@@ -407,7 +432,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						ai.bite_cool = 1.2
 				else:
 					want = to * float(sp.speed) * hurt
-					if species == "bear" and dist < 2.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
+					if species == "bear" and dist < 1.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
 						ai.rear = 1.15
 						ai.rear_cool = 4.0 + rng.randf() * 2.0
 						ai.slammed = false
@@ -449,7 +474,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					_stomp()
 	var moving := want.length_squared() > 0.05
 	if grounded and stagger < 0.5 and not down:
-		var kk := (3.0 if sp.ai == "path" else 6.0) * (0.45 if legs.size() > 0 and not collapsed else 1.0)
+		var kk := (3.0 if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
 		torso.apply_central_impulse(Vector3(want.x - lv.x, 0, want.z - lv.z) * mass * kk * dt)
 	_abilities(dt, t, to, dist, cur)
 	_animate(dt, moving, yaw_rate, to, dist, cur)
@@ -461,7 +486,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	# per speed the long-bodied, short-legged ones dragged their feet along the sand).
 	var spd := Vector2(lv.x, lv.z).length()
 	var sweep := 2.0 * leg_len() * sin(stride_amp(spd))
-	gait += dt * (maxf(maxf(1.2, spd) * 4.6 / S, PI * spd / maxf(0.08, sweep)) if moving else 0.0)
+	gait_rate = maxf(maxf(1.2, spd) * 4.6 / S, PI * spd / maxf(0.08, sweep)) if moving else 0.0
+	gait += dt * gait_rate
 
 func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool, legs_left: int, grounded: bool, h_want: float, dist_g: float, mass: float) -> Vector3:
 	var want := Vector3.ZERO
@@ -675,22 +701,39 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		var leg: VoxelPart = legs[i]
 		if leg.severed:
 			continue
-		var row := int(i / 2) if n == 8 or n == 4 else 0
-		var off := PI if ((i % 2) + row) % 2 else 0.0
+		var off := _leg_phase(i) - gait
 		var phase := gait + off
 		var hip := 0.0
 		var knee := 0.06
+		var hip_v := 0.0    # how fast the stride moves each joint, followed as well as the angle
+		var knee_v := 0.0
 		var wn := 70.0
+		var planted := false
 		if flying:
 			hip = 0.55; knee = 0.7; wn = 40.0
 		elif down:
 			wn = 25.0; hip = sin(time * 3.0 + i) * 0.3; knee = 0.4
 		elif collapsed:
 			hip = sin(gait * 2.2 + off) * 0.55; knee = 0.35 + cos(gait * 2.2 + off) * 0.3; wn = 45.0
+		elif lower_of(leg) != null and ground_ok and absf(float(leg.def.get("splay", 0.0))) < 0.3 and not float(ai.get("rear", 0.0)) > 0.0:
+			# Stepping on the sand: the foot is put down ahead and stays where it is put while
+			# the body goes over it, then is lifted and carried forward; the hip and knee are
+			# worked out from where the foot must be (a fixed swing of the joints dragged the
+			# feet along under a body held up by its spring, as if it glided).
+			var a0 := _leg_ik(leg, phase, speed)
+			var a1 := _leg_ik(leg, phase + gait_rate * dt, speed)
+			hip = a0.x; knee = a0.y
+			hip_v = (a1.x - a0.x) / dt; knee_v = (a1.y - a0.y) / dt
+			if ai.mode == "crouch":
+				hip += 0.08
+			planted = true
 		elif moving:
 			var amp := stride_amp(speed)
 			hip = sin(phase) * amp
 			knee = 0.06 + maxf(0.0, -cos(phase)) * amp * 1.9
+			hip_v = cos(phase) * amp * gait_rate
+			knee_v = sin(phase) * amp * 1.9 * gait_rate if cos(phase) < 0.0 else 0.0
+			planted = true
 			if ai.mode == "crouch":
 				# Stalking low: the legs bent, hip forward over the knee, still stepping (it
 				# folded its legs back under it and slid along the sand on them).
@@ -699,22 +742,112 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		else:
 			hip = 0.03 * sin(time * 1.1 + i * 1.7) + (0.1 if ai.mode == "crouch" else 0.0)
 			knee = 0.06 + (0.12 if ai.mode == "crouch" else 0.0)
+			planted = true
 		# A hurt leg steps short; a struck one buckles for a moment; a swiping one lashes forward.
 		var lf := fn_of([leg.part_name])
 		hip *= 0.35 + 0.65 * lf
+		hip_v *= 0.35 + 0.65 * lf
 		var lo0 := lower_of(leg)
 		var fl: float = maxf(leg.flinch_t, lo0.flinch_t if lo0 else 0.0)
 		if fl > 0.0:
 			hip += fl * 0.6; knee += fl * 0.8
 		if strikes.has(leg):
 			hip = -1.1 * (0.5 + 0.5 * lf); knee = 0.25; wn = 60.0
+			planted = false
+		if fl > 0.0:
+			planted = false
 		var splay: float = float(leg.def.get("splay", 0.0))
 		if leg.hanging:
 			continue
-		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
 		var lo := lower_of(leg)
-		if lo and not lo.severed and not lo.hanging:
+		var lo_ok: bool = lo != null and not lo.severed and not lo.hanging
+		if planted:
+			# Walking and standing the leg is driven stiff, angle and pace both: a soft spring on so
+			# light a limb gave way to the sand's friction, the foot was dragged along under the
+			# body and the beast seemed to glide with its legs paddling the air.
+			_leg_motor(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), Vector3(hip_v, 0, 0), max_t, dt)
+			if lo_ok:
+				_leg_motor(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), Vector3(knee_v, 0, 0), max_t * 0.7, dt)
+			continue
+		_leg_motor_off(leg)
+		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
+		if lo_ok:
+			_leg_motor_off(lo)
 			pd_relative(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), wn, 0.9, max_t * 0.7, dt, 3.0, LEG_REACT)
+
+## A leg joint steered by its relative spin: toward the angle it should have, plus the pace the
+## stride moves it at (`ff`, in the parent's frame), most of the gap closed each step.
+func _leg_motor(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, ff: Vector3, max_t: float, dt: float) -> void:
+	var pq := PD.quat_of(parent)
+	var err := PD.rot_error(pq * rel_q, PD.quat_of(part))
+	var rel := part.angular_velocity - parent.angular_velocity
+	# What turns at the joint is the whole limb below it, about the joint, not the one part
+	# about its own centre (ten times less on a hyena's leg, so the drive never caught up).
+	var at: Vector3 = parent.global_transform * part.pa
+	var inert := 0.0
+	for q in [part] + part.child_parts:
+		if not q.severed:
+			inert += PD.inertia_of(q) + q.mass * (q.global_position - at).length_squared()
+	# Fore and aft by the joint's own motor, which the solver holds against the body's weight
+	# (a torque worked out from here gave under it: the knees folded and the feet dragged);
+	# out to the side by a torque. The joint holds the twist.
+	var ax: Vector3 = pq * Vector3.RIGHT
+	var v := clampf(err.dot(ax) * 40.0, -14.0, 14.0) + ff.x
+	var j := part.joint as Generic6DOFJoint3D
+	if j:
+		j.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, true)
+		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, v * LEG_MOTOR_SIGN)
+		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, max_t)
+	var az: Vector3 = pq * Vector3.BACK
+	var vz := clampf(err.dot(az) * 40.0, -14.0, 14.0) + ff.z
+	var tq := az * clampf((vz - rel.dot(az)) / dt * inert * 0.6, -max_t, max_t)
+	part.apply_torque_impulse(tq * dt)
+	parent.apply_torque_impulse(-tq * dt * LEG_REACT)
+
+## Where leg `i` is in its stride: diagonal pairs step together.
+func _leg_phase(i: int) -> float:
+	var n := legs.size()
+	var row := int(i / 2) if n == 8 or n == 4 else 0
+	return gait + (PI if ((i % 2) + row) % 2 else 0.0)
+
+## Hip and knee angles (relative, about the joints' fore-and-aft axis) that put this leg's foot
+## where it belongs at this point of its stride: in stance on the sand, moving back under the
+## body exactly as fast as the body goes forward; in the swing lifted and brought forward.
+func _leg_ik(leg: VoxelPart, phase: float, speed: float) -> Vector2:
+	var lo := lower_of(leg)
+	var l1: float = maxf(0.02, leg.ca.y - lo.pa.y)
+	var l2: float = maxf(0.02, lo.ca.y + lo.half_ext.y)
+	var reach := l1 + l2
+	var tf := torso.global_transform.orthonormalized()
+	var hip_w: Vector3 = tf * leg.pa
+	var dir := Vector3(torso.linear_velocity.x, 0, torso.linear_velocity.z)
+	var off := Vector3.ZERO
+	var lift := 0.0
+	if gait_rate > 0.0 and dir.length() > 0.05:
+		dir = dir.normalized()
+		# Half a stride: what the ground covers in half a turn of the gait.
+		var half := minf(reach * 0.55, PI * speed / (2.0 * gait_rate))
+		var ph := fposmod(phase + PI * 0.5, TAU)
+		if ph < PI:
+			off = dir * half * (1.0 - 2.0 * ph / PI)
+		else:
+			var u := (ph - PI) / PI
+			off = dir * (-half * cos(PI * u))
+			lift = sin(PI * u) * reach * 0.22 * clampf(speed / (2.0 * S), 0.1, 1.0)   # a slow walk shuffles
+	var target := Vector3(hip_w.x, ground_y + lift, hip_w.z) + off
+	var tl := tf.basis.inverse() * (target - hip_w)
+	var d := clampf(Vector2(tl.z, tl.y).length(), absf(l1 - l2) + 0.01, reach * 0.995)
+	var knee := acos(clampf((d * d - l1 * l1 - l2 * l2) / (2.0 * l1 * l2), -1.0, 1.0))
+	var hip := atan2(-tl.z, -tl.y) - atan2(l2 * sin(knee), l1 + l2 * cos(knee))
+	return Vector2(clampf(hip, -1.3, 1.3), clampf(knee, 0.0, 1.35))
+
+## Lets a leg's joint go slack again when it is posed by torques instead (down, struck, flying).
+func _leg_motor_off(part: VoxelPart) -> void:
+	var j := part.joint as Generic6DOFJoint3D
+	if j and j.get_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR):
+		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, 0.0)
+		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, 0.0)
+		j.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, false)
 
 # ---------- What still works ----------
 # Behaviour follows the voxels that are left: every group of parts is judged by how well its
@@ -770,6 +903,15 @@ func breath_part() -> VoxelPart:
 	if by_name.has("goatHead"):
 		return by_name.goatHead
 	return head
+
+## The front of the jaws, where a breath comes out, and the way the mouth points: followed every
+## step, so the fire leaves the mouth however the head turns while it pours.
+func mouth_point() -> Vector3:
+	var h := breath_part()
+	return h.global_transform * Vector3(0, -0.3 * h.half_ext.y, h.half_ext.z * 1.05)
+
+func mouth_dir() -> Vector3:
+	return (PD.quat_of(breath_part()) * Vector3(0, 0, 1)).normalized()
 
 func can_breathe() -> bool:
 	var b := breath_part()
@@ -904,6 +1046,9 @@ func _setup_anim() -> void:
 func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float, cur: float) -> void:
 	var breath := sin(time * 1.7 / sqrt(S) + slot)
 	var track := 0.0
+	if breath_mark is Vector3:
+		to = Vector3((breath_mark as Vector3).x - torso.global_position.x, 0, (breath_mark as Vector3).z - torso.global_position.z).normalized()
+		dist = 1.0
 	if dist < INF:
 		var dy := atan2(to.x, to.z) - cur
 		track = clampf(atan2(sin(dy), cos(dy)), -0.9, 0.9)

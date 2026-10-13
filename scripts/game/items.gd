@@ -22,7 +22,7 @@ const TYPES := {
 	"pot_arrow": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_fire": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_arrow_poison": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_ice": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_discus": {"size": 0.12, "projectile": true, "discus": true}, "pot_bignet": {"size": 0.3, "projectile": true},
-	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true},
+	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true, "roll_r": 0.21},
 	"arrow_loose": {"size": 0.06, "debris": true},
 	"caltrop": {"size": 0.06},
 	"ball": {"size": 0.28, "rolling": true, "ball": true},
@@ -109,7 +109,16 @@ static func visual(type: String) -> Node3D:
 		"boomerang":
 			_box(g, 0.04, 0.03, 0.3, 0xc9d1d9, 0, 0, 0.12); _box(g, 0.3, 0.03, 0.04, 0xc9d1d9, 0.12); _box(g, 0.06, 0.05, 0.06, 0x8b5a2b)
 		"cheese":
-			_box(g, 0.12, 0.42, 0.42, 0xf2c94c)
+			# A round wheel on its edge, its axle across (local x): a rind and a paler face.
+			for k in [[0.42, 0.13, 0xd9a83a], [0.36, 0.135, 0xf2c94c]]:
+				var mi := MeshInstance3D.new()
+				var cm := CylinderMesh.new()
+				cm.top_radius = k[0] * 0.5; cm.bottom_radius = k[0] * 0.5; cm.height = k[1]
+				cm.radial_segments = 14; cm.rings = 1
+				cm.material = _mat(k[2], Vector3(k[1], k[0], k[0]))
+				mi.mesh = cm
+				mi.rotation.z = PI * 0.5
+				g.add_child(mi)
 		"caltrop":
 			# Four iron spikes, one always pointing up.
 			_box(g, 0.014, 0.08, 0.014, 0x5b5f66, 0, 0.03, 0)
@@ -331,7 +340,11 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 			it.p += it.vel * dt
 			if it.node:
 				it.node.position = it.p
-				it.node.rotation.x -= it.vel.length() * dt / (size / 2.0)
+				# Turned to where it rolls, then spun about its axle (Euler order YXZ: the yaw
+				# first, the spin about the turned axle): it rolled sideways along its face.
+				if Vector2(it.vel.x, it.vel.z).length_squared() > 0.01:
+					it.node.rotation.y = atan2(it.vel.x, it.vel.z)
+				it.node.rotation.x += Vector2(it.vel.x, it.vel.z).length() * dt / float(def.get("roll_r", size / 2.0))
 			var rr2 := Vector2(it.p.x, it.p.z).length()
 			if rr2 > RADIUS - 0.4:
 				var n2 := Vector3(it.p.x, 0, it.p.z).normalized()

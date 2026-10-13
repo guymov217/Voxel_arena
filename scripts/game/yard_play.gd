@@ -33,16 +33,20 @@ func setup() -> void:
 	c.drive = _champ_input
 	c.harmless = true
 	champ = c.f
-	# The smith, the trader and the physician, each at his stall, turned to the yard.
+	# The smith, the trader and the physician, each dressed for his trade, beside his stall's
+	# sign (not inside its post) between it and his workplace, at work: the smith hammers at
+	# the anvil, the trader sorts his wares, the physician bends over his table; whoever comes
+	# up to the stall, he turns to.
 	for id in Yard.stations():
 		var s: Dictionary = Yard.STATIONS[id]
 		if not s.has("npc"):
 			continue
-		var p: Vector3 = s.p
-		var yaw := atan2(-p.x, -p.z)
-		var n = m.spawn_fighter({"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": ""}, "team": Match.ENEMY_TEAM,
-			"pos": p + Vector3(0, 0.02, 0), "yaw": yaw, "mods": {"toughness": 5.0}, "color": s.npc.color})
-		n.drive = func(_e): return {"look": {"yaw": yaw, "pitch": 0.0}}
+		var out := Vector3(s.p.x, 0, s.p.z).normalized()
+		var side := Vector3(-out.z, 0, out.x)
+		var p: Vector3 = s.p + out * 1.5 + side * 0.9
+		var n = m.spawn_fighter({"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": "", "armor": s.npc.get("armor", [])}, "team": Match.ENEMY_TEAM,
+			"pos": p + Vector3(0, 0.02, 0), "yaw": atan2(-p.x, -p.z), "mods": {"toughness": 5.0}, "color": s.npc.color})
+		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, atan2(out.x, out.z) + 0.5, randf() * TAU)
 		n.harmless = true
 		keepers.append(n.f)
 	if m.headless:
@@ -59,6 +63,35 @@ func setup() -> void:
 		_board(p)
 	_dress_stations()
 	_sign(Yard.TARGETS[1] + Vector3(-0.8, 1.3, 0), "Throwing boards")
+
+## A stall keeper at his work, facing his workplace (`work_yaw`), or turned to a man who comes up.
+func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -> Dictionary:
+	var f: Fighter = e.f
+	var t := Time.get_ticks_msec() / 1000.0 + ph
+	var yaw := work_yaw
+	for h in m.humans():
+		if is_instance_valid(h.f) and h.f.alive and Vector2(h.f.torso.global_position.x - home.x, h.f.torso.global_position.z - home.z).length() < 3.2:
+			var to: Vector3 = h.f.torso.global_position - f.torso.global_position
+			yaw = atan2(to.x, to.z)
+			return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.25, "y": -0.2}, "off": {"x": -0.35, "y": -0.1}}
+	var inp := {"look": {"yaw": yaw, "pitch": -0.35}}
+	match work:
+		"hammer":
+			# Up over the shoulder, then down on the anvil, about once a second.
+			var k := fposmod(t, 1.1) / 1.1
+			inp.main = {"x": 0.15, "y": 1.3 if k < 0.55 else -1.1}
+			inp.power = k >= 0.55 and k < 0.7
+			inp.off = {"x": -0.3, "y": -0.7}
+		"wares":
+			# Reaching along the stall, picking things up and setting them down.
+			inp.main = {"x": 0.2 + 0.6 * sin(t * 1.3), "y": -0.55 + 0.25 * sin(t * 2.6)}
+			inp.off = {"x": -0.3 + 0.4 * sin(t * 0.9 + 1.0), "y": -0.5 + 0.2 * cos(t * 2.1)}
+		"stitch":
+			# Bent over the table, both hands close together, the needle hand at work.
+			inp.look.pitch = -0.6
+			inp.main = {"x": 0.05 + 0.12 * sin(t * 5.0), "y": -0.75 + 0.1 * sin(t * 3.0)}
+			inp.off = {"x": -0.12, "y": -0.8}
+	return inp
 
 func _champ_input(_e) -> Dictionary:
 	var to: Vector3 = Yard.RING.p - champ.torso.global_position
