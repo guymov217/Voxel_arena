@@ -142,3 +142,103 @@ func test_a_hard_blow_to_the_belly_bruises_inside() -> void:
 	t.check(inside.any(func(o): return o in ["liver", "guts", "stomach"]), "a hammer to the belly bruises what is under it (%s)" % [inside])
 	t.check(tor.bleed > bleed0 and v.organ_bruise.values().any(func(b): return b > 0.0), "and it bleeds inside (%.2f)" % (tor.bleed - bleed0))
 	m.queue_free()
+
+# ---------- Bones ----------
+
+func test_the_trunk_and_the_head_have_a_skeleton() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	var ribs := _of(v.torso, Anatomy.RIBS)
+	t.check(ribs.size() >= 150 and _of(v.torso, Anatomy.PELVIS).size() >= 30 and _of(v.head, Anatomy.SKULL).size() >= 100, "ribs %d, pelvis %d, skull %d" % [ribs.size(), _of(v.torso, Anatomy.PELVIS).size(), _of(v.head, Anatomy.SKULL).size()])
+	t.check(ribs.all(func(i): return v.torso.bone[i] == 1 and v.torso.kinds[i] == 6), "bone, drawn as bone")
+	t.check(_of(v.torso, Anatomy.SPINE).size() == 80, "the spine whole under the back ribs (%d)" % _of(v.torso, Anatomy.SPINE).size())
+	m.queue_free()
+
+## A cut at the forearm from the side, as hard as `J`; returns how many voxels it took.
+func _arm_cut(v: Fighter, side: String, J: float) -> Dictionary:
+	var fa: VoxelPart = v.arm[side].fore
+	fa.hp = 1000.0
+	var gt := fa.global_transform
+	var bx := gt.basis.orthonormalized()
+	return v.apply_hit(fa, {"impulse": J, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(fa.half_ext.x, 0.0, 0.0), "dir": -bx.x, "axis": bx.z, "edge": -bx.x})
+
+func test_a_light_cut_stops_at_the_bone_a_hard_one_chops_it() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var light := 0
+	var hard := 0
+	var stopped := false
+	for k in 4:
+		var res := _arm_cut(v, "R", 7.0)
+		stopped = stopped or res.get("bone", false)
+		await _steps(4)
+	for k in 4:
+		_arm_cut(v, "L", 60.0)
+		await _steps(4)
+	light = _bone_lost(v.arm.R.fore)
+	hard = _bone_lost(v.arm.L.fore)
+	t.check(stopped and light <= 10, "light cuts reach the bone and only notch it (%d gone)" % light)
+	t.check(hard >= 12 and hard >= light * 2, "hard ones chop through it (%d gone)" % hard)
+	m.queue_free()
+
+func _bone_lost(p: VoxelPart) -> int:
+	var n := 0
+	for i in p.fx.size():
+		if p.bone[i] and not p.alive[i]:
+			n += 1
+	return n
+
+func test_a_hammer_breaks_a_shin_and_the_knee_gives() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var sh: VoxelPart = v.by_name.shinR
+	var lim: float = sh.joint.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)
+	var k := 0
+	var res := {}
+	while not sh.fractured and k < 6:
+		sh.hp = 1000.0
+		var gt := sh.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		res = v.apply_hit(sh, {"impulse": 45.0, "type": "blunt", "hardness": 0.9, "heavy": 1.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": -bz})
+		k += 1
+		await _steps(4)
+	t.check(sh.fractured and sh.function() < 0.2, "the shin is broken (%d blows)" % k)
+	t.check(sh.joint.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) > lim + 0.5, "and the knee bends sideways now")
+	t.check(sh.has_meta("open_break"), "a blow that hard opens the skin to the bone")
+	m.queue_free()
+
+func test_cracked_ribs_take_the_breath_a_cracked_skull_rings_worse() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var tor := v.torso
+	var cap0 := v.breath_cap()
+	var k := 0
+	while v.ribs_broken == 0 and k < 6:
+		tor.hp = 1000.0
+		var gt := tor.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(tor, {"impulse": 40.0, "type": "blunt", "hardness": 0.9, "point": gt * Vector3(0.1, tor.half_ext.y * 0.4, tor.half_ext.z), "dir": -bz})
+		k += 1
+		await _steps(4)
+	t.check(v.ribs_broken > 0 and v.breath_cap() < cap0 - 4.0, "ribs cracked (%d), breath %.0f -> %.0f" % [v.ribs_broken, cap0, v.breath_cap()])
+	k = 0
+	while not v.skull_cracked and k < 8:
+		v.head.hp = 1000.0
+		v.concussion = 0.0
+		var gh := v.head.global_transform
+		v.apply_hit(v.head, {"impulse": 45.0, "type": "blunt", "hardness": 0.9, "point": gh * Vector3(v.head.half_ext.x, 0.05, 0), "dir": -(gh.basis.orthonormalized() * Vector3(1, 0, 0))})
+		k += 1
+		await _steps(4)
+	t.check(v.skull_cracked, "a skull cracks (%d)" % k)
+	v.concussion = 0.0
+	var gh2 := v.head.global_transform
+	v.apply_hit(v.head, {"impulse": 15.0, "type": "blunt", "hardness": 0.5, "point": gh2 * Vector3(v.head.half_ext.x, 0.05, 0), "dir": -(gh2.basis.orthonormalized() * Vector3(1, 0, 0))})
+	t.check(v.concussion > 15.0 * 0.8 * 0.015 * 1.5, "and the same blow rings it worse now (%.2f)" % v.concussion)
+	m.queue_free()

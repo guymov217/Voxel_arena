@@ -373,7 +373,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		var mat_h: float = Data.material(g.mat).get("hardness", 0.5)
 		# Every cut and stab blunts the edge a little (bone, armour, the sand of a fall).
 		if typ != "blunt":
-			att.wear_edge(minf(0.03, J * 0.00028 * (2.0 if res.get("armor", false) else 1.0)))
+			att.wear_edge(minf(0.03, J * 0.00028 * (2.0 if res.get("armor", false) else 1.0) * (1.6 if res.get("bone", false) else 1.0)))
 		var brittle: float = float(Data.material(g.mat).get("brittle", 0.0))
 		# A blow tires the metal where it lands even when nothing gives (a brittle blade more).
 		var k: Dictionary = att.knock(idx, Weapon.chip_score(J * maxf(0.25, brittle) * chip_mult, mat_h, vh))

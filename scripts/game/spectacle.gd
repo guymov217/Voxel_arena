@@ -32,6 +32,7 @@ const LINES := {
 	"stomach": ["{a} skewers {v}'s stomach. Lunch is cancelled."],
 	"spine": ["{a} cuts {v}'s spine! Those legs belong to nobody now.", "THE SPINE! {v} folds like a wet sail."],
 	"brain": ["{a} into the brain! {v} forgets what day it is. Forever.", "That blow reached {v}'s brain. Goodnight."],
+	"bones": ["CRACK! That was {v}'s {part}.", "{a} breaks {v}'s {part}. The front row heard that one.", "Bones go! {v}'s {part}, in pieces."],
 	"bigHit": ["WHAT A HIT! {a} nearly folds {v} in half.", "OOOH! {v} felt that one in the afterlife.", "{a} with the mighty blow! The Emperor spills his wine."],
 	"kill": ["{v} is down for good. {a} takes the kill.", "{a} finishes {v}! The sand drinks again.", "Farewell, {v}. {a} sends their regards."],
 	"double": ["DOUBLE KILL! {a} is on a rampage!", "Two down for {a}! Someone check if that is legal."],
@@ -176,6 +177,14 @@ func on_hit(h: Dictionary) -> void:
 		say("firstBlood", a, null, "", false, 0.0)
 	if ea and ev and ea.team == ev.team and J > 5.0 and not ev.get("harmless", false):
 		say("friendly", a, v, "", false, 6.0)
+	var broke := ""
+	if res.get("fractured") is VoxelPart:
+		broke = String(res.fractured.label).to_lower()
+	elif res.get("broke", "") != "":
+		broke = res.broke
+	if broke != "":
+		add(a, 12, "Bone breaker!")
+		say("bones", a, v, broke, false, 5.0)
 	# Inside: the worst organ the blow reached, once per organ and victim in a while.
 	for o in ["heart", "brain", "spine", "lung", "liver", "guts", "stomach"]:
 		if organs.has(o) and LINES.has(o):
