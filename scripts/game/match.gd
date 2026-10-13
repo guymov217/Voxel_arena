@@ -468,6 +468,7 @@ func _training_tick(dt: float) -> void:
 	f.blood = minf(100.0, f.blood + 40.0 * dt)
 	for p in f.parts:
 		p.bleed = 0.0
+		p.artery = 0.0
 
 const TRAINING_BOSSES := ["cyclops", "giant", "minotaur", "titan"]
 func _spawn_training() -> void:
@@ -673,6 +674,7 @@ func use_ability(c, ab: Dictionary) -> void:
 		t.blood = minf(100.0, t.blood + 25.0)
 		for p in t.parts:
 			p.bleed = 0.0
+			p.artery = 0.0
 			if not p.severed:
 				p.hp = minf(100.0, p.hp + 20.0)
 		t.stagger = 0.0
@@ -836,7 +838,7 @@ func guest_message(type: String, data) -> void:
 				match str(data.get("k")):
 					"hit":
 						var fd := Vector3(data.d[0], data.d[1], data.d[2]) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.UP
-						hit_fx(fp, fd, clampf(float(data.get("J", 5.0)), 0.0, 80.0), str(data.get("t", "blunt")), bool(data.get("s", false)))
+						hit_fx(fp, fd, clampf(float(data.get("J", 5.0)), 0.0, 80.0), str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)))
 					"clang":
 						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
 					"pool":
@@ -883,9 +885,13 @@ func has_gadget(e: Dictionary, id: String) -> bool:
 
 ## Blood, sparks and marks for a blow at `p` (host and guests alike): a cut sprays, a thrust
 ## spurts, a blunt blow bruises with little blood; a limb coming off opens the floodgates.
-func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false) -> void:
+func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, artery := false) -> void:
 	if headless:
 		return
+	if artery and not dec.confetti:
+		# A cut artery sprays: a jet of blood back out of the wound, and a splash on the sand.
+		fx.burst("spurt", p, 90, (-dir + Vector3(0, 0.5, 0)).normalized(), 1.3)
+		fx.mark("blood", Vector3(p.x - dir.x * 0.6, 0, p.z - dir.z * 0.6), 0.6)
 	arena.set_excitement(maxf(arena.excitement, minf(1.0, J / 45.0 + (0.6 if severed else 0.0))))
 	var n := int(clampf(J * (1.6 if type == "edge" else (1.2 if type == "point" else 0.5)), 4.0, 140.0)) + (120 if severed else 0)
 	fx.burst("confetti" if dec.confetti else "blood", p, n, (dir + Vector3(0, 0.6, 0)).normalized(), 0.8 + J / 40.0)
@@ -1062,9 +1068,10 @@ func _on_hit(h: Dictionary) -> void:
 	var jn: float = h.get("J", 0.0)
 	if jn > 6.0 and h.get("p") is Vector3:
 		var dir: Vector3 = h.get("dir", Vector3.UP) if h.get("dir") is Vector3 else Vector3.UP
-		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty())
+		var art: bool = h.res.get("artery", false)
+		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art)
 		if role == "host":
-			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty()}, false)
+			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art}, false)
 	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
 		_coating(h)
 	if h.killed and h.attacker:
@@ -1546,7 +1553,11 @@ func _process(dt: float) -> void:
 				continue
 			var bleed := 0.0
 			for prt in f.parts:
-				bleed += prt.bleed
+				bleed += prt.bleed + prt.artery
+				# A spurting artery throws its blood a pace off and pools under the wound.
+				if prt.artery > 0.3 and not prt.severed and randf() < 0.7:
+					var wp: Vector3 = prt.global_position
+					fx.mark("blood", Vector3(wp.x + randf_range(-0.5, 0.5), 0, wp.z + randf_range(-0.5, 0.5)), randf_range(0.12, 0.3) * f.S)
 			if bleed > 0.6 and randf() < minf(1.0, bleed * 0.25):
 				var tp: Vector3 = f.torso.global_position
 				fx.mark("blood", Vector3(tp.x + randf_range(-0.2, 0.2), 0, tp.z + randf_range(-0.2, 0.2)), randf_range(0.08, 0.22) * f.S)

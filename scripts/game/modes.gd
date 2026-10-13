@@ -181,6 +181,7 @@ func _heal(list: Array, blood: float) -> void:
 		for p in c.parts:
 			if not p.severed:
 				p.bleed = 0.0
+				p.artery = 0.0
 
 func _next_wave(text: String, sub: String) -> void:
 	wave += 1
@@ -361,6 +362,7 @@ func _bo3(dt: float, inp: Dictionary) -> void:
 				for p in c.parts:
 					if not p.severed:
 						p.bleed = 0.0
+						p.artery = 0.0
 				if c.state == "down":
 					c.down_timer = 0.1
 		m._banner("Round %d" % bo3.round, "%s fights on, wounded. The stake is %d denarii" % [l.display_name, bo3.stake])
@@ -470,6 +472,7 @@ func check(dt: float) -> void:
 		for p in c.parts:
 			if not p.severed:
 				p.bleed = 0.0
+				p.artery = 0.0
 		if winner == m.me:
 			m.round_pay += 10 + 8 * int(king.streak)
 		m._banner("%s holds the arena (%d)" % [c.display_name, king.streak], "The next challenger walks in")

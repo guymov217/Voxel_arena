@@ -80,6 +80,7 @@ static func texture(kind: String) -> Texture2D:
 
 const KINDS := {
 	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "", "drag": 0.3, "shade": true},
+	"spurt": {"color": Color(0.5, 0.02, 0.02), "life": 0.75, "speed": [2.4, 4.2], "spread": 7.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "", "shade": true},
 	"drip": {"color": Color(0.45, 0.01, 0.01), "life": 1.1, "speed": [0.05, 0.35], "spread": 25.0, "gravity": -9.8, "size": [0.022, 0.045], "tex": "", "shade": true},
 	"bloodmist": {"color": Color(0.5, 0.03, 0.03, 0.55), "life": 0.5, "speed": [0.5, 1.6], "spread": 60.0, "gravity": -2.0, "size": [0.08, 0.2], "tex": "soft", "drag": 2.0, "grow": 1.6, "shade": true},
 	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "", "emit": 6.0, "add": true},

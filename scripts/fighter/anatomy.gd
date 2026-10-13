@@ -87,6 +87,27 @@ static func organ_at(part: String, x: int, y: int, z: int) -> int:
 			return BRAIN
 	return NONE
 
+## The big vessels near the skin, where a cut bleeds out in seconds and spurts with every beat:
+## the throat (under the jaw, and the root of the neck on the trunk), the groin (high on the
+## inside of a thigh), the armpit (high on the inside of an upper arm). A beast's neck and throat.
+static func artery_at(part: String, x: int, y: int, z: int) -> bool:
+	match part:
+		"head":
+			return y <= 2 and z >= 2 and z <= 7
+		"torso":
+			return y >= 19 and x >= 5 and x <= 10 and z >= 3 and z <= 7
+		"thighR":
+			return x >= 5 and y >= 8 and z >= 2 and z <= 5
+		"thighL":
+			return x <= 2 and y >= 8 and z >= 2 and z <= 5
+		"upperArmR":
+			return x >= 4 and y >= 8
+		"upperArmL":
+			return x <= 1 and y >= 8
+		"neck":
+			return true
+	return false
+
 ## Plain red flesh (what lies under the skin in body.json), not hair, eyes, a mouth or a belt.
 static func _is_flesh(rgb: int) -> bool:
 	var r := (rgb >> 16) & 0xff

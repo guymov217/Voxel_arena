@@ -469,6 +469,7 @@ func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
 	p.refresh_colors(paint)
 	p.remove_voxels(drop, false)
 	p.bleed = 0.0
+	p.artery = 0.0
 
 static func _is_leg(p) -> bool:
 	return String(p.part_name).begins_with("thigh") or String(p.part_name).begins_with("shin")
@@ -1128,10 +1129,13 @@ func control(dt: float, inp_in: Dictionary) -> void:
 
 	# Bleeding, recovery.
 	var bleed := 0.0
+	# The heart pushes the blood out in beats while it still beats (a cut artery spurts with it).
+	var beat := 0.5 + 0.5 * sin(time * TAU * (1.2 + 0.6 * pain)) if state != "dead" and blood > 5.0 and heart_t < 0.0 else 0.0
 	for p in parts:
-		bleed += p.bleed
+		bleed += p.bleed + p.artery
 		p.bleed = maxf(0.0, p.bleed - dt * 0.08)
 		p.update_drips()
+		p.update_blood(dt, beat)
 		if p.stump:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
@@ -2441,6 +2445,19 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if remove.size() > 80 * 8:
 			remove.sort_custom(func(a, b): return part.local_of(a).distance_squared_to(lp) < part.local_of(b).distance_squared_to(lp))
 			remove = remove.slice(0, 80 * 8)
+		# Where the blade went in, the wound bleeds from then on: a cut artery (the throat, the
+		# groin, the armpit) or a torn heart pours, spurting with every beat.
+		if type != "blunt" and not detached:
+			var cut_artery := false
+			for i in remove:
+				if Anatomy.artery_at(part.part_name, part.fx[i], part.fy[i], part.fz[i]) and not part.bone[i]:
+					cut_artery = true
+					break
+			if part == torso and remove.any(func(i): return part.organ[i] == Anatomy.HEART):
+				cut_artery = true
+			if cut_artery:
+				res.artery = true
+			part.open_wound(lp.clamp(-part.half_ext, part.half_ext), -ld, cut_artery, 6.0 / maxf(1.0, S))
 		var voxels := part.remove_voxels(remove)
 		# Nothing cut away just vanishes: the slice a blade takes, the plug a point punches
 		# out, the flesh a blow crushes, all fall to the sand as pieces.

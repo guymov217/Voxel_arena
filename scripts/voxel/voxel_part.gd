@@ -452,6 +452,91 @@ func update_drips() -> void:
 		ps.emitting = flow > 0.03
 		ps.amount_ratio = clampf(0.15 + flow, 0.15, 1.0)
 
+# ---------- Blood on the body ----------
+# Every open wound bleeds where it is: blood runs down the skin from it the way gravity takes it
+# now (a fighter lying down bleeds sideways), voxel by voxel, while it still bleeds. A cut artery
+# (the throat, the groin, the armpit, the heart) bleeds hard for long and spurts with each beat.
+
+const MAX_RUNS := 6
+var artery := 0.0              # how hard a cut artery bleeds (adds to the bleeding; slow to close)
+var runs: Array = []           # {lp, len, t}: blood running down from a wound
+var spurts: Array = []         # {node, lp, out}: arterial jets
+var _blood_t := 0.0
+var _run_k := 0
+
+## A wound opens at `lp` (local), the blood coming out along `out` (local): it runs from there,
+## and an artery spurts.
+func open_wound(lp: Vector3, out: Vector3, cut_artery: bool, rate := 6.0) -> void:
+	if severed:
+		return
+	var near := false
+	for r in runs:
+		if (r.lp as Vector3).distance_to(lp) < vf * part_scale * 3.0:
+			near = true
+			break
+	if not near:
+		if runs.size() >= MAX_RUNS:
+			runs.pop_front()
+		runs.append({"lp": lp, "len": 0.0, "t": 0.0})
+	if cut_artery:
+		artery = maxf(artery, rate)
+		if Fx.current and not Fx.current.headless and spurts.size() < 2:
+			var ps: GPUParticles3D = Fx.current.emitter("spurt", self, 60, vf * part_scale * 0.6)
+			if ps:
+				ps.position = lp
+				var o := out.normalized() if out.length_squared() > 1e-6 else Vector3.UP
+				var axis := Vector3.UP.cross(o)
+				if axis.length_squared() > 1e-6:
+					ps.basis = Basis(axis.normalized(), Vector3.UP.angle_to(o))
+				spurts.append({"node": ps, "lp": lp})
+
+## Each tick: the blood runs further down while the part bleeds; the jets pulse with the heart
+## (`beat` 0..1, 0 when it has stopped). Painting is a few voxels a tick at most.
+func update_blood(dt: float, beat: float) -> void:
+	artery = maxf(0.0, artery - dt * 0.012)
+	var flow := bleed + artery
+	for s in spurts:
+		if is_instance_valid(s.node):
+			(s.node as GPUParticles3D).emitting = artery > 0.3 and beat > 0.55 and not severed
+	if runs.is_empty() or flow < 0.05:
+		return
+	_blood_t += dt
+	if _blood_t < 0.18:
+		return
+	_blood_t = 0.0
+	var down := (global_transform.basis.orthonormalized().inverse() * Vector3.DOWN).normalized()
+	var step := vf * part_scale
+	var painted := []
+	# Two runs a tick at most, in turn (each one looks over the part's voxels).
+	for kk in mini(2, runs.size()):
+		_run_k = (_run_k + 1) % runs.size()
+		var r: Dictionary = runs[_run_k]
+		var reach := minf(half_ext.length() * 2.2, 0.03 + flow * 0.06 + r.t * 0.02)
+		if r.len >= reach:
+			continue
+		r.len += step
+		r.t += 0.18
+		var want: Vector3 = (r.lp as Vector3) + down * r.len
+		var best := -1
+		var bd := INF
+		for i in fx.size():
+			if alive[i] == 0:
+				continue
+			var q := local_of(i)
+			# Only the skin shows it: a voxel near one of the part's faces.
+			var depth := minf(minf(half_ext.x - absf(q.x), half_ext.y - absf(q.y)), half_ext.z - absf(q.z))
+			if depth > step * 1.6:
+				continue
+			var d := q.distance_squared_to(want)
+			if d < bd:
+				bd = d
+				best = i
+		if best >= 0 and bd < pow(step * 2.5, 2.0):
+			colors[best] = colors[best].lerp(SMEAR, 0.75)
+			painted.append(best)
+	if not painted.is_empty():
+		refresh_colors(painted)
+
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
 	var target := BRUISE if kind == "bruise" else SMEAR

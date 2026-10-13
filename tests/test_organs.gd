@@ -320,3 +320,55 @@ func test_reduced_gore_spills_nothing_but_hurts_the_same() -> void:
 		st["gore"] = keep
 	Save.set_value("settings", st)
 	m.queue_free()
+
+# ---------- Blood ----------
+
+## A cut into the inside of the right thigh, high (the groin) or low.
+func _thigh_cut(v: Fighter, high: bool) -> Dictionary:
+	var th: VoxelPart = v.by_name.thighR
+	th.hp = 1000.0
+	var gt := th.global_transform
+	var bx := gt.basis.orthonormalized()
+	return v.apply_hit(th, {"impulse": 30.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(th.half_ext.x, th.half_ext.y * (0.5 if high else -0.6), 0.0), "dir": -(bx * Vector3(1, 0, 0)), "axis": bx * Vector3(0, 0, 1), "edge": -(bx * Vector3(1, 0, 0))})
+
+func test_a_cut_artery_bleeds_out_far_faster() -> void:
+	var lost := []
+	for high in [false, true]:
+		var r := _victim()
+		var m: Match = r[0]
+		var v: Fighter = r[1]
+		await _steps(30)
+		var res := _thigh_cut(v, high)
+		t.check(res.get("artery", false) == high, "the groin is an artery, low on the thigh is not (%s)" % high)
+		var b0 := v.blood
+		await _steps(120 * 4)
+		lost.append(b0 - v.blood)
+		m.queue_free()
+	t.check(lost[1] > lost[0] * 3.0 and lost[1] > 8.0, "the cut artery drains him far faster (%.1f against %.1f in 4 s)" % [lost[1], lost[0]])
+
+func test_blood_runs_down_from_a_wound() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(60)
+	var tor := v.torso
+	var gt := tor.global_transform
+	var bx := gt.basis.orthonormalized()
+	var fwd := bx * Vector3(0, 0, 1)
+	var at := Vector3(tor.half_ext.x * 0.5, tor.half_ext.y * 0.5, tor.half_ext.z)
+	v.apply_hit(tor, {"impulse": 20.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * at, "dir": -fwd, "axis": bx * Vector3(1, 0, 0), "edge": -fwd})
+	tor.bleed = maxf(tor.bleed, 1.0)
+	var before := tor.colors.duplicate()
+	var below := func() -> int:
+		var n := 0
+		for i in tor.fx.size():
+			var q := tor.local_of(i)
+			# Skin under the wound gone darker and redder than it was.
+			if tor.alive[i] and q.y < at.y - 0.06 and tor.colors[i].g < before[i].g - 0.15:
+				n += 1
+		return n
+	var n0: int = below.call()
+	await _steps(120 * 2)
+	var n1: int = below.call()
+	t.check(n1 >= n0 + 3, "the skin below the wound reddens as the blood runs down (%d -> %d)" % [n0, n1])
+	m.queue_free()
