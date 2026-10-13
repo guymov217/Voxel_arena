@@ -33,6 +33,8 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
+	# What each voxel is made of, for the shader (wet flesh, bone, skin...), when it is known.
+	mm.use_custom_data = voxels[0].has("kind")
 	mm.mesh = part.mm.mesh
 	mm.instance_count = voxels.size()
 	var lo := Vector3.ONE * 1e9
@@ -43,6 +45,8 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		hi = hi.max(d)
 		mm.set_instance_transform(i, Transform3D(Basis(), d))
 		mm.set_instance_color(i, voxels[i].color)
+		if mm.use_custom_data:
+			mm.set_instance_custom_data(i, VoxelPart.kind_data(int(voxels[i].get("kind", 8))))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	ch.add_child(mmi)

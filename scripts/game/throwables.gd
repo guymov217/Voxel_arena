@@ -1191,6 +1191,7 @@ func use_item(e: Dictionary, slot: int) -> bool:
 		"bandage":
 			for p in c.parts:
 				p.bleed = 0.0
+				p.artery = 0.0
 				p.stump = false
 			c.torso.hp = minf(100.0, c.torso.hp + 15.0)
 			m.feed.emit("%s bandaged up" % c.display_name)

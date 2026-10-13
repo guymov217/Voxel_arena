@@ -39,10 +39,13 @@ func load_all() -> void:
 	var b: Dictionary = _read("body")
 	body_parts = b.get("parts", [])
 	lobes = b.get("lobes", {})
+	# The organs and bones inside the trunk and the head (Anatomy).
+	Anatomy.dress(body_parts)
 	armor = _read("armor")
 	# The armourer's newer pieces, shaped round this body.
 	armor.merge(Armory.extra(body_parts))
 	beasts = _read("beasts")
+	Anatomy.dress_beasts(beasts)
 	campaign = _read("campaign")
 	shop = _read("shop")
 	controls = _read("controls")

@@ -293,6 +293,11 @@ func _register(e: Dictionary) -> void:
 	combat.fighters.append(e.f)
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
+	e.f.guts_spilled.connect(_on_guts_spilled)
+	e.f.guts_pulled.connect(func(f, g):
+		var en = entity_of(f)
+		if role == "host" and en:
+			Net.send_all("gutp", {"id": en.id, "g": g}))
 	if role == "host":
 		Net.send_all("spawn", _spawn_msg(e))
 
@@ -467,6 +472,7 @@ func _training_tick(dt: float) -> void:
 	f.blood = minf(100.0, f.blood + 40.0 * dt)
 	for p in f.parts:
 		p.bleed = 0.0
+		p.artery = 0.0
 
 const TRAINING_BOSSES := ["cyclops", "giant", "minotaur", "titan"]
 func _spawn_training() -> void:
@@ -672,6 +678,7 @@ func use_ability(c, ab: Dictionary) -> void:
 		t.blood = minf(100.0, t.blood + 25.0)
 		for p in t.parts:
 			p.bleed = 0.0
+			p.artery = 0.0
 			if not p.severed:
 				p.hp = minf(100.0, p.hp + 20.0)
 		t.stagger = 0.0
@@ -758,6 +765,29 @@ func _sync_loose() -> void:
 ## Guests: what the host sends besides spawns and snapshots.
 func guest_message(type: String, data) -> void:
 	match type:
+		"gutp":
+			# Another length pulled out of a belly already open (sanitized like "guts").
+			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
+			if e == null or not (e.f is Fighter) or not e.f.guts_out or not (data.get("g") is Array):
+				return
+			var n: int = e.f.torso.fx.size()
+			var g: Array = (data.g as Array).slice(0, GutRope.LINK_VOX).map(func(i): return clampi(int(i), 0, n - 1))
+			if e.f.gut_rope and is_instance_valid(e.f.gut_rope):
+				e.f.gut_rope.pull(g)
+			else:
+				e.f.torso.remove_voxels(g, true, false)
+		"guts":
+			# Sanitized: a known fighter, at most the chain's links of the torso's own voxels.
+			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
+			if e == null or not (e.f is Fighter) or e.f.guts_out or not (data.get("g") is Array) or not (data.get("p") is Array) or not (data.get("o") is Array) or data.p.size() != 3 or data.o.size() != 3:
+				return
+			var n: int = e.f.torso.fx.size()
+			var groups := []
+			for g in (data.g as Array).slice(0, GutRope.FIRST_LINKS):
+				if g is Array:
+					groups.append((g as Array).slice(0, GutRope.LINK_VOX).map(func(i): return clampi(int(i), 0, n - 1)))
+			var o := Vector3(float(data.o[0]), float(data.o[1]), float(data.o[2]))
+			e.f.spill_guts(groups, Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])), o.normalized() if o.length_squared() > 1e-6 else Vector3.FORWARD)
 		"wloose":
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
 			if e and (data.side == "R" or data.side == "L") and e.f.weapons.get(data.side):
@@ -823,7 +853,7 @@ func guest_message(type: String, data) -> void:
 				match str(data.get("k")):
 					"hit":
 						var fd := Vector3(data.d[0], data.d[1], data.d[2]) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.UP
-						hit_fx(fp, fd, clampf(float(data.get("J", 5.0)), 0.0, 80.0), str(data.get("t", "blunt")), bool(data.get("s", false)))
+						hit_fx(fp, fd, clampf(float(data.get("J", 5.0)), 0.0, 80.0), str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)))
 					"clang":
 						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
 					"pool":
@@ -870,9 +900,13 @@ func has_gadget(e: Dictionary, id: String) -> bool:
 
 ## Blood, sparks and marks for a blow at `p` (host and guests alike): a cut sprays, a thrust
 ## spurts, a blunt blow bruises with little blood; a limb coming off opens the floodgates.
-func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false) -> void:
+func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, artery := false) -> void:
 	if headless:
 		return
+	if artery and not dec.confetti:
+		# A cut artery sprays: a jet of blood back out of the wound, and a splash on the sand.
+		fx.burst("spurt", p, 90, (-dir + Vector3(0, 0.5, 0)).normalized(), 1.3)
+		fx.mark("blood", Vector3(p.x - dir.x * 0.6, 0, p.z - dir.z * 0.6), 0.6)
 	arena.set_excitement(maxf(arena.excitement, minf(1.0, J / 45.0 + (0.6 if severed else 0.0))))
 	var n := int(clampf(J * (1.6 if type == "edge" else (1.2 if type == "point" else 0.5)), 4.0, 140.0)) + (120 if severed else 0)
 	fx.burst("confetti" if dec.confetti else "blood", p, n, (dir + Vector3(0, 0.6, 0)).normalized(), 0.8 + J / 40.0)
@@ -1049,9 +1083,10 @@ func _on_hit(h: Dictionary) -> void:
 	var jn: float = h.get("J", 0.0)
 	if jn > 6.0 and h.get("p") is Vector3:
 		var dir: Vector3 = h.get("dir", Vector3.UP) if h.get("dir") is Vector3 else Vector3.UP
-		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty())
+		var art: bool = h.res.get("artery", false)
+		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art)
 		if role == "host":
-			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty()}, false)
+			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art}, false)
 	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
 		_coating(h)
 	if h.killed and h.attacker:
@@ -1131,6 +1166,14 @@ func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array
 	var e = entity_of(f)
 	if e:
 		Net.send_all("vox", {"id": e.id, "part": part_index, "idx": indices})
+
+## The host tells the guests whose guts came out, which voxels and where: each draws the chain.
+func _on_guts_spilled(f: Fighter, groups: Array, at: Vector3, out: Vector3) -> void:
+	if role != "host":
+		return
+	var e = entity_of(f)
+	if e:
+		Net.send_all("guts", {"id": e.id, "g": groups, "p": [snappedf(at.x, 0.001), snappedf(at.y, 0.001), snappedf(at.z, 0.001)], "o": [snappedf(out.x, 0.01), snappedf(out.y, 0.01), snappedf(out.z, 0.01)]})
 
 func _send_weapon_vox(w: Weapon, idx: Array) -> void:
 	for e in entities:
@@ -1563,7 +1606,11 @@ func _process(dt: float) -> void:
 				continue
 			var bleed := 0.0
 			for prt in f.parts:
-				bleed += prt.bleed
+				bleed += prt.bleed + prt.artery
+				# A spurting artery throws its blood a pace off and pools under the wound.
+				if prt.artery > 0.3 and not prt.severed and randf() < 0.7:
+					var wp: Vector3 = prt.global_position
+					fx.mark("blood", Vector3(wp.x + randf_range(-0.5, 0.5), 0, wp.z + randf_range(-0.5, 0.5)), randf_range(0.12, 0.3) * f.S)
 			if bleed > 0.6 and randf() < minf(1.0, bleed * 0.25):
 				var tp: Vector3 = f.torso.global_position
 				fx.mark("blood", Vector3(tp.x + randf_range(-0.2, 0.2), 0, tp.z + randf_range(-0.2, 0.2)), randf_range(0.08, 0.22) * f.S)
