@@ -1027,7 +1027,7 @@ func can_stand() -> bool:
 	var r := leg_func("R")
 	if bool(mods.get("cyclops", false)) and (l <= 0.0 or r <= 0.0):
 		return false
-	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 18.0 and concussion < 0.85
+	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 14.0 and concussion < 0.85
 
 func is_active() -> bool:
 	return state != "dead"
@@ -1163,11 +1163,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
 	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
+	# Out cold on the sand with his wounds staunched, he comes round: the blood comes back up
+	# to where his legs will hold him and his head clears, faster lying still than on his
+	# feet. (Felled with too little blood or too rung a head to stand, and no longer bleeding,
+	# a man once lay there alive for the rest of the bout.)
+	if state == "down" and bleed < 0.15 and blood > 0.0 and blood < 22.0:
+		blood = minf(22.0, blood + 1.2 * dt)
 	_organs_tick(dt)
 	stagger = maxf(0.0, stagger - dt * 1.6)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
-	concussion = maxf(float(mods.drunk), concussion - dt * 0.05)
+	concussion = maxf(float(mods.drunk), concussion - dt * (0.05 if state == "stand" else 0.16))
 	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0):
 		die("decap" if head.severed else ("bleed" if blood <= 0.0 else "wounds"))
 		live = false
@@ -1183,6 +1189,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		fall(1.8 if can_stand() else 99.0, true)
 	if state == "down":
 		down_timer -= dt
+		# Felled for a cause (too rung, too drained, the legs gone) he lies "until further
+		# notice"; the moment the cause has passed, the notice is a couple of seconds.
+		if can_stand() and down_timer > 2.0 and not limp:
+			down_timer = 2.0
 		if down_timer <= 0.0 and can_stand():
 			state = "rising"
 			rise_t = 0.0
@@ -2361,6 +2371,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var dmg := 0.0
 	var remove := []
 	var vfs := part.vf * part.part_scale
+	# A wound is the size of what made it: a gladius opens the same cut in a giant as in a man
+	# (sized to the man it was in, every blow took a slab out of a giant).
+	var wsz := clampf(float(hit.get("wsz", S)), 0.5, 4.0)
 	var hollow := 0.0 if detached else _hollow(part, lp, ld, V * S * 1.6)
 	if type == "edge":
 		var edge_v: Vector3 = hit.get("edge", Vector3.ZERO)
@@ -2381,10 +2394,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# each one carrying on from where the last one stopped (_wound below).
 		var thick := 2.0 * (absf(ld.x) * part.half_ext.x + absf(ld.y) * part.half_ext.y + absf(ld.z) * part.half_ext.z)
 		# The trunk is the hardest to cut through: ribs, spine and a body's depth of flesh (a man,
-		# a beast or a monster); it takes many hard blows in one wound to halve one.
+		# a beast or a monster); it takes many hard blows in one wound to halve one. The share is
+		# of a body the blade's own size: a man's sword goes no deeper into a giant than into a man.
 		var trunk := 0.55 if part == torso or part == head else 1.0
-		depth = minf(depth, thick * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
-		var width := vfs * (0.75 + 0.5 * heavy)
+		depth = minf(depth, thick * minf(1.0, wsz / S) * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
+		var width := V * wsz * (0.75 + 0.5 * heavy)
 		# A blow that cuts at all goes at least one layer of voxels deeper into the wound: shorter
 		# than a voxel, the same light blows only ever scraped the same mouth of it.
 		depth = maxf(depth, vfs * 1.1)
@@ -2393,7 +2407,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if n.length_squared() < 1e-4:
 				n = Vector3(1, 0, 0)
 			n = n.normalized()
-			var span := (0.24 + 0.08 * heavy) * S
+			var span := (0.24 + 0.08 * heavy) * wsz
 			# A blade follows the wound: a second blow into an open cut starts where the first
 			# one stopped, so a thick limb is chopped through blow by blow instead of each one
 			# only scraping the same mouth of the wound.
@@ -2417,10 +2431,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# the thickness along its line (a thrown one less, the shaft takes the blow's way off;
 		# a thrust more, the whole man leaning on it).
 		var stab := J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.5 * th)
-		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z)
+		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z) * minf(1.0, wsz / S)
 		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0) + 0.25 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.25 * th) if part == torso or part == head else 1.0))
 		if J * eff > 2.5:
-			var r := V * S * (1.2 + 0.5 * heavy + 0.25 * th)
+			var r := V * wsz * (1.2 + 0.5 * heavy + 0.25 * th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
@@ -2450,7 +2464,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			_fracture(part, lp, J, res)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
 		if J > 9.0 or (hollow > 0.0 and J > 6.0):
-			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * S
+			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz
 			var at := lp + ld * hollow
 			for i in part.fx.size():
 				if part.alive[i] and part.local_of(i).distance_to(at) < r:

@@ -636,8 +636,12 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				var d := Vector3(cos(a) * sqrt(1.0 - y * y), y, sin(a) * sqrt(1.0 - y * y))
 				if fwd != Vector3.ZERO and randf() < 0.2:
 					d = (d * 0.55 + fwd).normalized()   # carried on the way the pot was going
-				var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06
-				var it: Dictionary = m.items.spawn("nail", from, d * (22.0 + randf() * 14.0), owner_)
+				# From all round the burst, each a little way out along its own line, at its own
+				# speed: let go from one spot, a hundred of them went into the one voxel the pot
+				# broke on and stood there in a clump.
+				var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06 + d * (0.12 + randf() * 0.22) + Vector3(randf_range(-0.12, 0.12), randf_range(-0.08, 0.12), randf_range(-0.12, 0.12))
+				from.y = maxf(0.08, from.y)
+				var it: Dictionary = m.items.spawn("nail", from, d * (16.0 + randf() * 20.0), owner_)
 				it.from_char = hit_char
 		"pot_sand":
 			add_zone("sand", p, 3.2, 6.0, owner_)

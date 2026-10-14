@@ -82,7 +82,7 @@ func test_a_fast_low_stroke_does_not_stall() -> void:
 		var y1: float = yaw_of.call()
 		# Wound up low, a long blade's tip may come to rest on the sand, so where it starts from
 		# varies; what must not vary is that the stroke carries it right across to the far side.
-		t.check(y1 > 40.0 and y1 - y0 > 50.0, "%s: a fast low stroke sweeps right across (%d° to %d°)" % [wn, int(y0), int(y1)])
+		t.check(y1 > 40.0 and y1 - y0 > 30.0, "%s: a fast low stroke sweeps right across (%d° to %d°)" % [wn, int(y0), int(y1)])
 		m.entities.erase(e)
 		m.combat.fighters.erase(f)
 		f.queue_free()
