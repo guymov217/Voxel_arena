@@ -20,6 +20,7 @@ var own_by: Node = null            # the fighter it just left, ignored for `own_
 var own_t := 0.0
 var is_shield := false
 var welded := false
+var chain_cap := 17.0   # the speed the chain's links are held under this step (guard_chain)
 var grip_t := 0.0
 var grip_main := Vector3.ZERO      # local
 var grip_off := Vector3.ZERO
@@ -781,20 +782,37 @@ func guard_chain() -> void:
 	var t := global_position
 	var reach_ := chain_len * (chain_links.size() + 2) * 2.0 + 0.5
 	var broken := false
+	var whip: bool = design.chain.get("whip", false)
+	# The chain goes no faster than the hand that whirls it can send it: a few times the
+	# handle's own speed (a whip's tip more), and hardly at all from a handle lying still or
+	# in the fist of a man on the sand. Left free it was whipped about by every knock, the
+	# handle's jolt on a fall or a drop sent the head flying over his head, and the solver's
+	# own jitter between links on the ground fed on itself.
+	var hv := linear_velocity
+	var hs := hv.length()
+	# (Getting up counts as down for a moment: the arm hauled up with the body whipped it.)
+	var standing: bool = holder == null or not is_instance_valid(holder) or (holder.get("state") == "stand" and float(holder.get("time")) - float(holder.get("stood_at")) > 0.6)
+	var cap := 30.0 if whip else 17.0
+	# Relative to the handle: what the hand adds to the chain each step is what whirls it.
+	var cap_rel: float = (minf(16.0, 4.0 + hs * 7.0) if whip else minf(9.0, 2.5 + hs * 2.5)) if standing else (2.0 if whip else 1.5)
+	var damp := lerpf(5.0, 0.3, clampf(hs / 1.5, 0.0, 1.0)) if standing else 6.0
 	for b in chain_links + [chain_head]:
 		var p: Vector3 = b.global_position
 		var sp: float = b.linear_velocity.length()
 		if not is_finite(sp) or not p.is_finite() or p.distance_to(t) > reach_:
 			broken = true
 			break
-		# A head on a chain goes about as fast as a strong arm whirls it, not like a shot: a
-		# light whip's tip may crack faster, a flail's ball or a meteor hammer's weight may not.
-		var cap := 30.0 if design.chain.get("whip", false) else 17.0
 		if sp > cap:
 			b.linear_velocity *= cap / sp
+		var rel: Vector3 = b.linear_velocity - hv
+		var rs := rel.length()
+		if rs > cap_rel:
+			b.linear_velocity = hv + rel * (cap_rel / rs)
 		var av: float = b.angular_velocity.length()
 		if av > 25.0:
 			b.angular_velocity *= 25.0 / av
+		b.linear_damp = damp
+	chain_cap = cap
 	if not broken:
 		_rope()
 		return
@@ -855,7 +873,7 @@ func _rope() -> void:
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	# A chain's head is held to its speed inside the step too, not only between steps.
 	if chain_parent and is_instance_valid(chain_parent) and chain_parent.design.get("chain") is Dictionary:
-		var cap := 30.0 if chain_parent.design.chain.get("whip", false) else 17.0
+		var cap: float = chain_parent.chain_cap
 		var sp := state.linear_velocity.length()
 		if sp > cap:
 			state.linear_velocity *= cap / sp

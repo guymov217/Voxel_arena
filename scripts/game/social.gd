@@ -453,14 +453,21 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			# G: a weapon in reach, else a loose limb, else a person (G with a mouse button held
 			# is only ever for taking hold of people).
 			var took = null
-			if inp.get("grabHands") == null:
+			var gh = inp.get("grabHands")
+			if gh == null:
 				took = c.grab_nearest(m.combat.loose_weapons)
-				if took:
-					m.feed.emit("%s picks up a %s" % [c.display_name, String(took.design.get("name", "weapon")).to_lower()])
-					m.sfx("pickup", c.hand_world("R"))
+			else:
+				took = grab_person(e, inp)
+				# Nobody in that hand's reach: it takes a weapon lying there instead (G with the
+				# button down near a sword once did nothing at all).
+				if took == null and gh != "both":
+					took = c.grab_nearest(m.combat.loose_weapons, gh)
+			if took is Weapon:
+				m.feed.emit("%s picks up a %s" % [c.display_name, String(took.design.get("name", "weapon")).to_lower()])
+				m.sfx("pickup", c.hand_world("R" if c.weapons.R == took else "L"))
 			if took == null:
 				took = grab_limb(e)
-			if took == null:
+			if took == null and gh == null:
 				took = grab_person(e, inp)
 		# A throw is a movement, not a teleport: the arm (already drawn back while F was held, or
 		# drawn back now for a bot) whips forward and the thing leaves the hand partway through.

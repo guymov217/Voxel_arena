@@ -13,6 +13,8 @@ var look_yaw := 0.0
 var look_pitch := 0.0
 var lmb := false
 var rmb := false
+var mmb := false                   # the wheel held down: the mouse turns the camera alone
+var free_look := Vector2.ZERO      # (yaw, pitch) the camera is turned off the fighter's line by it
 var thrust := 0.0
 var twist := 0.0
 var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
@@ -158,6 +160,8 @@ func _mouse(e: InputEvent) -> void:
 			rmb = b.pressed
 			if b.pressed:
 				jab_l = true
+		elif b.button_index == MOUSE_BUTTON_MIDDLE:
+			mmb = b.pressed
 		elif (b.button_index == MOUSE_BUTTON_WHEEL_UP or b.button_index == MOUSE_BUTTON_WHEEL_DOWN) and b.pressed:
 			var dw := 0.25 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -0.25
 			# Round and round, like the web game: past half a turn it comes back the other way.
@@ -167,6 +171,12 @@ func _mouse(e: InputEvent) -> void:
 				twist = wrapf(twist + dw, -PI, PI)
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var m := e as InputEventMouseMotion
+		if mmb:
+			# A look round: the camera orbits the fighter any way the mouse goes, and neither
+			# he nor his hands move for it. Let go and it swings back behind him.
+			free_look.x -= m.relative.x * 0.0022 * sensitivity * sens_x
+			free_look.y = clampf(free_look.y - m.relative.y * 0.0018 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.3, 1.3)
+			return
 		var both := lmb and rmb
 		var h = main if lmb else (off if rmb else null)
 		if h == null or aiming:
@@ -225,6 +235,9 @@ func sample(dt: float) -> Dictionary:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		lmb = false   # let go of the mouse with a button down: its release never reaches us
 		rmb = false
+		mmb = false
+	if not mmb:
+		free_look = free_look.lerp(Vector2.ZERO, minf(1.0, dt * 6.0))
 	var hand_r := lmb or pad_r
 	var hand_l := rmb or pad_l
 	if not hand_r:

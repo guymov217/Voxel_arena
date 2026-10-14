@@ -1628,8 +1628,8 @@ func _process(dt: float) -> void:
 		cam.orbit(Vector3(c.x / n, 0.4, c.z / n) if n > 0 else Vector3(0, 0.4, 0), dt)
 	elif cam:
 		var f = me.f if me else null
-		var yaw := input.look_yaw if input else 0.0
-		var pitch := input.look_pitch if input else 0.0
+		var yaw := input.look_yaw + input.free_look.x if input else 0.0
+		var pitch := clampf(input.look_pitch + input.free_look.y, -1.45, 1.35) if input else 0.0
 		var aiming: bool = f != null and is_instance_valid(f) and f.alive and last_local_inp is Dictionary and float(last_local_inp.get("charging", 0.0)) > 0.0
 		var sh := _shooter_of(f)
 		var sighting: bool = sh != null and (float(sh.get_meta("draw", 0.0)) > 0.0 or str(sh.design.get("shoots", "")) == "bolt")

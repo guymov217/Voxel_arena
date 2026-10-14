@@ -217,6 +217,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var is_weapon: bool = att is Weapon
 	var rel := _vel_at(att, p) - _vel_at(vic, p)
 	var speed := rel.length()
+	var dir := rel.normalized()
 	if is_weapon and att.holder == null and not att.thrown_t > 0.0 and not att.is_hazard:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
@@ -270,11 +271,22 @@ func _blow(g: Dictionary) -> Dictionary:
 		# blade it lands far harder than its speed says (the web game's lunge).
 		var t_side: String = "R" if att.holder.weapons.R == att else "L"
 		var th: float = float(att.holder.thrust_amt.get(t_side, 0.0)) if "thrust_amt" in att.holder else 0.0
-		if th > 0.3 and g.type == "point":
-			var along := absf(closing.dot(PD.quat_of(att) * Vector3.UP))
-			if along > 0.5:
-				J = maxf(J, minf(55.0, (12.0 + 10.0 * th) * along * minf(1.0, swing / 2.0 + 0.4))) * (1.0 + 0.6 * th * along)
-				heavy = maxf(heavy, 0.4 * th)
+		if th > 0.3 and (g.type == "point" or g.type == "edge"):
+			var bax: Vector3 = PD.quat_of(att) * Vector3.UP
+			if bax.dot(closing) < 0.0:
+				bax = -bax
+			var along := bax.dot(closing)
+			# Driven home along the blade: a point, or an edge's tip coming in point first. The
+			# wound runs along the blade too, whichever way the bodies happened to be moving
+			# as it went in (measured off that, a stab read as a glancing poke).
+			if along > (0.4 if g.type == "point" else 0.75):
+				dir = bax
+				along = 1.0
+				J = maxf(J, minf(75.0, (18.0 + 16.0 * th) * minf(1.0, swing / 1.6 + 0.5))) * (1.0 + 0.8 * th)
+				heavy = maxf(heavy, 0.45 * th)
+				if g.type == "edge":
+					g = g.duplicate()
+					g.type = "point"
 	elif is_weapon and att.thrown_t > 0.0 and not att.is_hazard:
 		# Thrown: the blow is its momentum, in proportion to how hard it was thrown (the speed
 		# it lands at) and to how heavy it is; a dagger stings, a hammer flattens.
@@ -298,7 +310,6 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	if bite and not _cooldown("bite:%d" % att.get_instance_id(), J, 0.45):
 		return {}
-	var dir := rel.normalized()
 	var typ := "blunt"
 	var hardness := 0.3
 	var sharpness := 0.0
@@ -341,7 +352,10 @@ func _blow(g: Dictionary) -> Dictionary:
 	var was_alive: bool = vic_char.alive
 	# A bite takes a mouthful: the teeth close on a lump the size of the jaws, and tear it out.
 	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 and not att.def.get("claw", false) else 0.0
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush})
+	var thrust_k := 0.0
+	if is_weapon and att.holder and "thrust_amt" in att.holder:
+		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:

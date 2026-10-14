@@ -144,6 +144,8 @@ var stroke_idle := {"R": 0.0, "L": 0.0}
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
+var hp_prev := {"R": Vector2(0.1, 0.1), "L": Vector2(-0.35, 0.1)}   # the hand's mark last step, for the breath a swing costs
+var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
@@ -841,10 +843,12 @@ func set_net(on: bool, seconds := 4.0) -> void:
 		net_mesh.visible = on
 
 ## G next to a weapon lying loose: the nearest free hand closes on its grip.
-func grab_nearest(list: Array) -> Weapon:
+func grab_nearest(list: Array, only_side := "") -> Weapon:
 	if not alive:
 		return null
 	for side in ["R", "L"]:
+		if only_side != "" and side != only_side:
+			continue
 		if weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == "L" and two_handed) or (holding != null and holding.side == side):
 			continue
 		var hand := hand_world(side)
@@ -876,12 +880,29 @@ func pick_up(side: String, w: Weapon) -> bool:
 		w.forget_owner()
 	if w.stuck != null:
 		w.unstick()
+	# Whatever state it lay there in is shed: a frozen one (a guest's, or one held still by the
+	# host for them) moves again, a thrown one gets its damping back, and it is awake. Welded
+	# to a body that could not move, the hand was pinned where it closed and nothing it did,
+	# the throw included, came to anything.
+	for b in w.bodies():
+		if b is RigidBody3D:
+			b.freeze = false
+			b.sleeping = false
+	w.linear_damp = -1.0
+	w.angular_damp = -1.0
 	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w)
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
 	w.linear_velocity = fore.linear_velocity
 	w.angular_velocity = Vector3.ZERO
 	_exempt(w)
+	# The arm starts fresh with it: no stroke, throw or set elbow carried over from before.
+	swing_hold[side] = 0.0
+	throw_pose[side] = false
+	throwing[side] = false
+	behind_t[side] = 0.0
+	if fore.has_meta("elbow_set"):
+		_hold_elbow(side, 0.0, false, 0.0)
 	w.set_held_by(self)
 	w.thrown_t = 0.0
 	w.thrower = null
@@ -1126,7 +1147,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var blood_f: float = minf(1.0, 0.35 + blood / 100.0)
 	pain = maxf(0.0, pain - dt * 0.2)
 	var heavy := 1.0 - 0.5 * injury
-	var stam_f := (0.45 + 0.55 * stamina / 100.0) * (0.6 + 0.4 * heavy)
+	var stam_f := (0.3 + 0.7 * stamina / 100.0) * (0.6 + 0.4 * heavy)
 	var conc_f := 1.0 - concussion * 0.6
 
 	# Bleeding, recovery.
@@ -1250,6 +1271,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# ----- Locomotion -----
 	var lv := torso.linear_velocity
 	var move_local := Vector3.ZERO if rising else Vector3(inp.get("mx", 0.0), 0, inp.get("mz", 0.0))
+	# A thrust is a lunge: the feet carry him a step in after the point while the button is down
+	# (held out at arm's length and no more, the point only pricked).
+	var lunge := maxf(float(inp.get("thrust", 0.0)), float(inp.get("offThrust", 0.0)))
+	if lunge > 0.3 and standing and not rising and shove_t <= 0.0 and (weapons.R or weapons.L) and holding == null:
+		move_local.z = maxf(move_local.z, 0.75 * clampf(lunge, 0.0, 1.0))
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
@@ -1479,9 +1505,24 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# ----- Arms and weapons -----
 	var power: bool = inp.get("power", false) and stamina > 3.0
 	if power:
-		stamina_use += 9.0 * dt
+		stamina_use += 3.0 * dt
 	for side in ["R", "L"]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
+		# The breath goes with the work of the swing while the button is down: how far the hand
+		# is sent across the pane and how sharply it is turned, more with a heavy weapon in it.
+		# Held still it costs little; whirled hard it winds him fast.
+		if power and live and not limp:
+			var hp_now: Dictionary = hand_input[side]
+			var hpv := Vector2(float(hp_now.get("x", 0.0)) - float(hp_prev[side].x), float(hp_now.get("y", 0.0)) - float(hp_prev[side].y)) / dt
+			var hpa: Vector2 = (hpv - hp_vel[side]) / dt
+			hp_vel[side] = hpv
+			hp_prev[side] = Vector2(float(hp_now.get("x", 0.0)), float(hp_now.get("y", 0.0)))
+			var wm: float = weapons[side].mass if weapons[side] else 0.5
+			stamina_use += (0.9 * minf(12.0, hpv.length()) + 0.03 * minf(120.0, hpa.length())) * (0.7 + 0.12 * minf(8.0, wm)) * dt
+		else:
+			hp_vel[side] = Vector2.ZERO
+			var hp_now2: Dictionary = hand_input[side]
+			hp_prev[side] = Vector2(float(hp_now2.get("x", 0.0)), float(hp_now2.get("y", 0.0)))
 		# Whatever the arm is doing (swinging, limp, hanging by a strip, on a corpse), it never
 		# passes into its own chest or head.
 		if not arm[side].upper.severed:
@@ -1526,6 +1567,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var w: Weapon = weapons[side]
 	power_now = power
 	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3)
+	# A thrust is made with the whole body: the arm drives harder along the line and the body
+	# lunges after the point (held out at arm's length and no more, the point only pricked).
+	var th_in: float = float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0))
+	if th_in > 0.3 and state == "stand" and w and not w.is_shield and not w.design.has("shoots") and shove_t <= 0.0:
+		strength *= 1.0 + 0.6 * clampf(th_in, 0.0, 1.0)
 	var hp: Dictionary = inp.get("main" if side == "R" else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1})
 	if not w and inp.get("jabR" if side == "R" else "jabL", false) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
 		jab_t[side] = JAB_TIME
@@ -1624,8 +1670,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var lead = hand_lead[side]
 	if lead != null and (lead as Vector3).distance_to(target_w) < 2.5 * S:
 		var h: float = handling[side]
-		var vmax := 15.0 * S * (2.0 if jab_t[side] > 0.0 else (1.6 if thrust > 0.3 else 1.0)) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, arm_func(side) / 0.85)) * (0.6 + 0.4 * minf(1.0, stamina / 50.0))
-		var amax := 140.0 * S * (0.4 + 0.6 * h) * (1.3 if power else 1.0) * (4.0 if jab_t[side] > 0.0 else (2.0 if thrust > 0.3 else 1.0))
+		# Winded, the arm is slow as well as weak: the hand gets to its mark at half the pace.
+		var wind := 0.35 + 0.65 * minf(1.0, stamina / 60.0)
+		var vmax := 15.0 * S * (2.0 if jab_t[side] > 0.0 else (2.2 if thrust > 0.3 else 1.0)) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, arm_func(side) / 0.85)) * wind
+		var amax := 140.0 * S * (0.4 + 0.6 * h) * (1.3 if power else 1.0) * (4.0 if jab_t[side] > 0.0 else (3.0 if thrust > 0.3 else 1.0)) * (0.5 + 0.5 * wind)
 		var to_t: Vector3 = target_w - lead
 		var dist := to_t.length()
 		var v_des := to_t * (minf(minf(vmax, sqrt(2.0 * amax * dist)), dist / dt) / dist) if dist > 1e-5 else Vector3.ZERO
@@ -2359,16 +2407,20 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			remove = _stop_at_bone(part, remove, lp, ld, bite, res)
 	elif type == "point":
 		var eff := hardness * sharpness * maxf(0.15, la.dot(ld))
-		dmg = J * 2.8 * eff
+		# Driven home in a thrust the point goes in deep, the body's weight behind it: a
+		# longer, wider channel and the harm that goes with it (a prick of the tip did little).
+		var th := clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)
+		dmg = J * 2.8 * eff * (1.0 + 0.7 * th)
 		part.bleed += dmg * 0.07
-		var depth: float = minf(0.3 + 0.2 * heavy, 0.02 * J * eff * (1.0 + 0.8 * heavy)) * S
+		var depth: float = minf(0.3 + 0.2 * heavy + 0.25 * th, 0.02 * J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.6 * th)) * S
 		# A stab or a thrown point goes in, it rarely comes out the far side: at most a share of
-		# the thickness along its line (a thrown one less, the shaft takes the blow's way off).
-		var stab := J * eff * (1.0 + 0.8 * heavy)
+		# the thickness along its line (a thrown one less, the shaft takes the blow's way off;
+		# a thrust more, the whole man leaning on it).
+		var stab := J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.5 * th)
 		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z)
-		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0)) * (0.75 if hit.get("thrown", false) else 1.0) * (0.6 if part == torso or part == head else 1.0))
+		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0) + 0.25 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.25 * th) if part == torso or part == head else 1.0))
 		if J * eff > 2.5:
-			var r := V * S * (1.2 + 0.5 * heavy)
+			var r := V * S * (1.2 + 0.5 * heavy + 0.25 * th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
@@ -2377,7 +2429,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				var along := d.dot(la)
 				if along > -V * S and along < depth + open and (d - la * along).length() < r:
 					remove.append(i)
-			remove = _stop_at_bone(part, remove, lp, la, stab, res)
+			# A point goes between the ribs more often than not (a chop meets them flat): the bones
+			# turn it only when it comes in weakly, a thrust hardly at all.
+			remove = _stop_at_bone(part, remove, lp, la, stab * (2.2 + 2.5 * th), res)
 	else:
 		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
 		# hammer in earnest is as dangerous as a blade, only in a different way.
@@ -2450,7 +2504,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if boss:
 		dmg *= 0.6
 	if part == torso or part == head:
-		dmg = minf(dmg, 28.0 * part.mult / float(mods.toughness) * (0.7 if boss else 1.0))
+		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
+		dmg = minf(dmg, 28.0 * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0))
 	if detached:
 		stagger = keep_stagger
 		concussion = keep_conc
