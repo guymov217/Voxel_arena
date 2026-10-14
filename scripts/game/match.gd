@@ -280,6 +280,7 @@ func spawn_beast(spec: Dictionary):
 	b.on_breath = _breath
 	b.on_stomp = _stomp
 	b.on_venom = _venom
+	b.on_strike = func(bb, p): sfx("whoosh", p.global_position, 0.6)
 	b.on_roar = func(bb): sfx("horn", bb.torso.global_position, 1.2); feed.emit("%s trumpets and charges!" % bb.display_name)
 	if role == "guest":
 		b.make_puppet()
