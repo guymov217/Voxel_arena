@@ -64,6 +64,7 @@ var attract := false            # the menu backdrop: bots only, an orbiting came
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
 var hero_inp := {}
 var hero_cam := {}              # {pos, look}: a fixed shot instead of the orbit
+var tags := {}                  # fighter -> Label3D: a player's name over his head
 var rules: BoutRules = null     # Bread & Circuses: the bout's special rules
 var killcam: KillCam = null
 var tut: Tutorial = null
@@ -266,7 +267,43 @@ func spawn_fighter(spec: Dictionary):
 		e.bot = Bot.new(f, clampf(float(spec.get("diff", 0.7)), 0.1, 1.0), spec.get("personality", "standard"), rng.randi())
 	f.gravity = dec.gravity
 	_register(e)
+	if (spec.kind == "remote" or spec.kind == "local") and not headless:
+		_name_tag(f, String(spec.get("name", "")))
 	return e
+
+## A player's name floats over his head, in the yard and in the fight alike (not over your own,
+## which the camera rides behind; the host's and the guests' over theirs).
+func _name_tag(f, text: String) -> void:
+	if text == "" or tags.has(f):
+		return
+	var l := Label3D.new()
+	l.text = text
+	l.font = UIStyle.serif(2)
+	l.font_size = 48
+	l.pixel_size = 0.004
+	l.outline_size = 12
+	l.modulate = Color(0.96, 0.9, 0.72)
+	l.outline_modulate = Color(0.1, 0.06, 0.03, 0.9)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.render_priority = 2
+	add_child(l)
+	tags[f] = l
+
+func _update_tags() -> void:
+	for f in tags.keys():
+		var l: Label3D = tags[f]
+		if not is_instance_valid(f):
+			if is_instance_valid(l):
+				l.queue_free()
+			tags.erase(f)
+			continue
+		var own: bool = me != null and me.f == f and not attract
+		l.visible = f.alive and not own
+		if not l.visible:
+			continue
+		var top: VoxelPart = f.head if f.get("head") and is_instance_valid(f.head) and not f.head.severed else f.torso
+		l.global_position = top.global_position + Vector3(0, top.half_ext.y + 0.3 * float(f.S), 0)
 
 ## The body turns after the eyes, not in jumps with every twitch of the mouse: it closes most
 ## of the gap in a few steps, never faster than a fighter can wheel round, and the arms and the
@@ -1379,6 +1416,10 @@ func rebuild(e: Dictionary, body_: Dictionary) -> void:
 
 func _remove_entity(e: Dictionary) -> void:
 	entities.erase(e)
+	if tags.has(e.f):
+		if is_instance_valid(tags[e.f]):
+			tags[e.f].queue_free()
+		tags.erase(e.f)
 	if is_instance_valid(e.f):
 		combat.fighters.erase(e.f)
 		for w in e.f.weapons.values():
@@ -1686,6 +1727,7 @@ func guest_wvox(m: Dictionary) -> void:
 
 func _process(dt: float) -> void:
 	_update_breaths(dt)
+	_update_tags()
 	# A bleeding man leaves a trail of drops on the sand.
 	drip_t -= dt
 	if drip_t <= 0.0 and not headless:
