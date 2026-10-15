@@ -22,6 +22,38 @@ var cool := {}
 var time := 0.0
 var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
+var touches := {}                # "attacker id:victim id" -> {t, a: attacker's part, b: victim's part}: who is touching whom
+
+## The last touch of any part of `a` on any part of `b` within `within` seconds: the victim's
+## part touched, or null. A grapple, a squeeze, a roll or a trample is only real while the body
+## doing it is in contact with the body it is done to.
+func touch_part(a, b, within := 0.25) -> VoxelPart:
+	if a == null or b == null:
+		return null
+	var r = touches.get("%d:%d" % [a.get_instance_id(), b.get_instance_id()])
+	if r == null or time - float(r.t) > within:
+		return null
+	return r.b if is_instance_valid(r.b) else null
+
+func touching(a, b, within := 0.25) -> bool:
+	return touch_part(a, b, within) != null
+
+## Whether this one part of `a` touched `b` (any part) lately: the victim's part, or null.
+func touch_by(part: VoxelPart, b, within := 0.25) -> VoxelPart:
+	if part == null or b == null:
+		return null
+	var r = touches.get("p%d:%d" % [part.get_instance_id(), b.get_instance_id()])
+	if r == null or time - float(r.t) > within:
+		return null
+	return r.b if is_instance_valid(r.b) else null
+
+func _note_touch(a: VoxelPart, b: VoxelPart) -> void:
+	var fa = a.fighter
+	var fb = b.fighter
+	if fa == null or fb == null or fa == fb:
+		return
+	touches["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()]] = {"t": time, "a": a, "b": b}
+	touches["p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]] = {"t": time, "a": a, "b": b}
 
 func _enter_tree() -> void:
 	current = self
@@ -48,6 +80,9 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 			if other.is_hazard:
 				pending.append({"a": other, "b": body, "sa": state.get_contact_collider_shape(i), "sb": state.get_contact_local_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
 			continue # the weapon reports it
+		if bp and op:
+			_note_touch(body, other)
+			_note_touch(other, body)
 		if (bp and op) or (bw and ow):
 			if body.get_instance_id() > other.get_instance_id():
 				continue

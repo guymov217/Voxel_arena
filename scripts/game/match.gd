@@ -1660,16 +1660,10 @@ func _stomp(b: Beast) -> void:
 		var tp: Vector3 = c.torso.global_position
 		if Vector2(tp.x - front.x, tp.z - front.z).length() > 2.4 * maxf(1.0, b.S * 0.6):
 			continue
-		# The part nearest under the foot takes it.
-		var part: VoxelPart = c.torso
-		var best := INF
-		for p in c.parts:
-			if p.severed:
-				continue
-			var d: float = Vector2(p.global_position.x - front.x, p.global_position.z - front.z).length() + p.global_position.y * 0.4
-			if d < best:
-				best = d
-				part = p
+		# The part the foot comes down on takes it: the one it is touching (no touch, no stomp).
+		var part: VoxelPart = combat.touch_part(b, c, 0.3)
+		if part == null:
+			continue
 		var at: Vector3 = part.global_position + Vector3(0, part.half_ext.y * 0.5, 0)
 		var wasa: bool = c.alive
 		var res: Dictionary = c.apply_hit(part, {"impulse": 26.0, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.12, 0.07 * sqrt(b.S)), "heavy": 0.8})

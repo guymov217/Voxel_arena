@@ -24,6 +24,7 @@ var height := 0.8
 var ride_adj := 0.0   # how far the body is let down so the feet stand on the sand
 var bite_power := 45.0
 var hug = null
+var holds: Array = []                # the joints of a hold: jaws on a limb, fists on a man (freed with it)
 var down_t := 0.0
 var flying := false
 var rng := RandomNumberGenerator.new()
@@ -240,6 +241,7 @@ func die(cause := "") -> void:
 	state = "dead"
 	_release_coil()
 	hug = null
+	_free_holds()
 	flying = false
 	# Tip it over on its side instead of leaving it standing.
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
@@ -437,7 +439,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		"hunter":
 			want = _hunt(dt, t, to, dist, hurt, collapsed, legs_left, grounded, h_want, dist_g, mass)
 			# A python that gets close throws its coils round the man even without a bite.
-			if species == "python" and t and hug == null and coil_cool <= 0.0 and dist < 1.3 * S + 0.6 and fn_of(["coil"]) > 0.3 and rng.randf() < dt * 1.5:
+			if species == "python" and t and hug == null and coil_cool <= 0.0 and dist < 1.3 * S + 0.6 and fn_of(["coil"]) > 0.3 and rng.randf() < dt * 1.5 and _touching(t):
 				_start_coil(t)
 		"charger":
 			if t:
@@ -490,8 +492,13 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						for n in ["legFL", "legFR"]:
 							if by_name.has(n) and not leg_gone(by_name[n]):
 								_strike(by_name[n], 0.7, 0.0, [], 0.0)
-					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
-						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}
+					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15) and _touching(t):
+						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}   # a hand on him: the hold
+						for n in ["legFLLo", "legFRLo"]:
+							var fist: VoxelPart = by_name.get(n)
+							if fist and not fist.severed:
+								var on: VoxelPart = Combat.current.touch_by(fist, t, 0.3) if Combat.current else null
+								_hold(fist, on if on else t.torso, fist.global_position)
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
 				var a := rng.randf() * TAU
@@ -693,7 +700,7 @@ func _coil(dt: float) -> void:
 	tgt.stagger = maxf(tgt.stagger, 0.6)
 	if tgt.state == "stand" and float(hug.tight) > 0.5:
 		tgt.fall(2.0, true)
-	if hug.tick <= 0.0 and tgt.alive:
+	if hug.tick <= 0.0 and tgt.alive and _touching(tgt, 0.6):
 		hug.tick = 0.45
 		var J := clampf(pressure / 220.0, 3.0, 45.0)
 		var parts_hit := [tgt.torso]
@@ -711,12 +718,13 @@ func _coil(dt: float) -> void:
 	# coils too cut up to hold.
 	var escape: float = tgt.stamina / 100.0 * float(tgt.mods.get("strength", 1.0)) * 0.04 * dt * 60.0 / maxf(0.3, muscle)
 	# (A snake just wrapped round him is not shaken off by the first knock: only after a second.)
-	if hug.t <= 0.0 or not tgt.alive or (hug.t < 6.0 and stagger > float(hug.stagger0) + 0.45) or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt:
-		_release_coil()
+	if hug.t <= 0.0 or not tgt.alive or (hug.t < 6.0 and stagger > float(hug.stagger0) + 0.45) or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt or (hug.t < 6.0 and not _touching(tgt, 1.0)):
+		_release_coil()   # (the coils off him, he is out of them)
 
 func _release_coil() -> void:
 	if hug != null and hug.get("coil", false):
 		hug = null
+		_free_holds()
 		coil_cool = 4.0
 		ai.mode = "recover"
 		ai.t = 1.2
@@ -725,23 +733,34 @@ func _squeeze(dt: float) -> void:
 	hug.t -= dt
 	hug.tick -= dt
 	var tgt = hug.target
-	if hug.tick <= 0.0 and tgt.alive:
+	var held := _touching(tgt, 0.5)
+	if hug.tick <= 0.0 and tgt.alive and held:
 		hug.tick = 0.5
 		var p: Vector3 = tgt.torso.global_position
 		tgt.apply_hit(tgt.torso, {"impulse": 7.0, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": Vector3.DOWN})
 		tgt.last_attacker = self
+	if not held and hug.t < 2.6:
+		# He got out of its arms: nothing in them, the hold is over.
+		hug = null
+		_free_holds()
+		ai.bite_cool = 2.0
+		ai.mode = "recover"
+		ai.t = 1.0
+		return
 	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and the man is
 	# torn in two.
 	if species == "gorilla" and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
 		hug.rent = true
 		_rend(tgt)
 		hug = null
+		_free_holds()
 		ai.bite_cool = 4.0
 		ai.mode = "recover"
 		ai.t = 2.0
 		return
 	if hug.t <= 0.0 or not tgt.alive or stagger > hug.stagger0 + 0.35 or front_fn() < 0.3 or not part_ok(head, 0.1):
 		hug = null
+		_free_holds()
 		ai.bite_cool = 3.0
 		ai.mode = "recover"
 		ai.t = 1.5
@@ -790,8 +809,8 @@ func _death_roll(dt: float) -> void:
 	var part: VoxelPart = hug.part
 	hug.t -= dt
 	hug.tick -= dt
-	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.5 or not part_ok(head, 0.15):
-		_release_roll()
+	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.5 or not part_ok(head, 0.15) or (hug.t < 2.6 and not _touching(tgt, 1.0)):
+		_release_roll()   # (the limb out of its jaws, the roll is over)
 		return
 	var mp := mouth_point()
 	var err: Vector3 = mp - part.global_position
@@ -803,7 +822,7 @@ func _death_roll(dt: float) -> void:
 	jaw_t = minf(jaw_t, 0.1)
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
 	torso.angular_velocity = fwd * 7.0 * float(hug.spin)
-	if hug.tick <= 0.0:
+	if hug.tick <= 0.0 and _touching(tgt, 0.6):
 		hug.tick = 0.45
 		hug.bites = int(hug.bites) + 1
 		var J := bite_power * 0.7
@@ -823,6 +842,7 @@ func _death_roll(dt: float) -> void:
 func _release_roll() -> void:
 	if hug != null and hug.get("roll", false):
 		hug = null
+		_free_holds()
 		coil_cool = 5.0
 		ai.mode = "recover"
 		ai.t = 1.5
@@ -841,6 +861,8 @@ func _trample(dt: float, lv: Vector3) -> void:
 		var l: Vector3 = inv * f.torso.global_position
 		if absf(l.x) > torso.half_ext.x * 1.4 or absf(l.z) > torso.half_ext.z * 1.15 or l.y > 0.0:
 			continue
+		if not _touching(f, 0.3):
+			continue   # over him but not on him (a leap, a step past): nothing crushed
 		if f.state == "stand":
 			f.fall(1.5, true)
 		if ai.trample_t > 0.0:
@@ -1169,6 +1191,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	# A crocodile's jaws close on the limb they got and it goes into its roll.
 	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2):
 		hug = {"target": c, "part": vic, "t": 3.2, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0}
+		_hold(head, vic, mouth_point())
 		c.fall(2.5, true)
 		c.last_attacker = self
 	var torn := []
@@ -1585,6 +1608,24 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
 		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf(), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])
+
+## Whether any part of this body is in contact with `c` (Combat's touches): every hold, squeeze,
+## roll and trample is real only while it is.
+func _touching(c, within := 0.25) -> bool:
+	return Combat.current != null and Combat.current.touching(self, c, within)
+
+## A hold made physical: a joint from this part to the other's at the point of contact, so the
+## limb stays in the jaws and the man in the arms as long as the hold lasts (freed with it).
+func _hold(a: VoxelPart, b: VoxelPart, at: Vector3) -> void:
+	if a == null or b == null or a.severed or b.severed:
+		return
+	holds.append(_joint_at(a, b, at, false))
+
+func _free_holds() -> void:
+	for j in holds:
+		if j and is_instance_valid(j):
+			j.queue_free()
+	holds.clear()
 
 ## The ape's blows, each a swing of its own and each as hard as the swing (APE_BLOWS: the wind-up,
 ## the blow, the rest after, how much of the arm's weight goes into the fist, and how hard the

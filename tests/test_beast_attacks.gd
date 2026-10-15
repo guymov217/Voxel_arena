@@ -188,3 +188,33 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 	var off: int = s[1].parts.filter(func(p): return p.severed).size()
 	t.check(off >= 2, "an arm and a leg came away (%d parts off)" % off)
 	s[0].queue_free()
+
+func test_a_hold_needs_a_touch() -> void:
+	seed(21)
+	var s = _setup("gorilla", 3.0)
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	# Within the hug's range but out of contact, rooted, and its blows and its rearing held
+	# back: no hug can start, since nothing of it is on him.
+	b.sp = b.sp.duplicate()
+	b.sp.speed = 0.0
+	b.sp.lunge = 0.0
+	b.ai.bite_cool = 0.0
+	b.ai.rear_cool = 999.0
+	for n in ["legFL", "legFR"]:
+		b.strike_cool[b.by_name[n]] = 999.0
+	var touched := [false]
+	await _run(s[0], man, b, 3.0, func(_i):
+		if s[0].combat.touching(b, man):
+			touched[0] = true)
+	t.check(not touched[0], "nothing of it touched him from a pace off")
+	t.check(b.hug == null, "and so it has no hold on him")
+	# Set against its fist: the touch is noted, and only then may the hold come.
+	var fist: VoxelPart = b.by_name.legFRLo
+	man.teleport(fist.global_position + Vector3(0, 0.2, -0.3))
+	await _run(s[0], man, b, 1.5, func(_i):
+		if s[0].combat.touching(b, man):
+			touched[0] = true)
+	t.check(touched[0], "pressed against its fist, the touch is noted")
+	t.check(s[0].combat.touch_part(b, man, 9.0) != null, "and which part of him it touched")
+	s[0].queue_free()
