@@ -47,13 +47,30 @@ func touch_by(part: VoxelPart, b, within := 0.25) -> VoxelPart:
 		return null
 	return r.b if is_instance_valid(r.b) else null
 
-func _note_touch(a: VoxelPart, b: VoxelPart) -> void:
+## The impulse the physics put through the touch of `a` on `b` this step (N·s, summed over
+## their contacts): the weight and the drive actually bearing on him, for what a squeeze, a
+## trample or a stomp does to him. Zero without a touch within `within` seconds.
+func touch_impulse(a, b, within := 0.25) -> float:
+	if a == null or b == null:
+		return 0.0
+	var r = touches.get("%d:%d" % [a.get_instance_id(), b.get_instance_id()])
+	if r == null or time - float(r.t) > within:
+		return 0.0
+	return float(r.J)
+
+func _note_touch(a: VoxelPart, b: VoxelPart, J: float) -> void:
 	var fa = a.fighter
 	var fb = b.fighter
 	if fa == null or fb == null or fa == fb:
 		return
-	touches["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()]] = {"t": time, "a": a, "b": b}
-	touches["p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]] = {"t": time, "a": a, "b": b}
+	for key in ["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()], "p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]]:
+		var r = touches.get(key)
+		if r != null and float(r.t) == time:
+			r.J += J   # another contact of the same step: the impulses add up
+			if J > float(r.get("Jmax", 0.0)):
+				r.Jmax = J; r.a = a; r.b = b   # the hardest contact names the parts
+		else:
+			touches[key] = {"t": time, "a": a, "b": b, "J": J, "Jmax": J}
 
 func _enter_tree() -> void:
 	current = self
@@ -81,8 +98,9 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				pending.append({"a": other, "b": body, "sa": state.get_contact_collider_shape(i), "sb": state.get_contact_local_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
 			continue # the weapon reports it
 		if bp and op:
-			_note_touch(body, other)
-			_note_touch(other, body)
+			var cj := state.get_contact_impulse(i).length()
+			_note_touch(body, other, cj)
+			_note_touch(other, body, cj)
 		if (bp and op) or (bw and ow):
 			if body.get_instance_id() > other.get_instance_id():
 				continue

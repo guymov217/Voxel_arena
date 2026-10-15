@@ -1660,16 +1660,18 @@ func _stomp(b: Beast) -> void:
 		var tp: Vector3 = c.torso.global_position
 		if Vector2(tp.x - front.x, tp.z - front.z).length() > 2.4 * maxf(1.0, b.S * 0.6):
 			continue
-		# The part the foot comes down on takes it: the one it is touching (no touch, no stomp).
+		# The part the foot comes down on takes it, as hard as the foot lands (the physics'
+		# contact impulse); no touch, no stomp.
 		var part: VoxelPart = combat.touch_part(b, c, 0.3)
-		if part == null:
+		if part == null or part.severed:
 			continue
+		var J := clampf(combat.touch_impulse(b, c, 0.3) * 0.08, 10.0, 40.0)
 		var at: Vector3 = part.global_position + Vector3(0, part.half_ext.y * 0.5, 0)
 		var wasa: bool = c.alive
-		var res: Dictionary = c.apply_hit(part, {"impulse": 26.0, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.12, 0.07 * sqrt(b.S)), "heavy": 0.8})
+		var res: Dictionary = c.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.12, 0.003 * J * sqrt(b.S)), "heavy": 0.8})
 		c.last_attacker = b
 		c.fall(2.0, true)
-		combat.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": 26.0, "type": "blunt", "char": c, "part": part, "attacker": b, "res": res, "killed": wasa and not c.alive})
+		combat.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": J, "type": "blunt", "char": c, "part": part, "attacker": b, "res": res, "killed": wasa and not c.alive})
 
 # ---------- Network (host side snapshots, guest side drawing) ----------
 

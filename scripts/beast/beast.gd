@@ -686,13 +686,11 @@ func _coil(dt: float) -> void:
 		var err: Vector3 = at - p.global_position
 		p.apply_central_impulse((err * 60.0 - p.linear_velocity * 8.0) * p.mass * dt)
 		i += 1
-	# The squeeze: weight and muscle on the area of chest the coils cover.
-	var m_snake := 0.0
-	for p in parts:
-		if not p.severed:
-			m_snake += p.mass
+	# The squeeze: what the coils actually bear on him, read off the physics (the impulse their
+	# contacts put through him each step, the muscle pulling them tight on top of their weight),
+	# over the area of chest they cover.
 	var muscle := fn_of(["coil"]) * (0.4 + 0.6 * float(hug.tight))
-	var force := m_snake * gravity * 2.5 * muscle
+	var force := _touch_force(tgt) * (0.6 + 1.4 * muscle)
 	var area: float = 2.0 * PI * r * (0.16 * tgt.S * coils.size())
 	var pressure := force / maxf(0.05, area)          # N/m^2
 	# He is held: no breath, arms pinned to his sides.
@@ -736,8 +734,11 @@ func _squeeze(dt: float) -> void:
 	var held := _touching(tgt, 0.5)
 	if hug.tick <= 0.0 and tgt.alive and held:
 		hug.tick = 0.5
-		var p: Vector3 = tgt.torso.global_position
-		tgt.apply_hit(tgt.torso, {"impulse": 7.0, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": Vector3.DOWN})
+		# The arms' force on him, read off the physics of their contacts.
+		var on: VoxelPart = Combat.current.touch_part(self, tgt, 0.5) if Combat.current else tgt.torso
+		var J := clampf(_touch_force(tgt) * 0.004, 3.0, 20.0)
+		var p: Vector3 = on.global_position
+		tgt.apply_hit(on, {"impulse": J, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": (torso.global_position - p).normalized()})
 		tgt.last_attacker = self
 	if not held and hug.t < 2.6:
 		# He got out of its arms: nothing in them, the hold is over.
@@ -868,22 +869,17 @@ func _trample(dt: float, lv: Vector3) -> void:
 		if ai.trample_t > 0.0:
 			continue
 		ai.trample_t = 0.4
-		var foot: Vector3 = torso.global_position + PD.quat_of(torso) * Vector3(signf(l.x) * torso.half_ext.x * 0.7, -torso.half_ext.y, l.z)
-		var part: VoxelPart = f.torso
-		var best := INF
-		for p in f.parts:
-			if p.severed:
-				continue
-			var d: float = Vector2(p.global_position.x - foot.x, p.global_position.z - foot.z).length()
-			if d < best:
-				best = d
-				part = p
+		# The part it is on, and the weight it bears on him, both from the physics.
+		var part: VoxelPart = Combat.current.touch_part(self, f, 0.3)
+		if part == null or part.severed:
+			continue
+		var J := clampf(_touch_force(f) * 0.006, 8.0, 30.0)
 		var at: Vector3 = part.global_position + Vector3(0, part.half_ext.y * 0.5, 0)
 		var was: bool = f.alive
-		var res: Dictionary = f.apply_hit(part, {"impulse": 22.0, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.1, 0.06 * sqrt(S)), "heavy": 0.9})
+		var res: Dictionary = f.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "crush": minf(0.1, 0.003 * J * sqrt(S)), "heavy": 0.9})
 		f.last_attacker = self
 		f.fall(1.5, true)
-		Combat.current.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": 22.0, "type": "blunt", "char": f, "part": part, "attacker": self, "res": res, "killed": was and not f.alive, "trample": true})
+		Combat.current.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": J, "type": "blunt", "char": f, "part": part, "attacker": self, "res": res, "killed": was and not f.alive, "trample": true})
 
 ## Fire (or venom) in a cone in front of the head.
 func _breathe() -> void:
@@ -1613,6 +1609,13 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 ## roll and trample is real only while it is.
 func _touching(c, within := 0.25) -> bool:
 	return Combat.current != null and Combat.current.touching(self, c, within)
+
+## The force (N) this body is bearing on `c` through its contacts, read off the physics: the
+## contact impulse of the last step over the step.
+func _touch_force(c) -> float:
+	if Combat.current == null:
+		return 0.0
+	return Combat.current.touch_impulse(self, c, 0.3) / maxf(0.001, get_physics_process_delta_time())
 
 ## A hold made physical: a joint from this part to the other's at the point of contact, so the
 ## limb stays in the jaws and the man in the arms as long as the hold lasts (freed with it).
