@@ -45,6 +45,12 @@ func test_every_voice_is_rendered() -> void:
 			if not (ResourceLoader.exists(path) or FileAccess.file_exists(path)):
 				missing.append(path)
 	t.check(missing.is_empty(), "every voice has its three takes (%d keys); missing: %s" % [keys.size(), str(missing.slice(0, 6))])
+	for ev in ["grunt", "pain", "scream"]:
+		t.check(FileAccess.file_exists(Sfx.VOICE_DIR + "man_%s_6.ogg" % ev), "a man has six takes of his %s" % ev)
+	var seen := {}
+	for i in 12:
+		seen[Sfx._voice_stream("man_pain")] = true
+	t.check(seen.size() >= 3, "the takes vary (%d of 6 heard in 12 cries)" % seen.size())
 	var st := Sfx._voice_stream("lion_call")
 	t.check(st != null, "a rendered voice loads as a stream")
 

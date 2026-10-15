@@ -11,6 +11,8 @@ var backdrop_mul := 1.0   # quieter while the menu shows the attract fight
 var _cache := {}
 var _players: Array = []
 const TAKES := 3
+const MAX_TAKES := 8        # rendered voices: as many takes as there are files (men have six)
+var _last_take := {}        # voice key -> the take heard last, never played twice running
 var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
@@ -275,12 +277,22 @@ var _vlp := 0.0
 const VOICE_DIR := "res://art/audio/voices/"
 var _voices := {}
 
+## A take of a rendered voice, never the one heard last (a man struck twice cried the one cry).
+func _pick_take(key: String) -> AudioStream:
+	var takes: Array = _voices[key]
+	if takes.is_empty():
+		return null
+	var i := randi() % takes.size()
+	if takes.size() > 1 and i == int(_last_take.get(key, -1)):
+		i = (i + 1 + randi() % (takes.size() - 1)) % takes.size()
+	_last_take[key] = i
+	return takes[i]
+
 func _voice_stream(key: String) -> AudioStream:
 	if _voices.has(key):
-		var takes: Array = _voices[key]
-		return takes[randi() % takes.size()] if not takes.is_empty() else null
+		return _pick_take(key)
 	var takes := []
-	for i in range(1, TAKES + 1):
+	for i in range(1, MAX_TAKES + 1):
 		var path := VOICE_DIR + "%s_%d.ogg" % [key, i]
 		var st: AudioStream = null
 		if ResourceLoader.exists(path):
@@ -290,7 +302,7 @@ func _voice_stream(key: String) -> AudioStream:
 		if st:
 			takes.append(st)
 	_voices[key] = takes
-	return takes[randi() % takes.size()] if not takes.is_empty() else null
+	return _pick_take(key)
 
 ## A character's voice: `pitch` 1.0 for a man, lower for the big (a giant at 0.6, an elephant at
 ## 0.5), higher for the small. `file` names a rendered voice ("lion_call"); without one, or

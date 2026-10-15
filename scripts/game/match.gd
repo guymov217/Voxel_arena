@@ -1037,8 +1037,9 @@ func _check_round(dt: float) -> void:
 			_spawn_round(round + 1)
 			_banner("Round %d of 3" % (round + 1), "")
 		return
-	var alive_h := humans().filter(func(x): return x.f.alive)
-	var alive_e := enemies().filter(func(x): return x.f.alive)
+	# Beaten is beaten: dead, or out cold on the sand and never getting up again.
+	var alive_h := humans().filter(func(x): return not x.f.is_beaten())
+	var alive_e := enemies().filter(func(x): return not x.f.is_beaten())
 	if mode == "training":
 		for e in enemies():
 			if not e.f.alive and not e.get("respawned", false) and training.get("respawn", true):
@@ -1212,17 +1213,21 @@ func _music_tick() -> void:
 func _voices_on_hit(h: Dictionary) -> void:
 	var c = h.get("char")
 	var J := float(h.get("J", 0.0))
-	if c is Fighter and is_instance_valid(c) and J > 5.0:
+	# A man cries out for a blow that hurts, not for every touch: a quiet grunt for a light one,
+	# a cry for a heavy one, and not again within the second unless it is a limb or his life.
+	if c is Fighter and is_instance_valid(c) and J > 7.0:
 		var severed: bool = not h.res.get("severed", []).is_empty()
-		var recent: bool = time - float(c.get_meta("voice_t", -9.0)) < 0.4
-		if (c.alive or h.get("killed", false)) and (not recent or severed):
+		var grave: bool = severed or bool(h.get("killed", false))
+		var since: float = time - float(c.get_meta("voice_t", -9.0))
+		var recent: bool = since < (1.1 if J > 11.0 else 1.6)
+		if (c.alive or h.get("killed", false)) and (not recent or grave):
 			c.set_meta("voice_t", time)
-			var grave: bool = severed or bool(h.get("killed", false))
-			say(c, Voices.hurt_call(c, J, grave), clampf(0.5 + J / 40.0, 0.5, 1.2), "grave" if grave else ("hurt" if J > 11.0 else "grunt"))
+			var gain := 0.9 if grave else clampf(0.25 + J / 60.0, 0.3, 0.7)
+			say(c, Voices.hurt_call(c, J, grave), gain, "grave" if grave else ("hurt" if J > 11.0 else "grunt"))
 	var a = h.get("attacker")
 	if a is Fighter and is_instance_valid(a) and a.alive and a.kind != "beast" and J > 16.0 and time - float(a.get_meta("effort_t", -9.0)) > 1.2:
 		a.set_meta("effort_t", time)
-		say(a, "grunt", 0.7, "effort")
+		say(a, "grunt", 0.45, "effort")
 
 ## A coated weapon's blow: a burning one sets alight what it strikes, venom poisons (only a cut
 ## or a stab lets it in), frost slows and saps the breath. Not more than twice a second on a man.

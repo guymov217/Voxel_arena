@@ -457,15 +457,16 @@ def dragon(ev, i):
 # The men.
 @voice("man")
 def man(ev, i):
+    # Six takes an event, so a man struck again and again is not heard crying the one cry.
     if ev == "effort":
-        return [pool("human-attack", i), mm(f"Attack{i + 2}"), pool("human-attack", i + 3)][i - 1]
+        return [pool("human-attack", 1), mm("Attack3"), pool("human-attack", 4), mm("Attack5"), pool("human-attack", 2), mm("Attack7")][i - 1]
     if ev == "grunt":
-        return [warfork("pain25"), mm("Hit3"), warfork("pain50")][i - 1]
+        return [warfork("pain25"), mm("Hit3"), warfork("pain50"), mm("Hit5"), mm("Hit1"), mm("Hit9")][i - 1]
     if ev == "pain":
-        return [pool("human-hurt", i), warfork("pain75"), mm("Hit8")][i - 1]
+        return [pool("human-hurt", 1), warfork("pain75"), mm("Hit8"), pool("human-hurt", 3), mm("Hit14"), pool("human-hurt", 4)][i - 1]
     if ev == "scream":
-        return [warfork("pain100"), mm("Hit12"), pool("human-rough-hurt", 2)][i - 1]
-    return fade_out([warfork("death"), pool("human-death", i), mm(f"Death{i + 1}")][i - 1], 0.5)
+        return [warfork("pain100"), mm("Hit12"), pool("human-rough-hurt", 2), pool("human-hurt", 2), mm("Hit16"), pool("human-rough-hurt", 4)][i - 1]
+    return fade_out([warfork("death"), pool("human-death", 1), mm("Death2"), pool("human-death", 2), mm("Death3"), pool("human-death", 3)][i - 1], 0.5)
 
 # The giants of myth (bosses): each his own throat.
 @voice("cyclops")
@@ -520,6 +521,7 @@ def limit(x, ev):
     n = int(LIMIT.get(ev, 1.5) * SR)
     return fade_out(x[:n], 0.35) if len(x) > n else x
 TAKES = 3
+TAKES_OF = {"man": 6}
 
 # ---------------------------------------------------------------- output
 def write_ogg(x, path):
@@ -549,7 +551,7 @@ def main():
             continue
         demo = []
         for ev in EVENTS.get(key, ["call", "hurt", "death"]):
-            for i in range(1, TAKES + 1):
+            for i in range(1, TAKES_OF.get(key, TAKES) + 1):
                 x = finish(limit(fn(ev, i), ev))
                 write_ogg(x, os.path.join(a.out, f"{key}_{ev}_{i}.ogg"))
                 if a.demo and (ev in ("call", "death") or key == "man" or i == 1):
