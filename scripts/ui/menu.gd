@@ -11,6 +11,7 @@ var world_root: Node3D
 var pause_layer: CanvasLayer
 var last_result := {}
 var in_room := false
+var cmd_bot := false
 var room_list: VBoxContainer
 var _training_loaded := false
 var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
@@ -45,6 +46,7 @@ func _ready() -> void:
 	_net_loadout()
 	if Sfx.music:
 		Sfx.music.volume = float(Save.get_value("settings", {}).get("music", 0.5))
+	_cmdline_room.call_deferred()
 	world_root = Node3D.new()
 	get_parent().add_child.call_deferred(world_root)
 	bg = ColorRect.new()
@@ -1461,6 +1463,30 @@ func _mp(v: VBoxContainer) -> void:
 			show_screen("mp", "Could not connect"))])
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
+## Straight into a room from the command line, for testing with two windows on one machine:
+## `--host` opens a room by address, `--join 127.0.0.1` joins one, `--name Guest` names you,
+## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection
+## (tools/mp_local.sh).
+func _cmdline_room() -> void:
+	var args := OS.get_cmdline_user_args()
+	cmd_bot = args.has("--bot")
+	var lag := args.find("--lag")
+	if lag >= 0 and args.size() > lag + 1:
+		var ls := args.find("--loss")
+		Net.set_lag(int(args[lag + 1]), float(args[ls + 1]) if ls >= 0 and args.size() > ls + 1 else 0.0)
+	var i := args.find("--name")
+	if i >= 0 and args.size() > i + 1:
+		Net.my_name = args[i + 1]
+	if args.has("--host"):
+		if Net.host_enet() != OK:   # `connected` opens the room
+			show_screen("mp", "Could not open port %d" % Net.PORT)
+		return
+	i = args.find("--join")
+	if i >= 0:
+		var addr := args[i + 1] if args.size() > i + 1 and not args[i + 1].begins_with("--") else "127.0.0.1"
+		if Net.join_enet(addr) != OK:
+			show_screen("mp", "Could not connect to %s" % addr)
+
 func _on_lobbies(list: Array) -> void:
 	if room_list == null or not is_instance_valid(room_list):
 		return
@@ -1700,7 +1726,7 @@ func start(opts: Dictionary) -> void:
 		opts.body = body()
 	else:
 		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
-	if opts.get("autopilot", false):
+	if opts.get("autopilot", false) or cmd_bot:
 		opts.autopilot = true
 	var lk := look()
 	opts.loadout = opts.loadout.duplicate()
@@ -2000,7 +2026,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
 				match_.finished.connect(_on_finished)
 				hud = Hud.new(match_)
 				world_root.add_child(hud)

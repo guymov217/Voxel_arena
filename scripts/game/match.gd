@@ -45,6 +45,8 @@ var rng := RandomNumberGenerator.new()
 var next_id := 1
 var training: Dictionary = {}
 var headless := false
+var guest_bot_on := false
+var guest_bot: Bot
 var social: Social
 var items: Items
 var throwables: Throwables
@@ -186,6 +188,7 @@ func setup(opts: Dictionary) -> void:
 		add_child(cam)
 	if role == "guest":
 		combat.enabled = false
+		guest_bot_on = bool(opts.get("autopilot", false))
 		return
 	if Modes.handles(mode):
 		modes = Modes.new(self, mode)
@@ -720,6 +723,22 @@ func _physics_process(dt: float) -> void:
 	if role == "host" and tick % SNAP_EVERY == 0:
 		Net.send_all("snap", snapshot(), false)
 	_check_round(dt)
+
+## A guest's fighter played by a bot on the guest's side: it reads the host's snapshots like a
+## player would and sends inputs back, so two windows (or two processes) fight without hands.
+func _guest_bot_input(dt: float) -> Dictionary:
+	if me == null or not is_instance_valid(me.f):
+		return {}
+	if guest_bot == null or guest_bot.c != me.f:
+		guest_bot = Bot.new(me.f, 0.9, "standard", 99)
+	var tgt = nearest_enemy(me)
+	var inp: Dictionary = guest_bot.update(dt, tgt.f if tgt else null, _world_of(me))
+	var yaw: float = me.f.yaw
+	if tgt:
+		var d: Vector3 = tgt.f.torso.global_position - me.f.torso.global_position
+		yaw = atan2(d.x, d.z)
+	inp.look = {"yaw": yaw, "pitch": 0.0}
+	return inp
 
 func _world_of(e: Dictionary) -> Dictionary:
 	return {"loose": combat.loose_weapons, "allies": entities.filter(func(o): return o.team == e.team and o != e).map(func(o): return o.f)}
@@ -1771,8 +1790,8 @@ func _process(dt: float) -> void:
 				if not my_hit.is_empty() and time - float(my_hit.t) < 1.5 and my_hit.f == of:
 					foe.append(my_hit.p)
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
-	if role == "guest" and input and Net.active():
-		if tick % 4 == 0:
-			var gi := input.sample(dt * 4.0)
+	if role == "guest" and Net.active() and tick % 4 == 0:
+		var gi := _guest_bot_input(dt * 4.0) if guest_bot_on else (input.sample(dt * 4.0) if input else {})
+		if not gi.is_empty():
 			Net.send_host("input", PlayerInput.pack(gi), PlayerInput.has_one_shot(gi))
 	tick += 1 if role == "guest" else 0

@@ -35,6 +35,13 @@ var steam: Object = null
 var steam_ready := false
 var lobby_id := 0
 var steam_user := 0
+# A pretend bad connection, on one machine: incoming messages held back `lag_ms` (± jitter)
+# and some unreliable ones dropped. `--lag 120 --loss 3` on the command line, or NET_LAG/NET_LOSS.
+var lag_ms := 0
+var jitter_ms := 0
+var loss := 0.0
+var _held: Array = []
+var _held_due := 0
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -45,10 +52,32 @@ func _ready() -> void:
 		leave()
 		disconnected.emit())
 	_init_steam()
+	if OS.get_environment("NET_LAG") != "":
+		set_lag(int(OS.get_environment("NET_LAG")), float(OS.get_environment("NET_LOSS")) if OS.get_environment("NET_LOSS") != "" else 0.0)
+
+func set_lag(ms: int, loss_pct := 0.0) -> void:
+	lag_ms = maxi(0, ms)
+	jitter_ms = lag_ms / 4
+	loss = clampf(loss_pct / 100.0, 0.0, 0.9)
 
 func _process(_dt: float) -> void:
 	if steam_ready:
 		steam.run_callbacks()
+	if not _held.is_empty():
+		var now := Time.get_ticks_msec()
+		while not _held.is_empty() and int(_held[0].due) <= now:
+			var h: Dictionary = _held.pop_front()
+			_receive(h.type, h.data, h.from)
+
+## Hold a message back for the pretend lag; order is kept, as over one connection.
+func _hold(type: String, data, from: int, reliable: bool) -> bool:
+	if lag_ms <= 0:
+		return false
+	if not reliable and loss > 0.0 and randf() < loss:
+		return true
+	_held_due = maxi(_held_due, Time.get_ticks_msec() + lag_ms + randi_range(-jitter_ms, jitter_ms))
+	_held.append({"type": type, "data": data, "from": from, "due": _held_due})
+	return true
 
 # ---------- Steam ----------
 
@@ -174,6 +203,7 @@ func leave() -> void:
 	transport = ""
 	peers.clear()
 	inputs.clear()
+	_held.clear()
 
 func set_lobby_info(mode: String) -> void:
 	if steam_ready and lobby_id and is_host():
@@ -232,11 +262,15 @@ func input_of(id: int) -> Dictionary:
 
 @rpc("any_peer", "call_remote", "reliable")
 func _msg(type: String, data) -> void:
-	_receive(type, data, multiplayer.get_remote_sender_id())
+	var from := multiplayer.get_remote_sender_id()
+	if not _hold(type, data, from, true):
+		_receive(type, data, from)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func _umsg(type: String, data) -> void:
-	_receive(type, data, multiplayer.get_remote_sender_id())
+	var from := multiplayer.get_remote_sender_id()
+	if not _hold(type, data, from, false):
+		_receive(type, data, from)
 
 func _receive(type: String, data, from: int) -> void:
 	# Only the host may tell guests what happens; guests may only say hello and send input.
