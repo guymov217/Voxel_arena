@@ -39,8 +39,15 @@ static func value(d) -> int:
 		s += voxel_price(v[3])
 	return s
 
+## Weapons kept aside for now (still in the data, out of the shop, the lists, the lottery
+## and the drops from the stands): the chain weapons and the crossbow.
+const SHELVED := ["flail", "imperialFlail", "meteorHammer", "crossbow"]
+
+static func shelved(key: String) -> bool:
+	return SHELVED.has(key)
+
 static func bases() -> Array:
-	return Data.shop.get("bases", [])
+	return Data.shop.get("bases", []).filter(func(b): return not SHELVED.has(String(b.key)))
 
 static func base(key: String) -> Dictionary:
 	for b in bases():

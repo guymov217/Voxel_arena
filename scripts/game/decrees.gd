@@ -20,7 +20,7 @@ const LIST := [
 	{"id": "lions", "name": "Lions' Den", "desc": "The Emperor brought his pets", "lions": true},
 	{"id": "lottery", "name": "Weapon Lottery", "desc": "Everyone gets a random weapon from the armory", "loadout": "lottery"},
 ]
-const LOTTERY := ["gladius", "axe", "mace", "spear", "longsword", "warhammer", "trident", "dagger", "zweihander", "executionerAxe", "flail", "chicken", "fish", "chair", "plank", "goldenSpork", "nunchaku", "meteorHammer", "boing", "tickler"]
+const LOTTERY := ["gladius", "axe", "mace", "spear", "longsword", "warhammer", "hammer", "trident", "dagger", "zweihander", "executionerAxe", "chicken", "fish", "chair", "plank", "goldenSpork", "nunchaku", "boing", "tickler"]
 
 static func by_id(id: String) -> Dictionary:
 	for d in LIST:

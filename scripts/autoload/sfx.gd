@@ -7,7 +7,7 @@ extends Node
 
 const RATE := 22050
 var volume := 0.8
-var backdrop_mul := 1.0   # quieter while the menu shows the attract fight
+var backdrop_mul := 1.0   # 0 while the menu shows the attract fight: the fight behind the menus is silent
 var _cache := {}
 var _players: Array = []
 const TAKES := 3
@@ -308,7 +308,7 @@ func _voice_stream(key: String) -> AudioStream:
 ## 0.5), higher for the small. `file` names a rendered voice ("lion_call"); without one, or
 ## without the file, the voice is made on the fly from `kind`.
 func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0, file := "") -> void:
-	if _players.is_empty() or gain < 0.05:
+	if _players.is_empty() or gain < 0.05 or backdrop_mul <= 0.0:
 		return
 	for p in _players:
 		if not p.playing:
@@ -321,7 +321,7 @@ func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0, file := "") -> 
 			return
 
 func play(kind: String, at: Vector3, gain := 1.0) -> void:
-	if _players.is_empty() or gain < 0.05:
+	if _players.is_empty() or gain < 0.05 or backdrop_mul <= 0.0:
 		return
 	for p in _players:
 		if not p.playing:

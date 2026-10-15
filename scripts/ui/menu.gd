@@ -612,7 +612,7 @@ func _training(v: VBoxContainer) -> void:
 	var who: Array = ["none", "gladiator"] + foes + Data.beasts.keys()
 	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else Data.beasts[k].name))), "enemy")
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
-	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "whip", "bow", "crossbow"]
+	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "whip", "bow"]
 	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
 	pick.call(ge, "Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
 	var dl := UIStyle.label("Difficulty", 15)
@@ -627,7 +627,7 @@ func _training(v: VBoxContainer) -> void:
 	ge.add_child(diff)
 	var gy: GridContainer = form.call("YOU")
 	var built: Dictionary = Save.get_value("training_weapon", {})
-	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "spear", "trident", "dagger", "flail", "nunchaku", "meteorHammer", "whip", "plank", "chicken", "bow", "crossbow", "ram"]
+	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "nunchaku", "whip", "plank", "chicken", "bow", "ram"]
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
 	left.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
@@ -1758,7 +1758,7 @@ func _backdrop_on() -> void:
 		backdrop.input.set_process(false)
 	backdrop.finished.connect(func(_r): _backdrop_restart.call_deferred())
 	_stage_hero()
-	Sfx.backdrop_mul = 0.35
+	Sfx.backdrop_mul = 0.0   # the fight behind the menus is seen, not heard
 	bg.visible = false
 	shade.visible = true
 
