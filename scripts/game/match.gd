@@ -283,7 +283,11 @@ func spawn_beast(spec: Dictionary):
 	b.on_breath = _breath
 	b.on_stomp = _stomp
 	b.on_venom = _venom
-	b.on_strike = func(bb, p): sfx("whoosh", p.global_position, 0.6)
+	b.on_strike = func(bb, p):
+		sfx("whoosh", p.global_position, 0.6)
+		if time - float(bb.get_meta("voice_t", -9.0)) > 0.9:
+			bb.set_meta("voice_t", time)
+			say(bb, Voices.beast_call(bb.species), 0.9)
 	b.on_roar = func(bb): sfx("horn", bb.torso.global_position, 1.2); feed.emit("%s trumpets and charges!" % bb.display_name)
 	if role == "guest":
 		b.make_puppet()
@@ -873,6 +877,9 @@ func guest_message(type: String, data) -> void:
 						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
 					"pool":
 						fx.pool(fp, 1.4 * clampf(float(data.get("s", 1.0)), 0.3, 4.0), 8.0)
+					"voice":
+						if Sfx and not headless and Voices.KINDS.has(str(data.get("v"))):
+							Sfx.voice(str(data.v), fp, clampf(float(data.get("g", 1.0)), 0.0, 1.5), clampf(float(data.get("h", 1.0)), 0.3, 3.0))
 
 func nearest_enemy(e: Dictionary):
 	var best = null
@@ -904,6 +911,17 @@ func _exit_tree() -> void:
 func sfx(kind: String, at: Vector3, gain := 1.0) -> void:
 	if Sfx and not headless:
 		Sfx.play(kind, at, gain)
+
+## A character's voice from his mouth (Voices): heard here, and by the guests.
+func say(f, kind: String, gain := 1.0) -> void:
+	if kind == "" or f == null or not is_instance_valid(f):
+		return
+	var at: Vector3 = f.head.global_position if f.get("head") and not f.head.severed else f.torso.global_position
+	var pitch := Voices.pitch_of(f)
+	if Sfx and not headless:
+		Sfx.voice(kind, at, gain, pitch)
+	if role == "host":
+		Net.send_all("fx", {"k": "voice", "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)], "v": kind, "g": snappedf(gain, 0.01), "h": snappedf(pitch, 0.01)}, false)
 
 ## The crowd's favour (filled in by the crowd module when there is one).
 func crowd_add(f, n: float, why: String) -> void:
@@ -1111,8 +1129,26 @@ func _on_hit(h: Dictionary) -> void:
 		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
 	if Sfx:
 		Sfx.play("slash" if h.type == "edge" else ("stab" if h.type == "point" else "thud"), h.p, minf(1.0, h.J / 30.0))
+	if role != "guest":
+		_voices_on_hit(h)
 	if role == "host" and h.get("chip", {}).get("indices", []).size() > 0:
 		_send_weapon_vox(h.weapon, h.chip.indices)
+
+## Who cries out at a blow: the one struck (a grunt of pain, a scream for a limb lost or a
+## death blow, a beast's own call), and the one who dealt a heavy one (the effort).
+func _voices_on_hit(h: Dictionary) -> void:
+	var c = h.get("char")
+	var J := float(h.get("J", 0.0))
+	if c is Fighter and is_instance_valid(c) and J > 5.0:
+		var severed: bool = not h.res.get("severed", []).is_empty()
+		var recent: bool = time - float(c.get_meta("voice_t", -9.0)) < 0.4
+		if (c.alive or h.get("killed", false)) and (not recent or severed):
+			c.set_meta("voice_t", time)
+			say(c, Voices.hurt_call(c, J, severed or bool(h.get("killed", false))), clampf(0.5 + J / 40.0, 0.5, 1.2))
+	var a = h.get("attacker")
+	if a is Fighter and is_instance_valid(a) and a.alive and a.kind != "beast" and J > 16.0 and time - float(a.get_meta("effort_t", -9.0)) > 1.2:
+		a.set_meta("effort_t", time)
+		say(a, "grunt", 0.7)
 
 ## A coated weapon's blow: a burning one sets alight what it strikes, venom poisons (only a cut
 ## or a stab lets it in), frost slows and saps the breath. Not more than twice a second on a man.
@@ -1174,6 +1210,9 @@ func _on_death(f: Fighter, cause: String) -> void:
 			var tp := f.torso.global_position
 			Net.send_all("fx", {"k": "pool", "p": [tp.x, tp.y, tp.z], "s": f.S})
 	feed.emit("%s is %s" % [f.display_name, "dead" if cause != "decap" else "beheaded"])
+	if role != "guest" and cause != "decap" and time - float(f.get_meta("voice_t", -9.0)) > 0.2:
+		f.set_meta("voice_t", time)
+		say(f, Voices.death_call(f), 1.1)
 
 func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array) -> void:
 	if role != "host":

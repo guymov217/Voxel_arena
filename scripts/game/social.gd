@@ -288,6 +288,7 @@ func throw_person(e: Dictionary, inp: Dictionary) -> bool:
 	c.stamina = maxf(0.0, c.stamina - 25.0)
 	m.feed.emit(("%s CATAPULTED %s!" % [c.display_name, t.display_name]) if strong else ("%s tossed %s" % [c.display_name, t.display_name]))
 	m.sfx("whoosh" if strong else "thud", t.torso.global_position)
+	m.say(c, "grunt", 0.9)
 	if strong:
 		m.crowd_add(c, 12, "human catapult")
 	return true

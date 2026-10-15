@@ -15,7 +15,7 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -175,6 +175,8 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				lp += hp2 * 0.6
 				var crackle := hp2 * (0.6 if rng.randf() < 0.18 * exp(-t * 6.0) + 0.02 else 0.12) * exp(-t * 7.0)
 				s = (sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + crackle * 1.4)
+			"grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar":
+				s = _voice_sample(kind, t, rng, take)
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"bell":
@@ -191,6 +193,96 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	w.data = data
 	_cache[key] = w
 	return w
+
+## A voice: a throat (a pulse train at the pitch, with its vibrato and its break) through two
+## formants (a vowel), with breath noise. Men grunt with the effort, cry out when struck and
+## scream when a limb comes off; beasts growl, hiss, trumpet, screech or roar. Only the shape
+## of each call lives here; who makes it, and how deep, is the caller's (voice()).
+func _voice_sample(kind: String, t: float, rng: RandomNumberGenerator, take: int) -> float:
+	var L: float = LENGTH[kind]
+	var u := t / L
+	var f0 := 120.0
+	var env := 1.0
+	var noise := 0.1
+	var f1 := 600.0
+	var f2 := 1200.0
+	var rasp := 0.0
+	match kind:
+		"grunt":
+			# "Hngh": a short push from the belly, pitch falling.
+			f0 = 130.0 * (1.0 - 0.3 * u) * (1.0 + 0.08 * take)
+			env = minf(1.0, t * 60.0) * exp(-t * 7.0)
+			f1 = 450.0; f2 = 1100.0; noise = 0.25
+		"pain":
+			# "Agh!": a jump up, a wobble, and a fall away.
+			f0 = (170.0 + 60.0 * sin(PI * u) - 40.0 * u) * (1.0 + 0.06 * take) * (1.0 + 0.03 * sin(TAU * 7.0 * t))
+			env = minf(1.0, t * 40.0) * (1.0 - u) * (1.0 - u)
+			f1 = 750.0; f2 = 1300.0; noise = 0.18
+		"scream":
+			# A long high cry that breaks on the way down.
+			f0 = (260.0 + 120.0 * sin(PI * minf(1.0, u * 1.6)) - 60.0 * u) * (1.0 + 0.05 * take) * (1.0 + 0.05 * sin(TAU * 6.0 * t + take))
+			env = minf(1.0, t * 30.0) * (1.0 if u < 0.6 else (1.0 - u) / 0.4)
+			f1 = 900.0; f2 = 1700.0; noise = 0.22; rasp = 0.35
+		"growl":
+			# Low, rough, the throat rattling.
+			f0 = 55.0 * (1.0 + 0.1 * take) * (1.0 + 0.1 * sin(TAU * 25.0 * t))
+			env = minf(1.0, t * 20.0) * (1.0 - u) * (0.7 + 0.3 * sin(TAU * 14.0 * t))
+			f1 = 350.0; f2 = 900.0; noise = 0.3; rasp = 0.8
+		"hiss":
+			# Breath forced through the fangs: all noise, a narrow bright band.
+			f0 = 0.0
+			env = sin(PI * u) * (0.85 + 0.15 * sin(TAU * 30.0 * t))
+			f1 = 2600.0; f2 = 4200.0; noise = 1.0
+		"trumpet":
+			# A brass blast that climbs and cracks at the top.
+			f0 = (240.0 + 160.0 * minf(1.0, u * 2.5)) * (1.0 + 0.04 * take) * (1.0 + 0.02 * sin(TAU * 9.0 * t))
+			env = minf(1.0, t * 12.0) * minf(1.0, (1.0 - u) * 5.0)
+			f1 = 700.0; f2 = 1900.0; noise = 0.08; rasp = 0.5
+		"screech":
+			# High and thin, sliding down.
+			f0 = (900.0 - 350.0 * u) * (1.0 + 0.06 * take) * (1.0 + 0.04 * sin(TAU * 18.0 * t))
+			env = minf(1.0, t * 50.0) * (1.0 - u)
+			f1 = 1800.0; f2 = 3200.0; noise = 0.15; rasp = 0.3
+		"roar":
+			# Opens with a bark, then a chest-deep bellow that sags away.
+			f0 = (90.0 + 50.0 * exp(-t * 6.0) - 20.0 * u) * (1.0 + 0.07 * take) * (1.0 + 0.06 * sin(TAU * 11.0 * t))
+			env = minf(1.0, t * 30.0) * (1.0 if u < 0.5 else (1.0 - u) * 2.0) * (0.8 + 0.2 * sin(TAU * 17.0 * t))
+			f1 = 500.0; f2 = 1100.0; noise = 0.25; rasp = 0.6
+	env *= minf(1.0, (1.0 - u) * 10.0)   # every call closes, none is cut off
+	# The throat: a pulse train, its harmonics shaped by the two formants (a resonance each).
+	var s := 0.0
+	if f0 > 0.0:
+		var ph := fmod(f0 * t + 0.2 * rasp * sin(TAU * 33.0 * t), 1.0)
+		for h in range(1, 14):
+			var fh := f0 * h
+			var a := 1.0 / h
+			var r1 := fh / f1
+			var r2 := fh / f2
+			a *= 1.0 / (1.0 + 4.0 * (r1 - 1.0) * (r1 - 1.0)) + 0.6 / (1.0 + 4.0 * (r2 - 1.0) * (r2 - 1.0)) + 0.05
+			s += a * sin(TAU * h * ph)
+		s *= 0.35
+		if rasp > 0.0:
+			s *= 1.0 - rasp * 0.4 * maxf(0.0, sin(TAU * f0 * 0.5 * t))   # the fold catching every other beat
+	# Breath through the vowel: noise around the first formant.
+	_vlp += (rng.randf_range(-1.0, 1.0) - _vlp) * clampf(f1 / 3000.0, 0.08, 0.9)
+	s += _vlp * noise * 0.8
+	return clampf(s * env * 0.9, -1.0, 1.0)
+
+var _vlp := 0.0
+
+## A character's voice: `pitch` 1.0 for a man, lower for the big (a giant at 0.6, an elephant at
+## 0.5), higher for the small.
+func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0) -> void:
+	if _players.is_empty() or gain < 0.05:
+		return
+	for p in _players:
+		if not p.playing:
+			p.stream = _make(kind, randi() % TAKES)
+			p.global_position = at
+			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + randf_range(-1.5, 1.5)
+			p.pitch_scale = clampf(pitch * randf_range(0.92, 1.08), 0.3, 3.0)
+			p.play()
+			return
 
 func play(kind: String, at: Vector3, gain := 1.0) -> void:
 	if _players.is_empty() or gain < 0.05:
