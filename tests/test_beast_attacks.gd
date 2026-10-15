@@ -158,17 +158,29 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 	var hugged := [false]
 	var rent := [false]
 	var punches := [0]
+	var powers := {}
 	s[0].combat.hit.connect(func(h):
 		if h.attacker == b and h.char == s[1]:
 			if h.get("rend", false):
 				rent[0] = true
 			if h.type == "blunt" and h.get("att_part") != null and String(h.att_part.part_name).begins_with("legF"):
-				punches[0] += 1)
+				punches[0] += 1
+				powers[float(h.att_part.get_meta("power", 1.0))] = h.J)
+	var kinds := {}
 	await _run(s[0], s[1], b, 16.0, func(_i):
 		if b.hug != null:
-			hugged[0] = true)
+			hugged[0] = true
+		for n in ["legFL", "legFR"]:
+			var k := String(b.by_name[n].get_meta("ape", ""))
+			if k != "":
+				kinds[k] = true)
 	t.check(hugged[0], "it took hold of him")
 	t.check(rent[0], "and tore him in two")
+	t.check(kinds.size() >= 2, "it threw more than one kind of blow: %s" % str(kinds.keys()))
+	t.check(punches[0] >= 1, "and its fists landed (%d blows)" % punches[0])
+	var cap_jab: float = b.bite_power * 0.9
+	t.check(powers.values().all(func(j): return j <= b.bite_power * 1.8 + 0.01), "no blow lands harder than a slam may (%s)" % str(powers))
+	t.check(not powers.has(0.9) or powers[0.9] <= cap_jab + 0.01, "a jab lands no harder than a jab may")
 	var off: int = s[1].parts.filter(func(p): return p.severed).size()
 	t.check(off >= 2, "an arm and a leg came away (%d parts off)" % off)
 	s[0].queue_free()

@@ -57,29 +57,32 @@ def pelt(x, y, z, base=FUR, cell=3, var=0.22):
 
 # ---------------- body: a hulking upper body, the shoulders far broader than the hips, no neck,
 # a grey chest plate down the front, the red loincloth with its skull below ----------------
-body = part("beastBody", "Gorilla body", [14, 14, 12], 340, None, None, None, [0, 1.55, 0], mult=0.55)
+body = part("beastBody", "Gorilla body", [14, 14, 15], 340, None, None, None, [0, 1.55, 0], mult=0.55)
 g = body["grid"]
 for x in range(g[0]):
     for y in range(g[1]):
         for z in range(g[2]):
-            front = z / (g[2] - 1)
             up = y / (g[1] - 1)
+            # Hunched forward as an ape stands: the shoulders carried well ahead of the hips,
+            # the back sloping up and forward from the rump.
+            zc = 14.5 + (up - 0.45) * 8.0
             # Broad at the shoulders (up near 1), narrowing to the hips (up near 0.3).
             rx = 9.8 + 4.0 * min(1.0, max(0.0, (up - 0.25) / 0.6))
-            rz = 10.6 + 1.6 * min(1.0, max(0.0, (up - 0.3) / 0.6))
+            rz = 9.6 + 1.6 * min(1.0, max(0.0, (up - 0.3) / 0.6))
+            front = (z - (zc - rz)) / (2 * rz)     # 0 the back of this row, 1 its front
             if y < 5:
                 # The loincloth: a red flap down the front, the skull on it.
-                flap = 0.55 < front < 0.97 and abs(x - 13.5) < 6.5 and (y > 0 or abs(x - 13.5) < 4.5)
+                flap = 0.55 < front < 1.02 and abs(x - 13.5) < 6.5 and (y > 0 or abs(x - 13.5) < 4.5)
                 if not flap:
                     continue
                 c = fur(RED if (y + z + x) % 3 else RED_D, 0.05)
-                if front > 0.86 and abs(x - 13.5) <= 2.0 and 1 <= y <= 3:
+                if front > 0.9 and abs(x - 13.5) <= 2.0 and 1 <= y <= 3:
                     c = rgb(BONE)
                     add(body, x, y, z, c, 1)
                     continue
                 add(body, x, y, z, c)
                 continue
-            if not inside_ellipsoid(x, y, z, g, rx, 12.6, rz, cy=14.5):
+            if not inside_ellipsoid(x, y, z, g, rx, 12.6, rz, cy=14.5, cz=zc):
                 continue
             # The shoulders round off: no voxel in the top corners.
             if (y >= 24 and abs(x - 13.5) > 11.5) or (y >= 26 and abs(x - 13.5) > 9.5) or (y >= 22 and abs(x - 13.5) > 12.5):
@@ -92,7 +95,7 @@ for x in range(g[0]):
                 if abs(x - 13.5) < 0.6 and 13 <= y <= 22:
                     c = fur(GREY_D, 0.05)
             # The belly below the chest, a shade lighter than the back.
-            if front > 0.7 and 8 <= y < 12 and abs(x - 13.5) < 7:
+            if front > 0.7 and 8 <= y < 11 and abs(x - 13.5) < 7:
                 c = pelt(x, y, z, FUR_L, 3, 0.1)
             # The silverback's saddle, a faint silvering over the shoulders behind.
             if y >= 20 and front < 0.45 and abs(x - 13.5) < 9:
@@ -107,7 +110,7 @@ for x in range(g[0]):
 # ---------------- head: built in profile, as a gorilla's skull is: the cranium an egg behind,
 # the brow a shelf jutting over deep-set eyes, the face hollow under it, then the muzzle thrust
 # far forward with the nose on top of it and the mouth across its front ----------------
-head = part("beastHead", "Gorilla head", [8, 8, 8], 50, "beastBody", [0, 0.25, 0.2], [0, -0.1, -0.06], [0, 0, 0],
+head = part("beastHead", "Gorilla head", [8, 8, 8], 50, "beastBody", [0, 0.25, 0.32], [0, -0.1, -0.06], [0, 0, 0],
             head=True, bite=True, jaw={"from": 0.6, "y": 0.3}, mult=1.3)
 g = head["grid"]
 FACE = (0x9a, 0x96, 0x92)
@@ -196,12 +199,12 @@ def limb(name, label, dims, mass, parent, pa, ca, fist=False, lower=False, splay
                 p["voxels"].append([x, y, z, c, 0])
     return p
 
-armL = limb("legFL", "Gorilla left arm", [6, 11, 6], 28, "beastBody", [-0.32, 0.33, 0.14], [0, 0.30, 0], splay=0.1)
-armR = limb("legFR", "Gorilla right arm", [6, 11, 6], 28, "beastBody", [0.32, 0.33, 0.14], [0, 0.30, 0], splay=-0.1)
+armL = limb("legFL", "Gorilla left arm", [6, 11, 6], 28, "beastBody", [-0.32, 0.33, 0.26], [0, 0.30, 0], splay=0.1)
+armR = limb("legFR", "Gorilla right arm", [6, 11, 6], 28, "beastBody", [0.32, 0.33, 0.26], [0, 0.30, 0], splay=-0.1)
 foreL = limb("legFLLo", "Gorilla left fist", [7, 9, 7], 28, "legFL", [0, -0.30, 0], [0, 0.24, 0], fist=True, lower=True)
 foreR = limb("legFRLo", "Gorilla right fist", [7, 9, 7], 28, "legFR", [0, -0.30, 0], [0, 0.24, 0], fist=True, lower=True)
-legL = limb("legBL", "Gorilla left leg", [6, 5, 6], 16, "beastBody", [-0.2, -0.26, -0.1], [0, 0.13, 0])
-legR = limb("legBR", "Gorilla right leg", [6, 5, 6], 16, "beastBody", [0.2, -0.26, -0.1], [0, 0.13, 0])
+legL = limb("legBL", "Gorilla left leg", [6, 5, 6], 16, "beastBody", [-0.2, -0.26, -0.2], [0, 0.13, 0])
+legR = limb("legBR", "Gorilla right leg", [6, 5, 6], 16, "beastBody", [0.2, -0.26, -0.2], [0, 0.13, 0])
 shinL = limb("legBLLo", "Gorilla left foot", [6, 5, 6], 12, "legBL", [0, -0.13, 0], [0, 0.13, 0], fist=True, lower=True)
 shinR = limb("legBRLo", "Gorilla right foot", [6, 5, 6], 12, "legBR", [0, -0.13, 0], [0, 0.13, 0], fist=True, lower=True)
 

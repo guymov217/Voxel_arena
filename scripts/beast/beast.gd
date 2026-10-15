@@ -930,12 +930,34 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		var fl: float = maxf(leg.flinch_t, lo0.flinch_t if lo0 else 0.0)
 		if fl > 0.0:
 			hip += fl * 0.6; knee += fl * 0.8
-		if strikes.has(leg):
+		var sp_off := 0.0   # the arm swung out to the side (a hook) and back across
+		if strikes.has(leg) and String(leg.get_meta("ape", "")) != "":
+			# The ape's blows, each its own swing of the arm (APE_BLOWS).
+			var side := -signf(leg.pa.x)
+			var winding := float(wind.get(leg, 0.0)) > 0.0
+			match String(leg.get_meta("ape")):
+				"jab":      # the fist drawn back to the shoulder, then driven straight out
+					if winding: hip = 0.5; knee = 1.1
+					else: hip = -1.35; knee = 0.1
+				"hook":     # the arm swung out wide, then across in front
+					if winding: hip = -0.3; knee = 0.7; sp_off = side * 1.0
+					else: hip = -0.9; knee = 0.35; sp_off = -side * 0.5
+				"slam":     # both fists raised high over the head, then brought down together
+					if winding: hip = -2.3; knee = 0.6
+					else: hip = 0.5; knee = 0.25
+			wn = 55.0 if winding else 70.0
+			planted = false
+		elif strikes.has(leg):
 			# Drawn up and back first, then lashed forward.
 			if float(wind.get(leg, 0.0)) > 0.0:
 				hip = 0.75; knee = 0.9; wn = 50.0
 			else:
 				hip = -1.1 * (0.5 + 0.5 * lf); knee = 0.25; wn = 60.0
+			planted = false
+		elif float(ai.get("beat", 0.0)) > 0.0 and leg.def.get("splay", 0.0) != 0.0 and species == "gorilla":
+			# The chest beat: the fists drummed on the chest, one after the other.
+			var k := int(float(ai.beat) * 9.0) + i
+			hip = -1.05 + (0.25 if k % 2 == 0 else -0.1); knee = 1.45; wn = 60.0
 			planted = false
 		elif float(ai.get("stomp", 0.0)) > 0.0 and leg.part_name == "legFL":
 			hip = 0.7; knee = 0.8; wn = 50.0
@@ -956,7 +978,7 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 				_leg_motor(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), Vector3(knee_v, 0, 0), max_t * 0.7, dt)
 			continue
 		_leg_motor_off(leg)
-		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
+		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay + sp_off)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
 		if lo_ok:
 			_leg_motor_off(lo)
 			pd_relative(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), wn, 0.9, max_t * 0.7, dt, 3.0, LEG_REACT)
@@ -1483,6 +1505,7 @@ func _tick_strikes(dt: float) -> void:
 			wind.erase(p)
 			pending.erase(p)
 			if is_instance_valid(p) and p.def.get("leg", false):
+				p.set_meta("ape", "")
 				var lo := lower_of(p)
 				if lo:
 					lo.def["bite"] = false
@@ -1537,8 +1560,10 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 			var c: VoxelPart = by_name[n]
 			if part_ok(c, 0.2) and _ready_to_strike(c) and c.global_position.distance_to(tp) < 0.9 * S:
 				_strike(c, 0.25, 0.9 + rng.randf() * 0.6, [c, (tp - c.global_position).normalized() * maxf(18.0 * S, 3.5 * c.mass)])
+	if species == "gorilla":
+		_ape_blows(dt, t, to, dist, facing)
 	# A forepaw swipe (or the ostrich's kick): a working front leg lashes out.
-	if SWIPERS.has(species) and dist < reach * 1.1 and facing > 0.5:
+	if SWIPERS.has(species) and species != "gorilla" and dist < reach * 1.1 and facing > 0.5:
 		var best: VoxelPart = null
 		var best_f := 0.35
 		for n in ["legFL", "legFR"]:
@@ -1559,6 +1584,72 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
 		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf(), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])
+
+## The ape's blows, each a swing of its own and each as hard as the swing (APE_BLOWS: the wind-up,
+## the blow, the rest after, how much of the arm's weight goes into the fist, and how hard the
+## fist may land for it): a jab straight from the shoulder, a hook swung wide and across, and
+## both fists raised and slammed down together. Out of reach it beats its chest and roars.
+const APE_BLOWS := {
+	"jab": {"wind": 0.2, "t": 0.3, "cool": 1.1, "imp": 14.0, "power": 0.9},
+	"hook": {"wind": 0.3, "t": 0.35, "cool": 1.6, "imp": 20.0, "power": 1.3},
+	"slam": {"wind": 0.5, "t": 0.4, "cool": 3.2, "imp": 26.0, "power": 1.8},
+}
+
+func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
+	if float(ai.get("beat", 0.0)) > 0.0:
+		ai.beat = float(ai.beat) - dt
+	var arms := []
+	for n in ["legFL", "legFR"]:
+		if by_name.has(n) and not leg_gone(by_name[n]) and fn_of([n]) > 0.35 and _ready_to_strike(by_name[n]):
+			arms.append(by_name[n])
+	var reach: float = torso.half_ext.z + 1.6 * S
+	if arms.is_empty() or float(ai.get("rear", 0.0)) > 0.0:
+		return
+	var tp: Vector3 = t.torso.global_position
+	if dist > reach * 1.6:
+		# Out of reach: now and then it rears a little and drums its chest.
+		if float(ai.get("beat", 0.0)) <= 0.0 and float(ai.get("beat_cool", 0.0)) <= 0.0 and arms.size() == 2 and rng.randf() < dt * 0.35:
+			ai.beat = 1.3
+			ai.beat_cool = 7.0 + rng.randf() * 5.0
+			if on_roar.is_valid():
+				on_roar.call(self)
+		ai.beat_cool = float(ai.get("beat_cool", 0.0)) - dt
+		return
+	if float(ai.get("beat", 0.0)) > 0.0:
+		ai.beat = 0.0   # a man in reach ends the display
+	if dist > reach * 1.15 or facing < 0.5 or rng.randf() > dt * 2.2:
+		return
+	# Close in, with the hug ready, it grapples instead (control): the blows are for the rest.
+	if dist < 1.3 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
+		return
+	var kind := "jab"
+	var r := rng.randf()
+	if arms.size() == 2 and r < 0.25 and dist < reach:
+		kind = "slam"
+	elif r < 0.6:
+		kind = "hook"
+	var b: Dictionary = APE_BLOWS[kind]
+	var swing := [arms[rng.randi() % arms.size()]] if kind != "slam" else arms
+	for arm in swing:
+		var lo := lower_of(arm)
+		if lo == null:
+			continue
+		var dir: Vector3 = (tp - lo.global_position).normalized()
+		var imp: Vector3
+		match kind:
+			"hook":
+				var side := Vector3(-to.z, 0, to.x) * signf(arm.pa.x)
+				imp = (dir + side * 0.5).normalized() * float(b.imp) * S
+			"slam":
+				imp = (dir + Vector3(0, -0.8, 0)).normalized() * float(b.imp) * S
+			_:
+				imp = (dir + Vector3(0, 0.1, 0)).normalized() * float(b.imp) * S
+		arm.set_meta("ape", kind)
+		lo.set_meta("power", float(b.power))
+		_strike(arm, float(b.t), float(b.cool) + rng.randf() * 0.5, [lo, imp * maxf(1.0, lo.mass / (8.0 * MS))], float(b.wind))
+	if kind == "slam":
+		# The body comes down behind the fists.
+		torso.apply_central_impulse((to * 0.6 + Vector3(0, -0.3, 0)) * live_mass() * 0.8)
 
 ## The hydra's wounds close: voxels grow back, a few at a time, on necks and heads that are still
 ## on, next to flesh that is still there, never on burnt flesh and never more than half of what

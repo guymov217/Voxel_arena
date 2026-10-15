@@ -243,6 +243,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		cap = float(att.fighter.get("bite_power")) if att.fighter.get("bite_power") != null else 45.0
 		if att.def.get("claw", false):
 			cap *= 1.4   # a swipe has the whole foreleg and shoulder behind it
+		if att.def.get("fist", false):
+			cap *= float(att.get_meta("power", 1.0))   # a jab, a hook or a slam: each as hard as its swing
 	else:
 		cap = 30.0 if kick else (22.0 if jabbing else 17.0)
 	var J := minf(cap, maxf(g.J, m_eff * speed))
