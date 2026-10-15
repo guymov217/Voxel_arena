@@ -25,6 +25,7 @@ var dealt: Array = []
 var rng := RandomNumberGenerator.new()
 var undo_stack: Array = []
 var redo_stack: Array = []
+var stroke := {}   # the mouse held down in the voxel view: {erase, done: cells, undo}
 var line_from = null       # the first cell of a line or a box being drawn
 
 var viewport: SubViewport
@@ -607,9 +608,13 @@ func _on_view_input(e: InputEvent) -> void:
 			dist = minf(5.0, dist * 1.1)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
+			stroke = {"erase": false, "done": {}, "undo": false}
 			_click(e.position)
 		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels":
+			stroke = {"erase": true, "done": {}, "undo": false}
 			_erase_at(e.position)
+	if e is InputEventMouseButton and not e.pressed and (e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT):
+		stroke = {}
 	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and mode == "cards")):
 		dragging = e.pressed
 	if e is InputEventMouseMotion:
@@ -619,6 +624,13 @@ func _on_view_input(e: InputEvent) -> void:
 			_place_camera()
 		elif mode == "voxels":
 			_hover(e.position)
+			# Held down and dragged, the tool goes on working: a stroke of voxels built, painted
+			# or cleared under the mouse (one undo for the whole stroke).
+			if not stroke.is_empty() and tool != "line" and tool != "box":
+				if stroke.erase:
+					_erase_at(e.position)
+				else:
+					_click(e.position)
 
 ## Where the mouse points: the voxel under it and the empty cell on the face it points at (or,
 ## off the weapon, the cell on the weapon's own flat plane).
@@ -663,23 +675,45 @@ func _mirrored(list: Array) -> Array:
 				out.append(m)
 	return out
 
+## Already done in this stroke: a cell built, painted or cleared once is left alone while the
+## mouse stays down (built on, a drag would stack voxels up toward the eye).
+func _stroked(c) -> bool:
+	return not stroke.is_empty() and c != null and stroke.done.has(c)
+
+func _mark(list: Array) -> void:
+	if not stroke.is_empty():
+		for c in list:
+			stroke.done[c] = true
+
 func _click(at: Vector2) -> void:
-	var a := _aim(at)
+	_apply(_aim(at))
+
+## The tool used on what the mouse points at (`a` as _aim gives it).
+func _apply(a: Dictionary) -> void:
 	if a.is_empty():
 		return
 	match tool:
 		"build":
-			_place(_mirrored([a.place]))
+			if _stroked(a.place) or _stroked(a.get("hit")):
+				return
+			var list := _mirrored([a.place])
+			_place(list)
+			_mark(list)
 		"paint":
-			if a.hit != null:
+			if a.hit != null and not _stroked(a.hit):
+				var list := _mirrored([a.hit]).filter(func(c): return cells.has(c) and cells[c] != [mat, job])
+				_mark(_mirrored([a.hit]))
+				if list.is_empty():
+					return
 				_push_undo()
-				for c in _mirrored([a.hit]):
-					if cells.has(c):
-						cells[c] = [mat, job]
+				for c in list:
+					cells[c] = [mat, job]
 				_rebuild()
 		"erase":
-			if a.hit != null:
-				_remove(_mirrored([a.hit]))
+			if a.hit != null and not _stroked(a.hit):
+				var list := _mirrored([a.hit])
+				_remove(list)
+				_mark(list)
 		"line", "box":
 			var c: Vector3i = a.place
 			if line_from == null:
@@ -692,8 +726,10 @@ func _click(at: Vector2) -> void:
 
 func _erase_at(at: Vector2) -> void:
 	var a := _aim(at)
-	if not a.is_empty() and a.hit != null:
-		_remove(_mirrored([a.hit]))
+	if not a.is_empty() and a.hit != null and not _stroked(a.hit):
+		var list := _mirrored([a.hit])
+		_remove(list)
+		_mark(list)
 
 func _place(list: Array) -> void:
 	var add := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
@@ -720,6 +756,10 @@ func _remove(list: Array) -> void:
 	_rebuild()
 
 func _push_undo() -> void:
+	if not stroke.is_empty():
+		if stroke.undo:
+			return
+		stroke.undo = true
 	undo_stack.append([cells.duplicate(true), design.duplicate(true)])
 	if undo_stack.size() > 80:
 		undo_stack.pop_front()

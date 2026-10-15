@@ -44,3 +44,35 @@ func test_cards_build_real_weapons() -> void:
 	var s := ForgeLib.surprise_weapon(rng)
 	t.check(ForgeLib.compute_stats(s).hasGrip and s.name != "", "surprise: " + s.name)
 	t.check(ForgeLib.blacksmith_says(s) != "", "and the smith has an opinion")
+
+func test_a_dragged_stroke_paints_many_voxels_with_one_undo() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("gladius"), 9999, func(_d, _c): pass)
+	f.mode = "voxels"
+	var keys: Array = f.cells.keys()
+	keys.sort_custom(func(a, b): return a.y < b.y)
+	f.tool = "paint"
+	f.mat = "gold"
+	var undo0: int = f.undo_stack.size()
+	f.stroke = {"erase": false, "done": {}, "undo": false}
+	for c in keys.slice(0, 12):
+		f._apply({"hit": c, "place": c + Vector3i(0, 0, 1)})
+		f._apply({"hit": c, "place": c + Vector3i(0, 0, 1)})   # the mouse lingers on a cell
+	f.stroke = {}
+	var gold := 0
+	for c in keys.slice(0, 12):
+		if f.cells[c][0] == "gold":
+			gold += 1
+	t.check(gold >= 10, "the stroke painted the voxels it passed over (%d)" % gold)
+	t.eq(f.undo_stack.size() - undo0, 1, "one undo takes the whole stroke back")
+	# Built in a stroke, a cell is not built on again (no tower toward the eye).
+	f.tool = "build"
+	var n0: int = f.cells.size()
+	var base: Vector3i = keys[0]
+	f.stroke = {"erase": false, "done": {}, "undo": false}
+	f._apply({"hit": base, "place": base + Vector3i(0, 0, 1)})
+	f._apply({"hit": base + Vector3i(0, 0, 1), "place": base + Vector3i(0, 0, 2)})
+	f.stroke = {}
+	t.check(f.cells.size() - n0 <= 2, "a build stroke does not stack on itself (%d added)" % (f.cells.size() - n0))
+	f.queue_free()
