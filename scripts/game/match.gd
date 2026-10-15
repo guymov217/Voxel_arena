@@ -37,6 +37,9 @@ var tick := 0
 var stage_info: Dictionary = {}
 var players_count := 1
 var round_pay := 0
+## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
+## is saved for over several fights, not bought after the first.
+const PAY_SCALE := 0.4
 var kills := {}
 var rng := RandomNumberGenerator.new()
 var next_id := 1
@@ -504,6 +507,8 @@ func _spawn_training() -> void:
 # ---------- The loop ----------
 
 func _physics_process(dt: float) -> void:
+	if social == null:
+		return   # not set up (a Match made only to read its tables)
 	time += dt
 	tick += 1
 	if hero and is_instance_valid(hero) and hero.get_meta("frozen", false):
@@ -971,19 +976,19 @@ func _check_round(dt: float) -> void:
 		_check_circus(alive_h, alive_e)
 		return
 	if alive_h.is_empty():
-		_end(false, "You fall", "The crowd moves on. A fall sends you back to the checkpoint.")
+		_end(false, "You fall", "The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on.")
 		return
 	if alive_e.is_empty():
 		if mode == "campaign":
-			round_pay += int(stage_info.get("roundPay", 10))
+			round_pay += int(round(float(stage_info.get("roundPay", 10)) * PAY_SCALE))
 			if round + 1 < int(stage_info.get("rounds", []).size()):
 				between = 2.5
 				feed.emit("Round %d won" % (round + 1))
 				if role != "guest":
 					_round_wounds()
 				return
-			var pay := int(stage_info.get("stagePay", 30)) + round_pay
-			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, "%d denarii each. Back to the yard: spend, mend, gear up." % pay, pay)
+			var pay := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE)) + round_pay
+			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, ("%d denarii to the party's purse. " if players_count > 1 else "%d denarii. ") % pay + "Back to the yard: spend, mend, gear up.", pay)
 		else:
 			_end(true, "Victory", "")
 

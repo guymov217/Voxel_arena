@@ -182,6 +182,15 @@ func test_grabbing_an_arm_pins_it_and_a_severed_arm_is_a_club() -> void:
 	limb.global_position = a.f.hand_world("R") + Vector3(0, -0.1, 0.1)
 	var took = m.social.grab_limb(a)
 	t.check(took != null and a.f.holding != null and a.f.holding.limb != null, "a loose arm is picked up")
+	# Swung at B, the arm in hand lands like a club.
+	var clubbed := [0]
+	m.combat.hit.connect(func(h): if h.char == b.f and h.attacker == a.f and h.get("att_part") == limb: clubbed[0] += 1)
+	for i in 40:
+		if a.f.holding != null:
+			limb.linear_velocity = (b.f.torso.global_position - limb.global_position).normalized() * 7.0
+			a.f.arm.R.fore.linear_velocity = limb.linear_velocity
+		await get_tree().physics_frame
+	t.check(clubbed[0] > 0, "and swung at a man it hits him (%d)" % clubbed[0])
 	if a.f.holding != null:
 		m.social._throw_limb(a, {"throwPower": 1.0})
 		t.check(a.f.holding == null and (took as VoxelPart).thrown_t > 0.0, "and thrown like a club")

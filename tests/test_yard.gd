@@ -36,6 +36,11 @@ func test_the_yard_plays() -> void:
 	await _steps(5)
 	m.yard.update(0.01, {"talk": true})
 	t.check(opened.has("market"), "E by the trader opens the market")
+	var solid := 0
+	for n in m.find_children("*", "StaticBody3D", true, false):
+		if n.get_parent() != m and n.get_parent().get_parent() == m:
+			solid += 1
+	t.check(solid >= 3 or VoxelArt.make("smithy") == null, "the stalls stand solid (%d)" % solid)
 	var d = m.yard.dummies[0]
 	d.blood = 1.0
 	await _steps(2)

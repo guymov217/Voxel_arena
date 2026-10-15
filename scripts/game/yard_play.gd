@@ -118,7 +118,7 @@ func _ring(p: Vector3, r: float, color: Color) -> void:
 
 ## The stations' furniture, just behind each station's ring (toward the wall), facing the
 ## middle: the smith's hearth and anvil, the market stall, the mission board, the physician's
-## table. Only looks; nothing here collides.
+## table. Each stands solid: nobody walks through the smith's hearth.
 const STATION_PROPS := {"smith": "smithy", "market": "market_stall", "board": "notice_board", "physician": "physician"}
 
 func _dress_stations() -> void:
@@ -127,6 +127,7 @@ func _dress_stations() -> void:
 		var out := Vector3(sp.x, 0, sp.z).normalized()
 		var p := sp + out * (float(Yard.STATIONS[id].r) + 0.9)
 		var n := VoxelArt.place(m, STATION_PROPS[id], p, VoxelArt.facing_centre(p))
+		VoxelArt.solid(n)
 		if n and id == "smith":
 			var l := OmniLight3D.new()
 			l.light_color = Color(1.0, 0.5, 0.2)

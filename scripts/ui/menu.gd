@@ -111,7 +111,11 @@ func _ready() -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(ver)
 	Net.message.connect(_on_net)
-	Net.peer_joined.connect(func(_id, _info): if screen == "room": show_screen("room"))
+	Net.peer_joined.connect(func(id, _info):
+		if Net.is_host():
+			Net.send_to(int(id), "purse", coins())
+		if screen == "room":
+			show_screen("room"))
 	Net.peer_left.connect(func(_id): if screen == "room": show_screen("room"))
 	Net.connected.connect(func():
 		in_room = true
@@ -144,11 +148,24 @@ func _row(parent: Control, items: Array) -> HBoxContainer:
 	parent.add_child(h)
 	return h
 
+## The purse. In a room it is one purse for the party, the host's: what any of them earns goes
+## into it and what any of them buys comes out of it; the host keeps the count and tells the
+## rest (a guest's own purse waits for him at home).
+var shared_purse := 0
+
 func coins() -> int:
+	if Net.active() and not Net.is_host():
+		return shared_purse
 	return int(Save.get_value("coins", 150))
 
 func add_coins(n: int) -> void:
+	if Net.active() and not Net.is_host():
+		shared_purse = maxi(0, shared_purse + n)
+		Net.send_host("purse_add", n)
+		return
 	Save.set_value("coins", maxi(0, coins() + n))
+	if Net.active():
+		Net.send_all("purse", coins())
 
 func arms() -> Dictionary:
 	return Arms.sanitize(Save.get_value("arms", {}))
@@ -292,7 +309,7 @@ func _main(v: VBoxContainer) -> void:
 	laurel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	head.add_child(laurel)
 	var t := Label.new()
-	t.text = "VOXEL ARENA"
+	t.text = "WRECKSMITH"
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.add_theme_font_override("font", UIStyle.serif(4))
 	t.add_theme_font_size_override("font_size", 84)
@@ -1947,12 +1964,17 @@ func _on_finished(r: Dictionary) -> void:
 			Save.set_value(sk, int(r.stage) + 1)
 			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
 		else:
-			var back := int(Save.get_value(ck, 1))
-			Save.set_value(sk, back)
-			if back <= 1:
-				set_arms(Arms.empty())
-				set_worn_armor([])
-			last_result = {"text": "You fell. Back to stage %d." % back}
+			# A death ends the campaign: the next one begins at the first bout, with a beginner's
+			# purse, stick and body (online and alone alike; the host's word is the party's).
+			Save.set_value(sk, 1)
+			Save.set_value(ck, 1)
+			Save.set_value("coins", 150)
+			set_body(Body.empty())
+			set_arms(Arms.empty())
+			set_worn_armor([])
+			if Net.active():
+				Net.send_all("purse", coins())
+			last_result = {"text": "You fell. The campaign is over; a new one begins at bout 1."}
 	_end_match()
 	if Net.active() and not Net.is_host():
 		show_screen("room")
@@ -2014,10 +2036,18 @@ func _on_net(type: String, data, _from: int) -> void:
 		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp":
 			if match_:
 				match_.guest_message(type, data)
+		"purse":
+			# The party's purse, as the host counts it.
+			if not Net.is_host() and (data is int or data is float):
+				shared_purse = maxi(0, int(data))
+				if screen != "" and visible:
+					show_screen(screen)
+		"purse_add":
+			if Net.is_host() and (data is int or data is float):
+				add_coins(clampi(int(data), -5000, 5000))
 		"end":
 			if match_:
-				if data.won:
-					add_coins(int(data.pay))
+				# (The pay went into the party's purse on the host's side.)
 				match_.over = true
 				match_.banner.emit(data.text, data.sub)
 				match_.finished.emit({"won": data.won, "stage": match_.stage, "pay": data.pay})

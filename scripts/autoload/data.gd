@@ -85,6 +85,8 @@ func stage(n: int, players: int = 1) -> Dictionary:
 ## from the wolf at the start to the monsters late on; the rest are the stage's strongest
 ## gladiator. A party (co-op) fights it together: each friend gets a foe of his own (other men
 ## from the stage, or a pack of the beast), and a boss comes alone, the tougher for each friend.
+## From the fifth bout every other man's stage is a pack: two of the stage's gladiators at once,
+## three from the eleventh, so a bout is not always one on one.
 const LADDER_BEASTS := ["wolf", "boar", "hyena", "goat", "lion", "bear", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var rounds: Array = st.get("rounds", [])
@@ -131,15 +133,35 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 				var o: Dictionary = (pool[i % pool.size()] as Dictionary).duplicate(true)
 				o.erase("boss")
 				foes.append(o)
+	# The pack stages: more of the stage's men together (a beast or a boss still comes alone).
+	var pack := pack_size(n) if not (st.get("boss", false) or foe.has("beast")) else 1
+	if pack > 1:
+		var others: Array = []
+		for r in range(rounds.size() - 1, -1, -1):
+			for en in rounds[r]:
+				if en.has("e") and not en.get("boss", false):
+					others.append(en)
+		for i in pack - 1:
+			if others.is_empty():
+				break
+			var o: Dictionary = (others[i % others.size()] as Dictionary).duplicate(true)
+			o.erase("boss")
+			foes.append(o)
 	var name := String(foe.get("title", foe.get("name", "")))
 	if name == "":
 		name = String(beasts.get(foe.beast, {}).get("name", foe.beast)) if foe.has("beast") else String(enemy_type(String(foe.get("e", ""))).get("label", String(foe.get("e", "a gladiator")).capitalize()))
 	st["rounds"] = [foes]
 	st["duel"] = true
-	st["foe_name"] = name
-	st["title"] = String(foe.get("title", "Bout %d" % n))
+	st["foe_name"] = name if pack <= 1 else ("%s and %d more" % [name, pack - 1])
+	st["title"] = String(foe.get("title", ("Bout %d: the pair" if pack == 2 else ("Bout %d: the trio" if pack >= 3 else "Bout %d")) % n))
 	st["stagePay"] = int(st.get("stagePay", 30)) + int(st.get("roundPay", 10)) * 2
 	return st
+
+## How many men a stage's bout sends in together: one, or a pair, or a trio.
+static func pack_size(n: int) -> int:
+	if n % 4 == 0 or n % 3 == 0 or n < 5 or n % 2 == 0:
+		return 1
+	return 3 if n >= 11 else 2
 
 func enemy_type(id: String) -> Dictionary:
 	return campaign.get("enemies", {}).get(id, {})

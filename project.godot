@@ -1,10 +1,10 @@
-; Voxel Arena, Godot 4 port. The content (weapons, bodies, beasts, stages) is exported from the
+; WRECKSMITH (formerly Voxel Arena), Godot 4 port. The content (weapons, bodies, beasts, stages) is exported from the
 ; web game by tools/export-godot.mjs into data/.
 config_version=5
 
 [application]
 
-config/name="Voxel Arena"
+config/name="WRECKSMITH"
 config/version="0.1"
 config/description="Physics gladiator fights in voxels"
 run/main_scene="res://scenes/main.tscn"

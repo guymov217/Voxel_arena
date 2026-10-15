@@ -618,10 +618,10 @@ func _build_props() -> void:
 	for gx in [-1.0, 1.0]:
 		for gz in [-1.9, 1.9]:
 			VoxelArt.place(self, "statue", Vector3(gx * 15.6, 4.0, gz), -gx * PI / 2.0)
-		VoxelArt.place(self, "weapon_rack", Vector3(gx * 16.9, 0, -1.12), 0.0)
-		VoxelArt.place(self, "amphora", Vector3(gx * 16.4, 0, 1.08), 0.3)
-		VoxelArt.place(self, "amphora_wide", Vector3(gx * 16.9, 0, 1.05), 1.1)
-		VoxelArt.place(self, "crate", Vector3(gx * 17.7, 0, 0.98), 0.2)
+		VoxelArt.solid(VoxelArt.place(self, "weapon_rack", Vector3(gx * 16.9, 0, -1.12), 0.0))
+		VoxelArt.solid(VoxelArt.place(self, "amphora", Vector3(gx * 16.4, 0, 1.08), 0.3), 0.05)
+		VoxelArt.solid(VoxelArt.place(self, "amphora_wide", Vector3(gx * 16.9, 0, 1.05), 1.1), 0.05)
+		VoxelArt.solid(VoxelArt.place(self, "crate", Vector3(gx * 17.7, 0, 0.98), 0.2), 0.03)
 		VoxelArt.place(self, "crate", Vector3(gx * 17.75, 0.6, 1.0), 0.9)
 		var tl := OmniLight3D.new()
 		tl.light_color = Color(1.0, 0.55, 0.25)

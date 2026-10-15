@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Voxel Arena: a physics gladiator brawler in Godot 4.4 (GDScript, Jolt at 120 Hz) with voxel damage,
+WRECKSMITH (formerly Voxel Arena): a physics gladiator brawler in Godot 4.4 (GDScript, Jolt at 120 Hz) with voxel damage,
 a weapon forge, 24 beasts and host-authoritative multiplayer (GodotSteam or ENet). UI text is English.
 
 ## Layout

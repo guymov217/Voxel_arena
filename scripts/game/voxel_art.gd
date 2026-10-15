@@ -113,6 +113,38 @@ static func place(parent: Node, name_: String, pos: Vector3, yaw := 0.0) -> Node
 	n.rotation.y = yaw
 	return n
 
+## Makes a placed model solid: a static box the size of its meshes, on the world layer, so a
+## man walks into the smithy and the market stall instead of through them. `shrink` trims the
+## box all round (a hearth's overhanging roof should not stop him a yard out).
+static func solid(n: Node3D, shrink := 0.1) -> StaticBody3D:
+	if n == null:
+		return null
+	var box := AABB()
+	var first := true
+	for mi in _mesh_instances(n):
+		if mi.mesh == null:
+			continue
+		var local: Transform3D = n.global_transform.affine_inverse() * mi.global_transform if n.is_inside_tree() else mi.transform
+		var ab: AABB = local * mi.mesh.get_aabb()
+		box = ab if first else box.merge(ab)
+		first = false
+	if first:
+		return null
+	box = box.grow(-shrink)
+	if box.size.x <= 0.05 or box.size.z <= 0.05 or box.size.y <= 0.05:
+		return null
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = box.size
+	cs.shape = bs
+	cs.position = box.get_center()
+	body.add_child(cs)
+	n.add_child(body)
+	return body
+
 ## The yaw that turns a model's front (+z) toward the arena's middle from `pos`.
 static func facing_centre(pos: Vector3) -> float:
 	return atan2(-pos.x, -pos.z)

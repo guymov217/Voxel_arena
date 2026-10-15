@@ -1,4 +1,4 @@
-# Voxel Arena
+# WRECKSMITH
 
 A physics gladiator brawler in **Godot 4.4** (GDScript, Jolt physics at 120 Hz). Fighters are built
 from voxels and lose them to every cut, thrust and blow. You build your own weapons in a voxel
