@@ -22,6 +22,8 @@ var ai := {}
 var target: Node3D = null
 var height := 0.8
 var ride_adj := 0.0   # how far the body is let down so the feet stand on the sand
+var want_y := 0.0     # where the trunk should ride (world y): the legs are driven to hold it there
+var ik_legs := 0      # legs that stand on their feet (a lower part, not splayed): they carry the body
 var bite_power := 45.0
 var hug = null
 var holds: Array = []                # the joints of a hold: jaws on a limb, fists on a man (freed with it)
@@ -98,7 +100,14 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		var p := VoxelPart.new()
 		var dd: Dictionary = d.duplicate()
 		dd.erase("voxels")
-		p.setup(self, dd, voxels, float(d.scale) * k, float(d.mass) * MS)
+		# A leg weighs its share of the body (a thigh 7%, a shin 5%): legs modelled far too
+		# light for the body on them gave at the joints under its weight (the ostrich's folded
+		# sideways through their limits and it sat on the sand).
+		var m_part := float(d.mass)
+		if d.leg:
+			var n_legs: int = maxi(2, sp.parts.filter(func(q): return q.get("leg", false) and not q.get("lower", false)).size())
+			m_part = maxf(m_part, float(sp.parts[0].mass) * (0.14 if d.lower else 0.2) / float(n_legs))
+		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS)
 		p.linear_damp = 0.3
 		p.angular_damp = 2.0
 		p.collision_layer = VoxelPart.LAYER_BODY
@@ -139,6 +148,8 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	for p in parts:
 		if p.def.get("leg", false) and not p.def.get("lower", false):
 			legs.append(p)
+			if lower_of(p) != null and absf(float(p.def.get("splay", 0.0))) < 0.3:
+				ik_legs += 1
 		if p == head or p.def.get("head", false):
 			heads.append(p)
 		if float(p.def.get("wing", 0)) != 0.0:
@@ -291,7 +302,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var heavy := 1.0 - 0.5 * injury
 	var collapsed: bool = (legs.size() > 0 and legs_left <= legs.size() / 2.0) or (legs.size() > 0 and blood < 22.0)
 	var missing := legs.size() - legs_left
-	var crouching := 0.93 if ai.mode == "crouch" else (1.15 if ai.mode == "breathe" else 1.0)
+	var crouching := 0.93 if ai.mode == "crouch" else ((1.08 if float(ai.t) > 0.4 else 0.96) if ai.mode == "breathe" else 1.0)
 	if strikes.has(head) and head.parent_part != torso:
 		crouching = 0.8   # a long-necked beast drops its forequarters into a downward strike
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
@@ -309,7 +320,11 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var attacking: bool = not strikes.is_empty() or (ai.mode == "charge" and sp.ai == "charger")
 	if attacking:
 		ride_adj = move_toward(ride_adj, 0.0, dt * 0.3)
-	if hit and not flying and not collapsed and legs.size() > 0 and not attacking:
+	var carried: bool = ik_legs >= maxi(1, int(ceil(legs.size() * 0.5))) and not collapsed and not down_t > 0.0
+	if carried and not attacking:
+		# Carried on its legs the body rides as high as they hold it; nothing lets it down.
+		ride_adj = move_toward(ride_adj, 0.0, dt * 0.6)
+	elif hit and not flying and not collapsed and legs.size() > 0 and not attacking:
 		var gap := 0.0
 		var nf := 0
 		for li in legs.size():
@@ -336,11 +351,23 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		var want_y: float = float(ai.alt) * (1.0 - 0.5 * injury)
 		torso.apply_central_impulse(Vector3(0, mass * (gravity + 6.0 * (want_y - pos.y) - 3.0 * lv.y) * dt, 0))
 	elif grounded:
-		var support := 0.4 if legs.size() > 0 and not collapsed and not down_t > 0.0 else 1.0
-		var f := mass * (gravity * support + (70.0 if support < 1.0 else 120.0) * (h_want - dist_g) - 15.0 * lv.y)
-		# Over its height the help it gets is taken back, so it weighs its full weight on its
-		# legs (held at 0.4 g by this spring it was light, and each stride bounced it up off them).
-		torso.apply_central_impulse(Vector3(0, maxf(0.0 if support >= 1.0 else -gravity * support * mass, f) * dt, 0))
+		want_y = hit.position.y + h_want
+		var legs_carry: bool = ik_legs >= maxi(1, int(ceil(legs.size() * 0.5))) and not collapsed and not down_t > 0.0 and not float(ai.get("rear", 0.0)) > 0.0 and legs_left >= maxi(1, int(ceil(legs.size() * 0.5)))
+		if legs.size() <= 2 and legs.any(func(l): return strikes.has(l)):
+			legs_carry = false   # a two-legged runner kicking: the one leg under it gets help
+		if legs_carry:
+			# The body's whole weight rests on its legs: the leg motors drive each foot onto the
+			# sand under where the hip should ride (_leg_ik), and the feet, stopped by the sand,
+			# push the body up to its height. The trunk only damps the bounce of the stride, and
+			# a body thrown up over its height (a charge into a man, a leg vaulting off him) is
+			# pulled back down onto its legs: a ton of beast does not leap.
+			var over := maxf(0.0, dist_g - h_want - 0.12 * S)
+			torso.apply_central_impulse(Vector3(0, -(6.0 * lv.y + 50.0 * over) * mass * dt, 0))
+		else:
+			# No legs to carry it (a snake, a sprawling crocodile or spider, one collapsed or
+			# down): the body is held by its own strength over the sand.
+			var f := mass * (gravity + 120.0 * (h_want - dist_g) - 15.0 * lv.y)
+			torso.apply_central_impulse(Vector3(0, maxf(0.0, f) * dt, 0))
 	var q := PD.quat_of(torso)
 	var fwd_v := q * Vector3(0, 0, 1)
 	var cur := atan2(fwd_v.x, fwd_v.z)
@@ -535,7 +562,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			_trample(dt, lv)
 	var moving := want.length_squared() > 0.05
 	if grounded and stagger < 0.5 and not down:
-		var kk := ((4.5 if float(ai.get("charge_t", 0.0)) > 0.0 else 3.0) if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
+		var kk := ((6.5 if float(ai.get("charge_t", 0.0)) > 0.0 else 3.0) if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
 		torso.apply_central_impulse(Vector3(want.x - lv.x, 0, want.z - lv.z) * mass * kk * dt)
 	_abilities(dt, t, to, dist, cur)
 	_animate(dt, moving, yaw_rate, to, dist, cur)
@@ -623,6 +650,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			if ai.t <= 0.0:
 				ai.mode = "recover"; ai.t = 0.5
 		"breathe":
+			# It fills its chest standing, then comes on a step with the fire, head out at the prey.
+			want = to * spd * hurt * (0.0 if ai.t > 0.4 else 0.5)
 			if ai.t <= 0.0:
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.breath_cool = 7.0
 				_breathe()
@@ -893,7 +922,9 @@ func _stomp() -> void:
 
 func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: bool) -> void:
 	var n := legs.size()
-	var max_t := 120.0 * maxf(2.0, float(sp.parts[0].mass) * 0.04) * MS + 40.0
+	# The legs carry the whole body: each is driven with the strength to hold its share of the
+	# weight (two legs hold twice what four do).
+	var max_t := 120.0 * maxf(2.0, float(sp.parts[0].mass) * 0.05) * MS * (4.0 / maxf(2.0, float(n))) + 40.0
 	for i in n:
 		var leg: VoxelPart = legs[i]
 		if leg.severed:
@@ -993,7 +1024,7 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 			# body and the beast seemed to glide with its legs paddling the air.
 			_leg_motor(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), Vector3(hip_v, 0, 0), max_t, dt)
 			if lo_ok:
-				_leg_motor(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), Vector3(knee_v, 0, 0), max_t * 0.7, dt)
+				_leg_motor(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), Vector3(knee_v, 0, 0), max_t, dt)
 			continue
 		_leg_motor_off(leg)
 		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay + sp_off)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
@@ -1026,9 +1057,17 @@ func _leg_motor(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, ff: Vecto
 		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, max_t)
 	var az: Vector3 = pq * Vector3.BACK
 	var vz := clampf(err.dot(az) * 40.0, -14.0, 14.0) + ff.z
-	var tq := az * clampf((vz - rel.dot(az)) / dt * inert * 0.6, -max_t, max_t)
-	part.apply_torque_impulse(tq * dt)
-	parent.apply_torque_impulse(-tq * dt * LEG_REACT)
+	if j and absf(float(part.def.get("splay", 0.0))) < 0.3:
+		# Sideways too by the joint's motor, which the solver holds against the body's weight
+		# (a torque gave: a two-legged runner's thighs folded out sideways through their limits
+		# and it sat on the sand). A splayed leg (a scorpion's, a spider's) keeps its torque.
+		j.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, true)
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, vz * LEG_MOTOR_SIGN)
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, max_t)
+	else:
+		var tq := az * clampf((vz - rel.dot(az)) / dt * inert * 0.6, -max_t, max_t)
+		part.apply_torque_impulse(tq * dt)
+		parent.apply_torque_impulse(-tq * dt * LEG_REACT)
 
 ## Where leg `i` is in its stride: diagonal pairs step together.
 func _leg_phase(i: int) -> float:
@@ -1061,7 +1100,10 @@ func _leg_ik(leg: VoxelPart, phase: float, speed: float) -> Vector2:
 			off = dir * (-half * cos(PI * u))
 			lift = sin(PI * u) * reach * 0.22 * clampf(speed / (2.0 * S), 0.1, 1.0)   # a slow walk shuffles
 	var target := Vector3(hip_w.x, ground_y + lift, hip_w.z) + off
-	var tl := tf.basis.inverse() * (target - hip_w)
+	# From the hip as it should ride (want_y), not as it has sagged: a body that sinks asks
+	# more extension of its legs, and the feet, stopped by the sand, push it back up.
+	var hip_des := hip_w + Vector3(0, want_y - torso.global_position.y, 0) if want_y > 0.0 else hip_w
+	var tl := tf.basis.inverse() * (target - hip_des)
 	var d := clampf(Vector2(tl.z, tl.y).length(), absf(l1 - l2) + 0.01, reach * 0.995)
 	var knee := acos(clampf((d * d - l1 * l1 - l2 * l2) / (2.0 * l1 * l2), -1.0, 1.0))
 	var hip := atan2(-tl.z, -tl.y) - atan2(l2 * sin(knee), l1 + l2 * cos(knee))
@@ -1074,6 +1116,10 @@ func _leg_motor_off(part: VoxelPart) -> void:
 		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, 0.0)
 		j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, 0.0)
 		j.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, false)
+	if j and j.get_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR):
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_TARGET_VELOCITY, 0.0)
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, 0.0)
+		j.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, false)
 
 # ---------- What still works ----------
 # Behaviour follows the voxels that are left: every group of parts is judged by how well its
@@ -1170,6 +1216,14 @@ func _process(dt: float) -> void:
 	for p in heads:
 		if not p.severed:
 			p.set_gape(gape, dt)
+
+## Breathing fire (or venom) the neck is driven forward at the prey and the head thrust out
+## level with it, the jaws wide (a short draw back as it fills its chest, then the lunge),
+## not reared up and back away from what it burns.
+func _fire_lunge() -> float:
+	if ai.get("mode", "") == "breathe":
+		return -0.15 if float(ai.t) > 0.4 else 0.5
+	return 0.5 if breath_t > 0.0 else 0.0
 
 ## A bite landed (combat): the jaws snap shut on it, and what the teeth tore out hangs from
 ## them a while, or falls.
@@ -1318,10 +1372,10 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				off.y = sin(gait * 1.3 - i * 1.5) * (0.6 if moving else 0.1) + sin(time * 0.5 + i) * 0.05
 			"neck":
 				off.y = track * 0.45 + sin(time * 0.9 + i * 1.7) * 0.08 + yaw_rate * 0.08
-				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0) + float(a.lean)
+				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0) + float(a.lean) + _fire_lunge()
 			"head":
 				off.y = track * (0.4 if p.parent_part == torso else 0.25) + sin(time * 0.7 + i * 2.1) * 0.06
-				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0)
+				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0) - 0.3 * _fire_lunge()
 			"wing":
 				var side := signf(float(p.def.get("wing", 0))) if float(p.def.get("wing", 0)) != 0.0 else signf(p.pa.x)
 				var wfn: float = wf.x if side < 0.0 else wf.y

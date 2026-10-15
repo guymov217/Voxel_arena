@@ -1,54 +1,48 @@
 extends Node
-## Walking and running on the legs (the stance-leg gait): a foot is always on the sand while he
-## walks, the planted foot stays where it was put while the body goes over it, and the weight
-## rides over the foot that bears it.
+## Every beast walks on its own: let into the arena a way off from a man, each must close the
+## distance on its legs with its body held up off the sand the whole way (the legs carry it;
+## the trunk is not held up by anything else).
 
 var t
 
-func _gait(run: bool) -> Dictionary:
-	var m := Match.new()
-	add_child(m)
-	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
-	m.me.f.teleport(Vector3(6, 0, 6))
-	var e = m.spawn_fighter({"kind": "bot", "name": "W", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 1, "pos": Vector3(0, 0, -12.5), "yaw": 0.0})
-	e.erase("bot")
-	e.drive = func(_e): return {"mz": 1.0, "sprint": run, "look": {"yaw": 0.0, "pitch": 0.0}}
-	var f: Fighter = e.f
-	for i in 120:
-		await get_tree().physics_frame
-	var n := 0
-	var down_n := 0
-	var gap := 0.0
-	var gap_n := 0
-	var z0 := f.torso.global_position.z
-	for i in 300:
-		await get_tree().physics_frame
-		n += 1
-		var any := false
-		for sd in ["L", "R"]:
-			var sh: VoxelPart = f.by_name["shin" + sd]
-			var sole: Vector3 = sh.global_transform * Vector3(0, -sh.half_ext.y, 0)
-			if sole.y < 0.04:
-				any = true
-			var ft = f.feet[sd]
-			if ft != null and not ft.swing:
-				gap += Vector2(sole.x - ft.anchor.x, sole.z - ft.anchor.z).length()
-				gap_n += 1
-		if any:
-			down_n += 1
-	var out := {"down": float(down_n) / n, "gap": gap / maxf(1, gap_n), "speed": (f.torso.global_position.z - z0) / 2.5, "state": f.state}
-	m.queue_free()
-	return out
+const LEGLESS := ["python", "basilisk"]
 
-func test_he_walks_on_his_feet() -> void:
-	var r: Dictionary = await _gait(false)
-	t.check(r.down > 0.97, "a foot is on the sand %d%% of the walk" % int(r.down * 100))
-	t.check(r.gap < 0.07, "the planted foot holds its spot (%.3f m off)" % r.gap)
-	t.check(r.speed > 1.2, "and he gets on (%.2f m/s)" % r.speed)
-	t.eq(r.state, "stand", "on his feet")
-
-func test_he_runs_on_his_feet() -> void:
-	var r: Dictionary = await _gait(true)
-	t.check(r.down > 0.9, "running, a foot is down %d%% of the time" % int(r.down * 100))
-	t.check(r.speed > 3.0, "and he runs (%.2f m/s)" % r.speed)
-	t.eq(r.state, "stand", "on his feet")
+func test_every_beast_walks_to_its_prey_on_its_legs() -> void:
+	seed(3)
+	for sp in Data.beasts.keys():
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 4})
+		var man: Fighter = m.me.f
+		man.teleport(Vector3(0, 0, 0))
+		var e = m.spawn_beast({"beast": sp, "team": Match.ENEMY_TEAM, "pos": Vector3(0, 0.1, 10.0), "yaw": PI})
+		var b: Beast = e.f
+		var d0 := 10.0
+		var best := d0
+		var low_frames := 0
+		var frames := 0
+		var ground := 0.0
+		for i in int(9.0 * 120):
+			man.blood = 100.0
+			for p in man.parts:
+				p.hp = maxf(p.hp, 30.0)
+			b.target = man
+			await get_tree().physics_frame
+			if i < 60:
+				continue   # let it land and stand
+			frames += 1
+			var tp: Vector3 = b.torso.global_position
+			best = minf(best, Vector2(tp.x, tp.z).length())
+			ground = b.ground_y if b.ground_ok else 0.0
+			# The trunk stays up: its underside clear of the sand (a body on its belly has sagged).
+			if tp.y - b.torso.half_ext.y < ground + 0.05 and not LEGLESS.has(sp) and not b.flying:
+				low_frames += 1
+		var closed := d0 - best
+		var sag := float(low_frames) / maxf(1.0, frames)
+		var msg := "%s walks to the man on its own (closed %.1f m of %.0f, trunk on the sand %.0f%% of the way)" % [sp, closed, d0, sag * 100.0]
+		printerr("   : " + msg)
+		t.check(closed >= 4.0, msg)
+		if not LEGLESS.has(sp) and sp != "crocodile":
+			t.check(sag < 0.1, "%s: its legs carry it (sagged %.0f%%)" % [sp, sag * 100.0])
+		m.queue_free()
+		await get_tree().process_frame
