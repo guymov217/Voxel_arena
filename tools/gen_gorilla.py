@@ -6,15 +6,15 @@ legBL/BR (the legs, Lo the shins).  python3 tools/gen_gorilla.py
 """
 import json, math, random
 
-SCALE = 2.0
+SCALE = 2.5
 U = 0.0275 * SCALE          # one fine voxel in metres
 rng = random.Random(7)
 
-FUR = (0x64, 0x5d, 0x58)
-FUR_D = (0x34, 0x30, 0x2e)
-FUR_L = (0x8a, 0x82, 0x7b)
-GREY = (0xb6, 0xb2, 0xaa)
-GREY_D = (0x80, 0x7c, 0x76)
+FUR = (0x54, 0x52, 0x57)
+FUR_D = (0x30, 0x2f, 0x34)
+FUR_L = (0x74, 0x72, 0x78)
+GREY = (0xa6, 0xa2, 0x9c)
+GREY_D = (0x82, 0x7e, 0x78)
 SILVER = (0xc6, 0xc3, 0xbc)
 RED = (0x9a, 0x1c, 0x1c)
 RED_D = (0x6e, 0x12, 0x12)
@@ -86,7 +86,7 @@ for x in range(g[0]):
                 continue
             c = pelt(x, y, z)
             # The grey chest: a plate down the front, the two pectorals parted by a dark seam.
-            chest = front > 0.72 and 12 <= y <= 23 and abs(x - 13.5) < 8.5 - max(0, 17 - y) * 0.6
+            chest = front > 0.72 and 11 <= y <= 24 and abs(x - 13.5) < 9.5 - max(0, 16 - y) * 0.7
             if chest:
                 c = pelt(x, y, z, GREY, 4, 0.1)
                 if abs(x - 13.5) < 0.6 and 13 <= y <= 22:
@@ -104,64 +104,82 @@ for x in range(g[0]):
                 c = rgb(GOLD)
             add(body, x, y, z, c)
 
-# ---------------- head: small for the body and sunk between the shoulders, a crest on the
-# skull, a dark brow shelf over small amber eyes, a flat grey face with a broad nose, the mouth
-# open on long canines ----------------
-head = part("beastHead", "Gorilla head", [7, 7, 7], 45, "beastBody", [0, 0.25, 0.2], [0, -0.1, -0.11], [0, 0, 0],
+# ---------------- head: the face drawn as a map after the reference art (rows from the top):
+# a crest of fur, a heavy dark brow, a broad light-grey face narrowing to the chin, small
+# close-set amber eyes under the brow, a wide flat nose with its nostrils, the mouth a dark line
+# between the lips with the canines showing at its corners ----------------
+head = part("beastHead", "Gorilla head", [8, 8, 8], 50, "beastBody", [0, 0.25, 0.2], [0, -0.1, -0.06], [0, 0, 0],
             head=True, bite=True, jaw={"from": 0.55, "y": 0.3}, mult=1.3)
 g = head["grid"]
-FACE_Z = 10          # the plane of the cheeks; the brow and the nose stand out in front of it
+FACE_Z = 12          # the plane of the fur round the face; the face stands out in front of it
+FACE_MAP = [
+    ".....ffffff.....",
+    "...ffffffffff...",
+    "..ffffffffffff..",
+    ".fffBBBBBBBBfff.",
+    ".ffBBBBBBBBBBff.",
+    ".ffBGGGGGGGGBff.",
+    ".fGGeEGGGGEeGGf.",
+    ".fGGGGGNNGGGGGf.",
+    ".fGGGGNNNNGGGGf.",
+    ".fGGGnNNNNnGGGf.",
+    ".fGGLLLLLLLLGGf.",
+    ".fGGTMMMMMMTGGf.",
+    ".fGGGLLLLLLGGGf.",
+    "..fGGGGGGGGGGf..",
+    "...fGGGGGGGGf...",
+    "....ffffffff....",
+]
+FACE = (0x9a, 0x96, 0x92)
+LIP = (0xa8, 0xa4, 0x9e)
+NOSE = (0x5c, 0x58, 0x58)
+# Each mark: (colour, how many voxels proud of the fur plane; the fur plane itself is 0).
+FACE_KEY = {
+    "f": (None, 0), "B": (FUR_D, 2), "G": (FACE, 1), "e": (BLACK, 1), "E": (EYE, 1),
+    "N": (NOSE, 2), "n": (BLACK, 2), "L": (LIP, 2), "M": (BLACK, 2), "T": (BONE, 3),
+}
 for x in range(g[0]):
     for y in range(g[1]):
         for z in range(g[2]):
-            # The cranium: an egg, cut flat at the face and the chin.
-            cran = inside_ellipsoid(x, y, z, g, 6.6, 7.4, 6.4, cx=6.5, cy=7.0, cz=5.5) and z <= FACE_Z and y >= 1
-            # The sagittal crest along the top.
-            crest = abs(x - 6.5) < 2.0 - (y - 11) * 0.4 and 3 <= z <= 9 and 11 <= y <= 14 and inside_ellipsoid(x, y, z, g, 6.6, 9.4, 6.6, cx=6.5, cy=7.0, cz=5.5)
-            # The brow: a shelf of dark fur jutting over the eyes.
-            brow = 8 <= y <= 9 and 2 <= x <= 11 and FACE_Z <= z <= FACE_Z + 2 and not (z == FACE_Z + 2 and (x < 3 or x > 10))
-            # The face: a flat grey plate from the brow to the chin, a voxel ahead of the cheeks.
-            face = 1 <= y <= 7 and 3 <= x <= 10 and z == FACE_Z + 1 and not (y <= 1 and x in (3, 10)) and not (y == 7 and x in (3, 4, 9, 10))
-            # The nose: a broad flat bump between the eyes and the mouth.
-            nose = 4 <= y <= 5 and 4 <= x <= 9 and z == FACE_Z + 2 and not (y == 5 and x in (4, 9))
-            # The cheeks and the sides of the face, at the face plane.
-            cheek = 1 <= y <= 9 and 1 <= x <= 12 and z == FACE_Z
-            # The lower jaw back to the throat.
-            jaw = 1 <= y <= 3 and 4 <= x <= 9 and 6 <= z < FACE_Z
-            ear = 5 <= y <= 7 and 4 <= z <= 7 and (x == 0 or x == g[0] - 1)
-            if not (cran or crest or brow or face or nose or cheek or jaw or ear):
+            if z >= FACE_Z:
+                row = FACE_MAP[g[1] - 1 - y]
+                mark = row[x]
+                if mark == ".":
+                    continue
+                col, depth = FACE_KEY[mark]
+                d = z - FACE_Z
+                if d > depth:
+                    continue
+                if col is None:
+                    c = pelt(x, y, z, FUR_D if 3 <= y <= 12 else FUR, 2, 0.18)   # the fur frame
+                elif mark == "B" and d < depth:
+                    c = fur(FUR_D, 0.06)
+                elif mark in ("G", "L") and d < depth:
+                    c = fur(FACE, 0.05)
+                elif mark in ("N", "n", "M") and d < depth:
+                    c = fur(FACE, 0.05)
+                elif mark == "T" and d < depth:
+                    c = rgb(BLACK) if d == 2 else fur(FACE, 0.05)
+                elif mark == "E" or mark == "e":
+                    c = rgb(col)
+                else:
+                    c = rgb(col) if mark in ("n", "M", "T") else fur(col, 0.05)
+                add(head, x, y, z, c, 1 if d >= 1 and mark in ("E", "e", "T", "n") else 0)
                 continue
-            if nose:
-                c = rgb((0x5a, 0x56, 0x52))
-            elif face:
-                c = fur(GREY if y >= 1 else GREY_D, 0.06)
-                if 1 <= y <= 3 and 4 <= x <= 9:
-                    c = rgb(BLACK)          # the mouth, open
-                    if y == 3 and 5 <= x <= 8:
-                        c = rgb(BONE)       # the upper teeth
-                    if y == 1 and 5 <= x <= 8:
-                        c = rgb((0x7a, 0x22, 0x26))   # the tongue
-            elif brow:
-                c = fur(FUR_D, 0.05)
-            elif cheek:
-                c = fur(GREY_D, 0.08) if 3 <= x <= 10 and y <= 7 else pelt(x, y, z, FUR_D, 2, 0.15)
-            elif ear:
-                c = fur(FUR_D, 0.05)
-            elif crest:
+            # The cranium behind the face: an egg, the sagittal crest along the top.
+            cran = inside_ellipsoid(x, y, z, g, 7.6, 8.4, 7.4, cx=7.5, cy=7.0, cz=6.0)
+            crest = abs(x - 7.5) < 2.2 - max(0, y - 13) * 0.6 and 2 <= z <= 10 and 13 <= y <= 15 and inside_ellipsoid(x, y, z, g, 7.6, 10.4, 7.6, cx=7.5, cy=7.0, cz=6.0)
+            jaw = 0 <= y <= 4 and abs(x - 7.5) < 4.5 and 6 <= z < FACE_Z
+            ear = 6 <= y <= 8 and 3 <= z <= 7 and (x == 0 or x == g[0] - 1)
+            if not (cran or crest or jaw or ear):
+                continue
+            if ear or crest:
                 c = fur(FUR_D, 0.06)
+            elif jaw and not cran:
+                c = fur(GREY_D, 0.05)
             else:
                 c = pelt(x, y, z, FUR, 2, 0.2)
             add(head, x, y, z, c)
-# The eyes: small, amber, deep under the brow (the socket row is left open at the face plate).
-for x in (3, 4, 9, 10):
-    add(head, x, 7, FACE_Z + 1, rgb(EYE) if x in (4, 9) else rgb(BLACK), 1)
-# Nostrils: two dark pits at the foot of the nose.
-for x in (5, 8):
-    add(head, x, 4, FACE_Z + 3, rgb(BLACK), 1)
-# Teeth: a row of small teeth in the gape, and the canines, long, at the corners of the mouth.
-for x in (4, 9):
-    for y in (3, 2):
-        add(head, x, y, FACE_Z + 2, rgb(BONE), 1)
 
 # ---------------- arms: long, thick, from the shoulders to fists on the sand ----------------
 def limb(name, label, dims, mass, parent, pa, ca, fist=False, lower=False, splay=0):
