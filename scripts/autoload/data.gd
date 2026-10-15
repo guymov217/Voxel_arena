@@ -88,7 +88,7 @@ func stage(n: int, players: int = 1) -> Dictionary:
 ## from the stage, or a pack of the beast), and a boss comes alone, the tougher for each friend.
 ## From the fifth bout every other man's stage is a pack: two of the stage's gladiators at once,
 ## three from the eleventh, so a bout is not always one on one.
-const LADDER_BEASTS := ["wolf", "boar", "hyena", "goat", "lion", "bear", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
+const LADDER_BEASTS := ["wolf", "boar", "hyena", "lion", "bear", "gorilla", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var rounds: Array = st.get("rounds", [])
 	if rounds.is_empty():
@@ -101,7 +101,8 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 			if en.get("boss", false):
 				foe = en.duplicate(true)
 	if foe.is_empty() and n % 3 == 0:
-		var bid: String = LADDER_BEASTS[mini(n / 3 - 1, LADDER_BEASTS.size() - 1)]
+		# (The beasts come in order over the beast stages; a boss stage in between skips none.)
+		var bid: String = LADDER_BEASTS[mini(n / 3 - 1 - n / 12, LADDER_BEASTS.size() - 1)]
 		if beasts.has(bid):
 			foe = {"beast": bid, "gear": gear}
 	if foe.is_empty():

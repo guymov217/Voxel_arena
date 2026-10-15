@@ -1126,6 +1126,8 @@ func _on_hit(h: Dictionary) -> void:
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
+	elif h.get("rend", false):
+		feed.emit("%s TEARS %s APART!" % [h.attacker.display_name, h.char.display_name])
 	elif h.res.get("severed", []).size() > 0:
 		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
 	if Sfx:

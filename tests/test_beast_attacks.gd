@@ -149,3 +149,26 @@ func test_the_ostrich_winds_up_and_hops_into_its_kick() -> void:
 	t.check(wound[0], "every strike is wound up first")
 	t.check(hopped[0], "it hopped into its kick")
 	s[0].queue_free()
+
+func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
+	seed(12)
+	var s = _setup("gorilla", 2.4)
+	var b: Beast = s[2]
+	t.check(b.legs.size() == 4 and b.by_name.has("legFLLo"), "an ape on four limbs, fists and feet")
+	var hugged := [false]
+	var rent := [false]
+	var punches := [0]
+	s[0].combat.hit.connect(func(h):
+		if h.attacker == b and h.char == s[1]:
+			if h.get("rend", false):
+				rent[0] = true
+			if h.type == "blunt" and h.get("att_part") != null and String(h.att_part.part_name).begins_with("legF"):
+				punches[0] += 1)
+	await _run(s[0], s[1], b, 16.0, func(_i):
+		if b.hug != null:
+			hugged[0] = true)
+	t.check(hugged[0], "it took hold of him")
+	t.check(rent[0], "and tore him in two")
+	var off: int = s[1].parts.filter(func(p): return p.severed).size()
+	t.check(off >= 2, "an arm and a leg came away (%d parts off)" % off)
+	s[0].queue_free()

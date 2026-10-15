@@ -32,7 +32,7 @@ func _cut(b: Beast, n: String) -> void:
 	b.detach_limb(b.by_name[n], {"removed": [], "severed": []})
 
 const ANATOMY := {
-	"lion": [1, 4, 0], "wolf": [1, 4, 0], "boar": [1, 4, 0], "bear": [1, 4, 0], "goat": [1, 4, 0], "elephant": [1, 4, 0],
+	"lion": [1, 4, 0], "wolf": [1, 4, 0], "boar": [1, 4, 0], "bear": [1, 4, 0], "goat": [1, 4, 0], "elephant": [1, 4, 0], "gorilla": [1, 4, 0],
 	"tiger": [1, 4, 0], "hyena": [1, 4, 0], "rat": [1, 4, 0], "crocodile": [1, 4, 0], "bull": [1, 4, 0], "rhino": [1, 4, 0],
 	"python": [1, 0, 0], "ostrich": [1, 2, 2], "mammoth": [1, 4, 0], "scorpion": [1, 8, 0], "spider": [1, 8, 0],
 	"cerberus": [3, 4, 0], "hydra": [5, 4, 0], "griffin": [1, 4, 2], "chimera": [3, 4, 0], "manticore": [1, 4, 2],

@@ -5,7 +5,7 @@ class_name Voices
 const KINDS := ["grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar"]
 
 const CALLS := {
-	"lion": "roar", "tiger": "roar", "bear": "roar", "wolf": "growl", "hyena": "growl", "rat": "screech",
+	"lion": "roar", "tiger": "roar", "bear": "roar", "gorilla": "roar", "wolf": "growl", "hyena": "growl", "rat": "screech",
 	"boar": "growl", "bull": "growl", "rhino": "growl", "goat": "screech",
 	"crocodile": "hiss", "python": "hiss", "basilisk": "hiss", "scorpion": "hiss", "spider": "hiss",
 	"elephant": "trumpet", "mammoth": "trumpet",

@@ -332,6 +332,12 @@ func _blow(g: Dictionary) -> Dictionary:
 		hardness = 0.4
 		attacker = att.wielder if att.wielder else att.thrown_by
 		thrown = att.wielder == null
+	elif bite and att.def.get("fist", false):
+		# A gorilla's fist: a club of bone and muscle, blunt and heavy.
+		typ = "blunt"
+		hardness = 0.5
+		heavy = maxf(heavy, 0.5)
+		attacker = att.fighter
 	elif bite and att.def.get("claw", false):
 		# A paw's claws rake like knives: a cut along the swing, as deep as the blow drives it.
 		typ = "edge"
@@ -351,11 +357,11 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var was_alive: bool = vic_char.alive
 	# A bite takes a mouthful: the teeth close on a lump the size of the jaws, and tear it out.
-	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 and not att.def.get("claw", false) else 0.0
+	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 and not att.def.get("claw", false) and not att.def.get("fist", false) else 0.0
 	var thrust_k := 0.0
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "wsz": att.wscale if is_weapon else float(attacker.S) if attacker and "S" in attacker else 1.0})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:

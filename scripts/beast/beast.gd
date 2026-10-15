@@ -483,7 +483,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						ai.bite_cool = 1.2
 				else:
 					want = to * float(sp.speed) * hurt
-					if species == "bear" and dist < 1.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
+					if (species == "bear" or species == "gorilla") and dist < 1.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
 						ai.rear = 1.15
 						ai.rear_cool = 4.0 + rng.randf() * 2.0
 						ai.slammed = false
@@ -512,7 +512,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					ai.charge_t = 2.2
 					if on_roar.is_valid():
 						on_roar.call(self)
-				var spd := float(sp.speed) * (2.8 if float(ai.charge_t) > 0.0 else 1.5)
+				var spd := float(sp.speed) * (2.5 if float(ai.charge_t) > 0.0 else 1.5)
 				want = to * spd * hurt
 				yaw = atan2(to.x, to.z)
 			if t and float(ai.get("charge_t", 0.0)) <= 0.0 and dist < 3.2 * S * 0.6 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
@@ -528,7 +528,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			_trample(dt, lv)
 	var moving := want.length_squared() > 0.05
 	if grounded and stagger < 0.5 and not down:
-		var kk := ((5.0 if float(ai.get("charge_t", 0.0)) > 0.0 else 3.0) if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
+		var kk := ((4.5 if float(ai.get("charge_t", 0.0)) > 0.0 else 3.0) if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
 		torso.apply_central_impulse(Vector3(want.x - lv.x, 0, want.z - lv.z) * mass * kk * dt)
 	_abilities(dt, t, to, dist, cur)
 	_animate(dt, moving, yaw_rate, to, dist, cur)
@@ -730,11 +730,57 @@ func _squeeze(dt: float) -> void:
 		var p: Vector3 = tgt.torso.global_position
 		tgt.apply_hit(tgt.torso, {"impulse": 7.0, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": Vector3.DOWN})
 		tgt.last_attacker = self
+	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and the man is
+	# torn in two.
+	if species == "gorilla" and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
+		hug.rent = true
+		_rend(tgt)
+		hug = null
+		ai.bite_cool = 4.0
+		ai.mode = "recover"
+		ai.t = 2.0
+		return
 	if hug.t <= 0.0 or not tgt.alive or stagger > hug.stagger0 + 0.35 or front_fn() < 0.3 or not part_ok(head, 0.1):
 		hug = null
 		ai.bite_cool = 3.0
 		ai.mode = "recover"
 		ai.t = 1.5
+
+## Torn in two: the held arm and the leg across from it come away, the trunk is wrenched open
+## between them, and what is left is flung down.
+func _rend(tgt) -> void:
+	var was: bool = tgt.alive
+	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	var torn := []
+	var side := "R" if tgt.arm.R.upper.global_position.distance_to(head.global_position) < tgt.arm.L.upper.global_position.distance_to(head.global_position) else "L"
+	var arm: VoxelPart = tgt.arm[side].upper
+	if not arm.severed:
+		tgt.detach_limb(arm, res)
+		torn.append(arm)
+	var leg: VoxelPart = tgt.by_name.get("thighL" if side == "R" else "thighR")
+	if leg and not leg.severed:
+		tgt.detach_limb(leg, res)
+		torn.append(leg)
+	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
+	for p in torn:
+		var s := 1.0 if p == arm else -1.0
+		p.linear_velocity = Vector3(fwd.z, 0, -fwd.x) * s * 5.0 + Vector3(0, 3.0, 0)
+		p.angular_velocity = Vector3(6, 2, 4) * s
+	var J := 40.0
+	var point: Vector3 = tgt.torso.global_position
+	var r2: Dictionary = tgt.apply_hit(tgt.torso, {"impulse": J, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "point": point, "dir": Vector3.DOWN, "axis": Vector3.RIGHT, "edge": Vector3.DOWN, "heavy": 1.0, "wsz": 2.0})
+	for k in ["removed", "severed"]:
+		r2[k] = r2.get(k, []) + res[k]
+	tgt.last_attacker = self
+	tgt.fall(4.0, true)
+	tgt.stagger = 1.0
+	for p in tgt.parts:
+		if not p.severed:
+			p.linear_velocity = fwd * 4.0 + Vector3(0, -2.0, 0)
+	if Combat.current:
+		Combat.current.hit.emit({"kind": "hit", "att_part": head, "p": point, "dir": Vector3.DOWN, "J": J, "type": "edge", "char": tgt, "part": tgt.torso, "attacker": self, "res": r2, "killed": was and not tgt.alive, "rend": true})
+	if on_strike.is_valid():
+		on_strike.call(self, head)
 
 ## A crocodile's jaws close on a limb and do not let go: it rolls on its length with the limb
 ## held, wrenching it round until it comes away. He is dragged down and held while it rolls;
@@ -1372,7 +1418,8 @@ func _strike_go(p: VoxelPart) -> void:
 		var lo := lower_of(p)
 		if lo:
 			lo.def["bite"] = true
-			lo.def["claw"] = SWIPERS.has(species)
+			lo.def["claw"] = SWIPERS.has(species) and species != "gorilla"
+			lo.def["fist"] = species == "gorilla"   # a punch, not a rake
 		# The ostrich kicks with a hop: both feet off the sand for the blow.
 		if species == "ostrich" and ground_ok:
 			var m := live_mass()
@@ -1444,7 +1491,7 @@ func _tick_strikes(dt: float) -> void:
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)
 
-const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich"]
+const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich", "gorilla"]
 
 ## The attacks each body can still make, each needing the parts it is made with.
 func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
