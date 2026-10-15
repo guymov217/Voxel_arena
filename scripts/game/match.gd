@@ -377,8 +377,17 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 		mods[k] = g.mods[k]
 	for k in en.get("mods", {}):
 		mods[k] = en.mods[k]
-	return {"kind": "bot", "name": nm, "loadout": {"main": main, "off": off, "armor": armor}, "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": mods,
+	var spec := {"kind": "bot", "name": nm, "loadout": {"main": main, "off": off, "armor": armor}, "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": mods,
 		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)), "color": t.get("color"), "boss": en.get("boss", false)}
+	# The giants of myth look the part (MonsterLook): one eye, a bull's head, tusks, a crown.
+	var look := MonsterLook.look_of(String(en.get("e", "")))
+	if look != "":
+		mods["look"] = look
+		spec["skin"] = MonsterLook.SKIN[look]
+		for id in MonsterLook.WEARS[look]:
+			if not armor.has(id):
+				armor.append(id)
+	return spec
 
 func _spawn_round(r: int) -> void:
 	round = r

@@ -104,3 +104,25 @@ func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
 	var boss := Data.stage(4, 3)
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
 	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")
+
+func test_the_giants_of_myth_look_the_part() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var cy: Dictionary = m.enemy_spec({"e": "cyclops"}, 0, 1)
+	t.eq(String(cy.mods.get("look", "")), "cyclops", "the Cyclops has his look")
+	var mino: Dictionary = m.enemy_spec({"e": "minotaur"}, 0, 1)
+	t.check(mino.loadout.armor.has("mon_horns") and mino.loadout.armor.has("mon_muzzle"), "the Minotaur wears a bull's head")
+	t.check(m.enemy_spec({"e": "troll"}, 0, 1).loadout.armor.has("mon_tusks"), "the troll has tusks")
+	mino.pos = Vector3(3, 0.1, 3)
+	var e = m.spawn_fighter(mino)
+	t.check(e.f.head.get_node_or_null("Armor_mon_horns") != null, "and the horns are on his head")
+	cy.pos = Vector3(-3, 0.1, 3)
+	var c = m.spawn_fighter(cy)
+	var white := 0
+	for i in c.f.head.fx.size():
+		var col: Color = c.f.head.colors[i]
+		if col.r > 0.85 and col.g > 0.85 and col.b > 0.8 and c.f.head.fy[i] >= 5 and c.f.head.fy[i] <= 8:
+			white += 1
+	t.check(white >= 8, "one great eye in the middle of his brow (%d)" % white)
+	m.queue_free()

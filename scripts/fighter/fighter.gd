@@ -247,6 +247,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			_add_armor(p, id)
 	if opts.get("body") is Dictionary:
 		apply_body(opts.body)
+	if String(mods.get("look", "")) != "":
+		MonsterLook.paint_face(self, String(mods.look))
 	var main = loadout.get("main")
 	var off = loadout.get("off")
 	# A blade arm carries its own blade; a hook carries nothing.

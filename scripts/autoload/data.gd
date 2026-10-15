@@ -44,6 +44,7 @@ func load_all() -> void:
 	armor = _read("armor")
 	# The armourer's newer pieces, shaped round this body.
 	armor.merge(Armory.extra(body_parts))
+	armor.merge(MonsterLook.PIECES)
 	beasts = _read("beasts")
 	Anatomy.dress_beasts(beasts)
 	campaign = _read("campaign")
