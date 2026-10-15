@@ -16,7 +16,37 @@ func test_who_cries_what() -> void:
 	t.eq(Voices.hurt_call(e.f, 30.0, false), "trumpet", "and trumpets when hurt")
 	t.eq(Voices.beast_call("python"), "hiss", "a python hisses")
 	t.check(Voices.pitch_of(e.f) < Voices.pitch_of(man) * 0.8, "the elephant's throat is deeper (%.2f vs %.2f)" % [Voices.pitch_of(e.f), Voices.pitch_of(man)])
+	t.eq(Voices.file_key(e.f, "hurt"), "elephant_hurt", "the elephant's own rendered cry")
+	t.eq(Voices.file_key(e.f, "grave"), "elephant_call", "a beast's grave cry is its call")
+	t.eq(Voices.file_key(man, "grave"), "man_scream", "a man's grave cry is a scream")
+	t.eq(Voices.file_key(man, "effort"), "man_effort", "and his swing an effort")
+	man.mods["voice"] = "minotaur"
+	t.eq(Voices.file_key(man, "effort"), "minotaur_call", "a minotaur bellows with his own voice")
+	t.eq(Voices.file_key(man, "grunt"), "minotaur_hurt", "and is hurt in it")
+	t.eq(Voices.file_key(man, "death"), "minotaur_death", "and dies in it")
+	t.check(is_equal_approx(Voices.pitch_of_species(man), Voices.pitch_of(man)), "a giant's rendered voice is not shifted again")
+	man.mods.erase("voice")
 	m.queue_free()
+
+func test_every_voice_is_rendered() -> void:
+	var keys := []
+	for sp in Data.beasts.keys():
+		for ev in ["call", "hurt", "death"]:
+			keys.append("%s_%s" % [sp, ev])
+	for g in Voices.GIANTS:
+		for ev in ["call", "hurt", "death"]:
+			keys.append("%s_%s" % [g, ev])
+	for ev in ["effort", "grunt", "pain", "scream", "death"]:
+		keys.append("man_" + ev)
+	var missing := []
+	for k in keys:
+		for i in range(1, Sfx.TAKES + 1):
+			var path := Sfx.VOICE_DIR + "%s_%d.ogg" % [k, i]
+			if not (ResourceLoader.exists(path) or FileAccess.file_exists(path)):
+				missing.append(path)
+	t.check(missing.is_empty(), "every voice has its three takes (%d keys); missing: %s" % [keys.size(), str(missing.slice(0, 6))])
+	var st := Sfx._voice_stream("lion_call")
+	t.check(st != null, "a rendered voice loads as a stream")
 
 func test_every_call_is_a_shaped_sound() -> void:
 	for kind in Voices.KINDS:

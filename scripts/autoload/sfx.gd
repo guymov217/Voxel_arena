@@ -270,14 +270,38 @@ func _voice_sample(kind: String, t: float, rng: RandomNumberGenerator, take: int
 
 var _vlp := 0.0
 
+## The rendered voices (art/audio/voices, built by tools/build_voices.py from CC0 recordings, see
+## art/CREDITS.md): "<species>_<call>", "man_<call>" or "<giant>_<call>", three takes each. Loaded once; a missing one plays the on-the-fly voice instead.
+const VOICE_DIR := "res://art/audio/voices/"
+var _voices := {}
+
+func _voice_stream(key: String) -> AudioStream:
+	if _voices.has(key):
+		var takes: Array = _voices[key]
+		return takes[randi() % takes.size()] if not takes.is_empty() else null
+	var takes := []
+	for i in range(1, TAKES + 1):
+		var path := VOICE_DIR + "%s_%d.ogg" % [key, i]
+		var st: AudioStream = null
+		if ResourceLoader.exists(path):
+			st = load(path)
+		elif FileAccess.file_exists(path):
+			st = AudioStreamOggVorbis.load_from_file(path)
+		if st:
+			takes.append(st)
+	_voices[key] = takes
+	return takes[randi() % takes.size()] if not takes.is_empty() else null
+
 ## A character's voice: `pitch` 1.0 for a man, lower for the big (a giant at 0.6, an elephant at
-## 0.5), higher for the small.
-func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0) -> void:
+## 0.5), higher for the small. `file` names a rendered voice ("lion_call"); without one, or
+## without the file, the voice is made on the fly from `kind`.
+func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0, file := "") -> void:
 	if _players.is_empty() or gain < 0.05:
 		return
 	for p in _players:
 		if not p.playing:
-			p.stream = _make(kind, randi() % TAKES)
+			var st: AudioStream = _voice_stream(file) if file != "" else null
+			p.stream = st if st else _make(kind, randi() % TAKES)
 			p.global_position = at
 			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + randf_range(-1.5, 1.5)
 			p.pitch_scale = clampf(pitch * randf_range(0.92, 1.08), 0.3, 3.0)

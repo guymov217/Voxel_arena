@@ -13,6 +13,15 @@ const CALLS := {
 	"cerberus": "roar", "hydra": "roar", "chimera": "roar", "manticore": "roar", "dragon": "roar",
 }
 
+## The giants of myth with a rendered voice of their own (mods.voice, set for a boss).
+const GIANTS := ["cyclops", "giant", "minotaur", "troll", "titan"]
+
+static func giant_voice(f) -> String:
+	var mods = f.get("mods")
+	if mods is Dictionary and GIANTS.has(String(mods.get("voice", ""))):
+		return String(mods.voice)
+	return ""
+
 static func beast_call(species: String) -> String:
 	return CALLS.get(species, "growl")
 
@@ -28,6 +37,16 @@ static func pitch_of(f) -> float:
 		p *= 0.92 + 0.16 * fmod(float(f.skin.r) * 7.0 + float(f.skin.g) * 13.0, 1.0)
 	return clampf(p, 0.4, 2.2)
 
+## The depth a species' rendered voice was made at: its usual size (the files are only shifted
+## for a beast scaled away from it, or a giant of a man).
+static func pitch_of_species(f) -> float:
+	if f.get("kind") == "beast":
+		var base: float = float(Data.beasts.get(String(f.species), {}).get("scale", f.get("S")))
+		return clampf(1.1 / sqrt(maxf(0.4, base)), 0.4, 2.2)
+	if giant_voice(f) != "":
+		return pitch_of(f)  # rendered at his own depth already
+	return 1.0
+
 ## What one cries when struck: a man a grunt or a cry, a scream for a lost limb or a death blow;
 ## a beast its own call (a sting of pain for the small ones).
 static func hurt_call(f, J: float, grave: bool) -> String:
@@ -37,6 +56,21 @@ static func hurt_call(f, J: float, grave: bool) -> String:
 	if grave:
 		return "scream"
 	return "pain" if J > 11.0 else "grunt"
+
+## The rendered voice for an event: "lion_call", "elephant_hurt", "man_scream"...
+static func file_key(f, event: String) -> String:
+	if f.get("kind") == "beast":
+		return "%s_%s" % [String(f.species), event if ["call", "hurt", "death"].has(event) else "call"]
+	var g := giant_voice(f)
+	if g != "":
+		return "%s_%s" % [g, "death" if event == "death" else ("call" if ["call", "effort"].has(event) else "hurt")]
+	match event:
+		"call", "effort": return "man_effort"
+		"grunt": return "man_grunt"
+		"hurt": return "man_pain"
+		"grave": return "man_scream"
+		"death": return "man_death"
+	return "man_grunt"
 
 static func death_call(f) -> String:
 	if f.get("kind") == "beast":
