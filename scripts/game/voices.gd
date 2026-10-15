@@ -57,22 +57,21 @@ static func hurt_call(f, J: float, grave: bool) -> String:
 		return "scream"
 	return "pain" if J > 11.0 else "grunt"
 
-## Which of the three men's throats a fighter has, by his look: the big and the dark-skinned
-## speak from the heavy one, the small and the fair from the light one, the rest from the
-## middle, so a face and its voice go together.
+## Which of the three men's throats a fighter has: by his size first (a big man speaks from
+## the heavy one, a small one from the light), and among men of a size by chance, fixed for
+## each man (his name and his colours), so he sounds the same every time he is met.
 static func throat_of(f) -> String:
 	var s: float = float(f.get("S")) if f.get("S") != null else 1.0
 	if s >= 1.15:
 		return "man_heavy"
 	if s <= 0.9:
 		return "man_light"
+	var h := hash(String(f.get("display_name")))
 	if f.get("skin") is Color:
-		var lum: float = f.skin.get_luminance()
-		var h := fmod(float(f.skin.r) * 7.0 + float(f.skin.g) * 13.0 + float(f.skin.b) * 3.0, 1.0)
-		if lum < 0.3 or (lum < 0.45 and h < 0.5):
-			return "man_heavy"
-		if lum > 0.62 or (lum > 0.5 and h > 0.6):
-			return "man_light"
+		h = hash([h, f.skin.to_html()])
+	match absi(h) % 3:
+		0: return "man_light"
+		1: return "man_heavy"
 	return "man_mid"
 
 ## The rendered voice for an event: "lion_call", "elephant_hurt", "man_mid_scream"...
