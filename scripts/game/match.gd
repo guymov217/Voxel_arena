@@ -1051,6 +1051,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	over = true
 	if Sfx.music and not headless and not attract:
 		Sfx.music.set_state("victory" if won else "off")
+		music_hot = false
 	_banner(text, sub)
 	var wear := my_wear()
 	var result := {"won": won, "stage": stage, "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
@@ -1131,11 +1132,28 @@ func _on_hit(h: Dictionary) -> void:
 		Sfx.play("slash" if h.type == "edge" else ("stab" if h.type == "point" else "thud"), h.p, minf(1.0, h.J / 30.0))
 	if role != "guest":
 		_voices_on_hit(h)
+	_music_tick()
 	if role == "host" and h.get("chip", {}).get("indices", []).size() > 0:
 		_send_weapon_vox(h.weapon, h.chip.indices)
 
 ## Who cries out at a blow: the one struck (a grunt of pain, a scream for a limb lost or a
 ## death blow, a beast's own call), and the one who dealt a heavy one (the effort).
+## The music rises to the end of a fight: when the last foe or you are near the end, the boss
+## loop (faster, the horn on top) takes over the fight's.
+var music_hot := false
+func _music_tick() -> void:
+	if Sfx.music == null or headless or attract or over or mode == "yard" or mode == "training":
+		return
+	var foes := enemies().filter(func(e): return e.f.alive and not e.get("harmless", false))
+	var hot := false
+	if foes.size() == 1 and foes[0].f.vitality() < 0.35:
+		hot = true
+	if me and is_instance_valid(me.f) and me.f.alive and me.f.blood < 30.0:
+		hot = true
+	if hot and not music_hot:
+		music_hot = true
+		Sfx.music.set_state("boss")
+
 func _voices_on_hit(h: Dictionary) -> void:
 	var c = h.get("char")
 	var J := float(h.get("J", 0.0))
