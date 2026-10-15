@@ -250,6 +250,14 @@ func _receive(type: String, data, from: int) -> void:
 					peers[from] = info
 					peer_joined.emit(from, info)
 				return
+			"vc":
+				# A guest's voice: on to the other guests, and heard here.
+				if data is PackedByteArray and data.size() <= 4096:
+					for id in peers:
+						if int(id) != from:
+							send_to(int(id), "vc", {"f": from, "d": data}, false)
+					message.emit(type, data, from)
+				return
 			"input":
 				if data is Array:
 					var nu := PlayerInput.unpack(data)

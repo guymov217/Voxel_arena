@@ -111,6 +111,9 @@ func _ready() -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(ver)
 	Net.message.connect(_on_net)
+	var vc := VoiceChat.new()
+	vc.menu = self
+	add_child(vc)
 	Net.peer_joined.connect(func(id, _info):
 		if Net.is_host():
 			Net.send_to(int(id), "purse", coins())

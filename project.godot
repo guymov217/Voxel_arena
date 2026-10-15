@@ -25,6 +25,10 @@ window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[audio]
+
+driver/enable_input=true
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
