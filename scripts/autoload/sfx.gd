@@ -273,7 +273,7 @@ func _voice_sample(kind: String, t: float, rng: RandomNumberGenerator, take: int
 var _vlp := 0.0
 
 ## The rendered voices (art/audio/voices, built by tools/build_voices.py from CC0 recordings, see
-## art/CREDITS.md): "<species>_<call>", "man_<call>" or "<giant>_<call>", three takes each. Loaded once; a missing one plays the on-the-fly voice instead.
+## art/CREDITS.md): "<species>_<call>", "man_<throat>_<call>" (light, mid, heavy; six takes) or "<giant>_<call>", three takes each. Loaded once; a missing one plays the on-the-fly voice instead.
 const VOICE_DIR := "res://art/audio/voices/"
 var _voices := {}
 

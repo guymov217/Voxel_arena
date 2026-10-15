@@ -57,20 +57,39 @@ static func hurt_call(f, J: float, grave: bool) -> String:
 		return "scream"
 	return "pain" if J > 11.0 else "grunt"
 
-## The rendered voice for an event: "lion_call", "elephant_hurt", "man_scream"...
+## Which of the three men's throats a fighter has, by his look: the big and the dark-skinned
+## speak from the heavy one, the small and the fair from the light one, the rest from the
+## middle, so a face and its voice go together.
+static func throat_of(f) -> String:
+	var s: float = float(f.get("S")) if f.get("S") != null else 1.0
+	if s >= 1.15:
+		return "man_heavy"
+	if s <= 0.9:
+		return "man_light"
+	if f.get("skin") is Color:
+		var lum: float = f.skin.get_luminance()
+		var h := fmod(float(f.skin.r) * 7.0 + float(f.skin.g) * 13.0 + float(f.skin.b) * 3.0, 1.0)
+		if lum < 0.3 or (lum < 0.45 and h < 0.5):
+			return "man_heavy"
+		if lum > 0.62 or (lum > 0.5 and h > 0.6):
+			return "man_light"
+	return "man_mid"
+
+## The rendered voice for an event: "lion_call", "elephant_hurt", "man_mid_scream"...
 static func file_key(f, event: String) -> String:
 	if f.get("kind") == "beast":
 		return "%s_%s" % [String(f.species), event if ["call", "hurt", "death"].has(event) else "call"]
 	var g := giant_voice(f)
 	if g != "":
 		return "%s_%s" % [g, "death" if event == "death" else ("call" if ["call", "effort"].has(event) else "hurt")]
+	var t := throat_of(f)
 	match event:
-		"call", "effort": return "man_effort"
-		"grunt": return "man_grunt"
-		"hurt": return "man_pain"
-		"grave": return "man_scream"
-		"death": return "man_death"
-	return "man_grunt"
+		"call", "effort": return t + "_effort"
+		"grunt": return t + "_grunt"
+		"hurt": return t + "_pain"
+		"grave": return t + "_scream"
+		"death": return t + "_death"
+	return t + "_grunt"
 
 static func death_call(f) -> String:
 	if f.get("kind") == "beast":

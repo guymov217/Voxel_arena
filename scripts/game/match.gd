@@ -1214,20 +1214,21 @@ func _voices_on_hit(h: Dictionary) -> void:
 	var c = h.get("char")
 	var J := float(h.get("J", 0.0))
 	# A man cries out for a blow that hurts, not for every touch: a quiet grunt for a light one,
-	# a cry for a heavy one, and not again within the second unless it is a limb or his life.
-	if c is Fighter and is_instance_valid(c) and J > 7.0:
+	# a short cry for a heavy one, and not again for a couple of seconds unless it is a limb or
+	# his life. Quiet, and seldom: the fight is heard in the blows, not in the men.
+	if c is Fighter and is_instance_valid(c) and J > 9.0:
 		var severed: bool = not h.res.get("severed", []).is_empty()
 		var grave: bool = severed or bool(h.get("killed", false))
 		var since: float = time - float(c.get_meta("voice_t", -9.0))
-		var recent: bool = since < (1.1 if J > 11.0 else 1.6)
+		var recent: bool = since < (1.8 if J > 14.0 else 2.4)
 		if (c.alive or h.get("killed", false)) and (not recent or grave):
 			c.set_meta("voice_t", time)
-			var gain := 0.9 if grave else clampf(0.25 + J / 60.0, 0.3, 0.7)
-			say(c, Voices.hurt_call(c, J, grave), gain, "grave" if grave else ("hurt" if J > 11.0 else "grunt"))
+			var gain := 0.7 if grave else clampf(0.2 + J / 80.0, 0.25, 0.5)
+			say(c, Voices.hurt_call(c, J, grave), gain, "grave" if grave else ("hurt" if J > 14.0 else "grunt"))
 	var a = h.get("attacker")
-	if a is Fighter and is_instance_valid(a) and a.alive and a.kind != "beast" and J > 16.0 and time - float(a.get_meta("effort_t", -9.0)) > 1.2:
+	if a is Fighter and is_instance_valid(a) and a.alive and a.kind != "beast" and J > 18.0 and time - float(a.get_meta("effort_t", -9.0)) > 2.5:
 		a.set_meta("effort_t", time)
-		say(a, "grunt", 0.45, "effort")
+		say(a, "grunt", 0.3, "effort")
 
 ## A coated weapon's blow: a burning one sets alight what it strikes, venom poisons (only a cut
 ## or a stab lets it in), frost slows and saps the breath. Not more than twice a second on a man.
@@ -1291,7 +1292,7 @@ func _on_death(f: Fighter, cause: String) -> void:
 	feed.emit("%s is %s" % [f.display_name, "dead" if cause != "decap" else "beheaded"])
 	if role != "guest" and cause != "decap" and time - float(f.get_meta("voice_t", -9.0)) > 0.2:
 		f.set_meta("voice_t", time)
-		say(f, Voices.death_call(f), 1.1, "death")
+		say(f, Voices.death_call(f), 0.8 if f.kind != "beast" else 1.1, "death")
 
 func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array) -> void:
 	if role != "host":

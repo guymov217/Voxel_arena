@@ -18,8 +18,9 @@ func test_who_cries_what() -> void:
 	t.check(Voices.pitch_of(e.f) < Voices.pitch_of(man) * 0.8, "the elephant's throat is deeper (%.2f vs %.2f)" % [Voices.pitch_of(e.f), Voices.pitch_of(man)])
 	t.eq(Voices.file_key(e.f, "hurt"), "elephant_hurt", "the elephant's own rendered cry")
 	t.eq(Voices.file_key(e.f, "grave"), "elephant_call", "a beast's grave cry is its call")
-	t.eq(Voices.file_key(man, "grave"), "man_scream", "a man's grave cry is a scream")
-	t.eq(Voices.file_key(man, "effort"), "man_effort", "and his swing an effort")
+	t.check(Voices.file_key(man, "grave").ends_with("_scream") and Voices.file_key(man, "grave").begins_with("man_"), "a man's grave cry is a scream")
+	t.check(Voices.file_key(man, "effort").ends_with("_effort"), "and his swing an effort")
+	t.check(["man_light", "man_mid", "man_heavy"].has(Voices.throat_of(man)), "a man has one of the three throats")
 	man.mods["voice"] = "minotaur"
 	t.eq(Voices.file_key(man, "effort"), "minotaur_call", "a minotaur bellows with his own voice")
 	t.eq(Voices.file_key(man, "grunt"), "minotaur_hurt", "and is hurt in it")
@@ -36,8 +37,9 @@ func test_every_voice_is_rendered() -> void:
 	for g in Voices.GIANTS:
 		for ev in ["call", "hurt", "death"]:
 			keys.append("%s_%s" % [g, ev])
-	for ev in ["effort", "grunt", "pain", "scream", "death"]:
-		keys.append("man_" + ev)
+	for th in ["man_light", "man_mid", "man_heavy"]:
+		for ev in ["effort", "grunt", "pain", "scream", "death"]:
+			keys.append(th + "_" + ev)
 	var missing := []
 	for k in keys:
 		for i in range(1, Sfx.TAKES + 1):
@@ -46,10 +48,10 @@ func test_every_voice_is_rendered() -> void:
 				missing.append(path)
 	t.check(missing.is_empty(), "every voice has its three takes (%d keys); missing: %s" % [keys.size(), str(missing.slice(0, 6))])
 	for ev in ["grunt", "pain", "scream"]:
-		t.check(FileAccess.file_exists(Sfx.VOICE_DIR + "man_%s_6.ogg" % ev), "a man has six takes of his %s" % ev)
+		t.check(FileAccess.file_exists(Sfx.VOICE_DIR + "man_mid_%s_6.ogg" % ev), "a man has six takes of his %s" % ev)
 	var seen := {}
 	for i in 12:
-		seen[Sfx._voice_stream("man_pain")] = true
+		seen[Sfx._voice_stream("man_mid_pain")] = true
 	t.check(seen.size() >= 3, "the takes vary (%d of 6 heard in 12 cries)" % seen.size())
 	var st := Sfx._voice_stream("lion_call")
 	t.check(st != null, "a rendered voice loads as a stream")

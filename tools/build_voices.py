@@ -455,18 +455,46 @@ def dragon(ev, i):
     return room(fade_out(pool("dragon-death", i), 1.2), 1.1, 0.32)
 
 # The men.
-@voice("man")
-def man(ev, i):
-    # Six takes an event, so a man struck again and again is not heard crying the one cry.
-    if ev == "effort":
-        return [pool("human-attack", 1), mm("Attack3"), pool("human-attack", 4), mm("Attack5"), pool("human-attack", 2), mm("Attack7")][i - 1]
-    if ev == "grunt":
-        return [warfork("pain25"), mm("Hit3"), warfork("pain50"), mm("Hit5"), mm("Hit1"), mm("Hit9")][i - 1]
-    if ev == "pain":
-        return [pool("human-hurt", 1), warfork("pain75"), mm("Hit8"), pool("human-hurt", 3), mm("Hit14"), pool("human-hurt", 4)][i - 1]
-    if ev == "scream":
-        return [warfork("pain100"), mm("Hit12"), pool("human-rough-hurt", 2), pool("human-hurt", 2), mm("Hit16"), pool("human-rough-hurt", 4)][i - 1]
-    return fade_out([warfork("death"), pool("human-death", 1), mm("Death2"), pool("human-death", 2), mm("Death3"), pool("human-death", 3)][i - 1], 0.5)
+# The men: three throats (a lighter man, a middling one, a heavy one), each quiet and short.
+# Only the soft cuts (the conquest "human" family), no saturation, the level a third of a
+# beast's: a blow draws a breath or a grunt, not a war cry; the cry is kept for a lost limb
+# and for death.
+def soft(x, p=0.42, lpf=None):
+    x = np.nan_to_num(hp(trim(x), 60))
+    if lpf:
+        x = lp(x, lpf)
+    e = np.sqrt(np.maximum(lp(x * x, 20), 0) + 1e-9)
+    x = x / (0.6 + e * 1.2)
+    return np.nan_to_num(norm(env(x, 0.004, 0.04), p))
+
+def short(x, t):
+    return fade_out(cut(x, 0, t), 0.12)
+
+THROATS = {
+    "man_light": dict(r=1.12, lpf=9000, hurt=[1, 3, 1, 3, 1, 3], att=[1, 4, 2, 1, 4, 2], rough=[3, 2, 3, 2, 3, 2], death=[1, 2, 3]),
+    "man_mid":   dict(r=1.0,  lpf=7000, hurt=[3, 4, 1, 3, 4, 1], att=[2, 5, 4, 2, 5, 4], rough=[3, 1, 3, 1, 3, 1], death=[2, 1, 3]),
+    "man_heavy": dict(r=0.86, lpf=4500, hurt=[4, 3, 4, 3, 4, 3], att=[4, 1, 5, 4, 1, 5], rough=[1, 4, 3, 1, 4, 3], death=[3, 2, 1]),
+}
+
+def man_voice(key, ev, i):
+    T = THROATS[key]
+    r = T["r"] * (1 + 0.035 * ((i % 3) - 1))
+    k = i - 1
+    if ev == "effort":    # a breath of effort with the swing
+        x = short(pool("human-attack", T["att"][k]), 0.3) * 0.8
+    elif ev == "grunt":   # the breath knocked out of him
+        x = short(pool("human-hurt", T["hurt"][k]), 0.22) * 0.7
+    elif ev == "pain":
+        x = short(pool("human-hurt", T["hurt"][k]), 0.45)
+    elif ev == "scream":  # a lost limb: the rough hurt, still no bellow
+        x = short(pool("human-rough-hurt", T["rough"][k]), 0.6)
+    else:
+        x = fade_out(cut(pool("human-death", T["death"][k % 3]), 0, 1.1), 0.5)
+    p = {"effort": 0.3, "grunt": 0.3, "pain": 0.42, "scream": 0.5, "death": 0.45}[ev]
+    return soft(shift(x, r), p, T["lpf"])
+
+for _k in THROATS:
+    V[_k] = (lambda key: (lambda ev, i: man_voice(key, ev, i)))(_k)
 
 # The giants of myth (bosses): each his own throat.
 @voice("cyclops")
@@ -513,7 +541,7 @@ def titan(ev, i):
         return room(mix(deep(pool("human-rough-hurt", i), 0.52), (cut(thunder, 0, 0.8), 0.0, 0.5)), 0.7, 0.22)
     return room(fade_out(mix(deep(pool("human-rough-death", i), 0.48), (cut(thunder, 0, 2.5), 0.3, 0.8)), 1.8), 1.4, 0.38)
 
-EVENTS = {"man": ["effort", "grunt", "pain", "scream", "death"]}
+EVENTS = {k: ["effort", "grunt", "pain", "scream", "death"] for k in ["man_light", "man_mid", "man_heavy"]}
 # The longest a cut may run (seconds): a fight has no time for an aria.
 LIMIT = {"call": 3.2, "hurt": 1.2, "death": 4.5}
 
@@ -521,7 +549,8 @@ def limit(x, ev):
     n = int(LIMIT.get(ev, 1.5) * SR)
     return fade_out(x[:n], 0.35) if len(x) > n else x
 TAKES = 3
-TAKES_OF = {"man": 6}
+TAKES_OF = {"man_light": 6, "man_mid": 6, "man_heavy": 6}
+SOFT = ["man_light", "man_mid", "man_heavy"]   # already finished quietly: no limiter, no drive
 
 # ---------------------------------------------------------------- output
 def write_ogg(x, path):
@@ -552,9 +581,9 @@ def main():
         demo = []
         for ev in EVENTS.get(key, ["call", "hurt", "death"]):
             for i in range(1, TAKES_OF.get(key, TAKES) + 1):
-                x = finish(limit(fn(ev, i), ev))
+                x = fn(ev, i) if key in SOFT else finish(limit(fn(ev, i), ev))
                 write_ogg(x, os.path.join(a.out, f"{key}_{ev}_{i}.ogg"))
-                if a.demo and (ev in ("call", "death") or key == "man" or i == 1):
+                if a.demo and (ev in ("call", "death") or key in SOFT or i == 1):
                     demo.append(x)
         print(key, "ok", flush=True)
         if a.demo:
