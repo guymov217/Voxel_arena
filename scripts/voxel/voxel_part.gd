@@ -670,7 +670,9 @@ func build_jaw(jw: Dictionary) -> void:
 		if dark[y] >= 3 and (best_row < 0 or dark[y] > dark[best_row]):
 			best_row = y
 	if best_row > ylo:
-		y1 = best_row
+		# Never thinner than three rows on a tall snout: a two-row slab swung wide still
+		# read as a shut mouth from any distance (the dragon pouring fire through its teeth).
+		y1 = maxi(best_row, mini(y1, ylo + 3))
 	var idx := []
 	for i in fx.size():
 		if fz[i] >= z0 and fy[i] < y1:

@@ -1472,7 +1472,7 @@ func _breath(b: Beast, kind_: String, rng_: float) -> void:
 	if is_instance_valid(b.target) and b.target.get("torso") and (b.target.torso.global_position - mouth).length() < rng_ * 1.4:
 		mark = b.target.torso.global_position
 		prey = b.target
-	aim = lofted(mouth, mark, stream_speed(rng_))
+	aim = (b.mouth_dir() as Vector3)
 	breath_at(b, kind_, aim, rng_, 0.9)
 	stream(b, kind_, mark, rng_, 0.9, prey)
 	if role == "host":
@@ -1490,28 +1490,16 @@ var streams: Array = []
 static func stream_speed(rng_: float) -> float:
 	return clampf(rng_ * 1.7, 6.0, 16.0)
 
-## The way to aim a stream of `speed` from `from` so it falls on `to`.
-static func lofted(from: Vector3, to: Vector3, speed: float) -> Vector3:
-	var t := from.distance_to(to) / maxf(1.0, speed * 0.92)
-	return (to + Vector3(0, 0.5 * 9.81 * t * t, 0) - from).normalized()
-
-## Whether the jaws point (in their turn) within 50 degrees of `mark`.
+## Whether the jaws point within 15 degrees of `mark` in their turn, and near enough in their
+## tilt (the head is still tipping onto it) for the fire to go where it is meant to.
 static func mouth_faces(b: Beast, mark: Vector3) -> bool:
 	var md := b.mouth_dir()
 	var to := mark - b.mouth_point()
 	var a := Vector2(md.x, md.z)
 	var c := Vector2(to.x, to.z)
-	return a.length() < 0.2 or c.length() < 0.3 or absf(a.angle_to(c)) < deg_to_rad(50.0)
-
-## A breath's way out of the mouth: the arc `aim` (onto the mark), swung round as far as the head
-## is turned from it, so the stream leaves the jaws whichever way the head swings.
-static func follow_mouth(b: Beast, aim: Vector3) -> Vector3:
-	var md := b.mouth_dir()
-	var turn := atan2(md.x, md.z) - atan2(aim.x, aim.z)
-	turn = atan2(sin(turn), cos(turn))
-	if Vector2(md.x, md.z).length() < 0.2:
-		return aim
-	return aim.rotated(Vector3.UP, clampf(turn * 0.8, -1.2, 1.2))
+	if a.length() < 0.2 or c.length() < 0.3:
+		return true
+	return absf(a.angle_to(c)) < deg_to_rad(15.0) and absf(b.breath_err) < 0.35
 
 func stream(b: Beast, kind_: String, mark: Vector3, rng_: float, secs: float, prey = null) -> void:
 	streams.append({"b": b, "kind": "acid" if kind_ == "venom" else "fire", "mark": mark, "prey": prey, "speed": stream_speed(rng_), "t": secs, "acc": 0.0})
@@ -1530,18 +1518,18 @@ func _update_streams(dt: float) -> void:
 				b.breath_mark = null
 			continue
 		b.breath_mark = st.mark
+		b.breath_t = maxf(b.breath_t, 0.15)   # the jaws stay wide as long as it pours
 		var head: VoxelPart = b.breath_part()
 		# It hoses the prey: the mark follows him (a beat behind, so a quick man can get out
-		# from under it), and the stream is lofted from the mouth onto the mark.
+		# from under it), and the head is tipped to aim the jaws at it (Beast).
 		var prey = st.prey
 		if prey != null and is_instance_valid(prey) and prey.alive:
 			st.mark = (st.mark as Vector3).move_toward(prey.torso.global_position, dt * 3.5)
-		# Out of the jaws the way the mouth points, bent toward the mark: it follows the head
-		# as it swings (from the middle of the head along the aim, it came out of the skull).
 		if not facing and st.wait <= 1.2:
 			continue
+		# Out of the jaws, straight the way the mouth points: it is the head that aims the fire.
 		var mouth: Vector3 = b.mouth_point()
-		var dir := follow_mouth(b, lofted(mouth, st.mark, st.speed))
+		var dir: Vector3 = b.mouth_dir()
 		st.acc += dt * 55.0
 		while st.acc >= 1.0:
 			st.acc -= 1.0
@@ -1614,7 +1602,7 @@ func _update_breaths(dt: float) -> void:
 			var mouth: Vector3 = b.mouth_point()
 			br.ps.global_position = mouth
 			# The flames leave the way the mouth points now; those already out fly on.
-			br.dir = follow_mouth(b, br.dir0)
+			br.dir = b.mouth_dir()
 			br.pm.direction = br.dir
 			if br.light:
 				br.light.global_position = mouth + br.dir * br.range * 0.4

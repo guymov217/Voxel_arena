@@ -56,6 +56,7 @@ var base_bite := 45.0
 var jaw_t := 0.0                     # counts down from JAW_T through a bite
 var breath_mark = null   # where a breath being poured is meant to land: it turns to it (Match)
 var breath_t := 0.0                  # the mouth held wide while fire or venom pours out
+var breath_pitch := 0.0              # the head tipped so the jaws point at the breath mark
 const NECK_DIP := 2.0
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
 const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing": 20.0, "trunk": 14.0, "arm": 22.0, "claw": 26.0}
@@ -1178,12 +1179,23 @@ func breath_part() -> VoxelPart:
 
 ## The front of the jaws, where a breath comes out, and the way the mouth points: followed every
 ## step, so the fire leaves the mouth however the head turns while it pours.
+## With the jaws open the mouth is the gape between them: the breath leaves from the middle of
+## the maw, along the line halfway between the snout and the hanging jaw, so a mouth opened
+## and turned down pours its fire down.
 func mouth_point() -> Vector3:
 	var h := breath_part()
+	if h.jaw_pivot != null:
+		var hinge: Vector3 = h.jaw_pivot.position
+		var along: Vector3 = Basis(Vector3.RIGHT, h.jaw_angle * 0.5) * Vector3(0, 0, 1)
+		return h.global_transform * (hinge + along * (h.half_ext.z - hinge.z) * 0.7)
 	return h.global_transform * Vector3(0, -0.3 * h.half_ext.y, h.half_ext.z * 1.05)
 
 func mouth_dir() -> Vector3:
-	return (PD.quat_of(breath_part()) * Vector3(0, 0, 1)).normalized()
+	var h := breath_part()
+	var along := Vector3(0, 0, 1)
+	if h.jaw_pivot != null:
+		along = Basis(Vector3.RIGHT, h.jaw_angle * 0.5) * along
+	return (PD.quat_of(h) * along).normalized()
 
 func can_breathe() -> bool:
 	var b := breath_part()
@@ -1202,7 +1214,7 @@ func _process(dt: float) -> void:
 	if not alive:
 		gape = 0.35
 	elif breath_t > 0.0:
-		gape = 0.85
+		gape = 1.2   # the jaws flung wide for the fire
 	elif hug != null and hug.get("roll", false):
 		gape = 0.05   # clamped on the limb
 	elif hug != null:
@@ -1220,10 +1232,53 @@ func _process(dt: float) -> void:
 ## Breathing fire (or venom) the neck is driven forward at the prey and the head thrust out
 ## level with it, the jaws wide (a short draw back as it fills its chest, then the lunge),
 ## not reared up and back away from what it burns.
+## The fire goes where the jaws point, so the jaws are pointed at the mark: the neck is dipped,
+## a little more every step, until the mouth looks straight at where the breath is to land, and
+## the head tips the rest of the way.
+var breath_err := 0.0
+var breath_yaw := 0.0
+func _breath_mark_now() -> Variant:
+	if breath_mark is Vector3:
+		return breath_mark
+	# Filling its chest, the jaws are already turned onto the prey, so the first of the fire goes
+	# where the rest will.
+	if ai.get("mode", "") == "breathe" and target and is_instance_valid(target) and target.get("torso"):
+		return target.torso.global_position
+	return null
+
+func _breath_track(dt: float) -> void:
+	var mark = _breath_mark_now()
+	if _fire_lunge() <= 0.0 or not (mark is Vector3):
+		breath_pitch = 0.0
+		breath_err = 0.0
+		breath_yaw = 0.0
+		return
+	# Lofted: the globs fall as they fly, so the jaws are held a little above the mark.
+	var md := mouth_dir()
+	var mouth := mouth_point()
+	var speed := clampf(float(sp.breathRange) * S * 1.7, 6.0, 16.0)
+	var t := mouth.distance_to(mark as Vector3) / maxf(1.0, speed * 0.92)
+	var want := ((mark as Vector3) + Vector3(0, 0.5 * 9.81 * t * t, 0) - mouth).normalized()
+	breath_err = asin(clampf(want.y, -1.0, 1.0)) - asin(clampf(md.y, -1.0, 1.0))
+	breath_pitch = clampf(breath_pitch - breath_err * dt * 6.0, -1.2, 1.2)
+	var dy := atan2(want.x, want.z) - atan2(md.x, md.z)
+	breath_yaw = atan2(sin(dy), cos(dy))
+
+func _breath_aim(role: String) -> float:
+	if _fire_lunge() <= 0.0 or not (_breath_mark_now() is Vector3):
+		return 0.0
+	if role == "neck":
+		return breath_pitch - clampf(breath_err * 1.0, -0.8, 0.8)
+	return -clampf(breath_err * 0.6, -0.5, 0.5)
+
 func _fire_lunge() -> float:
 	if ai.get("mode", "") == "breathe":
-		return -0.15 if float(ai.t) > 0.4 else 0.5
-	return 0.5 if breath_t > 0.0 else 0.0
+		return 0.3 if float(ai.t) > 0.4 else 1.0
+	return 1.0 if breath_t > 0.0 else 0.0
+
+## How far the neck itself is thrust down with the fire: the rest of the dip is the aim.
+func _lunge_dip() -> float:
+	return 0.4 * _fire_lunge()
 
 ## A bite landed (combat): the jaws snap shut on it, and what the teeth tore out hangs from
 ## them a while, or falls.
@@ -1307,6 +1362,11 @@ func _setup_anim() -> void:
 			for ax in ["x", "y", "z"]:
 				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -jlim)
 				j.call("set_param_" + ax, Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, jlim)
+			if role == "head" and p == breath_part() and sp.breath != null:
+				# The head that breathes fire is raised and tipped freely on its dipped neck, to
+				# point the jaws at whatever the fire is to fall on.
+				j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -NECK_DIP)
+				j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, NECK_DIP)
 			if role == "neck":
 				# A neck bows far forward to bring the jaws down to the prey (the limit's sign is
 				# the joint's own, so it is opened both ways: held to 0.3 one way, the hydra's
@@ -1350,6 +1410,7 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		var dy := atan2(to.x, to.z) - cur
 		track = clampf(atan2(sin(dy), cos(dy)), -0.9, 0.9)
 	var wf := wing_fns()
+	_breath_track(dt)
 	var threat: bool = ai.mode == "crouch" or ai.mode == "snarl" or ai.mode == "breathe" or ai.mode == "aim"
 	for a in anim:
 		var p: VoxelPart = a.part
@@ -1371,11 +1432,16 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 			"coil":
 				off.y = sin(gait * 1.3 - i * 1.5) * (0.6 if moving else 0.1) + sin(time * 0.5 + i) * 0.05
 			"neck":
-				off.y = track * 0.45 + sin(time * 0.9 + i * 1.7) * 0.08 + yaw_rate * 0.08
-				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0) + float(a.lean) + _fire_lunge()
+				off.y = track * 0.45 + sin(time * 0.9 + i * 1.7) * 0.08 + yaw_rate * 0.08 + clampf(breath_yaw * 0.8, -0.6, 0.6)
+				off.x = -0.04 * breath + (0.25 if ai.mode == "aim" else 0.0) + float(a.lean) + _lunge_dip() + _breath_aim("neck")
 			"head":
 				off.y = track * (0.4 if p.parent_part == torso else 0.25) + sin(time * 0.7 + i * 2.1) * 0.06
-				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0) - 0.3 * _fire_lunge()
+				if p == breath_part():
+					off.y += clampf(breath_yaw * 0.6, -0.5, 0.5)   # the jaws turned onto the mark
+				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0)
+				off.x -= 0.45 * _lunge_dip()
+				if p == breath_part():
+					off.x += _breath_aim("head")   # the jaws turned onto the mark
 			"wing":
 				var side := signf(float(p.def.get("wing", 0))) if float(p.def.get("wing", 0)) != 0.0 else signf(p.pa.x)
 				var wfn: float = wf.x if side < 0.0 else wf.y
@@ -1401,7 +1467,11 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		var st: float = strikes.get(p, 0.0)
 		if role == "neck" or role == "head":
 			# Struck with, the neck is let fall onto the prey rather than held up over it.
+			var lunging := _fire_lunge() >= 1.0
 			_hold_up(p, a.max_t * (0.25 if st > 0.0 and float(wind.get(p, 0.0)) <= 0.0 else 1.0), dt)
+			if lunging:
+				# Fire poured out with the neck thrust down and forward over the prey, the head level.
+				lim = NECK_DIP
 		var wn: float = ROLE_WN[role]
 		if st > 0.0:
 			off += _strike_pose(p, role, st, track, dist)

@@ -33,6 +33,15 @@ func _ready() -> void:
 			await get_tree().process_frame
 			n += 1
 			get_viewport().get_texture().get_image().save_png(out.path_join("breath_%d.png" % n))
+			# A close-up of the open jaws from beside the head.
+			var hd: VoxelPart = b.breath_part()
+			var md: Vector3 = b.mouth_dir()
+			cam.global_position = hd.global_position + Vector3(md.z, 0, -md.x).normalized() * 3.2 + Vector3(0, 0.3, 0)
+			cam.look_at(hd.global_position + md * 0.4, Vector3.UP)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			get_viewport().get_texture().get_image().save_png(out.path_join("jaws_%d.png" % n))
+			print("jaw angle ", hd.jaw_angle)
 			print("saved breath ", n, " mode ", b.ai.mode, " t ", b.breath_t)
 			if n >= 4:
 				break
