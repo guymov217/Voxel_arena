@@ -57,7 +57,7 @@ def pelt(x, y, z, base=FUR, cell=3, var=0.22):
 
 # ---------------- body: a hulking upper body, the shoulders far broader than the hips, no neck,
 # a grey chest plate down the front, the red loincloth with its skull below ----------------
-body = part("beastBody", "Gorilla body", [14, 14, 15], 340, None, None, None, [0, 1.55, 0], mult=0.55)
+body = part("beastBody", "Gorilla body", [14, 14, 16], 340, None, None, None, [0, 1.55, 0], mult=0.55)
 g = body["grid"]
 for x in range(g[0]):
     for y in range(g[1]):
@@ -65,21 +65,26 @@ for x in range(g[0]):
             up = y / (g[1] - 1)
             # Hunched forward as an ape stands: the shoulders carried well ahead of the hips,
             # the back sloping up and forward from the rump.
-            zc = 14.5 + (up - 0.45) * 8.0
+            zc = 16.0 + (up - 0.45) * 13.0
             # Broad at the shoulders (up near 1), narrowing to the hips (up near 0.3).
             rx = 9.8 + 4.0 * min(1.0, max(0.0, (up - 0.25) / 0.6))
-            rz = 9.6 + 1.6 * min(1.0, max(0.0, (up - 0.3) / 0.6))
+            rz = 8.4 + 1.6 * min(1.0, max(0.0, (up - 0.3) / 0.6))
             front = (z - (zc - rz)) / (2 * rz)     # 0 the back of this row, 1 its front
             if y < 5:
-                # The loincloth: a red flap down the front, the skull on it.
+                # The rump, round and furred, and the loincloth's red flap down the front with
+                # the skull on it.
                 flap = 0.55 < front < 1.02 and abs(x - 13.5) < 6.5 and (y > 0 or abs(x - 13.5) < 4.5)
-                if not flap:
+                rump = inside_ellipsoid(x, y, z, g, rx * 0.9, 12.6, rz * 0.9, cy=14.5, cz=zc) and y >= 1
+                if not (flap or rump):
                     continue
-                c = fur(RED if (y + z + x) % 3 else RED_D, 0.05)
-                if front > 0.9 and abs(x - 13.5) <= 2.0 and 1 <= y <= 3:
-                    c = rgb(BONE)
-                    add(body, x, y, z, c, 1)
-                    continue
+                if flap:
+                    c = fur(RED if (y + z + x) % 3 else RED_D, 0.05)
+                    if front > 0.9 and abs(x - 13.5) <= 2.0 and 1 <= y <= 3:
+                        c = rgb(BONE)
+                        add(body, x, y, z, c, 1)
+                        continue
+                else:
+                    c = pelt(x, y, z, FUR_D if front < 0.5 else FUR, 3, 0.18)
                 add(body, x, y, z, c)
                 continue
             if not inside_ellipsoid(x, y, z, g, rx, 12.6, rz, cy=14.5, cz=zc):
@@ -110,7 +115,7 @@ for x in range(g[0]):
 # ---------------- head: built in profile, as a gorilla's skull is: the cranium an egg behind,
 # the brow a shelf jutting over deep-set eyes, the face hollow under it, then the muzzle thrust
 # far forward with the nose on top of it and the mouth across its front ----------------
-head = part("beastHead", "Gorilla head", [8, 8, 8], 50, "beastBody", [0, 0.25, 0.32], [0, -0.1, -0.06], [0, 0, 0],
+head = part("beastHead", "Gorilla head", [8, 8, 8], 50, "beastBody", [0, 0.3, 0.36], [0, -0.1, -0.06], [0, 0, 0],
             head=True, bite=True, jaw={"from": 0.6, "y": 0.3}, mult=1.3)
 g = head["grid"]
 FACE = (0x9a, 0x96, 0x92)
@@ -199,32 +204,68 @@ def limb(name, label, dims, mass, parent, pa, ca, fist=False, lower=False, splay
                 p["voxels"].append([x, y, z, c, 0])
     return p
 
-armL = limb("legFL", "Gorilla left arm", [6, 11, 6], 28, "beastBody", [-0.32, 0.33, 0.26], [0, 0.30, 0], splay=0.1)
-armR = limb("legFR", "Gorilla right arm", [6, 11, 6], 28, "beastBody", [0.32, 0.33, 0.26], [0, 0.30, 0], splay=-0.1)
-foreL = limb("legFLLo", "Gorilla left fist", [7, 9, 7], 28, "legFL", [0, -0.30, 0], [0, 0.24, 0], fist=True, lower=True)
-foreR = limb("legFRLo", "Gorilla right fist", [7, 9, 7], 28, "legFR", [0, -0.30, 0], [0, 0.24, 0], fist=True, lower=True)
-legL = limb("legBL", "Gorilla left leg", [6, 5, 6], 16, "beastBody", [-0.2, -0.26, -0.2], [0, 0.13, 0])
-legR = limb("legBR", "Gorilla right leg", [6, 5, 6], 16, "beastBody", [0.2, -0.26, -0.2], [0, 0.13, 0])
-shinL = limb("legBLLo", "Gorilla left foot", [6, 5, 6], 12, "legBL", [0, -0.13, 0], [0, 0.13, 0], fist=True, lower=True)
-shinR = limb("legBRLo", "Gorilla right foot", [6, 5, 6], 12, "legBR", [0, -0.13, 0], [0, 0.13, 0], fist=True, lower=True)
+armL = limb("legFL", "Gorilla left arm", [6, 8, 6], 28, "beastBody", [-0.36, 0.3, 0.3], [0, 0.22, 0], splay=0.08)
+armR = limb("legFR", "Gorilla right arm", [6, 8, 6], 28, "beastBody", [0.36, 0.3, 0.3], [0, 0.22, 0], splay=-0.08)
+foreL = limb("legFLLo", "Gorilla left fist", [7, 8, 7], 28, "legFL", [0, -0.22, 0], [0, 0.22, 0], fist=True, lower=True)
+foreR = limb("legFRLo", "Gorilla right fist", [7, 8, 7], 28, "legFR", [0, -0.22, 0], [0, 0.22, 0], fist=True, lower=True)
+legL = limb("legBL", "Gorilla left leg", [6, 6, 6], 18, "beastBody", [-0.2, -0.2, -0.1], [0, 0.16, 0])
+legR = limb("legBR", "Gorilla right leg", [6, 6, 6], 18, "beastBody", [0.2, -0.2, -0.1], [0, 0.16, 0])
+shinL = limb("legBLLo", "Gorilla left foot", [6, 6, 6], 14, "legBL", [0, -0.16, 0], [0, 0.16, 0], fist=True, lower=True)
+shinR = limb("legBRLo", "Gorilla right foot", [6, 6, 6], 14, "legBR", [0, -0.16, 0], [0, 0.16, 0], fist=True, lower=True)
 
 parts = [body, head, armL, foreL, armR, foreR, legL, shinL, legR, shinR]
 by = {p["name"]: p for p in parts}
-# Positions from the anchors (pos = parent's anchor - own anchor; all rotations identity).
+# Positions from the anchors (pos = parent.pos + rot_parent * pa - rot_child * ca). The arms hang
+# straight; the hind legs stand crouched, the thigh swung forward and the shin back under the
+# hip, so the feet and the knuckles meet the sand together.
+def qx(a):
+    return [math.sin(a / 2), 0, 0, math.cos(a / 2)]
+
+def rot(q, v):
+    x, y, z, w = q
+    # q * v * q^-1
+    ix = w * v[0] + y * v[2] - z * v[1]
+    iy = w * v[1] + z * v[0] - x * v[2]
+    iz = w * v[2] + x * v[1] - y * v[0]
+    iw = -x * v[0] - y * v[1] - z * v[2]
+    return [ix * w + iw * -x + iy * -z - iz * -y, iy * w + iw * -y + iz * -x - ix * -z, iz * w + iw * -z + ix * -y - iy * -x]
+
+THIGH = -0.85     # the thigh pitched forward (the knee ahead of the hip)
+arm_len = (by["legFL"]["ca"][1] - by["legFLLo"]["pa"][1] + by["legFLLo"]["ca"][1] + by["legFLLo"]["dims"][1] * 0.0275) * SCALE
+l1 = (by["legBL"]["ca"][1] - by["legBLLo"]["pa"][1]) * SCALE
+l2 = (by["legBLLo"]["ca"][1] + by["legBLLo"]["dims"][1] * 0.0275) * SCALE
+shoulder_y = by["legFL"]["pa"][1] * SCALE
+hip_y = by["legBL"]["pa"][1] * SCALE
+# The shin's pitch that brings the sole to the knuckles' level (the knuckles arm_len below the shoulder).
+want = shoulder_y - arm_len - hip_y    # how far below the hip the sole must be (negative)
+cos2 = max(-1.0, min(1.0, (-want - l1 * math.cos(THIGH)) / l2))
+SHIN = math.acos(cos2)                 # pitched back
+for n in ["legBL", "legBR"]:
+    by[n]["rot"] = qx(THIGH)
+for n in ["legBLLo", "legBRLo"]:
+    by[n]["rot"] = qx(SHIN)
 for p in parts:
     if p["parent"] is None:
         continue
     par = by[p["parent"]]
-    p["pos"] = [round(par["pos"][i] + p["pa"][i] * SCALE - p["ca"][i] * SCALE, 4) for i in range(3)]
-# A fist and a foot sit on the sand: the body's height is set so the feet reach it.
-foot_bottom = by["legBRLo"]["pos"][1] - (by["legBRLo"]["grid"][1] / 2) * U
-drop = foot_bottom - 0.02
+    a = rot(par["rot"], [v * SCALE for v in p["pa"]])
+    c = rot(p["rot"], [v * SCALE for v in p["ca"]])
+    p["pos"] = [round(par["pos"][i] + a[i] - c[i], 4) for i in range(3)]
+    p["rot"] = [round(v, 5) for v in p["rot"]]
+# The knuckles and the soles sit on the sand: the body's height is set so they reach it.
+fist = by["legFRLo"]
+fist_bottom = fist["pos"][1] - (fist["grid"][1] / 2) * U
+foot = by["legBRLo"]
+sole = rot(foot["rot"], [0, -(foot["grid"][1] / 2) * U, 0])
+foot_bottom = foot["pos"][1] + sole[1]
+print("knuckles %.3f soles %.3f (thigh %.2f shin %.2f)" % (fist_bottom, foot_bottom, THIGH, SHIN))
+drop = min(fist_bottom, foot_bottom) - 0.02
 for p in parts:
     p["pos"][1] = round(p["pos"][1] - drop, 4)
 height = by["beastBody"]["pos"][1] / SCALE
 
 d = json.load(open("data/beasts.json"))
-d["gorilla"] = {"name": "The Gorilla", "scale": SCALE, "height": round(height, 4), "ai": "hugger", "speed": 4.6, "bite": 34,
+d["gorilla"] = {"name": "The Gorilla", "scale": SCALE, "height": round(height, 4), "ai": "hugger", "speed": 4.6, "bite": 55,
                 "lunge": 3.0, "lungeUp": 0, "stalkRadius": 2.2, "cooldown": 1.1, "maul": False, "flies": False, "breath": None,
                 "breathRange": 0, "harmless": False, "multiHead": False, "mult": 0.5, "fur": rgb(FUR), "parts": parts}
 json.dump(d, open("data/beasts.json", "w"), separators=(",", ":"))

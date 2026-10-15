@@ -16,7 +16,7 @@ func _ready() -> void:
 	var seen := {}
 	var cam: Camera3D = m.cam
 	cam.fov = 42.0
-	for i in 20 * 120:
+	for i in 40 * 120:
 		man.blood = 100.0
 		man.head.hp = maxf(man.head.hp, 40.0)
 		man.torso.hp = maxf(man.torso.hp, 40.0)
@@ -37,9 +37,13 @@ func _ready() -> void:
 			if phase == "blow" and float(b.strikes.get(arm, 0.0)) > 0.22:
 				continue
 			seen[key] = true
-			var c: Vector3 = (b.torso.global_position + man.torso.global_position) * 0.5 + Vector3(0, 0.6, 0)
-			var side: Vector3 = (b.torso.global_position - man.torso.global_position).normalized().cross(Vector3.UP)
-			cam.global_position = c + side * 5.5 + Vector3(0, 1.2, 0) - (b.torso.global_position - man.torso.global_position).normalized() * 1.5
+			var bp: Vector3 = b.torso.global_position
+			var mp: Vector3 = man.torso.global_position
+			var c := Vector3((bp.x + mp.x) * 0.5, 1.3, (bp.z + mp.z) * 0.5)
+			var axis := Vector3(bp.x - mp.x, 0, bp.z - mp.z).normalized()
+			var side := axis.cross(Vector3.UP)
+			# From the side, a little toward the man's side of the pair, well back.
+			cam.global_position = c + side * 7.0 - axis * 2.0 + Vector3(0, 1.4, 0)
 			cam.look_at(c, Vector3.UP)
 			await get_tree().process_frame
 			await get_tree().process_frame

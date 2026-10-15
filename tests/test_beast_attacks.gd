@@ -165,7 +165,10 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 				rent[0] = true
 			if h.type == "blunt" and h.get("att_part") != null and String(h.att_part.part_name).begins_with("legF"):
 				punches[0] += 1
-				powers[float(h.att_part.get_meta("power", 1.0))] = h.J)
+				var arm = h.att_part.parent_part
+				if arm and h.get("bite", false) and b.strikes.has(arm) and String(arm.get_meta("ape", "")) != "":
+					var pw := float(h.att_part.get_meta("power", 1.0))
+					powers[pw] = maxf(float(powers.get(pw, 0.0)), h.J))
 	var kinds := {}
 	await _run(s[0], s[1], b, 16.0, func(_i):
 		if b.hug != null:
@@ -178,9 +181,10 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 	t.check(rent[0], "and tore him in two")
 	t.check(kinds.size() >= 2, "it threw more than one kind of blow: %s" % str(kinds.keys()))
 	t.check(punches[0] >= 1, "and its fists landed (%d blows)" % punches[0])
-	var cap_jab: float = b.bite_power * 0.9
-	t.check(powers.values().all(func(j): return j <= b.bite_power * 1.8 + 0.01), "no blow lands harder than a slam may (%s)" % str(powers))
-	t.check(not powers.has(0.9) or powers[0.9] <= cap_jab + 0.01, "a jab lands no harder than a jab may")
+	t.check(b.base_bite * 0.9 >= 45.0, "a gorilla's lightest blow is three men's punches (%.0f)" % (b.base_bite * 0.9))
+	var cap_jab: float = b.base_bite * 0.9
+	t.check(powers.values().all(func(j): return j <= b.base_bite * 1.8 + 0.01), "no blow lands harder than a slam may (%s)" % str(powers))
+	t.check(not powers.has(0.9) or powers[0.9] <= cap_jab + 0.01, "a jab lands no harder than a jab may (bite %.1f, %s)" % [b.base_bite, str(powers)])
 	var off: int = s[1].parts.filter(func(p): return p.severed).size()
 	t.check(off >= 2, "an arm and a leg came away (%d parts off)" % off)
 	s[0].queue_free()

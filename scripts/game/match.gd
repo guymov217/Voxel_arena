@@ -287,6 +287,7 @@ func _name_tag(f, text: String) -> void:
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
 	l.render_priority = 2
+	l.visible = false   # shown once it has a head to float over (_update_tags)
 	add_child(l)
 	tags[f] = l
 

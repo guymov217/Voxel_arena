@@ -1510,6 +1510,7 @@ func _tick_strikes(dt: float) -> void:
 				if lo:
 					lo.def["bite"] = false
 					lo.def["claw"] = false
+					lo.set_meta("power", 1.0)
 
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)

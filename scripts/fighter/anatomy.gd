@@ -171,6 +171,12 @@ static func beast_organ_at(part: String, g: Array, x: int, y: int, z: int) -> in
 			return BRAIN
 	return NONE
 
+static func _buried(filled: Dictionary, x: int, y: int, z: int) -> bool:
+	for d in [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]:
+		if not filled.has((x + d[0]) | ((y + d[1]) << 8) | ((z + d[2]) << 16)):
+			return false
+	return true
+
 ## Lays the organs into the beasts' bodies (Data.load_all): an organ id as the 6th field of every
 ## voxel of beasts.json ([x, y, z, colour, bone, organ]).
 static func dress_beasts(beasts: Dictionary) -> void:
@@ -179,9 +185,14 @@ static func dress_beasts(beasts: Dictionary) -> void:
 		for d in beasts[key].get("parts", []):
 			var name := str(d.name)
 			var g: Array = d.get("grid", [1, 1, 1])
+			# Organs lie under the skin: only a voxel with flesh on all six sides may be one (a
+			# body modelled leaning, the gorilla's, had its guts showing through the rump).
+			var filled := {}
+			for v in d.voxels:
+				filled[int(v[0]) | (int(v[1]) << 8) | (int(v[2]) << 16)] = true
 			for v in d.voxels:
 				var id := NONE
-				if not none and not v[4] and _is_flesh(int(v[3])):
+				if not none and not v[4] and _is_flesh(int(v[3])) and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
 					id = beast_organ_at(name, g, int(v[0]), int(v[1]), int(v[2]))
 				if id != NONE:
 					v[3] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]))
