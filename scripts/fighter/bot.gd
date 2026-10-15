@@ -50,7 +50,7 @@ var dodge := ""
 var jab_cd := 0.0
 var aim_pick = null
 var rng := RandomNumberGenerator.new()
-var grab_cool := 0.0
+var grab_cool := 4.0            # the first grab waits: the weapon comes first
 var hold_t := 0.0
 var hold_move := ""
 var follow_t := 0.0
@@ -112,6 +112,27 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var w: Weapon = c.weapons.R
 	var reach := 0.55 * S + (w.reach if w else 0.25) * 0.85
 	var ideal := reach * float(p.get("ideal", 0.9))
+	# A giant over a man a third his size: he steps in so the blade's length is over the man,
+	# and every blow is brought down to where the man actually is (standing, or on the sand),
+	# not swung at a giant's own height over his head.
+	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
+	var big: bool = S > tS * 1.5 and w != null
+	var aim_small = null
+	var swing_reach := reach
+	if big:
+		# Where the blade must end: on the man, a little below his chest. From the shoulder's
+		# height that fixes the blade's pitch, and the pitch fixes how far off he must stand for
+		# the blade's length to come down through him.
+		# (Measured: at the end of a chop the hand is 0.27 S below the chest and 0.59 S ahead of
+		# it; from there the blade's length must span to the man.)
+		var low_y: float = tp.y - 0.2 * tS
+		var hand_y: float = me.y - 0.27 * S
+		var hand_fwd: float = 0.59 * S
+		var dy := low_y - hand_y
+		var horiz := sqrt(maxf(0.0, w.reach * w.reach - dy * dy))
+		ideal = hand_fwd + horiz * 0.65
+		swing_reach = hand_fwd + horiz * 1.0
+		aim_small = clampf(atan2(dy, maxf(0.3, dist - hand_fwd)) / 0.92, -1.5, 0.6)
 	var keep_away = p.get("keepAway")
 	var cornered: bool = keep_away != null and dist < 1.6
 	if keep_away != null and not cornered:
@@ -192,7 +213,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				draw_t = -rng.randf_range(0.9, 2.2) * (1.3 - diff * 0.5)
 		inp.main = hand.duplicate()
 		return inp
-	var ready: bool = dist < reach * 1.15 and c.stamina > 20.0
+	var ready: bool = dist < (reach * 1.15 if not big else swing_reach) and c.stamina > 20.0
 	if state == "approach" or state == "guard":
 		_lerp_hand(0.15, gy, dt * (2.0 + diff * 4.0))
 		think -= dt
@@ -212,7 +233,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				aim_pick = head_y if rng.randf() < 0.6 else -0.6
 		if dist < 1.0 * S and rng.randf() < dt * 0.15 * diff * float(p.get("kick", 1.0)):
 			inp.kick = true
-		if S > 1.2 and dist < ideal * 0.7:
+		if S > 1.2 and dist < ideal * (0.5 if big else 0.7) and target.state == "stand":
 			inp.mz = -1.0
 			if rng.randf() < dt * 2.5:
 				inp.kick = true
@@ -224,7 +245,14 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var dur: float = k_[3]
 		if key == attack.size() - 1 and aim_pick != null:
 			y = y * 0.4 + float(aim_pick) * 0.6
+		if key == attack.size() - 1 and aim_small != null:
+			y = float(aim_small)   # the blow ends on the small man, wherever he is
+			x = 0.0                # and comes down through the middle of him, not past his shoulder
 		var windup: float = float(p.get("windup", 1.0)) if key == 0 else 1.0
+		if big:
+			# A giant's weapon is long and heavy: the stroke takes longer to come round, and the
+			# blow is held at its end until the blade has finished its arc onto the man.
+			windup *= 1.0 + (0.25 if key == 0 else 0.55) * (S - 1.0)
 		key_t += dt / (dur * windup * 1.15)
 		var kk := minf(1.0, key_t)
 		_lerp_hand(x, y, kk * kk)
@@ -234,7 +262,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			attack = feint_to
 			feint_to = []
 			key_t = 0.2
-		if key_t >= 1.0:
+		var settle: float = 1.0 + (0.2 * S if big and key == attack.size() - 1 else 0.0) / maxf(0.05, dur * windup * 1.15)
+		if key_t >= settle:
 			key += 1
 			key_t = 0.0
 			if key >= attack.size():
@@ -306,8 +335,9 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		inp.main = {"x": 0.7, "y": 0.4}
 		inp.mz = 0.2
 		return inp
-	# Giants and trolls grab the nearest fighter and hurl him across the arena.
-	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and state != "attack" and c.state == "stand" and rng.randf() < dt * 1.2:
+	# Giants and trolls now and then grab the nearest fighter and hurl him across the arena;
+	# the weapon is the main threat, the grab the surprise (never before the first blows).
+	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and state != "attack" and c.state == "stand" and rng.randf() < dt * 0.4:
 		inp.grab = true
 		grab_cool = 1.5
 		hold_t = 0.0

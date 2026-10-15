@@ -1544,6 +1544,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if sw and not sw.is_shield:
 		var tip := sw.angular_velocity.length() * sw.reach
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
+	# A giant's lungs and muscle go with his size: the same swing of a weapon scaled to him
+	# costs him no more breath than a man's costs the man.
+	if S > 1.2:
+		stamina_use /= maxf(1.0, pow(S, 1.5) * float(mods.get("strength", 1.0)))
 	var still := Vector2(v_smooth.x, v_smooth.z).length() < 0.4
 	var regen := 3.0 if stamina_use > 0.02 * dt * 60.0 else (18.0 if still else 9.0)
 	# A chest cut open or stove in: he gets his breath back slowly.
