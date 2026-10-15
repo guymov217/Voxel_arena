@@ -5,6 +5,8 @@ extends Node
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
 	for k in ["cyclops", "minotaur", "troll", "titan"]:
+		if OS.get_environment("SHOT_ONLY") != "" and OS.get_environment("SHOT_ONLY") != k:
+			continue
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": []})
@@ -19,10 +21,11 @@ func _ready() -> void:
 		for i in 120:
 			await get_tree().physics_frame
 		var f: Fighter = e.f
-		for v in [["f", Vector3(0.0, 0.35, -1.0)], ["q", Vector3(0.7, 0.45, -0.8)]]:
-			var c: Vector3 = f.head.global_position
+		for v in [["f", Vector3(0.0, 0.35, -1.0)], ["q", Vector3(0.7, 0.45, -0.8)], ["b", Vector3(0.9, 0.3, -1.0)]]:
+			# The face close up, three-quarter, and ("b") the whole body from a few yards off.
+			var c: Vector3 = f.head.global_position if v[0] != "b" else f.torso.global_position
 			m.cam.fov = 40.0
-			m.cam.global_position = c + (v[1] as Vector3).normalized() * 0.9 * f.S
+			m.cam.global_position = c + (v[1] as Vector3).normalized() * (0.9 if v[0] != "b" else 3.6) * f.S
 			m.cam.look_at(c, Vector3.UP)
 			await get_tree().process_frame
 			await get_tree().process_frame

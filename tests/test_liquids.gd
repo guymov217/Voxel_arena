@@ -62,7 +62,7 @@ func test_fire_breath_is_a_stream_a_wall_stops() -> void:
 	wall.collision_layer = VoxelPart.LAYER_WORLD
 	var cs := CollisionShape3D.new()
 	var bx := BoxShape3D.new()
-	bx.size = Vector3(1.6, 3.0, 0.3)
+	bx.size = Vector3(4.0, 3.5, 0.3)   # wide enough that the long neck cannot look round it
 	cs.shape = bx
 	wall.add_child(cs)
 	m.add_child(wall)

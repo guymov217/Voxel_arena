@@ -6,7 +6,7 @@ class_name Yard
 
 const STATIONS := {
 	"gate": {"p": Vector3(0, 0, 11.5), "r": 1.8, "label": "The arena gate", "hint": "G: choose the fight and go"},
-	"smith": {"p": Vector3(-9.5, 0, 5), "r": 2.0, "label": "The smith", "hint": "E: talk to the smith · buy, mend and reshape your weapons", "npc": {"name": "Vulcanus the smith", "main": "warhammer", "color": 0x4a3020, "armor": ["leatherJerkin", "hat_bandana", "beard_braided"], "work": "hammer"}},
+	"smith": {"p": Vector3(-9.5, 0, 5), "r": 2.0, "label": "The smith", "hint": "E: talk to the smith · buy, mend and reshape your weapons", "npc": {"name": "Vulcanus the smith", "main": "hammer", "color": 0x4a3020, "armor": ["leatherJerkin", "hat_bandana", "beard_braided"], "work": "hammer"}},
 	"market": {"p": Vector3(9.5, 0, 5), "r": 2.0, "label": "The market", "hint": "E: talk to the trader · pots, bread and gadgets", "npc": {"name": "Mercator the trader", "main": "", "color": 0x2a5a8a, "armor": ["cape", "hat_straw", "hair_curly"], "work": "wares"}},
 	"board": {"p": Vector3(0, 0, -11), "r": 1.4, "label": "The mission board", "hint": "G: your missions for the next fight"},
 	"physician": {"p": Vector3(-5, 0, -10), "r": 2.0, "label": "The physician", "hint": "E: talk to the physician · stitch your wounds, fit a prosthetic", "npc": {"name": "Galen the physician", "main": "dagger", "color": 0xe8e0d0, "armor": ["hat_laurel", "hair_long", "beard_braided"], "work": "stitch"}},

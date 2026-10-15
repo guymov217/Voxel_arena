@@ -792,9 +792,9 @@ func guard_chain() -> void:
 	var hs := hv.length()
 	# (Getting up counts as down for a moment: the arm hauled up with the body whipped it.)
 	var standing: bool = holder == null or not is_instance_valid(holder) or (holder.get("state") == "stand" and float(holder.get("time")) - float(holder.get("stood_at")) > 0.6)
-	var cap := 30.0 if whip else 17.0
+	var cap := 30.0 if whip else 13.0
 	# Relative to the handle: what the hand adds to the chain each step is what whirls it.
-	var cap_rel: float = (minf(16.0, 4.0 + hs * 7.0) if whip else minf(9.0, 2.5 + hs * 2.5)) if standing else (2.0 if whip else 1.5)
+	var cap_rel: float = (minf(16.0, 4.0 + hs * 7.0) if whip else minf(6.5, 2.0 + hs * 2.0)) if standing else (2.0 if whip else 1.5)
 	var damp := lerpf(5.0, 0.3, clampf(hs / 1.5, 0.0, 1.0)) if standing else 6.0
 	for b in chain_links + [chain_head]:
 		var p: Vector3 = b.global_position

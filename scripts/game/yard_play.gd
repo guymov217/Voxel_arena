@@ -44,9 +44,21 @@ func setup() -> void:
 		var out := Vector3(s.p.x, 0, s.p.z).normalized()
 		var side := Vector3(-out.z, 0, out.x)
 		var p: Vector3 = s.p + out * 1.5 + side * 0.9
+		var work_yaw := atan2(out.x, out.z) + 0.5
+		var face_yaw := atan2(-p.x, -p.z)
+		if id == "smith":
+			# The smith stands at his anvil (the smithy's right-hand block) with his back to the
+			# yard, so the hammer comes down on the iron and not on the air.
+			var prop_p: Vector3 = s.p + out * (float(s.r) + 0.9)
+			var yaw_p := VoxelArt.facing_centre(prop_p)
+			var anvil: Vector3 = prop_p + Vector3(cos(yaw_p), 0, -sin(yaw_p)) * 0.8 + Vector3(sin(yaw_p), 0, cos(yaw_p)) * -0.1
+			var to_centre := Vector3(sin(yaw_p), 0, cos(yaw_p))
+			p = anvil + to_centre * 0.95
+			work_yaw = atan2(-to_centre.x, -to_centre.z)
+			face_yaw = work_yaw
 		var n = m.spawn_fighter({"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": "", "armor": s.npc.get("armor", [])}, "team": Match.ENEMY_TEAM,
-			"pos": p + Vector3(0, 0.02, 0), "yaw": atan2(-p.x, -p.z), "mods": {"toughness": 5.0}, "color": s.npc.color})
-		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, atan2(out.x, out.z) + 0.5, randf() * TAU)
+			"pos": p + Vector3(0, 0.02, 0), "yaw": face_yaw, "mods": {"toughness": 5.0}, "color": s.npc.color})
+		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, work_yaw, randf() * TAU)
 		n.harmless = true
 		keepers.append(n.f)
 	if m.headless:

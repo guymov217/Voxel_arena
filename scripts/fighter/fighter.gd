@@ -139,6 +139,8 @@ var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
+var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
+var last_move := Vector3.ZERO   # where he is trying to go this step (world), for whatever holds him
 var stroke_dir := {"R": null, "L": null}   # which way the stroke is going, across the blade
 var stroke_idle := {"R": 0.0, "L": 0.0}
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
@@ -1034,6 +1036,45 @@ func can_stand() -> bool:
 func is_active() -> bool:
 	return state != "dead"
 
+## Fall damage: the blow of the sand coming up at `speed` m/s. Standing, the shins take it (and
+## he may crumple); down, the part lowest takes it. A giant falls as hard as a man per metre.
+func _land_hard(speed: float) -> void:
+	var J := (speed - 4.5) * 3.2 * sqrt(S)
+	if J < 3.0:
+		return
+	var targets := []
+	if state == "stand" or state == "rising":
+		for n in ["shinL", "shinR"]:
+			var sh: VoxelPart = by_name[n]
+			if not sh.severed:
+				targets.append(sh)
+	if targets.is_empty():
+		var low = null
+		for q in parts:
+			if not q.severed and (low == null or q.global_position.y < low.global_position.y):
+				low = q
+		if low:
+			targets.append(low)
+	for q in targets:
+		var at: Vector3 = q.global_position - Vector3(0, q.half_ext.y * 0.9, 0)
+		# (The blow is driven down into the sand, which holds him: the hurt without a bounce.)
+		var res: Dictionary = apply_hit(q, {"impulse": J / targets.size(), "type": "blunt", "hardness": 0.8, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "heavy": 0.2, "crush": minf(0.08, 0.002 * J)})
+		if Combat.current:
+			Combat.current.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": J / targets.size(), "type": "blunt", "char": self, "part": q, "attacker": null, "res": res, "killed": not alive, "fall": true})
+	if J > 14.0 and state == "stand":
+		fall(1.2, true)
+
+## Out cold: on the sand with the head too far gone (bled white or rung senseless) to ever get
+## up again. Alive, but beaten: the bout is over for him.
+func is_out() -> bool:
+	if state != "down" or not alive or can_stand():
+		return false
+	return head.hp < 30.0 or concussion >= 0.85
+
+## Beaten, one way or the other.
+func is_beaten() -> bool:
+	return not alive or is_out()
+
 # ---------- PD drives ----------
 
 func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta: float, max_t: float, dt: float, scale := 1.0, w_des := Vector3.ZERO) -> void:
@@ -1233,6 +1274,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			leg_flinch = 0.6
 	var support: float = minf(1.0, leg_avg * 1.6) * (0.75 if one_leg else 1.0) * stand_f * leg_flinch if standing else 0.0
 	var lv0 := torso.linear_velocity
+	# A hard landing (thrown by a giant, tossed by a bull, off a crate) breaks on the legs if
+	# he comes down on them, on whatever hits first if he does not: the faster, the worse.
+	# (The fastest he fell since he left the ground, cashed in when the fall is over.)
+	if lv0.y < -3.0:
+		prev_vy = minf(prev_vy, lv0.y)
+	elif prev_vy < -5.5 and lv0.y > -1.0:
+		if live:
+			_land_hard(-prev_vy)
+		prev_vy = 0.0
+	elif lv0.y > -1.0:
+		prev_vy = 0.0
 	var walk_amt: float = minf(1.0, Vector2(lv0.x, lv0.z).length() / 2.5)
 	var bob := 0.035 * S * walk_amt * (0.5 - 0.5 * cos(2.0 * gait_phase)) if standing else 0.0
 	# On one leg he cannot walk: he hops, a push off the good leg and a short flight, and only
@@ -1294,6 +1346,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
+	last_move = yaw_q * move_local if live else Vector3.ZERO
 	var planted := 0
 	var anchor_v := Vector3.ZERO
 	if standing and grounded:

@@ -56,6 +56,7 @@ var base_bite := 45.0
 var jaw_t := 0.0                     # counts down from JAW_T through a bite
 var breath_mark = null   # where a breath being poured is meant to land: it turns to it (Match)
 var breath_t := 0.0                  # the mouth held wide while fire or venom pours out
+var collapsed_now := false           # down on its belly this step (legs gone or bled out)
 var breath_pitch := 0.0              # the head tipped so the jaws point at the breath mark
 const NECK_DIP := 2.0
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
@@ -302,6 +303,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	injury = clampf(0.6 * (1.0 - blood / 100.0) + 0.4 * (1.0 - minf(torso.function(), lp)), 0.0, 1.0)
 	var heavy := 1.0 - 0.5 * injury
 	var collapsed: bool = (legs.size() > 0 and legs_left <= legs.size() / 2.0) or (legs.size() > 0 and blood < 22.0)
+	collapsed_now = collapsed
 	var missing := legs.size() - legs_left
 	var crouching := 0.93 if ai.mode == "crouch" else ((1.08 if float(ai.t) > 0.4 else 0.96) if ai.mode == "breathe" else 1.0)
 	if strikes.has(head) and head.parent_part != torso:
@@ -561,6 +563,11 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 				if ai.stomp <= 0.0:
 					_stomp()
 			_trample(dt, lv)
+	# Every beast that runs can run a man down, and one that has no bite, sting or fire left
+	# still has its weight: it charges and rams him with it.
+	if sp.ai != "path" and legs.size() > 0 and disarmed():
+		_trample(dt, lv)
+	_ram(dt)
 	var moving := want.length_squared() > 0.05
 	if grounded and stagger < 0.5 and not down:
 		var kk := ((6.5 if float(ai.get("charge_t", 0.0)) > 0.0 else 3.0) if sp.ai == "path" else 6.0) * (0.6 if legs.size() > 0 and not collapsed else 1.0)
@@ -632,16 +639,33 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		"stalk":
 			var r: float = float(sp.stalkRadius) * S
 			want = side * 2.2 + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
+			if disarmed():
+				# Nothing to bite with: no circling at a distance, it comes straight on and
+				# throws its weight at him as soon as it is close.
+				want = to * spd * hurt * 0.8
+				if dist < 2.5 * S and ai.t > 0.2:
+					ai.t = 0.2
 			if swing > 4.5 and dist < 2.8 * S and ai.dodge_cool <= 0.0:
 				ai.mode = "dodge"; ai.t = 0.35; ai.dodge_cool = 1.4
-			elif sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() and dist < float(sp.breathRange) * S * 0.8 and dist > 0.7 * S:
+			elif sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() and dist < float(sp.breathRange) * S * 0.8 and dist > 1.5 * S:
 				ai.mode = "breathe"; ai.t = 0.7
+				if species == "dragon" and on_roar.is_valid():
+					on_roar.call(self)   # the roar before the fire: the warning to run
 			elif ai.t <= 0.0:
 				var roll := rng.randf()
-				if roll < 0.25:
+				# A dragon does not dance about: it comes on (a feint only now and then, no snarling
+				# from a distance), and every charge is told by the crouch and the roar before it.
+				var feint_k := 0.1 if species == "dragon" else 0.25
+				var snarl_k := 0.1 if species == "dragon" else 0.4
+				if roll < feint_k:
 					ai.mode = "feint"; ai.t = 0.3
-				elif roll < 0.4:
+				elif roll < snarl_k:
 					ai.mode = "snarl"; ai.t = 0.5
+				elif disarmed():
+					# Jaws broken, fire gone: all it has left is its weight, so it charges.
+					ai.mode = "crouch"; ai.t = 0.45
+					if on_roar.is_valid() and rng.randf() < 0.5:
+						on_roar.call(self)
 				elif hind_fn() < 0.45 or injury > 0.6:
 					ai.mode = "feint"; ai.t = 0.4   # too hurt to pounce: it rushes in on the ground
 				else:
@@ -652,9 +676,11 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "recover"; ai.t = 0.5
 		"breathe":
 			# It fills its chest standing, then comes on a step with the fire, head out at the prey.
-			want = to * spd * hurt * (0.0 if ai.t > 0.4 else 0.5)
+			# It fills its chest standing, then comes on a step with the fire; close in it stands
+			# and pours (over a man at its feet it would only fold its neck under itself).
+			want = to * spd * hurt * (0.0 if ai.t > 0.4 or dist < 2.2 * S else 0.5)
 			if ai.t <= 0.0:
-				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.breath_cool = 7.0
+				ai.mode = "stalk"; ai.t = (0.5 + rng.randf() * 0.5) if species == "dragon" else (1.0 + rng.randf()); ai.breath_cool = 4.5 if species == "dragon" else 7.0
 				_breathe()
 		"snarl":
 			if ai.t <= 0.0:
@@ -662,6 +688,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		"crouch":
 			if ai.t <= 0.0:
 				ai.mode = "charge"; ai.t = 2.5
+				if species == "dragon" and on_roar.is_valid() and rng.randf() < 0.6:
+					on_roar.call(self)
 		"dodge":
 			want = side * spd * hurt
 			if ai.t <= 0.0:
@@ -686,9 +714,37 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury) * (0.35 + 0.65 * hind_fn())
 	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed else 1.2), to.z * mass * k))
+	if disarmed():
+		ai.ram_t = 0.8   # nothing to bite with: the body itself is the blow
 	for h in biting_heads():
 		_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
 	ai.bite_cool = float(sp.cooldown) * (1.0 + injury)
+
+## The ram: a beast with no bite left throws its weight at him; what it hits, it hits as hard as
+## the contact (the impulse the engine put through him), and he goes down under it.
+func _ram(dt: float) -> void:
+	ai.ram_t = float(ai.get("ram_t", 0.0)) - dt
+	if ai.ram_t <= 0.0 or Combat.current == null:
+		return
+	var t = target
+	if t == null or not is_instance_valid(t) or not t.alive or not _touching(t, 0.25):
+		return
+	var part: VoxelPart = Combat.current.touch_part(self, t, 0.25)
+	if part == null or part.severed:
+		return
+	ai.ram_t = 0.0
+	var J := clampf(_touch_force(t) * 0.005, 8.0, 28.0)
+	var dir: Vector3 = (t.torso.global_position - torso.global_position)
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length_squared() > 0.01 else Vector3.FORWARD
+	var at: Vector3 = part.global_position - dir * part.half_ext.z
+	var was: bool = t.alive
+	var res: Dictionary = t.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": dir, "heavy": 0.8})
+	t.last_attacker = self
+	if t.has_method("fall") and t.state == "stand":
+		t.fall(1.2, true)
+	Combat.current.hit.emit({"kind": "hit", "p": at, "dir": dir, "J": J, "type": "blunt", "char": t, "part": part, "attacker": self, "res": res, "killed": was and not t.alive, "ram": true})
+	ai.bite_cool = maxf(float(ai.bite_cool), 1.0)
 
 ## A python round a man (character.js has no constrictor; this is new): its coils wrap the
 ## body and close on it. The squeeze is a force, the snake's weight and the pull of its muscle,
@@ -725,8 +781,11 @@ func _coil(dt: float) -> void:
 	var pressure := force / maxf(0.05, area)          # N/m^2
 	# He is held: no breath, arms pinned to his sides.
 	tgt.stamina = maxf(0.0, tgt.stamina - pressure * 0.004 * dt)
-	tgt.stagger = maxf(tgt.stagger, 0.6)
-	if tgt.state == "stand" and float(hug.tight) > 0.5:
+	# He is not nailed to the spot: with breath left he keeps his feet and can tear away (the
+	# coils drag on him); only tight coils on a winded man bring him down.
+	var fresh: bool = tgt.stamina >= 35.0
+	tgt.stagger = minf(tgt.stagger, 0.5) if fresh else maxf(tgt.stagger, 0.6)
+	if tgt.state == "stand" and float(hug.tight) > 0.5 and not fresh:
 		tgt.fall(2.0, true)
 	if hug.tick <= 0.0 and tgt.alive and _touching(tgt, 0.6):
 		hug.tick = 0.45
@@ -745,6 +804,18 @@ func _coil(dt: float) -> void:
 	# Wrenched free: his struggle (what breath he has left), blows that stagger the snake, or
 	# coils too cut up to hold.
 	var escape: float = tgt.stamina / 100.0 * float(tgt.mods.get("strength", 1.0)) * 0.04 * dt * 60.0 / maxf(0.3, muscle)
+	# Running (or crawling, or just straining) away pulls the coils off him: the harder he
+	# pulls away, the sooner, and the coils slacken as he does.
+	var away: Vector3 = tgt.torso.global_position - torso.global_position
+	away.y = 0.0
+	var run_off := 0.0
+	if away.length_squared() > 0.01:
+		var tv: Vector3 = tgt.torso.linear_velocity - torso.linear_velocity
+		var lm: Vector3 = tgt.get("last_move") if tgt.get("last_move") is Vector3 else Vector3.ZERO
+		run_off = maxf(0.0, Vector3(tv.x, 0, tv.z).dot(away.normalized()) / 1.5) + maxf(0.0, lm.dot(away.normalized()))
+	escape *= 1.0 + 6.0 * minf(1.5, run_off) * (0.4 + 0.6 * tgt.stamina / 100.0)
+	if run_off > 0.5:
+		hug.tight = maxf(0.0, float(hug.tight) - dt * 0.8 * minf(1.5, run_off))
 	# (A snake just wrapped round him is not shaken off by the first knock: only after a second.)
 	if hug.t <= 0.0 or not tgt.alive or (hug.t < 6.0 and stagger > float(hug.stagger0) + 0.45) or fn_of(["coil"]) < 0.25 or rng.randf() < escape * dt or (hug.t < 6.0 and not _touching(tgt, 1.0)):
 		_release_coil()   # (the coils off him, he is out of them)
@@ -1150,6 +1221,20 @@ func part_ok(p: VoxelPart, need := 0.25) -> bool:
 	return p != null and not p.severed and not p.hanging and p.hp > 0.0 and p.function() > need
 
 ## The heads that can still bite, and how well the best of them does.
+## Nothing left to fight with but its weight: no jaws that bite, no horns or tusks, no sting,
+## no pincers, no fire.
+func disarmed() -> bool:
+	if not biting_heads().is_empty():
+		return false
+	if parts.any(func(p): return String(p.part_name).begins_with("horn") or String(p.part_name).begins_with("tusk")) and horn_fn() > 0.3:
+		return false
+	if by_name.has("stinger") and part_ok(by_name.stinger, 0.25):
+		return false
+	for n in ["clawL", "clawR"]:
+		if by_name.has(n) and part_ok(by_name[n], 0.25):
+			return false
+	return sp.breath == null or not can_breathe()
+
 func biting_heads() -> Array:
 	return heads.filter(func(h): return h.def.get("bite", false) and part_ok(h, 0.15))
 
@@ -1197,6 +1282,15 @@ func mouth_dir() -> Vector3:
 		along = Basis(Vector3.RIGHT, h.jaw_angle * 0.5) * along
 	return (PD.quat_of(h) * along).normalized()
 
+## Out cold: collapsed with the head too far gone to use (and no other head), never to rise.
+func is_out() -> bool:
+	if not alive or not collapsed_now:
+		return false
+	return blood < 22.0 and heads.all(func(h): return h.severed or h.function() < 0.3)
+
+func is_beaten() -> bool:
+	return not alive or is_out()
+
 func can_breathe() -> bool:
 	var b := breath_part()
 	var neck_ok := not by_name.has("neck") or part_ok(by_name.neck, 0.2)
@@ -1214,7 +1308,10 @@ func _process(dt: float) -> void:
 	if not alive:
 		gape = 0.35
 	elif breath_t > 0.0:
-		gape = 1.2   # the jaws flung wide for the fire
+		# The jaws flung wide for the fire; a head pointed steeply down opens less, so the
+		# hanging jaw does not swing back through its own neck.
+		var snout_y: float = (PD.quat_of(breath_part()) * Vector3(0, 0, 1)).y
+		gape = 1.0 * clampf((snout_y + 0.75) / 0.45, 0.45, 1.0)
 	elif hug != null and hug.get("roll", false):
 		gape = 0.05   # clamped on the limb
 	elif hug != null:
@@ -1260,7 +1357,7 @@ func _breath_track(dt: float) -> void:
 	var t := mouth.distance_to(mark as Vector3) / maxf(1.0, speed * 0.92)
 	var want := ((mark as Vector3) + Vector3(0, 0.5 * 9.81 * t * t, 0) - mouth).normalized()
 	breath_err = asin(clampf(want.y, -1.0, 1.0)) - asin(clampf(md.y, -1.0, 1.0))
-	breath_pitch = clampf(breath_pitch - breath_err * dt * 6.0, -1.2, 1.2)
+	breath_pitch = clampf(breath_pitch - breath_err * dt * 6.0, -1.4, 0.9)
 	var dy := atan2(want.x, want.z) - atan2(md.x, md.z)
 	breath_yaw = atan2(sin(dy), cos(dy))
 
@@ -1268,17 +1365,43 @@ func _breath_aim(role: String) -> float:
 	if _fire_lunge() <= 0.0 or not (_breath_mark_now() is Vector3):
 		return 0.0
 	if role == "neck":
-		return breath_pitch - clampf(breath_err * 1.0, -0.8, 0.8)
-	return -clampf(breath_err * 0.6, -0.5, 0.5)
+		return 0.0   # the neck holds its thrust; it is the head that turns onto the mark
+	return breath_pitch - clampf(breath_err * 0.8, -0.7, 0.7)   # (up to the joint's own limit)
+
+## The jaws turned straight onto where the fire is to fall (lofted for the drop), in the world,
+## whatever the neck under the head is doing: the fire goes the way the mouth points.
+func _aim_jaws(p: VoxelPart, max_t: float, dt: float) -> void:
+	var mark: Vector3 = _breath_mark_now()
+	var mouth := mouth_point()
+	var speed := clampf(float(sp.breathRange) * S * 1.7, 6.0, 16.0)
+	var t := mouth.distance_to(mark) / maxf(1.0, speed * 0.92)
+	var want := (mark + Vector3(0, 0.5 * 9.81 * t * t, 0) - mouth).normalized()
+	var md := mouth_dir()
+	var axis := md.cross(want)
+	var ang := asin(clampf(axis.length(), 0.0, 1.0))
+	if md.dot(want) < 0.0:
+		ang = PI - ang
+	var err := axis.normalized() * ang if axis.length_squared() > 1e-8 else Vector3.ZERO
+	var wn := 14.0
+	var inertia: float = p.mass * p.half_ext.length_squared() * 0.5
+	for c in p.child_parts:
+		if not c.severed:
+			inertia += c.mass * (c.global_position - p.global_position).length_squared()
+	var tq: Vector3 = (err * (wn * wn) - p.angular_velocity * (2.0 * 0.9 * wn)) * inertia
+	tq = PD.clamp_len(tq, max_t)
+	p.apply_torque_impulse(tq * dt)
 
 func _fire_lunge() -> float:
+	# From the moment it fills its chest the neck goes out at the prey, so it is already thrust
+	# forward when the fire comes.
 	if ai.get("mode", "") == "breathe":
-		return 0.3 if float(ai.t) > 0.4 else 1.0
+		return 1.0
 	return 1.0 if breath_t > 0.0 else 0.0
 
-## How far the neck itself is thrust down with the fire: the rest of the dip is the aim.
+## The neck with the fire: thrust straight out at the prey, forward and a little down (never
+## folded back over the body): the body's turn and the head's tilt do the aiming.
 func _lunge_dip() -> float:
-	return 0.4 * _fire_lunge()
+	return 0.8 * _fire_lunge()
 
 ## A bite landed (combat): the jaws snap shut on it, and what the teeth tore out hangs from
 ## them a while, or falls.
@@ -1473,6 +1596,8 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				# Fire poured out with the neck thrust down and forward over the prey, the head level.
 				lim = NECK_DIP
 		var wn: float = ROLE_WN[role]
+		if (role == "neck" or role == "head") and _fire_lunge() >= 1.0:
+			wn *= 1.6   # the thrust is quick and hard, not a slow sway forward
 		if st > 0.0:
 			off += _strike_pose(p, role, st, track, dist)
 			if role == "neck" or role == "head":
@@ -1483,6 +1608,8 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		if role == "tail" and by_name.has("stinger"):
 			# The arched tail carries the whole chain and the sting: held like a leg, not swung.
 			motor_rel(p, p.parent_part, Quaternion.from_euler(off) * a.rest, 14.0, a.max_t, dt, 0.5)
+		elif p == breath_part() and _fire_lunge() >= 1.0 and _breath_mark_now() is Vector3:
+			_aim_jaws(p, a.max_t, dt)   # breathing, the head is aimed in the world, not posed on the neck
 		else:
 			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
 

@@ -15,11 +15,20 @@ func _ready() -> void:
 	var cam: Camera3D = m.cam
 	cam.fov = 42.0
 	var n := 0
+	m.me.f.mods.toughness = 50.0
 	for i in 20 * 120:
 		b.target = m.me.f
 		m.me.f.blood = 100.0
 		for p in m.me.f.parts:
 			p.hp = maxf(p.hp, 30.0)
+		# The man stays on his feet five yards off the dragon: it is the pose that is on show.
+		var dp: Vector3 = b.torso.global_position
+		var mp0: Vector3 = m.me.f.torso.global_position
+		var away := Vector3(mp0.x - dp.x, 0, mp0.z - dp.z)
+		if m.me.f.state != "stand" or away.length() < 4.0:
+			away = away.normalized() if away.length() > 0.5 else Vector3(0, 0, -1)
+			m.me.f.teleport(Vector3(dp.x, 0, dp.z) + away * 5.0)
+			m.me.f.set_standing(true)
 		await get_tree().physics_frame
 		var fire: bool = b.breath_t > 0.6 or (b.ai.mode == "breathe" and float(b.ai.t) < 0.3)
 		if fire and i % 10 == 0:

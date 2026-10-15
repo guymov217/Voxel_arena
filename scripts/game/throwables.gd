@@ -98,10 +98,15 @@ func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
 				continue
 			hits.append({"part": part, "face": face, "f": pow(1.0 - d / radius, 1.5)})
 		hits.sort_custom(func(a, b): return a.f > b.f)
+		var first := true
 		for h in hits:
 			if h.part.severed:
 				continue
 			var J: float = power * h.f
+			# A monster's hide takes the blast hardest where it went off against it.
+			if first and c is Beast:
+				J *= 1.4
+			first = false
 			if J < 3.0:
 				continue
 			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6})
@@ -1364,8 +1369,9 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		var sd := Vector3(dd.z, 0, -dd.x).normalized()
 		var upv := sd.cross(dd).normalized()
 		dd += sd * cos(a1) * r1 * dist + upv * sin(a1) * r1 * dist
-		var t := maxf(0.1, dist / speed)
-		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
+		# The flat shot that lands on the mark at this speed, solved exactly (the old guess of
+		# the flight time from the straight distance fell short of a far mark).
+		vel = Items.flat_shot(dd, speed, 9.81)
 		from += dd.normalized() * 0.5
 	elif player and look != null:
 		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
