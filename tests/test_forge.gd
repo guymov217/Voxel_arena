@@ -76,3 +76,39 @@ func test_a_dragged_stroke_paints_many_voxels_with_one_undo() -> void:
 	f.stroke = {}
 	t.check(f.cells.size() - n0 <= 2, "a build stroke does not stack on itself (%d added)" % (f.cells.size() - n0))
 	f.queue_free()
+
+## The smith reshapes a weapon within its kind: a hammer stays a hammer, and a blunt one is not honed.
+func test_reshaping_keeps_the_kind_of_weapon() -> void:
+	var want := {"gladius": "blade", "longsword": "blade", "zweihander": "blade", "dagger": "blade", "axe": "axe", "executionerAxe": "axe",
+		"spear": "spear", "javelin": "spear", "trident": "spear", "mace": "blunt", "warhammer": "blunt", "hammer": "blunt",
+		"roundShield": "shield", "scutum": "shield", "bow": "bow", "crossbow": "crossbow", "flail": "chain"}
+	for k in want:
+		t.eq(Arms.family(Data.preset(k)), want[k], k)
+	var rng := RandomNumberGenerator.new()
+	for b in Arms.BASE_FAMILY:
+		for mods in [[], ["longer"], ["shorter"], ["heavyHead"], ["longHandle"]]:
+			if mods.all(func(m): return ForgeLib.mod_fits(m, b)):
+				rng.seed = 3
+				var d := ForgeLib.build_from_cards(b, mods, rng)
+				t.eq(Arms.family(d), Arms.BASE_FAMILY[b], "%s %s" % [b, str(mods)])
+	t.check(not Arms.can_upgrade("whetstone", Data.preset("mace")) and not Arms.can_upgrade("whetstone", Data.preset("warhammer")), "no honing a mace or a hammer")
+	t.check(Arms.can_upgrade("whetstone", Data.preset("gladius")), "a sword is honed")
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("warhammer"), 5000, func(_d, _c): pass)
+	t.eq(f.family, "blunt", "the warhammer on the anvil")
+	t.eq(f.job, "blunt", "nothing to put an edge on")
+	var bases := []
+	for c in f.find_children("*", "Button", true, false):
+		for k in ForgeLib.BASES:
+			if c.text == ForgeLib.BASES[k].label:
+				bases.append(k)
+	t.check(not bases.has("gladius") and not bases.has("silly"), "no sword base for a hammer (%s)" % str(bases))
+	# Paint an edge on it: the smith will not hand it over as a blade.
+	var taken := []
+	f.done = func(d, _c): taken.append(d)
+	for k in f.cells.keys():
+		f.cells[k] = ["steel", "edge"]
+	f._take()
+	t.eq(taken.size(), 0, "a hammer made into a blade is refused")
+	f.queue_free()

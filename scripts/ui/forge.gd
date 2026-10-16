@@ -13,6 +13,8 @@ var original_value := 0
 var purse := 0
 var done: Callable
 var free_build := false   # training: nothing costs anything
+var family := ""          # the smith reshapes a weapon within its kind (Arms.family): "" = anything goes
+const FAMILY_NAMES := {"blade": "a blade", "axe": "an axe", "spear": "a spear", "blunt": "a hammer or a mace", "shield": "a shield", "bow": "a bow", "crossbow": "a crossbow", "chain": "a chain weapon", "other": "what it is"}
 
 var mat := "steel"
 var job := "edge"
@@ -62,6 +64,9 @@ func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	done = cb
 	rng.randomize()
 	original_value = Arms.value(design)
+	family = "" if free_build else Arms.family(design)
+	if family == "blunt":
+		job = "blunt"
 	_load_cells(design)
 	_build_ui()
 	_show_mode(mode)
@@ -285,14 +290,18 @@ func _cards_ui() -> void:
 	mode_box.add_child(grid)
 	for k in ForgeLib.BASES:
 		var key: String = k
+		if family != "" and Arms.BASE_FAMILY.get(key, "") != family:
+			continue
 		var b := UIStyle.button(ForgeLib.BASES[k].label, func(): _pick_base(key))
 		b.tooltip_text = ForgeLib.BASES[k].blurb
 		b.toggle_mode = true
 		b.button_pressed = key == base_key
 		b.custom_minimum_size = Vector2(135, 0)
 		grid.add_child(b)
+	if family != "" and not Arms.BASE_FAMILY.values().has(family):
+		mode_box.add_child(UIStyle.label("No base for this one: Vulcanus reshapes it voxel by voxel.", 13, UIStyle.MUTED))
 	if base_key == "":
-		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil.", 13, UIStyle.MUTED))
+		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil." + ("" if family == "" else " It stays %s." % FAMILY_NAMES.get(family, "what it is")), 13, UIStyle.MUTED))
 		return
 	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS  (▲▼ speed · damage · reach)" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
 	var cards := GridContainer.new()
@@ -405,8 +414,11 @@ func _voxels_ui() -> void:
 	mode_box.add_child(md)
 	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
 	var jr := HBoxContainer.new()
+	var blunt := family == "blunt"
 	for j in JOBS:
 		var key: String = j
+		if blunt and (key == "edge" or key == "point"):
+			continue
 		var b := UIStyle.button(j.capitalize(), func():
 			job = key
 			_show_mode("voxels"))
@@ -429,28 +441,30 @@ func _voxels_ui() -> void:
 			keep[first] = cells[first]
 		cells = keep
 		_rebuild()))
-	ar.add_child(UIStyle.button("Auto-sharpen", func():
-		_push_undo()
-		var d := _design_now()
-		ForgeLib.auto_sharpen(d)
-		_load_cells(d)
-		_rebuild()))
+	if not blunt:
+		ar.add_child(UIStyle.button("Auto-sharpen", func():
+			_push_undo()
+			var d := _design_now()
+			ForgeLib.auto_sharpen(d)
+			_load_cells(d)
+			_rebuild()))
 	ar.add_child(UIStyle.button("Auto-grip", func():
 		_push_undo()
 		var d := _design_now()
 		ForgeLib.auto_grip(d)
 		_load_cells(d)
 		_rebuild()))
-	ar.add_child(UIStyle.button("Surprise me", func():
-		_push_undo()
-		var d := ForgeLib.surprise_weapon(rng)
-		for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
-			design.erase(k)
-		design.merge(d, true)
-		_load_cells(d)
-		name_edit.text = d.name
-		framed = false
-		_rebuild()))
+	if free_build:
+		ar.add_child(UIStyle.button("Surprise me", func():
+			_push_undo()
+			var d := ForgeLib.surprise_weapon(rng)
+			for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
+				design.erase(k)
+			design.merge(d, true)
+			_load_cells(d)
+			name_edit.text = d.name
+			framed = false
+			_rebuild()))
 	mode_box.add_child(ar)
 	var opts := HBoxContainer.new()
 	var two := CheckBox.new()
@@ -485,7 +499,8 @@ func _voxels_ui() -> void:
 	sr.add_child(sl_l)
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sr.add_child(sl)
-	mode_box.add_child(sr)
+	if not blunt:
+		mode_box.add_child(sr)
 	var cl := UIStyle.label("", 13, UIStyle.MUTED)
 	cl.set_meta("checklist", true)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -831,6 +846,9 @@ func _take() -> void:
 	var st := ForgeLib.compute_stats(d)
 	if not st.hasGrip:
 		cost_label.text = "It needs a grip to be held (Auto-grip finds one)"
+		return
+	if family != "" and Arms.family(d) != family:
+		cost_label.text = "Vulcanus reshapes it, he does not make it something else: it must stay %s" % FAMILY_NAMES.get(family, "what it is")
 		return
 	d.stats = st
 	var cost := 0 if free_build else _value_now() - original_value

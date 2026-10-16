@@ -46,6 +46,72 @@ const SHELVED := ["flail", "imperialFlail", "meteorHammer", "crossbow", "whip"]
 static func shelved(key: String) -> bool:
 	return SHELVED.has(key)
 
+## What kind of weapon a design is, read off its voxels: "blade" (a sword or a dagger: a long
+## edge down its length), "axe" (a short edge on a head), "spear" (a point on a long shaft),
+## "blunt" (no edge: a hammer, a mace, a club), "shield", "bow", "crossbow", "chain" or
+## "other". The smith reshapes a weapon only within its kind.
+static func family(d) -> String:
+	if not (d is Dictionary) or not (d.get("voxels") is Array) or d.voxels.is_empty():
+		return ""
+	if d.get("kind", "weapon") == "shield":
+		return "shield"
+	match String(d.get("shoots", "")):
+		"arrow":
+			return "bow"
+		"bolt":
+			return "crossbow"
+		"":
+			pass
+		_:
+			return "other"
+	if d.get("chain") is Dictionary:
+		return "chain"
+	var lo := 1 << 20
+	var hi := -lo
+	var elo := lo
+	var ehi := hi
+	var edges := 0
+	var points := 0
+	var narrow := true
+	var edge_x := 0.0
+	var grip_x := 0.0
+	var grips := 0
+	for v in d.voxels:
+		var y := int(v[1])
+		lo = mini(lo, y)
+		hi = maxi(hi, y)
+		if absi(int(v[0])) > 1:
+			narrow = false
+		match v[4]:
+			"edge":
+				edges += 1
+				edge_x += float(v[0])
+				elo = mini(elo, y)
+				ehi = maxi(ehi, y)
+			"point":
+				points += 1
+			"grip":
+				grips += 1
+				grip_x += float(v[0])
+	var length := hi - lo + 1
+	if edges == 0:
+		return "spear" if points > 0 and narrow and length >= 25 else "blunt"
+	# An axe's edge stands off the haft, on one side of it.
+	if absf(edge_x / edges - (grip_x / grips if grips > 0 else 0.0)) >= 2.0:
+		return "axe"
+	# A spear's head is at the far end of a long shaft; a sword's edge runs from near the guard.
+	if float(elo - lo) >= 0.6 * float(length):
+		return "spear"
+	return "blade"
+
+## What the smith's base cards make, by kind.
+const BASE_FAMILY := {"gladius": "blade", "spatha": "blade", "dagger": "blade", "axe": "axe", "throwingAxe": "axe",
+	"hammer": "blunt", "mace": "blunt", "spear": "spear", "javelin": "spear", "shield": "shield", "bow": "bow"}
+
+## Whether it has an edge to hone at all: a hammer or a mace (spikes or not) is not sharpened.
+static func sharpenable(d) -> bool:
+	return ["blade", "axe", "spear"].has(family(d))
+
 static func bases() -> Array:
 	return Data.shop.get("bases", []).filter(func(b): return not SHELVED.has(String(b.key)))
 
@@ -147,11 +213,7 @@ static func can_upgrade(id: String, d) -> bool:
 		return true
 	match id:
 		"whetstone":
-			var edged := false
-			for v in d.voxels:
-				if v[4] == "edge" or v[4] == "point":
-					edged = true
-			return edged and float(d.get("sharpness", 0.0)) < 1.0
+			return sharpenable(d) and float(d.get("sharpness", 0.0)) < 1.0
 		"temper":
 			return upgrade_price("temper", d) > 15
 	return false
