@@ -55,7 +55,9 @@ var says: Label
 var verdict: Label
 var cost_label: Label
 
-const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather", "rubber", "fish", "ice", "explosive", "spring", "glue", "feather", "magnet", "ruby", "sapphire", "emerald"]
+## The smith's stock, each for its own job: two metals for edges, three weights from light to
+## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
+const MATS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
 const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"]]
 
@@ -332,6 +334,7 @@ func _show_mode(m: String) -> void:
 	_update_texts()
 
 func _cards_ui() -> void:
+	mode_box.add_child(UIStyle.button("Blank anvil · build from nothing", _blank))
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -383,6 +386,24 @@ func _cards_ui() -> void:
 		_show_mode("cards")))
 	row.add_child(UIStyle.button("Customize the voxels", func(): _show_mode("voxels")))
 	mode_box.add_child(row)
+
+## A clean start: one block of grip on the anvil, everything else yours to put on it (and, at
+## the smith, to pay for, block by block).
+func _blank() -> void:
+	_push_undo()
+	for k in ["kind", "twoHanded", "throwable", "spins", "shoots", "serrated", "gem", "stats", "chain", "balance", "grips", "imbue"]:
+		design.erase(k)
+	design.sharpness = 0.8
+	cells = {Vector3i(0, 0, 0): ["wood", "grip"]}
+	base_key = ""
+	picks = []
+	name_edit.text = "New weapon"
+	mat = "wood"
+	job = "grip"
+	tool = "build"
+	framed = false
+	_rebuild()
+	_show_mode("voxels")
 
 ## The weapon these cards would make (the same dice for a silly base, so the arrows compare).
 func _trial(mods: Array, seed_: int) -> Dictionary:
@@ -657,15 +678,15 @@ const JOB_USE := {
 	"grip": "Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.",
 }
 const MAT_USE := {
-	"steel": "The blade metal: the keenest edge and point, holds them longest, rarely chips. Fairly light.",
-	"iron": "Nearly as keen as steel and a little heavier: hits a touch harder, dulls a touch sooner.",
+	"steel": "The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.",
+	"iron": "The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.",
 	"bronze": "Softer and heavier: a fair edge that dulls sooner; good weight for a head.",
-	"gold": "Very heavy and soft: a crushing head, a poor edge, a fortune spent.",
+	"gold": "Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.",
 	"stone": "Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.",
 	"bone": "Light and fairly hard: quick little blades and points, but they chip and snap.",
-	"wood": "Very light and soft: fast handles and shafts; no edge to speak of.",
+	"wood": "Light and cheap: fast handles and long shafts that keep the weight out of the hand; no edge.",
 	"leather": "Next to weightless and soft: wraps a grip; hurts no one by itself.",
-	"lead": "The heaviest: a few voxels give a head huge weight for crushing blows, and slow the swing.",
+	"lead": "The densest: a few blocks in a head give it a crushing weight and pull the balance out to it; in a pommel they balance a long blade.",
 	"rubber": "Light, soft and squeaky: bounces off and barely hurts. For laughs.",
 	"fish": "Soft and slappy: knocks a man about with a loud slap, cuts nothing.",
 	"ice": "Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.",

@@ -300,13 +300,13 @@ static func weapon_name(kind: String, rng: RandomNumberGenerator) -> String:
 static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	var kind: String = _pick(["blade", "blade", "axe", "mace", "polearm", "silly"], rng)
 	var d := empty_design(weapon_name(kind, rng))
-	var metal: String = _pick(["steel", "steel", "iron", "bronze", "gold", "bone", "stone"], rng)
+	var metal: String = _pick(["steel", "steel", "iron", "iron", "gold", "stone"], rng)
 	var haft: String = _pick(["wood", "wood", "leather", "bone"], rng)
 	var grip := rng.randi_range(3, 12 if kind == "polearm" else 6)
 	for y in grip:
 		set_voxel(d, 0, y, 0, haft, "grip")
 	if rng.randf() < 0.6:
-		set_voxel(d, 0, -1, 0, _pick(["lead", "bronze", "iron"], rng), "blunt")
+		set_voxel(d, 0, -1, 0, _pick(["lead", "iron", "iron"], rng), "blunt")
 	var top := grip
 	if kind == "polearm":
 		var l := rng.randi_range(12, 26)
@@ -321,7 +321,7 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	if kind == "blade" or kind == "polearm":
 		if rng.randf() < 0.7:
 			for x in range(-2, 3):
-				set_voxel(d, x, top, 0, _pick(["bronze", "iron", "gold"], rng), "blunt")
+				set_voxel(d, x, top, 0, _pick(["iron", "iron", "gold"], rng), "blunt")
 		top += 1
 		var bl := rng.randi_range(3, 7) if kind == "polearm" else rng.randi_range(8, 26)
 		var w := rng.randi_range(0, 2)
@@ -453,7 +453,7 @@ const SIMPLE_SHAPES := {
 	"shield": {"label": "Shield", "blade": [8, 14], "width": [4, 8]},
 	"bow": {"label": "Bow", "blade": [7, 14], "width": [1, 2]},
 }
-const SIMPLE_MATERIALS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "ice", "explosive", "spring", "glue", "feather", "magnet", "rubber", "fish"]
+const SIMPLE_MATERIALS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet"]
 const DEFAULT_SIMPLE := {"shape": "sword", "blade": 20, "width": 2, "handle": 5, "mat": "steel", "handleMat": "wood", "pommel": 1, "spikes": false, "twoHanded": false, "throwable": false, "sharp": 0.8}
 
 static func simple_weapon(o: Dictionary) -> Dictionary:
@@ -568,7 +568,7 @@ static func silly_simple(rng: RandomNumberGenerator) -> Dictionary:
 	var sh: Dictionary = SIMPLE_SHAPES[shape]
 	var kind := "blade" if shape == "sword" or shape == "dagger" else ("polearm" if shape == "spear" else ("axe" if shape == "axe" else "mace"))
 	return {"shape": shape, "blade": rng.randi_range(sh.blade[0], sh.blade[1]), "width": rng.randi_range(sh.width[0], sh.width[1]),
-		"handle": rng.randi_range(3, 10), "mat": _pick(SIMPLE_MATERIALS, rng), "handleMat": _pick(["wood", "leather", "bone", "gold", "rubber"], rng),
+		"handle": rng.randi_range(3, 10), "mat": _pick(SIMPLE_MATERIALS, rng), "handleMat": _pick(["wood", "wood", "iron", "gold"], rng),
 		"pommel": rng.randi_range(0, 2), "spikes": rng.randf() < 0.5, "twoHanded": rng.randf() < 0.3, "throwable": rng.randf() < 0.3,
 		"sharp": roundf(rng.randf() * 20.0) / 20.0, "name": weapon_name(kind, rng)}
 
@@ -602,17 +602,12 @@ const MODIFIERS := {
 	"longHandle": {"label": "Long handle", "blurb": "Steadier grip, a little more reach.", "word": "Long-hafted", "fits": "weapon", "handle": 5},
 	"twoHanded": {"label": "Two-handed", "blurb": "Much stronger swings. No shield.", "word": "Great", "fits": "weapon_not_dagger", "set": {"twoHanded": true}},
 	"throwable": {"label": "Throwable", "blurb": "F throws it where you aim.", "word": "Throwing", "fits": "weapon", "set": {"throwable": true}},
-	"bronze": {"label": "Bronze", "blurb": "Softer, chips, looks the part.", "word": "Bronze", "fits": "not_bow", "set": {"mat": "bronze"}},
 	"gold": {"label": "Gold", "blurb": "Heavy, soft, the crowd loves it.", "word": "Golden", "fits": "not_bow", "set": {"mat": "gold"}},
 	"stone": {"label": "Stone", "blurb": "Very heavy. Crushes.", "word": "Stone", "fits": ["axe", "hammer", "mace", "club", "silly"], "set": {"mat": "stone"}},
-	"ice": {"label": "Ice", "blurb": "Razor sharp, chills, shatters.", "word": "Frozen", "fits": "weapon", "set": {"mat": "ice", "sharp": 1.0}},
 	"explosive": {"label": "Explosive", "blurb": "BOOM on a hard hit. Once.", "word": "Exploding", "fits": "weapon", "set": {"mat": "explosive"}},
 	"spring": {"label": "Spring", "blurb": "Bounces people across the arena.", "word": "Springy", "fits": "not_bow", "set": {"mat": "spring"}},
 	"glue": {"label": "Glue", "blurb": "Sticks to bodies and weapons.", "word": "Sticky", "fits": "not_bow", "set": {"mat": "glue"}},
 	"magnet": {"label": "Magnet", "blurb": "Pulls iron weapons out of hands.", "word": "Magnetic", "fits": "weapon", "set": {"mat": "magnet"}},
-	"rubber": {"label": "Rubber", "blurb": "Squeaks. Barely hurts. Adored.", "word": "Rubber", "fits": "not_bow", "set": {"mat": "rubber"}},
-	"feather": {"label": "Feather", "blurb": "Weighs nothing. Tickles.", "word": "Feather", "fits": "weapon", "set": {"mat": "feather"}},
-	"fish": {"label": "Fish", "blurb": "It slaps. That is all.", "word": "Fishy", "fits": "weapon", "set": {"mat": "fish"}},
 	"heavyDraw": {"label": "Heavy draw", "blurb": "A stiffer bow: arrows hit harder, slower to draw.", "word": "War", "fits": ["bow"], "set": {"width": 2}, "blade": 2},
 	"quickDraw": {"label": "Short bow", "blurb": "Draws fast, hits softer.", "word": "Short", "fits": ["bow"], "blade": -3},
 	"fireArrows": {"label": "Fire arrows", "blurb": "Arrows set the sand ablaze where they land.", "word": "Fire", "fits": ["bow"], "set": {"gem": "fire"}},
@@ -622,7 +617,7 @@ const MODIFIERS := {
 	"tower": {"label": "Tower", "blurb": "A door. A very safe door.", "word": "Tower", "fits": ["shield"], "blade": 4, "width": 2},
 }
 const MAX_PICKS := 2
-const WILD := ["ice", "explosive", "spring", "glue", "magnet", "rubber", "feather", "fish", "gold"]
+const WILD := ["explosive", "spring", "glue", "magnet", "gold", "lead"]
 
 static func mod_fits(key: String, base: String) -> bool:
 	var f = MODIFIERS[key].fits

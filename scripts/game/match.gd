@@ -1298,6 +1298,7 @@ func _on_hit(h: Dictionary) -> void:
 		_coating(h)
 	if role != "guest" and h.get("weapon") and is_instance_valid(h.weapon):
 		_gems(h)
+		_gold(h)
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
@@ -1446,6 +1447,22 @@ func _gems(h: Dictionary) -> void:
 		if say:
 			c.set_meta("gem_say", time)
 			say = false
+
+## Gold in a weapon: the crowd loves every blow it lands, the more gold the more.
+func _gold(h: Dictionary) -> void:
+	var att = h.get("attacker")
+	var c = h.get("char")
+	if att == null or not (c is Fighter) or c == att or float(h.get("J", 0.0)) < 4.0:
+		return
+	var n := 0
+	var w: Weapon = h.weapon
+	for i in w.vox.size():
+		if w.alive[i] and w.vox[i][3] == "gold":
+			n += 1
+	if n == 0 or time - float(att.get_meta("gold_t", -9.0)) < 1.5:
+		return
+	att.set_meta("gold_t", time)
+	crowd_add(att, minf(8.0, 1.0 + n * 0.15), "a golden blow")
 
 static func _part_word(part: VoxelPart) -> String:
 	var n := String(part.part_name).to_lower()

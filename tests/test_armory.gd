@@ -129,3 +129,25 @@ func test_armour_designed_at_the_bench_and_its_weight() -> void:
 		used.append(100.0 - e.f.stamina)
 	t.check(used[1] > used[0] * 1.4, "an armoured runner tires faster (%.0f vs %.0f breath)" % [used[1], used[0]])
 	m.queue_free()
+
+## Gold in a weapon: the crowd loves the blows it lands, and more gold more.
+func test_a_golden_blow_wins_the_crowd() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 2, "decrees": [], "hazards": []})
+	var me: Fighter = m.me.f
+	var foe = null
+	for e in m.entities:
+		if e != m.me:
+			foe = e.f
+	var d := Data.preset("gladius").duplicate(true)
+	for v in d.voxels:
+		if v[4] == "blunt":
+			v[3] = "gold"
+	var w := Weapon.new()
+	w.setup(d)
+	m.add_child(w)
+	var f0: float = m.spectacle.get_favor(me)
+	m._on_hit({"kind": "hit", "weapon": w, "char": foe, "part": foe.torso, "attacker": me, "p": foe.torso.global_position, "dir": Vector3(0, 0, 1), "J": 10.0, "type": "edge", "res": {"severed": []}, "killed": false})
+	t.check(m.spectacle.get_favor(me) > f0 + 1.0, "the crowd roars (%.1f → %.1f)" % [f0, m.spectacle.get_favor(me)])
+	m.queue_free()

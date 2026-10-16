@@ -179,3 +179,30 @@ func test_no_block_hangs_in_the_air() -> void:
 	t.check(f.cells.values().any(func(v): return v[1] == "grip"), "the grip stays on the anvil")
 	t.eq(ForgeLib.pieces(f.cells).size(), 1, "one piece")
 	f.queue_free()
+
+## A blank anvil: one block of grip, and a weapon built up from it block by block; at the smith
+## every block put on is paid for. The stock is the short list, each stuff for its own job.
+func test_a_weapon_from_a_blank_anvil() -> void:
+	t.check(not ForgeLib.SIMPLE_MATERIALS.has("fish") and not load("res://scripts/ui/forge.gd").MATS.has("bronze"), "the stock is the short list")
+	t.check(load("res://scripts/ui/forge.gd").MATS.has("ruby") and load("res://scripts/ui/forge.gd").MATS.has("lead"), "gems and lead kept")
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("gladius"), 1000, func(_d, _c): pass)
+	f._blank()
+	t.eq(f.cells.size(), 1, "one block on the anvil")
+	t.eq(String(f.cells.values()[0][1]), "grip", "and it is the grip")
+	f.mirror = false
+	f.mat = "wood"
+	f.job = "grip"
+	f._place(ForgeLib.line_cells(Vector3i(0, 1, 0), Vector3i(0, 4, 0)))
+	f.mat = "steel"
+	f.job = "edge"
+	f._place(ForgeLib.line_cells(Vector3i(0, 5, 0), Vector3i(0, 20, 0)))
+	f._place([Vector3i(-1, 10, 0), Vector3i(1, 10, 0)])
+	t.check(f.cells.size() >= 21, "built up from it (%d blocks)" % f.cells.size())
+	t.check(f._value_now() > 0, "and at the smith it costs (%d)" % f._value_now())
+	var got := []
+	f.done = func(d, c): got.append([d, c])
+	f._take()
+	t.check(not got.is_empty() and Arms.family(got[0][0]) == "blade", "a blade made from nothing is still a blade (%s)" % [Arms.family(got[0][0]) if not got.is_empty() else "refused"])
+	f.queue_free()

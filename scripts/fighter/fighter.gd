@@ -682,6 +682,15 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst}])
 	_armor_dirty = true
 
+## All he carries, kg: his armour and the weapons in his hands (a warhammer and a tower of a
+## shield tire a man as plate does).
+func carried_kg() -> float:
+	var kg := armor_weight()
+	for w in weapons.values():
+		if w and is_instance_valid(w):
+			kg += w.mass
+	return kg
+
 ## The armour's weight on him, kg (Armory.kg for each piece, the plates still on it).
 func armor_weight() -> float:
 	if _armor_dirty:
@@ -1426,7 +1435,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
-	var load_ := Armory.burden(armor_weight())
+	var load_ := Armory.burden(carried_kg())
 	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
@@ -1688,7 +1697,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	# Armour is carried: every exertion (sprinting, swinging, the struggle) costs more breath
 	# the more he has on.
-	stamina_use *= float(Armory.burden(armor_weight()).breath)
+	stamina_use *= float(Armory.burden(carried_kg()).breath)
 	# A giant's lungs and muscle go with his size: the same swing of a weapon scaled to him
 	# costs him no more breath than a man's costs the man.
 	if S > 1.2:
@@ -1948,7 +1957,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			_keep_blade_front(side, w, yaw_q, dt)
 		if thrust_line[side] != null:
 			_hold_thrust_line(side, w, t_pos, yaw_q, strength, dt)
-		var wmax := 45.0
+		var wmax := swing_cap(side, w)
 		if w.angular_velocity.length() > wmax:
 			var k := wmax / w.angular_velocity.length()
 			w.angular_velocity *= k
@@ -2385,6 +2394,16 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	var desired := PD.quat_from_axes(e, axis, z)
 	aim_q[side] = desired
 	return desired
+
+## How fast a weapon can be swung round (rad/s): a light blade whips round, a weight far out on
+## a haft (a hammer's head, a lead-weighted club) turns slower, by its moment about the hand,
+## though it lands with more behind it. A strong man swings a heavy one a little faster.
+const SWING_I_REF := 0.25   # kg·m², a sword's
+func swing_cap(side: String, w: Weapon) -> float:
+	var lever := w.global_transform * w.center_of_mass - hand_world(side)
+	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
+	var k := pow(SWING_I_REF * S * S * float(mods.get("strength", 1.0)) / maxf(1e-4, i_wpn), 0.25)
+	return clampf(45.0 * k, 16.0, 45.0)
 
 func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float, dt: float) -> void:
 	var fore: VoxelPart = arm[side].fore

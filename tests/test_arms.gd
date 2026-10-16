@@ -192,3 +192,44 @@ func test_a_thrust_drives_straight_along_the_blade() -> void:
 		t.check(turn < 25.0, "%s: the blade keeps its line (turned %.0f deg)" % [wk, turn])
 		m.queue_free()
 		await get_tree().process_frame
+
+## The weight of a weapon and where it lies tell in the hand: the same hammer with a lead head
+## has its centre of mass further out, and the same sweep of the mouse swings it slower.
+func test_a_heavy_head_moves_the_balance_and_swings_slower() -> void:
+	var wood := Data.preset("hammer").duplicate(true)
+	var lead := Data.preset("hammer").duplicate(true)
+	for v in wood.voxels:
+		v[3] = "wood"
+	for v in lead.voxels:
+		v[3] = "wood" if v[4] == "grip" else "lead"
+	var ww := Weapon.new()
+	ww.setup(wood)
+	var wl := Weapon.new()
+	wl.setup(lead)
+	t.check(wl.mass > 4.0 * ww.mass, "lead is heavier (%.2f vs %.2f kg)" % [wl.mass, ww.mass])
+	t.check((wl.center_of_mass - wl.grip_main).length() > (ww.center_of_mass - ww.grip_main).length() + 0.02, "the balance moves out to the head (%.2f vs %.2f m)" % [(wl.center_of_mass - wl.grip_main).length(), (ww.center_of_mass - ww.grip_main).length()])
+	ww.free()
+	wl.free()
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	m.me.f.teleport(Vector3(0, 0, -10))
+	var peak := []
+	for d in [wood, lead]:
+		var e = m.spawn_fighter({"kind": "bot", "name": "S", "loadout": {"main": d, "off": ""}, "team": 1, "pos": Vector3(4.0 * peak.size(), 0.1, 0), "yaw": 0.0})
+		e.erase("bot")
+		var hp := {"x": 0.0, "y": 1.2}
+		e.drive = func(_e): return {"main": hp, "power": true}
+		var f: Fighter = e.f
+		for i in 90:
+			await get_tree().physics_frame
+		hp.y = -1.2
+		var sum := 0.0
+		for i in 30:
+			await get_tree().physics_frame
+			var w: Weapon = f.weapons.R
+			if w:
+				sum += w.angular_velocity.length()
+		peak.append(sum / 30.0)
+	t.check(peak[1] < peak[0] * 0.9, "the lead-headed hammer comes down slower (mean %.1f vs %.1f rad/s)" % [peak[1], peak[0]])
+	m.queue_free()
