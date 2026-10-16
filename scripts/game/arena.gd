@@ -348,7 +348,9 @@ static func _spectator_mesh() -> ArrayMesh:
 			var q := [o - du - dv, o + du - dv, o + du + dv, o - du + dv]
 			# A baked shade (UV2.y): lit from above, shadowed below, darker toward the box's foot.
 			var face := 1.0 if n.y > 0.5 else (0.6 if n.y < -0.5 else 0.86)
-			for idx in [0, 1, 2, 0, 2, 3]:
+			# Wound clockwise, Godot's front face (the other way round every box was inside out:
+			# its near faces culled, the crowd looked see-through).
+			for idx in [0, 2, 1, 0, 3, 2]:
 				var low: float = 0.82 if (q[idx] as Vector3).y < c.y else 1.0
 				st.set_normal(n)
 				st.set_color(Color(1, 1, 1))
@@ -403,12 +405,14 @@ func _build_crowd() -> void:
 	var list := []
 	for t in 6:
 		var rr := RADIUS + 1.4 + t * 1.3
-		var n := int(TAU * rr / 0.42)
+		# A seat each wide enough for a man and his arms (packed closer, the arms of
+		# neighbours went through each other).
+		var n := int(TAU * rr / 0.62)
 		for i in n:
 			if rng.randf() < 0.18:
 				continue
 			var a := float(i) / n * TAU + rng.randf() * 0.012
-			var sc := 1.25 + rng.randf() * 0.25
+			var sc := 1.1 + rng.randf() * 0.15
 			if voxel and not _seat_free(a, rr):
 				continue
 			# Facing the sand (the mesh looks along +z).

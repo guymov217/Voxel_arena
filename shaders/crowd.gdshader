@@ -21,7 +21,8 @@ void vertex() {
 	vec3 lift = vec3(0.0, jump + sin(TIME * 0.7 + ph * 9.0) * 0.008, 0.0);
 	if (tag > 1.5 && tag < 3.5) {
 		float side = tag > 2.5 ? 1.0 : -1.0;
-		float raise = clamp(excitement * 1.6 - 0.3 + 0.35 * sin(t * 1.3), 0.0, 1.0) * 2.7 * mix(0.25, 1.0, keen);
+		// Up to nearly straight over the head: thrown out wide, they reached into the next man's.
+		float raise = clamp(excitement * 1.6 - 0.3 + 0.35 * sin(t * 1.3), 0.0, 1.0) * 2.95 * mix(0.25, 1.0, keen);
 		vec3 sh = vec3(side * 0.16, 0.44, 0.0);
 		vec3 p = VERTEX - sh;
 		float a = raise * side;
