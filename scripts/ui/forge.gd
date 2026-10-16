@@ -915,8 +915,13 @@ func _erase_at(at: Vector2) -> void:
 		_mark(list)
 
 func _place(list: Array) -> void:
-	var add := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
+	var want := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
+	if want.is_empty():
+		return
+	# Only what holds on to the weapon goes on: no block hangs in the air.
+	var add := ForgeLib.attached(cells, want)
 	if add.is_empty():
+		cost_label.text = "A new block must touch the weapon"
 		return
 	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
 		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
@@ -936,6 +941,14 @@ func _remove(list: Array) -> void:
 	_push_undo()
 	for c in gone:
 		cells.erase(c)
+	# Cut through, the piece without the grip falls off the anvil (Undo puts it back).
+	var keep := ForgeLib.kept_piece(cells)
+	if keep.size() < cells.size():
+		var kept := {}
+		for c in keep:
+			kept[c] = cells[c]
+		cost_label.text = "Cut through: %d blocks fall away" % (cells.size() - keep.size())
+		cells = kept
 	_rebuild()
 
 func _push_undo() -> void:

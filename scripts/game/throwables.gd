@@ -910,9 +910,7 @@ func on_item(ev: Dictionary) -> void:
 					c.blood = minf(100.0, c.blood + 30.0)
 					m.feed.emit("%s eats the bread" % c.display_name)
 				"wine":
-					c.stamina = 100.0
-					c.wine_timer = 10.0
-					c.mods.drunk = maxf(float(c.mods.drunk), 0.3)
+					c.drink_wine()
 					m.feed.emit("%s downs the wine" % c.display_name)
 				"coin":
 					m.feed.emit("%s pockets a gold coin" % c.display_name)
@@ -1182,6 +1180,22 @@ func clear() -> void:
 
 # ---------- The hotbar ----------
 
+## A team-mate down within reach of `e` (the nearest), or null.
+func _downed_friend(e: Dictionary):
+	var p: Vector3 = e.f.torso.global_position
+	var best = null
+	var bd := 1.8 * float(e.f.S)
+	for o in m.entities:
+		if o == e or o.team != e.team or o.kind == "beast" or not is_instance_valid(o.f) or not o.f.alive:
+			continue
+		if o.f.state != "down" and o.f.state != "rising":
+			continue
+		var d: float = o.f.torso.global_position.distance_to(p)
+		if d < bd:
+			bd = d
+			best = o
+	return best
+
 ## Uses the kit item in hotbar `slot`: food and bandages at once; anything thrown goes into the
 ## free hand for a player (aimed and thrown with F), straight at the target for a bot.
 func use_item(e: Dictionary, slot: int) -> bool:
@@ -1206,18 +1220,24 @@ func use_item(e: Dictionary, slot: int) -> bool:
 	inv[id] = int(inv[id]) - 1
 	match id:
 		"bandage":
-			for p in c.parts:
+			# A friend down beside him: the bandage is for the friend, who is on his feet twice
+			# as soon. Otherwise his own wounds.
+			var friend = _downed_friend(e)
+			var who = friend.f if friend else c
+			for p in who.parts:
 				p.bleed = 0.0
 				p.artery = 0.0
 				p.stump = false
-			c.torso.hp = minf(100.0, c.torso.hp + 15.0)
-			m.feed.emit("%s bandaged up" % c.display_name)
+			who.torso.hp = minf(100.0, who.torso.hp + 15.0)
+			if friend:
+				who.help_up()
+				m.feed.emit("%s bandages %s and helps %s up" % [c.display_name, who.display_name, who.display_name])
+			else:
+				m.feed.emit("%s bandaged up" % c.display_name)
 		"bread":
 			c.blood = minf(100.0, c.blood + 40.0)
 		"wine":
-			c.stamina = 100.0
-			c.wine_timer = 10.0
-			c.mods.drunk = maxf(float(c.mods.drunk), 0.3)
+			c.drink_wine()
 		"cheese":
 			var cp: Vector3 = c.torso.global_position + fwd * 0.8
 			var it: Dictionary = m.items.spawn("cheese", Vector3(cp.x, 0.21, cp.z), fwd * 7.0, c)   # on its edge on the sand

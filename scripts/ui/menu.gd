@@ -1317,7 +1317,7 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
 ## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
-const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"], ["self", "Supplies"]]
+const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"]]   # the supplies are the physician's
 const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Press its number to take it in hand, hold F to aim, let go to throw; its number again puts it away"}
 const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery"]
 var market_tab := "throw"
@@ -1360,7 +1360,7 @@ func _market(v: VBoxContainer) -> void:
 	if not in_yard():
 		_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
 
-func _market_card(id: String, it: Dictionary, have: int) -> Control:
+func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Control:
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(286, 0)
 	var st := StyleBoxFlat.new()
@@ -1408,17 +1408,17 @@ func _market_card(id: String, it: Dictionary, have: int) -> Control:
 	var b := UIStyle.button("Buy · %d denarii" % price if have < 9 else "Bag full (9)", func():
 		var k2 := kit()
 		if price > coins():
-			show_screen("market", "Not enough denarii")
+			show_screen(back, "Not enough denarii")
 			return
 		if int(k2.get(id, 0)) >= 9:
-			show_screen("market", "You can carry no more of those")
+			show_screen(back, "You can carry no more of those")
 			return
 		add_coins(-price)
 		k2[id] = int(k2.get(id, 0)) + 1
 		set_kit(k2)
 		if Sfx:
 			Sfx.play("pickup", Vector3.ZERO, 0.6)
-		show_screen("market"), price <= coins() and have < 9)
+		show_screen(back), price <= coins() and have < 9)
 	b.disabled = price > coins() or have >= 9
 	col.add_child(b)
 	return card
@@ -1426,6 +1426,7 @@ func _market_card(id: String, it: Dictionary, have: int) -> Control:
 ## The physician's stall in the yard: the same treatments as between rounds.
 func _physician(v: VBoxContainer) -> void:
 	var yard := in_yard()
+	_medicine(v)
 	_doctor_panel(v, body(), [], int(Save.get_value("stage", 1)), func(nb):
 		set_body(nb)
 		if yard:
@@ -1434,6 +1435,21 @@ func _physician(v: VBoxContainer) -> void:
 			show_screen("yard"), "" if yard else "Back", func(nb):
 		set_body(nb)
 		show_screen("physician"))
+
+## The physician's supplies for the fight (bandages, bread, wine), into the bag like the market's.
+func _medicine(v: VBoxContainer) -> void:
+	v.add_child(UIStyle.label("SUPPLIES FOR THE FIGHT", 13, UIStyle.BRONZE))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	v.add_child(grid)
+	var k := kit()
+	var table: Dictionary = Data.shop.get("throwables", {})
+	for id in table:
+		if kit_use(id) == "self":
+			grid.add_child(_market_card(id, table[id], int(k.get(id, 0)), "physician"))
+	v.add_child(HSeparator.new())
 
 ## Between rounds: a player who lost a limb or an eye is taken to the physician (an overlay on
 ## the paused arena). `done` gets the body he leaves with.

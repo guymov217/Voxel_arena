@@ -104,6 +104,22 @@ var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
+var sober_drunk := 0.0   # how drunk he was before the wine (mods.drunk goes back to it)
+var help_t := 0.0        # a friend is helping him up: he rises twice as fast
+
+## Wine: full breath at once, and a little drunk for ten seconds.
+func drink_wine() -> void:
+	stamina = breath_cap()
+	if wine_timer <= 0.0:
+		sober_drunk = float(mods.get("drunk", 0.0))
+	wine_timer = 10.0
+	mods.drunk = maxf(sober_drunk, 0.3)
+
+## A friend's hand (and his bandage): down, he is up in half the time.
+func help_up() -> void:
+	help_t = 3.0
+	if state == "down":
+		down_timer = minf(down_timer, 0.5) if can_stand() else down_timer
 var body := {}                    # Body: old wounds, lost limbs, prosthetics, eyes (the campaign)
 var fixed_hand := {"R": false, "L": false}   # a blade arm: the weapon cannot leave that hand
 var eye_floor := 0.0
@@ -1212,7 +1228,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if wine_timer > 0.0:
 		wine_timer -= dt
 		if wine_timer <= 0.0:
-			mods.drunk = 0.0
+			mods.drunk = sober_drunk   # back to what he was (an Emperor's drunk decree stays)
+	if help_t > 0.0:
+		help_t -= dt
 	# Playing dead: a standing fighter goes fully limp until the key is let go.
 	if limp and live:
 		if state == "stand":
@@ -1289,7 +1307,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			rise_q0 = null
 			_legs_touch_ground(false)
 	if state == "rising":
-		rise_t = minf(1.0, rise_t + dt / (1.5 * (1.0 + injury)))
+		rise_t = minf(1.0, rise_t + dt / (1.5 * (1.0 + injury)) * (2.0 if help_t > 0.0 else 1.0))
 		if rise_q0 == null:
 			rise_q0 = t_rot
 		if rise_t >= 1.0 and tilt < 0.5:
@@ -3363,8 +3381,6 @@ func _read_cord() -> void:
 func breath_cap() -> float:
 	return 100.0 * (0.3 + 0.7 * lungs()) * (1.0 - 0.06 * mini(5, ribs_broken))
 
-## A hard blunt blow to the trunk or the head bruises the organ under it (no skin broken): a
-## kicked liver bleeds inside, crushed ribs take the breath, a skull blow shakes the brain.
 ## A blast's shock through the trunk or the skull (Throwables.blast): every organ in it is
 ## bruised a little, the lungs worst (they burst), the brain rung like a bell.
 func blast_shock(part: VoxelPart, J: float) -> void:
@@ -3390,6 +3406,8 @@ func blast_shock(part: VoxelPart, J: float) -> void:
 	if seen.has(Anatomy.LUNG_R) or seen.has(Anatomy.LUNG_L):
 		stamina = minf(stamina, breath_cap())
 
+## A hard blunt blow to the trunk or the head bruises the organ under it (no skin broken): a
+## kicked liver bleeds inside, crushed ribs take the breath, a skull blow shakes the brain.
 func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void:
 	if J < 12.0:
 		return

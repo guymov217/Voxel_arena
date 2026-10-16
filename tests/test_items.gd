@@ -128,3 +128,42 @@ func test_a_crossbow_shoots_a_bolt_on_a_thrust() -> void:
 	await _steps(60)
 	t.check(m.items.list.any(func(it): return it.type == "pot_bolt") or a.f.weapons.R.get_meta("reload", 0.0) > 0.0, "a bolt went off")
 	m.queue_free()
+
+## The physician's supplies do what the stall says: a bandage stops every bleed (and beside a
+## fallen friend it is his, and he is up twice as fast), bread brings blood back, wine gives
+## the breath back and makes him a little drunk for a while, and no more than that.
+func test_the_physicians_supplies_do_what_they_say() -> void:
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -4), 0.0, {}, "Medic", 0, _idle)
+	var b := _man(m, Vector3(0.8, 0, -4), 0.0, {}, "Friend", 0, _idle)
+	await _steps(20)
+	# Bandage on himself.
+	a.f.torso.bleed = 2.0
+	a.f.arm.R.fore.artery = 1.0
+	a.inventory = {"bandage": 2, "bread": 1, "wine": 1}
+	m.throwables.use_item(a, Throwables.hotbar_of(a.inventory).find("bandage"))
+	t.check(a.f.torso.bleed == 0.0 and a.f.arm.R.fore.artery == 0.0, "the bandage stops his bleeding")
+	# Bandage beside a fallen friend.
+	b.f.fall(6.0, true)
+	b.f.torso.bleed = 2.0
+	await _steps(5)
+	var t0: float = b.f.down_timer
+	m.throwables.use_item(a, Throwables.hotbar_of(a.inventory).find("bandage"))
+	t.check(b.f.torso.bleed == 0.0, "the friend's bleeding is stopped")
+	t.check(b.f.down_timer <= 0.5 and b.f.help_t > 0.0, "and he is helped up (down %.1f s → %.1f s)" % [t0, b.f.down_timer])
+	await _steps(120 * 2)
+	t.eq(String(b.f.state), "stand", "two seconds later he stands")
+	# Bread.
+	a.f.blood = 40.0
+	m.throwables.use_item(a, Throwables.hotbar_of(a.inventory).find("bread"))
+	t.check(absf(a.f.blood - 80.0) < 1.0, "bread: blood back (%.0f)" % a.f.blood)
+	# Wine, under a drunk decree.
+	a.f.mods.drunk = 0.5
+	a.f.stamina = 10.0
+	m.throwables.use_item(a, Throwables.hotbar_of(a.inventory).find("wine"))
+	t.check(a.f.stamina >= a.f.breath_cap() - 0.01, "wine: full breath (%.0f)" % a.f.stamina)
+	t.check(float(a.f.mods.drunk) >= 0.3, "and drunk")
+	a.f.wine_timer = 0.01
+	await _steps(3)
+	t.check(absf(float(a.f.mods.drunk) - 0.5) < 0.01, "when it wears off he is as drunk as the decree had him (%.2f)" % float(a.f.mods.drunk))
+	m.queue_free()

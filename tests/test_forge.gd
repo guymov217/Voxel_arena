@@ -141,3 +141,41 @@ func test_a_saved_design_loads_back() -> void:
 	t.check(load_btn != null and load_btn.disabled, "an axe design cannot be loaded onto a hammer at the smith")
 	r.queue_free()
 	Save.set_value("forge_gallery", keep)
+
+## Nothing is set in the air: a new block must touch the weapon (a line or a box only where it
+## does), and a cut through the weapon drops the piece without the grip.
+func test_no_block_hangs_in_the_air() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.mirror = false
+	f.open(Data.preset("gladius"), 0, func(_d, _c): pass)
+	var n0: int = f.cells.size()
+	var top := Vector3i(0, -99, 0)
+	for c in f.cells:
+		if c.y > top.y:
+			top = c
+	f._place([top + Vector3i(0, 5, 0)])
+	t.eq(f.cells.size(), n0, "a block in the air is refused")
+	# A line from the tip out into the air goes on whole: each block holds on to the one before.
+	f._place(ForgeLib.line_cells(top + Vector3i(0, 1, 0), top + Vector3i(0, 4, 0)))
+	t.eq(f.cells.size(), n0 + 4, "a line grown from the tip goes on")
+	# A line that starts in the air and never touches it: nothing.
+	f._place(ForgeLib.line_cells(top + Vector3i(6, 0, 0), top + Vector3i(8, 0, 0)))
+	t.eq(f.cells.size(), n0 + 4, "a line out in the air is refused")
+	# Cut through the blade near the guard: the blade above falls away, the grip stays.
+	var lo_y := 99
+	var hi_y := -99
+	for c in f.cells:
+		lo_y = mini(lo_y, c.y)
+		hi_y = maxi(hi_y, c.y)
+	var cut_y := (lo_y + hi_y) / 2
+	var row := []
+	for c in f.cells:
+		if c.y == cut_y:
+			row.append(c)
+	f._remove(row)
+	t.check(f.cells.keys().all(func(c): return c.y < cut_y), "what was above the cut fell off")
+	t.check(f.cells.values().any(func(v): return v[1] == "grip"), "the grip stays on the anvil")
+	t.eq(ForgeLib.pieces(f.cells).size(), 1, "one piece")
+	f.queue_free()

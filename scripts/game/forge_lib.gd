@@ -156,6 +156,58 @@ static func compute_stats(d: Dictionary) -> Dictionary:
 
 # ---------- Drawing ----------
 
+const SIDES := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+
+## Of the cells `add`, those that hold on to the weapon (`cells`: Vector3i -> anything): face to
+## face with it, or with another new one that does. Nothing is set in the air.
+static func attached(cells: Dictionary, add: Array) -> Array:
+	var on := {}
+	var left := add.duplicate()
+	var grew := true
+	while grew and not left.is_empty():
+		grew = false
+		for c in left.duplicate():
+			for d in SIDES:
+				if cells.has(c + d) or on.has(c + d):
+					on[c] = true
+					left.erase(c)
+					grew = true
+					break
+	return add.filter(func(c): return on.has(c))
+
+## The weapon's pieces: sets of cells joined face to face, the largest first.
+static func pieces(cells: Dictionary) -> Array:
+	var seen := {}
+	var out := []
+	for c0 in cells:
+		if seen.has(c0):
+			continue
+		var piece := []
+		var stack := [c0]
+		seen[c0] = true
+		while not stack.is_empty():
+			var c: Vector3i = stack.pop_back()
+			piece.append(c)
+			for d in SIDES:
+				var n: Vector3i = c + d
+				if cells.has(n) and not seen.has(n):
+					seen[n] = true
+					stack.append(n)
+		out.append(piece)
+	out.sort_custom(func(a, b): return a.size() > b.size())
+	return out
+
+## What stays on the anvil when the weapon is cut in two: the piece with the grip in it (the
+## biggest such), or else the biggest. The rest falls off.
+static func kept_piece(cells: Dictionary) -> Array:
+	var ps := pieces(cells)
+	if ps.is_empty():
+		return []
+	for p in ps:
+		if p.any(func(c): return cells[c] is Array and cells[c].size() > 1 and cells[c][1] == "grip"):
+			return p
+	return ps[0]
+
 static func line_cells(a: Vector3i, b: Vector3i) -> Array:
 	var n := maxi(absi(b.x - a.x), maxi(absi(b.y - a.y), absi(b.z - a.z)))
 	var out := []
