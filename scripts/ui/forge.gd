@@ -389,7 +389,7 @@ func _voxels_ui() -> void:
 		var key: String = m
 		var b := Button.new()
 		b.text = m.capitalize() + ("" if free_build else " %d" % Arms.voxel_price(m))
-		b.tooltip_text = str(Data.material(m).get("name", m))
+		b.tooltip_text = material_text(m)
 		b.toggle_mode = true
 		b.button_pressed = mat == key
 		b.add_theme_color_override("font_color", Weapon.voxel_color(m, "blunt").lightened(0.25))
@@ -399,6 +399,10 @@ func _voxels_ui() -> void:
 			_show_mode("voxels"))
 		mg.add_child(b)
 	mode_box.add_child(mg)
+	# What the chosen one is for: in words, and how hard and how heavy it is.
+	var md := UIStyle.label(material_text(mat), 13, UIStyle.TEXT)
+	md.custom_minimum_size = Vector2(420, 0)
+	mode_box.add_child(md)
 	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
 	var jr := HBoxContainer.new()
 	for j in JOBS:
@@ -474,13 +478,45 @@ func _voxels_ui() -> void:
 		design.sharpness = x
 		_update_texts())
 	var sr := HBoxContainer.new()
-	sr.add_child(UIStyle.label("Sharpness", 14, UIStyle.MUTED))
+	# Not wrapped: in a row a wrapping label is squeezed to one letter a line.
+	var sl_l := UIStyle.label("Sharpness", 14, UIStyle.MUTED)
+	sl_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	sl_l.custom_minimum_size = Vector2(90, 0)
+	sr.add_child(sl_l)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sr.add_child(sl)
 	mode_box.add_child(sr)
 	var cl := UIStyle.label("", 13, UIStyle.MUTED)
 	cl.set_meta("checklist", true)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_box.add_child(cl)
+
+## What a material does in a weapon, for the smith's customer: what it is good for, what it
+## does that no other does, and how hard (edge, chipping) and heavy (blow, swing) it is.
+const MAT_USE := {
+	"steel": "The blade metal: the keenest edge and point, holds them longest, rarely chips. Fairly light.",
+	"iron": "Nearly as keen as steel and a little heavier: hits a touch harder, dulls a touch sooner.",
+	"bronze": "Softer and heavier: a fair edge that dulls sooner; good weight for a head.",
+	"gold": "Very heavy and soft: a crushing head, a poor edge, a fortune spent.",
+	"stone": "Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.",
+	"bone": "Light and fairly hard: quick little blades and points, but they chip and snap.",
+	"wood": "Very light and soft: fast handles and shafts; no edge to speak of.",
+	"leather": "Next to weightless and soft: wraps a grip; hurts no one by itself.",
+	"lead": "The heaviest: a few voxels give a head huge weight for crushing blows, and slow the swing.",
+	"rubber": "Light, soft and squeaky: bounces off and barely hurts. For laughs.",
+	"fish": "Soft and slappy: knocks a man about with a loud slap, cuts nothing.",
+	"ice": "Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.",
+	"explosive": "Goes off when it strikes hard: a blast that hurts everyone close, you as well.",
+	"spring": "Bouncy: a blow springs back hard and knocks the man away. Boing.",
+	"glue": "Sticks to what it hits: the weapon stays in him, or he stays on it.",
+	"feather": "Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.",
+	"magnet": "Pulls iron and steel to it: blades and armour are dragged in.",
+}
+static func material_text(m: String) -> String:
+	var d: Dictionary = Data.material(m)
+	var h := clampi(int(round(float(d.get("hardness", 0.5)) * 5.0)), 0, 5)
+	var w := clampi(int(round(log(maxf(0.0008, float(d.get("mass", 0.02))) / 0.0008) / log(0.22 / 0.0008) * 5.0)), 0, 5)
+	return "%s: %s  Hardness %s  Weight %s" % [str(d.get("name", m)).get_slice(" (", 0), MAT_USE.get(m, ""), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
 
 func _draw_bars() -> void:
 	var y := 2.0
