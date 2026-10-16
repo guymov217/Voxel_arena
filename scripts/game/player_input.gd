@@ -123,6 +123,7 @@ func pressed(id: String) -> bool:
 	return _edges.get(id, false)
 
 var use_item := -1
+var throw_cancelled := false   # G while F is held: the hand keeps its grip until F is let go
 
 func _process(_dt: float) -> void:
 	for n in 9:
@@ -277,16 +278,27 @@ func sample(dt: float) -> Dictionary:
 		"useItem": use_item,
 	}
 	use_item = -1
-	# F: hold to wind up a throw, let go to throw. A quick tap is a lob.
+	# F: hold to wind up a throw, let go to throw. A quick tap is a lob. The mouse button held
+	# names the hand (left button: the right hand, right button: the left); neither, the right
+	# hand first. G while F is held calls it off: the hand keeps its grip.
+	var hand := "R" if hand_r and not hand_l else ("L" if hand_l and not hand_r else "")
 	if held("throw"):
-		throw_charge = minf(1.0, throw_charge + dt / 1.1)
-		inp.charging = throw_charge
-	elif throw_charge > 0.0:
-		inp.throw = true
-		inp.throwPower = maxf(0.3, throw_charge)
-		# The off hand's button held as F is let go: that hand throws (the shield, say).
-		inp.throwOff = hand_l and not hand_r
+		if pressed("grab"):
+			throw_cancelled = true
+			throw_charge = 0.0
+			_edges.grab = false
+			inp.grab = false
+		if not throw_cancelled:
+			throw_charge = minf(1.0, throw_charge + dt / 1.1)
+			inp.charging = throw_charge
+			inp.throwHand = hand
+	else:
+		if throw_charge > 0.0 and not throw_cancelled:
+			inp.throw = true
+			inp.throwPower = maxf(0.3, throw_charge)
+			inp.throwHand = hand
 		throw_charge = 0.0
+		throw_cancelled = false
 	_edges.clear()
 	jab_r = false
 	jab_l = false
@@ -305,7 +317,8 @@ static func pack(inp: Dictionary) -> Array:
 			bits |= 1 << i
 	var gh = inp.get("grabHands")
 	bits |= (1 if gh == "R" else (2 if gh == "L" else (3 if gh == "both" else 0))) << 14
-	bits |= (1 if inp.get("throwOff", false) else 0) << 16
+	var th = inp.get("throwHand", "")
+	bits |= (1 if th == "R" else (2 if th == "L" else 0)) << 16
 	return [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01)]
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
@@ -327,7 +340,7 @@ static func unpack(a: Array) -> Dictionary:
 	for i in BITS.size():
 		out[BITS[i]] = bits & (1 << i) != 0
 	out.grabHands = [null, "R", "L", "both"][(bits >> 14) & 3]
-	out.throwOff = bits & (1 << 16) != 0
+	out.throwHand = ["", "R", "L", ""][(bits >> 16) & 3]
 	out.throwPower = clampf(float(a[12]), 0.0, 1.0) if a.size() > 12 else 0.8
 	out.useItem = clampi(int(a[13]), -1, 8) if a.size() > 13 else -1
 	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0

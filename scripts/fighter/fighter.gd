@@ -892,8 +892,8 @@ func pick_up(side: String, w: Weapon) -> bool:
 		if b is RigidBody3D:
 			b.freeze = false
 			b.sleeping = false
-	w.linear_damp = -1.0
-	w.angular_damp = -1.0
+	w.linear_damp = 0.0   # (the world's own damping again; -1 is not a value Godot 4.7 takes)
+	w.angular_damp = 0.0
 	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w)
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
@@ -1665,6 +1665,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# Throwing: drawn back high behind the shoulder while F is held (further the longer it is
 	# held) or a bot winds up, then whipped forward and across in the follow-through.
 	var t_side := ("L" if not weapons.L else "R") if held_item != null else ("R" if weapons.R and not weapons.R.is_shield else "L")
+	var th = inp.get("throwHand", "")
+	if held_item == null and (th == "R" or th == "L") and weapons[th]:
+		t_side = th
 	var ta = throw_anim
 	var charging := float(inp.get("charging", 0.0))
 	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and state == "stand")

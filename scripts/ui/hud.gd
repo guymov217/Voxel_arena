@@ -73,6 +73,7 @@ var popups: Control
 var crosshair: Control
 var blind := {}
 var charge_bar: Control
+var charge_hint: Label
 var charge := 0.0
 var font_title: Font
 var font_ui: Font
@@ -686,6 +687,16 @@ func _build_crosshair() -> void:
 		charge_bar.draw_rect(Rect2(-70, 0, 140, 7), Color(IRON_EDGE, 0.6), false, 1.0))
 	charge_bar.visible = false
 	root.add_child(charge_bar)
+	charge_hint = Label.new()
+	charge_hint.set_anchors_preset(Control.PRESET_CENTER)
+	charge_hint.position = Vector2(-150, 70)
+	charge_hint.size = Vector2(300, 20)
+	charge_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	charge_hint.add_theme_font_size_override("font_size", 12)
+	charge_hint.add_theme_color_override("font_color", Color(0.85, 0.8, 0.7, 0.85))
+	charge_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	charge_hint.visible = false
+	root.add_child(charge_hint)
 
 # ---------- Events ----------
 
@@ -783,7 +794,7 @@ func _prompt_for(f) -> Array:
 			return [["throw"], "Throw the %s" % String(f.holding.limb.label).to_lower()]
 		return [["throw", "shove", "grab"], "Throw · slam · let go"]
 	if f.held_item != null:
-		return [["throw"], "Hold to aim, let go to throw the %s" % String(f.held_item.type).trim_prefix("pot_").replace("_", " ")]
+		return [["throw"], "Hold to aim, let go to throw the %s · its number again puts it away" % String(f.held_item.type).trim_prefix("pot_").replace("_", " ")]
 	var pos: Vector3 = f.torso.global_position
 	if match_.yard:
 		var at := Yard.station_at(pos)
@@ -860,6 +871,18 @@ func _process(dt: float) -> void:
 	_fit()
 	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
 	charge_bar.visible = ch > 0.0
+	charge_hint.visible = ch > 0.0
+	if ch > 0.0 and match_.me and is_instance_valid(match_.me.f):
+		var fh = match_.me.f
+		var hand := ""
+		if fh.held_item != null:
+			hand = String(fh.held_item.type).trim_prefix("pot_").replace("_", " ")
+		else:
+			var th: String = str(match_.last_local_inp.get("throwHand", ""))
+			var side: String = th if (th == "R" or th == "L") and fh.weapons.get(th) else ("R" if fh.weapons.R else "L")
+			var w = fh.weapons.get(side)
+			hand = ("%s hand: %s" % ["right" if side == "R" else "left", String(w.design.get("name", "weapon")).to_lower()]) if w else "nothing in hand"
+		charge_hint.text = "%s · left button: right hand · right button: left hand · G calls it off" % hand
 	if ch != charge:
 		charge = ch
 		charge_bar.queue_redraw()

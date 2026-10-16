@@ -1225,7 +1225,7 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
 ## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
 const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"], ["self", "Supplies"]]
-const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Press its number to take it in hand, hold F to aim, let go to throw"}
+const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Press its number to take it in hand, hold F to aim, let go to throw; its number again puts it away"}
 const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery"]
 var market_tab := "throw"
 

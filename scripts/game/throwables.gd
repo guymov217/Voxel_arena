@@ -1189,13 +1189,17 @@ func use_item(e: Dictionary, slot: int) -> bool:
 	var c = e.f
 	if not c.alive:
 		return false
-	inv[id] = int(inv[id]) - 1
+	# Its number again: back into the kit.
+	if c.held_item != null and c.held_item.id == id:
+		put_away(e)
+		return true
 	var fwd := Vector3(sin(c.yaw), 0, cos(c.yaw))
 	var player: bool = e.kind == "local" or e.kind == "remote"
 	var hand_type = POTS.get(id, {"darts": "pot_dart", "boomerang": "boomerang"}.get(id))
 	if hand_type != null and player:
-		hold_item(e, hand_type, id)
+		hold_item(e, hand_type, id)   # still in the kit (and on the hotbar) until it is thrown
 		return true
+	inv[id] = int(inv[id]) - 1
 	match id:
 		"bandage":
 			for p in c.parts:
@@ -1234,7 +1238,7 @@ func use_item(e: Dictionary, slot: int) -> bool:
 ## can be seen until F throws it.
 func hold_item(e: Dictionary, type: String, id: String) -> void:
 	var c = e.f
-	drop_held(c)
+	put_away(e)
 	var node = null
 	if not headless:
 		node = Items.visual(type)
@@ -1244,6 +1248,17 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 	c.held_item = {"type": type, "id": id, "node": node}
 	if e.kind == "local":
 		m.feed.emit("%s ready: hold F to aim, let go to throw" % Data.shop.throwables.get(id, {}).get("name", id))
+
+## The readied pot goes back into the kit (its number pressed again, or another pot readied):
+## it was never taken out, so nothing is owed.
+func put_away(e: Dictionary) -> void:
+	var c = e.f
+	if c.held_item == null:
+		return
+	var id: String = c.held_item.id
+	drop_held(c)
+	if e.kind == "local":
+		m.feed.emit("%s put away" % Data.shop.throwables.get(id, {}).get("name", id))
 
 func drop_held(c) -> void:
 	if c.held_item == null:
@@ -1259,6 +1274,10 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	if h == null:
 		return
 	drop_held(c)
+	var inv: Dictionary = e.get("inventory", {})
+	if int(inv.get(h.id, 0)) <= 0:
+		return   # the kit ran out under it (shared purse, a sale): nothing to throw
+	inv[h.id] = int(inv[h.id]) - 1
 	var look = inp.get("look", {"yaw": c.yaw, "pitch": 0.0})
 	var power := clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0)
 	var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
