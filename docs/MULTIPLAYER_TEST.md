@@ -8,9 +8,10 @@ No command line. Three things to do once, then one double-click each time.
    https://godotengine.org/download/windows/ and unzip it. You get a file called
    `Godot_v4.7.2-stable_win64.exe`.
 2. Put that file **in the game's folder**, next to `project.godot` and `multiplayer_test.bat`.
-   (Downloads or the Desktop also work; the script looks there too.)
-3. Open the game in Godot once (double-click `project.godot`) and wait for the import to finish,
-   then close the editor. Only needed the first time, or after a big update.
+   (Downloads or the Desktop also work; the script looks there too.) An older Godot, such as
+   4.4.1, is refused: the game is made for 4.7.
+
+That is all. The first run imports the project by itself (a minute or two).
 
 ## Each time
 
@@ -23,8 +24,8 @@ Double-click **`multiplayer_test.bat`** in the game's folder. It finds Godot and
 | 3 | Like 2, with a pretend poor connection (120 ms delay, 3% packet loss). |
 | 4 | A host and two bot guests. |
 
-Both windows open already in the same room. In the **host** window press
-**Start the co-op campaign** (or **Into the yard together**). The guest window follows.
+Both windows open already in the same room, and the co-op bout starts by itself in the host
+window a moment after the guest joins. Click a window to play in it.
 
 ## What to check
 
@@ -47,7 +48,8 @@ needs port 7777 (UDP) forwarded on the router; Steam lobbies avoid that.
 
 - "Could not find Godot": put `Godot_v4.7.2-stable_win64.exe` next to the .bat, or drag the exe
   onto the black window when asked.
-- A window opens and closes at once: open the game in Godot first (step 3 above).
+- A black window and a wall of "Identifier not declared" errors: the project was not imported.
+  Delete the `.godot` folder inside the game's folder and run the .bat again; it imports first.
 - The guest never joins: something else holds port 7777, or an antivirus blocks it. Try again
   after a reboot, or run only option 2.
 - Send a screenshot of each window's room screen; that is enough to tell what happened.

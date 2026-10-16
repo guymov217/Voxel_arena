@@ -1465,8 +1465,8 @@ func _mp(v: VBoxContainer) -> void:
 
 ## Straight into a room from the command line, for testing with two windows on one machine:
 ## `--host` opens a room by address, `--join 127.0.0.1` joins one, `--name Guest` names you,
-## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection
-## (tools/mp_local.sh).
+## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection,
+## `--start` (with --host) starts the co-op campaign when the first guest joins (multiplayer_test.bat).
 func _cmdline_room() -> void:
 	var args := OS.get_cmdline_user_args()
 	cmd_bot = args.has("--bot")
@@ -1480,6 +1480,12 @@ func _cmdline_room() -> void:
 	if args.has("--host"):
 		if Net.host_enet() != OK:   # `connected` opens the room
 			show_screen("mp", "Could not open port %d" % Net.PORT)
+		elif args.has("--start"):
+			# The co-op campaign starts by itself once the first guest is in (the one-click test).
+			Net.peer_joined.connect(func(_id, _info):
+				get_tree().create_timer(2.0).timeout.connect(func():
+					if match_ == null and screen == "room" and Net.is_host():
+						start({"mode": "coop", "role": "host"})), CONNECT_ONE_SHOT)
 		return
 	i = args.find("--join")
 	if i >= 0:
