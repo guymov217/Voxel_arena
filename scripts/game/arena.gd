@@ -358,17 +358,22 @@ static func _spectator_mesh() -> ArrayMesh:
 				st.add_vertex(q[idx])
 	box.call(Vector3(0, 0.3, 0), Vector3(0.14, 0.17, 0.09), 0.0, 1.0)            # tunic
 	box.call(Vector3(0, 0.6, 0), Vector3(0.09, 0.1, 0.09), 1.0, 1.0)             # head
-	box.call(Vector3(-0.19, 0.3, 0), Vector3(0.04, 0.14, 0.05), 2.0, 1.0)        # arms
-	box.call(Vector3(0.19, 0.3, 0), Vector3(0.04, 0.14, 0.05), 3.0, 1.0)
+	# Arms sunk a little into the tunic at the shoulder (a centimetre off it, they hung in the air;
+	# flush, they would flicker against it).
+	box.call(Vector3(-0.175, 0.31, 0), Vector3(0.04, 0.15, 0.05), 2.0, 1.0)      # arms
+	box.call(Vector3(0.175, 0.31, 0), Vector3(0.04, 0.15, 0.05), 3.0, 1.0)
 	box.call(Vector3(0, 0.07, 0.04), Vector3(0.12, 0.07, 0.1), 4.0, 1.0)         # legs
-	box.call(Vector3(0, 0.69, -0.005), Vector3(0.095, 0.03, 0.095), 5.0, 1.0)    # hair
-	box.call(Vector3(0, 0.62, -0.075), Vector3(0.095, 0.06, 0.025), 5.0, 1.0)
-	box.call(Vector3(0, 0.73, 0), Vector3(0.13, 0.012, 0.13), 6.0, 1.0)          # hat
-	box.call(Vector3(0, 0.765, 0), Vector3(0.08, 0.03, 0.08), 6.0, 1.0)
-	box.call(Vector3(0, 0.17, 0), Vector3(0.145, 0.02, 0.095), 7.0, 1.0)         # belt
-	box.call(Vector3(-0.035, 0.615, 0.092), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)   # eyes
-	box.call(Vector3(0.035, 0.615, 0.092), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)
-	box.call(Vector3(0.06, 0.34, 0.093), Vector3(0.05, 0.15, 0.005), 9.0, 1.0)   # sash
+	# Every box laid over another stands clear of it by a centimetre or more: faces in the same
+	# plane (the hair's front on the face, a belt flush with the tunic) fought over which was
+	# in front, and the crowd flickered.
+	box.call(Vector3(0, 0.69, 0.0), Vector3(0.105, 0.03, 0.105), 5.0, 1.0)       # hair
+	box.call(Vector3(0, 0.6, -0.085), Vector3(0.105, 0.055, 0.03), 5.0, 1.0)     # (below the top's, not into it)
+	box.call(Vector3(0, 0.74, 0), Vector3(0.14, 0.012, 0.14), 6.0, 1.0)          # hat
+	box.call(Vector3(0, 0.775, 0), Vector3(0.08, 0.03, 0.08), 6.0, 1.0)
+	box.call(Vector3(0, 0.17, 0), Vector3(0.155, 0.02, 0.105), 7.0, 1.0)         # belt
+	box.call(Vector3(-0.035, 0.615, 0.096), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)   # eyes
+	box.call(Vector3(0.035, 0.615, 0.096), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)
+	box.call(Vector3(0.06, 0.34, 0.097), Vector3(0.05, 0.15, 0.005), 9.0, 1.0)   # sash
 	return st.commit()
 
 func set_excitement(x: float) -> void:

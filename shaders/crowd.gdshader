@@ -23,7 +23,7 @@ void vertex() {
 		float side = tag > 2.5 ? 1.0 : -1.0;
 		// Up to nearly straight over the head: thrown out wide, they reached into the next man's.
 		float raise = clamp(excitement * 1.6 - 0.3 + 0.35 * sin(t * 1.3), 0.0, 1.0) * 2.95 * mix(0.25, 1.0, keen);
-		vec3 sh = vec3(side * 0.16, 0.44, 0.0);
+		vec3 sh = vec3(side * 0.175, 0.44, 0.0);   // the shoulder, at the top of the arm
 		vec3 p = VERTEX - sh;
 		float a = raise * side;
 		p = vec3(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a), p.z);

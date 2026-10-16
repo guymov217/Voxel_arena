@@ -11,7 +11,7 @@ func _ready() -> void:
 	var cam: Camera3D = m.cam
 	cam.set_process(false)
 	cam.set_physics_process(false)
-	var shots := [[Vector3(0, 4.5, 10.5), Vector3(0, 4.2, 20.0), "crowd_front.png"], [Vector3(3.0, 5.5, 13.0), Vector3(6.0, 5.0, 19.0), "crowd_side.png"]]
+	var shots := [[Vector3(0, 4.5, 10.5), Vector3(0, 4.2, 20.0), "crowd_front.png"], [Vector3(3.0, 5.5, 13.0), Vector3(6.0, 5.0, 19.0), "crowd_side.png"], [Vector3(5.6, 4.3, 14.2), Vector3(7.2, 4.0, 16.5), "crowd_close.png"]]
 	for ex in [0.2, 1.0]:
 		m.arena.crowd_mat.set_shader_parameter("excitement", ex)
 		for s in shots:
