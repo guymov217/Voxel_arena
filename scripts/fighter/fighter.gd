@@ -1593,9 +1593,13 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if not arm[side].upper.severed:
 			_keep_arm_out(side, dt)
 
+	# A blade whirled hard winds him: the swing's own speed, the weapon turning against his
+	# body while he swings (the button down). Not the turn of the whole man (walking about and
+	# looking round with the mouse carried the sword round with him and cost breath as if every
+	# turn of the head were a cut), and not a weapon bouncing in a hand at rest.
 	var sw: Weapon = weapons.R
-	if sw and not sw.is_shield:
-		var tip := sw.angular_velocity.length() * sw.reach
+	if sw and not sw.is_shield and power:
+		var tip := (sw.angular_velocity - torso.angular_velocity).length() * sw.reach
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	# A giant's lungs and muscle go with his size: the same swing of a weapon scaled to him
 	# costs him no more breath than a man's costs the man.
@@ -2176,17 +2180,18 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		stroke_idle[side] += dt
 		if stroke_idle[side] > 0.6:
 			stroke_dir[side] = null
-	if stroke_dir[side] != null and not is_spear(w):
+	# Only a blade sharp on both sides lines up with the stroke (the nearer side leads: never
+	# more than a quarter turn). A one-edged one (an axe) is not rolled about by the swing: it
+	# stays as the wheel set it in the hand, the bit forward and inward for the forehand. Turning
+	# it to lead every stroke rolled it half a turn at each change of way, and the blow landed
+	# in the middle of the roll, on the flat or the back.
+	if stroke_dir[side] != null and not is_spear(w) and w.edge_side() == 0.0:
 		var lead: Vector3 = stroke_dir[side]
 		lead -= axis * lead.dot(axis)
 		if lead.length_squared() > 1e-4:
 			lead = lead.normalized()
-			var es := w.edge_side()
-			if es == 0.0:
-				# Sharp both sides: the nearer side leads, no needless turn of the blade.
-				var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else ed
-				es = 1.0 if prev_ed.dot(lead) >= 0.0 else -1.0
-			ed = lead * es
+			var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else ed
+			ed = lead * (1.0 if prev_ed.dot(lead) >= 0.0 else -1.0)
 	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
 	var prev = aim_q[side]
 	if prev != null:
@@ -2291,15 +2296,16 @@ func _drive_wrist(side: String, w: Weapon, w_aim: Quaternion, strength: float, d
 	var b := w.global_transform.basis.orthonormalized()
 	var la := b.inverse() * ax
 	var i_ax := maxf(1e-4, la.x * la.x * w.inertia.x + la.y * la.y * w.inertia.y + la.z * la.z * w.inertia.z)
-	# Held firm at the angle the wheel set, through the swing and the knocks of a blow: a stiffer
-	# grip, and as strong as the head is hard to turn (an axe head off its haft's line).
-	var wn := 34.0
+	# Held firm at the angle the wheel set, through the swing and the knocks of a blow: a stiff
+	# grip, and as strong as the head is hard to turn (an axe head off its haft's line). Every
+	# fighter's, the host's guests' as well (they are all run by this code on the host).
+	var wn := 52.0
 	var t := (ang * wn * wn - spin * 2.0 * wn) * i_ax
 	var grip_k := 3.0 if throw_pose[side] or (throw_anim != null and throw_anim.side == side) else 1.0
 	# A head off the haft's line (an axe) is turned by its own weight: the grip holds against it.
 	var lever := (w.global_transform * w.center_of_mass) - w.global_position
 	t -= lever.cross(Vector3(0, -w.mass * gravity, 0)).dot(ax)
-	var t_max := maxf(30.0 * MS * S, i_ax * wn * wn * 1.2) * grip_k * maxf(0.3, strength)
+	var t_max := maxf(70.0 * MS * S, i_ax * wn * wn * 2.5) * grip_k * maxf(0.4, strength)
 	t = clampf(t, -t_max, t_max)
 	w.apply_torque_impulse(ax * t * dt)
 	fore.apply_torque_impulse(-ax * t * dt)
