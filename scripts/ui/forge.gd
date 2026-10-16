@@ -13,6 +13,7 @@ var original_value := 0
 var purse := 0
 var done: Callable
 var free_build := false   # training: nothing costs anything
+var workshop := false     # the main menu's forge: design and save to My designs, nothing taken or paid
 var family := ""          # the smith reshapes a weapon within its kind (Arms.family): "" = anything goes
 const FAMILY_NAMES := {"blade": "a blade", "axe": "an axe", "spear": "a spear", "blunt": "a hammer or a mace", "shield": "a shield", "bow": "a bow", "crossbow": "a crossbow", "chain": "a chain weapon", "other": "what it is"}
 
@@ -171,10 +172,11 @@ func _build_ui() -> void:
 	col.add_child(cost_label)
 	var end := HBoxContainer.new()
 	end.add_theme_constant_override("separation", 6)
-	end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
+	if not workshop:
+		end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
 	end.add_child(UIStyle.button("Swing it", func(): swing_t = 0.0))
-	end.add_child(UIStyle.button("Save design", _save_design))
-	end.add_child(UIStyle.button("Leave it as it was", func(): done.call(null, 0)))
+	end.add_child(UIStyle.button("Save design", _save_design, workshop))
+	end.add_child(UIStyle.button("Back" if workshop else "Leave it as it was", func(): done.call(null, 0)))
 	col.add_child(end)
 	var right := Control.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -736,7 +738,9 @@ func _update_texts() -> void:
 	var delta := _value_now() - original_value
 	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
 	cost_label.text += "  (purse %d)" % purse
-	if free_build:
+	if workshop:
+		cost_label.text = "Made at the smith: %d denarii" % Arms.design_price(_design_now())
+	elif free_build:
 		cost_label.text = "Free in training"
 
 func _value_now() -> int:

@@ -130,8 +130,22 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	var b := base(key)
 	if b.is_empty():
 		return {"error": "The smith has no such thing"}
+	return _acquire(a, Data.preset(key).duplicate(true), int(b.price), b.slot == "off", sell)
+
+## Has a design from the player's own gallery made at the smith, at what it is worth.
+static func buy_design(a: Dictionary, d: Dictionary, sell := "") -> Dictionary:
+	if not (d.get("voxels") is Array) or d.voxels.is_empty() or d.voxels.size() > ForgeLib.MAX_VOXELS or not ForgeLib.compute_stats(d).hasGrip:
+		return {"error": "The smith cannot make that"}
+	var nd := d.duplicate(true)
+	nd.erase("imbue")
+	return _acquire(a, nd, design_price(nd), nd.get("kind", "weapon") == "shield", sell)
+
+## What the smith asks to make a design: its stuff, block by block, and his labour on it.
+static func design_price(d: Dictionary) -> int:
+	return value(d) + 15 + int(d.get("voxels", []).size() / 10)
+
+static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String) -> Dictionary:
 	var arms := sanitize(a)
-	var d: Dictionary = Data.preset(key).duplicate(true)
 	var two := bool(d.get("twoHanded", false))
 	var held_two := bool(arms.main.get("twoHanded", false)) and not is_stick(arms.main)
 	var r_free := is_stick(arms.main)
@@ -141,7 +155,7 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	if two:
 		side = "R"
 		sold = ["R", "L"]
-	elif b.slot == "off":
+	elif off_hand:
 		side = "L"
 		if not l_free:
 			sold = ["R"] if held_two else ["L"]
@@ -152,7 +166,7 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	else:
 		var options: Array = ["R"] if held_two else ["R", "L"]
 		if options.size() > 1 and not options.has(sell):
-			return {"choose": options, "price": int(b.price)}
+			return {"choose": options, "price": price}
 		side = sell if options.has(sell) else options[0]
 		sold = [side]
 	var trade_in := 0
@@ -172,7 +186,7 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	arms.wear[side] = []
 	if two:
 		arms.off = null
-	return {"arms": arms, "cost": int(b.price) - trade_in, "trade_in": trade_in, "side": side, "sold": sold}
+	return {"arms": arms, "cost": price - trade_in, "trade_in": trade_in, "side": side, "sold": sold}
 
 ## The training stick everyone starts with: a hand that holds it is as good as free.
 static func is_stick(d) -> bool:

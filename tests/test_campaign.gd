@@ -154,3 +154,27 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	var big: Dictionary = r.arms
 	r = Arms.buy(big, "dagger")
 	t.check(not r.has("choose") and r.side == "R", "the only thing to sell is the two-handed sword")
+
+## A design from the gallery is made by the smith at its worth (its stuff and his labour), and
+## goes in a free hand like any weapon bought; the forge on the main menu takes nothing.
+func test_a_design_from_the_gallery_is_made_at_the_smith() -> void:
+	var d := Data.preset("gladius").duplicate(true)
+	d.name = "My blade"
+	for v in d.voxels:
+		if v[4] == "edge" and randi() % 2 == 0:
+			v[3] = "ruby"
+	var plain := Data.preset("gladius").duplicate(true)
+	t.check(Arms.design_price(d) > Arms.design_price(plain), "rubies make it dearer (%d vs %d)" % [Arms.design_price(d), Arms.design_price(plain)])
+	t.check(Arms.design_price(plain) >= Arms.value(plain), "the stuff and the labour")
+	var r := Arms.buy_design(Arms.empty(), d)
+	t.check(not r.has("error") and str(r.arms.main.name) == "My blade", "made, in the hand that held the stick")
+	t.eq(int(r.cost), Arms.design_price(d), "at its price")
+	t.check(Arms.buy_design(Arms.empty(), {"name": "air", "voxels": [[0, 0, 0, "steel", "edge"]]}).has("error"), "nothing without a grip")
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.workshop = true
+	f.open(d, 0, func(_d, _c): pass)
+	var labels: Array = f.find_children("*", "Button", true, false).map(func(b): return b.text)
+	t.check(not labels.has("Take it") and not labels.has("Pay and take it") and labels.has("Save design"), "the main menu's forge saves, it does not hand over (%s)" % [labels.filter(func(x): return x.contains("ake") or x.contains("Save"))])
+	f.queue_free()

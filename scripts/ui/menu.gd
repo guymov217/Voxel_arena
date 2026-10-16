@@ -378,6 +378,7 @@ func _main(v: VBoxContainer) -> void:
 	buttons.append_array([
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
 		UIStyle.menu_button("Training", func(): show_screen("training")),
+		UIStyle.menu_button("The forge", _workshop_forge),
 		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
 		UIStyle.menu_button("Settings", func(): show_screen("options")),
 		UIStyle.menu_button("Quit", func(): get_tree().quit()),
@@ -799,6 +800,20 @@ func _training_bag(v: VBoxContainer) -> void:
 		grid.add_child(tile)
 		Thumbs.item(tex, id)   # once it is in the tree, so the picture can be made for it
 
+## The forge from the main menu: the smith's forge as it is, to design weapons and keep them in
+## My designs; nothing is taken from here or paid for (the smith makes a design in the campaign).
+func _workshop_forge() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.workshop = true
+	var g: Array = f.gallery()
+	f.open((g[0] as Dictionary).duplicate(true) if not g.is_empty() else Data.preset("gladius").duplicate(true), 0, func(_d, _c):
+		f.queue_free()
+		show_screen("main"))
+	panel.visible = false
+	f.tree_exited.connect(func(): panel.visible = true)
+
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
 func _training_forge() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
@@ -919,7 +934,11 @@ func _yard(v: VBoxContainer) -> void:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(grid)
+	var rack_box := VBoxContainer.new()
+	rack_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rack_box.add_theme_constant_override("separation", 10)
+	scroll.add_child(rack_box)
+	rack_box.add_child(grid)
 	var tile_st := StyleBoxFlat.new()
 	tile_st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
 	tile_st.border_color = UIStyle.BRONZE_DARK
@@ -964,7 +983,7 @@ func _yard(v: VBoxContainer) -> void:
 		var buy := UIStyle.button("Buy", func():
 			var r := Arms.buy(arms(), key)
 			if r.has("choose"):
-				_sell_choice(key, r.choose)
+				_sell_choice(str(b.name), func(sd): return Arms.buy(arms(), key, sd), r.choose)
 			else:
 				_pay(r), afford)
 		buy.disabled = not afford
@@ -972,9 +991,13 @@ func _yard(v: VBoxContainer) -> void:
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
+	# His own designs first (made to order), then the smith's rack.
+	if _smith_designs(rack_box, grid.columns, tile_st):
+		rack_box.add_child(UIStyle.label("THE SMITH'S RACK", 13, UIStyle.BRONZE))
+		rack_box.move_child(grid, rack_box.get_child_count() - 1)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
-func _sell_choice(key: String, sides: Array) -> void:
+func _sell_choice(nm: String, buy: Callable, sides: Array) -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -988,20 +1011,68 @@ func _sell_choice(key: String, sides: Array) -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	box.add_child(v)
-	var nm := str(Arms.base(key).get("name", key))
 	var q := UIStyle.label("Both your hands are full. Which one does Vulcanus take for the %s?" % nm, 16, UIStyle.TEXT)
 	q.custom_minimum_size = Vector2(420, 0)
 	v.add_child(q)
 	for sd in sides:
 		var side: String = sd
 		var d = arms().main if side == "R" else arms().off
-		var r := Arms.buy(arms(), key, side)
+		var r: Dictionary = buy.call(side)
 		var b := UIStyle.button("Sell the %s (%s hand) · pay %d" % [str(d.get("name", "?")) if d else "?", "main" if side == "R" else "off", int(r.get("cost", 0))], func():
 			dim.queue_free()
-			_pay(Arms.buy(arms(), key, side)))
+			_pay(buy.call(side)))
 		b.disabled = int(r.get("cost", 0)) > coins()
 		v.add_child(b)
 	v.add_child(UIStyle.button("Keep both", func(): dim.queue_free()))
+
+## The player's own designs (My designs, from the forge), made by the smith at what they are
+## worth: their stuff block by block and his labour. Bought, one goes in a free hand like any.
+func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> bool:
+	var designs: Array = load("res://scripts/ui/forge.gd").gallery()
+	if designs.is_empty():
+		return false
+	box.add_child(UIStyle.label("YOUR DESIGNS · made to order", 13, UIStyle.BRONZE))
+	var g2 := GridContainer.new()
+	g2.columns = columns
+	g2.add_theme_constant_override("h_separation", 10)
+	g2.add_theme_constant_override("v_separation", 10)
+	g2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(g2)
+	for dv in designs:
+		var d: Dictionary = dv
+		var pre := Arms.buy_design(arms(), d)
+		if pre.has("error"):
+			continue
+		var price := Arms.design_price(d)
+		var tile := PanelContainer.new()
+		tile.add_theme_stylebox_override("panel", tile_st)
+		tile.custom_minimum_size = Vector2(146, 0)
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 4)
+		tile.add_child(col)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(0, 96)
+		col.add_child(tex)
+		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.TEXT)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(nm)
+		var pr := UIStyle.label("%d denarii · %d blocks" % [price, d.voxels.size()], 12, UIStyle.GOLD if price <= coins() else UIStyle.MUTED)
+		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(pr)
+		var buy := UIStyle.button("Have it made", func():
+			var r := Arms.buy_design(arms(), d)
+			if r.has("choose"):
+				_sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(arms(), d, sd), r.choose)
+			else:
+				_pay(r), true)
+		buy.disabled = price > coins() + (Arms.value(arms().main) + Arms.value(arms().off)) / 2   # (with what he could trade in)
+		col.add_child(buy)
+		g2.add_child(tile)
+		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
+	return true
 
 ## A list on the smith's screen that takes what height is left and scrolls within it.
 func _smith_scroll(parent: Control) -> ScrollContainer:
