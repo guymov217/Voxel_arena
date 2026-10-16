@@ -112,6 +112,10 @@ process play a campaign round over localhost, the guest's fighter played by a bo
 
 ### Trying an online game on one machine
 
+No command line: put the Godot 4.7.2 exe in the game's folder and double-click
+**`multiplayer_test.bat`** (Windows); it opens the windows and asks what to try. The steps and
+what to check are in `docs/MULTIPLAYER_TEST.md`. The long way:
+
 `tools/mp_local.sh` (Linux/macOS) or `tools/mp_local.bat` (Windows, after
 `set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window already
 in the same room over ENet; press **Start the co-op campaign** in the host window. With `BOT=1`
