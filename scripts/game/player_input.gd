@@ -331,6 +331,9 @@ static func pack(inp: Dictionary) -> Array:
 	# and a pot all go there, as they do for the host's own player.
 	if aim is Vector3:
 		out.append_array([snappedf(aim.x, 0.01), snappedf(aim.y, 0.01), snappedf(aim.z, 0.01)])
+		var af = inp.get("aimFrom")
+		if af is Vector3:
+			out.append_array([snappedf(af.x, 0.01), snappedf(af.y, 0.01), snappedf(af.z, 0.01)])
 	return out
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
@@ -361,4 +364,6 @@ static func unpack(a: Array) -> Dictionary:
 		out.charging = clampf(float(a[15]), 0.0, 1.0)
 	if bits & (1 << 18) != 0 and a.size() > 18:
 		out.aimAt = Vector3(clampf(float(a[16]), -300, 300), clampf(float(a[17]), -50, 200), clampf(float(a[18]), -300, 300))
+		if a.size() > 21:
+			out.aimFrom = Vector3(clampf(float(a[19]), -300, 300), clampf(float(a[20]), -50, 200), clampf(float(a[21]), -300, 300))
 	return out

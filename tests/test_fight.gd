@@ -266,3 +266,33 @@ func test_every_weapon_comes_down_hard_on_a_man_on_the_sand() -> void:
 		t.check(r.J > float(spec[2]), "%s comes down on the man on the sand (hardest blow J %.1f)" % [spec[0], r.J])
 		m.queue_free()
 		await get_tree().process_frame
+
+## A shield takes the blows that come at a man through it, and pays for them like any weapon:
+## chipped where it is struck, broken up in the end.
+func test_a_shield_takes_blows_and_breaks_under_them() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": "roundShield"}})
+	var f: Fighter = m.me.f
+	m.me.drive = func(_e): return {"off": {"x": -0.2, "y": 0.35}}
+	for i in 90:
+		await get_tree().physics_frame
+	var sh: Weapon = f.weapons.L
+	var n0 := 0
+	for a in sh.alive:
+		n0 += int(a)
+	var blocked := 0
+	for k in 40:
+		var c: Vector3 = sh.global_transform * sh.local_box().get_center()
+		var dir: Vector3 = (c - (c + (c - f.torso.global_position).normalized() * 0.5)).normalized()
+		var p: Vector3 = c + dir * 0.15
+		var r: Dictionary = f.apply_hit(f.arm.L.fore, {"impulse": 40.0, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": p, "dir": dir})
+		if r.get("blocked", false):
+			blocked += 1
+		await get_tree().physics_frame
+	var n1 := 0
+	for a in sh.alive:
+		n1 += int(a)
+	t.check(blocked > 30, "the shield took the blows (%d of 40)" % blocked)
+	t.check(n1 < n0 * 0.7, "and it is battered and broken by them (%d of %d voxels left)" % [n1, n0])
+	m.queue_free()

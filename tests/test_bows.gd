@@ -92,3 +92,20 @@ func test_a_guest_looses_at_his_own_crosshair() -> void:
 		t.check(absf(ang) < 10.0, "toward his crosshair, not where he faced (%.1f degrees off)" % ang)
 	Net.inputs.erase(77)
 	m.queue_free()
+
+## A shot leaves from the crosshair's own line of sight, beside the bow: it flies under the
+## crosshair at every distance, not across it from the right shoulder.
+func test_a_shot_leaves_from_the_line_of_sight() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "bow", "off": ""}})
+	var bow := Vector3(-0.3, 1.4, 0.4)
+	var cam := Vector3(-1.0, 1.9, -2.2)
+	var aim := Vector3(0.0, 1.3, 25.0)
+	var p: Vector3 = m.throwables._on_sight(bow, {"aimAt": aim, "aimFrom": cam})
+	var n := (aim - cam).normalized()
+	var off := (p - cam) - n * (p - cam).dot(n)
+	t.check(off.length() < 0.01, "the shot starts on the line of sight (%.3f m off it)" % off.length())
+	t.check(p.distance_to(bow) < 1.2, "beside the bow (%.2f m from it)" % p.distance_to(bow))
+	t.check(m.throwables._on_sight(bow, {"aimAt": aim}).is_equal_approx(bow), "with no line of sight sent (an old guest) it leaves from the bow")
+	m.queue_free()

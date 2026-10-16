@@ -130,3 +130,44 @@ func test_a_bout_ends_when_no_one_can_stand_and_fight() -> void:
 		await get_tree().physics_frame
 	t.check(m.over and res.get("won", true) == false, "after five the bout is lost (over %s, %s)" % [m.over, res.get("won")])
 	m.queue_free()
+
+## Half his head cut away kills a man (he does not lie there alive for ever).
+func test_half_a_head_is_death() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+	var f: Fighter = m.me.f
+	var half := []
+	for i in f.head.fx.size():
+		if f.head.fx[i] < f.head.dims.x * int(Data.body_res) / 2:
+			half.append(i)
+	f.head.remove_voxels(half)
+	for i in 10:
+		await get_tree().physics_frame
+	t.check(not f.alive, "a man with half his head gone is dead (integrity %.2f)" % f.head.integrity)
+	m.queue_free()
+
+## Whatever keeps a man on the sand, twelve seconds there without getting up and he is out:
+## the bout does not hang on a man who will not rise.
+func test_a_man_down_for_good_is_out_of_the_bout() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 5})
+	_calm(m)
+	m.me.drive = func(_e): return {"limp": true}
+	var res := {}
+	m.finished.connect(func(r): res.merge(r))
+	var f: Fighter = m.me.f
+	for i in 30:
+		_calm(m)
+		await get_tree().physics_frame
+	f.fall(60.0, true)
+	for i in 120 * 10:
+		_calm(m)
+		await get_tree().physics_frame
+	t.check(not m.over and f.can_stand(), "ten seconds down (he could stand): the bout goes on")
+	for i in 120 * 3:
+		_calm(m)
+		await get_tree().physics_frame
+	t.check(m.over and res.get("won", true) == false, "after twelve he is out and the bout is lost (state %s down_t %.1f unfit %.1f over %s)" % [f.state, float(m.me.get("down_t", -1.0)), float(m.me.get("unfit_t", -1.0)), m.over])
+	m.queue_free()

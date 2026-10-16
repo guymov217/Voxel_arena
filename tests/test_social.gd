@@ -158,6 +158,8 @@ func test_inputs_survive_the_network() -> void:
 	t.check(absf(float(full.get("charging", 0.0)) - 0.6) < 0.01, "the wind-up travels")
 	t.check(full.get("aimAt") is Vector3 and (full.aimAt as Vector3).distance_to(Vector3(3.25, 1.5, -7.75)) < 0.02, "the crosshair travels")
 	t.check(not PlayerInput.unpack(PlayerInput.pack({})).has("aimAt"), "and no crosshair when he has none")
+	var sight := PlayerInput.unpack(PlayerInput.pack({"aimAt": Vector3(3.25, 1.5, -7.75), "aimFrom": Vector3(-1.0, 2.0, -9.5)}))
+	t.check(sight.get("aimFrom") is Vector3 and (sight.aimFrom as Vector3).distance_to(Vector3(-1.0, 2.0, -9.5)) < 0.02, "and the line of sight it is on")
 	t.eq(PlayerInput.unpack(PlayerInput.pack({})).throwOther, false, "and the usual one")
 	t.check(PlayerInput.has_one_shot(inp), "a press makes the packet reliable")
 	# A press the host has not acted on yet survives the next packet, and is acted on once.

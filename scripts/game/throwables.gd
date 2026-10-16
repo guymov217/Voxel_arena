@@ -1380,6 +1380,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		# Where the crosshair sits, allowing for the drop over the distance (weaponFx.js): a
 		# short draw, a long hold or a tired arm scatters it a little.
 		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		from = _on_sight(from, inp)
 		var dd: Vector3 = (inp.aimAt as Vector3) - from
 		var dist := dd.length()
 		var wobble := _bow_wobble(c, draw, hold_t)
@@ -1414,6 +1415,24 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	m.sfx("twang", from)
 	m.sfx("whoosh", from, 0.6)
 	c.stamina = maxf(0.0, c.stamina - 9.0)
+
+## Where a shot leaves from: on the crosshair's own line of sight, beside the bow (the nearest
+## point of it), not at the bow out on the right shoulder. From there it flies under the
+## crosshair the whole way: from the bow it crossed the line of sight only at the mark, and at
+## anything nearer or farther (a ray that ran past the man to the far wall) it went to the
+## right of where the crosshair sat.
+func _on_sight(from: Vector3, inp: Dictionary) -> Vector3:
+	var af = inp.get("aimFrom")
+	if not (af is Vector3) or not (inp.get("aimAt") is Vector3):
+		return from
+	var line: Vector3 = (inp.aimAt as Vector3) - (af as Vector3)
+	if line.length_squared() < 0.01:
+		return from
+	var n := line.normalized()
+	var t := clampf((from - (af as Vector3)).dot(n), 0.0, line.length() - 0.2)
+	var on: Vector3 = (af as Vector3) + n * t
+	# Only from beside the archer: a camera thrown far off (a free look) keeps the bow's own.
+	return on if on.distance_to(from) < 1.2 else from
 
 ## Arrows fly fast and near straight (a dropping lob was the old slow arrow): speed at no draw
 ## plus what a full draw adds, m/s.
@@ -1540,9 +1559,11 @@ func _crossbow(e: Dictionary, w: Weapon, thrust: float, dt: float, inp := {}) ->
 	w.set_meta("reload", CROSSBOW_RELOAD)
 	var tgt = m.nearest_enemy(e)
 	var aim: Vector3 = tgt.f.torso.global_position if tgt else td[0] + td[1] * 8.0
+	var start: Vector3 = td[0]
 	if (e.kind == "local" or e.kind == "remote") and inp.get("aimAt") is Vector3:
 		aim = inp.aimAt
-	var bolt: Dictionary = m.items.throw_flat("pot_bolt", td[0], aim, c, BOLT_SPEED)
+		start = _on_sight(start, inp)
+	var bolt: Dictionary = m.items.throw_flat("pot_bolt", start, aim, c, BOLT_SPEED)
 	bolt.power = 1.0
 	m.sfx("clang", td[0], 0.4)
 	c.stamina = maxf(0.0, c.stamina - 8.0)

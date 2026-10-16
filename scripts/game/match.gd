@@ -770,6 +770,7 @@ func _player_input(f, dt: float) -> Dictionary:
 		inp.talk = true
 	if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
 		inp.aimAt = aim_point(f)
+		inp.aimFrom = aim_from
 	last_local_inp = inp
 	return inp
 
@@ -1155,14 +1156,27 @@ func _check_round(dt: float) -> void:
 
 ## A fighter who can no longer stand (legs gone, too little blood, his head ringing) and has lain
 ## or crawled about on the sand that way for UNFIT_OUT seconds can fight no more: he counts as
-## beaten, so a bout where no one on a side can stand is over.
+## beaten, so a bout where no one on a side can stand is over. So does one who has lain there
+## DOWN_OUT seconds on end for whatever reason, never getting up (a ruin of a man the numbers
+## still let stand): a bout never hangs on men who cannot fight.
 const UNFIT_OUT := 5.0
+const DOWN_OUT := 12.0
 func _unfit(e: Dictionary, dt: float) -> bool:
 	var f = e.f
-	if f is Fighter and f.alive and f.state != "stand" and not f.can_stand():
+	var down: bool = f is Fighter and f.alive and f.state != "stand"
+	# Only standing a while counts as being up again: one who keeps half rising and falling
+	# back is still down.
+	e.stand_t = 0.0 if down else float(e.get("stand_t", 0.0)) + dt
+	if down:
+		e.down_t = float(e.get("down_t", 0.0)) + dt
+	elif float(e.stand_t) > 2.0:
+		e.down_t = 0.0
+	if down and not f.can_stand():
 		e.unfit_t = float(e.get("unfit_t", 0.0)) + dt
 	else:
 		e.unfit_t = 0.0
+	if float(e.get("down_t", 0.0)) >= DOWN_OUT:
+		e.unfit_t = maxf(float(e.unfit_t), UNFIT_OUT)
 	return float(e.unfit_t) >= UNFIT_OUT
 
 func _check_circus(alive_h: Array, alive_e: Array) -> void:
@@ -1440,6 +1454,7 @@ func _bow_sway(f, w, dt: float) -> void:
 	bow_sway.y = ny
 	bow_sway.p = np
 
+var aim_from := Vector3.ZERO   # where the crosshair's line of sight starts (the last aim_point)
 func aim_point(f: Fighter) -> Vector3:
 	var dir := -cam.global_basis.z
 	var o := cam.global_position
@@ -1462,6 +1477,7 @@ func aim_point(f: Fighter) -> Vector3:
 		q.exclude = mine
 		hit = space.intersect_ray(q)
 		o = from
+	aim_from = o
 	return hit.position if not hit.is_empty() else o + dir * 40.0
 
 # ---------- The body between rounds (Body) ----------

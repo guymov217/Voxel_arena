@@ -1261,7 +1261,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	concussion = maxf(float(mods.drunk), concussion - dt * (0.05 if state == "stand" else 0.16))
 	if enraged:
 		concussion = minf(concussion, 0.45)
-	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0):
+	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0 or _head_ruined()):
 		die("decap" if head.severed else ("bleed" if blood <= 0.0 else "wounds"))
 		live = false
 		inp = {}
@@ -2843,10 +2843,27 @@ func _shield_takes(hit: Dictionary) -> bool:
 		if box.size == Vector3.ZERO:
 			continue
 		var inv: Transform3D = sh.global_transform.affine_inverse()
-		if box.grow(sh.vs).intersects_segment(inv * (p - d * 0.7 * S), inv * p) == null:
+		var at = box.grow(sh.vs).intersects_segment(inv * (p - d * 0.7 * S), inv * p)
+		if at == null:
 			continue
 		var J := float(hit.get("impulse", 0.0))
 		sh.apply_impulse(d * J * 0.4, p - sh.global_position)
+		# The shield pays for it as any weapon does: chipped where it was struck, split and
+		# broken in the end by blows enough (Weapon.knock).
+		var best := -1
+		var bd := INF
+		for i in sh.vox.size():
+			if sh.alive[i]:
+				var dd: float = (Vector3(sh.vox[i][0], sh.vox[i][1], sh.vox[i][2]) * sh.vs).distance_squared_to(at)
+				if dd < bd:
+					bd = dd
+					best = i
+		if best >= 0:
+			var own_h: float = Data.material(sh.vox[best][3]).get("hardness", 0.5)
+			var mult: float = Combat.current.chip_mult if Combat.current else 1.0
+			var k: Dictionary = sh.knock(best, Weapon.chip_score(J * mult, own_h, float(hit.get("hardness", 0.5))))
+			if not k.is_empty() and Combat.current:
+				Combat.current.chip.emit({"kind": "chip", "weapon": sh, "indices": k.indices, "voxels": k.voxels, "p": p, "broke": k.broke})
 		stagger = minf(1.0, stagger + J * 0.004)
 		if Combat.current:
 			Combat.current.clang.emit({"p": p, "J": J, "metal": 1.0})
@@ -3272,6 +3289,16 @@ func _count_organs() -> void:
 				organ_total[o] = int(organ_total.get(o, 0)) + 1
 
 ## 0..1: how much of an organ is left whole (voxels and bruising both).
+## Half his head gone, or most of his brain: no man lives through that (he lay on the sand
+## "alive" and the bout never ended).
+func _head_ruined() -> bool:
+	if head.severed or get("kind") == "beast":   # a beast's heads are its own (beast.gd)
+		return false
+	var nb: int = organ_total.get(Anatomy.BRAIN, 0)
+	if nb > 0 and float(organ_lost.get(Anatomy.BRAIN, 0)) / float(nb) >= 0.45:
+		return true
+	return head.integrity < 0.55
+
 func organ_health(id: int) -> float:
 	var n: int = organ_total.get(id, 0)
 	if n == 0:
