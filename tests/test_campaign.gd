@@ -126,3 +126,31 @@ func test_the_giants_of_myth_look_the_part() -> void:
 			white += 1
 	t.check(white >= 8, "one great eye in the middle of his brow (%d)" % white)
 	m.queue_free()
+
+## A weapon bought goes into a free hand; with both full the buyer picks which one is sold.
+func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
+	var a := Arms.empty()
+	var r := Arms.buy(a, "gladius")
+	t.eq(r.side, "R", "the stick's hand takes the first blade")
+	t.eq(int(r.trade_in), 0, "the stick fetches nothing")
+	a = r.arms
+	r = Arms.buy(a, "dagger")
+	t.eq(r.side, "L", "a second weapon goes into the free hand")
+	t.eq(str(r.arms.main.name), "Gladius", "the first one is kept")
+	t.eq(str(r.arms.off.name), "Dagger", "the dagger in the off hand")
+	a = r.arms
+	r = Arms.buy(a, "axe")
+	t.check(r.has("choose") and r.choose.size() == 2, "both hands full: he is asked which to sell")
+	r = Arms.buy(a, "axe", "L")
+	t.eq(str(r.arms.main.name), "Gladius", "the gladius stays")
+	t.eq(str(r.arms.off.name), "Axe", "the axe where the dagger was")
+	t.check(int(r.trade_in) > 0 and int(r.cost) < int(Arms.base("axe").price), "the dagger is taken in part exchange")
+	r = Arms.buy(a, "roundShield")
+	t.eq(r.side, "L", "a shield goes on the left")
+	t.eq(r.sold, ["L"], "taking the place of what was there")
+	r = Arms.buy(a, "zweihander")
+	t.eq(r.sold, ["R", "L"], "a two-handed sword takes both hands")
+	t.check(r.arms.off == null, "nothing left in the off hand")
+	var big: Dictionary = r.arms
+	r = Arms.buy(big, "dagger")
+	t.check(not r.has("choose") and r.side == "R", "the only thing to sell is the two-handed sword")

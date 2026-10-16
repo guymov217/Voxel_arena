@@ -905,7 +905,7 @@ func _yard(v: VBoxContainer) -> void:
 	rack.add_theme_constant_override("separation", 8)
 	body.add_child(rack)
 	rack.add_child(UIStyle.label("WEAPONS FOR SALE", 13, UIStyle.BRONZE))
-	rack.add_child(UIStyle.label("Your old one is taken in part exchange for half its worth.", 13, UIStyle.MUTED))
+	rack.add_child(UIStyle.label("It goes in a free hand. With both hands full you pick which one he takes, for half its worth.", 13, UIStyle.MUTED))
 	var scroll := _smith_scroll(rack)
 	var rack_w := inner_w - left_w - 60.0
 	var grid := GridContainer.new()
@@ -922,7 +922,14 @@ func _yard(v: VBoxContainer) -> void:
 	tile_st.content_margin_left = 8; tile_st.content_margin_right = 8; tile_st.content_margin_top = 8; tile_st.content_margin_bottom = 8
 	for b in Arms.bases():
 		var key: String = b.key
-		var trade := Arms.value(arms().main if b.slot == "main" else arms().off) / 2
+		var pre := Arms.buy(arms(), key)
+		var choose: bool = pre.has("choose")
+		var trade := 0
+		if choose:
+			for sd in pre.choose:
+				trade = maxi(trade, Arms.value(arms().main if sd == "R" else arms().off) / 2)
+		else:
+			trade = int(pre.get("trade_in", 0))
 		var cost := maxi(0, int(b.price) - trade)
 		var afford: bool = int(b.price) <= coins() + trade
 		var tile := PanelContainer.new()
@@ -942,17 +949,53 @@ func _yard(v: VBoxContainer) -> void:
 		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(nm)
-		var pr := UIStyle.label("%d denarii · %s hand" % [cost, "main" if b.slot == "main" else "off"], 12, UIStyle.GOLD if afford else UIStyle.MUTED)
+		var goes := "pick one to sell" if choose else ("both hands" if pre.get("sold", []).size() > 1 else ("main hand" if pre.get("side", "R") == "R" else "off hand"))
+		var pr := UIStyle.label("%s%d denarii · %s" % ["from " if choose else "", cost, goes], 12, UIStyle.GOLD if afford else UIStyle.MUTED)
 		if trade > 0:
 			tile.tooltip_text += " · %d denarii, less %d for your old one" % [int(b.price), trade]
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(pr)
-		var buy := UIStyle.button("Buy", func(): _pay(Arms.buy(arms(), key)), afford)
+		var buy := UIStyle.button("Buy", func():
+			var r := Arms.buy(arms(), key)
+			if r.has("choose"):
+				_sell_choice(key, r.choose)
+			else:
+				_pay(r), afford)
 		buy.disabled = not afford
 		buy.tooltip_text = "" if afford else "Not enough in your purse"
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
+
+## Both hands full: which one the smith takes in part exchange for what is bought.
+func _sell_choice(key: String, sides: Array) -> void:
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", panel_style)
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	dim.add_child(box)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	box.add_child(v)
+	var nm := str(Arms.base(key).get("name", key))
+	var q := UIStyle.label("Both your hands are full. Which one does Vulcanus take for the %s?" % nm, 16, UIStyle.TEXT)
+	q.custom_minimum_size = Vector2(420, 0)
+	v.add_child(q)
+	for sd in sides:
+		var side: String = sd
+		var d = arms().main if side == "R" else arms().off
+		var r := Arms.buy(arms(), key, side)
+		var b := UIStyle.button("Sell the %s (%s hand) · pay %d" % [str(d.get("name", "?")) if d else "?", "main" if side == "R" else "off", int(r.get("cost", 0))], func():
+			dim.queue_free()
+			_pay(Arms.buy(arms(), key, side)))
+		b.disabled = int(r.get("cost", 0)) > coins()
+		v.add_child(b)
+	v.add_child(UIStyle.button("Keep both", func(): dim.queue_free()))
 
 ## A list on the smith's screen that takes what height is left and scrolls within it.
 func _smith_scroll(parent: Control) -> ScrollContainer:

@@ -121,19 +121,62 @@ static func base(key: String) -> Dictionary:
 			return b
 	return {}
 
-static func buy(a: Dictionary, key: String) -> Dictionary:
+## Buys a base at the smith. It goes into a free hand: the right one if it holds only the
+## training stick, else the left (a shield only ever goes on the left; a two-handed weapon
+## takes both). With no hand free the buyer picks which weapon the smith takes in part
+## exchange (`sell` "R" or "L"); without that pick, when there is a choice, the answer is
+## {"choose": [sides], "price"}. What is sold fetches half its worth.
+static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	var b := base(key)
 	if b.is_empty():
 		return {"error": "The smith has no such thing"}
 	var arms := sanitize(a)
-	var slot: String = b.slot
-	var side := "R" if slot == "main" else "L"
-	var trade_in := int(value(arms[slot]) * 0.5) if arms[slot] else 0
-	arms[slot] = Data.preset(key).duplicate(true)
+	var d: Dictionary = Data.preset(key).duplicate(true)
+	var two := bool(d.get("twoHanded", false))
+	var held_two := bool(arms.main.get("twoHanded", false)) and not is_stick(arms.main)
+	var r_free := is_stick(arms.main)
+	var l_free: bool = arms.off == null and not held_two
+	var side := ""
+	var sold: Array = []
+	if two:
+		side = "R"
+		sold = ["R", "L"]
+	elif b.slot == "off":
+		side = "L"
+		if not l_free:
+			sold = ["R"] if held_two else ["L"]
+	elif r_free:
+		side = "R"
+	elif l_free:
+		side = "L"
+	else:
+		var options: Array = ["R"] if held_two else ["R", "L"]
+		if options.size() > 1 and not options.has(sell):
+			return {"choose": options, "price": int(b.price)}
+		side = sell if options.has(sell) else options[0]
+		sold = [side]
+	var trade_in := 0
+	for s_ in sold:
+		var old = arms.main if s_ == "R" else arms.off
+		if old and not is_stick(old):
+			trade_in += int(value(old) * 0.5)
+		if s_ == "R":
+			arms.main = empty().main
+		else:
+			arms.off = null
+		arms.wear[s_] = []
+	if side == "R":
+		arms.main = d
+	else:
+		arms.off = d
 	arms.wear[side] = []
-	if slot == "main" and arms.main.get("twoHanded", false):
+	if two:
 		arms.off = null
-	return {"arms": arms, "cost": int(b.price) - trade_in, "trade_in": trade_in}
+	return {"arms": arms, "cost": int(b.price) - trade_in, "trade_in": trade_in, "side": side, "sold": sold}
+
+## The training stick everyone starts with: a hand that holds it is as good as free.
+static func is_stick(d) -> bool:
+	return d is Dictionary and String(d.get("name", "")) == String(Data.shop.get("stick", {}).get("name", "Training Stick"))
 
 static func repair_cost(a: Dictionary, side: String) -> int:
 	var d = a.main if side == "R" else a.off
