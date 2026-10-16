@@ -150,9 +150,8 @@ func test_inputs_survive_the_network() -> void:
 	t.eq(back.get("taunt"), false, "taunt")
 	t.eq(back.grabHands, "both", "grab hands")
 	t.check(absf(back.throwPower - 0.7) < 0.01, "throw power")
-	t.eq(PlayerInput.unpack(PlayerInput.pack({"throwHand": "L"})).throwHand, "L", "the throwing hand travels")
-	t.eq(PlayerInput.unpack(PlayerInput.pack({"throwHand": "R"})).throwHand, "R", "either hand")
-	t.eq(PlayerInput.unpack(PlayerInput.pack({})).throwHand, "", "or neither")
+	t.eq(PlayerInput.unpack(PlayerInput.pack({"throwOther": true})).throwOther, true, "the other hand's throw travels")
+	t.eq(PlayerInput.unpack(PlayerInput.pack({})).throwOther, false, "and the usual one")
 	t.check(PlayerInput.has_one_shot(inp), "a press makes the packet reliable")
 	# A press the host has not acted on yet survives the next packet, and is acted on once.
 	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"grab": true}))
@@ -199,10 +198,10 @@ func test_grabbing_an_arm_pins_it_and_a_severed_arm_is_a_club() -> void:
 		t.check(a.f.holding == null and (took as VoxelPart).thrown_t > 0.0, "and thrown like a club")
 	m.queue_free()
 
-## F throws from the hand whose mouse button is held: the left button the right hand's blade,
-## the right button the shield; neither, the blade first. A readied pot takes F, and its number
-## again puts it back in the kit.
-func test_the_mouse_button_names_the_throwing_hand() -> void:
+## F throws the blade in the right hand first; a tap of the left button while winding up picks
+## the other hand (the shield). A readied pot takes F, and its number again puts it back in
+## the kit.
+func test_a_click_picks_the_other_throwing_hand() -> void:
 	var m := _match()
 	m.me.f.state = "dead"
 	var act := [{}]
@@ -216,9 +215,9 @@ func test_the_mouse_button_names_the_throwing_hand() -> void:
 	await _steps(60)
 	var blade: Weapon = a.f.weapons.R
 	var shield: Weapon = a.f.weapons.L
-	act[0] = {"throw": true, "throwPower": 0.8, "throwHand": "L"}
+	act[0] = {"throw": true, "throwPower": 0.8, "throwOther": true}
 	await _steps(30)
-	t.check(a.f.weapons.L == null and a.f.weapons.R == blade, "the right button threw the shield and kept the blade")
+	t.check(a.f.weapons.L == null and a.f.weapons.R == blade, "the other hand threw the shield and kept the blade")
 	t.check(shield.thrown_t > 0.0, "the shield flies")
 	# A pot readied: F throws that, not the blade; its number again puts it away.
 	act[0] = {"useItem": 0}
@@ -231,11 +230,11 @@ func test_the_mouse_button_names_the_throwing_hand() -> void:
 	t.eq(Throwables.hotbar_of(a.inventory), ["sandPot", "bread"], "still on the hotbar")
 	act[0] = {"useItem": 0}
 	await _steps(3)
-	act[0] = {"throw": true, "throwPower": 0.8, "throwHand": "R"}
+	act[0] = {"throw": true, "throwPower": 0.8}
 	await _steps(30)
 	t.check(a.f.held_item == null and a.f.weapons.R == blade, "F threw the readied pot, not the blade in the right hand")
 	t.eq(int(a.inventory.sandPot), 0, "the thrown pot left the kit")
-	act[0] = {"throw": true, "throwPower": 0.8, "throwHand": "R"}
+	act[0] = {"throw": true, "throwPower": 0.8, "throwOther": true}
 	await _steps(30)
-	t.check(a.f.weapons.R == null and blade.thrown_t > 0.0, "with the kit empty, F throws the blade")
+	t.check(a.f.weapons.R == null and blade.thrown_t > 0.0, "with the kit empty and the left hand bare, F throws the blade whatever was picked")
 	m.queue_free()

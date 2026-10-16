@@ -878,11 +878,10 @@ func _process(dt: float) -> void:
 		if fh.held_item != null:
 			hand = String(fh.held_item.type).trim_prefix("pot_").replace("_", " ")
 		else:
-			var th: String = str(match_.last_local_inp.get("throwHand", ""))
-			var side: String = th if (th == "R" or th == "L") and fh.weapons.get(th) else ("R" if fh.weapons.R else "L")
+			var side: String = Social.throw_side(fh, match_.last_local_inp)
 			var w = fh.weapons.get(side)
 			hand = ("%s hand: %s" % ["right" if side == "R" else "left", String(w.design.get("name", "weapon")).to_lower()]) if w else "nothing in hand"
-		charge_hint.text = "%s · left button: right hand · right button: left hand · G calls it off" % hand
+		charge_hint.text = "%s · left click: the other hand · right click: call it off" % hand
 	if ch != charge:
 		charge = ch
 		charge_bar.queue_redraw()

@@ -515,14 +515,16 @@ func _throw(e: Dictionary, inp: Dictionary, side := "") -> void:
 	if c.throw_weapon(side, tgt, clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0), dir):
 		m.sfx("whoosh", c.hand_world(side))
 
-## Which hand throws: the one whose mouse button is held (left button: the right hand, right
-## button: the left) if it holds anything; else the main weapon first, the shield once the
-## main hand is empty.
+## Which hand throws: the main weapon first, the shield once the main hand is empty; or the
+## other hand when the player picked it (a tap of the left button while winding up), if it
+## holds anything.
 static func throw_side(c, inp: Dictionary) -> String:
-	var th = inp.get("throwHand", "")
-	if (th == "R" or th == "L") and c.weapons.get(th):
-		return th
-	return "R" if c.weapons.R else "L"
+	var side := "R" if c.weapons.R else "L"
+	if inp.get("throwOther", false):
+		var other := "L" if side == "R" else "R"
+		if c.weapons.get(other):
+			return other
+	return side
 
 ## A mark behind the thrower (the wall at his back) is never thrown at: it is moved to a few
 ## strides ahead where he looks.
