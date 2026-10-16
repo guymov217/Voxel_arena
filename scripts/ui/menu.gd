@@ -11,6 +11,7 @@ var world_root: Node3D
 var pause_layer: CanvasLayer
 var last_result := {}
 var in_room := false
+var over_match := false   # a menu screen opened over a running match (Settings from the pause menu)
 var cmd_bot := false
 var room_list: VBoxContainer
 var _training_loaded := false
@@ -119,12 +120,24 @@ func _ready() -> void:
 	Net.peer_joined.connect(func(id, _info):
 		if Net.is_host():
 			Net.send_to(int(id), "purse", coins())
+			# The yard is the room: whoever joins walks in through the gate.
+			if in_yard() and match_.role == "host":
+				match_.add_peer(int(id), _peer_spec(int(id), true))
 		if screen == "room":
 			show_screen("room"))
-	Net.peer_left.connect(func(_id): if screen == "room": show_screen("room"))
+	Net.peer_left.connect(func(id):
+		if match_ and match_.role == "host":
+			match_.drop_peer(int(id))
+		if screen == "room":
+			show_screen("room"))
 	Net.connected.connect(func():
 		in_room = true
-		show_screen("room"))
+		# Online the lobby is the yard: the host walks in at once and the others join him
+		# there; the gate is where he picks the campaign or an arena mode for everyone.
+		if Net.is_host():
+			enter_yard()
+		else:
+			show_screen("room"))
 	Net.connection_failed.connect(func(r): show_screen("mp", r))
 	Net.disconnected.connect(func():
 		in_room = false
@@ -215,6 +228,12 @@ func _net_loadout() -> void:
 	Net.my_loadout = lo
 
 ## A guest's look, as the host accepts it: only the cosmetic pieces and the known skins.
+## What the host spawns for a guest: his name, kit, body and the look and arms he sent.
+func _peer_spec(id: int, geared: bool, with_body := true) -> Dictionary:
+	var pl: Dictionary = Net.peers[id].get("loadout", {})
+	var pk := peer_look(pl)
+	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else [])} if not pl.is_empty() else {"main": "gladius"}}
+
 func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
 	for k in LOOK_SLOTS:
@@ -393,7 +412,7 @@ func _open_station(id: String) -> void:
 		return
 	# Alone, the gate is the way to the next bout: through it and into the arena, no menu.
 	# A room's host gets the gate's menu (the co-op campaign or another mode for everyone).
-	if id == "gate" and not (Net.active() and not Net.peers.is_empty()):
+	if id == "gate" and not Net.active():
 		var st := int(Save.get_value("stage", 1))
 		start({"mode": "campaign", "stage": st})
 		return
@@ -416,16 +435,44 @@ func _open_station(id: String) -> void:
 
 func _close_overlay() -> void:
 	visible = false
+	over_match = false
+	if match_:
+		match_.process_mode = Node.PROCESS_MODE_INHERIT
 	if hud:
 		hud.visible = true
+	_apply_input_settings()   # (a key rebound or the sensitivity changed meanwhile takes at once)
 	if match_ and match_.input:
 		match_.input.enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+## A menu screen over a running match (Settings from the pause menu): the fight goes on
+## underneath online, the hands are off it until the screen is closed.
+func _open_over_match(s: String) -> void:
+	over_match = true
+	visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if match_ and match_.input:
+		match_.input.enabled = false
+	if match_ and not Net.active():
+		match_.process_mode = Node.PROCESS_MODE_DISABLED   # alone, the fight waits for him
+	if hud:
+		hud.visible = false
+	show_screen(s)
+
+## Out of the room: the host closes it (his guests are told the host left), a guest goes.
+func _leave_room() -> void:
+	get_tree().paused = false
+	_end_match()
+	Net.leave()
+	in_room = false
+	hub = false
+	over_match = false
+	show_screen("main")
+
 func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The arena gate", 34))
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
-	if Net.active() and Net.is_host() and not Net.peers.is_empty():
+	if Net.active() and Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
 		var cn := Data.stage(cs, 1 + Net.peers.size())
 		v.add_child(UIStyle.label("Next co-op bout: %s · %s" % [cn.get("title", "Bout %d" % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
@@ -441,10 +488,13 @@ func _gate(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
 			show_screen("circus")))
-	v.add_child(UIStyle.button("Another mode for the room (party modes)" if Net.active() and not Net.peers.is_empty() else "Fights and party modes", func():
+	v.add_child(UIStyle.button("An arena mode for the room" if Net.active() else "Fights and party modes", func():
 		_end_match()
 		show_screen("fights")))
-	v.add_child(UIStyle.button("Leave the yard (main menu)", func(): show_screen("main")))
+	if Net.active():
+		v.add_child(UIStyle.button("Close the room (main menu)" if Net.is_host() else "Leave the room (main menu)", func(): _leave_room()))
+	else:
+		v.add_child(UIStyle.button("Leave the yard (main menu)", func(): show_screen("main")))
 
 func missions() -> Array:
 	var ms = Save.get_value("missions", [])
@@ -1465,9 +1515,10 @@ func _mp(v: VBoxContainer) -> void:
 
 ## Straight into a room from the command line, for testing with two windows on one machine:
 ## `--host` opens a room by address, `--join 127.0.0.1` joins one, `--name Guest` names you,
-## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection,
-## `--start` (with --host) takes the room into the yard when the first guest joins (multiplayer_test.bat).
+## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection
+## (multiplayer_test.bat).
 func _cmdline_room() -> void:
+	await get_tree().process_frame   # (the world root is added deferred too: a yard needs it in the tree)
 	var args := OS.get_cmdline_user_args()
 	cmd_bot = args.has("--bot")
 	var lag := args.find("--lag")
@@ -1478,15 +1529,8 @@ func _cmdline_room() -> void:
 	if i >= 0 and args.size() > i + 1:
 		Net.my_name = args[i + 1]
 	if args.has("--host"):
-		if Net.host_enet() != OK:   # `connected` opens the room
+		if Net.host_enet() != OK:   # `connected` takes the host into the yard
 			show_screen("mp", "Could not open port %d" % Net.PORT)
-		elif args.has("--start"):
-			# The one-click test: once the first guest is in, everyone goes into the yard together
-			# (the lobby with the stalls, where every bout and the campaign are started from).
-			Net.peer_joined.connect(func(_id, _info):
-				get_tree().create_timer(2.0).timeout.connect(func():
-					if match_ == null and screen == "room" and Net.is_host():
-						enter_yard()), CONNECT_ONE_SHOT)
 		return
 	i = args.find("--join")
 	if i >= 0:
@@ -1506,7 +1550,7 @@ func _on_lobbies(list: Array) -> void:
 
 func _room(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The room", 34))
-	v.add_child(UIStyle.label("You are the host." if Net.is_host() else "Waiting for the host to start.", 15, UIStyle.MUTED))
+	v.add_child(UIStyle.label("You are the host." if Net.is_host() else "Joining the host's yard...", 15, UIStyle.MUTED))
 	v.add_child(UIStyle.label("· %s (you)" % Net.my_name, 16))
 	for id in Net.peers:
 		v.add_child(UIStyle.label("· %s" % Net.peers[id].name, 16))
@@ -1619,7 +1663,11 @@ func _options(v: VBoxContainer) -> void:
 	dsel.item_selected.connect(func(i): _set_opt("decrees", dopts[i]))
 	_row(v, [UIStyle.label("The Emperor's decrees (arena duels)", 15), dsel])
 	v.add_child(UIStyle.label("Controls: mouse looks; hold left button and move the mouse to swing the main hand, right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, wheel turns the blade, Esc frees the mouse.", 13, UIStyle.MUTED))
-	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+	v.add_child(UIStyle.button("Back to the game" if over_match and match_ else "Back", func():
+		if over_match and match_:
+			_close_overlay()
+		else:
+			show_screen("main")))
 
 const DISPLAY_MODES := [["fullscreen", "Full screen"], ["exclusive", "Full screen (exclusive)"], ["maximized", "Window, maximized"], ["windowed", "Window"]]
 # The common screens of today: 16:9, 16:10, 21:9 and 32:9, laptop to 4K. The menu offers the
@@ -1718,8 +1766,8 @@ func start(opts: Dictionary) -> void:
 		opts.stage = int(Save.get_value("coop_stage", 1))
 	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
 	# campaign: the guests are sent the start and join as themselves.
-	if not opts.has("role") and Net.active() and Net.is_host() and not Net.peers.is_empty() and not ["training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
-		opts.role = "host"
+	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
+		opts.role = "host"   # (alone in the room too: whoever joins is brought into what runs)
 	last_start = opts.duplicate(true)
 	_end_match()
 	var a := arms()
@@ -1755,21 +1803,14 @@ func start(opts: Dictionary) -> void:
 	if opts.get("role", "local") == "host":
 		var peers := []
 		for id in Net.peers:
-			var pl: Dictionary = Net.peers[id].get("loadout", {})
-			var pk := peer_look(pl)
-			peers.append({"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if int(opts.get("stage", 1)) > 1 else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else [])} if not pl.is_empty() else {"main": "gladius"}})
+			peers.append(_peer_spec(int(id), geared, int(opts.get("stage", 1)) > 1))
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
 		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
 	match_.setup(opts)
-	var st: Dictionary = Save.get_value("settings", {})
-	if match_.input:
-		match_.input.setup_actions(bindings())
-		match_.input.sensitivity = float(st.get("sensitivity", 1.0))
-		match_.input.left_handed = bool(st.get("leftHanded", false))
-		match_.input.invert_y = bool(st.get("invertY", false))
+	_apply_input_settings()
 	match_.finished.connect(_on_finished)
 	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
@@ -1952,6 +1993,15 @@ func _backdrop_off() -> void:
 	Sfx.backdrop_mul = 1.0
 	bg.visible = true
 
+## The player's own keys, sensitivity and hand go to every match he plays in, a guest's too.
+func _apply_input_settings() -> void:
+	var st: Dictionary = Save.get_value("settings", {})
+	if match_ and match_.input:
+		match_.input.setup_actions(bindings())
+		match_.input.sensitivity = float(st.get("sensitivity", 1.0))
+		match_.input.left_handed = bool(st.get("leftHanded", false))
+		match_.input.invert_y = bool(st.get("invertY", false))
+
 func _end_match() -> void:
 	_backdrop_off()
 	if match_:
@@ -2017,7 +2067,7 @@ func _on_finished(r: Dictionary) -> void:
 	else:
 		# Between bouts of the campaign the gladiator goes back to the yard, the lobby: the
 		# smith, the market, the physician, friends, and the gate to the next bout.
-		if hub or mode == "campaign" or (Net.active() and Net.is_host() and not Net.peers.is_empty()):
+		if hub or mode == "campaign" or (Net.active() and Net.is_host()):
 			enter_yard(((last_result.get("text", "") + " · ") if mode == "campaign" and last_result.get("text", "") != "" else "") + mission_text)
 		else:
 			show_screen("yard" if mode == "campaign" else "main", mission_text)
@@ -2034,7 +2084,12 @@ func _on_net(type: String, data, _from: int) -> void:
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
 				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
+				_apply_input_settings()
 				match_.finished.connect(_on_finished)
+				if data.mode == "yard":
+					# A guest has the yard as the host has it: the stalls open for him too.
+					hub = true
+					match_.station.connect(_open_station)
 				hud = Hud.new(match_)
 				world_root.add_child(hud)
 				visible = false
@@ -2095,7 +2150,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("va_restart") and not e.is_echo() and match_ and not visible and pause_layer == null and not Net.active() and not last_start.is_empty() and not in_yard() and String(last_start.get("mode", "")) != "campaign":
 		start(last_start.duplicate(true))
 		return
-	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and in_yard() and visible:
+	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and (in_yard() or over_match) and visible and match_:
 		_close_overlay()
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
@@ -2144,11 +2199,24 @@ func _toggle_pause() -> void:
 			get_tree().paused = false
 			restart_campaign())
 		v.add_child(rb)
-	v.add_child(UIStyle.button("Leave the fight", func():
+	# Settings for every player, the host and his guests alike (the game runs on meanwhile online).
+	v.add_child(UIStyle.button("Settings", func():
 		_toggle_pause()
-		get_tree().paused = false
-		_end_match()
-		show_screen("main")))
+		_open_over_match("options")))
+	if Net.active() and Net.is_host() and match_ and not in_yard():
+		v.add_child(UIStyle.button("Back to the yard (everyone)", func():
+			_toggle_pause()
+			enter_yard("The host called the party back")))
+	if Net.active():
+		v.add_child(UIStyle.button("Close the room (main menu)" if Net.is_host() else "Leave the room (main menu)", func():
+			_toggle_pause()
+			_leave_room()))
+	else:
+		v.add_child(UIStyle.button("Leave the fight", func():
+			_toggle_pause()
+			get_tree().paused = false
+			_end_match()
+			show_screen("main")))
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not Net.active():
 		get_tree().paused = true

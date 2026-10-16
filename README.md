@@ -118,7 +118,8 @@ what to check are in `docs/MULTIPLAYER_TEST.md`. The long way:
 
 `tools/mp_local.sh` (Linux/macOS) or `tools/mp_local.bat` (Windows, after
 `set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window already
-in the same room over ENet; press **Start the co-op campaign** in the host window. With `BOT=1`
+in the host's yard over ENet (online, the yard is the lobby: the host picks the next bout at the
+gate). With `BOT=1`
 the guests are played by bots, so you can host, play and watch a real online bout alone. `LAG=120
 LOSS=3` holds every incoming message back 120 ms (±30) and drops 3% of the unreliable ones, a
 pretend poor connection to see how the game feels at that latency. The same flags work on a plain

@@ -201,16 +201,17 @@ func _board(p: Vector3) -> void:
 
 ## Once a tick on the host: nobody bleeds out, the stations, the boards, the ring.
 func update(_dt: float, local_inp: Dictionary) -> void:
-	for d in dummies + keepers:
-		if is_instance_valid(d):
-			d.blood = 100.0
-	for e in m.humans():
-		if is_instance_valid(e.f):
-			e.f.blood = maxf(e.f.blood, 50.0)
-	if champ and is_instance_valid(champ):
-		champ.blood = 100.0
-		_ring_rule(_dt)
-	_boards()
+	if m.role != "guest":   # (a guest only reads the stalls; the host keeps the yard's people)
+		for d in dummies + keepers:
+			if is_instance_valid(d):
+				d.blood = 100.0
+		for e in m.humans():
+			if is_instance_valid(e.f):
+				e.f.blood = maxf(e.f.blood, 50.0)
+		if champ and is_instance_valid(champ):
+			champ.blood = 100.0
+			_ring_rule(_dt)
+		_boards()
 	if m.me and is_instance_valid(m.me.f):
 		at = Yard.station_at(m.me.f.torso.global_position)
 		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader or the physician · the gate leads to the arena"

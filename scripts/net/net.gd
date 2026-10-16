@@ -209,8 +209,13 @@ func set_lobby_info(mode: String) -> void:
 	if steam_ready and lobby_id and is_host():
 		steam.call("setLobbyData", lobby_id, "mode", mode)
 
-func _on_peer_connected(_id: int) -> void:
-	pass # the guest introduces itself with "hello"
+func _on_peer_connected(id: int) -> void:
+	# The guest introduces itself with "hello". A guest whose game closes without a word is
+	# missed within seconds, not ENet's half a minute: his fighter leaves the yard with him.
+	if transport == "enet" and is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+		var pp: ENetPacketPeer = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
+		if pp:
+			pp.set_timeout(0, 4000, 8000)
 
 func _on_peer_disconnected(id: int) -> void:
 	if peers.erase(id):

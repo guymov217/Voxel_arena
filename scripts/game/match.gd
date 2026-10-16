@@ -189,6 +189,8 @@ func setup(opts: Dictionary) -> void:
 	if role == "guest":
 		combat.enabled = false
 		guest_bot_on = bool(opts.get("autopilot", false))
+		if mode == "yard":
+			yard = YardPlay.new(self)   # the stalls and their prompts; the host spawns the keepers
 		return
 	if Modes.handles(mode):
 		modes = Modes.new(self, mode)
@@ -352,6 +354,30 @@ func _register(e: Dictionary) -> void:
 			Net.send_all("gutp", {"id": en.id, "g": g}))
 	if role == "host":
 		Net.send_all("spawn", _spawn_msg(e))
+
+## A guest who joins the room while it is in the yard: he gets the world as it stands, then a
+## fighter of his own by the gate (its spawn reaches everyone, him included).
+func add_peer(id: int, p: Dictionary) -> void:
+	if role != "host":
+		return
+	Net.send_to(id, "start", {"mode": mode, "stage": stage, "coop": coop, "decrees": decrees.map(func(d): return d.id), "hazards": hazard_specs})
+	for e in entities:
+		if is_instance_valid(e.f):
+			Net.send_to(id, "spawn", _spawn_msg(e))
+	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
+	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
+	players_count = humans().size()
+	feed.emit("%s came into the yard" % p.name)
+
+## A guest who left: his fighter goes, here and on every guest's screen.
+func drop_peer(id: int) -> void:
+	for e in entities.duplicate():
+		if e.kind == "remote" and int(e.get("peer", -1)) == id and is_instance_valid(e.f):
+			feed.emit("%s left" % e.f.display_name)
+			_remove_entity(e)
+			if role == "host":
+				Net.send_all("despawn", {"id": e.id})
+	players_count = humans().size()
 
 func _spawn_msg(e: Dictionary) -> Dictionary:
 	var s: Dictionary = e.spec.duplicate(true)
@@ -587,6 +613,8 @@ func _physics_process(dt: float) -> void:
 		for e in entities:
 			if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
 				Fire.tick(e.f, dt, false)
+		if yard:
+			yard.update(dt, last_local_inp)
 		return
 	var local_inp := {}
 	if modes and me == null and input:
@@ -1793,5 +1821,10 @@ func _process(dt: float) -> void:
 	if role == "guest" and Net.active() and tick % 4 == 0:
 		var gi := _guest_bot_input(dt * 4.0) if guest_bot_on else (input.sample(dt * 4.0) if input else {})
 		if not gi.is_empty():
+			# In the yard E by a stall's keeper is a word with him, not a kick (as for the host).
+			if yard and me and is_instance_valid(me.f) and gi.get("kick", false) and Yard.station_at(me.f.torso.global_position) != "":
+				gi.kick = false
+				gi.talk = true
+			last_local_inp = gi
 			Net.send_host("input", PlayerInput.pack(gi), PlayerInput.has_one_shot(gi))
 	tick += 1 if role == "guest" else 0
