@@ -61,7 +61,7 @@ if "%pick%"=="3" set "BOT=--bot" & set "EXTRA=--lag 120 --loss 3"
 if "%pick%"=="4" set "BOT=--bot" & set "N=2"
 
 rem ---- 4. Open the windows: the host first, then the guests join it. The host starts the
-rem         co-op campaign by itself when the first guest is in.
+rem         yard (the online lobby with the stalls) when the first guest is in.
 echo.
 echo Opening the host window...
 start "WRECKSMITH host" "!G!" --path . --position 40,60 --resolution 1100x650 -- --host --start --name Host %EXTRA%
@@ -72,7 +72,8 @@ for /l %%i in (1,1,%N%) do (
 	timeout /t 2 /nobreak >nul
 )
 echo.
-echo The bout starts in the host window a moment after the guest joins. Click a window to play in it.
+echo A moment after the guest joins, both windows go into the yard: the online lobby with the
+echo smith, the physician, the board and the gate. Start fights from there, as online players do.
 echo Close this window when done.
 pause
 endlocal

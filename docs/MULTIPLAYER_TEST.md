@@ -24,12 +24,15 @@ Double-click **`multiplayer_test.bat`** in the game's folder. It finds Godot and
 | 3 | Like 2, with a pretend poor connection (120 ms delay, 3% packet loss). |
 | 4 | A host and two bot guests. |
 
-Both windows open already in the same room, and the co-op bout starts by itself in the host
-window a moment after the guest joins. Click a window to play in it.
+Both windows open already in the same room, and a moment after the guest joins everyone is in
+the **yard**: the online lobby with the smith, the physician, the mission board, the practice
+dummies and the gate. From there you start the bouts the way online players do (the gate), so the
+whole flow is tested: lobby, shop, campaign, back to the yard.
 
 ## What to check
 
-- The room lists Host and Guest 1 in both windows before you start.
+- The room lists Host and Guest 1 in both windows, then both land in the yard.
+- Both players walk about the yard and see each other; E talks to the keepers.
 - In the fight, both fighters are drawn in both windows; the guest moves and strikes.
 - Damage (voxels flying, blood) shows in the other window too.
 - The round ends for both at once.
