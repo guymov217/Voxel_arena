@@ -400,8 +400,9 @@ func _bo3_end() -> void:
 func check(dt: float) -> void:
 	if m.over:
 		return
-	var alive: Array = m.entities.filter(func(e): return e.f.alive and not e.get("harmless", false))
-	var humans_alive: Array = m.humans().filter(func(e): return e.f.alive)
+	# One who has lain unable to stand for a while is out (Match._unfit), as in any bout.
+	var alive: Array = m.entities.filter(func(e): return e.f.alive and not m._unfit(e, dt) and not e.get("harmless", false))
+	var humans_alive: Array = m.humans().filter(func(e): return e.f.alive and float(e.get("unfit_t", 0.0)) < Match.UNFIT_OUT)
 	match mode:
 		"hill":
 			for id in hill.score:

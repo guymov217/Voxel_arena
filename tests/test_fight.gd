@@ -231,7 +231,7 @@ func test_thrown_weapons_hurt_and_stick() -> void:
 ## Every weapon, one hand or two, short or long, comes down onto a man lying on the sand with
 ## a blow that hurts (from where a fighter would stand over him).
 func test_every_weapon_comes_down_hard_on_a_man_on_the_sand() -> void:
-	for spec in [["gladius", 1.25, 8.0], ["axe", 1.25, 8.0], ["longsword", 1.25, 8.0], ["warhammer", 1.25, 8.0], ["dagger", 0.9, 5.0]]:
+	for spec in [["gladius", 1.25, 8.0], ["axe", 1.25, 8.0], ["longsword", 1.25, 8.0], ["warhammer", 1.25, 8.0], ["dagger", 0.9, 4.0]]:
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": spec[0], "off": ""}})

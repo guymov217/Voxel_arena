@@ -323,6 +323,18 @@ func _build_mesh() -> void:
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
 
+## The box the voxels still on it fill, in its own frame (a shield's cover, see Fighter).
+func local_box() -> AABB:
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for i in vox.size():
+		if alive[i] == 0:
+			continue
+		var q := Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
+		lo = lo.min(q)
+		hi = hi.max(q)
+	return AABB() if lo == Vector3.INF else AABB(lo, hi - lo)
+
 # ---------- Burning and poisoned (only the look) ----------
 
 var _burn := Vector2i.ZERO          # what is shown now: x fire, y poison

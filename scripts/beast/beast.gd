@@ -1417,6 +1417,10 @@ func _lunge_dip() -> float:
 ## them a while, or falls.
 func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	jaw_t = minf(jaw_t, 0.14)
+	# Teeth that met a shield, or armour that kept them out (nothing torn away): no venom in
+	# him, no hold on him.
+	if res.get("blocked", false) or (res.get("armor", false) and (res.get("removed", []) as Array).is_empty()):
+		return
 	# Venom: a scorpion's (or a manticore's) sting, a spider's or a snake's fangs.
 	var kind: String = VENOMOUS.get(species, "")
 	var c = vic.fighter

@@ -352,6 +352,10 @@ func _register(e: Dictionary) -> void:
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
+	if e.f.has_signal("raged"):
+		e.f.raged.connect(func(f):
+			feed.emit("%s's eye is put out: he goes berserk!" % f.display_name)
+			say(f, "scream", 1.6, "rage"))
 	e.f.guts_pulled.connect(func(f, g):
 		var en = entity_of(f)
 		if role == "host" and en:
@@ -1104,9 +1108,10 @@ func _check_round(dt: float) -> void:
 			_spawn_round(round + 1)
 			_banner("Round %d of 3" % (round + 1), "")
 		return
-	# Beaten is beaten: dead, or out cold on the sand and never getting up again.
-	var alive_h := humans().filter(func(x): return not x.f.is_beaten())
-	var alive_e := enemies().filter(func(x): return not x.f.is_beaten())
+	# Beaten is beaten: dead, or out cold on the sand and never getting up again, or down on
+	# the sand unable to stand (crawling at most) for UNFIT_OUT seconds.
+	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
+	var alive_e := enemies().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
 	if mode == "training":
 		for e in enemies():
 			if not e.f.alive and not e.get("respawned", false) and training.get("respawn", true):
@@ -1131,7 +1136,8 @@ func _check_round(dt: float) -> void:
 		_check_circus(alive_h, alive_e)
 		return
 	if alive_h.is_empty():
-		_end(false, "You fall", "The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on.")
+		var crawled := humans().any(func(x): return x.f.alive)
+		_end(false, "You can fight no more" if crawled else "You fall", ("None of you can stand. " if crawled else "") + ("The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on."))
 		return
 	if alive_e.is_empty():
 		if mode == "campaign":
@@ -1146,6 +1152,18 @@ func _check_round(dt: float) -> void:
 			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, ("%d denarii to the party's purse. " if players_count > 1 else "%d denarii. ") % pay + "Back to the yard: spend, mend, gear up.", pay)
 		else:
 			_end(true, "Victory", "")
+
+## A fighter who can no longer stand (legs gone, too little blood, his head ringing) and has lain
+## or crawled about on the sand that way for UNFIT_OUT seconds can fight no more: he counts as
+## beaten, so a bout where no one on a side can stand is over.
+const UNFIT_OUT := 5.0
+func _unfit(e: Dictionary, dt: float) -> bool:
+	var f = e.f
+	if f is Fighter and f.alive and f.state != "stand" and not f.can_stand():
+		e.unfit_t = float(e.get("unfit_t", 0.0)) + dt
+	else:
+		e.unfit_t = 0.0
+	return float(e.unfit_t) >= UNFIT_OUT
 
 func _check_circus(alive_h: Array, alive_e: Array) -> void:
 	if alive_h.is_empty():

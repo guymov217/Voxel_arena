@@ -46,6 +46,7 @@ const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
 
 signal died(fighter: Fighter, cause: String)
 signal hit_taken(fighter: Fighter, info: Dictionary)
+signal raged(fighter: Fighter)
 
 var display_name := "Gladiator"
 var slot := 0
@@ -109,6 +110,9 @@ var eye_floor := 0.0
 var stuck_load := 0.0              # the weight of the blades stuck in him               # an eye lost: the aim never quite steadies
 var crawling := false
 var eye_hurt := 0.0
+var enraged := false   # a giant with an eye put out fights on in a blind rage to the end of the bout
+const RAGE_SIZE := 1.5   # from this size up an eye put out enrages instead of stunning
+var eye_cells: Array = []   # the head's voxels around the eyes, on the face (big ones only)
 var strip_clock := 0.0
 var crawl_phase := 0.0
 var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
@@ -123,7 +127,8 @@ var thrust_ext := {"R": 0.0, "L": 0.0}   # how far along that line the hand is d
 const THRUST_DRAW := 0.12   # s drawing the hand back along the line
 const THRUST_DRIVE := 0.14   # s driving it out to the end of the arm
 const THRUST_OVER := 0.15   # past the arm's reach, the body leaning in after it
-var thrust_lean := 0.0   # how far into the stab the body leans now (0..1)
+var thrust_lean := 0.0
+var chop_mem := {"R": 0.0, "L": 0.0}   # a downward chop, held a moment after the hand slows   # how far into the stab the body leans now (0..1)
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
 var held_item = null             # {"type", "id", "node"}: a pot readied in the free hand
 var net_mesh: MeshInstance3D = null
@@ -1037,7 +1042,7 @@ func can_stand() -> bool:
 	var r := leg_func("R")
 	if bool(mods.get("cyclops", false)) and (l <= 0.0 or r <= 0.0):
 		return false
-	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 14.0 and concussion < 0.85
+	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 14.0 and (concussion < 0.85 or enraged)
 
 func is_active() -> bool:
 	return state != "dead"
@@ -1075,7 +1080,38 @@ func _land_hard(speed: float) -> void:
 func is_out() -> bool:
 	if state != "down" or not alive or can_stand():
 		return false
-	return head.hp < 30.0 or concussion >= 0.85
+	return head.hp < 30.0 or (concussion >= 0.85 and not enraged)
+
+## A giant (or anything his size) with an eye put out, an arrow in it or a blade through it, is
+## not put down by it: he goes berserk in a blind panic and fights on the harder to the end of
+## the bout, his head ringing no more than enough to spoil his aim (bot.gd: lashing out every
+## way, kicking, grabbing, punching).
+func enrage() -> void:
+	if enraged or not alive or S < RAGE_SIZE:
+		return
+	enraged = true
+	raged.emit(self)
+
+## The voxels of the eyes: on the front of the head, the band across it where the eyes are (a
+## man's two, the Cyclops' one great eye in the middle; monster_look paints them there).
+func _eye_cells() -> Array:
+	if eye_cells.is_empty():
+		var front := head.dims.z * int(Data.body_res) - 1
+		for i in head.fx.size():
+			if head.fz[i] == front and head.fx[i] >= 2 and head.fx[i] <= 7 and head.fy[i] >= 5 and head.fy[i] <= 8:
+				eye_cells.append(i)
+	return eye_cells
+
+## An eye put out (some of its voxels knocked away) enrages a big one.
+func _check_eye() -> void:
+	if enraged or S < RAGE_SIZE or head.severed:
+		return
+	var gone := 0
+	for i in _eye_cells():
+		if head.alive[i] == 0:
+			gone += 1
+	if gone >= 2:
+		enrage()
 
 ## Beaten, one way or the other.
 func is_beaten() -> bool:
@@ -1223,6 +1259,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
 	concussion = maxf(float(mods.drunk), concussion - dt * (0.05 if state == "stand" else 0.16))
+	if enraged:
+		concussion = minf(concussion, 0.45)
 	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0):
 		die("decap" if head.severed else ("bleed" if blood <= 0.0 else "wounds"))
 		live = false
@@ -1646,7 +1684,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		return
 	var w: Weapon = weapons[side]
 	power_now = power
-	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3)
+	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3) * (1.35 if enraged else 1.0)
 	# A thrust is made with the whole body: the arm drives harder along the line and the body
 	# lunges after the point (held out at arm's length and no more, the point only pricked).
 	var th_in: float = float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0))
@@ -2228,8 +2266,11 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		# Close over the sand only in a chop, the hand coming down fast; a sideways sweep keeps
 		# the point higher, as dragged along the sand a long blade stalled in it.
 		var hand_low := minf(hand_world(side).y, target_w.y)
-		var chop := clampf(-target_vel[side].y / (1.5 * S), 0.0, 1.0)
-		var margin := lerpf(0.13 + 0.035 * minf(4.0, w.mass), 0.05 + 0.015 * minf(4.0, w.mass), chop)
+		# A chop stays a chop to its end: the hand slows as it comes down onto the man, and taken
+		# for a sweep there the point was hauled back up just before it landed.
+		chop_mem[side] = maxf(clampf(-target_vel[side].y / (1.5 * S), 0.0, 1.0), float(chop_mem[side]) - dt / 0.6)
+		var chop: float = chop_mem[side]
+		var margin := lerpf(0.13 + 0.035 * minf(4.0, w.mass), 0.025 + 0.008 * minf(4.0, w.mass), chop)
 		var floor_gap := hand_low - (ground_level + margin * S)
 		var reach_w := maxf(0.2, w.reach + 0.04 * S)
 		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:
@@ -2516,6 +2557,9 @@ func die(cause := "") -> void:
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	if _shield_takes(hit):
+		res.blocked = true
+		return res
 	organs_hit = []
 	var detached := part.severed
 	var keep_stagger := stagger
@@ -2751,6 +2795,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			eye_floor = maxf(eye_floor, minf(0.85, lost * 1.6))
 			eye_hurt = maxf(eye_hurt, eye_floor)
 			concussion = minf(1.0, concussion + float(remove.size()) / maxf(1.0, float(part.fx.size())) * 1.5)
+			_check_eye()
 		break_loose(part, res, hit.dir, detached)
 		_check_flaps(res)
 		if part == torso and not detached and type != "blunt":
@@ -2779,6 +2824,34 @@ func _armor_near(part: VoxelPart, lp: Vector3, r: float) -> Array:
 					out.append([ad, i, d])
 	out.sort_custom(func(x, y): return x[2] < y[2])
 	return out
+
+## A shield in the way takes the blow: a bite, a claw, a ram, a stamp or a blade that comes at
+## him through the shield he holds (on its way in, the last stretch before the spot it struck)
+## lands on the shield, not on the arm behind it or the body: a knock on the shield, a jolt to
+## the man, no wound.
+func _shield_takes(hit: Dictionary) -> bool:
+	var d: Vector3 = hit.get("dir", Vector3.ZERO)
+	if d.length_squared() < 1e-6 or not (hit.get("point") is Vector3) or not alive:
+		return false
+	d = d.normalized()
+	var p: Vector3 = hit.point
+	for side in ["L", "R"]:
+		var sh = weapons[side]
+		if sh == null or not is_instance_valid(sh) or not sh.is_shield or sh.holder != self:
+			continue
+		var box: AABB = sh.local_box()
+		if box.size == Vector3.ZERO:
+			continue
+		var inv: Transform3D = sh.global_transform.affine_inverse()
+		if box.grow(sh.vs).intersects_segment(inv * (p - d * 0.7 * S), inv * p) == null:
+			continue
+		var J := float(hit.get("impulse", 0.0))
+		sh.apply_impulse(d * J * 0.4, p - sh.global_position)
+		stagger = minf(1.0, stagger + J * 0.004)
+		if Combat.current:
+			Combat.current.clang.emit({"p": p, "J": J, "metal": 1.0})
+		return true
+	return false
 
 ## How deep a wound already goes in from `lp` along `ld` (character.js wound): the farthest dead
 ## voxel inside the blade's slab (or the point's bore, when `n` is zero), counted only while the

@@ -843,7 +843,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0)) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	_hit(c, part, J, "point", p, hdir, owner_)
 	if headshot:
-		c.concussion = minf(1.0, c.concussion + 0.5)
+		c.concussion = minf(1.0, c.concussion + (0.2 if c.S >= 1.5 else 0.5))
 		m.feed.emit("HEADSHOT! %s%s's head%s" % [(owner_.display_name + " puts one in ") if owner_ else "", c.display_name, ". Down and out." if was_alive and not c.alive else ""])
 	if type == "pot_bolt":
 		part.bleed += 1.0
