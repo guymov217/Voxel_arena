@@ -258,7 +258,7 @@ func sample(dt: float) -> Dictionary:
 		off.x += (-0.35 - off.x) * minf(1.0, dt * 2.0)
 		off.y += (0.1 - off.y) * minf(1.0, dt * 2.0)
 	var want := 1.0 if held("thrust") else 0.0
-	thrust += (want - thrust) * minf(1.0, dt * 10.0)
+	thrust += (want - thrust) * minf(1.0, dt * 30.0)
 	var inp := {
 		"mx": clampf((1.0 if held("left") else 0.0) - (1.0 if held("right") else 0.0) - pad_move.x, -1.0, 1.0),
 		"mz": clampf((1.0 if held("forward") else 0.0) - (1.0 if held("back") else 0.0) - pad_move.y, -1.0, 1.0),

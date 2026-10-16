@@ -227,3 +227,42 @@ func test_thrown_weapons_hurt_and_stick() -> void:
 	print("   throws: ", ", ".join(report))
 	t.check(landed >= 4, "the throws land where they were aimed (%d of 5)" % landed)
 	t.check(stuck >= 2, "points and edges that bite deep stay in (%d)" % stuck)
+
+## Every weapon, one hand or two, short or long, comes down onto a man lying on the sand with
+## a blow that hurts (from where a fighter would stand over him).
+func test_every_weapon_comes_down_hard_on_a_man_on_the_sand() -> void:
+	for spec in [["gladius", 1.25, 8.0], ["axe", 1.25, 8.0], ["longsword", 1.25, 8.0], ["warhammer", 1.25, 8.0], ["dagger", 0.9, 5.0]]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": spec[0], "off": ""}})
+		var f: Fighter = m.me.f
+		var ve = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": f.torso.global_position * Vector3(1, 0, 1) + Vector3(0, 0, spec[1]), "yaw": PI})
+		ve.erase("bot")
+		ve.drive = func(_e): return {}
+		var v: Fighter = ve.f
+		var st := {"y": 0.15, "power": false}
+		m.me.drive = func(_e): return {"main": {"x": 0.1, "y": st.y}, "power": st.power, "look": {"yaw": 0.0, "pitch": -0.5}}
+		var r := {"J": 0.0}
+		m.combat.hit.connect(func(h):
+			if h.get("attacker") == f and h.get("char") == v:
+				r.J = maxf(r.J, float(h.J)))
+		for i in 90:
+			if v.state == "stand":
+				v.fall(30.0, true)
+			await get_tree().physics_frame
+		for rep in 2:
+			for i in 60:
+				st.y = lerpf(0.15, 1.4, minf(1.0, i / 40.0))
+				st.power = false
+				if v.state == "stand":
+					v.fall(30.0, true)
+				await get_tree().physics_frame
+			for i in 90:
+				st.y = lerpf(1.4, -1.6, minf(1.0, i / 40.0))
+				st.power = true
+				if v.state == "stand":
+					v.fall(30.0, true)
+				await get_tree().physics_frame
+		t.check(r.J > float(spec[2]), "%s comes down on the man on the sand (hardest blow J %.1f)" % [spec[0], r.J])
+		m.queue_free()
+		await get_tree().process_frame

@@ -144,3 +144,51 @@ func test_wheel_turns_the_edge() -> void:
 		var off := rad_to_deg((q * Vector3.RIGHT).angle_to(want))
 		t.check(off < 15.0, "twist %.1f: the edge is where the wheel set it (%.0f° off)" % [tw, off])
 	m.queue_free()
+
+## A blade hanging at the side and asked high across the body (and a two-handed one) goes up
+## round by the front: it is not stuck pressing in through its own hips with the blade down.
+func test_a_blade_comes_up_across_the_body_from_hanging() -> void:
+	for wk in ["gladius", "axe", "longsword"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		m.me.drive = func(_e): return {"main": {"x": -1.5, "y": 1.3}, "power": false, "look": {"yaw": 0.0, "pitch": -0.3}}
+		for i in 240:
+			await get_tree().physics_frame
+		var up: float = (PD.quat_of(f.weapons.R) * Vector3.UP).y
+		t.check(up > 0.3, "%s held high across the body points up (%.2f)" % [wk, up])
+		m.queue_free()
+		await get_tree().process_frame
+
+## A thrust is a stab along the blade's own line: drawn back along it, then driven out along
+## it, point first, the blade not turned off it, one hand or two.
+func test_a_thrust_drives_straight_along_the_blade() -> void:
+	for wk in ["gladius", "longsword"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		var st := {"th": 0.0}
+		m.me.drive = func(_e): return {"main": {"x": 0.1, "y": 0.8}, "power": true, "thrust": st.th, "look": {"yaw": 0.0, "pitch": -0.2}}
+		for i in 150:
+			await get_tree().physics_frame
+		var w: Weapon = f.weapons.R
+		var ax0: Vector3 = PD.quat_of(w) * Vector3.UP
+		var tip := func() -> Vector3: return w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0) - f.torso.global_position
+		var start: Vector3 = tip.call()
+		var back := start
+		var turn := 0.0
+		st.th = 1.0
+		for i in 60:
+			await get_tree().physics_frame
+			var p: Vector3 = tip.call()
+			if (p - start).dot(ax0) < (back - start).dot(ax0):
+				back = p
+			turn = maxf(turn, rad_to_deg((PD.quat_of(w) * Vector3.UP).angle_to(ax0)))
+		var drive: Vector3 = tip.call() - back
+		t.check(drive.dot(ax0) > 0.15, "%s: the point is driven out along the blade (%.2f m)" % [wk, drive.dot(ax0)])
+		t.check(rad_to_deg(drive.angle_to(ax0)) < (45.0 if f.two_handed else 35.0), "%s: straight along the blade (%.0f deg off)" % [wk, rad_to_deg(drive.angle_to(ax0))])
+		t.check(turn < 25.0, "%s: the blade keeps its line (turned %.0f deg)" % [wk, turn])
+		m.queue_free()
+		await get_tree().process_frame
