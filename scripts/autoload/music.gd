@@ -33,6 +33,7 @@ var players: Array = []
 var active := 0
 var thread: Thread = null
 var want := ""
+var fade: Tween = null
 
 func _ready() -> void:
 	if not AudioServer.get_bus_index("Music") >= 0:
@@ -85,6 +86,7 @@ static func render(name_: String) -> AudioStreamWAV:
 	buf.resize(n)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(name_)
+	_wrap = not st.get("once", false)
 	# The drone: root and fifth, a slow swell, the whole way.
 	if float(st.drone) > 0.0:
 		var f0 := hz(0, -1)
@@ -172,13 +174,20 @@ static func render(name_: String) -> AudioStreamWAV:
 		w.loop_end = n
 	return w
 
+## A note into the loop. What still rings past the loop's end goes round onto its start (the
+## loop is seamless: no tail cut off, no stumble in the beat where it comes round).
+static var _wrap := true
+
 static func _hit(buf: PackedFloat32Array, t0: float, dur: float, f: Callable) -> void:
+	var n := buf.size()
 	var i0 := int(t0 * RATE)
-	var cnt := int(dur * RATE)
+	var cnt := mini(int(dur * RATE), n)
 	for j in cnt:
 		var i := i0 + j
-		if i >= buf.size():
-			break
+		if i >= n:
+			if not _wrap:
+				break
+			i -= n
 		buf[i] += f.call(float(j) / RATE)
 
 ## Switches the music to a state ("off" for silence), cross-fading.
@@ -215,17 +224,24 @@ func _rendered(s: String, w: AudioStreamWAV) -> void:
 		state = ""
 		set_state(next)
 
+## One loop at a time: the one playing fades out and stops while the next fades in. A fade
+## still going is cut short first, so two quick changes never leave two loops playing over
+## each other (the music doubled, out of step with itself).
 func _fade_to(stream) -> void:
+	if fade and fade.is_valid():
+		fade.kill()
 	var old: AudioStreamPlayer = players[active]
 	active = 1 - active
 	var nu: AudioStreamPlayer = players[active]
-	var tw := create_tween().set_parallel()
-	tw.tween_property(old, "volume_db", -60.0, 1.2)
+	nu.stop()
+	fade = create_tween().set_parallel()
+	fade.tween_property(old, "volume_db", -60.0, 1.2)
 	if stream:
 		nu.stream = stream
 		nu.volume_db = -60.0
 		nu.play()
-		tw.tween_property(nu, "volume_db", linear_to_db(maxf(0.001, volume * 0.8)), 1.5)
+		fade.tween_property(nu, "volume_db", linear_to_db(maxf(0.001, volume * 0.8)), 1.5)
+	fade.chain().tween_callback(old.stop)
 
 func set_volume(v: float) -> void:
 	volume = clampf(v, 0.0, 1.0)
