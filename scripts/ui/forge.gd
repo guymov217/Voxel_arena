@@ -53,6 +53,7 @@ var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
 var says: Label
 var verdict: Label
 var cost_label: Label
+var view_hint: Label
 
 const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather", "rubber", "fish", "ice", "explosive", "spring", "glue", "feather", "magnet"]
 const JOBS := ["edge", "point", "blunt", "grip"]
@@ -101,57 +102,103 @@ func _build_ui() -> void:
 	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(h)
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(450, 0)
+	frame.custom_minimum_size = Vector2(470, 0)
 	h.add_child(frame)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	frame.add_child(scroll)
-	side_box = VBoxContainer.new()
-	side_box.add_theme_constant_override("separation", 8)
-	side_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(side_box)
-	var t := UIStyle.title("THE FORGE", 36)
+	# Three parts, top to bottom: what you are making and how (fixed), the tools for it
+	# (scrolls), and what it comes to and the way out (fixed: never scrolled off the screen).
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	frame.add_child(col)
+	var head := HBoxContainer.new()
+	var t := UIStyle.title("THE FORGE", 34)
 	t.add_theme_font_override("font", UIStyle.serif(3))
 	t.add_theme_color_override("font_color", UIStyle.GOLD)
-	side_box.add_child(t)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(UIStyle.button("Help", func(): _show_mode("help")))
+	col.add_child(head)
 	mode_row = HBoxContainer.new()
-	for m in [["cards", "Cards: base and twists"], ["voxels", "Voxels: block by block"]]:
+	mode_row.add_theme_constant_override("separation", 4)
+	for m in [["cards", "1 · Quick start", "Pick a base weapon and up to two twists: done in two clicks."], ["voxels", "2 · Shape by hand", "Add, paint and take off single blocks on the anvil."], ["gallery", "My designs", "Weapons you saved as templates: load one onto the anvil."]]:
 		var key: String = m[0]
 		var b := UIStyle.button(m[1], func(): _show_mode(key))
 		b.toggle_mode = true
+		b.tooltip_text = m[2]
 		b.set_meta("mode", key)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mode_row.add_child(b)
-	side_box.add_child(mode_row)
+	col.add_child(mode_row)
+	var nr := HBoxContainer.new()
+	var nl := UIStyle.label("Name", 14, UIStyle.MUTED)
+	nl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nr.add_child(nl)
 	name_edit = LineEdit.new()
 	name_edit.placeholder_text = "Name it"
 	name_edit.max_length = 32
 	name_edit.text = str(design.get("name", ""))
-	side_box.add_child(name_edit)
-	bars = Control.new()
-	bars.custom_minimum_size = Vector2(400, 64)
-	bars.draw.connect(_draw_bars)
-	side_box.add_child(bars)
-	says = UIStyle.label("", 14, UIStyle.TEXT)
-	says.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	side_box.add_child(says)
-	verdict = UIStyle.label("", 13, UIStyle.MUTED)
-	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	side_box.add_child(verdict)
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nr.add_child(name_edit)
+	col.add_child(nr)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
+	side_box = VBoxContainer.new()
+	side_box.add_theme_constant_override("separation", 8)
+	side_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(side_box)
 	mode_box = VBoxContainer.new()
 	mode_box.add_theme_constant_override("separation", 6)
+	mode_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	side_box.add_child(mode_box)
-	cost_label = UIStyle.label("", 16, UIStyle.BRONZE)
-	side_box.add_child(cost_label)
+	col.add_child(HSeparator.new())
+	bars = Control.new()
+	bars.custom_minimum_size = Vector2(400, 62)
+	bars.draw.connect(_draw_bars)
+	col.add_child(bars)
+	says = UIStyle.label("", 13, UIStyle.TEXT)
+	says.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	says.custom_minimum_size = Vector2(420, 0)
+	col.add_child(says)
+	verdict = UIStyle.label("", 12, UIStyle.MUTED)
+	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	verdict.custom_minimum_size = Vector2(420, 0)
+	col.add_child(verdict)
+	cost_label = UIStyle.label("", 15, UIStyle.BRONZE)
+	cost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cost_label.custom_minimum_size = Vector2(420, 0)
+	col.add_child(cost_label)
 	var end := HBoxContainer.new()
+	end.add_theme_constant_override("separation", 6)
 	end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
 	end.add_child(UIStyle.button("Swing it", func(): swing_t = 0.0))
+	end.add_child(UIStyle.button("Save design", _save_design))
 	end.add_child(UIStyle.button("Leave it as it was", func(): done.call(null, 0)))
-	side_box.add_child(end)
+	col.add_child(end)
+	var right := Control.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(right)
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
 	svc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	svc.gui_input.connect(_on_view_input)
-	h.add_child(svc)
+	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	right.add_child(svc)
+	# How the view is worked, always in sight over it.
+	var keys := UIStyle.label("Left click: use the tool  ·  Right click: take a block off  ·  Middle drag: turn  ·  Wheel: zoom  ·  Ctrl+Z: undo", 13, UIStyle.TEXT)
+	keys.autowrap_mode = TextServer.AUTOWRAP_OFF
+	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	keys.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	keys.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	keys.position.y -= 34
+	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kbg := StyleBoxFlat.new()
+	kbg.bg_color = Color(0, 0, 0, 0.55)
+	kbg.set_corner_radius_all(6)
+	kbg.content_margin_left = 12; kbg.content_margin_right = 12; kbg.content_margin_top = 5; kbg.content_margin_bottom = 5
+	keys.add_theme_stylebox_override("normal", kbg)
+	right.add_child(keys)
+	view_hint = keys
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
@@ -275,16 +322,22 @@ func _show_mode(m: String) -> void:
 		c.queue_free()
 	for b in mode_row.get_children():
 		b.button_pressed = b.get_meta("mode") == m
-	if m == "cards":
-		_cards_ui()
-	else:
-		_voxels_ui()
+	match m:
+		"cards":
+			_cards_ui()
+		"gallery":
+			_gallery_ui()
+		"help":
+			_help_ui()
+		_:
+			_voxels_ui()
 	ghost.visible = false
 	line_from = null
 	_update_texts()
 
 func _cards_ui() -> void:
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
+	mode_box.add_child(_hint("The quickest way to a good weapon. Then fine-tune it in Shape by hand if you like."))
 	var grid := GridContainer.new()
 	grid.columns = 3
 	mode_box.add_child(grid)
@@ -303,7 +356,8 @@ func _cards_ui() -> void:
 	if base_key == "":
 		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil." + ("" if family == "" else " It stays %s." % FAMILY_NAMES.get(family, "what it is")), 13, UIStyle.MUTED))
 		return
-	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS  (▲▼ speed · damage · reach)" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
+	mode_box.add_child(_hint("The three marks on a twist are what it does to speed, damage and reach: ▲ more, ▼ less, · the same. Click again to take it off."))
 	var cards := GridContainer.new()
 	cards.columns = 2
 	mode_box.add_child(cards)
@@ -321,7 +375,7 @@ func _cards_ui() -> void:
 		for bk in ["speed", "damage", "reach"]:
 			var dv: float = after[bk] - now[bk]
 			arrows += ("▲" if dv > 0.03 else ("▼" if dv < -0.03 else "·"))
-		var b := UIStyle.button("%s  %s" % [mdef.label, arrows], func(): _toggle_pick(key))
+		var b := UIStyle.button("%s  %s" % [mdef.label, "✔" if picks.has(key) else arrows], func(): _toggle_pick(key))
 		b.tooltip_text = mdef.blurb
 		b.toggle_mode = true
 		b.button_pressed = picks.has(key)
@@ -372,7 +426,7 @@ func _from_cards() -> void:
 	_rebuild()
 
 func _voxels_ui() -> void:
-	mode_box.add_child(UIStyle.label("TOOL · left click in the view; middle drag turns it, wheel zooms", 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("TOOL · what a left click on the weapon does", 13, UIStyle.BRONZE))
 	var trow := GridContainer.new()
 	trow.columns = 5
 	for td in TOOLS:
@@ -386,6 +440,9 @@ func _voxels_ui() -> void:
 		b.tooltip_text = td[2]
 		trow.add_child(b)
 	mode_box.add_child(trow)
+	for td in TOOLS:
+		if td[0] == tool:
+			mode_box.add_child(_hint(td[2]))
 	var mir := CheckBox.new()
 	mir.text = "Mirror (both sides at once)"
 	mir.button_pressed = mirror
@@ -412,7 +469,7 @@ func _voxels_ui() -> void:
 	var md := UIStyle.label(material_text(mat), 13, UIStyle.TEXT)
 	md.custom_minimum_size = Vector2(420, 0)
 	mode_box.add_child(md)
-	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("JOB · what the new blocks do in a fight", 13, UIStyle.BRONZE))
 	var jr := HBoxContainer.new()
 	var blunt := family == "blunt"
 	for j in JOBS:
@@ -424,8 +481,11 @@ func _voxels_ui() -> void:
 			_show_mode("voxels"))
 		b.toggle_mode = true
 		b.button_pressed = job == key
+		b.tooltip_text = JOB_USE[key]
 		jr.add_child(b)
 	mode_box.add_child(jr)
+	mode_box.add_child(_hint(JOB_USE.get(job, "")))
+	mode_box.add_child(UIStyle.label("FIX-UPS", 13, UIStyle.BRONZE))
 	var ar := GridContainer.new()
 	ar.columns = 3
 	ar.add_child(UIStyle.button("Undo", _undo))
@@ -506,8 +566,114 @@ func _voxels_ui() -> void:
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_box.add_child(cl)
 
+func _hint(text: String) -> Label:
+	var l := UIStyle.label(text, 13, UIStyle.MUTED)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(420, 0)
+	return l
+
+# ---------- My designs: weapons saved as templates ----------
+
+const GALLERY_MAX := 24
+
+## The designs this player saved (newest first), each a weapon design as the forge makes it.
+static func gallery() -> Array:
+	var out := []
+	var g = Save.get_value("forge_gallery", [])
+	if g is Array:
+		for d in g:
+			if d is Dictionary and d.get("voxels") is Array and not d.voxels.is_empty() and d.voxels.size() <= ForgeLib.MAX_VOXELS:
+				out.append(d)
+	return out.slice(0, GALLERY_MAX)
+
+func _save_design() -> void:
+	var d := _design_now()
+	if not ForgeLib.compute_stats(d).hasGrip:
+		cost_label.text = "Give it a grip before you save it (Auto-grip finds one)"
+		return
+	var g := gallery().filter(func(o): return str(o.get("name", "")) != str(d.get("name", "")))
+	d.erase("imbue")
+	g.push_front(d)
+	Save.set_value("forge_gallery", g.slice(0, GALLERY_MAX))
+	cost_label.text = "Saved to My designs: \"%s\"" % str(d.get("name", "?"))
+	if mode == "gallery":
+		_show_mode("gallery")
+
+func _gallery_ui() -> void:
+	mode_box.add_child(UIStyle.label("MY DESIGNS", 13, UIStyle.BRONZE))
+	mode_box.add_child(_hint("Save design (at the bottom) keeps what is on the anvil here. Load puts a saved one back on the anvil" + ("." if free_build else ": you pay only for the blocks that change, and it must be the same kind of weapon as yours.")))
+	var g := gallery()
+	if g.is_empty():
+		mode_box.add_child(_hint("Nothing saved yet."))
+		return
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	mode_box.add_child(grid)
+	for i in g.size():
+		var d: Dictionary = g[i]
+		var idx := i
+		var card := VBoxContainer.new()
+		card.custom_minimum_size = Vector2(205, 0)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(0, 84)
+		card.add_child(tex)
+		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.TEXT)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(nm)
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var fits := family == "" or Arms.family(d) == family
+		var ld := UIStyle.button("Load", func(): _load_design(d))
+		ld.disabled = not fits
+		ld.tooltip_text = "" if fits else "Not %s: Vulcanus reshapes yours within its kind" % FAMILY_NAMES.get(family, "the same kind")
+		row.add_child(ld)
+		row.add_child(UIStyle.button("Delete", func():
+			var all := gallery()
+			all.remove_at(idx)
+			Save.set_value("forge_gallery", all)
+			_show_mode("gallery")))
+		card.add_child(row)
+		grid.add_child(card)
+		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
+
+func _load_design(d: Dictionary) -> void:
+	_push_undo()
+	for k in ["kind", "twoHanded", "throwable", "spins", "shoots", "sharpness", "serrated", "gem", "name", "stats", "chain", "balance", "grips"]:
+		design.erase(k)
+	var nd: Dictionary = d.duplicate(true)
+	nd.erase("imbue")
+	design.merge(nd, true)
+	_load_cells(nd)
+	name_edit.text = str(nd.get("name", ""))
+	framed = false
+	_rebuild()
+	_show_mode("voxels")
+
+func _help_ui() -> void:
+	mode_box.add_child(UIStyle.label("HOW THE FORGE WORKS", 13, UIStyle.BRONZE))
+	for line in [
+		"1 · Quick start: pick a base weapon, then up to two twists. The arrows ▲▼ on a twist show what it does to speed, damage and reach.",
+		"2 · Shape by hand: pick a tool, a material and a job, then click on the weapon in the view. Build puts a block on the face you click, Paint changes blocks, Erase takes them off (or right click).",
+		"Every block has a material (what it is made of: hardness and weight) and a job: Edge cuts, Point stabs, Blunt crushes and holds it together, Grip is where you hold it.",
+		"The bars at the bottom show speed, damage and reach as you work; the smith and the dummy tell you what they think of it.",
+		"Mirror builds both sides at once. Undo / Redo (Ctrl+Z, Ctrl+Y) take any step back.",
+		"Save design keeps it in My designs, to load again later." + ("" if free_build else " At the smith you pay for the blocks you add and get back the ones you take off, and the weapon stays the same kind it is."),
+	]:
+		mode_box.add_child(_hint(line))
+	mode_box.add_child(UIStyle.button("Back to the anvil", func(): _show_mode("voxels")))
+
 ## What a material does in a weapon, for the smith's customer: what it is good for, what it
 ## does that no other does, and how hard (edge, chipping) and heavy (blow, swing) it is.
+const JOB_USE := {
+	"edge": "Edge: cuts. Put it along the side of a blade or an axe head.",
+	"point": "Point: stabs and pierces armour. Put it at the tip.",
+	"blunt": "Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.",
+	"grip": "Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.",
+}
 const MAT_USE := {
 	"steel": "The blade metal: the keenest edge and point, holds them longest, rarely chips. Fairly light.",
 	"iron": "Nearly as keen as steel and a little heavier: hits a touch harder, dulls a touch sooner.",
@@ -835,7 +1001,9 @@ func _redo() -> void:
 	_rebuild()
 
 func _unhandled_key_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:
+	if e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Y:
+		_redo()
+	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:
 		if e.shift_pressed:
 			_redo()
 		else:

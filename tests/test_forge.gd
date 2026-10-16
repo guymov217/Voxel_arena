@@ -112,3 +112,32 @@ func test_reshaping_keeps_the_kind_of_weapon() -> void:
 	f._take()
 	t.eq(taken.size(), 0, "a hammer made into a blade is refused")
 	f.queue_free()
+
+## A design saved goes into My designs and loads back onto the anvil.
+func test_a_saved_design_loads_back() -> void:
+	var keep = Save.get_value("forge_gallery", [])
+	Save.set_value("forge_gallery", [])
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("axe"), 0, func(_d, _c): pass)
+	f.name_edit.text = "My Axe"
+	f._save_design()
+	var g: Array = f.gallery()
+	t.eq(g.size(), 1, "one design saved")
+	t.eq(str(g[0].name), "My Axe", "under its name")
+	f._load_cells(Data.preset("gladius"))
+	f._load_design(g[0])
+	t.eq(f.cells.size(), Data.preset("axe").voxels.size(), "the saved axe is back on the anvil")
+	f.queue_free()
+	var r = load("res://scripts/ui/forge.gd").new()
+	add_child(r)
+	r.open(Data.preset("warhammer"), 0, func(_d, _c): pass)
+	r._show_mode("gallery")
+	var load_btn = null
+	for c in r.find_children("*", "Button", true, false):
+		if c.text == "Load":
+			load_btn = c
+	t.check(load_btn != null and load_btn.disabled, "an axe design cannot be loaded onto a hammer at the smith")
+	r.queue_free()
+	Save.set_value("forge_gallery", keep)
