@@ -47,6 +47,7 @@ var swing_t := -1.0
 var side_box: VBoxContainer
 var mode_row: HBoxContainer
 var mode_box: VBoxContainer
+var tool_bar: PanelContainer
 var name_edit: LineEdit
 var bars: Control
 var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
@@ -182,6 +183,18 @@ func _build_ui() -> void:
 	svc.gui_input.connect(_on_view_input)
 	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	right.add_child(svc)
+	tool_bar = PanelContainer.new()
+	var tbs := StyleBoxFlat.new()
+	tbs.bg_color = Color(0.07, 0.05, 0.035, 0.88)
+	tbs.border_color = UIStyle.BRONZE_DARK
+	tbs.set_border_width_all(1)
+	tbs.set_corner_radius_all(8)
+	tbs.content_margin_left = 8; tbs.content_margin_right = 8; tbs.content_margin_top = 6; tbs.content_margin_bottom = 6
+	tool_bar.add_theme_stylebox_override("panel", tbs)
+	tool_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	tool_bar.position.y = 12
+	right.add_child(tool_bar)
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
@@ -314,6 +327,8 @@ func _show_mode(m: String) -> void:
 			_voxels_ui()
 	ghost.visible = false
 	line_from = null
+	if tool_bar:
+		_toolbar_ui()
 	_update_texts()
 
 func _cards_ui() -> void:
@@ -405,26 +420,6 @@ func _from_cards() -> void:
 	_rebuild()
 
 func _voxels_ui() -> void:
-	mode_box.add_child(UIStyle.label("TOOL", 13, UIStyle.BRONZE))
-	var trow := GridContainer.new()
-	trow.columns = 5
-	for td in TOOLS:
-		var key: String = td[0]
-		var b := UIStyle.button(td[1], func():
-			tool = key
-			line_from = null
-			_show_mode("voxels"))
-		b.toggle_mode = true
-		b.button_pressed = tool == key
-		b.tooltip_text = td[2]
-		trow.add_child(b)
-	mode_box.add_child(trow)
-	var mir := CheckBox.new()
-	mir.text = "Mirror"
-	mir.tooltip_text = "Both sides at once"
-	mir.button_pressed = mirror
-	mir.toggled.connect(func(x): mirror = x)
-	mode_box.add_child(mir)
 	mode_box.add_child(UIStyle.label("MATERIAL" + ("" if free_build else " · price per voxel"), 13, UIStyle.BRONZE))
 	var mg := GridContainer.new()
 	mg.columns = 5
@@ -461,47 +456,6 @@ func _voxels_ui() -> void:
 		b.tooltip_text = JOB_USE[key]
 		jr.add_child(b)
 	mode_box.add_child(jr)
-	mode_box.add_child(UIStyle.label("FIX-UPS", 13, UIStyle.BRONZE))
-	var ar := GridContainer.new()
-	ar.columns = 3
-	ar.add_child(UIStyle.button("Undo", _undo))
-	ar.add_child(UIStyle.button("Redo", _redo))
-	ar.add_child(UIStyle.button("Clear", func():
-		_push_undo()
-		var keep: Dictionary = {}
-		for k in cells:
-			if cells[k][1] == "grip":
-				keep[k] = cells[k]
-		if keep.is_empty() and not cells.is_empty():
-			var first = cells.keys()[0]
-			keep[first] = cells[first]
-		cells = keep
-		_rebuild()))
-	if not blunt:
-		ar.add_child(UIStyle.button("Auto-sharpen", func():
-			_push_undo()
-			var d := _design_now()
-			ForgeLib.auto_sharpen(d)
-			_load_cells(d)
-			_rebuild()))
-	ar.add_child(UIStyle.button("Auto-grip", func():
-		_push_undo()
-		var d := _design_now()
-		ForgeLib.auto_grip(d)
-		_load_cells(d)
-		_rebuild()))
-	if free_build:
-		ar.add_child(UIStyle.button("Surprise me", func():
-			_push_undo()
-			var d := ForgeLib.surprise_weapon(rng)
-			for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
-				design.erase(k)
-			design.merge(d, true)
-			_load_cells(d)
-			name_edit.text = d.name
-			framed = false
-			_rebuild()))
-	mode_box.add_child(ar)
 	var opts := HBoxContainer.new()
 	var two := CheckBox.new()
 	two.text = "Two-handed"
@@ -541,6 +495,78 @@ func _voxels_ui() -> void:
 	cl.set_meta("checklist", true)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_box.add_child(cl)
+
+## The tools over the view (shaping by hand only): what a click does, Mirror, and the fix-ups.
+func _toolbar_ui() -> void:
+	for c in tool_bar.get_children():
+		c.queue_free()
+	tool_bar.visible = mode == "voxels"
+	if mode != "voxels":
+		return
+	var blunt := family == "blunt"
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 4)
+	tool_bar.add_child(rows)
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 4)
+	for td in TOOLS:
+		var key: String = td[0]
+		var b := UIStyle.button(td[1], func():
+			tool = key
+			line_from = null
+			_toolbar_ui())
+		b.toggle_mode = true
+		b.button_pressed = tool == key
+		b.tooltip_text = td[2]
+		trow.add_child(b)
+	var mir := CheckBox.new()
+	mir.text = "Mirror"
+	mir.tooltip_text = "Both sides at once"
+	mir.button_pressed = mirror
+	mir.toggled.connect(func(x): mirror = x)
+	trow.add_child(VSeparator.new())
+	trow.add_child(mir)
+	rows.add_child(trow)
+	var ar := HBoxContainer.new()
+	ar.add_theme_constant_override("separation", 4)
+	ar.add_child(UIStyle.button("Undo", _undo))
+	ar.add_child(UIStyle.button("Redo", _redo))
+	ar.add_child(UIStyle.button("Clear", func():
+		_push_undo()
+		var keep: Dictionary = {}
+		for k in cells:
+			if cells[k][1] == "grip":
+				keep[k] = cells[k]
+		if keep.is_empty() and not cells.is_empty():
+			var first = cells.keys()[0]
+			keep[first] = cells[first]
+		cells = keep
+		_rebuild()))
+	if not blunt:
+		ar.add_child(UIStyle.button("Auto-sharpen", func():
+			_push_undo()
+			var d := _design_now()
+			ForgeLib.auto_sharpen(d)
+			_load_cells(d)
+			_rebuild()))
+	ar.add_child(UIStyle.button("Auto-grip", func():
+		_push_undo()
+		var d := _design_now()
+		ForgeLib.auto_grip(d)
+		_load_cells(d)
+		_rebuild()))
+	if free_build:
+		ar.add_child(UIStyle.button("Surprise me", func():
+			_push_undo()
+			var d := ForgeLib.surprise_weapon(rng)
+			for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
+				design.erase(k)
+			design.merge(d, true)
+			_load_cells(d)
+			name_edit.text = d.name
+			framed = false
+			_rebuild()))
+	rows.add_child(ar)
 
 # ---------- My designs: weapons saved as templates ----------
 
@@ -749,12 +775,13 @@ func _rebuild() -> void:
 		var ext := 0.0
 		for k in cells:
 			ext = maxf(ext, (Vector3(k) * vs - centre).length())
-		dist = clampf(ext * 1.75 + 0.12, 0.35, 3.0)
+		dist = clampf(ext * 2.3 + 0.15, 0.4, 3.5)   # the whole of it in view, clear of the toolbar
 	_place_camera()
 	_update_texts()
 
 func _place_camera() -> void:
-	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO)
+	# Aimed a little above the weapon's middle: it sits low in the view, clear of the toolbar.
+	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO) + Vector3(0, 0.08 * dist, 0)
 	cam.global_position = c + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
 	cam.look_at(c)
 
