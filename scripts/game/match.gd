@@ -14,7 +14,7 @@ signal doctor(e: Dictionary, body: Dictionary, news: Array)
 
 const ENEMY_TEAM := 1
 const TICK := 1.0 / 120.0
-const SNAP_EVERY := 5           # snapshots at 24 Hz
+const SNAP_EVERY := 3           # snapshots at 40 Hz (the guest draws between them)
 
 var mode := "campaign"
 var stage := 1
@@ -46,6 +46,10 @@ var next_id := 1
 var training: Dictionary = {}
 var headless := false
 var guest_bot_on := false
+var input_acc := 0.0
+var puppets := {}           # guest: body -> [from, to, t0, length]: drawn between the host's snapshots
+var snap_t := -1.0
+var snap_gap := SNAP_EVERY / 120.0
 var guest_bot: Bot
 var social: Social
 var items: Items
@@ -613,6 +617,7 @@ func _physics_process(dt: float) -> void:
 		for e in entities:
 			if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
 				Fire.tick(e.f, dt, false)
+		_drive_puppets()
 		if yard:
 			yard.update(dt, last_local_inp)
 		return
@@ -639,26 +644,15 @@ func _physics_process(dt: float) -> void:
 						f.yaw = atan2(dl.x, dl.z)
 					inp = e.bot.update(dt, tl.f if tl else null, _world_of(e))
 				else:
-					var shooter := _shooter_of(f)
-					if input:
-						input.aiming = shooter != null or input.held("throw")
-						_bow_sway(f, shooter, dt)
-					inp = input.sample(dt) if input else {}
-					# In the yard E by a stall's keeper is a word with him, not a kick.
-					if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
-						inp.kick = false
-						inp.talk = true
-					if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
-						inp.aimAt = aim_point(f)
-					last_local_inp = inp
+					inp = _player_input(f, dt)
 					if inp.has("look"):
 						f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 			"remote":
 				inp = Net.input_of(e.peer)
 				if inp.has("look"):
 					f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
-					# A guest's thrust goes along their eyes (their crosshair is not sent).
-					if float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0:
+					# A guest sends his own crosshair; an older guest without one thrusts along his eyes.
+					if not (inp.get("aimAt") is Vector3) and (float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
 						var lk: Dictionary = inp.look
 						inp.aimAt = f.head.global_position + Vector3(sin(float(lk.yaw)) * cos(float(lk.pitch)), sin(float(lk.pitch)), cos(float(lk.yaw)) * cos(float(lk.pitch))) * 6.0
 			"bot":
@@ -749,8 +743,28 @@ func _physics_process(dt: float) -> void:
 				ls.append([id, snappedf(lw.global_position.x, 0.001), snappedf(lw.global_position.y, 0.001), snappedf(lw.global_position.z, 0.001), snappedf(lq.x, 0.001), snappedf(lq.y, 0.001), snappedf(lq.z, 0.001), snappedf(lq.w, 0.001)])
 		Net.send_all("lsnap", {"w": ls, "h": hazards.snapshot()}, false)
 	if role == "host" and tick % SNAP_EVERY == 0:
-		Net.send_all("snap", snapshot(), false)
+		# One fighter to a message: each fits in one packet (a whole snapshot was split into
+		# fragments, and one lost fragment lost all of it).
+		for row in snapshot():
+			Net.send_all("snap", [row], false)
 	_check_round(dt)
+
+## The player's own hands on his fighter: the same for the host's player and for a guest on his
+## own machine (whose input then goes to the host): the bow's aim mode and sway, E by a keeper,
+## and the crosshair his camera looks along for a bow, a thrust, a throw or a pot.
+func _player_input(f, dt: float) -> Dictionary:
+	var shooter := _shooter_of(f)
+	if input:
+		input.aiming = shooter != null or input.held("throw")
+		_bow_sway(f, shooter, dt)
+	var inp: Dictionary = input.sample(dt) if input else {}
+	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
+		inp.kick = false
+		inp.talk = true
+	if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
+		inp.aimAt = aim_point(f)
+	last_local_inp = inp
+	return inp
 
 ## A guest's fighter played by a bot on the guest's side: it reads the host's snapshots like a
 ## player would and sends inputs back, so two windows (or two processes) fight without hands.
@@ -905,6 +919,9 @@ func guest_message(type: String, data) -> void:
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
 			if e and (data.side == "R" or data.side == "L") and e.f.weapons.get(data.side):
 				var w: Weapon = e.f.release(data.side)
+				if w:
+					w.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+					w.freeze = true   # the host flies it; here it is drawn where he says
 				loose_ids[int(data.w)] = w
 		"wspawn":
 			if data is Dictionary and data.get("p") is Array and not loose_ids.has(int(data.get("w", -1))):
@@ -925,7 +942,7 @@ func guest_message(type: String, data) -> void:
 				for r in data.get("w", []):
 					var lw = loose_ids.get(int(r[0])) if r is Array and r.size() >= 8 else null
 					if lw and is_instance_valid(lw):
-						lw.global_transform = Transform3D(Basis(Quaternion(r[4], r[5], r[6], r[7]).normalized()), Vector3(r[1], r[2], r[3]))
+						_puppet_to(lw, _xf(r, 1))
 				hazards.apply_snapshot(data.get("h", []))
 		"isnap":
 			if data is Array:
@@ -1721,25 +1738,82 @@ func snapshot() -> Array:
 	for e in entities:
 		var f = e.f
 		var w := []
+		var bows := []
 		for side in ["R", "L"]:
 			var wp = f.weapons.get(side)
 			if wp:
 				var q: Quaternion = wp.global_transform.basis.get_rotation_quaternion()
 				w.append([side, wp.global_position.x, wp.global_position.y, wp.global_position.z, q.x, q.y, q.z, q.w])
-		out.append([e.id, f.snapshot(), w, f.status()])
+				# A drawn bow: the string, the arrow, the archer's sway and his camera go by it.
+				if str(wp.design.get("shoots", "")) == "arrow":
+					bows.append([side, snappedf(float(wp.get_meta("draw", 0.0)), 0.01), snappedf(float(wp.get_meta("hold_t", 0.0)), 0.01)])
+		out.append([e.id, f.snapshot(), w, f.status(), bows])
 	return out
 
+## Guest: a body is moved to where the host had it over the time until the next snapshot is due,
+## in the physics step (so the engine's own interpolation smooths every frame between): his
+## screen moves as smoothly as the host's, a snapshot behind.
+func _puppet_to(b: Node3D, to: Transform3D) -> void:
+	if not is_instance_valid(b):
+		return
+	var from: Transform3D = b.global_transform
+	if from.origin.distance_squared_to(to.origin) > 9.0:
+		b.global_transform = to   # a jump (a spawn, a throw across the arena): straight there
+		b.reset_physics_interpolation()
+		puppets.erase(b)
+		return
+	puppets[b] = [from, to, time, snap_gap]
+
+func _drive_puppets() -> void:
+	for b in puppets.keys():
+		if not is_instance_valid(b):
+			puppets.erase(b)
+			continue
+		var r: Array = puppets[b]
+		var k := clampf((time - float(r[2])) / maxf(0.005, float(r[3])), 0.0, 1.0)
+		b.global_transform = (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, k)
+		if k >= 1.0:
+			puppets.erase(b)
+
+static func _xf(a, o: int) -> Transform3D:
+	return Transform3D(Basis(Quaternion(float(a[o + 3]), float(a[o + 4]), float(a[o + 5]), float(a[o + 6])).normalized()), Vector3(float(a[o]), float(a[o + 1]), float(a[o + 2])))
+
 func apply_snapshot(s: Array) -> void:
+	# How often they really come (the network decides): each move lasts until the next is due.
+	# (The fighters of one snapshot come as separate messages in the same moment.)
+	if snap_t < 0.0 or time - snap_t > 0.006:
+		if snap_t >= 0.0:
+			snap_gap = lerpf(snap_gap, clampf(time - snap_t, SNAP_EVERY / 120.0, 0.2), 0.25)
+		snap_t = time
 	for row in s:
+		if not (row is Array) or row.size() < 4:
+			continue
 		var e = entity_by_id(int(row[0]))
 		if e == null:
 			continue
-		e.f.apply_snapshot(row[1])
+		var a = row[1]
+		if a is PackedFloat32Array:
+			var parts: Array = e.f.parts
+			for i in mini(a.size() / 7, parts.size()):
+				_puppet_to(parts[i], _xf(a, i * 7))
+		else:
+			e.f.apply_snapshot(a)
 		for w in row[2]:
 			var wp = e.f.weapons.get(w[0])
 			if wp:
-				wp.global_transform = Transform3D(Basis(Quaternion(w[4], w[5], w[6], w[7])), Vector3(w[1], w[2], w[3]))
+				if not wp.freeze:
+					wp.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+					wp.freeze = true
+				_puppet_to(wp, _xf(w, 1))
 		e.f.apply_status(row[3])
+		if row.size() > 4:
+			for bw in row[4]:
+				var bwp = e.f.weapons.get(bw[0]) if bw is Array and bw.size() >= 3 else null
+				if bwp:
+					var d := clampf(float(bw[1]), 0.0, 1.0)
+					bwp.set_meta("draw", d)
+					bwp.set_meta("hold_t", maxf(0.0, float(bw[2])))
+					throwables._show_draw(bwp, e.f, d)
 
 ## A guest builds what the host spawned.
 func guest_spawn(spec: Dictionary) -> void:
@@ -1818,13 +1892,21 @@ func _process(dt: float) -> void:
 				if not my_hit.is_empty() and time - float(my_hit.t) < 1.5 and my_hit.f == of:
 					foe.append(my_hit.p)
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
-	if role == "guest" and Net.active() and tick % 4 == 0:
-		var gi := _guest_bot_input(dt * 4.0) if guest_bot_on else (input.sample(dt * 4.0) if input else {})
-		if not gi.is_empty():
-			# In the yard E by a stall's keeper is a word with him, not a kick (as for the host).
-			if yard and me and is_instance_valid(me.f) and gi.get("kick", false) and Yard.station_at(me.f.torso.global_position) != "":
-				gi.kick = false
-				gi.talk = true
-			last_local_inp = gi
-			Net.send_host("input", PlayerInput.pack(gi), PlayerInput.has_one_shot(gi))
+	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
+	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).
+	if role == "guest" and Net.active():
+		input_acc += dt
+		if input_acc >= 1.0 / 60.0:
+			var step := minf(input_acc, 0.1)
+			input_acc = 0.0
+			var gi := {}
+			if guest_bot_on:
+				gi = _guest_bot_input(step)
+				last_local_inp = gi
+			elif me and is_instance_valid(me.f):
+				gi = _player_input(me.f, step)
+			elif input:
+				gi = input.sample(step)
+			if not gi.is_empty():
+				Net.send_host("input", PlayerInput.pack(gi), PlayerInput.has_one_shot(gi))
 	tick += 1 if role == "guest" else 0

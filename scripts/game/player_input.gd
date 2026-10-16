@@ -323,7 +323,15 @@ static func pack(inp: Dictionary) -> Array:
 	var gh = inp.get("grabHands")
 	bits |= (1 if gh == "R" else (2 if gh == "L" else (3 if gh == "both" else 0))) << 14
 	bits |= (1 if inp.get("throwOther", false) else 0) << 16
-	return [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01)]
+	bits |= (1 if inp.get("grip", false) else 0) << 17
+	var aim = inp.get("aimAt")
+	bits |= (1 if aim is Vector3 else 0) << 18
+	var out := [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01), snappedf(float(inp.get("charging", 0.0)), 0.01)]
+	# Where his crosshair sits (his camera's ray into the world): the bow, the thrust, a throw
+	# and a pot all go there, as they do for the host's own player.
+	if aim is Vector3:
+		out.append_array([snappedf(aim.x, 0.01), snappedf(aim.y, 0.01), snappedf(aim.z, 0.01)])
+	return out
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
 
@@ -348,4 +356,9 @@ static func unpack(a: Array) -> Dictionary:
 	out.throwPower = clampf(float(a[12]), 0.0, 1.0) if a.size() > 12 else 0.8
 	out.useItem = clampi(int(a[13]), -1, 8) if a.size() > 13 else -1
 	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0
+	out.grip = bits & (1 << 17) != 0
+	if a.size() > 15 and float(a[15]) > 0.0:
+		out.charging = clampf(float(a[15]), 0.0, 1.0)
+	if bits & (1 << 18) != 0 and a.size() > 18:
+		out.aimAt = Vector3(clampf(float(a[16]), -300, 300), clampf(float(a[17]), -50, 200), clampf(float(a[18]), -300, 300))
 	return out

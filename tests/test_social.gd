@@ -151,6 +151,13 @@ func test_inputs_survive_the_network() -> void:
 	t.eq(back.grabHands, "both", "grab hands")
 	t.check(absf(back.throwPower - 0.7) < 0.01, "throw power")
 	t.eq(PlayerInput.unpack(PlayerInput.pack({"throwOther": true})).throwOther, true, "the other hand's throw travels")
+	# What the host's own player has, a guest has: the two-handed grip, the wind-up of a throw
+	# and the point his crosshair is on.
+	var full := PlayerInput.unpack(PlayerInput.pack({"grip": true, "charging": 0.6, "aimAt": Vector3(3.25, 1.5, -7.75)}))
+	t.eq(full.get("grip"), true, "the two-handed grip travels")
+	t.check(absf(float(full.get("charging", 0.0)) - 0.6) < 0.01, "the wind-up travels")
+	t.check(full.get("aimAt") is Vector3 and (full.aimAt as Vector3).distance_to(Vector3(3.25, 1.5, -7.75)) < 0.02, "the crosshair travels")
+	t.check(not PlayerInput.unpack(PlayerInput.pack({})).has("aimAt"), "and no crosshair when he has none")
 	t.eq(PlayerInput.unpack(PlayerInput.pack({})).throwOther, false, "and the usual one")
 	t.check(PlayerInput.has_one_shot(inp), "a press makes the packet reliable")
 	# A press the host has not acted on yet survives the next packet, and is acted on once.

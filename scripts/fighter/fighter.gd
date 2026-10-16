@@ -3413,15 +3413,31 @@ func make_puppet() -> void:
 # ---------- Network ----------
 
 ## Positions and rotations of every part, for guests to draw.
-func snapshot() -> Array:
-	var out := []
+## Every part's place, seven floats each (position, rotation): a third of the bytes the nested
+## arrays took, so the host can send it more often.
+func snapshot() -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(parts.size() * 7)
+	var i := 0
 	for p in parts:
 		var t: Transform3D = p.global_transform
 		var q := t.basis.get_rotation_quaternion()
-		out.append([snappedf(t.origin.x, 0.001), snappedf(t.origin.y, 0.001), snappedf(t.origin.z, 0.001), snappedf(q.x, 0.0001), snappedf(q.y, 0.0001), snappedf(q.z, 0.0001), snappedf(q.w, 0.0001)])
+		out[i] = t.origin.x
+		out[i + 1] = t.origin.y
+		out[i + 2] = t.origin.z
+		out[i + 3] = q.x
+		out[i + 4] = q.y
+		out[i + 5] = q.z
+		out[i + 6] = q.w
+		i += 7
 	return out
 
-func apply_snapshot(s: Array) -> void:
+func apply_snapshot(s) -> void:
+	if s is PackedFloat32Array:
+		for i in mini(s.size() / 7, parts.size()):
+			var o := i * 7
+			parts[i].global_transform = Transform3D(Basis(Quaternion(s[o + 3], s[o + 4], s[o + 5], s[o + 6]).normalized()), Vector3(s[o], s[o + 1], s[o + 2]))
+		return
 	for i in mini(s.size(), parts.size()):
 		var a: Array = s[i]
 		parts[i].global_transform = Transform3D(Basis(Quaternion(a[3], a[4], a[5], a[6])), Vector3(a[0], a[1], a[2]))

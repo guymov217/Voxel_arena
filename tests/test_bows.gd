@@ -64,3 +64,31 @@ func test_the_bow_is_hard_to_shoot_well() -> void:
 	f.stamina = 100.0
 	t.check(Throwables.ARROW_SPEED.x + Throwables.ARROW_SPEED.y > 50.0 and Throwables.BOLT_SPEED > 50.0, "arrows and bolts fly fast and flat")
 	m.queue_free()
+
+## A guest's archer is the host's own archer: the bow drawn on his button, and the arrow loosed
+## at the point his crosshair is on, sent in his input packet (once he could not aim at all).
+func test_a_guest_looses_at_his_own_crosshair() -> void:
+	var m := _match()
+	var e = m.spawn_fighter({"kind": "remote", "peer": 77, "name": "Guest", "loadout": {"main": "bow"}, "team": 0, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+	var mark := Vector3(6.0, 1.2, 10.0)   # off to his right, not where he faces
+	var arrow = null
+	var drew := 0.0
+	for i in 220:
+		var inp := {"look": {"yaw": atan2(mark.x, mark.z), "pitch": 0.0}, "main": {"x": 0.1, "y": 0.2}, "power": i < 150, "aimAt": mark}
+		Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack(inp))
+		await get_tree().physics_frame
+		var bow: Weapon = e.f.weapons.R
+		if bow:
+			drew = maxf(drew, float(bow.get_meta("draw", 0.0)))
+		for it in m.items.list:
+			if arrow == null and str(it.type).begins_with("pot_arrow") and it.owner == e.f:
+				arrow = it.duplicate()
+	t.check(drew > 0.5, "his button drew the bow (draw %.2f)" % drew)
+	t.check(arrow != null, "an arrow was loosed")
+	if arrow:
+		var v: Vector3 = arrow.vel
+		var want: Vector3 = mark - e.f.torso.global_position
+		var ang := rad_to_deg(Vector2(v.x, v.z).angle_to(Vector2(want.x, want.z)))
+		t.check(absf(ang) < 10.0, "toward his crosshair, not where he faced (%.1f degrees off)" % ang)
+	Net.inputs.erase(77)
+	m.queue_free()

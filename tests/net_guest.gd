@@ -5,6 +5,9 @@ var m: Match
 var snaps := 0
 var vox := 0
 var spawns := 0
+var frames := 0
+var moved := 0
+var last_p := Vector3.ZERO
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
@@ -14,6 +17,14 @@ func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().physics_frame
+		# Drawn between snapshots: the fighters move every physics step, not only when a
+		# snapshot comes in (which looked like a game at 24 frames a second).
+		if m and m.me and is_instance_valid(m.me.f) and snaps > 10:
+			var p: Vector3 = m.me.f.torso.global_position
+			frames += 1
+			if p.distance_squared_to(last_p) > 1e-10:
+				moved += 1
+			last_p = p
 	print("GUEST timeout")
 	get_tree().quit(1)
 
@@ -34,5 +45,6 @@ func _on(type: String, data, _from: int) -> void:
 			if m: m.guest_vox(data)
 		"bye":
 			var me_found: bool = m != null and m.me != null
-			print("GUEST spawns ", spawns, " entities ", m.entities.size() if m else 0, " snaps ", snaps, " vox ", vox, " me ", me_found)
-			get_tree().quit(0)
+			print("GUEST spawns ", spawns, " entities ", m.entities.size() if m else 0, " snaps ", snaps, " vox ", vox, " me ", me_found, " smooth ", moved, "/", frames)
+			# Moving at least on most steps (the bout keeps him busy): not stepping at snapshot rate.
+			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 else 1)

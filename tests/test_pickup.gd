@@ -36,7 +36,7 @@ func _try(m: Match, f: Fighter, w: Weapon, side: String, q: Array, grab: Diction
 	var th := _base()
 	th.throw = true
 	th.throwPower = 0.8
-	th.throwOff = side == "L"
+	th.throwOther = side == "L"   # (the left click while winding up: the other hand)
 	q.append(th)
 	await _steps(60)
 	return [picked, moved, w.holder == null and w.thrown_t > 0.0]
