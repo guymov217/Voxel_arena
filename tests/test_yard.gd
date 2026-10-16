@@ -66,3 +66,22 @@ func test_training_brings_the_giant() -> void:
 	var en: Array = m.enemies()
 	t.check(en.size() == 1 and en[0].f.boss and en[0].f.S > 3.0, "the giant stands in the training ring (%s)" % [en[0].f.display_name if en.size() else "nobody"])
 	m.queue_free()
+
+## Killed in the yard (by a friend, as like as not), a player is back three seconds later.
+func test_a_man_killed_in_the_yard_is_back_in_three_seconds() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "inventory": {"bread": 2}})
+	await _steps(30)
+	var old: Fighter = m.me.f
+	var id: int = m.me.id
+	old.head.hp = 0.0
+	old.die("test")
+	await _steps(int(2.5 * 120))
+	t.check(m.me.f == old, "still down at two and a half seconds")
+	await _steps(int(1.0 * 120))
+	t.check(m.me.f != old and is_instance_valid(m.me.f) and m.me.f.alive, "up again by three and a half")
+	t.eq(m.me.id, id, "the same player")
+	t.eq(int(m.me.get("inventory", {}).get("bread", 0)), 2, "with his kit")
+	t.eq(m.humans().size(), 1, "and only once")
+	m.queue_free()

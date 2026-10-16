@@ -245,3 +245,20 @@ func test_a_click_picks_the_other_throwing_hand() -> void:
 	await _steps(30)
 	t.check(a.f.weapons.R == null and blade.thrown_t > 0.0, "with the kit empty and the left hand bare, F throws the blade whatever was picked")
 	m.queue_free()
+
+## Friendly fire: a man of your own side is as open to your blade as an enemy (a blow, a thrown
+## weapon, an arrow or a pot), online or not.
+func test_friendly_fire_wounds_a_teammate() -> void:
+	var m := _match()
+	m.me.f.state = "dead"
+	var a := _man(m, Vector3(0, 0, 0), 0.0, {"main": "spear"}, "A", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 3.0), PI, {}, "B", 0, _idle)
+	await _steps(60)
+	var hits := [0]
+	m.combat.hit.connect(func(h): if h.get("attacker") == a.f and h.get("char") == b.f: hits[0] += 1)
+	var hp0: float = b.f.total_hp()
+	a.f.throw_weapon("R", b.f.torso.global_position, 1.0)
+	await _steps(90)
+	t.check(hits[0] > 0, "the thrown spear struck his own teammate (%d hits)" % hits[0])
+	t.check(b.f.total_hp() < hp0, "and wounded him (%.0f hp lost)" % (hp0 - b.f.total_hp()))
+	m.queue_free()

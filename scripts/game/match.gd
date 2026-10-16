@@ -1116,6 +1116,13 @@ func _check_round(dt: float) -> void:
 		_training_tick(dt)
 		return
 	if mode == "yard":
+		# Nobody stays dead in the yard: a man killed there (a friend's blade, a bad fall) is
+		# back on his feet by the gate three seconds later, whole, with his kit.
+		for e in humans():
+			if not e.f.alive:
+				e.dead_t = float(e.get("dead_t", 0.0)) + dt
+				if e.dead_t >= YARD_RESPAWN:
+					respawn_player(e)
 		return
 	if mode == "circus":
 		_check_circus(alive_h, alive_e)
@@ -1463,6 +1470,25 @@ func doctor_done(id: int, body_: Dictionary) -> void:
 	if e == null or not is_instance_valid(e.f):
 		return
 	rebuild(e, Body.sanitize(body_))
+
+const YARD_RESPAWN := 3.0
+
+## A fallen player up again where he first came in (the host's word; the guests are sent the
+## despawn and the spawn): the body he came into the yard with, full of blood, his kit.
+func respawn_player(e: Dictionary) -> Dictionary:
+	var spec: Dictionary = e.spec.duplicate(true)
+	spec.id = e.id
+	_remove_entity(e)
+	if role == "host":
+		Net.send_all("despawn", {"id": e.id})
+	var ne = spawn_fighter(spec)
+	for k in ["inventory", "peer", "gadgets"]:
+		if e.has(k):
+			ne[k] = e[k]
+	if me == e:
+		me = ne
+	feed.emit("%s is back on his feet" % ne.f.display_name)
+	return ne
 
 ## The same man spawned again with another body (a prosthetic fitted between rounds): where he
 ## stood, with the blood he had (the physician stopped the bleeding).
