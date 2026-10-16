@@ -286,6 +286,9 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
 		equip("L", off)
+	for w in weapons.values():
+		if w and Combat.current:
+			w.clear_spawn(Combat.current.fighters)
 
 ## The shading painted on a body voxel (skin type 1, cloth type 2), as a brightness factor on
 ## its colour: the brow, nose and chin of the face; pecs, breastbone, abs and navel on the chest,

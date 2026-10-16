@@ -75,7 +75,8 @@ func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -
 		if is_instance_valid(h.f) and h.f.alive and Vector2(h.f.torso.global_position.x - home.x, h.f.torso.global_position.z - home.z).length() < 3.2:
 			var to: Vector3 = h.f.torso.global_position - f.torso.global_position
 			yaw = atan2(to.x, to.z)
-			return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.25, "y": -0.2}, "off": {"x": -0.35, "y": -0.1}}
+			# Tools down at his side while he talks: nothing held across his belly for a visitor to walk into.
+			return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.6, "y": -0.35}, "off": {"x": -0.5, "y": -0.3}}
 	var inp := {"look": {"yaw": yaw, "pitch": -0.35}}
 	match work:
 		"hammer":

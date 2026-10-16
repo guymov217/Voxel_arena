@@ -579,6 +579,33 @@ func set_held_by(f: Node) -> void:
 	if f:
 		collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
 
+## Put in a hand where it already runs through someone (bought at the smith, who stands in front
+## of the buyer): it passes through those parts until it is clear of them, rather than wounding
+## him and pinning the buyer to him.
+var spawned_in: Array = []
+var _spawn_check := 0
+
+func clear_spawn(others: Array) -> void:
+	for c in others:
+		if c == holder or not is_instance_valid(c) or not ("parts" in c):
+			continue
+		for p in c.parts:
+			if p is PhysicsBody3D and not spawned_in.has(p) and _runs_through(p, 0.3):
+				for b in bodies():
+					b.add_collision_exception_with(p)
+				spawned_in.append(p)
+
+func _runs_through(p: Node3D, margin: float) -> bool:
+	return local_box().grow(margin).has_point(global_transform.affine_inverse() * p.global_position)
+
+func _let_go_spawned() -> void:
+	for p in spawned_in.duplicate():
+		if not is_instance_valid(p) or not _runs_through(p, 0.4):
+			if is_instance_valid(p):
+				for b in bodies():
+					b.remove_collision_exception_with(p)
+			spawned_in.erase(p)
+
 ## Out of the hand long enough: it no longer passes through the body that let it go.
 func forget_owner() -> void:
 	if own_by and is_instance_valid(own_by):
@@ -606,6 +633,10 @@ func _physics_process(dt: float) -> void:
 		own_t -= dt
 		if own_t <= 0.0 and holder == null:
 			forget_owner()
+	if not spawned_in.is_empty():
+		_spawn_check += 1
+		if _spawn_check % 6 == 0:
+			_let_go_spawned()
 
 ## How it flies when thrown (weaponDesign.js): a throwing axe spins, a javelin flies point first.
 ## A thrown blade or point that bit deep stays in the body it struck (weapon.js impale): welded
