@@ -1,6 +1,6 @@
 extends Node
 ## The forge (`-- --probe forgeshots`, needs a display): the cards (an axe with two twists) and
-## the voxel tools, My designs and the help, saved to SHOT_DIR.
+## the voxel tools, My designs, saved to SHOT_DIR.
 
 func _save(f, name_: String) -> void:
 	for i in 6:
@@ -25,7 +25,5 @@ func _ready() -> void:
 	for i in 30:
 		await get_tree().process_frame
 	await _save(f, "gallery")
-	f._show_mode("help")
-	await _save(f, "help")
 	f._take()
 	get_tree().quit()

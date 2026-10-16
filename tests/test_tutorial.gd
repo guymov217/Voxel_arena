@@ -37,6 +37,10 @@ func test_the_tutorial_walks_through_its_steps() -> void:
 	tu.had_weapon = true
 	m.me.f.weapons["R"] = m.me.f.weapons.get("R") if m.me.f.weapons.get("R") else m.combat.loose_weapons[-1]
 	await _steps(130)
+	for page in ["The forge", "Blocks", "Gems"]:
+		t.eq(String(tu.view().title), page, "a page on the forge: %s" % page)
+		tu.s.read_t = 99.0
+		await _steps(130)
 	t.eq(String(tu.view().title), "A real fight", "the last step")
 	t.check(tu.recruit != null and tu.recruit.alive, "a recruit steps in")
 	var res := []

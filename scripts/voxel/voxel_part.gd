@@ -563,6 +563,8 @@ var integrity: float:
 		return float(alive_count) / maxf(1, fx.size())
 
 ## How well it still works, 0..1 (0 when severed).
+var frozen_until := 0.0   # seconds (engine clock) until a sapphire's frost lets go of it
+
 func function() -> float:
 	if severed:
 		return 0.0
@@ -573,6 +575,8 @@ func function() -> float:
 	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
 	if prosthetic != "":
 		fn = minf(fn, float(Body.PROSTHETIC_FN.get(prosthetic, 0.7)))
+	if frozen_until > 0.0 and Time.get_ticks_msec() * 0.001 < frozen_until:
+		fn *= 0.2   # frozen stiff by a sapphire: it hardly moves until it thaws
 	return fn
 
 ## Knocks out voxels; returns [{p: world position, color}].

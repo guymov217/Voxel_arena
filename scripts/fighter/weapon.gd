@@ -324,6 +324,15 @@ func _build_mesh() -> void:
 	add_child(mmi)
 
 ## The box the voxels still on it fill, in its own frame (a shield's cover, see Fighter).
+## The gems set in it that are still there: {"ruby": n, ...} (Match._gems).
+const GEMS := ["ruby", "sapphire", "emerald"]
+func gem_counts() -> Dictionary:
+	var out := {}
+	for i in vox.size():
+		if alive[i] and GEMS.has(vox[i][3]):
+			out[vox[i][3]] = int(out.get(vox[i][3], 0)) + 1
+	return out
+
 func local_box() -> AABB:
 	var lo := Vector3.INF
 	var hi := -Vector3.INF

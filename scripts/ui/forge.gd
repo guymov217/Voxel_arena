@@ -53,9 +53,8 @@ var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
 var says: Label
 var verdict: Label
 var cost_label: Label
-var view_hint: Label
 
-const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather", "rubber", "fish", "ice", "explosive", "spring", "glue", "feather", "magnet"]
+const MATS := ["steel", "iron", "bronze", "wood", "stone", "bone", "gold", "lead", "leather", "rubber", "fish", "ice", "explosive", "spring", "glue", "feather", "magnet", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
 const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"]]
 
@@ -115,7 +114,6 @@ func _build_ui() -> void:
 	t.add_theme_color_override("font_color", UIStyle.GOLD)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
-	head.add_child(UIStyle.button("Help", func(): _show_mode("help")))
 	col.add_child(head)
 	mode_row = HBoxContainer.new()
 	mode_row.add_theme_constant_override("separation", 4)
@@ -184,21 +182,6 @@ func _build_ui() -> void:
 	svc.gui_input.connect(_on_view_input)
 	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	right.add_child(svc)
-	# How the view is worked, always in sight over it.
-	var keys := UIStyle.label("Left click: use the tool  ·  Right click: take a block off  ·  Middle drag: turn  ·  Wheel: zoom  ·  Ctrl+Z: undo", 13, UIStyle.TEXT)
-	keys.autowrap_mode = TextServer.AUTOWRAP_OFF
-	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	keys.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	keys.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	keys.position.y -= 34
-	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var kbg := StyleBoxFlat.new()
-	kbg.bg_color = Color(0, 0, 0, 0.55)
-	kbg.set_corner_radius_all(6)
-	kbg.content_margin_left = 12; kbg.content_margin_right = 12; kbg.content_margin_top = 5; kbg.content_margin_bottom = 5
-	keys.add_theme_stylebox_override("normal", kbg)
-	right.add_child(keys)
-	view_hint = keys
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
@@ -327,8 +310,6 @@ func _show_mode(m: String) -> void:
 			_cards_ui()
 		"gallery":
 			_gallery_ui()
-		"help":
-			_help_ui()
 		_:
 			_voxels_ui()
 	ghost.visible = false
@@ -337,7 +318,6 @@ func _show_mode(m: String) -> void:
 
 func _cards_ui() -> void:
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
-	mode_box.add_child(_hint("The quickest way to a good weapon. Then fine-tune it in Shape by hand if you like."))
 	var grid := GridContainer.new()
 	grid.columns = 3
 	mode_box.add_child(grid)
@@ -357,7 +337,6 @@ func _cards_ui() -> void:
 		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil." + ("" if family == "" else " It stays %s." % FAMILY_NAMES.get(family, "what it is")), 13, UIStyle.MUTED))
 		return
 	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
-	mode_box.add_child(_hint("The three marks on a twist are what it does to speed, damage and reach: ▲ more, ▼ less, · the same. Click again to take it off."))
 	var cards := GridContainer.new()
 	cards.columns = 2
 	mode_box.add_child(cards)
@@ -426,7 +405,7 @@ func _from_cards() -> void:
 	_rebuild()
 
 func _voxels_ui() -> void:
-	mode_box.add_child(UIStyle.label("TOOL · what a left click on the weapon does", 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("TOOL", 13, UIStyle.BRONZE))
 	var trow := GridContainer.new()
 	trow.columns = 5
 	for td in TOOLS:
@@ -440,17 +419,15 @@ func _voxels_ui() -> void:
 		b.tooltip_text = td[2]
 		trow.add_child(b)
 	mode_box.add_child(trow)
-	for td in TOOLS:
-		if td[0] == tool:
-			mode_box.add_child(_hint(td[2]))
 	var mir := CheckBox.new()
-	mir.text = "Mirror (both sides at once)"
+	mir.text = "Mirror"
+	mir.tooltip_text = "Both sides at once"
 	mir.button_pressed = mirror
 	mir.toggled.connect(func(x): mirror = x)
 	mode_box.add_child(mir)
 	mode_box.add_child(UIStyle.label("MATERIAL" + ("" if free_build else " · price per voxel"), 13, UIStyle.BRONZE))
 	var mg := GridContainer.new()
-	mg.columns = 4
+	mg.columns = 5
 	for m in MATS:
 		var key: String = m
 		var b := Button.new()
@@ -465,11 +442,11 @@ func _voxels_ui() -> void:
 			_show_mode("voxels"))
 		mg.add_child(b)
 	mode_box.add_child(mg)
-	# What the chosen one is for: in words, and how hard and how heavy it is.
-	var md := UIStyle.label(material_text(mat), 13, UIStyle.TEXT)
-	md.custom_minimum_size = Vector2(420, 0)
+	var md := UIStyle.label(material_stats(mat), 13, UIStyle.MUTED)
+	md.tooltip_text = material_text(mat)
+	md.mouse_filter = Control.MOUSE_FILTER_PASS
 	mode_box.add_child(md)
-	mode_box.add_child(UIStyle.label("JOB · what the new blocks do in a fight", 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
 	var jr := HBoxContainer.new()
 	var blunt := family == "blunt"
 	for j in JOBS:
@@ -484,7 +461,6 @@ func _voxels_ui() -> void:
 		b.tooltip_text = JOB_USE[key]
 		jr.add_child(b)
 	mode_box.add_child(jr)
-	mode_box.add_child(_hint(JOB_USE.get(job, "")))
 	mode_box.add_child(UIStyle.label("FIX-UPS", 13, UIStyle.BRONZE))
 	var ar := GridContainer.new()
 	ar.columns = 3
@@ -566,12 +542,6 @@ func _voxels_ui() -> void:
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_box.add_child(cl)
 
-func _hint(text: String) -> Label:
-	var l := UIStyle.label(text, 13, UIStyle.MUTED)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(420, 0)
-	return l
-
 # ---------- My designs: weapons saved as templates ----------
 
 const GALLERY_MAX := 24
@@ -601,10 +571,9 @@ func _save_design() -> void:
 
 func _gallery_ui() -> void:
 	mode_box.add_child(UIStyle.label("MY DESIGNS", 13, UIStyle.BRONZE))
-	mode_box.add_child(_hint("Save design (at the bottom) keeps what is on the anvil here. Load puts a saved one back on the anvil" + ("." if free_build else ": you pay only for the blocks that change, and it must be the same kind of weapon as yours.")))
 	var g := gallery()
 	if g.is_empty():
-		mode_box.add_child(_hint("Nothing saved yet."))
+		mode_box.add_child(UIStyle.label("Nothing saved yet", 14, UIStyle.MUTED))
 		return
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -653,19 +622,6 @@ func _load_design(d: Dictionary) -> void:
 	_rebuild()
 	_show_mode("voxels")
 
-func _help_ui() -> void:
-	mode_box.add_child(UIStyle.label("HOW THE FORGE WORKS", 13, UIStyle.BRONZE))
-	for line in [
-		"1 · Quick start: pick a base weapon, then up to two twists. The arrows ▲▼ on a twist show what it does to speed, damage and reach.",
-		"2 · Shape by hand: pick a tool, a material and a job, then click on the weapon in the view. Build puts a block on the face you click, Paint changes blocks, Erase takes them off (or right click).",
-		"Every block has a material (what it is made of: hardness and weight) and a job: Edge cuts, Point stabs, Blunt crushes and holds it together, Grip is where you hold it.",
-		"The bars at the bottom show speed, damage and reach as you work; the smith and the dummy tell you what they think of it.",
-		"Mirror builds both sides at once. Undo / Redo (Ctrl+Z, Ctrl+Y) take any step back.",
-		"Save design keeps it in My designs, to load again later." + ("" if free_build else " At the smith you pay for the blocks you add and get back the ones you take off, and the weapon stays the same kind it is."),
-	]:
-		mode_box.add_child(_hint(line))
-	mode_box.add_child(UIStyle.button("Back to the anvil", func(): _show_mode("voxels")))
-
 ## What a material does in a weapon, for the smith's customer: what it is good for, what it
 ## does that no other does, and how hard (edge, chipping) and heavy (blow, swing) it is.
 const JOB_USE := {
@@ -692,7 +648,17 @@ const MAT_USE := {
 	"glue": "Sticks to what it hits: the weapon stays in him, or he stays on it.",
 	"feather": "Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.",
 	"magnet": "Pulls iron and steel to it: blades and armour are dragged in.",
+	"ruby": "A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.",
+	"sapphire": "A gem socket of frost: a blow may freeze the limb it strikes stiff and slow the whole body. More sapphires, a deeper frost. Costly.",
+	"emerald": "A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.",
 }
+## The chosen material in a line: its name, how hard and how heavy (the dots), and its price.
+static func material_stats(m: String) -> String:
+	var d: Dictionary = Data.material(m)
+	var h := clampi(int(round(float(d.get("hardness", 0.5)) * 5.0)), 0, 5)
+	var w := clampi(int(round(log(maxf(0.0008, float(d.get("mass", 0.02))) / 0.0008) / log(0.22 / 0.0008) * 5.0)), 0, 5)
+	return "%s   Hardness %s   Weight %s" % [str(d.get("name", m)).get_slice(" (", 0), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
+
 static func material_text(m: String) -> String:
 	var d: Dictionary = Data.material(m)
 	var h := clampi(int(round(float(d.get("hardness", 0.5)) * 5.0)), 0, 5)

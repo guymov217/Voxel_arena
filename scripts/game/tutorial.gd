@@ -13,12 +13,15 @@ const STEPS := [
 	{"id": "kick", "title": "Kick and shove", "text": "E kicks, Q shoves. Kick or shove the dummy."},
 	{"id": "throw", "title": "Throw", "text": "Hold F to aim, let go to throw. Throw your sword at the dummy."},
 	{"id": "pickup", "title": "Pick up", "text": "Your hand is empty now. A javelin lies by you: walk over and press G to pick it up.", "setup": "javelin"},
+	{"id": "forge", "title": "The forge", "read": 9.0, "text": "At the smith, Reshape in the forge changes your weapon. Quick start: a base and up to two twists (▲ more, ▼ less speed, damage, reach). Shape by hand: left click builds, right click takes a block off, middle drag turns it, the wheel zooms, Ctrl+Z undoes."},
+	{"id": "blocks", "title": "Blocks", "read": 9.0, "text": "Each block has a material (its hardness and weight) and a job: Edge cuts, Point stabs, Blunt crushes and holds it together, Grip is where you hold it. Save design keeps a weapon in My designs to load again."},
+	{"id": "gems", "title": "Gems", "read": 8.0, "text": "Ruby, sapphire and emerald are costly sockets: a blow may set the part it strikes alight, freeze it stiff, or poison it. The more stones, the surer and the fiercer."},
 	{"id": "fight", "title": "A real fight", "text": "A recruit steps in, and he fights back. Beat him. (You cannot die in here.)", "setup": "fight"},
 ]
 
 var m: Node
 var i := 0
-var s := {"moved": 0.0, "turned": 0.0, "hits": 0, "guard_t": 0.0, "kicks": 0, "throws": 0, "armed": true, "won": false}
+var s := {"moved": 0.0, "turned": 0.0, "hits": 0, "guard_t": 0.0, "kicks": 0, "throws": 0, "armed": true, "won": false, "read_t": 0.0}
 var ok_t := 0.0
 var finished := false
 var setup_done := {}
@@ -49,6 +52,8 @@ func setup() -> void:
 	dummy = e.f
 
 func _done(id: String) -> bool:
+	if step().has("read"):
+		return float(s.read_t) >= float(step().read)   # a page to read: it turns by itself
 	match id:
 		"move": return s.moved > 2.5
 		"look": return s.turned > 2.2
@@ -93,10 +98,12 @@ func update(dt: float, inp: Dictionary) -> void:
 		ok_t -= dt
 		if ok_t <= 0.0:
 			i += 1
+			s.read_t = 0.0
 			if i >= STEPS.size():
 				finished = true
 		return
 	var st := step()
+	s.read_t = float(s.read_t) + dt
 	if st.has("setup") and not setup_done.has(st.id):
 		setup_done[st.id] = true
 		_setup(String(st.setup))

@@ -248,12 +248,9 @@ static func can_upgrade(id: String, d) -> bool:
 	if not (d is Dictionary) or d.get("kind", "weapon") == "shield":
 		return id == "temper" and d is Dictionary and upgrade_price("temper", d) > 15
 	if COATINGS.has(id):
-		# Venom wants an edge or a point to go in by; fire and frost go on anything that hits.
-		if d.get("imbue", "") == id or d.get("shoots", false):
-			return false
-		if id == "venom":
-			return d.voxels.any(func(v): return v[4] == "edge" or v[4] == "point")
-		return true
+		# No longer sold: fire, frost and venom come from gems set in the forge (ruby, sapphire,
+		# emerald). A weapon coated before keeps its coating.
+		return false
 	match id:
 		"whetstone":
 			return sharpenable(d) and float(d.get("sharpness", 0.0)) < 1.0

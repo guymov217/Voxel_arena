@@ -338,7 +338,9 @@ func spawn_beast(spec: Dictionary):
 	b.on_roar = func(bb):
 		bb.set_meta("voice_t", time)
 		say(bb, Voices.beast_call(bb.species), 1.2, "call")
-		feed.emit("%s trumpets and charges!" % bb.display_name)
+		feed.emit(("%s beats its chest and roars!" if bb.species == "gorilla" else "%s trumpets and charges!") % bb.display_name)
+	b.on_thump = func(bb):
+		sfx("thump", bb.torso.global_position, 1.0)
 	if role == "guest":
 		b.make_puppet()
 	var e := {"id": spec.get("id", next_id), "f": b, "kind": "beast", "team": spec.team, "peer": -1, "boss": spec.get("boss", false), "spec": spec, "harmless": spec.get("harmless", false)}
@@ -1291,6 +1293,8 @@ func _on_hit(h: Dictionary) -> void:
 			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art}, false)
 	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
 		_coating(h)
+	if role != "guest" and h.get("weapon") and is_instance_valid(h.weapon):
+		_gems(h)
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
@@ -1384,6 +1388,68 @@ func _coating(h: Dictionary) -> void:
 				feed.emit("%s is chilled to the bone!" % c.display_name)
 	if say:
 		c.set_meta("coat_say", time)
+
+## Gems set in a weapon (forge voxels of ruby, sapphire, emerald): every blow that lands has a
+## chance, more the more of the stone there is, of setting the part it struck alight (ruby),
+## freezing the man or the beast stiff (sapphire), or poisoning the wound so that it festers and
+## eats into the flesh (emerald).
+const GEM_CHANCE := 0.1     # per voxel of the stone, to a cap
+const GEM_CAP := 0.7
+func _gems(h: Dictionary) -> void:
+	var c = h.get("char")
+	var part = h.get("part")
+	if not (c is Fighter) or not c.alive or not (part is VoxelPart) or part.severed or c == h.get("attacker") or float(h.get("J", 0.0)) < 4.0:
+		return
+	var counts: Dictionary = h.weapon.gem_counts()
+	if counts.is_empty():
+		return
+	var p: Vector3 = h.p if h.get("p") is Vector3 else part.global_position
+	var say := time - float(c.get_meta("gem_say", -9.0)) > 4.0
+	for gem in counts:
+		var key := "gem_t_" + String(gem)
+		if time - float(c.get_meta(key, -9.0)) < 0.6:
+			continue
+		if rng.randf() > minf(GEM_CAP, 1.0 - pow(1.0 - GEM_CHANCE, float(counts[gem]))):
+			continue
+		c.set_meta(key, time)
+		# Each stone more makes it surer and fiercer: longer flames, a deeper frost, more venom.
+		var k := minf(3.0, 1.0 + 0.2 * float(int(counts[gem]) - 1))
+		match gem:
+			"ruby":
+				add_spot(c, part, "fire", 3.5 * k, h.get("attacker"), p)
+				if fx:
+					fx.flash(p, Color(1.0, 0.35, 0.1), 3.0, 3.0)
+				if say:
+					feed.emit("The ruby flares: %s's %s catches fire!" % [c.display_name, _part_word(part)])
+			"sapphire":
+				part.frozen_until = Time.get_ticks_msec() * 0.001 + 2.5 * k
+				c.slow(2.5 * k, maxf(0.15, 0.45 - 0.08 * k))
+				c.stamina = maxf(0.0, c.stamina - 10.0 * k)
+				c.stagger = minf(1.0, c.stagger + 0.25 * k)
+				if fx:
+					fx.burst("frost", p, 30, Vector3.UP, 1.8)
+				if say:
+					feed.emit("The sapphire bites cold: %s's %s freezes stiff!" % [c.display_name, _part_word(part)])
+			"emerald":
+				part.bleed += 0.5 * k
+				c.slow(4.0 * k, 0.7)
+				c.pain = minf(1.0, c.pain + 0.15 * k)
+				c.stamina = maxf(0.0, c.stamina - 8.0 * k)
+				add_spot(c, part, "acid", 2.5 * k, h.get("attacker"), p)
+				if fx:
+					fx.burst("venom", p, 18, h.get("dir", Vector3.UP), 1.5)
+				if say:
+					feed.emit("The emerald's poison eats into %s's %s!" % [c.display_name, _part_word(part)])
+		if say:
+			c.set_meta("gem_say", time)
+			say = false
+
+static func _part_word(part: VoxelPart) -> String:
+	var n := String(part.part_name).to_lower()
+	for w in ["head", "torso", "arm", "leg", "tail", "wing", "neck", "body"]:
+		if n.contains(w):
+			return "body" if w == "torso" else w
+	return "flesh"
 
 func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":
