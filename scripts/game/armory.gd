@@ -32,7 +32,27 @@ const BLURB := {
 	"goldLorica": "A golden lorica. It dents easily; the Emperor approves.",
 }
 
+## What a piece weighs on a man (kg): a plate's worth of its material for every cell it covers.
+const KG_PER_CELL := 0.9   # × the material's mass (materials.json): a steel lorica ~13 kg, a jerkin ~1.5
+static func kg(id: String) -> float:
+	var a: Dictionary = Data.armor.get(id, {})
+	var n := 0
+	for part in a.get("parts", {}):
+		n += (a.parts[part] as Array).size()
+	return n * float(Data.material(String(a.get("mat", "iron"))).get("mass", 0.03)) * KG_PER_CELL
+
+## How well a piece keeps a blow out (0..1), by its material's hardness.
+static func protection(id: String) -> float:
+	return float(Data.material(String(Data.armor.get(id, {}).get("mat", "iron"))).get("hardness", 0.6))
+
+## What the weight of armour worn does: breath spent sprinting and swinging is multiplied by
+## `breath`, the pace by `pace`. Light leather hardly shows; a full kit of steel tells.
+static func burden(kg_worn: float) -> Dictionary:
+	return {"breath": 1.0 + maxf(0.0, kg_worn) / 35.0, "pace": 1.0 - clampf((kg_worn - 6.0) / 100.0, 0.0, 0.3)}
+
 static func price(id: String) -> int:
+	if custom(id):
+		return design_price(Data.armor[id])
 	for r in SHOP:
 		if r[0] == id:
 			return int(r[1])
@@ -40,6 +60,121 @@ static func price(id: String) -> int:
 
 static func sold(id: String) -> bool:
 	return price(id) > 0
+
+## A piece the player designed at the armourer's bench (id "custom_..."), known to Data.armor.
+static func custom(id: String) -> bool:
+	return id.begins_with("custom_") and Data.armor.has(id)
+
+# ---------- The armourer's bench: pieces the player designs ----------
+
+## What a designed piece may be made of: from soft and light to hard and heavy.
+const BENCH_MATS := ["leather", "bone", "bronze", "iron", "steel", "gold"]
+## Where it goes: a part, or a pair of them done alike.
+const REGIONS := {
+	"head": {"label": "Head", "parts": ["head"]},
+	"torso": {"label": "Body", "parts": ["torso"]},
+	"upperArms": {"label": "Upper arms", "parts": ["upperArmR", "upperArmL"]},
+	"forearms": {"label": "Forearms", "parts": ["forearmR", "forearmL"]},
+	"thighs": {"label": "Thighs", "parts": ["thighR", "thighL"]},
+	"shins": {"label": "Shins", "parts": ["shinR", "shinL"]},
+}
+const DESIGN_MAX_CELLS := 700
+
+static func _dims(part: String) -> Array:
+	for p in Data.body_parts:
+		if String(p.name) == part:
+			return p.dims
+	return [4, 4, 4]
+
+## A piece from the bench's choices: `region` (REGIONS), `mat`, the rows covered from `y0` to
+## `y1` (0 the bottom of the part, 1 its top), all round or the front and sides only, and the
+## top capped (a helmet's crown, a lorica's shoulders).
+static func design_piece(region: String, mat: String, y0: float, y1: float, front_only: bool, cap: bool, name := "") -> Dictionary:
+	var reg: Dictionary = REGIONS.get(region, REGIONS.torso)
+	var parts := {}
+	for part in reg.parts:
+		var d := _dims(part)
+		var top := int(d[1]) - 1
+		var a := clampi(int(round(minf(y0, y1) * top)), 0, top)
+		var b := clampi(int(round(maxf(y0, y1) * top)), 0, top)
+		var cells := _wrap(d, a, b, "front" if front_only else "all")
+		if cap and b == top:
+			cells += _cap(d, 1 if part == "torso" else 0)
+		parts[part] = cells
+	var nm := name.strip_edges().substr(0, 24)
+	if nm == "":
+		nm = "%s %s" % [mat.capitalize(), String(reg.label).to_lower()]
+	return {"name": nm, "mat": mat if BENCH_MATS.has(mat) else "iron", "color": 0x8c939b if mat == "steel" else null, "parts": parts}
+
+static func design_cells(def: Dictionary) -> int:
+	var n := 0
+	for part in def.get("parts", {}):
+		n += (def.parts[part] as Array).size()
+	return n
+
+## What the smith asks for making it: its plates, by the price of the stuff.
+static func design_price(def: Dictionary) -> int:
+	return 10 + int(ceil(design_cells(def) * Arms.voxel_price(String(def.get("mat", "iron"))) * 0.5))
+
+static func design_kg(def: Dictionary) -> float:
+	return design_cells(def) * float(Data.material(String(def.get("mat", "iron"))).get("mass", 0.03)) * KG_PER_CELL
+
+## Its id: from what it is, so the same piece is the same id on every machine.
+static func design_id(def: Dictionary) -> String:
+	return "custom_%d" % absi(hash(JSON.stringify([def.get("mat"), def.get("parts")])))
+
+## A design as sent by someone else (or read from a save), made safe: known stuff, known parts,
+## cells round the part only, not too many. Null if it is not a piece at all.
+static func clean_design(def) -> Variant:
+	if not (def is Dictionary) or not (def.get("parts") is Dictionary) or not BENCH_MATS.has(String(def.get("mat", ""))):
+		return null
+	var allowed := []
+	for r in REGIONS.values():
+		allowed += r.parts
+	var parts := {}
+	var n := 0
+	for part in def.parts:
+		if not allowed.has(String(part)) or not (def.parts[part] is Array):
+			continue
+		var d := _dims(String(part))
+		var cells := []
+		for c in def.parts[part]:
+			if c is Array and c.size() == 3 and n < DESIGN_MAX_CELLS:
+				var x := int(c[0])
+				var y := int(c[1])
+				var z := int(c[2])
+				if x >= -1 and x <= int(d[0]) and y >= 0 and y <= int(d[1]) + 1 and z >= -1 and z <= int(d[2]):
+					cells.append([x, y, z])
+					n += 1
+		if not cells.is_empty():
+			parts[String(part)] = cells
+	if parts.is_empty():
+		return null
+	var mat := String(def.mat)
+	return {"name": String(def.get("name", "Piece")).substr(0, 24), "mat": mat, "color": 0x8c939b if mat == "steel" else null, "parts": parts}
+
+## Makes designed pieces known (Data.armor), each under the id its content gives it: the ids
+## given back, in order (an unusable design is left out).
+static func register(defs) -> Array:
+	var ids := []
+	if not (defs is Dictionary or defs is Array):
+		return ids
+	for d in (defs.values() if defs is Dictionary else defs):
+		var c = clean_design(d)
+		if c == null:
+			continue
+		var id := design_id(c)
+		Data.armor[id] = c
+		ids.append(id)
+	return ids
+
+## The designs of the pieces in `ids` that are the player's own (to send with them).
+static func defs_of(ids: Array) -> Dictionary:
+	var out := {}
+	for id in ids:
+		if custom(String(id)):
+			out[id] = Data.armor[id]
+	return out
 
 ## The new pieces, shaped round the parts of `body` (body.json's parts, by name).
 static func extra(body_parts: Array) -> Dictionary:
@@ -135,13 +270,13 @@ static func sanitize(ids) -> Array:
 	if not (ids is Array):
 		return out
 	for id in ids:
-		if id is String and sold(id) and Data.armor.has(id) and not out.has(id) and not out.any(func(o): return clashes(o, id)):
+		if id is String and (sold(id) or custom(id)) and Data.armor.has(id) and not out.has(id) and not out.any(func(o): return clashes(o, id)):
 			out.append(id)
 	return out.slice(0, 10)
 
 ## Buying `id`: what is worn after (the clashing pieces taken off, sold back for half) and the cost.
 static func buy(worn: Array, id: String) -> Dictionary:
-	if not sold(id) or not Data.armor.has(id):
+	if not (sold(id) or custom(id)) or not Data.armor.has(id):
 		return {"error": "The armourer has no such thing"}
 	var have := sanitize(worn)
 	if have.has(id):

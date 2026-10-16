@@ -90,3 +90,42 @@ func test_gems_set_in_a_weapon_burn_freeze_and_poison() -> void:
 	t.check(got.sapphire.fn < 0.3 and got.sapphire.slow < 0.5, "the sapphire freezes the forearm stiff (%s)" % [got.sapphire])
 	t.check(got.emerald.acid and got.emerald.bleed > 0.5, "the emerald poisons the wound and it eats in (%s)" % [got.emerald])
 	m.queue_free()
+
+## The armourer's bench: a piece designed there protects by its stuff and weighs by it, costs
+## by its plates, can be bought and worn like any other; a design from someone else is made
+## safe; and the weight of what a man wears costs him breath when he runs and swings, and pace.
+func test_armour_designed_at_the_bench_and_its_weight() -> void:
+	var lth := Armory.design_piece("torso", "leather", 0.2, 1.0, false, true, "Light")
+	var stl := Armory.design_piece("torso", "steel", 0.2, 1.0, false, true, "Heavy")
+	t.check(Armory.design_kg(stl) > 4.0 * Armory.design_kg(lth), "steel weighs far more than leather (%.1f vs %.1f kg)" % [Armory.design_kg(stl), Armory.design_kg(lth)])
+	t.check(Armory.design_price(stl) > Armory.design_price(lth), "and costs more")
+	var ids := Armory.register([stl])
+	t.eq(ids.size(), 1, "registered")
+	t.check(Armory.custom(ids[0]) and Armory.protection(ids[0]) > 0.9, "a custom steel piece: high protection")
+	var b := Armory.buy([], ids[0])
+	t.check(not b.has("error") and b.worn.has(ids[0]), "bought and worn")
+	t.eq(Armory.sanitize(b.worn), b.worn, "a save keeps it")
+	t.check(Armory.clean_design({"mat": "uranium", "parts": {"torso": [[0, 0, 0]]}}) == null, "nonsense stuff is refused")
+	var junk = Armory.clean_design({"mat": "iron", "parts": {"torso": [[0, 0, 99], [0, 1, -1]], "tail": [[0, 0, 0]]}})
+	t.check(junk != null and junk.parts.size() == 1 and (junk.parts.torso as Array).size() == 1, "cells off the body and unknown parts dropped")
+	var light := Armory.burden(2.0)
+	var heavy := Armory.burden(40.0)
+	t.check(heavy.breath > 2.0 and light.breath < 1.1, "breath: light ×%.2f, heavy ×%.2f" % [light.breath, heavy.breath])
+	t.check(heavy.pace < 0.75 and light.pace == 1.0, "pace: heavy %.2f" % heavy.pace)
+	# On a man: the heavier kit drains his breath faster in the same run.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true})
+	m.me.f.teleport(Vector3(0, 0, -10))
+	var run := func(_e): return {"mz": 1.0, "sprint": true, "look": {"yaw": 0.0, "pitch": 0.0}}
+	var used := []
+	for kit in [[], ["steelLorica", "steelGreaves", "murmilloHelm", "cuisses"]]:
+		var e = m.spawn_fighter({"kind": "bot", "name": "R", "loadout": {"main": "", "off": "", "armor": kit}, "team": 1, "pos": Vector3(4.0 * used.size(), 0.1, -6), "yaw": 0.0})
+		e.erase("bot")
+		e.drive = run
+		await _steps(30)
+		e.f.stamina = 100.0
+		await _steps(120 * 2)
+		used.append(100.0 - e.f.stamina)
+	t.check(used[1] > used[0] * 1.4, "an armoured runner tires faster (%.0f vs %.0f breath)" % [used[1], used[0]])
+	m.queue_free()

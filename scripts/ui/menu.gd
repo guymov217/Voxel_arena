@@ -44,6 +44,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Net.my_kit = kit()
 	Net.my_body = body()
+	Armory.register(Save.get_value("armor_designs", {}))   # the pieces designed at the bench
 	_net_loadout()
 	if Sfx.music:
 		Sfx.music.volume = float(Save.get_value("settings", {}).get("music", 0.5))
@@ -224,6 +225,7 @@ func _net_loadout() -> void:
 	var lk := look()
 	lo["look"] = look_armor(lk)
 	lo["gear"] = worn_armor()
+	lo["gear_defs"] = Armory.defs_of(lo.gear)   # what a designed piece is, for the others to see it
 	lo["skin"] = Fighter.SKINS[lk.skin]
 	Net.my_loadout = lo
 
@@ -232,7 +234,7 @@ func _net_loadout() -> void:
 func _peer_spec(id: int, geared: bool, with_body := true) -> Dictionary:
 	var pl: Dictionary = Net.peers[id].get("loadout", {})
 	var pk := peer_look(pl)
-	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else [])} if not pl.is_empty() else {"main": "gladius"}}
+	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}}
 
 func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
@@ -240,6 +242,7 @@ func peer_look(pl: Dictionary) -> Dictionary:
 		ok += LOOK_SLOTS[k]
 	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, 4) if pl.get("look") is Array else []
 	var sk = pl.get("skin")
+	Armory.register(pl.get("gear_defs", {}))   # his designed pieces, made safe, under their own ids
 	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null}
 
 func look_armor(l: Dictionary) -> Array:
@@ -839,7 +842,7 @@ func _yard(v: VBoxContainer) -> void:
 	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(purse)
 	var tabs: Array = []
-	for t in [["weapons", "Weapons & coatings"], ["armour", "Armour"]]:
+	for t in [["weapons", "Weapons"], ["armour", "Armour"], ["bench", "Design armour"]]:
 		var tab_id: String = t[0]
 		tabs.append(UIStyle.button(t[1], func():
 			smith_tab = tab_id
@@ -851,6 +854,9 @@ func _yard(v: VBoxContainer) -> void:
 	var inner_w := panel.custom_minimum_size.x - 64.0
 	if smith_tab == "armour":
 		_smith_armour(v, inner_w)
+		return
+	if smith_tab == "bench":
+		_armour_bench(v, inner_w)
 		return
 	var a := arms()
 	var body := HBoxContainer.new()
@@ -1022,8 +1028,10 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
-	for r in Armory.SHOP:
-		var id: String = r[0]
+	var ids: Array = Armory.SHOP.map(func(r): return r[0])
+	ids = (Save.get_value("armor_designs", {}) as Dictionary).keys().filter(func(i): return Armory.custom(String(i))) + ids
+	for idv in ids:
+		var id: String = idv
 		var a: Dictionary = Data.armor.get(id, {})
 		if a.is_empty():
 			continue
@@ -1054,7 +1062,8 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 			if not where.has(ARMOUR_PARTS.get(k, k)):
 				where.append(ARMOUR_PARTS.get(k, k))
 		col.add_child(UIStyle.label("%s · %s" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where)], 12, UIStyle.BRONZE))
-		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "")), 12, UIStyle.MUTED))
+		col.add_child(UIStyle.label("Protection %s · %.1f kg" % [_dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.TEXT))
+		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "Your own design, from the bench.")), 12, UIStyle.MUTED))
 		var price := Armory.price(id)
 		if on:
 			col.add_child(UIStyle.button("Worn · take off (+%d)" % (price / 2), func():
@@ -1082,6 +1091,137 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 			btn.disabled = cost > coins()
 			col.add_child(btn)
 		grid.add_child(card)
+
+static func _dots(x: float) -> String:
+	var n := clampi(int(round(x * 5.0)), 0, 5)
+	return "●".repeat(n) + "○".repeat(5 - n)
+
+# ---------- The armourer's bench ----------
+
+var bench := {"region": "torso", "mat": "iron", "y0": 0.3, "y1": 1.0, "front": false, "cap": true, "name": ""}
+
+## The armourer's bench: a piece of your own, where it goes, what it is made of and how much
+## of the part it covers; what it keeps out, what it weighs and what the weight costs in breath
+## and pace, all as you choose; then made, paid for and worn.
+func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
+	var def := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 28)
+	v.add_child(body)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 8)
+	left.custom_minimum_size = Vector2(520, 0)
+	body.add_child(left)
+	var pick := func(label: String, keys: Array, names: Callable, cur: String, set: Callable) -> void:
+		left.add_child(UIStyle.label(label, 13, UIStyle.BRONZE))
+		var row := HFlowContainer.new()
+		row.add_theme_constant_override("h_separation", 6)
+		row.add_theme_constant_override("v_separation", 6)
+		for k in keys:
+			var key: String = k
+			var b := UIStyle.button(names.call(key), func():
+				set.call(key)
+				show_screen("yard"))
+			b.toggle_mode = true
+			b.button_pressed = key == cur
+			row.add_child(b)
+		left.add_child(row)
+	pick.call("WHERE", Armory.REGIONS.keys(), func(k): return Armory.REGIONS[k].label, bench.region, func(k): bench.region = k)
+	pick.call("MATERIAL", Armory.BENCH_MATS, func(k): return String(k).capitalize(), bench.mat, func(k): bench.mat = k)
+	left.add_child(UIStyle.label("%s   Protection %s   Weight %s" % [String(bench.mat).capitalize(), _dots(float(Data.material(bench.mat).get("hardness", 0.5))), _dots(clampf(float(Data.material(bench.mat).get("mass", 0.03)) / 0.1, 0.0, 1.0))], 13, UIStyle.MUTED))
+	left.add_child(UIStyle.label("COVERS", 13, UIStyle.BRONZE))
+	for sl_def in [["From", "y0"], ["To", "y1"]]:
+		var key: String = sl_def[1]
+		var row := HBoxContainer.new()
+		var l := UIStyle.label(sl_def[0], 14, UIStyle.MUTED)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.custom_minimum_size = Vector2(60, 0)
+		row.add_child(l)
+		var sl := HSlider.new()
+		sl.min_value = 0.0
+		sl.max_value = 1.0
+		sl.step = 0.05
+		sl.value = float(bench[key])
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sl.drag_ended.connect(func(_c):
+			bench[key] = sl.value
+			show_screen("yard"))
+		row.add_child(sl)
+		left.add_child(row)
+	var opt := HBoxContainer.new()
+	var fr := CheckBox.new()
+	fr.text = "Front and sides only"
+	fr.button_pressed = bench.front
+	fr.toggled.connect(func(x):
+		bench.front = x
+		show_screen("yard"))
+	opt.add_child(fr)
+	var cp := CheckBox.new()
+	cp.text = "Cap the top"
+	cp.button_pressed = bench.cap
+	cp.toggled.connect(func(x):
+		bench.cap = x
+		show_screen("yard"))
+	opt.add_child(cp)
+	left.add_child(opt)
+	var nm := LineEdit.new()
+	nm.placeholder_text = String(def.name)
+	nm.text = String(bench.name)
+	nm.max_length = 24
+	nm.text_changed.connect(func(x): bench.name = x)
+	left.add_child(nm)
+	# What it comes to: the figure with what it covers, and the numbers.
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	body.add_child(right)
+	var fig := Control.new()
+	fig.custom_minimum_size = Vector2(120, 220)
+	var covered: Array = (def.parts as Dictionary).keys()
+	var mc := Weapon.voxel_color(String(def.mat), "blunt")
+	fig.draw.connect(func():
+		fig.draw_set_transform(Vector2(4, 4), 0.0, Vector2(1.6, 1.6))
+		for k in Hud.LAYOUT:
+			var rr: Rect2 = Hud.LAYOUT[k]
+			var sb := StyleBoxFlat.new()
+			sb.set_corner_radius_all(4 if k != "head" else 10)
+			sb.bg_color = mc if covered.has(k) else Color(1, 1, 1, 0.08)
+			sb.border_color = Color(1, 1, 1, 0.3) if covered.has(k) else Color(1, 1, 1, 0.06)
+			sb.set_border_width_all(1)
+			fig.draw_style_box(sb, rr.grow(-1.0)))
+	right.add_child(fig)
+	var kg := Armory.design_kg(def)
+	var worn_kg := 0.0
+	for id in worn_armor():
+		worn_kg += Armory.kg(id)
+	var with := Armory.burden(worn_kg + kg)
+	var price := Armory.design_price(def)
+	right.add_child(UIStyle.label(String(def.name), 18, UIStyle.GOLD))
+	right.add_child(UIStyle.label("Protection %s" % _dots(float(Data.material(String(def.mat)).get("hardness", 0.5))), 15, UIStyle.TEXT))
+	right.add_child(UIStyle.label("Weight %.1f kg  (all you wear: %.1f kg)" % [kg, worn_kg + kg], 15, UIStyle.TEXT))
+	right.add_child(UIStyle.label("Breath when running and swinging: ×%.2f" % float(with.breath), 14, UIStyle.MUTED))
+	right.add_child(UIStyle.label("Pace: %d%%" % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
+	var make := UIStyle.button("Forge and wear · %d denarii" % price, func():
+		var final := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
+		var p2 := Armory.design_price(final)
+		if p2 > coins():
+			show_screen("yard", "Not enough denarii")
+			return
+		var ids := Armory.register([final])
+		if ids.is_empty():
+			return
+		var designs: Dictionary = Save.get_value("armor_designs", {})
+		designs[ids[0]] = final
+		Save.set_value("armor_designs", designs)
+		var t := Armory.buy(worn_armor(), ids[0])
+		if t.has("error"):
+			show_screen("yard", t.error)
+			return
+		add_coins(-int(t.cost))   # what it costs, less what any piece it replaces fetches
+		set_worn_armor(t.worn)
+		smith_tab = "armour"
+		show_screen("yard"), true)
+	make.disabled = price > coins()
+	right.add_child(make)
 
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
@@ -1426,7 +1566,6 @@ func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Co
 ## The physician's stall in the yard: the same treatments as between rounds.
 func _physician(v: VBoxContainer) -> void:
 	var yard := in_yard()
-	_medicine(v)
 	_doctor_panel(v, body(), [], int(Save.get_value("stage", 1)), func(nb):
 		set_body(nb)
 		if yard:
@@ -1435,6 +1574,11 @@ func _physician(v: VBoxContainer) -> void:
 			show_screen("yard"), "" if yard else "Back", func(nb):
 		set_body(nb)
 		show_screen("physician"))
+	# His supplies under his name, above the treatments.
+	var n0 := v.get_child_count()
+	_medicine(v)
+	for k in v.get_child_count() - n0:
+		v.move_child(v.get_child(n0 + k), 1 + k)
 
 ## The physician's supplies for the fight (bandages, bread, wine), into the bag like the market's.
 func _medicine(v: VBoxContainer) -> void:
@@ -1848,6 +1992,7 @@ func start(opts: Dictionary) -> void:
 	var geared: bool = opts.mode == "campaign" or opts.mode == "yard"
 	if geared:
 		opts.loadout.armor += worn_armor()
+		opts.loadout["armor_defs"] = Armory.defs_of(worn_armor())
 	opts.skin = Fighter.SKINS[lk.skin]
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())

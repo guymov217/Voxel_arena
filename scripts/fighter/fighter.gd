@@ -104,6 +104,8 @@ var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
 var wine_timer := 0.0
+var armor_kg := 0.0      # what the armour on him weighs now (plates knocked off lighten it)
+var _armor_dirty := true
 var sober_drunk := 0.0   # how drunk he was before the wine (mods.drunk goes back to it)
 var help_t := 0.0        # a friend is helping him up: he rises twice as fast
 
@@ -678,6 +680,21 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	on.resize(cells.size())
 	on.fill(1)
 	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst}])
+	_armor_dirty = true
+
+## The armour's weight on him, kg (Armory.kg for each piece, the plates still on it).
+func armor_weight() -> float:
+	if _armor_dirty:
+		_armor_dirty = false
+		var kg := 0.0
+		for p in parts:
+			if p.severed:
+				continue
+			for ad in p.get_meta("armor", []):
+				if Armory.sold(String(ad.id)) or Armory.custom(String(ad.id)):
+					kg += int(ad.alive) * float(Data.material(String(ad.mat)).get("mass", 0.03)) * Armory.KG_PER_CELL
+		armor_kg = kg
+	return armor_kg
 
 ## The armourer's pieces worn now: those not in `ids` come off, the missing ones go on (in the
 ## yard, bought or taken off at the smith). Cosmetic pieces are left alone.
@@ -685,12 +702,13 @@ func set_armor_pieces(ids: Array) -> void:
 	for p in parts:
 		var keep := []
 		for ad in p.get_meta("armor", []):
-			if Armory.sold(ad.id) and not ids.has(ad.id):
+			if (Armory.sold(ad.id) or Armory.custom(ad.id)) and not ids.has(ad.id):
 				if ad.node and is_instance_valid(ad.node):
 					ad.node.queue_free()
 			else:
 				keep.append(ad)
 		p.set_meta("armor", keep)
+	_armor_dirty = true
 	for id in ids:
 		var on := false
 		for p in parts:
@@ -1408,7 +1426,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
-	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var load_ := Armory.burden(armor_weight())
+	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
 	last_move = yaw_q * move_local if live else Vector3.ZERO
@@ -1667,6 +1686,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if sw and not sw.is_shield and power:
 		var tip := (sw.angular_velocity - torso.angular_velocity).length() * sw.reach
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
+	# Armour is carried: every exertion (sprinting, swinging, the struggle) costs more breath
+	# the more he has on.
+	stamina_use *= float(Armory.burden(armor_weight()).breath)
 	# A giant's lungs and muscle go with his size: the same swing of a weapon scaled to him
 	# costs him no more breath than a man's costs the man.
 	if S > 1.2:
@@ -2608,6 +2630,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			var ci: int = near[k][1]
 			ad.on[ci] = 0
 			ad.alive -= 1
+			_armor_dirty = true
 			if ad.node and is_instance_valid(ad.node):
 				ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 		if nk > 0:

@@ -241,6 +241,9 @@ func setup(opts: Dictionary) -> void:
 
 ## spec: {kind, name, loadout, team, pos, yaw, mods, personality, diff, color, boss, worn}
 func spawn_fighter(spec: Dictionary):
+	# Pieces designed at the armourer's bench come with the spec (a guest has never seen them).
+	if spec.get("loadout") is Dictionary and spec.loadout.get("armor_defs") is Dictionary:
+		Armory.register(spec.loadout.armor_defs)
 	# A decree on the weapons or the bodies goes into the spec, so guests build the same man.
 	if role != "guest" and not decrees.is_empty():
 		var lo_k: String = dec.get("loadout", "")
