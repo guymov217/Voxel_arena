@@ -759,8 +759,16 @@ func _physics_process(dt: float) -> void:
 ## The player's own hands on his fighter: the same for the host's player and for a guest on his
 ## own machine (whose input then goes to the host): the bow's aim mode and sway, E by a keeper,
 ## and the crosshair his camera looks along for a bow, a thrust, a throw or a pot.
+var faced_for = null
+
 func _player_input(f, dt: float) -> Dictionary:
 	var shooter := _shooter_of(f)
+	# A new fighter of ours (a bout starting, a respawn): the camera starts where he faces,
+	# not at a fixed angle that would turn him round with his back to the foe.
+	if input and f != faced_for:
+		faced_for = f
+		input.look_yaw = f.yaw
+		input.look_pitch = 0.0
 	if input:
 		input.aiming = shooter != null or input.held("throw")
 		_bow_sway(f, shooter, dt)

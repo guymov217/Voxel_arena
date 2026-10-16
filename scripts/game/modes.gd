@@ -58,7 +58,7 @@ func bot_count(players: int) -> int:
 
 static func spawn_pos(index: int, total: int) -> Vector3:
 	var a := float(index) / maxf(2.0, float(total)) * TAU + 0.3
-	var r := minf(15.0 - 2.0, 2.2 if total <= 2 else 4.5)
+	var r := minf(15.0 - 2.0, 3.5 if total <= 2 else 5.0)   # a few strides apart: room to square up
 	return Vector3(sin(a) * r, 0.02, cos(a) * r)
 
 ## Spawns the players (no fighter for the Emperor himself) and everything the mode starts with.

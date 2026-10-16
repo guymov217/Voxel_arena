@@ -124,3 +124,21 @@ func test_co_op_waves_and_teams_split() -> void:
 	var blue := t2.entities.filter(func(e): return e.team == 1).size()
 	t.check(red == 2 and blue == 2, "two against two (%d, %d)" % [red, blue])
 	t2.queue_free()
+
+## A duel starts with the two a few strides apart, each facing the other, and the camera behind
+## the player looking the same way (it does not turn him round).
+func test_a_duel_starts_face_to_face() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	var foe = null
+	for e in m.entities:
+		if e != m.me:
+			foe = e.f
+	var me: Fighter = m.me.f
+	var gap: Vector3 = foe.torso.global_position - me.torso.global_position
+	gap.y = 0.0
+	t.check(gap.length() >= 6.0, "room to square up (%.1f m)" % gap.length())
+	var fwd := Vector3(sin(me.yaw), 0, cos(me.yaw))
+	t.check(fwd.dot(gap.normalized()) > 0.9, "he faces his foe")
+	m.queue_free()
