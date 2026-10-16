@@ -5,10 +5,10 @@ extends Node
 
 var t
 
-func _setup(species: String, dist: float):
+func _setup(species: String, dist: float, loadout := {"main": "gladius", "off": "roundShield"}):
 	var m := Match.new()
 	add_child(m)
-	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": loadout})
 	var man: Fighter = m.me.f
 	man.teleport(Vector3(0, 0, 0))
 	man.mods.toughness = 3.0
@@ -38,7 +38,9 @@ func test_the_scorpion_stings_and_poisons() -> void:
 
 func test_the_python_coils_and_crushes() -> void:
 	seed(6)
-	var s = _setup("python", 2.4)
+	# Bare hands: a blade in his hand that the coils brush is a blow on the snake, and shakes it
+	# off him; this is the coil's own test.
+	var s = _setup("python", 2.4, {"main": "", "off": ""})
 	var coiled := [false]
 	var hp0: float = s[1].torso.hp
 	var lost0: int = s[1].torso.fx.size() - s[1].torso.alive_count

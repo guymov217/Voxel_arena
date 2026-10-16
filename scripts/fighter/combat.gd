@@ -416,7 +416,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var thrust_k := 0.0
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:

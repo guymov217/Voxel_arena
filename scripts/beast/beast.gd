@@ -164,6 +164,16 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 
 ## Hide first: the blow is softened by what it has to get through (HIDE), then lands as on any body.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
+	# Coils wrapped round a man knock against him as they close: that is the hold itself, not a
+	# blow that shakes the snake off him (his blows and kicks still do).
+	if hug != null and hug.get("coil", false) and hit.get("bump", false):
+		var keep := stagger
+		var r := apply_hit_inner(part, hit)
+		stagger = keep
+		return r
+	return apply_hit_inner(part, hit)
+
+func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var k: float = float(HIDE.get(species, 1.0))
 	var typ: String = hit.get("type", "blunt")
 	if k < 1.0 and not part.severed and (typ == "edge" or typ == "point"):

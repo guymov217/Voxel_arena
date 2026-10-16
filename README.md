@@ -1,6 +1,6 @@
 # WRECKSMITH
 
-A physics gladiator brawler in **Godot 4.4** (GDScript, Jolt physics at 120 Hz). Fighters are built
+A physics gladiator brawler in **Godot 4.7** (GDScript, Jolt physics at 120 Hz). Fighters are built
 from voxels and lose them to every cut, thrust and blow. You build your own weapons in a voxel
 forge, and you face 24 species of beasts. Multiplayer is host-authoritative, over **GodotSteam**
 lobbies or plain ENet.
@@ -80,7 +80,7 @@ plain checkout runs without it (and the editor does not complain about a missing
 
 ```bash
 cd extension
-git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
+git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp   # the 4.4 API: a library built for it loads in 4.7
 pip install scons
 scons platform=linux target=template_release      # or windows use_mingw=yes, or macos
 cp ../native/voxel_core.gdextension.in ../native/voxel_core.gdextension
@@ -97,7 +97,7 @@ The CI workflow builds it for all three platforms before exporting.
 
 To use Steam:
 
-1. Install the **GodotSteam GDExtension** for Godot 4.4 from the Asset Library or godotsteam.com,
+1. Install the **GodotSteam GDExtension** for Godot 4.7 (GodotSteam 4.22 or later) from the Asset Library or godotsteam.com,
    or use the prebuilt GodotSteam editor.
 2. Run with Steam open. During development the app id is 480 (Spacewar), or whatever the
    `SteamAppId` environment variable says. For release, put your own app id there and in
@@ -108,7 +108,17 @@ To use Steam:
 
 The Steam path was written against the GodotSteam 4.x API. It is untested here because the test
 machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
-process play a campaign round over localhost.
+process play a campaign round over localhost, the guest's fighter played by a bot.
+
+### Trying an online game on one machine
+
+`tools/mp_local.sh` (Linux/macOS) or `tools/mp_local.bat` (Windows, after
+`set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window already
+in the same room over ENet; press **Start the co-op campaign** in the host window. With `BOT=1`
+the guests are played by bots, so you can host, play and watch a real online bout alone. `LAG=120
+LOSS=3` holds every incoming message back 120 ms (±30) and drops 3% of the unreliable ones, a
+pretend poor connection to see how the game feels at that latency. The same flags work on a plain
+run: `godot --path . -- --host`, `--join <address>`, `--name <name>`, `--bot`, `--lag 120 --loss 3`.
 
 ## Exporting
 
@@ -116,7 +126,7 @@ process play a campaign round over localhost.
 from the repository's Actions tab, or push a tag such as `godot-v0.1`. Each build appears as a
 download on the run page. The presets live in `export_presets.cfg`.
 
-To export by hand, install the export templates for 4.4.1 (Editor → Manage Export Templates),
+To export by hand, install the export templates for 4.7.2 (Editor → Manage Export Templates),
 then run this:
 
 ```bash

@@ -8,7 +8,7 @@ on:
     tags: ['v*']
 
 env:
-  GODOT_VERSION: 4.4.1
+  GODOT_VERSION: 4.7.2
 
 jobs:
   # The C++ voxel core (extension/): Linux and Windows (MinGW) on Ubuntu, a universal library on macOS.
