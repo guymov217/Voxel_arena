@@ -17,7 +17,7 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -179,6 +179,14 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = (sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + crackle * 1.4)
 			"grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar":
 				s = _voice_sample(kind, t, rng, take)
+			"thump":
+				# A cupped palm on a barrel chest: a deep hollow boom that drops in pitch, the
+				# chest ringing a moment, and the smack of the hand on top.
+				var f := 82.0 * tone * (1.0 + 0.7 * exp(-t * 35.0))
+				var body := sin(TAU * f * t) * exp(-t * 14.0) + 0.35 * sin(TAU * f * 2.1 * t) * exp(-t * 26.0)
+				var hp3 := rng.randf_range(-1, 1) - lp
+				lp += hp3 * 0.3
+				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"bell":

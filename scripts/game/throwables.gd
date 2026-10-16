@@ -110,6 +110,10 @@ func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
 			if J < 3.0:
 				continue
 			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6})
+			# The shock goes through the trunk and the skull: what is inside is hurt under the
+			# skin, a beast's as a man's, wherever the blast struck him.
+			if c.alive and (h.part == c.torso or h.part == c.head) and c.has_method("blast_shock"):
+				c.blast_shock(h.part, J)
 
 ## Greek fire (or vitriol) breaks like a firebomb: the liquid bursts out mostly the way the pot
 ## was flying and fans out along whatever it hit, flying as drops on their own momentum. A drop

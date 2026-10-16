@@ -188,12 +188,21 @@ static func dress_beasts(beasts: Dictionary) -> void:
 			# Organs lie under the skin: only a voxel with flesh on all six sides may be one (a
 			# body modelled leaning, the gorilla's, had its guts showing through the rump).
 			var filled := {}
+			var lo := Vector3i(1 << 20, 1 << 20, 1 << 20)
+			var hi := -lo
 			for v in d.voxels:
 				filled[int(v[0]) | (int(v[1]) << 8) | (int(v[2]) << 16)] = true
+				var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+				lo = Vector3i(mini(lo.x, c.x), mini(lo.y, c.y), mini(lo.z, c.z))
+				hi = Vector3i(maxi(hi.x, c.x), maxi(hi.y, c.y), maxi(hi.z, c.z))
+			# Placed by the body as modelled, not by its grid (the gorilla's fills only the front
+			# of its box); and in whatever lies inside, its colour being the fur's or the hide's
+			# (the gorilla had four voxels of heart, and no lungs and no brain at all).
+			var ext := [hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1]
 			for v in d.voxels:
 				var id := NONE
-				if not none and not v[4] and _is_flesh(int(v[3])) and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
-					id = beast_organ_at(name, g, int(v[0]), int(v[1]), int(v[2]))
+				if not none and not v[4] and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
+					id = beast_organ_at(name, ext, int(v[0]) - lo.x, int(v[1]) - lo.y, int(v[2]) - lo.z)
 				if id != NONE:
 					v[3] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]))
 				if v.size() < 6:

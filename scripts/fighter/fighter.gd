@@ -3365,6 +3365,31 @@ func breath_cap() -> float:
 
 ## A hard blunt blow to the trunk or the head bruises the organ under it (no skin broken): a
 ## kicked liver bleeds inside, crushed ribs take the breath, a skull blow shakes the brain.
+## A blast's shock through the trunk or the skull (Throwables.blast): every organ in it is
+## bruised a little, the lungs worst (they burst), the brain rung like a bell.
+func blast_shock(part: VoxelPart, J: float) -> void:
+	if J < 6.0 or part.severed:
+		return
+	var k := minf(0.4, (J - 6.0) * 0.014) / sqrt(maxf(1.0, float(mods.toughness)))
+	var seen := {}
+	for i in part.organ.size():
+		var o: int = part.organ[i]
+		if o == Anatomy.NONE or Anatomy.is_bone(o) or seen.has(o) or not part.alive[i]:
+			continue
+		seen[o] = true
+		var kk := k * (1.5 if o == Anatomy.LUNG_R or o == Anatomy.LUNG_L else 1.0)
+		organ_bruise[o] = minf(0.9, float(organ_bruise.get(o, 0.0)) + kk)
+		match o:
+			Anatomy.LIVER, Anatomy.STOMACH, Anatomy.GUTS:
+				torso.bleed += kk * 2.0
+				pain = minf(1.0, pain + kk * 0.5)
+			Anatomy.HEART:
+				torso.bleed += kk * 2.0
+			Anatomy.BRAIN:
+				concussion = minf(1.0, concussion + kk)
+	if seen.has(Anatomy.LUNG_R) or seen.has(Anatomy.LUNG_L):
+		stamina = minf(stamina, breath_cap())
+
 func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void:
 	if J < 12.0:
 		return

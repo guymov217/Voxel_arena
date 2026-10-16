@@ -473,3 +473,17 @@ func test_a_stab_in_the_belly_spills_nothing_a_lions_slashed_belly_does() -> voi
 		await _steps(4)
 	t.check(lion.guts_out and lion.gut_rope != null, "a lion's belly slashed open spills its guts (%d)" % k2)
 	rb[0].queue_free()
+
+## The gorilla (fur all through, modelled filling only the front of its box) has its insides
+## like any beast, and a blast beside it hurts them under the skin.
+func test_a_gorilla_has_insides_and_a_blast_hurts_them() -> void:
+	var r := _beast("gorilla")
+	var m: Match = r[0]
+	var b: Beast = r[1]
+	for o in [Anatomy.HEART, Anatomy.LUNG_L, Anatomy.LIVER, Anatomy.GUTS, Anatomy.BRAIN]:
+		t.check(b.organ_total.get(o, 0) >= 20, "the gorilla has a %s (%d)" % [Anatomy.organ_name(o), b.organ_total.get(o, 0)])
+	await _steps(30)
+	m.throwables.blast(b.torso.global_position + Vector3(0, 0, -0.6 * b.S), 3.5, 24.0, m.me.f)
+	await _steps(5)
+	t.check(b.organ_health(Anatomy.LUNG_L) < 0.95 and b.organ_health(Anatomy.BRAIN) < 0.95, "the blast bruises its lungs and rings its brain (%.2f, %.2f)" % [b.organ_health(Anatomy.LUNG_L), b.organ_health(Anatomy.BRAIN)])
+	m.queue_free()

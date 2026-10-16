@@ -36,6 +36,7 @@ const VENOMOUS := {"scorpion": "sting", "manticore": "sting", "spider": "bite", 
 var coil_cool := 0.0
 var on_stomp: Callable
 var on_roar: Callable
+var on_thump: Callable   # a fist on its own chest (the gorilla's display): the drum is heard
 # Animation: the parts that move on their own joints (necks, heads, tails, wings, trunks,
 # pincers, the coils of a snake), their rest pose against their parent and how far they bend.
 var anim: Array = []                 # [{part, role, rest: Quaternion, lim, i}]
@@ -1908,6 +1909,12 @@ const APE_BLOWS := {
 func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 	if float(ai.get("beat", 0.0)) > 0.0:
 		ai.beat = float(ai.beat) - dt
+		# A blow of the drum each time a fist comes in (the arms swap at the same count).
+		var k := int(maxf(0.0, float(ai.beat)) * 9.0)
+		if k != int(ai.get("beat_k", -1)) and ai.beat > 0.0:
+			ai.beat_k = k
+			if on_thump.is_valid():
+				on_thump.call(self)
 	var arms := []
 	for n in ["legFL", "legFR"]:
 		if by_name.has(n) and not leg_gone(by_name[n]) and fn_of([n]) > 0.35 and _ready_to_strike(by_name[n]):
