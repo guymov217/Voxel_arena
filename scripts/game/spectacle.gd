@@ -11,7 +11,6 @@ const DROPS := [
 	["goldenSpork", "The Emperor drops his golden spork.", 1], ["swordfish", "A swordfish! Still wet.", 2],
 	["goose", "A goose on a stick. It is furious.", 2], ["fishStick", "An angry fish on a stick slaps the ground.", 2],
 	["hammer", "A hammer clatters down from the stands.", 2], ["nunchaku", "Nunchaku! Do not hit yourself.", 2],
-	["whip", "A whip. Yank their weapon away.", 2],
 	["boing", "A spring sword! BOING!", 2], ["sticky", "A glue mace. Everything sticks to it.", 2],
 	["tickler", "A feather duster. Deadly to the dignified.", 1], ["magnet", "A magnet club: pulls iron out of hands.", 2],
 	["icicle", "An icicle blade. Chills and shatters.", 2], ["badIdea", "A barrel of Bad Ideas. It is explosive.", 1],

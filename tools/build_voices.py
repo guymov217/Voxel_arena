@@ -268,11 +268,13 @@ def hyena(ev, i):
 
 @voice("rat")
 def rat(ev, i):
-    if ev == "call":  # a giant rat: the squeaks a little down, with a hiss of teeth
-        return seq(shift(pool("rat-call", i), 0.8), shift(pool("rat-attack", i), 0.75), gap=0.05)
+    # A giant rat. The squeals were the loudest, shrillest thing in the arena (a pack of them at
+    # once): now low chitters and a hiss through the teeth, darkened, short and quiet.
+    if ev == "call":
+        return soft(short(shift(pool("rat-call", i), 0.6), 0.55), 0.26, 2600)
     if ev == "hurt":
-        return shift(pool("rat-hurt", i), 0.8)
-    return fade_out(shift(pool("rat-death", i), 0.75), 0.6)
+        return soft(short(shift(pool("rat-hurt", i), 0.62), 0.35), 0.28, 2600)
+    return soft(fade_out(cut(shift(pool("rat-death", i), 0.6), 0, 1.0), 0.45), 0.3, 2400)
 
 @voice("boar")
 def boar(ev, i):
@@ -550,7 +552,7 @@ def limit(x, ev):
     return fade_out(x[:n], 0.35) if len(x) > n else x
 TAKES = 3
 TAKES_OF = {"man_light": 6, "man_mid": 6, "man_heavy": 6}
-SOFT = ["man_light", "man_mid", "man_heavy"]   # already finished quietly: no limiter, no drive
+SOFT = ["man_light", "man_mid", "man_heavy", "rat"]   # already finished quietly: no limiter, no drive
 
 # ---------------------------------------------------------------- output
 def write_ogg(x, path):

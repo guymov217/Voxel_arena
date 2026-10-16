@@ -41,7 +41,7 @@ static func value(d) -> int:
 
 ## Weapons kept aside for now (still in the data, out of the shop, the lists, the lottery
 ## and the drops from the stands): the chain weapons and the crossbow.
-const SHELVED := ["flail", "imperialFlail", "meteorHammer", "crossbow"]
+const SHELVED := ["flail", "imperialFlail", "meteorHammer", "crossbow", "whip"]
 
 static func shelved(key: String) -> bool:
 	return SHELVED.has(key)

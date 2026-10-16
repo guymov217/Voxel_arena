@@ -675,7 +675,10 @@ func _physics_process(dt: float) -> void:
 				# A beast on the hunt gives voice now and then, between its strikes.
 				elif f.target and f.alive and time - float(f.get_meta("voice_t", -9.0)) > float(f.get_meta("voice_gap", 6.0)):
 					f.set_meta("voice_t", time)
-					f.set_meta("voice_gap", rng.randf_range(6.0, 14.0))
+					# A pack does not all give voice at once: each of them the rarer the more of
+					# its kind are about (a run of rats screeching was a din).
+					var kin := entities.filter(func(o): return o.kind == "beast" and is_instance_valid(o.f) and o.f.alive and o.f.get("species") == f.species).size()
+					f.set_meta("voice_gap", rng.randf_range(6.0, 14.0) * maxf(1.0, kin))
 					say(f, Voices.beast_call(f.species), 0.7, "call")
 		if e.kind == "bot" and e.get("ball_target") is Vector3:
 			var bt: Vector3 = e.ball_target
