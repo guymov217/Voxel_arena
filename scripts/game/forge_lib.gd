@@ -301,7 +301,7 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	var kind: String = _pick(["blade", "blade", "axe", "mace", "polearm", "silly"], rng)
 	var d := empty_design(weapon_name(kind, rng))
 	var metal: String = _pick(["steel", "steel", "iron", "iron", "gold", "stone"], rng)
-	var haft: String = _pick(["wood", "wood", "leather", "bone"], rng)
+	var haft: String = _pick(["wood", "wood", "wood", "iron"], rng)
 	var grip := rng.randi_range(3, 12 if kind == "polearm" else 6)
 	for y in grip:
 		set_voxel(d, 0, y, 0, haft, "grip")

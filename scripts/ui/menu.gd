@@ -991,13 +991,14 @@ func _yard(v: VBoxContainer) -> void:
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-	# His own designs first (made to order), then the smith's rack.
-	if _smith_designs(rack_box, grid.columns, tile_st):
+	# The bout's oddities, his own designs (made to order), then the smith's rack.
+	var odd := _smith_oddities(rack_box, grid.columns, tile_st)
+	if _smith_designs(rack_box, grid.columns, tile_st) or odd:
 		rack_box.add_child(UIStyle.label("THE SMITH'S RACK", 13, UIStyle.BRONZE))
 		rack_box.move_child(grid, rack_box.get_child_count() - 1)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
-func _sell_choice(nm: String, buy: Callable, sides: Array) -> void:
+func _sell_choice(nm: String, buy: Callable, sides: Array, bought := Callable()) -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1020,10 +1021,92 @@ func _sell_choice(nm: String, buy: Callable, sides: Array) -> void:
 		var r: Dictionary = buy.call(side)
 		var b := UIStyle.button("Sell the %s (%s hand) · pay %d" % [str(d.get("name", "?")) if d else "?", "main" if side == "R" else "off", int(r.get("cost", 0))], func():
 			dim.queue_free()
-			_pay(buy.call(side)))
+			var got: Dictionary = buy.call(side)
+			if bought.is_valid() and not got.has("error") and int(got.get("cost", 0)) <= coins():
+				bought.call()
+			_pay(got))
 		b.disabled = int(r.get("cost", 0)) > coins()
 		v.add_child(b)
 	v.add_child(UIStyle.button("Keep both", func(): dim.queue_free()))
+
+## This campaign run's seed for the smith's oddities (drawn once, kept with the save).
+func run_seed() -> int:
+	if Save.get_value("run_seed") == null:
+		Save.set_value("run_seed", randi())
+	return int(Save.get_value("run_seed", 0))
+
+## The oddities on the stall this bout: one-off weapons of the smith's own, other ones each bout
+## and each run; one bought is gone.
+func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> bool:
+	var stage := int(Save.get_value("stage", 1))
+	var key := "%d:%d" % [run_seed(), stage]
+	var sold: Array = (Save.get_value("oddities_sold", {}) as Dictionary).get(key, [])
+	var list := Arms.oddities(run_seed(), stage)
+	box.add_child(UIStyle.label("VULCANUS'S ODDITIES · this bout only, one of each", 13, UIStyle.GOLD))
+	var g := GridContainer.new()
+	g.columns = columns
+	g.add_theme_constant_override("h_separation", 10)
+	g.add_theme_constant_override("v_separation", 10)
+	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(g)
+	for dv in list:
+		var d: Dictionary = dv
+		var idx := int(d.oddity.i)
+		var price := Arms.oddity_price(d)
+		var tile := PanelContainer.new()
+		var st := tile_st.duplicate()
+		if d.oddity.rare:
+			st.border_color = UIStyle.GOLD
+			st.set_border_width_all(2)
+		tile.add_theme_stylebox_override("panel", st)
+		tile.custom_minimum_size = Vector2(146, 0)
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 4)
+		tile.add_child(col)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(0, 96)
+		col.add_child(tex)
+		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.GOLD if d.oddity.rare else UIStyle.TEXT)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(nm)
+		var gems := []
+		for v in d.voxels:
+			if Weapon.GEMS.has(v[3]) and not gems.has(v[3]):
+				gems.append(v[3])
+		var info := UIStyle.label("%d denarii%s" % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""], 12, UIStyle.GOLD if price <= coins() else UIStyle.MUTED)
+		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(info)
+		if sold.has(idx):
+			col.add_child(UIStyle.label("Sold", 13, UIStyle.MUTED))
+			tex.modulate = Color(1, 1, 1, 0.35)
+		else:
+			var mark_sold := func():
+				var all: Dictionary = Save.get_value("oddities_sold", {})
+				var got: Array = all.get(key, [])
+				if not got.has(idx):
+					got.append(idx)
+				all[key] = got
+				Save.set_value("oddities_sold", all)
+			var pay := func(r: Dictionary):
+				if r.has("error") or int(r.get("cost", 0)) > coins():
+					_pay(r)
+					return
+				mark_sold.call()
+				_pay(r)
+			var buy := UIStyle.button("Buy", func():
+				var r := Arms.buy_design(arms(), d, "", price)
+				if r.has("choose"):
+					_sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(arms(), d, sd, price), r.choose, mark_sold)
+				else:
+					pay.call(r), true)
+			buy.disabled = price > coins() + (Arms.value(arms().main) + Arms.value(arms().off)) / 2
+			col.add_child(buy)
+		g.add_child(tile)
+		Thumbs.weapon(tex, d, "odd:%d:%d:%d" % [run_seed(), stage, idx])
+	return true
 
 ## The player's own designs (My designs, from the forge), made by the smith at what they are
 ## worth: their stuff block by block and his labour. Bought, one goes in a free hand like any.
@@ -2433,6 +2516,8 @@ func _unhandled_input(e: InputEvent) -> void:
 
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:
+	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+	Save.set_value("oddities_sold", {})
 	Save.set_value("stage", 1)
 	Save.set_value("checkpoint", 1)
 	set_body(Body.empty())

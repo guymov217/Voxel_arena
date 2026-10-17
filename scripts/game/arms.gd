@@ -133,12 +133,56 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	return _acquire(a, Data.preset(key).duplicate(true), int(b.price), b.slot == "off", sell)
 
 ## Has a design from the player's own gallery made at the smith, at what it is worth.
-static func buy_design(a: Dictionary, d: Dictionary, sell := "") -> Dictionary:
+static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1) -> Dictionary:
 	if not (d.get("voxels") is Array) or d.voxels.is_empty() or d.voxels.size() > ForgeLib.MAX_VOXELS or not ForgeLib.compute_stats(d).hasGrip:
 		return {"error": "The smith cannot make that"}
 	var nd := d.duplicate(true)
 	nd.erase("imbue")
-	return _acquire(a, nd, design_price(nd), nd.get("kind", "weapon") == "shield", sell)
+	nd.erase("oddity")
+	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield", sell)
+
+# ---------- Vulcanus's oddities: a few one-off weapons each bout ----------
+
+const ODDITY_NAMES := ["The Widowmaker", "Old Grudge", "Sorrow", "The Butcher's Apology", "Bonebiter", "Mercy", "The Last Word", "Thunderjaw", "Lady Ruin", "The Emperor's Itch", "Gutspiller", "Kindly Death"]
+const ODDITY_MARKUP := 1.3
+
+## The odd weapons on the smith's stall for `stage` of the campaign run `run_seed`: the same
+## on every visit through the bout, other ones the next bout and other ones every run. Later
+## bouts bring better stuff: steel for iron, lead in the heads, and now and then gem sockets.
+static func oddities(run_seed: int, stage: int, n := 3) -> Array:
+	var out := []
+	for i in n:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash([run_seed, stage, i])
+		var d := ForgeLib.surprise_weapon(rng)
+		var better := clampf(0.15 + 0.07 * stage, 0.15, 0.85)
+		var gem_p := clampf(0.04 * (stage - 1), 0.0, 0.5)
+		var gem: String = ["ruby", "sapphire", "emerald"][rng.randi_range(0, 2)]
+		var head := []
+		for v in d.voxels:
+			if v[4] != "grip" and v[3] != "wood":
+				head.append(v)
+		for v in head:
+			if v[3] == "iron" and rng.randf() < better:
+				v[3] = "steel"
+			elif v[3] == "stone" and v[4] == "blunt" and rng.randf() < better * 0.5:
+				v[3] = "lead"
+		var rare := rng.randf() < gem_p and not head.is_empty()
+		if rare:
+			var k := mini(head.size(), rng.randi_range(3, 4 + stage))
+			for j in k:
+				head[rng.randi_range(0, head.size() - 1)][3] = gem
+			d.name = ODDITY_NAMES[rng.randi_range(0, ODDITY_NAMES.size() - 1)]
+		d.erase("stats")
+		d["oddity"] = {"stage": stage, "i": i, "rare": rare}
+		out.append(d)
+	return out
+
+## What an oddity costs: what it is worth to make, and a little more for being one of a kind.
+static func oddity_price(d: Dictionary) -> int:
+	var nd := d.duplicate()
+	nd.erase("oddity")
+	return int(ceil(design_price(nd) * ODDITY_MARKUP))
 
 ## What the smith asks to make a design: its stuff, block by block, and his labour on it.
 static func design_price(d: Dictionary) -> int:

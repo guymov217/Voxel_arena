@@ -178,3 +178,38 @@ func test_a_design_from_the_gallery_is_made_at_the_smith() -> void:
 	var labels: Array = f.find_children("*", "Button", true, false).map(func(b): return b.text)
 	t.check(not labels.has("Take it") and not labels.has("Pay and take it") and labels.has("Save design"), "the main menu's forge saves, it does not hand over (%s)" % [labels.filter(func(x): return x.contains("ake") or x.contains("Save"))])
 	f.queue_free()
+
+## Vulcanus's oddities: the same through a bout (every visit), other ones the next bout, other
+## ones every run; each can be held and bought, at a little over its worth; later bouts bring
+## better stuff and, now and then, gem sockets.
+func test_the_smiths_oddities() -> void:
+	var a := Arms.oddities(1234, 3)
+	var b := Arms.oddities(1234, 3)
+	t.eq(a.size(), 3, "three on the stall")
+	t.check(a.map(func(d): return d.voxels.hash()) == b.map(func(d): return d.voxels.hash()), "the same on every visit through the bout")
+	var other_run := Arms.oddities(98765, 3)
+	var next_bout := Arms.oddities(1234, 4)
+	t.check(a[0].voxels.hash() != other_run[0].voxels.hash(), "another run, other weapons")
+	t.check(a[0].voxels.hash() != next_bout[0].voxels.hash(), "the next bout, other weapons")
+	var shapes := {}
+	for i in 3:
+		shapes[a[i].voxels.hash()] = true
+	t.eq(shapes.size(), 3, "no two alike on the stall")
+	for d in a:
+		var r := Arms.buy_design(Arms.empty(), d, "", Arms.oddity_price(d))
+		t.check(not r.has("error"), "%s can be bought" % d.name)
+		var plain: Dictionary = d.duplicate()
+		plain.erase("oddity")
+		t.check(Arms.oddity_price(d) > Arms.design_price(plain), "a one-off costs a little over its worth")
+	var steel := [0, 0]
+	var gems := [0, 0]
+	for seed_ in 40:
+		for k in 2:
+			for d in Arms.oddities(seed_ * 7 + 1, [1, 12][k]):
+				for v in d.voxels:
+					if v[3] == "steel":
+						steel[k] += 1
+					if Weapon.GEMS.has(v[3]):
+						gems[k] += 1
+	t.check(steel[1] > steel[0], "later bouts: more steel (%d vs %d)" % [steel[1], steel[0]])
+	t.check(gems[0] == 0 and gems[1] > 0, "gem sockets only later (%d at bout 1, %d at bout 12)" % gems)
