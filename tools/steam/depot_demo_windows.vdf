@@ -1,0 +1,10 @@
+"DepotBuild"
+{
+	"DepotID" "DEMO_WINDOWS_DEPOT_ID"
+	"FileMapping"
+	{
+		"LocalPath" "windows/*"
+		"DepotPath" "."
+		"Recursive" "1"
+	}
+}

@@ -72,7 +72,12 @@ jobs:
           godot --headless --path . --export-release "Windows Desktop" build/windows/VoxelArena.exe
           godot --headless --path . --export-release "Linux" build/linux/VoxelArena.x86_64
           godot --headless --path . --export-release "macOS" build/macos/VoxelArena.zip
-          ls -la build/*
+          # The free demo (its own Steam app): the same game with the "demo" feature on.
+          mkdir -p build/demo/windows build/demo/linux build/demo/macos
+          godot --headless --path . --export-release "Windows Desktop (Demo)" build/demo/windows/WRECKSMITH_Demo.exe
+          godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECKSMITH_Demo.x86_64
+          godot --headless --path . --export-release "macOS (Demo)" build/demo/macos/WRECKSMITH_Demo.zip
+          ls -la build/* build/demo/*
       - uses: actions/upload-artifact@v4
         with:
           name: voxel-arena-godot-windows
@@ -85,3 +90,15 @@ jobs:
         with:
           name: voxel-arena-godot-macos
           path: build/macos/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wrecksmith-demo-windows
+          path: build/demo/windows/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wrecksmith-demo-linux
+          path: build/demo/linux/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wrecksmith-demo-macos
+          path: build/demo/macos/

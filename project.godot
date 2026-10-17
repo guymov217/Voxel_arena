@@ -50,3 +50,8 @@ environment/volumetric_fog/volume_size=96
 [debug]
 
 gdscript/warnings/inference_on_variant=0
+
+[wrecksmith]
+
+store_url="https://store.steampowered.com/"
+full_app_id=0

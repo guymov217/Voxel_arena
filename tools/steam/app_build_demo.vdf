@@ -1,0 +1,13 @@
+"AppBuild"
+{
+	"AppID" "DEMO_APP_ID"
+	"Desc" "WRECKSMITH demo"
+	"ContentRoot" "../../build/demo/"
+	"BuildOutput" "../../build/steam_output/"
+	"SetLive" ""
+	"Depots"
+	{
+		"DEMO_WINDOWS_DEPOT_ID" "depot_demo_windows.vdf"
+		"DEMO_LINUX_DEPOT_ID" "depot_demo_linux.vdf"
+	}
+}

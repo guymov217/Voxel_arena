@@ -103,6 +103,17 @@ func _init_steam() -> void:
 	if steam.has_signal("join_requested"):
 		steam.connect("join_requested", func(lobby, _friend): join_steam(int(lobby)))
 
+## A marker on the Steam game recording's timeline (a kill, the kill cam's pick): the player
+## finds the moment there and clips it in a click. `clip` 0 none, 1 standard, 2 featured.
+## Works with the GodotSteam builds that have the timeline (either generation of its call).
+func timeline_event(title: String, desc: String, clip := 1, icon := "steam_combat") -> void:
+	if not steam_ready:
+		return
+	if steam.has_method("addInstantaneousTimelineEvent") and steam.get_method_argument_count("addInstantaneousTimelineEvent") == 6:
+		steam.call("addInstantaneousTimelineEvent", title, desc, icon, 0, 0.0, clip)
+	elif steam.has_method("addTimelineEvent") and steam.get_method_argument_count("addTimelineEvent") == 7:
+		steam.call("addTimelineEvent", icon, title, desc, 0, 0.0, 0.0, clip)
+
 func host_steam(public := true) -> void:
 	if not steam_ready:
 		connection_failed.emit("Steam is not running")

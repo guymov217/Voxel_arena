@@ -328,6 +328,7 @@ func show_screen(s: String, msg := "") -> void:
 		"gate": _gate(v)
 		"missions": _missions(v)
 		"circus_market": _circus_market(v)
+		"demo_end": _demo_end(v)
 	if backdrop and backdrop.hero:
 		_frame_hero()
 
@@ -353,6 +354,10 @@ func _main(v: VBoxContainer) -> void:
 	head.add_child(t)
 	t.modulate.a = 0.0
 	create_tween().tween_property(t, "modulate:a", 1.0, 0.7)
+	if Edition.demo():
+		var badge := UIStyle.label("FREE DEMO · the campaign to its second boss", 16, UIStyle.BRONZE)
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head.add_child(badge)
 	# The gold glints now and then.
 	var glint := create_tween().set_loops()
 	glint.bind_node(t)
@@ -374,6 +379,8 @@ func _main(v: VBoxContainer) -> void:
 		# A campaign under way goes on from the yard, the lobby between bouts.
 		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard(), true),
 	]
+	if Edition.demo():
+		buttons.append(UIStyle.menu_button("Wishlist the full game", Edition.open_store))
 	if SHOW_CIRCUS:
 		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
 	buttons.append(UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")))
@@ -422,6 +429,10 @@ func _open_station(id: String) -> void:
 	# A room's host gets the gate's menu (the co-op campaign or another mode for everyone).
 	if id == "gate" and not Net.active():
 		var st := int(Save.get_value("stage", 1))
+		if Edition.demo_over(st):
+			_end_match()
+			show_screen("demo_end")
+			return
 		start({"mode": "campaign", "stage": st})
 		return
 	if id == "gate" and Net.active() and not Net.is_host():
@@ -483,15 +494,26 @@ func _gate(v: VBoxContainer) -> void:
 	if Net.active() and Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
 		var cn := Data.stage(cs, 1 + Net.peers.size())
-		v.add_child(UIStyle.label("Next co-op bout: %s · %s" % [cn.get("title", "Bout %d" % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
-		v.add_child(UIStyle.button("The co-op campaign · bout %d (all of you)" % cs, func(): start({"mode": "coop", "role": "host"}), true))
+		if Edition.demo_over(cs):
+			v.add_child(UIStyle.button("The demo ends here: what the full game holds", func():
+				Net.send_all("demo_end", {})
+				_end_match()
+				show_screen("demo_end"), true))
+		else:
+			v.add_child(UIStyle.label("Next co-op bout: %s · %s" % [cn.get("title", "Bout %d" % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
+			v.add_child(UIStyle.button("The co-op campaign · bout %d (all of you)" % cs, func(): start({"mode": "coop", "role": "host"}), true))
 	elif Net.active() and not Net.is_host():
 		v.add_child(UIStyle.label("The host leads the party through the gate.", 15, UIStyle.MUTED))
 	else:
 		var st := int(Save.get_value("stage", 1))
 		var nxt := Data.stage(st)
-		v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
-		v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
+		if Edition.demo_over(st):
+			v.add_child(UIStyle.button("The demo ends here: what the full game holds", func():
+				_end_match()
+				show_screen("demo_end"), true))
+		else:
+			v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
+			v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
 	if SHOW_CIRCUS:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
@@ -669,8 +691,13 @@ func _training(v: VBoxContainer) -> void:
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")
 	var foes: Array = Data.campaign.enemies.keys().map(func(k): return "foe:" + k)
-	var who: Array = ["none", "gladiator"] + foes + Data.beasts.keys()
+	var who: Array = (["none", "gladiator"] + foes + Data.beasts.keys()).filter(func(k): return Edition.foe_open(k))
+	if not who.has(training.get("enemy")):
+		training.enemy = "gladiator"
 	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else Data.beasts[k].name))), "enemy")
+	if Edition.demo():
+		ge.add_child(UIStyle.label("", 12))
+		ge.add_child(UIStyle.label("%d more monsters and bosses in the full game" % Edition.full_game_tease().locked.size(), 13, UIStyle.BRONZE))
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
 	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "bow"]
 	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
@@ -1467,10 +1494,20 @@ func _fights(v: VBoxContainer) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 2
 	v.add_child(grid)
-	for k in ["hunt", "duel", "bo3", "king", "emperor", "ffa", "chaos", "coop", "gauntlet", "teams", "hill", "lastLimb", "headball"]:
+	var in_room := Net.active()
+	var keys := ["hunt", "duel", "bo3", "king", "emperor", "ffa", "chaos", "coop", "gauntlet", "teams", "hill", "lastLimb", "headball"]
+	if in_room:
+		keys.insert(0, "pvp")
+	for k in keys:
 		var b := UIStyle.button(Modes.TITLES[k].trim_suffix("!"), func(): start({"mode": k}))
 		b.tooltip_text = Modes.LABELS.get(k, "")
+		if not Edition.mode_open(k, in_room):
+			# In the demo the rest are there to see, under lock: the full game has them.
+			b.text = "🔒 " + b.text + "  · full game"
+			b.disabled = true
 		grid.add_child(b)
+	if Edition.demo():
+		v.add_child(UIStyle.button("Wishlist the full game", Edition.open_store))
 	if Net.active() and Net.is_host() and not Net.peers.is_empty():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
@@ -2488,6 +2525,13 @@ func _on_finished(r: Dictionary) -> void:
 				Save.set_value(ck, int(r.checkpoint))
 			Save.set_value(sk, int(r.stage) + 1)
 			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
+			if Edition.demo_over(int(r.stage) + 1):
+				# The demo's last boss down: what the full game holds, for the whole party.
+				if Net.active():
+					Net.send_all("demo_end", {})
+				_end_match()
+				show_screen("demo_end")
+				return
 		else:
 			# A death ends the campaign: the next one begins at the first bout, with a beginner's
 			# purse, stick and body (online and alone alike; the host's word is the party's).
@@ -2574,6 +2618,10 @@ func _on_net(type: String, data, _from: int) -> void:
 				shared_purse = maxi(0, int(data))
 				if screen != "" and visible:
 					show_screen(screen)
+		"demo_end":
+			if not Net.is_host():
+				_end_match()
+				show_screen("demo_end")
 		"purse_add":
 			if Net.is_host() and (data is int or data is float):
 				add_coins(clampi(int(data), -5000, 5000))
@@ -2583,6 +2631,10 @@ func _on_net(type: String, data, _from: int) -> void:
 				match_.guest_end(data)
 
 func _unhandled_input(e: InputEvent) -> void:
+	# F12: a screenshot (with Steam running, Steam takes its own on the same key).
+	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F12 and not Net.steam_ready:
+		_screenshot()
+		return
 	# R: the stage (the bout, the training) again from the start. Alone only: in a room the
 	# host's match is everyone's.
 	# (Not in the campaign: a bout there is not taken back; Esc offers a fresh campaign instead.)
@@ -2594,6 +2646,56 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
 		_toggle_pause()
+
+## The end of the demo: the second boss is down. What the full game holds (its bouts, its
+## bosses, the monsters the demo never showed), the wishlist, and the demo again from bout 1.
+func _demo_end(v: VBoxContainer) -> void:
+	var tease := Edition.full_game_tease()
+	v.add_theme_constant_override("separation", 12)
+	v.add_child(UIStyle.title("The crowd wants more", 40))
+	v.add_child(UIStyle.label("You have fought through the demo: %d bouts, the Cyclops and the Big Lion down." % Edition.DEMO_STAGES, 17, UIStyle.TEXT))
+	v.add_child(UIStyle.label("THE FULL GAME", 14, UIStyle.BRONZE))
+	v.add_child(UIStyle.label("%d bouts · %d bosses · the arena modes and party games, alone or with friends" % [int(tease.stages), int(tease.bosses)], 16, UIStyle.GOLD))
+	v.add_child(UIStyle.label("Waiting behind the gate:", 14, UIStyle.MUTED))
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 8)
+	flow.add_theme_constant_override("v_separation", 8)
+	for n in tease.locked:
+		var chip := PanelContainer.new()
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0.16, 0.1, 0.06)
+		st.border_color = UIStyle.BRONZE_DARK
+		st.set_border_width_all(1)
+		st.set_corner_radius_all(6)
+		st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 4; st.content_margin_bottom = 4
+		chip.add_theme_stylebox_override("panel", st)
+		var cl := UIStyle.label("🔒 " + String(n), 14, UIStyle.TEXT)
+		cl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		chip.add_child(cl)
+		flow.add_child(chip)
+	v.add_child(flow)
+	v.add_child(UIStyle.button("Wishlist WRECKSMITH on Steam", Edition.open_store, true))
+	if not Net.active() or Net.is_host():
+		v.add_child(UIStyle.button("Play the demo again from bout 1", func():
+			Save.set_value("coop_stage", 1)
+			Save.set_value("coop_checkpoint", 1)
+			restart_campaign()))
+	v.add_child(UIStyle.button("The forge (keep building)", _workshop_forge))
+	v.add_child(UIStyle.button("Main menu" if not Net.active() else "Back to the room", func(): show_screen("main" if not Net.active() else "room")))
+
+## A screenshot of the game as it is on screen, into the screenshots folder (Pictures/WRECKSMITH
+## where there is one, else the game's own data folder).
+func _screenshot() -> String:
+	var img := get_viewport().get_texture().get_image()
+	var pics := OS.get_system_dir(OS.SYSTEM_DIR_PICTURES)
+	var dir := pics.path_join("WRECKSMITH") if pics != "" else ProjectSettings.globalize_path("user://screenshots")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var path := dir.path_join("wrecksmith_%s.png" % Time.get_datetime_string_from_system().replace(":", "-"))
+	if img.save_png(path) != OK:
+		return ""
+	if match_ and is_instance_valid(match_):
+		match_.feed.emit("Screenshot saved: " + path.get_file())
+	return path
 
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:

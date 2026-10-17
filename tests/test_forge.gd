@@ -268,3 +268,45 @@ func test_the_builder_picks_where_the_hand_holds() -> void:
 	g = ForgeLib.grip_points(f._design_now())
 	t.check(g.main.distance_to(Vector3(high)) < 0.01 and g.off.distance_to(Vector3(low)) < 0.01, "two-handed: one hand, then the other")
 	f.queue_free()
+
+## Whatever the forge makes by itself (Something silly, any base card with any modifier cards,
+## Surprise me) comes out in one piece: no voxel hangs in the air apart from the weapon.
+func test_nothing_the_forge_makes_hangs_in_the_air() -> void:
+	var cells_of := func(d: Dictionary) -> Dictionary:
+		var c := {}
+		for v in d.voxels:
+			c[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = [v[3], v[4]]
+		return c
+	var bad := []
+	var made := 0
+	var mods: Array = ForgeLib.MODIFIERS.keys()
+	for seed in 400:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed
+		var base: String = "silly" if seed % 2 == 0 else ForgeLib.BASES.keys()[seed % ForgeLib.BASES.size()]
+		var picks := []
+		for k in rng.randi_range(0, ForgeLib.MAX_PICKS):
+			picks.append(mods[rng.randi_range(0, mods.size() - 1)])
+		for d in [ForgeLib.build_from_cards(base, picks, rng), ForgeLib.surprise_weapon(rng)]:
+			made += 1
+			var n: int = ForgeLib.pieces(cells_of.call(d)).size()
+			if n != 1 and bad.size() < 5:
+				bad.append("%s %s: %d pieces" % [base, picks, n])
+	t.check(bad.is_empty(), "%d weapons, every one in one piece %s" % [made, bad])
+
+## The ready-made weapons too: every one is in one piece (loose bits are joined on, not lost).
+func test_every_ready_made_weapon_is_one_piece() -> void:
+	var bad := []
+	for k in Data.presets:
+		var d: Dictionary = Data.preset(k)
+		if d.has("chain"):
+			continue
+		var c := {}
+		for v in d.get("voxels", []):
+			c[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = [v[3], v[4]]
+		if ForgeLib.pieces(c).size() > 1:
+			bad.append(k)
+	t.check(bad.is_empty(), "no ready-made weapon has a piece in the air %s" % [bad])
+	var loose := {"voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "blunt"], [3, 1, 0, "gold", "blunt"]]}
+	t.eq(ForgeLib.bridge(loose), 2, "a loose voxel three cells off is joined by two")
+	t.eq(loose.voxels.size(), 5, "and nothing is taken away")

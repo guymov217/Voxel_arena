@@ -300,7 +300,9 @@ func _emperor(_dt: float, inp: Dictionary) -> void:
 			if not d.is_empty():
 				m.add_runtime_decree(d[0])
 		if use.call(2, 20.0):
-			var sp := ["lion", "wolf", "bear", "boar", "tiger", "hyena"]
+			var sp := ["lion", "wolf", "bear", "boar", "tiger", "hyena"].filter(func(k): return Edition.foe_open(k))
+			if sp.is_empty():
+				sp = ["lion"]
 			var k: String = sp[m.rng.randi_range(0, sp.size() - 1)]
 			m.spawn_beast({"beast": k, "team": 9, "pos": Vector3(0, 0.1, 12), "yaw": PI})
 			m.feed.emit("The Emperor releases a %s!" % Data.beasts.get(k, {}).get("name", k).to_lower())

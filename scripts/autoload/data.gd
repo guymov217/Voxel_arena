@@ -35,6 +35,12 @@ func load_all() -> void:
 	body_res = int(m.get("bodyRes", 2))
 	var p: Dictionary = _read("presets")
 	presets = p.get("presets", {})
+	# No ready-made weapon has a piece hanging in the air (the chicken's eye, the tickler's
+	# feathers, the bow's string): each loose piece is joined on.
+	for k in presets:
+		if presets[k] is Dictionary and presets[k].get("voxels") is Array and not presets[k].has("chain"):
+			if ForgeLib.bridge(presets[k]) > 0:
+				presets[k].erase("stats")   # (worked out afresh for the joined-up weapon)
 	damage_tuning = p.get("damageTuning", {})
 	var b: Dictionary = _read("body")
 	body_parts = b.get("parts", [])

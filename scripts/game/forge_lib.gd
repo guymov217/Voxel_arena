@@ -383,6 +383,42 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	d.twoHanded = compute_stats(d).tooHeavy or (kind == "polearm" and rng.randf() < 0.5)
 	return d
 
+## A loose piece joined on instead of thrown away (a ready-made weapon's feathers, an eye, a
+## string): from its nearest cell to the nearest of the weapon's, a straight run of cells in
+## the loose piece's own stuff, one axis at a time. Returns how many voxels were added.
+static func bridge(d: Dictionary) -> int:
+	var added := 0
+	for guard in 64:
+		var cells := {}
+		for v in d.voxels:
+			cells[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = [v[3], v[4]]
+		var ps := pieces(cells)
+		if ps.size() <= 1:
+			return added
+		var main := kept_piece(cells)
+		var loose: Array = ps[0] if ps[0] != main else ps[1]
+		var best := INF
+		var a := Vector3i.ZERO
+		var b := Vector3i.ZERO
+		for c in loose:
+			for m in main:
+				var dd: float = absi(c.x - m.x) + absi(c.y - m.y) + absi(c.z - m.z)
+				if dd < best:
+					best = dd
+					a = c
+					b = m
+		var look: Array = cells[a]
+		var job: String = "blunt" if look[1] == "grip" else String(look[1])
+		var p := a
+		for axis in 3:
+			while p[axis] != b[axis]:
+				p[axis] += signi(b[axis] - p[axis])
+				if not cells.has(p):
+					d.voxels.append([p.x, p.y, p.z, look[0], job])
+					cells[p] = [look[0], job]
+					added += 1
+	return added
+
 ## Whatever is not joined, face to face, to the piece with the grip is taken off: nothing of a
 ## weapon hangs in the air. Returns how many voxels went.
 static func one_piece(d: Dictionary) -> int:
@@ -521,6 +557,7 @@ static func simple_weapon(o: Dictionary) -> Dictionary:
 			for x in range(-w, w + 1):
 				set_voxel(d, x, 0, 1, hm, "blunt")
 				set_voxel(d, x, h, 1, hm, "blunt")
+			one_piece(d)
 			return d
 		"bow":
 			d.voxels = []
@@ -535,9 +572,11 @@ static func simple_weapon(o: Dictionary) -> Dictionary:
 			if width > 1:
 				box(d, 1, 1, 0, l - 1, 0, 0, mat, "blunt")
 				box(d, 1, 1, l + 5, 2 * l + 4, 0, 0, mat, "blunt")
-			for xy in [[-1, 0], [-1, 2 * l + 4], [-2, 1], [-2, 2 * l + 3]]:
+			# The tips curl back to the string, face to face (corner to corner it hung in the air).
+			for xy in [[-1, 0], [-1, 1], [-1, 2 * l + 4], [-1, 2 * l + 3], [-2, 1], [-2, 2 * l + 3]]:
 				set_voxel(d, xy[0], xy[1], 0, "wood", "blunt")
 			box(d, -2, -2, 2, 2 * l + 2, 0, 0, "leather", "blunt")
+			one_piece(d)
 			return d
 		"sword":
 			box(d, -2, 2, handle + 1, handle + 1, 0, 0, "bronze", "blunt")
@@ -595,6 +634,9 @@ static func simple_weapon(o: Dictionary) -> Dictionary:
 		for y in range(handle + 4, top - 3, 4):
 			set_voxel(d, -half - 1, y, 0, "steel", "point")
 			set_voxel(d, half + 1, y, 0, "steel", "point")
+	# Spikes off a blade narrower than they stand out from, and the like: nothing is left
+	# hanging in the air, apart from the weapon (Something silly, any card).
+	one_piece(d)
 	return d
 
 static func silly_simple(rng: RandomNumberGenerator) -> Dictionary:
