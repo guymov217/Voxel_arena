@@ -8,7 +8,8 @@ var snaps := 0
 var last_snap := 0
 var worst_gap := 0
 var gaps := []
-var ms := []
+var c0 := 0.0
+var w0 := 0
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
@@ -18,8 +19,6 @@ func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 240000:
 		await get_tree().physics_frame
-		if m:
-			ms.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
 	print("GUEST timeout")
 	get_tree().quit(1)
 
@@ -31,6 +30,8 @@ func _on(type: String, data, _from: int) -> void:
 			m.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "headless": true, "autopilot": true})
 			(multiplayer.multiplayer_peer as ENetMultiplayerPeer).host.pop_statistic(ENetConnection.HOST_TOTAL_RECEIVED_DATA)
 			last_snap = Time.get_ticks_msec()
+			c0 = load("res://tests/net_load_host.gd").cpu_seconds()
+			w0 = Time.get_ticks_usec()
 		"spawn":
 			if m: m.guest_spawn(data)
 		"snap":
@@ -46,9 +47,9 @@ func _on(type: String, data, _from: int) -> void:
 		"bye":
 			var got: float = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).host.pop_statistic(ENetConnection.HOST_TOTAL_RECEIVED_DATA) / 1024.0
 			gaps.sort()
-			ms.sort()
-			var secs: float = m.time if m else 1.0
-			print("GUEST SUMMARY %s snaps %.1f/s gap p95 %d ms worst %d ms | received %.0f KB/s | physics avg %.1f ms p95 %.1f ms" % [Net.my_name, snaps / maxf(1.0, secs), gaps[int(gaps.size() * 0.95)] if gaps.size() else -1, worst_gap, got / maxf(1.0, secs), _avg(ms), ms[int(ms.size() * 0.95)] if ms.size() else -1.0])
+			var secs: float = (Time.get_ticks_usec() - w0) / 1e6
+			var cpu: float = (load("res://tests/net_load_host.gd").cpu_seconds() - c0) / maxf(0.1, secs) * 100.0
+			print("GUEST SUMMARY %s snapshot msgs %.0f/s gap p95 %d ms worst %d ms | received %.0f KB/s | cpu %.0f%% of a core" % [Net.my_name, snaps / maxf(1.0, secs), gaps[int(gaps.size() * 0.95)] if gaps.size() else -1, worst_gap, got / maxf(1.0, secs), cpu])
 			get_tree().quit(0)
 
 static func _avg(a: Array) -> float:

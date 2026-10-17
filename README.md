@@ -110,6 +110,22 @@ The Steam path was written against the GodotSteam 4.x API. It is untested here b
 machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
 process play a campaign round over localhost, the guest's fighter played by a bot.
 
+### Load test
+
+`sh tools/net_load.sh [guests] [seconds] [stage]` (default 7 guests, a full room of 8) starts a
+host and that many guests as headless games over ENet on localhost, plays a campaign bout and
+reports, each second, how many physics steps the host keeps up (of 120), its CPU, what it sends
+(by message type) and the size of a snapshot; each guest says how often snapshots came and the
+longest wait between two. All of them share the one machine's CPU, so the times are worse than in
+a real game, where each player has a computer of his own; the bytes are the same.
+
+What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a
+second, the dead once a second, and in a full room (4 guests or more, or more than 10 fighters) the
+enemies at half the rate of the players. Measured: about 1.6 Mbit/s up from the host for 4
+players and 8 fighters, about 7 Mbit/s for 8 players and 16 fighters. The host simulates every
+fighter: about 1.5 ms of a physics step each on the test machine, so a full room with many
+enemies asks a strong CPU of the host.
+
 ### Trying an online game on one machine
 
 No command line: put the Godot 4.7.2 exe in the game's folder and double-click

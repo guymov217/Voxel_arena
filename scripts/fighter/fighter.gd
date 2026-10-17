@@ -3173,6 +3173,7 @@ func _drop_unheld(part: VoxelPart, res: Dictionary) -> void:
 ## The same, now and then, for whatever ate away at the voxels without a blow (fire, frostbite,
 ## acid): the hit path checks it at once.
 var _joints_t := 0.0
+var _joints_seen := -1
 func _check_joints(dt: float) -> void:
 	_joints_t -= dt
 	if _joints_t > 0.0:
@@ -3180,6 +3181,13 @@ func _check_joints(dt: float) -> void:
 	_joints_t = 0.4
 	if torso.freeze:
 		return   # (a guest's puppet: the host says what has come off)
+	# Nothing has come off any part since the last look: nothing can have come loose.
+	var seen := 0
+	for p in parts:
+		seen += p.alive_count * 3 + (1 if p.severed else 0)
+	if seen == _joints_seen:
+		return
+	_joints_seen = seen
 	var res := {"removed": [], "severed": []}
 	for p in parts:
 		if is_instance_valid(p) and not p.severed and not p.missing:
@@ -3810,7 +3818,27 @@ func apply_snapshot(s) -> void:
 func status() -> Dictionary:
 	return {"blood": snappedf(blood, 0.1), "stamina": snappedf(stamina, 0.1), "state": state, "hp": parts.map(func(p): return snappedf(p.hp, 0.1))}
 
-func apply_status(s: Dictionary) -> void:
+## The same on the wire: [blood, stamina, state, hp of each part], a fraction of the bytes.
+func status_packed() -> Array:
+	var hp := PackedFloat32Array()
+	hp.resize(parts.size())
+	for i in parts.size():
+		hp[i] = parts[i].hp
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp]
+
+func apply_status(s) -> void:
+	if s is Array:
+		if s.size() < 4:
+			return
+		blood = maxf(0.0, float(s[0]))
+		stamina = maxf(0.0, float(s[1]))
+		if ["stand", "down", "dead", "rising"].has(String(s[2])):
+			state = String(s[2])
+		var ph = s[3]
+		if ph is PackedFloat32Array:
+			for i in mini(ph.size(), parts.size()):
+				parts[i].hp = ph[i]
+		return
 	blood = s.get("blood", blood)
 	stamina = s.get("stamina", stamina)
 	state = s.get("state", state)

@@ -84,29 +84,45 @@ func _exit_tree() -> void:
 func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 	if not enabled:
 		return
+	# The body is looked at once, and each contact let go at the first thing that rules it out:
+	# most are a foot on the sand, or a body's own parts against each other, every step.
+	var bw := body is Weapon
+	var bp := not bw and body is VoxelPart
+	if not (bw or bp):
+		return
+	var bid := body.get_instance_id()
+	var bf = body.fighter if bp else null
+	var holder = body.holder if bw else null
 	for i in state.get_contact_count():
 		var other = state.get_contact_collider_object(i)
 		if other == null:
 			continue
-		var bw := body is Weapon
-		var ow := other is Weapon
-		var bp := body is VoxelPart
 		var op := other is VoxelPart
-		if bp and ow:
-			# A trap does not move under physics, so the part it meets reports the contact.
-			if other.is_hazard:
-				pending.append({"a": other, "b": body, "sa": state.get_contact_collider_shape(i), "sb": state.get_contact_local_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
-			continue # the weapon reports it
-		if bp and op:
+		var ow := not op and other is Weapon
+		if not (op or ow):
+			continue
+		if bp:
+			if ow:
+				# A trap does not move under physics, so the part it meets reports the contact
+				# (any other weapon reports its own).
+				if other.is_hazard:
+					pending.append({"a": other, "b": body, "sa": state.get_contact_collider_shape(i), "sb": state.get_contact_local_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
+				continue
+			# (A limb cut off is a club, even in the hands of the man it came off.)
+			if bf != null and other.fighter == bf and not body.severed and not other.severed:
+				continue
 			var cj := state.get_contact_impulse(i).length()
 			_note_touch(body, other, cj)
 			_note_touch(other, body, cj)
-		if (bp and op) or (bw and ow):
-			if body.get_instance_id() > other.get_instance_id():
+			if bid > other.get_instance_id():
 				continue
-		if not (bw or (bp and op)):
-			continue
-		pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
+			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": cj})
+		else:
+			if op and holder != null and other.fighter == holder:
+				continue   # a weapon on the man holding it
+			if ow and bid > other.get_instance_id():
+				continue
+			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
 
 func _physics_process(dt: float) -> void:
 	time += dt

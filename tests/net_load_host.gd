@@ -25,28 +25,46 @@ func _ready() -> void:
 	add_child(m)
 	m.setup({"mode": "campaign", "stage": stage, "role": "host", "headless": true, "autopilot": true, "peers": peers, "seed": 9})
 	var enet := (multiplayer.multiplayer_peer as ENetMultiplayerPeer).host
+	Net.stats_on = true
 	enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA)
-	var all_ms := []
 	var all_kb := []
 	var snap_b := []
+	var cpus := []
+	var rates := []
 	for s in secs:
-		var ms := []
-		for i in 120:
-			var a := Time.get_ticks_usec()
+		var w0 := Time.get_ticks_usec()
+		var c0 := cpu_seconds()
+		var ticks := 0
+		while Time.get_ticks_usec() - w0 < 1000000:
 			await get_tree().physics_frame
-			ms.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
-		var sent: float = enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA) / 1024.0
+			ticks += 1
+		var wall := (Time.get_ticks_usec() - w0) / 1e6
+		var cpu := (cpu_seconds() - c0) / wall * 100.0
+		var sent: float = enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA) / 1024.0 / wall
 		var sb := var_to_bytes(m.snapshot()).size()
 		snap_b.append(sb)
-		ms.sort()
-		all_ms.append_array(ms)
+		cpus.append(cpu)
+		rates.append(ticks / wall)
 		all_kb.append(sent)
-		print("LOAD s=%d entities=%d physics avg %.1f ms p95 %.1f ms max %.1f ms | sent %.0f KB/s (%.0f per guest) | snapshot %d B" % [s, m.entities.size(), _avg(ms), ms[int(ms.size() * 0.95)], ms[-1], sent, sent / maxf(1, Net.peers.size()), sb])
-	all_ms.sort()
-	print("HOST SUMMARY guests=%d entities=%d physics avg %.1f ms p95 %.1f ms (budget 8.3 ms) | sent avg %.0f KB/s, %.0f KB/s per guest | snapshot avg %d B" % [Net.peers.size(), m.entities.size(), _avg(all_ms), all_ms[int(all_ms.size() * 0.95)], _avg(all_kb), _avg(all_kb) / maxf(1, Net.peers.size()), int(_avg(snap_b))])
+		print("LOAD s=%d entities=%d steps %.0f/s (of 120) cpu %.0f%% of a core | sent %.0f KB/s (%.0f per guest) | snapshot %d B" % [s, m.entities.size(), ticks / wall, cpu, sent, sent / maxf(1, Net.peers.size()), sb])
+	var by := Net.stats.keys()
+	by.sort_custom(func(a, b): return Net.stats[a] > Net.stats[b])
+	var steps_total := 0.0
+	for r in rates:
+		steps_total += r
+	print("HOST BYTES per step: ", ", ".join(by.slice(0, 10).map(func(k): return "%s %d" % [k, Net.stats[k] / maxf(1.0, steps_total)])))
+	print("HOST SUMMARY guests=%d entities=%d steps %.0f/s cpu %.0f%% of a core | sent avg %.0f KB/s, %.0f KB/s per guest | snapshot avg %d B" % [Net.peers.size(), m.entities.size(), _avg(rates), _avg(cpus), _avg(all_kb), _avg(all_kb) / maxf(1, Net.peers.size()), int(_avg(snap_b))])
 	Net.send_all("bye", {})
 	await get_tree().create_timer(1.0).timeout
 	get_tree().quit(0)
+
+## The CPU this process has used (Linux: /proc/self/stat, utime + stime), in seconds.
+static func cpu_seconds() -> float:
+	var f := FileAccess.open("/proc/self/stat", FileAccess.READ)
+	if f == null:
+		return 0.0
+	var parts := f.get_line().split(")")[-1].strip_edges().split(" ")
+	return (float(parts[11]) + float(parts[12])) / 100.0
 
 static func _avg(a: Array) -> float:
 	var s := 0.0

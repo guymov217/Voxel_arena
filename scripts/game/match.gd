@@ -804,7 +804,15 @@ func _physics_process(dt: float) -> void:
 	if role == "host" and tick % SNAP_EVERY == 0:
 		# One fighter to a message: each fits in one packet (a whole snapshot was split into
 		# fragments, and one lost fragment lost all of it).
-		for row in snapshot():
+		# A full room (many guests or many fighters): the players' fighters at the full rate, the
+		# enemies every other time, which halves what goes up the host's line.
+		var full := Net.peers.size() >= 4 or entities.size() > 10
+		var odd := (tick / SNAP_EVERY) % 2 == 1
+		for row in snapshot(false):
+			if full and odd:
+				var re = entity_by_id(int(row[0]))
+				if re != null and re.kind != "remote" and re.kind != "local":
+					continue
 			Net.send_all("snap", [row], false)
 	_check_round(dt)
 
@@ -2218,27 +2226,84 @@ func _stomp_fx(p: Vector3, size: float) -> void:
 
 # ---------- Network (host side snapshots, guest side drawing) ----------
 
-func snapshot() -> Array:
+## The snapshot on the wire, 40 times a second to every guest: each body's place and turn in 14
+## bytes (int16s: 2 mm, and the quaternion to 1/32767) instead of 28 bytes of floats; the state
+## of a fighter (blood, breath, each part's hp) 8 times a second or when he goes down or gets
+## up; the dead, settled on the sand, once a second.
+const POS_Q := 512.0
+const STATUS_EVERY := 15      # physics ticks between a fighter's status (8 a second)
+const STILL_EVERY := 120      # and between snapshots of one that has not moved (once a second)
+const STILL_POS := 6          # how far a corpse may drift (int16 steps, 2 mm each) and still be still
+const STILL_ROT := 400        # and turn (1/32767 of the quaternion: about 0.7 degree)
+
+static func pack_xf(b: PackedByteArray, o: int, t: Transform3D) -> void:
+	var q := t.basis.get_rotation_quaternion()
+	b.encode_s16(o, clampi(roundi(t.origin.x * POS_Q), -32767, 32767))
+	b.encode_s16(o + 2, clampi(roundi(t.origin.y * POS_Q), -32767, 32767))
+	b.encode_s16(o + 4, clampi(roundi(t.origin.z * POS_Q), -32767, 32767))
+	b.encode_s16(o + 6, roundi(q.x * 32767.0))
+	b.encode_s16(o + 8, roundi(q.y * 32767.0))
+	b.encode_s16(o + 10, roundi(q.z * 32767.0))
+	b.encode_s16(o + 12, roundi(q.w * 32767.0))
+
+static func unpack_xf(b: PackedByteArray, o: int) -> Transform3D:
+	var q := Quaternion(b.decode_s16(o + 6), b.decode_s16(o + 8), b.decode_s16(o + 10), b.decode_s16(o + 12))
+	if q.length_squared() < 1e-6:
+		q = Quaternion.IDENTITY
+	return Transform3D(Basis(q.normalized()), Vector3(b.decode_s16(o), b.decode_s16(o + 2), b.decode_s16(o + 4)) / POS_Q)
+
+static func pack_parts(parts: Array) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(parts.size() * 14)
+	for i in parts.size():
+		pack_xf(b, i * 14, (parts[i] as Node3D).global_transform)
+	return b
+
+static func _moved(a: PackedByteArray, b: PackedByteArray) -> bool:
+	if a.size() != b.size():
+		return true
+	for o in range(0, a.size(), 2):
+		if absi(a.decode_s16(o) - b.decode_s16(o)) > (STILL_POS if (o % 14) < 6 else STILL_ROT):
+			return true
+	return false
+
+## Every fighter's row (`all`: none left out, for a guest who has just come in).
+func snapshot(all := true) -> Array:
 	var out := []
 	for e in entities:
 		var f = e.f
+		if not is_instance_valid(f):
+			continue
 		var w := []
 		var bows := []
 		for side in ["R", "L"]:
 			var wp = f.weapons.get(side)
 			if wp:
-				var q: Quaternion = wp.global_transform.basis.get_rotation_quaternion()
-				w.append([side, wp.global_position.x, wp.global_position.y, wp.global_position.z, q.x, q.y, q.z, q.w])
+				var wb := PackedByteArray()
+				wb.resize(14)
+				pack_xf(wb, 0, wp.global_transform)
+				w.append([side, wb])
 				# A drawn bow: the string, the arrow, the archer's sway and his camera go by it.
 				if str(wp.design.get("shoots", "")) == "arrow":
 					bows.append([side, snappedf(float(wp.get_meta("draw", 0.0)), 0.01), snappedf(float(wp.get_meta("hold_t", 0.0)), 0.01)])
-		out.append([e.id, f.snapshot(), w, f.status(), bows])
+		var pb := pack_parts(f.parts)
+		var still: bool = not all and f.state == "dead" and e.has("snap_b") and not _moved(pb, e.snap_b) and tick - int(e.get("snap_tick", -9999)) < STILL_EVERY
+		if still and bows.is_empty():
+			continue
+		e.snap_b = pb
+		e.snap_tick = tick
+		var st = null
+		if all or tick - int(e.get("st_tick", -9999)) >= STATUS_EVERY or String(e.get("st_state", "")) != String(f.state):
+			st = f.status_packed()
+			e.st_tick = tick
+			e.st_state = String(f.state)
+		out.append([e.id, pb, w, st, bows])
 	return out
 
 ## Guest: a body is moved to where the host had it over the time until the next snapshot is due,
 ## in the physics step (so the engine's own interpolation smooths every frame between): his
 ## screen moves as smoothly as the host's, a snapshot behind.
-func _puppet_to(b: Node3D, to: Transform3D) -> void:
+func _puppet_to(b: Node3D, to: Transform3D, gap := -1.0) -> void:
 	if not is_instance_valid(b):
 		return
 	var from: Transform3D = b.global_transform
@@ -2247,7 +2312,7 @@ func _puppet_to(b: Node3D, to: Transform3D) -> void:
 		b.reset_physics_interpolation()
 		puppets.erase(b)
 		return
-	puppets[b] = [from, to, time, snap_gap]
+	puppets[b] = [from, to, time, snap_gap if gap <= 0.0 else gap]
 
 func _drive_puppets() -> void:
 	for b in puppets.keys():
@@ -2276,8 +2341,20 @@ func apply_snapshot(s: Array) -> void:
 		var e = entity_by_id(int(row[0]))
 		if e == null:
 			continue
+		# Each fighter moves over the time until his own next snapshot is due (in a full room the
+		# host sends the enemies at half the rate of the players).
+		var eg := snap_gap
+		if e.has("snap_seen"):
+			eg = clampf(time - float(e.snap_seen), SNAP_EVERY / 120.0, 0.25)
+			e.snap_gap = lerpf(float(e.get("snap_gap", eg)), eg, 0.3)
+			eg = float(e.snap_gap)
+		e.snap_seen = time
 		var a = row[1]
-		if a is PackedFloat32Array:
+		if a is PackedByteArray:
+			var bparts: Array = e.f.parts
+			for i in mini(a.size() / 14, bparts.size()):
+				_puppet_to(bparts[i], unpack_xf(a, i * 14), eg)
+		elif a is PackedFloat32Array:
 			var parts: Array = e.f.parts
 			for i in mini(a.size() / 7, parts.size()):
 				_puppet_to(parts[i], _xf(a, i * 7))
@@ -2289,8 +2366,9 @@ func apply_snapshot(s: Array) -> void:
 				if not wp.freeze:
 					wp.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 					wp.freeze = true
-				_puppet_to(wp, _xf(w, 1))
-		e.f.apply_status(row[3])
+				_puppet_to(wp, unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1), eg)
+		if row[3] is Dictionary or row[3] is Array:
+			e.f.apply_status(row[3])
 		if row.size() > 4:
 			for bw in row[4]:
 				var bwp = e.f.weapons.get(bw[0]) if bw is Array and bw.size() >= 3 else null

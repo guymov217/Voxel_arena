@@ -237,9 +237,15 @@ func _on_connected() -> void:
 	connected.emit()
 	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit, "body": my_body})
 
+## Bytes sent by message type (the load test turns it on).
+var stats_on := false
+var stats := {}
+
 func send_all(type: String, data, reliable := true) -> void:
 	if not active():
 		return
+	if stats_on:
+		stats[type] = int(stats.get(type, 0)) + var_to_bytes(data).size() * maxi(1, peers.size())
 	if reliable:
 		_msg.rpc(type, data)
 	else:
