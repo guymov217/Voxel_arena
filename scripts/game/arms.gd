@@ -115,6 +115,10 @@ static func sharpenable(d) -> bool:
 static func bases() -> Array:
 	return Data.shop.get("bases", []).filter(func(b): return not SHELVED.has(String(b.key)))
 
+## A weapon's price at the smith: what the list says, or what it can do in a fight if more.
+static func base_price(b: Dictionary) -> int:
+	return maxi(int(b.get("price", 0)), power_price(Data.preset(String(b.key))))
+
 static func base(key: String) -> Dictionary:
 	for b in bases():
 		if b.key == key:
@@ -130,7 +134,7 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	var b := base(key)
 	if b.is_empty():
 		return {"error": "The smith has no such thing"}
-	return _acquire(a, Data.preset(key).duplicate(true), int(b.price), b.slot == "off", sell)
+	return _acquire(a, Data.preset(key).duplicate(true), base_price(b), b.slot == "off", sell)
 
 ## Has a design from the player's own gallery made at the smith, at what it is worth.
 static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1) -> Dictionary:
@@ -185,9 +189,32 @@ static func oddity_price(d: Dictionary) -> int:
 	nd.erase("oddity")
 	return int(ceil(design_price(nd) * ODDITY_MARKUP))
 
-## What the smith asks to make a design: its stuff, block by block, and his labour on it.
+## What the smith asks to make a design: its stuff, block by block, and his labour on it, or
+## what it can do in a fight, whichever is more (lead is cheap stuff, a lead head is not a cheap
+## weapon).
 static func design_price(d: Dictionary) -> int:
-	return value(d) + 15 + int(d.get("voxels", []).size() / 10)
+	return maxi(value(d) + 15 + int(d.get("voxels", []).size() / 10), power_price(d))
+
+const POWER_PRICE := 20.0
+const BODY_KG := 5.0   # about what a head or a limb weighs: the most of a weapon a blow can use
+
+## The worth of a design by its harm: the blow it lands (its weight at the tip, as much of it
+## as a body part can take, times the tip's speed), sharpened or hardened into a wound, plus
+## its gems and its powder. Bows and shields go by their stuff.
+static func power_price(d: Dictionary) -> int:
+	if d.get("voxels", []).is_empty() or d.get("kind", "weapon") == "shield" or d.get("shoots", "") != "":
+		return 0
+	var st := ForgeLib.compute_stats(d)
+	var reach := maxf(0.2, float(st.reach))
+	var meff := float(st.inertia) / (reach * reach)
+	var blow := meff * BODY_KG / (meff + BODY_KG) * float(st.swingSpeed) * reach
+	var harm := blow * (0.5 + float(ForgeLib.three_bars(st).damage))
+	var extra := 0
+	for v in d.voxels:
+		match String(v[3]):
+			"ruby", "sapphire", "emerald": extra += 30
+			"explosive": extra += 10
+	return int(round(POWER_PRICE * harm)) + 15 + extra
 
 static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String) -> Dictionary:
 	var arms := sanitize(a)

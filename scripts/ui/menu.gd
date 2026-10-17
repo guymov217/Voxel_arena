@@ -964,8 +964,8 @@ func _yard(v: VBoxContainer) -> void:
 				trade = maxi(trade, Arms.value(arms().main if sd == "R" else arms().off) / 2)
 		else:
 			trade = int(pre.get("trade_in", 0))
-		var cost := maxi(0, int(b.price) - trade)
-		var afford: bool = int(b.price) <= coins() + trade
+		var cost := maxi(0, Arms.base_price(b) - trade)
+		var afford: bool = Arms.base_price(b) <= coins() + trade
 		var tile := PanelContainer.new()
 		tile.add_theme_stylebox_override("panel", tile_st)
 		tile.custom_minimum_size = Vector2(146, 0)
@@ -986,7 +986,7 @@ func _yard(v: VBoxContainer) -> void:
 		var goes := "pick one to sell" if choose else ("both hands" if pre.get("sold", []).size() > 1 else ("main hand" if pre.get("side", "R") == "R" else "off hand"))
 		var pr := UIStyle.label("%s%d denarii · %s" % ["from " if choose else "", cost, goes], 12, UIStyle.GOLD if afford else UIStyle.MUTED)
 		if trade > 0:
-			tile.tooltip_text += " · %d denarii, less %d for your old one" % [int(b.price), trade]
+			tile.tooltip_text += " · %d denarii, less %d for your old one" % [Arms.base_price(b), trade]
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(pr)
 		var buy := UIStyle.button("Buy", func():
@@ -1000,7 +1000,7 @@ func _yard(v: VBoxContainer) -> void:
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-		_viewable(tex, Data.preset(key), "%d denarii at the smith" % int(b.price))
+		_viewable(tex, Data.preset(key), "%d denarii at the smith" % Arms.base_price(b))
 	# The bout's oddities, his own designs (made to order), then the smith's rack.
 	var odd := _smith_oddities(rack_box, grid.columns, tile_st)
 	if _smith_designs(rack_box, grid.columns, tile_st) or odd:

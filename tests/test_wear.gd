@@ -59,6 +59,12 @@ func test_knocks_in_one_place_chip_it_then_break_it_there() -> void:
 	t.check(chipped_at >= 0, "the same spot, knocked again and again, gives way (after %d knocks)" % chipped_at)
 	t.check(broke, "and in the end the blade breaks there")
 	t.check(w.components().size() == 1, "what is left in the hand is one piece")
+	var sy: int = w.vox[spot][1]
+	var past := 0
+	for i in w.vox.size():
+		if w.alive[i] and w.vox[i][1] > sy + 1:
+			past += 1
+	t.check(past == 0, "it broke at the knocked spot: nothing past it is left (%d)" % past)
 	t.check(w.alive_count() < n0 and w.vox.size() - w.alive_count() > n0 * 0.1, "the broken-off part is gone (%d of %d left)" % [w.alive_count(), n0])
 	m.queue_free()
 

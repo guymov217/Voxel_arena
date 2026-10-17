@@ -144,7 +144,7 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	r = Arms.buy(a, "axe", "L")
 	t.eq(str(r.arms.main.name), "Gladius", "the gladius stays")
 	t.eq(str(r.arms.off.name), "Axe", "the axe where the dagger was")
-	t.check(int(r.trade_in) > 0 and int(r.cost) < int(Arms.base("axe").price), "the dagger is taken in part exchange")
+	t.check(int(r.trade_in) > 0 and int(r.cost) < Arms.base_price(Arms.base("axe")), "the dagger is taken in part exchange")
 	r = Arms.buy(a, "roundShield")
 	t.eq(r.side, "L", "a shield goes on the left")
 	t.eq(r.sold, ["L"], "taking the place of what was there")
@@ -240,3 +240,19 @@ func test_oddities_are_not_flat() -> void:
 			if not d.voxels.any(func(v): return int(v[2]) != 0):
 				flat += 1
 	t.check(flat <= n / 10, "hardly any flat (%d of %d)" % [flat, n])
+
+## The price is what it can do: a club with a lead head is cheap stuff and a heavy blow, and the
+## smith asks for the blow; a weapon in the shop is never cheaper than its harm either.
+func test_a_weapon_costs_what_it_can_do() -> void:
+	var wood := {"name": "Club", "voxels": []}
+	ForgeLib.box(wood, 0, 0, 0, 5, 0, 0, "wood", "grip")
+	ForgeLib.box(wood, -1, 1, 6, 12, -1, 1, "wood", "blunt")
+	var lead := wood.duplicate(true)
+	for v in lead.voxels:
+		if v[4] == "blunt":
+			v[3] = "lead"
+	t.eq(Arms.value(lead), Arms.value(wood), "lead costs the smith no more than wood")
+	t.check(Arms.design_price(lead) > Arms.design_price(wood) * 2, "but the lead club costs far more (%d vs %d)" % [Arms.design_price(lead), Arms.design_price(wood)])
+	t.check(Arms.design_price(lead) >= Arms.power_price(lead), "at least what its blow is worth")
+	for b in Arms.bases():
+		t.check(Arms.base_price(b) >= Arms.power_price(Data.preset(b.key)), "%s is not sold under its worth" % b.key)
