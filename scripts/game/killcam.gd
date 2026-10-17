@@ -145,8 +145,15 @@ func has_clip(min_score := 10.0) -> bool:
 		_cut(k)
 	return not best.is_empty() and float(best.score) >= min_score
 
-## Plays the best clip, then calls `done`.
-func play(done: Callable) -> void:
+## A fresh tape for the next round: its best kill is its own.
+func reset() -> void:
+	clips.clear()
+	best = {}
+	pending.clear()
+
+## Plays the best clip, then calls `done`. Between rounds (`restore`) the fight goes on after
+## it: every body is put back where it is now, moving as it was.
+func play(done: Callable, restore := false) -> void:
 	if best.is_empty() or m.headless:
 		done.call()
 		return
@@ -154,8 +161,12 @@ func play(done: Callable) -> void:
 	var tree := m.get_tree()
 	tree.paused = true
 	var ids := {}
+	var now := {}
 	for b in _bodies():
 		ids[b.get_instance_id()] = b
+		if restore:
+			now[b] = [b.global_transform, b.linear_velocity, b.angular_velocity]
+	var fov0: float = m.cam.fov if m.cam else 0.0
 	_overlay(String(best.caption))
 	var fr: Array = best.frames
 	var t0: float = fr[0].t
@@ -205,6 +216,13 @@ func play(done: Callable) -> void:
 	if overlay:
 		overlay.queue_free()
 		overlay = null
+	for b in now:
+		if is_instance_valid(b):
+			b.global_transform = now[b][0]
+			b.linear_velocity = now[b][1]
+			b.angular_velocity = now[b][2]
+	if restore and m.cam:
+		m.cam.fov = fov0
 	tree.paused = false
 	playing = false
 	done.call()

@@ -934,6 +934,34 @@ func _entity_of(f) -> Variant:
 			return e
 	return null
 
+## After every round won and before the next: the best kill of that round, the same on every
+## screen online (the host names it: "kcr"), then a fresh tape for the next round.
+func _round_replay() -> void:
+	if killcam == null or role == "guest":
+		return
+	var left := killcam.tape_left()
+	if left > 0.0:
+		await get_tree().create_timer(left + 0.05).timeout
+	var show := killcam.has_clip()
+	if role == "host":
+		var ve = _entity_of(killcam.best.get("victim")) if show else null
+		Net.send_all("kcr", {"kc_v": ve.id if ve != null else -1})
+	if show:
+		await killcam.play(func(): pass, true)
+	killcam.reset()
+
+func _guest_round_replay(data: Dictionary) -> void:
+	if killcam == null:
+		return
+	var left := killcam.tape_left()
+	if left > 0.0:
+		await get_tree().create_timer(left + 0.05).timeout
+	killcam.has_clip()
+	var ve = entity_by_id(int(data.get("kc_v", -1)))
+	if ve != null and is_instance_valid(ve.f) and killcam.choose(ve.f):
+		await killcam.play(func(): pass, true)
+	killcam.reset()
+
 ## The end of the fight on a guest: his own kill cam's best kill, then the result.
 func guest_end(data: Dictionary) -> void:
 	if over:
@@ -955,6 +983,9 @@ func guest_end(data: Dictionary) -> void:
 
 func guest_message(type: String, data) -> void:
 	match type:
+		"kcr":
+			if data is Dictionary:
+				_guest_round_replay(data)
 		"kc":
 			if killcam and data is Dictionary:
 				var ve = entity_by_id(int(data.get("v", -1)))
@@ -1215,6 +1246,7 @@ func _check_round(dt: float) -> void:
 				feed.emit("Round %d won" % (round + 1))
 				if role != "guest":
 					_round_wounds()
+				_round_replay()
 				return
 			var pay := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE)) + round_pay
 			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, ("%d denarii to the party's purse. " if players_count > 1 else "%d denarii. ") % pay + "Back to the yard: spend, mend, gear up.", pay)

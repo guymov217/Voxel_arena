@@ -2565,7 +2565,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr":
 			if match_:
 				match_.guest_message(type, data)
 		"purse":

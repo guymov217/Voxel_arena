@@ -386,6 +386,9 @@ func _bo3(dt: float, inp: Dictionary) -> void:
 			_bo3_end()
 			return
 		bo3.pause = 8.0
+		if c.alive:
+			m._tape_kill(c, "out")
+		m._round_replay()
 		m._banner("Round %d to %s" % [bo3.round, winner.f.display_name], "You are down. Y: yield · F: fight on, wounded, for double the stake" if e.kind == "local" else "%s is down and must choose: yield, or fight on for double the stake" % c.display_name)
 		return
 
@@ -433,6 +436,7 @@ func check(dt: float) -> void:
 				return
 			if not alive.any(func(e): return e.kind == "beast" and e.team == 1):
 				_heal(humans_alive, 22.0)
+				m._round_replay()
 				_next_wave("Wave %d!", "The gates open again")
 				spawn_hunt_wave()
 			return
@@ -442,6 +446,7 @@ func check(dt: float) -> void:
 				return
 			if not alive.any(func(e): return e.kind == "bot"):
 				_heal(humans_alive, 35.0)
+				m._round_replay()
 				_next_wave("Wave %d!", "The crowd wants more blood")
 				var n := mini(5, ceili(wave * 0.7) + m.players_count - 1)
 				spawn_bots(n, m.entities.size(), m.entities.size() + n)
@@ -467,6 +472,7 @@ func check(dt: float) -> void:
 			m._end(winner == m.me, ("%s reigns: the players are all down after %d bouts" % [winner.f.display_name, king.streak]) if winner.kind == "bot" else ("%s is King of the Arena: %d bouts unbeaten!" % [winner.f.display_name, king.max]), "", 60 if winner == m.me else 0)
 			return
 		king.streak += 1
+		m._round_replay()
 		var c = winner.f
 		c.blood = minf(100.0, c.blood + 15.0)
 		c.stamina = 100.0

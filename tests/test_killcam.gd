@@ -95,3 +95,24 @@ func test_online_everyone_sees_the_hosts_pick() -> void:
 	t.check(not m.killcam.choose(null) and m.killcam.best.is_empty(), "and one not on tape: nothing")
 	t.check(KillCam.score_kill({"victim": "A", "killer": "B", "player": true}).score == KillCam.score_kill({"victim": "C", "killer": "D"}).score, "the game picks by the kill, not by whose it is: a foe's kill counts the same")
 	m.queue_free()
+
+## After every round its own best kill is shown, then the tape starts afresh: the next round's
+## replay is that round's best, not a better one from before.
+func test_every_round_has_its_own_replay() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": []})
+	for i in 120 * 3:
+		await get_tree().physics_frame
+	var foe = m.enemies()[0].f
+	m.killcam.on_death(foe, "decap", {"J": 40.0}, m.me.f)
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	t.check(m.killcam.has_clip(), "round one: the beheading on tape")
+	await m._round_replay()
+	t.check(m.killcam.clips.is_empty() and m.killcam.best.is_empty(), "shown, and the tape is fresh for round two")
+	m.killcam.on_death(m.me.f, "wounds", {"J": 5.0}, foe)
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	t.check(m.killcam.has_clip() and m.killcam.best.victim == m.me.f, "round two's replay is round two's kill")
+	m.queue_free()
