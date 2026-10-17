@@ -14,13 +14,16 @@ var purse := 0
 var done: Callable
 var free_build := false   # training: nothing costs anything
 var workshop := false     # the main menu's forge: design and save to My designs, nothing taken or paid
+var scratch := false      # at the smith, a new weapon from nothing (any kind), paid for as made
 var family := ""          # the smith reshapes a weapon within its kind (Arms.family): "" = anything goes
 const FAMILY_NAMES := {"blade": "a blade", "axe": "an axe", "spear": "a spear", "blunt": "a hammer or a mace", "shield": "a shield", "bow": "a bow", "crossbow": "a crossbow", "chain": "a chain weapon", "other": "what it is"}
 
 var mat := "steel"
 var job := "edge"
 var tool := "build"
-var mirror := true
+var mirror := true          # left and right alike (across the blade's flat)
+var mirror_z := false        # front and back alike (across its edge)
+const ERASE_EVERY := 0.18    # a held right button takes a block off no faster than this (s)
 var mode := "cards"
 var base_key := ""
 var picks: Array = []
@@ -68,7 +71,7 @@ func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	done = cb
 	rng.randomize()
 	original_value = Arms.value(design)
-	family = "" if free_build else Arms.family(design)
+	family = "" if free_build or scratch else Arms.family(design)
 	if family == "blunt":
 		job = "blunt"
 	_load_cells(design)
@@ -336,7 +339,8 @@ func _show_mode(m: String) -> void:
 	_update_texts()
 
 func _cards_ui() -> void:
-	mode_box.add_child(UIStyle.button("Blank anvil · build from nothing", _blank))
+	if family == "":   # (reshaping a weapon at the smith keeps it what it is: no blank anvil there)
+		mode_box.add_child(UIStyle.button("Blank anvil · build from nothing", _blank))
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -543,12 +547,18 @@ func _toolbar_ui() -> void:
 		b.tooltip_text = td[2]
 		trow.add_child(b)
 	var mir := CheckBox.new()
-	mir.text = "Mirror"
-	mir.tooltip_text = "Both sides at once"
+	mir.text = "Mirror ⟷"
+	mir.tooltip_text = "Left and right alike"
 	mir.button_pressed = mirror
 	mir.toggled.connect(func(x): mirror = x)
+	var mirz := CheckBox.new()
+	mirz.text = "Mirror ⇅"
+	mirz.tooltip_text = "Front and back alike"
+	mirz.button_pressed = mirror_z
+	mirz.toggled.connect(func(x): mirror_z = x)
 	trow.add_child(VSeparator.new())
 	trow.add_child(mir)
+	trow.add_child(mirz)
 	rows.add_child(trow)
 	var ar := HBoxContainer.new()
 	ar.add_theme_constant_override("separation", 4)
@@ -738,8 +748,8 @@ func _update_texts() -> void:
 	var delta := _value_now() - original_value
 	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
 	cost_label.text += "  (purse %d)" % purse
-	if workshop:
-		cost_label.text = "Made at the smith: %d denarii" % Arms.design_price(_design_now())
+	if workshop or scratch:
+		cost_label.text = "Made at the smith: %d denarii" % Arms.design_price(_design_now()) + ("  (purse %d)" % purse if scratch else "")
 	elif free_build:
 		cost_label.text = "Free in training"
 
@@ -900,15 +910,30 @@ func _hover(at: Vector2) -> void:
 		(ghost.mesh.material as StandardMaterial3D).albedo_color = col
 
 func _mirrored(list: Array) -> Array:
-	if not mirror:
-		return list
 	var out := list.duplicate()
 	for c in list:
-		if c.x != 0:
-			var m := Vector3i(-c.x, c.y, c.z)
+		var more := []
+		if mirror and c.x != 0:
+			more.append(Vector3i(-c.x, c.y, c.z))
+		if mirror_z and c.z != 0:
+			more.append(Vector3i(c.x, c.y, -c.z))
+		if mirror and mirror_z and c.x != 0 and c.z != 0:
+			more.append(Vector3i(-c.x, c.y, -c.z))
+		for m in more:
 			if not out.has(m):
 				out.append(m)
 	return out
+
+## A block off now? A click always; a held button only every ERASE_EVERY, so a drag cannot
+## sweep the weapon away before the hand can stop.
+func _erase_ready() -> bool:
+	if stroke.is_empty():
+		return true
+	var now := Time.get_ticks_msec() * 0.001
+	if now - float(stroke.get("erase_t", -9.0)) < ERASE_EVERY:
+		return false
+	stroke["erase_t"] = now
+	return true
 
 ## Already done in this stroke: a cell built, painted or cleared once is left alone while the
 ## mouse stays down (built on, a drag would stack voxels up toward the eye).
@@ -945,7 +970,7 @@ func _apply(a: Dictionary) -> void:
 					cells[c] = [mat, job]
 				_rebuild()
 		"erase":
-			if a.hit != null and not _stroked(a.hit):
+			if a.hit != null and not _stroked(a.hit) and _erase_ready():
 				var list := _mirrored([a.hit])
 				_remove(list)
 				_mark(list)
@@ -961,7 +986,7 @@ func _apply(a: Dictionary) -> void:
 
 func _erase_at(at: Vector2) -> void:
 	var a := _aim(at)
-	if not a.is_empty() and a.hit != null and not _stroked(a.hit):
+	if not a.is_empty() and a.hit != null and not _stroked(a.hit) and _erase_ready():
 		var list := _mirrored([a.hit])
 		_remove(list)
 		_mark(list)

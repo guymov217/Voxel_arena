@@ -206,3 +206,38 @@ func test_a_weapon_from_a_blank_anvil() -> void:
 	f._take()
 	t.check(not got.is_empty() and Arms.family(got[0][0]) == "blade", "a blade made from nothing is still a blade (%s)" % [Arms.family(got[0][0]) if not got.is_empty() else "refused"])
 	f.queue_free()
+
+## Mirror works across both planes (left-right, front-back); a held right button takes blocks
+## off one at a time, not the whole weapon in a sweep; the blank anvil is for building from
+## nothing, not for reshaping a weapon at the smith.
+func test_mirror_both_ways_slow_erase_and_blank_only_from_scratch() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius"), 0, func(_d, _c): pass)
+	f.mirror = true
+	f.mirror_z = true
+	t.eq(f._mirrored([Vector3i(2, 5, 1)]).size(), 4, "both planes: four alike")
+	f.mirror_z = false
+	t.eq(f._mirrored([Vector3i(2, 5, 1)]).size(), 2, "left-right only: two")
+	f.stroke = {"erase": true, "done": {}, "undo": false}
+	var first: bool = f._erase_ready()
+	var second: bool = f._erase_ready()
+	t.check(first and not second, "a held button waits between blocks")
+	f.stroke = {}
+	f.queue_free()
+	var has_blank := func(fg) -> bool:
+		return fg.find_children("*", "Button", true, false).any(func(b): return b.text.begins_with("Blank anvil"))
+	var r = load("res://scripts/ui/forge.gd").new()
+	add_child(r)
+	r.open(Data.preset("gladius"), 500, func(_d, _c): pass)
+	r._show_mode("cards")
+	t.check(not has_blank.call(r), "reshaping at the smith: no blank anvil")
+	r.queue_free()
+	var sc = load("res://scripts/ui/forge.gd").new()
+	add_child(sc)
+	sc.scratch = true
+	sc.open({"name": "New weapon", "voxels": [[0, 0, 0, "wood", "grip"]]}, 500, func(_d, _c): pass)
+	sc._show_mode("cards")
+	t.check(has_blank.call(sc) and sc.family == "", "from nothing: any kind, blank anvil there")
+	sc.queue_free()

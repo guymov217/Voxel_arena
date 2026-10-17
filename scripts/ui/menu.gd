@@ -925,7 +925,12 @@ func _yard(v: VBoxContainer) -> void:
 	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rack.add_theme_constant_override("separation", 8)
 	body.add_child(rack)
-	rack.add_child(UIStyle.label("WEAPONS FOR SALE", 13, UIStyle.BRONZE))
+	var rh := HBoxContainer.new()
+	var rl := UIStyle.label("WEAPONS FOR SALE", 13, UIStyle.BRONZE)
+	rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rh.add_child(rl)
+	rh.add_child(UIStyle.button("Forge a new weapon from nothing", _scratch_forge, true))
+	rack.add_child(rh)
 	rack.add_child(UIStyle.label("It goes in a free hand. With both hands full you pick which one he takes, for half its worth.", 13, UIStyle.MUTED))
 	var scroll := _smith_scroll(rack)
 	var rack_w := inner_w - left_w - 60.0
@@ -1852,6 +1857,28 @@ func _pay(r: Dictionary) -> void:
 	add_coins(-int(r.cost))
 	set_arms(r.arms)
 	show_screen("yard")
+
+## At the smith, a weapon of any kind from a blank anvil: built block by block and, taken,
+## made and paid for at what it is worth; it goes in a free hand like one bought.
+func _scratch_forge() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.scratch = true
+	var blank := {"name": "New weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
+	f.open(blank, coins(), func(design, _cost):
+		f.queue_free()
+		show_screen("yard")
+		if design == null:
+			return
+		var r := Arms.buy_design(arms(), design)
+		if r.has("choose"):
+			_sell_choice(str(design.get("name", "it")), func(sd): return Arms.buy_design(arms(), design, sd), r.choose)
+		else:
+			_pay(r))
+	f._show_mode("voxels")
+	visible = true
+	panel.visible = false
+	f.tree_exited.connect(func(): panel.visible = true)
 
 func open_forge(side: String) -> void:
 	var a := arms()
