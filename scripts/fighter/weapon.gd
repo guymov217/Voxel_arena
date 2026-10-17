@@ -167,6 +167,11 @@ func _coat() -> void:
 				sm.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
 
 func _grip_points() -> Array:
+	# Where the builder put the hands (the forge's Hand tool), while there is grip there still.
+	if design.get("grips") is Dictionary:
+		var g = ForgeLib.grip_points({"voxels": vox, "twoHanded": design.get("twoHanded", false), "grips": design.grips})
+		if g != null:
+			return [g.main, g.off]
 	var grips := []
 	for v in vox:
 		if v[4] == "grip":

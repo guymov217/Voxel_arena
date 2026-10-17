@@ -241,3 +241,30 @@ func test_mirror_both_ways_slow_erase_and_blank_only_from_scratch() -> void:
 	sc._show_mode("cards")
 	t.check(has_blank.call(sc) and sc.family == "", "from nothing: any kind, blank anvil there")
 	sc.queue_free()
+
+## The Hand tool: the builder says where the hand holds the grip (both hands on a two-handed
+## weapon), the fighter holds it there, and a click off the grip moves no hand.
+func test_the_builder_picks_where_the_hand_holds() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("gladius"), 1000, func(_d, _c): pass)
+	var grip: Array = f.cells.keys().filter(func(k): return f.cells[k][1] == "grip")
+	grip.sort_custom(func(a, b): return a.y < b.y)
+	var low: Vector3i = grip[0]
+	f._set_hand(low)
+	var g = ForgeLib.grip_points(f._design_now())
+	t.check(g != null and g.main.distance_to(Vector3(low)) < 0.01, "the hand where it was put (%s)" % [g.main if g else null])
+	var w := Weapon.new()
+	w.setup(f._design_now())
+	t.check(w.grip_main.distance_to(Vector3(low) * Data.weapon_voxel) < 1e-4, "and the fighter holds it there")
+	w.free()
+	var blade = f.cells.keys().filter(func(k): return f.cells[k][1] != "grip")[0]
+	f._set_hand(blade)
+	t.check(ForgeLib.grip_points(f._design_now()).main.distance_to(Vector3(low)) < 0.01, "a click on the blade moves no hand")
+	f.design.twoHanded = true
+	var high: Vector3i = grip[grip.size() - 1]
+	f._set_hand(high)
+	f._set_hand(low)
+	g = ForgeLib.grip_points(f._design_now())
+	t.check(g.main.distance_to(Vector3(high)) < 0.01 and g.off.distance_to(Vector3(low)) < 0.01, "two-handed: one hand, then the other")
+	f.queue_free()

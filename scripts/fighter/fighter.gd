@@ -2741,9 +2741,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# hammer in earnest is as dangerous as a blade, only in a different way.
 		# Hard and heavy hurts more than soft and light: a steel mace far more than a wooden stick.
 		dmg = J * 1.9 * (0.55 + 0.6 * clampf(hardness, 0.0, 1.0))
+		var shielded := part == head and not skull_cracked   # (as it was before this blow)
 		stagger = minf(1.0, stagger + J * 0.011)
 		if part == head:
-			concussion = minf(1.0, concussion + J * 0.015 * (1.6 if skull_cracked else 1.0))
+			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0))
 		if (part == torso or part == head) and not detached:
 			_bruise_organs(part, lp, ld, J)
 			_break_trunk_bones(part, lp, J, heavy, res)
@@ -2756,8 +2757,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if J > 9.0 or (hollow > 0.0 and J > 6.0):
 			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz
 			var at := lp + ld * hollow
+			# The skull spreads a blow to the head: the brain under it is shaken (bruised, the
+			# concussion above), not crushed away, until the skull has cracked.
 			for i in part.fx.size():
-				if part.alive[i] and part.local_of(i).distance_to(at) < r:
+				if part.alive[i] and part.local_of(i).distance_to(at) < r and not (shielded and part.organ[i] == Anatomy.BRAIN):
 					remove.append(i)
 			part.bleed += J * 0.02
 			# A crater down into the bone of a limb has broken it.
@@ -2809,7 +2812,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		dmg *= 0.6
 	if part == torso or part == head:
 		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
-		dmg = minf(dmg, 28.0 * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0))
+		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0))
 	if detached:
 		stagger = keep_stagger
 		concussion = keep_conc
@@ -2833,6 +2836,17 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if remove.size() > 80 * 8:
 			remove.sort_custom(func(a, b): return part.local_of(a).distance_squared_to(lp) < part.local_of(b).distance_squared_to(lp))
 			remove = remove.slice(0, 80 * 8)
+		# The skull and the depth of it: no one blow takes more than a quarter of the brain, so a
+		# head is split blow after blow, not ended by one.
+		if part == head and not detached:
+			var cap := ceili(0.25 * float(organ_total.get(Anatomy.BRAIN, 0)))
+			var brain := remove.filter(func(i): return part.organ[i] == Anatomy.BRAIN)
+			if brain.size() > cap:
+				brain.sort_custom(func(a, b): return part.local_of(a).distance_squared_to(lp) < part.local_of(b).distance_squared_to(lp))
+				var spare := {}
+				for i in brain.slice(cap):
+					spare[i] = true
+				remove = remove.filter(func(i): return not spare.has(i))
 		# Where the blade went in, the wound bleeds from then on: a cut artery (the throat, the
 		# groin, the armpit) or a torn heart pours, spurting with every beat.
 		if type != "blunt" and not detached:
@@ -2863,7 +2877,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		_check_flaps(res)
 		if part == torso and not detached and type != "blunt":
 			_check_belly(res)
-		if not part.severed and part.integrity < 0.4:
+		if not part.severed and part.integrity < (HEAD_DEATH if part == head else 0.4):
 			part.hp = 0.0
 	if part == head and part.hp <= 0.0:
 		die("ko")
@@ -3352,15 +3366,21 @@ func _count_organs() -> void:
 				organ_total[o] = int(organ_total.get(o, 0)) + 1
 
 ## 0..1: how much of an organ is left whole (voxels and bruising both).
-## Half his head gone, or most of his brain: no man lives through that (he lay on the sand
-## "alive" and the bout never ended).
+## Most of his head gone, or most of his brain: no man lives through that (he lay on the sand
+## "alive" and the bout never ended). Short of it a split head rings him, blinds him, fells
+## him; it does not end him: that takes blow after blow.
 func _head_ruined() -> bool:
 	if head.severed or get("kind") == "beast":   # a beast's heads are its own (beast.gd)
 		return false
+	return brain_lost() >= BRAIN_DEATH or head.integrity < HEAD_DEATH
+
+const BRAIN_DEATH := 0.7   # the share of the brain torn away that kills
+const HEAD_DEATH := 0.35   # the share of the head left that still lives
+
+## 0..1: how much of the brain is torn away (bruising rings him, it does not kill).
+func brain_lost() -> float:
 	var nb: int = organ_total.get(Anatomy.BRAIN, 0)
-	if nb > 0 and float(organ_lost.get(Anatomy.BRAIN, 0)) / float(nb) >= 0.45:
-		return true
-	return head.integrity < 0.55
+	return float(organ_lost.get(Anatomy.BRAIN, 0)) / float(nb) if nb > 0 else 0.0
 
 func organ_health(id: int) -> float:
 	var n: int = organ_total.get(id, 0)
@@ -3394,7 +3414,8 @@ func _organ_lost(part: VoxelPart, indices: Array) -> void:
 	if n_lung > 0:
 		stamina = minf(stamina, breath_cap())
 	if lost.has(Anatomy.BRAIN):
-		concussion = minf(1.0, concussion + 0.12 * lost[Anatomy.BRAIN])
+		# As much as the share of it torn (by the voxel, a nick of the brain rang him senseless).
+		concussion = minf(1.0, concussion + 2.0 * float(lost[Anatomy.BRAIN]) / maxf(1.0, float(organ_total.get(Anatomy.BRAIN, 1))))
 	if lost.has(Anatomy.SPINE):
 		_read_cord()
 
@@ -3479,7 +3500,7 @@ func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void
 		Anatomy.HEART:
 			torso.bleed += k * 3.0
 		Anatomy.BRAIN:
-			concussion = minf(1.0, concussion + k)
+			concussion = minf(1.0, concussion + k * 0.5)
 
 ## The belly opened wide enough to let the guts out: they come out through the wound as a chain
 ## of their own voxels, hanging and swinging (GutRope; with gore reduced they are only lost). It
@@ -3603,7 +3624,7 @@ func _organs_tick(dt: float) -> void:
 			return
 	# (A many-headed monster lives on without one of its heads' brains.)
 	var many: bool = get("sp") is Dictionary and get("sp").get("multiHead", false)
-	if organ_health(Anatomy.BRAIN) < 0.6 and not many:
+	if brain_lost() >= BRAIN_DEATH and not many:
 		die("brain")
 
 # ---------- Bones ----------

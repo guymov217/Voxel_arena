@@ -52,16 +52,19 @@ static func grip_points(d: Dictionary) -> Variant:
 	if grips.is_empty():
 		return null
 	grips.sort_custom(func(a, b): return a[1] < b[1])
-	# Hand places set in the design (two-person weapons), while there is still a handle there.
+	# Hand places set in the design (the forge's Hand tool, two-person weapons), while there is
+	# still a handle there; one-handed, only the main hand's place counts.
 	var gs = d.get("grips")
 	if gs is Dictionary and gs.has("main") and gs.has("off"):
+		var two: bool = d.get("twoHanded", false)
 		var both := true
-		for k in ["main", "off"]:
+		for k in (["main", "off"] if two else ["main"]):
 			var q := Vector3(gs[k][0], gs[k][1], gs[k][2])
 			if not grips.any(func(g): return Vector3(g[0], g[1], g[2]).distance_to(q) < 1.5):
 				both = false
 		if both:
-			return {"main": Vector3(gs.main[0], gs.main[1], gs.main[2]), "off": Vector3(gs.off[0], gs.off[1], gs.off[2])}
+			var m := Vector3(gs.main[0], gs.main[1], gs.main[2])
+			return {"main": m, "off": Vector3(gs.off[0], gs.off[1], gs.off[2]) if two else m + Vector3(0, -2, 0)}
 	var avg := func(list: Array) -> Vector3:
 		var p := Vector3.ZERO
 		for g in list:

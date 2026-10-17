@@ -132,19 +132,26 @@ func test_a_bout_ends_when_no_one_can_stand_and_fight() -> void:
 	m.queue_free()
 
 ## Half his head cut away kills a man (he does not lie there alive for ever).
-func test_half_a_head_is_death() -> void:
+## A split head rings a man and fells him; only most of his head gone ends him.
+func test_most_of_a_head_is_death() -> void:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
 	var f: Fighter = m.me.f
-	var half := []
-	for i in f.head.fx.size():
-		if f.head.fx[i] < f.head.dims.x * int(Data.body_res) / 2:
-			half.append(i)
-	f.head.remove_voxels(half)
+	var cut := func(share: float) -> void:
+		var some := []
+		for i in f.head.fx.size():
+			if f.head.alive[i] and f.head.fx[i] < f.head.dims.x * int(Data.body_res) * share:
+				some.append(i)
+		f.head.remove_voxels(some)
+	cut.call(0.3)
 	for i in 10:
 		await get_tree().physics_frame
-	t.check(not f.alive, "a man with half his head gone is dead (integrity %.2f)" % f.head.integrity)
+	t.check(f.alive, "a third of his head gone: still alive (integrity %.2f)" % f.head.integrity)
+	cut.call(0.75)
+	for i in 10:
+		await get_tree().physics_frame
+	t.check(not f.alive, "most of his head gone: dead (integrity %.2f)" % f.head.integrity)
 	m.queue_free()
 
 ## Whatever keeps a man on the sand, twelve seconds there without getting up and he is out:

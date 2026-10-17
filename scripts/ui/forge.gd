@@ -32,6 +32,7 @@ var rng := RandomNumberGenerator.new()
 var undo_stack: Array = []
 var redo_stack: Array = []
 var stroke := {}   # the mouse held down in the voxel view: {erase, done: cells, undo}
+var hand_next := "main"      # the Hand tool: which hand the next click places
 var line_from = null       # the first cell of a line or a box being drawn
 
 var viewport: SubViewport
@@ -63,7 +64,7 @@ var cost_label: Label
 ## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
 const MATS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
-const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"]]
+const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"], ["hand", "Hand", "Click the grip where the hand holds it (two-handed: then where the other hand goes)"]]
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	design = d.duplicate(true)
@@ -541,6 +542,7 @@ func _toolbar_ui() -> void:
 		var b := UIStyle.button(td[1], func():
 			tool = key
 			line_from = null
+			hand_next = "main"
 			_toolbar_ui())
 		b.toggle_mode = true
 		b.button_pressed = tool == key
@@ -800,6 +802,25 @@ func _rebuild() -> void:
 	if cells.size():
 		centre /= cells.size()
 	weapon_root.set_meta("centre", centre)
+	# Where the hands hold it: a gold ring for the main hand, a bronze one for the other.
+	var g = ForgeLib.grip_points(_design_now())
+	if g != null:
+		var hands := [[g.main, UIStyle.GOLD]]
+		if design.get("twoHanded", false):
+			hands.append([g.off, UIStyle.BRONZE])
+		for hd in hands:
+			var ring := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = vs * 0.75
+			tm.outer_radius = vs * 1.05
+			var rm := StandardMaterial3D.new()
+			rm.albedo_color = hd[1]
+			rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			rm.no_depth_test = true
+			tm.material = rm
+			ring.mesh = tm
+			ring.position = (hd[0] as Vector3) * vs
+			weapon_root.add_child(ring)
 	var low := INF
 	for k in cells:
 		low = minf(low, float(k.y) * vs)
@@ -974,6 +995,11 @@ func _apply(a: Dictionary) -> void:
 				var list := _mirrored([a.hit])
 				_remove(list)
 				_mark(list)
+		"hand":
+			if a.hit == null or stroke.get("handed", false):
+				return
+			stroke["handed"] = true
+			_set_hand(a.hit)
 		"line", "box":
 			var c: Vector3i = a.place
 			if line_from == null:
@@ -983,6 +1009,27 @@ func _apply(a: Dictionary) -> void:
 				var list := ForgeLib.line_cells(line_from, c) if tool == "line" else ForgeLib.box_cells(line_from, c)
 				line_from = null
 				_place(_mirrored(list))
+
+## The Hand tool: the hand goes where it was clicked on the grip (and the other hand of a
+## two-handed weapon at the next click). The fighter holds the weapon there.
+func _set_hand(c: Vector3i) -> void:
+	if cells[c][1] != "grip":
+		cost_label.text = "The hands hold the grip: click a grip block"
+		return
+	var at := [c.x, c.y, c.z]
+	var two: bool = design.get("twoHanded", false)
+	var gs: Dictionary = design.get("grips", {}) if design.get("grips") is Dictionary else {}
+	if not two:
+		design.grips = {"main": at, "off": [c.x, c.y - 2, c.z]}
+	elif hand_next == "main":
+		design.grips = {"main": at, "off": gs.get("off", at)}
+		hand_next = "off"
+	else:
+		design.grips = {"main": gs.get("main", at), "off": at}
+		hand_next = "main"
+	_rebuild()
+	if two and hand_next == "off":
+		cost_label.text = "Now click where the other hand holds it"
 
 func _erase_at(at: Vector2) -> void:
 	var a := _aim(at)

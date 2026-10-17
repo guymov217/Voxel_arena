@@ -172,10 +172,14 @@ func _row(parent: Control, items: Array) -> HBoxContainer:
 ## rest (a guest's own purse waits for him at home).
 var shared_purse := 0
 
+## A beginner's purse: not enough for any weapon on the rack (the cheapest, a dagger, is 35),
+## enough for a handful of blocks on the stick at the forge.
+const START_COINS := 20
+
 func coins() -> int:
 	if Net.active() and not Net.is_host():
 		return shared_purse
-	return int(Save.get_value("coins", 150))
+	return int(Save.get_value("coins", START_COINS))
 
 func add_coins(n: int) -> void:
 	if Net.active() and not Net.is_host():
@@ -368,7 +372,7 @@ func _main(v: VBoxContainer) -> void:
 	v.add_child(col)
 	var buttons := [
 		# A campaign under way goes on from the yard, the lobby between bouts.
-		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard() if int(Save.get_value("stage", 1)) > 1 else start({"mode": "campaign", "stage": 1}), true),
+		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard(), true),
 	]
 	if SHOW_CIRCUS:
 		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
@@ -2467,7 +2471,7 @@ func _on_finished(r: Dictionary) -> void:
 			Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
 			Save.set_value("oddities_sold", {})
 			Save.set_value(ck, 1)
-			Save.set_value("coins", 150)
+			Save.set_value("coins", START_COINS)
 			set_body(Body.empty())
 			set_arms(Arms.empty())
 			set_worn_armor([])
@@ -2573,12 +2577,15 @@ func _unhandled_input(e: InputEvent) -> void:
 func restart_campaign() -> void:
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
 	Save.set_value("oddities_sold", {})
+	Save.set_value("coins", START_COINS)
 	Save.set_value("stage", 1)
 	Save.set_value("checkpoint", 1)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
 	set_worn_armor([])
-	start({"mode": "campaign", "stage": 1})
+	# Back to the yard, not straight into bout 1: the smith, the market and the gate first
+	# (online the host brings the whole party back with him).
+	enter_yard("A new campaign begins")
 
 func _toggle_pause() -> void:
 	if pause_layer:
@@ -2602,7 +2609,7 @@ func _toggle_pause() -> void:
 	p.add_child(v)
 	v.add_child(UIStyle.title("Paused", 30))
 	v.add_child(UIStyle.button("Back to the fight", _toggle_pause, true))
-	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and not Net.active():
+	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()):
 		# Twice, to be sure: the whole campaign over from bout 1, whole of body, bare of arms.
 		var rb := UIStyle.button("Restart the campaign", func(): pass)
 		rb.pressed.connect(func():

@@ -97,10 +97,13 @@ func test_a_broken_brain_fells_him() -> void:
 	await _steps(30)
 	v.head.remove_voxels(_of(v.head, Anatomy.BRAIN, 0.2))
 	await _steps(30)
-	t.check(v.alive and v.concussion > 0.5, "a bit of it: he is badly rung (%.2f)" % v.concussion)
+	t.check(v.alive and v.concussion > 0.3, "a bit of it: he is badly rung (%.2f)" % v.concussion)
 	v.head.remove_voxels(_of(v.head, Anatomy.BRAIN, 0.4))
 	await _steps(30)
-	t.check(not v.alive and why == ["brain"], "half of it: he is dead (%s)" % [why])
+	t.check(v.alive, "half of it: still alive, a split head is not the end of him")
+	v.head.remove_voxels(_of(v.head, Anatomy.BRAIN, 0.7))
+	await _steps(30)
+	t.check(not v.alive and why == ["brain"], "most of it: he is dead (%s)" % [why])
 	m.queue_free()
 
 func test_a_stab_in_the_chest_reaches_the_heart() -> void:
