@@ -5,8 +5,9 @@ extends RefCounted
 ## card and up to two modifier cards built into voxels by simple_weapon), "surprise me", the
 ## blacksmith's opinion and the dummy's verdict. No UI: tests use it directly.
 
-const GRID := {"minX": -8, "maxX": 8, "minY": -8, "maxY": 46, "minZ": -3, "maxZ": 3}
-const MAX_VOXELS := 400
+## Room to try things: a weapon up to about 3.5 m long, 1.3 m wide and half a metre thick.
+const GRID := {"minX": -16, "maxX": 16, "minY": -16, "maxY": 90, "minZ": -6, "maxZ": 6}
+const MAX_VOXELS := 1600
 const CHAIN_LINK := 0.07
 const METALS := ["steel", "iron", "bronze", "gold", "stone", "bone"]
 
@@ -48,16 +49,28 @@ static func _mass(mat: String) -> float:
 
 ## The most a gladiator can lift and swing (kg): heavier, it lies on the sand with the hand
 ## dragged down after it.
-const MAX_KG_ONE := 10.0
-const MAX_KG_TWO := 18.0
+const MAX_KG_ONE := 14.0
+const MAX_KG_TWO := 26.0
+## And the most weight out at a distance from the hand (kg·m): a heavy head on a long haft
+## drags the arm down though the whole weighs little (a warhammer is 6.4 two-handed, a mace 1.8).
+const MAX_LEVER_ONE := 3.5
+const MAX_LEVER_TWO := 10.0
 
 ## Why this design cannot be carried into a fight, or "" if it can.
 static func too_heavy(d: Dictionary, st := {}) -> String:
 	if st.is_empty():
 		st = compute_stats(d)
-	var cap := MAX_KG_TWO if d.get("twoHanded", false) else MAX_KG_ONE
+	var two: bool = d.get("twoHanded", false)
+	var cap := MAX_KG_TWO if two else MAX_KG_ONE
 	if float(st.mass) > cap:
-		return "Too heavy to lift: %.1f kg, the most is %d kg%s" % [st.mass, int(cap), "" if d.get("twoHanded", false) else " (%d two-handed)" % int(MAX_KG_TWO)]
+		return "Too heavy to lift: %.1f kg, the most is %d kg%s" % [st.mass, int(cap), "" if two else " (%d two-handed)" % int(MAX_KG_TWO)]
+	var g = grip_points(d)
+	if g != null and st.get("com") is Array:
+		var gm: Vector3 = g.main
+		var lever: float = float(st.mass) * (Vector3(st.com[0], st.com[1], st.com[2]) - gm).length() * Data.weapon_voxel
+		var lcap := MAX_LEVER_TWO if two else MAX_LEVER_ONE
+		if lever > lcap:
+			return "Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f%s). Lighter at the end, or nearer the hand" % [lever, lcap, "" if two else "; more two-handed"]
 	return ""
 
 ## The hand points (voxel units) for the main and the off hand, or null with no grip.

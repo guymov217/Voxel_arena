@@ -433,11 +433,13 @@ func _blow(g: Dictionary) -> Dictionary:
 			vic_char.concussion = minf(1.0, vic_char.concussion + J * 0.012)
 		vic.apply_central_impulse(Vector3(dir.x, dir.y * 0.5, dir.z) * J * 0.7 * vic_char.MS)
 	if kick and not vic.severed and vic_char.get("torso"):
-		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(120.0, J * 6.0)
+		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(80.0, J * 4.0)
 		vic_char.torso.apply_central_impulse(Vector3(dir.x * m, 10.0, dir.z * m))
-		vic_char.stagger = minf(1.0, vic_char.stagger + 0.25)
+		vic_char.stagger = minf(1.0, vic_char.stagger + 0.12)
 		var lv: Vector3 = vic_char.torso.linear_velocity
-		var sweep: float = (0.35 if Vector2(lv.x, lv.z).length() > 0.8 else 0.0) + (0.35 if vic_char.stamina < 30.0 else 0.0) + 0.3 * vic_char.stagger
+		# A kick takes the legs from under a man only now and then: the harder it lands, the
+		# more he is on the move, out of breath or reeling, the likelier; never a sure thing.
+		var sweep: float = ((0.12 if Vector2(lv.x, lv.z).length() > 0.8 else 0.0) + (0.12 if vic_char.stamina < 30.0 else 0.0) + 0.15 * vic_char.stagger) * clampf(J / 22.0, 0.2, 1.0)
 		if vic.def.get("leg", false) and vic_char.state == "stand" and randf() < sweep:
 			vic_char.fall(1.2)
 			res.tripped = true

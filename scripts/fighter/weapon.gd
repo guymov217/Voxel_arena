@@ -338,6 +338,32 @@ func gem_counts() -> Dictionary:
 			out[vox[i][3]] = int(out.get(vox[i][3], 0)) + 1
 	return out
 
+## The voxels of `mat` still on it within `r` voxels of world point `p` (Match._materials).
+func voxels_near(p: Vector3, r: float, mat: String) -> Array:
+	var q := to_local(p) / vs
+	var out := []
+	for i in vox.size():
+		if alive[i] and vox[i][3] == mat and Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(q) <= r:
+			out.append(i)
+	return out
+
+func material_count(mats: Array) -> int:
+	var n := 0
+	for i in vox.size():
+		if alive[i] and mats.has(vox[i][3]):
+			n += 1
+	return n
+
+## Where the voxels of `mat` are, in the world (the middle of them).
+func material_centre(mat: String) -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for i in vox.size():
+		if alive[i] and vox[i][3] == mat:
+			sum += Vector3(vox[i][0], vox[i][1], vox[i][2])
+			n += 1
+	return global_transform * (sum / maxf(1.0, n) * vs)
+
 func local_box() -> AABB:
 	var lo := Vector3.INF
 	var hi := -Vector3.INF
@@ -511,6 +537,17 @@ func knock(index: int, score: float) -> Dictionary:
 		Chunk.spawn(self, pv, Vector3.DOWN)
 	return {"indices": idx, "voxels": voxels, "broke": not pieces.is_empty()}
 
+## Voxels `idx` are spent (explosive powder gone off): they are gone, and what they held up falls
+## off as its own piece. Returns every index removed.
+func spend(idx: Array) -> Array:
+	var voxels := remove_voxels(idx)
+	Chunk.spawn(self, voxels, Vector3.UP)
+	var out := idx.duplicate()
+	for pc in split_plan():
+		out.append_array(pc)
+		Chunk.spawn(self, remove_voxels(pc), Vector3.DOWN)
+	return out
+
 ## The 6-connected pieces of what is left.
 func components() -> Array:
 	var at := {}
@@ -600,6 +637,24 @@ func chip_indices(index: int, score: float) -> Array:
 static func chip_score(j: float, own_hardness: float, other_hardness: float) -> float:
 	return (j * (0.4 + other_hardness)) / (own_hardness + 0.15)
 
+## In a hand with the blade under the sand (put into a hanging arm, pressed down by its weight):
+## it passes through the floor until the arm has it out, then meets the floor again, rather
+## than jammed there with the hand stuck to it.
+var _through_floor := false
+func _out_of_the_floor() -> void:
+	if freeze or vox.is_empty():
+		return
+	var low := INF
+	var box := local_box()
+	for i in 8:
+		low = minf(low, (global_transform * box.get_endpoint(i)).y)
+	var under := holder != null and low < -0.04
+	if under != _through_floor and (under or low > 0.02 or holder == null):
+		_through_floor = under
+		for b in bodies():
+			if b is CollisionObject3D:
+				b.collision_mask = (b.collision_mask & ~VoxelPart.LAYER_WORLD) if under else (b.collision_mask | VoxelPart.LAYER_WORLD)
+
 func grip_world() -> Vector3:
 	return global_transform * grip_main
 
@@ -659,6 +714,7 @@ func _physics_process(dt: float) -> void:
 		global_position = Vector3(global_position.x, 0.6, global_position.z)
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO
+	_out_of_the_floor()
 	if chain_head:
 		# The head hits for whoever swings the handle.
 		chain_head.holder = holder

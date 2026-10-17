@@ -17,7 +17,7 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -189,6 +189,21 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
+			"boing":
+				# A spring let go: a low tone that wobbles up and down as it dies away.
+				s = sin(TAU * 150.0 * tone * t * (1.0 + 0.35 * sin(TAU * 9.0 * t) * exp(-t * 3.0))) * exp(-t * 5.0) * 0.6
+			"squeak":
+				s = sin(TAU * (900.0 + 1400.0 * sin(PI * t / 0.18)) * tone * t) * sin(PI * t / 0.18) * 0.4
+			"freeze":
+				# Ice: a bright crack, then a tinkle of little shards.
+				var hp4 := rng.randf_range(-1, 1) - lp
+				lp += hp4 * 0.7
+				s = hp4 * exp(-t * 40.0) * 0.7 + sin(TAU * 3100.0 * tone * t) * exp(-t * 9.0) * (0.25 if fmod(t * 23.0, 1.0) < 0.3 else 0.05)
+			"giggle":
+				# A run of "hee"s, each a little higher.
+				var k := int(t / 0.12)
+				var u := fmod(t, 0.12) / 0.12
+				s = sin(TAU * (520.0 + 40.0 * k) * tone * t) * sin(PI * u) * (0.5 + 0.3 * sin(TAU * 1040.0 * t)) * exp(-t * 2.0) * 0.4
 			"bell":
 				s = (sin(TAU * 660.0 * t) + 0.5 * sin(TAU * 1584.0 * t) + 0.25 * sin(TAU * 2310.0 * t)) * exp(-t * 3.0) * 0.35
 			"horn":

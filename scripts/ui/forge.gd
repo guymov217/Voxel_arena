@@ -890,7 +890,7 @@ func _rebuild() -> void:
 		var ext := 0.0
 		for k in cells:
 			ext = maxf(ext, (Vector3(k) * vs - centre).length())
-		dist = clampf(ext * 2.3 + 0.15, 0.4, 3.5)   # the whole of it in view, clear of the toolbar
+		dist = clampf(ext * 2.3 + 0.15, 0.4, 6.0)   # the whole of it in view, clear of the toolbar
 	_place_camera()
 	_update_texts()
 
@@ -930,7 +930,7 @@ func _on_view_input(e: InputEvent) -> void:
 			dist = maxf(0.3, dist * 0.9)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(5.0, dist * 1.1)
+			dist = minf(8.0, dist * 1.1)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
 			stroke = {"erase": false, "done": {}, "undo": false}

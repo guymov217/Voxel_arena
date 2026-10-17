@@ -788,6 +788,7 @@ func _physics_process(dt: float) -> void:
 	_update_streams(dt)
 	throwables.update(dt)
 	throwables.update_shooters(dt)
+	_materials_tick(dt)
 	for e in entities:
 		if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
 			Fire.tick(e.f, dt, true)
@@ -1133,6 +1134,10 @@ func guest_message(type: String, data) -> void:
 						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
 					"pool":
 						fx.pool(fp, 1.4 * clampf(float(data.get("s", 1.0)), 0.3, 4.0), 8.0)
+					"boom":
+						_boom_fx(fp, clampi(int(data.get("n", 4)), 1, 60))
+					"boing":
+						sfx("boing", fp, 0.8)
 					"voice":
 						if Sfx and not headless and Voices.KINDS.has(str(data.get("v"))):
 							var vf := str(data.get("f", ""))
@@ -1445,6 +1450,7 @@ func _on_hit(h: Dictionary) -> void:
 	if role != "guest" and h.get("weapon") and is_instance_valid(h.weapon):
 		_gems(h)
 		_gold(h)
+		_materials(h)
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
@@ -1612,6 +1618,162 @@ func _gold(h: Dictionary) -> void:
 		return
 	att.set_meta("gold_t", time)
 	crowd_add(att, minf(8.0, 1.0 + n * 0.15), "a golden blow")
+
+## The odd stuff of the forge does what the smith was told it does. Explosive powder goes off on
+## a hard blow, once: a blast round the place it struck that hurts everyone close, the man who
+## swung it as well, and the powder is gone from the weapon. A spring throws the man it hits
+## away (boing). Glue holds the weapon where it struck for a moment, a thrown one longer. Ice
+## chills, a feather makes him laugh and drop his guard, and each has its sound.
+const BOOM_J := 8.0
+const GLUE_T := 1.4
+const GLUE_THROWN_T := 5.0
+var glued: Array = []   # [{"j": joint, "t": until, "w": weapon}]
+func _materials(h: Dictionary) -> void:
+	var c = h.get("char")
+	var w: Weapon = h.weapon
+	if not (c is Fighter) or c == h.get("attacker") or not (h.get("p") is Vector3):
+		return
+	var J := float(h.get("J", 0.0))
+	var p: Vector3 = h.p
+	var mat := String(h.get("mat", ""))
+	var dir: Vector3 = h.get("dir", Vector3.FORWARD) if h.get("dir") is Vector3 else Vector3.FORWARD
+	var att = h.get("attacker")
+	var sound := String(Data.material(mat).get("sound", ""))
+	if sound != "" and sound != "boing":
+		sfx(sound, p, minf(1.0, 0.4 + J / 30.0))
+	if J >= BOOM_J:
+		var powder := w.voxels_near(p, 4.0, "explosive")
+		if not powder.is_empty():
+			_boom(w, powder, p, att)
+	if (mat == "spring" or not w.voxels_near(p, 2.5, "spring").is_empty()) and J >= 3.0 and c.alive:
+		var out: Vector3 = Vector3(dir.x, 0.0, dir.z).normalized() if Vector2(dir.x, dir.z).length() > 0.05 else (c.torso.global_position - p).normalized()
+		var k := minf(1.0, J / 25.0)
+		c.torso.apply_central_impulse((out * 140.0 + Vector3.UP * 55.0) * k * maxf(1.0, c.torso.mass / 20.0))
+		c.stagger = minf(1.0, c.stagger + 0.35 * k)
+		w.apply_central_impulse(-out * w.mass * 3.0 * k)
+		sfx("boing", p, 0.5 + 0.5 * k)
+		_send_fx("boing", p)
+		if time - float(c.get_meta("spring_say", -9.0)) > 4.0:
+			c.set_meta("spring_say", time)
+			feed.emit("BOING! %s goes flying!" % c.display_name)
+	var part = h.get("part")
+	if (mat == "glue" or not w.voxels_near(p, 2.0, "glue").is_empty()) and J >= 4.0 and part is VoxelPart and not part.severed and not w.freeze and time - float(w.get_meta("glue_t", -9.0)) > GLUE_T + 0.8:
+		w.set_meta("glue_t", time)
+		var j := PinJoint3D.new()
+		add_child(j)
+		j.global_position = p
+		j.node_a = w.get_path()
+		j.node_b = part.get_path()
+		glued.append({"j": j, "t": time + (GLUE_T if w.holder else GLUE_THROWN_T)})
+		if time - float(c.get_meta("glue_say", -9.0)) > 4.0:
+			c.set_meta("glue_say", time)
+			feed.emit("Stuck! The glue holds %s fast." % c.display_name)
+	if Data.material(mat).get("chill", false) and J >= 4.0 and c.alive:
+		c.slow(1.5, 0.7)
+		c.stamina = maxf(0.0, c.stamina - 5.0)
+		if fx:
+			fx.burst("frost", p, 12, Vector3.UP, 1.2)
+	if Data.material(mat).get("tickle", false) and c.alive and c.kind != "beast":
+		# He laughs: out of breath, off balance, the guard down a moment.
+		c.stamina = maxf(0.0, c.stamina - 6.0)
+		c.stagger = minf(1.0, c.stagger + 0.2)
+		c.slow(1.0, 0.8)
+		if time - float(c.get_meta("tickle_say", -9.0)) > 5.0:
+			c.set_meta("tickle_say", time)
+			feed.emit("%s giggles helplessly!" % c.display_name)
+
+## Explosive powder going off: the voxels at `powder` are spent (what they held falls off), and a
+## blast the bigger the more of it there was.
+func _boom(w: Weapon, powder: Array, p: Vector3, owner_) -> void:
+	var n := powder.size()
+	var gone := w.spend(powder)
+	if role == "host":
+		_send_weapon_vox(w, gone)
+		_send_fx("boom", p, n)
+	_boom_fx(p, n)
+	var r := minf(3.2, 1.3 + 0.12 * n)
+	throwables.blast(p, r, minf(42.0, 14.0 + 2.2 * n), owner_)
+	for e in entities:
+		var c = e.f
+		if not is_instance_valid(c) or not c.alive:
+			continue
+		var d: float = c.torso.global_position.distance_to(p)
+		if d > r:
+			continue
+		var f := 1.0 - d / r
+		c.concussion = minf(1.0, c.concussion + 0.4 * f)
+		var out: Vector3 = c.torso.global_position - p
+		out.y = 0.0
+		out = (out.normalized() if out.length() > 0.01 else Vector3.FORWARD) + Vector3.UP * 0.4
+		c.torso.apply_central_impulse(out * 120.0 * f * maxf(1.0, c.torso.mass / 20.0))
+		if f > 0.5 and not c.mods.get("unstoppable", false):
+			c.fall(1.2, true)
+		if owner_ and owner_ != c:
+			c.last_attacker = owner_
+	feed.emit("BOOM!")
+
+func _boom_fx(p: Vector3, n: int) -> void:
+	sfx("thud", p, 1.0)
+	if fx:
+		var k := clampf(0.4 + n * 0.06, 0.4, 1.0)
+		fx.flash(p, Color(1.0, 0.8, 0.55), 12.0 * k, 8.0 * k)
+		fx.burst("blastfire", p, int(60 * k), Vector3.UP)
+		fx.burst("smoke", p + Vector3(0, 0.3, 0), int(40 * k), Vector3.UP, 1.4)
+		fx.burst("sparks", p, int(90 * k), Vector3.UP, 2.0)
+		fx.mark("scorch", Vector3(p.x, 0.0, p.z), 1.8 * k)
+
+func _send_fx(k: String, p: Vector3, n := 0) -> void:
+	if role == "host":
+		Net.send_all("fx", {"k": k, "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)], "n": n}, false)
+
+## Glue lets go when its time is up; a magnet pulls iron and steel to it: loose blades slide in,
+## and one held close enough by a weaker hand is torn out of it (host).
+const MAGNET_R := 1.8
+var _magnet_t := 0.0
+func _materials_tick(dt: float) -> void:
+	for g in glued.duplicate():
+		if time >= g.t or not is_instance_valid(g.j) or not is_instance_valid(g.j.get_node_or_null(g.j.node_a)) or not is_instance_valid(g.j.get_node_or_null(g.j.node_b)):
+			if is_instance_valid(g.j):
+				g.j.queue_free()
+			glued.erase(g)
+	_magnet_t -= dt
+	if _magnet_t > 0.0:
+		return
+	_magnet_t = 0.1
+	var all := []
+	for e in entities:
+		if is_instance_valid(e.f):
+			for side in ["R", "L"]:
+				var hw = e.f.weapons.get(side)
+				if hw and is_instance_valid(hw):
+					all.append(hw)
+	for lw in combat.loose_weapons:
+		if is_instance_valid(lw) and not all.has(lw):
+			all.append(lw)
+	for m in all:
+		var nm: int = m.material_count(["magnet"])
+		if nm == 0:
+			continue
+		var mp: Vector3 = m.material_centre("magnet")
+		for o in all:
+			if o == m or o.freeze:
+				continue
+			var iron: int = o.material_count(["iron", "steel"])
+			if iron == 0:
+				continue
+			var to: Vector3 = mp - o.global_position
+			var d := to.length()
+			if d > MAGNET_R or d < 0.05:
+				continue
+			var pull := minf(60.0, nm * minf(iron, 40) * 0.05 / maxf(0.09, d * d))
+			o.apply_central_impulse(to / d * pull * 0.1)
+			m.apply_central_impulse(-to / d * pull * 0.03)
+			var hf = o.holder
+			if hf and hf != m.holder and d < 0.6 and pull > 25.0 and not o.is_shield and rng.randf() < 0.15:
+				for side in ["R", "L"]:
+					if hf.weapons.get(side) == o:
+						hf.release(side)
+						feed.emit("The magnet tears the %s out of %s's hand!" % [String(o.design.get("name", "weapon")).to_lower(), hf.display_name])
 
 static func _part_word(part: VoxelPart) -> String:
 	var n := String(part.part_name).to_lower()
