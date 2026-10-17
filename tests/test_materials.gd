@@ -101,6 +101,7 @@ func test_a_magnet_pulls_a_steel_blade_in() -> void:
 	m.queue_free()
 
 func test_a_kick_rarely_fells_a_man() -> void:
+	seed(11)
 	var m := _match()
 	var a = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {}, "team": 2, "pos": Vector3(0, 0, -0.9), "yaw": 0.0})
 	a.erase("bot")

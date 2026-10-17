@@ -71,6 +71,6 @@ The processed cuts come from [hoffspot/conquest](https://github.com/hoffspot/con
 The men's grunts, cries and deaths also use the Warfork player voices (`sounds/players/male`, Team
 Forbidden LLC, CC0) and The Motion Monkey's Free Retro Arcade Sounds Pack (vocal pack, CC0), both by
 way of [lavenderdotpet/cc0-public-domain-sounds](https://github.com/lavenderdotpet/cc0-public-domain-sounds).
-The hyena's giggle and whoop are a hound's yelps, quickened and climbing; the elephant's trumpet is
-a horse's whinny brought down to its throat and blown through a brassy band; the gorilla's chest
-beat and the bull's snort are made in code.
+The hyena's giggle and whoop are a hound's yelps, quickened and climbing; the elephant's and the
+mammoth's trumpets and rumbles (`tools/elephant_voice.py`), the gorilla's chest beat and the bull's
+snort are made in code.

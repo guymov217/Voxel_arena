@@ -68,7 +68,7 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	e.glow_hdr_threshold = 1.1
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	e.volumetric_fog_enabled = lv >= 2
-	e.volumetric_fog_density = 0.012
+	e.volumetric_fog_density = 0.005
 	e.volumetric_fog_albedo = Color(0.85, 0.76, 0.6)
 	e.volumetric_fog_anisotropy = 0.6
 	e.volumetric_fog_length = 48.0
@@ -100,7 +100,7 @@ func _build_visuals() -> void:
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 1.08
 	e.adjustment_contrast = 1.12
-	e.fog_density = 0.004 if day else 0.02
+	e.fog_density = 0.0015 if day else 0.008
 	e.fog_light_color = Color(0.82, 0.74, 0.6)
 	we.environment = e
 	add_child(we)

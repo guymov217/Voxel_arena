@@ -10,6 +10,7 @@ var cam: Camera3D
 var pivot: Node3D
 var turn := Vector2(0.6, 0.25)
 var dist := 1.0
+var fit_dist := 1.0   # the distance that shows the whole weapon
 var dragging := false
 var idle := 0.0
 
@@ -86,12 +87,13 @@ func _build(line: String) -> void:
 	pivot.add_child(model)
 	# Its middle on the pivot, and the camera far enough for the whole of it, turned any way.
 	var mi := model.get_child(0) as MultiMeshInstance3D
-	var box: AABB = mi.multimesh.get_aabb()
+	var box: AABB = mi.custom_aabb if mi.custom_aabb.size != Vector3.ZERO else mi.multimesh.get_aabb()
 	model.position = -box.get_center()
 	cam = Camera3D.new()
 	cam.fov = 32.0
 	vp.add_child(cam)
 	dist = maxf(0.3, box.size.length() * 0.5 / sin(deg_to_rad(cam.fov * 0.5)) * 1.12)
+	fit_dist = dist
 	col.add_child(UIStyle.label("Drag to turn it · wheel to bring it nearer", 12, UIStyle.MUTED))
 	_place()
 
@@ -107,7 +109,7 @@ func _on_input(e: InputEvent) -> void:
 		elif e.button_index == MOUSE_BUTTON_WHEEL_UP and e.pressed:
 			dist = maxf(0.2, dist * 0.9)
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN and e.pressed:
-			dist = minf(6.0, dist * 1.1)
+			dist = minf(maxf(6.0, fit_dist * 2.0), dist * 1.1)   # a weapon of any size can be backed away from
 		_place()
 	elif e is InputEventMouseMotion and dragging:
 		turn.x += e.relative.x * 0.01

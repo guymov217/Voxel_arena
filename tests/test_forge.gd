@@ -408,3 +408,39 @@ func test_nothing_too_heavy_to_lift() -> void:
 	await get_tree().physics_frame
 	t.check(w.global_position.y > 0.0, "a weapon through the sand is back on top (y %.2f)" % w.global_position.y)
 	w.queue_free()
+
+## Whatever its size, the whole weapon is in the forge's view: framed when it is put on the
+## anvil, and the camera backs off as it is built bigger.
+func test_the_whole_weapon_is_always_in_view() -> void:
+	var pole := {"name": "Long pole", "voxels": []}
+	for y in 86:
+		pole.voxels.append([0, y, 0, "wood", "grip" if y < 8 else "blunt"])
+	for d in [Data.preset("dagger"), Data.preset("zweihander"), pole]:
+		var f = load("res://scripts/ui/forge.gd").new()
+		add_child(f)
+		f.free_build = true
+		f.open(d.duplicate(true), 99999, func(_d, _c): pass)
+		await get_tree().process_frame
+		t.check(_all_in_view(f), "%s: all of it in view (camera %.2f m off)" % [d.name, f.dist])
+		if d == pole:
+			f.queue_free()
+			continue
+		# Built out to three metres long: the camera follows it out.
+		var add := []
+		for y in range(-14, 80):
+			add.append(Vector3i(0, y, 0))
+		for c in add:
+			if not f.cells.has(c):
+				f.cells[c] = ["wood", "blunt"]
+		f._rebuild()
+		await get_tree().process_frame
+		t.check(_all_in_view(f), "%s built out long: still all in view (camera %.2f m off)" % [d.name, f.dist])
+		f.queue_free()
+
+func _all_in_view(f) -> bool:
+	var vs: float = Data.weapon_voxel
+	for k in f.cells:
+		var p: Vector3 = f.weapon_root.global_transform * (Vector3(k) * vs)
+		if not f.cam.is_position_in_frustum(p):
+			return false
+	return true

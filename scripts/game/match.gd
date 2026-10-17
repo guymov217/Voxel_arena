@@ -1138,6 +1138,8 @@ func guest_message(type: String, data) -> void:
 						_boom_fx(fp, clampi(int(data.get("n", 4)), 1, 60))
 					"boing":
 						sfx("boing", fp, 0.8)
+					"stomp":
+						_stomp_fx(fp, clampf(float(data.get("n", 27)) / 10.0, 0.5, 5.0))
 					"voice":
 						if Sfx and not headless and Voices.KINDS.has(str(data.get("v"))):
 							var vf := str(data.get("f", ""))
@@ -2170,25 +2172,31 @@ func _venom(b, c, part: VoxelPart, at: Vector3) -> void:
 ## his feet, and the part of him the foot lands on is crushed flat, a crater of voxels the
 ## size of the foot.
 func _stomp(b: Beast) -> void:
-	sfx("thud", b.torso.global_position, 1.5)
 	var fwd := PD.quat_of(b.torso) * Vector3(0, 0, 1)
 	fwd.y = 0.0
 	fwd = fwd.normalized()
 	var front: Vector3 = b.torso.global_position + fwd * (b.torso.half_ext.z * 1.2)
 	front.y = 0.1
-	if fx:
-		fx.burst("dust", front, 30, Vector3.UP)
+	_stomp_fx(front, b.S)
+	_send_fx("stomp", front, int(b.S * 10.0))
+	var shake := 2.4 * maxf(1.0, b.S * 0.6)
 	for e in entities:
 		if e.team == ENEMY_TEAM or not e.f.alive or e.f == b or e.f is Beast:
 			continue
 		var c = e.f
 		var tp: Vector3 = c.torso.global_position
-		if Vector2(tp.x - front.x, tp.z - front.z).length() > 2.4 * maxf(1.0, b.S * 0.6):
+		var dd := Vector2(tp.x - front.x, tp.z - front.z).length()
+		if dd > shake:
 			continue
 		# The part the foot comes down on takes it, as hard as the foot lands (the physics'
-		# contact impulse); no touch, no stomp.
+		# contact impulse); no touch, no stomp. Those close by only feel the ground jump: they
+		# reel and stagger back from it.
 		var part: VoxelPart = combat.touch_part(b, c, 0.3)
 		if part == null or part.severed:
+			var k := 1.0 - dd / shake
+			c.stagger = minf(1.0, c.stagger + 0.45 * k)
+			var away := Vector3(tp.x - front.x, 0.0, tp.z - front.z).normalized()
+			c.torso.apply_central_impulse((away * 20.0 + Vector3.UP * 8.0) * k * c.MS)
 			continue
 		var J := clampf(combat.touch_impulse(b, c, 0.3) * 0.08, 10.0, 40.0)
 		var at: Vector3 = part.global_position + Vector3(0, part.half_ext.y * 0.5, 0)
@@ -2197,6 +2205,16 @@ func _stomp(b: Beast) -> void:
 		c.last_attacker = b
 		c.fall(2.0, true)
 		combat.hit.emit({"kind": "hit", "p": at, "dir": Vector3.DOWN, "J": J, "type": "blunt", "char": c, "part": part, "attacker": b, "res": res, "killed": wasa and not c.alive})
+
+## The forefeet coming down: a boom, the sand thrown up all round in a ring, grit flying.
+func _stomp_fx(p: Vector3, size: float) -> void:
+	sfx("thud", p, 1.5)
+	sfx("thump", p, 1.0)
+	if fx:
+		var k := clampf(size / 2.7, 0.6, 1.6)
+		fx.burst("dust", p, int(90 * k), Vector3.UP, 2.4 * k)
+		fx.burst("debris", p, int(30 * k), Vector3.UP, 1.6 * k)
+		fx.burst("dust", p + Vector3(0, 0.3, 0), int(40 * k), Vector3.UP, 1.0)
 
 # ---------- Network (host side snapshots, guest side drawing) ----------
 

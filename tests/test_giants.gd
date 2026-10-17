@@ -202,3 +202,32 @@ func test_a_beaten_foe_does_not_fight_on() -> void:
 		await get_tree().physics_frame
 	t.check(not e.has("bot") and e.drive.call(e).get("limp", false), "and he stays down: no bot fights on in him")
 	m.queue_free()
+
+## A giant is not felled by a man's hard blows to the legs and the body: his bones are thicker
+## and he stands steadier, a dozen warhammer blows in a row leave him on his feet.
+func test_a_giant_stands_up_to_hard_blows() -> void:
+	for kind in ["cyclops", "giant"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+		m.me.f.teleport(Vector3(0, 0, -15))
+		var spec: Dictionary = m.enemy_spec({"e": kind}, 0, 1)
+		spec.pos = Vector3(0, 0.1, 0)
+		var e = m.spawn_fighter(spec)
+		e.erase("bot")
+		e.drive = func(_e): return {}
+		var g: Fighter = e.f
+		for k in 90:
+			await get_tree().physics_frame
+		var falls := 0
+		for n in ["torso", "thighL", "torso", "shinR", "thighR", "torso", "shinL", "thighL"]:
+			var p: VoxelPart = g.torso if n == "torso" else g.by_name[n]
+			g.apply_hit(p, {"impulse": 34.0, "type": "blunt", "hardness": 0.9, "sharpness": 0.0, "point": p.global_position - Vector3(0, 0, p.half_ext.z), "dir": Vector3(0, 0, 1), "axis": Vector3.RIGHT, "edge": Vector3(0, 0, 1), "heavy": 0.4, "wsz": 1.0})
+			for k in 45:
+				await get_tree().physics_frame
+				if g.state != "stand":
+					falls += 1
+					break
+		t.eq(falls, 0, "%s stays on his feet under 8 warhammer blows" % kind)
+		m.queue_free()
+		await get_tree().physics_frame

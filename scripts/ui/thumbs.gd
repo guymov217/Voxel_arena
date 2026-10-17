@@ -90,6 +90,16 @@ static func model(d: Dictionary) -> Node3D:
 		mm.set_instance_color(i, Weapon.voxel_color(str(v[3]), str(v[4])))
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
+	# Its box from the voxels themselves (the renderer's own is filled in late, and a picture
+	# framed by it cut the end off a long weapon).
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for v in all:
+		var q := Vector3(float(v[0]), float(v[1]), float(v[2])) * vs
+		lo = lo.min(q)
+		hi = hi.max(q)
+	if not all.is_empty():
+		mi.custom_aabb = AABB(lo - Vector3.ONE * vs * 0.5, hi - lo + Vector3.ONE * vs)
 	root.add_child(mi)
 	return root
 
@@ -100,6 +110,7 @@ static func item_type(id: String) -> Variant:
 	return {"darts": "pot_dart", "boomerang": "boomerang", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "bandage": "bandage"}.get(id)
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS   # the pictures come in behind a paused game too
 	vp = SubViewport.new()
 	vp.size = Vector2i(SIZE, SIZE)
 	vp.own_world_3d = true
@@ -141,7 +152,8 @@ func _make(q: Dictionary) -> void:
 		stack.append_array(n.get_children())
 		if n is MeshInstance3D or n is MultiMeshInstance3D:
 			var gi := n as GeometryInstance3D
-			var b: AABB = gi.global_transform * (gi.multimesh.get_aabb() if gi is MultiMeshInstance3D else gi.get_aabb())
+			var own: AABB = gi.custom_aabb if gi.custom_aabb.size != Vector3.ZERO else (gi.multimesh.get_aabb() if gi is MultiMeshInstance3D else gi.get_aabb())
+			var b: AABB = gi.global_transform * own
 			box = b if first else box.merge(b)
 			first = false
 	var c := box.get_center()

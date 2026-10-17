@@ -643,6 +643,9 @@ func _input_more(e: InputEvent) -> void:
 func _tutorial() -> void:
 	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
 
+## Foes kept out of the training for now (the flail fighter: the flail is not right yet).
+const TRAINING_OUT := ["flailman"]
+
 func _training(v: VBoxContainer) -> void:
 	# The saved choices once; after that the screen is redrawn from what is being picked (each
 	# redraw read the save back over it, and a + or − in the bag came to nothing).
@@ -689,7 +692,7 @@ func _training(v: VBoxContainer) -> void:
 		o.item_selected.connect(func(i): training[key] = keys[i])
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")
-	var foes: Array = Data.campaign.enemies.keys().map(func(k): return "foe:" + k)
+	var foes: Array = Data.campaign.enemies.keys().filter(func(k): return not TRAINING_OUT.has(k)).map(func(k): return "foe:" + k)
 	var who: Array = (["none", "gladiator"] + foes + Data.beasts.keys()).filter(func(k): return Edition.foe_open(k))
 	if not who.has(training.get("enemy")):
 		training.enemy = "gladiator"
@@ -874,30 +877,62 @@ func back_to_forge() -> void:
 		if match_ and match_.input:
 			match_.input.enabled = false
 
-## Training: a weapon from My designs into either hand (a separate list of the saved designs).
+## Training: My designs as the forge shows them, a card for each saved weapon (its picture, its
+## weight and reach) to take into the main or the off hand; the ones in hand are marked.
 func _training_designs(v: VBoxContainer) -> void:
-	v.add_child(UIStyle.title("My designs", 34))
+	var vp := get_viewport_rect().size
+	panel.custom_minimum_size = Vector2(minf(1100.0, maxf(640.0, vp.x - 144.0)), maxf(420.0, vp.y - 80.0))
+	var head := HBoxContainer.new()
+	head.add_child(UIStyle.title("My designs", 34))
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(sp)
+	head.add_child(UIStyle.button("Forge a new one", _training_forge))
+	head.add_child(UIStyle.button("Back", func(): show_screen("training")))
+	v.add_child(head)
+	v.add_child(UIStyle.label("Pick a weapon you saved in the forge for either hand", 15, UIStyle.MUTED))
 	var g: Array = load("res://scripts/ui/forge.gd").gallery()
 	if g.is_empty():
 		v.add_child(UIStyle.label("Nothing saved yet: save a design in the forge first", 15, UIStyle.MUTED))
+		return
+	var main_d: Dictionary = Save.get_value("training_weapon", {}) if training.my_main == "built" else {}
+	var off_d: Dictionary = Save.get_value("training_off_weapon", {}) if training.my_off == "built" else {}
+	var scroll := _smith_scroll(v)
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	v.add_child(grid)
+	grid.columns = maxi(2, int((panel.custom_minimum_size.x - 60.0) / 250.0))
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	scroll.add_child(grid)
 	for d in g:
 		var dd: Dictionary = d
-		var card := VBoxContainer.new()
-		card.custom_minimum_size = Vector2(220, 0)
+		var in_main := not main_d.is_empty() and main_d.hash() == dd.hash()
+		var in_off := not off_d.is_empty() and off_d.hash() == dd.hash()
+		var card := PanelContainer.new()
+		var sb := UIStyle._plate(UIStyle.PANEL, UIStyle.BRONZE if in_main or in_off else UIStyle.BRONZE_DARK, 2 if in_main or in_off else 1)
+		sb.content_margin_left = 10; sb.content_margin_right = 10; sb.content_margin_top = 8; sb.content_margin_bottom = 8
+		card.add_theme_stylebox_override("panel", sb)
+		card.custom_minimum_size = Vector2(230, 0)
+		var col := VBoxContainer.new()
+		card.add_child(col)
 		var tex := TextureRect.new()
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 90)
-		card.add_child(tex)
-		Thumbs.weapon(tex, dd, "tdesign:%d" % dd.hash())
-		var nm := UIStyle.label(str(dd.get("name", "?")), 14, UIStyle.TEXT)
+		tex.custom_minimum_size = Vector2(0, 120)
+		col.add_child(tex)
+		var nm := UIStyle.label(str(dd.get("name", "?")), 16, UIStyle.TEXT)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		card.add_child(nm)
+		nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nm.custom_minimum_size = Vector2(200, 0)
+		col.add_child(nm)
+		var st := ForgeLib.compute_stats(dd)
+		var info := UIStyle.label("%.1f kg · reach %.1f m%s" % [float(st.mass), float(st.reach), " · two hands" if dd.get("twoHanded", false) else ""], 13, UIStyle.MUTED)
+		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(info)
+		if in_main or in_off:
+			var mark := UIStyle.label("In your %s" % ("main hand" if in_main else "off hand") if not (in_main and in_off) else "In both hands", 13, UIStyle.BRONZE)
+			mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(mark)
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_child(UIStyle.button("Main hand", func():
@@ -909,10 +944,11 @@ func _training_designs(v: VBoxContainer) -> void:
 			training.my_off = "built"
 			show_screen("training"))
 		off.disabled = bool(dd.get("twoHanded", false))
+		off.tooltip_text = "Two-handed: it takes both hands" if off.disabled else ""
 		row.add_child(off)
-		card.add_child(row)
+		col.add_child(row)
 		grid.add_child(card)
-	v.add_child(UIStyle.button("Back", func(): show_screen("training")))
+		Thumbs.weapon(tex, dd, "tdesign:%d" % dd.hash())
 
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
 func _training_forge() -> void:

@@ -44,6 +44,7 @@ var anvil: MeshInstance3D
 var floor_: MeshInstance3D
 var ghost: MeshInstance3D
 var framed := false
+var fit_dist := 1.0   # how far back the camera must be for the whole weapon
 var cells := {}                 # Vector3i -> [mat, job]
 var orbit := Vector2(0.6, 0.35)
 var dist := 1.6
@@ -885,16 +886,37 @@ func _rebuild() -> void:
 		low = minf(low, float(k.y) * vs)
 	anvil.position = Vector3(centre.x, (low if low < INF else 0.0) - vs * 0.5 - 0.11, centre.z)
 	floor_.position = anvil.position - Vector3(0, 0.11, 0)
-	if not framed and cells.size():
-		framed = true
+	if cells.size():
 		var ext := 0.0
 		for k in cells:
 			ext = maxf(ext, (Vector3(k) * vs - centre).length())
-		dist = clampf(ext * 2.3 + 0.15, 0.4, 6.0)   # the whole of it in view, clear of the toolbar
+		# The whole of it in view, turned any way, clear of the toolbar: framed when it is put
+		# on the anvil, and backed off as it grows past the frame (never pushed in on the builder).
+		fit_dist = maxf(0.4, (ext + vs) / sin(deg_to_rad(_view_fov() * 0.5)) * 1.1 + 0.1)
+		if not framed:
+			framed = true
+			dist = fit_dist
+		elif dist < fit_dist * 0.85:
+			dist = fit_dist
 	_place_camera()
 	_update_texts()
 
+## The narrower of the camera's two angles of view (a tall narrow window is narrow sideways).
+func _view_fov() -> float:
+	var sz := Vector2(viewport.size) if viewport else Vector2(16, 9)
+	var aspect := sz.x / maxf(1.0, sz.y)
+	var h := rad_to_deg(2.0 * atan(tan(deg_to_rad(cam.fov * 0.5)) * aspect))
+	return minf(cam.fov, h)
+
+## The smithy round the anvil (the hearth, the racks, the jars) stands about 3 m off: backed
+## away for a big weapon, the camera would be behind them, so they are put away until it comes in.
+func _decor_shown(on: bool) -> void:
+	for c in floor_.get_children():
+		if c is Node3D:
+			c.visible = on
+
 func _place_camera() -> void:
+	_decor_shown(dist < 2.6)
 	# Aimed a little above the weapon's middle: it sits low in the view, clear of the toolbar.
 	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO) + Vector3(0, 0.08 * dist, 0)
 	cam.global_position = c + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
@@ -930,7 +952,7 @@ func _on_view_input(e: InputEvent) -> void:
 			dist = maxf(0.3, dist * 0.9)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(8.0, dist * 1.1)
+			dist = minf(maxf(8.0, fit_dist * 2.0), dist * 1.1)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
 			stroke = {"erase": false, "done": {}, "undo": false}

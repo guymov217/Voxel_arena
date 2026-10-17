@@ -2745,14 +2745,17 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var shielded := part == head and not skull_cracked   # (as it was before this blow)
 		stagger = minf(1.0, stagger + J * 0.011)
 		if part == head:
-			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0))
+			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0) / sqrt(maxf(1.0, S)))
 		if (part == torso or part == head) and not detached:
 			_bruise_organs(part, lp, ld, J)
 			_break_trunk_bones(part, lp, J, heavy, res)
 		if part == torso and lp.y < 0.0 and J > 8.0 and not detached:
 			stamina = maxf(0.0, stamina - J * 1.3)
 			res.winded = true
-		if not detached and J > 16.0 and not part.fractured and part != torso and part != head and randf() < (J - 14.0) * 0.06 * (1.0 + heavy) / float(mods.toughness):
+		# A giant's bones are as much thicker as he is bigger: what breaks a man's thigh only
+		# bruises his.
+		var big := maxf(1.0, S)
+		if not detached and J > 16.0 * big and not part.fractured and part != torso and part != head and randf() < (J - 14.0 * big) * 0.06 * (1.0 + heavy) / (float(mods.toughness) * big):
 			_fracture(part, lp, J, res)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
 		if J > 9.0 or (hollow > 0.0 and J > 6.0):
@@ -2827,7 +2830,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var steady: bool = bool(mods.get("unstoppable", false)) and blood > 40.0
 	if concussion > 0.85 and state == "stand" and not steady:
 		fall(3.0)
-	if stagger > 0.95 and J >= 16.0 and state == "stand" and not steady:
+	if stagger > 0.95 and J >= 16.0 * maxf(1.0, S * 0.8) and state == "stand" and not steady:
 		fall(1.5)
 	if remove.is_empty() and not detached and J > 3.0:
 		var bruise := type == "blunt"

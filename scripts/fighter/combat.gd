@@ -440,7 +440,12 @@ func _blow(g: Dictionary) -> Dictionary:
 		# A kick takes the legs from under a man only now and then: the harder it lands, the
 		# more he is on the move, out of breath or reeling, the likelier; never a sure thing.
 		var sweep: float = ((0.12 if Vector2(lv.x, lv.z).length() > 0.8 else 0.0) + (0.12 if vic_char.stamina < 30.0 else 0.0) + 0.15 * vic_char.stagger) * clampf(J / 22.0, 0.2, 1.0)
-		if vic.def.get("leg", false) and vic_char.state == "stand" and randf() < sweep:
+		# One chance a kick (a foot that lands twice in the one kick is still one kick).
+		var now := Time.get_ticks_msec()
+		var rolled := now - int(vic_char.get_meta("sweep_roll", -10000)) < 400
+		if not rolled:
+			vic_char.set_meta("sweep_roll", now)
+		if vic.def.get("leg", false) and vic_char.state == "stand" and not rolled and randf() < sweep:
 			vic_char.fall(1.2)
 			res.tripped = true
 	var chip := {}

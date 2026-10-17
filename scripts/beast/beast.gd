@@ -429,8 +429,13 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			pitch = 0.35 if ai.mode == "swoop" else -0.08
 			K = 5.0
 		else:
-			if float(ai.get("stomp", 0.0)) > 0.0:
-				pitch -= 0.14   # reared a little onto the hind legs with the forefoot up
+			if float(ai.get("stomp", 0.0)) > STOMP_DOWN:
+				# Reared up on the hind legs, the forefeet in the air.
+				pitch = -0.55 * clampf((STOMP_T - float(ai.stomp)) / 0.35, 0.0, 1.0)
+				K = 5.0
+			elif float(ai.get("stomp", 0.0)) > 0.0:
+				pitch = 0.16   # and down, the front pitched onto the forefeet
+				K = 10.0
 			if stagger > 0.3:
 				roll += sin(time * 9.0) * stagger * 0.2
 			if Vector2(lv.x, lv.z).length() / S < 0.4:
@@ -563,15 +568,19 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 				var spd := float(sp.speed) * (2.5 if float(ai.charge_t) > 0.0 else 1.5)
 				want = to * spd * hurt
 				yaw = atan2(to.x, to.z)
-			if t and float(ai.get("charge_t", 0.0)) <= 0.0 and dist < 3.2 * S * 0.6 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
-				ai.bite_cool = 4.0
-				ai.stomp = 0.9   # the forefoot lifted, the trunk raised: then it comes down
+			# Close enough that the forefeet, coming down ahead of the chest, land on him.
+			if t and float(ai.get("charge_t", 0.0)) <= 0.0 and dist < torso.half_ext.z * 1.5 + 0.9 * S * 0.5 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
+				ai.bite_cool = 4.5
+				ai.stomp = STOMP_T   # up on the hind legs, forefeet and trunk raised: then it comes down
+				ai.stomped = false
 				if on_strike.is_valid():
 					on_strike.call(self, head)
 			if ai.get("stomp", 0.0) > 0.0:
 				ai.stomp -= dt
-				want = Vector3.ZERO
-				if ai.stomp <= 0.0:
+				want = to * 0.6 * hurt if float(ai.stomp) > STOMP_DOWN else Vector3.ZERO   # it walks up on him on its hind legs
+				if float(ai.stomp) <= STOMP_HIT and not ai.get("stomped", false):
+					ai.stomped = true
+					torso.apply_central_impulse(Vector3(0, -1.0, 0) * mass * 2.5)   # the whole weight brought down
 					_stomp()
 			_trample(dt, lv)
 	# Every beast that runs can run a man down, and one that has no bite, sting or fire left
@@ -999,6 +1008,18 @@ func _breathe() -> void:
 		breath_t = 1.0
 		on_breath.call(self, String(sp.breath), float(sp.breathRange) * S)
 
+## The elephant's stomp (s): it rears for the first part, then comes down; the blow lands at
+## STOMP_HIT before the end.
+const STOMP_T := 1.3
+const STOMP_DOWN := 0.45
+const STOMP_HIT := 0.3
+
+func _stomping() -> bool:
+	return float(ai.get("stomp", 0.0)) > 0.0
+
+static func _foreleg(leg: VoxelPart) -> bool:
+	return leg.part_name == "legFL" or leg.part_name == "legFR"
+
 func _stomp() -> void:
 	if on_stomp.is_valid():
 		on_stomp.call(self)
@@ -1026,7 +1047,7 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 			wn = 25.0; hip = sin(time * 3.0 + i) * 0.3; knee = 0.4
 		elif collapsed:
 			hip = sin(gait * 2.2 + off) * 0.55; knee = 0.35 + cos(gait * 2.2 + off) * 0.3; wn = 45.0
-		elif lower_of(leg) != null and ground_ok and absf(float(leg.def.get("splay", 0.0))) < 0.3 and not float(ai.get("rear", 0.0)) > 0.0:
+		elif lower_of(leg) != null and ground_ok and absf(float(leg.def.get("splay", 0.0))) < 0.3 and not float(ai.get("rear", 0.0)) > 0.0 and not (_stomping() and _foreleg(leg)):
 			# Stepping on the sand: the foot is put down ahead and stays where it is put while
 			# the body goes over it, then is lifted and carried forward; the hip and knee are
 			# worked out from where the foot must be (a fixed swing of the joints dragged the
@@ -1091,8 +1112,13 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 			var k := int(float(ai.beat) * 9.0) + i
 			hip = -1.05 + (0.25 if k % 2 == 0 else -0.1); knee = 1.45; wn = 60.0
 			planted = false
-		elif float(ai.get("stomp", 0.0)) > 0.0 and leg.part_name == "legFL":
-			hip = 0.7; knee = 0.8; wn = 50.0
+		elif _stomping() and _foreleg(leg):
+			if float(ai.stomp) > STOMP_DOWN:
+				# Both forelegs drawn up and folded at the knee, one a little higher than the other.
+				hip = 1.05 + (0.15 if leg.part_name == "legFL" else 0.0); knee = 1.2; wn = 45.0
+			else:
+				# Driven down hard, straight, a little ahead: the forefeet come down like columns.
+				hip = -0.3; knee = 0.02; wn = 95.0
 			planted = false
 		if fl > 0.0:
 			planted = false
@@ -1577,6 +1603,10 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				if p == breath_part():
 					off.y += clampf(breath_yaw * 0.6, -0.5, 0.5)   # the jaws turned onto the mark
 				off.x = 0.03 * breath + (0.35 if ai.mode == "aim" or ai.mode == "charge" and sp.ai == "charger" else 0.0)
+				if sp.ai == "path" and float(ai.get("charge_t", 0.0)) > 0.0:
+					off.x += 0.4   # head down, tusks levelled at him
+				elif _stomping():
+					off.x -= 0.35 if float(ai.stomp) > STOMP_DOWN else -0.2   # the head thrown up, then down
 				off.x -= 0.45 * _lunge_dip()
 				if p == breath_part():
 					off.x += _breath_aim("head")   # the jaws turned onto the mark
@@ -1592,8 +1622,14 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				else:
 					off.z = side * (0.2 + 0.03 * breath)
 			"trunk":
-				off.x = sin(time * 0.8 + i) * 0.22 - (0.7 if ai.get("stomp", 0.0) > 0.0 else 0.0)
+				off.x = sin(time * 0.8 + i) * 0.22
 				off.y = sin(time * 0.55 + i) * 0.25
+				if _stomping():
+					off.x = -1.1 if float(ai.stomp) > STOMP_DOWN else 0.6   # raised high, trumpeting; then flung down
+					off.y *= 0.3
+				elif float(ai.get("charge_t", 0.0)) > 0.0:
+					off.x = -0.8   # curled up out of the way of the tusks
+					off.y *= 0.2
 			"arm":
 				off.y = -track * 0.3 * signf(p.pa.x)
 				off.x = -0.25 if dist < 2.5 * S else 0.0

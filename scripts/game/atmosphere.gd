@@ -140,7 +140,7 @@ func _haze(day: bool) -> void:
 	fv.position = Vector3(0, 0.6, 0)
 	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
 	var fm := FogMaterial.new()
-	fm.density = 0.06 if day else 0.012
+	fm.density = 0.02 if day else 0.005
 	fm.albedo = Color(0.9, 0.8, 0.62) if day else Color(0.45, 0.48, 0.6)
 	fm.height_falloff = 1.6
 	fm.edge_fade = 0.6
