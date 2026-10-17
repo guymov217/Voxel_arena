@@ -944,7 +944,12 @@ func guest_end(data: Dictionary) -> void:
 		var left := killcam.tape_left()
 		if left > 0.0:
 			await get_tree().create_timer(left + 0.05).timeout
-		if killcam.has_clip():
+		var show := killcam.has_clip()
+		if data.has("kc_v"):
+			# The host's pick, the same kill for everyone (none, if his tape had none worth it).
+			var ve = entity_by_id(int(data.kc_v))
+			show = ve != null and is_instance_valid(ve.f) and killcam.choose(ve.f)
+		if show:
 			await killcam.play(func(): pass)
 	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0))})
 
@@ -1295,8 +1300,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		result["coins"] = rules.coins if rules else 0
 		result["favor"] = spectacle.get_favor(me.f) if me and is_instance_valid(me.f) else 0.0
 		result["time"] = time
-	if role == "host":
-		Net.send_all("end", {"won": won, "text": text, "sub": sub, "pay": pay})
+	var show := false
 	if killcam:
 		# Let the last blow play out on tape (only as long as it still needs), then show the
 		# best kill of the match; with nothing to show, straight on (a dead pause of near two
@@ -1304,8 +1308,16 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		var left := killcam.tape_left()
 		if left > 0.0:
 			await get_tree().create_timer(left + 0.05).timeout
-		if killcam.has_clip():
-			await killcam.play(func(): pass)
+		show = killcam.has_clip()
+	if role == "host":
+		# Online one kill is shown, the fight's best of all, on every screen: the host names it.
+		var msg := {"won": won, "text": text, "sub": sub, "pay": pay}
+		if killcam:
+			var ve = _entity_of(killcam.best.get("victim")) if show else null
+			msg["kc_v"] = ve.id if ve != null else -1
+		Net.send_all("end", msg)
+	if show:
+		await killcam.play(func(): pass)
 	finished.emit(result)
 
 # ---------- Events ----------

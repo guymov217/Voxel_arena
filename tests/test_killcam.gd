@@ -51,7 +51,7 @@ func test_a_knockout_is_taped_and_the_kill_cam_can_be_off() -> void:
 		await get_tree().physics_frame
 	t.check(not m.killcam.best.is_empty() and String(m.killcam.best.caption).contains("senseless"), "out cold is a kill on tape (%s)" % m.killcam.best.get("caption", ""))
 	t.check(m.killcam.has_clip(), "and worth showing")
-	t.check(KillCam.score_kill({"victim": "Gaius", "killer": "Marcus", "player": true}).score >= 15.0, "a plain kill of the player's is shown")
+	t.check(KillCam.score_kill({"victim": "Gaius", "killer": "Marcus"}).score >= 10.0, "a plain kill is shown when it is the best there was")
 	m.queue_free()
 	var st: Dictionary = Save.get_value("settings", {}).duplicate()
 	var off := st.duplicate()
@@ -74,3 +74,24 @@ func test_a_knockout_is_taped_and_the_kill_cam_can_be_off() -> void:
 		await get_tree().physics_frame
 	t.check(not m3.killcam.best.is_empty() and String(m3.killcam.best.caption).contains(m3.me.f.display_name), "a guest tapes the host's kill (%s)" % m3.killcam.best.get("caption", ""))
 	m3.queue_free()
+
+## Online one kill is shown on every screen, the one the host names as the fight's best: a
+## guest plays that one even if another scored higher on his own tape, and none if he has
+## not got it.
+func test_online_everyone_sees_the_hosts_pick() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": []})
+	for i in 120 * 3:
+		await get_tree().physics_frame
+	var foe = m.enemies()[0].f
+	m.killcam.on_death(foe, "wounds", {"J": 10.0})
+	m.killcam.on_death(m.me.f, "decap", {"J": 40.0}, foe)
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	t.eq(m.killcam.clips.size(), 2, "both kills on tape")
+	t.check(m.killcam.best.victim == m.me.f, "on his own the beheading is the best")
+	t.check(m.killcam.choose(foe) and m.killcam.best.victim == foe, "the host's pick is the one shown")
+	t.check(not m.killcam.choose(null) and m.killcam.best.is_empty(), "and one not on tape: nothing")
+	t.check(KillCam.score_kill({"victim": "A", "killer": "B", "player": true}).score == KillCam.score_kill({"victim": "C", "killer": "D"}).score, "the game picks by the kill, not by whose it is: a foe's kill counts the same")
+	m.queue_free()

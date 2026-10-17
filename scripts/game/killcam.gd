@@ -18,6 +18,7 @@ var frames: Array = []          # {t, xf: {instance_id: Transform3D}}
 var acc := 0.0
 var pending: Array = []         # kills waiting for their AFTER seconds
 var best: Dictionary = {}       # {score, caption, frames, t_blow, killer, victim}
+var clips: Array = []           # the best few clips cut so far (online the host names the one shown)
 var playing := false
 var overlay: CanvasLayer = null
 
@@ -51,8 +52,6 @@ static func score_kill(k: Dictionary) -> Dictionary:
 	score += minf(30.0, float(k.get("severed", 0)) * 12.0)
 	if float(k.get("J", 0.0)) > 30.0:
 		score += minf(15.0, (float(k.J) - 30.0) * 0.5)
-	if k.get("player", false):
-		score += 6.0
 	return {"score": score, "caption": caption}
 
 func _bodies() -> Array:
@@ -108,18 +107,29 @@ func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", th
 		"unarmed": killer is Fighter and is_instance_valid(killer) and killer.weapons.get("R") == null and killer.weapons.get("L") == null,
 		"thrown": thrown or (w != null and is_instance_valid(w) and w.holder == null), "weapon": wn,
 		"self": killer == f, "friendly": killer is Fighter and is_instance_valid(killer) and killer != f and killer.team == f.team,
-		"severed": severed, "J": float(last_hit.get("J", 0.0)), "player": (m.me != null and (killer == m.me.f or f == m.me.f)),
+		"severed": severed, "J": float(last_hit.get("J", 0.0)),
 		"killer_node": killer, "victim_node": f}
 	pending.append(k)
 
 func _cut(k: Dictionary) -> void:
 	var sc := score_kill(k)
-	if not best.is_empty() and sc.score <= float(best.score):
-		return
 	var clip: Array = frames.filter(func(fr): return float(fr.t) >= float(k.t) - BEFORE and float(fr.t) <= float(k.t) + AFTER)
 	if clip.size() < 10:
 		return
-	best = {"score": sc.score, "caption": sc.caption, "frames": clip, "t_blow": k.t, "killer": k.killer_node, "victim": k.victim_node}
+	clips.append({"score": sc.score, "caption": sc.caption, "frames": clip, "t_blow": k.t, "killer": k.killer_node, "victim": k.victim_node})
+	clips.sort_custom(func(a, b): return float(a.score) > float(b.score))
+	clips = clips.slice(0, 6)
+	best = clips[0]
+
+## Online: the one kill the host named as the fight's best (its victim), the same on every
+## screen; false (and nothing to show) if it is not on this tape.
+func choose(victim) -> bool:
+	for c in clips:
+		if c.victim == victim:
+			best = c
+			return true
+	best = {}
+	return false
 
 ## How long the last kill still needs on tape before it can be cut (0 when nothing waits).
 func tape_left() -> float:
@@ -129,7 +139,7 @@ func tape_left() -> float:
 	return maxf(0.0, left)
 
 ## Whether there is a clip worth showing; the kill must have been on tape long enough.
-func has_clip(min_score := 15.0) -> bool:
+func has_clip(min_score := 10.0) -> bool:
 	for k in pending.duplicate():
 		pending.erase(k)
 		_cut(k)
