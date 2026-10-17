@@ -176,3 +176,40 @@ func test_frostbite_kills_the_flesh_it_bites() -> void:
 	t.check(thigh.alive_count < n0, "the frostbitten flesh died away (%d → %d voxels)" % [n0, thigh.alive_count])
 	t.check(v.blood > blood0 - 3.0, "with hardly any blood lost (%.1f → %.1f)" % [blood0, v.blood])
 	m.queue_free()
+
+## The armourer's bench plate by plate: a plate goes on the outside of the part only, never
+## inside it or hanging in the air; a pair of limbs is plated alike; more plates weigh and cost
+## more, and what is made is a piece the game knows and puts on.
+func test_armour_plate_by_plate() -> void:
+	var f := ArmourForge.new()
+	add_child(f)
+	var got := []
+	f.open({"name": "Mine", "mat": "iron", "parts": {}}, "shins", func(d): got.append(d))
+	f.mirror = false
+	var X: int = f.dims.x
+	t.check(not f.add_plate(Vector3i(0, 0, 0)), "no plate inside the leg")
+	t.check(not f.add_plate(Vector3i(-1, f.dims.y + 1, -1)), "none hanging in the air")
+	t.check(f.add_plate(Vector3i(0, 2, f.dims.z)), "one on the front of the shin")
+	t.check(f.add_plate(Vector3i(0, 3, f.dims.z)), "and one above it")
+	var d := f.design_now()
+	t.eq((d.parts.shinR as Array).size(), 2, "two plates on the right shin")
+	t.eq((d.parts.shinL as Array).size(), 2, "and the left alike")
+	t.check(d.parts.shinL.has([X - 1, 2, f.dims.z]), "mirrored on the other leg")
+	var kg1 := Armory.design_kg(d)
+	var p1 := Armory.design_price(d)
+	f.mirror = true
+	f.add_plate(Vector3i(0, 4, f.dims.z))
+	d = f.design_now()
+	t.check(Armory.design_kg(d) > kg1 and Armory.design_price(d) > p1, "more plates: heavier and dearer")
+	t.check(f.remove_plate(Vector3i(0, 4, f.dims.z)) and f.design_now().parts.shinR.size() == 2, "right click takes them off again")
+	d.mat = "steel"
+	var ids := Armory.register([d])
+	t.eq(ids.size(), 1, "the game knows the piece")
+	t.eq(Armory.design_cells(Data.armor[ids[0]]), Armory.design_cells(d), "every plate kept")
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	m.me.f.set_armor_pieces(ids)
+	t.check(m.me.f.armor_weight() > 0.0, "and he wears it (%.1f kg)" % m.me.f.armor_weight())
+	m.queue_free()
+	f.queue_free()

@@ -293,6 +293,6 @@ func test_a_shield_takes_blows_and_breaks_under_them() -> void:
 	var n1 := 0
 	for a in sh.alive:
 		n1 += int(a)
-	t.check(blocked > 30, "the shield took the blows (%d of 40)" % blocked)
+	t.check(blocked > 25, "the shield took the blows (%d of 40)" % blocked)
 	t.check(n1 < n0 * 0.7, "and it is battered and broken by them (%d of %d voxels left)" % [n1, n0])
 	m.queue_free()

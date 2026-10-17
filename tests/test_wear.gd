@@ -149,3 +149,47 @@ func test_chips_from_a_fight_go_to_the_smith_and_into_the_next_fight() -> void:
 	m2.queue_free()
 	var mended := Arms.repair(a, "R")
 	t.eq(Arms.condition(mended.arms, "R"), 1.0, "mended, it is whole again")
+
+## Overuse wears a weapon down: blows too light to chip it, landing again and again in one
+## place, crumble the voxels there one by one (soft stuff sooner than steel), long before it breaks.
+func test_overuse_wears_voxels_off() -> void:
+	var m := _match()
+	var w: Weapon = m.me.f.weapons.R
+	var spot := -1
+	for i in w.vox.size():
+		if w.vox[i][4] == "edge" and spot < 0 and w.vox[i][1] > 8:
+			spot = i
+	var light := Weapon.CHIP_THRESHOLDS[0] * 0.25
+	t.check(w.chip_indices(spot, light).is_empty(), "one such blow chips nothing")
+	var n0 := w.alive_count()
+	var first := -1
+	var took := 0
+	for k in 40:
+		var r := w.knock(spot if w.alive[spot] else _near(w, spot), light)
+		if not r.is_empty():
+			first = k
+			took = r.indices.size()
+			break
+	t.check(first > 0, "but over and over, the voxels there wear off (from blow %d)" % first)
+	t.check(took > 0 and took <= 3 and not w.components().size() > 1, "a voxel or so at a time, not the blade (%d)" % took)
+	var wood := Weapon.new()
+	wood.setup({"name": "Stick", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "blunt"]]})
+	var steel := Weapon.new()
+	steel.setup({"name": "Bar", "voxels": [[0, 0, 0, "steel", "grip"], [0, 1, 0, "steel", "blunt"]]})
+	t.check(wood.wear_limit(1) < steel.wear_limit(1), "wood wears through sooner than steel")
+	t.check(steel.wear_limit(0) > steel.wear_limit(1), "and a grip lasts longer than a head")
+	wood.free()
+	steel.free()
+	m.queue_free()
+
+func _near(w: Weapon, spot: int) -> int:
+	var p0 := Vector3(w.vox[spot][0], w.vox[spot][1], w.vox[spot][2])
+	var best := -1
+	var bd := INF
+	for i in w.vox.size():
+		if w.alive[i] and w.vox[i][4] != "grip":
+			var d := Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]).distance_to(p0)
+			if d < bd:
+				bd = d
+				best = i
+	return best

@@ -481,12 +481,21 @@ func knock(index: int, score: float) -> Dictionary:
 		fatigue.resize(vox.size())
 	var v0 := Vector3(vox[index][0], vox[index][1], vox[index][2])
 	var eff := score + fatigue[index]
+	var worn := []
 	for i in vox.size():
 		if alive[i]:
 			var d := Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(v0)
 			if d <= 1.5:
-				fatigue[i] += score * (0.3 if d < 0.5 else 0.12)
-	var idx := sparing(chip_indices(index, eff))
+				fatigue[i] += score * (FATIGUE_SPOT if d < 0.5 else FATIGUE_NEAR)
+				if fatigue[i] >= wear_limit(i):
+					worn.append(i)
+	var idx := chip_indices(index, eff)
+	# Worn out by use: the voxels round the place it is always struck with crumble away one by
+	# one, even under blows too light to chip it (soft stuff sooner than steel).
+	for i in worn:
+		if not idx.has(i):
+			idx.append(i)
+	idx = sparing(idx)
 	if idx.is_empty():
 		return {}
 	var voxels := remove_voxels(idx)
@@ -531,6 +540,15 @@ func components() -> Array:
 ## whose loss leaves it in one piece come off, unless the metal there is worn out (knocked in
 ## that one place over and over): there it gives way, and the blade breaks at its worst spot.
 const FATIGUE_BREAK := 60.0
+const FATIGUE_SPOT := 0.5        # of a knock's score, into the voxel struck
+const FATIGUE_NEAR := 0.2        # and into those round it
+const WEAR_LIMIT := 7.0          # the fatigue a steel voxel takes before it crumbles
+
+## How much use voxel `i` stands before it wears off: the harder the stuff the longer; a grip,
+## wrapped and held, twice as long; a shield, made to take blows, half as long again.
+func wear_limit(i: int) -> float:
+	var h := float(Data.material(String(vox[i][3])).get("hardness", 0.5))
+	return WEAR_LIMIT * (0.5 + h) / 1.5 * (2.0 if vox[i][4] == "grip" else 1.0) * (1.5 if design.get("kind", "") == "shield" else 1.0)
 func sparing(idx: Array) -> Array:
 	if idx.is_empty() or vox.size() - alive_count() >= vox.size() * 0.25:
 		return idx

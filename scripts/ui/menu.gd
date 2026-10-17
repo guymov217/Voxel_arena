@@ -1378,27 +1378,46 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	right.add_child(UIStyle.label("Breath when running and swinging: ×%.2f" % float(with.breath), 14, UIStyle.MUTED))
 	right.add_child(UIStyle.label("Pace: %d%%" % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
 	var make := UIStyle.button("Forge and wear · %d denarii" % price, func():
-		var final := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
-		var p2 := Armory.design_price(final)
-		if p2 > coins():
-			show_screen("yard", "Not enough denarii")
-			return
-		var ids := Armory.register([final])
-		if ids.is_empty():
-			return
-		var designs: Dictionary = Save.get_value("armor_designs", {})
-		designs[ids[0]] = final
-		Save.set_value("armor_designs", designs)
-		var t := Armory.buy(worn_armor(), ids[0])
-		if t.has("error"):
-			show_screen("yard", t.error)
-			return
-		add_coins(-int(t.cost))   # what it costs, less what any piece it replaces fetches
-		set_worn_armor(t.worn)
-		smith_tab = "armour"
-		show_screen("yard"), true)
+		_forge_armour(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)), true)
 	make.disabled = price > coins()
 	right.add_child(make)
+	# Or plate by plate, as a weapon is built at the forge (from the shape above).
+	right.add_child(UIStyle.button("Shape it plate by plate", func(): _plate_bench(def, worn_kg)))
+
+## The armourer's bench voxel by voxel (ArmourForge) over the smith's screen.
+func _plate_bench(def: Dictionary, worn_kg: float) -> void:
+	var f := ArmourForge.new()
+	add_child(f)
+	panel.visible = false
+	f.tree_exited.connect(func(): panel.visible = true)
+	f.open(def, String(bench.region), func(final):
+		f.queue_free()
+		smith_tab = "armour"
+		if final == null:
+			show_screen("yard")
+		else:
+			_forge_armour(final), worn_kg, coins())
+
+## A designed piece made at the smith and put on, paid for less what it replaces fetches.
+func _forge_armour(final: Dictionary) -> void:
+	smith_tab = "armour"
+	if Armory.design_price(final) > coins():
+		show_screen("yard", "Not enough denarii")
+		return
+	var ids := Armory.register([final])
+	if ids.is_empty():
+		show_screen("yard")
+		return
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	designs[ids[0]] = final
+	Save.set_value("armor_designs", designs)
+	var t := Armory.buy(worn_armor(), ids[0])
+	if t.has("error"):
+		show_screen("yard", t.error)
+		return
+	add_coins(-int(t.cost))   # what it costs, less what any piece it replaces fetches
+	set_worn_armor(t.worn)
+	show_screen("yard")
 
 ## A weapon's picture that opens it in the round (WeaponView) when clicked.
 func _viewable(tex: TextureRect, d, line := "") -> void:
