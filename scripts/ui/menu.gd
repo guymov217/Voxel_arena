@@ -356,7 +356,7 @@ func _main(v: VBoxContainer) -> void:
 	t.modulate.a = 0.0
 	create_tween().tween_property(t, "modulate:a", 1.0, 0.7)
 	if Edition.demo():
-		var badge := UIStyle.label("FREE DEMO · the campaign to its second boss", 16, UIStyle.BRONZE)
+		var badge := UIStyle.label("DEMO", 16, UIStyle.BRONZE)
 		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		head.add_child(badge)
 	# The gold glints now and then.
@@ -380,8 +380,6 @@ func _main(v: VBoxContainer) -> void:
 		# A campaign under way goes on from the yard, the lobby between bouts.
 		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard(), true),
 	]
-	if Edition.demo():
-		buttons.append(UIStyle.menu_button("Wishlist the full game", Edition.open_store))
 	if SHOW_CIRCUS:
 		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
 	buttons.append(UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")))
@@ -496,7 +494,7 @@ func _gate(v: VBoxContainer) -> void:
 		var cs := int(Save.get_value("coop_stage", 1))
 		var cn := Data.stage(cs, 1 + Net.peers.size())
 		if Edition.demo_over(cs):
-			v.add_child(UIStyle.button("The demo ends here: what the full game holds", func():
+			v.add_child(UIStyle.button("You have finished the demo", func():
 				Net.send_all("demo_end", {})
 				_end_match()
 				show_screen("demo_end"), true))
@@ -509,7 +507,7 @@ func _gate(v: VBoxContainer) -> void:
 		var st := int(Save.get_value("stage", 1))
 		var nxt := Data.stage(st)
 		if Edition.demo_over(st):
-			v.add_child(UIStyle.button("The demo ends here: what the full game holds", func():
+			v.add_child(UIStyle.button("You have finished the demo", func():
 				_end_match()
 				show_screen("demo_end"), true))
 		else:
@@ -696,9 +694,6 @@ func _training(v: VBoxContainer) -> void:
 	if not who.has(training.get("enemy")):
 		training.enemy = "gladiator"
 	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else Data.beasts[k].name))), "enemy")
-	if Edition.demo():
-		ge.add_child(UIStyle.label("", 12))
-		ge.add_child(UIStyle.label("%d more monsters and bosses in the full game" % Edition.full_game_tease().locked.size(), 13, UIStyle.BRONZE))
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
 	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "bow"]
 	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
@@ -1572,16 +1567,10 @@ func _fights(v: VBoxContainer) -> void:
 	var keys := ["hunt", "duel", "bo3", "king", "emperor", "ffa", "chaos", "coop", "gauntlet", "teams", "hill", "lastLimb", "headball"]
 	if in_room:
 		keys.insert(0, "pvp")
-	for k in keys:
+	for k in keys.filter(func(k): return Edition.mode_open(k, in_room)):
 		var b := UIStyle.button(Modes.TITLES[k].trim_suffix("!"), func(): start({"mode": k}))
 		b.tooltip_text = Modes.LABELS.get(k, "")
-		if not Edition.mode_open(k, in_room):
-			# In the demo the rest are there to see, under lock: the full game has them.
-			b.text = "🔒 " + b.text + "  · full game"
-			b.disabled = true
 		grid.add_child(b)
-	if Edition.demo():
-		v.add_child(UIStyle.button("Wishlist the full game", Edition.open_store))
 	if Net.active() and Net.is_host() and not Net.peers.is_empty():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
@@ -2721,40 +2710,17 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
 		_toggle_pause()
 
-## The end of the demo: the second boss is down. What the full game holds (its bouts, its
-## bosses, the monsters the demo never showed), the wishlist, and the demo again from bout 1.
+## The end of the demo: the second boss is down. The campaign stops here; the demo again from
+## bout 1, or back to the menu.
 func _demo_end(v: VBoxContainer) -> void:
-	var tease := Edition.full_game_tease()
 	v.add_theme_constant_override("separation", 12)
-	v.add_child(UIStyle.title("The crowd wants more", 40))
-	v.add_child(UIStyle.label("You have fought through the demo: %d bouts, the Cyclops and the Big Lion down." % Edition.DEMO_STAGES, 17, UIStyle.TEXT))
-	v.add_child(UIStyle.label("THE FULL GAME", 14, UIStyle.BRONZE))
-	v.add_child(UIStyle.label("%d bouts · %d bosses · the arena modes and party games, alone or with friends" % [int(tease.stages), int(tease.bosses)], 16, UIStyle.GOLD))
-	v.add_child(UIStyle.label("Waiting behind the gate:", 14, UIStyle.MUTED))
-	var flow := HFlowContainer.new()
-	flow.add_theme_constant_override("h_separation", 8)
-	flow.add_theme_constant_override("v_separation", 8)
-	for n in tease.locked:
-		var chip := PanelContainer.new()
-		var st := StyleBoxFlat.new()
-		st.bg_color = Color(0.16, 0.1, 0.06)
-		st.border_color = UIStyle.BRONZE_DARK
-		st.set_border_width_all(1)
-		st.set_corner_radius_all(6)
-		st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 4; st.content_margin_bottom = 4
-		chip.add_theme_stylebox_override("panel", st)
-		var cl := UIStyle.label("🔒 " + String(n), 14, UIStyle.TEXT)
-		cl.autowrap_mode = TextServer.AUTOWRAP_OFF
-		chip.add_child(cl)
-		flow.add_child(chip)
-	v.add_child(flow)
-	v.add_child(UIStyle.button("Wishlist WRECKSMITH on Steam", Edition.open_store, true))
+	v.add_child(UIStyle.title("The end of the demo", 40))
+	v.add_child(UIStyle.label("You have fought through all %d bouts of the demo." % Edition.DEMO_STAGES, 17, UIStyle.TEXT))
 	if not Net.active() or Net.is_host():
 		v.add_child(UIStyle.button("Play the demo again from bout 1", func():
 			Save.set_value("coop_stage", 1)
 			Save.set_value("coop_checkpoint", 1)
-			restart_campaign()))
-	v.add_child(UIStyle.button("The forge (keep building)", _workshop_forge))
+			restart_campaign(), true))
 	v.add_child(UIStyle.button("Main menu" if not Net.active() else "Back to the room", func(): show_screen("main" if not Net.active() else "room")))
 
 ## A screenshot of the game as it is on screen, into the screenshots folder (Pictures/WRECKSMITH

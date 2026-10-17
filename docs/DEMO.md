@@ -3,17 +3,16 @@
 The demo is the same game exported with the `demo` feature (`scripts/game/edition.gd`):
 
 - **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Cyclops at
-  bout 4, the Big Lion at bout 8). Then the "The crowd wants more" screen shows what the full
-  game holds (64 bouts, 16 bosses, every monster still locked) with a Wishlist button.
+  bout 4, the Big Lion at bout 8). Then a plain "The end of the demo" screen: play it again from
+  bout 1, or back to the menu.
 - **Arena:** alone, the duel, best of three and the free-for-all. In a room, the players' brawl
-  (everyone against everyone) and the free-for-all. The other modes are listed under lock.
+  (everyone against everyone) and the free-for-all. The other modes are not on the menu.
 - **Training:** the men and beasts of the demo's bouts, plus the bear and the gorilla.
 - **Everything else is in:** the forge (voxel by voxel, gems, the gallery), the armourer's bench,
   the yard, the physician, the kill cam.
-- **Clips:** every kill cam carries the WRECKSMITH mark ("free demo on Steam" in the demo). Every
-  kill puts a marker on the Steam game recording's timeline, so players find a moment and clip
-  it in a click (the best kills are flagged as featured). F12 saves a screenshot when Steam is
-  not running.
+- **Clips:** every kill puts a marker on the Steam game recording's timeline, so players find a
+  moment and clip it in a click (the best kills are flagged as featured). F12 saves a screenshot
+  when Steam is not running. No marks or messages are added to the picture.
 
 Try it without exporting: `godot --path . -- --demo`, or `WRECKSMITH_DEMO=1`.
 
@@ -35,14 +34,10 @@ Try it without exporting: `godot --path . -- --demo`, or `WRECKSMITH_DEMO=1`.
 
 ### 2. The project
 
-1. **Full game's store page.** In `project.godot` under `[wrecksmith]`:
-   - `full_app_id`: the full game's App ID, so the Wishlist button opens its page in the Steam
-     overlay.
-   - `store_url`: its store URL, the fallback when Steam is not running.
-2. **GodotSteam.** Install the GodotSteam GDExtension (see README, *Multiplayer and GodotSteam*)
+1. **GodotSteam.** Install the GodotSteam GDExtension (see README, *Multiplayer and GodotSteam*)
    and ship its `addons/` folder and the `steam_api` library with the export. Without it, the
    demo still runs, but without Steam lobbies, the overlay or timeline markers.
-3. **App ID file.** Put the **demo's** App ID in `steam_appid.txt` next to the executable for
+2. **App ID file.** Put the **demo's** App ID in `steam_appid.txt` next to the executable for
    testing outside Steam. Do not ship that file in the depot: when launched by Steam, Steam
    passes the App ID itself.
 
@@ -71,10 +66,10 @@ godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECK
 ### 5. Before release
 
 - **Checks:** play bout 1 to 8 from a fresh save, alone and with a friend over a Steam lobby.
-  Check the end screen and its Wishlist button.
+  Check the end screen.
 - **Store review:** submit the demo's store presence and build for Steam review. It takes a few
   days.
 - **Steam Next Fest:** register in Steamworks (*Marketing → Steam Next Fest*) and have the demo
   live a few weeks before the festival.
-- **Trailer:** cut the first seconds from kill cam clips (they carry the game's name), and lead
-  with the gorilla, the cyclops and the forge.
+- **Trailer:** cut the first seconds from kill cam clips, and lead with the gorilla, the cyclops
+  and the forge.

@@ -1,7 +1,6 @@
 extends Node
 ## The demo edition: the campaign to its second boss and no further, the arena and the training
-## with the bouts' own men and beasts (the rest on the menus under lock), and its last screen
-## showing what the full game holds. The full game is untouched by all of it.
+## with the bouts' own men and beasts (the rest left out), and it stops after its last bout. The full game is untouched by all of it.
 
 var t
 
@@ -22,9 +21,6 @@ func test_the_demo_shows_its_own_foes_and_locks_the_rest() -> void:
 	t.check(Edition.foe_open("foe:recruit") and Edition.foe_open("gladiator"), "the men of its bouts are there")
 	t.check(Edition.mode_open("ffa", true) and Edition.mode_open("pvp", true), "in a room: everyone against everyone")
 	t.check(Edition.mode_open("duel", false) and not Edition.mode_open("hunt", false), "alone: the duel, not the monster hunt")
-	var tease := Edition.full_game_tease()
-	t.check(int(tease.stages) > Edition.DEMO_STAGES and int(tease.bosses) > 2, "the full game: %d bouts, %d bosses" % [tease.stages, tease.bosses])
-	t.check(tease.locked.has("Dragon") or tease.locked.size() > 10, "and the monsters behind the gate (%d)" % tease.locked.size())
 	Edition.forced = false
 	t.check(Edition.foe_open("dragon") and Edition.mode_open("hunt", false), "the full game locks nothing")
 	Edition.forced = null

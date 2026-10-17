@@ -267,16 +267,3 @@ func _overlay(caption: String) -> void:
 	cap.offset_top = -78
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	overlay.add_child(cap)
-	# The game's name on every replay, so a clip of it says where it came from.
-	var mark := Label.new()
-	mark.text = "WRECKSMITH" + ("\nfree demo on Steam" if Edition.demo() else "")
-	mark.add_theme_font_override("font", UIStyle.serif(4))
-	mark.add_theme_font_size_override("font_size", 22)
-	mark.add_theme_color_override("font_color", Color(UIStyle.GOLD, 0.85))
-	mark.anchor_left = 1.0
-	mark.anchor_right = 1.0
-	mark.offset_left = -320
-	mark.offset_right = -28
-	mark.offset_top = 26
-	mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	overlay.add_child(mark)
