@@ -979,6 +979,16 @@ func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:
 			return true
 	return false
 
+## Whether there is still flesh of this part where `child` is jointed on (an upper arm's end for
+## the forearm, the neck for the head): with none, the child hangs on nothing and must fall.
+func holds_child(child: VoxelPart) -> bool:
+	var pt := anchor_point(child)
+	var r := vf * part_scale * 2.2
+	for i in fx.size():
+		if alive[i] and local_of(i).distance_to(pt) < r:
+			return true
+	return false
+
 func near_child_anchor(lump: PackedInt32Array) -> bool:
 	var pts := []
 	for c in child_parts:

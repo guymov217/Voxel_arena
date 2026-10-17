@@ -127,9 +127,8 @@ func say(key: String, a = null, v = null, part := "", center := false, cooldown 
 		if ch >= "A" and ch <= "Z" and up.length() < 7:
 			up += ch
 	var line: String = lines[randi() % lines.size()].replace("{a}", an).replace("{v}", vn).replace("{part}", part if part != "" else "limb").replace("{A}", up if up != "" else "ROME")
+	# In the feed at the side only: across the middle of the screen a shout hid the fight.
 	m.feed.emit(line)
-	if center:
-		m.banner.emit(line, "")
 	if m.role == "host":
 		Net.send_all("feed", line)
 	return true

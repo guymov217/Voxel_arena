@@ -45,14 +45,16 @@ func test_cards_build_real_weapons() -> void:
 	t.check(ForgeLib.compute_stats(s).hasGrip and s.name != "", "surprise: " + s.name)
 	t.check(ForgeLib.blacksmith_says(s) != "", "and the smith has an opinion")
 
-func test_a_dragged_stroke_paints_many_voxels_with_one_undo() -> void:
+func test_a_dragged_stroke_builds_many_voxels_with_one_undo() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
 	f.open(Data.preset("gladius"), 9999, func(_d, _c): pass)
 	f.mode = "voxels"
-	var keys: Array = f.cells.keys()
+	f.mirror = false
+	f.mirror_z = false
+	var keys: Array = f.cells.keys().filter(func(c): return not f.cells.has(c + Vector3i(0, 0, 1)))
 	keys.sort_custom(func(a, b): return a.y < b.y)
-	f.tool = "paint"
+	f.tool = "build"
 	f.mat = "gold"
 	var undo0: int = f.undo_stack.size()
 	f.stroke = {"erase": false, "done": {}, "undo": false}
@@ -62,10 +64,11 @@ func test_a_dragged_stroke_paints_many_voxels_with_one_undo() -> void:
 	f.stroke = {}
 	var gold := 0
 	for c in keys.slice(0, 12):
-		if f.cells[c][0] == "gold":
+		if f.cells.get(c + Vector3i(0, 0, 1), ["", ""])[0] == "gold":
 			gold += 1
-	t.check(gold >= 10, "the stroke painted the voxels it passed over (%d)" % gold)
+	t.check(gold >= 10, "the stroke built on the faces it passed over (%d)" % gold)
 	t.eq(f.undo_stack.size() - undo0, 1, "one undo takes the whole stroke back")
+	t.check(not ["paint", "box"].any(func(k): return f.TOOLS.any(func(td): return td[0] == k)), "no Paint, no Box: Build does it")
 	# Built in a stroke, a cell is not built on again (no tower toward the eye).
 	f.tool = "build"
 	var n0: int = f.cells.size()
@@ -242,8 +245,8 @@ func test_mirror_both_ways_slow_erase_and_blank_only_from_scratch() -> void:
 	t.check(has_blank.call(sc) and sc.family == "", "from nothing: any kind, blank anvil there")
 	sc.queue_free()
 
-## The Hand tool: the builder says where the hand holds the grip (both hands on a two-handed
-## weapon), the fighter holds it there, and a click off the grip moves no hand.
+## Move hand: the builder drags the hand onto any block (both hands on a two-handed weapon,
+## each from its own ring), and the fighter holds it there.
 func test_the_builder_picks_where_the_hand_holds() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -260,13 +263,23 @@ func test_the_builder_picks_where_the_hand_holds() -> void:
 	w.free()
 	var blade = f.cells.keys().filter(func(k): return f.cells[k][1] != "grip")[0]
 	f._set_hand(blade)
-	t.check(ForgeLib.grip_points(f._design_now()).main.distance_to(Vector3(low)) < 0.01, "a click on the blade moves no hand")
+	t.check(ForgeLib.grip_points(f._design_now()).main.distance_to(Vector3(blade)) < 0.01, "any block will do: the hand goes onto the blade")
+	f._set_hand(Vector3i(40, 40, 0))
+	t.check(ForgeLib.grip_points(f._design_now()).main.distance_to(Vector3(blade)) < 0.01, "but not into thin air")
+	# Dragged: pressed on the ring, the hand follows the mouse from block to block.
+	f.tool = "hand"
+	f.stroke = {"erase": false, "done": {}, "undo": false}
+	for c in grip:
+		f._apply({"hit": c, "place": c})
+	f.stroke = {}
+	t.check(ForgeLib.grip_points(f._design_now()).main.distance_to(Vector3(grip[grip.size() - 1])) < 0.01, "dragged along the grip, it ends where the mouse let go")
 	f.design.twoHanded = true
 	var high: Vector3i = grip[grip.size() - 1]
-	f._set_hand(high)
-	f._set_hand(low)
+	f._set_hand(high, "main")
+	f._set_hand(low, "off")
 	g = ForgeLib.grip_points(f._design_now())
-	t.check(g.main.distance_to(Vector3(high)) < 0.01 and g.off.distance_to(Vector3(low)) < 0.01, "two-handed: one hand, then the other")
+	t.check(g.main.distance_to(Vector3(high)) < 0.01 and g.off.distance_to(Vector3(low)) < 0.01, "two-handed: each hand where it was put")
+	t.eq(f._nearest_hand(low + Vector3i(0, 1, 0)), "off", "pressed nearer the bronze ring, the other hand is taken up")
 	f.queue_free()
 
 ## Whatever the forge makes by itself (Something silly, any base card with any modifier cards,
@@ -310,3 +323,88 @@ func test_every_ready_made_weapon_is_one_piece() -> void:
 	var loose := {"voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "blunt"], [3, 1, 0, "gold", "blunt"]]}
 	t.eq(ForgeLib.bridge(loose), 2, "a loose voxel three cells off is joined by two")
 	t.eq(loose.voxels.size(), 5, "and nothing is taken away")
+
+## The line goes any way, from block to block, every cell joined face to face (no corner
+## hanging), and its path shows while the end is picked.
+func test_a_line_any_way_with_its_path_shown() -> void:
+	var path := ForgeLib.line_path(Vector3i(0, 0, 0), Vector3i(4, 6, 0))
+	t.eq(path[0], Vector3i(0, 0, 0), "from the start")
+	t.eq(path[path.size() - 1], Vector3i(4, 6, 0), "to the end")
+	var joined := true
+	for i in range(1, path.size()):
+		var d: Vector3i = path[i] - path[i - 1]
+		if absi(d.x) + absi(d.y) + absi(d.z) != 1:
+			joined = false
+	t.check(joined, "slanting, still face to face all the way (%d cells)" % path.size())
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("gladius"), 9999, func(_d, _c): pass)
+	f._show_mode("voxels")
+	f.mirror = false
+	f.tool = "line"
+	var top: Vector3i = f.cells.keys().reduce(func(a, b): return a if a.y > b.y else b)
+	var n0: int = f.cells.size()
+	f._apply({"hit": top, "place": top + Vector3i(0, 1, 0)})
+	t.check(f.line_from != null and f.line_ghost.multimesh.instance_count >= 1, "the start is shown")
+	f._show_line(f._mirrored(ForgeLib.line_path(f.line_from, top + Vector3i(5, 5, 0))))
+	t.check(f.line_ghost.multimesh.instance_count >= 10, "and the path to where the mouse is")
+	f._apply({"hit": null, "place": top + Vector3i(5, 5, 0)})
+	t.check(f.cells.size() - n0 >= 10 and f.line_ghost.multimesh.instance_count == 0, "the slanting line is built (%d blocks)" % (f.cells.size() - n0))
+	f.queue_free()
+
+## At the smith, from nothing: a saved design can be bought straight from My designs.
+func test_buy_a_saved_design_at_the_smith() -> void:
+	var keep = Save.get_value("forge_gallery", [])
+	var d: Dictionary = Data.preset("axe").duplicate(true)
+	d.name = "My axe"
+	Save.set_value("forge_gallery", [d])
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.scratch = true
+	var got := []
+	f.open({"name": "New", "kind": "weapon", "voxels": [[0, 0, 0, "wood", "grip"]]}, 9999, func(dd, _c): got.append(dd))
+	f._show_mode("gallery")
+	var buy = _find_button(f, "Buy · %d" % Arms.design_price(d))
+	t.check(buy != null, "a Buy button with its price on the saved design")
+	if buy:
+		buy.pressed.emit()
+	t.check(not got.is_empty() and str(got[0].get("name", "")) == "My axe", "bought as it was designed")
+	f.queue_free()
+	Save.set_value("forge_gallery", keep)
+
+func _find_button(n: Node, text: String) -> Button:
+	if n is Button and (n as Button).text == text:
+		return n
+	for c in n.get_children():
+		var b := _find_button(c, text)
+		if b:
+			return b
+	return null
+
+## A weapon too heavy to lift is not let out of the forge (it lay on the sand, the hand dragged
+## after it); the smith's oddities never come out that heavy; a weapon pushed through the sand
+## comes back up on it rather than being lost.
+func test_nothing_too_heavy_to_lift() -> void:
+	var heavy := {"name": "Anvil on a stick", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"]]}
+	ForgeLib.box(heavy, -3, 3, 2, 8, -2, 2, "lead", "blunt")
+	t.check(ForgeLib.too_heavy(heavy) != "", "a lead block of %.0f kg is too heavy" % ForgeLib.compute_stats(heavy).mass)
+	t.eq(ForgeLib.too_heavy(Data.preset("warhammer")), "", "a warhammer is not")
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	var got := []
+	f.free_build = true
+	f.open(heavy, 99999, func(d, _c): got.append(d))
+	f._take()
+	t.check(got.is_empty() and f.cost_label.text.begins_with("Too heavy"), "the forge will not let it out: %s" % f.cost_label.text)
+	f.queue_free()
+	for s in 6:
+		for d in Arms.oddities(s * 13 + 1, 1 + s * 3):
+			t.eq(ForgeLib.too_heavy(d), "", "oddity %s can be lifted" % d.name)
+	var w := Weapon.new()
+	w.setup(Data.preset("gladius"))
+	add_child(w)
+	w.global_position = Vector3(0, -5, 0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(w.global_position.y > 0.0, "a weapon through the sand is back on top (y %.2f)" % w.global_position.y)
+	w.queue_free()

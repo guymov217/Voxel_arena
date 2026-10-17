@@ -256,3 +256,34 @@ func test_a_weapon_costs_what_it_can_do() -> void:
 	t.check(Arms.design_price(lead) >= Arms.power_price(lead), "at least what its blow is worth")
 	for b in Arms.bases():
 		t.check(Arms.base_price(b) >= Arms.power_price(Data.preset(b.key)), "%s is not sold under its worth" % b.key)
+
+## The campaign's foes come up the ladder: at the first bout nothing better than a dagger or a
+## fish, a little more every bout (weapons random, within the bout's budget), their skill rising
+## too; no spear against the starting stick.
+func test_foes_grow_bout_by_bout() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var avg := []
+	for st in [1, 3, 6, 10]:
+		var tot := 0.0
+		var seen := {}
+		for i in 40:
+			var k := Match.ladder_weapon(st, ["spear", "gladius"], rng)
+			seen[k] = true
+			t.check(Match.ladder_power(k) <= Match.weapon_budget(st), "bout %d: %s within its budget" % [st, k])
+			tot += Match.ladder_power(k)
+		avg.append(tot / 40.0)
+		t.check(seen.size() >= 2, "bout %d: the weapons vary (%s)" % [st, seen.keys()])
+	t.check(avg[0] < avg[1] and avg[1] < avg[2] and avg[2] < avg[3], "and grow bout by bout %s" % [avg])
+	var first := []
+	for i in 40:
+		first.append(Match.ladder_weapon(1, ["spear"], rng))
+	t.check(not first.has("spear"), "no spear at the first bout")
+	t.check(Match.ladder_skill(1) < Match.ladder_skill(5) and Match.ladder_skill(5) < Match.ladder_skill(9), "their skill rises")
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
+	for e in m.enemies():
+		if e.f is Fighter and e.f.weapons.R:
+			t.check(Arms.power_price(e.f.weapons.R.design) <= Match.weapon_budget(1) + 1, "in the arena too: %s" % e.f.weapons.R.design.get("name", "?"))
+	m.queue_free()

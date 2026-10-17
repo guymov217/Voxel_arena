@@ -178,3 +178,27 @@ func test_a_man_down_for_good_is_out_of_the_bout() -> void:
 		await get_tree().physics_frame
 	t.check(m.over and res.get("won", true) == false, "after twelve he is out and the bout is lost (state %s down_t %.1f unfit %.1f over %s)" % [f.state, float(m.me.get("down_t", -1.0)), float(m.me.get("unfit_t", -1.0)), m.over])
 	m.queue_free()
+
+## A foe the bout has counted beaten stays beaten: he does not get up and fight on after the
+## round was called over him (and its kill cam shown).
+func test_a_beaten_foe_does_not_fight_on() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 5})
+	_calm(m)
+	for i in 30:
+		_calm(m)
+		await get_tree().physics_frame
+	var e: Dictionary = m.enemies()[0]
+	e.erase("bot")
+	e.drive = func(_e): return {"limp": true}
+	e.f.fall(60.0, true)
+	for i in 120 * 13:
+		await get_tree().physics_frame
+	t.check(e.get("beaten", false), "down for good: counted beaten")
+	e.f.down_timer = 0.0
+	e.f.concussion = 0.0
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	t.check(not e.has("bot") and e.drive.call(e).get("limp", false), "and he stays down: no bot fights on in him")
+	m.queue_free()

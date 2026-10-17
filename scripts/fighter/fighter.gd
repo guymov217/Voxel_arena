@@ -1303,6 +1303,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if state == "down" and bleed < 0.15 and blood > 0.0 and blood < 22.0:
 		blood = minf(22.0, blood + 1.2 * dt)
 	_organs_tick(dt)
+	_check_joints(dt)
 	stagger = maxf(0.0, stagger - dt * 1.6)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
@@ -3144,12 +3145,42 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 			res.removed.append({"part": part, "indices": idx, "voxels": vox, "chunk": piece != null})
 	if cut_off == null and not detached and part != torso and part.alive_count == 0:
 		cut_off = PackedInt32Array()
+	_drop_unheld(part, res)
 	if cut_off != null:
 		sever(part, res, cut_off)
 	elif not detached and _make_flaps(part, res):
 		pass   # what was nearly off hangs on as a flap; the rest of the part is whole enough
 	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)):
 		hang(part, res)
+
+## Every part jointed onto `part` where `part` has no flesh left falls off, with all below it:
+## a forearm whose elbow end of the upper arm is gone, a head on a neck cut away, a leg whose
+## hip is gone. Nothing stays on a body it is not joined to by its voxels.
+func _drop_unheld(part: VoxelPart, res: Dictionary) -> void:
+	if part.severed:
+		return
+	for ch in part.child_parts.duplicate():
+		if is_instance_valid(ch) and not ch.severed and not ch.missing and not part.holds_child(ch):
+			var all := PackedInt32Array()
+			for i in ch.fx.size():
+				if ch.alive[i]:
+					all.append(i)
+			sever(ch, res, all)
+
+## The same, now and then, for whatever ate away at the voxels without a blow (fire, frostbite,
+## acid): the hit path checks it at once.
+var _joints_t := 0.0
+func _check_joints(dt: float) -> void:
+	_joints_t -= dt
+	if _joints_t > 0.0:
+		return
+	_joints_t = 0.4
+	if torso.freeze:
+		return   # (a guest's puppet: the host says what has come off)
+	var res := {"removed": [], "severed": []}
+	for p in parts:
+		if is_instance_valid(p) and not p.severed and not p.missing:
+			_drop_unheld(p, res)
 
 ## A half: a lump of the torso cut clean away with the limbs rooted in it. The lump becomes a
 ## body of its own and the limbs are jointed onto it, so a man cut through at the waist leaves

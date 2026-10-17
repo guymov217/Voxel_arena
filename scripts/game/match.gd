@@ -429,6 +429,37 @@ static func temper(design: Dictionary, t) -> Dictionary:
 ## An enemy from a campaign entry: the type's kit plus the stage's armour, temper and skill.
 ## They come in through the gates (east and west, by turns), never out of thin air at your
 ## back: each a little way inside the gate it came through, the ones after it behind it.
+## The campaign's foes come up the ladder by what they carry: each bout a weapon picked at
+## random from those its stage can afford (by what it can do in a fight, Arms.power_price), from
+## a dagger or a fish at the first bout to a warhammer late on; their skill, and their armour,
+## grow with the bouts too. The stage's own men keep their loadout once it is within the budget.
+const LADDER_WEAPONS := ["dagger", "fish", "chicken", "javelin", "plank", "gladius", "hammer", "axe", "spear", "trident", "chair", "longsword", "mace", "executionerAxe", "zweihander", "warhammer"]
+static var _ladder_power := {}
+static func weapon_budget(st: int) -> float:
+	return 90.0 + 25.0 * float(maxi(1, st) - 1)
+
+static func ladder_power(key: String) -> int:
+	if not _ladder_power.has(key):
+		_ladder_power[key] = Arms.power_price(Data.preset(key))
+	return int(_ladder_power[key])
+
+## A foe's main weapon for campaign bout `st`: from its own loadouts if one is within the bout's
+## budget, else at random from the ladder's weapons that are (and not far below it, so later
+## foes do not come with daggers).
+static func ladder_weapon(st: int, own: Array, rng_: RandomNumberGenerator) -> String:
+	var cap := weapon_budget(st)
+	var fit := own.filter(func(k): return k != "" and ladder_power(k) <= cap)
+	if not fit.is_empty() and rng_.randf() < 0.5:
+		return fit[rng_.randi_range(0, fit.size() - 1)]
+	var pool := LADDER_WEAPONS.filter(func(k): return ladder_power(k) <= cap and ladder_power(k) >= cap * 0.4)
+	if pool.is_empty():
+		pool = ["dagger"]
+	return pool[rng_.randi_range(0, pool.size() - 1)]
+
+## How much of a foe's skill (and how far up its armour) the campaign's bout `st` brings out.
+static func ladder_skill(st: int) -> float:
+	return clampf(0.6 + 0.05 * float(st - 1), 0.6, 1.0)
+
 func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var gx := 1.0 if i % 2 == 0 else -1.0
 	var row := i / 2
@@ -453,10 +484,23 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	if en.get("loadout") is String and en.loadout != "":
 		main = Data.preset(en.loadout)
 		off = {}
+	var ladder: bool = mode == "campaign" and not en.get("boss", false) and not (en.get("loadout") is String and en.loadout != "")
+	if ladder and not main.is_empty() and lo.get("main"):
+		var own: Array = los.map(func(x): return String(x.get("main", "")))
+		var key := ladder_weapon(stage, own, rng)
+		if key != String(lo.main):
+			main = temper(Data.preset(key), g.get("temper"))
+			# (A shield goes with its own man's loadout; from the fourth bout on.)
+			if stage < 4 or key not in own:
+				off = {}
+		elif stage < 4:
+			off = {}
 	var armor: Array = lo.get("armor", []).duplicate()
 	for x in g.get("armor", []):
 		if not armor.has(x):
 			armor.append(x)
+	if ladder and stage <= 2:
+		armor.clear()   # the first bouts' men fight in their tunics
 	var names: Array = t.get("names", ["Gladiator"])
 	var nm: String = en.get("name", names[rng.randi_range(0, names.size() - 1)])
 	if g.get("rank") and not en.get("boss", false):
@@ -467,7 +511,7 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	for k in en.get("mods", {}):
 		mods[k] = en.mods[k]
 	var spec := {"kind": "bot", "name": nm, "loadout": {"main": main, "off": off, "armor": armor}, "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": mods,
-		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)), "color": t.get("color"), "boss": en.get("boss", false)}
+		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)) * (ladder_skill(stage) if ladder else 1.0), "color": t.get("color"), "boss": en.get("boss", false)}
 	# The giants of myth look the part (MonsterLook): one eye, a bull's head, tusks, a crown.
 	var look := MonsterLook.look_of(String(en.get("e", "")))
 	if look != "":
@@ -1205,7 +1249,15 @@ func _check_round(dt: float) -> void:
 	# Beaten is beaten: dead, or out cold on the sand and never getting up again, or down on
 	# the sand unable to stand (crawling at most) for UNFIT_OUT seconds.
 	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
-	var alive_e := enemies().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
+	var alive_e := enemies().filter(func(x): return not x.get("beaten", false) and not x.f.is_beaten() and not _unfit(x, dt))
+	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
+	# beaten: he does not get up and fight on after its kill cam. (Before that, a man who comes
+	# round gets up and fights again.)
+	for x in (enemies() if alive_e.is_empty() and mode != "training" and mode != "yard" else []):
+		if not x.get("beaten", false) and is_instance_valid(x.f) and x.f.alive:
+			x.beaten = true
+			x.erase("bot")
+			x.drive = func(_e): return {"limp": true}
 	# Beaten without dying (out cold, or down for good): on the kill cam's tape as a kill.
 	for x in entities:
 		if x.f.alive and not x.get("taped", false) and not alive_h.has(x) and not alive_e.has(x) and (x.team == ENEMY_TEAM or humans().has(x)):

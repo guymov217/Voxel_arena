@@ -20,6 +20,8 @@ const PROSTHETICS := {
 ## How well a replaced part works (1 for a whole one): walking on a peg, swinging a fixed blade.
 const PROSTHETIC_FN := {"peg": 0.6, "hook": 0.75, "blade": 0.7}
 const MEDICINE_PRICE := 140
+## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, old wounds).
+const ELIXIR_PRICE := 420
 ## The most of a part's voxels an old wound may leave missing for good.
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
@@ -257,6 +259,9 @@ static func offers(body: Dictionary, stage: int) -> Array:
 			if worst == "" or b.scars[n].size() > b.scars[worst].size():
 				worst = n
 		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": "A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been." % label(worst), "price": MEDICINE_PRICE})
+	# The magic one: everything the campaign took, given back at once.
+	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or not b.scars.is_empty():
+		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": ELIXIR_PRICE})
 	return out
 
 ## Apply a treatment by its offer id. Returns the new body (unchanged if it does not apply).
@@ -277,6 +282,10 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 				b.eyes[n] = "glass"
 		"medicine":
 			b.scars.erase(n)
+		"elixir":
+			var fights: int = int(b.get("fights", 0))
+			b = empty()
+			b.fights = fights
 		"stitch":
 			for p in b.fresh:
 				var gone := {}
@@ -301,4 +310,6 @@ static func price_of(id: String, body := {}) -> int:
 		return stitch_price(sanitize(body))
 	if kind == "medicine":
 		return MEDICINE_PRICE
+	if kind == "elixir":
+		return ELIXIR_PRICE
 	return int(PROSTHETICS.get(kind, {}).get("price", 0))

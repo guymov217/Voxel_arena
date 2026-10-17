@@ -46,25 +46,39 @@ static func box(d: Dictionary, x0: int, x1: int, y0: int, y1: int, z0: int, z1: 
 static func _mass(mat: String) -> float:
 	return float(Data.material(mat).get("mass", 0.02))
 
+## The most a gladiator can lift and swing (kg): heavier, it lies on the sand with the hand
+## dragged down after it.
+const MAX_KG_ONE := 10.0
+const MAX_KG_TWO := 18.0
+
+## Why this design cannot be carried into a fight, or "" if it can.
+static func too_heavy(d: Dictionary, st := {}) -> String:
+	if st.is_empty():
+		st = compute_stats(d)
+	var cap := MAX_KG_TWO if d.get("twoHanded", false) else MAX_KG_ONE
+	if float(st.mass) > cap:
+		return "Too heavy to lift: %.1f kg, the most is %d kg%s" % [st.mass, int(cap), "" if d.get("twoHanded", false) else " (%d two-handed)" % int(MAX_KG_TWO)]
+	return ""
+
 ## The hand points (voxel units) for the main and the off hand, or null with no grip.
 static func grip_points(d: Dictionary) -> Variant:
-	var grips: Array = d.voxels.filter(func(v): return v[4] == "grip")
-	if grips.is_empty():
-		return null
-	grips.sort_custom(func(a, b): return a[1] < b[1])
-	# Hand places set in the design (the forge's Hand tool, two-person weapons), while there is
-	# still a handle there; one-handed, only the main hand's place counts.
+	# Where the builder put the hands (the forge's Move hand: on any block of it), while there
+	# is still a block there; one-handed, only the main hand's place counts.
 	var gs = d.get("grips")
 	if gs is Dictionary and gs.has("main") and gs.has("off"):
 		var two: bool = d.get("twoHanded", false)
 		var both := true
 		for k in (["main", "off"] if two else ["main"]):
 			var q := Vector3(gs[k][0], gs[k][1], gs[k][2])
-			if not grips.any(func(g): return Vector3(g[0], g[1], g[2]).distance_to(q) < 1.5):
+			if not d.voxels.any(func(g): return Vector3(g[0], g[1], g[2]).distance_to(q) < 1.5):
 				both = false
 		if both:
 			var m := Vector3(gs.main[0], gs.main[1], gs.main[2])
 			return {"main": m, "off": Vector3(gs.off[0], gs.off[1], gs.off[2]) if two else m + Vector3(0, -2, 0)}
+	var grips: Array = d.voxels.filter(func(v): return v[4] == "grip")
+	if grips.is_empty():
+		return null
+	grips.sort_custom(func(a, b): return a[1] < b[1])
 	var avg := func(list: Array) -> Vector3:
 		var p := Vector3.ZERO
 		for g in list:
@@ -210,6 +224,31 @@ static func kept_piece(cells: Dictionary) -> Array:
 		if p.any(func(c): return cells[c] is Array and cells[c].size() > 1 and cells[c][1] == "grip"):
 			return p
 	return ps[0]
+
+## A line from `a` to `b` in any direction, every cell joined face to face to the one before
+## (a slanting line climbs as a staircase, so none of it hangs by a corner).
+static func line_path(a: Vector3i, b: Vector3i) -> Array:
+	var out := [a]
+	var p := a
+	var d := b - a
+	var n := Vector3(absi(d.x), absi(d.y), absi(d.z))
+	var done := Vector3.ZERO
+	while p != b:
+		# The axis furthest behind on its share of the way takes the next step.
+		var best := -1
+		var lag := INF
+		for i in 3:
+			if done[i] < n[i]:
+				var t := (done[i] + 0.5) / n[i]
+				if t < lag:
+					lag = t
+					best = i
+		var step := Vector3i.ZERO
+		step[best] = signi(d[best])
+		p += step
+		done[best] += 1.0
+		out.append(p)
+	return out
 
 static func line_cells(a: Vector3i, b: Vector3i) -> Array:
 	var n := maxi(absi(b.x - a.x), maxi(absi(b.y - a.y), absi(b.z - a.z)))

@@ -653,6 +653,12 @@ func forget_owner() -> void:
 	own_t = 0.0
 
 func _physics_process(dt: float) -> void:
+	# Through the sand (a heavy thing pressed or thrown into it): back up on top, at rest, not
+	# lost for good under the arena.
+	if global_position.y < -1.0 and not freeze:
+		global_position = Vector3(global_position.x, 0.6, global_position.z)
+		linear_velocity = Vector3.ZERO
+		angular_velocity = Vector3.ZERO
 	if chain_head:
 		# The head hits for whoever swings the handle.
 		chain_head.holder = holder

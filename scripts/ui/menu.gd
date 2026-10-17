@@ -329,6 +329,7 @@ func show_screen(s: String, msg := "") -> void:
 		"missions": _missions(v)
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
+		"training_designs": _training_designs(v)
 	if backdrop and backdrop.hero:
 		_frame_hero()
 
@@ -716,8 +717,9 @@ func _training(v: VBoxContainer) -> void:
 	var built: Dictionary = Save.get_value("training_weapon", {})
 	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "nunchaku", "plank", "chicken", "bow", "ram"]
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
-	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms"], "my_off")
-	left.add_child(UIStyle.button("Forge a weapon (free in training)", _training_forge))
+	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
+	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
+	_row(left, [UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")), UIStyle.button("Forge a weapon (free in training)", _training_forge)])
 	var imm := CheckBox.new()
 	imm.text = "I cannot die"
 	imm.button_pressed = training.immortal
@@ -737,7 +739,8 @@ func _training_loadout() -> Dictionary:
 	var m = training.my_main
 	var main = (built if not built.is_empty() else "gladius") if m == "built" else (lo.main if m == "campaign" else ("" if m == "fists" else m))
 	var o = training.my_off
-	var off = lo.off if o == "campaign" else ("" if o == "none" else o)
+	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
+	var off = lo.off if o == "campaign" else ("" if o == "none" else ((built_off if not built_off.is_empty() else "") if o == "built" else o))
 	if main is Dictionary and main.get("twoHanded", false):
 		off = ""
 	return {"main": main if main != null else "", "off": off if off != null else ""}
@@ -844,6 +847,77 @@ func _workshop_forge() -> void:
 		show_screen("main"))
 	panel.visible = false
 	f.tree_exited.connect(func(): panel.visible = true)
+
+## The forge's "Try it in the arena": a training bout with the weapon on the anvil in hand and
+## the dummy picked there in front of it; Esc (or Leave) goes back to the forge as it was (to
+## the yard first, if the forge was the smith's).
+var forge_trying = null
+var forge_try_yard := false
+func try_from_forge(f: Node, d: Dictionary, who: String, fights: bool) -> void:
+	forge_trying = f
+	forge_try_yard = in_yard()
+	f.visible = false
+	f.process_mode = Node.PROCESS_MODE_DISABLED
+	start({"mode": "training", "training": {"enemy": who, "count": 1, "weapon": "random", "behaviour": "fights" if fights else "still", "difficulty": 0.5, "immortal": true, "respawn": true},
+		"loadout_override": {"main": d, "off": ""}, "decrees": [], "hazards": []})
+	if match_:
+		match_._banner("Trying it out", "Esc: back to the forge")
+
+func back_to_forge() -> void:
+	var f = forge_trying
+	forge_trying = null
+	get_tree().paused = false
+	_end_match()
+	if forge_try_yard:
+		enter_yard()
+	visible = true
+	panel.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if f != null and is_instance_valid(f):
+		f.visible = true
+		f.process_mode = Node.PROCESS_MODE_INHERIT
+		if match_ and match_.input:
+			match_.input.enabled = false
+
+## Training: a weapon from My designs into either hand (a separate list of the saved designs).
+func _training_designs(v: VBoxContainer) -> void:
+	v.add_child(UIStyle.title("My designs", 34))
+	var g: Array = load("res://scripts/ui/forge.gd").gallery()
+	if g.is_empty():
+		v.add_child(UIStyle.label("Nothing saved yet: save a design in the forge first", 15, UIStyle.MUTED))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	v.add_child(grid)
+	for d in g:
+		var dd: Dictionary = d
+		var card := VBoxContainer.new()
+		card.custom_minimum_size = Vector2(220, 0)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(0, 90)
+		card.add_child(tex)
+		Thumbs.weapon(tex, dd, "tdesign:%d" % dd.hash())
+		var nm := UIStyle.label(str(dd.get("name", "?")), 14, UIStyle.TEXT)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(nm)
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_child(UIStyle.button("Main hand", func():
+			Save.set_value("training_weapon", dd)
+			training.my_main = "built"
+			show_screen("training")))
+		var off := UIStyle.button("Off hand", func():
+			Save.set_value("training_off_weapon", dd)
+			training.my_off = "built"
+			show_screen("training"))
+		off.disabled = bool(dd.get("twoHanded", false))
+		row.add_child(off)
+		card.add_child(row)
+		grid.add_child(card)
+	v.add_child(UIStyle.button("Back", func(): show_screen("training")))
 
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
 func _training_forge() -> void:
@@ -2733,6 +2807,10 @@ func _toggle_pause() -> void:
 	p.add_child(v)
 	v.add_child(UIStyle.title("Paused", 30))
 	v.add_child(UIStyle.button("Back to the fight", _toggle_pause, true))
+	if forge_trying != null:
+		v.add_child(UIStyle.button("Back to the forge", func():
+			_toggle_pause()
+			back_to_forge(), true))
 	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()):
 		# Twice, to be sure: the whole campaign over from bout 1, whole of body, bare of arms.
 		var rb := UIStyle.button("Restart the campaign", func(): pass)
@@ -2761,6 +2839,9 @@ func _toggle_pause() -> void:
 		v.add_child(UIStyle.button("Leave the fight", func():
 			_toggle_pause()
 			get_tree().paused = false
+			if forge_trying != null:
+				back_to_forge()
+				return
 			_end_match()
 			show_screen("main")))
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

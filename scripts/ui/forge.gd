@@ -32,7 +32,9 @@ var rng := RandomNumberGenerator.new()
 var undo_stack: Array = []
 var redo_stack: Array = []
 var stroke := {}   # the mouse held down in the voxel view: {erase, done: cells, undo}
-var hand_next := "main"      # the Hand tool: which hand the next click places
+var line_ghost: MultiMeshInstance3D   # the Line tool's path, shown while the end is picked
+var dummy_pick := "gladiator"       # what "Try it in the arena" puts in front of the weapon
+var dummy_fights := false
 var line_from = null       # the first cell of a line or a box being drawn
 
 var viewport: SubViewport
@@ -64,7 +66,14 @@ var cost_label: Label
 ## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
 const MATS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
-const TOOLS := [["build", "Build", "Click a face: a voxel goes on it"], ["paint", "Paint", "Click voxels: give them this material and job"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click one end, then the other: a haft, a blade"], ["box", "Box", "Click two corners: a block"], ["hand", "Hand", "Click the grip where the hand holds it (two-handed: then where the other hand goes)"]]
+const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there"]]
+## What each tool asks for, shown under the anvil while it is in hand.
+const TOOL_HINT := {
+	"build": "Build: click a face of the weapon, or hold and drag",
+	"erase": "Erase: click blocks, or hold the right button anywhere",
+	"line": "Line: click where it starts",
+	"hand": "Move hand: press on the gold ring and drag it to any block (the bronze ring is the other hand)",
+}
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	design = d.duplicate(true)
@@ -179,6 +188,7 @@ func _build_ui() -> void:
 	if not workshop:
 		end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
 	end.add_child(UIStyle.button("Swing it", func(): swing_t = 0.0))
+	col.add_child(_try_row())
 	end.add_child(UIStyle.button("Save design", _save_design, workshop))
 	end.add_child(UIStyle.button("Back" if workshop else "Leave it as it was", func(): done.call(null, 0)))
 	col.add_child(end)
@@ -292,6 +302,12 @@ func _build_smithy() -> void:
 	ghost.mesh = gb
 	ghost.visible = false
 	viewport.add_child(ghost)
+	line_ghost = MultiMeshInstance3D.new()
+	var lmm := MultiMesh.new()
+	lmm.transform_format = MultiMesh.TRANSFORM_3D
+	lmm.mesh = gb
+	line_ghost.multimesh = lmm
+	viewport.add_child(line_ghost)
 
 ## The voxel smithy round the anvil (art/voxel): a stone anvil block in place of the plain box,
 ## a flagstone floor, and in the gloom behind it the hearth, a rack of arms, jars and crates.
@@ -335,9 +351,50 @@ func _show_mode(m: String) -> void:
 			_voxels_ui()
 	ghost.visible = false
 	line_from = null
+	_show_line([])
 	if tool_bar:
 		_toolbar_ui()
 	_update_texts()
+
+## Try it in the arena: the weapon in hand, in front of a dummy of the player's choosing (a
+## man or a beast; standing still, or fighting back), and back to the anvil afterwards with
+## everything as it was.
+func _try_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var who := OptionButton.new()
+	var keys: Array = ["gladiator"]
+	var names: Array = ["A gladiator"]
+	for k in Data.campaign.get("enemies", {}):
+		if Edition.foe_open("foe:" + k):
+			keys.append("foe:" + k)
+			names.append(String(Data.campaign.enemies[k].get("label", k)))
+	for k in Data.beasts:
+		if Edition.foe_open(k) and k != "goat":
+			keys.append(k)
+			names.append(String(Data.beasts[k].get("name", k)))
+	for n in names:
+		who.add_item(n)
+	who.select(maxi(0, keys.find(dummy_pick)))
+	who.item_selected.connect(func(i): dummy_pick = keys[i])
+	who.tooltip_text = "What stands in front of the weapon"
+	row.add_child(who)
+	var fb := CheckBox.new()
+	fb.text = "Fights back"
+	fb.button_pressed = dummy_fights
+	fb.toggled.connect(func(x): dummy_fights = x)
+	row.add_child(fb)
+	row.add_child(UIStyle.button("Try it in the arena", func():
+		var d := _design_now()
+		if not ForgeLib.compute_stats(d).hasGrip:
+			cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
+			return
+		if ForgeLib.too_heavy(d) != "":
+			cost_label.text = ForgeLib.too_heavy(d)
+			return
+		if get_parent() and get_parent().has_method("try_from_forge"):
+			get_parent().try_from_forge(self, d, dummy_pick, dummy_fights)))
+	return row
 
 func _cards_ui() -> void:
 	if family == "":   # (reshaping a weapon at the smith keeps it what it is: no blank anvil there)
@@ -542,8 +599,9 @@ func _toolbar_ui() -> void:
 		var b := UIStyle.button(td[1], func():
 			tool = key
 			line_from = null
-			hand_next = "main"
-			_toolbar_ui())
+			_show_line([])
+			_toolbar_ui()
+			cost_label.text = TOOL_HINT.get(key, ""))
 		b.toggle_mode = true
 		b.button_pressed = tool == key
 		b.tooltip_text = td[2]
@@ -577,19 +635,6 @@ func _toolbar_ui() -> void:
 			keep[first] = cells[first]
 		cells = keep
 		_rebuild()))
-	if not blunt:
-		ar.add_child(UIStyle.button("Auto-sharpen", func():
-			_push_undo()
-			var d := _design_now()
-			ForgeLib.auto_sharpen(d)
-			_load_cells(d)
-			_rebuild()))
-	ar.add_child(UIStyle.button("Auto-grip", func():
-		_push_undo()
-		var d := _design_now()
-		ForgeLib.auto_grip(d)
-		_load_cells(d)
-		_rebuild()))
 	if free_build:
 		ar.add_child(UIStyle.button("Surprise me", func():
 			_push_undo()
@@ -619,8 +664,11 @@ static func gallery() -> Array:
 
 func _save_design() -> void:
 	var d := _design_now()
+	if ForgeLib.too_heavy(d) != "":
+		cost_label.text = ForgeLib.too_heavy(d)
+		return
 	if not ForgeLib.compute_stats(d).hasGrip:
-		cost_label.text = "Give it a grip before you save it (Auto-grip finds one)"
+		cost_label.text = "Say where it is held before you save it: build a Grip block, or ✋ Move hand"
 		return
 	var g := gallery().filter(func(o): return str(o.get("name", "")) != str(d.get("name", "")))
 	d.erase("imbue")
@@ -661,6 +709,14 @@ func _gallery_ui() -> void:
 		ld.disabled = not fits
 		ld.tooltip_text = "" if fits else "Not %s: Vulcanus reshapes yours within its kind" % FAMILY_NAMES.get(family, "the same kind")
 		row.add_child(ld)
+		if scratch:
+			# At the smith: have it made as it is, for what it is worth.
+			var price := Arms.design_price(d)
+			var buy := UIStyle.button("Buy · %d" % price, func():
+				_load_design(d)
+				_take())
+			buy.disabled = price > purse
+			row.add_child(buy)
 		row.add_child(UIStyle.button("Delete", func():
 			var all := gallery()
 			all.remove_at(idx)
@@ -754,6 +810,9 @@ func _update_texts() -> void:
 		cost_label.text = "Made at the smith: %d denarii" % Arms.design_price(_design_now()) + ("  (purse %d)" % purse if scratch else "")
 	elif free_build:
 		cost_label.text = "Free in training"
+	var heavy := ForgeLib.too_heavy(d, st)
+	if heavy != "":
+		cost_label.text = heavy
 
 func _value_now() -> int:
 	var s := 0
@@ -876,6 +935,10 @@ func _on_view_input(e: InputEvent) -> void:
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
 			stroke = {"erase": false, "done": {}, "undo": false}
 			_click(e.position)
+		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels" and tool == "line" and line_from != null:
+			line_from = null
+			_show_line([])
+			cost_label.text = TOOL_HINT.line
 		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels":
 			stroke = {"erase": true, "done": {}, "undo": false}
 			_erase_at(e.position)
@@ -892,7 +955,7 @@ func _on_view_input(e: InputEvent) -> void:
 			_hover(e.position)
 			# Held down and dragged, the tool goes on working: a stroke of voxels built, painted
 			# or cleared under the mouse (one undo for the whole stroke).
-			if not stroke.is_empty() and tool != "line" and tool != "box":
+			if not stroke.is_empty() and tool != "line":
 				if stroke.erase:
 					_erase_at(e.position)
 				else:
@@ -922,13 +985,25 @@ func _hover(at: Vector2) -> void:
 	var a := _aim(at)
 	var c = null
 	if not a.is_empty():
-		c = a.get("hit") if tool == "paint" or tool == "erase" else a.get("place")
+		c = a.get("hit") if tool == "erase" or tool == "hand" else a.get("place")
+	# The line from where it starts to where the mouse is: every block it would put down.
+	if tool == "line" and line_from != null and c != null:
+		_show_line(_mirrored(ForgeLib.line_path(line_from, c)))
 	ghost.visible = c != null
 	if c != null:
 		ghost.position = Vector3(c) * Data.weapon_voxel
 		var col := Color(1, 0.3, 0.3, 0.45) if tool == "erase" else Weapon.voxel_color(mat, job)
 		col.a = 0.5
 		(ghost.mesh.material as StandardMaterial3D).albedo_color = col
+
+func _show_line(list: Array) -> void:
+	if line_ghost == null:
+		return
+	var mm := line_ghost.multimesh
+	mm.instance_count = list.size()
+	for i in list.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(list[i]) * Data.weapon_voxel))
+	(line_ghost.multimesh.mesh.material as StandardMaterial3D).albedo_color = Color(Weapon.voxel_color(mat, job), 0.4)
 
 func _mirrored(list: Array) -> Array:
 	var out := list.duplicate()
@@ -980,56 +1055,60 @@ func _apply(a: Dictionary) -> void:
 			var list := _mirrored([a.place])
 			_place(list)
 			_mark(list)
-		"paint":
-			if a.hit != null and not _stroked(a.hit):
-				var list := _mirrored([a.hit]).filter(func(c): return cells.has(c) and cells[c] != [mat, job])
-				_mark(_mirrored([a.hit]))
-				if list.is_empty():
-					return
-				_push_undo()
-				for c in list:
-					cells[c] = [mat, job]
-				_rebuild()
 		"erase":
 			if a.hit != null and not _stroked(a.hit) and _erase_ready():
 				var list := _mirrored([a.hit])
 				_remove(list)
 				_mark(list)
 		"hand":
-			if a.hit == null or stroke.get("handed", false):
+			# Pressed: the hand whose ring is nearest is taken up; dragged, it follows the mouse
+			# from block to block.
+			if a.hit == null or stroke.get("at") == a.hit:
 				return
-			stroke["handed"] = true
-			_set_hand(a.hit)
-		"line", "box":
+			if not stroke.has("which"):
+				stroke["which"] = _nearest_hand(a.hit)
+			stroke["at"] = a.hit
+			_set_hand(a.hit, String(stroke.which))
+		"line":
 			var c: Vector3i = a.place
 			if line_from == null:
 				line_from = c
-				cost_label.text = "Now click the other end"
+				_show_line(_mirrored([c]))
+				cost_label.text = "Line: now click where it ends (right click: start again)"
 			else:
-				var list := ForgeLib.line_cells(line_from, c) if tool == "line" else ForgeLib.box_cells(line_from, c)
+				var list := ForgeLib.line_path(line_from, c)
 				line_from = null
+				_show_line([])
 				_place(_mirrored(list))
+				cost_label.text = TOOL_HINT.line
 
-## The Hand tool: the hand goes where it was clicked on the grip (and the other hand of a
-## two-handed weapon at the next click). The fighter holds the weapon there.
-func _set_hand(c: Vector3i) -> void:
-	if cells[c][1] != "grip":
-		cost_label.text = "The hands hold the grip: click a grip block"
+## Move hand: hand `which` ("main" or "off") goes onto block `c`, any block of the weapon. The
+## fighter holds the weapon there.
+func _set_hand(c: Vector3i, which := "main") -> void:
+	if not cells.has(c):
 		return
 	var at := [c.x, c.y, c.z]
 	var two: bool = design.get("twoHanded", false)
-	var gs: Dictionary = design.get("grips", {}) if design.get("grips") is Dictionary else {}
+	var g = ForgeLib.grip_points(_design_now())
+	var now := {"main": [c.x, c.y, c.z], "off": [c.x, c.y - 2, c.z]}
+	if g != null:
+		now = {"main": [roundi(g.main.x), roundi(g.main.y), roundi(g.main.z)], "off": [roundi(g.off.x), roundi(g.off.y), roundi(g.off.z)]}
 	if not two:
 		design.grips = {"main": at, "off": [c.x, c.y - 2, c.z]}
-	elif hand_next == "main":
-		design.grips = {"main": at, "off": gs.get("off", at)}
-		hand_next = "off"
 	else:
-		design.grips = {"main": gs.get("main", at), "off": at}
-		hand_next = "main"
+		now[which] = at
+		design.grips = now
 	_rebuild()
-	if two and hand_next == "off":
-		cost_label.text = "Now click where the other hand holds it"
+	cost_label.text = ("The %s hand holds it here" % ("main" if which == "main" else "other")) if two else "The hand holds it here"
+
+## The hand whose ring is nearest block `c` (one-handed: the only one).
+func _nearest_hand(c: Vector3i) -> String:
+	if not design.get("twoHanded", false):
+		return "main"
+	var g = ForgeLib.grip_points(_design_now())
+	if g == null:
+		return "main"
+	return "off" if Vector3(c).distance_to(g.off) < Vector3(c).distance_to(g.main) else "main"
 
 func _erase_at(at: Vector2) -> void:
 	var a := _aim(at)
@@ -1115,8 +1194,11 @@ func _unhandled_key_input(e: InputEvent) -> void:
 func _take() -> void:
 	var d := _design_now()
 	var st := ForgeLib.compute_stats(d)
+	if ForgeLib.too_heavy(d, st) != "":
+		cost_label.text = ForgeLib.too_heavy(d, st)
+		return
 	if not st.hasGrip:
-		cost_label.text = "It needs a grip to be held (Auto-grip finds one)"
+		cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
 		return
 	if family != "" and Arms.family(d) != family:
 		cost_label.text = "Vulcanus reshapes it, he does not make it something else: it must stay %s" % FAMILY_NAMES.get(family, "what it is")

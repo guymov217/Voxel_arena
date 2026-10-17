@@ -141,3 +141,17 @@ func test_on_one_leg_he_hops() -> void:
 	t.check(f.torso.global_position.distance_to(p0) > 1.5, "and gets on, hop by hop")
 	t.check(hi - lo > 0.05, "rising and dropping with each hop (%.2f m)" % (hi - lo))
 	m.queue_free()
+
+## The Elixir of Asclepius: dear, and it gives back all the campaign took (a lost leg, a
+## replaced hand, a blind eye, the old wounds); offered only to a body that needs it.
+func test_the_elixir_gives_back_everything() -> void:
+	var b := Body.sanitize({"missing": ["shinL", "forearmR"], "prosthetics": {"forearmR": "hook"}, "eyes": {"L": "lost"}, "fights": 7})
+	b.missing.erase("forearmR")
+	var offer := Body.offers(b, 1).filter(func(o): return String(o.id) == "elixir:all")
+	t.eq(offer.size(), 1, "the physician has it for a body that needs it")
+	t.check(int(offer[0].price) >= 300 and int(offer[0].price) > Body.MEDICINE_PRICE * 2, "and it costs a fortune (%d)" % int(offer[0].price))
+	var whole := Body.apply(b, "elixir:all")
+	t.check(whole.missing.is_empty() and whole.prosthetics.is_empty() and whole.eyes.is_empty() and whole.scars.is_empty(), "whole again: %s" % Body.summary(whole))
+	t.eq(int(whole.fights), 7, "the fights fought are still his")
+	t.check(not Body.offers(Body.empty(), 1).any(func(o): return String(o.id) == "elixir:all"), "not sold to a whole man")
+	t.eq(Body.price_of("elixir:all"), Body.ELIXIR_PRICE, "priced the same everywhere")
