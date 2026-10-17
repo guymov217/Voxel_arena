@@ -34,6 +34,7 @@ static func score_kill(k: Dictionary) -> Dictionary:
 	var caption: String = ("%s killed %s" % [a, v]) if a else ("%s died" % v)
 	var best_pts := 0.0
 	var picks := []
+	if k.get("out", false): picks.append([12.0, ("%s beat %s senseless" % [a, v]) if a else ("%s is out of the fight" % v)])
 	if k.get("big", false): picks.append([30.0, "%s brought down the mighty %s" % [a if a else "The arena", v]])
 	if k.get("burning", false): picks.append([20.0, ("%s burned, courtesy of %s" % [v, a]) if a else ("%s burned" % v)])
 	if k.get("unarmed", false) and a: picks.append([25.0, "%s punched %s to death" % [a, v]])
@@ -89,20 +90,23 @@ func _physics_process(dt: float) -> void:
 			_cut(k)
 
 ## A death: what kind of kill it was, scored; cut once the aftermath is on tape.
-func on_death(f: Fighter, cause: String, last_hit: Dictionary) -> void:
+## (On a guest the host names the killer, the weapon and whether it was thrown: `by`, `wname`,
+## `thrown`.) `last_hit.at`, when the blow came: a man beaten senseless is put on tape from it.
+func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", thrown := false) -> void:
 	if playing:
 		return
-	var killer = f.last_attacker
+	var killer = by if by != null else f.get("last_attacker")
 	var kname = killer.display_name if killer and is_instance_valid(killer) and killer != f else null
 	var severed := 0
 	for p in f.parts:
 		if p.severed:
 			severed += 1
 	var w = last_hit.get("weapon")
-	var k := {"t": m.time, "victim": f.display_name, "killer": kname, "decap": cause == "decap" or (f.head and f.head.severed),
+	var wn = String(w.design.get("name", "")).to_lower() if w != null and is_instance_valid(w) else (wname if wname != "" else null)
+	var k := {"t": float(last_hit.get("at", m.time)) if cause == "out" else m.time, "out": cause == "out", "victim": f.display_name, "killer": kname, "decap": cause == "decap" or (f.head and f.head.severed),
 		"big": f.S >= 1.8 or f.boss, "burning": f.parts.any(func(p): return not p.spots.is_empty()),
 		"unarmed": killer is Fighter and is_instance_valid(killer) and killer.weapons.get("R") == null and killer.weapons.get("L") == null,
-		"thrown": w != null and is_instance_valid(w) and w.holder == null, "weapon": String(w.design.get("name", "")).to_lower() if w != null and is_instance_valid(w) else null,
+		"thrown": thrown or (w != null and is_instance_valid(w) and w.holder == null), "weapon": wn,
 		"self": killer == f, "friendly": killer is Fighter and is_instance_valid(killer) and killer != f and killer.team == f.team,
 		"severed": severed, "J": float(last_hit.get("J", 0.0)), "player": (m.me != null and (killer == m.me.f or f == m.me.f)),
 		"killer_node": killer, "victim_node": f}
@@ -125,7 +129,7 @@ func tape_left() -> float:
 	return maxf(0.0, left)
 
 ## Whether there is a clip worth showing; the kill must have been on tape long enough.
-func has_clip(min_score := 25.0) -> bool:
+func has_clip(min_score := 15.0) -> bool:
 	for k in pending.duplicate():
 		pending.erase(k)
 		_cut(k)

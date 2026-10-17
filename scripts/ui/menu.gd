@@ -2078,6 +2078,11 @@ func _options(v: VBoxContainer) -> void:
 	gore.select(1 if str(st.get("gore", "full")) == "reduced" else 0)
 	gore.item_selected.connect(func(k): _set_opt("gore", "reduced" if k == 1 else "full"))
 	_row(v, [UIStyle.label("Gore", 15), gore, UIStyle.label("Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.", 13, UIStyle.MUTED)])
+	var kc := CheckBox.new()
+	kc.text = "Kill cam: the best kill replayed at the end of a fight (alone and online)"
+	kc.button_pressed = bool(st.get("killcam", true))
+	kc.toggled.connect(func(on): _set_opt("killcam", on))
+	v.add_child(kc)
 	var lh := CheckBox.new()
 	lh.text = "Left-handed (the right button swings the main weapon)"
 	lh.button_pressed = bool(st.get("leftHanded", false))
@@ -2560,7 +2565,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc":
 			if match_:
 				match_.guest_message(type, data)
 		"purse":
@@ -2575,9 +2580,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"end":
 			if match_:
 				# (The pay went into the party's purse on the host's side.)
-				match_.over = true
-				match_.banner.emit(data.text, data.sub)
-				match_.finished.emit({"won": data.won, "stage": match_.stage, "pay": data.pay})
+				match_.guest_end(data)
 
 func _unhandled_input(e: InputEvent) -> void:
 	# R: the stage (the bout, the training) again from the start. Alone only: in a room the

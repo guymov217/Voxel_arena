@@ -160,7 +160,9 @@ func setup(opts: Dictionary) -> void:
 	add_child(throwables)
 	items.on_event = throwables.on_item
 	spectacle = Spectacle.new(self)
-	if (not headless or opts.get("killcam", false)) and role != "guest" and not opts.get("autopilot", false) and not attract:
+	# The kill cam, if the player wants it (Settings): alone, the host and every guest each tape
+	# the fight as they see it and replay the best kill at its end.
+	if (opts.get("killcam", false) or (not headless and bool(Save.get_value("settings", {}).get("killcam", true)))) and not opts.get("autopilot", false) and not attract:
 		killcam = KillCam.new(self)
 		add_child(killcam)
 	hazards = Hazards.new()
@@ -911,8 +913,50 @@ func _sync_loose() -> void:
 			w.net_id = -1
 
 ## Guests: what the host sends besides spawns and snapshots.
+## A kill (or a man beaten senseless, out of the fight) for the kill cam; the host tells his
+## guests, who tape it on their own kill cams.
+func _tape_kill(f, cause: String) -> void:
+	var lh: Dictionary = last_hit_of.get(f, {})
+	if killcam and role != "guest":   # (a guest tapes the host's word on it: "kc")
+		killcam.on_death(f, cause, lh)
+	if role == "host":
+		var ve = _entity_of(f)
+		var ke = _entity_of(f.last_attacker) if f.get("last_attacker") else null
+		var w = lh.get("weapon")
+		if ve != null:
+			Net.send_all("kc", {"v": ve.id, "k": ke.id if ke != null else -1, "cause": cause, "J": float(lh.get("J", 0.0)),
+				"w": String(w.design.get("name", "")) if w != null and is_instance_valid(w) else "", "th": w != null and is_instance_valid(w) and w.holder == null,
+				"ago": time - float(lh.get("at", time))})
+
+func _entity_of(f) -> Variant:
+	for e in entities:
+		if e.f == f:
+			return e
+	return null
+
+## The end of the fight on a guest: his own kill cam's best kill, then the result.
+func guest_end(data: Dictionary) -> void:
+	if over:
+		return
+	over = true
+	banner.emit(str(data.get("text", "")), str(data.get("sub", "")))
+	if killcam:
+		var left := killcam.tape_left()
+		if left > 0.0:
+			await get_tree().create_timer(left + 0.05).timeout
+		if killcam.has_clip():
+			await killcam.play(func(): pass)
+	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0))})
+
 func guest_message(type: String, data) -> void:
 	match type:
+		"kc":
+			if killcam and data is Dictionary:
+				var ve = entity_by_id(int(data.get("v", -1)))
+				var ke = entity_by_id(int(data.get("k", -1)))
+				if ve != null and is_instance_valid(ve.f):
+					killcam.on_death(ve.f, str(data.get("cause", "")).left(16), {"J": clampf(float(data.get("J", 0.0)), 0.0, 500.0), "at": time - clampf(float(data.get("ago", 0.0)), 0.0, 10.0)},
+						ke.f if ke != null and is_instance_valid(ke.f) else null, str(data.get("w", "")).left(32).to_lower(), bool(data.get("th", false)))
 		"gutp":
 			# Another length pulled out of a belly already open (sanitized like "guts").
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
@@ -1126,6 +1170,11 @@ func _check_round(dt: float) -> void:
 	# the sand unable to stand (crawling at most) for UNFIT_OUT seconds.
 	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
 	var alive_e := enemies().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
+	# Beaten without dying (out cold, or down for good): on the kill cam's tape as a kill.
+	for x in entities:
+		if x.f.alive and not x.get("taped", false) and not alive_h.has(x) and not alive_e.has(x) and (x.team == ENEMY_TEAM or humans().has(x)):
+			x.taped = true
+			_tape_kill(x.f, "out")
 	if mode == "training":
 		for e in enemies():
 			if not e.f.alive and not e.get("respawned", false) and training.get("respawn", true):
@@ -1270,6 +1319,7 @@ func _on_hit(h: Dictionary) -> void:
 	if rules and role != "guest":
 		rules.on_hit(h)
 	if h.get("char"):
+		h["at"] = time
 		last_hit_of[h.char] = h
 	if tut:
 		tut.on_hit(h)
@@ -1477,8 +1527,7 @@ static func _part_word(part: VoxelPart) -> String:
 func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":
 		spectacle.on_death(f)
-	if killcam:
-		killcam.on_death(f, cause, last_hit_of.get(f, {}))
+	_tape_kill(f, cause)
 	if me and f != me.f and f.last_attacker == me.f:
 		mission_event("kill")
 		var lw = last_hit_of.get(f, {}).get("weapon")
