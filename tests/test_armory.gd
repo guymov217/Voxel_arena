@@ -84,10 +84,11 @@ func test_gems_set_in_a_weapon_burn_freeze_and_poison() -> void:
 		while tries < 12 and not v.has_meta("gem_t_" + gem):
 			m._on_hit({"kind": "hit", "weapon": w, "char": v, "part": arm, "attacker": null, "p": arm.global_position, "dir": Vector3(0, 0, 1), "J": 12.0, "type": "edge", "res": {"severed": []}, "killed": false})
 			tries += 1
-		got[gem] = {"burn": arm.spots.any(func(s): return s.kind == "fire"), "acid": arm.spots.any(func(s): return s.kind == "acid"), "fn": arm.function(), "slow": v.slow_factor, "bleed": arm.bleed - b0}
+		got[gem] = {"burn": arm.spots.any(func(s): return s.kind == "fire"), "acid": arm.spots.any(func(s): return s.kind == "acid"), "frost": arm.spots.any(func(s): return s.kind == "frost"), "fn": arm.function(), "slow": v.slow_factor, "bleed": arm.bleed - b0}
 		i += 1
 	t.check(got.ruby.burn, "the ruby sets the forearm it struck alight (%s)" % [got.ruby])
 	t.check(got.sapphire.fn < 0.3 and got.sapphire.slow < 0.5, "the sapphire freezes the forearm stiff (%s)" % [got.sapphire])
+	t.check(got.sapphire.frost, "and frostbite sets in there")
 	t.check(got.emerald.acid and got.emerald.bleed > 0.5, "the emerald poisons the wound and it eats in (%s)" % [got.emerald])
 	m.queue_free()
 
@@ -150,4 +151,28 @@ func test_a_golden_blow_wins_the_crowd() -> void:
 	var f0: float = m.spectacle.get_favor(me)
 	m._on_hit({"kind": "hit", "weapon": w, "char": foe, "part": foe.torso, "attacker": me, "p": foe.torso.global_position, "dir": Vector3(0, 0, 1), "J": 10.0, "type": "edge", "res": {"severed": []}, "killed": false})
 	t.check(m.spectacle.get_favor(me) > f0 + 1.0, "the crowd roars (%.1f → %.1f)" % [f0, m.spectacle.get_favor(me)])
+	m.queue_free()
+
+
+## Frostbite: the flesh where it set in turns white, then black, then falls away, without a
+## drop of blood; the limb is all but useless while the cold is in it.
+func test_frostbite_kills_the_flesh_it_bites() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true})
+	m.me.f.teleport(Vector3(0, 0, -10))
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0.1, 0), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	await _steps(10)
+	var v: Fighter = e.f
+	var thigh: VoxelPart = v.by_name["thighR"]
+	var n0: int = thigh.alive_count
+	var blood0: float = v.blood
+	m.add_spot(v, thigh, "frost", 8.0, null, thigh.global_position + Vector3(0, 0, thigh.half_ext.z))
+	await _steps(30)
+	t.check(thigh.function() < 0.3, "the frozen thigh hardly works (%.2f)" % thigh.function())
+	await _steps(120 * 7)
+	t.check(thigh.alive_count < n0, "the frostbitten flesh died away (%d → %d voxels)" % [n0, thigh.alive_count])
+	t.check(v.blood > blood0 - 3.0, "with hardly any blood lost (%.1f → %.1f)" % [blood0, v.blood])
 	m.queue_free()

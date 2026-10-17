@@ -708,7 +708,7 @@ const MAT_USE := {
 	"feather": "Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.",
 	"magnet": "Pulls iron and steel to it: blades and armour are dragged in.",
 	"ruby": "A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.",
-	"sapphire": "A gem socket of frost: a blow may freeze the limb it strikes stiff and slow the whole body. More sapphires, a deeper frost. Costly.",
+	"sapphire": "A gem socket of frost: a blow may freeze the limb it strikes stiff and give it frostbite: the flesh there whitens, blackens and dies away, bloodless. More sapphires, a deeper frost. Costly.",
 	"emerald": "A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.",
 }
 ## The chosen material in a line: its name, how hard and how heavy (the dots), and its price.

@@ -306,7 +306,10 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	for y in grip:
 		set_voxel(d, 0, y, 0, haft, "grip")
 	if rng.randf() < 0.6:
-		set_voxel(d, 0, -1, 0, _pick(["lead", "iron", "iron"], rng), "blunt")
+		var pm: String = _pick(["lead", "iron", "iron"], rng)
+		set_voxel(d, 0, -1, 0, pm, "blunt")
+		for o in [Vector3i(1, -1, 0), Vector3i(-1, -1, 0), Vector3i(0, -1, 1), Vector3i(0, -1, -1)]:
+			set_voxel(d, o.x, o.y, o.z, pm, "blunt")
 	var top := grip
 	if kind == "polearm":
 		var l := rng.randi_range(12, 26)
@@ -320,14 +323,22 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 		top += l2
 	if kind == "blade" or kind == "polearm":
 		if rng.randf() < 0.7:
+			var guard: String = _pick(["iron", "iron", "gold"], rng)
 			for x in range(-2, 3):
-				set_voxel(d, x, top, 0, _pick(["iron", "iron", "gold"], rng), "blunt")
+				set_voxel(d, x, top, 0, guard, "blunt")
+			set_voxel(d, 0, top, -1, guard, "blunt")
+			set_voxel(d, 0, top, 1, guard, "blunt")
 		top += 1
 		var bl := rng.randi_range(3, 7) if kind == "polearm" else rng.randi_range(8, 26)
 		var w := rng.randi_range(0, 2)
 		for y in range(top, top + bl):
 			for x in range(-w, w + 1):
 				set_voxel(d, x, y, 0, metal, "blunt")
+			# A spine down the middle: the blade has a thickness (thin at the edges, thick at the
+			# core), not a sheet of one voxel. Not near the tip, nor on a needle of a blade.
+			if w >= 1 and y < top + bl - 2:
+				set_voxel(d, 0, y, -1, metal, "blunt")
+				set_voxel(d, 0, y, 1, metal, "blunt")
 		for i in mini(2, w + 1):
 			set_voxel(d, 0, top + bl + i, 0, metal, "blunt")
 	elif kind == "axe":
@@ -339,6 +350,12 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 				set_voxel(d, x, y, 0, metal, "blunt")
 				if dbl:
 					set_voxel(d, -x, y, 0, metal, "blunt")
+				# The cheeks of the head are thick where it sits on the haft, thin to the edge.
+				if x <= mini(2, reach - 1):
+					for z in [-1, 1]:
+						set_voxel(d, x, y, z, metal, "blunt")
+						if dbl:
+							set_voxel(d, -x, y, z, metal, "blunt")
 	elif kind == "mace":
 		var r := rng.randi_range(1, 3)
 		for x in range(-r, r + 1):
@@ -352,7 +369,8 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	else:
 		for x in range(-2, 3):
 			for y in 4:
-				set_voxel(d, x, top + y, 0, metal, "blunt")
+				for z in [-1, 0, 1]:
+					set_voxel(d, x, top + y, z, metal, "blunt")
 		for x in [-2, 0, 2]:
 			for y in range(4, 7):
 				set_voxel(d, x, top + y, 0, metal, "point")

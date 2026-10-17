@@ -864,7 +864,7 @@ func add_spot(c, part: VoxelPart, kind: String, seconds: float, by = null, point
 	var e = entity_of(c)
 	if role == "host" and e:
 		Net.send_all("spot", {"id": e.id, "part": c.parts.find(part), "kind": kind, "lp": [s.lp.x, s.lp.y, s.lp.z], "t": s.t})
-	if not was:
+	if not was and kind != "frost":   # (frostbite is told by the sapphire that brings it)
 		feed.emit(("%s is on fire!" if kind == "fire" else "The poison eats into %s!") % c.display_name)
 
 ## A weapon lying loose in the arena (a crowd's gift, chickens out of a crate).
@@ -1426,14 +1426,17 @@ func _gems(h: Dictionary) -> void:
 				if say:
 					feed.emit("The ruby flares: %s's %s catches fire!" % [c.display_name, _part_word(part)])
 			"sapphire":
+				# Frozen stiff, and frostbitten: the flesh at the blow dies over the next seconds
+				# (Fire.tick "frost": white, then black, then it falls away; no blood from it).
 				part.frozen_until = Time.get_ticks_msec() * 0.001 + 2.5 * k
+				add_spot(c, part, "frost", 4.0 * k, h.get("attacker"), p)
 				c.slow(2.5 * k, maxf(0.15, 0.45 - 0.08 * k))
 				c.stamina = maxf(0.0, c.stamina - 10.0 * k)
 				c.stagger = minf(1.0, c.stagger + 0.25 * k)
 				if fx:
 					fx.burst("frost", p, 30, Vector3.UP, 1.8)
 				if say:
-					feed.emit("The sapphire bites cold: %s's %s freezes stiff!" % [c.display_name, _part_word(part)])
+					feed.emit("The sapphire bites cold: frostbite in %s's %s!" % [c.display_name, _part_word(part)])
 			"emerald":
 				part.bleed += 0.5 * k
 				c.slow(4.0 * k, 0.7)

@@ -11,6 +11,8 @@ const EMBER := Color(1.0, 0.416, 0.102)
 const SCORCH := Color(0.604, 0.541, 0.416)
 const ACID := Color(0.561, 0.831, 0.227)
 const ACID_DARK := Color(0.227, 0.353, 0.071)
+const FROST := Color(0.78, 0.9, 1.0)
+const NECROSIS := Color(0.12, 0.08, 0.14)
 
 ## A world point on (or near) a part, in its own frame, snapped onto its nearest live voxel.
 static func _spot_on(part: VoxelPart, point) -> Variant:
@@ -68,6 +70,32 @@ static func spot_world(part: VoxelPart, s: Dictionary) -> Vector3:
 
 ## One step of fire and acid on every part of `c`. The host does the damage and the eating
 ## away. Returns {"removed": [{part, indices, voxels}], "caught": [{part, spot}]}.
+## Frostbite at a spot: the flesh round it freezes white, then over the seconds darkens to
+## the black of dead flesh (necrosis); the dead voxels fall away a few at a time, the bone is
+## left. A small patch, slow, bloodless.
+static func _frostbite(p: VoxelPart, s: Dictionary, vfs: float, host: bool, crumble: Array, touched: Array) -> void:
+	var r: float = vfs * minf(3.0, 1.0 + s.age * 0.35)
+	var cap: float = p.fx.size() * 0.12
+	var near := []
+	for i in p.fx.size():
+		if p.alive[i]:
+			var d: float = p.local_of(i).distance_to(s.lp)
+			if d < r:
+				near.append([i, d])
+	near.sort_custom(func(a, b): return a[1] < b[1])
+	for pair in near.slice(0, 24):
+		var i: int = pair[0]
+		var h: float = p.heat.get(i, 0.0)
+		touched.append(i)
+		if p.bone[i]:
+			p.colors[i] = p.colors[i].lerp(FROST, 0.2)
+			continue
+		p.heat[i] = h + 0.12
+		p.colors[i] = p.colors[i].lerp(FROST if p.heat[i] < 0.5 else NECROSIS, 0.35)
+		if host and p.heat[i] >= 1.4 and s.removed < cap and crumble.size() < 2:
+			crumble.append(i)
+			s.removed += 1
+
 static func tick(c, dt: float, host := true) -> Dictionary:
 	var out := {"removed": [], "caught": []}
 	var rolling: bool = c.state == "down" or c.state == "rising"
@@ -83,11 +111,20 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 			continue
 		var fire := active.any(func(s): return s.kind == "fire")
 		var acid_on := active.any(func(s): return s.kind == "acid")
+		var frost_on := active.any(func(s): return s.kind == "frost")
+		if frost_on and not p.severed:
+			# Frostbite: the limb all but useless while the cold is in it, and frozen flesh
+			# does not bleed.
+			p.frozen_until = maxf(p.frozen_until, Time.get_ticks_msec() * 0.001 + 0.4)
+			p.bleed *= maxf(0.0, 1.0 - dt * 0.8)
+			if host:
+				p.hp = maxf(0.0, p.hp - dt * 3.0 / soak)
 		p.set_flames(fire)
 		p.set_poison(acid_on)
 		if host and not p.severed:
 			p.hp = maxf(0.0, p.hp - dt * ((8.0 if fire else 0.0) + (6.0 if acid_on else 0.0)) / soak)
-			c.blood = maxf(0.0, c.blood - dt * (0.9 if acid_on else 0.6))
+			if fire or acid_on:   # (frostbite does not bleed)
+				c.blood = maxf(0.0, c.blood - dt * (0.9 if acid_on else 0.6))
 		var limb: bool = p != c.torso and p != c.head and p.bone.has(1)
 		var vfs: float = p.vf * p.part_scale
 		var crumble := []
@@ -99,6 +136,9 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 			if s.clock < 0.2:
 				continue
 			s.clock = 0.0
+			if s.kind == "frost":
+				_frostbite(p, s, vfs, host, crumble, touched)
+				continue
 			var acid: bool = s.kind == "acid"
 			var r: float = vfs * minf(4.5 if acid else 6.0, 1.2 + s.age * (0.75 if acid else 0.7))
 			var cap: float = p.fx.size() * (0.4 if limb else 0.25)

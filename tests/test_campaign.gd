@@ -228,3 +228,15 @@ func test_every_oddity_is_one_piece() -> void:
 				if ForgeLib.pieces(cells).size() != 1:
 					bad += 1
 	t.eq(bad, 0, "all %d oddities are one piece" % n)
+
+## The oddities have depth: not one sheet of voxels, a thickness where the kind of weapon has
+## one (a blade's spine, an axe's cheeks, a mace's ball).
+func test_oddities_are_not_flat() -> void:
+	var flat := 0
+	var n := 0
+	for seed_ in 40:
+		for d in Arms.oddities(seed_ * 13 + 3, 1):
+			n += 1
+			if not d.voxels.any(func(v): return int(v[2]) != 0):
+				flat += 1
+	t.check(flat <= n / 10, "hardly any flat (%d of %d)" % [flat, n])
