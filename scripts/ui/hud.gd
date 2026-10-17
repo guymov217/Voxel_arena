@@ -953,7 +953,7 @@ func _process(dt: float) -> void:
 	match_.spectacle.events.clear()
 	_place()
 	var status: Label = bars.status
-	status.text = (match_.yard.hint if match_.yard else "") if match_.mode == "yard" else ""
+	status.text = ""   # (the yard's place is in the corner and what to do there in the prompt: the plate stays the fight's size)
 	decree_label.text = ("DECREES: " + " · ".join(match_.dec.names)).to_upper() if not match_.dec.names.is_empty() else ""
 	if match_.tut:
 		if tut_panel == null:

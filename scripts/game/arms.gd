@@ -173,6 +173,7 @@ static func oddities(run_seed: int, stage: int, n := 3) -> Array:
 			for j in k:
 				head[rng.randi_range(0, head.size() - 1)][3] = gem
 			d.name = ODDITY_NAMES[rng.randi_range(0, ODDITY_NAMES.size() - 1)]
+		ForgeLib.one_piece(d)   # (the gems and swaps change no shape, but be sure: nothing in the air)
 		d.erase("stats")
 		d["oddity"] = {"stage": stage, "i": i, "rare": rare}
 		out.append(d)

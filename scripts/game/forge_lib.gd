@@ -357,9 +357,23 @@ static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 			for y in range(4, 7):
 				set_voxel(d, x, top + y, 0, metal, "point")
 	auto_sharpen(d)
+	one_piece(d)
 	d.sharpness = roundf((0.5 + rng.randf() * 0.5) * 20.0) / 20.0
 	d.twoHanded = compute_stats(d).tooHeavy or (kind == "polearm" and rng.randf() < 0.5)
 	return d
+
+## Whatever is not joined, face to face, to the piece with the grip is taken off: nothing of a
+## weapon hangs in the air. Returns how many voxels went.
+static func one_piece(d: Dictionary) -> int:
+	var cells := {}
+	for v in d.voxels:
+		cells[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = [v[3], v[4]]
+	var keep := {}
+	for c in kept_piece(cells):
+		keep[c] = true
+	var before: int = d.voxels.size()
+	d.voxels = d.voxels.filter(func(v): return keep.has(Vector3i(int(v[0]), int(v[1]), int(v[2]))))
+	return before - d.voxels.size()
 
 # ---------- The blacksmith and the dummy ----------
 

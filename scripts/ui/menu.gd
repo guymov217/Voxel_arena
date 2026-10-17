@@ -991,6 +991,7 @@ func _yard(v: VBoxContainer) -> void:
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
+		_viewable(tex, Data.preset(key), "%d denarii at the smith" % int(b.price))
 	# The bout's oddities, his own designs (made to order), then the smith's rack.
 	var odd := _smith_oddities(rack_box, grid.columns, tile_st)
 	if _smith_designs(rack_box, grid.columns, tile_st) or odd:
@@ -1106,6 +1107,18 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 			col.add_child(buy)
 		g.add_child(tile)
 		Thumbs.weapon(tex, d, "odd:%d:%d:%d" % [run_seed(), stage, idx])
+		_viewable(tex, d, "%d denarii%s" % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""])
+		var keep := d.duplicate(true)
+		keep.erase("oddity")
+		var saved: bool = load("res://scripts/ui/forge.gd").gallery().any(func(o): return o.get("voxels") == keep.voxels)
+		var sv := UIStyle.button("In My designs" if saved else "Save to My designs", func():
+			var mine: Array = load("res://scripts/ui/forge.gd").gallery()
+			if not mine.any(func(o): return o.get("voxels") == keep.voxels):
+				mine.push_front(keep)
+				Save.set_value("forge_gallery", mine.slice(0, 24))
+			show_screen("yard"))
+		sv.disabled = saved
+		col.add_child(sv)
 	return true
 
 ## The player's own designs (My designs, from the forge), made by the smith at what they are
@@ -1155,6 +1168,7 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 		col.add_child(buy)
 		g2.add_child(tile)
 		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
+		_viewable(tex, d, "Your design · %d denarii to have it made" % price)
 	return true
 
 ## A list on the smith's screen that takes what height is left and scrolls within it.
@@ -1377,6 +1391,17 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	make.disabled = price > coins()
 	right.add_child(make)
 
+## A weapon's picture that opens it in the round (WeaponView) when clicked.
+func _viewable(tex: TextureRect, d, line := "") -> void:
+	if not (d is Dictionary) or not (d.get("voxels") is Array):
+		return
+	tex.mouse_filter = Control.MOUSE_FILTER_STOP
+	tex.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	tex.tooltip_text = "Click to see it all round"
+	tex.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			WeaponView.show_for(self, d, line))
+
 ## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
 func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -1404,6 +1429,7 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	card.set_meta("col", col)
 	if d is Dictionary:
 		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
+		_viewable(tex, d, "%d voxels" % d.voxels.size())
 	return card
 
 ## Every other way to fight (game.js modes, partyModes.js).
@@ -2372,12 +2398,12 @@ func _end_match() -> void:
 
 func _on_finished(r: Dictionary) -> void:
 	var was := match_
-	# A moment on the banner (any key or a click goes straight on), not a long wait with
-	# nothing happening.
-	var wait_until := Time.get_ticks_msec() + 1600
+	# Five seconds on the banner over the arena, to take in how the bout ended (Space or Enter
+	# goes on sooner, but not in the first moment, nor a mouse button still held from the fight).
+	var wait_until := Time.get_ticks_msec() + 5000
 	while Time.get_ticks_msec() < wait_until and match_ == was:
 		await get_tree().process_frame
-		if Time.get_ticks_msec() > wait_until - 1300 and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER) or Input.is_key_pressed(KEY_ESCAPE) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)):
+		if Time.get_ticks_msec() > wait_until - 3500 and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER)):
 			break
 	if match_ != was:
 		return   # restarted (R) in the meantime
@@ -2411,6 +2437,8 @@ func _on_finished(r: Dictionary) -> void:
 			# A death ends the campaign: the next one begins at the first bout, with a beginner's
 			# purse, stick and body (online and alone alike; the host's word is the party's).
 			Save.set_value(sk, 1)
+			Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+			Save.set_value("oddities_sold", {})
 			Save.set_value(ck, 1)
 			Save.set_value("coins", 150)
 			set_body(Body.empty())

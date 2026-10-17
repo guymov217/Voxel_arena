@@ -45,46 +45,53 @@ static func weapon(rect: TextureRect, d: Dictionary, key: String) -> void:
 	if not (d.get("voxels") is Array) or d.voxels.is_empty():
 		return
 	put(rect, "weapon:" + key, func():
-		var root := Node3D.new()
-		var vs: float = Data.weapon_voxel
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.vertex_color_is_srgb = true
-		mat.roughness = 0.35
-		mat.metallic = 0.35
-		var bm := BoxMesh.new()
-		bm.size = Vector3.ONE * vs * 0.98
-		bm.material = mat
-		# A chain weapon: its links and head hang on above the handle, as it is carried.
-		var all: Array = d.voxels.duplicate()
-		var c = d.get("chain")
-		if c is Dictionary and c.get("head") is Dictionary:
-			var top := -INF
-			for v in d.voxels:
-				top = maxf(top, float(v[1]))
-			var links := int(c.get("links", 4))
-			var gap := mini(links, 8) * 1.6
-			for k in mini(links, 8):
-				all.append([0, top + 1.0 + k * 1.6, 0, "iron", "blunt"])
-			var hlo := INF
-			for v in c.head.voxels:
-				hlo = minf(hlo, float(v[1]))
-			for v in c.head.voxels:
-				all.append([v[0], float(v[1]) - hlo + top + 1.0 + gap, v[2], v[3], v[4]])
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true
-		mm.mesh = bm
-		mm.instance_count = all.size()
-		for i in all.size():
-			var v: Array = all[i]
-			mm.set_instance_transform(i, Transform3D(Basis(), Vector3(float(v[0]), float(v[1]), float(v[2])) * vs))
-			mm.set_instance_color(i, Weapon.voxel_color(str(v[3]), str(v[4])))
-		var mi := MultiMeshInstance3D.new()
-		mi.multimesh = mm
+		var root := model(d)
+		var mi: Node3D = root.get_child(0)
 		mi.rotation = Vector3(0.0, 0.5, -0.75)
-		root.add_child(mi)
 		return root)
+
+## The weapon's model as the shop draws it (the voxels, a chain's links and head hung on above
+## the handle): a Node3D with one MultiMeshInstance3D, the grip at the origin.
+static func model(d: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	var vs: float = Data.weapon_voxel
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mat.roughness = 0.35
+	mat.metallic = 0.35
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE * vs * 0.98
+	bm.material = mat
+	# A chain weapon: its links and head hang on above the handle, as it is carried.
+	var all: Array = d.voxels.duplicate()
+	var c = d.get("chain")
+	if c is Dictionary and c.get("head") is Dictionary:
+		var top := -INF
+		for v in d.voxels:
+			top = maxf(top, float(v[1]))
+		var links := int(c.get("links", 4))
+		var gap := mini(links, 8) * 1.6
+		for k in mini(links, 8):
+			all.append([0, top + 1.0 + k * 1.6, 0, "iron", "blunt"])
+		var hlo := INF
+		for v in c.head.voxels:
+			hlo = minf(hlo, float(v[1]))
+		for v in c.head.voxels:
+			all.append([v[0], float(v[1]) - hlo + top + 1.0 + gap, v[2], v[3], v[4]])
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = bm
+	mm.instance_count = all.size()
+	for i in all.size():
+		var v: Array = all[i]
+		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(float(v[0]), float(v[1]), float(v[2])) * vs))
+		mm.set_instance_color(i, Weapon.voxel_color(str(v[3]), str(v[4])))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	root.add_child(mi)
+	return root
 
 ## The model a kit item is drawn with (throwables.js kitItemType).
 static func item_type(id: String) -> Variant:
@@ -139,7 +146,7 @@ func _make(q: Dictionary) -> void:
 			first = false
 	var c := box.get_center()
 	var r := maxf(0.05, box.size.length() * 0.5)
-	var dist := r / sin(deg_to_rad(cam.fov * 0.5)) * 1.02
+	var dist := r / sin(deg_to_rad(cam.fov * 0.5)) * 1.15   # with a margin: nothing at the edge is cut
 	cam.position = c + Vector3(0.75, 0.55, 1.0).normalized() * dist
 	cam.look_at(c, Vector3.UP)
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE

@@ -213,3 +213,18 @@ func test_the_smiths_oddities() -> void:
 						gems[k] += 1
 	t.check(steel[1] > steel[0], "later bouts: more steel (%d vs %d)" % [steel[1], steel[0]])
 	t.check(gems[0] == 0 and gems[1] > 0, "gem sockets only later (%d at bout 1, %d at bout 12)" % gems)
+
+## Every oddity (and every "surprise me") is one piece: no voxel off on its own in the air.
+func test_every_oddity_is_one_piece() -> void:
+	var bad := 0
+	var n := 0
+	for seed_ in 60:
+		for stage in [1, 5, 12]:
+			for d in Arms.oddities(seed_ * 31 + 7, stage):
+				var cells := {}
+				for v in d.voxels:
+					cells[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = [v[3], v[4]]
+				n += 1
+				if ForgeLib.pieces(cells).size() != 1:
+					bad += 1
+	t.eq(bad, 0, "all %d oddities are one piece" % n)
