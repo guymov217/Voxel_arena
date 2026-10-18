@@ -1161,7 +1161,10 @@ func nearest_enemy(e: Dictionary):
 	var best = null
 	var bd := INF
 	var p: Vector3 = e.f.torso.global_position
-	var cands := entities.filter(func(o): return o.team != e.team and o.f.alive and not (o.kind == "beast" and e.kind == "beast" and not o.get("harmless", false)) and not (o.get("harmless", false) and e.kind != "beast"))
+	var cands := []
+	for o in entities:
+		if o.team != e.team and o.f.alive and not (o.kind == "beast" and e.kind == "beast" and not o.get("harmless", false)) and not (o.get("harmless", false) and e.kind != "beast"):
+			cands.append(o)
 	# Predators cannot resist a goat.
 	if e.kind == "beast":
 		for o in cands:

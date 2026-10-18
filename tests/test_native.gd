@@ -91,3 +91,34 @@ func test_native_searches_match_the_gdscript() -> void:
 	t.check(same, "voxels_within: the same voxels in C++ and GDScript")
 	t.check(skin_same, "skin search: the same voxel in C++ and GDScript")
 	m.queue_free()
+
+## PD's helpers in C++ give the very floats the GDScript gives (the limb drives are built on them).
+func test_native_pd_matches_the_gdscript() -> void:
+	if Greedy.core() == null:
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	var nc = Greedy.core()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 13
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 5, "decrees": [], "hazards": []})
+	for k in 20:
+		await get_tree().physics_frame
+	var bad := []
+	for k in 400:
+		var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+		var qa := Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))
+		var qb := Quaternion((rv.call(1.0) as Vector3 + Vector3(0, 0.01, 0)).normalized(), rng.randf_range(-3.0, 3.0))
+		var a: Vector3 = rv.call(3.0)
+		var b: Vector3 = rv.call(3.0)
+		var mx := rng.randf_range(0.0, 4.0)
+		var p: VoxelPart = m.me.f.parts[k % m.me.f.parts.size()]
+		if nc.rot_error(qa, qb) != PD.rot_error(qa, qb): bad.append("rot_error")
+		if nc.dir_error(a, b) != PD.dir_error(a, b): bad.append("dir_error")
+		if nc.clamp_len(a, mx) != PD.clamp_len(a, mx): bad.append("clamp_len")
+		var sc := rng.randf_range(0.2, 3.0)
+		if nc.torque_for(p, a, sc) != PD.torque_for(p, a, sc): bad.append("torque_for")
+		if nc.quat_of(p) != PD.quat_of(p): bad.append("quat_of")
+	t.check(bad.is_empty(), "the same floats in C++ and GDScript (off: %s)" % [bad.slice(0, 5)])
+	m.queue_free()

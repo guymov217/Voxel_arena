@@ -1736,6 +1736,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			_hold_elbow(side, 0.0, false, dt)
 		return
 	var af := arm_func(side)
+	# The arm's function, again below, is the same this step (unless a frost on it is thawing:
+	# that is read off the clock).
+	var af_now := af if upper.frozen_until <= 0.0 and fore.frozen_until <= 0.0 else -1.0
 	if fore.flinch_t > 0.0 or upper.flinch_t > 0.0:
 		af *= 0.6
 	# Caught by that arm: it cannot swing until it is wrenched free.
@@ -1829,7 +1832,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var line_on: bool = th_in > 0.5 and w != null and not w.is_shield and not w.design.has("shoots") and down_hp == null and held_item == null and shove_t <= 0.0
 	var target := hand_target_local(side, hp_used, 0.0 if line_on else thrust)
 	# A hurt arm trembles and wanders, more the worse it is; a hurt eye throws the aim off too.
-	var arm_hurt := 1.0 - minf(1.0, arm_func(side) / 0.85)
+	var arm_hurt := 1.0 - minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)
 	var shake := maxf(0.0, arm_hurt - 0.1) * 0.09 + eye_hurt * 0.04
 	if shake > 0.002:
 		target.x += (sin(time * 13.7 + slot * 3) + 0.5 * sin(time * 29.3)) * shake * S
@@ -1875,7 +1878,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var h: float = handling[side]
 		# Winded, the arm is slow as well as weak: the hand gets to its mark at half the pace.
 		var wind := 0.35 + 0.65 * minf(1.0, stamina / 60.0)
-		var vmax := 15.0 * S * (2.0 if jab_t[side] > 0.0 else (3.0 if line_on else (2.2 if thrust > 0.3 else 1.0))) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, arm_func(side) / 0.85)) * wind
+		var vmax := 15.0 * S * (2.0 if jab_t[side] > 0.0 else (3.0 if line_on else (2.2 if thrust > 0.3 else 1.0))) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)) * wind
 		var amax := 140.0 * S * (0.4 + 0.6 * h) * (1.3 if power else 1.0) * (4.0 if jab_t[side] > 0.0 else (6.0 if line_on else (3.0 if thrust > 0.3 else 1.0))) * (0.5 + 0.5 * wind)
 		var to_t: Vector3 = target_w - lead
 		var dist := to_t.length()

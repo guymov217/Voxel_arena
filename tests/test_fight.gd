@@ -174,6 +174,7 @@ func test_a_man_cut_in_half_falls_and_smashed_legs_mean_crawling() -> void:
 ## Blow after blow into the same cut goes deeper each time (the blade follows the wound) until
 ## the limb comes off; armour is knocked off where it is struck, plate by plate.
 func test_blows_follow_the_wound_and_knock_armour_off() -> void:
+	seed(3)   # the game's dice (randf) the same whatever tests ran before
 	var w := _world()
 	var a := w.fighter(Vector3(0, 0, 0), 0.0, {"armor": ["manica"]}, {"name": "A"})
 	await _step(w, 60, func(_f, _i): return {})

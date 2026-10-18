@@ -43,6 +43,7 @@ func _ready() -> void:
 			m.spawn_fighter(spec)
 		else:
 			m.spawn_beast({"beast": beasts[(i / 4 + off) % beasts.size()], "team": Match.ENEMY_TEAM, "pos": pos, "yaw": a + PI})
+	var t_start := Time.get_ticks_usec()
 	var hits := [0]
 	m.combat.hit.connect(func(_h): hits[0] += 1)
 	for s in SECONDS:
@@ -66,4 +67,6 @@ func _ready() -> void:
 				if w:
 					ctx.update(Match.pack_parts([w]))
 		print("REPLAY s=%d alive=%d hits=%d %s" % [s, alive, hits[0], ctx.finish().hex_encode()])
+	# (Not a REPLAY line: the time is the machine's, the fingerprints are the game's.)
+	print("TIMING %.3f ms a step" % ((Time.get_ticks_usec() - t_start) / 1000.0 / (SECONDS * 120)))
 	get_tree().quit()

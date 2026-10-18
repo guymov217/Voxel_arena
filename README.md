@@ -79,8 +79,11 @@ the skin). With them the host's step is about 15–25% cheaper. The source
 is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
 plain checkout runs without it (and the editor does not complain about a missing library).
 `tests/test_native.gd` checks that both give the same results, and `tools/replay_check.sh`
-plays a fixed 10-second, 16-fighter fight single-threaded and prints its fingerprints: a faster
-build must print exactly the same ones as before. To build it for Linux, then load it:
+plays fixed 10-second fights single-threaded (16 and 6 fighters, and two of 24 with bows, two
+hands, chains, giants and a dozen more creatures) and prints their fingerprints: a faster build
+must print exactly the same ones as before. `tools/replay_bench.sh` times the same fights, so two
+versions are compared on exactly the same work. The limbs' PD drives (`motor_rel`, `pd_relative`,
+`pd_axis`, `pd_twist`) run in C++ too, giving the very floats the GDScript gives. To build it for Linux, then load it:
 
 ```bash
 cd extension
