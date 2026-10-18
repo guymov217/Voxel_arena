@@ -15,19 +15,34 @@ func _ready() -> void:
 	var foes := ["recruit", "shieldbearer", "brute", "murmillo"]
 	var beasts := ["wolf", "lion", "bear", "boar"]
 	var weapons := ["gladius", "axe", "mace", "spear"]
+	var offs := []
+	var r := 4.0
+	# REPLAY_MIX: the rest of the game's ways of fighting (bows, two hands, chains, throwing,
+	# bare fists, two blades), its archers, net men and giants, and a dozen more creatures.
+	if OS.get_environment("REPLAY_MIX") != "":
+		foes = ["sagittarius", "retiarius", "dimachaerus", "cyclops", "minotaur", "hoplite", "veles", "flailman"]
+		beasts = ["python", "gorilla", "elephant", "scorpion", "crocodile", "ostrich", "hydra", "griffin", "rhino", "spider", "cerberus", "tiger"]
+		weapons = ["bow", "zweihander", "flail", "javelin", "", "whip", "crossbow", "nunchaku", "warhammer", "meteorHammer", "dagger", "trident"]
+		offs = ["", "", "scutum", "", "", "", "", "", "", "", "dagger", ""]
+		r = 6.5
 	var n := int(OS.get_environment("REPLAY_N")) if OS.get_environment("REPLAY_N") != "" else 16
+	var off := int(OS.get_environment("REPLAY_OFF")) if OS.get_environment("REPLAY_OFF") != "" else 0   # which foes and creatures come first
 	for i in n:
 		var a := TAU * i / n
-		var pos := Vector3(sin(a) * 4.0, 0.1, cos(a) * 4.0)
+		var pos := Vector3(sin(a) * r, 0.1, cos(a) * r)
 		if i % 2 == 0:
-			m.spawn_fighter({"kind": "bot", "name": "P%d" % i, "loadout": {"main": weapons[i % 4], "off": "roundShield" if i % 4 == 0 else ""}, "team": 0, "pos": pos, "yaw": a + PI, "diff": 0.8})
+			var lo := {"main": weapons[i % 4], "off": "roundShield" if i % 4 == 0 else ""}
+			if weapons.size() > 4:
+				var wi := (i / 2) % weapons.size()
+				lo = {"main": weapons[wi], "off": offs[wi]}
+			m.spawn_fighter({"kind": "bot", "name": "P%d" % i, "loadout": lo, "team": 0, "pos": pos, "yaw": a + PI, "diff": 0.8})
 		elif i % 4 == 1:
-			var spec: Dictionary = m.enemy_spec({"e": foes[(i / 4) % foes.size()]}, 0, 1)
+			var spec: Dictionary = m.enemy_spec({"e": foes[(i / 4 + off) % foes.size()]}, 0, 1)
 			spec.pos = pos
 			spec.yaw = a + PI
 			m.spawn_fighter(spec)
 		else:
-			m.spawn_beast({"beast": beasts[(i / 4) % beasts.size()], "team": Match.ENEMY_TEAM, "pos": pos, "yaw": a + PI})
+			m.spawn_beast({"beast": beasts[(i / 4 + off) % beasts.size()], "team": Match.ENEMY_TEAM, "pos": pos, "yaw": a + PI})
 	var hits := [0]
 	m.combat.hit.connect(func(_h): hits[0] += 1)
 	for s in SECONDS:

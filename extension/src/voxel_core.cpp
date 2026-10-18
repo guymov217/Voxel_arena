@@ -12,6 +12,15 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("greedy_boxes", "w", "h", "d", "solid"), &VoxelCore::greedy_boxes);
 	ClassDB::bind_method(D_METHOD("loose_lumps", "cell", "w", "h", "d", "axis", "edge"), &VoxelCore::loose_lumps);
 	ClassDB::bind_method(D_METHOD("within", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "p", "r", "limit"), &VoxelCore::within);
+	ClassDB::bind_method(D_METHOD("motor_rel", "part", "parent", "rel_q", "wn", "max_t", "dt", "react"), &VoxelCore::motor_rel);
+	ClassDB::bind_method(D_METHOD("pd_relative", "part", "parent", "rel_q", "wn", "zeta", "max_t", "dt", "boost", "react"), &VoxelCore::pd_relative);
+	ClassDB::bind_method(D_METHOD("pd_axis", "part", "local_axis", "des", "wn", "zeta", "max_t", "dt", "scale", "w_des"), &VoxelCore::pd_axis);
+	ClassDB::bind_method(D_METHOD("pd_twist", "part", "ref", "kp", "kd", "max_t", "dt"), &VoxelCore::pd_twist);
+	ClassDB::bind_method(D_METHOD("quat_of", "body"), &VoxelCore::quat_of);
+	ClassDB::bind_method(D_METHOD("rot_error", "to", "from"), &VoxelCore::rot_error);
+	ClassDB::bind_method(D_METHOD("dir_error", "cur", "des"), &VoxelCore::dir_error);
+	ClassDB::bind_method(D_METHOD("clamp_len", "v", "mx"), &VoxelCore::clamp_len);
+	ClassDB::bind_method(D_METHOD("torque_for", "body", "alpha", "scale"), &VoxelCore::torque_for);
 	ClassDB::bind_method(D_METHOD("skin_nearest", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "half_ext", "max_depth", "want"), &VoxelCore::skin_nearest);
 }
 

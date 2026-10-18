@@ -1167,6 +1167,10 @@ func is_beaten() -> bool:
 func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta: float, max_t: float, dt: float, scale := 1.0, w_des := Vector3.ZERO) -> void:
 	if part.severed or wn <= 0.0 or max_t <= 0.0:
 		return
+	var nc := Greedy.core()
+	if nc:
+		nc.pd_axis(part, local_axis, des, wn, zeta, max_t, dt, scale, w_des)
+		return
 	var kp := wn * wn
 	var kd := 2.0 * zeta * wn
 	var cur := PD.quat_of(part) * local_axis
@@ -1182,6 +1186,10 @@ func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta
 
 func pd_relative(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float, zeta: float, max_t: float, dt: float, boost := 1.0, react := 1.0) -> void:
 	if part.severed or wn <= 0.0:
+		return
+	var nc := Greedy.core()
+	if nc:
+		nc.pd_relative(part, parent, rel_q, wn, zeta, max_t, dt, boost, react)
 		return
 	var ic := PD.inertia_of(part)
 	var ip := PD.inertia_of(parent)
@@ -1201,6 +1209,10 @@ func pd_relative(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: floa
 func motor_rel(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float, max_t: float, dt: float, react := 1.0) -> void:
 	if part.severed or wn <= 0.0:
 		return
+	var nc := Greedy.core()
+	if nc:
+		nc.motor_rel(part, parent, rel_q, wn, max_t, dt, react)
+		return
 	var desired := PD.quat_of(parent) * rel_q
 	var err := PD.rot_error(desired, PD.quat_of(part))
 	var rel := part.angular_velocity - parent.angular_velocity
@@ -1212,6 +1224,10 @@ func motor_rel(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float,
 
 func pd_twist(part: VoxelPart, ref: RigidBody3D, kp: float, kd: float, max_t: float, dt: float) -> void:
 	if part.severed:
+		return
+	var nc := Greedy.core()
+	if nc:
+		nc.pd_twist(part, ref, kp, kd, max_t, dt)
 		return
 	var q := PD.quat_of(part)
 	var axis := q * Vector3(0, -1, 0)

@@ -9,4 +9,7 @@ printf '[threading]\nworker_pool/max_threads=1\n' > override.cfg
 for n in 16 6; do
 	REPLAY_N=$n "$GODOT" --headless --fixed-fps 120 --path . -- --probe replay_dump 2>&1 | grep REPLAY | sed "s/^/n=$n /"
 done
+for o in 0 6; do
+	REPLAY_MIX=1 REPLAY_N=24 REPLAY_OFF=$o "$GODOT" --headless --fixed-fps 120 --path . -- --probe replay_dump 2>&1 | grep REPLAY | sed "s/^/mix$o /"
+done
 rm -f override.cfg
