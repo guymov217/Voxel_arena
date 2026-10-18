@@ -78,6 +78,8 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	vox = d.get("voxels", [])
 	alive.resize(vox.size())
 	alive.fill(1)
+	_box_cache = null
+	_point_first = null
 	box_of.resize(vox.size())
 	# Weight, centre and inertia from the voxels.
 	var m := 0.0
@@ -364,7 +366,10 @@ func material_centre(mat: String) -> Vector3:
 			n += 1
 	return global_transform * (sum / maxf(1.0, n) * vs)
 
+var _box_cache = null   # local_box() until voxels come off (remove_voxels, setup)
 func local_box() -> AABB:
+	if _box_cache != null:
+		return _box_cache
 	var lo := Vector3.INF
 	var hi := -Vector3.INF
 	for i in vox.size():
@@ -373,7 +378,8 @@ func local_box() -> AABB:
 		var q := Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
 		lo = lo.min(q)
 		hi = hi.max(q)
-	return AABB() if lo == Vector3.INF else AABB(lo, hi - lo)
+	_box_cache = AABB() if lo == Vector3.INF else AABB(lo, hi - lo)
+	return _box_cache
 
 # ---------- Burning and poisoned (only the look) ----------
 
@@ -443,6 +449,7 @@ func remove_voxels(indices: Array) -> Array:
 		if i < 0 or i >= vox.size() or alive[i] == 0:
 			continue
 		alive[i] = 0
+		_box_cache = null
 		var v: Array = vox[i]
 		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3]))})
 		var b: int = i * 16
@@ -784,6 +791,13 @@ static func spins_in_flight(d: Dictionary) -> bool:
 	for v in d.voxels:
 		xs.append(v[0]); zs.append(v[2])
 	return maxi(xs.max() - xs.min(), zs.max() - zs.min()) + 1 >= 4
+
+## flies_point_first of its own design (which never changes once set up), worked out once.
+var _point_first = null
+func point_first() -> bool:
+	if _point_first == null:
+		_point_first = flies_point_first(design)
+	return _point_first
 
 static func flies_point_first(d: Dictionary) -> bool:
 	if d.is_empty():

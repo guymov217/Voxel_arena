@@ -460,10 +460,9 @@ func _make_missing(part: VoxelPart) -> void:
 		var pt := par.anchor_point(part)
 		var r := par.vf * par.part_scale * 2.6
 		var near := []
-		for i in par.fx.size():
-			if par.alive[i] and par.local_of(i).distance_to(pt) < r:
-				par.colors[i] = par.colors[i].lerp(VoxelPart.SCAR, 0.6)
-				near.append(i)
+		for i in par.voxels_within(pt, r):
+			par.colors[i] = par.colors[i].lerp(VoxelPart.SCAR, 0.6)
+			near.append(i)
 		par.refresh_colors(near)
 
 ## A prosthetic in the part's place: the part is reshaped (wood or iron, thinner) and works
@@ -786,7 +785,7 @@ static func is_spear(w) -> bool:
 	if w == null:
 		return false
 	if not w.has_meta("spear"):
-		w.set_meta("spear", Weapon.flies_point_first(w.design) and w.design.get("chain") == null)
+		w.set_meta("spear", w.point_first() and w.design.get("chain") == null)
 	return bool(w.get_meta("spear"))
 
 static func has_wrist(w) -> bool:
@@ -1019,7 +1018,7 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	var fwd := Vector3(sin(yaw), 0, cos(yaw))
 	var aim_at: Vector3 = target if target != null else from + (dir if dir != null else fwd) * 20.0
 	var scatter := 0.006 + 0.03 * (1.0 - power) + 0.004 * minf(6.0, w.mass) + 0.02 * (1.0 - arm_f)
-	var point_first := Weapon.flies_point_first(w.design) and not w.is_shield
+	var point_first := w.point_first() and not w.is_shield
 	var vel := launch_velocity(from, aim_at, w.mass, power, point_first, scatter, arm_f)
 	w.linear_velocity = vel
 	if w.is_shield:
@@ -1785,7 +1784,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if winding or following:
 		strength *= 1.8
 	thrust_amt[side] = clampf(thrust, 0.0, 1.5) if down_hp == null else 0.0
-	var spear: bool = w != null and Weapon.flies_point_first(w.design) and held_item == null
+	var spear: bool = w != null and w.point_first() and held_item == null
 	throw_pose[side] = spear and down_hp == null and (winding or following)
 	if down_hp == null and (winding or following):
 		if spear:
@@ -2763,8 +2762,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			var at := lp + ld * hollow
 			# The skull spreads a blow to the head: the brain under it is shaken (bruised, the
 			# concussion above), not crushed away, until the skull has cracked.
-			for i in part.fx.size():
-				if part.alive[i] and part.local_of(i).distance_to(at) < r and not (shielded and part.organ[i] == Anatomy.BRAIN):
+			for i in part.voxels_within(at, r):
+				if not (shielded and part.organ[i] == Anatomy.BRAIN):
 					remove.append(i)
 			part.bleed += J * 0.02
 			# A crater down into the bone of a limb has broken it.
@@ -2776,16 +2775,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if crush > 0.0:
 		# From the nearest point of the part (a heavy thing's middle may be outside it).
 		var cp := lp.clamp(-part.half_ext, part.half_ext)
-		for i in part.fx.size():
-			if part.alive[i] and part.local_of(i).distance_to(cp) < crush:
-				remove.append(i)
+		for i in part.voxels_within(cp, crush):
+			remove.append(i)
 		part.bleed += J * 0.03
 	# Every cut or stab that lands takes something with it: under the threshold for a real wound
 	# it still nicks a few voxels out at the point it struck, more the harder it came in.
 	if remove.is_empty() and not detached and type != "blunt" and J * hardness * sharpness > 1.0:
 		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08))
-		for i in part.fx.size():
-			if part.alive[i] and not part.bone[i] and part.local_of(i).distance_to(lp) < rn:
+		for i in part.voxels_within(lp, rn):
+			if not part.bone[i]:
 				remove.append(i)
 	if hollow > 0.0 and not detached:
 		dmg *= 1.0 + minf(0.4 if type == "blunt" else 1.0, hollow / 0.1)

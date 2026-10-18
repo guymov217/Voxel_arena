@@ -2,6 +2,7 @@
 
 #include <godot_cpp/core/class_db.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -10,6 +11,87 @@ using namespace godot;
 void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("greedy_boxes", "w", "h", "d", "solid"), &VoxelCore::greedy_boxes);
 	ClassDB::bind_method(D_METHOD("loose_lumps", "cell", "w", "h", "d", "axis", "edge"), &VoxelCore::loose_lumps);
+	ClassDB::bind_method(D_METHOD("within", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "p", "r", "limit"), &VoxelCore::within);
+	ClassDB::bind_method(D_METHOD("skin_nearest", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "half_ext", "max_depth", "want"), &VoxelCore::skin_nearest);
+}
+
+// VoxelPart.local_of, step for step as GDScript does it: the offsets in double, made a float
+// vector, then scaled by the part's scale as a float.
+namespace {
+struct Frame {
+	double cx, cy, cz, vf;
+	real_t sc;
+	Frame(const Vector3i &grid, double vf_, double scale) :
+			cx((grid.x - 1) * 0.5), cy((grid.y - 1) * 0.5), cz((grid.z - 1) * 0.5), vf(vf_), sc((real_t)scale) {}
+	Vector3 at(int x, int y, int z) const {
+		return Vector3((real_t)((x - cx) * vf), (real_t)((y - cy) * vf), (real_t)((z - cz) * vf)) * sc;
+	}
+};
+
+bool sizes_ok(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive) {
+	return fy.size() >= fx.size() && fz.size() >= fx.size() && alive.size() >= fx.size();
+}
+} // namespace
+
+PackedInt32Array VoxelCore::within(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &p, double r, int limit) const {
+	PackedInt32Array out;
+	if (!sizes_ok(fx, fy, fz, alive)) {
+		return out;
+	}
+	const Frame f(grid, vf, scale);
+	const int32_t *x = fx.ptr();
+	const int32_t *y = fy.ptr();
+	const int32_t *z = fz.ptr();
+	const uint8_t *a = alive.ptr();
+	const int64_t n = fx.size();
+	for (int64_t i = 0; i < n; i++) {
+		if (a[i] == 0) {
+			continue;
+		}
+		if ((double)f.at(x[i], y[i], z[i]).distance_to(p) < r) {
+			out.push_back((int32_t)i);
+			if (limit > 0 && out.size() >= limit) {
+				break;
+			}
+		}
+	}
+	return out;
+}
+
+PackedFloat64Array VoxelCore::skin_nearest(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &half_ext, double max_depth, const Vector3 &want) const {
+	PackedFloat64Array out;
+	out.resize(2);
+	out.set(0, -1.0);
+	out.set(1, INFINITY);
+	if (!sizes_ok(fx, fy, fz, alive)) {
+		return out;
+	}
+	const Frame f(grid, vf, scale);
+	const int32_t *x = fx.ptr();
+	const int32_t *y = fy.ptr();
+	const int32_t *z = fz.ptr();
+	const uint8_t *a = alive.ptr();
+	const int64_t n = fx.size();
+	int64_t best = -1;
+	double bd = INFINITY;
+	for (int64_t i = 0; i < n; i++) {
+		if (a[i] == 0) {
+			continue;
+		}
+		const Vector3 q = f.at(x[i], y[i], z[i]);
+		const double depth = std::fmin(std::fmin((double)half_ext.x - std::fabs((double)q.x), (double)half_ext.y - std::fabs((double)q.y)), (double)half_ext.z - std::fabs((double)q.z));
+		if (depth > max_depth) {
+			continue;
+		}
+		const double d = (double)q.distance_squared_to(want);
+		if (d < bd) {
+			bd = d;
+			best = i;
+		}
+	}
+	out.set(0, (double)best);
+	out.set(1, bd);
+	return out;
 }
 
 Array VoxelCore::greedy_boxes(int w, int h, int d, const PackedByteArray &solid) const {

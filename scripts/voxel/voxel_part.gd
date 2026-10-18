@@ -190,6 +190,20 @@ static func _v3(a) -> Vector3:
 func local_of(i: int) -> Vector3:
 	return Vector3((fx[i] - (grid.x - 1) * 0.5) * vf, (fy[i] - (grid.y - 1) * 0.5) * vf, (fz[i] - (grid.z - 1) * 0.5) * vf) * part_scale
 
+## The living voxels whose local_of lies nearer than `r` to `p`, in index order (at most
+## `limit` of them when it is above 0). VoxelCore does it when the extension is loaded.
+func voxels_within(p: Vector3, r: float, limit := 0) -> PackedInt32Array:
+	var nc := Greedy.core()
+	if nc:
+		return nc.within(fx, fy, fz, alive, grid, vf, part_scale, p, r, limit)
+	var out := PackedInt32Array()
+	for i in fx.size():
+		if alive[i] and local_of(i).distance_to(p) < r:
+			out.append(i)
+			if limit > 0 and out.size() >= limit:
+				break
+	return out
+
 func world_of(i: int) -> Vector3:
 	return global_transform * local_of(i)
 
@@ -519,18 +533,24 @@ func update_blood(dt: float, beat: float) -> void:
 		var want: Vector3 = (r.lp as Vector3) + down * r.len
 		var best := -1
 		var bd := INF
-		for i in fx.size():
-			if alive[i] == 0:
-				continue
-			var q := local_of(i)
-			# Only the skin shows it: a voxel near one of the part's faces.
-			var depth := minf(minf(half_ext.x - absf(q.x), half_ext.y - absf(q.y)), half_ext.z - absf(q.z))
-			if depth > step * 1.6:
-				continue
-			var d := q.distance_squared_to(want)
-			if d < bd:
-				bd = d
-				best = i
+		var nc := Greedy.core()
+		if nc:
+			var got: PackedFloat64Array = nc.skin_nearest(fx, fy, fz, alive, grid, vf, part_scale, half_ext, step * 1.6, want)
+			best = int(got[0])
+			bd = got[1]
+		else:
+			for i in fx.size():
+				if alive[i] == 0:
+					continue
+				var q := local_of(i)
+				# Only the skin shows it: a voxel near one of the part's faces.
+				var depth := minf(minf(half_ext.x - absf(q.x), half_ext.y - absf(q.y)), half_ext.z - absf(q.z))
+				if depth > step * 1.6:
+					continue
+				var d := q.distance_squared_to(want)
+				if d < bd:
+					bd = d
+					best = i
 		if best >= 0 and bd < pow(step * 2.5, 2.0):
 			colors[best] = colors[best].lerp(SMEAR, 0.75)
 			painted.append(best)
@@ -542,12 +562,8 @@ func wound(lp: Vector3, r: float, kind := "blood") -> int:
 	var target := BRUISE if kind == "bruise" else SMEAR
 	var mx := 0.55 if kind == "bruise" else 0.9
 	var touched := []
-	for i in fx.size():
-		if alive[i] == 0:
-			continue
+	for i in voxels_within(lp, r):
 		var d := local_of(i).distance_to(lp)
-		if d >= r:
-			continue
 		var k := mx * pow(1.0 - d / r, 0.6)
 		if k < 0.08:
 			continue
@@ -983,11 +999,7 @@ func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:
 ## the forearm, the neck for the head): with none, the child hangs on nothing and must fall.
 func holds_child(child: VoxelPart) -> bool:
 	var pt := anchor_point(child)
-	var r := vf * part_scale * 2.2
-	for i in fx.size():
-		if alive[i] and local_of(i).distance_to(pt) < r:
-			return true
-	return false
+	return not voxels_within(pt, vf * part_scale * 2.2, 1).is_empty()
 
 func near_child_anchor(lump: PackedInt32Array) -> bool:
 	var pts := []

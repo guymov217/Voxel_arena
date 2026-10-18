@@ -73,10 +73,14 @@ godot --headless --path . -- --test test_fight   # one suite
 ## The C++ voxel core (GDExtension)
 
 The hot voxel loops run in C++ when the extension is built: greedy box merging for the
-colliders (about 8× faster) and the flood fill that finds the lumps a blow knocks loose. The source
+colliders (about 8× faster), the flood fill that finds the lumps a blow knocks loose, and the
+searches over a part's voxels (wounds, craters, the flesh a joint hangs on, blood running down
+the skin). With them the host's step is about 15–25% cheaper. The source
 is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
 plain checkout runs without it (and the editor does not complain about a missing library).
-`tests/test_native.gd` checks that both give the same results. To build it for Linux, then load it:
+`tests/test_native.gd` checks that both give the same results, and `tools/replay_check.sh`
+plays a fixed 10-second, 16-fighter fight single-threaded and prints its fingerprints: a faster
+build must print exactly the same ones as before. To build it for Linux, then load it:
 
 ```bash
 cd extension

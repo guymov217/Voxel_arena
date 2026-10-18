@@ -11,6 +11,10 @@ if "build_profile" not in ARGUMENTS:
     ARGUMENTS["build_profile"] = File("build_profile.json").abspath
 env = SConscript(os.environ.get("GODOT_CPP", "godot-cpp") + "/SConstruct")
 env.Append(CPPPATH=["src/"])
+# The voxel searches must give the same floats as GDScript's own Vector3 maths: no fused
+# multiply-adds.
+if not env.get("is_msvc", False):
+    env.Append(CCFLAGS=["-ffp-contract=off"])
 sources = Glob("src/*.cpp")
 if env["platform"] == "macos":
     lib = env.SharedLibrary("../native/bin/libvoxelcore.{}.{}.framework/libvoxelcore.{}.{}".format(env["platform"], env["target"], env["platform"], env["target"]), source=sources)
