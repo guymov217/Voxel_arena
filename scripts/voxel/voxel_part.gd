@@ -89,7 +89,7 @@ var _skin_dirty := false
 ## `voxels`: [[fx, fy, fz, Color, bone, kind, organ], ...] on the fine grid (kind and organ optional).
 func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
 	fighter = owner_node
-	def = d
+	def = d.duplicate()   # its own: what one creature sets on its part (a fist, a bite) is not every one's after it
 	part_name = d.get("name", "part")
 	label = d.get("label", part_name)
 	name = part_name

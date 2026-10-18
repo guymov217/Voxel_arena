@@ -543,8 +543,11 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						for n in ["legFLLo", "legFRLo"]:
 							var fist: VoxelPart = by_name.get(n)
 							if fist and not fist.severed:
-								var on: VoxelPart = Combat.current.touch_by(fist, t, 0.3) if Combat.current else null
-								_hold(fist, on if on else t.torso, fist.global_position)
+								# Only a fist that is on him now takes hold (one in the air holds nothing:
+								# a joint made from a fist a stride off his arm wrenched the elbow apart).
+								var on: VoxelPart = Combat.current.touch_by(fist, t, 0.02) if Combat.current else null
+								if on and Social.box_distance(on, fist.global_position) < maxf(fist.half_ext.x, maxf(fist.half_ext.y, fist.half_ext.z)) + 0.05:
+									_hold(fist, on, fist.global_position)
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
 				var a := rng.randf() * TAU
@@ -577,7 +580,10 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					on_strike.call(self, head)
 			if ai.get("stomp", 0.0) > 0.0:
 				ai.stomp -= dt
-				want = to * 0.6 * hurt if float(ai.stomp) > STOMP_DOWN else Vector3.ZERO   # it walks up on him on its hind legs
+				# It walks up on him on its hind legs, as fast as brings the forefeet (ahead of the
+				# chest) over him by the time they come down: at a walk they fell yards short.
+				var reach := maxf(0.0, dist - torso.half_ext.z * 1.2)
+				want = to * minf(3.0 * S, reach / maxf(0.15, float(ai.stomp) - STOMP_DOWN)) * hurt if float(ai.stomp) > STOMP_DOWN else Vector3.ZERO
 				if float(ai.stomp) <= STOMP_HIT and not ai.get("stomped", false):
 					ai.stomped = true
 					torso.apply_central_impulse(Vector3(0, -1.0, 0) * mass * 2.5)   # the whole weight brought down
@@ -810,12 +816,11 @@ func _coil(dt: float) -> void:
 	if hug.tick <= 0.0 and tgt.alive and _touching(tgt, 0.6):
 		hug.tick = 0.45
 		var J := clampf(pressure / 220.0, 3.0, 45.0)
-		var parts_hit := [tgt.torso]
-		for n in ["upperArmR", "upperArmL"]:
-			var q = tgt.by_name.get(n)
-			if q and not q.severed:
-				parts_hit.append(q)
-		var part: VoxelPart = parts_hit[rng.randi() % parts_hit.size()]
+		# Where the coils bear on him hardest (the physics' contact), of the chest and the arms
+		# pinned to it that they are wound round; not a part picked at random.
+		var part: VoxelPart = Combat.current.touch_part(self, tgt, 0.6)
+		if part == null or part.severed or not (part == tgt.torso or part == tgt.by_name.get("upperArmR") or part == tgt.by_name.get("upperArmL")):
+			part = tgt.torso
 		var at2: Vector3 = part.global_position + (part.global_position - tc).normalized() * part.half_ext.x
 		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.4, "sharpness": 0.0, "point": at2, "dir": (tc - at2).normalized(), "crush": minf(0.09, 0.02 + J * 0.0015) if J > 18.0 else 0.0})
 		tgt.last_attacker = self
@@ -871,9 +876,10 @@ func _squeeze(dt: float) -> void:
 		return
 	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and the man is
 	# torn in two.
-	if species == "gorilla" and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
+	var fists := _fists_on(tgt) if species == "gorilla" else []
+	if fists.size() >= 2 and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
 		hug.rent = true
-		_rend(tgt)
+		_rend(tgt, fists)
 		hug = null
 		_free_holds()
 		ai.bite_cool = 4.0
@@ -889,11 +895,22 @@ func _squeeze(dt: float) -> void:
 
 ## Torn in two: the held arm and the leg across from it come away, the trunk is wrenched open
 ## between them, and what is left is flung down.
-func _rend(tgt) -> void:
+## The gorilla's fists that are on him now (the physics' contacts), for the tearing.
+func _fists_on(tgt) -> Array:
+	var out := []
+	for n in ["legFLLo", "legFRLo"]:
+		var fist: VoxelPart = by_name.get(n)
+		if fist and not fist.severed and Combat.current and Combat.current.touch_by(fist, tgt, 0.3) != null:
+			out.append(fist)
+	return out
+
+func _rend(tgt, fists: Array) -> void:
 	var was: bool = tgt.alive
 	var res := {"removed": [], "severed": [], "dmg": 0.0}
 	var torn := []
-	var side := "R" if tgt.arm.R.upper.global_position.distance_to(head.global_position) < tgt.arm.L.upper.global_position.distance_to(head.global_position) else "L"
+	# The arm in one fist, the leg across from it in the other: each torn where the hand is.
+	var f0: Vector3 = fists[0].global_position
+	var side := "R" if tgt.arm.R.upper.global_position.distance_to(f0) < tgt.arm.L.upper.global_position.distance_to(f0) else "L"
 	var arm: VoxelPart = tgt.arm[side].upper
 	if not arm.severed:
 		tgt.detach_limb(arm, res)
@@ -1781,32 +1798,27 @@ func _role_of(p: VoxelPart) -> String:
 			return a.role
 	return "head" if p == head or p.def.get("head", false) else ""
 
-## The sting's tip is a needle: its little collider rarely meets a body square on, so while the
-## sting is driving, the tip reaching flesh is the blow (a point, as hard as the scorpion's
-## strike), once per sting.
+## The sting's tip is a needle: driven home it goes in point first, as hard as the scorpion's
+## strike, however glancing the contact of its little collider. Only a sting that touched him
+## (the physics' contact of the stinger on one of his parts) is a blow, once per sting.
 func _sting_reach() -> void:
-	if not by_name.has("stinger") or not strikes.has(by_name.stinger) or target == null or not is_instance_valid(target) or not target.alive:
+	if not by_name.has("stinger") or not strikes.has(by_name.stinger) or target == null or not is_instance_valid(target) or not target.alive or Combat.current == null:
 		return
 	var stg: VoxelPart = by_name.stinger
 	if stg.get_meta("stung", false) or float(wind.get(stg, 0.0)) > 0.0:
 		return
+	var q: VoxelPart = Combat.current.touch_by(stg, target, 0.05)
+	if q == null or q.severed:
+		return
+	stg.set_meta("stung", true)
 	var tip: Vector3 = stg.global_transform * Vector3(0, -stg.half_ext.y, stg.half_ext.z)
-	for q in target.parts:
-		if q.severed:
-			continue
-		var lp: Vector3 = q.global_transform.affine_inverse() * tip
-		var e: Vector3 = q.half_ext + Vector3.ONE * 0.06 * S
-		if absf(lp.x) < e.x and absf(lp.y) < e.y and absf(lp.z) < e.z:
-			stg.set_meta("stung", true)
-			var dir: Vector3 = (q.global_position - tip).normalized()
-			var J := bite_power * 0.8
-			var was: bool = target.alive
-			var res: Dictionary = target.apply_hit(q, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": tip, "dir": dir, "axis": dir})
-			target.last_attacker = self
-			if Combat.current:
-				Combat.current.hit.emit({"kind": "hit", "att_part": stg, "p": tip, "dir": dir, "J": J, "type": "point", "char": target, "part": q, "attacker": self, "res": res, "killed": was and not target.alive, "bite": true})
-			bit(stg, q, res, dir)
-			return
+	var dir: Vector3 = (q.global_position - tip).normalized()
+	var J := bite_power * 0.8
+	var was: bool = target.alive
+	var res: Dictionary = target.apply_hit(q, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": tip, "dir": dir, "axis": dir})
+	target.last_attacker = self
+	Combat.current.hit.emit({"kind": "hit", "att_part": stg, "p": tip, "dir": dir, "J": J, "type": "point", "char": target, "part": q, "attacker": self, "res": res, "killed": was and not target.alive, "bite": true})
+	bit(stg, q, res, dir)
 
 func _tick_strikes(dt: float) -> void:
 	_sting_reach()
@@ -1870,7 +1882,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		var stg: VoxelPart = by_name.stinger
 		var chain_ok := fn_of(["tail"]) > 0.3
 		if part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and dist < reach * 1.3 and facing > 0.3:
-			_strike(stg, 0.45, 2.2 + rng.randf(), [stg, (tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * maxf(30.0 * S, 4.0 * stg.mass)])
+			_strike(stg, 0.7, 2.2 + rng.randf(), [stg, (tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * maxf(30.0 * S, 4.0 * stg.mass)])
 			for n in ["tail", "tail2", "tail3"]:
 				if by_name.has(n) and part_ok(by_name[n], 0.1):
 					strikes[by_name[n]] = strikes[stg]

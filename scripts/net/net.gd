@@ -192,6 +192,7 @@ func host_enet(port := PORT) -> Error:
 	var err := p.create_server(port, MAX_PLAYERS)
 	if err != OK:
 		return err
+	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)   # (the guests' side does the same)
 	multiplayer.multiplayer_peer = p
 	transport = "enet"
 	connected.emit()
@@ -202,6 +203,7 @@ func join_enet(address: String, port := PORT) -> Error:
 	var err := p.create_client(address, port)
 	if err != OK:
 		return err
+	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = p
 	transport = "enet"
 	return OK

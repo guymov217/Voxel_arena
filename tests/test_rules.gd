@@ -83,6 +83,7 @@ func test_a_disarmed_beast_still_rams() -> void:
 	w.queue_free()
 
 func test_running_tears_free_of_the_coils() -> void:
+	seed(12)   # the game's dice (randf) the same whatever tests ran before
 	var w := _world()
 	var man := w.fighter(Vector3(0, 0, 0), 0.0, {}, {"name": "Man", "slot": 0})
 	var b := Beast.new()

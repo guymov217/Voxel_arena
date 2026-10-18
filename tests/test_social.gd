@@ -56,6 +56,7 @@ func test_a_shove_pushes_a_man_back_and_downs_a_tired_one() -> void:
 	m.queue_free()
 
 func test_grab_hold_and_throw_a_man() -> void:
+	seed(4)   # a held man tears free now and then (Social._holding): not in this test's half second
 	var m := _match()
 	m.me.f.state = "dead"
 	var phase := ["wait"]

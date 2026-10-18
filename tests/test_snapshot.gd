@@ -23,6 +23,7 @@ func test_a_body_packs_to_within_two_millimetres() -> void:
 			break
 
 func test_less_on_the_wire_and_the_still_left_out() -> void:
+	seed(6)   # the game's dice (randf) the same whatever tests ran before
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})

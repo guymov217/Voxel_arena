@@ -61,6 +61,7 @@ func test_every_creature_animates_and_attacks() -> void:
 	var no_hits := []
 	var still := []
 	for k in Data.beasts:
+		seed(hash(k) + 2)   # the game's dice (randf) the same whatever ran before
 		var w := _world()
 		var man := w.fighter(Vector3(0, 0, 0), PI, {"main": "gladius"}, {"name": "Man", "slot": 0})
 		man.mods.toughness = 50.0
@@ -216,3 +217,43 @@ func test_attacks_stay_physical() -> void:
 		w.queue_free()
 		await get_tree().process_frame
 	t.check(bad.is_empty(), "unphysical: " + ", ".join(bad))
+
+## Every blow a creature lands is a touch: its body on his at that moment, in the physics (a
+## bite, a claw, a kick, a ram, a stomp, a squeeze, a sting...). Nothing reaches him through the
+## air but what is meant to (fire; none of it is a blow here).
+func test_every_blow_is_a_touch() -> void:
+	var bad := []
+	var landed := 0
+	for k in Data.beasts:
+		seed(hash(k) + 1)
+		var w := _world()
+		var man := w.fighter(Vector3(0, 0, 0), PI, {}, {"name": "Man", "slot": 0})
+		var b: Beast
+		if Data.beasts[k].ai == "path":
+			b = _beast(w, k, Vector3(0, 0.2, 6.0), PI * 0.5)
+			man.teleport(Vector3(sin(0.8) * 6.0, 0, cos(0.8) * 6.0))
+		else:
+			b = _beast(w, k, Vector3(0, 0.2, 2.2 + 0.9 * b_size(k)))
+		b.target = man
+		b.ai.fly_cool = 999.0
+		var blows := [0]
+		var untouched := []
+		w.combat.hit.connect(func(h):
+			if h.get("attacker") == b and h.get("char") == man:
+				blows[0] += 1
+				if not w.combat.touching(b, man, 0.3):
+					untouched.append(str(h.keys().filter(func(x): return x in ["bite", "ram", "trample", "rend", "roll", "fall"]))))
+		for s in int(6.0 / DT):
+			man.blood = 100.0
+			man.head.hp = maxf(man.head.hp, 40.0)
+			man.torso.hp = maxf(man.torso.hp, 40.0)
+			man.control(DT, {})
+			b.control(DT)
+			await get_tree().physics_frame
+		landed += blows[0]
+		if not untouched.is_empty():
+			bad.append("%s: %d of %d blows without a touch %s" % [k, untouched.size(), blows[0], untouched.slice(0, 3)])
+		w.queue_free()
+		await get_tree().physics_frame
+	t.check(landed > 20, "the creatures landed blows (%d)" % landed)
+	t.check(bad.is_empty(), "every blow came with the creature's body on his: %s" % [bad])

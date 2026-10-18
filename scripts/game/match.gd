@@ -710,6 +710,8 @@ func _physics_process(dt: float) -> void:
 					if not (inp.get("aimAt") is Vector3) and (float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
 						var lk: Dictionary = inp.look
 						inp.aimAt = f.head.global_position + Vector3(sin(float(lk.yaw)) * cos(float(lk.pitch)), sin(float(lk.pitch)), cos(float(lk.yaw)) * cos(float(lk.pitch))) * 6.0
+			"bot" when not f.alive:
+				pass   # the dead think no more (whatever a bot chose, his body takes no orders now)
 			"bot":
 				var tgt = nearest_enemy(e)
 				var mt = e.get("manual_target")

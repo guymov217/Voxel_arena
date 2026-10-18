@@ -24,6 +24,7 @@ func run(only: String) -> void:
 			if not n.begins_with("test_"):
 				continue
 			current = "%s.%s" % [f.get_basename(), n]
+			Save.reset()
 			var before := failures
 			var start := Time.get_ticks_msec()
 			await suite.call(n)

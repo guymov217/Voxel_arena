@@ -61,8 +61,11 @@ func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 	var best = null
 	var bd := 0.14 * c.S if touch else 0.7 * maxf(1.0, c.S * 0.85)
 	for o in targets:
+		# A giant's hand takes only what it is on: the part his forearm touches (the physics'
+		# contact), at the hand.
+		var on: VoxelPart = m.combat.touch_by(c.arm[side].fore, o.f, 0.3) if touch else null
 		for part in o.f.parts:
-			if part.severed or part.missing:
+			if part.severed or part.missing or (touch and part != on):
 				continue
 			var d: float = box_distance(part, hand) if touch else part.global_position.distance_to(hand)
 			if d < bd:
