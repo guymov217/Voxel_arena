@@ -119,6 +119,36 @@ func test_weapons_swap_hands() -> void:
 	t.check(f.swap_hands() and f.weapons.R == sword, "and back again")
 	m.queue_free()
 
+## H after a pickup: a weapon taken up in the right hand with a shield on the left arm goes
+## two-handed (the shield is let fall); one taken up in the left hand alone crosses to the right
+## and both hands take it.
+func test_h_takes_a_picked_up_weapon_in_both_hands() -> void:
+	for lo in [{"main": "", "off": "roundShield"}, {"main": "", "off": ""}]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": lo})
+		var f: Fighter = m.me.f
+		var inp := {"main": {"x": 0.2, "y": 0.2}, "power": false}
+		m.me.drive = func(_e): return inp
+		for i in 60:
+			await get_tree().physics_frame
+		var shield: Weapon = f.weapons.L
+		var side := "R" if shield else "L"
+		var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), f.hand_world(side))
+		t.check(f.pick_up(side, w), "the gladius is taken up in the %s hand" % side)
+		for i in 10:
+			await get_tree().physics_frame
+		inp.grip = true
+		await get_tree().physics_frame
+		inp.erase("grip")
+		for i in 30:
+			await get_tree().physics_frame
+		t.check(f.two_handed and f.weapons.R == w, "%s: H puts both hands on it" % ("with a shield" if shield else "from the left hand"))
+		if shield:
+			t.check(f.weapons.L == null and shield.holder == null, "the shield was let fall")
+		m.queue_free()
+		await get_tree().process_frame
+
 ## The wheel turns the edge: the blade rolls in the hand to whatever twist is set, half a turn
 ## included.
 func test_wheel_turns_the_edge() -> void:

@@ -229,6 +229,35 @@ func test_thrown_weapons_hurt_and_stick() -> void:
 	t.check(landed >= 4, "the throws land where they were aimed (%d of 5)" % landed)
 	t.check(stuck >= 2, "points and edges that bite deep stay in (%d)" % stuck)
 
+## A weapon stuck in a man leaves a wound its own shape: the flesh where the blade sits is
+## gone, along the blade's line, and no more than that.
+func test_a_stuck_weapon_leaves_a_wound_its_own_shape() -> void:
+	var w := _world()
+	var b := w.fighter(Vector3(0, 0, 0), 0.0, {}, {"name": "B", "slot": 1})
+	await _step(w, 60, func(_f, _i): return {})
+	var jv := Weapon.new()
+	jv.setup(Data.preset("javelin"), 1.0)
+	w.add_child(jv)
+	# Point first into the chest from the front, the tip a hand's width inside.
+	var dir := Vector3(0, 0, -1)
+	var tip: Vector3 = b.torso.global_position + Vector3(0, 0.05, 0.02)
+	var basis := Basis(Quaternion(Vector3.UP, dir))
+	jv.global_transform = Transform3D(basis, tip - dir * jv.reach)
+	jv.linear_velocity = Vector3.ZERO
+	var was: PackedByteArray = b.torso.alive.duplicate()
+	t.check(jv.impale(b, b.torso, tip), "the javelin sticks in")
+	var gone := []
+	for i in was.size():
+		if was[i] != 0 and b.torso.alive[i] == 0:
+			gone.append(i)
+	t.check(gone.size() >= 3 and gone.size() <= Weapon.WOUND_MAX, "a wound was opened where it sits (%d voxels)" % gone.size())
+	var off := 0.0
+	for i in gone:
+		var p: Vector3 = b.torso.world_of(i) - tip
+		off = maxf(off, (p - dir * p.dot(dir)).length())
+	t.check(off < 0.07, "all of it along the javelin's line (at most %.3f m off it)" % off)
+	w.queue_free()
+
 ## Every weapon, one hand or two, short or long, comes down onto a man lying on the sand with
 ## a blow that hurts (from where a fighter would stand over him).
 func test_every_weapon_comes_down_hard_on_a_man_on_the_sand() -> void:

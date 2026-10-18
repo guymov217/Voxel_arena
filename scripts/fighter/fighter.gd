@@ -166,12 +166,13 @@ var lead_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var prev_target := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
+var aim_tw := {"R": 0.0, "L": 0.0}
+var two_front = null   # both hands on one haft: where the off hand should hold it this step
+var grip_in := 0.0     # how far the two-handed grip is drawn in toward the shoulder (held still)   # the wheel's twist the last aim was made with
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
 var last_move := Vector3.ZERO   # where he is trying to go this step (world), for whatever holds him
-var stroke_dir := {"R": null, "L": null}   # which way the stroke is going, across the blade
-var stroke_idle := {"R": 0.0, "L": 0.0}
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
@@ -180,6 +181,7 @@ var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
+var pane_prev := {"R": null, "L": null}  # last step's hand on the pane (what the mouse asked)
 var power_now := false                     # the swing button, this step (for the hand's target)
 var low_hand := 0.0
 var shoulder := {"R": SHOULDER_R, "L": SHOULDER_L}
@@ -839,6 +841,9 @@ func release(side: String) -> Weapon:
 ## toggleGrip). Two hands: more power and better control of a heavy weapon; one: the off hand
 ## is free. Returns "one", "two" or null.
 func toggle_grip() -> Variant:
+	# A weapon in the left hand alone crosses to the right first, then both take it.
+	if not weapons.R and weapons.L and not weapons.L.is_shield and alive:
+		swap_hands()
 	var w: Weapon = weapons.R
 	if not w or w.is_shield or not alive or w.design.get("chain") != null:
 		return null
@@ -849,7 +854,11 @@ func toggle_grip() -> Variant:
 		two_handed = false
 		return "one"
 	var fore: VoxelPart = arm.L.fore
-	if weapons.L or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or fixed_hand.R:
+	if fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or fixed_hand.R or fixed_hand.L:
+		return null
+	# Whatever the off hand held (the shield it came in with, a dagger) is let fall to the sand:
+	# the hand is wanted on the haft.
+	if weapons.L and not release("L"):
 		return null
 	two_handed = true
 	_attach_off_hand(w)
@@ -1681,6 +1690,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var power: bool = inp.get("power", false) and stamina > 3.0
 	if power:
 		stamina_use += 3.0 * dt
+	two_front = null
 	for side in ["R", "L"]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
 		# The breath goes with the work of the swing while the button is down: how far the hand
@@ -1729,6 +1739,66 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# Torn lungs draw breath slower and fill no further than they still can.
 	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs()) * dt, 0.0, maxf(stamina - stamina_use, breath_cap()))
 
+## The shoulder drawn whole (drawing only): the top of the upper arm meets its socket on the
+## chest through a cap of the arm's own colour, the deltoid, so a raised arm, or one the joint
+## let give a little under a heavy blow, is never seen to float off the body.
+var shoulder_caps := {}
+func _process(_dt: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	for side in ["R", "L"]:
+		_draw_shoulder(side)
+
+func _draw_shoulder(side: String) -> void:
+	var up: VoxelPart = arm[side].upper
+	var cap: MeshInstance3D = shoulder_caps.get(side)
+	var show := not up.severed and not up.hanging and not up.missing and up.prosthetic == "" and not torso.severed and up.alive_count > 0
+	var sock := Vector3.ZERO
+	var top := Vector3.ZERO
+	var tb := Basis()
+	if show:
+		var tt := torso.get_global_transform_interpolated()
+		var ut := up.get_global_transform_interpolated()
+		sock = tt * Vector3(shoulder[side].x, shoulder[side].y, 0)
+		top = ut * Vector3(0, up.half_ext.y, 0)
+		tb = ut.basis.orthonormalized()
+	if not show:
+		if cap:
+			cap.visible = false
+		return
+	if cap == null:
+		cap = MeshInstance3D.new()
+		cap.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		cap.mesh = BoxMesh.new()
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = _top_color(up)
+		mat.roughness = 0.9
+		cap.material_override = mat
+		add_child(cap)
+		shoulder_caps[side] = cap
+	cap.visible = true
+	# A block the arm's own thickness, from just inside the arm's top to the socket, turned with
+	# the arm; at rest it sits inside the arm and the chest, unseen.
+	var d := sock - top
+	var w := Vector2(up.half_ext.x, up.half_ext.z) * 1.6
+	var along := tb.y
+	var len := maxf(0.02, d.dot(along)) + w.x * 0.6
+	var mid := top + d * 0.5 - along * w.x * 0.15
+	cap.global_transform = Transform3D(tb.scaled_local(Vector3(w.x, len, w.y)), mid)
+
+## The colour of the top of a part (its skin or what is worn there), for the shoulder cap.
+static func _top_color(p: VoxelPart) -> Color:
+	var best := -INF
+	for i in p.fy.size():
+		best = maxf(best, float(p.fy[i]))
+	var c := Color(0, 0, 0)
+	var n := 0
+	for i in p.fy.size():
+		if float(p.fy[i]) >= best - 1.0 and p.alive[i] != 0:
+			c += p.colors[i]
+			n += 1
+	return c / float(n) if n > 0 else Color(0.8, 0.6, 0.45)
+
 func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
 	var a: Dictionary = arm[side]
 	var upper: VoxelPart = a.upper
@@ -1754,8 +1824,21 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var dir_l = (hand_l - sh_l).normalized()
 		pd_axis(upper, Vector3(0, -1, 0), (dir_l + Vector3(0, -0.3, 0)).normalized(), 10.0, 0.8, 50.0 * af * MS * S, dt)
 		pd_axis(fore, Vector3(0, -1, 0), dir_l, 8.0, 0.8, 30.0 * af * MS * S, dt)
+		# It bears its own weight and its half of the weapon's (the other arm held it all up, and a
+		# raised blade sank and crept while the mouse stood still).
 		var m_arm := (fore.nominal_mass + upper.nominal_mass * 0.5)
-		fore.apply_impulse(Vector3(0, m_arm * gravity * minf(1.0, af * 1.2) * dt, 0), hand_l - fore.global_position)
+		var m_bear: float = m_arm + (weapons.R.mass * 0.5 if weapons.R and two_front != null else 0.0)
+		fore.apply_impulse(Vector3(0, m_bear * gravity * minf(1.0, af * 1.2) * dt, 0), hand_l - fore.global_position)
+		# The off hand works too: it carries its end of the haft to where the swing wants it (the
+		# front hand's place), as hard as an arm can, instead of hanging on as dead weight for the
+		# other arm to haul round (the blade lagged a stroke behind the mouse and drifted).
+		if two_front != null and weapons.R:
+			var vel_l := fore.velocity_at(hand_l) - torso.linear_velocity
+			var m_l: float = m_arm + weapons.R.mass * 0.5
+			var wn_l := 22.0
+			var J_l := PD.clamp_len((((two_front as Vector3) - hand_l) * wn_l * wn_l - vel_l * 2.0 * 0.9 * wn_l) * m_l * dt, 700.0 * af * stam_f * blood_f * MS * dt)
+			fore.apply_impulse(J_l, hand_l - fore.global_position)
+			torso.apply_central_impulse(-J_l * 0.5)
 		return
 	var w: Weapon = weapons[side]
 	power_now = power
@@ -1793,9 +1876,16 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		t_side = "L" if t_side == "R" else "R"
 	var ta = throw_anim
 	var charging := float(inp.get("charging", 0.0))
-	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and state == "stand")
+	var winding: bool = (ta != null and ta.side == side and ta.phase == "wind") or (ta == null and side == t_side and charging > 0.0 and (state == "stand" or state == "down"))
 	var following: bool = ta != null and ta.side == side and ta.phase == "follow"
 	throwing[side] = winding or following
+	# Down but awake, a man still throws and shoots from where he lies: the arm comes up off the
+	# sand for it (it stayed on the sand, and the pot or the arrow left from there into the
+	# ground), with less behind it than on his feet.
+	if state == "down" and down_hp != null and (winding or following or (side == "R" and w and w.design.has("shoots"))):
+		down_hp = null
+		thrust = 0.0
+		strength *= 2.0
 	# A throw is made with one hand: the off hand lets go of the haft as the arm draws back.
 	if (winding or following) and side == "R" and two_handed and held_item == null:
 		if weapon_joints.L:
@@ -1936,6 +2026,21 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 					tl2.f = yaw_q.inverse() * (front - t_pos)
 				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z))
 			target_w = front - w_aim * (w.grip_off - w.grip_main)
+			# Both hands where both arms reach: a grip that would have the back hand further than
+			# its arm goes (high across the face, far out to the side) is moved in toward that
+			# shoulder whole, the blade's line kept. Out of reach, that hand strained short of it,
+			# the hands pulled against each other and the blade crept on while the mouse was still.
+			# Only while it is held: a stroke or a stab goes out to the full reach of the arm, and
+			# the grip eases back out to it as one starts.
+			var holding: bool = thrust_line[side] == null and not power and swing_hold[side] <= 0.0
+			grip_in = move_toward(grip_in, 1.0 if holding else 0.0, dt * 5.0)
+			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
+			var far := target_w.distance_to(sh_r) - arm_reach * 0.88
+			if far > 0.0 and grip_in > 0.0:
+				var pull: Vector3 = (sh_r - target_w).normalized() * far * grip_in
+				front += pull
+				target_w += pull
+			two_front = front
 		var fore_q := w_aim * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
@@ -1963,7 +2068,15 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# (a warhammer most) is carried round on the straight arm from the shoulder instead of
 		# folding the elbow and stopping dead in mid-flight. Not in a thrust: the arm has to
 		# straighten along the line.
-		if target_vel[side].length() > 1.2 * S:
+		# A fast stroke with both hands on the haft is the mouse's, read off the pane: read off the
+		# hand's mark, a still mouse set it going again and again and the arm pumped in and out.
+		var hp_now: Dictionary = hand_input[side]
+		var hp_was = pane_prev[side]
+		pane_prev[side] = hp_now
+		var in_spd := Vector2(float(hp_now.get("x", 0.0)) - float(hp_was.get("x", 0.0)), float(hp_now.get("y", 0.0)) - float(hp_was.get("y", 0.0))).length() / dt if hp_was is Dictionary else 0.0
+		# (Two hands only: there the hand's mark goes round with the body and the other hand, and
+		# the arm's own set pumping it kept the set on; one hand reads its mark as before.)
+		if (in_spd > 2.4) if two_handed else (target_vel[side].length() > 1.2 * S):
 			swing_hold[side] = 0.35
 		else:
 			swing_hold[side] = maxf(0.0, swing_hold[side] - dt)
@@ -2362,45 +2475,19 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	var raise_k := smoothstep(0.5, 1.2, elev)
 	var ed := yaw_q * Vector3((1.0 if side == "R" else -1.0) * (1.0 - raise_k), 0, raise_k)
 	ed -= axis * ed.dot(axis)
-	if ed.length_squared() < 1e-4:
-		var fz := yaw_q * Vector3(0, 0, 1)
-		ed = fz - axis * axis.dot(fz)
+	# Where the blade lies along that edge line (swept full out to the side) the edge is taken
+	# from straight ahead instead, eased over so it never jumps from one to the other.
+	var fz := yaw_q * Vector3(0, 0, 1)
+	fz -= axis * axis.dot(fz)
+	var keep := smoothstep(0.05, 0.3, ed.length())
+	ed = (fz.normalized() * (1.0 - keep) + (ed.normalized() if ed.length_squared() > 1e-8 else fz.normalized()) * keep)
+	if ed.length_squared() < 1e-6:
+		ed = fz
 	ed = ed.normalized()
-	# The edge leads the stroke: whichever way the hand sweeps, the cutting edge faces where
-	# the blade is going (an axe's bit, not the back of its head), and the wheel's twist is
-	# set from there. The stroke's way is held through the blow and a moment after (the hand
-	# slowing on the impact does not turn the blade), and a sweep the other way turns it over.
-	var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
-	var tvl := tv.length()
-	if tvl > 0.9:
-		var nd := tv / tvl
-		var sd = stroke_dir[side]
-		stroke_dir[side] = nd if sd == null or (sd as Vector3).dot(nd) < -0.2 else (sd as Vector3).slerp(nd, minf(1.0, dt * 10.0)).normalized()
-		stroke_idle[side] = 0.0
-	else:
-		stroke_idle[side] += dt
-		if stroke_idle[side] > 0.6:
-			stroke_dir[side] = null
-	# Only a blade sharp on both sides lines up with the stroke (the nearer side leads: never
-	# more than a quarter turn). A one-edged one (an axe) is not rolled about by the swing: it
-	# stays as the wheel set it in the hand, the bit forward and inward for the forehand. Turning
-	# it to lead every stroke rolled it half a turn at each change of way, and the blow landed
-	# in the middle of the roll, on the flat or the back.
+	# The edge is where the wheel set it, and stays there through every stroke: it is not rolled
+	# over to lead the swing (that turned a pick's head over at each change of way, on its own).
 	var tw := float(inp.get("twist" if side == "R" else "offTwist", 0.0))
-	var led := false
-	if stroke_dir[side] != null and not is_spear(w) and w.edge_side() == 0.0:
-		var lead: Vector3 = stroke_dir[side]
-		lead -= axis * lead.dot(axis)
-		if lead.length_squared() > 1e-4:
-			# The nearer side to lead is judged with the wheel's turn already on it: judged
-			# without it, a turn past a quarter flipped the choice every frame and the blade
-			# spun on in the hand, eating the breath and the swing.
-			var lt := lead.normalized().rotated(axis, tw)
-			var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else lt
-			ed = lt * (1.0 if prev_ed.dot(lt) >= 0.0 else -1.0)
-			led = true
-	if not led:
-		ed = ed.rotated(axis, tw)
+	ed = ed.rotated(axis, tw)
 	var prev = aim_q[side]
 	if prev != null:
 		# Only the blade's line is held to the speed the weapon allows; turning the edge about
@@ -2419,6 +2506,20 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 					ed = ((prev as Quaternion) * Vector3.RIGHT)
 					ed -= axis * ed.dot(axis)
 				ed = ed.normalized()
+	if prev != null:
+		# The edge goes round with the blade: the last aim's edge carried along the turn the blade
+		# makes, so swinging never rolls it about the haft; the wheel turns it by what the wheel
+		# turned, and over a second or so it settles back to the edge the body's frame gives it.
+		var pa2: Vector3 = (prev as Quaternion) * Vector3.UP
+		var te: Vector3 = (prev as Quaternion) * Vector3.RIGHT
+		if pa2.dot(axis) > -0.95:
+			te = Quaternion(pa2, axis) * te
+		te -= axis * te.dot(axis)
+		if te.length_squared() > 1e-6:
+			te = te.normalized().rotated(axis, tw - float(aim_tw[side]))
+			var off := atan2(te.cross(ed).dot(axis), te.dot(ed))
+			ed = te.rotated(axis, off * minf(1.0, dt * 1.5))
+	aim_tw[side] = tw
 	var z := ed.cross(axis).normalized()
 	var e := axis.cross(z)
 	var desired := PD.quat_from_axes(e, axis, z)

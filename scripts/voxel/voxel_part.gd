@@ -983,10 +983,28 @@ func _flood(cell: PackedInt32Array, mark: PackedByteArray, starts: PackedInt32Ar
 	return out
 
 ## Where a child is jointed on, pulled onto this part's flesh.
+## Where `child` is rooted in this part: its joint point, kept inside the box, and moved onto the
+## nearest flesh of the part as it was built if that point lies in the air (a gorilla's arms are
+## jointed on the rounded corners of its chest: with no flesh there, any blow to the chest was
+## taken for the shoulder being cut away, and both arms fell off).
+var _anchors := {}
 func anchor_point(child: VoxelPart) -> Vector3:
+	if _anchors.has(child):
+		return _anchors[child]
 	var p := child.pa
 	var hx := half_ext / 0.95
-	return Vector3(clampf(p.x, -hx.x, hx.x), clampf(p.y, -hx.y, hx.y), clampf(p.z, -hx.z, hx.z))
+	var pt := Vector3(clampf(p.x, -hx.x, hx.x), clampf(p.y, -hx.y, hx.y), clampf(p.z, -hx.z, hx.z))
+	var best := INF
+	var near := pt
+	for i in fx.size():
+		var d := local_of(i).distance_squared_to(pt)
+		if d < best:
+			best = d
+			near = local_of(i)
+	if sqrt(best) > vf * part_scale * 2.2:
+		pt = near
+	_anchors[child] = pt
+	return pt
 
 ## Whether a lump holds the root of `child` (its joint point is inside it).
 func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:

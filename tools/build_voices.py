@@ -390,13 +390,15 @@ def spider(ev, i):
 
 @voice("ostrich")
 def ostrich(ev, i):
-    # The ostrich booms like a lion (an owl's hoot brought far down) and hisses.
-    boom = peak(growl(shift(pool("owl", i), 0.5), 20, 0.3), 110, 1.0, 8)
+    # The ostrich's own two sounds: a low boom, felt more than heard (an owl's hoot brought far
+    # down and darkened), and the hiss of a bird that means it. No shriek: it is not a gull.
+    boom = lp(peak(growl(shift(pool("owl", i), 0.42), 16, 0.25), 90, 1.0, 6), 700)
+    hiss = lp(hp(shift(pool("hiss", i), 0.85), 900), 5000)
     if ev == "call":
-        return room(seq(boom, gain(shift(pool("snake-hurt", i), 1.2), 0.5), gap=-0.1), 0.5, 0.18)
+        return room(seq(boom, gain(boom, 0.6), gap=-0.05), 0.5, 0.15)
     if ev == "hurt":
-        return shift(pool("gull", i), 0.75)
-    return room(fade_out(seq(shift(pool("gull", i + 1), 0.65), gain(shift(boom, 0.9), 0.8), gap=-0.1), 0.9), 0.5, 0.2)
+        return seq(gain(cut(hiss, 0, 0.45), 0.7), gain(cut(boom, 0, 0.5), 0.6), gap=-0.15)
+    return room(fade_out(seq(gain(cut(hiss, 0, 0.6), 0.6), boom, gap=-0.1), 1.0), 0.5, 0.18)
 
 @voice("griffin")
 def griffin(ev, i):
@@ -552,6 +554,8 @@ def limit(x, ev):
     return fade_out(x[:n], 0.35) if len(x) > n else x
 TAKES = 3
 TAKES_OF = {"man_light": 6, "man_mid": 6, "man_heavy": 6}
+# Quieter than the rest after finishing (peak): a bird, not a lion.
+LEVEL = {"ostrich": 0.42}
 SOFT = ["man_light", "man_mid", "man_heavy", "rat"]   # already finished quietly: no limiter, no drive
 
 # ---------------------------------------------------------------- output
@@ -583,7 +587,7 @@ def main():
         demo = []
         for ev in EVENTS.get(key, ["call", "hurt", "death"]):
             for i in range(1, TAKES_OF.get(key, TAKES) + 1):
-                x = fn(ev, i) if key in SOFT else finish(limit(fn(ev, i), ev))
+                x = fn(ev, i) if key in SOFT else finish(limit(fn(ev, i), ev), LEVEL.get(key, 0.9))
                 write_ogg(x, os.path.join(a.out, f"{key}_{ev}_{i}.ogg"))
                 if a.demo and (ev in ("call", "death") or key in SOFT or i == 1):
                     demo.append(x)

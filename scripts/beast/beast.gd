@@ -138,6 +138,12 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		for b in parts:
 			if a != b:
 				a.add_collision_exception_with(b)
+	# A head on a long neck (an ostrich's, a dragon's) meets its own body: folded down, it rested
+	# inside its chest. (Its neck, jointed on there, still passes.)
+	for p in parts:
+		if (p == head or String(p.part_name).begins_with("neck")) and p.parent_part != null and p.parent_part != torso:
+			p.remove_collision_exception_with(torso)
+			torso.remove_collision_exception_with(p)
 	for p in parts:
 		if p.parent_part:
 			var at: Vector3 = p.parent_part.global_transform * p.pa
@@ -267,6 +273,11 @@ func die(cause := "") -> void:
 	hug = null
 	_free_holds()
 	flying = false
+	# Dead, a neck does not fold back in through the body it is jointed on (its bend forward,
+	# opened wide for its strikes, is left as it is).
+	for p in parts:
+		if p.parent_part == torso and String(p.part_name).begins_with("neck") and p.joint is Generic6DOFJoint3D:
+			(p.joint as Generic6DOFJoint3D).set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, -0.5)
 	# Tip it over on its side instead of leaving it standing.
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
 	var side := 1.0 if rng.randf() < 0.5 else -1.0
@@ -295,6 +306,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		push_t -= dt
 	if alive and (blood <= 0.0 or torso.hp <= 0.0 or (heads_left().is_empty() if sp.get("multiHead", false) else head.hp <= 0.0)):
 		die("wounds")
+	if alive and neck_broken():
+		die("neck")
 	if not alive:
 		for l in legs:
 			for p in [l, lower_of(l)]:
@@ -622,7 +635,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		ai.fly_cool -= dt
 		if not collapsed and legs_left == legs.size() and can_fly() and (ai.mode == "stalk" or ai.mode == "recover") and ai.fly_cool <= 0.0:
 			flying = true
-			ai.mode = "fly"; ai.t = 2.0; ai.alt = 2.4 * S; ai.fly_t = 9.0 + rng.randf() * 5.0
+			ai.mode = "fly"; ai.t = 2.0; ai.alt = 2.4 * S; ai.fly_t = 6.0 + rng.randf() * 3.0   # a short flight: it is down on him again soon
 			return want
 	if flying:
 		ai.fly_t -= dt
@@ -655,7 +668,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = -to * spd * 0.4
 			if (grounded and dist_g < h_want + 0.1) or ai.t <= 0.0:
 				flying = false
-				ai.mode = "stalk"; ai.t = 1.0; ai.fly_cool = 10.0 + rng.randf() * 6.0
+				ai.mode = "stalk"; ai.t = 1.0; ai.fly_cool = 14.0 + rng.randf() * 6.0
 		return want
 	var side := Vector3(-to.z, 0, to.x) * float(ai.circle)
 	var tw = t.weapons.get("R") if t.get("weapons") else null
@@ -725,7 +738,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = to * spd * hurt
 			if t.state != "stand" and t.alive:
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.bite_cool = maxf(ai.bite_cool, 1.2); ai.circle = -ai.circle
-			elif dist < 1.1 + 0.6 * S and ai.bite_cool <= 0.0:
+			elif _in_bite_reach(t, dist) and ai.bite_cool <= 0.0:
 				_lunge(to, mass, collapsed)
 				ai.mode = "recover"; ai.t = 1.1 * (1.0 + injury * 1.5)   # a hurt hunter backs off longer
 			elif ai.t <= 0.0:
@@ -737,6 +750,15 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.t = 0.45 if ai.mode == "crouch" else 1.0 + rng.randf() * 1.5
 				ai.circle = -ai.circle
 	return want
+
+## Close enough to bite: a head on a long neck (a dragon's) is judged by where the head is,
+## not the body: from the body's distance it snapped at the air two metres short of the man.
+func _in_bite_reach(t, dist: float) -> bool:
+	if by_name.has("neck") and not sp.get("multiHead", false) and t.get("torso") and not head.severed:
+		# Over the ground: the head is held high and strikes down onto him.
+		var d: Vector3 = t.torso.global_position - head.global_position
+		return Vector2(d.x, d.z).length() < 0.7 + 0.25 * S
+	return dist < 1.1 + 0.6 * S
 
 func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury) * (0.35 + 0.65 * hind_fn())
@@ -1311,6 +1333,16 @@ func front_fn() -> float:
 func hind_fn() -> float:
 	return fn_of(["legBL", "legBR"]) if by_name.has("legBL") else front_fn()
 
+## A single head on a neck (an ostrich's, a dragon's): the neck broken through, or hanging by
+## a few voxels, or crushed, and the beast is dead (the many-headed only lose that head).
+func neck_broken() -> bool:
+	if sp.get("multiHead", false):
+		return false
+	for p in parts:
+		if String(p.part_name).begins_with("neck") and (p.severed or p.hanging or p.hp <= 0.0):
+			return true
+	return false
+
 func part_ok(p: VoxelPart, need := 0.25) -> bool:
 	return p != null and not p.severed and not p.hanging and p.hp > 0.0 and p.function() > need
 
@@ -1790,6 +1822,7 @@ func _strike(p: VoxelPart, t_: float, cool: float, imp: Array = [], wind_s := -1
 	strikes[p] = t_ + w
 	wind[p] = w
 	p.set_meta("stung", false)
+	p.set_meta("landed", false)
 	p.set_meta("strike_lead", true)
 	strike_cool[p] = cool
 	if not imp.is_empty():
@@ -1864,6 +1897,7 @@ func _tick_strikes(dt: float) -> void:
 	_sting_reach()
 	if species == "gorilla":
 		_ape_drive()
+	_head_drive()
 	for p in strike_cool.keys():
 		strike_cool[p] -= dt
 	for p in strikes.keys():
@@ -1935,6 +1969,41 @@ func _ape_drive() -> void:
 		var f := acc * lo.mass
 		lo.apply_central_force(f)
 		torso.apply_central_force(-f * 0.5)
+
+## A head on a long neck (a dragon's, an ostrich's) strikes the way the ape's arm drives its
+## fist: drawn back and up on the neck in the wind-up, then driven down at the man at the
+## strike's speed, the body taking the push back, until the jaws are on him. A kick of an
+## impulse alone was taken back by the neck's own spring before it got there.
+const HEAD_SPEED := 5.5
+const HEAD_PULL := 120.0
+func _head_drive() -> void:
+	if sp.get("multiHead", false) or head.severed or head.parent_part == torso or not strikes.has(head):
+		return
+	if target == null or not is_instance_valid(target) or not target.get("torso") or head.get_meta("landed", false):
+		return
+	# At his head and shoulders, high, where a long neck reaches down to (its root will not let
+	# it fold down to his belly).
+	var aim: Vector3 = target.head.global_position if target.get("head") and not target.head.severed else target.torso.global_position
+	var tv: Vector3 = torso.linear_velocity
+	var want: Vector3
+	if float(wind.get(head, 0.0)) > 0.0:
+		var to: Vector3 = aim - torso.global_position
+		to.y = 0.0
+		to = to.normalized()
+		want = (head.parent_part.global_position + Vector3.UP * 0.3 * S - to * 0.2 * S - head.global_position) * 5.0
+	else:
+		want = (aim - head.global_position).normalized() * HEAD_SPEED * sqrt(S)
+		if Combat.current and Combat.current.touch_by(head, target, 0.03) != null:
+			head.set_meta("landed", true)
+			return
+	var acc := ((want - (head.linear_velocity - tv)) / maxf(0.02, get_physics_process_delta_time() * 4.0)).limit_length(HEAD_PULL * sqrt(S))
+	var f := acc * head.mass
+	head.apply_central_force(f)
+	# The neck goes with it, its end most, the body taking the push back.
+	var nk: VoxelPart = head.parent_part
+	var fn := acc * nk.mass * 0.6
+	nk.apply_force(fn, head.global_position - nk.global_position)
+	torso.apply_central_force(-(f + fn) * 0.5)
 
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)

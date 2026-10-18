@@ -67,6 +67,8 @@ func _ready() -> void:
 	var shots := [
 		["close", c + side * (2.6 + pa.distance_to(pv) * 0.7) + Vector3(0, 0.5, 0), c + Vector3(0, 0.1, 0), 48.0],
 		["wide", Vector3(c.x, 0, c.z) + side * 10.0 + Vector3(0, 4.5, 0), c, 60.0],
+		["wall", Vector3(sin(deg_to_rad(145.0)), 0, cos(deg_to_rad(145.0))) * 9.0 + Vector3(0, 2.2, 0), Vector3(sin(deg_to_rad(145.0)), 0, cos(deg_to_rad(145.0))) * 14.6 + Vector3(0, 0.6, 0), 55.0],
+		["top", Vector3(0.5, 19.0, 6.0), Vector3(0, 0, 0), 60.0],
 	]
 	var only := OS.get_environment("LOOK_ONLY")
 	for look in LOOKS:

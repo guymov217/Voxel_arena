@@ -754,6 +754,7 @@ func impale(c, part: VoxelPart, point: Vector3) -> bool:
 		global_position += linear_velocity * (0.1 * float(c.S) / sp)
 	linear_velocity = part.linear_velocity
 	angular_velocity = part.angular_velocity
+	_carve_wound(c)
 	for p in c.parts:
 		add_collision_exception_with(p)
 	var j := Generic6DOFJoint3D.new()
@@ -765,6 +766,36 @@ func impale(c, part: VoxelPart, point: Vector3) -> bool:
 	stuck = {"char": c, "part": part, "joint": j, "mass": mass}
 	c.stuck_load += mass
 	return true
+
+## The wound a stuck weapon makes is its own shape: every voxel of it that sits inside the body
+## takes out the flesh where it is (a blade a slot, a point a narrow hole, an axe's bit a wedge),
+## at most WOUND_MAX voxels from any one part.
+const WOUND_MAX := 60
+func _carve_wound(c) -> void:
+	var pts := []
+	for i in vox.size():
+		if alive.size() > i and alive[i] == 0:
+			continue
+		var v: Array = vox[i]
+		pts.append(global_transform * (Vector3(v[0], v[1], v[2]) * vs))
+	for p: VoxelPart in c.parts:
+		if p.severed or p.alive_count <= 0:
+			continue
+		var reach: float = p.half_ext.length() + vs
+		var inv: Transform3D = p.global_transform.affine_inverse()
+		var r: float = maxf(vs, p.vf * p.part_scale) * 0.55
+		var hit := {}
+		for wp in pts:
+			if (wp as Vector3).distance_to(p.global_position) > reach:
+				continue
+			for k in p.voxels_within(inv * wp, r, 8):
+				hit[k] = true
+				if hit.size() >= WOUND_MAX:
+					break
+			if hit.size() >= WOUND_MAX:
+				break
+		if not hit.is_empty():
+			p.remove_voxels(hit.keys())
 
 func unstick() -> void:
 	if stuck == null:

@@ -688,22 +688,50 @@ PROPS = {
 
 def sand_texture():
     """The arena floor as a 10 cm voxel grid seen from above (320 px for 32 m): grains, raked
-    rings, darker sand at the foot of the wall, pebbles and old stains."""
+    rings, a laurel wreath raked in the middle, the trodden paths from the two gates, drag marks,
+    damp dark sand at the foot of the wall, flat stones half buried, pebbles and old stains."""
     n = 320
     ii, jj = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
     x = -16 + (ii + 0.5) * 0.1
     z = -16 + (jj + 0.5) * 0.1
     r = np.sqrt(x * x + z * z)
+    ang = np.arctan2(z, x)
     c = np.tile(np.array(SAND, np.float32), (n, n, 1))
     c *= (1 + 0.12 * (hash3(ii, jj, 0, 200) - 0.5) * 2)[..., None]
-    c *= (1 + 0.07 * (vnoise(x, 0, z, 1.6, 201) - 0.5) * 2)[..., None]
-    c *= (1 + 0.04 * (np.mod(np.floor(r / 0.1), 4) < 1))[..., None]   # raked rings, a voxel wide
-    edge = np.clip((r - 13.2) / 1.8, 0, 1) ** 1.5
-    c = c * (1 - 0.25 * edge)[..., None] + np.array([0.5, 0.4, 0.3]) * (0.25 * edge)[..., None]
+    c *= (1 + 0.08 * (vnoise(x, 0, z, 1.6, 201) - 0.5) * 2)[..., None]
+    # Raked rings: a ridge every 40 cm (the rake's teeth), its furrow a shade darker.
+    ridge = np.mod(r, 0.4) / 0.4
+    c *= (1 + 0.05 * (ridge < 0.25) - 0.04 * ((ridge > 0.5) & (ridge < 0.75)))[..., None]
+    # The laurel raked in the middle: a ring of leaves round a bare disc.
+    leaf = (r > 2.0) & (r < 3.1) & (np.mod(ang * 12 / np.pi + 0.5 * np.sin((r - 2.0) * 5.7), 2.0) < 0.75)
+    c[leaf] *= 0.8
+    c[(np.abs(r - 3.25) < 0.08) | (np.abs(r - 1.85) < 0.08)] *= 0.82
+    c[(r > 0.0) & (r < 1.6)] *= 1.04
+    # The paths trodden from the gates (east and west, along x), darker and packed down.
+    for gx in (-1.0, 1.0):
+        lane = np.exp(-((z + 0.25 * np.sin(x * 0.7)) ** 2) / 0.9) * np.clip((x * gx - 2.0) / 4.0, 0, 1)
+        c *= (1 - 0.1 * lane)[..., None]
+        steps = (hash3(np.floor(x / 0.3), np.floor(z / 0.2), gx, 210) < 0.35 * lane) & (np.abs(z) < 1.3)
+        c[steps] *= 0.9
+    # Drag marks: a few long furrows where a body was hauled off.
+    for k in range(5):
+        a0 = 0.6 + k * 1.21
+        along = x * np.cos(a0) + z * np.sin(a0)
+        d = np.abs((x * np.sin(a0) - z * np.cos(a0)) - (k - 2) * 1.7 - 0.25 * np.sin(along * 1.3 + k))
+        mark = (d < 0.1) & (along > 4.0 + k * 0.6) & (along < 7.0 + k * 0.6) & (r < 13.5)
+        c[mark] *= 0.92
+    # Damp and dark at the foot of the wall, where the sand is not raked.
+    edge = np.clip((r - 13.0) / 2.0, 0, 1) ** 1.3
+    c = c * (1 - 0.32 * edge)[..., None] + np.array([0.45, 0.36, 0.26]) * (0.32 * edge)[..., None]
+    # Old stains.
     stain = vnoise(x, 5, z, 0.9, 202) * vnoise(x, 9, z, 2.5, 203)
     k = np.clip((stain - 0.42) * 6, 0, 1) * 0.35
     c = c * (1 - k)[..., None] + np.array([0.42, 0.22, 0.15]) * k[..., None]
-    peb = hash3(ii, jj, 0, 204) < 0.006
+    # Flat stones half buried, in a few clusters, and pebbles.
+    cluster = vnoise(x, 13, z, 0.45, 207) > 0.84
+    stone = cluster & (hash3(np.floor(x / 0.3), np.floor(z / 0.3), 3, 208) < 0.22) & (r < 14.0) & (r > 3.4)
+    c[stone] = np.array([0.72, 0.64, 0.52]) * (0.85 + 0.2 * hash3(ii, jj, 2, 209)[stone])[:, None]
+    peb = hash3(ii, jj, 0, 204) < (0.006 + 0.02 * cluster)
     c[peb] = np.array([0.55, 0.52, 0.48]) * (0.8 + 0.4 * hash3(ii, jj, 1, 205)[peb])[:, None]
     scuff = (vnoise(x, 2, z, 0.35, 206) > 0.78) & (r < 13)
     c[scuff] *= 0.9

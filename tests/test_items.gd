@@ -184,3 +184,39 @@ func test_the_bag_holds_nine_kinds_and_sensible_stacks() -> void:
 	t.check(not Throwables.bag_has_room(nine, tenth), "no tenth kind")
 	var old := Net.sanitize_kit({"nailPot": 9, "anvil": 4, "bread": 9})
 	t.eq([int(old.nailPot), int(old.anvil), int(old.bread)], [3, 1, 5], "an old bag cut down to what it may hold")
+
+## Knocked down but awake, a man still throws: the arm comes up off the sand as he winds up,
+## and the pot leaves his hand.
+func test_a_man_on_the_sand_still_throws() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": ""}})
+	var f: Fighter = m.me.f
+	var inp := {"main": {"x": 0.2, "y": 0.2}, "look": {"yaw": 0.0, "pitch": 0.0}}
+	m.me.drive = func(_e): return inp.duplicate()
+	m.me.inventory = {"greekFire": 2}
+	for i in 60:
+		await get_tree().physics_frame
+	f.fall(4.0, true)
+	for i in 40:
+		await get_tree().physics_frame
+	t.eq(f.state, "down", "he is down")
+	inp.useItem = 0
+	await get_tree().physics_frame
+	inp.erase("useItem")
+	await get_tree().physics_frame
+	t.check(f.held_item != null, "the pot is readied in his hand")
+	inp.charging = 0.6
+	var hy := -9.0
+	for i in 30:
+		await get_tree().physics_frame
+		hy = maxf(hy, f.hand_world("L").y - f.torso.global_position.y)
+	t.check(hy > 0.4, "the throwing arm comes up off the sand (%.2f m above the chest)" % hy)
+	inp.erase("charging")
+	inp.throw = true
+	await get_tree().physics_frame
+	inp.erase("throw")
+	for i in 30:
+		await get_tree().physics_frame
+	t.check(f.held_item == null and int(m.me.inventory.greekFire) == 1, "and the pot is thrown")
+	m.queue_free()

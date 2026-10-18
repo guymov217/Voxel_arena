@@ -296,6 +296,7 @@ func _build_walls() -> void:
 		add_child(bowl)
 		voxel = true
 		_build_props()
+		_build_debris()
 		_build_crowd()
 		return
 	# Without it, the old wall: a painted podium ring with banners, then tiers of stands and an arcade.
@@ -650,6 +651,72 @@ func _build_props() -> void:
 	VoxelArt.place(self, "throne", Vector3(0, 3.6, 17.9), PI)
 	VoxelArt.place(self, "amphora", Vector3(-1.9, 3.6, 18.2), 0.0)
 	VoxelArt.place(self, "amphora_wide", Vector3(1.9, 3.6, 18.2), 0.5)
+
+## What earlier fights left at the foot of the wall, for the eye only (nothing here collides, and
+## it all stands in the last half metre of sand, out of the way of the fight): spears stuck in the
+## sand at a lean, broken shields propped against the wall, a helmet on its side. Clear of the
+## two gates and of the Emperor's box.
+const DEBRIS := [
+	["spear", 25.0, 0.22], ["shield", 38.0, 0.0], ["spear", 52.0, -0.3], ["helmet", 70.0, 0.0],
+	["shield", 128.0, 0.0], ["spear", 141.0, 0.25], ["spear", 150.0, -0.18], ["helmet", 166.0, 0.0],
+	["spear", 205.0, 0.3], ["shield", 222.0, 0.0], ["helmet", 238.0, 0.0], ["spear", 300.0, -0.25],
+	["shield", 316.0, 0.0], ["spear", 330.0, 0.2],
+]
+
+func _build_debris() -> void:
+	var wood := _flat_material(Color(0.42, 0.29, 0.17))
+	var iron := _flat_material(Color(0.5, 0.5, 0.52), 0.6)
+	var bronze := _flat_material(Color(0.62, 0.42, 0.2), 0.7)
+	var red := _flat_material(Color(0.55, 0.12, 0.09))
+	for d in DEBRIS:
+		var a := deg_to_rad(float(d[1]))
+		var out := Vector3(sin(a), 0, cos(a))
+		var side := Vector3(out.z, 0, -out.x)
+		var n := Node3D.new()
+		add_child(n)
+		n.position = out * (RADIUS - 0.35)
+		n.basis = Basis.looking_at(-out, Vector3.UP)
+		match String(d[0]):
+			"spear":
+				# Driven into the sand at a lean, the head up.
+				n.rotate(side, float(d[2]))
+				_box(n, wood, Vector3(0.05, 1.7, 0.05), Vector3(0, 0.7, 0))
+				_box(n, iron, Vector3(0.09, 0.24, 0.025), Vector3(0, 1.64, 0))
+			"shield":
+				# A round shield propped on its rim against the wall, a wedge of it split off.
+				var sh := Node3D.new()
+				n.add_child(sh)
+				sh.position = Vector3(0, 0.4, 0.22)
+				sh.rotation = Vector3(deg_to_rad(-72.0), 0, 0)
+				for k in 7:
+					var ang := k * TAU / 8.0
+					_box(sh, red if k % 2 == 0 else bronze, Vector3(0.26, 0.05, 0.26), Vector3(cos(ang) * 0.2, 0, sin(ang) * 0.2))
+				_box(sh, bronze, Vector3(0.14, 0.08, 0.14), Vector3.ZERO)
+			"helmet":
+				# On its side in the sand, the crest to the wall.
+				var hm := Node3D.new()
+				n.add_child(hm)
+				hm.position = Vector3(0, 0.13, -0.2)
+				hm.rotation = Vector3(0, 0, deg_to_rad(80.0))
+				_box(hm, bronze, Vector3(0.26, 0.2, 0.28), Vector3.ZERO)
+				_box(hm, bronze, Vector3(0.3, 0.04, 0.32), Vector3(0, -0.1, 0))
+				_box(hm, red, Vector3(0.05, 0.12, 0.26), Vector3(0, 0.15, 0))
+
+func _flat_material(c: Color, metal := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.metallic = metal
+	m.roughness = 0.6 if metal > 0.0 else 0.9
+	return m
+
+func _box(parent: Node3D, mat: Material, size: Vector3, at: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = mat
+	mi.mesh = bm
+	mi.position = at
+	parent.add_child(mi)
 
 ## Swings the east (1) or west (-1) gate open inward for `hold` seconds, then shut again.
 var gates := {}

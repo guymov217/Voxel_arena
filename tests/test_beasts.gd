@@ -51,3 +51,22 @@ func test_a_lion_bites() -> void:
 	t.check(bites[0] > 0, "the lion got its teeth in (%d)" % bites[0])
 	t.check(man.total_hp() < 1000.0 or man.blood < 100.0, "the man is hurt")
 	w.queue_free()
+
+## A single head on a long neck: with the neck broken (cut through, hanging by a thread or
+## crushed), the ostrich is dead; a hydra only loses that head.
+func test_a_broken_neck_kills_the_ostrich() -> void:
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var b := _beast(w, "ostrich", Vector3(0, 0.2, 0))
+	for i in 30:
+		b.control(1.0 / 120.0)
+		await get_tree().physics_frame
+	t.check(b.alive, "the ostrich stands")
+	var cause := [""]
+	b.died.connect(func(_b, c): cause[0] = c)
+	b.by_name.neck.hp = 0.0
+	b.control(1.0 / 120.0)
+	await get_tree().physics_frame
+	t.check(not b.alive and cause[0] == "neck", "its neck broken, it is dead (%s)" % cause[0])
+	w.queue_free()

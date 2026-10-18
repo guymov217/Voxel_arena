@@ -82,6 +82,8 @@ var columns := {}           # part -> {w, h, cells: PackedFloat32Array (alive sh
 var columns_t := 0.0
 var columns_dirty := true
 var ui_scale := 1.0
+var hands_seen := []          # what was in each hand last frame, and when that changed
+var hands_t := -100.0
 
 func _init(m: Match) -> void:
 	match_ = m
@@ -822,6 +824,19 @@ func _prompt_for(f) -> Array:
 				var d := minf(part.global_position.distance_to(hand_r), part.global_position.distance_to(hand_l))
 				if d < 0.9:
 					return [["grab"], "Grab the %s" % String(part.label).to_lower()]
+	# A weapon just taken in hand: for a few seconds, how to put both hands on it or change hands.
+	# (Not the weapons a fighter walks in with: only a change in his hands.)
+	var now_held := [f, f.weapons.R, f.weapons.L, f.two_handed]
+	if now_held != hands_seen:
+		if not hands_seen.is_empty() and hands_seen[0] == f:
+			hands_t = Time.get_ticks_msec() / 1000.0
+		hands_seen = now_held
+	if Time.get_ticks_msec() / 1000.0 - hands_t < 6.0:
+		var w = f.weapons.R if f.weapons.R else f.weapons.L
+		if w and not w.is_shield and w.design.get("chain") == null:
+			if f.two_handed:
+				return [["grip"], "One hand"]
+			return [["grip", "swap"], "Both hands · swap hands"]
 	return []
 
 func _set_prompt(p: Array) -> void:

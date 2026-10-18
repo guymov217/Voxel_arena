@@ -337,7 +337,8 @@ func spawn_beast(spec: Dictionary):
 	b.on_venom = _venom
 	b.on_strike = func(bb, p):
 		sfx("whoosh", p.global_position, 0.6)
-		if time - float(bb.get_meta("voice_t", -9.0)) > 0.9:
+		# (A quick pecker like the ostrich is not to cry out at every peck.)
+		if time - float(bb.get_meta("voice_t", -9.0)) > (3.0 if bb.species == "ostrich" else 0.9):
 			bb.set_meta("voice_t", time)
 			say(bb, Voices.beast_call(bb.species), 0.9, "call")
 	b.on_roar = func(bb):
@@ -911,6 +912,10 @@ func add_runtime_decree(d: Dictionary) -> void:
 ## Sets `part` of `c` alight (or lets acid eat it) where it struck, and tells the guests.
 func add_spot(c, part: VoxelPart, kind: String, seconds: float, by = null, point = null) -> void:
 	if c == null or not c.alive or part == null or role == "guest":
+		return
+	# What breathes fire does not burn (nor what spits venom melt in it): a dragon walking through
+	# its own burning trail was set alight, and stood in a cloud of its own flames.
+	if c is Beast and c.sp.get("breath") == ("venom" if kind == "acid" else kind):
 		return
 	var was: bool = Fire.is_burning(c) if kind == "fire" else c.parts.any(func(p): return p.spots.any(func(s): return s.kind == "acid" and s.t > 0.0))
 	var s := Fire.add_spot(part, kind, seconds, point)
