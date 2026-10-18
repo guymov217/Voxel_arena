@@ -851,9 +851,13 @@ func _workshop_forge() -> void:
 ## the yard first, if the forge was the smith's).
 var forge_trying = null
 var forge_try_yard := false
+var forge_try_spot = null   # where he stood in the yard (and which way he looked), to stand there again after
 func try_from_forge(f: Node, d: Dictionary, who: String, fights: bool) -> void:
 	forge_trying = f
 	forge_try_yard = in_yard()
+	forge_try_spot = null
+	if forge_try_yard and match_.me and is_instance_valid(match_.me.f):
+		forge_try_spot = {"pos": match_.me.f.torso.global_position, "yaw": match_.me.f.yaw, "look": match_.input.look_yaw if match_.input else match_.me.f.yaw}
 	f.visible = false
 	f.process_mode = Node.PROCESS_MODE_DISABLED
 	start({"mode": "training", "training": {"enemy": who, "count": 1, "weapon": "random", "behaviour": "fights" if fights else "still", "difficulty": 0.5, "immortal": true, "respawn": true},
@@ -868,6 +872,13 @@ func back_to_forge() -> void:
 	_end_match()
 	if forge_try_yard:
 		enter_yard()
+		# Back where he was at the smith's, not at the gate of the yard.
+		if forge_try_spot != null and match_ and match_.me and is_instance_valid(match_.me.f):
+			match_.me.f.teleport(forge_try_spot.pos)
+			match_.me.f.yaw = forge_try_spot.yaw
+			if match_.input:
+				match_.input.look_yaw = forge_try_spot.look
+	forge_try_spot = null
 	visible = true
 	panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

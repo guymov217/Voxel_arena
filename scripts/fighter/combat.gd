@@ -295,6 +295,14 @@ func _blow(g: Dictionary) -> Dictionary:
 	var punch: bool = not is_weapon and not club and not bite and not kick
 	if speed < (2.2 if is_weapon else (1.5 if kick else 2.0)):
 		return {}
+	# A beast's foot or knuckle walking into a man is a shove, not a blow: its blows are its
+	# strikes (a bite, a claw, a fist swung), which mark the part for the length of the swing.
+	if punch and att.fighter is Beast:
+		return {}
+	# A fist lands as hard as it is swung: the ape's weight leaning on him is no punch.
+	var fist: bool = bite and att.def.get("fist", false)
+	if fist and speed < 3.0:
+		return {}
 	var jabbing: bool = punch and att.fighter.jab_t.get(att.part_name.right(1), 0.0) > 0.0
 	var m_eff: float
 	if is_weapon or club:
@@ -316,7 +324,7 @@ func _blow(g: Dictionary) -> Dictionary:
 			cap *= float(att.get_meta("power", 1.0))   # a jab, a hook or a slam: each as hard as its swing
 	else:
 		cap = 30.0 if kick else (22.0 if jabbing else 17.0)
-	var J := minf(cap, maxf(g.J, m_eff * speed))
+	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
 	var heavy := 0.0
 	if is_weapon and att.is_hazard:
 		J = minf(40.0, maxf(J, 6.0 * speed))

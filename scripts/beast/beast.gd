@@ -538,7 +538,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						for n in ["legFL", "legFR"]:
 							if by_name.has(n) and not leg_gone(by_name[n]):
 								_strike(by_name[n], 0.7, 0.0, [], 0.0)
-					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15) and _touching(t):
+					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15) and not _paws_on(t, 0.05).is_empty():
 						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}   # a hand on him: the hold
 						for n in ["legFLLo", "legFRLo"]:
 							var fist: VoxelPart = by_name.get(n)
@@ -857,11 +857,13 @@ func _squeeze(dt: float) -> void:
 	hug.t -= dt
 	hug.tick -= dt
 	var tgt = hug.target
-	var held := _touching(tgt, 0.5)
+	# Only the arms hold and crush: a paw or a fist on him (its belly against him is no squeeze).
+	var paws := _paws_on(tgt, 0.5)
+	var held := not paws.is_empty()
 	if hug.tick <= 0.0 and tgt.alive and held:
 		hug.tick = 0.5
 		# The arms' force on him, read off the physics of their contacts.
-		var on: VoxelPart = Combat.current.touch_part(self, tgt, 0.5) if Combat.current else tgt.torso
+		var on: VoxelPart = Combat.current.touch_by(paws[0], tgt, 0.5) if Combat.current else tgt.torso
 		var J := clampf(_touch_force(tgt) * 0.004, 3.0, 20.0)
 		var p: Vector3 = on.global_position
 		tgt.apply_hit(on, {"impulse": J, "type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": p, "dir": (torso.global_position - p).normalized()})
@@ -895,6 +897,16 @@ func _squeeze(dt: float) -> void:
 
 ## Torn in two: the held arm and the leg across from it come away, the trunk is wrenched open
 ## between them, and what is left is flung down.
+## The forepaws (a bear's paws, the ape's fists) on him within `within` seconds: the arms a
+## hold is made with.
+func _paws_on(tgt, within: float) -> Array:
+	var out := []
+	for n in ["legFLLo", "legFRLo"]:
+		var paw: VoxelPart = by_name.get(n)
+		if paw and not paw.severed and Combat.current and Combat.current.touch_by(paw, tgt, within) != null:
+			out.append(paw)
+	return out
+
 ## The gorilla's fists that are on him now (the physics' contacts), for the tearing.
 func _fists_on(tgt) -> Array:
 	var out := []
@@ -1822,6 +1834,8 @@ func _sting_reach() -> void:
 
 func _tick_strikes(dt: float) -> void:
 	_sting_reach()
+	if species == "gorilla":
+		_ape_drive()
 	for p in strike_cool.keys():
 		strike_cool[p] -= dt
 	for p in strikes.keys():
@@ -1844,6 +1858,55 @@ func _tick_strikes(dt: float) -> void:
 					lo.def["bite"] = false
 					lo.def["claw"] = false
 					lo.set_meta("power", 1.0)
+
+## The ape's arms at work in a blow, the way a man's arm drives his hand: in the wind-up the
+## fist is drawn back to the shoulder, then the arm drives it at the man (straight, swung round
+## from the side, or brought down from above) at the blow's speed, as hard as its pull allows,
+## the body taking the push back. Once the fist is on him the drive stops: the blow has landed.
+func _ape_drive() -> void:
+	if target == null or not is_instance_valid(target) or not target.get("torso"):
+		return
+	var tv: Vector3 = torso.linear_velocity
+	for arm in strikes.keys():
+		if not is_instance_valid(arm) or String(arm.get_meta("ape", "")) == "":
+			continue
+		var lo := lower_of(arm)
+		if lo == null or lo.severed or lo.get_meta("landed", false):
+			continue
+		var kind := String(arm.get_meta("ape"))
+		var b: Dictionary = APE_BLOWS[kind]
+		var aim: Vector3 = target.head.global_position if target.get("head") and not target.head.severed else target.torso.global_position
+		var to: Vector3 = aim - torso.global_position
+		to.y = 0.0
+		to = to.normalized()
+		var side := Vector3(-to.z, 0, to.x) * signf(arm.pa.x)
+		var want: Vector3
+		if float(wind.get(arm, 0.0)) > 0.0:
+			# Drawn back: the fist to the shoulder (a hook out to the side, a slam up over the head).
+			var sh: Vector3 = arm.global_position
+			var back := sh - to * 0.35 * S + Vector3.UP * 0.25 * S
+			if kind == "hook":
+				back += side * 0.4 * S
+			elif kind == "slam":
+				back = sh + Vector3.UP * 0.9 * S - to * 0.15 * S
+			want = (back - lo.global_position) * 6.0
+		else:
+			var dir: Vector3 = (aim - lo.global_position).normalized()
+			match kind:
+				"hook":
+					dir = (dir + side * 0.45).normalized()
+				"slam":
+					dir = (dir + Vector3(0, -0.7, 0)).normalized()
+			want = dir * float(b.speed) * sqrt(S)
+			if Combat.current and Combat.current.touch_by(lo, target, 0.02) != null:
+				lo.set_meta("landed", true)
+				continue
+		var dv: Vector3 = want - (lo.linear_velocity - tv)
+		var acc := dv / maxf(0.02, get_physics_process_delta_time() * 4.0)
+		acc = acc.limit_length(APE_PULL * sqrt(S))
+		var f := acc * lo.mass
+		lo.apply_central_force(f)
+		torso.apply_central_force(-f * 0.5)
 
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)
@@ -1945,14 +2008,17 @@ func _free_holds() -> void:
 	holds.clear()
 
 ## The ape's blows, each a swing of its own and each as hard as the swing (APE_BLOWS: the wind-up,
-## the blow, the rest after, how much of the arm's weight goes into the fist, and how hard the
-## fist may land for it): a jab straight from the shoulder, a hook swung wide and across, and
-## both fists raised and slammed down together. Out of reach it beats its chest and roars.
+## the blow, the rest after, how fast the arm drives the fist (m/s, for an ape of scale 1), and
+## how hard the fist may land for it): a jab straight from the shoulder, a hook swung wide and
+## across, and both fists raised and slammed down together. Out of reach it beats its chest and
+## roars. The fist is driven like a man's hand (_ape_drive): the arm's pull, not a kick from
+## nowhere, so it lands only where it gets to and as hard as it is going when it does.
 const APE_BLOWS := {
-	"jab": {"wind": 0.2, "t": 0.3, "cool": 1.1, "imp": 14.0, "power": 0.9},
-	"hook": {"wind": 0.3, "t": 0.35, "cool": 1.6, "imp": 20.0, "power": 1.3},
-	"slam": {"wind": 0.5, "t": 0.4, "cool": 3.2, "imp": 26.0, "power": 1.8},
+	"jab": {"wind": 0.2, "t": 0.3, "cool": 1.1, "speed": 7.5, "power": 0.9},
+	"hook": {"wind": 0.3, "t": 0.35, "cool": 1.6, "speed": 8.0, "power": 1.3},
+	"slam": {"wind": 0.5, "t": 0.4, "cool": 3.2, "speed": 9.0, "power": 1.8},
 }
+const APE_PULL := 160.0   # the most the arm accelerates its fist, m/s² (a man's arm is near 100)
 
 func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 	if float(ai.get("beat", 0.0)) > 0.0:
@@ -1984,8 +2050,9 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 		ai.beat = 0.0   # a man in reach ends the display
 	if dist > reach * 1.15 or facing < 0.5 or rng.randf() > dt * 2.2:
 		return
-	# Close in, with the hug ready, it grapples instead (control): the blows are for the rest.
-	if dist < 1.3 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15):
+	# Close in, a fist already on him and the hug ready, it grapples instead (control): the
+	# blows are for the rest.
+	if dist < 1.3 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15) and not _paws_on(t, 0.05).is_empty():
 		return
 	var kind := "jab"
 	var r := rng.randf()
@@ -1999,19 +2066,10 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 		var lo := lower_of(arm)
 		if lo == null:
 			continue
-		var dir: Vector3 = (tp - lo.global_position).normalized()
-		var imp: Vector3
-		match kind:
-			"hook":
-				var side := Vector3(-to.z, 0, to.x) * signf(arm.pa.x)
-				imp = (dir + side * 0.5).normalized() * float(b.imp) * S
-			"slam":
-				imp = (dir + Vector3(0, -0.8, 0)).normalized() * float(b.imp) * S
-			_:
-				imp = (dir + Vector3(0, 0.1, 0)).normalized() * float(b.imp) * S
 		arm.set_meta("ape", kind)
 		lo.set_meta("power", float(b.power))
-		_strike(arm, float(b.t), float(b.cool) + rng.randf() * 0.5, [lo, imp * maxf(1.0, lo.mass / (8.0 * MS))], float(b.wind))
+		lo.set_meta("landed", false)
+		_strike(arm, float(b.t), float(b.cool) + rng.randf() * 0.5, [], float(b.wind))
 	if kind == "slam":
 		# The body comes down behind the fists.
 		torso.apply_central_impulse((to * 0.6 + Vector3(0, -0.3, 0)) * live_mass() * 0.8)

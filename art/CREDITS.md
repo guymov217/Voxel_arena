@@ -74,3 +74,10 @@ way of [lavenderdotpet/cc0-public-domain-sounds](https://github.com/lavenderdotp
 The hyena's giggle and whoop are a hound's yelps, quickened and climbing; the elephant's and the
 mammoth's trumpets and rumbles (`tools/elephant_voice.py`), the gorilla's chest beat and the bull's
 snort are made in code.
+
+## Fonts (store art only)
+
+- `tools/fonts/Cinzel-Black.ttf` — Cinzel by Natanael Gama, SIL Open Font License 1.1
+  ([Google Fonts](https://fonts.google.com/specimen/Cinzel)). Used by `tools/make_capsules.py`
+  and `tools/clip_overlays.py` for the store capsules and the clips' end card; not shipped with
+  the game.

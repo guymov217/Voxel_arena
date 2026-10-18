@@ -805,8 +805,10 @@ func fit_collider() -> void:
 	var solid := PackedByteArray(); solid.resize(n)
 	var holes := 0
 	var any := 0
+	# A cell stops a blade until most of it is gone (a quarter left): at half, a cell that still
+	# looked whole (a few fine voxels out of its eight) let a blade in through an unbroken face.
 	for c in n:
-		solid[c] = 1 if (total[c] > 0 and live[c] * 2 >= total[c]) else 0
+		solid[c] = 1 if (total[c] > 0 and live[c] * 4 >= total[c]) else 0
 		if total[c] > 0 and solid[c] == 0:
 			holes += 1
 		any += solid[c]

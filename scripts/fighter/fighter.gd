@@ -1709,7 +1709,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# turn of the head were a cut), and not a weapon bouncing in a hand at rest.
 	var sw: Weapon = weapons.R
 	if sw and not sw.is_shield and power:
-		var tip := (sw.angular_velocity - torso.angular_velocity).length() * sw.reach
+		# Only the turn that carries the tip through the air: the blade turned about its own
+		# length (the wheel setting the edge) moves the tip a finger's breadth, not its reach.
+		var rel_w: Vector3 = sw.angular_velocity - torso.angular_velocity
+		var haft: Vector3 = PD.quat_of(sw) * Vector3.UP
+		var tip := (rel_w - haft * rel_w.dot(haft)).length() * sw.reach
 		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	# Armour is carried: every exertion (sprinting, swinging, the struggle) costs more breath
 	# the more he has on.
@@ -2382,14 +2386,21 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	# stays as the wheel set it in the hand, the bit forward and inward for the forehand. Turning
 	# it to lead every stroke rolled it half a turn at each change of way, and the blow landed
 	# in the middle of the roll, on the flat or the back.
+	var tw := float(inp.get("twist" if side == "R" else "offTwist", 0.0))
+	var led := false
 	if stroke_dir[side] != null and not is_spear(w) and w.edge_side() == 0.0:
 		var lead: Vector3 = stroke_dir[side]
 		lead -= axis * lead.dot(axis)
 		if lead.length_squared() > 1e-4:
-			lead = lead.normalized()
-			var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else ed
-			ed = lead * (1.0 if prev_ed.dot(lead) >= 0.0 else -1.0)
-	ed = ed.rotated(axis, float(inp.get("twist" if side == "R" else "offTwist", 0.0)))
+			# The nearer side to lead is judged with the wheel's turn already on it: judged
+			# without it, a turn past a quarter flipped the choice every frame and the blade
+			# spun on in the hand, eating the breath and the swing.
+			var lt := lead.normalized().rotated(axis, tw)
+			var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else lt
+			ed = lt * (1.0 if prev_ed.dot(lt) >= 0.0 else -1.0)
+			led = true
+	if not led:
+		ed = ed.rotated(axis, tw)
 	var prev = aim_q[side]
 	if prev != null:
 		# Only the blade's line is held to the speed the weapon allows; turning the edge about

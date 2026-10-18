@@ -36,7 +36,7 @@ common/physics_ticks_per_second=120
 common/max_physics_steps_per_frame=8
 common/physics_interpolation=true
 jolt_physics_3d/simulation/velocity_steps=12
-jolt_physics_3d/simulation/position_steps=4
+jolt_physics_3d/simulation/position_steps=12
 3d/default_gravity=9.81
 
 [rendering]

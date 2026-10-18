@@ -24,6 +24,23 @@ static func _shift(lo: float, hi: float, lim: float) -> float:
 		return lo + lim
 	return 0.0
 
+## The camera kept on the fighter's side of the arena wall (and of the yard's walls and props):
+## backed against the wall, it comes in along its line to him instead of going through into the
+## stands. A ray from his shoulders to where the camera would be; what it hits first stops it.
+func _clear_of_walls(from: Vector3, to: Vector3) -> Vector3:
+	if not is_inside_tree():
+		return to
+	var q := PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return to
+	var d := to - from
+	var len := d.length()
+	if len < 1e-4:
+		return to
+	# A hand's width short of the wall, so the near plane never cuts into it.
+	return from + d / len * maxf(0.05, from.distance_to(hit.position) - 0.25)
+
 ## The menu's attract mode: a slow orbit around the action.
 var orbit_a := 0.0
 func orbit(center: Vector3, dt: float) -> void:
@@ -78,6 +95,7 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null)
 		clear_k = move_toward(clear_k, 1.0 if blocked else 0.0, dt * (2.5 if blocked else 0.8))
 		want += (right * 0.55 + Vector3(0, 0.3, 0)) * S * clear_k * (1.0 - aim_k)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
+		pos = _clear_of_walls(base + Vector3(0, 0.5 * S, 0), pos)
 		# The view looks where the mouse points: all the way down at the sand at your feet,
 		# or up at the stands (it used to look at a point two strides ahead, and looking down
 		# hardly tilted it).

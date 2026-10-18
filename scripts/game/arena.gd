@@ -68,7 +68,7 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	e.glow_hdr_threshold = 1.1
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	e.volumetric_fog_enabled = lv >= 2
-	e.volumetric_fog_density = 0.005
+	e.volumetric_fog_density = 0.004
 	e.volumetric_fog_albedo = Color(0.85, 0.76, 0.6)
 	e.volumetric_fog_anisotropy = 0.6
 	e.volumetric_fog_length = 48.0
@@ -93,22 +93,25 @@ func _build_visuals() -> void:
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	e.ambient_light_sky_contribution = 0.55
 	e.ambient_light_color = Color(0.85, 0.72, 0.55)
-	e.ambient_light_energy = 0.6 if day else 0.27
+	# Clear and easy on the eye: the sun a little lower and softer, the exposure down a touch so
+	# the sand no longer glares white, the colours kept bright (the "clear" look, E, of the
+	# lighting trials: tests/lightshots.gd).
+	e.ambient_light_energy = 0.65 if day else 0.27
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.88
+	e.tonemap_exposure = 0.8 if day else 0.88
 	e.tonemap_white = 6.0
 	e.adjustment_enabled = true
-	e.adjustment_saturation = 1.08
-	e.adjustment_contrast = 1.12
+	e.adjustment_saturation = 1.05 if day else 1.08
+	e.adjustment_contrast = 1.1 if day else 1.12
 	e.fog_density = 0.0015 if day else 0.008
 	e.fog_light_color = Color(0.82, 0.74, 0.6)
 	we.environment = e
 	add_child(we)
 	env = e
 	sun = DirectionalLight3D.new()
-	sun.light_energy = 1.65 if day else 0.25
-	sun.light_color = Color(1.0, 0.9, 0.74) if day else Color(0.5, 0.56, 0.75)
-	sun.rotation = Vector3(deg_to_rad(-48), deg_to_rad(35), 0)
+	sun.light_energy = 1.5 if day else 0.25
+	sun.light_color = Color(1.0, 0.9, 0.78) if day else Color(0.5, 0.56, 0.75)
+	sun.rotation = Vector3(deg_to_rad(-38 if day else -48), deg_to_rad(35), 0)
 	add_child(sun)
 	apply_quality(e, sun, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
 	# Particles land on the sand instead of falling through it.
@@ -149,6 +152,7 @@ static func sand_material() -> StandardMaterial3D:
 	m.uv1_world_triplanar = true
 	m.uv1_scale = Vector3.ONE / 32.0
 	m.uv1_offset = Vector3(0.5, 0.5, 0.5)
+	m.albedo_color = Color(0.74, 0.74, 0.74)   # a shade down: bright sand under a high sun glared
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 	m.roughness = 0.97
 	m.specular = 0.25
@@ -171,6 +175,8 @@ static func sky_material(day: bool) -> ShaderMaterial:
 	m.set_shader_parameter("clouds_noise", nt)
 	if day:
 		m.set_shader_parameter("night", 0.0)
+		m.set_shader_parameter("top_color", Color(0.28, 0.47, 0.78))
+		m.set_shader_parameter("horizon_color", Color(0.88, 0.8, 0.68))
 	else:
 		m.set_shader_parameter("night", 1.0)
 		m.set_shader_parameter("top_color", Color(0.01, 0.015, 0.04))

@@ -15,8 +15,6 @@ var done: Callable
 var free_build := false   # training: nothing costs anything
 var workshop := false     # the main menu's forge: design and save to My designs, nothing taken or paid
 var scratch := false      # at the smith, a new weapon from nothing (any kind), paid for as made
-var family := ""          # the smith reshapes a weapon within its kind (Arms.family): "" = anything goes
-const FAMILY_NAMES := {"blade": "a blade", "axe": "an axe", "spear": "a spear", "blunt": "a hammer or a mace", "shield": "a shield", "bow": "a bow", "crossbow": "a crossbow", "chain": "a chain weapon", "other": "what it is"}
 
 var mat := "steel"
 var job := "edge"
@@ -49,6 +47,8 @@ var cells := {}                 # Vector3i -> [mat, job]
 var orbit := Vector2(0.6, 0.35)
 var dist := 1.6
 var dragging := false
+var focus := Vector3.ZERO     # what the camera looks at: set when a weapon is framed, then the player's
+var moved := false            # the player has placed the camera: no more turning by itself
 var idle_t := 0.0
 var swing_t := -1.0
 
@@ -82,8 +82,9 @@ func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	done = cb
 	rng.randomize()
 	original_value = Arms.value(design)
-	family = "" if free_build or scratch else Arms.family(design)
-	if family == "blunt":
+	# Any weapon may be made into any other (a stick into a sword): the smith charges what the
+	# new one is worth over the old. A blunt one starts with the blunt job in hand.
+	if Arms.family(design) == "blunt":
 		job = "blunt"
 	_load_cells(design)
 	_build_ui()
@@ -398,7 +399,7 @@ func _try_row() -> HBoxContainer:
 	return row
 
 func _cards_ui() -> void:
-	if family == "":   # (reshaping a weapon at the smith keeps it what it is: no blank anvil there)
+	if free_build or scratch:   # (reshaping a weapon at the smith: no blank anvil there)
 		mode_box.add_child(UIStyle.button("Blank anvil · build from nothing", _blank))
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
 	var grid := GridContainer.new()
@@ -406,18 +407,14 @@ func _cards_ui() -> void:
 	mode_box.add_child(grid)
 	for k in ForgeLib.BASES:
 		var key: String = k
-		if family != "" and Arms.BASE_FAMILY.get(key, "") != family:
-			continue
 		var b := UIStyle.button(ForgeLib.BASES[k].label, func(): _pick_base(key))
 		b.tooltip_text = ForgeLib.BASES[k].blurb
 		b.toggle_mode = true
 		b.button_pressed = key == base_key
 		b.custom_minimum_size = Vector2(135, 0)
 		grid.add_child(b)
-	if family != "" and not Arms.BASE_FAMILY.values().has(family):
-		mode_box.add_child(UIStyle.label("No base for this one: Vulcanus reshapes it voxel by voxel.", 13, UIStyle.MUTED))
 	if base_key == "":
-		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil." + ("" if family == "" else " It stays %s." % FAMILY_NAMES.get(family, "what it is")), 13, UIStyle.MUTED))
+		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil.", 13, UIStyle.MUTED))
 		return
 	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
 	var cards := GridContainer.new()
@@ -529,11 +526,8 @@ func _voxels_ui() -> void:
 	mode_box.add_child(md)
 	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
 	var jr := HBoxContainer.new()
-	var blunt := family == "blunt"
 	for j in JOBS:
 		var key: String = j
-		if blunt and (key == "edge" or key == "point"):
-			continue
 		var b := UIStyle.button(j.capitalize(), func():
 			job = key
 			_show_mode("voxels"))
@@ -589,7 +583,6 @@ func _toolbar_ui() -> void:
 	tool_bar.visible = mode == "voxels"
 	if mode != "voxels":
 		return
-	var blunt := family == "blunt"
 	var rows := VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 4)
 	tool_bar.add_child(rows)
@@ -705,11 +698,7 @@ func _gallery_ui() -> void:
 		card.add_child(nm)
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		var fits := family == "" or Arms.family(d) == family
-		var ld := UIStyle.button("Load", func(): _load_design(d))
-		ld.disabled = not fits
-		ld.tooltip_text = "" if fits else "Not %s: Vulcanus reshapes yours within its kind" % FAMILY_NAMES.get(family, "the same kind")
-		row.add_child(ld)
+		row.add_child(UIStyle.button("Load", func(): _load_design(d)))
 		if scratch:
 			# At the smith: have it made as it is, for what it is worth.
 			var price := Arms.design_price(d)
@@ -890,14 +879,12 @@ func _rebuild() -> void:
 		var ext := 0.0
 		for k in cells:
 			ext = maxf(ext, (Vector3(k) * vs - centre).length())
-		# The whole of it in view, turned any way, clear of the toolbar: framed when it is put
-		# on the anvil, and backed off as it grows past the frame (never pushed in on the builder).
+		# The whole of it in view, turned any way, clear of the toolbar: framed once, when it is
+		# put on the anvil (or with F). After that the camera stays where the player put it,
+		# however the weapon grows.
 		fit_dist = maxf(0.4, (ext + vs) / sin(deg_to_rad(_view_fov() * 0.5)) * 1.1 + 0.1)
 		if not framed:
-			framed = true
-			dist = fit_dist
-		elif dist < fit_dist * 0.85:
-			dist = fit_dist
+			_frame()
 	_place_camera()
 	_update_texts()
 
@@ -915,18 +902,44 @@ func _decor_shown(on: bool) -> void:
 		if c is Node3D:
 			c.visible = on
 
+## The whole weapon in view: the camera aimed at its middle and backed off to take it all in.
+func _frame() -> void:
+	framed = true
+	dist = fit_dist
+	focus = weapon_root.get_meta("centre", Vector3.ZERO)
+	_place_camera()
+
 func _place_camera() -> void:
 	_decor_shown(dist < 2.6)
-	# Aimed a little above the weapon's middle: it sits low in the view, clear of the toolbar.
-	var c: Vector3 = weapon_root.get_meta("centre", Vector3.ZERO) + Vector3(0, 0.08 * dist, 0)
+	# Aimed a little above the point it looks at: the weapon sits low in the view, clear of the
+	# toolbar.
+	var c: Vector3 = focus + Vector3(0, 0.08 * dist, 0)
 	cam.global_position = c + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
 	cam.look_at(c)
+
+## The camera slid sideways and up or down in its own plane (a pan), as far as the mouse moved:
+## what was under the mouse stays under it.
+func _pan(rel: Vector2) -> void:
+	var px := 2.0 * dist * tan(deg_to_rad(cam.fov * 0.5)) / maxf(1.0, float(viewport.size.y))
+	var b := cam.global_transform.basis
+	focus += (-b.x * rel.x + b.y * rel.y) * px
+	_place_camera()
+
+## The wheel draws the camera in toward what is under the mouse (or out from it).
+func _zoom(at: Vector2, k: float) -> void:
+	var a := _aim(at)
+	var cell = a.get("hit") if a.get("hit") != null else a.get("place")
+	var nd := clampf(dist * k, 0.15, maxf(8.0, fit_dist * 2.0))
+	if cell != null and k < 1.0:
+		focus = focus.lerp(Vector3(cell) * Data.weapon_voxel, 1.0 - nd / dist)
+	dist = nd
+	_place_camera()
 
 func _process(dt: float) -> void:
 	if viewport == null:
 		return
 	idle_t += dt
-	if idle_t > 4.0 and not dragging and swing_t < 0.0:
+	if idle_t > 4.0 and not dragging and not moved and swing_t < 0.0:
 		orbit.x += dt * 0.25   # left alone, it turns slowly on the anvil
 		_place_camera()
 	# Swing it: the weapon swept round its grip at the speed it would really swing.
@@ -949,11 +962,11 @@ func _on_view_input(e: InputEvent) -> void:
 	idle_t = 0.0
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			dist = maxf(0.3, dist * 0.9)
-			_place_camera()
+			moved = true
+			_zoom(e.position, 0.88)
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(maxf(8.0, fit_dist * 2.0), dist * 1.1)
-			_place_camera()
+			moved = true
+			_zoom(e.position, 1.0 / 0.88)
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
 			stroke = {"erase": false, "done": {}, "undo": false}
 			_click(e.position)
@@ -966,10 +979,15 @@ func _on_view_input(e: InputEvent) -> void:
 			_erase_at(e.position)
 	if e is InputEventMouseButton and not e.pressed and (e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT):
 		stroke = {}
+	# The middle button turns the camera round the weapon; with Shift held it slides it instead.
 	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and mode == "cards")):
 		dragging = e.pressed
+		if e.pressed:
+			moved = true
 	if e is InputEventMouseMotion:
-		if dragging:
+		if dragging and e.shift_pressed:
+			_pan(e.relative)
+		elif dragging:
 			orbit.x -= e.relative.x * 0.01
 			orbit.y = clampf(orbit.y + e.relative.y * 0.01, -1.4, 1.4)
 			_place_camera()
@@ -1205,7 +1223,9 @@ func _redo() -> void:
 	_rebuild()
 
 func _unhandled_key_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Y:
+	if e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_F and viewport:
+		_frame()   # the whole weapon back in view
+	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Y:
 		_redo()
 	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:
 		if e.shift_pressed:
@@ -1221,9 +1241,6 @@ func _take() -> void:
 		return
 	if not st.hasGrip:
 		cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
-		return
-	if family != "" and Arms.family(d) != family:
-		cost_label.text = "Vulcanus reshapes it, he does not make it something else: it must stay %s" % FAMILY_NAMES.get(family, "what it is")
 		return
 	d.stats = st
 	var cost := 0 if free_build else _value_now() - original_value

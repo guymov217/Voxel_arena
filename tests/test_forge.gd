@@ -80,8 +80,9 @@ func test_a_dragged_stroke_builds_many_voxels_with_one_undo() -> void:
 	t.check(f.cells.size() - n0 <= 2, "a build stroke does not stack on itself (%d added)" % (f.cells.size() - n0))
 	f.queue_free()
 
-## The smith reshapes a weapon within its kind: a hammer stays a hammer, and a blunt one is not honed.
-func test_reshaping_keeps_the_kind_of_weapon() -> void:
+## The kinds of weapon are told apart, a blunt one is not honed, and the smith makes any weapon
+## into any other: a hammer into a blade, for what the blade is worth over the hammer.
+func test_reshaping_into_another_kind_costs_the_difference() -> void:
 	var want := {"gladius": "blade", "longsword": "blade", "zweihander": "blade", "dagger": "blade", "axe": "axe", "executionerAxe": "axe",
 		"spear": "spear", "javelin": "spear", "trident": "spear", "mace": "blunt", "warhammer": "blunt", "hammer": "blunt",
 		"roundShield": "shield", "scutum": "shield", "bow": "bow", "crossbow": "crossbow", "flail": "chain"}
@@ -99,21 +100,27 @@ func test_reshaping_keeps_the_kind_of_weapon() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
 	f.open(Data.preset("warhammer"), 5000, func(_d, _c): pass)
-	t.eq(f.family, "blunt", "the warhammer on the anvil")
-	t.eq(f.job, "blunt", "nothing to put an edge on")
+	t.eq(f.job, "blunt", "a hammer starts with the blunt job in hand")
 	var bases := []
 	for c in f.find_children("*", "Button", true, false):
 		for k in ForgeLib.BASES:
 			if c.text == ForgeLib.BASES[k].label:
 				bases.append(k)
-	t.check(not bases.has("gladius") and not bases.has("silly"), "no sword base for a hammer (%s)" % str(bases))
-	# Paint an edge on it: the smith will not hand it over as a blade.
+	f._show_mode("cards")
+	for c in f.find_children("*", "Button", true, false):
+		for k in ForgeLib.BASES:
+			if c.text == ForgeLib.BASES[k].label and not bases.has(k):
+				bases.append(k)
+	t.check(bases.has("gladius"), "a sword base for a hammer too (%s)" % str(bases))
+	# Paint an edge on it: the smith hands it over as a blade, for the difference.
 	var taken := []
-	f.done = func(d, _c): taken.append(d)
+	f.done = func(d, c): taken.append([d, c])
 	for k in f.cells.keys():
-		f.cells[k] = ["steel", "edge"]
+		f.cells[k] = ["steel", "edge"] if k.y > 0 else ["wood", "grip"]
 	f._take()
-	t.eq(taken.size(), 0, "a hammer made into a blade is refused")
+	t.eq(taken.size(), 1, "a hammer made into a blade is taken")
+	if taken.size() == 1:
+		t.check(int(taken[0][1]) == f._value_now() - f.original_value, "charged what it is worth over the hammer (%d)" % int(taken[0][1]))
 	f.queue_free()
 
 ## A design saved goes into My designs and loads back onto the anvil.
@@ -242,7 +249,7 @@ func test_mirror_both_ways_slow_erase_and_blank_only_from_scratch() -> void:
 	sc.scratch = true
 	sc.open({"name": "New weapon", "voxels": [[0, 0, 0, "wood", "grip"]]}, 500, func(_d, _c): pass)
 	sc._show_mode("cards")
-	t.check(has_blank.call(sc) and sc.family == "", "from nothing: any kind, blank anvil there")
+	t.check(has_blank.call(sc), "from nothing: any kind, blank anvil there")
 	sc.queue_free()
 
 ## Move hand: the builder drags the hand onto any block (both hands on a two-handed weapon,
