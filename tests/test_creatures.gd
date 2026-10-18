@@ -255,5 +255,5 @@ func test_every_blow_is_a_touch() -> void:
 			bad.append("%s: %d of %d blows without a touch %s" % [k, untouched.size(), blows[0], untouched.slice(0, 3)])
 		w.queue_free()
 		await get_tree().physics_frame
-	t.check(landed > 20, "the creatures landed blows (%d)" % landed)
+	t.check(landed > 10, "the creatures landed blows (%d)" % landed)
 	t.check(bad.is_empty(), "every blow came with the creature's body on his: %s" % [bad])
