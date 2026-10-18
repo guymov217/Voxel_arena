@@ -569,8 +569,7 @@ func _voxels_ui() -> void:
 	sr.add_child(sl_l)
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sr.add_child(sl)
-	if not blunt:
-		mode_box.add_child(sr)
+	mode_box.add_child(sr)
 	var cl := UIStyle.label("", 13, UIStyle.MUTED)
 	cl.set_meta("checklist", true)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

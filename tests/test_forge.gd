@@ -148,7 +148,7 @@ func test_a_saved_design_loads_back() -> void:
 	for c in r.find_children("*", "Button", true, false):
 		if c.text == "Load":
 			load_btn = c
-	t.check(load_btn != null and load_btn.disabled, "an axe design cannot be loaded onto a hammer at the smith")
+	t.check(load_btn != null and not load_btn.disabled, "an axe design loads onto a hammer at the smith too (paid for the difference)")
 	r.queue_free()
 	Save.set_value("forge_gallery", keep)
 
@@ -432,7 +432,9 @@ func test_the_whole_weapon_is_always_in_view() -> void:
 		if d == pole:
 			f.queue_free()
 			continue
-		# Built out to three metres long: the camera follows it out.
+		# Built out to three metres long: the camera stays where the builder put it (it no longer
+		# backs off at every block), and F frames the whole of it again.
+		var dist0: float = f.dist
 		var add := []
 		for y in range(-14, 80):
 			add.append(Vector3i(0, y, 0))
@@ -441,7 +443,10 @@ func test_the_whole_weapon_is_always_in_view() -> void:
 				f.cells[c] = ["wood", "blunt"]
 		f._rebuild()
 		await get_tree().process_frame
-		t.check(_all_in_view(f), "%s built out long: still all in view (camera %.2f m off)" % [d.name, f.dist])
+		t.check(is_equal_approx(f.dist, dist0), "%s built out long: the camera stayed put (%.2f m, was %.2f)" % [d.name, f.dist, dist0])
+		f._frame()
+		await get_tree().process_frame
+		t.check(_all_in_view(f), "%s built out long: F brings all of it into view (camera %.2f m off)" % [d.name, f.dist])
 		f.queue_free()
 
 func _all_in_view(f) -> bool:

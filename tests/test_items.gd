@@ -167,3 +167,20 @@ func test_the_physicians_supplies_do_what_they_say() -> void:
 	await _steps(3)
 	t.check(absf(float(a.f.mods.drunk) - 0.5) < 0.01, "when it wears off he is as drunk as the decree had him (%.2f)" % float(a.f.mods.drunk))
 	m.queue_free()
+
+## The bag: nine kinds at most, one heavy thing, three pots, five of something light; an old
+## save carrying more is cut down to that.
+func test_the_bag_holds_nine_kinds_and_sensible_stacks() -> void:
+	t.eq(Throwables.stack_max("anvil"), 1, "one anvil")
+	t.eq(Throwables.stack_max("nailPot"), 3, "three nail pots")
+	t.eq(Throwables.stack_max("bread"), 5, "five loaves")
+	var inv := {"nailPot": 3}
+	t.check(not Throwables.bag_has_room(inv, "nailPot"), "no fourth nail pot")
+	t.check(Throwables.bag_has_room(inv, "bread"), "room for bread beside them")
+	var nine := {}
+	for id in (Data.shop.throwables.keys() as Array).slice(0, 9):
+		nine[id] = 1
+	var tenth: String = Data.shop.throwables.keys()[9]
+	t.check(not Throwables.bag_has_room(nine, tenth), "no tenth kind")
+	var old := Net.sanitize_kit({"nailPot": 9, "anvil": 4, "bread": 9})
+	t.eq([int(old.nailPot), int(old.anvil), int(old.bread)], [3, 1, 5], "an old bag cut down to what it may hold")

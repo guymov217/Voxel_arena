@@ -109,7 +109,7 @@ func _ready() -> void:
 	ps.content_margin_left = 32; ps.content_margin_right = 32; ps.content_margin_top = 26; ps.content_margin_bottom = 26
 	panel_style = ps
 	col.add_child(panel)
-	var ver := UIStyle.label("v%s · Godot %s" % [ProjectSettings.get_setting("application/config/version", "0.1"), Engine.get_version_info().string], 12, Color(1, 1, 1, 0.45))
+	var ver := UIStyle.label("v%s" % ProjectSettings.get_setting("application/config/version", "0.1"), 12, Color(1, 1, 1, 0.45))
 	ver.anchor_left = 1.0; ver.anchor_right = 1.0
 	ver.offset_left = -420; ver.offset_right = -20; ver.offset_top = 12; ver.offset_bottom = 34
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -753,16 +753,13 @@ func _start_training() -> void:
 
 ## The market's wares to try out in training, free: what is taken, how many of each (up to 9
 ## kinds, one for each number key).
-const TRAINING_BAG_MAX := 9
+const TRAINING_BAG_MAX := Throwables.BAG_KINDS
 func _bag_clean(raw) -> Dictionary:
 	var out := {}
 	if raw is Dictionary:
-		var table: Dictionary = Data.shop.get("throwables", {})
 		for id in raw:
-			var n := clampi(int(raw[id]), 0, 9)
-			if table.has(str(id)) and n > 0 and out.size() < TRAINING_BAG_MAX:
-				out[str(id)] = n
-	return out
+			out[str(id)] = int(raw[id])
+	return Throwables.bag_clamp(out)
 
 func _training_bag(v: VBoxContainer) -> void:
 	var bag := _bag_clean(training.get("bag", {}))
@@ -823,11 +820,12 @@ func _training_bag(v: VBoxContainer) -> void:
 		row.add_child(cnt)
 		var plus := UIStyle.button("+", func():
 			var b: Dictionary = training.bag
-			b[item_id] = mini(9, int(b.get(item_id, 0)) + 1)
+			if Throwables.bag_has_room(b, item_id):
+				b[item_id] = int(b.get(item_id, 0)) + 1
 			Save.set_value("training", training)
 			show_screen("training"))
 		plus.custom_minimum_size = Vector2(36, 34)
-		plus.disabled = have >= 9 or (have == 0 and bag.size() >= TRAINING_BAG_MAX)
+		plus.disabled = not Throwables.bag_has_room(bag, item_id)
 		row.add_child(plus)
 		grid.add_child(tile)
 		Thumbs.item(tex, id)   # once it is in the tree, so the picture can be made for it
@@ -1747,8 +1745,8 @@ func _circus_market(v: VBoxContainer) -> void:
 			if int(r2.gold) < price:
 				show_screen("circus_market", "Not enough gold")
 				return
-			if int(r2.inventory.get(id, 0)) >= 9:
-				show_screen("circus_market", "You can carry no more of those")
+			if not Throwables.bag_has_room(r2.inventory, id):
+				show_screen("circus_market", "Your bag is full: %d of those at most, %d kinds in all" % [Throwables.stack_max(id), Throwables.BAG_KINDS])
 				return
 			r2.gold = int(r2.gold) - price
 			r2.inventory[id] = int(r2.inventory.get(id, 0)) + 1
@@ -1900,21 +1898,22 @@ func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Co
 	if FRIENDLY_FIRE.has(id):
 		col.add_child(UIStyle.label("Hurts friends too", 11, Color(0.95, 0.55, 0.4)))
 	var price := int(it.price)
-	var b := UIStyle.button("Buy · %d denarii" % price if have < 9 else "Bag full (9)", func():
+	var room := Throwables.bag_has_room(kit(), id)
+	var b := UIStyle.button("Buy · %d denarii" % price if room else ("Bag full (%d)" % Throwables.stack_max(id) if have > 0 else "Bag full (%d kinds)" % Throwables.BAG_KINDS), func():
 		var k2 := kit()
 		if price > coins():
 			show_screen(back, "Not enough denarii")
 			return
-		if int(k2.get(id, 0)) >= 9:
-			show_screen(back, "You can carry no more of those")
+		if not Throwables.bag_has_room(k2, id):
+			show_screen(back, "Your bag is full: %d of those at most, %d kinds in all" % [Throwables.stack_max(id), Throwables.BAG_KINDS])
 			return
 		add_coins(-price)
 		k2[id] = int(k2.get(id, 0)) + 1
 		set_kit(k2)
 		if Sfx:
 			Sfx.play("pickup", Vector3.ZERO, 0.6)
-		show_screen(back), price <= coins() and have < 9)
-	b.disabled = price > coins() or have >= 9
+		show_screen(back), price <= coins() and room)
+	b.disabled = price > coins() or not room
 	col.add_child(b)
 	return card
 

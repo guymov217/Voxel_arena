@@ -24,6 +24,39 @@ func _init(match_: Node) -> void:
 	m = match_
 	headless = match_.headless
 
+## What a bag holds: nine kinds at most (one for each number key), and of each as many as can
+## be carried into a fight: one of a heavy thing, three pots or bombs, five of something light.
+const BAG_KINDS := 9
+const STACK_HEAVY := ["anvil", "goat", "bigNet", "beehive", "harpoon"]
+const STACK_LIGHT := ["bandage", "bread", "wine", "bananas", "cheese", "darts", "caltrops", "discus"]
+
+static func stack_max(id: String) -> int:
+	return 1 if STACK_HEAVY.has(id) else (5 if STACK_LIGHT.has(id) else 3)
+
+## Whether one more `id` fits in the bag: below its stack, and a new kind only while there are
+## fewer than nine.
+static func bag_has_room(inv: Dictionary, id: String) -> bool:
+	var have := int(inv.get(id, 0))
+	if have >= stack_max(id):
+		return false
+	if have > 0:
+		return true
+	var kinds := 0
+	for k in inv:
+		if int(inv[k]) > 0:
+			kinds += 1
+	return kinds < BAG_KINDS
+
+## A bag cut down to what it may hold (an old save, a guest's kit): each stack to its most,
+## and only the first nine kinds.
+static func bag_clamp(inv: Dictionary) -> Dictionary:
+	var out := {}
+	for id in Data.shop.get("throwables", {}):
+		var n := mini(int(inv.get(id, 0)), stack_max(id))
+		if n > 0 and out.size() < BAG_KINDS:
+			out[id] = n
+	return out
+
 static func hotbar_of(inv: Dictionary) -> Array:
 	var out := []
 	for id in Data.shop.get("throwables", {}):

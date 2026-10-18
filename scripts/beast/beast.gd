@@ -548,6 +548,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 								var on: VoxelPart = Combat.current.touch_by(fist, t, 0.02) if Combat.current else null
 								if on and Social.box_distance(on, fist.global_position) < maxf(fist.half_ext.x, maxf(fist.half_ext.y, fist.half_ext.z)) + 0.05:
 									_hold(fist, on, fist.global_position)
+									fist.set_meta("gripped", true)
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
 				var a := rng.randf() * TAU
@@ -877,7 +878,10 @@ func _squeeze(dt: float) -> void:
 		ai.t = 1.0
 		return
 	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and the man is
-	# torn in two.
+	# torn in two. The hand not yet on him reaches for him (the arm's pull, like a blow's, only
+	# slower) and takes hold where it lands.
+	if species == "gorilla":
+		_ape_reach(tgt)
 	var fists := _fists_on(tgt) if species == "gorilla" else []
 	if fists.size() >= 2 and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
 		hug.rent = true
@@ -906,6 +910,30 @@ func _paws_on(tgt, within: float) -> Array:
 		if paw and not paw.severed and Combat.current and Combat.current.touch_by(paw, tgt, within) != null:
 			out.append(paw)
 	return out
+
+## In the hug, each of the ape's fists not yet on him is driven at the limb it will tear (the
+## right fist at his left leg, the left at his right arm, or the other way about), and holds fast
+## once it touches.
+func _ape_reach(tgt) -> void:
+	var tv: Vector3 = torso.linear_velocity
+	for n in ["legFLLo", "legFRLo"]:
+		var fist: VoxelPart = by_name.get(n)
+		if fist == null or fist.severed:
+			continue
+		var on: VoxelPart = Combat.current.touch_by(fist, tgt, 0.05) if Combat.current else null
+		if on:
+			if not fist.get_meta("gripped", false) and Social.box_distance(on, fist.global_position) < maxf(fist.half_ext.x, maxf(fist.half_ext.y, fist.half_ext.z)) + 0.05:
+				fist.set_meta("gripped", true)
+				_hold(fist, on, fist.global_position)
+			continue
+		var want_part = tgt.by_name.get("thighL" if n == "legFRLo" else "upperArmR")
+		if want_part == null or want_part.severed:
+			want_part = tgt.torso
+		var dir: Vector3 = (want_part.global_position - fist.global_position).normalized()
+		var dv: Vector3 = dir * 3.5 * sqrt(S) - (fist.linear_velocity - tv)
+		var acc := (dv / maxf(0.02, get_physics_process_delta_time() * 4.0)).limit_length(APE_PULL * 0.6 * sqrt(S))
+		fist.apply_central_force(acc * fist.mass)
+		torso.apply_central_force(-acc * fist.mass * 0.5)
 
 ## The gorilla's fists that are on him now (the physics' contacts), for the tearing.
 func _fists_on(tgt) -> Array:
@@ -2006,6 +2034,9 @@ func _free_holds() -> void:
 		if j and is_instance_valid(j):
 			j.queue_free()
 	holds.clear()
+	for n in ["legFLLo", "legFRLo"]:
+		if by_name.has(n):
+			by_name[n].set_meta("gripped", false)
 
 ## The ape's blows, each a swing of its own and each as hard as the swing (APE_BLOWS: the wind-up,
 ## the blow, the rest after, how fast the arm drives the fist (m/s, for an ape of scale 1), and

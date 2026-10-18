@@ -10,6 +10,13 @@ itself: `docs/store/screenshots/` and `docs/store/capsules/` (how to remake them
 
 **WRECKSMITH**
 
+## Genre, in one line (for the page, press and Next Fest)
+
+A **physics-based melee action game** set in a Roman arena: a gladiator brawler where you
+**build your own weapons voxel by voxel** and wield them with direct mouse-driven arm control,
+against men, beasts and mythical monsters, in a single-player campaign or online co-op and PvP
+for up to 8 players.
+
 ## Short description (300 characters at most; this is 252)
 
 > Forge a weapon voxel by voxel, then swing it with your own two hands. A physics gladiator game
@@ -20,7 +27,15 @@ itself: `docs/store/screenshots/` and `docs/store/capsules/` (how to remake them
 
 ```
 [h2]Build it. Swing it. Wreck everything.[/h2]
-WRECKSMITH is a physics gladiator game. There are no canned attacks: your mouse is your arm. Swing hard and the blade bites deep; swing lazily and it glances off. Every fighter, beast and monster is made of voxels, and every voxel can be cut, crushed or torn away.
+WRECKSMITH is a physics gladiator game. There are no canned attacks: [b]your mouse is your arm[/b]. Swing hard and the blade bites deep; swing lazily and it glances off. Every fighter, beast and monster is made of voxels, and [b]every voxel can be cut, crushed or torn away[/b].
+
+[h2]What you do[/h2]
+[list]
+[*][b]Forge[/b] a weapon at the smith, voxel by voxel: pick the material of every block, which part cuts, stabs or crushes, and where your hand holds it.
+[*][b]Fight[/b] with it in the arena. Move with the keys, steer each hand with the mouse, turn the edge with the wheel, thrust, kick, grab and throw.
+[*][b]Survive[/b] what you have done: wounds bleed, broken limbs stay broken, weapons chip and dull. The physician patches you up between bouts, for a price.
+[*][b]Spend[/b] your purse on armour you design yourself, pots of Greek fire and nails, and better steel, then climb the next stage of the campaign, alone or with friends.
+[/list]
 
 [h2]The forge[/h2]
 [list]

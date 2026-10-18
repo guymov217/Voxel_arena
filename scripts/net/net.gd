@@ -337,7 +337,7 @@ static func sanitize_kit(k) -> Dictionary:
 		for id in k:
 			if Data.shop.get("throwables", {}).has(str(id)):
 				out[str(id)] = clampi(int(k[id]), 0, 20)
-	return out
+	return Throwables.bag_clamp(out)
 
 ## A guest's latest input; a one-shot press in it (a jump, a grab) is handed out once.
 func input_of(id: int) -> Dictionary:

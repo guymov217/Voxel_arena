@@ -32,7 +32,22 @@ func _ready() -> void:
 		{"name": "06_chaos_decrees", "opts": {"mode": "chaos"}, "J": 30.0, "cam": "close"},
 		{"name": "07_red_vs_blue", "opts": {"mode": "teams"}, "J": 30.0, "cam": "wide"},
 		{"name": "08_in_the_fight", "opts": {"mode": "duel"}, "J": 20.0, "cam": "player"},
+		{"name": "09_gorilla", "opts": {"mode": "training", "training": {"enemy": "gorilla", "immortal": true}, "loadout_override": {"main": "gladius", "off": "roundShield"}}, "J": 30.0, "cam": "close"},
+		{"name": "10_cyclops", "opts": {"mode": "training", "training": {"enemy": "foe:cyclops", "immortal": true}, "loadout_override": {"main": "spear", "off": "scutum"}}, "J": 30.0, "cam": "wide"},
+		{"name": "11_elephant", "opts": {"mode": "training", "training": {"enemy": "elephant", "immortal": true}, "loadout_override": {"main": "warhammer", "off": ""}}, "J": 25.0, "cam": "wide"},
+		{"name": "12_crocodile", "opts": {"mode": "training", "training": {"enemy": "crocodile", "immortal": true}, "loadout_override": {"main": "axe", "off": ""}}, "J": 25.0, "cam": "close"},
 	]
+	if only == "" or only == "forge":
+		# The forge: a two-handed axe on the anvil, half built.
+		var fg = load("res://scripts/ui/forge.gd").new()
+		fg.free_build = true
+		fg.workshop = true
+		menu.add_child(fg)
+		fg.open(Data.preset("executionerAxe").duplicate(true), 0, func(_d, _c): pass)
+		for i in 120 * 3:
+			await get_tree().physics_frame
+		_save("13_forge")
+		fg.queue_free()
 	for i in 30:
 		await get_tree().process_frame
 	for sc in scenes:

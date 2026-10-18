@@ -83,7 +83,11 @@ func test_every_creature_animates_and_attacks() -> void:
 		for a in b.anim:
 			first[a.part] = PD.quat_of(a.part.parent_part).inverse() * PD.quat_of(a.part)
 		var moved := 0.0
-		for s in int(7.0 / DT):
+		# Seven seconds to land a blow; a big slow one that starts far off (the hydra) gets up
+		# to twelve to close in, the rest stop at seven as before.
+		for s in int(12.0 / DT):
+			if s >= int(7.0 / DT) and (hits[0] > 0 or stomps[0] > 0):
+				break
 			man.blood = 100.0
 			man.control(DT, {"main": {"x": 0.0, "y": 0.1}})
 			b.control(DT)

@@ -123,13 +123,20 @@ func _ready() -> void:
 	e.background_mode = Environment.BG_CLEAR_COLOR
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(1.0, 0.93, 0.82)
-	e.ambient_light_energy = 0.7
+	e.ambient_light_energy = 0.85
 	env.environment = e
 	vp.add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.light_energy = 1.6
 	sun.rotation = Vector3(-0.9, 0.6, 0)
 	vp.add_child(sun)
+	# A rim from behind and above: the outline of a dark thing (a purple thunder pot, a black
+	# nail pot) stands out on the hotbar's dark iron instead of sinking into it.
+	var rim := DirectionalLight3D.new()
+	rim.light_energy = 1.1
+	rim.light_color = Color(1.0, 0.95, 0.85)
+	rim.rotation = Vector3(-0.5, PI + 0.6, 0)
+	vp.add_child(rim)
 	cam = Camera3D.new()
 	cam.fov = 30.0
 	vp.add_child(cam)
