@@ -52,6 +52,23 @@ it opened. On the second computer open the game in Godot, go to **Multiplayer**,
 IPv4 Address). If Windows asks about the firewall, allow it. Over the internet the host also
 needs port 7777 (UDP) forwarded on the router; Steam lobbies avoid that.
 
+## Before any players: what a computer can host
+
+The host's computer runs the physics of every fighter on the sand; a guest's only draws what
+the host sends. So the first question, how big a room a computer can host, needs no network
+and no players: double-click **`tools/host_bench.bat`** (Windows; `sh tools/host_bench.sh` on
+Linux) on that computer. In about a minute it plays fights of 4, 8, 12 and 16 fighters as fast
+as the computer goes and says, for each, the time of a physics step against the 8.3 ms there is
+(120 steps a second), and the most fighters it hosts smoothly. A fighter counts whoever is on
+the sand: players and enemies.
+
+On the cloud test machine (a 2.8 GHz server core): 4 fighters smooth (6.0 ms), 8 at 10.7 ms,
+16 at 22.4 ms. A gaming PC is usually faster per core than that.
+
+A bad connection can be tried on one computer too: `set LAG=150 & set LOSS=3` before
+`multiplayer_test.bat` holds every message back 150 ms and loses 3% of them; F3 shows what that
+does.
+
 ## Over Steam, with real players
 
 Nothing on one computer says how a game goes between homes: only real players over Steam do. So
