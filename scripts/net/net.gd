@@ -55,14 +55,27 @@ func _ready() -> void:
 	if OS.get_environment("NET_LAG") != "":
 		set_lag(int(OS.get_environment("NET_LAG")), float(OS.get_environment("NET_LOSS")) if OS.get_environment("NET_LOSS") != "" else 0.0)
 
+var meter: CanvasLayer = null
+func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F3 and active():
+		if meter and is_instance_valid(meter):
+			meter.queue_free()
+			meter = null
+			stats_on = false
+		else:
+			meter = load("res://scripts/ui/net_meter.gd").new()
+			add_child(meter)
+			stats_on = true
+
 func set_lag(ms: int, loss_pct := 0.0) -> void:
 	lag_ms = maxi(0, ms)
 	jitter_ms = lag_ms / 4
 	loss = clampf(loss_pct / 100.0, 0.0, 0.9)
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
 	if steam_ready:
 		steam.run_callbacks()
+	_meter(dt)
 	if not _held.is_empty():
 		var now := Time.get_ticks_msec()
 		while not _held.is_empty() and int(_held[0].due) <= now:
@@ -208,6 +221,9 @@ func leave() -> void:
 	if steam_ready and lobby_id:
 		steam.call("leaveLobby", lobby_id)
 	lobby_id = 0
+	ping_ms = -1.0
+	host_rate = -1.0
+	guest_pings.clear()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
@@ -229,6 +245,7 @@ func _on_peer_connected(id: int) -> void:
 			pp.set_timeout(0, 4000, 8000)
 
 func _on_peer_disconnected(id: int) -> void:
+	guest_pings.erase(id)
 	if peers.erase(id):
 		peer_left.emit(id)
 	inputs.erase(id)
@@ -237,9 +254,56 @@ func _on_connected() -> void:
 	connected.emit()
 	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit, "body": my_body})
 
-## Bytes sent by message type (the load test turns it on).
-var stats_on := false
-var stats := {}
+# ---------- How the connection is doing (the F3 meter, and the load test) ----------
+# Every guest asks the host once a second ("_ping"); the host answers at once ("_pong") with
+# its own physics rate. So on Steam as on ENet each game knows its round trip to the host,
+# whether the host keeps up (120 physics steps a second), and the host knows every guest's.
+
+var stats_on := false           # count the bytes (the meter is open, or the load test)
+var stats := {}                 # type -> bytes sent
+var stats_in := {}              # type -> bytes received
+var ping_ms := -1.0             # guest: round trip to the host
+var host_rate := -1.0           # guest: the host's physics steps a second, as it says
+var guest_pings := {}           # host: id -> that guest's round trip
+var step_rate := 120.0          # this game's physics steps over the last second
+var snap_rate := 0.0            # snapshot messages a second (guest)
+var snap_gap := 0               # the longest wait between two snapshots in the last second (ms)
+var _snaps := 0
+var _snap_last := 0
+var _gap := 0
+var _meter_t := 0.0
+var _frames0 := -1
+var _wall0 := 0
+
+func _meter(dt: float) -> void:
+	_meter_t += dt
+	if _meter_t < 1.0:
+		return
+	_meter_t = 0.0
+	var now := Time.get_ticks_msec()
+	var fr := Engine.get_physics_frames()
+	if _frames0 >= 0 and now > _wall0:
+		step_rate = (fr - _frames0) * 1000.0 / float(now - _wall0)
+	_frames0 = fr
+	_wall0 = now
+	snap_rate = float(_snaps)
+	_snaps = 0
+	snap_gap = _gap
+	_gap = 0
+	if active() and not is_host():
+		send_host("_ping", {"t": now, "p": ping_ms}, false)
+
+func _count_in(type: String, data) -> void:
+	if stats_on:
+		stats_in[type] = int(stats_in.get(type, 0)) + var_to_bytes(data).size()
+	if type == "snap":
+		# (One fighter to a message: the messages of one snapshot come in the same moment.)
+		var now := Time.get_ticks_msec()
+		if now - _snap_last > 6:
+			_snaps += 1
+			if _snap_last > 0:
+				_gap = maxi(_gap, now - _snap_last)
+			_snap_last = now
 
 func send_all(type: String, data, reliable := true) -> void:
 	if not active():
@@ -254,6 +318,8 @@ func send_all(type: String, data, reliable := true) -> void:
 func send_to(id: int, type: String, data, reliable := true) -> void:
 	if not active():
 		return
+	if stats_on:
+		stats[type] = int(stats.get(type, 0)) + var_to_bytes(data).size()
 	if reliable:
 		_msg.rpc_id(id, type, data)
 	else:
@@ -285,18 +351,31 @@ func input_of(id: int) -> Dictionary:
 @rpc("any_peer", "call_remote", "reliable")
 func _msg(type: String, data) -> void:
 	var from := multiplayer.get_remote_sender_id()
+	_count_in(type, data)
 	if not _hold(type, data, from, true):
 		_receive(type, data, from)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func _umsg(type: String, data) -> void:
 	var from := multiplayer.get_remote_sender_id()
+	_count_in(type, data)
 	if not _hold(type, data, from, false):
 		_receive(type, data, from)
 
 func _receive(type: String, data, from: int) -> void:
 	# Only the host may tell guests what happens; guests may only say hello and send input.
 	if not is_host() and from != 1:
+		return
+	# The meter's own round trip (never passed on to the game).
+	if type == "_ping":
+		if is_host() and data is Dictionary:
+			guest_pings[from] = clampf(float(data.get("p", -1.0)), -1.0, 9999.0)
+			send_to(from, "_pong", {"t": int(data.get("t", 0)), "s": snappedf(step_rate, 0.1)}, false)
+		return
+	if type == "_pong":
+		if not is_host() and data is Dictionary:
+			ping_ms = clampf(float(Time.get_ticks_msec() - int(data.get("t", 0))), 0.0, 9999.0)
+			host_rate = clampf(float(data.get("s", -1.0)), -1.0, 1000.0)
 		return
 	if is_host():
 		match type:

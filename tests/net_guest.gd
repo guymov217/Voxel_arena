@@ -45,6 +45,8 @@ func _on(type: String, data, _from: int) -> void:
 			if m: m.guest_vox(data)
 		"bye":
 			var me_found: bool = m != null and m.me != null
+			print("GUEST ping ", Net.ping_ms, " ms host steps ", Net.host_rate, " snaps/s ", Net.snap_rate)
 			print("GUEST spawns ", spawns, " entities ", m.entities.size() if m else 0, " snaps ", snaps, " vox ", vox, " me ", me_found, " smooth ", moved, "/", frames)
 			# Moving at least on most steps (the bout keeps him busy): not stepping at snapshot rate.
-			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 else 1)
+			# The meter's round trip came back: the guest knows its ping and how the host keeps up.
+			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 and Net.ping_ms >= 0.0 and Net.host_rate > 0.0 else 1)

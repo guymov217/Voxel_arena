@@ -52,6 +52,38 @@ it opened. On the second computer open the game in Godot, go to **Multiplayer**,
 IPv4 Address). If Windows asks about the firewall, allow it. Over the internet the host also
 needs port 7777 (UDP) forwarded on the router; Steam lobbies avoid that.
 
+## Over Steam, with real players
+
+Nothing on one computer says how a game goes between homes: only real players over Steam do. So
+before the demo goes out:
+
+1. **Steam build.** Upload the build to a private beta branch (docs/DEMO.md) and give the testers
+   keys or the branch password. The game needs GodotSteam and the Steam client running: the
+   Multiplayer menu then offers **Host a Steam lobby**.
+2. **Rounds of players.** 2 players first, then 4, then a full room of 8. Each round, a campaign
+   bout with enemies and a free-for-all, 10 minutes. Change who hosts: a fast computer, then an
+   ordinary one (the host's computer runs the whole fight), and players far apart (another
+   country) at least once.
+3. **The meter.** Everyone presses **F3** in the room. In the corner:
+   - **ping**: the round trip to the host. Green under 80 ms, amber to 150, red over.
+   - **host keeps up**: the host's physics steps a second, of 120. Green from 112. Under 95
+     (red) the host's computer cannot keep up and the whole game slows for everyone: fewer
+     players or enemies, or a stronger host.
+   - **snapshots** (guests): about 40 a second, fewer in a full room; **longest wait** under
+     90 ms is smooth, over 200 ms is a stutter.
+   - **in / out**: KB a second. The host's "out" is his upload: it must stay well under his
+     line's upload (1 Mbit/s is 125 KB/s).
+4. **What each player says.** Did my fighter answer my mouse at once? Did others move smoothly
+   or jump? Did hits land where they looked? Note the time of anything odd.
+5. **The record.** While F3 is open the game writes a line a second to `net_log.csv` in its
+   data folder (Windows: `%APPDATA%\Godot\app_userdata\WRECKSMITH`, Linux:
+   `~/.local/share/godot/app_userdata/WRECKSMITH`). Collect everyone's after the session: the
+   numbers at the moments people noted say whether it was the line (ping, waits) or the host
+   (steps).
+
+Before that, on one computer: `sh tools/net_load.sh 7` plays a full room of bots over localhost
+and says what the host sends and whether it keeps up (README, Load test).
+
 ## If something is wrong
 
 - "Could not find Godot": put `Godot_v4.7.2-stable_win64.exe` next to the .bat, or drag the exe
