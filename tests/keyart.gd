@@ -21,6 +21,10 @@ func _ready() -> void:
 	if view == "":
 		view = "poster"
 	seed(7)
+	# The fight plays out unseen (each frame of the ultra picture is slow to draw on a machine
+	# without a GPU); only the last frames are drawn.
+	RenderingServer.render_loop_enabled = false
+	Engine.max_physics_steps_per_frame = 64
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "decrees": [], "hazards": [], "seed": 11,
@@ -70,6 +74,7 @@ func _ready() -> void:
 		cam.fov = 46.0
 		cam.global_position = c + Vector3(1.4, -0.35, -3.6)
 		cam.look_at(c + Vector3(-0.2, 0.75, 2.5), Vector3.UP)
+	RenderingServer.render_loop_enabled = true
 	for k in 4:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(out.path_join("keyart_%s.png" % view))

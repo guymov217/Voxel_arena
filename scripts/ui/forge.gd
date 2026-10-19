@@ -43,6 +43,7 @@ var floor_: MeshInstance3D
 var ghost: MeshInstance3D
 var framed := false
 var fit_dist := 1.0   # how far back the camera must be for the whole weapon
+const AIM_RISE := 0.08   # the camera aims this far above what it looks at, per metre back
 var cells := {}                 # Vector3i -> [mat, job]
 var orbit := Vector2(0.6, 0.35)
 var dist := 1.6
@@ -50,6 +51,7 @@ var dragging := false
 var focus := Vector3.ZERO     # what the camera looks at: set when a weapon is framed, then the player's
 var moved := false            # the player has placed the camera: no more turning by itself
 var idle_t := 0.0
+var fog_env: Environment       # the smithy's: its haze is laid from the weapon back (_place_camera)
 var swing_t := -1.0
 
 var side_box: VBoxContainer
@@ -245,11 +247,16 @@ func _build_smithy() -> void:
 	e.glow_intensity = 0.7
 	e.glow_bloom = 0.08
 	e.ssao_enabled = true
+	# The haze thickens from the weapon back, not from the camera: drawn in close or backed far
+	# off, the smithy behind the anvil is seen the same.
 	e.fog_enabled = true
+	e.fog_mode = Environment.FOG_MODE_DEPTH
 	e.fog_light_color = Color(0.2, 0.14, 0.1)
-	e.fog_density = 0.12
+	e.fog_density = 0.8
+	e.fog_depth_curve = 1.4
 	e.fog_sky_affect = 0.9
 	env.environment = e
+	fog_env = e
 	viewport.add_child(env)
 	var light := DirectionalLight3D.new()
 	light.rotation = Vector3(-0.75, 0.7, 0)
@@ -330,14 +337,14 @@ func _dress_smithy() -> void:
 		fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 		fm.roughness = 0.92
 		(floor_.mesh as PlaneMesh).material = fm
-	# Far enough out that the orbiting camera (up to 3 m away) never ends up inside them.
-	VoxelArt.place(floor_, "smithy", Vector3(-3.1, 0, 2.7), deg_to_rad(130))
-	VoxelArt.place(floor_, "weapon_rack", Vector3(3.3, 0, 2.7), deg_to_rad(-130))
-	VoxelArt.place(floor_, "amphora", Vector3(2.0, 0, 3.6), 0.4)
-	VoxelArt.place(floor_, "amphora_wide", Vector3(2.5, 0, 3.4), 1.2)
-	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0, 3.7), 0.3)
-	VoxelArt.place(floor_, "crate", Vector3(-0.9, 0, 4.0), 1.0)
-	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0.6, 3.7), 0.9)
+	# Behind the anvil as the camera first looks at it, so the smithy is the weapon's backdrop.
+	VoxelArt.place(floor_, "smithy", Vector3(-3.1, 0, -2.7), deg_to_rad(50))
+	VoxelArt.place(floor_, "weapon_rack", Vector3(3.3, 0, -2.7), deg_to_rad(-50))
+	VoxelArt.place(floor_, "amphora", Vector3(2.0, 0, -3.6), PI - 0.4)
+	VoxelArt.place(floor_, "amphora_wide", Vector3(2.5, 0, -3.4), PI - 1.2)
+	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0, -3.7), PI - 0.3)
+	VoxelArt.place(floor_, "crate", Vector3(-0.9, 0, -4.0), PI - 1.0)
+	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0.6, -3.7), PI - 0.9)
 
 func _show_mode(m: String) -> void:
 	mode = m
@@ -415,7 +422,6 @@ func _cards_ui() -> void:
 		b.custom_minimum_size = Vector2(135, 0)
 		grid.add_child(b)
 	if base_key == "":
-		mode_box.add_child(_sharpen_button())
 		return
 	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
 	var cards := GridContainer.new()
@@ -449,19 +455,6 @@ func _cards_ui() -> void:
 		_show_mode("cards")))
 	row.add_child(UIStyle.button("Customize the voxels", func(): _show_mode("voxels")))
 	mode_box.add_child(row)
-	mode_box.add_child(_sharpen_button())
-
-## Straight to the anvil with a steel edge in hand: click or drag along the faces where the
-## sharp part goes (along the top of a stick, round the end of a club).
-func _sharpen_button() -> Button:
-	var b := UIStyle.button("Make part of it sharp ▸", func():
-		job = "edge"
-		mat = "steel"
-		tool = "build"
-		_show_mode("voxels"))
-	b.icon = _job_icon("edge")
-	b.tooltip_text = "Steel edge blocks: click or drag along the weapon where they go"
-	return b
 
 ## A clean start: one block of grip on the anvil, everything else yours to put on it (and, at
 ## the smith, to pay for, block by block).
@@ -980,7 +973,10 @@ func _rebuild() -> void:
 		# The whole of it in view, turned any way, clear of the toolbar: framed once, when it is
 		# put on the anvil (or with F). After that the camera stays where the player put it,
 		# however the weapon grows.
-		fit_dist = maxf(0.4, (ext + vs) / sin(deg_to_rad(_view_fov() * 0.5)) * 1.1 + 0.1)
+		# (The camera aims a little above the middle, _place_camera: that much of the view's
+		# half-angle is spent before the weapon's own size.)
+		var half := deg_to_rad(_view_fov() * 0.5) - atan(AIM_RISE)
+		fit_dist = maxf(0.4, (ext + vs) / sin(half) * 1.1 + 0.1)
 		if not framed:
 			_frame()
 	_place_camera()
@@ -993,12 +989,29 @@ func _view_fov() -> float:
 	var h := rad_to_deg(2.0 * atan(tan(deg_to_rad(cam.fov * 0.5)) * aspect))
 	return minf(cam.fov, h)
 
-## The smithy round the anvil (the hearth, the racks, the jars) stands about 3 m off: backed
-## away for a big weapon, the camera would be behind them, so they are put away until it comes in.
-func _decor_shown(on: bool) -> void:
+## The smithy round the anvil (the hearth, the racks, the jars) stands about 3 m off, and stays
+## in view behind the weapon however far the camera is drawn in or backed off; only a piece the
+## camera has backed into, or one standing between it and the weapon, is put away while it is.
+func _decor_update() -> void:
+	var cp := cam.global_position
+	var seg := focus - cp
 	for c in floor_.get_children():
-		if c is Node3D:
-			c.visible = on
+		if not (c is Node3D):
+			continue
+		if not c.has_meta("decor_r"):
+			var box := AABB()
+			var first := true
+			for vi in c.find_children("*", "VisualInstance3D", true, false):
+				var b: AABB = (vi as VisualInstance3D).global_transform * (vi as VisualInstance3D).get_aabb()
+				box = b if first else box.merge(b)
+				first = false
+			c.set_meta("decor_c", box.get_center())
+			c.set_meta("decor_r", box.size.length() * 0.5)
+		var cc: Vector3 = c.get_meta("decor_c")
+		var r: float = c.get_meta("decor_r")
+		var t := clampf((cc - cp).dot(seg) / maxf(seg.length_squared(), 1e-6), 0.0, 1.0)
+		var in_way := t > 0.0 and t < 1.0 and (cp + seg * t).distance_to(cc) < r * 0.85
+		c.visible = cp.distance_to(cc) > r + 0.3 and not in_way
 
 ## The whole weapon in view: the camera aimed at its middle and backed off to take it all in.
 func _frame() -> void:
@@ -1008,12 +1021,15 @@ func _frame() -> void:
 	_place_camera()
 
 func _place_camera() -> void:
-	_decor_shown(dist < 2.6)
 	# Aimed a little above the point it looks at: the weapon sits low in the view, clear of the
 	# toolbar.
-	var c: Vector3 = focus + Vector3(0, 0.08 * dist, 0)
+	var c: Vector3 = focus + Vector3(0, AIM_RISE * dist, 0)
 	cam.global_position = c + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
 	cam.look_at(c)
+	if fog_env:
+		fog_env.fog_depth_begin = dist + 1.0
+		fog_env.fog_depth_end = dist + 16.0
+	_decor_update()
 
 ## The camera slid sideways and up or down in its own plane (a pan), as far as the mouse moved:
 ## what was under the mouse stays under it.
@@ -1021,6 +1037,42 @@ func _pan(rel: Vector2) -> void:
 	var px := 2.0 * dist * tan(deg_to_rad(cam.fov * 0.5)) / maxf(1.0, float(viewport.size.y))
 	var b := cam.global_transform.basis
 	focus += (-b.x * rel.x + b.y * rel.y) * px
+	_place_camera()
+
+const WALK_KEYS := {"forward": KEY_W, "back": KEY_S, "left": KEY_A, "right": KEY_D, "jump": KEY_SPACE, "crouch": KEY_CTRL, "sprint": KEY_SHIFT}
+## W A S D (the walking keys, as bound in Controls) move the camera over the anvil: forward and
+## back the way it looks, sideways across; Space and Ctrl (jump, crouch) up and down; Shift
+## (run) faster. It goes at a pace for how far back it stands. Not while a name is typed in.
+func _walk_camera(dt: float) -> void:
+	if not is_visible_in_tree() or cam == null:
+		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo is LineEdit or fo is TextEdit:
+		return
+	var v := Vector3.ZERO
+	var held := func(id: String) -> bool:
+		if InputMap.has_action("va_" + id):
+			return Input.is_action_pressed("va_" + id)
+		# Not yet bound (no fight started since the game opened): the default keys.
+		return Input.is_physical_key_pressed(WALK_KEYS[id])
+	if held.call("forward"): v.z -= 1.0
+	if held.call("back"): v.z += 1.0
+	if held.call("left"): v.x -= 1.0
+	if held.call("right"): v.x += 1.0
+	if held.call("jump"): v.y += 1.0
+	if held.call("crouch"): v.y -= 1.0
+	if v == Vector3.ZERO:
+		return
+	moved = true
+	idle_t = 0.0
+	var b := cam.global_transform.basis
+	var speed := maxf(0.5, dist * 0.9) * (2.5 if held.call("sprint") else 1.0)
+	var step := (b.x * v.x + Vector3.UP * v.y + b.z * v.z).normalized() * speed * dt
+	# What it looks at goes along sideways and up; moving in or out along the view brings the
+	# camera nearer or farther (never through it: it stops a hand's breadth short).
+	var ahead := -b.z
+	focus += step - ahead * step.dot(ahead)
+	dist = clampf(dist - step.dot(ahead), 0.15, maxf(8.0, fit_dist * 2.0))
 	_place_camera()
 
 ## The wheel draws the camera in toward what is under the mouse (or out from it).
@@ -1037,6 +1089,7 @@ func _process(dt: float) -> void:
 	if viewport == null:
 		return
 	idle_t += dt
+	_walk_camera(dt)
 	if idle_t > 4.0 and not dragging and not moved and swing_t < 0.0:
 		orbit.x += dt * 0.25   # left alone, it turns slowly on the anvil
 		_place_camera()

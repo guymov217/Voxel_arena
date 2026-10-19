@@ -1894,6 +1894,14 @@ func _sting_reach() -> void:
 	var stg: VoxelPart = by_name.stinger
 	if stg.get_meta("stung", false) or float(wind.get(stg, 0.0)) > 0.0:
 		return
+	# The sting is aimed all the way in, at his trunk as it is now (the blow's push was aimed
+	# when the tail cocked, and he had moved by the time it came down): the tail's muscles steer
+	# the tip onto him, as fast as a scorpion strikes and no faster.
+	var aim: Vector3 = target.torso.global_position + Vector3(0, 0.1, 0)
+	var to_aim: Vector3 = aim - stg.global_position
+	if to_aim.length() < 1.6 * maxf(S, 0.6):
+		var want: Vector3 = to_aim.normalized() * 5.0 * maxf(S, 0.6)
+		stg.apply_central_impulse(PD.clamp_len((want - stg.linear_velocity) * stg.mass * 0.35, 40.0 * S * stg.mass))
 	var q: VoxelPart = Combat.current.touch_by(stg, target, 0.05)
 	if q == null or q.severed:
 		return

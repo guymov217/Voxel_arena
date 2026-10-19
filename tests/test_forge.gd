@@ -456,3 +456,42 @@ func _all_in_view(f) -> bool:
 		if not f.cam.is_position_in_frustum(p):
 			return false
 	return true
+
+func test_the_walking_keys_move_the_forge_camera() -> void:
+	# The keys as bound in Controls (a fight sets them up; here, by hand).
+	var pi_ = PlayerInput.new()
+	add_child(pi_)
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius").duplicate(true), 99999, func(_d, _c): pass)
+	await get_tree().process_frame
+	var d0: float = f.dist
+	Input.action_press("va_forward")
+	for i in 20:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	t.check(f.dist < d0 - 0.05, "W draws the camera in (%.2f → %.2f m)" % [d0, f.dist])
+	var f0: Vector3 = f.focus
+	var right: Vector3 = f.cam.global_transform.basis.x
+	Input.action_press("va_right")
+	for i in 20:
+		await get_tree().process_frame
+	Input.action_release("va_right")
+	t.check((f.focus - f0).dot(right) > 0.02, "D slides it to the right")
+	var y0: float = f.cam.global_position.y
+	Input.action_press("va_jump")
+	for i in 20:
+		await get_tree().process_frame
+	Input.action_release("va_jump")
+	t.check(f.cam.global_position.y > y0 + 0.02, "Space lifts it")
+	# Typing a name moves nothing.
+	f.name_edit.grab_focus()
+	var d1: float = f.dist
+	Input.action_press("va_forward")
+	for i in 10:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	t.check(is_equal_approx(f.dist, d1), "not while the name is being typed")
+	f.queue_free()
+	pi_.queue_free()
