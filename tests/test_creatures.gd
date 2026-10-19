@@ -183,6 +183,10 @@ func test_attacks_stay_physical() -> void:
 		if k == "goat":
 			continue
 		seed(hash(k))
+		# The last world is let go first (freed at the end of a frame, its bodies stood where
+		# this man is made).
+		await get_tree().physics_frame
+		await get_tree().physics_frame
 		var w := _world()
 		var man := w.fighter(Vector3(0, 0, 0), PI, {}, {"name": "Man", "slot": 0})
 		var b: Beast

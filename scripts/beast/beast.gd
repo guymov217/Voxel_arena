@@ -9,6 +9,7 @@ extends Fighter
 const JAW_T := 0.55
 
 var species := "lion"
+var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
 var sp: Dictionary = {}
 var legs: Array = []
 var heads: Array = []
@@ -1783,7 +1784,7 @@ func _hold_up(p: VoxelPart, max_t: float, dt: float) -> void:
 	p.apply_torque_impulse(tq * dt)
 	p.parent_part.apply_torque_impulse(-tq * dt)
 
-func _strike_pose(p: VoxelPart, role: String, st: float, track: float, dist: float) -> Vector3:
+func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: float) -> Vector3:
 	# The wind-up: drawn back the opposite way to the blow that is coming.
 	if float(wind.get(p, 0.0)) > 0.0:
 		match role:
@@ -1838,7 +1839,9 @@ func _strike(p: VoxelPart, t_: float, cool: float, imp: Array = [], wind_s := -1
 	p.set_meta("stung", false)
 	p.set_meta("landed", false)
 	p.set_meta("strike_lead", true)
-	strike_cool[p] = cool
+	# Keener it comes again sooner (a quarter sooner at the top of the scale), slacker it waits
+	# longer (half again at the bottom); as it is everywhere but training.
+	strike_cool[p] = cool * (1.0 + (0.7 - clampf(skill, 0.0, 1.0)) * 0.85)
 	if not imp.is_empty():
 		pending[p] = imp
 	# A head on a neck strikes with the neck: it dips and drives forward with it.
@@ -2158,7 +2161,6 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 	var reach: float = torso.half_ext.z + 1.6 * S
 	if arms.is_empty() or float(ai.get("rear", 0.0)) > 0.0:
 		return
-	var tp: Vector3 = t.torso.global_position
 	if dist > reach * 1.6:
 		# Out of reach: now and then it rears a little and drums its chest.
 		if float(ai.get("beat", 0.0)) <= 0.0 and float(ai.get("beat_cool", 0.0)) <= 0.0 and arms.size() == 2 and rng.randf() < dt * 0.35:

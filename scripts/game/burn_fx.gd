@@ -91,9 +91,12 @@ static func set_on(main: GPUParticles3D, on: bool) -> void:
 	for c in main.get_children():
 		if c is GPUParticles3D:
 			if not on and was and c.has_meta("smoke") and main.is_inside_tree():
-				var cc: GPUParticles3D = c
+				var ccr := weakref(c)       # (weak: see Weapon's stuck-load timer)
+				var mr := weakref(main)
 				main.get_tree().create_timer(4.0, false).timeout.connect(func():
-					if is_instance_valid(cc) and is_instance_valid(main) and not main.emitting:
+					var cc = ccr.get_ref()
+					var mn = mr.get_ref()
+					if cc and mn and not mn.emitting:
 						cc.emitting = false)
 				continue
 			c.emitting = on

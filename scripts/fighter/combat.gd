@@ -173,7 +173,7 @@ func _cooldown(key: String, J: float, t: float) -> bool:
 	cool[key] = [time, J]
 	return true
 
-func process_contacts(dt: float) -> Array:
+func process_contacts(_dt: float) -> Array:
 	var groups := {}
 	for c in pending:
 		var a = c.a

@@ -220,3 +220,32 @@ func test_a_man_on_the_sand_still_throws() -> void:
 		await get_tree().physics_frame
 	t.check(f.held_item == null and int(m.me.inventory.greekFire) == 1, "and the pot is thrown")
 	m.queue_free()
+
+## The wind-up sets the throw: a flick tosses a pot a few paces, short of a far mark; held to the
+## full it flies hard and reaches it.
+func test_the_wind_up_sets_how_hard_a_pot_flies() -> void:
+	var far := {}
+	for power in [0.3, 1.0]:
+		var m := _match()
+		var a := _man(m, Vector3(0, 0, -6), 0.0, {}, "Thrower", 0, _idle)
+		a.kind = "local"
+		a.inventory = {"sandPot": 1}
+		await _steps(30)
+		m.throwables.use_item(a, 0)
+		var from: Vector3 = a.f.torso.global_position
+		m.throwables.throw_held(a, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": power, "aimAt": from + Vector3(0, 0, 14.0)})
+		var it = null
+		for x in m.items.list:
+			if x.type == "pot_sand":
+				it = x
+		t.check(it != null, "thrown (power %.1f)" % power)
+		var reach := 0.0
+		for i in 240:
+			await get_tree().physics_frame
+			if it == null or not m.items.list.has(it):
+				break
+			reach = maxf(reach, (it.p as Vector3).z - from.z)
+		far[power] = reach
+		m.queue_free()
+	t.check(float(far[0.3]) < 9.0, "a flick falls well short of a mark 14 m off (%.1f m)" % far[0.3])
+	t.check(float(far[1.0]) > 12.5, "a full wind-up reaches it (%.1f m)" % far[1.0])

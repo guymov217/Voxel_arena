@@ -595,24 +595,34 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 	var up := n
 	var side := up.cross(Vector3.UP if absf(up.y) < 0.9 else Vector3.RIGHT).normalized()
 	dcl.global_transform = Transform3D(Basis(side, up, side.cross(up)), p)
+	var dr := weakref(dcl)   # (weak: the match may be gone before the mark fades)
+	var me := weakref(self)
 	get_tree().create_timer(20.0, false).timeout.connect(func():
-		if is_instance_valid(dcl):
-			dcl.queue_free()
-		_wall_marks -= 1)
+		var d = dr.get_ref()
+		if d:
+			d.queue_free()
+		var t = me.get_ref()
+		if t:
+			t._wall_marks -= 1)
 	if not acid and _wall_fires < 8:
 		# A lick of flame on the wall where it struck, burning out in a few seconds.
 		var holder := Node3D.new()
 		add_child(holder)
 		holder.global_position = p + n * 0.06
-		var ps: GPUParticles3D = m.fx.emitter("fire", holder, 14, 0.12)
+		m.fx.emitter("fire", holder, 14, 0.12)
 		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", holder, 6, 0.1)
 		if sm:
 			sm.position = Vector3(0, 0.25, 0)
 		_wall_fires += 1
+		var hr := weakref(holder)
+		var me2 := weakref(self)
 		get_tree().create_timer(2.0 + randf() * 2.0, false).timeout.connect(func():
-			_wall_fires -= 1
-			if is_instance_valid(holder):
-				holder.queue_free())
+			var t = me2.get_ref()
+			if t:
+				t._wall_fires -= 1
+			var h = hr.get_ref()
+			if h:
+				h.queue_free())
 
 # ---------- What breaks where ----------
 
@@ -1345,6 +1355,11 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	aim.y = maxf(0.1, aim.y)
 	throw_type(c, h.type, aim, null, true, power)
 
+## How fast a thrown thing leaves the hand, of its full speed, for a wind-up of `power` (0.3, a
+## flick, to 1, held to the full).
+static func throw_speed_k(power: float) -> float:
+	return 0.35 + 0.8 * clampf(power, 0.0, 1.0)
+
 ## `straight`: a player's throw flies along the line to the crosshair (the flat one of the two
 ## arcs that reach it, or along the line itself when it is out of reach), never a lob.
 func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power := 0.8) -> void:
@@ -1356,13 +1371,15 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 		for i in [-1, 0, 1]:
 			var da := aim + Vector3(fwd.z * i * 0.5, i * 0.15, -fwd.x * i * 0.5)
 			if straight:
-				m.items.throw_flat("pot_dart", from, da, c, 19.0)
+				m.items.throw_flat("pot_dart", from, da, c, 19.0 * throw_speed_k(power))
 			else:
 				m.items.throw_at("pot_dart", from, da, c, 15.0)
 	elif type == "boomerang":
 		m.items.throw_at("boomerang", from, aim, c, 12.0, 0.0)
 	elif straight:
-		m.items.throw_flat(type, from, aim, c, float(THROW_SPEED.get(type, 14.5)) * (0.8 + 0.35 * power))
+		# The wind-up is the throw: a quick flick tosses it a few paces (short of a far mark),
+		# held to the full it flies hard and far.
+		m.items.throw_flat(type, from, aim, c, float(THROW_SPEED.get(type, 14.5)) * throw_speed_k(power))
 	else:
 		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 14.5))
 	m.sfx("whoosh", from)

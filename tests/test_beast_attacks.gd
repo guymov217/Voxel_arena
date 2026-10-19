@@ -7,6 +7,10 @@ extends Node
 var t
 
 func _setup(species: String, dist: float, loadout := {"main": "gladius", "off": "roundShield"}):
+	# The last test's match is let go first: freed only at the end of the frame, its bodies
+	# stood where this one's man is made and knocked him about.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": loadout})
@@ -27,7 +31,7 @@ func _run(m: Match, man: Fighter, b: Beast, seconds: float, each: Callable) -> v
 
 func test_the_scorpion_stings_and_poisons() -> void:
 	seed(5)
-	var s = _setup("scorpion", 2.6)
+	var s = await _setup("scorpion", 2.6)
 	var stings := [0]
 	s[0].combat.hit.connect(func(h): if h.attacker == s[2] and h.get("part") and h.res and h.char == s[1] and String(h.get("weapon_part", "")) == "": pass)
 	var poisoned := [false]
@@ -41,7 +45,7 @@ func test_the_python_coils_and_crushes() -> void:
 	seed(6)
 	# Bare hands: a blade in his hand that the coils brush is a blow on the snake, and shakes it
 	# off him; this is the coil's own test.
-	var s = _setup("python", 2.4, {"main": "", "off": ""})
+	var s = await _setup("python", 2.4, {"main": "", "off": ""})
 	var coiled := [false]
 	var hp0: float = s[1].torso.hp
 	var lost0: int = s[1].torso.fx.size() - s[1].torso.alive_count
@@ -56,7 +60,7 @@ func test_the_python_coils_and_crushes() -> void:
 
 func test_the_bear_rakes_with_its_claws_and_rears() -> void:
 	seed(7)
-	var s = _setup("bear", 2.6)
+	var s = await _setup("bear", 2.6)
 	var cuts := [0]
 	var reared := [false]
 	s[0].combat.hit.connect(func(h): if h.attacker == s[2] and h.char == s[1] and h.type == "edge": cuts[0] += 1)
@@ -71,7 +75,7 @@ func test_the_bear_rakes_with_its_claws_and_rears() -> void:
 
 func test_the_mammoth_hunts() -> void:
 	seed(8)
-	var s = _setup("mammoth", 12.0)
+	var s = await _setup("mammoth", 12.0)
 	var closest := [INF]
 	await _run(s[0], s[1], s[2], 10.0, func(_i):
 		closest[0] = minf(closest[0], s[2].torso.global_position.distance_to(s[1].torso.global_position)))
@@ -80,7 +84,7 @@ func test_the_mammoth_hunts() -> void:
 
 func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	seed(9)
-	var s = _setup("crocodile", 2.2)
+	var s = await _setup("crocodile", 2.2)
 	var rolled := [false]
 	var wrenches := [0]
 	var torn := [false]
@@ -115,7 +119,7 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 
 func test_the_elephant_charges_and_crushes() -> void:
 	seed(10)
-	var s = _setup("elephant", 9.0)
+	var s = await _setup("elephant", 9.0)
 	var closest := [INF]
 	var fastest := [0.0]
 	var crushed := [0]
@@ -131,7 +135,7 @@ func test_the_elephant_charges_and_crushes() -> void:
 	s[0].queue_free()
 
 func test_hide_turns_a_slash_but_not_a_thrust() -> void:
-	var s = _setup("elephant", 4.0)
+	var s = await _setup("elephant", 4.0)
 	var b: Beast = s[2]
 	var at: Vector3 = b.torso.global_position + Vector3(b.torso.half_ext.x, 0, 0)
 	var slash: Dictionary = b.apply_hit(b.torso, {"impulse": 30.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "point": at, "dir": Vector3.LEFT, "axis": Vector3.UP, "edge": Vector3.LEFT, "wsz": 1.0})
@@ -150,7 +154,7 @@ func test_hide_turns_a_slash_but_not_a_thrust() -> void:
 
 func test_the_ostrich_winds_up_and_hops_into_its_kick() -> void:
 	seed(11)
-	var s = _setup("ostrich", 2.4)
+	var s = await _setup("ostrich", 2.4)
 	var b: Beast = s[2]
 	var wound := [false]
 	var hopped := [false]
@@ -171,7 +175,7 @@ func test_the_ostrich_winds_up_and_hops_into_its_kick() -> void:
 
 func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 	seed(12)
-	var s = _setup("gorilla", 2.4)
+	var s = await _setup("gorilla", 2.4)
 	var b: Beast = s[2]
 	t.check(b.legs.size() == 4 and b.by_name.has("legFLLo"), "an ape on four limbs, fists and feet")
 	var hugged := [false]
@@ -210,7 +214,7 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 
 func test_a_hold_needs_a_touch() -> void:
 	seed(21)
-	var s = _setup("gorilla", 3.0)
+	var s = await _setup("gorilla", 3.0)
 	var b: Beast = s[2]
 	var man: Fighter = s[1]
 	# Within the hug's range but out of contact, rooted, and its blows and its rearing held

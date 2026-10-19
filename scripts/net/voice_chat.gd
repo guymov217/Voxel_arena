@@ -17,7 +17,6 @@ var mic: AudioStreamPlayer = null
 var players := {}             # peer id -> AudioStreamPlayer3D
 var factor := 4
 var _acc := PackedVector2Array()
-var _carry := PackedFloat32Array()
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":

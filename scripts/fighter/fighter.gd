@@ -1034,7 +1034,7 @@ func pick_up(side: String, w: Weapon) -> bool:
 func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8, javelin := false, scatter := 0.0, arm_f := 1.0) -> Vector3:
 	var m_arm := 2.5 * pow(S, 2.5)
 	var tired := 0.65 + 0.35 * minf(1.0, stamina / 100.0)
-	var v_hand := (31.0 if javelin else 24.0) * sqrt(S) * float(mods.strength) * (0.5 + 0.5 * arm_f) * (1.0 - 0.5 * injury) * (0.4 + 0.6 * power) * tired
+	var v_hand := (31.0 if javelin else 24.0) * sqrt(S) * float(mods.strength) * (0.5 + 0.5 * arm_f) * (1.0 - 0.5 * injury) * (0.3 + 0.7 * power) * tired
 	var v := minf(38.0, v_hand * sqrt(m_arm / (m_arm + maxf(0.05, mass_))))
 	var d := aim_at - from
 	var dx := maxf(0.01, Vector2(d.x, d.z).length())
@@ -2164,7 +2164,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# A thrust is driven hard: the hand is held tight to its line and its mark along it.
 	var kp := 300.0 * (0.5 + 0.5 * hnd) * (2.5 if thrust_line[side] != null else 1.0)
 	var kd := 2.1 * sqrt(kp) * (1.1 if power else 1.0)
-	var F = ((hand_goal - hand_w) * kp + (target_vel[side] - hand_vel) * kd) * m_eff
+	# The braking is no harder than stops the hand in one step: pushed at the hand, the forearm
+	# answers as a much lighter mass than the arm and blade it stands for (it swings on the
+	# elbow), and braked as the whole of them its hand overshot every step and the arm trembled.
+	var r_h: Vector3 = hand_w - fore.global_position
+	var m_pt := 1.0 / (1.0 / maxf(0.05, fore.mass) + r_h.length_squared() / PD.inertia_of(fore))
+	var damp := minf(kd * m_eff, 1.6 * m_pt / dt)
+	var F = (hand_goal - hand_w) * kp * m_eff + (target_vel[side] - hand_vel) * damp
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
 	F = PD.clamp_len(F, 1150.0 * (1.5 if thrust_line[side] != null else 1.0) * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0) * (1.0 + (0.08 * minf(8.0, w.mass) if w else 0.0)))
 	# The hands never press down harder than a share of the body's own weight: bearing down on
@@ -2799,6 +2805,7 @@ func teleport(p: Vector3) -> void:
 			b.global_position += off
 			b.linear_velocity = Vector3.ZERO
 			b.angular_velocity = Vector3.ZERO
+			b.snap_drawing()   # drawn there at once, not swept across
 
 func die(cause := "") -> void:
 	if state == "dead":
@@ -3281,7 +3288,6 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 		j.global_transform = Transform3D(Basis(xa, ya, xa.cross(ya)), at)
 		j.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, deg_to_rad(75.0))
 		j.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, deg_to_rad(35.0))
-		j.set_param(ConeTwistJoint3D.PARAM_SOFTNESS, 0.9)
 		j.node_a = part.get_path()
 		j.node_b = ch.get_path()
 		ch.flap_of = part
@@ -3547,11 +3553,15 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	# The piece still overlaps the stump it came off: meeting its owner's body at once, the
 	# solver flung it across the arena. It falls clear first, then it is a thing in the world.
 	if is_inside_tree():
+		var me := weakref(self)   # (weak: he may be gone, a round over, before it runs)
 		get_tree().create_timer(0.7, false, true).timeout.connect(func():
+			var f = me.get_ref()
+			if f == null:
+				return
 			for p in pieces:
 				if not is_instance_valid(p):
 					continue
-				for o in parts:
+				for o in f.parts:
 					if is_instance_valid(o) and not pieces.has(o):
 						p.remove_collision_exception_with(o))
 	if part.joint:
@@ -3710,7 +3720,7 @@ func blast_shock(part: VoxelPart, J: float) -> void:
 func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void:
 	if J < 12.0:
 		return
-	var best := Anatomy.NONE
+	var best: int = Anatomy.NONE
 	var bd := INF
 	var deep := lp + ld * part.half_ext.length() * 0.45
 	for i in part.organ.size():

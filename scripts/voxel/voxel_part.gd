@@ -30,6 +30,31 @@ var fz := PackedInt32Array()
 var colors := PackedColorArray()
 var alive := PackedByteArray()
 var jaw_pivot: Node3D = null     # a biting head's hinged lower jaw (drawing only)
+var jaw_mesh: MultiMeshInstance3D = null
+
+## Made and put in place in one go (a fighter built, a beast spawned), or moved there at once
+## (snap_drawing): for its first steps it is drawn where it is, not swept there from where it
+## was made (a new champion on the dressing screen showed first at the arena's middle). Only
+## the drawing: resetting the body's own interpolation nudged the physics.
+var _snap_until := 0
+func _ready() -> void:
+	snap_drawing()
+
+func snap_drawing() -> void:
+	_snap_until = Engine.get_physics_frames() + 2
+
+## The drawing follows the body where the physics' interpolation has it this frame (see
+## _build_mesh): the voxels, the skin and the jaw.
+func _process(_dt: float) -> void:
+	if mmi == null and skin == null:
+		return
+	var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+	if mmi:
+		mmi.global_transform = t
+	if skin:
+		skin.global_transform = t
+	if jaw_mesh and jaw_pivot:
+		jaw_mesh.global_transform = t * jaw_pivot.transform
 var jaw_mouth: Node3D = null
 var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
@@ -312,7 +337,10 @@ func _build_mesh() -> void:
 	var key := snappedf(vf * part_scale, 0.0001)
 	if not _box_mesh_cache.has(key):
 		var bm := BoxMesh.new()
-		bm.size = Vector3.ONE * vf * part_scale * 0.98
+		# Full size: a hair smaller, the background showed through the seams between the voxels
+		# of a body close to the camera (the menu's champion). The shader's darker edges still
+		# mark out the blocks.
+		bm.size = Vector3.ONE * vf * part_scale
 		bm.material = body_material()
 		_box_mesh_cache[key] = bm
 	mm = MultiMesh.new()
@@ -329,9 +357,11 @@ func _build_mesh() -> void:
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
-	# built with, so every hole, cut and knocked-off piece stayed invisible. The part's body
-	# moves it at the physics rate.
+	# built with, so every hole, cut and knocked-off piece stayed invisible. It is placed each
+	# frame where the physics' interpolation has the body (_process), as the camera sees it: left
+	# at the body's raw step-by-step place, every body juddered against the smoothly moving camera.
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	mmi.top_level = true
 	# A fixed box the size of the whole part: knocking voxels out (scaling them to nothing) makes
 	# Godot shrink the multimesh's own box to a sliver, and the part was then culled off screen.
 	var ext := Vector3(grid.x, grid.y, grid.z) * vf * part_scale * 0.5 + Vector3.ONE * vf * part_scale
@@ -349,6 +379,7 @@ func make_skin() -> void:
 		_skin_material.roughness = 0.72
 	skin = MeshInstance3D.new()
 	skin.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	skin.top_level = true
 	skin.material_override = _skin_material
 	skin.custom_aabb = mmi.custom_aabb
 	add_child(skin)
@@ -889,6 +920,8 @@ func build_jaw(jw: Dictionary) -> void:
 	var jm := MultiMeshInstance3D.new()
 	jm.multimesh = jaw_mm
 	jm.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	jm.top_level = true
+	jaw_mesh = jm
 	jm.custom_aabb = jaw_mm.custom_aabb
 	jaw_pivot.add_child(jm)
 	_mark_skin()   # the jaw is drawn on its own now

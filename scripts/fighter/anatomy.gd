@@ -122,7 +122,7 @@ static func dress(body_parts: Array) -> void:
 	for d in body_parts:
 		var name := str(d.name)
 		for v in d.voxels:
-			var id := NONE
+			var id: int = NONE
 			if int(v[3]) == 0 and not v[5] and _is_flesh(int(v[4])):
 				id = organ_at(name, int(v[0]), int(v[1]), int(v[2]))
 				if id == NONE:
@@ -184,7 +184,6 @@ static func dress_beasts(beasts: Dictionary) -> void:
 		var none: bool = key in NO_ORGANS
 		for d in beasts[key].get("parts", []):
 			var name := str(d.name)
-			var g: Array = d.get("grid", [1, 1, 1])
 			# Organs lie under the skin: only a voxel with flesh on all six sides may be one (a
 			# body modelled leaning, the gorilla's, had its guts showing through the rump).
 			var filled := {}
@@ -200,7 +199,7 @@ static func dress_beasts(beasts: Dictionary) -> void:
 			# (the gorilla had four voxels of heart, and no lungs and no brain at all).
 			var ext := [hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1]
 			for v in d.voxels:
-				var id := NONE
+				var id: int = NONE
 				if not none and not v[4] and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
 					id = beast_organ_at(name, ext, int(v[0]) - lo.x, int(v[1]) - lo.y, int(v[2]) - lo.z)
 				if id != NONE:

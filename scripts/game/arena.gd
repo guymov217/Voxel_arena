@@ -86,7 +86,7 @@ func _build_visuals() -> void:
 	var e := Environment.new()
 	var sky := Sky.new()
 	sky.sky_material = sky_material(day)
-	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	sky.radiance_size = Sky.RADIANCE_SIZE_256   # the size a realtime sky is drawn at anyway
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	e.background_mode = Environment.BG_SKY
 	e.sky = sky
@@ -155,7 +155,7 @@ static func sand_material() -> StandardMaterial3D:
 	m.albedo_color = Color(0.74, 0.74, 0.74)   # a shade down: bright sand under a high sun glared
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
 	m.roughness = 0.97
-	m.specular = 0.25
+	m.metallic_specular = 0.25   # (Godot 4's name: "specular" was the 3.x one and did nothing)
 	return m
 
 ## The sky: a shader with drifting clouds and the sun's glare; at night a photographed starfield.

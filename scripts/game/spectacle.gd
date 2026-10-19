@@ -115,7 +115,7 @@ func verdict(winner) -> Dictionary:
 
 # ---------- The announcer ----------
 
-func say(key: String, a = null, v = null, part := "", center := false, cooldown := 1.5) -> bool:
+func say(key: String, a = null, v = null, part := "", _center := false, cooldown := 1.5) -> bool:
 	if cool.get(key, -1.0) > time:
 		return false
 	cool[key] = time + cooldown

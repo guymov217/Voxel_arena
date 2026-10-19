@@ -142,3 +142,57 @@ func test_a_duel_starts_face_to_face() -> void:
 	var fwd := Vector3(sin(me.yaw), 0, cos(me.yaw))
 	t.check(fwd.dot(gap.normalized()) > 0.9, "he faces his foe")
 	m.queue_free()
+
+## Training's difficulty reaches every kind of opponent: the sparring gladiator's skill, a
+## beast's keenness (how soon it strikes again) and a campaign foe's skill.
+func test_training_difficulty_reaches_every_opponent() -> void:
+	for d in [0.2, 0.9]:
+		var keen := {}
+		for who in ["gladiator", "lion", "foe:giant"]:
+			var m := _match("training", {"training": {"enemy": who, "count": 1, "difficulty": d, "behaviour": "fights"}})
+			var foe = null
+			for e in m.entities:
+				if e != m.me:
+					foe = e
+			t.check(foe != null, "%s is there" % who)
+			if foe == null:
+				m.queue_free()
+				continue
+			if foe.f is Beast:
+				t.eq(snappedf(foe.f.skill, 0.01), d, "the %s's keenness is the slider's %.1f" % [who, d])
+				var head: VoxelPart = foe.f.head
+				foe.f._strike(head, 0.3, 2.0, [], 0.0)
+				keen[who] = float(foe.f.strike_cool[head])
+			else:
+				t.check(foe.has("bot"), "%s is a bot" % who)
+				if foe.has("bot"):
+					t.eq(snappedf(foe.bot.diff, 0.01), d, "the %s's skill is the slider's %.1f" % [who, d])
+			m.queue_free()
+		if d == 0.2:
+			set_meta("slow", keen.get("lion", 0.0))
+		else:
+			t.check(float(keen.get("lion", 9.0)) < float(get_meta("slow", 0.0)), "a keener lion strikes again sooner (%.2f s against %.2f s)" % [keen.get("lion", 0.0), get_meta("slow", 0.0)])
+
+## The menu's champion dressed again and again (the dressing screen) leaves no arms lying about,
+## and the fight behind the menus starts again in place: the champion stays, fresh men come in.
+func test_the_menu_champion_and_its_fight() -> void:
+	var m := _match("ffa", {"autopilot": true})
+	m.attract = true
+	for k in 4:
+		m.add_hero(Vector3(3, 0, -9), 0.0, {"main": "gladius", "off": "scutum"}, Color.RED, null, true)
+		await _steps(4)
+	await _steps(10)
+	var loose := 0
+	for n in m.get_children():
+		if n is Weapon and not n.is_queued_for_deletion() and n.holder == null:
+			loose += 1
+	t.eq(loose, 0, "no sword or shield left lying from the earlier dressings")
+	var hero := m.hero
+	var before: Array = m.entities.map(func(e): return e.f)
+	m.restart_attract({"mode": "ffa", "autopilot": true, "decrees": [], "hazards": [], "seed": 9})
+	await _steps(4)
+	t.check(m.hero == hero and is_instance_valid(hero), "the champion is still the same man")
+	t.eq(m.entities.size(), before.size(), "a full set of fighters again")
+	t.check(not m.entities.any(func(e): return before.has(e.f)), "and all of them fresh")
+	t.check(not m.over, "the fight is on again")
+	m.queue_free()

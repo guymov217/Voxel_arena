@@ -26,6 +26,7 @@ var grip_main := Vector3.ZERO      # local
 var grip_off := Vector3.ZERO
 var reach := 0.6
 var mm: MultiMesh
+var vis: MultiMeshInstance3D = null   # its voxels, drawn where it is this frame (_process)
 var net_id := -1
 var _next_box := 0
 # A head on a chain (flail, nunchaku, meteor hammer, whip): links and a head of their own,
@@ -328,6 +329,8 @@ func _build_mesh() -> void:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # see VoxelPart
+	mmi.top_level = true   # placed each frame where the physics' interpolation has the weapon
+	vis = mmi
 	# Fixed box: chipped voxels are scaled to nothing, which would shrink the auto box (see VoxelPart).
 	var lo := Vector3.INF
 	var hi := -Vector3.INF
@@ -739,6 +742,17 @@ func forget_owner() -> void:
 	own_by = null
 	own_t = 0.0
 
+var _snap_until := 0   # see VoxelPart.snap_drawing
+func _ready() -> void:
+	snap_drawing()
+
+func snap_drawing() -> void:
+	_snap_until = Engine.get_physics_frames() + 2
+
+func _process(_dt: float) -> void:
+	if vis:
+		vis.global_transform = global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+
 func _physics_process(dt: float) -> void:
 	# Through the sand (a heavy thing pressed or thrown into it): back up on top, at rest, not
 	# lost for good under the arena.
@@ -831,12 +845,17 @@ func unstick() -> void:
 		st.joint.queue_free()
 	if is_instance_valid(st.char):
 		st.char.stuck_load = maxf(0.0, st.char.stuck_load - float(st.mass))
-		var cc = st.char
+		# (Held by weak reference: a lambda that captures a node gone by the time it runs
+		# reports an error, though it does nothing with it.)
+		var ccr := weakref(st.char)
+		var me := weakref(self)
 		get_tree().create_timer(0.5, false, true).timeout.connect(func():
-			if is_instance_valid(cc) and is_instance_valid(self) and holder != cc:
+			var cc = ccr.get_ref()
+			var w = me.get_ref()
+			if cc and w and w.holder != cc:
 				for p in cc.parts:
 					if is_instance_valid(p):
-						remove_collision_exception_with(p))
+						w.remove_collision_exception_with(p))
 
 static func spins_in_flight(d: Dictionary) -> bool:
 	if not d.get("throwable", false) or d.get("voxels", []).is_empty():

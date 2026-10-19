@@ -7,6 +7,7 @@ extends Node3D
 signal feed(text: String)
 signal banner(text: String, sub: String)
 signal finished(result: Dictionary)
+@warning_ignore("unused_signal")   # sent by the yard (YardPlay)
 signal station(id: String)
 ## The campaign's physician: a player lost a limb or an eye this round (Body). The menu shows
 ## the local one; the host asks a guest over the network.
@@ -95,6 +96,16 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 			if old.weapons[side]:
 				pose["w" + side] = old.weapons[side].global_transform
 	if old:
+		# His arms are not his children (they lie in the world beside him): put away with him,
+		# or every change on the dressing screen left a sword and a shield on the sand.
+		for w in old.weapons.values():
+			if w and is_instance_valid(w):
+				for l in w.chain_links:
+					if is_instance_valid(l):
+						l.queue_free()
+				if w.chain_head and is_instance_valid(w.chain_head):
+					w.chain_head.queue_free()
+				w.queue_free()
 		old.queue_free()
 	hero = Fighter.new()
 	add_child(hero)
@@ -112,10 +123,36 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 		for side in hero.weapons:
 			if hero.weapons[side] and pose.has("w" + side):
 				hero.weapons[side].global_transform = pose["w" + side]
+		for p in hero.parts:
+			p.snap_drawing()
+		for side in hero.weapons:
+			if hero.weapons[side]:
+				hero.weapons[side].snap_drawing()
 		_freeze_hero(true)
 	return hero
 
 var hero_still_t := -1.0
+
+## The fight behind the menus begins again in place: the fighters (and what they dropped, cut
+## off or threw) are cleared away and a fresh lot come in; the arena, the camera and the
+## champion stay as they are.
+func restart_attract(opts: Dictionary) -> void:
+	for e in entities.duplicate():
+		_remove_entity(e)
+	me = null
+	for n in get_children():
+		if (n is Weapon or n is VoxelPart) and not _is_hero_body(n):
+			n.queue_free()
+	over = false
+	if Modes.handles(mode):
+		modes = Modes.new(self, mode)
+		modes.setup(opts)
+	spectacle.on_round_start()
+
+func _is_hero_body(n: Node) -> bool:
+	if hero == null or not is_instance_valid(hero):
+		return false
+	return hero.parts.has(n) or hero.weapons.values().has(n)
 
 func _freeze_hero(on: bool) -> void:
 	var bodies: Array = hero.parts.duplicate()
@@ -630,8 +667,10 @@ func _spawn_training() -> void:
 		if who == "none":
 			break
 		var e
+		var skill := float(training.get("difficulty", 0.5))
 		if Data.beasts.has(who):
 			e = spawn_beast({"beast": who, "team": ENEMY_TEAM, "pos": pos, "yaw": PI})
+			e.f.skill = skill
 		elif who.begins_with("foe:"):
 			# A campaign foe as he comes in the campaign, his own arms and size: the giant, the
 			# Cyclops, a troll, an archer.
@@ -639,12 +678,13 @@ func _spawn_training() -> void:
 			var spec := enemy_spec({"e": key, "boss": TRAINING_BOSSES.has(key)}, 0, 1)
 			spec.pos = Vector3(i * 3.0, 0.1, 6.0 if TRAINING_BOSSES.has(key) else 5.0)
 			spec.yaw = PI
+			spec.diff = skill   # the slider, not the campaign's stage
 			e = spawn_fighter(spec)
 		else:
 			var w: String = training.get("weapon", "gladius")
 			if w == "random":
 				w = ["gladius", "axe", "spear", "mace"][rng.randi_range(0, 3)]
-			e = spawn_fighter({"kind": "bot", "name": "Sparring partner", "loadout": {"main": "" if w == "fists" else w, "off": ""}, "team": ENEMY_TEAM, "pos": pos, "yaw": PI, "diff": float(training.get("difficulty", 0.5)), "personality": "archer" if w == "bow" or w == "crossbow" else "standard"})
+			e = spawn_fighter({"kind": "bot", "name": "Sparring partner", "loadout": {"main": "" if w == "fists" else w, "off": ""}, "team": ENEMY_TEAM, "pos": pos, "yaw": PI, "diff": skill, "personality": "archer" if w == "bow" or w == "crossbow" else "standard"})
 		if e:
 			e.training = String(training.get("behaviour", "fights"))
 

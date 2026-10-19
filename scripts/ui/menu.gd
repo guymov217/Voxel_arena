@@ -2693,11 +2693,16 @@ func _set_look(k: String, i: int) -> void:
 	else:
 		_dress_hero()
 
+## The fight behind the menus is over: after a moment fresh men come in where it was fought.
+## Only the fighters are replaced (built anew, the whole scene came back with its camera from
+## the start and the champion in front settled again: the screen visibly reset).
 func _backdrop_restart() -> void:
 	await get_tree().create_timer(2.5).timeout
 	if backdrop:
-		_backdrop_off()
-		_backdrop_on()
+		backdrop.restart_attract({"mode": "ffa", "autopilot": true, "decrees": [], "hazards": [], "seed": randi()})
+		if backdrop.input:
+			backdrop.input.set_process_unhandled_input(false)
+			backdrop.input.set_process(false)
 
 func _backdrop_off() -> void:
 	if backdrop:

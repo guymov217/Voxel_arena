@@ -174,7 +174,9 @@ func _ready() -> void:
 	caps.spacing_glyph = 2
 	font_caps = caps
 	root = Control.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Pinned top left and sized by hand (_fit scales it to the window): full-rect anchors
+	# fought the size set there, and Godot warned of it every round.
+	root.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 	_build_vignette()
@@ -731,7 +733,7 @@ func add_feed(text: String) -> void:
 	tw.tween_property(p, "modulate:a", 1.0, 0.2)
 	tw.tween_interval(5.0)
 	tw.tween_property(p, "modulate:a", 0.0, 1.0)
-	tw.tween_callback(func(): if is_instance_valid(p): p.queue_free())
+	tw.tween_callback(p.queue_free)   # (a bound call: dropped with p if it goes first, no error)
 
 func show_banner(text: String, sub: String) -> void:
 	banner_label.text = text
