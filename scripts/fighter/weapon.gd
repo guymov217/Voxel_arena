@@ -76,6 +76,13 @@ var last_side := ""
 var wscale := 1.0
 
 
+static var _slip_mat: PhysicsMaterial
+static func _slip() -> PhysicsMaterial:
+	if _slip_mat == null:
+		_slip_mat = PhysicsMaterial.new()
+		_slip_mat.friction = 0.3
+	return _slip_mat
+
 func setup(d: Dictionary, scale_ := 1.0) -> void:
 	design = d.duplicate(true)
 	wscale = scale_
@@ -121,6 +128,9 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	contact_monitor = true
 	max_contacts_reported = 8
 	continuous_cd = true
+	# Iron on sand slips: at the ground's full grip a blade or a haft that touched down in a low
+	# stroke was held there, and the arms could not get it back up.
+	physics_material_override = _slip()
 	collision_layer = VoxelPart.LAYER_WEAPON
 	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
 	var all := []

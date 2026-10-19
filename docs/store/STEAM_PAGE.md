@@ -137,6 +137,7 @@ physics step on one core.
 | Library hero | 3840 × 1240 | the library page banner (no text) | `capsules/library_hero_3840x1240.png` |
 | Library logo | 1280 × 720, transparent PNG | over the hero | `capsules/library_logo_1280x720.png` |
 | Screenshots | 1920 × 1080, at least 5 | the gallery | `screenshots/*.png` |
+| Key-art poster | 1200 × 1800 and 2560 × 1080 | press kit, social, events (not a Steam slot) | `capsules/poster_1200x1800.png`, `capsules/poster_wide_2560x1080.png` |
 
 Valve's rules for capsules: the game's name must be readable, and no review quotes, prices,
 awards or "out now" text. The capsules here are made from real game frames with the title over
@@ -167,4 +168,8 @@ Record with the game's own F9 recorder or OBS at 1920×1080 60 fps, gameplay onl
 SHOT_DIR=docs/store/screenshots godot --resolution 1920x1080 --path . -- --probe steamshots
 # capsules from those screenshots
 python3 tools/make_capsules.py
+# the key art: the poster frame and the wide frame, then the posters and the logo
+SHOT_DIR=/tmp/ka KEYART_VIEW=poster godot --resolution 1200x1800 --path . -- --probe keyart
+SHOT_DIR=/tmp/ka KEYART_VIEW=wide godot --resolution 2560x1080 --path . -- --probe keyart
+python3 tools/make_keyart.py /tmp/ka docs/store/capsules
 ```

@@ -1504,7 +1504,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# (held out at arm's length and no more, the point only pricked).
 	var lunge := maxf(float(inp.get("thrust", 0.0)), float(inp.get("offThrust", 0.0)))
 	if lunge > 0.3 and standing and not rising and shove_t <= 0.0 and (weapons.R or weapons.L) and holding == null:
-		move_local.z = maxf(move_local.z, 0.75 * clampf(lunge, 0.0, 1.0))
+		# The step goes the way the point goes: along the thrust's line as it lies on the ground
+		# (a stab across the body steps across, one straight up or down hardly steps at all).
+		var tl_m = thrust_line.R if thrust_line.R != null else thrust_line.L
+		var step := Vector3(0, 0, 1)
+		if tl_m != null:
+			var d: Vector3 = tl_m.dir
+			step = Vector3(d.x, 0.0, d.z) * clampf(1.0 - 1.3 * absf(d.y), 0.0, 1.0)
+		step *= 0.75 * clampf(lunge, 0.0, 1.0)
+		move_local.z = maxf(move_local.z, step.z)
+		if absf(step.x) > absf(move_local.x):
+			move_local.x = step.x
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
@@ -1984,12 +1994,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# the blade's own line (see below): the hand's mark is where it was, not pushed out ahead.
 	var line_on: bool = th_in > 0.5 and w != null and not w.is_shield and not w.design.has("shoots") and down_hp == null and held_item == null and shove_t <= 0.0
 	var target := hand_target_local(side, hp_used, 0.0 if line_on else thrust)
-	# A hurt arm trembles and wanders, more the worse it is; a hurt eye throws the aim off too.
+	# A hurt arm sags and wanders, slowly, more the worse it is (a fast tremble on the mark had
+	# the hand and blade buzzing); a hurt eye throws the aim off too.
 	var arm_hurt := 1.0 - minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)
-	var shake := maxf(0.0, arm_hurt - 0.1) * 0.09 + eye_hurt * 0.04
+	var shake := maxf(0.0, arm_hurt - 0.1) * 0.06 + eye_hurt * 0.04
 	if shake > 0.002:
-		target.x += (sin(time * 13.7 + slot * 3) + 0.5 * sin(time * 29.3)) * shake * S
-		target.y += (cos(time * 11.1 + side.length()) + 0.5 * sin(time * 23.9)) * shake * S
+		target.x += (sin(time * 1.7 + slot * 3) + 0.4 * sin(time * 2.9)) * shake * S
+		target.y += ((cos(time * 1.3 + side.length()) + 0.4 * sin(time * 2.3)) * shake - maxf(0.0, arm_hurt - 0.1) * 0.08) * S
 	if concussion > 0.1:
 		target.x += sin(time * 3.1 + slot) * concussion * 0.25
 		target.y += cos(time * 2.3) * concussion * 0.2
@@ -2523,7 +2534,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	# the body (see _route_front); kept off the sand below like any other.
 	if not throwing[side] and not throw_pose[side]:
 		axis = _route_front(PD.quat_of(w) * Vector3.UP, axis, yaw_q)
-	if not throwing[side] and not is_spear(w):
+	if not throwing[side]:
 		# A low blow comes down to the sand and skims it instead of ploughing in (a sweep with the
 		# tip dug in stuck fast there): the point is let down to just above the ground (a heavy
 		# head sags a little below its aim). Measured from where the hand is going, the lowest it
@@ -2537,6 +2548,10 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		chop_mem[side] = maxf(clampf(-target_vel[side].y / (1.5 * S), 0.0, 1.0), float(chop_mem[side]) - dt / 0.6)
 		var chop: float = chop_mem[side]
 		var margin := lerpf(0.13 + 0.035 * minf(4.0, w.mass), 0.025 + 0.008 * minf(4.0, w.mass), chop)
+		if is_spear(w):
+			# A spear's point lowered (couched low, or at a man on the sand) stops just over the
+			# sand: driven into it, the long haft caught there and would not come back up.
+			margin = 0.05 + 0.008 * minf(4.0, w.mass)
 		var floor_gap := hand_low - (ground_level + margin * S)
 		var reach_w := maxf(0.2, w.reach + 0.04 * S)
 		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:

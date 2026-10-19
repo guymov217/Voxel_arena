@@ -305,7 +305,7 @@ func show_screen(s: String, msg := "") -> void:
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
-	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" else 760), 0)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" else (980 if s == "armoury" or s == "training_bench" else 760)), 0)
 	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
 	# a count changed in the bag, stays put).
 	var fresh := s != was or not panel.has_meta("shown")
@@ -336,6 +336,9 @@ func show_screen(s: String, msg := "") -> void:
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
 		"training_designs": _training_designs(v)
+		"armoury": _armoury(v)
+		"training_armour": _training_armour(v)
+		"training_bench": _training_bench(v)
 	if fresh and s != "main":
 		var rows := v.get_children()
 		for i in rows.size():
@@ -403,6 +406,9 @@ func _main(v: VBoxContainer) -> void:
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
 		UIStyle.menu_button("Training", func(): show_screen("training")),
 		UIStyle.menu_button("The forge", _workshop_forge),
+		UIStyle.menu_button("The armourer", func():
+			bench_mode = "workshop"
+			show_screen("armoury")),
 		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
 		UIStyle.menu_button("Settings", func(): show_screen("options")),
 		UIStyle.menu_button("Quit", func(): get_tree().quit()),
@@ -732,6 +738,13 @@ func _training(v: VBoxContainer) -> void:
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
 	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
 	_row(left, [UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")), UIStyle.button("Forge a weapon (free in training)", _training_forge)])
+	var t_arm := Armory.sanitize(training.get("armor", []))
+	var t_kg := 0.0
+	for id in t_arm:
+		t_kg += Armory.kg(id)
+	var al := UIStyle.label(("Armour: %d pieces · %.1f kg" % [t_arm.size(), t_kg]) if not t_arm.is_empty() else "Armour: none", 15)
+	al.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_row(left, [al, UIStyle.button("Armour (free in training)", func(): show_screen("training_armour"))])
 	var imm := CheckBox.new()
 	imm.text = "I cannot die"
 	imm.button_pressed = training.immortal
@@ -755,7 +768,8 @@ func _training_loadout() -> Dictionary:
 	var off = lo.off if o == "campaign" else ("" if o == "none" else ((built_off if not built_off.is_empty() else "") if o == "built" else o))
 	if main is Dictionary and main.get("twoHanded", false):
 		off = ""
-	return {"main": main if main != null else "", "off": off if off != null else ""}
+	var arm := Armory.sanitize(training.get("armor", []))
+	return {"main": main if main != null else "", "off": off if off != null else "", "armor": arm, "armor_defs": Armory.defs_of(arm)}
 
 func _start_training() -> void:
 	Save.set_value("training", training)
@@ -1030,6 +1044,7 @@ func _yard(v: VBoxContainer) -> void:
 		_smith_armour(v, inner_w)
 		return
 	if smith_tab == "bench":
+		bench_mode = "smith"
 		_armour_bench(v, inner_w)
 		return
 	var a := arms()
@@ -1428,9 +1443,131 @@ static func _dots(x: float) -> String:
 	var n := clampi(int(round(x * 5.0)), 0, 5)
 	return "●".repeat(n) + "○".repeat(5 - n)
 
+# ---------- The armourer (main menu) and armour in training ----------
+
+## The main menu's armourer: the smith's bench, free, to design pieces and keep them in My
+## designs (worn in training; made and paid for at the smith in the campaign).
+func _armoury(v: VBoxContainer) -> void:
+	bench_mode = "workshop"
+	v.add_child(UIStyle.title("The armourer", 34))
+	v.add_child(UIStyle.label("Design a piece: where it goes, what it is made of, how much it covers. It is kept in My designs: worn in training here, forged at the smith in the campaign.", 14, UIStyle.MUTED))
+	_armour_bench(v, panel.custom_minimum_size.x - 64.0)
+	_armour_designs_row(v)
+	_row(v, [UIStyle.button("Back", func(): show_screen("main"))]).alignment = BoxContainer.ALIGNMENT_END
+
+## The pieces kept in My designs, one line, each with a bin.
+func _armour_designs_row(v: VBoxContainer) -> void:
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	if designs.is_empty():
+		return
+	v.add_child(UIStyle.label("MY DESIGNS", 13, UIStyle.BRONZE))
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	for idv in designs:
+		var id: String = idv
+		var d: Dictionary = designs[id]
+		row.add_child(UIStyle.label("%s · %s · %.1f kg" % [String(d.get("name", id)), String(d.get("mat", "iron")).capitalize(), Armory.design_kg(d)], 13, UIStyle.TEXT))
+		row.add_child(UIStyle.button("✕", func():
+			var ds: Dictionary = Save.get_value("armor_designs", {})
+			ds.erase(id)
+			Save.set_value("armor_designs", ds)
+			training.armor = Armory.sanitize(training.get("armor", [])).filter(func(o): return o != id)
+			Save.set_value("training", training)
+			show_screen(screen)))
+	v.add_child(row)
+
+## Armour for training, free: every piece the smith sells and every one of My designs, worn or
+## taken off with a click (a piece replaces what it clashes with); or a new one made at the bench.
+func _training_armour(v: VBoxContainer) -> void:
+	var worn := Armory.sanitize(training.get("armor", []))
+	var head := HBoxContainer.new()
+	var tt := UIStyle.title("Armour for training", 34)
+	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tt)
+	head.add_child(UIStyle.button("Make your own (free)", func():
+		bench_mode = "training"
+		show_screen("training_bench")))
+	v.add_child(head)
+	var kg := 0.0
+	for id in worn:
+		kg += Armory.kg(id)
+	var with := Armory.burden(kg)
+	v.add_child(UIStyle.label(("Worn: %s · %.1f kg · breath ×%.2f · pace %d%%" % [", ".join(worn.map(func(i): return String(Data.armor[i].name))), kg, float(with.breath), int(round(float(with.pace) * 100.0))]) if not worn.is_empty() else "You wear no armour in training. Put on what you like: nothing is paid for here.", 14, UIStyle.MUTED))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 470)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
+	scroll.add_child(grid)
+	var ids: Array = (Save.get_value("armor_designs", {}) as Dictionary).keys().filter(func(i): return Armory.custom(String(i))) + Armory.SHOP.map(func(r): return r[0])
+	for idv in ids:
+		var id: String = idv
+		var a: Dictionary = Data.armor.get(id, {})
+		if a.is_empty():
+			continue
+		var on := worn.has(id)
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_child(UIStyle.label(String(a.name), 15, UIStyle.GOLD if on else UIStyle.TEXT))
+		var where := []
+		for k in Armory.parts_of(id):
+			if not where.has(ARMOUR_PARTS.get(k, k)):
+				where.append(ARMOUR_PARTS.get(k, k))
+		col.add_child(UIStyle.label("%s · %s · Protection %s · %.1f kg" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where), _dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.BRONZE))
+		col.add_child(UIStyle.button("Worn · take off" if on else "Wear", func():
+			var now := Armory.sanitize(training.get("armor", []))
+			training.armor = now.filter(func(o): return o != id) if on else Armory.buy(now, id).worn
+			Save.set_value("training", training)
+			show_screen("training_armour")))
+		grid.add_child(col)
+	_row(v, [UIStyle.button("Take it all off", func():
+		training.armor = []
+		Save.set_value("training", training)
+		show_screen("training_armour")), UIStyle.button("Back", func(): show_screen("training"))]).alignment = BoxContainer.ALIGNMENT_END
+
+## The bench, free, for training: what is made is kept in My designs and worn.
+func _training_bench(v: VBoxContainer) -> void:
+	bench_mode = "training"
+	v.add_child(UIStyle.title("Make armour", 34))
+	_armour_bench(v, panel.custom_minimum_size.x - 64.0)
+	_row(v, [UIStyle.button("Back", func(): show_screen("training_armour"))]).alignment = BoxContainer.ALIGNMENT_END
+
 # ---------- The armourer's bench ----------
 
 var bench := {"region": "torso", "mat": "iron", "y0": 0.3, "y1": 1.0, "front": false, "cap": true, "name": ""}
+## Whose bench it is: "smith" (the campaign's, paid for and worn), "workshop" (the main menu's
+## armourer: designed and kept in My designs, free) or "training" (made free and worn there).
+var bench_mode := "smith"
+
+func _bench_back() -> String:
+	return {"smith": "yard", "workshop": "armoury", "training": "training_armour"}.get(bench_mode, "yard")
+
+## What the bench is wearing it against: the campaign's armour, the training kit, or nothing.
+func _bench_worn() -> Array:
+	match bench_mode:
+		"smith": return worn_armor()
+		"training": return Armory.sanitize(training.get("armor", []))
+	return []
+
+## A piece made at a free bench (the workshop's or training's): kept in My designs, and in
+## training put on as well.
+func _bench_keep(final: Dictionary) -> void:
+	var ids := Armory.register([final])
+	if ids.is_empty():
+		show_screen(_bench_back())
+		return
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	designs[ids[0]] = final
+	Save.set_value("armor_designs", designs)
+	if bench_mode == "training":
+		training.armor = Armory.buy(Armory.sanitize(training.get("armor", [])), ids[0]).worn
+		Save.set_value("training", training)
+	show_screen(_bench_back(), "%s kept in My designs" % String(final.get("name", "The piece")) + (" and worn" if bench_mode == "training" else ""))
 
 ## The armourer's bench: a piece of your own, where it goes, what it is made of and how much
 ## of the part it covers; what it keeps out, what it weighs and what the weight costs in breath
@@ -1453,7 +1590,7 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 			var key: String = k
 			var b := UIStyle.button(names.call(key), func():
 				set.call(key)
-				show_screen("yard"))
+				show_screen(_bench_back()))
 			b.toggle_mode = true
 			b.button_pressed = key == cur
 			row.add_child(b)
@@ -1477,7 +1614,7 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sl.drag_ended.connect(func(_c):
 			bench[key] = sl.value
-			show_screen("yard"))
+			show_screen(_bench_back()))
 		row.add_child(sl)
 		left.add_child(row)
 	var opt := HBoxContainer.new()
@@ -1486,14 +1623,14 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	fr.button_pressed = bench.front
 	fr.toggled.connect(func(x):
 		bench.front = x
-		show_screen("yard"))
+		show_screen(_bench_back()))
 	opt.add_child(fr)
 	var cp := CheckBox.new()
 	cp.text = "Cap the top"
 	cp.button_pressed = bench.cap
 	cp.toggled.connect(func(x):
 		bench.cap = x
-		show_screen("yard"))
+		show_screen(_bench_back()))
 	opt.add_child(cp)
 	left.add_child(opt)
 	var nm := LineEdit.new()
@@ -1523,7 +1660,7 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	right.add_child(fig)
 	var kg := Armory.design_kg(def)
 	var worn_kg := 0.0
-	for id in worn_armor():
+	for id in _bench_worn():
 		worn_kg += Armory.kg(id)
 	var with := Armory.burden(worn_kg + kg)
 	var price := Armory.design_price(def)
@@ -1532,9 +1669,14 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	right.add_child(UIStyle.label("Weight %.1f kg  (all you wear: %.1f kg)" % [kg, worn_kg + kg], 15, UIStyle.TEXT))
 	right.add_child(UIStyle.label("Breath when running and swinging: ×%.2f" % float(with.breath), 14, UIStyle.MUTED))
 	right.add_child(UIStyle.label("Pace: %d%%" % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
-	var make := UIStyle.button("Forge and wear · %d denarii" % price, func():
-		_forge_armour(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)), true)
-	make.disabled = price > coins()
+	var free := bench_mode != "smith"
+	var make := UIStyle.button(("Make and wear · free in training" if bench_mode == "training" else "Keep in My designs") if free else ("Forge and wear · %d denarii" % price), func():
+		var piece := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
+		if free:
+			_bench_keep(piece)
+		else:
+			_forge_armour(piece), true)
+	make.disabled = not free and price > coins()
 	right.add_child(make)
 	# Or plate by plate, as a weapon is built at the forge (from the shape above).
 	right.add_child(UIStyle.button("Shape it plate by plate", func(): _plate_bench(def, worn_kg)))
@@ -1549,9 +1691,11 @@ func _plate_bench(def: Dictionary, worn_kg: float) -> void:
 		f.queue_free()
 		smith_tab = "armour"
 		if final == null:
-			show_screen("yard")
+			show_screen(_bench_back())
+		elif bench_mode != "smith":
+			_bench_keep(final)
 		else:
-			_forge_armour(final), worn_kg, coins())
+			_forge_armour(final), worn_kg, coins() if bench_mode == "smith" else -1)
 
 ## A designed piece made at the smith and put on, paid for less what it replaces fetches.
 func _forge_armour(final: Dictionary) -> void:

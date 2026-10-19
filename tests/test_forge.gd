@@ -289,6 +289,42 @@ func test_the_builder_picks_where_the_hand_holds() -> void:
 	t.eq(f._nearest_hand(low + Vector3i(0, 1, 0)), "off", "pressed nearer the bronze ring, the other hand is taken up")
 	f.queue_free()
 
+## The hands said plainly: "Held in" One hand / Two hands, and a button for each hand puts it
+## on the next block clicked (no hunting for the ring), its ring marked MAIN or OTHER.
+func test_each_hand_has_its_own_button() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Data.preset("longsword"), 1000, func(_d, _c): pass)
+	f._show_mode("voxels")
+	await get_tree().process_frame
+	var texts := func() -> Array:
+		var out := []
+		var stack: Array = [f]
+		while stack.size():
+			var n: Node = stack.pop_back()
+			if n is Button:
+				out.append((n as Button).text)
+			stack.append_array(n.get_children())
+		return out
+	var tx: Array = texts.call()
+	t.check(tx.has("One hand") and tx.has("Two hands"), "held in one hand or two, said plainly")
+	t.check(tx.has("✋ Main hand") and tx.has("✋ Other hand"), "a button for each hand of a two-handed weapon")
+	var grip: Array = f.cells.keys().filter(func(k): return f.cells[k][1] == "grip")
+	grip.sort_custom(func(a, b): return a.y < b.y)
+	f.tool = "hand"
+	f.hand_pick = "off"
+	f.stroke = {"erase": false, "done": {}, "undo": false}
+	f._apply({"hit": grip[grip.size() - 1], "place": grip[grip.size() - 1]})
+	f.stroke = {}
+	var g = ForgeLib.grip_points(f._design_now())
+	t.check(g.off.distance_to(Vector3(grip[grip.size() - 1])) < 0.01, "the other hand's button and a click: that hand goes there, wherever its ring was")
+	var tags := []
+	for c in f.weapon_root.get_children():
+		if c is Label3D:
+			tags.append((c as Label3D).text)
+	t.check(tags.has("MAIN") and tags.has("OTHER"), "the rings are marked (%s)" % [tags])
+	f.queue_free()
+
 ## Whatever the forge makes by itself (Something silly, any base card with any modifier cards,
 ## Surprise me) comes out in one piece: no voxel hangs in the air apart from the weapon.
 func test_nothing_the_forge_makes_hangs_in_the_air() -> void:

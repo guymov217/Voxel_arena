@@ -50,6 +50,11 @@ godot --headless --path . -- --test test_fight   # one suite
   that names the next fight (the party's, in a room). Three missions per fight pay denarii and reputation, and reputation
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
+  In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
+  (the rings are marked MAIN and OTHER).
+- **The armourer**: design a piece (where it goes, its material, how much it covers, or plate by
+  plate). From the main menu it is kept in My designs for free; in training any piece, bought or
+  designed, is worn for free; in the campaign the smith makes it for denarii.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
   head football, players' brawl).

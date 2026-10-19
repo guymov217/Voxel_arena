@@ -223,6 +223,73 @@ func test_a_thrust_drives_straight_along_the_blade() -> void:
 		m.queue_free()
 		await get_tree().process_frame
 
+## A stab aimed across the body goes across: the feet step along the blade's line as it lies
+## on the ground, not straight ahead, so the point (in the world, not just in his frame)
+## travels where the blade points.
+func test_a_thrust_across_the_body_steps_across() -> void:
+	for wk in ["gladius", "spear"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		var inp := {"main": {"x": 1.2, "y": 0.3}, "power": false}
+		m.me.drive = func(_e): return inp
+		for i in 150:
+			await get_tree().physics_frame
+		var w: Weapon = f.weapons.R
+		var ax0: Vector3 = PD.quat_of(w) * Vector3.UP
+		var tip := func() -> Vector3: return w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0)
+		var body0 := f.torso.global_position
+		var back: Vector3 = tip.call()
+		var far := back
+		inp.thrust = 1.0
+		for i in 40:
+			await get_tree().physics_frame
+			var p: Vector3 = tip.call()
+			if f.thrust_line.R != null and float(f.thrust_line.R.t) <= Fighter.THRUST_DRAW:
+				back = p
+				far = p
+			elif (p - back).dot(ax0) > (far - back).dot(ax0):
+				far = p
+		var drive: Vector3 = far - back
+		var step: Vector3 = f.torso.global_position - body0
+		var side := Vector3(ax0.x, 0, ax0.z).normalized()
+		t.check(drive.dot(ax0) > 0.2, "%s: the point goes out along the blade (%.2f m)" % [wk, drive.dot(ax0)])
+		t.check(rad_to_deg(drive.angle_to(ax0)) < 25.0, "%s: in the world too (%.0f deg off)" % [wk, rad_to_deg(drive.angle_to(ax0))])
+		t.check(Vector3(step.x, 0, step.z).dot(side) > 0.05, "%s: the feet step the way it points (%.2f m)" % [wk, Vector3(step.x, 0, step.z).dot(side)])
+		m.queue_free()
+		await get_tree().process_frame
+
+## A wounded arm (red on the HUD) sags and wanders slowly; it does not buzz. A fast tremble on
+## its mark had the hand and the blade shaking at more than a metre a second, standing still.
+func test_a_wounded_arm_wanders_but_does_not_buzz() -> void:
+	for hpv in [60.0, 30.0, -1.0]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": ""}})
+		var f: Fighter = m.me.f
+		m.me.drive = func(_e): return {"main": {"x": 0.3, "y": 0.4}, "power": false}
+		for i in 120:
+			await get_tree().physics_frame
+		if hpv < 0.0:
+			f.arm.R.fore.fractured = true
+		else:
+			f.arm.R.upper.hp = hpv
+			f.arm.R.fore.hp = hpv
+		for i in 120:
+			await get_tree().physics_frame
+		var speed := 0.0
+		var prev: Vector3 = f.hand_world("R") - f.torso.global_position
+		for i in 240:
+			await get_tree().physics_frame
+			var h: Vector3 = f.hand_world("R") - f.torso.global_position
+			speed += (h - prev).length() * 120.0 / 240.0
+			prev = h
+		t.check(speed < 0.4, "arm at %s: the hand wanders, it does not buzz (%.2f m/s)" % [hpv, speed])
+		t.check(f.weapons.R != null, "arm at %s: the blade is still in the hand" % hpv)
+		m.queue_free()
+		await get_tree().process_frame
+
 ## The weight of a weapon and where it lies tell in the hand: the same hammer with a lead head
 ## has its centre of mass further out, and the same sweep of the mouse swings it slower.
 func test_a_heavy_head_moves_the_balance_and_swings_slower() -> void:

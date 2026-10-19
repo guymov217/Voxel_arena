@@ -213,3 +213,40 @@ func test_armour_plate_by_plate() -> void:
 	t.check(m.me.f.armor_weight() > 0.0, "and he wears it (%.1f kg)" % m.me.f.armor_weight())
 	m.queue_free()
 	f.queue_free()
+
+## The armourer from the main menu and in training: a piece designed at the main menu's
+## armourer is kept in My designs (free); in training it is put on with a click, a new one made
+## at the bench there is kept and worn too, and the fighter goes out in them.
+func test_armour_from_the_main_menu_and_in_training() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.bench_mode = "workshop"
+	menu.show_screen("armoury")
+	await get_tree().process_frame
+	menu._bench_keep(Armory.design_piece("torso", "bronze", 0.3, 1.0, false, true, "Test plate"))
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	t.eq(designs.size(), 1, "the main menu's armourer keeps the piece in My designs")
+	t.eq(menu.screen, "armoury", "and stays at the armourer")
+	var id: String = designs.keys()[0]
+	menu.show_screen("training_armour")
+	await get_tree().process_frame
+	menu.training.armor = Armory.buy([], id).worn
+	menu.bench_mode = "training"
+	menu.show_screen("training_bench")
+	await get_tree().process_frame
+	menu._bench_keep(Armory.design_piece("head", "iron", 0.0, 1.0, false, true, "Test helm"))
+	t.eq((menu.training.armor as Array).size(), 2, "made at the training bench: worn as well as kept")
+	var lo: Dictionary = menu._training_loadout()
+	t.eq((lo.armor as Array).size(), 2, "training goes out in it")
+	menu.show_screen("training")
+	await get_tree().process_frame
+	menu._start_training()
+	await _steps(20)
+	var f: Fighter = menu.match_.me.f
+	var n := 0
+	for p in f.parts:
+		n += (p.get_meta("armor", []) as Array).size()
+	t.check(n >= 2 and f.armor_weight() > 1.0, "the fighter wears both (%d pieces on, %.1f kg)" % [n, f.armor_weight()])
+	menu.queue_free()
+	await get_tree().process_frame

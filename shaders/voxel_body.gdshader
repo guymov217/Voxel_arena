@@ -28,8 +28,8 @@ uniform float ao_strength : hint_range(0.0, 1.0) = 0.55;   // 0: corner shading 
 uniform float edge_thin : hint_range(0.0, 1.0) = 0.1;    // a sharp edge's thickness, of the voxel's
 uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
 
-const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.27, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
-const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
+const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 const float SPEC[13] = float[](0.38, 0.16, 0.3, 0.5, 0.5, 0.28, 0.4, 0.75, 0.2, 0.6, 0.55, 0.7, 0.5);
 const float GRAIN[13] = float[](0.035, 0.035, 0.06, 0.06, 0.04, 0.09, 0.05, 0.03, 0.08, 0.08, 0.06, 0.04, 0.0);
 

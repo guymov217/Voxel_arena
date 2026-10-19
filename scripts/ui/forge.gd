@@ -19,6 +19,7 @@ var scratch := false      # at the smith, a new weapon from nothing (any kind), 
 var mat := "steel"
 var job := "edge"
 var tool := "build"
+var hand_pick := ""         # Move hand: "main"/"off" picked with its button (a click puts it there)
 var mirror := true          # left and right alike (across the blade's flat)
 var mirror_z := false        # front and back alike (across its edge)
 const ERASE_EVERY := 0.18    # a held right button takes a block off no faster than this (s)
@@ -75,7 +76,7 @@ const TOOL_HINT := {
 	"build": "Build: click a face of the weapon, or hold and drag",
 	"erase": "Erase: click blocks, or hold the right button anywhere",
 	"line": "Line: click where it starts",
-	"hand": "Move hand: press on the gold ring and drag it to any block (the bronze ring is the other hand)",
+	"hand": "Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand",
 }
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
@@ -639,14 +640,50 @@ func _voxels_ui() -> void:
 	md.tooltip_text = material_text(mat)
 	md.mouse_filter = Control.MOUSE_FILTER_PASS
 	mode_box.add_child(md)
+	# How it is held, and where: one hand or two, and each hand put on its block with a click
+	# (the gold ring is the main hand, the bronze one the other).
+	var held := HBoxContainer.new()
+	held.add_theme_constant_override("separation", 4)
+	var hl := UIStyle.label("Held in", 14, UIStyle.MUTED)
+	hl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	held.add_child(hl)
+	var two_now: bool = design.get("twoHanded", false)
+	for hk in [[false, "One hand"], [true, "Two hands"]]:
+		var want: bool = hk[0]
+		var hb := UIStyle.button(hk[1], func():
+			if bool(design.get("twoHanded", false)) == want:
+				return
+			design.twoHanded = want
+			hand_pick = "main" if not want and hand_pick == "off" else hand_pick
+			_rebuild()
+			_update_texts()
+			_show_mode("voxels"))
+		hb.toggle_mode = true
+		hb.button_pressed = two_now == want
+		hb.tooltip_text = "Swung in both hands: slower to start, much more behind each blow" if want else "In one hand: quick, the other hand free for a shield"
+		held.add_child(hb)
+	held.add_child(VSeparator.new())
+	var hands := [["main", "✋ Main hand", UIStyle.GOLD]]
+	if two_now:
+		hands.append(["off", "✋ Other hand", UIStyle.BRONZE])
+	for hd in hands:
+		var which: String = hd[0]
+		var pb := UIStyle.button(hd[1], func():
+			tool = "hand"
+			hand_pick = which
+			line_from = null
+			_show_line([])
+			_toolbar_ui()
+			_show_mode("voxels")
+			cost_label.text = "Click the block where the %s hand holds it (its ring: %s)" % ["main" if which == "main" else "other", "gold" if which == "main" else "bronze"])
+		pb.toggle_mode = true
+		pb.button_pressed = tool == "hand" and (hand_pick if hand_pick != "" else "main") == which
+		pb.add_theme_color_override("font_color", hd[2])
+		pb.add_theme_color_override("font_pressed_color", hd[2])
+		pb.tooltip_text = "Put the %s hand on a block: click it on the weapon" % ("main" if which == "main" else "other")
+		held.add_child(pb)
+	mode_box.add_child(held)
 	var opts := HBoxContainer.new()
-	var two := CheckBox.new()
-	two.text = "Two-handed"
-	two.button_pressed = design.get("twoHanded", false)
-	two.toggled.connect(func(x):
-		design.twoHanded = x
-		_update_texts())
-	opts.add_child(two)
 	var thr := CheckBox.new()
 	thr.text = "Throwable"
 	thr.button_pressed = design.get("throwable", false)
@@ -703,6 +740,7 @@ func _toolbar_ui() -> void:
 		var key: String = td[0]
 		var b := UIStyle.button(td[1], func():
 			tool = key
+			hand_pick = ""
 			line_from = null
 			_show_line([])
 			_toolbar_ui()
@@ -987,6 +1025,16 @@ func _rebuild() -> void:
 			ring.mesh = tm
 			ring.position = (hd[0] as Vector3) * vs
 			weapon_root.add_child(ring)
+			var tag := Label3D.new()
+			tag.text = "MAIN" if hd[1] == UIStyle.GOLD else "OTHER"
+			tag.modulate = hd[1]
+			tag.outline_size = 8
+			tag.font_size = 36
+			tag.pixel_size = vs * 0.03
+			tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			tag.no_depth_test = true
+			tag.position = (hd[0] as Vector3) * vs + Vector3(vs * 2.2, 0, 0)
+			weapon_root.add_child(tag)
 	var low := INF
 	for k in cells:
 		low = minf(low, float(k.y) * vs)
@@ -1283,7 +1331,8 @@ func _apply(a: Dictionary) -> void:
 			if a.hit == null or stroke.get("at") == a.hit:
 				return
 			if not stroke.has("which"):
-				stroke["which"] = _nearest_hand(a.hit)
+				# The hand picked with its button, else the one whose ring is nearest.
+				stroke["which"] = hand_pick if hand_pick != "" and (hand_pick == "main" or design.get("twoHanded", false)) else _nearest_hand(a.hit)
 			stroke["at"] = a.hit
 			_set_hand(a.hit, String(stroke.which))
 		"line":

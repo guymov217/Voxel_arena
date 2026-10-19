@@ -35,21 +35,21 @@ func _ready() -> void:
 	if m.arena and m.arena.env:
 		Arena.apply_quality(m.arena.env, m.arena.sun, "ultra")
 	var hero: Fighter = m.me.f
-	hero.teleport(Vector3(0, 0, -1.0))
-	hero.yaw = 0.0
-	# The axe up over his head, the other arm out: facing the camera, his back to the dragon.
-	var pose := {"look": {"yaw": PI, "pitch": 0.35}, "main": {"x": 0.15, "y": 1.6}, "off": {"x": -0.9, "y": 0.6}}
-	m.me.drive = func(_e): return pose
+	hero.teleport(Vector3(0, 0, 1.0))
 	hero.yaw = PI
+	# The axe up over his head, the other arm out: facing the camera, his back to the dragon.
+	var pose := {"look": {"yaw": 0.0, "pitch": 0.35}, "main": {"x": 0.15, "y": 1.6}, "off": {"x": -0.9, "y": 0.6}, "twist": 1.3}
+	m.me.drive = func(_e): return pose
+	hero.yaw = 0.0
 	# The dragon behind him, its fire poured across the sand at a man running from it.
-	var dragon = m.spawn_beast({"beast": "dragon", "team": Match.ENEMY_TEAM, "pos": Vector3(1.2, 0.1, 6.5), "yaw": PI + 0.5, "harmless": true})
+	var dragon = m.spawn_beast({"beast": "dragon", "team": Match.ENEMY_TEAM, "pos": Vector3(1.2, 0.1, -6.5), "yaw": -0.5, "harmless": true})
 	dragon.f.sp = dragon.f.sp.duplicate()
 	dragon.f.sp.speed = 0.0
 	dragon.f.sp.lunge = 0.0
 	dragon.f.sp.ai = "statue"
-	var runner = m.spawn_fighter({"kind": "bot", "name": "Runner", "loadout": {"main": "spear", "off": "roundShield"}, "team": 2, "pos": Vector3(-4.0, 0, 4.0), "yaw": -PI * 0.5})
+	var runner = m.spawn_fighter({"kind": "bot", "name": "Runner", "loadout": {"main": "spear", "off": "roundShield"}, "team": 2, "pos": Vector3(-1.5, 0, -3.5), "yaw": -PI * 0.5})
 	runner.erase("bot")
-	runner.drive = func(_e): return {"mz": 1.0, "sprint": true, "look": {"yaw": -PI * 0.5, "pitch": 0.0}, "main": {"x": -0.3, "y": 1.2}}
+	runner.drive = func(_e): return {"mz": 1.0, "sprint": false, "look": {"yaw": -PI * 0.5, "pitch": 0.0}, "main": {"x": -0.3, "y": 1.2}}
 	if m.arena:
 		m.arena.set_excitement(1.0)
 	for i in 120 * 2:
@@ -63,17 +63,15 @@ func _ready() -> void:
 	var cam: Camera3D = m.cam
 	cam.set_process(false)
 	m.set_process(false)
-	if m.hud:
-		m.hud.visible = false
 	var c: Vector3 = hero.torso.global_position
 	if view == "poster":
 		cam.fov = 52.0
-		cam.global_position = c + Vector3(0.6, -0.55, -3.1)
-		cam.look_at(c + Vector3(0.25, 1.15, 2.0), Vector3.UP)
+		cam.global_position = c + Vector3(1.0, -0.45, 4.9)
+		cam.look_at(c + Vector3(0.3, 1.45, -2.0), Vector3.UP)
 	else:
 		cam.fov = 46.0
-		cam.global_position = c + Vector3(1.4, -0.35, -3.6)
-		cam.look_at(c + Vector3(-0.2, 0.75, 2.5), Vector3.UP)
+		cam.global_position = c + Vector3(1.6, -0.3, 4.0)
+		cam.look_at(c + Vector3(-0.3, 0.8, -2.5), Vector3.UP)
 	RenderingServer.render_loop_enabled = true
 	for k in 4:
 		await get_tree().process_frame
