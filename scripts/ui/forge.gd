@@ -238,8 +238,9 @@ func _build_smithy() -> void:
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.55, 0.45, 0.4)
-	e.ambient_light_energy = 0.9
+	e.ambient_light_energy = 0.7
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
+	e.tonemap_exposure = 0.9
 	e.glow_enabled = true
 	e.glow_intensity = 0.7
 	e.glow_bloom = 0.08
@@ -253,7 +254,7 @@ func _build_smithy() -> void:
 	var light := DirectionalLight3D.new()
 	light.rotation = Vector3(-0.75, 0.7, 0)
 	light.light_color = Color(1.0, 0.95, 0.88)
-	light.light_energy = 1.5
+	light.light_energy = 1.2
 	light.shadow_enabled = true
 	viewport.add_child(light)
 	var glow := OmniLight3D.new()
@@ -414,7 +415,7 @@ func _cards_ui() -> void:
 		b.custom_minimum_size = Vector2(135, 0)
 		grid.add_child(b)
 	if base_key == "":
-		mode_box.add_child(UIStyle.label("Or switch to Voxels and reshape what is on the anvil.", 13, UIStyle.MUTED))
+		mode_box.add_child(_sharpen_button())
 		return
 	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
 	var cards := GridContainer.new()
@@ -448,6 +449,19 @@ func _cards_ui() -> void:
 		_show_mode("cards")))
 	row.add_child(UIStyle.button("Customize the voxels", func(): _show_mode("voxels")))
 	mode_box.add_child(row)
+	mode_box.add_child(_sharpen_button())
+
+## Straight to the anvil with a steel edge in hand: click or drag along the faces where the
+## sharp part goes (along the top of a stick, round the end of a club).
+func _sharpen_button() -> Button:
+	var b := UIStyle.button("Make part of it sharp ▸", func():
+		job = "edge"
+		mat = "steel"
+		tool = "build"
+		_show_mode("voxels"))
+	b.icon = _job_icon("edge")
+	b.tooltip_text = "Steel edge blocks: click or drag along the weapon where they go"
+	return b
 
 ## A clean start: one block of grip on the anvil, everything else yours to put on it (and, at
 ## the smith, to pay for, block by block).
@@ -502,40 +516,120 @@ func _from_cards() -> void:
 	framed = false
 	_rebuild()
 
+## What a block does, in the words a player thinks in: it cuts, it stabs, it crushes, it is
+## held. (The job names stay the game's own: edge, point, blunt, grip.)
+const JOB_PICK := [["edge", "Cut", "sharp edge"], ["point", "Stab", "point"], ["blunt", "Crush", "head, body"], ["grip", "Hold", "grip"]]
+## The materials in four rows, the way a smith sorts them.
+const MAT_GROUPS := [["Metals", ["steel", "iron", "gold", "lead"]], ["Wood and stone", ["wood", "stone"]], ["Tricks", ["explosive", "spring", "glue", "magnet"]], ["Gems", ["ruby", "sapphire", "emerald"]]]
+const KEEN := 0.5   # a material softer than this holds no edge worth the name
+
+static func _swatch(c: Color, px := 18) -> ImageTexture:
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	img.fill(c)
+	for i in px:
+		for e in [0, px - 1]:
+			img.set_pixel(i, e, c.darkened(0.45))
+			img.set_pixel(e, i, c.darkened(0.45))
+	for i in range(2, px - 2):
+		img.set_pixel(i, 2, c.lightened(0.35))
+	return ImageTexture.create_from_image(img)
+
+## A picture of each job, drawn: a blade's edge, a point, a block, a bound grip.
+static func _job_icon(j: String, px := 26) -> ImageTexture:
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var g := UIStyle.GOLD_LIGHT
+	var d := UIStyle.GOLD.darkened(0.3)
+	for y in px:
+		for x in px:
+			var u := float(x) / (px - 1)
+			var v := float(y) / (px - 1)
+			var on := false
+			var dark := false
+			match j:
+				"edge":
+					# A blade seen flat, its keen side a bright line.
+					on = u > 0.15 and u < 0.85 and v > 0.38 + (u - 0.15) * 0.1 and v < 0.62
+					dark = on and v > 0.47
+				"point":
+					on = absf(v - 0.5) < (u - 0.1) * 0.45 and u > 0.1 and u < 0.92
+					dark = on and v > 0.5
+				"blunt":
+					on = u > 0.2 and u < 0.8 and v > 0.2 and v < 0.8
+					dark = on and (u > 0.62 or v > 0.62)
+				"grip":
+					on = u > 0.38 and u < 0.62 and v > 0.08 and v < 0.92
+					dark = on and int(v * 8.0) % 2 == 0
+			if on:
+				img.set_pixel(x, y, d if dark else g)
+	return ImageTexture.create_from_image(img)
+
 func _voxels_ui() -> void:
-	mode_box.add_child(UIStyle.label("MATERIAL" + ("" if free_build else " · price per voxel"), 13, UIStyle.BRONZE))
-	var mg := GridContainer.new()
-	mg.columns = 5
-	for m in MATS:
-		var key: String = m
-		var b := Button.new()
-		b.text = m.capitalize() + ("" if free_build else " %d" % Arms.voxel_price(m))
-		b.tooltip_text = material_text(m)
-		b.toggle_mode = true
-		b.button_pressed = mat == key
-		b.add_theme_color_override("font_color", Weapon.voxel_color(m, "blunt").lightened(0.25))
-		b.add_theme_font_size_override("font_size", 13)
-		b.pressed.connect(func():
-			mat = key
+	# 1. What the next blocks do: a big choice of four.
+	mode_box.add_child(UIStyle.label("1 · WHAT THE BLOCK DOES", 13, UIStyle.BRONZE))
+	var jr := GridContainer.new()
+	jr.columns = 4
+	jr.add_theme_constant_override("h_separation", 6)
+	for jp in JOB_PICK:
+		var key: String = jp[0]
+		var b := UIStyle.button(jp[1], func():
+			job = key
+			# A cutting or stabbing block of a soft stuff would be no edge at all: the smith
+			# reaches for steel.
+			if (key == "edge" or key == "point") and float(Data.material(mat).get("hardness", 0.5)) < KEEN:
+				mat = "steel"
+			if tool == "erase":
+				tool = "build"
 			_show_mode("voxels"))
-		mg.add_child(b)
+		b.icon = _job_icon(key)
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.expand_icon = false
+		b.tooltip_text = JOB_USE[key]
+		b.toggle_mode = true
+		b.button_pressed = job == key
+		b.custom_minimum_size = Vector2(98, 46)
+		jr.add_child(b)
+	mode_box.add_child(jr)
+	# 2. What they are made of: swatches by kind, the price on each.
+	mode_box.add_child(UIStyle.label("2 · MATERIAL" + ("" if free_build else " · DENARII A BLOCK"), 13, UIStyle.BRONZE))
+	var mg := GridContainer.new()
+	mg.columns = 2
+	mg.add_theme_constant_override("h_separation", 8)
+	mg.add_theme_constant_override("v_separation", 4)
+	for grp in MAT_GROUPS:
+		var gl := UIStyle.label(String(grp[0]), 14, UIStyle.MUTED)
+		gl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		gl.custom_minimum_size = Vector2(92, 0)
+		mg.add_child(gl)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		for m in grp[1]:
+			if not MATS.has(m):
+				continue
+			var key: String = m
+			var b := Button.new()
+			b.text = m.capitalize() + ("" if free_build else " %d" % Arms.voxel_price(m))
+			b.icon = _swatch(Weapon.voxel_color(m, "blunt"))
+			b.tooltip_text = material_text(m)
+			b.toggle_mode = true
+			b.button_pressed = mat == key
+			b.add_theme_font_override("font", UIStyle.body("medium"))
+			b.add_theme_font_size_override("font_size", 15)
+			b.add_theme_constant_override("h_separation", 6)
+			# A soft stuff cannot be an edge: dimmed while Cut or Stab is chosen.
+			if (job == "edge" or job == "point") and float(Data.material(m).get("hardness", 0.5)) < KEEN:
+				b.modulate = Color(1, 1, 1, 0.45)
+				b.tooltip_text += "  (soft: a poor edge)"
+			b.pressed.connect(func():
+				mat = key
+				_show_mode("voxels"))
+			row.add_child(b)
+		mg.add_child(row)
 	mode_box.add_child(mg)
-	var md := UIStyle.label(material_stats(mat), 13, UIStyle.MUTED)
+	var md := UIStyle.label(material_stats(mat), 14, UIStyle.TEXT)
 	md.tooltip_text = material_text(mat)
 	md.mouse_filter = Control.MOUSE_FILTER_PASS
 	mode_box.add_child(md)
-	mode_box.add_child(UIStyle.label("JOB", 13, UIStyle.BRONZE))
-	var jr := HBoxContainer.new()
-	for j in JOBS:
-		var key: String = j
-		var b := UIStyle.button(j.capitalize(), func():
-			job = key
-			_show_mode("voxels"))
-		b.toggle_mode = true
-		b.button_pressed = job == key
-		b.tooltip_text = JOB_USE[key]
-		jr.add_child(b)
-	mode_box.add_child(jr)
 	var opts := HBoxContainer.new()
 	var two := CheckBox.new()
 	two.text = "Two-handed"
@@ -817,13 +911,13 @@ func _rebuild() -> void:
 	var vs := Data.weapon_voxel
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE * vs * 0.96
-	var mat_ := StandardMaterial3D.new()
-	mat_.vertex_color_use_as_albedo = true
-	mat_.vertex_color_is_srgb = true
-	bm.material = mat_
+	# Drawn as in the arena (shaders/voxel_body.gdshader: steel shines as steel, wood is grained),
+	# not as chalk-white blocks in the forge light.
+	bm.material = VoxelPart.body_material()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
+	mm.use_custom_data = true
 	mm.mesh = bm
 	mm.instance_count = cells.size()
 	var i := 0
@@ -831,6 +925,7 @@ func _rebuild() -> void:
 	for k in cells:
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * vs))
 		mm.set_instance_color(i, Weapon.voxel_color(cells[k][0], cells[k][1]))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0]))))
 		centre += Vector3(k) * vs
 		i += 1
 	var mi := MultiMeshInstance3D.new()

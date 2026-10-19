@@ -167,6 +167,8 @@ var prev_target := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var target_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
 var aim_q := {"R": null, "L": null}
 var aim_tw := {"R": 0.0, "L": 0.0}
+var stroke_dir := {"R": null, "L": null}   # a bot's stroke: which way it is going, across the blade
+var stroke_idle := {"R": 0.0, "L": 0.0}
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
 var grip_in := 0.0     # how far the two-handed grip is drawn in toward the shoulder (held still)   # the wheel's twist the last aim was made with
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
@@ -237,8 +239,15 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 				var lin := c.srgb_to_linear()
 				var k := style_shade(d.name, int(v[0]), int(v[1]), int(v[2]), d.grid, int(v[3]))
 				c = Color(lin.r * k, lin.g * k, lin.b * k).linear_to_srgb()
+				c = _grain(c, d.name, int(v[0]), int(v[1]), int(v[2]), int(v[3]))
+				# Sandal straps laced up the lower shin, over the skin.
+				if int(v[3]) == 1 and d.name.begins_with("shin") and _strap(int(v[0]), int(v[1]), int(v[2]), d.grid):
+					c = _grain(Color.hex(0x5c3b22ff), d.name, int(v[0]), int(v[1]), int(v[2]), 0)
+					kind = VoxelPart.kind_of_body_color(c)
 			elif d.name == "head" and int(v[4]) == 0 and int(v[2]) == int(d.grid[2]) - 1 and (int(v[0]) == 2 or int(v[0]) == 7) and int(v[1]) >= 6 and int(v[1]) <= 7:
 				c = Color(0.9, 0.88, 0.82)
+			elif kind == 2 and organ_of(v) == Anatomy.NONE:
+				c = _grain(c, d.name, int(v[0]), int(v[1]), int(v[2]), 0)   # worn leather
 			c.a = 1.0
 			var organ: int = int(v[6]) if v.size() > 6 else 0
 			if organ != Anatomy.NONE and not Anatomy.is_bone(organ):
@@ -309,6 +318,39 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	for w in weapons.values():
 		if w and Combat.current:
 			w.clear_spawn(Combat.current.fighters)
+
+static func organ_of(v: Array) -> int:
+	return int(v[6]) if v.size() > 6 else 0
+
+## A voxel's own small difference from its neighbours, the same every time it is built (and on
+## every machine): skin a touch lighter or darker here and there and now and then a little
+## ruddier, cloth woven (alternate threads catch the light), leather worn unevenly.
+static func _grain(c: Color, part: String, x: int, y: int, z: int, type: int) -> Color:
+	var h := (x * 73856093) ^ (y * 19349663) ^ (z * 83492791) ^ part.hash()
+	var r1 := float(h & 1023) / 1023.0 * 2.0 - 1.0
+	var r2 := float((h >> 10) & 1023) / 1023.0
+	var lin := c.srgb_to_linear()
+	var k := 1.0
+	match type:
+		1:
+			k = 1.0 + 0.07 * r1
+			if r2 > 0.94:
+				lin = Color(lin.r * 1.05, lin.g * 0.96, lin.b * 0.93)
+		2:
+			k = (1.045 if (x + y + z) % 2 == 0 else 0.955) * (1.0 + 0.03 * r1)
+		_:
+			k = 1.0 + 0.08 * r1
+	return Color(lin.r * k, lin.g * k, lin.b * k).linear_to_srgb()
+
+## Where a sandal's straps cross the shin: two bands round it above the sole and a lacing
+## crossed up the front, as far as the bottom of the calf.
+static func _strap(x: int, y: int, z: int, g: Array) -> bool:
+	if y < 4 or y > 8:
+		return false
+	if y == 4 or y == 7:
+		return true
+	var front := z == int(g[2]) - 1
+	return front and ((x + y) % 4 == 0 or (x - y + 16) % 4 == 0)
 
 ## The shading painted on a body voxel (skin type 1, cloth type 2), as a brightness factor on
 ## its colour: the brow, nose and chin of the face; pecs, breastbone, abs and navel on the chest,
@@ -2488,6 +2530,29 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	# over to lead the swing (that turned a pick's head over at each change of way, on its own).
 	var tw := float(inp.get("twist" if side == "R" else "offTwist", 0.0))
 	ed = ed.rotated(axis, tw)
+	# A bot has no wheel: its blade (sharp on both sides) turns to lead whichever way it sweeps,
+	# the nearer side forward (without it a giant's blows came down on the flat and seldom
+	# reached a man on the sand).
+	var led := false
+	if is_bot and not is_spear(w) and w.bites() and w.edge_side() == 0.0:
+		var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
+		if tv.length() > 0.9:
+			var nd := tv.normalized()
+			var sd = stroke_dir[side]
+			stroke_dir[side] = nd if sd == null or (sd as Vector3).dot(nd) < -0.2 else (sd as Vector3).slerp(nd, minf(1.0, dt * 10.0)).normalized()
+			stroke_idle[side] = 0.0
+		else:
+			stroke_idle[side] = float(stroke_idle[side]) + dt
+			if float(stroke_idle[side]) > 0.6:
+				stroke_dir[side] = null
+		if stroke_dir[side] != null:
+			var lead: Vector3 = stroke_dir[side]
+			lead -= axis * lead.dot(axis)
+			if lead.length_squared() > 1e-4:
+				var lt := lead.normalized()
+				var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else lt
+				ed = lt * (1.0 if prev_ed.dot(lt) >= 0.0 else -1.0)
+				led = true
 	var prev = aim_q[side]
 	if prev != null:
 		# Only the blade's line is held to the speed the weapon allows; turning the edge about
@@ -2506,7 +2571,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 					ed = ((prev as Quaternion) * Vector3.RIGHT)
 					ed -= axis * ed.dot(axis)
 				ed = ed.normalized()
-	if prev != null:
+	if prev != null and not led:
 		# The edge goes round with the blade: the last aim's edge carried along the turn the blade
 		# makes, so swinging never rolls it about the haft; the wheel turns it by what the wheel
 		# turned, and over a second or so it settles back to the edge the body's frame gives it.

@@ -56,12 +56,17 @@ godot --headless --path . -- --test test_fight   # one suite
 - **The spectacle**: the Emperor's decrees, arena hazards, the crowd's favour and the announcer,
   and drops from the stands.
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
-  A gladiator editor (name, skin, cloth, hat, hair, beard, cape). The HUD, menus and options.
+  A gladiator editor (name, skin, cloth, hat, hair, beard, cape). The HUD, menus and options
+  (four tabs: game, controls, graphics, sound). The menus in one imperial look (`scripts/ui/style.gd`):
+  Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
+  fights as cards with a line each on what they are.
 - **Graphics**: the arena in 10 cm voxels in the manner of Teardown (the bowl, gatehouses, the
   Emperor's box, the arcade and the props are models built by `tools/gen_voxel_art.py`), bodies,
   armour and weapons shaded by what each voxel is made of. Physics interpolation, GPU particles (blood, sparks, dust, smoke, fire, embers),
   decals for blood and scorch marks, SSAO, SSIL, SDFGI, volumetric fog and glow by quality
-  level. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
+  level. Anti-aliasing to choose (MSAA 4x by default: the blocks' edges smooth, the rest sharp;
+  or SMAA, FXAA, MSAA 2x/8x, off) and voxel corner shading (each voxel's face darkens toward the
+  neighbours that shut it in, so creases and the gaps between blocks lie in shadow; on or off). An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows.
 - **Multiplayer**: host-authoritative. Guests send input; the host sends snapshots, spawns, voxel

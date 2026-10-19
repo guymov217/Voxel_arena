@@ -38,7 +38,9 @@ const LOOK_SLOTS := {
 
 func _ready() -> void:
 	theme = UIStyle.theme()
+	UIStyle.hook(get_tree())
 	apply_display(Save.get_value("settings", {}))
+	apply_picture(Save.get_value("settings", {}))
 	# Resized, moved to another screen, or full screen: the automatic resolution follows.
 	get_tree().root.size_changed.connect(func(): apply_render_scale(Save.get_value("settings", {})))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -99,11 +101,11 @@ func _ready() -> void:
 	panel = PanelContainer.new()
 	panel.custom_minimum_size = Vector2(760, 0)
 	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.09, 0.065, 0.045, 0.82)
+	ps.bg_color = Color(0.075, 0.056, 0.04, 0.86)
 	ps.border_color = UIStyle.BRONZE_DARK
 	ps.border_width_left = 1; ps.border_width_right = 1; ps.border_width_bottom = 1
 	ps.border_width_top = 3
-	ps.set_corner_radius_all(12)
+	ps.set_corner_radius_all(4)
 	ps.shadow_color = Color(0, 0, 0, 0.45)
 	ps.shadow_size = 18
 	ps.content_margin_left = 32; ps.content_margin_right = 32; ps.content_margin_top = 26; ps.content_margin_bottom = 26
@@ -303,13 +305,17 @@ func show_screen(s: String, msg := "") -> void:
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
-	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" else 760), 0)
-	# Each screen slides in.
-	panel.modulate.a = 0.0
-	panel.position.x = -24.0
-	var tw := create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(panel, "modulate:a", 1.0, 0.28)
-	tw.tween_property(panel, "position:x", 0.0, 0.32)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" else 760), 0)
+	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
+	# a count changed in the bag, stays put).
+	var fresh := s != was or not panel.has_meta("shown")
+	panel.set_meta("shown", true)
+	if fresh:
+		panel.modulate.a = 0.0
+		panel.position.x = -24.0
+		var tw := create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.tween_property(panel, "modulate:a", 1.0, 0.28)
+		tw.tween_property(panel, "position:x", 0.0, 0.32)
 	if msg != "":
 		v.add_child(UIStyle.label(msg, 16, Color(1, 0.6, 0.5)))
 	match s:
@@ -330,6 +336,14 @@ func show_screen(s: String, msg := "") -> void:
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
 		"training_designs": _training_designs(v)
+	if fresh and s != "main":
+		var rows := v.get_children()
+		for i in rows.size():
+			var r: Control = rows[i]
+			r.modulate.a = 0.0
+			var rt := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			rt.tween_interval(0.05 + minf(i, 10) * 0.035)
+			rt.tween_property(r, "modulate:a", 1.0, 0.22)
 	if backdrop and backdrop.hero:
 		_frame_hero()
 
@@ -1602,24 +1616,80 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	return card
 
 ## Every other way to fight (game.js modes, partyModes.js).
+## The fights, as cards in four groups: each says in a line what the bout is.
+const FIGHT_GROUPS := [
+	["Single combat", ["duel", "bo3", "king", "gauntlet"]],
+	["The melee", ["ffa", "chaos", "teams", "pvp"]],
+	["Beasts and waves", ["hunt", "coop"]],
+	["Games for the Emperor", ["emperor", "hill", "lastLimb", "headball"]],
+]
+const FIGHT_BLURBS := {
+	"duel": "One against one, a quick bout. The Emperor may throw in a decree.",
+	"bo3": "Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.",
+	"king": "The winner stays and the next challenger walks in. Reign for seven.",
+	"gauntlet": "One foe after another, wave after wave. How long do you last?",
+	"ffa": "Four gladiators on one sand. The last one standing wins.",
+	"chaos": "Everyone against everyone, under three of the Emperor's decrees at once.",
+	"teams": "Red against Blue: players and bots split into two sides.",
+	"pvp": "Players only, no bots: settle it among yourselves.",
+	"hunt": "Beasts pour through the gates in waves. Each wave beaten heals you.",
+	"coop": "Waves of gladiators against you and your friends, side by side.",
+	"emperor": "You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.",
+	"hill": "Hold the circle alone for 20 seconds.",
+	"lastLimb": "Every 15 seconds the Emperor takes a limb from everyone.",
+	"headball": "Kick a severed head into the other goal. First to three.",
+}
+
 func _fights(v: VBoxContainer) -> void:
-	v.add_child(UIStyle.title("Fights", 34))
-	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 14, UIStyle.MUTED))
-	var grid := GridContainer.new()
-	grid.columns = 2
-	v.add_child(grid)
+	v.add_child(UIStyle.title("The Arena", 34))
+	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	var in_room := Net.active()
-	var keys := ["hunt", "duel", "bo3", "king", "emperor", "ffa", "chaos", "coop", "gauntlet", "teams", "hill", "lastLimb", "headball"]
-	if in_room:
-		keys.insert(0, "pvp")
-	for k in keys.filter(func(k): return Edition.mode_open(k, in_room)):
-		var b := UIStyle.button(Modes.TITLES[k].trim_suffix("!"), func(): start({"mode": k}))
-		b.tooltip_text = Modes.LABELS.get(k, "")
-		grid.add_child(b)
+	for g in FIGHT_GROUPS:
+		var keys: Array = (g[1] as Array).filter(func(k): return (k != "pvp" or in_room) and Edition.mode_open(k, in_room))
+		if keys.is_empty():
+			continue
+		v.add_child(UIStyle.label(String(g[0]).to_upper(), 13, UIStyle.BRONZE))
+		var grid := GridContainer.new()
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 10)
+		v.add_child(grid)
+		for k in keys:
+			grid.add_child(_fight_card(k))
 	if Net.active() and Net.is_host() and not Net.peers.is_empty():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
 		v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+
+## One fight's card: its name in capitals, under it what it is, the whole card a button.
+func _fight_card(k: String) -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(262, 104)
+	b.pressed.connect(func(): start({"mode": k}))
+	b.tooltip_text = Modes.LABELS.get(k, "")
+	var m := MarginContainer.new()
+	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]:
+		m.add_theme_constant_override("margin_" + side, 14)
+	m.add_theme_constant_override("margin_top", 10)
+	m.add_theme_constant_override("margin_bottom", 8)
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(m)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.add_child(col)
+	var nm := Label.new()
+	nm.text = "◆  " + Modes.TITLES[k].trim_suffix("!")
+	nm.add_theme_font_override("font", UIStyle.serif(1, 700))
+	nm.add_theme_font_size_override("font_size", 17)
+	nm.add_theme_color_override("font_color", UIStyle.GOLD_LIGHT)
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(nm)
+	var blurb := UIStyle.label(FIGHT_BLURBS.get(k, Modes.LABELS.get(k, "")), 15, UIStyle.MUTED)
+	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(blurb)
+	return b
 
 ## The market (market.js): pots, food and tricks for the kit, used in a fight with 1 to 8.
 # ---------- Bread & Circuses ----------
@@ -2144,54 +2214,121 @@ func _room(v: VBoxContainer) -> void:
 		in_room = false
 		show_screen("mp")))
 
+var options_tab := "game"
+const OPTION_TABS := [["game", "Game"], ["controls", "Controls"], ["graphics", "Graphics"], ["sound", "Sound"]]
+
+## Options in four tabs: the game, the controls, the picture and the sound.
 func _options(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("Options", 34))
 	var st: Dictionary = Save.get_value("settings", {})
-	var sens := HSlider.new()
-	sens.min_value = 0.3
-	sens.max_value = 2.5
-	sens.step = 0.05
-	sens.value = float(st.get("sensitivity", 1.0))
-	sens.custom_minimum_size = Vector2(300, 0)
-	sens.value_changed.connect(func(x): _set_opt("sensitivity", x))
-	_row(v, [UIStyle.label("Mouse sensitivity", 15), sens])
-	var vol := HSlider.new()
-	vol.min_value = 0.0
-	vol.max_value = 1.0
-	vol.step = 0.05
-	vol.value = float(st.get("volume", 0.8))
-	vol.custom_minimum_size = Vector2(300, 0)
-	vol.value_changed.connect(func(x):
-		_set_opt("volume", x)
-		Sfx.volume = x)
-	_row(v, [UIStyle.label("Sound", 15), vol])
-	var mus := HSlider.new()
-	mus.min_value = 0.0
-	mus.max_value = 1.0
-	mus.step = 0.05
-	mus.value = float(st.get("music", 0.5))
-	mus.custom_minimum_size = Vector2(300, 0)
-	mus.value_changed.connect(func(x):
-		_set_opt("music", x)
-		if Sfx.music:
-			Sfx.music.set_volume(x))
-	_row(v, [UIStyle.label("Music", 15), mus])
-	v.add_child(UIStyle.button("Controls: rebind keys · gamepad", func(): show_screen("controls")))
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	for td in OPTION_TABS:
+		var key: String = td[0]
+		var tb := UIStyle.button(td[1], func():
+			options_tab = key
+			show_screen("options"))
+		tb.toggle_mode = true
+		tb.button_pressed = options_tab == key
+		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tabs.add_child(tb)
+	v.add_child(tabs)
+	var page := VBoxContainer.new()
+	page.add_theme_constant_override("separation", 14)
+	page.custom_minimum_size = Vector2(0, 330)
+	v.add_child(page)
+	match options_tab:
+		"game": _options_game(page, st)
+		"controls": _options_controls(page, st)
+		"graphics": _options_graphics(page, st)
+		"sound": _options_sound(page, st)
+	v.add_child(UIStyle.button("Back to the game" if over_match and match_ else "Back", func():
+		if over_match and match_:
+			_close_overlay()
+		else:
+			show_screen("main")))
+
+func _slider(lo: float, hi: float, step: float, val: float, cb: Callable) -> HSlider:
+	var sl := HSlider.new()
+	sl.min_value = lo
+	sl.max_value = hi
+	sl.step = step
+	sl.value = val
+	sl.custom_minimum_size = Vector2(320, 24)
+	sl.value_changed.connect(cb)
+	return sl
+
+## A setting's row: its name in a column of its own, the control, a word on what it does.
+func _opt_row(v: Control, name_: String, ctl: Control, note := "") -> void:
+	var l := UIStyle.label(name_, 16)
+	l.custom_minimum_size = Vector2(190, 0)
+	var items: Array = [l, ctl]
+	if note != "":
+		var n := UIStyle.label(note, 14, UIStyle.MUTED)
+		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		items.append(n)
+	_row(v, items)
+	# (_row keeps labels on one line; the note may wrap.)
+	if note != "":
+		(items[2] as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+func _check(text: String, on: bool, cb: Callable) -> CheckBox:
+	var c := CheckBox.new()
+	c.text = text
+	c.button_pressed = on
+	c.toggled.connect(cb)
+	return c
+
+func _options_game(v: VBoxContainer, st: Dictionary) -> void:
+	var gore := OptionButton.new()
+	gore.add_item("Full")
+	gore.add_item("Reduced")
+	gore.select(1 if str(st.get("gore", "full")) == "reduced" else 0)
+	gore.item_selected.connect(func(k): _set_opt("gore", "reduced" if k == 1 else "full"))
+	_opt_row(v, "Gore", gore, "Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.")
+	var dsel := OptionButton.new()
+	var dopts := ["off", "sometimes", "always"]
+	for o in ["No decrees", "Decrees sometimes", "Decrees always"]:
+		dsel.add_item(o)
+	dsel.select(dopts.find(str(st.get("decrees", "sometimes"))))
+	dsel.item_selected.connect(func(i): _set_opt("decrees", dopts[i]))
+	_opt_row(v, "The Emperor's decrees", dsel, "Odd rules the Emperor lays on an arena duel.")
+	v.add_child(_check("Kill cam: the best kill replayed at the end of a fight (alone and online)", bool(st.get("killcam", true)), func(on): _set_opt("killcam", on)))
+
+func _options_controls(v: VBoxContainer, st: Dictionary) -> void:
+	_opt_row(v, "Mouse sensitivity", _slider(0.3, 2.5, 0.05, float(st.get("sensitivity", 1.0)), func(x): _set_opt("sensitivity", x)))
+	v.add_child(_check("Left-handed (the right button swings the main weapon)", bool(st.get("leftHanded", false)), func(on): _set_opt("leftHanded", on)))
+	v.add_child(_check("Invert vertical look", bool(st.get("invertY", false)), func(on): _set_opt("invertY", on)))
+	v.add_child(UIStyle.button("Rebind keys · gamepad", func(): show_screen("controls")))
+	v.add_child(UIStyle.label("Mouse looks; hold the left button and move the mouse to swing the main hand, the right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, the wheel turns the blade, H takes it in both hands, J swaps hands, Esc frees the mouse.", 15, UIStyle.MUTED))
+
+func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 	var q := OptionButton.new()
 	var levels := ["low", "medium", "high", "ultra"]
 	for l in levels:
 		q.add_item(l.capitalize())
 	q.select(maxi(0, levels.find(str(st.get("quality", "high")))))
 	q.item_selected.connect(func(i): _set_opt("quality", levels[i]))
-	_row(v, [UIStyle.label("Graphics", 15), q, UIStyle.label("Low: no shadows or effects lighting. Ultra: global illumination and fog.", 13, UIStyle.MUTED)])
-	var bo := OptionButton.new()
-	bo.visible = Match.SMOOTH_BODIES_OFFERED
-	bo.add_item("Smooth")
-	bo.add_item("Blocky voxels")
-	bo.select(1 if str(st.get("bodies", "smooth")) == "blocky" else 0)
-	bo.item_selected.connect(func(i): _set_opt("bodies", "blocky" if i == 1 else "smooth"))
+	_opt_row(v, "Graphics", q, "Low: no shadows or effects lighting. Ultra: global illumination and fog.")
+	var aa := OptionButton.new()
+	for a in AA_MODES:
+		aa.add_item(a[1])
+	aa.select(maxi(0, AA_MODES.map(func(a): return a[0]).find(str(st.get("aa", "msaa4")))))
+	aa.item_selected.connect(func(i):
+		_set_opt("aa", AA_MODES[i][0])
+		apply_picture(Save.get_value("settings", {})))
+	_opt_row(v, "Anti-aliasing", aa, "MSAA smooths the edges of the blocks and keeps everything else sharp (4x is the best balance; 8x for strong cards). FXAA is the lightest but blurs the picture.")
+	var vao := _check("Voxel shading: corners and creases between blocks in soft shadow", bool(st.get("voxelAO", true)), func(on):
+		_set_opt("voxelAO", on)
+		apply_picture(Save.get_value("settings", {})))
+	v.add_child(vao)
 	if Match.SMOOTH_BODIES_OFFERED:
-		_row(v, [UIStyle.label("Bodies", 15), bo, UIStyle.label("Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.", 13, UIStyle.MUTED)])
+		var bo := OptionButton.new()
+		bo.add_item("Smooth")
+		bo.add_item("Blocky voxels")
+		bo.select(1 if str(st.get("bodies", "smooth")) == "blocky" else 0)
+		bo.item_selected.connect(func(i): _set_opt("bodies", "blocky" if i == 1 else "smooth"))
+		_opt_row(v, "Bodies", bo, "Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.")
 	var dm := OptionButton.new()
 	for d in DISPLAY_MODES:
 		dm.add_item(d[1])
@@ -2199,6 +2336,7 @@ func _options(v: VBoxContainer) -> void:
 	dm.item_selected.connect(func(i):
 		_set_opt("display", DISPLAY_MODES[i][0])
 		apply_display(Save.get_value("settings", {})))
+	_opt_row(v, "Display", dm, "F11 toggles full screen.")
 	var ws := OptionButton.new()
 	var sizes := window_sizes()
 	var scr := DisplayServer.screen_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1920, 1080)
@@ -2209,7 +2347,7 @@ func _options(v: VBoxContainer) -> void:
 		_set_opt("windowW", sizes[i].x)
 		_set_opt("windowH", sizes[i].y)
 		apply_display(Save.get_value("settings", {})))
-	_row(v, [UIStyle.label("Display (F11 toggles)", 15), dm, UIStyle.label("Window", 15), ws])
+	_opt_row(v, "Window", ws)
 	var rs := OptionButton.new()
 	for r in RENDER_SCALES:
 		rs.add_item(r[1])
@@ -2217,43 +2355,31 @@ func _options(v: VBoxContainer) -> void:
 	rs.item_selected.connect(func(i):
 		_set_opt("renderScale", RENDER_SCALES[i][0])
 		apply_render_scale(Save.get_value("settings", {})))
-	_row(v, [UIStyle.label("3D resolution", 15), rs, UIStyle.label("Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.", 13, UIStyle.MUTED)])
-	var gore := OptionButton.new()
-	gore.add_item("Full")
-	gore.add_item("Reduced")
-	gore.select(1 if str(st.get("gore", "full")) == "reduced" else 0)
-	gore.item_selected.connect(func(k): _set_opt("gore", "reduced" if k == 1 else "full"))
-	_row(v, [UIStyle.label("Gore", 15), gore, UIStyle.label("Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.", 13, UIStyle.MUTED)])
-	var kc := CheckBox.new()
-	kc.text = "Kill cam: the best kill replayed at the end of a fight (alone and online)"
-	kc.button_pressed = bool(st.get("killcam", true))
-	kc.toggled.connect(func(on): _set_opt("killcam", on))
-	v.add_child(kc)
-	var lh := CheckBox.new()
-	lh.text = "Left-handed (the right button swings the main weapon)"
-	lh.button_pressed = bool(st.get("leftHanded", false))
-	lh.toggled.connect(func(on): _set_opt("leftHanded", on))
-	v.add_child(lh)
-	var inv := CheckBox.new()
-	inv.text = "Invert vertical look"
-	inv.button_pressed = bool(st.get("invertY", false))
-	inv.toggled.connect(func(on): _set_opt("invertY", on))
-	v.add_child(inv)
-	var dsel := OptionButton.new()
-	var dopts := ["off", "sometimes", "always"]
-	for o in ["No decrees", "Decrees sometimes", "Decrees always"]:
-		dsel.add_item(o)
-	dsel.select(dopts.find(str(st.get("decrees", "sometimes"))))
-	dsel.item_selected.connect(func(i): _set_opt("decrees", dopts[i]))
-	_row(v, [UIStyle.label("The Emperor's decrees (arena duels)", 15), dsel])
-	v.add_child(UIStyle.label("Controls: mouse looks; hold left button and move the mouse to swing the main hand, right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, wheel turns the blade, Esc frees the mouse.", 13, UIStyle.MUTED))
-	v.add_child(UIStyle.button("Back to the game" if over_match and match_ else "Back", func():
-		if over_match and match_:
-			_close_overlay()
-		else:
-			show_screen("main")))
+	_opt_row(v, "3D resolution", rs, "Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.")
+
+func _options_sound(v: VBoxContainer, st: Dictionary) -> void:
+	_opt_row(v, "Sound", _slider(0.0, 1.0, 0.05, float(st.get("volume", 0.8)), func(x):
+		_set_opt("volume", x)
+		Sfx.volume = x))
+	_opt_row(v, "Music", _slider(0.0, 1.0, 0.05, float(st.get("music", 0.5)), func(x):
+		_set_opt("music", x)
+		if Sfx.music:
+			Sfx.music.set_volume(x)))
 
 const DISPLAY_MODES := [["fullscreen", "Full screen"], ["exclusive", "Full screen (exclusive)"], ["maximized", "Window, maximized"], ["windowed", "Window"]]
+const AA_MODES := [["off", "Off"], ["fxaa", "FXAA (soft)"], ["smaa", "SMAA"], ["msaa2", "MSAA 2x"], ["msaa4", "MSAA 4x"], ["msaa8", "MSAA 8x"]]
+
+## The picture's finish from the settings: the anti-aliasing of the window (MSAA keeps the
+## voxels' edges smooth and the rest sharp; FXAA blurs the whole frame a little) and the voxels'
+## corner shading.
+static func apply_picture(st: Dictionary) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var vp: Viewport = tree.root
+		var mode := str(st.get("aa", "msaa4"))
+		vp.msaa_3d = {"msaa2": Viewport.MSAA_2X, "msaa4": Viewport.MSAA_4X, "msaa8": Viewport.MSAA_8X}.get(mode, Viewport.MSAA_DISABLED)
+		vp.screen_space_aa = {"fxaa": Viewport.SCREEN_SPACE_AA_FXAA, "smaa": Viewport.SCREEN_SPACE_AA_SMAA}.get(mode, Viewport.SCREEN_SPACE_AA_DISABLED)
+	VoxelPart.set_ao(bool(st.get("voxelAO", true)))
 # The common screens of today: 16:9, 16:10, 21:9 and 32:9, laptop to 4K. The menu offers the
 # ones that fit this screen, and the screen's own size.
 const WINDOW_SIZES := [Vector2i(1280, 720), Vector2i(1280, 800), Vector2i(1366, 768), Vector2i(1440, 900), Vector2i(1536, 864), Vector2i(1600, 900),
@@ -2522,7 +2648,10 @@ func _gladiator(v: VBoxContainer) -> void:
 		ob.select(lk[k])
 		ob.custom_minimum_size = Vector2(260, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
-		_row(v, [UIStyle.label(k.capitalize(), 15, UIStyle.MUTED), ob])
+		var kl := UIStyle.label(k.capitalize(), 15, UIStyle.MUTED)
+		kl.custom_minimum_size = Vector2(64, 0)   # the four drop-downs in one column
+		ob.custom_minimum_size = Vector2(220, 0)
+		_row(v, [kl, ob])
 	_row(v, [UIStyle.button("Random", func():
 		var r := {}
 		r.skin = randi() % Fighter.SKINS.size()

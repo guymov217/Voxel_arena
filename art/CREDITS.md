@@ -8,6 +8,13 @@
   for this game by `tools/gen_voxel_art.py` (code only, no outside sources); same licence as the
   game.
 
+## Fonts (`fonts/`)
+
+- `Cinzel.ttf` — [Cinzel](https://github.com/NDISCOVER/Cinzel) by Natanael Gama, SIL Open Font
+  License 1.1 (`fonts/OFL-Cinzel.txt`). The menus' headings and buttons, the logo.
+- `AlegreyaSans-*.ttf` — [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans) by
+  Huerta Tipográfica, SIL Open Font License 1.1 (`fonts/OFL-AlegreyaSans.txt`). The menus' text.
+
 ## Voices (`audio/voices/*.ogg`)
 
 Every beast, monster, giant and man has a voice of its own, built by `tools/build_voices.py` from

@@ -78,6 +78,10 @@ static var _material: StandardMaterial3D
 ## instance data (skin, cloth, leather, metal...; see the shader).
 static var _body_material: ShaderMaterial
 var kinds := PackedByteArray()   # per voxel, what it is made of (only how it is drawn)
+## Per voxel, which corners of its six faces are shut in by a neighbour (ao_bits): drawn darker
+## there, the creases of a body and the gaps between blocks in shadow. Only how it is drawn.
+var ao := PackedInt32Array()
+var cellmap := PackedInt32Array()   # grid cell -> voxel index + 1 (0: never a voxel there)
 ## Bodies drawn as a smooth skin over their voxels (VoxelSkin) instead of the voxel boxes; the
 ## voxels are still what is hit, cut and simulated. Set from the settings ("bodies"). Off for
 ## now (kept for later: SMOOTH_BODIES_DEFAULT in match.gd and the menu's Bodies row).
@@ -150,17 +154,31 @@ static func body_material(force := -1) -> ShaderMaterial:
 		if _body_material == null:
 			_body_material = ShaderMaterial.new()
 			_body_material.shader = load("res://shaders/voxel_body.gdshader")
+			_body_material.set_shader_parameter("ao_strength", ao_strength)
 		return _body_material
 	if not _forced.has(force):
 		var m := ShaderMaterial.new()
 		m.shader = load("res://shaders/voxel_body.gdshader")
 		m.set_shader_parameter("force_kind", force)
+		m.set_shader_parameter("ao_strength", ao_strength)
 		_forced[force] = m
 	return _forced[force]
 
-## A voxel kind as MultiMesh custom data (the shader reads r * 16; a = 1 marks it set).
-static func kind_data(k: int) -> Color:
-	return Color(float(k) / 16.0, 0.0, 0.0, 1.0)
+## How dark the corners of the voxels go (Options, "Voxel shading"): 0 off. Every voxel body,
+## armour plate and weapon drawn with body_material() follows at once.
+const AO_ON := 0.55
+static var ao_strength := AO_ON
+
+static func set_ao(on: bool) -> void:
+	ao_strength = AO_ON if on else 0.0
+	for mat in [_body_material] + _forced.values():
+		if mat:
+			mat.set_shader_parameter("ao_strength", ao_strength)
+
+## A voxel kind as MultiMesh custom data (the shader reads r * 16; a >= 1 marks it set, and
+## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits).
+static func kind_data(k: int, ao_ := 0) -> Color:
+	return Color(float(k) / 16.0, 0.0, 0.0, 1.0 + float(ao_))
 
 ## What a material (data/materials.json) is drawn as: see shaders/voxel_body.gdshader.
 static func kind_of_material(mat: String) -> int:
@@ -229,10 +247,11 @@ func _build_mesh() -> void:
 	mm.use_custom_data = true
 	mm.mesh = _box_mesh_cache[key]
 	mm.instance_count = fx.size()
+	_build_ao()
 	for i in fx.size():
 		mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
 		mm.set_instance_color(i, colors[i])
-		mm.set_instance_custom_data(i, kind_data(kinds[i]))
+		mm.set_instance_custom_data(i, kind_data(kinds[i], ao[i]))
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
@@ -333,7 +352,7 @@ func _write_glow(list: Array) -> void:
 		_set_status(i, g)
 
 func _set_status(i: int, g: Vector2) -> void:
-	var c := Color(float(kinds[i]) / 16.0, g.x, g.y, 1.0)
+	var c := Color(float(kinds[i]) / 16.0, g.x, g.y, 1.0 + float(ao[i] if i < ao.size() else 0))
 	if jaw_slot.has(i):
 		if jaw_mm:
 			jaw_mm.set_instance_custom_data(jaw_slot[i], c)
@@ -596,6 +615,75 @@ func function() -> float:
 	return fn
 
 ## Knocks out voxels; returns [{p: world position, color}].
+# ---------- corner shading (ambient occlusion) ----------
+
+## The faces in the order of ao_bits, each with the two axes across it: +x -x +y -y +z -z.
+const AO_FACES := [[Vector3i(1, 0, 0), 1, 2], [Vector3i(-1, 0, 0), 1, 2], [Vector3i(0, 1, 0), 0, 2], [Vector3i(0, -1, 0), 0, 2], [Vector3i(0, 0, 1), 0, 1], [Vector3i(0, 0, -1), 0, 1]]
+
+func _cell(x: int, y: int, z: int) -> int:
+	if x < 0 or y < 0 or z < 0 or x >= grid.x or y >= grid.y or z >= grid.z:
+		return -1
+	return cellmap[(x * grid.y + y) * grid.z + z] - 1
+
+func _solid(c: Vector3i) -> bool:
+	var i := _cell(c.x, c.y, c.z)
+	return i >= 0 and alive[i] == 1
+
+## Voxel i's 24 corner bits, 4 per face (face * 4 + corner; corner bit 0 the low end of the
+## face's first axis, bit 1 the high end of its second). A corner is shut in when a voxel sits
+## beside the face toward it, either way along the face or across the corner.
+func ao_bits(i: int) -> int:
+	var bits := 0
+	var p := Vector3i(fx[i], fy[i], fz[i])
+	for f in 6:
+		var fd: Array = AO_FACES[f]
+		var n: Vector3i = p + (fd[0] as Vector3i)
+		if _solid(n):
+			continue   # a face against a voxel is never seen
+		var ua := Vector3i.ZERO
+		ua[int(fd[1])] = 1
+		var va := Vector3i.ZERO
+		va[int(fd[2])] = 1
+		for c in 4:
+			var su := 1 if c & 1 else -1
+			var sv := 1 if c & 2 else -1
+			if _solid(n + ua * su) or _solid(n + va * sv) or _solid(n + ua * su + va * sv):
+				bits |= 1 << (f * 4 + c)
+	return bits
+
+func _build_ao() -> void:
+	cellmap.resize(grid.x * grid.y * grid.z)
+	cellmap.fill(0)
+	for i in fx.size():
+		if fx[i] >= 0 and fy[i] >= 0 and fz[i] >= 0 and fx[i] < grid.x and fy[i] < grid.y and fz[i] < grid.z:
+			cellmap[(fx[i] * grid.y + fy[i]) * grid.z + fz[i]] = i + 1
+	ao.resize(fx.size())
+	for i in fx.size():
+		ao[i] = ao_bits(i)
+
+## Voxels gone or back: the shading of the ones round them follows (a cut opens its edges to
+## the light, a hole's walls lie in its shadow).
+func _reshade(changed: Array) -> void:
+	if mm == null or ao.size() != fx.size():
+		return
+	var seen := {}
+	for i in changed:
+		if i < 0 or i >= fx.size():
+			continue
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					var j := _cell(fx[i] + dx, fy[i] + dy, fz[i] + dz)
+					if j < 0 or seen.has(j) or alive[j] == 0:
+						continue
+					seen[j] = true
+					var b := ao_bits(j)
+					if b == ao[j]:
+						continue
+					ao[j] = b
+					var g: Vector2 = glowing.get(j, Vector2.ZERO)
+					_set_status(j, g)
+
 func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	var out := []
 	var done := []
@@ -611,6 +699,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	if out.is_empty():
 		return out
 	set_shown(done, false)
+	_reshade(done)
 	if smear:
 		centre /= out.size()
 		wound(centre, vf * part_scale * (2.2 + pow(out.size(), 1.0 / 3.0) * 0.8), "blood")
@@ -720,7 +809,7 @@ func build_jaw(jw: Dictionary) -> void:
 		var k := 1.0 if alive[i] else 0.0
 		jaw_mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ONE * k), (local_of(i) - jaw_pivot.position) * k))
 		jaw_mm.set_instance_color(s, colors[i])
-		jaw_mm.set_instance_custom_data(s, kind_data(kinds[i]))
+		jaw_mm.set_instance_custom_data(s, kind_data(kinds[i], ao[i] if i < ao.size() else 0))
 	var ext := Vector3(grid.x, grid.y, grid.z) * sc + Vector3.ONE * sc
 	jaw_mm.custom_aabb = AABB(-ext, ext * 2.0)
 	var jm := MultiMeshInstance3D.new()
@@ -786,6 +875,7 @@ func restore_voxels(indices: Array) -> void:
 			alive[i] = 1
 			alive_count += 1
 	set_shown(indices, true)
+	_reshade(indices)
 	fit_collider()
 
 ## The collision shape follows the flesh once the part has a hole (see the class comment).

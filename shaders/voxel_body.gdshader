@@ -7,7 +7,10 @@ shader_type spatial;
 // glowing eye. A material can force one kind for all its boxes (armour plates).
 //
 // The look: each kind its own roughness and shine, a little grain voxel to voxel, and each box's
-// edges a shade darker so the blocks read as blocks even in flat light.
+// edges a shade darker so the blocks read as blocks even in flat light. INSTANCE_CUSTOM.a over
+// 1 carries the voxel's corner shading (VoxelPart.ao_bits): 4 bits a face (+x -x +y -y +z -z),
+// a corner set when a neighbour shuts it in; the face darkens toward those corners, smoothly
+// across it, so the creases of a body and the gaps between blocks lie in shadow.
 
 uniform int force_kind = -1;
 // For a lone box (not a MultiMesh): its colour, and its half size when it is not a cube.
@@ -16,6 +19,7 @@ uniform vec3 box_half = vec3(0.0);
 uniform float edge_dark : hint_range(0.0, 0.5) = 0.09;
 uniform float edge_width : hint_range(0.01, 0.5) = 0.16;
 uniform float rim_amount : hint_range(0.0, 1.0) = 0.2;
+uniform float ao_strength : hint_range(0.0, 1.0) = 0.55;   // 0: corner shading off (Options)
 
 const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.27, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
 const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -26,12 +30,46 @@ varying vec3 box_pos;
 varying flat float kind_f;
 varying flat float seed;
 varying flat vec2 status;   // INSTANCE_CUSTOM.g: burning, .b: poisoned (0..1)
+varying flat float ao_code; // the corner bits (an integer held exactly in a float)
 
 void vertex() {
 	box_pos = VERTEX;
 	kind_f = force_kind >= 0 ? float(force_kind) : (INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0);
 	seed = fract(sin(float(INSTANCE_ID) * 12.9898 + 4.1414) * 43758.5453);
 	status = INSTANCE_CUSTOM.a > 0.5 ? INSTANCE_CUSTOM.gb : vec2(0.0);
+	ao_code = INSTANCE_CUSTOM.a > 0.5 ? max(0.0, floor(INSTANCE_CUSTOM.a - 1.0 + 0.5)) : 0.0;
+}
+
+// How shut in this point of the face is (0 open, 1 in a corner), from the face's 4 corner bits.
+float corner_shade(vec3 a, vec3 p, float m) {
+	if (ao_code < 0.5 || ao_strength <= 0.0) {
+		return 0.0;
+	}
+	int bits = int(ao_code);
+	int face;
+	vec2 uv;
+	if (a.x >= a.y && a.x >= a.z) {
+		face = p.x > 0.0 ? 0 : 1;
+		uv = p.yz;
+	} else if (a.y >= a.z) {
+		face = p.y > 0.0 ? 2 : 3;
+		uv = p.xz;
+	} else {
+		face = p.z > 0.0 ? 4 : 5;
+		uv = p.xy;
+	}
+	int f4 = (bits >> (face * 4)) & 15;
+	if (f4 == 0) {
+		return 0.0;
+	}
+	vec2 t = clamp(uv / max(m, 1e-5) * 0.5 + 0.5, 0.0, 1.0);
+	// Toward a shut corner the shade gathers, falling away across the face.
+	t = t * t * (3.0 - 2.0 * t);
+	float c00 = float(f4 & 1);
+	float c10 = float((f4 >> 1) & 1);
+	float c01 = float((f4 >> 2) & 1);
+	float c11 = float((f4 >> 3) & 1);
+	return mix(mix(c00, c10, t.x), mix(c01, c11, t.x), t.y);
 }
 
 vec3 to_linear(vec3 c) {
@@ -49,6 +87,9 @@ void fragment() {
 	float second = q.x + q.y + q.z - 1.0 - min(q.x, min(q.y, q.z));
 	float edge = 1.0 - smoothstep(1.0 - edge_width, 1.0, second);
 	c *= mix(1.0 - edge_dark, 1.0, edge);
+	if (box_half.x <= 0.0) {
+		c *= 1.0 - ao_strength * corner_shade(a, box_pos, m);
+	}
 	ALBEDO = c;
 	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5), 0.02, 1.0);
 	METALLIC = METAL[k];

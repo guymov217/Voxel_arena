@@ -49,6 +49,13 @@ func edge_side() -> float:
 	set_meta("edge_side", side)
 	return side
 
+## Whether any of it cuts or pierces (an edge or a point anywhere, a nail-studded plank's
+## nails): a plain club or hammer has nothing to lead a stroke with.
+func bites() -> bool:
+	if not has_meta("bites"):
+		set_meta("bites", vox.any(func(v): return str(v[4]) == "edge" or str(v[4]) == "point"))
+	return bool(get_meta("bites"))
+
 static func links_of(d: Dictionary) -> int:
 	var c = d.get("chain")
 	if not (c is Dictionary):

@@ -1,7 +1,8 @@
 extends Node
 ## Creatures attack as they should: a scorpion stings and poisons, a python coils round a man and
 ## crushes him, a bear rakes with its claws (cuts) and rears up to come down on him, a mammoth
-## goes after him instead of keeping to its circle.
+## goes after him instead of keeping to its circle, a crocodile rolls with a limb locked in its
+## jaws and the man rolled over with it.
 
 var t
 
@@ -88,10 +89,26 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 			wrenches[0] += 1
 			if h.res.get("rolled", false):
 				torn[0] = true)
+	# Through the roll: how far round the crocodile, the limb in its jaws and the man's trunk
+	# go on its length, and how far the bitten place gets from its teeth.
+	var turn := [0.0, 0.0, 0.0]
+	var gap := [0.0]
 	await _run(s[0], s[1], s[2], 16.0, func(_i):
-		if s[2].hug != null and s[2].hug.get("roll", false):
-			rolled[0] = true)
+		var b: Beast = s[2]
+		if b.hug != null and b.hug.get("roll", false) and is_instance_valid(b.hug.part):
+			rolled[0] = true
+			var ax: Vector3 = PD.quat_of(b.torso) * Vector3(0, 0, 1)
+			turn[0] += absf(b.torso.angular_velocity.dot(ax)) / 120.0
+			turn[1] += absf(b.hug.part.angular_velocity.dot(ax)) / 120.0
+			turn[2] += absf(s[1].torso.angular_velocity.dot(ax)) / 120.0
+			var g: float = b.mouth_point().distance_to(b.hug.part.global_transform * (b.hug.bite_at as Vector3))
+			if not b.hug.part.severed:   # (the step it comes away it is out of the jaws)
+				gap[0] = maxf(gap[0], g))
 	t.check(rolled[0], "the jaws closed on a limb and it went into its roll")
+	t.check(turn[0] > TAU * 2.0, "it rolled right over, more than twice (%.0f deg)" % rad_to_deg(turn[0]))
+	t.check(turn[1] > turn[0] * 0.8, "the limb went round with the jaws (%.0f of %.0f deg)" % [rad_to_deg(turn[1]), rad_to_deg(turn[0])])
+	t.check(turn[2] > turn[0] * 0.5, "and the man was rolled over with it (%.0f deg)" % rad_to_deg(turn[2]))
+	t.check(gap[0] < 0.15, "the teeth never left the bite (at most %.2f m off)" % gap[0])
 	t.check(wrenches[0] >= 3, "the roll wrenched at the limb (%d)" % wrenches[0])
 	t.check(torn[0], "and tore it off")
 	s[0].queue_free()

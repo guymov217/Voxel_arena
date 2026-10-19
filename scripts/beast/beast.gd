@@ -1010,20 +1010,30 @@ func _death_roll(dt: float) -> void:
 	var part: VoxelPart = hug.part
 	hug.t -= dt
 	hug.tick -= dt
-	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.5 or not part_ok(head, 0.15) or (hug.t < 2.6 and not _touching(tgt, 1.0)):
+	var mp := mouth_point()
+	# The bitten place on the limb, where the teeth are in it: it stays in the mouth.
+	var bite: Vector3 = part.global_transform * (hug.bite_at as Vector3) if is_instance_valid(part) else mp
+	var gap := bite.distance_to(mp)
+	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.5 or not part_ok(head, 0.15) or gap > 0.25 * S:
 		_release_roll()   # (the limb out of its jaws, the roll is over)
 		return
-	var mp := mouth_point()
-	var err: Vector3 = mp - part.global_position
-	part.apply_central_impulse((err * 40.0 - part.linear_velocity * 6.0) * part.mass * dt)
-	head.apply_central_impulse(-err * 10.0 * head.mass * dt)
+	# Whatever the joint gives under the wrench is taken back up: teeth to the bitten place.
+	var err: Vector3 = mp - bite
+	part.apply_impulse((err * 60.0 - (part.linear_velocity - head.linear_velocity) * 8.0) * part.mass * dt, bite - part.global_position)
 	if tgt.state == "stand":
 		tgt.fall(1.0, true)
 	tgt.stagger = maxf(tgt.stagger, 0.7)
 	jaw_t = minf(jaw_t, 0.1)
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
-	torso.angular_velocity = fwd * 7.0 * float(hug.spin)
-	if hug.tick <= 0.0 and _touching(tgt, 0.6):
+	var spin := 10.0 * float(hug.spin)
+	torso.angular_velocity = fwd * spin
+	hug.turned = float(hug.turned) + absf(spin) * dt
+	# The man goes round with it: the limb is locked in the jaws, and his trunk is wrenched over
+	# after it (most of the way, his own weight dragging behind).
+	var tw: Vector3 = tgt.torso.angular_velocity
+	var about := tw.dot(fwd)
+	tgt.torso.angular_velocity = tw + fwd * (spin * 0.75 - about) * minf(1.0, dt * 12.0)
+	if hug.tick <= 0.0 and gap < 0.12 * S:
 		hug.tick = 0.45
 		hug.bites = int(hug.bites) + 1
 		var J := bite_power * 0.7
@@ -1031,8 +1041,8 @@ func _death_roll(dt: float) -> void:
 		var was: bool = tgt.alive
 		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": mp, "dir": dir, "axis": dir, "crush": 0.07, "wsz": S})
 		tgt.last_attacker = self
-		# The third wrench twists a limb (never the trunk or the head) clean off.
-		if int(hug.bites) >= 3 and part != tgt.torso and part != tgt.head and not part.severed:
+		# Two full turns and three wrenches twist a limb (never the trunk or the head) clean off.
+		if int(hug.bites) >= 3 and float(hug.turned) >= TAU * 2.0 and part != tgt.torso and part != tgt.head and not part.severed:
 			tgt.detach_limb(part, res)
 			res.rolled = true
 		if Combat.current:
@@ -1548,8 +1558,12 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 		_start_coil(c)
 	# A crocodile's jaws close on the limb they got and it goes into its roll.
 	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2):
-		hug = {"target": c, "part": vic, "t": 3.2, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0}
-		_hold(head, vic, mouth_point())
+		var mp0 := mouth_point()
+		hug = {"target": c, "part": vic, "t": 3.2, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
+			"bite_at": vic.to_local(mp0), "turned": 0.0}
+		# Clamped, not hinged: the limb is locked in the jaws, so it turns as the head turns
+		# (on a pin it only swivelled in the mouth while the crocodile spun round it).
+		holds.append(_joint_at(head, vic, mp0, true))
 		c.fall(2.5, true)
 		c.last_attacker = self
 	var torn := []

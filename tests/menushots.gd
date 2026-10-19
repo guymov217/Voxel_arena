@@ -1,7 +1,8 @@
 extends Node
 ## Every menu screen in turn (`-- --probe menushots`, needs a display): the main menu, the
 ## fights, training, multiplayer, options, controls, the gladiator, Bread & Circuses and the
-## forge. PNGs go to SHOT_DIR as menu_<screen>.png.
+## forge (quick start and by hand), and the options' graphics tab. PNGs go to SHOT_DIR as
+## menu_<screen>.png.
 
 const SCREENS := ["main", "fights", "training", "mp", "options", "controls", "gladiator", "circus"]
 
@@ -25,4 +26,16 @@ func _ready() -> void:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(out.path_join("menu_forge.png"))
 	print("saved forge")
+	f._show_mode("voxels")
+	for i in 30:
+		await get_tree().process_frame
+	get_viewport().get_texture().get_image().save_png(out.path_join("menu_forge_voxels.png"))
+	print("saved forge voxels")
+	f.queue_free()
+	menu.options_tab = "graphics"
+	menu.show_screen("options")
+	for i in 45:
+		await get_tree().process_frame
+	get_viewport().get_texture().get_image().save_png(out.path_join("menu_options_graphics.png"))
+	print("saved options graphics")
 	get_tree().quit()

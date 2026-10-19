@@ -17,7 +17,8 @@ var _ambience: AudioStreamPlayer = null
 var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6}
+var _ui_player: AudioStreamPlayer = null
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -25,6 +26,9 @@ func _ready() -> void:
 	_buses()
 	music = Music.new()
 	add_child(music)
+	_ui_player = AudioStreamPlayer.new()
+	_ui_player.bus = "SFX"
+	add_child(_ui_player)
 	for i in 16:
 		var p := AudioStreamPlayer3D.new()
 		p.max_distance = 40.0
@@ -189,6 +193,11 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
+			"tick":
+				# A menu press: a small dry knock of wood on stone.
+				var hp5 := rng.randf_range(-1, 1) - lp
+				lp += hp5 * 0.5
+				s = (sin(TAU * 820.0 * t) * 0.6 + hp5 * 0.5) * exp(-t * 70.0) * 0.5
 			"boing":
 				# A spring let go: a low tone that wobbles up and down as it dies away.
 				s = sin(TAU * 150.0 * tone * t * (1.0 + 0.35 * sin(TAU * 9.0 * t) * exp(-t * 3.0))) * exp(-t * 5.0) * 0.6
@@ -342,6 +351,15 @@ func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0, file := "") -> 
 			p.pitch_scale = clampf(pitch * randf_range(0.92, 1.08), 0.3, 3.0)
 			p.play()
 			return
+
+## A sound of the menus, heard the same everywhere (not placed in the arena).
+func ui(kind: String, gain := 0.5) -> void:
+	if _ui_player == null:
+		return
+	_ui_player.stream = _make(kind)
+	_ui_player.volume_db = linear_to_db(clampf(gain * volume, 0.01, 1.0))
+	_ui_player.pitch_scale = randf_range(0.94, 1.06)
+	_ui_player.play()
 
 func play(kind: String, at: Vector3, gain := 1.0) -> void:
 	if _players.is_empty() or gain < 0.05 or backdrop_mul <= 0.0:
