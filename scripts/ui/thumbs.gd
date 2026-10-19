@@ -36,7 +36,23 @@ static func item(rect: TextureRect, id: String) -> void:
 	var type = item_type(id)
 	if type == null:
 		return
-	put(rect, "item:" + id, func(): return Items.visual(type))
+	put(rect, "item:" + id, func():
+		var g := Items.visual(type)
+		lay_across(g)
+		return g)
+
+## A long thin thing modelled nose along +z (a dart, a bolt, an arrow) came out end-on to the
+## three-quarter camera, a dot in the middle of its slot: lay it across the view at a slant.
+static func lay_across(g: Node3D) -> void:
+	var box := AABB()
+	var first := true
+	for c in g.get_children():
+		if c is MeshInstance3D and c.mesh:
+			var b: AABB = c.transform * c.mesh.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+	if not first and box.size.z > 1.8 * maxf(box.size.x, box.size.y):
+		g.rotation = Vector3(-0.45, 2.2, 0.0)
 
 ## The picture of a weapon design (the smith's wares, your own arms as they are now), laid at
 ## a slant like a blade on the counter. `key` names it in the cache (a design that changes,

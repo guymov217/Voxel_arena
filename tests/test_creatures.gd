@@ -265,3 +265,40 @@ func test_every_blow_is_a_touch() -> void:
 		await get_tree().physics_frame
 	t.check(landed > 10, "the creatures landed blows (%d)" % landed)
 	t.check(bad.is_empty(), "every blow came with the creature's body on his: %s" % [bad])
+
+## A blow on a part from the side: a club (blunt) or a point.
+func _blow(b: Beast, p: VoxelPart, kind: String) -> Dictionary:
+	var q := PD.quat_of(p)
+	var at: Vector3 = p.global_position + q * Vector3(p.half_ext.x * 1.05, 0, 0)
+	var dir: Vector3 = (p.global_position - at).normalized()
+	return b.apply_hit(p, {"impulse": 30.0 if kind == "blunt" else 20.0, "type": kind, "hardness": 0.85, "sharpness": 0.0 if kind == "blunt" else 0.9, "point": at, "dir": dir, "axis": dir, "edge": dir, "heavy": 0.3})
+
+## Every part breaks on its own by the harm it took, whatever did it: a club snaps a bull's
+## horn and knocks off its dewlap; a leg run through and through hangs broken and then tears
+## away; the trunk stays, it is what kills.
+func test_every_part_breaks_by_its_harm() -> void:
+	var w := _world()
+	var b := _beast(w, "bull", Vector3(0, 0.2, 0))
+	for i in 30:
+		await get_tree().physics_frame
+	for n in ["hornL", "dewlap", "tail"]:
+		var p: VoxelPart = b.by_name[n]
+		var k := 0
+		while k < 12 and not p.severed:
+			_blow(b, p, "blunt")
+			k += 1
+		t.check(p.severed, "a club breaks the %s off (%d blows, hp %d)" % [n, k, int(p.hp)])
+	var leg: VoxelPart = b.by_name["legFL"]
+	var hung := -1
+	var k2 := 0
+	while k2 < 15 and not leg.severed:
+		_blow(b, leg, "point")
+		k2 += 1
+		if leg.hanging and hung < 0:
+			hung = k2
+	t.check(hung > 0 and hung < k2, "the leg hung broken first (blow %d)" % hung)
+	t.check(leg.severed, "and tore away under more (%d blows)" % k2)
+	t.check(not b.torso.severed, "the trunk stays on")
+	w.queue_free()
+	await get_tree().physics_frame
+	await get_tree().physics_frame

@@ -141,3 +141,15 @@ func test_when_the_edge_breaks_the_row_behind_is_not_sharpened() -> void:
 	t.eq(w.taper[mid], 0, "broken off, the edge behind it stays a block: it is not sharpened")
 	t.eq(w.taper[top], before, "and the sharp voxels left keep their shape")
 	w.queue_free()
+
+## A dart's picture: modelled nose along +z it came out end-on to the shop camera (a dot in its
+## hotbar slot); it is laid across the view. A pot, as wide as it is deep, stays as it is.
+func test_long_items_are_pictured_across_the_view() -> void:
+	var dart := Items.visual("pot_dart")
+	Thumbs.lay_across(dart)
+	t.check(dart.rotation.length() > 0.5, "the dart is turned across the view")
+	var pot := Items.visual("pot_fire")
+	Thumbs.lay_across(pot)
+	t.eq(pot.rotation, Vector3.ZERO, "a pot is pictured as it is")
+	dart.free()
+	pot.free()
