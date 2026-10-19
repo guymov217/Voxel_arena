@@ -11,6 +11,11 @@ shader_type spatial;
 // 1 carries the voxel's corner shading (VoxelPart.ao_bits): 4 bits a face (+x -x +y -y +z -z),
 // a corner set when a neighbour shuts it in; the face darkens toward those corners, smoothly
 // across it, so the creases of a body and the gaps between blocks lie in shadow.
+//
+// A weapon's sharp voxels (VoxelPart.taper_code, in r over the kind, in sixteens) are drawn
+// tapered: an edge voxel pinched thin across the blade toward its open side, a wedge whose bevels
+// meet in a bright honed line (half of a blade two thick, toward the face the halves share); a
+// point voxel pinched to a tip. Only the look: it hits as a cube.
 
 uniform int force_kind = -1;
 // For a lone box (not a MultiMesh): its colour, and its half size when it is not a cube.
@@ -20,6 +25,8 @@ uniform float edge_dark : hint_range(0.0, 0.5) = 0.09;
 uniform float edge_width : hint_range(0.01, 0.5) = 0.16;
 uniform float rim_amount : hint_range(0.0, 1.0) = 0.2;
 uniform float ao_strength : hint_range(0.0, 1.0) = 0.55;   // 0: corner shading off (Options)
+uniform float edge_thin : hint_range(0.0, 1.0) = 0.1;    // a sharp edge's thickness, of the voxel's
+uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
 
 const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.27, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
 const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -31,10 +38,47 @@ varying flat float kind_f;
 varying flat float seed;
 varying flat vec2 status;   // INSTANCE_CUSTOM.g: burning, .b: poisoned (0..1)
 varying flat float ao_code; // the corner bits (an integer held exactly in a float)
+varying flat float taper_code;
 
 void vertex() {
 	box_pos = VERTEX;
-	kind_f = force_kind >= 0 ? float(force_kind) : (INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0);
+	float kc = INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0;
+	kind_f = force_kind >= 0 ? float(force_kind) : mod(kc, 16.0);
+	taper_code = INSTANCE_CUSTOM.a > 0.5 ? floor(kc / 16.0) : 0.0;
+	if (taper_code > 0.5) {
+		int t = int(taper_code);
+		float thin = ((t >> 9) & 1) == 1 ? point_thin : edge_thin;
+		vec3 pinch = vec3(float((t >> 6) & 1), float((t >> 7) & 1), float((t >> 8) & 1));
+		vec3 toward = vec3(0.0);   // the open sides it narrows to
+		float sides = 0.0;
+		bool open_side = false;
+		for (int f = 0; f < 6; f++) {
+			if (((t >> f) & 1) == 1) {
+				vec3 d = vec3(0.0);
+				d[f / 2] = (f % 2 == 0) ? 1.0 : -1.0;
+				toward += d;
+				sides += 1.0;
+				open_side = open_side || dot(VERTEX, d) > 0.0;
+			}
+		}
+		// Half of a blade two thick narrows toward the face it shares with its other half.
+		vec3 anchor = vec3(0.0);
+		for (int a = 0; a < 3; a++) {
+			anchor[a] = ((t >> (10 + 2 * a)) & 1) == 1 ? 1.0 : (((t >> (11 + 2 * a)) & 1) == 1 ? -1.0 : 0.0);
+		}
+		if (open_side) {
+			vec3 fixed_at = anchor * abs(VERTEX);
+			VERTEX = mix(VERTEX, fixed_at + (VERTEX - fixed_at) * thin, pinch);
+		}
+		// The faces across the pinch are bevels now: they lean toward the edge (at a corner,
+		// pinched toward two sides, the face is mostly flat with a bevel at one end: less). The
+		// shared face of a half stays flat; its outer face leans twice as steeply.
+		int na = abs(NORMAL.x) > 0.5 ? 0 : (abs(NORMAL.y) > 0.5 ? 1 : 2);
+		if (pinch[na] > 0.5) {
+			float slope = anchor[na] == 0.0 ? 0.5 : (sign(NORMAL[na]) == anchor[na] ? 0.0 : 1.0);
+			NORMAL = normalize(NORMAL + normalize(toward) * (1.0 - thin) * slope / sides);
+		}
+	}
 	seed = fract(sin(float(INSTANCE_ID) * 12.9898 + 4.1414) * 43758.5453);
 	status = INSTANCE_CUSTOM.a > 0.5 ? INSTANCE_CUSTOM.gb : vec2(0.0);
 	ao_code = INSTANCE_CUSTOM.a > 0.5 ? max(0.0, floor(INSTANCE_CUSTOM.a - 1.0 + 0.5)) : 0.0;
@@ -90,8 +134,21 @@ void fragment() {
 	if (box_half.x <= 0.0) {
 		c *= 1.0 - ao_strength * corner_shade(a, box_pos, m);
 	}
+	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
+	float hone = 0.0;
+	if (taper_code > 0.5) {
+		int t = int(taper_code);
+		for (int f = 0; f < 6; f++) {
+			if (((t >> f) & 1) == 1) {
+				float s = (f % 2 == 0) ? 1.0 : -1.0;
+				hone = max(hone, smoothstep(0.72, 0.98, box_pos[f / 2] * s / max(m, 1e-5)));
+			}
+		}
+		hone *= (k == 3 || k == 4 || k == 7) ? 1.0 : 0.35;
+		c = mix(c, c * 1.22 + vec3(0.025), hone * 0.6);
+	}
 	ALBEDO = c;
-	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5), 0.02, 1.0);
+	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5) - 0.1 * hone, 0.02, 1.0);
 	METALLIC = METAL[k];
 	SPECULAR = SPEC[k];
 	if (k == 12) {

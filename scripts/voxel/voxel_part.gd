@@ -176,9 +176,83 @@ static func set_ao(on: bool) -> void:
 			mat.set_shader_parameter("ao_strength", ao_strength)
 
 ## A voxel kind as MultiMesh custom data (the shader reads r * 16; a >= 1 marks it set, and
-## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits).
-static func kind_data(k: int, ao_ := 0) -> Color:
-	return Color(float(k) / 16.0, 0.0, 0.0, 1.0 + float(ao_))
+## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits). A sharp weapon
+## voxel's taper (taper_code) rides in r over the kind, in sixteens.
+static func kind_data(k: int, ao_ := 0, taper := 0) -> Color:
+	return Color(float(k + 16 * taper) / 16.0, 0.0, 0.0, 1.0 + float(ao_))
+
+const TAPER_AXES := [Vector3i.RIGHT, Vector3i.UP, Vector3i.BACK]
+## How a sharp voxel of a weapon is drawn (only the look: it still hits and weighs as a cube).
+## An edge voxel narrows to a wedge toward its open sides, thin across the blade's thickness and
+## full along it: a triangle seen end on. A point voxel narrows both ways to a tip. Which way is
+## the thickness goes by the weapon's volume round it: the way it is thinnest. A blade two voxels
+## thick narrows in each of its two halves toward the face they share.
+## `cells`: the weapon's voxels, Vector3i -> its job ("edge", "point", ...). 0 for a voxel not
+## tapered; else bits 0..5 the open sides it narrows toward (+x -x +y -y +z -z), 6..8 the axes it
+## is pinched along, 9 a point, 10..15 an axis pinched toward its + or - face (2a + 10 for +,
+## 2a + 11 for -) instead of its middle. The rows behind an edge and thick blocks stay blocks.
+static func taper_code(cells: Dictionary, p: Vector3i) -> int:
+	var job := str(cells.get(p, ""))
+	if job != "edge" and job != "point":
+		return 0
+	var both := []    # open on both sides: the thickness, pinched on the middle
+	var half := {}    # half of a blade two thick: axis -> the side its other half is on (+1/-1)
+	var one := []     # open on one side: where it faces
+	for a in 3:
+		var d: Vector3i = TAPER_AXES[a]
+		var up := not cells.has(p + d)
+		var down := not cells.has(p - d)
+		if up and down:
+			both.append(a)
+		elif up or down:
+			var s := -1 if up else 1
+			var q := p + d * s
+			if (str(cells.get(q, "")) == "edge" or str(cells.get(q, "")) == "point") and not cells.has(q + d * s):
+				half[a] = s
+			else:
+				one.append(a)
+	var pinch: Array = both + half.keys()
+	if job == "edge" and pinch.size() > 1:
+		# Thin one way only, across the blade: the way the weapon is thinnest round it.
+		var best: int = pinch[0]
+		var span := INF
+		for a in pinch:
+			var w := _span(cells, p, a) + (0.0 if a == 2 else 0.1)   # a tie: the forge's depth
+			if w < span:
+				span = w
+				best = a
+		pinch = [best]
+	# What it faces: the one-sided axes, and for an edge also the halves it is not pinched on.
+	for a in half:
+		if not pinch.has(a):
+			one.append(a)
+	if pinch.is_empty() or one.is_empty():
+		return 0
+	var code := 512 if job == "point" else 0
+	for a in pinch:
+		code |= 1 << (6 + a)
+		if half.has(a):
+			code |= 1 << (2 * a + (10 if half[a] > 0 else 11))
+	for a in one:
+		if half.has(a):
+			code |= 1 << (2 * a + (1 if half[a] > 0 else 0))
+		else:
+			code |= 1 << (2 * a + (0 if not cells.has(p + TAPER_AXES[a]) else 1))
+	return code
+
+## How far the weapon spans along axis `a` within a few voxels of `p` (its local thickness).
+static func _span(cells: Dictionary, p: Vector3i, a: int) -> float:
+	var lo := 0
+	var hi := 0
+	for x in range(-3, 4):
+		for y in range(-3, 4):
+			for z in range(-3, 4):
+				var o := Vector3i(x, y, z)
+				if cells.has(p + o):
+					var k: int = o[a]
+					lo = mini(lo, k)
+					hi = maxi(hi, k)
+	return float(hi - lo)
 
 ## What a material (data/materials.json) is drawn as: see shaders/voxel_body.gdshader.
 static func kind_of_material(mat: String) -> int:

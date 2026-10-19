@@ -922,10 +922,14 @@ func _rebuild() -> void:
 	mm.instance_count = cells.size()
 	var i := 0
 	var centre := Vector3.ZERO
+	# Sharp voxels drawn tapered, as on the weapon in the arena.
+	var jobs := {}
+	for k in cells:
+		jobs[k] = str(cells[k][1])
 	for k in cells:
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * vs))
 		mm.set_instance_color(i, Weapon.voxel_color(cells[k][0], cells[k][1]))
-		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0]))))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k)))
 		centre += Vector3(k) * vs
 		i += 1
 	var mi := MultiMeshInstance3D.new()

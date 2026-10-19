@@ -322,7 +322,9 @@ func _build_mesh() -> void:
 		var v: Array = vox[i]
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(v[0], v[1], v[2]) * vs))
 		mm.set_instance_color(i, voxel_color(v[3], v[4]))
-		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(v[3]))))
+	_taper_all()
+	for i in vox.size():
+		mm.set_instance_custom_data(i, _custom(i))
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # see VoxelPart
@@ -336,6 +338,36 @@ func _build_mesh() -> void:
 		mmi.custom_aabb = AABB(lo - Vector3.ONE * vs, hi - lo + Vector3.ONE * vs * 2.0)
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
+
+## The sharp voxels' taper (VoxelPart.taper_code), over the voxels still on it: when the outer
+## row of an edge chips away, the edge voxels behind it are the edge now.
+var taper := PackedInt32Array()
+func _taper_all() -> Array:
+	var cells := {}
+	for i in vox.size():
+		if alive[i]:
+			cells[Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))] = str(vox[i][4])
+	taper.resize(vox.size())
+	var changed := []
+	for i in vox.size():
+		var t := VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))) if alive[i] else 0
+		if t != taper[i]:
+			taper[i] = t
+			changed.append(i)
+	return changed
+
+## A voxel's custom data for the shader: its kind and taper, and while it lies in fire or acid
+## (set_burn) how hot it glows and how poisoned.
+func _custom(i: int) -> Color:
+	var k := VoxelPart.kind_of_material(str(vox[i][3]))
+	var c := VoxelPart.kind_data(k, 0, taper[i] if i < taper.size() else 0)
+	if _burn.x:
+		match BurnFx.surface_of_kind(k):
+			"wood", "cloth": c.g = 0.9
+			"metal": c.g = 0.35
+			_: c.g = 0.2
+	c.b = 0.7 if _burn.y else 0.0
+	return c
 
 ## The box the voxels still on it fill, in its own frame (a shield's cover, see Fighter).
 ## The gems set in it that are still there: {"ruby": n, ...} (Match._gems).
@@ -403,15 +435,7 @@ func set_burn(fire: bool, poison: bool) -> void:
 		return
 	_burn = want
 	for i in vox.size():
-		var mat := str(vox[i][3])
-		var k := VoxelPart.kind_of_material(mat)
-		var heat := 0.0
-		if fire:
-			match BurnFx.surface_of_kind(k):
-				"wood", "cloth": heat = 0.9
-				"metal": heat = 0.35
-				_: heat = 0.2
-		mm.set_instance_custom_data(i, Color(float(k) / 16.0, heat, 0.7 if poison else 0.0, 1.0))
+		mm.set_instance_custom_data(i, _custom(i))
 	var surface := _main_surface()
 	var size := clampf(reach * 1.6, 0.6, 3.0)
 	if fire and _burn_fx == null:
@@ -469,6 +493,10 @@ func remove_voxels(indices: Array) -> Array:
 		# on; the fixed custom_aabb keeps single writes from culling the weapon).
 		for k in range(0, hidden.size(), 12):
 			mm.set_instance_transform(int(hidden[k] / 16), Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		if mm.use_custom_data:
+			for i in _taper_all():
+				if alive[i]:
+					mm.set_instance_custom_data(i, _custom(i))
 	for b in touched.values():
 		_drop_box(b)
 		var left := []

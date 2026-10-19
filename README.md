@@ -66,7 +66,9 @@ godot --headless --path . -- --test test_fight   # one suite
   decals for blood and scorch marks, SSAO, SSIL, SDFGI, volumetric fog and glow by quality
   level. Anti-aliasing to choose (MSAA 4x by default: the blocks' edges smooth, the rest sharp;
   or SMAA, FXAA, MSAA 2x/8x, off) and voxel corner shading (each voxel's face darkens toward the
-  neighbours that shut it in, so creases and the gaps between blocks lie in shadow; on or off). An animated crowd shader, braziers, awnings, flags and the Emperor's box.
+  neighbours that shut it in, so creases and the gaps between blocks lie in shadow; on or off). A
+  weapon's sharp voxels are drawn tapered, in the forge and in the fight: the outer row of an edge a
+  wedge thin across the blade with a honed line, a point a tip (only the look; they hit as cubes). An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows.
 - **Multiplayer**: host-authoritative. Guests send input; the host sends snapshots, spawns, voxel
