@@ -27,6 +27,28 @@ func test_a_fighter_stands_and_walks() -> void:
 	t.check(f.torso.global_position.z - z0 > 2.0, "walked forward (%.2f m)" % (f.torso.global_position.z - z0))
 	w.queue_free()
 
+## Standing still, the legs are still: the foot's grip on the sand braked as the whole leg set
+## the thighs and shins buzzing, a turn back and forth every step.
+func test_standing_still_the_legs_do_not_buzz() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "gladius", "off": "roundShield"}, {"name": "A"})
+	await _step(w, 360, func(_f, _i): return {"main": {"x": 0.2, "y": 0.2}})
+	var acc := 0.0
+	var flips := 0
+	var last := {}
+	for i in 240:
+		await _step(w, 1, func(_f, _i): return {"main": {"x": 0.2, "y": 0.2}})
+		for n in ["thighL", "thighR", "shinL", "shinR"]:
+			var av: Vector3 = f.by_name[n].angular_velocity
+			acc += av.length_squared()
+			if last.has(n) and (last[n] as Vector3).dot(av) < 0.0 and av.length() > 0.05:
+				flips += 1
+			last[n] = av
+	var rms := sqrt(acc / (240.0 * 4.0))
+	t.check(rms < 0.3, "the legs hold still (%.3f rad/s)" % rms)
+	t.check(flips < 40, "not turning back and forth (%d turns)" % flips)
+	w.queue_free()
+
 func test_a_sword_sweep_cuts_a_dummy() -> void:
 	var w := _world()
 	var a := w.fighter(Vector3(0, 0, 0), 0.0, {"main": "gladius"}, {"name": "a", "slot": 0})

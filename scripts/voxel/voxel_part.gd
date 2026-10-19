@@ -48,7 +48,15 @@ func snap_drawing() -> void:
 func _process(_dt: float) -> void:
 	if mmi == null and skin == null:
 		return
-	var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+	_draw_at(global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated())
+
+## Drawn where the body is now, with the game paused (the kill cam puts the bodies back where
+## they were and plays them forward while nothing else runs: _process with it).
+func draw_now() -> void:
+	_draw_at(global_transform)
+	snap_drawing()
+
+func _draw_at(t: Transform3D) -> void:
 	if mmi:
 		mmi.global_transform = t
 	if skin:

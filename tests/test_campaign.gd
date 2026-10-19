@@ -287,3 +287,13 @@ func test_foes_grow_bout_by_bout() -> void:
 		if e.f is Fighter and e.f.weapons.R:
 			t.check(Arms.power_price(e.f.weapons.R.design) <= Match.weapon_budget(1) + 1, "in the arena too: %s" % e.f.weapons.R.design.get("name", "?"))
 	m.queue_free()
+
+## A keener edge costs more: every edge and point voxel is dearer the higher the sharpness is
+## set; a blunt weapon costs the same however it is set.
+func test_sharper_voxels_cost_more() -> void:
+	var blade := {"kind": "weapon", "sharpness": 0.3, "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "steel", "edge"], [0, 2, 0, "steel", "point"]]}
+	var keen := blade.duplicate(true)
+	keen.sharpness = 1.0
+	t.check(Arms.value(keen) > Arms.value(blade), "honed keener, dearer (%d vs %d)" % [Arms.value(keen), Arms.value(blade)])
+	t.eq(Arms.sharp_price("blunt", 1.0), 0, "a blunt voxel costs no honing")
+	t.check(Arms.sharp_price("edge", 1.0) > Arms.sharp_price("edge", 0.5), "an edge costs more the keener it is")

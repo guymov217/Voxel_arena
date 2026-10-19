@@ -3,13 +3,13 @@ extends RefCounted
 ## The Ludus yard as a place to walk around in (game.js yard mode). The arena becomes the yard:
 ## a sign and a glowing ring at each station (G there opens it), two training dummies that
 ## never fall, three throwing boards that score a thrown weapon by how close to the middle it
-## struck, and a shoving ring with its own champion to push out. Nobody bleeds to death here.
+## struck, and by the gate a board with the next fight on it. Nobody bleeds to death here.
 
 var m: Node
 var dummies: Array = []
-var champ = null
-var champ_out_t := 0.0
-var ring_outs := 0
+var next_board: Label3D = null
+var next_text := ""
+var next_t := 0.0   # (the host says it again now and then: a guest whose yard was not up yet hears it)
 var best_throw := 0
 var hint := ""
 var at := ""
@@ -27,12 +27,6 @@ func setup() -> void:
 		e.drive = func(_e): return {}
 		e.harmless = true
 		dummies.append(e.f)
-	# The ring's champion walks back to the middle whenever he is pushed off it.
-	var c = m.spawn_fighter({"kind": "npc", "name": "Ring champion", "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,
-		"pos": Yard.RING.p + Vector3(0, 0.02, 0), "yaw": PI, "mods": {"toughness": 2.0}, "color": 0x7a2a8a})
-	c.drive = _champ_input
-	c.harmless = true
-	champ = c.f
 	# The smith, the trader and the physician, each dressed for his trade, beside his stall's
 	# sign (not inside its post) between it and his workplace, at work: the smith stands by
 	# his hearth, the trader sorts his wares, the physician bends over his table; whoever comes
@@ -51,6 +45,12 @@ func setup() -> void:
 		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, work_yaw, randf() * TAU)
 		n.harmless = true
 		keepers.append(n.f)
+	set_next(next_fight(m.humans().size()))
+	scenery()
+
+## What stands in the yard for the eye (on the host and on every guest alike): the stations'
+## signs, rings and furniture, the throwing boards and the board of the next fight.
+func scenery() -> void:
 	if m.headless:
 		return
 	for id in Yard.stations():
@@ -59,12 +59,75 @@ func setup() -> void:
 		if not s.has("npc"):
 			_ring(s.p, float(s.r), Color(1.0, 0.8, 0.35, 0.8))
 		_sign(s.p + Vector3(0, 2.6, 0), String(s.label))
-	_ring(Yard.RING.p, float(Yard.RING.r), Color(0.75, 0.3, 0.95, 0.85))
-	_sign(Yard.RING.p + Vector3(0, 2.2, 0), "The shoving ring")
 	for p in Yard.TARGETS:
 		_board(p)
 	_dress_stations()
 	_sign(Yard.TARGETS[1] + Vector3(-0.8, 1.3, 0), "Throwing boards")
+	_next_board()
+
+## The next fight through the gate (the campaign's next bout; in a room, the party's), as the
+## board beside the gate reads it.
+static func next_fight(players: int) -> String:
+	var coop := Net.active()
+	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
+	if Edition.demo_over(st):
+		return "THE DEMO ENDS HERE"
+	var nx: Dictionary = Data.stage(st, maxi(1, players))
+	return "NEXT FIGHT\n%s\n%s" % [String(nx.get("title", "Bout %d" % st)), String(nx.get("foe_name", ""))]
+
+## The text on the board (the host's own, or what the host sent: kept short and to three lines).
+func set_next(text: String) -> void:
+	next_text = "\n".join(Array(text.split("\n")).slice(0, 3).map(func(l): return String(l).left(48)))
+	if next_board and is_instance_valid(next_board):
+		next_board.text = next_text
+
+## A board on two posts beside the gate, the next fight painted on it, lit by a torch's glow.
+func _next_board() -> void:
+	var gp: Vector3 = Yard.STATIONS.gate.p
+	var at := gp + Vector3(2.9, 0, -0.8)
+	var root := Node3D.new()
+	m.add_child(root)
+	root.global_position = at
+	root.rotation.y = VoxelArt.facing_centre(at)
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.36, 0.24, 0.13)
+	for x in [-0.75, 0.75]:
+		var post := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.1, 2.5, 0.1)
+		pm.material = wood
+		post.mesh = pm
+		post.position = Vector3(x, 1.25, 0)
+		root.add_child(post)
+	var plank := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.9, 1.05, 0.08)
+	var face := StandardMaterial3D.new()
+	face.albedo_color = Color(0.2, 0.08, 0.05)
+	bm.material = face
+	plank.mesh = bm
+	plank.position = Vector3(0, 1.85, 0.03)
+	root.add_child(plank)
+	var l := Label3D.new()
+	l.text = next_text
+	l.font = UIStyle.serif(2)
+	l.font_size = 52
+	l.pixel_size = 0.0042
+	l.outline_size = 8
+	l.modulate = UIStyle.GOLD
+	l.outline_modulate = Color(0.12, 0.05, 0.02)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.width = 420.0
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.position = Vector3(0, 1.85, 0.08)
+	root.add_child(l)
+	next_board = l
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.7, 0.4)
+	glow.light_energy = 0.8
+	glow.omni_range = 2.5
+	glow.position = Vector3(0, 2.2, 0.6)
+	root.add_child(glow)
 
 ## A stall keeper at his work, facing his workplace (`work_yaw`), or turned to a man who comes up.
 func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -> Dictionary:
@@ -95,12 +158,6 @@ func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -
 			inp.main = {"x": 0.05 + 0.12 * sin(t * 5.0), "y": -0.75 + 0.1 * sin(t * 3.0)}
 			inp.off = {"x": -0.12, "y": -0.8}
 	return inp
-
-func _champ_input(_e) -> Dictionary:
-	var to: Vector3 = Yard.RING.p - champ.torso.global_position
-	to.y = 0.0
-	var far := to.length() > 0.6
-	return {"mz": 0.5 if far else 0.0, "mx": 0.0, "faceAt": Yard.RING.p if far else champ.torso.global_position + Vector3(0, 0, 1)}
 
 func _ring(p: Vector3, r: float, color: Color) -> void:
 	var mi := MeshInstance3D.new()
@@ -209,10 +266,11 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 		for e in m.humans():
 			if is_instance_valid(e.f):
 				e.f.blood = maxf(e.f.blood, 50.0)
-		if champ and is_instance_valid(champ):
-			champ.blood = 100.0
-			_ring_rule(_dt)
 		_boards()
+		next_t -= _dt
+		if next_t <= 0.0:
+			next_t = 4.0
+			m._send_yard_next()
 	if m.me and is_instance_valid(m.me.f):
 		at = Yard.station_at(m.me.f.torso.global_position)
 		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader or the physician · the gate leads to the arena"
@@ -221,21 +279,6 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 		last_at = at
 		if at != "" and (walked_in or local_inp.get("talk", false) or (local_inp.get("grab", false) and not Yard.STATIONS[at].has("npc"))):
 			m.station.emit(at)
-
-func _ring_rule(dt: float) -> void:
-	var inside := Yard.in_ring(champ.torso.global_position)
-	if not inside and champ_out_t <= 0.0:
-		champ_out_t = 2.0
-		var who = champ.last_attacker
-		if who and is_instance_valid(who) and who != champ:
-			ring_outs += 1
-			m.feed.emit("RING OUT! %s pushes the champion off the ring (%d)" % [who.display_name, ring_outs])
-			m.sfx("cheer", champ.torso.global_position, 0.7)
-	if champ_out_t > 0.0:
-		champ_out_t -= dt
-		if champ_out_t <= 0.0:
-			champ.teleport(Yard.RING.p)
-			champ.last_attacker = null
 
 func _boards() -> void:
 	for w in m.combat.loose_weapons:

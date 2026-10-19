@@ -31,12 +31,20 @@ static func sanitize(a) -> Dictionary:
 static func voxel_price(mat: String) -> int:
 	return int(Data.shop.get("voxelPrice", {}).get(mat, 2))
 
+## A sharp voxel (an edge or a point) costs the more the keener it is honed: the smith's hours
+## at the stone, nothing for a blunt one.
+const SHARP_PRICE := 3.0
+
+static func sharp_price(job: String, sharpness: float) -> int:
+	return roundi(SHARP_PRICE * sharpness * sharpness) if job == "edge" or job == "point" else 0
+
 static func value(d) -> int:
 	if not (d is Dictionary):
 		return 0
 	var s := 0
+	var sh := clampf(float(d.get("sharpness", 0.8)), 0.0, 1.0)
 	for v in d.get("voxels", []):
-		s += voxel_price(v[3])
+		s += voxel_price(v[3]) + (sharp_price(String(v[4]), sh) if v.size() > 4 else 0)
 	return s
 
 ## Weapons kept aside for now (still in the data, out of the shop, the lists, the lottery

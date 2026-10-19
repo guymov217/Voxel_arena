@@ -263,3 +263,46 @@ func test_a_heavy_head_moves_the_balance_and_swings_slower() -> void:
 		peak.append(sum / 30.0)
 	t.check(peak[1] < peak[0] * 0.9, "the lead-headed hammer comes down slower (mean %.1f vs %.1f rad/s)" % [peak[1], peak[0]])
 	m.queue_free()
+
+## The forearm's roll on its own length against the upper arm, in degrees (the twist part of
+## the elbow's turn: its bend is about x, the forearm's length is y).
+func _fore_twist(f: Fighter, side: String) -> float:
+	var r: Quaternion = PD.quat_of(f.arm[side].upper).inverse() * PD.quat_of(f.arm[side].fore)
+	return absf(rad_to_deg(wrapf(2.0 * atan2(r.y, r.w), -PI, PI)))
+
+## Both hands on a war hammer through a long run of hard strokes every way: neither forearm winds
+## itself round on its own length (the hands looked tangled), and the hammer still goes where it
+## is sent at the end as at the start.
+func test_two_hands_stay_untangled_through_a_long_bout() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "warhammer", "off": ""}})
+	var f: Fighter = m.me.f
+	var inp := {"main": {"x": 0.1, "y": 0.1}, "power": false}
+	m.me.drive = func(_e): return inp
+	for i in 90:
+		await get_tree().physics_frame
+	t.check(f.two_handed, "the war hammer in both hands")
+	var worst := 0.0
+	var marks := [Vector2(0, 1.5), Vector2(1.8, 0), Vector2(0, -1.5), Vector2(-1.8, 0), Vector2(1.1, 1.1), Vector2(-1.1, -1.1)]
+	for k in 24:
+		var d: Vector2 = marks[k % marks.size()]
+		inp.power = true
+		inp.main = {"x": d.x, "y": d.y}
+		for i in 40:
+			await get_tree().physics_frame
+		inp.main = {"x": -d.x, "y": -d.y}
+		for i in 40:
+			await get_tree().physics_frame
+		worst = maxf(worst, maxf(_fore_twist(f, "L"), _fore_twist(f, "R")))
+	t.check(worst < 100.0, "neither forearm winds round (worst %.0f deg)" % worst)
+	inp.power = false
+	inp.main = {"x": 0.0, "y": 1.5}
+	for i in 90:
+		await get_tree().physics_frame
+	var w: Weapon = f.weapons.R
+	var err := rad_to_deg(PD.quat_of(w).angle_to(f.aim_q.R))
+	t.check(err < 30.0, "and the hammer still goes up where it is sent (%.0f deg off)" % err)
+	t.eq(f.state, "stand", "on his feet throughout")
+	m.queue_free()
+	await get_tree().process_frame

@@ -1,6 +1,6 @@
 extends Node
-## The Ludus yard (yard.js): the stations, the dummies that never fall, the shoving ring and the
-## throwing boards; missions counted from a fight and paid; ranks from reputation.
+## The Ludus yard (yard.js): the stations, the dummies that never fall, the throwing boards and
+## the board of the next fight; missions counted from a fight and paid; ranks from reputation.
 
 var t
 
@@ -29,7 +29,10 @@ func test_the_yard_plays() -> void:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "roundShield"}})
-	t.check(m.yard != null and m.yard.dummies.size() == 2 and m.yard.champ != null, "two dummies and the ring champion")
+	t.check(m.yard != null and m.yard.dummies.size() == 2, "two dummies")
+	var nx := Data.stage(int(Save.get_value("stage", 1)))
+	t.check(m.yard.next_text.contains(String(nx.get("foe_name", "?"))), "the board by the gate names the next foe (%s)" % m.yard.next_text.replace("\n", " / "))
+	t.check(m.find_children("*", "Fighter", true, false).all(func(f): return f.display_name != "Ring champion"), "no shoving ring any more")
 	var opened := []
 	m.station.connect(func(id): opened.append(id))
 	m.me.f.teleport(Yard.STATIONS.market.p)
@@ -45,10 +48,6 @@ func test_the_yard_plays() -> void:
 	d.blood = 1.0
 	await _steps(2)
 	t.check(d.alive and d.blood >= 99.0, "the dummy never falls")
-	m.yard.champ.last_attacker = m.me.f
-	m.yard.champ.teleport(Yard.RING.p + Vector3(5, 0, 0))
-	await _steps(3)
-	t.eq(m.yard.ring_outs, 1, "a ring out for the player")
 	var w := m.spawn_loose_weapon(Data.preset("javelin"), Yard.TARGETS[0] + Vector3(0.05, 0, 0))
 	w.linear_velocity = Vector3(6, 0, 0)
 	await _steps(1)

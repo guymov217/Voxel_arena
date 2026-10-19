@@ -46,8 +46,8 @@ godot --headless --path . -- --test test_fight   # one suite
   the right stick looks, and a held trigger turns the right stick into that hand.
 - **The Ludus yard**: a walkable hub (`scripts/game/yard.gd`, `yard_play.gd`). It has stations
   (the arena gate, the smith, the market and the mission board; press G at one), two training
-  dummies that never fall, three throwing boards that score a throw, and a shoving ring with a
-  champion to push out. Three missions per fight pay denarii and reputation, and reputation
+  dummies that never fall, three throwing boards that score a throw, and by the gate a board
+  that names the next fight (the party's, in a room). Three missions per fight pay denarii and reputation, and reputation
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,

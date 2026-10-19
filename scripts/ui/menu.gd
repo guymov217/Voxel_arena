@@ -2097,6 +2097,15 @@ func _pay(r: Dictionary) -> void:
 	set_arms(r.arms)
 	show_screen("yard")
 
+## Reshaping a weapon, the smith is asked for a new one from nothing instead: the reshape is
+## left as it was and a blank anvil comes up.
+func scratch_from_forge(f: Node) -> void:
+	# (Its going would show the smith's panel again over the new anvil.)
+	for c in f.tree_exited.get_connections():
+		f.tree_exited.disconnect(c.callable)
+	f.done.call(null, 0)
+	_scratch_forge()
+
 ## At the smith, a weapon of any kind from a blank anvil: built block by block and, taken,
 ## made and paid for at what it is worth; it goes in a free hand like one bought.
 func _scratch_forge() -> void:
@@ -2852,7 +2861,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next":
 			if match_:
 				match_.guest_message(type, data)
 		"purse":

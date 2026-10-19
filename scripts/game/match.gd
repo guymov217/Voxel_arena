@@ -234,6 +234,7 @@ func setup(opts: Dictionary) -> void:
 		guest_bot_on = bool(opts.get("autopilot", false))
 		if mode == "yard":
 			yard = YardPlay.new(self)   # the stalls and their prompts; the host spawns the keepers
+			yard.scenery()              # (the board by the gate reads what the host sends: yard_next)
 		return
 	if Modes.handles(mode):
 		modes = Modes.new(self, mode)
@@ -271,7 +272,8 @@ func setup(opts: Dictionary) -> void:
 	elif mode == "yard":
 		yard = YardPlay.new(self)
 		yard.setup()
-		_banner("The Ludus yard", "Walk to a station and press G · dummies, throwing boards and the shoving ring to play")
+		_send_yard_next()
+		_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight")
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names))
 	spectacle.on_round_start()
@@ -421,6 +423,16 @@ func add_peer(id: int, p: Dictionary) -> void:
 	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	players_count = humans().size()
 	feed.emit("%s came into the yard" % p.name)
+	_send_yard_next()
+
+## The board by the gate: the next fight, as many as the party is now (a friend more, a friend
+## less, the bout is sized again), on the host and on every guest's board.
+func _send_yard_next() -> void:
+	if yard == null or role != "host":
+		return
+	yard.set_next(YardPlay.next_fight(humans().size()))
+	if Net.active():
+		Net.send_all("yard_next", {"t": yard.next_text})
 
 ## A guest who left: his fighter goes, here and on every guest's screen.
 func drop_peer(id: int) -> void:
@@ -431,6 +443,7 @@ func drop_peer(id: int) -> void:
 			if role == "host":
 				Net.send_all("despawn", {"id": e.id})
 	players_count = humans().size()
+	_send_yard_next()
 
 func _spawn_msg(e: Dictionary) -> Dictionary:
 	var s: Dictionary = e.spec.duplicate(true)
@@ -1083,6 +1096,9 @@ func guest_end(data: Dictionary) -> void:
 
 func guest_message(type: String, data) -> void:
 	match type:
+		"yard_next":
+			if yard and data is Dictionary:
+				yard.set_next(str(data.get("t", "")))
 		"kcr":
 			if data is Dictionary:
 				_guest_round_replay(data)

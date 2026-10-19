@@ -1,7 +1,7 @@
 class_name Yard
 ## The Ludus yard (yard.js): where the gladiators wait between fights. A walkable hub with its
-## stations (the arena gate, the smith, the market, the mission board), training dummies,
-## throwing targets and a shoving ring; and the progression the yard pays out: missions for the
+## stations (the arena gate, the smith, the market, the mission board), training dummies and
+## throwing targets; and the progression the yard pays out: missions for the
 ## next fight, denarii and reputation, and the ranks that reputation buys.
 
 const STATIONS := {
@@ -13,7 +13,6 @@ const STATIONS := {
 }
 const DUMMIES := [Vector3(-8, 0, -5), Vector3(-10.5, 0, -2)]
 const TARGETS := [Vector3(12.6, 1.5, -3), Vector3(11.6, 1.5, -6.5), Vector3(10.2, 1.5, -9.5)]
-const RING := {"p": Vector3(5, 0, -6), "r": 2.4}
 
 ## The mission board is put away for now (its missions still count, quietly).
 const SHOW_BOARD := false
@@ -36,9 +35,6 @@ static func station_at(p: Vector3) -> String:
 ## Points for a throw by how close to the middle of the board it struck.
 static func target_score(dist: float) -> int:
 	return 10 if dist < 0.15 else (5 if dist < 0.3 else (2 if dist < 0.5 else 0))
-
-static func in_ring(p: Vector3) -> bool:
-	return Vector2(p.x - RING.p.x, p.z - RING.p.z).length() < float(RING.r)
 
 # ---------- Ranks ----------
 ## Reputation is earned in fights and from missions; it never goes down.

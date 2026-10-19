@@ -1721,8 +1721,16 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var sole := shin.global_transform * Vector3(0, -4 * V * S, 0)
 			var goal: Vector3 = feet[side].anchor
 			var sv := shin.velocity_at(sole)
-			var fh := Vector3((goal.x - sole.x) * FOOT_HOLD - sv.x * 60.0, minf(0.0, (goal.y - sole.y) * FOOT_HOLD - sv.y * 60.0), (goal.z - sole.z) * FOOT_HOLD - sv.z * 60.0)
-			fh = PD.clamp_len(fh * (shin.nominal_mass + thigh.nominal_mass * 0.5), 260.0 * f * MS * S)
+			# Held and braked no harder than the sole itself answers to: pushed at the sole the
+			# shin turns about it, much lighter than the leg it stands for, and braked as the
+			# whole leg it overshot every step and the legs buzzed while he stood still.
+			var r_s: Vector3 = sole - shin.global_position
+			var m_sole := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_s.length_squared() / PD.inertia_of(shin))
+			var m_leg := shin.nominal_mass + thigh.nominal_mass * 0.5
+			var k_hold := minf(FOOT_HOLD * m_leg, 0.25 * m_sole / (dt * dt))
+			var c_hold := minf(60.0 * m_leg, 0.8 * m_sole / dt)
+			var fh := Vector3((goal.x - sole.x) * k_hold - sv.x * c_hold, minf(0.0, (goal.y - sole.y) * k_hold - sv.y * c_hold), (goal.z - sole.z) * k_hold - sv.z * c_hold)
+			fh = PD.clamp_len(fh, 260.0 * f * MS * S)
 			shin.apply_impulse(fh * dt, sole - shin.global_position)
 		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
@@ -2060,7 +2068,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var hy2 := clampf(float(hp2.get("y", 0.0)), -1.6, 1.6)
 			var low2 := clampf((-hy2 - 0.3) / 1.0, 0.0, 1.0)
 			var high2 := clampf(hy2 / 1.4, 0.0, 1.0)
-			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.25 * high2, 0.4 - 0.12 * low2 + 0.3 * clampf(0.0 if thrust_line[side] != null else thrust, -1.0, 1.0)) * S)
+			# Aimed right up the hands go up over the head and in over it (held at the head's
+			# height, a short haft never got its head above his own).
+			var over2 := clampf((hy2 - 0.6) / 0.8, 0.0, 1.0)
+			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.25 * high2 + 0.37 * over2, 0.4 - 0.12 * low2 - 0.2 * over2 + 0.3 * clampf(0.0 if thrust_line[side] != null else thrust, -1.0, 1.0)) * S)
 			var tl2 = thrust_line[side]
 			if tl2 != null:
 				# A thrust drives the front hand along the blade's line, as far as that arm reaches.
@@ -2215,7 +2226,9 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			# A soft, critically damped push (a stiff one fought a two-handed grip and set the
 			# hands buzzing at the hilt).
 			var acc: float = push.length() * ARM_OUT_K - minf(0.0, v_out) * 2.0 * sqrt(ARM_OUT_K)
-			part.apply_impulse(bq * push.normalized() * acc * m_eff * dt, (pp[1] as Vector3) - part.global_position)
+			var jo: Vector3 = bq * push.normalized() * acc * m_eff * dt
+			part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
+			body.apply_central_impulse(-jo)   # (the arm pushes off his own body, not off the air)
 
 ## Where a bow or a crossbow points: at the player's crosshair (aimAt), a bot's target (gaze),
 ## or straight ahead. A bow lies with the arrow (+x) on that line and the stave upright; a
@@ -2334,6 +2347,9 @@ func _keep_weapon_out(w: Weapon, dt: float) -> void:
 		w.apply_impulse(push, p - w.global_position)
 		if w.welded:
 			arm_of(w).fore.apply_impulse(push * 0.6, hand_world("R" if weapons.R == w else "L") - arm_of(w).fore.global_position)
+		# And as much back on the body it is pushed off: his own haft over his head could
+		# otherwise push him up and up off his feet (a push with nothing pushing back).
+		part.apply_central_impulse(-push * (1.6 if w.welded else 1.0))
 
 ## A big blade left behind its wielder's back, with the arm too weak to haul it round, is swung
 ## back over the shoulder after a moment (sooner the heavier it is).

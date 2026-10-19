@@ -187,6 +187,9 @@ func _build_ui() -> void:
 	cost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cost_label.custom_minimum_size = Vector2(420, 0)
 	col.add_child(cost_label)
+	var fresh := _from_nothing_button()
+	if fresh:
+		col.add_child(fresh)
 	var end := HBoxContainer.new()
 	end.add_theme_constant_override("separation", 6)
 	if not workshop:
@@ -407,8 +410,6 @@ func _try_row() -> HBoxContainer:
 	return row
 
 func _cards_ui() -> void:
-	if free_build or scratch:   # (reshaping a weapon at the smith: no blank anvil there)
-		mode_box.add_child(UIStyle.button("Blank anvil · build from nothing", _blank))
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -556,6 +557,17 @@ static func _job_icon(j: String, px := 26) -> ImageTexture:
 			if on:
 				img.set_pixel(x, y, d if dark else g)
 	return ImageTexture.create_from_image(img)
+
+## Building from nothing, under Quick start and Shape by hand alike: a blank anvil where the
+## weapon is new anyway (training, the workshop, a new one at the smith); reshaping your own
+## weapon at the smith, a new weapon of its own (yours is left as it was, the new one paid for
+## as made). Null where neither can be.
+func _from_nothing_button() -> Button:
+	if free_build or scratch:
+		return UIStyle.button("Blank anvil · build from nothing", _blank)
+	if get_parent() and get_parent().has_method("scratch_from_forge"):
+		return UIStyle.button("Forge a new weapon from nothing", func(): get_parent().scratch_from_forge(self))
+	return null
 
 func _voxels_ui() -> void:
 	# 1. What the next blocks do: a big choice of four.
@@ -892,8 +904,9 @@ func _update_texts() -> void:
 
 func _value_now() -> int:
 	var s := 0
+	var sh := clampf(float(design.get("sharpness", 0.8)), 0.0, 1.0)
 	for c in cells.values():
-		s += Arms.voxel_price(c[0])
+		s += Arms.voxel_price(c[0]) + Arms.sharp_price(String(c[1]), sh)
 	return s
 
 # ---------- The weapon on the anvil ----------
@@ -1320,7 +1333,7 @@ func _place(list: Array) -> void:
 	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
 		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
 		return
-	if not free_build and _value_now() + Arms.voxel_price(mat) * add.size() - original_value > purse:
+	if not free_build and _value_now() + (Arms.voxel_price(mat) + Arms.sharp_price(job, float(design.get("sharpness", 0.8)))) * add.size() - original_value > purse:
 		cost_label.text = "Not enough denarii for that"
 		return
 	_push_undo()
@@ -1395,4 +1408,7 @@ func _take() -> void:
 		return
 	d.stats = st
 	var cost := 0 if free_build else _value_now() - original_value
+	if not (workshop or scratch or free_build) and cost > purse:
+		cost_label.text = "Not enough denarii for that (a keener edge costs more)"
+		return
 	done.call(d, cost)

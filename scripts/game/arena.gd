@@ -688,9 +688,11 @@ func _build_debris() -> void:
 				n.add_child(sh)
 				sh.position = Vector3(0, 0.4, 0.22)
 				sh.rotation = Vector3(deg_to_rad(-72.0), 0, 0)
+				# (The sectors overlap: the bronze ones a hair thicker, so no two faces share a
+				# plane and the red and the bronze do not flicker through each other.)
 				for k in 7:
 					var ang := k * TAU / 8.0
-					_box(sh, red if k % 2 == 0 else bronze, Vector3(0.26, 0.05, 0.26), Vector3(cos(ang) * 0.2, 0, sin(ang) * 0.2))
+					_box(sh, red if k % 2 == 0 else bronze, Vector3(0.26, 0.05 if k % 2 == 0 else 0.058, 0.26), Vector3(cos(ang) * 0.2, 0, sin(ang) * 0.2))
 				_box(sh, bronze, Vector3(0.14, 0.08, 0.14), Vector3.ZERO)
 			"helmet":
 				# On its side in the sand, the crest to the wall.

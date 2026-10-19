@@ -753,6 +753,12 @@ func _process(_dt: float) -> void:
 	if vis:
 		vis.global_transform = global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
 
+## Drawn where it is now, with the game paused (the kill cam's replay).
+func draw_now() -> void:
+	if vis:
+		vis.global_transform = global_transform
+	snap_drawing()
+
 func _physics_process(dt: float) -> void:
 	# Through the sand (a heavy thing pressed or thrown into it): back up on top, at rest, not
 	# lost for good under the arena.
