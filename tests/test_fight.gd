@@ -49,6 +49,48 @@ func test_standing_still_the_legs_do_not_buzz() -> void:
 	t.check(flips < 40, "not turning back and forth (%d turns)" % flips)
 	w.queue_free()
 
+## A jump with a two-handed weapon is a jump: up and down where he stood (in the air, the arms'
+## pull on the haft had nothing under him to push back and flew him metres aside).
+func test_a_jump_with_two_hands_lands_where_it_left() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "warhammer", "off": ""}})
+	var f: Fighter = m.me.f
+	var inp := {"main": {"x": 0.3, "y": -1.0}, "power": false}
+	m.me.drive = func(_e): return inp
+	for i in 150:
+		await get_tree().physics_frame
+	t.check(f.two_handed, "the war hammer in both hands")
+	var p0: Vector3 = f.torso.global_position
+	inp.jump = true
+	await get_tree().physics_frame
+	inp.erase("jump")
+	var top := 0.0
+	var far := 0.0
+	for i in 360:
+		await get_tree().physics_frame
+		top = maxf(top, f.torso.global_position.y - p0.y)
+		far = maxf(far, Vector2(f.torso.global_position.x - p0.x, f.torso.global_position.z - p0.z).length())
+	t.check(top > 0.3 and top < 1.6, "a jump (up %.2f m)" % top)
+	t.check(far < 1.5, "that comes down near where it left (%.2f m off)" % far)
+	m.queue_free()
+	await get_tree().process_frame
+
+## Throwable means something: the same blade made to be thrown leaves the hand faster.
+func test_a_throwing_weapon_flies_faster() -> void:
+	var speeds := []
+	for made in [false, true]:
+		var w := _world()
+		var d: Dictionary = Data.preset("gladius").duplicate(true)
+		d.throwable = made
+		var f := w.fighter(Vector3.ZERO, 0.0, {"main": d}, {"name": "A"})
+		await _step(w, 90, func(_f, _i): return {"main": {"x": 0.1, "y": 0.2}})
+		var wp: Weapon = f.throw_weapon("R", f.torso.global_position + Vector3(0, 1, 8), 1.0)
+		speeds.append(wp.linear_velocity.length())
+		w.queue_free()
+		await get_tree().physics_frame
+	t.check(speeds[1] > speeds[0] * 1.1, "made to be thrown, it flies faster (%.1f vs %.1f m/s)" % [speeds[1], speeds[0]])
+
 func test_a_sword_sweep_cuts_a_dummy() -> void:
 	var w := _world()
 	var a := w.fighter(Vector3(0, 0, 0), 0.0, {"main": "gladius"}, {"name": "a", "slot": 0})

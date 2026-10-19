@@ -160,3 +160,35 @@ func test_a_held_blade_never_sticks_in_the_floor() -> void:
 	w._out_of_the_floor()
 	t.check(w.bodies().all(func(b): return not (b is CollisionObject3D) or (b.collision_mask & VoxelPart.LAYER_WORLD) != 0), "and meets the floor again once it is up")
 	m.queue_free()
+
+## Kick after kick at a man standing his ground: he is shoved about, not felled (three kicks in
+## a row once put any man on the sand), and they do him less harm than a sword would.
+func test_kicks_in_a_row_do_not_fell_a_man() -> void:
+	seed(5)
+	var m := _match()
+	var a = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {}, "team": 2, "pos": Vector3(0, 0, -0.9), "yaw": 0.0})
+	a.erase("bot")
+	var kick := [false]
+	a.drive = func(_e): return {"kick": kick[0], "mz": 0.3}
+	var v = _man(m, Vector3(0, 0, 0), {})
+	await _steps(90)
+	var landed := [0]
+	var harm := [0.0]
+	m.combat.hit.connect(func(h): if h.get("kick", false) and h.char == v.f:
+		landed[0] += 1
+		harm[0] += float(h.res.get("dmg", 0.0)))
+	var fell := false
+	for i in 4:
+		a.f.teleport(v.f.torso.global_position + Vector3(0, -v.f.torso.global_position.y, -0.85))
+		a.f.yaw = 0.0
+		await _steps(20)
+		kick[0] = true
+		await _steps(3)
+		kick[0] = false
+		for k in 60:
+			await get_tree().physics_frame
+			fell = fell or v.f.state != "stand"
+	t.check(landed[0] >= 3, "the kicks land (%d)" % landed[0])
+	t.check(not fell, "four kicks in a row and he is still on his feet (stagger %.2f)" % v.f.stagger)
+	t.check(harm[0] / maxf(1, landed[0]) < 12.0, "each does little harm (%.1f a kick)" % (harm[0] / maxf(1, landed[0])))
+	m.queue_free()

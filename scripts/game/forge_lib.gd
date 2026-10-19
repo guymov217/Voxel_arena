@@ -541,7 +541,10 @@ static func dummy_verdict(d: Dictionary, st := {}) -> String:
 	if d.get("shoots", "") == "arrow":
 		return "Hold the left button to draw, let go to loose. Arrows stick and bleed."
 	if d.get("throwable", false):
-		return "Made to fly. Press F and it goes where you aim."
+		var how := "point first" if Weapon.flies_point_first(d) else "end over end"
+		if st.mass > 3.5:
+			return "Made to fly, but at %.1f kg it flies short and slow. F throws it, %s." % [st.mass, how]
+		return "Made to fly: faster and truer from the hand than any other weapon, %s. F throws it." % how
 	var b := three_bars(st)
 	if b.damage < 0.15:
 		return "Barely a scratch. The dummy is laughing."

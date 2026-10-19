@@ -21,6 +21,8 @@ var best: Dictionary = {}       # {score, caption, frames, t_blow, killer, victi
 var clips: Array = []           # the best few clips cut so far (online the host names the one shown)
 var playing := false
 var overlay: CanvasLayer = null
+var vox_log: Array = []         # {t, part, idx}: every voxel lost while on tape, to put back and take again
+var _heard := {}                # fighters whose voxel losses are on tape
 
 func _init(match_: Node) -> void:
 	m = match_
@@ -83,10 +85,23 @@ func _physics_process(dt: float) -> void:
 	frames.append({"t": m.time, "xf": xf})
 	while not frames.is_empty() and m.time - float(frames[0].t) > KEEP:
 		frames.pop_front()
+	while not vox_log.is_empty() and m.time - float(vox_log[0].t) > KEEP + 1.0:
+		vox_log.pop_front()
+	for e in m.entities:
+		if is_instance_valid(e.f) and not _heard.has(e.f.get_instance_id()) and e.f.has_signal("voxels_lost"):
+			_heard[e.f.get_instance_id()] = true
+			e.f.voxels_lost.connect(_on_voxels_lost)
 	for k in pending.duplicate():
 		if m.time - float(k.t) >= AFTER:
 			pending.erase(k)
 			_cut(k)
+
+## A voxel lost (cut, crushed, burnt away): on tape with its time, so the replay shows the body
+## whole until the blow and the wound opening as it did.
+func _on_voxels_lost(f, part_index: int, indices: Array, _voxels: Array) -> void:
+	if playing or not is_instance_valid(f) or part_index < 0 or part_index >= f.parts.size() or indices.is_empty():
+		return
+	vox_log.append({"t": m.time, "part": f.parts[part_index], "idx": indices.duplicate()})
 
 ## A death: what kind of kill it was, scored; cut once the aftermath is on tape.
 ## (On a guest the host names the killer, the weapon and whether it was thrown: `by`, `wname`,
@@ -174,6 +189,12 @@ func play(done: Callable, restore := false) -> void:
 	var fr: Array = best.frames
 	var t0: float = fr[0].t
 	var t1: float = fr[fr.size() - 1].t
+	# The wounds as they were when the clip begins: every voxel lost since put back (last lost
+	# first), then taken again at its moment as the clip plays.
+	var redo: Array = vox_log.filter(func(ev): return float(ev.t) > t0 and is_instance_valid(ev.part))
+	for k in range(redo.size() - 1, -1, -1):
+		redo[k].part.restore_voxels(redo[k].idx)
+	var next_ev := 0
 	var tb: float = best.t_blow
 	var t := t0
 	var orbit := 0.0
@@ -191,6 +212,10 @@ func play(done: Callable, restore := false) -> void:
 		var b2: Dictionary = fr[mini(i + 1, fr.size() - 1)]
 		var span := maxf(0.0001, float(b2.t) - float(a.t))
 		var u := clampf((t - float(a.t)) / span, 0.0, 1.0)
+		while next_ev < redo.size() and float(redo[next_ev].t) <= t:
+			if is_instance_valid(redo[next_ev].part):
+				redo[next_ev].part.remove_voxels(redo[next_ev].idx, false, false)
+			next_ev += 1
 		for id in a.xf:
 			var body = ids.get(id)
 			if body == null or not is_instance_valid(body):
@@ -217,6 +242,11 @@ func play(done: Callable, restore := false) -> void:
 			cam.global_position = c + Vector3(sin(orbit) * 3.2, 0.7, cos(orbit) * 3.2)
 			cam.look_at(c, Vector3.UP)
 		await tree.process_frame
+	# (Skipped or played through: every wound back as it is now.)
+	while next_ev < redo.size():
+		if is_instance_valid(redo[next_ev].part):
+			redo[next_ev].part.remove_voxels(redo[next_ev].idx, false, false)
+		next_ev += 1
 	await tree.create_timer(0.3, true).timeout
 	if overlay:
 		overlay.queue_free()

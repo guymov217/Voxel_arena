@@ -569,6 +569,10 @@ func _from_nothing_button() -> Button:
 		return UIStyle.button("Forge a new weapon from nothing", func(): get_parent().scratch_from_forge(self))
 	return null
 
+## The slider's reading: how sharp, and what each Cut or Stab block costs at that.
+func _sharp_note(k: float) -> String:
+	return "%d%% · +%d per Cut/Stab" % [roundi(k * 100.0), Arms.sharp_price("edge", k)]
+
 func _voxels_ui() -> void:
 	# 1. What the next blocks do: a big choice of four.
 	mode_box.add_child(UIStyle.label("1 · WHAT THE BLOCK DOES", 13, UIStyle.BRONZE))
@@ -657,9 +661,6 @@ func _voxels_ui() -> void:
 	sl.step = 0.05
 	sl.value = float(design.get("sharpness", 0.8))
 	sl.custom_minimum_size = Vector2(220, 0)
-	sl.value_changed.connect(func(x):
-		design.sharpness = x
-		_update_texts())
 	var sr := HBoxContainer.new()
 	# Not wrapped: in a row a wrapping label is squeezed to one letter a line.
 	var sl_l := UIStyle.label("Sharpness", 14, UIStyle.MUTED)
@@ -668,6 +669,18 @@ func _voxels_ui() -> void:
 	sr.add_child(sl_l)
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sr.add_child(sl)
+	# What the honing costs, by the block, at the sharpness set (Cut and Stab blocks only).
+	var sl_v := UIStyle.label(_sharp_note(sl.value), 13, UIStyle.GOLD)
+	sl_v.autowrap_mode = TextServer.AUTOWRAP_OFF
+	sr.add_child(sl_v)
+	var tip := "Sharpness: how easily a Cut or Stab block gets into flesh and how deep it wounds.\nIt costs per Cut or Stab block, by the sharpness set:\n%s\nHold and Crush blocks cost no honing." % "\n".join([0.25, 0.5, 0.75, 1.0].map(func(k): return "  %d%%: +%d denarii a block" % [roundi(k * 100.0), Arms.sharp_price("edge", k)]))
+	for c in [sl_l, sl, sl_v]:
+		c.tooltip_text = tip
+		c.mouse_filter = Control.MOUSE_FILTER_STOP
+	sl.value_changed.connect(func(x):
+		design.sharpness = x
+		sl_v.text = _sharp_note(x)
+		_update_texts())
 	mode_box.add_child(sr)
 	var cl := UIStyle.label("", 13, UIStyle.MUTED)
 	cl.set_meta("checklist", true)

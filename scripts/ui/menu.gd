@@ -428,7 +428,7 @@ func enter_yard(banner_text := "") -> void:
 	var lo := Arms.loadout(arms())
 	# He walks about the yard as the last fight left him: his wounds on him (nobody bleeds out
 	# here), for the physician to see to.
-	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "gladius", "off": lo.off if lo.off else "roundShield"}, "decrees": [], "hazards": [], "body": body()})
+	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else ""}, "decrees": [], "hazards": [], "body": body()})   # (what he has: no shield he does not own)
 	match_.station.connect(_open_station)
 	if Sfx.music:
 		Sfx.music.set_state("yard")
@@ -1645,7 +1645,7 @@ func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	var in_room := Net.active()
 	for g in FIGHT_GROUPS:
-		var keys: Array = (g[1] as Array).filter(func(k): return (k != "pvp" or in_room) and Edition.mode_open(k, in_room))
+		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop"].has(k) or in_room) and Edition.mode_open(k, in_room))   # (the friends' fights only in a room)
 		if keys.is_empty():
 			continue
 		v.add_child(UIStyle.label(String(g[0]).to_upper(), 13, UIStyle.BRONZE))

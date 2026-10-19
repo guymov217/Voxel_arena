@@ -135,6 +135,7 @@ var strip_clock := 0.0
 var crawl_phase := 0.0
 var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
+var on_ground := true  # this step: the trunk held up by the legs over the sand (not in the air)
 var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x sharpness)
 var throwing := {"R": false, "L": false}   # that arm winding up or letting go a throw
 var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust (0 none)
@@ -1031,11 +1032,11 @@ func pick_up(side: String, w: Weapon) -> bool:
 
 ## The arm model of any throw (launchVelocity): how fast the hand can send `mass` off, and the
 ## elevation that lands it on `aim_at` (the lower of the two arcs), with a little scatter.
-func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8, javelin := false, scatter := 0.0, arm_f := 1.0) -> Vector3:
+func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8, javelin := false, scatter := 0.0, arm_f := 1.0, speed_k := 1.0) -> Vector3:
 	var m_arm := 2.5 * pow(S, 2.5)
 	var tired := 0.65 + 0.35 * minf(1.0, stamina / 100.0)
 	var v_hand := (31.0 if javelin else 24.0) * sqrt(S) * float(mods.strength) * (0.5 + 0.5 * arm_f) * (1.0 - 0.5 * injury) * (0.3 + 0.7 * power) * tired
-	var v := minf(38.0, v_hand * sqrt(m_arm / (m_arm + maxf(0.05, mass_))))
+	var v := minf(38.0, v_hand * speed_k * sqrt(m_arm / (m_arm + maxf(0.05, mass_))))
 	var d := aim_at - from
 	var dx := maxf(0.01, Vector2(d.x, d.z).length())
 	var dy := d.y
@@ -1055,6 +1056,8 @@ func launch_velocity(from: Vector3, aim_at: Vector3, mass_: float, power := 0.8,
 
 ## F: the weapon in `side`'s hand flies at `target` (or along `dir`): point first if it is a
 ## javelin, end over end if it is a throwing axe, tumbling otherwise.
+const THROW_MADE_SPEED := 1.2     # a throwing weapon leaves the hand this much faster
+const THROW_MADE_SCATTER := 0.4   # and strays this much less off its line
 func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weapon:
 	# A hurt arm still throws (a fractured one at a tenth of its strength), only weakly: once
 	# a single cracked bone was enough to make F do nothing at all.
@@ -1068,9 +1071,12 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	release(side)
 	var fwd := Vector3(sin(yaw), 0, cos(yaw))
 	var aim_at: Vector3 = target if target != null else from + (dir if dir != null else fwd) * 20.0
-	var scatter := 0.006 + 0.03 * (1.0 - power) + 0.004 * minf(6.0, w.mass) + 0.02 * (1.0 - arm_f)
+	# Made to be thrown (the forge's Throwable): balanced to fly, it leaves the hand faster and
+	# goes truer than the same weapon not made for it.
+	var made := bool(w.design.get("throwable", false))
+	var scatter := (0.006 + 0.03 * (1.0 - power) + 0.004 * minf(6.0, w.mass) + 0.02 * (1.0 - arm_f)) * (THROW_MADE_SCATTER if made else 1.0)
 	var point_first := w.point_first() and not w.is_shield
-	var vel := launch_velocity(from, aim_at, w.mass, power, point_first, scatter, arm_f)
+	var vel := launch_velocity(from, aim_at, w.mass, power, point_first, scatter, arm_f, THROW_MADE_SPEED if made else 1.0)
 	w.linear_velocity = vel
 	if w.is_shield:
 		# A shield goes like a discus: flat, face up, spinning, rim first into the man.
@@ -1541,6 +1547,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var side_w := yaw_q * Vector3(1, 0, 0)
 				off = side_w * off.dot(side_w)
 			move_world += PD.clamp_len(off * CENTER_K, 1.0)
+	on_ground = grounded
 	if grounded and standing:
 		# He moves himself by pushing off the sand: with no foot down there is next to nothing to push on.
 		var accel := (2.5 + 18.5 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
@@ -1879,6 +1886,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var m_arm := (fore.nominal_mass + upper.nominal_mass * 0.5)
 		var m_bear: float = m_arm + (weapons.R.mass * 0.5 if weapons.R and two_front != null else 0.0)
 		fore.apply_impulse(Vector3(0, m_bear * gravity * minf(1.0, af * 1.2) * dt, 0), hand_l - fore.global_position)
+		if not on_ground:
+			torso.apply_central_impulse(Vector3(0, -m_bear * gravity * minf(1.0, af * 1.2) * dt, 0))
 		# The off hand works too: it carries its end of the haft to where the swing wants it (the
 		# front hand's place), as hard as an arm can, instead of hanging on as dead weight for the
 		# other arm to haul round (the blade lagged a stroke behind the mouse and drifted).
@@ -1888,7 +1897,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var wn_l := 22.0
 			var J_l := PD.clamp_len((((two_front as Vector3) - hand_l) * wn_l * wn_l - vel_l * 2.0 * 0.9 * wn_l) * m_l * dt, 700.0 * af * stam_f * blood_f * MS * dt)
 			fore.apply_impulse(J_l, hand_l - fore.global_position)
-			torso.apply_central_impulse(-J_l * 0.5)
+			torso.apply_central_impulse(-J_l * (0.5 if on_ground else 1.0))
 		return
 	var w: Weapon = weapons[side]
 	power_now = power
@@ -2192,7 +2201,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# not hauled up, and the arm straining at it no longer hoists its wielder off his feet.
 	F.y = minf(F.y, (fore.nominal_mass + upper.nominal_mass * 0.5) * gravity + 0.45 * body_mass * gravity * float(mods.strength))
 	fore.apply_impulse(F * dt, hand_w - fore.global_position)
-	torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
+	if on_ground:
+		torso.apply_central_impulse(Vector3(-F.x * dt * 0.35, 0, -F.z * dt * 0.35))
+	else:
+		# In the air nothing under him takes the arm's push: it is his own, all of it back on the
+		# trunk (a two-handed weapon held out in a jump flew him metres up and aside).
+		torso.apply_central_impulse(-F * dt)
 	if w and w.holder == self and not w.is_shield:
 		_keep_weapon_out(w, dt)
 
@@ -2685,6 +2699,10 @@ func _lock_elbow(side: String, w: Weapon, fore_q: Quaternion, strength: float, d
 	# A damper on the bend, with a gentle pull toward the bend the aim wants: the elbow does
 	# not flex fast unless the fighter means it, so a swing is one lever from the shoulder.
 	var tq := (err * ELBOW_PULL - rel * ELBOW_DAMP) * i_red
+	# About the hinge only: not about the upper arm's own length either, round which it is far
+	# lighter than i_red allows for (pushed there, it buzzed every step under a two-handed grip).
+	var au := PD.quat_of(upper) * Vector3(0, -1, 0)
+	tq -= au * tq.dot(au)
 	tq = PD.clamp_len(tq, 260.0 * maxf(0.3, strength) * MS * S * float(mods.strength))
 	fore.apply_torque_impulse(tq * dt)
 	upper.apply_torque_impulse(-tq * dt)

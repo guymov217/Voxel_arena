@@ -14,16 +14,20 @@ var want_me := false
 func _ready() -> void:
 	out = OS.get_environment("SHOT_DIR")
 	var only := OS.get_environment("SHOT_ONLY")
+	# The fights play out unseen (each frame of the full picture is slow to draw on a machine
+	# without a GPU); only the frames saved are drawn.
+	RenderingServer.render_loop_enabled = false
+	Engine.max_physics_steps_per_frame = 64
 	menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
 	if only == "" or only == "menu":
 		for i in 120 * 5:
 			await get_tree().physics_frame
-		_save("01_title")
+		await _save("01_title")
 		menu.show_screen("gladiator")
 		for i in 120 * 3:
 			await get_tree().physics_frame
-		_save("02_your_gladiator")
+		await _save("02_your_gladiator")
 		menu.show_screen("main")
 	var scenes := [
 		{"name": "03_clash", "opts": {"mode": "duel"}, "J": 30.0, "cam": "close"},
@@ -46,7 +50,10 @@ func _ready() -> void:
 		fg.open(Data.preset("executionerAxe").duplicate(true), 0, func(_d, _c): pass)
 		for i in 120 * 3:
 			await get_tree().physics_frame
-		_save("13_forge")
+		# In close on the weapon: the smithy behind it, the axe filling the view.
+		fg.dist = fg.fit_dist * 0.72
+		fg._place_camera()
+		await _save("13_forge")
 		fg.queue_free()
 	for i in 30:
 		await get_tree().process_frame
@@ -57,7 +64,11 @@ func _ready() -> void:
 	get_tree().quit()
 
 func _save(nm: String) -> void:
+	RenderingServer.render_loop_enabled = true
+	for k in 4:
+		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(out.path_join(nm + ".png"))
+	RenderingServer.render_loop_enabled = false
 	print("saved ", nm)
 
 func _on_hit(h: Dictionary) -> void:
@@ -107,7 +118,14 @@ func _scene(sc: Dictionary) -> void:
 		if across.length() < 0.2:
 			across = Vector3(1, 0, 0)
 		var side := across.normalized().cross(Vector3.UP)
-		var dist := 2.4 + pa.distance_to(pv) * 0.7 + (2.5 if sc.cam == "wide" else 0.0)
+		# A giant or a beast in it: far enough back for all of him (close up, the camera stood
+		# inside the Cyclops).
+		var big_s := 1.0
+		for f in [a, v]:
+			if f is Fighter and is_instance_valid(f):
+				big_s = maxf(big_s, float(f.S))
+		var dist := (2.4 + pa.distance_to(pv) * 0.7 + (2.5 if sc.cam == "wide" else 0.0)) * (1.0 + 0.55 * (big_s - 1.0))
+		c.y += 0.35 * (big_s - 1.0)
 		# Take the side with nobody standing between the camera and the fight; with both clear,
 		# the arena's middle side, looking out at the crowd.
 		var score := func(sd: Vector3) -> float:
@@ -127,7 +145,7 @@ func _scene(sc: Dictionary) -> void:
 		cam.look_at(c + Vector3(0, 0.05, 0), Vector3.UP)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_save(sc.name)
+	await _save(sc.name)
 	print("  J=%.0f waited %.1f s" % [float(big.get("J", 0.0)), waited / 120.0])
 	if menu.hud:
 		menu.hud.visible = true

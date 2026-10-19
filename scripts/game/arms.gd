@@ -209,7 +209,14 @@ static func oddity_price(d: Dictionary) -> int:
 ## what it can do in a fight, whichever is more (lead is cheap stuff, a lead head is not a cheap
 ## weapon).
 static func design_price(d: Dictionary) -> int:
-	return maxi(value(d) + 15 + int(d.get("voxels", []).size() / 10), power_price(d))
+	# (The grip block a new weapon starts from is the smith's own: an empty anvil costs nothing.)
+	return maxi(maxi(0, value(d) - 1) + labour(d), power_price(d))
+
+## The smith's work on a design, by how much there is of it: a handful of blocks is next to
+## nothing (a blank anvil cost a flat 15 before a block was laid), a whole weapon the full fee.
+static func labour(d: Dictionary) -> int:
+	var n: int = d.get("voxels", []).size()
+	return mini(15, n / 4) + n / 10
 
 const POWER_PRICE := 20.0
 const BODY_KG := 5.0   # about what a head or a limb weighs: the most of a weapon a blow can use
@@ -230,7 +237,7 @@ static func power_price(d: Dictionary) -> int:
 		match String(v[3]):
 			"ruby", "sapphire", "emerald": extra += 30
 			"explosive": extra += 10
-	return int(round(POWER_PRICE * harm)) + 15 + extra
+	return int(round(POWER_PRICE * harm)) + mini(15, d.voxels.size() / 4) + extra
 
 static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String) -> Dictionary:
 	var arms := sanitize(a)

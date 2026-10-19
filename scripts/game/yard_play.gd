@@ -7,7 +7,9 @@ extends RefCounted
 
 var m: Node
 var dummies: Array = []
-var next_board: Label3D = null
+var next_board: Label3D = null   # the foe's name; over it the band, under it the bout
+var next_head: Label3D = null
+var next_sub: Label3D = null
 var next_text := ""
 var next_t := 0.0   # (the host says it again now and then: a guest whose yard was not up yet hears it)
 var best_throw := 0
@@ -73,15 +75,25 @@ static func next_fight(players: int) -> String:
 	if Edition.demo_over(st):
 		return "THE DEMO ENDS HERE"
 	var nx: Dictionary = Data.stage(st, maxi(1, players))
-	return "NEXT FIGHT\n%s\n%s" % [String(nx.get("title", "Bout %d" % st)), String(nx.get("foe_name", ""))]
+	var title := String(nx.get("title", "Bout %d" % st))
+	var foe := String(nx.get("foe_name", ""))
+	# (A named foe is the bout's title too, "The Cyclops": once is enough.)
+	if foe == "" or foe.to_lower() == title.to_lower():
+		return "NEXT FIGHT\n%s\nBout %d" % [title, st]
+	return "NEXT FIGHT\n%s\n%s" % [foe, title]
 
-## The text on the board (the host's own, or what the host sent: kept short and to three lines).
+## The text on the board (the host's own, or what the host sent: kept short and to three lines:
+## the band, the foe, the bout).
 func set_next(text: String) -> void:
-	next_text = "\n".join(Array(text.split("\n")).slice(0, 3).map(func(l): return String(l).left(48)))
+	var lines: Array = Array(text.split("\n")).slice(0, 3).map(func(l): return String(l).left(48))
+	next_text = "\n".join(lines)
 	if next_board and is_instance_valid(next_board):
-		next_board.text = next_text
+		next_head.text = lines[0] if lines.size() > 0 else ""
+		next_board.text = lines[1] if lines.size() > 1 else ""
+		next_sub.text = lines[2] if lines.size() > 2 else ""
 
-## A board on two posts beside the gate, the next fight painted on it, lit by a torch's glow.
+## A board on two posts beside the gate: a gilt frame, a red band over it that says what it is,
+## the foe's name large and the bout under it, lit by a lamp of its own.
 func _next_board() -> void:
 	var gp: Vector3 = Yard.STATIONS.gate.p
 	var at := gp + Vector3(2.9, 0, -0.8)
@@ -89,44 +101,55 @@ func _next_board() -> void:
 	m.add_child(root)
 	root.global_position = at
 	root.rotation.y = VoxelArt.facing_centre(at)
-	var wood := StandardMaterial3D.new()
-	wood.albedo_color = Color(0.36, 0.24, 0.13)
-	for x in [-0.75, 0.75]:
-		var post := MeshInstance3D.new()
-		var pm := BoxMesh.new()
-		pm.size = Vector3(0.1, 2.5, 0.1)
-		pm.material = wood
-		post.mesh = pm
-		post.position = Vector3(x, 1.25, 0)
-		root.add_child(post)
-	var plank := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(1.9, 1.05, 0.08)
-	var face := StandardMaterial3D.new()
-	face.albedo_color = Color(0.2, 0.08, 0.05)
-	bm.material = face
-	plank.mesh = bm
-	plank.position = Vector3(0, 1.85, 0.03)
-	root.add_child(plank)
-	var l := Label3D.new()
-	l.text = next_text
-	l.font = UIStyle.serif(2)
-	l.font_size = 52
-	l.pixel_size = 0.0042
-	l.outline_size = 8
-	l.modulate = UIStyle.GOLD
-	l.outline_modulate = Color(0.12, 0.05, 0.02)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.width = 420.0
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.position = Vector3(0, 1.85, 0.08)
-	root.add_child(l)
-	next_board = l
+	var mat := func(c: Color, metal := 0.0) -> StandardMaterial3D:
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = c
+		sm.metallic = metal
+		sm.roughness = 0.45 if metal > 0.0 else 0.85
+		return sm
+	var wood: StandardMaterial3D = mat.call(Color(0.33, 0.21, 0.11))
+	var gilt: StandardMaterial3D = mat.call(Color(0.78, 0.58, 0.24), 0.8)
+	var box := func(size: Vector3, pos: Vector3, sm: Material) -> void:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		bm.material = sm
+		mi.mesh = bm
+		mi.position = pos
+		root.add_child(mi)
+	for x in [-0.95, 0.95]:
+		box.call(Vector3(0.12, 2.75, 0.12), Vector3(x, 1.375, -0.02), wood)
+		box.call(Vector3(0.18, 0.12, 0.18), Vector3(x, 2.8, -0.02), gilt)
+	# The panel, its gilt frame a hair in front of it (no two faces in one plane).
+	box.call(Vector3(1.9, 1.2, 0.06), Vector3(0, 1.8, 0.0), mat.call(Color(0.1, 0.05, 0.04)))
+	for y in [1.2, 2.4]:
+		box.call(Vector3(2.0, 0.07, 0.09), Vector3(0, y, 0.01), gilt)
+	for x in [-0.98, 0.98]:
+		box.call(Vector3(0.07, 1.27, 0.09), Vector3(x, 1.8, 0.01), gilt)
+	box.call(Vector3(1.86, 0.26, 0.02), Vector3(0, 2.22, 0.04), mat.call(Color(0.5, 0.07, 0.05)))
+	var label := func(size: int, pos: Vector3, c: Color) -> Label3D:
+		var l := Label3D.new()
+		l.font = UIStyle.serif(2)
+		l.font_size = size
+		l.pixel_size = 0.004
+		l.outline_size = 6
+		l.modulate = c
+		l.outline_modulate = Color(0.08, 0.03, 0.02)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.width = 440.0
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.position = pos
+		root.add_child(l)
+		return l
+	next_head = label.call(34, Vector3(0, 2.22, 0.06), Color(1.0, 0.86, 0.6))
+	next_board = label.call(70, Vector3(0, 1.84, 0.05), UIStyle.GOLD)
+	next_sub = label.call(34, Vector3(0, 1.43, 0.05), Color(0.86, 0.78, 0.66))
+	set_next(next_text)
 	var glow := OmniLight3D.new()
 	glow.light_color = Color(1.0, 0.7, 0.4)
-	glow.light_energy = 0.8
-	glow.omni_range = 2.5
-	glow.position = Vector3(0, 2.2, 0.6)
+	glow.light_energy = 0.9
+	glow.omni_range = 2.8
+	glow.position = Vector3(0, 2.3, 0.7)
 	root.add_child(glow)
 
 ## A stall keeper at his work, facing his workplace (`work_yaw`), or turned to a man who comes up.

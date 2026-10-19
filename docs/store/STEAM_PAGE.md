@@ -41,6 +41,7 @@ WRECKSMITH is a physics gladiator game. There are no canned attacks: [b]your mou
 [list]
 [*]Build any weapon voxel by voxel: swords, axes, hammers, a two-person sword, a goose.
 [*]Each material has its own weight, edge and strength. The centre of mass and the grip are yours to set.
+[*]Hone the edge as keen as your purse allows: the sharper the blade, the more every edge block costs. Sharp blocks are drawn as real wedges and points.
 [*]Set gems in the blade: ruby burns, sapphire freezes, emerald poisons.
 [*]Weapons dull, chip and finally break where you used them most. Mend them, or forge a better one.
 [/list]
@@ -54,10 +55,10 @@ WRECKSMITH is a physics gladiator game. There are no canned attacks: [b]your mou
 [/list]
 
 [h2]Men, beasts and monsters[/h2]
-Lions, bears, crocodiles that drag you into a death roll, elephants that charge and stomp, a gorilla that tears men in two. Then the myths: the Cyclops, the Minotaur, Cerberus, the Hydra, the Titan and a dragon. 25 creatures, each with attacks you can see coming and must answer with steel.
+Lions, bears, crocodiles that drag you into a death roll, elephants that charge and stomp, a gorilla that tears men in two, a scorpion whose sting poisons. Then the myths: the Cyclops, the Minotaur, Cerberus, the Hydra, the Titan and a dragon. 25 creatures, each with attacks you can see coming and must answer with steel. Every part of every beast breaks on its own: club a bull's horn off, cripple a lion's leg, cut the stinger from the scorpion.
 
 [h2]The campaign[/h2]
-Climb 64 stages, from a drunk in the sand to the Hydra, with 9 bosses on the way. Spend your purse at the smith, the armourer and the physician. Wounds stay with you, and so do the scars.
+Climb 64 stages, from a drunk in the sand to the Hydra, with 9 bosses on the way. Between bouts you walk the Ludus yard: the board by the arena gate names your next opponent, and you spend your purse at the smith, the armourer and the physician. Wounds stay with you, and so do the scars.
 
 [h2]With friends[/h2]
 [list]

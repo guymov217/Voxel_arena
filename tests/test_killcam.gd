@@ -116,3 +116,28 @@ func test_every_round_has_its_own_replay() -> void:
 		await get_tree().physics_frame
 	t.check(m.killcam.has_clip() and m.killcam.best.victim == m.me.f, "round two's replay is round two's kill")
 	m.queue_free()
+
+## The wounds are on tape too: what a blow cut away is logged with its time, so the replay shows
+## the man whole until the blow (it showed him as he ended, every wound already open).
+func test_the_wounds_are_on_tape() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": []})
+	for i in 60:
+		await get_tree().physics_frame
+	var foe: Fighter = m.enemies()[0].f
+	var th: VoxelPart = foe.by_name.thighL
+	var n0 := th.alive_count
+	foe.apply_hit(th, {"impulse": 40.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": th.global_position + Vector3(th.half_ext.x, 0, 0), "dir": Vector3(-1, 0, 0), "axis": Vector3(0, 0, 1), "edge": Vector3(-1, 0, 0)})
+	await get_tree().physics_frame
+	t.check(th.alive_count < n0, "the blow cut voxels away")
+	var logged: Array = m.killcam.vox_log.filter(func(ev): return ev.part == th)
+	t.check(not logged.is_empty(), "and they are on the kill cam's tape with their time")
+	# Put back for the replay, they are there again; taken again, gone.
+	for ev in logged:
+		th.restore_voxels(ev.idx)
+	t.eq(th.alive_count, n0, "the thigh whole again for the replay")
+	for ev in logged:
+		th.remove_voxels(ev.idx, false, false)
+	t.check(th.alive_count < n0, "and cut again at the blow")
+	m.queue_free()

@@ -297,3 +297,9 @@ func test_sharper_voxels_cost_more() -> void:
 	t.check(Arms.value(keen) > Arms.value(blade), "honed keener, dearer (%d vs %d)" % [Arms.value(keen), Arms.value(blade)])
 	t.eq(Arms.sharp_price("blunt", 1.0), 0, "a blunt voxel costs no honing")
 	t.check(Arms.sharp_price("edge", 1.0) > Arms.sharp_price("edge", 0.5), "an edge costs more the keener it is")
+
+## A new weapon from nothing starts at next to nothing: one grip block is not a smith's day.
+func test_a_blank_anvil_costs_next_to_nothing() -> void:
+	var blank := {"name": "New weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
+	t.eq(Arms.design_price(blank), 0, "the grip block it starts from costs nothing")
+	t.check(Arms.design_price(Data.preset("gladius")) > 30, "a whole gladius still costs what it is worth (%d)" % Arms.design_price(Data.preset("gladius")))

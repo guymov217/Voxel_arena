@@ -310,7 +310,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		# a dagger a little over half a gladius's, a hammer twice), the arm's share small.
 		m_eff = 0.3 + 1.15 * pow(maxf(0.05, att.mass), 0.6)
 	else:
-		m_eff = 5.0 if bite else (4.5 if kick else (3.2 if jabbing else 2.4))
+		m_eff = 5.0 if bite else (3.6 if kick else (3.2 if jabbing else 2.4))
 	var cap: float
 	if is_weapon:
 		cap = 70.0
@@ -323,7 +323,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		if att.def.get("fist", false):
 			cap *= float(att.get_meta("power", 1.0))   # a jab, a hook or a slam: each as hard as its swing
 	else:
-		cap = 30.0 if kick else (22.0 if jabbing else 17.0)
+		# (A kick shoves more than it harms: three of them felled a man in a row.)
+		cap = 20.0 if kick else (22.0 if jabbing else 17.0)
 	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
 	var heavy := 0.0
 	if is_weapon and att.is_hazard:
@@ -440,6 +441,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var thrust_k := 0.0
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
+	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
@@ -457,9 +459,11 @@ func _blow(g: Dictionary) -> Dictionary:
 			vic_char.concussion = minf(1.0, vic_char.concussion + J * 0.012)
 		vic.apply_central_impulse(Vector3(dir.x, dir.y * 0.5, dir.z) * J * 0.7 * vic_char.MS)
 	if kick and not vic.severed and vic_char.get("torso"):
-		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(80.0, J * 4.0)
+		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(55.0, J * 3.0)
 		vic_char.torso.apply_central_impulse(Vector3(dir.x * m, 10.0, dir.z * m))
-		vic_char.stagger = minf(1.0, vic_char.stagger + 0.12)
+		# It rocks him a little, the same however hard it lands: kicks one after another do not
+		# pile up into a fall the way they did.
+		vic_char.stagger = minf(1.0, minf(vic_char.stagger, stag0 + 0.06) + 0.04)
 		var lv: Vector3 = vic_char.torso.linear_velocity
 		# A kick takes the legs from under a man only now and then: the harder it lands, the
 		# more he is on the move, out of breath or reeling, the likelier; never a sure thing.
