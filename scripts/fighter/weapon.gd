@@ -339,22 +339,16 @@ func _build_mesh() -> void:
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
 
-## The sharp voxels' taper (VoxelPart.taper_code), over the voxels still on it: when the outer
-## row of an edge chips away, the edge voxels behind it are the edge now.
+## The sharp voxels' taper (VoxelPart.taper_code), from the weapon as it was made: when sharp
+## voxels break off, the ones left behind them are not sharpened (the edge is broken, not new).
 var taper := PackedInt32Array()
-func _taper_all() -> Array:
+func _taper_all() -> void:
 	var cells := {}
-	for i in vox.size():
-		if alive[i]:
-			cells[Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))] = str(vox[i][4])
+	for v in vox:
+		cells[Vector3i(roundi(float(v[0])), roundi(float(v[1])), roundi(float(v[2])))] = str(v[4])
 	taper.resize(vox.size())
-	var changed := []
 	for i in vox.size():
-		var t := VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))) if alive[i] else 0
-		if t != taper[i]:
-			taper[i] = t
-			changed.append(i)
-	return changed
+		taper[i] = VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2]))))
 
 ## A voxel's custom data for the shader: its kind and taper, and while it lies in fire or acid
 ## (set_burn) how hot it glows and how poisoned.
@@ -493,10 +487,6 @@ func remove_voxels(indices: Array) -> Array:
 		# on; the fixed custom_aabb keeps single writes from culling the weapon).
 		for k in range(0, hidden.size(), 12):
 			mm.set_instance_transform(int(hidden[k] / 16), Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
-		if mm.use_custom_data:
-			for i in _taper_all():
-				if alive[i]:
-					mm.set_instance_custom_data(i, _custom(i))
 	for b in touched.values():
 		_drop_box(b)
 		var left := []

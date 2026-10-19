@@ -114,7 +114,7 @@ func test_sharp_voxels_are_drawn_tapered() -> void:
 	t.eq(kc % 16, 3, "the kind reads back")
 	t.eq(kc / 16, tip, "and the taper with it")
 
-func test_when_the_edge_chips_the_row_behind_is_the_edge() -> void:
+func test_when_the_edge_breaks_the_row_behind_is_not_sharpened() -> void:
 	var d := _blade()
 	# A second row of edge voxels behind the left edge.
 	for v in d.voxels:
@@ -126,15 +126,18 @@ func test_when_the_edge_chips_the_row_behind_is_the_edge() -> void:
 	add_child(w)
 	var mid := -1
 	var outer := -1
+	var top := -1
 	for i in w.vox.size():
 		if w.vox[i][1] == 3 and w.vox[i][0] == 0:
 			mid = i
 		if w.vox[i][1] == 3 and w.vox[i][0] == -1:
 			outer = i
+		if w.vox[i][1] == 5 and w.vox[i][0] == 1:
+			top = i
 	t.check(w.taper[outer] != 0, "the outer edge is tapered")
-	t.eq(w.taper[mid], 0, "the edge behind it is a block while covered")
+	t.eq(w.taper[mid], 0, "the edge behind it is a block")
+	var before: int = w.taper[top]
 	w.remove_voxels([outer])
-	t.check(w.taper[mid] != 0, "chipped away, the edge behind it is the edge now")
-	# (What it hands the shader: headless, the MultiMesh keeps no data to read back.)
-	t.eq(int(floor(w._custom(mid).r * 16.0 + 0.5)) / 16, w.taper[mid], "and is drawn so")
+	t.eq(w.taper[mid], 0, "broken off, the edge behind it stays a block: it is not sharpened")
+	t.eq(w.taper[top], before, "and the sharp voxels left keep their shape")
 	w.queue_free()
