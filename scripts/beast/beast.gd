@@ -8,7 +8,7 @@ extends Fighter
 
 const JAW_T := 0.55
 const ROLL_SPIN := 7.5   # a crocodile's death roll, rad/s (slowed by the man fighting it)
-const PRY_RATE := 0.55   # how fast pulling away prises its jaws open (1 is free)
+const PRY_RATE := 0.75   # how fast pulling away prises its jaws open (1 is free)
 
 var species := "lion"
 var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
