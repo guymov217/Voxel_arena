@@ -127,6 +127,7 @@ func _build_visuals() -> void:
 	plane.height = 0.02
 	plane.radial_segments = 96
 	plane.material = sand_material()
+	sand.name = "Sand"
 	sand.mesh = plane
 	sand.position = Vector3(0, -0.01, 0)
 	add_child(sand)
