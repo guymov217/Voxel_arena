@@ -314,10 +314,15 @@ func test_each_hand_has_its_own_button() -> void:
 	f.tool = "hand"
 	f.hand_pick = "off"
 	f.stroke = {"erase": false, "done": {}, "undo": false}
-	f._apply({"hit": grip[grip.size() - 1], "place": grip[grip.size() - 1]})
+	f._apply({"hit": grip[0], "place": grip[0]})
 	f.stroke = {}
 	var g = ForgeLib.grip_points(f._design_now())
-	t.check(g.off.distance_to(Vector3(grip[grip.size() - 1])) < 0.01, "the other hand's button and a click: that hand goes there, wherever its ring was")
+	t.check(g.off.distance_to(Vector3(grip[0])) < 0.01, "the other hand's button and a click: that hand goes there, wherever its ring was")
+	f.hand_pick = "off"
+	f.stroke = {"erase": false, "done": {}, "undo": false}
+	f._apply({"hit": Vector3i(g.main), "place": Vector3i(g.main)})
+	f.stroke = {}
+	t.check(ForgeLib.grip_points(f._design_now()).off.distance_to(Vector3(grip[0])) < 0.01, "but not right against the main hand: two fists need room")
 	var tags := []
 	for c in f.weapon_root.get_children():
 		if c is Label3D:

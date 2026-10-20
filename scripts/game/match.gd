@@ -399,6 +399,10 @@ func _register(e: Dictionary) -> void:
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
+	if e.f.has_signal("note"):
+		e.f.note.connect(func(f, text):
+			if me and f == me.f:
+				feed.emit(text))
 	if e.f.has_signal("raged"):
 		e.f.raged.connect(func(f):
 			feed.emit("%s's eye is put out: he goes berserk!" % f.display_name)

@@ -78,7 +78,11 @@ const REGIONS := {
 	"thighs": {"label": "Thighs", "parts": ["thighR", "thighL"]},
 	"shins": {"label": "Shins", "parts": ["shinR", "shinL"]},
 }
-const DESIGN_MAX_CELLS := 700
+const DESIGN_MAX_CELLS := 2400
+## How far out from the body part plates may stand (cells, 4 cm each): a crest, a broad
+## pauldron, a skirt of plates. Every plate must still touch the part or another plate; what
+## it costs is its weight (breath and pace).
+const DESIGN_OUT := 6
 
 static func _dims(part: String) -> Array:
 	for p in Data.body_parts:
@@ -143,7 +147,7 @@ static func clean_design(def) -> Variant:
 				var x := int(c[0])
 				var y := int(c[1])
 				var z := int(c[2])
-				if x >= -1 and x <= int(d[0]) and y >= 0 and y <= int(d[1]) + 1 and z >= -1 and z <= int(d[2]):
+				if x >= -DESIGN_OUT and x < int(d[0]) + DESIGN_OUT and y >= -DESIGN_OUT and y < int(d[1]) + DESIGN_OUT and z >= -DESIGN_OUT and z < int(d[2]) + DESIGN_OUT:
 					cells.append([x, y, z])
 					n += 1
 		if not cells.is_empty():

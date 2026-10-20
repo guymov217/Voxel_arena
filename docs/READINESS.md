@@ -48,6 +48,11 @@ long campaign on real hardware before a release date is set.
 - Thrusts go along the blade, the feet stepping that way (5–20° off the line, was 25–70°).
 - A wounded arm sags and wanders slowly instead of buzzing (hand speed at rest 1.2 → 0.1 m/s).
 - The forge: armour is made there (its Armour tab), grips placed per hand, sharpness priced.
+- Short grips stay one-handed: two fists need 12 cm of grip, and a long one-hander taken in two
+  hands spreads the hands to the ends of the grip (they sat 8 cm apart and jammed the swing).
+- The armour bench takes 2400 plates, up to 6 blocks out from the body, and marks front and back.
+- The arena sand: 10 cm voxels of their own shade and height, raked, trampled, damp by the wall,
+  with pebbles and grass tufts.
 - Tests no longer depend on which ran before them: each test's world is cleared before the
   next starts (up to 400 bodies from earlier tests used to stand in later ones).
 

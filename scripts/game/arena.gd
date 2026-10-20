@@ -130,22 +130,93 @@ func _build_visuals() -> void:
 	sand.mesh = plane
 	sand.position = Vector3(0, -0.01, 0)
 	add_child(sand)
+	_build_ground_details()
 	_build_walls()
 	_build_torches(day)
 	var atm := Atmosphere.new()
 	add_child(atm)
 	atm.build(self, day, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
 
+## What lies on the sand, drawn only (nothing to trip on): pebbles and stones, thick along the
+## foot of the wall and scattered over the ring, and tufts of dry grass where the feet never go.
+func _build_ground_details() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var stone := StandardMaterial3D.new()
+	stone.vertex_color_use_as_albedo = true
+	stone.roughness = 0.9
+	var pebbles := MultiMesh.new()
+	pebbles.transform_format = MultiMesh.TRANSFORM_3D
+	pebbles.use_colors = true
+	var pm := BoxMesh.new()
+	pm.size = Vector3.ONE
+	pm.material = stone
+	pebbles.mesh = pm
+	var n := 900
+	pebbles.instance_count = n
+	for i in n:
+		# Two in three along the wall's foot, the rest over the ring (fewer in the middle).
+		var a := rng.randf() * TAU
+		var rr := rng.randf_range(RADIUS - 2.2, RADIUS - 0.25) if i % 3 != 0 else sqrt(rng.randf()) * (RADIUS - 2.0)
+		var big := rng.randf() < 0.08
+		var sz := Vector3(rng.randf_range(0.03, 0.07), rng.randf_range(0.015, 0.035), rng.randf_range(0.03, 0.07)) * (2.6 if big else 1.0)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(sz)
+		pebbles.set_instance_transform(i, Transform3D(b, Vector3(sin(a) * rr, sz.y * 0.35, cos(a) * rr)))
+		var g := rng.randf_range(0.45, 0.72)
+		pebbles.set_instance_color(i, Color(g * 1.05, g, g * 0.9) if rng.randf() < 0.7 else Color(g * 1.1, g * 0.82, g * 0.6))
+	var pmi := MultiMeshInstance3D.new()
+	pmi.multimesh = pebbles
+	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(pmi)
+	var grass := StandardMaterial3D.new()
+	grass.vertex_color_use_as_albedo = true
+	grass.roughness = 1.0
+	grass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var tufts := MultiMesh.new()
+	tufts.transform_format = MultiMesh.TRANSFORM_3D
+	tufts.use_colors = true
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.012, 1.0, 0.012)
+	bm.material = grass
+	tufts.mesh = bm
+	var blades := 1400
+	tufts.instance_count = blades
+	var at := Vector3.ZERO
+	for i in blades:
+		if i % 14 == 0:
+			var a := rng.randf() * TAU
+			var rr := rng.randf_range(RADIUS - 0.55, RADIUS - 0.15)
+			at = Vector3(sin(a) * rr, 0, cos(a) * rr)
+		var hgt := rng.randf_range(0.06, 0.2)
+		var lean := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.1, 0.5))
+		var off := Vector3(rng.randf_range(-0.07, 0.07), 0, rng.randf_range(-0.07, 0.07))
+		tufts.set_instance_transform(i, Transform3D(lean.scaled(Vector3(1, hgt, 1)), at + off + lean * Vector3(0, hgt * 0.5, 0)))
+		var dry := rng.randf()
+		tufts.set_instance_color(i, Color(0.62 + 0.2 * dry, 0.58 + 0.12 * dry, 0.3 + 0.1 * dry) if dry > 0.25 else Color(0.42, 0.5, 0.25))
+	var tmi := MultiMeshInstance3D.new()
+	tmi.multimesh = tufts
+	tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(tmi)
+
 ## The sand as 10 cm voxels seen from above (art/textures/sand_voxel.png, 32 m across, one
 ## texel a voxel): laid on in world space, unfiltered so every voxel stays crisp. Falls back to
 ## the old raked sand when the voxel texture is missing.
-static func sand_material() -> StandardMaterial3D:
+static func sand_material() -> Material:
 	var tex := load_texture("res://art/textures/sand_voxel.png")
 	if tex == null:
 		var old := surface_material("sand", 0.45, 1.0)
 		old.albedo_color = Color(1.0, 0.97, 0.93)
 		old.normal_scale = 0.9
 		return old
+	# The sand's own shader: bevelled voxels, raked rings, the trampled middle, damp sand at the
+	# wall (shaders/sand.gdshader). The plain textured sand when it cannot be had.
+	var sh = load("res://shaders/sand.gdshader")
+	if sh:
+		var sm := ShaderMaterial.new()
+		sm.shader = sh
+		sm.set_shader_parameter("voxels", tex)
+		sm.set_shader_parameter("radius", RADIUS)
+		return sm
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = tex
 	m.uv1_triplanar = true

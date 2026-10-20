@@ -280,3 +280,37 @@ func _find(n: Node, pred: Callable):
 		if r != null:
 			return r
 	return null
+
+## Armour may stand out from the body: a crest rising off the helmet, plates built up and out,
+## up to Armory.DESIGN_OUT from the part, each holding on to the one before; it is kept as built
+## and weighs what its plates weigh. The bench says which way is the front.
+func test_armour_built_up_and_out() -> void:
+	var bench := ArmourForge.new()
+	add_child(bench)
+	bench.open(Armory.design_piece("head", "iron", 0.0, 1.0, false, false, ""), "head", func(_d): pass)
+	var top := Vector3i(bench.dims.x / 2, bench.dims.y, bench.dims.z / 2)
+	bench.mirror = false
+	var put := 0
+	for k in Armory.DESIGN_OUT:
+		if bench.add_plate(top + Vector3i(0, k, 0)):
+			put += 1
+	t.eq(put, Armory.DESIGN_OUT, "a crest of %d plates rises off the head" % Armory.DESIGN_OUT)
+	t.check(not bench.add_plate(top + Vector3i(0, Armory.DESIGN_OUT, 0)), "but no further than the bench allows")
+	var before := Armory.design_kg(bench.design_now())
+	var ids := Armory.register([bench.design_now()])
+	t.check(not ids.is_empty(), "the crest is kept as built")
+	var d: Dictionary = Data.armor[ids[0]]
+	var n := 0
+	for p in d.parts:
+		n += (d.parts[p] as Array).size()
+	t.check(n >= put, "every plate of it (%d)" % n)
+	t.check(Armory.design_kg(bench.design_now()) >= before and before > 0.0, "and it weighs (%.1f kg)" % before)
+	var tags := []
+	var stack: Array = [bench]
+	while stack.size():
+		var nd: Node = stack.pop_back()
+		if nd is Label3D:
+			tags.append((nd as Label3D).text)
+		stack.append_array(nd.get_children())
+	t.check(tags.has("FRONT") and tags.has("BACK"), "the bench marks the front and the back (%s)" % [tags])
+	bench.queue_free()

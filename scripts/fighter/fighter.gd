@@ -47,6 +47,7 @@ const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
 signal died(fighter: Fighter, cause: String)
 signal hit_taken(fighter: Fighter, info: Dictionary)
 signal raged(fighter: Fighter)
+signal note(fighter: Fighter, text: String)   # a word for the player about his own fighter
 
 var display_name := "Gladiator"
 var slot := 0
@@ -311,7 +312,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty():
 		equip("R", main)
-		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing:
+		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing and weapons.R.two_hand_off() != null:
 			two_handed = true
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
@@ -432,7 +433,7 @@ func rearm(main, off) -> void:
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty() and not weapons.R:
 		equip("R", main)
-		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing:
+		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing and weapons.R.two_hand_off() != null:
 			two_handed = true
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
@@ -712,7 +713,7 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mmesh
 	# A fixed box: plates knocked off one by one must not shrink it and cull the rest.
-	var ext := Vector3(p.dims.x + 2, p.dims.y + 2, p.dims.z + 2) * V * S * 0.5
+	var ext := (Vector3(p.dims.x, p.dims.y, p.dims.z) + Vector3.ONE * 2.0 * (Armory.DESIGN_OUT + 1)) * V * S * 0.5
 	inst.custom_aabb = AABB(-ext, ext * 2.0)
 	mmesh.custom_aabb = inst.custom_aabb
 	inst.name = "Armor_" + id
@@ -899,6 +900,12 @@ func toggle_grip() -> Variant:
 	var fore: VoxelPart = arm.L.fore
 	if fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or fixed_hand.R or fixed_hand.L:
 		return null
+	# Room on the grip for the other fist, at its far end; on a short grip the hands crushed
+	# together and the arms locked against each other in a swing.
+	var off_at = w.two_hand_off()
+	if off_at == null:
+		return "short"
+	w.grip_off = off_at
 	# Whatever the off hand held (the shield it came in with, a dagger) is let fall to the sand:
 	# the hand is wanted on the haft.
 	if weapons.L and not release("L"):
@@ -1025,7 +1032,7 @@ func pick_up(side: String, w: Weapon) -> bool:
 	aim_q[side] = null
 	if Combat.current:
 		Combat.current.loose_weapons.erase(w)
-	if side == "R" and w.design.get("twoHanded", false) and not weapons.L:
+	if side == "R" and w.design.get("twoHanded", false) and not weapons.L and w.two_hand_off() != null:
 		two_handed = true
 		_attach_off_hand(w)
 	return true
@@ -1340,7 +1347,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			down_timer = maxf(down_timer, 0.4)
 	var inp: Dictionary = inp_in if live and not limp else {}
 	if inp.get("grip", false) and state == "stand":
-		toggle_grip()
+		if toggle_grip() == "short":
+			note.emit(self, "The grip is too short for two hands")
 	if inp.get("swap", false) and state == "stand":
 		swap_hands()
 	var t_pos: Vector3 = torso.global_position

@@ -134,7 +134,7 @@ func test_h_takes_a_picked_up_weapon_in_both_hands() -> void:
 			await get_tree().physics_frame
 		var shield: Weapon = f.weapons.L
 		var side := "R" if shield else "L"
-		var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), f.hand_world(side))
+		var w: Weapon = m.spawn_loose_weapon(Data.preset("axe"), f.hand_world(side))
 		t.check(f.pick_up(side, w), "the gladius is taken up in the %s hand" % side)
 		for i in 10:
 			await get_tree().physics_frame
@@ -289,6 +289,37 @@ func test_a_wounded_arm_wanders_but_does_not_buzz() -> void:
 		t.check(f.weapons.R != null, "arm at %s: the blade is still in the hand" % hpv)
 		m.queue_free()
 		await get_tree().process_frame
+
+## Two fists need room on the haft: a short grip (a gladius, a dagger, a hammer) is not taken in
+## two hands (H says so); a long one is, with the other hand at the far end of the grip, not
+## crushed against the first. A design marked two-handed with too short a grip is held in one.
+func test_a_short_grip_takes_one_hand() -> void:
+	for wk in ["gladius", "dagger", "hammer", "axe", "mace"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		for i in 30:
+			await get_tree().physics_frame
+		var r = f.toggle_grip()
+		var long_grip: bool = wk == "axe" or wk == "mace"
+		if long_grip:
+			t.eq(r, "two", "%s: a long grip takes both hands" % wk)
+			var w: Weapon = f.weapons.R
+			t.check(w.grip_main.distance_to(w.grip_off) >= 0.115, "%s: the hands apart on it (%.2f m)" % [wk, w.grip_main.distance_to(w.grip_off)])
+		else:
+			t.eq(r, "short", "%s: too short a grip for two hands" % wk)
+			t.check(not f.two_handed, "%s: still in one hand" % wk)
+		m.queue_free()
+		await get_tree().process_frame
+	var stub := Data.preset("dagger").duplicate(true)
+	stub.twoHanded = true
+	var m2 := Match.new()
+	add_child(m2)
+	m2.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": stub, "off": ""}})
+	t.check(not m2.me.f.two_handed, "a dagger marked two-handed is held in one hand")
+	m2.queue_free()
+	await get_tree().process_frame
 
 ## The weight of a weapon and where it lies tell in the hand: the same hammer with a lead head
 ## has its centre of mass further out, and the same sweep of the mouse swings it slower.

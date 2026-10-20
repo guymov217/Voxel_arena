@@ -104,6 +104,30 @@ static func grip_points(d: Dictionary) -> Variant:
 	var bottom: Array = grips.slice(0, maxi(1, int(grips.size() / 3)))
 	return {"main": avg.call(top), "off": avg.call(bottom)}
 
+## Two fists on a haft need room: the hands at least this far apart (voxels, 12 cm). Closer, they
+## were crushed together on a short grip, and the arms locked against each other in a swing.
+const HANDS_APART := 3.0
+
+## Where both hands go on `d` held in two: its own two-handed grips, or, made for one hand, the
+## main hand where it is and the other at the far end of the grip. Null when the grip is too
+## short for two fists (a gladius, a dagger, a hammer: they stay one-handed).
+static func two_hand_points(d: Dictionary) -> Variant:
+	var g = grip_points(d)
+	if g == null:
+		return null
+	if d.get("twoHanded", false):
+		return g if (g.main as Vector3).distance_to(g.off) >= HANDS_APART - 0.01 else null
+	var far = null
+	var fd := 0.0
+	for v in d.voxels:
+		if v[4] == "grip":
+			var p := Vector3(v[0], v[1], v[2])
+			var dd := p.distance_to(g.main)
+			if dd > fd:
+				fd = dd
+				far = p
+	return {"main": g.main, "off": far} if fd >= HANDS_APART - 0.01 else null
+
 ## The counterweight the builder set with the balance tool (weaponDesign.js ballast).
 static func ballast(d: Dictionary) -> Variant:
 	var want = d.get("balance")

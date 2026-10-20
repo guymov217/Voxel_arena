@@ -86,7 +86,8 @@ func design_now() -> Dictionary:
 
 ## A plate may sit on the outside of the part only: round it, on top, or a crest above that.
 func can_hold(c: Vector3i) -> bool:
-	if c.x < -1 or c.x > dims.x or c.y < 0 or c.y > dims.y + 1 or c.z < -1 or c.z > dims.z:
+	var o := Armory.DESIGN_OUT
+	if c.x < -o or c.x >= dims.x + o or c.y < -o or c.y >= dims.y + o or c.z < -o or c.z >= dims.z + o:
 		return false
 	return not _inside(c)
 
@@ -243,8 +244,8 @@ func _build_ui() -> void:
 	cam = Camera3D.new()
 	cam.fov = 38.0
 	vp.add_child(cam)
-	dist = clampf(Vector3(dims).length() * CELL * 2.2, 0.6, 3.0)
-	view.add_child(UIStyle.label("Left click: a plate on · right click: off · middle drag or Turn: round it · wheel: nearer", 12, UIStyle.MUTED))
+	dist = clampf((Vector3(dims) + Vector3.ONE * Armory.DESIGN_OUT).length() * CELL * 2.0, 0.6, 3.5)
+	view.add_child(UIStyle.label("Left click: a plate on · right click: off · middle drag or Turn: round it · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
 	# The stuff, the name, and what it comes to.
 	var side := VBoxContainer.new()
 	side.custom_minimum_size = Vector2(340, 0)
@@ -351,6 +352,30 @@ func _rebuild() -> void:
 	var bi := MultiMeshInstance3D.new()
 	bi.multimesh = mm
 	root.add_child(bi)
+	# Which way he faces: FRONT before the part (where his face and chest look), BACK behind it,
+	# and a gold line down the front of the part.
+	var mid := (Vector3(dims) - Vector3.ONE) * 0.5
+	for side in [[1.0, "FRONT", UIStyle.GOLD], [-1.0, "BACK", UIStyle.MUTED]]:
+		var tag := Label3D.new()
+		tag.text = side[1]
+		tag.modulate = side[2]
+		tag.outline_size = 10
+		tag.font_size = 48
+		tag.pixel_size = CELL * 0.012
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		tag.position = _pos(Vector3(mid.x, mid.y, mid.z + float(side[0]) * (mid.z + Armory.DESIGN_OUT + 1.5)))
+		root.add_child(tag)
+	var line := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(CELL * 0.25, CELL * dims.y, CELL * 0.05)
+	var lmat := StandardMaterial3D.new()
+	lmat.albedo_color = UIStyle.GOLD
+	lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lm.material = lmat
+	line.mesh = lm
+	line.position = _pos(Vector3(mid.x, mid.y, dims.z - 0.45))
+	root.add_child(line)
 	# The plates, in the stuff they are made of.
 	var pm := BoxMesh.new()
 	pm.size = Vector3.ONE * CELL * 0.96

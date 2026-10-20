@@ -187,7 +187,7 @@ func test_throws_wind_up_and_fly_true() -> void:
 ## H takes the off hand onto the haft and lets go again.
 func test_h_switches_the_grip() -> void:
 	var w := _world()
-	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "gladius"}, {"name": "A"})
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "axe"}, {"name": "A"})
 	await _step(w, 60, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
 	t.check(not f.two_handed, "one hand to begin with")
 	await _step(w, 1, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "grip": true})
@@ -196,7 +196,7 @@ func test_h_switches_the_grip() -> void:
 	t.check(f.hand_world("L").distance_to(f.weapons.R.global_transform * f.weapons.R.grip_off) < 0.12, "the off hand is on the haft")
 	await _step(w, 1, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "grip": true})
 	await _step(w, 10, func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}})
-	t.check(not f.two_handed and f.weapons.R != null, "one hand again, the sword still held")
+	t.check(not f.two_handed and f.weapons.R != null, "one hand again, the axe still held")
 	w.queue_free()
 
 ## Cut through at the waist, a man comes apart: the pelvis and legs go as a half of their own,

@@ -661,6 +661,12 @@ func _voxels_ui() -> void:
 		var hb := UIStyle.button(hk[1], func():
 			if bool(design.get("twoHanded", false)) == want:
 				return
+			if want:
+				var two_d := _design_now()
+				two_d.twoHanded = true
+				if ForgeLib.two_hand_points(two_d) == null:
+					cost_label.text = "The grip is too short for two hands: two fists need a grip of 5 blocks or more"
+					return
 			design.twoHanded = want
 			hand_pick = "main" if not want and hand_pick == "off" else hand_pick
 			_rebuild()
@@ -1378,6 +1384,10 @@ func _set_hand(c: Vector3i, which := "main") -> void:
 	if not two:
 		design.grips = {"main": at, "off": [c.x, c.y - 2, c.z]}
 	else:
+		var other: Array = now["off" if which == "main" else "main"]
+		if Vector3(c).distance_to(Vector3(other[0], other[1], other[2])) < ForgeLib.HANDS_APART - 0.01:
+			cost_label.text = "Too close to the other hand: two fists need 3 blocks between them"
+			return
 		now[which] = at
 		design.grips = now
 	_rebuild()

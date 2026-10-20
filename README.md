@@ -51,9 +51,13 @@ godot --headless --path . -- --test test_fight   # one suite
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
-  (the rings are marked MAIN and OTHER).
+  (the rings are marked MAIN and OTHER). Two fists need 3 blocks (12 cm) between them, so a
+  short grip (gladius, dagger, hammer) stays one-handed; a long one taken in two hands with H
+  puts the other hand at the far end of the grip, so the hands never crush together mid-swing.
 - **Armour at the forge**: the forge's Armour tab opens the armour bench, a body part in the
   round with plates put on it voxel by voxel (where it goes and its stuff picked on the bench).
+  Up to 2400 plates, and they may stand up to 6 blocks out from the body (crests, wide
+  pauldrons): each one weighs. The bench marks the FRONT and the BACK.
   The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
   (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
@@ -66,7 +70,8 @@ godot --headless --path . -- --test test_fight   # one suite
   (four tabs: game, controls, graphics, sound). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
   fights as cards with a line each on what they are.
-- **Graphics**: the arena in 10 cm voxels in the manner of Teardown (the bowl, gatehouses, the
+- **Graphics**: the arena in 10 cm voxels (the sand too: each voxel its own shade and height,
+  raked rings, the trampled middle, damp sand by the wall, pebbles and dry grass) in the manner of Teardown (the bowl, gatehouses, the
   Emperor's box, the arcade and the props are models built by `tools/gen_voxel_art.py`), bodies,
   armour and weapons shaded by what each voxel is made of. Physics interpolation, GPU particles (blood, sparks, dust, smoke, fire, embers),
   decals for blood and scorch marks, SSAO, SSIL, SDFGI, volumetric fog and glow by quality

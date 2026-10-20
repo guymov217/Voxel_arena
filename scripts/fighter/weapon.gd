@@ -186,6 +186,12 @@ func _coat() -> void:
 			if sm:
 				sm.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
 
+## Where the other hand takes hold when both hands take it (local), or null when its grip is too
+## short for two fists (ForgeLib.two_hand_points).
+func two_hand_off() -> Variant:
+	var g = ForgeLib.two_hand_points({"voxels": vox, "twoHanded": design.get("twoHanded", false), "grips": design.get("grips")})
+	return (g.off as Vector3) * vs if g != null else null
+
 func _grip_points() -> Array:
 	# Where the builder put the hands (the forge's Hand tool), while there is grip there still.
 	if design.get("grips") is Dictionary:
