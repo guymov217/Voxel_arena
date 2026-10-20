@@ -29,7 +29,7 @@ var mm: MultiMesh
 var vis: MultiMeshInstance3D = null   # its voxels, drawn where it is this frame (_process)
 var net_id := -1
 var _next_box := 0
-# A head on a chain (flail, nunchaku, meteor hammer, whip): links and a head of their own,
+# A head on a chain (flail, meteor hammer, whip): links and a head of their own,
 # swinging on ball joints from the top of the handle.
 const CHAIN_LINK := 0.07
 const MAX_LINKS := 10.0

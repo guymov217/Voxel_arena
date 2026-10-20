@@ -18,7 +18,7 @@ func _step(w: TestWorld, n: int, inputs: Callable) -> void:
 
 func test_every_chain_weapon_hangs_together() -> void:
 	var w := _world()
-	var keys := ["flail", "nunchaku", "meteorHammer", "whip", "imperialFlail"]
+	var keys := ["flail", "meteorHammer", "whip", "imperialFlail"]
 	var men := []
 	for i in keys.size():
 		men.append(w.fighter(Vector3(i * 3.0 - 6.0, 0, 0), 0.0, {"main": keys[i]}, {"name": keys[i], "slot": i}))

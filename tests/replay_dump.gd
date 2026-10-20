@@ -22,7 +22,7 @@ func _ready() -> void:
 	if OS.get_environment("REPLAY_MIX") != "":
 		foes = ["sagittarius", "retiarius", "dimachaerus", "cyclops", "minotaur", "hoplite", "veles", "flailman"]
 		beasts = ["python", "gorilla", "elephant", "scorpion", "crocodile", "ostrich", "hydra", "griffin", "rhino", "spider", "cerberus", "tiger"]
-		weapons = ["bow", "zweihander", "flail", "javelin", "", "whip", "crossbow", "nunchaku", "warhammer", "meteorHammer", "dagger", "trident"]
+		weapons = ["bow", "zweihander", "flail", "javelin", "", "whip", "crossbow", "warhammer", "meteorHammer", "dagger", "trident"]
 		offs = ["", "", "scutum", "", "", "", "", "", "", "", "dagger", ""]
 		r = 6.5
 	var n := int(OS.get_environment("REPLAY_N")) if OS.get_environment("REPLAY_N") != "" else 16
