@@ -26,6 +26,7 @@ var root: Node3D
 var ghost: MeshInstance3D
 var orbit := Vector2(0.5, 0.25)
 var dist := 1.4
+var focus := Vector3.ZERO           # what the camera looks at: between the part and the man's middle
 var dragging := false
 var stroke := {}
 var info: VBoxContainer
@@ -244,7 +245,9 @@ func _build_ui() -> void:
 	cam = Camera3D.new()
 	cam.fov = 38.0
 	vp.add_child(cam)
-	dist = clampf((Vector3(dims) + Vector3.ONE * Armory.DESIGN_OUT).length() * CELL * 2.0, 0.6, 3.5)
+	# Far enough back to see the whole man, the part nearer the middle of the shot.
+	focus = _part_origin("torso", Armory.REGIONS[region].parts[0]) * 0.55
+	dist = 3.6
 	view.add_child(UIStyle.label("Left click: a plate on · right click: off · middle drag or Turn: round it · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
 	# The stuff, the name, and what it comes to.
 	var side := VBoxContainer.new()
@@ -323,36 +326,13 @@ func _pos(c: Vector3) -> Vector3:
 func _rebuild() -> void:
 	for c in root.get_children():
 		c.queue_free()
-	var first: String = Armory.REGIONS[region].parts[0]
-	# The part itself, its own voxels in the flesh.
-	var bp: Dictionary = {}
-	for p in Data.body_parts:
-		if String(p.name) == first:
-			bp = p
-	var res := float(Data.body_res)
-	var fine: Array = bp.get("voxels", [])
-	var skin := Color(0.6, 0.42, 0.31)
-	var fm := BoxMesh.new()
-	fm.size = Vector3.ONE * CELL / res * 0.98
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	fm.material = mat
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = fm
-	mm.instance_count = fine.size()
-	for i in fine.size():
-		var v: Array = fine[i]
-		var at := Vector3((float(v[0]) + 0.5) / res - 0.5, (float(v[1]) + 0.5) / res - 0.5, (float(v[2]) + 0.5) / res - 0.5)
-		mm.set_instance_transform(i, Transform3D(Basis(), _pos(at)))
-		var col := skin * clampf(float(v[4]), 0.4, 1.2) if int(v[3]) != 0 else Color.hex((int(v[4]) << 8) | 0xff)
-		col.a = 1.0
-		mm.set_instance_color(i, col)
-	var bi := MultiMeshInstance3D.new()
-	bi.multimesh = mm
-	root.add_child(bi)
-	# Which way he faces: FRONT before the part (where his face and chest look), BACK behind it,
+	var names: Array = Armory.REGIONS[region].parts
+	var first: String = names[0]
+	# The whole man, in the player's own skin and cloth, the part on the bench where it sits on
+	# him: the rest of him a shade darker, so it is plain what is being plated.
+	var body := _body_mesh(first)
+	root.add_child(body)
+	# Which way he faces: FRONT before him (where his face and chest look), BACK behind him,
 	# and a gold line down the front of the part.
 	var mid := (Vector3(dims) - Vector3.ONE) * 0.5
 	for side in [[1.0, "FRONT", UIStyle.GOLD], [-1.0, "BACK", UIStyle.MUTED]]:
@@ -364,7 +344,9 @@ func _rebuild() -> void:
 		tag.pixel_size = CELL * 0.012
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		tag.no_depth_test = true
-		tag.position = _pos(Vector3(mid.x, mid.y, mid.z + float(side[0]) * (mid.z + Armory.DESIGN_OUT + 1.5)))
+		# (before and behind the man's chest, whichever part is on the bench)
+		var td: Array = Armory._dims("torso")
+		tag.position = _part_origin("torso", names[0]) + Vector3(0, CELL * 2.0, float(side[0]) * (float(td[2]) * 0.5 + Armory.DESIGN_OUT + 2.0) * CELL)
 		root.add_child(tag)
 	var line := MeshInstance3D.new()
 	var lm := BoxMesh.new()
@@ -387,11 +369,17 @@ func _rebuild() -> void:
 	var pmm := MultiMesh.new()
 	pmm.transform_format = MultiMesh.TRANSFORM_3D
 	pmm.mesh = pm
-	pmm.instance_count = cells.size()
-	var i := 0
-	for c in cells:
-		pmm.set_instance_transform(i, Transform3D(Basis(), _pos(Vector3(c))))
-		i += 1
+	# On the part on the bench and, mirrored, on its pair (design_now).
+	var shown := design_now().parts as Dictionary
+	var at := []
+	for part in names:
+		var dd := Armory._dims(part)
+		var pd := Vector3i(int(dd[0]), int(dd[1]), int(dd[2]))
+		for c in shown.get(part, []):
+			at.append(_part_origin(part, first) + (Vector3(float(c[0]), float(c[1]), float(c[2])) - (Vector3(pd) - Vector3.ONE) * 0.5) * CELL)
+	pmm.instance_count = at.size()
+	for i in at.size():
+		pmm.set_instance_transform(i, Transform3D(Basis(), at[i]))
 	var pi := MultiMeshInstance3D.new()
 	pi.multimesh = pmm
 	root.add_child(pi)
@@ -416,11 +404,77 @@ func _rebuild() -> void:
 	_place_camera()
 	_update_info()
 
+## Where `part` sits on the bench, with the part `on` (the one being plated) in the middle.
+func _part_origin(part: String, on: String) -> Vector3:
+	var a: Array = Data.body_def(part).get("pos", [0, 0, 0])
+	var b: Array = Data.body_def(on).get("pos", [0, 0, 0])
+	return (Vector3(float(a[0]), float(a[1]), float(a[2])) - Vector3(float(b[0]), float(b[1]), float(b[2]))) * CELL / Data.body_voxel
+
+## The player's gladiator standing round the bench: every part's outer voxels coloured as he
+## is in the arena (Fighter.build: skin, cloth, the shading and grain), those not of `on` dimmed.
+func _body_mesh(on: String) -> MultiMeshInstance3D:
+	var lk: Dictionary = Save.get_value("look", {}) if Save.get_value("look", {}) is Dictionary else {}
+	var sk_lin := Color.hex(int(Fighter.SKINS[clampi(int(lk.get("skin", 0)), 0, Fighter.SKINS.size() - 1)]) << 8 | 0xff).srgb_to_linear()
+	var cloths: Array = load("res://scripts/ui/menu.gd").CLOTH   # (the player's cloth colours)
+	var tm_lin := Color.hex(int(cloths[clampi(int(lk.get("cloth", 0)), 0, cloths.size() - 1)]) << 8 | 0xff).srgb_to_linear()
+	var res := float(Data.body_res)
+	var at := []
+	var cols := []
+	for d in Data.body_parts:
+		var g: Array = d.grid
+		var dd: Array = d.dims
+		var origin := _part_origin(String(d.name), on)
+		var half := (Vector3(float(dd[0]), float(dd[1]), float(dd[2])) - Vector3.ONE) * 0.5
+		var full := {}
+		for v in d.voxels:
+			full[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = true
+		var dim := 1.0 if String(d.name) == on or Armory.REGIONS[region].parts.has(String(d.name)) else 0.62
+		for v in d.voxels:
+			var k := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+			var shut := true
+			for n in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				if not full.has(k + n):
+					shut = false
+					break
+			if shut:
+				continue   # (nobody sees the inside: the organs, the bone)
+			var c: Color
+			var t := int(v[3])
+			if t == 1 or t == 2:
+				c = ((sk_lin if t == 1 else tm_lin) * float(v[4])).linear_to_srgb()
+				var lin := c.srgb_to_linear()
+				var sh := Fighter.style_shade(String(d.name), k.x, k.y, k.z, g, t)
+				c = Fighter._grain(Color(lin.r * sh, lin.g * sh, lin.b * sh).linear_to_srgb(), String(d.name), k.x, k.y, k.z, t)
+				if t == 1 and String(d.name).begins_with("shin") and Fighter._strap(k.x, k.y, k.z, g):
+					c = Fighter._grain(Color.hex(0x5c3b22ff), String(d.name), k.x, k.y, k.z, 0)
+			else:
+				c = Color.hex(int(v[4]) << 8 | 0xff)
+			c = Color(c.r * dim, c.g * dim, c.b * dim, 1.0)
+			at.append(origin + (Vector3((float(k.x) + 0.5) / res - 0.5, (float(k.y) + 0.5) / res - 0.5, (float(k.z) + 0.5) / res - 0.5) - half) * CELL)
+			cols.append(c)
+	var fm := BoxMesh.new()
+	fm.size = Vector3.ONE * CELL / res * 0.98
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	fm.material = mat
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = fm
+	mm.instance_count = at.size()
+	for i in at.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), at[i]))
+		mm.set_instance_color(i, cols[i])
+	var bi := MultiMeshInstance3D.new()
+	bi.name = "Body"
+	bi.multimesh = mm
+	return bi
+
 func _place_camera() -> void:
 	if cam == null:
 		return
-	cam.position = Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
-	cam.look_at(Vector3.ZERO)
+	cam.position = focus + Vector3(cos(orbit.y) * sin(orbit.x), sin(orbit.y), cos(orbit.y) * cos(orbit.x)) * dist
+	cam.look_at(focus)
 
 ## What the mouse points at: the cell hit (a plate or the part) and the one on its face.
 func _aim(at: Vector2) -> Dictionary:
@@ -442,7 +496,7 @@ func _on_input(e: InputEvent) -> void:
 			dist = maxf(0.3, dist * 0.9)
 			_place_camera()
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(4.0, dist * 1.1)
+			dist = minf(6.0, dist * 1.1)
 			_place_camera()
 		elif e.button_index == MOUSE_BUTTON_MIDDLE:
 			dragging = e.pressed
