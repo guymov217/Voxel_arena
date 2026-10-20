@@ -7,6 +7,8 @@ extends Fighter
 ## bear hugs; the goat wanders; elephants walk their circle and stomp.
 
 const JAW_T := 0.55
+const ROLL_SPIN := 7.5   # a crocodile's death roll, rad/s (slowed by the man fighting it)
+const PRY_RATE := 0.55   # how fast pulling away prises its jaws open (1 is free)
 
 var species := "lion"
 var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
@@ -1034,7 +1036,8 @@ func _rend(tgt, fists: Array) -> void:
 
 ## A crocodile's jaws close on a limb and do not let go: it rolls on its length with the limb
 ## held, wrenching it round until it comes away. He is dragged down and held while it rolls;
-## a hard enough knock on the crocodile, or the limb coming off, ends it.
+## he fights it: pulling away prises the jaws open and slows the roll (the more breath he has,
+## the sooner), and a knock on the crocodile, or the limb coming off, ends it.
 func _death_roll(dt: float) -> void:
 	var tgt = hug.target
 	var part: VoxelPart = hug.part
@@ -1044,7 +1047,15 @@ func _death_roll(dt: float) -> void:
 	# The bitten place on the limb, where the teeth are in it: it stays in the mouth.
 	var bite: Vector3 = part.global_transform * (hug.bite_at as Vector3) if is_instance_valid(part) else mp
 	var gap := bite.distance_to(mp)
-	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.5 or not part_ok(head, 0.15) or gap > 0.25 * S:
+	# His struggle: any pull (crawling, straining) counts, most of all straight away from the jaws.
+	var away: Vector3 = tgt.torso.global_position - head.global_position
+	away.y = 0.0
+	var lm: Vector3 = tgt.get("last_move") if tgt.get("last_move") is Vector3 else Vector3.ZERO
+	var pull := minf(1.0, lm.length()) * (0.5 + 0.5 * maxf(0.0, lm.normalized().dot(away.normalized()))) if lm.length_squared() > 0.01 and away.length_squared() > 0.0001 else 0.0
+	var breath := clampf(tgt.stamina / 100.0, 0.0, 1.0)
+	hug.pry = float(hug.get("pry", 0.0)) + dt * pull * (0.25 + 0.75 * breath) * float(tgt.mods.get("strength", 1.0)) * PRY_RATE
+	tgt.stamina = maxf(0.0, tgt.stamina - dt * 12.0 * pull)
+	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.3 or float(hug.pry) >= 1.0 or not part_ok(head, 0.15) or gap > 0.25 * S:
 		_release_roll()   # (the limb out of its jaws, the roll is over)
 		return
 	# Whatever the joint gives under the wrench is taken back up: teeth to the bitten place.
@@ -1055,7 +1066,7 @@ func _death_roll(dt: float) -> void:
 	tgt.stagger = maxf(tgt.stagger, 0.7)
 	jaw_t = minf(jaw_t, 0.1)
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
-	var spin := 10.0 * float(hug.spin)
+	var spin := ROLL_SPIN * (1.0 - 0.45 * pull) * float(hug.spin)   # (his weight dragging against it)
 	torso.angular_velocity = fwd * spin
 	hug.turned = float(hug.turned) + absf(spin) * dt
 	# The man goes round with it: the limb is locked in the jaws, and his trunk is wrenched over
@@ -1082,6 +1093,8 @@ func _death_roll(dt: float) -> void:
 
 func _release_roll() -> void:
 	if hug != null and hug.get("roll", false):
+		if is_instance_valid(hug.target):
+			hug.target.remove_meta("rolled_by")
 		hug = null
 		_free_holds()
 		coil_cool = 5.0
@@ -1594,6 +1607,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 		# Clamped, not hinged: the limb is locked in the jaws, so it turns as the head turns
 		# (on a pin it only swivelled in the mouth while the crocodile spun round it).
 		holds.append(_joint_at(head, vic, mp0, true))
+		c.set_meta("rolled_by", self)   # (for his screen: how to fight it)
 		c.fall(2.5, true)
 		c.last_attacker = self
 	var torn := []

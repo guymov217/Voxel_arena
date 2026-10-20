@@ -249,6 +249,10 @@ def wolf(ev, i):
 
 @voice("hyena")
 def hyena(ev, i):
+    # Darkened and quieter after the fact: the climbing yelps were the shrillest thing heard.
+    return gain(lp(shift(_hyena(ev, i), 0.84), 2600), 0.35)
+
+def _hyena(ev, i):
     yelp = pool("wolf-hurt", i)
     def giggle(n=7, r0=1.25, r1=1.7, k=0):  # the giggle: quick yelps climbing in pitch, "hee-hee-hee"
         bits = []
@@ -343,6 +347,10 @@ def mammoth(ev, i):
 
 @voice("crocodile")
 def crocodile(ev, i):
+    # A deep rumbling bellow, the hiss taken down: deeper and darker than the alligator as cut.
+    return lp(shift(_crocodile(ev, i), 0.74), 1400)
+
+def _crocodile(ev, i):
     if ev == "call":  # an alligator's bellow and a hiss
         return room(peak(seq(pool("croc-call", i), pool("croc-attack", i), gap=-0.2), 120, 1.0, 5), 0.4, 0.14)
     if ev == "hurt":

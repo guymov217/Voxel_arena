@@ -793,6 +793,9 @@ func _key(id: String) -> String:
 func _prompt_for(f) -> Array:
 	if not f.alive:
 		return []
+	var croc = f.get_meta("rolled_by") if f.has_meta("rolled_by") else null
+	if croc != null and is_instance_valid(croc) and croc.hug != null and croc.hug.get("target") == f:
+		return [["back", "forward"], "Pull away to prise its jaws open · strike its head"]
 	if f.holding != null:
 		if f.holding.limb != null:
 			return [["throw"], "Throw the %s" % String(f.holding.limb.label).to_lower()]

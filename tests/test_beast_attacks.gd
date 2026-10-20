@@ -117,6 +117,34 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	t.check(torn[0], "and tore it off")
 	s[0].queue_free()
 
+## A man in its roll fights it: pulling away the whole time prises the jaws open before the
+## limb is twisted off.
+func test_pulling_away_breaks_the_death_roll() -> void:
+	seed(9)
+	var s = await _setup("crocodile", 2.2)
+	s[0].me.drive = func(_e): return {"mz": -1.0}
+	var rolled := [false]
+	var torn := [false]
+	var freed := [false]
+	var pry := [0.0]
+	var marked := [true]
+	s[0].combat.hit.connect(func(h):
+		if h.attacker == s[2] and h.char == s[1] and h.get("roll", false) and h.res.get("rolled", false):
+			torn[0] = true)
+	await _run(s[0], s[1], s[2], 16.0, func(_i):
+		var b: Beast = s[2]
+		if b.hug != null and b.hug.get("roll", false):
+			rolled[0] = true
+			pry[0] = maxf(pry[0], float(b.hug.get("pry", 0.0)))
+		elif rolled[0] and pry[0] > 0.9 and not torn[0] and not freed[0]:
+			freed[0] = true
+			marked[0] = s[1].has_meta("rolled_by"))
+	t.check(rolled[0], "the jaws closed on a limb and it rolled")
+	t.check(freed[0], "pulling away prised the jaws open (pry %.2f)" % pry[0])
+	t.check(not torn[0], "before the limb was twisted off")
+	t.check(not marked[0], "and he is out of it")
+	s[0].queue_free()
+
 func test_the_elephant_charges_and_crushes() -> void:
 	seed(10)
 	var s = await _setup("elephant", 9.0)

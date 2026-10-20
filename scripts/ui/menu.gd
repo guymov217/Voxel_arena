@@ -3149,8 +3149,10 @@ func _toggle_pause() -> void:
 			if forge_trying != null:
 				back_to_forge()
 				return
+			# Out of training, back to its own screen (to change the foe or the kit and go again).
+			var to_training: bool = match_ != null and match_.mode == "training" and match_.tut == null
 			_end_match()
-			show_screen("main")))
+			show_screen("training" if to_training else "main")))
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not Net.active():
 		get_tree().paused = true
