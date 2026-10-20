@@ -70,8 +70,8 @@ godot --headless --path . -- --test test_fight   # one suite
   (four tabs: game, controls, graphics, sound). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
   fights as cards with a line each on what they are.
-- **Graphics**: the arena in 10 cm voxels (the sand too: each voxel its own shade and height,
-  raked rings, the trampled middle, damp sand by the wall, pebbles and dry grass) in the manner of Teardown (the bowl, gatehouses, the
+- **Graphics**: the arena in 10 cm voxels (the floor smooth sand and packed earth with a fine
+  voxel grain, raked rings, the trampled middle, damp sand by the wall, pebbles and dry grass) in the manner of Teardown (the bowl, gatehouses, the
   Emperor's box, the arcade and the props are models built by `tools/gen_voxel_art.py`), bodies,
   armour and weapons shaded by what each voxel is made of. Physics interpolation, GPU particles (blood, sparks, dust, smoke, fire, embers),
   decals for blood and scorch marks, SSAO, SSIL, SDFGI, volumetric fog and glow by quality

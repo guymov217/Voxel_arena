@@ -53,6 +53,17 @@ long campaign on real hardware before a release date is set.
 - The armour bench takes 2400 plates, up to 6 blocks out from the body, and marks front and back.
 - The arena sand: 10 cm voxels of their own shade and height, raked, trampled, damp by the wall,
   with pebbles and grass tufts.
+- Two-handed guards and strokes (user video): a high guard holds the hands at the brow in front
+  of the face instead of over the head; the trunk holds itself upright against a heavy haft and
+  turns with a stroke out to the side; a mark held with the swing button down no longer locks the
+  elbows straight. In a soak of fast strokes to eight marks, strokes still more than 30° off the
+  mouse a second later went from 1–11 of 24 to 0 (longsword, zweihander, warhammer); the trunk's
+  lean at a guard from 21–28° to 13–17°.
+- The crocodile's death roll can be fought: pulling away prises the jaws open (faster with
+  breath), and the roll slows while he struggles.
+- Guests: a beast's status reached them in a form they could not read (an error each snapshot,
+  no health or jaw shown); fixed. Measured otherwise, a guest costs no more than a local game.
+- The floor: smooth sand and packed earth with a fine 5 cm voxel grain in its colour.
 - Tests no longer depend on which ran before them: each test's world is cleared before the
   next starts (up to 400 bodies from earlier tests used to stand in later ones).
 
