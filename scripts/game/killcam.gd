@@ -70,6 +70,10 @@ func _bodies() -> Array:
 	for w in m.combat.loose_weapons:
 		if is_instance_valid(w):
 			out.append(w)
+	# The lumps knocked off them (and the chips off a blade), flying as they flew.
+	for c in Chunk.all:
+		if is_instance_valid(c) and c.is_inside_tree():
+			out.append(c)
 	return out
 
 func _physics_process(dt: float) -> void:
@@ -216,15 +220,25 @@ func play(done: Callable, restore := false) -> void:
 			if is_instance_valid(redo[next_ev].part):
 				redo[next_ev].part.remove_voxels(redo[next_ev].idx, false, false)
 			next_ev += 1
-		for id in a.xf:
-			var body = ids.get(id)
-			if body == null or not is_instance_valid(body):
+		for id in ids:
+			var body = ids[id]
+			if not is_instance_valid(body):
 				continue
-			var xa: Transform3D = a.xf[id]
+			# A piece not yet knocked off at this moment of the clip is not there yet.
+			if not a.xf.has(id) and not b2.xf.has(id):
+				if body is Chunk:
+					body.visible = false
+				continue
+			if body is Chunk:
+				body.visible = true
+			var xa: Transform3D = a.xf.get(id, b2.xf.get(id))
 			var xb: Transform3D = b2.xf.get(id, xa)
 			body.global_transform = xa.interpolate_with(xb, u)
 			# (Drawn here: with the game paused the bodies' own drawing does not follow them.)
-			body.draw_now()
+			if body.has_method("draw_now"):
+				body.draw_now()
+			elif body is Chunk:
+				body.reset_physics_interpolation()
 		# The camera circles the pair, close, a little low.
 		var pk = best.killer
 		var pv = best.victim
@@ -251,12 +265,16 @@ func play(done: Callable, restore := false) -> void:
 	if overlay:
 		overlay.queue_free()
 		overlay = null
+	for id in ids:
+		if is_instance_valid(ids[id]) and ids[id] is Chunk:
+			ids[id].visible = true
 	for b in now:
 		if is_instance_valid(b):
 			b.global_transform = now[b][0]
 			b.linear_velocity = now[b][1]
 			b.angular_velocity = now[b][2]
-			b.draw_now()
+			if b.has_method("draw_now"):
+				b.draw_now()
 	if restore and m.cam:
 		m.cam.fov = fov0
 	tree.paused = false

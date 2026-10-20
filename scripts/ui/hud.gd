@@ -893,7 +893,9 @@ func _process(dt: float) -> void:
 		return
 	# Never over the forge or the armour bench (back from trying a weapon in the arena, the yard's
 	# HUD came up again over the forge, hid it and took the keys).
-	var bench_up := false
+	# Nor over the kill cam: the replay is seen as it was, not through the eyes of the man in it
+	# (a blow to the head left his blinded eye and swimming sight over the whole clip).
+	var bench_up: bool = match_.get("killcam") != null and is_instance_valid(match_.killcam) and match_.killcam.playing
 	for b in get_tree().get_nodes_in_group("bench"):
 		if b is CanvasItem and (b as CanvasItem).is_visible_in_tree():
 			bench_up = true

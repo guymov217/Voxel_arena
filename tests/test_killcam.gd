@@ -141,3 +141,37 @@ func test_the_wounds_are_on_tape() -> void:
 		th.remove_voxels(ev.idx, false, false)
 	t.check(th.alive_count < n0, "and cut again at the blow")
 	m.queue_free()
+
+## The pieces knocked off go on tape with the bodies (a lump cut loose flies in the replay as it
+## flew), and while the clip plays the HUD is off: the replay is seen whole, not through the eyes
+## of a man with a blow to the head.
+func test_flying_pieces_are_taped_and_the_replay_is_seen_whole() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": []})
+	for i in 30:
+		await get_tree().physics_frame
+	var foe = m.enemies()[0].f
+	var arm: VoxelPart = foe.arm.R.upper
+	var idx := []
+	for i in mini(6, arm.fx.size()):
+		idx.append(i)
+	var ch := Chunk.spawn(arm, arm.remove_voxels(idx, false, false), Vector3.UP)
+	t.check(ch != null, "a lump knocked off")
+	for i in 30:
+		await get_tree().physics_frame
+	var last: Dictionary = m.killcam.frames[m.killcam.frames.size() - 1].xf
+	t.check(last.has(ch.get_instance_id()), "and it is on the tape")
+	var hud := Hud.new(m)
+	add_child(hud)
+	await get_tree().process_frame
+	m.killcam.playing = true
+	for i in 2:
+		await get_tree().process_frame
+	t.check(not hud.visible, "the HUD (blinded eye, swimming sight) is off while the clip plays")
+	m.killcam.playing = false
+	for i in 2:
+		await get_tree().process_frame
+	t.check(hud.visible, "and back after it")
+	hud.queue_free()
+	m.queue_free()
