@@ -66,6 +66,7 @@ var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
 var says: Label
 var verdict: Label
 var cost_label: Label
+var hover_at = null      # where the mouse is over the anvil (R turns the sharp block there)
 
 ## The smith's stock, each for its own job: two metals for edges, three weights from light to
 ## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
@@ -74,7 +75,7 @@ const JOBS := ["edge", "point", "blunt", "grip"]
 const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there"]]
 ## What each tool asks for, shown under the anvil while it is in hand.
 const TOOL_HINT := {
-	"build": "Build: click a face of the weapon, or hold and drag",
+	"build": "Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one)",
 	"erase": "Erase: click blocks, or hold the right button anywhere",
 	"line": "Line: click where it starts",
 	"hand": "Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand",
@@ -99,13 +100,14 @@ func open(d: Dictionary, coins: int, cb: Callable) -> void:
 func _load_cells(d: Dictionary) -> void:
 	cells.clear()
 	for v in d.voxels:
-		cells[Vector3i(v[0], v[1], v[2])] = [v[3], v[4]]
+		cells[Vector3i(v[0], v[1], v[2])] = [v[3], v[4], ForgeLib.face_of(v)]
 
 func _design_now() -> Dictionary:
 	var out := design.duplicate(true)
 	var vox := []
 	for k in cells:
-		vox.append([k.x, k.y, k.z, cells[k][0], cells[k][1]])
+		var f := _face(k)
+		vox.append([k.x, k.y, k.z, cells[k][0], cells[k][1], f] if f >= 0 else [k.x, k.y, k.z, cells[k][0], cells[k][1]])
 	out.voxels = vox
 	out.erase("stats")
 	if name_edit and name_edit.text.strip_edges() != "":
@@ -782,6 +784,10 @@ func _toolbar_ui() -> void:
 	ar.add_theme_constant_override("separation", 4)
 	ar.add_child(UIStyle.button("Undo", _undo))
 	ar.add_child(UIStyle.button("Redo", _redo))
+	var turn := UIStyle.button("Turn sharp block (R)", func():
+		cost_label.text = "Point at an Edge or a Point block and press R: it turns to face each way in turn")
+	turn.tooltip_text = "An Edge or Point block faces away from the face you put it on; R turns the one under the mouse"
+	ar.add_child(turn)
 	ar.add_child(UIStyle.button("Clear", func():
 		_push_undo()
 		var keep: Dictionary = {}
@@ -1025,7 +1031,7 @@ func _rebuild() -> void:
 	for k in cells:
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * vs))
 		mm.set_instance_color(i, Weapon.voxel_color(cells[k][0], cells[k][1]))
-		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k)))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k, _face(k))))
 		centre += Vector3(k) * vs
 		i += 1
 	var mi := MultiMeshInstance3D.new()
@@ -1264,6 +1270,7 @@ func _on_view_input(e: InputEvent) -> void:
 			orbit.y = clampf(orbit.y + e.relative.y * 0.01, -1.4, 1.4)
 			_place_camera()
 		elif mode == "voxels":
+			hover_at = e.position
 			_hover(e.position)
 			# Held down and dragged, the tool goes on working: a stroke of voxels built, painted
 			# or cleared under the mouse (one undo for the whole stroke).
@@ -1365,7 +1372,7 @@ func _apply(a: Dictionary) -> void:
 			if _stroked(a.place) or _stroked(a.get("hit")):
 				return
 			var list := _mirrored([a.place])
-			_place(list)
+			_place(list, ForgeLib.face_index(a.place - a.hit) if a.get("hit") != null else -1, a.place)
 			_mark(list)
 		"erase":
 			if a.hit != null and not _stroked(a.hit) and _erase_ready():
@@ -1434,7 +1441,29 @@ func _erase_at(at: Vector2) -> void:
 		_remove(list)
 		_mark(list)
 
-func _place(list: Array) -> void:
+## The way a sharp block faces, as the smith set it (-1: read off the weapon's shape).
+func _face(k: Vector3i) -> int:
+	var c: Array = cells.get(k, [])
+	return int(c[2]) if c.size() > 2 and (str(c[1]) == "edge" or str(c[1]) == "point") else -1
+
+## Turns the sharp block `k` to face the next way: each of the six in turn, then back to as the
+## weapon's shape has it.
+func turn_face(k: Vector3i) -> void:
+	if not cells.has(k) or not (str(cells[k][1]) == "edge" or str(cells[k][1]) == "point"):
+		cost_label.text = "Only an Edge or a Point block turns: point at one and press R"
+		return
+	_push_undo()
+	var f := _face(k) + 1
+	if f > 5:
+		f = -1
+	var c: Array = cells[k].duplicate()
+	c.resize(3)
+	c[2] = f
+	cells[k] = c
+	cost_label.text = ("This %s faces %s (R: turn it again)" % [str(c[1]), ForgeLib.FACE_NAMES[f]]) if f >= 0 else "This %s faces as the weapon's shape has it (R: turn it)" % str(c[1])
+	_rebuild()
+
+func _place(list: Array, face := -1, origin = null) -> void:
 	var want := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
 	if want.is_empty():
 		return
@@ -1451,7 +1480,15 @@ func _place(list: Array) -> void:
 		return
 	_push_undo()
 	for c in add:
-		cells[c] = [mat, job]
+		# A sharp block faces away from the face it was put on (out from the weapon); a mirrored
+		# one the mirrored way.
+		var f := face
+		if f >= 0 and origin is Vector3i:
+			if c.x != (origin as Vector3i).x and f < 2:
+				f = 1 - f
+			if c.z != (origin as Vector3i).z and f >= 4:
+				f = 9 - f
+		cells[c] = [mat, job, f if (job == "edge" or job == "point") else -1]
 	_rebuild()
 
 func _remove(list: Array) -> void:
@@ -1502,6 +1539,10 @@ func _redo() -> void:
 func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_F and viewport:
 		_frame()   # the whole weapon back in view
+	elif e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_R and viewport and mode == "voxels" and hover_at != null:
+		var a := _aim(hover_at)
+		if not a.is_empty() and a.get("hit") != null:
+			turn_face(a.hit)
 	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Y:
 		_redo()
 	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:

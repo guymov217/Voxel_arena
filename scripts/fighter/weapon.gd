@@ -367,7 +367,8 @@ func _taper_all() -> void:
 		cells[Vector3i(roundi(float(v[0])), roundi(float(v[1])), roundi(float(v[2])))] = str(v[4])
 	taper.resize(vox.size())
 	for i in vox.size():
-		taper[i] = VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2]))))
+		# (A sixth entry: the way the smith set the edge or point to face, ForgeLib.face_of.)
+		taper[i] = VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2]))), ForgeLib.face_of(vox[i]))
 
 ## A voxel's custom data for the shader: its kind and taper, and while it lies in fire or acid
 ## (set_burn) how hot it glows and how poisoned.

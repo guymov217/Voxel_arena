@@ -107,6 +107,20 @@ static func grip_points(d: Dictionary) -> Variant:
 ## Two fists on a haft need room: the hands at least this far apart (voxels, 12 cm). Closer, they
 ## were crushed together on a short grip, and the arms locked against each other in a swing.
 const HANDS_APART := 3.0
+const FACES := [Vector3i.RIGHT, Vector3i.LEFT, Vector3i.UP, Vector3i.DOWN, Vector3i.BACK, Vector3i.FORWARD]   # +x -x +y -y +z -z
+const FACE_NAMES := ["right", "left", "up", "down", "front", "back"]
+
+## The way a sharp voxel was set to face at the forge (an index into FACES), or -1 for none: then
+## it is read off the weapon's shape (VoxelPart.taper_code).
+static func face_of(v) -> int:
+	if v is Array and v.size() > 5 and (v[5] is int or v[5] is float) and (String(v[4]) == "edge" or String(v[4]) == "point"):
+		var f := int(v[5])
+		return f if f >= 0 and f < 6 else -1
+	return -1
+
+## The face index of a unit step `d` (one of FACES), -1 for anything else.
+static func face_index(d: Vector3i) -> int:
+	return FACES.find(d)
 
 ## Where both hands go on `d` held in two: its own two-handed grips, or, made for one hand, the
 ## main hand where it is and the other at the far end of the grip. Null when the grip is too

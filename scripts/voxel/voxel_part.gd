@@ -224,10 +224,23 @@ const TAPER_AXES := [Vector3i.RIGHT, Vector3i.UP, Vector3i.BACK]
 ## tapered; else bits 0..5 the open sides it narrows toward (+x -x +y -y +z -z), 6..8 the axes it
 ## is pinched along, 9 a point, 10..15 an axis pinched toward its + or - face (2a + 10 for +,
 ## 2a + 11 for -) instead of its middle. The rows behind an edge and thick blocks stay blocks.
-static func taper_code(cells: Dictionary, p: Vector3i) -> int:
+## `face` (0..5: +x -x +y -y +z -z), when the smith set it at the forge: the way the edge or the
+## point faces, whatever is round it; -1 to read it off the weapon's shape.
+static func taper_code(cells: Dictionary, p: Vector3i, face := -1) -> int:
 	var job := str(cells.get(p, ""))
 	if job != "edge" and job != "point":
 		return 0
+	if face >= 0 and face < 6:
+		var fa := face / 2
+		var others: Array = [0, 1, 2].filter(func(a): return a != fa)
+		var pinched: Array = others
+		if job == "edge":
+			# Thin across the blade: the way the weapon is thinnest round it (a tie: the forge's depth).
+			pinched = [others[0] if _span(cells, p, others[0]) + (0.0 if others[0] == 2 else 0.1) <= _span(cells, p, others[1]) + (0.0 if others[1] == 2 else 0.1) else others[1]]
+		var c := 512 if job == "point" else 0
+		for a in pinched:
+			c |= 1 << (6 + int(a))
+		return c | (1 << face)
 	var both := []    # open on both sides: the thickness, pinched on the middle
 	var half := {}    # half of a blade two thick: axis -> the side its other half is on (+1/-1)
 	var one := []     # open on one side: where it faces

@@ -584,3 +584,34 @@ func test_the_price_is_spelled_out() -> void:
 	txt = f.price_text(d)
 	t.check(txt.contains("%d more needed" % (pay - 3)), "short of it, how much more (%s)" % txt.replace("\n", " / "))
 	f.queue_free()
+
+## A sharp block faces the way it is put on (out from the face clicked), R turns it, the way is
+## kept in the design, and the weapon in the arena is drawn so: even a lone edge sticking out
+## (whose shape alone said nothing, and it stayed a plain cube) is a wedge facing out.
+func test_a_sharp_block_faces_the_way_it_was_put_on() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	var stick := {"name": "stick", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"], [0, 2, 0, "wood", "grip"], [0, 3, 0, "iron", "blunt"]]}
+	f.open(stick, 0, func(_d, _c): pass)
+	await get_tree().process_frame
+	f.mirror = false
+	f.mirror_z = false
+	f.mat = "steel"
+	f.job = "edge"
+	f._place([Vector3i(1, 3, 0)], ForgeLib.face_index(Vector3i(1, 0, 0)), Vector3i(1, 3, 0))
+	t.eq(f._face(Vector3i(1, 3, 0)), 0, "put on the right face, the edge faces right")
+	var code := VoxelPart.taper_code({Vector3i(0, 3, 0): "blunt", Vector3i(1, 3, 0): "edge"}, Vector3i(1, 3, 0), 0)
+	t.check(code != 0 and (code & 1) != 0, "drawn as a wedge facing right (code %d)" % code)
+	f.turn_face(Vector3i(1, 3, 0))
+	t.eq(f._face(Vector3i(1, 3, 0)), 1, "R turns it to the next way")
+	var d: Dictionary = f._design_now()
+	var v: Array = d.voxels.filter(func(x): return int(x[0]) == 1 and int(x[1]) == 3)[0]
+	t.eq(ForgeLib.face_of(v), 1, "and the way is kept in the design")
+	var w := Weapon.new()
+	add_child(w)
+	w.setup(d)
+	var i: int = w.vox.find(v)
+	t.check(i >= 0 and (w.taper[i] & 2) != 0, "the weapon in the arena is drawn facing that way")
+	w.queue_free()
+	f.queue_free()
