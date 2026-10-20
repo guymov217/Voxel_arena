@@ -67,6 +67,7 @@ var jaw_mouth: Node3D = null
 var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
 var jaw_angle := 0.0
+var jaw_teeth := true          # the teeth still there (a jaw hacked mostly away loses them)
 var bone := PackedByteArray()
 var organ := PackedByteArray()     # per voxel, the organ it is part of (Anatomy; 0 none)
 var alive_count := 0
@@ -857,9 +858,10 @@ func set_shown(indices: Array, on: bool) -> void:
 			for i in jaw_slot:
 				left += alive[i]
 			var keep := left > jaw_slot.size() * 0.35
+			jaw_teeth = keep
 			for c in jaw_pivot.get_children():
 				if c is MeshInstance3D:
-					c.visible = keep
+					c.visible = keep and (not c.name.begins_with("Tooth") or jaw_angle > 0.08)
 			if jaw_mouth:
 				for c in jaw_mouth.get_children():
 					c.visible = keep
@@ -908,6 +910,13 @@ func build_jaw(jw: Dictionary) -> void:
 		# Never thinner than three rows on a tall snout: a two-row slab swung wide still
 		# read as a shut mouth from any distance (the dragon pouring fire through its teeth).
 		y1 = maxi(best_row, mini(y1, ylo + 3))
+	# The skull keeps two rows over the jaw at least: with less, a thin snout (the crocodile's)
+	# had its gullet and teeth standing out of the top of its head.
+	var tip_hi := -1
+	for i in fx.size():
+		if fz[i] >= front_z - 2:
+			tip_hi = maxi(tip_hi, fy[i])
+	y1 = mini(y1, mini(yhi, tip_hi if tip_hi >= 0 else yhi) - 1)
 	var idx := []
 	for i in fx.size():
 		if fz[i] >= z0 and fy[i] < y1:
@@ -961,31 +970,44 @@ func build_jaw(jw: Dictionary) -> void:
 	jaw_mouth.position = jaw_pivot.position
 	jaw_mouth.visible = false
 	add_child(jaw_mouth)
-	var gm := StandardMaterial3D.new()
-	gm.albedo_color = Color8(0x4a, 0x0e, 0x0e)
-	gm.roughness = 0.9
-	var gullet := MeshInstance3D.new()
-	var gb := BoxMesh.new()
-	gb.size = Vector3(wide, sc * 1.0, length)
-	gb.material = gm
-	gullet.mesh = gb
-	gullet.position = Vector3(((xlo + xhi) * 0.5 - (grid.x - 1) * 0.5) * sc, sc * 0.5, length * 0.5)
-	jaw_mouth.add_child(gullet)
+	# The inside of the mouth is the head's own voxels: the bottom row of the skull over the jaw
+	# its roof, the top row of the jaw its tongue, dark red (inside, out of sight while shut).
+	# (A box laid in for a gullet stood out of the top of a thin snout.)
+	var roof := []
+	var zup := -1
+	for i in fx.size():
+		if fz[i] >= z0 and fy[i] == y1:
+			zup = maxi(zup, fz[i])
+			if fx[i] > xlo and fx[i] < xhi and fz[i] < zhi:
+				roof.append(i)
+	for i in idx:
+		if fy[i] == y1 - 1 and fx[i] > xlo and fx[i] < xhi and fz[i] < zhi:
+			roof.append(i)
+	for i in roof:
+		colors[i] = Color8(0x5a, 0x14, 0x14).lerp(Color8(0x7a, 0x24, 0x22), fmod(float(i) * 0.37, 1.0))
+	refresh_colors(roof)
+	if zup < 0:
+		zup = zhi
+	var up_len := (zup - z0) * sc
 	var tm := StandardMaterial3D.new()
 	tm.albedo_color = Color8(0xf2, 0xec, 0xdc)
 	tm.roughness = 0.5
+	# The teeth inside the mouth: the upper ones hang from its roof, the lower stand on the jaw,
+	# and they show only while it is open (shut, they are in the closed mouth).
 	var tb := BoxMesh.new()
-	tb.size = Vector3(sc * 0.5, sc * 0.9, sc * 0.5)
+	tb.size = Vector3(sc * 0.45, sc * 0.6, sc * 0.45)
 	tb.material = tm
 	for n in 4:
 		var x := (n / 3.0 - 0.5) * wide * 0.8
 		var up := MeshInstance3D.new()
 		up.mesh = tb
-		up.position = Vector3(x, sc * 0.7, length - sc * 0.4)
+		up.position = Vector3(x, -sc * 0.2, up_len - sc * 0.4)
 		jaw_mouth.add_child(up)
 		var lo := MeshInstance3D.new()
+		lo.name = "Tooth"
 		lo.mesh = tb
-		lo.position = Vector3(x, sc * 0.4, length - sc * 0.5)
+		lo.position = Vector3(x, sc * 0.1, length - sc * 0.5)
+		lo.visible = false
 		jaw_pivot.add_child(lo)
 
 ## Opens the jaw toward `gape` radians (smoothly).
@@ -995,6 +1017,9 @@ func set_gape(gape: float, dt: float) -> void:
 	jaw_angle += (gape - jaw_angle) * minf(1.0, dt * 18.0)
 	jaw_pivot.basis = Basis(Vector3.RIGHT, jaw_angle)
 	jaw_mouth.visible = jaw_angle > 0.08
+	for c in jaw_pivot.get_children():
+		if c is MeshInstance3D and c.name.begins_with("Tooth"):
+			c.visible = jaw_mouth.visible and jaw_teeth
 
 ## Puts voxels back (a mended limb in a replay, a net message out of order).
 func restore_voxels(indices: Array) -> void:
