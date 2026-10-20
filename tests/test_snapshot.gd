@@ -107,3 +107,22 @@ func test_a_guest_puppet_follows_the_snapshot() -> void:
 	t.check(d < 0.03, "the guest's puppet comes to where the host's man was in the last snapshot (%.2f m off)" % d)
 	host.queue_free()
 	guest.queue_free()
+
+## A beast's status goes out packed like a man's (with its jaw), and a guest takes it in.
+func test_a_beasts_packed_status_comes_through() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var e = m.spawn_beast({"beast": "crocodile", "team": Match.ENEMY_TEAM, "pos": Vector3(3, 0.1, 3), "yaw": 0.0})
+	var b: Beast = e.f
+	await get_tree().physics_frame
+	b.jaw_t = 0.3
+	b.torso.hp = 42.0
+	var packed: Array = b.status_packed()
+	t.eq(packed.size(), 5, "blood, breath, state, the parts' hp and the jaw")
+	b.jaw_t = 0.0
+	b.torso.hp = 100.0
+	b.apply_status(packed)
+	t.check(absf(b.torso.hp - 42.0) < 0.01, "the hp came through (%.1f)" % b.torso.hp)
+	t.check(b.jaw_t > 0.2, "and the jaw (%.2f)" % b.jaw_t)
+	m.queue_free()

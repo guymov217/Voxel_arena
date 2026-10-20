@@ -1634,9 +1634,15 @@ func status() -> Dictionary:
 	s.jaw = snappedf(maxf(jaw_t, breath_t), 0.01)
 	return s
 
-func apply_status(s: Dictionary) -> void:
+## On the wire: the man's packed status and the jaw after it.
+func status_packed() -> Array:
+	var a := super.status_packed()
+	a.append(snappedf(maxf(jaw_t, breath_t), 0.01))
+	return a
+
+func apply_status(s) -> void:
 	super.apply_status(s)
-	var j := float(s.get("jaw", 0.0))
+	var j := (float(s[4]) if s.size() > 4 else 0.0) if s is Array else float(s.get("jaw", 0.0))
 	if j > jaw_t and j <= 1.0:
 		jaw_t = minf(JAW_T, j)
 
