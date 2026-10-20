@@ -875,6 +875,7 @@ func _gallery_ui() -> void:
 			all.remove_at(idx)
 			Save.set_value("forge_gallery", all)
 			_show_mode("gallery")))
+		UIStyle.push_down(card)
 		card.add_child(row)
 		grid.add_child(card)
 		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())

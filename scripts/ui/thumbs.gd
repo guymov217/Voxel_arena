@@ -5,6 +5,7 @@ extends Node
 ## cached. Pictures are made one per frame; a TextureRect asked for one gets it when it is ready.
 
 const SIZE := 160
+const FILL := 1.6           # of the frame's 2 (-1 to 1) the thing may span: a margin all round
 static var cache := {}
 static var _studio: Thumbs = null
 
@@ -181,16 +182,47 @@ func _make(q: Dictionary) -> void:
 			first = false
 	var c := box.get_center()
 	var r := maxf(0.05, box.size.length() * 0.5)
+	var dir := Vector3(0.75, 0.55, 1.0).normalized()
 	var dist := r / sin(deg_to_rad(cam.fov * 0.5)) * 1.15   # with a margin: nothing at the edge is cut
-	cam.position = c + Vector3(0.75, 0.55, 1.0).normalized() * dist
+	cam.position = c + dir * dist
 	cam.look_at(c, Vector3.UP)
-	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-	await RenderingServer.frame_post_draw
-	if not warm:
-		# The studio's first frame comes out before its world is set up: shoot it again.
-		warm = true
+	# Then framed on the picture itself: the box's corners as the camera sees them, centred and
+	# filling at most FILL of the frame (a long blade on the slant was off to one side).
+	var corners := []
+	for i in 8:
+		corners.append(box.get_endpoint(i))
+	for k in 2:
+		var lo := Vector2.INF
+		var hi := -Vector2.INF
+		for p3 in corners:
+			var p2 := _seen(p3)
+			lo = lo.min(p2)
+			hi = hi.max(p2)
+		var mid := (lo + hi) * 0.5
+		var span := maxf(hi.x - lo.x, hi.y - lo.y)
+		# Move the aim to the middle of what is seen, and the camera in or out to fit.
+		var right := cam.global_transform.basis.x
+		var up := cam.global_transform.basis.y
+		var half := tan(deg_to_rad(cam.fov * 0.5))
+		c += (right * mid.x + up * mid.y) * dist * half
+		dist *= maxf(0.2, span / FILL)
+		cam.position = c + dir * dist
+		cam.look_at(c, Vector3.UP)
+	for tries in 4:
 		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 		await RenderingServer.frame_post_draw
+		if not warm:
+			# The studio's first frame comes out before its world is set up: shoot it again.
+			warm = true
+			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+			await RenderingServer.frame_post_draw
+		# Last of all the picture is looked at: anything touching its edge, and it is shot again
+		# from further back.
+		if not _touches_edge(vp.get_texture().get_image()):
+			break
+		dist *= 1.25
+		cam.position = c + dir * dist
+		cam.look_at(c, Vector3.UP)
 	var tex := ImageTexture.create_from_image(vp.get_texture().get_image())
 	cache[q.key] = tex
 	for rect in q.rects:
@@ -198,3 +230,24 @@ func _make(q: Dictionary) -> void:
 			rect.texture = tex
 	obj.queue_free()
 	busy = false
+
+## Where the camera sees `p`, from -1 to 1 across and up the frame.
+func _seen(p: Vector3) -> Vector2:
+	var l := cam.global_transform.affine_inverse() * p
+	var half := tan(deg_to_rad(cam.fov * 0.5))
+	var z := maxf(0.001, -l.z)
+	return Vector2(l.x / (z * half), l.y / (z * half))
+
+## Something drawn in the outermost pixels of the picture (it would look cut off).
+static func _touches_edge(img: Image) -> bool:
+	var w := img.get_width()
+	var h := img.get_height()
+	for i in w:
+		for y in [0, 1, h - 2, h - 1]:
+			if img.get_pixel(i, y).a > 0.1:
+				return true
+	for j in h:
+		for x in [0, 1, w - 2, w - 1]:
+			if img.get_pixel(x, j).a > 0.1:
+				return true
+	return false

@@ -270,6 +270,13 @@ static func title(text: String, size := 44) -> Label:
 
 ## A label. One set in capitals in bronze is a section's heading ("THE ENEMY", "1 · PICK A
 ## BASE"): it is cut in the inscription face, spaced out, in gold.
+## A gap that takes what height is left in a card, so the buttons below it sit along one line
+## in every card of a row, whatever is written above them.
+static func push_down(box: Container) -> void:
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(gap)
+
 static func label(text: String, size := 16, color := TEXT) -> Label:
 	var l := Label.new()
 	l.text = text

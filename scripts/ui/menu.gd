@@ -961,10 +961,11 @@ func _training_designs(v: VBoxContainer) -> void:
 		var info := UIStyle.label("%.1f kg · reach %.1f m%s" % [float(st.mass), float(st.reach), " · two hands" if dd.get("twoHanded", false) else ""], 13, UIStyle.MUTED)
 		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(info)
-		if in_main or in_off:
-			var mark := UIStyle.label("In your %s" % ("main hand" if in_main else "off hand") if not (in_main and in_off) else "In both hands", 13, UIStyle.BRONZE)
-			mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			col.add_child(mark)
+		UIStyle.push_down(col)
+		# (a line kept in every card, so the buttons of one in hand line up with the rest)
+		var mark := UIStyle.label(("In your %s" % ("main hand" if in_main else "off hand") if not (in_main and in_off) else "In both hands") if in_main or in_off else " ", 13, UIStyle.BRONZE)
+		mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(mark)
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_child(UIStyle.button("Main hand", func():
@@ -1162,6 +1163,7 @@ func _yard(v: VBoxContainer) -> void:
 				_pay(r), afford)
 		buy.disabled = not afford
 		buy.tooltip_text = "" if afford else "Not enough in your purse"
+		UIStyle.push_down(box)
 		box.add_child(buy)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
@@ -1254,6 +1256,7 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 		var info := UIStyle.label("%d denarii%s" % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""], 12, UIStyle.GOLD if price <= coins() else UIStyle.MUTED)
 		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(info)
+		UIStyle.push_down(col)
 		if sold.has(idx):
 			col.add_child(UIStyle.label("Sold", 13, UIStyle.MUTED))
 			tex.modulate = Color(1, 1, 1, 0.35)
@@ -1339,6 +1342,7 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 			else:
 				_pay(r), true)
 		buy.disabled = price > coins() + (Arms.value(arms().main) + Arms.value(arms().off)) / 2   # (with what he could trade in)
+		UIStyle.push_down(col)
 		col.add_child(buy)
 		g2.add_child(tile)
 		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
