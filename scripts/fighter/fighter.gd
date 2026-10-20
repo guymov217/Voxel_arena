@@ -171,6 +171,13 @@ var aim_q := {"R": null, "L": null}
 var aim_tw := {"R": 0.0, "L": 0.0}
 var stroke_dir := {"R": null, "L": null}   # a bot's stroke: which way it is going, across the blade
 var stroke_idle := {"R": 0.0, "L": 0.0}
+const TWO_HAND_TWIST := 0.18   # how far the shoulders turn with a two-handed stroke, per unit of the pane across
+const TWO_HAND_TRUNK := 1.8   # how much harder the trunk holds upright with both hands on a haft
+const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a second): held, not swung
+const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
+const OVER_LIFT := 0.1   # how far the front hand rises over a high guard (m, a man's size)
+const OVER_FWD := 0.02
+var twist_two := 0.0
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
 var grip_in := 0.0     # how far the two-handed grip is drawn in toward the shoulder (held still)   # the wheel's twist the last aim was made with
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
@@ -1611,14 +1618,26 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			if t > 0.0:
 				var k := 1.0 - t / JAB_TIME
 				twist += (1.0 if s == "R" else -1.0) * 0.5 * (k / 0.15 if k < 0.15 else (1.0 if k < 0.6 else 1.0 - (k - 0.6) / 0.4))
+		# Both hands on a haft, the shoulders turn with the stroke: out to the side the arm across
+		# the chest was at the end of its reach and the blade stopped short of the mouse.
+		if two_handed and live:
+			var hx := clampf(float(hand_input.R.get("x", 0.0)), -2.0, 2.0)
+			var low_t := clampf(-float(hand_input.R.get("y", 0.0)) - 0.4, 0.0, 1.0)   # (bent over a low guard, less)
+			twist_two = lerpf(twist_two, -hx * TWO_HAND_TWIST * (1.0 - 0.6 * low_t), minf(1.0, dt * 6.0))
+			twist += twist_two
+		else:
+			twist_two = 0.0
 		var desired_q := yaw_q * Quaternion(UP, twist) * lean
 		if rising and rise_q0 != null:
 			desired_q = (rise_q0 as Quaternion).normalized().slerp(desired_q.normalized(), e1)
 		var err := PD.rot_error(desired_q, t_rot)
 		var I := 4.0 * MS * S * S
-		var wn := (8.0 if rising else 12.0) * sqrt(balance)
+		# Both hands on a heavy haft, the trunk holds itself up against it harder: swung with the
+		# arms alone it bent him over sideways and back like a bow.
+		var hold := TWO_HAND_TRUNK if two_handed and not rising else 1.0
+		var wn := (8.0 if rising else 12.0) * sqrt(balance) * sqrt(hold)
 		var tq := (err * (wn * wn) - torso.angular_velocity * (2.0 * wn)) * I
-		torso.apply_torque_impulse(PD.clamp_len(tq, 1400.0 * balance * MS * S) * dt)
+		torso.apply_torque_impulse(PD.clamp_len(tq, 1400.0 * balance * MS * S * hold) * dt)
 
 	# ----- Head -----
 	if not head.severed:
@@ -2096,10 +2115,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var hy2 := clampf(float(hp2.get("y", 0.0)), -1.6, 1.6)
 			var low2 := clampf((-hy2 - 0.3) / 1.0, 0.0, 1.0)
 			var high2 := clampf(hy2 / 1.4, 0.0, 1.0)
-			# Aimed right up the hands go up over the head and in over it (held at the head's
-			# height, a short haft never got its head above his own).
+			# Aimed right up the hands rise to the brow, out in front of the face (a high guard):
+			# the blade stands up from the wrists. (Lifted over the head and in over it, the arms
+			# covered the face and the trunk arched back under them.)
 			var over2 := clampf((hy2 - 0.6) / 0.8, 0.0, 1.0)
-			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.25 * high2 + 0.37 * over2, 0.4 - 0.12 * low2 - 0.2 * over2 + 0.3 * clampf(0.0 if thrust_line[side] != null else thrust, -1.0, 1.0)) * S)
+			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.28 * high2 + OVER_LIFT * over2, 0.4 - 0.12 * low2 + OVER_FWD * over2 + 0.3 * clampf(0.0 if thrust_line[side] != null else thrust, -1.0, 1.0)) * S)
 			var tl2 = thrust_line[side]
 			if tl2 != null:
 				# A thrust drives the front hand along the blade's line, as far as that arm reaches.
@@ -2115,8 +2135,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# the hands pulled against each other and the blade crept on while the mouse was still.
 			# Only while it is held: a stroke or a stab goes out to the full reach of the arm, and
 			# the grip eases back out to it as one starts.
-			var holding: bool = thrust_line[side] == null and not power and swing_hold[side] <= 0.0
+			# (A mark held with the button still down is held too: kept out at the arm's full
+			# length the wrists could not stand a heavy head up, and it hung 40 degrees off.)
+			var still: bool = not power or (hp_vel[side] as Vector2).length() < HELD_STILL
+			var holding: bool = thrust_line[side] == null and still and swing_hold[side] <= 0.0
 			grip_in = move_toward(grip_in, 1.0 if holding else 0.0, dt * 5.0)
+			# (In a stroke too, never past the arm's whole length: held there under power, a mark
+			# out of the back hand's reach locked the two hands against each other and the blade
+			# stopped short of the mouse for as long as the button was down.)
 			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
 			var far := target_w.distance_to(sh_r) - arm_reach * 0.88
 			if far > 0.0 and grip_in > 0.0:
@@ -2163,7 +2189,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			swing_hold[side] = 0.35
 		else:
 			swing_hold[side] = maxf(0.0, swing_hold[side] - dt)
-		var swinging: bool = (power or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
+		# A high mark held still with the button down is a high guard, and a high guard's elbows
+		# bend: kept near straight, the blade could not be stood up and hung 40 degrees off the
+		# mouse. (Out to the side and below the arms are near straight anyway, and the set elbow
+		# is what holds a long blade out there.)
+		var moving: bool = in_spd > HELD_STILL if two_handed else target_vel[side].length() > 0.3 * S
+		var high_guard: bool = not moving and float(hp_now.get("y", 0.0)) > 0.6
+		var swinging: bool = ((power and not high_guard) or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
 		# A swing is made with the arm near straight, light weapon or heavy.
 		var want_bend := minf(elbow_dir.angle_to(fore_dir), 0.35)
 		_hold_elbow(side, want_bend, swinging, dt)

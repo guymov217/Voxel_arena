@@ -404,3 +404,42 @@ func test_two_hands_stay_untangled_through_a_long_bout() -> void:
 	t.eq(f.state, "stand", "on his feet throughout")
 	m.queue_free()
 	await get_tree().process_frame
+
+## Two hands on a haft go to every mark and stay there, the button down or not: a high guard with
+## the hands at the brow in front of the face (not over the head), the trunk upright, and after
+## fast strokes all round the blade is on the mouse within a second, never stuck short of it.
+func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
+	for wk in ["longsword", "warhammer"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		var box := {"i": {"main": {"x": 0.1, "y": 0.1}, "power": false}}
+		m.me.drive = func(_e): return box.i
+		for i in 90:
+			await get_tree().physics_frame
+		box.i = {"main": {"x": 0.0, "y": 1.6}, "power": true}
+		for i in 150:
+			await get_tree().physics_frame
+		var w: Weapon = f.weapons.R
+		var hi_err := rad_to_deg(PD.quat_of(w).angle_to(f.aim_q.R))
+		var face: Vector3 = f.head.global_position
+		var yq := Quaternion(Vector3.UP, f.yaw).inverse()
+		var lead: Vector3 = yq * (f.hand_world("L") - face)
+		t.check(hi_err < 25.0, "%s: a high guard with the button down stands the blade up (%.0f deg off)" % [wk, hi_err])
+		t.check(lead.y < 0.15 and lead.z > 0.2, "%s: the front hand at the brow, out in front of the face (up %.2f, out %.2f)" % [wk, lead.y, lead.z])
+		var worst := 0.0
+		var tilt := 0.0
+		var marks := [Vector2(0, 1.6), Vector2(0, -1.5), Vector2(1.8, 0.4), Vector2(-1.8, 0.4), Vector2(1.1, 1.3), Vector2(-1.2, -1.2), Vector2(-1.1, 1.3), Vector2(1.2, -1.2)]
+		for d in marks:
+			box.i = {"main": {"x": d.x, "y": d.y}, "power": true}
+			for i in 120:
+				await get_tree().physics_frame
+				if i >= 80 and d.y > -0.5:   # (settled at the mark; bent over a low one by design)
+					tilt = maxf(tilt, rad_to_deg(f.torso.global_transform.basis.y.angle_to(Vector3.UP)))
+			worst = maxf(worst, rad_to_deg(PD.quat_of(f.weapons.R).angle_to(f.aim_q.R)))
+		t.check(worst < 30.0, "%s: after each fast stroke the blade is on the mouse within a second (worst %.0f deg)" % [wk, worst])
+		t.check(tilt < 25.0, "%s: the trunk stays upright through the strokes (leans at most %.0f deg)" % [wk, tilt])
+		t.eq(f.state, "stand", "%s: on his feet throughout" % wk)
+		m.queue_free()
+		await get_tree().process_frame
