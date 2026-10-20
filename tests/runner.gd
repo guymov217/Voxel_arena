@@ -32,6 +32,13 @@ func run(only: String) -> void:
 			if ok:
 				passed += 1
 			print("%s %s (%d ms)" % ["ok  " if ok else "FAIL", current, Time.get_ticks_msec() - start])
+			# What a test left behind (a world it did not free, its fighters, debris) goes before
+			# the next one starts: left standing where the next one builds, its bodies struck
+			# the next test's and made its results hang on which tests ran before it.
+			for c in suite.get_children():
+				c.queue_free()
+			await get_tree().process_frame
+			await get_tree().physics_frame
 		suite.queue_free()
 		await get_tree().process_frame
 	print("\n%d passed, %d failed" % [passed, failures])

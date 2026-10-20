@@ -44,6 +44,7 @@ var floor_: MeshInstance3D
 var ghost: MeshInstance3D
 var framed := false
 var fit_dist := 1.0   # how far back the camera must be for the whole weapon
+var fit_ext := 0.0    # how far the weapon reaches from its middle (m)
 const AIM_RISE := 0.08   # the camera aims this far above what it looks at, per metre back
 var cells := {}                 # Vector3i -> [mat, job]
 var orbit := Vector2(0.6, 0.35)
@@ -147,6 +148,13 @@ func _build_ui() -> void:
 		b.set_meta("mode", key)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mode_row.add_child(b)
+	# Armour is made at the same forge: plate by plate on the body part, its own bench.
+	if get_parent() and get_parent().has_method("armour_from_forge"):
+		var ab := UIStyle.button("Armour", func(): get_parent().armour_from_forge(self))
+		ab.tooltip_text = "Make a piece of armour, plate by plate: where it goes, what it is made of"
+		ab.set_meta("mode", "armour")
+		ab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mode_row.add_child(ab)
 	col.add_child(mode_row)
 	var nr := HBoxContainer.new()
 	var nl := UIStyle.label("Name", 14, UIStyle.MUTED)
@@ -1049,14 +1057,20 @@ func _rebuild() -> void:
 		# however the weapon grows.
 		# (The camera aims a little above the middle, _place_camera: that much of the view's
 		# half-angle is spent before the weapon's own size.)
-		var half := deg_to_rad(_view_fov() * 0.5) - atan(AIM_RISE)
-		fit_dist = maxf(0.4, (ext + vs) / sin(half) * 1.1 + 0.1)
+		fit_ext = ext + vs
+		_fit()
 		if not framed:
 			_frame()
 	_place_camera()
 	_update_texts()
 
 ## The narrower of the camera's two angles of view (a tall narrow window is narrow sideways).
+## How far back the camera must stand for all of it, for the view as big as it is now (the
+## view is laid out after the weapon is put on: framed again, F uses its size then).
+func _fit() -> void:
+	var half := deg_to_rad(_view_fov() * 0.5) - atan(AIM_RISE)
+	fit_dist = maxf(0.4, fit_ext / sin(half) * 1.1 + 0.1)
+
 func _view_fov() -> float:
 	var sz := Vector2(viewport.size) if viewport else Vector2(16, 9)
 	var aspect := sz.x / maxf(1.0, sz.y)
@@ -1090,6 +1104,8 @@ func _decor_update() -> void:
 ## The whole weapon in view: the camera aimed at its middle and backed off to take it all in.
 func _frame() -> void:
 	framed = true
+	if fit_ext > 0.0:
+		_fit()
 	dist = fit_dist
 	focus = weapon_root.get_meta("centre", Vector3.ZERO)
 	_place_camera()

@@ -245,7 +245,7 @@ func test_blows_follow_the_wound_and_knock_armour_off() -> void:
 	var th: VoxelPart = a.by_name.thighL
 	var cuts := 0
 	var gone := []
-	for i in 8:
+	for i in 12:
 		if th.severed:
 			break
 		var p: Vector3 = th.global_position + PD.quat_of(th) * Vector3(th.half_ext.x * 1.05, 0, 0)

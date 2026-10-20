@@ -52,9 +52,10 @@ godot --headless --path . -- --test test_fight   # one suite
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
   (the rings are marked MAIN and OTHER).
-- **The armourer**: design a piece (where it goes, its material, how much it covers, or plate by
-  plate). From the main menu it is kept in My designs for free; in training any piece, bought or
-  designed, is worn for free; in the campaign the smith makes it for denarii.
+- **Armour at the forge**: the forge's Armour tab opens the armour bench, a body part in the
+  round with plates put on it voxel by voxel (where it goes and its stuff picked on the bench).
+  The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
+  (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
 - **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
   head football, players' brawl).
@@ -170,7 +171,7 @@ To export by hand, install the export templates for 4.7.2 (Editor → Manage Exp
 then run this:
 
 ```bash
-godot --headless --path . --export-release "Windows Desktop" build/windows/VoxelArena.exe
+godot --headless --path . --export-release "Windows Desktop" build/windows/WRECKSMITH.exe
 ```
 
 The macOS build is not signed. On a Mac, right-click it and choose Open the first time.

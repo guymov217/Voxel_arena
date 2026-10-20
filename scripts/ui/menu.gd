@@ -305,7 +305,7 @@ func show_screen(s: String, msg := "") -> void:
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
-	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" else (980 if s == "armoury" or s == "training_bench" else 760)), 0)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" else 760), 0)
 	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
 	# a count changed in the bag, stays put).
 	var fresh := s != was or not panel.has_meta("shown")
@@ -336,9 +336,7 @@ func show_screen(s: String, msg := "") -> void:
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
 		"training_designs": _training_designs(v)
-		"armoury": _armoury(v)
 		"training_armour": _training_armour(v)
-		"training_bench": _training_bench(v)
 	if fresh and s != "main":
 		var rows := v.get_children()
 		for i in rows.size():
@@ -406,9 +404,6 @@ func _main(v: VBoxContainer) -> void:
 		UIStyle.menu_button("Arena", func(): show_screen("fights")),
 		UIStyle.menu_button("Training", func(): show_screen("training")),
 		UIStyle.menu_button("The forge", _workshop_forge),
-		UIStyle.menu_button("The armourer", func():
-			bench_mode = "workshop"
-			show_screen("armoury")),
 		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
 		UIStyle.menu_button("Settings", func(): show_screen("options")),
 		UIStyle.menu_button("Quit", func(): get_tree().quit()),
@@ -1443,17 +1438,7 @@ static func _dots(x: float) -> String:
 	var n := clampi(int(round(x * 5.0)), 0, 5)
 	return "●".repeat(n) + "○".repeat(5 - n)
 
-# ---------- The armourer (main menu) and armour in training ----------
-
-## The main menu's armourer: the smith's bench, free, to design pieces and keep them in My
-## designs (worn in training; made and paid for at the smith in the campaign).
-func _armoury(v: VBoxContainer) -> void:
-	bench_mode = "workshop"
-	v.add_child(UIStyle.title("The armourer", 34))
-	v.add_child(UIStyle.label("Design a piece: where it goes, what it is made of, how much it covers. It is kept in My designs: worn in training here, forged at the smith in the campaign.", 14, UIStyle.MUTED))
-	_armour_bench(v, panel.custom_minimum_size.x - 64.0)
-	_armour_designs_row(v)
-	_row(v, [UIStyle.button("Back", func(): show_screen("main"))]).alignment = BoxContainer.ALIGNMENT_END
+# ---------- Armour at the forge and in training ----------
 
 ## The pieces kept in My designs, one line, each with a bin.
 func _armour_designs_row(v: VBoxContainer) -> void:
@@ -1485,9 +1470,9 @@ func _training_armour(v: VBoxContainer) -> void:
 	var tt := UIStyle.title("Armour for training", 34)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tt)
-	head.add_child(UIStyle.button("Make your own (free)", func():
+	head.add_child(UIStyle.button("Make your own at the forge (free)", func():
 		bench_mode = "training"
-		show_screen("training_bench")))
+		_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())))
 	v.add_child(head)
 	var kg := 0.0
 	for id in worn:
@@ -1525,17 +1510,11 @@ func _training_armour(v: VBoxContainer) -> void:
 			Save.set_value("training", training)
 			show_screen("training_armour")))
 		grid.add_child(col)
+	_armour_designs_row(v)
 	_row(v, [UIStyle.button("Take it all off", func():
 		training.armor = []
 		Save.set_value("training", training)
 		show_screen("training_armour")), UIStyle.button("Back", func(): show_screen("training"))]).alignment = BoxContainer.ALIGNMENT_END
-
-## The bench, free, for training: what is made is kept in My designs and worn.
-func _training_bench(v: VBoxContainer) -> void:
-	bench_mode = "training"
-	v.add_child(UIStyle.title("Make armour", 34))
-	_armour_bench(v, panel.custom_minimum_size.x - 64.0)
-	_row(v, [UIStyle.button("Back", func(): show_screen("training_armour"))]).alignment = BoxContainer.ALIGNMENT_END
 
 # ---------- The armourer's bench ----------
 
@@ -1545,7 +1524,28 @@ var bench := {"region": "torso", "mat": "iron", "y0": 0.3, "y1": 1.0, "front": f
 var bench_mode := "smith"
 
 func _bench_back() -> String:
-	return {"smith": "yard", "workshop": "armoury", "training": "training_armour"}.get(bench_mode, "yard")
+	return {"smith": "yard", "workshop": "main", "training": "training_armour"}.get(bench_mode, "yard")
+
+## Back from the armour bench to where it was opened (the main menu's forge opens again).
+func _bench_return(msg := "") -> void:
+	show_screen(_bench_back(), msg)
+	if bench_mode == "workshop":
+		_workshop_forge()
+
+func _bench_worn_kg() -> float:
+	var kg := 0.0
+	for id in _bench_worn():
+		kg += Armory.kg(id)
+	return kg
+
+## The forge's Armour tab: the forge gives way to the armour bench, free or paid as the forge was
+## (the main menu's: kept in My designs; training's: kept and worn; the smith's: made and worn).
+func armour_from_forge(f: Node) -> void:
+	bench_mode = "workshop" if f.workshop else ("training" if f.free_build else "smith")
+	for c in f.tree_exited.get_connections():
+		f.tree_exited.disconnect(c.callable)
+	f.queue_free()
+	_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())
 
 ## What the bench is wearing it against: the campaign's armour, the training kit, or nothing.
 func _bench_worn() -> Array:
@@ -1567,7 +1567,7 @@ func _bench_keep(final: Dictionary) -> void:
 	if bench_mode == "training":
 		training.armor = Armory.buy(Armory.sanitize(training.get("armor", [])), ids[0]).worn
 		Save.set_value("training", training)
-	show_screen(_bench_back(), "%s kept in My designs" % String(final.get("name", "The piece")) + (" and worn" if bench_mode == "training" else ""))
+	_bench_return("%s kept in My designs" % String(final.get("name", "The piece")) + (" and worn" if bench_mode == "training" else ""))
 
 ## The armourer's bench: a piece of your own, where it goes, what it is made of and how much
 ## of the part it covers; what it keeps out, what it weighs and what the weight costs in breath
@@ -1688,10 +1688,14 @@ func _plate_bench(def: Dictionary, worn_kg: float) -> void:
 	panel.visible = false
 	f.tree_exited.connect(func(): panel.visible = true)
 	f.open(def, String(bench.region), func(final):
+		# (Its going would show the panel over a forge opened again after it.)
+		for c in f.tree_exited.get_connections():
+			f.tree_exited.disconnect(c.callable)
+		panel.visible = true
 		f.queue_free()
 		smith_tab = "armour"
 		if final == null:
-			show_screen(_bench_back())
+			_bench_return()
 		elif bench_mode != "smith":
 			_bench_keep(final)
 		else:

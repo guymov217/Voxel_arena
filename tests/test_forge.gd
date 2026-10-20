@@ -464,6 +464,7 @@ func test_the_whole_weapon_is_always_in_view() -> void:
 		f.free_build = true
 		f.open(d.duplicate(true), 99999, func(_d, _c): pass)
 		await get_tree().process_frame
+		await get_tree().process_frame
 		t.check(_all_in_view(f), "%s: all of it in view (camera %.2f m off)" % [d.name, f.dist])
 		if d == pole:
 			f.queue_free()
@@ -481,6 +482,9 @@ func test_the_whole_weapon_is_always_in_view() -> void:
 		await get_tree().process_frame
 		t.check(is_equal_approx(f.dist, dist0), "%s built out long: the camera stayed put (%.2f m, was %.2f)" % [d.name, f.dist, dist0])
 		f._frame()
+		# (Two frames: the camera's frustum is brought up to date a frame late when another
+		# view was taken down in the one before.)
+		await get_tree().process_frame
 		await get_tree().process_frame
 		t.check(_all_in_view(f), "%s built out long: F brings all of it into view (camera %.2f m off)" % [d.name, f.dist])
 		f.queue_free()

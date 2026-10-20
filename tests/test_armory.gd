@@ -214,31 +214,48 @@ func test_armour_plate_by_plate() -> void:
 	m.queue_free()
 	f.queue_free()
 
-## The armourer from the main menu and in training: a piece designed at the main menu's
-## armourer is kept in My designs (free); in training it is put on with a click, a new one made
-## at the bench there is kept and worn too, and the fighter goes out in them.
-func test_armour_from_the_main_menu_and_in_training() -> void:
+## Armour is made at the forge: its Armour tab gives way to the armour bench (any part of the
+## body, picked on the bench). From the main menu's forge the piece is kept in My designs, free,
+## and the forge opens again; in training's forge it is kept and worn; the fighter goes out in it.
+func test_armour_is_made_at_the_forge() -> void:
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
 	await get_tree().process_frame
-	menu.bench_mode = "workshop"
-	menu.show_screen("armoury")
+	menu._workshop_forge()
 	await get_tree().process_frame
-	menu._bench_keep(Armory.design_piece("torso", "bronze", 0.3, 1.0, false, true, "Test plate"))
+	var forge = _find(menu, func(n): return n.get_script() == load("res://scripts/ui/forge.gd"))
+	t.check(forge != null, "the main menu's forge is open")
+	var tab = _find(forge, func(n): return n is Button and (n as Button).text == "Armour")
+	t.check(tab != null, "the forge has an Armour tab")
+	tab.pressed.emit()
+	await get_tree().process_frame
+	var bench: ArmourForge = _find(menu, func(n): return n is ArmourForge)
+	t.check(bench != null, "the Armour tab opens the armour bench")
+	bench.switch_region("head")
+	await get_tree().process_frame
+	t.eq(bench.region, "head", "any part of the body is picked on the bench")
+	_cover(bench)
+	bench.done.call(bench.design_now())
+	await get_tree().process_frame
 	var designs: Dictionary = Save.get_value("armor_designs", {})
-	t.eq(designs.size(), 1, "the main menu's armourer keeps the piece in My designs")
-	t.eq(menu.screen, "armoury", "and stays at the armourer")
-	var id: String = designs.keys()[0]
-	menu.show_screen("training_armour")
+	t.eq(designs.size(), 1, "kept in My designs, free")
 	await get_tree().process_frame
-	menu.training.armor = Armory.buy([], id).worn
-	menu.bench_mode = "training"
-	menu.show_screen("training_bench")
+	t.check(_find(menu, func(n): return n.get_script() == load("res://scripts/ui/forge.gd")) != null, "and the forge opens again")
+	# Training's forge: made there, it is worn as well.
+	var f2 = _find(menu, func(n): return n.get_script() == load("res://scripts/ui/forge.gd"))
+	f2.queue_free()
 	await get_tree().process_frame
-	menu._bench_keep(Armory.design_piece("head", "iron", 0.0, 1.0, false, true, "Test helm"))
-	t.eq((menu.training.armor as Array).size(), 2, "made at the training bench: worn as well as kept")
-	var lo: Dictionary = menu._training_loadout()
-	t.eq((lo.armor as Array).size(), 2, "training goes out in it")
+	menu._training_forge()
+	await get_tree().process_frame
+	var tf = _find(menu, func(n): return n.get_script() == load("res://scripts/ui/forge.gd"))
+	menu.armour_from_forge(tf)
+	await get_tree().process_frame
+	bench = _find(menu, func(n): return n is ArmourForge)
+	_cover(bench)
+	bench.done.call(bench.design_now())
+	await get_tree().process_frame
+	t.eq((menu.training.armor as Array).size(), 1, "made at training's forge: worn as well as kept")
+	t.eq(menu.screen, "training_armour", "back at training's armour")
 	menu.show_screen("training")
 	await get_tree().process_frame
 	menu._start_training()
@@ -247,6 +264,19 @@ func test_armour_from_the_main_menu_and_in_training() -> void:
 	var n := 0
 	for p in f.parts:
 		n += (p.get_meta("armor", []) as Array).size()
-	t.check(n >= 2 and f.armor_weight() > 1.0, "the fighter wears both (%d pieces on, %.1f kg)" % [n, f.armor_weight()])
+	t.check(n >= 1 and f.armor_weight() > 0.0, "the fighter wears it (%d pieces on, %.1f kg)" % [n, f.armor_weight()])
 	menu.queue_free()
 	await get_tree().process_frame
+
+func _cover(bench: ArmourForge) -> void:
+	for c in Armory._wrap([bench.dims.x, bench.dims.y, bench.dims.z], 0, bench.dims.y - 1, "all"):
+		bench.cells[Vector3i(c[0], c[1], c[2])] = true
+
+func _find(n: Node, pred: Callable):
+	if pred.call(n):
+		return n
+	for c in n.get_children():
+		var r = _find(c, pred)
+		if r != null:
+			return r
+	return null

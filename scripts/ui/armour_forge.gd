@@ -49,6 +49,22 @@ func open(d: Dictionary, reg: String, cb: Callable, kg_worn := 0.0, coins := -1)
 	_build_ui()
 	_rebuild()
 
+## Another part of the body on the bench: its own plates, from nothing (the stuff and the name
+## kept).
+func switch_region(reg: String) -> void:
+	if reg == region or not Armory.REGIONS.has(reg):
+		return
+	var d := def.duplicate(true)
+	d.parts = {}
+	# A name of the player's own stays; the bench's own ("Iron body") follows the part.
+	var typed := name_edit.text.strip_edges() if name_edit else ""
+	d.name = typed if typed != "" and typed != String(def.get("name", "")) else String(Armory.design_piece(reg, String(d.get("mat", "iron")), 0.0, 1.0, false, true, "").name)
+	undo.clear()
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	open(d, reg, done, worn_kg, purse)
+
 ## The piece as it stands: the plates of the first part, and the same mirrored on its pair.
 func design_now() -> Dictionary:
 	var out := def.duplicate(true)
@@ -235,7 +251,17 @@ func _build_ui() -> void:
 	side.add_theme_constant_override("separation", 8)
 	h.add_child(side)
 	side.add_child(UIStyle.title("Armourer's bench", 28))
-	side.add_child(UIStyle.label(String(Armory.REGIONS[region].label).to_upper() + ("  (both sides alike)" if Armory.REGIONS[region].parts.size() > 1 else ""), 14, UIStyle.BRONZE))
+	side.add_child(UIStyle.label("WHERE" + ("  (both sides alike)" if Armory.REGIONS[region].parts.size() > 1 else ""), 13, UIStyle.BRONZE))
+	var regs := HFlowContainer.new()
+	regs.add_theme_constant_override("h_separation", 6)
+	regs.add_theme_constant_override("v_separation", 6)
+	for r in Armory.REGIONS:
+		var rk: String = r
+		var rb := UIStyle.button(String(Armory.REGIONS[rk].label), func(): switch_region(rk))
+		rb.toggle_mode = true
+		rb.button_pressed = rk == region
+		regs.add_child(rb)
+	side.add_child(regs)
 	side.add_child(UIStyle.label("MATERIAL", 13, UIStyle.BRONZE))
 	var mats := HFlowContainer.new()
 	mats.add_theme_constant_override("h_separation", 6)

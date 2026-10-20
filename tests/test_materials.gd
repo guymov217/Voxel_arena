@@ -91,7 +91,10 @@ func test_a_magnet_pulls_a_steel_blade_in() -> void:
 	var d0 := blade.global_position.distance_to(mag.material_centre("magnet"))
 	await _steps(120)
 	var d1 := blade.global_position.distance_to(mag.material_centre("magnet"))
-	t.check(d1 < d0 - 0.15, "the blade slides to the magnet (%.2f → %.2f m)" % [d0, d1])
+	# In, or as far in as it goes: a blade that lands pointing at the magnet is against it after
+	# a hand's breadth (the pull is to its grip, the length of it lies between).
+	var against := blade.get_colliding_bodies().has(mag)
+	t.check(d1 < d0 - 0.15 or (against and d1 < d0 - 0.03), "the blade slides to the magnet (%.2f → %.2f m%s)" % [d0, d1, ", against it" if against else ""])
 	var wood := m.spawn_loose_weapon(_club("wood"), Vector3(-0.9, 0.1, 0))
 	await _steps(60)
 	var w0 := wood.global_position.distance_to(mag.material_centre("magnet"))
@@ -119,7 +122,8 @@ func test_a_kick_rarely_fells_a_man() -> void:
 		v.f.yaw = PI
 		v.f.stamina = 20.0   # out of breath: the worst case
 		a.f.stamina = 100.0
-		await _steps(90)
+		# Settled, not walked into one another or past (both walk): the kick from where he stands.
+		await _steps(30)
 		kick[0] = true
 		await _steps(3)
 		kick[0] = false

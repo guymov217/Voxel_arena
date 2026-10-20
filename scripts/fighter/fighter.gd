@@ -2095,8 +2095,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var tl2 = thrust_line[side]
 			if tl2 != null:
 				# A thrust drives the front hand along the blade's line, as far as that arm reaches.
+				# From where the front hand really is (the guard's mark was off it, and the stab
+				# began with a jump off its own line).
 				if not tl2.has("f"):
-					tl2.f = yaw_q.inverse() * (front - t_pos)
+					tl2.f = yaw_q.inverse() * (hand_world("L") - t_pos)
 				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z))
 			target_w = front - w_aim * (w.grip_off - w.grip_main)
 			# Both hands where both arms reach: a grip that would have the back hand further than
