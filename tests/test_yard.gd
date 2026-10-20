@@ -39,6 +39,14 @@ func test_the_yard_plays() -> void:
 	await _steps(5)
 	m.yard.update(0.01, {"talk": true})
 	t.check(opened.has("market"), "E by the trader opens the market")
+	# The gate is walked into and then E (walking in no longer sends him off to fight).
+	m.me.f.teleport(Yard.STATIONS.gate.p + Vector3(0, 0, -0.8))
+	await _steps(5)
+	m.yard.update(0.01, {})
+	m.yard.update(0.01, {})
+	t.check(not opened.has("gate"), "standing in the gateway does not start the fight by itself")
+	m.yard.update(0.01, {"talk": true})
+	t.check(opened.has("gate"), "E in the gateway does")
 	var solid := 0
 	for n in m.find_children("*", "StaticBody3D", true, false):
 		if n.get_parent() != m and n.get_parent().get_parent() == m:

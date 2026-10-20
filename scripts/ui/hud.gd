@@ -810,7 +810,9 @@ func _prompt_for(f) -> Array:
 			var st: Dictionary = Yard.STATIONS[at]
 			if st.has("npc"):
 				return [["kick"], "Talk to %s" % String(st.npc.name)]
-			return [["grab"], String(st.label)]
+			if at == "gate":
+				return [["kick"], "Into the arena: the next fight"]
+			return [["kick"], String(st.label)]
 	var hand_r: Vector3 = f.hand_world("R")
 	var hand_l: Vector3 = f.hand_world("L")
 	var best = null

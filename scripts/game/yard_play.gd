@@ -55,17 +55,46 @@ func setup() -> void:
 func scenery() -> void:
 	if m.headless:
 		return
-	for id in Yard.stations():
-		var s: Dictionary = Yard.STATIONS[id]
-		# A stall is kept by someone you talk to; only the gate is a place to walk into.
-		if not s.has("npc"):
-			_ring(s.p, float(s.r), Color(1.0, 0.8, 0.35, 0.8))
-		_sign(s.p + Vector3(0, 2.6, 0), String(s.label))
+	# No signs over the stations: each is what it looks like (the smithy, the stall, the
+	# physician's table), and the way to the arena is a gateway to walk into.
+	_gate()
 	for p in Yard.TARGETS:
 		_board(p)
 	_dress_stations()
-	_sign(Yard.TARGETS[1] + Vector3(-0.8, 1.3, 0), "Throwing boards")
 	_next_board()
+
+## The gateway to the arena where the gate is: a stone arch to walk in under (E there takes him
+## to the next fight), solid at its piers and over the arch, open through the middle, braziers
+## burning either side.
+func _gate() -> void:
+	var gp: Vector3 = Yard.STATIONS.gate.p
+	var yaw := VoxelArt.facing_centre(gp)
+	var n := VoxelArt.place(m, "ludus_gate", gp, yaw)
+	if n == null:
+		_ring(gp, float(Yard.STATIONS.gate.r), Color(1.0, 0.8, 0.35, 0.8))
+		return
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	n.add_child(body)
+	for b in [[Vector3(-1.5, 2.2, 0.0), Vector3(0.8, 4.4, 1.0)], [Vector3(1.5, 2.2, 0.0), Vector3(0.8, 4.4, 1.0)], [Vector3(0, 4.0, 0.0), Vector3(3.8, 0.8, 1.0)], [Vector3(0, 1.5, -0.45), Vector3(2.2, 3.0, 0.1)]]:
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = b[1]
+		cs.shape = bs
+		cs.position = b[0]
+		body.add_child(cs)
+	for sx in [-1.0, 1.0]:
+		var at: Vector3 = gp + Basis(Vector3.UP, yaw) * Vector3(sx * 2.6, 0, 0.9)
+		var br := VoxelArt.place(m, "brazier", at, yaw)
+		VoxelArt.solid(br, 0.15)
+		if br:
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.6, 0.3)
+			l.light_energy = 1.6
+			l.omni_range = 4.0
+			br.add_child(l)
+			l.position = Vector3(0, 1.8, 0)
 
 ## The next fight through the gate (the campaign's next bout; in a room, the party's), as the
 ## board beside the gate reads it.
@@ -96,7 +125,7 @@ func set_next(text: String) -> void:
 ## the foe's name large and the bout under it, lit by a lamp of its own.
 func _next_board() -> void:
 	var gp: Vector3 = Yard.STATIONS.gate.p
-	var at := gp + Vector3(2.9, 0, -0.8)
+	var at := gp + Vector3(4.2, 0, -0.9)
 	var root := Node3D.new()
 	m.add_child(root)
 	root.global_position = at
@@ -298,9 +327,8 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 		at = Yard.station_at(m.me.f.torso.global_position)
 		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader or the physician · the gate leads to the arena"
 		# E talks to a stall's keeper; the gate is walked into (G there as well).
-		var walked_in: bool = at == "gate" and last_at != "gate"
 		last_at = at
-		if at != "" and (walked_in or local_inp.get("talk", false) or (local_inp.get("grab", false) and not Yard.STATIONS[at].has("npc"))):
+		if at != "" and local_inp.get("talk", false):
 			m.station.emit(at)
 
 func _boards() -> void:

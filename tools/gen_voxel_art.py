@@ -661,9 +661,57 @@ def forge_anvil(s):
     s.carve(chip)
 
 
+def ludus_gate(s):
+    """The yard's way to the arena (4.4 m tall, 3.8 wide, its face toward +z): a round-arched
+    gateway of travertine ashlar on two piers, a gilt keystone, an iron portcullis raised into
+    the arch, the oak leaves swung back inside, and the dark of the tunnel beyond."""
+    x, y, z = s.grids()
+    stone = ashlar("stone", TRAVERTINE, 0.5, 0.3, 0.07, seed=300, mortar=0.84, radial=False, vs=0.05)
+    dark_stone = ashlar("stone", TRAV_DARK, 0.5, 0.3, 0.06, seed=301, mortar=0.86, radial=False, vs=0.05)
+    hw, spring, rad = 1.1, 2.55, 1.1          # the opening: half its width, where the arch springs, its radius
+    opening = (np.abs(x) < hw) & ((y < spring) | ((x * x + (y - spring) ** 2) < rad * rad))
+    body = (np.abs(x) < 1.9) & (y < 4.05) & (z > -0.5) & (z < 0.5)
+    s.put(body & ~opening, stone)
+    # A plinth and a cornice standing proud of the face, a frieze between in the darker stone.
+    s.put((np.abs(x) < 2.0) & (y < 0.35) & (z > -0.55) & (z < 0.6) & ~opening, dark_stone)
+    s.put((np.abs(x) < 2.05) & (y >= 4.05) & (y < 4.4) & (z > -0.6) & (z < 0.62), dark_stone)
+    s.put((np.abs(x) < 1.95) & (y >= 3.8) & (y < 4.05) & (z > -0.5) & (z < 0.55), pack("stone", (0.6, 0.53, 0.43)))
+    # The arch's voussoirs: a ring of wedge stones round the opening, a gilt keystone at the top.
+    rr = np.sqrt(x * x + (y - spring) ** 2)
+    ring = (rr >= rad) & (rr < rad + 0.3) & (y >= spring) & (z > 0.3) & (z < 0.58)
+    seg = np.floor((np.arctan2(y - spring, x) / math.pi) * 9).astype(np.int64)
+    vc = (0.84, 0.77, 0.64)
+    s.put(ring & (np.mod(seg, 2) == 0), pack("stone", vc))
+    s.put(ring & (np.mod(seg, 2) == 1), pack("stone", (0.78, 0.71, 0.58)))
+    key = (np.abs(x) < 0.17) & (y >= spring + rad - 0.05) & (y < spring + rad + 0.42) & (z > 0.3) & (z < 0.62)
+    s.put(key, pack("gold", GOLD))
+    # Pilasters up the piers' faces, with capitals.
+    for px in (-1.55, 1.55):
+        pil = (np.abs(x - px) < 0.2) & (y >= 0.35) & (y < 3.6) & (z >= 0.5) & (z < 0.62)
+        s.put(pil, ashlar("marble", MARBLE, 3.0, 0.9, 0.04, seed=302, mortar=0.9, radial=False, vs=0.05))
+        s.put((np.abs(x - px) < 0.26) & (y >= 3.6) & (y < 3.8) & (z >= 0.48) & (z < 0.66), pack("marble", (0.86, 0.83, 0.77)))
+    # The tunnel beyond: dark walls and a darker back, so the opening reads as a way through.
+    s.put(opening & (z <= -0.35) & (z > -0.5), pack("stone", (0.07, 0.05, 0.04)))
+    s.put(opening & (np.abs(x) >= hw - 0.1) & (z > -0.5) & (z < 0.45), pack("stone", (0.25, 0.21, 0.17)))
+    # The portcullis raised into the arch: an iron grid, its spiked foot over the way.
+    bars = opening & (y > 2.75) & (z > -0.05) & (z < 0.05) & ((np.abs(np.mod(x + hw, 0.3) - 0.15) < 0.04) | (np.abs(np.mod(y, 0.3) - 0.15) < 0.035))
+    s.put(bars, plain("iron", IRON, 0.05, 0.12, seed=303))
+    s.put(opening & (y > 2.7) & (y < 2.8) & (np.abs(np.mod(x + hw, 0.3) - 0.15) < 0.04) & (np.abs(z) < 0.05), pack("iron", (0.3, 0.29, 0.27)))
+    # The oak leaves swung back against the tunnel walls.
+    for sx in (-1, 1):
+        leaf = (np.abs(x - sx * (hw - 0.17)) < 0.06) & (y < spring - 0.1) & (z > -0.3) & (z < 0.35)
+        s.put(leaf, planks("wood", WOOD, along=1, width=0.2, seed=304 + (sx > 0)))
+        s.put(leaf & ((np.abs(y - 0.5) < 0.08) | (np.abs(y - 1.9) < 0.08)), plain("iron", IRON, 0.05, 0.12, seed=306))
+    # A worn step at the threshold, and wear on the stone.
+    s.put((np.abs(x) < hw + 0.1) & (y < 0.08) & (z > -0.5) & (z < 0.75), pack("stone", (0.62, 0.56, 0.46)))
+    chip = (hash3(np.floor(x / 0.05).astype(np.int64), np.floor(y / 0.05).astype(np.int64), np.floor(z / 0.05).astype(np.int64), 307) < 0.05) & body & ~opening & (z > 0.4) & (np.abs(x) > 1.75)
+    s.carve(chip)
+
+
 PROPS = {
     "brazier": ((-0.45, 0, -0.45), (0.45, 1.6, 0.45), brazier),
     "gate_door": ((-0.25, 0, -0.05), (0.25, 2.45, 2.65), gate_door),
+    "ludus_gate": ((-2.1, 0, -0.65), (2.1, 4.45, 0.8), ludus_gate),
     "statue": ((-0.5, 0, -0.5), (0.5, 3.0, 0.5), statue),
     "amphora": ((-0.24, 0, -0.24), (0.24, 0.84, 0.24), amphora, 0.04),
     "amphora_wide": ((-0.32, 0, -0.32), (0.32, 0.68, 0.32), lambda s: amphora(s, True), 0.04),
