@@ -540,3 +540,47 @@ func test_the_walking_keys_move_the_forge_camera() -> void:
 	t.check(is_equal_approx(f.dist, d1), "not while the name is being typed")
 	f.queue_free()
 	pi_.queue_free()
+
+## The fight's HUD never stands over the forge (back from trying a weapon in the arena it came up
+## over it and took the keys): hidden while a forge is open, back when it goes, a pause or not.
+func test_the_hud_keeps_off_the_forge() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var hud := Hud.new(m)
+	add_child(hud)
+	await get_tree().process_frame
+	t.check(hud.visible, "the HUD is up in the fight")
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius").duplicate(true), 0, func(_d, _c): pass)
+	get_tree().paused = true
+	for i in 3:
+		await get_tree().process_frame
+	t.check(not hud.visible, "hidden while the forge is open, the game paused")
+	get_tree().paused = false
+	f.queue_free()
+	for i in 3:
+		await get_tree().process_frame
+	t.check(hud.visible, "and back when the forge goes")
+	hud.queue_free()
+	m.queue_free()
+
+## The forge spells out what a weapon comes to: what it is made of, what is paid and the purse
+## after, or how much is missing.
+func test_the_price_is_spelled_out() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.scratch = true
+	f.open(Data.preset("gladius").duplicate(true), 1000, func(_d, _c): pass)
+	await get_tree().process_frame
+	var d: Dictionary = f._design_now()
+	var txt: String = f.price_text(d)
+	var pay := Arms.design_price(d)
+	t.check(txt.contains("You pay %d" % pay) and txt.contains("purse 1000 → %d" % (1000 - pay)), "what is paid and the purse after (%s)" % txt.replace("\n", " / "))
+	t.check(txt.contains("smith's work"), "and what it is made of")
+	f.purse = 3
+	txt = f.price_text(d)
+	t.check(txt.contains("%d more needed" % (pay - 3)), "short of it, how much more (%s)" % txt.replace("\n", " / "))
+	f.queue_free()

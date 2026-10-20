@@ -81,6 +81,7 @@ const TOOL_HINT := {
 }
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
+	add_to_group("bench")   # (the HUD keeps off it)
 	design = d.duplicate(true)
 	purse = coins
 	done = cb
@@ -957,16 +958,39 @@ func _update_texts() -> void:
 	for c in mode_box.get_children():
 		if c.has_meta("checklist"):
 			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + i.text))
-	var delta := _value_now() - original_value
-	cost_label.text = ("Cost: %d denarii" % delta) if delta >= 0 else ("Refund: %d denarii" % -delta)
-	cost_label.text += "  (purse %d)" % purse
-	if workshop or scratch:
-		cost_label.text = "Made at the smith: %d denarii" % Arms.design_price(_design_now()) + ("  (purse %d)" % purse if scratch else "")
-	elif free_build:
-		cost_label.text = "Free in training"
+	cost_label.text = price_text(d)
 	var heavy := ForgeLib.too_heavy(d, st)
 	if heavy != "":
 		cost_label.text = heavy
+
+## What the weapon on the anvil comes to, spelled out: what it is made of and the smith's work,
+## what is paid now, and what is left in the purse after (or how much is missing).
+func price_text(d: Dictionary) -> String:
+	if free_build and not scratch and not workshop:
+		return "Free in training"
+	if workshop:
+		return "Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii." % Arms.design_price(d)
+	var pay: int
+	var lines: Array = []
+	if scratch:
+		var mat := maxi(0, Arms.value(d) - 1)
+		var work := Arms.labour(d)
+		var harm := Arms.power_price(d)
+		pay = Arms.design_price(d)
+		lines.append("Blocks %d + the smith's work %d = %d" % [mat, work, mat + work])
+		if harm > mat + work:
+			lines.append("A weapon that hits this hard costs at least %d" % harm)
+	else:
+		var now := _value_now()
+		pay = now - original_value
+		lines.append("Its blocks were worth %d, now %d" % [original_value, now])
+	if pay < 0:
+		lines.append("He pays you back %d · purse %d → %d" % [-pay, purse, purse - pay])
+	elif pay > purse:
+		lines.append("You pay %d · you have %d: %d more needed" % [pay, purse, pay - purse])
+	else:
+		lines.append("You pay %d · purse %d → %d" % [pay, purse, purse - pay])
+	return "\n".join(lines)
 
 func _value_now() -> int:
 	var s := 0

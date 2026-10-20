@@ -159,6 +159,7 @@ func _keycap(text: String) -> PanelContainer:
 	return p
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var sf := SystemFont.new()
 	sf.font_names = PackedStringArray(["Cinzel", "Trajan Pro", "Cormorant Garamond", "Georgia", "DejaVu Serif", "serif"])
 	sf.font_weight = 700
@@ -885,9 +886,28 @@ func _place() -> void:
 			place_label.text = "THE ARENA"
 			place_sub.text = (m.modes.status() if m.modes else m.mode.capitalize()).to_upper()
 
+var bench_hid := false   # hidden while a forge was open, to come back when it goes
+
 func _process(dt: float) -> void:
 	if not is_instance_valid(match_):
 		return
+	# Never over the forge or the armour bench (back from trying a weapon in the arena, the yard's
+	# HUD came up again over the forge, hid it and took the keys).
+	var bench_up := false
+	for b in get_tree().get_nodes_in_group("bench"):
+		if b is CanvasItem and (b as CanvasItem).is_visible_in_tree():
+			bench_up = true
+			break
+	if bench_up:
+		if visible:
+			visible = false
+			bench_hid = true
+		return
+	if bench_hid:
+		bench_hid = false
+		visible = true
+	if get_tree().paused:
+		return   # (it runs through a pause only to keep off the forge; the rest waits as before)
 	_fit()
 	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
 	charge_bar.visible = ch > 0.0

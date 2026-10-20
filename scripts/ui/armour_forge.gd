@@ -34,6 +34,7 @@ var name_edit: LineEdit
 
 ## Opens the bench for `d` (Armory.design_piece's shape) on `reg` (Armory.REGIONS).
 func open(d: Dictionary, reg: String, cb: Callable, kg_worn := 0.0, coins := -1) -> void:
+	add_to_group("bench")   # (the HUD keeps off it)
 	def = d.duplicate(true)
 	region = reg if Armory.REGIONS.has(reg) else "torso"
 	done = cb

@@ -1078,16 +1078,16 @@ func _yard(v: VBoxContainer) -> void:
 		acts.add_theme_constant_override("v_separation", 6)
 		col.add_child(acts)
 		var rc := Arms.repair_cost(a, side)
-		var mend := UIStyle.button("Mend (%d)" % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
+		var mend := UIStyle.button("Mend · %d denarii" % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
 		mend.disabled = rc == 0 or rc > coins()
-		mend.tooltip_text = "The smith puts back every voxel it has lost."
+		mend.tooltip_text = "The smith puts back every voxel it has lost." + (" Purse after: %d" % (coins() - rc) if rc <= coins() else " %d more needed" % (rc - coins()))
 		acts.add_child(mend)
 		for id in Arms.UPGRADES:
 			if Arms.can_upgrade(id, d):
 				var price := Arms.upgrade_price(id, d)
-				var b := UIStyle.button("%s (%d)" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
+				var b := UIStyle.button("%s · %d denarii" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
 				b.disabled = price > coins()
-				b.tooltip_text = Arms.UPGRADES[id].desc
+				b.tooltip_text = String(Arms.UPGRADES[id].desc) + (" Purse after: %d" % (coins() - price) if price <= coins() else " %d more needed" % (price - coins()))
 				acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
 	body.add_child(VSeparator.new())
@@ -1130,7 +1130,6 @@ func _yard(v: VBoxContainer) -> void:
 				trade = maxi(trade, Arms.value(arms().main if sd == "R" else arms().off) / 2)
 		else:
 			trade = int(pre.get("trade_in", 0))
-		var cost := maxi(0, Arms.base_price(b) - trade)
 		var afford: bool = Arms.base_price(b) <= coins() + trade
 		var tile := PanelContainer.new()
 		tile.add_theme_stylebox_override("panel", tile_st)
@@ -1149,12 +1148,12 @@ func _yard(v: VBoxContainer) -> void:
 		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(nm)
-		var goes := "pick one to sell" if choose else ("both hands" if pre.get("sold", []).size() > 1 else ("main hand" if pre.get("side", "R") == "R" else "off hand"))
-		var pr := UIStyle.label("%s%d denarii · %s" % ["from " if choose else "", cost, goes], 12, UIStyle.GOLD if afford else UIStyle.MUTED)
-		if trade > 0:
-			tile.tooltip_text += " · %d denarii, less %d for your old one" % [Arms.base_price(b), trade]
+		var goes := "both hands full: you pick which one he takes" if choose else ("into both hands" if pre.get("sold", []).size() > 1 else ("into the main hand" if pre.get("side", "R") == "R" else "into the off hand"))
+		var pr := UIStyle.label(goes, 12, UIStyle.MUTED)
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pr.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(pr)
+		_price_lines(box, Arms.base_price(b), trade, "your old one" if choose else "what you hand in")
 		var buy := UIStyle.button("Buy", func():
 			var r := Arms.buy(arms(), key)
 			if r.has("choose"):
@@ -1173,6 +1172,21 @@ func _yard(v: VBoxContainer) -> void:
 	if _smith_designs(rack_box, grid.columns, tile_st) or odd:
 		rack_box.add_child(UIStyle.label("THE SMITH'S RACK", 13, UIStyle.BRONZE))
 		rack_box.move_child(grid, rack_box.get_child_count() - 1)
+
+## What a thing costs, spelled out under it: the price, what is taken off for the old one handed
+## in, what is paid, and the purse after (or how much is missing).
+func _price_lines(box: Container, price: int, trade := 0, trade_what := "") -> void:
+	var pay := maxi(0, price - trade)
+	var left := coins() - pay
+	if trade > 0:
+		var l1 := UIStyle.label("%d denarii, less %d for %s" % [price, trade, trade_what], 12, UIStyle.MUTED)
+		l1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(l1)
+	var l2 := UIStyle.label(("You pay %d · purse after %d" % [pay, left]) if left >= 0 else ("You pay %d · %d more needed" % [pay, -left]), 13, UIStyle.GOLD if left >= 0 else Color(1, 0.55, 0.45))
+	l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(l2)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
 func _sell_choice(nm: String, buy: Callable, sides: Array, bought := Callable()) -> void:
@@ -1253,9 +1267,12 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 		for v in d.voxels:
 			if Weapon.GEMS.has(v[3]) and not gems.has(v[3]):
 				gems.append(v[3])
-		var info := UIStyle.label("%d denarii%s" % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""], 12, UIStyle.GOLD if price <= coins() else UIStyle.MUTED)
-		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(info)
+		if not gems.is_empty():
+			var info := UIStyle.label("Set with " + ", ".join(gems), 12, UIStyle.MUTED)
+			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(info)
+		if not sold.has(idx):
+			_price_lines(col, price)
 		UIStyle.push_down(col)
 		if sold.has(idx):
 			col.add_child(UIStyle.label("Sold", 13, UIStyle.MUTED))
@@ -1332,9 +1349,10 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.TEXT)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(nm)
-		var pr := UIStyle.label("%d denarii · %d blocks" % [price, d.voxels.size()], 12, UIStyle.GOLD if price <= coins() else UIStyle.MUTED)
+		var pr := UIStyle.label("%d blocks · made to order" % d.voxels.size(), 12, UIStyle.MUTED)
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(pr)
+		_price_lines(col, price)
 		var buy := UIStyle.button("Have it made", func():
 			var r := Arms.buy_design(arms(), d)
 			if r.has("choose"):
