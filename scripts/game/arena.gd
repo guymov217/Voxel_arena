@@ -144,6 +144,7 @@ func _build_ground_details() -> void:
 	rng.seed = 77
 	var stone := StandardMaterial3D.new()
 	stone.vertex_color_use_as_albedo = true
+	stone.vertex_color_is_srgb = true   # (read as linear, every stone came out chalk white)
 	stone.roughness = 0.9
 	var pebbles := MultiMesh.new()
 	pebbles.transform_format = MultiMesh.TRANSFORM_3D
@@ -157,13 +158,13 @@ func _build_ground_details() -> void:
 	for i in n:
 		# Two in three along the wall's foot, the rest over the ring (fewer in the middle).
 		var a := rng.randf() * TAU
-		var rr := rng.randf_range(RADIUS - 2.2, RADIUS - 0.25) if i % 3 != 0 else sqrt(rng.randf()) * (RADIUS - 2.0)
+		var rr := rng.randf_range(RADIUS - 2.2, RADIUS - 0.25) if i % 5 != 0 else sqrt(rng.randf()) * (RADIUS - 2.0)
 		var big := rng.randf() < 0.08
 		var sz := Vector3(rng.randf_range(0.03, 0.07), rng.randf_range(0.015, 0.035), rng.randf_range(0.03, 0.07)) * (2.6 if big else 1.0)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(sz)
-		pebbles.set_instance_transform(i, Transform3D(b, Vector3(sin(a) * rr, sz.y * 0.35, cos(a) * rr)))
-		var g := rng.randf_range(0.45, 0.72)
-		pebbles.set_instance_color(i, Color(g * 1.05, g, g * 0.9) if rng.randf() < 0.7 else Color(g * 1.1, g * 0.82, g * 0.6))
+		pebbles.set_instance_transform(i, Transform3D(b, Vector3(sin(a) * rr, sz.y * 0.2, cos(a) * rr)))   # (half in the sand)
+		var g := rng.randf_range(0.38, 0.6)
+		pebbles.set_instance_color(i, Color(g * 1.05, g * 0.97, g * 0.86) if rng.randf() < 0.7 else Color(g * 1.1, g * 0.86, g * 0.66))
 	var pmi := MultiMeshInstance3D.new()
 	pmi.multimesh = pebbles
 	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -198,36 +199,27 @@ func _build_ground_details() -> void:
 	tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(tmi)
 
-## The sand as 10 cm voxels seen from above (art/textures/sand_voxel.png, 32 m across, one
-## texel a voxel): laid on in world space, unfiltered so every voxel stays crisp. Falls back to
-## the old raked sand when the voxel texture is missing.
+## The arena floor: smooth sand and packed earth (art/textures/floor_*.webp, 4 m a map) laid on
+## in world space. Falls back to the old raked sand when the maps are missing.
 static func sand_material() -> Material:
-	var tex := load_texture("res://art/textures/sand_voxel.png")
-	if tex == null:
-		var old := surface_material("sand", 0.45, 1.0)
-		old.albedo_color = Color(1.0, 0.97, 0.93)
-		old.normal_scale = 0.9
-		return old
-	# The sand's own shader: bevelled voxels, raked rings, the trampled middle, damp sand at the
-	# wall (shaders/sand.gdshader). The plain textured sand when it cannot be had.
+	# The floor's own shader: fine sand and packed earth blended across the arena, raked rings,
+	# damp sand at the wall (shaders/sand.gdshader). The plain textured sand when it cannot be had.
+	var maps := {}
+	for k in ["sand_alb", "sand_nrm", "earth_alb", "earth_nrm"]:
+		var f: String = {"sand_alb": "floor_sand_albedo", "sand_nrm": "floor_sand_normal", "earth_alb": "floor_earth_albedo", "earth_nrm": "floor_earth_normal"}[k]
+		maps[k] = load_texture("res://art/textures/%s.webp" % f)
 	var sh = load("res://shaders/sand.gdshader")
-	if sh:
+	if sh and not maps.values().has(null):
 		var sm := ShaderMaterial.new()
 		sm.shader = sh
-		sm.set_shader_parameter("voxels", tex)
+		for k in maps:
+			sm.set_shader_parameter(k, maps[k])
 		sm.set_shader_parameter("radius", RADIUS)
 		return sm
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = tex
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE / 32.0
-	m.uv1_offset = Vector3(0.5, 0.5, 0.5)
-	m.albedo_color = Color(0.74, 0.74, 0.74)   # a shade down: bright sand under a high sun glared
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
-	m.roughness = 0.97
-	m.metallic_specular = 0.25   # (Godot 4's name: "specular" was the 3.x one and did nothing)
-	return m
+	var old := surface_material("sand", 0.45, 1.0)
+	old.albedo_color = Color(1.0, 0.97, 0.93)
+	old.normal_scale = 0.9
+	return old
 
 ## The sky: a shader with drifting clouds and the sun's glare; at night a photographed starfield.
 static func sky_material(day: bool) -> ShaderMaterial:

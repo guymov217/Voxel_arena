@@ -35,7 +35,10 @@ def normal_map(h, strength):
 
 def save(img, name):
     os.makedirs(OUT, exist_ok=True)
-    img.save(os.path.join(OUT, name), optimize=True)
+    if name.endswith(".webp"):
+        img.save(os.path.join(OUT, name), quality=90, method=6)
+    else:
+        img.save(os.path.join(OUT, name), optimize=True)
     print("wrote", name)
 
 
@@ -143,6 +146,94 @@ def ashlar():
     save(Image.fromarray((np.clip(col, 0, 1) * 255).astype(np.uint8)), "stone_albedo.png")
 
 
+def cells(count, seed):
+    """Distance to the nearest and second-nearest of `count` scattered points (wrapping): the
+    gap between the two is small along the edges of the cells, where packed earth cracks."""
+    r = np.random.default_rng(seed)
+    pts = r.uniform(0, N, (count, 2))
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float32)
+    d1 = np.full((N, N), 1e9, np.float32)
+    d2 = np.full((N, N), 1e9, np.float32)
+    for px, py in pts:
+        dx = np.abs(xx - px); dx = np.minimum(dx, N - dx)
+        dy = np.abs(yy - py); dy = np.minimum(dy, N - dy)
+        d = np.sqrt(dx * dx + dy * dy)
+        closer = d < d1
+        d2 = np.where(closer, d1, np.minimum(d2, d))
+        d1 = np.where(closer, d, d1)
+    return d1, d2
+
+
+def floor_sand():
+    """The arena floor's sand, 4 m to a tile at 2 mm a pixel: grains of many colours (pale quartz,
+    ochre, dark specks), wind ripples a hand apart, soft hollows; height in the alpha."""
+    big = noise(700, seed=21)
+    mid = noise(140, seed=22)
+    small = noise(18, seed=23)
+    grain = noise(1.3, power=1.1, seed=24)
+    grain2 = noise(2.6, power=1.3, seed=25)
+    yy, xx = np.mgrid[0:N, 0:N] / N
+    warp = noise(400, seed=26) * 2.2 + noise(90, seed=27) * 0.35
+    rip = np.sin((yy * 38 + xx * 6 + warp) * 2 * np.pi)
+    rip = np.where(rip > 0, np.abs(rip) ** 0.6, -np.abs(rip) ** 1.6) * (0.55 + 0.45 * np.clip(mid * 1.5 + 0.5, 0, 1))
+    peb_h, peb_s = blobs(420, 2.0, 6.0, 28)
+    h = big * 1.4 + mid * 0.6 + small * 0.3 + rip * 0.22 + grain * 0.22 + peb_h * 0.9
+    save(normal_map(h, 3.2), "floor_sand_normal.webp")
+    base = np.array([0.80, 0.68, 0.50])
+    warm = np.array([0.76, 0.58, 0.38])
+    pale = np.array([0.90, 0.83, 0.69])
+    t = np.clip(0.5 + big * 0.45 + mid * 0.2, 0, 1)[..., None]
+    col = base * (1 - t) + warm * t
+    col = col * (1 - np.clip(-rip, 0, 1)[..., None] * 0.025) + (pale - col) * np.clip(rip, 0, 1)[..., None] * 0.05
+    col *= 1.0 + grain[..., None] * 0.16 + grain2[..., None] * 0.08
+    r = np.random.default_rng(29)
+    speck = r.random((N, N))
+    col = np.where((speck > 0.985)[..., None], col * 0.45, col)                       # dark mineral grains
+    col = np.where((speck < 0.012)[..., None], np.minimum(1, col * 1.25 + 0.06), col)  # bright quartz
+    stone = np.array([0.62, 0.55, 0.47])
+    m = (peb_h > 0.08)[..., None]
+    col = np.where(m, stone * (1 + peb_s[..., None] * 0.25) * (0.75 + 0.35 * peb_h[..., None]), col)
+    hn = (h - h.min()) / (h.max() - h.min())
+    img = np.dstack([np.clip(col, 0, 1), hn[..., None]])
+    save(Image.fromarray((img * 255).astype(np.uint8), "RGBA"), "floor_sand_albedo.webp")
+
+
+def floor_earth():
+    """Packed earth where the fighting tramples the sand away: darker, its crust cracked into
+    plates, grit and small stones pressed into it, scuffs; height in the alpha."""
+    big = noise(600, seed=31)
+    mid = noise(110, seed=32)
+    grain = noise(1.5, power=1.2, seed=33)
+    d1, d2 = cells(160, 34)
+    crack = np.clip(1.0 - (d2 - d1) / 4.5, 0, 1) ** 2 * np.clip(mid * 1.4 - 0.1, 0, 1)   # (only in patches)
+    fine1, fine2 = cells(900, 35)
+    hair = np.clip(1.0 - (fine2 - fine1) / 1.6, 0, 1) ** 3 * np.clip(mid + 0.2, 0, 1) * 0.6
+    peb_h, peb_s = blobs(380, 1.5, 4.5, 36)
+    mottle = noise(30, seed=38)
+    scuff = np.clip(noise(60, seed=37) * 1.6 - 0.6, 0, 1)
+    h = big * 1.0 + mid * 0.5 + grain * 0.18 - crack * 1.1 - hair * 0.5 + peb_h * 0.8 - scuff * 0.25
+    save(normal_map(h, 3.6), "floor_earth_normal.webp")
+    a = np.array([0.55, 0.42, 0.30])
+    b = np.array([0.47, 0.35, 0.25])
+    t = np.clip(0.5 + big * 0.5 + mid * 0.25, 0, 1)[..., None]
+    col = a * (1 - t) + b * t
+    col *= 1.0 + grain[..., None] * 0.14 + mottle[..., None] * 0.07
+    col *= 1.0 - crack[..., None] * 0.3 - hair[..., None] * 0.15
+    col = col * (1 - scuff[..., None] * 0.15) + np.array([0.70, 0.58, 0.43]) * scuff[..., None] * 0.15
+    stone = np.array([0.50, 0.43, 0.35])
+    m = (peb_h > 0.1)[..., None]
+    col = np.where(m, stone * (1 + peb_s[..., None] * 0.25) * (0.7 + 0.4 * peb_h[..., None]), col)
+    hn = (h - h.min()) / (h.max() - h.min())
+    img = np.dstack([np.clip(col, 0, 1), hn[..., None]])
+    save(Image.fromarray((img * 255).astype(np.uint8), "RGBA"), "floor_earth_albedo.webp")
+
+
 if __name__ == "__main__":
-    sand()
-    ashlar()
+    import sys
+    if "floor" in sys.argv[1:]:
+        N = 2048
+        floor_sand()
+        floor_earth()
+    else:
+        sand()
+        ashlar()
