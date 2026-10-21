@@ -615,3 +615,56 @@ func test_a_sharp_block_faces_the_way_it_was_put_on() -> void:
 	t.check(i >= 0 and (w.taper[i] & 2) != 0, "the weapon in the arena is drawn facing that way")
 	w.queue_free()
 	f.queue_free()
+
+## The price of the job is always in sight over the anvil (what is paid, the purse after), the
+## same sum as the full breakdown; it follows every change.
+func test_the_price_is_always_in_sight() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.scratch = true
+	f.open(Data.preset("gladius").duplicate(true), 1000, func(_d, _c): pass)
+	await get_tree().process_frame
+	var pay := Arms.design_price(f._design_now())
+	t.check(f.price_badge != null and f.price_badge.get_parent().visible, "a price badge over the view")
+	t.check(f.price_badge.text.contains("Price %d" % pay) and f.price_badge.text.contains("1000 → %d" % (1000 - pay)), "it says the whole price and the purse after (%s)" % f.price_badge.text)
+	t.eq(f.price_badge.get_parent().mouse_filter, Control.MOUSE_FILTER_IGNORE, "it never gets in the way of a click")
+	f.purse = 3
+	f._update_texts()
+	t.check(f.price_badge.text.contains("short"), "short of money, it says so (%s)" % f.price_badge.text)
+	f.queue_free()
+
+## Sharpness is only for Cut and Stab blocks: a weapon with none has no slider, only a note; its
+## price does not move with it. A keener blade costs more at every step, never by jumps of nothing.
+func test_sharpness_only_where_there_is_an_edge() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	var mace := {"name": "mace", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"], [0, 2, 0, "iron", "blunt"], [0, 3, 0, "iron", "blunt"]]}
+	f.open(mace, 1000, func(_d, _c): pass)
+	await get_tree().process_frame
+	f.job = "blunt"
+	f._show_mode("voxels")   # shaping by hand, where the sharpness is set
+	var row_seen := false
+	var note_seen := false
+	for c in f.mode_box.get_children():
+		if c.has_meta("sharp_row"):
+			row_seen = c.visible
+		if c.has_meta("sharp_none"):
+			note_seen = c.visible
+	t.check(not row_seen and note_seen, "a Crush weapon: no sharpness slider (%s), a note instead (%s)" % [row_seen, note_seen])
+	var blunt := mace.duplicate(true)
+	blunt.sharpness = 0.1
+	t.eq(Arms.value(blunt), Arms.value(mace), "and its price does not hang on the sharpness")
+	f.queue_free()
+	var blade := {"kind": "weapon", "sharpness": 0.0, "voxels": [[0, 0, 0, "wood", "grip"]]}
+	for y in range(1, 13):
+		blade.voxels.append([0, y, 0, "steel", "edge"])
+	var last := -1
+	var steps_up := 0
+	for k in range(0, 21):
+		blade.sharpness = k / 20.0
+		var v := Arms.value(blade)
+		t.check(v >= last, "never cheaper for keener (%d%%: %d after %d)" % [k * 5, v, last])
+		if v > last:
+			steps_up += 1
+		last = v
+	t.check(steps_up >= 12, "the price climbs with the sharpness, step by step (%d of 20 steps)" % steps_up)

@@ -19,9 +19,25 @@ const PROSTHETICS := {
 }
 ## How well a replaced part works (1 for a whole one): walking on a peg, swinging a fixed blade.
 const PROSTHETIC_FN := {"peg": 0.6, "hook": 0.75, "blade": 0.7}
-const MEDICINE_PRICE := 140
+## The rare medicine (one old wound closed): half the elixir's price, so both follow the pay.
+const MEDICINE_BOUTS := 1.5
+const MEDICINE_MIN := 30
 ## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, old wounds).
-const ELIXIR_PRICE := 420
+## It costs what a few bouts at this point of the campaign pay (ELIXIR_BOUTS of them): dear, but
+## within reach of a man who saves for it, early on as late.
+const ELIXIR_BOUTS := 3.0
+const ELIXIR_MIN := 60
+
+## What winning the bout at `stage` pays one man (its stage pay and its round, as Match pays them).
+static func bout_pay(stage: int) -> int:
+	var st := Data.stage(maxi(1, stage), 1)
+	return int(round(float(st.get("stagePay", 30)) * Match.PAY_SCALE)) + int(round(float(st.get("roundPay", 10)) * Match.PAY_SCALE))
+
+static func elixir_price(stage: int) -> int:
+	return maxi(ELIXIR_MIN, roundi(ELIXIR_BOUTS * bout_pay(stage)))
+
+static func medicine_price(stage: int) -> int:
+	return maxi(MEDICINE_MIN, roundi(MEDICINE_BOUTS * bout_pay(stage)))
 ## The most of a part's voxels an old wound may leave missing for good.
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
@@ -258,10 +274,10 @@ static func offers(body: Dictionary, stage: int) -> Array:
 		for n in b.scars:
 			if worst == "" or b.scars[n].size() > b.scars[worst].size():
 				worst = n
-		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": "A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been." % label(worst), "price": MEDICINE_PRICE})
+		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": "A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been." % label(worst), "price": medicine_price(stage)})
 	# The magic one: everything the campaign took, given back at once.
 	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or not b.scars.is_empty():
-		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": ELIXIR_PRICE})
+		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": elixir_price(stage)})
 	return out
 
 ## Apply a treatment by its offer id. Returns the new body (unchanged if it does not apply).
@@ -304,12 +320,12 @@ static func stitch_price(b: Dictionary) -> int:
 		n += (b.fresh[p] as Array).size()
 	return clampi(15 + n / 6, 15, 160)
 
-static func price_of(id: String, body := {}) -> int:
+static func price_of(id: String, body := {}, stage := 1) -> int:
 	var kind := id.split(":")[0]
 	if kind == "stitch":
 		return stitch_price(sanitize(body))
 	if kind == "medicine":
-		return MEDICINE_PRICE
+		return medicine_price(stage)
 	if kind == "elixir":
-		return ELIXIR_PRICE
+		return elixir_price(stage)
 	return int(PROSTHETICS.get(kind, {}).get("price", 0))

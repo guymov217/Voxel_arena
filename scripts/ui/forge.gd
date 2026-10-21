@@ -232,6 +232,26 @@ func _build_ui() -> void:
 	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	tool_bar.position.y = 12
 	right.add_child(tool_bar)
+	# The price of the job, always in sight at the foot of the view, out of the way of the work.
+	var pb := PanelContainer.new()
+	var pbs := StyleBoxFlat.new()
+	pbs.bg_color = Color(0.07, 0.05, 0.035, 0.82)
+	pbs.border_color = UIStyle.BRONZE_DARK
+	pbs.set_border_width_all(1)
+	pbs.set_corner_radius_all(8)
+	pbs.content_margin_left = 14; pbs.content_margin_right = 14; pbs.content_margin_top = 6; pbs.content_margin_bottom = 6
+	pb.add_theme_stylebox_override("panel", pbs)
+	pb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	pb.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	pb.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	pb.position.y -= 14
+	price_badge = UIStyle.label("", 19, UIStyle.GOLD)
+	price_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_badge.autowrap_mode = TextServer.AUTOWRAP_OFF
+	pb.add_child(price_badge)
+	pb.name = "PriceBadge"
+	right.add_child(pb)
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
@@ -582,8 +602,23 @@ func _from_nothing_button() -> Button:
 	return null
 
 ## The slider's reading: how sharp, and what each Cut or Stab block costs at that.
+## The Cut and Stab blocks on the anvil (the only ones honed).
+func _sharp_blocks() -> int:
+	var n := 0
+	for c in cells.values():
+		if String(c[1]) == "edge" or String(c[1]) == "point":
+			n += 1
+	return n
+
+## The sharpness set and what the honing of the blade comes to at it.
 func _sharp_note(k: float) -> String:
-	return "%d%% · +%d per Cut/Stab" % [roundi(k * 100.0), Arms.sharp_price("edge", k)]
+	var n := _sharp_blocks()
+	if free_build:
+		return "%d%%" % roundi(k * 100.0)
+	return "%d%% · honing %d (%d Cut/Stab block%s)" % [roundi(k * 100.0), Arms.honing(_jobs_now(), k), n, "" if n == 1 else "s"]
+
+func _jobs_now() -> Array:
+	return cells.values().map(func(c): return String(c[1]))
 
 func _voxels_ui() -> void:
 	# 1. What the next blocks do: a big choice of four.
@@ -727,15 +762,20 @@ func _voxels_ui() -> void:
 	var sl_v := UIStyle.label(_sharp_note(sl.value), 13, UIStyle.GOLD)
 	sl_v.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sr.add_child(sl_v)
-	var tip := "Sharpness: how easily a Cut or Stab block gets into flesh and how deep it wounds.\nIt costs per Cut or Stab block, by the sharpness set:\n%s\nHold and Crush blocks cost no honing." % "\n".join([0.25, 0.5, 0.75, 1.0].map(func(k): return "  %d%%: +%d denarii a block" % [roundi(k * 100.0), Arms.sharp_price("edge", k)]))
+	var tip := "Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\nHoning each Cut or Stab block costs, by the sharpness set:\n%s" % "\n".join([0.25, 0.5, 0.75, 1.0].map(func(k): return "  %d%%: %.1f denarii a block" % [roundi(k * 100.0), Arms.sharp_cost("edge", k)]))
 	for c in [sl_l, sl, sl_v]:
 		c.tooltip_text = tip
 		c.mouse_filter = Control.MOUSE_FILTER_STOP
 	sl.value_changed.connect(func(x):
 		design.sharpness = x
-		sl_v.text = _sharp_note(x)
 		_update_texts())
+	sr.set_meta("sharp_row", true)
+	sl_v.set_meta("sharp_note", true)
 	mode_box.add_child(sr)
+	# With nothing on it to hone, the slider has nothing to do: a note says so instead.
+	var no_edge := UIStyle.label("Sharpness: only for Cut and Stab blocks (none on it yet)", 13, UIStyle.MUTED)
+	no_edge.set_meta("sharp_none", true)
+	mode_box.add_child(no_edge)
 	var cl := UIStyle.label("", 13, UIStyle.MUTED)
 	cl.set_meta("checklist", true)
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -965,6 +1005,16 @@ func _update_texts() -> void:
 		if c.has_meta("checklist"):
 			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + i.text))
 	cost_label.text = price_text(d)
+	var sharp := _sharp_blocks() > 0 or job == "edge" or job == "point"
+	for c in mode_box.get_children():
+		if c.has_meta("sharp_row"):
+			c.visible = sharp
+			for k in c.get_children():
+				if k.has_meta("sharp_note"):
+					k.text = _sharp_note(float(design.get("sharpness", 0.8)))
+		elif c.has_meta("sharp_none"):
+			c.visible = not sharp
+	_price_badge()
 	var heavy := ForgeLib.too_heavy(d, st)
 	if heavy != "":
 		cost_label.text = heavy
@@ -1002,8 +1052,39 @@ func _value_now() -> int:
 	var s := 0
 	var sh := clampf(float(design.get("sharpness", 0.8)), 0.0, 1.0)
 	for c in cells.values():
-		s += Arms.voxel_price(c[0]) + Arms.sharp_price(String(c[1]), sh)
-	return s
+		s += Arms.voxel_price(c[0])
+	return s + Arms.honing(_jobs_now(), sh)
+
+## What the job comes to now and the purse after it, in one line: always on show over the anvil.
+func _price_now() -> Array:
+	if scratch:
+		return [Arms.design_price(_design_now()), purse]
+	return [_value_now() - original_value, purse]
+
+var price_badge: Label
+func _price_badge() -> void:
+	if price_badge == null or not is_instance_valid(price_badge):
+		return
+	var panel := price_badge.get_parent() as Control
+	if free_build and not scratch and not workshop:
+		panel.visible = false
+		return
+	panel.visible = true
+	if workshop:
+		price_badge.text = "At the smith: %d denarii" % Arms.design_price(_design_now())
+		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
+		return
+	var pr := _price_now()
+	var pay: int = pr[0]
+	if pay < 0:
+		price_badge.text = "He pays you %d  ·  purse %d → %d" % [-pay, purse, purse - pay]
+		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
+	elif pay > purse:
+		price_badge.text = "Price %d  ·  you have %d: %d short" % [pay, purse, pay - purse]
+		price_badge.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
+	else:
+		price_badge.text = "Price %d  ·  purse %d → %d" % [pay, purse, purse - pay]
+		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 
 # ---------- The weapon on the anvil ----------
 
@@ -1475,7 +1556,7 @@ func _place(list: Array, face := -1, origin = null) -> void:
 	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
 		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
 		return
-	if not free_build and _value_now() + (Arms.voxel_price(mat) + Arms.sharp_price(job, float(design.get("sharpness", 0.8)))) * add.size() - original_value > purse:
+	if not free_build and _value_now() + Arms.voxel_price(mat) * add.size() + roundi(Arms.sharp_cost(job, float(design.get("sharpness", 0.8))) * add.size()) - original_value > purse:
 		cost_label.text = "Not enough denarii for that"
 		return
 	_push_undo()

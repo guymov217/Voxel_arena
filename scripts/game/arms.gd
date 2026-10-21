@@ -35,17 +35,32 @@ static func voxel_price(mat: String) -> int:
 ## at the stone, nothing for a blunt one.
 const SHARP_PRICE := 3.0
 
+## (Fractions of a denarius a block: the honing of a whole blade is summed, then rounded once, so
+## every step of the sharpness moves the price, and no keener setting is ever the cheaper.)
+static func sharp_cost(job: String, sharpness: float) -> float:
+	return SHARP_PRICE * sharpness * sharpness if job == "edge" or job == "point" else 0.0
+
 static func sharp_price(job: String, sharpness: float) -> int:
-	return roundi(SHARP_PRICE * sharpness * sharpness) if job == "edge" or job == "point" else 0
+	return roundi(sharp_cost(job, sharpness))
+
+## The honing of every Cut and Stab block of `jobs` (job names) at `sharpness`, in denarii.
+static func honing(jobs: Array, sharpness: float) -> int:
+	var h := 0.0
+	for j in jobs:
+		h += sharp_cost(String(j), sharpness)
+	return roundi(h)
 
 static func value(d) -> int:
 	if not (d is Dictionary):
 		return 0
 	var s := 0
+	var jobs := []
 	var sh := clampf(float(d.get("sharpness", 0.8)), 0.0, 1.0)
 	for v in d.get("voxels", []):
-		s += voxel_price(v[3]) + (sharp_price(String(v[4]), sh) if v.size() > 4 else 0)
-	return s
+		s += voxel_price(v[3])
+		if v.size() > 4:
+			jobs.append(v[4])
+	return s + honing(jobs, sh)
 
 ## Weapons kept aside for now (still in the data, out of the shop, the lists, the lottery
 ## and the drops from the stands): the chain weapons and the crossbow.
