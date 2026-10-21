@@ -668,3 +668,29 @@ func test_sharpness_only_where_there_is_an_edge() -> void:
 			steps_up += 1
 		last = v
 	t.check(steps_up >= 12, "the price climbs with the sharpness, step by step (%d of 20 steps)" % steps_up)
+
+## The training stick takes blades: a Cut block put on it goes on at the smith's price, and as
+## the stick was honed to nothing the smith hones the new edge to a working one (else it would
+## cut nothing); the price says so.
+func test_the_starting_stick_takes_a_blade() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.open(Arms.empty().main.duplicate(true), 20, func(_d, _c): pass)
+	await get_tree().process_frame
+	f._show_mode("voxels")
+	f.mirror = false
+	f.mirror_z = false
+	f.mat = "iron"
+	f.job = "edge"
+	var top := -99
+	for k in f.cells:
+		top = maxi(top, k.y)
+	var n: int = f.cells.size()
+	f._place([Vector3i(1, top, 0), Vector3i(1, top - 1, 0), Vector3i(1, top - 2, 0)], 0, Vector3i(1, top, 0))
+	t.eq(f.cells.size(), n + 3, "three Cut blocks on the stick")
+	t.check(float(f.design.sharpness) >= 0.5, "honed to a working edge (%.2f)" % float(f.design.sharpness))
+	var d: Dictionary = f._design_now()
+	t.check(float(ForgeLib.compute_stats(d).get("cut", 0.0)) > 0.0 or ForgeLib.three_bars(ForgeLib.compute_stats(d)).damage > 0.0, "and it cuts")
+	t.check(f._price_now()[0] > 3, "the honing is in the price (%d)" % f._price_now()[0])
+	t.check(f._price_now()[0] <= 20, "within the starting purse")
+	f.queue_free()

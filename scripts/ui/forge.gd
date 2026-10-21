@@ -1544,6 +1544,16 @@ func turn_face(k: Vector3i) -> void:
 	cost_label.text = ("This %s faces %s (R: turn it again)" % [str(c[1]), ForgeLib.FACE_NAMES[f]]) if f >= 0 else "This %s faces as the weapon's shape has it (R: turn it)" % str(c[1])
 	_rebuild()
 
+const DULL := 0.2           # below it an edge cuts next to nothing
+const WORKING_EDGE := 0.6   # what the smith hones a first edge to on a dull weapon
+
+func _set_sharp_slider(v: float) -> void:
+	for c in mode_box.get_children():
+		if c.has_meta("sharp_row"):
+			for k in c.get_children():
+				if k is HSlider:
+					k.set_value_no_signal(v)
+
 func _place(list: Array, face := -1, origin = null) -> void:
 	var want := list.filter(func(c): return not cells.has(c) and ForgeLib.in_grid(c.x, c.y, c.z))
 	if want.is_empty():
@@ -1556,10 +1566,17 @@ func _place(list: Array, face := -1, origin = null) -> void:
 	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
 		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
 		return
-	if not free_build and _value_now() + Arms.voxel_price(mat) * add.size() + roundi(Arms.sharp_cost(job, float(design.get("sharpness", 0.8))) * add.size()) - original_value > purse:
+	# A first edge or point on a weapon honed to nothing (the training stick) would cut nothing:
+	# the smith hones it to a working edge at once (the slider still sets it any way after).
+	var sharp_new := (job == "edge" or job == "point") and float(design.get("sharpness", 0.8)) < DULL and _sharp_blocks() == 0
+	var sh_after := WORKING_EDGE if sharp_new else float(design.get("sharpness", 0.8))
+	if not free_build and _value_now() + Arms.voxel_price(mat) * add.size() + roundi(Arms.sharp_cost(job, sh_after) * add.size()) - original_value > purse:
 		cost_label.text = "Not enough denarii for that"
 		return
 	_push_undo()
+	if sharp_new:
+		design.sharpness = WORKING_EDGE
+		_set_sharp_slider(WORKING_EDGE)
 	for c in add:
 		# A sharp block faces away from the face it was put on (out from the weapon); a mirrored
 		# one the mirrored way.
