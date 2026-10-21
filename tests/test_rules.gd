@@ -32,8 +32,34 @@ func test_out_cold_is_beaten() -> void:
 	a.concussion = 1.0
 	a.fall(99.0, true)
 	await _steps(5)
+	t.check(not a.is_out(), "not counted out the instant he drops")
+	for i in 90:
+		await get_tree().physics_frame
+		a.is_out()   # (the match asks every step)
 	t.check(a.alive and a.is_out() and a.is_beaten(), "rung senseless on the sand, alive but beaten")
 	w.queue_free()
+
+## One hard knock that floors him is not the end of his bout: his head clears on the sand in a
+## moment and he is in the fight again; only a knock that leaves him senseless counts him out.
+func test_one_knock_is_not_a_knockout() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -8))
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0.1, 0), "yaw": PI})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var a: Fighter = e.f
+	for i in 60:
+		await get_tree().physics_frame
+	a.concussion = 0.87
+	a.fall(1.5, true)
+	var out := false
+	for i in 120 * 3:
+		await get_tree().physics_frame
+		out = out or a.is_beaten()
+	t.check(not out, "floored by one knock, never counted out (concussion now %.2f)" % a.concussion)
+	m.queue_free()
 
 func test_a_hard_landing_hurts() -> void:
 	var w := _world()

@@ -1240,6 +1240,22 @@ func _land_hard(speed: float) -> void:
 ## Out cold: on the sand with the head too far gone (bled white or rung senseless) to ever get
 ## up again. Alive, but beaten: the bout is over for him.
 func is_out() -> bool:
+	if not _out_cold_now():
+		_out_since = -1
+		return false
+	var now := Engine.get_physics_frames()
+	if _out_since < 0:
+		_out_since = now
+	return float(now - _out_since) / float(Engine.physics_ticks_per_second) >= OUT_HOLD
+
+## Out cold only once it lasts: down, unable to stand, the head too far gone or ringing for
+## OUT_HOLD seconds on end. A single hard knock that sends him down (and clears in a moment, as a
+## ringing head does on the sand) no longer ends his bout on the spot; a crushing blow, a cracked
+## skull or a ruined head still does.
+const OUT_HOLD := 0.6
+const CONC_PER_BLOW := 0.7   # the most one blow to a sound skull adds to the concussion
+var _out_since := -1   # the physics frame he was first seen out cold (-1: he is not)
+func _out_cold_now() -> bool:
 	if state != "down" or not alive or can_stand():
 		return false
 	return head.hp < 30.0 or (concussion >= 0.85 and not enraged)
@@ -2966,6 +2982,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var detached := part.severed
 	var keep_stagger := stagger
 	var keep_conc := concussion
+	var cracked_before := skull_cracked
 	var type: String = hit.get("type", "blunt")
 	var hardness: float = hit.get("hardness", 0.3)
 	var sharpness: float = hit.get("sharpness", 0.0)
@@ -3228,6 +3245,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			_check_belly(res)
 		if not part.severed and part.integrity < (HEAD_DEATH if part == head else 0.4):
 			part.hp = 0.0
+	# One knock rings the head and may floor him, all it does at once (the blow, the crater, the
+	# brain shaken) together; it takes another before the first has cleared, or a skull already
+	# cracked, to leave him senseless (CONC_PER_BLOW).
+	if not detached and not cracked_before:
+		concussion = minf(concussion, maxf(keep_conc, keep_conc + CONC_PER_BLOW))
 	if part == head and part.hp <= 0.0:
 		die("ko")
 	if part == torso and part.hp <= 0.0:

@@ -442,6 +442,8 @@ func _blow(g: Dictionary) -> Dictionary:
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
+	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
+	var cracked0: bool = bool(vic_char.get("skull_cracked"))
 	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
@@ -457,6 +459,9 @@ func _blow(g: Dictionary) -> Dictionary:
 		vic.bleed += J * (0.05 if vic == vic_char.head else 0.015)
 		if vic == vic_char.head:
 			vic_char.concussion = minf(1.0, vic_char.concussion + J * 0.012)
+			# (One knock at a time, the fist's ringing and the blow's together: Fighter.CONC_PER_BLOW.)
+			if not cracked0:
+				vic_char.concussion = minf(vic_char.concussion, maxf(conc0, conc0 + Fighter.CONC_PER_BLOW))
 		vic.apply_central_impulse(Vector3(dir.x, dir.y * 0.5, dir.z) * J * 0.7 * vic_char.MS)
 	if kick and not vic.severed and vic_char.get("torso"):
 		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(55.0, J * 3.0)
