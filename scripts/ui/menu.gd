@@ -2501,6 +2501,17 @@ func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 		_set_opt("voxelAO", on)
 		apply_picture(Save.get_value("settings", {})))
 	v.add_child(vao)
+	var look := OptionButton.new()
+	for k in Physique.STYLES:
+		look.add_item(Physique.NAMES[k])
+	look.select(maxi(0, Physique.STYLES.find(Physique.current())))
+	look.item_selected.connect(func(i):
+		_set_opt("physique", Physique.STYLES[i])
+		look.tooltip_text = Physique.BLURB[Physique.STYLES[i]]
+		Physique.restyle_all(get_tree().root))
+	look.tooltip_text = Physique.BLURB[Physique.current()]
+	_opt_row(v, "Gladiators' look", look, "How the gladiators are drawn: " + " ".join(Physique.STYLES.map(func(k): return Physique.NAMES[k] + ": " + Physique.BLURB[k]))
+		+ " Only the drawing: every cut, organ and limb works the same. Changes at once.")
 	if Match.SMOOTH_BODIES_OFFERED:
 		var bo := OptionButton.new()
 		bo.add_item("Smooth")

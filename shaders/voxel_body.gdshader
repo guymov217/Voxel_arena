@@ -16,6 +16,11 @@ shader_type spatial;
 // tapered: an edge voxel pinched thin across the blade toward its open side, a wedge whose bevels
 // meet in a bright honed line (half of a blade two thick, toward the face the halves share); a
 // point voxel pinched to a tip. Only the look: it hits as a cube.
+//
+// A gladiator's look (Physique) can bevel his body's outer edges: drawn with bevel_mode on, the
+// code over the kind is the voxel's open faces (+x -x +y -y +z -z, bits 0..5), not a taper. Where two or three open
+// faces meet, the box's corner there is drawn pulled in toward its middle, so the edges of the
+// body read chamfered; nothing inside is uncovered, and it still hits as a cube.
 
 uniform int force_kind = -1;
 // For a lone box (not a MultiMesh): its colour, and its half size when it is not a cube.
@@ -27,6 +32,9 @@ uniform float rim_amount : hint_range(0.0, 1.0) = 0.2;
 uniform float ao_strength : hint_range(0.0, 1.0) = 0.55;   // 0: corner shading off (Options)
 uniform float edge_thin : hint_range(0.0, 1.0) = 0.1;    // a sharp edge's thickness, of the voxel's
 uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
+uniform float body_bevel : hint_range(0.0, 1.0) = 0.85;   // how far a bevelled corner is pulled in
+uniform float oil : hint_range(0.0, 1.0) = 0.0;          // skin oiled for the arena: glossier
+uniform bool bevel_mode = false;
 
 const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
 const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -45,7 +53,32 @@ void vertex() {
 	float kc = INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0;
 	kind_f = force_kind >= 0 ? float(force_kind) : mod(kc, 16.0);
 	taper_code = INSTANCE_CUSTOM.a > 0.5 ? floor(kc / 16.0) : 0.0;
-	if (taper_code > 0.5) {
+	if (bevel_mode) {
+		int open = int(taper_code) & 63;
+		// Which way the body is open along each axis (0: shut both ways, or a sliver open both).
+		vec3 dir = vec3(0.0);
+		for (int a = 0; a < 3; a++) {
+			bool pos = ((open >> (2 * a)) & 1) == 1;
+			bool neg = ((open >> (2 * a + 1)) & 1) == 1;
+			dir[a] = pos == neg ? 0.0 : (pos ? 1.0 : -1.0);
+		}
+		vec3 at = vec3(0.0);
+		float n = 0.0;
+		for (int a = 0; a < 3; a++) {
+			if (dir[a] != 0.0 && sign(VERTEX[a]) == dir[a]) {
+				at[a] = 1.0;
+				n += 1.0;
+			}
+		}
+		float faces = abs(dir.x) + abs(dir.y) + abs(dir.z);
+		if (n >= 2.0) {
+			VERTEX *= vec3(1.0) - at * body_bevel;
+		}
+		int na = abs(NORMAL.x) > 0.5 ? 0 : (abs(NORMAL.y) > 0.5 ? 1 : 2);
+		if (faces >= 2.0 && dir[na] != 0.0 && sign(NORMAL[na]) == dir[na]) {
+			NORMAL = normalize(mix(NORMAL, normalize(dir), body_bevel));
+		}
+	} else if (taper_code > 0.5) {
 		int t = int(taper_code);
 		float thin = ((t >> 9) & 1) == 1 ? point_thin : edge_thin;
 		vec3 pinch = vec3(float((t >> 6) & 1), float((t >> 7) & 1), float((t >> 8) & 1));
@@ -136,7 +169,7 @@ void fragment() {
 	}
 	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
 	float hone = 0.0;
-	if (taper_code > 0.5) {
+	if (taper_code > 0.5 && !bevel_mode) {
 		int t = int(taper_code);
 		for (int f = 0; f < 6; f++) {
 			if (((t >> f) & 1) == 1) {
@@ -157,6 +190,9 @@ void fragment() {
 	if (k == 0) {
 		// Skin: light through the thin edges, warm.
 		BACKLIGHT = c * vec3(0.16, 0.07, 0.05);
+		// Oiled: a wet sheen on the muscles that catches the sun.
+		ROUGHNESS = mix(ROUGHNESS, 0.26 + 0.08 * seed, oil);
+		SPECULAR = mix(SPECULAR, 0.72, oil);
 	}
 	if (status.x > 0.0) {
 		// Burning: the voxel glows from within, flickering, white-yellow at its hottest.

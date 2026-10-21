@@ -43,7 +43,10 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		var d: Vector3 = inv * ((voxels[i].p as Vector3) - c)
 		lo = lo.min(d)
 		hi = hi.max(d)
-		mm.set_instance_transform(i, Transform3D(Basis(), d))
+		# A voxel a gladiator's look kept out of sight (Physique) stays out of sight on the
+		# piece too; it is still part of the piece and its weight.
+		var shown := 0.0 if voxels[i].get("veil", false) else 1.0
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * shown), d))
 		mm.set_instance_color(i, voxels[i].color)
 		if mm.use_custom_data:
 			mm.set_instance_custom_data(i, VoxelPart.kind_data(int(voxels[i].get("kind", 8))))

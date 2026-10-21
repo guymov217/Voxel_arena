@@ -314,3 +314,46 @@ func test_armour_built_up_and_out() -> void:
 		stack.append_array(nd.get_children())
 	t.check(tags.has("FRONT") and tags.has("BACK"), "the bench marks the front and the back (%s)" % [tags])
 	bench.queue_free()
+
+## A plate struck hard enough flies off as a piece, whatever side and angle the blow came from;
+## lighter blows on the same spot wear it until it gives. Where there is no armour, nothing flies.
+func test_struck_plates_fly_off_from_any_side() -> void:
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var sides := {"front": Vector3(0, 0, 1), "back": Vector3(0, 0, -1), "left": Vector3(1, 0, 0), "right": Vector3(-1, 0, 0),
+		"above": Vector3(0.3, 1, 0.4), "below at an angle": Vector3(-0.5, -0.6, 0.6)}
+	var x := 0.0
+	for side in sides:
+		x += 2.5
+		var f := w.fighter(Vector3(x, 1.2, 0), 0.0, {"armor": ["steelLorica"]})
+		var tor: VoxelPart = f.torso
+		var out: Vector3 = (sides[side] as Vector3).normalized()
+		# The point on the lorica's side of the trunk the blow comes in at.
+		var he: Vector3 = tor.half_ext
+		var lp := out / maxf(absf(out.x) / he.x, maxf(absf(out.y) / he.y, absf(out.z) / he.z))   # on the trunk's surface
+		var at: Vector3 = tor.global_transform * lp
+		var dir := -(tor.global_transform.basis * out).normalized()
+		var ad: Dictionary = tor.get_meta("armor")[0]
+		var before: int = ad.alive
+		var pieces := Chunk.all.size()
+		var res := f.apply_hit(tor, {"point": at, "dir": dir, "type": "blunt", "hardness": 1.0, "sharpness": 0.0, "impulse": 80.0, "heavy": 0.8})
+		t.check(int(res.get("armor_hit", 0)) > 0 and ad.alive < before, "%s: a hard blow knocks plates off (%d)" % [side, before - ad.alive])
+		t.check(Chunk.all.size() > pieces, "%s: they fly off as pieces" % side)
+		var flying := Chunk.all.slice(pieces).filter(func(c): return is_instance_valid(c))
+		t.check(flying.any(func(c): return c.linear_velocity.dot(dir) > 0.2), "%s: driven the way the blow went" % side)
+	# Light blows that knock nothing at once wear the plate until it gives.
+	var f2 := w.fighter(Vector3(-3, 1.2, 0), 0.0, {"armor": ["steelLorica"]})
+	var t2: VoxelPart = f2.torso
+	var ad2: Dictionary = t2.get_meta("armor")[0]
+	var at2: Vector3 = t2.global_transform * Vector3(0, 0, t2.half_ext.z)
+	var dir2 := -(t2.global_transform.basis * Vector3.BACK).normalized()
+	var first := f2.apply_hit(t2, {"point": at2, "dir": dir2, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "impulse": 9.0})
+	t.eq(int(first.get("armor_hit", 0)), 0, "one light knock takes no plate")
+	var n := 1
+	while int(ad2.alive) == ad2.cells.size() and n < 40:
+		f2.apply_hit(t2, {"point": at2, "dir": dir2, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "impulse": 9.0})
+		n += 1
+	t.check(int(ad2.alive) < ad2.cells.size(), "light knocks wear a plate off in the end (%d blows)" % n)
+	t.check(n > 2, "but not at the first few (%d)" % n)
+	w.queue_free()

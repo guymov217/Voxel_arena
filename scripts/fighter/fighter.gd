@@ -300,6 +300,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		apply_body(opts.body)
 	if String(mods.get("look", "")) != "":
 		MonsterLook.paint_face(self, String(mods.look))
+	# How he is drawn (Options: the gladiators' look). Drawing only.
+	Physique.dress(self)
 	var main = loadout.get("main")
 	var off = loadout.get("off")
 	# A blade arm carries its own blade; a hook carries nothing.
@@ -714,7 +716,7 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	mmesh.instance_count = cells.size()
 	for i in cells.size():
 		var c: Array = cells[i]
-		mmesh.set_instance_transform(i, Transform3D(Basis(), Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S))
+		mmesh.set_instance_transform(i, Transform3D(Basis(), Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S + Physique.inset(p, c)))
 		mmesh.set_instance_color(i, looks[i][0])
 		mmesh.set_instance_custom_data(i, VoxelPart.kind_data(int(looks[i][1])))
 	var inst := MultiMeshInstance3D.new()
@@ -731,8 +733,52 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	var on := PackedByteArray()
 	on.resize(cells.size())
 	on.fill(1)
-	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst}])
+	var cols := []
+	var ks := []
+	for lk in looks:
+		cols.append(lk[0])
+		ks.append(int(lk[1]))
+	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst, "cols": cols, "kinds": ks}])
 	_armor_dirty = true
+
+## How much wear (summed blow force, times the plate's hardness) knocks a plate off at last.
+const PLATE_WEAR := 26.0
+
+## A plate knocked off: gone from him, it flies off the way the blow drove it, a piece of its
+## own (what is left of him is uncovered there).
+func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force: float) -> void:
+	ad.on[ci] = 0
+	ad.alive -= 1
+	_armor_dirty = true
+	var at: Vector3 = (ad.pts[ci] as Vector3) + Physique.inset(part, ad.cells[ci])
+	if ad.node and is_instance_valid(ad.node):
+		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+	if part.freeze or not part.is_inside_tree():
+		return
+	# The plate as voxels of the body's own size, two to a side, in its colour and stuff.
+	var c: Color = ad.cols[ci] if ad.has("cols") else Color(0.5, 0.5, 0.5)
+	var kind: int = ad.kinds[ci] if ad.has("kinds") else 3
+	var q := V * S * 0.25
+	var voxels := []
+	for dx in [-q, q]:
+		for dy in [-q, q]:
+			for dz in [-q, q]:
+				voxels.append({"p": part.global_transform * (at + Vector3(dx, dy, dz)), "color": c, "kind": kind})
+	var out := (part.global_transform.basis * at).normalized()
+	var d: Vector3 = dir.normalized() if dir.length_squared() > 1e-6 else out
+	Chunk.spawn(part, voxels, (d * 0.6 + out * 0.4 + Vector3.UP * 0.25).normalized() * clampf(force / 40.0, 0.6, 2.0))
+
+## His armour drawn again on the outline of his look (Physique): each plate still on him pulled
+## in onto the voxels drawn under it. Where it stops blows ("pts") stays as it was.
+func place_armor() -> void:
+	for p in parts:
+		for ad in p.get_meta("armor", []):
+			if ad.node == null or not is_instance_valid(ad.node):
+				continue
+			var m: MultiMesh = ad.node.multimesh
+			for ci in ad.cells.size():
+				if ad.on[ci] == 1:
+					m.set_instance_transform(ci, Transform3D(Basis(), (ad.pts[ci] as Vector3) + Physique.inset(p, ad.cells[ci])))
 
 ## All he carries, kg: his armour and the weapons in his hands (a warhammer and a tower of a
 ## shield tire a man as plate does).
@@ -2938,16 +2984,23 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var h: float = Data.material(a0.mat).get("hardness", 0.6)
 		var force := J * (0.6 if type == "blunt" else 1.0) * (1.0 + 0.6 * heavy)
 		var nk := mini(4 + roundi(3.0 * heavy), 1 + int(force / (12.0 * h))) if force > 10.0 * h else 0
-		for k in mini(nk, near.size()):
+		var gone := 0
+		var reach := V * S * 1.7
+		for k in near.size():
 			var ad: Dictionary = near[k][0]
 			var ci: int = near[k][1]
-			ad.on[ci] = 0
-			ad.alive -= 1
-			_armor_dirty = true
-			if ad.node and is_instance_valid(ad.node):
-				ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
-		if nk > 0:
-			res.armor_hit = nk
+			# Every blow wears the plates round where it struck, from whatever side and at
+			# whatever angle it came, the nearest most: lighter blows add up until one gives.
+			var hk: float = Data.material(ad.mat).get("hardness", 0.6)
+			if not ad.has("wear"):
+				ad.wear = PackedFloat32Array()
+				ad.wear.resize(ad.cells.size())
+			ad.wear[ci] += force * (1.0 - float(near[k][2]) / reach)
+			if k < nk or ad.wear[ci] > PLATE_WEAR * hk:
+				_knock_plate(part, ad, ci, hit.dir, force)
+				gone += 1
+		if gone > 0:
+			res.armor_hit = gone
 		var absorb := minf(0.85, 0.3 + 0.55 * h)
 		J *= 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
 		res.armor = true

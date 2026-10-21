@@ -116,6 +116,12 @@ var kinds := PackedByteArray()   # per voxel, what it is made of (only how it is
 ## there, the creases of a body and the gaps between blocks in shadow. Only how it is drawn.
 var ao := PackedInt32Array()
 var cellmap := PackedInt32Array()   # grid cell -> voxel index + 1 (0: never a voxel there)
+## A gladiator's look (Physique), drawing only: `veil` 1 where a voxel is there for every blow,
+## organ, bone and joint but not drawn (the shell a style pares away over plain flesh), and
+## `bevel` on to draw the body's outer edges chamfered (`bev`: each voxel's open faces).
+var veil := PackedByteArray()
+var bevel := false
+var bev := PackedInt32Array()
 ## Bodies drawn as a smooth skin over their voxels (VoxelSkin) instead of the voxel boxes; the
 ## voxels are still what is hit, cut and simulated. Set from the settings ("bodies"). Off for
 ## now (kept for later: SMOOTH_BODIES_DEFAULT in match.gd and the menu's Bodies row).
@@ -198,6 +204,18 @@ static func body_material(force := -1) -> ShaderMaterial:
 		_forced[force] = m
 	return _forced[force]
 
+## The body material for a gladiator's look (Physique): his edges bevelled (the code over each
+## voxel's kind is then its open faces, not a blade's taper), the skin oiled or not. Only the look.
+static var _looks := {}
+static func look_material(oiled: bool) -> ShaderMaterial:
+	if not _looks.has(oiled):
+		var m: ShaderMaterial = body_material().duplicate()
+		m.set_shader_parameter("bevel_mode", true)
+		m.set_shader_parameter("oil", 1.0 if oiled else 0.0)
+		m.set_shader_parameter("ao_strength", ao_strength)
+		_looks[oiled] = m
+	return _looks[oiled]
+
 ## How dark the corners of the voxels go (Options, "Voxel shading"): 0 off. Every voxel body,
 ## armour plate and weapon drawn with body_material() follows at once.
 const AO_ON := 0.55
@@ -205,7 +223,7 @@ static var ao_strength := AO_ON
 
 static func set_ao(on: bool) -> void:
 	ao_strength = AO_ON if on else 0.0
-	for mat in [_body_material] + _forced.values():
+	for mat in [_body_material] + _looks.values() + _forced.values():
 		if mat:
 			mat.set_shader_parameter("ao_strength", ao_strength)
 
@@ -375,7 +393,7 @@ func _build_mesh() -> void:
 	for i in fx.size():
 		mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
 		mm.set_instance_color(i, colors[i])
-		mm.set_instance_custom_data(i, kind_data(kinds[i], ao[i]))
+		mm.set_instance_custom_data(i, _custom(i))
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
@@ -479,7 +497,7 @@ func _write_glow(list: Array) -> void:
 		_set_status(i, g)
 
 func _set_status(i: int, g: Vector2) -> void:
-	var c := Color(float(kinds[i]) / 16.0, g.x, g.y, 1.0 + float(ao[i] if i < ao.size() else 0))
+	var c := _custom(i, g)
 	if jaw_slot.has(i):
 		if jaw_mm:
 			jaw_mm.set_instance_custom_data(jaw_slot[i], c)
@@ -537,11 +555,15 @@ func resync() -> void:
 	for i in fx.size():
 		if jaw_slot.has(i):
 			continue
-		(main_on if alive[i] else main_off).append([i, local_of(i)])
+		(main_on if alive[i] and not veiled(i) else main_off).append([i, local_of(i)])
 		cols.append([i, colors[i]])
 	_write_shown(mm, main_on, true)
 	_write_shown(mm, main_off, false)
 	_write_colors(mm, cols)
+	if veil.size() > 0 or bevel:
+		for i in fx.size():
+			if not jaw_slot.has(i):
+				mm.set_instance_custom_data(i, _custom(i, glowing.get(i, Vector2.ZERO)))
 	_mark_skin()
 
 func resync_later() -> void:
@@ -754,7 +776,28 @@ func _cell(x: int, y: int, z: int) -> int:
 
 func _solid(c: Vector3i) -> bool:
 	var i := _cell(c.x, c.y, c.z)
-	return i >= 0 and alive[i] == 1
+	return i >= 0 and alive[i] == 1 and not veiled(i)
+
+func veiled(i: int) -> bool:
+	return i < veil.size() and veil[i] == 1
+
+## Voxel i's open faces as bevel bits for the shader (0 when the part is not bevelled).
+func bevel_bits(i: int) -> int:
+	if not bevel:
+		return 0
+	var p := Vector3i(fx[i], fy[i], fz[i])
+	var m := 0
+	for f in 6:
+		if not _solid(p + (AO_FACES[f][0] as Vector3i)):
+			m |= 1 << f
+	return m
+
+## The instance data of voxel i as it is drawn now: its kind, corner shade, bevel and glow.
+func _custom(i: int, g := Vector2.ZERO) -> Color:
+	var c := kind_data(kinds[i], ao[i] if i < ao.size() else 0, bev[i] if i < bev.size() else 0)
+	c.g = g.x
+	c.b = g.y
+	return c
 
 ## Voxel i's 24 corner bits, 4 per face (face * 4 + corner; corner bit 0 the low end of the
 ## face's first axis, bit 1 the high end of its second). A corner is shut in when a voxel sits
@@ -787,6 +830,9 @@ func _build_ao() -> void:
 	ao.resize(fx.size())
 	for i in fx.size():
 		ao[i] = ao_bits(i)
+	bev.resize(fx.size())
+	for i in fx.size():
+		bev[i] = bevel_bits(i)
 
 ## Voxels gone or back: the shading of the ones round them follows (a cut opens its edges to
 ## the light, a hole's walls lie in its shadow).
@@ -805,9 +851,12 @@ func _reshade(changed: Array) -> void:
 						continue
 					seen[j] = true
 					var b := ao_bits(j)
-					if b == ao[j]:
+					var bb := bevel_bits(j)
+					if b == ao[j] and (j >= bev.size() or bb == bev[j]):
 						continue
 					ao[j] = b
+					if j < bev.size():
+						bev[j] = bb
 					var g: Vector2 = glowing.get(j, Vector2.ZERO)
 					_set_status(j, g)
 
@@ -821,7 +870,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 		alive[i] = 0
 		alive_count -= 1
 		done.append(i)
-		out.append({"p": world_of(i), "color": colors[i], "kind": kinds[i]})
+		out.append({"p": world_of(i), "color": colors[i], "kind": kinds[i], "veil": veiled(i)})
 		centre += local_of(i)
 	if out.is_empty():
 		return out
@@ -842,7 +891,7 @@ func set_shown(indices: Array, on: bool) -> void:
 	var main := []
 	var jaw := []
 	for i in indices:
-		if i < 0 or i >= fx.size():
+		if i < 0 or i >= fx.size() or (on and veiled(i)):
 			continue
 		if jaw_slot.has(i):
 			jaw.append([jaw_slot[i], local_of(i) - jaw_pivot.position])
@@ -941,10 +990,10 @@ func build_jaw(jw: Dictionary) -> void:
 	for s in idx.size():
 		var i: int = idx[s]
 		jaw_slot[i] = s
-		var k := 1.0 if alive[i] else 0.0
+		var k := 1.0 if alive[i] and not veiled(i) else 0.0
 		jaw_mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ONE * k), (local_of(i) - jaw_pivot.position) * k))
 		jaw_mm.set_instance_color(s, colors[i])
-		jaw_mm.set_instance_custom_data(s, kind_data(kinds[i], ao[i] if i < ao.size() else 0))
+		jaw_mm.set_instance_custom_data(s, _custom(i))
 	var ext := Vector3(grid.x, grid.y, grid.z) * sc + Vector3.ONE * sc
 	jaw_mm.custom_aabb = AABB(-ext, ext * 2.0)
 	var jm := MultiMeshInstance3D.new()
@@ -1020,6 +1069,28 @@ func set_gape(gape: float, dt: float) -> void:
 	for c in jaw_pivot.get_children():
 		if c is MeshInstance3D and c.name.begins_with("Tooth"):
 			c.visible = jaw_mouth.visible and jaw_teeth
+
+## A look's veil and bevel (Physique), drawing only: `v` per voxel 1 to hide it though it is
+## there, or empty for none. The shading round them follows.
+func set_look(v: PackedByteArray, bevel_on: bool) -> void:
+	var was := veil
+	veil = v
+	bevel = bevel_on
+	var show := []
+	var hide := []
+	for i in fx.size():
+		var now := veiled(i)
+		var before := i < was.size() and was[i] == 1
+		if alive[i] == 1 and now != before:
+			(hide if now else show).append(i)
+	set_shown(hide, false)
+	set_shown(show, true)
+	if mm == null or ao.size() != fx.size():
+		return
+	for i in fx.size():
+		ao[i] = ao_bits(i)
+		bev[i] = bevel_bits(i)
+		_set_status(i, glowing.get(i, Vector2.ZERO))
 
 ## Puts voxels back (a mended limb in a replay, a net message out of order).
 func restore_voxels(indices: Array) -> void:
