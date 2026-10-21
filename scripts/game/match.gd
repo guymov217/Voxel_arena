@@ -508,7 +508,13 @@ static func ladder_weapon(st: int, own: Array, rng_: RandomNumberGenerator) -> S
 		return fit[rng_.randi_range(0, fit.size() - 1)]
 	var pool := LADDER_WEAPONS.filter(func(k): return ladder_power(k) <= cap and ladder_power(k) >= cap * 0.4)
 	if pool.is_empty():
-		pool = ["dagger"]
+		# Past the dearest weapon's worth (late in the campaign) the budget buys anything: the
+		# strongest few, never back down to a dagger.
+		var by := LADDER_WEAPONS.duplicate()
+		by.sort_custom(func(a, b): return ladder_power(a) > ladder_power(b))
+		pool = by.filter(func(k): return ladder_power(k) <= cap).slice(0, 4)
+		if pool.is_empty():
+			pool = ["dagger"]
 	return pool[rng_.randi_range(0, pool.size() - 1)]
 
 ## How much of a foe's skill (and how far up its armour) the campaign's bout `st` brings out.

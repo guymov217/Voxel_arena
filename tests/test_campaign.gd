@@ -303,3 +303,19 @@ func test_a_blank_anvil_costs_next_to_nothing() -> void:
 	var blank := {"name": "New weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
 	t.eq(Arms.design_price(blank), 0, "the grip block it starts from costs nothing")
 	t.check(Arms.design_price(Data.preset("gladius")) > 30, "a whole gladius still costs what it is worth (%d)" % Arms.design_price(Data.preset("gladius")))
+
+## Late in the campaign (the budget past the dearest weapon) foes still come with the strongest
+## weapons, never with a dagger.
+func test_late_foes_keep_strong_weapons() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var strongest := 0
+	for k in Match.LADDER_WEAPONS:
+		strongest = maxi(strongest, Match.ladder_power(k))
+	for st in [24, 32, 48, 64]:
+		var weak := 0
+		for i in 40:
+			var k := Match.ladder_weapon(st, [], rng)
+			if Match.ladder_power(k) < strongest * 0.5:
+				weak += 1
+		t.eq(weak, 0, "bout %d: no weak weapon in the foes' hands" % st)
