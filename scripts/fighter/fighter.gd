@@ -741,9 +741,12 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst, "cols": cols, "kinds": ks}])
 	_armor_dirty = true
 
-## How much wear (summed blow force) knocks a plate off at last, by its stuff: leather 22,
-## bronze 45, iron 49, steel 54 (a gladius cut is about 24, a heavy hammer blow about 57).
-const PLATE_WEAR := 36.0
+## How much wear (summed blow force) knocks a plate off at last, by its stuff: leather 14,
+## bronze 29, iron 31, steel 35 (in blow force, J: a gladius cut is about 24, a hammer blow
+## 32, a heavy hammer blow 95: a cut goes through leather at once and dents nothing off steel
+## or iron until it adds up; a hammer takes an iron plate at a blow and two or three off steel
+## when swung with weight behind it).
+const PLATE_WEAR := 23.0
 static func plate_wear(mat: String) -> float:
 	return PLATE_WEAR * (0.5 + float(Data.material(mat).get("hardness", 0.6)))
 
@@ -3094,7 +3097,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if not near.is_empty():
 		var a0: Dictionary = near[0][0]
 		var h: float = Data.material(a0.mat).get("hardness", 0.6)
-		var force := J * (0.6 if type == "blunt" else 1.0) * (1.0 + 0.6 * heavy)
+		var force := J * (1.0 + 0.6 * heavy)   # a dent knocks a plate as a cut does; the blow's bite is another matter (armor_f)
 		var gone := 0
 		var reach := V * S * 1.7
 		for k in near.size():
