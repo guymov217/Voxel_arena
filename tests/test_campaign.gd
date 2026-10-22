@@ -423,3 +423,24 @@ func test_the_second_campaign_is_tougher() -> void:
 	t.check(is_equal_approx(float(m2.mods.toughness), float(m1.mods.toughness) * (1.0 + Match.LAP_TOUGH)), "the recruit a third tougher (%.2f from %.2f)" % [float(m2.mods.toughness), float(m1.mods.toughness)])
 	first.queue_free()
 	again.queue_free()
+
+## The crowd pays a little for a lively bout and nothing for a dull one: the heat of a fight is
+## the share of its time near a blow and the party's favour, and the bonus a quarter of the
+## stage's pay at the most.
+func test_the_crowd_pays_for_a_lively_bout() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
+	var sp: Spectacle = m.spectacle
+	for i in 60:
+		sp.update(0.1)
+	t.check(is_zero_approx(sp.heat(m.humans())), "a bout without a blow: no heat (%.2f)" % sp.heat(m.humans()))
+	var foe = m.enemies()[0].f
+	for i in 60:
+		if i % 10 == 0:
+			sp.on_hit({"attacker": m.me.f, "char": foe, "J": 24.0, "res": {}})
+		sp.update(0.1)
+	var h := sp.heat(m.humans())
+	t.check(h > 0.4 and h <= 1.0, "a bout of blows runs hot (%.2f)" % h)
+	t.check(int(round(100 * Match.CROWD_BONUS * h)) <= 25, "and the crowd's bonus stays small (%d on 100)" % int(round(100 * Match.CROWD_BONUS * h)))
+	m.queue_free()

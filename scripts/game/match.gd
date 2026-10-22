@@ -41,6 +41,9 @@ var round_pay := 0
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.5
+## The crowd's purse: up to this share of the stage's pay more for a lively bout (Spectacle.heat),
+## nothing for a dull one. Small, so it spurs a man on without paying for the campaign.
+const CROWD_BONUS := 0.25
 const PLAYER_BLEED := 0.75
 ## The campaign won and begun again (the rudis in hand): each time round the foes are tougher
 ## by LAP_TOUGH and the beasts bigger by LAP_SCALE.
@@ -1423,8 +1426,13 @@ func _check_round(dt: float) -> void:
 					_round_wounds()
 				_round_replay()
 				return
-			var pay := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE)) + round_pay
-			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, ("%d denarii to the party's purse. " if players_count > 1 else "%d denarii. ") % pay + "Back to the yard: spend, mend, gear up.", pay)
+			var base := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE))
+			var crowd := int(round(base * CROWD_BONUS * spectacle.heat(humans())))
+			var pay := base + round_pay + crowd
+			var purse := ("%d denarii to the party's purse" if players_count > 1 else "%d denarii") % pay
+			if crowd > 0:
+				purse += ", %d of them the crowd's" % crowd
+			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, purse + ". Back to the yard: spend, mend, gear up.", pay)
 		else:
 			_end(true, "Victory", "")
 

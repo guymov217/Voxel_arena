@@ -54,6 +54,9 @@ var gifted := {}
 var time := 0.0
 var last_action := 0.0
 var events: Array = []   # {f, amount, reason} for the HUD
+var last_blow := -99.0   # the last real blow by anyone
+var lively_t := 0.0      # the fight's seconds spent within a few of a blow
+var fight_t := 0.0
 # The announcer.
 var cool := {}
 var first_blood := false
@@ -75,6 +78,9 @@ func reset() -> void:
 	gifted.clear()
 	time = 0.0
 	last_action = 0.0
+	last_blow = -99.0
+	lively_t = 0.0
+	fight_t = 0.0
 	events.clear()
 	cool.clear()
 	first_blood = false
@@ -99,6 +105,18 @@ func add(f, amount: float, reason := "") -> void:
 		last_action = time
 	if reason != "":
 		events.append({"f": f, "amount": roundi(amount), "reason": reason})
+
+## How much of the fight was fighting, 0..1: the share of its time within five seconds of a
+## real blow (by anyone), and how far above indifference the crowd's favour for the party ended.
+## The campaign pays a little more for a lively bout (Match.CROWD_BONUS).
+func heat(party: Array) -> float:
+	var fav := 0.0
+	for e in party:
+		if e.get("f") != null and is_instance_valid(e.f):
+			fav += clampf((get_favor(e.f) - 20.0) / 80.0, 0.0, 1.0)
+	fav /= maxf(1.0, float(party.size()))
+	var live := lively_t / maxf(10.0, fight_t)
+	return clampf(0.6 * live + 0.4 * fav, 0.0, 1.0)
 
 ## 0 while the fight is lively, rising to 1 after about 20 s without real action.
 func boredom() -> float:
@@ -146,6 +164,8 @@ func on_hit(h: Dictionary) -> void:
 	var J: float = h.get("J", 0.0)
 	var res: Dictionary = h.get("res", {})
 	var severed: Array = res.get("severed", [])
+	if J > 4.0:
+		last_blow = time
 	# The crowd.
 	if J > 8.0:
 		add(a, minf(6.0, J * 0.25), "Mighty blow" if J > 30.0 else "")
@@ -237,6 +257,9 @@ func update(dt: float) -> void:
 		return
 	time += dt
 	round_time += dt
+	fight_t += dt
+	if time - last_blow < 5.0:
+		lively_t += dt
 	for e in m.entities:
 		var f = e.f
 		if not f.alive:
