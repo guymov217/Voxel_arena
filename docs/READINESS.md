@@ -8,7 +8,7 @@ PC with a GPU) and what is known to be rough. Kept with the code; update it as i
 | | Demo | Full game |
 |---|---|---|
 | Content | Ready: campaign bouts 1–8 (two bosses), duel / best of three / free-for-all, training, the forge (weapons and armour), the yard | Ready to play end to end: the whole campaign, 14 arena and party modes, 24 beasts and monsters, co-op and versus |
-| Code and tests | 296 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
+| Code and tests | 298 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
 | Store page | Copy, tags, 13 screenshots, all capsules, two key-art posters, the logo (`docs/store/`) | Same page; the demo is attached to it |
 | Steamworks | Not set up yet (needs the account owner) | Not set up yet |
 | Played on real hardware | Not by me: everything here was checked headless and with a software renderer | Same |
@@ -77,6 +77,13 @@ long campaign on real hardware before a release date is set.
   can be painted at the bench, and knocked-off plates stay off until the armourer mends them.
 - The market: the Hand of Jupiter (a grip on a man, steered by the crosshair and the wheel, F
   hurls him; twice a bout) and the fireball.
+- The trainer in the yard: six abilities (strength, blow, wind, hide, blood, footing) bought
+  a session at a time for denarii, two per cent a session, no further than a per cent for every
+  bout won; a death takes it all. Measured in equal-bot duels (gladius and shield, sides swapped
+  every bout, 24 bouts): untrained 14 of 24 won (noise about 50%), half-trained 17 of 24,
+  fully trained 18 of 24. A trained body tells, and does not decide a fight. The campaign
+  autopilot (which never blocks) still loses every bout with or without training, so the
+  campaign's winnability still needs people.
 - Settings: VSync, a frame-rate cap and the size of the text and menus (for a TV, 4K or the
   Deck), beside the display mode, window size, 3D resolution and anti-aliasing already there.
 - The save is written beside the old one and moved into place whole, the last good one kept as
