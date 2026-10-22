@@ -40,8 +40,13 @@ var players_count := 1
 var round_pay := 0
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
-const PAY_SCALE := 0.4
+const PAY_SCALE := 0.5
 const PLAYER_BLEED := 0.75
+## The campaign won and begun again (the rudis in hand): each time round the foes are tougher
+## by LAP_TOUGH and the beasts bigger by LAP_SCALE.
+const LAP_TOUGH := 0.3
+const LAP_SCALE := 0.1
+var lap := 1
 ## A boss's second coming (after every boss has come once): the steel set in place of the
 ## bronze and iron, and a coating on his weapon.
 const RETURN_ARMOR := ["steelLorica", "murmilloHelm", "steelGreaves", "manica"]
@@ -183,6 +188,7 @@ func setup(opts: Dictionary) -> void:
 	mode = opts.get("mode", "campaign")
 	stage = int(opts.get("stage", 1))
 	coop = bool(opts.get("coop", false))
+	lap = maxi(1, int(opts.get("lap", Save.get_value("coop_lap" if coop else "lap", 1)))) if mode == "campaign" else 1
 	role = opts.get("role", "local")
 	training = opts.get("training", {})
 	circus = opts.get("circus", {})
@@ -540,7 +546,8 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var depth := (3.2 if big else 1.6) + row * 1.1
 	var pos := Vector3(gx * (Arena.RADIUS - depth), 0.1, (0.6 if row % 2 else -0.6) if total > 2 else 0.0)
 	if en.has("beast"):
-		return {"kind": "beast", "beast": en.beast, "scale": en.get("scale"), "name": en.get("name", Data.beasts.get(en.beast, {}).get("name", en.beast)), "boss": en.get("boss", false), "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z)}
+		var sc: float = float(en.scale) if en.get("scale") != null else float(Data.beasts.get(en.beast, {}).get("scale", 1.0))
+		return {"kind": "beast", "beast": en.beast, "scale": sc * (1.0 + LAP_SCALE * (lap - 1)), "name": en.get("name", Data.beasts.get(en.beast, {}).get("name", en.beast)), "boss": en.get("boss", false), "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z)}
 	var t := Data.enemy_type(en.get("e", "recruit"))
 	var g: Dictionary = en.get("gear", {}) if en.get("gear") else {}
 	var los: Array = t.get("loadouts", [{"main": "gladius"}])
@@ -592,6 +599,9 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 		mods[k] = g.mods[k]
 	for k in en.get("mods", {}):
 		mods[k] = en.mods[k]
+	if lap > 1:
+		mods["toughness"] = float(mods.get("toughness", 1.0)) * (1.0 + LAP_TOUGH * (lap - 1))
+		mods["strength"] = float(mods.get("strength", 1.0)) * (1.0 + 0.1 * (lap - 1))
 	var spec := {"kind": "bot", "name": nm, "loadout": {"main": main, "off": off, "armor": armor}, "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": mods,
 		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)) * (ladder_skill(stage) if ladder else 1.0), "color": t.get("color"), "boss": en.get("boss", false)}
 	# The giants of myth look the part (MonsterLook): one eye, a bull's head, tusks, a crown.

@@ -402,3 +402,24 @@ func test_a_returning_boss_comes_in_steel() -> void:
 		t.eq(String(again.loadout.main.get("imbue", "")), String(pair[2]), "bout %d: his weapon coated" % int(pair[1]))
 		t.check(again.loadout.armor.has("mon_horns") == first.loadout.armor.has("mon_horns"), "and still looks the part")
 	m.queue_free()
+
+## The campaign won and begun again (the rudis): the same tables, the men a third tougher and
+## the beasts a tenth bigger each time round.
+func test_the_second_campaign_is_tougher() -> void:
+	var first := Match.new()
+	add_child(first)
+	first.setup({"mode": "campaign", "stage": 3, "headless": true, "lap": 1, "seed": 3})
+	var again := Match.new()
+	add_child(again)
+	again.setup({"mode": "campaign", "stage": 3, "headless": true, "lap": 2, "seed": 3})
+	t.eq(again.lap, 2, "the second time round")
+	var wolf1 = first.enemies()[0].f
+	var wolf2 = again.enemies()[0].f
+	t.check(is_equal_approx(float(wolf2.S), float(wolf1.S) * (1.0 + Match.LAP_SCALE)), "the wolf is bigger (%.2f from %.2f)" % [float(wolf2.S), float(wolf1.S)])
+	first.stage = 1
+	again.stage = 1
+	var m1 := first.enemy_spec(Data.stage(1, 1).rounds[0][0], 0, 1)
+	var m2 := again.enemy_spec(Data.stage(1, 1).rounds[0][0], 0, 1)
+	t.check(is_equal_approx(float(m2.mods.toughness), float(m1.mods.toughness) * (1.0 + Match.LAP_TOUGH)), "the recruit a third tougher (%.2f from %.2f)" % [float(m2.mods.toughness), float(m1.mods.toughness)])
+	first.queue_free()
+	again.queue_free()

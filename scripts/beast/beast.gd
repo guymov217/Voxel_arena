@@ -799,7 +799,7 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 		ai.ram_t = 0.8   # nothing to bite with: the body itself is the blow
 	for h in biting_heads():
 		_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
-	ai.bite_cool = float(sp.cooldown) * (1.0 + injury)
+	ai.bite_cool = float(sp.cooldown) * STRIKE_PACE * (1.0 + injury)
 
 ## The ram: a beast with no bite left throws its weight at him; what it hits, it hits as hard as
 ## the contact (the impulse the engine put through him), and he goes down under it.
@@ -1879,6 +1879,10 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: fl
 ## A strike: `wind_s` seconds of wind-up (by WINDUP when < 0; 0 when something else, a crouch
 ## or a rearing, already showed it coming), then `t_` seconds of the blow itself. `imp` is
 ## [body, impulse] given when the blow goes.
+## Every beast's blows come at this pace: a bite a second bled a man white before he could
+## answer one; half as long again between them is a fight.
+const STRIKE_PACE := 1.45
+
 func _strike(p: VoxelPart, t_: float, cool: float, imp: Array = [], wind_s := -1.0) -> void:
 	var w: float = wind_s
 	if w < 0.0:
@@ -1890,7 +1894,7 @@ func _strike(p: VoxelPart, t_: float, cool: float, imp: Array = [], wind_s := -1
 	p.set_meta("strike_lead", true)
 	# Keener it comes again sooner (a quarter sooner at the top of the scale), slacker it waits
 	# longer (half again at the bottom); as it is everywhere but training.
-	strike_cool[p] = cool * (1.0 + (0.7 - clampf(skill, 0.0, 1.0)) * 0.85)
+	strike_cool[p] = cool * STRIKE_PACE * (1.0 + (0.7 - clampf(skill, 0.0, 1.0)) * 0.85)
 	if not imp.is_empty():
 		pending[p] = imp
 	# A head on a neck strikes with the neck: it dips and drives forward with it.

@@ -335,6 +335,7 @@ func show_screen(s: String, msg := "") -> void:
 		"missions": _missions(v)
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
+		"campaign_end": _campaign_end(v)
 		"training_designs": _training_designs(v)
 		"training_armour": _training_armour(v)
 	if fresh and s != "main":
@@ -1954,7 +1955,7 @@ func _circus_lobby(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.title("Hall of Fame", 24))
 		for i in mini(5, hall.size()):
 			var h: Dictionary = hall[i]
-			v.add_child(UIStyle.label("%d. %s · %s · %d bouts, %d kills%s" % [i + 1, h.name, "crowned by the Emperor" if h.won else "fell on day %s to %s" % [ROMAN[clampi(int(h.day) - 1, 0, 6)], h.get("fate", "the arena")], int(h.bouts), int(h.kills), " · daily" if h.get("daily", false) else ""], 14, UIStyle.GOLD if h.won else UIStyle.TEXT))
+			v.add_child(UIStyle.label("%d. %s · %s · %d bouts, %d kills%s" % [i + 1, h.name, ("won the rudis" if h.get("campaign", false) else "crowned by the Emperor") if h.won else "fell on day %s to %s" % [ROMAN[clampi(int(h.day) - 1, 0, 6)], h.get("fate", "the arena")], int(h.bouts), int(h.kills), " · daily" if h.get("daily", false) else (" · the campaign" if h.get("campaign", false) else "")], 14, UIStyle.GOLD if h.won else UIStyle.TEXT))
 	_row(v, [UIStyle.button("Main menu", func(): show_screen("main"))])
 
 func _circus_market(v: VBoxContainer) -> void:
@@ -2958,6 +2959,21 @@ func _on_finished(r: Dictionary) -> void:
 				Save.set_value(ck, int(r.checkpoint))
 			Save.set_value(sk, int(r.stage) + 1)
 			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
+			if int(r.stage) >= Data.campaign.get("stages", []).size():
+				# The last bout won: the rudis. The campaign begins again, the same man and his
+				# gear, the foes a third tougher each time round (lap).
+				var lk := "coop_lap" if r.get("coop", false) else "lap"
+				var kills := int(r.get("kills", {}).size()) if r.get("kills") is Dictionary else 0
+				Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"),
+					{"day": 7, "won": true, "kills": kills, "bouts_won": int(r.stage), "campaign": true}, ""))
+				Save.set_value(lk, int(Save.get_value(lk, 1)) + 1)
+				Save.set_value(sk, 1)
+				Save.set_value(ck, 1)
+				if Net.active():
+					Net.send_all("campaign_end", {})
+				_end_match()
+				show_screen("campaign_end")
+				return
 			if Edition.demo_over(int(r.stage) + 1):
 				# The demo's last boss down: what the full game holds, for the whole party.
 				if Net.active():
@@ -2969,6 +2985,7 @@ func _on_finished(r: Dictionary) -> void:
 			# A death ends the campaign: the next one begins at the first bout, with a beginner's
 			# purse, stick and body (online and alone alike; the host's word is the party's).
 			Save.set_value(sk, 1)
+			Save.set_value("coop_lap" if r.get("coop", false) else "lap", 1)
 			Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
 			Save.set_value("oddities_sold", {})
 			Save.set_value(ck, 1)
@@ -3055,6 +3072,10 @@ func _on_net(type: String, data, _from: int) -> void:
 			if not Net.is_host():
 				_end_match()
 				show_screen("demo_end")
+		"campaign_end":
+			if not Net.is_host():
+				_end_match()
+				show_screen("campaign_end")
 		"purse_add":
 			if Net.is_host() and (data is int or data is float):
 				add_coins(clampi(int(data), -5000, 5000))
@@ -3082,6 +3103,17 @@ func _unhandled_input(e: InputEvent) -> void:
 
 ## The end of the demo: the second boss is down. The campaign stops here; the demo again from
 ## bout 1, or back to the menu.
+## The campaign won: the rudis, the wooden sword of a gladiator set free. The next campaign
+## waits in the yard, the same man and his gear, the foes tougher (Match.lap).
+func _campaign_end(v: VBoxContainer) -> void:
+	v.add_theme_constant_override("separation", 12)
+	var lap := int(Save.get_value("coop_lap" if Net.active() else "lap", 2))
+	v.add_child(UIStyle.title("THE RUDIS", 40))
+	v.add_child(UIStyle.label("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free." % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
+	v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
+	v.add_child(UIStyle.label("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger." % ROMAN[clampi(lap - 1, 0, 6)], 15, UIStyle.MUTED))
+	v.add_child(UIStyle.button("Back to the ludus", func(): show_screen("main" if not Net.active() else "room"), true))
+
 func _demo_end(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 12)
 	v.add_child(UIStyle.title("The end of the demo", 40))
@@ -3114,6 +3146,8 @@ func restart_campaign() -> void:
 	Save.set_value("coins", START_COINS)
 	Save.set_value("stage", 1)
 	Save.set_value("checkpoint", 1)
+	Save.set_value("lap", 1)
+	Save.set_value("coop_lap", 1)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
 	set_worn_armor([])

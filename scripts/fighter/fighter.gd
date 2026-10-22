@@ -2973,6 +2973,7 @@ func teleport(p: Vector3) -> void:
 ## match says so (a friend still stands), never a beheading, and once per fall.
 const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
+const GIANT_BLOW := 0.85 # a giant's blows, pulled a little (Combat)
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -3179,7 +3180,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			_fracture(part, lp, J, res)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
 		if J > 9.0 or (hollow > 0.0 and J > 6.0):
-			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz
+			# (Armour over the spot keeps the crater small too, else a giant's hammer took a
+			# helmeted head clean off in one while the number on it said a bruise.)
+			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0))
 			var at := lp + ld * hollow
 			# The skull spreads a blow to the head: the brain under it is shaken (bruised, the
 			# concussion above), not crushed away, until the skull has cracked.
@@ -3237,12 +3240,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
 		# (Armour counts against a heavy blow too: a blow past the cap is capped lower for it,
 		# else a club through a steel cuirass hurt as much as through a tunic.)
-		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f)
+		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	elif not detached:
 		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
 		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
 		# number's.
-		dmg = minf(dmg, LIMB_BLOW * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f)
+		dmg = minf(dmg, LIMB_BLOW * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	# One blow opens one wound: however hard it came, the bleeding it starts is bounded (a
 	# dragon's bite once bled a man white in a minute from a single wound); a cut artery is
 	# its own matter (part.artery), and wound on wound still adds up.

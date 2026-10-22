@@ -184,6 +184,6 @@ static func rng_for(run: Dictionary, tag: String) -> RandomNumberGenerator:
 static func hall_add(hall: Array, name_: String, run: Dictionary, fate: String) -> Array:
 	var h := hall.duplicate(true)
 	h.append({"name": name_, "day": int(run.day) + (0 if run.won else 1), "won": run.won, "kills": int(run.kills),
-		"bouts": int(run.bouts_won), "fate": fate, "daily": run.get("daily", false), "date": daily_label()})
+		"bouts": int(run.bouts_won), "fate": fate, "daily": run.get("daily", false), "campaign": run.get("campaign", false), "date": daily_label()})
 	h.sort_custom(func(a, b): return a.bouts > b.bouts or (a.bouts == b.bouts and a.kills > b.kills))
 	return h.slice(0, 10)
