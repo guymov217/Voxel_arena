@@ -470,3 +470,35 @@ func test_a_plate_holds_until_worn_through() -> void:
 	t.check(lth <= 2, "a gladius cut goes through leather at once (%d)" % lth)
 	t.check(stl > lth and stl < 20, "steel holds for more of them (%d)" % stl)
 	w.queue_free()
+
+## The plates a bout knocks off stay off: the man reports them, the save keeps them, he comes
+## into the next bout without them, and the armourer puts them back for a price.
+func test_knocked_plates_stay_off_until_mended() -> void:
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var f := w.fighter(Vector3(0, 1.2, 0), 0.0, {"armor": ["steelLorica"]})
+	var tor: VoxelPart = f.torso
+	var at: Vector3 = tor.global_transform * Vector3(0, 0, tor.half_ext.z)
+	var dir := -(tor.global_transform.basis * Vector3.BACK).normalized()
+	f.apply_hit(tor, {"point": at, "dir": dir, "type": "blunt", "hardness": 1.0, "sharpness": 0.0, "impulse": 80.0, "heavy": 0.8})
+	var rep := f.armor_wear()
+	t.check(rep.has("steelLorica") and (rep.steelLorica.get("torso", []) as Array).size() > 0, "the man reports the plates off his lorica (%s)" % [rep])
+	var n: int = (rep.steelLorica.torso as Array).size()
+	var saved := Armory.add_wear({}, rep, ["steelLorica"])
+	t.eq(int(Armory.plates_lost("steelLorica", saved)[0]), n, "the save keeps them")
+	t.check(Armory.condition("steelLorica", saved) < 1.0, "condition below whole")
+	t.eq(Armory.mend_cost("steelLorica", saved), n * 1, "mending costs half a plate's steel each (%d)" % Armory.mend_cost("steelLorica", saved))
+	t.check(Armory.add_wear({}, {"steelLorica": {"tail": [1], "torso": [999, -1, 0]}}, ["steelLorica"]).steelLorica.torso == [0], "nonsense parts and cells dropped")
+	t.check(Armory.clean_wear(saved, []).is_empty(), "a piece taken off takes its wear with it")
+	w.queue_free()
+	# Next bout: he comes in without those plates.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "headless": true, "loadout": {"main": "gladius", "armor": ["steelLorica"], "armor_wear": saved}, "training": {"enemy": "none"}, "seed": 5})
+	var ad: Dictionary = m.me.f.torso.get_meta("armor")[0]
+	t.eq(int(ad.alive), ad.cells.size() - n, "the next bout starts with them off")
+	t.eq(m.my_wear().get("armor", {}).get("steelLorica", {}).get("torso", []).size(), n, "and reports them again, unmended")
+	m.queue_free()
+	var mended := Armory.mend(saved, "steelLorica")
+	t.check(int(mended.cost) > 0 and not mended.wear.has("steelLorica"), "mended: whole again for %d" % int(mended.cost))

@@ -282,6 +282,78 @@ static func sanitize(ids) -> Array:
 			out.append(id)
 	return out.slice(0, 10)
 
+# ---------- Wear: the plates a bout knocked off stay off until the smith mends the piece ----------
+
+## {id: {part: [cell index, ...]}}, made safe against what is worn: known pieces, known parts,
+## cells the piece has, each once.
+static func clean_wear(w, worn: Array) -> Dictionary:
+	var out := {}
+	if not (w is Dictionary):
+		return out
+	for id in w:
+		if not (id is String) or not worn.has(id) or not Data.armor.has(id) or not (w[id] is Dictionary):
+			continue
+		var parts: Dictionary = Data.armor[id].get("parts", {})
+		var piece := {}
+		for part in w[id]:
+			if not parts.has(part) or not (w[id][part] is Array):
+				continue
+			var n: int = (parts[part] as Array).size()
+			var idx := []
+			for c in w[id][part]:
+				var i := int(c)
+				if i >= 0 and i < n and not idx.has(i):
+					idx.append(i)
+			if not idx.is_empty():
+				piece[String(part)] = idx
+		if not piece.is_empty():
+			out[id] = piece
+	return out
+
+## The wear after a bout: what it knocked off, on top of what was off already.
+static func add_wear(w: Dictionary, report, worn: Array) -> Dictionary:
+	var out := clean_wear(w, worn)
+	var rep := clean_wear(report, worn)
+	for id in rep:
+		var piece: Dictionary = out.get(id, {})
+		for part in rep[id]:
+			var idx: Array = piece.get(part, [])
+			for i in rep[id][part]:
+				if not idx.has(int(i)):
+					idx.append(int(i))
+			piece[part] = idx
+		out[id] = piece
+	return out
+
+## How many plates of the piece are off, and how many it has.
+static func plates_lost(id: String, w: Dictionary) -> Array:
+	var total := 0
+	for part in Data.armor.get(id, {}).get("parts", {}):
+		total += (Data.armor[id].parts[part] as Array).size()
+	var lost := 0
+	for part in w.get(id, {}):
+		lost += (w[id][part] as Array).size()
+	return [lost, total]
+
+## 1.0 whole, down to 0.0 with every plate off.
+static func condition(id: String, w: Dictionary) -> float:
+	var n := plates_lost(id, w)
+	return 1.0 - float(n[0]) / maxf(1.0, float(n[1]))
+
+## The smith's price for putting every plate back: half a plate's stuff for each, like a chip.
+static func mend_cost(id: String, w: Dictionary) -> int:
+	var lost: int = plates_lost(id, w)[0]
+	if lost == 0:
+		return 0
+	var mat := String(Data.armor.get(id, {}).get("mat", "iron"))
+	return lost * maxi(1, ceili(Arms.voxel_price(mat) * 0.5))
+
+static func mend(w: Dictionary, id: String) -> Dictionary:
+	var out := w.duplicate(true)
+	var cost := mend_cost(id, w)
+	out.erase(id)
+	return {"wear": out, "cost": cost}
+
 ## Buying `id`: what is worn after (the clashing pieces taken off, sold back for half) and the cost.
 static func buy(worn: Array, id: String) -> Dictionary:
 	if not (sold(id) or custom(id)) or not Data.armor.has(id):

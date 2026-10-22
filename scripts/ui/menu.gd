@@ -210,8 +210,17 @@ func kit() -> Dictionary:
 func worn_armor() -> Array:
 	return Armory.sanitize(Save.get_value("armor_worn", []))
 
+## The plates off the worn pieces (Armory wear), until the smith mends them.
+func armor_wear() -> Dictionary:
+	return Armory.clean_wear(Save.get_value("armor_wear", {}), worn_armor())
+
+func set_armor_wear(w: Dictionary) -> void:
+	Save.set_value("armor_wear", Armory.clean_wear(w, worn_armor()))
+	_net_loadout()
+
 func set_worn_armor(a: Array) -> void:
 	Save.set_value("armor_worn", Armory.sanitize(a))
+	Save.set_value("armor_wear", Armory.clean_wear(Save.get_value("armor_wear", {}), Armory.sanitize(a)))   # a piece taken off takes its wear with it
 	_net_loadout()
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
 		match_.me.f.set_armor_pieces(worn_armor())
@@ -232,6 +241,7 @@ func _net_loadout() -> void:
 	lo["look"] = look_armor(lk)
 	lo["gear"] = worn_armor()
 	lo["gear_defs"] = Armory.defs_of(lo.gear)   # what a designed piece is, for the others to see it
+	lo["gear_wear"] = armor_wear()
 	lo["skin"] = Fighter.SKINS[lk.skin]
 	Net.my_loadout = lo
 
@@ -240,7 +250,7 @@ func _net_loadout() -> void:
 func _peer_spec(id: int, geared: bool, with_body := true) -> Dictionary:
 	var pl: Dictionary = Net.peers[id].get("loadout", {})
 	var pk := peer_look(pl)
-	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}}
+	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}, "armor_wear": Armory.clean_wear(pl.get("gear_wear", {}), pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}, "worn": pl.get("worn", {}) if pl.get("worn") is Dictionary else {}}
 
 func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
@@ -1431,6 +1441,22 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "Your own design, from the bench.")), 12, UIStyle.MUTED))
 		var price := Armory.price(id)
 		if on:
+			var aw := armor_wear()
+			var lost: Array = Armory.plates_lost(id, aw)
+			if int(lost[0]) > 0:
+				var mc_ := Armory.mend_cost(id, aw)
+				col.add_child(UIStyle.label("%d of %d plates knocked off · condition %d%%" % [lost[0], lost[1], int(Armory.condition(id, aw) * 100.0)], 12, Color(1, 0.55, 0.45)))
+				var mend := UIStyle.button("Mend · %d denarii" % mc_, func():
+					var m := Armory.mend(armor_wear(), id)
+					if int(m.cost) > coins():
+						show_screen("yard", "Not enough denarii")
+						return
+					add_coins(-int(m.cost))
+					set_armor_wear(m.wear)
+					show_screen("yard"))
+				mend.disabled = mc_ > coins()
+				mend.tooltip_text = "The armourer puts back every plate it has lost." + (" Purse after: %d" % (coins() - mc_) if mc_ <= coins() else " %d more needed" % (mc_ - coins()))
+				col.add_child(mend)
 			col.add_child(UIStyle.button("Worn · take off (+%d)" % (price / 2), func():
 				var t := Armory.take_off(worn_armor(), id)
 				if not t.has("error"):
@@ -2691,6 +2717,7 @@ func start(opts: Dictionary) -> void:
 	if geared:
 		opts.loadout.armor += worn_armor()
 		opts.loadout["armor_defs"] = Armory.defs_of(worn_armor())
+		opts.loadout["armor_wear"] = armor_wear()
 	opts.skin = Fighter.SKINS[lk.skin]
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())
@@ -2953,6 +2980,7 @@ func _on_finished(r: Dictionary) -> void:
 		if r.get("body") is Dictionary:
 			set_body(r.body)
 		set_arms(Arms.add_wear(arms(), r.get("wear", {})))
+		set_armor_wear(Armory.add_wear(armor_wear(), r.get("wear", {}).get("armor", {}), worn_armor()))
 		if r.won:
 			add_coins(int(r.pay))
 			if r.get("checkpoint") != null:
@@ -2993,6 +3021,7 @@ func _on_finished(r: Dictionary) -> void:
 			set_body(Body.empty())
 			set_arms(Arms.empty())
 			set_worn_armor([])
+			set_armor_wear({})
 			if Net.active():
 				Net.send_all("purse", coins())
 			last_result = {"text": "You fell. The campaign is over; a new one begins at bout 1."}
@@ -3039,6 +3068,10 @@ func _on_net(type: String, data, _from: int) -> void:
 			# The host's word on what the stage left on me (a fall: whole again).
 			if data is Dictionary and not Net.is_host():
 				set_body(data)
+		"armor_wear":
+			# The plates the bout knocked off my armour (the host saw them go).
+			if data is Dictionary and not Net.is_host():
+				set_armor_wear(Armory.add_wear(armor_wear(), data, worn_armor()))
 		"doctor":
 			if data is Dictionary and not Net.is_host():
 				_doctor_visit(Body.sanitize(data.get("body", {})), (data.get("news", []) as Array).map(func(x): return str(x).left(80)) if data.get("news") is Array else [], int(data.get("stage", 1)), func(nb): Net.send_host("doctor_done", nb))
@@ -3151,6 +3184,7 @@ func restart_campaign() -> void:
 	set_body(Body.empty())
 	set_arms(Arms.empty())
 	set_worn_armor([])
+	set_armor_wear({})
 	# Back to the yard, not straight into bout 1: the smith, the market and the gate first
 	# (online the host brings the whole party back with him).
 	enter_yard("A new campaign begins")

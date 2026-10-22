@@ -771,6 +771,40 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 	var d: Vector3 = dir.normalized() if dir.length_squared() > 1e-6 else out
 	Chunk.spawn(part, voxels, (d * 0.6 + out * 0.4 + Vector3.UP * 0.25).normalized() * clampf(force / 40.0, 0.6, 2.0))
 
+## The plates a piece came in without (Armory wear: {id: {part: [cell index]}}): off him from
+## the start, quietly (nothing flies).
+func apply_armor_wear(wear: Dictionary) -> void:
+	for p in parts:
+		for ad in p.get_meta("armor", []):
+			var idx = wear.get(ad.id, {}).get(p.part_name) if wear.get(ad.id) is Dictionary else null
+			if not (idx is Array):
+				continue
+			for c in idx:
+				var ci := int(c)
+				if ci >= 0 and ci < ad.on.size() and ad.on[ci] == 1:
+					ad.on[ci] = 0
+					ad.alive -= 1
+					if ad.node and is_instance_valid(ad.node):
+						ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+	_armor_dirty = true
+
+## The plates off him now, piece by piece, for the save (the same shape apply_armor_wear takes).
+func armor_wear() -> Dictionary:
+	var out := {}
+	for p in parts:
+		for ad in p.get_meta("armor", []):
+			if not (Armory.sold(ad.id) or Armory.custom(ad.id)):
+				continue
+			var idx := []
+			for ci in ad.on.size():
+				if ad.on[ci] == 0:
+					idx.append(ci)
+			if not idx.is_empty():
+				var piece: Dictionary = out.get(ad.id, {})
+				piece[p.part_name] = idx
+				out[ad.id] = piece
+	return out
+
 ## His armour drawn again on the outline of his look (Physique): each plate still on him pulled
 ## in onto the voxels drawn under it. Where it stops blows ("pts") stays as it was.
 func place_armor() -> void:

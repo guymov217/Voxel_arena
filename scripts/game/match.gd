@@ -327,6 +327,9 @@ func spawn_fighter(spec: Dictionary):
 	for side in spec.get("worn", {}):
 		if f.weapons.get(side):
 			f.weapons[side].remove_voxels(spec.worn[side])
+	# And the plates his armour came in without.
+	if spec.get("loadout") is Dictionary and spec.loadout.get("armor_wear") is Dictionary:
+		f.apply_armor_wear(spec.loadout.armor_wear)
 	if role == "guest":
 		f.make_puppet()
 	elif spec.kind == "remote" or spec.kind == "local":
@@ -1515,18 +1518,24 @@ func _check_circus(alive_h: Array, alive_e: Array) -> void:
 ## What the fight did to my arms, for the smith: the voxels knocked off each weapon in hand, or
 ## "lost" for one that went with the arm holding it.
 func my_wear() -> Dictionary:
+	return wear_of(me) if me else {}
+
+## What a bout left of a man's gear: the chips in his weapons (R, L: indices, or "lost" with
+## the arm) and the plates off his armour ("armor": Armory wear).
+func wear_of(e: Dictionary) -> Dictionary:
 	var wear := {}
-	if me and is_instance_valid(me.f):
+	if e and e.get("f") != null and is_instance_valid(e.f) and e.f is Fighter:
 		for side in ["R", "L"]:
-			var w = me.f.weapons.get(side)
+			var w = e.f.weapons.get(side)
 			if w and is_instance_valid(w):
 				var lost := []
 				for i in w.alive.size():
 					if w.alive[i] == 0:
 						lost.append(i)
 				wear[side] = lost
-			elif me.f.arm[side].fore.severed:
+			elif e.f.arm[side].fore.severed:
 				wear[side] = "lost"
+		wear["armor"] = e.f.armor_wear()
 	return wear
 
 func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
@@ -1545,6 +1554,8 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 			for e in humans():
 				if e.kind == "remote":
 					Net.send_to(int(e.peer), "body", bodies.get(e.id, Body.empty()))
+					# His armour as the bout left it: the plates off it stay off until he mends it.
+					Net.send_to(int(e.peer), "armor_wear", wear_of(e).get("armor", {}))
 	if me and is_instance_valid(me.f) and me.f.alive:
 		mission_event("survive")
 		if won and me.f.blood > 66.0:
