@@ -124,7 +124,7 @@ static func model(d: Dictionary) -> Node3D:
 static func item_type(id: String) -> Variant:
 	if Throwables.POTS.has(id):
 		return Throwables.POTS[id]
-	return {"darts": "pot_dart", "boomerang": "boomerang", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "bandage": "bandage"}.get(id)
+	return {"darts": "pot_dart", "boomerang": "boomerang", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # the pictures come in behind a paused game too

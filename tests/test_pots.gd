@@ -87,3 +87,68 @@ func test_an_anvil_strikes_hard_and_lies_where_it_falls() -> void:
 	t.check(m.items.list.has(it), "the anvil is still there, not shattered")
 	t.check(it.grounded and float(it.p.y) < 0.3 and Vector2(it.p.x, it.p.z).distance_to(Vector2(0, 2.0)) < 1.5, "it dropped at his feet (%s)" % str(it.p))
 	m.queue_free()
+
+## The Hand of Jupiter: a charge from the market seizes the man in the crosshair for three
+## seconds (no giants); he hangs off his feet where his captor looks, and F hurls him that way;
+## his landing hurts him by how hard he came down.
+func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
+	var m := _match()
+	m.me.inventory = {"telekinesis": 2}
+	m.me.f.teleport(Vector3(0, 0, -4))
+	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
+	var g := _victim(m, Vector3(6, 0, 0), func(_e): return {})
+	g.mods.bodyScale = 2.0
+	g.S = 2.0
+	await _steps(20)
+	var me: Dictionary = m.me
+	var phase := {"n": 0, "throw": false}
+	me.drive = func(_e):
+		phase.n += 1
+		var out := {"look": {"yaw": 0.0, "pitch": 0.0}, "aimFrom": Vector3(0, 1.4, -4), "aimAt": v.torso.global_position}
+		if phase.n == 1:
+			out["useItem"] = 0
+		if phase.throw:
+			out["throw"] = true
+			phase.throw = false
+		return out
+	await _steps(3)
+	t.eq(m.social.minds.size(), 1, "seized")
+	t.eq(int(me.inventory.telekinesis), 1, "one charge spent")
+	await _steps(60)
+	t.check(v.torso.global_position.y > 0.75 and v.state != "stand", "he hangs off his feet (%.2f m up, %s)" % [v.torso.global_position.y, v.state])
+	t.check(v.torso.global_position.z < -0.5, "drawn to where his captor looks (z %.2f)" % v.torso.global_position.z)
+	var blood_before := v.blood
+	phase.throw = true
+	await _steps(4)
+	t.check(m.social.minds.size() == 1 and m.social.minds[0].flung, "F hurls him")
+	t.check(v.torso.linear_velocity.z > 6.0, "the way his captor looks (vz %.1f)" % v.torso.linear_velocity.z)
+	await _steps(160)
+	t.check(m.social.minds.is_empty(), "the grip is done with him")
+	t.check(v.blood < blood_before or v.last_attacker == m.me.f, "his landing hurt him (blood %.0f → %.0f)" % [blood_before, v.blood])
+	# A giant is beyond the grip: the charge is not spent.
+	m.me.f.teleport(Vector3(6, 0, -4))
+	phase.n = 0
+	me.drive = func(_e):
+		phase.n += 1
+		var out := {"look": {"yaw": 0.0, "pitch": 0.0}, "aimFrom": Vector3(6, 1.4, -4), "aimAt": g.torso.global_position}
+		if phase.n == 1:
+			out["useItem"] = 0
+		return out
+	v.die("test")
+	await _steps(3)
+	t.check(m.social.minds.is_empty() and int(me.inventory.telekinesis) == 1, "a giant is beyond the grip, and the charge is kept")
+	m.queue_free()
+
+## A fireball: Vulcan's fire in a clay sphere, a blast with flames in it and fire on the sand.
+func test_a_fireball_blasts_and_burns() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
+	await _steps(20)
+	var wet_before: int = m.throwables.wet.size()
+	m.throwables.explode("pot_fireball", v.torso.global_position + Vector3(0, -0.2, -0.4), m.me.f, Vector3.BACK)
+	await _steps(5)
+	t.check(v.last_attacker == m.me.f and v.torso.linear_velocity.length() > 0.5 or v.state != "stand", "the blast throws him (%s)" % v.state)
+	t.check(m.throwables.wet.size() > wet_before, "fire on the sand")
+	t.check(Throwables.POTS.has("fireball") and Data.shop.throwables.has("fireball") and Data.shop.throwables.has("telekinesis"), "both are on the market")
+	m.queue_free()

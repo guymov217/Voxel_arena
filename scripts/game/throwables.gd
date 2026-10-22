@@ -7,7 +7,7 @@ extends Node3D
 
 const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "pot_sand", "greekFire": "pot_fire", "vitriol": "pot_acid", "beehive": "pot_bees",
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
-	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
+	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet", "fireball": "pot_fireball"}
 const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
 const NAILS := 96
 const CALTROPS := 14
@@ -630,7 +630,7 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 ## struck someone, else on the sand.
 ## Every pot breaks like a pot, whatever was in it: glazed shards flung off the way it was going
 ## and bouncing on the sand, a puff of clay dust, a splash of what it held, a crack of clay.
-const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_sand": Color(0.86, 0.76, 0.52), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5)}
+const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_sand": Color(0.86, 0.76, 0.52), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5), "pot_fireball": Color(1.0, 0.45, 0.1)}
 func shatter(p: Vector3, type: String, dir = null) -> void:
 	m.sfx("shatter", p, 1.0)
 	var fx: Fx = m.fx
@@ -651,6 +651,24 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 	if pot:
 		shatter(p, type, dir)
 	match type:
+		"pot_fireball":
+			# Vulcan's fire: a ball of flame with a shock in it (a thunder pot's little brother),
+			# burning what it breaks on and a small pool of fire where it fell.
+			m.sfx("thud", p, 0.9)
+			flash(p, Color(1.0, 0.55, 0.2), 12.0, 8.0)
+			if m.fx:
+				m.fx.burst("blastfire", p + Vector3(0, 0.2, 0), 90, Vector3.UP, 1.6)
+				m.fx.burst("smoke", p + Vector3(0, 0.4, 0), 40, Vector3.UP, 1.3)
+				m.fx.burst("sparks", p, 60, Vector3.UP, 1.8)
+				m.fx.mark("scorch", p, 1.8)
+			if m.role == "host":
+				m._send_fx("boom", p, 3)
+			blast(p, 2.6, 22.0, owner_)
+			splash_burning(p, dir, 30, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null)
+			for k in 4:
+				add_liquid("fire", Vector3(p.x + randf_range(-0.3, 0.3), _floor_y(p), p.z + randf_range(-0.3, 0.3)), 0.22, owner_)
+			if owner_:
+				m.crowd_add(owner_, 6, "Vulcan's fire")
 		"pot_thunder":
 			m.sfx("thud", p, 1.0)
 			flash(p, Color(1.0, 0.8, 0.55), 14.0, 10.0)
@@ -1262,6 +1280,11 @@ func use_item(e: Dictionary, slot: int) -> bool:
 		return true
 	inv[id] = int(inv[id]) - 1
 	match id:
+		"telekinesis":
+			# The Hand of Jupiter: a man in the crosshair seized in an unseen grip (Social).
+			if not m.social.mind_hold(e):
+				inv[id] = int(inv[id]) + 1   # nothing to seize: the charge is not spent
+				return false
 		"bandage":
 			# A friend down beside him: the bandage is for the friend, who is on his feet twice
 			# as soon. Otherwise his own wounds.

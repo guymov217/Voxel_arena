@@ -800,6 +800,9 @@ func _prompt_for(f) -> Array:
 	var dying_friend = match_.dying_friend_of(me_e) if me_e else null
 	if dying_friend != null:
 		return [["revive"], "Hold to lift %s" % dying_friend.f.display_name]
+	var mnd = match_.social.mind_of(me_e) if me_e and match_.social else null
+	if mnd != null:
+		return [["throw"], "%s hangs in your grip · hurl him where you look · %d s" % [mnd.t.display_name, ceili(float(mnd.left))]]
 	var croc = f.get_meta("rolled_by") if f.has_meta("rolled_by") else null
 	if croc != null and is_instance_valid(croc) and croc.hug != null and croc.hug.get("target") == f:
 		return [["back", "forward"], "Pull away to prise its jaws open · strike its head"]

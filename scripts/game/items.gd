@@ -10,6 +10,7 @@ const TYPES := {
 	"bread": {"size": 0.16}, "wine": {"size": 0.18}, "tomato": {"size": 0.1}, "banana": {"size": 0.12}, "coin": {"size": 0.06},
 	"rock": {"size": 0.12, "projectile": true}, "net": {"size": 0.3, "projectile": true},
 	"pot_thunder": {"size": 0.16, "projectile": true, "pot": 0x6a4a8a}, "pot_nail": {"size": 0.16, "projectile": true, "pot": 0x5b5f66},
+	"pot_fireball": {"size": 0.15, "projectile": true, "pot": 0xd0481a}, "gauntlet": {"size": 0.2},
 	"pot_sand": {"size": 0.16, "projectile": true, "pot": 0xd8c08a}, "pot_fire": {"size": 0.16, "projectile": true, "pot": 0xff7a1a},
 	"pot_acid": {"size": 0.16, "projectile": true, "pot": 0x8fd43a}, "pot_bees": {"size": 0.18, "projectile": true, "pot": 0xe8b830},
 	"pot_caltrops": {"size": 0.14, "projectile": true, "pot": 0x444444}, "pot_goat": {"size": 0.2, "projectile": true, "pot": 0x8b5a2b},
@@ -89,6 +90,15 @@ static func visual(type: String) -> Node3D:
 			var s := 0.6 if type == "net" else 0.9
 			for i in 5:
 				_box(g, s, 0.01, 0.01, 0x8a6a3a, 0, 0, -s / 2 + i * s / 4); _box(g, 0.01, 0.01, s, 0x8a6a3a, -s / 2 + i * s / 4, 0, 0)
+		"pot_fireball":
+			# A clay sphere, cracked, the fire showing through.
+			_box(g, 0.15, 0.15, 0.15, 0x3a2418); _box(g, 0.16, 0.05, 0.05, 0xff8a1a, 0, 0.03, 0); _box(g, 0.05, 0.16, 0.05, 0xffb03a, 0.02, 0, 0.02); _box(g, 0.05, 0.05, 0.16, 0xff6a10, -0.02, -0.02, 0)
+		"gauntlet":
+			# A bronze hand, open: the palm, four fingers and a thumb.
+			_box(g, 0.12, 0.03, 0.12, 0xa5702b); _box(g, 0.12, 0.04, 0.06, 0x7a5220, 0, 0, -0.08)
+			for i in 4:
+				_box(g, 0.022, 0.03, 0.08, 0xb8803a, -0.045 + i * 0.03, 0, 0.1)
+			_box(g, 0.08, 0.03, 0.022, 0xb8803a, 0.09, 0, 0.02)
 		"pot_bola":
 			_box(g, 0.07, 0.07, 0.07, 0x4a4f63, -0.12); _box(g, 0.07, 0.07, 0.07, 0x4a4f63, 0.12); _box(g, 0.07, 0.07, 0.07, 0x4a4f63, 0, 0, 0.12); _box(g, 0.22, 0.015, 0.015, 0x8a6a3a)
 		"pot_anvil":

@@ -13,6 +13,18 @@ const EMOTES := [
 
 var m: Node
 
+# ---------- The Hand of Jupiter ----------
+## A man seized in an unseen grip (the "telekinesis" charge from the market): for MIND_T seconds
+## he hangs MIND_DIST ahead of where his captor looks, off his feet, free to swing his arms; F
+## hurls him the way the captor looks, and the ground, a wall or a man he lands on hurts him
+## by how hard he came down. No giants (MIND_S), no bosses.
+const MIND_T := 3.0
+const MIND_REACH := 7.0
+const MIND_S := 1.45
+const MIND_DIST := 2.8
+const MIND_HURL := 14.0
+var minds := []   # {e: captor entity, t: the held Fighter, left, flung, prev_v, watch, fx_t}
+
 func _init(match_: Node) -> void:
 	m = match_
 
@@ -419,6 +431,13 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 	var c = e.f
 	if not (c is Fighter) or c.kind == "beast":
 		return inp
+	# A man in his grip: F hurls him, not the sword in hand.
+	var mnd = mind_of(e)
+	if mnd != null and inp.get("throw", false):
+		_mind_hurl(mnd, _aim_dir(e, inp, _aim_from(e, inp)))
+		inp = inp.duplicate()
+		inp.throw = false
+		inp.charging = 0.0
 	if c.taunt_t > 0.0:
 		c.taunt_t -= dt
 	if e.get("taunt_t", 0.0) > 0.0:
@@ -621,6 +640,173 @@ func after(dt: float) -> void:
 			if p.thrown_t > 0.0:
 				p.thrown_t -= dt
 	flying_hits(dt)
+	minds_tick(dt)
+
+# ---------- The Hand of Jupiter ----------
+
+## The grip `e` holds now (not one he has already let fly), or null.
+func mind_of(e: Dictionary):
+	for mnd in minds:
+		if mnd.e == e and not mnd.flung:
+			return mnd
+	return null
+
+static func _aim_from(e: Dictionary, inp: Dictionary) -> Vector3:
+	var af = inp.get("aimFrom", e.get("last_aim_from"))
+	if af is Vector3:
+		return af
+	var c: Fighter = e.f
+	return c.head.global_position if not c.head.severed else c.torso.global_position + Vector3.UP * 0.5
+
+static func _aim_dir(e: Dictionary, inp: Dictionary, from: Vector3) -> Vector3:
+	var at = inp.get("aimAt", e.get("last_aim"))
+	if at is Vector3 and (at as Vector3).distance_to(from) > 0.2:
+		return ((at as Vector3) - from).normalized()
+	var lk = inp.get("look")
+	if lk is Dictionary:
+		return Vector3(sin(float(lk.yaw)) * cos(float(lk.pitch)), sin(float(lk.pitch)), cos(float(lk.yaw)) * cos(float(lk.pitch))).normalized()
+	var c: Fighter = e.f
+	return Vector3(sin(c.yaw), 0.1, cos(c.yaw)).normalized()
+
+## Seizes the foe in the crosshair (the nearest one close by when nothing is): true if a man
+## is held. Whoever is too big, or a boss, is beyond the grip.
+func mind_hold(e: Dictionary) -> bool:
+	var c = e.f
+	if not (c is Fighter) or not c.alive or mind_of(e) != null:
+		return false
+	var inp: Dictionary = e.get("input", {})
+	var from := _aim_from(e, inp)
+	var dir := _aim_dir(e, inp, from)
+	var best = null
+	var bd := INF
+	for o in m.entities:
+		if o == e or o.team == e.team or not o.f.alive or o.get("harmless", false) or not (o.f is Fighter):
+			continue
+		var t: Fighter = o.f
+		if float(t.S) > MIND_S or o.get("boss", false):
+			continue
+		var to: Vector3 = t.torso.global_position - from
+		var along := to.dot(dir)
+		if along < 0.3 or along > MIND_REACH:
+			continue
+		var off := (to - dir * along).length()
+		if off > 0.9 * float(t.S) + 0.15 * along:
+			continue
+		if off < bd:
+			bd = off
+			best = o
+	if best == null:
+		var ne = m.nearest_enemy(e)
+		if ne != null and ne.f is Fighter and float(ne.f.S) <= MIND_S and not ne.get("boss", false) and ne.f.torso.global_position.distance_to(c.torso.global_position) < 3.5:
+			best = ne
+	if best == null:
+		_hint(e, "Nothing in your grip: look at a man, not a giant")
+		return false
+	var t: Fighter = best.f
+	for p in t.parts:
+		if not p.severed:
+			p.angular_velocity *= 0.3
+	t.fall(0.5, true)
+	t.last_attacker = c
+	minds.append({"e": e, "t": t, "left": MIND_T, "flung": false, "prev_v": Vector3.ZERO, "peak": 0.0, "watch": 0.0, "fx_t": 0.0})
+	m.feed.emit("%s seizes %s in an unseen grip!" % [c.display_name, t.display_name] + (" He hangs where you look: F hurls him." if e.kind == "local" else ""))
+	m.sfx("whoosh", t.torso.global_position)
+	m.say(t, "grunt", 0.8, "pain")
+	m.crowd_add(c, 10, "the hand of Jupiter")
+	return true
+
+func minds_tick(dt: float) -> void:
+	for mnd in minds.duplicate():
+		var t: Fighter = mnd.t
+		var c = mnd.e.f
+		if not is_instance_valid(t) or not is_instance_valid(c):
+			minds.erase(mnd)
+			continue
+		if mnd.flung:
+			# In the air: his landing (the ground, a wall, a man) hurts by how hard it stopped him.
+			mnd.watch -= dt
+			var v: Vector3 = t.torso.linear_velocity
+			var peak: float = maxf(float(mnd.peak), v.length())
+			mnd.peak = peak
+			if v.length() < peak * 0.5 and peak > 6.0 and t.alive:
+				_mind_land(mnd, peak - v.length())
+				minds.erase(mnd)
+				continue
+			if v.length() > 1.0:
+				mnd.prev_v = v
+			if mnd.watch <= 0.0:
+				minds.erase(mnd)
+			continue
+		if not t.alive or not c.alive:
+			minds.erase(mnd)
+			continue
+		mnd.left -= dt
+		var inp: Dictionary = mnd.e.get("input", {})
+		var from := _aim_from(mnd.e, inp)
+		var dir := _aim_dir(mnd.e, inp, from)
+		if mnd.left <= 0.0:
+			# The grip fades: he drops where he hangs.
+			minds.erase(mnd)
+			t.fall(0.8, true)
+			m.feed.emit("The grip on %s lets go" % t.display_name)
+			continue
+		var goal := from + dir * MIND_DIST
+		goal.y = maxf(goal.y, 0.9 * float(t.S))
+		var pos: Vector3 = t.torso.global_position
+		# A spring to where he should hang, damped, with his weight carried: the trunk is held,
+		# the rest of him dangles (and swings as he likes).
+		var acc := ((goal - pos) * 14.0 - t.torso.linear_velocity * 4.5).limit_length(45.0) + Vector3.UP * 9.8
+		t.torso.apply_central_force(acc * t.torso.mass)
+		for p in t.parts:
+			if p != t.torso and not p.severed:
+				p.apply_central_force(Vector3.UP * 9.8 * p.mass * 0.85)
+		t.fall(0.5, true)
+		mnd.fx_t -= dt
+		if mnd.fx_t <= 0.0 and m.fx:
+			mnd.fx_t = 0.12
+			m.fx.burst("sparks", pos, 3, Vector3.UP, 0.6)
+
+## F: he flies the way his captor looks.
+func _mind_hurl(mnd: Dictionary, dir: Vector3) -> void:
+	var t: Fighter = mnd.t
+	var c = mnd.e.f
+	var v := dir * MIND_HURL + Vector3.UP * 1.0
+	for p in t.parts:
+		if not p.severed:
+			p.linear_velocity = v
+			p.angular_velocity = Vector3.ZERO
+	t.torso.continuous_cd = true
+	t.fall(2.0, true)
+	t.thrown_by = c
+	t.thrown_t = 1.5
+	mnd.flung = true
+	mnd.prev_v = v
+	mnd.peak = v.length()
+	mnd.watch = 2.5
+	m.feed.emit("%s HURLS %s!" % [c.display_name, t.display_name])
+	m.sfx("whoosh", t.torso.global_position)
+	m.crowd_add(c, 8, "hurled")
+
+## The landing: a blunt blow on the trunk and the skull by how hard he was stopped.
+func _mind_land(mnd: Dictionary, drop: float) -> void:
+	var t: Fighter = mnd.t
+	var c = mnd.e.f
+	var J := clampf(drop * 2.6, 8.0, 52.0)
+	var pv: Vector3 = mnd.prev_v
+	var dir: Vector3 = -pv.normalized() if pv.length_squared() > 1e-4 else Vector3.DOWN
+	var was_alive := t.alive
+	for pk in [[t.torso, 1.0], [t.head, 0.45]]:
+		var part: VoxelPart = pk[0]
+		if part == null or part.severed:
+			continue
+		var point := part.global_position
+		var res: Dictionary = t.apply_hit(part, {"impulse": J * pk[1], "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": point, "dir": dir})
+		m.report_hit({"kind": "hit", "p": point, "dir": dir, "J": J * pk[1], "type": "blunt", "char": t, "part": part, "attacker": c, "res": res, "killed": was_alive and not t.alive})
+	t.last_attacker = c
+	t.concussion = minf(1.0, t.concussion + 0.3 * J / 52.0)
+	if J > 20.0:
+		m.feed.emit("%s lands hard!" % t.display_name)
+	m.sfx("thud", t.torso.global_position, clampf(J / 40.0, 0.4, 1.0))
 
 ## Bots: a taunt pulls them onto the taunter; nobody bothers a man playing dead while someone
 ## else is awake.

@@ -38,6 +38,7 @@ var tick := 0
 var stage_info: Dictionary = {}
 var players_count := 1
 var round_pay := 0
+var mind_aim_until := -1.0   # while the local player may hold a man in the Hand of Jupiter
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.5
@@ -856,6 +857,7 @@ func _physics_process(dt: float) -> void:
 			use_ability(f, inp.ability)
 		if int(inp.get("useItem", -1)) >= 0:
 			e.last_aim = inp.get("aimAt")
+			e.last_aim_from = inp.get("aimFrom")
 			throwables.use_item(e, int(inp.useItem))
 		if inp.get("faceAt") is Vector3:
 			var fd: Vector3 = inp.faceAt - f.torso.global_position
@@ -939,7 +941,11 @@ func _player_input(f, dt: float) -> Dictionary:
 	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
 		inp.kick = false
 		inp.talk = true
-	if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0):
+	# (A man held in the Hand of Jupiter hangs where the crosshair points: the aim goes every
+	# step for as long as the grip can last, from the host's own player and a guest alike.)
+	if int(inp.get("useItem", -1)) >= 0 and me and Throwables.hotbar_of(me.get("inventory", {})).slice(int(inp.useItem), int(inp.useItem) + 1).has("telekinesis"):
+		mind_aim_until = time + Social.MIND_T + 0.5
+	if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0 or time < mind_aim_until):
 		inp.aimAt = aim_point(f)
 		inp.aimFrom = aim_from
 	last_local_inp = inp

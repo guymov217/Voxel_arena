@@ -325,7 +325,7 @@ static func pack(inp: Dictionary) -> Array:
 	bits |= (1 if gh == "R" else (2 if gh == "L" else (3 if gh == "both" else 0))) << 14
 	bits |= (1 if inp.get("throwOther", false) else 0) << 16
 	bits |= (1 if inp.get("grip", false) else 0) << 17
-	bits |= (1 if inp.get("revive", false) else 0) << 18
+	bits |= (1 if inp.get("revive", false) else 0) << 19
 	var aim = inp.get("aimAt")
 	bits |= (1 if aim is Vector3 else 0) << 18
 	var out := [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01), snappedf(float(inp.get("charging", 0.0)), 0.01)]
@@ -362,7 +362,7 @@ static func unpack(a: Array) -> Dictionary:
 	out.useItem = clampi(int(a[13]), -1, 8) if a.size() > 13 else -1
 	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0
 	out.grip = bits & (1 << 17) != 0
-	out.revive = bits & (1 << 18) != 0
+	out.revive = bits & (1 << 19) != 0
 	if a.size() > 15 and float(a[15]) > 0.0:
 		out.charging = clampf(float(a[15]), 0.0, 1.0)
 	if bits & (1 << 18) != 0 and a.size() > 18:
