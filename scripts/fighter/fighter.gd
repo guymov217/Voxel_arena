@@ -1939,7 +1939,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var still := Vector2(v_smooth.x, v_smooth.z).length() < 0.4
 	var regen := 3.0 if stamina_use > 0.02 * dt * 60.0 else (18.0 if still else 9.0)
 	# A chest cut open or stove in: he gets his breath back slowly.
-	regen *= 0.35 + 0.65 * torso.function()
+	regen *= (0.35 + 0.65 * torso.function()) * float(mods.get("wind", 1.0))   # (wind: the trainer's)
 	# Torn lungs draw breath slower and fill no further than they still can.
 	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs()) * dt, 0.0, maxf(stamina - stamina_use, breath_cap()))
 
@@ -3148,7 +3148,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var eff := hardness * sharpness * (0.12 + 0.88 * pow(align, 1.5))
 		dmg = J * 2.4 * eff + (J * 0.6 if align < 0.35 else 0.0)
 		if align < 0.35:
-			stagger = minf(1.0, stagger + J * 0.006)
+			stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.006)
 			res.slid = true
 		part.bleed += dmg * 0.05 * (2.0 if hit.get("serrated", false) else 1.0)
 		var big: float = maxf(1.0, S)
@@ -3219,7 +3219,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# Hard and heavy hurts more than soft and light: a steel mace far more than a wooden stick.
 		dmg = J * 1.9 * (0.55 + 0.6 * clampf(hardness, 0.0, 1.0))
 		var shielded := part == head and not skull_cracked   # (as it was before this blow)
-		stagger = minf(1.0, stagger + J * 0.011)
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.011)
 		if part == head:
 			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0) / sqrt(maxf(1.0, S)))
 		if (part == torso or part == head) and not detached:
@@ -3267,7 +3267,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if hollow > 0.0 and not detached:
 		dmg *= 1.0 + minf(0.4 if type == "blunt" else 1.0, hollow / 0.1)
 	if part == torso or part == head:
-		stagger = minf(1.0, stagger + J * 0.004)
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.004)
 	# A blow across the face near the eyes: the view closes in from the edges (players), the
 	# aim wanders (everyone). It heals a little over the fight.
 	if part == head and not detached and lp.z > V * S * 0.5 and absf(lp.y - V * S * 0.6) < V * S * 1.6 and J > 5.0:
@@ -3276,7 +3276,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + J * 0.005)
 	if not detached:
 		# A wrecked trunk holds him up worse: every blow rocks him more.
-		stagger = minf(1.0, stagger + J * 0.0035 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.0035 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
 		part.flinch_t = maxf(part.flinch_t, minf(0.3, 0.08 + J * 0.006))
 		if push_t <= 0.0 and J > 4.0:
 			push_t = 0.3
@@ -3321,8 +3321,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var steady: bool = bool(mods.get("unstoppable", false)) and blood > 40.0
 	if concussion > 0.85 and state == "stand" and not steady:
 		fall(3.0)
-	if stagger > 0.95 and J >= 16.0 * maxf(1.0, S * 0.8) and state == "stand" and not steady:
-		fall(1.5)
+	if stagger > 0.95 and J >= 16.0 * maxf(1.0, S * 0.8) * float(mods.get("footing", 1.0)) and state == "stand" and not steady:
+		fall(1.5 / float(mods.get("footing", 1.0)))
 	if remove.is_empty() and not detached and J > 3.0:
 		var bruise := type == "blunt"
 		part.wound(lp, (minf(0.13, 0.05 + J * 0.003) if bruise else V * 1.6) * S, "bruise" if bruise else "blood")
@@ -3441,7 +3441,7 @@ func _shield_takes(hit: Dictionary) -> bool:
 			var k: Dictionary = sh.knock(best, Weapon.chip_score(J * mult, own_h, float(hit.get("hardness", 0.5))))
 			if not k.is_empty() and Combat.current:
 				Combat.current.chip.emit({"kind": "chip", "weapon": sh, "indices": k.indices, "voxels": k.voxels, "p": p, "broke": k.broke})
-		stagger = minf(1.0, stagger + J * 0.004)
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.004)
 		if Combat.current:
 			Combat.current.clang.emit({"p": p, "J": J, "metal": 1.0})
 		return true
@@ -3983,7 +3983,7 @@ func _read_cord() -> void:
 
 ## The top of his breath: torn lungs fill no further.
 func breath_cap() -> float:
-	return 100.0 * (0.3 + 0.7 * lungs()) * (1.0 - 0.06 * mini(5, ribs_broken))
+	return 100.0 * (0.3 + 0.7 * lungs()) * (1.0 - 0.06 * mini(5, ribs_broken)) * float(mods.get("wind", 1.0))
 
 ## A blast's shock through the trunk or the skull (Throwables.blast): every organ in it is
 ## bruised a little, the lungs worst (they burst), the brain rung like a bell.

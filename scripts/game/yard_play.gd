@@ -231,7 +231,7 @@ func _ring(p: Vector3, r: float, color: Color) -> void:
 ## The stations' furniture, just behind each station's ring (toward the wall), facing the
 ## middle: the smith's hearth and anvil, the market stall, the mission board, the physician's
 ## table. Each stands solid: nobody walks through the smith's hearth.
-const STATION_PROPS := {"smith": "smithy", "market": "market_stall", "board": "notice_board", "physician": "physician"}
+const STATION_PROPS := {"smith": "smithy", "market": "market_stall", "board": "notice_board", "physician": "physician", "trainer": "notice_board"}
 
 func _dress_stations() -> void:
 	for id in STATION_PROPS:
@@ -325,7 +325,7 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 			m._send_yard_next()
 	if m.me and is_instance_valid(m.me.f):
 		at = Yard.station_at(m.me.f.torso.global_position)
-		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader or the physician · the gate leads to the arena"
+		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader, the physician or the trainer · the gate leads to the arena"
 		# E talks to a stall's keeper; the gate is walked into (G there as well).
 		last_at = at
 		if at != "" and local_inp.get("talk", false):

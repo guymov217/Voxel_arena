@@ -244,6 +244,7 @@ func _net_loadout() -> void:
 	lo["gear"] = worn_armor()
 	lo["gear_defs"] = Armory.defs_of(lo.gear)   # what a designed piece is, for the others to see it
 	lo["gear_wear"] = armor_wear()
+	lo["stats"] = training_stats()
 	lo["skin"] = Fighter.SKINS[lk.skin]
 	Net.my_loadout = lo
 
@@ -252,7 +253,7 @@ func _net_loadout() -> void:
 func _peer_spec(id: int, geared: bool, with_body := true) -> Dictionary:
 	var pl: Dictionary = Net.peers[id].get("loadout", {})
 	var pk := peer_look(pl)
-	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}, "armor_wear": Armory.clean_wear(pl.get("gear_wear", {}), pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}, "worn": pl.get("worn", {}) if pl.get("worn") is Dictionary else {}}
+	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}, "armor_wear": Armory.clean_wear(pl.get("gear_wear", {}), pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}, "worn": pl.get("worn", {}) if pl.get("worn") is Dictionary else {}, "mods": Training.mods_of(Training.sanitize(pl.get("stats", {}))) if geared else {}}
 
 func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
@@ -336,6 +337,7 @@ func show_screen(s: String, msg := "") -> void:
 		"yard": _yard(v)
 		"market": _market(v)
 		"physician": _physician(v)
+		"trainer": _trainer(v)
 		"fights": _fights(v)
 		"mp": _mp(v)
 		"room": _room(v)
@@ -477,6 +479,7 @@ func _open_station(id: String) -> void:
 		"market": show_screen("market")
 		"board": show_screen("missions")
 		"physician": show_screen("physician")
+		"trainer": show_screen("trainer")
 		"gate": show_screen("gate")
 
 func _close_overlay() -> void:
@@ -2203,6 +2206,71 @@ func _physician(v: VBoxContainer) -> void:
 	for k in v.get_child_count() - n0:
 		v.move_child(v.get_child(n0 + k), 1 + k)
 
+## What the trainer has taught this gladiator (Training), kept with the campaign.
+func training_stats() -> Dictionary:
+	return Training.sanitize(Save.get_value("training", {}))
+
+func set_training_stats(st: Dictionary) -> void:
+	Save.set_value("training", Training.sanitize(st))
+	_net_loadout()
+
+## The trainer's yard: six abilities, a session of each for denarii, no further than the bout
+## allows. Alone and in a party alike (each man trains his own body from the party's purse).
+func _trainer(v: VBoxContainer) -> void:
+	var yard := in_yard()
+	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
+	v.add_child(UIStyle.title("The trainer", 36))
+	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
+	var st := training_stats()
+	v.add_child(UIStyle.label("Purse: %d denarii · %s" % [coins(), Training.summary(st)], 15, UIStyle.BRONZE))
+	v.add_child(UIStyle.label("Doctore teaches the body, a session at a time, for denarii: nothing is learned in the arena itself. No ability goes past a per cent for every bout won (bout %d: %d%%), and a death takes it all, as it takes the purse." % [stage, maxi(0, stage - 1)], 13, UIStyle.MUTED))
+	v.add_child(HSeparator.new())
+	for id in Training.ORDER:
+		var a: Dictionary = Training.ABILITIES[id]
+		var lv := Training.level(st, id)
+		var cap := Training.cap(id, stage)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		v.add_child(row)
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(col)
+		col.add_child(UIStyle.label("%s · %s   +%d%% of %d%%" % [a.name, a.title, lv, int(a.max)], 17, UIStyle.GOLD if lv > 0 else UIStyle.TEXT))
+		var bar := ProgressBar.new()
+		bar.min_value = 0
+		bar.max_value = int(a.max)
+		bar.value = lv
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(0, 8)
+		col.add_child(bar)
+		var d := UIStyle.label(String(a.desc), 13, UIStyle.MUTED)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(d)
+		var r := Training.buy(st, id, stage, coins())
+		var b: Button
+		if r.has("error"):
+			b = UIStyle.button(String(r.error) if lv >= int(a.max) or lv >= cap else "Train · %d denarii" % Training.price(st, id), func(): pass)
+			b.disabled = true
+			b.tooltip_text = String(r.error)
+		else:
+			b = UIStyle.button("Train · %d denarii" % int(r.cost), func():
+				var r2 := Training.buy(training_stats(), id, stage, coins())
+				if r2.has("error"):
+					show_screen("trainer", r2.error)
+					return
+				add_coins(-int(r2.cost))
+				set_training_stats(r2.stats)
+				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, a.title.to_lower()]), true)
+		b.custom_minimum_size = Vector2(230, 0)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(b)
+	v.add_child(HSeparator.new())
+	v.add_child(UIStyle.button("Back to the yard" if yard else "Back", func():
+		if yard:
+			_close_overlay()
+		else:
+			show_screen("yard")))
+
 ## The physician's supplies for the fight (bandages, bread, wine), into the bag like the market's.
 func _medicine(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("SUPPLIES FOR THE FIGHT", 13, UIStyle.BRONZE))
@@ -2760,6 +2828,12 @@ func start(opts: Dictionary) -> void:
 		opts.loadout.armor += worn_armor()
 		opts.loadout["armor_defs"] = Armory.defs_of(worn_armor())
 		opts.loadout["armor_wear"] = armor_wear()
+		# What the trainer taught him, on top of what the mode gives.
+		var tm := Training.mods_of(training_stats())
+		var om: Dictionary = opts.get("mods", {}).duplicate()
+		for k in tm:
+			om[k] = float(om.get(k, 1.0)) * float(tm[k])
+		opts.mods = om
 	opts.skin = Fighter.SKINS[lk.skin]
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())
@@ -3064,6 +3138,7 @@ func _on_finished(r: Dictionary) -> void:
 			set_arms(Arms.empty())
 			set_worn_armor([])
 			set_armor_wear({})
+			set_training_stats({})
 			if Net.active():
 				Net.send_all("purse", coins())
 			last_result = {"text": "You fell. The campaign is over; a new one begins at bout 1."}
@@ -3227,6 +3302,7 @@ func restart_campaign() -> void:
 	set_arms(Arms.empty())
 	set_worn_armor([])
 	set_armor_wear({})
+	set_training_stats({})
 	# Back to the yard, not straight into bout 1: the smith, the market and the gate first
 	# (online the host brings the whole party back with him).
 	enter_yard("A new campaign begins")

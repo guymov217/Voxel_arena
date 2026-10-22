@@ -445,6 +445,9 @@ func _blow(g: Dictionary) -> Dictionary:
 	# heaviest of all, but not every one of them at the most a head can take (the cap on a
 	# blow comes down with it: Fighter.apply_hit "pull").
 	var pull := 1.0
+	# The trainer's blow: a man taught to put his weight behind it hits harder.
+	if attacker and "mods" in attacker and not bite:
+		J *= float(attacker.mods.get("blow", 1.0))
 	if attacker and not (attacker is Beast) and "S" in attacker and float(attacker.S) >= 1.8:
 		J *= Fighter.GIANT_BLOW
 		pull = Fighter.GIANT_BLOW
