@@ -23,18 +23,38 @@ func reset() -> void:
 func load_save() -> void:
 	if not FileAccess.file_exists(path):
 		_migrate_old_name()
-	if not FileAccess.file_exists(path):
-		return
-	var f := FileAccess.open(path, FileAccess.READ)
-	var d = JSON.parse_string(f.get_as_text())
-	if d is Dictionary:
-		for k in d:
-			data[k] = d[k]
+	# The save, or, when it cannot be read (a write cut off by a crash or the power), the copy
+	# kept of the one before.
+	for p in [path, path + ".bak"]:
+		var d = _read(p)
+		if d is Dictionary:
+			if p != path:
+				push_warning("Save: %s could not be read; the backup was used" % path)
+			for k in d:
+				data[k] = d[k]
+			return
 
+static func _read(p: String):
+	if not FileAccess.file_exists(p):
+		return null
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return null
+	return JSON.parse_string(f.get_as_text())
+
+## Written to a file beside it and moved into place whole, the last good save kept as .bak:
+## a crash or the power going mid-write leaves one of the two readable.
 func save() -> void:
-	var f := FileAccess.open(path, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
+	var tmp := path + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(data))
+	f.close()
+	var abs_path := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(path):
+		DirAccess.rename_absolute(abs_path, ProjectSettings.globalize_path(path + ".bak"))
+	DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), abs_path)
 
 func get_value(key: String, default = null):
 	return data.get(key, default)

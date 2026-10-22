@@ -37,3 +37,26 @@ func test_weapon_from_design() -> void:
 	w.remove_voxels(idx)
 	t.eq(w.alive_count(), n - idx.size(), "voxels gone")
 	w.queue_free()
+
+## A save is written beside the old one and moved into place whole, the one before kept: a
+## write cut off by a crash leaves the campaign readable from the backup.
+func test_a_save_survives_a_cut_off_write() -> void:
+	var keep := Save.path
+	Save.path = "user://save_probe.json"
+	for p in [Save.path, Save.path + ".bak", Save.path + ".tmp"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	Save.set_value("stage", 7)
+	Save.set_value("stage", 9)
+	t.check(FileAccess.file_exists(Save.path) and FileAccess.file_exists(Save.path + ".bak"), "the save and the one before")
+	t.check(not FileAccess.file_exists(Save.path + ".tmp"), "no half-written file left")
+	# The power goes mid-write: the save is garbage, the backup is whole.
+	var f := FileAccess.open(Save.path, FileAccess.WRITE)
+	f.store_string('{"stage": 9, "coins')
+	f.close()
+	Save.data = Save.DEFAULTS.duplicate(true)
+	Save.load_save()
+	t.eq(int(Save.get_value("stage")), 7, "the campaign comes back from the backup")
+	for p in [Save.path, Save.path + ".bak"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	Save.path = keep
+	Save.reset()

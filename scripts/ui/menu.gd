@@ -41,6 +41,8 @@ func _ready() -> void:
 	UIStyle.hook(get_tree())
 	apply_display(Save.get_value("settings", {}))
 	apply_picture(Save.get_value("settings", {}))
+	apply_frame(Save.get_value("settings", {}))
+	apply_ui_scale(Save.get_value("settings", {}))
 	# Resized, moved to another screen, or full screen: the automatic resolution follows.
 	get_tree().root.size_changed.connect(func(): apply_render_scale(Save.get_value("settings", {})))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2573,6 +2575,29 @@ func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 		_set_opt("renderScale", RENDER_SCALES[i][0])
 		apply_render_scale(Save.get_value("settings", {})))
 	_opt_row(v, "3D resolution", rs, "Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.")
+	var vs := CheckBox.new()
+	vs.text = "VSync"
+	vs.button_pressed = bool(st.get("vsync", true))
+	vs.toggled.connect(func(on):
+		_set_opt("vsync", on)
+		apply_frame(Save.get_value("settings", {})))
+	_opt_row(v, "VSync", vs, "Draws in step with the screen: no tearing, no wasted frames.")
+	var fc := OptionButton.new()
+	for f in FPS_CAPS:
+		fc.add_item(f[1])
+	fc.select(maxi(0, FPS_CAPS.map(func(f): return f[0]).find(int(st.get("fpsCap", 0)))))
+	fc.item_selected.connect(func(i):
+		_set_opt("fpsCap", FPS_CAPS[i][0])
+		apply_frame(Save.get_value("settings", {})))
+	_opt_row(v, "Frame rate cap", fc, "A ceiling on the frames drawn a second: cooler and quieter on a strong PC, steadier on a laptop.")
+	var us := OptionButton.new()
+	for u in UI_SCALES:
+		us.add_item(u[1])
+	us.select(maxi(0, UI_SCALES.map(func(u): return u[0]).find(snappedf(float(st.get("uiScale", 1.0)), 0.01))))
+	us.item_selected.connect(func(i):
+		_set_opt("uiScale", UI_SCALES[i][0])
+		apply_ui_scale(Save.get_value("settings", {})))
+	_opt_row(v, "Text and menus", us, "The size of the menus and the HUD: larger for a TV, a 4K screen or the Deck. Changes at once.")
 
 func _options_sound(v: VBoxContainer, st: Dictionary) -> void:
 	_opt_row(v, "Sound", _slider(0.0, 1.0, 0.05, float(st.get("volume", 0.8)), func(x):
@@ -2659,6 +2684,23 @@ static func apply_display(st: Dictionary) -> void:
 			sz = Vector2i(mini(sz.x, screen.x), mini(sz.y, screen.y))
 			DisplayServer.window_set_size(sz)
 			DisplayServer.window_set_position(DisplayServer.screen_get_usable_rect().position + (screen - sz) / 2)
+
+const FPS_CAPS := [[0, "Off"], [30, "30"], [60, "60"], [72, "72"], [90, "90"], [120, "120"], [144, "144"], [165, "165"], [240, "240"]]
+const UI_SCALES := [[0.8, "Smaller"], [0.9, "Small"], [1.0, "Normal"], [1.15, "Large"], [1.3, "Larger"], [1.5, "Largest"]]
+
+## VSync and the frame-rate cap from the settings.
+static func apply_frame(st: Dictionary) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(st.get("vsync", true)) else DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = clampi(int(st.get("fpsCap", 0)), 0, 500)
+
+## The size of everything drawn flat (menus, HUD) from the settings: the window's content scale.
+static func apply_ui_scale(st: Dictionary) -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root if Engine.get_main_loop() is SceneTree else null
+	if root == null:
+		return
+	root.content_scale_factor = clampf(float(st.get("uiScale", 1.0)), 0.7, 1.6)
 
 static func set_fullscreen(on: bool) -> void:
 	var st: Dictionary = Save.get_value("settings", {})

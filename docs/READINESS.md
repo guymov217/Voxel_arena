@@ -8,7 +8,7 @@ PC with a GPU) and what is known to be rough. Kept with the code; update it as i
 | | Demo | Full game |
 |---|---|---|
 | Content | Ready: campaign bouts 1–8 (two bosses), duel / best of three / free-for-all, training, the forge (weapons and armour), the yard | Ready to play end to end: the whole campaign, 14 arena and party modes, 24 beasts and monsters, co-op and versus |
-| Code and tests | 260 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
+| Code and tests | 296 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
 | Store page | Copy, tags, 13 screenshots, all capsules, two key-art posters, the logo (`docs/store/`) | Same page; the demo is attached to it |
 | Steamworks | Not set up yet (needs the account owner) | Not set up yet |
 | Played on real hardware | Not by me: everything here was checked headless and with a software renderer | Same |
@@ -66,6 +66,26 @@ long campaign on real hardware before a release date is set.
 - The floor: smooth sand and packed earth with a fine 5 cm voxel grain in its colour.
 - Tests no longer depend on which ran before them: each test's world is cleared before the
   next starts (up to 400 bodies from earlier tests used to stand in later ones).
+
+## Closed since (the campaign and the market round)
+
+- The campaign: a purse of 60 to start, gentler bouts 2–4, the Big Lion first and the Cyclops
+  eighth, bleeding a quarter slower for players, beasts' bites capped and paced, giants' blows
+  pulled, death's door and the lift in co-op, the rudis and a second lap at the end, returning
+  bosses in steel; the crowd pays a little more for a lively bout.
+- Armour: every plate guards its spot until worn through (by its stuff), layers add up, plates
+  can be painted at the bench, and knocked-off plates stay off until the armourer mends them.
+- The market: the Hand of Jupiter (a grip on a man, steered by the crosshair and the wheel, F
+  hurls him; twice a bout) and the fireball.
+- Settings: VSync, a frame-rate cap and the size of the text and menus (for a TV, 4K or the
+  Deck), beside the display mode, window size, 3D resolution and anti-aliasing already there.
+- The save is written beside the old one and moved into place whole, the last good one kept as
+  `.bak` and read back when the save cannot be: a crash mid-write no longer loses a campaign.
+- The *Builds* workflow builds the C++ core against godot-cpp 4.4 (the extension's
+  `compatibility_minimum`); godot-cpp has no 4.7 branch, and a 4.4 build loads in 4.7.2. What
+  cannot be checked here: that the exported Windows build loads the core (the game falls back to
+  GDScript voxels without it, slower but whole), so run one export and look for the core in the
+  log on a real PC.
 
 ## Known rough edges
 
