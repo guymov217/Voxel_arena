@@ -41,6 +41,7 @@ var round_pay := 0
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.4
+const PLAYER_BLEED := 0.75
 var kills := {}
 var rng := RandomNumberGenerator.new()
 var next_id := 1
@@ -314,6 +315,9 @@ func spawn_fighter(spec: Dictionary):
 			f.weapons[side].remove_voxels(spec.worn[side])
 	if role == "guest":
 		f.make_puppet()
+	elif spec.kind == "remote" or spec.kind == "local":
+		# A player bleeds slower than the bots, time enough to see the wound and answer it.
+		f.mods.bleed = float(f.mods.get("bleed", 1.0)) * PLAYER_BLEED
 	var e := {"id": spec.get("id", next_id), "f": f, "kind": spec.kind, "team": spec.team, "peer": spec.get("peer", -1), "boss": spec.get("boss", false), "spec": spec}
 	next_id = maxi(next_id, e.id) + 1
 	if spec.kind == "bot":
@@ -519,7 +523,9 @@ static func ladder_weapon(st: int, own: Array, rng_: RandomNumberGenerator) -> S
 
 ## How much of a foe's skill (and how far up its armour) the campaign's bout `st` brings out.
 static func ladder_skill(st: int) -> float:
-	return clampf(0.6 + 0.05 * float(st - 1), 0.6, 1.0)
+	# (The first bouts after the first climb slower: a new man finds his feet.)
+	var ease := 0.04 if st >= 2 and st <= 4 else 0.0
+	return clampf(0.6 + 0.05 * float(st - 1) - ease, 0.6, 1.0)
 
 func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var gx := 1.0 if i % 2 == 0 else -1.0

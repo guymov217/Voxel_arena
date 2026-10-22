@@ -319,3 +319,23 @@ func test_late_foes_keep_strong_weapons() -> void:
 			if Match.ladder_power(k) < strongest * 0.5:
 				weak += 1
 		t.eq(weak, 0, "bout %d: no weak weapon in the foes' hands" % st)
+
+## The first bouts are gentle: the Big Lion is the first boss and the Cyclops waits for the
+## eighth bout, the wolf and the boar bite less hard, and the men of bouts 2 to 4 climb slower.
+func test_the_first_bouts_are_gentler() -> void:
+	t.eq(String(Data.stage(4, 1).rounds[0][0].get("beast", "")), "lion", "the Big Lion is the first boss")
+	t.eq(String(Data.stage(8, 1).rounds[0][0].get("e", "")), "cyclops", "the Cyclops comes at the eighth bout")
+	t.check(float(Data.beasts.wolf.bite) < 22.0 and float(Data.beasts.boar.bite) < 30.0, "the wolf and the boar bite less hard")
+	t.check(Match.ladder_skill(2) < 0.65 and Match.ladder_skill(4) < 0.75 and is_equal_approx(Match.ladder_skill(5), 0.8), "bouts 2 to 4 climb slower, bout 5 as before")
+	t.check(float(Data.stage(3, 1).rounds[0][0].get("gear", {}).get("diff", 0.85)) <= 0.9 if Data.stage(3, 1).rounds[0][0].get("gear") is Dictionary else true, "bout 3's man is no sharper")
+
+## A player bleeds a quarter slower than a bot from the same wounds.
+func test_a_player_bleeds_slower() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
+	t.eq(float(m.me.f.mods.bleed), Match.PLAYER_BLEED, "the player's own bleeding")
+	for e in m.enemies():
+		if e.f is Fighter:
+			t.eq(float(e.f.mods.bleed), 1.0, "a foe bleeds as before")
+	m.queue_free()
