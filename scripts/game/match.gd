@@ -42,6 +42,11 @@ var round_pay := 0
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.4
 const PLAYER_BLEED := 0.75
+## A boss's second coming (after every boss has come once): the steel set in place of the
+## bronze and iron, and a coating on his weapon.
+const RETURN_ARMOR := ["steelLorica", "murmilloHelm", "steelGreaves", "manica"]
+const RETURN_ARMOR_OFF := ["helmet", "lorica", "greaves", "manica"]
+const RETURN_COAT := {"cyclops": "fire", "minotaur": "venom", "giant": "frost", "titan": "fire"}
 var kills := {}
 var rng := RandomNumberGenerator.new()
 var next_id := 1
@@ -546,7 +551,14 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var coat := "fire" if en.get("e", "") == "pyro" else ""
 	if coat == "" and mode == "campaign" and stage >= 12 and rng.randf() < clampf((stage - 10) * 0.025, 0.0, 0.45):
 		coat = Arms.COATINGS[rng.randi_range(0, Arms.COATINGS.size() - 1)]
-	if coat != "" and not main.is_empty() and Arms.can_upgrade(coat, main):
+	# A boss come round again (the tables' second time through) is not the same man again:
+	# steel on him where the first time was bronze and iron, and his weapon coated.
+	var returning: bool = en.get("boss", false) and mode == "campaign" and stage > int(Data.campaign.get("bosses", []).size()) * int(Data.campaign.get("bossEvery", 4))
+	if returning:
+		coat = RETURN_COAT.get(String(en.get("e", "")), "fire")
+	# (Coatings are no longer sold at the smith, so Arms.can_upgrade says no to one; a foe's
+	# weapon is coated straight, as a weapon coated before keeps its coating.)
+	if coat != "" and not main.is_empty() and main.get("kind", "weapon") != "shield":
 		main = main.duplicate(true)
 		main.imbue = coat
 	if en.get("loadout") is String and en.loadout != "":
@@ -569,6 +581,8 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 			armor.append(x)
 	if ladder and stage <= 2:
 		armor.clear()   # the first bouts' men fight in their tunics
+	if returning:
+		armor = armor.filter(func(x): return not RETURN_ARMOR_OFF.has(x)) + RETURN_ARMOR
 	var names: Array = t.get("names", ["Gladiator"])
 	var nm: String = en.get("name", names[rng.randi_range(0, names.size() - 1)])
 	if g.get("rank") and not en.get("boss", false):

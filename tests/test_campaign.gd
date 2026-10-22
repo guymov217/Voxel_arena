@@ -385,3 +385,20 @@ func test_a_friend_lifts_a_man_from_deaths_door() -> void:
 	await get_tree().physics_frame
 	t.check(not a.alive, "with no friend standing, his death is his own")
 	m.queue_free()
+
+## A boss who comes round a second time comes better armed: the steel set and a coated weapon,
+## where his first coming wore bronze and iron and swung a plain one.
+func test_a_returning_boss_comes_in_steel() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
+	for pair in [[8, 40, "fire"], [12, 48, "venom"], [16, 52, "frost"], [24, 60, "fire"]]:
+		m.stage = int(pair[0])
+		var first := m.enemy_spec(Data.stage(int(pair[0]), 1).rounds[0][0], 0, 1)
+		m.stage = int(pair[1])
+		var again := m.enemy_spec(Data.stage(int(pair[1]), 1).rounds[0][0], 0, 1)
+		t.check(not first.loadout.armor.has("steelLorica") and String(first.loadout.main.get("imbue", "")) == "", "bout %d: the first time, no steel and a plain weapon" % int(pair[0]))
+		t.check(again.loadout.armor.has("steelLorica") and again.loadout.armor.has("murmilloHelm") and not again.loadout.armor.has("helmet"), "bout %d: in steel (%s)" % [int(pair[1]), str(again.loadout.armor)])
+		t.eq(String(again.loadout.main.get("imbue", "")), String(pair[2]), "bout %d: his weapon coated" % int(pair[1]))
+		t.check(again.loadout.armor.has("mon_horns") == first.loadout.armor.has("mon_horns"), "and still looks the part")
+	m.queue_free()
