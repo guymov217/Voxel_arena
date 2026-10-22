@@ -119,7 +119,7 @@ func test_a_beasts_packed_status_comes_through() -> void:
 	b.jaw_t = 0.3
 	b.torso.hp = 42.0
 	var packed: Array = b.status_packed()
-	t.eq(packed.size(), 5, "blood, breath, state, the parts' hp and the jaw")
+	t.eq(packed.size(), 6, "blood, breath, state, the parts' hp, death's door and the jaw")
 	b.jaw_t = 0.0
 	b.torso.hp = 100.0
 	b.apply_status(packed)

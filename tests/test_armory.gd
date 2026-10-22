@@ -379,3 +379,35 @@ func test_armour_softens_clubs_and_cuts() -> void:
 	var bare_cut: float = await dmg.call([], "edge", 0.8, 40.0)
 	var leather_cut: float = await dmg.call(["leatherJerkin"], "edge", 0.8, 40.0)
 	t.check(leather_cut < bare_cut * 0.8, "a cut through leather: %.1f against %.1f bare" % [leather_cut, bare_cut])
+
+## Armour built thicker at the bench protects more: a second ring of steel plates round the
+## trunk takes more out of the same blow than one.
+func test_thicker_armour_protects_more() -> void:
+	var one := Armory.design_piece("torso", "steel", 0.0, 1.0, false, false, "One")
+	var two := one.duplicate(true)
+	two.name = "Two"
+	var X: int = Armory._dims("torso")[0]
+	var Z: int = Armory._dims("torso")[2]
+	var outer := []
+	for c in two.parts.torso:
+		var x: int = c[0]
+		var z: int = c[2]
+		outer.append([x - 1 if x == -1 else (x + 1 if x == X else x), c[1], z - 1 if z == -1 else (z + 1 if z == Z else z)])
+	two.parts.torso = two.parts.torso + outer
+	var ids := Armory.register([one, two])
+	t.eq(ids.size(), 2, "both pieces registered")
+	var dmg := func(id: String) -> float:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "headless": true, "loadout": {"main": "gladius", "armor": [id], "armor_defs": Armory.defs_of([id])}, "training": {"enemy": "none"}, "seed": 5})
+		var g: Fighter = m.me.f
+		for i in 30:
+			await get_tree().physics_frame
+		var pt: Vector3 = g.torso.global_transform * Vector3(0, 0.1, -g.torso.half_ext.z)
+		var r: Dictionary = g.apply_hit(g.torso, {"impulse": 40.0, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "point": pt, "dir": Vector3.BACK, "axis": Vector3.RIGHT, "edge": Vector3.BACK})
+		m.queue_free()
+		await get_tree().process_frame
+		return float(r.get("dmg", 0.0))
+	var d1: float = await dmg.call(ids[0])
+	var d2: float = await dmg.call(ids[1])
+	t.check(d1 > 0.0 and d2 < d1 * 0.8, "two layers of steel: %.1f against %.1f through one" % [d2, d1])

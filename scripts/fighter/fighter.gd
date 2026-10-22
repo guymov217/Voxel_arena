@@ -2974,6 +2974,7 @@ func teleport(p: Vector3) -> void:
 const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
 const GIANT_BLOW := 0.85 # a giant's blows, pulled a little (Combat)
+const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -3075,7 +3076,20 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				gone += 1
 		if gone > 0:
 			res.armor_hit = gone
-		var absorb := minf(0.85, 0.3 + 0.55 * h)
+		# Plate on plate: armour built thicker (the bench's second and third layers under the
+		# blow) takes more of it, a step for each layer beneath the one it struck.
+		# (The plates stand off the body, the outer layers furthest: how far out along the
+		# blow's path the armour over the spot reaches is how many layers it went through.)
+		var in_most := INF
+		var out_most := -INF
+		for n2 in _armor_near(part, lp, V * S * 3.4):
+			var off: Vector3 = (n2[0].pts[n2[1]] as Vector3) - lp
+			var along := off.dot(ld)
+			if (off - ld * along).length() < V * S * 1.2:   # under the blow's line
+				in_most = minf(in_most, along)
+				out_most = maxf(out_most, along)
+		var layers := 1 + (int(round((out_most - in_most) / (V * S))) if out_most > in_most else 0)
+		var absorb := minf(0.92, 0.3 + 0.55 * h + LAYER_ABSORB * (layers - 1))
 		armor_f = 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
 		J *= armor_f
 		res.armor = true
