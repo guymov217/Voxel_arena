@@ -16,6 +16,7 @@ const STEPS := [
 	{"id": "forge", "title": "The forge", "read": 9.0, "text": "At the smith, Reshape in the forge changes your weapon. Quick start: a base and up to two twists (▲ more, ▼ less speed, damage, reach). Shape by hand: left click builds, right click takes a block off, middle drag turns it, Shift and middle drag slides it, the wheel zooms to the mouse, F shows it all again, Ctrl+Z undoes."},
 	{"id": "blocks", "title": "Blocks", "read": 9.0, "text": "Each block has a material (its hardness and weight) and a job: Edge cuts, Point stabs, Blunt crushes and holds it together, Grip is where you hold it. Save design keeps a weapon in My designs to load again."},
 	{"id": "gems", "title": "Gems", "read": 8.0, "text": "Ruby, sapphire and emerald are costly sockets: a blow may set the part it strikes alight, freeze it stiff with frostbite that kills the flesh, or poison it. The more stones, the surer and the fiercer."},
+	{"id": "yard", "title": "The yard", "read": 10.0, "text": "Between bouts the yard has the smith (weapons and armour, both mended there as they wear), the market (pots, the Hand of Jupiter: twice a bout, it holds a man where you look, the wheel draws him in, F hurls him), the physician for your wounds, and the trainer: strength, blow, wind, hide, blood and footing, a session at a time, no further than the bouts you have won."},
 	{"id": "fight", "title": "A real fight", "text": "A recruit steps in, and he fights back. Beat him. (You cannot die in here.)", "setup": "fight"},
 ]
 

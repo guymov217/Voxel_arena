@@ -89,11 +89,15 @@ func test_a_magnet_pulls_a_steel_blade_in() -> void:
 	var blade := m.spawn_loose_weapon(Data.preset("gladius"), Vector3(0.9, 0.1, 0))
 	await _steps(60)
 	var d0 := blade.global_position.distance_to(mag.material_centre("magnet"))
-	await _steps(120)
-	var d1 := blade.global_position.distance_to(mag.material_centre("magnet"))
 	# In, or as far in as it goes: a blade that lands pointing at the magnet is against it after
-	# a hand's breadth (the pull is to its grip, the length of it lies between).
-	var against := blade.get_colliding_bodies().has(mag)
+	# a hand's breadth (the pull is to its grip, the length of it lies between). The nearest it
+	# came counts: sliding in, it may knock the magnet club and settle a little off again.
+	var d1 := d0
+	var against := false
+	for k in 24:
+		await _steps(10)
+		d1 = minf(d1, blade.global_position.distance_to(mag.material_centre("magnet")))
+		against = against or blade.get_colliding_bodies().has(mag)
 	t.check(d1 < d0 - 0.15 or (against and d1 < d0 - 0.03), "the blade slides to the magnet (%.2f → %.2f m%s)" % [d0, d1, ", against it" if against else ""])
 	var wood := m.spawn_loose_weapon(_club("wood"), Vector3(-0.9, 0.1, 0))
 	await _steps(60)

@@ -56,7 +56,11 @@ func draw_now() -> void:
 	_draw_at(global_transform)
 	snap_drawing()
 
+## Drawn this much off where the physics has it (world): the fighter closes each joint on
+## screen, the limb set against the part it hangs from (Fighter._seat_drawing).
+var draw_shift := Vector3.ZERO
 func _draw_at(t: Transform3D) -> void:
+	t.origin += draw_shift
 	if mmi:
 		mmi.global_transform = t
 	if skin:

@@ -50,6 +50,7 @@ func _ready() -> void:
 	Net.my_body = body()
 	Armory.register(Save.get_value("armor_designs", {}))   # the pieces designed at the bench
 	_net_loadout()
+	Achievements.sync.call_deferred()
 	if Sfx.music:
 		Sfx.music.volume = float(Save.get_value("settings", {}).get("music", 0.5))
 	_cmdline_room.call_deferred()
@@ -1617,6 +1618,7 @@ func _bench_keep(final: Dictionary) -> void:
 		return
 	var designs: Dictionary = Save.get_value("armor_designs", {})
 	designs[ids[0]] = final
+	Achievements.unlock("armourer")
 	Save.set_value("armor_designs", designs)
 	if bench_mode == "training":
 		training.armor = Armory.buy(Armory.sanitize(training.get("armor", [])), ids[0]).worn
@@ -2260,6 +2262,8 @@ func _trainer(v: VBoxContainer) -> void:
 					return
 				add_coins(-int(r2.cost))
 				set_training_stats(r2.stats)
+				if int(r2.stats[id]) >= int(a.max):
+					Achievements.unlock("trained")
 				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, a.title.to_lower()]), true)
 		b.custom_minimum_size = Vector2(230, 0)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -3102,6 +3106,12 @@ func _on_finished(r: Dictionary) -> void:
 			if r.get("checkpoint") != null:
 				Save.set_value(ck, int(r.checkpoint))
 			Save.set_value(sk, int(r.stage) + 1)
+			if r.get("boss", false):
+				Achievements.unlock("boss")
+			if int(r.stage) >= 8:
+				Achievements.unlock("eight_bouts")
+			if int(r.stage) >= 32:
+				Achievements.unlock("halfway")
 			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
 			if int(r.stage) >= Data.campaign.get("stages", []).size():
 				# The last bout won: the rudis. The campaign begins again, the same man and his
@@ -3110,6 +3120,9 @@ func _on_finished(r: Dictionary) -> void:
 				var kills := int(r.get("kills", {}).size()) if r.get("kills") is Dictionary else 0
 				Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"),
 					{"day": 7, "won": true, "kills": kills, "bouts_won": int(r.stage), "campaign": true}, ""))
+				Achievements.unlock("rudis")
+				if int(Save.get_value(lk, 1)) >= 2:
+					Achievements.unlock("rudis_again")
 				Save.set_value(lk, int(Save.get_value(lk, 1)) + 1)
 				Save.set_value(sk, 1)
 				Save.set_value(ck, 1)

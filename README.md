@@ -25,6 +25,17 @@ godot --headless --path . -- --test test_fight   # one suite
   hang or come off, and blood and breath. Chips knocked off weapons wear them down. Fire.
 - **Weapons**: built from the same voxel designs, with greedy-merged colliders and shields.
   Chain weapons, bows and crossbows, throwables and the market.
+- **Armour that wears**: every plate you put on protects the spot it covers until it is knocked
+  off, at a force by its stuff (leather gives first, steel last); what came off stays off between
+  fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.
+- **The trainer** (Doctore, in the yard): six abilities bought a session at a time, never earned
+  in the arena: vis (strength), ictus (the blow), spiritus (breath), corium (a thick hide),
+  sanguis (slower bleeding) and firmitas (footing). Each costs more than the last and is capped
+  by the bout you have reached (`scripts/game/training.gd`).
+- **The Hand of Jupiter**: a telekinesis charge from the market seizes the man under the
+  crosshair for three seconds (twice a bout), the wheel draws him nearer or further, and F lets
+  him fly with the mouse's sweep; a hard landing hurts. A fireball pot bursts, burns and leaves
+  fire on the sand.
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw.
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath.
 - **The campaign**: stages of three rounds, pay, bosses on the same tables, checkpoints and
@@ -64,10 +75,18 @@ godot --headless --path . -- --test test_fight   # one suite
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
   head football, players' brawl).
 - **The spectacle**: the Emperor's decrees, arena hazards, the crowd's favour and the announcer,
-  and drops from the stands.
+  and drops from the stands. A lively bout earns a small crowd bonus on the pay, in proportion
+  to how much fighting the crowd saw.
+- **Limbs that stay on**: the parts of a body are rigid bodies on joints, and a joint opens a
+  few millimetres under load; on screen each part is drawn against the part it hangs from and
+  the weapon with its hand, so nothing floats off the body until it is really cut off
+  (`Fighter._seat_drawing`).
+- **Achievements** (`scripts/game/achievements.gd`): fifteen, kept in the save and set on Steam
+  when it runs (the list is in docs/DEMO.md).
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
   A gladiator editor (name, skin, cloth, hat, hair, beard, cape). The HUD, menus and options
-  (four tabs: game, controls, graphics, sound). The menus in one imperial look (`scripts/ui/style.gd`):
+  (four tabs: game, controls, graphics, sound; VSync, an FPS cap and the interface scale among
+  them). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
   fights as cards with a line each on what they are.
 - **Graphics**: the arena in 10 cm voxels (the floor smooth sand and packed earth with a fine

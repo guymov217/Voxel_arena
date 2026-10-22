@@ -766,9 +766,12 @@ func _ready() -> void:
 func snap_drawing() -> void:
 	_snap_until = Engine.get_physics_frames() + 2
 
+var draw_shift := Vector3.ZERO   # drawn this much off (world): with the hand that holds it
 func _process(_dt: float) -> void:
 	if vis:
-		vis.global_transform = global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+		var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+		t.origin += draw_shift
+		vis.global_transform = t
 
 ## Drawn where it is now, with the game paused (the kill cam's replay).
 func draw_now() -> void:

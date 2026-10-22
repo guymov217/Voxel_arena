@@ -128,11 +128,17 @@ func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	seed(11)
 	var m := _match()
 	m.me.f.state = "dead"
-	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, _idle)
+	# (A victim a giant's first blow cannot kill, and a giant in a rage, who grabs at every
+	# chance: which blow lands first, and whether it kills, hangs on the physics' chaos; the
+	# hold, the slam and the throw are what is tested.)
+	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, _idle, {"toughness": 6.0})
 	var giant = m.spawn_fighter({"kind": "bot", "name": "Giant", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.0, "strength": 2.0}, "diff": 0.9})
+	giant.f.enraged = true
 	var moves := []
 	m.feed.connect(func(s): moves.append(s))
 	for k in 50:
+		victim.f.blood = 100.0
+		victim.f.head.hp = maxf(victim.f.head.hp, 60.0)
 		await _steps(60)
 		if moves.any(func(s): return s.contains("SLAMS") or s.contains("tossed")):
 			break

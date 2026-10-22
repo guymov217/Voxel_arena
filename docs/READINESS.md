@@ -8,7 +8,7 @@ PC with a GPU) and what is known to be rough. Kept with the code; update it as i
 | | Demo | Full game |
 |---|---|---|
 | Content | Ready: campaign bouts 1–8 (two bosses), duel / best of three / free-for-all, training, the forge (weapons and armour), the yard | Ready to play end to end: the whole campaign, 14 arena and party modes, 24 beasts and monsters, co-op and versus |
-| Code and tests | 298 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
+| Code and tests | 302 automated checks, run with `sh run_tests.sh` (parse, every suite, a host and a guest over ENet) | Same build |
 | Store page | Copy, tags, 13 screenshots, all capsules, two key-art posters, the logo (`docs/store/`) | Same page; the demo is attached to it |
 | Steamworks | Not set up yet (needs the account owner) | Not set up yet |
 | Played on real hardware | Not by me: everything here was checked headless and with a software renderer | Same |
@@ -66,6 +66,34 @@ long campaign on real hardware before a release date is set.
 - The floor: smooth sand and packed earth with a fine 5 cm voxel grain in its colour.
 - Tests no longer depend on which ran before them: each test's world is cleared before the
   next starts (up to 400 bodies from earlier tests used to stand in later ones).
+- The failures that remained were not timing but order: the physics is deterministic, yet a
+  blow's outcome depends on the bodies' history in the process, so a test that asserted dice
+  (a cut landing, a hug given, a magnet's grip) passed alone and failed after another suite.
+  Those tests now assert the mechanics (the rage, the hug, the nearest approach) and pass in
+  any order: pots+social 14/14, beasts+materials 18/18, demo+tutorial+basics+training 11/11.
+- Limbs stay on the body (user request): the joints of a ragdoll open under load (an elbow
+  driving a heavy blade by 7–9 mm on average, up to 15 cm in a hard blow; a shoulder 2–7 mm,
+  up to 4.5 cm; shoulders open past 3 cm in 2–4% of the frames of a duel, elbows in 3–7%).
+  On screen every joint is now closed: each part is drawn against the part it hangs from and
+  the weapon with its hand, so nothing floats until it is really cut off, when it is left to
+  fall. The bodies themselves are left as they were: setting each limb back on its joint
+  before every step, or 24 Jolt position iterations instead of 10, brought the physical gaps
+  down to 1–3 mm (0–0.3% past 3 cm) but cost the heavy two-handers their precision (the
+  warhammer 32–48° off its mark where 30° is allowed, a high guard 39° off), so neither is
+  in; the drawing alone gives the 100% on screen with the arms untouched. Mobility and cutting
+  are unchanged (arms, fight, footing, destructible, social, flaps, body, giants suites; a new
+  `seating` suite measures the gaps, the drawn seating and a cut limb).
+- Bug "weapon no-clips into a head and sticks": not reproduced on the current build. A probe
+  drove eight weapons (gladius, spear, dagger, executioner's axe, hammer, zweihander, trident,
+  longsword) at a man's head, ten stabs and ten swings each, bare-headed, in a helmet and skull
+  plate, and lying on the sand: 6–26 head blows per weapon, and never a frame with the blade
+  inside the head once the hand was at rest, never a stuck weapon, never one out of the hand.
+  The `seating` suite keeps that check (gladius and zweihander). The wheel-spin half of the
+  report was fixed earlier.
+- Bug "the left arm locks up raised": still not reproduced; a soak of ten states (a shield held
+  high and let be, knocked out, a dagger, an empty hand, blows to the arm, falls, throws, a
+  two-handed grip taken and let go) reads the elbow's limits and the hand's height after each,
+  and finds the arm at rest every time (elbow span 2.65 rad, no lock flag left set).
 
 ## Closed since (the campaign and the market round)
 
@@ -100,8 +128,9 @@ long campaign on real hardware before a release date is set.
   high guard): 0.16–0.28 m along the line, against about 0.5 m for a level stab.
 - Heavy two-handers (the warhammer) are slow to come round to a new mark: by design, but it
   can read as lag.
-- "The left arm locks up raised" (seen once in a screenshot) has not reproduced in soak tests
-  of shield, dagger, empty hand, blows to the arm, falls and throws.
+- "The left arm locks up raised" (seen once in a screenshot) and "a weapon no-clips into a
+  head and sticks" have not reproduced in soak tests (see above); if either is seen again, a
+  kill-cam clip or the save and the weapon used would let it be traced.
 - The crocodile's death-roll test and the giant's grab test are timing-sensitive (beast AI
   with random decisions); they pass on their own and fail now and then in the full run.
 - Everything above was checked headless and with a software renderer; lighting, shadows and
@@ -109,6 +138,7 @@ long campaign on real hardware before a release date is set.
 
 ## Not in yet (later, not needed for the demo)
 
-- Steam achievements and Steam Cloud (saves are local; Steam Auto-Cloud can be switched on in
-  Steamworks without code, pointing at the game's user folder).
+- Steam achievements: in (`scripts/game/achievements.gd`, fifteen, kept in the save and set on
+  Steam when it runs); the API names and texts to enter in Steamworks, the Auto-Cloud root for
+  the save and the content survey answers are in docs/DEMO.md (4b). Icons still to draw.
 - Localisation: English only.

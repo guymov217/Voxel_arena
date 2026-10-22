@@ -823,6 +823,8 @@ func _mind_land(mnd: Dictionary, drop: float) -> void:
 	t.concussion = minf(1.0, t.concussion + 0.3 * J / 52.0)
 	if J > 20.0:
 		m.feed.emit("%s lands hard!" % t.display_name)
+		if m.me != null and mnd.e == m.me and not m.headless:
+			Achievements.unlock("jupiter_hand")
 	m.sfx("thud", t.torso.global_position, clampf(J / 40.0, 0.4, 1.0))
 
 ## Bots: a taunt pulls them onto the taunter; nobody bothers a man playing dead while someone

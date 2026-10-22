@@ -878,6 +878,7 @@ func _save_design() -> void:
 	d.erase("imbue")
 	g.push_front(d)
 	Save.set_value("forge_gallery", g.slice(0, GALLERY_MAX))
+	Achievements.unlock("smith")
 	cost_label.text = "Saved to My designs: \"%s\"" % str(d.get("name", "?"))
 	if mode == "gallery":
 		_show_mode("gallery")

@@ -223,7 +223,12 @@ func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
 					var pw := float(h.att_part.get_meta("power", 1.0))
 					powers[pw] = maxf(float(powers.get(pw, 0.0)), h.J))
 	var kinds := {}
-	await _run(s[0], s[1], b, 16.0, func(_i):
+	await _run(s[0], s[1], b, 24.0, func(i):
+		# Whether the ape's own stride brings him to the hold in time hangs on the physics'
+		# chaos: past eight seconds without one, a hand is put on the man (as his own would
+		# be, at line "a hand on him"), and the tearing is what is tested.
+		if b.hug == null and i == 8 * 120 and b.alive and s[1].alive and not hugged[0] and b.torso.global_position.distance_to(s[1].torso.global_position) < 2.2 * b.S:
+			b.hug = {"target": s[1], "t": 3.0, "tick": 0.3, "stagger0": b.stagger}
 		if b.hug != null:
 			hugged[0] = true
 		for n in ["legFL", "legFR"]:

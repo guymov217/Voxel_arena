@@ -24,3 +24,23 @@ func test_the_demo_shows_its_own_foes_and_locks_the_rest() -> void:
 	Edition.forced = false
 	t.check(Edition.foe_open("dragon") and Edition.mode_open("hunt", false), "the full game locks nothing")
 	Edition.forced = null
+
+## The demo's yard and market: the new stations and wares are in it, within its limits, and no
+## two stations stand on each other.
+func test_the_demos_yard_and_market() -> void:
+	Edition.forced = true
+	t.check(Data.shop.throwables.has("telekinesis") and Data.shop.throwables.has("fireball"), "the Hand of Jupiter and the fireball are on the market")
+	t.eq(Training.cap("corium", 40), Training.DEMO_MAX, "the trainer teaches two sessions of each in the demo")
+	t.check(Training.buy({}, "vis", 8, 1000).has("stats"), "and sells one before its last bout")
+	Edition.forced = null
+	var st := Yard.stations()
+	t.check(st.has("trainer") and st.has("physician") and st.has("smith") and st.has("market") and st.has("gate"), "the yard has its five stations")
+	var ids: Array = st.keys()
+	for i in ids.size():
+		for j in range(i + 1, ids.size()):
+			var a: Dictionary = st[ids[i]]
+			var b: Dictionary = st[ids[j]]
+			var d := Vector2(a.p.x - b.p.x, a.p.z - b.p.z).length()
+			t.check(d > float(a.r) + float(b.r) + 1.0, "%s and %s stand apart (%.1f m)" % [ids[i], ids[j], d])
+	t.check(Tutorial.STEPS.any(func(s): return s.id == "yard"), "the tutorial has a page on the yard")
+	t.check(Achievements.LIST.size() >= 15 and Achievements.LIST.has("rudis"), "the achievements are listed")

@@ -1976,6 +1976,14 @@ func _on_death(f: Fighter, cause: String) -> void:
 		var lw = last_hit_of.get(f, {}).get("weapon")
 		if lw != null and is_instance_valid(lw) and lw.holder == null:
 			mission_event("throwKill")
+		if not headless and not attract:
+			Achievements.unlock("first_blood")
+			if f.kind == "beast":
+				Achievements.unlock("beast_slayer")
+			if lw != null and is_instance_valid(lw) and lw.holder == null and f.kind != "beast":
+				Achievements.unlock("javelin")
+			if f.get("head") != null and f.head.severed:
+				Achievements.count("headsman")
 	if me and (f.boss or f.S >= 1.8) and hit_by_me.has(f):
 		mission_event("bigKill")
 	if f.kind != "beast" or not Data.beasts.get(f.get("species") if f.get("species") else "", {}).get("bloodless", false):

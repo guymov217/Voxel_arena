@@ -1950,8 +1950,34 @@ var shoulder_caps := {}
 func _process(_dt: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	_seat_drawing()
 	for side in ["R", "L"]:
 		_draw_shoulder(side)
+
+## What the physics leaves open of a joint (a few millimetres under load, a couple of
+## centimetres in a hard blow) is closed on screen: each joined part is drawn moved so that
+## its anchor meets its parent's where the parent is drawn, parents before children, and the
+## weapon in a hand is drawn moved with the forearm. The bodies are not touched (setting them
+## back on their joints before each step, or more solver iterations, cost the arms their
+## precision with a heavy head); a part cut off, hanging or gone is drawn where it is.
+func _seat_drawing() -> void:
+	for p: VoxelPart in parts:
+		var par: VoxelPart = p.parent_part
+		p.draw_shift = Vector3.ZERO
+		if par == null or p.severed or p.hanging or p.missing or par.severed or p.joint == null:
+			continue
+		var tp := par.get_global_transform_interpolated()
+		var tc := p.get_global_transform_interpolated()
+		p.draw_shift = tp * p.pa + par.draw_shift - tc * p.ca
+	for side in ["R", "L"]:
+		var w: Weapon = weapons[side]
+		if w == null:
+			continue
+		var fore: VoxelPart = arm[side].fore
+		var shift: Vector3 = fore.draw_shift if not two_handed or side == "R" else arm.R.fore.draw_shift
+		for b in w.bodies():
+			if b is Weapon:
+				b.draw_shift = shift
 
 func _draw_shoulder(side: String) -> void:
 	var up: VoxelPart = arm[side].upper
@@ -1963,8 +1989,8 @@ func _draw_shoulder(side: String) -> void:
 	if show:
 		var tt := torso.get_global_transform_interpolated()
 		var ut := up.get_global_transform_interpolated()
-		sock = tt * Vector3(shoulder[side].x, shoulder[side].y, 0)
-		top = ut * Vector3(0, up.half_ext.y, 0)
+		sock = tt * Vector3(shoulder[side].x, shoulder[side].y, 0) + torso.draw_shift
+		top = ut * Vector3(0, up.half_ext.y, 0) + up.draw_shift
 		tb = ut.basis.orthonormalized()
 	if not show:
 		if cap:
@@ -3065,6 +3091,7 @@ func lift() -> void:
 		p.artery = 0.0
 	help_up()
 	note.emit(self, "%s is lifted" % display_name)
+	Achievements.unlock("lifted")
 
 # ---------- Wounds ----------
 

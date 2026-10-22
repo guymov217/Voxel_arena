@@ -273,6 +273,8 @@ func update(dt: float) -> void:
 		if val >= 100.0:
 			favor[f] = 65.0
 			gifted[f] = 40
+			if m.me != null and f == m.me.f and not m.headless:
+				Achievements.unlock("darling")
 		# Passive gladiators slowly lose the crowd.
 		if time - last_action > 6.0:
 			favor[f] = maxf(0.0, get_favor(f) - dt * 1.2)
