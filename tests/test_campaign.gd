@@ -100,7 +100,7 @@ func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
 	for n in [1, 2, 3, 5, 6]:
 		var st := Data.stage(n, 3)
 		t.eq(st.rounds.size(), 1, "co-op bout %d is one fight" % n)
-		t.eq(st.rounds[0].size(), 2 + Data.pack_size(n), "three friends, a foe each (and the pack's extra men) in bout %d" % n)
+		t.eq(st.rounds[0].size(), 1 + Data.pack_size(n), "three friends, two foes (and the pack's extra men) in bout %d" % n)
 	var boss := Data.stage(4, 3)
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
 	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")
@@ -326,7 +326,7 @@ func test_the_first_bouts_are_gentler() -> void:
 	t.eq(String(Data.stage(4, 1).rounds[0][0].get("beast", "")), "lion", "the Big Lion is the first boss")
 	t.eq(String(Data.stage(8, 1).rounds[0][0].get("e", "")), "cyclops", "the Cyclops comes at the eighth bout")
 	t.check(float(Data.beasts.wolf.bite) < 22.0 and float(Data.beasts.boar.bite) < 30.0, "the wolf and the boar bite less hard")
-	t.check(Match.ladder_skill(2) < 0.65 and Match.ladder_skill(4) < 0.75 and is_equal_approx(Match.ladder_skill(5), 0.8), "bouts 2 to 4 climb slower, bout 5 as before")
+	t.check(Match.ladder_skill(4) < 0.68 and Match.ladder_skill(12) < 0.8 and Match.ladder_skill(23) < 1.0 and is_equal_approx(Match.ladder_skill(24), 1.0), "their skill climbs slowly, at its best from the 24th bout")
 	t.check(float(Data.stage(3, 1).rounds[0][0].get("gear", {}).get("diff", 0.85)) <= 0.9 if Data.stage(3, 1).rounds[0][0].get("gear") is Dictionary else true, "bout 3's man is no sharper")
 
 ## A player bleeds a quarter slower than a bot from the same wounds.
@@ -338,4 +338,50 @@ func test_a_player_bleeds_slower() -> void:
 	for e in m.enemies():
 		if e.f is Fighter:
 			t.eq(float(e.f.mods.bleed), 1.0, "a foe bleeds as before")
+	m.queue_free()
+
+## A party has the numbers: fewer foes than friends on a men's bout, and a boss tougher by a
+## third for each friend, not more.
+func test_a_party_has_the_better_of_it() -> void:
+	var count := func(st): return st.rounds.reduce(func(a, r): return a + r.size(), 0)
+	t.eq(count.call(Data.stage(2, 2)), 2, "two friends: two men")
+	t.eq(count.call(Data.stage(2, 3)), 2, "three friends: two men")
+	t.eq(count.call(Data.stage(2, 4)), 3, "four friends: three men")
+	var boss3: Dictionary = Data.stage(8, 3).rounds[0][0]
+	t.check(is_equal_approx(float(boss3.mods.toughness), 1.0 + 0.35 * 2), "a boss for three is 70%% tougher (%.2f)" % float(boss3.mods.toughness))
+	t.eq(Data.stage(3, 3).rounds[0].size(), 2, "a beast's bout for three: a pair of them")
+
+## In a party a player's death is not the end: he falls to death's door, his bleeding stopped,
+## and a friend who holds the revive key beside him lifts him back into the fight. The door
+## shuts after DYING_T seconds, or at once when nobody else stands.
+func test_a_friend_lifts_a_man_from_deaths_door() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "role": "host", "headless": true, "peers": [{"id": 2, "name": "Friend", "loadout": {"main": "axe"}}], "seed": 9})
+	for e in m.enemies():
+		e.erase("bot")
+		e.drive = func(_e): return {"limp": true}
+	var a: Fighter = m.me.f
+	var friend: Dictionary = m.humans().filter(func(x): return x.kind == "remote")[0]
+	var fr: Fighter = friend.f
+	for i in 30:
+		await get_tree().physics_frame
+	a.blood = 0.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(a.alive and a.dying > 0.0 and a.state != "stand", "bled white beside a friend, he is at death's door, not dead (dying %.1f)" % a.dying)
+	t.check(a.blood > 0.0, "his bleeding is stopped")
+	fr.teleport(a.torso.global_position + Vector3(0.8, 0, 0))
+	friend.drive = func(_e): return {"revive": true}
+	for i in int(Fighter.LIFT_T * 120) + 30:
+		await get_tree().physics_frame
+	t.check(a.alive and a.dying <= 0.0 and a.blood >= 30.0, "lifted by his friend, he lives (blood %.0f)" % a.blood)
+	# Alone at death's door he dies as before: the friend gone, no one to spare him.
+	friend.drive = func(_e): return {}
+	fr.die("test")
+	await get_tree().physics_frame
+	a.blood = 0.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(not a.alive, "with no friend standing, his death is his own")
 	m.queue_free()

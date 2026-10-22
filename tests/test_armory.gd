@@ -357,3 +357,25 @@ func test_struck_plates_fly_off_from_any_side() -> void:
 	t.check(int(ad2.alive) < ad2.cells.size(), "light knocks wear a plate off in the end (%d blows)" % n)
 	t.check(n > 2, "but not at the first few (%d)" % n)
 	w.queue_free()
+
+## Armour counts against a heavy blow too: the same club through a steel cuirass hurts less
+## than through a tunic, and a leather jerkin takes a real bite out of a cut.
+func test_armour_softens_clubs_and_cuts() -> void:
+	var dmg := func(armor: Array, type: String, sharp: float, J: float) -> float:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "headless": true, "loadout": {"main": "gladius", "armor": armor}, "training": {"enemy": "none"}, "seed": 5})
+		var g: Fighter = m.me.f
+		for i in 30:
+			await get_tree().physics_frame
+		var pt: Vector3 = g.torso.global_transform * Vector3(0, 0.1, -g.torso.half_ext.z)
+		var r: Dictionary = g.apply_hit(g.torso, {"impulse": J, "type": type, "hardness": 0.9, "sharpness": sharp, "point": pt, "dir": Vector3.FORWARD, "axis": Vector3.RIGHT, "edge": Vector3.FORWARD})
+		m.queue_free()
+		await get_tree().process_frame
+		return float(r.get("dmg", 0.0))
+	var bare_club: float = await dmg.call([], "blunt", 0.0, 60.0)
+	var steel_club: float = await dmg.call(["steelLorica"], "blunt", 0.0, 60.0)
+	t.check(steel_club < bare_club * 0.7, "a club through steel: %.1f against %.1f bare" % [steel_club, bare_club])
+	var bare_cut: float = await dmg.call([], "edge", 0.8, 40.0)
+	var leather_cut: float = await dmg.call(["leatherJerkin"], "edge", 0.8, 40.0)
+	t.check(leather_cut < bare_cut * 0.8, "a cut through leather: %.1f against %.1f bare" % [leather_cut, bare_cut])

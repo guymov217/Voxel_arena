@@ -124,17 +124,19 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 	var foes: Array = [foe]
 	if players > 1 and (st.get("boss", false) or foe.get("boss", false)):
 		var m: Dictionary = foe.get("mods", {}).duplicate()
-		m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.6 * (players - 1))
-		m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.12 * (players - 1))
+		# (A party has the better of a boss: tougher for each friend, but not by a whole man.)
+		m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.35 * (players - 1))
+		m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.08 * (players - 1))
 		foe["mods"] = m
 	elif players > 1:
-		# Every friend his own man: the stage's other gladiators, latest waves first.
+		# More of the stage's gladiators for a party, latest waves first: fewer than the
+		# friends, so a party always has the numbers (two for two, two for three, three for four).
 		var pool: Array = []
 		for r in range(rounds.size() - 1, -1, -1):
 			for en in rounds[r]:
 				if en.has("e") and not en.get("boss", false) and en.e != foe.get("e"):
 					pool.append(en)
-		for i in players - 1:
+		for i in roundi((players - 1) * 0.6):
 			if foe.has("beast") or pool.is_empty():
 				foes.append(foe.duplicate(true))
 			else:

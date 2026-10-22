@@ -794,6 +794,12 @@ func _key(id: String) -> String:
 func _prompt_for(f) -> Array:
 	if not f.alive:
 		return []
+	if f.dying > 0.0:
+		return [[], "At death's door: a friend can lift you · %d s" % ceili(f.dying)]
+	var me_e = match_.entity_of(f)
+	var dying_friend = match_.dying_friend_of(me_e) if me_e else null
+	if dying_friend != null:
+		return [["revive"], "Hold to lift %s" % dying_friend.f.display_name]
 	var croc = f.get_meta("rolled_by") if f.has_meta("rolled_by") else null
 	if croc != null and is_instance_valid(croc) and croc.hug != null and croc.hug.get("target") == f:
 		return [["back", "forward"], "Pull away to prise its jaws open · strike its head"]

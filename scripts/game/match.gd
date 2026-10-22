@@ -318,6 +318,7 @@ func spawn_fighter(spec: Dictionary):
 	elif spec.kind == "remote" or spec.kind == "local":
 		# A player bleeds slower than the bots, time enough to see the wound and answer it.
 		f.mods.bleed = float(f.mods.get("bleed", 1.0)) * PLAYER_BLEED
+		f.spare = _may_spare
 	var e := {"id": spec.get("id", next_id), "f": f, "kind": spec.kind, "team": spec.team, "peer": spec.get("peer", -1), "boss": spec.get("boss", false), "spec": spec}
 	next_id = maxi(next_id, e.id) + 1
 	if spec.kind == "bot":
@@ -523,9 +524,9 @@ static func ladder_weapon(st: int, own: Array, rng_: RandomNumberGenerator) -> S
 
 ## How much of a foe's skill (and how far up its armour) the campaign's bout `st` brings out.
 static func ladder_skill(st: int) -> float:
-	# (The first bouts after the first climb slower: a new man finds his feet.)
-	var ease := 0.04 if st >= 2 and st <= 4 else 0.0
-	return clampf(0.6 + 0.05 * float(st - 1) - ease, 0.6, 1.0)
+	# A slow climb: the foes fight at their best from the 24th bout, not the ninth (their
+	# toughness and weapons keep rising the whole way).
+	return clampf(0.6 + 0.4 * float(st - 1) / 23.0, 0.6, 1.0)
 
 func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var gx := 1.0 if i % 2 == 0 else -1.0
@@ -1345,7 +1346,8 @@ func _check_round(dt: float) -> void:
 		return
 	# Beaten is beaten: dead, or out cold on the sand and never getting up again, or down on
 	# the sand unable to stand (crawling at most) for UNFIT_OUT seconds.
-	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and not _unfit(x, dt))
+	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and x.f.dying <= 0.0 and not _unfit(x, dt))
+	_lift_tick(dt)
 	var alive_e := enemies().filter(func(x): return not x.get("beaten", false) and not x.f.is_beaten() and not _unfit(x, dt))
 	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
 	# beaten: he does not get up and fight on after its kill cam. (Before that, a man who comes
@@ -1401,6 +1403,46 @@ func _check_round(dt: float) -> void:
 			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, ("%d denarii to the party's purse. " if players_count > 1 else "%d denarii. ") % pay + "Back to the yard: spend, mend, gear up.", pay)
 		else:
 			_end(true, "Victory", "")
+
+## A party: a player whose wounds would kill him is spared at death's door while a friend still
+## stands to lift him (Fighter.dying). Alone, or the last one up, he dies as he always did.
+func _may_spare(f: Fighter, _cause: String) -> bool:
+	if role == "guest" or mode == "yard" or mode == "training":
+		return false
+	return humans().any(func(x): return x.f != f and x.f is Fighter and x.f.alive and x.f.dying <= 0.0 and not x.f.is_beaten())
+
+## A friend beside a man at death's door holds the revive key LIFT_T seconds to lift him.
+func _lift_tick(dt: float) -> void:
+	if role == "guest":
+		return
+	for e in humans():
+		var f = e.f
+		if not (f is Fighter) or not f.alive or f.state != "stand" or not bool(e.get("input", {}).get("revive", false)):
+			e.lift_t = 0.0
+			continue
+		var who = dying_friend_of(e)
+		if who == null:
+			e.lift_t = 0.0
+			continue
+		e.lift_t = float(e.get("lift_t", 0.0)) + dt
+		if float(e.lift_t) >= Fighter.LIFT_T:
+			e.lift_t = 0.0
+			who.f.lift()
+			feed.emit("%s lifts %s" % [f.display_name, who.f.display_name])
+
+## The nearest friend at death's door within reach of `e`, if any.
+func dying_friend_of(e: Dictionary):
+	var p: Vector3 = e.f.torso.global_position
+	var best = null
+	var bd := 1.8 * float(e.f.S)
+	for o in humans():
+		if o == e or not (o.f is Fighter) or not o.f.alive or o.f.dying <= 0.0:
+			continue
+		var d: float = o.f.torso.global_position.distance_to(p)
+		if d < bd:
+			bd = d
+			best = o
+	return best
 
 ## A fighter who can no longer stand (legs gone, too little blood, his head ringing) and has lain
 ## or crawled about on the sand that way for UNFIT_OUT seconds can fight no more: he counts as

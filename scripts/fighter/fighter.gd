@@ -1445,6 +1445,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
 	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
+	if dying > 0.0:
+		# At death's door: no blood comes back, and the door shuts when the time is up.
+		blood = minf(blood, 12.0)
+		dying -= dt
+		if dying <= 0.0:
+			dying = 0.0
+			die("bleed")
+			inp = {}
 	# Out cold on the sand with his wounds staunched, he comes round: the blood comes back up
 	# to where his legs will hold him and his head clears, faster lying still than on his
 	# feet. (Felled with too little blood or too rung a head to stand, and no longer bleeding,
@@ -2960,14 +2968,61 @@ func teleport(p: Vector3) -> void:
 			b.angular_velocity = Vector3.ZERO
 			b.snap_drawing()   # drawn there at once, not swept across
 
+## At death's door (a party, co-op): a man whose wounds would kill him falls instead, his
+## bleeding stopped, DYING_T seconds for a friend to lift him before they do. Only when the
+## match says so (a friend still stands), never a beheading, and once per fall.
+const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
+const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
+const DYING_T := 20.0
+const LIFT_T := 2.5
+var dying := 0.0         # seconds left at death's door (0: not there)
+var spared := false      # this fall was spared: the next death is for good
+var lifts := 0           # how often friends lifted him this bout (less time each time)
+var spare: Callable      # the match's say: may this man be spared now?
+
 func die(cause := "") -> void:
 	if state == "dead":
+		return
+	if cause != "decap" and not head.severed and not spared and spare.is_valid() and spare.call(self, cause):
+		_fall_dying()
 		return
 	state = "dead"
 	set_standing(false)
 	for side in ["R", "L"]:
 		release(side)
 	died.emit(self, cause)
+
+func _fall_dying() -> void:
+	spared = true
+	dying = maxf(8.0, DYING_T - 5.0 * lifts)
+	set_standing(false)
+	for side in ["R", "L"]:
+		release(side)
+	for p in parts:
+		p.bleed = 0.0
+		p.artery = 0.0
+		p.stump_t = 99.0
+	blood = maxf(blood, 8.0)
+	torso.hp = maxf(torso.hp, 6.0)
+	head.hp = maxf(head.hp, 6.0)
+	concussion = minf(concussion, 0.5)
+	note.emit(self, "%s is at death's door" % display_name)
+
+## A friend's hands: up from death's door with a little blood, able to fight on.
+func lift() -> void:
+	if dying <= 0.0:
+		return
+	dying = 0.0
+	spared = false
+	lifts += 1
+	blood = maxf(blood, 35.0)
+	torso.hp = maxf(torso.hp, 25.0)
+	head.hp = maxf(head.hp, 25.0)
+	for p in parts:
+		p.bleed = 0.0
+		p.artery = 0.0
+	help_up()
+	note.emit(self, "%s is lifted" % display_name)
 
 # ---------- Wounds ----------
 
@@ -2996,6 +3051,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# Armour takes it first, where there is armour (character.js armorNear): the blow knocks
 	# off the plates nearest it, the harder the more, and a bare spot is not covered any more.
 	var near := [] if detached else _armor_near(part, lp, V * S * 1.7)
+	var armor_f := 1.0   # what the armour left of the blow (the cap on a blow shrinks with it)
 	if not near.is_empty():
 		var a0: Dictionary = near[0][0]
 		var h: float = Data.material(a0.mat).get("hardness", 0.6)
@@ -3019,7 +3075,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if gone > 0:
 			res.armor_hit = gone
 		var absorb := minf(0.85, 0.3 + 0.55 * h)
-		J *= 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
+		armor_f = 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
+		J *= armor_f
 		res.armor = true
 	var bleed_before := part.bleed
 	var dmg := 0.0
@@ -3178,7 +3235,21 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		dmg *= 0.6
 	if part == torso or part == head:
 		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
-		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0))
+		# (Armour counts against a heavy blow too: a blow past the cap is capped lower for it,
+		# else a club through a steel cuirass hurt as much as through a tunic.)
+		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f)
+	elif not detached:
+		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
+		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
+		# number's.
+		dmg = minf(dmg, LIMB_BLOW * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f)
+	# One blow opens one wound: however hard it came, the bleeding it starts is bounded (a
+	# dragon's bite once bled a man white in a minute from a single wound); a cut artery is
+	# its own matter (part.artery), and wound on wound still adds up.
+	if not detached:
+		part.bleed = minf(part.bleed, bleed_before + BLEED_BLOW)
+	if dying > 0.0 and not detached:
+		dying = maxf(0.0, dying - 2.5)   # every blow on a man at death's door hurries it
 	if detached:
 		stagger = keep_stagger
 		concussion = keep_conc
@@ -4194,7 +4265,7 @@ func status_packed() -> Array:
 	hp.resize(parts.size())
 	for i in parts.size():
 		hp[i] = parts[i].hp
-	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp]
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1)]
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -4208,6 +4279,8 @@ func apply_status(s) -> void:
 		if ph is PackedFloat32Array:
 			for i in mini(ph.size(), parts.size()):
 				parts[i].hp = ph[i]
+		if s.size() > 4:
+			dying = maxf(0.0, float(s[4]))
 		return
 	blood = s.get("blood", blood)
 	stamina = s.get("stamina", stamina)
