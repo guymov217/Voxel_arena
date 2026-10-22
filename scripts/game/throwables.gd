@@ -251,7 +251,10 @@ func _update_drops(dt: float) -> void:
 					d.from = null
 				else:
 					done = true
-			elif d.p.y < 3.0 or d.age > 0.05:
+			elif d.p.y < 3.0 or d.age > 0.05 or d.get("glob", false):
+				# (A breath's globs are checked from the first step: out of a mouth held a hand
+				# from a wall, at nine metres a second, they were past it before the check began,
+				# and the fire went through the wall.)
 				var hit := _ray(from, d.p)
 				if not hit.is_empty():
 					var nrm: Vector3 = hit.normal
@@ -781,6 +784,14 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.crowd_add(owner_, 4, "disgusting")
 		"pot_honey":
 			add_zone("honey", Vector3(p.x, 0, p.z), 2.0, 12.0, owner_)
+			# Bees love it: whoever the honey splashed over is covered in them for a while.
+			for x in _near(p, 1.6):
+				if x.c == owner_:
+					continue
+				x.c.bee_timer = maxf(float(x.c.bee_timer), 3.5)
+				if owner_:
+					x.c.last_attacker = owner_
+				m.feed.emit("%s is dripping honey, and the bees have found him!" % x.c.display_name)
 		"pot_smoke":
 			add_zone("smoke", Vector3(p.x, 0, p.z), 3.0, 9.0, owner_)
 			m.sfx("whoosh", p)

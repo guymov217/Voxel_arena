@@ -29,15 +29,20 @@ godot --headless --path . -- --test test_fight   # one suite
   off, at a force by its stuff (leather gives first, steel last); what came off stays off between
   fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.
 - **The trainer** (Doctore, in the yard): six abilities bought a session at a time, never earned
-  in the arena: vis (strength), ictus (the blow), spiritus (breath), corium (a thick hide),
+  in the arena: vis (strength, half of it behind every blow), ictus (the blow), spiritus (breath), corium (a thick hide),
   sanguis (slower bleeding) and firmitas (footing). Each costs more than the last and is capped
   by the bout you have reached (`scripts/game/training.gd`).
-- **The Hand of Jupiter**: a telekinesis charge from the market seizes the man under the
-  crosshair for three seconds (twice a bout), the wheel draws him nearer or further, and F lets
-  him fly with the mouse's sweep; a hard landing hurts. A fireball pot bursts, burns and leaves
+- **The Hand of Jupiter**: a telekinesis charge from the market seizes the foe under the
+  crosshair, up to 12 m off (a man or a beast; not a giant, not the great monsters of myth), for three seconds (twice a
+  bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a
+  hard landing hurts. A fireball pot bursts, burns and leaves
   fire on the sand.
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw.
-- **Bots** and all 24 **beast** species with their behaviours, including flying and breath.
+- **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A
+  beast's jaws, claws and horns bite only in a strike (the snap after the wind-up), never by
+  brushing against a man, so a lunge can be dodged or taken on the shield; a bite goes in
+  like teeth, not a blade, and takes no more than 30 off a limb. Beasts and monsters chunk
+  more under blows than men do (the giants of myth keep their own hide).
 - **The campaign**: stages of three rounds, pay, bosses on the same tables, checkpoints and
   persistent weapon wear.
 - **Bread & Circuses**: the seven-day campaign (`scripts/game/circus.gd`). Every day has its

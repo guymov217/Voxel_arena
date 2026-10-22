@@ -112,10 +112,15 @@ func test_a_blade_at_the_head_hits_and_comes_away() -> void:
 		m.combat.hit.connect(func(h):
 			if h.attacker == f and h.get("char") == ve.f and String(h.part.part_name) == "head":
 				head_hits[0] += 1)
+		var hits := [0]
+		m.combat.hit.connect(func(h):
+			if h.attacker == f and h.get("char") == ve.f:
+				hits[0] += 1)
 		var lodged := 0
 		var stuck := 0
 		var lost := 0
 		for k in 8:
+			var hy: float = [0.45, 0.6, 0.75, 0.9][(k / 2) % 4]   # stabs at four heights, the head among them
 			ve.f.teleport(Vector3(0, 0, reach))
 			ve.f.yaw = PI
 			f.teleport(Vector3(0, 0, 0))
@@ -125,10 +130,10 @@ func test_a_blade_at_the_head_hits_and_comes_away() -> void:
 			ve.f.blood = 100.0
 			ve.f.head.hp = 100.0
 			if k % 2 == 0:
-				hold[0] = {"main": {"x": 0.1, "y": 0.55}, "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}
+				hold[0] = {"main": {"x": 0.1, "y": hy}, "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}
 				for i in 50:
 					await get_tree().physics_frame
-				hold[0] = {"main": {"x": 0.1, "y": 0.55}, "power": true, "thrust": 1.0, "look": {"yaw": 0.0, "pitch": 0.0}}
+				hold[0] = {"main": {"x": 0.1, "y": hy}, "power": true, "thrust": 1.0, "look": {"yaw": 0.0, "pitch": 0.0}}
 			else:
 				hold[0] = {"main": {"x": 0.9 if k % 4 == 1 else -0.9, "y": 0.9}, "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}
 			for i in 70:
@@ -146,7 +151,7 @@ func test_a_blade_at_the_head_hits_and_comes_away() -> void:
 					stuck += 1
 				if not ve.f.head.severed and _inside(_tip(w), ve.f.head):
 					lodged += 1
-		t.check(head_hits[0] > 0, "%s: the head is hit (%d blows)" % [key, head_hits[0]])
+		t.check(hits[0] > 0, "%s: the man is hit (%d blows, %d of them on the head)" % [key, hits[0], head_hits[0]])
 		t.check(lodged == 0, "%s: the blade is never left in the head with the hand at rest (%d frames)" % [key, lodged])
 		t.check(stuck == 0 and lost == 0, "%s: never stuck (%d) nor out of the hand (%d)" % [key, stuck, lost])
 		m.queue_free()

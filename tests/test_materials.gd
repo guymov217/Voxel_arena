@@ -99,12 +99,20 @@ func test_a_magnet_pulls_a_steel_blade_in() -> void:
 		d1 = minf(d1, blade.global_position.distance_to(mag.material_centre("magnet")))
 		against = against or blade.get_colliding_bodies().has(mag)
 	t.check(d1 < d0 - 0.15 or (against and d1 < d0 - 0.03), "the blade slides to the magnet (%.2f → %.2f m%s)" % [d0, d1, ", against it" if against else ""])
+	# Wood: dropped, let come to rest (it may roll a little on landing), then watched for a
+	# second: its own travel toward the magnet (the magnet club, knocked by the blade, may
+	# still be drifting, so the gap between them is not the measure).
 	var wood := m.spawn_loose_weapon(_club("wood"), Vector3(-0.9, 0.1, 0))
-	await _steps(60)
-	var w0 := wood.global_position.distance_to(mag.material_centre("magnet"))
+	for k in 30:
+		await _steps(10)
+		if wood.linear_velocity.length() < 0.03:
+			break
+	var wp0 := wood.global_position
 	await _steps(120)
-	var w1 := wood.global_position.distance_to(mag.material_centre("magnet"))
-	t.check(w1 > w0 - 0.05, "wood is not pulled (%.2f → %.2f m)" % [w0, w1])
+	var to_mag := (mag.material_centre("magnet") - wp0).normalized()
+	var pulled := (wood.global_position - wp0).dot(to_mag)
+	# Against the steel blade's slide (d0 → d1): wood, rolling or nudged, goes nowhere like it.
+	t.check(pulled < 0.1 and pulled < (d0 - d1) * 0.5, "wood is not pulled (moved %.2f m toward the magnet; the blade %.2f)" % [pulled, d0 - d1])
 	m.queue_free()
 
 func test_a_kick_rarely_fells_a_man() -> void:

@@ -7,6 +7,7 @@ extends Node3D
 signal feed(text: String)
 signal banner(text: String, sub: String)
 signal finished(result: Dictionary)
+signal lost(result: Dictionary)   # a campaign bout lost: at once, before the kill cam (the save resets then)
 @warning_ignore("unused_signal")   # sent by the yard (YardPlay)
 signal station(id: String)
 ## The campaign's physician: a player lost a limb or an eye this round (Body). The menu shows
@@ -45,7 +46,7 @@ const PAY_SCALE := 0.5
 ## The crowd's purse: up to this share of the stage's pay more for a lively bout (Spectacle.heat),
 ## nothing for a dull one. Small, so it spurs a man on without paying for the campaign.
 const CROWD_BONUS := 0.25
-const PLAYER_BLEED := 0.75
+const PLAYER_BLEED := 0.6
 ## The campaign won and begun again (the rudis in hand): each time round the foes are tougher
 ## by LAP_TOUGH and the beasts bigger by LAP_SCALE.
 const LAP_TOUGH := 0.3
@@ -1312,6 +1313,8 @@ func say(f, kind: String, gain := 1.0, event := "") -> void:
 	if kind == "" or f == null or not is_instance_valid(f):
 		return
 	var at: Vector3 = f.head.global_position if f.get("head") and not f.head.severed else f.torso.global_position
+	if f is Beast:
+		gain *= Voices.call_gain(f.species)
 	var pitch := Voices.pitch_of(f)
 	var file := Voices.file_key(f, event) if event != "" else ""
 	# A rendered voice is already the animal's own depth; only the odd-sized get a shift.
@@ -1569,6 +1572,8 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		if won and me.f.blood > 66.0:
 			mission_event("clean")
 	result["missions"] = mcount.duplicate()
+	if mode == "campaign" and role != "guest" and not won:
+		lost.emit(result)
 	if mode == "circus":
 		result["circus"] = true
 		result["coins"] = rules.coins if rules else 0

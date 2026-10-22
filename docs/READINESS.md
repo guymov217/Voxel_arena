@@ -83,6 +83,41 @@ long campaign on real hardware before a release date is set.
   in; the drawing alone gives the 100% on screen with the arms untouched. Mobility and cutting
   are unchanged (arms, fight, footing, destructible, social, flaps, body, giants suites; a new
   `seating` suite measures the gaps, the drawn seating and a cut limb).
+- The beasts (user's play): the lion took a man apart in ten seconds and nothing he did
+  changed it. Measured with a gladius bot against the stage-4 Big Lion: dead in 10–13 s after
+  7–9 bites, the lion at 95%. The cause was in the blows, not the lion: every touch of a
+  beast's jaws at a walk's speed counted as a bite (one every half second, whatever the man
+  did), and a bite cut like a keen blade. Now a beast bites only in a strike (Beast.strikes:
+  the snap after the wind-up; the crocodile's jaws alone close on whatever touches them, its
+  bite being the grab the man then fights), teeth go in at 0.65 of a blade's keenness, a bite takes at most
+  30 off a limb (was 55: two bites and both arms hung useless), never opens an artery, and
+  bleeds at 0.4 of a blade's wound (measured again after each step: the bot now lasts 20–23 s
+  and the stage-4 autopilot 25–34 s where it lasted 6–13; neither blocks, a player does); the player bleeds at 0.6 of a bot's rate (was 0.75) and his wounds clot faster for it;
+  the lion bites 30 (was 34), lunges 4.2 (4.5), every 2.0 s (1.2); the stage-4 Big Lion is 1.9×
+  (was 2.2×). Beasts and monsters come apart more under a blow (Beast.CHUNK 1.25: the wound a
+  blow cuts or craters is a quarter bigger; their toughness 1.55, was 1.7); the giants of myth
+  are men and keep theirs. The crocodile's hold is 3 s (3.2), pulling free is faster (PRY_RATE 1.1, was 0.75: about
+  a second of pulling with breath against a second and a half for the limb to give), and only
+  a hold never fought off takes the limb; and a beast no longer circles a legless man
+  for ever: one who cannot stand at all is prey still (the crocodile stopped attacking after
+  it had taken two legs).
+- The python flew into the sky with the man it coiled (user's play): the spiral its coils are
+  pulled onto was centred on his chest wherever that was, so as the coils lifted him the
+  spiral rose with him. Reproduced headless (man at 3.0 m, 15 m/s) and fixed: the spiral sits
+  on the sand and the coils never heave upward (now 1.5–1.6 m, a man's standing height, in
+  the same seeds). The python's and the hydra's calls are quieter (Voices.CALL_GAIN).
+- A dragon's fire went through a wall: a breath's globs were not checked against the world
+  for their first 0.05 s (a rule for the sand under a low spit), and out of a mouth held a hand
+  from a wall at nine metres a second they were past it before the first check. Found by the
+  fire-breath test failing in one full run (the neck's pose is dice) and traced with a probe;
+  the globs are checked from their first step, and a wall now stops the stream every time.
+- A lost campaign is reset the moment the bout is lost (Match.lost), not when its result is
+  read after the kill cam: leaving the fight, or the game, during the kill cam used to leave
+  the stage where it was.
+- The Hand of Jupiter reaches 12 m (was 7) and takes any foe but the giants (men over MIND_S,
+  beasts of 500 kg and more) and the monsters of myth that come as bosses (dragon, hydra,
+  Cerberus, chimera, manticore, basilisk): men, bosses among them, and beasts up to a bull.
+- The honey pot: the bees come to whoever it splashes (3.5 s), as well as the puddle.
 - Bug "weapon no-clips into a head and sticks": not reproduced on the current build. A probe
   drove eight weapons (gladius, spear, dagger, executioner's axe, hammer, zweihander, trident,
   longsword) at a man's head, ten stabs and ten swings each, bare-headed, in a helmet and skull

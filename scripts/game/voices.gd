@@ -25,6 +25,11 @@ static func giant_voice(f) -> String:
 static func beast_call(species: String) -> String:
 	return CALLS.get(species, "growl")
 
+## How loud a species calls, against the rest (the hydra's roar was a din).
+const CALL_GAIN := {"hydra": 0.45, "cerberus": 0.8, "python": 0.4, "basilisk": 0.7}
+static func call_gain(species: String) -> float:
+	return float(CALL_GAIN.get(species, 1.0))
+
 ## How deep the voice: a man at 1.0, the big lower (a giant three times a man's size at 0.55),
 ## the small higher.
 static func pitch_of(f) -> float:

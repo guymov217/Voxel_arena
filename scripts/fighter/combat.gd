@@ -216,6 +216,15 @@ func process_contacts(_dt: float) -> Array:
 				continue
 			if att.fighter.state != "stand" or not att.fighter.alive or att.severed:
 				continue
+			# A beast's jaws, claws and horns bite only in a strike (the snap of the jaws, the
+			# swipe, the toss: Beast.strikes, telegraphed by the wind-up before it): a head that
+			# merely bumps into a man as it mauls or turns is no bite. (Every touch of the jaws
+			# at a walk's speed was one, a bite every half second whatever the man did: a bout
+			# with a lion was over in ten seconds and nothing he did could change it.)
+			# (A crocodile's jaws close on whatever touches them: its bite is the grab, and the
+			# hold it starts is the fight he can win by pulling free.)
+			if att.fighter is Beast and att.fighter.species != "crocodile" and not (att.fighter.strikes.has(att) or (att.parent_part != null and att.fighter.strikes.has(att.parent_part))):
+				continue
 			if att.fighter.kind != "beast" and not att.def.get("bite", false):
 				var n: String = att.part_name
 				if n.begins_with("shin") and not att.fighter.kick_timer > 0.0:
@@ -427,9 +436,11 @@ func _blow(g: Dictionary) -> Dictionary:
 		axis = PD.quat_of(att) * Vector3(0, -1, 0)
 		attacker = att.fighter
 	elif bite:
+		# Teeth, not a blade: they go in, they do not slice (at a blade's keenness a beast's
+		# bite took a quarter of a man each time, and a bout with a lion was over in ten seconds).
 		typ = "point"
-		hardness = 0.9
-		sharpness = 1.0
+		hardness = 0.8
+		sharpness = 0.65
 		attacker = att.fighter
 	else:
 		attacker = att.fighter
@@ -445,16 +456,17 @@ func _blow(g: Dictionary) -> Dictionary:
 	# heaviest of all, but not every one of them at the most a head can take (the cap on a
 	# blow comes down with it: Fighter.apply_hit "pull").
 	var pull := 1.0
-	# The trainer's blow: a man taught to put his weight behind it hits harder.
+	# The trainer's blow: a man taught to put his weight behind it hits harder; and strength
+	# (the arm's drive) puts half of itself behind every blow too.
 	if attacker and "mods" in attacker and not bite:
-		J *= float(attacker.mods.get("blow", 1.0))
+		J *= float(attacker.mods.get("blow", 1.0)) * (1.0 + 0.5 * (float(attacker.mods.get("strength", 1.0)) - 1.0))
 	if attacker and not (attacker is Beast) and "S" in attacker and float(attacker.S) >= 1.8:
 		J *= Fighter.GIANT_BLOW
 		pull = Fighter.GIANT_BLOW
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false)})
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:

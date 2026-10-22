@@ -1476,9 +1476,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var bleed := 0.0
 	# The heart pushes the blood out in beats while it still beats (a cut artery spurts with it).
 	var beat := 0.5 + 0.5 * sin(time * TAU * (1.2 + 0.6 * pain)) if state != "dead" and blood > 5.0 and heart_t < 0.0 else 0.0
+	# A wound clots at the rate the man bleeds: a player's (PLAYER_BLEED) and a hide trained
+	# to bleed slow close sooner, a berserker's slower.
+	var clot := dt * 0.08 / maxf(0.3, float(mods.bleed))
 	for p in parts:
 		bleed += p.bleed + p.artery
-		p.bleed = maxf(0.0, p.bleed - dt * 0.08)
+		p.bleed = maxf(0.0, p.bleed - clot)
 		p.update_drips()
 		p.update_blood(dt, beat)
 		if p.stump:
@@ -3038,6 +3041,8 @@ func teleport(p: Vector3) -> void:
 ## bleeding stopped, DYING_T seconds for a friend to lift him before they do. Only when the
 ## match says so (a friend still stands), never a beheading, and once per fall.
 const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
+const BITE_LIMB := 30.0  # and the most a bite or a claw does (two bites took both arms)
+const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
 const GIANT_BLOW := 0.85 # a giant's blows, pulled a little (Combat)
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
@@ -3182,7 +3187,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A light cut only opens the skin; the depth climbs faster than the blow (a full swing
 		# of a keen blade still goes through a limb in one).
 		var bite := J * eff * (1.0 + 0.8 * heavy)
-		var depth: float = minf(0.3 + 0.2 * heavy, 0.011 * bite * clampf(bite / 30.0, 0.3, 1.0)) * S / pow(big, 1.5)
+		var depth: float = minf(0.3 + 0.2 * heavy, 0.011 * bite * clampf(bite / 30.0, 0.3, 1.0)) * S / pow(big, 1.5) * float(hit.get("chunk", 1.0))
 		# No one blow goes through: at most a share of how thick the part is there (a light cut
 		# a sixth, the hardest a little over half). Through comes from blows into the same wound,
 		# each one carrying on from where the last one stopped (_wound below).
@@ -3220,7 +3225,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var th := clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)
 		dmg = J * 2.8 * eff * (1.0 + 0.7 * th)
 		part.bleed += dmg * 0.07
-		var depth: float = minf(0.3 + 0.2 * heavy + 0.25 * th, 0.02 * J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.6 * th)) * S
+		var depth: float = minf(0.3 + 0.2 * heavy + 0.25 * th, 0.02 * J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.6 * th)) * S * float(hit.get("chunk", 1.0))
 		# A stab or a thrown point goes in, it rarely comes out the far side: at most a share of
 		# the thickness along its line (a thrown one less, the shaft takes the blow's way off;
 		# a thrust more, the whole man leaning on it).
@@ -3287,7 +3292,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# Every cut or stab that lands takes something with it: under the threshold for a real wound
 	# it still nicks a few voxels out at the point it struck, more the harder it came in.
 	if remove.is_empty() and not detached and type != "blunt" and J * hardness * sharpness > 1.0:
-		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08))
+		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08)) * float(hit.get("chunk", 1.0))
 		for i in part.voxels_within(lp, rn):
 			if not part.bone[i]:
 				remove.append(i)
@@ -3327,12 +3332,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
 		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
 		# number's.
-		dmg = minf(dmg, LIMB_BLOW * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
+		dmg = minf(dmg, (BITE_LIMB if hit.get("bite", false) else LIMB_BLOW) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	# One blow opens one wound: however hard it came, the bleeding it starts is bounded (a
 	# dragon's bite once bled a man white in a minute from a single wound); a cut artery is
 	# its own matter (part.artery), and wound on wound still adds up.
 	if not detached:
-		part.bleed = minf(part.bleed, bleed_before + BLEED_BLOW)
+		part.bleed = minf(part.bleed, bleed_before + BLEED_BLOW * (BITE_BLEED if hit.get("bite", false) else 1.0))
 	if dying > 0.0 and not detached:
 		dying = maxf(0.0, dying - 2.5)   # every blow on a man at death's door hurries it
 	if detached:
@@ -3372,8 +3377,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# Where the blade went in, the wound bleeds from then on: a cut artery (the throat, the
 		# groin, the armpit) or a torn heart pours, spurting with every beat.
 		if type != "blunt" and not detached:
+			# (Teeth tear, they do not open an artery: a bite's bleeding is its own, BITE_BLEED;
+			# a bite in the thigh once bled a man white in seconds.)
 			var cut_artery := false
-			for i in remove:
+			for i in (remove if not hit.get("bite", false) else []):
 				if Anatomy.artery_at(part.part_name, part.fx[i], part.fy[i], part.fz[i]) and not part.bone[i]:
 					cut_artery = true
 					break

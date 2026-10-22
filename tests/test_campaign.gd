@@ -329,7 +329,7 @@ func test_the_first_bouts_are_gentler() -> void:
 	t.check(Match.ladder_skill(4) < 0.68 and Match.ladder_skill(12) < 0.8 and Match.ladder_skill(23) < 1.0 and is_equal_approx(Match.ladder_skill(24), 1.0), "their skill climbs slowly, at its best from the 24th bout")
 	t.check(float(Data.stage(3, 1).rounds[0][0].get("gear", {}).get("diff", 0.85)) <= 0.9 if Data.stage(3, 1).rounds[0][0].get("gear") is Dictionary else true, "bout 3's man is no sharper")
 
-## A player bleeds a quarter slower than a bot from the same wounds.
+## A player bleeds well under a bot's rate from the same wounds (PLAYER_BLEED), and clots sooner.
 func test_a_player_bleeds_slower() -> void:
 	var m := Match.new()
 	add_child(m)

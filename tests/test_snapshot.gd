@@ -43,7 +43,19 @@ func test_less_on_the_wire_and_the_still_left_out() -> void:
 	t.check(var_to_bytes(row).size() < var_to_bytes(old).size() * 0.6, "a fighter's row is much smaller (%d bytes, was %d)" % [var_to_bytes(row).size(), var_to_bytes(old).size()])
 	# Standing still: after the first, he is not sent again until a second has gone by.
 	e.f.die("test")
-	await _steps(360)
+	# Down and come to rest (how long the fall and the shield take to settle is dice; a corpse
+	# at rest is the case): at most ten seconds for every part to lie still.
+	await _steps(120)
+	for k in 100:
+		var moving := false
+		for p in e.f.parts:
+			if p.linear_velocity.length() > 0.02 or p.angular_velocity.length() > 0.05:
+				moving = true
+				break
+		if not moving:
+			break
+		await _steps(12)
+	await _steps(120)
 	var sent := 0
 	var with_status := 0
 	for i in 120:

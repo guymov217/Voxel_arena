@@ -8,7 +8,7 @@ extends Fighter
 
 const JAW_T := 0.55
 const ROLL_SPIN := 7.5   # a crocodile's death roll, rad/s (slowed by the man fighting it)
-const PRY_RATE := 0.75   # how fast pulling away prises its jaws open (1 is free)
+const PRY_RATE := 1.1    # how fast pulling away prises its jaws open (1 is free)
 
 var species := "lion"
 var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
@@ -82,7 +82,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	MS = pow(S, 2.5)
 	mods.bodyScale = S
 	# A beast is harder to kill than a man: thicker bone and more of it under the skin.
-	mods.toughness = float(sp.get("toughness", 1.7)) * (1.3 if boss else 1.0)
+	mods.toughness = float(sp.get("toughness", 1.55)) * (1.3 if boss else 1.0)
 	yaw = yaw_
 	height = float(sp.height) * S
 	bite_power = float(sp.get("bite", 45.0))
@@ -183,13 +183,19 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		return r
 	return apply_hit_inner(part, hit)
 
+## Beasts and monsters come apart more than men under the same blow (CHUNK: the wound a blow
+## cuts or craters out of them is this much bigger); the giants of myth are men, not Beasts,
+## and keep their own.
+const CHUNK := 1.25
+
 func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var k: float = float(HIDE.get(species, 1.0))
 	var typ: String = hit.get("type", "blunt")
+	hit = hit.duplicate()
+	hit.chunk = CHUNK
 	if k < 1.0 and not part.severed and (typ == "edge" or typ == "point"):
 		var th := clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)
 		var kk := lerpf(k, 1.0, 0.6 * th)
-		hit = hit.duplicate()
 		hit.sharpness = float(hit.get("sharpness", 0.0)) * kk
 		hit.impulse = float(hit.get("impulse", 0.0)) * (0.55 + 0.45 * kk)
 		var res := super.apply_hit(part, hit)
@@ -768,7 +774,10 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "stalk"; ai.t = 0.6 + rng.randf()
 		"charge":
 			want = to * spd * hurt
-			if t.state != "stand" and t.alive:
+			# A man down is let be a moment (a chance to get up); one who cannot stand at all
+			# (his legs gone) is prey still: the beast goes in, else it circled a legless man
+			# for ever.
+			if t.state != "stand" and t.alive and (t.can_stand() if t.has_method("can_stand") else true):
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.bite_cool = maxf(ai.bite_cool, 1.2); ai.circle = -ai.circle
 			elif _in_bite_reach(t, dist) and ai.bite_cool <= 0.0:
 				_lunge(to, mass, collapsed)
@@ -843,6 +852,9 @@ func _coil(dt: float) -> void:
 	hug.tick -= dt
 	hug.tight = minf(1.0, float(hug.tight) + dt / 2.5)
 	var tc: Vector3 = tgt.torso.global_position
+	# The spiral sits on the sand, on a man lying in it: centred on his chest where it is, the
+	# coils lifted him, the spiral rose with him, and the two climbed into the sky together.
+	tc.y = minf(tc.y, ground_level + 0.55 * tgt.S)
 	var r: float = tgt.torso.half_ext.x * 1.25 + 0.06 * S
 	var coils: Array = parts.filter(func(p): return (String(p.part_name).begins_with("coil") or p.part_name == "tailTip" or p == torso) and not p.severed)
 	var i := 0
@@ -851,7 +863,9 @@ func _coil(dt: float) -> void:
 		var a: float = time * 0.6 + i * 2.1
 		var at: Vector3 = tc + Vector3(cos(a) * r, -0.25 * tgt.S + i * 0.16 * tgt.S, sin(a) * r)
 		var err: Vector3 = at - p.global_position
-		p.apply_central_impulse((err * 60.0 - p.linear_velocity * 8.0) * p.mass * dt)
+		var imp: Vector3 = (err * 60.0 - p.linear_velocity * 8.0) * p.mass * dt
+		imp.y = minf(imp.y, 0.0)   # the coils never heave upward: gravity and the ground hold them
+		p.apply_central_impulse(imp)
 		i += 1
 	# The squeeze: what the coils actually bear on him, read off the physics (the impulse their
 	# contacts put through him each step, the muscle pulling them tight on top of their weight),
@@ -1083,6 +1097,8 @@ func _death_roll(dt: float) -> void:
 		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": mp, "dir": dir, "axis": dir, "crush": 0.07, "wsz": S})
 		tgt.last_attacker = self
 		# Two full turns and three wrenches twist a limb (never the trunk or the head) clean off.
+		# Only a hold he never fought off (three wrenches, two full turns: a second and a half
+		# of it, while pulling away prises the jaws open in about one) takes the limb.
 		if int(hug.bites) >= 3 and float(hug.turned) >= TAU * 2.0 and part != tgt.torso and part != tgt.head and not part.severed:
 			tgt.detach_limb(part, res)
 			res.rolled = true
@@ -1602,7 +1618,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	# A crocodile's jaws close on the limb they got and it goes into its roll.
 	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2):
 		var mp0 := mouth_point()
-		hug = {"target": c, "part": vic, "t": 3.2, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
+		hug = {"target": c, "part": vic, "t": 3.0, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
 			"bite_at": vic.to_local(mp0), "turned": 0.0}
 		# Clamped, not hinged: the limb is locked in the jaws, so it turns as the head turns
 		# (on a pin it only swivelled in the mouth while the crocodile spun round it).

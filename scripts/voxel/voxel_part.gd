@@ -295,6 +295,13 @@ static func taper_code(cells: Dictionary, p: Vector3i, face := -1) -> int:
 	for a in half:
 		if not pinch.has(a):
 			one.append(a)
+	# An edge runs on: a voxel with a sharp one beside it along an axis is a length of that edge,
+	# not its end, so it does not narrow that way (the top block of an axe's edge, open above as
+	# well, was drawn as a roof across the blade, cut off from the wedge running up to it).
+	if job == "edge" and one.size() > 1:
+		var ends: Array = one.filter(func(a): return half.has(a) or not (_is_sharp(cells, p + TAPER_AXES[a]) or _is_sharp(cells, p - TAPER_AXES[a])))
+		if not ends.is_empty():
+			one = ends
 	if pinch.is_empty() or one.is_empty():
 		return 0
 	var code := 512 if job == "point" else 0
@@ -308,6 +315,10 @@ static func taper_code(cells: Dictionary, p: Vector3i, face := -1) -> int:
 		else:
 			code |= 1 << (2 * a + (0 if not cells.has(p + TAPER_AXES[a]) else 1))
 	return code
+
+static func _is_sharp(cells: Dictionary, q: Vector3i) -> bool:
+	var j := str(cells.get(q, ""))
+	return j == "edge" or j == "point"
 
 ## How far the weapon spans along axis `a` within a few voxels of `p` (its local thickness).
 static func _span(cells: Dictionary, p: Vector3i, a: int) -> float:

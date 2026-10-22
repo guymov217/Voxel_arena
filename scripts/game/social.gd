@@ -17,9 +17,9 @@ var m: Node
 ## A man seized in an unseen grip (the "telekinesis" charge from the market): for MIND_T seconds
 ## he hangs MIND_DIST ahead of where his captor looks, off his feet, free to swing his arms; F
 ## hurls him the way the captor looks, and the ground, a wall or a man he lands on hurts him
-## by how hard he came down. No giants (MIND_S), no bosses.
+## by how hard he came down. No giants (MIND_S, MIND_MASS); any other foe, a beast or a boss too.
 const MIND_T := 3.0
-const MIND_REACH := 7.0
+const MIND_REACH := 12.0
 const MIND_S := 1.45
 const MIND_DIST := 2.8
 const MIND_NEAR := 1.3
@@ -694,7 +694,7 @@ func mind_hold(e: Dictionary) -> bool:
 		if o == e or o.team == e.team or not o.f.alive or o.get("harmless", false) or not (o.f is Fighter):
 			continue
 		var t: Fighter = o.f
-		if float(t.S) > MIND_S or o.get("boss", false):
+		if _is_giant(t):
 			continue
 		var to: Vector3 = t.torso.global_position - from
 		var along := to.dot(dir)
@@ -709,7 +709,7 @@ func mind_hold(e: Dictionary) -> bool:
 	if best == null:
 		# Closed on nothing: nobody is seized, and the grip needs a moment before the next try.
 		e.mind_cool = m.time + MIND_COOL
-		_hint(e, "The grip closes on nothing: look at a man, not a giant")
+		_hint(e, "The grip closes on nothing: look at a foe (no giants)")
 		return false
 	var t: Fighter = best.f
 	for p in t.parts:
@@ -725,6 +725,17 @@ func mind_hold(e: Dictionary) -> bool:
 	m.say(t, "grunt", 0.8, "pain")
 	m.crowd_add(c, 10, "the hand of Jupiter")
 	return true
+
+## Too big for the grip: a giant of a man (a cyclops, a troll, a titan: MIND_S), a beast of
+## MIND_MASS and more (a rhino, an elephant, a mammoth) and the monsters of myth that come as
+## bosses (MIND_MONSTERS: the dragon, the hydra, Cerberus...). Everything else hangs: men,
+## bosses among them, and beasts up to a bull or a gorilla.
+const MIND_MASS := 500.0
+const MIND_MONSTERS := ["dragon", "hydra", "cerberus", "chimera", "manticore", "basilisk"]
+static func _is_giant(t) -> bool:
+	if t is Beast:
+		return t.live_mass() >= MIND_MASS or MIND_MONSTERS.has(String(t.species))
+	return float(t.S) > MIND_S
 
 func minds_tick(dt: float) -> void:
 	for mnd in minds.duplicate():

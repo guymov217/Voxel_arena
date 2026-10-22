@@ -8,7 +8,7 @@ class_name Training
 
 const ABILITIES := {
 	"vis": {"name": "Vis", "title": "Strength", "max": 16, "mod": "strength", "sign": 1,
-		"desc": "The arm's drive: a heavy weapon swung as fast as a light one, for less breath, held steadier."},
+		"desc": "The arm's drive: a heavy weapon swung as fast as a light one, for less breath, held steadier; half of it goes into every blow."},
 	"ictus": {"name": "Ictus", "title": "Blow", "max": 16, "mod": "blow", "sign": 1,
 		"desc": "Weight behind the blow: every hit that lands, lands harder."},
 	"spiritus": {"name": "Spiritus", "title": "Wind", "max": 20, "mod": "wind", "sign": 1,

@@ -78,8 +78,18 @@ func test_sharp_voxels_are_drawn_tapered() -> void:
 	t.eq(left & 63, 2, "an edge narrows toward its open side")
 	t.eq((left >> 6) & 7, 4, "and is thin across the blade")
 	t.eq(left >> 9, 0, "as a wedge, not a tip")
-	# The top corner of the edge narrows toward the side and the top.
-	t.eq(VoxelPart.taper_code(cells, Vector3i(1, 5, 0)) & 63, 1 | 4, "the corner of the edge toward both its open sides")
+	# The top block of the edge, open above as well, still faces the side: the wedge runs on up
+	# to it unbroken, not turned into a roof across the blade (user screenshot of an axe).
+	t.eq(VoxelPart.taper_code(cells, Vector3i(1, 5, 0)) & 63, 1, "the top of the edge keeps facing out, not up")
+	# An axe: a column of edge blocks beside the haft, the top one level with the haft's top.
+	var axe := {}
+	for y in range(0, 8):
+		axe[Vector3i(0, y, 0)] = "blunt"
+	for y in range(3, 8):
+		axe[Vector3i(1, y, 0)] = "edge"
+	t.eq(VoxelPart.taper_code(axe, Vector3i(1, 7, 0)) & 63, 1, "the top cut of an axe faces out like the cuts below it")
+	t.eq((VoxelPart.taper_code(axe, Vector3i(1, 7, 0)) >> 6) & 7, 4, "pinched across the blade like them")
+	t.eq(VoxelPart.taper_code(axe, Vector3i(1, 3, 0)) & 63, 1, "and so does the bottom one")
 	# The point narrows up, pinched both ways: a tip.
 	var tip := VoxelPart.taper_code(cells, Vector3i(0, 6, 0))
 	t.eq(tip & 63, 4, "the point narrows toward its end")

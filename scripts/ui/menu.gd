@@ -725,10 +725,15 @@ func _training(v: VBoxContainer) -> void:
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")
 	var foes: Array = Data.campaign.enemies.keys().filter(func(k): return not TRAINING_OUT.has(k)).map(func(k): return "foe:" + k)
-	var who: Array = (["none", "gladiator"] + foes + Data.beasts.keys()).filter(func(k): return Edition.foe_open(k))
+	# The beasts by name, A to Z, without their "The" (the gorilla was "The Gorilla", last of
+	# forty, and not to be found).
+	var beast_name := func(k: String) -> String: return String(Data.beasts[k].name).trim_prefix("The ")
+	var beasts: Array = Data.beasts.keys()
+	beasts.sort_custom(func(a, b): return beast_name.call(a) < beast_name.call(b))
+	var who: Array = (["none", "gladiator"] + foes + beasts).filter(func(k): return Edition.foe_open(k))
 	if not who.has(training.get("enemy")):
 		training.enemy = "gladiator"
-	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else Data.beasts[k].name))), "enemy")
+	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else beast_name.call(k)))), "enemy")
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
 	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "bow"]
 	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
@@ -2085,7 +2090,7 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
 ## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
 const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"]]   # the supplies are the physician's
-const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Press its number to take it in hand, hold F to aim, let go to throw; its number again puts it away"}
+const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Its number takes it in hand; hold F to aim, let go to throw"}
 const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery"]
 var market_tab := "throw"
 
@@ -2224,34 +2229,71 @@ func _trainer(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The trainer", 36))
 	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
 	var st := training_stats()
-	v.add_child(UIStyle.label("Purse: %d denarii · %s" % [coins(), Training.summary(st)], 15, UIStyle.BRONZE))
-	v.add_child(UIStyle.label("Doctore teaches the body, a session at a time, for denarii: nothing is learned in the arena itself. No ability goes past a per cent for every bout won (bout %d: %d%%), and a death takes it all, as it takes the purse." % [stage, maxi(0, stage - 1)], 13, UIStyle.MUTED))
-	v.add_child(HSeparator.new())
+	var cap_any := maxi(0, stage - 1)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 18)
+	v.add_child(head)
+	var purse_l := UIStyle.label("Purse  %d denarii" % coins(), 15, UIStyle.GOLD)
+	purse_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	head.add_child(purse_l)
+	var sum_l := UIStyle.label(Training.summary(st).capitalize(), 15, UIStyle.BRONZE)
+	sum_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	sum_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	sum_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(sum_l)
+	var cap_l := UIStyle.label("Bout %d: up to %d%% an ability" % [stage, cap_any], 15, UIStyle.BRONZE)
+	cap_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	head.add_child(cap_l)
+	var note := UIStyle.label("Doctore sells sessions, a per cent at a time; the arena teaches nothing, and a death takes it all with the purse.", 13, UIStyle.MUTED)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(note)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
 	for id in Training.ORDER:
 		var a: Dictionary = Training.ABILITIES[id]
 		var lv := Training.level(st, id)
 		var cap := Training.cap(id, stage)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		v.add_child(row)
+		var full := lv >= int(a.max)
+		var card := PanelContainer.new()
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var cs := StyleBoxFlat.new()
+		cs.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+		cs.border_color = UIStyle.GOLD if full else (UIStyle.BRONZE if lv > 0 else UIStyle.BRONZE_DARK)
+		cs.set_border_width_all(1)
+		cs.set_corner_radius_all(6)
+		cs.content_margin_left = 10; cs.content_margin_right = 10; cs.content_margin_top = 6; cs.content_margin_bottom = 8
+		card.add_theme_stylebox_override("panel", cs)
+		grid.add_child(card)
 		var col := VBoxContainer.new()
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(col)
-		col.add_child(UIStyle.label("%s · %s   +%d%% of %d%%" % [a.name, a.title, lv, int(a.max)], 17, UIStyle.GOLD if lv > 0 else UIStyle.TEXT))
+		col.add_theme_constant_override("separation", 4)
+		card.add_child(col)
+		var top := HBoxContainer.new()
+		col.add_child(top)
+		var name_l := UIStyle.label("%s · %s" % [a.name, a.title], 16, UIStyle.GOLD if lv > 0 else UIStyle.TEXT)
+		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(name_l)
+		var lv_l := UIStyle.label("%d / %d%%" % [lv, int(a.max)], 14, UIStyle.GOLD if lv > 0 else UIStyle.MUTED)
+		lv_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		top.add_child(lv_l)
 		var bar := ProgressBar.new()
 		bar.min_value = 0
 		bar.max_value = int(a.max)
 		bar.value = lv
 		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 8)
+		bar.custom_minimum_size = Vector2(0, 6)
 		col.add_child(bar)
-		var d := UIStyle.label(String(a.desc), 13, UIStyle.MUTED)
-		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var d := UIStyle.label(String(a.desc), 12, UIStyle.MUTED)
+		d.custom_minimum_size = Vector2(0, 50)
 		col.add_child(d)
 		var r := Training.buy(st, id, stage, coins())
 		var b: Button
 		if r.has("error"):
-			b = UIStyle.button(String(r.error) if lv >= int(a.max) or lv >= cap else "Train · %d denarii" % Training.price(st, id), func(): pass)
+			var why := "Mastered" if full else ("Wait for bout %d" % (lv + Training.STEP + 1) if lv >= cap else "Train · %d denarii" % Training.price(st, id))
+			b = UIStyle.button(why, func(): pass)
 			b.disabled = true
 			b.tooltip_text = String(r.error)
 		else:
@@ -2265,10 +2307,7 @@ func _trainer(v: VBoxContainer) -> void:
 				if int(r2.stats[id]) >= int(a.max):
 					Achievements.unlock("trained")
 				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, a.title.to_lower()]), true)
-		b.custom_minimum_size = Vector2(230, 0)
-		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(b)
-	v.add_child(HSeparator.new())
+		col.add_child(b)
 	v.add_child(UIStyle.button("Back to the yard" if yard else "Back", func():
 		if yard:
 			_close_overlay()
@@ -2861,6 +2900,7 @@ func start(opts: Dictionary) -> void:
 	match_.setup(opts)
 	_apply_input_settings()
 	match_.finished.connect(_on_finished)
+	match_.lost.connect(_campaign_lost)
 	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
 	world_root.add_child(hud)
@@ -3069,6 +3109,27 @@ func _end_match() -> void:
 		hud = null
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
+## A death ends the campaign: the next one begins at the first bout, with a beginner's purse,
+## stick and body (online and alone alike; the host's word is the party's). Done the moment
+## the bout is lost (Match.lost), so a player who leaves the fight, or the game, during the kill
+## cam cannot come back to the bout he fell in; and again, harmlessly, when the result is read.
+func _campaign_lost(r: Dictionary) -> void:
+	var sk := "coop_stage" if r.get("coop", false) else "stage"
+	var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
+	Save.set_value(sk, 1)
+	Save.set_value("coop_lap" if r.get("coop", false) else "lap", 1)
+	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+	Save.set_value("oddities_sold", {})
+	Save.set_value(ck, 1)
+	Save.set_value("coins", START_COINS)
+	set_body(Body.empty())
+	set_arms(Arms.empty())
+	set_worn_armor([])
+	set_armor_wear({})
+	set_training_stats({})
+	if Net.active():
+		Net.send_all("purse", coins())
+
 func _on_finished(r: Dictionary) -> void:
 	var was := match_
 	# Five seconds on the banner over the arena, to take in how the bout ended (Space or Enter
@@ -3139,21 +3200,7 @@ func _on_finished(r: Dictionary) -> void:
 				show_screen("demo_end")
 				return
 		else:
-			# A death ends the campaign: the next one begins at the first bout, with a beginner's
-			# purse, stick and body (online and alone alike; the host's word is the party's).
-			Save.set_value(sk, 1)
-			Save.set_value("coop_lap" if r.get("coop", false) else "lap", 1)
-			Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
-			Save.set_value("oddities_sold", {})
-			Save.set_value(ck, 1)
-			Save.set_value("coins", START_COINS)
-			set_body(Body.empty())
-			set_arms(Arms.empty())
-			set_worn_armor([])
-			set_armor_wear({})
-			set_training_stats({})
-			if Net.active():
-				Net.send_all("purse", coins())
+			_campaign_lost(r)
 			last_result = {"text": "You fell. The campaign is over; a new one begins at bout 1."}
 	_end_match()
 	if Net.active() and not Net.is_host():
@@ -3180,6 +3227,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
+				match_.lost.connect(_campaign_lost)
 				if data.mode == "yard":
 					# A guest has the yard as the host has it: the stalls open for him too.
 					hub = true
