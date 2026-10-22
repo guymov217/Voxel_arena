@@ -145,6 +145,22 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 	await _steps(3)
 	t.check(m.social.minds.is_empty() and int(me.inventory.telekinesis) == 1, "a giant is beyond the grip, and the charge is kept")
 	t.check(float(me.get("mind_cool", -1.0)) > m.time, "but the grip needs a moment before the next try")
+	# Not to be spammed: two grips a bout, whatever is in the bag, and a rest after each.
+	me.mind_cool = -1.0
+	me.inventory.telekinesis = 5
+	var v2 := _victim(m, Vector3(6, 0, 0), func(_e): return {})
+	phase.n = 0
+	me.drive = func(_e):
+		phase.n += 1
+		var out := {"look": {"yaw": 0.0, "pitch": 0.0}, "aimFrom": Vector3(6, 1.4, -4), "aimAt": v2.torso.global_position}
+		if phase.n == 1 or phase.n == 40:
+			out["useItem"] = 0
+		return out
+	await _steps(3)
+	t.check(m.social.minds.size() == 1 and int(me.mind_uses) == 2, "a second grip")
+	t.check(float(me.mind_cool) > m.time + 5.0, "and a rest after it")
+	await _steps(40)
+	t.eq(int(me.inventory.telekinesis), 4, "a third try in the same bout seizes nobody and spends nothing")
 	var packed := PlayerInput.pack({"aimAt": Vector3(1, 2, 3), "aimFrom": Vector3(0, 1, 0), "wheel": -2.0, "look": {"yaw": 0.0, "pitch": 0.0}})
 	t.eq(float(PlayerInput.unpack(packed).get("wheel", 0.0)), -2.0, "a guest's wheel travels with his crosshair")
 	m.queue_free()

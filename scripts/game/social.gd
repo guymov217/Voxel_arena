@@ -26,6 +26,8 @@ const MIND_NEAR := 1.3
 const MIND_FAR := 6.0
 const MIND_HURL := 14.0
 const MIND_COOL := 1.5   # a grip that closed on nothing: a moment before the next
+const MIND_USES := 2     # grips a man gets in one bout, whatever charges he carries
+const MIND_REST := 8.0   # seconds after a grip before the next
 var minds := []   # {e: captor entity, t: the held Fighter, left, flung, prev_v, watch, fx_t}
 
 func _init(match_: Node) -> void:
@@ -677,8 +679,11 @@ func mind_hold(e: Dictionary) -> bool:
 	var c = e.f
 	if not (c is Fighter) or not c.alive or mind_of(e) != null:
 		return false
+	if int(e.get("mind_uses", 0)) >= MIND_USES:
+		_hint(e, "The Hand of Jupiter is spent for this bout")
+		return false
 	if float(e.get("mind_cool", -1.0)) > m.time:
-		_hint(e, "The grip needs a moment")
+		_hint(e, "The grip needs a moment (%d s)" % ceili(float(e.mind_cool) - m.time))
 		return false
 	var inp: Dictionary = e.get("input", {})
 	var from := _aim_from(e, inp)
@@ -712,6 +717,8 @@ func mind_hold(e: Dictionary) -> bool:
 			p.angular_velocity *= 0.3
 	t.fall(0.5, true)
 	t.last_attacker = c
+	e.mind_uses = int(e.get("mind_uses", 0)) + 1
+	e.mind_cool = m.time + MIND_REST
 	minds.append({"e": e, "t": t, "left": MIND_T, "dist": MIND_DIST, "flung": false, "prev_v": Vector3.ZERO, "peak": 0.0, "watch": 0.0, "fx_t": 0.0})
 	m.feed.emit("%s seizes %s in an unseen grip!" % [c.display_name, t.display_name] + (" He hangs where you look: F hurls him." if e.kind == "local" else ""))
 	m.sfx("whoosh", t.torso.global_position)
