@@ -945,6 +945,8 @@ func _player_input(f, dt: float) -> Dictionary:
 	# step for as long as the grip can last, from the host's own player and a guest alike.)
 	if int(inp.get("useItem", -1)) >= 0 and me and Throwables.hotbar_of(me.get("inventory", {})).slice(int(inp.useItem), int(inp.useItem) + 1).has("telekinesis"):
 		mind_aim_until = time + Social.MIND_T + 0.5
+	if input:
+		input.wheel_to_grip = time < mind_aim_until   # the wheel draws the held man in and out, not the blade round
 	if cam and (shooter != null or int(inp.get("useItem", -1)) >= 0 or float(inp.get("charging", 0.0)) > 0.0 or inp.get("throw", false) or float(inp.get("thrust", 0.0)) > 0.0 or float(inp.get("offThrust", 0.0)) > 0.0 or time < mind_aim_until):
 		inp.aimAt = aim_point(f)
 		inp.aimFrom = aim_from

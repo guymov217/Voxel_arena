@@ -107,6 +107,9 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 		var out := {"look": {"yaw": 0.0, "pitch": 0.0}, "aimFrom": Vector3(0, 1.4, -4), "aimAt": v.torso.global_position}
 		if phase.n == 1:
 			out["useItem"] = 0
+		if phase.get("wheel", 0.0) != 0.0:
+			out["wheel"] = phase.wheel
+			phase.wheel = 0.0
 		if phase.throw:
 			out["throw"] = true
 			phase.throw = false
@@ -114,9 +117,13 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 	await _steps(3)
 	t.eq(m.social.minds.size(), 1, "seized")
 	t.eq(int(me.inventory.telekinesis), 1, "one charge spent")
-	await _steps(60)
-	t.check(v.torso.global_position.y > 0.75 and v.state != "stand", "he hangs off his feet (%.2f m up, %s)" % [v.torso.global_position.y, v.state])
+	await _steps(90)
+	t.check(v.torso.global_position.y > 1.3 and v.state != "stand", "he hangs off his feet (%.2f m up, %s)" % [v.torso.global_position.y, v.state])
 	t.check(v.torso.global_position.z < -0.5, "drawn to where his captor looks (z %.2f)" % v.torso.global_position.z)
+	var z_near := v.torso.global_position.z
+	phase["wheel"] = 2.0
+	await _steps(120)
+	t.check(v.torso.global_position.z > z_near + 0.5, "the wheel pushes him off (z %.2f → %.2f)" % [z_near, v.torso.global_position.z])
 	var blood_before := v.blood
 	phase.throw = true
 	await _steps(4)
@@ -137,6 +144,9 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 	v.die("test")
 	await _steps(3)
 	t.check(m.social.minds.is_empty() and int(me.inventory.telekinesis) == 1, "a giant is beyond the grip, and the charge is kept")
+	t.check(float(me.get("mind_cool", -1.0)) > m.time, "but the grip needs a moment before the next try")
+	var packed := PlayerInput.pack({"aimAt": Vector3(1, 2, 3), "aimFrom": Vector3(0, 1, 0), "wheel": -2.0, "look": {"yaw": 0.0, "pitch": 0.0}})
+	t.eq(float(PlayerInput.unpack(packed).get("wheel", 0.0)), -2.0, "a guest's wheel travels with his crosshair")
 	m.queue_free()
 
 ## A fireball: Vulcan's fire in a clay sphere, a blast with flames in it and fire on the sand.

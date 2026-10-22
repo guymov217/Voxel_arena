@@ -22,7 +22,10 @@ const MIND_T := 3.0
 const MIND_REACH := 7.0
 const MIND_S := 1.45
 const MIND_DIST := 2.8
+const MIND_NEAR := 1.3
+const MIND_FAR := 6.0
 const MIND_HURL := 14.0
+const MIND_COOL := 1.5   # a grip that closed on nothing: a moment before the next
 var minds := []   # {e: captor entity, t: the held Fighter, left, flung, prev_v, watch, fx_t}
 
 func _init(match_: Node) -> void:
@@ -674,6 +677,9 @@ func mind_hold(e: Dictionary) -> bool:
 	var c = e.f
 	if not (c is Fighter) or not c.alive or mind_of(e) != null:
 		return false
+	if float(e.get("mind_cool", -1.0)) > m.time:
+		_hint(e, "The grip needs a moment")
+		return false
 	var inp: Dictionary = e.get("input", {})
 	var from := _aim_from(e, inp)
 	var dir := _aim_dir(e, inp, from)
@@ -696,11 +702,9 @@ func mind_hold(e: Dictionary) -> bool:
 			bd = off
 			best = o
 	if best == null:
-		var ne = m.nearest_enemy(e)
-		if ne != null and ne.f is Fighter and float(ne.f.S) <= MIND_S and not ne.get("boss", false) and ne.f.torso.global_position.distance_to(c.torso.global_position) < 3.5:
-			best = ne
-	if best == null:
-		_hint(e, "Nothing in your grip: look at a man, not a giant")
+		# Closed on nothing: nobody is seized, and the grip needs a moment before the next try.
+		e.mind_cool = m.time + MIND_COOL
+		_hint(e, "The grip closes on nothing: look at a man, not a giant")
 		return false
 	var t: Fighter = best.f
 	for p in t.parts:
@@ -708,7 +712,7 @@ func mind_hold(e: Dictionary) -> bool:
 			p.angular_velocity *= 0.3
 	t.fall(0.5, true)
 	t.last_attacker = c
-	minds.append({"e": e, "t": t, "left": MIND_T, "flung": false, "prev_v": Vector3.ZERO, "peak": 0.0, "watch": 0.0, "fx_t": 0.0})
+	minds.append({"e": e, "t": t, "left": MIND_T, "dist": MIND_DIST, "flung": false, "prev_v": Vector3.ZERO, "peak": 0.0, "watch": 0.0, "fx_t": 0.0})
 	m.feed.emit("%s seizes %s in an unseen grip!" % [c.display_name, t.display_name] + (" He hangs where you look: F hurls him." if e.kind == "local" else ""))
 	m.sfx("whoosh", t.torso.global_position)
 	m.say(t, "grunt", 0.8, "pain")
@@ -750,12 +754,14 @@ func minds_tick(dt: float) -> void:
 			t.fall(0.8, true)
 			m.feed.emit("The grip on %s lets go" % t.display_name)
 			continue
-		var goal := from + dir * MIND_DIST
-		goal.y = maxf(goal.y, 0.9 * float(t.S))
+		# The wheel draws him in or pushes him off.
+		mnd.dist = clampf(float(mnd.dist) + float(inp.get("wheel", 0.0)) * 0.5, MIND_NEAR, MIND_FAR)
+		var goal := from + dir * float(mnd.dist)
+		goal.y = maxf(goal.y, 1.7 * float(t.S))   # high enough that his feet find no sand
 		var pos: Vector3 = t.torso.global_position
 		# A spring to where he should hang, damped, with his weight carried: the trunk is held,
 		# the rest of him dangles (and swings as he likes).
-		var acc := ((goal - pos) * 14.0 - t.torso.linear_velocity * 4.5).limit_length(45.0) + Vector3.UP * 9.8
+		var acc := ((goal - pos) * 30.0 - t.torso.linear_velocity * 7.0).limit_length(80.0) + Vector3.UP * 9.8
 		t.torso.apply_central_force(acc * t.torso.mass)
 		for p in t.parts:
 			if p != t.torso and not p.severed:
@@ -766,11 +772,15 @@ func minds_tick(dt: float) -> void:
 			mnd.fx_t = 0.12
 			m.fx.burst("sparks", pos, 3, Vector3.UP, 0.6)
 
-## F: he flies the way his captor looks.
+## F lets go: he flies on with the swing he was given (a fast sweep of the mouse and F sends him
+## the way the sweep went), and a little the way his captor looks.
 func _mind_hurl(mnd: Dictionary, dir: Vector3) -> void:
 	var t: Fighter = mnd.t
 	var c = mnd.e.f
-	var v := dir * MIND_HURL + Vector3.UP * 1.0
+	var v: Vector3 = t.torso.linear_velocity * 1.25 + dir * MIND_HURL * 0.5
+	if v.length() < MIND_HURL * 0.65:
+		v = (v.normalized() if v.length() > 0.5 else dir) * MIND_HURL * 0.65
+	v = v.limit_length(MIND_HURL * 1.7) + Vector3.UP * 0.8
 	for p in t.parts:
 		if not p.severed:
 			p.linear_velocity = v

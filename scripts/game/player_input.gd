@@ -19,6 +19,8 @@ var thrust := 0.0
 var twist := 0.0
 var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
 var twist_l := 0.0   # the off hand's edge turn: the wheel turns whichever hand is held
+var wheel := 0.0     # wheel steps since the last sample, when the Match wants them (a man held in the grip)
+var wheel_to_grip := false
 var jab_r := false
 var jab_l := false
 var enabled := true
@@ -176,7 +178,9 @@ func _mouse(e: InputEvent) -> void:
 		elif (b.button_index == MOUSE_BUTTON_WHEEL_UP or b.button_index == MOUSE_BUTTON_WHEEL_DOWN) and b.pressed:
 			var dw := 0.25 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -0.25
 			# Round and round, like the web game: past half a turn it comes back the other way.
-			if rmb and not lmb:
+			if wheel_to_grip:
+				wheel += 1.0 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
+			elif rmb and not lmb:
 				twist_l = wrapf(twist_l - dw, -PI, PI)
 			else:
 				twist = wrapf(twist + dw, -PI, PI)
@@ -271,6 +275,7 @@ func sample(dt: float) -> Dictionary:
 		"jabL": jab_l,
 		"twist": twist,
 		"offTwist": twist_l,
+		"wheel": wheel,
 		"look": {"yaw": look_yaw, "pitch": look_pitch},
 		"sprint": held("sprint"),
 		"crouch": held("crouch"),
@@ -308,6 +313,7 @@ func sample(dt: float) -> Dictionary:
 	_edges.clear()
 	jab_r = false
 	jab_l = false
+	wheel = 0.0
 	if not enabled:
 		return {"main": main.duplicate(), "look": {"yaw": look_yaw, "pitch": look_pitch}}
 	return inp
@@ -335,7 +341,7 @@ static func pack(inp: Dictionary) -> Array:
 		out.append_array([snappedf(aim.x, 0.01), snappedf(aim.y, 0.01), snappedf(aim.z, 0.01)])
 		var af = inp.get("aimFrom")
 		if af is Vector3:
-			out.append_array([snappedf(af.x, 0.01), snappedf(af.y, 0.01), snappedf(af.z, 0.01)])
+			out.append_array([snappedf(af.x, 0.01), snappedf(af.y, 0.01), snappedf(af.z, 0.01), clampf(float(inp.get("wheel", 0.0)), -6.0, 6.0)])
 	return out
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
@@ -369,4 +375,6 @@ static func unpack(a: Array) -> Dictionary:
 		out.aimAt = Vector3(clampf(float(a[16]), -300, 300), clampf(float(a[17]), -50, 200), clampf(float(a[18]), -300, 300))
 		if a.size() > 21:
 			out.aimFrom = Vector3(clampf(float(a[19]), -300, 300), clampf(float(a[20]), -50, 200), clampf(float(a[21]), -300, 300))
+		if a.size() > 22 and float(a[22]) != 0.0:
+			out.wheel = clampf(float(a[22]), -6.0, 6.0)
 	return out
