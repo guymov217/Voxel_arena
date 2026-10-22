@@ -411,3 +411,62 @@ func test_thicker_armour_protects_more() -> void:
 	var d1: float = await dmg.call(ids[0])
 	var d2: float = await dmg.call(ids[1])
 	t.check(d1 > 0.0 and d2 < d1 * 0.8, "two layers of steel: %.1f against %.1f through one" % [d2, d1])
+
+## A plate painted at the bench keeps its colour: in the design the bench gives, through the
+## cleaning a design gets when it arrives from another machine, and on the piece as worn.
+func test_painted_plates_keep_their_colour() -> void:
+	var bench := ArmourForge.new()
+	add_child(bench)
+	bench.open(Armory.design_piece("torso", "iron", 0.0, 1.0, false, false, ""), "torso", func(_d): pass)
+	bench.mirror = false
+	bench.paint = 0x9b1c1c
+	var top := Vector3i(bench.dims.x / 2, bench.dims.y, bench.dims.z / 2)
+	t.check(bench.add_plate(top), "a plate is laid in red")
+	var d: Dictionary = bench.design_now()
+	var red := (d.parts.torso as Array).filter(func(c): return c.size() > 3 and int(c[3]) == 0x9b1c1c)
+	t.eq(red.size(), 1, "the design carries the colour")
+	var plain := (d.parts.torso as Array).filter(func(c): return c.size() == 3)
+	t.check(plain.size() > 0, "the unpainted plates carry none")
+	var c = Armory.clean_design(d)
+	t.check(c != null and (c.parts.torso as Array).any(func(x): return x.size() > 3 and int(x[3]) == 0x9b1c1c), "cleaning keeps it")
+	var junk = Armory.clean_design({"mat": "iron", "parts": {"torso": [[0, 0, 0, "red"], [1, 0, 0, 0x1ff0000ff]]}})
+	t.check(junk != null and (junk.parts.torso as Array)[0].size() == 3 and int((junk.parts.torso as Array)[1][3]) == 0x0000ff, "nonsense colours dropped, big ones clipped")
+	var ids := Armory.register([d])
+	t.eq(ids.size(), 1, "registered")
+	var cells: Array = Data.armor[ids[0]].parts.torso
+	var styled := ArmorStyle.cells(ids[0], Data.armor[ids[0]], cells, Color.WHITE)
+	var reds := 0
+	var greys := 0
+	for k in cells.size():
+		var col: Color = styled[k][0]
+		if col.r > 2.0 * col.g and col.r > 2.0 * col.b:
+			reds += 1
+		elif absf(col.r - col.g) < 0.05 and absf(col.g - col.b) < 0.05:
+			greys += 1
+	t.eq(reds, 1, "and the worn piece shows the red plate")
+	t.eq(greys, cells.size() - 1, "the rest keep the stuff's colour")
+	bench.queue_free()
+
+## Every plate guards the spot it sits on until worn through, and a harder stuff holds longer:
+## one gladius cut goes through a leather plate, a steel plate takes several.
+func test_a_plate_holds_until_worn_through() -> void:
+	t.check(Fighter.plate_wear("steel") > Fighter.plate_wear("iron") and Fighter.plate_wear("iron") > Fighter.plate_wear("leather"), "harder stuff wears slower (%.0f/%.0f/%.0f)" % [Fighter.plate_wear("leather"), Fighter.plate_wear("iron"), Fighter.plate_wear("steel")])
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var blows := func(armor: String, x: float) -> int:
+		var f := w.fighter(Vector3(x, 1.2, 0), 0.0, {"armor": [armor]})
+		var tor: VoxelPart = f.torso
+		var ad: Dictionary = tor.get_meta("armor")[0]
+		var at: Vector3 = tor.global_transform * Vector3(0, 0, tor.half_ext.z)
+		var dir := -(tor.global_transform.basis * Vector3.BACK).normalized()
+		var n := 0
+		while int(ad.alive) == ad.cells.size() and n < 20:
+			f.apply_hit(tor, {"point": at, "dir": dir, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "impulse": 30.0, "axis": Vector3.RIGHT, "edge": Vector3.BACK})
+			n += 1
+		return n
+	var lth: int = blows.call("leatherJerkin", -3.0)
+	var stl: int = blows.call("steelLorica", 3.0)
+	t.check(lth <= 2, "a gladius cut goes through leather at once (%d)" % lth)
+	t.check(stl > lth and stl < 20, "steel holds for more of them (%d)" % stl)
+	w.queue_free()

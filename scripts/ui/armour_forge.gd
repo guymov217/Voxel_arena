@@ -20,6 +20,9 @@ var dims := Vector3i(4, 4, 4)
 var undo: Array = []
 var mirror := true                 # left and right of the part alike
 var mirror_z := false              # front and back alike
+var paint := -1                    # the paint on the plates put on next (-1: the bare stuff); a click on a plate paints it
+## The bench's paints: a plate in any of these over the stuff it is made of (0xRRGGBB).
+const PAINTS := [["Red", 0x9b1c1c], ["Blue", 0x1f3f8f], ["Gold", 0xd4a640], ["White", 0xe8e2d4], ["Black", 0x1a1816], ["Green", 0x2f6b2e], ["Purple", 0x5b2a73], ["Bronze", 0xa5702b]]
 var vp: SubViewport
 var cam: Camera3D
 var root: Node3D
@@ -45,7 +48,7 @@ func open(d: Dictionary, reg: String, cb: Callable, kg_worn := 0.0, coins := -1)
 	dims = Vector3i(int(dd[0]), int(dd[1]), int(dd[2]))
 	cells.clear()
 	for c in def.get("parts", {}).get(first, []):
-		cells[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = true
+		cells[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = int(c[3]) if c.size() > 3 else -1
 	if not Armory.BENCH_MATS.has(String(def.get("mat", ""))):
 		def.mat = "iron"
 	_build_ui()
@@ -74,12 +77,12 @@ func design_now() -> Dictionary:
 	var names: Array = Armory.REGIONS[region].parts
 	var list := []
 	for c in cells:
-		list.append([c.x, c.y, c.z])
+		list.append([c.x, c.y, c.z] if int(cells[c]) < 0 else [c.x, c.y, c.z, int(cells[c])])
 	parts[names[0]] = list
 	if names.size() > 1:
 		var other := []
 		for c in cells:
-			other.append([dims.x - 1 - c.x, c.y, c.z])
+			other.append([dims.x - 1 - c.x, c.y, c.z] if int(cells[c]) < 0 else [dims.x - 1 - c.x, c.y, c.z, int(cells[c])])
 		parts[names[1]] = other
 	out.parts = parts
 	if name_edit and name_edit.text.strip_edges() != "":
@@ -126,11 +129,24 @@ func add_plate(c: Vector3i) -> bool:
 		if not cells.has(m) and can_hold(m) and _held(m) and _cells_total() < Armory.DESIGN_MAX_CELLS:
 			if not put and stroke.get("undo", true):
 				_push_undo()
-			cells[m] = true
+			cells[m] = paint
 			put = true
 	if put:
 		_rebuild()
 	return put
+
+## The paint on a plate already on (and its mirror): the colour chosen, or -1 for the bare stuff.
+func paint_plate(c: Vector3i, colour: int) -> bool:
+	var did := false
+	for m in _mirrored(c):
+		if cells.has(m) and int(cells[m]) != colour:
+			if not did and stroke.get("undo", true):
+				_push_undo()
+			cells[m] = colour
+			did = true
+	if did:
+		_rebuild()
+	return did
 
 func remove_plate(c: Vector3i) -> bool:
 	var took := false
@@ -186,7 +202,7 @@ func _build_ui() -> void:
 		_push_undo()
 		for c in Armory._wrap([dims.x, dims.y, dims.z], 0, dims.y - 1, "all"):
 			if _cells_total() < Armory.DESIGN_MAX_CELLS:
-				cells[Vector3i(c[0], c[1], c[2])] = true
+				cells[Vector3i(c[0], c[1], c[2])] = paint
 		_rebuild()))
 	var mx := CheckBox.new()
 	mx.text = "Mirror ⟷"
@@ -198,6 +214,41 @@ func _build_ui() -> void:
 	mz.button_pressed = mirror_z
 	mz.toggled.connect(func(x): mirror_z = x)
 	tools.add_child(mz)
+	# The paints: pick one and the plates put on come in it, a click on a plate paints it;
+	# "Plain" is the bare stuff again.
+	var pots := HFlowContainer.new()
+	pots.add_theme_constant_override("h_separation", 4)
+	pots.add_theme_constant_override("v_separation", 4)
+	var pick := func(colour: int) -> void:
+		paint = colour
+		for pb in pots.get_children():
+			pb.button_pressed = int(pb.get_meta("paint")) == colour
+	var plain := UIStyle.button("Plain", func(): pick.call(-1))
+	plain.toggle_mode = true
+	plain.button_pressed = true
+	plain.set_meta("paint", -1)
+	pots.add_child(plain)
+	for p in PAINTS:
+		var colour: int = p[1]
+		var pb := Button.new()
+		pb.custom_minimum_size = Vector2(30, 30)
+		pb.tooltip_text = String(p[0])
+		pb.toggle_mode = true
+		pb.set_meta("paint", colour)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color.hex((colour << 8) | 0xff)
+		sb.set_corner_radius_all(4)
+		sb.border_width_bottom = 2
+		sb.border_color = Color(0.1, 0.08, 0.06)
+		pb.add_theme_stylebox_override("normal", sb)
+		var sbp := sb.duplicate()
+		sbp.border_color = UIStyle.GOLD
+		sbp.set_border_width_all(2)
+		pb.add_theme_stylebox_override("pressed", sbp)
+		pb.add_theme_stylebox_override("hover", sb)
+		pb.pressed.connect(func(): pick.call(colour))
+		pots.add_child(pb)
+	tools.add_child(pots)
 	tools.add_child(UIStyle.button("◀ Turn", func():
 		orbit.x -= TURN
 		_place_camera()))
@@ -249,7 +300,7 @@ func _build_ui() -> void:
 	# Far enough back to see the whole man, the part nearer the middle of the shot.
 	focus = _part_origin("torso", Armory.REGIONS[region].parts[0]) * 0.55
 	dist = 3.6
-	view.add_child(UIStyle.label("Left click: a plate on · right click: off · middle drag or Turn: round it · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
+	view.add_child(UIStyle.label("Left click: a plate on (in the paint picked; on a plate, it paints it) · right click: off · middle drag or Turn: round it · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
 	# The stuff, the name, and what it comes to.
 	var side := VBoxContainer.new()
 	side.custom_minimum_size = Vector2(340, 0)
@@ -363,24 +414,29 @@ func _rebuild() -> void:
 	var pm := BoxMesh.new()
 	pm.size = Vector3.ONE * CELL * 0.96
 	var pmat := StandardMaterial3D.new()
-	pmat.albedo_color = Weapon.voxel_color(String(def.mat), "blunt")
+	var bare := Weapon.voxel_color(String(def.mat), "blunt")
+	pmat.vertex_color_use_as_albedo = true   # (each plate its own paint, or the bare stuff)
 	pmat.metallic = 0.6 if ["iron", "steel", "bronze", "gold"].has(String(def.mat)) else 0.0
 	pmat.roughness = 0.45
 	pm.material = pmat
 	var pmm := MultiMesh.new()
 	pmm.transform_format = MultiMesh.TRANSFORM_3D
+	pmm.use_colors = true
 	pmm.mesh = pm
 	# On the part on the bench and, mirrored, on its pair (design_now).
 	var shown := design_now().parts as Dictionary
 	var at := []
+	var cols := []
 	for part in names:
 		var dd := Armory._dims(part)
 		var pd := Vector3i(int(dd[0]), int(dd[1]), int(dd[2]))
 		for c in shown.get(part, []):
 			at.append(_part_origin(part, first) + (Vector3(float(c[0]), float(c[1]), float(c[2])) - (Vector3(pd) - Vector3.ONE) * 0.5) * CELL)
+			cols.append(Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else bare)
 	pmm.instance_count = at.size()
 	for i in at.size():
 		pmm.set_instance_transform(i, Transform3D(Basis(), at[i]))
+		pmm.set_instance_color(i, cols[i])
 	var pi := MultiMeshInstance3D.new()
 	pi.multimesh = pmm
 	root.add_child(pi)
@@ -525,6 +581,10 @@ func _use(at: Vector2) -> void:
 		if a.plate and not stroke.done.has(a.hit):
 			stroke.done[a.hit] = true
 			remove_plate(a.hit)
+	elif a.plate and paint >= 0 and int(cells.get(a.hit, -1)) != paint and not stroke.done.has(a.hit):
+		# A plate already on, under the brush: it takes the paint.
+		stroke.done[a.hit] = true
+		paint_plate(a.hit, paint)
 	elif not stroke.done.has(a.place) and not stroke.done.has(a.hit):
 		stroke.done[a.place] = true
 		add_plate(a.place)
@@ -537,7 +597,7 @@ func _hover(at: Vector2) -> void:
 	ghost.visible = c != null
 	if c != null:
 		ghost.position = _pos(Vector3(c))
-		var col := Weapon.voxel_color(String(def.mat), "blunt")
+		var col := Color.hex((paint << 8) | 0xff) if paint >= 0 else Weapon.voxel_color(String(def.mat), "blunt")
 		col.a = 0.5
 		(ghost.mesh.material as StandardMaterial3D).albedo_color = col
 

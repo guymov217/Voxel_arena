@@ -174,9 +174,9 @@ func _row(parent: Control, items: Array) -> HBoxContainer:
 ## rest (a guest's own purse waits for him at home).
 var shared_purse := 0
 
-## A beginner's purse: not enough for any weapon on the rack (the cheapest, a dagger, is 35),
-## enough for a handful of blocks on the stick at the forge.
-const START_COINS := 20
+## A beginner's purse: a dagger (35) or a leather cap and a few blocks on the stick at the forge,
+## not a proper weapon from the rack.
+const START_COINS := 60
 
 func coins() -> int:
 	if Net.active() and not Net.is_host():

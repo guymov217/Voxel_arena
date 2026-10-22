@@ -48,7 +48,7 @@ static func cells(id: String, a: Dictionary, cells_: Array, base: Color) -> Arra
 		var z := int(c[2])
 		var h := float(y - ylo) / span
 		var n := _hash(x, y, z)
-		var col := base
+		var col := Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else base   # a painted cell
 		var k := 1.0
 		var kd := kind
 		if hair:

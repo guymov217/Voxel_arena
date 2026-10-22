@@ -143,12 +143,16 @@ static func clean_design(def) -> Variant:
 		var d := _dims(String(part))
 		var cells := []
 		for c in def.parts[part]:
-			if c is Array and c.size() == 3 and n < DESIGN_MAX_CELLS:
+			if c is Array and c.size() >= 3 and n < DESIGN_MAX_CELLS:
 				var x := int(c[0])
 				var y := int(c[1])
 				var z := int(c[2])
 				if x >= -DESIGN_OUT and x < int(d[0]) + DESIGN_OUT and y >= -DESIGN_OUT and y < int(d[1]) + DESIGN_OUT and z >= -DESIGN_OUT and z < int(d[2]) + DESIGN_OUT:
-					cells.append([x, y, z])
+					# a 4th number is the cell's paint (0xRRGGBB); a plain cell has none
+					if c.size() > 3 and (c[3] is int or c[3] is float) and int(c[3]) >= 0:
+						cells.append([x, y, z, int(c[3]) & 0xffffff])
+					else:
+						cells.append([x, y, z])
 					n += 1
 		if not cells.is_empty():
 			parts[String(part)] = cells
