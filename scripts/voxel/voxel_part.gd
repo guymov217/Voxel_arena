@@ -233,9 +233,11 @@ static func set_ao(on: bool) -> void:
 
 ## A voxel kind as MultiMesh custom data (the shader reads r * 16; a >= 1 marks it set, and
 ## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits). A sharp weapon
-## voxel's taper (taper_code) rides in r over the kind, in sixteens.
+## voxel's taper (taper_code) rides in r over the kind, in sixteens: r holds the kind and the
+## taper's low 16 bits exactly (a float carries 24). The spike bits over them (16..23, a point's
+## place along a run of points) ride in a's fraction, under the corner bits.
 static func kind_data(k: int, ao_ := 0, taper := 0) -> Color:
-	return Color(float(k + 16 * taper) / 16.0, 0.0, 0.0, 1.0 + float(ao_))
+	return Color(float(k + 16 * (taper & 0xFFFF)) / 16.0, 0.0, 0.0, 1.0 + float(ao_) + float(taper >> 16) / 1024.0)
 
 const TAPER_AXES := [Vector3i.RIGHT, Vector3i.UP, Vector3i.BACK]
 ## How a sharp voxel of a weapon is drawn (only the look: it still hits and weighs as a cube).
@@ -248,11 +250,34 @@ const TAPER_AXES := [Vector3i.RIGHT, Vector3i.UP, Vector3i.BACK]
 ## is pinched along, 9 a point, 10..15 an axis pinched toward its + or - face (2a + 10 for +,
 ## 2a + 11 for -) instead of its middle. The rows behind an edge and thick blocks stay blocks.
 ## `face` (0..5: +x -x +y -y +z -z), when the smith set it at the forge: the way the edge or the
-## point faces, whatever is round it; -1 to read it off the weapon's shape.
-static func taper_code(cells: Dictionary, p: Vector3i, face := -1) -> int:
+## point faces, whatever is round it; -1 to read it off the weapon's shape. `faces`: the faces
+## the smith set on the other sharp voxels (Vector3i -> 0..5), for a run of points.
+## A point on a run of points (one stab block on another, up to the tip) is a length of one
+## spike: bits 16..19 its place along the run from the base, 20..23 the run's length, and it is
+## drawn narrowing from its base's width to its tip's, so the spike tapers unbroken to the end.
+static func taper_code(cells: Dictionary, p: Vector3i, face := -1, faces: Dictionary = {}) -> int:
 	var job := str(cells.get(p, ""))
 	if job != "edge" and job != "point":
 		return 0
+	if job == "point":
+		var run := _spike(cells, faces, p, face)
+		if not run.is_empty():
+			var ra: int = run[0]
+			var code := 512 | (1 << (2 * ra + (0 if run[1] > 0 else 1)))
+			for b in 3:
+				if b == ra:
+					continue
+				code |= 1 << (6 + b)
+				# Half of a spike two thick narrows toward the face it shares with its other half:
+				# a point on one side only (the haft, or nothing, on the other).
+				var d: Vector3i = TAPER_AXES[b]
+				var halves := []
+				for sg: int in [1, -1]:
+					if str(cells.get(p + d * sg, "")) == "point":
+						halves.append(sg)
+				if halves.size() == 1:
+					code |= 1 << (2 * b + (10 if halves[0] > 0 else 11))
+			return code | (mini(run[2], 14) << 16) | (mini(run[3], 15) << 20)
 	if face >= 0 and face < 6:
 		var fa := face / 2
 		var others: Array = [0, 1, 2].filter(func(a): return a != fa)
@@ -315,6 +340,42 @@ static func taper_code(cells: Dictionary, p: Vector3i, face := -1) -> int:
 		else:
 			code |= 1 << (2 * a + (0 if not cells.has(p + TAPER_AXES[a]) else 1))
 	return code
+
+## The run of points `p` is on: [axis, sign (toward the tip), its place from the base, length],
+## or [] when it stands alone. The run goes the way the smith turned it (`face`), else the way
+## the longest line of points through it ends in the open, the one its tip was turned to first;
+## a point turned to face another way is not part of it.
+static func _spike(cells: Dictionary, faces: Dictionary, p: Vector3i, face: int) -> Array:
+	var dirs := []
+	if face >= 0 and face < 6:
+		dirs = [[face / 2, 1 if face % 2 == 0 else -1]]
+	else:
+		for a in 3:
+			dirs.append([a, 1])
+			dirs.append([a, -1])
+	var best := []
+	for d in dirs:
+		var want: int = 2 * d[0] + (0 if d[1] > 0 else 1)
+		var step: Vector3i = TAPER_AXES[d[0]] * d[1]
+		var ahead := 0
+		var q := p + step
+		while str(cells.get(q, "")) == "point" and int(faces.get(q, -1)) in [-1, want]:
+			ahead += 1
+			q += step
+		if cells.has(q):
+			continue   # it ends in the weapon's body, not the open: no tip that way
+		var behind := 0
+		q = p - step
+		while str(cells.get(q, "")) == "point" and int(faces.get(q, -1)) in [-1, want]:
+			behind += 1
+			q -= step
+		var n := ahead + behind + 1
+		if n < 2:
+			continue
+		var score := n * 10 + (5 if int(faces.get(p + step * ahead, -1)) == want else 0)
+		if best.is_empty() or score > best[4]:
+			best = [d[0], d[1], behind, n, score]
+	return best
 
 static func _is_sharp(cells: Dictionary, q: Vector3i) -> bool:
 	var j := str(cells.get(q, ""))

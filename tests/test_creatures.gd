@@ -263,7 +263,9 @@ func test_every_blow_is_a_touch() -> void:
 			bad.append("%s: %d of %d blows without a touch %s" % [k, untouched.size(), blows[0], untouched.slice(0, 3)])
 		w.queue_free()
 		await get_tree().physics_frame
-	t.check(landed > 10, "the creatures landed blows (%d)" % landed)
+	# (A sanity floor: bites land only in a strike window now, so six seconds a creature gives
+	# 8–12 blows over all of them, by the dice of the round.)
+	t.check(landed > 5, "the creatures landed blows (%d)" % landed)
 	t.check(bad.is_empty(), "every blow came with the creature's body on his: %s" % [bad])
 
 ## A blow on a part from the side: a club (blunt) or a point.

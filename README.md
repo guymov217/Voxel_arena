@@ -103,7 +103,12 @@ godot --headless --path . -- --test test_fight   # one suite
   or SMAA, FXAA, MSAA 2x/8x, off) and voxel corner shading (each voxel's face darkens toward the
   neighbours that shut it in, so creases and the gaps between blocks lie in shadow; on or off). A
   weapon's sharp voxels are drawn tapered, in the forge and in the fight: the outer row of an edge a
-  wedge thin across the blade with a honed line, a point a tip (only the look; they hit as cubes). An animated crowd shader, braziers, awnings, flags and the Emperor's box.
+  wedge thin across the blade with a honed line, a point a tip, and a run of points (one stab
+  block on another) one spike narrowing unbroken from its base to its tip (only the look; they hit
+  as cubes). Every joint of a fighter is drawn whole: each limb is drawn moved to close the few
+  millimetres the physics leaves open at its joint, and a block of the limb's own colour sits on
+  each pivot (the deltoid at the shoulder, the elbow, hip, knee and neck) to fill the wedge two
+  blocks open between them when the joint bends. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows.
 - **Multiplayer**: host-authoritative. Guests send input; the host sends snapshots, spawns, voxel

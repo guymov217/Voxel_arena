@@ -72,6 +72,85 @@ func test_joints_stay_closed_through_a_fight() -> void:
 	t.check(wide_pct < 8.0, "and are open past 3 cm in under 8%% of the readings (%.2f%%)" % wide_pct)
 	t.check(drawn_worst < 0.0005, "on screen every joint is closed (worst drawn %.2f mm)" % (1000.0 * drawn_worst))
 	t.check(wep_off < 0.0005, "and the weapon is drawn with the hand that holds it")
+	# Every joint capped (the deltoid, elbows, hips, knees, the neck): a block of the limb's own
+	# thickness on its pivot, turned with the arm at the shoulder, with the parent elsewhere.
+	var f0: Fighter = m.me.f
+	f0.draw_now()
+	var caps := 0
+	var off := 0.0
+	var fat := 0.0
+	for p: VoxelPart in f0.parts:
+		if p.parent_part == null or p.joint == null:
+			continue
+		var cap: MeshInstance3D = f0.joint_caps.get(p)
+		if cap == null or not cap.visible:
+			continue
+		caps += 1
+		var pivot: Vector3 = p.global_transform * p.ca + p.draw_shift
+		var sc: Vector3 = cap.global_transform.basis.get_scale()
+		var along: Vector3 = cap.global_transform.basis.y.normalized()
+		# Its middle on the pivot's line (a deltoid runs on past it, along the arm).
+		var d: Vector3 = cap.global_position - pivot
+		off = maxf(off, (d - along * d.dot(along)).length())
+		fat = maxf(fat, maxf(sc.x / p.half_ext.x, sc.z / p.half_ext.z))
+	t.eq(caps, 9, "nine joints are capped")
+	t.check(off < 0.002, "each cap sits on its joint's pivot (off by %.1f mm at most)" % (1000.0 * off))
+	t.check(fat <= 0.97, "and is a shade thinner than its limb, hidden inside it when straight (%.2f)" % fat)
+	m.queue_free()
+
+## Standing on a fallen man (user video: the legs hung in the air over the sand), the feet are
+## planted on him: the stance reads whatever lies under the fighter, each foot the ground under
+## its own spot.
+func test_feet_stand_on_a_body() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": ""}})
+	await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	m.me.drive = func(_e): return {"main": {"x": 0.0, "y": 0.2}}
+	var e = m.spawn_fighter({"kind": "bot", "name": "Fallen", "loadout": {"main": "gladius", "off": ""}, "team": 1, "pos": Vector3(0, 0, 2), "yaw": PI, "diff": 1.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	for i in 30:
+		await get_tree().physics_frame
+	var g: Fighter = e.f
+	g.die("test")
+	var n := 0
+	while n < 900 and (g.torso.global_position.y > 0.45 or g.torso.linear_velocity.length() > 0.2):
+		await get_tree().physics_frame
+		n += 1
+	var top := -INF
+	var at := Vector3.ZERO
+	for p: VoxelPart in g.parts:
+		if p.global_position.y + p.half_ext.y > top:
+			top = p.global_position.y + p.half_ext.y
+			at = p.global_position
+	# Set down on him (a lumpy heap he can slide off: set down again where he lies, up to three
+	# times, until a foot is on him).
+	var planted := 0
+	var high := -INF
+	for attempt in 3:
+		f.teleport(Vector3(at.x, top + 1.1, at.z))
+		for i in 240:
+			await get_tree().physics_frame
+		planted = 0
+		high = -INF
+		for side in ["L", "R"]:
+			var ft = f.feet[side]
+			if ft != null:
+				high = maxf(high, float((ft.anchor as Vector3).y))
+				if not ft.swing:
+					planted += 1
+		if high > 0.08:
+			break
+		top = -INF
+		for p: VoxelPart in g.parts:
+			if p.global_position.y + p.half_ext.y > top:
+				top = p.global_position.y + p.half_ext.y
+				at = p.global_position
+	t.check(f.on_ground, "on a fallen man he counts as on the ground")
+	t.check(planted >= 1, "a foot is planted (%d)" % planted)
+	t.check(high > 0.08, "on the body, not down on the sand under it (the higher foot %.2f m up)" % high)
 	m.queue_free()
 
 func test_a_cut_limb_is_left_to_fall() -> void:

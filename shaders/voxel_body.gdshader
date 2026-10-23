@@ -47,12 +47,14 @@ varying flat float seed;
 varying flat vec2 status;   // INSTANCE_CUSTOM.g: burning, .b: poisoned (0..1)
 varying flat float ao_code; // the corner bits (an integer held exactly in a float)
 varying flat float taper_code;
+varying flat float spike_code; // a point's place on a run of points (bits 0..3) and the run's length (4..7)
 
 void vertex() {
 	box_pos = VERTEX;
 	float kc = INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0;
 	kind_f = force_kind >= 0 ? float(force_kind) : mod(kc, 16.0);
 	taper_code = INSTANCE_CUSTOM.a > 0.5 ? floor(kc / 16.0) : 0.0;
+	spike_code = INSTANCE_CUSTOM.a > 0.5 ? floor(fract(INSTANCE_CUSTOM.a) * 1024.0 + 0.5) : 0.0;
 	if (bevel_mode) {
 		int open = int(taper_code) & 63;
 		// Which way the body is open along each axis (0: shut both ways, or a sliver open both).
@@ -99,17 +101,22 @@ void vertex() {
 		for (int a = 0; a < 3; a++) {
 			anchor[a] = ((t >> (10 + 2 * a)) & 1) == 1 ? 1.0 : (((t >> (11 + 2 * a)) & 1) == 1 ? -1.0 : 0.0);
 		}
-		if (open_side) {
-			vec3 fixed_at = anchor * abs(VERTEX);
-			VERTEX = mix(VERTEX, fixed_at + (VERTEX - fixed_at) * thin, pinch);
-		}
+		// A length of a spike (a run of points) narrows from its base's width to its tip's, so
+		// the spike tapers unbroken from the first block to the last; a lone point from full
+		// width to the tip.
+		int si = int(spike_code) & 15;
+		int sn = int(spike_code) >> 4;
+		float s_base = sn > 1 ? mix(1.0, thin, float(si) / float(sn)) : 1.0;
+		float s_tip = sn > 1 ? mix(1.0, thin, float(si + 1) / float(sn)) : thin;
+		vec3 fixed_at = anchor * abs(VERTEX);
+		VERTEX = mix(VERTEX, fixed_at + (VERTEX - fixed_at) * (open_side ? s_tip : s_base), pinch);
 		// The faces across the pinch are bevels now: they lean toward the edge (at a corner,
 		// pinched toward two sides, the face is mostly flat with a bevel at one end: less). The
 		// shared face of a half stays flat; its outer face leans twice as steeply.
 		int na = abs(NORMAL.x) > 0.5 ? 0 : (abs(NORMAL.y) > 0.5 ? 1 : 2);
 		if (pinch[na] > 0.5) {
 			float slope = anchor[na] == 0.0 ? 0.5 : (sign(NORMAL[na]) == anchor[na] ? 0.0 : 1.0);
-			NORMAL = normalize(NORMAL + normalize(toward) * (1.0 - thin) * slope / sides);
+			NORMAL = normalize(NORMAL + normalize(toward) * (s_base - s_tip) * slope / sides);
 		}
 	}
 	seed = fract(sin(float(INSTANCE_ID) * 12.9898 + 4.1414) * 43758.5453);
@@ -169,7 +176,9 @@ void fragment() {
 	}
 	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
 	float hone = 0.0;
-	if (taper_code > 0.5 && !bevel_mode) {
+	// (A length of a spike short of its tip has no honed end: the spike runs on.)
+	bool mid_spike = (int(spike_code) >> 4) > 1 && (int(spike_code) & 15) + 1 < (int(spike_code) >> 4);
+	if (taper_code > 0.5 && !bevel_mode && !mid_spike) {
 		int t = int(taper_code);
 		for (int f = 0; f < 6; f++) {
 			if (((t >> f) & 1) == 1) {

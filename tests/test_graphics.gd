@@ -124,6 +124,49 @@ func test_sharp_voxels_are_drawn_tapered() -> void:
 	t.eq(kc % 16, 3, "the kind reads back")
 	t.eq(kc / 16, tip, "and the taper with it")
 
+## A stab block on a stab block: one spike, narrowing unbroken from the first block to the tip
+## (user screenshot: a column of points drawn as blocks with a small roof on top).
+func test_a_run_of_points_is_one_spike() -> void:
+	# A haft with a plate of points up its side, two wide, six tall, on a blunt bar, open above.
+	var cells := {}
+	for y in range(0, 16):
+		cells[Vector3i(0, y, 0)] = "blunt"
+	cells[Vector3i(1, 9, 0)] = "blunt"
+	cells[Vector3i(2, 9, 0)] = "blunt"
+	for y in range(10, 16):
+		for x in [1, 2]:
+			cells[Vector3i(x, y, 0)] = "point"
+	var faces := {Vector3i(1, 15, 0): 2, Vector3i(2, 15, 0): 2}   # the smith turned the top two up
+	var top := VoxelPart.taper_code(cells, Vector3i(1, 15, 0), 2, faces)
+	var mid := VoxelPart.taper_code(cells, Vector3i(1, 12, 0), -1, faces)
+	var base := VoxelPart.taper_code(cells, Vector3i(1, 10, 0), -1, faces)
+	for code in [top, mid, base]:
+		t.eq(code & 63, 4, "every block of the run narrows up, toward the tip")
+		t.eq((code >> 6) & 7, 1 | 4, "pinched across both ways")
+		t.eq((code >> 9) & 1, 1, "a point")
+		t.eq((code >> 20) & 15, 6, "on a run six long")
+		t.eq((code >> 10) & 63, 1 << 0, "the left half narrows toward the face it shares with the right, the haft on its other side or not")
+	t.eq((base >> 16) & 15, 0, "the bottom block is the base")
+	t.eq((mid >> 16) & 15, 2, "the third is third")
+	t.eq((top >> 16) & 15, 5, "the top block is the tip")
+	t.eq((VoxelPart.taper_code(cells, Vector3i(2, 12, 0), -1, faces) >> 10) & 63, 1 << 1, "the right half toward the left")
+	# The spike bits ride in the custom data's alpha, under the corner bits; the kind and the
+	# taper's low bits still read back from r.
+	var c := VoxelPart.kind_data(3, 0, mid)
+	t.eq(int(floor(c.r * 16.0 + 0.5)) % 16, 3, "the kind reads back")
+	t.eq(int(floor(c.r * 16.0 + 0.5)) / 16, mid & 0xFFFF, "and the taper's low bits")
+	t.eq(int(floor(fmod(c.a, 1.0) * 1024.0 + 0.5)), mid >> 16, "and the spike bits from a's fraction")
+	t.eq(int(floor(c.a - 1.0 + 0.5)), 0, "which do not read as corner bits")
+	# A lone point is as it was: no run.
+	t.eq(VoxelPart.taper_code({Vector3i(0, 0, 0): "blunt", Vector3i(0, 1, 0): "point"}, Vector3i(0, 1, 0)) >> 16, 0, "a lone point is no spike")
+	# A point turned to face another way is not part of the run: a column of four points on a
+	# haft, the third turned aside, leaves the two below it no run to the open.
+	var col := {Vector3i(0, 0, 0): "blunt"}
+	for y in range(1, 5):
+		col[Vector3i(0, y, 0)] = "point"
+	t.eq((VoxelPart.taper_code(col, Vector3i(0, 1, 0)) >> 20) & 15, 4, "four points up a haft are one spike")
+	t.eq((VoxelPart.taper_code(col, Vector3i(0, 1, 0), -1, {Vector3i(0, 3, 0): 0}) >> 20) & 15, 0, "the run is cut below a point turned aside")
+
 func test_when_the_edge_breaks_the_row_behind_is_not_sharpened() -> void:
 	var d := _blade()
 	# A second row of edge voxels behind the left edge.

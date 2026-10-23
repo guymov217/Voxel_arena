@@ -423,13 +423,18 @@ func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
 			await get_tree().physics_frame
 		var w: Weapon = f.weapons.R
 		var hi_err := rad_to_deg(PD.quat_of(w).angle_to(f.aim_q.R))
-		var face: Vector3 = f.head.global_position
 		var yq := Quaternion(Vector3.UP, f.yaw).inverse()
-		var lead: Vector3 = yq * (f.hand_world("L") - face)
+		var sh_r: Vector3 = f.torso.global_position + f.torso.global_transform.basis.get_rotation_quaternion() * f.shoulder.R
+		var high: Vector3 = yq * (f.hand_world("R") - sh_r)
 		t.check(hi_err < 25.0, "%s: a high guard with the button down stands the blade up (%.0f deg off)" % [wk, hi_err])
-		t.check(lead.y < 0.15 and lead.z > 0.2, "%s: the front hand at the brow, out in front of the face (up %.2f, out %.2f)" % [wk, lead.y, lead.z])
+		# Both hands go where the mouse sends them, as one hand does: aimed right up they rise
+		# over the head, not held at the brow with the blade standing up out of the fists
+		# (user video: the hands never left the face and the arms looked tangled).
+		t.check(high.y > 0.4, "%s: aimed right up, the hands rise over the head (%.2f above the shoulder)" % [wk, high.y])
 		var worst := 0.0
 		var tilt := 0.0
+		var lo := Vector3.INF
+		var hi := -Vector3.INF
 		var marks := [Vector2(0, 1.6), Vector2(0, -1.5), Vector2(1.8, 0.4), Vector2(-1.8, 0.4), Vector2(1.1, 1.3), Vector2(-1.2, -1.2), Vector2(-1.1, 1.3), Vector2(1.2, -1.2)]
 		for d in marks:
 			box.i = {"main": {"x": d.x, "y": d.y}, "power": true}
@@ -438,8 +443,15 @@ func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
 				if i >= 80 and d.y > -0.5:   # (settled at the mark; bent over a low one by design)
 					tilt = maxf(tilt, rad_to_deg(f.torso.global_transform.basis.y.angle_to(Vector3.UP)))
 			worst = maxf(worst, rad_to_deg(PD.quat_of(f.weapons.R).angle_to(f.aim_q.R)))
+			sh_r = f.torso.global_position + f.torso.global_transform.basis.get_rotation_quaternion() * f.shoulder.R
+			var h: Vector3 = Quaternion(Vector3.UP, f.yaw).inverse() * (f.hand_world("R") - sh_r)
+			lo = lo.min(h)
+			hi = hi.max(h)
 		t.check(worst < 30.0, "%s: after each fast stroke the blade is on the mouse within a second (worst %.0f deg)" % [wk, worst])
 		t.check(tilt < 25.0, "%s: the trunk stays upright through the strokes (leans at most %.0f deg)" % [wk, tilt])
+		# The main hand sweeps as wide and as high in two hands as in one (one hand: 1.3 m across,
+		# 1.1 m up and down over these marks).
+		t.check(hi.x - lo.x > 0.9 and hi.y - lo.y > 0.9, "%s: the hands range as wide as one hand's (%.2f m across, %.2f m up and down)" % [wk, hi.x - lo.x, hi.y - lo.y])
 		t.eq(f.state, "stand", "%s: on his feet throughout" % wk)
 		m.queue_free()
 		await get_tree().process_frame

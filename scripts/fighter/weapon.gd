@@ -363,12 +363,18 @@ func _build_mesh() -> void:
 var taper := PackedInt32Array()
 func _taper_all() -> void:
 	var cells := {}
+	var faces := {}
 	for v in vox:
-		cells[Vector3i(roundi(float(v[0])), roundi(float(v[1])), roundi(float(v[2])))] = str(v[4])
+		var k := Vector3i(roundi(float(v[0])), roundi(float(v[1])), roundi(float(v[2])))
+		cells[k] = str(v[4])
+		# (A sixth entry: the way the smith set the edge or point to face, ForgeLib.face_of.)
+		var f := ForgeLib.face_of(v)
+		if f >= 0:
+			faces[k] = f
 	taper.resize(vox.size())
 	for i in vox.size():
-		# (A sixth entry: the way the smith set the edge or point to face, ForgeLib.face_of.)
-		taper[i] = VoxelPart.taper_code(cells, Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2]))), ForgeLib.face_of(vox[i]))
+		var k := Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))
+		taper[i] = VoxelPart.taper_code(cells, k, int(faces.get(k, -1)), faces)
 
 ## A voxel's custom data for the shader: its kind and taper, and while it lies in fire or acid
 ## (set_burn) how hot it glows and how poisoned.

@@ -1108,12 +1108,15 @@ func _rebuild() -> void:
 	var centre := Vector3.ZERO
 	# Sharp voxels drawn tapered, as on the weapon in the arena.
 	var jobs := {}
+	var faces := {}
 	for k in cells:
 		jobs[k] = str(cells[k][1])
+		if _face(k) >= 0:
+			faces[k] = _face(k)
 	for k in cells:
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * vs))
 		mm.set_instance_color(i, Weapon.voxel_color(cells[k][0], cells[k][1]))
-		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k, _face(k))))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k, _face(k), faces)))
 		centre += Vector3(k) * vs
 		i += 1
 	var mi := MultiMeshInstance3D.new()

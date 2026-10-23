@@ -175,11 +175,9 @@ const TWO_HAND_TWIST := 0.18   # how far the shoulders turn with a two-handed st
 const TWO_HAND_TRUNK := 1.8   # how much harder the trunk holds upright with both hands on a haft
 const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a second): held, not swung
 const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
-const OVER_LIFT := 0.1   # how far the front hand rises over a high guard (m, a man's size)
-const OVER_FWD := 0.02
 var twist_two := 0.0
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
-var grip_in := 0.0     # how far the two-handed grip is drawn in toward the shoulder (held still)   # the wheel's twist the last aim was made with
+var two_main = null    # and the main hand (for the tests)
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
@@ -1557,8 +1555,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	for w in weapons.values():
 		if w:
 			total_mass += w.mass
-	var ray := PhysicsRayQueryParameters3D.create(t_pos, t_pos + Vector3(0, -2.2 * S, 0), VoxelPart.LAYER_WORLD)
-	var hit := space.intersect_ray(ray)
+	# The sand, or whatever lies on it under him: a man or a beast down there holds him up too
+	# (read off the sand alone, standing on a body he was "in the air", no foot planted, and
+	# the legs hung).
+	var hit := _ground_ray(space, t_pos)
 	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, low_hand * 0.9))
 	var one_leg: bool = minf(leg_l, leg_r) < 0.1
 	var leg_flinch := 1.0
@@ -1613,7 +1613,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var hip_w: Vector3 = t_pos + t_rot * by_name["thigh" + sd].pa
 				var dxz := Vector2(hip_w.x - ftp.anchor.x, hip_w.z - ftp.anchor.z).length()
 				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
-				pend = minf(pend, ground_y + hh + (t_pos.y - hip_w.y))
+				pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
 			if pend < INF:
 				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2))
 			if stance_h > 0.0:
@@ -1800,7 +1800,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				feet[side].swing = true
 		elif standing and grounded:
 			var neutral := t_pos + yaw_q * Vector3(thigh.pa.x * 1.15, 0, 0)
-			neutral.y = ground_y
+			neutral.y = _ground_under(neutral, ground_y)
 			var ft = feet[side]
 			if ft == null:
 				ft = {"anchor": neutral, "from": neutral, "swing": false, "s": 0.0, "land": neutral, "half": -1, "slip": 0.0}
@@ -1946,16 +1946,25 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# Torn lungs draw breath slower and fill no further than they still can.
 	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs()) * dt, 0.0, maxf(stamina - stamina_use, breath_cap()))
 
-## The shoulder drawn whole (drawing only): the top of the upper arm meets its socket on the
-## chest through a cap of the arm's own colour, the deltoid, so a raised arm, or one the joint
-## let give a little under a heavy blow, is never seen to float off the body.
-var shoulder_caps := {}
+## Every joint drawn whole (drawing only): a block of the limb's own thickness and colour sits
+## on the joint's pivot, hidden inside the two parts while the limb is straight, and filling
+## the wedge their blocks open between them when it bends, so no arm, leg or head is seen to
+## float off the body. At the shoulder it is the deltoid: turned with the arm and run on from
+## the arm's top into the chest as far as the arm's line meets it (the socket sits an arm's
+## width out from the chest, and a raised arm pivots there, its top a hand off the chest); the
+## others turn with the part the limb hangs from.
+var joint_caps := {}
 func _process(_dt: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	_seat_drawing()
-	for side in ["R", "L"]:
-		_draw_shoulder(side)
+	_draw_joint_caps()
+
+## Drawn where the bodies are now, with the game paused (the kill cam): the joints closed and
+## capped off the bodies' own transforms, not the interpolation's.
+func draw_now() -> void:
+	_seat_drawing(false)
+	_draw_joint_caps(false)
 
 ## What the physics leaves open of a joint (a few millimetres under load, a couple of
 ## centimetres in a hard blow) is closed on screen: each joined part is drawn moved so that
@@ -1963,14 +1972,14 @@ func _process(_dt: float) -> void:
 ## weapon in a hand is drawn moved with the forearm. The bodies are not touched (setting them
 ## back on their joints before each step, or more solver iterations, cost the arms their
 ## precision with a heavy head); a part cut off, hanging or gone is drawn where it is.
-func _seat_drawing() -> void:
+func _seat_drawing(interp := true) -> void:
 	for p: VoxelPart in parts:
 		var par: VoxelPart = p.parent_part
 		p.draw_shift = Vector3.ZERO
 		if par == null or p.severed or p.hanging or p.missing or par.severed or p.joint == null:
 			continue
-		var tp := par.get_global_transform_interpolated()
-		var tc := p.get_global_transform_interpolated()
+		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
+		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
 		p.draw_shift = tp * p.pa + par.draw_shift - tc * p.ca
 	for side in ["R", "L"]:
 		var w: Weapon = weapons[side]
@@ -1982,52 +1991,57 @@ func _seat_drawing() -> void:
 			if b is Weapon:
 				b.draw_shift = shift
 
-func _draw_shoulder(side: String) -> void:
-	var up: VoxelPart = arm[side].upper
-	var cap: MeshInstance3D = shoulder_caps.get(side)
-	var show := not up.severed and not up.hanging and not up.missing and up.prosthetic == "" and not torso.severed and up.alive_count > 0
-	var sock := Vector3.ZERO
-	var top := Vector3.ZERO
-	var tb := Basis()
-	if show:
-		var tt := torso.get_global_transform_interpolated()
-		var ut := up.get_global_transform_interpolated()
-		sock = tt * Vector3(shoulder[side].x, shoulder[side].y, 0) + torso.draw_shift
-		top = ut * Vector3(0, up.half_ext.y, 0) + up.draw_shift
-		tb = ut.basis.orthonormalized()
-	if not show:
-		if cap:
-			cap.visible = false
-		return
-	if cap == null:
-		cap = MeshInstance3D.new()
-		cap.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-		cap.mesh = BoxMesh.new()
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = _top_color(up)
-		mat.roughness = 0.9
-		cap.material_override = mat
-		add_child(cap)
-		shoulder_caps[side] = cap
-	cap.visible = true
-	# A block the arm's own thickness, from just inside the arm's top to the socket, turned with
-	# the arm; at rest it sits inside the arm and the chest, unseen.
-	var d := sock - top
-	var w := Vector2(up.half_ext.x, up.half_ext.z) * 1.6
-	var along := tb.y
-	var len := maxf(0.02, d.dot(along)) + w.x * 0.6
-	var mid := top + d * 0.5 - along * w.x * 0.15
-	cap.global_transform = Transform3D(tb.scaled_local(Vector3(w.x, len, w.y)), mid)
+func _draw_joint_caps(interp := true) -> void:
+	for p: VoxelPart in parts:
+		var par: VoxelPart = p.parent_part
+		var cap: MeshInstance3D = joint_caps.get(p)
+		var show := par != null and p.joint != null and not p.severed and not p.hanging and not p.missing and not par.severed and not par.missing and p.prosthetic == "" and p.alive_count > 0
+		if not show:
+			if cap:
+				cap.visible = false
+			continue
+		if cap == null:
+			cap = MeshInstance3D.new()
+			cap.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+			cap.mesh = BoxMesh.new()
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = _end_color(p).srgb_to_linear()   # (the voxels' colours are sRGB)
+			mat.roughness = 0.9
+			cap.material_override = mat
+			add_child(cap)
+			joint_caps[p] = cap
+		cap.visible = true
+		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
+		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
+		var pivot: Vector3 = tc * p.ca + p.draw_shift
+		var hx := p.half_ext.x * 0.96
+		var hz := p.half_ext.z * 0.96
+		var b: Basis = tp.basis.orthonormalized()
+		var mid := pivot
+		var hy := minf(hx, hz)
+		if p == arm.R.upper or p == arm.L.upper:
+			b = tc.basis.orthonormalized()
+			# From a little inside the arm's top, on along the arm's line to just inside the side
+			# of the chest, where that line meets it (hanging, it does not: the cap stays inside).
+			var along: Vector3 = tp.basis.orthonormalized().inverse() * b.y
+			var inward := -signf(p.pa.x)
+			var run := 0.0
+			if along.x * inward > 0.05:
+				run = clampf((-inward * (par.half_ext.x - 0.03 * S) - p.pa.x) / along.x, 0.0, 0.2 * S)
+			hy = (run + hx * 0.6) * 0.5
+			mid = pivot + b.y * (run - hx * 0.6) * 0.5
+		cap.global_transform = Transform3D(b.scaled_local(Vector3(hx, hy, hz)), mid)
 
-## The colour of the top of a part (its skin or what is worn there), for the shoulder cap.
-static func _top_color(p: VoxelPart) -> Color:
-	var best := -INF
+## The colour of a part at its joint's end (its skin or what is worn there), for the joint cap.
+static func _end_color(p: VoxelPart) -> Color:
+	var top := p.ca.y >= 0.0
+	var best := -INF if top else INF
 	for i in p.fy.size():
-		best = maxf(best, float(p.fy[i]))
+		best = maxf(best, float(p.fy[i])) if top else minf(best, float(p.fy[i]))
 	var c := Color(0, 0, 0)
 	var n := 0
 	for i in p.fy.size():
-		if float(p.fy[i]) >= best - 1.0 and p.alive[i] != 0:
+		if absf(float(p.fy[i]) - best) <= 1.0 and p.alive[i] != 0:
 			c += p.colors[i]
 			n += 1
 	return c / float(n) if n > 0 else Color(0.8, 0.6, 0.45)
@@ -2250,15 +2264,15 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# sweep), the back hand behind it down the shaft, and a thrust drives both along it.
 			# So the off hand is never stretched across the body, and the head goes wherever the
 			# mouse sends it, up, down or round.
-			var hp2: Dictionary = hand_input[side]
-			var hy2 := clampf(float(hp2.get("y", 0.0)), -1.6, 1.6)
-			var low2 := clampf((-hy2 - 0.3) / 1.0, 0.0, 1.0)
-			var high2 := clampf(hy2 / 1.4, 0.0, 1.0)
-			# Aimed right up the hands rise to the brow, out in front of the face (a high guard):
-			# the blade stands up from the wrists. (Lifted over the head and in over it, the arms
-			# covered the face and the trunk arched back under them.)
-			var over2 := clampf((hy2 - 0.6) / 0.8, 0.0, 1.0)
-			var front: Vector3 = t_pos + t_rot * shoulder.L + yaw_q * (Vector3(-0.08 - 0.1 * clampf(float(hp2.get("x", 0.0)), -2.0, 2.0) * 0.5, -0.2 - 0.3 * low2 + 0.28 * high2 + OVER_LIFT * over2, 0.4 - 0.12 * low2 + OVER_FWD * over2 + 0.3 * clampf(0.0 if thrust_line[side] != null else thrust, -1.0, 1.0)) * S)
+			# Both hands go where the mouse sends them, as one hand does: the main hand to the
+			# mark one hand is given (hand_target_local: the same reach every way), the front
+			# hand ahead of it down the haft. Where an arm cannot reach its grip (the front hand
+			# high across the face or far out past the other shoulder) the pair is moved in
+			# toward the shoulders, the blade's line kept. (Held at a guard in front of the face
+			# with only the blade turning, the hands never left the brow, the blade stood up over
+			# the head and the arms looked tangled, while one hand swung wide: user video.)
+			var gap: Vector3 = w_aim * (w.grip_off - w.grip_main)
+			var front: Vector3 = target_w + gap
 			var tl2 = thrust_line[side]
 			if tl2 != null:
 				# A thrust drives the front hand along the blade's line, as far as that arm reaches.
@@ -2267,28 +2281,24 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				if not tl2.has("f"):
 					tl2.f = yaw_q.inverse() * (hand_world("L") - t_pos)
 				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z))
-			target_w = front - w_aim * (w.grip_off - w.grip_main)
-			# Both hands where both arms reach: a grip that would have the back hand further than
-			# its arm goes (high across the face, far out to the side) is moved in toward that
-			# shoulder whole, the blade's line kept. Out of reach, that hand strained short of it,
-			# the hands pulled against each other and the blade crept on while the mouse was still.
-			# Only while it is held: a stroke or a stab goes out to the full reach of the arm, and
-			# the grip eases back out to it as one starts.
-			# (A mark held with the button still down is held too: kept out at the arm's full
-			# length the wrists could not stand a heavy head up, and it hung 40 degrees off.)
-			var still: bool = not power or (hp_vel[side] as Vector2).length() < HELD_STILL
-			var holding: bool = thrust_line[side] == null and still and swing_hold[side] <= 0.0
-			grip_in = move_toward(grip_in, 1.0 if holding else 0.0, dt * 5.0)
-			# (In a stroke too, never past the arm's whole length: held there under power, a mark
-			# out of the back hand's reach locked the two hands against each other and the blade
-			# stopped short of the mouse for as long as the button was down.)
+				target_w = front - gap
 			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
-			var far := target_w.distance_to(sh_r) - arm_reach * 0.88
-			if far > 0.0 and grip_in > 0.0:
-				var pull: Vector3 = (sh_r - target_w).normalized() * far * grip_in
-				front += pull
-				target_w += pull
+			var sh_l: Vector3 = t_pos + t_rot * shoulder.L
+			# (Not in a thrust: that goes out to the full reach of the arm along its line.)
+			if tl2 == null:
+				for _pass in 2:
+					var far_l := front.distance_to(sh_l) - arm_reach * 0.9
+					if far_l > 0.0:
+						var pull_l: Vector3 = (sh_l - front).normalized() * far_l
+						front += pull_l
+						target_w += pull_l
+					var far_r := target_w.distance_to(sh_r) - arm_reach * 0.9
+					if far_r > 0.0:
+						var pull_r: Vector3 = (sh_r - target_w).normalized() * far_r
+						front += pull_r
+						target_w += pull_r
 			two_front = front
+			two_main = target_w
 		var fore_q := w_aim * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
@@ -2586,9 +2596,48 @@ func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t
 	arm[side].fore.angular_velocity = av
 
 ## The hand moves on a flat pane in front of the body, Half Sword style.
+## This fighter's own bodies, kept out of the rays he casts down for the ground.
+var _rids: Array[RID] = []
+func _own_rids() -> Array[RID]:
+	if _rids.is_empty():
+		for p: VoxelPart in parts:
+			_rids.append(p.get_rid())
+	return _rids
+
+## The ground under a foot's spot: the sand, or a body lying on it there; `fallback` with
+## nothing under it within reach.
+func _ground_under(at: Vector3, fallback: float) -> float:
+	var h := _ground_ray(torso.get_world_3d().direct_space_state, Vector3(at.x, torso.global_position.y, at.z))
+	return float(h.position.y) if h else fallback
+
+## The ground under `from`, 2.2 S down: the sand, or a dead man or beast lying still on it.
+## A live one is not ground (a beast charging under him, or biting at his legs, read as ground
+## threw him into the air or sat him on its head), nor a body still on the move.
+func _ground_ray(space: PhysicsDirectSpaceState3D, from: Vector3) -> Dictionary:
+	var to := from + Vector3(0, -2.2 * S, 0)
+	var h := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY, _own_rids()))
+	if h and not _is_dead_ground(h.collider):
+		h = space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD))
+	return h
+
+static func _is_dead_ground(c: Object) -> bool:
+	if not (c is VoxelPart):
+		return not (c is RigidBody3D)   # the sand and the props
+	var p := c as VoxelPart
+	if p.linear_velocity.length() > 0.5:
+		return false
+	var o: Node = p.fighter
+	if o == null:
+		return p.severed   # a piece cut off, lying there
+	return o is Fighter and not (o as Fighter).alive   # (a Beast is a Fighter too)
+
 func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var sh: Vector3 = shoulder[side]
-	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * (0.22 if two_handed and side == "R" else 0.5) * S
+	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * 0.5 * S
+	# Both hands on the haft: out to the main hand's own side the other hand has to cross the
+	# whole chest to keep its grip, so that way the mark goes only part as far.
+	if two_handed and side == "R" and x * sh.x > 0.0:
+		x *= 0.4
 	var fist := 0.12 if not weapons[side] else 0.0
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
 	var y := (-0.08 + (hy * 0.42 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
@@ -2601,6 +2650,10 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# the shorter it is, the lower the hand goes, the body stooping and the knees bending with it.
 	var short := clampf((0.95 - float(weapons[side].reach)) / 0.5, 0.0, 1.0) if weapons[side] and not weapons[side].is_shield else 0.0
 	y -= 0.3 * low * short * S
+	# Both hands go no lower than the hips: a long blade pointed down from lower than that
+	# went into the sand and could not follow the mouse.
+	if two_handed and side == "R":
+		y = minf(maxf(y, -0.55 * S), 0.5 * S)
 	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
 	# Never round behind the back (only a throw is drawn back there on purpose).

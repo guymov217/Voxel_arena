@@ -41,6 +41,40 @@ long campaign on real hardware before a release date is set.
 
 ## Tested and fixed in this round
 
+- Two hands range like one (user video: with both hands on a longsword the fists never left the
+  brow, the blade stood up out of them and the arms looked tangled, while one hand swung wide).
+  Both hands now go where the mouse sends them, as one hand does: the main hand to the same mark
+  one hand is given, the front hand ahead of it down the haft, and the pair is moved in toward
+  the shoulders only as far as an arm needs to reach its grip. Over a grid of nine marks the
+  main hand's box went from 0.98 × 0.90 m (across × up) to 1.13 × 1.09, against 1.35 × 1.13 in
+  one hand; aimed right up the hands rise 0.5–0.6 m over the shoulder (0.4 before, 0.6 in one
+  hand). Out to the main hand's own side the mark goes 0.4 as far (the other hand has to cross
+  the whole chest to keep its grip there) and the hands go no lower than the hips (a long blade
+  pointed down from lower went into the sand). In the soak of fast strokes to eight marks every
+  stroke is on the mouse within 30° a second later (longsword worst 24°, warhammer 16°); thrusts
+  still go to the arm's full reach (not pulled in).
+- The joints drawn whole (user screenshots: the upper arm a hand off the chest with the arm
+  raised, the forearm off the elbow). The shoulder's socket sits an arm's width out from the
+  chest, so a raised arm pivoting there left its top that far from the chest, and a bent elbow,
+  hip, knee or neck opens a wedge between its two blocks. A block of the limb's own thickness
+  and colour now sits on every pivot: hidden inside the two parts while the limb is straight,
+  filling the wedge as it bends; at the shoulder it turns with the arm and runs from the arm's
+  top into the chest as far as the arm's line meets it (the deltoid). Drawing only: nothing in
+  the physics, the cut and the hit are as they were; a cut-off, hanging or prosthetic limb has
+  no cap. The kill cam draws the caps and the closed joints too (Fighter.draw_now).
+- A stab block on a stab block (user screenshot: a column of points drawn as blocks with a
+  small roof on top): a run of points is one spike now, each block narrowing from its base's
+  width to its tip's, the honed end only on the last, the half of a plate two wide pinched
+  toward the face it shares with the other half; a point the smith turned another way ends the
+  run. The spike bits ride in the custom data's alpha (the taper's 16 bits fill what a float
+  holds exactly beside the kind).
+- Feet on a body (user video: standing on a fallen man the legs hung in the air). The stance
+  ray read the sand alone, so on a body the fighter counted as off the ground and planted no
+  foot. It now reads whatever lies under him (his own bodies kept out of it), each foot finds
+  the ground under its own spot, and the stance pendulum measures from the foot's own height.
+  Only a body lying still counts: read as ground, a boar charging under him threw him 3 m into
+  the air (the creature tests caught it), so a body on the move is passed over for the sand.
+
 - Two-handed weapons no longer get caught in the sand (weapons slip on it, spears keep their
   point over it): in a soak of random swings, turning and walking, frames with the blade more
   than 45° off the mouse went from 50 to 0 (longsword), 9 to 0 (zweihander), 70–185 to 5–34
