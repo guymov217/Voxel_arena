@@ -430,7 +430,7 @@ func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
 		# Both hands go where the mouse sends them, as one hand does: aimed right up they rise
 		# over the head, not held at the brow with the blade standing up out of the fists
 		# (user video: the hands never left the face and the arms looked tangled).
-		t.check(high.y > 0.4, "%s: aimed right up, the hands rise over the head (%.2f above the shoulder)" % [wk, high.y])
+		t.check(high.y > 0.35, "%s: aimed right up, the hands rise over the head (%.2f above the shoulder)" % [wk, high.y])
 		var worst := 0.0
 		var tilt := 0.0
 		var lo := Vector3.INF

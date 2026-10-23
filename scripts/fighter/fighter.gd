@@ -2005,7 +2005,7 @@ func _draw_joint_caps(interp := true) -> void:
 			cap.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 			cap.mesh = BoxMesh.new()
 			var mat := StandardMaterial3D.new()
-			mat.albedo_color = _end_color(p).srgb_to_linear()   # (the voxels' colours are sRGB)
+			mat.albedo_color = _body_color(p).srgb_to_linear()   # (the voxels' colours are sRGB)
 			mat.roughness = 0.9
 			cap.material_override = mat
 			add_child(cap)
@@ -2014,37 +2014,46 @@ func _draw_joint_caps(interp := true) -> void:
 		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
 		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
 		var pivot: Vector3 = tc * p.ca + p.draw_shift
-		var hx := p.half_ext.x * 0.96
-		var hz := p.half_ext.z * 0.96
-		var b: Basis = tp.basis.orthonormalized()
+		# Turned halfway between the two parts, a shade smaller than the limb: it fills the inner
+		# part of the wedge and shows little past either block (turned with one of them, a
+		# block the limb's full size stood out of the other: user screenshot).
+		var hx := p.half_ext.x * 0.88
+		var hz := p.half_ext.z * 0.88
+		var b := Basis(tp.basis.get_rotation_quaternion().slerp(tc.basis.get_rotation_quaternion(), 0.5))
 		var mid := pivot
 		var hy := minf(hx, hz)
 		if p == arm.R.upper or p == arm.L.upper:
 			b = tc.basis.orthonormalized()
-			# From a little inside the arm's top, on along the arm's line to just inside the side
-			# of the chest, where that line meets it (hanging, it does not: the cap stays inside).
-			var along: Vector3 = tp.basis.orthonormalized().inverse() * b.y
+			# The deltoid: from a little inside the arm's top, on along the arm's line to just
+			# inside the chest, where that line enters it. Where the line misses the chest (the
+			# arm hanging, or raised up or back past the shoulder) the cap stays inside the arm.
+			var tb := tp.basis.orthonormalized()
+			var along: Vector3 = tb.inverse() * b.y
 			var inward := -signf(p.pa.x)
 			var run := 0.0
 			if along.x * inward > 0.05:
-				run = clampf((-inward * (par.half_ext.x - 0.03 * S) - p.pa.x) / along.x, 0.0, 0.2 * S)
+				var t := (-inward * (par.half_ext.x - 0.03 * S) - p.pa.x) / along.x
+				var at: Vector3 = p.pa + along * t
+				if t > 0.0 and t < 0.2 * S and absf(at.y) < par.half_ext.y - 0.01 and absf(at.z) < par.half_ext.z - 0.01:
+					run = t
+			hx = p.half_ext.x * 0.96
+			hz = p.half_ext.z * 0.96
 			hy = (run + hx * 0.6) * 0.5
 			mid = pivot + b.y * (run - hx * 0.6) * 0.5
 		cap.global_transform = Transform3D(b.scaled_local(Vector3(hx, hy, hz)), mid)
 
-## The colour of a part at its joint's end (its skin or what is worn there), for the joint cap.
-static func _end_color(p: VoxelPart) -> Color:
-	var top := p.ca.y >= 0.0
-	var best := -INF if top else INF
-	for i in p.fy.size():
-		best = maxf(best, float(p.fy[i])) if top else minf(best, float(p.fy[i]))
-	var c := Color(0, 0, 0)
-	var n := 0
-	for i in p.fy.size():
-		if absf(float(p.fy[i]) - best) <= 1.0 and p.alive[i] != 0:
-			c += p.colors[i]
-			n += 1
-	return c / float(n) if n > 0 else Color(0.8, 0.6, 0.45)
+## The colour most of a part is (its skin, or the cloth or leather over it), for its joint cap.
+static func _body_color(p: VoxelPart) -> Color:
+	var count := {}
+	var best = null
+	for i in p.colors.size():
+		if i < p.alive.size() and p.alive[i] == 0:
+			continue
+		var k := p.colors[i].to_rgba32() & 0xF0F0F0F0
+		count[k] = int(count.get(k, 0)) + 1
+		if best == null or count[k] > count[best]:
+			best = k
+	return Color.hex(best) if best != null else Color(0.8, 0.6, 0.45)
 
 func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
 	var a: Dictionary = arm[side]
@@ -2637,7 +2646,7 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# Both hands on the haft: out to the main hand's own side the other hand has to cross the
 	# whole chest to keep its grip, so that way the mark goes only part as far.
 	if two_handed and side == "R" and x * sh.x > 0.0:
-		x *= 0.4
+		x *= 0.5
 	var fist := 0.12 if not weapons[side] else 0.0
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
 	var y := (-0.08 + (hy * 0.42 if hy >= 0.0 else -0.3 * minf(0.4, -hy) - (0.6 if fist > 0.0 else 0.4) * maxf(0.0, -hy - 0.4))) * S
@@ -2653,7 +2662,7 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# Both hands go no lower than the hips: a long blade pointed down from lower than that
 	# went into the sand and could not follow the mouse.
 	if two_handed and side == "R":
-		y = minf(maxf(y, -0.55 * S), 0.5 * S)
+		y = minf(maxf(y, -0.55 * S), 0.55 * S)
 	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
 	# Never round behind the back (only a throw is drawn back there on purpose).
@@ -2723,7 +2732,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		return _shooter_aim(side, w, inp, yaw_q, dt)
 	var local := (yaw_q.inverse() * (target_w - t_pos)) / S
 	var hy := float(hand_input[side].get("y", 0.15))
-	var elev := clampf((0.92 if hy >= 0.0 else 1.0) * hy, -1.45, 1.3 if two_handed else 1.5)
+	var elev := clampf((0.92 if hy >= 0.0 else 1.0) * hy, -1.45, 1.5)
 	# Both hands on the haft swing it about the middle of the chest, one about its own shoulder.
 	var shx: float = 0.0 if two_handed else shoulder[side].x / S
 	var pivot := Vector3(shx + (local.x - shx) * 0.2, local.y, local.z - 0.28)
@@ -3097,7 +3106,7 @@ const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
 const BITE_LIMB := 30.0  # and the most a bite or a claw does (two bites took both arms)
 const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
-const GIANT_BLOW := 0.85 # a giant's blows, pulled a little (Combat)
+const GIANT_BLOW := 0.5  # a giant's blows, pulled (Combat): still the heaviest, not death in one or two
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
 const DYING_T := 20.0
 const LIFT_T := 2.5

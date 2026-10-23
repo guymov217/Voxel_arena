@@ -41,6 +41,31 @@ long campaign on real hardware before a release date is set.
 
 ## Tested and fixed in this round
 
+- The joint caps stood out of the body (user screenshot: a block of the arm's full size past
+  the elbow, a shoulder cap in the air with the arm raised back). They are turned halfway
+  between the two parts now and a little smaller (0.88 of the limb), so they fill the inner
+  part of the wedge and show little past either block; the deltoid runs into the chest only
+  where the arm's line really enters it (checked against the chest's height and depth, not
+  its side alone), and every cap is the colour most of its limb is, not the top row's.
+- Two hands hit a fifth harder than one (Combat.TWO_HAND_BLOW), the blade stands as high as in
+  one hand (the two-handed elevation clamp is gone) and the hands go to the same mark across
+  on the main hand's side as one hand's (0.5, was 0.4 of the mouse) (user: one hand on a
+  two-hander hit harder than two, and the swing felt shorter). In the soak of fast strokes
+  the worst a stroke is off the mouse a second later is 20° (longsword), and the high guard
+  is 9–18° off (was 21–25°).
+- Giants (user: a blow or two from a giant kills, armour or not, and a man alone takes an age
+  to hurt one): a giant's blows are pulled to 0.5 (GIANT_BLOW, was 0.85) and the campaign's
+  giants are a quarter less tough (cyclops 1.3, troll 1.5, minotaur 1.3, titan 1.6, the giant
+  1.9). A bot with a longsword, who neither blocks nor dodges, still dies to each of them, but
+  takes 4–9 blows of 56–97 J (was 4–13 of 81–126 J) and lands 5–26 on the cyclops and the
+  titan (was 1–39), taking the cyclops to 32% blood; the minotaur still kills him in 4–22 s
+  without a scratch. A player who blocks does better; if it is still too hard, GIANT_BLOW
+  and the toughness numbers in data/campaign.json are the knobs.
+- The bull's noise (user: spikes of sound): a charge called on_strike every frame of the run,
+  and a whoosh with each, piling into a roar of noise. One whoosh a strike now (0.3 s apart),
+  and the bull's call at 0.6 (its rendered calls sit 5 dB above the lion's).
+- Armour for training, My designs (user screenshot: a design's line squeezed to a letter's
+  width down the page): a line a piece now, name, metal and weight, the bin at the end.
 - Two hands range like one (user video: with both hands on a longsword the fists never left the
   brow, the blade stood up out of them and the arms looked tangled, while one hand swung wide).
   Both hands now go where the mouse sends them, as one hand does: the main hand to the same mark

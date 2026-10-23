@@ -399,7 +399,11 @@ func spawn_beast(spec: Dictionary):
 	b.on_stomp = _stomp
 	b.on_venom = _venom
 	b.on_strike = func(bb, p):
-		sfx("whoosh", p.global_position, 0.6)
+		# (One whoosh a strike, not one a step of a charge: the bull's horns swung every
+		# frame of a charge and the whooshes piled into a roar of noise.)
+		if time - float(bb.get_meta("whoosh_t", -9.0)) > 0.3:
+			bb.set_meta("whoosh_t", time)
+			sfx("whoosh", p.global_position, 0.6)
 		# (A quick pecker like the ostrich is not to cry out at every peck.)
 		if time - float(bb.get_meta("voice_t", -9.0)) > (3.0 if bb.species == "ostrich" else 0.9):
 			bb.set_meta("voice_t", time)

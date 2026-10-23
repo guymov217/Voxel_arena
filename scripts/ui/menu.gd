@@ -1506,21 +1506,29 @@ func _armour_designs_row(v: VBoxContainer) -> void:
 	if designs.is_empty():
 		return
 	v.add_child(UIStyle.label("MY DESIGNS", 13, UIStyle.BRONZE))
-	var row := HFlowContainer.new()
-	row.add_theme_constant_override("h_separation", 6)
-	row.add_theme_constant_override("v_separation", 6)
+	# A line a piece: its name, metal and weight, and a bin at the end. (In a flow container
+	# the wrapping label was squeezed to a letter's width, one letter a line: user screenshot.)
 	for idv in designs:
 		var id: String = idv
 		var d: Dictionary = designs[id]
-		row.add_child(UIStyle.label("%s · %s · %.1f kg" % [String(d.get("name", id)), String(d.get("mat", "iron")).capitalize(), Armory.design_kg(d)], 13, UIStyle.TEXT))
-		row.add_child(UIStyle.button("✕", func():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var l := UIStyle.label("%s · %s · %.1f kg" % [String(d.get("name", id)), String(d.get("mat", "iron")).capitalize(), Armory.design_kg(d)], 13, UIStyle.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(l)
+		var bin := UIStyle.button("✕", func():
 			var ds: Dictionary = Save.get_value("armor_designs", {})
 			ds.erase(id)
 			Save.set_value("armor_designs", ds)
 			training.armor = Armory.sanitize(training.get("armor", [])).filter(func(o): return o != id)
 			Save.set_value("training", training)
-			show_screen(screen)))
-	v.add_child(row)
+			show_screen(screen))
+		bin.custom_minimum_size = Vector2(44, 0)
+		row.add_child(bin)
+		v.add_child(row)
 
 ## Armour for training, free: every piece the smith sells and every one of My designs, worn or
 ## taken off with a click (a piece replaces what it clashes with); or a new one made at the bench.

@@ -22,6 +22,7 @@ var cool := {}
 var time := 0.0
 var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
+const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
 var touches := {}                # "attacker id:victim id" -> {t, a: attacker's part, b: victim's part}: who is touching whom
 
 ## The last touch of any part of `a` on any part of `b` within `within` seconds: the victim's
@@ -460,6 +461,9 @@ func _blow(g: Dictionary) -> Dictionary:
 	# (the arm's drive) puts half of itself behind every blow too.
 	if attacker and "mods" in attacker and not bite:
 		J *= float(attacker.mods.get("blow", 1.0)) * (1.0 + 0.5 * (float(attacker.mods.get("strength", 1.0)) - 1.0))
+	# Both arms behind the haft: a fifth more behind the blow.
+	if attacker and "two_handed" in attacker and attacker.two_handed and not bite and att is Weapon:
+		J *= TWO_HAND_BLOW
 	if attacker and not (attacker is Beast) and "S" in attacker and float(attacker.S) >= 1.8:
 		J *= Fighter.GIANT_BLOW
 		pull = Fighter.GIANT_BLOW
