@@ -119,6 +119,10 @@ func test_feet_stand_on_a_body() -> void:
 	while n < 900 and (g.torso.global_position.y > 0.45 or g.torso.linear_velocity.length() > 0.2):
 		await get_tree().physics_frame
 		n += 1
+	# (The heap held still: a ragdoll he was set down on now and then rolled from under him,
+	# and the test fell with it.)
+	for p: VoxelPart in g.parts:
+		p.freeze = true
 	var top := -INF
 	var at := Vector3.ZERO
 	for p: VoxelPart in g.parts:

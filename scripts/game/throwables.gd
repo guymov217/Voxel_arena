@@ -1236,11 +1236,14 @@ func update(dt: float) -> void:
 			var c = e.f
 			if c.bee_timer > 0.0:
 				c.bee_timer -= dt
-				if c.alive and randf() < dt * 2.0:
+				# (Four stings a second that are felt: three a second at a third the sting were
+				# a swarm that did nothing: user.)
+				if c.alive and randf() < dt * 4.0:
 					var part: VoxelPart = c.parts[randi() % c.parts.size()]
 					if not part.severed:
-						_hit(c, part, 3.0, "point", part.global_position, Vector3.DOWN, null, {"hardness": 0.5, "sharpness": 0.5})
-						c.stagger = minf(1.0, c.stagger + 0.15)
+						_hit(c, part, 6.0, "point", part.global_position, Vector3.DOWN, c.last_attacker, {"hardness": 0.6, "sharpness": 0.7})
+						c.stagger = minf(1.0, c.stagger + 0.2)
+						c.pain = minf(1.0, float(c.pain) + 0.15)
 
 func clear() -> void:
 	for z in zones:

@@ -1415,6 +1415,24 @@ func pd_twist(part: VoxelPart, ref: RigidBody3D, kp: float, kd: float, max_t: fl
 	var t := clampf(kp * ang - kd * spin, -max_t, max_t)
 	part.apply_torque_impulse(axis * t * dt)
 
+## The part rolled about its own length (its -y) until its front (+z) lies along `want`
+## (projected across the axis): a hinge's bend plane set to where the next bone must go.
+func _twist_to(part: VoxelPart, want: Vector3, kp: float, kd: float, max_t: float, dt: float) -> void:
+	if part.severed:
+		return
+	var q := PD.quat_of(part)
+	var axis := q * Vector3(0, -1, 0)
+	var f := q * Vector3(0, 0, 1)
+	f -= axis * axis.dot(f)
+	var rf := want - axis * axis.dot(want)
+	if f.length_squared() < 1e-6 or rf.length_squared() < 1e-6:
+		return
+	f = f.normalized()
+	rf = rf.normalized()
+	var ang := atan2(f.cross(rf).dot(axis), f.dot(rf))
+	var spin := part.angular_velocity.dot(axis)
+	part.apply_torque_impulse(axis * clampf(kp * ang - kd * spin, -max_t, max_t) * dt)
+
 # ---------- Control ----------
 
 ## One physics step of a fighter driven by `inp` (the same input dictionary as the web game:
@@ -2077,9 +2095,61 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if side == "L" and two_handed and not (off_goal != null and is_bow(weapons.R)):
 		var hand_l := hand_world("L")
 		var sh_l = t_pos + t_rot * shoulder.L
-		var dir_l = (hand_l - sh_l).normalized()
-		pd_axis(upper, Vector3(0, -1, 0), (dir_l + Vector3(0, -0.3, 0)).normalized(), 10.0, 0.8, 50.0 * af * MS * S, dt)
-		pd_axis(fore, Vector3(0, -1, 0), dir_l, 8.0, 0.8, 30.0 * af * MS * S, dt)
+		# A man's off arm bends at an elbow as his main one does, the elbow out to his own side,
+		# down and a little back of the line from shoulder to hand (never up over it nor in
+		# across the chest), and the upper arm is rolled so the hinge bends toward the hand:
+		# pointed straight at its hand with the roll left to drift, the elbow turned up over
+		# the shoulder and jammed in a slow circle with a heavy haft, a chicken wing (user; a
+		# probe of circles, eights and side-to-side with the zweihander and the warhammer).
+		# A giant's off arm is pointed at its hand as before, the upper arm pushed down: a
+		# giant's bot sends both hands to a mark out of reach (a blow held over a small man),
+		# and with the arm stretched straight the routed elbow lies on the line to the hand,
+		# every roll target has nothing across the axis but noise, and drive after drive
+		# (routed, rolled, reacted, kneed, gated) left the arm locked straight and the hammer
+		# 0.6 m short on 1-3 seeds of 8; pointed and pushed down it bends and the head comes
+		# down on the man, 8 of 8. (The full run caught it: the cyclops never landed.)
+		var to_h: Vector3 = hand_l - sh_l
+		var dist_h := maxf(0.05, to_h.length())
+		var line: Vector3 = to_h / dist_h
+		var spd_l: float = (fore.velocity_at(hand_l) - torso.linear_velocity).length() / S
+		var calm := clampf(1.3 - spd_l / 3.0, 0.3, 1.0)
+		if S >= 1.6:
+			pd_axis(upper, Vector3(0, -1, 0), (line + Vector3(0, -0.3, 0)).normalized(), 10.0, 0.8, 50.0 * af * MS * S, dt)
+			pd_axis(fore, Vector3(0, -1, 0), line, 8.0, 0.8, 30.0 * af * MS * S, dt)
+		else:
+			var lu_l := UPPER_LEN * S
+			var lf_l := FORE_LEN * S
+			var cos_a := clampf((lu_l * lu_l + dist_h * dist_h - lf_l * lf_l) / (2.0 * lu_l * dist_h), -1.0, 1.0)
+			var sin_a := sqrt(maxf(0.0, 1.0 - cos_a * cos_a))
+			var elbow_dir_l := Vector3.ZERO
+			var elbow_l := Vector3.ZERO
+			# Out, down and a little back; where that elbow would sit in the chest (the hand
+			# across the body, the haft held in front), down and forward instead: an elbow aimed
+			# into the chest was shoved up over the shoulder by it.
+			for pref_l in [Vector3(0.5, -0.7, -0.4), Vector3(0.25, -0.65, 0.75)]:
+				var pref: Vector3 = t_rot * (pref_l as Vector3).normalized()
+				var perp: Vector3 = pref - line * pref.dot(line)
+				if perp.length_squared() < 1e-4:
+					perp = t_rot * Vector3(1, 0, 0)
+				perp = perp.normalized()
+				elbow_dir_l = _elbow_dir("L", t_rot.inverse() * (line * cos_a + perp * sin_a), lu_l, t_rot)
+				elbow_l = sh_l + elbow_dir_l * lu_l
+				var in_chest: Vector3 = t_rot.inverse() * (elbow_l - t_pos)
+				var th_l: Vector3 = torso.half_ext
+				if not (absf(in_chest.x) < th_l.x + 0.06 * S and absf(in_chest.y) < th_l.y + 0.02 * S and in_chest.z < th_l.z + 0.06 * S):
+					break
+			# Driven as hard as the main arm's (at a fifth of it the pull on the haft folded the
+			# elbow up over the shoulder), firm while the hands move slowly or hold (a guard, a
+			# slow circle: where the elbow stood up), giving way in a fast stroke, where the off
+			# arm has to follow the haft and a firm one pulled the blade off the mouse.
+			pd_axis(upper, Vector3(0, -1, 0), elbow_dir_l, 12.0, 0.9, 120.0 * calm * af * MS * S, dt)
+			var fore_dir_l: Vector3 = (hand_l - elbow_l).normalized()
+			pd_axis(fore, Vector3(0, -1, 0), fore_dir_l, 10.0, 0.8, 50.0 * calm * af * MS * S, dt)
+			# The elbow is a hinge that bends the forearm toward the upper arm's front: the upper
+			# arm is rolled so that its front is the way the forearm has to bend to reach the
+			# hand, else the hinge's plane is wherever the roll drifted and the elbow ends up over
+			# the shoulder or in the chest however the two bones are pointed.
+			_twist_to(upper, fore_dir_l, 14.0 * MS, 1.4 * MS, 90.0 * calm * MS, dt)
 		# It bears its own weight and its half of the weapon's (the other arm held it all up, and a
 		# raised blade sank and crept while the mouse stood still).
 		var m_arm := (fore.nominal_mass + upper.nominal_mass * 0.5)
@@ -3381,7 +3451,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if part.prosthetic != "":
 		part.bleed = bleed_before
 		dmg *= 0.5
-	var soak := pow(S, 1.5) * float(mods.toughness)
+	# A point (an arrow, a bolt, a thrust) goes into a giant as it goes into a man: flesh is
+	# flesh, and its size soaks it only a little (thirty arrows left the titan at 88%: user).
+	var soak := pow(S, 0.5 if type == "point" else 1.5) * float(mods.toughness)
 	dmg *= part.mult / soak * (0.75 if part == torso or part == head else 1.0)
 	if boss:
 		dmg *= 0.6

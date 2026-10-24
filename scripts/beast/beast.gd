@@ -951,7 +951,9 @@ func _squeeze(dt: float) -> void:
 	if species == "gorilla":
 		_ape_reach(tgt)
 	var fists := _fists_on(tgt) if species == "gorilla" else []
-	if fists.size() >= 2 and hug.t < 1.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
+	# (Both fists on him for most of the hold before the tear: 2.4 s, was 1.4, in which a blow
+	# that staggers the ape breaks its hold: user, "the gorilla is so hard I have no idea".)
+	if fists.size() >= 2 and hug.t < 0.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
 		hug.rent = true
 		_rend(tgt, fists)
 		hug = null

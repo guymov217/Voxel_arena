@@ -41,6 +41,62 @@ long campaign on real hardware before a release date is set.
 
 ## Tested and fixed in this round
 
+- "My man has lost half his head and an arm and does not bleed" (user, against giants in
+  training): training is immortal by default, blood refilled and no wound bleeding (the
+  *Immortal* box on the training screen); untick it to bleed and die there as in the arena.
+  Measured with it off: three giant blows to the head and a forearm cut off both bleed as they
+  should.
+- Arrows into a giant: a point (an arrow, a bolt, a thrust) was soaked by the body's size to
+  the power 1.5 like a blow, so thirty arrows left the titan's helmeted head at 88%; a point
+  wound is soaked to the power 0.5 now (flesh is flesh), and the same thirty leave it at 62%,
+  the lorica'd chest at 92% (was 98%). A helmet and a lorica still turn most of an arrow: the
+  titan's bare arms and legs are where to shoot it.
+- The gorilla (user: "so hard I have no idea what to do"): it tore a man in two 1.4 s into its
+  hold; now both fists have to be on him for 2.4 s of the 3 s hold, and a blow that staggers
+  it breaks the hold, and its punch is 50 (was 55; the beast tests hold it to three men's punches). A longsword bot still loses to it but lasts
+  8–39 s (was 6–16) and lands blows (gorilla left at 52–90%).
+- The beehive (user: no bees attacking): the swarm stung three times a second at a third of a
+  sting and did nothing a man would notice; four stings a second now at twice the weight, with
+  pain and stagger, the thrower credited with the hurt.
+- The off elbow turned over (user: swinging a two-hander left, right and up, the elbows can
+  turn and jam). Reproduced with circles, eights, side-to-side at three heights, random jerks
+  and a sweep while turning: in a slow circle with the warhammer or the zweihander the left
+  elbow stood up over the shoulder, a chicken wing, with the hands in front of the chest, for
+  up to 3–4 s at a stretch (216–493 frames of 600 over the line in the slow circles). The off
+  arm in two hands was pointed straight at its hand, upper arm and forearm alike, with
+  nothing said about its elbow or its roll; the elbow is a hinge that bends toward the upper
+  arm's front, so with the roll wherever it drifted the hinge's plane was wrong and the elbow
+  went up. A man's off arm now bends like the main one (the elbow out, down and a little
+  back, or down and forward where that would put it in the chest) and the upper arm is rolled
+  so the hinge bends toward the hand (_twist_to), firmly while the hands move slowly or hold
+  and giving way in a fast stroke (firm there, it pulled the blade off the mouse). The slow
+  warhammer circle is 0 frames over the line (was 396), the slow zweihander under 40 (was
+  484), the longest the elbow is up or across anywhere about 1.5 s (a whipped circle); the
+  main hand's strokes stay on the mouse (the arms suite's worst under 30°, the high guard
+  22°). What is not a jam: the warhammer in a circle faster than it can come round (the head
+  trails the mouse by up to 180° for as long as the circle goes on; a warhammer is slow by
+  design).
+  A giant's off arm (S ≥ 1.6) keeps the old drive, pointed at its hand with the upper arm
+  pushed down. The full run caught what the new one did to it: a giant's bot sends both
+  hands to a mark out of reach (a blow held over a small man), the arm goes straight, the
+  routed elbow then lies on the line to the hand and every roll target has nothing across
+  the axis, and the drives held the arm locked straight with the hammer's head 0.6 m short of
+  its mark instead of 0.4 (the cyclops of the giants test never landed, 3 of 3 runs; the off
+  arm straight in every held blow that missed, bent to 0.85 in every one that landed). Over
+  eight seeds of that bout the old drive lands 8 of 8 by 6 s; the new one, and every variant
+  tried on top of it (the drives reacted on the torso, the roll weak, strong, kneed, faded
+  out by the hand's reach, gated on the elbow's rise, scaled by what lies across the axis),
+  locked 1–3 of 8 or pushed the first blow past 13 s, and most of them also put the man's
+  fast longsword stroke 31–35° off the mouse where the suite's floor is 30. A single drive
+  for both is open work: the giant's hold wants a bent elbow from a pushed-down upper arm,
+  the man's circle wants the roll, and together they fight through the haft.
+- The armourer's bench: a flicker on every change of part (the old man and the new drawn
+  together for a frame) is gone, and the camera slides with Shift + middle drag as at the
+  forge, beside the turn and the wheel.
+- The shield and the helmet (user: the shield should keep limbs from being cut, a broken spot
+  of a helmet should be the weak spot): both already so. A held shield is a body the blade has
+  to get past, and every plate of a helmet or lorica guards the spot it sits on until it is
+  worn through and knocked off; the bare spot under it then takes the blow in full.
 - The joint caps stood out of the body (user screenshot: a block of the arm's full size past
   the elbow, a shoulder cap in the air with the arm raised back). They are turned halfway
   between the two parts now and a little smaller (0.88 of the limb), so they fill the inner
@@ -93,7 +149,8 @@ long campaign on real hardware before a release date is set.
   toward the face it shares with the other half; a point the smith turned another way ends the
   run. The spike bits ride in the custom data's alpha (the taper's 16 bits fill what a float
   holds exactly beside the kind).
-- Feet on a body (user video: standing on a fallen man the legs hung in the air). The stance
+- Feet on a body (user video: standing on a fallen man the legs hung in the air; the test for
+  it stands him on a heap held still, since a ragdoll rolled from under him now and then). The stance
   ray read the sand alone, so on a body the fighter counted as off the ground and planted no
   foot. It now reads whatever lies under him (his own bodies kept out of it), each foot finds
   the ground under its own spot, and the stance pendulum measures from the foot's own height.

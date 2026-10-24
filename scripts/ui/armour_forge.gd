@@ -300,7 +300,7 @@ func _build_ui() -> void:
 	# Far enough back to see the whole man, the part nearer the middle of the shot.
 	focus = _part_origin("torso", Armory.REGIONS[region].parts[0]) * 0.55
 	dist = 3.6
-	view.add_child(UIStyle.label("Left click: a plate on (in the paint picked; on a plate, it paints it) · right click: off · middle drag or Turn: round it · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
+	view.add_child(UIStyle.label("Left click: a plate on (in the paint picked; on a plate, it paints it) · right click: off · middle drag or Turn: round him · Shift + middle drag: slide · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)", 12, UIStyle.MUTED))
 	# The stuff, the name, and what it comes to.
 	var side := VBoxContainer.new()
 	side.custom_minimum_size = Vector2(340, 0)
@@ -376,8 +376,11 @@ func _pos(c: Vector3) -> Vector3:
 	return (c - (Vector3(dims) - Vector3.ONE) * 0.5) * CELL
 
 func _rebuild() -> void:
+	# (Gone at once, not at the end of the frame: the old man and the new were drawn together
+	# for a frame and fought for the pixels, a flicker on every change of part: user.)
 	for c in root.get_children():
-		c.queue_free()
+		root.remove_child(c)
+		c.free()
 	var names: Array = Armory.REGIONS[region].parts
 	var first: String = names[0]
 	# The whole man, in the player's own skin and cloth, the part on the bench where it sits on
@@ -564,7 +567,14 @@ func _on_input(e: InputEvent) -> void:
 			else:
 				stroke = {}
 	elif e is InputEventMouseMotion:
-		if dragging:
+		# The middle button turns the camera round him; with Shift held it slides it instead,
+		# as at the weapon forge (user: the bench's camera could not be worked like the forge's).
+		if dragging and e.shift_pressed:
+			var px := 2.0 * dist * tan(deg_to_rad(cam.fov * 0.5)) / maxf(1.0, float(vp.size.y))
+			var b := cam.global_transform.basis
+			focus += (-b.x * e.relative.x + b.y * e.relative.y) * px
+			_place_camera()
+		elif dragging:
 			orbit.x -= e.relative.x * 0.01
 			orbit.y = clampf(orbit.y + e.relative.y * 0.01, -1.4, 1.4)
 			_place_camera()
