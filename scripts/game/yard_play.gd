@@ -10,6 +10,7 @@ var dummies: Array = []
 var next_board: Label3D = null   # the foe's name; over it the band, under it the bout
 var next_head: Label3D = null
 var next_sub: Label3D = null
+const BOARD_PX := 420.0   # the inside of the frame, 1.68 m, in the labels' pixels
 var next_text := ""
 var next_t := 0.0   # (the host says it again now and then: a guest whose yard was not up yet hears it)
 var best_throw := 0
@@ -117,9 +118,17 @@ func set_next(text: String) -> void:
 	var lines: Array = Array(text.split("\n")).slice(0, 3).map(func(l): return String(l).left(48))
 	next_text = "\n".join(lines)
 	if next_board and is_instance_valid(next_board):
-		next_head.text = lines[0] if lines.size() > 0 else ""
-		next_board.text = lines[1] if lines.size() > 1 else ""
-		next_sub.text = lines[2] if lines.size() > 2 else ""
+		_fit(next_head, lines[0] if lines.size() > 0 else "", 34)
+		_fit(next_board, lines[1] if lines.size() > 1 else "", 70)
+		_fit(next_sub, lines[2] if lines.size() > 2 else "", 34)
+
+## One line on the board, its type made smaller until it fits inside the gilt frame (a long name,
+## "The Big Lion", would wrap onto the bout under it and over the frame).
+static func _fit(l: Label3D, text: String, size: int) -> void:
+	l.text = text
+	while size > 16 and l.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + l.outline_size > BOARD_PX:
+		size -= 2
+	l.font_size = size
 
 ## A board on two posts beside the gate: a gilt frame, a red band over it that says what it is,
 ## the foe's name large and the bout under it, lit by a lamp of its own.
@@ -165,8 +174,7 @@ func _next_board() -> void:
 		l.modulate = c
 		l.outline_modulate = Color(0.08, 0.03, 0.02)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.width = 440.0
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		l.position = pos
 		root.add_child(l)
 		return l

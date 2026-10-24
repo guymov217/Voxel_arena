@@ -215,6 +215,33 @@ func test_a_hammer_breaks_a_shin_and_the_knee_gives() -> void:
 	t.check(sh.has_meta("open_break"), "a blow that hard opens the skin to the bone")
 	m.queue_free()
 
+## A broken arm cannot hold: the blade falls from its hand, and the hand takes nothing up again.
+func test_a_broken_arm_drops_its_weapon() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -8))
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": "gladius", "off": ""}, "team": 1, "pos": Vector3(0, 0.1, 0), "yaw": PI})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var v: Fighter = e.f
+	await _steps(30)
+	var w: Weapon = v.weapons.R
+	t.check(w != null, "he holds a gladius")
+	var fo: VoxelPart = v.arm.R.fore
+	var k := 0
+	while not fo.fractured and k < 8:
+		fo.hp = 1000.0
+		var gt := fo.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(fo, {"impulse": 45.0, "type": "blunt", "hardness": 0.9, "heavy": 1.0, "point": gt * Vector3(0, 0, fo.half_ext.z), "dir": -bz})
+		k += 1
+		await _steps(4)
+	t.check(fo.fractured, "the forearm is broken (%d blows)" % k)
+	t.check(v.weapons.R == null, "and the gladius falls from the hand")
+	t.check(not v.pick_up("R", w), "nor will that hand take it up again")
+	m.queue_free()
+
 func test_cracked_ribs_take_the_breath_a_cracked_skull_rings_worse() -> void:
 	var r := _victim()
 	var m: Match = r[0]

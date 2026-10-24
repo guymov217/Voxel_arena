@@ -113,6 +113,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		if d.leg:
 			var n_legs: int = maxi(2, sp.parts.filter(func(q): return q.get("leg", false) and not q.get("lower", false)).size())
 			m_part = maxf(m_part, float(sp.parts[0].mass) * (0.14 if d.lower else 0.2) / float(n_legs))
+		_bone_core(str(d.name), voxels)
 		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS)
 		p.linear_damp = 0.3
 		p.angular_damp = 2.0
@@ -182,6 +183,48 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		stagger = keep
 		return r
 	return apply_hit_inner(part, hit)
+
+## A limb, tail or wing modelled with no bone in it (the gorilla's arms and legs) gets one: a core
+## down its length, under the flesh, so it can break like any other (an arthropod's legs are shell
+## and have none).
+const BONELESS := ["scorpion", "spider"]
+func _bone_core(part_name: String, voxels: Array) -> void:
+	if BONELESS.has(species) or voxels.any(func(v): return bool(v[4])):
+		return
+	var n := part_name.to_lower()
+	if not (n.begins_with("leg") or n.begins_with("arm") or n.begins_with("tail") or n.begins_with("wing") or n.begins_with("neck")) or n.contains("fin") or n.contains("tip"):
+		return
+	var filled := {}
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for v in voxels:
+		var c := Vector3(v[0], v[1], v[2])
+		filled[Vector3i(c)] = true
+		lo = lo.min(c)
+		hi = hi.max(c)
+	var ext := hi - lo + Vector3.ONE
+	var long := 0 if ext.x >= ext.y and ext.x >= ext.z else (1 if ext.y >= ext.z else 2)
+	var mid := (lo + hi) * 0.5
+	var thin := INF
+	for a in 3:
+		if a != long:
+			thin = minf(thin, ext[a])
+	if thin < 3.0:
+		return
+	var r := maxf(0.75, thin * 0.2)
+	for v in voxels:
+		var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+		var off := Vector3(c) - mid
+		off[long] = 0.0
+		if off.length() > r:
+			continue
+		var buried := true
+		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			if not filled.has(c + d):
+				buried = false
+				break
+		if buried:
+			v[4] = true
 
 ## Beasts and monsters come apart more than men under the same blow (CHUNK: the wound a blow
 ## cuts or craters out of them is this much bigger); the giants of myth are men, not Beasts,

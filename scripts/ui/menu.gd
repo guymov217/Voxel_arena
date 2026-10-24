@@ -754,7 +754,18 @@ func _training(v: VBoxContainer) -> void:
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
 	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
-	_row(left, [UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")), UIStyle.button("Forge a weapon (free in training)", _training_forge), UIStyle.button("Forge an off-hand weapon", func(): _training_forge("L"))])
+	# (A flow, not a row: three buttons in a row pushed the screen past the window's right edge.)
+	var wb := HFlowContainer.new()
+	wb.add_theme_constant_override("h_separation", 10)
+	wb.add_theme_constant_override("v_separation", 8)
+	wb.add_child(UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")))
+	var fm := UIStyle.button("Forge main hand", _training_forge)
+	fm.tooltip_text = "Build a weapon for the main hand: free in training"
+	wb.add_child(fm)
+	var fo := UIStyle.button("Forge off hand", func(): _training_forge("L"))
+	fo.tooltip_text = "Build a weapon for the off hand: free in training"
+	wb.add_child(fo)
+	left.add_child(wb)
 	var t_arm := Armory.sanitize(training.get("armor", []))
 	var t_kg := 0.0
 	for id in t_arm:

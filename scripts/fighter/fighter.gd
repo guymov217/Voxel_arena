@@ -89,6 +89,8 @@ var holding = null              # {side, target (entity), part, joint, t, extra,
 var grabbed_by: Node = null
 var pinned_arm := ""
 var thrown_t := 0.0
+var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
+var v_free := Vector3.ZERO       # his trunk's speed before it did
 var thrown_by: Node = null
 var shove_cool := 0.0
 var shove_t := 0.0
@@ -989,7 +991,7 @@ func toggle_grip() -> Variant:
 		two_handed = false
 		return "one"
 	var fore: VoxelPart = arm.L.fore
-	if fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or fixed_hand.R or fixed_hand.L:
+	if fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or arm_broken("L") or fixed_hand.R or fixed_hand.L:
 		return null
 	# Room on the grip for the other fist, at its far end; on a short grip the hands crushed
 	# together and the arms locked against each other in a swing.
@@ -1084,7 +1086,7 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 ## Takes `w` into the hand on `side`: the grip moved into the palm and welded there.
 func pick_up(side: String, w: Weapon) -> bool:
 	var fore: VoxelPart = arm[side].fore
-	if weapons[side] or fore.severed or fore.missing or fore.prosthetic != "":
+	if weapons[side] or fore.severed or fore.missing or fore.prosthetic != "" or arm_broken(side):
 		return false
 	if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
 		w.forget_owner()
@@ -1228,6 +1230,10 @@ func leg_func(side: String) -> float:
 	if t.severed or s.severed:
 		return 0.0
 	return minf(t.function(), s.function()) * cord_legs * pelvis_f
+
+## A bone of that arm broken: it hangs, and its hand holds nothing (user).
+func arm_broken(side: String) -> bool:
+	return arm[side].upper.fractured or arm[side].fore.fractured
 
 func arm_func(side: String) -> float:
 	var a: Dictionary = arm[side]
@@ -1437,9 +1443,35 @@ func _twist_to(part: VoxelPart, want: Vector3, kp: float, kd: float, max_t: floa
 
 ## One physics step of a fighter driven by `inp` (the same input dictionary as the web game:
 ## mx, mz, main{x,y}, off{x,y}, thrust, power, sprint, jump, crouch, kick, look{yaw,pitch}...).
+## A blow moves a man, it does not fling him: while a foe's weapon presses on him, and for a
+## moment after (a part pressed into a big weapon is pushed back out of it hard), it can add no
+## more than this to his speed (a battering ram threw men five metres up, a warhammer half a
+## metre; user). Thrown by a giant or blown up by a pot, he flies as before.
+const STRUCK_V := 3.5        # m/s along the ground
+const STRUCK_VY := 1.0       # m/s upward
+const STRUCK_FRAMES := 30    # physics frames after the weapon last touched him (a quarter second)
+func _no_fling() -> void:
+	var tv: Vector3 = torso.linear_velocity
+	# (A beast's own lunges and rolls are its own, and a man in a hold goes where he is dragged.)
+	if Engine.get_physics_frames() - struck_frame <= STRUCK_FRAMES and thrown_t <= 0.0 and not (self is Beast) and not is_instance_valid(grabbed_by):
+		var h := Vector2(tv.x, tv.z)
+		var h_max := maxf(STRUCK_V * sqrt(S), Vector2(v_free.x, v_free.z).length())
+		var want := Vector3(tv.x, minf(tv.y, maxf(STRUCK_VY, v_free.y)), tv.z)
+		if h.length() > h_max:
+			h = h.limit_length(h_max)
+			want = Vector3(h.x, want.y, h.y)
+		var fix := want - tv
+		if fix.length_squared() > 1e-4:
+			for p in parts:
+				if not p.severed:
+					p.linear_velocity += fix
+		return
+	v_free = tv
+
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
 	space = get_world_3d().direct_space_state
+	_no_fling()
 	for p in parts:
 		if p.flinch_t > 0.0:
 			p.flinch_t -= dt
@@ -3431,8 +3463,22 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var big := maxf(1.0, S)
 		if not detached and J > 16.0 * big and not part.fractured and part != torso and part != head and randf() < (J - 14.0 * big) * 0.06 * (1.0 + heavy) / (float(mods.toughness) * big):
 			_fracture(part, lp, J, res)
+		# A burst (a thunder pot, powder going off) blows a crater out of the side of the part
+		# turned to it, at its nearest point to where it went off (not the part's middle): as
+		# wide as the blast was strong (blast_r) right against it, nothing a little way off.
+		if hit.has("blast"):
+			var at_b: Vector3 = inv * (hit.blast as Vector3)
+			var bp: Vector3 = at_b.clamp(-part.half_ext, part.half_ext)
+			var rb: float = (float(hit.blast_r) - 0.6 * at_b.distance_to(bp)) * armor_f * float(hit.get("chunk", 1.0))
+			for i in (part.voxels_within(bp, rb) if rb > 0.0 else PackedInt32Array()):
+				if not (shielded and part.organ[i] == Anatomy.BRAIN):
+					remove.append(i)
+			if not remove.is_empty():
+				part.bleed += J * 0.02
+				if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
+					_fracture(part, lp, J, res)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
-		if J > 9.0 or (hollow > 0.0 and J > 6.0):
+		elif J > 9.0 or (hollow > 0.0 and J > 6.0):
 			# (Armour over the spot keeps the crater small too, else a giant's hammer took a
 			# helmeted head clean off in one while the number on it said a bruise.)
 			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0))
@@ -4467,6 +4513,17 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary) -> void:
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.7)
 	if J >= 28.0:
 		_open_break(part, lp)
+	# A broken arm cannot hold on: what was in its hand falls, and an off hand on a two-handed
+	# haft lets go of it.
+	for side in ["L", "R"]:
+		if part == arm[side].upper or part == arm[side].fore:
+			if side == "L" and two_handed:
+				if weapon_joints.L:
+					weapon_joints.L.queue_free()
+					weapon_joints.L = null
+				two_handed = false
+			elif weapons[side]:
+				release(side)
 
 ## The skin and flesh between the broken bone and where the blow landed burst open: the bone shows.
 func _open_break(part: VoxelPart, lp: Vector3) -> void:

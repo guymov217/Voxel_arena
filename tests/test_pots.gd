@@ -194,3 +194,40 @@ func test_a_broken_hive_sends_its_swarm_at_the_nearest_foe() -> void:
 	t.eq(m.throwables.swarms.size(), 0, "and the swarm in the air is gone, the bees on him now")
 	m.queue_free()
 
+
+## A thunder pot that goes off against a beast's flank blows the flesh out of that flank, where it
+## went off, not out of the middle of each part it reached.
+func test_a_thunder_pot_craters_the_spot_it_went_off_at() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "lion"}, "headless": true, "seed": 3})
+	m.me.f.teleport(Vector3(0, 0, -14))
+	await _steps(20)
+	var lion = null
+	for e in m.entities:
+		if e.f is Beast:
+			lion = e.f
+	t.check(lion != null, "a lion to blow up")
+	var tp: VoxelPart = lion.torso
+	var side: Vector3 = tp.global_basis.x.normalized()
+	var p: Vector3 = tp.global_position + side * (tp.half_ext.x + 0.05)
+	var was := {}
+	for part in lion.parts:
+		for i in part.fx.size():
+			if part.alive[i]:
+				was[[part, i]] = part.world_of(i)
+	m.throwables.explode("pot_thunder", p, m.me.f)
+	var near := 0
+	var lost := 0
+	var on_side := 0
+	for k in was:
+		if not k[0].alive[k[1]]:
+			lost += 1
+			var w: Vector3 = was[k]
+			if w.distance_to(p) < 0.4:
+				near += 1
+			if (w - tp.global_position).dot(side) > 0.0:
+				on_side += 1
+	t.check(lost >= 10, "it blows flesh away (%d voxels)" % lost)
+	t.check(near >= lost * 0.7 and on_side >= lost * 0.8, "from where it went off (%d of %d within 0.4 m, %d on that flank)" % [near, lost, on_side])
+	m.queue_free()

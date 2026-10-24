@@ -131,6 +131,40 @@ long campaign on real hardware before a release date is set.
   design still takes both hands. Test: a dirk made for the off hand goes there with the
   sword staying, a shield there is traded in, a longsword takes both, and in a fight it is
   held in the left hand as a weapon.
+- A thunder pot's crater where it went off (user: pieces often did not fly from where the
+  pot hit; the blast's bite should follow the spot and what can be blown away there): every
+  part in reach was dented at a point a tenth of a metre from its own middle, so a pot on a
+  lion's flank took flesh from all four legs and the head as much as from the flank. Now a
+  burst blows a crater out of each part at its point nearest the burst, 0.06 + 0.006 x power
+  m wide right against it (0.32 m for a thunder pot, less behind armour, a quarter more on a
+  beast) and 0.6 m narrower for every metre off, so nothing half a metre away. The knock and
+  the harm inside are as before. Test: a pot against a lion's flank: everything it blew off
+  was within 0.4 m of the burst, on that flank.
+- Broken bones (user: a broken arm should be useless, a broken leg too, wherever there is
+  bone): a man's arms and legs and the trunk and skull already broke (a limb at a tenth of
+  its use, the ribs and skull as before), and a broken leg already only hops. A broken arm
+  now lets go of what it holds (an off hand on a two-handed haft lets go of the haft), and
+  that hand takes nothing up again, nor a haft in two hands. Beasts: limbs modelled without
+  bone (the gorilla's arms and legs) get a core of bone down their length, so they break
+  too; a scorpion's and a spider's legs are shell and do not. Test: a forearm hammered till
+  it breaks drops its gladius and will not pick it up.
+- No more launching (user: a weapon so strong it sent men flying): a heavy weapon pressed on
+  a man, or a body part pushed back out of a big one, could fling him (measured: a warhammer
+  lifted a man 0.46 m, the battering ram 5.4 m). While a foe's weapon touches him and for a
+  quarter second after, it can add no more than 3.5 m/s to his speed along the ground and 1
+  m/s upward; a giant's throw and a pot's blast still fly him. Now: warhammer 0, ram 0.7 m.
+- Men who fight like men (user: the human foes walked at him like zombies and hardly swung):
+  a bot held its blade dead still on guard, walked right up to its reach and only then began
+  a blow, and stood a second or two between blows. Now the guard moves (the blade weaves, and
+  near the man it is drawn back to the shoulder, cocked), a blow is begun a step outside reach
+  and stepped into, and the pause between blows is shorter. Measured over six bouts of 20
+  seconds against a man circling: time spent swinging in reach 8.2 s (was 6.4), the hand's
+  travel up a sixth.
+- The next-fight board (user: the writing ran past the frame): a long name ("The Big Lion")
+  wrapped onto two lines over the bout under it and out of the frame. Each line now stays on
+  one line and its type is made smaller until it fits inside the gilt frame.
+- Training screen too wide (user screenshot): the third forge button pushed the row past the
+  window's right edge (1823 px in a 1600 px window); the buttons now wrap (1600).
 - Nothing comes off by a count (user: a limb or a part is severed only when none of its
   voxels join it to the rest, and then it falls): that was already the rule for men and
   giants (break_loose: a lump no longer joined face to face to where the part is held on

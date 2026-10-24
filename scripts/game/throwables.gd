@@ -94,6 +94,9 @@ func flash(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> void:
 func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vector3, owner_, extra := {}) -> Dictionary:
 	var was_alive: bool = c.alive
 	var h := {"impulse": J, "type": type, "hardness": extra.get("hardness", 0.9 if type == "point" else 0.6), "sharpness": extra.get("sharpness", 0.9 if type == "point" else 0.0), "point": point, "dir": dir, "axis": dir, "crush": extra.get("crush", 0.0), "heavy": extra.get("heavy", 0.0)}
+	if extra.has("blast"):
+		h.blast = extra.blast
+		h.blast_r = extra.blast_r
 	var res: Dictionary = c.apply_hit(part, h)
 	if owner_ and owner_ != c:
 		c.last_attacker = owner_
@@ -113,8 +116,11 @@ func _near(p: Vector3, r: float) -> Array:
 	return out
 
 ## A blast: every part of everyone in reach takes a blow on the side turned to it, harder the
-## closer it is.
+## closer it is, and what was right where it went off is blown away.
 func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
+	# The crater it blows out of what it went off against (a thunder pot's, 0.32 m wide); a
+	# part farther off loses less, and none half a metre away.
+	var rb := 0.06 + 0.006 * power
 	for e in m.entities:
 		var c = e.f
 		if not c.alive:
@@ -143,7 +149,7 @@ func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
 			first = false
 			if J < 3.0:
 				continue
-			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6})
+			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6, "blast": p, "blast_r": rb})
 			# The shock goes through the trunk and the skull: what is inside is hurt under the
 			# skin, a beast's as a man's, wherever the blast struck him.
 			if c.alive and (h.part == c.torso or h.part == c.head) and c.has_method("blast_shock"):
