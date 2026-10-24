@@ -37,6 +37,21 @@ def godot():
     sys.exit("Godot not found: set GODOT to the Godot 4.7 executable (the *_console.exe on Windows), or put godot on the PATH")
 
 
+def ffmpeg_on_path():
+    """FFMPEG may name the ffmpeg.exe, its bin folder or the folder it was unzipped to: that
+    folder goes first on the PATH, so it is found however it was installed."""
+    f = os.environ.get("FFMPEG", "")
+    if not f:
+        return
+    cands = [os.path.dirname(f) if os.path.isfile(f) else f, os.path.join(f, "bin")]
+    if os.path.isdir(f):
+        cands += [os.path.join(f, d, "bin") for d in os.listdir(f) if d.lower().startswith("ffmpeg")]
+    for c in cands:
+        if os.path.isfile(os.path.join(c, "ffmpeg.exe")) or os.path.isfile(os.path.join(c, "ffmpeg")):
+            os.environ["PATH"] = c + os.pathsep + os.environ.get("PATH", "")
+            return
+
+
 def need(tool):
     if not shutil.which(tool):
         sys.exit("%s not found on the PATH: install it (ffmpeg comes with ffprobe)" % tool)
@@ -188,6 +203,7 @@ def cut():
 
 
 if __name__ == "__main__":
+    ffmpeg_on_path()
     need("ffmpeg")
     need("ffprobe")
     try:
