@@ -259,7 +259,7 @@ func test_a_raging_giant_lurches_blind_and_swings_at_the_air() -> void:
 	var n := 0
 	var fast := 0.0
 	var swings := 0
-	var was_attack := false
+	var was_fast := false
 	for i in int(10.0 * 120):
 		man.blood = 100.0
 		await get_tree().physics_frame
@@ -271,14 +271,17 @@ func test_a_raging_giant_lurches_blind_and_swings_at_the_air() -> void:
 			facing += 1
 		var w: Weapon = g.weapons.R
 		if w:
-			fast = maxf(fast, (w.linear_velocity - g.torso.linear_velocity).length())
-		var attacking: bool = e.has("bot") and e.bot.state == "attack"
-		if attacking and not was_attack:
-			swings += 1
-		was_attack = attacking
+			var sp := (w.linear_velocity - g.torso.linear_velocity).length()
+			fast = maxf(fast, sp)
+			# A stroke: the hammer getting up to speed from rest (enraged he chains blow on
+			# blow in one long attack, so the bot's attack state starts once and tells nothing).
+			var fast_now := sp > 8.0
+			if fast_now and not was_fast:
+				swings += 1
+			was_fast = fast_now if fast_now else (was_fast and sp > 3.0)
 	var share := float(facing) / maxf(1.0, n)
 	t.check(share < 0.75, "blind, he is not turned on the man most of the time (%.0f%% of it)" % (share * 100.0))
-	t.check(swings >= 2 and fast > 5.0, "and swings all the same (%d swings, the hammer at %.1f m/s)" % [swings, fast])
+	t.check(swings >= 2 and fast > 5.0, "and swings all the same (%d strokes, the hammer at %.1f m/s)" % [swings, fast])
 	t.check(g.alive and g.enraged, "still raging")
 	m.queue_free()
 

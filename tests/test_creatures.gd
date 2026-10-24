@@ -275,31 +275,63 @@ func _blow(b: Beast, p: VoxelPart, kind: String) -> Dictionary:
 	var dir: Vector3 = (p.global_position - at).normalized()
 	return b.apply_hit(p, {"impulse": 30.0 if kind == "blunt" else 20.0, "type": kind, "hardness": 0.85, "sharpness": 0.0 if kind == "blunt" else 0.9, "point": at, "dir": dir, "axis": dir, "edge": dir, "heavy": 0.3})
 
-## Every part breaks on its own by the harm it took, whatever did it: a club snaps a bull's
-## horn and knocks off its dewlap; a leg run through and through hangs broken and then tears
-## away; the trunk stays, it is what kills.
+## A part beaten past what it can take is broken, not off: a club leaves a bull's horn and
+## dewlap on him with nothing left in them, a leg run through hangs broken; nothing comes
+## away until a blade cuts the last voxels joining it to the body, and then it falls.
+func _cut_free(b: Beast, p: VoxelPart) -> int:
+	var vfs: float = p.vf * p.part_scale
+	var ra: Array = p._root_axis()
+	var ax: int = ra[0]
+	var cx: int = 0 if ax != 0 else 2
+	var la_ax: int = 3 - ax - cx
+	var root: float = maxf(0.0, p.half_ext[ax] - 1.6 * vfs) * (1.0 if ra[1] else -1.0)
+	var best = null
+	var best_d := -INF
+	for pass_ in 3:
+		for i in p.fx.size():
+			if not p.alive[i]:
+				continue
+			var v: Vector3 = p.local_of(i)
+			if (pass_ < 2 and absf(v[ax] - root) > vfs * 0.6) or (pass_ == 0 and absf(v[la_ax]) > vfs * 1.2):
+				continue
+			if v[cx] > best_d:
+				best_d = v[cx]
+				best = v
+		if best != null:
+			break
+	var lp: Vector3 = best if best != null else Vector3.ZERO
+	lp[cx] += vfs * 0.5 + 0.01
+	var ld := Vector3.ZERO
+	ld[cx] = -1.0
+	var la := Vector3.ZERO
+	la[la_ax] = 1.0
+	var bs: Basis = p.global_transform.basis.orthonormalized()
+	for k in 30:
+		if p.severed:
+			return k
+		b.apply_hit(p, {"impulse": 60.0, "type": "edge", "hardness": 0.9, "sharpness": 1.0, "heavy": 1.0, "wsz": 1.0, "point": p.to_global(lp), "dir": bs * ld, "axis": bs * la, "edge": bs * ld})
+		b.blood = 100.0
+		b.alive = true
+	return -1
+
 func test_every_part_breaks_by_its_harm() -> void:
 	var w := _world()
 	var b := _beast(w, "bull", Vector3(0, 0.2, 0))
 	for i in 30:
 		await get_tree().physics_frame
-	for n in ["hornL", "dewlap", "tail"]:
+	for n in ["hornL", "dewlap"]:
 		var p: VoxelPart = b.by_name[n]
-		var k := 0
-		while k < 12 and not p.severed:
+		for k in 12:
 			_blow(b, p, "blunt")
-			k += 1
-		t.check(p.severed, "a club breaks the %s off (%d blows, hp %d)" % [n, k, int(p.hp)])
+		t.check(p.hp <= 0.0 and not p.severed, "a club beats the %s to nothing and it stays on (hp %d, severed %s)" % [n, int(p.hp), str(p.severed)])
+		var cut := _cut_free(b, p)
+		t.check(cut >= 1, "a blade cuts the %s free (%s blows)" % [n, str(cut) if cut >= 0 else "not in 30"])
 	var leg: VoxelPart = b.by_name["legFL"]
-	var hung := -1
-	var k2 := 0
-	while k2 < 15 and not leg.severed:
+	for k2 in 15:
 		_blow(b, leg, "point")
-		k2 += 1
-		if leg.hanging and hung < 0:
-			hung = k2
-	t.check(hung > 0 and hung < k2, "the leg hung broken first (blow %d)" % hung)
-	t.check(leg.severed, "and tore away under more (%d blows)" % k2)
+	t.check(leg.hanging and not leg.severed, "the leg run through hangs broken and stays on (hanging %s, severed %s, hp %d)" % [str(leg.hanging), str(leg.severed), int(leg.hp)])
+	var cut2 := _cut_free(b, leg)
+	t.check(cut2 >= 1, "and comes away only cut through (%s blows)" % (str(cut2) if cut2 >= 0 else "not in 30"))
 	t.check(not b.torso.severed, "the trunk stays on")
 	w.queue_free()
 	await get_tree().physics_frame

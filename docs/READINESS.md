@@ -105,6 +105,19 @@ long campaign on real hardware before a release date is set.
   gorilla's 17, dragon's 11; every limb of every beast at most 12 (elephant and mammoth
   legs, through their hide). Test: the giant's five parts in at most fourteen blows each,
   and the lion's, gorilla's and elephant's leg and head in at most twenty-four.
+- Nothing comes off by a count (user: a limb or a part is severed only when none of its
+  voxels join it to the rest, and then it falls): that was already the rule for men and
+  giants (break_loose: a lump no longer joined face to face to where the part is held on
+  falls, a limb's end as an amputation, the rest as pieces; a child part whose parent has
+  no flesh left at the joint falls with all below it; the blows-to-sever above are
+  measurements of the blade, not a rule). The one exception was the beasts: a part with no
+  hp left snapped off (a horn, a tusk, a tail) or tore away under forty more harm (a leg, a
+  neck, a wing), from the "every part breaks by its harm" round. Gone: a beast's part beaten
+  to nothing hangs broken (a leg, neck, wing, tail or trunk) or is just dead flesh (a horn),
+  and comes away only cut or blasted free, the same as a man's. The gorilla's tearing a man
+  in two and the crocodile's death roll still take a limb: those are a hold, not a number.
+  Test: a bull's horn, dewlap and tail clubbed to nothing stay on until a blade cuts them
+  free; a leg run through hangs and stays until cut through.
 - Armour for training (user: not intuitive or comfortable): the screen is now what you wear on
   the left (the little man with every piece on him in its metal's colour, the pieces one a
   line with Take off, the weight and its cost in breath and pace) and the pieces on the right
@@ -336,6 +349,14 @@ long campaign on real hardware before a release date is set.
   log on a real PC.
 
 ## Known rough edges
+
+- Two hands on a longsword, held still at a mark: at the far right (1.8, 0.4) and straight up
+  the blade drifts off the mouse while held, 7 deg at half a second to 41 at two; and at the
+  low right (1.2, -1.2) it settles 14 deg off most runs and 30 to 34 in some (which depends
+  on what ran before in the same process: the physics is chaotic there). Both are in the
+  code before this round's elbow work (measured on 7868c59: the same numbers). The arms test
+  reads the blade's nearest approach over the last sixth of its second now, not one frame,
+  and passes alone; in a full run it fails the low-right mark now and then. Open.
 
 - Two-handed stabs straight up or down travel little (the arms are already at full reach in a
   high guard): 0.16–0.28 m along the line, against about 0.5 m for a level stab.

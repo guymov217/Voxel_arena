@@ -206,15 +206,12 @@ func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	_break_by_damage(part, res2)
 	return res2
 
-## Parts that carry weight or other parts: beaten past what they can take they hang broken
-## first, and only more harm tears them away.
+## Parts that carry weight or other parts: beaten past what they can take they hang broken.
 const HANG_FIRST := ["neck", "goatNeck", "arm", "coil", "wing", "trunk", "abdomen"]
-const TEAR_OVER := 40.0   # harm past nothing left that tears a broken part away
 
-## Every part breaks on its own by the harm it took, whatever the blow (a club breaks a horn
-## too): with no hp left a horn, a tusk, a tail, a pincer or a crest snaps off; a leg, a neck,
-## a wing or a coil hangs broken and tears away under more. The trunk and the head end the
-## beast instead.
+## A part with no hp left is broken: a leg, a neck, a wing or a tail hangs useless from then
+## on. Nothing comes off by the number on it: a part falls only when its voxels no longer
+## join it to the body (break_loose), cut or blasted free, the same as a man's (user).
 func _break_by_damage(part: VoxelPart, res: Dictionary) -> void:
 	if part == torso or part.severed or part.missing or part.hp > 0.0 or torso.freeze:
 		return
@@ -224,13 +221,6 @@ func _break_by_damage(part: VoxelPart, res: Dictionary) -> void:
 	var hangs: bool = part.def.get("leg", false) or heads.has(part) or HANG_FIRST.any(func(h): return n.begins_with(h))
 	if hangs and not part.hanging:
 		hang(part, res)
-		return
-	if hangs:
-		var over: float = float(part.get_meta("over", 0.0)) + float(res.get("dmg", 0.0))
-		part.set_meta("over", over)
-		if over < TEAR_OVER:
-			return
-	detach_limb(part, res)
 
 func live_mass() -> float:
 	var m := 0.0
