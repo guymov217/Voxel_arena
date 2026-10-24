@@ -107,8 +107,9 @@ func test_a_giant_with_an_eye_put_out_rages_and_fights_on() -> void:
 	t.check(not m.over, "and the bout goes on")
 	m.queue_free()
 
-## A man who cannot stand any more (crawling at most) is out of the bout after five seconds:
-## with no one on his side able to fight on, the bout is lost.
+## A man who cannot stand any more is out of the bout five seconds after he stops crawling at
+## the foe (crawling is fighting on; lying still is not): with no one on his side able to
+## fight on, the bout is lost.
 func test_a_bout_ends_when_no_one_can_stand_and_fight() -> void:
 	var m := Match.new()
 	add_child(m)
@@ -128,10 +129,11 @@ func test_a_bout_ends_when_no_one_can_stand_and_fight() -> void:
 		await get_tree().physics_frame
 	t.check(not m.over, "four seconds crawling: the bout is not yet over")
 	t.check(not f.can_stand(), "he cannot stand")
-	for i in 150:
+	m.me.drive = func(_e): return {}
+	for i in int(120 * 5.5):
 		_calm(m)
 		await get_tree().physics_frame
-	t.check(m.over and res.get("won", true) == false, "after five the bout is lost (over %s, %s)" % [m.over, res.get("won")])
+	t.check(m.over and res.get("won", true) == false, "lying still, after five the bout is lost (over %s, %s)" % [m.over, res.get("won")])
 	m.queue_free()
 
 ## Half his head cut away kills a man (he does not lie there alive for ever).
@@ -234,3 +236,99 @@ func test_a_giant_stands_up_to_hard_blows() -> void:
 		t.eq(falls, 0, "%s stays on his feet under 8 warhammer blows" % kind)
 		m.queue_free()
 		await get_tree().physics_frame
+
+## A giant in his blind rage does not go straight for the man as if he saw him: he lurches
+## about, facing every way, and swings at the air; when the man is close he feels for him.
+func test_a_raging_giant_lurches_blind_and_swings_at_the_air() -> void:
+	seed(9)
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 9})
+	var man: Fighter = m.me.f
+	man.teleport(Vector3(0, 0, 0))
+	m.me.drive = func(_e): return {}
+	var spec: Dictionary = m.enemy_spec({"e": "cyclops"}, 0, 1)
+	spec.pos = Vector3(0, 0.1, 9.0)
+	spec.yaw = PI
+	var e = m.spawn_fighter(spec)
+	var g: Fighter = e.f
+	for i in 30:
+		await get_tree().physics_frame
+	g.enrage()
+	var facing := 0
+	var n := 0
+	var fast := 0.0
+	var swings := 0
+	var was_attack := false
+	for i in int(10.0 * 120):
+		man.blood = 100.0
+		await get_tree().physics_frame
+		n += 1
+		var fwd: Vector3 = PD.quat_of(g.torso) * Vector3(0, 0, 1)
+		var to: Vector3 = man.torso.global_position - g.torso.global_position
+		fwd.y = 0.0; to.y = 0.0
+		if fwd.angle_to(to) < deg_to_rad(30.0):
+			facing += 1
+		var w: Weapon = g.weapons.R
+		if w:
+			fast = maxf(fast, (w.linear_velocity - g.torso.linear_velocity).length())
+		var attacking: bool = e.has("bot") and e.bot.state == "attack"
+		if attacking and not was_attack:
+			swings += 1
+		was_attack = attacking
+	var share := float(facing) / maxf(1.0, n)
+	t.check(share < 0.75, "blind, he is not turned on the man most of the time (%.0f%% of it)" % (share * 100.0))
+	t.check(swings >= 2 and fast > 5.0, "and swings all the same (%d swings, the hammer at %.1f m/s)" % [swings, fast])
+	t.check(g.alive and g.enraged, "still raging")
+	m.queue_free()
+
+## A giant with a leg blown off is not out of the fight: he crawls at the man and swings from
+## the sand, and the bout does not run out on him while he does (a thunder pot took a giant's
+## leg and he lay there until the count put him out: user).
+func test_a_giant_with_a_leg_blown_off_crawls_at_the_man_and_fights_on() -> void:
+	seed(11)
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 11})
+	var man: Fighter = m.me.f
+	man.teleport(Vector3(0, 0, 0))
+	m.me.drive = func(_e): return {}
+	var spec: Dictionary = m.enemy_spec({"e": "giant"}, 0, 1)
+	spec.pos = Vector3(0, 0.1, 12.0)   # (far enough that he has to crawl a way: the blast shoved him a few metres closer)
+	spec.yaw = PI
+	var e = m.spawn_fighter(spec)
+	var g: Fighter = e.f
+	for i in 30:
+		await get_tree().physics_frame
+	var shin: VoxelPart = g.by_name["shinR"]
+	m.throwables.explode("pot_thunder", shin.global_position + Vector3(0.3, 0, 0), man, null, g, shin, 2.5)
+	for i in 60:
+		await get_tree().physics_frame
+	if g.leg_func("R") > 0.0:
+		g.by_name["shinR"].severed = true   # (the blast did not take it: the leg is taken for him)
+	for i in 120:
+		await get_tree().physics_frame
+	t.check(not g.can_stand() and g.alive, "his leg gone, he cannot stand (leg %.2f, state %s)" % [g.leg_func("R"), g.state])
+	var d0: float = Vector2(g.torso.global_position.x - man.torso.global_position.x, g.torso.global_position.z - man.torso.global_position.z).length()
+	var crawled := 0
+	var swings := 0
+	var was_attack := false
+	var fast := 0.0
+	for i in int(14.0 * 120):
+		man.blood = 100.0
+		await get_tree().physics_frame
+		if g.crawling:
+			crawled += 1
+		var attacking: bool = e.has("bot") and e.bot.state == "attack"
+		if attacking and not was_attack:
+			swings += 1
+		was_attack = attacking
+		var w: Weapon = g.weapons.R
+		if w:
+			fast = maxf(fast, (w.linear_velocity - g.torso.linear_velocity).length())
+	var d1: float = Vector2(g.torso.global_position.x - man.torso.global_position.x, g.torso.global_position.z - man.torso.global_position.z).length()
+	t.check(crawled > 120 and d1 < d0 - 1.0, "he crawls at the man (%d frames crawling, %.1f m closer)" % [crawled, d0 - d1])
+	t.check(swings >= 1 or fast > 4.0, "and swings from the sand (%d swings, %.1f m/s)" % [swings, fast])
+	t.check(not m.over and g.alive, "and fourteen seconds on the bout is still on (over %s)" % m.over)
+	m.queue_free()
+

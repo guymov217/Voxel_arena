@@ -178,3 +178,19 @@ func test_a_fireball_blasts_and_burns() -> void:
 	t.check(m.throwables.wet.size() > wet_before, "fire on the sand")
 	t.check(Throwables.POTS.has("fireball") and Data.shop.throwables.has("fireball") and Data.shop.throwables.has("telekinesis"), "both are on the market")
 	m.queue_free()
+
+## A beehive broken short of the man: the swarm comes out and goes for him, and within a couple
+## of seconds he is covered (a pot that broke on the sand five metres off did nothing: user).
+func test_a_broken_hive_sends_its_swarm_at_the_nearest_foe() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
+	await _steps(30)
+	m.throwables.explode("pot_bees", Vector3(0, 0.3, 5.0), m.me.f)
+	t.check(v.bee_timer <= 0.0, "broken five metres short, the bees are not on him yet")
+	t.eq(m.throwables.swarms.size(), 1, "a swarm is in the air")
+	await _steps(int(2.5 * 120))
+	t.check(v.bee_timer > 0.0, "and within two and a half seconds it has found him (bees for %.1f s)" % v.bee_timer)
+	t.eq(m.throwables.swarms.size(), 0, "and the swarm in the air is gone, the bees on him now")
+	m.queue_free()
+

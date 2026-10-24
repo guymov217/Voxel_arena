@@ -1508,10 +1508,13 @@ func _unfit(e: Dictionary, dt: float) -> bool:
 	# back is still down.
 	e.stand_t = 0.0 if down else float(e.get("stand_t", 0.0)) + dt
 	if down:
-		e.down_t = float(e.get("down_t", 0.0)) + dt
+		# One crawling at his foe is still fighting, not down for good: the count does not run
+		# while he crawls (a giant with a leg blown off would crawl and swing until the twelve
+		# seconds were up and then be out: user).
+		e.down_t = 0.0 if f.crawling else float(e.get("down_t", 0.0)) + dt
 	elif float(e.stand_t) > 2.0:
 		e.down_t = 0.0
-	if down and not f.can_stand():
+	if down and not f.can_stand() and not f.crawling:
 		e.unfit_t = float(e.get("unfit_t", 0.0)) + dt
 	else:
 		e.unfit_t = 0.0

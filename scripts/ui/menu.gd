@@ -1408,47 +1408,15 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 	var worn := worn_armor()
 	v.add_child(UIStyle.label(("Worn: " + ", ".join(worn.map(func(i): return String(Data.armor[i].name)))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
 	var scroll := _smith_scroll(v)
-	var grid := GridContainer.new()
-	grid.columns = clampi(int((inner_w - 16.0) / 340.0), 1, 5)
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(grid)
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 10)
+	scroll.add_child(box)
 	var ids: Array = Armory.SHOP.map(func(r): return r[0])
 	ids = (Save.get_value("armor_designs", {}) as Dictionary).keys().filter(func(i): return Armory.custom(String(i))) + ids
-	for idv in ids:
-		var id: String = idv
-		var a: Dictionary = Data.armor.get(id, {})
-		if a.is_empty():
-			continue
-		var on := worn.has(id)
-		var card := _smith_card(null, "", "", 0)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var row: HBoxContainer = card.get_child(0)
-		var fig := Control.new()
-		fig.custom_minimum_size = Vector2(58, 106)
-		var covered: Array = Armory.parts_of(id)
-		var mc := Weapon.voxel_color(a.get("mat", "iron"), "blunt")
-		fig.draw.connect(func():
-			fig.draw_set_transform(Vector2(1, 1), 0.0, Vector2(0.78, 0.78))
-			for k in Hud.LAYOUT:
-				var rr: Rect2 = Hud.LAYOUT[k]
-				var sb := StyleBoxFlat.new()
-				sb.set_corner_radius_all(4 if k != "head" else 10)
-				sb.bg_color = mc if covered.has(k) else Color(1, 1, 1, 0.08)
-				sb.border_color = Color(1, 1, 1, 0.25) if covered.has(k) else Color(1, 1, 1, 0.06)
-				sb.set_border_width_all(1)
-				fig.draw_style_box(sb, rr.grow(-1.0)))
-		row.add_child(fig)
-		row.move_child(fig, 0)
-		var col: VBoxContainer = card.get_meta("col")
-		col.add_child(UIStyle.label(String(a.name), 16, UIStyle.GOLD if on else UIStyle.TEXT))
-		var where := []
-		for k in covered:
-			if not where.has(ARMOUR_PARTS.get(k, k)):
-				where.append(ARMOUR_PARTS.get(k, k))
-		col.add_child(UIStyle.label("%s · %s" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where)], 12, UIStyle.BRONZE))
-		col.add_child(UIStyle.label("Protection %s · %.1f kg" % [_dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.TEXT))
+	# The pieces in sections by the part of the body, as in training, each with its price and,
+	# worn, its condition and the armourer's mending.
+	_armour_sections(box, ids, worn, func(col: VBoxContainer, id: String, on: bool):
 		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "Your own design, from the bench.")), 12, UIStyle.MUTED))
 		var price := Armory.price(id)
 		if on:
@@ -1468,7 +1436,7 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 				mend.disabled = mc_ > coins()
 				mend.tooltip_text = "The armourer puts back every plate it has lost." + (" Purse after: %d" % (coins() - mc_) if mc_ <= coins() else " %d more needed" % (mc_ - coins()))
 				col.add_child(mend)
-			col.add_child(UIStyle.button("Worn · take off (+%d)" % (price / 2), func():
+			col.add_child(UIStyle.button("Take off · %d denarii back" % (price / 2), func():
 				var t := Armory.take_off(worn_armor(), id)
 				if not t.has("error"):
 					add_coins(-int(t.cost))
@@ -1477,9 +1445,6 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 		else:
 			var b := Armory.buy(worn, id)
 			var cost: int = int(b.get("cost", price))
-			var swaps := worn.filter(func(o): return Armory.clashes(o, id))
-			if not swaps.is_empty():
-				col.add_child(UIStyle.label("Replaces your %s (taken in part exchange)" % String(Data.armor[swaps[0]].name).to_lower(), 12, UIStyle.MUTED))
 			var btn := UIStyle.button(("Buy · %d denarii" % cost) if cost > 0 else ("Swap · %d denarii back" % -cost), func():
 				var t := Armory.buy(worn_armor(), id)
 				if t.has("error"):
@@ -1491,8 +1456,8 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 					set_worn_armor(t.worn)
 					show_screen("yard"), true)
 			btn.disabled = cost > coins()
-			col.add_child(btn)
-		grid.add_child(card)
+			btn.tooltip_text = ("Purse after: %d" % (coins() - cost)) if cost <= coins() else ("%d more needed" % (cost - coins()))
+			col.add_child(btn), clampi(int((inner_w - 16.0) / 360.0), 1, 4))
 
 static func _dots(x: float) -> String:
 	var n := clampi(int(round(x * 5.0)), 0, 5)
@@ -1530,59 +1495,207 @@ func _armour_designs_row(v: VBoxContainer) -> void:
 		row.add_child(bin)
 		v.add_child(row)
 
-## Armour for training, free: every piece the smith sells and every one of My designs, worn or
-## taken off with a click (a piece replaces what it clashes with); or a new one made at the bench.
-func _training_armour(v: VBoxContainer) -> void:
-	var worn := Armory.sanitize(training.get("armor", []))
-	var head := HBoxContainer.new()
-	var tt := UIStyle.title("Armour for training", 34)
-	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(tt)
-	head.add_child(UIStyle.button("Make your own at the forge (free)", func():
-		bench_mode = "training"
-		_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())))
-	v.add_child(head)
+## Which part of the body a piece is for, for the sections of an armour screen.
+const ARMOUR_REGIONS := [["Head", ["head"]], ["Body", ["torso"]], ["Arms", ["upperArmR", "upperArmL", "forearmR", "forearmL"]], ["Legs", ["thighR", "thighL", "shinR", "shinL"]]]
+
+static func _armour_region(id: String) -> String:
+	var parts: Array = Armory.parts_of(id)
+	for r in ARMOUR_REGIONS:
+		for k in r[1]:
+			if parts.has(k):
+				return r[0]
+	return "Body"
+
+## A little man with the parts a set of pieces covers filled in their metal's colour (the HUD's
+## figure); `covered` is {part: Color}. `px` is the figure's width.
+func _armour_figure(covered: Dictionary, px := 58.0) -> Control:
+	var fig := Control.new()
+	var k_ := px / Hud.FIG_W
+	fig.custom_minimum_size = Vector2(Hud.FIG_W, Hud.FIG_H) * k_
+	fig.draw.connect(func():
+		fig.draw_set_transform(Vector2.ZERO, 0.0, Vector2(k_, k_))
+		for k in Hud.LAYOUT:
+			var rr: Rect2 = Hud.LAYOUT[k]
+			var sb := StyleBoxFlat.new()
+			sb.set_corner_radius_all(4 if k != "head" else 10)
+			var on: bool = covered.has(k)
+			sb.bg_color = covered[k] if on else Color(1, 1, 1, 0.08)
+			sb.border_color = Color(1, 1, 1, 0.3) if on else Color(1, 1, 1, 0.07)
+			sb.set_border_width_all(1)
+			fig.draw_style_box(sb, rr.grow(-1.0)))
+	return fig
+
+static func _armour_colour(id: String) -> Color:
+	return Weapon.voxel_color(Data.armor.get(id, {}).get("mat", "iron"), "blunt")
+
+## {part: Color} for everything in `worn`.
+static func _armour_cover(worn: Array) -> Dictionary:
+	var out := {}
+	for id in worn:
+		for k in Armory.parts_of(id):
+			out[k] = _armour_colour(id)
+	return out
+
+## One piece as a card: the little man with the piece on him, its name, metal, protection and
+## weight, what it replaces, and the button to wear it or take it off (`act` fills the button
+## and any lines of its own below the facts: act(col, id, on)).
+func _armour_card(id: String, worn: Array, act: Callable) -> PanelContainer:
+	var a: Dictionary = Data.armor.get(id, {})
+	var on := worn.has(id)
+	var card := PanelContainer.new()
+	var sb := UIStyle._plate(Color(0.1, 0.075, 0.055, 0.95), UIStyle.GOLD if on else UIStyle.BRONZE_DARK, 2 if on else 1)
+	sb.content_margin_left = 10; sb.content_margin_right = 10; sb.content_margin_top = 8; sb.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", sb)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	card.add_child(row)
+	var cov := {}
+	for k in Armory.parts_of(id):
+		cov[k] = _armour_colour(id)
+	row.add_child(_armour_figure(cov, 50.0))
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	row.add_child(col)
+	var name_row := HBoxContainer.new()
+	var nm := UIStyle.label(String(a.get("name", id)), 16, UIStyle.GOLD if on else UIStyle.TEXT)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_row.add_child(nm)
+	if on:
+		var tag := UIStyle.label("WORN", 11, UIStyle.GOLD)
+		tag.autowrap_mode = TextServer.AUTOWRAP_OFF   # (squeezed to a letter a line beside the name)
+		name_row.add_child(tag)
+	col.add_child(name_row)
+	var where := []
+	for k in Armory.parts_of(id):
+		if not where.has(ARMOUR_PARTS.get(k, k)):
+			where.append(ARMOUR_PARTS.get(k, k))
+	col.add_child(UIStyle.label("%s · %s" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where)], 12, UIStyle.BRONZE))
+	col.add_child(UIStyle.label("Protection %s · %.1f kg" % [_dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.TEXT))
+	if not on:
+		var swaps := worn.filter(func(o): return Armory.clashes(o, id))
+		if not swaps.is_empty():
+			col.add_child(UIStyle.label("Replaces your %s" % String(Data.armor[swaps[0]].name).to_lower(), 12, UIStyle.MUTED))
+	act.call(col, id, on)
+	return card
+
+## The pieces in sections by the part of the body they are for, My designs first, two cards a
+## row; `act` as in _armour_card.
+func _armour_sections(parent: Control, ids: Array, worn: Array, act: Callable, columns := 2) -> void:
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	var groups := {"My designs": []}
+	for r in ARMOUR_REGIONS:
+		groups[r[0]] = []
+	for idv in ids:
+		var id: String = idv
+		if Data.armor.get(id, {}).is_empty():
+			continue
+		groups["My designs" if designs.has(id) else _armour_region(id)].append(id)
+	for g in groups:
+		var list: Array = groups[g]
+		if list.is_empty():
+			continue
+		# (A label in a row with nothing to fill it was squeezed to a letter a line: _row sets
+		# its wrapping off.)
+		var worn_here: int = list.filter(func(i): return worn.has(i)).size()
+		_row(parent, [UIStyle.label(String(g).to_upper(), 13, UIStyle.BRONZE)] + ([UIStyle.label("· %d worn" % worn_here, 12, UIStyle.GOLD)] if worn_here > 0 else []))
+		var grid := GridContainer.new()
+		grid.columns = columns
+		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 8)
+		parent.add_child(grid)
+		for id in list:
+			grid.add_child(_armour_card(id, worn, act))
+
+## What is worn, as a column: the figure with it all on, the pieces one a line with a button to
+## take each off, and what it all weighs and costs in breath and pace.
+func _armour_worn_column(worn: Array, take_off: Callable, empty_text: String) -> VBoxContainer:
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(300, 0)
+	left.add_theme_constant_override("separation", 8)
+	left.add_child(UIStyle.label("YOU WEAR", 13, UIStyle.BRONZE))
+	var figrow := HBoxContainer.new()
+	figrow.alignment = BoxContainer.ALIGNMENT_CENTER
+	figrow.add_child(_armour_figure(_armour_cover(worn), 120.0))
+	left.add_child(figrow)
+	if worn.is_empty():
+		var e := UIStyle.label(empty_text, 13, UIStyle.MUTED)
+		e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		left.add_child(e)
+		return left
 	var kg := 0.0
 	for id in worn:
 		kg += Armory.kg(id)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var l := UIStyle.label("%s · %.1f kg" % [String(Data.armor[id].name), Armory.kg(id)], 13, UIStyle.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var b := UIStyle.button("Take off", take_off.bind(id))
+		b.tooltip_text = "Take off the " + String(Data.armor[id].name).to_lower()
+		row.add_child(b)
+		left.add_child(row)
 	var with := Armory.burden(kg)
-	v.add_child(UIStyle.label(("Worn: %s · %.1f kg · breath ×%.2f · pace %d%%" % [", ".join(worn.map(func(i): return String(Data.armor[i].name))), kg, float(with.breath), int(round(float(with.pace) * 100.0))]) if not worn.is_empty() else "You wear no armour in training. Put on what you like: nothing is paid for here.", 14, UIStyle.MUTED))
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 470)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	v.add_child(scroll)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 8)
-	scroll.add_child(grid)
-	var ids: Array = (Save.get_value("armor_designs", {}) as Dictionary).keys().filter(func(i): return Armory.custom(String(i))) + Armory.SHOP.map(func(r): return r[0])
-	for idv in ids:
-		var id: String = idv
-		var a: Dictionary = Data.armor.get(id, {})
-		if a.is_empty():
-			continue
-		var on := worn.has(id)
-		var col := VBoxContainer.new()
-		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		col.add_child(UIStyle.label(String(a.name), 15, UIStyle.GOLD if on else UIStyle.TEXT))
-		var where := []
-		for k in Armory.parts_of(id):
-			if not where.has(ARMOUR_PARTS.get(k, k)):
-				where.append(ARMOUR_PARTS.get(k, k))
-		col.add_child(UIStyle.label("%s · %s · Protection %s · %.1f kg" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where), _dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.BRONZE))
-		col.add_child(UIStyle.button("Worn · take off" if on else "Wear", func():
-			var now := Armory.sanitize(training.get("armor", []))
-			training.armor = now.filter(func(o): return o != id) if on else Armory.buy(now, id).worn
-			Save.set_value("training", training)
-			show_screen("training_armour")))
-		grid.add_child(col)
-	_armour_designs_row(v)
-	_row(v, [UIStyle.button("Take it all off", func():
-		training.armor = []
+	left.add_child(UIStyle.label("%d piece%s · %.1f kg" % [worn.size(), "" if worn.size() == 1 else "s", kg], 14, UIStyle.TEXT))
+	left.add_child(UIStyle.label("Breath ×%.2f · pace %d%%" % [float(with.breath), int(round(float(with.pace) * 100.0))], 13, UIStyle.MUTED))
+	return left
+
+## Armour for training, free: every piece the smith sells and every one of My designs, in
+## sections by the part of the body, worn or taken off with a click (a piece replaces what it
+## clashes with); what is worn stands on the left; or a new one made at the bench.
+func _training_armour(v: VBoxContainer) -> void:
+	var vp := get_viewport_rect().size
+	panel.custom_minimum_size = Vector2(minf(1180.0, maxf(760.0, vp.x - 144.0)), maxf(480.0, vp.y - 80.0))
+	var worn := Armory.sanitize(training.get("armor", []))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var tt := UIStyle.title("Armour for training", 34)
+	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tt)
+	head.add_child(UIStyle.button("Make a piece at the bench (free)", func():
+		bench_mode = "training"
+		_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())))
+	head.add_child(UIStyle.button("Back", func(): show_screen("training")))
+	v.add_child(head)
+	v.add_child(UIStyle.label("Nothing is paid for here. Click Wear on a piece; a piece that covers the same place takes the other off.", 13, UIStyle.MUTED))
+	var set_worn := func(now: Array) -> void:
+		training.armor = now
 		Save.set_value("training", training)
-		show_screen("training_armour")), UIStyle.button("Back", func(): show_screen("training"))]).alignment = BoxContainer.ALIGNMENT_END
+		show_screen("training_armour")
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 24)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(cols)
+	var left := _armour_worn_column(worn, func(id: String): set_worn.call(Armory.sanitize(training.get("armor", [])).filter(func(o): return o != id)), "You wear no armour in training. Put on what you like from the right.")
+	if not worn.is_empty():
+		left.add_child(UIStyle.button("Take it all off", func(): set_worn.call([])))
+	cols.add_child(left)
+	var scroll := _smith_scroll(cols)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 10)
+	scroll.add_child(right)
+	var designs: Dictionary = Save.get_value("armor_designs", {})
+	var ids: Array = designs.keys().filter(func(i): return Armory.custom(String(i))) + Armory.SHOP.map(func(r): return r[0])
+	_armour_sections(right, ids, worn, func(col: VBoxContainer, id: String, on: bool):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(UIStyle.button("Take off" if on else "Wear", func():
+			var now := Armory.sanitize(training.get("armor", []))
+			set_worn.call(now.filter(func(o): return o != id) if on else Armory.buy(now, id).worn), not on))
+		if designs.has(id):
+			var bin := UIStyle.button("Delete the design", func():
+				var ds: Dictionary = Save.get_value("armor_designs", {})
+				ds.erase(id)
+				Save.set_value("armor_designs", ds)
+				set_worn.call(Armory.sanitize(training.get("armor", [])).filter(func(o): return o != id)))
+			row.add_child(bin)
+		col.add_child(row))
 
 # ---------- The armourer's bench ----------
 

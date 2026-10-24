@@ -102,7 +102,7 @@ const KINDS := {
 	"petals": {"color": Color(0.62, 0.05, 0.06), "life": 6.0, "speed": [0.2, 0.6], "spread": 180.0, "gravity": -0.35, "size": [0.025, 0.045], "tex": "", "drag": 1.6},
 	"sandgrain": {"color": Color(0.86, 0.74, 0.52), "life": 1.4, "speed": [0.8, 2.6], "spread": 70.0, "gravity": -5.0, "size": [0.022, 0.045], "tex": "", "drag": 0.9, "shrink": true},
 	"sandcloud": {"color": Color(0.84, 0.72, 0.5), "life": 2.6, "speed": [0.2, 0.9], "spread": 180.0, "gravity": -0.15, "size": [0.045, 0.1], "tex": "", "drag": 0.4, "swirl": true},
-	"bees": {"color": Color(0.95, 0.75, 0.1), "life": 0.7, "speed": [1.2, 2.6], "spread": 180.0, "gravity": 0.0, "size": [0.04, 0.05], "tex": "", "drag": 2.5, "buzz": true},
+	"bees": {"color": Color(0.95, 0.75, 0.1), "life": 1.0, "speed": [1.2, 2.8], "spread": 180.0, "gravity": 0.0, "size": [0.055, 0.075], "tex": "", "drag": 2.5, "buzz": true},
 	"ash": {"color": Color(0.16, 0.15, 0.14), "life": 2.4, "speed": [0.3, 0.9], "spread": 40.0, "gravity": 0.7, "size": [0.015, 0.03], "tex": "", "drag": 0.8, "swirl": true},
 	"lowfire": {"color": Color(1.0, 0.55, 0.15), "life": 0.35, "speed": [0.1, 0.45], "spread": 30.0, "gravity": 1.4, "size": [0.025, 0.045], "tex": "", "emit": 3.0, "shrink": true},
 	"fumes": {"color": Color(0.45, 0.8, 0.25, 0.35), "life": 1.8, "speed": [0.1, 0.4], "spread": 30.0, "gravity": 0.5, "size": [0.08, 0.2], "tex": "soft", "drag": 0.8, "grow": 2.2, "shade": true},

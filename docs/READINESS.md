@@ -58,6 +58,61 @@ long campaign on real hardware before a release date is set.
 - The beehive (user: no bees attacking): the swarm stung three times a second at a third of a
   sting and did nothing a man would notice; four stings a second now at twice the weight, with
   pain and stagger, the thrower credited with the hurt.
+  A hive that broke on the sand short of the man did nothing anyone could see (user): the
+  swarm now comes out of the broken pot as a cloud of bees in the air and flies at the nearest
+  foe of the thrower within nine metres (5.5 m/s, wavering), covers him when it gets there,
+  and the bees are half as big again and live longer, so the cloud reads as bees. Test:
+  broken five metres short, the man is covered within two and a half seconds.
+- A giant's blind rage (user: a cyclops shot in the eye should not go straight for the man
+  as if he saw him, but lash out at random): enraged, he no longer turns on the man's true
+  place. Where he thinks the man is gets set only when the man is within two of his heights
+  or a blow staggers him, with an error of 0.6 of his height, and goes stale otherwise; most
+  of the time he lurches some other way, turning as he goes, and bears down on his idea of the
+  man under half the time; and he swings at the air every couple of seconds whether or not
+  anything is in reach. Test: ten seconds of rage with the man standing still nine metres
+  off, he faces the man under three quarters of the time and swings at least twice.
+- A giant with a leg blown off (user: after a thunder pot takes a giant's leg he mostly stops
+  fighting, cannot get up, and does not crawl at the man): two things put him out. The bot
+  zeroed its movement whenever it was not standing, so it never crawled (a man can: down, the
+  move keys crawl him), and the bout's count of the unfit put anyone down and unable to stand
+  out after five seconds, crawling or not. Down and alive, a bot now crawls at the man up to
+  his reach and swings from the sand (the strokes never needed standing), and the counts of
+  the down and the unfit do not run while he crawls: crawling is fighting on. A man lying
+  still is out as before (the down-for-good test; the bout-end test now has the man crawl
+  four seconds, not over, then lie still, and lost five seconds on). Test: a giant's shin
+  blown off twelve metres out, he cannot stand, crawls over a metre at the man in fourteen
+  seconds, swings, and the bout is still on. The rage test's swing at the air is a timer
+  now (1.5 to 3 s between swings), not a chance a step: the chance left a cyclops standing
+  nine seconds between swings.
+- Severing giants and beasts (user: could not cut the hands or legs off giants and cyclopes;
+  check every limb and part of every enemy comes off): a probe put a man's sword (gladius
+  size, a committed stroke) to every part of every human foe, every giant and every beast,
+  blow after blow on one spot, and counted the blows to sever. Men and the small beasts were
+  fine (a thigh in three, a head in five). A giant's thigh and the big heads never came off:
+  the cut was through in eight blows, but a man's blade spans 0.6 m and a giant's thigh is
+  0.8 m across, so the slot went out the far side and the leg hung on by its sides for ever,
+  every further blow taking nothing. Now a blow into a slot that is already through (nothing
+  alive left on its own line, whatever shape the part is there) widens it instead of
+  deepening: the blade takes the flesh beside the slot, a layer a blow, until the part is
+  off. The torso keeps its own rules (halves). A blade landing within a voxel of an open
+  slot slides into it (a giant's voxels are a hand's breadth, wider than a sword's cut: the
+  blows of a man hacking at one place opened a slot each and none got through; measured,
+  the same thigh took 17 blows that way and 9 in one slot). Also a lump the size of a limb's end (two
+  fifths of the part or more) is no longer made a flap: as a flap, a giant's half forearm
+  fell off a stump that never counted as cut (no weapon dropped, no limb lost); it is an
+  amputation when the blade is through. Blows at one spot now: a giant's (S 3.8) forearm 6,
+  upper arm 6, shin 8, thigh 8, head 12; cyclops/titan the same within two; lion's head 11,
+  gorilla's 17, dragon's 11; every limb of every beast at most 12 (elephant and mammoth
+  legs, through their hide). Test: the giant's five parts in at most fourteen blows each,
+  and the lion's, gorilla's and elephant's leg and head in at most twenty-four.
+- Armour for training (user: not intuitive or comfortable): the screen is now what you wear on
+  the left (the little man with every piece on him in its metal's colour, the pieces one a
+  line with Take off, the weight and its cost in breath and pace) and the pieces on the right
+  in sections by the part of the body (My designs, Head, Body, Arms, Legs), each a card with
+  the little man wearing it, name, metal, protection and weight, what it would replace, and
+  Wear or Take off; a worn card is edged in gold. The smith's armour tab is in the same
+  sections and cards with its prices and mending. The forge gallery and My designs for
+  weapons were already cards in a grid and stay as they are.
 - The off elbow turned over (user: swinging a two-hander left, right and up, the elbows can
   turn and jam). Reproduced with circles, eights, side-to-side at three heights, random jerks
   and a sweep while turning: in a slow circle with the warhammer or the zweihander the left
@@ -89,7 +144,14 @@ long campaign on real hardware before a release date is set.
   locked 1–3 of 8 or pushed the first blow past 13 s, and most of them also put the man's
   fast longsword stroke 31–35° off the mouse where the suite's floor is 30. A single drive
   for both is open work: the giant's hold wants a bent elbow from a pushed-down upper arm,
-  the man's circle wants the roll, and together they fight through the haft.
+  the man's circle wants the roll, and together they fight through the haft. Tried after
+  the push: the push down faded in as the arm straightens on top of the routing (the routed
+  elbow lies on the line to the hand then), and the giant's bot bringing a held blow lower
+  while the hammer's head is above the man; the man's elbow is best of all with the faded
+  push (345 frames over the line across the twelve patterns, 41 at most in a slow circle),
+  and it stays, but the giant still locked on 1 seed of 8 (the test's), so giants keep the
+  old drive. The bot's lowering stays too: it costs nothing and brings the first blow forward
+  where it lands.
 - The armourer's bench: a flicker on every change of part (the old man and the new drawn
   together for a frame) is gone, and the camera slides with Shift + middle drag as at the
   forge, beside the turn and the wheel.

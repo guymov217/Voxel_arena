@@ -39,6 +39,7 @@ var hand := {"x": 0.1, "y": 0.2}
 var attack: Array = []
 var key := 0
 var key_t := 0.0
+var aim_low := 0.0   # a big man's blow brought lower while its head is held above the small one
 var feint_to: Array = []
 var strafe := 1.0
 var strafe_t := 0.0
@@ -57,6 +58,9 @@ var follow_t := 0.0
 var ability_t := 1.0
 var draw_t := -0.8
 var panic_t := 0.0             # enraged: when the blind lurch changes
+var air_t := 0.0               # enraged: the next swing at the air, whatever is in reach
+var rage_goal := Vector3.ZERO  # enraged: where he thinks the man is (heard or felt, with error)
+var rage_known := false
 var panic_off := Vector3.ZERO  # where, off the man, the half-blind giant is facing now
 var panic_mx := 0.0
 
@@ -164,8 +168,12 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		inp.mz = -1.0
 		inp.sprint = true
 	if c.state != "stand":
+		# Down and alive he does not lie there: he crawls at the man and fights on from the
+		# sand (a giant with a leg blown off by a thunder pot lay still and the bout ran out
+		# on him: user). Up to the man's reach, then he stays and swings.
 		inp.mx = 0.0
-		inp.mz = 0.0
+		inp.mz = 1.0 if dist > reach * 0.6 + 0.3 * S else 0.0
+		inp.faceAt = tp
 	# Ranged tricks: a rock, a net, a pot of Greek fire.
 	if p.has("ability") and p.ability != "heal" and ability_t <= 0.0 and c.state == "stand":
 		var rg: Array = p.get("range", [2.5, 9.0])
@@ -219,7 +227,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				draw_t = -rng.randf_range(0.9, 2.2) * (1.3 - diff * 0.5)
 		inp.main = hand.duplicate()
 		return inp
-	var ready: bool = (dist < (reach * 1.15 if not big else swing_reach) or (rage and dist < reach * 1.8)) and c.stamina > (8.0 if rage else 20.0)
+	# (Enraged he also swings at the air, at nothing in particular, every couple of seconds:
+	# a timer, not a chance a step, which left him standing nine seconds between swings.)
+	if rage:
+		air_t -= dt
+	var ready: bool = (dist < (reach * 1.15 if not big else swing_reach) or (rage and (dist < reach * 1.8 or air_t <= 0.0))) and c.stamina > (8.0 if rage else 20.0)
 	if state == "approach" or state == "guard":
 		_lerp_hand(0.15, gy, dt * (2.0 + diff * 4.0))
 		think -= dt * (5.0 if rage else 1.0)
@@ -228,6 +240,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			if open and rng.randf() < dt * (diff - 0.3) * 12.0:
 				think = 0.0
 		if ready and think <= 0.0:
+			air_t = rng.randf_range(1.5, 3.0)
 			attack = ATTACKS.thrust if dist > reach and rng.randf() < 0.5 else _pick(p.attacks)
 			feint_to = _pick(p.attacks) if diff > 0.6 and rng.randf() < (diff - 0.6) * 0.4 else []
 			key = 0
@@ -244,6 +257,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			if rng.randf() < dt * 2.5:
 				inp.kick = true
 	if state == "attack" and not attack.is_empty():
+		if key == 0:
+			aim_low = 0.0
 		var k_: Array = attack[key]
 		var x: float = k_[0]
 		var y: float = k_[1]
@@ -252,7 +267,16 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		if key == attack.size() - 1 and aim_pick != null:
 			y = y * 0.4 + float(aim_pick) * 0.6
 		if key == attack.size() - 1 and aim_small != null:
-			y = float(aim_small)   # the blow ends on the small man, wherever he is
+			# Held at the end of the blow with the head still above the man, the blow is brought
+			# lower, a little a frame, until the head is down on him: the pitch the mark asked
+			# for is not always the pitch the haft takes (the hands pulled in to their reach, the
+			# off arm stretched straight), and the cyclops held its hammer at the man's head
+			# height half a metre short of him and never landed.
+			if key_t >= 0.85 and w != null:
+				var hd: Vector3 = w.global_position + PD.quat_of(w) * Vector3(0, w.reach * 0.85, 0)
+				if hd.y > tp.y - 0.2 * tS:
+					aim_low = maxf(-1.0, aim_low - 2.0 * dt)
+			y = clampf(float(aim_small) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
 			x = 0.0                # and comes down through the middle of him, not past his shoulder
 		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else 1.0)
 		if rage:
@@ -303,16 +327,28 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				inp["jab" + side] = true
 				jab_cd = (0.9 - 0.4 * diff) * (0.6 + rng.randf() * 0.8) * (0.4 if rage else 1.0)
 	if rage:
-		# Half blind and mad with it: he lurches this way and that, turning on where he thinks the
-		# man is (never quite where he is), lashing out all the while.
+		# Blind and mad with it: he does not see the man, only hears and feels him. Where he
+		# thinks the man is gets set when the man is close enough to hear (within two of his
+		# own heights) or hits him, with a wide error, and goes stale otherwise; most of the
+		# time he lurches some other way altogether, turning as he goes and lashing out at the
+		# air, and bears down on his idea of the man only now and then. (He went straight for
+		# the man as if he saw him: user.)
 		panic_t -= dt
+		if dist < 2.0 * S or float(c.get("stagger")) > 0.15:
+			rage_goal = tp + Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)) * 0.6 * S
+			rage_known = true
 		if panic_t <= 0.0:
-			panic_t = rng.randf_range(0.35, 0.9)
-			panic_off = Vector3.ZERO if rng.randf() < 0.4 else Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)) * 0.3 * S
+			panic_t = rng.randf_range(0.5, 1.4)
+			var at_goal: bool = rage_known and rng.randf() < 0.45
+			var dir_: Vector3 = (rage_goal - me) if at_goal else Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0))
+			dir_.y = 0.0
+			panic_off = dir_.normalized() * 3.0 * S if dir_.length() > 0.05 else Vector3(0, 0, 3.0 * S)
 			panic_mx = rng.randf_range(-1.0, 1.0)
-		inp.faceAt = tp + panic_off
+		inp.faceAt = me + panic_off
 		inp.mx = panic_mx * 0.6
-		inp.mz = 1.0 if dist > reach * 0.7 else rng.randf_range(-0.4, 0.8)
+		inp.mz = 1.0 if (me + panic_off).distance_to(me) > 0.5 else 0.0
+		if dist < reach * 0.7:
+			inp.mz = rng.randf_range(-0.4, 0.8)
 		# Kicking out and punching with the free fist in the middle of the strokes.
 		if dist < 1.6 * S and c.state == "stand" and rng.randf() < dt * 1.2:
 			inp.kick = true

@@ -2095,25 +2095,23 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if side == "L" and two_handed and not (off_goal != null and is_bow(weapons.R)):
 		var hand_l := hand_world("L")
 		var sh_l = t_pos + t_rot * shoulder.L
-		# A man's off arm bends at an elbow as his main one does, the elbow out to his own side,
-		# down and a little back of the line from shoulder to hand (never up over it nor in
-		# across the chest), and the upper arm is rolled so the hinge bends toward the hand:
-		# pointed straight at its hand with the roll left to drift, the elbow turned up over
-		# the shoulder and jammed in a slow circle with a heavy haft, a chicken wing (user; a
-		# probe of circles, eights and side-to-side with the zweihander and the warhammer).
-		# A giant's off arm is pointed at its hand as before, the upper arm pushed down: a
-		# giant's bot sends both hands to a mark out of reach (a blow held over a small man),
-		# and with the arm stretched straight the routed elbow lies on the line to the hand,
-		# every roll target has nothing across the axis but noise, and drive after drive
-		# (routed, rolled, reacted, kneed, gated) left the arm locked straight and the hammer
-		# 0.6 m short on 1-3 seeds of 8; pointed and pushed down it bends and the head comes
-		# down on the man, 8 of 8. (The full run caught it: the cyclops never landed.)
+		# The off arm bends at an elbow as the main one does, the elbow out to its own side, down
+		# and a little back of the line from shoulder to hand (never up over it nor in across the
+		# chest), and the upper arm is rolled so the hinge bends toward the hand: pointed straight
+		# at its hand with the roll left to drift, the elbow turned up over the shoulder and
+		# jammed in a slow circle with a heavy haft, a chicken wing (user; a probe of circles,
+		# eights and side-to-side with the zweihander and the warhammer).
 		var to_h: Vector3 = hand_l - sh_l
 		var dist_h := maxf(0.05, to_h.length())
 		var line: Vector3 = to_h / dist_h
-		var spd_l: float = (fore.velocity_at(hand_l) - torso.linear_velocity).length() / S
-		var calm := clampf(1.3 - spd_l / 3.0, 0.3, 1.0)
 		if S >= 1.6:
+			# A giant's off arm keeps the old drive, pointed at its hand with the upper arm pushed
+			# down. Its bot sends both hands to a mark out of reach (a blow held over a small
+			# man) and the arm goes straight; the drive below, and every variant of it measured
+			# (its push down faded in as the arm straightens, the bot bringing the blow lower,
+			# the roll weak, strong, kneed, reacted or gated), left it locked straight on 1-3
+			# seeds of 8 with the hammer's head at the man's height half a metre short, and the
+			# cyclops of the giants test never landed; pointed and pushed down it lands 8 of 8.
 			pd_axis(upper, Vector3(0, -1, 0), (line + Vector3(0, -0.3, 0)).normalized(), 10.0, 0.8, 50.0 * af * MS * S, dt)
 			pd_axis(fore, Vector3(0, -1, 0), line, 8.0, 0.8, 30.0 * af * MS * S, dt)
 		else:
@@ -2142,7 +2140,24 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# elbow up over the shoulder), firm while the hands move slowly or hold (a guard, a
 			# slow circle: where the elbow stood up), giving way in a fast stroke, where the off
 			# arm has to follow the haft and a firm one pulled the blade off the mouse.
-			pd_axis(upper, Vector3(0, -1, 0), elbow_dir_l, 12.0, 0.9, 120.0 * calm * af * MS * S, dt)
+			# Driven as hard as the main arm's (at a fifth of it the pull on the haft folded the elbow
+			# up over the shoulder), firm while the hands move slowly or hold (a guard, a slow circle:
+			# where the elbow stood up), giving way in a fast stroke, where the off arm has to follow
+			# the haft and a firm one pulled the blade off the mouse. A giant's bot, whose hands go
+			# to a mark out of reach in a blow held over a small man, brings the blow lower itself
+			# while the hammer's head is above him (bot.gd): with this drive alone it held the arm
+			# straight and the head at the man's height half a metre short, and never landed.
+			var spd_l: float = (fore.velocity_at(hand_l) - torso.linear_velocity).length() / S
+			var calm := clampf(1.3 - spd_l / 3.0, 0.3, 1.0)
+			# As the arm straightens the routed elbow comes onto the line to the hand and the drive
+			# has nothing left to bend the arm with; the old push down on the upper arm comes in
+			# then (none at a bend of 24 degrees or more, all at straight). A giant's off arm
+			# stretched to a mark out of reach (a blow held over a small man) stayed locked straight
+			# without it, the hammer's head at the man's height half a metre short, and the cyclops
+			# of the giants test never landed; pushed down, the arm bends, the haft tilts and the
+			# head comes down on him, as it did before the routing.
+			var straight := clampf(1.0 - sin_a / 0.4, 0.0, 1.0)
+			pd_axis(upper, Vector3(0, -1, 0), (elbow_dir_l + Vector3(0, -0.3, 0) * straight).normalized(), 12.0, 0.9, 120.0 * calm * af * MS * S, dt)
 			var fore_dir_l: Vector3 = (hand_l - elbow_l).normalized()
 			pd_axis(fore, Vector3(0, -1, 0), fore_dir_l, 10.0, 0.8, 50.0 * calm * af * MS * S, dt)
 			# The elbow is a hinge that bends the forearm toward the upper arm's front: the upper
@@ -3339,10 +3354,23 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				n = Vector3(1, 0, 0)
 			n = n.normalized()
 			var span := (0.24 + 0.08 * heavy) * wsz
+			# A blade landing beside an open slot slides into it (a giant's voxels are wider than
+			# a man's cut: blows a hand's breadth apart on him opened a new slot each, and none
+			# of them ever got through).
+			if not detached:
+				lp += n * _slot_beside(part, lp, ld, n, width, la, span, vfs)
 			# A blade follows the wound: a second blow into an open cut starts where the first
 			# one stopped, so a thick limb is chopped through blow by blow instead of each one
 			# only scraping the same mouth of the wound.
 			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth)
+			# A slot already out of the far side of a limb too broad for the blade (a giant's
+			# thigh under a man's sword: the cut was through, and the leg hung on by its sides
+			# for good) widens instead of deepening: the blade in the slot takes the flesh
+			# beside it, a layer a blow, until the limb is off.
+			if not detached and part != torso:
+				var slot := _slot(part, lp, ld, n, width, la, vfs)
+				if slot.y <= 0.0:
+					span = maxf(span, slot.x + depth)
 			for i in part.fx.size():
 				if part.alive[i] == 0:
 					continue
@@ -3643,6 +3671,46 @@ func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float,
 		deepest = a
 	return deepest
 
+## How far along `n` (across the blade) a blow at `lp` has to shift to land in an open slot
+## beside it: the nearest dead voxel's row within a voxel of the blow's own band, when the
+## band itself has no slot (0 otherwise).
+func _slot_beside(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, vfs: float) -> float:
+	var best := 0.0
+	var best_d := INF
+	for i in part.fx.size():
+		if part.alive[i]:
+			continue
+		var d := part.local_of(i) - lp
+		var along := d.dot(ld)
+		if along <= 0.0 or along > vfs * 2.5 or absf(d.dot(la)) >= span:
+			continue
+		var side := d.dot(n)
+		var off := absf(side)
+		if off < width:
+			return 0.0   # in a slot already
+		if off < width + vfs * 1.1 and off < best_d:
+			best_d = off
+			best = side
+	return best
+
+## The slot a blow at `lp` heading `ld` lands in: x, how far along the blade (`la`) its dead
+## voxels already reach, so a blow into it can widen it from there; y, how much flesh is left
+## alive on the blow's own line (0: the slot is through, whatever shape the part is there).
+func _slot(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, vfs: float) -> Vector2:
+	var far := 0.0
+	var left := 0.0
+	for i in part.fx.size():
+		var d := part.local_of(i) - lp
+		if d.dot(ld) <= 0.0 or absf(d.dot(n)) >= width:
+			continue
+		var side := absf(d.dot(la))
+		if part.alive[i]:
+			if side < vfs * 1.1:
+				left += 1.0
+		else:
+			far = maxf(far, side)
+	return Vector2(far, left)
+
 ## How deep an open hole goes under a blow at `lp` heading `ld` (0 on whole skin).
 func _hollow(part: VoxelPart, lp: Vector3, ld: Vector3, width: float) -> float:
 	var seen := []
@@ -3710,7 +3778,10 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 	var lip_list := PackedInt32Array(lips.keys())
 	# What would come away if the lips were gone hangs by them alone.
 	for lump in part.loose_lumps(lip_list):
-		if lump.size() < FLAP_MIN or lump.size() > 0.6 * part.alive_count or part.near_child_anchor(lump):
+		# (Not the end of a limb: a lump that big is an amputation once the blade is through
+		# (break_loose), not a flap; as a flap, a giant's half forearm fell off a stump that
+		# never counted as cut.)
+		if lump.size() < FLAP_MIN or lump.size() >= (0.6 if part == torso or part == head else 0.4) * part.alive_count or part.near_child_anchor(lump):
 			continue
 		var inside := {}
 		for i in lump:

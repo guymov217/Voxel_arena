@@ -17,6 +17,7 @@ const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 
 var m: Node
 var zones: Array = []
 var drops: Array = []
+var swarms: Array = []   # bees out of a broken hive on their way to a man: {pos, target, owner, t, node}
 var next_zone := 1
 var headless := false
 
@@ -741,6 +742,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.feed.emit("Caltrops all over the sand. Watch your step.")
 		"pot_bees":
 			m.sfx("slap", p)
+			var stung := false
 			for x in _near(p, 3.0):
 				if x.c == owner_:
 					continue
@@ -748,6 +750,34 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				if owner_:
 					x.c.last_attacker = owner_
 				m.feed.emit("%s is covered in bees!" % x.c.display_name)
+				stung = true
+			# The swarm comes out of the broken hive and goes for the nearest foe of the thrower
+			# (anyone but him, if he has no side) within nine metres, a cloud of bees in the air
+			# that flies at him and covers him when it gets there. (A pot that broke on the sand
+			# short of the man did nothing anyone could see: user.)
+			if not stung:
+				var my_team = null
+				for e in m.entities:
+					if e.f == owner_:
+						my_team = e.get("team")
+				var best = null
+				for x in _near(p, 9.0):
+					if x.c == owner_ or (my_team != null and x.e.get("team") == my_team):
+						continue
+					best = x.c
+					break
+				if best != null:
+					var sw := {"pos": p + Vector3(0, 0.4, 0), "target": best, "owner": owner_, "t": 0.0, "node": null}
+					if not headless and m.fx:
+						var node := Node3D.new()
+						m.add_child(node)
+						node.global_position = sw.pos
+						var em = m.fx.emitter("bees", node, 160, 0.4)
+						if em:
+							em.local_coords = false
+						sw.node = node
+					swarms.append(sw)
+					m.feed.emit("The hive breaks open: the swarm goes for %s!" % best.display_name)
 		"pot_goat":
 			m.spawn_beast({"beast": "goat", "team": 2, "pos": Vector3(p.x, 0.1, p.z), "yaw": 0.0, "harmless": true})
 			m.feed.emit("The crowd laughs. Every beast wants the goat.")
@@ -1212,6 +1242,31 @@ func update(dt: float) -> void:
 			if z.node:
 				z.node.queue_free()
 			zones.erase(z)
+	# Swarms in the air fly at their man, a little wavering, and cover him when they arrive.
+	if not swarms.is_empty():
+		for sw in swarms.duplicate():
+			var tgt = sw.target
+			if not is_instance_valid(tgt) or not tgt.alive or sw.t > 6.0:
+				if sw.node and is_instance_valid(sw.node):
+					sw.node.queue_free()
+				swarms.erase(sw)
+				continue
+			sw.t += dt
+			var goal: Vector3 = tgt.torso.global_position
+			var to: Vector3 = goal - sw.pos
+			var step := minf(to.length(), 5.5 * dt)
+			sw.pos += to.normalized() * step + Vector3(sin(sw.t * 9.0), cos(sw.t * 7.0), sin(sw.t * 11.0)) * 0.6 * dt
+			if sw.node and is_instance_valid(sw.node):
+				sw.node.global_position = sw.pos
+			if to.length() < 0.7 * float(tgt.S):
+				if m.role != "guest":
+					tgt.bee_timer = maxf(float(tgt.bee_timer), 5.0)
+					if sw.owner:
+						tgt.last_attacker = sw.owner
+				m.feed.emit("%s is covered in bees!" % tgt.display_name)
+				if sw.node and is_instance_valid(sw.node):
+					sw.node.queue_free()
+				swarms.erase(sw)
 	# A swarm of voxel bees round whoever they cover (only the look; drawn wherever the timer runs).
 	if not headless and m.fx:
 		for e in m.entities:
@@ -1221,7 +1276,7 @@ func update(dt: float) -> void:
 			var swarm = bc.get_meta("bee_swarm") if bc.has_meta("bee_swarm") else null
 			var want: bool = bc.bee_timer > 0.0 and bc.alive
 			if want and swarm == null:
-				swarm = m.fx.emitter("bees", bc.torso, 70, 0.45)
+				swarm = m.fx.emitter("bees", bc.torso, 140, 0.55)
 				if swarm:
 					swarm.local_coords = true
 					bc.set_meta("bee_swarm", swarm)
@@ -1250,6 +1305,10 @@ func clear() -> void:
 		if z.node:
 			z.node.queue_free()
 	zones.clear()
+	for sw in swarms:
+		if sw.node and is_instance_valid(sw.node):
+			sw.node.queue_free()
+	swarms.clear()
 	drops.clear()
 	wet.clear()
 
