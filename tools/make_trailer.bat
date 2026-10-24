@@ -4,7 +4,7 @@ rem Double-click this file. It needs Godot 4.7 and Python 3; ffmpeg and Pillow i
 rem   ffmpeg: the FFMPEG variable (the ffmpeg.exe, its bin folder or the folder it was unzipped to),
 rem           the PATH (read fresh, so a PATH just edited counts), the usual install folders, or,
 rem           if it is nowhere, downloaded once (about 100 MB) into ..\trailer_work\ffmpeg.
-rem   Godot:  the GODOT variable, else D:\godot\Godot_v4.7.2-stable_win64_console.exe, else godot on the PATH.
+rem   Godot:  the GODOT variable, else D:\godot\Godot_v4.7.2-stable_win64(_console).exe, else godot on the PATH.
 rem 20-40 minutes with a graphics card; shots already made are kept, so a run that was stopped
 rem carries on. Work files go to ..\trailer_work beside the project.
 setlocal
@@ -58,7 +58,9 @@ rem ---------- Pillow ----------
 )
 
 rem ---------- Godot ----------
-if "%GODOT%"=="" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64_console.exe"
+if "%GODOT%"=="" if exist "D:\godot\Godot_v4.7.2-stable_win64_console.exe" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64_console.exe"
+if "%GODOT%"=="" if exist "D:\godot\Godot_v4.7.2-stable_win64.exe" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe"
+if "%GODOT%"=="" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe"
 if exist "%GODOT%" goto :godot_ok
 where godot >nul 2>nul && set "GODOT=godot" && goto :godot_ok
 echo Godot not found at "%GODOT%": set GODOT to your Godot 4.7 *_console.exe, e.g.

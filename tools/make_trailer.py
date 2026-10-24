@@ -25,9 +25,15 @@ ORDER = ["gorilla", "forge", "duel", "elephant", "cyclops", "bear", "chicken"]
 
 
 def godot():
-    g = os.environ.get("GODOT")
-    if g:
-        return g
+    """The Godot to run: GODOT, else the usual D:\\godot place, else godot on the PATH. The
+    *_console.exe beside a window build is taken if it is there (it prints to the pipe)."""
+    cands = [os.environ.get("GODOT", ""),
+             r"D:\godot\Godot_v4.7.2-stable_win64_console.exe", r"D:\godot\Godot_v4.7.2-stable_win64.exe",
+             r"C:\godot\Godot_v4.7.2-stable_win64_console.exe", r"C:\godot\Godot_v4.7.2-stable_win64.exe"]
+    for g in cands:
+        if g and os.path.isfile(g):
+            con = g[:-4] + "_console.exe" if g.lower().endswith(".exe") and not g.lower().endswith("_console.exe") else ""
+            return con if con and os.path.isfile(con) else g
     for name in ("godot", "godot4", "Godot_v4.7.2-stable_win64_console.exe", "Godot_v4.7.2-stable_win64.exe"):
         p = shutil.which(name)
         if p:
@@ -58,11 +64,19 @@ def need(tool):
 
 
 def run(args, env=None, log=None):
-    """Runs Godot or ffmpeg, prints nothing of theirs; returns the lines that start with a tag."""
+    """Runs Godot or ffmpeg, prints nothing of theirs; returns its output lines, with the timing
+    tags the probes also write to TAG_LOG (the window build of Godot prints nothing to a pipe)."""
     e = dict(os.environ)
     e.update(env or {})
+    tags = os.path.join(TMP, "tags.txt")
+    if os.path.exists(tags):
+        os.remove(tags)
+    e["TAG_LOG"] = tags
     p = subprocess.run(args, env=e, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-    lines = [l.strip() for l in p.stdout.splitlines()]
+    lines = [l.strip() for l in (p.stdout or "").splitlines()]
+    if os.path.exists(tags):
+        with open(tags) as f:
+            lines += [l.strip() for l in f if l.strip()]
     if log:
         with open(log, "w") as f:
             f.write("\n".join(lines))

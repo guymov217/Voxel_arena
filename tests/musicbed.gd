@@ -9,8 +9,22 @@ func _ready() -> void:
 		await get_tree().process_frame
 	if Sfx.music:
 		Sfx.music.set_state(OS.get_environment("MUSIC_STATE") if OS.get_environment("MUSIC_STATE") != "" else "boss")
-	print("REC_START ", Engine.get_frames_drawn())
+	_tag("REC_START %d" % Engine.get_frames_drawn())
 	for i in int(seconds * 30.0):
 		await get_tree().process_frame
-	print("REC_END ", Engine.get_frames_drawn())
+	_tag("REC_END %d" % Engine.get_frames_drawn())
 	get_tree().quit()
+
+## Each timing tag goes to stdout and, when TAG_LOG names a file, there too: the window build of
+## Godot on Windows (not the *_console.exe) prints nothing to a pipe, and the trailer kit reads
+## the shots' frames from these lines.
+var _tags := PackedStringArray()
+func _tag(line: String) -> void:
+	print(line)
+	var path := OS.get_environment("TAG_LOG")
+	if path == "":
+		return
+	_tags.append(line)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_string("\n".join(_tags) + "\n")

@@ -57,7 +57,7 @@ func _ready() -> void:
 	rec0 = Engine.get_frames_drawn()
 	from = int(OS.get_environment("CLIP_FROM")) if OS.get_environment("CLIP_FROM") != "" else 0
 	get_viewport().disable_3d = OS.get_environment("CLIP_DRY") == "1" or from > 0
-	print("REC_START ", rec0)
+	_tag("REC_START %d" % rec0)
 	started = true
 	var dead := {}
 	var t := 0.0
@@ -70,13 +70,13 @@ func _ready() -> void:
 		for e in m.entities:
 			if is_instance_valid(e.f) and not e.f.alive and not dead.has(e.f):
 				dead[e.f] = true
-				print("DEATH ", _frame(), " ", e.kind)
+				_tag("DEATH %d %s" % [_frame(), str(e.kind)])
 				if after < 0.0:
 					after = t
 		# Someone is down: a few seconds of the aftermath, then stop.
 		if after >= 0.0 and t - after > 4.0:
 			break
-	print("REC_END ", _frame())
+	_tag("REC_END %d" % _frame())
 	get_tree().quit()
 
 ## Frames since the fight began (the movie's frame number, less the frames before REC_START).
@@ -85,7 +85,7 @@ func _frame() -> int:
 
 func _on_hit(h: Dictionary) -> void:
 	if float(h.get("J", 0.0)) >= 20.0:
-		print("HIT ", _frame(), " ", int(h.J))
+		_tag("HIT %d %d" % [_frame(), int(h.J)])
 
 func _process(dt: float) -> void:
 	if not started or m == null or m.me == null or not is_instance_valid(m.me.f):
@@ -165,3 +165,17 @@ func _fits(eye: Vector3, at: Vector3, pts: Array, ht: float, vt: float) -> bool:
 		if (absf(v.dot(right)) + 0.35) / z > ht or (yv + 0.35) / z > vt * 0.6 or (-yv + 0.35) / z > vt:
 			return false
 	return true
+
+## Each timing tag goes to stdout and, when TAG_LOG names a file, there too: the window build of
+## Godot on Windows (not the *_console.exe) prints nothing to a pipe, and the trailer kit reads
+## the shots' frames from these lines.
+var _tags := PackedStringArray()
+func _tag(line: String) -> void:
+	print(line)
+	var path := OS.get_environment("TAG_LOG")
+	if path == "":
+		return
+	_tags.append(line)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_string("\n".join(_tags) + "\n")
