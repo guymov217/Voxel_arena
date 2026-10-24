@@ -131,6 +131,24 @@ long campaign on real hardware before a release date is set.
   design still takes both hands. Test: a dirk made for the off hand goes there with the
   sword staying, a shield there is traded in, a longsword takes both, and in a fight it is
   held in the left hand as a weapon.
+- The weapon that went round by itself (user, the most important: with nothing touched the
+  hands and the weapon turned in circles instead of staying where it was last aimed). Found:
+  the hand's mark was made to wander on purpose: a ringing head went round in circles (sine
+  and cosine on the clock), and a head's ringing never fell below how drunk he was, so wine, the
+  Emperor's drunk decree or any knock to the head had the hammer circling for as long as it
+  lasted; a hurt arm wandered the same way. And the mouse let go, the mark slid back to a guard
+  of its own across the body. Now none of it for a player (a bot dazed still swings wide: the giants needed it): the blade stays where it was aimed (a hurt arm only
+  sags; the head's ringing still staggers and blurs), and the mark stays where the mouse left
+  it. Measured, a hammer held still eight seconds: drunk 4.26 m of travel in circles 0.44 m
+  across before, 0.04 m now; dazed the same. New test: drunk or dazed, the blade's tip stays
+  within 8 cm for four seconds.
+- A long weapon swung too fast (user, video: a long pole with a small head): a light pole
+  counted as easy to handle, so the hands moved it as fast as a sword and turned it as fast,
+  and at the end of two metres of haft that was half again a sword's point: the tip at 30 m/s
+  (a gladius 16). Now past a zweihander's length (1.55 m) the hands carry it slower and turn it
+  slower the longer it is (by (1.55/length)^1.5), and it cannot spin faster than 12 m/s over its
+  length. Measured, a full power stroke: a 2.2 m pole in two hands 31 m/s at the tip, now 16;
+  in one hand 30, now 21; the swords, axes, spear and dagger as before (14 to 17).
 - A thunder pot's crater where it went off (user: pieces often did not fly from where the
   pot hit; the blast's bite should follow the spot and what can be blown away there): every
   part in reach was dented at a point a tenth of a metre from its own middle, so a pot on a

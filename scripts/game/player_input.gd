@@ -255,12 +255,8 @@ func sample(dt: float) -> Dictionary:
 		free_look = free_look.lerp(Vector2.ZERO, minf(1.0, dt * 6.0))
 	var hand_r := lmb or pad_r
 	var hand_l := rmb or pad_l
-	if not hand_r:
-		main.x += (0.1 - main.x) * minf(1.0, dt * 2.5)
-		main.y += (0.15 - main.y) * minf(1.0, dt * 2.5)
-	if not hand_l:
-		off.x += (-0.35 - off.x) * minf(1.0, dt * 2.0)
-		off.y += (0.1 - off.y) * minf(1.0, dt * 2.0)
+	# Let go of the button and the hand stays where it was aimed: it no longer slides back to a
+	# guard of its own (user: the weapon must hold the last place it was aimed at).
 	var want := 1.0 if held("thrust") else 0.0
 	thrust += (want - thrust) * minf(1.0, dt * 30.0)
 	var inp := {

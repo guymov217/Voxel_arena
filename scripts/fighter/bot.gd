@@ -241,10 +241,12 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	if state == "approach" or state == "guard":
 		# On guard the blade moves: it weaves on its line, and near the man it is drawn back to
 		# the shoulder, cocked for the blow, with a half-feint now and then.
+		# (A giant over a small man keeps the still guard his blows are brought down from.)
 		weave += dt * (2.2 + 1.2 * diff)
+		var live_k := 0.0 if big else 1.0
 		var near: float = clampf((reach * 2.2 - dist) / maxf(0.3, reach * 1.2), 0.0, 1.0) if w != null else 0.0
-		var gx: float = 0.15 + 0.12 * sin(weave) + 0.3 * near * (0.6 + 0.4 * sin(weave * 0.37))
-		var gyy: float = gy + 0.1 * sin(weave * 1.31 + 1.0) + 0.25 * near
+		var gx: float = 0.15 + live_k * (0.12 * sin(weave) + 0.3 * near * (0.6 + 0.4 * sin(weave * 0.37)))
+		var gyy: float = gy + live_k * (0.1 * sin(weave * 1.31 + 1.0) + 0.25 * near)
 		_lerp_hand(gx, gyy, dt * (2.0 + diff * 4.0))
 		think -= dt * (5.0 if rage else 1.0)
 		if think > 0.0 and diff > 0.45 and ready:
@@ -322,9 +324,10 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				else:
 					state = "guard"
 					lunge = false
-					# (Armed, the next blow comes sooner; a giant's bare hands keep their pace.)
-					recover_t = (0.25 + rng.randf() * 0.3) if w else (0.35 + rng.randf() * 0.4)
-					think = (1.5 - diff * 0.4) * ((0.35 + 0.7 * rng.randf()) if w else (0.5 + rng.randf())) * float(p.get("think", 1.0))
+					# (A man with a weapon strikes again sooner; a giant keeps his pace.)
+					var brisk: bool = w != null and not big
+					recover_t = (0.25 + rng.randf() * 0.3) if brisk else (0.35 + rng.randf() * 0.4)
+					think = (1.5 - diff * 0.4) * ((0.35 + 0.7 * rng.randf()) if brisk else (0.5 + rng.randf())) * float(p.get("think", 1.0))
 	# Bare-handed: jab when in reach.
 	# Close in: a shove now and then, more when the other man is off balance or tired.
 	if dist < 0.9 * S + 0.4 and c.state == "stand" and state != "attack" and rng.randf() < dt * diff * float(p.get("shove", 1.0)) * (3.0 if rage else 1.0) * (0.25 + (0.9 if float(target.get("stagger")) > 0.4 or float(target.get("stamina")) < 35.0 else 0.0)):

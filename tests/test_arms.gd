@@ -486,3 +486,34 @@ func test_two_hands_hold_a_guard_without_drifting() -> void:
 				near = minf(near, rad_to_deg(PD.quat_of(f.weapons.R).angle_to(f.aim_q.R)))
 		t.check(near < 25.0, "held three seconds at (%.1f, %.1f) the blade is still on the mouse (%.0f deg off)" % [d.x, d.y, near])
 	m.queue_free()
+
+## Nothing touched, the blade stays where it was aimed: a ringing head or wine had the hand going
+## round in circles on its own (user: the weapon turned with the hands in a circle instead of
+## staying where it was last aimed; 4 m of travel in eight seconds, circles 0.4 m across).
+func test_a_dazed_or_drunk_mans_blade_holds_still() -> void:
+	for cond in ["drunk", "concussed"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": "hammer", "off": ""}})
+		var f: Fighter = m.me.f
+		m.me.drive = func(_e): return {"main": {"x": 0.1, "y": 0.15}, "power": false}
+		for i in 240:
+			await get_tree().physics_frame
+			if cond == "drunk":
+				f.mods.drunk = 0.6
+			else:
+				f.concussion = 0.6
+		var w: Weapon = f.weapons.R
+		var lo := Vector3(INF, INF, INF)
+		var hi := -lo
+		for i in 480:
+			await get_tree().physics_frame
+			if cond == "concussed":
+				f.concussion = 0.6
+			var tip: Vector3 = w.global_transform * Vector3(0, w.reach, 0)
+			lo = lo.min(tip)
+			hi = hi.max(tip)
+		var spread := (hi - lo).length()
+		t.check(spread < 0.08, "%s: the blade holds its place (%.2f m across in four seconds)" % [cond, spread])
+		m.queue_free()
+		await get_tree().process_frame

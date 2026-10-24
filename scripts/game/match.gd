@@ -338,6 +338,7 @@ func spawn_fighter(spec: Dictionary):
 		# A player bleeds slower than the bots, time enough to see the wound and answer it.
 		f.mods.bleed = float(f.mods.get("bleed", 1.0)) * PLAYER_BLEED
 		f.spare = _may_spare
+		f.player = true
 	var e := {"id": spec.get("id", next_id), "f": f, "kind": spec.kind, "team": spec.team, "peer": spec.get("peer", -1), "boss": spec.get("boss", false), "spec": spec}
 	next_id = maxi(next_id, e.id) + 1
 	if spec.kind == "bot":

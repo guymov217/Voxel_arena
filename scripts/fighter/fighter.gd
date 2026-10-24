@@ -89,6 +89,7 @@ var holding = null              # {side, target (entity), part, joint, t, extra,
 var grabbed_by: Node = null
 var pinned_arm := ""
 var thrown_t := 0.0
+var player := false              # a man's own fighter, his or a guest's (not a bot's)
 var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
 var v_free := Vector3.ZERO       # his trunk's speed before it did
 var thrown_by: Node = null
@@ -2300,14 +2301,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# the blade's own line (see below): the hand's mark is where it was, not pushed out ahead.
 	var line_on: bool = th_in > 0.5 and w != null and not w.is_shield and not w.design.has("shoots") and down_hp == null and held_item == null and shove_t <= 0.0
 	var target := hand_target_local(side, hp_used, 0.0 if line_on else thrust)
-	# A hurt arm sags and wanders, slowly, more the worse it is (a fast tremble on the mark had
-	# the hand and blade buzzing); a hurt eye throws the aim off too.
+	# A hurt arm sags, more the worse it is; it does not wander. A player's blade stays where he
+	# last aimed it: a hurt arm, a ringing head or wine had the hand going round in circles on
+	# its own, the weapon with it, with nothing touched (user: the most important of all). Their
+	# harm is in the arm's strength and speed, the stagger and the blurred eyes. A bot's ringing
+	# head still has its blows go wide (the giants' were brought down onto a man by it).
 	var arm_hurt := 1.0 - minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)
-	var shake := maxf(0.0, arm_hurt - 0.1) * 0.06 + eye_hurt * 0.04
-	if shake > 0.002:
-		target.x += (sin(time * 1.7 + slot * 3) + 0.4 * sin(time * 2.9)) * shake * S
-		target.y += ((cos(time * 1.3 + side.length()) + 0.4 * sin(time * 2.3)) * shake - maxf(0.0, arm_hurt - 0.1) * 0.08) * S
-	if concussion > 0.1:
+	target.y -= maxf(0.0, arm_hurt - 0.1) * 0.08 * S
+	if concussion > 0.1 and not player:
 		target.x += sin(time * 3.1 + slot) * concussion * 0.25
 		target.y += cos(time * 2.3) * concussion * 0.2
 	target = _clear_body(target, yaw_q, t_pos)
@@ -2348,7 +2349,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var h: float = handling[side]
 		# Winded, the arm is slow as well as weak: the hand gets to its mark at half the pace.
 		var wind := 0.35 + 0.65 * minf(1.0, stamina / 60.0)
-		var vmax := 15.0 * S * (2.0 if jab_t[side] > 0.0 else (3.0 if line_on else (2.2 if thrust > 0.3 else 1.0))) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)) * wind
+		var vmax := 15.0 * S * (long_k(w) if not line_on and thrust <= 0.3 else 1.0) * (2.0 if jab_t[side] > 0.0 else (3.0 if line_on else (2.2 if thrust > 0.3 else 1.0))) * (0.55 + 0.45 * h) * (0.5 + 0.5 * minf(1.0, (af_now if af_now >= 0.0 else arm_func(side)) / 0.85)) * wind
 		var amax := 140.0 * S * (0.4 + 0.6 * h) * (1.3 if power else 1.0) * (4.0 if jab_t[side] > 0.0 else (6.0 if line_on else (3.0 if thrust > 0.3 else 1.0))) * (0.5 + 0.5 * wind)
 		var to_t: Vector3 = target_w - lead
 		var dist := to_t.length()
@@ -2483,7 +2484,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			_keep_blade_front(side, w, yaw_q, dt)
 		if thrust_line[side] != null:
 			_hold_thrust_line(side, w, t_pos, yaw_q, strength, dt)
-		var wmax := swing_cap(side, w)
+		var wmax := swing_cap(side, w) if thrust_line[side] == null else 45.0
 		if w.angular_velocity.length() > wmax:
 			var k := wmax / w.angular_velocity.length()
 			w.angular_velocity *= k
@@ -2970,7 +2971,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		# the line is the wrist's, and does not eat into the sweep (when the stroke turned back
 		# and the edge rolled over to lead it, the sweep stalled while it did).
 		var h: float = handling[side]
-		var wmax := 34.0 * (0.45 + 0.55 * h) * (1.2 if inp.get("power", false) else 1.0)
+		var wmax := 34.0 * (0.45 + 0.55 * h) * long_k(w) * (1.2 if inp.get("power", false) else 1.0)
 		var pa: Vector3 = (prev as Quaternion) * Vector3.UP
 		var ang := pa.angle_to(axis)
 		if ang > wmax * dt and ang > 1e-5:
@@ -3012,11 +3013,24 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 ## a haft (a hammer's head, a lead-weighted club) turns slower, by its moment about the hand,
 ## though it lands with more behind it. A strong man swings a heavy one a little faster.
 const SWING_I_REF := 0.25   # kg·m², a sword's
+## A long weapon is not whipped round as fast as a short one, however light: the hands carry it
+## and turn it slower the longer it is past a zweihander's length, so its end goes no faster than
+## a sword's point (a two-metre pole with a little head on it went round at 26 m/s at the end,
+## the gladius 16: user).
+const LONG_REACH := 1.55   # m: a zweihander's length; longer than that, slower
+func long_k(w) -> float:
+	if w == null or w.is_shield:
+		return 1.0
+	return pow(minf(1.0, LONG_REACH * S / maxf(0.1, float(w.reach))), 1.5)
+
 func swing_cap(side: String, w: Weapon) -> float:
 	var lever := w.global_transform * w.center_of_mass - hand_world(side)
 	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
 	var k := pow(SWING_I_REF * S * S * float(mods.get("strength", 1.0)) / maxf(1e-4, i_wpn), 0.25)
-	return clampf(45.0 * k, 16.0, 45.0)
+	var cap := clampf(45.0 * k, 16.0, 45.0)
+	if float(w.reach) > LONG_REACH * S:
+		cap = minf(cap, 12.0 * S * sqrt(float(mods.get("strength", 1.0))) / float(w.reach))
+	return cap
 
 func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float, dt: float) -> void:
 	var fore: VoxelPart = arm[side].fore
