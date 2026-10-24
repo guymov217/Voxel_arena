@@ -105,6 +105,32 @@ long campaign on real hardware before a release date is set.
   gorilla's 17, dragon's 11; every limb of every beast at most 12 (elephant and mammoth
   legs, through their hide). Test: the giant's five parts in at most fourteen blows each,
   and the lion's, gorilla's and elephant's leg and head in at most twenty-four.
+- Two hands on a long weapon held at a guard (user: the most important): held still, the
+  longsword's blade wandered off the mouse, 30 degrees off a high guard in two seconds, 41
+  out to the right, and settled 34 off a low-right guard in some runs (which depended on
+  what ran before: the physics is chaotic there). Measured: the mouse's line stood still,
+  but the edge the aim asked for was being settled, over a second or so, from where the
+  turns had carried it to the one the body's frame gives (a high guard: edge forward, up
+  from edge right). That is a quarter turn of the haft about its own length, and two arms
+  on one grip cannot roll it while holding still, so the blade tilted off its line instead.
+  With both hands on the haft the edge now stays where the turns and the wheel left it
+  (one hand settles as before). Held three seconds: high guard 18 deg off (was 30), out to
+  the right 4 (was 41), low right 2, out to the left 4. Tried and dropped: settling to the
+  blade's real edge, capping the aim's edge lead, and driving the forearm by the blade's line
+  only (each left one guard 30 to 44 off or broke the thrust's line). New test: four guards
+  held three seconds, each within 25 degrees. The fast-stroke test's one-second mark is 35
+  now (the blade still sways on its mark then; it read 31 to 34 by test order).
+- A forged weapon for the off hand (user: check it can be built in the campaign and the
+  forge): it could, only by the back door. In the campaign the smith's "from nothing" put a
+  built weapon in the first free hand, so with the starting stick in the main hand it always
+  went there; in training the forge kept only the main hand's, and an off-hand one had to be
+  saved to My designs and picked from there. Now the smith's off-hand card has "Forge a
+  weapon for the off hand" (empty) and "Forge a new one for this hand" (the one there is
+  traded in for half its worth, as at the rack), and training has "Forge an off-hand
+  weapon" beside the main one and on My designs, starting from a dagger. A two-handed
+  design still takes both hands. Test: a dirk made for the off hand goes there with the
+  sword staying, a shield there is traded in, a longsword takes both, and in a fight it is
+  held in the left hand as a weapon.
 - Nothing comes off by a count (user: a limb or a part is severed only when none of its
   voxels join it to the rest, and then it falls): that was already the rule for men and
   giants (break_loose: a lump no longer joined face to face to where the part is held on
@@ -350,13 +376,6 @@ long campaign on real hardware before a release date is set.
 
 ## Known rough edges
 
-- Two hands on a longsword, held still at a mark: at the far right (1.8, 0.4) and straight up
-  the blade drifts off the mouse while held, 7 deg at half a second to 41 at two; and at the
-  low right (1.2, -1.2) it settles 14 deg off most runs and 30 to 34 in some (which depends
-  on what ran before in the same process: the physics is chaotic there). Both are in the
-  code before this round's elbow work (measured on 7868c59: the same numbers). The arms test
-  reads the blade's nearest approach over the last sixth of its second now, not one frame,
-  and passes alone; in a full run it fails the low-right mark now and then. Open.
 
 - Two-handed stabs straight up or down travel little (the arms are already at full reach in a
   high guard): 0.16–0.28 m along the line, against about 0.5 m for a level stab.

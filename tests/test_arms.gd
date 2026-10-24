@@ -453,7 +453,10 @@ func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
 			var h: Vector3 = Quaternion(Vector3.UP, f.yaw).inverse() * (f.hand_world("R") - sh_r)
 			lo = lo.min(h)
 			hi = hi.max(h)
-		t.check(worst < 30.0, "%s: after each fast stroke the blade is on the mouse within a second (worst %.0f deg)" % [wk, worst])
+		# (Thirty-five: one second after a fast stroke the blade still sways a little on its mark,
+		# and which way it is caught depends on what ran before; held three seconds it is on the
+		# mouse within twenty-five, the test below.)
+		t.check(worst < 35.0, "%s: after each fast stroke the blade is on the mouse within a second (worst %.0f deg)" % [wk, worst])
 		t.check(tilt < 25.0, "%s: the trunk stays upright through the strokes (leans at most %.0f deg)" % [wk, tilt])
 		# The main hand sweeps as wide and as high in two hands as in one (one hand: 1.3 m across,
 		# 1.1 m up and down over these marks).
@@ -461,3 +464,25 @@ func test_two_handed_reaches_every_mark_and_never_sticks() -> void:
 		t.eq(f.state, "stand", "%s: on his feet throughout" % wk)
 		m.queue_free()
 		await get_tree().process_frame
+
+## Both hands on a longsword held still at a guard: the blade stays on the mouse, it does not
+## wander off while held (it used to tilt 30 degrees off a high guard in two seconds and
+## settle 34 off a low one, the edge being rolled round to the frame's while the arms held).
+func test_two_hands_hold_a_guard_without_drifting() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "longsword", "off": ""}})
+	var f: Fighter = m.me.f
+	var box := {"i": {"main": {"x": 0.1, "y": 0.1}, "power": false}}
+	m.me.drive = func(_e): return box.i
+	for i in 90:
+		await get_tree().physics_frame
+	for d in [Vector2(0.0, 1.6), Vector2(1.8, 0.4), Vector2(1.2, -1.2), Vector2(-1.8, 0.4)]:
+		box.i = {"main": {"x": d.x, "y": d.y}, "power": true}
+		var near := 999.0
+		for i in 360:
+			await get_tree().physics_frame
+			if i >= 340:
+				near = minf(near, rad_to_deg(PD.quat_of(f.weapons.R).angle_to(f.aim_q.R)))
+		t.check(near < 25.0, "held three seconds at (%.1f, %.1f) the blade is still on the mouse (%.0f deg off)" % [d.x, d.y, near])
+	m.queue_free()

@@ -2962,7 +2962,13 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		if te.length_squared() > 1e-6:
 			te = te.normalized().rotated(axis, tw - float(aim_tw[side]))
 			var off := atan2(te.cross(ed).dot(axis), te.dot(ed))
-			ed = te.rotated(axis, off * minf(1.0, dt * 1.5))
+			# Not with both hands on the haft: there the edge stays where the turns and the
+			# wheel left it. Settling it to the frame's asked the two arms to roll the haft up
+			# to a quarter turn while holding still (a high guard: edge forward, up from edge
+			# right), which two arms on one grip cannot do, so the blade tilted instead, 30
+			# degrees off the mouse in two seconds at a high guard and 41 out to the side,
+			# and a low guard stuck 34 off (user: holding a long weapon in two hands).
+			ed = te.rotated(axis, off * minf(1.0, dt * (0.0 if two_handed else 1.5)))
 	aim_tw[side] = tw
 	var z := ed.cross(axis).normalized()
 	var e := axis.cross(z)

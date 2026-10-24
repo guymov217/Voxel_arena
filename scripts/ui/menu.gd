@@ -754,7 +754,7 @@ func _training(v: VBoxContainer) -> void:
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
 	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
-	_row(left, [UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")), UIStyle.button("Forge a weapon (free in training)", _training_forge)])
+	_row(left, [UIStyle.button("Weapons from My designs", func(): show_screen("training_designs")), UIStyle.button("Forge a weapon (free in training)", _training_forge), UIStyle.button("Forge an off-hand weapon", func(): _training_forge("L"))])
 	var t_arm := Armory.sanitize(training.get("armor", []))
 	var t_kg := 0.0
 	for id in t_arm:
@@ -942,6 +942,7 @@ func _training_designs(v: VBoxContainer) -> void:
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
 	head.add_child(UIStyle.button("Forge a new one", _training_forge))
+	head.add_child(UIStyle.button("Forge one for the off hand", func(): _training_forge("L")))
 	head.add_child(UIStyle.button("Back", func(): show_screen("training")))
 	v.add_child(head)
 	v.add_child(UIStyle.label("Pick a weapon you saved in the forge for either hand", 15, UIStyle.MUTED))
@@ -1006,17 +1007,24 @@ func _training_designs(v: VBoxContainer) -> void:
 		Thumbs.weapon(tex, dd, "tdesign:%d" % dd.hash())
 
 ## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
-func _training_forge() -> void:
+## `hand`: "L" builds the off hand's (kept as "your forged off-hand weapon"; a two-handed one
+## goes in the main hand, taking both).
+func _training_forge(hand := "R") -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
-	var base: Dictionary = Save.get_value("training_weapon", {})
+	var key := "training_off_weapon" if hand == "L" else "training_weapon"
+	var base: Dictionary = Save.get_value(key, {})
 	if base.is_empty():
-		base = Data.preset("gladius").duplicate(true)
+		base = Data.preset("dagger" if hand == "L" else "gladius").duplicate(true)
 	f.free_build = true
 	f.open(base, 999999, func(design, _cost):
 		if design != null:
-			Save.set_value("training_weapon", design)
-			training.my_main = "built"
+			if hand == "L" and not design.get("twoHanded", false):
+				Save.set_value("training_off_weapon", design)
+				training.my_off = "built"
+			else:
+				Save.set_value("training_weapon", design)
+				training.my_main = "built"
 		f.queue_free()
 		show_screen("training"))
 	visible = true
@@ -1089,7 +1097,11 @@ func _yard(v: VBoxContainer) -> void:
 		mine.add_child(card)
 		var col: VBoxContainer = card.get_meta("col")
 		if d == null:
-			col.add_child(UIStyle.label("Empty: buy a shield or a dagger from the rack", 14, UIStyle.MUTED))
+			col.add_child(UIStyle.label("Empty: buy a shield or a dagger from the rack, or have one made", 14, UIStyle.MUTED))
+			var mk := UIStyle.button("Forge a weapon for the off hand", func(): _scratch_forge("L"))
+			mk.disabled = side == "L" and bool(a.main.get("twoHanded", false)) and not Arms.is_stick(a.main)
+			mk.tooltip_text = "Your main weapon takes both hands" if mk.disabled else "Built block by block at the anvil, paid for at what it is worth"
+			col.add_child(mk)
 			continue
 		var cond := int(Arms.condition(a, side) * 100.0)
 		var coat: String = Arms.COATING_NAMES.get(d.get("imbue", ""), "")
@@ -1112,6 +1124,10 @@ func _yard(v: VBoxContainer) -> void:
 				b.tooltip_text = String(Arms.UPGRADES[id].desc) + (" Purse after: %d" % (coins() - price) if price <= coins() else " %d more needed" % (price - coins()))
 				acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
+		if side == "L":
+			var nw := UIStyle.button("Forge a new one for this hand", func(): _scratch_forge("L"))
+			nw.tooltip_text = "A new weapon from nothing for the off hand: the one there now is traded in for half its worth"
+			acts.add_child(nw)
 	body.add_child(VSeparator.new())
 	var rack := VBoxContainer.new()
 	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2539,19 +2555,20 @@ func scratch_from_forge(f: Node) -> void:
 
 ## At the smith, a weapon of any kind from a blank anvil: built block by block and, taken,
 ## made and paid for at what it is worth; it goes in a free hand like one bought.
-func _scratch_forge() -> void:
+## `hand`: "L" makes it for the off hand (a dagger, a hatchet, a second sword).
+func _scratch_forge(hand := "") -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
 	f.scratch = true
-	var blank := {"name": "New weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
+	var blank := {"name": "New weapon" if hand != "L" else "Off-hand weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
 	f.open(blank, coins(), func(design, _cost):
 		f.queue_free()
 		show_screen("yard")
 		if design == null:
 			return
-		var r := Arms.buy_design(arms(), design)
+		var r := Arms.buy_design(arms(), design, "", -1, hand)
 		if r.has("choose"):
-			_sell_choice(str(design.get("name", "it")), func(sd): return Arms.buy_design(arms(), design, sd), r.choose)
+			_sell_choice(str(design.get("name", "it")), func(sd): return Arms.buy_design(arms(), design, sd, -1, hand), r.choose)
 		else:
 			_pay(r))
 	f._show_mode("voxels")

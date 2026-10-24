@@ -160,13 +160,14 @@ static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
 	return _acquire(a, Data.preset(key).duplicate(true), base_price(b), b.slot == "off", sell)
 
 ## Has a design from the player's own gallery made at the smith, at what it is worth.
-static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1) -> Dictionary:
+## `hand`: "L" to have it made for the off hand ("" puts it in a free hand as one bought).
+static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1, hand := "") -> Dictionary:
 	if not (d.get("voxels") is Array) or d.voxels.is_empty() or d.voxels.size() > ForgeLib.MAX_VOXELS or not ForgeLib.compute_stats(d).hasGrip:
 		return {"error": "The smith cannot make that"}
 	var nd := d.duplicate(true)
 	nd.erase("imbue")
 	nd.erase("oddity")
-	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield", sell)
+	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or (hand == "L" and not nd.get("twoHanded", false)), sell)
 
 # ---------- Vulcanus's oddities: a few one-off weapons each bout ----------
 

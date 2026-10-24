@@ -694,3 +694,30 @@ func test_the_starting_stick_takes_a_blade() -> void:
 	t.check(f._price_now()[0] > 3, "the honing is in the price (%d)" % f._price_now()[0])
 	t.check(f._price_now()[0] <= 20, "within the starting purse")
 	f.queue_free()
+
+## A weapon built at the anvil can be made for the off hand, in the campaign and in training:
+## with a sword in the main hand it goes in the off hand, the sword stays; the old off-hand
+## piece is traded in; a two-handed one still takes both; and in a fight the man holds it in
+## his left hand as a weapon, not a shield.
+func test_a_forged_weapon_can_go_in_the_off_hand() -> void:
+	var dag: Dictionary = Data.preset("dagger").duplicate(true)
+	dag.name = "Forged dirk"
+	var a := Arms.sanitize({"main": Data.preset("gladius").duplicate(true), "off": null})
+	var r := Arms.buy_design(a, dag, "", -1, "L")
+	t.check(r.get("side") == "L", "made for the off hand it goes in the off hand (%s)" % str(r.get("side")))
+	t.check(String(r.arms.main.get("name", "")) == String(Data.preset("gladius").name), "and the sword stays in the main hand")
+	var st := Arms.sanitize({"main": Data.preset("gladius").duplicate(true), "off": Data.preset("roundShield").duplicate(true)})
+	var r2 := Arms.buy_design(st, dag, "", -1, "L")
+	t.check(r2.get("side") == "L" and r2.get("sold", []) == ["L"] and int(r2.get("trade_in", 0)) > 0, "the shield there is traded in for it (sold %s, trade in %d)" % [str(r2.get("sold")), int(r2.get("trade_in", 0))])
+	var two: Dictionary = Data.preset("longsword").duplicate(true)
+	var r3 := Arms.buy_design(a, two, "", -1, "L")
+	t.check(r3.get("side") == "R" and r3.arms.off == null, "a two-handed one still takes both hands (%s)" % str(r3.get("side")))
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": r.arms.off}})
+	for i in 30:
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	var lw = f.weapons.get("L")
+	t.check(lw != null and not lw.is_shield and String(lw.design.get("name", "")) == "Forged dirk", "in the fight he holds it in his off hand as a weapon (%s)" % (String(lw.design.get("name", "")) if lw else "nothing"))
+	m.queue_free()
