@@ -68,6 +68,67 @@ func test_knocks_in_one_place_chip_it_then_break_it_there() -> void:
 	t.check(w.alive_count() < n0 and w.vox.size() - w.alive_count() > n0 * 0.1, "the broken-off part is gone (%d of %d left)" % [w.alive_count(), n0])
 	m.queue_free()
 
+## A weapon broken in two: the half that came off is not crumbs but a weapon lying on the sand,
+## held at its broken end (its voxel nearest the hand it broke from), picked up and swung like
+## any other; a tip snapped off is only a chip.
+func test_a_big_broken_piece_is_a_weapon_to_pick_up() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	var w: Weapon = f.weapons.R
+	var lo := INF
+	var hi := -INF
+	for v in w.vox:
+		if v[4] != "grip":
+			lo = minf(lo, float(v[1]))
+			hi = maxf(hi, float(v[1]))
+	var cut := int(round((lo + hi) * 0.5))
+	var row := []
+	var above := 0
+	for i in w.vox.size():
+		if int(w.vox[i][1]) == cut:
+			row.append(i)
+		elif int(w.vox[i][1]) > cut:
+			above += 1
+	var loose_before: int = m.combat.loose_weapons.size()
+	w.spend(row)
+	t.check(m.combat.loose_weapons.size() == loose_before + 1, "the half that broke off lies there as a weapon (%d loose)" % m.combat.loose_weapons.size())
+	var piece: Weapon = m.combat.loose_weapons.back() if m.combat.loose_weapons.size() > loose_before else null
+	if piece == null:
+		m.queue_free()
+		return
+	t.check(piece.vox.size() == above and String(piece.design.name).begins_with("Broken"), "all of it, %d voxels, a broken %s" % [piece.vox.size(), w.design.get("name", "")])
+	var g := piece.grip_main / piece.vs
+	t.check(absf(g.y - float(cut + 1)) < 1.01, "held at its broken end (grip at row %.0f, the break at %d)" % [g.y, cut])
+	t.check(piece.reach > 0.15, "it has a reach of its own (%.2f m)" % piece.reach)
+	f.release("R")
+	for i in 30:
+		await get_tree().physics_frame
+	t.check(f.pick_up("R", piece), "it can be picked up")
+	var box := {"i": {"main": {"x": 1.5, "y": 0.4}, "power": true}}
+	m.me.drive = func(_e): return box.i
+	var moved := 0.0
+	var prev := piece.global_position
+	for i in 120:
+		if i == 60:
+			box.i = {"main": {"x": -1.5, "y": 0.4}, "power": true}
+		await get_tree().physics_frame
+		moved += piece.global_position.distance_to(prev)
+		prev = piece.global_position
+	t.check(f.weapons.R == piece and piece.grip_world().distance_to(f.hand_world("R")) < 0.12, "in his hand, by its new grip (%.2f m off)" % piece.grip_world().distance_to(f.hand_world("R")))
+	t.check(moved > 1.0, "and swung with it (%.1f m)" % moved)
+	# The last voxels of a tip: crumbs, not a weapon.
+	var top := []
+	var ymax := -INF
+	for i in piece.vox.size():
+		ymax = maxf(ymax, float(piece.vox[i][1]))
+	for i in piece.vox.size():
+		if piece.alive[i] and float(piece.vox[i][1]) == ymax - 1.0:
+			top.append(i)
+	var n_loose: int = m.combat.loose_weapons.size()
+	piece.spend(top)
+	t.check(m.combat.loose_weapons.size() == n_loose, "a tip snapped off is only a chip")
+	m.queue_free()
+
 func test_waves_come_in_at_the_gates() -> void:
 	var m := _match()
 	var me: Vector3 = m.me.f.torso.global_position

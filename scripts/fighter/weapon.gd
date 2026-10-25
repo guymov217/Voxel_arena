@@ -586,13 +586,20 @@ func knock(index: int, score: float) -> Dictionary:
 	Chunk.spawn(self, voxels.duplicate(), Vector3.UP)   # the chips fly off
 	var pieces := split_plan()
 	var fell := []
+	var whole := []
 	for pc in pieces:
+		var keep := _piece_weapon(pc)
 		var pv := remove_voxels(pc)
 		idx.append_array(pc)
 		voxels.append_array(pv)
-		fell.append(pv)
+		if keep.is_empty():
+			fell.append(pv)
+		else:
+			whole.append(keep)
 	for pv in fell:
 		Chunk.spawn(self, pv, Vector3.DOWN)
+	for d in whole:
+		_drop_piece(d)
 	return {"indices": idx, "voxels": voxels, "broke": not pieces.is_empty()}
 
 ## Voxels `idx` are spent (explosive powder gone off): they are gone, and what they held up falls
@@ -603,8 +610,64 @@ func spend(idx: Array) -> Array:
 	var out := idx.duplicate()
 	for pc in split_plan():
 		out.append_array(pc)
-		Chunk.spawn(self, remove_voxels(pc), Vector3.DOWN)
+		var keep := _piece_weapon(pc)
+		var pv := remove_voxels(pc)
+		if keep.is_empty():
+			Chunk.spawn(self, pv, Vector3.DOWN)
+		else:
+			_drop_piece(keep)
 	return out
+
+## A piece broken off big enough to fight with (half a blade snapped off its hilt, a hammer's
+## head with the end of its haft): not debris but a weapon of its own, falling where it broke
+## off and lying on the sand to be picked up and swung. It is held at its voxel nearest the
+## hand it was broken from (its broken end, where a man would grab it), in one hand.
+const PIECE_MIN := 8        # voxels, at the least
+const PIECE_LONG := 4.0     # and at least this long (voxels), end to end
+func _piece_weapon(pc: Array) -> Dictionary:
+	if pc.size() < PIECE_MIN or design.get("chain") != null or is_shield or not is_inside_tree():
+		return {}
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	var gl := grip_main / vs
+	var near := Vector3.ZERO
+	var best := INF
+	var vs_out := []
+	for i in pc:
+		var v: Array = vox[i]
+		var q := Vector3(v[0], v[1], v[2])
+		lo = lo.min(q)
+		hi = hi.max(q)
+		if q.distance_to(gl) < best:
+			best = q.distance_to(gl)
+			near = q
+		vs_out.append(v.duplicate())
+	if (hi - lo).length() < PIECE_LONG:
+		return {}
+	var d := {}
+	for k in ["kind", "gem", "sharpness", "serrated", "massScale"]:
+		if design.has(k):
+			d[k] = design[k]
+	d["name"] = "Broken " + str(design.get("name", "weapon")).trim_prefix("Broken ")
+	d["voxels"] = vs_out
+	d["grips"] = {"main": [int(near.x), int(near.y), int(near.z)], "off": [int(near.x), int(near.y) - 2, int(near.z)]}
+	d["broken"] = true
+	var c := (lo + hi) * 0.5 * vs
+	return {"design": d, "xf": global_transform, "vel": velocity_at(global_transform * c), "spin": angular_velocity}
+
+func _drop_piece(info: Dictionary) -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var w := Weapon.new()
+	w.setup(info.design, wscale)
+	parent.add_child(w)
+	w.global_transform = info.xf
+	w.linear_velocity = info.vel
+	w.angular_velocity = info.spin
+	w.snap_drawing()
+	if Combat.current and not Combat.current.loose_weapons.has(w):
+		Combat.current.loose_weapons.append(w)
 
 ## The 6-connected pieces of what is left.
 func components() -> Array:

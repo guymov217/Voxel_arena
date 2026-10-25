@@ -1085,7 +1085,11 @@ func _sync_loose() -> void:
 		if owner_e and w.last_side != "":
 			Net.send_all("wloose", {"w": w.net_id, "id": owner_e.id, "side": w.last_side})
 		else:
-			Net.send_all("wspawn", {"w": w.net_id, "key": Combat._preset_key(w.design), "p": [w.global_position.x, w.global_position.y, w.global_position.z]})
+			var key := Combat._preset_key(w.design)
+			var msg := {"w": w.net_id, "key": key, "p": [w.global_position.x, w.global_position.y, w.global_position.z]}
+			if key == "" and w.design.get("broken", false):
+				msg["d"] = {"name": w.design.get("name", ""), "voxels": w.design.get("voxels", []), "grips": w.design.get("grips", {}), "kind": w.design.get("kind", "weapon")}
+			Net.send_all("wspawn", msg)
 	for id in loose_ids.keys():
 		var w: Weapon = loose_ids[id]
 		if not is_instance_valid(w):
@@ -1215,7 +1219,10 @@ func guest_message(type: String, data) -> void:
 				loose_ids[int(data.w)] = w
 		"wspawn":
 			if data is Dictionary and data.get("p") is Array and not loose_ids.has(int(data.get("w", -1))):
-				var w := spawn_loose_weapon(Data.preset(str(data.get("key", ""))), Vector3(data.p[0], data.p[1], data.p[2]))
+				var dz: Dictionary = Data.preset(str(data.get("key", "")))
+				if dz.is_empty() and data.get("d") is Dictionary:
+					dz = _broken_piece_design(data.d)   # a piece broken off a weapon
+				var w := spawn_loose_weapon(dz, Vector3(data.p[0], data.p[1], data.p[2]))
 				if w:
 					w.freeze = true
 					w.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
@@ -2602,6 +2609,25 @@ func guest_vox(m: Dictionary) -> void:
 	var e = entity_by_id(int(m.id))
 	if e and int(m.part) >= 0 and int(m.part) < e.f.parts.size():
 		e.f.parts[int(m.part)].remove_voxels(m.idx, false)
+
+## A broken-off piece the host describes, taken only as voxels of known stuff and a grip on one
+## of them (nothing else of it is trusted).
+static func _broken_piece_design(d: Dictionary) -> Dictionary:
+	var vx := []
+	if not (d.get("voxels") is Array):
+		return {}
+	for v in d.voxels:
+		if vx.size() >= 2000:
+			break
+		if v is Array and v.size() >= 5 and (v[3] is String) and (v[4] is String) and Data.materials.has(v[3]) and String(v[4]).length() <= 12:
+			vx.append([clampi(int(v[0]), -64, 64), clampi(int(v[1]), -64, 64), clampi(int(v[2]), -64, 64), String(v[3]), String(v[4])])
+	if vx.is_empty():
+		return {}
+	var out := {"name": String(d.get("name", "Broken weapon")).left(40), "voxels": vx, "broken": true, "kind": "weapon"}
+	var g = d.get("grips")
+	if g is Dictionary and g.get("main") is Array and g.main.size() == 3 and g.get("off") is Array and g.off.size() == 3:
+		out["grips"] = {"main": [int(g.main[0]), int(g.main[1]), int(g.main[2])], "off": [int(g.off[0]), int(g.off[1]), int(g.off[2])]}
+	return out
 
 func guest_wvox(m: Dictionary) -> void:
 	var e = entity_by_id(int(m.id))

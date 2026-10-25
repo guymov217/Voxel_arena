@@ -184,6 +184,7 @@ const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to
 var twist_two := 0.0
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
 var two_main = null    # and the main hand (for the tests)
+var two_gap = null     # the off hand's place from the main hand, along the blade's line
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
@@ -2094,6 +2095,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if power:
 		stamina_use += 3.0 * dt
 	two_front = null
+	two_gap = null
 	for side in ["R", "L"]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
 		# The breath goes with the work of the swing while the button is down: how far the hand
@@ -2572,6 +2574,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 						target_w += pull_r
 			two_front = front
 			two_main = target_w
+			two_gap = front - target_w if tl2 == null else null   # (a thrust drives the front hand along its line)
 		var fore_q := w_aim * grip_q(w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
@@ -2586,6 +2589,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot), t_rot)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
+		if side == "R" and two_gap != null:
+			# The off hand's place is taken off where the main arm is really driven (its elbow and
+			# forearm as the blade's line has them), not off the mouse's mark: the arm cannot always
+			# put its hand on the mark, and the off hand sent to the mark's end of the haft pulled
+			# it the other way. The two hands fought over the haft: a longsword in both stopped at
+			# 30 degrees of the 86 asked out to the side, its side stroke little more than half as
+			# long as in one hand.
+			two_front = hand_goal + (two_gap as Vector3)
 		var m_load := (fore.nominal_mass + w.mass) * lu * lu
 		var k_up := 1.0 + m_load / PD.inertia_of(upper)
 		var up_ff: Vector3 = PD.clamp_len((e_was as Vector3).cross(elbow_dir) / dt, 25.0) if e_was != null else Vector3.ZERO
