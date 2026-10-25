@@ -631,7 +631,7 @@ func resync() -> void:
 	for i in fx.size():
 		if jaw_slot.has(i):
 			continue
-		(main_on if alive[i] and not veiled(i) else main_off).append([i, local_of(i)])
+		(main_on if alive[i] and not veiled(i) else main_off).append([i, drawn_xf(i)])
 		cols.append([i, colors[i]])
 	_write_shown(mm, main_on, true)
 	_write_shown(mm, main_off, false)
@@ -972,7 +972,7 @@ func set_shown(indices: Array, on: bool) -> void:
 		if jaw_slot.has(i):
 			jaw.append([jaw_slot[i], local_of(i) - jaw_pivot.position])
 		else:
-			main.append([i, local_of(i)])
+			main.append([i, drawn_xf(i)])
 	_write_shown(mm, main, on)
 	_mark_skin()
 	if jaw_mm:
@@ -994,7 +994,28 @@ func set_shown(indices: Array, on: bool) -> void:
 static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
 	var k := 1.0 if on else 0.0
 	for r in rows:
-		m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
+		if r[1] is Transform3D:
+			m.set_instance_transform(r[0], r[1] if on else Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		else:
+			m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
+
+## How voxel i is drawn in a look that reshapes the man (Physique, "strong"): moved and sized
+## within the part. Drawing only: local_of, every blow, cut and collider keep the cube.
+var shape_xf: Array = []
+func drawn_xf(i: int) -> Transform3D:
+	return shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+
+## Draws the part in shape `xf` (one Transform3D per voxel), or as plain cubes when empty; only
+## the voxels in `only` drawn again when it is given.
+func set_shape(xf: Array, only: Array = []) -> void:
+	shape_xf = xf
+	if mm == null:
+		return
+	var on := []
+	for i in (only if not only.is_empty() else range(fx.size())):
+		if alive[i] and not veiled(i) and not jaw_slot.has(i):
+			on.append([i, drawn_xf(i)])
+	_write_shown(mm, on, true)
 
 ## A biting head's lower jaw on a hinge at the back of the mouth (`jw` gives where, as fractions
 ## of the head's depth and height): its voxels are drawn in their own multimesh under a pivot,

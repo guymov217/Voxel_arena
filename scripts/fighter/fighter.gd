@@ -44,7 +44,7 @@ static func is_bow(w) -> bool:
 var behind_t := {"R": 0.0, "L": 0.0}
 var wedge_t := {"R": {}, "L": {}}   # a foe's part the blade has been pressed into, and for how long
 var unwedge := []                   # [weapon, part, until]: let through a moment to come free
-const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
+const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5, 0xb98a5e, 0x4f3220, 0xd9a07c]
 
 signal died(fighter: Fighter, cause: String)
 signal hit_taken(fighter: Fighter, info: Dictionary)
@@ -57,6 +57,7 @@ var team := 0
 var team_color := Color(0.627, 0.125, 0.125)
 var skin := Color(0.878, 0.706, 0.549)
 var is_bot := false
+var face_ids: Array = []          # the eyes and the mouth he chose (Physique.FACES), drawing only
 var kind := "fighter"
 var mods := {"bodyScale": 1.0, "strength": 1.0, "speed": 1.0, "toughness": 1.0, "bleed": 1.0, "accel": 1.0, "unstoppable": false, "drunk": 0.0}
 var S := 1.0
@@ -299,6 +300,9 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	for p in parts:
 		for id in loadout.get("armor", []):
 			_add_armor(p, id)
+	for id in loadout.get("armor", []):
+		if String(id).begins_with("eyes_") or String(id).begins_with("mouth_"):
+			face_ids.append(String(id))   # (a face is painted, not worn: Physique)
 	if opts.get("body") is Dictionary:
 		apply_body(opts.body)
 	if String(mods.get("look", "")) != "":
@@ -719,7 +723,7 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	mmesh.instance_count = cells.size()
 	for i in cells.size():
 		var c: Array = cells[i]
-		mmesh.set_instance_transform(i, Transform3D(Basis(), Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S + Physique.inset(p, c)))
+		mmesh.set_instance_transform(i, Physique.plate_xf(p, c, Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S, id))
 		mmesh.set_instance_color(i, looks[i][0])
 		mmesh.set_instance_custom_data(i, VoxelPart.kind_data(int(looks[i][1])))
 	var inst := MultiMeshInstance3D.new()
@@ -762,6 +766,10 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 	var at: Vector3 = (ad.pts[ci] as Vector3) + Physique.inset(part, ad.cells[ci])
 	if ad.node and is_instance_valid(ad.node):
 		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+	if part == head and not _cosmetic(String(ad.id)):
+		place_armor()   # (the hair the plate covered bursts out of the hole)
+		_hair_pop = 1.0
+		_hair_lagv += dir.normalized() * 0.6 if dir.length_squared() > 1e-6 else Vector3.ZERO
 	if part.freeze or not part.is_inside_tree():
 		return
 	# The plate as voxels of the body's own size, two to a side, in its colour and stuff.
@@ -821,7 +829,142 @@ func place_armor() -> void:
 			var m: MultiMesh = ad.node.multimesh
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
-					m.set_instance_transform(ci, Transform3D(Basis(), (ad.pts[ci] as Vector3) + Physique.inset(p, ad.cells[ci])))
+					m.set_instance_transform(ci, Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)))
+		_tuck_hair(p)
+
+## Hair and a beard under a helmet are drawn tucked inside it: a lock with a plate of the helmet
+## on it or next to it is not drawn (what hangs out below, a ponytail, braids, stays). Drawing
+## only; and as the helmet's plates are knocked off, what they covered shows again.
+static func _cosmetic(id: String) -> bool:
+	return id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id.begins_with("mon_") or id == "cape"
+
+func _tuck_hair(p: VoxelPart) -> void:
+	var covered := {}
+	var holes := {}    # where a plate of the helmet was knocked off: the hair bursts out there
+	var capped := {}   # under a cap or a hat: only the locks in its cells and just below them
+	for ad in p.get_meta("armor", []):
+		var hid := String(ad.id)
+		if _cosmetic(hid):
+			continue
+		for ci in ad.cells.size():
+			var c := Vector3i(int(ad.cells[ci][0]), int(ad.cells[ci][1]), int(ad.cells[ci][2]))
+			if ad.on[ci] == 1:
+				covered[c] = true
+			else:
+				holes[c] = true
+	for ad in p.get_meta("armor", []):
+		var hid := String(ad.id)
+		if not hid.begins_with("hat_") or ad.node == null or not is_instance_valid(ad.node):
+			continue
+		if not covered.is_empty():
+			# A hat is not worn under a helmet: while the helmet is on him the hat is not drawn
+			# (when the last of its plates is knocked off, the hat shows again).
+			for ci in ad.cells.size():
+				ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+			continue
+		for ci in ad.cells.size():
+			if ad.on[ci] == 1:
+				var c := Vector3i(int(ad.cells[ci][0]), int(ad.cells[ci][1]), int(ad.cells[ci][2]))
+				capped[c] = true
+				capped[c + Vector3i.DOWN] = true
+	if p == head:
+		_hair = []
+	for ad in p.get_meta("armor", []):
+		var id := String(ad.id)
+		if not (id.begins_with("hair_") or id.begins_with("beard_")) or ad.node == null or not is_instance_valid(ad.node):
+			continue
+		# Each lock's place at rest ("base") and how freely it swings ("sway", Fighter._sway_hair).
+		var top := -INF
+		for c in ad.cells:
+			top = maxf(top, float(c[1]))
+		var base := []
+		var sway := PackedFloat32Array()
+		var out := PackedByteArray()
+		for ci in ad.cells.size():
+			var c := Vector3i(int(ad.cells[ci][0]), int(ad.cells[ci][1]), int(ad.cells[ci][2]))
+			var xf := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+			var w := 0.0
+			var burst := false
+			if ad.on[ci] == 1:
+				xf = Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, id)
+				w = clampf(0.35 + (top - float(c.y)) / 6.0, 0.35, 1.2)
+				var under := capped.has(c)
+				for dx in [-1, 0, 1]:
+					for dy in [-1, 0, 1]:
+						for dz in [-1, 0, 1]:
+							if covered.has(c + Vector3i(dx, dy, dz)):
+								under = true
+				for d in [Vector3i.ZERO, Vector3i.UP, Vector3i.DOWN, Vector3i.LEFT, Vector3i.RIGHT, Vector3i.FORWARD, Vector3i.BACK]:
+					if holes.has(c + d):
+						burst = true
+				if burst and not covered.has(c):
+					xf = Physique.fluff_xf(p, xf)
+					w += 0.6
+				elif under:
+					xf = Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+					w = 0.0
+					burst = false
+			base.append(xf)
+			sway.append(w)
+			out.append(1 if burst and w > 0.0 else 0)
+			ad.node.multimesh.set_instance_transform(ci, xf)
+		ad["base"] = base
+		ad["sway"] = sway
+		ad["out"] = out
+		if p == head:
+			_hair.append(ad)
+
+## The hair is alive (drawing only): each lock lags the head on a spring as he moves, swings
+## and takes blows, the long locks hanging lowest the most; a tuft burst out of a broken helmet
+## pops out big and settles.
+var _hair: Array = []
+var _hair_lag := Vector3.ZERO
+var _hair_lagv := Vector3.ZERO
+var _hair_prev := Vector3.ZERO
+var _hair_vel := Vector3.ZERO
+var _hair_pop := 0.0
+var _hair_moved := false
+const HAIR_K := 90.0
+const HAIR_D := 9.0
+const HAIR_MAX := 0.035
+
+func _sway_hair(dt: float) -> void:
+	if _hair.is_empty() or dt <= 0.0 or head == null or head.missing:
+		return
+	var x := head.get_global_transform_interpolated().origin
+	var v := (x - _hair_prev) / dt
+	_hair_prev = x
+	if v.length() > 30.0:   # (a teleport, a respawn)
+		v = Vector3.ZERO
+		_hair_vel = Vector3.ZERO
+	var acc := (v - _hair_vel) / dt
+	_hair_vel = v
+	_hair_lagv += (-HAIR_K * _hair_lag - HAIR_D * _hair_lagv - acc * 0.15) * dt
+	_hair_lag += _hair_lagv * dt
+	if _hair_lag.length() > HAIR_MAX:
+		_hair_lag = _hair_lag.normalized() * HAIR_MAX
+		_hair_lagv *= 0.5
+	_hair_pop = maxf(0.0, _hair_pop - dt * 2.5)
+	var local := head.global_transform.basis.inverse() * _hair_lag
+	if local.length() < 0.0005 and _hair_pop <= 0.0:
+		if not _hair_moved:
+			return
+		local = Vector3.ZERO
+	_hair_moved = local != Vector3.ZERO or _hair_pop > 0.0
+	var pop := 1.0 + 0.45 * _hair_pop * _hair_pop
+	for ad in _hair:
+		if not ad.has("base") or ad.node == null or not is_instance_valid(ad.node):
+			continue
+		var m: MultiMesh = ad.node.multimesh
+		for ci in ad.base.size():
+			var w: float = ad.sway[ci]
+			if w <= 0.0:
+				continue
+			var xf: Transform3D = ad.base[ci]
+			if ad.out[ci] == 1 and pop > 1.0:
+				xf.basis = xf.basis.scaled(Vector3.ONE * pop)
+			xf.origin += local * w
+			m.set_instance_transform(ci, xf)
 
 ## All he carries, kg: his armour and the weapons in his hands (a warhammer and a tower of a
 ## shield tire a man as plate does).
@@ -2012,6 +2155,7 @@ func _process(_dt: float) -> void:
 		return
 	_seat_drawing()
 	_draw_joint_caps()
+	_sway_hair(_dt)
 
 ## Drawn where the bodies are now, with the game paused (the kill cam): the joints closed and
 ## capped off the bodies' own transforms, not the interpolation's.
@@ -4222,6 +4366,7 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		if pieces.has(arm[side].fore) and weapons[side]:
 			release(side)
 	res.severed.append(part)
+	Physique.reshape(self, part)
 	on_severed(part)
 
 ## What losing a part means (a man dies without his head; a hydra has others).
@@ -4577,6 +4722,8 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary) -> void:
 	# A broken arm cannot hold on: what was in its hand falls, and an off hand on a two-handed
 	# haft lets go of it.
 	for side in ["L", "R"]:
+		if not arm.has(side):
+			continue   # (a beast's legs are not arms)
 		if part == arm[side].upper or part == arm[side].fore:
 			if side == "L" and two_handed:
 				if weapon_joints.L:

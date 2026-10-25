@@ -14,7 +14,10 @@ The demo is the same game exported with the `demo` feature (`scripts/game/editio
   moment and clip it in a click (the best kills are flagged as featured). F12 saves a screenshot
   when Steam is not running. No marks or messages are added to the picture.
 
-Try it without exporting: `godot --path . -- --demo`, or `WRECKSMITH_DEMO=1`.
+Try it without exporting: double-click `play_demo.bat` (Windows; set `GODOT` to your Godot exe if
+it is not on the PATH) or run `./play_demo.sh`, or `godot --path . -- --demo`, or `WRECKSMITH_DEMO=1`.
+The *Builds* workflow also exports the demo itself (artifacts `wrecksmith-demo-windows` and
+`wrecksmith-demo-linux`), from whatever is on the branch.
 
 ## Shipping it on Steam
 

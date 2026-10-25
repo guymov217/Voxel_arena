@@ -28,12 +28,14 @@ const SHOW_CIRCUS := false
 ## in the save) shows it; players go from fight to the smith.
 static func admin() -> bool:
 	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
-const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e]
+const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e, 0x5a3a22, 0x1d6b6b, 0x8a8a80, 0xd06a8a]
 const LOOK_SLOTS := {
-	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana"],
-	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail"],
-	"beard": ["", "beard_braided"],
-	"cape": ["", "cape"],
+	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt"],
+	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"],
+	"beard": ["", "beard_braided", "beard_full", "beard_short", "beard_goatee", "beard_moustache", "beard_philosopher", "beard_stubble", "beard_mutton", "beard_chinstrap", "beard_forked"],
+	"cape": ["", "cape", "cape_short"],
+	"eyes": ["", "eyes_wide", "eyes_side", "eyes_cross", "eyes_angry", "eyes_sleepy", "eyes_blue", "eyes_green", "eyes_mad", "eyes_wink", "eyes_brown", "eyes_scar", "eyes_tired"],
+	"mouth": ["", "mouth_gap", "mouth_grin", "mouth_snarl", "mouth_stern", "mouth_shout", "mouth_tongue", "mouth_toothless", "mouth_smirk", "mouth_buck", "mouth_frown", "mouth_gold", "mouth_grimace"],
 }
 
 func _ready() -> void:
@@ -260,7 +262,7 @@ func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
 	for k in LOOK_SLOTS:
 		ok += LOOK_SLOTS[k]
-	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, 4) if pl.get("look") is Array else []
+	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, 6) if pl.get("look") is Array else []
 	var sk = pl.get("skin")
 	Armory.register(pl.get("gear_defs", {}))   # his designed pieces, made safe, under their own ids
 	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null}
@@ -3164,14 +3166,26 @@ func _gladiator(v: VBoxContainer) -> void:
 		Net.my_name = tx)
 	_row(v, [UIStyle.label("Name", 15, UIStyle.MUTED), name_edit])
 	var lk := look()
+	# The body's drawing (the same setting as Options, Gladiators' look): only how he is drawn.
+	var body := OptionButton.new()
+	for k in Physique.STYLES:
+		body.add_item(Physique.NAMES[k])
+	body.select(maxi(0, Physique.STYLES.find(Physique.current())))
+	body.tooltip_text = Physique.BLURB[Physique.current()]
+	body.custom_minimum_size = Vector2(260, 0)
+	body.item_selected.connect(func(i):
+		_set_opt("physique", Physique.STYLES[i])
+		body.tooltip_text = Physique.BLURB[Physique.STYLES[i]]
+		Physique.restyle_all(get_tree().root))
+	_row(v, [UIStyle.label("Body", 15, UIStyle.MUTED), body])
 	v.add_child(UIStyle.label("Skin", 15, UIStyle.MUTED))
 	_swatches(v, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i))
 	v.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
 	_swatches(v, CLOTH, lk.cloth, func(i): _set_look("cloth", i))
-	for k in ["hat", "hair", "beard", "cape"]:
+	for k in ["hat", "hair", "beard", "cape", "eyes", "mouth"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			ob.add_item("None" if id == "" else String(Data.armor.get(id, {}).get("name", id)))
+			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
 		ob.select(lk[k])
 		ob.custom_minimum_size = Vector2(260, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
@@ -3191,8 +3205,9 @@ func _gladiator(v: VBoxContainer) -> void:
 	_dress_hero.call_deferred()
 
 func _swatches(v: VBoxContainer, colors: Array, sel: int, cb: Callable) -> void:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 8)
+	var h := HFlowContainer.new()   # (wraps when there are more than fit the panel)
+	h.add_theme_constant_override("h_separation", 8)
+	h.add_theme_constant_override("v_separation", 8)
 	for i in colors.size():
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(44, 44)

@@ -80,7 +80,12 @@ func test_every_look_keeps_the_whole_man() -> void:
 			var seen_inner := _seen(p).keys().filter(func(i): return p.organ[i] != 0 or p.bone[i] == 1).size()
 			var seen_inner_b := _seen(b).keys().filter(func(i): return b.organ[i] != 0 or b.bone[i] == 1).size()
 			t.eq(seen_inner, seen_inner_b, "%s %s: the organs and bones on show" % [style, n])
-		t.check(veiled > 300, "%s: the outline really is pared (%d voxels veiled)" % [style, veiled])
+		if style == "strong":
+			t.eq(veiled, 0, "strong: nothing veiled, every voxel drawn")
+			for p in f.parts:
+				t.eq(p.shape_xf.size(), p.fx.size(), "strong %s: every voxel drawn in the shape" % p.part_name)
+		else:
+			t.check(veiled > 300, "%s: the outline really is pared (%d voxels veiled)" % [style, veiled])
 		t.eq(f.get_meta("physique", ""), style, style + ": drawn in it")
 	w.queue_free()
 
@@ -121,7 +126,7 @@ func test_the_same_blows_do_the_same_in_every_look() -> void:
 	var w := _world()
 	var want := []
 	var want_s := {}
-	for style in Physique.STYLES:
+	for style in ["classic"] + _looks():   # (the classic man first: the one to match)
 		# Each man on the same spot, one after another: the same blows meet the same voxels.
 		var f := _man(w, style)
 		var got := _blows(f)
@@ -144,7 +149,7 @@ func test_the_same_blows_do_the_same_in_every_look() -> void:
 func test_a_wound_opens_on_the_same_insides() -> void:
 	var w := _world()
 	var want := {}
-	for style in Physique.STYLES:
+	for style in ["classic"] + _looks():   # (the classic man first: the one to match)
 		var f := _man(w, style)
 		_blows(f)
 		for p in f.parts:
@@ -178,6 +183,7 @@ func test_changing_the_look_mid_fight_changes_nothing_of_him() -> void:
 		if p.colors != cols[p.part_name]:
 			same = false
 		t.eq(p.veil.size(), 0, p.part_name + ": back to classic, nothing veiled")
+		t.eq(p.shape_xf.size(), 0, p.part_name + ": back to classic, drawn as cubes")
 	t.check(same, "back to classic, every colour as it was")
 	w.queue_free()
 
@@ -232,4 +238,149 @@ func test_armour_is_drawn_on_the_look_but_stops_blows_where_it_did() -> void:
 		if drawn.distance_to(ad.pts[ci]) > 0.001:
 			pulled += 1
 	t.check(pulled > 0, "plates over the pared waist drawn in on it (%d)" % pulled)
+	w.queue_free()
+
+## The strong man: every voxel drawn moved and sized in its part, nothing of him moved. The
+## limbs reach into the part they join (one body at the shoulder, elbow, hip, knee and neck), the
+## fist stays where the hand holds the weapon, the armour is drawn on him by the same map, a cut
+## limb and its stump end where they were cut, and a voxel put back is drawn in the shape.
+func test_the_strong_man_is_drawn_whole_on_the_same_body() -> void:
+	# (What a part draws is read from its shape: a headless run keeps no multimesh data.)
+	var w := _world()
+	var f := _man(w, "strong", Vector3(0, 1.2, 0), {"armor": ["steelLorica", "greaves"]})
+	var base := _man(w, "classic", Vector3(3, 1.2, 0), {"armor": ["steelLorica", "greaves"]})
+	for k in f.parts.size():
+		var p: VoxelPart = f.parts[k]
+		var b: VoxelPart = base.parts[k]
+		var same := true
+		for i in p.fx.size():
+			if not p.local_of(i).is_equal_approx(b.local_of(i)):
+				same = false
+		t.check(same, p.part_name + ": every voxel where it was, for every blow")
+	var ua: VoxelPart = f.by_name.upperArmR
+	var vox := ua.vf * ua.part_scale
+	var top := -INF
+	for i in ua.fx.size():
+		var xf := ua.drawn_xf(i)
+		top = maxf(top, xf.origin.y + xf.basis.get_scale().y * vox * 0.5)
+	t.check(top > ua.half_ext.y + 0.9 * vox, "the shoulder drawn up into the torso (%.3f over %.3f)" % [top, ua.half_ext.y])
+	var hd: VoxelPart = f.head
+	var low_h := INF
+	for i in hd.fx.size():
+		var xf := hd.drawn_xf(i)
+		low_h = minf(low_h, xf.origin.y - xf.basis.get_scale().y * vox * 0.5)
+	t.check(low_h < -hd.half_ext.y - 1.0 * vox, "a neck drawn down into the shoulders")
+	var fa: VoxelPart = f.by_name.forearmR
+	var fist := 0
+	for i in fa.fx.size():
+		if fa.fy[i] <= 1 and absf(fa.drawn_xf(i).origin.y - fa.local_of(i).y) < 0.0001:
+			fist += 1
+	t.eq(fist, _count(fa, func(i): return fa.fy[i] <= 1), "the fist drawn where the hand is: the grip does not move")
+	var moved := 0
+	for k in f.parts.size():
+		var a: Array = f.parts[k].get_meta("armor", [])
+		var b: Array = base.parts[k].get_meta("armor", [])
+		for j in a.size():
+			t.eq(a[j].pts, b[j].pts, f.parts[k].part_name + ": the plates stop blows where they did")
+			for ci in a[j].cells.size():
+				if Physique.plate_xf(f.parts[k], a[j].cells[ci], a[j].pts[ci]).origin.distance_to(a[j].pts[ci]) > 0.001:
+					moved += 1
+	t.check(moved > 50, "the plates drawn on the shape, moved with the flesh under them (%d)" % moved)
+	# The forearm off: the upper arm's elbow end no longer reaches into it, the shoulder still does.
+	var low := INF
+	for i in ua.fx.size():
+		var xf := ua.drawn_xf(i)
+		low = minf(low, xf.origin.y - xf.basis.get_scale().y * vox * 0.5)
+	t.check(low < -ua.half_ext.y - 0.8 * vox, "the elbow drawn down into the forearm")
+	var res := {"removed": [], "severed": []}
+	fa.freeze = false
+	f.detach_limb(fa, res)
+	low = INF
+	for i in ua.fx.size():
+		var xf := ua.drawn_xf(i)
+		low = minf(low, xf.origin.y - xf.basis.get_scale().y * vox * 0.5)
+	t.check(low > -ua.half_ext.y - 0.5 * vox, "the stump ends where it was cut (%.3f, %.3f)" % [low, -ua.half_ext.y])
+	var fa_top := -INF
+	for i in fa.fx.size():
+		var xf := fa.drawn_xf(i)
+		fa_top = maxf(fa_top, xf.origin.y + xf.basis.get_scale().y * vox * 0.5)
+	t.check(fa_top < fa.half_ext.y + 0.5 * vox, "and the forearm cut off ends there too")
+	w.queue_free()
+
+## The eyes and the mouth he chooses are paint on the front of his head: the same man in every
+## other way, his face's voxels in new colours, and a beard worn drawn on his jaw.
+func test_a_chosen_face_is_only_paint() -> void:
+	var w := _world()
+	var plain := _man(w, "strong", Vector3(-3, 1.2, 0))
+	var f := _man(w, "strong", Vector3(3, 1.2, 0), {"armor": ["eyes_cross", "mouth_gap", "beard_full"]})
+	t.eq(f.face_ids, ["eyes_cross", "mouth_gap"], "the face pieces are his")
+	t.eq(_state(f), _state(plain), "his body is the plain man's")
+	var hd: VoxelPart = f.head
+	var changed := 0
+	var off_face := 0
+	for i in hd.fx.size():
+		if hd.colors[i] != plain.head.colors[i]:
+			changed += 1
+			if hd.fz[i] < hd.grid.z / 2 and hd.fy[i] > 4:
+				off_face += 1   # (the back of the skull, above the jaw: never painted)
+	t.check(changed > 10, "the face painted (%d voxels)" % changed)
+	t.eq(off_face, 0, "nothing painted on the back of his head")
+	Physique.dress(f, "classic")
+	t.check(f.head.colors[0] == plain.head.colors[0], "the classic look keeps his face too")
+	w.queue_free()
+
+## A hat is not worn under a helmet: with both on, the hat is not drawn (and the hair is
+## tucked into the helmet); the hat alone is drawn.
+func test_a_hat_under_a_helmet_is_not_drawn() -> void:
+	var w := _world()
+	var f := _man(w, "strong", Vector3(0, 1.2, 0), {"armor": ["helmet", "hat_phrygian", "hair_curly"]})
+	var hidden := 0
+	var hat_cells := 0
+	for ad in f.head.get_meta("armor", []):
+		if String(ad.id) == "hat_phrygian":
+			hat_cells = ad.cells.size()
+			# (headless: the multimesh keeps no transforms, so ask how it would be placed)
+	t.check(hat_cells > 0, "the cap is on his head")
+	var covered := false
+	for ad in f.head.get_meta("armor", []):
+		if not Fighter._cosmetic(String(ad.id)):
+			covered = true
+	t.check(covered, "and a helmet over it, so the cap is not drawn (Fighter._tuck_hair)")
+	w.queue_free()
+
+func test_hair_bursts_out_of_a_hole_in_the_helmet() -> void:
+	var w := _world()
+	var f := _man(w, "strong", Vector3(0, 1.2, 0), {"armor": ["helmet", "hair_curly"]})
+	var helm: Dictionary = {}
+	var hair: Dictionary = {}
+	for ad in f.head.get_meta("armor", []):
+		if String(ad.id) == "helmet":
+			helm = ad
+		elif String(ad.id) == "hair_curly":
+			hair = ad
+	t.check(not hair.is_empty() and hair.has("base"), "his hair is placed (Fighter._tuck_hair)")
+	var shown := 0
+	for xf in hair.base:
+		if (xf as Transform3D).basis.get_scale().x > 0.0:
+			shown += 1
+	t.check(shown == 0, "all of it tucked in under the helmet (%d)" % shown)
+	var lock: Array = hair.cells[0]
+	var hole := -1
+	for ci in helm.cells.size():
+		if helm.cells[ci] == lock:
+			hole = ci
+	t.check(hole >= 0, "a plate of the helmet over a lock")
+	var before := f.head.alive_count
+	f._knock_plate(f.head, helm, hole, Vector3.RIGHT, 30.0)
+	var big := 0
+	shown = 0
+	for ci in hair.base.size():
+		var sc: float = (hair.base[ci] as Transform3D).basis.get_scale().x
+		if sc > 0.0:
+			shown += 1
+		if hair.out[ci] == 1:
+			big += 1
+	t.check(big >= 1 and (hair.base[0] as Transform3D).basis.get_scale().x > 0.0, "the lock under the hole bursts out, fluffed (%d)" % big)
+	t.check(shown < hair.cells.size(), "the rest stays under the plates still on (%d of %d)" % [shown, hair.cells.size()])
+	t.check(f.head.alive_count == before, "and his head is the same head")
 	w.queue_free()

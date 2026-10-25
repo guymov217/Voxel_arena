@@ -8,16 +8,25 @@ const SCREENS := ["main", "fights", "training", "mp", "options", "controls", "gl
 
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
+	# LOOK=skin,cloth,hat,hair,beard,cape (indices): the champion dressed so.
+	if OS.get_environment("LOOK") != "":
+		var l := OS.get_environment("LOOK").split(",")
+		Save.set_value("look", {"skin": int(l[0]), "cloth": int(l[1]), "hat": int(l[2]), "hair": int(l[3]), "beard": int(l[4]), "cape": int(l[5])})
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
 	for i in 30:
 		await get_tree().process_frame
-	for s in SCREENS:
+	# ONLY=gladiator,...: just those screens.
+	var only := OS.get_environment("ONLY")
+	for s in (only.split(",") if only != "" else PackedStringArray(SCREENS)):
 		menu.show_screen(s)
 		for i in 45:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(out.path_join("menu_%s.png" % s))
 		print("saved ", s)
+	if only != "":
+		get_tree().quit()
+		return
 	menu.show_screen("main")
 	var f = load("res://scripts/ui/forge.gd").new()
 	menu.add_child(f)

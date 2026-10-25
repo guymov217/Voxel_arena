@@ -129,6 +129,18 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 	if skin != null:
 		o["skin"] = int(skin)
 	hero.build(pos, yaw_, _resolve_loadout(lo), o)
+	# A soft light on his face from the camera's side: the sun is behind him on the dressing
+	# screen, and the face, hair and beard being chosen were in shadow.
+	var fill := get_node_or_null("HeroFill") as OmniLight3D
+	if fill == null:
+		fill = OmniLight3D.new()
+		fill.name = "HeroFill"
+		fill.omni_range = 4.5
+		fill.light_energy = 1.3
+		fill.light_color = Color(1.0, 0.92, 0.82)
+		fill.shadow_enabled = false
+		add_child(fill)
+	fill.position = pos + Vector3(1.5, 1.9, -1.9)
 	hero.set_meta("anchor", hero.torso.global_position)
 	hero.set_meta("still", still)
 	hero_still_t = 1.6 if still else -1.0
