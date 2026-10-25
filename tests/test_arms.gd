@@ -517,3 +517,39 @@ func test_a_dazed_or_drunk_mans_blade_holds_still() -> void:
 		t.check(spread < 0.08, "%s: the blade holds its place (%.2f m across in four seconds)" % [cond, spread])
 		m.queue_free()
 		await get_tree().process_frame
+
+## A blade pressed into a man's head, the head cut round it, and then pulled hard the other way
+## comes out with the hand (user: the sword went into a head and stuck there; an axe stayed in
+## two times in six before).
+func test_a_blade_pulled_out_of_a_head_comes_free() -> void:
+	for mark in [Vector2(-0.4, 0.6), Vector2(0.4, 0.9)]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": "axe", "off": ""}})
+		var f: Fighter = m.me.f
+		f.teleport(Vector3(0, 0, 0))
+		var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0.1, 0.85), "yaw": PI})
+		e.erase("bot")
+		e.drive = func(_e): return {}
+		e.f.mods.toughness = 20.0
+		var inp := [{"main": {"x": 0.1, "y": 0.2}, "power": false}]
+		m.me.drive = func(_e): return inp[0]
+		for i in 120:
+			await get_tree().physics_frame
+		inp[0] = {"main": {"x": mark.x, "y": mark.y}, "power": true}
+		for i in 180:
+			await get_tree().physics_frame
+			e.f.blood = 100.0
+			e.f.head.hp = maxf(e.f.head.hp, 50.0)
+		var w: Weapon = f.weapons.R
+		var hp: VoxelPart = e.f.head
+		var gone := hp.voxels_within(hp.global_transform.affine_inverse() * (w.global_transform * Vector3(0, w.reach * 0.8, 0)), 0.06)
+		if not gone.is_empty():
+			hp.remove_voxels(Array(gone))
+		inp[0] = {"main": {"x": -0.9, "y": -0.3}, "power": true}
+		for i in 120:
+			await get_tree().physics_frame
+		t.check(not w.get_colliding_bodies().has(hp), "%s: the axe is out of the head a second after the pull" % mark)
+		t.check(f.weapons.R == w, "%s: and still in his hand" % mark)
+		m.queue_free()
+		await get_tree().process_frame

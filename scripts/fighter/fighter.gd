@@ -42,6 +42,8 @@ static func grip_q(w) -> Quaternion:
 static func is_bow(w) -> bool:
 	return w != null and str(w.design.get("shoots", "")) == "arrow"
 var behind_t := {"R": 0.0, "L": 0.0}
+var wedge_t := {"R": {}, "L": {}}   # a foe's part the blade has been pressed into, and for how long
+var unwedge := []                   # [weapon, part, until]: let through a moment to come free
 const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5]
 
 signal died(fighter: Fighter, cause: String)
@@ -2480,6 +2482,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		if has_wrist(w):
 			_drive_wrist(side, w, w_aim, strength, dt)
 		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
+		_free_wedged(side, w, dt)
 		if not throwing[side]:
 			_keep_blade_front(side, w, yaw_q, dt)
 		if thrust_line[side] != null:
@@ -2721,6 +2724,50 @@ func _unjam_blade(side: String, w: Weapon, fore_q: Quaternion, t_pos: Vector3, t
 	var av := axis.normalized() * minf(9.0, 5.0 * ang + 2.0) + torso.angular_velocity
 	w.angular_velocity = av
 	arm[side].fore.angular_velocity = av
+
+## A blade driven into a man (a head, more often than not) could wedge there: pressed into the
+## part, or the part's shape made again round it when a cut took voxels out, and the arm
+## pulling at it for nothing while it stayed in (user: the sword goes into a head and sticks).
+## Pressed into one part of a foe for half a second while the hand is pulling away from it, the
+## blade is let through that part for a moment and slides out.
+const WEDGE_T := 0.5
+func _free_wedged(side: String, w: Weapon, dt: float) -> void:
+	var now := time
+	for k in range(unwedge.size() - 1, -1, -1):
+		var u: Array = unwedge[k]
+		if now >= float(u[2]):
+			if is_instance_valid(u[0]) and is_instance_valid(u[1]):
+				(u[0] as Weapon).remove_collision_exception_with(u[1])
+			unwedge.remove_at(k)
+	var held: Dictionary = wedge_t[side]
+	var touching := {}
+	for b in w.get_colliding_bodies():
+		if b is VoxelPart and b.fighter != null and b.fighter != self:
+			touching[b] = true
+	for b in held.keys():
+		if not touching.has(b):
+			held.erase(b)
+	if touching.is_empty():
+		return
+	# Pulling away: the hand's mark is off where the hand is, and away from the part.
+	var hw := hand_world(side)
+	var goal = hand_lead[side]
+	if goal == null:
+		return
+	var pull: Vector3 = (goal as Vector3) - hw
+	if pull.length() < 0.12 * S:
+		for b in touching:
+			held.erase(b)
+		return
+	for b in touching:
+		if pull.dot((b as VoxelPart).global_position - hw) > 0.0:
+			held.erase(b)
+			continue
+		held[b] = float(held.get(b, 0.0)) + dt
+		if float(held[b]) >= WEDGE_T:
+			held.erase(b)
+			w.add_collision_exception_with(b)
+			unwedge.append([w, b, now + 0.35])
 
 ## The hand moves on a flat pane in front of the body, Half Sword style.
 ## This fighter's own bodies, kept out of the rays he casts down for the ground.

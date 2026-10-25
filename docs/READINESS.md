@@ -131,6 +131,14 @@ long campaign on real hardware before a release date is set.
   design still takes both hands. Test: a dirk made for the off hand goes there with the
   sword staying, a shield there is traded in, a longsword takes both, and in a fight it is
   held in the left hand as a weapon.
+- A blade that went into a head and stuck (user): reproduced at last. A probe drove six
+  weapons into a man's head for a second and a half, cut a notch out of the head round the blade
+  (so its shape was made again round it, as a real cut does), then pulled hard the other way: in
+  3 of 36 the blade was still in the head a second later (an axe twice, a zweihander), the arm
+  pulling at it for nothing. Now a blade pressed into one part of a foe for half a second while
+  the hand is pulling away from it is let through that part for a third of a second and slides
+  out: 0 of 36. Blows land as before (the release needs half a second of pressing). New test:
+  the axe comes out of the head and stays in the hand.
 - The weapon that went round by itself (user, the most important: with nothing touched the
   hands and the weapon turned in circles instead of staying where it was last aimed). Found:
   the hand's mark was made to wander on purpose: a ringing head went round in circles (sine
@@ -433,9 +441,9 @@ long campaign on real hardware before a release date is set.
   high guard): 0.16–0.28 m along the line, against about 0.5 m for a level stab.
 - Heavy two-handers (the warhammer) are slow to come round to a new mark: by design, but it
   can read as lag.
-- "The left arm locks up raised" (seen once in a screenshot) and "a weapon no-clips into a
-  head and sticks" have not reproduced in soak tests (see above); if either is seen again, a
-  kill-cam clip or the save and the weapon used would let it be traced.
+- "The left arm locks up raised" (seen once in a screenshot) has not reproduced in soak tests
+  (see above); if it is seen again, a kill-cam clip or the save and the weapon used would let it
+  be traced. (The blade stuck in a head is fixed, above.)
 - The crocodile's death-roll test and the giant's grab test are timing-sensitive (beast AI
   with random decisions); they pass on their own and fail now and then in the full run.
 - Everything above was checked headless and with a software renderer; lighting, shadows and
