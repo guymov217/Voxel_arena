@@ -18,6 +18,7 @@ var free_look := Vector2.ZERO      # (yaw, pitch) the camera is turned off the f
 var thrust := 0.0
 var twist := 0.0
 var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
+var two_handed := false   # both hands on one haft: either button swings it (set_two_handed)
 var twist_l := 0.0   # the off hand's edge turn: the wheel turns whichever hand is held
 var wheel := 0.0     # wheel steps since the last sample, when the Match wants them (a man held in the grip)
 var wheel_to_grip := false
@@ -180,7 +181,7 @@ func _mouse(e: InputEvent) -> void:
 			# Round and round, like the web game: past half a turn it comes back the other way.
 			if wheel_to_grip:
 				wheel += 1.0 if b.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0
-			elif rmb and not lmb:
+			elif rmb and not lmb and not two_handed:
 				twist_l = wrapf(twist_l - dw, -PI, PI)
 			else:
 				twist = wrapf(twist + dw, -PI, PI)
@@ -192,19 +193,32 @@ func _mouse(e: InputEvent) -> void:
 			free_look.x -= m.relative.x * 0.0022 * sensitivity * sens_x
 			free_look.y = clampf(free_look.y - m.relative.y * 0.0018 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.3, 1.3)
 			return
-		var both := lmb and rmb
-		var h = main if lmb else (off if rmb else null)
-		if h == null or aiming:
-			look_yaw -= m.relative.x * 0.001 * sensitivity * sens_x
-			look_pitch = clampf(look_pitch - m.relative.y * 0.00085 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
-			return
-		var s := 0.0024 * sensitivity
-		for hh in ([main, off] if both else [h]):
-			var lim := 2.0
-			hh.x = clampf(hh.x + m.relative.x * s, -lim, lim)
-			hh.y = clampf(hh.y - m.relative.y * s, -1.6, 1.6)
+		_motion(m.relative)
 	elif e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## The mouse moved (caught): the hand whose button is down goes with it, or the view turns.
+func _motion(rel: Vector2) -> void:
+	var both := lmb and rmb and not two_handed
+	var h = main if lmb or (rmb and two_handed) else (off if rmb else null)
+	if h == null or aiming:
+		look_yaw -= rel.x * 0.001 * sensitivity * sens_x
+		look_pitch = clampf(look_pitch - rel.y * 0.00085 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
+		return
+	var s := 0.0024 * sensitivity
+	for hh in ([main, off] if both else [h]):
+		var lim := 2.0
+		hh.x = clampf(hh.x + rel.x * s, -lim, lim)
+		hh.y = clampf(hh.y - rel.y * s, -1.6, 1.6)
+
+## Both hands on one haft, the off hand's mark is not its own: either button (or both) swings
+## the weapon with the main hand's. Moved along unseen under the grip, the off hand's mark was
+## left wherever the mouse had gone (up by the head), and when the grip ended (H, the weapon
+## knocked away) the left arm went up there and stayed (user). So it is set back to its guard.
+func set_two_handed(on: bool) -> void:
+	if two_handed and not on:
+		off = {"x": -0.35, "y": 0.1}
+	two_handed = on
 
 ## The gamepad, read once a step: sticks and triggers (buttons come through the input actions).
 func _pad(dt: float) -> void:
@@ -234,7 +248,7 @@ func _pad(dt: float) -> void:
 		look_yaw -= rs.x * dt * 2.1 * sensitivity * sens_x
 		look_pitch = clampf(look_pitch - rs.y * dt * 1.45 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
 	else:
-		for hh in ([main] if pad_r else []) + ([off] if pad_l else []):
+		for hh in ([main] if pad_r or (pad_l and two_handed) else []) + ([off] if pad_l and not two_handed else []):
 			var lim := 2.0
 			hh.x = clampf(hh.x + rs.x * dt * 3.2 * sensitivity, -lim, lim)
 			hh.y = clampf(hh.y - rs.y * dt * 3.2 * sensitivity, -1.6, 1.6)
@@ -253,8 +267,8 @@ func sample(dt: float) -> Dictionary:
 		mmb = false
 	if not mmb:
 		free_look = free_look.lerp(Vector2.ZERO, minf(1.0, dt * 6.0))
-	var hand_r := lmb or pad_r
-	var hand_l := rmb or pad_l
+	var hand_r := lmb or pad_r or (two_handed and (rmb or pad_l))
+	var hand_l := (rmb or pad_l) and not two_handed
 	# Let go of the button and the hand stays where it was aimed: it no longer slides back to a
 	# guard of its own (user: the weapon must hold the last place it was aimed at).
 	var want := 1.0 if held("thrust") else 0.0

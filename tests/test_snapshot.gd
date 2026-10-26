@@ -131,10 +131,17 @@ func test_a_beasts_packed_status_comes_through() -> void:
 	b.jaw_t = 0.3
 	b.torso.hp = 42.0
 	var packed: Array = b.status_packed()
-	t.eq(packed.size(), 6, "blood, breath, state, the parts' hp, death's door and the jaw")
+	t.eq(packed.size(), 7, "blood, breath, state, the parts' hp, death's door, the grip and the jaw")
 	b.jaw_t = 0.0
 	b.torso.hp = 100.0
 	b.apply_status(packed)
 	t.check(absf(b.torso.hp - 42.0) < 0.01, "the hp came through (%.1f)" % b.torso.hp)
 	t.check(b.jaw_t > 0.2, "and the jaw (%.2f)" % b.jaw_t)
+	# A man's: whether both his hands are on one haft goes to his guest (its input reads it).
+	var me: Fighter = m.me.f
+	me.equip("R", Data.preset("warhammer"))
+	me.toggle_grip()
+	var g: Fighter = m.spawn_fighter({"kind": "bot", "name": "Copy", "loadout": {"main": "", "off": ""}, "team": 0, "pos": Vector3(-3, 0.1, 3), "yaw": 0.0}).f
+	g.apply_status(me.status_packed())
+	t.check(me.two_handed and g.net_two_handed, "the grip on the haft comes through to the guest's copy")
 	m.queue_free()

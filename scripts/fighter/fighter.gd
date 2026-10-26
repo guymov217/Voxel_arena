@@ -182,6 +182,7 @@ const TWO_HAND_TRUNK := 1.8   # how much harder the trunk holds upright with bot
 const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a second): held, not swung
 const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
 var twist_two := 0.0
+var net_two_handed := false   # a guest's copy: the host has both his hands on one haft (status)
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
 var two_main = null    # and the main hand (for the tests)
 var two_gap = null     # the off hand's place from the main hand, along the blade's line
@@ -4975,7 +4976,7 @@ func status_packed() -> Array:
 	hp.resize(parts.size())
 	for i in parts.size():
 		hp[i] = parts[i].hp
-	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1)]
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0]
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -4991,6 +4992,8 @@ func apply_status(s) -> void:
 				parts[i].hp = ph[i]
 		if s.size() > 4:
 			dying = maxf(0.0, float(s[4]))
+		if s.size() > 5:
+			net_two_handed = int(s[5]) == 1
 		return
 	blood = s.get("blood", blood)
 	stamina = s.get("stamina", stamina)

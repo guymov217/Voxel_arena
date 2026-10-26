@@ -954,6 +954,7 @@ func _player_input(f, dt: float) -> Dictionary:
 		input.look_pitch = 0.0
 	if input:
 		input.aiming = shooter != null or input.held("throw")
+		input.set_two_handed(f.net_two_handed if role == "guest" else f.two_handed)
 		_bow_sway(f, shooter, dt)
 	var inp: Dictionary = input.sample(dt) if input else {}
 	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":

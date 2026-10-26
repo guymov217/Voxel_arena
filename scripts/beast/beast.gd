@@ -1700,8 +1700,8 @@ func status_packed() -> Array:
 
 func apply_status(s) -> void:
 	super.apply_status(s)
-	# (On the wire the jaw rides after the fighter's own [blood, breath, state, hp, dying].)
-	var j := (float(s[5]) if s.size() > 5 else 0.0) if s is Array else float(s.get("jaw", 0.0))
+	# (On the wire the jaw rides after the fighter's own [blood, breath, state, hp, dying, grip].)
+	var j := (float(s[6]) if s.size() > 6 else 0.0) if s is Array else float(s.get("jaw", 0.0))
 	if j > jaw_t and j <= 1.0:
 		jaw_t = minf(JAW_T, j)
 
