@@ -329,7 +329,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty():
 		equip("R", main)
-		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing and weapons.R.two_hand_off() != null:
+		if main.get("twoHanded", false) and off_hand_free() and weapons.R.two_hand_off() != null:
 			two_handed = true
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
@@ -450,7 +450,7 @@ func rearm(main, off) -> void:
 		off = Data.preset(off)
 	if main is Dictionary and not main.is_empty() and not weapons.R:
 		equip("R", main)
-		if main.get("twoHanded", false) and arm.L.fore.prosthetic == "" and not arm.L.fore.missing and weapons.R.two_hand_off() != null:
+		if main.get("twoHanded", false) and off_hand_free() and weapons.R.two_hand_off() != null:
 			two_handed = true
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
@@ -1137,8 +1137,7 @@ func toggle_grip() -> Variant:
 			weapon_joints.L = null
 		two_handed = false
 		return "one"
-	var fore: VoxelPart = arm.L.fore
-	if fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm.L.upper.severed or arm.L.upper.hanging or arm_broken("L") or fixed_hand.R or fixed_hand.L:
+	if not off_hand_free() or fixed_hand.R or fixed_hand.L:
 		return null
 	# Room on the grip for the other fist, at its far end; on a short grip the hands crushed
 	# together and the arms locked against each other in a swing.
@@ -1233,7 +1232,7 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 ## Takes `w` into the hand on `side`: the grip moved into the palm and welded there.
 func pick_up(side: String, w: Weapon) -> bool:
 	var fore: VoxelPart = arm[side].fore
-	if weapons[side] or fore.severed or fore.missing or fore.prosthetic != "" or arm_broken(side):
+	if weapons[side] or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm[side].upper.severed or arm[side].upper.hanging or arm_broken(side):
 		return false
 	if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
 		w.forget_owner()
@@ -1272,7 +1271,7 @@ func pick_up(side: String, w: Weapon) -> bool:
 	aim_q[side] = null
 	if Combat.current:
 		Combat.current.loose_weapons.erase(w)
-	if side == "R" and w.design.get("twoHanded", false) and not weapons.L and w.two_hand_off() != null:
+	if side == "R" and w.design.get("twoHanded", false) and not weapons.L and off_hand_free() and w.two_hand_off() != null:
 		two_handed = true
 		_attach_off_hand(w)
 	return true
@@ -1377,6 +1376,13 @@ func leg_func(side: String) -> float:
 	if t.severed or s.severed:
 		return 0.0
 	return minf(t.function(), s.function()) * cord_legs * pelvis_f
+
+## Whether the left hand can take hold of a haft beside the right: not cut off, hanging, broken,
+## lost or a prosthetic (a hand cut off by the crocodile took up a hammer with the good one).
+func off_hand_free() -> bool:
+	var fore: VoxelPart = arm.L.fore
+	var upper: VoxelPart = arm.L.upper
+	return not (fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or upper.severed or upper.hanging or arm_broken("L"))
 
 ## A bone of that arm broken: it hangs, and its hand holds nothing (user).
 func arm_broken(side: String) -> bool:
@@ -1815,6 +1821,28 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2))
 			if stance_h > 0.0:
 				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
+		# The feet stand on the sand, never in it and never above it: standing, the legs do not
+		# meet the ground (the spring holds him), so the hips are set by where the soles are. A
+		# sole sunk in lifts him by as much (a cyclops with his shins hacked away stood knee-deep
+		# in the arena, user); both soles up off it let him down by as much, until one touches
+		# (a man hit hard hovered with his feet clear of the sand, user). In a hop or getting up,
+		# no.
+		if state == "stand" and hop_phase <= 0.0 and not rising and dist < desired + 0.25:
+			var sole_lo := INF
+			var sole_planted := INF
+			for sd in ["L", "R"]:
+				var sh: VoxelPart = by_name["shin" + sd]
+				if sh.severed or by_name["thigh" + sd].severed:
+					continue
+				var sy: float = (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y
+				sole_lo = minf(sole_lo, sy)
+				var ftp = feet[sd]
+				if ftp != null and not ftp.swing:
+					sole_planted = minf(sole_planted, sy)
+			if sole_planted < -0.03 * S:
+				desired = maxf(desired, dist - sole_planted - 0.01 * S)
+			elif sole_lo < INF and sole_lo > 0.05 * S:
+				desired = minf(desired, dist - (sole_lo - 0.02 * S))
 		grounded = dist < desired + 0.25
 		if grounded and support > 0.0:
 			var vy := torso.linear_velocity.y
@@ -2034,7 +2062,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					# stands where it came down: held to a mark it could not reach, it read as
 					# slipping at once and stepped again and again, never down.
 					if not (moving and wants_move) and not shin.severed and Vector2(sole_at.x - ft.land.x, sole_at.z - ft.land.z).length() > 0.12 * S:
-						ft.anchor = Vector3(sole_at.x, minf(sole_at.y, (ft.land as Vector3).y + 0.6 * S), sole_at.z)
+						ft.anchor = Vector3(sole_at.x, clampf(sole_at.y, (ft.land as Vector3).y, (ft.land as Vector3).y + 0.6 * S), sole_at.z)   # (on the sand, never under it)
 					ft.slip = 0.0
 			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S:
 				ft.swing = true
@@ -2095,6 +2123,19 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
 			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
+		# The sand is under the sole, standing as lying: the legs pass through the ground while
+		# he stands (the spring holds him), and a weak leg's step dragged its foot along under
+		# the sand (a cyclops with hacked shins stood knee-deep, user). Pushed up only, never
+		# along, so it does not catch.
+		if standing and (grounded or (rising and hit)) and not shin.severed:
+			var sole_f := shin.global_transform * Vector3(0, -4 * V * S, 0)
+			var pen := ground_y - sole_f.y
+			if pen > 0.005 * S:
+				var r_f: Vector3 = sole_f - shin.global_position
+				var m_f := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_f.length_squared() / PD.inertia_of(shin))
+				var vy_f := shin.velocity_at(sole_f).y
+				var jy := m_f * (minf(pen, 0.2 * S) * 0.3 / dt - minf(0.0, vy_f) * 0.8)
+				shin.apply_impulse(Vector3(0, maxf(0.0, jy), 0), r_f)
 
 	# ----- Arms and weapons -----
 	var power: bool = inp.get("power", false) and stamina > 3.0
@@ -2269,6 +2310,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if upper.severed or fore.severed or upper.hanging or fore.hanging or not live:
 		if not live and fore.has_meta("elbow_set"):
 			_hold_elbow(side, 0.0, false, dt)
+		# A stump is held in to the side, weakly: left to itself it flapped about with every
+		# turn of the body.
+		if live and fore.severed and not upper.severed and not upper.hanging:
+			motor_rel(upper, torso, Quaternion.IDENTITY, 5.0, 25.0 * MS * S, dt, 0.5)
 		return
 	var af := arm_func(side)
 	# The arm's function, again below, is the same this step (unless a frost on it is thawing:
@@ -4394,9 +4439,22 @@ func hang(part: VoxelPart, res: Dictionary) -> void:
 	for side in arm:
 		if (part == arm[side].fore or part == arm[side].upper) and weapons[side]:
 			release(side)
+	if arm.has("L") and two_handed and (part == arm.L.fore or part == arm.L.upper):
+		_off_hand_off_haft()
 	if part == head:
 		concussion = minf(1.0, concussion + 0.5)
 	part.angular_damp = 2.0
+
+## The off hand lets go of the two-handed haft: its arm is cut, hanging or broken. Still joined
+## to the hammer by the hand that was gone, the stump spun round and round after it (user video,
+## the forearm taken by the crocodile) and the main arm was dragged into a knot.
+func _off_hand_off_haft() -> void:
+	if weapon_joints.L:
+		weapon_joints.L.queue_free()
+		weapon_joints.L = null
+	two_handed = false
+	two_front = null
+	two_gap = null
 
 ## Cut through: the stump side stays on (removed from the falling piece), the piece with
 ## whatever hangs from it is no longer his.
@@ -4450,6 +4508,8 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	for side in arm:
 		if pieces.has(arm[side].fore) and weapons[side]:
 			release(side)
+	if arm.has("L") and two_handed and pieces.has(arm.L.fore):
+		_off_hand_off_haft()
 	res.severed.append(part)
 	Physique.reshape(self, part)
 	on_severed(part)
@@ -4811,10 +4871,7 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary) -> void:
 			continue   # (a beast's legs are not arms)
 		if part == arm[side].upper or part == arm[side].fore:
 			if side == "L" and two_handed:
-				if weapon_joints.L:
-					weapon_joints.L.queue_free()
-					weapon_joints.L = null
-				two_handed = false
+				_off_hand_off_haft()
 			elif weapons[side]:
 				release(side)
 

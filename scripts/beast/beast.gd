@@ -2211,7 +2211,11 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if (species == "boar" or species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 1.2 and facing > 0.4:
 		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
 		_strike(head, 0.5, 2.0 + rng.randf())
-	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach and facing > 0.6:
+	# In reach by the body's length, or by the head itself: a rhino's horn, pressed to a man's
+	# chest in its charge, was still short of the body's reach and shoved him a stride along the
+	# sand without once striking.
+	var head_d := Vector2(head.global_position.x - tp.x, head.global_position.z - tp.z).length()
+	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and (dist < reach or head_d < head.half_ext.z * 2.0 + 0.6) and facing > 0.6:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
 		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf(), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])

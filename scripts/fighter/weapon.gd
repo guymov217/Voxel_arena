@@ -197,6 +197,8 @@ func _grip_points() -> Array:
 	if design.get("grips") is Dictionary:
 		var g = ForgeLib.grip_points({"voxels": vox, "twoHanded": design.get("twoHanded", false), "grips": design.grips})
 		if g != null:
+			if design.get("twoHanded", false):
+				g = ForgeLib.spread_hands(vox, g)
 			return [g.main, g.off]
 	var grips := []
 	for v in vox:
@@ -216,7 +218,8 @@ func _grip_points() -> Array:
 		return [mid, mid + Vector3(0, -2, 0)]
 	var top := grips.slice(int(grips.size() / 2))
 	var bottom := grips.slice(0, maxi(1, int(grips.size() / 3)))
-	return [avg.call(top), avg.call(bottom)]
+	var g2 := ForgeLib.spread_hands(vox, {"main": avg.call(top), "off": avg.call(bottom)})
+	return [g2.main, g2.off]
 
 # ---------- Boxes ----------
 

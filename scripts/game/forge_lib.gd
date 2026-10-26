@@ -104,6 +104,48 @@ static func grip_points(d: Dictionary) -> Variant:
 	var bottom: Array = grips.slice(0, maxi(1, int(grips.size() / 3)))
 	return {"main": avg.call(top), "off": avg.call(bottom)}
 
+## On a long haft (a pole hammer, a pike) the hands go apart as on a real one, about a fifth
+## of its length (to 11 voxels, 45 cm): put together at the butt as the builder left them, the
+## haft stuck out stiff from two fists side by side, a pointer turned about the shoulder (user
+## video). The off hand slides down the haft away from the main one while there is haft there,
+## else the main hand goes up it. Presets (none longer than 48 voxels) are as they were.
+const LONG_HAFT := 48.0
+static func spread_hands(voxels: Array, g: Dictionary) -> Dictionary:
+	var m: Vector3 = g.main
+	var o: Vector3 = g.off
+	var u := (o - m).normalized() if o.distance_to(m) > 0.5 else Vector3(0, -1, 0)
+	var lo := INF
+	var hi := -INF
+	var at := {}
+	for v in voxels:
+		var p := Vector3(v[0], v[1], v[2])
+		lo = minf(lo, p.dot(u))
+		hi = maxf(hi, p.dot(u))
+		at[Vector3i(v[0], v[1], v[2])] = true
+	var length := hi - lo + 1.0
+	if length <= LONG_HAFT:
+		return g
+	var want := clampf(0.2 * length, HANDS_APART, 11.0)
+	var gap := o.distance_to(m)
+	if gap >= want:
+		return g
+	var has := func(p: Vector3) -> bool: return at.has(Vector3i(roundi(p.x), roundi(p.y), roundi(p.z)))
+	var k := ceilf(want)
+	# Down the haft from the main hand; with no haft left there (both at the butt), the main
+	# hand goes up it instead, the off hand staying at the end (the hands kept in their order:
+	# the off hand above the main one twisted him round).
+	for pair in [[m, u], [o, -u]]:
+		var from: Vector3 = pair[0]
+		var dir: Vector3 = pair[1]
+		var ok := true
+		for i in range(1, int(k) + 1):
+			if not has.call(from + dir * float(i)):
+				ok = false
+				break
+		if ok:
+			return {"main": m, "off": m + dir * k} if from == m else {"main": o + dir * k, "off": o}
+	return g
+
 ## Two fists on a haft need room: the hands at least this far apart (voxels, 12 cm). Closer, they
 ## were crushed together on a short grip, and the arms locked against each other in a swing.
 const HANDS_APART := 3.0
@@ -130,6 +172,7 @@ static func two_hand_points(d: Dictionary) -> Variant:
 	if g == null:
 		return null
 	if d.get("twoHanded", false):
+		g = spread_hands(d.voxels, g)
 		return g if (g.main as Vector3).distance_to(g.off) >= HANDS_APART - 0.01 else null
 	var far = null
 	var fd := 0.0
