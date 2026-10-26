@@ -120,6 +120,34 @@ func test_the_hotbar_eats_bread_and_bots_throw_pots() -> void:
 	t.check(a.f.held_item == null and m.items.list.any(func(it): return it.type == "pot_thunder"), "and throws it")
 	m.queue_free()
 
+func test_a_pot_leaves_from_the_hand_that_holds_it() -> void:
+	seed(9)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -4), 0.0, {}, "Kit", 0, _idle)
+	a.kind = "local"
+	await _steps(30)
+	var pot_from := func() -> Vector3:
+		var it = m.items.list.filter(func(i): return i.type == "pot_thunder").back()
+		return it.p
+	a.inventory = {"thunderPot": 2}
+	m.throwables.use_item(a, 0)
+	var side: String = a.f.held_item.side
+	var hand: Vector3 = a.f.hand_world(side)
+	m.throwables.throw_held(a, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": 0.8})
+	t.check(pot_from.call().distance_to(hand) < 0.25, "it leaves the %s hand it was held in (%.2f m off)" % [side, pot_from.call().distance_to(hand)])
+	# Readied in the left hand, and the left forearm taken off: it goes from the right one,
+	# not from the forearm lying on the sand.
+	m.throwables.use_item(a, 0)
+	t.eq(a.f.held_item.side, "L", "readied in the free left hand")
+	var fore: VoxelPart = a.f.arm.L.fore
+	a.f.detach_limb(fore, {"removed": [], "severed": []})
+	fore.global_position += Vector3(2.0, 0, 0)
+	m.throwables.throw_held(a, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": 0.8})
+	var from: Vector3 = pot_from.call()
+	t.check(from.distance_to(a.f.hand_world("R")) < 0.25, "the good hand throws it (%.2f m from it, %.2f m from the cut-off one)" % [from.distance_to(a.f.hand_world("R")), from.distance_to(a.f.hand_world("L"))])
+	t.eq(a.f.item_hand(), "R", "the next is readied in the right hand")
+	m.queue_free()
+
 func test_a_crossbow_shoots_a_bolt_on_a_thrust() -> void:
 	seed(7)
 	var m := _match()

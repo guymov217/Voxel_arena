@@ -500,7 +500,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		# A throw is a movement, not a teleport: the arm (already drawn back while F was held, or
 		# drawn back now for a bot) whips forward and the thing leaves the hand partway through.
 		if inp.get("throw", false) and c.alive and not e.has("throw_q"):
-			var side: String = ("L" if not c.weapons.L else "R") if c.held_item != null else throw_side(c, inp)
+			var side: String = c.item_hand() if c.held_item != null else throw_side(c, inp)
 			if c.held_item != null or c.weapons.get(side):
 				var player: bool = e.kind == "local" or e.kind == "remote"
 				e.throw_q = {"inp": inp.duplicate(), "t": 0.09 if player else 0.45, "side": side}

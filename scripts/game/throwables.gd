@@ -1408,13 +1408,15 @@ func use_item(e: Dictionary, slot: int) -> bool:
 func hold_item(e: Dictionary, type: String, id: String) -> void:
 	var c = e.f
 	put_away(e)
+	var side: String = c.item_hand()
+	if side == "":
+		return   # no hand left to hold it
 	var node = null
 	if not headless:
 		node = Items.visual(type)
-		var side := "L" if not c.weapons.L else "R"
 		c.arm[side].fore.add_child(node)
 		node.position = c.hand_point
-	c.held_item = {"type": type, "id": id, "node": node}
+	c.held_item = {"type": type, "id": id, "node": node, "side": side}
 	if e.kind == "local":
 		m.feed.emit("%s ready: hold F to aim, let go to throw" % Data.shop.throwables.get(id, {}).get("name", id))
 
@@ -1442,6 +1444,7 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	var h = c.held_item
 	if h == null:
 		return
+	var side: String = c.item_hand()   # (read before the pot leaves the hand)
 	drop_held(c)
 	var inv: Dictionary = e.get("inventory", {})
 	if int(inv.get(h.id, 0)) <= 0:
@@ -1455,7 +1458,7 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	if inp.get("aimAt") is Vector3:
 		aim = Social.aim_ahead(c, inp.aimAt, look)
 	aim.y = maxf(0.1, aim.y)
-	throw_type(c, h.type, aim, null, true, power)
+	throw_type(c, h.type, aim, null, true, power, side)
 
 ## How fast a thrown thing leaves the hand, of its full speed, for a wind-up of `power` (0.3, a
 ## flick, to 1, held to the full).
@@ -1464,8 +1467,12 @@ static func throw_speed_k(power: float) -> float:
 
 ## `straight`: a player's throw flies along the line to the crosshair (the flat one of the two
 ## arcs that reach it, or along the line itself when it is out of reach), never a lob.
-func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power := 0.8) -> void:
-	var from: Vector3 = c.hand_world("L" if not c.weapons.L else "R") + Vector3(0, 0.3, 0)
+func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power := 0.8, side := "") -> void:
+	# From the hand that throws it, a hand's breadth on toward the mark (clear of the fist): it
+	# was always the left hand's place, a span over it, whichever hand held it.
+	var sd: String = side if side != "" else c.item_hand()
+	var hand: Vector3 = c.hand_world(sd) if sd != "" else c.head.global_position
+	var from: Vector3 = hand + (aim - hand).normalized() * 0.12 * c.S if aim.distance_to(hand) > 0.3 else hand
 	if type == "pot_dart":
 		var fwd: Vector3 = (aim - from)
 		fwd.y = 0.0

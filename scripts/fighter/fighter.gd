@@ -1378,6 +1378,27 @@ func leg_func(side: String) -> float:
 		return 0.0
 	return minf(t.function(), s.function()) * cord_legs * pelvis_f
 
+## Whether that hand can do anything at all: there, not hanging, not broken, not a hook.
+func hand_works(side: String) -> bool:
+	var fore: VoxelPart = arm[side].fore
+	var upper: VoxelPart = arm[side].upper
+	return not (fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or upper.severed or upper.hanging or arm_broken(side))
+
+## The hand a pot is held in and thrown from: the one it was readied in while that hand still
+## works, else the free one (the left first), else whichever works. "" with no hand left. (The
+## throw came from the left hand whatever happened to it: cut off by a crocodile, it left from
+## the forearm lying on the sand, user.)
+func item_hand() -> String:
+	if held_item != null and held_item.get("side", "") != "" and hand_works(held_item.side):
+		return held_item.side
+	for sd in ["L", "R"]:
+		if not weapons[sd] and hand_works(sd):
+			return sd
+	for sd in ["R", "L"]:
+		if hand_works(sd):
+			return sd
+	return ""
+
 ## Whether the left hand can take hold of a haft beside the right: not cut off, hanging, broken,
 ## lost or a prosthetic (a hand cut off by the crocodile took up a hammer with the good one).
 func off_hand_free() -> bool:
@@ -2447,7 +2468,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		thrust = 0.5
 	# Throwing: drawn back high behind the shoulder while F is held (further the longer it is
 	# held) or a bot winds up, then whipped forward and across in the follow-through.
-	var t_side := ("L" if not weapons.L else "R") if held_item != null else ("R" if weapons.R and not weapons.R.is_shield else "L")
+	var t_side := item_hand() if held_item != null else ("R" if weapons.R and not weapons.R.is_shield else "L")
 	if held_item == null and inp.get("throwOther", false) and weapons["L" if t_side == "R" else "R"]:
 		t_side = "L" if t_side == "R" else "R"
 	var ta = throw_anim
