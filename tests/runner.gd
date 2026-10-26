@@ -25,6 +25,10 @@ func run(only: String) -> void:
 				continue
 			current = "%s.%s" % [f.get_basename(), n]
 			Save.reset()
+			# Each test draws the same random numbers every run (Godot seeds its generator afresh
+			# at start-up): a blow's chips, a bot's whims and a wound's wander are the same each
+			# time, so a test passes or fails the same way, and a failure can be run again.
+			seed(hash(current))
 			var before := failures
 			var start := Time.get_ticks_msec()
 			await suite.call(n)

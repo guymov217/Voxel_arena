@@ -12,7 +12,9 @@ cd "$(dirname "$0")" || exit 1
 fail=0
 errs=$(sh ./check.sh)
 if [ -n "$errs" ]; then echo "$errs"; fail=1; else echo "parse: ok"; fi
-timeout 3600 "$G" --headless --path . -- --test || fail=1
+# --fixed-fps: one physics step to every frame, however fast the machine, so what runs per frame
+# and what runs per step keep in step and a run comes out the same every time.
+timeout 3600 "$G" --headless --fixed-fps 120 --path . -- --test || fail=1
 export NET_PORT=${NET_PORT:-17777}
 timeout 120 "$G" --headless --path . -- --probe net_host > /tmp/va_net_host.log 2>&1 &
 hp=$!

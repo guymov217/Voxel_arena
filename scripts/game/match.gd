@@ -1797,7 +1797,7 @@ func _gems(h: Dictionary) -> void:
 			"sapphire":
 				# Frozen stiff, and frostbitten: the flesh at the blow dies over the next seconds
 				# (Fire.tick "frost": white, then black, then it falls away; no blood from it).
-				part.frozen_until = Time.get_ticks_msec() * 0.001 + 2.5 * k
+				part.frozen_until = VoxelPart.clock() + 2.5 * k
 				add_spot(c, part, "frost", 4.0 * k, h.get("attacker"), p)
 				c.slow(2.5 * k, maxf(0.15, 0.45 - 0.08 * k))
 				c.stamina = maxf(0.0, c.stamina - 10.0 * k)

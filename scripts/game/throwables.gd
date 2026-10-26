@@ -941,7 +941,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		# A nail is a sting, not a stab: it goes in and stays, it bleeds a little. Out of one
 		# burst only the first dozen in a body count; the rest just stick (a dragon catches half
 		# the hail, and every nail at full weight bled it dry in seconds and stalled the game).
-		var now := Time.get_ticks_msec()
+		var now := int(VoxelPart.clock() * 1000.0)
 		var nh: Array = c.get_meta("nail_hits", [0, 0])
 		if now - int(nh[0]) > 1500:
 			nh = [now, 0]

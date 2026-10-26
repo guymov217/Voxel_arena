@@ -52,6 +52,8 @@ var jab_cd := 0.0
 var aim_pick = null
 var rng := RandomNumberGenerator.new()
 var grab_cool := 4.0            # the first grab waits: the weapon comes first
+var grab_reach := 0.0           # a grab under way: the hand reaching for him (s)
+const GRAB_REACH := 0.6
 var hold_t := 0.0
 var hold_move := ""
 var follow_t := 0.0
@@ -420,9 +422,21 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 	# the weapon is the main threat, the grab the surprise (never before the first blows).
 	var rage: bool = bool(c.get("enraged"))
 	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and (state != "attack" or rage) and c.state == "stand" and rng.randf() < dt * (1.4 if rage else 0.4):
-		inp.grab = true
 		grab_cool = 1.5
+		grab_reach = GRAB_REACH
 		hold_t = 0.0
+	# The grab is a reach: the hand goes out and down at him, and closes on whatever of him it
+	# gets to (tried at the one moment only, with the hand wherever the last stroke left it, it
+	# closed on air nine times in ten, and a raging giant took fifteen seconds to get hold).
+	if grab_reach > 0.0 and c.holding == null and c.state == "stand":
+		grab_reach -= dt
+		inp.grab = true
+		inp.faceAt = tp
+		inp.main = {"x": 0.0, "y": clampf((tp.y - c.torso.global_position.y) / (0.45 * S), -1.4, 0.4)}
+		inp.thrust = 0.6
+		inp.mz = 0.5 if dist > 0.5 * S else 0.0
+		return inp
+	grab_reach = 0.0
 	if c.holding != null and c.holding.limb == null:
 		grab_cool = (8.0 + rng.randf() * 4.0) * (0.35 if rage else 1.0)
 		hold_t += dt

@@ -115,7 +115,7 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 		if frost_on and not p.severed:
 			# Frostbite: the limb all but useless while the cold is in it, and frozen flesh
 			# does not bleed.
-			p.frozen_until = maxf(p.frozen_until, Time.get_ticks_msec() * 0.001 + 0.4)
+			p.frozen_until = maxf(p.frozen_until, VoxelPart.clock() + 0.4)
 			p.bleed *= maxf(0.0, 1.0 - dt * 0.8)
 			if host:
 				p.hp = maxf(0.0, p.hp - dt * 3.0 / soak)

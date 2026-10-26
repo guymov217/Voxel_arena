@@ -43,7 +43,7 @@ static func is_bow(w) -> bool:
 	return w != null and str(w.design.get("shoots", "")) == "arrow"
 var behind_t := {"R": 0.0, "L": 0.0}
 var wedge_t := {"R": {}, "L": {}}   # a foe's part the blade has been pressed into, and for how long
-var unwedge := []                   # [weapon, part, until]: let through a moment to come free
+var unwedge := []                   # [weapon, part, until, at most until]: let through a moment to come free
 const SKINS := [0xe0b48c, 0xc68e5e, 0x9a6440, 0x6e4529, 0xf1c9a5, 0xb98a5e, 0x4f3220, 0xd9a07c]
 
 signal died(fighter: Fighter, cause: String)
@@ -177,7 +177,7 @@ var aim_q := {"R": null, "L": null}
 var aim_tw := {"R": 0.0, "L": 0.0}
 var stroke_dir := {"R": null, "L": null}   # a bot's stroke: which way it is going, across the blade
 var stroke_idle := {"R": 0.0, "L": 0.0}
-const TWO_HAND_TWIST := 0.18   # how far the shoulders turn with a two-handed stroke, per unit of the pane across
+const TWO_HAND_TWIST := 0.22   # how far the shoulders turn with a two-handed stroke, per unit of the pane across
 const TWO_HAND_TRUNK := 1.8   # how much harder the trunk holds upright with both hands on a haft
 const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a second): held, not swung
 const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
@@ -2030,6 +2030,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					# catch his balance still goes to its mark.
 					var sole_at := shin.global_transform * Vector3(0, -4 * V * S, 0)
 					ft.anchor = Vector3(sole_at.x, (ft.land as Vector3).y, sole_at.z) if moving and wants_move and not shin.severed and sole_at.distance_to(ft.land) < 0.35 * S else ft.land
+					# Kept off its mark (a heap under him it came down on, a body in the way), it
+					# stands where it came down: held to a mark it could not reach, it read as
+					# slipping at once and stepped again and again, never down.
+					if not (moving and wants_move) and not shin.severed and Vector2(sole_at.x - ft.land.x, sole_at.z - ft.land.z).length() > 0.12 * S:
+						ft.anchor = Vector3(sole_at.x, minf(sole_at.y, (ft.land as Vector3).y + 0.6 * S), sole_at.z)
+					ft.slip = 0.0
 			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S:
 				ft.swing = true
 				ft.from = ft.anchor
@@ -2636,6 +2642,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if has_wrist(w):
 			_drive_wrist(side, w, w_aim, strength, dt)
+		if side == "R" and two_handed and weapon_joints.L and thrust_line[side] == null:
+			_drive_haft(w, w_aim, strength, dt)
+		elif side == "R":
+			haft_i = Vector3.ZERO
 		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
 		_free_wedged(side, w, dt)
 		if not throwing[side]:
@@ -2705,7 +2715,13 @@ func _keep_arm_out(side: String, dt: float) -> void:
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
 	var out_x := -1.0 if side == "R" else 1.0
-	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)], [up, up.global_position]]
+	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)]]
+	# The middle of the upper arm too, but not with both hands on a haft: reaching across the
+	# chest for the other end of it, the off arm's lies along the front of the chest, at the
+	# box's corner by the shoulder, and pushed out from there all the time it twisted the haft
+	# off the mouse (a longsword aimed out to the right stood 69 degrees short of it).
+	if not two_handed:
+		pts.append([up, up.global_position])
 	if not fo.severed:
 		pts.append_array([[fo, fo.global_position], [fo, hand_world(side)]])
 	for body in [torso, head]:
@@ -2892,6 +2908,12 @@ func _free_wedged(side: String, w: Weapon, dt: float) -> void:
 		var u: Array = unwedge[k]
 		if now >= float(u[2]):
 			if is_instance_valid(u[0]) and is_instance_valid(u[1]):
+				# Wrenched free, it slides on out: the part lets it through until the blade is
+				# clear of it (given it back while still half in, it caught there again), for a
+				# second and a half at most.
+				if now < float(u[3]) and _blade_in((u[0] as Weapon), (u[1] as VoxelPart)):
+					u[2] = now + 0.1
+					continue
 				(u[0] as Weapon).remove_collision_exception_with(u[1])
 			unwedge.remove_at(k)
 	var held: Dictionary = wedge_t[side]
@@ -2922,7 +2944,22 @@ func _free_wedged(side: String, w: Weapon, dt: float) -> void:
 		if float(held[b]) >= WEDGE_T:
 			held.erase(b)
 			w.add_collision_exception_with(b)
-			unwedge.append([w, b, now + 0.35])
+			unwedge.append([w, b, now + 0.35, now + 1.5])
+
+## Whether the blade still runs into the part: the part's box, grown a little, crosses the line
+## from the grip to the tip.
+static func _blade_in(w: Weapon, b: VoxelPart) -> bool:
+	var a := w.grip_world()
+	var tip := w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0)
+	var inv := b.global_transform.affine_inverse()
+	var la := inv * a
+	var lb := inv * tip
+	var e: Vector3 = b.half_ext + Vector3.ONE * 0.04
+	for i in 9:
+		var q := la.lerp(lb, i / 8.0)
+		if absf(q.x) < e.x and absf(q.y) < e.y and absf(q.z) < e.z:
+			return true
+	return false
 
 ## The hand moves on a flat pane in front of the body, Half Sword style.
 ## This fighter's own bodies, kept out of the rays he casts down for the ground.
@@ -3052,7 +3089,8 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		return _shooter_aim(side, w, inp, yaw_q, dt)
 	var local := (yaw_q.inverse() * (target_w - t_pos)) / S
 	var hy := float(hand_input[side].get("y", 0.15))
-	var elev := clampf((0.92 if hy >= 0.0 else 1.0) * hy, -1.45, 1.5)
+	# Right up and right down at the ends of the pane (the sand stops a long blade short below).
+	var elev := clampf(hy * PI / 2.0 / 1.6, -PI / 2.0, PI / 2.0)
 	# Both hands on the haft swing it about the middle of the chest, one about its own shoulder.
 	var shx: float = 0.0 if two_handed else shoulder[side].x / S
 	var pivot := Vector3(shx + (local.x - shx) * 0.2, local.y, local.z - 0.28)
@@ -3062,10 +3100,10 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	flat = flat.normalized()
 	if not is_spear(w):
 		# The sweep comes from the mouse itself, the wrists and forearms carrying the blade round
-		# (near 90 degrees either way), not from how far the hands can get: in one hand or two,
-		# light or heavy, every blade sweeps as wide.
+		# (90 degrees either way at the ends of the pane), not from how far the hands can get: in
+		# one hand or two, light or heavy, every blade sweeps as wide.
 		# (Narrower the lower the blade: low across the body it would end up behind the back.)
-		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * 0.75 * (1.0 - 0.45 * clampf(-elev / 1.2, 0.0, 1.0))
+		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * PI / 4.0 * (1.0 - 0.45 * clampf(-elev / 1.2, 0.0, 1.0))
 		flat = Vector3(sin(sweep), 0, cos(sweep))
 	var axis := yaw_q * Vector3(flat.x * cos(elev), sin(elev), flat.z * cos(elev))
 	if is_spear(w) and not throw_pose[side]:
@@ -3303,6 +3341,42 @@ func _lock_elbow(side: String, w: Weapon, fore_q: Quaternion, strength: float, d
 	tq = PD.clamp_len(tq, 260.0 * maxf(0.3, strength) * MS * S * float(mods.strength))
 	fore.apply_torque_impulse(tq * dt)
 	upper.apply_torque_impulse(-tq * dt)
+
+## Both hands on a haft turn it as a lever, one hand pushing as the other pulls: the blade's line
+## is steered onto the aim's from the pair of them, the reaction going into the body. (Each arm alone, driven to its own place on the haft, could not hold that line: the
+## off arm reaching across the chest pulled it its own way and the blade stood off the mouse.)
+## Not its roll, which is the wrists' (_drive_wrist).
+const HAFT_WN := 12.0
+const HAFT_KI := 6.0   # how hard a held error is worked off, per second of it
+var haft_i := Vector3.ZERO   # the haft drive's held correction (_drive_haft)
+const HAFT_MAX := 70.0
+func _drive_haft(w: Weapon, w_aim: Quaternion, strength: float, dt: float) -> void:
+	var ax := PD.quat_of(w) * Vector3.UP
+	var want := w_aim * Vector3.UP
+	var c := ax.cross(want)
+	var err := c.normalized() * ax.angle_to(want) if c.length_squared() > 1e-10 else Vector3.ZERO
+	var rel := w.angular_velocity - (aim_w.R as Vector3)
+	rel -= ax * rel.dot(ax)
+	# A steady pull off the line (the arms' own pose, a heavy head's weight) is worked off as he
+	# holds it: the correction grows while the blade stays off the mouse, and lets go as it comes
+	# on or as the stroke moves fast.
+	var moving := (aim_w.R as Vector3).length() > 3.0
+	haft_i = (haft_i + err * dt) * (0.9 if moving else 1.0)
+	haft_i -= ax * haft_i.dot(ax)   # (about the haft's line only, never its roll)
+	haft_i = PD.clamp_len(haft_i, 0.35)
+	var alpha := err * HAFT_WN * HAFT_WN + haft_i * HAFT_WN * HAFT_WN * HAFT_KI - rel * (2.0 * 0.9 * HAFT_WN)
+	var mid := (hand_world("R") + hand_world("L")) * 0.5
+	var lever := (w.global_transform * w.center_of_mass) - mid
+	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
+	var heft := clampf(i_wpn / (MS * S * S * 0.6), 0.0, 6.0)
+	var tq := PD.clamp_len(alpha * i_wpn, HAFT_MAX * strength * MS * S * float(mods.strength) * (1.0 + 0.45 * heft))
+	w.apply_torque_impulse(tq * dt)
+	# The shoulders and the trunk turn it: half the reaction is the trunk's, a quarter each upper
+	# arm's (all on the trunk, a war hammer swung about leaned the whole man over with it; all on
+	# the arms, the sword arm was pushed in across the chest).
+	torso.apply_torque_impulse(-tq * 0.5 * dt)
+	arm.R.upper.apply_torque_impulse(-tq * 0.25 * dt)
+	arm.L.upper.apply_torque_impulse(-tq * 0.25 * dt)
 
 ## The wrist turns the blade about its own length to the edge the aim wants (the wheel's
 ## twist, the lean into the stroke), the reaction going into the forearm.

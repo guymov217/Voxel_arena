@@ -651,11 +651,16 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 				ai.charge_t = float(ai.get("charge_t", 0.0)) - dt
 				if float(ai.charge_t) < -3.5 and dist > 0.8 * S:
 					ai.charge_t = 2.2
+					ai.charge_rammed = false
 					if on_roar.is_valid():
 						on_roar.call(self)
 				var spd := float(sp.speed) * (2.5 if float(ai.charge_t) > 0.0 else 1.5)
 				want = to * spd * hurt
 				yaw = atan2(to.x, to.z)
+				# A charge at full tilt that meets him knocks him off his feet, once (it shoved
+				# him on ahead of its head, never under it, and the feet never came down on him).
+				if float(ai.charge_t) > 0.0 and not ai.get("charge_rammed", false) and Vector2(lv.x, lv.z).length() > 2.0:
+					ai.ram_t = maxf(float(ai.get("ram_t", 0.0)), 0.1)
 			# Close enough that the forefeet, coming down ahead of the chest, land on him.
 			if t and float(ai.get("charge_t", 0.0)) <= 0.0 and dist < torso.half_ext.z * 1.5 + 0.9 * S * 0.5 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
 				ai.bite_cool = 4.5
@@ -856,6 +861,8 @@ func _ram(dt: float) -> void:
 	if part == null or part.severed:
 		return
 	ai.ram_t = 0.0
+	if float(ai.get("charge_t", 0.0)) > 0.0:
+		ai.charge_rammed = true
 	var J := clampf(_touch_force(t) * 0.005, 8.0, 28.0)
 	var dir: Vector3 = (t.torso.global_position - torso.global_position)
 	dir.y = 0.0
