@@ -153,11 +153,19 @@ static func base(key: String) -> Dictionary:
 ## takes both). With no hand free the buyer picks which weapon the smith takes in part
 ## exchange (`sell` "R" or "L"); without that pick, when there is a choice, the answer is
 ## {"choose": [sides], "price"}. What is sold fetches half its worth.
-static func buy(a: Dictionary, key: String, sell := "") -> Dictionary:
+## `hand`: "L" to have a one-handed weapon put in the off hand (user: not only the main hand).
+static func buy(a: Dictionary, key: String, sell := "", hand := "") -> Dictionary:
 	var b := base(key)
 	if b.is_empty():
 		return {"error": "The smith has no such thing"}
-	return _acquire(a, Data.preset(key).duplicate(true), base_price(b), b.slot == "off", sell)
+	var d: Dictionary = Data.preset(key).duplicate(true)
+	return _acquire(a, d, base_price(b), b.slot == "off" or (hand == "L" and not d.get("twoHanded", false)), sell)
+
+## Whether a base can go in the off hand as well as the main one: a one-handed weapon (a
+## shield goes there anyway; a two-handed one takes both).
+static func off_hand_ok(key: String) -> bool:
+	var b := base(key)
+	return not b.is_empty() and b.slot != "off" and not bool(Data.preset(key).get("twoHanded", false))
 
 ## Has a design from the player's own gallery made at the smith, at what it is worth.
 ## `hand`: "L" to have it made for the off hand ("" puts it in a free hand as one bought).

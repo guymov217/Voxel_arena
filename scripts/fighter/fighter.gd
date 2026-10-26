@@ -2813,6 +2813,51 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			var jo: Vector3 = bq * push.normalized() * acc * m_eff * dt
 			part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 			body.apply_central_impulse(-jo)   # (the arm pushes off his own body, not off the air)
+	_keep_hand_front(side, dt)
+
+## Nor does a hand ever go round behind his back: an empty hand knocked or dragged there stayed
+## at the small of the back as if tied (user, more than once), a hand from the hips to the
+## shoulders behind the back's plane is pushed out to its own side and on round to the front.
+## (Not a throw drawing back over the shoulder, which is above it, nor while something holds him.)
+func _keep_hand_front(side: String, dt: float) -> void:
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	# Only while he has his body to himself, on his feet or getting up: lying, flung or torn, a
+	# hand pushed round against what pins it put the energy into his flight (a man an ape tore
+	# and threw went up at 21 m/s).
+	# (Staggering on his feet, a hand pushed round fought the ape or giant that had him: only
+	# getting up is always put right.)
+	if torso.severed or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or (throwing[side] and fo.global_position.y > torso.global_position.y) or (pinned_arm == side and is_instance_valid(grabbed_by)) or is_instance_valid(get_meta("beast_hold", null)):
+		return
+	# Not with a beast on him (an ape's grip, a croc's jaws, a python's coils: they have their
+	# own say over where his arms go, and the push fought them).
+	if Combat.current != null and kind != "beast":
+		for o in Combat.current.fighters:
+			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive and o.torso.global_position.distance_to(torso.global_position) < 4.0 * maxf(1.0, o.S):
+				return
+	var out_x := -1.0 if side == "R" else 1.0
+	var bt: Transform3D = torso.global_transform
+	var inv := bt.affine_inverse()
+	var bq := PD.quat_of(torso)
+	var e: Vector3 = torso.half_ext
+	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)]]
+	if not fo.severed:
+		pts.append([fo, hand_world(side)])
+	for pp in pts:
+		var l: Vector3 = inv * (pp[1] as Vector3)
+		if l.z > -e.z or absf(l.x) > e.x + 0.12 * S or l.y < -e.y - 0.1 * S or l.y > e.y + 0.25 * S:
+			continue
+		var push := Vector3(out_x * maxf(0.0, e.x + 0.16 * S - l.x * out_x), 0.0, maxf(0.0, -0.3 * e.z - l.z))
+		if push.length_squared() < 1e-8:
+			continue
+		var part: VoxelPart = pp[0]
+		var dir: Vector3 = bq * push.normalized()
+		var v_out := dir.dot(part.velocity_at(pp[1]) - torso.velocity_at(pp[1]))
+		var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
+		var acc: float = minf(push.length(), 0.3 * S) * ARM_OUT_K - minf(0.0, v_out) * 2.0 * sqrt(ARM_OUT_K)
+		var jo: Vector3 = dir * acc * m_eff * dt
+		part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
+		torso.apply_central_impulse(-jo)
 
 ## Where a bow or a crossbow points: at the player's crosshair (aimAt), a bot's target (gaze),
 ## or straight ahead. A bow lies with the arrow (+x) on that line and the stave upright; a
@@ -3334,7 +3379,8 @@ func swing_cap(side: String, w: Weapon) -> float:
 	var lever := w.global_transform * w.center_of_mass - hand_world(side)
 	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
 	var k := pow(SWING_I_REF * S * S * float(mods.get("strength", 1.0)) / maxf(1e-4, i_wpn), 0.25)
-	var cap := clampf(45.0 * k, 16.0, 45.0)
+	# A touch slower than it was (user: the swings feel very, very fast).
+	var cap := clampf(38.0 * k, 16.0, 38.0)
 	if float(w.reach) > LONG_REACH * S:
 		cap = minf(cap, 12.0 * S * sqrt(float(mods.get("strength", 1.0))) / float(w.reach))
 	return cap

@@ -2238,12 +2238,25 @@ func _hold(a: VoxelPart, b: VoxelPart, at: Vector3) -> void:
 	if a == null or b == null or a.severed or b.severed:
 		return
 	holds.append(_joint_at(a, b, at, false))
+	# The man held knows it (his own arm drives stand back: a hand pushed round to the front
+	# against an ape's grip on it flung him into the air).
+	var held = b.fighter
+	if held != null and held != self and is_instance_valid(held):
+		held.set_meta("beast_hold", self)
+		if not hold_targets.has(held):
+			hold_targets.append(held)
+
+var hold_targets: Array = []   # the men this body has hold of (_hold), told when it lets go
 
 func _free_holds() -> void:
 	for j in holds:
 		if j and is_instance_valid(j):
 			j.queue_free()
 	holds.clear()
+	for f in hold_targets:
+		if is_instance_valid(f) and f.get_meta("beast_hold", null) == self:
+			f.remove_meta("beast_hold")
+	hold_targets.clear()
 	for n in ["legFLLo", "legFRLo"]:
 		if by_name.has(n):
 			by_name[n].set_meta("gripped", false)

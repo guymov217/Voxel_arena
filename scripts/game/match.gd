@@ -952,6 +952,10 @@ func _player_input(f, dt: float) -> Dictionary:
 		faced_for = f
 		input.look_yaw = f.yaw
 		input.look_pitch = 0.0
+		# And the hands at their guard: the marks were left wherever the last fight's last stroke
+		# had them (across the body, up over the head), and a new man in the yard came up with
+		# his arms twisted over and behind him (user).
+		input.reset_hands()
 	if input:
 		input.aiming = shooter != null or input.held("throw")
 		input.set_two_handed(f.net_two_handed if role == "guest" else f.two_handed)
@@ -2689,6 +2693,13 @@ func _process(dt: float) -> void:
 				foe = [of.torso.global_position + Vector3(0, 0.25, 0), of.head.global_position + Vector3(0, 0.15 * of.S, 0) if not of.head.severed else of.torso.global_position, low]
 				if not my_hit.is_empty() and time - float(my_hit.t) < 1.5 and my_hit.f == of:
 					foe.append(my_hit.p)
+				# And the point of the weapon while it is among them: where the blow is about to
+				# land (user: not always seen where I hit with the weapon).
+				var wt: Weapon = f.weapons.R if f.weapons.R and not f.weapons.R.is_shield else f.weapons.L
+				if wt != null and last_local_inp is Dictionary and bool(last_local_inp.get("power", false)):
+					var tip: Vector3 = wt.global_transform * (wt.center_of_mass + Vector3(0, float(wt.reach) * 0.5 / maxf(0.1, wt.vs), 0))
+					if tip.distance_to(of.torso.global_position) < 3.0 * maxf(1.0, of.S):
+						foe.append(tip)
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
 	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
 	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).

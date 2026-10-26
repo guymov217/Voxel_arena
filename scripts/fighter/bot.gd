@@ -53,10 +53,11 @@ var aim_pick = null
 var rng := RandomNumberGenerator.new()
 var grab_cool := 4.0            # the first grab waits: the weapon comes first
 var grab_reach := 0.0           # a grab under way: the hand reaching for him (s)
-const GRAB_REACH := 0.6
+const GRAB_REACH := 1.0
 var hold_t := 0.0
 var hold_move := ""
 var follow_t := 0.0
+var hold_side := "L"            # the hand a man is held in (the hoist and throw follow it)
 var ability_t := 1.0
 var draw_t := -0.8
 var panic_t := 0.0             # enraged: when the blind lurch changes
@@ -417,28 +418,44 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		inp.offThrust = 1.4 - 0.8 * k
 		inp.main = {"x": 0.7, "y": 0.4}
 		inp.mz = 0.2
-		return inp
+		return _holding_hand(inp)
 	# Giants and trolls now and then grab the nearest fighter and hurl him across the arena;
 	# the weapon is the main threat, the grab the surprise (never before the first blows).
+	# Seldom: a grab is the surprise of the fight, not its pattern (user: it came too often).
 	var rage: bool = bool(c.get("enraged"))
-	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and (state != "attack" or rage) and c.state == "stand" and rng.randf() < dt * (1.4 if rage else 0.4):
-		grab_cool = 1.5
+	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and (state != "attack" or rage) and c.state == "stand" and rng.randf() < dt * (0.5 if rage else 0.12):
+		grab_cool = 4.0
 		grab_reach = GRAB_REACH
 		hold_t = 0.0
 	# The grab is a reach: the hand goes out and down at him, and closes on whatever of him it
 	# gets to (tried at the one moment only, with the hand wherever the last stroke left it, it
 	# closed on air nine times in ten, and a raging giant took fifteen seconds to get hold).
+	# The hand that reaches is the one that takes hold: the free one (the sword hand reached
+	# while the empty one, hanging at his side, closed on the man from a stride off, user).
 	if grab_reach > 0.0 and c.holding == null and c.state == "stand":
 		grab_reach -= dt
+		var gs := "R" if not c.weapons.R else ("L" if not c.weapons.L else "")
+		if gs == "":
+			grab_reach = 0.0
+			return null
 		inp.grab = true
+		inp.grabHands = gs
 		inp.faceAt = tp
-		inp.main = {"x": 0.0, "y": clampf((tp.y - c.torso.global_position.y) / (0.45 * S), -1.4, 0.4)}
-		inp.thrust = 0.6
-		inp.mz = 0.5 if dist > 0.5 * S else 0.0
+		var reach_to := {"x": 0.0, "y": clampf((tp.y - c.torso.global_position.y) / (0.45 * S), -1.4, 0.4)}
+		# Out at arm's length and a step in, so the hand comes onto him (a hold now has to be
+		# a touch, and a half-reach closed a hand's breadth short).
+		if gs == "R":
+			inp.main = reach_to
+			inp.thrust = 1.0
+		else:
+			inp.off = reach_to
+			inp.offThrust = 1.0
+			inp.power = true
+		inp.mz = 0.6 if dist > 0.4 * S else 0.0
 		return inp
 	grab_reach = 0.0
 	if c.holding != null and c.holding.limb == null:
-		grab_cool = (8.0 + rng.randf() * 4.0) * (0.35 if rage else 1.0)
+		grab_cool = (18.0 + rng.randf() * 8.0) * (0.35 if rage else 1.0)
 		hold_t += dt
 		inp.mz = 0.0
 		inp.mx = 0.0
@@ -471,5 +488,21 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 			var caught: float = c.holding.target.f.torso.global_position.y
 			if (down >= 1.0 and caught < 1.1 * c.holding.target.f.S) or T > 1.9:
 				inp.slam = true
-		return inp
+		hold_side = String(c.holding.side)
+		return _holding_hand(inp)
 	return null
+
+## The hoist, the swing and the throw are written for the left hand holding; held in the right
+## (a giant with no weapon), the same moves go to the right arm, mirrored, and the left one
+## balances.
+func _holding_hand(inp: Dictionary) -> Dictionary:
+	if hold_side != "R":
+		return inp
+	var o: Dictionary = inp.get("off", {"x": -0.35, "y": 0.1})
+	var mn: Dictionary = inp.get("main", {"x": 0.1, "y": 0.15})
+	inp.main = {"x": -float(o.x), "y": float(o.y)}
+	inp.off = {"x": -float(mn.x), "y": float(mn.y)}
+	var th := float(inp.get("offThrust", 0.0))
+	inp.offThrust = float(inp.get("thrust", 0.0))
+	inp.thrust = th
+	return inp

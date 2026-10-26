@@ -80,9 +80,12 @@ func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 	for o in targets:
 		# A giant's hand takes only what it is on: the part his forearm touches (the physics'
 		# contact), at the hand.
+		# (With no contact on the record this step, the part whose surface is at the hand, a
+		# touch's width off: the contacts come and go between steps, and a hand on a man's
+		# shoulder closed on nothing.)
 		var on: VoxelPart = m.combat.touch_by(c.arm[side].fore, o.f, 0.3) if touch else null
 		for part in o.f.parts:
-			if part.severed or part.missing or (touch and part != on):
+			if part.severed or part.missing or (touch and on != null and part != on):
 				continue
 			var d: float = box_distance(part, hand) if touch else part.global_position.distance_to(hand)
 			if d < bd:
@@ -105,7 +108,9 @@ func grab_person(e: Dictionary, inp: Dictionary):
 	if sides.is_empty():
 		return null
 	var side: String = sides[0]
-	var touch: bool = c.mods.get("grabby", false)
+	# A giant's hand (and any big bot's) takes only what it is on: a hold from a stride off read
+	# as the man pulled up by nothing (user).
+	var touch: bool = c.mods.get("grabby", false) or (c.S >= 1.8 and e.has("bot"))
 	var others: Array = m.entities.filter(func(o): return o != e and o.f.alive)
 	var best = nearest_part(c, side, others, touch)
 	if best == null:

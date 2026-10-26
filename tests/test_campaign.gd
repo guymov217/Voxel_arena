@@ -154,6 +154,13 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	var big: Dictionary = r.arms
 	r = Arms.buy(big, "dagger")
 	t.check(not r.has("choose") and r.side == "R", "the only thing to sell is the two-handed sword")
+	# Asked for the off hand, a one-handed weapon goes there even with the main hand free.
+	r = Arms.buy(Arms.empty(), "gladius", "", "L")
+	t.eq(r.side, "L", "a gladius bought for the off hand goes there")
+	t.check(Arms.is_stick(r.arms.main), "the main hand keeps its stick")
+	r = Arms.buy(Arms.buy(Arms.empty(), "axe").arms, "dagger", "", "L")
+	t.check(r.side == "L" and str(r.arms.main.name) == "Axe" and str(r.arms.off.name) == "Dagger", "beside the axe in the main hand")
+	t.check(Arms.off_hand_ok("gladius") and not Arms.off_hand_ok("zweihander") and not Arms.off_hand_ok("roundShield"), "one-handed weapons only (a shield goes there anyway)")
 
 ## A design from the gallery is made by the smith at its worth (its stuff and his labour), and
 ## goes in a free hand like any weapon bought; the forge on the main menu takes nothing.

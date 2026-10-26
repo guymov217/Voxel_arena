@@ -1215,6 +1215,14 @@ func _yard(v: VBoxContainer) -> void:
 		buy.tooltip_text = "" if afford else "Not enough in your purse"
 		UIStyle.push_down(box)
 		box.add_child(buy)
+		# A one-handed weapon can be had for the off hand too (what is there is handed in).
+		if Arms.off_hand_ok(key):
+			var pre_l := Arms.buy(arms(), key, "", "L")
+			var afford_l: bool = Arms.base_price(b) <= coins() + int(pre_l.get("trade_in", 0))
+			var buy_l := UIStyle.button("For the off hand", func(): _pay(Arms.buy(arms(), key, "", "L")), afford_l)
+			buy_l.disabled = not afford_l
+			buy_l.tooltip_text = ("Into the off hand, %s" % ("handing in what is there" if int(pre_l.get("trade_in", 0)) > 0 else "the main hand keeps its weapon")) if afford_l else "Not enough in your purse"
+			box.add_child(buy_l)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
 		_viewable(tex, Data.preset(key), "%d denarii at the smith" % Arms.base_price(b))

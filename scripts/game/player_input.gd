@@ -211,6 +211,12 @@ func _motion(rel: Vector2) -> void:
 		hh.x = clampf(hh.x + rel.x * s, -lim, lim)
 		hh.y = clampf(hh.y - rel.y * s, -1.6, 1.6)
 
+## Both hands back at their guard (a new fighter of ours: a bout, the yard, a respawn).
+func reset_hands() -> void:
+	main = {"x": 0.1, "y": 0.15}
+	off = {"x": -0.35, "y": 0.1}
+	thrust = 0.0
+
 ## Both hands on one haft, the off hand's mark is not its own: either button (or both) swings
 ## the weapon with the main hand's. Moved along unseen under the grip, the off hand's mark was
 ## left wherever the mouse had gone (up by the head), and when the grip ended (H, the weapon

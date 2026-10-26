@@ -136,7 +136,7 @@ func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	giant.f.enraged = true
 	var moves := []
 	m.feed.connect(func(s): moves.append(s))
-	for k in 50:
+	for k in 150:   # (grabs are rare now: user, they came too often)
 		victim.f.blood = 100.0
 		victim.f.head.hp = maxf(victim.f.head.hp, 60.0)
 		await _steps(60)
