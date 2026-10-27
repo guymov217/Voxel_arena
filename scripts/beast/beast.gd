@@ -2254,7 +2254,7 @@ func _free_holds() -> void:
 			j.queue_free()
 	holds.clear()
 	for f in hold_targets:
-		if is_instance_valid(f) and f.get_meta("beast_hold", null) == self:
+		if is_instance_valid(f) and f.has_meta("beast_hold") and f.get_meta("beast_hold") == self:
 			f.remove_meta("beast_hold")
 	hold_targets.clear()
 	for n in ["legFLLo", "legFRLo"]:

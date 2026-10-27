@@ -68,6 +68,11 @@ var panic_off := Vector3.ZERO  # where, off the man, the half-blind giant is fac
 var panic_mx := 0.0
 var weave := 0.0               # the guard's own motion: the blade is never held dead still
 var lunge := false             # this blow began out of reach: he steps in with it
+var react := ""                # a hit reaction under way: "clutch" (hand to the wound), "flinch" (recoil), "stagger"
+var react_t := 0.0
+var react_cd := 0.0            # no reaction again before this has run down
+var react_part := ""
+var react_dir := 1.0           # which way the flinch sways
 
 func _init(fighter: Fighter, difficulty := 0.5, personality := "standard", seed_ := 0) -> void:
 	c = fighter
@@ -76,6 +81,84 @@ func _init(fighter: Fighter, difficulty := 0.5, personality := "standard", seed_
 	rng.seed = seed_ if seed_ else randi()
 	strafe = -1.0 if rng.randf() < 0.5 else 1.0
 	ability_t = 0.4 if p.has("range") else 1.0 + rng.randf() * 2.0
+	fighter.hit_taken.connect(_on_hit)
+
+## A man does not take every blow like a post: now and then he grabs the place that was hit, doubles
+## up or jerks back from it. Seldom (a cooldown, and a chance that grows with the damage), short,
+## and never so long that he stops fighting: the weapon hand keeps its own business throughout.
+func _on_hit(_f: Fighter, info: Dictionary) -> void:
+	if react_cd > 0.0 or not c.alive or info.get("blocked", false) or c.state != "stand":
+		return
+	var dmg: float = float(info.get("dmg", 0.0))
+	if dmg < 3.0:
+		return
+	var nerve := 0.35 if p.get("power", false) and p.get("sprint", false) else 0.9   # berserkers shrug it off
+	if p.get("shield", false) or p.has("keepAway"):
+		nerve = 1.2
+	if rng.randf() > clampf(dmg / 30.0, 0.1, 0.65) * nerve * (1.15 - 0.4 * diff):
+		return
+	react_part = str(info.get("part_name", "torso"))
+	react_dir = -1.0 if rng.randf() < 0.5 else 1.0
+	var big: bool = dmg > 16.0
+	var free: bool = not c.weapons.L and not c.two_handed and c.hand_works("L")
+	if big and rng.randf() < 0.5:
+		react = "stagger"
+		react_t = rng.randf_range(0.5, 0.8)
+	elif free and rng.randf() < 0.75:
+		react = "clutch"
+		react_t = rng.randf_range(0.7, 1.3) * (1.0 + 0.4 * dmg / 24.0)
+	else:
+		react = "flinch"
+		react_t = rng.randf_range(0.35, 0.6)
+	react_cd = react_t + rng.randf_range(3.0, 5.5)
+
+## Where the free hand goes to hold the wound (a mark in the mouse pane), by the part that was hit.
+func _wound_mark(part: String) -> Dictionary:
+	var S := c.S
+	var tx := 0.0
+	var y := 0.1
+	if part == "head":
+		y = 1.15
+	elif part.begins_with("thigh") or part.begins_with("shin"):
+		y = -1.2
+		tx = (-0.18 if part.ends_with("L") else 0.18) * S
+	elif part.begins_with("upperArm") or part.begins_with("forearm"):
+		tx = float(c.shoulder["R" if part.ends_with("R") else "L"].x) * 0.8
+		y = 0.35
+	elif part != "torso":
+		y = -0.1
+	# Invert hand_target_local's x for the left hand: x = -hx * 0.5 * S - 0.1 * S.
+	return {"x": clampf(-(tx + 0.1 * S) / (0.5 * S), -2.0, 2.0), "y": y, "tuck": 1.0}
+
+## Bends the input for the reaction under way (called last, so it rides over the plan).
+func _react(dt: float, inp: Dictionary) -> void:
+	react_cd = maxf(0.0, react_cd - dt)
+	if react == "":
+		return
+	react_t -= dt
+	if react_t <= 0.0 or c.state != "stand" or not c.alive:
+		react = ""
+		return
+	var swinging: bool = state == "attack"
+	match react:
+		"clutch":
+			if not c.weapons.L and not c.two_handed:
+				inp.off = _wound_mark(react_part)
+			if not swinging:
+				inp.mz = minf(float(inp.mz), 0.0) if react_t > 0.35 else float(inp.mz)
+				if react_part.begins_with("torso") or react_part == "belly":
+					inp.crouch = true   # doubled over the belly
+		"flinch":
+			if not swinging:
+				inp.mz = minf(float(inp.mz), -0.7)
+				inp.mx = float(inp.mx) + react_dir * 0.4
+			if c.weapons.L == null and not c.two_handed and react_part == "head":
+				inp.off = _wound_mark("head")
+		"stagger":
+			if not swinging:
+				inp.mz = -0.9
+				inp.mx = react_dir * 0.6
+				inp.crouch = true
 
 func _lerp_hand(x: float, y: float, k: float) -> void:
 	k = minf(1.0, k)
@@ -379,6 +462,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		if dist < 1.4 * S and not c.weapons.L and not c.two_handed and rng.randf() < dt * 2.0:
 			inp.jabL = true
 	inp.main = hand.duplicate()
+	_react(dt0, inp)
 	return inp
 
 ## The moves that are not swings: going for a weapon lying about when empty-handed, and the

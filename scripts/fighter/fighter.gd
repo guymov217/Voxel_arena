@@ -2827,7 +2827,7 @@ func _keep_hand_front(side: String, dt: float) -> void:
 	# and threw went up at 21 m/s).
 	# (Staggering on his feet, a hand pushed round fought the ape or giant that had him: only
 	# getting up is always put right.)
-	if torso.severed or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or (throwing[side] and fo.global_position.y > torso.global_position.y) or (pinned_arm == side and is_instance_valid(grabbed_by)) or is_instance_valid(get_meta("beast_hold", null)):
+	if torso.severed or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or (throwing[side] and fo.global_position.y > torso.global_position.y) or (pinned_arm == side and is_instance_valid(grabbed_by)) or (has_meta("beast_hold") and is_instance_valid(get_meta("beast_hold"))):
 		return
 	# Not with a beast on him (an ape's grip, a croc's jaws, a python's coils: they have their
 	# own say over where his arms go, and the push fought them).
@@ -3132,7 +3132,8 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# went into the sand and could not follow the mouse.
 	if two_handed and side == "R":
 		y = minf(maxf(y, -0.55 * S), 0.55 * S)
-	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short) * S
+	# "tuck": a hand held in to the body (a bot clutching a wound), not out in front of it.
+	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short - 0.32 * clampf(float(hp.get("tuck", 0.0)), 0.0, 1.0)) * S
 	var d := Vector3(x + (0.1 if side == "R" else -0.1) * S, y, z)
 	# Never round behind the back (only a throw is drawn back there on purpose).
 	if thrust > -0.5:
@@ -4038,6 +4039,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		res.organs = organs_hit.map(func(o): return Anatomy.organ_name(o))
 		if res.get("spilled", false) and not res.organs.has("guts"):
 			res.organs.append("guts")
+	res.part_name = part.part_name
 	hit_taken.emit(self, res)
 	return res
 
