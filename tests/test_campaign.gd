@@ -149,18 +149,19 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	t.eq(r.side, "L", "a shield goes on the left")
 	t.eq(r.sold, ["L"], "taking the place of what was there")
 	r = Arms.buy(a, "zweihander")
-	t.eq(r.sold, ["R", "L"], "a two-handed sword takes both hands")
-	t.check(r.arms.off == null, "nothing left in the off hand")
-	var big: Dictionary = r.arms
-	r = Arms.buy(big, "dagger")
-	t.check(not r.has("choose") and r.side == "R", "the only thing to sell is the two-handed sword")
+	t.eq(r.sold, ["R"], "a two-handed sword takes the main hand")
+	t.eq(str(r.arms.off.name), "Dagger", "and leaves the dagger in the off hand (held in one hand beside it)")
+	r = Arms.buy(Arms.buy(Arms.empty(), "zweihander").arms, "dagger")
+	t.check(not r.has("choose") and r.side == "L", "beside a two-hander, a dagger goes in the free off hand")
 	# Asked for the off hand, a one-handed weapon goes there even with the main hand free.
 	r = Arms.buy(Arms.empty(), "gladius", "", "L")
 	t.eq(r.side, "L", "a gladius bought for the off hand goes there")
 	t.check(Arms.is_stick(r.arms.main), "the main hand keeps its stick")
 	r = Arms.buy(Arms.buy(Arms.empty(), "axe").arms, "dagger", "", "L")
 	t.check(r.side == "L" and str(r.arms.main.name) == "Axe" and str(r.arms.off.name) == "Dagger", "beside the axe in the main hand")
-	t.check(Arms.off_hand_ok("gladius") and not Arms.off_hand_ok("zweihander") and not Arms.off_hand_ok("roundShield"), "one-handed weapons only (a shield goes there anyway)")
+	t.check(Arms.off_hand_ok("gladius") and Arms.off_hand_ok("zweihander") and not Arms.off_hand_ok("roundShield"), "any weapon (a shield goes there anyway)")
+	r = Arms.buy(Arms.empty(), "longsword", "", "L")
+	t.check(r.side == "L" and str(r.arms.off.name) == "Longsword", "even a longsword can be bought for the off hand")
 
 ## A design from the gallery is made by the smith at its worth (its stuff and his labour), and
 ## goes in a free hand like any weapon bought; the forge on the main menu takes nothing.

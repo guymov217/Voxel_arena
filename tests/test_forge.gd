@@ -711,7 +711,7 @@ func test_a_forged_weapon_can_go_in_the_off_hand() -> void:
 	t.check(r2.get("side") == "L" and r2.get("sold", []) == ["L"] and int(r2.get("trade_in", 0)) > 0, "the shield there is traded in for it (sold %s, trade in %d)" % [str(r2.get("sold")), int(r2.get("trade_in", 0))])
 	var two: Dictionary = Data.preset("longsword").duplicate(true)
 	var r3 := Arms.buy_design(a, two, "", -1, "L")
-	t.check(r3.get("side") == "R" and r3.arms.off == null, "a two-handed one still takes both hands (%s)" % str(r3.get("side")))
+	t.check(r3.get("side") == "L" and String(r3.arms.main.get("name", "")) == String(Data.preset("gladius").name), "a two-handed one made for the off hand goes there too, beside the sword (%s)" % str(r3.get("side")))
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": r.arms.off}})

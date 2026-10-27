@@ -90,3 +90,76 @@ func test_weak_legs_stand_on_the_sand_not_in_it() -> void:
 	t.check(stood > 600, "the cyclops gets up on his hacked legs (%d steps up)" % stood)
 	t.check(under < 30, "and his feet stay on the sand, not knee-deep in it (%d steps under)" % under)
 	m.queue_free()
+
+func test_a_two_hander_with_a_dagger_in_the_other_hand_holds_both() -> void:
+	var m := _match({"main": "longsword", "off": "dagger"})
+	var f: Fighter = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(30)
+	t.check(f.weapons.R != null and f.weapons.L != null and not f.two_handed, "the longsword in one hand, the dagger in the other")
+	m.queue_free()
+	m = _match({"main": "gladius", "off": "longsword"})
+	f = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(30)
+	t.check(f.weapons.L != null and str(f.weapons.L.design.name) == "Longsword", "and a longsword goes in the off hand")
+	m.queue_free()
+	m = _match({"main": "longsword", "off": ""})
+	f = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(30)
+	t.check(f.two_handed, "with nothing for the other hand, both take the longsword")
+	m.queue_free()
+
+func test_a_pot_is_never_readied_in_the_hand_round_the_weapon() -> void:
+	var m := _match({"main": "warhammer", "off": ""})
+	var f: Fighter = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(60)
+	t.check(f.two_handed, "the hammer in both hands")
+	m.throwables.hold_item(m.me, "pot_fire", "pot_fire")
+	t.eq(f.held_item.side, "L", "the pot goes to the off hand")
+	t.check(not f.two_handed and f.weapons.R != null, "which lets go of the haft for it; the hammer stays in the right")
+	m.queue_free()
+	m = _match({"main": "gladius", "off": "roundShield"})
+	f = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(30)
+	t.eq(f.item_hand(), "L", "both hands full: the shield hand takes the pot, not the sword hand")
+	m.queue_free()
+
+## H with the weapon low across to the far hip, where the haft's other end is behind him: the
+## off hand never closes on it there (user: it took hold behind his back), and a hand dragged
+## round behind lets go and comes out in front.
+func test_the_off_hand_never_takes_the_haft_behind_the_back() -> void:
+	for wk in ["mace", "longsword", "warhammer", "spear"]:
+		var m := _match({"main": wk, "off": ""})
+		var f: Fighter = m.me.f
+		var press := [false]
+		var k := [0]
+		m.me.drive = func(_e):
+			k[0] += 1
+			var d := {"main": {"x": 1.9 * sin(k[0] / 120.0 * 1.7), "y": -1.2 + 0.4 * sin(k[0] / 120.0)}, "power": true}
+			if press[0]:
+				d.grip = true
+				press[0] = false
+			return d
+		await _steps(60)
+		if f.two_handed:
+			f.toggle_grip()
+		var worst := 0.0
+		var stuck := 0
+		for i in 120 * 8:
+			if i % 150 == 0:
+				press[0] = true
+			await get_tree().physics_frame
+			var l: Vector3 = f.torso.global_transform.affine_inverse() * f.hand_world("L")
+			var e: Vector3 = f.torso.half_ext
+			var b := -e.z - l.z
+			if absf(l.x) < e.x * 1.3 and l.y > -1.2 * e.y and l.y < 1.3 * e.y and b > 0.0:
+				stuck += 1
+				if f.two_handed:
+					worst = maxf(worst, b)
+		t.check(worst < 0.04 * f.S, "%s: on the haft the off hand is not behind the back (%.2f m)" % [wk, worst])
+		t.check(stuck < 60, "%s: and a free hand is not left there either (%d steps of 960)" % [wk, stuck])
+		m.queue_free()

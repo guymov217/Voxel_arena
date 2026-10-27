@@ -14,8 +14,6 @@ static func sanitize(a) -> Dictionary:
 		out.main = a.main
 	if a.get("off") is Dictionary and a.off.get("voxels") is Array:
 		out.off = a.off
-	if out.main.get("twoHanded", false):
-		out.off = null
 	for side in ["R", "L"]:
 		var d = out.main if side == "R" else out.off
 		var w = a.get("wear", {}).get(side, []) if a.get("wear") is Dictionary else []
@@ -150,7 +148,7 @@ static func base(key: String) -> Dictionary:
 
 ## Buys a base at the smith. It goes into a free hand: the right one if it holds only the
 ## training stick, else the left (a shield only ever goes on the left; a two-handed weapon
-## takes both). With no hand free the buyer picks which weapon the smith takes in part
+## goes in the main one). With no hand free the buyer picks which weapon the smith takes in part
 ## exchange (`sell` "R" or "L"); without that pick, when there is a choice, the answer is
 ## {"choose": [sides], "price"}. What is sold fetches half its worth.
 ## `hand`: "L" to have a one-handed weapon put in the off hand (user: not only the main hand).
@@ -159,13 +157,13 @@ static func buy(a: Dictionary, key: String, sell := "", hand := "") -> Dictionar
 	if b.is_empty():
 		return {"error": "The smith has no such thing"}
 	var d: Dictionary = Data.preset(key).duplicate(true)
-	return _acquire(a, d, base_price(b), b.slot == "off" or (hand == "L" and not d.get("twoHanded", false)), sell)
+	return _acquire(a, d, base_price(b), b.slot == "off" or hand == "L", sell)
 
-## Whether a base can go in the off hand as well as the main one: a one-handed weapon (a
-## shield goes there anyway; a two-handed one takes both).
+## Whether a base can go in the off hand as well as the main one: any weapon (a shield goes
+## there anyway).
 static func off_hand_ok(key: String) -> bool:
 	var b := base(key)
-	return not b.is_empty() and b.slot != "off" and not bool(Data.preset(key).get("twoHanded", false))
+	return not b.is_empty() and b.slot != "off"
 
 ## Has a design from the player's own gallery made at the smith, at what it is worth.
 ## `hand`: "L" to have it made for the off hand ("" puts it in a free hand as one bought).
@@ -175,7 +173,7 @@ static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1, ha
 	var nd := d.duplicate(true)
 	nd.erase("imbue")
 	nd.erase("oddity")
-	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or (hand == "L" and not nd.get("twoHanded", false)), sell)
+	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or hand == "L", sell)
 
 # ---------- Vulcanus's oddities: a few one-off weapons each bout ----------
 
@@ -265,25 +263,28 @@ static func power_price(d: Dictionary) -> int:
 
 static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String) -> Dictionary:
 	var arms := sanitize(a)
+	# A two-handed weapon goes in the main hand and leaves the other alone: with nothing in the
+	# off hand both hands take it, with a dagger or a shield there it is held in one (user: any
+	# weapon in the off hand).
 	var two := bool(d.get("twoHanded", false))
-	var held_two := bool(arms.main.get("twoHanded", false)) and not is_stick(arms.main)
 	var r_free := is_stick(arms.main)
-	var l_free: bool = arms.off == null and not held_two
+	var l_free: bool = arms.off == null
 	var side := ""
 	var sold: Array = []
-	if two:
-		side = "R"
-		sold = ["R", "L"]
-	elif off_hand:
+	if off_hand:
 		side = "L"
 		if not l_free:
-			sold = ["R"] if held_two else ["L"]
+			sold = ["L"]
+	elif two:
+		side = "R"
+		if not r_free:
+			sold = ["R"]
 	elif r_free:
 		side = "R"
 	elif l_free:
 		side = "L"
 	else:
-		var options: Array = ["R"] if held_two else ["R", "L"]
+		var options: Array = ["R", "L"]
 		if options.size() > 1 and not options.has(sell):
 			return {"choose": options, "price": price}
 		side = sell if options.has(sell) else options[0]
@@ -303,8 +304,6 @@ static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, s
 	else:
 		arms.off = d
 	arms.wear[side] = []
-	if two:
-		arms.off = null
 	return {"arms": arms, "cost": price - trade_in, "trade_in": trade_in, "side": side, "sold": sold}
 
 ## The training stick everyone starts with: a hand that holds it is as good as free.

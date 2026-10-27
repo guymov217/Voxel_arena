@@ -755,7 +755,7 @@ func _training(v: VBoxContainer) -> void:
 	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "plank", "chicken", "bow", "ram"]
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
-	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
+	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "spear", "longsword", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Gladius", "Axe", "Mace", "Spear", "Longsword", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
 	# (A flow, not a row: three buttons in a row pushed the screen past the window's right edge.)
 	var wb := HFlowContainer.new()
 	wb.add_theme_constant_override("h_separation", 10)
@@ -796,8 +796,6 @@ func _training_loadout() -> Dictionary:
 	var o = training.my_off
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
 	var off = lo.off if o == "campaign" else ("" if o == "none" else ((built_off if not built_off.is_empty() else "") if o == "built" else o))
-	if main is Dictionary and main.get("twoHanded", false):
-		off = ""
 	var arm := Armory.sanitize(training.get("armor", []))
 	return {"main": main if main != null else "", "off": off if off != null else "", "armor": arm, "armor_defs": Armory.defs_of(arm)}
 
@@ -1012,16 +1010,12 @@ func _training_designs(v: VBoxContainer) -> void:
 			Save.set_value("training_off_weapon", dd)
 			training.my_off = "built"
 			show_screen("training"))
-		off.disabled = bool(dd.get("twoHanded", false))
-		off.tooltip_text = "Two-handed: it takes both hands" if off.disabled else ""
 		row.add_child(off)
 		col.add_child(row)
 		grid.add_child(card)
 		Thumbs.weapon(tex, dd, "tdesign:%d" % dd.hash())
 
-## The forge, free: build any weapon to try out; it is kept as "your forged weapon".
-## `hand`: "L" builds the off hand's (kept as "your forged off-hand weapon"; a two-handed one
-## goes in the main hand, taking both).
+## `hand`: "L" builds the off hand's (kept as "your forged off-hand weapon", whatever it is).
 func _training_forge(hand := "R") -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -1032,7 +1026,7 @@ func _training_forge(hand := "R") -> void:
 	f.free_build = true
 	f.open(base, 999999, func(design, _cost):
 		if design != null:
-			if hand == "L" and not design.get("twoHanded", false):
+			if hand == "L":
 				Save.set_value("training_off_weapon", design)
 				training.my_off = "built"
 			else:
@@ -1112,8 +1106,7 @@ func _yard(v: VBoxContainer) -> void:
 		if d == null:
 			col.add_child(UIStyle.label("Empty: buy a shield or a dagger from the rack, or have one made", 14, UIStyle.MUTED))
 			var mk := UIStyle.button("Forge a weapon for the off hand", func(): _scratch_forge("L"))
-			mk.disabled = side == "L" and bool(a.main.get("twoHanded", false)) and not Arms.is_stick(a.main)
-			mk.tooltip_text = "Your main weapon takes both hands" if mk.disabled else "Built block by block at the anvil, paid for at what it is worth"
+			mk.tooltip_text = "Built block by block at the anvil, paid for at what it is worth"
 			col.add_child(mk)
 			continue
 		var cond := int(Arms.condition(a, side) * 100.0)

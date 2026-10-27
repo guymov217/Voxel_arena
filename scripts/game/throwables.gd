@@ -1411,6 +1411,8 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 	var side: String = c.item_hand()
 	if side == "":
 		return   # no hand left to hold it
+	if side == "L" and c.two_handed:
+		c.toggle_grip()   # the off hand lets go of the haft to take the pot (H takes it back)
 	var node = null
 	if not headless:
 		node = Items.visual(type)
@@ -1471,6 +1473,8 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 	# From the hand that throws it, a hand's breadth on toward the mark (clear of the fist): it
 	# was always the left hand's place, a span over it, whichever hand held it.
 	var sd: String = side if side != "" else c.item_hand()
+	if sd == "L" and c.two_handed:
+		c.toggle_grip()
 	var hand: Vector3 = c.hand_world(sd) if sd != "" else c.head.global_position
 	var from: Vector3 = hand + (aim - hand).normalized() * 0.12 * c.S if aim.distance_to(hand) > 0.3 else hand
 	if type == "pot_dart":
@@ -1480,7 +1484,7 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 		for i in [-1, 0, 1]:
 			var da := aim + Vector3(fwd.z * i * 0.5, i * 0.15, -fwd.x * i * 0.5)
 			if straight:
-				m.items.throw_flat("pot_dart", from, da, c, 19.0 * throw_speed_k(power))
+				m.items.spawn("pot_dart", from, Items.flat_shot(da - from, 19.0 * throw_speed_k(1.0)).normalized() * 19.0 * throw_speed_k(power), c)
 			else:
 				m.items.throw_at("pot_dart", from, da, c, 15.0)
 	elif type == "boomerang":
@@ -1488,7 +1492,10 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 	elif straight:
 		# The wind-up is the throw: a quick flick tosses it a few paces (short of a far mark),
 		# held to the full it flies hard and far.
-		m.items.throw_flat(type, from, aim, c, float(THROW_SPEED.get(type, 14.5)) * throw_speed_k(power))
+		# Along the line a full throw takes to the mark, whatever the wind-up: it says how far,
+		# not which way (at its own speed every throw left at another angle: user).
+		var full: float = float(THROW_SPEED.get(type, 14.5))
+		m.items.spawn(type, from, Items.flat_shot(aim - from, full * throw_speed_k(1.0)).normalized() * full * throw_speed_k(power), c)
 	else:
 		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 14.5))
 	m.sfx("whoosh", from)
