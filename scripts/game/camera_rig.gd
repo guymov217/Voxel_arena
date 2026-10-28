@@ -106,6 +106,14 @@ var hide_k := 0.0            # how much of the foe your own body hid, last looke
 const ORBIT := 0.9
 var near_k := 0.0    # 0..1: how far it has drawn back for a foe close in
 var assist := Vector2.ZERO   # the turn (yaw, pitch) it adds to keep the foe in the frame
+var jolt := Vector3.ZERO     # a landed blow's jolt to the camera (world, decays)
+var fov_jolt := 0.0          # and its punch in (degrees)
+
+## A blow that lands jolts the view the way it went and punches in a little (k 0..1).
+func kick(dir: Vector3, k: float) -> void:
+	var d := dir.normalized() if dir.length_squared() > 1e-6 else Vector3(randf_range(-1, 1), 0.3, randf_range(-1, 1)).normalized()
+	jolt += d * 0.14 * k + Vector3(0, -0.05 * k, 0)
+	fov_jolt = maxf(fov_jolt, 5.0 * k)
 func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null) -> void:
 	aim_k = move_toward(aim_k, 1.0 if aiming else 0.0, dt * 4.0)
 	fov = lerpf(65.0, 50.0, aim_k)
@@ -195,6 +203,9 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null)
 		var vy := yv - assist.x
 		var vpp := clampf(vp + assist.y, -1.5, 1.45)
 		look = pos + Vector3(sin(vy) * cos(vpp), sin(vpp), cos(vy) * cos(vpp)) * 6.0 * S
-	global_position = pos
-	if pos.distance_to(look) > 0.01:
+	jolt = jolt.lerp(Vector3.ZERO, minf(1.0, dt * 14.0))
+	fov_jolt = move_toward(fov_jolt, 0.0, dt * 40.0)
+	fov -= fov_jolt
+	global_position = pos + jolt
+	if global_position.distance_to(look) > 0.01:
 		look_at(look, Vector3.UP)
