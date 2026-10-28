@@ -12,6 +12,18 @@ const ATTACKS := {
 	"low": [[0.9, 0.1, 0.0, 0.4], [-0.8, -0.8, 0.2, 0.3]],
 }
 const ALL := ["slashR", "slashL", "overhead", "thrust", "low"]
+## A giant's blows at a man far smaller than he is: every one ends on the man, at his height
+## (Bot.aim_small; the heights here are off that). Not only the chop from above (user: the
+## giants only ever strike top to bottom): a sweep round from either side through him, one low
+## at his legs, a thrust of the head of the weapon into him.
+const GIANT := {
+	"chop": [[0.15, 1.0, 0.0, 0.5], [0.0, 0.0, 0.3, 0.3]],
+	"sweepR": [[1.0, 0.1, 0.0, 0.5], [-1.0, 0.0, 0.1, 0.36]],
+	"sweepL": [[-1.0, 0.1, 0.0, 0.5], [1.0, 0.0, 0.1, 0.36]],
+	"low": [[0.95, -0.2, 0.0, 0.45], [-0.95, -0.35, 0.1, 0.34]],
+	"thrust": [[0.05, 0.3, 0.0, 0.4], [0.0, 0.1, 1.0, 0.26]],
+}
+const GIANT_ODDS := {"chop": 0.3, "sweepR": 0.22, "sweepL": 0.2, "low": 0.16, "thrust": 0.12}
 const PERSONALITIES := {
 	"standard": {"attacks": ALL},
 	"turtle": {"attacks": ["thrust", "thrust", "low"], "think": 1.6, "approach": 0.5, "shield": true, "ideal": 0.75},
@@ -50,6 +62,7 @@ var dodge_cool := 0.0
 var dodge := ""
 var jab_cd := 0.0
 var aim_pick = null
+var giant_kind := ""   # which of the GIANT blows is under way ("": a man's blow)
 var rng := RandomNumberGenerator.new()
 var grab_cool := 4.0            # the first grab waits: the weapon comes first
 var lodged_t := 0.0             # how long his blade has been stuck in the man he struck
@@ -174,7 +187,28 @@ func _lerp_hand(x: float, y: float, k: float) -> void:
 	hand.y += (y - hand.y) * k
 
 func _pick(list: Array) -> Array:
+	giant_kind = ""
 	return ATTACKS[list[rng.randi_range(0, list.size() - 1)]]
+
+## A giant's next blow (GIANT): an executioner chops more often, a berserker sweeps.
+func _giant_pick() -> Array:
+	var odds: Dictionary = GIANT_ODDS.duplicate()
+	if p.get("attacks", []) == ["overhead"]:
+		odds.chop = 0.45
+	elif p.get("sprint", false):
+		odds.sweepR = 0.3
+		odds.sweepL = 0.3
+	var tot := 0.0
+	for k in odds:
+		tot += float(odds[k])
+	var r := rng.randf() * tot
+	for k in odds:
+		r -= float(odds[k])
+		if r <= 0.0:
+			giant_kind = k
+			return GIANT[k]
+	giant_kind = "chop"
+	return GIANT.chop
 
 ## The input for this step against `target` (a Fighter or a Beast).
 ## `world`: {"loose": weapons lying about}.
@@ -370,8 +404,13 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				think = 0.0
 		if ready and think <= 0.0:
 			air_t = rng.randf_range(1.5, 3.0)
-			attack = ATTACKS.thrust if dist > reach and rng.randf() < 0.5 else _pick(p.attacks)
-			feint_to = _pick(p.attacks) if diff > 0.6 and rng.randf() < (diff - 0.6) * 0.4 else []
+			giant_kind = ""
+			if big:
+				attack = _giant_pick()
+				feint_to = []
+			else:
+				attack = ATTACKS.thrust if dist > reach and rng.randf() < 0.5 else _pick(p.attacks)
+				feint_to = _pick(p.attacks) if diff > 0.6 and rng.randf() < (diff - 0.6) * 0.4 else []
 			key = 0
 			key_t = 0.0
 			state = "attack"
@@ -396,7 +435,10 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var dur: float = k_[3]
 		if key == attack.size() - 1 and aim_pick != null:
 			y = y * 0.4 + float(aim_pick) * 0.6
-		if key == attack.size() - 1 and aim_small != null:
+		if aim_small != null and giant_kind != "" and giant_kind != "chop" and giant_kind != "thrust":
+			# A sweep: drawn out to the side and round through him at his own height.
+			y = clampf(float(aim_small) + y, -1.5, 0.6)
+		elif key == attack.size() - 1 and aim_small != null:
 			# Held at the end of the blow with the head still above the man, the blow is brought
 			# lower, a little a frame, until the head is down on him: the pitch the mark asked
 			# for is not always the pitch the haft takes (the hands pulled in to their reach, the
@@ -406,7 +448,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				var hd: Vector3 = w.global_position + PD.quat_of(w) * Vector3(0, w.reach * 0.85, 0)
 				if hd.y > tp.y - 0.2 * tS:
 					aim_low = maxf(-1.0, aim_low - 2.0 * dt)
-			y = clampf(float(aim_small) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
+			y = clampf(float(aim_small) + (y if giant_kind != "" else 0.0) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
 			x = 0.0                # and comes down through the middle of him, not past his shoulder
 		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else 1.0)
 		if rage:
@@ -433,7 +475,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			key_t = 0.0
 			if key >= attack.size():
 				if (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and rng.randf() < (diff - 0.4) * 0.7 + float(p.get("combo", 0.0)) and c.stamina > 50.0):
-					attack = _pick(p.attacks)
+					attack = _giant_pick() if big else _pick(p.attacks)
 					key = 0
 					feint_to = []
 				else:

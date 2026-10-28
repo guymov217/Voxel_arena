@@ -40,6 +40,7 @@ var coil_cool := 0.0
 var on_stomp: Callable
 var on_roar: Callable
 var on_thump: Callable   # a fist on its own chest (the gorilla's display): the drum is heard
+var on_volley: Callable  # (beast, from, at): the manticore's tail flings its spikes at `at`
 # Animation: the parts that move on their own joints (necks, heads, tails, wings, trunks,
 # pincers, the coils of a snake), their rest pose against their parent and how far they bend.
 var anim: Array = []                 # [{part, role, rest: Quaternion, lim, i}]
@@ -182,7 +183,34 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var r := apply_hit_inner(part, hit)
 		stagger = keep
 		return r
-	return apply_hit_inner(part, hit)
+	var res := apply_hit_inner(part, hit)
+	if species == "gorilla":
+		_dent_nerve(float(hit.get("impulse", 0.0)), res)
+	return res
+
+## The gorilla's nerve: every blow that lands on it takes some of the fight out of it (a hard one
+## more), so it comes on slower, swings less often, rears and grabs less; a solid one breaks off
+## the blow it is winding up and sends it back a step. It comes back slowly while it is let be.
+## (One dent for all the parts a blast or a blow lands on at once.)
+const NERVE_MIN := 0.3
+const NERVE_DENT := 0.07     # a solid blow's (J 25); a light one dents it a third as much
+const NERVE_BACK := 0.012    # per second
+var nerve := 1.0
+
+func _dent_nerve(J: float, res: Dictionary) -> void:
+	if not alive or res.get("blocked", false) or J < 3.0 or time - float(ai.get("dent_at", -9.0)) < 0.25:
+		return
+	ai.dent_at = time
+	nerve = maxf(NERVE_MIN, nerve - NERVE_DENT * clampf(J / 25.0, 0.3, 1.6))
+	if hug != null or J < 8.0:
+		return
+	for arm in wind.keys():
+		if is_instance_valid(arm) and String(arm.get_meta("ape", "")) != "":
+			wind.erase(arm)
+			strikes[arm] = 0.0   # (let go in _tick_strikes, never struck)
+	ai.rear = 0.0
+	ai.mode = "recover"
+	ai.t = maxf(float(ai.t), 0.35 + 0.9 * (1.0 - nerve))
 
 ## A limb, tail or wing modelled with no bone in it (the gorilla's arms and legs) gets one: a core
 ## down its length, under the flesh, so it can break like any other (an arthropod's legs are shell
@@ -248,6 +276,12 @@ func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res2 := super.apply_hit(part, hit)
 	_break_by_damage(part, res2)
 	return res2
+
+## A beast's one head, on no neck (a griffin's, a lion's), is never left hanging by a cut-thin
+## root: it is held up, as weak as its wounds leave it, until it comes off (and the beast dies).
+## A thunder pot at the root of a griffin's head once left it lolling on a live griffin (user).
+func may_hang(part: VoxelPart) -> bool:
+	return part != head or sp.get("multiHead", false)
 
 ## Parts that carry weight or other parts: beaten past what they can take they hang broken.
 const HANG_FIRST := ["neck", "goatNeck", "arm", "coil", "wing", "trunk", "abdomen"]
@@ -326,15 +360,24 @@ func on_severed(part: VoxelPart) -> void:
 	if part == head and not sp.get("multiHead", false):
 		die("decap")
 
+## As a man's (Fighter.vitality), with what else ends a beast: the neck a single head is carried
+## on (broken, it dies on the spot), and its fight is over once it is down and spent (is_out).
+## Many-headed, the best head left counts, and no one brain.
 func vitality() -> float:
-	if not alive:
+	if not alive or is_beaten():
 		return 0.0
+	var many: bool = sp.get("multiHead", false)
 	var h := head.hp
-	if sp.get("multiHead", false):
+	if many:
 		h = 0.0
 		for hh in heads_left():
 			h = maxf(h, hh.hp)
-	return clampf(minf(minf(h, torso.hp), blood) / 100.0, 0.0, 1.0)
+	var v := minf(minf(h, torso.hp), blood)
+	if not many:
+		for p in parts:
+			if String(p.part_name).begins_with("neck"):
+				v = minf(v, 0.0 if p.severed or p.hanging else p.hp)
+	return clampf(minf(v / 100.0, organ_vitality(not many)), 0.0, 1.0)
 
 func die(cause := "") -> void:
 	if state == "dead":
@@ -373,6 +416,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	blood = maxf(0.0, blood - bleed * 0.3 / (S * S) * dt)
 	_organs_tick(dt)
 	stagger = maxf(0.0, stagger - dt * 1.5)
+	nerve = minf(1.0, nerve + NERVE_BACK * dt)
 	if push_t > 0.0:
 		push_t -= dt
 	if alive and (blood <= 0.0 or torso.hp <= 0.0 or (heads_left().is_empty() if sp.get("multiHead", false) else head.hp <= 0.0)):
@@ -568,6 +612,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	match "" if coiling or rolling else String(sp.ai):
 		"hunter":
 			want = _hunt(dt, t, to, dist, hurt, collapsed, legs_left, grounded, h_want, dist_g, mass)
+			if float(ai.get("volley", 0.0)) > 0.0:
+				want = Vector3.ZERO   # (it stands to fling its spikes)
 			# A python that gets close throws its coils round the man even without a bite.
 			if species == "python" and t and hug == null and coil_cool <= 0.0 and dist < 1.3 * S + 0.6 and fn_of(["coil"]) > 0.3 and rng.randf() < dt * 1.5 and _touching(t):
 				_start_coil(t)
@@ -614,25 +660,28 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 						ai.mode = "stalk"
 						ai.bite_cool = 1.2
 				else:
-					want = to * float(sp.speed) * hurt
+					want = to * float(sp.speed) * hurt * (0.4 + 0.6 * nerve)
 					if (species == "bear" or species == "gorilla") and dist < 1.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
 						ai.rear = 1.15
-						ai.rear_cool = 4.0 + rng.randf() * 2.0
+						ai.rear_cool = (4.0 + rng.randf() * 2.0) / nerve
 						ai.slammed = false
 						for n in ["legFL", "legFR"]:
 							if by_name.has(n) and not leg_gone(by_name[n]):
 								_strike(by_name[n], 0.7, 0.0, [], 0.0)
 					elif dist < 1.5 * S and ai.bite_cool <= 0.0 and front_fn() > 0.35 and part_ok(head, 0.15) and not _paws_on(t, 0.05).is_empty():
-						hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}   # a hand on him: the hold
-						for n in ["legFLLo", "legFRLo"]:
-							var fist: VoxelPart = by_name.get(n)
-							if fist and not fist.severed:
-								# Only a fist that is on him now takes hold (one in the air holds nothing:
-								# a joint made from a fist a stride off his arm wrenched the elbow apart).
-								var on: VoxelPart = Combat.current.touch_by(fist, t, 0.02) if Combat.current else null
-								if on and Social.box_distance(on, fist.global_position) < maxf(fist.half_ext.x, maxf(fist.half_ext.y, fist.half_ext.z)) + 0.05:
-									_hold(fist, on, fist.global_position)
-									fist.set_meta("gripped", true)
+						if rng.randf() > nerve:
+							ai.bite_cool = 0.6   # (cowed, it does not dare take hold this time)
+						else:
+							hug = {"target": t, "t": 3.0, "tick": 0.3, "stagger0": stagger}   # a hand on him: the hold
+							for n in ["legFLLo", "legFRLo"]:
+								var fist: VoxelPart = by_name.get(n)
+								if fist and not fist.severed:
+									# Only a fist that is on him now takes hold (one in the air holds nothing:
+									# a joint made from a fist a stride off his arm wrenched the elbow apart).
+									var on: VoxelPart = Combat.current.touch_by(fist, t, 0.02) if Combat.current else null
+									if on and Social.box_distance(on, fist.global_position) < maxf(fist.half_ext.x, maxf(fist.half_ext.y, fist.half_ext.z)) + 0.05:
+										_hold(fist, on, fist.global_position)
+										fist.set_meta("gripped", true)
 		"wanderer":
 			if not ai.has("goal") or ai.t <= 0.0 or Vector2(ai.goal.x - pos.x, ai.goal.z - pos.z).length() < 0.6:
 				var a := rng.randf() * TAU
@@ -1798,8 +1847,10 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		match role:
 			"tail":
 				if by_name.has("stinger"):
-					# Arched up over the back, the sting poised above the head, swaying.
-					off.x = 1.0 + 0.05 * sin(time * 1.3 + i)
+					# Arched up over the back, the sting poised above the head, swaying (raised higher
+					# still and quivering as a manticore makes ready to fling its spikes).
+					var vk: float = clampf(float(ai.get("volley", 0.0)) / VOLLEY_WIND, 0.0, 1.0)
+					off.x = 1.0 + 0.05 * sin(time * 1.3 + i) + vk * (0.25 + 0.06 * sin(time * 40.0 + i))
 					off.y = sin(time * 0.9 - i * 0.6) * 0.12 + track * 0.25
 				else:
 					var k := 0.18 + (0.22 if moving else 0.0) + (0.3 if threat or ai.mode == "charge" else 0.0)
@@ -2185,6 +2236,12 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 					strikes[by_name[n]] = strikes[stg]
 					wind[by_name[n]] = wind[stg]
 					by_name[n].set_meta("strike_lead", false)
+		# The manticore's tail is not long enough to sting over its back at a man before it: it
+		# stings one at its side or behind it (flanking the claws), within the tail's reach.
+		elif species == "manticore" and part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and stg.global_position.distance_to(tp) < 1.3 * S:
+			_strike(stg, 0.7, 2.2 + rng.randf(), [stg, (tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * maxf(30.0 * S, 4.0 * stg.mass)])
+	if species == "manticore":
+		_volley(dt, tp, dist, facing)
 	# Pincers snap at whatever is in front of them.
 	for n in ["clawL", "clawR"]:
 		if by_name.has(n):
@@ -2219,6 +2276,26 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
 		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf(), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])
+
+## The manticore's volley (the beast of Ctesias, its tail set with stings it shoots like
+## arrows): a man out of reach of its claws, it stands, raises the tail high over its back with a
+## roar (the warning: time to close in or get out of the line), and flings a spread of poisoned
+## spikes at him (Match._volley). A few seconds between volleys.
+const VOLLEY_WIND := 0.8
+func _volley(dt: float, tp: Vector3, dist: float, facing: float) -> void:
+	var stg: VoxelPart = by_name.get("stinger")
+	if stg == null:
+		return
+	ai.volley_cool = float(ai.get("volley_cool", 2.0)) - dt
+	if float(ai.get("volley", 0.0)) > 0.0:
+		ai.volley = float(ai.volley) - dt
+		if float(ai.volley) <= 0.0 and on_volley.is_valid() and part_ok(stg, 0.2):
+			on_volley.call(self, stg.global_position, tp)
+	elif float(ai.volley_cool) <= 0.0 and part_ok(stg, 0.2) and fn_of(["tail"]) > 0.3 and dist > 2.0 * S and dist < 5.0 * S and facing > 0.5:
+		ai.volley = VOLLEY_WIND
+		ai.volley_cool = 5.0 + rng.randf() * 2.5
+		if on_roar.is_valid():
+			on_roar.call(self)
 
 ## Whether any part of this body is in contact with `c` (Combat's touches): every hold, squeeze,
 ## roll and trample is real only while it is.
@@ -2301,7 +2378,9 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 		return
 	if float(ai.get("beat", 0.0)) > 0.0:
 		ai.beat = 0.0   # a man in reach ends the display
-	if dist > reach * 1.15 or facing < 0.5 or rng.randf() > dt * 2.2:
+	# Cowed by the blows it has taken it swings less often and waits longer between (nerve);
+	# backing off (struck, or out of a hold) it throws none.
+	if dist > reach * 1.15 or facing < 0.5 or ai.mode == "recover" or rng.randf() > dt * 2.2 * (0.35 + 0.65 * nerve):
 		return
 	# Close in, a fist already on him and the hug ready, it grapples instead (control): the
 	# blows are for the rest.
@@ -2322,7 +2401,7 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 		arm.set_meta("ape", kind)
 		lo.set_meta("power", float(b.power))
 		lo.set_meta("landed", false)
-		_strike(arm, float(b.t), float(b.cool) + rng.randf() * 0.5, [], float(b.wind))
+		_strike(arm, float(b.t), (float(b.cool) + rng.randf() * 0.5) * (2.0 - nerve), [], float(b.wind))
 	if kind == "slam":
 		# The body comes down behind the fists.
 		torso.apply_central_impulse((to * 0.6 + Vector3(0, -0.3, 0)) * live_mass() * 0.8)

@@ -87,6 +87,7 @@ var attract := false            # the menu backdrop: bots only, an orbiting came
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
 var hero_inp := {}
 var hero_cam := {}              # {pos, look}: a fixed shot instead of the orbit
+var cam_aiming := false         # the camera was along a throw's or a draw's aim last frame
 var tags := {}                  # fighter -> Label3D: a player's name over his head
 var rules: BoutRules = null     # Bread & Circuses: the bout's special rules
 var killcam: KillCam = null
@@ -411,6 +412,7 @@ func spawn_beast(spec: Dictionary):
 	b.on_breath = _breath
 	b.on_stomp = _stomp
 	b.on_venom = _venom
+	b.on_volley = _volley
 	b.on_strike = func(bb, p):
 		# (One whoosh a strike, not one a step of a charge: the bull's horns swung every
 		# frame of a charge and the whooshes piled into a roar of noise.)
@@ -424,7 +426,7 @@ func spawn_beast(spec: Dictionary):
 	b.on_roar = func(bb):
 		bb.set_meta("voice_t", time)
 		say(bb, Voices.beast_call(bb.species), 1.2, "call")
-		feed.emit(("%s beats its chest and roars!" if bb.species == "gorilla" else "%s trumpets and charges!") % bb.display_name)
+		feed.emit(("%s beats its chest and roars!" if bb.species == "gorilla" else ("%s raises its spiked tail!" if bb.species == "manticore" else "%s trumpets and charges!")) % bb.display_name)
 	b.on_thump = func(bb):
 		sfx("thump", bb.torso.global_position, 1.0)
 	if role == "guest":
@@ -1417,38 +1419,42 @@ func _on_lodged(f, w, what: String, at: Vector3) -> void:
 
 func lodge_fx(what: String, at: Vector3, dir: Vector3) -> void:
 	if what == "free":
-		sfx("chop", at, 0.8)
-		sfx("slap", at, 0.6)
+		sfx("chop", at, 0.6)
+		sfx("flat", at, 0.4)
 		if not headless and fx:
 			fx.burst("confetti" if dec.confetti else "blood", at, 50, (dir + Vector3(0, 0.5, 0)).normalized(), 1.2)
 	else:
-		sfx("crunch", at, 0.7)
+		sfx("crunch", at, 0.45)
 
 ## What a blow sounds like, as [kind, gain] pairs: steel skidding off a plate, the flat of a blade
 ## slapping flesh, a clean cut biting in, a stab, a knock; bone giving way under it and a plate
 ## ringing on top.
-const HIT_SOUNDS := ["scrape", "slap", "chop", "slash", "stab", "thud", "crunch", "clang"]
+const HIT_SOUNDS := ["scrape", "flat", "chop", "slash", "stab", "thud", "crunch", "clang"]
 static func hit_sounds(h: Dictionary) -> Array:
 	var res: Dictionary = h.get("res", {}) if h.get("res") is Dictionary else {}
 	var J := float(h.get("J", 0.0))
 	var g := minf(1.0, J / 30.0)
 	if res.get("glance", 0.0):
-		return [["scrape", clampf(0.35 + J / 25.0, 0.4, 1.0)]]
+		return [["scrape", clampf(0.3 + J / 40.0, 0.3, 0.7)]]
 	var out := []
 	match String(h.get("type", "blunt")):
 		"edge":
 			if res.get("slid", false):
-				out.append(["slap", clampf(0.3 + J / 30.0, 0.3, 1.0)])
+				out.append(["flat", clampf(0.25 + J / 40.0, 0.25, 0.7)])
+			elif J > 8.0 and not res.get("armor", false):
+				out.append(["chop", minf(0.8, J / 35.0)])
 			else:
-				out.append(["chop" if J > 8.0 and not res.get("armor", false) else "slash", g])
+				out.append(["slash", g])
 		"point":
 			out.append(["stab", g])
 		_:
 			out.append(["thud", g])
+	# (Laid under the blow's own sound, not over it: two and three at full strength at once
+	# were a din.)
 	if res.get("bone", false) or res.has("fractured") or res.has("broke"):
-		out.append(["crunch", clampf(0.4 + J / 40.0, 0.4, 1.0)])
+		out.append(["crunch", clampf(0.25 + J / 60.0, 0.25, 0.6)])
 	if res.get("armor", false):
-		out.append(["clang", g * 0.5])
+		out.append(["clang", g * 0.3])
 	return out
 
 ## Sparks off a plate a weapon skidded across, thrown on along `dir` (host and guests).
@@ -2524,6 +2530,17 @@ func _venom(b, c, part: VoxelPart, at: Vector3) -> void:
 		c.set_meta("venom_feed", time)
 		feed.emit("%s is poisoned by the %s!" % [c.display_name, String(b.display_name).to_lower()])
 
+## The manticore's volley (Beast._volley): five spikes off its tail at the man, spread a little,
+## each a poisoned dart that sticks where it lands, bleeds and slows (a poisoned arrow's).
+func _volley(b: Beast, from: Vector3, at: Vector3) -> void:
+	sfx("twang", from, 1.0)
+	sfx("whoosh", from, 0.8)
+	for i in 5:
+		var aim: Vector3 = at + Vector3(0, 0.3, 0) + Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.15, 0.25), rng.randf_range(-0.3, 0.3)) * b.S
+		var dir := (aim - from).normalized()
+		var it: Dictionary = items.spawn("pot_arrow_poison", from + dir * 0.35 * b.S, Items.flat_shot(aim - from, 24.0), b)
+		it.power = 0.55
+
 ## An elephant brings a forefoot down (character.js beastStomp): everyone near is knocked off
 ## his feet, and the part of him the foot lands on is crushed flat, a crater of voxels the
 ## size of the foot.
@@ -2808,6 +2825,7 @@ func _process(dt: float) -> void:
 		var sh := _shooter_of(f)
 		var sighting: bool = sh != null and (float(sh.get_meta("draw", 0.0)) > 0.0 or str(sh.design.get("shoots", "")) == "bolt")
 		var foe = null
+		var tip_i := -1
 		if me and f != null and is_instance_valid(f) and f.alive:
 			var ne = nearest_enemy(me)
 			if ne and is_instance_valid(ne.f):
@@ -2821,14 +2839,25 @@ func _process(dt: float) -> void:
 				foe = [of.torso.global_position + Vector3(0, 0.25, 0), of.head.global_position + Vector3(0, 0.15 * of.S, 0) if not of.head.severed else of.torso.global_position, low]
 				if not my_hit.is_empty() and time - float(my_hit.t) < 1.5 and my_hit.f == of:
 					foe.append(my_hit.p)
-				# And the point of the weapon while it is among them: where the blow is about to
-				# land (user: not always seen where I hit with the weapon).
+				# And the point of the weapon as it comes on him: where the blow is about to land
+				# (user: not always seen where I hit with the weapon). Only then: aimed about
+				# anywhere within three strides of him, the view went after it (user: the camera
+				# runs off as I aim).
 				var wt: Weapon = f.weapons.R if f.weapons.R and not f.weapons.R.is_shield else f.weapons.L
 				if wt != null and last_local_inp is Dictionary and bool(last_local_inp.get("power", false)):
 					var tip: Vector3 = wt.global_transform * (wt.center_of_mass + Vector3(0, float(wt.reach) * 0.5 / maxf(0.1, wt.vs), 0))
-					if tip.distance_to(of.torso.global_position) < 3.0 * maxf(1.0, of.S):
+					if tip.distance_to(of.torso.global_position) < 1.2 * maxf(1.0, of.S):
+						tip_i = foe.size()
 						foe.append(tip)
-		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe)
+		# The aim takes over from where the view is the moment it begins (see CameraRig.reaim_k).
+		if (aiming or sighting) and not cam_aiming and input:
+			var va: Vector2 = cam.view_angles()
+			input.look_yaw = va.x - input.free_look.x
+			input.look_pitch = clampf(va.y - input.free_look.y, -1.45, 1.35)
+			yaw = input.look_yaw + input.free_look.x
+			pitch = clampf(input.look_pitch + input.free_look.y, -1.45, 1.35)
+		cam_aiming = aiming or sighting
+		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe, tip_i)
 	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
 	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).
 	if role == "guest" and Net.active():

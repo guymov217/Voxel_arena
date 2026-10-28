@@ -31,6 +31,8 @@ godot --headless --path . -- --test test_fight   # one suite
   flat, skids off with sparks and a scrape and does little; a square cut chops in, bone crunches.
   A heavy keen blade driven hard can stay in the wound, still in the hand: it is wrenched out
   by pulling (the man it is in comes with it) or let go of (G), and taken back the same way.
+  None holds a man for good: the man it is in tears it out with G, pulling away frees it
+  sooner, and after three seconds it works loose by itself. A giant's blade never stays in.
 - **Armour that wears**: every plate you put on protects the spot it covers until it is knocked
   off, at a force by its stuff (leather gives first, steel last); what came off stays off between
   fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.
@@ -43,12 +45,18 @@ godot --headless --path . -- --test test_fight   # one suite
   bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a
   hard landing hurts. A fireball pot bursts, burns and leaves
   fire on the sand.
-- **Wrestling**: grabs, shoves, trips, and the giant's lift and throw.
+- **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A giant's blows vary:
+  a chop from above, sweeps from either side, a low sweep at the legs and a thrust.
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A
   beast's jaws, claws and horns bite only in a strike (the snap after the wind-up), never by
   brushing against a man, so a lunge can be dodged or taken on the shield; a bite goes in
   like teeth, not a blade, and takes no more than 30 off a limb. Beasts and monsters chunk
-  more under blows than men do (the giants of myth keep their own hide).
+  more under blows than men do (the giants of myth keep their own hide). The gorilla loses its
+  nerve with every blow it takes (slower to come on, fewer blows and grabs, a solid one breaks
+  off its wind-up), and gathers it back when let be. The manticore stings a man at its flank and
+  flings poisoned spikes from its tail at one out of its reach, after raising the tail with a roar.
+  The enemy's health plate reaches nothing when the fight with him is over, whatever ends it:
+  head, trunk, blood, a broken neck, the brain or a torn heart, or down and spent.
 - **The campaign**: stages of three rounds, pay, bosses on the same tables, checkpoints and
   persistent weapon wear.
 - **Bread & Circuses**: the seven-day campaign (`scripts/game/circus.gd`). Every day has its

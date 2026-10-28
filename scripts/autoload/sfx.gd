@@ -18,7 +18,7 @@ var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
 var _ui_player: AudioStreamPlayer = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.38, "chop": 0.22, "crunch": 0.3}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -138,6 +138,16 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	var n := int(RATE * float(LENGTH.get(kind, 0.25)))
 	var data := PackedByteArray()
 	data.resize(n * 2)
+	if BLOWS.has(kind):
+		var buf := _blow_sound(kind, take, n)
+		for i in n:
+			data.encode_s16(i * 2, int(clampf(buf[i], -1.0, 1.0) * 32000))
+		var bw := AudioStreamWAV.new()
+		bw.format = AudioStreamWAV.FORMAT_16_BITS
+		bw.mix_rate = RATE
+		bw.data = data
+		_cache[key] = bw
+		return bw
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(kind) + take * 7919
 	# Takes differ a little in body as well as in the noise.
@@ -191,28 +201,6 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				var hp3 := rng.randf_range(-1, 1) - lp
 				lp += hp3 * 0.3
 				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
-			"scrape":
-				# Steel skidding off a plate: a hiss of grinding grit, a ring that slides down as the
-				# edge runs off, and a few bright ticks where it catches.
-				var hp6 := rng.randf_range(-1, 1) - lp
-				lp += hp6 * 0.75
-				var f6 := (2300.0 - 900.0 * t / 0.38) * tone
-				var ring := (sin(TAU * f6 * t) + 0.5 * sin(TAU * f6 * 1.53 * t)) * exp(-t * 7.0) * 0.28
-				var grit := hp6 * (0.7 if rng.randf() < 0.06 else 0.25) * sin(PI * minf(1.0, t / 0.3)) * exp(-t * 4.0)
-				s = (ring + grit) * minf(1.0, t * 300.0)
-			"chop":
-				# A blade biting into meat: the flat knock of the body taking it, a wet tearing
-				# burst on top, and the dull stop of the blade in it.
-				var hp7 := rng.randf_range(-1, 1) - lp
-				lp += hp7 * 0.28
-				var body7 := sin(TAU * 120.0 * tone * t * (1.0 - 0.8 * t)) * exp(-t * 26.0)
-				s = (body7 * 0.75 + lp * 1.6 * exp(-t * 30.0) + hp7 * 0.35 * exp(-t * 80.0)) * minf(1.0, t * 900.0)
-			"crunch":
-				# Bone giving: a burst of sharp cracks over a low knock, the cracks thinning out.
-				var hp8 := rng.randf_range(-1, 1) - lp
-				lp += hp8 * 0.5
-				var crack := hp8 * (1.0 if rng.randf() < 0.16 * exp(-t * 9.0) else 0.08) * exp(-t * 10.0)
-				s = sin(TAU * 95.0 * tone * t) * exp(-t * 22.0) * 0.6 + crack * 1.2
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"tick":
@@ -249,6 +237,96 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	w.data = data
 	_cache[key] = w
 	return w
+
+## The blows' own sounds (a cut biting in, the flat of a blade, bone giving, steel skidding off
+## a plate, a club's knock): noise filtered down to the body of the sound over tones, never raw
+## noise (that was a hiss of static over every blow), and levelled to a peak well under full
+## scale (they come two and three to a blow, and clipped, they crackled).
+const BLOWS := {"chop": 0.55, "flat": 0.45, "crunch": 0.5, "scrape": 0.4, "thud": 0.7}   # each one's peak
+
+static func _lp_k(hz: float) -> float:
+	return 1.0 - exp(-TAU * hz / RATE)
+
+func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(kind) + take * 7919
+	var tone := 1.0 + (take - 1) * 0.06
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var L := float(n) / RATE
+	# Two-pole low-passes over the one noise: a (and its second pole a2), b, c.
+	var a1 := 0.0; var a2 := 0.0; var b1 := 0.0; var b2 := 0.0; var c1 := 0.0; var c2 := 0.0
+	var ph := 0.0; var ph2 := 0.0
+	var crack := 0.0; var crack_n := 0; var crack_a := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var nz := rng.randf_range(-1.0, 1.0)
+		var att := minf(1.0, t * 450.0)   # (a 2 ms onset: no click at the start)
+		var s := 0.0
+		match kind:
+			"chop":
+				# A blade biting into meat: the knock of the body taking it (a low tone falling),
+				# the soft tear of the flesh, and a wet thud under it.
+				var ka := _lp_k(1500.0)
+				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
+				var kb := _lp_k(700.0)
+				var kc := _lp_k(220.0)
+				b1 += (nz - b1) * kb; b2 += (b1 - b2) * kb
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				ph += TAU * (150.0 - 75.0 * minf(1.0, t / 0.12)) * tone / RATE
+				s = sin(ph) * exp(-t * 26.0) * 0.55 + a2 * 3.2 * exp(-t * 40.0) + (b2 - c2) * 5.0 * exp(-t * 18.0)
+			"flat":
+				# The flat of a blade on flesh: a dull smack, no edge in it.
+				var ka := _lp_k(1100.0)
+				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
+				ph += TAU * 190.0 * tone / RATE
+				s = a2 * 3.5 * exp(-t * 55.0) + sin(ph) * exp(-t * 38.0) * 0.4
+			"crunch":
+				# Bone giving way: a low knock, and a run of short dry cracks thinning out, each
+				# a little burst of noise rounded off (no fizz over the top).
+				if crack_n <= 0 and rng.randf() < 0.010 * exp(-t * 9.0):
+					crack_n = rng.randi_range(40, 90)
+					crack_a = rng.randf_range(0.4, 1.0)
+				var cr := 0.0
+				if crack_n > 0:
+					crack_n -= 1
+					cr = nz * crack_a
+				var ka := _lp_k(2600.0)
+				a1 += (cr - a1) * ka; a2 += (a1 - a2) * ka
+				var kc := _lp_k(350.0)
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				ph += TAU * 105.0 * tone / RATE
+				s = sin(ph) * exp(-t * 24.0) * 0.5 + a2 * 2.2 * exp(-t * 6.0) + c2 * 2.5 * exp(-t * 30.0)
+			"scrape":
+				# Steel skidding off a plate: a metal ring sliding down as the edge runs off, and
+				# the grind of it in a narrow band, rough with the plate's grain.
+				var slide := 1.0 - 0.15 * t / L
+				ph += TAU * 1650.0 * tone * slide / RATE
+				ph2 += TAU * 2480.0 * tone * slide / RATE
+				var ring := (sin(ph) * 0.6 + sin(ph2) * 0.35) * exp(-t * 7.5)
+				var ka := _lp_k(3000.0)
+				var kc := _lp_k(1100.0)
+				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				var grind := (a2 - c2) * (0.65 + 0.35 * sin(TAU * 28.0 * t)) * sin(PI * minf(1.0, t / (0.9 * L)))
+				s = ring * 0.5 + grind * 1.6
+			"thud":
+				# A knock: a low tone falling away, with a dull rumble of the blow in it.
+				var kc := _lp_k(500.0)
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				ph += TAU * 90.0 * tone * (1.0 - 2.0 * t) / RATE
+				s = (sin(ph) + c2 * 2.6) * exp(-t * 20.0)
+		s *= att * minf(1.0, (L - t) * 200.0)   # (and a 5 ms close: no click at the end)
+		out[i] = s
+	# Levelled: every take to the same peak, well under full scale.
+	var peak := 0.0
+	for v in out:
+		peak = maxf(peak, absf(v))
+	if peak > 1e-6:
+		var k: float = float(BLOWS[kind]) / peak
+		for i in n:
+			out[i] *= k
+	return out
 
 ## A voice: a throat (a pulse train at the pitch, with its vibrato and its break) through two
 ## formants (a vowel), with breath noise. Men grunt with the effort, cry out when struck and

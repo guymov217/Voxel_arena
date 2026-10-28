@@ -1399,7 +1399,7 @@ func use_item(e: Dictionary, slot: int) -> bool:
 			var aim: Vector3 = tgt.f.torso.global_position if tgt else c.torso.global_position + fwd * 6.0
 			var ia = e.get("last_aim")
 			if player and ia is Vector3:
-				aim = ia   # a player's pot goes to the crosshair
+				aim = Social.aim_ahead(c, ia, e.get("input", {}).get("look"), e.get("last_aim_from"))   # a player's pot goes to the crosshair
 			throw_type(c, hand_type, aim, null, player)
 	return true
 
@@ -1458,7 +1458,7 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	var reach := 4.0 + 10.0 * power
 	var aim: Vector3 = c.head.global_position + dir * reach
 	if inp.get("aimAt") is Vector3:
-		aim = Social.aim_ahead(c, inp.aimAt, look)
+		aim = Social.aim_ahead(c, inp.aimAt, look, inp.get("aimFrom"))
 	aim.y = maxf(0.1, aim.y)
 	throw_type(c, h.type, aim, null, true, power, side)
 

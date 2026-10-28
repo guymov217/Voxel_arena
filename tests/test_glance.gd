@@ -42,12 +42,29 @@ func test_blows_sound_like_what_they_did() -> void:
 	var kinds := func(h: Dictionary) -> Array:
 		return Match.hit_sounds(h).map(func(s): return s[0])
 	t.eq(kinds.call({"type": "edge", "J": 20.0, "res": {"glance": 0.8}}), ["scrape"], "a glance scrapes")
-	t.eq(kinds.call({"type": "edge", "J": 20.0, "res": {"slid": true}}), ["slap"], "the flat of a blade on flesh slaps")
+	t.eq(kinds.call({"type": "edge", "J": 20.0, "res": {"slid": true}}), ["flat"], "the flat of a blade on flesh smacks")
 	t.eq(kinds.call({"type": "edge", "J": 20.0, "res": {}}), ["chop"], "a clean cut chops in")
 	t.eq(kinds.call({"type": "edge", "J": 5.0, "res": {}}), ["slash"], "a light one only slashes")
 	t.check(kinds.call({"type": "edge", "J": 30.0, "res": {"bone": true}}).has("crunch"), "bone gives with a crunch")
 	t.check(kinds.call({"type": "blunt", "J": 30.0, "res": {"broke": "ribs"}}).has("crunch"), "ribs too")
 	var arm: Array = kinds.call({"type": "blunt", "J": 30.0, "res": {"armor": true}})
 	t.check(arm.has("thud") and arm.has("clang"), "a club on a plate knocks and rings (%s)" % [arm])
-	for k in ["scrape", "chop", "crunch"]:
+	for k in ["scrape", "chop", "crunch", "flat"]:
 		t.check(Match.HIT_SOUNDS.has(k) and Sfx.LENGTH.has(k), "%s is a sound a guest may play" % k)
+
+func test_blow_sounds_are_clean_and_levelled() -> void:
+	for k in Sfx.BLOWS:
+		for take in 3:
+			var d: PackedByteArray = Sfx._make(k, take).data
+			var peak := 0
+			var e := 0.0
+			var steps := 0.0
+			var prev := 0
+			for i in d.size() / 2:
+				var v := d.decode_s16(i * 2)
+				peak = maxi(peak, absi(v))
+				e += float(v) * v
+				steps += float(v - prev) * (v - prev)
+				prev = v
+			t.check(peak < 26000, "%s %d stays under the ceiling (%d)" % [k, take, peak])
+			t.check(steps < 1.0 * e, "%s %d has no raw-noise hiss (%.2f)" % [k, take, steps / maxf(e, 1.0)])

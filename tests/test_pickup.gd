@@ -320,3 +320,37 @@ func test_a_bot_hauls_on_a_stuck_blade_or_lets_it_go() -> void:
 	t.check(stuck_for < 400, "the bot does not stand there holding it: freed or let go in %.1f s" % (stuck_for / 120.0))
 	t.check(f.weapons.R == w or (f.weapons.R == null and w.stuck != null), "either it came out in his hand or it is left in the man")
 	m.queue_free()
+
+func test_no_blade_holds_a_man_for_good() -> void:
+	var m := _match()
+	var pr = await _pair(m, {"main": "axe"})
+	var f: Fighter = pr[0]
+	var v: Fighter = pr[1]
+	# Stuck fast (more than any arm can wrench) and nobody pulling: it works loose all the same.
+	var w := _lodge(f, v, 999.0)
+	await _steps(3)
+	t.check(w.stuck != null, "it went in")
+	var held := 0
+	for i in 600:
+		await get_tree().physics_frame
+		if w.stuck == null:
+			break
+		held += 1
+	t.check(w.stuck == null and f.weapons.R == w, "it comes out by itself, still in his hand (after %.1f s)" % (held / 120.0))
+	t.check(held <= int(Weapon.LODGE_HOLD * 120.0) + 10, "within %.0f s" % Weapon.LODGE_HOLD)
+	# The man it is in tears it out of himself with G.
+	await _steps(60)
+	w = _lodge(f, v, 999.0)
+	await _steps(3)
+	var q := [{"grab": true}]
+	m.entity_of(v).drive = func(_e): return q.pop_front() if not q.is_empty() else {}
+	await _steps(6)
+	t.check(w.stuck == null, "G: he tears it out of himself")
+	# And a giant's never stays in a man at all.
+	var giant = m.spawn_fighter({"kind": "bot", "name": "G", "loadout": {"main": "axe"}, "team": 1, "pos": Vector3(4, 0, -4), "yaw": 0.0, "mods": {"bodyScale": 2.0}})
+	await _steps(10)
+	var gw: Weapon = giant.f.weapons.R
+	t.check(float(giant.f.S) >= 1.5 and gw != null, "a giant with an axe (S %.1f)" % float(giant.f.S))
+	if gw:
+		t.eq(Combat.lodge_chance(gw, "edge", 80.0, 0.0, {"bone": true}), 0.0, "his axe never stays in a man")
+	m.queue_free()

@@ -873,6 +873,8 @@ func _physics_process(dt: float) -> void:
 			forget_owner()
 	if lodge_pending != null:
 		_lodge_step()
+	elif stuck != null and stuck.has("need") and holder != null:
+		_lodge_hold(dt)   # (let go of, it stays in him: it holds nobody to him)
 	if not spawned_in.is_empty():
 		_spawn_check += 1
 		if _spawn_check % 6 == 0:
@@ -952,6 +954,31 @@ func _lodge_step() -> void:
 	c.stuck_load += mass
 	if holder.has_signal("lodged"):
 		holder.lodged.emit(holder, self, "in", at)
+
+## No blade stays in a man for good: held there LODGE_HOLD seconds it works loose and comes out
+## by itself, as if wrenched (however strong the arm on it, or however little it pulls); and the
+## man it is in tears it out sooner the harder he pulls away from it (his walking off against the
+## joint: the blade's own lag behind his trunk). Pinned to the end of it, he could not go anywhere.
+const LODGE_HOLD := 3.0
+func _lodge_hold(dt: float) -> void:
+	var c = stuck.char
+	stuck.age = float(stuck.get("age", 0.0)) + dt
+	if is_instance_valid(c) and c.get("torso") and holder.get("torso"):
+		var d0: float = float(stuck.get("d0", -1.0))
+		var d: float = c.torso.global_position.distance_to(holder.torso.global_position)
+		if d0 < 0.0:
+			stuck.d0 = d
+		elif d > d0 + 0.12 * float(c.S):
+			stuck.age += dt * 2.0   # he is pulling himself off it
+	if stuck.age < LODGE_HOLD:
+		return
+	var at := stuck_point()
+	var part = stuck.part
+	unstick()
+	if is_instance_valid(part) and not part.severed:
+		part.bleed += 0.8
+	if holder and holder.has_signal("lodged"):
+		holder.lodged.emit(holder, self, "free", at)
 
 ## Where it is stuck in the body (world), while it is.
 func stuck_point() -> Vector3:

@@ -4799,8 +4799,12 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		sever(part, res, cut_off)
 	elif not detached and _make_flaps(part, res):
 		pass   # what was nearly off hangs on as a flap; the rest of the part is whole enough
-	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)):
+	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)) and may_hang(part):
 		hang(part, res)
+
+## Whether a part cut thin hangs by what is left of it (a beast's one head does not: see Beast).
+func may_hang(_part: VoxelPart) -> bool:
+	return true
 
 ## Every part jointed onto `part` where `part` has no flesh left falls off, with all below it:
 ## a forearm whose elbow end of the upper arm is gone, a head on a neck cut away, a leg whose
@@ -5539,12 +5543,22 @@ func apply_status(s) -> void:
 	for i in mini(hps.size(), parts.size()):
 		parts[i].hp = hps[i]
 
-## How far from death he is, 0..1 (the enemy's health plate): what kills him is the head, the
-## torso or the blood running out, whichever is nearest.
+## How far from death he is, 0..1 (the enemy's health plate): whatever ends him soonest, of the
+## head, the torso, the blood running out, the brain (BRAIN_DEATH of it torn is death) and a torn
+## heart's last seconds; and nothing once he is beaten (out cold, the bout is over). The plate
+## read the head, the torso and the blood only, and a man went down for good with a third of it
+## left on it (user: the bar is not accurate).
 func vitality() -> float:
-	if not alive:
+	if not alive or is_beaten():
 		return 0.0
-	return clampf(minf(minf(head.hp, torso.hp), blood) / 100.0, 0.0, 1.0)
+	return clampf(minf(minf(minf(head.hp, torso.hp), blood) / 100.0, organ_vitality()), 0.0, 1.0)
+
+## The organs' share of it: the brain torn toward BRAIN_DEATH, a torn heart's seconds running out.
+func organ_vitality(brain := true) -> float:
+	var v := 1.0 - brain_lost() / BRAIN_DEATH if brain else 1.0
+	if heart_t >= 0.0:
+		v = minf(v, 0.2 * minf(1.0, heart_t / 3.0))
+	return v
 
 func total_hp() -> float:
 	var t := 0.0

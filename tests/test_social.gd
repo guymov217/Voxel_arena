@@ -276,3 +276,29 @@ func test_friendly_fire_wounds_a_teammate() -> void:
 	t.check(hits[0] > 0, "the thrown spear struck his own teammate (%d hits)" % hits[0])
 	t.check(b.f.total_hp() < hp0, "and wounded him (%.0f hp lost)" % (hp0 - b.f.total_hp()))
 	m.queue_free()
+
+## A giant over a small man does not only chop down from above: he sweeps round from either
+## side, low at the legs, and thrusts, and these land too.
+func test_a_giant_varies_his_blows() -> void:
+	seed(5)
+	var m := _match()
+	m.me.f.state = "dead"
+	var victim := _man(m, Vector3(0, 0, 2.2), PI, {}, "Victim", 0, _idle, {"toughness": 8.0})
+	var giant = m.spawn_fighter({"kind": "bot", "name": "Cyclops", "loadout": {"main": "warhammer"}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.6, "toughness": 1.3, "cyclops": true}, "personality": "executioner", "diff": 0.9})
+	var b: Bot = giant.bot
+	var kinds := {}
+	var landed := {}
+	m.combat.hit.connect(func(h):
+		if h.attacker == giant.f and h.char == victim.f and b.giant_kind != "":
+			landed[b.giant_kind] = true)
+	for i in 120 * 30:
+		victim.f.blood = 100.0
+		victim.f.head.hp = maxf(victim.f.head.hp, 50.0)
+		victim.f.torso.hp = maxf(victim.f.torso.hp, 50.0)
+		await get_tree().physics_frame
+		if b.giant_kind != "":
+			kinds[b.giant_kind] = true
+	t.check(kinds.size() >= 4, "more than one kind of blow: %s" % str(kinds.keys()))
+	t.check(kinds.has("sweepR") or kinds.has("sweepL"), "a sweep from the side among them")
+	t.check(landed.size() >= 2, "and more than one kind lands: %s" % str(landed.keys()))
+	m.queue_free()

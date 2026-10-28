@@ -490,6 +490,8 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			# A weapon of his stuck fast in a body: G lets go of it (it stays in him).
 			if c.lodged_side() != "" and c.let_go_lodged():
 				took = true
+			elif tear_out(c):
+				took = true
 			elif gh == null:
 				took = c.grab_nearest(m.combat.loose_weapons)
 			else:
@@ -525,6 +527,18 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		shove(e)
 	return inp
 
+## G with someone's blade stuck in him: he tears it out of himself (it comes out on its next step,
+## as if wrenched, and the wound bleeds for it). Nobody is left on the end of another's weapon.
+func tear_out(c) -> bool:
+	for o in m.entities:
+		if not is_instance_valid(o.f) or o.f == c:
+			continue
+		for w in o.f.weapons.values():
+			if w and w.stuck != null and w.stuck.has("need") and w.stuck.char == c:
+				w.stuck.age = Weapon.LODGE_HOLD
+				return true
+	return false
+
 ## Lets go of whatever is in the throwing hand: players at the crosshair (the point their
 ## camera looks at), bots at their enemy.
 func _throw(e: Dictionary, inp: Dictionary, side := "") -> void:
@@ -539,7 +553,7 @@ func _throw(e: Dictionary, inp: Dictionary, side := "") -> void:
 	var dir = null
 	var tgt = null
 	if player and inp.get("aimAt") is Vector3:
-		tgt = aim_ahead(c, inp.aimAt, look)
+		tgt = aim_ahead(c, inp.aimAt, look, inp.get("aimFrom"))
 	elif player and look != null:
 		dir = Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
 	else:
@@ -560,8 +574,13 @@ static func throw_side(c, inp: Dictionary) -> String:
 	return side
 
 ## A mark behind the thrower (the wall at his back) is never thrown at: it is moved to a few
-## strides ahead where he looks.
-static func aim_ahead(c, at: Vector3, look) -> Vector3:
+## strides ahead where he looks. Nor one farther along the crosshair's line than a throw reaches
+## without a lob (THROW_MARK, less looking up): past that the arc that lands on it jumped from a
+## flat throw to a high lob and back as the crosshair went over the far sand, the wall and the
+## sky (user: each throw at another angle). It is drawn in along the line it is seen along
+## (`from`, the crosshair's eye), so it stays under the crosshair.
+const THROW_MARK := 18.0
+static func aim_ahead(c, at: Vector3, look, from = null) -> Vector3:
 	if look == null:
 		return at
 	var fwd := Vector3(sin(look.yaw), 0, cos(look.yaw))
@@ -571,6 +590,12 @@ static func aim_ahead(c, at: Vector3, look) -> Vector3:
 		var p := hp + d * 4.0
 		p.y = maxf(0.05, minf(at.y, hp.y))
 		return p
+	var o: Vector3 = from if from is Vector3 else hp
+	var line := at - o
+	var dist := line.length()
+	var most := THROW_MARK / (1.0 + maxf(0.0, line.y / maxf(1e-3, dist)))
+	if dist > most:
+		at = o + line / dist * most
 	return at
 
 func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:

@@ -276,3 +276,139 @@ func test_a_hold_needs_a_touch() -> void:
 	t.check(touched[0], "pressed against its fist, the touch is noted")
 	t.check(s[0].combat.touch_part(b, man, 9.0) != null, "and which part of him it touched")
 	s[0].queue_free()
+
+func test_every_blow_on_the_gorilla_cows_it() -> void:
+	seed(4)
+	var s = await _setup("gorilla", 3.0)
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	await get_tree().physics_frame
+	var blow := {"type": "blunt", "hardness": 0.5, "sharpness": 0.0, "point": b.torso.global_position, "dir": Vector3.FORWARD}
+	var hit := func(J: float) -> void:
+		b.ai.dent_at = -9.0
+		var h := blow.duplicate()
+		h.impulse = J
+		b.apply_hit(b.torso, h)
+	t.eq(b.nerve, 1.0, "fresh, it has all its nerve")
+	hit.call(25.0)
+	var one: float = b.nerve
+	t.check(one < 0.95, "a solid blow takes some of the fight out of it (%.2f)" % one)
+	hit.call(5.0)
+	t.check(b.nerve < one and one - b.nerve < 1.0 - one, "a light one a little less (%.2f)" % b.nerve)
+	var n0: float = b.nerve
+	b.ai.dent_at = -9.0
+	var h2 := blow.duplicate()
+	h2.impulse = 25.0
+	b.apply_hit(b.torso, h2)
+	b.apply_hit(b.head, h2)
+	t.check(absf((n0 - b.nerve) - (1.0 - one)) < 0.001, "a blow landing on two parts at once is one dent (%.3f)" % (n0 - b.nerve))
+	# Struck as it winds up a blow: the blow is broken off and it gives ground.
+	var arm: VoxelPart = b.by_name.legFR
+	arm.set_meta("ape", "jab")
+	b.strike_cool.erase(arm)
+	b._strike(arm, 0.5, 1.0, [], 0.3)
+	t.check(b.wind.has(arm), "it winds up a blow")
+	hit.call(20.0)
+	t.check(not b.wind.has(arm), "a solid blow as it winds up breaks the blow off")
+	t.eq(b.ai.mode, "recover", "and it gives ground")
+	await get_tree().physics_frame
+	t.check(not b.strikes.has(arm), "the blow never goes")
+	# Cowed, it swings less often (the same chances, rolled as often, at full nerve and at least).
+	var reach: float = b.torso.half_ext.z + 1.6 * b.S
+	var count := func(nv: float) -> int:
+		var n := 0
+		b.ai.bite_cool = 99.0
+		b.ai.mode = "stalk"
+		b.ai.rear = 0.0
+		for i in 6000:
+			b.nerve = nv
+			b.strikes.clear()
+			b.wind.clear()
+			b.strike_cool.clear()
+			b._ape_blows(0.01, man, Vector3.FORWARD, reach * 1.05, 1.0)
+			if not b.strikes.is_empty():
+				n += 1
+		b.strikes.clear()
+		b.wind.clear()
+		b.strike_cool.clear()
+		b.pending.clear()
+		for nm in ["legFL", "legFR"]:
+			b.by_name[nm].set_meta("ape", "")
+		return n
+	var bold: int = count.call(1.0)
+	var cowed: int = count.call(Beast.NERVE_MIN)
+	t.check(bold > 60 and cowed < bold * 0.75, "a cowed ape swings less often (%d blows to %d)" % [cowed, bold])
+	# Let be, it gathers itself again.
+	b.nerve = 0.5
+	man.teleport(Vector3(0, 0, -25))
+	await _run(s[0], man, b, 2.0, func(_i): pass)
+	t.check(b.nerve > 0.51, "let be, its nerve comes back (%.3f)" % b.nerve)
+	s[0].queue_free()
+
+## The health plate says how near the end it is, whatever the end would be: a broken neck, a
+## torn brain, a torn heart's last seconds, not only the head, the trunk and the blood.
+func test_the_health_plate_counts_every_way_to_die() -> void:
+	var s = await _setup("ostrich", 6.0)
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	await get_tree().physics_frame
+	t.check(b.vitality() > 0.95, "unhurt, it is full (%.2f)" % b.vitality())
+	var neck: VoxelPart = null
+	for p in b.parts:
+		if String(p.part_name).begins_with("neck"):
+			neck = p
+	t.check(neck != null, "an ostrich has a neck")
+	if neck:
+		neck.hp = 30.0
+		t.check(b.vitality() <= 0.31, "its neck all but broken, the plate is all but empty (%.2f)" % b.vitality())
+		neck.hp = 100.0
+	var nb: int = man.organ_total.get(Anatomy.BRAIN, 0)
+	t.check(nb > 0, "he has a brain")
+	man.organ_lost[Anatomy.BRAIN] = int(nb * 0.5)
+	t.check(man.vitality() < 0.35, "half his brain gone, he is near the end (%.2f)" % man.vitality())
+	man.organ_lost[Anatomy.BRAIN] = 0
+	man.heart_t = 1.0
+	t.check(man.vitality() < 0.1, "his heart torn, seconds to live (%.2f)" % man.vitality())
+	man.heart_t = -1.0
+	b.die("test")
+	t.eq(b.vitality(), 0.0, "dead, it is empty")
+	s[0].queue_free()
+
+func test_a_beasts_one_head_never_hangs_from_a_thin_root() -> void:
+	var s = await _setup("griffin", 6.0)
+	var b: Beast = s[2]
+	t.check(not b.may_hang(b.head), "a griffin's head is held up, however thin its root is cut")
+	t.check(b.may_hang(b.by_name.legFL), "its legs still hang broken")
+	t.check(s[1].may_hang(s[1].head), "a man's head is his own matter")
+	s[0].queue_free()
+	var h = await _setup("hydra", 6.0)
+	var hy: Beast = h[2]
+	t.check(hy.may_hang(hy.heads[0]), "one of a hydra's heads may hang")
+	h[0].queue_free()
+
+## The manticore, out of reach of its claws, raises its tail with a roar and flings poisoned
+## spikes; a man beside its flank gets the sting.
+func test_the_manticore_flings_its_spikes() -> void:
+	seed(9)
+	var s = await _setup("manticore", 9.0)
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	var said := []
+	s[0].feed.connect(func(t_): said.append(t_))
+	var spikes := [0]
+	var poisoned := [false]
+	var raised := [false]
+	b.ai.volley_cool = 0.0
+	await _run(s[0], man, b, 6.0, func(_i):
+		if float(b.ai.get("volley", 0.0)) > 0.0:
+			raised[0] = true
+		for it in s[0].items.list:
+			if it.type == "pot_arrow_poison" and it.owner == b:
+				spikes[0] = maxi(spikes[0], 1)
+		if man.parts.any(func(p): return p.spots.any(func(x): return x.kind == "acid")):
+			poisoned[0] = true)
+	t.check(raised[0], "it raised its tail to fling them")
+	t.check(said.any(func(x): return String(x).contains("tail")), "and the crowd is told it is coming (%s)" % [said])
+	t.check(spikes[0] > 0, "the spikes flew")
+	t.check(poisoned[0], "and the man is poisoned by them")
+	s[0].queue_free()

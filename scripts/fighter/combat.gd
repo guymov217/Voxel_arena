@@ -545,6 +545,10 @@ func _blow(g: Dictionary) -> Dictionary:
 static func lodge_chance(w, typ: String, J: float, thrust_k: float, res: Dictionary) -> float:
 	if float(w.design.get("sharpness", 0.0)) < 0.3 or w.design.get("chain") != null or w.is_shield or w.design.has("shoots"):
 		return 0.0
+	# Never a giant's: his blade in a man pinned the man where he stood, the giant's arm too strong
+	# ever to strain on it and so ever to wrench it out (user). His blows throw men about instead.
+	if w.holder and float(w.holder.S) >= 1.5:
+		return 0.0
 	var head: float = (w.center_of_mass - w.grip_main).length() / maxf(0.01, float(w.reach))
 	var heft := maxf(clampf((head - 0.5) / 0.15, 0.0, 1.0), 0.3 * clampf((w.mass - 2.5) / 2.0, 0.0, 1.0) * (1.0 if res.get("bone", false) else 0.0))
 	var k := 0.0
