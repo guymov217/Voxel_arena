@@ -18,7 +18,7 @@ var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
 var _ui_player: AudioStreamPlayer = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.38, "chop": 0.22, "crunch": 0.3}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -191,6 +191,28 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				var hp3 := rng.randf_range(-1, 1) - lp
 				lp += hp3 * 0.3
 				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
+			"scrape":
+				# Steel skidding off a plate: a hiss of grinding grit, a ring that slides down as the
+				# edge runs off, and a few bright ticks where it catches.
+				var hp6 := rng.randf_range(-1, 1) - lp
+				lp += hp6 * 0.75
+				var f6 := (2300.0 - 900.0 * t / 0.38) * tone
+				var ring := (sin(TAU * f6 * t) + 0.5 * sin(TAU * f6 * 1.53 * t)) * exp(-t * 7.0) * 0.28
+				var grit := hp6 * (0.7 if rng.randf() < 0.06 else 0.25) * sin(PI * minf(1.0, t / 0.3)) * exp(-t * 4.0)
+				s = (ring + grit) * minf(1.0, t * 300.0)
+			"chop":
+				# A blade biting into meat: the flat knock of the body taking it, a wet tearing
+				# burst on top, and the dull stop of the blade in it.
+				var hp7 := rng.randf_range(-1, 1) - lp
+				lp += hp7 * 0.28
+				var body7 := sin(TAU * 120.0 * tone * t * (1.0 - 0.8 * t)) * exp(-t * 26.0)
+				s = (body7 * 0.75 + lp * 1.6 * exp(-t * 30.0) + hp7 * 0.35 * exp(-t * 80.0)) * minf(1.0, t * 900.0)
+			"crunch":
+				# Bone giving: a burst of sharp cracks over a low knock, the cracks thinning out.
+				var hp8 := rng.randf_range(-1, 1) - lp
+				lp += hp8 * 0.5
+				var crack := hp8 * (1.0 if rng.randf() < 0.16 * exp(-t * 9.0) else 0.08) * exp(-t * 10.0)
+				s = sin(TAU * 95.0 * tone * t) * exp(-t * 22.0) * 0.6 + crack * 1.2
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"tick":

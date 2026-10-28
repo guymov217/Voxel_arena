@@ -444,6 +444,9 @@ func _register(e: Dictionary) -> void:
 		e.f.note.connect(func(f, text):
 			if me and f == me.f:
 				feed.emit(text))
+	if e.f.has_signal("took_up"):
+		e.f.took_up.connect(_on_took_up)
+		e.f.lodged.connect(_on_lodged)
 	if e.f.has_signal("raged"):
 		e.f.raged.connect(func(f):
 			feed.emit("%s's eye is put out: he goes berserk!" % f.display_name)
@@ -1285,9 +1288,22 @@ func guest_message(type: String, data) -> void:
 				match str(data.get("k")):
 					"hit":
 						var fd := Vector3(data.d[0], data.d[1], data.d[2]) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.UP
-						hit_fx(fp, fd, clampf(float(data.get("J", 5.0)), 0.0, 80.0), str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)))
+						var fj := clampf(float(data.get("J", 5.0)), 0.0, 80.0)
+						if data.get("g") is Array and (data.g as Array).size() == 3:
+							glance_fx(fp, Vector3(data.g[0], data.g[1], data.g[2]).limit_length(1.0), fj)
+						elif fj > 6.0:
+							hit_fx(fp, fd, fj, str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)))
+						if data.get("sn") is Array:
+							for sn in (data.sn as Array).slice(0, 3):
+								if sn is Array and sn.size() == 2 and HIT_SOUNDS.has(str(sn[0])):
+									sfx(str(sn[0]), fp, clampf(float(sn[1]), 0.0, 1.0))
 					"clang":
 						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
+						sfx("clang", fp, minf(1.0, clampf(float(data.get("J", 5.0)), 0.0, 80.0) / 8.0))
+					"pickup":
+						sfx("pickup", fp)
+					"lodge":
+						lodge_fx("free" if str(data.get("w", "")) == "free" else "in", fp, Vector3.UP)
 					"pool":
 						fx.pool(fp, 1.4 * clampf(float(data.get("s", 1.0)), 0.3, 4.0), 8.0)
 					"boom":
@@ -1377,6 +1393,69 @@ func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, 
 		fx.burst("bloodmist", p, int(clampf(J * 0.5, 4.0, 40.0)), (dir + Vector3(0, 0.3, 0)).normalized())
 	if J > 12.0 and not dec.confetti:
 		fx.mark("blood", Vector3(p.x + dir.x * 0.4, 0, p.z + dir.z * 0.4), clampf(0.15 + J * 0.012, 0.2, 0.9) * (1.8 if severed else 1.0))
+
+## A hand has closed on a weapon it reached for (G) and holds it now.
+func _on_took_up(f, w) -> void:
+	if not is_instance_valid(w):
+		return
+	feed.emit("%s picks up a %s" % [f.display_name, String(w.design.get("name", "weapon")).to_lower()])
+	var at: Vector3 = f.hand_world("R" if f.weapons.R == w else "L")
+	sfx("pickup", at)
+	if role == "host":
+		Net.send_all("fx", {"k": "pickup", "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)]}, false)
+
+## A blow left the weapon in him ("in"), or it was wrenched out of him ("free"): the bite of it
+## going in and holding, the tearing and the blood of it coming out (host and guests).
+func _on_lodged(f, w, what: String, at: Vector3) -> void:
+	if role == "guest":
+		return
+	lodge_fx(what, at, w.global_transform.basis.y if is_instance_valid(w) else Vector3.UP)
+	if what == "in" and is_instance_valid(w) and w.stuck != null and is_instance_valid(w.stuck.char):
+		feed.emit("%s's %s is stuck fast in %s!" % [f.display_name, String(w.design.get("name", "weapon")).to_lower(), w.stuck.char.display_name])
+	if role == "host":
+		Net.send_all("fx", {"k": "lodge", "w": what, "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)]}, false)
+
+func lodge_fx(what: String, at: Vector3, dir: Vector3) -> void:
+	if what == "free":
+		sfx("chop", at, 0.8)
+		sfx("slap", at, 0.6)
+		if not headless and fx:
+			fx.burst("confetti" if dec.confetti else "blood", at, 50, (dir + Vector3(0, 0.5, 0)).normalized(), 1.2)
+	else:
+		sfx("crunch", at, 0.7)
+
+## What a blow sounds like, as [kind, gain] pairs: steel skidding off a plate, the flat of a blade
+## slapping flesh, a clean cut biting in, a stab, a knock; bone giving way under it and a plate
+## ringing on top.
+const HIT_SOUNDS := ["scrape", "slap", "chop", "slash", "stab", "thud", "crunch", "clang"]
+static func hit_sounds(h: Dictionary) -> Array:
+	var res: Dictionary = h.get("res", {}) if h.get("res") is Dictionary else {}
+	var J := float(h.get("J", 0.0))
+	var g := minf(1.0, J / 30.0)
+	if res.get("glance", 0.0):
+		return [["scrape", clampf(0.35 + J / 25.0, 0.4, 1.0)]]
+	var out := []
+	match String(h.get("type", "blunt")):
+		"edge":
+			if res.get("slid", false):
+				out.append(["slap", clampf(0.3 + J / 30.0, 0.3, 1.0)])
+			else:
+				out.append(["chop" if J > 8.0 and not res.get("armor", false) else "slash", g])
+		"point":
+			out.append(["stab", g])
+		_:
+			out.append(["thud", g])
+	if res.get("bone", false) or res.has("fractured") or res.has("broke"):
+		out.append(["crunch", clampf(0.4 + J / 40.0, 0.4, 1.0)])
+	if res.get("armor", false):
+		out.append(["clang", g * 0.5])
+	return out
+
+## Sparks off a plate a weapon skidded across, thrown on along `dir` (host and guests).
+func glance_fx(p: Vector3, dir: Vector3, J: float) -> void:
+	if headless or fx == null:
+		return
+	fx.burst("sparks", p, int(clampf(J * 2.5, 8.0, 70.0)), dir, 0.9 + J / 30.0)
 
 func _on_clang(c: Dictionary) -> void:
 	if Sfx:
@@ -1698,12 +1777,23 @@ func _on_hit(h: Dictionary) -> void:
 		spectacle.on_hit(h)
 	# Blood where it struck (a party of colours under Confetti Blood), and on the sand below.
 	var jn: float = h.get("J", 0.0)
-	if jn > 6.0 and h.get("p") is Vector3:
+	var snd := hit_sounds(h)
+	if h.get("p") is Vector3:
 		var dir: Vector3 = h.get("dir", Vector3.UP) if h.get("dir") is Vector3 else Vector3.UP
 		var art: bool = h.res.get("artery", false)
-		hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art)
+		# A blow that skidded off a plate throws sparks along the way it went, and no blood.
+		var skid = null
+		if h.res.get("glance_n") is Vector3:
+			var gn: Vector3 = h.res.glance_n
+			skid = (dir - gn * dir.dot(gn) + gn * 0.35).normalized()
+			glance_fx(h.p, skid, jn)
+		elif jn > 6.0:
+			hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art)
 		if role == "host":
-			Net.send_all("fx", {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art}, false)
+			var msg := {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art, "sn": snd}
+			if skid != null:
+				msg.g = [snappedf(skid.x, 0.01), snappedf(skid.y, 0.01), snappedf(skid.z, 0.01)]
+			Net.send_all("fx", msg, false)
 	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
 		_coating(h)
 	if role != "guest" and h.get("weapon") and is_instance_valid(h.weapon):
@@ -1717,8 +1807,9 @@ func _on_hit(h: Dictionary) -> void:
 		feed.emit("%s TEARS %s APART!" % [h.attacker.display_name, h.char.display_name])
 	elif h.res.get("severed", []).size() > 0:
 		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
-	if Sfx:
-		Sfx.play("slash" if h.type == "edge" else ("stab" if h.type == "point" else "thud"), h.p, minf(1.0, h.J / 30.0))
+	if h.get("p") is Vector3:
+		for sn in snd:
+			sfx(sn[0], h.p, sn[1])
 	if role != "guest":
 		_voices_on_hit(h)
 	_music_tick()

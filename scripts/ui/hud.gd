@@ -810,6 +810,8 @@ func _prompt_for(f) -> Array:
 		if f.holding.limb != null:
 			return [["throw"], "Throw the %s" % String(f.holding.limb.label).to_lower()]
 		return [["throw", "shove", "grab"], "Throw · slam · let go"]
+	if f.has_method("lodged_side") and f.lodged_side() != "":
+		return [["grab"], "Stuck fast in him · pull back or step away to wrench it out · let go"]
 	if f.held_item != null:
 		return [["throw"], "Hold to aim, let go to throw the %s · its number again puts it away" % String(f.held_item.type).trim_prefix("pot_").replace("_", " ")]
 	var pos: Vector3 = f.torso.global_position

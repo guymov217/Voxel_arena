@@ -52,6 +52,9 @@ var jab_cd := 0.0
 var aim_pick = null
 var rng := RandomNumberGenerator.new()
 var grab_cool := 4.0            # the first grab waits: the weapon comes first
+var lodged_t := 0.0             # how long his blade has been stuck in the man he struck
+var gave_up = null              # the weapon he let go of, stuck in a man: not gone back for at once
+var gave_up_t := 0.0
 var grab_reach := 0.0           # a grab under way: the hand reaching for him (s)
 const GRAB_REACH := 1.0
 var hold_t := 0.0
@@ -131,13 +134,18 @@ func _wound_mark(part: String) -> Dictionary:
 	return {"x": clampf(-(tx + 0.1 * S) / (0.5 * S), -2.0, 2.0), "y": y, "tuck": 1.0}
 
 ## Bends the input for the reaction under way (called last, so it rides over the plan).
-func _react(dt: float, inp: Dictionary) -> void:
+## The reaction's clock, run every step whatever else he is doing (going for a weapon on the
+## sand, wrestling): a reaction does not last longer for being out of the fight a moment.
+func _react_clock(dt: float) -> void:
 	react_cd = maxf(0.0, react_cd - dt)
 	if react == "":
 		return
 	react_t -= dt
 	if react_t <= 0.0 or c.state != "stand" or not c.alive:
 		react = ""
+
+func _react(_dt: float, inp: Dictionary) -> void:
+	if react == "":
 		return
 	var swinging: bool = state == "attack"
 	match react:
@@ -176,6 +184,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# strokes one after another, the button always down, kicks and grabs far more often.
 	var rage: bool = bool(c.get("enraged"))
 	var inp := {"mx": 0.0, "mz": 0.0, "main": hand.duplicate(), "off": {"x": -0.35, "y": 0.15}, "thrust": 0.0, "power": false, "twist": 0.0}
+	_react_clock(dt0)
 	if not c.alive:
 		return inp
 	ability_t -= dt
@@ -196,6 +205,26 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			return inp
 	if target == null:
 		return inp
+	# His blade stuck in a man: he hauls on it, stepping back with the arm drawn in (the man comes
+	# with it until it tears out), and lets go of it if it will not come.
+	gave_up_t = maxf(0.0, gave_up_t - dt)
+	var ls: String = c.lodged_side() if c.has_method("lodged_side") else ""
+	if ls != "":
+		lodged_t += dt
+		inp.faceAt = target.torso.global_position
+		inp.mz = -0.8
+		if ls == "R":
+			inp.main = {"x": 0.0, "y": -0.9}
+		else:
+			inp.off = {"x": 0.0, "y": -0.9}
+		if lodged_t > 1.6 + rng.randf() * 0.8:
+			gave_up = c.weapons[ls] if c.weapons[ls] else c.reaching(ls)
+			gave_up_t = 6.0
+			inp.grab = true
+			lodged_t = 0.0
+		_react(dt0, inp)
+		return inp
+	lodged_t = 0.0
 	var special = _wrestle(dt, target, world, inp)
 	if special != null:
 		return special
@@ -478,7 +507,7 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		var best = null
 		var bd := minf(8.0, dist + 1.0)
 		for w in world.get("loose", []):
-			if not is_instance_valid(w) or w.holder != null or w.is_shield or w.alive_count() < 3:
+			if not is_instance_valid(w) or w.holder != null or w.is_shield or w.alive_count() < 3 or (w == gave_up and gave_up_t > 0.0):
 				continue
 			var d := Vector2(w.global_position.x - hand_p.x, w.global_position.z - hand_p.z).length()
 			if d < bd:

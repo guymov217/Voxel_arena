@@ -871,6 +871,8 @@ func _physics_process(dt: float) -> void:
 		own_t -= dt
 		if own_t <= 0.0 and holder == null:
 			forget_owner()
+	if lodge_pending != null:
+		_lodge_step()
 	if not spawned_in.is_empty():
 		_spawn_check += 1
 		if _spawn_check % 6 == 0:
@@ -900,9 +902,64 @@ func impale(c, part: VoxelPart, point: Vector3) -> bool:
 	j.node_a = part.get_path()
 	j.node_b = get_path()
 	thrown_t = 0.0
-	stuck = {"char": c, "part": part, "joint": j, "mass": mass}
+	stuck = {"char": c, "part": part, "joint": j, "mass": mass, "lp": part.global_transform.affine_inverse() * point}
 	c.stuck_load += mass
 	return true
+
+## A heavy blade driven hard into a body stays in the wound, still in the hand that struck
+## (Combat.lodge_chance): it goes on into the flesh it opened for a step, as it would, then holds
+## there, the man it is in on the end of it, until the hand wrenches it out (Fighter._wrench)
+## or lets go of it. `need`: how hard it is to pull free (s of a good pull).
+var lodge_pending = null   # {char, part, lp (in the part), steps, need}
+
+func lodge_in(c, part: VoxelPart, point: Vector3, need: float) -> bool:
+	if stuck != null or lodge_pending != null or holder == null or not chain_links.is_empty() or part == null or part.severed or not is_inside_tree():
+		return false
+	for b in bodies():
+		if b is PhysicsBody3D:
+			for p in c.parts:
+				b.add_collision_exception_with(p)
+	lodge_pending = {"char": c, "part": part, "lp": part.global_transform.affine_inverse() * point, "steps": 2, "need": need}
+	return true
+
+func _lodge_step() -> void:
+	var lp: Dictionary = lodge_pending
+	lp.steps -= 1
+	if lp.steps > 0:
+		return
+	lodge_pending = null
+	var c = lp.char
+	var part = lp.part
+	if holder == null or stuck != null or not is_instance_valid(c) or not is_instance_valid(part) or part.severed:
+		if is_instance_valid(c) and c != holder:
+			var me := weakref(self)
+			var cr := weakref(c)
+			get_tree().create_timer(0.4, false, true).timeout.connect(func():
+				var w = me.get_ref()
+				var cc = cr.get_ref()
+				if w and cc and w.stuck == null:
+					for p in cc.parts:
+						if is_instance_valid(p):
+							w.remove_collision_exception_with(p))
+		return
+	var at: Vector3 = part.global_transform * (lp.lp as Vector3)
+	var j := Generic6DOFJoint3D.new()
+	c.add_child(j)
+	j.global_position = at
+	j.node_a = part.get_path()
+	j.node_b = get_path()
+	stuck = {"char": c, "part": part, "joint": j, "mass": mass, "need": float(lp.need), "lp": lp.lp}
+	c.stuck_load += mass
+	if holder.has_signal("lodged"):
+		holder.lodged.emit(holder, self, "in", at)
+
+## Where it is stuck in the body (world), while it is.
+func stuck_point() -> Vector3:
+	if stuck == null:
+		return global_position
+	if stuck.has("lp") and is_instance_valid(stuck.part):
+		return stuck.part.global_transform * (stuck.lp as Vector3)
+	return global_position
 
 ## The wound a stuck weapon makes is its own shape: every voxel of it that sits inside the body
 ## takes out the flesh where it is (a blade a slot, a point a narrow hole, an axe's bit a wedge),

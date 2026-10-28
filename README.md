@@ -24,7 +24,13 @@ godot --headless --path . -- --test test_fight   # one suite
 - **Damage**: per-voxel damage by material and hit type (cut, thrust, blunt). Dents, limbs that
   hang or come off, and blood and breath. Chips knocked off weapons wear them down. Fire.
 - **Weapons**: built from the same voxel designs, with greedy-merged colliders and shields.
-  Chain weapons, bows and crossbows, throwables and the market.
+  Chain weapons, bows and crossbows, throwables and the market. A weapon is only ever taken up by
+  hand (G): the hand reaches for the grip (he stoops for one on the sand, steps to one a pace
+  off), the fingers draw it into the palm and the wrist turns it into line, then it is held.
+- **Glancing and lodged blows**: a weapon that meets a plate at a slant, or a blade that lands
+  flat, skids off with sparks and a scrape and does little; a square cut chops in, bone crunches.
+  A heavy keen blade driven hard can stay in the wound, still in the hand: it is wrenched out
+  by pulling (the man it is in comes with it) or let go of (G), and taken back the same way.
 - **Armour that wears**: every plate you put on protects the spot it covers until it is knocked
   off, at a force by its stuff (leather gives first, steel last); what came off stays off between
   fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.

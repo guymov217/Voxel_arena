@@ -31,6 +31,24 @@ static func torque_for(body: RigidBody3D, alpha: Vector3, scale := 1.0) -> Vecto
 		i = Vector3.ONE * body.mass * 0.01
 	return b * Vector3(l.x * i.x, l.y * i.y, l.z * i.z) * scale
 
+## The point-mass matrix of `body` at world point `p` (how the point's velocity answers an
+## impulse there: dv = K * J), from its mass and its inertia: what a constraint solver uses.
+static func point_k(body: RigidBody3D, p: Vector3) -> Basis:
+	var r := p - body.global_transform * body.center_of_mass
+	var i := body.inertia
+	if i == Vector3.ZERO:
+		i = Vector3.ONE * body.mass * 0.01
+	var rb := body.global_transform.basis.orthonormalized()
+	var i_inv := rb * Basis.from_scale(Vector3(1.0 / i.x, 1.0 / i.y, 1.0 / i.z)) * rb.transposed()
+	var x := Basis(Vector3(0, r.z, -r.y), Vector3(-r.z, 0, r.x), Vector3(r.y, -r.x, 0))
+	var rot := x * i_inv * x
+	var im := 1.0 / maxf(1e-4, body.mass)
+	return Basis(Vector3(im, 0, 0) - rot.x, Vector3(0, im, 0) - rot.y, Vector3(0, 0, im) - rot.z)
+
+## Adds two point-mass matrices.
+static func k_add(a: Basis, b: Basis) -> Basis:
+	return Basis(a.x + b.x, a.y + b.y, a.z + b.z)
+
 static func inertia_of(body: RigidBody3D) -> float:
 	var i := body.inertia
 	return maxf(1e-4, (i.x + i.y + i.z) / 3.0)

@@ -110,6 +110,11 @@ func test_a_dropped_weapon_is_picked_up_and_thrown() -> void:
 	await _steps(90)
 	act[0] = "grab"
 	await _steps(4)
+	t.check(a.f.reaching("R") == w or a.f.reaching("L") == w, "G sends the hand for it (it does not jump into the hand)")
+	for i in 360:
+		await get_tree().physics_frame
+		if a.f.weapons.R == w:
+			break
 	t.eq(a.f.weapons.R, w, "picked it back up")
 	await _steps(60)
 	var x0: float = a.f.torso.global_position.z

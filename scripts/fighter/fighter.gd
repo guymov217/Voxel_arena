@@ -50,6 +50,8 @@ signal died(fighter: Fighter, cause: String)
 signal hit_taken(fighter: Fighter, info: Dictionary)
 signal raged(fighter: Fighter)
 signal note(fighter: Fighter, text: String)   # a word for the player about his own fighter
+signal took_up(fighter: Fighter, w: Weapon)    # a hand closed on a weapon's grip (G) and has it
+signal lodged(fighter: Fighter, w: Weapon, what: String, at: Vector3)   # "in" a blow left it in him, "free" wrenched out of him
 
 var display_name := "Gladiator"
 var slot := 0
@@ -187,7 +189,13 @@ var two_front = null   # both hands on one haft: where the off hand should hold 
 var two_main = null    # and the main hand (for the tests)
 var two_gap = null     # the off hand's place from the main hand, along the blade's line
 var grip_wait := 0.0   # H pressed with the haft's other end behind him: the off hand reaches for it in front, and takes it once it is there
+var grip_gentle := false   # (that reach after a weapon taken up by hand: the off hand closes on the haft only once it is on it)
+var forearms_pass := false   # the forearms let each other by: the off hand going to the haft beside the other fist, and holding it there
 var haft_behind_t := 0.0    # how long the off hand on the haft has been dragged behind his back
+var reach := {"R": null, "L": null}   # G: a hand on its way to a weapon's grip, or closed on it and turning it into the fist
+var stoop := 0.0            # bent down to a grip low by his feet (0..1): the reach sets it every step
+var arm_strain := {"R": 0.0, "L": 0.0}   # how far each hand is held off its mark (m): pulling on a weapon stuck fast
+var wrench_t := {"R": 0.0, "L": 0.0}     # how long that hand has been pulling on a weapon stuck in a body
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
 var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
@@ -1098,11 +1106,15 @@ func _joint_at(a: RigidBody3D, b: RigidBody3D, at: Vector3, fixed: bool) -> Join
 	j.node_b = b.get_path()
 	return j
 
-func _attach_off_hand(w: Weapon) -> void:
+func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 	if not w or is_bow(w):
 		return   # the off hand of an archer draws the string; it does not hold the stave
 	var fore: VoxelPart = arm.L.fore
 	var at := w.global_transform * w.grip_off
+	if not move_arm:
+		# (The hand got there itself: it closes on the haft where it is.)
+		weapon_joints.L = _joint_at(fore, w, hand_world("L"), false)
+		return
 	fore.global_position += at - hand_world("L")
 	weapon_joints.L = _joint_at(fore, w, at, false)
 
@@ -1174,6 +1186,8 @@ func toggle_grip() -> Variant:
 ## in front and in reach. And with both on it, an off hand dragged round behind his back (a low
 ## stroke across to the far hip) lets go rather than stay there; it takes hold again in front.
 func _grip_reach(dt: float) -> void:
+	if forearms_pass and not grip_gentle and not two_handed:
+		_forearms_pass(false)
 	var w: Weapon = weapons.R
 	if two_handed:
 		grip_wait = 0.0
@@ -1188,16 +1202,18 @@ func _grip_reach(dt: float) -> void:
 		return
 	haft_behind_t = 0.0
 	if grip_wait <= 0.0:
+		grip_gentle = false
 		return
 	grip_wait -= dt
 	if w == null or w.is_shield or weapons.L or held_item != null or not off_hand_free() or state != "stand":
 		grip_wait = 0.0
 		return
 	var at: Vector3 = w.global_transform * w.grip_off
-	if _out_front(at) == Vector3.ZERO and hand_world("L").distance_to(at) < 0.35 * S:
+	if _out_front(at) == Vector3.ZERO and hand_world("L").distance_to(at) < (0.07 if grip_gentle else 0.35) * S:
 		grip_wait = 0.0
 		two_handed = true
-		_attach_off_hand(w)
+		_attach_off_hand(w, not grip_gentle)
+		grip_gentle = false
 
 ## J: what is in each hand changes hands (a sword to the left, a shield to the right, or the
 ## one weapon across to the empty hand). Not with both hands on one haft, an arm gone or a
@@ -1246,10 +1262,15 @@ func set_net(on: bool, seconds := 4.0) -> void:
 	if net_mesh:
 		net_mesh.visible = on
 
-## G next to a weapon lying loose: the nearest free hand closes on its grip.
+## G next to a weapon lying loose (or stuck in someone): the nearest free hand reaches for its
+## grip and takes it when it gets there (_reach_tick), never before; a hand already reaching
+## goes on reaching.
 func grab_nearest(list: Array, only_side := "") -> Weapon:
 	if not alive:
 		return null
+	for side in ["R", "L"]:
+		if (only_side == "" or side == only_side) and reach[side] != null:
+			return reach[side].w
 	for side in ["R", "L"]:
 		if only_side != "" and side != only_side:
 			continue
@@ -1271,12 +1292,228 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 			if d < bd:
 				bd = d
 				best = w
-		if best and pick_up(side, best):
+		if best and reach_for(side, best):
 			return best
 	return null
 
-## Takes `w` into the hand on `side`: the grip moved into the palm and welded there.
-func pick_up(side: String, w: Weapon) -> bool:
+## Taking a weapon up is the hand's own doing (user: no weapon ever jumps into a hand): the hand
+## goes to the grip where it lies (he stoops to one on the sand), the fingers close on it and
+## draw it into the palm, and the wrist turns it into line with the forearm; only then is it
+## held. One stuck in a body stays stuck in it, the hand on its grip, until it is wrenched out.
+const REACH_T := 2.2      # how long a hand goes on reaching for a grip before it gives up (s)
+const CLOSE_R := 0.12     # the palm this near the grip (x S): the fingers take it
+const TURN_T := 1.2       # how long the fist may take drawing it in and turning it into line (s)
+
+func reach_for(side: String, w: Weapon) -> bool:
+	if w == null or not is_instance_valid(w) or w.holder != null or not _hand_can_take(side) or reach[side] != null:
+		return false
+	for o in ["R", "L"]:
+		if reach[o] != null and reach[o].w == w:
+			return false
+	reach[side] = {"w": w, "t": REACH_T, "phase": "reach", "pin": null}
+	# The reaching hand goes round the weapon to its grip, not into it (pushed by the knuckles it
+	# slid off across the sand, and one stuck in a man shoved him away).
+	_arm_exempt(side, w, true)
+	return true
+
+func _arm_exempt(side: String, w: Weapon, on: bool) -> void:
+	for b in w.bodies():
+		if b is PhysicsBody3D:
+			for p in [arm[side].fore, arm[side].upper]:
+				if on:
+					b.add_collision_exception_with(p)
+				else:
+					b.remove_collision_exception_with(p)
+
+func _hand_can_take(side: String) -> bool:
+	var fore: VoxelPart = arm[side].fore
+	return alive and not weapons[side] and not fore.severed and not fore.hanging and not fore.missing and fore.prosthetic == "" and not arm[side].upper.severed and not arm[side].upper.hanging and not arm_broken(side) and not (side == "L" and two_handed) and not (holding != null and holding.side == side)
+
+func cancel_reach(side: String) -> void:
+	var r = reach[side]
+	reach[side] = null
+	if r == null:
+		return
+	if r.pin and is_instance_valid(r.pin):
+		r.pin.queue_free()
+	if is_instance_valid(r.w) and r.w.holder == null:
+		if r.phase == "reach":
+			_arm_exempt(side, r.w, false)
+		else:
+			r.w.own_by = self
+			r.w.own_t = 0.3   # (let go of: for a moment more it passes through the hand that had it)
+
+## The weapon a hand is reaching for or turning into the fist, if any.
+func reaching(side: String) -> Weapon:
+	return reach[side].w if reach[side] != null else null
+
+## A weapon in his hand that is stuck in a body (a blow left it there, or he took hold of one
+## stuck in someone): which hand, or "".
+func lodged_side() -> String:
+	for side in ["R", "L"]:
+		var w: Weapon = weapons[side]
+		if w and w.stuck != null:
+			return side
+		var r = reach[side]
+		if r != null and r.phase == "fist" and is_instance_valid(r.w) and r.w.stuck != null:
+			return side
+	return ""
+
+## G with a weapon stuck fast in a body: he lets go of it (it stays where it is).
+func let_go_lodged() -> bool:
+	var side := lodged_side()
+	if side == "":
+		return false
+	if weapons[side]:
+		return release(side) != null
+	cancel_reach(side)
+	return true
+
+## A weapon in his hand stuck in a body comes out of it when the hand pulls on it long and hard
+## enough: the arm held off its mark by it (pulling back, stepping away, or the man it is in
+## pulling the other way), both hands on the haft pulling harder, a strong man harder, a winded
+## one weaker. Pulling on it drags the man it is in (the joint holds until then).
+func _wrench(dt: float) -> void:
+	for side in ["R", "L"]:
+		var w: Weapon = weapons[side]
+		if not (w and w.stuck != null):
+			var r = reach[side]
+			w = r.w if r != null and r.phase == "fist" and is_instance_valid(r.w) and r.w.stuck != null else null
+		if w == null or (side == "L" and two_handed and weapons.R == w):
+			wrench_t[side] = 0.0
+			continue
+		if not is_instance_valid(w.stuck.get("joint")) or not is_instance_valid(w.stuck.get("part")):
+			w.unstick()   # (what it was in is gone: nothing holds it any more)
+			continue
+		var pull := clampf((float(arm_strain[side]) - 0.05 * S) / (0.22 * S), 0.0, 1.5)
+		if side == "R" and two_handed:
+			pull = maxf(pull, clampf((float(arm_strain.L) - 0.05 * S) / (0.22 * S), 0.0, 1.5)) * 1.5
+		pull *= float(mods.strength) * (0.45 + 0.55 * minf(1.0, stamina / 60.0)) * (1.0 if state == "stand" else 0.4)
+		wrench_t[side] += pull * dt
+		stamina = maxf(0.0, stamina - pull * dt * 5.0)
+		if wrench_t[side] >= float(w.stuck.get("need", 0.5)):
+			wrench_t[side] = 0.0
+			var at := w.stuck_point()
+			var part = w.stuck.part
+			w.unstick()
+			if is_instance_valid(part) and not part.severed:
+				part.bleed += 0.8
+			lodged.emit(self, w, "free", at)
+
+func _reach_tick(dt: float) -> void:
+	stoop = maxf(0.0, stoop - dt * 2.5)
+	for side in ["R", "L"]:
+		var r = reach[side]
+		if r == null:
+			continue
+		var w: Weapon = r.w
+		r.t -= dt
+		if not is_instance_valid(w) or w.holder != null or w.alive_count() == 0 or not _hand_can_take(side) or state == "dead" or (state != "stand" and r.phase != "fist") or (r.t <= 0.0 and r.phase == "reach"):
+			cancel_reach(side)
+			continue
+		var fore: VoxelPart = arm[side].fore
+		var palm := hand_world(side)
+		var g: Vector3 = w.grip_world()
+		var d := palm.distance_to(g)
+		if r.phase == "reach" and Vector2(g.x - torso.global_position.x, g.z - torso.global_position.z).length() > 1.0 * S:
+			cancel_reach(side)   # (gone out of reach: kicked away, taken, rolled off)
+			continue
+		if r.phase != "fist":
+			# Down to it: he bends lower and lower while the hand is still above the grip, and no
+			# lower than gets it there.
+			r.bend = clampf(float(r.get("bend", 0.0)) + dt * (2.2 if palm.y > g.y + 0.03 * S else -0.8), 0.0, 1.0)
+			stoop = maxf(stoop, r.bend)
+			if r.phase == "reach" and d < CLOSE_R * S:
+				r.phase = "draw"
+				r.draw_t = 0.5
+				r.hold = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
+				for bd in w.bodies():
+					if bd is RigidBody3D:
+						bd.freeze = false
+						bd.sleeping = false
+				_exempt(w)
+				if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
+					w.forget_owner()
+				w.own_by = self
+				w.own_t = 1e9   # (his while it is in his hand: it hurts nobody until it is held)
+			if r.phase == "draw":
+				# The fingers close round it and draw the grip into the palm (one stuck fast does
+				# not come: the hand is drawn to it instead), the arm taking the pull.
+				r.draw_t -= dt
+				_draw_in(w, fore, palm, g, dt)
+				if d < 0.015 * S or (w.stuck != null and d < 0.08 * S):
+					# In the palm: the fist closes on it there (one stuck fast in a body, as near
+					# as the hand gets to it: it is drawn in properly once it is out). It hangs in it for now; the wrist
+					# turns it into line next, and he straightens up with it.
+					var j := PinJoint3D.new()
+					add_child(j)
+					j.global_position = palm
+					j.node_a = fore.get_path()
+					j.node_b = w.get_path()
+					r.pin = j
+					r.phase = "fist"
+					r.t = TURN_T
+					r.from = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
+				elif r.draw_t <= 0.0:
+					r.phase = "reach"   # it would not come: the hand goes on reaching for it
+			continue
+		# In the fist: he straightens up with it, the hand coming up to his guard (_drive_arm),
+		# and the wrist turns it into line with the forearm against its weight and its swing.
+		r.lift = minf(1.0, float(r.get("lift", 0.0)) + dt / 0.55)
+		stoop = maxf(stoop, float(r.get("bend", 0.0)) * (1.0 - r.lift))
+		var want: Quaternion = (Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w))
+		var err := PD.rot_error(want, PD.quat_of(w))
+		if w.stuck != null:
+			r.t = TURN_T   # (stuck fast in a body: held on to until it comes out or he lets go)
+			continue
+		if d > 0.02 * S:
+			# Out of the body now, and not yet in the palm: the fingers draw it in.
+			if r.pin and is_instance_valid(r.pin):
+				r.pin.queue_free()
+			r.pin = null
+			r.phase = "draw"
+			r.draw_t = 0.5
+			r.hold = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
+			continue
+		var wr := 24.0
+		var rel := w.angular_velocity - fore.angular_velocity
+		# (Turned about the fist, not its own middle: the weight out along the haft is turned too,
+		# and held up against its sagging.)
+		var lever := (w.global_transform * w.center_of_mass) - palm
+		var about := minf(4.0, 1.0 + w.mass * lever.length_squared() / PD.inertia_of(w))
+		var tq := PD.torque_for(w, err * wr * wr - rel * 2.0 * wr) * about - lever.cross(Vector3(0, -w.mass * gravity, 0))
+		tq = PD.clamp_len(tq, 90.0 * MS * S * float(mods.strength))
+		w.apply_torque_impulse(tq * dt)
+		fore.apply_torque_impulse(-tq * dt * 0.5)
+		if err.length() < deg_to_rad(6.0) or r.t <= 0.0:
+			var pin = r.pin
+			reach[side] = null
+			if pin and is_instance_valid(pin):
+				pin.queue_free()
+			w.own_t = 0.0
+			if err.length() > deg_to_rad(40.0):
+				# It never came into line (jammed against something): it falls from his hand.
+				w.own_t = 0.3
+				continue
+			if pick_up(side, w, true):
+				took_up.emit(self, w)
+
+## The fingers drawing a grip into the palm: the two points are brought together the way a
+## joint would bring them (an impulse at each, as the bodies' masses and inertia answer it at
+## that point), gently and no harder than a hand pulls, the arm taking it back.
+func _draw_in(w: Weapon, fore: VoxelPart, palm: Vector3, g: Vector3, dt: float) -> void:
+	var rel_v: Vector3 = w.velocity_at(g) - fore.velocity_at(palm)
+	var v_des := ((palm - g) / 0.07).limit_length(1.6 * S)
+	var k := PD.k_add(PD.point_k(w, g), PD.point_k(fore, palm))
+	if absf(k.determinant()) < 1e-9:
+		return
+	var J := (k.inverse() * (v_des - rel_v)).limit_length(500.0 * MS * S * float(mods.strength) * dt)
+	w.apply_impulse(J, g - w.global_position)
+	fore.apply_impulse(-J, palm - fore.global_position)
+
+## Takes `w` into the hand on `side`: the grip moved into the palm and welded there (`by_hand`:
+## the hand has already brought it there itself, _reach_tick).
+func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 	var fore: VoxelPart = arm[side].fore
 	if weapons[side] or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm[side].upper.severed or arm[side].upper.hanging or arm_broken(side):
 		return false
@@ -1318,8 +1555,15 @@ func pick_up(side: String, w: Weapon) -> bool:
 	if Combat.current:
 		Combat.current.loose_weapons.erase(w)
 	if side == "R" and w.design.get("twoHanded", false) and not weapons.L and off_hand_free() and w.two_hand_off() != null:
-		two_handed = true
-		_attach_off_hand(w)
+		if by_hand:
+			# Taken up by hand: the other hand goes to the haft too and takes it when it is there.
+			w.grip_off = w.two_hand_off()
+			grip_wait = 1.5
+			grip_gentle = true
+			_forearms_pass(true)
+		else:
+			two_handed = true
+			_attach_off_hand(w)
 	return true
 
 ## The arm model of any throw (launchVelocity): how fast the hand can send `mass` off, and the
@@ -1739,6 +1983,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if inp.get("swap", false) and state == "stand":
 		swap_hands()
 	_grip_reach(dt)
+	_reach_tick(dt)
+	_wrench(dt)
 	var t_pos: Vector3 = torso.global_position
 	var t_rot: Quaternion = PD.quat_of(torso)
 	var yaw_q := Quaternion(UP, yaw)
@@ -1840,7 +2086,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# (read off the sand alone, standing on a body he was "in the air", no foot planted, and
 	# the legs hung).
 	var hit := _ground_ray(space, t_pos)
-	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, low_hand * 0.9))
+	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, maxf(low_hand * 0.9, stoop)))
 	var one_leg: bool = minf(leg_l, leg_r) < 0.1
 	var leg_flinch := 1.0
 	for n in ["thighL", "thighR", "shinL", "shinR"]:
@@ -1883,14 +2129,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# heavy weapon), and for a moment under every footfall and landing (land_sag), more the
 		# harder he came down (user: he floated, the legs carried nothing).
 		var burden_k := clampf(carried_kg() / 25.0, 0.0, 1.0)
-		var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch * 0.22 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
+		var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch * 0.22 - stoop * 0.24 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
 		# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
 		# reaches from the foot planted on the sand to the hip (an inverted pendulum: up as the body
 		# passes over the foot, down as the stride opens). Never higher than the legs reach, so
 		# a planted foot always stands on the sand.
 		if state == "stand" and not one_leg and hop_phase <= 0.0:
 			var pend := INF
-			var reach_l := 16.0 * V * S * (0.965 - crouch * 0.12 - run_low * 0.5)
+			var reach_l := 16.0 * V * S * (0.965 - crouch * 0.12 - stoop * 0.14 - run_low * 0.5)
 			for sd in ["L", "R"]:
 				var ftp = feet[sd]
 				if ftp == null or ftp.swing or by_name["shin" + sd].severed:
@@ -1900,7 +2146,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
 				pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
 			if pend < INF:
-				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2))
+				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2 - stoop * 0.24))
 			if stance_h > 0.0:
 				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
 		desired -= land_sag   # (after the planted leg's height: walking, that is what holds him up)
@@ -1964,6 +2210,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		move_local.z = maxf(move_local.z, step.z)
 		if absf(step.x) > absf(move_local.x):
 			move_local.x = step.x
+	# Reaching for a weapon a step off: he steps to it (nothing else moving him).
+	var rs = reach.R if reach.R != null and reach.R.phase == "reach" else (reach.L if reach.L != null and reach.L.phase == "reach" else null)
+	if rs != null and is_instance_valid(rs.w) and standing and move_local.length_squared() < 0.05:
+		var to_g: Vector3 = (rs.w as Weapon).grip_world() - t_pos
+		to_g.y = 0.0
+		var far := to_g.length() - 0.36 * S
+		if far > 0.0:
+			move_local += yaw_q.inverse() * to_g.normalized() * clampf(far / (0.3 * S), 0.3, 0.6)
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
@@ -2042,7 +2296,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		low_hand = 0.0
 		thrust_lean = 0.0
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
-		var lean := Quaternion(Vector3(1, 0, 0), (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + kneel_lean)
+		var lean := Quaternion(Vector3(1, 0, 0), (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + kneel_lean + stoop * 0.6 / sqrt(maxf(1.0, S)))
 		if h_speed < 0.4 and live:
 			var sway := 7.0 if one_leg else 1.0
 			lean = Quaternion(Vector3(0, 0, 1), 0.01 * sway * sin(time * 0.6 * sqrt(sway) + slot * 2)) * Quaternion(Vector3(1, 0, 0), 0.012 * sway * sin(time * 0.9 * sqrt(sway) + slot)) * lean
@@ -2149,7 +2403,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				ft.s = minf(1.0, ft.s + dt * rate)
 				if ft.s >= 1.0 or (moving and not my_swing):
 					ft.swing = false
-					land_sag = maxf(land_sag, (0.06 + 0.03 * minf(1.0, h_speed / 3.0)) * S)   # the weight comes onto the foot
+					land_sag = maxf(land_sag, (0.06 + 0.03 * minf(1.0, h_speed / 3.0)) * S * clampf((leg_avg - 0.6) / 0.3, 0.0, 1.0))   # the weight comes onto the foot (hacked legs, already low on them, not at all: it sank a giant's feet in the sand)
 					# Walking, it stays where it actually came down (short of the mark, it used to be
 					# drawn on along the sand to it, and the planted foot skated). A step taken to
 					# catch his balance still goes to its mark.
@@ -2602,6 +2856,18 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if side == "L" and grip_wait > 0.0 and weapons.R and not two_handed:
 		var at_g: Vector3 = weapons.R.global_transform * weapons.R.grip_off
 		target = yaw_q.inverse() * (at_g + _out_front(at_g) - t_pos)
+	# Reaching for a weapon (G): to its grip, wherever it lies; with it in the fist, back up from
+	# there to the guard, not in one leap.
+	var rch = reach[side]
+	if rch != null and is_instance_valid(rch.w):
+		if rch.phase == "reach":
+			target = yaw_q.inverse() * ((rch.w as Weapon).grip_world() - t_pos)
+		elif rch.phase == "draw":
+			# Held still while the fingers draw it in; to it, if it is stuck fast and will not come.
+			target = yaw_q.inverse() * ((rch.w as Weapon).grip_world() - t_pos) if rch.w.stuck != null else rch.hold
+		elif rch.get("from") is Vector3:
+			var k := float(rch.get("lift", 1.0))
+			target = (rch.from as Vector3).lerp(target, k * k * (3.0 - 2.0 * k))
 	# A hurt arm sags, more the worse it is; it does not wander. A player's blade stays where he
 	# last aimed it: a hurt arm, a ringing head or wine had the hand going round in circles on
 	# its own, the weapon with it, with nothing touched (user: the most important of all). Their
@@ -2675,7 +2941,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 
 	var hand_w := hand_world(side)
 	var hand_vel := fore.velocity_at(hand_w)
-	var m_eff := (fore.nominal_mass + upper.nominal_mass * 0.5) + (w.mass if w else 0.0)
+	var in_fist: Weapon = reach[side].w if reach[side] != null and reach[side].phase == "fist" and is_instance_valid(reach[side].w) else null
+	var m_eff := (fore.nominal_mass + upper.nominal_mass * 0.5) + (w.mass if w else (in_fist.mass if in_fist else 0.0))
 	var load := (w.mass * 0.22 + float(w.stats.get("inertia", 0.0)) * 0.9) / (float(mods.strength) * sqrt(S) * (1.7 if two_handed else 1.0)) if w else 0.0
 	var hnd := 1.0 / (1.0 + load)
 	if fixed_hand[side]:
@@ -2857,6 +3124,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var r_h: Vector3 = hand_w - fore.global_position
 	var m_pt := 1.0 / (1.0 / maxf(0.05, fore.mass) + r_h.length_squared() / PD.inertia_of(fore))
 	var damp := minf(kd * m_eff, 1.6 * m_pt / dt)
+	arm_strain[side] = (hand_goal - hand_w).length()
 	var F = (hand_goal - hand_w) * kp * m_eff + (target_vel[side] - hand_vel) * damp
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
 	F = PD.clamp_len(F, 1150.0 * (1.5 if thrust_line[side] != null else 1.0) * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0) * (1.0 + (0.08 * minf(8.0, w.mass) if w else 0.0)))
@@ -3789,6 +4057,7 @@ const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
 const GIANT_BLOW := 0.5  # a giant's blows, pulled (Combat): still the heaviest, not death in one or two
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
+const GLANCE_INTO := 0.35   # a weapon coming in at less than this (cosine to the plate's normal) starts to skid off
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -3872,6 +4141,16 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	if not near.is_empty():
 		var a0: Dictionary = near[0][0]
 		var h: float = Data.material(a0.mat).get("hardness", 0.6)
+		# A weapon that meets the plate at a slant, or a blade that comes in flat, skids off it
+		# (a spark, a scrape) and does little to the plate or the man under it; one that meets it
+		# square bites.
+		var on_plate: Vector3 = a0.pts[near[0][1]]
+		var glance := _glance(part, on_plate, ld, type, basis_inv, hit) if hit.get("weapon", false) else 0.0
+		if glance > 0.0:
+			J *= 1.0 - 0.6 * glance
+			if glance > 0.35:
+				res.glance = glance
+				res.glance_n = (part.global_transform.basis * _surface_normal(part, on_plate)).normalized()
 		var force := J * (1.0 + 0.6 * heavy)   # a dent knocks a plate as a cut does; the blow's bite is another matter (armor_f)
 		var gone := 0
 		var reach := V * S * 1.7
@@ -4198,6 +4477,28 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	return res
 
 ## The armour plates within `r` of a part-local point, nearest first: [[piece, cell index]].
+## Outward from a part's surface at `lp` (its local frame): the body is rounded, so the normal
+## of the ellipsoid that fills the part's box, not of the box's flat faces.
+static func _surface_normal(part: VoxelPart, lp: Vector3) -> Vector3:
+	var he := part.half_ext.max(Vector3.ONE * 0.005)
+	var n := lp / (he * he)
+	return n.normalized() if n.length_squared() > 1e-8 else Vector3.UP
+
+## How much of a weapon's blow at the plate point `lp` skids off (0 square, 1 all of it): it
+## comes in along the surface rather than into it, or (an edge) with the flat of the blade.
+func _glance(part: VoxelPart, lp: Vector3, ld: Vector3, type: String, basis_inv: Basis, hit: Dictionary) -> float:
+	var into := absf(ld.dot(_surface_normal(part, lp)))
+	var g := clampf((GLANCE_INTO - into) / 0.25, 0.0, 1.0)
+	if type == "edge":
+		var ev: Vector3 = hit.get("edge", Vector3.ZERO)
+		if ev != Vector3.ZERO and absf(ld.dot((basis_inv * ev).normalized())) < 0.35:
+			g = maxf(g, 0.6)
+	elif type == "point":
+		# A point turns off a plate unless it comes in nearly square (a thrust at a breastplate
+		# from the side slides round it).
+		g = clampf((GLANCE_INTO + 0.15 - into) / 0.25, 0.0, 1.0)
+	return g
+
 func _armor_near(part: VoxelPart, lp: Vector3, r: float) -> Array:
 	var out := []
 	for ad in part.get_meta("armor", []):
@@ -4672,6 +4973,19 @@ func hang(part: VoxelPart, res: Dictionary) -> void:
 ## The off hand lets go of the two-handed haft: its arm is cut, hanging or broken. Still joined
 ## to the hammer by the hand that was gone, the stump spun round and round after it (user video,
 ## the forearm taken by the crocodile) and the main arm was dragged into a knot.
+## The forearms pass each other (on) or knock against each other again (off): the off hand
+## comes in beside the main fist on the haft, where the two would otherwise jam.
+func _forearms_pass(on: bool) -> void:
+	forearms_pass = on
+	for a in [arm.L.fore, arm.L.upper]:
+		for b in [arm.R.fore, arm.R.upper]:
+			if a == arm.L.upper and b == arm.R.upper:
+				continue
+			if on:
+				a.add_collision_exception_with(b)
+			else:
+				a.remove_collision_exception_with(b)
+
 func _off_hand_off_haft() -> void:
 	if weapon_joints.L:
 		weapon_joints.L.queue_free()

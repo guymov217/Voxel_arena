@@ -178,6 +178,10 @@ func test_a_cut_limb_is_left_to_fall() -> void:
 ## hits the head and comes away: never left inside it with the hand at rest, never stuck, and
 ## never out of the hand.
 func test_a_blade_at_the_head_hits_and_comes_away() -> void:
+	# (Jammed is what this is about; a heavy blade left in the skull by a hard blow is meant,
+	# Combat.lodge_chance, and is kept out of it here.)
+	var lodge_k := Combat.LODGE_K
+	Combat.LODGE_K = 0.0
 	for key in ["gladius", "zweihander"]:
 		var reach := 0.9 if key == "gladius" else 1.25   # the man a blade's length off
 		var m := Match.new()
@@ -239,3 +243,4 @@ func test_a_blade_at_the_head_hits_and_comes_away() -> void:
 		t.check(stuck == 0 and lost == 0, "%s: never stuck (%d) nor out of the hand (%d)" % [key, stuck, lost])
 		m.queue_free()
 		await get_tree().process_frame
+	Combat.LODGE_K = lodge_k

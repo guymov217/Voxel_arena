@@ -487,7 +487,10 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			# is only ever for taking hold of people).
 			var took = null
 			var gh = inp.get("grabHands")
-			if gh == null:
+			# A weapon of his stuck fast in a body: G lets go of it (it stays in him).
+			if c.lodged_side() != "" and c.let_go_lodged():
+				took = true
+			elif gh == null:
 				took = c.grab_nearest(m.combat.loose_weapons)
 			else:
 				took = grab_person(e, inp)
@@ -495,9 +498,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 				# button down near a sword once did nothing at all).
 				if took == null and gh != "both":
 					took = c.grab_nearest(m.combat.loose_weapons, gh)
-			if took is Weapon:
-				m.feed.emit("%s picks up a %s" % [c.display_name, String(took.design.get("name", "weapon")).to_lower()])
-				m.sfx("pickup", c.hand_world("R" if c.weapons.R == took else "L"))
+			# (The word and the sound come when the hand has it: Match._on_took_up.)
 			if took == null:
 				took = grab_limb(e)
 			if took == null and gh == null:

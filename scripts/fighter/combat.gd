@@ -23,6 +23,7 @@ var time := 0.0
 var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
 const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
+static var LODGE_K := 1.0        # how readily held blades stay in the wound (tests set it to 0 or 1e3)
 var touches := {}                # "attacker id:victim id" -> {t, a: attacker's part, b: victim's part}: who is touching whom
 
 ## The last touch of any part of `a` on any part of `b` within `within` seconds: the victim's
@@ -470,7 +471,14 @@ func _blow(g: Dictionary) -> Dictionary:
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false)})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false), "weapon": is_weapon})
+	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
+	# is turned aside at the point it struck, so it twists off too).
+	if is_weapon and res.has("glance_n"):
+		var gn: Vector3 = res.glance_n
+		var vn := (_vel_at(att, p) - _vel_at(vic, p)).dot(gn)
+		if vn < 0.0:
+			att.apply_impulse(gn * (-vn) * 1.1 * float(res.glance) * att.mass, p - att.global_position)
 	if bite and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:
@@ -479,8 +487,16 @@ func _blow(g: Dictionary) -> Dictionary:
 	# enough stays in the wound (combat.js).
 	if thrown and is_weapon and not vic.severed and J > 9.0:
 		var keen: float = hardness * sharpness
-		if keen > 0.4 and (g.type == "point" or (g.type == "edge" and not res.get("slid", false))) and att.has_method("impale") and att.impale(vic_char, vic, p):
+		if keen > 0.4 and not res.has("glance") and (g.type == "point" or (g.type == "edge" and not res.get("slid", false))) and att.has_method("impale") and att.impale(vic_char, vic, p):
 			res.impaled = true
+	# A heavy blade driven home stays in the wound, in the hand that struck: an axe in a shoulder,
+	# a cleaver in a thigh (not every time: the harder it lands and the more weight out at its
+	# head, the likelier, more where it met bone). It has to be wrenched out of him, dragging him
+	# with it, or let go of.
+	if is_weapon and att.holder and not thrown and not vic.severed and res.get("severed", []).is_empty() and not res.has("glance") and not res.get("slid", false) and not res.get("blocked", false):
+		var lk := lodge_chance(att, typ, J, thrust_k, res)
+		if lk > 0.0 and randf() < lk and att.lodge_in(vic_char, vic, p, 0.6 + clampf((J - 20.0) / 50.0, 0.0, 0.6) + (0.35 if res.get("bone", false) else 0.0)):
+			res.lodged = true
 	if punch and not vic.severed:
 		vic.bleed += J * (0.05 if vic == vic_char.head else 0.015)
 		if vic == vic_char.head:
@@ -521,6 +537,24 @@ func _blow(g: Dictionary) -> Dictionary:
 		if not k.is_empty():
 			chip = {"indices": k.indices, "voxels": k.voxels, "broke": k.broke}
 	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
+
+## How likely a held weapon's blow is to stay in the wound: a weapon heavy at the head (an axe,
+## a trident: the weight out at the blade drives it in and wedges it), or a long heavy blade
+## into bone now and then, the harder the blow the likelier; a sword's or a dagger's cut slides
+## out of the wound it made.
+static func lodge_chance(w, typ: String, J: float, thrust_k: float, res: Dictionary) -> float:
+	if float(w.design.get("sharpness", 0.0)) < 0.3 or w.design.get("chain") != null or w.is_shield or w.design.has("shoots"):
+		return 0.0
+	var head: float = (w.center_of_mass - w.grip_main).length() / maxf(0.01, float(w.reach))
+	var heft := maxf(clampf((head - 0.5) / 0.15, 0.0, 1.0), 0.3 * clampf((w.mass - 2.5) / 2.0, 0.0, 1.0) * (1.0 if res.get("bone", false) else 0.0))
+	var k := 0.0
+	if typ == "edge":
+		k = clampf((J - 20.0) / 35.0, 0.0, 0.55) * heft
+	elif typ == "point" and thrust_k > 0.5:
+		k = clampf((J - 30.0) / 40.0, 0.0, 0.4) * heft
+	if res.get("bone", false):
+		k *= 1.6
+	return minf(0.7 if LODGE_K <= 1.0 else 1.0, k * LODGE_K)
 
 static func _is_club(p) -> bool:
 	return p is VoxelPart and p.severed and (p.wielder != null or p.thrown_t > 0.0)
