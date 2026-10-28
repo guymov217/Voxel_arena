@@ -412,3 +412,31 @@ func test_the_manticore_flings_its_spikes() -> void:
 	t.check(spikes[0] > 0, "the spikes flew")
 	t.check(poisoned[0], "and the man is poisoned by them")
 	s[0].queue_free()
+
+## The dragon left be is alive, not a statue: its head glances about, it huffs smoke, and now
+## and then it rouses and spreads its wings.
+func test_the_dragon_is_alive_at_rest() -> void:
+	var s = await _setup("dragon", 30.0)
+	var b: Beast = s[2]
+	s[1].teleport(Vector3(0, 0, -30))
+	var huffs := [0]
+	b.on_huff = func(_bb): huffs[0] += 1
+	var lo := INF
+	var hi := -INF
+	var roused := false
+	for i in 120 * 14:
+		b.target = null
+		await get_tree().physics_frame
+		if i < 120:
+			continue
+		var rel := PD.quat_of(b.torso).inverse() * PD.quat_of(b.head)
+		var f := rel * Vector3(0, 0, 1)
+		var yaw := atan2(f.x, f.z)
+		lo = minf(lo, yaw)
+		hi = maxf(hi, yaw)
+		if float(b.ai.get("rouse", 0.0)) > 0.0:
+			roused = true
+	t.check(hi - lo > 0.2, "its head turns about on its own (%.2f rad)" % (hi - lo))
+	t.check(huffs[0] >= 2, "it huffs smoke (%d)" % huffs[0])
+	t.check(roused, "and rouses its wings now and then")
+	s[0].queue_free()

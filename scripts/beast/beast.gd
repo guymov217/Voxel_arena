@@ -41,6 +41,10 @@ var on_stomp: Callable
 var on_roar: Callable
 var on_thump: Callable   # a fist on its own chest (the gorilla's display): the drum is heard
 var on_volley: Callable  # (beast, from, at): the manticore's tail flings its spikes at `at`
+var on_huff: Callable    # (beast): a dragon's smoke huffed from its nostrils (looks only)
+var life_rng := RandomNumberGenerator.new()   # (the dragon's idle life: never the AI's own draws)
+var huff_t := 3.0
+var huff_open := 0.0
 # Animation: the parts that move on their own joints (necks, heads, tails, wings, trunks,
 # pincers, the coils of a snake), their rest pose against their parent and how far they bend.
 var anim: Array = []                 # [{part, role, rest: Quaternion, lim, i}]
@@ -77,6 +81,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	team = int(opts.get("team", 1))
 	boss = bool(opts.get("boss", false))
 	rng.seed = int(opts.get("seed", randi()))
+	life_rng.seed = rng.seed ^ 0x5bd1e995
 	var base_s: float = float(sp.scale)
 	S = float(opts.get("scale", base_s))
 	var k := S / base_s
@@ -1589,6 +1594,14 @@ func can_breathe() -> bool:
 func _process(dt: float) -> void:
 	jaw_t = maxf(0.0, jaw_t - dt)
 	breath_t = maxf(0.0, breath_t - dt)
+	huff_open = maxf(0.0, huff_open - dt)
+	if species == "dragon" and alive and breath_t <= 0.0:
+		huff_t -= dt
+		if huff_t <= 0.0:
+			huff_t = life_rng.randf_range(2.5, 5.5)
+			huff_open = 0.3
+			if on_huff.is_valid():
+				on_huff.call(self)
 	var k := jaw_t / JAW_T
 	var gape := 0.0
 	if not alive:
@@ -1606,6 +1619,8 @@ func _process(dt: float) -> void:
 		gape = 0.75 * minf(1.0, (1.0 - k) / 0.35) if k > 0.3 else 0.75 * (k / 0.3)
 	elif heads.any(func(h): return float(wind.get(h, 0.0)) > 0.0):
 		gape = 0.6   # the jaws open as the head draws back
+	elif huff_open > 0.0:
+		gape = 0.18   # a huff of smoke between the teeth
 	elif ai.get("mode", "") == "snarl" or ai.get("mode", "") == "breathe" or ai.get("mode", "") == "crouch":
 		gape = 0.35 if ai.mode != "breathe" else 0.6
 	for p in heads:
@@ -1821,6 +1836,56 @@ func _setup_anim() -> void:
 		var lean := maxf(0.0, atan2(-up.z, up.y) - 0.35) if role == "neck" else 0.0
 		anim.append({"part": p, "role": role, "rest": rest, "i": anim.size(), "max_t": mt, "lean": lean})
 
+## The dragon is a living thing between its attacks, not a machine waiting for the next one
+## (user: it is too robotic): it breathes slow and deep (the neck and the folded wings rise and
+## fall with it), its head never holds still (it glances off to one side, at a sound, at the
+## stands, and back to its prey; less with the prey close), the neck weaves on more than one beat,
+## the end of the tail curls and flicks on its own, and now and then it rouses, spreading and
+## shaking out its wings. None of it while it strikes, breathes fire, flies or is down.
+const ROUSE_T := 1.6
+func _dragon_tick(dt: float, dist: float) -> void:
+	var near := clampf((dist - 2.0 * S) / (6.0 * S), 0.15, 1.0) if dist < INF else 1.0
+	ai.glance_t = float(ai.get("glance_t", 1.0)) - dt
+	if float(ai.glance_t) <= 0.0:
+		var g: Vector2 = ai.get("glance", Vector2.ZERO)
+		if g.length() > 0.01:
+			ai.glance = Vector2.ZERO
+			ai.glance_t = life_rng.randf_range(1.0, 3.2)
+		else:
+			ai.glance = Vector2(life_rng.randf_range(-0.5, 0.5), life_rng.randf_range(-0.22, 0.12)) * near
+			ai.glance_t = life_rng.randf_range(0.35, 1.0)
+	var gn: Vector2 = ai.get("glance_now", Vector2.ZERO)
+	ai.glance_now = gn.lerp(ai.get("glance", Vector2.ZERO), minf(1.0, dt * 8.0))   # a quick turn of the head, not a slide
+	ai.rouse = maxf(0.0, float(ai.get("rouse", 0.0)) - dt)
+	ai.rouse_cool = float(ai.get("rouse_cool", 5.0 + life_rng.randf() * 5.0)) - dt
+	if float(ai.rouse_cool) <= 0.0:
+		ai.rouse_cool = life_rng.randf_range(9.0, 16.0)
+		if not flying and strikes.is_empty() and breath_t <= 0.0 and dist > 3.0 * S:
+			ai.rouse = ROUSE_T
+
+func _dragon_life(role: String, i: int, p: VoxelPart) -> Vector3:
+	var calm := 0.0 if (not strikes.is_empty() or breath_t > 0.0 or breath_mark is Vector3 or flying or down_t > 0.0) else 1.0
+	var ph := slot * 1.7 + i * 1.3
+	var heave := sin(time * 0.9 / sqrt(S) + slot)   # the slow, deep breath
+	var o := Vector3.ZERO
+	match role:
+		"neck":
+			o.y = (sin(time * 0.43 + ph) * 0.6 + sin(time * 1.07 + ph * 2.0) * 0.4) * 0.12 * calm
+			o.x = (heave * 0.06 + sin(time * 0.31 + ph) * 0.05) * calm
+		"head":
+			var g: Vector2 = ai.get("glance_now", Vector2.ZERO)
+			o.y = g.x * calm
+			o.x = (g.y + sin(time * 1.9 + ph) * 0.025) * calm
+		"tail":
+			o.y = (sin(time * 1.3 - i * 0.9 + ph) * 0.5 + sin(time * 2.6 - i * 1.6) * 0.5) * 0.08 * (1.0 + 0.7 * i)
+			o.x = sin(time * 0.7 + ph) * 0.05 * (1.0 + 0.5 * i)
+		"wing":
+			var side := signf(float(p.def.get("wing", 0))) if float(p.def.get("wing", 0)) != 0.0 else signf(p.pa.x)
+			var r: float = float(ai.get("rouse", 0.0))
+			var rk := clampf(minf(r / 0.4, (ROUSE_T - r) / 0.3), 0.0, 1.0) * calm
+			o.z = side * heave * 0.05 * calm - side * rk * (0.75 + 0.2 * sin(time * 9.0 + ph))
+	return o
+
 ## Drives every animated joint: breathing, looking at the prey, tails swaying and lashing,
 ## snakes' bodies travelling in waves, wings beating or flaring, trunks swinging, and the
 ## strikes on top. Each part moves on its own surviving voxels; a part that hangs or is off
@@ -1835,6 +1900,9 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		var dy := atan2(to.x, to.z) - cur
 		track = clampf(atan2(sin(dy), cos(dy)), -0.9, 0.9)
 	var wf := wing_fns()
+	var life := species == "dragon"
+	if life:
+		_dragon_tick(dt, dist)
 	_breath_track(dt)
 	var threat: bool = ai.mode == "crouch" or ai.mode == "snarl" or ai.mode == "breathe" or ai.mode == "aim"
 	for a in anim:
@@ -1898,6 +1966,8 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 				off.x = -0.25 if dist < 2.5 * S else 0.0
 			"claw":
 				off.y = signf(p.pa.x) * (0.15 + 0.15 * sin(time * 3.0 + i))
+		if life:
+			off += _dragon_life(role, i, p)
 		var lim: float = ROLE_LIM[role]
 		if role == "tail" and by_name.has("stinger"):
 			lim = 1.3

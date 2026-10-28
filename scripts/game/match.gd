@@ -413,6 +413,9 @@ func spawn_beast(spec: Dictionary):
 	b.on_stomp = _stomp
 	b.on_venom = _venom
 	b.on_volley = _volley
+	b.on_huff = func(bb):
+		if fx and is_instance_valid(bb):
+			fx.burst("smoke", bb.mouth_point(), 6, bb.mouth_dir() + Vector3(0, 0.4, 0), 0.5)
 	b.on_strike = func(bb, p):
 		# (One whoosh a strike, not one a step of a charge: the bull's horns swung every
 		# frame of a charge and the whooshes piled into a roar of noise.)
