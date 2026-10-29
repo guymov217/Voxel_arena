@@ -64,3 +64,20 @@ func test_a_cut_is_the_size_of_the_blade_in_a_giant_as_in_a_man() -> void:
 	t.check(lost[0] > 0.0 and lost[1] > 0.0, "both are cut (%.5f and %.5f cubic metres)" % [lost[0], lost[1]])
 	t.check(lost[1] < lost[0] * 3.0, "the giant loses no great slab to a man's sword (%.1fx the man's wound)" % (lost[1] / maxf(1e-9, lost[0])))
 	m.queue_free()
+
+## A blow does not set a man lying on the sand turning head over heels (user video): while a
+## foe's weapon presses on him, the turn it puts into his trunk is held to Fighter.STRUCK_W.
+func test_a_blow_does_not_flip_a_man_lying_down() -> void:
+	var m := _match()
+	var f := _man(m, Vector3(0, 0, 0))
+	await _steps(30)
+	f.fall(2.0, true)
+	await _steps(90)
+	var worst := 0.0
+	for k in 20:
+		f.struck_frame = Engine.get_physics_frames()
+		f.torso.angular_velocity = Vector3(18.0, 0.0, 0.0)
+		await _steps(1)
+		worst = maxf(worst, f.torso.angular_velocity.length())
+	t.check(worst < 8.0, "a struck man's trunk turns slower than a somersault (%.1f rad/s, set at 18)" % worst)
+	m.queue_free()

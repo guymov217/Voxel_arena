@@ -852,6 +852,12 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "backstep"; ai.t = 1.2
 				if on_roar.is_valid():
 					on_roar.call(self)
+			elif species == "manticore" and float(ai.get("volley_cool", 2.0)) <= 0.0 and dist < 1.6 * S and part_ok(by_name.get("stinger"), 0.2) and fn_of(["tail"]) > 0.3 and hind_fn() > 0.45:
+				# Pressed close, the manticore springs back off him, wings half spread, to fling its
+				# spikes (it only ever loosed them from a distance a man fighting it never gave it:
+				# up close it was a lion with a tail, user).
+				ai.mode = "backstep"; ai.t = 0.6
+				torso.apply_central_impulse(Vector3(-to.x * mass * 3.2, mass * 1.4, -to.z * mass * 3.2))
 			elif ai.t <= 0.0:
 				var roll := rng.randf()
 				# A dragon does not dance about: it comes on (a feint only now and then, no snarling
@@ -878,7 +884,11 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "recover"; ai.t = 0.5
 		"backstep":
 			want = -to * spd * hurt * 0.8
-			if dist > 1.6 * S or ai.t <= 0.0:
+			if species == "manticore":
+				if ai.t <= 0.0:
+					ai.mode = "stalk"; ai.t = VOLLEY_WIND + 0.3
+					_start_volley()
+			elif dist > 1.6 * S or ai.t <= 0.0:
 				ai.mode = "breathe"; ai.t = 0.7
 		"breathe":
 			# It fills its chest standing, then comes on a step with the fire, head out at the prey.
@@ -2425,11 +2435,14 @@ func _volley(dt: float, tp: Vector3, dist: float, facing: float) -> void:
 		ai.volley = float(ai.volley) - dt
 		if float(ai.volley) <= 0.0 and on_volley.is_valid() and part_ok(stg, 0.2):
 			on_volley.call(self, stg.global_position, tp)
-	elif float(ai.volley_cool) <= 0.0 and part_ok(stg, 0.2) and fn_of(["tail"]) > 0.3 and dist > 2.0 * S and dist < 5.0 * S and facing > 0.5:
-		ai.volley = VOLLEY_WIND
-		ai.volley_cool = 5.0 + rng.randf() * 2.5
-		if on_roar.is_valid():
-			on_roar.call(self)
+	elif float(ai.volley_cool) <= 0.0 and part_ok(stg, 0.2) and fn_of(["tail"]) > 0.3 and dist > 1.6 * S and dist < 5.0 * S and facing > 0.5:
+		_start_volley()
+
+func _start_volley() -> void:
+	ai.volley = VOLLEY_WIND
+	ai.volley_cool = 5.0 + rng.randf() * 2.5
+	if on_roar.is_valid():
+		on_roar.call(self)
 
 ## Whether any part of this body is in contact with `c` (Combat's touches): every hold, squeeze,
 ## roll and trample is real only while it is.

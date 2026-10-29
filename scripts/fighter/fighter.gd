@@ -97,6 +97,7 @@ var thrown_t := 0.0
 var player := false              # a man's own fighter, his or a guest's (not a bot's)
 var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
 var v_free := Vector3.ZERO       # his trunk's speed before it did
+var w_free := Vector3.ZERO       # and its turn
 var thrown_by: Node = null
 var shove_cool := 0.0
 var shove_t := 0.0
@@ -1932,7 +1933,21 @@ func _twist_to(part: VoxelPart, want: Vector3, kp: float, kd: float, max_t: floa
 const STRUCK_V := 3.5        # m/s along the ground
 const STRUCK_VY := 1.0       # m/s upward
 const STRUCK_FRAMES := 30    # physics frames after the weapon last touched him (a quarter second)
+const STRUCK_W := 4.0        # rad/s: the turn a blow can put into him (a man lying hit flipped head over heels, user video)
+## Whether `o` is a part of a man-shaped foe far bigger than `f` (a giant's body, not a beast's:
+## a beast's tosses and charges are its own).
+const GIANT_OVER := 1.4
+static func is_giant_over(o, f) -> bool:
+	return o is VoxelPart and o.fighter != null and o.fighter != f and not (o.fighter is Beast) and float(o.fighter.S) > float(f.S) * GIANT_OVER
+
 func _no_fling() -> void:
+	# His own weapon caught on a giant (on the forearm it raises) lifts him by the hand: the same.
+	for w in weapons.values():
+		if w and is_instance_valid(w) and w.contact_monitor:
+			for b in w.get_colliding_bodies():
+				if is_giant_over(b, self):
+					struck_frame = Engine.get_physics_frames()
+					break
 	var tv: Vector3 = torso.linear_velocity
 	# (A beast's own lunges and rolls are its own, and a man in a hold goes where he is dragged.)
 	if Engine.get_physics_frames() - struck_frame <= STRUCK_FRAMES and thrown_t <= 0.0 and not (self is Beast) and not is_instance_valid(grabbed_by):
@@ -1947,8 +1962,17 @@ func _no_fling() -> void:
 			for p in parts:
 				if not p.severed:
 					p.linear_velocity += fix
+		# Nor set him spinning: the turn of his trunk is held to what it was, or STRUCK_W.
+		var tw: Vector3 = torso.angular_velocity
+		var w_max := maxf(STRUCK_W, w_free.length())
+		if tw.length() > w_max:
+			var wfix := tw.limit_length(w_max) - tw
+			for p in parts:
+				if not p.severed:
+					p.angular_velocity += wfix
 		return
 	v_free = tv
+	w_free = torso.angular_velocity
 
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt

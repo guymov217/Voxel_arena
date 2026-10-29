@@ -413,6 +413,26 @@ func test_the_manticore_flings_its_spikes() -> void:
 	t.check(poisoned[0], "and the man is poisoned by them")
 	s[0].queue_free()
 
+## Pressed close, the manticore does not only claw: it springs back off the man and flings its
+## spikes at him from there (up close the volley never came, user).
+func test_the_manticore_springs_back_to_fling_its_spikes_up_close() -> void:
+	seed(4)
+	var s = await _setup("manticore", 2.6)
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	b.ai.volley_cool = 0.0
+	var sprang := [false]
+	var spikes := [false]
+	await _run(s[0], man, b, 5.0, func(_i):
+		if String(b.ai.get("mode", "")) == "backstep":
+			sprang[0] = true
+		for it in s[0].items.list:
+			if it.type == "pot_arrow_poison" and it.owner == b:
+				spikes[0] = true)
+	t.check(sprang[0], "it sprang back off the man at its claws")
+	t.check(spikes[0], "and flung its spikes at him")
+	s[0].queue_free()
+
 ## The dragon left be is alive, not a statue: its head glances about, it huffs smoke, and now
 ## and then it rouses and spreads its wings.
 func test_the_dragon_is_alive_at_rest() -> void:

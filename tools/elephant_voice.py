@@ -73,6 +73,8 @@ VOICES = {
     "elephant": dict(r=1.0, big=1.0),
     "mammoth": dict(r=0.72, big=1.4),
 }
+# The mammoth's blare low-passed and set down: at full level it was deafening (user).
+SOFT = {"mammoth": (2600, 0.7)}
 EVENTS = {"call": call, "hurt": hurt, "death": death}
 
 def main():
@@ -84,7 +86,9 @@ def main():
         demo = []
         for ev, fn in EVENTS.items():
             for i in (1, 2, 3):
-                x = finish(fn(i, **kw), 0.9)
+                lp_f, p = SOFT.get(key, (0, 0.9))
+                x = fn(i, **kw)
+                x = finish(lp(x, lp_f) if lp_f else x, p)
                 write_ogg(x, os.path.join(a.out, f"{key}_{ev}_{i}.ogg"))
                 demo.append(x)
         if a.demo:

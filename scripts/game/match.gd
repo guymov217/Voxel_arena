@@ -1535,11 +1535,8 @@ func _check_round(dt: float) -> void:
 	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
 	# beaten: he does not get up and fight on after its kill cam. (Before that, a man who comes
 	# round gets up and fights again.)
-	for x in (enemies() if alive_e.is_empty() and mode != "training" and mode != "yard" else []):
-		if not x.get("beaten", false) and is_instance_valid(x.f) and x.f.alive:
-			x.beaten = true
-			x.erase("bot")
-			x.drive = func(_e): return {"limp": true}
+	if alive_e.is_empty() and mode != "training" and mode != "yard":
+		_hold_beaten(enemies())
 	# Beaten without dying (out cold, or down for good): on the kill cam's tape as a kill.
 	for x in entities:
 		if x.f.alive and not x.get("taped", false) and not alive_h.has(x) and not alive_e.has(x) and (x.team == ENEMY_TEAM or humans().has(x)):
@@ -1570,6 +1567,7 @@ func _check_round(dt: float) -> void:
 		return
 	if alive_h.is_empty():
 		var crawled := humans().any(func(x): return x.f.alive)
+		_hold_beaten(humans())
 		_end(false, "You can fight no more" if crawled else "You fall", ("None of you can stand. " if crawled else "") + ("The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on."))
 		return
 	if alive_e.is_empty():
@@ -1660,8 +1658,18 @@ func _unfit(e: Dictionary, dt: float) -> bool:
 		e.unfit_t = maxf(float(e.unfit_t), UNFIT_OUT)
 	return float(e.unfit_t) >= UNFIT_OUT
 
+## The bout called against them, the men it counted beaten stay down: one out cold who came
+## round got up after the kill cam and fought on into a bout already lost (user, a cyclops).
+func _hold_beaten(es: Array) -> void:
+	for x in es:
+		if not x.get("beaten", false) and is_instance_valid(x.f) and x.f.alive:
+			x.beaten = true
+			x.erase("bot")
+			x.drive = func(_e): return {"limp": true}
+
 func _check_circus(alive_h: Array, alive_e: Array) -> void:
 	if alive_h.is_empty():
+		_hold_beaten(humans())
 		_end(false, "DEFEAT", "The Emperor turns his thumb down")
 		return
 	var r := rules.check() if rules else ""

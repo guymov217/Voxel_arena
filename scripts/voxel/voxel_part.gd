@@ -1552,11 +1552,12 @@ func velocity_at(p: Vector3) -> Vector3:
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if Combat.current and state.get_contact_count() > 0:
 		Combat.current.report(self, state)
-		# Pressed on by someone else's weapon this step (Fighter.control caps what that adds to
-		# his speed).
+		# Pressed on by someone else's weapon this step, or by a giant's body (Fighter.control
+		# caps what that adds to his speed: a man's shins caught in a giant's striding legs were
+		# flung at 25 m/s and sent him into the sky, user).
 		if fighter and "struck_frame" in fighter:
 			for i in state.get_contact_count():
 				var o = state.get_contact_collider_object(i)
-				if o is Weapon and o.holder != null and o.holder != fighter:
+				if (o is Weapon and o.holder != null and o.holder != fighter) or Fighter.is_giant_over(o, fighter):
 					fighter.struck_frame = Engine.get_physics_frames()
 					break

@@ -368,12 +368,13 @@ def python(ev, i):
 @voice("basilisk")
 def basilisk(ev, i):
     # The king of serpents, hatched from a cock's egg: a cock's crow brought down to a croak over a hiss.
+    # Low-passed at 3 kHz: the driven crow over the hiss was a piercing din (user).
     crow = growl(drive(shift(pool("rooster", i), 0.48), 1.8), 40, 0.35)
     if ev == "call":
-        return room(mix(shift(pool("snake-call", i), 0.7), (crow, 0.25, 0.9)), 0.5, 0.2)
+        return lp(lp(room(mix(shift(pool("snake-call", i), 0.7), (crow, 0.25, 0.9)), 0.5, 0.2), 3000), 3000)
     if ev == "hurt":
-        return room(mix(shift(pool("snake-hurt", i), 0.7), (cut(crow, 0, 0.5), 0.0, 0.8)), 0.3, 0.1)
-    return room(fade_out(mix(shift(pool("snake-death", i), 0.65), (shift(crow, 0.85), 0.1, 0.8)), 1.0), 0.6, 0.22)
+        return lp(lp(room(mix(shift(pool("snake-hurt", i), 0.7), (cut(crow, 0, 0.5), 0.0, 0.8)), 0.3, 0.1), 3000), 3000)
+    return lp(lp(room(fade_out(mix(shift(pool("snake-death", i), 0.65), (shift(crow, 0.85), 0.1, 0.8)), 1.0), 0.6, 0.22), 3000), 3000)
 
 @voice("scorpion")
 def scorpion(ev, i):
@@ -563,7 +564,7 @@ def limit(x, ev):
 TAKES = 3
 TAKES_OF = {"man_light": 6, "man_mid": 6, "man_heavy": 6}
 # Quieter than the rest after finishing (peak): a bird, not a lion.
-LEVEL = {"ostrich": 0.42}
+LEVEL = {"ostrich": 0.42, "basilisk": 0.6}
 SOFT = ["man_light", "man_mid", "man_heavy", "rat"]   # already finished quietly: no limiter, no drive
 
 # ---------------------------------------------------------------- output

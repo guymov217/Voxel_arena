@@ -113,8 +113,10 @@ static func render(name_: String) -> AudioStreamWAV:
 				_hit(buf, t0, 0.06, func(t): return (rng.randf_range(-1.0, 1.0) * sin(TAU * 5200.0 * t)) * exp(-t * 70.0) * 0.08 * float(st.riq))
 			# The bass under a fight.
 			if float(st.get("bass", 0.0)) > 0.0 and BASS_ON[stp]:
-				var fb := hz(BASS[stp], -2)
-				_hit(buf, t0, step_s * 1.9, func(t): return (sin(TAU * fb * t) + 0.5 * sin(TAU * fb * 2.0 * t) + 0.25 * (1.0 if fmod(fb * t, 1.0) < 0.5 else -1.0)) * minf(1.0, t * 90.0) * exp(-t * 4.0) * 0.16 * float(st.bass))
+				# (An octave under the root, round tones: two octaves down with a square edge on it
+				# was a sub-bass rumble most speakers could only buzz and crackle at.)
+				var fb := hz(BASS[stp], -1)
+				_hit(buf, t0, step_s * 1.9, func(t): return (sin(TAU * fb * t) + 0.35 * sin(TAU * fb * 2.0 * t) + 0.12 * sin(TAU * fb * 3.0 * t)) * minf(1.0, t * 90.0) * exp(-t * 4.0) * 0.16 * float(st.bass))
 			# Fills: a roll of the drum into every fourth bar, and a crash of jingles on the one.
 			if float(st.get("fills", 0.0)) > 0.0 and bar % 4 == 3 and stp >= 12:
 				for sub in 2:
@@ -182,13 +184,19 @@ static func _hit(buf: PackedFloat32Array, t0: float, dur: float, f: Callable) ->
 	var n := buf.size()
 	var i0 := int(t0 * RATE)
 	var cnt := mini(int(dur * RATE), n)
+	# Every note let go over its last few milliseconds: cut off where it still sounded, each one
+	# ended in a click, and the clicks of a fight's notes were a crackle under the whole bout.
+	var rel := maxi(1, mini(int(0.008 * RATE), cnt / 4))
 	for j in cnt:
 		var i := i0 + j
 		if i >= n:
 			if not _wrap:
 				break
 			i -= n
-		buf[i] += f.call(float(j) / RATE)
+		var v: float = f.call(float(j) / RATE)
+		if j >= cnt - rel:
+			v *= float(cnt - j) / rel
+		buf[i] += v
 
 ## Switches the music to a state ("off" for silence), cross-fading.
 func set_state(s: String) -> void:

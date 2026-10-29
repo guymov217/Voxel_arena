@@ -208,6 +208,27 @@ func test_a_beaten_foe_does_not_fight_on() -> void:
 	t.check(not e.has("bot") and e.drive.call(e).get("limp", false), "and he stays down: no bot fights on in him")
 	m.queue_free()
 
+## Nor does the man the bout was lost on: knocked out cold, he does not come round after the
+## kill cam and fight on in a bout already called against him (user, a cyclops' blow).
+func test_a_man_beaten_cold_stays_down_after_the_bout_is_lost() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 5})
+	_calm(m)
+	for i in 30:
+		_calm(m)
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	# (Out cold: his own hands do nothing until the bout is called.)
+	m.me.drive = func(_e): return {"limp": true, "mine": true}
+	f.fall(60.0, true)
+	for i in 120 * 13:
+		_calm(m)
+		await get_tree().physics_frame
+	t.check(m.over, "out on the sand: the bout is lost")
+	t.check(m.me.get("beaten", false) and m.me.drive.call(m.me).get("limp", false) and not m.me.drive.call(m.me).has("mine"), "and the bout holds him down from then on, whatever his hands do (%s)" % [m.me.drive.call(m.me)])
+	m.queue_free()
+
 ## A giant is not felled by a man's hard blows to the legs and the body: his bones are thicker
 ## and he stands steadier, a dozen warhammer blows in a row leave him on his feet.
 func test_a_giant_stands_up_to_hard_blows() -> void:
