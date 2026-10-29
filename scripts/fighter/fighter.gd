@@ -779,6 +779,7 @@ static func plate_wear(mat: String) -> float:
 ## own (what is left of him is uncovered there).
 func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force: float) -> void:
 	ad.on[ci] = 0
+	part.remove_meta("armor_box")
 	ad.alive -= 1
 	_armor_dirty = true
 	var at: Vector3 = (ad.pts[ci] as Vector3) + Physique.inset(part, ad.cells[ci])
@@ -845,6 +846,8 @@ func place_armor() -> void:
 			if ad.node == null or not is_instance_valid(ad.node):
 				continue
 			var m: MultiMesh = ad.node.multimesh
+			ad.erase("xf")   # (the arm's plates against the chest: worked out again, _clip_arm_armor)
+			p.remove_meta("armor_box")
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
 					m.set_instance_transform(ci, Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)))
@@ -2574,6 +2577,65 @@ func _process(_dt: float) -> void:
 	_seat_drawing()
 	_draw_joint_caps()
 	_sway_hair(_dt)
+	_clip_arm_armor()
+
+## An arm's armour does not show through his chest's: a plate of it that has gone inside the
+## chest (at the shoulder, an arm swung across him) is not drawn while it is there, when he
+## wears armour on the chest too. Drawing only; the plate still stops blows.
+func _clip_arm_armor() -> void:
+	if torso == null or not _armored(torso):
+		return
+	var tinv := torso.get_global_transform_interpolated().affine_inverse()
+	# The chest armour's own box (its plates stand out from the chest), kept until it changes.
+	if not torso.has_meta("armor_box"):
+		var lo := Vector3.ONE * INF
+		var hi := -Vector3.ONE * INF
+		for ad in torso.get_meta("armor", []):
+			if _cosmetic(String(ad.id)) or ad.node == null or not is_instance_valid(ad.node):
+				continue
+			for ci in ad.cells.size():
+				if ad.on[ci] == 1:
+					var o: Vector3 = Physique.plate_xf(torso, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)).origin
+					lo = lo.min(o)
+					hi = hi.max(o)
+		var cell: float = torso.vf * torso.part_scale * float(Data.body_res) * 0.5
+		torso.set_meta("armor_box", AABB(lo - Vector3.ONE * cell, hi - lo + Vector3.ONE * cell * 2.0) if lo.x < INF else AABB())
+	var box: AABB = torso.get_meta("armor_box")
+	if box.size == Vector3.ZERO:
+		return
+	for n in ["upperArmL", "upperArmR"]:
+		var p: VoxelPart = by_name.get(n)
+		if p == null or p.severed or p.missing:
+			continue
+		var to_t := tinv * p.get_global_transform_interpolated()
+		for ad in p.get_meta("armor", []):
+			if _cosmetic(String(ad.id)) or ad.node == null or not is_instance_valid(ad.node):
+				continue
+			var m: MultiMesh = ad.node.multimesh
+			if not ad.has("xf"):
+				var xf := []
+				for ci in ad.cells.size():
+					xf.append(m.get_instance_transform(ci))
+				ad["xf"] = xf
+				var fresh := PackedByteArray()
+				fresh.resize(ad.cells.size())
+				ad["clip"] = fresh
+			var clip: PackedByteArray = ad.clip
+			for ci in ad.cells.size():
+				if ad.on[ci] == 0:
+					continue
+				var q: Vector3 = to_t * (ad.xf[ci] as Transform3D).origin
+				var inside := box.has_point(q)
+				if inside != (clip[ci] == 1):
+					clip[ci] = 1 if inside else 0
+					m.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else ad.xf[ci])
+			ad["clip"] = clip   # (a packed array is a value: the changes go back in)
+
+func _armored(p: VoxelPart) -> bool:
+	for ad in p.get_meta("armor", []):
+		if not _cosmetic(String(ad.id)):
+			return true
+	return false
 
 ## Drawn where the bodies are now, with the game paused (the kill cam): the joints closed and
 ## capped off the bodies' own transforms, not the interpolation's.
