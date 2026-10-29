@@ -202,6 +202,28 @@ const NERVE_DENT := 0.07     # a solid blow's (J 25); a light one dents it a thi
 const NERVE_BACK := 0.012    # per second
 var nerve := 1.0
 
+## Hurt, some beasts lose heart and some lose their heads (user). The hunters, the gorilla
+## (nerve) and the crawlers grow careful: slower, longer between attacks, a feint where they
+## would have pounced. The FURIES come on harder the worse they are hurt: sooner between charges
+## and bites, closer, no feinting; but wilder, their charges, lunges and strikes thrown wide of
+## the man by up to AIM_WILD at the last of their blood.
+const FURIES := ["boar", "bull", "rhino", "bear", "mammoth", "elephant", "dragon", "cerberus", "manticore", "griffin", "chimera", "basilisk"]   # (not the crocodile: its roll is its fury, and a wild bite spoiled the hold)
+const AIM_WILD := 0.45
+var fury := 0.0   # 0..1: the injury, for a FURIES species; 0 for the rest
+## A boss presses: the hydra and the hound, whose heads strike on their own, keep the body at
+## the man after a lunge instead of backing off for a second (the hydra pecked and retreated:
+## 89 damage in a 90 s bout); the dragon and the manticore back off less.
+const PRESS := {"hydra": 0.3, "cerberus": 0.55, "dragon": 0.6, "manticore": 0.7}
+
+## (Neither draws on the rng without fury: a beast that is whole, or none of the FURIES, rolls
+## exactly as it did, seed for seed.)
+func _aim_err() -> float:
+	return rng.randf_range(-1.0, 1.0) * AIM_WILD * fury if fury > 0.0 else 0.0
+
+## Where a furious beast thinks the man is: off him by up to a third of its size.
+func _wild(tp: Vector3) -> Vector3:
+	return tp + Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)) * 0.3 * S * fury if fury > 0.0 else tp
+
 func _dent_nerve(J: float, res: Dictionary) -> void:
 	if not alive or res.get("blocked", false) or J < 3.0 or time - float(ai.get("dent_at", -9.0)) < 0.25:
 		return
@@ -445,7 +467,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var lp := leg_power()
 	var legs_left := legs.filter(func(l): return not leg_gone(l)).size()
 	injury = clampf(0.6 * (1.0 - blood / 100.0) + 0.4 * (1.0 - minf(torso.function(), lp)), 0.0, 1.0)
-	var heavy := 1.0 - 0.5 * injury
+	fury = injury if FURIES.has(species) else 0.0
+	var heavy := 1.0 - (0.3 if fury > 0.0 else 0.5) * injury
 	var collapsed: bool = (legs.size() > 0 and legs_left <= legs.size() / 2.0) or (legs.size() > 0 and blood < 22.0)
 	collapsed_now = collapsed
 	var missing := legs.size() - legs_left
@@ -627,17 +650,17 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 				if ai.mode == "aim":
 					if ai.t <= 0.0:
 						# Broken horns shorten the run; hurt forelegs make it slower and wobblier.
-						ai.mode = "charge"; ai.t = 1.6 * (0.55 + 0.45 * horn_fn()); ai.charge_yaw = atan2(to.x, to.z) + (1.0 - front_fn()) * rng.randf_range(-0.35, 0.35)
+						ai.mode = "charge"; ai.t = 1.6 * (0.55 + 0.45 * horn_fn()); ai.charge_yaw = atan2(to.x, to.z) + (1.0 - front_fn()) * rng.randf_range(-0.35, 0.35) + _aim_err()
 					yaw = atan2(to.x, to.z)
 				elif ai.mode == "charge":
 					want = Vector3(sin(ai.charge_yaw), 0, cos(ai.charge_yaw)) * float(sp.speed) * hurt * (0.3 + 0.7 * front_fn())
 					if ai.t <= 0.0:
-						ai.mode = "recover"; ai.t = 1.4
+						ai.mode = "recover"; ai.t = 1.4 * (1.0 - 0.5 * fury)
 				else:
 					want = -to
 					yaw = atan2(to.x, to.z)
 					if ai.t <= 0.0:
-						ai.mode = "aim"; ai.t = 0.8 + rng.randf()
+						ai.mode = "aim"; ai.t = (0.8 + rng.randf()) * (1.0 - 0.5 * fury)
 		"hugger":
 			if hug != null:
 				_squeeze(dt)
@@ -668,7 +691,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					want = to * float(sp.speed) * hurt * (0.4 + 0.6 * nerve)
 					if (species == "bear" or species == "gorilla") and dist < 1.4 * S and float(ai.get("rear_cool", 0.0)) <= 0.0 and hind_fn() > 0.5 and front_fn() > 0.35:
 						ai.rear = 1.15
-						ai.rear_cool = (4.0 + rng.randf() * 2.0) / nerve
+						ai.rear_cool = (4.0 + rng.randf() * 2.0) / nerve * (1.0 - 0.4 * fury)
 						ai.slammed = false
 						for n in ["legFL", "legFR"]:
 							if by_name.has(n) and not leg_gone(by_name[n]):
@@ -703,13 +726,14 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			# and now and then charges, trumpeting, tusks first.
 			if (species == "mammoth" or species == "elephant") and t and dist < 18.0 * S:
 				ai.charge_t = float(ai.get("charge_t", 0.0)) - dt
-				if float(ai.charge_t) < -3.5 and dist > 0.8 * S:
+				if float(ai.charge_t) < -3.5 * (1.0 - 0.5 * fury) and dist > 0.8 * S:
 					ai.charge_t = 2.2
+					ai.charge_err = _aim_err()
 					ai.charge_rammed = false
 					if on_roar.is_valid():
 						on_roar.call(self)
 				var spd := float(sp.speed) * (2.5 if float(ai.charge_t) > 0.0 else 1.5)
-				want = to * spd * hurt
+				want = (to.rotated(Vector3.UP, float(ai.get("charge_err", 0.0))) if float(ai.charge_t) > 0.0 else to) * spd * hurt
 				yaw = atan2(to.x, to.z)
 				# A charge at full tilt that meets him knocks him off his feet, once (it shoved
 				# him on ahead of its head, never under it, and the feet never came down on him).
@@ -717,7 +741,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					ai.ram_t = maxf(float(ai.get("ram_t", 0.0)), 0.1)
 			# Close enough that the forefeet, coming down ahead of the chest, land on him.
 			if t and float(ai.get("charge_t", 0.0)) <= 0.0 and dist < torso.half_ext.z * 1.5 + 0.9 * S * 0.5 and ai.bite_cool <= 0.0 and Vector3(sin(cur), 0, cos(cur)).dot(to) > 0.3 and leg_power() > 0.4:
-				ai.bite_cool = 4.5
+				ai.bite_cool = 4.5 * (1.0 - 0.4 * fury)
 				ai.stomp = STOMP_T   # up on the hind legs, forefeet and trunk raised: then it comes down
 				ai.stomped = false
 				if on_strike.is_valid():
@@ -765,7 +789,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		ai.fly_cool -= dt
 		if not collapsed and legs_left == legs.size() and can_fly() and (ai.mode == "stalk" or ai.mode == "recover") and ai.fly_cool <= 0.0:
 			flying = true
-			ai.mode = "fly"; ai.t = 2.0; ai.alt = 2.4 * S; ai.fly_t = 6.0 + rng.randf() * 3.0   # a short flight: it is down on him again soon
+			ai.mode = "fly"; ai.t = 2.0; ai.alt = 2.4 * S; ai.fly_t = (4.0 + rng.randf() * 2.0) if species == "dragon" else (6.0 + rng.randf() * 3.0)   # a short flight: it is down on him again soon (the dragon's shortest: one swoop)
 			return want
 	if flying:
 		ai.fly_t -= dt
@@ -798,7 +822,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = -to * spd * 0.4
 			if (grounded and dist_g < h_want + 0.1) or ai.t <= 0.0:
 				flying = false
-				ai.mode = "stalk"; ai.t = 1.0; ai.fly_cool = 14.0 + rng.randf() * 6.0
+				ai.mode = "stalk"; ai.t = 1.0; ai.fly_cool = (20.0 + rng.randf() * 8.0) if species == "dragon" else (14.0 + rng.randf() * 6.0)
 		return want
 	var side := Vector3(-to.z, 0, to.x) * float(ai.circle)
 	var tw = t.weapons.get("R") if t.get("weapons") else null
@@ -807,7 +831,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		ai.mode = "recover"; ai.t = 0.7 + rng.randf() * 0.6; ai.circle = -ai.circle
 	match String(ai.mode):
 		"stalk":
-			var r: float = float(sp.stalkRadius) * S
+			var r: float = float(sp.stalkRadius) * S * (1.0 - 0.35 * fury)
 			want = side * 2.2 + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
 			if disarmed():
 				# Nothing to bite with: no circling at a distance, it comes straight on and
@@ -821,12 +845,20 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "breathe"; ai.t = 0.7
 				if species == "dragon" and on_roar.is_valid():
 					on_roar.call(self)   # the roar before the fire: the warning to run
+			elif species == "dragon" and sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() and dist <= 1.5 * S and dist > 0.6 * S:
+				# Too close to pour fire (over a man at its feet it would fold its neck under
+				# itself): it backs off a stride, head up and roaring, and pours (it hardly ever
+				# breathed: close in, it only ever charged).
+				ai.mode = "backstep"; ai.t = 1.2
+				if on_roar.is_valid():
+					on_roar.call(self)
 			elif ai.t <= 0.0:
 				var roll := rng.randf()
 				# A dragon does not dance about: it comes on (a feint only now and then, no snarling
 				# from a distance), and every charge is told by the crouch and the roar before it.
-				var feint_k := 0.1 if species == "dragon" else 0.25
-				var snarl_k := 0.1 if species == "dragon" else 0.4
+				# (A furious beast neither feints nor snarls.)
+				var feint_k := (0.1 if species == "dragon" else 0.25) * (1.0 - fury)
+				var snarl_k := feint_k + (0.0 if species == "dragon" else 0.15) * (1.0 - fury)
 				if roll < feint_k:
 					ai.mode = "feint"; ai.t = 0.3
 				elif roll < snarl_k:
@@ -836,7 +868,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 					ai.mode = "crouch"; ai.t = 0.45
 					if on_roar.is_valid() and rng.randf() < 0.5:
 						on_roar.call(self)
-				elif hind_fn() < 0.45 or injury > 0.6:
+				elif hind_fn() < 0.45 or (injury > 0.6 and fury <= 0.0):
 					ai.mode = "feint"; ai.t = 0.4   # too hurt to pounce: it rushes in on the ground
 				else:
 					ai.mode = "crouch"; ai.t = 0.45
@@ -844,6 +876,10 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = to * spd * hurt * 0.8
 			if ai.t <= 0.0:
 				ai.mode = "recover"; ai.t = 0.5
+		"backstep":
+			want = -to * spd * hurt * 0.8
+			if dist > 1.6 * S or ai.t <= 0.0:
+				ai.mode = "breathe"; ai.t = 0.7
 		"breathe":
 			# It fills its chest standing, then comes on a step with the fire, head out at the prey.
 			# It fills its chest standing, then comes on a step with the fire; close in it stands
@@ -873,12 +909,20 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf(); ai.bite_cool = maxf(ai.bite_cool, 1.2); ai.circle = -ai.circle
 			elif _in_bite_reach(t, dist) and ai.bite_cool <= 0.0:
 				_lunge(to, mass, collapsed)
-				ai.mode = "recover"; ai.t = 1.1 * (1.0 + injury * 1.5)   # a hurt hunter backs off longer
+				# A hurt hunter backs off longer; a furious one sooner; a boss that presses, less (PRESS).
+				ai.mode = "recover"; ai.t = (1.1 * (1.0 + injury * 1.5) if fury <= 0.0 else 1.1 * (1.0 - 0.5 * fury)) * float(PRESS.get(species, 1.0))
 			elif ai.t <= 0.0:
 				ai.mode = "stalk"; ai.t = 1.0 + rng.randf() * 1.5
 		_:
 			want = to * spd * hurt * 0.6 if ai.t > 0.7 else to * -2.0 + side * 1.2
-			if ai.t <= 0.0:
+			if ai.t <= 0.0 and species == "dragon" and sp.breath != null and ai.breath_cool <= 0.0 and can_breathe() and dist > 0.6 * S and dist < float(sp.breathRange) * S * 0.8:
+				# Its fire ready as it comes out of a lunge, the dragon pours it before anything
+				# else (a bout went by between charges and flights with a single flame).
+				ai.mode = "backstep" if dist <= 1.5 * S else "breathe"
+				ai.t = 1.2 if ai.mode == "backstep" else 0.7
+				if on_roar.is_valid():
+					on_roar.call(self)
+			elif ai.t <= 0.0:
 				ai.mode = "crouch" if rng.randf() < 0.4 else "stalk"
 				ai.t = 0.45 if ai.mode == "crouch" else 1.0 + rng.randf() * 1.5
 				ai.circle = -ai.circle
@@ -894,13 +938,15 @@ func _in_bite_reach(t, dist: float) -> bool:
 	return dist < 1.1 + 0.6 * S
 
 func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
-	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury) * (0.35 + 0.65 * hind_fn())
+	if fury > 0.0:
+		to = to.rotated(Vector3.UP, _aim_err())   # thrown wide, in its fury
+	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury * (1.0 - fury)) * (0.35 + 0.65 * hind_fn())
 	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed else 1.2), to.z * mass * k))
 	if disarmed():
 		ai.ram_t = 0.8   # nothing to bite with: the body itself is the blow
 	for h in biting_heads():
 		_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
-	ai.bite_cool = float(sp.cooldown) * STRIKE_PACE * (1.0 + injury)
+	ai.bite_cool = float(sp.cooldown) * STRIKE_PACE * (1.0 + injury * (1.0 - fury)) * (1.0 - 0.35 * fury)
 
 ## The ram: a beast with no bite left throws its weight at him; what it hits, it hits as hard as
 ## the contact (the impulse the engine put through him), and he goes down under it.
@@ -2293,7 +2339,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		return
 	var facing := Vector3(sin(cur), 0, cos(cur)).dot(to)
 	var reach: float = torso.half_ext.z + head.half_ext.z * 2.0 + 0.5
-	var tp: Vector3 = t.torso.global_position
+	var tp: Vector3 = _wild(t.torso.global_position)
 	# Many heads: each snaps on its own, when it is in reach and ready, so the bites come staggered.
 	if sp.get("multiHead", false):
 		for h in heads:

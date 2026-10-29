@@ -32,6 +32,8 @@ var entities: Array = []        # {id, f, kind, team, bot, peer, boss, spec}
 var me = null
 var over := false
 var between := 0.0
+var late_wave: Array = []   # the bout's second wave (Ladder "late"), not yet in
+var late_at := 0.0
 var doctor_wait := {}            # entity id -> true while that player is at the physician
 var doctor_t := 0.0
 var time := 0.0
@@ -289,7 +291,8 @@ func setup(opts: Dictionary) -> void:
 		stage_info = Data.stage(stage, players_count)
 		_spawn_round(0)
 		if stage_info.get("duel", false):
-			_banner(stage_info.get("title", "Bout %d" % stage), "One on one: %s" % stage_info.get("foe_name", "your opponent"))
+			var first: Array = stage_info.get("rounds", [[]])[0]
+			_banner(stage_info.get("title", "Bout %d" % stage), ("One on one: %s" if first.size() <= 1 else "Together: %s") % stage_info.get("foe_name", "your opponent"))
 		else:
 			_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
 	elif mode == "training":
@@ -661,6 +664,25 @@ func _spawn_round(r: int) -> void:
 		else:
 			spawn_fighter(spec)
 	_open_gates(list.size())
+	late_wave = stage_info.get("late", []).duplicate(true) if r == 0 else []
+	late_at = time + Ladder.LATE_AFTER
+
+## The bout's second wave (Ladder "late"): through the other gate, LATE_AFTER seconds in or as
+## soon as the first wave is down, the horn and the feed its only warning (the board by the
+## gate named the first wave alone: the surprise is the point).
+func _spawn_late() -> void:
+	var list := late_wave
+	late_wave = []
+	for i in list.size():
+		var spec := enemy_spec(list[i], 2 * i + 1, 2 * (i + 1))   # the odd slots: the far gate
+		if spec.kind == "beast":
+			spawn_beast(spec)
+		else:
+			spawn_fighter(spec)
+	if arena and arena.has_method("open_gate"):
+		arena.open_gate(-1)
+	sfx("horn", Vector3(-Arena.RADIUS, 2.0, 0), 0.6)
+	feed.emit("The other gate opens: %s!" % Ladder.foe_name(list))
 
 ## The gates swing open as a wave comes in, with a blast of the horn.
 func _open_gates(n: int) -> void:
@@ -1507,6 +1529,9 @@ func _check_round(dt: float) -> void:
 	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and x.f.dying <= 0.0 and not _unfit(x, dt))
 	_lift_tick(dt)
 	var alive_e := enemies().filter(func(x): return not x.get("beaten", false) and not x.f.is_beaten() and not _unfit(x, dt))
+	if role != "guest" and not late_wave.is_empty() and (time >= late_at or alive_e.is_empty()):
+		_spawn_late()
+		return
 	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
 	# beaten: he does not get up and fight on after its kill cam. (Before that, a man who comes
 	# round gets up and fights again.)

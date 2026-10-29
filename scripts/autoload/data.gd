@@ -86,92 +86,52 @@ func stage(n: int, players: int = 1) -> Dictionary:
 	out["gear"] = row.get("gear", {})
 	return duel(out, players)
 
-## The campaign is a ladder of single bouts: each stage one opponent, one on one, harder every
-## time. Every boss stage brings its boss (the Cyclops, the Minotaur, Polyphemus the giant, the
-## Hydra, the Dragon...); every third stage a beast comes through the gate instead of a man,
-## from the wolf at the start to the monsters late on; the rest are the stage's strongest
-## gladiator. A party (co-op) fights it together: each friend gets a foe of his own (other men
-## from the stage, or a pack of the beast), and a boss comes alone, the tougher for each friend.
-## From the fifth bout every other man's stage is a pack: two of the stage's gladiators at once,
-## three from the eleventh, so a bout is not always one on one.
-const LADDER_BEASTS := ["wolf", "boar", "hyena", "lion", "bear", "gorilla", "crocodile", "tiger", "bull", "ostrich", "rhino", "python", "scorpion", "spider", "elephant", "griffin", "basilisk", "manticore", "chimera"]
+## The campaign is a ladder of single bouts, authored bout by bout in Ladder (scripts/game/
+## ladder.gd): each stage one bout, its men with the stage's gear, weapons and skill (the
+## tables'), a beast at its species' size, a boss on every fourth stage, and on some a second
+## wave through the other gate ("late"). A party (co-op) fights it together: for the extra
+## friends, more of the bout's own men (or of its beast), fewer than the friends, so a party
+## always has the numbers (two for two, two for three, three for four); a boss comes alone, the
+## tougher for each friend. The second wave comes as authored, for a party as for one man.
 func duel(st: Dictionary, players := 1) -> Dictionary:
-	var rounds: Array = st.get("rounds", [])
-	if rounds.is_empty():
-		return st
 	var n := int(st.get("n", 1))
+	var b := Ladder.bout(n)
+	if b.is_empty():
+		return st
 	var gear: Dictionary = st.get("gear", {})
-	var foe: Dictionary = {}
-	if st.get("boss", false):
-		for en in rounds[rounds.size() - 1]:
-			if en.get("boss", false):
-				foe = en.duplicate(true)
-	if foe.is_empty() and n % 3 == 0:
-		# (The beasts come in order over the beast stages; a boss stage in between skips none.)
-		var bid: String = LADDER_BEASTS[mini(n / 3 - 1 - n / 12, LADDER_BEASTS.size() - 1)]
-		if beasts.has(bid):
-			foe = {"beast": bid, "gear": gear}
-	if foe.is_empty():
-		# The stage's hardest man: the first gladiator of its last wave (the latest wave
-		# that has one, beasts left to their own stages).
-		for r in range(rounds.size() - 1, -1, -1):
-			for en in rounds[r]:
-				if foe.is_empty() and en.has("e") and not en.get("boss", false):
-					foe = (en as Dictionary).duplicate(true)
-		if foe.is_empty():
-			foe = (rounds[rounds.size() - 1][0] as Dictionary).duplicate(true)
-		foe.erase("boss")
-	var foes: Array = [foe]
-	if players > 1 and (st.get("boss", false) or foe.get("boss", false)):
-		var m: Dictionary = foe.get("mods", {}).duplicate()
-		# (A party has the better of a boss: tougher for each friend, but not by a whole man.)
-		m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.35 * (players - 1))
-		m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.08 * (players - 1))
-		foe["mods"] = m
+	var foes: Array = []
+	for en in b.get("foes", []):
+		foes.append(_ladder_foe(en, gear))
+	var late: Array = []
+	for en in b.get("late", []):
+		late.append(_ladder_foe(en, gear))
+	var boss: bool = foes.any(func(f): return f.get("boss", false))
+	if players > 1 and boss:
+		for f in foes:
+			var m: Dictionary = f.get("mods", {}).duplicate()
+			# (A party has the better of a boss: tougher for each friend, but not by a whole man.)
+			m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.35 * (players - 1))
+			m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.08 * (players - 1))
+			f["mods"] = m
 	elif players > 1:
-		# More of the stage's gladiators for a party, latest waves first: fewer than the
-		# friends, so a party always has the numbers (two for two, two for three, three for four).
-		var pool: Array = []
-		for r in range(rounds.size() - 1, -1, -1):
-			for en in rounds[r]:
-				if en.has("e") and not en.get("boss", false) and en.e != foe.get("e"):
-					pool.append(en)
+		var own := foes.size()
 		for i in roundi((players - 1) * 0.6):
-			if foe.has("beast") or pool.is_empty():
-				foes.append(foe.duplicate(true))
-			else:
-				var o: Dictionary = (pool[i % pool.size()] as Dictionary).duplicate(true)
-				o.erase("boss")
-				foes.append(o)
-	# The pack stages: more of the stage's men together (a beast or a boss still comes alone).
-	var pack := pack_size(n) if not (st.get("boss", false) or foe.has("beast")) else 1
-	if pack > 1:
-		var others: Array = []
-		for r in range(rounds.size() - 1, -1, -1):
-			for en in rounds[r]:
-				if en.has("e") and not en.get("boss", false):
-					others.append(en)
-		for i in pack - 1:
-			if others.is_empty():
-				break
-			var o: Dictionary = (others[i % others.size()] as Dictionary).duplicate(true)
-			o.erase("boss")
-			foes.append(o)
-	var name := String(foe.get("title", foe.get("name", "")))
-	if name == "":
-		name = String(beasts.get(foe.beast, {}).get("name", foe.beast)) if foe.has("beast") else String(enemy_type(String(foe.get("e", ""))).get("label", String(foe.get("e", "a gladiator")).capitalize()))
+			foes.append((foes[i % own] as Dictionary).duplicate(true))
 	st["rounds"] = [foes]
+	st["late"] = late
 	st["duel"] = true
-	st["foe_name"] = name if pack <= 1 else ("%s and %d more" % [name, pack - 1])
-	st["title"] = String(foe.get("title", ("Bout %d: the pair" if pack == 2 else ("Bout %d: the trio" if pack >= 3 else "Bout %d")) % n))
+	st["foe_name"] = Ladder.foe_name(foes)
+	var title := String(b.get("title", foes[0].get("title", "")))
+	st["title"] = ("Bout %d" % n) if title == "" else (title if boss or foes[0].has("title") else "Bout %d: %s" % [n, title])
 	st["stagePay"] = int(st.get("stagePay", 30)) + int(st.get("roundPay", 10)) * 2
 	return st
 
-## How many men a stage's bout sends in together: one, or a pair, or a trio.
-static func pack_size(n: int) -> int:
-	if n % 4 == 0 or n % 3 == 0 or n < 5 or n % 2 == 0:
-		return 1
-	return 3 if n >= 11 else 2
+## A ladder entry as the match spawns it: with the stage's gear (a beast ignores it).
+func _ladder_foe(en: Dictionary, gear: Dictionary) -> Dictionary:
+	var f: Dictionary = en.duplicate(true)
+	if not f.has("gear"):
+		f["gear"] = gear
+	return f
 
 func enemy_type(id: String) -> Dictionary:
 	return campaign.get("enemies", {}).get(id, {})

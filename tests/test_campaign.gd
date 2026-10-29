@@ -9,12 +9,13 @@ func test_stage_tables_match_the_web_game() -> void:
 		var st := Data.stage(n, 1)
 		t.eq(Data.campaign.stages[n - 1].byPlayers["1"].rounds.size(), 3, "stage %d has three rounds in the tables" % n)
 		t.eq(st.rounds.size(), 1, "stage %d is one bout" % n)
-		t.eq(st.rounds[0].size(), 1, "stage %d is against one foe" % n)
 		t.eq(st.boss, n % 4 == 0, "stage %d boss flag" % n)
 		t.check(int(st.stagePay) > 0, "stage %d pays" % n)
-	t.eq(Data.stage(5, 1).rounds[0].size(), 2, "bout 5 is a pair")
-	t.eq(Data.stage(11, 1).rounds[0].size(), 3, "bout 11 is a trio")
-	t.eq(Data.stage(9, 1).rounds[0].size(), 1, "a beast's bout stays one on one")
+	t.eq(Data.stage(26, 1).rounds[0].size(), 2, "bout 26 is a pair")
+	t.eq(Data.stage(57, 1).rounds[0].size(), 3, "bout 57 is a trio")
+	t.eq(Data.stage(2, 1).rounds[0].size(), 1, "a beast's bout stays one on one")
+	t.eq(Data.stage(5, 1).late.size(), 1, "bout 5 keeps a man back for the other gate")
+	t.eq(String(Data.stage(5, 1).foe_name), "Coward", "and the board names the first wave alone")
 	var more := Data.stage(6, 4)
 	var one := Data.stage(6, 1)
 	var count := func(st): return st.rounds.reduce(func(a, r): return a + r.size(), 0)
@@ -79,31 +80,89 @@ func test_a_campaign_stage_plays_through() -> void:
 			t.check(result[0].pay > 0, "it paid")
 	m.queue_free()
 
-func test_the_ladder_brings_beasts_bosses_and_the_giant() -> void:
+## What the bot-versus-bot survey made of each kind (tests/zz_balance: the plain swordsman's
+## losses, blood lost, damage taken; see README): the ladder is checked against it.
+const DANGER := {"drunk": 14, "medicus": 1, "retiarius": 1, "boar": 13, "recruit": 27, "dimachaerus": 29, "sagittarius": 30, "mimic": 41, "coward": 44,
+	"wolf": 55, "hyena": 60, "ostrich": 50, "veles": 71, "hydra": 73, "berserker": 82, "executioner": 93, "dragon": 105, "cyclops": 107, "lion": 117, "brute": 118,
+	"bull": 120, "flailman": 128, "emperor": 130, "tiger": 130, "shieldbearer": 143, "python": 150, "elephant": 150, "rhino": 155, "pyro": 158, "champion": 158,
+	"griffin": 160, "mammoth": 163, "murmillo": 164, "praetorian": 166, "hoplite": 166, "scorpion": 171, "giant": 175, "cerberus": 177, "troll": 179, "gorilla": 180,
+	"chimera": 180, "basilisk": 180, "titan": 181, "manticore": 182, "spider": 186, "bear": 188, "minotaur": 194, "crocodile": 210}
+
+static func _kind(en: Dictionary) -> String:
+	return String(en.get("e", en.get("beast", "")))
+
+func test_the_ladder_climbs_and_never_repeats_itself() -> void:
 	var beasts := 0
 	var bosses := []
-	var last_diff := 0.0
-	for n in range(1, 41):
+	var late := 0
+	var band := []   # the mean danger of the plain bouts, eight stages at a time
+	var sum := 0.0
+	var cnt := 0
+	for n in range(1, 65):
 		var st := Data.stage(n, 1)
-		var foe: Dictionary = st.rounds[0][0]
-		if foe.has("beast"):
+		var first: Array = st.rounds[0]
+		t.check(first.size() >= 1 and first.size() <= 3, "bout %d sends in one to three at once (%d)" % [n, first.size()])
+		if first[0].has("beast"):
 			beasts += 1
 		if st.boss:
-			bosses.append(str(foe.get("e", foe.get("beast", ""))))
-		var d := float(st.gear.get("diff", 1.0))
-		t.check(d >= last_diff - 1e-6, "bout %d is no easier than the one before (%.2f)" % [n, d])
-		last_diff = d
-	t.check(beasts >= 10, "beasts come through the gate in their turn (%d of 40)" % beasts)
-	t.check(bosses.has("giant") and bosses.has("cyclops") and bosses.has("dragon"), "the bosses come, the giant among them (%s)" % [bosses])
+			t.eq(first.size(), 1, "the boss of bout %d comes alone" % n)
+			t.check(first[0].get("boss", false), "bout %d's foe is a boss" % n)
+			bosses.append(_kind(first[0]))
+		else:
+			t.check(not first[0].get("boss", false), "bout %d brings no boss" % n)
+			var d := 0.0
+			for en in first:
+				d += float(DANGER.get(_kind(en), 100))
+			for en in st.get("late", []):
+				d += 0.6 * float(DANGER.get(_kind(en), 100))
+			sum += d
+			cnt += 1
+		if not st.get("late", []).is_empty():
+			late += 1
+		if n > 1:
+			var prev: Array = Data.stage(n - 1, 1).rounds[0]
+			t.check(_kind(first[0]) != _kind(prev[0]) or st.boss, "bout %d is not bout %d again (%s)" % [n, n - 1, _kind(first[0])])
+		if n % 8 == 0:
+			band.append(sum / maxf(1.0, cnt))
+			sum = 0.0
+			cnt = 0
+	t.eq(bosses, ["cyclops", "lion", "giant", "cerberus", "minotaur", "titan", "mammoth", "hydra", "dragon", "giant", "cerberus", "minotaur", "titan", "mammoth", "hydra", "dragon"], "the bosses come in the order the survey ranked them, the gentlest first, the Dragon last")
+	for i in range(1, 4):
+		t.check(band[i] > band[i - 1], "the plain bouts get harder band by band (%s)" % [band.map(func(x): return roundi(x))])
+	t.check(band[4] > band[3] * 0.8 and band[7] > band[3], "and stay hard to the end (%s)" % [band.map(func(x): return roundi(x))])
+	t.check(beasts >= 20, "beasts come through the gate in their turn (%d of 64)" % beasts)
+	t.check(late >= 20, "a second gate opens on many a bout (%d)" % late)
+	for n in range(1, 25):
+		var k := _kind(Data.stage(n, 1).rounds[0][0])
+		t.check(k != "hoplite" and k != "brute" and k != "crocodile" and k != "troll", "no %s before bout 25 (bout %d)" % [k, n])
 
 func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
 	for n in [1, 2, 3, 5, 6]:
 		var st := Data.stage(n, 3)
 		t.eq(st.rounds.size(), 1, "co-op bout %d is one fight" % n)
-		t.eq(st.rounds[0].size(), 1 + Data.pack_size(n), "three friends, two foes (and the pack's extra men) in bout %d" % n)
+		t.eq(st.rounds[0].size(), Data.stage(n, 1).rounds[0].size() + 1, "three friends, one foe more than alone, in bout %d" % n)
+	t.eq(Data.stage(5, 3).late.size(), 1, "the second wave comes as authored, for a party as for one")
 	var boss := Data.stage(4, 3)
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
 	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")
+
+func test_the_other_gate_opens_on_the_second_wave() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 5, "headless": true, "loadout": {"main": "gladius", "off": "roundShield"}, "seed": 5})
+	var said := []
+	m.feed.connect(func(s): said.append(s))
+	t.eq(m.enemies().size(), 1, "the coward comes in alone")
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	t.eq(m.enemies().size(), 1, "and is alone two seconds in")
+	for i in int(120 * (Ladder.LATE_AFTER - 1.0)):
+		await get_tree().physics_frame
+	t.eq(m.enemies().size(), 2, "the second man is in once the other gate has opened")
+	var late = m.enemies()[1]
+	t.check(late.f.torso.global_position.x < -2.0, "through the far gate (x %.1f)" % late.f.torso.global_position.x)
+	t.check(said.any(func(x): return String(x).begins_with("The other gate opens")), "the feed says so (%s)" % [said])
+	m.queue_free()
 
 func test_the_giants_of_myth_look_the_part() -> void:
 	var m := Match.new()
@@ -328,11 +387,13 @@ func test_late_foes_keep_strong_weapons() -> void:
 				weak += 1
 		t.eq(weak, 0, "bout %d: no weak weapon in the foes' hands" % st)
 
-## The first bouts are gentle: the Big Lion is the first boss and the Cyclops waits for the
-## eighth bout, the wolf and the boar bite less hard, and the men of bouts 2 to 4 climb slower.
+## The first bouts are gentle: the Cyclops (the gentlest giant in the survey) is the first boss
+## and the Big Lion waits for the eighth bout, the wolf and the boar bite less hard, and the men
+## of bouts 2 to 4 climb slower.
 func test_the_first_bouts_are_gentler() -> void:
-	t.eq(String(Data.stage(4, 1).rounds[0][0].get("beast", "")), "lion", "the Big Lion is the first boss")
-	t.eq(String(Data.stage(8, 1).rounds[0][0].get("e", "")), "cyclops", "the Cyclops comes at the eighth bout")
+	t.eq(String(Data.stage(4, 1).rounds[0][0].get("e", "")), "cyclops", "the Cyclops is the first boss")
+	t.eq(String(Data.stage(8, 1).rounds[0][0].get("beast", "")), "lion", "the Big Lion comes at the eighth bout")
+	t.check(float(Data.stage(8, 1).rounds[0][0].get("scale", 2.2)) <= 2.0, "and no bigger than twice a man")
 	t.check(float(Data.beasts.wolf.bite) < 22.0 and float(Data.beasts.boar.bite) < 30.0, "the wolf and the boar bite less hard")
 	t.check(Match.ladder_skill(4) < 0.68 and Match.ladder_skill(12) < 0.8 and Match.ladder_skill(23) < 1.0 and is_equal_approx(Match.ladder_skill(24), 1.0), "their skill climbs slowly, at its best from the 24th bout")
 	t.check(float(Data.stage(3, 1).rounds[0][0].get("gear", {}).get("diff", 0.85)) <= 0.9 if Data.stage(3, 1).rounds[0][0].get("gear") is Dictionary else true, "bout 3's man is no sharper")
@@ -400,7 +461,7 @@ func test_a_returning_boss_comes_in_steel() -> void:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
-	for pair in [[8, 40, "fire"], [12, 48, "venom"], [16, 52, "frost"], [24, 60, "fire"]]:
+	for pair in [[12, 40, "frost"], [20, 48, "venom"], [24, 52, "fire"]]:
 		m.stage = int(pair[0])
 		var first := m.enemy_spec(Data.stage(int(pair[0]), 1).rounds[0][0], 0, 1)
 		m.stage = int(pair[1])
@@ -416,14 +477,14 @@ func test_a_returning_boss_comes_in_steel() -> void:
 func test_the_second_campaign_is_tougher() -> void:
 	var first := Match.new()
 	add_child(first)
-	first.setup({"mode": "campaign", "stage": 3, "headless": true, "lap": 1, "seed": 3})
+	first.setup({"mode": "campaign", "stage": 2, "headless": true, "lap": 1, "seed": 3})
 	var again := Match.new()
 	add_child(again)
-	again.setup({"mode": "campaign", "stage": 3, "headless": true, "lap": 2, "seed": 3})
+	again.setup({"mode": "campaign", "stage": 2, "headless": true, "lap": 2, "seed": 3})
 	t.eq(again.lap, 2, "the second time round")
-	var wolf1 = first.enemies()[0].f
-	var wolf2 = again.enemies()[0].f
-	t.check(is_equal_approx(float(wolf2.S), float(wolf1.S) * (1.0 + Match.LAP_SCALE)), "the wolf is bigger (%.2f from %.2f)" % [float(wolf2.S), float(wolf1.S)])
+	var boar1 = first.enemies()[0].f
+	var boar2 = again.enemies()[0].f
+	t.check(is_equal_approx(float(boar2.S), float(boar1.S) * (1.0 + Match.LAP_SCALE)), "the boar is bigger (%.2f from %.2f)" % [float(boar2.S), float(boar1.S)])
 	first.stage = 1
 	again.stage = 1
 	var m1 := first.enemy_spec(Data.stage(1, 1).rounds[0][0], 0, 1)

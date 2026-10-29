@@ -440,3 +440,70 @@ func test_the_dragon_is_alive_at_rest() -> void:
 	t.check(huffs[0] >= 2, "it huffs smoke (%d)" % huffs[0])
 	t.check(roused, "and rouses its wings now and then")
 	s[0].queue_free()
+
+## The hydra presses: its heads strike on their own, so after a lunge the body stays at the man
+## instead of backing off for a second, and it stalks close (it pecked and retreated: 89 damage
+## in a 90 s bout against a swordsman).
+func test_the_hydra_presses_its_attack() -> void:
+	seed(8)
+	var s = await _setup("hydra", 6.0)
+	var hits := [0]
+	s[0].combat.hit.connect(func(h): if h.attacker == s[2] and h.char == s[1]: hits[0] += 1)
+	var near := [0]
+	await _run(s[0], s[1], s[2], 25.0, func(_i):
+		if Vector2(s[2].torso.global_position.x - s[1].torso.global_position.x, s[2].torso.global_position.z - s[1].torso.global_position.z).length() < 2.0 * s[2].S:
+			near[0] += 1)
+	# (How many bites land varies with what ran before it in the suite; staying at him is the
+	# point: before, it circled at eight metres and pecked, 18 bites in 40 s and 14 s of them backing off.)
+	t.check(hits[0] >= 6, "its heads keep biting (%d bites in 25 s)" % hits[0])
+	t.check(near[0] > 120 * 10, "and it stays at him (%.0f s of 25 within two of its lengths)" % (near[0] / 120.0))
+	s[0].queue_free()
+
+## A dragon with a man under its chin backs off a stride to pour fire on him instead of only
+## ever charging (close in it never breathed: a 90 s bout without a flame).
+func test_the_dragon_backs_off_to_breathe() -> void:
+	seed(9)
+	var s = await _setup("dragon", 3.5)
+	var b: Beast = s[2]
+	b.ai.breath_cool = 0.0
+	b.ai.fly_cool = 99.0
+	var stepped := [false]
+	var breathed := [false]
+	await _run(s[0], s[1], b, 10.0, func(_i):
+		if b.ai.get("mode") == "backstep":
+			stepped[0] = true
+		if b.breath_t > 0.0:
+			breathed[0] = true)
+	t.check(stepped[0], "it backed off a stride")
+	t.check(breathed[0], "and breathed fire")
+	s[0].queue_free()
+
+## Hurt, a bull (a FURIES species) comes on sooner and wilder: its charges are aimed wide of
+## the man and it is up again sooner after one; a hurt lion (a hunter) is not.
+func test_a_hurt_bull_charges_wild_and_soon() -> void:
+	seed(10)
+	var s = await _setup("bull", 7.0)
+	var b: Beast = s[2]
+	var lion = await _setup("lion", 7.0)
+	for i in 10:
+		b.blood = 30.0
+		lion[2].blood = 30.0
+		await get_tree().physics_frame
+	t.check(b.fury > 0.3, "the bull's fury rises with its wounds (%.2f)" % b.fury)
+	t.check(lion[2].fury == 0.0 and lion[2].injury > 0.3, "the lion's does not (%.2f, hurt %.2f)" % [lion[2].fury, lion[2].injury])
+	lion[0].queue_free()
+	var wide := [0.0]
+	var recover := [9.0]
+	var last := [""]
+	await _run(s[0], s[1], b, 18.0, func(_i):
+		b.blood = 30.0
+		var md := String(b.ai.get("mode", ""))
+		if md == "charge" and last[0] != "charge":
+			var to: Vector3 = s[1].torso.global_position - b.torso.global_position
+			wide[0] = maxf(wide[0], absf(wrapf(float(b.ai.charge_yaw) - atan2(to.x, to.z), -PI, PI)))
+		if md == "recover" and last[0] == "charge":
+			recover[0] = minf(recover[0], float(b.ai.t))
+		last[0] = md)
+	t.check(wide[0] > 0.03, "its charges go wide (%.2f rad at most)" % wide[0])
+	t.check(recover[0] < 1.25, "and it is up again sooner (%.2f s)" % recover[0])
+	s[0].queue_free()

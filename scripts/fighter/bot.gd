@@ -45,6 +45,16 @@ const PERSONALITIES := {
 
 var c: Fighter
 var diff := 0.5
+## Hurt, a man grows wary (user): past WARY_FROM of his wound (Fighter.wound: blood lost, a bad
+## trunk or leg) he keeps a longer distance, is slower to begin a blow, strings fewer together;
+## and near the end of his blood he gathers himself for one desperate blow now and then, a lunge
+## from further out with all his weight in it. A boss or a giant has half the wariness and all
+## of the desperation; an enraged giant none of either.
+const WARY_FROM := 0.4
+const WARY_BOSS := 0.5
+const DESPERATE_BLOOD := 25.0
+var desperate_t := 3.0   # until the next desperate blow may come
+var desperate := false   # the blow under way is the desperate one
 var p: Dictionary
 var state := "approach"
 var hand := {"x": 0.1, "y": 0.2}
@@ -212,11 +222,18 @@ func _giant_pick() -> Array:
 
 ## The input for this step against `target` (a Fighter or a Beast).
 ## `world`: {"loose": weapons lying about}.
+func wariness() -> float:
+	var w := clampf((c.wound() - WARY_FROM) / 0.4, 0.0, 1.0)
+	return w * (WARY_BOSS if c.boss or c.S >= 1.5 else 1.0)
+
 func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
-	var dt := dt0 / (1.0 + 0.9 * c.injury)
+	# (A wound slows a man's thinking through wariness, below, not his whole clock: scaling dt by
+	# the wound slowed his very blows, and left a hurt giant swinging in slow motion.)
+	var dt := dt0
 	# Enraged (a giant hurt in the head): no pause between blows, short wind-ups, wild wide
 	# strokes one after another, the button always down, kicks and grabs far more often.
 	var rage: bool = bool(c.get("enraged"))
+	var wary: float = 0.0 if rage else wariness()
 	var inp := {"mx": 0.0, "mz": 0.0, "main": hand.duplicate(), "off": {"x": -0.35, "y": 0.15}, "thrust": 0.0, "power": false, "twist": 0.0}
 	_react_clock(dt0)
 	if not c.alive:
@@ -262,6 +279,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var special = _wrestle(dt, target, world, inp)
 	if special != null:
 		return special
+	if state != "attack":
+		desperate = false
 	strafe_t -= dt
 	if strafe_t <= 0.0:
 		strafe = -strafe
@@ -272,7 +291,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var S := c.S
 	var w: Weapon = c.weapons.R
 	var reach := 0.55 * S + (w.reach if w else 0.25) * 0.85
-	var ideal := reach * float(p.get("ideal", 0.9))
+	var ideal := reach * float(p.get("ideal", 0.9)) * (1.0 + 0.3 * wary)
 	# A giant over a man a third his size: he steps in so the blade's length is over the man,
 	# and every blow is brought down to where the man actually is (standing, or on the sand),
 	# not swung at a giant's own height over his head.
@@ -345,7 +364,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			incoming = sp
 	dodge_t = maxf(0.0, dodge_t - dt)
 	dodge_cool = maxf(0.0, dodge_cool - dt)
-	if incoming > 0.0 and not rage and dodge_t <= 0.0 and dodge_cool <= 0.0 and state != "attack" and c.state == "stand" and rng.randf() < ((diff - 0.4) * 1.2 + float(p.get("dodge", 0.0))) * (1.0 - 0.6 * c.injury):
+	if incoming > 0.0 and not rage and dodge_t <= 0.0 and dodge_cool <= 0.0 and state != "attack" and c.state == "stand" and rng.randf() < ((diff - 0.4) * 1.2 + float(p.get("dodge", 0.0))) * (1.0 - 0.6 * c.wound()):
 		dodge_t = 0.35
 		dodge_cool = 1.6
 		dodge = "side" if rng.randf() < 0.5 else "parry"
@@ -397,11 +416,17 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var gx: float = 0.15 + live_k * (0.12 * sin(weave) + 0.3 * near * (0.6 + 0.4 * sin(weave * 0.37)))
 		var gyy: float = gy + live_k * (0.1 * sin(weave * 1.31 + 1.0) + 0.25 * near)
 		_lerp_hand(gx, gyy, dt * (2.0 + diff * 4.0))
-		think -= dt * (5.0 if rage else 1.0)
+		think -= dt * (5.0 if rage else 1.0 - 0.5 * wary)
 		if think > 0.0 and diff > 0.45 and ready:
 			var open: bool = float(target.get("stagger")) > 0.25 or target.state != "stand"
 			if open and rng.randf() < dt * (diff - 0.3) * 12.0:
 				think = 0.0
+		desperate_t -= dt
+		if c.blood < DESPERATE_BLOOD and desperate_t <= 0.0 and not rage and c.state == "stand" and dist < reach * 2.2 and c.stamina > 8.0:
+			desperate = true
+			desperate_t = rng.randf_range(6.0, 9.0)
+			think = 0.0
+			ready = true
 		if ready and think <= 0.0:
 			air_t = rng.randf_range(1.5, 3.0)
 			giant_kind = ""
@@ -450,7 +475,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 					aim_low = maxf(-1.0, aim_low - 2.0 * dt)
 			y = clampf(float(aim_small) + (y if giant_kind != "" else 0.0) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
 			x = 0.0                # and comes down through the middle of him, not past his shoulder
-		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else 1.0)
+		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else (1.3 if desperate else 1.0))
 		if rage:
 			x = clampf(x * 1.35, -2.0, 2.0)
 		if big:
@@ -461,10 +486,12 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var kk := minf(1.0, key_t)
 		_lerp_hand(x, y, kk * kk)
 		inp.thrust = th * kk
-		inp.power = p.get("power", false) or key == attack.size() - 1 or rage
+		inp.power = p.get("power", false) or key == attack.size() - 1 or rage or desperate
 		if lunge and c.state == "stand" and dist > reach * 0.7:
 			inp.mz = 1.0
 			inp.mx = 0.0
+			if desperate:
+				inp.sprint = true
 		if not feint_to.is_empty() and key == 0 and key_t > 0.5:
 			attack = feint_to
 			feint_to = []
@@ -474,17 +501,18 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			key += 1
 			key_t = 0.0
 			if key >= attack.size():
-				if (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and rng.randf() < (diff - 0.4) * 0.7 + float(p.get("combo", 0.0)) and c.stamina > 50.0):
+				if (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and not desperate and rng.randf() < ((diff - 0.4) * 0.7 + float(p.get("combo", 0.0))) * (1.0 - wary) and c.stamina > 50.0):
 					attack = _giant_pick() if big else _pick(p.attacks)
 					key = 0
 					feint_to = []
 				else:
 					state = "guard"
 					lunge = false
+					desperate = false
 					# (A man with a weapon strikes again sooner; a giant keeps his pace.)
 					var brisk: bool = w != null and not big
 					recover_t = (0.25 + rng.randf() * 0.3) if brisk else (0.35 + rng.randf() * 0.4)
-					think = (1.5 - diff * 0.4) * ((0.35 + 0.7 * rng.randf()) if brisk else (0.5 + rng.randf())) * float(p.get("think", 1.0))
+					think = (1.5 - diff * 0.4) * ((0.35 + 0.7 * rng.randf()) if brisk else (0.5 + rng.randf())) * float(p.get("think", 1.0)) * (1.0 + 0.6 * wary)
 	# Bare-handed: jab when in reach.
 	# Close in: a shove now and then, more when the other man is off balance or tired.
 	if dist < 0.9 * S + 0.4 and c.state == "stand" and state != "attack" and rng.randf() < dt * diff * float(p.get("shove", 1.0)) * (3.0 if rage else 1.0) * (0.25 + (0.9 if float(target.get("stagger")) > 0.4 or float(target.get("stamina")) < 35.0 else 0.0)):

@@ -2,8 +2,8 @@
 
 The demo is the same game exported with the `demo` feature (`scripts/game/edition.gd`):
 
-- **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Big Lion at
-  bout 4, the Cyclops at bout 8). Then a plain "The end of the demo" screen: play it again from
+- **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Cyclops at
+  bout 4, the Big Lion at bout 8). Then a plain "The end of the demo" screen: play it again from
   bout 1, or back to the menu.
 - **Arena:** alone, the duel, best of three and the free-for-all. In a room, the players' brawl
   (everyone against everyone) and the free-for-all. The other modes are not on the menu.

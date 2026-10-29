@@ -1810,6 +1810,11 @@ func _check_eye() -> void:
 		enrage()
 
 ## Beaten, one way or the other.
+## How far gone a man is, 0..1: the blood he has lost and the worse of his trunk and his legs
+## (what a bot reads to grow wary of him, or desperate; Beast.injury is the same measure).
+func wound() -> float:
+	return clampf(0.6 * (1.0 - blood / 100.0) + 0.4 * (1.0 - minf(torso.function(), minf(leg_func("L"), leg_func("R")))), 0.0, 1.0)
+
 func is_beaten() -> bool:
 	return not alive or is_out()
 

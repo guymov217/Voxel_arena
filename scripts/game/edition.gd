@@ -42,7 +42,8 @@ static func demo_foes() -> Dictionary:
 	var beasts := {}
 	for s in range(1, DEMO_STAGES + 1):
 		for p in range(1, 5):
-			for r in Data.stage(s, p).get("rounds", []):
+			var st := Data.stage(s, p)
+			for r in st.get("rounds", []) + [st.get("late", [])]:
 				for en in r:
 					if en.get("beast"):
 						beasts[String(en.beast)] = true

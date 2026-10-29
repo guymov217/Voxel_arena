@@ -57,8 +57,25 @@ godot --headless --path . -- --test test_fight   # one suite
   flings poisoned spikes from its tail at one out of its reach, after raising the tail with a roar.
   The enemy's health plate reaches nothing when the fight with him is over, whatever ends it:
   head, trunk, blood, a broken neck, the brain or a torn heart, or down and spent.
-- **The campaign**: stages of three rounds, pay, bosses on the same tables, checkpoints and
-  persistent weapon wear.
+- **Wounds change how they fight**: a hurt man grows wary (a longer distance, slower to begin
+  a blow, fewer strung together) and, near the end of his blood, throws a desperate lunging
+  blow now and then with all his weight in it; a boss has half the wariness. Of the beasts,
+  the hunters, the crawlers and the gorilla grow careful when hurt, while the furies (the boar,
+  bull, rhino, bear, mammoth, elephant, dragon, cerberus, manticore, griffin, chimera and
+  basilisk: `Beast.FURIES`) come on harder the worse they are hurt, sooner and closer, but
+  wilder, their charges, lunges and strikes thrown wide of the man. The hydra and the hound
+  press after a lunge instead of backing off (their heads strike on their own), and a dragon
+  with a man under its chin backs off a stride to pour fire on him.
+- **The campaign**: a ladder of 64 bouts, authored one by one in `scripts/game/ladder.gd`
+  (who comes through the gate, who comes through the *other* gate nine seconds in or as soon
+  as the first is down: the board by the gate names the first wave alone), the men with the
+  stage tables' gear, weapons and skill (`data/campaign.json`), a boss on every fourth bout,
+  and no kind of foe twice running. The order came from a bot-versus-bot survey of every foe
+  against a plain swordsman (what beat him, how fast, at what cost): the gentlest giant (the
+  Cyclops) is the first boss, the Dragon the last, the crocodile, the hoplite's phalanx and the
+  brutes wait for the thirties, and the bosses come round again in steel from bout 40
+  (`tests/test_campaign.gd` checks the climb, the variety and the gates). Pay, checkpoints and
+  persistent weapon wear as before.
 - **Bread & Circuses**: the seven-day campaign (`scripts/game/circus.gd`). Every day has its
   bouts and bosses. The special bouts are in `scripts/game/bout_rules.gd`: gold rush, chariots,
   the Emperor's whims, hot potato, escorting the senator, holding the circle, and bringing back a
