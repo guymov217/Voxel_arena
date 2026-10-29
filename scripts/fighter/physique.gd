@@ -44,11 +44,10 @@ const DIRS := [Vector3i(0, 0, 1), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3
 
 static var forced := ""   # set by tests; else the player's setting
 
+## The game draws every man as the strong gladiator (one look, no choice in the menus); the
+## other styles are kept for the tests and the look studies (`forced`).
 static func current() -> String:
-	if forced != "":
-		return forced
-	var s := str(Save.get_value("settings", {}).get("physique", "strong"))
-	return s if STYLES.has(s) else "strong"
+	return forced if forced != "" else "strong"
 
 ## Men only, in their own skins: beasts, and giants with their own heads, keep theirs.
 static func applies(f) -> bool:

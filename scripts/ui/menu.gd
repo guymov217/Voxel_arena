@@ -2793,17 +2793,6 @@ func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 		_set_opt("voxelAO", on)
 		apply_picture(Save.get_value("settings", {})))
 	v.add_child(vao)
-	var look := OptionButton.new()
-	for k in Physique.STYLES:
-		look.add_item(Physique.NAMES[k])
-	look.select(maxi(0, Physique.STYLES.find(Physique.current())))
-	look.item_selected.connect(func(i):
-		_set_opt("physique", Physique.STYLES[i])
-		look.tooltip_text = Physique.BLURB[Physique.STYLES[i]]
-		Physique.restyle_all(get_tree().root))
-	look.tooltip_text = Physique.BLURB[Physique.current()]
-	_opt_row(v, "Gladiators' look", look, "How the gladiators are drawn: " + " ".join(Physique.STYLES.map(func(k): return Physique.NAMES[k] + ": " + Physique.BLURB[k]))
-		+ " Only the drawing: every cut, organ and limb works the same. Changes at once.")
 	if Match.SMOOTH_BODIES_OFFERED:
 		var bo := OptionButton.new()
 		bo.add_item("Smooth")
@@ -3167,18 +3156,6 @@ func _gladiator(v: VBoxContainer) -> void:
 		Net.my_name = tx)
 	_row(v, [UIStyle.label("Name", 15, UIStyle.MUTED), name_edit])
 	var lk := look()
-	# The body's drawing (the same setting as Options, Gladiators' look): only how he is drawn.
-	var body := OptionButton.new()
-	for k in Physique.STYLES:
-		body.add_item(Physique.NAMES[k])
-	body.select(maxi(0, Physique.STYLES.find(Physique.current())))
-	body.tooltip_text = Physique.BLURB[Physique.current()]
-	body.custom_minimum_size = Vector2(260, 0)
-	body.item_selected.connect(func(i):
-		_set_opt("physique", Physique.STYLES[i])
-		body.tooltip_text = Physique.BLURB[Physique.STYLES[i]]
-		Physique.restyle_all(get_tree().root))
-	_row(v, [UIStyle.label("Body", 15, UIStyle.MUTED), body])
 	v.add_child(UIStyle.label("Skin", 15, UIStyle.MUTED))
 	_swatches(v, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i))
 	v.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
