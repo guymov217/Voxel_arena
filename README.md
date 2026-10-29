@@ -139,7 +139,11 @@ godot --headless --path . -- --test test_fight   # one suite
   as cubes). Every joint of a fighter is drawn whole: each limb is drawn moved to close the few
   millimetres the physics leaves open at its joint, and a block of the limb's own colour sits on
   each pivot (the deltoid at the shoulder, the elbow, hip, knee and neck) to fill the wedge two
-  blocks open between them when the joint bends. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
+  blocks open between them when the joint bends. The men (the "Strong gladiator" look) are
+  drawn as one faceted skin over their voxels, laid over a gentle taper: a thigh that widens to
+  the knee, a calf that narrows to the ankle, oval limbs, neither blocks nor tubes; it shines,
+  burns and glows as the voxel boxes do, and every cut shows in it at once (only the drawing:
+  every voxel is still there for every blow). Beasts keep their blocks. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows.
 - **Multiplayer**: host-authoritative. Guests send input; the host sends snapshots, spawns, voxel
@@ -153,7 +157,8 @@ godot --headless --path . -- --test test_fight   # one suite
 The hot voxel loops run in C++ when the extension is built: greedy box merging for the
 colliders (about 8× faster), the flood fill that finds the lumps a blow knocks loose, and the
 searches over a part's voxels (wounds, craters, the flesh a joint hangs on, blood running down
-the skin). With them the host's step is about 15–25% cheaper. The source
+the skin), and the gladiators' skin (about 2 ms a part after a cut, 0.6 ms when only its
+colours change). With them the host's step is about 15–25% cheaper. The source
 is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
 plain checkout runs without it (and the editor does not complain about a missing library).
 `tests/test_native.gd` checks that both give the same results, and `tools/replay_check.sh`

@@ -80,10 +80,10 @@ func test_every_look_keeps_the_whole_man() -> void:
 			var seen_inner := _seen(p).keys().filter(func(i): return p.organ[i] != 0 or p.bone[i] == 1).size()
 			var seen_inner_b := _seen(b).keys().filter(func(i): return b.organ[i] != 0 or b.bone[i] == 1).size()
 			t.eq(seen_inner, seen_inner_b, "%s %s: the organs and bones on show" % [style, n])
-		if style == "strong":
-			t.eq(veiled, 0, "strong: nothing veiled, every voxel drawn")
+		if style == "strong" or style == "athletic":
+			t.eq(veiled, 0, "%s: nothing veiled, every voxel drawn" % style)
 			for p in f.parts:
-				t.eq(p.shape_xf.size(), p.fx.size(), "strong %s: every voxel drawn in the shape" % p.part_name)
+				t.eq(p.shape_xf.size(), p.fx.size(), "%s %s: every voxel drawn in the shape" % [style, p.part_name])
 		else:
 			t.check(veiled > 300, "%s: the outline really is pared (%d voxels veiled)" % [style, veiled])
 		t.eq(f.get_meta("physique", ""), style, style + ": drawn in it")

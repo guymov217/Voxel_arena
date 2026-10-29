@@ -133,6 +133,10 @@ static var smooth_skin := false
 static var _skin_material: StandardMaterial3D
 var skin: MeshInstance3D = null
 var _skin_dirty := false
+## The last skin's surface ([verts, idx, qcol], VoxelSkin), kept while only colours change
+## (blood running, a bruise, fire): only the voxels' colours are laid on it again.
+var skin_geo: Array = []
+var skin_geo_ok := false
 
 ## `voxels`: [[fx, fy, fz, Color, bone, kind, organ], ...] on the fine grid (kind and organ optional).
 func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
@@ -187,6 +191,15 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 
 ## The little brightness grain voxel to voxel (skin, cloth and fur are never one flat colour on
 ## blocks); the smooth skin takes it back out.
+## Each voxel's grain (below), worked out once, for the smooth skin to take back out.
+var _grain := PackedFloat32Array()
+func grains() -> PackedFloat32Array:
+	if _grain.size() != fx.size():
+		_grain.resize(fx.size())
+		for i in fx.size():
+			_grain[i] = grain(i)
+	return _grain
+
 func grain(i: int) -> float:
 	return 1.0 + (float(hash(Vector3i(fx[i], fy[i], fz[i]) + Vector3i(dims.x, dims.y, dims.z) * 131) % 1000) / 1000.0 - 0.5) * 0.09
 
@@ -489,18 +502,37 @@ func _build_mesh() -> void:
 
 ## Draws the part as a smooth skin (the voxel boxes hidden), built now and again whenever its
 ## voxels change.
-func make_skin() -> void:
+func make_skin(look := false) -> void:
 	if _skin_material == null:
 		_skin_material = _material.duplicate()
 		_skin_material.roughness = 0.72
 	skin = MeshInstance3D.new()
 	skin.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	skin.top_level = true
-	skin.material_override = _skin_material
+	skin.material_override = skin_look_material() if look else _skin_material
 	skin.custom_aabb = mmi.custom_aabb
 	add_child(skin)
 	mmi.visible = false
 	rebuild_skin()
+
+## The material of a gladiator's skin in his look (Physique): the voxel boxes' shine, glow and
+## fire on one smooth surface.
+static var _skin_look: ShaderMaterial
+static func skin_look_material() -> ShaderMaterial:
+	if _skin_look == null:
+		_skin_look = ShaderMaterial.new()
+		_skin_look.shader = load("res://shaders/voxel_skin.gdshader")
+	return _skin_look
+
+## Back to the voxel boxes (a look without the skin).
+func drop_skin() -> void:
+	if skin == null:
+		return
+	skin.queue_free()
+	skin = null
+	_skin_dirty = false
+	if mmi:
+		mmi.visible = true
 
 func rebuild_skin() -> void:
 	_skin_dirty = false
@@ -508,7 +540,9 @@ func rebuild_skin() -> void:
 		return
 	skin.mesh = VoxelSkin.build(self, jaw_slot)
 
-func _mark_skin() -> void:
+func _mark_skin(shape := true) -> void:
+	if shape:
+		skin_geo_ok = false
 	if skin != null and not _skin_dirty:
 		_skin_dirty = true
 		_rebuild_skin_soon()
@@ -535,7 +569,7 @@ func refresh_colors(indices: Array = []) -> void:
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
 	_write_glow(list)
-	_mark_skin()
+	_mark_skin(false)
 
 # ---------- Fire and poison on the voxels themselves (only how they look) ----------
 
@@ -583,6 +617,7 @@ func _set_status(i: int, g: Vector2) -> void:
 		glowing.erase(i)
 	else:
 		glowing[i] = g
+	_mark_skin(false)
 
 ## What the part is made of where the first live spot of `kind` is: the nearest living voxel's
 ## kind of stuff (skin, cloth, fur...), as a BurnFx surface.
@@ -1014,6 +1049,7 @@ func drawn_xf(i: int) -> Transform3D:
 ## the voxels in `only` drawn again when it is given.
 func set_shape(xf: Array, only: Array = []) -> void:
 	shape_xf = xf
+	skin_geo_ok = false
 	if mm == null:
 		return
 	var on := []

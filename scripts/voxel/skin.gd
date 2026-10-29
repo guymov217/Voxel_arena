@@ -12,6 +12,9 @@ const CRISP := true       # each face in the colour of the voxel under it: sharp
 ## The skin of `part`'s living voxels, leaving out the ones `skip` holds (a hinged jaw drawn on
 ## its own). Null when nothing is left to draw.
 static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
+	var nc := Greedy.core()
+	if nc != null and CRISP and nc.has_method("skin_crisp"):   # (a library built before the skin was in it: the script)
+		return _build_native(part, skip, nc)
 	var g: Vector3i = part.grid
 	var sx := g.x + 2
 	var sxy := sx * (g.y + 2)
@@ -110,13 +113,19 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 					for s in 4:
 						var p0: int = q[s]
 						var p1: int = q[(s + 1) % 4]
-						(nb[p0] as PackedInt32Array).append(p1)
-						(nb[p1] as PackedInt32Array).append(p0)
+						# (A packed array is a value: appended through a cast, the copy took it.)
+						var l0: PackedInt32Array = nb[p0]
+						l0.append(p1)
+						nb[p0] = l0
+						var l1: PackedInt32Array = nb[p1]
+						l1.append(p0)
+						nb[p1] = l1
 	if idx.is_empty():
 		return null
 	# Relax: rounds the steps off, the shape stays (a pass moves each vertex half way to the mean
 	# of its neighbours).
-	for _r in RELAX:
+	var tune: Dictionary = part.get_meta("tune", {})
+	for _r in int(tune.get("relax", RELAX)):
 		var out := verts.duplicate()
 		for i in verts.size():
 			var list: PackedInt32Array = nb[i]
@@ -127,6 +136,12 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 				s += verts[j]
 			out[i] = verts[i].lerp(s / float(list.size()), RELAX_K)
 		verts = out
+	var warp := not part.shape_xf.is_empty() and bool(tune.get("skin_shape", false))
+	var shaped := PackedVector3Array()
+	if warp:
+		# (A trial: the skin laid over the look's shape, the limbs tapered and rounded as the
+		# boxes are drawn; the colours are still read where the skin lies over the voxels.)
+		shaped = Physique.warp_skin(part, verts)
 	# Colour: the voxel nearest where the vertex ended up (not an average, which smeared an
 	# eye or a belt a voxel wide into mud).
 	cols.resize(verts.size())
@@ -147,6 +162,8 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 				bd = dd
 				best = wi
 		cols[i] = part.colors[best] if best >= 0 else Color(0.5, 0.5, 0.5)
+	if warp:
+		verts = shaped
 	# Smooth normals from the faces round each vertex.
 	var norms := PackedVector3Array()
 	norms.resize(verts.size())
@@ -174,6 +191,11 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 			var col: Color = part.colors[vi] / part.grain(vi)
 			col.a = 1.0
 			var t := qi * 6
+			var fnq := Vector3.ZERO
+			if bool(tune.get("flat", false)):
+				var a0 := verts[idx[t]]
+				fnq = (verts[idx[t + 2]] - a0).cross(verts[idx[t + 1]] - a0) + (verts[idx[t + 5]] - verts[idx[t + 3]]).cross(verts[idx[t + 4]] - verts[idx[t + 3]])
+				fnq = fnq.normalized() if fnq.length_squared() > 1e-12 else Vector3.UP
 			# The quad's two triangles keep their winding; its four corners are copied.
 			var local := {}
 			for j in 6:
@@ -182,7 +204,7 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 					var nv := qi * 4 + local.size()
 					local[o] = nv
 					v2[nv] = verts[o]
-					n2[nv] = norms[o]
+					n2[nv] = fnq if fnq != Vector3.ZERO else norms[o]
 					c2[nv] = col
 				i2[t + j] = local[o]
 		verts = v2
@@ -197,4 +219,38 @@ static func build(part: VoxelPart, skip := {}) -> ArrayMesh:
 	arr[Mesh.ARRAY_INDEX] = idx
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return am
+
+## The same skin from the C++ core (VoxelCore.skin_net and skin_crisp): a few milliseconds a
+## man instead of the script's hundred and more, so a part can be built again on every blow.
+static func _build_native(part: VoxelPart, skip: Dictionary, nc: Object) -> ArrayMesh:
+	var tune: Dictionary = part.get_meta("tune", {})
+	if not part.skin_geo_ok:
+		var alive := part.alive
+		if not skip.is_empty():
+			alive = alive.duplicate()
+			for i in skip:
+				alive[i] = 0
+		var net: Array = nc.skin_net(part.fx, part.fy, part.fz, alive, part.grid, part.vf * part.part_scale, int(tune.get("relax", RELAX)), RELAX_K)
+		if not net.is_empty() and not part.shape_xf.is_empty() and bool(tune.get("skin_shape", false)):
+			net[0] = Physique.warp_skin(part, net[0])
+		part.skin_geo = net
+		part.skin_geo_ok = true
+	var net: Array = part.skin_geo
+	if net.is_empty():
+		return null
+	var gi := PackedInt32Array(part.glowing.keys())
+	var gv := PackedVector2Array(part.glowing.values())
+	var out: Array = nc.skin_crisp(net[0], net[1], net[2], part.colors, part.grains(), part.kinds, gi, gv, bool(tune.get("flat", false)))
+	if out.is_empty():
+		return null
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = out[0]
+	arr[Mesh.ARRAY_NORMAL] = out[1]
+	arr[Mesh.ARRAY_COLOR] = out[2]
+	arr[Mesh.ARRAY_INDEX] = out[3]
+	arr[Mesh.ARRAY_CUSTOM0] = out[4]
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	return am

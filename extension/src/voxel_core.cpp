@@ -21,6 +21,8 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("dir_error", "cur", "des"), &VoxelCore::dir_error);
 	ClassDB::bind_method(D_METHOD("clamp_len", "v", "mx"), &VoxelCore::clamp_len);
 	ClassDB::bind_method(D_METHOD("torque_for", "body", "alpha", "scale"), &VoxelCore::torque_for);
+	ClassDB::bind_method(D_METHOD("skin_net", "fx", "fy", "fz", "alive", "grid", "vs", "relax", "relax_k"), &VoxelCore::skin_net);
+	ClassDB::bind_method(D_METHOD("skin_crisp", "verts", "idx", "qcol", "colors", "grain", "kinds", "glow_i", "glow_v", "flat"), &VoxelCore::skin_crisp);
 	ClassDB::bind_method(D_METHOD("skin_nearest", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "half_ext", "max_depth", "want"), &VoxelCore::skin_nearest);
 }
 

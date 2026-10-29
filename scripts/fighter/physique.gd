@@ -17,13 +17,15 @@ extends RefCounted
 ##   set_shape): limbs and torso a rounded square across, tapered as a man is, broad in the chest
 ##   and the shoulders, the ends of the limbs drawn into the next part so the body reads one piece
 ##   at the shoulder, elbow, hip, knee and neck. The armour is drawn by the same map, so it sits
-##   on him. The cubes stay where they are for everything else.
+##   on him. The cubes stay where they are for everything else. Where there is a screen he is
+##   drawn as one faceted skin over his voxels laid over that shape (STRONG_SKIN, VoxelSkin).
 ## A man's own choices (skin, hair, beard, armour) are worn over any of them. Each player picks
 ## for himself; nothing of it goes over the network.
 
-const STYLES := ["strong", "classic", "sculpted", "heroic", "anatomy", "worn", "oiled"]
+const STYLES := ["strong", "athletic", "classic", "sculpted", "heroic", "anatomy", "worn", "oiled"]
 const NAMES := {
 	"strong": "Strong gladiator",
+	"athletic": "Athletic gladiator",
 	"classic": "Classic blocks",
 	"sculpted": "Sculpted",
 	"heroic": "Heroic",
@@ -33,6 +35,7 @@ const NAMES := {
 }
 const BLURB := {
 	"strong": "Broad, muscled men built of voxels: rounded, tapered limbs, one body from neck to feet.",
+	"athletic": "Anatomical limbs: thigh and calf muscle, thin ankles and wrists, biceps and forearms, oval not square.",
 	"classic": "The gladiators as they were: square blocks.",
 	"sculpted": "A neck, sloped shoulders, rounded limbs, bevelled edges.",
 	"heroic": "Sculpted, with a narrow waist under a broad chest.",
@@ -43,6 +46,15 @@ const BLURB := {
 const DIRS := [Vector3i(0, 0, 1), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(0, -1, 0)]
 
 static var forced := ""   # set by tests; else the player's setting
+## Trial drawings of the strong man's limbs (the body-options study; empty: the look as it is):
+## "e" the cross-section (2 a circle, 3.4 a rounded square), "taper" ("strong" | "gentle"), "oval"
+## the thigh and upper arm flatter front to back, "scale" how much a voxel is drawn over its place
+## (more closes the steps), "bevel" the outer edges chamfered, "edge_dark" the blocks' outlines.
+static var tune := {}
+## The strong man's limbs as he is drawn (the body-options study's "L"): a smooth skin over his
+## voxels, faceted (no rounding pass), laid over a gentle taper with a rounded-square, oval
+## cross-section: neither blocks nor tubes.
+const STRONG_SKIN := {"relax": 0, "skin_shape": true, "taper": "gentle", "e": 3.0, "oval": true}
 
 static func current() -> String:
 	if forced != "":
@@ -66,9 +78,13 @@ static func dress(f, style := "") -> void:
 		if style == "classic" or p.missing or p.prosthetic != "":
 			p.set_look(PackedByteArray(), false)
 			_material(p, "classic")
+			_skin(p, false)
 			continue
-		if style == "strong":
-			p.set_look(PackedByteArray(), false)
+		if style == "strong" or style == "athletic":
+			var look: Dictionary = tune if not tune.is_empty() else (STRONG_SKIN if style == "strong" else {})
+			p.set_look(PackedByteArray(), bool(look.get("bevel", false)))
+			p.set_meta("phys", style)
+			p.set_meta("tune", look.duplicate())
 			_paint(p, style)
 			if p == f.get("head"):
 				if f.get("is_bot"):
@@ -76,9 +92,12 @@ static func dress(f, style := "") -> void:
 				var worn := beard_worn(p)
 				if worn != "":
 					_paint_face(p, ArmorStyle.base_color(worn, {}, f.skin), false, BEARD_PAINT.get(worn, 2), false)
-			_material(p, "classic")   # the game's own voxels: crisp, no chamfer
+			_material(p, "tuned" if not tune.is_empty() else "classic")   # the game's own voxels: crisp, no chamfer
 			p.set_shape(shape_of(p))
+			_skin(p, bool(look.get("skin_shape", false)))
+			p.resync_later()   # (a shape set before the part's first frame on screen was lost with it)
 			continue
+		_skin(p, false)
 		p.set_look(_veil(p, style), true)
 		_bare(p)
 		if style == "anatomy" or style == "worn" or style == "oiled":
@@ -100,7 +119,27 @@ static func restyle_all(root: Node) -> void:
 			continue
 		stack.append_array(n.get_children())
 
+## The part drawn as its look's smooth skin (on) or as its voxel boxes; never without a screen.
+static func _skin(p: VoxelPart, on: bool) -> void:
+	if on and DisplayServer.get_name() != "headless":
+		if p.skin == null:
+			p.make_skin(true)
+		else:
+			p.skin.material_override = VoxelPart.skin_look_material()
+			p.rebuild_skin()
+	elif not on and p.skin != null and not VoxelPart.smooth_skin:
+		p.drop_skin()
+
+static var _tuned_mat := {}
 static func _material(p: VoxelPart, style: String) -> void:
+	if p.mmi and style == "tuned":
+		var key := str(tune)
+		if not _tuned_mat.has(key):
+			var m: ShaderMaterial = (VoxelPart.look_material(false) if tune.get("bevel", false) else VoxelPart.body_material()).duplicate()
+			m.set_shader_parameter("edge_dark", float(tune.get("edge_dark", 0.09)))
+			_tuned_mat[key] = m
+		p.mmi.material_override = _tuned_mat[key]
+		return
 	if p.mmi:
 		p.mmi.material_override = null if style == "classic" else VoxelPart.look_material(style == "oiled")
 
@@ -303,7 +342,7 @@ static func _paint(p: VoxelPart, style: String) -> void:
 		var z: int = p.fz[i]
 		var cx := absf(float(x) - (g.x - 1) * 0.5)
 		var k := 1.0 + (muscle(n, x, y, z, g, face, cx) - 1.0) * 1.8
-		if style == "strong":
+		if style == "strong" or style == "athletic":
 			# The muscles deeper, lit from above: the shape reads in the light.
 			k = 1.0 + (muscle(n, x, y, z, g, face, cx) - 1.0) * 2.4
 			k *= 1.07 if face.y == 1 else (0.82 if face.y == -1 else 1.0)
@@ -567,6 +606,56 @@ static func taper(n: String, t: float) -> Vector2:
 			kz = 1.06
 	return Vector2(k, kz)
 
+## A smooth curve through points [t, value] (t rising): the anatomical profiles below.
+static func _curve(t: float, pts: Array) -> float:
+	if t <= float(pts[0][0]):
+		return float(pts[0][1])
+	for i in range(1, pts.size()):
+		if t <= float(pts[i][0]):
+			var a: Array = pts[i - 1]
+			var b: Array = pts[i]
+			return _smooth(float(a[1]), float(b[1]), (t - float(a[0])) / (float(b[0]) - float(a[0])))
+	return float(pts[pts.size() - 1][1])
+
+## The athletic man: (width across, depth front to back, how far the middle is moved to the
+## front, as a share of the part's half-depth) at height t of a part. The thigh's quadriceps
+## and hamstrings at the top narrowing to the knee, a calf high and behind with a thin ankle,
+## biceps and deltoid, a forearm thick below the elbow and slim at the wrist; the foot and the
+## fist their own size. The torso and head as the strong man's.
+static func taper_athletic(n: String, t: float) -> Vector3:
+	match n:
+		"thighR", "thighL":
+			var k := _curve(t, [[0.0, 0.74], [0.3, 0.92], [0.7, 1.25], [1.0, 1.1]])
+			return Vector3(k, k * 1.08, 0.05 * _curve(t, [[0.0, 0.0], [0.6, 1.0], [1.0, 0.3]]))
+		"shinR", "shinL":
+			var k := _curve(t, [[0.0, 1.0], [0.2, 1.0], [0.3, 0.56], [0.45, 0.74], [0.64, 1.2], [0.86, 0.95], [1.0, 0.78]])
+			return Vector3(k, k * 1.0, -0.14 * _curve(t, [[0.3, 0.0], [0.64, 1.0], [0.95, 0.2]]))
+		"upperArmR", "upperArmL":
+			var k := _curve(t, [[0.0, 0.72], [0.35, 1.05], [0.62, 1.3], [1.0, 1.12]])
+			return Vector3(k, k * 1.02, 0.06 * _curve(t, [[0.2, 0.0], [0.62, 1.0], [1.0, 0.3]]))
+		"forearmR", "forearmL":
+			var k := _curve(t, [[0.0, 0.98], [0.2, 0.98], [0.3, 0.58], [0.55, 0.9], [0.8, 1.1], [1.0, 0.98]])
+			return Vector3(k, k * 0.96, 0.0)
+	var v := taper(n, t)
+	return Vector3(v.x, v.y, 0.0)
+
+## The gentle man (a trial): the strong man's taper with the muscle a touch fuller and the joints a
+## touch leaner, every change of width spread over the length of the limb (no step at the ankle).
+static func taper_gentle(n: String, t: float) -> Vector2:
+	var k := 1.0
+	match n:
+		"thighR", "thighL":
+			k = _curve(t, [[0.0, 0.82], [0.3, 0.94], [0.65, 1.12], [1.0, 1.06]])
+		"shinR", "shinL":
+			k = _curve(t, [[0.0, 1.0], [0.2, 1.0], [0.34, 0.76], [0.5, 0.86], [0.68, 1.06], [0.88, 0.98], [1.0, 0.9]])
+		"upperArmR", "upperArmL":
+			k = _curve(t, [[0.0, 0.84], [0.4, 1.02], [0.65, 1.14], [1.0, 1.08]])
+		"forearmR", "forearmL":
+			k = _curve(t, [[0.0, 0.98], [0.2, 0.98], [0.32, 0.78], [0.55, 0.9], [0.8, 1.06], [1.0, 0.98]])
+		_:
+			return taper(n, t)
+	return Vector2(k, k)
+
 ## How far (in voxels) the end rows of a part are drawn into the part joined there: (bottom, top).
 ## Only while that part is on him: a severed limb and its stump end where they were cut.
 static func reach(p: VoxelPart) -> Vector2:
@@ -595,8 +684,14 @@ static func _norm(u: Vector2, e: float) -> float:
 ## for an armour plate, which is only moved with the flesh under it).
 static func shape_at(p: VoxelPart, q: Vector3, vox: float) -> Array:
 	var n := String(p.part_name)
+	var tune: Dictionary = p.get_meta("tune", {})
 	var h := Vector3(p.grid) * p.vf * p.part_scale * 0.5
+	var ath := String(p.get_meta("phys", "strong")) == "athletic"
 	var e: Array = SHAPE_ROUND.get(n, [SHAPE_ROUND_LIMB, 0.0])
+	if ath and n != "torso" and n != "head":
+		e = [2.3, 0.0]
+	if tune.has("e") and n != "torso" and n != "head":
+		e = [float(tune.e), e[1]]
 	var s := Vector3.ONE
 	var at := q
 	var u := Vector2(q.x / h.x, q.z / h.z)
@@ -618,9 +713,22 @@ static func shape_at(p: VoxelPart, q: Vector3, vox: float) -> Array:
 	if n == "head":
 		at.y = q.y * 1.06
 		s.y *= 1.06
-	var k := taper(n, clampf((q.y / h.y + 1.0) * 0.5, 0.0, 1.0))
+	var tt := clampf((q.y / h.y + 1.0) * 0.5, 0.0, 1.0)
+	var k := taper(n, tt)
+	var shift_z := 0.0
+	if ath:
+		var a := taper_athletic(n, tt)
+		k = Vector2(a.x, a.y)
+		shift_z = a.z
+	if String(tune.get("taper", "")) == "gentle":
+		k = taper_gentle(n, tt)
+	if tune.get("oval", false):
+		if n.begins_with("thigh") or n.begins_with("upperArm"):
+			k.y *= 0.88
+		elif n.begins_with("shin") or n.begins_with("forearm"):
+			k.y *= 0.93
 	at.x *= k.x
-	at.z *= k.y
+	at.z = at.z * k.y + shift_z * h.z
 	s.x *= k.x
 	s.z *= k.y
 	if vox > 0.0:
@@ -640,6 +748,36 @@ static func shape_at(p: VoxelPart, q: Vector3, vox: float) -> Array:
 ## (by part, size and whether a helmet presses his hair flat); a part with a limb off at one of
 ## its ends, or voxels of its own, is worked out for itself.
 static var _shapes := {}
+## The smooth skin's vertices (in the part's frame) laid over the look's shape, as shape_at
+## moves a voxel's centre. A vertex sits on the half-voxel lattice, so each one is worked out
+## once for every man of that part, size and look.
+static var _warps := {}
+static func warp_skin(p: VoxelPart, verts: PackedVector3Array) -> PackedVector3Array:
+	var vox := p.vf * p.part_scale
+	var r := reach(p)
+	var key := "%s|%.5f|%s|%s|%s|%s" % [p.part_name, vox, str(p.grid), String(p.get_meta("phys", "strong")), str(p.get_meta("tune", {})), str(r)]
+	if not _warps.has(key):
+		_warps[key] = {}
+	var memo: Dictionary = _warps[key]
+	var hy := p.grid.y * vox * 0.5
+	var out := PackedVector3Array()
+	out.resize(verts.size())
+	for i in verts.size():
+		var v := verts[i]
+		var w = memo.get(v)
+		if w == null:
+			var at: Vector3 = shape_at(p, v, 0.0)[0]
+			# The end layers stretched into the next part the way _voxel_xf stretches their
+			# voxels (reach), so the skin closes over the joint as the boxes do.
+			if r.y > 0.0 and v.y > hy - vox:
+				at.y += r.y * (v.y - (hy - vox))
+			elif r.x > 0.0 and v.y < -hy + vox:
+				at.y -= r.x * ((-hy + vox) - v.y)
+			w = at
+			memo[v] = w
+		out[i] = w
+	return out
+
 static func shape_of(p: VoxelPart) -> Array:
 	var vox := p.vf * p.part_scale
 	var head := String(p.part_name) == "head"
@@ -647,7 +785,7 @@ static func shape_of(p: VoxelPart) -> Array:
 		if not Fighter._cosmetic(String(ad.id)):
 			head = false   # (under a helmet his hair lies flat inside it)
 	var whole := reach(p) == _reach_whole(String(p.part_name))
-	var key := "%s|%.5f|%d|%d" % [p.part_name, vox, p.fx.size(), int(head)]
+	var key := "%s|%.5f|%d|%d|%s|%s" % [p.part_name, vox, p.fx.size(), int(head), String(p.get_meta("phys", "strong")), str(p.get_meta("tune", {}))]
 	if whole and _shapes.has(key):
 		return (_shapes[key] as Array).duplicate()
 	var out := []
@@ -660,7 +798,7 @@ static func shape_of(p: VoxelPart) -> Array:
 
 static func _voxel_xf(p: VoxelPart, i: int, vox: float, head: bool) -> Transform3D:
 	var r := shape_at(p, p.local_of(i), vox)
-	var sc: Vector3 = r[1] * 1.06
+	var sc: Vector3 = r[1] * float(p.get_meta("tune", {}).get("scale", 1.06))
 	var at: Vector3 = r[0]
 	if head and p.kinds[i] == 2 and p.fy[i] >= p.grid.y - 2:
 		# His own hair over the crown drawn standing off the skull: it has a volume of its own.

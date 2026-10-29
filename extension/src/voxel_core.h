@@ -7,6 +7,10 @@
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_color_array.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -45,6 +49,10 @@ public:
 	Vector3 dir_error(const Vector3 &cur, const Vector3 &des) const;
 	Vector3 clamp_len(const Vector3 &v, double mx) const;
 	Vector3 torque_for(RigidBody3D *body, const Vector3 &alpha, double scale) const;
+	// VoxelSkin.build's two halves (skin.cpp): the surface over the living voxels, and its
+	// crisp drawing, a quad to a voxel's colour.
+	Array skin_net(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vs, int relax, double relax_k) const;
+	Array skin_crisp(const PackedVector3Array &verts, const PackedInt32Array &idx, const PackedInt32Array &qcol, const PackedColorArray &colors, const PackedFloat32Array &grain, const PackedByteArray &kinds, const PackedInt32Array &glow_i, const PackedVector2Array &glow_v, bool flat) const;
 	PackedFloat64Array skin_nearest(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &half_ext, double max_depth, const Vector3 &want) const;
 };
 
