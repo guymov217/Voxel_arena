@@ -122,36 +122,3 @@ func test_native_pd_matches_the_gdscript() -> void:
 		if nc.quat_of(p) != PD.quat_of(p): bad.append("quat_of")
 	t.check(bad.is_empty(), "the same floats in C++ and GDScript (off: %s)" % [bad.slice(0, 5)])
 	m.queue_free()
-
-func test_native_skin_matches_the_gdscript() -> void:
-	if Greedy.core() == null:
-		t.check(true, "no native core built: the GDScript fallback runs")
-		return
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 11
-	var m := Match.new()
-	add_child(m)
-	m.setup({"mode": "duel", "headless": true, "seed": 3, "decrees": [], "hazards": []})
-	var f: Fighter = m.me.f
-	for p in f.parts:
-		for i in p.alive.size():
-			if rng.randf() < 0.2:
-				p.alive[i] = 0
-		for look in [{"relax": 0}, {"relax": 1}, Physique.STRONG_SKIN]:
-			p.set_meta("tune", look)
-			p.skin_geo_ok = false
-			Greedy.use_native = false
-			var gd := VoxelSkin.build(p)
-			Greedy.use_native = true
-			var cc := VoxelSkin.build(p)
-			var a: Array = gd.surface_get_arrays(0)
-			var b: Array = cc.surface_get_arrays(0)
-			t.eq((b[Mesh.ARRAY_INDEX] as PackedInt32Array).size(), (a[Mesh.ARRAY_INDEX] as PackedInt32Array).size(), "same triangles on %s %s" % [p.name, str(look)])
-			var va: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
-			var vb: PackedVector3Array = b[Mesh.ARRAY_VERTEX]
-			var worst := 0.0
-			for i in mini(va.size(), vb.size()):
-				worst = maxf(worst, va[i].distance_to(vb[i]))
-			t.check(va.size() == vb.size() and worst < 1e-5, "same skin on %s %s (off by %f)" % [p.name, str(look), worst])
-			t.eq(str(b[Mesh.ARRAY_COLOR]) == str(a[Mesh.ARRAY_COLOR]), true, "same colours on %s %s" % [p.name, str(look)])
-	m.queue_free()

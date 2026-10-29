@@ -23,23 +23,6 @@ func _outward(p: VoxelPart, am: ArrayMesh) -> float:
 			good += 1
 	return float(good) / vs.size()
 
-## A skin laid over a look's shape (Physique) no longer sits on the voxel grid: its faces look
-## outward when they turn away from the part's long axis (the ends: up or down past it).
-func _outward_shaped(p: VoxelPart, am: ArrayMesh) -> float:
-	var a := am.surface_get_arrays(0)
-	var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
-	var ns: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
-	var hy: float = p.grid.y * p.vf * p.part_scale * 0.5
-	var good := 0
-	for i in vs.size():
-		var v := vs[i]
-		var away := Vector3(v.x, 0.0, v.z)
-		if absf(v.y) > hy * 0.8:
-			away.y = v.y
-		if ns[i].dot(away) >= 0.0:
-			good += 1
-	return float(good) / vs.size()
-
 func test_every_body_gets_a_smooth_skin_facing_out() -> void:
 	var m := Match.new()
 	add_child(m)
@@ -62,7 +45,7 @@ func test_every_body_gets_a_smooth_skin_facing_out() -> void:
 			if am == null:
 				bad.append(p.part_name)
 				continue
-			var o := _outward_shaped(p, am) if bool(p.get_meta("tune", {}).get("skin_shape", false)) else _outward(p, am)
+			var o := _outward(p, am)
 			if o < 0.9:
 				bad_face.append("%s %.0f%% (%s)" % [p.part_name, o * 100.0, str(p.grid)])
 			worst = minf(worst, o)
