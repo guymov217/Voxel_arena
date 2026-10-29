@@ -2177,6 +2177,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				desired = maxf(desired, dist - sole_planted - 0.01 * S)
 			elif sole_lo < INF and sole_lo > 0.05 * S:
 				desired = minf(desired, dist - (sole_lo - 0.02 * S))
+		elif rising and dist < desired + 0.25:
+			# Getting up, the same floor under the soles, up only: on hacked legs the rise is
+			# low and long (little support), and the kneeling shins were pressed under the sand
+			# by the trunk coming down on them.
+			var sole_lo := INF
+			for sd in ["L", "R"]:
+				var sh: VoxelPart = by_name["shin" + sd]
+				if not sh.severed and not by_name["thigh" + sd].severed:
+					sole_lo = minf(sole_lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y)
+			if sole_lo < -0.03 * S:
+				desired = maxf(desired, dist - sole_lo - 0.01 * S)
 		grounded = dist < desired + 0.25
 		# Touching down after a jump or a flight, the knees take the fall.
 		if grounded and air_time > 0.12 and standing and not rising:
@@ -2490,7 +2501,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var r_f: Vector3 = sole_f - shin.global_position
 				var m_f := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_f.length_squared() / PD.inertia_of(shin))
 				var vy_f := shin.velocity_at(sole_f).y
-				var jy := m_f * (minf(pen, 0.2 * S) * 0.3 / dt - minf(0.0, vy_f) * 0.8)
+				# (A weak leg's own motor holds it no better than its hurt: the sand then is what
+				# stops the sole, all of its fall and half of the depth it is in each step.)
+				var jy := m_f * (minf(pen, 0.2 * S) * (0.3 + 0.3 * clampf((0.8 - leg_func(side)) / 0.5, 0.0, 1.0)) / dt - minf(0.0, vy_f) * (0.8 + 0.2 * clampf((0.8 - leg_func(side)) / 0.5, 0.0, 1.0)))
 				shin.apply_impulse(Vector3(0, maxf(0.0, jy), 0), r_f)
 
 	# ----- Arms and weapons -----

@@ -133,20 +133,29 @@ func test_feet_stand_on_a_body() -> void:
 	# he was pushed through the frozen heap and stood with his legs inside it, and it killed
 	# him); a lumpy heap he can slide off: set down again where he lies, up to three times,
 	# until a foot is on him.
+	# (Read over his last second there, not at one step: settling on a lumpy heap he takes a
+	# step now and then, and caught in mid-step he had no foot down and was "in the air".)
 	var planted := 0
 	var high := -INF
+	var grounded := 0
 	for attempt in 3:
 		f.teleport(Vector3(at.x, top + 0.08, at.z), true)
-		for i in 240:
-			await get_tree().physics_frame
 		planted = 0
 		high = -INF
-		for side in ["L", "R"]:
-			var ft = f.feet[side]
-			if ft != null:
-				high = maxf(high, float((ft.anchor as Vector3).y))
-				if not ft.swing:
-					planted += 1
+		grounded = 0
+		for i in 240:
+			await get_tree().physics_frame
+			if i < 120:
+				continue
+			grounded += 1 if f.on_ground else 0
+			var down := 0
+			for side in ["L", "R"]:
+				var ft = f.feet[side]
+				if ft != null:
+					high = maxf(high, float((ft.anchor as Vector3).y))
+					if not ft.swing:
+						down += 1
+			planted = maxi(planted, down)
 		if high > 0.08:
 			break
 		top = -INF
@@ -154,7 +163,7 @@ func test_feet_stand_on_a_body() -> void:
 			if p.global_position.y + p.half_ext.y > top:
 				top = p.global_position.y + p.half_ext.y
 				at = p.global_position
-	t.check(f.on_ground, "on a fallen man he counts as on the ground")
+	t.check(grounded > 90, "on a fallen man he counts as on the ground (%d of his last 120 steps)" % grounded)
 	t.check(planted >= 1, "a foot is planted (%d)" % planted)
 	t.check(high > 0.08, "on the body, not down on the sand under it (the higher foot %.2f m up)" % high)
 	m.queue_free()

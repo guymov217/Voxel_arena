@@ -453,5 +453,5 @@ long campaign on real hardware before a release date is set.
 
 - Steam achievements: in (`scripts/game/achievements.gd`, fifteen, kept in the save and set on
   Steam when it runs); the API names and texts to enter in Steamworks, the Auto-Cloud root for
-  the save and the content survey answers are in docs/DEMO.md (4b). Icons still to draw.
+  the save and the content survey answers are in docs/DEMO.md (4b). The icons are in `art/achievements/`.
 - Localisation: English only.

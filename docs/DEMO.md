@@ -81,7 +81,8 @@ godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECK
   is lost offline) and on Steam when it runs (`setAchievement` + `storeStats`; at the menu the
   save's list is pushed to Steam again, so a client that comes later gets them all). Set them up
   in Steamworks, *Stats & Achievements → Achievements*, with these API names and texts (the
-  icons are 64×64 PNG, a lit and a grey one each):
+  icons are 64×64 PNG, a lit and a grey one each: `art/achievements/<API name>.png` and
+  `<API name>_locked.png`, made by `tools/make_achievement_icons.py`):
 
   | API name | Name | Description |
   |---|---|---|
