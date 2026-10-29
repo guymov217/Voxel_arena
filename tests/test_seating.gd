@@ -129,12 +129,14 @@ func test_feet_stand_on_a_body() -> void:
 		if p.global_position.y + p.half_ext.y > top:
 			top = p.global_position.y + p.half_ext.y
 			at = p.global_position
-	# Set down on him (a lumpy heap he can slide off: set down again where he lies, up to three
-	# times, until a foot is on him).
+	# Set down on him, his soles a hand over the top of the heap (moved across at his own height
+	# he was pushed through the frozen heap and stood with his legs inside it, and it killed
+	# him); a lumpy heap he can slide off: set down again where he lies, up to three times,
+	# until a foot is on him.
 	var planted := 0
 	var high := -INF
 	for attempt in 3:
-		f.teleport(Vector3(at.x, top + 1.1, at.z))
+		f.teleport(Vector3(at.x, top + 0.08, at.z), true)
 		for i in 240:
 			await get_tree().physics_frame
 		planted = 0

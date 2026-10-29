@@ -1168,15 +1168,25 @@ func _death_roll(dt: float) -> void:
 	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.3 or float(hug.pry) >= 1.0 or not part_ok(head, 0.15) or gap > 0.25 * S:
 		_release_roll()   # (the limb out of its jaws, the roll is over)
 		return
-	# Whatever the joint gives under the wrench is taken back up: teeth to the bitten place.
+	# Whatever the joint gives under the wrench is taken back up at once: the bitten place is
+	# brought back to the teeth the way the joint would bring it (an impulse at each, as the two
+	# bodies answer it at that point, PD.point_k, the head taking the other half). A spring on
+	# the limb alone (60/s²) let the teeth come 0.45 m out of the bite before the hold gave.
 	var err: Vector3 = mp - bite
-	part.apply_impulse((err * 60.0 - (part.linear_velocity - head.linear_velocity) * 8.0) * part.mass * dt, bite - part.global_position)
+	var rel_v: Vector3 = part.velocity_at(bite) - head.velocity_at(mp)
+	var k := PD.k_add(PD.point_k(part, bite), PD.point_k(head, mp))
+	if absf(k.determinant()) > 1e-9:
+		var J := (k.inverse() * ((err / 0.02).limit_length(6.0 * S) - rel_v)).limit_length(12.0 * S * part.mass)
+		part.apply_impulse(J, bite - part.global_position)
+		head.apply_impulse(-J, mp - head.global_position)
 	if tgt.state == "stand":
 		tgt.fall(1.0, true)
 	tgt.stagger = maxf(tgt.stagger, 0.7)
 	jaw_t = minf(jaw_t, 0.1)
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
-	var spin := ROLL_SPIN * (1.0 - 0.45 * pull) * float(hug.spin)   # (his weight dragging against it)
+	# (His weight dragging against it; and a man it cannot bring round, the teeth working out
+	# of the bite, slows it: the roll is only as fast as the hold is firm.)
+	var spin := ROLL_SPIN * (1.0 - 0.45 * pull) * float(hug.spin) * clampf(1.0 - (gap - 0.04 * S) / (0.12 * S), 0.3, 1.0)
 	torso.angular_velocity = fwd * spin
 	hug.turned = float(hug.turned) + absf(spin) * dt
 	# The man goes round with it: the limb is locked in the jaws, and his trunk is wrenched over
@@ -1732,6 +1742,14 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 		c.set_meta("rolled_by", self)   # (for his screen: how to fight it)
 		c.fall(2.5, true)
 		c.last_attacker = self
+		# The arm in its jaws lets go of what it holds: a blade still gripped in an arm being
+		# twisted off wedged against the sand, the chain of him could not follow the roll, and
+		# the teeth came half a metre out of the bite before the hold gave.
+		for sd in c.arm:
+			if vic == c.arm[sd].fore or vic == c.arm[sd].upper:
+				if sd == "L" and c.two_handed:
+					c.toggle_grip()
+				c.release(sd)
 	var torn := []
 	for r in res.get("removed", []):
 		if not r.get("chunk", false) and r.part == vic:

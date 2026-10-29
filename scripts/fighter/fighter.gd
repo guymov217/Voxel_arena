@@ -4035,8 +4035,20 @@ func fall(duration: float, force := false) -> void:
 	set_standing(false)
 
 ## Moves the whole body (every part, its weapons) so the torso stands over `p`, at rest.
-func teleport(p: Vector3) -> void:
+## Moves him (and what he holds) to `p` on the sand, at the height he is; with `feet_at_y`, up or
+## down as well, so that his lowest sole stands at p.y (set down on a heap, a crate, a body: moved
+## across at his own height he was pushed through whatever stood there, and stuck in it).
+func teleport(p: Vector3, feet_at_y := false) -> void:
 	var off := Vector3(p.x, 0.0, p.z) - Vector3(torso.global_position.x, 0.0, torso.global_position.z)
+	if feet_at_y:
+		var lo := INF
+		for n in ["shinL", "shinR"]:
+			var sh: VoxelPart = by_name[n]
+			if not sh.severed:
+				lo = minf(lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y)
+		if lo == INF:
+			lo = torso.global_position.y - torso.half_ext.y
+		off.y = p.y - lo
 	var bodies: Array = parts.duplicate()
 	for side in weapons:
 		if weapons[side]:
