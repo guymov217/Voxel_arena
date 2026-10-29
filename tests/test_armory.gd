@@ -502,3 +502,24 @@ func test_knocked_plates_stay_off_until_mended() -> void:
 	m.queue_free()
 	var mended := Armory.mend(saved, "steelLorica")
 	t.check(int(mended.cost) > 0 and not mended.wear.has("steelLorica"), "mended: whole again for %d" % int(mended.cost))
+
+## The smith's window fits the screen, its rack of weapons and all (a card with its "For the off
+## hand" button ran wider than the columns were counted for, and the rack pushed the purse, the
+## tabs and the last column of cards off the right of the screen: user).
+func test_the_smiths_window_fits_the_screen() -> void:
+	var root := get_tree().root
+	var size0 := root.content_scale_size
+	for sz in [Vector2i(1600, 900), Vector2i(1280, 720)]:
+		root.content_scale_size = sz
+		var menu = load("res://scripts/ui/menu.gd").new()
+		add_child(menu)
+		await get_tree().process_frame
+		menu.show_screen("yard")
+		for i in 3:
+			await get_tree().process_frame
+		var vp: Vector2 = menu.get_viewport_rect().size
+		var r: Rect2 = menu.panel.get_global_rect()
+		t.check(r.end.x <= vp.x + 1.0, "at %s the window ends at %.0f, inside the screen's %.0f" % [sz, r.end.x, vp.x])
+		menu.queue_free()
+		await get_tree().process_frame
+	root.content_scale_size = size0

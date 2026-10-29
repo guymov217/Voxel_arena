@@ -175,3 +175,44 @@ func test_flying_pieces_are_taped_and_the_replay_is_seen_whole() -> void:
 	t.check(hud.visible, "and back after it")
 	hud.queue_free()
 	m.queue_free()
+
+## While the kill cam plays, Esc and R are its own (Esc skips it): Esc opened the pause menu over
+## it, and closing that unpaused the arena in the middle of the replay; R restarted the bout.
+func test_the_kill_cam_keeps_esc_and_r_to_itself() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.start({"mode": "duel", "decrees": [], "hazards": [], "headless": true, "killcam": true})
+	await get_tree().process_frame
+	var m0 = menu.match_
+	t.check(m0.killcam != null, "the bout has its kill cam")
+	menu.visible = false
+	m0.killcam.playing = true
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	menu._unhandled_input(esc)
+	t.check(menu.pause_layer == null, "no pause menu over the kill cam")
+	var r := InputEventAction.new()
+	r.action = "va_restart"
+	r.pressed = true
+	menu._unhandled_input(r)
+	t.check(menu.match_ == m0, "and no new bout under it")
+	m0.killcam.playing = false
+	menu._unhandled_input(esc)
+	t.check(menu.pause_layer != null, "after it, Esc pauses as ever")
+	menu._toggle_pause()
+	menu._end_match()
+	menu.queue_free()
+	get_tree().paused = false
+	await get_tree().process_frame
+
+## The skip key is shown on the kill cam, as bound ("E" by default).
+func test_the_kill_cam_says_how_to_skip_it() -> void:
+	var kc := KillCam.new(self)
+	add_child(kc)
+	t.eq(kc.skip_key(), "E", "E skips it")
+	kc._overlay("Marcus took Gaius's head off")
+	var said := kc.overlay.find_children("*", "Label", true, false).map(func(l): return String(l.text))
+	t.check(said.any(func(x): return x.contains("E") and x.to_lower().contains("skip")), "and the kill cam says so (%s)" % [said])
+	kc.queue_free()

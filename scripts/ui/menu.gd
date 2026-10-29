@@ -284,6 +284,11 @@ func set_body(b: Dictionary) -> void:
 	var was := Body.sanitize(Save.get_value("body", {}))
 	Save.set_value("body", clean)
 	Net.my_body = clean
+	# A limb or an eye given back in the yard (the Elixir, a prosthetic): he stands there with it
+	# at once, his weapons in the hands it gave back (he walked about armless until the next bout).
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes):
+		match_.rebuild(match_.me, clean)
+		return
 	# Stitched in the yard: the wounds close on him there and then.
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and clean.fresh.is_empty():
 		for n in was.fresh:
@@ -1219,6 +1224,13 @@ func _yard(v: VBoxContainer) -> void:
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
 		_viewable(tex, Data.preset(key), "%d denarii at the smith" % Arms.base_price(b))
+	# As many to a row as fit the rack at the widest card's width (counted at 166 px, a card with
+	# its "For the off hand" button ran half as wide again, and the grid pushed the whole window,
+	# purse and tabs, out past the right of the screen: user).
+	var tile_w := 146.0
+	for c in grid.get_children():
+		tile_w = maxf(tile_w, c.get_combined_minimum_size().x)
+	grid.columns = clampi(int((rack_w + 10.0) / (tile_w + 10.0)), 1, 8)
 	# The bout's oddities, his own designs (made to order), then the smith's rack.
 	var odd := _smith_oddities(rack_box, grid.columns, tile_st)
 	if _smith_designs(rack_box, grid.columns, tile_st) or odd:
@@ -3441,6 +3453,11 @@ func _unhandled_input(e: InputEvent) -> void:
 	# F12: a screenshot (with Steam running, Steam takes its own on the same key).
 	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F12 and not Net.steam_ready:
 		_screenshot()
+		return
+	# The kill cam keeps its own keys (E or Esc skip it): Esc here opened the pause menu over it,
+	# and closing that unpaused the arena in the middle of the replay; R started the bout again
+	# under it.
+	if match_ and is_instance_valid(match_) and match_.killcam and match_.killcam.playing:
 		return
 	# R: the stage (the bout, the training) again from the start. Alone only: in a room the
 	# host's match is everyone's.

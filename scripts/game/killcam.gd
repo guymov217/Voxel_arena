@@ -203,6 +203,9 @@ func play(done: Callable, restore := false) -> void:
 	var t := t0
 	var orbit := 0.0
 	var cam: Camera3D = m.cam
+	# A skip is a fresh press: the key held down as the clip begins (the kick that killed) does
+	# not skip it unseen.
+	var armed := not _skip_held()
 	while t < t1 and is_instance_valid(m):
 		var dt := m.get_process_delta_time() if m.get_process_delta_time() > 0.0 else 1.0 / 60.0
 		# Slow right down around the blow.
@@ -247,14 +250,22 @@ func play(done: Callable, restore := false) -> void:
 			c = pv.torso.global_position
 			if pk and is_instance_valid(pk) and pk != pv:
 				c = (c + pk.torso.global_position) * 0.5
-		# Any key or a click skips it.
-		if Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ESCAPE) or Input.is_key_pressed(KEY_ENTER) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		# E (the use key, as bound) or Esc skips it. (Space, Enter and a click did too: held in the
+		# fight's last blow, they skipped the clip before it was seen.)
+		if armed and _skip_held():
 			break
+		armed = armed or not _skip_held()
 		orbit += dt * speed * 0.35
 		if cam:
 			cam.fov = 45.0
 			cam.global_position = c + Vector3(sin(orbit) * 3.2, 0.7, cos(orbit) * 3.2)
 			cam.look_at(c, Vector3.UP)
+		await tree.process_frame
+	# The skip key let go before the game goes on (E held into the yard walked him out through
+	# the gate, Esc into the fight opened the pause menu).
+	var hold := 0.0
+	while _skip_held() and hold < 1.5:
+		hold += 1.0 / 60.0
 		await tree.process_frame
 	# (Skipped or played through: every wound back as it is now.)
 	while next_ev < redo.size():
@@ -280,6 +291,16 @@ func play(done: Callable, restore := false) -> void:
 	tree.paused = false
 	playing = false
 	done.call()
+
+func _skip_held() -> bool:
+	return (InputMap.has_action("va_kick") and Input.is_action_pressed("va_kick")) or Input.is_key_pressed(KEY_ESCAPE)
+
+## The key that skips, as bound ("E" by default).
+func skip_key() -> String:
+	var code := str(Data.controls.get("defaults", {}).get("kick", "KeyE"))
+	if m and m.get("input") and m.input.bindings.has("kick"):
+		code = str(m.input.bindings.kick)
+	return PlayerInput.label_of(code)
 
 func _overlay(caption: String) -> void:
 	overlay = CanvasLayer.new()
@@ -318,3 +339,15 @@ func _overlay(caption: String) -> void:
 	cap.offset_top = -78
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	overlay.add_child(cap)
+	var hint := Label.new()
+	hint.text = "%s  skip" % skip_key()
+	hint.add_theme_font_override("font", UIStyle.serif(1))
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color(0.96, 0.92, 0.84, 0.6))
+	hint.anchor_left = 1.0
+	hint.anchor_right = 1.0
+	hint.offset_left = -220
+	hint.offset_right = -36
+	hint.offset_top = 44
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	overlay.add_child(hint)

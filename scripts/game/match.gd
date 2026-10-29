@@ -1685,12 +1685,16 @@ func my_wear() -> Dictionary:
 	return wear_of(me) if me else {}
 
 ## What a bout left of a man's gear: the chips in his weapons (R, L: indices, or "lost" with
-## the arm) and the plates off his armour ("armor": Armory wear).
+## the arm) and the plates off his armour ("armor": Armory wear). A weapon that fell to the sand
+## with the arm holding it is picked up after the bout with the chips it had (it was "lost": all
+## but its grip gone, and an arm grown back by the Elixir had nothing to hold, user).
 func wear_of(e: Dictionary) -> Dictionary:
 	var wear := {}
 	if e and e.get("f") != null and is_instance_valid(e.f) and e.f is Fighter:
 		for side in ["R", "L"]:
 			var w = e.f.weapons.get(side)
+			if not (w and is_instance_valid(w)) and e.f.arm[side].fore.severed:
+				w = e.f.fell_with_arm.get(side)
 			if w and is_instance_valid(w):
 				var lost := []
 				for i in w.alive.size():

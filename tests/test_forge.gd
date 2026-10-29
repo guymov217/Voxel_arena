@@ -511,12 +511,45 @@ func test_the_walking_keys_move_the_forge_camera() -> void:
 	f.free_build = true
 	f.open(Data.preset("gladius").duplicate(true), 99999, func(_d, _c): pass)
 	await get_tree().process_frame
-	var d0: float = f.dist
+	var c0: Vector3 = f.cam.global_position
+	var ahead: Vector3 = -f.cam.global_transform.basis.z
 	Input.action_press("va_forward")
 	for i in 20:
 		await get_tree().process_frame
 	Input.action_release("va_forward")
-	t.check(f.dist < d0 - 0.05, "W draws the camera in (%.2f → %.2f m)" % [d0, f.dist])
+	t.check((f.cam.global_position - c0).dot(ahead) > 0.05, "W flies the camera on the way it looks (%.2f m)" % (f.cam.global_position - c0).dot(ahead))
+	# Toward what the mouse points at, wherever that is in the view.
+	var vs: Vector2 = f.viewport.size
+	f.view_mouse = Vector2(vs.x * 0.85, vs.y * 0.5)
+	var aim: Vector3 = f.cam.project_ray_normal(f.view_mouse)
+	c0 = f.cam.global_position
+	Input.action_press("va_forward")
+	for i in 10:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	var went: Vector3 = (f.cam.global_position - c0).normalized()
+	t.check(went.dot(aim) > 0.97, "toward the mouse (off by %.0f°)" % rad_to_deg(acos(clampf(went.dot(aim), -1.0, 1.0))))
+	f.view_mouse = Vector2(-1, -1)
+	# Right up close it still flies on (it stuck a hand's breadth short of the weapon's middle).
+	f.dist = 0.15
+	f._place_camera()
+	c0 = f.cam.global_position
+	Input.action_press("va_forward")
+	for i in 10:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	t.check(f.cam.global_position.distance_to(c0) > 0.02, "and on, right up close")
+	# A number box clicked keeps the keyboard, but not from the camera.
+	var sb := SpinBox.new()
+	f.add_child(sb)
+	sb.get_line_edit().grab_focus()
+	c0 = f.cam.global_position
+	Input.action_press("va_forward")
+	for i in 10:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	t.check(f.cam.global_position.distance_to(c0) > 0.02, "with a number box last clicked")
+	sb.queue_free()
 	var f0: Vector3 = f.focus
 	var right: Vector3 = f.cam.global_transform.basis.x
 	Input.action_press("va_right")
@@ -532,13 +565,32 @@ func test_the_walking_keys_move_the_forge_camera() -> void:
 	t.check(f.cam.global_position.y > y0 + 0.02, "Space lifts it")
 	# Typing a name moves nothing.
 	f.name_edit.grab_focus()
-	var d1: float = f.dist
+	var c1: Vector3 = f.cam.global_position
 	Input.action_press("va_forward")
 	for i in 10:
 		await get_tree().process_frame
 	Input.action_release("va_forward")
-	t.check(is_equal_approx(f.dist, d1), "not while the name is being typed")
+	t.check(f.cam.global_position.is_equal_approx(c1), "not while the name is being typed")
 	f.queue_free()
+	pi_.queue_free()
+
+## The armour bench flies on the same keys.
+func test_the_walking_keys_fly_the_armour_bench_camera() -> void:
+	var pi_ = PlayerInput.new()
+	add_child(pi_)
+	var a = load("res://scripts/ui/armour_forge.gd").new()
+	add_child(a)
+	a.open(Armory.design_piece("torso", "iron", 0.0, 1.0, false, false, ""), "torso", func(_d): pass)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var c0: Vector3 = a.cam.global_position
+	var ahead: Vector3 = -a.cam.global_transform.basis.z
+	Input.action_press("va_forward")
+	for i in 20:
+		await get_tree().process_frame
+	Input.action_release("va_forward")
+	t.check((a.cam.global_position - c0).dot(ahead) > 0.05, "W flies the bench's camera on (%.2f m)" % (a.cam.global_position - c0).dot(ahead))
+	a.queue_free()
 	pi_.queue_free()
 
 ## The fight's HUD never stands over the forge (back from trying a weapon in the arena it came up

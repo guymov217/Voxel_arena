@@ -159,3 +159,50 @@ func test_the_elixir_gives_back_everything() -> void:
 		var pay := Body.bout_pay(st)
 		var pr := Body.elixir_price(st)
 		t.check(pr >= pay * 2 and pr <= maxi(Body.ELIXIR_MIN, pay * 4), "stage %d: the elixir (%d) costs a few bouts' pay (%d each)" % [st, pr, pay])
+
+## Drunk in the yard, the Elixir gives the hand back there and then, with the weapon in it (he
+## was healed and walked on armless, empty-handed, until the next bout: user).
+func test_the_elixir_in_the_yard_gives_the_hand_back_at_once() -> void:
+	var body0 = Save.get_value("body", {})
+	Save.set_value("body", Body.sanitize({"missing": ["forearmR"]}))
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	for i in 10:
+		await get_tree().physics_frame
+	var f: Fighter = menu.match_.me.f
+	t.check(f.arm.R.fore.missing and f.weapons.R == null, "he walks in without his right hand, and holds nothing in it")
+	menu.set_body(Body.apply(menu.body(), "elixir:all"))
+	for i in 10:
+		await get_tree().physics_frame
+	var g: Fighter = menu.match_.me.f
+	t.check(not g.arm.R.fore.missing, "the hand is back on him in the yard")
+	t.check(g.weapons.R != null, "and his weapon in it")
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("body", body0 if body0 is Dictionary else {})
+	await get_tree().process_frame
+
+## A weapon that fell to the sand with the arm cut off holding it comes back from the bout with
+## the chips it had, not "lost" down to its grip.
+func test_a_weapon_that_fell_with_its_arm_is_not_lost() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius"}})
+	var f: Fighter = m.me.f
+	for i in 20:
+		await get_tree().physics_frame
+	t.check(f.weapons.R != null, "a sword in his right hand")
+	var fore: VoxelPart = f.arm.R.fore
+	var all := PackedInt32Array()
+	for i in fore.fx.size():
+		if fore.alive[i]:
+			all.append(i)
+	f.sever(fore, {"severed": []}, all)
+	for i in 5:
+		await get_tree().physics_frame
+	t.check(f.weapons.R == null and f.fell_with_arm.has("R"), "the sword fell with the arm")
+	var w := m.my_wear()
+	t.check(w.get("R") is Array, "the sword is picked up off the sand, chips and all (%s)" % [w.get("R")])
+	m.queue_free()

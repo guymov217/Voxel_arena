@@ -260,6 +260,7 @@ func _build_ui() -> void:
 	svc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	svc.custom_minimum_size = Vector2(420, 360)
 	svc.gui_input.connect(_on_input)
+	svc.mouse_exited.connect(func(): view_mouse = Vector2(-1, -1))
 	view.add_child(svc)
 	vp = SubViewport.new()
 	vp.own_world_3d = true
@@ -550,7 +551,24 @@ func _aim(at: Vector2) -> Dictionary:
 	var n: Vector3 = hit.normal
 	return {"hit": c, "plate": cs.get_meta("plate"), "place": c + Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))}
 
+## The walking keys fly the camera round him, as at the weapon forge (FlyCam).
+var view_mouse := Vector2(-1, -1)   # where the mouse is over the view (-1: off it)
+func _process(dt: float) -> void:
+	if cam == null:
+		return
+	var aim := cam.project_ray_normal(view_mouse) if view_mouse.x >= 0.0 else Vector3.ZERO
+	var mv := FlyCam.step(self, cam, aim, maxf(0.5, dist * 0.9), dt)
+	if mv != Vector3.ZERO:
+		focus += mv
+		_place_camera()
+
 func _on_input(e: InputEvent) -> void:
+	if e is InputEventMouse:
+		view_mouse = e.position
+	if e is InputEventMouseButton and e.pressed:
+		var fo := get_viewport().gui_get_focus_owner()
+		if fo:
+			fo.release_focus()
 	if e is InputEventMouseButton:
 		if e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			dist = maxf(0.3, dist * 0.9)

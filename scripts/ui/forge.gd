@@ -218,6 +218,7 @@ func _build_ui() -> void:
 	svc.stretch = true
 	svc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	svc.gui_input.connect(_on_view_input)
+	svc.mouse_exited.connect(func(): view_mouse = Vector2(-1, -1))
 	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	right.add_child(svc)
 	tool_bar = PanelContainer.new()
@@ -1251,40 +1252,16 @@ func _pan(rel: Vector2) -> void:
 	focus += (-b.x * rel.x + b.y * rel.y) * px
 	_place_camera()
 
-const WALK_KEYS := {"forward": KEY_W, "back": KEY_S, "left": KEY_A, "right": KEY_D, "jump": KEY_SPACE, "crouch": KEY_CTRL, "sprint": KEY_SHIFT}
-## W A S D (the walking keys, as bound in Controls) move the camera over the anvil: forward and
-## back the way it looks, sideways across; Space and Ctrl (jump, crouch) up and down; Shift
-## (run) faster. It goes at a pace for how far back it stands. Not while a name is typed in.
+## The walking keys fly the camera over the anvil (FlyCam): W toward what the mouse points at.
+var view_mouse := Vector2(-1, -1)   # where the mouse is over the view (-1: off it)
 func _walk_camera(dt: float) -> void:
-	if not is_visible_in_tree() or cam == null:
-		return
-	var fo := get_viewport().gui_get_focus_owner()
-	if fo is LineEdit or fo is TextEdit:
-		return
-	var v := Vector3.ZERO
-	var held := func(id: String) -> bool:
-		if InputMap.has_action("va_" + id):
-			return Input.is_action_pressed("va_" + id)
-		# Not yet bound (no fight started since the game opened): the default keys.
-		return Input.is_physical_key_pressed(WALK_KEYS[id])
-	if held.call("forward"): v.z -= 1.0
-	if held.call("back"): v.z += 1.0
-	if held.call("left"): v.x -= 1.0
-	if held.call("right"): v.x += 1.0
-	if held.call("jump"): v.y += 1.0
-	if held.call("crouch"): v.y -= 1.0
-	if v == Vector3.ZERO:
+	var aim := cam.project_ray_normal(view_mouse) if cam and view_mouse.x >= 0.0 else Vector3.ZERO
+	var mv := FlyCam.step(self, cam, aim, maxf(0.5, dist * 0.9), dt)
+	if mv == Vector3.ZERO:
 		return
 	moved = true
 	idle_t = 0.0
-	var b := cam.global_transform.basis
-	var speed := maxf(0.5, dist * 0.9) * (2.5 if held.call("sprint") else 1.0)
-	var step := (b.x * v.x + Vector3.UP * v.y + b.z * v.z).normalized() * speed * dt
-	# What it looks at goes along sideways and up; moving in or out along the view brings the
-	# camera nearer or farther (never through it: it stops a hand's breadth short).
-	var ahead := -b.z
-	focus += step - ahead * step.dot(ahead)
-	dist = clampf(dist - step.dot(ahead), 0.15, maxf(8.0, fit_dist * 2.0))
+	focus += mv
 	_place_camera()
 
 ## The wheel draws the camera in toward what is under the mouse (or out from it).
@@ -1323,6 +1300,13 @@ func _process(dt: float) -> void:
 
 func _on_view_input(e: InputEvent) -> void:
 	idle_t = 0.0
+	if e is InputEventMouse:
+		view_mouse = e.position
+	if e is InputEventMouseButton and e.pressed:
+		# A click on the anvil takes the keyboard back from a box typed in (W flies the camera).
+		var fo := get_viewport().gui_get_focus_owner()
+		if fo:
+			fo.release_focus()
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
 			moved = true

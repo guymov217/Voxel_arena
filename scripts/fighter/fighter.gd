@@ -98,6 +98,7 @@ var player := false              # a man's own fighter, his or a guest's (not a 
 var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
 var v_free := Vector3.ZERO       # his trunk's speed before it did
 var w_free := Vector3.ZERO       # and its turn
+var fell_with_arm := {}          # side -> the Weapon that fell to the sand with the arm cut off holding it
 var thrown_by: Node = null
 var shove_cool := 0.0
 var shove_t := 0.0
@@ -1136,6 +1137,8 @@ func release(side: String) -> Weapon:
 		weapon_joints.L = null
 	two_handed = false if side == "R" else two_handed
 	weapons[side] = null
+	if arm[side].fore.severed:
+		fell_with_arm[side] = w
 	w.holder = null
 	w.welded = false
 	# Loose: for a moment more it ignores the body that let it go, then it hits anyone.
