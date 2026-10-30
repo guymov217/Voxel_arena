@@ -10,6 +10,8 @@ hounds). The men are men. See art/CREDITS.md for every recording.
 The pools are hoffspot/conquest (its processed CC0 creature cuts, 48 kHz mp3) and
 lavenderdotpet/cc0-public-domain-sounds (Warfork's player voices, The Motion Monkey's vocal pack).
 Needs numpy, scipy and ffmpeg.
+
+Afterwards: python3 tools/clean_voices.py (clipping, hiss and the noise floor taken out).
 """
 import argparse, glob, os, subprocess, sys, tempfile
 import numpy as np

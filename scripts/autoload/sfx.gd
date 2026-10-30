@@ -18,7 +18,7 @@ var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
 var _ui_player: AudioStreamPlayer = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14, "slash": 0.2, "stab": 0.22}
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -153,32 +153,50 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	# Takes differ a little in body as well as in the noise.
 	var tone := 1.0 + (take - 1) * 0.06
 	var lp := 0.0
+	var lp2 := 0.0   # a second pole over lp: noise rounded off twice (one pole left a hiss on top)
+	var ph := 0.0    # a phase run up sample by sample (a pitch that moves without a jump)
+	_vph = 0.0
+	_vph2 = 0.0
+	_crk_n = 0
+	var buf := PackedFloat32Array()
+	buf.resize(n)
 	for i in n:
 		var t := float(i) / RATE
 		var s := 0.0
 		match kind:
 			"clang":
 				s = (sin(TAU * 1250.0 * tone * t) + 0.6 * sin(TAU * 2830.0 * tone * t) + 0.35 * sin(TAU * 4410.0 / tone * t)) * exp(-t * 9.0 * tone) * 0.4
-			"slash":
-				lp += (rng.randf_range(-1, 1) - lp) * 0.35
-				s = lp * exp(-t * 18.0) * 0.9
-			"stab":
-				lp += (rng.randf_range(-1, 1) - lp) * 0.2
-				s = (lp + 0.4 * sin(TAU * 180.0 * t)) * exp(-t * 22.0) * 0.8
 			"slap":
-				var hp := rng.randf_range(-1, 1) - lp
-				lp += hp * 0.5
-				s = hp * exp(-t * 45.0) * 0.9
+				# A palm or a flat on skin: a short dull smack, rounded off (high-passed noise was a
+				# crackle of static).
+				var k := _lp_k(1800.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				ph += TAU * 220.0 * tone / RATE
+				s = (lp2 * 2.6 + sin(ph) * 0.35) * exp(-t * 45.0)
 			"whoosh":
-				lp += (rng.randf_range(-1, 1) - lp) * (0.05 + 0.25 * sin(PI * t / 0.35))
-				s = lp * sin(PI * t / 0.35) * 1.4
+				# Air parted by a swing: a band of noise that rises and falls, rounded on top.
+				var L: float = LENGTH[kind]
+				var e := sin(PI * minf(1.0, t / L))
+				var k := _lp_k(500.0 + 1300.0 * e)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				s = lp2 * e * 2.2
 			"cheer", "boo":
 				var L: float = LENGTH[kind]
-				lp += (rng.randf_range(-1, 1) - lp) * (0.25 if kind == "cheer" else 0.08)
+				var k := _lp_k(1400.0 if kind == "cheer" else 600.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
 				var env := sin(PI * t / L) * (0.75 + 0.25 * sin(TAU * (7.0 if kind == "cheer" else 3.0) * t))
-				s = (lp + (0.0 if kind == "cheer" else 0.25 * sin(TAU * 120.0 * t * (1.0 - 0.3 * t / L)))) * env * 0.9
+				ph += TAU * 120.0 * (1.0 - 0.3 * t / L) / RATE
+				s = (lp2 * 2.2 + (0.0 if kind == "cheer" else 0.25 * sin(ph))) * env * 0.9
 			"honk":
-				s = (1.0 if fmod(t * 233.0, 1.0) < 0.5 else -1.0) * 0.35 * minf(1.0, t * 40.0) * minf(1.0, (0.45 - t) * 20.0)
+				# A clown's horn: a square tone, its harmonics stopped below the hiss (a raw square
+				# clicked at every edge).
+				var sq := 0.0
+				for hh in [1, 3, 5, 7, 9]:
+					sq += sin(TAU * 233.0 * hh * t) / hh
+				s = sq * 0.4 * minf(1.0, t * 40.0) * minf(1.0, (0.45 - t) * 20.0)
 			"draw":
 				# A bow string creaking back.
 				lp += (rng.randf_range(-1, 1) - lp) * 0.08
@@ -186,11 +204,20 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 			"twang":
 				s = (sin(TAU * 196.0 * tone * t) + 0.5 * sin(TAU * 392.0 * tone * t) * exp(-t * 18.0)) * exp(-t * 11.0) * 0.55
 			"shatter":
-				# Clay giving way: a dull knock, then a rattle of bright little cracks.
-				var hp2 := rng.randf_range(-1, 1) - lp
-				lp += hp2 * 0.6
-				var crackle := hp2 * (0.6 if rng.randf() < 0.18 * exp(-t * 6.0) + 0.02 else 0.12) * exp(-t * 7.0)
-				s = (sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + crackle * 1.4)
+				# Clay giving way: a dull knock, then a rattle of little cracks, each a short burst
+				# rounded off (bursts switched on and off sample by sample were static).
+				if _crk_n <= 0 and rng.randf() < 0.012 * exp(-t * 6.0):
+					_crk_n = rng.randi_range(60, 140)
+					_crk_len = _crk_n
+					_crk_a = rng.randf_range(0.4, 1.0)
+				var cr := 0.0
+				if _crk_n > 0:
+					_crk_n -= 1
+					cr = rng.randf_range(-1, 1) * _crk_a * sin(PI * float(_crk_n) / _crk_len)
+				var k := _lp_k(2600.0)
+				lp += (cr - lp) * k
+				lp2 += (lp - lp2) * k
+				s = sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + lp2 * 2.4 * exp(-t * 5.0)
 			"grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar":
 				s = _voice_sample(kind, t, rng, take)
 			"thump":
@@ -205,19 +232,22 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"tick":
 				# A menu press: a small dry knock of wood on stone.
-				var hp5 := rng.randf_range(-1, 1) - lp
-				lp += hp5 * 0.5
-				s = (sin(TAU * 820.0 * t) * 0.6 + hp5 * 0.5) * exp(-t * 70.0) * 0.5
+				var k := _lp_k(2400.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				s = (sin(TAU * 820.0 * t) * 0.6 + lp2 * 1.5) * exp(-t * 70.0) * 0.5
 			"boing":
 				# A spring let go: a low tone that wobbles up and down as it dies away.
 				s = sin(TAU * 150.0 * tone * t * (1.0 + 0.35 * sin(TAU * 9.0 * t) * exp(-t * 3.0))) * exp(-t * 5.0) * 0.6
 			"squeak":
 				s = sin(TAU * (900.0 + 1400.0 * sin(PI * t / 0.18)) * tone * t) * sin(PI * t / 0.18) * 0.4
 			"freeze":
-				# Ice: a bright crack, then a tinkle of little shards.
-				var hp4 := rng.randf_range(-1, 1) - lp
-				lp += hp4 * 0.7
-				s = hp4 * exp(-t * 40.0) * 0.7 + sin(TAU * 3100.0 * tone * t) * exp(-t * 9.0) * (0.25 if fmod(t * 23.0, 1.0) < 0.3 else 0.05)
+				# Ice: a bright crack, then a tinkle of little shards (the tinkle swells and fades
+				# smoothly: switched on and off it clicked).
+				var k := _lp_k(3500.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				s = lp2 * 2.0 * exp(-t * 40.0) + sin(TAU * 3100.0 * tone * t) * exp(-t * 9.0) * (0.15 + 0.1 * sin(TAU * 23.0 * t))
 			"giggle":
 				# A run of "hee"s, each a little higher.
 				var k := int(t / 0.12)
@@ -229,8 +259,15 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				var v := sin(TAU * 196.0 * t) + 0.5 * sin(TAU * 392.0 * t) + 0.3 * sin(TAU * 588.0 * t)
 				s = v * 0.25 * minf(1.0, t * 8.0) * minf(1.0, (1.0 - t) * 6.0)
 			_:
-				s = (sin(TAU * 90.0 * tone * t * (1.0 - t)) + rng.randf_range(-0.3, 0.3)) * exp(-t * 20.0) * 0.9
-		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000))
+				var k := _lp_k(600.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				ph += TAU * 90.0 * tone * (1.0 - 2.0 * t) / RATE
+				s = (sin(ph) + lp2 * 1.5) * exp(-t * 20.0) * 0.9
+		buf[i] = s
+	_finish(buf)
+	for i in n:
+		data.encode_s16(i * 2, int(clampf(buf[i], -1.0, 1.0) * 32000))
 	var w := AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
 	w.mix_rate = RATE
@@ -242,7 +279,31 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 ## a plate, a club's knock): noise filtered down to the body of the sound over tones, never raw
 ## noise (that was a hiss of static over every blow), and levelled to a peak well under full
 ## scale (they come two and three to a blow, and clipped, they crackled).
-const BLOWS := {"chop": 0.55, "flat": 0.45, "crunch": 0.5, "scrape": 0.4, "thud": 0.7}   # each one's peak
+const BLOWS := {"chop": 0.55, "flat": 0.45, "crunch": 0.5, "scrape": 0.4, "thud": 0.7, "slash": 0.45, "stab": 0.5}   # each one's peak
+const PEAK := 0.7   # no other sound made here goes higher (a few at once must not clip)
+
+## Every made sound: a 2 ms onset and a 6 ms close (no click at either end: a sound that starts
+## or stops on a full sample clicks), and no peak over PEAK.
+var _crk_n := 0
+var _crk_len := 1
+var _crk_a := 0.0
+static func _finish(buf: PackedFloat32Array) -> void:
+	var n := buf.size()
+	var a := maxi(1, int(0.002 * RATE))
+	var r := maxi(1, int(0.006 * RATE))
+	var peak := 0.0
+	for i in n:
+		var g := 1.0
+		if i < a:
+			g = float(i) / a
+		if i >= n - r:
+			g = minf(g, float(n - 1 - i) / r)
+		buf[i] *= g
+		peak = maxf(peak, absf(buf[i]))
+	if peak > PEAK:
+		var k := PEAK / peak
+		for i in n:
+			buf[i] *= k
 
 static func _lp_k(hz: float) -> float:
 	return 1.0 - exp(-TAU * hz / RATE)
@@ -257,7 +318,7 @@ func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
 	# Two-pole low-passes over the one noise: a (and its second pole a2), b, c.
 	var a1 := 0.0; var a2 := 0.0; var b1 := 0.0; var b2 := 0.0; var c1 := 0.0; var c2 := 0.0
 	var ph := 0.0; var ph2 := 0.0
-	var crack := 0.0; var crack_n := 0; var crack_a := 0.0
+	var crack := 0.0; var crack_n := 0; var crack_a := 0.0; var crack_len := 1
 	for i in n:
 		var t := float(i) / RATE
 		var nz := rng.randf_range(-1.0, 1.0)
@@ -286,11 +347,12 @@ func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
 				# a little burst of noise rounded off (no fizz over the top).
 				if crack_n <= 0 and rng.randf() < 0.010 * exp(-t * 9.0):
 					crack_n = rng.randi_range(40, 90)
+					crack_len = crack_n
 					crack_a = rng.randf_range(0.4, 1.0)
 				var cr := 0.0
 				if crack_n > 0:
 					crack_n -= 1
-					cr = nz * crack_a
+					cr = nz * crack_a * sin(PI * float(crack_n) / crack_len)   # (each crack swells and dies: no edge)
 				var ka := _lp_k(2600.0)
 				a1 += (cr - a1) * ka; a2 += (a1 - a2) * ka
 				var kc := _lp_k(350.0)
@@ -304,12 +366,27 @@ func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
 				ph += TAU * 1650.0 * tone * slide / RATE
 				ph2 += TAU * 2480.0 * tone * slide / RATE
 				var ring := (sin(ph) * 0.6 + sin(ph2) * 0.35) * exp(-t * 7.5)
-				var ka := _lp_k(3000.0)
-				var kc := _lp_k(1100.0)
+				var ka := _lp_k(2400.0)
+				var kc := _lp_k(1000.0)
 				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
 				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
 				var grind := (a2 - c2) * (0.65 + 0.35 * sin(TAU * 28.0 * t)) * sin(PI * minf(1.0, t / (0.9 * L)))
 				s = ring * 0.5 + grind * 1.6
+			"slash":
+				# A cut that only opens the skin: a short swish of the edge across it, in a band
+				# (the old one, near raw noise, was a hiss of static on every light cut).
+				var ka := _lp_k(2300.0)
+				var kc := _lp_k(700.0)
+				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				ph += TAU * 160.0 * tone / RATE
+				s = (a2 - c2) * 3.0 * exp(-t * 28.0) + sin(ph) * exp(-t * 45.0) * 0.3
+			"stab":
+				# A point driven in: a short knock falling in pitch, and a wet rounded thud.
+				var kc := _lp_k(900.0)
+				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
+				ph += TAU * (190.0 - 70.0 * minf(1.0, t / 0.1)) * tone / RATE
+				s = sin(ph) * exp(-t * 24.0) * 0.6 + c2 * 3.0 * exp(-t * 26.0)
 			"thud":
 				# A knock: a low tone falling away, with a dull rumble of the blow in it.
 				var kc := _lp_k(500.0)
@@ -386,7 +463,10 @@ func _voice_sample(kind: String, t: float, rng: RandomNumberGenerator, take: int
 	# The throat: a pulse train, its harmonics shaped by the two formants (a resonance each).
 	var s := 0.0
 	if f0 > 0.0:
-		var ph := fmod(f0 * t + 0.2 * rasp * sin(TAU * 33.0 * t), 1.0)
+		# (The phase run up from the pitch sample by sample: f0 * t jumped as the pitch moved, a
+		# click a cycle, a crackle through every growl and roar.)
+		_vph = fmod(_vph + f0 / RATE, 1.0)
+		var ph := fmod(_vph + 0.2 * rasp * sin(TAU * 33.0 * t) + 1.0, 1.0)
 		for h in range(1, 14):
 			var fh := f0 * h
 			var a := 1.0 / h
@@ -396,13 +476,20 @@ func _voice_sample(kind: String, t: float, rng: RandomNumberGenerator, take: int
 			s += a * sin(TAU * h * ph)
 		s *= 0.35
 		if rasp > 0.0:
-			s *= 1.0 - rasp * 0.4 * maxf(0.0, sin(TAU * f0 * 0.5 * t))   # the fold catching every other beat
+			_vph2 = fmod(_vph2 + 0.5 * f0 / RATE, 1.0)
+			s *= 1.0 - rasp * 0.4 * maxf(0.0, sin(TAU * _vph2))   # the fold catching every other beat
 	# Breath through the vowel: noise around the first formant.
-	_vlp += (rng.randf_range(-1.0, 1.0) - _vlp) * clampf(f1 / 3000.0, 0.08, 0.9)
-	s += _vlp * noise * 0.8
+	# (Rounded off twice: one pole left near white noise on top, a fizz over every call.)
+	var kb := clampf(f1 / 3000.0, 0.08, 0.6)
+	_vlp += (rng.randf_range(-1.0, 1.0) - _vlp) * kb
+	_vlp2 += (_vlp - _vlp2) * kb
+	s += _vlp2 * noise * 1.1
 	return clampf(s * env * 0.9, -1.0, 1.0)
 
 var _vlp := 0.0
+var _vlp2 := 0.0
+var _vph := 0.0
+var _vph2 := 0.0
 
 ## The rendered voices (art/audio/voices, built by tools/build_voices.py from CC0 recordings, see
 ## art/CREDITS.md): "<species>_<call>", "man_<throat>_<call>" (light, mid, heavy; six takes) or "<giant>_<call>", three takes each. Loaded once; a missing one plays the on-the-fly voice instead.
@@ -461,9 +548,19 @@ func ui(kind: String, gain := 0.5) -> void:
 	_ui_player.pitch_scale = randf_range(0.94, 1.06)
 	_ui_player.play()
 
+## The one sound in the one place again within REPEAT_S is the same sound: one blow came as a run
+## of contacts a few milliseconds apart, each starting the blow's sound over the last, a crackle
+## like static on every hit (user: a sword on a gladiator).
+const REPEAT_S := 0.08
+var _last_play := {}   # kind -> [msec, position]
 func play(kind: String, at: Vector3, gain := 1.0) -> void:
 	if _players.is_empty() or gain < 0.05 or backdrop_mul <= 0.0:
 		return
+	var now := Time.get_ticks_msec()
+	var lp = _last_play.get(kind)
+	if lp != null and now - int(lp[0]) < int(REPEAT_S * 1000.0) and (lp[1] as Vector3).distance_to(at) < 1.5:
+		return
+	_last_play[kind] = [now, at]
 	for p in _players:
 		if not p.playing:
 			p.stream = _make(kind, randi() % TAKES)

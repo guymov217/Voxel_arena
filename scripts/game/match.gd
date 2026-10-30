@@ -1763,40 +1763,6 @@ func _banner(text: String, sub: String) -> void:
 	if role == "host":
 		Net.send_all("banner", {"text": text, "sub": sub})
 
-## A blow that lands is felt: for a split second the moment holds (hit-stop) and the camera is
-## jolted the way the blow went, the harder the blow the longer and the harder (a scratch, nothing;
-## a limb off, the most). Only on the screen of the one who struck or was struck. The hold slows
-## the game's clock, so only offline: online the host's clock is everyone's.
-var impact_t := 0.0   # the hold under way (s); 0 when none
-var impact_id := 0
-func _impact(h: Dictionary, share: float) -> void:
-	if headless:
-		return
-	var res = h.get("res")
-	var dmg: float = float(res.get("dmg", 0.0)) if res is Dictionary else 0.0
-	var k := clampf((dmg - 3.0) / 25.0, 0.0, 1.0)
-	if res is Dictionary and not (res.get("severed", []) as Array).is_empty():
-		k = 1.0
-	k *= share
-	if k <= 0.02:
-		return
-	if role == "local" and is_inside_tree() and not get_tree().paused and (impact_t > 0.0 or is_equal_approx(Engine.time_scale, float(dec.timeScale))):
-		var hold := 0.03 + 0.08 * k
-		if hold > impact_t:
-			impact_t = hold
-			impact_id += 1
-			var id := impact_id
-			Engine.time_scale = float(dec.timeScale) * 0.05
-			# On a timer of real time that runs paused too: a killing blow's kill cam pauses the
-			# game, and a hold left on would have played the replay at a twentieth of its speed.
-			get_tree().create_timer(hold, true, false, true).timeout.connect(func():
-				if id == impact_id and is_instance_valid(self):
-					impact_t = 0.0
-					Engine.time_scale = float(dec.timeScale))
-	if cam:
-		var dir: Vector3 = h.get("dir") if h.get("dir") is Vector3 else Vector3.ZERO
-		cam.kick(dir, k)
-
 func _on_hit(h: Dictionary) -> void:
 	if rules and role != "guest":
 		rules.on_hit(h)
@@ -1809,7 +1775,6 @@ func _on_hit(h: Dictionary) -> void:
 		hit_by_me[h.char] = true
 		if h.get("p") is Vector3:
 			my_hit = {"p": h.p, "f": h.char, "t": time}
-		_impact(h, 1.0)
 		if h.get("punch", false):
 			mission_event("punch")
 		if h.get("part") == h.char.head:
@@ -1817,8 +1782,6 @@ func _on_hit(h: Dictionary) -> void:
 		var res = h.get("res")
 		if res is Dictionary and not res.get("severed", []).is_empty():
 			mission_event("sever", res.severed.size())
-	if me and h.get("char") == me.f and h.get("attacker") != me.f:
-		_impact(h, 0.6)   # (struck: felt too, a little less)
 	if role != "guest":
 		spectacle.on_hit(h)
 	# Blood where it struck (a party of colours under Confetti Blood), and on the sand below.

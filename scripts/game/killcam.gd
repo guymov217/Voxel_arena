@@ -74,7 +74,17 @@ func _bodies() -> Array:
 	for c in Chunk.all:
 		if is_instance_valid(c) and c.is_inside_tree():
 			out.append(c)
+	# The pots, darts and every thing thrown, in the air or on the sand.
+	if m.get("items") != null:
+		for it in m.items.list:
+			if it.node and is_instance_valid(it.node):
+				out.append(it.node)
 	return out
+
+## Shown only where the tape has it (a lump not yet knocked off, a pot not yet thrown or already
+## in pieces is not there at that moment of the clip).
+static func _comes_and_goes(b) -> bool:
+	return b is Chunk or (b is Node3D and b.is_in_group("kc_item"))
 
 func _physics_process(dt: float) -> void:
 	if playing:
@@ -187,7 +197,12 @@ func play(done: Callable, restore := false) -> void:
 	for b in _bodies():
 		ids[b.get_instance_id()] = b
 		if restore:
-			now[b] = [b.global_transform, b.linear_velocity, b.angular_velocity]
+			now[b] = [b.global_transform, b.linear_velocity, b.angular_velocity] if b is RigidBody3D else [b.global_transform]
+	# The things thrown that are gone now (a pot in pieces) still fly in the replay.
+	if m.get("items") != null:
+		for g in m.items.ghosts:
+			if is_instance_valid(g[0]):
+				ids[g[0].get_instance_id()] = g[0]
 	var fov0: float = m.cam.fov if m.cam else 0.0
 	_overlay(String(best.caption))
 	var fr: Array = best.frames
@@ -229,10 +244,10 @@ func play(done: Callable, restore := false) -> void:
 				continue
 			# A piece not yet knocked off at this moment of the clip is not there yet.
 			if not a.xf.has(id) and not b2.xf.has(id):
-				if body is Chunk:
+				if _comes_and_goes(body):
 					body.visible = false
 				continue
-			if body is Chunk:
+			if _comes_and_goes(body):
 				body.visible = true
 			var xa: Transform3D = a.xf.get(id, b2.xf.get(id))
 			var xb: Transform3D = b2.xf.get(id, xa)
@@ -240,7 +255,7 @@ func play(done: Callable, restore := false) -> void:
 			# (Drawn here: with the game paused the bodies' own drawing does not follow them.)
 			if body.has_method("draw_now"):
 				body.draw_now()
-			elif body is Chunk:
+			elif _comes_and_goes(body):
 				body.reset_physics_interpolation()
 		# The camera circles the pair, close, a little low.
 		var pk = best.killer
@@ -277,13 +292,15 @@ func play(done: Callable, restore := false) -> void:
 		overlay.queue_free()
 		overlay = null
 	for id in ids:
-		if is_instance_valid(ids[id]) and ids[id] is Chunk:
-			ids[id].visible = true
+		if is_instance_valid(ids[id]) and _comes_and_goes(ids[id]):
+			# (A thing thrown that is gone stays gone; the rest as they are now.)
+			ids[id].visible = ids[id] is Chunk or not (m.get("items") != null and m.items.ghosts.any(func(g): return g[0] == ids[id]))
 	for b in now:
 		if is_instance_valid(b):
 			b.global_transform = now[b][0]
-			b.linear_velocity = now[b][1]
-			b.angular_velocity = now[b][2]
+			if b is RigidBody3D:
+				b.linear_velocity = now[b][1]
+				b.angular_velocity = now[b][2]
 			if b.has_method("draw_now"):
 				b.draw_now()
 	if restore and m.cam:

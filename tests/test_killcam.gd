@@ -216,3 +216,23 @@ func test_the_kill_cam_says_how_to_skip_it() -> void:
 	var said := kc.overlay.find_children("*", "Label", true, false).map(func(l): return String(l.text))
 	t.check(said.any(func(x): return x.contains("E") and x.to_lower().contains("skip")), "and the kill cam says so (%s)" % [said])
 	kc.queue_free()
+
+## A pot thrown is on the tape, and kept after it shatters, hidden, for the replay to show it in
+## flight (freed at once, it never was in the kill cam: user).
+func test_a_thrown_pot_is_on_the_tape() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": []})
+	m.items.headless = false   # (its look made, as on a screen)
+	var it: Dictionary = m.items.spawn("pot_fire", Vector3(0, 2, 0), Vector3(3, 2, 0), m.me.f)
+	var n: Node3D = it.node
+	t.check(n != null, "the pot has its look")
+	for i in 30:
+		await get_tree().physics_frame
+	var id := n.get_instance_id()
+	t.check(m.killcam.frames.any(func(fr): return fr.xf.has(id)), "it is on the tape in flight")
+	m.items.remove(it)
+	await get_tree().process_frame
+	t.check(is_instance_valid(n) and not n.visible, "shattered, its look is kept hidden for the replay")
+	t.check(m.items.ghosts.any(func(g): return g[0] == n), "among the things gone the replay still shows")
+	m.queue_free()

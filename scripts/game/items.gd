@@ -30,6 +30,10 @@ const TYPES := {
 }
 
 var list: Array = []
+## Items gone (a pot shattered, a dart spent): their look kept a while, hidden, for the kill cam
+## to show them flying in its replay (freed at once, a thrown pot was never on its tape: user).
+var ghosts: Array = []   # [node, msec gone]
+const GHOST_MS := 8000
 var next_id := 1
 var headless := false
 var on_event: Callable
@@ -163,6 +167,7 @@ func spawn(type: String, pos: Vector3, vel := Vector3.ZERO, owner_: Node = null,
 		var n := visual(type)
 		add_child(n)
 		n.position = pos
+		n.add_to_group("kc_item")
 		it.node = n
 		_face(it)
 	list.append(it)
@@ -199,12 +204,24 @@ func throw_from_stands(type: String, target: Vector3, t := 1.2, gravity := 9.81)
 
 func remove(it: Dictionary) -> void:
 	if it.node and is_instance_valid(it.node):
-		it.node.queue_free()
+		it.node.visible = false
+		ghosts.append([it.node, Time.get_ticks_msec()])
 	list.erase(it)
 
 func clear() -> void:
 	for it in list.duplicate():
 		remove(it)
+	for g in ghosts:
+		if is_instance_valid(g[0]):
+			g[0].queue_free()
+	ghosts.clear()
+
+func _free_ghosts() -> void:
+	var now := Time.get_ticks_msec()
+	while not ghosts.is_empty() and now - int(ghosts[0][1]) > GHOST_MS:
+		if is_instance_valid(ghosts[0][0]):
+			ghosts[0][0].queue_free()
+		ghosts.pop_front()
 
 func _face(it: Dictionary) -> void:
 	var n: Node3D = it.node
@@ -238,6 +255,7 @@ func hit_char(p: Vector3, chars: Array, r: float, owner_, any_part: bool):
 
 ## One step: flight, landing, hits. `chars` are the fighters and beasts in the arena.
 func update(dt: float, chars: Array, gravity := 9.81) -> void:
+	_free_ghosts()
 	for it in list.duplicate():
 		if not list.has(it):
 			continue

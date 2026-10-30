@@ -7,6 +7,8 @@ chest. The mammoth is the same throat, bigger: lower, longer, more rumble.
   python3 tools/elephant_voice.py [--out art/audio/voices] [--demo <dir>]
 
 Uses the helpers of build_voices.py (numpy, scipy, ffmpeg).
+
+Afterwards: python3 tools/clean_voices.py (clipping, hiss and the noise floor taken out).
 """
 import argparse, os, subprocess, sys
 import numpy as np
