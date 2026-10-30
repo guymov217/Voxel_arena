@@ -157,3 +157,41 @@ func test_a_foot_is_always_on_the_sand_running_climbing_and_struck() -> void:
 					worst = maxf(worst, _feet_up(g))
 			t.check(worst < 0.025, "a blow of %.0f from %s leaves a foot on the sand (%.3f m)" % [J, str(dir.snapped(Vector3(0.1, 0.1, 0.1))), worst])
 	m.queue_free()
+
+func test_he_walks_and_runs_over_the_dead_without_falling() -> void:
+	# User: he fell stepping on what lay in the way; he walks on over it, walking or running.
+	for what in ["man", "wolf"]:
+		for run in [false, true]:
+			var m := Match.new()
+			add_child(m)
+			m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3})
+			m.me.f.teleport(Vector3(-12, 0, 0))
+			var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": "gladius"}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+			e.erase("bot")
+			var f: Fighter = e.f
+			var go := {"on": false, "yaw": 0.0}
+			e.drive = func(_e):
+				if go.on:
+					f.yaw = go.yaw
+				return {"mz": 1.0, "sprint": run} if go.on else {}
+			for i in 60:
+				await get_tree().physics_frame
+			var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
+			var at: Vector3 = f.torso.global_position * Vector3(1, 0, 1) + fwd * 3.0
+			var d = m.spawn_fighter({"kind": "bot", "name": "D", "loadout": {}, "team": 1, "pos": at, "yaw": f.yaw + PI * 0.5}) if what == "man" else m.spawn_beast({"beast": what, "team": 1, "pos": at, "yaw": f.yaw + PI * 0.5})
+			d.erase("bot")
+			d.f.set("spared", true)
+			d.f.die("test")
+			for i in 120:
+				await get_tree().physics_frame
+			go.yaw = f.yaw
+			fwd = Vector3(sin(f.yaw), 0, cos(f.yaw))
+			go.on = true
+			var p0 := f.torso.global_position
+			var fell := false
+			for i in 120 * 3:
+				await get_tree().physics_frame
+				fell = fell or f.state != "stand"
+			var went := (f.torso.global_position - p0).dot(fwd)
+			t.check(not fell and went > 4.5, "%s over a dead %s: on his feet (%s), past it (%.1f m)" % ["running" if run else "walking", what, not fell, went])
+			m.queue_free()

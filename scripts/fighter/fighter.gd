@@ -1431,7 +1431,7 @@ func _reach_tick(dt: float) -> void:
 		var palm := hand_world(side)
 		var g: Vector3 = w.grip_world()
 		var d := palm.distance_to(g)
-		if r.phase == "reach" and Vector2(g.x - torso.global_position.x, g.z - torso.global_position.z).length() > 1.0 * S:
+		if r.phase == "reach" and Vector2(g.x - torso.global_position.x, g.z - torso.global_position.z).length() > 1.4 * S:   # (a long haft lying slant has its grip a long arm's length off)
 			cancel_reach(side)   # (gone out of reach: kicked away, taken, rolled off)
 			continue
 		if r.phase != "fist":
@@ -1439,7 +1439,10 @@ func _reach_tick(dt: float) -> void:
 			# lower than gets it there.
 			r.bend = clampf(float(r.get("bend", 0.0)) + dt * (2.2 if palm.y > g.y + 0.03 * S else -0.8), 0.0, 1.0)
 			stoop = maxf(stoop, r.bend)
-			if r.phase == "reach" and d < CLOSE_R * S:
+			# Near enough to close on: the palm at it, or, the hand having got as low and as near as
+			# it can a while, a hand's breadth off it (the fingers reach the rest: it stopped a few
+			# fingers short of a grip on the sand and gave up, user).
+			if r.phase == "reach" and (d < CLOSE_R * S or (d < 0.32 * S and r.t < REACH_T * 0.55)):
 				r.phase = "draw"
 				r.draw_t = 0.5
 				r.hold = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
@@ -1457,7 +1460,7 @@ func _reach_tick(dt: float) -> void:
 				# not come: the hand is drawn to it instead), the arm taking the pull.
 				r.draw_t -= dt
 				_draw_in(w, fore, palm, g, dt)
-				if d < 0.015 * S or (w.stuck != null and d < 0.08 * S):
+				if d < 0.03 * S or (w.stuck != null and d < 0.08 * S):
 					# In the palm: the fist closes on it there (one stuck fast in a body, as near
 					# as the hand gets to it: it is drawn in properly once it is out). It hangs in it for now; the wrist
 					# turns it into line next, and he straightens up with it.
@@ -1472,6 +1475,7 @@ func _reach_tick(dt: float) -> void:
 					r.from = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
 				elif r.draw_t <= 0.0:
 					r.phase = "reach"   # it would not come: the hand goes on reaching for it
+					r.t = maxf(r.t, 0.8)   # (and has the time to: it ran out between tries)
 			continue
 		# In the fist: he straightens up with it, the hand coming up to his guard (_drive_arm),
 		# and the wrist turns it into line with the forearm against its weight and its swing.
@@ -1482,8 +1486,10 @@ func _reach_tick(dt: float) -> void:
 		if w.stuck != null:
 			r.t = TURN_T   # (stuck fast in a body: held on to until it comes out or he lets go)
 			continue
-		if d > 0.02 * S:
-			# Out of the body now, and not yet in the palm: the fingers draw it in.
+		if d > 0.07 * S:
+			# Out of the body now, and not yet in the palm: the fingers draw it in. (Well out of
+			# it: the fist closes on it within a few fingers, and slipping a finger's width while
+			# it turned sent it back and forth between the two for good.)
 			if r.pin and is_instance_valid(r.pin):
 				r.pin.queue_free()
 			r.pin = null
@@ -1507,10 +1513,9 @@ func _reach_tick(dt: float) -> void:
 			if pin and is_instance_valid(pin):
 				pin.queue_free()
 			w.own_t = 0.0
-			if err.length() > deg_to_rad(40.0):
-				# It never came into line (jammed against something): it falls from his hand.
-				w.own_t = 0.3
-				continue
+			# Taken, whether or not the wrist got it all the way into line (a long haft against the
+			# sand): the grip settles it the rest of the way. (It was let fall: a spear came up
+			# off the sand and dropped from the hand at once, user.)
 			if pick_up(side, w, true):
 				took_up.emit(self, w)
 
@@ -2343,6 +2348,20 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				off = side_w * off.dot(side_w)
 			move_world += PD.clamp_len(off * CENTER_K, 1.0)
 	on_ground = grounded
+	# The trunk goes no farther than a long stride past the foremost foot: feet caught on what lies
+	# in the way, it was driven on past them, leaning, till he fell over it. Held back there, the
+	# feet catch up (step over) and he goes on. (A man's: a giant leans far out over a man on the
+	# sand to reach him, and held back he never did.)
+	if grounded and standing and not rising and S < 1.3 and wants_move and move_world.length_squared() > 0.01:
+		var mdir := Vector3(move_world.x, 0, move_world.z).normalized()
+		var front := -INF
+		for sd in ["L", "R"]:
+			var shf: VoxelPart = by_name["shin" + sd]
+			if not shf.severed:
+				front = maxf(front, (shf.global_transform * Vector3(0, -4 * V * S, 0) - t_pos).dot(mdir))
+		if front > -INF and front < -0.45 * S:
+			var hold := clampf((-front - 0.45 * S) / (0.25 * S), 0.0, 1.0)
+			move_world -= mdir * move_world.dot(mdir) * hold
 	if grounded and standing:
 		# He moves himself by pushing off the sand: with no foot down there is next to nothing to push on.
 		var accel := (2.5 + 18.5 * minf(1, planted)) * stand_f * float(mods.accel) * (0.55 + 0.45 * heavy)
@@ -2477,7 +2496,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				# Stepping, or set down but not yet on the sand (a step ends a little above it and
 				# the foot is brought down after): either way not yet a foot to stand on.
 				var o_sole: Vector3 = by_name["shin" + os].global_transform * Vector3(0, -4 * V * S, 0)
-				other_up = feet[os].swing or o_sole.y - float((feet[os].anchor as Vector3).y) > float(GAIT.down) * S
+				# (Both up off their plants, the one on something lying there, a sword, the other
+				# rolled onto its toe: each waited on the other, neither stepped, and he stood stuck
+				# leaning over them. Then either may.)
+				var my_sole: Vector3 = shin.global_transform * Vector3(0, -4 * V * S, 0)
+				var me_up: bool = not ft.swing and my_sole.y - float((ft.anchor as Vector3).y) > float(GAIT.down) * S
+				other_up = feet[os].swing or (o_sole.y - float((feet[os].anchor as Vector3).y) > float(GAIT.down) * S and not me_up)
 			if hop_phase > 0.0:
 				# Hopping: the good foot stays under him, leaves the sand at the top of each hop
 				# and lands a little ahead; the stump does not step.
@@ -2505,6 +2529,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				# Set down on what is where it lands (stepping off a ledge it was set down at the
 				# ledge's height and hung over the sand below it, up onto one into its face).
 				ft.land.y = _ground_under(ft.land, neutral.y)
+				# What is in the way between (a body lying there): the foot lifted over it, as a man
+				# steps over a thing, not dragged into it at a few fingers off the sand.
+				var mid_at: Vector3 = ((ft.from as Vector3) + (ft.land as Vector3)) * 0.5
+				var over_h := _ground_under(mid_at, mid_at.y) - mid_at.y
+				ft.lift = over_h + 0.06 * S if over_h > 0.03 * S else 0.0
 				var rate: float = h_speed / step_len if moving else 4.0
 				ft.s = minf(1.0, ft.s + dt * rate)
 				# On the sand again is down: past the top of its step, a foot that touches it is
@@ -2547,7 +2576,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var ease: float = ft.s * ft.s * (3.0 - 2.0 * ft.s)
 			# The foot clears the sand by a few fingers, as a walking man's does (it went up a hand
 			# and a half, a march), a little more at a run.
-			var target: Vector3 = (ft.from as Vector3).lerp(ft.land, ease) + Vector3(0, sin(PI * ft.s) * (float(GAIT.arc) + float(GAIT.arc_run) * move_amt) * S, 0) if ft.swing else ft.anchor
+			var target: Vector3 = (ft.from as Vector3).lerp(ft.land, ease) + Vector3(0, sin(PI * ft.s) * ((float(GAIT.arc) + float(GAIT.arc_run) * move_amt) * S + float(ft.get("lift", 0.0))), 0) if ft.swing else ft.anchor
 			ft.target_y = target.y
 			if hop_phase > 0.0 and hop_k > 0.6:
 				target.y += (hop_k - 0.6) * 0.2 * S   # the foot tucks up at the top of the hop
@@ -2580,6 +2609,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if standing and grounded and not kicking and feet[side] and not feet[side].swing and not shin.severed and not shin.hanging and not rising:
 			var sole := shin.global_transform * Vector3(0, -4 * V * S, 0)
 			var goal: Vector3 = feet[side].anchor
+			# Planted on something higher than its plant (a body lying there, a dropped shield): it
+			# stands on that. (Held to the sand under it, it read as never down, the other foot
+			# waited on it for good, and he stood leaning on into the body till he fell over it.)
+			if sole.y - goal.y > float(GAIT.down) * S:
+				var under := _ground_under(sole, goal.y)
+				if under > goal.y + 0.01 * S:
+					goal.y = minf(under, sole.y)
+					feet[side].anchor = goal
 			var sv := shin.velocity_at(sole)
 			# Held and braked no harder than the sole itself answers to: pushed at the sole the
 			# shin turns about it, much lighter than the leg it stands for, and braked as the
@@ -3714,7 +3751,7 @@ func _ground_under(at: Vector3, fallback: float) -> float:
 ## threw him into the air or sat him on its head), nor a body still on the move.
 func _ground_ray(space: PhysicsDirectSpaceState3D, from: Vector3) -> Dictionary:
 	var to := from + Vector3(0, -2.2 * S, 0)
-	var h := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY, _own_rids()))
+	var h := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, _own_rids()))
 	if h and not _is_dead_ground(h.collider):
 		h = space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD))
 	return h
@@ -4214,6 +4251,12 @@ func set_standing(on: bool) -> void:
 		stood_at = time
 	_legs_touch_ground(not on)
 	_legs_apart(not on)
+	# Standing, he walks on over the dead (his feet on what is under them, a body's top among it):
+	# caught on one, legs or trunk, he stalled against it and fell over it, or stood blocked by a
+	# dead lion (user). Down, he lies on them.
+	for p in parts:
+		if not p.severed and p.collision_layer == VoxelPart.LAYER_BODY:
+			p.collision_mask = (p.collision_mask & ~VoxelPart.LAYER_CORPSE) if on else (p.collision_mask | VoxelPart.LAYER_CORPSE)
 
 ## Standing (and getting up) the legs are held by the support spring, not the sand; lying, they
 ## rest on it.
@@ -4284,6 +4327,7 @@ func die(cause := "") -> void:
 		return
 	state = "dead"
 	set_standing(false)
+	VoxelPart.to_corpse(parts)
 	for side in ["R", "L"]:
 		release(side)
 	died.emit(self, cause)
@@ -4951,7 +4995,7 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 		ch.flap_joint = j
 		# It swings against the flesh it hangs from rather than through it.
 		ch.remove_collision_exception_with(part)
-		ch.collision_mask |= VoxelPart.LAYER_BODY
+		ch.collision_mask |= VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE
 		flaps.append({"chunk": ch, "part": part, "link": link, "idx": idx})
 		res.flapped = true
 		made = true
@@ -5074,7 +5118,7 @@ func _drop_half(part: VoxelPart, lump: PackedInt32Array, res: Dictionary, dir: V
 	if piece:
 		piece.angular_velocity = Vector3.ZERO
 		piece.mass = maxf(piece.mass, part.nominal_mass * fraction)
-		piece.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_DEBRIS
+		piece.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
 		piece.angular_damp = 0.3
 	var names := []
 	for ch in carried:
@@ -5236,7 +5280,7 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		p.severed = true
 		p.hp = 0.0
 		p.collision_layer = VoxelPart.LAYER_DEBRIS
-		p.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
+		p.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
 	# The piece still overlaps the stump it came off: meeting its owner's body at once, the
 	# solver flung it across the arena. It falls clear first, then it is a thing in the world.
 	if is_inside_tree():

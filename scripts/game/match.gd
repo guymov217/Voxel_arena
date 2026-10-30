@@ -833,6 +833,11 @@ func _physics_process(dt: float) -> void:
 		var f = e.f
 		if not is_instance_valid(f):
 			continue
+		# The dead at rest are seen to now and then, not every step: each body lying still cost
+		# as much as a man on his feet (eight of them and the game crawled, user). Anything that
+		# moves one (a blow, a blast, a man treading on it) has it seen to again at once.
+		if not f.alive and _at_rest(e, f, dt) and (tick + int(e.get("id", 0))) % REST_EVERY != 0:
+			continue
 		var inp := {}
 		# Tests (and the tutorial) can drive any fighter by hand.
 		var kind_: String = "drive" if e.has("drive") else String(e.kind)
@@ -968,6 +973,26 @@ func _physics_process(dt: float) -> void:
 					continue
 			Net.send_all("snap", [row], false)
 	_check_round(dt)
+
+## Whether a dead body has lain still a while (nothing on it moving, nothing burning on it):
+## then its parts may sleep, and it is looked after only every REST_EVERY steps.
+const REST_EVERY := 15
+const REST_AFTER := 1.5
+func _at_rest(e: Dictionary, f, dt: float) -> bool:
+	var still := true
+	for p in f.parts:
+		if not p.severed and (p.linear_velocity.length_squared() > 0.04 or not p.spots.is_empty()):
+			still = false
+			break
+	e.rest_t = float(e.get("rest_t", 0.0)) + dt if still else 0.0
+	var resting: bool = e.rest_t > REST_AFTER
+	if resting:
+		# Put to sleep: the physics wakes a part itself the moment anything touches or pushes it.
+		for p in f.parts:
+			if not p.severed and not p.sleeping:
+				p.can_sleep = true
+				p.sleeping = true
+	return resting
 
 ## The player's own hands on his fighter: the same for the host's player and for a guest on his
 ## own machine (whose input then goes to the host): the bow's aim mode and sway, E by a keeper,

@@ -132,7 +132,7 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	# stroke was held there, and the arms could not get it back up.
 	physics_material_override = _slip()
 	collision_layer = VoxelPart.LAYER_WEAPON
-	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
+	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
 	var all := []
 	for i in vox.size():
 		all.append(i)
@@ -788,7 +788,7 @@ func velocity_at(p: Vector3) -> Vector3:
 func set_held_by(f: Node) -> void:
 	holder = f
 	if f:
-		collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS
+		collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
 
 ## Put in a hand where it already runs through someone (bought at the smith, who stands in front
 ## of the buyer): it passes through those parts until it is clear of them, rather than wounding

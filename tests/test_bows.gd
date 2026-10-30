@@ -109,3 +109,26 @@ func test_a_shot_leaves_from_the_line_of_sight() -> void:
 	t.check(p.distance_to(bow) < 1.2, "beside the bow (%.2f m from it)" % p.distance_to(bow))
 	t.check(m.throwables._on_sight(bow, {"aimAt": aim}).is_equal_approx(bow), "with no line of sight sent (an old guest) it leaves from the bow")
 	m.queue_free()
+
+func test_a_bot_archer_does_not_shoot_every_arrow_at_the_middle_of_the_chest() -> void:
+	# User: they always shot at the centre of the chest, and a man standing still was hit there
+	# every time. Aimed from eight metres at a man standing still: the marks spread over him.
+	seed(11)
+	var m := _match()
+	var v := _victim(m, Vector3(0, 0, 0))
+	await get_tree().physics_frame
+	var from := v.torso.global_position + Vector3(0, 0.4, -8.0)
+	var chest := v.torso.global_position
+	var near_chest := 0
+	var heights := []
+	var n := 200
+	for i in n:
+		var at: Vector3 = m.throwables.bot_aim({}, v, from, 40.0, 0.01)
+		heights.append(at.y)
+		if at.distance_to(chest) < 0.08:
+			near_chest += 1
+	heights.sort()
+	var spread: float = float(heights[int(n * 0.9)]) - float(heights[int(n * 0.1)])
+	t.check(near_chest < n / 5, "few within a hand of the chest's middle (%d of %d)" % [near_chest, n])
+	t.check(spread > 0.4, "the marks run from the legs to the head (%.2f m between the 10th and 90th)" % spread)
+	m.queue_free()

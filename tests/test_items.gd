@@ -53,12 +53,19 @@ func test_an_archer_draws_looses_and_the_arrow_sticks() -> void:
 	# Aim straight at him: the look the archer looses along.
 	var d: Vector3 = b.f.torso.global_position - a.f.weapons.R.global_position
 	a.drive = func(_e): return {"main": {"x": 0.3, "y": 0.45}, "power": phase[0] == 1, "look": {"yaw": atan2(d.x, d.z), "pitch": atan2(d.y - 0.15, Vector2(d.x, d.z).length()) - 0.04}}
-	phase[0] = 1
-	await _steps(150)
-	phase[0] = 2
-	await _steps(4)
-	t.check(m.items.list.any(func(it): return it.type == "pot_arrow"), "an arrow is in the air")
-	await _steps(60)
+	# (A bot's shot scatters like a man's, at a mark of its own choosing: it may take him more than
+	# one arrow, as it would a man.)
+	var flew := false
+	for shot in 3:
+		phase[0] = 1
+		await _steps(150)
+		phase[0] = 2
+		await _steps(4)
+		flew = flew or m.items.list.any(func(it): return it.type == "pot_arrow")
+		await _steps(60)
+		if hits.any(func(h): return h.type == "point"):
+			break
+	t.check(flew, "an arrow is in the air")
 	t.check(not hits.is_empty() and hits.any(func(h): return h.type == "point"), "it went in (%d hits)" % hits.size())
 	var bleed := 0.0
 	for p in b.f.parts:

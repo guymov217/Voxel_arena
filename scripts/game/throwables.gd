@@ -1593,9 +1593,10 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		from += dir * 0.5
 	else:
 		var tgt = m.nearest_enemy(e)
-		var aim: Vector3 = tgt.f.torso.global_position + Vector3(0, 0.2, 0) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
+		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		var aim: Vector3 = bot_aim(e, tgt.f, from, speed, _bow_wobble(c, draw, hold_t)) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
 		var dd := aim - from
-		var t := maxf(0.15, dd.length() / (ARROW_SPEED.x + ARROW_SPEED.y * draw))
+		var t := maxf(0.15, dd.length() / speed)
 		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
 		from += dd.normalized() * 0.5
 	var gem = w.design.get("gem")
@@ -1605,6 +1606,47 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	m.sfx("twang", from)
 	m.sfx("whoosh", from, 0.6)
 	c.stamina = maxf(0.0, c.stamina - 9.0)
+
+## Where a bot's arrow or bolt is aimed: a man's shot, not a machine's. He picks a mark on the man
+## (the chest most often, the belly, now and then the head or a thigh), anywhere on it, leads him
+## if he is on the move, and the shot scatters as a man's does: more the farther, the shorter the
+## draw (`wobble`), the worse the archer, so the arms, the legs and the sand get their share (all
+## went to the dead centre of the chest, and a man who stood still was hit there every time: user).
+func bot_aim(e: Dictionary, t, from: Vector3, speed: float, wobble: float) -> Vector3:
+	var marks := [["torso", 5.0], ["belly", 3.0], ["head", 1.0], ["thighR", 0.5], ["thighL", 0.5]]
+	var tot := 0.0
+	for mk in marks:
+		tot += float(mk[1])
+	var r := randf() * tot
+	var pick := "torso"
+	for mk in marks:
+		r -= float(mk[1])
+		if r <= 0.0:
+			pick = String(mk[0])
+			break
+	var names: Dictionary = t.by_name if t.get("by_name") is Dictionary else {}
+	var part = names.get("torso" if pick == "belly" else pick, t.torso)
+	if part == null or not is_instance_valid(part) or part.severed:
+		part = t.torso
+	# Somewhere on that part, not its middle (the belly: the trunk's lower half).
+	var he: Vector3 = part.half_ext
+	var y0 := -0.55 if pick == "belly" else 0.0
+	var at: Vector3 = part.global_transform * Vector3(randf_range(-0.6, 0.6) * he.x, (y0 + randf_range(-0.45, 0.45)) * he.y, randf_range(-0.6, 0.6) * he.z)
+	var dist := at.distance_to(from)
+	# Led: where he will be when it arrives (a little short of it: no one leads perfectly).
+	var lv: Vector3 = t.torso.linear_velocity
+	at += Vector3(lv.x, 0, lv.z) * (dist / maxf(1.0, speed)) * randf_range(0.5, 1.0)
+	# The scatter: an angle off the line, the archer's own wobble and his skill.
+	var diff := 0.7
+	if e.get("bot") != null and e.bot.get("diff") != null:
+		diff = float(e.bot.diff)
+	var spread := wobble + 0.02 + 0.035 * (1.0 - diff)
+	var a := randf() * TAU
+	var k := sqrt(randf()) * spread * dist
+	var dd := (at - from).normalized()
+	var sd := Vector3(dd.z, 0, -dd.x).normalized()
+	var upv := sd.cross(dd).normalized()
+	return at + sd * cos(a) * k + upv * sin(a) * k
 
 ## Where a shot leaves from: on the crosshair's own line of sight, beside the bow (the nearest
 ## point of it), not at the bow out on the right shoulder. From there it flies under the
@@ -1748,7 +1790,7 @@ func _crossbow(e: Dictionary, w: Weapon, thrust: float, dt: float, inp := {}) ->
 	var td := _tip(w)
 	w.set_meta("reload", CROSSBOW_RELOAD)
 	var tgt = m.nearest_enemy(e)
-	var aim: Vector3 = tgt.f.torso.global_position if tgt else td[0] + td[1] * 8.0
+	var aim: Vector3 = bot_aim(e, tgt.f, td[0], BOLT_SPEED, 0.012) if tgt else td[0] + td[1] * 8.0
 	var start: Vector3 = td[0]
 	if (e.kind == "local" or e.kind == "remote") and inp.get("aimAt") is Vector3:
 		aim = inp.aimAt

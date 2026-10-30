@@ -125,7 +125,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		p.angular_damp = 2.0
 		p.collision_layer = VoxelPart.LAYER_BODY
 		var no_ground: bool = d.leg and not d.lower
-		p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | (0 if no_ground else VoxelPart.LAYER_WORLD)
+		p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE | (0 if no_ground else VoxelPart.LAYER_WORLD)
 		var pm := PhysicsMaterial.new()
 		# A paw grips, but on four legs a mistimed step slides rather than folding the leg back
 		# under; a two-legged runner (the ostrich) needs all the grip it can get.
@@ -410,6 +410,7 @@ func die(cause := "") -> void:
 	if state == "dead":
 		return
 	state = "dead"
+	VoxelPart.to_corpse(parts)
 	_release_coil()
 	hug = null
 	_free_holds()

@@ -9,6 +9,18 @@ const LAYER_WORLD := 1
 const LAYER_BODY := 2
 const LAYER_WEAPON := 4
 const LAYER_DEBRIS := 8
+## The dead: a body lying in the arena. Everything that meets a body meets it too, except a
+## standing man: he walks on over it (the ground under his feet is its top), where his legs
+## caught on it, he stalled against it and fell over it (user).
+const LAYER_CORPSE := 16
+
+## A body that has died, put on the dead's layer: it meets the sand, weapons, pieces, other dead
+## and the living who look for it (beasts, a man down), not a man on his feet.
+static func to_corpse(ps: Array) -> void:
+	for p in ps:
+		if is_instance_valid(p) and not p.severed and p.collision_layer == LAYER_BODY:
+			p.collision_layer = LAYER_CORPSE
+			p.collision_mask = LAYER_WORLD | LAYER_WEAPON | LAYER_DEBRIS | LAYER_CORPSE
 
 const SMEAR := Color(0.306, 0.039, 0.039)
 const BRUISE := Color(0.29, 0.157, 0.282)

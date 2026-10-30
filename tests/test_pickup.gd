@@ -186,7 +186,7 @@ func test_a_weapon_on_the_sand_is_reached_for_and_taken_by_hand() -> void:
 	t.check(o.held_at > 20, "the hand takes it after going to it (held after %d steps; %s)" % [o.held_at, o.phases])
 	t.check(o.low < 0.25, "down to it on the sand (the hand as low as %.2f m)" % o.low)
 	t.check(o.jump < 0.06, "it never jumps on the way: at most %.3f m in a step" % o.jump)
-	t.check(o.closed_d >= 0.0 and o.closed_d < 0.02 and o.turn < 10.0, "gripped only once it is in the palm (%.3f m off) and in line (%.1f deg)" % [o.closed_d, o.turn])
+	t.check(o.closed_d >= 0.0 and o.closed_d < 0.035 and o.turn < 10.0, "gripped only once it is in the palm (%.3f m off) and in line (%.1f deg)" % [o.closed_d, o.turn])
 	t.check(o.stood, "he stoops for it and stays on his feet")
 	t.check(f.weapons[side] == w and w.holder == f, "and holds it at the end")
 	m.queue_free()
@@ -354,3 +354,26 @@ func test_no_blade_holds_a_man_for_good() -> void:
 	if gw:
 		t.eq(Combat.lodge_chance(gw, "edge", 80.0, 0.0, {"bone": true}), 0.0, "his axe never stays in a man")
 	m.queue_free()
+
+func test_a_long_weapon_off_the_sand_is_taken_and_kept() -> void:
+	# User: a spear taken up off the sand came up and fell from the hand at once, and at times
+	# was never taken at all. Lying every which way, it ends in the hand and stays there.
+	var held := 0
+	var tries := 0
+	for kind in ["spear", "zweihander"]:
+		for ang in [0.0, 45.0, 90.0, 135.0]:
+			var m := _match()
+			var f := _bare(m, Vector3(0, 0, 4), 0.0)
+			await _steps(60)
+			var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
+			var at: Vector3 = f.torso.global_position * Vector3(1, 0, 1) + fwd * 0.5 + Vector3(0, 0.12, 0)
+			var w := m.spawn_loose_weapon(Data.preset(kind), at)
+			w.global_transform = Transform3D(Basis(Vector3.FORWARD, PI * 0.5).rotated(Vector3.UP, deg_to_rad(ang)), at)
+			await _steps(90)
+			f.grab_nearest(m.combat.loose_weapons)
+			await _steps(600)
+			tries += 1
+			if (f.weapons.R == w or f.weapons.L == w) and w.holder == f:
+				held += 1
+			m.queue_free()
+	t.check(held == tries, "every one taken and kept (%d of %d)" % [held, tries])

@@ -100,7 +100,7 @@ func _add_link(group: Array, at_wound: bool) -> void:
 	ch.angular_velocity = Vector3.ZERO
 	# They heap on the sand and on each other, hang over his legs (not through them), and a blade
 	# passing through is felt. Only the trunk they come out of is let through.
-	ch.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_BODY
+	ch.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE
 	if fighter and fighter.get("parts"):
 		for p in fighter.parts:
 			if p != tor and is_instance_valid(p):
