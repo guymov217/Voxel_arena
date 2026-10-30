@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checks every sound of the game for what makes it crackle or hiss: clipping, clicks (a jump
-between samples no sound of its own makes), hiss (energy high up the spectrum, noise-flat), a
+between samples no sound of its own makes), a deep static (noise under a made sound's body), hiss (energy high up the spectrum, noise-flat), a
 cut-off start or end, and for the recorded voices the noise floor under them (the room and the
 microphone's hiss between and behind the calls).
 
@@ -11,6 +11,9 @@ import os, subprocess, sys
 import numpy as np
 
 SR = 22050
+# Made sounds that are noise by nature (air, a crowd, a rattle of shards, a hiss), and a squeak
+# (one tone sweeping across the band reads as noise to the measure).
+BREATHY = ("whoosh", "cheer", "boo", "murmur", "shatter", "hiss", "draw", "freeze", "growl", "roar", "screech", "scream", "pain", "grunt", "squeak")
 
 def load(path):
     if path.endswith(".wav"):
@@ -81,6 +84,23 @@ def floor_db(x, sr):
     seg = np.concatenate([x[i * w:(i + 1) * w] for i in sorted(q)])
     return float(20 * np.log10(lo / hi)), flatness(seg, sr, 1500, min(10000, sr / 2 - 1))
 
+def deep_noise(x, sr):
+    """A deep static: low-band noise under a sound after its first 20 ms (a knock, a cut, a
+    crunch rings in tones; noise filtered down to the body of a blow is heard as static). The
+    noise floor of each 30 ms frame in 40-1500 Hz (its median bin, over every bin) against all of
+    it, weighted by energy."""
+    w = int(0.03 * sr); h = w // 3; i0 = int(0.02 * sr)
+    if len(x) < i0 + w:
+        return 0.0
+    f = np.fft.rfftfreq(w, 1.0 / sr)
+    band = (f >= 40) & (f < 1500)
+    nz = tot = 0.0
+    for s in range(i0, len(x) - w, h):
+        b = np.abs(np.fft.rfft(x[s:s + w] * np.hanning(w)))[band] ** 2
+        nz += np.median(b) * len(b)
+        tot += b.sum()
+    return float(nz / max(tot, 1e-12))
+
 def audit(path):
     x, sr = load(path)
     if len(x) == 0:
@@ -92,6 +112,7 @@ def audit(path):
     flat = flatness(x, sr, 2000, min(9000, sr / 2 - 1))
     edge = max(abs(float(x[0])), abs(float(x[-1]))) / (peak + 1e-9)
     fl, fflat = floor_db(x, sr)
+    deep = deep_noise(x, sr)
     flags = []
     if clip > 0:
         flags.append("CLIP")
@@ -99,11 +120,14 @@ def audit(path):
         flags.append("CLICK")
     if hiss > 0.12 and flat > 0.25:
         flags.append("HISS")
+    # Only the made sounds: a breath in a recorded voice, or a crowd, is meant to be noise.
+    if path.endswith(".wav") and deep > 0.15 and not os.path.basename(path).startswith(BREATHY):
+        flags.append("STATIC")
     if edge > 0.05:
         flags.append("CUT")
     if path.endswith(".ogg") and fl > -45 and fflat > 0.3 and len(x) > sr * 0.3:
         flags.append("FLOOR")
-    return {"name": os.path.basename(path), "peak": peak, "clip": clip, "clicks": nclick, "hiss": hiss, "flat": flat, "edge": edge, "floor": fl, "fflat": fflat, "flags": flags}
+    return {"name": os.path.basename(path), "peak": peak, "clip": clip, "clicks": nclick, "hiss": hiss, "flat": flat, "edge": edge, "floor": fl, "fflat": fflat, "deep": deep, "flags": flags}
 
 def main():
     paths = []
@@ -114,11 +138,11 @@ def main():
             paths.append(d)
     rows = [r for r in (audit(p) for p in paths) if r]
     bad = 0
-    print("%-28s %5s %5s %6s %5s %5s %5s %6s %5s  %s" % ("sound", "peak", "clip", "clicks", "hiss", "flat", "edge", "floor", "fflat", "FLAG"))
+    print("%-28s %5s %5s %6s %5s %5s %5s %6s %5s %5s  %s" % ("sound", "peak", "clip", "clicks", "hiss", "flat", "edge", "floor", "fflat", "deep", "FLAG"))
     for r in sorted(rows, key=lambda r: (-len(r["flags"]), r["name"])):
         if r["flags"]:
             bad += 1
-        print("%-28s %5.2f %5d %6d %5.2f %5.2f %5.2f %6.1f %5.2f  %s" % (r["name"], r["peak"], r["clip"], r["clicks"], r["hiss"], r["flat"], r["edge"], r["floor"], r["fflat"], " ".join(r["flags"])))
+        print("%-28s %5.2f %5d %6d %5.2f %5.2f %5.2f %6.1f %5.2f %5.2f  %s" % (r["name"], r["peak"], r["clip"], r["clicks"], r["hiss"], r["flat"], r["edge"], r["floor"], r["fflat"], r["deep"], " ".join(r["flags"])))
     print("%d sounds, %d flagged" % (len(rows), bad))
     sys.exit(1 if bad else 0)
 

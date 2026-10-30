@@ -169,11 +169,11 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 			"slap":
 				# A palm or a flat on skin: a short dull smack, rounded off (high-passed noise was a
 				# crackle of static).
-				var k := _lp_k(1800.0)
+				var k := _lp_k(2000.0)
 				lp += (rng.randf_range(-1, 1) - lp) * k
 				lp2 += (lp - lp2) * k
 				ph += TAU * 220.0 * tone / RATE
-				s = (lp2 * 2.6 + sin(ph) * 0.35) * exp(-t * 45.0)
+				s = lp2 * 2.6 * exp(-t * 280.0) + sin(ph) * 0.4 * exp(-t * 50.0) + sin(ph * 2.1) * 0.15 * exp(-t * 80.0)
 			"whoosh":
 				# Air parted by a swing: a band of noise that rises and falls, rounded on top.
 				var L: float = LENGTH[kind]
@@ -225,9 +225,10 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				# chest ringing a moment, and the smack of the hand on top.
 				var f := 82.0 * tone * (1.0 + 0.7 * exp(-t * 35.0))
 				var body := sin(TAU * f * t) * exp(-t * 14.0) + 0.35 * sin(TAU * f * 2.1 * t) * exp(-t * 26.0)
-				var hp3 := rng.randf_range(-1, 1) - lp
-				lp += hp3 * 0.3
-				s = body * 0.6 * minf(1.0, t * 600.0) + hp3 * exp(-t * 90.0) * 0.22
+				var k := _lp_k(2200.0)
+				lp += (rng.randf_range(-1, 1) - lp) * k
+				lp2 += (lp - lp2) * k
+				s = body * 0.6 * minf(1.0, t * 600.0) + lp2 * exp(-t * 300.0) * 0.6
 			"pickup":
 				s = sin(TAU * (600.0 + 2500.0 * t) * t) * exp(-t * 25.0) * 0.6
 			"tick":
@@ -235,7 +236,7 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				var k := _lp_k(2400.0)
 				lp += (rng.randf_range(-1, 1) - lp) * k
 				lp2 += (lp - lp2) * k
-				s = (sin(TAU * 820.0 * t) * 0.6 + lp2 * 1.5) * exp(-t * 70.0) * 0.5
+				s = sin(TAU * 820.0 * t) * 0.3 * exp(-t * 70.0) + lp2 * 0.75 * exp(-t * 300.0)
 			"boing":
 				# A spring let go: a low tone that wobbles up and down as it dies away.
 				s = sin(TAU * 150.0 * tone * t * (1.0 + 0.35 * sin(TAU * 9.0 * t) * exp(-t * 3.0))) * exp(-t * 5.0) * 0.6
@@ -276,8 +277,8 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	return w
 
 ## The blows' own sounds (a cut biting in, the flat of a blade, bone giving, steel skidding off
-## a plate, a club's knock): noise filtered down to the body of the sound over tones, never raw
-## noise (that was a hiss of static over every blow), and levelled to a peak well under full
+## a plate, a club's knock): ringing tones with noise only at the instant of contact (raw noise
+## was a hiss of static over every blow, filtered noise a deep one), and levelled to a peak well under full
 ## scale (they come two and three to a blow, and clipped, they crackled).
 const BLOWS := {"chop": 0.55, "flat": 0.45, "crunch": 0.5, "scrape": 0.4, "thud": 0.7, "slash": 0.45, "stab": 0.5}   # each one's peak
 const PEAK := 0.7   # no other sound made here goes higher (a few at once must not clip)
@@ -315,85 +316,83 @@ func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(n)
 	var L := float(n) / RATE
-	# Two-pole low-passes over the one noise: a (and its second pole a2), b, c.
-	var a1 := 0.0; var a2 := 0.0; var b1 := 0.0; var b2 := 0.0; var c1 := 0.0; var c2 := 0.0
-	var ph := 0.0; var ph2 := 0.0
-	var crack := 0.0; var crack_n := 0; var crack_a := 0.0; var crack_len := 1
+	# A blow is a knock that rings a moment and dies, not a noise: the body it lands on rings at a
+	# few low tones (each its own decay), the edge or point bites with a short falling chirp, and
+	# only the instant of contact is noise, a few milliseconds of it (a body of filtered noise
+	# under every blow was a deep static on each one, user).
+	var tr1 := 0.0; var tr2 := 0.0
+	var ph := [0.0, 0.0, 0.0, 0.0]
+	# Bone giving way: a few dry cracks, each a ring a few milliseconds long, at set moments.
+	var cracks := []
+	if kind == "crunch":
+		var tc := 0.004
+		for j in rng.randi_range(4, 6):
+			cracks.append([tc, rng.randf_range(1300.0, 2600.0), rng.randf_range(0.5, 1.0) * exp(-tc * 9.0)])
+			tc += rng.randf_range(0.012, 0.035)
 	for i in n:
 		var t := float(i) / RATE
-		var nz := rng.randf_range(-1.0, 1.0)
-		var att := minf(1.0, t * 450.0)   # (a 2 ms onset: no click at the start)
 		var s := 0.0
+		# The contact: noise rounded off twice and gone within a few milliseconds.
+		var tr_hz := 2500.0
+		var tr_d := 280.0
+		var tr_a := 0.6
 		match kind:
 			"chop":
-				# A blade biting into meat: the knock of the body taking it (a low tone falling),
-				# the soft tear of the flesh, and a wet thud under it.
-				var ka := _lp_k(1500.0)
-				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
-				var kb := _lp_k(700.0)
-				var kc := _lp_k(220.0)
-				b1 += (nz - b1) * kb; b2 += (b1 - b2) * kb
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				ph += TAU * (150.0 - 75.0 * minf(1.0, t / 0.12)) * tone / RATE
-				s = sin(ph) * exp(-t * 26.0) * 0.55 + a2 * 3.2 * exp(-t * 40.0) + (b2 - c2) * 5.0 * exp(-t * 18.0)
+				tr_hz = 3000.0; tr_a = 0.8
+				ph[0] += TAU * (150.0 - 65.0 * minf(1.0, t / 0.06)) * tone / RATE
+				ph[1] += TAU * 265.0 * tone / RATE
+				ph[2] += TAU * 530.0 * tone / RATE
+				ph[3] += TAU * (950.0 - 600.0 * minf(1.0, t / 0.025)) * tone / RATE   # the bite
+				s = sin(ph[0]) * 0.6 * exp(-t * 22.0) + sin(ph[1]) * 0.3 * exp(-t * 40.0) + sin(ph[2]) * 0.12 * exp(-t * 70.0) + sin(ph[3]) * 0.25 * exp(-t * 90.0)
 			"flat":
-				# The flat of a blade on flesh: a dull smack, no edge in it.
-				var ka := _lp_k(1100.0)
-				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
-				ph += TAU * 190.0 * tone / RATE
-				s = a2 * 3.5 * exp(-t * 55.0) + sin(ph) * exp(-t * 38.0) * 0.4
+				tr_hz = 2200.0; tr_a = 1.0; tr_d = 300.0
+				ph[0] += TAU * 190.0 * tone / RATE
+				ph[1] += TAU * 410.0 * tone / RATE
+				s = sin(ph[0]) * 0.4 * exp(-t * 45.0) + sin(ph[1]) * 0.18 * exp(-t * 70.0)
 			"crunch":
-				# Bone giving way: a low knock, and a run of short dry cracks thinning out, each
-				# a little burst of noise rounded off (no fizz over the top).
-				if crack_n <= 0 and rng.randf() < 0.010 * exp(-t * 9.0):
-					crack_n = rng.randi_range(40, 90)
-					crack_len = crack_n
-					crack_a = rng.randf_range(0.4, 1.0)
-				var cr := 0.0
-				if crack_n > 0:
-					crack_n -= 1
-					cr = nz * crack_a * sin(PI * float(crack_n) / crack_len)   # (each crack swells and dies: no edge)
-				var ka := _lp_k(2600.0)
-				a1 += (cr - a1) * ka; a2 += (a1 - a2) * ka
-				var kc := _lp_k(350.0)
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				ph += TAU * 105.0 * tone / RATE
-				s = sin(ph) * exp(-t * 24.0) * 0.5 + a2 * 2.2 * exp(-t * 6.0) + c2 * 2.5 * exp(-t * 30.0)
+				tr_hz = 2800.0; tr_a = 0.5
+				ph[0] += TAU * 105.0 * tone / RATE
+				ph[1] += TAU * 230.0 * tone / RATE
+				s = sin(ph[0]) * 0.5 * exp(-t * 24.0) + sin(ph[1]) * 0.2 * exp(-t * 45.0)
+				for c in cracks:
+					var u: float = t - float(c[0])
+					if u >= 0.0 and u < 0.03:
+						s += sin(TAU * float(c[1]) * tone * u) * float(c[2]) * 0.45 * exp(-u * 380.0) * minf(1.0, u * 4000.0)
 			"scrape":
-				# Steel skidding off a plate: a metal ring sliding down as the edge runs off, and
-				# the grind of it in a narrow band, rough with the plate's grain.
+				# Steel skidding off a plate: the ring of it sliding down, rough with the plate's
+				# grain (the grain a flutter on the ring, not a grind of noise).
+				tr_hz = 3200.0; tr_a = 0.35; tr_d = 350.0
 				var slide := 1.0 - 0.15 * t / L
-				ph += TAU * 1650.0 * tone * slide / RATE
-				ph2 += TAU * 2480.0 * tone * slide / RATE
-				var ring := (sin(ph) * 0.6 + sin(ph2) * 0.35) * exp(-t * 7.5)
-				var ka := _lp_k(2400.0)
-				var kc := _lp_k(1000.0)
-				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				var grind := (a2 - c2) * (0.65 + 0.35 * sin(TAU * 28.0 * t)) * sin(PI * minf(1.0, t / (0.9 * L)))
-				s = ring * 0.5 + grind * 1.6
+				ph[0] += TAU * 1650.0 * tone * slide / RATE
+				ph[1] += TAU * 2480.0 * tone * slide / RATE
+				ph[2] += TAU * 1130.0 * tone * slide / RATE
+				var rough := 0.6 + 0.4 * sin(TAU * 31.0 * t) * sin(TAU * 47.0 * t + 1.3)
+				s = (sin(ph[0]) * 0.5 + sin(ph[1]) * 0.3 + sin(ph[2]) * 0.3 * rough) * exp(-t * 7.5) * 0.6
 			"slash":
-				# A cut that only opens the skin: a short swish of the edge across it, in a band
-				# (the old one, near raw noise, was a hiss of static on every light cut).
-				var ka := _lp_k(2300.0)
-				var kc := _lp_k(700.0)
-				a1 += (nz - a1) * ka; a2 += (a1 - a2) * ka
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				ph += TAU * 160.0 * tone / RATE
-				s = (a2 - c2) * 3.0 * exp(-t * 28.0) + sin(ph) * exp(-t * 45.0) * 0.3
+				# A cut that only opens the skin: the edge's quick "fwip" across it and a light knock.
+				tr_hz = 3500.0; tr_a = 0.7; tr_d = 320.0
+				ph[0] += TAU * (2200.0 - 1500.0 * minf(1.0, t / 0.05)) * tone / RATE
+				ph[1] += TAU * 160.0 * tone / RATE
+				s = sin(ph[0]) * 0.32 * exp(-t * 55.0) + sin(ph[1]) * 0.3 * exp(-t * 45.0)
 			"stab":
-				# A point driven in: a short knock falling in pitch, and a wet rounded thud.
-				var kc := _lp_k(900.0)
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				ph += TAU * (190.0 - 70.0 * minf(1.0, t / 0.1)) * tone / RATE
-				s = sin(ph) * exp(-t * 24.0) * 0.6 + c2 * 3.0 * exp(-t * 26.0)
+				# A point driven in: a short knock falling in pitch and a wet squelch.
+				tr_hz = 2000.0; tr_a = 0.6
+				ph[0] += TAU * (190.0 - 70.0 * minf(1.0, t / 0.1)) * tone / RATE
+				ph[1] += TAU * 360.0 * tone / RATE
+				ph[2] += TAU * (700.0 - 450.0 * minf(1.0, t / 0.04)) * tone / RATE
+				s = sin(ph[0]) * 0.6 * exp(-t * 24.0) + sin(ph[1]) * 0.2 * exp(-t * 50.0) + sin(ph[2]) * 0.3 * exp(-t * 60.0)
 			"thud":
-				# A knock: a low tone falling away, with a dull rumble of the blow in it.
-				var kc := _lp_k(500.0)
-				c1 += (nz - c1) * kc; c2 += (c1 - c2) * kc
-				ph += TAU * 90.0 * tone * (1.0 - 2.0 * t) / RATE
-				s = (sin(ph) + c2 * 2.6) * exp(-t * 20.0)
-		s *= att * minf(1.0, (L - t) * 200.0)   # (and a 5 ms close: no click at the end)
+				# A knock: a low tone falling away and the body's overtones over it.
+				tr_hz = 1500.0; tr_a = 0.6; tr_d = 250.0
+				ph[0] += TAU * (90.0 - 20.0 * minf(1.0, t / 0.15)) * tone / RATE
+				ph[1] += TAU * 185.0 * tone / RATE
+				ph[2] += TAU * 330.0 * tone / RATE
+				s = sin(ph[0]) * exp(-t * 20.0) + sin(ph[1]) * 0.35 * exp(-t * 35.0) + sin(ph[2]) * 0.15 * exp(-t * 55.0)
+		var k := _lp_k(tr_hz)
+		tr1 += (rng.randf_range(-1.0, 1.0) - tr1) * k
+		tr2 += (tr1 - tr2) * k
+		s += tr2 * tr_a * 2.5 * exp(-t * tr_d)
+		s *= minf(1.0, t * 450.0) * minf(1.0, (L - t) * 200.0)   # (a 2 ms onset and a 5 ms close: no click at either end)
 		out[i] = s
 	# Levelled: every take to the same peak, well under full scale.
 	var peak := 0.0
