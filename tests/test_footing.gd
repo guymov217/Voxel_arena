@@ -88,3 +88,72 @@ func test_a_fast_low_stroke_does_not_stall() -> void:
 		f.queue_free()
 		await get_tree().physics_frame
 	m.queue_free()
+
+## The lower of the two feet over what is under it (the lowest corner of each shin's box: a heel
+## or a toe on the sand is a foot on it).
+func _feet_up(f: Fighter) -> float:
+	var lo := INF
+	for sd in ["L", "R"]:
+		var sh: VoxelPart = f.by_name["shin" + sd]
+		if not sh.severed:
+			lo = minf(lo, _box_low(sh) - f._ground_under(sh.global_position, f.ground_level))
+	return lo
+
+func test_a_foot_is_always_on_the_sand_running_climbing_and_struck() -> void:
+	# User: never both feet in the air unless thrown: not running, not climbing a step, not hit.
+	var m := _match()
+	for run in [false, true]:
+		var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": "gladius"}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+		e.erase("bot")
+		var go := {"on": false}
+		e.drive = func(_e): return {"mz": 1.0, "sprint": run} if go.on else {}
+		var f: Fighter = e.f
+		for i in 120:
+			await get_tree().physics_frame
+		var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
+		var step := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var bx := BoxShape3D.new()
+		bx.size = Vector3(4.0, 0.25, 1.6)
+		cs.shape = bx
+		step.add_child(cs)
+		m.add_child(step)
+		step.global_transform = Transform3D(Basis(Vector3.UP, f.yaw), f.torso.global_position * Vector3(1, 0, 1) + fwd * 2.0 + Vector3(0, 0.125, 0))
+		go.on = true
+		var p0 := f.torso.global_position
+		var n := 0
+		var up := 0
+		var worst := 0.0
+		for i in 120 * 4:
+			await get_tree().physics_frame
+			if f.state == "stand" and i > 30:
+				n += 1
+				var a := _feet_up(f)
+				up += 1 if a > 0.025 else 0
+				worst = maxf(worst, a)
+		var went := (f.torso.global_position - p0).dot(fwd)
+		t.check(went > 4.0 and f.state == "stand", "%s over the step and on (%.1f m, %s)" % ["running" if run else "walking", went, f.state])
+		t.check(up <= n / 100 and worst < 0.05, "%s, a foot on the sand: both up %d of %d frames, at most %.3f m" % ["running" if run else "walking", up, n, worst])
+		step.queue_free()
+		go.on = false
+		f.teleport(Vector3(6.0 if run else -6.0, 0, -6))
+	# Blows on the trunk, as a weapon's contact puts them: he rocks on his feet, they stay down.
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "W", "loadout": {"main": "gladius"}, "team": 1, "pos": Vector3(-6, 0, 6), "yaw": 0.0})
+	e2.erase("bot")
+	e2.drive = func(_e): return {}
+	var g: Fighter = e2.f
+	for J in [30.0, 60.0]:
+		for dir in [Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0.7, 0.4, 0.7).normalized()]:
+			for i in 90:
+				await get_tree().physics_frame
+			var worst := 0.0
+			for i in 120:
+				if i < 6:
+					g.struck_frame = Engine.get_physics_frames()
+				if i == 0:
+					g.torso.apply_impulse(dir * J, Vector3(0, 0.1, 0))
+				await get_tree().physics_frame
+				if g.state == "stand":
+					worst = maxf(worst, _feet_up(g))
+			t.check(worst < 0.025, "a blow of %.0f from %s leaves a foot on the sand (%.3f m)" % [J, str(dir.snapped(Vector3(0.1, 0.1, 0.1))), worst])
+	m.queue_free()

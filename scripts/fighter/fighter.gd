@@ -203,6 +203,15 @@ var ground_level := 0.0   # the sand under the fighter, from the stance ray
 var prev_vy := 0.0        # the torso's fall speed last step (a hard landing hurts)
 var land_sag := 0.0       # how far the knees are giving under his weight just now (a landing, a footfall)
 var air_time := 0.0       # how long his feet have been off the sand
+var jump_t := 0.0         # a jump of his own under way: the one time his feet leave the sand standing
+## Standing, a foot is always on the sand (user: never in the air unless thrown): both soles this
+## far over the ground under them and the hips are brought down at once.
+const FOOT_AIR := 0.015
+## The gait's numbers (tuned with tests/feetlab.gd against the time both feet are off the sand):
+## how far the planted leg may reach (of its length), the step's clearance (walking, more at a
+## run), how far behind a foot is left before it comes off the sand, how high over its plant a
+## foot counts as not yet down.
+static var GAIT := {"reach": 0.94, "arc": 0.04, "arc_run": 0.03, "behind": 0.97, "down": 0.012, "touch": 0.01, "run_stride": 1.0, "walk_stride": 0.66}
 var last_move := Vector3.ZERO   # where he is trying to go this step (world), for whatever holds him
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
@@ -2158,6 +2167,18 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if hit:
 		var dist = t_pos.y - hit.position.y
 		ground_y = hit.position.y
+		# Stepping down off a ledge, the trunk goes out over the drop before the leading foot is
+		# down: the foot still planted up on the ledge carries him till it is (by the sand under
+		# the trunk he was in the air there, both legs let go, and he dropped).
+		var ledge_held := false
+		if state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0:
+			for sd in ["L", "R"]:
+				var ftp = feet[sd]
+				if ftp == null or ftp.swing or by_name["shin" + sd].severed or by_name["thigh" + sd].severed:
+					continue
+				var sp: Vector3 = by_name["shin" + sd].global_transform * Vector3(0, -4 * V * S, 0)
+				if sp.y - float((ftp.anchor as Vector3).y) < 0.06 * S and float((ftp.anchor as Vector3).y) > ground_y + 0.1 * S:
+					ledge_held = true
 		ground_level = ground_y
 		var run_low := 0.06 * minf(1.0, walk_amt * 2.5 / 3.5)
 		# His weight is on his legs: the knees give a little under what he carries (armour, a
@@ -2171,7 +2192,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# a planted foot always stands on the sand.
 		if state == "stand" and not one_leg and hop_phase <= 0.0:
 			var pend := INF
-			var reach_l := 16.0 * V * S * (0.965 - crouch * 0.12 - stoop * 0.14 - run_low * 0.5)
+			var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
 			for sd in ["L", "R"]:
 				var ftp = feet[sd]
 				if ftp == null or ftp.swing or by_name["shin" + sd].severed:
@@ -2198,15 +2219,29 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var sh: VoxelPart = by_name["shin" + sd]
 				if sh.severed or by_name["thigh" + sd].severed:
 					continue
-				var sy: float = (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y
-				sole_lo = minf(sole_lo, sy)
+				# Over what is under that foot, not under the trunk: on a step, the foot up on it read as
+				# down while the other swung over the sand below, and he rose off both climbing it. (A
+				# planted foot's plant is on what is under it already.)
 				var ftp = feet[sd]
-				if ftp != null and not ftp.swing:
-					sole_planted = minf(sole_planted, sy)
+				var sp := sh.global_transform * Vector3(0, -4 * V * S, 0)
+				var planted: bool = ftp != null and not ftp.swing
+				sole_lo = minf(sole_lo, sp.y - (float((ftp.anchor as Vector3).y) if planted else _ground_under(sp, ground_y)))
+				# Sunk in: under the sand under the trunk and under its plant both (a plant left high,
+				# after a hop, is not a foot in the sand; one stepped down off a ledge is not either).
+				if planted:
+					sole_planted = minf(sole_planted, sp.y - minf(float((ftp.anchor as Vector3).y), ground_y))
 			if sole_planted < -0.03 * S:
 				desired = maxf(desired, dist - sole_planted - 0.01 * S)
-			elif sole_lo < INF and sole_lo > 0.05 * S:
-				desired = minf(desired, dist - (sole_lo - 0.02 * S))
+			elif sole_lo < INF and sole_lo > FOOT_AIR * S and jump_t <= 0.0:
+				# Both soles off the sand (a blow, a step, a stride): the hips down until one is on
+				# it, and nothing more that lifts him (the spring's push and the blow's lift).
+				desired = minf(desired, dist - sole_lo + 0.005 * S)
+				# Brought down within a few hundredths of a second, not as slowly as the spring
+				# lets the weight down (a man knocked off his feet hung there a fifth of a second).
+				var vy_want := -clampf((sole_lo - 0.005 * S) / 0.06, 0.0, 2.5 * sqrt(S))
+				for p in parts:
+					if not p.severed:
+						p.linear_velocity.y = minf(p.linear_velocity.y, vy_want)
 		elif rising and dist < desired + 0.25:
 			# Getting up, the same floor under the soles, up only: on hacked legs the rise is
 			# low and long (little support), and the kneeling shins were pressed under the sand
@@ -2218,7 +2253,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					sole_lo = minf(sole_lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y)
 			if sole_lo < -0.03 * S:
 				desired = maxf(desired, dist - sole_lo - 0.01 * S)
-		grounded = dist < desired + 0.25
+		grounded = dist < desired + 0.25 or ledge_held
 		# Touching down after a jump or a flight, the knees take the fall.
 		if grounded and air_time > 0.12 and standing and not rising:
 			land_sag = maxf(land_sag, clampf((0.015 + 0.012 * maxf(0.0, -lv0.y)) * S, 0.025 * S, 0.07 * S))
@@ -2229,6 +2264,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			torso.apply_central_impulse(Vector3(0, f * dt, 0))
 
 	air_time = 0.0 if grounded else air_time + dt
+	jump_t = maxf(0.0, jump_t - dt)
 	land_sag *= exp(-dt * 10.0)
 	# Off the sand he comes down like the weight he is: a jump or a stumble off a ledge falls
 	# faster than a feather (gravity alone, with the legs held up by nothing, let him hang in
@@ -2319,6 +2355,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if inp.get("jump", false) and stamina > 15.0:
 			torso.apply_central_impulse(Vector3(0, total_mass * 3.8 * maxf(0.3, leg_avg), 0))   # (a man's jump: it went up a metre and more and hung there)
 			stamina -= 15.0
+			jump_t = 0.9
 	# Down but alive: drag yourself along on your arms, slowly, slower still the worse you are.
 	crawling = false
 	if live and state == "down" and grounded and move_local.length_squared() > 0.05 and net_timer <= 0.0:
@@ -2331,7 +2368,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 3.0 * dt
 	v_smooth = v_smooth.lerp(Vector3(lv.x, 0, lv.z), minf(1.0, dt * 10.0))
 	var h_speed := Vector2(v_smooth.x, v_smooth.z).length()
-	var step_len: float = (minf(1.0, 0.3 + 0.17 * h_speed) if sprint else minf(0.66, 0.28 + 0.12 * h_speed)) * S
+	# A stride no longer than the legs cover with a foot on the sand: longer, the body was past the
+	# planted foot before the other came down, and both were off the sand (a runner's flight).
+	# Faster then is quicker steps.
+	var step_len: float = (minf(float(GAIT.run_stride), 0.3 + 0.17 * h_speed) if sprint else minf(float(GAIT.walk_stride), 0.28 + 0.12 * h_speed)) * S
 	if h_speed > 0.25:
 		gait_phase += dt * h_speed * PI / step_len
 
@@ -2429,6 +2469,15 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var half := int(floor(gait_phase / PI))
 			var my_swing = (half % 2 == 0) == (side == "L")
 			var moving := h_speed > 0.25
+			# One foot steps at a time: the other is down first (both off together, walking or
+			# running, he left the sand, user). A leg gone or useless does not hold the other.
+			var os := "R" if side == "L" else "L"
+			var other_up := false
+			if feet[os] != null and not by_name["shin" + os].severed and not by_name["thigh" + os].severed and leg_func(os) >= 0.1:
+				# Stepping, or set down but not yet on the sand (a step ends a little above it and
+				# the foot is brought down after): either way not yet a foot to stand on.
+				var o_sole: Vector3 = by_name["shin" + os].global_transform * Vector3(0, -4 * V * S, 0)
+				other_up = feet[os].swing or o_sole.y - float((feet[os].anchor as Vector3).y) > float(GAIT.down) * S
 			if hop_phase > 0.0:
 				# Hopping: the good foot stays under him, leaves the sand at the top of each hop
 				# and lands a little ahead; the stump does not step.
@@ -2438,42 +2487,68 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					ft.anchor = (ft.anchor as Vector3) + Vector3(0, 0.25 * S, 0)
 				ft.from = ft.anchor
 				ft.land = ft.anchor
-			elif moving and my_swing and not ft.swing and ft.half != half:
+			elif moving and not ft.swing and not other_up and (hip - (ft.anchor as Vector3)).length() > (l1 + l2) * float(GAIT.behind):
+				# Left behind farther than the leg reaches (at a run the body is past it before its
+				# turn comes): the foot comes off the sand and steps, as a runner's toes do, instead
+				# of hanging stretched out behind him over it.
+				ft.half = half
+				ft.swing = true
+				ft.from = ft.anchor
+				ft.s = 0.0
+			elif moving and my_swing and not ft.swing and ft.half != half and not other_up:
 				ft.half = half
 				ft.swing = true
 				ft.from = ft.anchor
 				ft.s = 0.0
 			if ft.swing:
 				ft.land = neutral + move_dir * step_len * 0.5
+				# Set down on what is where it lands (stepping off a ledge it was set down at the
+				# ledge's height and hung over the sand below it, up onto one into its face).
+				ft.land.y = _ground_under(ft.land, neutral.y)
 				var rate: float = h_speed / step_len if moving else 4.0
 				ft.s = minf(1.0, ft.s + dt * rate)
-				if ft.s >= 1.0 or (moving and not my_swing):
+				# On the sand again is down: past the top of its step, a foot that touches it is
+				# planted there and then (it was held "stepping" on the sand till its half stride
+				# ran out, and the other foot hung behind, not let go).
+				var sole_td := shin.global_transform * Vector3(0, -4 * V * S, 0)
+				var touched: bool = ft.s > 0.55 and not shin.severed and sole_td.y - float((ft.land as Vector3).y) < float(GAIT.touch) * S
+				# Its time up but still over the sand (stepping down off a ledge, the step ended a hand
+				# above the sand below, the other foot already off it): it goes on down a moment more.
+				var high: bool = not touched and not shin.severed and float((ft.from as Vector3).y) - float((ft.land as Vector3).y) > 0.08 * S and sole_td.y - float((ft.land as Vector3).y) > 0.03 * S and float(ft.get("late", 0.0)) < 0.25
+				if (ft.s >= 1.0 or (moving and not my_swing)) and high:
+					ft.late = float(ft.get("late", 0.0)) + dt
+				elif ft.s >= 1.0 or (moving and not my_swing) or touched:
 					ft.swing = false
+					ft.late = 0.0
 					land_sag = maxf(land_sag, (0.06 + 0.03 * minf(1.0, h_speed / 3.0)) * S * clampf((leg_avg - 0.6) / 0.3, 0.0, 1.0))   # the weight comes onto the foot (hacked legs, already low on them, not at all: it sank a giant's feet in the sand)
 					# Walking, it stays where it actually came down (short of the mark, it used to be
 					# drawn on along the sand to it, and the planted foot skated). A step taken to
 					# catch his balance still goes to its mark.
 					var sole_at := shin.global_transform * Vector3(0, -4 * V * S, 0)
-					ft.anchor = Vector3(sole_at.x, (ft.land as Vector3).y, sole_at.z) if moving and wants_move and not shin.severed and sole_at.distance_to(ft.land) < 0.35 * S else ft.land
+					var floor_at := _ground_under(sole_at, (ft.land as Vector3).y)
+					ft.anchor = Vector3(sole_at.x, floor_at, sole_at.z) if moving and wants_move and not shin.severed and sole_at.distance_to(ft.land) < 0.35 * S else ft.land
 					# Kept off its mark (a heap under him it came down on, a body in the way), it
 					# stands where it came down: held to a mark it could not reach, it read as
 					# slipping at once and stepped again and again, never down.
 					if not (moving and wants_move) and not shin.severed and Vector2(sole_at.x - ft.land.x, sole_at.z - ft.land.z).length() > 0.12 * S:
-						ft.anchor = Vector3(sole_at.x, clampf(sole_at.y, (ft.land as Vector3).y, (ft.land as Vector3).y + 0.6 * S), sole_at.z)   # (on the sand, never under it)
+						ft.anchor = Vector3(sole_at.x, floor_at, sole_at.z)   # (on what is under it, the sand or a heap: never where it hung in the air)
 					ft.slip = 0.0
-			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S:
+			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S and not other_up:
 				ft.swing = true
 				ft.from = ft.anchor
 				ft.s = 0.0
 				ft.half = half
 				ft.land = neutral + Vector3(v_smooth.x, 0, v_smooth.z).normalized() * 0.25 * S
-			elif not moving and (ft.anchor as Vector3).distance_to(neutral) > 0.3 * S:
+			elif not moving and (ft.anchor as Vector3).distance_to(neutral) > 0.3 * S and not other_up:
 				ft.swing = true
 				ft.from = ft.anchor
 				ft.s = 0.0
 				ft.land = neutral
 			var ease: float = ft.s * ft.s * (3.0 - 2.0 * ft.s)
-			var target: Vector3 = (ft.from as Vector3).lerp(ft.land, ease) + Vector3(0, sin(PI * ft.s) * (0.08 + 0.06 * move_amt) * S, 0) if ft.swing else ft.anchor
+			# The foot clears the sand by a few fingers, as a walking man's does (it went up a hand
+			# and a half, a march), a little more at a run.
+			var target: Vector3 = (ft.from as Vector3).lerp(ft.land, ease) + Vector3(0, sin(PI * ft.s) * (float(GAIT.arc) + float(GAIT.arc_run) * move_amt) * S, 0) if ft.swing else ft.anchor
+			ft.target_y = target.y
 			if hop_phase > 0.0 and hop_k > 0.6:
 				target.y += (hop_k - 0.6) * 0.2 * S   # the foot tucks up at the top of the hop
 			var hf := t_inv * (target - hip)
@@ -2514,9 +2589,26 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var m_leg := shin.nominal_mass + thigh.nominal_mass * 0.5
 			var k_hold := minf(FOOT_HOLD * m_leg, 0.25 * m_sole / (dt * dt))
 			var c_hold := minf(60.0 * m_leg, 0.8 * m_sole / dt)
-			var fh := Vector3((goal.x - sole.x) * k_hold - sv.x * c_hold, minf(0.0, (goal.y - sole.y) * k_hold - sv.y * c_hold), (goal.z - sole.z) * k_hold - sv.z * c_hold)
+			var fh := Vector3((goal.x - sole.x) * k_hold - sv.x * c_hold, 0.0, (goal.z - sole.z) * k_hold - sv.z * c_hold)
 			fh = PD.clamp_len(fh, 260.0 * f * MS * S)
+			# Down onto the sand harder than along it: the planted foot stays on the ground while
+			# the body goes over it and the knee bends (it rose two fingers off it every stride).
+			# (The gap closed in three steps at the sole's own mass: a stiffness, at the leg's, was
+			# a fraction of what the knee lifted it with.)
+			var gap := sole.y - goal.y
+			fh.y = clampf(m_sole * (-maxf(0.0, gap) / (3.0 * dt) - sv.y) / dt, -600.0 * f * MS * S, 0.0) if gap > 0.002 * S else 0.0
 			shin.apply_impulse(fh * dt, sole - shin.global_position)
+		elif standing and grounded and not kicking and feet[side] and feet[side].swing and feet[side].has("target_y") and not shin.severed and not shin.hanging and not rising and jump_t <= 0.0:
+			# A stepping foot no higher than its step: the shin swung back on its own and kicked
+			# the heel up a hand and a half, a step meant to clear the sand by a few fingers.
+			var sole2 := shin.global_transform * Vector3(0, -4 * V * S, 0)
+			var over := sole2.y - float(feet[side].target_y) - 0.02 * S
+			if over > 0.0:
+				var sv2 := shin.velocity_at(sole2)
+				var r2: Vector3 = sole2 - shin.global_position
+				var m2 := 1.0 / (1.0 / maxf(0.05, shin.mass) + r2.length_squared() / PD.inertia_of(shin))
+				var fy := clampf(-over * 0.25 * m2 / (dt * dt) - maxf(0.0, sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0)
+				shin.apply_impulse(Vector3(0, fy * dt, 0), r2)
 		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
 			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
