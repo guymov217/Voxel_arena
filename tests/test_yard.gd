@@ -31,7 +31,9 @@ func test_the_yard_plays() -> void:
 	m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "roundShield"}})
 	t.check(m.yard != null and m.yard.dummies.size() == 2, "two dummies")
 	var nx := Data.stage(int(Save.get_value("stage", 1)))
-	t.check(m.yard.next_text.contains(String(nx.get("foe_name", "?"))), "the board by the gate names the next foe (%s)" % m.yard.next_text.replace("\n", " / "))
+	var first: Dictionary = (nx.get("rounds", [[{}]]) as Array)[0][0]
+	t.check(m.yard.next_text.contains(YardPlay.foe_label(first)), "the stele by the gate names the next foe (%s)" % m.yard.next_text.replace("\n", " / "))
+	t.check(m.yard.next_text.contains("PVGNA " + YardPlay.roman(int(Save.get_value("stage", 1)))), "and the bout, in numerals")
 	t.check(m.find_children("*", "Fighter", true, false).all(func(f): return f.display_name != "Ring champion"), "no shoving ring any more")
 	var opened := []
 	m.station.connect(func(id): opened.append(id))

@@ -12,6 +12,7 @@ const LIST := {
 	"halfway": {"name": "Halfway to the Rudis", "desc": "Clear the thirty-second bout."},
 	"rudis": {"name": "The Rudis", "desc": "Win the campaign: the wooden sword is yours."},
 	"rudis_again": {"name": "Twice Free", "desc": "Win the campaign a second time round."},
+	"unbroken": {"name": "Unbroken", "desc": "Win the campaign on Ironman: one life, never once fallen."},
 	"jupiter_hand": {"name": "The Hand of Jupiter", "desc": "Hurl a man hard enough that his landing hurts."},
 	"trained": {"name": "A Body of Iron", "desc": "Take one of the trainer's abilities to its best."},
 	"smith": {"name": "Wrecksmith", "desc": "Keep a weapon of your own design."},

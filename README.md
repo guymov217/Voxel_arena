@@ -83,6 +83,11 @@ godot --headless --path . -- --test test_fight   # one suite
   brutes wait for the thirties, and the bosses come round again in steel from bout 40
   (`tests/test_campaign.gd` checks the climb, the variety and the gates). Pay, checkpoints and
   persistent weapon wear as before.
+- **Ironman or Legionary** (`scripts/game/campaign_run.gd`): chosen when a campaign begins (in
+  co-op the host chooses in the room). A legionary who falls goes back to the last checkpoint
+  (every four bouts) with the purse, arms, armour, body and training he had there; an ironman
+  starts over at bout 1. The rudis won on Ironman gives the Unbroken laurel (a hat) and Virtus
+  at the trainer (a little of every ability, never lost), both for good.
 - **Bread & Circuses**: the seven-day campaign (`scripts/game/circus.gd`). Every day has its
   bouts and bosses. The special bouts are in `scripts/game/bout_rules.gd`: gold rush, chariots,
   the Emperor's whims, hot potato, escorting the senator, holding the circle, and bringing back a

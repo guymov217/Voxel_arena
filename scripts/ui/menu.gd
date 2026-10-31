@@ -30,7 +30,7 @@ static func admin() -> bool:
 	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
 const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e, 0x5a3a22, 0x1d6b6b, 0x8a8a80, 0xd06a8a]
 const LOOK_SLOTS := {
-	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt"],
+	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt", "hat_unbroken"],
 	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"],
 	"beard": ["", "beard_braided", "beard_full", "beard_short", "beard_goatee", "beard_moustache", "beard_philosopher", "beard_stubble", "beard_mutton", "beard_chinstrap", "beard_forked"],
 	"cape": ["", "cape", "cape_short"],
@@ -237,7 +237,13 @@ func look() -> Dictionary:
 	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1)}
 	for k in LOOK_SLOTS:
 		out[k] = clampi(int(l.get(k, 0)), 0, LOOK_SLOTS[k].size() - 1)
+		if look_locked(LOOK_SLOTS[k][out[k]]):
+			out[k] = 0
 	return out
+
+## A look piece not yet earned: the Unbroken laurel is the Ironman's (CampaignRun).
+static func look_locked(id: String) -> bool:
+	return id == "hat_unbroken" and not CampaignRun.unbroken()
 
 ## What the room is told about us: the arms, plus the look (other players see your hat).
 func _net_loadout() -> void:
@@ -358,6 +364,7 @@ func show_screen(s: String, msg := "") -> void:
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
 		"campaign_end": _campaign_end(v)
+		"campaign_mode": _campaign_mode(v)
 		"training_designs": _training_designs(v)
 		"training_armour": _training_armour(v)
 	if fresh and s != "main":
@@ -416,7 +423,11 @@ func _main(v: VBoxContainer) -> void:
 	v.add_child(col)
 	var buttons := [
 		# A campaign under way goes on from the yard, the lobby between bouts.
-		UIStyle.menu_button(("Continue · bout %d" % st) if st > 1 else "Begin the campaign", func(): enter_yard(), true),
+		UIStyle.menu_button(("Continue · bout %d · %s" % [st, CampaignRun.MODES[CampaignRun.mode()].name]) if st > 1 else "Begin the campaign", func():
+			if st <= 1 and not CampaignRun.chosen():
+				show_screen("campaign_mode")
+			else:
+				enter_yard(), true),
 	]
 	if SHOW_CIRCUS:
 		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
@@ -2378,10 +2389,19 @@ func _physician(v: VBoxContainer) -> void:
 
 ## What the trainer has taught this gladiator (Training), kept with the campaign.
 func training_stats() -> Dictionary:
-	return Training.sanitize(Save.get_value("training", {}))
+	var st := Training.sanitize(Save.get_value("training", {}))
+	var vt := int(Save.get_value("virtus", 0))
+	if vt > 0:
+		st = Training.sanitize(st.merged({"virtus": vt}, true))
+	return st
 
+## (Virtus is kept apart: a death and a new campaign clear the rest, never it.)
 func set_training_stats(st: Dictionary) -> void:
-	Save.set_value("training", Training.sanitize(st))
+	var clean := Training.sanitize(st)
+	if clean.has("virtus"):
+		Save.set_value("virtus", int(clean.virtus))
+	clean.erase("virtus")
+	Save.set_value("training", clean)
 	_net_loadout()
 
 ## The trainer's yard: six abilities, a session of each for denarii, no further than the bout
@@ -2415,7 +2435,7 @@ func _trainer(v: VBoxContainer) -> void:
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	v.add_child(grid)
-	for id in Training.ORDER:
+	for id in Training.ORDER + ["virtus"]:
 		var a: Dictionary = Training.ABILITIES[id]
 		var lv := Training.level(st, id)
 		var cap := Training.cap(id, stage)
@@ -2456,6 +2476,8 @@ func _trainer(v: VBoxContainer) -> void:
 		var b: Button
 		if r.has("error"):
 			var why := "Mastered" if full else ("Wait for bout %d" % (lv + Training.STEP + 1) if lv >= cap else "Train · %d denarii" % Training.price(st, id))
+			if id == "virtus" and not CampaignRun.unbroken():
+				why = "Only for the Unbroken (Ironman)"
 			b = UIStyle.button(why, func(): pass)
 			b.disabled = true
 			b.tooltip_text = String(r.error)
@@ -2689,7 +2711,16 @@ func _room(v: VBoxContainer) -> void:
 	if Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
 		var nb := Data.stage(cs, 1 + Net.peers.size())
-		v.add_child(UIStyle.label("Co-op campaign: bout %d · %s" % [cs, nb.get("foe_name", "")], 15, UIStyle.GOLD))
+		v.add_child(UIStyle.label("Co-op campaign: bout %d · %s · %s" % [cs, nb.get("foe_name", ""), CampaignRun.MODES[CampaignRun.mode(true)].name], 15, UIStyle.GOLD))
+		if cs <= 1:
+			# Before the first bout the host says how death is dealt with for the party.
+			var mo := OptionButton.new()
+			for m in ["legionary", "ironman"]:
+				mo.add_item(String(CampaignRun.MODES[m].name))
+			mo.select(1 if CampaignRun.mode(true) == "ironman" else 0)
+			mo.tooltip_text = "%s\n%s" % [CampaignRun.MODES.legionary.desc, CampaignRun.MODES.ironman.desc]
+			mo.item_selected.connect(func(i): CampaignRun.begin(["legionary", "ironman"][i], true))
+			_row(v, [UIStyle.label("Death", 15, UIStyle.MUTED), mo])
 		v.add_child(UIStyle.button("Start the co-op campaign · bout %d" % cs, func(): start({"mode": "coop", "role": "host"}), true))
 		v.add_child(UIStyle.button("Into the yard together (shop, heal, play)", func(): enter_yard()))
 	v.add_child(UIStyle.button("Leave", func():
@@ -3175,7 +3206,9 @@ func _gladiator(v: VBoxContainer) -> void:
 	for k in ["hat", "hair", "beard", "cape", "eyes", "mouth"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
+			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))) + ("  (win the campaign on Ironman)" if look_locked(id) else ""))
+			if look_locked(id):
+				ob.set_item_disabled(ob.item_count - 1, true)
 		ob.select(lk[k])
 		ob.custom_minimum_size = Vector2(260, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
@@ -3189,6 +3222,8 @@ func _gladiator(v: VBoxContainer) -> void:
 		r.cloth = randi() % CLOTH.size()
 		for k in LOOK_SLOTS:
 			r[k] = randi() % LOOK_SLOTS[k].size()
+			if look_locked(LOOK_SLOTS[k][r[k]]):
+				r[k] = 0
 		Save.set_value("look", r)
 		_net_loadout()
 		show_screen("gladiator")), UIStyle.button("Done", func(): show_screen("main"), true)])
@@ -3267,7 +3302,17 @@ func _end_match() -> void:
 ## stick and body (online and alone alike; the host's word is the party's). Done the moment
 ## the bout is lost (Match.lost), so a player who leaves the fight, or the game, during the kill
 ## cam cannot come back to the bout he fell in; and again, harmlessly, when the result is read.
+var fell_back := 0   # the bout a Legionary went back to on his last death (0: the run ended)
+
 func _campaign_lost(r: Dictionary) -> void:
+	# Legionary: back to the last checkpoint as he left it; Ironman (or none yet): it is over.
+	var back := CampaignRun.fall_back(bool(r.get("coop", false)))
+	fell_back = back
+	if back > 0:
+		_net_loadout()
+		if Net.active():
+			Net.send_all("purse", coins())
+		return
 	var sk := "coop_stage" if r.get("coop", false) else "stage"
 	var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
 	Save.set_value(sk, 1)
@@ -3321,6 +3366,8 @@ func _on_finished(r: Dictionary) -> void:
 			if r.get("checkpoint") != null:
 				Save.set_value(ck, int(r.checkpoint))
 			Save.set_value(sk, int(r.stage) + 1)
+			if r.get("checkpoint") != null:
+				CampaignRun.keep(bool(r.get("coop", false)))
 			if r.get("boss", false):
 				Achievements.unlock("boss")
 			if int(r.stage) >= 8:
@@ -3336,11 +3383,14 @@ func _on_finished(r: Dictionary) -> void:
 				Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"),
 					{"day": 7, "won": true, "kills": kills, "bouts_won": int(r.stage), "campaign": true}, ""))
 				Achievements.unlock("rudis")
+				if CampaignRun.won(bool(r.get("coop", false))):
+					Save.set_value("unbroken_news", true)
 				if int(Save.get_value(lk, 1)) >= 2:
 					Achievements.unlock("rudis_again")
 				Save.set_value(lk, int(Save.get_value(lk, 1)) + 1)
 				Save.set_value(sk, 1)
 				Save.set_value(ck, 1)
+				CampaignRun.keep(bool(r.get("coop", false)))   # (the next time round starts as he is now)
 				if Net.active():
 					Net.send_all("campaign_end", {})
 				_end_match()
@@ -3355,7 +3405,7 @@ func _on_finished(r: Dictionary) -> void:
 				return
 		else:
 			_campaign_lost(r)
-			last_result = {"text": "You fell. The campaign is over; a new one begins at bout 1."}
+			last_result = {"text": ("You fell. Back to the last checkpoint: bout %d, as you left it." % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
 	_end_match()
 	if Net.active() and not Net.is_host():
 		show_screen("room")
@@ -3481,6 +3531,11 @@ func _campaign_end(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("THE RUDIS", 40))
 	v.add_child(UIStyle.label("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free." % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
 	v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
+	if bool(Save.get_value("unbroken_news", false)):
+		Save.set_value("unbroken_news", false)
+		var un := UIStyle.label("UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.", 16, UIStyle.GOLD)
+		un.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(un)
 	v.add_child(UIStyle.label("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger." % ROMAN[clampi(lap - 1, 0, 6)], 15, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back to the ludus", func(): show_screen("main" if not Net.active() else "room"), true))
 
@@ -3523,9 +3578,49 @@ func restart_campaign() -> void:
 	set_worn_armor([])
 	set_armor_wear({})
 	set_training_stats({})
-	# Back to the yard, not straight into bout 1: the smith, the market and the gate first
-	# (online the host brings the whole party back with him).
-	enter_yard("A new campaign begins")
+	# How death is dealt with this time, then the yard, not straight into bout 1: the smith, the
+	# market and the gate first (online the host brings the whole party back with him).
+	if match_:
+		_end_match()
+	show_screen("campaign_mode")
+
+## A new campaign: Legionary (back to the last checkpoint on a death) or Ironman (one life).
+func _campaign_mode(v: VBoxContainer) -> void:
+	var coop := Net.active()
+	v.add_theme_constant_override("separation", 14)
+	v.add_child(UIStyle.label("A NEW CAMPAIGN" + (" · CO-OP" if coop else ""), 13, UIStyle.BRONZE))
+	v.add_child(UIStyle.title("How will you die?", 36))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	v.add_child(row)
+	for m in ["legionary", "ironman"]:
+		var md: Dictionary = CampaignRun.MODES[m]
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(300, 0)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var cs := StyleBoxFlat.new()
+		cs.bg_color = Color(0.1, 0.075, 0.055, 0.95)
+		cs.border_color = UIStyle.GOLD if m == "ironman" else UIStyle.BRONZE
+		cs.set_border_width_all(2 if m == "ironman" else 1)
+		cs.set_corner_radius_all(8)
+		cs.content_margin_left = 16; cs.content_margin_right = 16; cs.content_margin_top = 12; cs.content_margin_bottom = 14
+		card.add_theme_stylebox_override("panel", cs)
+		row.add_child(card)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 8)
+		card.add_child(col)
+		col.add_child(UIStyle.title(String(md.name), 26))
+		var d := UIStyle.label(String(md.desc), 14, UIStyle.TEXT)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(0, 72)
+		col.add_child(d)
+		if m == "ironman":
+			var rw := UIStyle.label(("Earned: " if CampaignRun.unbroken() else "The reward: ") + "the Unbroken laurel, and Virtus from the trainer.", 13, UIStyle.GOLD)
+			rw.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(rw)
+		col.add_child(UIStyle.button("Begin as a %s" % String(md.name).to_lower() if m == "legionary" else "Begin as an ironman", func():
+			CampaignRun.begin(m, coop)
+			enter_yard("A new campaign begins · " + String(md.name)), m == "legionary"))
 
 func _toggle_pause() -> void:
 	if pause_layer:

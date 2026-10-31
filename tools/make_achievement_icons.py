@@ -138,6 +138,13 @@ def rudis_again(d, extra):
 
 
 @glyph
+def unbroken(d, extra):
+    # the laurel, closed all round, over a single numeral I: one life
+    laurel(d, r=300, leaves=12)
+    numeral(d, "I", size=360, y=-10)
+
+
+@glyph
 def jupiter_hand(d, extra):
     poly(d, [(60, -340), (-160, 20), (-10, 20), (-90, 340), (180, -60), (30, -60), (130, -340)])
 

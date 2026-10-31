@@ -7,10 +7,6 @@ extends RefCounted
 
 var m: Node
 var dummies: Array = []
-var next_board: Label3D = null   # the foe's name; over it the band, under it the bout
-var next_head: Label3D = null
-var next_sub: Label3D = null
-const BOARD_PX := 420.0   # the inside of the frame, 1.68 m, in the labels' pixels
 var next_text := ""
 var next_t := 0.0   # (the host says it again now and then: a guest whose yard was not up yet hears it)
 var best_throw := 0
@@ -98,96 +94,199 @@ func _gate() -> void:
 			l.position = Vector3(0, 1.8, 0)
 
 ## The next fight through the gate (the campaign's next bout; in a room, the party's), as the
-## board beside the gate reads it.
+## stele beside the gate reads it: a line a row, each tagged with what it is: B the bout (in
+## numerals), F a foe (by name, the same ones counted: "Veles ×2"; three at most, then "+N"),
+## P the prize. (An untagged line, from an older host, is read as a foe.)
 static func next_fight(players: int) -> String:
 	var coop := Net.active()
 	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
 	if Edition.demo_over(st):
-		return "THE DEMO ENDS HERE"
+		return "B|FINIS\nF|The demo ends here"
 	var nx: Dictionary = Data.stage(st, maxi(1, players))
-	var title := String(nx.get("title", "Bout %d" % st))
-	var foe := String(nx.get("foe_name", ""))
-	# (A named foe is the bout's title too, "The Cyclops": once is enough.)
-	if foe == "" or foe.to_lower() == title.to_lower():
-		return "NEXT FIGHT\n%s\nBout %d" % [title, st]
-	return "NEXT FIGHT\n%s\n%s" % [foe, title]
+	var lines := ["B|PVGNA %s" % roman(st)]
+	var foes: Array = (nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []
+	var names := []
+	var count := {}
+	for f in foes:
+		var n := foe_label(f)
+		if not count.has(n):
+			names.append(n)
+		count[n] = int(count.get(n, 0)) + 1
+	for i in mini(3, names.size()):
+		var n: String = names[i]
+		lines.append("F|%s%s" % [n, (" ×%d" % count[n]) if int(count[n]) > 1 else ""])
+	if names.size() > 3:
+		var rest := 0
+		for i in range(3, names.size()):
+			rest += int(count[names[i]])
+		lines.append("F|and %d more" % rest)
+	if names.is_empty():
+		lines.append("F|%s" % String(nx.get("title", "Bout %d" % st)))
+	var pay := Body.bout_pay(st)
+	if pay > 0:
+		lines.append("P|PRAEMIVM · %d DENARII" % pay)
+	return "\n".join(lines)
 
-## The text on the board (the host's own, or what the host sent: kept short and to three lines:
-## the band, the foe, the bout).
+## A foe as the stele names him: his title, else what he is.
+static func foe_label(f: Dictionary) -> String:
+	var nm := String(f.get("title", f.get("name", "")))
+	if nm != "":
+		return nm
+	if f.has("beast"):
+		return String(Data.beasts.get(f.beast, {}).get("name", f.beast))
+	return String(Data.enemy_type(String(f.get("e", ""))).get("label", String(f.get("e", "a gladiator")).capitalize()))
+
+## Roman numerals, as cut in stone (the bouts run past fifty).
+static func roman(n: int) -> String:
+	var out := ""
+	for pair in [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]:
+		while n >= int(pair[0]):
+			out += String(pair[1])
+			n -= int(pair[0])
+	return out
+
+## The text on the stele (the host's own, or what the host sent: six lines at most).
 func set_next(text: String) -> void:
-	var lines: Array = Array(text.split("\n")).slice(0, 3).map(func(l): return String(l).left(48))
+	var lines: Array = Array(text.split("\n")).slice(0, 6).map(func(l): return String(l).left(48))
 	next_text = "\n".join(lines)
-	if next_board and is_instance_valid(next_board):
-		_fit(next_head, lines[0] if lines.size() > 0 else "", 34)
-		_fit(next_board, lines[1] if lines.size() > 1 else "", 70)
-		_fit(next_sub, lines[2] if lines.size() > 2 else "", 34)
+	if next_root == null or not is_instance_valid(next_root):
+		return
+	for c in next_lines:
+		if is_instance_valid(c):
+			c.queue_free()
+	next_lines = []
+	var bout := ""
+	var foes := []
+	var prize := ""
+	for l in lines:
+		var tag: String = String(l).left(2)
+		var body: String = String(l).substr(2) if tag.ends_with("|") else String(l)
+		match tag:
+			"B|": bout = body
+			"P|": prize = body
+			_: foes.append(body)
+	# Cut and painted in the Pompeian way: the bout big in red, a rule, the foes in black, the
+	# prize small at the foot.
+	var y := 2.2
+	if bout != "":
+		next_lines.append(_paint(bout, 64, y, PAINT_RED))
+		y -= 0.3
+	next_lines.append(_rule(y + 0.06))
+	y -= 0.08
+	for f in foes:
+		next_lines.append(_paint(f, 44 if foes.size() <= 2 else 36, y, PAINT_BLACK))
+		y -= 0.24 if foes.size() <= 2 else 0.2
+	if prize != "":
+		next_lines.append(_paint(prize, 26, 0.86, PAINT_RED))
 
-## One line on the board, its type made smaller until it fits inside the gilt frame (a long name,
-## "The Big Lion", would wrap onto the bout under it and over the frame).
-static func _fit(l: Label3D, text: String, size: int) -> void:
+const PAINT_RED := Color(0.55, 0.09, 0.06)
+const PAINT_BLACK := Color(0.13, 0.1, 0.09)
+const STELE_PX := 300.0   # the face between the mouldings, 1.2 m, in the letters' pixels
+var next_root: Node3D = null
+var next_lines: Array = []
+
+## A line of letters painted on the stele's face, made smaller until it fits.
+func _paint(text: String, size: int, y: float, c: Color) -> Label3D:
+	var l := Label3D.new()
+	l.font = UIStyle.serif(2)
+	l.pixel_size = 0.004
+	l.outline_size = 0
+	l.modulate = c
+	l.shaded = true
+	l.double_sided = false
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.position = Vector3(0, y, 0.122)
 	l.text = text
-	while size > 16 and l.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + l.outline_size > BOARD_PX:
+	while size > 14 and l.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > STELE_PX:
 		size -= 2
 	l.font_size = size
+	next_root.add_child(l)
+	return l
 
-## A board on two posts beside the gate: a gilt frame, a red band over it that says what it is,
-## the foe's name large and the bout under it, lit by a lamp of its own.
+## A painted rule between the bout and the foes.
+func _rule(y: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.9, 0.025, 0.004)
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = PAINT_RED
+	sm.roughness = 0.9
+	bm.material = sm
+	mi.mesh = bm
+	mi.position = Vector3(0, y, 0.121)
+	next_root.add_child(mi)
+	return mi
+
+## A stele of whitewashed stone on a plinth beside the gate, a pediment over it: what the next
+## bout is, painted on it in red and black as the games were announced on the walls of Pompeii.
+## A torch on an iron bracket lights it at night.
 func _next_board() -> void:
 	var gp: Vector3 = Yard.STATIONS.gate.p
 	var at := gp + Vector3(4.2, 0, -0.9)
-	var root := Node3D.new()
-	m.add_child(root)
-	root.global_position = at
-	root.rotation.y = VoxelArt.facing_centre(at)
-	var mat := func(c: Color, metal := 0.0) -> StandardMaterial3D:
+	next_root = Node3D.new()
+	m.add_child(next_root)
+	next_root.global_position = at
+	next_root.rotation.y = VoxelArt.facing_centre(at)
+	var mat := func(c: Color, rough := 0.95, metal := 0.0) -> StandardMaterial3D:
 		var sm := StandardMaterial3D.new()
 		sm.albedo_color = c
+		sm.roughness = rough
 		sm.metallic = metal
-		sm.roughness = 0.45 if metal > 0.0 else 0.85
 		return sm
-	var wood: StandardMaterial3D = mat.call(Color(0.33, 0.21, 0.11))
-	var gilt: StandardMaterial3D = mat.call(Color(0.78, 0.58, 0.24), 0.8)
-	var box := func(size: Vector3, pos: Vector3, sm: Material) -> void:
+	var stone: StandardMaterial3D = mat.call(Color(0.62, 0.57, 0.5))
+	var lime: StandardMaterial3D = mat.call(Color(0.86, 0.82, 0.72))
+	var iron: StandardMaterial3D = mat.call(Color(0.16, 0.15, 0.14), 0.6, 0.7)
+	var piece := func(mesh: Mesh, pos: Vector3, sm: Material, rot := Vector3.ZERO) -> void:
 		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = sm
+		mi.position = pos
+		mi.rotation = rot
+		next_root.add_child(mi)
+	var bx := func(size: Vector3) -> BoxMesh:
 		var bm := BoxMesh.new()
 		bm.size = size
-		bm.material = sm
-		mi.mesh = bm
-		mi.position = pos
-		root.add_child(mi)
-	for x in [-0.95, 0.95]:
-		box.call(Vector3(0.12, 2.75, 0.12), Vector3(x, 1.375, -0.02), wood)
-		box.call(Vector3(0.18, 0.12, 0.18), Vector3(x, 2.8, -0.02), gilt)
-	# The panel, its gilt frame a hair in front of it (no two faces in one plane).
-	box.call(Vector3(1.9, 1.2, 0.06), Vector3(0, 1.8, 0.0), mat.call(Color(0.1, 0.05, 0.04)))
-	for y in [1.2, 2.4]:
-		box.call(Vector3(2.0, 0.07, 0.09), Vector3(0, y, 0.01), gilt)
-	for x in [-0.98, 0.98]:
-		box.call(Vector3(0.07, 1.27, 0.09), Vector3(x, 1.8, 0.01), gilt)
-	box.call(Vector3(1.86, 0.26, 0.02), Vector3(0, 2.22, 0.04), mat.call(Color(0.5, 0.07, 0.05)))
-	var label := func(size: int, pos: Vector3, c: Color) -> Label3D:
-		var l := Label3D.new()
-		l.font = UIStyle.serif(2)
-		l.font_size = size
-		l.pixel_size = 0.004
-		l.outline_size = 6
-		l.modulate = c
-		l.outline_modulate = Color(0.08, 0.03, 0.02)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		l.position = pos
-		root.add_child(l)
-		return l
-	next_head = label.call(34, Vector3(0, 2.22, 0.06), Color(1.0, 0.86, 0.6))
-	next_board = label.call(70, Vector3(0, 1.84, 0.05), UIStyle.GOLD)
-	next_sub = label.call(34, Vector3(0, 1.43, 0.05), Color(0.86, 0.78, 0.66))
+		return bm
+	# Plinth in two steps, the shaft, its mouldings, and the pediment on top.
+	piece.call(bx.call(Vector3(1.75, 0.18, 0.6)), Vector3(0, 0.09, 0), stone)
+	piece.call(bx.call(Vector3(1.6, 0.16, 0.48)), Vector3(0, 0.26, 0), stone)
+	piece.call(bx.call(Vector3(1.4, 2.1, 0.24)), Vector3(0, 1.39, 0), lime)
+	piece.call(bx.call(Vector3(1.52, 0.1, 0.3)), Vector3(0, 0.39, 0), stone)
+	piece.call(bx.call(Vector3(1.56, 0.12, 0.32)), Vector3(0, 2.5, 0), stone)
+	var pm := PrismMesh.new()
+	pm.size = Vector3(1.6, 0.42, 0.3)
+	piece.call(pm, Vector3(0, 2.77, 0), stone)
+	# A laurel disc in the pediment.
+	var cy := CylinderMesh.new()
+	cy.top_radius = 0.1
+	cy.bottom_radius = 0.1
+	cy.height = 0.04
+	piece.call(cy, Vector3(0, 2.72, 0.15), mat.call(Color(0.72, 0.55, 0.22), 0.45, 0.8), Vector3(PI / 2, 0, 0))
+	# A torch on an iron bracket at the right-hand edge, burning.
+	piece.call(bx.call(Vector3(0.04, 0.04, 0.32)), Vector3(0.78, 2.05, 0.1), iron)
+	piece.call(bx.call(Vector3(0.07, 0.36, 0.07)), Vector3(0.78, 2.15, 0.26), mat.call(Color(0.3, 0.2, 0.1)))
+	var flame := OmniLight3D.new()
+	flame.light_color = Color(1.0, 0.62, 0.3)
+	flame.light_energy = 1.1
+	flame.omni_range = 3.2
+	flame.position = Vector3(0.78, 2.45, 0.35)
+	next_root.add_child(flame)
+	var fire := MeshInstance3D.new()
+	var sp := SphereMesh.new()
+	sp.radius = 0.06
+	sp.height = 0.16
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.albedo_color = Color(1.0, 0.7, 0.3)
+	fm.emission_enabled = true
+	fm.emission = Color(1.0, 0.55, 0.2)
+	fm.emission_energy_multiplier = 2.0
+	sp.material = fm
+	fire.mesh = sp
+	fire.position = Vector3(0.78, 2.38, 0.26)
+	next_root.add_child(fire)
 	set_next(next_text)
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(1.0, 0.7, 0.4)
-	glow.light_energy = 0.9
-	glow.omni_range = 2.8
-	glow.position = Vector3(0, 2.3, 0.7)
-	root.add_child(glow)
 
 ## A stall keeper at his work, facing his workplace (`work_yaw`), or turned to a man who comes up.
 func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -> Dictionary:
