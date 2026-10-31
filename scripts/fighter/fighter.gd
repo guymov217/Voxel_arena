@@ -299,7 +299,9 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		p.linear_damp = 0.1
 		p.angular_damp = 1.5 if d.name == "torso" else (3.0 if d.name == "head" else 0.6)
 		p.collision_layer = VoxelPart.LAYER_BODY
-		p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | (0 if d.leg else VoxelPart.LAYER_WORLD)
+		# (The legs never trip on the chips of voxel knocked off in a fight: stood on, a pebble of
+		# one lifted the foot off its footing.)
+		p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | (0 if d.leg else VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS)
 		add_child(p)
 		var pos := Vector3(float(d.pos[0]), float(d.pos[1]), float(d.pos[2])) * S
 		p.global_transform = Transform3D(Basis(yaw_q), spawn + yaw_q * pos)
@@ -544,6 +546,8 @@ func apply_body(b: Dictionary) -> void:
 					if lv >= 2:
 						bp.fractured = true
 						_set_broken(bp, Vector3.ZERO, lv)
+						if lv == 3:
+							bp.show_bone(Vector3.ZERO)
 	for p in parts:
 		if p.alive_count < p.fx.size() or p.prosthetic != "":
 			p.resync_later()
@@ -1203,8 +1207,11 @@ func toggle_grip() -> Variant:
 	if off_at == null:
 		return "short"
 	w.grip_off = off_at
-	# Whatever the off hand held (the shield it came in with, a dagger) is let fall to the sand:
-	# the hand is wanted on the haft.
+	# A shield on the off arm is let fall to the sand: the hand is wanted on the haft. A weapon
+	# in it is not: H never throws a weapon away (user: H on a weapon just taken up off the sand
+	# dropped it); he is told his hand is full.
+	if weapons.L and not weapons.L.is_shield:
+		return "full"
 	if weapons.L and not release("L"):
 		return null
 	# Never onto the haft behind his back (user): where that end of it is behind him, the hand
@@ -1257,17 +1264,19 @@ func swap_hands() -> bool:
 		return false
 	for side in ["R", "L"]:
 		var fore: VoxelPart = arm[side].fore
-		if fixed_hand[side] or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm[side].upper.severed or arm[side].upper.hanging:
+		if fixed_hand[side] or fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or arm[side].upper.severed or arm[side].upper.hanging or arm_broken(side):
 			return false
 	var r := release("R")
 	var l := release("L")
-	for pair in [[r, "L"], [l, "R"]]:
+	for pair in [[r, "L", "R"], [l, "R", "L"]]:
 		var w = pair[0]
 		if w:
 			w.own_t = 0.0
 			if Combat.current:
 				Combat.current.loose_weapons.erase(w)
-			pick_up(pair[1], w)
+			# Never let fall on the way: if the other hand cannot take it, it stays where it was.
+			if not pick_up(pair[1], w) and not pick_up(pair[2], w):
+				w.own_t = 0.35
 	# A two-hander that crossed to the right takes the off hand back onto its haft.
 	return true
 
@@ -1308,27 +1317,33 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 	for side in ["R", "L"]:
 		if only_side != "" and side != only_side:
 			continue
-		if weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == "L" and two_handed) or (holding != null and holding.side == side):
-			continue
-		var hand := hand_world(side)
-		var best: Weapon = null
-		var bd := 0.75
-		for w in list:
-			if not is_instance_valid(w) or w.holder != null or w.alive_count() == 0:
-				continue
-			var g: Vector3 = w.grip_world()
-			# Reaching down counts for little: a weapon on the sand by your feet is in reach.
-			var dx := Vector2(g.x - hand.x, g.z - hand.z).length()
-			var dy := hand.y - g.y
-			if dy < -0.5 or dy > 1.7 * S:
-				continue
-			var d := dx + maxf(0.0, dy - 0.4) * 0.15
-			if d < bd:
-				bd = d
-				best = w
+		var best := takeable(list, side)
 		if best and reach_for(side, best):
 			return best
 	return null
+
+## The weapon in `list` that `side`'s hand would go for on G (null: none in its reach, or the hand
+## is not free). The HUD's "Pick up" prompt asks this too, so it shows exactly when G would work.
+func takeable(list: Array, side: String) -> Weapon:
+	if not alive or weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == "L" and two_handed) or (holding != null and holding.side == side):
+		return null
+	var hand := hand_world(side)
+	var best: Weapon = null
+	var bd := 0.75
+	for w in list:
+		if not is_instance_valid(w) or w.holder != null or w.alive_count() == 0:
+			continue
+		var g: Vector3 = w.grip_world()
+		# Reaching down counts for little: a weapon on the sand by your feet is in reach.
+		var dx := Vector2(g.x - hand.x, g.z - hand.z).length()
+		var dy := hand.y - g.y
+		if dy < -0.5 or dy > 1.7 * S:
+			continue
+		var d := dx + maxf(0.0, dy - 0.4) * 0.15
+		if d < bd:
+			bd = d
+			best = w
+	return best
 
 ## Taking a weapon up is the hand's own doing (user: no weapon ever jumps into a hand): the hand
 ## goes to the grip where it lies (he stoops to one on the sand), the fingers close on it and
@@ -1446,7 +1461,7 @@ func _reach_tick(dt: float) -> void:
 			continue
 		var w: Weapon = r.w
 		r.t -= dt
-		if not is_instance_valid(w) or w.holder != null or w.alive_count() == 0 or not _hand_can_take(side) or state == "dead" or (state != "stand" and r.phase != "fist") or (r.t <= 0.0 and r.phase == "reach"):
+		if not is_instance_valid(w) or w.holder != null or w.alive_count() == 0 or not _hand_can_take(side) or state == "dead" or (state != "stand" and r.phase != "fist" and r.phase != "take") or (r.t <= 0.0 and r.phase == "reach"):
 			cancel_reach(side)
 			continue
 		var fore: VoxelPart = arm[side].fore
@@ -1455,6 +1470,13 @@ func _reach_tick(dt: float) -> void:
 		var d := palm.distance_to(g)
 		if r.phase == "reach" and Vector2(g.x - torso.global_position.x, g.z - torso.global_position.z).length() > 1.4 * S:   # (a long haft lying slant has its grip a long arm's length off)
 			cancel_reach(side)   # (gone out of reach: kicked away, taken, rolled off)
+			continue
+		if r.phase == "take":
+			_take_tick(side, r, w, fore, palm, dt)
+			continue
+		# At the grip (and it lies loose): the fingers close on it there and then.
+		if (r.phase == "reach" or r.phase == "draw") and d < CLOSE_R * S and w.stuck == null:
+			_begin_take(r, w, fore, palm)
 			continue
 		if r.phase != "fist":
 			# Down to it: he bends lower and lower while the hand is still above the grip, and no
@@ -1542,6 +1564,54 @@ func _reach_tick(dt: float) -> void:
 			# off the sand and dropped from the hand at once, user.)
 			if pick_up(side, w, true):
 				took_up.emit(self, w)
+
+## The fingers close on a grip lying loose (user: the taking up smooth, all of it, and from the
+## moment it is gripped he has it wholly in hand): from where it lies by the palm it is brought
+## into the fist and turned into line with the forearm along one smooth curve, carried by the
+## hand the whole way (not swung about on a pin by the wrist's torque, jittering into line),
+## and then it is held: the further it has to turn, the longer (a fifth of a second for a blade
+## near enough in line, under half a second for a spear lying across him).
+func _begin_take(r: Dictionary, w: Weapon, fore: VoxelPart, palm: Vector3) -> void:
+	if r.pin and is_instance_valid(r.pin):
+		r.pin.queue_free()
+	r.pin = null
+	var fq := PD.quat_of(fore)
+	r.phase = "take"
+	r.take = 0.0
+	r.q0 = fq.inverse() * PD.quat_of(w)
+	r.off0 = fq.inverse() * (w.grip_world() - palm)
+	var want: Quaternion = (fq.inverse() * Quaternion(UP, yaw)) if w.is_shield else grip_q(w)
+	r.take_t = clampf(0.14 + 0.16 * (r.q0 as Quaternion).angle_to(want), 0.14, 0.42)
+	r.from = Quaternion(UP, yaw).inverse() * (palm - torso.global_position)
+	r.lift = 0.0
+	for bd in w.bodies():
+		if bd is RigidBody3D:
+			bd.freeze = false
+			bd.sleeping = false
+	_exempt(w)
+	if w.own_by and is_instance_valid(w.own_by) and w.own_by != self:
+		w.forget_owner()
+	w.own_by = self
+	w.own_t = 1e9
+
+func _take_tick(side: String, r: Dictionary, w: Weapon, fore: VoxelPart, palm: Vector3, dt: float) -> void:
+	r.take = minf(1.0, float(r.take) + dt / float(r.take_t))
+	var k: float = r.take * r.take * (3.0 - 2.0 * r.take)
+	# He starts straightening up with it already.
+	r.lift = minf(1.0, float(r.get("lift", 0.0)) + dt / 0.55)
+	stoop = maxf(stoop, float(r.get("bend", 0.0)) * (1.0 - r.lift))
+	var fq := PD.quat_of(fore)
+	var want: Quaternion = (fq.inverse() * Quaternion(UP, yaw)) if w.is_shield else grip_q(w)
+	var q: Quaternion = fq * (r.q0 as Quaternion).slerp(want, k)
+	var gp: Vector3 = palm + fq * ((r.off0 as Vector3) * (1.0 - k))
+	w.global_transform = Transform3D(Basis(q), gp - q * w.grip_main)
+	w.linear_velocity = fore.velocity_at(palm)
+	w.angular_velocity = fore.angular_velocity
+	if r.take >= 1.0:
+		reach[side] = null
+		w.own_t = 0.0
+		if pick_up(side, w, true):
+			took_up.emit(self, w)
 
 ## The fingers drawing a grip into the palm: the two points are brought together the way a
 ## joint would bring them (an impulse at each, as the bodies' masses and inertia answer it at
@@ -2051,8 +2121,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			down_timer = maxf(down_timer, 0.4)
 	var inp: Dictionary = inp_in if live and not limp else {}
 	if inp.get("grip", false) and state == "stand":
-		if toggle_grip() == "short":
+		var g = toggle_grip()
+		if g == "short":
 			note.emit(self, "The grip is too short for two hands")
+		elif g == "full" and weapons.L:
+			note.emit(self, "Your left hand holds the %s: swap hands (J) or throw it (F) first" % String(weapons.L.design.get("name", "weapon")).to_lower())
 	if inp.get("swap", false) and state == "stand":
 		swap_hands()
 	_grip_reach(dt)
@@ -3218,7 +3291,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 
 	var hand_w := hand_world(side)
 	var hand_vel := fore.velocity_at(hand_w)
-	var in_fist: Weapon = reach[side].w if reach[side] != null and reach[side].phase == "fist" and is_instance_valid(reach[side].w) else null
+	var in_fist: Weapon = reach[side].w if reach[side] != null and (reach[side].phase == "fist" or reach[side].phase == "take") and is_instance_valid(reach[side].w) else null
 	var m_eff := (fore.nominal_mass + upper.nominal_mass * 0.5) + (w.mass if w else (in_fist.mass if in_fist else 0.0))
 	var load := (w.mass * 0.22 + float(w.stats.get("inertia", 0.0)) * 0.9) / (float(mods.strength) * sqrt(S) * (1.7 if two_handed else 1.0)) if w else 0.0
 	var hnd := 1.0 / (1.0 + load)
@@ -4306,7 +4379,7 @@ func _legs_touch_ground(on: bool) -> void:
 		for n in ["thigh" + side, "shin" + side]:
 			var p: VoxelPart = by_name[n]
 			if not p.severed:
-				p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | (VoxelPart.LAYER_WORLD if on else 0)
+				p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | ((VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS) if on else 0)
 
 func fall(duration: float, force := false) -> void:
 	if state == "dead":
@@ -4596,10 +4669,13 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A giant's bones are as much thicker as he is bigger: what breaks a man's thigh only
 		# bruises his.
 		var big := maxf(1.0, S)
-		# (A cracked bone gives way to less.)
+		# (A cracked bone gives way to less.) A weapon made to crush (a mace, a hammer, a club of
+		# hard wood) is what breaks bones: the harder its head, the less it takes and the surer it
+		# is, and the worse the break (user: blunt breaks, sharp cuts). Fists and kicks as before.
+		var ck := clampf(hardness, 0.0, 1.0) if hit.get("weapon", false) else 0.0
 		var cr := part.fracture == 1
-		if not detached and J > (10.0 if cr else 16.0) * big and not part.fractured and part != torso and part != head and randf() < (J - (8.0 if cr else 14.0) * big) * 0.06 * (1.0 + heavy) / (float(mods.toughness) * big):
-			_fracture(part, lp, J, res, -1, ld)
+		if not detached and J > ((10.0 if cr else 16.0) - 9.0 * ck) * big and not part.fractured and part != torso and part != head and randf() < (J - ((8.0 if cr else 14.0) - 9.0 * ck) * big) * 0.06 * (1.0 + heavy) * (1.0 + 1.2 * ck) / (float(mods.toughness) * big):
+			_fracture(part, lp, J * (1.0 + 0.25 * ck), res, -1, ld)
 		# A burst (a thunder pot, powder going off) blows a crater out of the side of the part
 		# turned to it, at its nearest point to where it went off (not the part's middle): as
 		# wide as the blast was strong (blast_r) right against it, nothing a little way off.
@@ -4615,10 +4691,14 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
 					_fracture(part, lp, J, res, 3, ld)   # (blown open to the bone)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
-		elif J > 9.0 or (hollow > 0.0 and J > 6.0):
+		elif J > 9.0 + 6.0 * ck or (hollow > 0.0 and J > 6.0):
 			# (Armour over the spot keeps the crater small too, else a giant's hammer took a
-			# helmeted head clean off in one while the number on it said a bruise.)
-			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0))
+			# helmeted head clean off in one while the number on it said a bruise.) A crushing
+			# weapon's harm goes in, to the bone: the flesh is bruised and pulped, little of it
+			# knocked away (a mace took lumps out of a limb like an axe).
+			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0)) * (1.0 - 0.45 * ck)
+			if ck > 0.0 and not detached:
+				part.wound(lp, minf(0.14, 0.05 + J * 0.002) * S, "bruise")
 			var at := lp + ld * hollow
 			# The skull spreads a blow to the head: the brain under it is shaken (bruised, the
 			# concussion above), not crushed away, until the skull has cracked.
@@ -5760,7 +5840,7 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 const BREAK_J := 24.0
 const OPEN_J := 30.0
 ## How far a broken bone is drawn bent (radians): broken under the skin, and out through it.
-const KINK := [0.0, 0.0, 0.3, 0.5]
+const KINK := [0.0, 0.0, 0.45, 0.7]
 
 ## The bone broken through: the joint above it gives (the two ends of the bone held by muscle,
 ## not by each other) and the part is drawn bent at the break, its far end pushed the way the
@@ -5808,6 +5888,8 @@ func _open_break(part: VoxelPart, lp: Vector3) -> void:
 		part.remove_voxels(gone)
 		part.bleed += 1.5
 		part.set_meta("open_break", true)
+	if part != head:
+		part.show_bone(from, surf - from)
 
 ## Hard blunt blows to the trunk crack ribs (high) or the pelvis (low); to the head, the skull.
 func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, res: Dictionary) -> void:
@@ -5950,6 +6032,8 @@ func apply_status(s) -> void:
 				var at := Vector3.ZERO
 				at[ax] = (float(fb[i * 3 + 2]) / 255.0 - 0.5) * 2.0 * p.half_ext[ax]
 				p.set_kink(at, KINK[lv], fb[i * 3 + 1] & 3)
+				if lv == 3 and p != head:
+					p.show_bone(at)
 		return
 	blood = s.get("blood", blood)
 	stamina = s.get("stamina", stamina)

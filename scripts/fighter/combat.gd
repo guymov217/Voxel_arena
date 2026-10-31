@@ -454,6 +454,10 @@ func _blow(g: Dictionary) -> Dictionary:
 	var thrust_k := 0.0
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
+	# The studs on a mace's head crush with it, unless it is driven in point first.
+	if is_weapon and typ == "point" and thrust_k < 0.5 and att.crusher():
+		typ = "blunt"
+		sharpness = 0.0
 	# A giant's blow (the Cyclops, the Minotaur, a troll) is pulled a little: it still lands
 	# heaviest of all, but not every one of them at the most a head can take (the cap on a
 	# blow comes down with it: Fighter.apply_hit "pull").

@@ -9,7 +9,7 @@ const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "p
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet", "fireball": "pot_fireball"}
 const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
-const NAILS := 96
+const NAILS := 120
 const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
 	"oil": Color(0.16, 0.23, 0.06, 0.7), "honey": Color(0.91, 0.63, 0.13, 0.75), "smoke": Color(0.6, 0.6, 0.6, 0.5)}
@@ -100,7 +100,9 @@ func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vecto
 	var res: Dictionary = c.apply_hit(part, h)
 	if owner_ and owner_ != c:
 		c.last_attacker = owner_
-	m.report_hit({"kind": "hit", "p": point, "dir": dir, "J": J, "type": type, "char": c, "part": part, "attacker": owner_, "res": res, "killed": was_alive and not c.alive})
+	# (A blast's blows on every part in reach are heard as the blast: a knock and a crack for each
+	# of them, all at once, was a burst of static over the boom, user.)
+	m.report_hit({"kind": "hit", "p": point, "dir": dir, "J": J, "type": type, "char": c, "part": part, "attacker": owner_, "res": res, "killed": was_alive and not c.alive, "blast": extra.has("blast")})
 	return res
 
 func _near(p: Vector3, r: float) -> Array:
@@ -664,7 +666,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 		"pot_fireball":
 			# Vulcan's fire: a ball of flame with a shock in it (a thunder pot's little brother),
 			# burning what it breaks on and a small pool of fire where it fell.
-			m.sfx("thud", p, 0.9)
+			m.sfx("boom", p, 0.7)
 			flash(p, Color(1.0, 0.55, 0.2), 12.0, 8.0)
 			if m.fx:
 				m.fx.burst("blastfire", p + Vector3(0, 0.2, 0), 90, Vector3.UP, 1.6)
@@ -680,7 +682,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			if owner_:
 				m.crowd_add(owner_, 6, "Vulcan's fire")
 		"pot_thunder":
-			m.sfx("thud", p, 1.0)
+			m.sfx("boom", p, 1.0)
 			flash(p, Color(1.0, 0.8, 0.55), 14.0, 10.0)
 			if m.fx:
 				m.fx.burst("blastfire", p + Vector3(0, 0.25, 0), 70, Vector3.UP)
@@ -710,19 +712,10 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			# is a real little dart: it goes in only where it meets a body and stays in it. The
 			# man it broke on takes the nails that go his way.
 			var fwd: Vector3 = (dir as Vector3).normalized() if dir is Vector3 and (dir as Vector3).length_squared() > 1e-4 else Vector3.ZERO
-			for i in NAILS:
-				var a := randf() * TAU
-				var y := -0.55 + randf() * 1.45
-				var d := Vector3(cos(a) * sqrt(1.0 - y * y), y, sin(a) * sqrt(1.0 - y * y))
-				if fwd != Vector3.ZERO and randf() < 0.2:
-					d = (d * 0.55 + fwd).normalized()   # carried on the way the pot was going
-				# From all round the burst, each a little way out along its own line, at its own
-				# speed: let go from one spot, a hundred of them went into the one voxel the pot
-				# broke on and stood there in a clump.
-				var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06 + d * (0.12 + randf() * 0.22) + Vector3(randf_range(-0.12, 0.12), randf_range(-0.08, 0.12), randf_range(-0.12, 0.12))
-				from.y = maxf(0.08, from.y)
-				var it: Dictionary = m.items.spawn("nail", from, d * (16.0 + randf() * 20.0), owner_)
-				it.from_char = hit_char
+			var sd := randi()
+			nail_burst(p, fwd, sd, owner_, false)
+			if m.role == "host":
+				Net.send_all("fx", {"k": "nails", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)], "d": [snappedf(fwd.x, 0.01), snappedf(fwd.y, 0.01), snappedf(fwd.z, 0.01)], "n": sd}, false)
 		"pot_sand":
 			add_zone("sand", p, 3.2, 6.0, owner_)
 			m.sfx("slap", p)
@@ -905,8 +898,131 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			if hit_char:
 				hit_char.set_net(true, 3.0)
 
+## The hail of a nail pot: every nail a real little iron body (user: the nail is a physical
+## body, flying through the air), let go from all round the burst, every way, up, down and all
+## round (a few carried on the way the pot was going), each at its own speed. It flies point
+## first under its own weight; a shield or a blade in its way knocks it aside; where its line
+## meets a body it goes in (_dart: a hole, blood, it stays); the ones that meet nobody strike the
+## sand, skip and lie there. `sd` seeds the burst so a guest sees the same hail (`visual`: his
+## nails only show, the host's do the harm).
+func nail_burst(p: Vector3, fwd: Vector3, sd: int, owner_, visual: bool) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = sd
+	for i in NAILS:
+		var a := rng.randf() * TAU
+		var y := -0.55 + rng.randf() * 1.45
+		var d := Vector3(cos(a) * sqrt(1.0 - y * y), y, sin(a) * sqrt(1.0 - y * y))
+		if fwd != Vector3.ZERO and rng.randf() < 0.2:
+			d = (d * 0.55 + fwd).normalized()   # carried on the way the pot was going
+		# From all round the burst, each a little way out along its own line (let go from one
+		# spot, a hundred of them went into the one voxel the pot broke on in a clump).
+		var from := Vector3(p.x, maxf(0.15, p.y), p.z) - fwd * 0.06 + d * (0.12 + rng.randf() * 0.22) + Vector3(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.08, 0.12), rng.randf_range(-0.12, 0.12))
+		from.y = maxf(0.08, from.y)
+		var b := _nail_body(from, d * (16.0 + rng.randf() * 20.0))
+		if b == null:
+			return
+		# In flight it is in nobody's way but a shield's, a blade's and the ground's: its hits on
+		# bodies are found along its line each step (below), not by bouncing off them.
+		b.collision_layer = 0
+		b.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON
+		flying_nails.append({"b": b, "owner": owner_, "prev": Vector3(p.x, maxf(0.15, p.y), p.z), "age": 0.0, "visual": visual})
+
+const LOOSE_NAILS := 48
+var loose_nails: Array = []
+var flying_nails: Array = []
+
+func _nail_body(at: Vector3, vel: Vector3) -> RigidBody3D:
+	if not m.is_inside_tree():
+		return null
+	var b := RigidBody3D.new()
+	b.mass = 0.02
+	b.continuous_cd = true
+	b.physics_material_override = PhysicsMaterial.new()
+	b.physics_material_override.bounce = 0.35
+	b.physics_material_override.friction = 0.7
+	var cs := CollisionShape3D.new()
+	var bx := BoxShape3D.new()
+	bx.size = Vector3(0.014, 0.014, 0.09)
+	cs.shape = bx
+	b.add_child(cs)
+	if not m.headless:
+		b.add_child(Items.visual("nail"))
+	m.add_child(b)
+	var d := vel.normalized() if vel.length_squared() > 1e-6 else Vector3.DOWN
+	var up := Vector3.UP if absf(d.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+	b.global_transform = Transform3D(Basis.looking_at(-d, up), at)
+	b.linear_velocity = vel
+	return b
+
+## Down on the sand, its flight over: it lies there a while among the others (walked over, not
+## tripped on), at most LOOSE_NAILS of them, the oldest going first.
+func _lay_nail(b: RigidBody3D) -> void:
+	b.collision_layer = VoxelPart.LAYER_DEBRIS
+	b.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
+	while loose_nails.size() >= LOOSE_NAILS:
+		var old = loose_nails.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+	loose_nails.append(b)
+	var wb := weakref(b)
+	m.get_tree().create_timer(4.0).timeout.connect(func():
+		var n = wb.get_ref()
+		if n:
+			n.freeze = true)
+	m.get_tree().create_timer(25.0).timeout.connect(func():
+		var n = wb.get_ref()
+		if n:
+			loose_nails.erase(n)
+			n.queue_free())
+
+## Each step of each nail in the air: along the line it flew this step, the first body it met it
+## goes into; it flies point first; slowed to a roll on the sand, it lies down (not at the top
+## of its arc, where it hung in the air).
+func _nails_tick(dt: float) -> void:
+	if flying_nails.is_empty():
+		return
+	var space: PhysicsDirectSpaceState3D = m.get_world_3d().direct_space_state if m.is_inside_tree() else null
+	for n in flying_nails.duplicate():
+		var b = n.b
+		if not is_instance_valid(b):
+			flying_nails.erase(n)
+			continue
+		n.age += dt
+		var now: Vector3 = b.global_position
+		var v: Vector3 = b.linear_velocity
+		if space and v.length() > 2.0:
+			var ex: Array[RID] = []
+			if n.owner and is_instance_valid(n.owner) and n.age < 0.3 and n.owner.has_method("_own_rids"):
+				ex = n.owner._own_rids()
+			var q := PhysicsRayQueryParameters3D.create(n.prev, now + v.normalized() * 0.045, VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, ex)
+			var h: Dictionary = space.intersect_ray(q)
+			if h and h.collider is VoxelPart and not (h.collider as VoxelPart).severed:
+				var part: VoxelPart = h.collider
+				var c = part.fighter
+				if not n.visual and c is Fighter and c.alive and c != n.owner:
+					_dart("nail", h.position, n.owner, v.normalized(), c, part)
+				else:
+					part.stick("nail", h.position, v.normalized())
+				flying_nails.erase(n)
+				b.queue_free()
+				continue
+			# Point first, as a nail thrown flies.
+			var d := v.normalized()
+			var up := Vector3.UP if absf(d.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+			b.global_transform = Transform3D(Basis.looking_at(-d, up), now)
+			b.angular_velocity = Vector3.ZERO
+		elif (v.length() < 1.2 and now.y < 0.35) or n.age > 6.0 or now.y < -0.5:
+			flying_nails.erase(n)
+			if now.y < -0.5 or m.headless:
+				b.queue_free()
+			else:
+				_lay_nail(b)
+			continue
+		n.prev = now
+
 func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1.0) -> void:
-	# A nail only wounds what it actually met: one that reaches the sand lies there.
+	# A nail only wounds what it actually met: one that reaches the sand lies there, a thing
+	# of iron on the sand (it bounces, rolls and stays), not gone.
 	if type == "nail" and (hit_char == null or hit_part == null):
 		return
 	if type == "pot_arrow_fire":
@@ -938,19 +1054,41 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	# An arrow strikes as hard as the bow was drawn (a half draw stings, a full one goes deep);
 	# a crossbow's bolt always has the whole of the prod behind it.
 	if type == "nail":
-		# A nail is a sting, not a stab: it goes in and stays, it bleeds a little. Out of one
-		# burst only the first dozen in a body count; the rest just stick (a dragon catches half
-		# the hail, and every nail at full weight bled it dry in seconds and stalled the game).
+		# A nail is iron driven in at forty metres a second (user: the nails did next to nothing,
+		# no holes where they went in, no bleeding): it punches a hole of its own through the
+		# skin and into the flesh along its line, where it went in, the wound bleeds, the limb is
+		# knocked by it, and it stays in. Out of one burst the first fourteen in a body each do all
+		# of that; the rest go in and stay (a dragon catches half the hail, and every one of a
+		# hundred at full weight bled it dry in seconds and stalled the game).
 		var now := int(VoxelPart.clock() * 1000.0)
 		var nh: Array = c.get_meta("nail_hits", [0, 0])
 		if now - int(nh[0]) > 1500:
 			nh = [now, 0]
 		nh[1] = int(nh[1]) + 1
 		c.set_meta("nail_hits", nh)
-		if int(nh[1]) <= 12:
-			_hit(c, part, 1.2, "point", p, hdir, owner_)
-			part.bleed += 0.06 / maxf(1.0, c.S)
-		part.stick("nail", p, hdir)
+		var hd: Vector3 = hdir.normalized() if hdir.length_squared() > 1e-6 else Vector3.DOWN
+		# Where it went in: back along its line to the skin.
+		var gt: Transform3D = part.global_transform
+		var lp: Vector3 = gt.affine_inverse() * p
+		var ld: Vector3 = (gt.basis.orthonormalized().inverse() * hd).normalized()
+		var back := 0.3
+		for k in 3:
+			var v := -ld[k]
+			if absf(v) > 1e-4:
+				back = minf(back, maxf(0.0, ((part.half_ext[k] if v > 0.0 else -part.half_ext[k]) - lp[k]) / v))
+		var entry: Vector3 = gt * (lp - ld * back)
+		if int(nh[1]) <= 14:
+			var was := part.alive_count
+			var res: Dictionary = c.apply_hit(part, {"impulse": 3.6, "type": "point", "hardness": 1.0, "sharpness": 1.0, "point": entry + hd * 0.01, "dir": hd, "axis": hd, "wsz": 0.5 / maxf(1.0, c.S), "weapon": true})
+			if owner_ and owner_ != c:
+				c.last_attacker = owner_
+			# (Heard as the hail it is: a stab's sound for each of ten at once was a din.)
+			m.report_hit({"kind": "hit", "p": entry, "dir": hd, "J": 3.6, "type": "point", "char": c, "part": part, "attacker": owner_, "res": res, "killed": was_alive and not c.alive, "blast": true})
+			part.bleed += 0.2 / maxf(1.0, c.S)
+			if part.alive_count == was:
+				part.wound(gt.affine_inverse() * entry, 0.02 * c.S, "blood")
+			part.apply_impulse(hd * 0.9, entry - part.global_position)
+		part.stick("nail", entry + hd * 0.03, hd)
 		return
 	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0)) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	_hit(c, part, J, "point", p, hdir, owner_)
@@ -1195,6 +1333,7 @@ func _floor_y(p: Vector3) -> float:
 	return float(hit.position.y) if not hit.is_empty() else 0.0
 
 func update(dt: float) -> void:
+	_nails_tick(dt)
 	_update_drops(dt)
 	_update_wet(dt)
 	for z in zones.duplicate():

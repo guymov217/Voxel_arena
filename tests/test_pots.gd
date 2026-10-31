@@ -48,12 +48,14 @@ func test_nails_fly_all_round_and_stick() -> void:
 	await _steps(40)
 	var nails := func(f: Fighter) -> int: return f.parts.reduce(func(a, p): return a + p.stuck.filter(func(n): return is_instance_valid(n)).size(), 0)
 	var bleed: float = v.parts.reduce(func(a, p): return a + p.bleed, 0.0)
-	t.check(nails.call(v) >= 8, "a hail of nails stays stuck in the man by the pot (%d)" % nails.call(v))
+	t.check(nails.call(v) >= 6, "a hail of nails stays stuck in the man by the pot (%d)" % nails.call(v))
 	t.check(nails.call(by) >= 2, "and in the one standing further off in their way (%d)" % nails.call(by))
-	t.check(bleed > 0.5, "the nails went into him and he bleeds (%.1f)" % bleed)
+	t.check(bleed > 1.5, "the nails went into him and he bleeds (%.1f)" % bleed)
+	t.check(_lost(v) >= 6, "each nail that went in left its hole (%d voxels)" % _lost(v))
+	t.check(hp0 - v.total_hp() > hp0 * 0.035, "and they hurt him (%.0f of %.0f hp)" % [hp0 - v.total_hp(), hp0])
 	t.check(v.alive and hp0 - v.total_hp() < hp0 * 0.6, "a nail pot wounds, it does not shred (%.0f of %.0f hp)" % [hp0 - v.total_hp(), hp0])
 	await _steps(240)
-	t.check(nails.call(v) >= 8, "four seconds on, the nails are still in him (%d)" % nails.call(v))
+	t.check(nails.call(v) >= 6, "four seconds on, the nails are still in him (%d)" % nails.call(v))
 	m.queue_free()
 
 func test_caltrops_scatter_and_wound_the_foot_that_steps_on_one() -> void:

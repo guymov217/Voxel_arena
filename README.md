@@ -23,17 +23,26 @@ godot --headless --path . -- --test test_fight   # one suite
   control. Falling, getting up, and Half Sword mouse hands, with each hand on its own button.
 - **Damage**: per-voxel damage by material and hit type (cut, thrust, blunt). Dents, limbs that
   hang or come off, and blood and breath. Chips knocked off weapons wear them down. Fire.
+  Blunt and keen are different harm: a crushing weapon (a mace, a hammer: its head all blunt
+  but a few studs) bruises and pulps rather than taking flesh away, and breaks bones sooner and
+  worse the harder its head; blades cut. A nail pot's nails each punch a hole of their own where
+  they go in, bleed and stay in; the ones that miss bounce and lie on the sand.
 - **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
   at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
   out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle
   only, it flops from the joint and is drawn bent at the break, and still never passes through
   the body. The skull cracks, is driven in or breaks open; broken ribs cut the breath and, broken
   in, hurt the lung. In the campaign the bones stay broken from fight to fight until the
-  physician sets them (no elixir needed: a bone knits, a hand does not grow back).
+  physician sets them (no elixir needed: a bone knits, a hand does not grow back). A break is
+  seen: a broken limb is drawn bent, an open break has the splinter standing out of the skin,
+  the HUD figure marks the bone, the feed names it and it is heard over the blow.
 - **Weapons**: built from the same voxel designs, with greedy-merged colliders and shields.
   Chain weapons, bows and crossbows, throwables and the market. A weapon is only ever taken up by
   hand (G): the hand reaches for the grip (he stoops for one on the sand, steps to one a pace
-  off), the fingers draw it into the palm and the wrist turns it into line, then it is held.
+  off), and at the grip the fist closes on it and brings it into line along one smooth curve,
+  carried by the hand the whole way, then it is held. The "Pick up" prompt shows exactly when G
+  would take something. J changes hands, H puts both on the haft; neither ever drops a weapon.
+  Whatever lies still on the sand (a weapon, a severed limb, chips) is walked over, not tripped on.
 - **Glancing and lodged blows**: a weapon that meets a plate at a slant, or a blade that lands
   flat, skids off with sparks and a scrape and does little; a square cut chops in, bone crunches.
   A heavy keen blade driven hard can stay in the wound, still in the hand: it is wrenched out
@@ -153,7 +162,9 @@ godot --headless --path . -- --test test_fight   # one suite
   each pivot (the deltoid at the shoulder, the elbow, hip, knee and neck) to fill the wedge two
   blocks open between them when the joint bends. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
-  crowd murmur that follows the excitement and ducks under the blows.
+  crowd murmur that follows the excitement and ducks under the blows. A blow is the body's knock
+  and a few hundredths of a second of shaped noise (the thwack, the slap, the wet bite); a pot of
+  powder has its own boom, and the blast's blows on every part in reach are heard as that boom.
 - **Multiplayer**: host-authoritative. Guests send input; the host sends snapshots, spawns, voxel
   losses and effects.
 

@@ -467,6 +467,23 @@ func _draw_body() -> void:
 				var px := rr.position.x + x * cw + (float(h - 1 - y) * tilt)
 				var py := rr.position.y + (h - 1 - y) * ch
 				fig.draw_rect(Rect2(px, py, cw + 0.4, ch + 0.4), c)
+		# A broken bone: a jagged line across the part where it broke (thin: a crack; bold: broken
+		# through, the part outlined in bone white; open: the splinter stands out of it).
+		if not gone and p.fracture > 0:
+			var my := rr.position.y + rr.size.y * 0.5
+			var zig := PackedVector2Array()
+			var n := 5
+			for i in n + 1:
+				zig.append(Vector2(rr.position.x - 2.0 + (rr.size.x + 4.0) * i / n, my + (2.5 if i % 2 == 0 else -2.5)))
+			var bone := Color(0.96, 0.93, 0.84)
+			fig.draw_polyline(zig, Color(bone, 0.6 if p.fracture == 1 else 1.0), 1.2 if p.fracture == 1 else 2.4)
+			if p.fracture >= 2:
+				var pulse := 0.6 + 0.4 * sin(t * 6.0)
+				fig.draw_rect(rr.grow(1.0), Color(bone, pulse), false, 1.5)
+			if p.fracture >= 3:
+				var side := -1.0 if r.position.x + r.size.x * 0.5 < FIG_W * 0.5 else 1.0
+				var bx := rr.position.x + (0.0 if side < 0.0 else rr.size.x)
+				fig.draw_colored_polygon(PackedVector2Array([Vector2(bx, my - 3.0), Vector2(bx + side * 8.0, my - 7.0), Vector2(bx + side * 6.0, my - 3.5), Vector2(bx + side * 9.0, my - 1.0), Vector2(bx, my + 2.0)]), bone)
 		if gone:
 			fig.draw_rect(rr, Color(BLOOD_BRIGHT, 0.75), false, 1.0)
 		elif burning:
@@ -826,16 +843,16 @@ func _prompt_for(f) -> Array:
 			return [["kick"], String(st.label)]
 	var hand_r: Vector3 = f.hand_world("R")
 	var hand_l: Vector3 = f.hand_world("L")
+	# Exactly what G would take (Fighter.takeable: the grip in a hand's reach, the hand free). By
+	# the weapon's middle and 1.1 m from a hand, one lying at his feet was often out of it.
 	var best = null
-	var bd := 1.1
-	for w in match_.combat.loose_weapons:
-		if not is_instance_valid(w) or w.holder != null:
-			continue
-		var d := minf(w.global_position.distance_to(hand_r), w.global_position.distance_to(hand_l))
-		if d < bd:
-			bd = d
-			best = w
-	if best != null and (f.weapons.R == null or f.weapons.L == null):
+	for side in ["R", "L"]:
+		if f.reach[side] != null:
+			best = null
+			break
+		if best == null:
+			best = f.takeable(match_.combat.loose_weapons, side)
+	if best != null:
 		return [["grab"], "Pick up the %s" % String(best.design.get("name", "weapon")).to_lower()]
 	for o in match_.entities:
 		for part in o.f.parts:

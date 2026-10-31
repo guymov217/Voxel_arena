@@ -79,6 +79,79 @@ func _draw_at(t: Transform3D) -> void:
 		skin.global_transform = t
 	if jaw_mesh and jaw_pivot:
 		jaw_mesh.global_transform = t * jaw_pivot.transform
+	if bone_out:
+		bone_out.global_transform = t * bone_xf
+
+## An open break: the broken end of the bone stands out through the torn skin, jagged and
+## bloodied at the root, where the player sees it (user: a broken limb has to be seen). `at`
+## part-local on the bone, `out` the way out through the skin (part-local; zero: the way the
+## break is bent, the same on every screen). Drawing only.
+var bone_out: MeshInstance3D = null
+var bone_xf := Transform3D()
+func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
+	if DisplayServer.get_name() == "headless" or mmi == null:
+		return
+	var ra := _root_axis()
+	var ax: int = ra[0]
+	var along := Vector3.ZERO
+	along[ax] = -1.0 if bool(ra[1]) else 1.0
+	if out.length_squared() < 1e-6:
+		var code: int = kink[4] if not kink.is_empty() else absi(hash(String(part_name))) % 4
+		out[(ax + 2 - (code & 1)) % 3] = -1.0 if (code & 2) == 0 else 1.0
+	out = (out - along * out.dot(along)).normalized()
+	if out.length_squared() < 0.5:
+		return
+	# Out through the skin and slanting on toward the far end, as a snapped shaft does.
+	var dir := (out + along * 0.55).normalized()
+	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
+	var length := maxf(vf * part_scale * 2.4, thick * 1.05)
+	var w := vf * part_scale * 0.62
+	if bone_out == null:
+		var shard := ArrayMesh.new()
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		# A splinter: a four-sided shaft narrowing to a ragged, uneven point, white up its length
+		# and dark with blood at the root.
+		var root_c := Color(0.42, 0.04, 0.04)
+		var bone_c := Color(0.93, 0.89, 0.78)
+		var ring := [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(0.5, 0, 0.5), Vector3(-0.5, 0, 0.5)]
+		var tip := [Vector3(-0.22, 1.0, -0.05), Vector3(0.12, 0.86, -0.2), Vector3(0.2, 0.95, 0.15), Vector3(-0.1, 0.78, 0.2)]
+		for k in 4:
+			var a: Vector3 = ring[k]
+			var b: Vector3 = ring[(k + 1) % 4]
+			var c: Vector3 = tip[(k + 1) % 4]
+			var d: Vector3 = tip[k]
+			for v in [[a, root_c], [b, root_c], [c, bone_c], [a, root_c], [c, bone_c], [d, bone_c]]:
+				st.set_color(v[1])
+				st.add_vertex(v[0])
+		for v in [tip[0], tip[1], tip[2], tip[0], tip[2], tip[3]]:
+			st.set_color(bone_c)
+			st.add_vertex(v)
+		st.generate_normals()
+		st.commit(shard)
+		var mat := StandardMaterial3D.new()
+		mat.vertex_color_use_as_albedo = true
+		mat.roughness = 0.45
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		shard.surface_set_material(0, mat)
+		bone_out = MeshInstance3D.new()
+		bone_out.mesh = shard
+		bone_out.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		bone_out.top_level = true
+		add_child(bone_out)
+	# Its root on the bone inside, its point standing clear of the skin.
+	var y := dir
+	var x := y.cross(along if absf(y.dot(along)) < 0.95 else Vector3.UP).normalized()
+	var z := x.cross(y).normalized()
+	bone_xf = Transform3D(Basis(x * w, y * length, z * w), at - y * length * 0.2)
+	if not kink.is_empty():
+		bone_xf = (kink[2] as Transform3D) * bone_xf
+	bone_out.visible = true
+	_draw_at(global_transform)
+
+func hide_bone() -> void:
+	if bone_out:
+		bone_out.visible = false
 var jaw_mouth: Node3D = null
 var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
@@ -1044,6 +1117,7 @@ func _past_break(i: int) -> bool:
 ## same on every screen). 0 straightens it.
 func set_kink(at: Vector3, angle: float, code: int) -> void:
 	if angle == 0.0:
+		hide_bone()
 		if not kink.is_empty():
 			kink = []
 			resync()
@@ -1624,7 +1698,26 @@ func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
 func velocity_at(p: Vector3) -> Vector3:
 	return linear_velocity + angular_velocity.cross(p - global_position)
 
+## A piece cut off and lying still on the sand is walked over, as the dead are (Weapon._lie: a
+## man stepping on a lopped-off arm went down over it); it is a thing that hits again once it
+## moves, or is in someone's hand.
+var _lying := false
+var _lie_t := 0.0
+func _lie(dt: float) -> void:
+	if not (collision_layer == LAYER_DEBRIS or collision_layer == LAYER_CORPSE):
+		return
+	var still := wielder == null and linear_velocity.length() < 0.6
+	_lie_t = (_lie_t + dt) if still else 0.0
+	var lie := _lie_t > 0.4 or (_lying and wielder == null and linear_velocity.length() < 1.5)
+	if lie == _lying:
+		return
+	_lying = lie
+	collision_layer = LAYER_CORPSE if lie else LAYER_DEBRIS
+	collision_mask = (LAYER_WORLD | LAYER_WEAPON | LAYER_DEBRIS | LAYER_CORPSE) if lie else (LAYER_WORLD | LAYER_BODY | LAYER_WEAPON | LAYER_DEBRIS | LAYER_CORPSE)
+
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if severed:
+		_lie(state.step)
 	if Combat.current and state.get_contact_count() > 0:
 		Combat.current.report(self, state)
 		# Pressed on by someone else's weapon this step, or by a giant's body (Fighter.control

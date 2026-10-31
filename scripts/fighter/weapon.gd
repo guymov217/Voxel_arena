@@ -94,6 +94,7 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	alive.resize(vox.size())
 	alive.fill(1)
 	_box_cache = null
+	_crusher = null
 	_point_first = null
 	box_of.resize(vox.size())
 	# Weight, centre and inertia from the voxels.
@@ -542,6 +543,22 @@ var dull := 0.0
 var _dull_shown := 0.0
 const DULL_MAX := 0.65
 
+## A crushing weapon (a mace, a hammer, a club): its head is blunt metal or wood all but a few
+## studs or flanges, and those crush with the rest rather than stab (user: a mace breaks bone,
+## it does not cut). A blade, an axe, a spear or a spiked star are not.
+var _crusher = null
+func crusher() -> bool:
+	if _crusher == null:
+		var blunt := 0
+		var keen := 0
+		for v in vox:
+			if v[4] == "blunt":
+				blunt += 1
+			elif v[4] == "edge" or v[4] == "point":
+				keen += 1
+		_crusher = blunt > 0 and keen <= blunt * 0.08
+	return _crusher
+
 ## How keen the edge still is, as a share of the smith's: 1 fresh from the forge.
 func keenness() -> float:
 	return 1.0 - dull
@@ -788,7 +805,30 @@ func velocity_at(p: Vector3) -> Vector3:
 func set_held_by(f: Node) -> void:
 	holder = f
 	if f:
+		_lying = false
+		_lie_t = 0.0
+		collision_layer = VoxelPart.LAYER_WEAPON
 		collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
+
+## Lying still on the sand a weapon is something a man walks over, as he does the dead (user:
+## stepping on anything lying a little off the ground threw him down: the foot came down on the
+## blade, it rolled, he fell): to a man on his feet it is ground, to one down on the sand it is
+## a thing he lies on, and it is a weapon again (it hits) the moment it moves: kicked, thrown,
+## taken up.
+var _lying := false
+var _lie_t := 0.0
+func _lie(dt: float) -> void:
+	if is_hazard or chain_parent != null or collision_layer == 0:
+		return
+	var still := holder == null and thrown_t <= 0.0 and stuck == null and not freeze and linear_velocity.length() < 0.6 and angular_velocity.length() < 2.0
+	_lie_t = (_lie_t + dt) if still else 0.0
+	var lie := _lie_t > 0.4 or (_lying and holder == null and linear_velocity.length() < 1.5)
+	if lie == _lying:
+		return
+	_lying = lie
+	for b in [self] + ([chain_head] if chain_head else []):
+		b.collision_layer = VoxelPart.LAYER_CORPSE if lie else VoxelPart.LAYER_WEAPON
+		b.collision_mask = (VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE) if lie else (VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE)
 
 ## Put in a hand where it already runs through someone (bought at the smith, who stands in front
 ## of the buyer): it passes through those parts until it is clear of them, rather than wounding
@@ -867,6 +907,7 @@ func _physics_process(dt: float) -> void:
 		guard_chain()
 	if thrown_t > 0.0:
 		thrown_t -= dt
+	_lie(dt)
 	if own_t > 0.0:
 		own_t -= dt
 		if own_t <= 0.0 and holder == null:

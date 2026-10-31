@@ -1398,6 +1398,9 @@ func guest_message(type: String, data) -> void:
 						fx.pool(fp, 1.4 * clampf(float(data.get("s", 1.0)), 0.3, 4.0), 8.0)
 					"boom":
 						_boom_fx(fp, clampi(int(data.get("n", 4)), 1, 60))
+					"nails":
+						var nd := Vector3(data.d[0], data.d[1], data.d[2]).limit_length(1.0) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.ZERO
+						throwables.nail_burst(fp, nd, int(data.get("n", 0)), null, true)
 					"boing":
 						sfx("boing", fp, 0.8)
 					"stomp":
@@ -1519,6 +1522,8 @@ func lodge_fx(what: String, at: Vector3, dir: Vector3) -> void:
 ## ringing on top.
 const HIT_SOUNDS := ["scrape", "flat", "chop", "slash", "stab", "thud", "crunch", "clang"]
 static func hit_sounds(h: Dictionary) -> Array:
+	if h.get("blast", false):
+		return []
 	var res: Dictionary = h.get("res", {}) if h.get("res") is Dictionary else {}
 	var J := float(h.get("J", 0.0))
 	var g := minf(1.0, J / 30.0)
@@ -1539,7 +1544,10 @@ static func hit_sounds(h: Dictionary) -> Array:
 			out.append(["thud", g])
 	# (Laid under the blow's own sound, not over it: two and three at full strength at once
 	# were a din.)
-	if res.get("bone", false) or res.has("fractured") or res.has("broke"):
+	# A bone broken through is heard over the blow: a loud, wet snap.
+	if res.has("fractured") or res.has("broke"):
+		out.append(["crunch", clampf(0.5 + J / 60.0, 0.5, 0.85)])
+	elif res.get("bone", false):
 		out.append(["crunch", clampf(0.25 + J / 60.0, 0.25, 0.6)])
 	if res.get("armor", false):
 		out.append(["clang", g * 0.3])
@@ -1881,6 +1889,11 @@ func _on_hit(h: Dictionary) -> void:
 		feed.emit("%s TEARS %s APART!" % [h.attacker.display_name, h.char.display_name])
 	elif h.res.get("severed", []).size() > 0:
 		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
+	elif h.res.get("fractured") is VoxelPart and h.char is Fighter:
+		var bp: VoxelPart = h.res.fractured
+		feed.emit("%s's %s is BROKEN%s!" % [h.char.display_name, String(bp.label).to_lower(), ", the bone out through the skin" if bp.fracture >= 3 else ""])
+	elif String(h.res.get("broke", "")).begins_with("skull") and h.char is Fighter:
+		feed.emit("%s's skull is %s!" % [h.char.display_name, "broken open" if h.res.broke == "skull open" else ("cracked" if h.char.skull_fracture == 1 else "broken")])
 	if h.get("p") is Vector3:
 		for sn in snd:
 			sfx(sn[0], h.p, sn[1])
@@ -2137,7 +2150,7 @@ func _boom(w: Weapon, powder: Array, p: Vector3, owner_) -> void:
 	feed.emit("BOOM!")
 
 func _boom_fx(p: Vector3, n: int) -> void:
-	sfx("thud", p, 1.0)
+	sfx("boom", p, clampf(0.5 + n * 0.05, 0.5, 1.0))
 	if fx:
 		var k := clampf(0.4 + n * 0.06, 0.4, 1.0)
 		fx.flash(p, Color(1.0, 0.8, 0.55), 12.0 * k, 8.0 * k)
