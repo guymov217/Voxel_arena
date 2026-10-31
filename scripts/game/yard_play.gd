@@ -172,10 +172,13 @@ func set_next(text: String) -> void:
 		next_lines.append(_paint(bout, 64, y, PAINT_RED))
 		y -= 0.3
 	next_lines.append(_rule(y + 0.06))
-	y -= 0.08
+	# The foes in the middle of the face between the rule and the prize.
+	var step := 0.27 if foes.size() <= 2 else 0.21
+	var fy := 1.42 + step * (foes.size() - 1) * 0.5
 	for f in foes:
-		next_lines.append(_paint(f, 44 if foes.size() <= 2 else 36, y, PAINT_BLACK))
-		y -= 0.24 if foes.size() <= 2 else 0.2
+		next_lines.append(_paint(f, 52 if foes.size() <= 2 else 38, fy, PAINT_BLACK))
+		fy -= step
+	next_lines.append(_rule(1.0))
 	if prize != "":
 		next_lines.append(_paint(prize, 26, 0.86, PAINT_RED))
 

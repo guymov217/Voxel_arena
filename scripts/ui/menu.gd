@@ -332,6 +332,8 @@ func show_screen(s: String, msg := "") -> void:
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
+	if s != "main":
+		UIStyle.frame_over(panel, Vector2(32, 26))
 	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" else 760), 0)
 	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
 	# a count changed in the bag, stays put).
@@ -383,7 +385,7 @@ func _main(v: VBoxContainer) -> void:
 	var head := VBoxContainer.new()
 	head.add_theme_constant_override("separation", 2)
 	v.add_child(head)
-	var laurel := Ornament.new("laurel", Vector2(170, 86))
+	var laurel := Ornament.new("laurel", Vector2(150, 70))
 	laurel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	head.add_child(laurel)
 	var t := Label.new()
@@ -413,42 +415,70 @@ func _main(v: VBoxContainer) -> void:
 	var rule := Ornament.new("rule", Vector2(380, 22))
 	rule.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	head.add_child(rule)
+	var tag := Label.new()
+	tag.text = "FORGE  ·  FIGHT  ·  FALL"
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.add_theme_font_override("font", UIStyle.serif(6, 600))
+	tag.add_theme_font_size_override("font_size", 15)
+	tag.add_theme_color_override("font_color", Color(0.93, 0.84, 0.66, 0.85))
+	tag.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.01))
+	tag.add_theme_constant_override("outline_size", 4)
+	head.add_child(tag)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 18)
+	gap.custom_minimum_size = Vector2(0, 22)
 	v.add_child(gap)
 	var st := int(Save.get_value("stage", 1))
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 4)
+	col.custom_minimum_size = Vector2(440, 0)
 	col.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(col)
-	var buttons := [
-		# A campaign under way goes on from the yard, the lobby between bouts.
-		UIStyle.menu_button(("Continue · bout %d · %s" % [st, CampaignRun.MODES[CampaignRun.mode()].name]) if st > 1 else "Begin the campaign", func():
-			if st <= 1 and not CampaignRun.chosen():
-				show_screen("campaign_mode")
-			else:
-				enter_yard(), true),
-	]
+	var rows := []
+	# The campaign first and largest: where it stands (the bout, how death is dealt with) under it.
+	var go := func():
+		if st <= 1 and not CampaignRun.chosen():
+			show_screen("campaign_mode")
+		else:
+			enter_yard()
+	var fresh_run := st <= 1 and not CampaignRun.chosen()
+	rows.append(UIStyle.hero_button("Continue the campaign" if not fresh_run else "Begin the campaign",
+		("Bout %s of %d · %s" % [YardPlay.roman(st), Data.campaign.get("stages", []).size(), CampaignRun.MODES[CampaignRun.mode()].name]) if not fresh_run else "Sixty-four bouts to freedom", go))
+	var gap2 := Control.new()
+	gap2.custom_minimum_size = Vector2(0, 10)
+	rows.append(gap2)
+	var entries := []
 	if SHOW_CIRCUS:
-		buttons.append(UIStyle.menu_button("Bread & Circuses", func(): show_screen("circus")))
-	buttons.append(UIStyle.menu_button("Your gladiator", func(): show_screen("gladiator")))
+		entries.append(["Bread & Circuses", func(): show_screen("circus")])
+	entries.append(["Your gladiator", func(): show_screen("gladiator")])
 	if admin():
-		buttons.append(UIStyle.menu_button("The Ludus yard (admin)", enter_yard))
-	buttons.append_array([
-		UIStyle.menu_button("Arena", func(): show_screen("fights")),
-		UIStyle.menu_button("Training", func(): show_screen("training")),
-		UIStyle.menu_button("The forge", _workshop_forge),
-		UIStyle.menu_button("Multiplayer", func(): show_screen("mp")),
-		UIStyle.menu_button("Settings", func(): show_screen("options")),
-		UIStyle.menu_button("Quit", func(): get_tree().quit()),
+		entries.append(["The Ludus yard (admin)", enter_yard])
+	entries.append_array([
+		["Arena", func(): show_screen("fights")],
+		["Training", func(): show_screen("training")],
+		["The forge", _workshop_forge],
+		["Multiplayer", func(): show_screen("mp")],
 	])
-	for i in buttons.size():
-		var b: Button = buttons[i]
+	for en in entries:
+		rows.append(UIStyle.menu_entry(String(en[0]), en[1]))
+	var rule2 := Ornament.new("rule", Vector2(440, 18))
+	rule2.color = Color(UIStyle.GOLD, 0.55)
+	rows.append(rule2)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 0)
+	foot.add_child(UIStyle.menu_entry("Settings", func(): show_screen("options"), 16))
+	foot.add_child(UIStyle.menu_entry("Quit", func(): get_tree().quit(), 16))
+	rows.append(foot)
+	# Who he is and what he has, small, at the foot.
+	var who := UIStyle.label("%s  ·  %d denarii%s" % [String(Save.get_value("name", "Gladiator")), coins(), ("  ·  Unbroken" if CampaignRun.unbroken() else "")], 14, Color(UIStyle.MUTED, 0.85))
+	who.autowrap_mode = TextServer.AUTOWRAP_OFF
+	rows.append(who)
+	for i in rows.size():
+		var b: Control = rows[i]
 		col.add_child(b)
-		# The plates slide in one after another.
+		# The rows come in one after another, sliding a little from the left.
 		b.modulate.a = 0.0
 		var tw := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw.tween_interval(0.12 + i * 0.06)
+		tw.tween_interval(0.12 + i * 0.05)
 		tw.tween_property(b, "modulate:a", 1.0, 0.3)
 
 var rebinding := ""
@@ -2444,12 +2474,16 @@ func _trainer(v: VBoxContainer) -> void:
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var cs := StyleBoxFlat.new()
 		cs.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-		cs.border_color = UIStyle.GOLD if full else (UIStyle.BRONZE if lv > 0 else UIStyle.BRONZE_DARK)
+		cs.border_color = UIStyle.GOLD if full or id == "virtus" else (UIStyle.BRONZE if lv > 0 else UIStyle.BRONZE_DARK)
 		cs.set_border_width_all(1)
+		if id == "virtus":
+			# The Unbroken's own: a row to itself, framed in gold.
+			cs.set_border_width_all(2)
+			cs.bg_color = Color(0.16, 0.11, 0.05, 0.95)
 		cs.set_corner_radius_all(6)
 		cs.content_margin_left = 10; cs.content_margin_right = 10; cs.content_margin_top = 6; cs.content_margin_bottom = 8
 		card.add_theme_stylebox_override("panel", cs)
-		grid.add_child(card)
+		(grid if id != "virtus" else v).add_child(card)
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 4)
 		card.add_child(col)
@@ -2534,6 +2568,7 @@ func _doctor_visit(b: Dictionary, news: Array, stage_: int, done: Callable) -> v
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 8)
 		p.add_child(v)
+		UIStyle.frame_over(p)
 		_doctor_panel(v, cur[0], news, stage_, func(nb):
 			layer.queue_free()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -3206,9 +3241,11 @@ func _gladiator(v: VBoxContainer) -> void:
 	for k in ["hat", "hair", "beard", "cape", "eyes", "mouth"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))) + ("  (win the campaign on Ironman)" if look_locked(id) else ""))
+			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))) + ("  (Ironman)" if look_locked(id) else ""))
 			if look_locked(id):
 				ob.set_item_disabled(ob.item_count - 1, true)
+				ob.set_item_tooltip(ob.item_count - 1, "Won by taking the rudis on Ironman, never once fallen")
+		ob.fit_to_longest_item = false
 		ob.select(lk[k])
 		ob.custom_minimum_size = Vector2(260, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
@@ -3642,6 +3679,7 @@ func _toggle_pause() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	p.add_child(v)
+	UIStyle.frame_over(p)
 	v.add_child(UIStyle.title("Paused", 30))
 	v.add_child(UIStyle.button("Back to the fight", _toggle_pause, true))
 	if forge_trying != null:

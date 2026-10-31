@@ -334,6 +334,106 @@ static func menu_button(text: String, cb: Callable, primary := false) -> Button:
 		b.mouse_exited.connect(func(): b.text = cap)
 	return b
 
+## The title screen's lesser entries: no plate, Roman capitals set left like a line cut in a
+## list; under the mouse a band of gold light runs in from a gilded edge on the left, and a
+## diamond marks it. `size` small (16) for the foot of the list (Settings, Quit).
+static func menu_entry(text: String, cb: Callable, size := 22) -> Button:
+	var b := Button.new()
+	var cap := text.to_upper()
+	b.text = cap
+	b.pressed.connect(cb)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(0, 30 + size)
+	b.add_theme_font_override("font", serif(3, 700))
+	b.add_theme_font_size_override("font_size", size)
+	var rest := StyleBoxEmpty.new()
+	rest.content_margin_left = 26
+	rest.content_margin_right = 18
+	var band := StyleBoxTexture.new()
+	band.texture = _band()
+	band.content_margin_left = 26
+	band.content_margin_right = 18
+	for st in ["normal", "disabled"]:
+		b.add_theme_stylebox_override(st, rest)
+	for st in ["hover", "pressed", "hover_pressed", "focus"]:
+		b.add_theme_stylebox_override(st, band)
+	b.add_theme_color_override("font_color", Color(0.9, 0.84, 0.72) if size >= 20 else MUTED)
+	b.add_theme_color_override("font_hover_color", GOLD_LIGHT)
+	b.add_theme_color_override("font_focus_color", GOLD_LIGHT)
+	b.add_theme_color_override("font_pressed_color", Color(1, 0.95, 0.8))
+	b.add_theme_color_override("font_outline_color", Color(0.06, 0.035, 0.015))
+	b.add_theme_constant_override("outline_size", 4)
+	b.mouse_entered.connect(func(): b.text = "◆  " + cap)
+	b.mouse_exited.connect(func(): b.text = cap)
+	return b
+
+static var _band_tex: GradientTexture2D
+## A gilded edge on the left and gold light fading out to the right.
+static func _band() -> GradientTexture2D:
+	if _band_tex:
+		return _band_tex
+	var g := Gradient.new()
+	g.set_color(0, Color(GOLD_LIGHT, 1.0))
+	g.add_point(0.008, Color(GOLD_LIGHT, 1.0))
+	g.add_point(0.011, Color(GOLD, 0.34))
+	g.add_point(0.45, Color(GOLD, 0.12))
+	g.set_color(g.get_point_count() - 1, Color(GOLD, 0.0))
+	_band_tex = GradientTexture2D.new()
+	_band_tex.gradient = g
+	_band_tex.width = 512
+	_band_tex.height = 2
+	return _band_tex
+
+## The great button of the title screen: a gilded plate, the thing to do in big capitals and,
+## under it, where it leads in small ("Bout 5 · Legionary").
+static func hero_button(text: String, sub: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text.to_upper()
+	b.pressed.connect(cb)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size = Vector2(440, 84)
+	b.add_theme_font_override("font", serif(3, 700))
+	b.add_theme_font_size_override("font_size", 26)
+	var mk := func(bg: Color, edge: Color) -> StyleBoxFlat:
+		var s := _plate(bg, edge, 2)
+		s.border_width_left = 6
+		s.content_margin_left = 30
+		s.content_margin_top = 8
+		s.content_margin_bottom = 26
+		s.set_corner_radius_all(2)
+		return s
+	b.add_theme_stylebox_override("normal", mk.call(Color(0.42, 0.27, 0.09, 0.96), GOLD))
+	b.add_theme_stylebox_override("hover", mk.call(Color(0.54, 0.36, 0.12, 0.98), GOLD_LIGHT))
+	b.add_theme_stylebox_override("focus", mk.call(Color(0.54, 0.36, 0.12, 0.98), GOLD_LIGHT))
+	b.add_theme_stylebox_override("pressed", mk.call(Color(0.3, 0.19, 0.07, 0.98), GOLD))
+	b.add_theme_color_override("font_color", Color(1.0, 0.94, 0.8))
+	b.add_theme_color_override("font_hover_color", Color(1, 0.98, 0.9))
+	b.add_theme_color_override("font_outline_color", Color(0.14, 0.07, 0.02))
+	b.add_theme_constant_override("outline_size", 4)
+	if sub != "":
+		var l := Label.new()
+		l.text = sub.to_upper()
+		l.add_theme_font_override("font", serif(3, 700))
+		l.add_theme_font_size_override("font_size", 13)
+		l.add_theme_color_override("font_color", Color(1.0, 0.86, 0.6, 0.85))
+		l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+		l.offset_left = 31
+		l.offset_top = -30
+		l.offset_bottom = -10
+		l.offset_right = 420
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(l)
+	return b
+
+## A frame laid over a panel: a gold hairline inset from its edge, a bracket at each corner with
+## a diamond in it. Drawing only (Ornament "frame"); added as the panel's last child, ignored by
+## its layout.
+static func frame_over(p: Control, pad := Vector2(28, 22)) -> void:
+	var f := Ornament.new("frame", Vector2.ZERO)
+	f.pad = pad
+	f.name = "Frame"
+	p.add_child(f)
+
 ## Every button anywhere in the game lifts a little under the mouse and ticks when pressed.
 ## Hooked once, on the tree: buttons made later are caught as they are added.
 static func hook(tree: SceneTree) -> void:
