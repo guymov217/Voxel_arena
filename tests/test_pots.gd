@@ -58,6 +58,21 @@ func test_nails_fly_all_round_and_stick() -> void:
 	t.check(nails.call(v) >= 6, "four seconds on, the nails are still in him (%d)" % nails.call(v))
 	m.queue_free()
 
+## Whoever stands in a nail's line takes it (user): the one who threw the pot too, when it bursts
+## right by him.
+func test_nails_hit_whoever_is_in_their_way_the_thrower_too() -> void:
+	seed(9)
+	var m := _match()
+	var me: Fighter = m.me.f
+	await _steps(30)
+	var hp0 := me.total_hp()
+	m.throwables.explode("pot_nail", me.torso.global_position + Vector3(0, 0.0, 0.9), me)
+	await _steps(40)
+	var nails: int = me.parts.reduce(func(a, p): return a + p.stuck.filter(func(n): return is_instance_valid(n)).size(), 0)
+	t.check(nails >= 3, "nails stick in the thrower in their way too (%d)" % nails)
+	t.check(me.total_hp() < hp0, "and they hurt him (%.0f -> %.0f)" % [hp0, me.total_hp()])
+	m.queue_free()
+
 func test_caltrops_scatter_and_wound_the_foot_that_steps_on_one() -> void:
 	seed(7)
 	var m := _match()

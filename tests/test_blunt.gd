@@ -70,3 +70,34 @@ func test_a_mace_breaks_bone_where_a_fist_bruises() -> void:
 	seed(11)
 	var hard_fist = await _beat(false, 22.0)
 	t.check(int(hard[1]) <= int(hard_fist[1]), "and it pulps the flesh rather than knocking it away (%d voxels, %d without)" % [hard[1], hard_fist[1]])
+
+## A fair blow of a hammer rocks a man, it does not floor him (user: blunt weapons knocked men
+## down far too easily); a crushing one still can.
+func test_a_hammer_blow_rocks_but_does_not_floor() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(40)
+	var gt := v.torso.global_transform
+	var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+	v.apply_hit(v.torso, {"impulse": 50.0, "type": "blunt", "hardness": 0.9, "heavy": 0.6, "weapon": true, "point": gt * Vector3(0, 0, v.torso.half_ext.z), "dir": -bz})
+	t.check(v.state == "stand", "a fair hammer blow to the chest leaves him on his feet (%s, stagger %.2f)" % [v.state, v.stagger])
+	m.queue_free()
+
+## The warhammer stands its blows longer than its stone head alone would (user: it broke after a
+## few blows).
+func test_the_warhammer_is_made_to_last() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	await _steps(5)
+	var hammer := m.spawn_loose_weapon(Data.preset("warhammer"), Vector3(3, 1, 3))
+	var mace := m.spawn_loose_weapon(Data.preset("mace"), Vector3(-3, 1, 3))
+	t.check(hammer.durability() > 1.4, "the warhammer is tougher than its stuff (x%.1f)" % hammer.durability())
+	t.check(is_equal_approx(mace.durability(), 1.0), "others as their stuff makes them")
+	var lost := 0
+	for i in 8:
+		var k: Dictionary = hammer.knock(hammer.voxel_count() - 1 if hammer.has_method("voxel_count") else hammer.vox.size() - 1, Weapon.chip_score(32.0 * 0.25, 0.6, 0.5))
+		lost += (k.get("indices", []) as Array).size()
+	t.check(lost <= 2, "eight fair blows on one spot of its head take almost nothing off (%d voxels)" % lost)
+	m.queue_free()
+

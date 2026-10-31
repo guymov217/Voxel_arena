@@ -95,6 +95,7 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	alive.fill(1)
 	_box_cache = null
 	_crusher = null
+	_durability = -1.0
 	_point_first = null
 	box_of.resize(vox.size())
 	# Weight, centre and inertia from the voxels.
@@ -581,6 +582,7 @@ func wear_edge(amount: float) -> void:
 func knock(index: int, score: float) -> Dictionary:
 	if index < 0 or index >= vox.size() or alive[index] == 0:
 		return {}
+	score /= durability()
 	if fatigue.size() != vox.size():
 		fatigue.resize(vox.size())
 	var v0 := Vector3(vox[index][0], vox[index][1], vox[index][2])
@@ -713,6 +715,15 @@ func components() -> Array:
 					stack.append(n)
 		out.append(comp)
 	return out
+
+## How much better than its stuff alone a weapon stands its blows (a design's own "durability",
+## else its preset's): the warhammer's stone head on its haft wore away in a few blows (user).
+const DURABILITY := {"warhammer": 1.7}
+var _durability := -1.0
+func durability() -> float:
+	if _durability < 0.0:
+		_durability = maxf(0.2, float(design.get("durability", DURABILITY.get(Combat._preset_key(design), 1.0))))
+	return _durability
 
 ## durability.js sparingChip: while it has lost less than a quarter of itself, only the voxels
 ## whose loss leaves it in one piece come off, unless the metal there is worn out (knocked in
@@ -879,9 +890,11 @@ func snap_drawing() -> void:
 	_snap_until = Engine.get_physics_frames() + 2
 
 var draw_shift := Vector3.ZERO   # drawn this much off (world): with the hand that holds it
+var draw_turn := Transform3D()    # and turned so (a hand below a broken bone swings)
 func _process(_dt: float) -> void:
 	if vis:
 		var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
+		t = draw_turn * t
 		t.origin += draw_shift
 		vis.global_transform = t
 

@@ -443,6 +443,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		bleed += 2.5
 	blood = maxf(0.0, blood - bleed * 0.3 / (S * S) * dt)
 	_organs_tick(dt)
+	keep_above_ground()
 	stagger = maxf(0.0, stagger - dt * 1.5)
 	nerve = minf(1.0, nerve + NERVE_BACK * dt)
 	if push_t > 0.0:

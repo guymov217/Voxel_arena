@@ -1,7 +1,8 @@
 extends Node
 ## Open fractures, close up (`-- --probe fractureshot`, needs a display): a forearm and a shin
 ## broken out through the skin, the splinter of bone standing out of the wound. PNGs go to
-## SHOT_DIR: fracture_arm.png, fracture_leg.png, fracture_hud.png (the HUD's figure).
+## SHOT_DIR: fracture_arm.png, fracture_leg.png, fracture_thigh.png (a thigh broken under the
+## skin, the leg below swinging from the break), fracture_hud.png (the HUD's figure).
 
 var m
 var cam: Camera3D
@@ -30,12 +31,13 @@ func _ready() -> void:
 	for i in 60:
 		await get_tree().physics_frame
 	var yq := Quaternion(Vector3.UP, f.yaw)
-	# The right forearm broken open by a blow from in front, the left shin from the side.
-	for k in [["forearmR", Vector3(0, 0, 1)], ["shinL", Vector3(1, 0, 0)]]:
+	# The right forearm broken open by a blow from in front, the left shin from the side, the
+	# right thigh broken under the skin (the leg below it hangs from the break).
+	for k in [["forearmR", Vector3(0, 0, 1), 3], ["shinL", Vector3(1, 0, 0), 3], ["thighR", Vector3(0, 0, 1), 2]]:
 		var p: VoxelPart = f.by_name[k[0]]
 		var lp: Vector3 = (k[1] as Vector3) * p.half_ext
 		var ld: Vector3 = -(k[1] as Vector3)
-		f._fracture(p, lp, 52.0, {}, 3, ld)
+		f._fracture(p, lp, 52.0, {}, k[2], ld)
 	for i in 90:
 		await get_tree().physics_frame
 	var arm: VoxelPart = f.by_name["forearmR"]
@@ -54,6 +56,11 @@ func _ready() -> void:
 		var cp: Vector3 = mid + look_from * 0.42 + Vector3(0, 0.12, 0)
 		cp.y = maxf(cp.y, 0.3)
 		await _snap(out, k[1], cp, mid, 38.0)
+	# The broken thigh from the side: the leg below it swings from the break, whole, bent there.
+	var th: VoxelPart = f.by_name["thighR"]
+	var tm: Vector3 = th.global_position
+	var side: Vector3 = yq * Vector3(-1.0, 0.0, 0.25)
+	await _snap(out, "fracture_thigh.png", tm + side.normalized() * 1.5 + Vector3(0, 0.1, 0), tm + Vector3(0, -0.25, 0), 45.0)
 	# The whole man, the HUD's figure in the corner.
 	var hud := Hud.new(m)
 	add_child(hud)

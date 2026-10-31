@@ -215,7 +215,17 @@ func test_a_hammer_breaks_a_shin_and_the_knee_gives() -> void:
 		await _steps(4)
 	t.check(sh.fractured and sh.function() < 0.2, "the shin is broken (%d blows)" % k)
 	t.check(sh.joint.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) > lim + 0.5, "and the knee bends sideways now")
-	t.check(sh.has_meta("open_break"), "a blow that hard opens the skin to the bone")
+	# (Out through the skin only from a very hard blow or a broken bone beaten on: user.)
+	t.check(not sh.has_meta("open_break"), "one hard blow breaks it under the skin")
+	k = 0
+	while not sh.has_meta("open_break") and k < 12:
+		sh.hp = 1000.0
+		var gt2 := sh.global_transform
+		var bz2 := gt2.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(sh, {"impulse": 28.0, "type": "blunt", "hardness": 0.9, "heavy": 0.0, "point": gt2 * Vector3(0, 0, sh.half_ext.z), "dir": -bz2})
+		k += 1
+		await _steps(4)
+	t.check(sh.has_meta("open_break") and not sh.severed, "beaten on, the broken shin opens to the bone (%d more blows)" % k)
 	m.queue_free()
 
 ## A broken arm cannot hold: the blade falls from its hand, and the hand takes nothing up again.

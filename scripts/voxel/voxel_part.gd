@@ -61,7 +61,7 @@ func _process(_dt: float) -> void:
 	if mmi == null and skin == null:
 		return
 	if dangle_mesh:
-		_swing(_dt)
+		swing_now(_dt)
 	_draw_at(global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated())
 
 ## Drawn where the body is now, with the game paused (the kill cam puts the bodies back where
@@ -73,7 +73,13 @@ func draw_now() -> void:
 ## Drawn this much off where the physics has it (world): the fighter closes each joint on
 ## screen, the limb set against the part it hangs from (Fighter._seat_drawing).
 var draw_shift := Vector3.ZERO
+## Drawn turned by this (world) first: a limb below a broken bone is drawn swinging with the
+## piece past the break it hangs from (Fighter._seat_drawing).
+var draw_turn := Transform3D()
+## Drawn wherever the part is drawn (its armour): top-level nodes set to its drawing each frame.
+var draw_with: Array = []
 func _draw_at(t: Transform3D) -> void:
+	t = draw_turn * t
 	t.origin += draw_shift
 	if mmi:
 		mmi.global_transform = t
@@ -84,7 +90,11 @@ func _draw_at(t: Transform3D) -> void:
 	if bone_out:
 		bone_out.global_transform = t * bone_xf
 	if dangle_mesh:
-		dangle_mesh.global_transform = t * _dangle_xf()
+		_lay_bend()
+		dangle_mesh.global_transform = t * _bend_x
+	for n in draw_with:
+		if is_instance_valid(n):
+			n.global_transform = t
 
 ## An open break: the broken end of the bone stands out through the torn skin (user: it has to
 ## look like bone, and the break real, enough to turn the stomach). A round shaft as thick as the
@@ -261,6 +271,12 @@ var _sw_q := Quaternion()           # the swing, part-local, about the break
 var _sw_w := Vector3.ZERO           # its angular velocity
 var _sw_lv := Vector3.ZERO          # the part's velocity (world) last frame
 var _sw_av := Vector3.ZERO
+var _sw_frame := -1                 # the frame it last swung
+var _band: Array = []                # [slot, voxel]: the voxels over the break, laid round the bend
+var _bend_q := Quaternion(0, 0, 0, 0)   # the swing the bend was last laid out for
+## The piece past the bend as it is drawn (part-local): turned by the swing and set on the end of
+## the bend (_lay_bend). What hangs from it (the leg below a broken thigh) is drawn with it.
+var _bend_x := Transform3D()
 
 func _skin_skip() -> Dictionary:
 	if dangle_slot.is_empty():
@@ -275,10 +291,130 @@ func _dangle_pivot() -> Vector3:
 		p[int(kink[0])] = float(kink[1])
 	return p
 
-func _dangle_xf() -> Transform3D:
+## How a voxel past the break is drawn, unbent (its look's shape, or a plain cube).
+func _dangle_base(i: int) -> Transform3D:
+	return shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+
+## The piece past the break as it is drawn now (part-local), for what hangs from it: nothing
+## turned where `lp` is not past the break, or while nothing swings there.
+func bend_of(lp: Vector3) -> Transform3D:
+	if dangle_mm == null or kink.is_empty():
+		return Transform3D()
+	var c: float = lp[int(kink[0])] - float(kink[1])
+	if (c < 0.0) if bool(kink[3]) else (c > 0.0):
+		return _bend_x
+	return Transform3D()
+
+## How far the bone runs on past the break, to its far end.
+func _far_len() -> float:
+	var ax: int = kink[0]
+	var tip: Vector3 = _across()[2]
+	return maxf(0.0, half_ext[ax] - float(kink[1]) * tip[ax])
+
+## How long the bend at the break runs along the bone: the sharper it is bent, the longer, so
+## that no two neighbouring layers of voxels turn far apart (cubes gaping on the outside).
+func _band_len(theta: float) -> float:
+	var v := vf * part_scale
+	return clampf(maxf(v * 3.0, theta * v * 4.5), v * 2.0, maxf(v * 2.0, _far_len() * 0.9))
+
+## The centre line of the bend, `s` along it from the break (part-local): the bone's own line
+## turned round in an arc, `s` of `b` of the way to the whole swing (`n`, `theta`).
+static func _arc_at(s: float, b: float, n: Vector3, theta: float, tip: Vector3, pv: Vector3) -> Vector3:
+	if theta < 1e-4:
+		return pv + tip * s
+	var ph := theta * s / b
+	return pv + (b / theta) * (tip * sin(ph) + n.cross(tip) * (1.0 - cos(ph)) + n * n.dot(tip) * (ph - sin(ph)))
+
+## The swing as an angle in [0, PI] about a unit axis.
+static func _swing_of(q: Quaternion) -> Array:
+	q = q.normalized()
+	if q.w < 0.0:
+		q = -q
+	var theta := q.get_angle()
+	return [q, theta, q.get_axis() if theta > 1e-5 else Vector3.UP]
+
+## Where the piece past the bend is drawn for swing `q` (part-local).
+func _bend_for(q: Quaternion) -> Transform3D:
+	var sw := _swing_of(q)
+	var theta: float = sw[1]
 	var pv := _dangle_pivot()
-	var b := Basis(_sw_q)
-	return Transform3D(b, pv - b * pv)
+	var tip: Vector3 = _across()[2]
+	var b := _band_len(theta)
+	var r := Basis(sw[0])
+	return Transform3D(r, _arc_at(b, b, sw[2], theta, tip, pv) - r * (pv + tip * b))
+
+## The limb bent at the break as the swing has it (user: a break is not a gap, nothing missing
+## between the two pieces): the piece past the bend turned whole, and the voxels over the break
+## laid round the bend between, each turned its share, stretched along the bone on the outside of
+## the bend and pressed together on the inside, the flesh one, bent. Armour on it goes with it.
+func _lay_bend() -> void:
+	if dangle_mm == null or kink.is_empty():
+		return
+	if absf(_bend_q.dot(_sw_q)) > 0.9999995:
+		return
+	_bend_q = _sw_q
+	_bend_x = _bend_for(_sw_q)
+	var g := _bend_geom()
+	var inv := _bend_x.affine_inverse()
+	for row in _band:
+		var i: int = row[1]
+		if not alive[i] or veiled(i):
+			continue
+		dangle_mm.set_instance_transform(int(row[0]), inv * _bent(_dangle_base(i), g))
+	for ad in get_meta("armor", []):
+		var n = ad.get("node")
+		if n == null or not is_instance_valid(n):
+			continue
+		var m: MultiMesh = n.multimesh
+		var base: Array = _plate_bases(ad)
+		for ci in mini(base.size(), m.instance_count):
+			if ad.on[ci] == 0 or (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
+				continue
+			m.set_instance_transform(ci, _bent(base[ci], g))
+
+## The plates' own places (part-local), straight: kept from before the limb was ever bent.
+func _plate_bases(ad: Dictionary) -> Array:
+	if ad.has("xf"):
+		return ad.xf
+	if not ad.has("flat"):
+		var out := []
+		var m: MultiMesh = ad.node.multimesh
+		for ci in m.instance_count:
+			out.append(m.get_instance_transform(ci))
+		ad["flat"] = out
+	return ad.flat
+
+## A plate drawn where the limb under it is drawn (straight, or bent at the break).
+func drawn_plate(base: Transform3D) -> Transform3D:
+	if dangle_mm == null or kink.is_empty():
+		return base
+	return _bent(base, _bend_geom())
+
+## The bend as it is now: [swing, angle, axis, pivot, the far end's way, bone axis, band, angle a metre].
+func _bend_geom() -> Array:
+	var sw := _swing_of(_sw_q)
+	var theta: float = sw[1]
+	var b := _band_len(theta)
+	return [sw[0], theta, sw[2], _dangle_pivot(), _across()[2], int(kink[0]), b, theta / b]
+
+## Where something drawn at `base` (part-local, unbent) is drawn bent: past the bend turned with
+## the far piece; over the break, laid round the bend.
+func _bent(base: Transform3D, g: Array) -> Transform3D:
+	var pv: Vector3 = g[3]
+	var tip: Vector3 = g[4]
+	var b: float = g[6]
+	var s := (base.origin - pv).dot(tip)
+	if s <= 0.0:
+		return base
+	if s >= b:
+		return _bend_x * base
+	var q: Quaternion = g[0]
+	var n: Vector3 = g[2]
+	var rs := Basis(Quaternion().slerp(q, s / b))
+	var off := base.origin - pv - tip * s
+	var sc := Vector3.ONE
+	sc[int(g[5])] = clampf(1.0 + float(g[7]) * n.dot(off.cross(tip)), 0.35, 2.6)
+	return Transform3D(rs * Basis.from_scale(sc) * base.basis, _arc_at(s, b, n, float(g[1]), tip, pv) + rs * off)
 
 func _start_dangle() -> void:
 	if mm == null or DisplayServer.get_name() == "headless" or kink.is_empty():
@@ -300,11 +436,20 @@ func _start_dangle() -> void:
 		var i: int = idx[s]
 		dangle_slot[i] = s
 		var k := 1.0 if alive[i] and not veiled(i) else 0.0
-		var base: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+		var base := _dangle_base(i)
 		dangle_mm.set_instance_transform(s, Transform3D(base.basis.scaled(Vector3.ONE * k), base.origin))
 		dangle_mm.set_instance_color(s, colors[i])
 		dangle_mm.set_instance_custom_data(s, _custom(i))
 	dangle_mm.custom_aabb = mmi.custom_aabb
+	# The voxels over the break: laid round the bend as it swings (_lay_bend).
+	var pv := _dangle_pivot()
+	var tip: Vector3 = _across()[2]
+	var reach := _band_len(PI)
+	_band = []
+	for i in idx:
+		if (local_of(i) - pv).dot(tip) < reach:
+			_band.append([dangle_slot[i], i])
+	_bend_q = Quaternion(0, 0, 0, 0)
 	dangle_mesh = MultiMeshInstance3D.new()
 	dangle_mesh.multimesh = dangle_mm
 	dangle_mesh.material_override = mmi.material_override
@@ -317,25 +462,50 @@ func _start_dangle() -> void:
 	_sw_w = Vector3.ZERO
 	_sw_lv = linear_velocity
 	_sw_av = angular_velocity
+	_lay_bend()
 	_mark_skin()
 
 func _stop_dangle() -> void:
+	if dangle_mm:
+		for ad in get_meta("armor", []):
+			var n = ad.get("node")
+			if n == null or not is_instance_valid(n):
+				continue
+			var base: Array = _plate_bases(ad)
+			for ci in mini(base.size(), n.multimesh.instance_count):
+				if ad.on[ci] == 1 and not (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
+					n.multimesh.set_instance_transform(ci, base[ci])
 	if dangle_mesh:
 		dangle_mesh.queue_free()
 	dangle_mesh = null
 	dangle_mm = null
+	_bend_x = Transform3D()
+	_band = []
 	if not dangle_slot.is_empty():
 		dangle_slot = {}
 		_mark_skin()
 
-## The far end, hung from the break by the muscle round it: its weight swings it down, the limb's
-## jerks and turns throw it about, and the muscle holds it a little toward where it broke.
+## Swung once a frame: by its fighter first, before what hangs from it is drawn with it
+## (Fighter._seat_drawing), else on its own.
+func swing_now(dt: float) -> void:
+	if dangle_mm == null or kink.is_empty():
+		return
+	var fr := Engine.get_process_frames()
+	if fr == _sw_frame:
+		return
+	_sw_frame = fr
+	_swing(dt)
+	_lay_bend()
+
+## The far end, hung from the break by the muscle round it (user: like rubber at the break,
+## swinging from the broken piece): its weight swings it down, the limb's jerks and turns throw
+## it about, and the torn muscle holds it a little toward where it broke.
 func _swing(dt: float) -> void:
 	if dt <= 0.0 or kink.is_empty():
 		return
 	dt = minf(dt, 1.0 / 30.0)
 	var inv := global_transform.basis.orthonormalized().inverse()
-	var tip: Vector3 = _across()[2] * half_ext[int(kink[0])] * 0.8
+	var tip: Vector3 = _across()[2] * maxf(_far_len(), half_ext[int(kink[0])] * 0.5)
 	var d := _sw_q * tip
 	var len2 := maxf(1e-4, d.length_squared())
 	# Gravity, and the part's own acceleration felt the other way (it is left behind).
@@ -354,17 +524,76 @@ func _swing(dt: float) -> void:
 	var eax := err.get_axis() if ang > 1e-4 else Vector3.ZERO
 	if ang > PI:
 		ang -= TAU
-	alpha -= eax * ang * 6.0
+	alpha -= eax * ang * 2.5
 	_sw_w += alpha * dt
-	_sw_w *= exp(-dt * 2.2)
+	_sw_w *= exp(-dt * 1.4)
 	var wl := _sw_w.length()
 	if wl > 1e-5:
 		_sw_q = (Quaternion(_sw_w / wl, wl * dt) * _sw_q).normalized()
-	# Never round further than the torn flesh lets it.
+	# Never round further than the torn flesh lets it: so far from where it broke, and never
+	# folded back on itself.
 	var off := (_sw_q * rest.inverse()).normalized()
-	if off.get_angle() > 1.4 and off.get_angle() < TAU - 1.4:
-		_sw_q = (Quaternion(off.get_axis(), 1.4) * rest).normalized()
+	if off.get_angle() > 1.3 and off.get_angle() < TAU - 1.3:
+		_sw_q = (Quaternion(off.get_axis(), 1.3) * rest).normalized()
 		_sw_w *= 0.3
+	var sw := _swing_of(_sw_q)
+	if float(sw[1]) > 1.9:
+		_sw_q = Quaternion(sw[2], 1.9)
+		_sw_w *= 0.3
+	_keep_off_ground()
+
+## Never through the sand: the piece past the break and the limb hanging below it are drawn above
+## the ground, laid back toward straight (where the body itself is, on the ground at worst) as far
+## as they must be.
+func _keep_off_ground() -> void:
+	var t := draw_turn * get_global_transform_interpolated()
+	t.origin += draw_shift
+	var pts := _hang_points()
+	if _lowest(t, pts, _sw_q) >= GROUND_CLEAR:
+		return
+	var lo := 0.0
+	var hi := 1.0
+	for k in 7:
+		var mid := (lo + hi) * 0.5
+		if _lowest(t, pts, _sw_q.slerp(Quaternion(), mid)) >= GROUND_CLEAR:
+			hi = mid
+		else:
+			lo = mid
+	_sw_q = _sw_q.slerp(Quaternion(), hi).normalized()
+	_sw_w *= 0.4
+
+const GROUND_CLEAR := 0.01
+
+## The far end's corners, and the corners of every part hanging below it (part-local, unbent).
+func _hang_points() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var ax: int = kink[0]
+	var ac := _across()
+	var far: Vector3 = (ac[2] as Vector3) * half_ext[ax]
+	var h1: float = half_ext[(ax + 1) % 3]
+	var h2: float = half_ext[(ax + 2) % 3]
+	for a in [-1.0, 1.0]:
+		for b in [-1.0, 1.0]:
+			out.append(far + (ac[0] as Vector3) * h1 * a + (ac[1] as Vector3) * h2 * b)
+	var inv := get_global_transform_interpolated().affine_inverse()
+	var stack: Array = child_parts.duplicate()
+	while not stack.is_empty():
+		var c = stack.pop_back()
+		if not is_instance_valid(c) or c.severed or c.missing or c.hanging:
+			continue
+		var tc: Transform3D = inv * c.get_global_transform_interpolated()
+		var h: Vector3 = c.half_ext
+		for k in 8:
+			out.append(tc * Vector3(h.x if k & 1 else -h.x, h.y if k & 2 else -h.y, h.z if k & 4 else -h.z))
+		stack.append_array(c.child_parts)
+	return out
+
+func _lowest(t: Transform3D, pts: PackedVector3Array, q: Quaternion) -> float:
+	var x := t * _bend_for(q)
+	var lo := INF
+	for p in pts:
+		lo = minf(lo, (x * p).y)
+	return lo
 var jaw_mouth: Node3D = null
 var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
@@ -950,11 +1179,12 @@ func resync() -> void:
 		var d_off := []
 		var d_col := []
 		for i in dangle_slot:
-			(d_on if alive[i] and not veiled(i) else d_off).append([dangle_slot[i], local_of(i)])
+			(d_on if alive[i] and not veiled(i) else d_off).append([dangle_slot[i], _dangle_base(i)])
 			d_col.append([dangle_slot[i], colors[i]])
 		_write_shown(dangle_mm, d_on, true)
 		_write_shown(dangle_mm, d_off, false)
 		_write_colors(dangle_mm, d_col)
+		_bend_q = Quaternion(0, 0, 0, 0)
 	if veil.size() > 0 or bevel:
 		for i in fx.size():
 			if not jaw_slot.has(i):
@@ -1301,10 +1531,11 @@ func set_shown(indices: Array, on: bool) -> void:
 		else:
 			main.append([i, drawn_xf(i)])
 			if dangle_slot.has(i):
-				dang.append([dangle_slot[i], local_of(i)])
+				dang.append([dangle_slot[i], _dangle_base(i)])
 	_write_shown(mm, main, on)
 	if dangle_mm:
 		_write_shown(dangle_mm, dang, on)
+		_bend_q = Quaternion(0, 0, 0, 0)
 	_mark_skin()
 	if jaw_mm:
 		_write_shown(jaw_mm, jaw, on)

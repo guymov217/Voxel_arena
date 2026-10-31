@@ -784,7 +784,12 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	inst.custom_aabb = AABB(-ext, ext * 2.0)
 	mmesh.custom_aabb = inst.custom_aabb
 	inst.name = "Armor_" + id
+	# (Drawn where the part is drawn, with a limb swinging below a broken bone: VoxelPart.draw_with.)
+	inst.top_level = true
+	inst.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	p.add_child(inst)
+	inst.global_transform = p.global_transform
+	p.draw_with.append(inst)
 	var pts := []
 	for c in cells:
 		pts.append(Vector3(c[0] - (p.dims.x - 1) * 0.5, c[1] - (p.dims.y - 1) * 0.5, c[2] - (p.dims.z - 1) * 0.5) * V * S)
@@ -1172,6 +1177,10 @@ func release(side: String) -> Weapon:
 		fell_with_arm[side] = w
 	w.holder = null
 	w.welded = false
+	for b in w.bodies():
+		if b is Weapon:
+			b.draw_shift = Vector3.ZERO
+			b.draw_turn = Transform3D()
 	# Loose: for a moment more it ignores the body that let it go, then it hits anyone.
 	w.last_side = side
 	w.own_by = self
@@ -2180,6 +2189,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		blood = minf(22.0, blood + 1.2 * dt)
 	_organs_tick(dt)
 	_check_joints(dt)
+	keep_above_ground()
 	stagger = maxf(0.0, stagger - dt * 1.6)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
@@ -2836,7 +2846,7 @@ var joint_caps := {}
 func _process(_dt: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	_seat_drawing()
+	_seat_drawing(true, _dt)
 	_draw_joint_caps()
 	_sway_hair(_dt)
 	_clip_arm_armor()
@@ -2890,7 +2900,7 @@ func _clip_arm_armor() -> void:
 				var inside := box.has_point(q)
 				if inside != (clip[ci] == 1):
 					clip[ci] = 1 if inside else 0
-					m.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else ad.xf[ci])
+					m.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else p.drawn_plate(ad.xf[ci]))
 			ad["clip"] = clip   # (a packed array is a value: the changes go back in)
 
 func _armored(p: VoxelPart) -> bool:
@@ -2911,24 +2921,40 @@ func draw_now() -> void:
 ## weapon in a hand is drawn moved with the forearm. The bodies are not touched (setting them
 ## back on their joints before each step, or more solver iterations, cost the arms their
 ## precision with a heavy head); a part cut off, hanging or gone is drawn where it is.
-func _seat_drawing(interp := true) -> void:
+## A limb below a broken bone (the leg below a broken thigh, the forearm below a broken upper arm)
+## is drawn with the piece past the break, swinging with it: turned with it about the break and
+## set on its end (VoxelPart.bend_of), so the limb stays one, bent at the break.
+func _seat_drawing(interp := true, dt := 0.0) -> void:
 	for p: VoxelPart in parts:
 		var par: VoxelPart = p.parent_part
 		p.draw_shift = Vector3.ZERO
+		p.draw_turn = Transform3D()
 		if par == null or p.severed or p.hanging or p.missing or par.severed or p.joint == null:
+			if p.dangle_mm and dt > 0.0:
+				p.swing_now(dt)
 			continue
 		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
 		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
-		p.draw_shift = tp * p.pa + par.draw_shift - tc * p.ca
+		var bx := par.bend_of(p.pa)
+		if par.draw_turn == Transform3D() and bx == Transform3D():
+			p.draw_shift = tp * p.pa + par.draw_shift - tc * p.ca
+		else:
+			var wp := par.draw_turn * tp
+			wp.origin += par.draw_shift
+			p.draw_turn = wp * bx * tp.affine_inverse()
+			p.draw_shift = wp * (bx * p.pa) - (p.draw_turn * tc) * p.ca
+		# (Swung now, before the limb below it is drawn on the end of it.)
+		if p.dangle_mm and dt > 0.0:
+			p.swing_now(dt)
 	for side in ["R", "L"]:
 		var w: Weapon = weapons[side]
 		if w == null:
 			continue
-		var fore: VoxelPart = arm[side].fore
-		var shift: Vector3 = fore.draw_shift if not two_handed or side == "R" else arm.R.fore.draw_shift
+		var fore: VoxelPart = arm[side].fore if not two_handed or side == "R" else arm.R.fore
 		for b in w.bodies():
 			if b is Weapon:
-				b.draw_shift = shift
+				b.draw_shift = fore.draw_shift
+				b.draw_turn = fore.draw_turn
 
 func _draw_joint_caps(interp := true) -> void:
 	for p: VoxelPart in parts:
@@ -2952,6 +2978,9 @@ func _draw_joint_caps(interp := true) -> void:
 		cap.visible = true
 		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
 		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
+		# (As they are drawn: a limb below a broken bone turned with the piece past the break.)
+		tc = p.draw_turn * tc
+		tp = par.draw_turn * tp * par.bend_of(p.pa)
 		var pivot: Vector3 = tc * p.ca + p.draw_shift
 		# Turned halfway between the two parts, a shade smaller than the limb: it fills the inner
 		# part of the wedge and shows little past either block (turned with one of them, a
@@ -4378,13 +4407,44 @@ func set_standing(on: bool) -> void:
 			p.collision_mask = (p.collision_mask & ~VoxelPart.LAYER_CORPSE) if on else (p.collision_mask | VoxelPart.LAYER_CORPSE)
 
 ## Standing (and getting up) the legs are held by the support spring, not the sand; lying, they
-## rest on it.
+## rest on it. (A leg that had gone into the sand while it passed through it is set on top of it
+## first: met by the ground from inside, it was pushed out through the bottom, and a falling giant
+## went down through the floor after it.)
 func _legs_touch_ground(on: bool) -> void:
 	for side in ["L", "R"]:
 		for n in ["thigh" + side, "shin" + side]:
 			var p: VoxelPart = by_name[n]
 			if not p.severed:
+				if on:
+					_lift_out(p, 0.0)
 				p.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | ((VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS) if on else 0)
+
+## Nothing of him under the sand (user: a giant fell into the floor and through it): a part gone
+## into the ground (a giant's weight coming down on it, a leg sunk while it passed through the sand)
+## is set back on top, its fall stopped. Every other step; a part well clear is passed over at once.
+var _ground_n := 0
+func keep_above_ground() -> void:
+	_ground_n += 1
+	if _ground_n % 2 != 0:
+		return
+	for p in parts:
+		if is_instance_valid(p) and not p.freeze and not p.missing:
+			# (A standing leg passes through the sand, held up by the support spring: only one
+			# sunk far into it is lifted.)
+			_lift_out(p, (0.04 if p.collision_mask & VoxelPart.LAYER_WORLD else 0.25) * S)
+
+func _lift_out(p: VoxelPart, allow: float) -> void:
+	var c := p.global_position
+	var h: Vector3 = p.half_ext
+	if c.y - h.length() > -allow:
+		return
+	var b := p.global_transform.basis.orthonormalized()
+	var low := c.y - (absf(b.x.y) * h.x + absf(b.y.y) * h.y + absf(b.z.y) * h.z)
+	if low >= -allow:
+		return
+	p.global_position = c + Vector3(0.0, -low, 0.0)
+	if p.linear_velocity.y < 0.0:
+		p.linear_velocity = Vector3(p.linear_velocity.x, 0.0, p.linear_velocity.z)
 
 func fall(duration: float, force := false) -> void:
 	if state == "dead":
@@ -4662,7 +4722,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# Hard and heavy hurts more than soft and light: a steel mace far more than a wooden stick.
 		dmg = J * 1.9 * (0.55 + 0.6 * clampf(hardness, 0.0, 1.0))
 		var shielded := part == head and not skull_cracked   # (as it was before this blow)
-		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.011)
+		# It rocks him more than a cut does, but one fair blow of a hammer does not floor a man
+		# (user: blunt weapons knocked men down far too easily).
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.0065)
 		if part == head:
 			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0) / sqrt(maxf(1.0, S)))
 		if (part == torso or part == head) and not detached:
@@ -4680,7 +4742,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var ck := clampf(hardness, 0.0, 1.0) if hit.get("weapon", false) else 0.0
 		var cr := part.fracture == 1
 		if not detached and J > ((10.0 if cr else 16.0) - 9.0 * ck) * big and not part.fractured and part != torso and part != head and randf() < (J - ((8.0 if cr else 14.0) - 9.0 * ck) * big) * 0.06 * (1.0 + heavy) * (1.0 + 1.2 * ck) / (float(mods.toughness) * big):
-			_fracture(part, lp, J * (1.0 + 0.25 * ck), res, -1, ld)
+			# (The hard head makes the break worse, but out through the skin only a very hard
+			# blow goes, whatever struck it.)
+			var jb := J * (1.0 + 0.25 * ck)
+			if J < OPEN_J * big:
+				jb = minf(jb, OPEN_J * big - 0.01)
+			_fracture(part, lp, jb, res, -1, ld)
 		# A burst (a thunder pot, powder going off) blows a crater out of the side of the part
 		# turned to it, at its nearest point to where it went off (not the part's middle): as
 		# wide as the blast was strong (blast_r) right against it, nothing a little way off.
@@ -4694,7 +4761,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if not remove.is_empty():
 				part.bleed += J * 0.02
 				if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
-					_fracture(part, lp, J, res, 3, ld)   # (blown open to the bone)
+					_fracture(part, lp, J, res, 3 if J >= OPEN_J * maxf(1.0, S) else 2, ld)   # (blown to the bone)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
 		elif J > 9.0 + 6.0 * ck or (hollow > 0.0 and J > 6.0):
 			# (Armour over the spot keeps the crater small too, else a giant's hammer took a
@@ -4714,6 +4781,17 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# A crater down into the bone of a limb has broken it.
 			if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
 				_fracture(part, lp, J, res, -1, ld)   # (a crack, or through, as hard as it was)
+	# A limb broken under the skin and beaten on, again and again: the ends of the bone grind
+	# through the flesh and out (user: open only after many blows, or one very hard one).
+	if not detached and part.fracture == 2 and part != torso and part != head and J > 12.0 * maxf(1.0, S):
+		var bt := float(part.get_meta("battered", 0.0)) + J
+		part.set_meta("battered", bt)
+		if bt >= 120.0 * maxf(1.0, S):
+			_fracture(part, lp, J, res, 3, ld)
+	# Ribs give under any blow that reaches them: a blade or a point that cuts into them breaks
+	# them as a club does.
+	if not detached and part == torso and type != "blunt" and res.get("bone", false) and J > 14.0:
+		_break_rib(lp, J, res)
 	# A crushing bite (or weight) smashes a crater whatever kind of blow it is; what it breaks
 	# loose falls away as pieces.
 	var crush: float = float(hit.get("crush", 0.0))
@@ -4789,7 +4867,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var steady: bool = bool(mods.get("unstoppable", false)) and blood > 40.0
 	if concussion > 0.85 and state == "stand" and not steady:
 		fall(3.0)
-	if stagger > 0.95 and J >= 16.0 * maxf(1.0, S * 0.8) * float(mods.get("footing", 1.0)) and state == "stand" and not steady:
+	if stagger > 0.95 and J >= 22.0 * maxf(1.0, S * 0.8) * float(mods.get("footing", 1.0)) and state == "stand" and not steady:
 		fall(1.5 / float(mods.get("footing", 1.0)))
 	if remove.is_empty() and not detached and J > 3.0:
 		var bruise := type == "blunt"
@@ -5747,6 +5825,7 @@ const BONE_BITE := 16.0   # a blow's bite (impulse x keenness) that chops clean 
 var ribs_broken := 0
 var skull_cracked := false
 var skull_fracture := 0   # 0 whole, 1 cracked, 2 driven in (depressed), 3 open
+var skull_battered := 0.0 # the force of the blows taken on a skull already driven in
 var pelvis_f := 1.0
 
 ## Of the voxels a cut or a stab would take, bone gives way only as far as the blow is strong:
@@ -5835,17 +5914,21 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 		return
 	var q := float(cut) / float(all)
 	var big := maxf(1.0, S)
-	if q >= 0.3 or (part.fracture == 1 and q >= 0.12):
+	# Chopped through most of it, the bone stands in the wound (open); a deep notch breaks it under
+	# the cut (the flesh over it holds), as does a smaller one in a bone already cracked.
+	if q >= 0.6:
 		_fracture(part, lp, J, res, 3, ld)
+	elif q >= 0.3 or (part.fracture == 1 and q >= 0.12):
+		_fracture(part, lp, J, res, 2, ld)
 	elif cut > 0 or (res.get("bone", false) and J > 18.0 * big):
 		_fracture(part, lp, J, res, 1, ld)
 
 ## Blows that break bone (a man's, x his size): a blunt blow past BREAK_J breaks it through
 ## rather than cracking it, past OPEN_J out through the skin.
 const BREAK_J := 24.0
-const OPEN_J := 30.0
+const OPEN_J := 60.0
 ## How far a broken bone is drawn bent (radians): broken under the skin, and out through it.
-const KINK := [0.0, 0.0, 0.45, 0.7]
+const KINK := [0.0, 0.0, 0.35, 0.55]
 
 ## The bone broken through: the joint above it gives (the two ends of the bone held by muscle,
 ## not by each other) and the part is drawn bent at the break, its far end pushed the way the
@@ -5866,8 +5949,16 @@ func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO, J
 	# Bent at the very spot the blow fell along the limb, the far end driven the way the blow went
 	# (any way round the bone it came from), and the harder it was the further.
 	var big := maxf(1.0, S)
-	var bend: float = KINK[level] if J <= 0.0 else clampf(KINK[level] * (0.55 + 0.55 * J / (OPEN_J * big)), 0.25, 1.25)
+	var bend: float = KINK[level] if J <= 0.0 else clampf(KINK[level] * (0.6 + 0.6 * J / (OPEN_J * big)), 0.2, 0.9)
 	part.set_kink(lp, bend, part.kink_code(lp, ld, bend))
+	# The break shows through the skin: bruised dark all round it, darkest on the outside of the
+	# bend, where the broken ends press out.
+	var ex := part.break_exit()
+	if not ex.is_empty():
+		var ax: int = part.kink[0]
+		var r := maxf(part.half_ext[(ax + 1) % 3], part.half_ext[(ax + 2) % 3])
+		part.wound(ex[0], r * 1.7, "bruise")
+		part.wound((ex[0] as Vector3) + (ex[1] as Vector3) * r, r * 1.1, "bruise")
 
 ## The skin and flesh between the broken bone and where the blow landed burst open: the bone shows.
 func _open_break(part: VoxelPart, lp: Vector3) -> void:
@@ -5908,12 +5999,39 @@ func _open_break(part: VoxelPart, lp: Vector3) -> void:
 	if not gone.is_empty():
 		part.remove_voxels(gone)
 		part.bleed += 1.5
-		part.set_meta("open_break", true)
+	# (Open whether or not the blows had already torn the flesh away over it.)
+	part.set_meta("open_break", true)
 	# The torn skin round it is red with blood.
 	part.wound(surf, part.vf * part.part_scale * 3.0, "blood")
 	part.bleed += 0.5
 	if part != head:
 		part.show_bone(from, surf - from)
+
+## A rib broken (by a club, or cut into by a blade): the breath shortens; broken in, its end goes
+## into the lung under it; broken by a very hard blow, out through the skin of the chest, the end
+## of the rib standing in the wound.
+func _break_rib(lp: Vector3, J: float, res: Dictionary) -> void:
+	var tough := float(mods.toughness)
+	ribs_broken += 2 if J > 32.0 else 1
+	res.broke = "ribs"
+	res.bone = true
+	pain = minf(1.0, pain + 0.25)
+	if (J > 36.0 * tough or ribs_broken >= 4) and randf() < 0.6:
+		var lung := Anatomy.LUNG_R if lp.x < 0.0 else Anatomy.LUNG_L
+		organ_bruise[lung] = minf(0.9, float(organ_bruise.get(lung, 0.0)) + 0.35)
+		if not organs_hit.has(lung):
+			organs_hit.append(lung)
+		torso.bleed += 1.5
+		res.broke = "ribs into the lung"
+	if J >= OPEN_J * tough and not torso.has_meta("open_break"):
+		torso.set_meta("open_break", true)
+		torso.bleed += 1.5
+		res.broke = "ribs open"
+		var surf := lp.clamp(-torso.half_ext, torso.half_ext)
+		torso.wound(surf, torso.vf * torso.part_scale * 3.0, "blood")
+		var inward := Vector3(surf.x, surf.y * 0.3, surf.z)
+		torso.show_bone(surf * 0.6, inward)
+	stamina = minf(stamina, breath_cap())
 
 ## Hard blunt blows to the trunk crack ribs (high) or the pelvis (low); to the head, the skull.
 func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, res: Dictionary) -> void:
@@ -5923,7 +6041,13 @@ func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, re
 		# it in (depressed: the brain under it struck); harder still it bursts out through the
 		# scalp (open), the bone showing.
 		if skull_fracture < 3 and J > 20.0 and randf() < (J - 18.0) * 0.05 * (1.0 + heavy) / tough * (1.6 if skull_cracked else 1.0):
-			var lv := 3 if J >= 44.0 * tough else (2 if J >= 34.0 * tough or skull_cracked else 1)
+			var lv := 3 if J >= 62.0 * tough else (2 if J >= 34.0 * tough or skull_cracked else 1)
+			# Driven in already and beaten on: at last it bursts out through the scalp (user: open
+			# only after many blows, or one very hard one).
+			if skull_fracture == 2 and J > 24.0 * tough:
+				skull_battered += J
+				if skull_battered >= 120.0 * tough:
+					lv = 3
 			if lv > skull_fracture:
 				skull_fracture = lv
 				skull_cracked = true
@@ -5939,20 +6063,7 @@ func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, re
 		return
 	var hy := part.half_ext.y
 	if lp.y > -hy * 0.05 and J > 18.0 and randf() < (J - 16.0) * 0.05 * (1.0 + heavy) / tough:
-		ribs_broken += 2 if J > 32.0 else 1
-		res.broke = "ribs"
-		res.bone = true
-		pain = minf(1.0, pain + 0.25)
-		# A rib broken in, its end driven into the lung under it: the lung bleeds and fails
-		# (a hard blow, or one onto ribs already broken).
-		if (J > 36.0 * tough or ribs_broken >= 4) and randf() < 0.6:
-			var lung := Anatomy.LUNG_R if lp.x < 0.0 else Anatomy.LUNG_L
-			organ_bruise[lung] = minf(0.9, float(organ_bruise.get(lung, 0.0)) + 0.35)
-			if not organs_hit.has(lung):
-				organs_hit.append(lung)
-			torso.bleed += 1.5
-			res.broke = "ribs into the lung"
-		stamina = minf(stamina, breath_cap())
+		_break_rib(lp, J, res)
 	elif lp.y < -hy * 0.6 and pelvis_f > 0.5 and J > 24.0 and randf() < (J - 22.0) * 0.04 * (1.0 + heavy) / tough:
 		pelvis_f = 0.5
 		res.broke = "pelvis"

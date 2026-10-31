@@ -18,9 +18,11 @@ func build(theme_ := "colosseum", visuals := true) -> void:
 	ground.collision_mask = 0
 	var gs := CollisionShape3D.new()
 	var gb := BoxShape3D.new()
-	gb.size = Vector3(60, 1, 60)
+	# Deep: a body driven into it is pushed back out of the top, never out of the bottom (a giant
+	# came down through a metre of it).
+	gb.size = Vector3(60, 20, 60)
 	gs.shape = gb
-	gs.position = Vector3(0, -0.5, 0)
+	gs.position = Vector3(0, -10.0, 0)
 	ground.add_child(gs)
 	var pm := PhysicsMaterial.new()
 	pm.friction = 1.0

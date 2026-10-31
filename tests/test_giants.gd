@@ -356,3 +356,35 @@ func test_a_giant_with_a_leg_blown_off_crawls_at_the_man_and_fights_on() -> void
 	t.check(not m.over and g.alive, "and fourteen seconds on the bout is still on (over %s)" % m.over)
 	m.queue_free()
 
+## A giant never goes down through the floor (user): legs sunk into the sand while the support
+## spring held him (they pass through it standing) come up on top of it when he falls, and a part
+## driven into the ground by his weight is set back on it.
+func test_a_falling_giant_stays_on_the_sand() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var spec: Dictionary = m.enemy_spec({"e": "giant"}, 0, 1)
+	spec.pos = Vector3(0, 0.1, 4.0)
+	spec.yaw = PI
+	var e = m.spawn_fighter(spec)
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var g: Fighter = e.f
+	for i in 60:
+		await get_tree().physics_frame
+	# His legs pushed deep into the sand, then down he goes.
+	for n in ["shinL", "shinR", "thighL"]:
+		var p: VoxelPart = g.by_name[n]
+		p.global_position += Vector3(0, -0.9 * g.S * 0.5, 0)
+	g.fall(3.0, true)
+	var lowest := INF
+	for i in 240:
+		await get_tree().physics_frame
+		if i > 10:
+			for p in g.parts:
+				lowest = minf(lowest, p.global_position.y)
+	t.check(lowest > -0.05, "every part of him stays on the sand as he falls (lowest middle %.2f m)" % lowest)
+	t.check(g.torso.global_position.y > 0.0 and g.torso.global_position.y < 2.0 * g.S, "he lies on the floor, not under it (%.2f m)" % g.torso.global_position.y)
+	m.queue_free()
+

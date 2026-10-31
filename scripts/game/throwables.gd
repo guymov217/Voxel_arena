@@ -991,15 +991,14 @@ func _nails_tick(dt: float) -> void:
 		var now: Vector3 = b.global_position
 		var v: Vector3 = b.linear_velocity
 		if space and v.length() > 2.0:
-			var ex: Array[RID] = []
-			if n.owner and is_instance_valid(n.owner) and n.age < 0.3 and n.owner.has_method("_own_rids"):
-				ex = n.owner._own_rids()
-			var q := PhysicsRayQueryParameters3D.create(n.prev, now + v.normalized() * 0.045, VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, ex)
+			# Whoever is in its line takes it (user): friend or foe, the one who threw the pot too
+			# when it bursts by him; the living hurt by it, the dead stuck with it all the same.
+			var q := PhysicsRayQueryParameters3D.create(n.prev, now + v.normalized() * 0.045, VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE)
 			var h: Dictionary = space.intersect_ray(q)
-			if h and h.collider is VoxelPart and not (h.collider as VoxelPart).severed:
+			if h and h.collider is VoxelPart:
 				var part: VoxelPart = h.collider
 				var c = part.fighter
-				if not n.visual and c is Fighter and c.alive and c != n.owner:
+				if not n.visual and not part.severed and c is Fighter and c.alive:
 					_dart("nail", h.position, n.owner, v.normalized(), c, part)
 				else:
 					part.stick("nail", h.position, v.normalized())
@@ -1027,7 +1026,8 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		return
 	if type == "pot_arrow_fire":
 		add_zone("fire", Vector3(p.x, 0.0, p.z), 0.8, 3.0, owner_)
-	var c = hit_char if hit_char and hit_char.alive and hit_char != owner_ else null
+	# (A nail goes into whoever it met, the thrower too; the rest find the one they struck.)
+	var c = hit_char if hit_char and hit_char.alive and (hit_char != owner_ or type == "nail") else null
 	if c == null:
 		for x in _near(p, 0.9 if type == "pot_dart" else 1.0):
 			if x.c != owner_:
@@ -1083,7 +1083,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 			if owner_ and owner_ != c:
 				c.last_attacker = owner_
 			# (Heard as the hail it is: a stab's sound for each of ten at once was a din.)
-			m.report_hit({"kind": "hit", "p": entry, "dir": hd, "J": 3.6, "type": "point", "char": c, "part": part, "attacker": owner_, "res": res, "killed": was_alive and not c.alive, "blast": true})
+			m.report_hit({"kind": "hit", "p": entry, "dir": hd, "J": 3.6, "type": "point", "char": c, "part": part, "attacker": owner_ if owner_ != c else null, "res": res, "killed": was_alive and not c.alive, "blast": true})
 			part.bleed += 0.2 / maxf(1.0, c.S)
 			if part.alive_count == was:
 				part.wound(gt.affine_inverse() * entry, 0.02 * c.S, "blood")

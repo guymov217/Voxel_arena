@@ -50,7 +50,59 @@ func test_a_blow_cracks_or_breaks_as_hard_as_it_was() -> void:
 	t.check(not sh.has_meta("open_break"), "the skin over it whole")
 	var th: VoxelPart = v.by_name.thighR
 	k = await _club(v, th, 48.0)
-	t.check(th.fracture == 3 and th.has_meta("open_break"), "a crushing one breaks the thigh out through the skin (level %d)" % th.fracture)
+	t.check(th.fracture == 2 and not th.has_meta("open_break"), "a heavy one breaks the thigh, but under the skin (level %d)" % th.fracture)
+	var ua: VoxelPart = v.arm.L.upper
+	k = await _club(v, ua, 80.0)
+	t.check(ua.fracture == 3 and ua.has_meta("open_break"), "a crushing one breaks the upper arm out through the skin at once (level %d)" % ua.fracture)
+	m.queue_free()
+
+## Open fractures are rare (user): not from one fair blow, but from a very hard one, or from a
+## limb already broken beaten on again and again.
+func test_a_broken_limb_beaten_on_breaks_out_through_the_skin() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var sh: VoxelPart = v.by_name.shinR
+	await _club(v, sh, 30.0)
+	t.check(sh.fracture == 2, "a hard blow breaks the shin under the skin (level %d)" % sh.fracture)
+	var k := 0
+	while sh.fracture < 3 and k < 12:
+		sh.hp = 1000.0
+		var gt := sh.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(sh, {"impulse": 30.0, "type": "blunt", "hardness": 0.9, "heavy": 0.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": -bz})
+		k += 1
+		await _steps(3)
+	t.check(sh.fracture == 3 and sh.has_meta("open_break"), "beaten on, the broken shin breaks out through the skin at last (after %d more blows)" % k)
+	t.check(k >= 3, "but not at the next blow (%d)" % k)
+	# A blade into the bone: a deep notch breaks it under the cut, only a chop through most of it
+	# leaves it standing in the wound.
+	var fo: VoxelPart = v.arm.R.fore
+	var bones := []
+	for i in fo.fx.size():
+		if fo.alive[i] and fo.bone[i]:
+			bones.append(i)
+	v._edge_on_bone(fo, bones.slice(0, int(bones.size() * 0.4)), Vector3.ZERO, Vector3(0, 0, -1), 20.0, {})
+	t.check(fo.fracture == 2, "a deep notch in the bone breaks it under the skin (level %d)" % fo.fracture)
+	m.queue_free()
+
+## Every bone can break, the ribs too, and by an edge as by a club.
+func test_a_blade_into_the_ribs_breaks_them() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var tor := v.torso
+	var k := 0
+	while v.ribs_broken == 0 and k < 20:
+		tor.hp = 1000.0
+		var gt := tor.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		v.apply_hit(tor, {"impulse": 30.0, "type": "edge", "sharpness": 1.0, "hardness": 0.9, "point": gt * Vector3(0.1, tor.half_ext.y * 0.4, tor.half_ext.z), "dir": -bz, "axis": gt.basis.orthonormalized() * Vector3(1, 0, 0), "edge": -bz})
+		k += 1
+		await _steps(3)
+	t.check(v.ribs_broken > 0, "a blade cutting into the chest breaks ribs (%d after %d cuts)" % [v.ribs_broken, k])
 	m.queue_free()
 
 func test_a_cracked_bone_gives_way_to_less() -> void:
