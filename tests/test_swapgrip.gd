@@ -76,3 +76,29 @@ func test_j_and_h_with_a_weapon_already_in_the_other_hand() -> void:
 		t.check(f.weapons.R == main or f.weapons.L == main, "after %s the sword is still in hand" % key)
 		m.queue_free()
 		await _steps(2)
+
+## J with the other arm broken: the weapon stays in the good hand (user), whichever arm it is.
+func test_j_with_the_other_arm_broken_keeps_the_weapon_in_the_good_hand() -> void:
+	for broken in ["L", "R"]:
+		var good := "R" if broken == "L" else "L"
+		var s = await _setup({"main": "", "off": ""})
+		var m: Match = s[0]
+		var f: Fighter = s[1]
+		var q: Array = s[2]
+		var p: VoxelPart = f.arm[broken].fore
+		f._fracture(p, Vector3(0, 0, p.half_ext.z), 30.0, {}, 2, Vector3(0, 0, -1))
+		await _steps(10)
+		var w := m.spawn_loose_weapon(Data.preset("gladius"), f.hand_world(good) + Vector3(0, -0.2, 0.2))
+		f.pick_up(good, w)
+		await _steps(10)
+		var said := []
+		f.note.connect(func(_f, text): said.append(text))
+		for i in 3:
+			var k := _base()
+			k.swap = true
+			q.append(k)
+			await _steps(30)
+		t.check(f.weapons[good] == w and w.holder == f, "%s arm broken: J leaves the sword in the %s hand" % [broken, good])
+		t.check(said.any(func(x): return String(x).contains("broken")), "and he is told why (%s)" % [said])
+		m.queue_free()
+		await _steps(2)

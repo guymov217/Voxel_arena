@@ -104,8 +104,8 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	# Out through the skin and slanting on toward the far end, as a snapped shaft does.
 	var dir := (out + along * 0.55).normalized()
 	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
-	var length := maxf(vf * part_scale * 2.4, thick * 1.05)
-	var w := vf * part_scale * 0.62
+	var length := maxf(vf * part_scale * 4.0, thick * 1.4)
+	var w := vf * part_scale * 1.25
 	if bone_out == null:
 		var shard := ArrayMesh.new()
 		var st := SurfaceTool.new()
@@ -126,6 +126,23 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 				st.add_vertex(v[0])
 		for v in [tip[0], tip[1], tip[2], tip[0], tip[2], tip[3]]:
 			st.set_color(bone_c)
+			st.add_vertex(v)
+		# A second, shorter splinter broken off beside it, and the marrow dark at the root.
+		var off := Vector3(0.55, 0.0, 0.35)
+		var ring2 := [Vector3(-0.3, 0, -0.3), Vector3(0.3, 0, -0.3), Vector3(0.3, 0, 0.3), Vector3(-0.3, 0, 0.3)]
+		var tip2 := [Vector3(-0.1, 0.62, 0.05), Vector3(0.12, 0.5, -0.08), Vector3(0.08, 0.58, 0.14), Vector3(-0.06, 0.45, 0.1)]
+		for k in 4:
+			var a: Vector3 = ring2[k] + off
+			var b: Vector3 = ring2[(k + 1) % 4] + off
+			var c: Vector3 = tip2[(k + 1) % 4] + off
+			var d: Vector3 = tip2[k] + off
+			for v in [[a, root_c], [b, root_c], [c, bone_c], [a, root_c], [c, bone_c], [d, bone_c]]:
+				st.set_color(v[1])
+				st.add_vertex(v[0])
+		# The ragged end of the shaft's cut face: blood-dark.
+		var marrow := Color(0.3, 0.02, 0.02)
+		for v in [tip[0] * Vector3(1, 0.98, 1), tip[1] * Vector3(1, 0.98, 1), tip[2] * Vector3(1, 0.98, 1)]:
+			st.set_color(marrow)
 			st.add_vertex(v)
 		st.generate_normals()
 		st.commit(shard)

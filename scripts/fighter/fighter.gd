@@ -2127,7 +2127,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		elif g == "full" and weapons.L:
 			note.emit(self, "Your left hand holds the %s: swap hands (J) or throw it (F) first" % String(weapons.L.design.get("name", "weapon")).to_lower())
 	if inp.get("swap", false) and state == "stand":
-		swap_hands()
+		# The other arm broken: what is in the good hand stays there (user), and he is told why.
+		if not swap_hands() and (weapons.R or weapons.L):
+			for sd in ["R", "L"]:
+				if arm_broken(sd):
+					note.emit(self, "Your %s arm is broken: the weapon stays in your %s hand" % ["right" if sd == "R" else "left", "left" if sd == "R" else "right"])
+					break
 	_grip_reach(dt)
 	_reach_tick(dt)
 	_wrench(dt)
@@ -5888,6 +5893,9 @@ func _open_break(part: VoxelPart, lp: Vector3) -> void:
 		part.remove_voxels(gone)
 		part.bleed += 1.5
 		part.set_meta("open_break", true)
+	# The torn skin round it is red with blood.
+	part.wound(surf, part.vf * part.part_scale * 3.0, "blood")
+	part.bleed += 0.5
 	if part != head:
 		part.show_bone(from, surf - from)
 
