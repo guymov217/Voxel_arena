@@ -82,12 +82,17 @@ func _draw_at(t: Transform3D) -> void:
 	if bone_out:
 		bone_out.global_transform = t * bone_xf
 
-## An open break: the broken end of the bone stands out through the torn skin, jagged and
-## bloodied at the root, where the player sees it (user: a broken limb has to be seen). `at`
-## part-local on the bone, `out` the way out through the skin (part-local; zero: the way the
+## An open break: the broken end of the bone stands out through the torn skin (user: it has to
+## look like bone, and the break real, enough to turn the stomach). A round shaft as thick as the
+## bone in that limb, ivory, smeared with blood up from the wound, snapped off in a jagged
+## splintered end with the red marrow showing in it, a sliver split off beside it; round it the
+## wound: a crater of torn, wet, bright red flesh, dark in the middle, flaps of skin peeled back.
+## `at` part-local on the bone, `out` the way out through the skin (part-local; zero: the way the
 ## break is bent, the same on every screen). Drawing only.
 var bone_out: MeshInstance3D = null
 var bone_xf := Transform3D()
+var bone_at := Vector3.ZERO     # part-local: the middle of the bone standing out, and its way
+var bone_dir := Vector3.UP
 func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	if DisplayServer.get_name() == "headless" or mmi == null:
 		return
@@ -101,68 +106,145 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	out = (out - along * out.dot(along)).normalized()
 	if out.length_squared() < 0.5:
 		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(String(part_name)) + int(at.x * 1000.0) * 31 + int(at.z * 1000.0)
 	# Out through the skin and slanting on toward the far end, as a snapped shaft does.
-	var dir := (out + along * 0.55).normalized()
+	var y := (out + along * 0.5).normalized()
+	var x := y.cross(along if absf(y.dot(along)) < 0.95 else Vector3.UP).normalized()
+	var z := x.cross(y).normalized()
 	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
-	var length := maxf(vf * part_scale * 4.0, thick * 1.4)
-	var w := vf * part_scale * 1.25
+	var r := maxf(thick * 0.17, vf * part_scale * 0.55)    # the bone's own radius in this limb
+	# Where its line meets the skin (the face of the part it comes out through).
+	var t_skin := INF
+	var nrm := out
+	for k in 3:
+		if absf(y[k]) > 1e-4:
+			var tk: float = ((half_ext[k] if y[k] > 0.0 else -half_ext[k]) - at[k]) / y[k]
+			if tk > 0.0 and tk < t_skin:
+				t_skin = tk
+				nrm = Vector3.ZERO
+				nrm[k] = signf(y[k])
+	if t_skin == INF:
+		t_skin = thick * 0.5
+	var root := at - y * r * 1.5
+	var h_out := maxf(r * 4.5, thick * 0.9)                # how far it stands out of the skin
+	var h := t_skin + r * 1.5 + h_out
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ivory := Color(0.93, 0.89, 0.78)
+	var blood := Color(0.42, 0.02, 0.02)
+	var wet := Color(0.62, 0.04, 0.04)
+	var marrow := Color(0.36, 0.06, 0.05)
+	var spongy := Color(0.72, 0.42, 0.36)
+	var N := 14
+	# The shaft: rings up its length, a little oval, narrowing toward the break; the top ring
+	# snapped off jagged, two long spikes and the rest broken short.
+	var levels := [0.0, 0.35, 0.6, 0.8, 1.0]
+	var spikes := [rng.randi_range(0, N - 1), rng.randi_range(0, N - 1)]
+	var rings := []
+	for li in levels.size():
+		var lv: float = levels[li]
+		var ring := []
+		for i in N:
+			var a := TAU * i / N
+			var rr := r * (1.0 - 0.12 * lv) * (1.0 + 0.12 * sin(a * 2.0 + 0.7))
+			var hh := h * lv
+			if li == levels.size() - 1:
+				var d0 := mini(absi(i - int(spikes[0])), N - absi(i - int(spikes[0])))
+				var d1 := mini(absi(i - int(spikes[1])), N - absi(i - int(spikes[1])))
+				var d := mini(d0, d1)
+				hh += (r * 2.4 / (1.0 + d * d * 0.9)) - r * 0.6 + rng.randf_range(-0.25, 0.25) * r
+			var p := root + y * hh + (x * cos(a) + z * sin(a)) * rr
+			# Blood up from the wound, in streaks, thinning toward the end.
+			var above := hh - (t_skin + r * 1.5)
+			var bl := clampf(1.0 - above / (h_out * (0.45 + 0.4 * absf(sin(a * 3.0 + 1.3)))), 0.0, 1.0)
+			ring.append([p, ivory.lerp(blood, bl * 0.9).lerp(Color(0.8, 0.72, 0.6), 0.12 * rng.randf())])
+		rings.append(ring)
+	for li in rings.size() - 1:
+		for i in N:
+			var a0 = rings[li][i]; var a1 = rings[li][(i + 1) % N]
+			var b0 = rings[li + 1][i]; var b1 = rings[li + 1][(i + 1) % N]
+			for v in [a0, a1, b1, a0, b1, b0]:
+				st.set_color(v[1])
+				st.add_vertex(v[0])
+	# The snapped end: the hard rim ivory, the spongy bone inside it pink, the marrow dark red,
+	# sunk a little into the shaft.
+	var top: Array = rings[rings.size() - 1]
+	var c := root + y * (h - r * 0.7)
+	for i in N:
+		var a := TAU * i / N
+		var a2 := TAU * (i + 1) / N
+		var in0 := c + (x * cos(a) + z * sin(a)) * r * 0.55
+		var in1 := c + (x * cos(a2) + z * sin(a2)) * r * 0.55
+		for v in [[top[i][0], ivory], [top[(i + 1) % N][0], ivory], [in1, spongy], [top[i][0], ivory], [in1, spongy], [in0, spongy]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+		for v in [[in0, spongy], [in1, spongy], [c - y * r * 0.4, marrow]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+	# A sliver split off the shaft, standing out beside it.
+	var sb := root + y * (t_skin + r * 1.5) + x * r * 1.15
+	var sy := (y + x * 0.35).normalized()
+	var sx := sy.cross(z).normalized() * r * 0.35
+	var sz := z * r * 0.3
+	var stip := sb + sy * h_out * 0.7
+	for q in [[sx, sz], [sz, -sx], [-sx, -sz], [-sz, sx]]:
+		for v in [[sb + q[0], blood], [sb + q[1], blood], [stip, ivory]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+	# The wound round it, on the skin: a ragged rim of torn flesh, wet bright red sloping down into a
+	# dark hole round the bone, and flaps of skin peeled back from it.
+	var wc := at + y * t_skin + nrm * 0.004
+	var wx := nrm.cross(y if absf(nrm.dot(y)) < 0.95 else along).normalized()
+	if wx.length_squared() < 0.5:
+		wx = x
+	var wz := nrm.cross(wx).normalized()
+	var R := r * 2.6
+	var M := 16
+	var rim := []
+	var mid := []
+	for i in M:
+		var a := TAU * i / M
+		var dv := wx * cos(a) + wz * sin(a)
+		rim.append(wc + dv * R * rng.randf_range(0.8, 1.3) + nrm * rng.randf_range(0.0, 0.006))
+		mid.append(wc + dv * R * 0.55 - nrm * 0.006)
+	var hole := wc - nrm * 0.02
+	var raw := Color(0.55, 0.07, 0.06)
+	for i in M:
+		var j := (i + 1) % M
+		for v in [[rim[i], raw], [rim[j], raw], [mid[j], wet], [rim[i], raw], [mid[j], wet], [mid[i], wet]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+		for v in [[mid[i], wet], [mid[j], wet], [hole, Color(0.16, 0.0, 0.0)]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+	# Flaps of skin, torn back from the edge.
+	var skin := colors[0] if colors.size() > 0 else Color(0.8, 0.6, 0.5)
+	for f in 4:
+		var i := (f * 4 + rng.randi_range(0, 2)) % M
+		var dv: Vector3 = (rim[i] - wc).normalized()
+		var side := nrm.cross(dv).normalized() * R * 0.35
+		var tip: Vector3 = rim[i] + dv * R * 0.55 + nrm * R * 0.35
+		for v in [[rim[i] + side, skin.darkened(0.15)], [rim[i] - side, skin.darkened(0.15)], [tip, raw]]:
+			st.set_color(v[1])
+			st.add_vertex(v[0])
+	st.generate_normals()
+	var mesh := st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.38       # wet, not glass (the sky shone violet off it)
+	mat.metallic_specular = 0.45
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh.surface_set_material(0, mat)
 	if bone_out == null:
-		var shard := ArrayMesh.new()
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		# A splinter: a four-sided shaft narrowing to a ragged, uneven point, white up its length
-		# and dark with blood at the root.
-		var root_c := Color(0.42, 0.04, 0.04)
-		var bone_c := Color(0.93, 0.89, 0.78)
-		var ring := [Vector3(-0.5, 0, -0.5), Vector3(0.5, 0, -0.5), Vector3(0.5, 0, 0.5), Vector3(-0.5, 0, 0.5)]
-		var tip := [Vector3(-0.22, 1.0, -0.05), Vector3(0.12, 0.86, -0.2), Vector3(0.2, 0.95, 0.15), Vector3(-0.1, 0.78, 0.2)]
-		for k in 4:
-			var a: Vector3 = ring[k]
-			var b: Vector3 = ring[(k + 1) % 4]
-			var c: Vector3 = tip[(k + 1) % 4]
-			var d: Vector3 = tip[k]
-			for v in [[a, root_c], [b, root_c], [c, bone_c], [a, root_c], [c, bone_c], [d, bone_c]]:
-				st.set_color(v[1])
-				st.add_vertex(v[0])
-		for v in [tip[0], tip[1], tip[2], tip[0], tip[2], tip[3]]:
-			st.set_color(bone_c)
-			st.add_vertex(v)
-		# A second, shorter splinter broken off beside it, and the marrow dark at the root.
-		var off := Vector3(0.55, 0.0, 0.35)
-		var ring2 := [Vector3(-0.3, 0, -0.3), Vector3(0.3, 0, -0.3), Vector3(0.3, 0, 0.3), Vector3(-0.3, 0, 0.3)]
-		var tip2 := [Vector3(-0.1, 0.62, 0.05), Vector3(0.12, 0.5, -0.08), Vector3(0.08, 0.58, 0.14), Vector3(-0.06, 0.45, 0.1)]
-		for k in 4:
-			var a: Vector3 = ring2[k] + off
-			var b: Vector3 = ring2[(k + 1) % 4] + off
-			var c: Vector3 = tip2[(k + 1) % 4] + off
-			var d: Vector3 = tip2[k] + off
-			for v in [[a, root_c], [b, root_c], [c, bone_c], [a, root_c], [c, bone_c], [d, bone_c]]:
-				st.set_color(v[1])
-				st.add_vertex(v[0])
-		# The ragged end of the shaft's cut face: blood-dark.
-		var marrow := Color(0.3, 0.02, 0.02)
-		for v in [tip[0] * Vector3(1, 0.98, 1), tip[1] * Vector3(1, 0.98, 1), tip[2] * Vector3(1, 0.98, 1)]:
-			st.set_color(marrow)
-			st.add_vertex(v)
-		st.generate_normals()
-		st.commit(shard)
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.roughness = 0.45
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		shard.surface_set_material(0, mat)
 		bone_out = MeshInstance3D.new()
-		bone_out.mesh = shard
 		bone_out.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		bone_out.top_level = true
 		add_child(bone_out)
-	# Its root on the bone inside, its point standing clear of the skin.
-	var y := dir
-	var x := y.cross(along if absf(y.dot(along)) < 0.95 else Vector3.UP).normalized()
-	var z := x.cross(y).normalized()
-	bone_xf = Transform3D(Basis(x * w, y * length, z * w), at - y * length * 0.2)
-	if not kink.is_empty():
-		bone_xf = (kink[2] as Transform3D) * bone_xf
+	bone_out.mesh = mesh
+	bone_xf = (kink[2] as Transform3D) if not kink.is_empty() else Transform3D()
+	bone_at = bone_xf * (root + y * (t_skin + r * 1.5 + h_out * 0.5))
+	bone_dir = bone_xf.basis * y
 	bone_out.visible = true
 	_draw_at(global_transform)
 

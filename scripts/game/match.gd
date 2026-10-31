@@ -1891,6 +1891,9 @@ func _on_hit(h: Dictionary) -> void:
 		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
 	elif h.res.get("fractured") is VoxelPart and h.char is Fighter:
 		var bp: VoxelPart = h.res.fractured
+		# Broken out through the skin: the blood comes out with it.
+		if bp.fracture >= 3 and fx and not headless and h.get("p") is Vector3:
+			fx.burst("confetti" if dec.confetti else "blood", h.p, 70, (h.get("dir", Vector3.UP) as Vector3 if h.get("dir") is Vector3 else Vector3.UP) * -1.0 + Vector3(0, 0.6, 0), 1.4)
 		feed.emit("%s's %s is BROKEN%s!" % [h.char.display_name, String(bp.label).to_lower(), ", the bone out through the skin" if bp.fracture >= 3 else ""])
 	elif String(h.res.get("broke", "")).begins_with("skull") and h.char is Fighter:
 		feed.emit("%s's skull is %s!" % [h.char.display_name, "broken open" if h.res.broke == "skull open" else ("cracked" if h.char.skull_fracture == 1 else "broken")])

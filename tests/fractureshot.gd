@@ -45,14 +45,13 @@ func _ready() -> void:
 		if part.bone_out == null:
 			print("no bone out on ", part.part_name)
 			continue
-		var bx: Transform3D = part.bone_out.global_transform
-		var mid: Vector3 = bx.origin + bx.basis.y * 0.6
+		var mid: Vector3 = part.global_transform * part.bone_at
+		var bd: Vector3 = (part.global_transform.basis * part.bone_dir).normalized()
 		# From outside him, on the side the bone stands out of, a little above it.
 		var away: Vector3 = mid - f.torso.global_position
 		away.y = 0.0
-		var bd: Vector3 = bx.basis.y.normalized()
 		var look_from: Vector3 = (away.normalized() * 0.6 + Vector3(bd.x, 0.0, bd.z) * 0.6).normalized()
-		var cp: Vector3 = mid + look_from * 0.55 + Vector3(0, 0.18, 0)
+		var cp: Vector3 = mid + look_from * 0.42 + Vector3(0, 0.12, 0)
 		cp.y = maxf(cp.y, 0.3)
 		await _snap(out, k[1], cp, mid, 38.0)
 	# The whole man, the HUD's figure in the corner.
