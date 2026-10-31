@@ -92,7 +92,13 @@ var hp := 100.0
 var bleed := 0.0
 var severed := false
 var hanging := false
-var fractured := false
+var fractured := false        # the bone broken right through: the limb is held on by its muscle only
+## How badly its bone is broken: 0 whole, 1 cracked (it holds, and hurts), 2 broken through under
+## whole skin (closed), 3 broken through and out of the skin (open). `fractured` is 2 and over.
+var fracture := 0
+## Where the bone broke, drawn bent there: [axis, at (local, along the bone), the transform the
+## far end is drawn with]; empty for a straight bone. Drawing only (the collider stays straight).
+var kink: Array = []
 var stump := false
 var drips: Array = []   # {node: GPUParticles3D, lp: Vector3}: where blood runs from its wounds
 var stump_t := 0.0
@@ -479,7 +485,7 @@ func _build_mesh() -> void:
 	mm.instance_count = fx.size()
 	_build_ao()
 	for i in fx.size():
-		mm.set_instance_transform(i, Transform3D(Basis(), local_of(i)))
+		mm.set_instance_transform(i, drawn_xf(i))
 		mm.set_instance_color(i, colors[i])
 		mm.set_instance_custom_data(i, _custom(i))
 	mmi = MultiMeshInstance3D.new()
@@ -848,8 +854,10 @@ func function() -> float:
 	if hanging:
 		return 0.03
 	if fractured:
-		return 0.1
+		return 0.04   # broken through: the muscle cannot move what the bone no longer holds
 	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
+	if fracture == 1:
+		fn *= 0.6     # cracked: it holds, and every move of it hurts
 	if prosthetic != "":
 		fn = minf(fn, float(Body.PROSTHETIC_FN.get(prosthetic, 0.7)))
 	if frozen_until > 0.0 and clock() < frozen_until:
@@ -1020,7 +1028,58 @@ static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
 ## within the part. Drawing only: local_of, every blow, cut and collider keep the cube.
 var shape_xf: Array = []
 func drawn_xf(i: int) -> Transform3D:
-	return shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+	var t: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+	if not kink.is_empty() and _past_break(i):
+		t = (kink[2] as Transform3D) * t
+	return t
+
+## The voxel lies on the far side of the break, away from the joint the part hangs by.
+func _past_break(i: int) -> bool:
+	var ax: int = kink[0]
+	var c: float = local_of(i)[ax] - float(kink[1])
+	return c < 0.0 if bool(kink[3]) else c > 0.0
+
+## The broken bone drawn bent at `at` (part-local, on the bone): the far end turned `angle` about a
+## line across the bone, the one `code` names (0..3: which line across and which way round, the
+## same on every screen). 0 straightens it.
+func set_kink(at: Vector3, angle: float, code: int) -> void:
+	if angle == 0.0:
+		if not kink.is_empty():
+			kink = []
+			resync()
+		return
+	var kb := _kink_basis(at, angle, code)
+	var ra := _root_axis()
+	kink = [int(ra[0]), float(kb[1]), kb[0], bool(ra[1]), code]
+	resync()
+
+func _kink_basis(at: Vector3, angle: float, code: int) -> Array:
+	var ax: int = _root_axis()[0]
+	var across := Vector3.ZERO
+	across[(ax + 1 + (code & 1)) % 3] = 1.0 if (code & 2) == 0 else -1.0
+	var pivot := Vector3.ZERO
+	pivot[ax] = clampf(at[ax], -half_ext[ax] * 0.6, half_ext[ax] * 0.6)
+	var b := Basis(across, angle)
+	return [Transform3D(b, pivot - b * pivot), pivot[ax]]
+
+## Which way to draw it bent: the far end pushed along `ld` (part-local, the blow's way), or for no
+## blow one way the part's name picks.
+func kink_code(at: Vector3, ld: Vector3, angle: float) -> int:
+	if ld.length_squared() < 1e-6 or angle == 0.0:
+		return absi(hash(String(part_name))) % 4
+	var ra := _root_axis()
+	var ax: int = ra[0]
+	var tip := Vector3.ZERO
+	tip[ax] = -half_ext[ax] if bool(ra[1]) else half_ext[ax]
+	var best := 0
+	var bs := -INF
+	for code in 4:
+		var t: Transform3D = _kink_basis(at, angle, code)[0]
+		var sc := (t * tip - tip).dot(ld)
+		if sc > bs:
+			bs = sc
+			best = code
+	return best
 
 ## Draws the part in shape `xf` (one Transform3D per voxel), or as plain cubes when empty; only
 ## the voxels in `only` drawn again when it is given.

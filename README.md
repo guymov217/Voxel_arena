@@ -23,6 +23,13 @@ godot --headless --path . -- --test test_fight   # one suite
   control. Falling, getting up, and Half Sword mouse hands, with each hand on its own button.
 - **Damage**: per-voxel damage by material and hit type (cut, thrust, blunt). Dents, limbs that
   hang or come off, and blood and breath. Chips knocked off weapons wear them down. Fire.
+- **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
+  at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
+  out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle
+  only, it flops from the joint and is drawn bent at the break, and still never passes through
+  the body. The skull cracks, is driven in or breaks open; broken ribs cut the breath and, broken
+  in, hurt the lung. In the campaign the bones stay broken from fight to fight until the
+  physician sets them (no elixir needed: a bone knits, a hand does not grow back).
 - **Weapons**: built from the same voxel designs, with greedy-merged colliders and shields.
   Chain weapons, bows and crossbows, throwables and the market. A weapon is only ever taken up by
   hand (G): the hand reaches for the grip (he stoops for one on the sand, steps to one a pace

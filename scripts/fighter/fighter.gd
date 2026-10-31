@@ -526,6 +526,24 @@ func apply_body(b: Dictionary) -> void:
 		else:
 			head.scar(ev)
 			eye_floor += 0.3
+	# Bones broken in an earlier fight and not set since: as broken as they were.
+	for k in body.get("fractures", {}):
+		var lv := int(body.fractures[k])
+		match String(k):
+			"skull":
+				skull_fracture = lv
+				skull_cracked = true
+			"ribs":
+				ribs_broken = lv
+			"pelvis":
+				pelvis_f = 0.5
+			_:
+				var bp: VoxelPart = by_name.get(k)
+				if bp and not bp.missing and not bp.severed and bp.prosthetic == "":
+					bp.fracture = lv
+					if lv >= 2:
+						bp.fractured = true
+						_set_broken(bp, Vector3.ZERO, lv)
 	for p in parts:
 		if p.alive_count < p.fx.size() or p.prosthetic != "":
 			p.resync_later()
@@ -2472,6 +2490,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if thigh.severed:
 			continue
 		var f := maxf(0.15, leg_func(side)) * (0.12 + 0.88 * e1 if rising else 1.0) if standing else 0.03
+		# A bone of the leg broken through: it is not driven (the muscle cannot move what the bone
+		# no longer holds), only held loosely; he hops on the other.
+		if thigh.fractured or shin.fractured:
+			f = 0.03
 		var kicking = side == "R" and kick_timer > 0.0
 		var l1 := 8 * V * S
 		var l2 := 8 * V * S
@@ -2907,6 +2929,19 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# turn of the body.
 		if live and fore.severed and not upper.severed and not upper.hanging:
 			motor_rel(upper, torso, Quaternion.IDENTITY, 5.0, 25.0 * MS * S, dt, 0.5)
+		return
+	# A bone of the arm broken through: nothing drives it, the muscle only holds it loosely to
+	# him (the upper arm in to his side while it is whole, the forearm hanging from the elbow as
+	# it will): it flops as he moves, and still knocks against him rather than through him.
+	if upper.fractured or fore.fractured:
+		if fore.has_meta("elbow_set"):
+			_hold_elbow(side, 0.0, false, dt)
+		if not upper.fractured:
+			motor_rel(upper, torso, Quaternion.IDENTITY, 4.0, 30.0 * MS * S, dt, 0.5)
+		else:
+			motor_rel(upper, torso, Quaternion.IDENTITY, 1.5, 6.0 * MS * S, dt, 0.5)
+		if not fore.fractured:
+			motor_rel(fore, upper, Quaternion.IDENTITY, 2.0, 8.0 * MS * S, dt, 0.5)
 		return
 	var af := arm_func(side)
 	# The arm's function, again below, is the same this step (unless a frost on it is thawing:
@@ -4514,6 +4549,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				if abs(d.dot(n)) < width and d.dot(ld) > -V * S and d.dot(ld) < depth + open and abs(d.dot(la)) < span:
 					remove.append(i)
 			remove = _stop_at_bone(part, remove, lp, ld, bite, res)
+			if not detached:
+				_edge_on_bone(part, remove, lp, ld, J, res)
 	elif type == "point":
 		var eff := hardness * sharpness * maxf(0.15, la.dot(ld))
 		# Driven home in a thrust the point goes in deep, the body's weight behind it: a
@@ -4559,8 +4596,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A giant's bones are as much thicker as he is bigger: what breaks a man's thigh only
 		# bruises his.
 		var big := maxf(1.0, S)
-		if not detached and J > 16.0 * big and not part.fractured and part != torso and part != head and randf() < (J - 14.0 * big) * 0.06 * (1.0 + heavy) / (float(mods.toughness) * big):
-			_fracture(part, lp, J, res)
+		# (A cracked bone gives way to less.)
+		var cr := part.fracture == 1
+		if not detached and J > (10.0 if cr else 16.0) * big and not part.fractured and part != torso and part != head and randf() < (J - (8.0 if cr else 14.0) * big) * 0.06 * (1.0 + heavy) / (float(mods.toughness) * big):
+			_fracture(part, lp, J, res, -1, ld)
 		# A burst (a thunder pot, powder going off) blows a crater out of the side of the part
 		# turned to it, at its nearest point to where it went off (not the part's middle): as
 		# wide as the blast was strong (blast_r) right against it, nothing a little way off.
@@ -4574,7 +4613,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if not remove.is_empty():
 				part.bleed += J * 0.02
 				if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
-					_fracture(part, lp, J, res)
+					_fracture(part, lp, J, res, 3, ld)   # (blown open to the bone)
 		# The crater a blow leaves: from a fair knock up, as wide as it was hard.
 		elif J > 9.0 or (hollow > 0.0 and J > 6.0):
 			# (Armour over the spot keeps the crater small too, else a giant's hammer took a
@@ -4589,7 +4628,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			part.bleed += J * 0.02
 			# A crater down into the bone of a limb has broken it.
 			if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):
-				_fracture(part, lp, J, res)
+				_fracture(part, lp, J, res, -1, ld)   # (a crack, or through, as hard as it was)
 	# A crushing bite (or weight) smashes a crater whatever kind of blow it is; what it breaks
 	# loose falls away as pieces.
 	var crush: float = float(hit.get("crush", 0.0))
@@ -5622,6 +5661,7 @@ func _organs_tick(dt: float) -> void:
 const BONE_BITE := 16.0   # a blow's bite (impulse x keenness) that chops clean through bone
 var ribs_broken := 0
 var skull_cracked := false
+var skull_fracture := 0   # 0 whole, 1 cracked, 2 driven in (depressed), 3 open
 var pelvis_f := 1.0
 
 ## Of the voxels a cut or a stab would take, bone gives way only as far as the blow is strong:
@@ -5652,20 +5692,34 @@ func _stop_at_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, bit
 			out.append(i)
 	return out
 
-## A limb's bone breaks: it works at a tenth (VoxelPart.function), the joint gives sideways as the
-## broken bone lets it, and a hard enough blow opens the skin over the break to the bone.
-func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary) -> void:
+## A limb's bone gives under a blow, as badly as the blow was hard (VoxelPart.fracture): a crack
+## (1: it holds, at a little over half its use, and hurts), broken through under the skin (2:
+## closed) or broken through and out of it (3: open, the bone showing). Broken through, the two
+## ends are held together by the muscle round them only: the limb is no use, it is not driven,
+## it flops (its joint gives every way the broken bone lets it), and it is drawn bent where it
+## broke. It still knocks against the rest of him: a body never passes through itself.
+## `level` -1: by the blow alone (a giant's bones as much thicker as he is bigger).
+func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level := -1, ld := Vector3.ZERO) -> void:
+	var big := maxf(1.0, S)
+	if level < 0:
+		level = 3 if J >= OPEN_J * big else (2 if J >= BREAK_J * big or part.fracture >= 1 else 1)
+	if level <= part.fracture:
+		return
+	var was := part.fracture
+	part.fracture = level
+	res.bone = true
+	pain = minf(1.0, pain + (0.12 if level == 1 else 0.35))
+	if level == 1:
+		res.cracked = part
+		part.wound(lp, minf(0.1, 0.05 + J * 0.0015) * S, "bruise")
+		return
+	res.fractured = part
 	part.fractured = true
 	part.bleed += 0.5
 	part.wound(lp, minf(0.16, 0.08 + J * 0.002) * S, "bruise")
-	res.fractured = part
-	var j = part.joint
-	if j is Generic6DOFJoint3D:
-		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.5)
-		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.5)
-		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.7)
-		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.7)
-	if J >= 28.0:
+	if was < 2:
+		_set_broken(part, lp, level, ld)
+	if level == 3:
 		_open_break(part, lp)
 	# A broken arm cannot hold on: what was in its hand falls, and an off hand on a two-handed
 	# haft lets go of it.
@@ -5677,6 +5731,54 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary) -> void:
 				_off_hand_off_haft()
 			elif weapons[side]:
 				release(side)
+
+## An edge on a limb's bone: a notch in it cracks it, and a chop through much of it (or into one
+## already cracked) breaks it, open, the cut being the wound over it. A blade stopped by the bone
+## at a hard blow cracks it all the same.
+func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: float, res: Dictionary) -> void:
+	if part == torso or part == head or part.fractured:
+		return
+	var cut := 0
+	for i in remove:
+		if part.bone[i]:
+			cut += 1
+	var all := 0
+	for i in part.fx.size():
+		if part.alive[i] and part.bone[i]:
+			all += 1
+	if all == 0:
+		return
+	var q := float(cut) / float(all)
+	var big := maxf(1.0, S)
+	if q >= 0.3 or (part.fracture == 1 and q >= 0.12):
+		_fracture(part, lp, J, res, 3, ld)
+	elif cut > 0 or (res.get("bone", false) and J > 18.0 * big):
+		_fracture(part, lp, J, res, 1, ld)
+
+## Blows that break bone (a man's, x his size): a blunt blow past BREAK_J breaks it through
+## rather than cracking it, past OPEN_J out through the skin.
+const BREAK_J := 24.0
+const OPEN_J := 30.0
+## How far a broken bone is drawn bent (radians): broken under the skin, and out through it.
+const KINK := [0.0, 0.0, 0.3, 0.5]
+
+## The bone broken through: the joint above it gives (the two ends of the bone held by muscle,
+## not by each other) and the part is drawn bent at the break, its far end pushed the way the
+## blow went. An elbow held straight or bent for a swing is let go first.
+func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO) -> void:
+	for side in ["L", "R"]:
+		if arm.has(side) and (part == arm[side].upper or part == arm[side].fore):
+			_lock_elbow_straight(side, false)
+			_hold_elbow(side, 0.0, false, 0.0)
+	var j = part.joint
+	if j is Generic6DOFJoint3D:
+		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.6)
+		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.6)
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.8)
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.8)
+	# Rubbery, not loose as a rope: the muscle round the break damps how it swings.
+	part.angular_damp = maxf(part.angular_damp, 2.5)
+	part.set_kink(lp, KINK[level], part.kink_code(lp, ld, KINK[level]))
 
 ## The skin and flesh between the broken bone and where the blow landed burst open: the bone shows.
 func _open_break(part: VoxelPart, lp: Vector3) -> void:
@@ -5711,16 +5813,39 @@ func _open_break(part: VoxelPart, lp: Vector3) -> void:
 func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, res: Dictionary) -> void:
 	var tough := float(mods.toughness)
 	if part == head:
-		if not skull_cracked and J > 20.0 and randf() < (J - 18.0) * 0.05 * (1.0 + heavy) / tough:
-			skull_cracked = true
-			res.broke = "skull"
-			concussion = minf(1.0, concussion + 0.2)
+		# A crack first; a blow hard enough (or onto a skull already cracked) drives a piece of
+		# it in (depressed: the brain under it struck); harder still it bursts out through the
+		# scalp (open), the bone showing.
+		if skull_fracture < 3 and J > 20.0 and randf() < (J - 18.0) * 0.05 * (1.0 + heavy) / tough * (1.6 if skull_cracked else 1.0):
+			var lv := 3 if J >= 44.0 * tough else (2 if J >= 34.0 * tough or skull_cracked else 1)
+			if lv > skull_fracture:
+				skull_fracture = lv
+				skull_cracked = true
+				res.broke = ["", "skull", "skull", "skull open"][lv]
+				res.bone = true
+				concussion = minf(1.0, concussion + [0.0, 0.2, 0.4, 0.5][lv])
+				pain = minf(1.0, pain + 0.2 * lv)
+				if lv >= 2:
+					organ_bruise[Anatomy.BRAIN] = minf(0.9, float(organ_bruise.get(Anatomy.BRAIN, 0.0)) + 0.15 * (lv - 1))
+				if lv == 3:
+					head.bleed += 2.0
+					_open_break(head, lp)
 		return
 	var hy := part.half_ext.y
 	if lp.y > -hy * 0.05 and J > 18.0 and randf() < (J - 16.0) * 0.05 * (1.0 + heavy) / tough:
 		ribs_broken += 2 if J > 32.0 else 1
 		res.broke = "ribs"
+		res.bone = true
 		pain = minf(1.0, pain + 0.25)
+		# A rib broken in, its end driven into the lung under it: the lung bleeds and fails
+		# (a hard blow, or one onto ribs already broken).
+		if (J > 36.0 * tough or ribs_broken >= 4) and randf() < 0.6:
+			var lung := Anatomy.LUNG_R if lp.x < 0.0 else Anatomy.LUNG_L
+			organ_bruise[lung] = minf(0.9, float(organ_bruise.get(lung, 0.0)) + 0.35)
+			if not organs_hit.has(lung):
+				organs_hit.append(lung)
+			torso.bleed += 1.5
+			res.broke = "ribs into the lung"
 		stamina = minf(stamina, breath_cap())
 	elif lp.y < -hy * 0.6 and pelvis_f > 0.5 and J > 24.0 and randf() < (J - 22.0) * 0.04 * (1.0 + heavy) / tough:
 		pelvis_f = 0.5
@@ -5778,7 +5903,23 @@ func status_packed() -> Array:
 	hp.resize(parts.size())
 	for i in parts.size():
 		hp[i] = parts[i].hp
-	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0]
+	# Broken bones, three bytes a part: how badly, and where and which way it is drawn bent.
+	# (Nothing but a 0 while no bone is broken: most rows, most of the time.)
+	var any := false
+	for p in parts:
+		any = any or p.fracture > 0
+	if not any:
+		return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0, 0]
+	var fb := PackedByteArray()
+	fb.resize(parts.size() * 3)
+	for i in parts.size():
+		var p: VoxelPart = parts[i]
+		fb[i * 3] = p.fracture
+		if not p.kink.is_empty():
+			var ax: int = p.kink[0]
+			fb[i * 3 + 1] = int(p.kink[4])
+			fb[i * 3 + 2] = clampi(roundi((float(p.kink[1]) / maxf(1e-4, p.half_ext[ax]) * 0.5 + 0.5) * 255.0), 0, 255)
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0, fb]
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -5796,6 +5937,19 @@ func apply_status(s) -> void:
 			dying = maxf(0.0, float(s[4]))
 		if s.size() > 5:
 			net_two_handed = int(s[5]) == 1
+		if s.size() > 6 and s[6] is PackedByteArray and (s[6] as PackedByteArray).size() == parts.size() * 3:
+			var fb: PackedByteArray = s[6]
+			for i in parts.size():
+				var p: VoxelPart = parts[i]
+				var lv := clampi(fb[i * 3], 0, 3)
+				if lv == p.fracture:
+					continue
+				p.fracture = lv
+				p.fractured = lv >= 2
+				var ax: int = p._root_axis()[0]
+				var at := Vector3.ZERO
+				at[ax] = (float(fb[i * 3 + 2]) / 255.0 - 0.5) * 2.0 * p.half_ext[ax]
+				p.set_kink(at, KINK[lv], fb[i * 3 + 1] & 3)
 		return
 	blood = s.get("blood", blood)
 	stamina = s.get("stamina", stamina)

@@ -38,12 +38,41 @@ static func elixir_price(stage: int) -> int:
 
 static func medicine_price(stage: int) -> int:
 	return maxi(MEDICINE_MIN, roundi(MEDICINE_BOUTS * bout_pay(stage)))
+## Broken bones carried out of a fight (`fractures`): a limb's by its part name, 1 cracked, 2
+## broken through under the skin, 3 broken out through it; "skull" the same; "ribs" how many;
+## "pelvis" 1. They stay as they are, a broken limb no use, until the physician sets them (no
+## elixir needed: a bone knits, a hand does not grow back). What setting costs, in bouts' pay.
+const SET_BOUTS := {1: 0.25, 2: 0.5, 3: 0.8}
+const SET_MIN := {1: 8, 2: 15, 3: 25}
+const RIB_BOUTS := 0.12
+const BONES := {"skull": "skull", "ribs": "ribs", "pelvis": "pelvis"}
+
+static func set_price(key: String, lv: int, stage: int) -> int:
+	if key == "ribs":
+		return maxi(6 * lv, roundi(RIB_BOUTS * lv * bout_pay(stage)))
+	if key == "pelvis":
+		lv = 2
+	lv = clampi(lv, 1, 3)
+	var k := 1.5 if key == "skull" else 1.0
+	return maxi(roundi(SET_MIN[lv] * k), roundi(SET_BOUTS[lv] * k * bout_pay(stage)))
+
+static func bone_label(key: String) -> String:
+	return BONES.get(key, label(key))
+
+## What is wrong with a bone, in a few words.
+static func break_words(key: String, lv: int) -> String:
+	if key == "ribs":
+		return "%d broken rib%s" % [lv, "s" if lv > 1 else ""]
+	if key == "pelvis":
+		return "a cracked pelvis"
+	return ["", "a cracked %s", "a broken %s", "an open break of the %s"][clampi(lv, 1, 3)] % bone_label(key)
+
 ## The most of a part's voxels an old wound may leave missing for good.
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
 
 static func empty() -> Dictionary:
-	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}}
+	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}, "fractures": {}}
 
 static func part_names() -> Array:
 	return Data.body_parts.map(func(d): return String(d.name))
@@ -93,6 +122,21 @@ static func sanitize(raw) -> Dictionary:
 			if v == "lost" or v == "glass":
 				b.eyes[s] = v
 	b.fights = maxi(0, int(raw.get("fights", 0)))
+	var fx = raw.get("fractures", {})
+	if fx is Dictionary:
+		for k in fx:
+			var key := str(k)
+			var lv := int(fx[k]) if (fx[k] is int or fx[k] is float) else 0
+			if key == "ribs":
+				lv = clampi(lv, 0, 12)
+			elif key == "pelvis":
+				lv = clampi(lv, 0, 1)
+			elif key == "skull" or (names.has(key) and key != "torso" and key != "head"):
+				lv = clampi(lv, 0, 3)
+			else:
+				lv = 0
+			if lv > 0:
+				b.fractures[key] = lv
 	# A part replaced is not missing; a part missing has no scar, and nor does what hangs off it.
 	for k in b.prosthetics.keys():
 		if k.begins_with("eye"):
@@ -104,6 +148,11 @@ static func sanitize(raw) -> Dictionary:
 			b.scars.erase(c)
 	for k in b.prosthetics:
 		b.scars.erase(k)
+		b.fractures.erase(k)
+	for n in b.missing:
+		b.fractures.erase(n)
+		for c in children_of(n):
+			b.fractures.erase(c)
 	# The wounds of the last fight, still open: a part of its scars the physician can still close.
 	var fr = raw.get("fresh", {})
 	if fr is Dictionary:
@@ -162,6 +211,18 @@ static func snapshot(f) -> Dictionary:
 				dead.append(i)
 		if not dead.is_empty():
 			snap.holes[String(p.part_name)] = dead
+	var fr := {}
+	for p in f.parts:
+		var n := String(p.part_name)
+		if n != "torso" and n != "head" and not p.severed and not p.missing and p.prosthetic == "" and p.fracture > 0:
+			fr[n] = int(p.fracture)
+	if int(f.get("skull_fracture")) > 0 and not f.head.severed:
+		fr["skull"] = int(f.skull_fracture)
+	if int(f.ribs_broken) > 0:
+		fr["ribs"] = int(f.ribs_broken)
+	if float(f.pelvis_f) < 1.0:
+		fr["pelvis"] = 1
+	snap["fractures"] = fr
 	if not f.head.severed:
 		for s in ["L", "R"]:
 			var ev := eye_voxels(f.head, s)
@@ -217,6 +278,15 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 			b.eyes[s] = "lost"
 			news.append("lost the %s eye" % ("right" if s == "R" else "left"))
 			doctor = true
+	var fr: Dictionary = snap.get("fractures", {})
+	for k in fr:
+		var lv := int(fr[k])
+		var had := int(b.fractures.get(k, 0))
+		if lv > had and not b.missing.has(k):
+			b.fractures[k] = lv
+			news.append(break_words(k, lv))
+			# Broken through (a limb, the skull driven in, ribs in the lung's way): to the physician.
+			doctor = doctor or (k != "ribs" and lv >= 2) or (k == "ribs" and lv >= 3)
 	b.fights = int(b.fights) + 1
 	return {"body": sanitize(b), "news": news, "doctor": doctor}
 
@@ -241,6 +311,8 @@ static func summary(body: Dictionary) -> String:
 		bits.append(PROSTHETICS[b.prosthetics[k]].name.to_lower())
 	for s in b.eyes:
 		bits.append(("glass %s eye" if b.eyes[s] == "glass" else "blind in the %s eye") % ("right" if s == "R" else "left"))
+	for k in b.fractures:
+		bits.append(break_words(k, int(b.fractures[k])))
 	if not b.scars.is_empty():
 		bits.append("%d scarred part%s" % [b.scars.size(), "s" if b.scars.size() > 1 else ""])
 	return " · ".join(bits) if not bits.is_empty() else "whole"
@@ -264,6 +336,27 @@ static func offers(body: Dictionary, stage: int) -> Array:
 	for s in ["R", "L"]:
 		if b.eyes.get(s, "") == "lost":
 			out.append({"id": "glassEye:%s" % s, "name": "Glass eye (%s)" % ("right" if s == "R" else "left"), "desc": PROSTHETICS.glassEye.desc, "price": PROSTHETICS.glassEye.price})
+	# Broken bones set and splinted (an open break cleaned and sewn over it too): they knit by the
+	# next bout. No elixir needed.
+	for k in b.fractures:
+		var lv := int(b.fractures[k])
+		var what := "Set the %s" % bone_label(k)
+		var desc := "The bone pulled straight, set and splinted: it knits by the next bout. Left alone it stays broken, and the limb no use."
+		if k == "ribs":
+			what = "Bind the ribs"
+			desc = "The broken ribs bound tight: you breathe freely again by the next bout. Left alone, every breath is short."
+		elif k == "skull":
+			what = "Mend the skull"
+			desc = "The cracked bone lifted and bound, the head kept still: the ringing and the blurring stop. Left alone, every knock to the head goes straight to the brain."
+		elif k == "pelvis":
+			what = "Bind the pelvis"
+			desc = "The hips bound tight in linen: the legs bear you again. Left alone, they buckle."
+		elif lv == 1:
+			what = "Splint the cracked %s" % bone_label(k)
+			desc = "The crack splinted until it holds: whole again by the next bout. Left alone it stays weak, and a lesser blow breaks it through."
+		elif lv == 3:
+			desc = "The bone that came out through the skin cleaned, pushed back, set and the wound sewn over it: it knits by the next bout. Left alone it stays broken, and the limb no use."
+		out.append({"id": "set:%s" % k, "name": what, "desc": desc, "price": set_price(k, lv, stage)})
 	var fresh_n := 0
 	for n in b.fresh:
 		fresh_n += b.fresh[n].size()
@@ -298,6 +391,8 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 				b.eyes[n] = "glass"
 		"medicine":
 			b.scars.erase(n)
+		"set":
+			b.fractures.erase(n)
 		"elixir":
 			var fights: int = int(b.get("fights", 0))
 			b = empty()
@@ -328,4 +423,7 @@ static func price_of(id: String, body := {}, stage := 1) -> int:
 		return medicine_price(stage)
 	if kind == "elixir":
 		return elixir_price(stage)
+	if kind == "set":
+		var key := id.split(":")[1] if id.split(":").size() > 1 else ""
+		return set_price(key, int(sanitize(body).fractures.get(key, 1)), stage)
 	return int(PROSTHETICS.get(kind, {}).get("price", 0))
