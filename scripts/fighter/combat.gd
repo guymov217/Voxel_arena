@@ -17,6 +17,10 @@ static var current: Combat = null
 var fighters: Array = []      # Fighter and Beast nodes in the match
 var loose_weapons: Array = [] # weapons nobody holds (thrown, dropped)
 var pending: Array = []
+var touch_q: Array = []          # [part, part, impulse] reported this step, noted at the next (see _settle)
+## Contacts handled in an order of their own (see _in_order), not the physics' (off in play: the
+## game is tuned to it; the trailer's recorder turns it on, its two passes then go the same way).
+static var canonical := false
 var vel := {}
 var cool := {}
 var time := 0.0
@@ -114,8 +118,11 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 			if bf != null and other.fighter == bf and not body.severed and not other.severed:
 				continue
 			var cj := state.get_contact_impulse(i).length()
-			_note_touch(body, other, cj)
-			_note_touch(other, body, cj)
+			if canonical:
+				touch_q.append([body, other, cj])
+			else:
+				_note_touch(body, other, cj)
+				_note_touch(other, body, cj)
 			if bid > other.get_instance_id():
 				continue
 			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": cj})
@@ -127,6 +134,8 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
 
 func _physics_process(dt: float) -> void:
+	if canonical:
+		_settle()
 	time += dt
 	var hits := process_contacts(dt)
 	for h in hits:
@@ -175,8 +184,40 @@ func _cooldown(key: String, J: float, t: float) -> bool:
 	cool[key] = [time, J]
 	return true
 
+## The contacts of the last step put in an order of their own (the parts' and weapons' ages, then
+## where and how hard), not the order the physics reported them in. That order is not always the
+## same from one run of the same fight to the next (the physics engine's threads report as they
+## finish), and the blows were dealt, the impulses summed and the dice rolled in it: a run drawn
+## with the film camera's depth of field went another way than the same run undrawn.
+static func _in_order(rows: Array, key: Callable) -> Array:
+	if rows.size() < 2:
+		return rows
+	var keyed := []
+	for i in rows.size():
+		keyed.append(key.call(rows[i]) + [i])
+	keyed.sort()
+	var out := []
+	for k in keyed:
+		out.append(rows[int(k[-1])])
+	return out
+
+static func _id(o) -> int:
+	return o.get_instance_id() if is_instance_valid(o) else 0
+
+## The touches the last step reported, noted (in order) at the stamp of the step that made them.
+func _settle() -> void:
+	if touch_q.is_empty():
+		return
+	for t in _in_order(touch_q, func(t): return [_id(t[0]), _id(t[1]), t[2]]):
+		if is_instance_valid(t[0]) and is_instance_valid(t[1]):
+			_note_touch(t[0], t[1], t[2])
+			_note_touch(t[1], t[0], t[2])
+	touch_q.clear()
+
 func process_contacts(_dt: float) -> Array:
 	var groups := {}
+	if canonical:
+		pending = _in_order(pending, func(c): return [_id(c.a), _id(c.b), c.sa, c.sb, c.p.x, c.p.y, c.p.z, c.J])
 	for c in pending:
 		var a = c.a
 		var b = c.b

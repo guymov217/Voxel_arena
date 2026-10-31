@@ -21,6 +21,7 @@ var _ui_player: AudioStreamPlayer = null
 const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14, "slash": 0.2, "stab": 0.22, "boom": 1.8}
 
 func _ready() -> void:
+	_vary.randomize()
 	if DisplayServer.get_name() == "headless":
 		return
 	_buses()
@@ -514,15 +515,19 @@ var _vph2 := 0.0
 ## art/CREDITS.md): "<species>_<call>", "man_<throat>_<call>" (light, mid, heavy; six takes) or "<giant>_<call>", three takes each. Loaded once; a missing one plays the on-the-fly voice instead.
 const VOICE_DIR := "res://art/audio/voices/"
 var _voices := {}
+## The sounds' own dice: a take, a pitch, a level. Never the game's (randf), which the fight
+## rolls from: a sound plays or not by the wall clock and the audio thread, and the fight drawing
+## from the same dice would go a different way each time it is run (the trailer's two passes).
+var _vary := RandomNumberGenerator.new()
 
 ## A take of a rendered voice, never the one heard last (a man struck twice cried the one cry).
 func _pick_take(key: String) -> AudioStream:
 	var takes: Array = _voices[key]
 	if takes.is_empty():
 		return null
-	var i := randi() % takes.size()
+	var i := _vary.randi() % takes.size()
 	if takes.size() > 1 and i == int(_last_take.get(key, -1)):
-		i = (i + 1 + randi() % (takes.size() - 1)) % takes.size()
+		i = (i + 1 + _vary.randi() % (takes.size() - 1)) % takes.size()
 	_last_take[key] = i
 	return takes[i]
 
@@ -551,10 +556,10 @@ func voice(kind: String, at: Vector3, gain := 1.0, pitch := 1.0, file := "") -> 
 	for p in _players:
 		if not p.playing:
 			var st: AudioStream = _voice_stream(file) if file != "" else null
-			p.stream = st if st else _make(kind, randi() % TAKES)
+			p.stream = st if st else _make(kind, _vary.randi() % TAKES)
 			p.global_position = at
-			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + randf_range(-1.5, 1.5)
-			p.pitch_scale = clampf(pitch * randf_range(0.92, 1.08), 0.3, 3.0)
+			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + _vary.randf_range(-1.5, 1.5)
+			p.pitch_scale = clampf(pitch * _vary.randf_range(0.92, 1.08), 0.3, 3.0)
 			p.play()
 			return
 
@@ -564,7 +569,7 @@ func ui(kind: String, gain := 0.5) -> void:
 		return
 	_ui_player.stream = _make(kind)
 	_ui_player.volume_db = linear_to_db(clampf(gain * volume, 0.01, 1.0))
-	_ui_player.pitch_scale = randf_range(0.94, 1.06)
+	_ui_player.pitch_scale = _vary.randf_range(0.94, 1.06)
 	_ui_player.play()
 
 ## The one sound in the one place again within REPEAT_S is the same sound: one blow came as a run
@@ -582,10 +587,10 @@ func play(kind: String, at: Vector3, gain := 1.0) -> void:
 	_last_play[kind] = [now, at]
 	for p in _players:
 		if not p.playing:
-			p.stream = _make(kind, randi() % TAKES)
+			p.stream = _make(kind, _vary.randi() % TAKES)
 			p.global_position = at
-			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + randf_range(-1.5, 1.5)
-			p.pitch_scale = randf_range(0.88, 1.12)
+			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + _vary.randf_range(-1.5, 1.5)
+			p.pitch_scale = _vary.randf_range(0.88, 1.12)
 			if kind == "horn" or kind == "bell":
 				duck(1.4)
 			p.play()

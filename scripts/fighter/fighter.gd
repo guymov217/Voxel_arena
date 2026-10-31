@@ -4429,9 +4429,11 @@ func keep_above_ground() -> void:
 		return
 	for p in parts:
 		if is_instance_valid(p) and not p.freeze and not p.missing:
-			# (A standing leg passes through the sand, held up by the support spring: only one
-			# sunk far into it is lifted.)
-			_lift_out(p, (0.04 if p.collision_mask & VoxelPart.LAYER_WORLD else 0.25) * S)
+			# Only a part sunk far in: the physics pushes back out of the sand whatever only
+			# presses into it (a stamping foot, a body thrown down), and a part lifted out of
+			# that on its own was torn from its joint (a rhino's leg a hand's width off its
+			# hip). A standing leg passes through the sand, held up by the support spring.
+			_lift_out(p, 0.25 * S)
 
 func _lift_out(p: VoxelPart, allow: float) -> void:
 	var c := p.global_position
