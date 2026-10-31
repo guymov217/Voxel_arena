@@ -83,6 +83,7 @@ var next_wid := 1
 var hazard_specs: Array = []
 var modes: Modes = null
 var fx: Fx
+var bone_drip_t := 0.0
 var drip_t := 0.0
 var breaths: Array = []
 var attract := false            # the menu backdrop: bots only, an orbiting camera
@@ -2871,6 +2872,20 @@ func guest_wvox(m: Dictionary) -> void:
 func _process(dt: float) -> void:
 	_update_breaths(dt)
 	_update_tags()
+	# A bone out through the skin: blood runs from the wound and drips off the limb, all the time.
+	bone_drip_t -= dt
+	if bone_drip_t <= 0.0 and not headless and fx:
+		bone_drip_t = 0.12
+		for e in entities:
+			var f = e.f
+			if not is_instance_valid(f) or (not f.alive and randf() < 0.7):
+				continue
+			for prt in f.parts:
+				if prt.bone_out != null and prt.bone_out.visible and not prt.severed:
+					var wp: Vector3 = prt.global_transform * prt.bone_wound
+					fx.burst("confetti" if dec.confetti else "drip", wp, 2 if f.alive else 1, Vector3.DOWN, 0.6)
+					if randf() < 0.25:
+						fx.mark("blood", Vector3(wp.x + randf_range(-0.08, 0.08), 0, wp.z + randf_range(-0.08, 0.08)), randf_range(0.05, 0.12) * f.S)
 	# A bleeding man leaves a trail of drops on the sand.
 	drip_t -= dt
 	if drip_t <= 0.0 and not headless:

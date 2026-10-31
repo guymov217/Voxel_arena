@@ -5803,7 +5803,7 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 	part.bleed += 0.5
 	part.wound(lp, minf(0.16, 0.08 + J * 0.002) * S, "bruise")
 	if was < 2:
-		_set_broken(part, lp, level, ld)
+		_set_broken(part, lp, level, ld, J)
 	if level == 3:
 		_open_break(part, lp)
 	# A broken arm cannot hold on: what was in its hand falls, and an off hand on a two-handed
@@ -5850,7 +5850,7 @@ const KINK := [0.0, 0.0, 0.45, 0.7]
 ## The bone broken through: the joint above it gives (the two ends of the bone held by muscle,
 ## not by each other) and the part is drawn bent at the break, its far end pushed the way the
 ## blow went. An elbow held straight or bent for a swing is let go first.
-func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO) -> void:
+func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO, J := 0.0) -> void:
 	for side in ["L", "R"]:
 		if arm.has(side) and (part == arm[side].upper or part == arm[side].fore):
 			_lock_elbow_straight(side, false)
@@ -5863,10 +5863,26 @@ func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO) -
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.8)
 	# Rubbery, not loose as a rope: the muscle round the break damps how it swings.
 	part.angular_damp = maxf(part.angular_damp, 2.5)
-	part.set_kink(lp, KINK[level], part.kink_code(lp, ld, KINK[level]))
+	# Bent at the very spot the blow fell along the limb, the far end driven the way the blow went
+	# (any way round the bone it came from), and the harder it was the further.
+	var big := maxf(1.0, S)
+	var bend: float = KINK[level] if J <= 0.0 else clampf(KINK[level] * (0.55 + 0.55 * J / (OPEN_J * big)), 0.25, 1.25)
+	part.set_kink(lp, bend, part.kink_code(lp, ld, bend))
 
 ## The skin and flesh between the broken bone and where the blow landed burst open: the bone shows.
 func _open_break(part: VoxelPart, lp: Vector3) -> void:
+	# Bent through: it comes out at the break, on the outside of the bend (VoxelPart.break_exit),
+	# not wherever the blow happened to land.
+	var ex := part.break_exit()
+	if not ex.is_empty():
+		var ac := part._across()
+		var outw: Vector3 = ((ex[1] as Vector3) + (ac[2] as Vector3) * 0.45).normalized()
+		var tt := INF
+		for k in 3:
+			if absf(outw[k]) > 1e-4:
+				tt = minf(tt, ((part.half_ext[k] if outw[k] > 0.0 else -part.half_ext[k]) - (ex[0] as Vector3)[k]) / outw[k])
+		if tt < INF:
+			lp = (ex[0] as Vector3) + outw * tt
 	var b := -1
 	var bd := INF
 	for i in part.fx.size():
@@ -6007,7 +6023,8 @@ func status_packed() -> Array:
 		fb[i * 3] = p.fracture
 		if not p.kink.is_empty():
 			var ax: int = p.kink[0]
-			fb[i * 3 + 1] = int(p.kink[4])
+			fb[i * 3] = p.fracture | (clampi(roundi(float(p.kink[5]) / 1.4 * 63.0), 1, 63) << 2)
+			fb[i * 3 + 1] = int(p.kink[4]) & 255
 			fb[i * 3 + 2] = clampi(roundi((float(p.kink[1]) / maxf(1e-4, p.half_ext[ax]) * 0.5 + 0.5) * 255.0), 0, 255)
 	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0, fb]
 
@@ -6031,7 +6048,8 @@ func apply_status(s) -> void:
 			var fb: PackedByteArray = s[6]
 			for i in parts.size():
 				var p: VoxelPart = parts[i]
-				var lv := clampi(fb[i * 3], 0, 3)
+				var lv := fb[i * 3] & 3
+				var bq := fb[i * 3] >> 2
 				if lv == p.fracture:
 					continue
 				p.fracture = lv
@@ -6039,8 +6057,9 @@ func apply_status(s) -> void:
 				var ax: int = p._root_axis()[0]
 				var at := Vector3.ZERO
 				at[ax] = (float(fb[i * 3 + 2]) / 255.0 - 0.5) * 2.0 * p.half_ext[ax]
-				p.set_kink(at, KINK[lv], fb[i * 3 + 1] & 3)
+				p.set_kink(at, (float(bq) / 63.0 * 1.4) if bq > 0 and lv >= 2 else KINK[lv], fb[i * 3 + 1])
 				if lv == 3 and p != head:
+					p.set_meta("open_break", true)
 					p.show_bone(at)
 		return
 	blood = s.get("blood", blood)

@@ -60,6 +60,8 @@ func snap_drawing() -> void:
 func _process(_dt: float) -> void:
 	if mmi == null and skin == null:
 		return
+	if dangle_mesh:
+		_swing(_dt)
 	_draw_at(global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated())
 
 ## Drawn where the body is now, with the game paused (the kill cam puts the bodies back where
@@ -81,6 +83,8 @@ func _draw_at(t: Transform3D) -> void:
 		jaw_mesh.global_transform = t * jaw_pivot.transform
 	if bone_out:
 		bone_out.global_transform = t * bone_xf
+	if dangle_mesh:
+		dangle_mesh.global_transform = t * _dangle_xf()
 
 ## An open break: the broken end of the bone stands out through the torn skin (user: it has to
 ## look like bone, and the break real, enough to turn the stomach). A round shaft as thick as the
@@ -93,28 +97,35 @@ var bone_out: MeshInstance3D = null
 var bone_xf := Transform3D()
 var bone_at := Vector3.ZERO     # part-local: the middle of the bone standing out, and its way
 var bone_dir := Vector3.UP
+var bone_wound := Vector3.ZERO  # part-local: the hole in the skin it came out of, and its facing
+var bone_wound_n := Vector3.UP
 func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	if DisplayServer.get_name() == "headless" or mmi == null:
 		return
-	var ra := _root_axis()
-	var ax: int = ra[0]
-	var along := Vector3.ZERO
-	along[ax] = -1.0 if bool(ra[1]) else 1.0
+	# At the break, on the outside of the bend (where it is bent; else where it was given).
+	var ex := break_exit()
+	if not ex.is_empty():
+		at = ex[0]
+		out = ex[1]
+	var ac := _across()
+	var along: Vector3 = ac[2]
 	if out.length_squared() < 1e-6:
-		var code: int = kink[4] if not kink.is_empty() else absi(hash(String(part_name))) % 4
-		out[(ax + 2 - (code & 1)) % 3] = -1.0 if (code & 2) == 0 else 1.0
+		out = kink_push(absi(hash(String(part_name))) % 256) * -1.0
 	out = (out - along * out.dot(along)).normalized()
 	if out.length_squared() < 0.5:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(String(part_name)) + int(at.x * 1000.0) * 31 + int(at.z * 1000.0)
-	# Out through the skin and slanting on toward the far end, as a snapped shaft does.
-	var y := (out + along * 0.5).normalized()
+	# The near piece's snapped end, driven out through the skin and on toward the far end.
+	var y := (out + along * 0.45).normalized()
 	var x := y.cross(along if absf(y.dot(along)) < 0.95 else Vector3.UP).normalized()
 	var z := x.cross(y).normalized()
+	var ax: int = _root_axis()[0]
 	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
-	var r := maxf(thick * 0.17, vf * part_scale * 0.55)    # the bone's own radius in this limb
-	# Where its line meets the skin (the face of the part it comes out through).
+	# Voxels half the body's, so it reads as bone and not as one block.
+	var c := vf * part_scale * 0.5
+	var r := maxf(thick * 0.17, c * 1.5)
+	# Where its line meets the skin.
 	var t_skin := INF
 	var nrm := out
 	for k in 3:
@@ -126,115 +137,83 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 				nrm[k] = signf(y[k])
 	if t_skin == INF:
 		t_skin = thick * 0.5
-	var root := at - y * r * 1.5
-	var h_out := maxf(r * 4.5, thick * 0.9)                # how far it stands out of the skin
-	var h := t_skin + r * 1.5 + h_out
+	var h_out := maxf(r * 3.5, thick * 0.75)          # how far it stands out of the skin
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var ivory := Color(0.93, 0.89, 0.78)
-	var blood := Color(0.42, 0.02, 0.02)
-	var wet := Color(0.62, 0.04, 0.04)
-	var marrow := Color(0.36, 0.06, 0.05)
-	var spongy := Color(0.72, 0.42, 0.36)
-	var N := 14
-	# The shaft: rings up its length, a little oval, narrowing toward the break; the top ring
-	# snapped off jagged, two long spikes and the rest broken short.
-	var levels := [0.0, 0.35, 0.6, 0.8, 1.0]
-	var spikes := [rng.randi_range(0, N - 1), rng.randi_range(0, N - 1)]
-	var rings := []
-	for li in levels.size():
-		var lv: float = levels[li]
-		var ring := []
-		for i in N:
-			var a := TAU * i / N
-			var rr := r * (1.0 - 0.12 * lv) * (1.0 + 0.12 * sin(a * 2.0 + 0.7))
-			var hh := h * lv
-			if li == levels.size() - 1:
-				var d0 := mini(absi(i - int(spikes[0])), N - absi(i - int(spikes[0])))
-				var d1 := mini(absi(i - int(spikes[1])), N - absi(i - int(spikes[1])))
-				var d := mini(d0, d1)
-				hh += (r * 2.4 / (1.0 + d * d * 0.9)) - r * 0.6 + rng.randf_range(-0.25, 0.25) * r
-			var p := root + y * hh + (x * cos(a) + z * sin(a)) * rr
-			# Blood up from the wound, in streaks, thinning toward the end.
-			var above := hh - (t_skin + r * 1.5)
-			var bl := clampf(1.0 - above / (h_out * (0.45 + 0.4 * absf(sin(a * 3.0 + 1.3)))), 0.0, 1.0)
-			ring.append([p, ivory.lerp(blood, bl * 0.9).lerp(Color(0.8, 0.72, 0.6), 0.12 * rng.randf())])
-		rings.append(ring)
-	for li in rings.size() - 1:
-		for i in N:
-			var a0 = rings[li][i]; var a1 = rings[li][(i + 1) % N]
-			var b0 = rings[li + 1][i]; var b1 = rings[li + 1][(i + 1) % N]
-			for v in [a0, a1, b1, a0, b1, b0]:
-				st.set_color(v[1])
-				st.add_vertex(v[0])
-	# The snapped end: the hard rim ivory, the spongy bone inside it pink, the marrow dark red,
-	# sunk a little into the shaft.
-	var top: Array = rings[rings.size() - 1]
-	var c := root + y * (h - r * 0.7)
-	for i in N:
-		var a := TAU * i / N
-		var a2 := TAU * (i + 1) / N
-		var in0 := c + (x * cos(a) + z * sin(a)) * r * 0.55
-		var in1 := c + (x * cos(a2) + z * sin(a2)) * r * 0.55
-		for v in [[top[i][0], ivory], [top[(i + 1) % N][0], ivory], [in1, spongy], [top[i][0], ivory], [in1, spongy], [in0, spongy]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-		for v in [[in0, spongy], [in1, spongy], [c - y * r * 0.4, marrow]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-	# A sliver split off the shaft, standing out beside it.
-	var sb := root + y * (t_skin + r * 1.5) + x * r * 1.15
-	var sy := (y + x * 0.35).normalized()
-	var sx := sy.cross(z).normalized() * r * 0.35
-	var sz := z * r * 0.3
-	var stip := sb + sy * h_out * 0.7
-	for q in [[sx, sz], [sz, -sx], [-sx, -sz], [-sz, sx]]:
-		for v in [[sb + q[0], blood], [sb + q[1], blood], [stip, ivory]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-	# The wound round it, on the skin: a ragged rim of torn flesh, wet bright red sloping down into a
-	# dark hole round the bone, and flaps of skin peeled back from it.
-	var wc := at + y * t_skin + nrm * 0.004
+	var ivory := Color(0.92, 0.88, 0.76)
+	var blood := Color(0.45, 0.02, 0.02)
+	var marrow := Color(0.38, 0.05, 0.04)
+	var hx := x * c * 0.5
+	var hy := y * c * 0.5
+	var hz := z * c * 0.5
+	# The shaft, column by column across it: each column up to the skin and out of it, snapped
+	# off at its own height (two long splinters, the rest short and ragged), the marrow in the
+	# middle sunk and red, blood up from the wound in streaks.
+	var n := int(ceil(r / c))
+	var spike := [Vector2i(rng.randi_range(-n, n), rng.randi_range(-n, n)), Vector2i(rng.randi_range(-n, n), rng.randi_range(-n, n))]
+	var top_h := t_skin + h_out
+	for ix in range(-n, n + 1):
+		for iz in range(-n, n + 1):
+			var off := Vector2(ix, iz) * c
+			if off.length() > r:
+				continue
+			var inner := off.length() < r * 0.45
+			var col_top := top_h - rng.randf_range(0.0, 2.0) * c
+			for sp in spike:
+				var dsp := Vector2(ix - sp.x, iz - sp.y).length()
+				col_top = maxf(col_top, top_h + c * (2.6 - dsp * 1.3))
+			if inner:
+				col_top = top_h - c * rng.randf_range(1.0, 2.0)
+			var streak := rng.randf_range(0.3, 1.0)
+			var hcur := t_skin * 0.4
+			while hcur < col_top:
+				var p := at + y * hcur + x * off.x + z * off.y
+				var above := hcur - t_skin
+				var col := ivory.lerp(Color(0.84, 0.78, 0.62), rng.randf() * 0.5)
+				if above < 0.0:
+					col = blood
+				else:
+					col = col.lerp(blood, clampf(1.0 - above / (h_out * streak), 0.0, 1.0) * 0.85)
+				if inner and hcur + c >= col_top:
+					col = marrow
+				_cube(st, p, hx, hy, hz, col)
+				hcur += c
+	# A splinter split off the shaft beside it, leaning out.
+	var sy := (y + x * 0.4).normalized()
+	var sbase := at + y * t_skin + x * (r + c)
+	for k in int(h_out * 0.7 / c):
+		var p := sbase + sy * c * k
+		_cube(st, p, hx * 0.8, hy, hz * 0.8, ivory.lerp(blood, clampf(1.0 - float(k) / 3.0, 0.0, 1.0) * 0.8))
+	# The wound round it: torn flesh in voxels heaped round the hole, wet red and dark, and lumps
+	# of it hanging out, the skin's own voxels round it smeared (VoxelPart.wound, by the caller).
+	var wc := at + y * t_skin
 	var wx := nrm.cross(y if absf(nrm.dot(y)) < 0.95 else along).normalized()
 	if wx.length_squared() < 0.5:
 		wx = x
 	var wz := nrm.cross(wx).normalized()
-	var R := r * 2.6
-	var M := 16
-	var rim := []
-	var mid := []
-	for i in M:
-		var a := TAU * i / M
-		var dv := wx * cos(a) + wz * sin(a)
-		rim.append(wc + dv * R * rng.randf_range(0.8, 1.3) + nrm * rng.randf_range(0.0, 0.006))
-		mid.append(wc + dv * R * 0.55 - nrm * 0.006)
-	var hole := wc - nrm * 0.02
-	var raw := Color(0.55, 0.07, 0.06)
-	for i in M:
-		var j := (i + 1) % M
-		for v in [[rim[i], raw], [rim[j], raw], [mid[j], wet], [rim[i], raw], [mid[j], wet], [mid[i], wet]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-		for v in [[mid[i], wet], [mid[j], wet], [hole, Color(0.16, 0.0, 0.0)]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-	# Flaps of skin, torn back from the edge.
-	var skin := colors[0] if colors.size() > 0 else Color(0.8, 0.6, 0.5)
-	for f in 4:
-		var i := (f * 4 + rng.randi_range(0, 2)) % M
-		var dv: Vector3 = (rim[i] - wc).normalized()
-		var side := nrm.cross(dv).normalized() * R * 0.35
-		var tip: Vector3 = rim[i] + dv * R * 0.55 + nrm * R * 0.35
-		for v in [[rim[i] + side, skin.darkened(0.15)], [rim[i] - side, skin.darkened(0.15)], [tip, raw]]:
-			st.set_color(v[1])
-			st.add_vertex(v[0])
-	st.generate_normals()
+	var R := r * 2.4
+	var m := int(ceil(R / c))
+	var wxh := wx * c * 0.5
+	var wnh := nrm * c * 0.5
+	var wzh := wz * c * 0.5
+	for ix in range(-m, m + 1):
+		for iz in range(-m, m + 1):
+			var off := Vector2(ix, iz) * c
+			var dl := off.length()
+			if dl > R * rng.randf_range(0.8, 1.15) or dl < r * 0.9:
+				continue
+			var hgt := rng.randi_range(0, 2) if dl < R * 0.7 else rng.randi_range(0, 1)
+			var shade := rng.randf()
+			var col := Color(0.62, 0.05, 0.04).lerp(Color(0.3, 0.0, 0.0), shade * 0.7)
+			if rng.randf() < 0.15:
+				col = Color(0.78, 0.38, 0.33)   # torn fat and tissue
+			for k in hgt + 1:
+				_cube(st, wc + wx * off.x + wz * off.y + nrm * c * (k - 0.3), wxh, wnh, wzh, col)
 	var mesh := st.commit()
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.38       # wet, not glass (the sky shone violet off it)
+	mat.roughness = 0.4
 	mat.metallic_specular = 0.45
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mesh.surface_set_material(0, mat)
 	if bone_out == null:
 		bone_out = MeshInstance3D.new()
@@ -242,15 +221,150 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 		bone_out.top_level = true
 		add_child(bone_out)
 	bone_out.mesh = mesh
-	bone_xf = (kink[2] as Transform3D) if not kink.is_empty() else Transform3D()
-	bone_at = bone_xf * (root + y * (t_skin + r * 1.5 + h_out * 0.5))
-	bone_dir = bone_xf.basis * y
+	# (The near piece: it stays with the part; the far one swings.)
+	bone_xf = Transform3D()
+	bone_at = at + y * (t_skin + h_out * 0.5)
+	bone_dir = y
+	bone_wound = wc
+	bone_wound_n = nrm
 	bone_out.visible = true
 	_draw_at(global_transform)
+
+## One voxel cube for the bone or the wound: centre `p`, half-edges along hx, hy, hz.
+static func _cube(st: SurfaceTool, p: Vector3, hx: Vector3, hy: Vector3, hz: Vector3, col: Color) -> void:
+	var v := [p - hx - hy - hz, p + hx - hy - hz, p + hx + hy - hz, p - hx + hy - hz, p - hx - hy + hz, p + hx - hy + hz, p + hx + hy + hz, p - hx + hy + hz]
+	st.set_color(col)
+	for f in [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]:
+		var a: Vector3 = v[f[0]]; var b: Vector3 = v[f[1]]; var c: Vector3 = v[f[2]]; var d: Vector3 = v[f[3]]
+		var nn := (b - a).cross(c - a).normalized()
+		var outw := (a + b + c + d) * 0.25 - p
+		if nn.dot(outw) < 0.0:
+			nn = -nn
+			var t := b; b = d; d = t
+		st.set_normal(nn)
+		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+		st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
 
 func hide_bone() -> void:
 	if bone_out:
 		bone_out.visible = false
+
+# ---------- A limb broken through: the far end swings from the break ----------
+# (user: a broken limb swinging free from the broken angle) Drawn on its own, like a jaw: the
+# voxels past the break in a multimesh of their own, hung from the break and swung by the limb's
+# own movement and its weight; the break's bend is where it rests. Drawing only: the collider
+# and every blow are the part's as they were.
+var dangle_slot := {}
+var dangle_mm: MultiMesh = null
+var dangle_mesh: MultiMeshInstance3D = null
+var _sw_q := Quaternion()           # the swing, part-local, about the break
+var _sw_w := Vector3.ZERO           # its angular velocity
+var _sw_lv := Vector3.ZERO          # the part's velocity (world) last frame
+var _sw_av := Vector3.ZERO
+
+func _skin_skip() -> Dictionary:
+	if dangle_slot.is_empty():
+		return jaw_slot
+	var d := jaw_slot.duplicate()
+	d.merge(dangle_slot)
+	return d
+
+func _dangle_pivot() -> Vector3:
+	var p := Vector3.ZERO
+	if not kink.is_empty():
+		p[int(kink[0])] = float(kink[1])
+	return p
+
+func _dangle_xf() -> Transform3D:
+	var pv := _dangle_pivot()
+	var b := Basis(_sw_q)
+	return Transform3D(b, pv - b * pv)
+
+func _start_dangle() -> void:
+	if mm == null or DisplayServer.get_name() == "headless" or kink.is_empty():
+		return
+	_stop_dangle()
+	var idx := []
+	for i in fx.size():
+		if _past_break(i):
+			idx.append(i)
+	if idx.is_empty():
+		return
+	dangle_mm = MultiMesh.new()
+	dangle_mm.transform_format = MultiMesh.TRANSFORM_3D
+	dangle_mm.use_colors = true
+	dangle_mm.use_custom_data = true
+	dangle_mm.mesh = mm.mesh
+	dangle_mm.instance_count = idx.size()
+	for s in idx.size():
+		var i: int = idx[s]
+		dangle_slot[i] = s
+		var k := 1.0 if alive[i] and not veiled(i) else 0.0
+		var base: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+		dangle_mm.set_instance_transform(s, Transform3D(base.basis.scaled(Vector3.ONE * k), base.origin))
+		dangle_mm.set_instance_color(s, colors[i])
+		dangle_mm.set_instance_custom_data(s, _custom(i))
+	dangle_mm.custom_aabb = mmi.custom_aabb
+	dangle_mesh = MultiMeshInstance3D.new()
+	dangle_mesh.multimesh = dangle_mm
+	dangle_mesh.material_override = mmi.material_override
+	dangle_mesh.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	dangle_mesh.top_level = true
+	dangle_mesh.custom_aabb = mmi.custom_aabb
+	add_child(dangle_mesh)
+	# It starts where the blow left it: bent at the break.
+	_sw_q = Quaternion((kink[2] as Transform3D).basis.orthonormalized())
+	_sw_w = Vector3.ZERO
+	_sw_lv = linear_velocity
+	_sw_av = angular_velocity
+	_mark_skin()
+
+func _stop_dangle() -> void:
+	if dangle_mesh:
+		dangle_mesh.queue_free()
+	dangle_mesh = null
+	dangle_mm = null
+	if not dangle_slot.is_empty():
+		dangle_slot = {}
+		_mark_skin()
+
+## The far end, hung from the break by the muscle round it: its weight swings it down, the limb's
+## jerks and turns throw it about, and the muscle holds it a little toward where it broke.
+func _swing(dt: float) -> void:
+	if dt <= 0.0 or kink.is_empty():
+		return
+	dt = minf(dt, 1.0 / 30.0)
+	var inv := global_transform.basis.orthonormalized().inverse()
+	var tip: Vector3 = _across()[2] * half_ext[int(kink[0])] * 0.8
+	var d := _sw_q * tip
+	var len2 := maxf(1e-4, d.length_squared())
+	# Gravity, and the part's own acceleration felt the other way (it is left behind).
+	var acc_w := (linear_velocity - _sw_lv) / dt
+	_sw_lv = linear_velocity
+	var g_l := inv * (Vector3(0, -9.8, 0) - acc_w.limit_length(60.0))
+	var alpha := d.cross(g_l) / len2
+	# The part turning under it: it lags behind the turn.
+	var dav := inv * (angular_velocity - _sw_av)
+	_sw_av = angular_velocity
+	_sw_w -= dav * 0.7
+	# The torn muscle pulls it a little toward its bent rest, and damps the swing.
+	var rest := Quaternion((kink[2] as Transform3D).basis.orthonormalized())
+	var err := (_sw_q * rest.inverse()).normalized()
+	var ang := err.get_angle()
+	var eax := err.get_axis() if ang > 1e-4 else Vector3.ZERO
+	if ang > PI:
+		ang -= TAU
+	alpha -= eax * ang * 6.0
+	_sw_w += alpha * dt
+	_sw_w *= exp(-dt * 2.2)
+	var wl := _sw_w.length()
+	if wl > 1e-5:
+		_sw_q = (Quaternion(_sw_w / wl, wl * dt) * _sw_q).normalized()
+	# Never round further than the torn flesh lets it.
+	var off := (_sw_q * rest.inverse()).normalized()
+	if off.get_angle() > 1.4 and off.get_angle() < TAU - 1.4:
+		_sw_q = (Quaternion(off.get_axis(), 1.4) * rest).normalized()
+		_sw_w *= 0.3
 var jaw_mouth: Node3D = null
 var jaw_mm: MultiMesh = null
 var jaw_slot := {}               # voxel index -> its slot in jaw_mm
@@ -696,7 +810,7 @@ func rebuild_skin() -> void:
 	_skin_dirty = false
 	if skin == null:
 		return
-	skin.mesh = VoxelSkin.build(self, jaw_slot)
+	skin.mesh = VoxelSkin.build(self, _skin_skip())
 
 func _mark_skin() -> void:
 	if skin != null and not _skin_dirty:
@@ -716,14 +830,19 @@ func refresh_colors(indices: Array = []) -> void:
 	var list: Array = indices if not indices.is_empty() else range(fx.size())
 	var main := []
 	var jaw := []
+	var dang := []
 	for i in list:
 		if jaw_slot.has(i):
 			jaw.append([jaw_slot[i], colors[i]])
 		else:
 			main.append([i, colors[i]])
+			if dangle_slot.has(i):
+				dang.append([dangle_slot[i], colors[i]])
 	_write_colors(mm, main)
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
+	if dangle_mm:
+		_write_colors(dangle_mm, dang)
 	_write_glow(list)
 	_mark_skin()
 
@@ -826,6 +945,16 @@ func resync() -> void:
 	_write_shown(mm, main_on, true)
 	_write_shown(mm, main_off, false)
 	_write_colors(mm, cols)
+	if dangle_mm:
+		var d_on := []
+		var d_off := []
+		var d_col := []
+		for i in dangle_slot:
+			(d_on if alive[i] and not veiled(i) else d_off).append([dangle_slot[i], local_of(i)])
+			d_col.append([dangle_slot[i], colors[i]])
+		_write_shown(dangle_mm, d_on, true)
+		_write_shown(dangle_mm, d_off, false)
+		_write_colors(dangle_mm, d_col)
 	if veil.size() > 0 or bevel:
 		for i in fx.size():
 			if not jaw_slot.has(i):
@@ -1163,6 +1292,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 func set_shown(indices: Array, on: bool) -> void:
 	var main := []
 	var jaw := []
+	var dang := []
 	for i in indices:
 		if i < 0 or i >= fx.size() or (on and veiled(i)):
 			continue
@@ -1170,7 +1300,11 @@ func set_shown(indices: Array, on: bool) -> void:
 			jaw.append([jaw_slot[i], local_of(i) - jaw_pivot.position])
 		else:
 			main.append([i, drawn_xf(i)])
+			if dangle_slot.has(i):
+				dang.append([dangle_slot[i], local_of(i)])
 	_write_shown(mm, main, on)
+	if dangle_mm:
+		_write_shown(dangle_mm, dang, on)
 	_mark_skin()
 	if jaw_mm:
 		_write_shown(jaw_mm, jaw, on)
@@ -1201,6 +1335,8 @@ static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
 var shape_xf: Array = []
 func drawn_xf(i: int) -> Transform3D:
 	var t: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+	if dangle_slot.has(i):
+		return Transform3D(Basis().scaled(Vector3.ZERO), t.origin)   # (drawn swinging, below)
 	if not kink.is_empty() and _past_break(i):
 		t = (kink[2] as Transform3D) * t
 	return t
@@ -1217,42 +1353,82 @@ func _past_break(i: int) -> bool:
 func set_kink(at: Vector3, angle: float, code: int) -> void:
 	if angle == 0.0:
 		hide_bone()
+		_stop_dangle()
 		if not kink.is_empty():
 			kink = []
 			resync()
 		return
 	var kb := _kink_basis(at, angle, code)
 	var ra := _root_axis()
-	kink = [int(ra[0]), float(kb[1]), kb[0], bool(ra[1]), code]
+	kink = [int(ra[0]), float(kb[1]), kb[0], bool(ra[1]), code, angle]
+	_start_dangle()
 	resync()
+
+## The two unit lines across the bone, and the far end's way along it (from the break out to the
+## end the part does not hang by).
+func _across() -> Array:
+	var ra := _root_axis()
+	var ax: int = ra[0]
+	var e1 := Vector3.ZERO
+	e1[(ax + 1) % 3] = 1.0
+	var e2 := Vector3.ZERO
+	e2[(ax + 2) % 3] = 1.0
+	var tip := Vector3.ZERO
+	tip[ax] = -1.0 if bool(ra[1]) else 1.0
+	return [e1, e2, tip]
+
+## The way the far end was pushed, across the bone: `code` 0..255 is its angle round the bone (any
+## way at all, as the blow came in).
+func kink_push(code: int) -> Vector3:
+	var ac := _across()
+	var th := TAU * float(code) / 256.0
+	return ((ac[0] as Vector3) * cos(th) + (ac[1] as Vector3) * sin(th)).normalized()
 
 func _kink_basis(at: Vector3, angle: float, code: int) -> Array:
 	var ax: int = _root_axis()[0]
-	var across := Vector3.ZERO
-	across[(ax + 1 + (code & 1)) % 3] = 1.0 if (code & 2) == 0 else -1.0
+	var tip: Vector3 = _across()[2]
+	var push := kink_push(code)
+	# The far end turned toward where the blow drove it, about the line across the bone at right
+	# angles to both.
+	var across := tip.cross(push).normalized()
 	var pivot := Vector3.ZERO
 	pivot[ax] = clampf(at[ax], -half_ext[ax] * 0.6, half_ext[ax] * 0.6)
 	var b := Basis(across, angle)
 	return [Transform3D(b, pivot - b * pivot), pivot[ax]]
 
-## Which way to draw it bent: the far end pushed along `ld` (part-local, the blow's way), or for no
-## blow one way the part's name picks.
-func kink_code(at: Vector3, ld: Vector3, angle: float) -> int:
-	if ld.length_squared() < 1e-6 or angle == 0.0:
-		return absi(hash(String(part_name))) % 4
-	var ra := _root_axis()
-	var ax: int = ra[0]
-	var tip := Vector3.ZERO
-	tip[ax] = -half_ext[ax] if bool(ra[1]) else half_ext[ax]
-	var best := 0
-	var bs := -INF
-	for code in 4:
-		var t: Transform3D = _kink_basis(at, angle, code)[0]
-		var sc := (t * tip - tip).dot(ld)
-		if sc > bs:
-			bs = sc
-			best = code
-	return best
+## Which way it is bent: the far end pushed along `ld` (part-local, the blow's own way, at any
+## angle round the bone), or with no blow one way the part's name picks. 0..255.
+func kink_code(_at: Vector3, ld: Vector3, angle: float) -> int:
+	var ac := _across()
+	var lp := ld - (ac[2] as Vector3) * ld.dot(ac[2])
+	if lp.length_squared() < 1e-6 or angle == 0.0:
+		return absi(hash(String(part_name))) % 256
+	var th := atan2(lp.dot(ac[1]), lp.dot(ac[0]))
+	return posmod(roundi(th / TAU * 256.0), 256)
+
+## Where the bone breaks out of an open fracture: on the bone at the break, and out through the
+## skin on the outside of the bend (the side the blow came from, where the broken ends of the shaft
+## are driven out). [point on the bone, way out], part-local; empty when it is not bent.
+func break_exit() -> Array:
+	if kink.is_empty():
+		return []
+	var ax: int = kink[0]
+	var c := float(kink[1])
+	var sum := Vector3.ZERO
+	var n := 0
+	var slab := vf * part_scale * 1.5
+	for i in fx.size():
+		if bone[i]:
+			var q := local_of(i)
+			if absf(q[ax] - c) < slab:
+				sum += q
+				n += 1
+	var at := Vector3.ZERO
+	at[ax] = c
+	if n > 0:
+		at = sum / n
+		at[ax] = c
+	return [at, -kink_push(int(kink[4]))]
 
 ## Draws the part in shape `xf` (one Transform3D per voxel), or as plain cubes when empty; only
 ## the voxels in `only` drawn again when it is given.

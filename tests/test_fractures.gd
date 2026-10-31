@@ -214,3 +214,43 @@ func test_a_guest_sees_the_break() -> void:
 	t.check(b.fractured and b.fracture == 2, "the guest's copy is broken")
 	t.check(not b.kink.is_empty() and int(b.kink[4]) == int(a.kink[4]) and absf(float(b.kink[1]) - float(a.kink[1])) < 0.01, "bent at the same place, the same way")
 	m.queue_free()
+
+## A break follows the blow that made it (user: from any angle, as the blow fell and as hard as
+## it was): bent where it landed along the limb, the far end driven the way the blow went (at any
+## angle round the bone, not one of four), further the harder it was; an open one comes out at
+## the break on the outside of the bend, the side the blow came from.
+func test_a_break_follows_the_blow() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(20)
+	var p: VoxelPart = v.by_name.shinR
+	var ac := p._across()
+	var seen := []
+	for k in 6:
+		var th := TAU * k / 6.0 + 0.3
+		var ld: Vector3 = ((ac[0] as Vector3) * cos(th) + (ac[1] as Vector3) * sin(th)).normalized()
+		var code := p.kink_code(Vector3.ZERO, ld, 0.5)
+		var push := p.kink_push(code)
+		t.check(push.dot(ld) > 0.98, "a blow from %d degrees drives the far end its own way (%.3f)" % [roundi(rad_to_deg(th)), push.dot(ld)])
+		seen.append(code)
+	t.check(seen.size() == 6 and seen.all(func(c): return seen.count(c) == 1), "six blows, six ways (%s)" % [seen])
+	# Where along it, and how far, as the blow was.
+	var ax: int = p._root_axis()[0]
+	var at := Vector3.ZERO
+	at[ax] = p.half_ext[ax] * 0.3
+	var ld2: Vector3 = ac[0]
+	v._fracture(p, at + ld2 * -p.half_ext[(ax + 1) % 3], 26.0, {}, 2, ld2)
+	t.check(absf(float(p.kink[1]) - at[ax]) < 0.01, "bent where the blow landed along the shin")
+	var soft := float(p.kink[5])
+	var q: VoxelPart = v.by_name.shinL
+	v._fracture(q, at, 60.0, {}, 2, ld2)
+	t.check(float(q.kink[5]) > soft + 0.1, "a harder blow bends it further (%.2f against %.2f)" % [q.kink[5], soft])
+	# Open: out at the break, on the side the blow came from.
+	var fo: VoxelPart = v.arm.R.fore
+	var ld3: Vector3 = fo._across()[1]
+	v._fracture(fo, Vector3.ZERO, 52.0, {}, 3, ld3)
+	var ex := fo.break_exit()
+	t.check(not ex.is_empty() and (ex[1] as Vector3).dot(-ld3) > 0.98, "an open break comes out on the side the blow came from")
+	t.check(absf((ex[0] as Vector3)[fo._root_axis()[0]] - float(fo.kink[1])) < 0.01, "and at the break itself")
+	m.queue_free()
