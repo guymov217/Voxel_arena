@@ -1247,6 +1247,10 @@ func set_gape(gape: float, dt: float) -> void:
 ## there, or empty for none. The shading round them follows.
 func set_look(v: PackedByteArray, bevel_on: bool) -> void:
 	var was := veil
+	# The same look again (a plain body made plain, every man at his spawn): nothing to redraw.
+	# (It went over every voxel's corners anyway, a seventh of a second a man.)
+	if v == was and bevel_on == bevel:
+		return
 	veil = v
 	bevel = bevel_on
 	var show := []

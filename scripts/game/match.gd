@@ -180,6 +180,42 @@ func restart_attract(opts: Dictionary) -> void:
 		modes.setup(opts)
 	spectacle.on_round_start()
 
+## The menu backdrop: a man who has lain a while is taken away and a fresh one walks on, one
+## at a time a few seconds apart. (The whole lot was cleared and four men built again in one
+## frame when a round ended: two seconds with the menu frozen, user.)
+var attract_cool := 0.0
+const ATTRACT_DOWN := 4.0
+const ATTRACT_GAP := 3.0
+func _attract_tick(dt: float) -> void:
+	attract_cool -= dt
+	for e in entities:
+		if not is_instance_valid(e.f):
+			continue
+		if e.f.alive and not e.f.is_beaten():
+			e.down_t = 0.0
+			continue
+		e.down_t = float(e.get("down_t", 0.0)) + dt
+		if e.down_t < ATTRACT_DOWN or attract_cool > 0.0:
+			continue
+		attract_cool = ATTRACT_GAP
+		var spec: Dictionary = e.spec.duplicate(true)
+		spec.erase("id")
+		var a := randf() * TAU
+		spec.pos = Vector3(cos(a) * 6.0, 0.1, sin(a) * 6.0)
+		spec.yaw = atan2(-spec.pos.x, -spec.pos.z)
+		var was_me: bool = me == e
+		_remove_entity(e)
+		var ne = spawn_fighter(spec)
+		if was_me:
+			me = ne
+		# What the fallen dropped does not pile up behind the menus for ever.
+		var loose: Array = combat.loose_weapons.filter(func(w): return is_instance_valid(w))
+		while loose.size() > 6:
+			var w = loose.pop_front()
+			combat.loose_weapons.erase(w)
+			w.queue_free()
+		return
+
 func _is_hero_body(n: Node) -> bool:
 	if hero == null or not is_instance_valid(hero):
 		return false
@@ -771,7 +807,7 @@ func _training_tick(dt: float) -> void:
 const TRAINING_BOSSES := ["cyclops", "giant", "minotaur", "titan"]
 func _spawn_training() -> void:
 	var who: String = training.get("enemy", "gladiator")
-	for i in int(training.get("count", 1)):
+	for i in clampi(int(training.get("count", 1)), 1, 3):
 		var pos := Vector3(i * 1.5, 0.1, 5.0)
 		if who == "none":
 			break
@@ -804,6 +840,8 @@ func _physics_process(dt: float) -> void:
 		return   # not set up (a Match made only to read its tables)
 	time += dt
 	tick += 1
+	if attract:
+		_attract_tick(dt)
 	if hero and is_instance_valid(hero) and hero.get_meta("frozen", false):
 		pass
 	elif hero and is_instance_valid(hero):
@@ -1732,6 +1770,8 @@ func wear_of(e: Dictionary) -> Dictionary:
 	return wear
 
 func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
+	if attract:
+		return   # (the fight behind the menus never ends: the fallen are replaced one at a time)
 	over = true
 	if Sfx.music and not headless and not attract:
 		Sfx.music.set_state("victory" if won else "off")

@@ -768,7 +768,14 @@ func _training(v: VBoxContainer) -> void:
 		o.fit_to_longest_item = false
 		for n in names:
 			o.add_item(n)
-		o.select(maxi(0, keys.find(training.get(key))))
+		# (The save gives numbers back as floats: 3.0 is not found among 1, 2, 3, and the list
+		# showed "One" while three were sent in. What is shown is what is used.)
+		var at := keys.find(training.get(key))
+		if at < 0 and (training.get(key) is float):
+			at = keys.find(int(training.get(key)))
+		at = maxi(0, at)
+		training[key] = keys[at]
+		o.select(at)
 		o.item_selected.connect(func(i): training[key] = keys[i])
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")

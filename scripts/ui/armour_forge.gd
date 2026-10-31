@@ -70,6 +70,12 @@ func switch_region(reg: String) -> void:
 		c.queue_free()
 	open(d, reg, done, worn_kg, purse)
 
+func _reveal(svc: Control) -> void:
+	for i in 3:
+		await RenderingServer.frame_post_draw
+	if is_instance_valid(svc):
+		svc.modulate.a = 1.0
+
 ## The piece as it stands: the plates of the first part, and the same mirrored on its pair.
 func design_now() -> Dictionary:
 	var out := def.duplicate(true)
@@ -266,6 +272,10 @@ func _build_ui() -> void:
 	vp.own_world_3d = true
 	vp.msaa_3d = Viewport.MSAA_4X
 	svc.add_child(vp)
+	# A new view shows whatever was in the graphics memory until it has drawn once (a flash of
+	# coloured noise each time another part was put on the bench, user video): kept clear till then.
+	svc.modulate.a = 0.0
+	_reveal(svc)
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
