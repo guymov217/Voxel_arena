@@ -1332,10 +1332,14 @@ func reach_for(side: String, w: Weapon) -> bool:
 	_arm_exempt(side, w, true)
 	return true
 
-func _arm_exempt(side: String, w: Weapon, on: bool) -> void:
+## The whole of him, not only the reaching arm: stooping for it, the other hand, the knees and the
+## chest knocked it a metre off along the sand, out of reach (a trident, a mace lying slant: user).
+func _arm_exempt(_side: String, w: Weapon, on: bool) -> void:
 	for b in w.bodies():
 		if b is PhysicsBody3D:
-			for p in [arm[side].fore, arm[side].upper]:
+			for p in parts:
+				if p.severed:
+					continue
 				if on:
 					b.add_collision_exception_with(p)
 				else:
@@ -1507,7 +1511,9 @@ func _reach_tick(dt: float) -> void:
 		tq = PD.clamp_len(tq, 90.0 * MS * S * float(mods.strength))
 		w.apply_torque_impulse(tq * dt)
 		fore.apply_torque_impulse(-tq * dt * 0.5)
-		if err.length() < deg_to_rad(6.0) or r.t <= 0.0:
+		# In line, or near it once the wrist has had a while (a light blade jitters a few degrees
+		# about the line as he straightens up with it, and was let go out of line at the end of it).
+		if err.length() < deg_to_rad(6.0) or (r.t < TURN_T * 0.5 and err.length() < deg_to_rad(9.0)) or r.t <= 0.0:
 			var pin = r.pin
 			reach[side] = null
 			if pin and is_instance_valid(pin):

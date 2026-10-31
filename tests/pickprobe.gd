@@ -7,7 +7,7 @@ func _ready() -> void:
 	var tally := {"held": 0, "dropped": 0, "never": 0}
 	var kinds: Array = OS.get_environment("KINDS").split(",") if OS.get_environment("KINDS") != "" else ["spear", "javelin", "trident", "swissSpear", "zweihander", "longsword", "gladius", "axe", "mace", "warhammer"]
 	for kind in kinds:
-		for ang in [0.0, 45.0, 90.0, 135.0]:
+		for ang in ([float(OS.get_environment("ANG"))] if OS.get_environment("ANG") != "" else [0.0, 45.0, 90.0, 135.0]):
 			var m := Match.new()
 			add_child(m)
 			m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
@@ -19,7 +19,10 @@ func _ready() -> void:
 			for i in 60:
 				await get_tree().physics_frame
 			var fwd := Vector3(sin(f.yaw), 0, cos(f.yaw))
-			var at: Vector3 = f.torso.global_position * Vector3(1, 0, 1) + fwd * 0.5 + Vector3(0, 0.12, 0)
+			var side_w := Vector3(fwd.z, 0, -fwd.x)
+			var far := float(OS.get_environment("FAR")) if OS.get_environment("FAR") != "" else 0.5
+			var lat := float(OS.get_environment("LAT")) if OS.get_environment("LAT") != "" else 0.0
+			var at: Vector3 = f.torso.global_position * Vector3(1, 0, 1) + fwd * far + side_w * lat + Vector3(0, 0.12, 0)
 			var w: Weapon = m.spawn_loose_weapon(Data.preset(kind), at)
 			w.global_transform = Transform3D(Basis(Vector3.FORWARD, PI * 0.5).rotated(Vector3.UP, deg_to_rad(ang)), at)
 			for i in 90:
@@ -32,6 +35,9 @@ func _ready() -> void:
 			for i in 600:
 				await get_tree().physics_frame
 				var r = f.reach[side]
+				if OS.get_environment("TRACE") != "" and i % 24 == 0:
+					var gg: Vector3 = w.grip_world()
+					print("   t%d grip %s moved %.2f  torso %s  palm-grip %.2f stoop %.2f %s" % [i, str(gg.snapped(Vector3.ONE * 0.01)), gg.distance_to(at), str(f.torso.global_position.snapped(Vector3.ONE * 0.01)), f.hand_world(side).distance_to(gg), f.stoop, r.phase if r != null else "-"])
 				if r != null:
 					var g: Vector3 = w.grip_world()
 					f.set_meta("pk_last", [i, f.hand_world(side).distance_to(g), Vector2(g.x - f.torso.global_position.x, g.z - f.torso.global_position.z).length(), g.y, f.hand_world(side).y, r.t])
