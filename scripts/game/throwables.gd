@@ -1019,6 +1019,35 @@ func _nails_tick(dt: float) -> void:
 			continue
 		n.prev = now
 
+## Nails in a body whose wounds are still to be dealt: [char, part, entry (part's frame),
+## direction (part's frame), thrower].
+var nail_hits_due: Array = []
+const NAIL_HITS_A_STEP := 1
+
+func _nail_hits_tick() -> void:
+	var n := 0
+	while not nail_hits_due.is_empty() and n < NAIL_HITS_A_STEP:
+		var q: Array = nail_hits_due.pop_front()
+		var c = q[0]
+		var part = q[1]
+		if not is_instance_valid(c) or not is_instance_valid(part) or part.severed or not c.alive:
+			continue
+		n += 1
+		var gt: Transform3D = part.global_transform
+		var entry: Vector3 = gt * (q[2] as Vector3)
+		var hd: Vector3 = (gt.basis.orthonormalized() * (q[3] as Vector3)).normalized()
+		var owner_ = q[4] if is_instance_valid(q[4]) else null
+		var was: int = part.alive_count
+		var res: Dictionary = c.apply_hit(part, {"impulse": 3.6, "type": "point", "hardness": 1.0, "sharpness": 1.0, "point": entry + hd * 0.01, "dir": hd, "axis": hd, "wsz": 0.5 / maxf(1.0, c.S), "weapon": true})
+		if owner_ and owner_ != c:
+			c.last_attacker = owner_
+		# (Heard as the hail it is: a stab's sound for each of ten at once was a din.)
+		m.report_hit({"kind": "hit", "p": entry, "dir": hd, "J": 3.6, "type": "point", "char": c, "part": part, "attacker": owner_ if owner_ != c else null, "res": res, "killed": not c.alive, "blast": true})
+		part.bleed += 0.2 / maxf(1.0, c.S)
+		if part.alive_count == was:
+			part.wound(q[2], 0.02 * c.S, "blood")
+		part.apply_impulse(hd * 0.9, entry - part.global_position)
+
 func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1.0) -> void:
 	# A nail only wounds what it actually met: one that reaches the sand lies there, a thing
 	# of iron on the sand (it bounces, rolls and stays), not gone.
@@ -1078,16 +1107,10 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 				back = minf(back, maxf(0.0, ((part.half_ext[k] if v > 0.0 else -part.half_ext[k]) - lp[k]) / v))
 		var entry: Vector3 = gt * (lp - ld * back)
 		if int(nh[1]) <= 14:
-			var was := part.alive_count
-			var res: Dictionary = c.apply_hit(part, {"impulse": 3.6, "type": "point", "hardness": 1.0, "sharpness": 1.0, "point": entry + hd * 0.01, "dir": hd, "axis": hd, "wsz": 0.5 / maxf(1.0, c.S), "weapon": true})
-			if owner_ and owner_ != c:
-				c.last_attacker = owner_
-			# (Heard as the hail it is: a stab's sound for each of ten at once was a din.)
-			m.report_hit({"kind": "hit", "p": entry, "dir": hd, "J": 3.6, "type": "point", "char": c, "part": part, "attacker": owner_ if owner_ != c else null, "res": res, "killed": was_alive and not c.alive, "blast": true})
-			part.bleed += 0.2 / maxf(1.0, c.S)
-			if part.alive_count == was:
-				part.wound(gt.affine_inverse() * entry, 0.02 * c.S, "blood")
-			part.apply_impulse(hd * 0.9, entry - part.global_position)
+			# Its wound is dealt over the next steps, NAIL_HITS_A_STEP a step (where it went in,
+			# in the part's own frame): a dozen wounds dealt in the one step the hail landed in
+			# took a fifth of a second of it (user: a hitch every time a nail pot hits).
+			nail_hits_due.append([c, part, lp - ld * back, ld, owner_])
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
 	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0)) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
@@ -1334,6 +1357,7 @@ func _floor_y(p: Vector3) -> float:
 
 func update(dt: float) -> void:
 	_nails_tick(dt)
+	_nail_hits_tick()
 	_update_drops(dt)
 	_update_wet(dt)
 	for z in zones.duplicate():

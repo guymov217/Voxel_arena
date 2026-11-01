@@ -817,6 +817,13 @@ var jaw_teeth := true          # the teeth still there (a jaw hacked mostly away
 var bone := PackedByteArray()
 var organ := PackedByteArray()     # per voxel, the organ it is part of (Anatomy; 0 none)
 var alive_count := 0
+## Each grid cell's living voxel (its index + 1; 0 none, or gone) and each collider cell's count
+## of living voxels (of total_coarse whole), kept up as voxels go and come back: worked out voxel
+## by voxel for every blow (loose_lumps, fit_collider), they were most of what a nail of a pot's
+## hail cost.
+var live_cell := PackedInt32Array()
+var live_coarse := PackedInt32Array()
+var total_coarse := PackedInt32Array()
 
 var hp := 100.0
 var bleed := 0.0
@@ -915,6 +922,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 		organ[i] = int(v[6]) if v.size() > 6 else 0
 		alive[i] = 1
 	alive_count = n
+	_index_cells()
 	# Physics: the box carries the weight; inertia from the whole box, centred, so a dent never
 	# changes how the part swings.
 	mass = maxf(0.05, mass_)
@@ -1716,6 +1724,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 			continue
 		alive[i] = 0
 		alive_count -= 1
+		_cell_out(i)
 		done.append(i)
 		out.append({"p": world_of(i), "color": colors[i], "kind": kinds[i], "veil": veiled(i)})
 		centre += local_of(i)
@@ -2066,12 +2075,85 @@ func set_look(v: PackedByteArray, bevel_on: bool) -> void:
 		bev[i] = bevel_bits(i)
 		_set_status(i, glowing.get(i, Vector2.ZERO))
 
+## live_cell, live_coarse, total_coarse and the dead from the voxels as they are.
+func _index_cells() -> void:
+	live_cell = PackedInt32Array()
+	live_cell.resize(grid.x * grid.y * grid.z)
+	_dead = PackedInt32Array()
+	var nc := dims.x * dims.y * dims.z
+	live_coarse = PackedInt32Array()
+	live_coarse.resize(nc)
+	total_coarse = PackedInt32Array()
+	total_coarse.resize(nc)
+	_cell_map = PackedInt32Array()
+	_cell_map.resize(live_cell.size())
+	for i in fx.size():
+		_cell_map[_cell_of(i)] = i + 1
+		if alive[i]:
+			live_cell[_cell_of(i)] = i + 1
+		else:
+			_dead.append(i)
+		var c := _coarse_of(i)
+		if c >= 0 and c < nc:
+			total_coarse[c] += 1
+			if alive[i]:
+				live_coarse[c] += 1
+
+func _cell_of(i: int) -> int:
+	return (fx[i] * grid.y + fy[i]) * grid.z + fz[i]
+
+## Every grid cell's voxel (its index + 1; 0 none), dead or alive: the part's layout, which never
+## changes once it is built.
+var _cell_map := PackedInt32Array()
+func cell_map() -> PackedInt32Array:
+	if _cell_map.size() != grid.x * grid.y * grid.z:
+		_cell_map = PackedInt32Array()
+		_cell_map.resize(grid.x * grid.y * grid.z)
+		for i in fx.size():
+			_cell_map[_cell_of(i)] = i + 1
+	return _cell_map
+
+func _coarse_of(i: int) -> int:
+	var res := Data.body_res
+	return int(fx[i] / res) + dims.x * (int(fy[i] / res) + dims.y * int(fz[i] / res))
+
+## The voxels gone from the part, in no order (what is under a blow is looked for among them,
+## not among the whole part's).
+var _dead := PackedInt32Array()
+func dead_voxels() -> PackedInt32Array:
+	if live_cell.size() != grid.x * grid.y * grid.z:
+		_index_cells()
+	return _dead
+
+func _cell_out(i: int) -> void:
+	if live_cell.size() != grid.x * grid.y * grid.z:
+		return   # (worked out from the voxels when first wanted)
+	_dead.append(i)
+	var c := _cell_of(i)
+	if live_cell[c] == i + 1:
+		live_cell[c] = 0
+	var k := _coarse_of(i)
+	if k >= 0 and k < live_coarse.size():
+		live_coarse[k] -= 1
+
+func _cell_in(i: int) -> void:
+	if live_cell.size() != grid.x * grid.y * grid.z:
+		return
+	var at := _dead.find(i)
+	if at >= 0:
+		_dead.remove_at(at)
+	live_cell[_cell_of(i)] = i + 1
+	var k := _coarse_of(i)
+	if k >= 0 and k < live_coarse.size():
+		live_coarse[k] += 1
+
 ## Puts voxels back (a mended limb in a replay, a net message out of order).
 func restore_voxels(indices: Array) -> void:
 	for i in indices:
 		if i >= 0 and i < fx.size() and alive[i] == 0:
 			alive[i] = 1
 			alive_count += 1
+			_cell_in(i)
 	set_shown(indices, true)
 	_reshade(indices)
 	fit_collider()
@@ -2080,16 +2162,10 @@ func restore_voxels(indices: Array) -> void:
 func fit_collider() -> void:
 	var w := dims.x; var h := dims.y; var d := dims.z
 	var n := w * h * d
-	var res := Data.body_res
-	var total := PackedInt32Array(); total.resize(n)
-	var live := PackedInt32Array(); live.resize(n)
-	for i in fx.size():
-		var c := int(fx[i] / res) + w * (int(fy[i] / res) + h * int(fz[i] / res))
-		if c < 0 or c >= n:
-			continue
-		total[c] += 1
-		if alive[i]:
-			live[c] += 1
+	if live_coarse.size() != n or live_cell.size() != grid.x * grid.y * grid.z:
+		_index_cells()
+	var total := total_coarse
+	var live := live_coarse
 	var solid := PackedByteArray(); solid.resize(n)
 	var holes := 0
 	var any := 0
@@ -2159,18 +2235,19 @@ func _root_axis() -> Array:
 func loose_lumps(ignore := PackedInt32Array()) -> Array:
 	var wf := grid.x; var hf := grid.y; var df := grid.z
 	var n := wf * hf * df
-	var cell := PackedInt32Array(); cell.resize(n)
+	if live_cell.size() != n:
+		_index_cells()
+	var cell := live_cell.duplicate()
 	var mark := PackedByteArray(); mark.resize(n)
-	var count := 0
+	var count := alive_count
 	var skip := PackedByteArray()
 	if not ignore.is_empty():
 		skip.resize(fx.size())
 		for i in ignore:
+			if skip[i] == 0 and alive[i]:
+				cell[(fx[i] * hf + fy[i]) * df + fz[i]] = 0
+				count -= 1
 			skip[i] = 1
-	for i in fx.size():
-		if alive[i] and (skip.is_empty() or skip[i] == 0):
-			cell[(fx[i] * hf + fy[i]) * df + fz[i]] = i + 1
-			count += 1
 	if count == 0:
 		return []
 	var held := 0
@@ -2182,8 +2259,55 @@ func loose_lumps(ignore := PackedInt32Array()) -> Array:
 		for ch in child_parts:
 			if ch.part_name == "head" and not ch.severed:
 				head_c = ch
-	var nc := Greedy.core() if head_c == null else null
-	if nc:
+	var nc := Greedy.core()
+	if nc and head_c != null:
+		# The trunk in the core too: the lumps cut loose from the biggest, then of all of them
+		# the one with the most flesh round the neck stays (a tie: the biggest). Gone over voxel
+		# by voxel here, twice, every blow on the trunk took a fiftieth of a second: a nail pot's
+		# hail, nine nails in one step, was a fifth of a second's hitch.
+		var others: Array = nc.loose_lumps(cell, wf, hf, df, -1, 0)
+		if others.is_empty():
+			return []
+		var near_neck := PackedByteArray()
+		near_neck.resize(fx.size())
+		var total_near := 0
+		for i in voxels_within(head_c.pa, vf * part_scale * 2.5):
+			if skip.is_empty() or skip[i] == 0:
+				near_neck[i] = 1
+				total_near += 1
+		var held_k := -1
+		var held_near := total_near
+		for k in others.size():
+			var at := 0
+			for i in others[k]:
+				at += near_neck[i]
+			held_near -= at
+		var best_near := held_near   # (the biggest's, all the neck's flesh the others have not)
+		for k in others.size():
+			var at := 0
+			for i in others[k]:
+				at += near_neck[i]
+			if at > best_near:
+				best_near = at
+				held_k = k
+		if held_k < 0:
+			return others
+		var in_other := PackedByteArray()
+		in_other.resize(fx.size())
+		for lump in others:
+			for i in lump:
+				in_other[i] = 1
+		var biggest := PackedInt32Array()
+		for i in fx.size():
+			if alive[i] and (skip.is_empty() or skip[i] == 0) and in_other[i] == 0:
+				biggest.append(i)
+		var out := []
+		for k in others.size():
+			if k != held_k:
+				out.append(others[k])
+		out.append(biggest)
+		return out
+	if nc and head_c == null:
 		var nax := -1
 		var nedge := 0
 		if has_joint and not severed:

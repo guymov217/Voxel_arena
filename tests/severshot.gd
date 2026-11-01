@@ -25,7 +25,10 @@ func _report(tag: String, f: Fighter) -> void:
 
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
+	var only := OS.get_environment("CASES").split(",", false)
 	for case in ["cut", "missing"]:
+		if not only.is_empty() and not only.has(case):
+			continue
 		var m := Match.new()
 		add_child(m)
 		var spec := {"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "seed": 3, "loadout": {"main": "gladius", "off": "roundShield", "armor": ["manica", "helmet"]}}

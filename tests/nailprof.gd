@@ -23,7 +23,7 @@ func _ready() -> void:
 			t_prev = now
 		var p: Vector3 = e.f.torso.global_position + Vector3(-0.35, 0.1, 0)
 		var t0 := Time.get_ticks_usec()
-		m.throwables.explode("pot_nail", p, m.me, Vector3(1, 0, 0))
+		m.throwables.explode("pot_nail", p, m.me.f, Vector3(1, 0, 0))
 		var t_burst := Time.get_ticks_usec() - t0
 		t_prev = Time.get_ticks_usec()
 		var after := []

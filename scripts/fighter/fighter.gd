@@ -4761,9 +4761,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if J * eff > 2.5:
 			var r := V * wsz * (1.2 + 0.5 * heavy + 0.25 * th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
-			for i in part.fx.size():
-				if part.alive[i] == 0:
-					continue
+			# (Only the live voxels round the channel: the whole part voxel by voxel, for each nail
+			# of a pot's hail, was a hitch.)
+			var half := (depth + open + V * S) * 0.5
+			for i in part.voxels_within(lp + la * (half - V * S), sqrt(half * half + r * r) + vfs * 0.01):
 				var d := part.local_of(i) - lp
 				var along := d.dot(la)
 				if along > -V * S and along < depth + open and (d - la * along).length() < r:
@@ -5126,9 +5127,7 @@ func _shield_takes(hit: Dictionary) -> bool:
 func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, step: float) -> float:
 	var seen := []
 	var slab := n != Vector3.ZERO
-	for i in part.fx.size():
-		if part.alive[i]:
-			continue
+	for i in part.dead_voxels():
 		var d := part.local_of(i) - lp
 		var along := d.dot(ld)
 		if along <= 0.0:
@@ -5191,9 +5190,7 @@ func _slot(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, 
 ## How deep an open hole goes under a blow at `lp` heading `ld` (0 on whole skin).
 func _hollow(part: VoxelPart, lp: Vector3, ld: Vector3, width: float) -> float:
 	var seen := []
-	for i in part.fx.size():
-		if part.alive[i]:
-			continue
+	for i in part.dead_voxels():
 		var d := part.local_of(i) - lp
 		var along := d.dot(ld)
 		if along <= 0.0 or (d - ld * along).length() >= width:
@@ -5226,11 +5223,9 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 	var wf: int = part.grid.x
 	var hf: int = part.grid.y
 	var df: int = part.grid.z
-	var cellmap := PackedInt32Array()
-	cellmap.resize(wf * hf * df)
-	for i in part.fx.size():
-		if part.alive[i]:
-			cellmap[(part.fx[i] * hf + part.fy[i]) * df + part.fz[i]] = i + 1
+	# (Dead or alive is looked up where it counts: a map of the living built anew every blow was
+	# a hitch under a nail pot's hail.)
+	var cellmap := part.cell_map()
 	# The lips of the cut: the flesh left within two voxels of what was just taken.
 	var lips := {}
 	for i in cut:
@@ -5248,7 +5243,7 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 					if xx < 0 or yy < 0 or zz < 0 or xx >= wf or yy >= hf or zz >= df:
 						continue
 					var k := cellmap[(xx * hf + yy) * df + zz]
-					if k > 0:
+					if k > 0 and part.alive[k - 1]:
 						lips[k - 1] = true
 	if lips.is_empty():
 		return false
@@ -5804,30 +5799,39 @@ var gut_rope: GutRope = null
 const SPILL_EXPOSED := 24
 var guts_out := false
 
-func _cells(p: VoxelPart) -> Dictionary:
-	if not p.has_meta("cells"):
-		var m := {}
-		for i in p.fx.size():
-			m[Vector3i(p.fx[i], p.fy[i], p.fz[i])] = i
-		p.set_meta("cells", m)
-	return p.get_meta("cells")
-
 const _NB := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
 
 func _check_belly(res: Dictionary) -> void:
 	if guts_out or torso.severed or not organ_total.has(Anatomy.GUTS):
 		return
-	var cells := _cells(torso)
+	var cm := torso.cell_map()
+	var gx := torso.grid.x
+	var gy := torso.grid.y
+	var gz := torso.grid.z
 	var exposed := []
 	var out := Vector3.ZERO
-	for i in torso.organ.size():
-		if torso.organ[i] != Anatomy.GUTS or not torso.alive[i]:
+	# (The guts' own voxels, not the whole trunk's, gone over after every blow.)
+	if not torso.has_meta("guts_idx"):
+		var gi := PackedInt32Array()
+		for i in torso.organ.size():
+			if torso.organ[i] == Anatomy.GUTS:
+				gi.append(i)
+		torso.set_meta("guts_idx", gi)
+	for i in torso.get_meta("guts_idx"):
+		if not torso.alive[i]:
 			continue
-		var c := Vector3i(torso.fx[i], torso.fy[i], torso.fz[i])
+		var x: int = torso.fx[i]
+		var y: int = torso.fy[i]
+		var z: int = torso.fz[i]
 		var open := false
 		for d in _NB:
-			var j = cells.get(c + d)
-			if j != null and not torso.alive[j]:
+			var xx: int = x + d.x
+			var yy: int = y + d.y
+			var zz: int = z + d.z
+			if xx < 0 or yy < 0 or zz < 0 or xx >= gx or yy >= gy or zz >= gz:
+				continue
+			var k := cm[(xx * gy + yy) * gz + zz]
+			if k > 0 and not torso.alive[k - 1]:
 				open = true
 				out += Vector3(d)
 		if open:
