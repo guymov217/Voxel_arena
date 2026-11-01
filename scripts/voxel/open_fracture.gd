@@ -104,8 +104,8 @@ static func _bone(cb: Cubes, rng: RandomNumberGenerator, o: Dictionary) -> void:
 			var inner := rr < edge * 0.55
 			var rim := rr / maxf(edge, 1e-3)
 			var top := base_top + R * (0.15 + 0.9 * (0.5 + 0.5 * cos(a - cut)))
-			top += R * 1.9 * pow(maxf(0.0, 1.0 - _ang_dist(a, s1) / 0.55), 1.6) * rim
-			top += R * 0.9 * pow(maxf(0.0, 1.0 - _ang_dist(a, s2) / 0.4), 1.6) * rim
+			top += R * 1.3 * pow(maxf(0.0, 1.0 - _ang_dist(a, s1) / 0.55), 1.6) * rim
+			top += R * 0.6 * pow(maxf(0.0, 1.0 - _ang_dist(a, s2) / 0.4), 1.6) * rim
 			top += rng.randf() * 0.8
 			if inner:
 				top -= rng.randf_range(1.0, 2.2)   # the marrow, sunk in a hollow

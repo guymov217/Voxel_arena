@@ -137,6 +137,14 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	out = (out - along * out.dot(along)).normalized()
 	if out.length_squared() < 0.5:
 		return
+	# Never out toward the body (into the trunk, between the legs): a blow from that side drives the
+	# broken end out of the other (user: only where it makes sense).
+	var trunk = fighter.get("torso") if fighter else null
+	if trunk is Node3D and trunk != self and is_instance_valid(trunk):
+		var tb: Vector3 = global_transform.affine_inverse() * (trunk as Node3D).global_position - at
+		tb -= along * tb.dot(along)
+		if tb.length_squared() > 1e-6 and out.dot(tb.normalized()) > 0.25:
+			out = -out
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(String(part_name)) + int(at.x * 1000.0) * 31 + int(at.z * 1000.0)
 	# The near piece's snapped end, driven out through the skin and on toward the far end.
@@ -145,9 +153,9 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	var z := x.cross(y).normalized()
 	var ax: int = _root_axis()[0]
 	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
-	# The bone's radius: a limb's bone a fifth of its thickness, never thinner than a voxel (a
-	# little stout, to be seen from where the fight is watched).
-	var r := maxf(thick * 0.19, vf * part_scale * 0.8)
+	# The bone's radius: as a limb's bone is, a quarter of its width across, never thinner than
+	# most of a voxel (user: no huge bone).
+	var r := maxf(thick * 0.13, vf * part_scale * 0.7)
 	# Where its line meets the skin.
 	var t_skin := INF
 	var nrm := out
@@ -160,7 +168,7 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 				nrm[k] = signf(y[k])
 	if t_skin == INF:
 		t_skin = thick * 0.5
-	var h_out := maxf(r * 3.4, thick * 0.65)          # how far it stands out of the skin
+	var h_out := maxf(r * 2.8, thick * 0.45)          # how far it stands out of the skin
 	var wc := at + y * t_skin
 	# The limb's own colour round the hole (its skin, or the cloth over it), for the torn edge:
 	# from a voxel of the face just past the blood the wound has smeared round it.
@@ -1830,7 +1838,7 @@ func _kink_basis(at: Vector3, angle: float, code: int) -> Array:
 	# angles to both.
 	var across := tip.cross(push).normalized()
 	var pivot := Vector3.ZERO
-	pivot[ax] = clampf(at[ax], -half_ext[ax] * 0.6, half_ext[ax] * 0.6)
+	pivot[ax] = clampf(at[ax], -half_ext[ax] * 0.45, half_ext[ax] * 0.45)   # (the shaft, well clear of the joints)
 	var b := Basis(across, angle)
 	return [Transform3D(b, pivot - b * pivot), pivot[ax]]
 

@@ -44,7 +44,7 @@ func _ready() -> void:
 	# The right forearm broken open by a blow from in front, the left shin low by the ankle from
 	# the side, the right thigh above its middle from in front: [part, the side struck, how far up
 	# it (of its half length)].
-	for k in [["forearmR", Vector3(0, 0, 1), 0.0], ["shinL", Vector3(1, 0, 0), -0.5], ["thighR", Vector3(0, 0, 1), 0.3]]:
+	for k in [["forearmR", Vector3(0, 0, 1), 0.0], ["shinL", Vector3(1, 0, 0), -0.4], ["thighR", Vector3(0, 0, 1), 0.3]]:
 		var p: VoxelPart = f.by_name[k[0]]
 		var ax: int = p._root_axis()[0]
 		var lp: Vector3 = (k[1] as Vector3) * p.half_ext

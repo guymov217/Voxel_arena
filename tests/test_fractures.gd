@@ -250,8 +250,8 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 	var v: Fighter = r[1]
 	await _steps(10)
 	# [part, how far up it the blow fell (of its half length), the side it came from]
-	var cases := [["thighL", 0.45, Vector3(0, 0, 1)], ["thighR", -0.35, Vector3(1, 0, 0)],
-		["shinL", 0.0, Vector3(-1, 0, 0)], ["shinR", -0.5, Vector3(0, 0, 1)]]
+	var cases := [["thighL", 0.4, Vector3(0, 0, 1)], ["thighR", -0.35, Vector3(1, 0, 0)],
+		["shinL", 0.0, Vector3(-1, 0, 0)], ["shinR", -0.4, Vector3(0, 0, 1)]]
 	for c in cases:
 		var p: VoxelPart = v.by_name[c[0]]
 		var ax: int = p._root_axis()[0]
@@ -276,7 +276,20 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 	lp2[ax2] = 0.97 * sh.half_ext[ax2]
 	v2._fracture(sh, lp2, 200.0, {}, 3, Vector3(0, 0, -1))
 	var ex2 := sh.break_exit()
-	t.check(not ex2.is_empty() and absf((ex2[0] as Vector3)[ax2]) <= sh.half_ext[ax2] * 0.61, "struck by the knee, it breaks open in the shaft below it (%.3f of %.3f)" % [(ex2[0] as Vector3)[ax2] if not ex2.is_empty() else INF, sh.half_ext[ax2]])
+	t.check(not ex2.is_empty() and absf((ex2[0] as Vector3)[ax2]) <= sh.half_ext[ax2] * 0.46, "struck by the knee, it breaks open in the shaft below it (%.3f of %.3f)" % [(ex2[0] as Vector3)[ax2] if not ex2.is_empty() else INF, sh.half_ext[ax2]])
+	# Struck from between the legs, the inside of the thigh: out the outside of it, never toward
+	# the body.
+	var th2: VoxelPart = v2.by_name.thighL
+	var ax4: int = th2._root_axis()[0]
+	var along4: Vector3 = th2._across()[2]
+	var med: Vector3 = th2.global_transform.affine_inverse() * v2.torso.global_position
+	med -= along4 * med.dot(along4)
+	med = med.normalized()
+	var lp4: Vector3 = med * th2.half_ext
+	lp4[ax4] = 0.1 * th2.half_ext[ax4]
+	v2._fracture(th2, lp4, 200.0, {}, 3, -med)
+	var outw := th2.bone_dir - along4 * th2.bone_dir.dot(along4)
+	t.check(th2.has_meta("open_break") and outw.length() > 0.1 and outw.normalized().dot(med) < 0.25, "struck on the inside of the thigh, the bone comes out away from the body (%.2f)" % (outw.normalized().dot(med) if outw.length() > 0.1 else 9.0))
 	# A beast's leg, struck high: open there too, in the shaft.
 	var b = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(3, 0.1, 3), "yaw": 0.0})
 	await _steps(5)
