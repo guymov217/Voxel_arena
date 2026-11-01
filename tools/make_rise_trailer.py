@@ -482,12 +482,19 @@ def picture(e, out):
 
 def sound(e, work, out):
     """The fight's own sound under the score, the score giving way to the blows, at -14 LUFS."""
+    import time
     import rise_score
+    t0 = time.time()
+
+    def step(what):
+        print("    %s (%d s in)" % (what, time.time() - t0), flush=True)
     with open(os.path.join(work, "cues.json"), "w") as f:
         json.dump(e.cues, f, indent=1)
     sc = os.path.join(work, "score.wav")
+    step("the score")
     rise_score.write(sc, rise_score.make(e.cues))
     score = ed.read_wav(sc)
+    step("the fight's own sound")
     game = ed.render_sound(e.segs, FPS)
     n = max(len(score), len(game))
     score = np.pad(score, ((0, n - len(score)), (0, 0)))
@@ -497,7 +504,9 @@ def sound(e, work, out):
     mix = np.tanh(game * 1.7) * 0.85 + score * duck[:, None] * 0.8
     raw = os.path.join(work, "mix_raw.wav")
     ed.write_wav(raw, mix / max(1.0, float(np.max(np.abs(mix)))))
+    step("the mix, brought to -14 LUFS")
     ed.loudnorm(raw, out, -14.0, -1.0)
+    step("done")
 
 
 def film(e, work, out):

@@ -66,7 +66,7 @@ def reverb(x, secs=2.4, wet=0.32, seed=0):
     ir = r.standard_normal(n) * np.exp(-np.arange(n) / SR * (6.9 / secs))
     ir = lowpass(ir, 3500.0)
     ir /= np.sqrt(np.sum(ir ** 2))
-    m = len(x) + n
+    m = 1 << (len(x) + n).bit_length()   # (room for the whole tail, a power of two: quick to transform)
     y = np.fft.irfft(np.fft.rfft(x, m) * np.fft.rfft(ir, m), m)[: len(x)]
     return x * (1.0 - wet) + y * wet
 

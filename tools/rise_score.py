@@ -43,6 +43,17 @@ def norm(x):
     return x / (np.max(np.abs(x)) + 1e-9)
 
 
+def smooth(x, m):
+    """The mean of x over the m samples round each one (np.convolve(x, ones(m) / m, "same")), by
+    a running sum: one pass, where the convolution took m multiplies a sample (minutes on a whole
+    score, far longer on a PC whose numpy splits each of those millions of sums over its cores)."""
+    c = np.concatenate(([0.0], np.cumsum(x)))
+    k = np.arange(len(x)) + (m - 1) // 2
+    hi = np.minimum(k, len(x) - 1) + 1
+    lo = np.clip(k - m + 1, 0, len(x))
+    return (c[hi] - c[lo]) / m
+
+
 def heartbeat():
     """Lub-dub: two low thumps, the second softer."""
     n = int(0.9 * SR)
@@ -246,9 +257,8 @@ def make(c):
         lvl_d[i * 441:(i + 1) * 441] = d
         lvl_c[i * 441:(i + 1) * 441] = ch
     sm = int(0.6 * SR)
-    kern = np.ones(sm) / sm
-    lvl_d = np.convolve(lvl_d, kern, mode="same")
-    lvl_c = np.convolve(lvl_c, kern, mode="same")
+    lvl_d = smooth(lvl_d, sm)
+    lvl_c = smooth(lvl_c, sm)
     tonal[0] += drone * lvl_d * 0.5 + choir * lvl_c * 0.42
     tonal[1] += drone * lvl_d * 0.5 + np.roll(choir, 300) * lvl_c * 0.42
     # The horn calls at each act's turn.
