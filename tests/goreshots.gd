@@ -115,11 +115,12 @@ func _ready() -> void:
 	await _steps(90)
 	var sh: VoxelPart = d.by_name.shinR
 	var j := 0
-	while not sh.has_meta("open_break") and j < 8:
+	# (Beaten on again and again, then one very hard blow: an open break as it happens.)
+	while not sh.has_meta("open_break") and j < Fighter.OPEN_AFTER + 4:
 		sh.hp = 1000.0
 		var gt := sh.global_transform
 		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
-		d.apply_hit(sh, {"impulse": 50.0, "type": "blunt", "hardness": 0.9, "heavy": 1.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": -bz})
+		d.apply_hit(sh, {"impulse": 30.0 if j < Fighter.OPEN_AFTER else 80.0, "type": "blunt", "hardness": 0.9, "heavy": 1.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": -bz})
 		j += 1
 		await _steps(4)
 	d.blood = 100.0

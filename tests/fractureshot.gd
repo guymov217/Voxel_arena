@@ -3,8 +3,9 @@ extends Node
 ## skin where each was struck, the broken end of the bone standing out of the wound. PNGs go to
 ## SHOT_DIR: fracture_arm.png (a forearm struck in front), fracture_leg.png (a shin low, by the
 ## ankle, struck from the side), fracture_thigh.png (a thigh above its middle, struck in front),
-## fracture_far.png (the broken shin from where the fight's camera would be), fracture_hud.png
-## (the HUD's figure).
+## fracture_far.png (the broken shin from where the fight's camera would be), fracture_leg_side.png
+## (the whole leg from its outer side), fracture_hud.png
+## (the HUD's figure; SKIP_HUD=1 leaves it out).
 
 var m
 var cam: Camera3D
@@ -29,7 +30,8 @@ func _ready() -> void:
 	m.add_child(cam)
 	cam.make_current()
 	var f: Fighter = m.me.f
-	m.me.drive = func(_e): return {"main": {"x": 0.6, "y": -0.2}, "off": {"x": -0.3, "y": 0.1}}
+	# (The right arm out to his side, clear of the body, its forearm to be seen broken.)
+	m.me.drive = func(_e): return {"main": {"x": 0.9, "y": 0.35}, "off": {"x": -0.3, "y": 0.1}}
 	# Nothing drawn until the shots (a machine without a graphics card spends seconds a frame).
 	get_viewport().disable_3d = true
 	var full := get_window().size
@@ -63,21 +65,56 @@ func _ready() -> void:
 		if part.bone_out == null:
 			print("no bone out on ", part.part_name)
 			continue
+		# Where along the bone it broke out, of its half length from the middle (0: the middle).
+		var ex := part.break_exit()
+		if not ex.is_empty():
+			var ax: int = part.kink[0]
+			print("%s broke out at %+.2f of its half length from its middle" % [part.part_name, (ex[0] as Vector3)[ax] / part.half_ext[ax]])
 		var mid: Vector3 = part.global_transform * part.bone_at
 		var bd: Vector3 = (part.global_transform.basis * part.bone_dir).normalized()
-		# From outside him, on the side the bone stands out of, a little above it.
+		# From the side the bone stands out of, half across it (seen standing out, not end on), and
+		# from outside him.
 		var away: Vector3 = mid - f.torso.global_position
 		away.y = 0.0
-		var look_from: Vector3 = (away.normalized() * 0.6 + Vector3(bd.x, 0.0, bd.z) * 0.6).normalized()
-		var cp: Vector3 = mid + look_from * 0.42 + Vector3(0, 0.12, 0)
+		var across: Vector3 = bd.cross(Vector3.UP)
+		if across.length() < 0.2:
+			across = away
+		across = across.normalized()
+		if across.dot(away) < 0.0:
+			across = -across
+		var look_from: Vector3 = (bd * 0.7 + across * 0.6 + Vector3.UP * 0.15).normalized()
+		var cp: Vector3 = mid + look_from * 0.6
 		cp.y = maxf(cp.y, 0.3)
 		await _snap(out, k[1], cp, mid, 38.0)
+	# How high up the shin it broke out, between the knee and the sole (world heights), and the
+	# whole leg from its outer side.
+	var exs := shin.break_exit()
+	if not exs.is_empty():
+		var axs: int = shin._root_axis()[0]
+		var top := Vector3.ZERO
+		top[axs] = shin.half_ext[axs]
+		var bot := -top
+		var yk: float = (shin.global_transform * top).y
+		var ys: float = (shin.global_transform * bot).y
+		if yk < ys:
+			var sw := yk
+			yk = ys
+			ys = sw
+		var yb: float = (shin.global_transform * (exs[0] as Vector3)).y
+		print("shinL: knee end %.2f m, sole end %.2f m, broke out at %.2f m: %.0f%% of the way up from the sole" % [yk, ys, yb, (yb - ys) / maxf(1e-3, yk - ys) * 100.0])
+		var side: Vector3 = (shin.global_position - f.torso.global_position)
+		side.y = 0.0
+		var sc: Vector3 = shin.global_position + Vector3(0, 0.15, 0)
+		await _snap(out, "fracture_leg_side.png", sc + side.normalized() * 1.5 + Vector3(0, 0.25, 0), sc, 40.0)
 	# The broken shin as the fight's camera sees it, a couple of metres off.
 	var sh: Vector3 = shin.global_transform * shin.bone_at if shin.bone_out else shin.global_position
 	var aw: Vector3 = sh - f.torso.global_position
 	aw.y = 0.0
 	await _snap(out, "fracture_far.png", sh + aw.normalized() * 2.6 + Vector3(0, 1.3, 0), sh + Vector3(0, 0.3, 0), 55.0)
-	# The whole man, the HUD's figure in the corner.
+	# The whole man, the HUD's figure in the corner (SKIP_HUD=1: not; it takes long to draw).
+	if OS.get_environment("SKIP_HUD") == "1":
+		get_tree().quit()
+		return
 	var hud := Hud.new(m)
 	add_child(hud)
 	var t: Vector3 = f.torso.global_position

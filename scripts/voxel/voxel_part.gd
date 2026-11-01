@@ -1997,6 +1997,38 @@ func kink_push(code: int) -> Vector3:
 	var th := TAU * float(code) / 256.0
 	return ((ac[0] as Vector3) * cos(th) + (ac[1] as Vector3) * sin(th)).normalized()
 
+## How far from its middle a bone breaks, of its half length: in the middle of the shaft only, two
+## fifths of the bone or more from either joint (user: open breaks only mid-limb; at 0.45 of the
+## part a shin struck low broke out by the ankle, at 0.3 still low on it). The bone's own middle
+## and length, not the part's: a shin's part takes in the foot, a forearm's the hand.
+const BREAK_MID := 0.2
+
+## Where along the part's bone it can break (part-local, along its length): [low, high].
+func break_range() -> Vector2:
+	var ax: int = _root_axis()[0]
+	var lo := INF
+	var hi := -INF
+	for i in fx.size():
+		if bone[i]:
+			var q: float = local_of(i)[ax]
+			lo = minf(lo, q)
+			hi = maxf(hi, q)
+	if lo > hi:
+		lo = -half_ext[ax]
+		hi = half_ext[ax]
+	# A man's shin takes in his foot, his forearm his hand: the shaft of the bone stops short of
+	# them (a fifth of the part), so its middle is higher up (a shin broke out by the ankle).
+	var n := String(part_name)
+	if n.begins_with("shin") or n.begins_with("forearm"):
+		var trim := (hi - lo) * 0.22
+		if float((_across()[2] as Vector3)[ax]) < 0.0:
+			lo += trim
+		else:
+			hi -= trim
+	var mid := (lo + hi) * 0.5
+	var h := (hi - lo) * 0.5 * BREAK_MID
+	return Vector2(mid - h, mid + h)
+
 func _kink_basis(at: Vector3, angle: float, code: int) -> Array:
 	var ax: int = _root_axis()[0]
 	var tip: Vector3 = _across()[2]
@@ -2005,7 +2037,10 @@ func _kink_basis(at: Vector3, angle: float, code: int) -> Array:
 	# angles to both.
 	var across := tip.cross(push).normalized()
 	var pivot := Vector3.ZERO
-	pivot[ax] = clampf(at[ax], -half_ext[ax] * 0.45, half_ext[ax] * 0.45)   # (the shaft, well clear of the joints)
+	if not has_meta("break_range"):
+		set_meta("break_range", break_range())
+	var br: Vector2 = get_meta("break_range")
+	pivot[ax] = clampf(at[ax], br.x, br.y)
 	var b := Basis(across, angle)
 	return [Transform3D(b, pivot - b * pivot), pivot[ax]]
 

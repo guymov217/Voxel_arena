@@ -33,6 +33,14 @@ func _club(v: Fighter, p: VoxelPart, J: float, n := 12) -> int:
 		await _steps(3)
 	return k
 
+## One blunt blow of `J` on the front of `p`.
+func _blow(v: Fighter, p: VoxelPart, J: float) -> void:
+	p.hp = 1000.0
+	var gt := p.global_transform
+	var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+	v.apply_hit(p, {"impulse": J, "type": "blunt", "hardness": 0.9, "heavy": 0.0, "point": gt * Vector3(0, 0, p.half_ext.z), "dir": -bz})
+	await _steps(3)
+
 func test_a_blow_cracks_or_breaks_as_hard_as_it_was() -> void:
 	var r := _victim()
 	var m: Match = r[0]
@@ -53,38 +61,51 @@ func test_a_blow_cracks_or_breaks_as_hard_as_it_was() -> void:
 	t.check(th.fracture == 2 and not th.has_meta("open_break"), "a heavy one breaks the thigh, but under the skin (level %d)" % th.fracture)
 	var ua: VoxelPart = v.arm.L.upper
 	k = await _club(v, ua, 80.0)
-	t.check(ua.fracture == 3 and ua.has_meta("open_break"), "a crushing one breaks the upper arm out through the skin at once (level %d)" % ua.fracture)
+	t.check(ua.fracture == 2 and not ua.has_meta("open_break"), "a crushing one on a sound upper arm breaks it through, but under the skin: it was not beaten on first (level %d)" % ua.fracture)
 	m.queue_free()
 
-## Open fractures are rare (user): not from one fair blow, but from a very hard one, or from a
-## limb already broken beaten on again and again.
-func test_a_broken_limb_beaten_on_breaks_out_through_the_skin() -> void:
-	var r := _victim()
+## An open break as it happens (user): the work of many blunt blows on the one limb, the bone
+## cracked and broken under them, ended by a very hard one that drives the broken ends out through
+## the flesh. One crushing blow on a sound limb breaks it under the skin; a broken limb beaten on
+## with fair blows stays shut; and the limb is of no use at all after.
+func test_an_open_break_takes_a_beating_and_then_a_crushing_blow() -> void:
+	var r := _victim({"main": "gladius", "off": "gladius"})
 	var m: Match = r[0]
 	var v: Fighter = r[1]
 	await _steps(30)
 	var sh: VoxelPart = v.by_name.shinR
 	await _club(v, sh, 30.0)
 	t.check(sh.fracture == 2, "a hard blow breaks the shin under the skin (level %d)" % sh.fracture)
-	var k := 0
-	while sh.fracture < 3 and k < 12:
-		sh.hp = 1000.0
-		var gt := sh.global_transform
-		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
-		v.apply_hit(sh, {"impulse": 30.0, "type": "blunt", "hardness": 0.9, "heavy": 0.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": -bz})
-		k += 1
-		await _steps(3)
-	t.check(sh.fracture == 3 and sh.has_meta("open_break"), "beaten on, the broken shin breaks out through the skin at last (after %d more blows)" % k)
-	t.check(k >= 3, "but not at the next blow (%d)" % k)
-	# A blade into the bone: a deep notch breaks it under the cut, only a chop through most of it
-	# leaves it standing in the wound.
-	var fo: VoxelPart = v.arm.R.fore
+	for i in 12:
+		await _blow(v, sh, 30.0)
+	t.check(sh.fracture == 2 and not sh.has_meta("open_break"), "beaten on with fair blows, a dozen more, it stays under the skin (level %d)" % sh.fracture)
+	await _blow(v, sh, Fighter.OPEN_J + 15.0)
+	t.check(sh.fracture == 3 and sh.has_meta("open_break"), "then a very hard blow drives the broken ends out through the skin (level %d)" % sh.fracture)
+	t.check(v.leg_broken("R") and v.leg_func("R") < 0.1, "and the leg is of no use at all (%.2f)" % v.leg_func("R"))
+	# Nor is a kick: not with it, nor standing on it.
+	v.control(1.0 / 120.0, {"kick": true})
+	t.check(v.kick_timer <= 0.0, "he cannot kick on a broken leg")
+	# A crushing first blow on a sound thigh: broken through, under the skin.
+	var th: VoxelPart = v.by_name.thighL
+	await _blow(v, th, Fighter.OPEN_J + 15.0)
+	t.check(th.fracture == 2 and not th.has_meta("open_break"), "a crushing first blow on a sound thigh breaks it under the skin, not out (level %d)" % th.fracture)
+	# A forearm beaten on again and again (cracked, then broken), then struck very hard: open,
+	# and what was in its hand falls; the hand takes nothing up again.
+	var fo: VoxelPart = v.arm.L.fore
+	for i in Fighter.OPEN_AFTER:
+		await _blow(v, fo, 16.0)
+	t.check(not fo.has_meta("open_break"), "%d fair blows on the forearm do not break it open" % Fighter.OPEN_AFTER)
+	await _blow(v, fo, Fighter.OPEN_J + 15.0)
+	t.check(fo.fracture == 3 and fo.has_meta("open_break"), "beaten on and then struck very hard, the forearm breaks open (level %d)" % fo.fracture)
+	t.check(v.weapons.L == null and not v.hand_works("L") and not v._hand_can_take("L"), "its hand drops what it held and can take nothing up")
+	# A blade into the bone: a deep notch breaks it under the cut.
+	var fr: VoxelPart = v.arm.R.fore
 	var bones := []
-	for i in fo.fx.size():
-		if fo.alive[i] and fo.bone[i]:
+	for i in fr.fx.size():
+		if fr.alive[i] and fr.bone[i]:
 			bones.append(i)
-	v._edge_on_bone(fo, bones.slice(0, int(bones.size() * 0.4)), Vector3.ZERO, Vector3(0, 0, -1), 20.0, {})
-	t.check(fo.fracture == 2, "a deep notch in the bone breaks it under the skin (level %d)" % fo.fracture)
+	v._edge_on_bone(fr, bones.slice(0, int(bones.size() * 0.4)), Vector3.ZERO, Vector3(0, 0, -1), 20.0, {})
+	t.check(fr.fracture == 2, "a deep notch in the bone breaks it under the skin (level %d)" % fr.fracture)
 	m.queue_free()
 
 ## Every bone can break, the ribs too, and by an edge as by a club.
@@ -241,9 +262,9 @@ func test_only_an_arm_or_a_leg_breaks_open() -> void:
 		t.check(tail.fracture == 2 and not tail.has_meta("open_break"), "a blow that would break a leg open breaks its %s under the skin (level %d)" % [tail.part_name, tail.fracture])
 	m.queue_free()
 
-## Out through the skin anywhere along a leg it makes sense (user): the thigh and the shin, high,
-## in the middle or low, wherever the blow fell along the bone and on the side it came from; never
-## in the knee, the hip or the ankle (the break is kept to the shaft of the bone), a beast's the same.
+## Out through the skin where it makes sense on a leg (user): the thigh and the shin, in the
+## middle of the shaft (user: only mid-limb), nearest where the blow fell along the bone and on the
+## side it came from; never by the knee, the hip or the ankle, a beast's the same.
 func test_a_leg_breaks_open_where_it_was_struck() -> void:
 	var r := _victim()
 	var m: Match = r[0]
@@ -263,7 +284,9 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 		t.check(p.fracture == 3 and p.has_meta("open_break") and not ex.is_empty(), "%s struck %+.2f up it breaks open" % [c[0], c[1]])
 		if ex.is_empty():
 			continue
-		t.check(absf((ex[0] as Vector3)[ax] - float(c[1]) * p.half_ext[ax]) < 0.01, "%s: out where it was struck along the bone (%.3f, struck at %.3f)" % [c[0], (ex[0] as Vector3)[ax], float(c[1]) * p.half_ext[ax]])
+		var br := p.break_range()
+		var want := clampf(float(c[1]) * p.half_ext[ax], br.x, br.y)
+		t.check(absf((ex[0] as Vector3)[ax] - want) < 0.01, "%s: out nearest where it was struck along the bone, in the middle of the shaft (%.3f, struck at %.3f)" % [c[0], (ex[0] as Vector3)[ax], float(c[1]) * p.half_ext[ax]])
 		t.check((ex[1] as Vector3).dot(d) > 0.9, "%s: on the side the blow came from (%.2f)" % [c[0], (ex[1] as Vector3).dot(d)])
 	# Struck at the very end of the shin, by the knee: it breaks open in the shaft below it, not
 	# in the joint.
@@ -276,7 +299,8 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 	lp2[ax2] = 0.97 * sh.half_ext[ax2]
 	v2._fracture(sh, lp2, 200.0, {}, 3, Vector3(0, 0, -1))
 	var ex2 := sh.break_exit()
-	t.check(not ex2.is_empty() and absf((ex2[0] as Vector3)[ax2]) <= sh.half_ext[ax2] * 0.46, "struck by the knee, it breaks open in the shaft below it (%.3f of %.3f)" % [(ex2[0] as Vector3)[ax2] if not ex2.is_empty() else INF, sh.half_ext[ax2]])
+	var br2 := sh.break_range()
+	t.check(not ex2.is_empty() and (ex2[0] as Vector3)[ax2] >= br2.x - 0.005 and (ex2[0] as Vector3)[ax2] <= br2.y + 0.005, "struck by the knee, it breaks open in the middle of the shaft below it (%.3f, the middle %.3f..%.3f)" % [(ex2[0] as Vector3)[ax2] if not ex2.is_empty() else INF, br2.x, br2.y])
 	# Struck from between the legs, the inside of the thigh: out the outside of it, never toward
 	# the body.
 	var th2: VoxelPart = v2.by_name.thighL
@@ -290,7 +314,7 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 	v2._fracture(th2, lp4, 200.0, {}, 3, -med)
 	var outw := th2.bone_dir - along4 * th2.bone_dir.dot(along4)
 	t.check(th2.has_meta("open_break") and outw.length() > 0.1 and outw.normalized().dot(med) < 0.25, "struck on the inside of the thigh, the bone comes out away from the body (%.2f)" % (outw.normalized().dot(med) if outw.length() > 0.1 else 9.0))
-	# A beast's leg, struck high: open there too, in the shaft.
+	# A beast's leg, struck high: open in the shaft, as near there as the middle of it goes.
 	var b = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(3, 0.1, 3), "yaw": 0.0})
 	await _steps(5)
 	var lion: Beast = b.f
@@ -308,15 +332,16 @@ func test_a_leg_breaks_open_where_it_was_struck() -> void:
 		lp3[ax3] = 0.4 * leg.half_ext[ax3]
 		lion._fracture(leg, lp3, 400.0, {}, 3, -d3)
 		var ex3 := leg.break_exit()
-		t.check(leg.has_meta("open_break") and not ex3.is_empty() and absf((ex3[0] as Vector3)[ax3] - 0.4 * leg.half_ext[ax3]) < 0.01, "a lion's %s breaks open where it was struck" % leg.part_name)
+		var br3 := leg.break_range()
+		t.check(leg.has_meta("open_break") and not ex3.is_empty() and absf((ex3[0] as Vector3)[ax3] - clampf(0.4 * leg.half_ext[ax3], br3.x, br3.y)) < 0.01, "a lion's %s breaks open nearest where it was struck, in the middle of the shaft" % leg.part_name)
 	else:
 		t.check(false, "the lion has a leg with a bone")
 	m.queue_free()
 	r2[0].queue_free()
 
-## Open only from the hardest blunt blows (user): a sword through a limb's bone breaks it, the
-## limb of no use after, but under the skin, unless the chop was as heavy as the blows that break
-## bones open; a broken limb cut at again and again stays shut, beaten on it opens.
+## Open only from blunt blows (user): a sword through a limb's bone breaks it, the limb of no use
+## after, but under the skin, however heavy the chop; a broken limb cut at again and again stays
+## shut.
 func test_a_blade_through_the_bone_breaks_it_without_opening_it() -> void:
 	var r := _victim()
 	var m: Match = r[0]
@@ -337,7 +362,7 @@ func test_a_blade_through_the_bone_breaks_it_without_opening_it() -> void:
 		if fl.alive[i] and fl.bone[i]:
 			bones.append(i)
 	v._edge_on_bone(fl, bones.slice(0, int(bones.size() * 0.75)), Vector3.ZERO, Vector3(0, 0, -1), Fighter.OPEN_J + 5.0, {})
-	t.check(fl.fracture == 3 and fl.has_meta("open_break"), "a chop as heavy as the hardest blows breaks it open (level %d)" % fl.fracture)
+	t.check(fl.fracture == 2 and not fl.has_meta("open_break"), "a chop as heavy as the hardest blows breaks it through, under the skin: a blade does not drive the bone out (level %d)" % fl.fracture)
 	var sh: VoxelPart = v.by_name.shinR
 	await _club(v, sh, 30.0)
 	t.check(sh.fracture == 2, "a hard blow breaks the shin under the skin (level %d)" % sh.fracture)
@@ -475,7 +500,8 @@ func test_a_break_follows_the_blow() -> void:
 	at[ax] = p.half_ext[ax] * 0.3
 	var ld2: Vector3 = ac[0]
 	v._fracture(p, at + ld2 * -p.half_ext[(ax + 1) % 3], 26.0, {}, 2, ld2)
-	t.check(absf(float(p.kink[1]) - at[ax]) < 0.01, "bent where the blow landed along the shin")
+	var brk := p.break_range()
+	t.check(absf(float(p.kink[1]) - clampf(at[ax], brk.x, brk.y)) < 0.01, "bent where the blow landed along the shin, in the middle of its bone (%.3f, struck at %.3f)" % [float(p.kink[1]), at[ax]])
 	var soft := float(p.kink[5])
 	var q: VoxelPart = v.by_name.shinL
 	v._fracture(q, at, 60.0, {}, 2, ld2)
