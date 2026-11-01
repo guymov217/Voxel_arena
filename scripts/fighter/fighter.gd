@@ -163,6 +163,7 @@ var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust
 var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
 var thrust_aim := {"R": null, "L": null}   # {dir, k}: the line a thrust holds the blade on
 var thrust_line := {"R": null, "L": null}   # {o, dir, t}: a thrust's line in the body's frame
+var spear_true := {"R": 0.0, "L": 0.0}   # a couched spear's line turned by what it misses by aside (_spear_trued)
 var thrust_ext := {"R": 0.0, "L": 0.0}   # how far along that line the hand is driven now
 const THRUST_DRAW := 0.12   # s drawing the hand back along the line
 const THRUST_DRIVE := 0.14   # s driving it out to the end of the arm
@@ -4101,6 +4102,26 @@ static func _route_front(cur: Vector3, want: Vector3, frame: Quaternion) -> Vect
 		return want
 	return cur.rotated(ax.normalized(), minf(AIM_AHEAD, cur.angle_to(go))).normalized()
 
+## A couched spear lies where it is asked to (the thrust goes where the blade points, so the blade
+## has to point where he aims): in two hands the back hand, on its own side of the body, swung the
+## point a sixth of a right angle out to the other side (spearaim.gd). The line asked is turned by
+## what the spear has lately been missing it by aside, learnt over half a second while it is held
+## couched and steady (not driven in a stab, nor thrown, nor swung round fast, nor with him down).
+## (Not up and down: there a held haft has two ways to lie, and set off to lift it, it flipped up
+## over the head and stayed there.)
+func _spear_trued(side: String, w: Weapon, axis: Vector3, dt: float) -> Vector3:
+	var fix: float = spear_true[side]
+	var a_yaw := atan2(axis.x, axis.z)
+	var flat := Vector2(axis.x, axis.z).length()
+	if thrust_line[side] == null and not throwing[side] and state == "stand" and held_item == null and flat > 0.75 and w.angular_velocity.length() < 2.5:
+		var now: Vector3 = PD.quat_of(w) * Vector3.UP
+		var e_yaw := wrapf(a_yaw - atan2(now.x, now.z), -PI, PI)
+		if absf(e_yaw) < 0.6 and Vector2(now.x, now.z).length() > 0.7:
+			fix = clampf(fix + e_yaw * 2.0 * dt, -0.45, 0.45)
+			spear_true[side] = fix
+	var y2 := a_yaw + fix
+	return Vector3(sin(y2) * flat, axis.y, cos(y2) * flat)
+
 func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_q: Quaternion, inp: Dictionary, dt: float) -> Quaternion:
 	if w.design.has("shoots") and not w.design.get("chain"):
 		return _shooter_aim(side, w, inp, yaw_q, dt)
@@ -4137,6 +4158,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		var side_ax := axis.cross(Vector3.UP).normalized()
 		if side_ax.length_squared() > 1e-4:
 			axis = axis.rotated(side_ax, clampf(hy, -1.6, 1.6) * 0.55).normalized()
+		axis = _spear_trued(side, w, axis, dt)
 	var ta = thrust_aim[side]
 	if ta != null:
 		axis = axis.slerp(ta.dir, ta.k).normalized()

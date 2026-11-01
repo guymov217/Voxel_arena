@@ -43,8 +43,58 @@ const PERSONALITIES := {
 	"whirler": {"attacks": ["slashR", "slashL", "overhead", "slashR"], "power": true, "ideal": 1.0, "think": 0.7},
 }
 
+## How a man fights with what he holds (user: the gladiators should know every weapon in the game
+## and fight like real ones): the blows that weapon is made for (weights over ATTACKS), how far
+## off he stands to it (of his reach), and how he keeps a man at its length. Read off the weapon
+## itself (Bot.style_of), so one from the forge is fought with as its shape says.
+const STYLES := {
+	"sword": {"attacks": {"thrust": 3.0, "slashR": 2.0, "slashL": 2.0, "overhead": 1.0, "low": 1.5}, "ideal": 0.9},
+	"short": {"attacks": {"thrust": 4.0, "slashR": 2.0, "slashL": 2.0, "low": 1.0}, "ideal": 0.8},
+	"spear": {"attacks": {"thrust": 7.0, "low": 1.5, "overhead": 0.5}, "ideal": 1.15, "keep_out": 0.75},
+	"great": {"attacks": {"slashR": 3.0, "slashL": 3.0, "overhead": 2.0, "thrust": 2.0, "low": 1.0}, "ideal": 0.95},
+	"axe": {"attacks": {"overhead": 3.5, "slashR": 2.5, "slashL": 2.5, "low": 1.5}, "ideal": 0.9},
+	"blunt": {"attacks": {"overhead": 4.0, "slashR": 2.5, "slashL": 2.5, "low": 1.0}, "ideal": 0.85},
+	"chain": {"attacks": {"overhead": 3.5, "slashR": 3.0, "slashL": 3.0}, "ideal": 0.9},
+	"ranged": {"attacks": {"thrust": 1.0, "low": 1.0}, "ideal": 0.9},
+	"fists": {"attacks": {"thrust": 1.0}, "ideal": 0.9},
+}
+
+## The style a weapon is fought in (STYLES): what shoots from range, swings on a chain, crushes,
+## thrusts from a long haft, sweeps two-handed, chops with a blade to one side, or is short.
+static func style_of(w) -> String:
+	if w == null or not is_instance_valid(w):
+		return "fists"
+	var d: Dictionary = w.design
+	if d.get("shoots"):
+		return "ranged"
+	if d.get("chain") is Dictionary:
+		return "chain"
+	var st: Dictionary = w.stats if w.stats is Dictionary and not w.stats.is_empty() else d.get("stats", {})
+	var edge := int(st.get("edge", 0))
+	var point := int(st.get("point", 0))
+	if w.crusher() or (edge == 0 and point <= 2):
+		return "blunt"
+	if w.reach >= 1.0 and point >= 2 and edge <= 14 and point * 4 >= edge:
+		return "spear"
+	if w.reach >= 1.2 and edge >= 20:
+		return "great"
+	if w.edge_side() != 0.0 and edge <= 20:
+		return "axe"
+	if w.reach <= 0.55:
+		return "short"
+	return "sword"
+
 var c: Fighter
 var diff := 0.5
+var skill := 0.5               # diff as a 0..1 craft (0.1 a raw novice, 0.95 and over a champion)
+var style := "sword"
+var style_w = null             # the weapon the style was read off
+var threat_t := 0.0            # how long a blow has been coming at him
+var threat_met := false        # this blow already answered (or let through)
+var foe_fast := 0.0            # the other man's weapon at speed lately (s since)
+var foe_was := 0.0             # its speed a step ago
+var aim_bias := Vector2.ZERO   # a point held on the man: how far the hand mark is off, fed back (Bot._point_on)
+var stab_at := ""              # the blow under way is a stab at his "chest", "head" or "legs" ("": a stroke)
 ## Hurt, a man grows wary (user): past WARY_FROM of his wound (Fighter.wound: blood lost, a bad
 ## trunk or leg) he keeps a longer distance, is slower to begin a blow, strings fewer together;
 ## and near the end of his blood he gathers himself for one desperate blow now and then, a lunge
@@ -103,6 +153,7 @@ var react_dir := 1.0           # which way the flinch sways
 func _init(fighter: Fighter, difficulty := 0.5, personality := "standard", seed_ := 0) -> void:
 	c = fighter
 	diff = difficulty
+	skill = clampf((difficulty - 0.1) / 0.85, 0.0, 1.0)
 	p = PERSONALITIES.get(personality, PERSONALITIES.standard)
 	rng.seed = seed_ if seed_ else randi()
 	strafe = -1.0 if rng.randf() < 0.5 else 1.0
@@ -196,9 +247,79 @@ func _lerp_hand(x: float, y: float, k: float) -> void:
 	hand.x += (x - hand.x) * k
 	hand.y += (y - hand.y) * k
 
+## The hand mark that lays the point of `w` on `at` (a stab; a couched spear on guard): the line
+## asked for, corrected a little each step by where the point really lies (a haft in two hands
+## pitches up or down twice as far as its mark asks, more on the move: spearaim.gd; the bots'
+## spears were held over the other man's head and every stab went past him). `hold`: the
+## correction kept as it is (the stab being driven out along its line).
+func _point_on(w: Weapon, at: Vector3, dt: float, hold := false) -> Vector2:
+	var want := at - w.grip_world()
+	var now: Vector3 = PD.quat_of(w) * Vector3.UP
+	var flat := Vector2(want.x, want.z).length()
+	# (Turning to him, or he is in past the point: the line asked for is held near the level and
+	# straight ahead, and what it is off by is not learnt from it.)
+	var dyaw := clampf(wrapf(atan2(want.x, want.z) - c.yaw, -PI, PI), -0.6, 0.6)
+	var now_yaw := wrapf(atan2(now.x, now.z) - c.yaw, -PI, PI)
+	var spear := Fighter.is_spear(w)
+	var pitch := clampf(atan2(want.y, maxf(flat, 0.3)), -0.7, 0.6)
+	if spear and flat < 1.1:
+		pitch = clampf(pitch, -0.25, 0.25)   # (he is in past the point: the haft is kept level at him, not stood on end)
+	var now_pitch := atan2(now.y, Vector2(now.x, now.z).length())
+	var ky := 0.85 if spear else PI / 2.0 / 1.6   # the pitch a unit of the mark gives
+	var kx := 0.6 if spear else PI / 4.0          # and the turn aside
+	if not hold and flat > 0.6 and absf(dyaw) < 0.45:
+		aim_bias.y = clampf(aim_bias.y + (pitch - now_pitch) / ky * 1.5 * dt, -0.35, 0.35)
+		if not spear:   # (a spear is turned true by the fighter himself: Fighter._spear_trued)
+			aim_bias.x = clampf(aim_bias.x - (dyaw - now_yaw) / kx * 1.0 * dt, -0.3, 0.3)
+	return Vector2(clampf(-dyaw / kx + aim_bias.x, -0.9, 0.9), clampf(pitch / ky + aim_bias.y, -1.1, 1.0))
+
+## Where on a man a stab goes: his chest, his face, or a thigh (on the sand, wherever he lies).
+static func stab_mark(target: Node3D, where: String) -> Vector3:
+	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
+	var tp: Vector3 = target.torso.global_position
+	var down: bool = target.get("state") != null and target.state != "stand"
+	if where == "head" and target.get("head") != null and is_instance_valid(target.head) and not down:
+		return target.head.global_position
+	if where == "legs" and not down:
+		return Vector3(tp.x, tp.y - 0.42 * tS, tp.z)
+	return tp + Vector3(0, 0 if down else 0.1 * tS, 0)
+
+## A stab or a stroke for the blow just picked (Bot.stab_at): a thrust goes at his chest, or his
+## face when the bot picked that; with a spear every blow is a stab, low at a thigh, high at the
+## face.
+func _stab_for(blow: Array) -> Array:
+	stab_at = "chest" if blow == ATTACKS.thrust else ""
+	if style == "spear":
+		stab_at = "legs" if blow == ATTACKS.low else ("head" if blow == ATTACKS.overhead else "chest")
+		return ATTACKS.thrust
+	return blow
+
 func _pick(list: Array) -> Array:
 	giant_kind = ""
 	return ATTACKS[list[rng.randi_range(0, list.size() - 1)]]
+
+## The next blow: the ones his weapon is made for, his own ways on top (an executioner chops, a
+## hoplite stabs whatever he holds).
+func _pick_styled() -> Array:
+	giant_kind = ""
+	var weights: Dictionary = (STYLES.get(style, STYLES.sword).attacks as Dictionary).duplicate()
+	var own: Array = p.get("attacks", ALL)
+	if own != ALL:
+		for k in weights:
+			weights[k] = float(weights[k]) * 0.35
+		for k in own:
+			weights[k] = float(weights.get(k, 0.0)) + 2.0
+	var tot := 0.0
+	for k in weights:
+		tot += float(weights[k])
+	if tot <= 0.0:
+		return _pick(own)
+	var r := rng.randf() * tot
+	for k in weights:
+		r -= float(weights[k])
+		if r <= 0.0:
+			return ATTACKS[k]
+	return ATTACKS[weights.keys()[0]]
 
 ## A giant's next blow (GIANT): an executioner chops more often, a berserker sweeps.
 func _giant_pick() -> Array:
@@ -290,8 +411,14 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var dist := Vector2(tp.x - me.x, tp.z - me.z).length()
 	var S := c.S
 	var w: Weapon = c.weapons.R
+	if w != style_w:
+		style_w = w
+		style = style_of(w)
+		aim_bias = Vector2.ZERO
 	var reach := 0.55 * S + (w.reach if w else 0.25) * 0.85
-	var ideal := reach * float(p.get("ideal", 0.9)) * (1.0 + 0.3 * wary)
+	if style == "spear":
+		reach = 0.7 * S + w.reach * 0.95   # (couched out in front, its point further off than a blade held up)
+	var ideal := reach * float(p.get("ideal", STYLES.get(style, STYLES.sword).ideal)) * (1.0 + 0.3 * wary)
 	# A giant over a man a third his size: he steps in so the blade's length is over the man,
 	# and every blow is brought down to where the man actually is (standing, or on the sand),
 	# not swung at a giant's own height over his head.
@@ -333,6 +460,13 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			recover_t -= dt
 			inp.mz = -0.6
 			inp.mx = strafe * 0.8
+		# A long haft is fought at its point: a man come in past it is backed away from, briskly
+		# (a spear lost every bout to a short sword, fighting at the sword's length: duel.gd).
+		var keep_out: float = float(STYLES.get(style, {}).get("keep_out", 0.0))
+		if keep_out > 0.0 and state != "attack" and dist < reach * keep_out and c.state == "stand":
+			inp.mz = -1.0
+			inp.mx = strafe * 0.3
+			inp.sprint = skill > 0.35 and dist < reach * keep_out * 0.85
 	# Ranged trick almost ready but too close: back off to throwing range.
 	if p.has("range") and ability_t < 0.8 and dist < p.range[0] + 0.6:
 		inp.mz = -1.0
@@ -351,7 +485,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.ability = {"type": p.ability, "target": target}
 			ability_t = rng.randf_range(p.cooldown[0], p.cooldown[1])
 	var gy := clampf((tp.y + 0.3 - me.y) / S * 0.9, -0.2, 0.8)
-	if p.get("shield", false):
+	# A shield on the arm is held up before him, whoever he is (only the shield-men did).
+	if p.get("shield", false) or (c.weapons.L and c.weapons.L.is_shield):
 		inp.off = {"x": -0.28, "y": gy}
 	# A weapon flying at us: good bots dodge or parry.
 	var tw = target.weapons.get("R") if target.get("weapons") != null else null
@@ -364,23 +499,65 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			incoming = sp
 	dodge_t = maxf(0.0, dodge_t - dt)
 	dodge_cool = maxf(0.0, dodge_cool - dt)
-	if incoming > 0.0 and not rage and dodge_t <= 0.0 and dodge_cool <= 0.0 and state != "attack" and c.state == "stand" and rng.randf() < ((diff - 0.4) * 1.2 + float(p.get("dodge", 0.0))) * (1.0 - 0.6 * c.wound()):
-		dodge_t = 0.35
-		dodge_cool = 1.6
-		dodge = "side" if rng.randf() < 0.5 else "parry"
-		if dodge == "side":
-			strafe = -strafe
+	# The other man's blow: how long it has been coming, and his weapon slowing after a stroke
+	# (he is open while he recovers it).
+	var tw_sp: float = tw.linear_velocity.length() if tw else 0.0
+	if foe_was > 6.0 and tw_sp < foe_was * 0.6:
+		foe_fast = 0.0   # (a stroke just spent)
+	else:
+		foe_fast += dt
+	foe_was = tw_sp
+	if incoming > 0.0:
+		threat_t += dt
+	else:
+		threat_t = 0.0
+		threat_met = false
+	# Defence (user: fight like a real gladiator): seeing a blow come, a skilled man puts his shield
+	# in its way, meets it with his own blade or steps out of its reach; a poor one sees it late
+	# and seldom does anything about it. A master breaks off his own stroke to do it.
+	var see_t := 0.3 - 0.24 * skill
+	var shield_w = c.weapons.L if c.weapons.L and c.weapons.L.is_shield else null
+	if incoming > 0.0 and not threat_met and threat_t >= see_t and not rage and c.state == "stand" and dodge_cool <= 0.0 and (state != "attack" or (skill > 0.75 and key == 0)):
+		threat_met = true
+		if rng.randf() < ((0.06 + 0.84 * skill) * (1.0 - 0.6 * c.wound()) + float(p.get("dodge", 0.0))):
+			dodge_t = 0.45
+			dodge_cool = 0.5
+			if shield_w:
+				dodge = "shield"
+			elif style == "spear" or style == "great" or rng.randf() < 0.35:
+				dodge = "back"
+			elif rng.randf() < 0.5:
+				dodge = "parry"
+			else:
+				dodge = "side"
+				strafe = -strafe
+			if state == "attack":
+				state = "guard"   # (his own blow given up for it)
+				attack = []
 	if dodge_t > 0.0:
 		if dodge == "side":
 			inp.mx = strafe
 			inp.mz = -0.6
 			inp.sprint = true
+		elif dodge == "back":
+			inp.mz = -1.0
+			inp.mx = strafe * 0.35
+			inp.sprint = true
+		elif dodge == "shield" and tw:
+			# The shield into the blow's way: out toward his weapon, at its height.
+			var d3: Vector3 = tw.global_position - me
+			var right3 := Vector3(cos(c.yaw), 0, -sin(c.yaw))
+			inp.off = {"x": clampf(-d3.dot(right3) * 1.5 - 0.15, -1.0, 0.6), "y": clampf((tw.global_position.y - me.y) * 0.9, -0.3, 1.0)}
+			inp.offThrust = 0.45
+			inp.mz = minf(float(inp.mz), 0.0)
 		elif tw:
 			var d2: Vector3 = tw.global_position - me
 			var right := Vector3(cos(c.yaw), 0, -sin(c.yaw))
 			_lerp_hand(clampf(-d2.dot(right) * 1.5, -1.0, 1.0), clampf((tw.global_position.y - me.y) * 0.9, -0.2, 1.0), dt * 14.0)
 			inp.main = hand.duplicate()
-			inp.thrust = 0.6
+			# Out to meet it, not a stab (past half a thrust the blade is driven along its own line
+			# and could not be brought across into the blow's way).
+			inp.thrust = 0.3
 			inp.power = true
 			think = 0.0
 			return inp
@@ -404,8 +581,9 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# A man does not walk up to the reach of his blade and then begin: from a step outside it
 	# he starts the blow and steps in with it (they walked at the man like the dead, the blade
 	# held still, and swung only once there: user).
-	var step_in: bool = w != null and not big and keep_away == null and c.state == "stand" and dist < reach * 1.7 and dist > reach * 0.9
-	var ready: bool = (dist < (reach * 1.15 if not big else swing_reach) or step_in or (rage and (dist < reach * 1.8 or air_t <= 0.0))) and c.stamina > (8.0 if rage else 20.0)
+	var step_in: bool = w != null and not big and keep_away == null and c.state == "stand" and dist < reach * (1.4 if style == "spear" else 1.7) and dist > reach * 0.9
+	var judge := reach * (1.15 + 0.35 * (1.0 - skill))   # (a novice misjudges his length and swings short)
+	var ready: bool = (dist < (judge if not big else swing_reach) or step_in or (rage and (dist < reach * 1.8 or air_t <= 0.0))) and c.stamina > (8.0 if rage else (20.0 + 15.0 * skill))
 	if state == "approach" or state == "guard":
 		# On guard the blade moves: it weaves on its line, and near the man it is drawn back to
 		# the shoulder, cocked for the blow, with a half-feint now and then.
@@ -415,11 +593,24 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var near: float = clampf((reach * 2.2 - dist) / maxf(0.3, reach * 1.2), 0.0, 1.0) if w != null else 0.0
 		var gx: float = 0.15 + live_k * (0.12 * sin(weave) + 0.3 * near * (0.6 + 0.4 * sin(weave * 0.37)))
 		var gyy: float = gy + live_k * (0.1 * sin(weave * 1.31 + 1.0) + 0.25 * near)
+		if style == "spear" and w and not big:
+			# A spear is held couched, its point on the man's chest and never off him: who comes
+			# in comes onto it. Only the point plays a little about its mark.
+			var mk := _point_on(w, stab_mark(target, "chest"), dt)
+			gx = mk.x + 0.06 * sin(weave)
+			gyy = mk.y + 0.05 * sin(weave * 1.31 + 1.0)
 		_lerp_hand(gx, gyy, dt * (2.0 + diff * 4.0))
 		think -= dt * (5.0 if rage else 1.0 - 0.5 * wary)
 		if think > 0.0 and diff > 0.45 and ready:
-			var open: bool = float(target.get("stagger")) > 0.25 or target.state != "stand"
-			if open and rng.randf() < dt * (diff - 0.3) * 12.0:
+			var open: bool = float(target.get("stagger")) > 0.25 or target.state != "stand" or foe_fast < 0.35 or float(target.get("stamina")) < 15.0
+			if open and rng.randf() < dt * (diff - 0.3) * 14.0:
+				think = 0.0
+		if style == "spear" and think > 0.0 and ready and dist > reach * 0.75 and dist < reach * 1.3:
+			# A man walking onto a spear's point is met with it as he comes.
+			var to_him: Vector3 = (tp - me)
+			to_him.y = 0.0
+			var closing: float = -to_him.normalized().dot(target.torso.linear_velocity - c.torso.linear_velocity)
+			if closing > 0.7 and rng.randf() < dt * (1.0 + 9.0 * skill):
 				think = 0.0
 		desperate_t -= dt
 		if c.blood < DESPERATE_BLOOD and desperate_t <= 0.0 and not rage and c.state == "stand" and dist < reach * 2.2 and c.stamina > 8.0:
@@ -427,6 +618,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			desperate_t = rng.randf_range(6.0, 9.0)
 			think = 0.0
 			ready = true
+		if style == "spear" and dist < reach * 0.7 and not rage and not desperate:
+			ready = false   # (in past the point a stab only pokes the shaft into him: back out first)
 		if ready and think <= 0.0:
 			air_t = rng.randf_range(1.5, 3.0)
 			giant_kind = ""
@@ -434,16 +627,19 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				attack = _giant_pick()
 				feint_to = []
 			else:
-				attack = ATTACKS.thrust if dist > reach and rng.randf() < 0.5 else _pick(p.attacks)
+				var thrusts: bool = float((STYLES.get(style, STYLES.sword).attacks as Dictionary).get("thrust", 0.0)) > 0.0
+				attack = _stab_for(ATTACKS.thrust if thrusts and dist > reach and rng.randf() < 0.5 else _pick_styled())
 				feint_to = _pick(p.attacks) if diff > 0.6 and rng.randf() < (diff - 0.6) * 0.4 else []
 			key = 0
 			key_t = 0.0
 			state = "attack"
 			lunge = dist > reach * 1.05
 			aim_pick = null
-			if diff > 0.7 and rng.randf() < (diff - 0.6) * 1.6:
+			if diff > 0.45 and not big and rng.randf() < (diff - 0.35) * 1.2:   # (a giant's blows are brought down onto the man himself: aim_small)
 				var head_y: float = minf(1.0, (target.head.global_position.y - me.y) / S * 0.9)
 				aim_pick = head_y if rng.randf() < 0.6 else -0.6
+				if stab_at == "chest" and float(aim_pick) > 0.0:
+					stab_at = "head"
 		if dist < (1.3 if rage else 1.0) * S and rng.randf() < dt * 0.15 * diff * float(p.get("kick", 1.0)) * (8.0 if rage else 1.0):
 			inp.kick = true
 		if S > 1.2 and dist < ideal * (0.5 if big else 0.7) and target.state == "stand":
@@ -460,6 +656,12 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var dur: float = k_[3]
 		if key == attack.size() - 1 and aim_pick != null:
 			y = y * 0.4 + float(aim_pick) * 0.6
+		if stab_at != "" and w and not big:
+			# A stab goes where its point is laid: on the mark, and held there while it is driven
+			# (the line is taken from where the blade lies as the drive begins).
+			var mk := _point_on(w, stab_mark(target, stab_at), dt, key == attack.size() - 1 and key_t > 0.35)
+			x = mk.x
+			y = mk.y
 		if aim_small != null and giant_kind != "" and giant_kind != "chop" and giant_kind != "thrust":
 			# A sweep: drawn out to the side and round through him at his own height.
 			y = clampf(float(aim_small) + y, -1.5, 0.6)
@@ -475,7 +677,9 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 					aim_low = maxf(-1.0, aim_low - 2.0 * dt)
 			y = clampf(float(aim_small) + (y if giant_kind != "" else 0.0) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
 			x = 0.0                # and comes down through the middle of him, not past his shoulder
-		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else (1.3 if desperate else 1.0))
+		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else (1.3 if desperate else 1.0)) * (1.25 - 0.4 * skill)
+		if style == "spear" and key == 0 and not big:
+			windup *= 0.35   # (its point already laid on the man: no drawing back of the arm, the stab is driven at once)
 		if rage:
 			x = clampf(x * 1.35, -2.0, 2.0)
 		if big:
@@ -487,22 +691,30 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		_lerp_hand(x, y, kk * kk)
 		inp.thrust = th * kk
 		inp.power = p.get("power", false) or key == attack.size() - 1 or rage or desperate
-		if lunge and c.state == "stand" and dist > reach * 0.7:
+		if lunge and c.state == "stand" and dist > reach * (1.05 if style == "spear" else 0.7):
 			inp.mz = 1.0
 			inp.mx = 0.0
 			if desperate:
 				inp.sprint = true
 		if not feint_to.is_empty() and key == 0 and key_t > 0.5:
-			attack = feint_to
+			if style == "spear":
+				stab_at = "head" if stab_at != "head" else "chest"   # (the point shown at one place, driven at another)
+			else:
+				attack = _stab_for(feint_to)
 			feint_to = []
 			key_t = 0.2
 		var settle: float = 1.0 + (0.2 * S if big and key == attack.size() - 1 else 0.0) / maxf(0.05, dur * windup * 1.15)
+		if attack == ATTACKS.thrust and key == attack.size() - 1 and not big:
+			# A stab is held until it is driven home: drawn back and driven out along its line
+			# from when the button goes down (key_t 0.5). Let go at the end of the key, the bots'
+			# stabs stopped half drawn, the point never reaching the man (duel.gd).
+			settle = maxf(settle, 0.5 + (Fighter.THRUST_DRAW + Fighter.THRUST_DRIVE + 0.1) / maxf(0.05, dur * windup * 1.15))
 		if key_t >= settle:
 			key += 1
 			key_t = 0.0
 			if key >= attack.size():
 				if (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and not desperate and rng.randf() < ((diff - 0.4) * 0.7 + float(p.get("combo", 0.0))) * (1.0 - wary) and c.stamina > 50.0):
-					attack = _giant_pick() if big else _pick(p.attacks)
+					attack = _giant_pick() if big else _stab_for(_pick_styled())
 					key = 0
 					feint_to = []
 				else:
@@ -512,10 +724,10 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 					# (A man with a weapon strikes again sooner; a giant keeps his pace.)
 					var brisk: bool = w != null and not big
 					recover_t = (0.25 + rng.randf() * 0.3) if brisk else (0.35 + rng.randf() * 0.4)
-					think = (1.5 - diff * 0.4) * ((0.35 + 0.7 * rng.randf()) if brisk else (0.5 + rng.randf())) * float(p.get("think", 1.0)) * (1.0 + 0.6 * wary)
+					think = (1.75 - 1.25 * diff) * ((0.35 + 0.7 * rng.randf()) if brisk else (0.5 + rng.randf())) * float(p.get("think", 1.0)) * (1.0 + 0.6 * wary)
 	# Bare-handed: jab when in reach.
 	# Close in: a shove now and then, more when the other man is off balance or tired.
-	if dist < 0.9 * S + 0.4 and c.state == "stand" and state != "attack" and rng.randf() < dt * diff * float(p.get("shove", 1.0)) * (3.0 if rage else 1.0) * (0.25 + (0.9 if float(target.get("stagger")) > 0.4 or float(target.get("stamina")) < 35.0 else 0.0)):
+	if dist < 0.9 * S + 0.4 and c.state == "stand" and state != "attack" and rng.randf() < dt * diff * float(p.get("shove", 1.0)) * (3.0 if rage else (4.0 if style == "spear" else 1.0)) * (0.25 + (0.9 if float(target.get("stagger")) > 0.4 or float(target.get("stamina")) < 35.0 else 0.0)):
 		inp.shove = true
 	# A throwing weapon in hand and the man in range: let it fly.
 	if w and w.design.get("throwable", false) and dist > 2.8 and dist < 8.0 and c.state == "stand" and rng.randf() < dt * 0.5:
