@@ -1,8 +1,10 @@
 extends Node
-## Open fractures, close up (`-- --probe fractureshot`, needs a display): a forearm and a shin
-## broken out through the skin, the splinter of bone standing out of the wound. PNGs go to
-## SHOT_DIR: fracture_arm.png, fracture_leg.png, fracture_thigh.png (a thigh broken under the
-## skin, the leg below swinging from the break), fracture_hud.png (the HUD's figure).
+## Open fractures, close up (`-- --probe fractureshot`, needs a display): broken out through the
+## skin where each was struck, the broken end of the bone standing out of the wound. PNGs go to
+## SHOT_DIR: fracture_arm.png (a forearm struck in front), fracture_leg.png (a shin low, by the
+## ankle, struck from the side), fracture_thigh.png (a thigh above its middle, struck in front),
+## fracture_far.png (the broken shin from where the fight's camera would be), fracture_hud.png
+## (the HUD's figure).
 
 var m
 var cam: Camera3D
@@ -11,7 +13,7 @@ func _snap(out: String, name: String, pos: Vector3, look: Vector3, fov := 30.0) 
 	cam.global_position = pos
 	cam.look_at(look, Vector3.UP)
 	cam.fov = fov
-	for i in 24:
+	for i in 14:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(out.path_join(name))
 	print("saved ", name)
@@ -28,21 +30,35 @@ func _ready() -> void:
 	cam.make_current()
 	var f: Fighter = m.me.f
 	m.me.drive = func(_e): return {"main": {"x": 0.6, "y": -0.2}, "off": {"x": -0.3, "y": 0.1}}
+	# Nothing drawn until the shots (a machine without a graphics card spends seconds a frame).
+	get_viewport().disable_3d = true
+	var full := get_window().size
+	get_window().size = Vector2i(160, 90)
 	for i in 60:
 		await get_tree().physics_frame
 	var yq := Quaternion(Vector3.UP, f.yaw)
-	# The right forearm broken open by a blow from in front, the left shin from the side, the
-	# right thigh broken under the skin (the leg below it hangs from the break).
-	for k in [["forearmR", Vector3(0, 0, 1), 3], ["shinL", Vector3(1, 0, 0), 3], ["thighR", Vector3(0, 0, 1), 2]]:
+	# Held where he stands (frozen), so the breaks are seen in daylight as on a man on his feet, not
+	# under him in the sand.
+	for p in f.parts:
+		p.freeze = true
+	# The right forearm broken open by a blow from in front, the left shin low by the ankle from
+	# the side, the right thigh above its middle from in front: [part, the side struck, how far up
+	# it (of its half length)].
+	for k in [["forearmR", Vector3(0, 0, 1), 0.0], ["shinL", Vector3(1, 0, 0), -0.5], ["thighR", Vector3(0, 0, 1), 0.3]]:
 		var p: VoxelPart = f.by_name[k[0]]
+		var ax: int = p._root_axis()[0]
 		var lp: Vector3 = (k[1] as Vector3) * p.half_ext
+		lp[ax] = float(k[2]) * p.half_ext[ax]
 		var ld: Vector3 = -(k[1] as Vector3)
-		f._fracture(p, lp, 52.0, {}, k[2], ld)
+		f._fracture(p, lp, 52.0, {}, 3, ld)
 	for i in 90:
 		await get_tree().physics_frame
+	get_window().size = full
+	get_viewport().disable_3d = false
 	var arm: VoxelPart = f.by_name["forearmR"]
 	var shin: VoxelPart = f.by_name["shinL"]
-	for k in [[arm, "fracture_arm.png"], [shin, "fracture_leg.png"]]:
+	var thigh: VoxelPart = f.by_name["thighR"]
+	for k in [[arm, "fracture_arm.png"], [shin, "fracture_leg.png"], [thigh, "fracture_thigh.png"]]:
 		var part: VoxelPart = k[0]
 		if part.bone_out == null:
 			print("no bone out on ", part.part_name)
@@ -56,11 +72,11 @@ func _ready() -> void:
 		var cp: Vector3 = mid + look_from * 0.42 + Vector3(0, 0.12, 0)
 		cp.y = maxf(cp.y, 0.3)
 		await _snap(out, k[1], cp, mid, 38.0)
-	# The broken thigh from the side: the leg below it swings from the break, whole, bent there.
-	var th: VoxelPart = f.by_name["thighR"]
-	var tm: Vector3 = th.global_position
-	var side: Vector3 = yq * Vector3(-1.0, 0.0, 0.25)
-	await _snap(out, "fracture_thigh.png", tm + side.normalized() * 1.5 + Vector3(0, 0.1, 0), tm + Vector3(0, -0.25, 0), 45.0)
+	# The broken shin as the fight's camera sees it, a couple of metres off.
+	var sh: Vector3 = shin.global_transform * shin.bone_at if shin.bone_out else shin.global_position
+	var aw: Vector3 = sh - f.torso.global_position
+	aw.y = 0.0
+	await _snap(out, "fracture_far.png", sh + aw.normalized() * 2.6 + Vector3(0, 1.3, 0), sh + Vector3(0, 0.3, 0), 55.0)
 	# The whole man, the HUD's figure in the corner.
 	var hud := Hud.new(m)
 	add_child(hud)

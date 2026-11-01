@@ -484,6 +484,7 @@ func _register(e: Dictionary) -> void:
 	combat.fighters.append(e.f)
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
+	e.f.bone_bits_lost.connect(_on_bone_bits_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
 	if e.f.has_signal("note"):
 		e.f.note.connect(func(f, text):
@@ -1287,6 +1288,17 @@ func guest_end(data: Dictionary) -> void:
 
 func guest_message(type: String, data) -> void:
 	match type:
+		"bone":
+			# (Taken only as a part of someone, a point near it and a reach.)
+			if data is Dictionary and data.get("p") is Array and (data.p as Array).size() == 3:
+				var e = entity_by_id(int(data.get("id", -1)))
+				var pi := int(data.get("part", -1))
+				if e != null and is_instance_valid(e.f) and pi >= 0 and pi < e.f.parts.size():
+					var prt: VoxelPart = e.f.parts[pi]
+					var at := Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])).clamp(Vector3.ONE * -3.0, Vector3.ONE * 3.0)
+					var bits := prt.break_bone_out(at, clampf(float(data.get("r", 0.0)), 0.0, 0.5))
+					if not bits.is_empty():
+						Chunk.spawn(prt, bits, Vector3.DOWN)
 		"yard_next":
 			if yard and data is Dictionary:
 				yard.set_next(str(data.get("t", "")))
@@ -1917,7 +1929,7 @@ func _on_hit(h: Dictionary) -> void:
 			fx.burst("confetti" if dec.confetti else "blood", h.p, 70, (h.get("dir", Vector3.UP) as Vector3 if h.get("dir") is Vector3 else Vector3.UP) * -1.0 + Vector3(0, 0.6, 0), 1.4)
 		feed.emit("%s's %s is BROKEN%s!" % [h.char.display_name, String(bp.label).to_lower(), ", the bone out through the skin" if bp.fracture >= 3 else ""])
 	elif String(h.res.get("broke", "")).begins_with("skull") and h.char is Fighter:
-		feed.emit("%s's skull is %s!" % [h.char.display_name, "broken open" if h.res.broke == "skull open" else ("cracked" if h.char.skull_fracture == 1 else "broken")])
+		feed.emit("%s's skull is %s!" % [h.char.display_name, "cracked" if h.char.skull_fracture == 1 else "broken"])
 	if h.get("p") is Vector3:
 		for sn in snd:
 			sfx(sn[0], h.p, sn[1])
@@ -2279,6 +2291,15 @@ func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array
 	var e = entity_of(f)
 	if e:
 		Net.send_all("vox", {"id": e.id, "part": part_index, "idx": indices})
+
+## The host tells the guests where an open break's bone was struck and how hard (the cubes there
+## knocked off on every screen, the end snapped off with them when the blow went through it).
+func _on_bone_bits_lost(f: Fighter, part_index: int, at: Vector3, rad: float) -> void:
+	if role != "host":
+		return
+	var e = entity_of(f)
+	if e:
+		Net.send_all("bone", {"id": e.id, "part": part_index, "p": [snappedf(at.x, 0.001), snappedf(at.y, 0.001), snappedf(at.z, 0.001)], "r": snappedf(rad, 0.001)})
 
 ## The host tells the guests whose guts came out, which voxels and where: each draws the chain.
 func _on_guts_spilled(f: Fighter, groups: Array, at: Vector3, out: Vector3) -> void:

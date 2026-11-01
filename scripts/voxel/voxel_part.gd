@@ -97,21 +97,34 @@ func _draw_at(t: Transform3D) -> void:
 			n.global_transform = t
 
 ## An open break: the broken end of the bone stands out through the torn skin (user: it has to
-## look like bone, and the break real, enough to turn the stomach). A round shaft as thick as the
-## bone in that limb, ivory, smeared with blood up from the wound, snapped off in a jagged
-## splintered end with the red marrow showing in it, a sliver split off beside it; round it the
-## wound: a crater of torn, wet, bright red flesh, dark in the middle, flaps of skin peeled back.
+## look like bone, very real, the break the most real thing in the game), and like everything
+## else it is voxels and it breaks (user): a shaft of bone cubes as thick as that limb's bone,
+## ivory, snapped at a slant into a jagged end with the red marrow in it, a sliver split off beside
+## it, blood up it in streaks; round it the torn flesh in cubes on the skin (OpenFracture). It is
+## as solid as the rest of him (bone_shape: a box round what is left of it) and a blow that meets
+## it knocks its cubes off, a hard one snaps its end off (break_bone_out, Fighter.apply_hit).
 ## `at` part-local on the bone, `out` the way out through the skin (part-local; zero: the way the
-## break is bent, the same on every screen). Drawing only.
-var bone_out: MeshInstance3D = null
+## break is bent, the same on every screen).
+var bone_out: MultiMeshInstance3D = null   # its cubes drawn (none without a screen)
 var bone_xf := Transform3D()
 var bone_at := Vector3.ZERO     # part-local: the middle of the bone standing out, and its way
 var bone_dir := Vector3.UP
 var bone_wound := Vector3.ZERO  # part-local: the hole in the skin it came out of, and its facing
 var bone_wound_n := Vector3.UP
+var bo_pos := PackedVector3Array()   # its cubes (OpenFracture.Cubes): part-local centres,
+var bo_col := PackedColorArray()     # colours, kinds, turned with the bone (1) or not,
+var bo_kind := PackedByteArray()     # the shaft's layer each is in (-1: not the shaft),
+var bo_frame := PackedByteArray()    # and which are still there
+var bo_layer := PackedInt32Array()
+var bo_alive := PackedByteArray()
+var bo_basis := Basis()              # the bone's frame (its y the way it stands out)
+var bo_s := 0.0                      # a cube's size
+var bo_origin := Vector3.ZERO        # where the shaft starts, on the bone at the break
+var bo_skin := 0.0                   # how far up the shaft the skin is
+var bo_r := 0.0                      # the shaft's radius
+var bo_top := 0.0                    # how far up the shaft its end (and spikes) can reach
+var bone_shape: CollisionShape3D = null
 func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
-	if DisplayServer.get_name() == "headless" or mmi == null:
-		return
 	# At the break, on the outside of the bend (where it is bent; else where it was given).
 	var ex := break_exit()
 	if not ex.is_empty():
@@ -132,9 +145,9 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 	var z := x.cross(y).normalized()
 	var ax: int = _root_axis()[0]
 	var thick := absf(half_ext[(ax + 1) % 3]) + absf(half_ext[(ax + 2) % 3])
-	# Voxels half the body's, so it reads as bone and not as one block.
-	var c := vf * part_scale * 0.5
-	var r := maxf(thick * 0.17, c * 1.5)
+	# The bone's radius: a limb's bone a fifth of its thickness, never thinner than a voxel (a
+	# little stout, to be seen from where the fight is watched).
+	var r := maxf(thick * 0.19, vf * part_scale * 0.8)
 	# Where its line meets the skin.
 	var t_skin := INF
 	var nrm := out
@@ -147,117 +160,201 @@ func show_bone(at: Vector3, out := Vector3.ZERO) -> void:
 				nrm[k] = signf(y[k])
 	if t_skin == INF:
 		t_skin = thick * 0.5
-	var h_out := maxf(r * 3.5, thick * 0.75)          # how far it stands out of the skin
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var ivory := Color(0.92, 0.88, 0.76)
-	var blood := Color(0.45, 0.02, 0.02)
-	var marrow := Color(0.38, 0.05, 0.04)
-	var hx := x * c * 0.5
-	var hy := y * c * 0.5
-	var hz := z * c * 0.5
-	# The shaft, column by column across it: each column up to the skin and out of it, snapped
-	# off at its own height (two long splinters, the rest short and ragged), the marrow in the
-	# middle sunk and red, blood up from the wound in streaks.
-	var n := int(ceil(r / c))
-	var spike := [Vector2i(rng.randi_range(-n, n), rng.randi_range(-n, n)), Vector2i(rng.randi_range(-n, n), rng.randi_range(-n, n))]
-	var top_h := t_skin + h_out
-	for ix in range(-n, n + 1):
-		for iz in range(-n, n + 1):
-			var off := Vector2(ix, iz) * c
-			if off.length() > r:
-				continue
-			var inner := off.length() < r * 0.45
-			var col_top := top_h - rng.randf_range(0.0, 2.0) * c
-			for sp in spike:
-				var dsp := Vector2(ix - sp.x, iz - sp.y).length()
-				col_top = maxf(col_top, top_h + c * (2.6 - dsp * 1.3))
-			if inner:
-				col_top = top_h - c * rng.randf_range(1.0, 2.0)
-			var streak := rng.randf_range(0.3, 1.0)
-			var hcur := t_skin * 0.4
-			while hcur < col_top:
-				var p := at + y * hcur + x * off.x + z * off.y
-				var above := hcur - t_skin
-				var col := ivory.lerp(Color(0.84, 0.78, 0.62), rng.randf() * 0.5)
-				if above < 0.0:
-					col = blood
-				else:
-					col = col.lerp(blood, clampf(1.0 - above / (h_out * streak), 0.0, 1.0) * 0.85)
-				if inner and hcur + c >= col_top:
-					col = marrow
-				_cube(st, p, hx, hy, hz, col)
-				hcur += c
-	# A splinter split off the shaft beside it, leaning out.
-	var sy := (y + x * 0.4).normalized()
-	var sbase := at + y * t_skin + x * (r + c)
-	for k in int(h_out * 0.7 / c):
-		var p := sbase + sy * c * k
-		_cube(st, p, hx * 0.8, hy, hz * 0.8, ivory.lerp(blood, clampf(1.0 - float(k) / 3.0, 0.0, 1.0) * 0.8))
-	# The wound round it: torn flesh in voxels heaped round the hole, wet red and dark, and lumps
-	# of it hanging out, the skin's own voxels round it smeared (VoxelPart.wound, by the caller).
+	var h_out := maxf(r * 3.4, thick * 0.65)          # how far it stands out of the skin
 	var wc := at + y * t_skin
-	var wx := nrm.cross(y if absf(nrm.dot(y)) < 0.95 else along).normalized()
-	if wx.length_squared() < 0.5:
-		wx = x
-	var wz := nrm.cross(wx).normalized()
-	var R := r * 2.4
-	var m := int(ceil(R / c))
-	var wxh := wx * c * 0.5
-	var wnh := nrm * c * 0.5
-	var wzh := wz * c * 0.5
-	for ix in range(-m, m + 1):
-		for iz in range(-m, m + 1):
-			var off := Vector2(ix, iz) * c
-			var dl := off.length()
-			if dl > R * rng.randf_range(0.8, 1.15) or dl < r * 0.9:
-				continue
-			var hgt := rng.randi_range(0, 2) if dl < R * 0.7 else rng.randi_range(0, 1)
-			var shade := rng.randf()
-			var col := Color(0.62, 0.05, 0.04).lerp(Color(0.3, 0.0, 0.0), shade * 0.7)
-			if rng.randf() < 0.15:
-				col = Color(0.78, 0.38, 0.33)   # torn fat and tissue
-			for k in hgt + 1:
-				_cube(st, wc + wx * off.x + wz * off.y + nrm * c * (k - 0.3), wxh, wnh, wzh, col)
-	var mesh := st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.4
-	mat.metallic_specular = 0.45
-	mesh.surface_set_material(0, mat)
-	if bone_out == null:
-		bone_out = MeshInstance3D.new()
-		bone_out.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-		bone_out.top_level = true
-		add_child(bone_out)
-	bone_out.mesh = mesh
+	# The limb's own colour round the hole (its skin, or the cloth over it), for the torn edge:
+	# from a voxel of the face just past the blood the wound has smeared round it.
+	var skin := Color(0.85, 0.66, 0.52)
+	var ring := vf * part_scale * 3.0
+	var face_k := 0
+	for k in 3:
+		if absf(nrm[k]) > 0.5:
+			face_k = k
+	var bd := INF
+	for i in fx.size():
+		if not alive[i] or bone[i] or organ[i] != 0:
+			continue
+		var q := local_of(i)
+		if absf(absf(q[face_k]) - half_ext[face_k]) > vf * part_scale * 1.1:
+			continue   # (not on the face it comes out of)
+		var d := q.distance_to(wc)
+		if d > ring * 1.05 and d < bd:
+			bd = d
+			skin = colors[i]
+	var cb := OpenFracture.voxels({"at": at, "y": y, "x": x, "z": z, "along": along, "nrm": nrm,
+		"t_skin": t_skin, "r": r, "h_out": h_out, "half": half_ext, "skin": skin, "seed": rng.randi(), "vox": vf * part_scale,
+		"skin_h": skin_over.bind(face_k, signf(nrm[face_k]))})
+	bo_pos = cb.pos
+	bo_col = cb.color
+	bo_kind = cb.kind
+	bo_frame = cb.frame
+	bo_layer = cb.layer
+	bo_alive = PackedByteArray()
+	bo_alive.resize(bo_pos.size())
+	bo_alive.fill(1)
+	bo_basis = cb.basis
+	bo_s = cb.s
+	bo_origin = at
+	bo_skin = t_skin
+	bo_r = r
+	bo_top = t_skin + h_out + r * 2.0
 	# (The near piece: it stays with the part; the far one swings.)
 	bone_xf = Transform3D()
 	bone_at = at + y * (t_skin + h_out * 0.5)
 	bone_dir = y
 	bone_wound = wc
 	bone_wound_n = nrm
+	_fit_bone_shape()
+	if DisplayServer.get_name() == "headless" or mmi == null:
+		return
+	if bone_out == null:
+		bone_out = MultiMeshInstance3D.new()
+		bone_out.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		bone_out.top_level = true
+		add_child(bone_out)
+	var m := MultiMesh.new()
+	m.transform_format = MultiMesh.TRANSFORM_3D
+	m.use_colors = true
+	m.use_custom_data = true
+	m.mesh = mm.mesh
+	m.instance_count = bo_pos.size()
+	var box := AABB(bone_at, Vector3.ZERO)
+	for n in bo_pos.size():
+		m.set_instance_transform(n, _bo_xf(n))
+		m.set_instance_color(n, bo_col[n])
+		m.set_instance_custom_data(n, kind_data(bo_kind[n]))
+		box = box.expand(bo_pos[n])
+	bone_out.multimesh = m
+	bone_out.material_override = mmi.material_override
+	bone_out.custom_aabb = box.grow(bo_s * 2.0)
 	bone_out.visible = true
 	_draw_at(global_transform)
 
-## One voxel cube for the bone or the wound: centre `p`, half-edges along hx, hy, hz.
-static func _cube(st: SurfaceTool, p: Vector3, hx: Vector3, hy: Vector3, hz: Vector3, col: Color) -> void:
-	var v := [p - hx - hy - hz, p + hx - hy - hz, p + hx + hy - hz, p - hx + hy - hz, p - hx - hy + hz, p + hx - hy + hz, p + hx + hy + hz, p - hx + hy + hz]
-	st.set_color(col)
-	for f in [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]]:
-		var a: Vector3 = v[f[0]]; var b: Vector3 = v[f[1]]; var c: Vector3 = v[f[2]]; var d: Vector3 = v[f[3]]
-		var nn := (b - a).cross(c - a).normalized()
-		var outw := (a + b + c + d) * 0.25 - p
-		if nn.dot(outw) < 0.0:
-			nn = -nn
-			var t := b; b = d; d = t
-		st.set_normal(nn)
-		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
-		st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+## Cube n of the open break as drawn: half a voxel, turned with the bone or square with the part,
+## nothing once it is knocked off.
+func _bo_xf(n: int) -> Transform3D:
+	var k := bo_s / (vf * part_scale) if bo_alive[n] else 0.0
+	var b := bo_basis if bo_frame[n] == 1 else Basis()
+	return Transform3D(b.scaled(Vector3.ONE * k), bo_pos[n])
+
+## How many of the bone's own cubes (the shaft, the sliver, the chips) are still there.
+func bone_out_left() -> int:
+	var n := 0
+	for i in bo_pos.size():
+		if bo_alive[i] and bo_kind[i] == OpenFracture.BONE:
+			n += 1
+	return n
+
+## A blow at `lp` (part-local) on an open break: the cubes within `rad` of it knocked out, and the
+## shaft past them with them when not a third of it is left standing where it was struck (the
+## end snapped off). What came off: [{p (world), color, kind, b (turned how, part-local), s (its
+## size, of a voxel)}], for the pieces to fly (Chunk); empty when it met none of them.
+func break_bone_out(lp: Vector3, rad: float) -> Array:
+	var out := []
+	if bo_pos.is_empty():
+		return out
+	var lost := {}
+	for n in bo_pos.size():
+		if bo_alive[n] and bo_pos[n].distance_to(lp) <= rad:
+			lost[n] = true
+	if lost.is_empty():
+		return out
+	# Snapped: where a layer of the shaft struck has not a third of itself left, all above it goes.
+	var count := {}   # layer -> [cubes there, cubes left]
+	for n in bo_pos.size():
+		var j: int = bo_layer[n]
+		if j >= 0 and bo_alive[n]:
+			var c: Array = count.get(j, [0, 0])
+			c[0] += 1
+			if not lost.has(n):
+				c[1] += 1
+			count[j] = c
+	var snap := 1 << 30
+	for j in count:
+		var c: Array = count[j]
+		if int(c[1]) * 3 < int(c[0]) and int(j) < snap:
+			snap = int(j)
+	if snap < (1 << 30):
+		for n in bo_pos.size():
+			if bo_alive[n] and bo_layer[n] > snap:
+				lost[n] = true
+	var k := bo_s / (vf * part_scale)
+	for n in lost:
+		bo_alive[n] = 0
+		out.append({"p": global_transform * bo_pos[n], "color": bo_col[n], "kind": int(bo_kind[n]), "b": bo_basis if bo_frame[n] == 1 else Basis(), "s": k})
+		if bone_out and bone_out.multimesh:
+			bone_out.multimesh.set_instance_transform(n, _bo_xf(n))
+	_fit_bone_shape()
+	if bone_out and not bo_alive.has(1):
+		bone_out.visible = false
+	return out
+
+## The bone standing out as solid as the rest of him: a box round what is left of it out of the
+## skin, so a blade or a club meets it there (and knocks its cubes off); gone with it.
+func _fit_bone_shape() -> void:
+	var hi := -INF
+	for n in bo_pos.size():
+		if bo_alive[n] and bo_frame[n] == 1:
+			hi = maxf(hi, (bo_pos[n] - bo_origin).dot(bone_dir))
+	var len := hi + bo_s * 0.5 - bo_skin
+	if len < bo_s or bo_pos.is_empty():
+		if bone_shape:
+			bone_shape.set_deferred("disabled", true)
+			bone_shape.queue_free()
+			bone_shape = null
+		return
+	if bone_shape == null:
+		bone_shape = CollisionShape3D.new()
+		bone_shape.shape = BoxShape3D.new()
+		add_child(bone_shape)
+	(bone_shape.shape as BoxShape3D).size = Vector3(bo_r * 2.0, len, bo_r * 2.0)
+	bone_shape.transform = Transform3D(bo_basis, bo_origin + bone_dir * (bo_skin + len * 0.5))
 
 func hide_bone() -> void:
 	if bone_out:
 		bone_out.visible = false
+	bo_pos = PackedVector3Array()
+	bo_col = PackedColorArray()
+	bo_kind = PackedByteArray()
+	bo_frame = PackedByteArray()
+	bo_layer = PackedInt32Array()
+	bo_alive = PackedByteArray()
+	_fit_bone_shape()
+
+## How far out from the part's middle its skin is over the part-local point p, along axis k on
+## the side sg (+1 or -1): the outer face of the last living voxel of the column there, eased
+## between the four columns round p. NAN where none of them has a voxel.
+func skin_over(p: Vector3, k: int, sg: float) -> float:
+	var s := vf * part_scale
+	var a1 := (k + 1) % 3
+	var a2 := (k + 2) % 3
+	var g1: float = p[a1] / s + (grid[a1] - 1) * 0.5
+	var g2: float = p[a2] / s + (grid[a2] - 1) * 0.5
+	var i1 := floori(g1)
+	var i2 := floori(g2)
+	var sum := 0.0
+	var wsum := 0.0
+	for d1 in 2:
+		for d2 in 2:
+			var h := _column_top(i1 + d1, i2 + d2, k, sg)
+			if is_nan(h):
+				continue
+			var w := absf(1.0 - d1 - (g1 - i1)) * absf(1.0 - d2 - (g2 - i2))
+			sum += h * w
+			wsum += w
+	return sum / wsum if wsum > 1e-6 else NAN
+
+func _column_top(c1: int, c2: int, k: int, sg: float) -> float:
+	var q := Vector3i.ZERO
+	q[(k + 1) % 3] = c1
+	q[(k + 2) % 3] = c2
+	var n: int = grid[k]
+	for st in n:
+		q[k] = n - 1 - st if sg > 0.0 else st
+		var i := _cell(q.x, q.y, q.z)
+		if i >= 0 and alive[i] == 1:
+			return sg * local_of(i)[k] + vf * part_scale * 0.5
+	return NAN
 
 # ---------- A limb broken through: the far end swings from the break ----------
 # (user: a broken limb swinging free from the broken angle) Drawn on its own, like a jaw: the

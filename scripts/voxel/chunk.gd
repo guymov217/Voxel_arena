@@ -46,7 +46,10 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		# A voxel a gladiator's look kept out of sight (Physique) stays out of sight on the
 		# piece too; it is still part of the piece and its weight.
 		var shown := 0.0 if voxels[i].get("veil", false) else 1.0
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * shown), d))
+		# (A cube of an open break is smaller than a voxel, and turned with the bone it came off:
+		# VoxelPart.break_bone_out.)
+		var vb: Basis = voxels[i].get("b", Basis())
+		mm.set_instance_transform(i, Transform3D(vb.scaled(Vector3.ONE * shown * float(voxels[i].get("s", 1.0))), d))
 		mm.set_instance_color(i, voxels[i].color)
 		if mm.use_custom_data:
 			mm.set_instance_custom_data(i, VoxelPart.kind_data(int(voxels[i].get("kind", 8))))

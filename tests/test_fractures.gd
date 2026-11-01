@@ -180,7 +180,7 @@ func test_the_skull_and_the_ribs_break_by_degrees() -> void:
 	await _steps(30)
 	var k := 0
 	var lv := []
-	while v.skull_fracture < 3 and k < 20:
+	while k < 20:
 		v.head.hp = 1000.0
 		v.concussion = 0.0
 		var gh := v.head.global_transform
@@ -189,7 +189,8 @@ func test_the_skull_and_the_ribs_break_by_degrees() -> void:
 			lv.append(v.skull_fracture)
 		k += 1
 		await _steps(3)
-	t.check(v.skull_fracture == 3 and v.head.has_meta("open_break"), "hammered, the skull breaks open at last (levels %s)" % [lv])
+	t.check(v.skull_fracture == 2, "hammered, the skull is driven in (levels %s)" % [lv])
+	t.check(not v.head.has_meta("open_break") and (v.head.bone_out == null or not v.head.bone_out.visible), "but never broken open: only an arm or a leg breaks out through the skin")
 	var tor := v.torso
 	var lung0: float = v.lungs()
 	k = 0
@@ -201,6 +202,174 @@ func test_the_skull_and_the_ribs_break_by_degrees() -> void:
 		await _steps(3)
 	t.check(v.ribs_broken >= 4, "ribs broken one blow after another (%d)" % v.ribs_broken)
 	t.check(v.lungs() < lung0, "and broken in, they hurt the lung under them (%.2f -> %.2f)" % [lung0, v.lungs()])
+	t.check(not tor.has_meta("open_break"), "never out through the chest")
+	m.queue_free()
+
+## Out through the skin only in an arm or a leg (user): a man's upper arms, forearms, thighs and
+## shins, a beast's legs; never his head or trunk, nor a beast's neck or tail.
+func test_only_an_arm_or_a_leg_breaks_open() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(10)
+	var open := []
+	var shut := []
+	for p in v.parts:
+		(open if v.can_break_open(p) else shut).append(String(p.part_name))
+	open.sort()
+	t.check(open == ["forearmL", "forearmR", "shinL", "shinR", "thighL", "thighR", "upperArmL", "upperArmR"], "a man: his arms and legs (%s)" % [open])
+	t.check(shut.has("head") and shut.has("torso"), "not his head or trunk")
+	var b = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(3, 0.1, 3), "yaw": 0.0})
+	await _steps(5)
+	var lion: Beast = b.f
+	var legs_open := true
+	var rest_shut := true
+	for p in lion.parts:
+		if bool(p.def.get("leg", false)):
+			legs_open = legs_open and lion.can_break_open(p)
+		else:
+			rest_shut = rest_shut and not lion.can_break_open(p)
+	t.check(legs_open, "a beast: its legs")
+	t.check(rest_shut, "and nothing else of it")
+	var tail = null
+	for p in lion.parts:
+		if not bool(p.def.get("leg", false)) and p != lion.torso and p != lion.head and p.bone.has(1):
+			tail = p
+			break
+	if tail:
+		lion._fracture(tail, Vector3.ZERO, 200.0, {}, 3)
+		t.check(tail.fracture == 2 and not tail.has_meta("open_break"), "a blow that would break a leg open breaks its %s under the skin (level %d)" % [tail.part_name, tail.fracture])
+	m.queue_free()
+
+## Out through the skin anywhere along a leg it makes sense (user): the thigh and the shin, high,
+## in the middle or low, wherever the blow fell along the bone and on the side it came from; never
+## in the knee, the hip or the ankle (the break is kept to the shaft of the bone), a beast's the same.
+func test_a_leg_breaks_open_where_it_was_struck() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(10)
+	# [part, how far up it the blow fell (of its half length), the side it came from]
+	var cases := [["thighL", 0.45, Vector3(0, 0, 1)], ["thighR", -0.35, Vector3(1, 0, 0)],
+		["shinL", 0.0, Vector3(-1, 0, 0)], ["shinR", -0.5, Vector3(0, 0, 1)]]
+	for c in cases:
+		var p: VoxelPart = v.by_name[c[0]]
+		var ax: int = p._root_axis()[0]
+		var d: Vector3 = c[2]
+		var lp: Vector3 = d * p.half_ext
+		lp[ax] = float(c[1]) * p.half_ext[ax]
+		v._fracture(p, lp, 200.0, {}, 3, -d)
+		var ex := p.break_exit()
+		t.check(p.fracture == 3 and p.has_meta("open_break") and not ex.is_empty(), "%s struck %+.2f up it breaks open" % [c[0], c[1]])
+		if ex.is_empty():
+			continue
+		t.check(absf((ex[0] as Vector3)[ax] - float(c[1]) * p.half_ext[ax]) < 0.01, "%s: out where it was struck along the bone (%.3f, struck at %.3f)" % [c[0], (ex[0] as Vector3)[ax], float(c[1]) * p.half_ext[ax]])
+		t.check((ex[1] as Vector3).dot(d) > 0.9, "%s: on the side the blow came from (%.2f)" % [c[0], (ex[1] as Vector3).dot(d)])
+	# Struck at the very end of the shin, by the knee: it breaks open in the shaft below it, not
+	# in the joint.
+	var r2 := _victim()
+	var v2: Fighter = r2[1]
+	await _steps(10)
+	var sh: VoxelPart = v2.by_name.shinR
+	var ax2: int = sh._root_axis()[0]
+	var lp2: Vector3 = Vector3(0, 0, 1) * sh.half_ext
+	lp2[ax2] = 0.97 * sh.half_ext[ax2]
+	v2._fracture(sh, lp2, 200.0, {}, 3, Vector3(0, 0, -1))
+	var ex2 := sh.break_exit()
+	t.check(not ex2.is_empty() and absf((ex2[0] as Vector3)[ax2]) <= sh.half_ext[ax2] * 0.61, "struck by the knee, it breaks open in the shaft below it (%.3f of %.3f)" % [(ex2[0] as Vector3)[ax2] if not ex2.is_empty() else INF, sh.half_ext[ax2]])
+	# A beast's leg, struck high: open there too, in the shaft.
+	var b = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(3, 0.1, 3), "yaw": 0.0})
+	await _steps(5)
+	var lion: Beast = b.f
+	var leg: VoxelPart = null
+	for p in lion.parts:
+		if bool(p.def.get("leg", false)) and p.bone.has(1):
+			leg = p
+			break
+	if leg:
+		var ax3: int = leg._root_axis()[0]
+		var side := (ax3 + 1) % 3
+		var d3 := Vector3.ZERO
+		d3[side] = 1.0
+		var lp3: Vector3 = d3 * leg.half_ext
+		lp3[ax3] = 0.4 * leg.half_ext[ax3]
+		lion._fracture(leg, lp3, 400.0, {}, 3, -d3)
+		var ex3 := leg.break_exit()
+		t.check(leg.has_meta("open_break") and not ex3.is_empty() and absf((ex3[0] as Vector3)[ax3] - 0.4 * leg.half_ext[ax3]) < 0.01, "a lion's %s breaks open where it was struck" % leg.part_name)
+	else:
+		t.check(false, "the lion has a leg with a bone")
+	m.queue_free()
+	r2[0].queue_free()
+
+## Open only from the hardest blunt blows (user): a sword through a limb's bone breaks it, the
+## limb of no use after, but under the skin, unless the chop was as heavy as the blows that break
+## bones open; a broken limb cut at again and again stays shut, beaten on it opens.
+func test_a_blade_through_the_bone_breaks_it_without_opening_it() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(20)
+	var fo: VoxelPart = v.arm.R.fore
+	var bones := []
+	for i in fo.fx.size():
+		if fo.alive[i] and fo.bone[i]:
+			bones.append(i)
+	var f0: float = fo.function()
+	v._edge_on_bone(fo, bones.slice(0, int(bones.size() * 0.75)), Vector3.ZERO, Vector3(0, 0, -1), 30.0, {})
+	t.check(fo.fracture == 2 and fo.fractured and not fo.has_meta("open_break"), "a sword through most of the forearm's bone breaks it, under the skin (level %d)" % fo.fracture)
+	t.check(fo.function() < 0.1 and f0 > 0.5, "and the arm is of no use after (%.2f, was %.2f)" % [fo.function(), f0])
+	var fl: VoxelPart = v.arm.L.fore
+	bones = []
+	for i in fl.fx.size():
+		if fl.alive[i] and fl.bone[i]:
+			bones.append(i)
+	v._edge_on_bone(fl, bones.slice(0, int(bones.size() * 0.75)), Vector3.ZERO, Vector3(0, 0, -1), Fighter.OPEN_J + 5.0, {})
+	t.check(fl.fracture == 3 and fl.has_meta("open_break"), "a chop as heavy as the hardest blows breaks it open (level %d)" % fl.fracture)
+	var sh: VoxelPart = v.by_name.shinR
+	await _club(v, sh, 30.0)
+	t.check(sh.fracture == 2, "a hard blow breaks the shin under the skin (level %d)" % sh.fracture)
+	for k in 12:
+		sh.hp = 1000.0
+		var gt := sh.global_transform
+		var bs := gt.basis.orthonormalized()
+		v.apply_hit(sh, {"impulse": 30.0, "type": "edge", "hardness": 0.9, "sharpness": 0.05, "heavy": 0.0, "point": gt * Vector3(0, 0, sh.half_ext.z), "dir": bs * Vector3(0, 0, -1), "axis": bs * Vector3(1, 0, 0)})
+		await _steps(3)
+	t.check(sh.fracture == 2 and not sh.has_meta("open_break"), "cut at twelve times more, it stays under the skin (level %d)" % sh.fracture)
+	m.queue_free()
+
+## Everything is voxels and everything breaks, the open break too (user): the bone standing out
+## of it is cubes of bone, solid to a blow, and a blow that meets it knocks them off; a hard one
+## through the shaft snaps its end off, and what is left of it breaks away blow by blow.
+func test_the_bone_out_of_an_open_break_breaks_too() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(20)
+	var sh: VoxelPart = v.by_name.shinR
+	var ax: int = sh._root_axis()[0]
+	var lp: Vector3 = Vector3(0, 0, 1) * sh.half_ext
+	v._fracture(sh, lp, 200.0, {}, 3, Vector3(0, 0, -1))
+	var n0 := sh.bone_out_left()
+	t.check(sh.has_meta("open_break") and n0 > 40, "the bone stands out of the open break as cubes of bone (%d)" % n0)
+	t.check(sh.bone_shape != null and not sh.bone_shape.disabled, "solid to a blow, like the rest of him")
+	var len0: float = (sh.bone_shape.shape as BoxShape3D).size.y if sh.bone_shape else 0.0
+	# A club across the middle of what stands out: it snaps there, the end flies off.
+	var mid: Vector3 = sh.bo_origin + sh.bone_dir * (sh.bo_skin + (sh.bo_top - sh.bo_skin) * 0.4)
+	var across: Vector3 = sh.bo_basis.x
+	var gt := sh.global_transform
+	var bs := gt.basis.orthonormalized()
+	var res: Dictionary = v.apply_hit(sh, {"impulse": 40.0, "type": "blunt", "hardness": 0.9, "heavy": 0.3, "point": gt * mid, "dir": bs * -across})
+	var n1 := sh.bone_out_left()
+	t.check(int(res.get("bone_bits", 0)) > 0 and n1 < n0 * 0.75, "a club across it knocks its cubes off and snaps the end off (%d of %d left)" % [n1, n0])
+	t.check(sh.bone_shape == null or (sh.bone_shape.shape as BoxShape3D).size.y < len0 - 0.01, "and less of it stands out to be struck (%.3f, was %.3f)" % [(sh.bone_shape.shape as BoxShape3D).size.y if sh.bone_shape else 0.0, len0])
+	# Beaten on at the skin, the stump breaks away too.
+	for k in 6:
+		if sh.bone_out_left() == 0:
+			break
+		var low: Vector3 = sh.bo_origin + sh.bone_dir * (sh.bo_skin + sh.bo_s * 1.5)
+		v.apply_hit(sh, {"impulse": 45.0, "type": "blunt", "hardness": 0.9, "heavy": 0.5, "point": gt * low, "dir": bs * -across})
+		await _steps(2)
+	t.check(sh.bone_out_left() < n1 * 0.4, "beaten on, what was left breaks away (%d left)" % sh.bone_out_left())
 	m.queue_free()
 
 ## The campaign: broken bones are carried to the next fight until the physician sets them.
