@@ -78,7 +78,10 @@ func _ready() -> void:
 				st.thrust = 0.0
 				var mv := far - tip0
 				var off_deg := rad_to_deg(mv.angle_to(ax)) if mv.length() > 0.02 else -1.0
-				var line := "THRUST %-11s %-5s %s went %.2f m off-line %5.1f deg  tip speed %.1f m/s" % [wn, an, "foe " if with_foe else "air ", mv.dot(ax), off_deg, vmax]
+				# Which way off the line: up (+) or down, and to his left (+) or right, in cm.
+				var side_v := Vector3.UP.cross(ax).normalized() if absf(ax.y) < 0.95 else Vector3.RIGHT
+				var up_v := ax.cross(side_v).normalized()
+				var line := "THRUST %-11s %-5s %s went %.2f m off-line %5.1f deg (up %+.0f cm, left %+.0f cm)  tip speed %.1f m/s" % [wn, an, "foe " if with_foe else "air ", mv.dot(ax), off_deg, mv.dot(up_v) * 100.0, mv.dot(side_v) * 100.0, vmax]
 				if with_foe:
 					var Jmax := 0.0
 					var dmg := 0.0

@@ -203,13 +203,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 var react_t := -9.0
 func _hit_react(part: VoxelPart, hit: Dictionary, res: Dictionary) -> void:
 	var J := float(hit.get("impulse", 0.0))
-	if not alive or res.get("blocked", false) or part.severed or J < 4.0 or hit.get("bump", false) or time - react_t < 0.12:
+	# (Not with its jaws or coils locked on him: a crocodile in its roll, a python round him, does
+	# not let go to flinch; a jerk of the head pulled the teeth off the bite.)
+	if not alive or res.get("blocked", false) or part.severed or J < 4.0 or hit.get("bump", false) or time - react_t < 0.12 or hug != null:
 		return
 	react_t = time
 	var k := clampf(J / 28.0, 0.2, 1.0)
 	var dir: Vector3 = hit.dir if hit.get("dir") is Vector3 else Vector3.ZERO
 	dir.y = 0.0
-	if dir.length_squared() > 1e-4 and not flying and hug == null:
+	if dir.length_squared() > 1e-4 and not flying:
 		dir = dir.normalized()
 		var dv := 1.1 * k / sqrt(maxf(1.0, MS / 3.0))
 		torso.apply_central_impulse((dir + Vector3.UP * 0.2) * dv * torso.mass)
@@ -223,7 +225,7 @@ func _hit_react(part: VoxelPart, hit: Dictionary, res: Dictionary) -> void:
 		if not l.severed:
 			l.flinch_t = maxf(l.flinch_t, 0.08 + 0.18 * k)
 	var t = target
-	if t == null or not is_instance_valid(t) or hug != null or not t.get("torso"):
+	if t == null or not is_instance_valid(t) or not t.get("torso"):
 		return
 	var d: Vector3 = t.torso.global_position - torso.global_position
 	if Vector2(d.x, d.z).length() > 2.6 * S:

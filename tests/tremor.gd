@@ -30,11 +30,15 @@ func _ready() -> void:
 			for hurt in [false, true]:
 				var m := Match.new()
 				add_child(m)
-				m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3})
-				m.me.f.teleport(Vector3(-12, 0, 0))
 				var lo: Dictionary = LOADS[ln]
-				var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": lo.main, "off": lo.get("off", "")}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
-				e.erase("bot")
+				# PLAYER=1: the player's own fighter (no bot's ways with the blade), as in the user's video.
+				var as_player := OS.get_environment("PLAYER") == "1"
+				m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "loadout": {"main": lo.main, "off": lo.get("off", "")}})
+				var e = m.me
+				if not as_player:
+					m.me.f.teleport(Vector3(-12, 0, 0))
+					e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": lo.main, "off": lo.get("off", "")}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+					e.erase("bot")
 				var f: Fighter = e.f
 				var h: Array = HOLDS[hn]
 				e.drive = func(_e): return {"main": h[0], "off": h[1], "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}

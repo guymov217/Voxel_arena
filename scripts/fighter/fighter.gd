@@ -2224,7 +2224,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var tilt := acos(clampf(up_w.y, -1.0, 1.0))
 	tilt_t = tilt_t + dt if tilt > 1.15 else 0.0
 	var fresh := time - stood_at < 5.0
-	var jolted := time - jolt_t < JOLT_GRACE or stagger > 0.25 or grabbed_by != null or torso.linear_velocity.length() > 5.0
+	# (A beast's hold is one too: a crocodile rolling him, an ape hugging him. Righted against the
+	# roll, his limb was wrenched off the teeth.)
+	var jolted := time - jolt_t < JOLT_GRACE or stagger > 0.25 or grabbed_by != null or torso.linear_velocity.length() > 5.0 or (has_meta("rolled_by") and is_instance_valid(get_meta("rolled_by"))) or (has_meta("beast_hold") and is_instance_valid(get_meta("beast_hold")))
 	var tipped := tilt_t > (0.45 if fresh else 0.2) or (tilt > 1.5 and (not fresh or tilt_t > 0.25))
 	if state == "stand" and ((tipped and (jolted or tilt_t > 2.5)) or not can_stand()):
 		fall(1.8 if can_stand() else 99.0, true)
@@ -4615,6 +4617,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var basis_inv := part.global_transform.basis.orthonormalized().inverse()
 	var ld: Vector3 = (basis_inv * (hit.dir as Vector3)).normalized()
 	var la: Vector3 = (basis_inv * (hit.get("axis", hit.dir) as Vector3)).normalized()
+	# A part's box is the box round its voxels: on a rounded body (a boar's back, a bull's rump)
+	# the blade met the box a hand's breadth off the hide, and the cut, the crater and the nick
+	# all stopped in the air (user: the boar hardly lost a voxel to a blow). It goes on to the flesh.
+	# (A weapon's: the teeth of a bite are where they close, already in the limb.)
+	if not detached and hit.get("weapon", false):
+		lp = _to_flesh(part, lp, ld, V * S * 1.2, V * S * 3.0)
 	# Armour takes it first, where there is armour (character.js armorNear): the blow knocks
 	# off the plates nearest it, the harder the more, and a bare spot is not covered any more.
 	var near := [] if detached else _armor_near(part, lp, V * S * 1.7)
@@ -5000,6 +5008,38 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	res.part_name = part.part_name
 	hit_taken.emit(self, res)
 	return res
+
+## Where a blow that met a part's box at `lp`, heading `ld`, meets its flesh: where the flesh
+## begins along its way across a bore `r` wide (or, a blow that skimmed the box, straight in
+## through the face it touched), no further in than `reach`; `lp` itself when it is there already.
+## Where most of it begins, not the one voxel standing highest: a ridge of bristle a voxel wide
+## along a boar's spine took the whole of an axe's cut and left two voxels gone.
+static func _to_flesh(part: VoxelPart, lp: Vector3, ld: Vector3, r: float, reach: float) -> Vector3:
+	var vfs := part.vf * part.part_scale
+	for way in [ld, -_surface_normal(part, lp)]:
+		var w: Vector3 = way
+		var u := w.cross(Vector3.UP if absf(w.y) < 0.9 else Vector3.RIGHT).normalized()
+		var v := w.cross(u)
+		var first := {}   # each line through the bore -> how far along it the flesh begins
+		# (Only the live voxels round the bore: the whole part voxel by voxel, for each nail of a
+		# pot's hail, would be a hitch.)
+		for i in part.voxels_within(lp + w * (reach - vfs) * 0.5, (reach + vfs) * 0.5 + r):
+			var d := part.local_of(i) - lp
+			var along := d.dot(w)
+			var a := d.dot(u)
+			var b := d.dot(v)
+			if along <= -vfs or along > reach or a * a + b * b >= r * r:
+				continue
+			var key := Vector2i(roundi(a / vfs), roundi(b / vfs))
+			if along < float(first.get(key, INF)):
+				first[key] = along
+		if first.is_empty():
+			continue
+		var starts: Array = first.values()
+		starts.sort()
+		var best: float = starts[starts.size() / 2]
+		return lp + w * (best - vfs * 0.5) if best > vfs else lp
+	return lp
 
 ## The armour plates within `r` of a part-local point, nearest first: [[piece, cell index]].
 ## Outward from a part's surface at `lp` (its local frame): the body is rounded, so the normal
