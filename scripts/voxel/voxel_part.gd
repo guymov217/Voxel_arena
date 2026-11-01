@@ -1011,10 +1011,14 @@ const TAPER_AXES := [Vector3i.RIGHT, Vector3i.UP, Vector3i.BACK]
 ## A point on a run of points (one stab block on another, up to the tip) is a length of one
 ## spike: bits 16..19 its place along the run from the base, 20..23 the run's length, and it is
 ## drawn narrowing from its base's width to its tip's, so the spike tapers unbroken to the end.
-static func taper_code(cells: Dictionary, p: Vector3i, face := -1, faces: Dictionary = {}) -> int:
+## Not a point, bits 16..19 are corners thin on their own (see _edge_code): an edge where it turns
+## a step of the outline, and the block behind the step (any job, a blunt one too), so the edge
+## of a blade cut round in steps runs on unbroken round its corners. `memo`: shared by the calls
+## of one pass over a weapon, so each voxel's thickness is worked out once.
+static func taper_code(cells: Dictionary, p: Vector3i, face := -1, faces: Dictionary = {}, memo: Dictionary = {}) -> int:
 	var job := str(cells.get(p, ""))
 	if job != "edge" and job != "point":
-		return 0
+		return _step_corners(cells, p, faces, memo) if cells.has(p) else 0
 	if job == "point":
 		var run := _spike(cells, faces, p, face)
 		if not run.is_empty():
@@ -1045,6 +1049,8 @@ static func taper_code(cells: Dictionary, p: Vector3i, face := -1, faces: Dictio
 		for a in pinched:
 			c |= 1 << (6 + int(a))
 		return c | (1 << face)
+	if job == "edge":
+		return _edge_code(cells, p, faces, memo)
 	var both := []    # open on both sides: the thickness, pinched on the middle
 	var half := {}    # half of a blade two thick: axis -> the side its other half is on (+1/-1)
 	var one := []     # open on one side: where it faces
@@ -1062,30 +1068,9 @@ static func taper_code(cells: Dictionary, p: Vector3i, face := -1, faces: Dictio
 			else:
 				one.append(a)
 	var pinch: Array = both + half.keys()
-	if job == "edge" and pinch.size() > 1:
-		# Thin one way only, across the blade: the way the weapon is thinnest round it.
-		var best: int = pinch[0]
-		var span := INF
-		for a in pinch:
-			var w := _span(cells, p, a) + (0.0 if a == 2 else 0.1)   # a tie: the forge's depth
-			if w < span:
-				span = w
-				best = a
-		pinch = [best]
-	# What it faces: the one-sided axes, and for an edge also the halves it is not pinched on.
-	for a in half:
-		if not pinch.has(a):
-			one.append(a)
-	# An edge runs on: a voxel with a sharp one beside it along an axis is a length of that edge,
-	# not its end, so it does not narrow that way (the top block of an axe's edge, open above as
-	# well, was drawn as a roof across the blade, cut off from the wedge running up to it).
-	if job == "edge" and one.size() > 1:
-		var ends: Array = one.filter(func(a): return half.has(a) or not (_is_sharp(cells, p + TAPER_AXES[a]) or _is_sharp(cells, p - TAPER_AXES[a])))
-		if not ends.is_empty():
-			one = ends
 	if pinch.is_empty() or one.is_empty():
 		return 0
-	var code := 512 if job == "point" else 0
+	var code := 512
 	for a in pinch:
 		code |= 1 << (6 + a)
 		if half.has(a):
@@ -1133,9 +1118,182 @@ static func _spike(cells: Dictionary, faces: Dictionary, p: Vector3i, face: int)
 			best = [d[0], d[1], behind, n, score]
 	return best
 
-static func _is_sharp(cells: Dictionary, q: Vector3i) -> bool:
-	var j := str(cells.get(q, ""))
-	return j == "edge" or j == "point"
+## An edge voxel's taper (no face set by the smith), drawn so the edge runs on unbroken from
+## voxel to voxel round the blade's outline: each corner of it across the blade is thin when
+## every voxel at that corner that meets the open air there is an edge facing that way, full when
+## one is not (a blunt block, a point's broad base, the back of a horn). So the top block of an
+## axe's edge, a blunt block beside it open above as well, faces out and not up (not roofed over,
+## cut off from the wedge below it), and where a blade is cut round in steps the edge turns each
+## step with the outline (user: the blade's corners did not join). Its open sides thin at both
+## corners are the sides it narrows toward (honed); a corner thin alone is a corner bit.
+static func _edge_code(cells: Dictionary, p: Vector3i, faces: Dictionary, memo: Dictionary) -> int:
+	var th := _edge_axis(cells, p, memo)
+	if th.is_empty():
+		return 0
+	var c: int = th[0]
+	var thin := _thin_corners(cells, p, c, faces, memo)
+	if thin == 0:
+		return 0
+	var code := (1 << (6 + c)) | _anchor_bit(c, int(th[1]))
+	# Across the blade: axes a1 < a2 (the shader reads them so). Corner i: + or - on a1 (bit 0),
+	# on a2 (bit 1).
+	var a1 := 1 if c == 0 else 0
+	var a2 := 1 if c == 2 else 2
+	var left := thin
+	for side in [[a1, 1, 5], [a1, -1, 10], [a2, 1, 3], [a2, -1, 12]]:
+		var m: int = side[2]
+		if thin & m == m and not cells.has(p + TAPER_AXES[side[0]] * int(side[1])):
+			code |= 1 << (2 * int(side[0]) + (0 if int(side[1]) > 0 else 1))
+			left &= ~m
+	return code | (left << 16)
+
+## A block behind a step of an edge (a blade cut round in steps: the edge's two voxels either
+## side of the gap, this one behind the corner they meet at): thin at that corner with them, or it
+## stands out full between their thin ends and the honed line breaks at every step. Bits 16..19,
+## the corners (see _edge_code), with the blade's thickness pinched as theirs is.
+static func _step_corners(cells: Dictionary, p: Vector3i, faces: Dictionary, memo: Dictionary) -> int:
+	for c in 3:
+		var d: Vector3i = TAPER_AXES[c]
+		var up := cells.has(p + d)
+		var down := cells.has(p - d)
+		if up and down:
+			continue
+		var anchor := 0
+		if up or down:
+			anchor = 1 if up else -1
+			if cells.has(p + d * 2 * anchor):
+				continue   # three or more thick: a block
+		var thin := _thin_corners(cells, p, c, faces, memo)
+		if thin != 0:
+			return (thin << 16) | (1 << (6 + c)) | _anchor_bit(c, anchor)
+	return 0
+
+static func _anchor_bit(c: int, anchor: int) -> int:
+	return 0 if anchor == 0 else 1 << (2 * c + (10 if anchor > 0 else 11))
+
+## Which of `p`'s four corners across a blade `c` thick are thin (bit i: corner i, see _edge_code).
+static func _thin_corners(cells: Dictionary, p: Vector3i, c: int, faces: Dictionary, memo: Dictionary) -> int:
+	var a1 := 1 if c == 0 else 0
+	var a2 := 1 if c == 2 else 2
+	var thin := 0
+	for i in 4:
+		var s1 := 1 if i & 1 == 0 else -1
+		var s2 := 1 if i & 2 == 0 else -1
+		if _corner_thin(cells, p, c, a1, s1, a2, s2, faces, memo):
+			thin |= 1 << i
+	return thin
+
+## The corner of `p` toward s1 on a1 and s2 on a2: the four voxels round it across the blade, and
+## for each one there that meets the open air at it, which way it faces it. Thin when one at least
+## is an edge facing the air there and none is not (one voxel across, facing neither way, leaves
+## it to the rest).
+static func _corner_thin(cells: Dictionary, p: Vector3i, c: int, a1: int, s1: int, a2: int, s2: int, faces: Dictionary, memo: Dictionary) -> bool:
+	var e1: Vector3i = TAPER_AXES[a1] * s1
+	var e2: Vector3i = TAPER_AXES[a2] * s2
+	var quad := [p, p + e1, p + e2, p + e1 + e2]
+	# [from, to, axis, way]: the neighbours round the corner, each way.
+	var sharp := false
+	for pr in [[0, 1, a1, s1], [1, 0, a1, -s1], [0, 2, a2, s2], [2, 0, a2, -s2], [1, 3, a2, s2], [3, 1, a2, -s2], [2, 3, a1, s1], [3, 2, a1, -s1]]:
+		var q: Vector3i = quad[pr[0]]
+		if not cells.has(q) or cells.has(quad[pr[1]]):
+			continue
+		var st := _faces_air(cells, q, int(pr[2]), int(pr[3]), c, faces, memo)
+		if st < 0:
+			return false
+		if st > 0:
+			sharp = true
+	return sharp
+
+## Whether edge voxel `q` (a blade `c` thick) is sharp toward the open air on its side `s` along
+## `d`: 1 it faces it, -1 it is no edge there (not an edge at all, a blade another way), 0 one
+## voxel across, not facing that way. Open on that side only, it faces it. Open both ways (a horn
+## of an axe, a dagger's blade): it faces the way the edge it runs in faces, or the gap where the
+## edge turns round a step of the outline (the next voxel of the edge across the gap from it).
+static func _faces_air(cells: Dictionary, q: Vector3i, d: int, s: int, c: int, faces: Dictionary, memo: Dictionary) -> int:
+	if str(cells.get(q, "")) != "edge":
+		return -1
+	var th := _edge_axis(cells, q, memo)
+	if th.is_empty() or int(th[0]) != c:
+		return -1
+	var f := int(faces.get(q, -1))
+	if f >= 0 and f < 6:
+		return 1 if f == 2 * d + (0 if s > 0 else 1) else -1
+	var dv: Vector3i = TAPER_AXES[d]
+	if cells.has(q - dv * s):
+		return 1
+	var e := 3 - c - d
+	var ev: Vector3i = TAPER_AXES[e]
+	for t: int in [1, -1]:
+		if str(cells.get(q + dv * s + ev * t, "")) == "edge" and cells.has(q + ev * t):
+			return 1
+	# (Its back, the way the run does not face, is left to the rest: not sharp there, it does not
+	# hold the corner full either, so a horn of an axe comes to a point at its end.)
+	return 1 if _run_facing(cells, q, d, e, memo) == s else 0
+
+## The way the edge `q` runs in (along `e`) faces across `d`: the nearest edge voxel of the run
+## open on one side of `d` only; 0 when there is none (or the nearest two disagree).
+static func _run_facing(cells: Dictionary, q: Vector3i, d: int, e: int, memo: Dictionary) -> int:
+	var key := Vector4i(q.x, q.y, q.z, d)
+	if memo.has(key):
+		return memo[key]
+	var dv: Vector3i = TAPER_AXES[d]
+	var ev: Vector3i = TAPER_AXES[e]
+	var found := 0
+	var at := 99
+	for t: int in [1, -1]:
+		var r := q
+		for i in range(1, 13):
+			r += ev * t
+			if str(cells.get(r, "")) != "edge":
+				break
+			var up := not cells.has(r + dv)
+			var down := not cells.has(r - dv)
+			if up != down:
+				var f := 1 if up else -1
+				if i < at:
+					found = f
+					at = i
+				elif i == at and f != found:
+					found = 0
+				break
+	memo[key] = found
+	return found
+
+## An edge voxel's thickness across the blade: [the axis it is thin along, the side its other
+## half is on when the blade is two thick (+1/-1), else 0], or [] for a thick edge (a block). The
+## way the weapon is thinnest round it, where it is open more than one way (a tie: the forge's
+## depth).
+static func _edge_axis(cells: Dictionary, p: Vector3i, memo: Dictionary) -> Array:
+	if memo.has(p):
+		return memo[p]
+	var pinch := []
+	var half := {}
+	for a in 3:
+		var d: Vector3i = TAPER_AXES[a]
+		var up := not cells.has(p + d)
+		var down := not cells.has(p - d)
+		if up and down:
+			pinch.append(a)
+		elif up or down:
+			var s := -1 if up else 1
+			var q := p + d * s
+			var j := str(cells.get(q, ""))
+			if (j == "edge" or j == "point") and not cells.has(q + d * s):
+				half[a] = s
+	pinch.append_array(half.keys())
+	var out := []
+	if not pinch.is_empty():
+		var best: int = pinch[0]
+		if pinch.size() > 1:
+			var span := INF
+			for a in pinch:
+				var w := _span(cells, p, a) + (0.0 if a == 2 else 0.1)
+				if w < span:
+					span = w
+					best = a
+		out = [best, int(half.get(best, 0))]
+	memo[p] = out
+	return out
 
 ## How far the weapon spans along axis `a` within a few voxels of `p` (its local thickness).
 static func _span(cells: Dictionary, p: Vector3i, a: int) -> float:

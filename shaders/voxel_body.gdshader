@@ -15,7 +15,9 @@ shader_type spatial;
 // A weapon's sharp voxels (VoxelPart.taper_code, in r over the kind, in sixteens) are drawn
 // tapered: an edge voxel pinched thin across the blade toward its open side, a wedge whose bevels
 // meet in a bright honed line (half of a blade two thick, toward the face the halves share); a
-// point voxel pinched to a tip. Only the look: it hits as a cube.
+// point voxel pinched to a tip. Where the edge turns a step of a blade cut round in steps, a
+// corner of a voxel is pinched on its own, so the honed line runs on round it. Only the look: it
+// hits as a cube.
 //
 // A gladiator's look (Physique) can bevel his body's outer edges: drawn with bevel_mode on, the
 // code over the kind is the voxel's open faces (+x -x +y -y +z -z, bits 0..5), not a taper. Where two or three open
@@ -82,7 +84,8 @@ void vertex() {
 		}
 	} else if (taper_code > 0.5) {
 		int t = int(taper_code);
-		float thin = ((t >> 9) & 1) == 1 ? point_thin : edge_thin;
+		bool is_point = ((t >> 9) & 1) == 1;
+		float thin = is_point ? point_thin : edge_thin;
 		vec3 pinch = vec3(float((t >> 6) & 1), float((t >> 7) & 1), float((t >> 8) & 1));
 		vec3 toward = vec3(0.0);   // the open sides it narrows to
 		float sides = 0.0;
@@ -96,6 +99,24 @@ void vertex() {
 				open_side = open_side || dot(VERTEX, d) > 0.0;
 			}
 		}
+		// Not a point: its corners across the blade thin on their own (bits 16..19, which on a
+		// point hold its place on a spike), where the edge turns a step of a blade cut round in
+		// steps; and narrowed both ways across the blade's width, all of it is thin, a flat plate.
+		vec3 corner = vec3(0.0);
+		if (!is_point) {
+			int pa = pinch.x > 0.5 ? 0 : (pinch.y > 0.5 ? 1 : 2);
+			int a1 = pa == 0 ? 1 : 0;
+			int a2 = pa == 2 ? 1 : 2;
+			int ci = (VERTEX[a1] > 0.0 ? 0 : 1) + (VERTEX[a2] > 0.0 ? 0 : 2);
+			if (((int(spike_code) >> ci) & 1) == 1) {
+				corner[a1] = sign(VERTEX[a1]);
+				corner[a2] = sign(VERTEX[a2]);
+				open_side = true;
+			}
+			if (((t >> (2 * a1)) & 3) == 3 || ((t >> (2 * a2)) & 3) == 3) {
+				toward = vec3(0.0);
+			}
+		}
 		// Half of a blade two thick narrows toward the face it shares with its other half.
 		vec3 anchor = vec3(0.0);
 		for (int a = 0; a < 3; a++) {
@@ -104,8 +125,8 @@ void vertex() {
 		// A length of a spike (a run of points) narrows from its base's width to its tip's, so
 		// the spike tapers unbroken from the first block to the last; a lone point from full
 		// width to the tip.
-		int si = int(spike_code) & 15;
-		int sn = int(spike_code) >> 4;
+		int si = is_point ? int(spike_code) & 15 : 0;
+		int sn = is_point ? int(spike_code) >> 4 : 0;
 		float s_base = sn > 1 ? mix(1.0, thin, float(si) / float(sn)) : 1.0;
 		float s_tip = sn > 1 ? mix(1.0, thin, float(si + 1) / float(sn)) : thin;
 		vec3 fixed_at = anchor * abs(VERTEX);
@@ -116,7 +137,11 @@ void vertex() {
 		int na = abs(NORMAL.x) > 0.5 ? 0 : (abs(NORMAL.y) > 0.5 ? 1 : 2);
 		if (pinch[na] > 0.5) {
 			float slope = anchor[na] == 0.0 ? 0.5 : (sign(NORMAL[na]) == anchor[na] ? 0.0 : 1.0);
-			NORMAL = normalize(NORMAL + normalize(toward) * (s_base - s_tip) * slope / sides);
+			if (dot(toward, toward) > 0.5) {
+				NORMAL = normalize(NORMAL + normalize(toward) * (s_base - s_tip) * slope / sides);
+			}
+			// A corner thin on its own: the face falls to it there.
+			NORMAL = normalize(NORMAL + corner * (s_base - s_tip) * slope);
 		}
 	}
 	seed = fract(sin(float(INSTANCE_ID) * 12.9898 + 4.1414) * 43758.5453);
@@ -177,13 +202,27 @@ void fragment() {
 	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
 	float hone = 0.0;
 	// (A length of a spike short of its tip has no honed end: the spike runs on.)
-	bool mid_spike = (int(spike_code) >> 4) > 1 && (int(spike_code) & 15) + 1 < (int(spike_code) >> 4);
+	bool sharp_point = ((int(taper_code) >> 9) & 1) == 1;
+	bool mid_spike = sharp_point && (int(spike_code) >> 4) > 1 && (int(spike_code) & 15) + 1 < (int(spike_code) >> 4);
 	if (taper_code > 0.5 && !bevel_mode && !mid_spike) {
 		int t = int(taper_code);
 		for (int f = 0; f < 6; f++) {
 			if (((t >> f) & 1) == 1) {
 				float s = (f % 2 == 0) ? 1.0 : -1.0;
 				hone = max(hone, smoothstep(0.72, 0.98, box_pos[f / 2] * s / max(m, 1e-5)));
+			}
+		}
+		// A corner thin on its own (see vertex()): honed there, where the edges either side meet.
+		if (!sharp_point) {
+			int pa = ((t >> 6) & 1) == 1 ? 0 : (((t >> 7) & 1) == 1 ? 1 : 2);
+			int a1 = pa == 0 ? 1 : 0;
+			int a2 = pa == 2 ? 1 : 2;
+			for (int ci = 0; ci < 4; ci++) {
+				if (((int(spike_code) >> ci) & 1) == 1) {
+					float s1 = (ci & 1) == 0 ? 1.0 : -1.0;
+					float s2 = (ci & 2) == 0 ? 1.0 : -1.0;
+					hone = max(hone, min(smoothstep(0.72, 0.98, box_pos[a1] * s1 / max(m, 1e-5)), smoothstep(0.72, 0.98, box_pos[a2] * s2 / max(m, 1e-5))));
+				}
 			}
 		}
 		hone *= (k == 3 || k == 4 || k == 7) ? 1.0 : 0.35;

@@ -377,9 +377,10 @@ func _taper_all() -> void:
 		if f >= 0:
 			faces[k] = f
 	taper.resize(vox.size())
+	var memo := {}
 	for i in vox.size():
 		var k := Vector3i(roundi(float(vox[i][0])), roundi(float(vox[i][1])), roundi(float(vox[i][2])))
-		taper[i] = VoxelPart.taper_code(cells, k, int(faces.get(k, -1)), faces)
+		taper[i] = VoxelPart.taper_code(cells, k, int(faces.get(k, -1)), faces, memo)
 
 ## A voxel's custom data for the shader: its kind and taper, and while it lies in fire or acid
 ## (set_burn) how hot it glows and how poisoned.
