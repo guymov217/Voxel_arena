@@ -184,7 +184,9 @@ plays fixed 10-second fights single-threaded (16 and 6 fighters, and two of 24 w
 hands, chains, giants and a dozen more creatures) and prints their fingerprints: a faster build
 must print exactly the same ones as before. `tools/replay_bench.sh` times the same fights, so two
 versions are compared on exactly the same work. The limbs' PD drives (`motor_rel`, `pd_relative`,
-`pd_axis`, `pd_twist`) run in C++ too, giving the very floats the GDScript gives. To build it for Linux, then load it:
+`pd_axis`, `pd_twist`) run in C++ too, giving the very floats the GDScript gives. So does the
+drawing of a limb bent at a break (`lay_band`: the voxels over the break laid round the bend every
+frame, for a quarter of what the GDScript cost). To build it for Linux, then load it:
 
 ```bash
 cd extension
