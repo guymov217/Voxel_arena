@@ -753,7 +753,14 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 				_start_coil(t)
 		"charger":
 			if t:
+				# Close to him with its head ready to swing: in at him, to where the tusks or horns
+				# reach (from two strides off they swung at the air, and it stood by him for seconds
+				# between charges with nothing landing: user).
+				var reach_c: float = torso.half_ext.z + head.half_ext.z * 2.0 + 0.5
+				var press: bool = ai.mode != "charge" and dist < 2.8 * S and dist > reach_c * 0.75 and _ready_to_strike(head) and horn_fn() > 0.2 and part_ok(head)
 				if ai.mode == "aim":
+					if press:
+						want = to * float(sp.speed) * 0.4 * hurt
 					if ai.t <= 0.0:
 						# Broken horns shorten the run; hurt forelegs make it slower and wobblier.
 						ai.mode = "charge"; ai.t = 1.6 * (0.55 + 0.45 * horn_fn()); ai.charge_yaw = atan2(to.x, to.z) + (1.0 - front_fn()) * rng.randf_range(-0.35, 0.35) + _aim_err()
@@ -762,11 +769,17 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 					want = Vector3(sin(ai.charge_yaw), 0, cos(ai.charge_yaw)) * float(sp.speed) * hurt * (0.3 + 0.7 * front_fn())
 					if ai.t <= 0.0:
 						ai.mode = "recover"; ai.t = 1.4 * (1.0 - 0.5 * fury)
+						if dist < 2.4 * S:
+							ai.t = 0.5   # (ended on him: a step back to swing its head, not a long retreat)
 				else:
-					want = -to
+					want = to * float(sp.speed) * 0.4 * hurt if press else -to
 					yaw = atan2(to.x, to.z)
 					if ai.t <= 0.0:
 						ai.mode = "aim"; ai.t = (0.8 + rng.randf()) * (1.0 - 0.5 * fury)
+						# Still close to him: no long stare before it goes again (a boar stood by a
+						# man nine seconds, backing, staring and shoving, without a blow: user).
+						if dist < 2.4 * S:
+							ai.t = minf(float(ai.t), 0.35 + rng.randf() * 0.3)
 		"hugger":
 			if hug != null:
 				_squeeze(dt)
@@ -2534,9 +2547,11 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 			var lo := lower_of(best)
 			_strike(best, 0.35, 1.6 + rng.randf(), [lo, (tp - lo.global_position).normalized() * maxf(20.0 * S, 4.0 * lo.mass) * best_f] if lo else [])
 	# Tusks sweep sideways, horns toss upward, both only with something left of them.
-	if (species == "boar" or species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 1.2 and facing > 0.4:
+	# Close in, a charger works at him with them, blow on blow, instead of only charging home.
+	var close_in := dist < reach * 0.95
+	if (species == "boar" or species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 0.95 and facing > 0.4:
 		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
-		_strike(head, 0.5, 2.0 + rng.randf())
+		_strike(head, 0.5, (1.1 if close_in else 2.0) + rng.randf() * (0.6 if close_in else 1.0))
 	# In reach by the body's length, or by the head itself: a rhino's horn, pressed to a man's
 	# chest in its charge, was still short of the body's reach and shoved him a stride along the
 	# sand without once striking.
@@ -2544,7 +2559,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if (species == "bull" or species == "rhino" or species == "goat") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and (dist < reach or head_d < head.half_ext.z * 2.0 + 0.6) and facing > 0.6:
 		# The toss is the head's own swing (see _strike_pose); only a small lift on top of it, so a
 		# man is thrown about like by a bull, not launched into the air.
-		_strike(head, 0.25 if species == "rhino" else 0.35, 1.8 + rng.randf(), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])
+		_strike(head, 0.25 if species == "rhino" else 0.35, (1.1 if close_in else 1.8) + rng.randf() * (0.6 if close_in else 1.0), [head, Vector3(0, 4.0 * S * horn_fn(), 0)] if species != "rhino" else [])
 
 ## The manticore's volley (the beast of Ctesias, its tail set with stings it shoots like
 ## arrows): a man out of reach of its claws, it stands, raises the tail high over its back with a
