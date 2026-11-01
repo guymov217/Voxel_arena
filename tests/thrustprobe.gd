@@ -62,15 +62,22 @@ func _ready() -> void:
 				var ax: Vector3 = PD.quat_of(w) * Vector3.UP
 				var tip0 := _tip(w)
 				var far := tip0
+				var trunk0 := f.torso.global_position
+				var fell := false
 				var vmax := 0.0
 				var prev := tip0
 				st.thrust = 1.0
 				for i in 72:
 					await get_tree().physics_frame
 					var tp := _tip(w)
-					if OS.get_environment("TRACE") != "" and i % 6 == 0:
+					if OS.get_environment("TRACE") != "" and i % int(OS.get_environment("TRACE_EVERY") if OS.get_environment("TRACE_EVERY") != "" else "6") == 0:
 						var tl = f.thrust_line.R
-						print("  t %d line %s ext %.2f hand %s tip %s" % [i, "on" if tl != null else "off", float(f.thrust_ext.R), str((f.hand_world("R") - f.torso.global_position).snapped(Vector3(0.01, 0.01, 0.01))), str((tp - f.torso.global_position).snapped(Vector3(0.01, 0.01, 0.01)))])
+						var mark := Vector3.ZERO
+						if tl != null and tl.has("o_w"):
+							mark = (tl.o_w as Vector3) + (tl.dir_w as Vector3) * float(f.thrust_ext.R)
+						print("  t %d line %s ext %.2f hand %s tip %s  hand off its mark %.2f m  tip speed %.1f m/s  trunk moved %.2f m" % [i, "on" if tl != null else "off", float(f.thrust_ext.R), str((f.hand_world("R") - f.torso.global_position).snapped(Vector3(0.01, 0.01, 0.01))), str((tp - f.torso.global_position).snapped(Vector3(0.01, 0.01, 0.01))), f.hand_world("R").distance_to(mark) if mark != Vector3.ZERO else -1.0, (tp - prev).length() * 120.0, (f.torso.global_position - trunk0).length()])
+					if f.state != "stand":
+						fell = true
 					vmax = maxf(vmax, (tp - prev).length() * 120.0 - f.torso.linear_velocity.length())
 					prev = tp
 					if (tp - tip0).dot(ax) > (far - tip0).dot(ax):
@@ -82,6 +89,8 @@ func _ready() -> void:
 				var side_v := Vector3.UP.cross(ax).normalized() if absf(ax.y) < 0.95 else Vector3.RIGHT
 				var up_v := ax.cross(side_v).normalized()
 				var line := "THRUST %-11s %-5s %s went %.2f m off-line %5.1f deg (up %+.0f cm, left %+.0f cm)  tip speed %.1f m/s" % [wn, an, "foe " if with_foe else "air ", mv.dot(ax), off_deg, mv.dot(up_v) * 100.0, mv.dot(side_v) * 100.0, vmax]
+				if fell:
+					line += "  FELL (%s)" % f.state
 				if with_foe:
 					var Jmax := 0.0
 					var dmg := 0.0

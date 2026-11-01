@@ -2,7 +2,7 @@ extends Node
 ## The hands held still (user video 1135: small tremors in the hands, a sword in each, both arms
 ## out in front): how much each blade's tip shakes about where it is going, in millimetres (the
 ## part of its motion faster than a quarter of a second), and the most it moves in one step.
-## `-- --probe tremor`. HOLDS: which holds (all).
+## `-- --probe tremor`. HOLDS: which holds (all); THRUST=1: with the main hand's thrust held.
 
 const HOLDS := {
 	"guard": [{"x": 0.1, "y": 0.15}, {"x": -0.35, "y": 0.1}],
@@ -41,13 +41,19 @@ func _ready() -> void:
 					e.erase("bot")
 				var f: Fighter = e.f
 				var h: Array = HOLDS[hn]
-				e.drive = func(_e): return {"main": h[0], "off": h[1], "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}
+				# THRUST=1: the main hand's thrust held at the end of its stab (the arm out at full stretch).
+				var st := {"thrust": 0.0}
+				e.drive = func(_e): return {"main": h[0], "off": h[1], "power": true, "thrust": st.thrust, "look": {"yaw": 0.0, "pitch": 0.0}}
 				if hurt:
 					for s in ["R", "L"]:
 						f.arm[s].fore.hp *= 0.45
 						f.arm[s].upper.hp *= 0.6
 				for i in 240:
 					await get_tree().physics_frame
+				if OS.get_environment("THRUST") == "1":
+					st.thrust = 1.0
+					for i in 90:
+						await get_tree().physics_frame
 				var tips := {"R": [], "L": []}
 				for i in 360:
 					await get_tree().physics_frame

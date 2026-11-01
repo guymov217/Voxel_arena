@@ -192,7 +192,9 @@ func test_a_blade_comes_up_across_the_body_from_hanging() -> void:
 		await get_tree().process_frame
 
 ## A thrust is a stab along the blade's own line: drawn back along it, then driven out along
-## it, point first, the blade not turned off it, one hand or two.
+## it, point first, the blade not turned off it, one hand or two. In the arena, where the point
+## goes: the body lunges in behind it and the line stays where it lay, so the point (not just
+## the arm in his frame) travels where the blade pointed.
 func test_a_thrust_drives_straight_along_the_blade() -> void:
 	for wk in ["gladius", "longsword"]:
 		var m := Match.new()
@@ -205,7 +207,7 @@ func test_a_thrust_drives_straight_along_the_blade() -> void:
 			await get_tree().physics_frame
 		var w: Weapon = f.weapons.R
 		var ax0: Vector3 = PD.quat_of(w) * Vector3.UP
-		var tip := func() -> Vector3: return w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0) - f.torso.global_position
+		var tip := func() -> Vector3: return w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0)
 		var start: Vector3 = tip.call()
 		var back := start
 		var turn := 0.0

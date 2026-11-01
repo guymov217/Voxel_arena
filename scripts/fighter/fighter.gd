@@ -167,6 +167,9 @@ var thrust_ext := {"R": 0.0, "L": 0.0}   # how far along that line the hand is d
 const THRUST_DRAW := 0.12   # s drawing the hand back along the line
 const THRUST_DRIVE := 0.14   # s driving it out to the end of the arm
 const THRUST_OVER := 0.3    # past the arm's reach, the body leaning in after it (0.15 left a stab from a raised guard 5 cm past where it began, user)
+const THRUST_CHAMBER := 0.2   # at most this far (times the body's scale) drawn back along the line before the drive
+const LUNGE_TIME := 0.3    # s of the drive the body lunges in behind the point
+const LUNGE_BOOST := 0.8   # how much faster than a walk the lunge carries him
 var thrust_lean := 0.0
 var chop_mem := {"R": 0.0, "L": 0.0}   # a downward chop, held a moment after the hand slows   # how far into the stab the body leans now (0..1)
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
@@ -2418,14 +2421,33 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# A thrust is a lunge: the feet carry him a step in after the point while the button is down
 	# (held out at arm's length and no more, the point only pricked).
 	var lunge := maxf(float(inp.get("thrust", 0.0)), float(inp.get("offThrust", 0.0)))
+	var lunge_burst := 0.0
 	if lunge > 0.3 and standing and not rising and shove_t <= 0.0 and (weapons.R or weapons.L) and holding == null:
 		# The step goes the way the point goes: along the thrust's line as it lies on the ground
-		# (a stab across the body steps across, one straight up or down hardly steps at all).
+		# (a stab across the body steps across, one straight up or down hardly steps at all). The
+		# line stays where it lay, so the step only brings the shoulder nearer along it: a stab up
+		# or down from a high or a low guard, the arm already out that way, went a hand's breadth.
 		var tl_m = thrust_line.R if thrust_line.R != null else thrust_line.L
 		var step := Vector3(0, 0, 1)
 		if tl_m != null:
 			var d: Vector3 = tl_m.dir
-			step = Vector3(d.x, 0.0, d.z) * clampf(1.0 - 1.3 * absf(d.y), 0.0, 1.0)
+			var t_l := float(tl_m.t)
+			if t_l < THRUST_DRAW:
+				# (Not while the hand is drawn back: the step is the drive's, the body's weight going
+				# in behind the point. Stepping in from the start, the trunk went forward as the hand
+				# came back and the hand never drew back at all.)
+				step = Vector3.ZERO
+			elif t_l < THRUST_DRAW + LUNGE_TIME:
+				# The drive itself is a lunge, the back foot thrusting the body in behind the point
+				# (at a walk it was a push: the arm, out at a guard's reach already, has a hand's
+				# breadth to give, and the rest of a stab's weight is the body's). Any slope: the
+				# line stays where it lay, so the lunge only brings the shoulder nearer along it.
+				step = Vector3(d.x, 0.0, d.z)
+				lunge_burst = Vector2(d.x, d.z).length()
+			else:
+				# The button held after it: a step in after the point, the line carried with him (a
+				# stab straight up or down hardly steps at all).
+				step = Vector3(d.x, 0.0, d.z) * clampf(1.0 - 1.3 * absf(d.y), 0.0, 1.0)
 		step *= 0.75 * clampf(lunge, 0.0, 1.0)
 		move_local.z = maxf(move_local.z, step.z)
 		if absf(step.x) > absf(move_local.x):
@@ -2442,7 +2464,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
 	var load_ := Armory.burden(carried_kg())
-	var speed := (3.8 if sprint else 2.1) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var speed := (3.8 if sprint else 2.1) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
 	last_move = yaw_q * move_local if live else Vector3.ZERO
@@ -3298,9 +3320,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	target = _clear_body(target, yaw_q, t_pos)
 	var target_w := t_pos + yaw_q * target
 	# A thrust is a straight stab along the blade, wherever it points: the line the blade is on
-	# when the button goes down (in the body's frame, so it turns with him) is kept, the hand is
-	# drawn back along it a little and then driven out along it, hard and fast, to the end of
-	# the arm. The blade stays on that line the whole way: the point goes where it points.
+	# when the button goes down is kept where it lies (in the arena, not on the body: a lean or a
+	# lunge only gives the arm more reach along it, where carried with the trunk the point sank
+	# a hand's breadth under its line, user), the hand is drawn back along it a little and then
+	# driven out along it, hard and fast, to the end of the arm. The blade stays on that line the
+	# whole way: the point goes where it points.
 	thrust_aim[side] = null
 	thrust_ext[side] = 0.0
 	if not line_on:
@@ -3311,8 +3335,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# The line the blade really lies on, and the hand where it really is.
 			var d0: Vector3 = yaw_q.inverse() * (PD.quat_of(w) * Vector3.UP)
 			d0.z = maxf(d0.z, 0.2)
-			tl = {"o": yaw_q.inverse() * (hand_world(side) - t_pos), "dir": d0.normalized(), "t": 0.0}
+			d0 = d0.normalized()
+			tl = {"o": yaw_q.inverse() * (hand_world(side) - t_pos), "dir": d0, "t": 0.0, "o_w": hand_world(side), "dir_w": yaw_q * d0}
 			thrust_line[side] = tl
+		_line_in_body(tl, t_pos, yaw_q)
 		tl.t += dt
 		var ext := _thrust_ext(tl, tl.o, shoulder[side])
 		thrust_ext[side] = ext
@@ -3400,8 +3426,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				# A thrust drives the front hand along the blade's line, as far as that arm reaches.
 				# From where the front hand really is (the guard's mark was off it, and the stab
 				# began with a jump off its own line).
-				if not tl2.has("f"):
-					tl2.f = yaw_q.inverse() * (hand_world("L") - t_pos)
+				if not tl2.has("f_w"):
+					tl2.f_w = hand_world("L")
+				_line_in_body(tl2, t_pos, yaw_q)
 				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z))
 				target_w = front - gap
 			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
@@ -3993,6 +4020,21 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * 0.97 * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
 
+## A thrust's line, kept where it lay in the arena when the stab began (o_w, dir_w, the front
+## hand's f_w), as it lies from the body now (o, dir, f: the body's frame). Through the stab
+## only (drawn back, driven out, the lunge in behind it): the button held after it, the line
+## goes on with him as it lies then (kept in the arena, the hand was dragged off its mark and
+## shook as he stepped on past where the stab began).
+static func _line_in_body(tl: Dictionary, t_pos: Vector3, yaw_q: Quaternion) -> void:
+	if float(tl.t) >= THRUST_DRAW + LUNGE_TIME:
+		return
+	var inv := yaw_q.inverse()
+	if tl.has("o_w"):
+		tl.o = inv * ((tl.o_w as Vector3) - t_pos)
+		tl.dir = inv * (tl.dir_w as Vector3)
+	if tl.has("f_w"):
+		tl.f = inv * ((tl.f_w as Vector3) - t_pos)
+
 ## Where the blade should point: elevation from the hand's height, yaw from a pivot behind the
 ## hand, the edge leading the stroke; slewed at the rate the weapon allows.
 ## How far along a thrust's line (from `o`, in the body's frame) the hand is now: drawn back
@@ -4016,6 +4058,10 @@ func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF) -> f
 	# the line as far as it takes, to no nearer than just in front of the chest.
 	e_lo = minf(e_lo, e_hi - 0.4 * S)
 	e_lo = minf(0.0, maxf(e_lo, (0.12 * S - minf(o_l.z, chest_z)) / maxf(d.z, 0.2)))
+	# No further back than an arm can draw a hand in a tenth of a second: asked half a metre back,
+	# to the chest, the hand got a third of the way there and the drive spent itself catching up
+	# with its own mark (the point came on at a walking pace).
+	e_lo = maxf(e_lo, -THRUST_CHAMBER * S)
 	# Driven a hand past the arm's reach: the straight arm hauls the shoulder after it, the body
 	# leaning into the stab as the feet lunge.
 	e_hi += THRUST_OVER * S
