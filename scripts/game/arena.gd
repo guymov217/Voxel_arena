@@ -70,17 +70,22 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	e.glow_hdr_threshold = 1.1
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	e.volumetric_fog_enabled = lv >= 2
-	e.volumetric_fog_density = 0.004
+	e.volumetric_fog_density = 0.006   # air enough for the sun to show in, shafts through the arcade
 	e.volumetric_fog_albedo = Color(0.85, 0.76, 0.6)
 	e.volumetric_fog_anisotropy = 0.6
 	e.volumetric_fog_length = 48.0
 	e.volumetric_fog_sky_affect = 0.15
-	e.fog_enabled = lv < 2
+	# A haze of distance on every level (next to nothing to draw): the far side of the bowl and
+	# its stands a little lost in the warm air, the fight in front sharp.
+	e.fog_enabled = true
 	if sun_:
 		sun_.shadow_enabled = true
 		sun_.directional_shadow_max_distance = 40.0 if lv >= 2 else 25.0
 		sun_.shadow_blur = 1.0
-		sun_.light_volumetric_fog_energy = 1.4
+		sun_.light_volumetric_fog_energy = 1.8
+		# The sun a disc, not a point (ultra only: it is the one thing here that costs): shadows
+		# sharp at the feet, softer the further they fall from what casts them.
+		sun_.light_angular_distance = 0.5 if lv >= 3 else 0.0
 
 func _build_visuals() -> void:
 	var day := theme != "night"
@@ -93,29 +98,48 @@ func _build_visuals() -> void:
 	e.background_mode = Environment.BG_SKY
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	e.ambient_light_sky_contribution = 0.55
-	e.ambient_light_color = Color(0.85, 0.72, 0.55)
+	# Warm sun, cool shade: the shadows take the blue of the open sky (by night, the moon's).
+	e.ambient_light_sky_contribution = 0.75 if day else 0.55
+	e.ambient_light_color = Color(0.62, 0.72, 0.9) if day else Color(0.85, 0.72, 0.55)
 	# Clear and easy on the eye: the sun a little lower and softer, the exposure down a touch so
 	# the sand no longer glares white, the colours kept bright (the "clear" look, E, of the
 	# lighting trials: tests/lightshots.gd).
-	e.ambient_light_energy = 0.65 if day else 0.27
+	e.ambient_light_energy = 0.6 if day else 0.27
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
 	e.tonemap_exposure = 0.8 if day else 0.88
 	e.tonemap_white = 6.0
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 1.05 if day else 1.08
 	e.adjustment_contrast = 1.1 if day else 1.12
-	e.fog_density = 0.0015 if day else 0.008
+	e.fog_density = 0.005 if day else 0.008
 	e.fog_light_color = Color(0.82, 0.74, 0.6)
+	e.fog_aerial_perspective = 0.7 if day else 0.5   # the haze takes the sky's own colour far off
+	e.fog_sun_scatter = 0.25 if day else 0.0
+	e.fog_sky_affect = 0.0                            # (the sky itself clear)
 	we.environment = e
 	add_child(we)
 	env = e
 	sun = DirectionalLight3D.new()
-	sun.light_energy = 1.5 if day else 0.25
-	sun.light_color = Color(1.0, 0.9, 0.78) if day else Color(0.5, 0.56, 0.75)
+	sun.light_energy = 1.75 if day else 0.25
+	sun.light_color = Color(1.0, 0.86, 0.7) if day else Color(0.5, 0.56, 0.75)
 	sun.rotation = Vector3(deg_to_rad(-38 if day else -48), deg_to_rad(35), 0)
 	add_child(sun)
-	apply_quality(e, sun, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
+	var q := str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high"
+	apply_quality(e, sun, q)
+	# A film's look over the picture, under the HUD (medium and up): the corners a touch darker,
+	# a fine grain that moves. One quad over the screen that reads nothing back.
+	if q != "low":
+		var layer := CanvasLayer.new()
+		layer.name = "Film"
+		layer.layer = -1
+		var veil := ColorRect.new()
+		veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sm := ShaderMaterial.new()
+		sm.shader = load("res://shaders/film.gdshader")
+		veil.material = sm
+		layer.add_child(veil)
+		add_child(layer)
 	# Particles land on the sand instead of falling through it.
 	var pc := GPUParticlesCollisionBox3D.new()
 	pc.size = Vector3(RADIUS * 2.0 + 4.0, 1.0, RADIUS * 2.0 + 4.0)

@@ -1,5 +1,5 @@
 shader_type spatial;
-// The arena's floor (Arena.sand_material): sand and packed earth in 10 cm voxels, as Teardown's
+// The arena's floor (Arena.sand_material): sand and packed earth in 10 cm voxels, a voxel world's
 // ground (each voxel its own shade, flat; `step_amt` would raise patches a voxel with steps between).
 // Each is a 2 mm-a-pixel map (tools/gen_textures.py floor) laid on in world space, twice at two
 // sizes and angles and blended by a slow noise, so no tile repeats; the two meet by their
@@ -15,7 +15,7 @@ uniform float tile = 4.0;                // metres a map covers
 uniform float radius = 15.0;             // the arena's
 uniform float tint = 0.8;                // a shade down: bright sand under a high sun glared
 uniform float bump = 1.0;
-uniform float voxel = 0.1;               // the sand in the game's voxels, as Teardown's ground: 10 cm
+uniform float voxel = 0.1;               // the sand in the game's voxels, as a voxel world's ground: 10 cm
 uniform float voxel_fade = 26.0;         // past this the voxels blend back into smooth sand (m)
 uniform float steps = 2.4;               // how many voxels the patches' heights range over
 uniform float vox_on = 1.0;              // 0: smooth sand, no voxels at all
@@ -93,7 +93,7 @@ void fragment() {
 	vec2 cp = mix(p, (cell + 0.5) * voxel, vk);
 	vec4 s = layer(sand_alb, sand_nrm, p, cp, mixw, gs);
 	vec4 e = layer(earth_alb, earth_nrm, p + vec2(11.3, -7.9), cp + vec2(11.3, -7.9), 1.0 - mixw, ge);
-	// Each voxel its own shade, as Teardown's: grains of a palette, a few darker or paler ones.
+	// Each voxel its own shade: grains of a palette, a few darker or paler ones.
 	float hv = hash(cell);
 	float vj = mix(1.0, 0.92 + 0.14 * hv + (hv > 0.94 ? -0.1 : 0.0) + (hv < 0.04 ? 0.08 : 0.0), vk * jitter);
 	s.rgb *= vj;
