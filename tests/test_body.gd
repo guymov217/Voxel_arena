@@ -184,6 +184,39 @@ func test_the_elixir_in_the_yard_gives_the_hand_back_at_once() -> void:
 	Save.set_value("body", body0 if body0 is Dictionary else {})
 	await get_tree().process_frame
 
+## A bone the physician sets in the yard is whole on him there and then (user: whatever he bought
+## at the physician's, the broken arm stayed broken).
+func test_a_bone_set_in_the_yard_is_whole_at_once() -> void:
+	var body0 = Save.get_value("body", {})
+	Save.set_value("body", Body.sanitize({"fractures": {"forearmL": 2, "shinR": 3}}))
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	for i in 10:
+		await get_tree().physics_frame
+	var f: Fighter = menu.match_.me.f
+	t.check(f.by_name.forearmL.fractured and f.by_name.shinR.fracture == 3, "he walks in with the forearm broken and the shin broken open")
+	var arm0 := f.arm_func("L")
+	menu.set_body(Body.apply(menu.body(), "set:forearmL"))
+	for i in 10:
+		await get_tree().physics_frame
+	var g: Fighter = menu.match_.me.f
+	t.check(g.by_name.forearmL.fracture == 0 and not g.by_name.forearmL.fractured, "the forearm set: whole on him at once")
+	t.check(g.arm_func("L") > arm0 + 0.5, "and the arm works again (%.2f, was %.2f)" % [g.arm_func("L"), arm0])
+	t.check(g.by_name.shinR.fracture == 3, "the shin not yet set")
+	menu.set_body(Body.apply(menu.body(), "set:shinR"))
+	for i in 10:
+		await get_tree().physics_frame
+	var h: Fighter = menu.match_.me.f
+	t.check(h.by_name.shinR.fracture == 0 and h.by_name.shinR.bo_pos.is_empty(), "the open break set: the bone back in")
+	t.check(h.leg_func("R") > 0.9, "and the leg bears him (%.2f)" % h.leg_func("R"))
+	t.check((menu.body().fractures as Dictionary).is_empty(), "nothing left broken in his save")
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("body", body0 if body0 is Dictionary else {})
+	await get_tree().process_frame
+
 ## A weapon that fell to the sand with the arm cut off holding it comes back from the bout with
 ## the chips it had, not "lost" down to its grip.
 func test_a_weapon_that_fell_with_its_arm_is_not_lost() -> void:

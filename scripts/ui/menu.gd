@@ -292,7 +292,9 @@ func set_body(b: Dictionary) -> void:
 	Net.my_body = clean
 	# A limb or an eye given back in the yard (the Elixir, a prosthetic): he stands there with it
 	# at once, his weapons in the hands it gave back (he walked about armless until the next bout).
-	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes):
+	# A bone set by the physician the same: whole on him there and then (user: whatever he bought,
+	# the broken arm stayed broken).
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures):
 		match_.rebuild(match_.me, clean)
 		return
 	# Stitched in the yard: the wounds close on him there and then.
