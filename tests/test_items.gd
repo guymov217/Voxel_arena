@@ -155,6 +155,61 @@ func test_a_pot_leaves_from_the_hand_that_holds_it() -> void:
 	t.eq(a.f.item_hand(), "R", "the next is readied in the right hand")
 	m.queue_free()
 
+## Both hands full (a sword and a shield): the pot is not put in a fist round the shield's grip.
+## The shield hand puts the shield out of sight (hidden, touching nothing, still his), holds the
+## pot, throws it from there, and has the very same shield back once the arm has come through;
+## the same when the pot is put back in the kit, and for a bot that throws at once. Dying with
+## the shield put away, it is dropped on the sand like his other arms (user).
+func test_a_full_hand_puts_its_weapon_away_to_throw_and_takes_it_back() -> void:
+	seed(4)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -4), 0.0, {"main": "gladius", "off": "roundShield"}, "Kit", 0, _idle)
+	a.kind = "local"
+	await _steps(40)
+	var f: Fighter = a.f
+	var shield: Weapon = f.weapons.L
+	t.check(shield != null and shield.is_shield, "a shield in the left hand")
+	a.inventory = {"thunderPot": 3}
+	m.throwables.use_item(a, 0)
+	t.eq(f.held_item.side, "L", "the pot goes to the shield hand")
+	t.check(f.weapons.L == null and f.stowed.L == shield, "which puts the shield away for it")
+	t.check(not shield.visible and shield.collision_layer == 0 and shield.collision_mask == 0, "out of sight, touching nothing")
+	t.check(f.weapons.R != null, "the sword stays in the right hand")
+	await _steps(20)
+	var hand: Vector3 = f.hand_world("L")
+	m.throwables.throw_held(a, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": 0.8})
+	f.throw_anim = {"side": "L", "phase": "follow", "t": 0.35}
+	var it = m.items.list.filter(func(i): return i.type == "pot_thunder").back()
+	t.check(it != null and (it.p as Vector3).distance_to(hand) < 0.3, "the pot leaves from that hand (%.2f m off)" % ((it.p as Vector3).distance_to(hand) if it else -1.0))
+	t.check(f.weapons.L == null, "the shield still away while the arm comes through")
+	await _steps(60)
+	t.check(f.weapons.L == shield and f.stowed.L == null, "then the same shield is back in the hand")
+	t.check(shield.visible and shield.collision_layer != 0 and not shield.freeze, "seen and solid again")
+	t.check(shield.grip_world().distance_to(f.hand_world("L")) < 0.15, "held at its grip (%.2f m)" % shield.grip_world().distance_to(f.hand_world("L")))
+	# Readied and put back in the kit: the shield comes back too.
+	m.throwables.use_item(a, 0)
+	t.check(f.stowed.L == shield, "readied again, the shield away")
+	m.throwables.use_item(a, 0)
+	await _steps(4)
+	t.check(f.held_item == null and f.weapons.L == shield, "put back in the kit, the shield in the hand again")
+	# A bot throws at once, from the shield hand, and has its shield back after (at a man far off:
+	# its pot is not to land on the one being tested).
+	_man(m, Vector3(3, 0, 16), PI, {}, "Mark", 1, _idle)
+	var b := _man(m, Vector3(3, 0, -4), 0.0, {"main": "gladius", "off": "roundShield"}, "Bot", 0, _idle)
+	await _steps(40)
+	var bs: Weapon = b.f.weapons.L
+	b.inventory = {"thunderPot": 1}
+	m.throwables.use_item(b, 0)
+	t.check(b.f.weapons.L == null and b.f.stowed.L == bs, "a bot's shield goes out of sight for the throw")
+	await _steps(70)
+	t.check(b.f.weapons.L == bs and bs.visible, "and is back in its hand after")
+	# Killed with the shield put away: it falls on the sand.
+	m.throwables.use_item(a, 0)
+	t.check(f.stowed.L == shield, "readied once more")
+	f.die("test")
+	t.check(f.stowed.L == null and shield.holder == null and shield.visible and m.combat.loose_weapons.has(shield), "dead, the shield is dropped, seen, loose")
+	m.queue_free()
+
 func test_a_crossbow_shoots_a_bolt_on_a_thrust() -> void:
 	seed(7)
 	var m := _match()

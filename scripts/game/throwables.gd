@@ -1576,6 +1576,10 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 		return   # no hand left to hold it
 	if side == "L" and c.two_handed:
 		c.toggle_grip()   # the off hand lets go of the haft to take the pot (H takes it back)
+	# Both hands full: that hand puts what it holds out of sight and takes the pot instead; the
+	# weapon is back in it once the pot is thrown or put away (user).
+	if c.weapons.get(side):
+		c.stow(side)
 	var node = null
 	if not headless:
 		node = Items.visual(type)
@@ -1638,6 +1642,10 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 	var sd: String = side if side != "" else c.item_hand()
 	if sd == "L" and c.two_handed:
 		c.toggle_grip()
+	# (A bot throws at once: the hand full, it puts its weapon out of sight for the throw and has
+	# it back when the arm comes through.)
+	if sd != "" and c.weapons.get(sd) and c.stow(sd):
+		c.throw_anim = {"side": sd, "phase": "follow", "t": 0.35}
 	var hand: Vector3 = c.hand_world(sd) if sd != "" else c.head.global_position
 	var from: Vector3 = hand + (aim - hand).normalized() * 0.12 * c.S if aim.distance_to(hand) > 0.3 else hand
 	if type == "pot_dart":

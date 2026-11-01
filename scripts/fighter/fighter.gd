@@ -184,6 +184,7 @@ var head: VoxelPart
 var arm := {}
 var weapons := {"R": null, "L": null}
 var weapon_joints := {"R": null, "L": null}
+var stowed := {"R": null, "L": null}   # a weapon put out of sight while that hand throws a pot (Fighter.stow)
 var two_handed := false
 var feet := {"L": null, "R": null}
 var v_smooth := Vector3.ZERO
@@ -1205,6 +1206,77 @@ func release(side: String) -> Weapon:
 		Combat.current.loose_weapons.append(w)
 	return w
 
+## A pot is thrown from a free hand; with both hands full, one of them puts what it holds out of
+## sight, takes the pot, throws it, and then has its own back (user). Put away, the weapon is let
+## go of, hidden and touches nothing, and it stays his (not lying loose for anyone to take);
+## Fighter.unstow puts it back in the hand as it was held. False if that hand has nothing it
+## can put down (a blade arm keeps its blade).
+func stow(side: String) -> bool:
+	var w: Weapon = weapons[side]
+	if w == null or stowed[side] != null or fixed_hand[side]:
+		return false
+	if side == "R" and two_handed:
+		toggle_grip()
+	if weapon_joints[side]:
+		weapon_joints[side].queue_free()
+		weapon_joints[side] = null
+	weapons[side] = null
+	stowed[side] = w
+	for b in w.bodies():
+		if not is_instance_valid(b):
+			continue
+		b.visible = false
+		if b is RigidBody3D:
+			b.set_meta("stow_lm", [b.collision_layer, b.collision_mask])
+			b.collision_layer = 0
+			b.collision_mask = 0
+			b.linear_velocity = Vector3.ZERO
+			b.angular_velocity = Vector3.ZERO
+			b.freeze = true
+	return true
+
+## The weapon put away for a throw, back in the hand that held it, gripped as it was (that hand
+## gone, or holding something else by now: it falls at his feet instead).
+func unstow(side: String) -> void:
+	var w = stowed[side]
+	stowed[side] = null
+	if w == null or not is_instance_valid(w):
+		return
+	var fore: VoxelPart = arm[side].fore
+	var hand := hand_world(side)
+	var back: bool = weapons[side] == null and not fore.severed and not fore.missing and state != "dead"
+	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w)
+	var to := Transform3D(Basis(rot), hand - rot * w.grip_main)
+	var shift: Transform3D = to * w.global_transform.affine_inverse()
+	for b in w.bodies():
+		if not is_instance_valid(b):
+			continue
+		if b != w:
+			b.global_transform = shift * b.global_transform
+		b.visible = true
+		if b is RigidBody3D:
+			var lm = b.get_meta("stow_lm", null)
+			if lm is Array:
+				b.collision_layer = int(lm[0])
+				b.collision_mask = int(lm[1])
+			b.remove_meta("stow_lm")
+			b.freeze = false
+			b.linear_velocity = fore.linear_velocity
+			b.angular_velocity = Vector3.ZERO
+	w.global_transform = to
+	w.snap_drawing()
+	if back:
+		weapons[side] = w
+		weapon_joints[side] = _grip_joint(fore, w, hand)
+		return
+	w.holder = null
+	w.welded = false
+	w.last_side = side
+	w.own_by = self
+	w.own_t = 0.35
+	if Combat.current and not Combat.current.loose_weapons.has(w):
+		Combat.current.loose_weapons.append(w)
+
 ## H: the off hand takes hold of the main weapon's haft too, or lets go of it (character.js
 ## toggleGrip). Two hands: more power and better control of a heavy weapon; one: the off hand
 ## is free. Returns "one", "two" or null.
@@ -1838,6 +1910,10 @@ func item_hand() -> String:
 	for sd in ["L", "R"]:
 		if not weapons[sd] and hand_works(sd) and not (sd == "L" and two_handed):
 			return sd
+	# Both full: one that can put what it holds out of sight for the throw (Fighter.stow).
+	for sd in ["L", "R"]:
+		if hand_works(sd) and not fixed_hand[sd]:
+			return sd
 	for sd in ["L", "R"]:
 		if hand_works(sd):
 			return sd
@@ -2137,6 +2213,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		throw_anim.t -= dt
 		if throw_anim.t <= 0.0:
 			throw_anim = null
+	# A weapon put away for a throw comes back to its hand once the pot has gone from it and the
+	# arm has finished the throw (or the pot was put back in the kit).
+	for sd in ["R", "L"]:
+		if stowed[sd] != null and not (held_item != null and str(held_item.get("side", "")) == sd) and not (throw_anim != null and throw_anim.side == sd):
+			unstow(sd)
 	if net_timer > 0.0:
 		net_timer -= dt
 		if net_timer <= 0.0:
@@ -4630,6 +4711,7 @@ func die(cause := "") -> void:
 	set_standing(false)
 	VoxelPart.to_corpse(parts)
 	for side in ["R", "L"]:
+		unstow(side)
 		release(side)
 	died.emit(self, cause)
 
@@ -4638,6 +4720,7 @@ func _fall_dying() -> void:
 	dying = maxf(8.0, DYING_T - 5.0 * lifts)
 	set_standing(false)
 	for side in ["R", "L"]:
+		unstow(side)
 		release(side)
 	for p in parts:
 		p.bleed = 0.0

@@ -515,6 +515,8 @@ func add_peer(id: int, p: Dictionary) -> void:
 			Net.send_to(id, "spawn", _spawn_msg(e))
 	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
 	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
+	for e in entities:
+		e.erase("held_sig")   # (what everyone holds ready, to him too)
 	players_count = humans().size()
 	feed.emit("%s came into the yard" % p.name)
 	_send_yard_next()
@@ -1005,6 +1007,8 @@ func _physics_process(dt: float) -> void:
 				var lq := lw.global_transform.basis.get_rotation_quaternion()
 				ls.append([id, snappedf(lw.global_position.x, 0.001), snappedf(lw.global_position.y, 0.001), snappedf(lw.global_position.z, 0.001), snappedf(lq.x, 0.001), snappedf(lq.y, 0.001), snappedf(lq.z, 0.001), snappedf(lq.w, 0.001)])
 		Net.send_all("lsnap", {"w": ls, "h": hazards.snapshot()}, false)
+	if role == "host" and tick % SNAP_EVERY == 1:
+		_sync_held()
 	if role == "host" and tick % SNAP_EVERY == 0:
 		# One fighter to a message: each fits in one packet (a whole snapshot was split into
 		# fragments, and one lost fragment lost all of it).
@@ -1192,6 +1196,23 @@ func on_coin(c) -> void:
 
 ## Host: loose weapons get a number and the guests are told when one is dropped, thrown,
 ## spawned or picked up.
+## What each fighter has readied in a hand to throw and the weapon he put out of sight for it
+## (Fighter.stow), sent to the guests when it changes: a shield put away for a throw was left
+## hanging in the air on their screens, and the pot was never seen in the hand.
+func _sync_held() -> void:
+	for e in entities:
+		var f = e.f
+		if not is_instance_valid(f) or not (f is Fighter):
+			continue
+		var h = f.held_item
+		var t: String = str(h.type) if h != null else ""
+		var sd: String = str(h.get("side", "")) if h != null else ""
+		var sig := "%s|%s|%d%d" % [t, sd, 1 if f.stowed.R != null else 0, 1 if f.stowed.L != null else 0]
+		if str(e.get("held_sig", "||00")) == sig:
+			continue
+		e.held_sig = sig
+		Net.send_all("held", {"id": e.id, "t": t, "s": sd, "st": [f.stowed.R != null, f.stowed.L != null]})
+
 func _sync_loose() -> void:
 	for w in combat.loose_weapons:
 		if not is_instance_valid(w) or w.net_id >= 0:
@@ -1338,6 +1359,32 @@ func guest_message(type: String, data) -> void:
 					groups.append((g as Array).slice(0, GutRope.LINK_VOX).map(func(i): return clampi(int(i), 0, n - 1)))
 			var o := Vector3(float(data.o[0]), float(data.o[1]), float(data.o[2]))
 			e.f.spill_guts(groups, Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])), o.normalized() if o.length_squared() > 1e-6 else Vector3.FORWARD)
+		"held":
+			# A pot readied in a hand and the weapon put out of sight for it (Match._sync_held);
+			# sanitized: a known fighter, a known pot, R or L.
+			var eh = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
+			if eh == null or not is_instance_valid(eh.f) or not (eh.f is Fighter):
+				return
+			var fh: Fighter = eh.f
+			var st = data.get("st", [])
+			for i in 2:
+				var sdh := "R" if i == 0 else "L"
+				var wh = fh.weapons.get(sdh)
+				if wh and is_instance_valid(wh):
+					var hide: bool = st is Array and (st as Array).size() > i and bool(st[i])
+					for b in wh.bodies():
+						if is_instance_valid(b):
+							b.visible = not hide
+			if fh.held_item != null and fh.held_item.get("node") and is_instance_valid(fh.held_item.node):
+				fh.held_item.node.queue_free()
+			fh.held_item = null
+			var th := str(data.get("t", ""))
+			var sh := str(data.get("s", ""))
+			if (sh == "R" or sh == "L") and (Throwables.POTS.values().has(th) or th == "pot_dart" or th == "boomerang"):
+				var node := Items.visual(th)
+				fh.arm[sh].fore.add_child(node)
+				node.position = fh.hand_point
+				fh.held_item = {"type": th, "id": "", "node": node, "side": sh}
 		"wloose":
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
 			if e and (data.side == "R" or data.side == "L") and e.f.weapons.get(data.side):
