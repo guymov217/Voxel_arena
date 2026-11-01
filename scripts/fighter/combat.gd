@@ -155,7 +155,10 @@ func record_velocities() -> void:
 		for w in f.weapons.values():
 			if w:
 				_record(w)
-	loose_weapons = loose_weapons.filter(func(w): return is_instance_valid(w))
+	for w in loose_weapons:
+		if not is_instance_valid(w):
+			loose_weapons = loose_weapons.filter(func(x): return is_instance_valid(x))
+			break
 	for w in loose_weapons:
 		_record(w)
 

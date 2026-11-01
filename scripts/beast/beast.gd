@@ -359,7 +359,12 @@ func leg_len() -> float:
 var _leg_len := 0.0
 
 func lower_of(leg: VoxelPart) -> VoxelPart:
-	return by_name.get(leg.part_name + "Lo")
+	if _lower.has(leg):
+		return _lower[leg]
+	var lo: VoxelPart = by_name.get(leg.part_name + "Lo")
+	_lower[leg] = lo
+	return lo
+var _lower := {}   # leg -> the part below it (looked up once: the parts are all there once built)
 
 func leg_gone(leg: VoxelPart) -> bool:
 	var lo := lower_of(leg)
@@ -1550,15 +1555,24 @@ func _leg_motor_off(part: VoxelPart) -> void:
 ## How well the parts whose names start with one of `prefixes` work together, 0..1 (a severed
 ## one counts as 0). 1 when the species has no such parts.
 func fn_of(prefixes: Array) -> float:
-	var n := 0
+	# The parts each set of names picks out, in their order, found once (every leg asked it every
+	# step, going through every part's name).
+	var key = prefixes[0] if prefixes.size() == 1 else str(prefixes)
+	var ps = _fn_parts.get(key)
+	if ps == null:
+		ps = []
+		for p in parts:
+			for pre in prefixes:
+				if String(p.part_name).begins_with(pre):
+					ps.append(p)
+					break
+		if not parts.is_empty():
+			_fn_parts[key] = ps
 	var s := 0.0
-	for p in parts:
-		for pre in prefixes:
-			if String(p.part_name).begins_with(pre):
-				n += 1
-				s += 0.0 if p.severed else p.function()
-				break
-	return s / n if n > 0 else 1.0
+	for p in ps:
+		s += 0.0 if p.severed else p.function()
+	return s / ps.size() if not ps.is_empty() else 1.0
+var _fn_parts := {}
 
 func front_fn() -> float:
 	return fn_of(["legFL", "legFR"])

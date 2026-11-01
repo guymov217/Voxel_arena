@@ -1790,9 +1790,14 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 
 # ---------- Function of limbs ----------
 
+var _legs := {}   # side -> [thigh, shin], looked up once
 func leg_func(side: String) -> float:
-	var t: VoxelPart = by_name["thigh" + side]
-	var s: VoxelPart = by_name["shin" + side]
+	var l = _legs.get(side)
+	if l == null:
+		l = [by_name["thigh" + side], by_name["shin" + side]]
+		_legs[side] = l
+	var t: VoxelPart = l[0]
+	var s: VoxelPart = l[1]
 	if t.severed or s.severed:
 		return 0.0
 	return minf(t.function(), s.function()) * cord_legs * pelvis_f
@@ -3550,10 +3555,11 @@ func _keep_arm_out(side: String, dt: float) -> void:
 		if body.severed:
 			continue
 		var bt: Transform3D = body.global_transform
+		var bi := bt.affine_inverse()
 		var bq := PD.quat_of(body)
 		var e: Vector3 = body.half_ext + Vector3(0.02, 0.0, 0.02) * S
 		for pp in pts:
-			var l: Vector3 = bt.affine_inverse() * (pp[1] as Vector3)
+			var l: Vector3 = bi * (pp[1] as Vector3)
 			if absf(l.x) >= e.x or absf(l.y) >= e.y or absf(l.z) >= e.z:
 				continue
 			var front := e.z - l.z
@@ -3629,8 +3635,9 @@ func _keep_hand_front(side: String, dt: float) -> void:
 	# Not with a beast on him (an ape's grip, a croc's jaws, a python's coils: they have their
 	# own say over where his arms go, and the push fought them).
 	if Combat.current != null and kind != "beast":
+		var tp := torso.global_position
 		for o in Combat.current.fighters:
-			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive and o.torso.global_position.distance_to(torso.global_position) < 4.0 * maxf(1.0, o.S):
+			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive and o.torso.global_position.distance_to(tp) < 4.0 * maxf(1.0, o.S):
 				return
 	var out_x := -1.0 if side == "R" else 1.0
 	var bt: Transform3D = torso.global_transform
@@ -3899,10 +3906,21 @@ func _ground_under(at: Vector3, fallback: float) -> float:
 ## threw him into the air or sat him on its head), nor a body still on the move.
 func _ground_ray(space: PhysicsDirectSpaceState3D, from: Vector3) -> Dictionary:
 	var to := from + Vector3(0, -2.2 * S, 0)
-	var h := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, _own_rids()))
+	if _ray_all == null:
+		_ray_all = PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, _own_rids())
+		_ray_sand = PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD)
+	_ray_all.from = from
+	_ray_all.to = to
+	var h := space.intersect_ray(_ray_all)
 	if h and not _is_dead_ground(h.collider):
-		h = space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to, VoxelPart.LAYER_WORLD))
+		_ray_sand.from = from
+		_ray_sand.to = to
+		h = space.intersect_ray(_ray_sand)
 	return h
+## Its two rays, made once (a new pair for every foot every step was much of what it cost):
+## over everything but his own body, and over the sand and the props alone.
+var _ray_all: PhysicsRayQueryParameters3D = null
+var _ray_sand: PhysicsRayQueryParameters3D = null
 
 static func _is_dead_ground(c: Object) -> bool:
 	if not (c is VoxelPart):

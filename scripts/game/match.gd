@@ -859,7 +859,7 @@ func _physics_process(dt: float) -> void:
 		_update_streams(dt)
 		throwables.update(dt)
 		for e in entities:
-			if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
+			if is_instance_valid(e.f) and _any_spots(e.f):
 				Fire.tick(e.f, dt, false)
 		_drive_puppets()
 		if yard:
@@ -980,14 +980,17 @@ func _physics_process(dt: float) -> void:
 			feed.emit("Lions' Den! Here comes the Emperor's pet.")
 	if role == "host":
 		_sync_loose()
-	var chars := entities.map(func(x): return x.f).filter(func(x): return is_instance_valid(x))
+	var chars := []
+	for x in entities:
+		if is_instance_valid(x.f):
+			chars.append(x.f)
 	items.update(dt, chars)
 	_update_streams(dt)
 	throwables.update(dt)
 	throwables.update_shooters(dt)
 	_materials_tick(dt)
 	for e in entities:
-		if is_instance_valid(e.f) and e.f.parts.any(func(p): return not p.spots.is_empty()):
+		if is_instance_valid(e.f) and _any_spots(e.f):
 			Fire.tick(e.f, dt, true)
 	if role == "host" and tick % SNAP_EVERY == 2:
 		Net.send_all("isnap", items.snapshot(), false)
@@ -1087,7 +1090,19 @@ func _guest_bot_input(dt: float) -> Dictionary:
 	return inp
 
 func _world_of(e: Dictionary) -> Dictionary:
-	return {"loose": combat.loose_weapons, "allies": entities.filter(func(o): return o.team == e.team and o != e).map(func(o): return o.f)}
+	var allies := []
+	var team = e.team
+	for o in entities:
+		if o.team == team and not is_same(o, e):
+			allies.append(o.f)
+	return {"loose": combat.loose_weapons, "allies": allies}
+
+## Something burning or eating into one of his parts (fire, acid): Fire.tick has work there.
+static func _any_spots(f) -> bool:
+	for p in f.parts:
+		if not p.spots.is_empty():
+			return true
+	return false
 
 ## A bot's ranged trick (ai.js abilities): a rock or a net at the head, a pot at the feet, or a
 ## medicus patching up a friend.
@@ -1418,8 +1433,13 @@ func nearest_enemy(e: Dictionary):
 	var bd := INF
 	var p: Vector3 = e.f.torso.global_position
 	var cands := []
+	var team = e.team
+	var beast: bool = e.kind == "beast"
 	for o in entities:
-		if o.team != e.team and o.f.alive and not (o.kind == "beast" and e.kind == "beast" and not o.get("harmless", false)) and not (o.get("harmless", false) and e.kind != "beast"):
+		if o.team == team or not o.f.alive:
+			continue
+		var harmless = o.get("harmless", false)
+		if not (o.kind == "beast" and beast and not harmless) and not (harmless and not beast):
 			cands.append(o)
 	# Predators cannot resist a goat.
 	if e.kind == "beast":

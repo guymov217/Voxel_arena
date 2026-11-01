@@ -875,7 +875,13 @@ func target_for(e: Dictionary, candidates: Array):
 	if e.get("taunted_by") != null and e.get("taunt_t", 0.0) > 0.0 and e.taunted_by.f.alive:
 		return e.taunted_by
 	if e.kind != "local" and e.kind != "remote":
-		var awake := candidates.filter(func(o): return not o.f.get("limp") and not (float(o.f.get("played_dead") if o.f.get("played_dead") != null else 0.0) > 0.0))
+		var awake := []
+		for o in candidates:
+			if o.f.get("limp"):
+				continue
+			var pd = o.f.get("played_dead")
+			if not (float(pd if pd != null else 0.0) > 0.0):
+				awake.append(o)
 		if not awake.is_empty() and awake.size() < candidates.size():
 			return {"only": awake}
 	return null
