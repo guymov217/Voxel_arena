@@ -1175,18 +1175,31 @@ func _yard(v: VBoxContainer) -> void:
 		mend.disabled = rc == 0 or rc > coins()
 		mend.tooltip_text = "The smith puts back every voxel it has lost." + (" Purse after: %d" % (coins() - rc) if rc <= coins() else " %d more needed" % (rc - coins()))
 		acts.add_child(mend)
-		for id in Arms.UPGRADES:
-			if Arms.can_upgrade(id, d):
+		# The same things offered for either hand (user): what cannot be done to this weapon is
+		# shown, greyed, with why.
+		for id in ["whetstone", "temper"]:
+			var why := Arms.upgrade_why_not(id, d)
+			var b: Button
+			if why == "":
 				var price := Arms.upgrade_price(id, d)
-				var b := UIStyle.button("%s · %d denarii" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
+				b = UIStyle.button("%s · %d denarii" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
 				b.disabled = price > coins()
 				b.tooltip_text = String(Arms.UPGRADES[id].desc) + (" Purse after: %d" % (coins() - price) if price <= coins() else " %d more needed" % (price - coins()))
-				acts.add_child(b)
+			else:
+				b = UIStyle.button("%s · %s" % [Arms.UPGRADES[id].label, why], func(): pass)
+				b.disabled = true
+				b.tooltip_text = String(Arms.UPGRADES[id].desc)
+			acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
-		if side == "L":
-			var nw := UIStyle.button("Forge a new one for this hand", func(): _scratch_forge("L"))
-			nw.tooltip_text = "A new weapon from nothing for the off hand: the one there now is traded in for half its worth"
-			acts.add_child(nw)
+		var nw := UIStyle.button("Forge a new one for this hand", func(): _scratch_forge(side))
+		nw.tooltip_text = "A new weapon from nothing for the %s: the one there now is traded in for half its worth" % ("main hand" if side == "R" else "off hand")
+		acts.add_child(nw)
+		# Selling it outright, for what a trade-in fetches (user).
+		var got := Arms.sale_price(d)
+		var sl := UIStyle.button(("Sell · you get %d denarii" % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): _sell_confirm(side))
+		sl.disabled = Arms.is_stick(d)
+		sl.tooltip_text = "Vulcanus buys it for half its worth: the %s is left %s" % (["main hand", "with the training stick"] if side == "R" else ["off hand", "empty"])
+		acts.add_child(sl)
 	body.add_child(VSeparator.new())
 	var rack := VBoxContainer.new()
 	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1331,6 +1344,34 @@ func _sell_choice(nm: String, buy: Callable, sides: Array, bought := Callable())
 		b.disabled = int(r.get("cost", 0)) > coins()
 		v.add_child(b)
 	v.add_child(UIStyle.button("Keep both", func(): dim.queue_free()))
+
+## Selling a weapon in a hand to the smith, asked once more first: it cannot be had back.
+func _sell_confirm(side: String) -> void:
+	var d = arms().main if side == "R" else arms().off
+	if not (d is Dictionary) or Arms.is_stick(d):
+		return
+	var got := Arms.sale_price(d)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", panel_style)
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	dim.add_child(box)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	box.add_child(v)
+	var q := UIStyle.label("Sell the %s to Vulcanus? It is gone for good." % str(d.get("name", "it")), 16, UIStyle.TEXT)
+	q.custom_minimum_size = Vector2(420, 0)
+	v.add_child(q)
+	v.add_child(UIStyle.label("You get %d denarii · you will have %d" % [got, coins() + got], 15, UIStyle.GOLD))
+	v.add_child(UIStyle.button("Sell it", func():
+		dim.queue_free()
+		_pay(Arms.sell(arms(), side)), true))
+	v.add_child(UIStyle.button("Keep it", func(): dim.queue_free()))
 
 ## This campaign run's seed for the smith's oddities (drawn once, kept with the save).
 func run_seed() -> int:
@@ -3367,6 +3408,7 @@ func _campaign_lost(r: Dictionary) -> void:
 	Save.set_value("coins", START_COINS)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
+	set_kit({})   # the pots in his bag went with him (user)
 	set_worn_armor([])
 	set_armor_wear({})
 	set_training_stats({})
@@ -3619,6 +3661,7 @@ func restart_campaign() -> void:
 	Save.set_value("coop_lap", 1)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
+	set_kit({})
 	set_worn_armor([])
 	set_armor_wear({})
 	set_training_stats({})

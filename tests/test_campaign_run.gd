@@ -53,6 +53,30 @@ func test_an_ironman_starts_over_and_takes_the_rudis_for_good() -> void:
 	CampaignRun.begin("legionary")
 	t.check(CampaignRun.unbroken(), "kept in every campaign after")
 
+## An Ironman's death takes the pots in his bag with it: the new campaign starts with none
+## (user). A Legionary gets the bag back as it was at the checkpoint.
+func test_an_ironman_death_empties_the_bag() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	CampaignRun.begin("ironman")
+	menu.set_kit({"greekFire": 2, "nailPot": 1})
+	t.eq(int(menu.kit().get("greekFire", 0)), 2, "pots in the bag")
+	menu._campaign_lost({})
+	t.check(menu.kit().is_empty(), "dead on an Ironman run: the new campaign starts with an empty bag (%s)" % str(menu.kit()))
+	menu.set_kit({"nailPot": 2})
+	menu.restart_campaign()
+	t.check(menu.kit().is_empty(), "and so does one begun over from the menu")
+	CampaignRun.begin("legionary")
+	menu.set_kit({"greekFire": 1})
+	Save.set_value("checkpoint", 3)
+	CampaignRun.keep()
+	menu.set_kit({"greekFire": 3})
+	menu._campaign_lost({})
+	t.eq(int(menu.kit().get("greekFire", 0)), 1, "a Legionary's bag as it was at the checkpoint")
+	menu.queue_free()
+	await get_tree().process_frame
+
 func test_a_legionary_rudis_gives_nothing_of_the_ironman() -> void:
 	CampaignRun.begin("legionary")
 	t.check(not CampaignRun.won(), "the rudis as a legionary")

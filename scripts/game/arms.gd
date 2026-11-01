@@ -173,7 +173,7 @@ static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1, ha
 	var nd := d.duplicate(true)
 	nd.erase("imbue")
 	nd.erase("oddity")
-	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or hand == "L", sell)
+	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or hand == "L", sell, hand == "R")
 
 # ---------- Vulcanus's oddities: a few one-off weapons each bout ----------
 
@@ -261,7 +261,7 @@ static func power_price(d: Dictionary) -> int:
 			"explosive": extra += 10
 	return int(round(POWER_PRICE * harm)) + mini(15, d.voxels.size() / 4) + extra
 
-static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String) -> Dictionary:
+static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, sell: String, main_hand := false) -> Dictionary:
 	var arms := sanitize(a)
 	# A two-handed weapon goes in the main hand and leaves the other alone: with nothing in the
 	# off hand both hands take it, with a dagger or a shield there it is held in one (user: any
@@ -275,7 +275,7 @@ static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, s
 		side = "L"
 		if not l_free:
 			sold = ["L"]
-	elif two:
+	elif two or main_hand:
 		side = "R"
 		if not r_free:
 			sold = ["R"]
@@ -291,9 +291,7 @@ static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, s
 		sold = [side]
 	var trade_in := 0
 	for s_ in sold:
-		var old = arms.main if s_ == "R" else arms.off
-		if old and not is_stick(old):
-			trade_in += int(value(old) * 0.5)
+		trade_in += sale_price(arms.main if s_ == "R" else arms.off)
 		if s_ == "R":
 			arms.main = empty().main
 		else:
@@ -305,6 +303,27 @@ static func _acquire(a: Dictionary, d: Dictionary, price: int, off_hand: bool, s
 		arms.off = d
 	arms.wear[side] = []
 	return {"arms": arms, "cost": price - trade_in, "trade_in": trade_in, "side": side, "sold": sold}
+
+## What the smith gives for a weapon he takes, sold or traded in: half its worth (nothing for the
+## training stick).
+static func sale_price(d) -> int:
+	return int(value(d) * 0.5) if d is Dictionary and not is_stick(d) else 0
+
+## Sells the weapon in a hand (`side` "R" or "L") to the smith for half its worth (user): the main
+## hand is left with the training stick, the off hand empty. "cost" is what the purse pays, so
+## less than nothing.
+static func sell(a: Dictionary, side: String) -> Dictionary:
+	var arms := sanitize(a)
+	var d = arms.main if side == "R" else arms.off
+	if not (d is Dictionary) or is_stick(d):
+		return {"error": "Nothing in that hand to sell"}
+	var got := sale_price(d)
+	if side == "R":
+		arms.main = empty().main
+	else:
+		arms.off = null
+	arms.wear[side] = []
+	return {"arms": arms, "cost": -got, "got": got}
 
 ## The training stick everyone starts with: a hand that holds it is as good as free.
 static func is_stick(d) -> bool:
@@ -375,6 +394,20 @@ static func upgrade_price(id: String, d: Dictionary) -> int:
 		"fire": return 75
 		"frost": return 65
 	return 0
+
+## Why the smith cannot do `id` to `d` (empty: he can): shown on the hand's button, so both hands
+## always offer the same things (user).
+static func upgrade_why_not(id: String, d) -> String:
+	if can_upgrade(id, d):
+		return ""
+	match id:
+		"whetstone":
+			if not (d is Dictionary) or d.get("kind", "weapon") == "shield" or not sharpenable(d):
+				return "no edge to hone"
+			return "as sharp as it gets"
+		"temper":
+			return "already steel"
+	return "not on this one"
 
 static func can_upgrade(id: String, d) -> bool:
 	if not (d is Dictionary) or d.get("kind", "weapon") == "shield":

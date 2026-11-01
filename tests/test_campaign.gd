@@ -222,6 +222,40 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	r = Arms.buy(Arms.empty(), "longsword", "", "L")
 	t.check(r.side == "L" and str(r.arms.off.name) == "Longsword", "even a longsword can be bought for the off hand")
 
+## Either hand's weapon can be sold to the smith outright, for what a trade-in fetches (user).
+func test_a_weapon_is_sold_for_half_its_worth() -> void:
+	var a: Dictionary = Arms.buy(Arms.buy(Arms.empty(), "axe").arms, "dagger").arms
+	var back := Arms.sale_price(a.main)
+	t.check(back > 0 and back == int(Arms.value(a.main) * 0.5), "the axe fetches half its worth (%d)" % back)
+	t.eq(int(Arms.buy(a, "gladius", "R").trade_in), back, "as much as it fetches traded in")
+	var r := Arms.sell(a, "R")
+	t.eq(int(r.cost), -back, "the purse gains it")
+	t.check(Arms.is_stick(r.arms.main), "the main hand is left with the training stick")
+	t.eq(str(r.arms.off.name), "Dagger", "the dagger stays")
+	r = Arms.sell(r.arms, "L")
+	t.check(r.arms.off == null and int(r.cost) < 0, "the dagger sold, the off hand empty")
+	t.check(Arms.sell(r.arms, "R").has("error") and Arms.sell(r.arms, "L").has("error"), "nothing left to sell: the stick fetches nothing")
+	t.eq(Arms.sale_price(r.arms.main), 0, "the stick is worth nothing to him")
+
+## At the smith both hands are offered the same things (user), greyed with why where they cannot
+## be done to that weapon.
+func test_the_smith_offers_both_hands_the_same() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.set_arms(Arms.buy(Arms.buy(Arms.empty(), "warhammer").arms, "gladius", "", "L").arms)
+	menu.smith_tab = "weapons"
+	menu.show_screen("yard")
+	await get_tree().process_frame
+	var seen := {}
+	for b in menu.find_children("*", "Button", true, false):
+		var k := String(b.text).get_slice(" · ", 0)
+		seen[k] = int(seen.get(k, 0)) + 1
+	for k in ["Sound", "Hone the edge", "Temper the blade", "Reshape in the forge", "Forge a new one for this hand", "Sell"]:
+		t.eq(int(seen.get(k, 0)), 2, "%s: offered for both hands" % k)
+	menu.queue_free()
+	await get_tree().process_frame
+
 ## A design from the gallery is made by the smith at its worth (its stuff and his labour), and
 ## goes in a free hand like any weapon bought; the forge on the main menu takes nothing.
 func test_a_design_from_the_gallery_is_made_at_the_smith() -> void:
