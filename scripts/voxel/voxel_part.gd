@@ -272,7 +272,12 @@ var _sw_w := Vector3.ZERO           # its angular velocity
 var _sw_lv := Vector3.ZERO          # the part's velocity (world) last frame
 var _sw_av := Vector3.ZERO
 var _sw_frame := -1                 # the frame it last swung
-var _band: Array = []                # [slot, voxel]: the voxels over the break, laid round the bend
+var _band: Array = []                # [slot, voxel, base, s, off, off x tip, laid straight]: the voxels over the break, laid round the bend
+var _hang_r := 0.0                   # how far from the break anything that hangs from it can reach
+var _band_rows := PackedFloat32Array()   # _band's terms for VoxelCore.lay_band: 19 floats a voxel
+var _band_ix := PackedInt32Array()       # and [slot, voxel] a voxel
+var _band_was := INF                     # how long the bend was when last laid out (INF: lay all)
+var _band_native := false                # last laid by the C++ core (else row by row here)
 var _bend_q := Quaternion(0, 0, 0, 0)   # the swing the bend was last laid out for
 ## The piece past the bend as it is drawn (part-local): turned by the swing and set on the end of
 ## the bend (_lay_bend). What hangs from it (the leg below a broken thigh) is drawn with it.
@@ -356,11 +361,52 @@ func _lay_bend() -> void:
 	_bend_x = _bend_for(_sw_q)
 	var g := _bend_geom()
 	var inv := _bend_x.affine_inverse()
-	for row in _band:
-		var i: int = row[1]
-		if not alive[i] or veiled(i):
-			continue
-		dangle_mm.set_instance_transform(int(row[0]), inv * _bent(_dangle_base(i), g))
+	var b: float = g[6]
+	var nc := Greedy.core() if dangle_mm.instance_count > 0 else null
+	if nc and not nc.has_method("lay_band"):
+		nc = null   # (a core built before it could)
+	if (nc != null) != _band_native:
+		# Laid the other way last time: what that way left straight, this one does not know of.
+		_band_native = nc != null
+		_band_was = INF
+		for row in _band:
+			row[6] = false
+	if nc:
+		# The C++ core lays the band, voxel by voxel, in one call.
+		nc.lay_band(dangle_mm, _band_rows, _band_ix, alive, veil, g[0], g[2], g[1], b, _band_was, g[7], g[5], g[3], g[4], inv)
+		_band_was = b
+	else:
+		var q: Quaternion = g[0]
+		var n: Vector3 = g[2]
+		var theta: float = g[1]
+		var k: float = g[7]
+		var ax: int = g[5]
+		var pv: Vector3 = g[3]
+		var tip: Vector3 = g[4]
+		# Each layer of voxels along the bone is turned and placed on the arc alike: worked out
+		# once a layer (with the far piece's inverse folded in), then each voxel stretched and set.
+		var lay_of := {}
+		for row in _band:
+			var i: int = row[1]
+			if not alive[i] or veiled(i):
+				continue
+			var sb: float = row[3]
+			if sb >= b:
+				# Past the bend: turned whole with the far piece, its own place in that piece's mesh.
+				if not row[6]:
+					row[6] = true
+					dangle_mm.set_instance_transform(int(row[0]), row[2])
+				continue
+			row[6] = false
+			var lay = lay_of.get(sb)
+			if lay == null:
+				lay = [inv.basis * Basis(Quaternion().slerp(q, sb / b)), inv * _arc_at(sb, b, n, theta, tip, pv)]
+				lay_of[sb] = lay
+			var m: Basis = lay[0]
+			var ms := m
+			ms[ax] = m[ax] * clampf(1.0 + k * n.dot(row[5]), 0.35, 2.6)
+			dangle_mm.set_instance_transform(int(row[0]), Transform3D(ms * (row[2] as Transform3D).basis, (lay[1] as Vector3) + m * (row[4] as Vector3)))
+	var layers := {}
 	for ad in get_meta("armor", []):
 		var n = ad.get("node")
 		if n == null or not is_instance_valid(n):
@@ -370,7 +416,7 @@ func _lay_bend() -> void:
 		for ci in mini(base.size(), m.instance_count):
 			if ad.on[ci] == 0 or (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
 				continue
-			m.set_instance_transform(ci, _bent(base[ci], g))
+			m.set_instance_transform(ci, _bent(base[ci], g, layers))
 
 ## The plates' own places (part-local), straight: kept from before the limb was ever bent.
 func _plate_bases(ad: Dictionary) -> Array:
@@ -399,7 +445,7 @@ func _bend_geom() -> Array:
 
 ## Where something drawn at `base` (part-local, unbent) is drawn bent: past the bend turned with
 ## the far piece; over the break, laid round the bend.
-func _bent(base: Transform3D, g: Array) -> Transform3D:
+func _bent(base: Transform3D, g: Array, layers := {}) -> Transform3D:
 	var pv: Vector3 = g[3]
 	var tip: Vector3 = g[4]
 	var b: float = g[6]
@@ -408,13 +454,22 @@ func _bent(base: Transform3D, g: Array) -> Transform3D:
 		return base
 	if s >= b:
 		return _bend_x * base
-	var q: Quaternion = g[0]
-	var n: Vector3 = g[2]
-	var rs := Basis(Quaternion().slerp(q, s / b))
 	var off := base.origin - pv - tip * s
+	return _bent_layer(base, s, off, off.cross(tip), g, layers)
+
+## _bent for a voxel `s` along the bend, `off` across it (`cr` = off x tip): the layer's turn
+## and its place on the arc are the same for every voxel in it, worked out once (`layers`, s ->).
+func _bent_layer(base: Transform3D, s: float, off: Vector3, cr: Vector3, g: Array, layers: Dictionary) -> Transform3D:
+	var b: float = g[6]
+	var n: Vector3 = g[2]
+	var lay = layers.get(s)
+	if lay == null:
+		lay = [Basis(Quaternion().slerp(g[0] as Quaternion, s / b)), _arc_at(s, b, n, float(g[1]), g[4], g[3])]
+		layers[s] = lay
+	var rs: Basis = lay[0]
 	var sc := Vector3.ONE
-	sc[int(g[5])] = clampf(1.0 + float(g[7]) * n.dot(off.cross(tip)), 0.35, 2.6)
-	return Transform3D(rs * Basis.from_scale(sc) * base.basis, _arc_at(s, b, n, float(g[1]), tip, pv) + rs * off)
+	sc[int(g[5])] = clampf(1.0 + float(g[7]) * n.dot(cr), 0.35, 2.6)
+	return Transform3D(rs * Basis.from_scale(sc) * base.basis, (lay[1] as Vector3) + rs * off)
 
 func _start_dangle() -> void:
 	if mm == null or DisplayServer.get_name() == "headless" or kink.is_empty():
@@ -449,6 +504,8 @@ func _start_dangle() -> void:
 	for i in idx:
 		if (local_of(i) - pv).dot(tip) < reach:
 			_band.append([dangle_slot[i], i])
+	_band_terms()
+	_hang_r = _hang_reach()
 	_bend_q = Quaternion(0, 0, 0, 0)
 	dangle_mesh = MultiMeshInstance3D.new()
 	dangle_mesh.multimesh = dangle_mm
@@ -464,6 +521,55 @@ func _start_dangle() -> void:
 	_sw_av = angular_velocity
 	_lay_bend()
 	_mark_skin()
+
+## How far from the break anything _hang_points has can be drawn, however it swings (for
+## _keep_off_ground: one well clear of the sand is passed). The far end's corners, and each part
+## below joint by joint (its joint on the one above, then its corner furthest from that joint);
+## the bend at most twice its length further (the arc, and the piece set on its end), and a little
+## over for the give in the joints.
+func _hang_reach() -> float:
+	var pv := _dangle_pivot()
+	var ax: int = kink[0]
+	var r := Vector3(_far_len(), half_ext[(ax + 1) % 3], half_ext[(ax + 2) % 3]).length()
+	var below: Array = []
+	for c in child_parts:
+		if is_instance_valid(c):
+			below.append([c, (c.pa as Vector3).distance_to(pv)])
+	while not below.is_empty():
+		var e: Array = below.pop_back()
+		var c = e[0]
+		var ca: Vector3 = c.ca
+		var h: Vector3 = c.half_ext
+		r = maxf(r, float(e[1]) + (ca.abs() + h).length())
+		for gc in c.child_parts:
+			if is_instance_valid(gc):
+				below.append([gc, float(e[1]) + (gc.pa as Vector3).distance_to(ca)])
+	return 1.1 * (r + 2.0 * _band_len(PI)) + 0.05
+
+## What the bend does not change, for each voxel over it, worked out once (_bent's own terms):
+## its place unbent, how far along the bone past the break, and its offset across the bone.
+func _band_terms() -> void:
+	var pv := _dangle_pivot()
+	var tip: Vector3 = _across()[2]
+	for k in _band.size():
+		var i: int = _band[k][1]
+		var base := _dangle_base(i)
+		var sb := (base.origin - pv).dot(tip)
+		var off := base.origin - pv - tip * sb
+		_band[k] = [_band[k][0], i, base, sb, off, off.cross(tip), false]
+	# The same, packed for the C++ core: the place as a MultiMesh buffer has it (by rows, each
+	# row's origin after it), then s, off and off x tip.
+	_band_rows = PackedFloat32Array()
+	_band_ix = PackedInt32Array()
+	for row in _band:
+		var t: Transform3D = row[2]
+		var bx := t.basis
+		var o: Vector3 = row[4]
+		var c: Vector3 = row[5]
+		_band_rows.append_array([bx.x.x, bx.y.x, bx.z.x, t.origin.x, bx.x.y, bx.y.y, bx.z.y, t.origin.y, bx.x.z, bx.y.z, bx.z.z, t.origin.z, row[3], o.x, o.y, o.z, c.x, c.y, c.z])
+		_band_ix.append_array([int(row[0]), int(row[1])])
+	_band_was = INF
+	_bend_q = Quaternion(0, 0, 0, 0)
 
 func _stop_dangle() -> void:
 	if dangle_mm:
@@ -548,6 +654,10 @@ func _swing(dt: float) -> void:
 func _keep_off_ground() -> void:
 	var t := draw_turn * get_global_transform_interpolated()
 	t.origin += draw_shift
+	# Whatever hangs from the break is within _hang_r of it, however it swings (_hang_reach): well
+	# clear of the sand, nothing to do.
+	if (t * _dangle_pivot()).y - _hang_r > GROUND_CLEAR:
+		return
 	var pts := _hang_points()
 	if _lowest(t, pts, _sw_q) >= GROUND_CLEAR:
 		return
@@ -1665,6 +1775,8 @@ func break_exit() -> Array:
 ## the voxels in `only` drawn again when it is given.
 func set_shape(xf: Array, only: Array = []) -> void:
 	shape_xf = xf
+	if not _band.is_empty():
+		_band_terms()   # (a limb bent at a break: laid round it in its new shape)
 	if mm == null:
 		return
 	var on := []

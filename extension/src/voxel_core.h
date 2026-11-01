@@ -7,6 +7,9 @@
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/string_name.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -45,6 +48,12 @@ public:
 	Vector3 dir_error(const Vector3 &cur, const Vector3 &des) const;
 	Vector3 clamp_len(const Vector3 &v, double mx) const;
 	Vector3 torque_for(RigidBody3D *body, const Vector3 &alpha, double scale) const;
+	// VoxelPart._lay_bend: the voxels over a break laid round the bend, each set on `multimesh`
+	// (set_instance_transform). `rows`: 19 floats a voxel (its unbent place, the basis by rows each
+	// with its origin after it, how far past the break, its offset across the bone and that offset
+	// x the bone's line); `ix`: [slot, voxel] a row. Dead and veiled voxels are passed over, and
+	// those past the bend unless the last layout (`b_was` long) had them in it.
+	void lay_band(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &ix, const PackedByteArray &alive, const PackedByteArray &veil, const Quaternion &q, const Vector3 &n, double theta, double b, double b_was, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &inv) const;
 	PackedFloat64Array skin_nearest(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &half_ext, double max_depth, const Vector3 &want) const;
 };
 
