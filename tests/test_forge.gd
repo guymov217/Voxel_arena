@@ -619,8 +619,8 @@ func test_the_hud_keeps_off_the_forge() -> void:
 	hud.queue_free()
 	m.queue_free()
 
-## The forge spells out what a weapon comes to: what it is made of, what is paid and the purse
-## after, or how much is missing.
+## The forge says what he has and what the weapon costs, nothing more (user: the breakdown was
+## more than anyone could follow), or how much is missing.
 func test_the_price_is_spelled_out() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -630,8 +630,8 @@ func test_the_price_is_spelled_out() -> void:
 	var d: Dictionary = f._design_now()
 	var txt: String = f.price_text(d)
 	var pay := Arms.design_price(d)
-	t.check(txt.contains("You pay %d" % pay) and txt.contains("purse 1000 → %d" % (1000 - pay)), "what is paid and the purse after (%s)" % txt.replace("\n", " / "))
-	t.check(txt.contains("smith's work"), "and what it is made of")
+	t.check(txt.contains("You have 1000") and txt.contains("this costs %d" % pay), "what he has and what it costs (%s)" % txt.replace("\n", " / "))
+	t.check(not txt.contains("\n"), "on one line")
 	f.purse = 3
 	txt = f.price_text(d)
 	t.check(txt.contains("%d more needed" % (pay - 3)), "short of it, how much more (%s)" % txt.replace("\n", " / "))
@@ -668,8 +668,8 @@ func test_a_sharp_block_faces_the_way_it_was_put_on() -> void:
 	w.queue_free()
 	f.queue_free()
 
-## The price of the job is always in sight over the anvil (what is paid, the purse after), the
-## same sum as the full breakdown; it follows every change.
+## What he has and what the job costs are always in sight at the top of the view; it follows
+## every change.
 func test_the_price_is_always_in_sight() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -678,11 +678,11 @@ func test_the_price_is_always_in_sight() -> void:
 	await get_tree().process_frame
 	var pay := Arms.design_price(f._design_now())
 	t.check(f.price_badge != null and f.price_badge.get_parent().visible, "a price badge over the view")
-	t.check(f.price_badge.text.contains("Price %d" % pay) and f.price_badge.text.contains("1000 → %d" % (1000 - pay)), "it says the whole price and the purse after (%s)" % f.price_badge.text)
+	t.check(f.price_badge.text.contains("You have 1000") and f.price_badge.text.contains("This costs %d" % pay), "it says what he has and what it costs (%s)" % f.price_badge.text)
 	t.eq(f.price_badge.get_parent().mouse_filter, Control.MOUSE_FILTER_IGNORE, "it never gets in the way of a click")
 	f.purse = 3
 	f._update_texts()
-	t.check(f.price_badge.text.contains("short"), "short of money, it says so (%s)" % f.price_badge.text)
+	t.check(f.price_badge.text.contains("more needed"), "short of money, it says so (%s)" % f.price_badge.text)
 	f.queue_free()
 
 ## Sharpness is only for Cut and Stab blocks: a weapon with none has no slider, only a note; its

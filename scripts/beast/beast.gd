@@ -120,6 +120,8 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			var n_legs: int = maxi(2, sp.parts.filter(func(q): return q.get("leg", false) and not q.get("lower", false)).size())
 			m_part = maxf(m_part, float(sp.parts[0].mass) * (0.14 if d.lower else 0.2) / float(n_legs))
 		_bone_core(str(d.name), voxels)
+		if d.get("parent") == null:
+			_bury_bones(voxels, 3)
 		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS)
 		p.linear_damp = 0.3
 		p.angular_damp = 2.0
@@ -191,7 +193,51 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res := apply_hit_inner(part, hit)
 	if species == "gorilla":
 		_dent_nerve(float(hit.get("impulse", 0.0)), res)
+	_hit_react(part, hit, res)
 	return res
+
+## Struck, a beast shows it (user: a wolf stood looking at him while he beat it, no sign it felt
+## a thing): the body jolts away from the blow and twists, the head jerks back, the legs give a
+## little; and one only circling, standing off or squaring up to him when it is hit close in
+## turns on the man there and then, or gets out of his reach, instead of standing for more.
+var react_t := -9.0
+func _hit_react(part: VoxelPart, hit: Dictionary, res: Dictionary) -> void:
+	var J := float(hit.get("impulse", 0.0))
+	if not alive or res.get("blocked", false) or part.severed or J < 4.0 or hit.get("bump", false) or time - react_t < 0.12:
+		return
+	react_t = time
+	var k := clampf(J / 28.0, 0.2, 1.0)
+	var dir: Vector3 = hit.dir if hit.get("dir") is Vector3 else Vector3.ZERO
+	dir.y = 0.0
+	if dir.length_squared() > 1e-4 and not flying and hug == null:
+		dir = dir.normalized()
+		var dv := 1.1 * k / sqrt(maxf(1.0, MS / 3.0))
+		torso.apply_central_impulse((dir + Vector3.UP * 0.2) * dv * torso.mass)
+		torso.apply_torque_impulse(Vector3.UP.cross(dir) * dv * 0.35 * torso.mass * S)
+	if not head.severed:
+		head.flinch_t = maxf(head.flinch_t, 0.12 + 0.3 * k)
+	for p in parts:
+		if not p.severed and p.parent_part == torso and String(p.part_name).begins_with("neck"):
+			p.flinch_t = maxf(p.flinch_t, 0.1 + 0.25 * k)
+	for l in legs:
+		if not l.severed:
+			l.flinch_t = maxf(l.flinch_t, 0.08 + 0.18 * k)
+	var t = target
+	if t == null or not is_instance_valid(t) or hug != null or not t.get("torso"):
+		return
+	var d: Vector3 = t.torso.global_position - torso.global_position
+	if Vector2(d.x, d.z).length() > 2.6 * S:
+		return
+	match String(sp.ai):
+		"hunter":
+			if ["stalk", "snarl", "recover", "dodge", "feint"].has(String(ai.mode)):
+				if not disarmed() and (fury > 0.0 or rng.randf() < 0.65):
+					ai.mode = "charge"; ai.t = 1.2; ai.bite_cool = minf(float(ai.bite_cool), 0.35)
+				else:
+					ai.mode = "recover"; ai.t = 0.6
+		"charger":
+			if ai.mode == "aim":
+				ai.t = minf(float(ai.t), 0.15)   # (it goes for him now)
 
 ## The gorilla's nerve: every blow that lands on it takes some of the fight out of it (a hard one
 ## more), so it comes on slower, swings less often, rears and grabs less; a solid one breaks off
@@ -238,6 +284,30 @@ func _dent_nerve(J: float, res: Dictionary) -> void:
 	ai.rear = 0.0
 	ai.mode = "recover"
 	ai.t = maxf(float(ai.t), 0.35 + 0.9 * (1.0 - nerve))
+
+## A trunk's bones lie under its flesh, not at the skin (user: the boar hardly came apart under
+## blows: the slab of bone through its middle came up to within a voxel of its back, and every
+## blow from above stopped on it at once): bone less than `depth` voxels in from the surface is
+## flesh.
+static func _bury_bones(voxels: Array, depth: int) -> void:
+	var filled := {}
+	for v in voxels:
+		filled[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = true
+	var dirs := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	for v in voxels:
+		if not bool(v[4]):
+			continue
+		var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+		var shallow := false
+		for dvec in dirs:
+			for n in range(1, depth + 1):
+				if not filled.has(c + dvec * n):
+					shallow = true
+					break
+			if shallow:
+				break
+		if shallow:
+			v[4] = false
 
 ## A limb, tail or wing modelled with no bone in it (the gorilla's arms and legs) gets one: a core
 ## down its length, under the flesh, so it can break like any other (an arthropod's legs are shell
@@ -430,7 +500,33 @@ func die(cause := "") -> void:
 	var side := 1.0 if rng.randf() < 0.5 else -1.0
 	torso.apply_torque_impulse(Vector3(fwd.x, 0, fwd.z) * torso.mass * side * 0.55 * S)
 	torso.angular_damp = 1.2
+	topple_side = side
+	dead_t = 0.0
 	died.emit(self, cause)
+
+## Dead on its feet (user: a beast that died sometimes stayed standing, the boar, the bull and the
+## rhino every time, stiff-legged as a table): it is rolled over onto its side, the harder the
+## longer it stands there dead, until it lies.
+var dead_t := 0.0
+var topple_side := 1.0
+const SPRAWLERS := ["crocodile", "python", "basilisk", "spider", "scorpion"]
+func _topple(dt: float) -> void:
+	dead_t += dt
+	if dead_t > 5.0 or torso.freeze or flying:
+		return
+	var b := torso.global_transform.basis
+	# (Only one still up on its legs: a crawler lies on its belly as it should.)
+	if b.y.normalized().y < 0.55 or torso.global_position.y < height * 0.6 or SPRAWLERS.has(species):
+		return
+	var fwd := Vector3(b.z.x, 0.0, b.z.z)
+	if fwd.length_squared() < 1e-4:
+		return
+	var mass := 0.0
+	for p in parts:
+		if not p.severed:
+			mass += p.mass
+	var k := clampf(dead_t / 0.8, 0.25, 1.0)
+	torso.apply_torque_impulse(fwd.normalized() * topple_side * mass * 9.8 * 0.5 * S * k * dt)
 
 func control(dt: float, _inp: Dictionary = {}) -> void:
 	time += dt
@@ -462,6 +558,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			for p in [l, lower_of(l)]:
 				if p and not p.severed:
 					p.angular_damp = 1.5
+		_topple(dt)
 		return
 	var pos := torso.global_position
 	var lv := torso.linear_velocity
@@ -836,6 +933,15 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 	var swing: float = tw.linear_velocity.length() if tw else 0.0
 	if (ai.mode == "charge" or ai.mode == "crouch" or ai.mode == "feint") and stagger > 0.3:
 		ai.mode = "recover"; ai.t = 0.7 + rng.randf() * 0.6; ai.circle = -ai.circle
+	# Never a punching bag: a few seconds close in to him without going for him, it goes for him
+	# (user: a beast did next to nothing a whole bout and let a man take it apart).
+	if t and t.alive and dist < 2.2 * S and ["stalk", "snarl", "recover", "dodge"].has(String(ai.mode)):
+		ai.near_t = float(ai.get("near_t", 0.0)) + dt
+		if float(ai.near_t) > 2.5 and not disarmed():
+			ai.near_t = 0.0
+			ai.mode = "crouch"; ai.t = 0.3
+	else:
+		ai.near_t = 0.0
 	match String(ai.mode):
 		"stalk":
 			var r: float = float(sp.stalkRadius) * S * (1.0 - 0.35 * fury)

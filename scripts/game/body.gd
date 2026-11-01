@@ -20,13 +20,13 @@ const PROSTHETICS := {
 ## How well a replaced part works (1 for a whole one): walking on a peg, swinging a fixed blade.
 const PROSTHETIC_FN := {"peg": 0.6, "hook": 0.75, "blade": 0.7}
 ## The rare medicine (one old wound closed): half the elixir's price, so both follow the pay.
-const MEDICINE_BOUTS := 1.5
-const MEDICINE_MIN := 30
+const MEDICINE_BOUTS := 0.75
+const MEDICINE_MIN := 20
 ## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, old wounds).
-## It costs what a few bouts at this point of the campaign pay (ELIXIR_BOUTS of them): dear, but
-## within reach of a man who saves for it, early on as late.
-const ELIXIR_BOUTS := 3.0
-const ELIXIR_MIN := 60
+## It costs what a bout and a half at this point of the campaign pays (ELIXIR_BOUTS): within
+## reach of a man who saves a little, early on as late (user: a full heal cost a fortune).
+const ELIXIR_BOUTS := 1.5
+const ELIXIR_MIN := 35
 
 ## What winning the bout at `stage` pays one man (its stage pay and its round, as Match pays them).
 static func bout_pay(stage: int) -> int:
@@ -42,8 +42,25 @@ static func medicine_price(stage: int) -> int:
 ## broken through under the skin, 3 broken out through it; "skull" the same; "ribs" how many;
 ## "pelvis" 1. They stay as they are, a broken limb no use, until the physician sets them (no
 ## elixir needed: a bone knits, a hand does not grow back). What setting costs, in bouts' pay.
-const SET_BOUTS := {1: 0.25, 2: 0.5, 3: 0.8}
-const SET_MIN := {1: 8, 2: 15, 3: 25}
+const SET_BOUTS := {1: 0.2, 2: 0.4, 3: 0.6}
+const SET_MIN := {1: 6, 2: 12, 3: 20}
+## Everything his own hands can do (every bone set, every fresh wound stitched) in one go, for
+## less than the lot one at a time (user: badly hurt, there were piles of things to buy).
+const ALL_DISCOUNT := 0.7
+
+static func treat_all_price(body: Dictionary, stage: int) -> int:
+	var b := sanitize(body)
+	var sum := 0
+	for k in b.fractures:
+		sum += set_price(k, int(b.fractures[k]), stage)
+	if not b.fresh.is_empty():
+		sum += stitch_price(b)
+	return roundi(sum * ALL_DISCOUNT)
+
+## How many things "Treat everything" takes care of.
+static func treat_all_count(body: Dictionary) -> int:
+	var b := sanitize(body)
+	return b.fractures.size() + (1 if not b.fresh.is_empty() else 0)
 const RIB_BOUTS := 0.12
 const BONES := {"skull": "skull", "ribs": "ribs", "pelvis": "pelvis"}
 
@@ -325,6 +342,8 @@ static func medicine_in_stock(stage: int) -> bool:
 static func offers(body: Dictionary, stage: int) -> Array:
 	var b := sanitize(body)
 	var out := []
+	if treat_all_count(b) >= 2:
+		out.append({"id": "heal:all", "name": "Treat everything", "desc": "Every broken bone set and splinted, every fresh wound cleaned and stitched, all at once: whole by the next bout, and cheaper than one at a time.", "price": treat_all_price(b, stage)})
 	for kind in ["peg", "hook", "blade"]:
 		for n in PROSTHETICS[kind].parts:
 			var parent := ""
@@ -393,6 +412,9 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 			b.scars.erase(n)
 		"set":
 			b.fractures.erase(n)
+		"heal":
+			b.fractures = {}
+			b = apply(b, "stitch:all")
 		"elixir":
 			var fights: int = int(b.get("fights", 0))
 			b = empty()
@@ -413,10 +435,12 @@ static func stitch_price(b: Dictionary) -> int:
 	var n := 0
 	for p in b.get("fresh", {}):
 		n += (b.fresh[p] as Array).size()
-	return clampi(15 + n / 6, 15, 160)
+	return clampi(10 + n / 10, 10, 90)
 
 static func price_of(id: String, body := {}, stage := 1) -> int:
 	var kind := id.split(":")[0]
+	if kind == "heal":
+		return treat_all_price(body, stage)
 	if kind == "stitch":
 		return stitch_price(sanitize(body))
 	if kind == "medicine":

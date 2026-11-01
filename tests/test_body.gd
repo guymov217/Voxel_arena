@@ -158,7 +158,25 @@ func test_the_elixir_gives_back_everything() -> void:
 	for st in [1, 10, 30, 60]:
 		var pay := Body.bout_pay(st)
 		var pr := Body.elixir_price(st)
-		t.check(pr >= pay * 2 and pr <= maxi(Body.ELIXIR_MIN, pay * 4), "stage %d: the elixir (%d) costs a few bouts' pay (%d each)" % [st, pr, pay])
+		t.check(pr >= pay and pr <= maxi(Body.ELIXIR_MIN, pay * 2), "stage %d: the elixir (%d) costs a bout or two's pay (%d each)" % [st, pr, pay])
+
+## Badly hurt, one button sees to everything the physician's hands can (user: piles of things to
+## buy), for less than the lot one at a time.
+func test_one_treatment_sees_to_everything() -> void:
+	var b := Body.sanitize({"fractures": {"forearmL": 3, "shinR": 2, "ribs": 2}, "fresh": {"torso": [1, 2, 3, 4, 5]}, "scars": {"torso": [1, 2, 3, 4, 5]}})
+	var offers := Body.offers(b, 6)
+	var all := offers.filter(func(o): return String(o.id) == "heal:all")
+	t.eq(all.size(), 1, "one treatment for the lot")
+	var sum := 0
+	for o in offers:
+		if String(o.id).begins_with("set:") or String(o.id).begins_with("stitch:"):
+			sum += int(o.price)
+	t.check(int(all[0].price) < sum and int(all[0].price) > 0, "cheaper than one at a time (%d against %d)" % [int(all[0].price), sum])
+	t.eq(Body.price_of("heal:all", b, 6), int(all[0].price), "priced the same asked again")
+	var healed := Body.apply(b, "heal:all")
+	t.check((healed.fractures as Dictionary).is_empty() and (healed.fresh as Dictionary).is_empty(), "every bone set and every wound stitched")
+	t.check(not (healed.scars as Dictionary).has("torso"), "the stitched wounds leave no scar")
+	t.check(not Body.offers(Body.sanitize({"fractures": {"shinR": 1}}), 6).any(func(o): return String(o.id) == "heal:all"), "not offered for a single thing")
 
 ## Drunk in the yard, the Elixir gives the hand back there and then, with the weapon in it (he
 ## was healed and walked on armless, empty-handed, until the next bout: user).

@@ -390,6 +390,7 @@ func shove(e: Dictionary) -> bool:
 		if t.feet[side]:
 			t.feet[side].swing = true
 	t.stagger = minf(1.0, t.stagger + 0.3 * minf(1.5, ratio) + (0.25 if t.stamina < 30.0 else 0.0))
+	t.jolt_t = t.time
 	t.last_attacker = c
 	var goes_down: bool = t.state == "rising" or t.stagger > 0.75 or t.stamina < 20.0
 	if goes_down and t.state != "down" and ratio > 0.5:

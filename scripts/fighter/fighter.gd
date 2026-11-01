@@ -76,6 +76,16 @@ var rise_t := 1.0
 var rise_q0 = null
 var tilt_t := 0.0
 var stood_at := -99.0
+## When something from outside last shook him (a blow, a shove, a blast). A man on his feet goes
+## over by tipping only for such a cause: his own stoop to a low guard, the weight of what he
+## holds, or a foot caught on what lies in the way never throws him (user: never, whatever lies
+## in his way or however low he takes his blade). He rights himself instead.
+var jolt_t := -99.0
+const JOLT_GRACE := 1.2
+## The most a man's trunk bends forward of its own (a stoop to a low guard, a crouch, a lunge),
+## well short of where he would tip over: lower than that he bends his knees (user: reaching low
+## with a sword, or a sword and a dagger, he bent right over and fell on the sand).
+const LEAN_MAX := 0.75
 var blood := 100.0
 var stamina := 100.0
 var stagger := 0.0
@@ -156,7 +166,7 @@ var thrust_line := {"R": null, "L": null}   # {o, dir, t}: a thrust's line in th
 var thrust_ext := {"R": 0.0, "L": 0.0}   # how far along that line the hand is driven now
 const THRUST_DRAW := 0.12   # s drawing the hand back along the line
 const THRUST_DRIVE := 0.14   # s driving it out to the end of the arm
-const THRUST_OVER := 0.15   # past the arm's reach, the body leaning in after it
+const THRUST_OVER := 0.3    # past the arm's reach, the body leaning in after it (0.15 left a stab from a raised guard 5 cm past where it began, user)
 var thrust_lean := 0.0
 var chop_mem := {"R": 0.0, "L": 0.0}   # a downward chop, held a moment after the hand slows   # how far into the stab the body leans now (0..1)
 var throw_anim = null            # {side, phase: "wind" | "follow", t}: the throwing arm's swing
@@ -2214,7 +2224,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var tilt := acos(clampf(up_w.y, -1.0, 1.0))
 	tilt_t = tilt_t + dt if tilt > 1.15 else 0.0
 	var fresh := time - stood_at < 5.0
-	if state == "stand" and (tilt_t > (0.45 if fresh else 0.2) or (tilt > 1.5 and (not fresh or tilt_t > 0.25)) or not can_stand()):
+	var jolted := time - jolt_t < JOLT_GRACE or stagger > 0.25 or grabbed_by != null or torso.linear_velocity.length() > 5.0
+	var tipped := tilt_t > (0.45 if fresh else 0.2) or (tilt > 1.5 and (not fresh or tilt_t > 0.25))
+	if state == "stand" and ((tipped and (jolted or tilt_t > 2.5)) or not can_stand()):
 		fall(1.8 if can_stand() else 99.0, true)
 	if state == "down":
 		down_timer -= dt
@@ -2520,7 +2532,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		low_hand = 0.0
 		thrust_lean = 0.0
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
-		var lean := Quaternion(Vector3(1, 0, 0), (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + kneel_lean + stoop * 0.6 / sqrt(maxf(1.0, S)))
+		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S))
+		if S < 1.3:
+			lean_a = minf(lean_a, LEAN_MAX)   # (a giant leans far out over a man on the sand to reach him)
+		var lean := Quaternion(Vector3(1, 0, 0), lean_a + kneel_lean)
 		if h_speed < 0.4 and live:
 			var sway := 7.0 if one_leg else 1.0
 			lean = Quaternion(Vector3(0, 0, 1), 0.01 * sway * sin(time * 0.6 * sqrt(sway) + slot * 2)) * Quaternion(Vector3(1, 0, 0), 0.012 * sway * sin(time * 0.9 * sqrt(sway) + slot)) * lean
@@ -2547,6 +2562,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# Both hands on a heavy haft, the trunk holds itself up against it harder: swung with the
 		# arms alone it bent him over sideways and back like a bow.
 		var hold := TWO_HAND_TRUNK if two_handed and not rising else 1.0
+		# Bent or dragged far over with nothing from outside to blame (the weight of his weapon, a
+		# foot caught on a body), he rights himself the harder the farther over he is (see jolt_t).
+		if not rising and not jolted and tilt > LEAN_MAX * 0.8:
+			hold *= 1.0 + 3.0 * clampf((tilt - LEAN_MAX * 0.8) / 0.5, 0.0, 1.0)
 		var wn := (8.0 if rising else 12.0) * sqrt(balance) * sqrt(hold)
 		var tq := (err * (wn * wn) - torso.angular_velocity * (2.0 * wn)) * I
 		torso.apply_torque_impulse(PD.clamp_len(tq, 1400.0 * balance * MS * S * hold) * dt)
@@ -3990,7 +4009,11 @@ func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF) -> f
 		var rt := sqrt(disc)
 		e_hi = clampf(-bq + rt, 0.0, 0.6 * S)
 		e_lo = maxf(-bq - rt, e_hi - 0.5 * S)
-	e_lo = minf(0.0, maxf(e_lo, (0.15 * S - minf(o_l.z, chest_z)) / d.z))
+	# Always a stab's worth of travel, whichever way the blade points (user: aimed up or down the
+	# thrust hardly moved, the hand already near the end of the arm that way): drawn back along
+	# the line as far as it takes, to no nearer than just in front of the chest.
+	e_lo = minf(e_lo, e_hi - 0.4 * S)
+	e_lo = minf(0.0, maxf(e_lo, (0.12 * S - minf(o_l.z, chest_z)) / maxf(d.z, 0.2)))
 	# Driven a hand past the arm's reach: the straight arm hauls the shoulder after it, the body
 	# leaning into the stab as the feet lunge.
 	e_hi += THRUST_OVER * S
@@ -4572,6 +4595,8 @@ func lift() -> void:
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	if float(hit.get("impulse", 0.0)) > 2.0:
+		jolt_t = time   # (a blow, a bite, a blast, a fall: a cause to go over by)
 	if _shield_takes(hit):
 		res.blocked = true
 		return res

@@ -1113,7 +1113,7 @@ func _yard(v: VBoxContainer) -> void:
 	right.alignment = BoxContainer.ALIGNMENT_END
 	right.add_theme_constant_override("separation", 6)
 	head.add_child(right)
-	var purse := UIStyle.label("Purse: %d denarii" % coins(), 18, UIStyle.GOLD)
+	var purse := UIStyle.label("You have %d denarii" % coins(), 18, UIStyle.GOLD)
 	purse.autowrap_mode = TextServer.AUTOWRAP_OFF
 	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(purse)
@@ -1300,19 +1300,16 @@ func _yard(v: VBoxContainer) -> void:
 		rack_box.add_child(UIStyle.label("THE SMITH'S RACK", 13, UIStyle.BRONZE))
 		rack_box.move_child(grid, rack_box.get_child_count() - 1)
 
-## What a thing costs, spelled out under it: the price, what is taken off for the old one handed
-## in, what is paid, and the purse after (or how much is missing).
+## What a thing costs him (less what his old one fetches) and what he has, under it.
 func _price_lines(box: Container, price: int, trade := 0, trade_what := "") -> void:
+	# Just what it costs him and what he has (user: the rest was more than anyone could follow).
 	var pay := maxi(0, price - trade)
-	var left := coins() - pay
-	if trade > 0:
-		var l1 := UIStyle.label("%d denarii, less %d for %s" % [price, trade, trade_what], 12, UIStyle.MUTED)
-		l1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(l1)
-	var l2 := UIStyle.label(("You pay %d · purse after %d" % [pay, left]) if left >= 0 else ("You pay %d · %d more needed" % [pay, -left]), 13, UIStyle.GOLD if left >= 0 else Color(1, 0.55, 0.45))
+	var short := pay - coins()
+	var l2 := UIStyle.label(("Costs %d · you have %d" % [pay, coins()]) + ((" (%d more needed)" % short) if short > 0 else ""), 14, UIStyle.GOLD if short <= 0 else Color(1, 0.55, 0.45))
 	l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if trade > 0:
+		l2.tooltip_text = "%d, less %d for %s" % [price, trade, trade_what]
 	box.add_child(l2)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
@@ -2359,7 +2356,7 @@ func _market(v: VBoxContainer) -> void:
 	for id in k:
 		if int(k[id]) > 0:
 			bag.append("%s ×%d" % [Data.shop.throwables.get(id, {}).get("name", id), int(k[id])])
-	v.add_child(UIStyle.label("Purse: %d denarii · %s" % [coins(), ("In your bag: " + ", ".join(bag)) if not bag.is_empty() else "Your bag is empty"], 15, UIStyle.BRONZE))
+	v.add_child(UIStyle.label("You have %d denarii · %s" % [coins(), ("In your bag: " + ", ".join(bag)) if not bag.is_empty() else "Your bag is empty"], 15, UIStyle.BRONZE))
 	v.add_child(UIStyle.label("Everything here comes with you into every fight: keys 1 to 9 use it.", 13, UIStyle.MUTED))
 	var tabs: Array = []
 	for t in MARKET_TABS:
@@ -2628,16 +2625,39 @@ func _doctor_visit(b: Dictionary, news: Array, stage_: int, done: Callable) -> v
 	build.call(build)
 
 func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, done: Callable, done_text: String, changed: Callable) -> void:
-	v.custom_minimum_size = Vector2(420, 0)
+	# Kept simple (user: badly hurt there were piles of things to buy, and the prices unclear):
+	# what you have, one button that sees to everything, the bottle that gives back what was lost,
+	# and the separate treatments folded away under it.
+	v.custom_minimum_size = Vector2(460, 0)
 	v.add_child(UIStyle.title("The physician", 30))
 	var state := Body.summary(b)
 	if not news.is_empty():
 		state = ", ".join(news.map(func(n): return str(n)))
 		state = state.left(1).to_upper() + state.substr(1)
 	v.add_child(UIStyle.label(state, 15, Color(1, 0.62, 0.5) if not news.is_empty() else UIStyle.MUTED))
-	for o in Body.offers(b, stage_):
-		var price := int(o.price)
+	v.add_child(UIStyle.label("You have %d denarii" % coins(), 18, UIStyle.GOLD))
+	var buy := func(id: String, price: int) -> void:
+		if price > coins():
+			return
+		add_coins(-price)
+		if Sfx:
+			Sfx.play("pickup", Vector3.ZERO, 0.6)
+		changed.call(Body.apply(b, id))
+	var offers := Body.offers(b, stage_)
+	var all := offers.filter(func(o): return String(o.id) == "heal:all")
+	if not all.is_empty():
+		var p_all := int(all[0].price)
+		var big := UIStyle.button("Treat everything · it costs %d" % p_all, func(): buy.call("heal:all", p_all), true)
+		big.disabled = p_all > coins()
+		big.tooltip_text = String(all[0].desc) + ("" if p_all <= coins() else "  (%d more needed)" % (p_all - coins()))
+		v.add_child(big)
+	var folded := VBoxContainer.new()
+	folded.add_theme_constant_override("separation", 6)
+	for o in offers:
 		var id := String(o.id)
+		if id == "heal:all":
+			continue
+		var price := int(o.price)
 		var row := HBoxContainer.new()
 		row.tooltip_text = String(o.desc)
 		var name_l := UIStyle.label(String(o.name), 16)
@@ -2646,25 +2666,39 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 		name_l.tooltip_text = String(o.desc)
 		name_l.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.add_child(name_l)
-		var btn := UIStyle.button("%d" % price, func():
-			if price > coins():
-				return
-			add_coins(-price)
-			if Sfx:
-				Sfx.play("pickup", Vector3.ZERO, 0.6)
-			changed.call(Body.apply(b, id)))
+		var btn := UIStyle.button("costs %d" % price, func(): buy.call(id, price))
 		btn.disabled = price > coins()
-		btn.custom_minimum_size = Vector2(80, 0)
-		btn.tooltip_text = String(o.desc)
+		btn.custom_minimum_size = Vector2(110, 0)
+		btn.tooltip_text = String(o.desc) + ("" if price <= coins() else "  (%d more needed)" % (price - coins()))
 		row.add_child(btn)
-		v.add_child(row)
-	var foot := HBoxContainer.new()
-	var purse := UIStyle.label("%d denarii" % coins(), 14, UIStyle.BRONZE)
-	purse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	foot.add_child(purse)
+		# With the one button there, the bones and the stitching one at a time are folded away.
+		if not all.is_empty() and (id.begins_with("set:") or id.begins_with("stitch:")):
+			folded.add_child(row)
+		else:
+			v.add_child(row)
+	if folded.get_child_count() > 0:
+		if all.is_empty():
+			for c in folded.get_children():
+				folded.remove_child(c)
+				v.add_child(c)
+			folded.queue_free()
+		else:
+			folded.visible = false
+			var more := UIStyle.button("Or one at a time (%d)" % folded.get_child_count(), func(): pass)
+			more.pressed.connect(func():
+				folded.visible = not folded.visible
+				more.text = ("Hide" if folded.visible else "Or one at a time (%d)" % folded.get_child_count()))
+			v.add_child(more)
+			v.add_child(folded)
+	else:
+		folded.queue_free()
+	if offers.is_empty():
+		v.add_child(UIStyle.label("Nothing he needs to see to.", 15, UIStyle.MUTED))
 	if done_text != "":
+		var foot := HBoxContainer.new()
+		foot.alignment = BoxContainer.ALIGNMENT_END
 		foot.add_child(UIStyle.button(done_text, func(): done.call(b), true))
-	v.add_child(foot)
+		v.add_child(foot)
 
 func _pay(r: Dictionary) -> void:
 	if r.has("error"):

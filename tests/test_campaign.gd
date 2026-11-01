@@ -421,6 +421,23 @@ func test_late_foes_keep_strong_weapons() -> void:
 				weak += 1
 		t.eq(weak, 0, "bout %d: no weak weapon in the foes' hands" % st)
 
+## An archer keeps his bow at every bout (user: a "Veteran Bowman" came at him with a mace: the
+## bout's weapon had been put in his hands for his bow).
+func test_an_archer_keeps_his_bow() -> void:
+	var m := Match.new()
+	m.mode = "campaign"
+	var bad := []
+	for st in [3, 9, 17, 30, 50]:
+		m.stage = st
+		for sd in 6:
+			m.rng.seed = sd
+			var spec := m.enemy_spec({"e": "sagittarius", "gear": {"rank": "Veteran", "temper": "iron"}}, 0, 1)
+			var main: Dictionary = spec.loadout.main
+			if not main.has("shoots"):
+				bad.append("bout %d: %s" % [st, str(main.get("name", "?"))])
+	t.check(bad.is_empty(), "every archer holds a bow (%s)" % ", ".join(bad))
+	m.free()
+
 ## The first bouts are gentle: the Cyclops (the gentlest giant in the survey) is the first boss
 ## and the Big Lion waits for the eighth bout, the wolf and the boar bite less hard, and the men
 ## of bouts 2 to 4 climb slower.

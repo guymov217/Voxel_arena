@@ -233,7 +233,8 @@ func _build_ui() -> void:
 	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	tool_bar.position.y = 12
 	right.add_child(tool_bar)
-	# The price of the job, always in sight at the foot of the view, out of the way of the work.
+	# What he has and what the job costs, always in sight at the top of the view (user: where it
+	# is seen), out of the way of the work.
 	var pb := PanelContainer.new()
 	var pbs := StyleBoxFlat.new()
 	pbs.bg_color = Color(0.07, 0.05, 0.035, 0.82)
@@ -243,11 +244,11 @@ func _build_ui() -> void:
 	pbs.content_margin_left = 14; pbs.content_margin_right = 14; pbs.content_margin_top = 6; pbs.content_margin_bottom = 6
 	pb.add_theme_stylebox_override("panel", pbs)
 	pb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	pb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	pb.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	pb.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	pb.position.y -= 14
-	price_badge = UIStyle.label("", 19, UIStyle.GOLD)
+	pb.grow_vertical = Control.GROW_DIRECTION_END
+	pb.position.y += 14
+	price_badge = UIStyle.label("", 23, UIStyle.GOLD)
 	price_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	price_badge.autowrap_mode = TextServer.AUTOWRAP_OFF
 	pb.add_child(price_badge)
@@ -648,7 +649,7 @@ func _voxels_ui() -> void:
 		jr.add_child(b)
 	mode_box.add_child(jr)
 	# 2. What they are made of: swatches by kind, the price on each.
-	mode_box.add_child(UIStyle.label("2 · MATERIAL" + ("" if free_build else " · DENARII A BLOCK"), 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label("2 · MATERIAL", 13, UIStyle.BRONZE))
 	var mg := GridContainer.new()
 	mg.columns = 2
 	mg.add_theme_constant_override("h_separation", 8)
@@ -665,7 +666,7 @@ func _voxels_ui() -> void:
 				continue
 			var key: String = m
 			var b := Button.new()
-			b.text = m.capitalize() + ("" if free_build else " %d" % Arms.voxel_price(m))
+			b.text = m.capitalize()   # (no price a block on it: what the weapon costs is on show over the anvil, user)
 			b.icon = _swatch(Weapon.voxel_color(m, "blunt"))
 			b.tooltip_text = material_text(m)
 			b.toggle_mode = true
@@ -1028,27 +1029,13 @@ func price_text(d: Dictionary) -> String:
 		return "Free in training"
 	if workshop:
 		return "Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii." % Arms.design_price(d)
-	var pay: int
-	var lines: Array = []
-	if scratch:
-		var mat := maxi(0, Arms.value(d) - 1)
-		var work := Arms.labour(d)
-		var harm := Arms.power_price(d)
-		pay = Arms.design_price(d)
-		lines.append("Blocks %d + the smith's work %d = %d" % [mat, work, mat + work])
-		if harm > mat + work:
-			lines.append("A weapon that hits this hard costs at least %d" % harm)
-	else:
-		var now := _value_now()
-		pay = now - original_value
-		lines.append("Its blocks were worth %d, now %d" % [original_value, now])
+	# Just what he has and what it costs (user: the rest was more than anyone could follow).
+	var pay: int = Arms.design_price(d) if scratch else _value_now() - original_value
 	if pay < 0:
-		lines.append("He pays you back %d · purse %d → %d" % [-pay, purse, purse - pay])
-	elif pay > purse:
-		lines.append("You pay %d · you have %d: %d more needed" % [pay, purse, pay - purse])
-	else:
-		lines.append("You pay %d · purse %d → %d" % [pay, purse, purse - pay])
-	return "\n".join(lines)
+		return "You have %d · you get %d back" % [purse, -pay]
+	if pay > purse:
+		return "You have %d · this costs %d (%d more needed)" % [purse, pay, pay - purse]
+	return "You have %d · this costs %d" % [purse, pay]
 
 func _value_now() -> int:
 	var s := 0
@@ -1079,13 +1066,13 @@ func _price_badge() -> void:
 	var pr := _price_now()
 	var pay: int = pr[0]
 	if pay < 0:
-		price_badge.text = "He pays you %d  ·  purse %d → %d" % [-pay, purse, purse - pay]
+		price_badge.text = "You have %d   ·   You get %d back" % [purse, -pay]
 		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 	elif pay > purse:
-		price_badge.text = "Price %d  ·  you have %d: %d short" % [pay, purse, pay - purse]
+		price_badge.text = "You have %d   ·   This costs %d   (%d more needed)" % [purse, pay, pay - purse]
 		price_badge.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
 	else:
-		price_badge.text = "Price %d  ·  purse %d → %d" % [pay, purse, purse - pay]
+		price_badge.text = "You have %d   ·   This costs %d" % [purse, pay]
 		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 
 # ---------- The weapon on the anvil ----------

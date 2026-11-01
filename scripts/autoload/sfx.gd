@@ -141,6 +141,7 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	data.resize(n * 2)
 	if BLOWS.has(kind):
 		var buf := _blow_sound(kind, take, n)
+		_finish(buf)   # (its ends faded after the high-pass, which leaves them off zero)
 		for i in n:
 			data.encode_s16(i * 2, int(clampf(buf[i], -1.0, 1.0) * 32000))
 		var bw := AudioStreamWAV.new()
@@ -407,14 +408,27 @@ func _blow_sound(kind: String, take: int, n: int) -> PackedFloat32Array:
 				s = sin(ph[0]) * exp(-t * 19.0) + sin(ph[1]) * 0.3 * exp(-t * 36.0) + smack * 2.6
 			"boom":
 				# A pot of powder going off: the crack of it, the whump of the air thrown out, and
-				# the deep roll that follows, all of it low and round (no fizz on top).
-				var crack := _lp2(nz, 0, w, 3800.0) * exp(-t * 160.0)
-				var whump := _lp2(nz, 2, w, 420.0) * exp(-t * 9.0)
-				var roll := _lp2(nz, 6, _lp2(nz, 4, w, 140.0), 140.0) * exp(-t * 2.4) * minf(1.0, t / 0.03)
-				ph[0] += TAU * (58.0 - 24.0 * minf(1.0, t / 0.5)) * tone / RATE
-				s = crack * 0.9 + whump * 2.6 + roll * 9.0 + sin(ph[0]) * 0.8 * exp(-t * 3.2)
+				# the deep roll that follows. The roll is tones, falling and beating against each
+				# other, not noise: rumbling noise that low and that long was heard as a static
+				# under every blast (user, twice). The whump is a short burst, not a long one.
+				var crack := _band(nz, 0, w, 600.0, 3800.0) * exp(-t * 160.0)
+				var whump := _band(nz, 4, w, 120.0, 520.0) * exp(-t * 14.0)
+				ph[0] += TAU * (62.0 - 20.0 * minf(1.0, t / 0.6)) * tone / RATE
+				ph[1] += TAU * (91.0 - 26.0 * minf(1.0, t / 0.5)) * tone / RATE
+				ph[2] += TAU * 47.0 * tone / RATE
+				var roll := (sin(ph[0]) + 0.6 * sin(ph[1]) + 0.45 * sin(ph[2] + 0.7 * sin(TAU * 3.0 * t))) * exp(-t * 2.6) * minf(1.0, t / 0.02)
+				s = crack * 1.1 + whump * 3.2 + roll * 0.85
 		s *= minf(1.0, t * 450.0) * minf(1.0, (L - t) * 200.0)   # (a 2 ms onset and a 5 ms close: no click at either end)
 		out[i] = s
+	# Nothing under 40 Hz (two poles of high-pass): below that a blow or a blast is only a push of
+	# the speaker, heard as a rumble of static on small ones and a drone through the reverb.
+	var hp := [0.0, 0.0]
+	var hk := _lp_k(40.0)
+	for i in n:
+		hp[0] += (out[i] - hp[0]) * hk
+		var x1: float = out[i] - hp[0]
+		hp[1] += (x1 - hp[1]) * hk
+		out[i] = x1 - hp[1]
 	# Levelled: every take to the same peak, well under full scale.
 	var peak := 0.0
 	for v in out:

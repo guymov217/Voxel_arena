@@ -646,7 +646,10 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 		main = Data.preset(en.loadout)
 		off = {}
 	var ladder: bool = mode == "campaign" and not en.get("boss", false) and not (en.get("loadout") is String and en.loadout != "")
-	if ladder and not main.is_empty() and lo.get("main"):
+	# (An archer keeps his bow: the bout's weapon put in his hands, a Bowman came at a man with a
+	# mace, user.)
+	var shooter: bool = String(t.get("personality", "")) == "archer" or main.has("shoots")
+	if ladder and not main.is_empty() and lo.get("main") and not shooter:
 		var own: Array = los.map(func(x): return String(x.get("main", "")))
 		var key := ladder_weapon(stage, own, rng)
 		if key != String(lo.main):
