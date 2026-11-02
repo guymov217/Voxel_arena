@@ -243,6 +243,13 @@ void fragment() {
 		ROUGHNESS = mix(ROUGHNESS, 0.26 + 0.08 * seed, oil);
 		SPECULAR = mix(SPECULAR, 0.72, oil);
 	}
+	if (status.x < 0.0) {
+		// Wet blood on it (Weapon.bloody: green below nought): glossy while it is fresh.
+		float wet = clamp(-status.x, 0.0, 1.0);
+		ROUGHNESS = mix(ROUGHNESS, 0.24, wet);
+		SPECULAR = mix(SPECULAR, 0.5, wet);
+		METALLIC = mix(METALLIC, 0.0, wet * 0.85);
+	}
 	if (status.x > 0.0) {
 		// Burning: the voxel glows from within, flickering, white-yellow at its hottest.
 		float f = 0.65 + 0.35 * sin(TIME * (9.0 + seed * 7.0) + seed * 40.0) + 0.15 * sin(TIME * 23.0 + seed * 11.0);

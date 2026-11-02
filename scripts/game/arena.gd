@@ -65,12 +65,13 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	e.sdfgi_energy = 0.8
 	e.sdfgi_cascades = 4
 	e.glow_enabled = lv >= 1
-	e.glow_intensity = 0.85
-	e.glow_bloom = 0.08
+	# (Gentler than it was: the sun's glow and bloom spread over the picture and blurred it, user.)
+	e.glow_intensity = 0.7
+	e.glow_bloom = 0.04
 	e.glow_hdr_threshold = 1.1
 	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	e.volumetric_fog_enabled = lv >= 2
-	e.volumetric_fog_density = 0.006   # air enough for the sun to show in, shafts through the arcade
+	e.volumetric_fog_density = 0.0035   # air enough for the sun to show in, shafts through the arcade (more washed the colours out, user)
 	e.volumetric_fog_albedo = Color(0.85, 0.76, 0.6)
 	e.volumetric_fog_anisotropy = 0.6
 	e.volumetric_fog_length = 48.0
@@ -82,7 +83,7 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 		sun_.shadow_enabled = true
 		sun_.directional_shadow_max_distance = 40.0 if lv >= 2 else 25.0
 		sun_.shadow_blur = 1.0
-		sun_.light_volumetric_fog_energy = 1.8
+		sun_.light_volumetric_fog_energy = 1.1
 		# The sun a disc, not a point (ultra only: it is the one thing here that costs): shadows
 		# sharp at the feet, softer the further they fall from what casts them.
 		sun_.light_angular_distance = 0.5 if lv >= 3 else 0.0
@@ -111,10 +112,13 @@ func _build_visuals() -> void:
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 1.05 if day else 1.08
 	e.adjustment_contrast = 1.1 if day else 1.12
+	# A film's grade over it all (grade_lut): the shade a touch cooler, the sunlight a touch more
+	# gold, the middle tones given a little more shape. A table looked up once a pixel: free.
+	e.adjustment_color_correction = grade_lut(day)
 	e.fog_density = 0.005 if day else 0.008
 	e.fog_light_color = Color(0.82, 0.74, 0.6)
 	e.fog_aerial_perspective = 0.7 if day else 0.5   # the haze takes the sky's own colour far off
-	e.fog_sun_scatter = 0.25 if day else 0.0
+	e.fog_sun_scatter = 0.1 if day else 0.0         # (a glare over all toward the sun at more)
 	e.fog_sky_affect = 0.0                            # (the sky itself clear)
 	we.environment = e
 	add_child(we)
@@ -136,7 +140,9 @@ func _build_visuals() -> void:
 		veil.set_anchors_preset(Control.PRESET_FULL_RECT)
 		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var sm := ShaderMaterial.new()
-		sm.shader = load("res://shaders/film.gdshader")
+		# High and up, the picture is sharpened first (film_sharp: it reads the picture back,
+		# one pass, so not at medium): the voxels' edges crisp again after the anti-aliasing.
+		sm.shader = load("res://shaders/film_sharp.gdshader" if q == "high" or q == "ultra" else "res://shaders/film.gdshader")
 		veil.material = sm
 		layer.add_child(veil)
 		add_child(layer)
@@ -163,6 +169,162 @@ func _build_visuals() -> void:
 	var atm := Atmosphere.new()
 	add_child(atm)
 	atm.build(self, day, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
+	if q != "low":
+		_build_reflections()
+	if day and q != "low":
+		_build_cloud_shadows()
+
+## What the arena itself is drawn with is marked (a layer of its own, STATIC_LAYER) so that the
+## reflection taken of it holds the bowl and nothing that moves in it.
+const STATIC_LAYER := 1 << 2
+
+## Metal shows the arena round it: a reflection of the bowl taken once (the sand, the stone, the
+## stands and the cloth; no one standing in it, they are not on STATIC_LAYER), and in it every
+## blade, helmet and plate catches the warm stone and the crowd instead of only the sky (a blade
+## turned up to the light went the blue of the open sky). Taken once, at the start: it costs
+## nothing after.
+func _build_reflections() -> void:
+	var stack: Array = [self]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is VisualInstance3D and not (n is ReflectionProbe) and not (n is Decal):
+			(n as VisualInstance3D).layers |= STATIC_LAYER
+	var rp := ReflectionProbe.new()
+	rp.name = "Reflections"
+	rp.size = Vector3(RADIUS * 2.0 + 2.0, 14.0, RADIUS * 2.0 + 2.0)
+	rp.max_distance = 90.0
+	rp.update_mode = ReflectionProbe.UPDATE_ONCE
+	rp.ambient_mode = ReflectionProbe.AMBIENT_ENVIRONMENT
+	rp.cull_mask = STATIC_LAYER
+	rp.enable_shadows = true
+	add_child(rp)
+	rp.position = Vector3(0, 1.6, 0)
+
+## The shadows of the clouds the sky's wind carries over (by day): soft dark patches drifting
+## across the sand, the stands and the men, one great decal moved a little every frame. When it
+## has gone as far as it may, it fades out and comes back in from the other side.
+const CLOUD_SPAN := 260.0
+const CLOUD_TRAVEL := 90.0
+const CLOUD_WIND := Vector3(0.45, 0.0, 0.17)
+const CLOUD_DARK := 0.5
+var cloud_shade: Decal = null
+var _cloud_fade := 1.0
+var _cloud_back := false
+
+func _build_cloud_shadows() -> void:
+	cloud_shade = Decal.new()
+	cloud_shade.name = "CloudShadows"
+	cloud_shade.texture_albedo = cloud_texture()
+	cloud_shade.modulate = Color(0.06, 0.07, 0.1, CLOUD_DARK)
+	cloud_shade.albedo_mix = 1.0
+	cloud_shade.size = Vector3(CLOUD_SPAN, 70.0, CLOUD_SPAN)
+	cloud_shade.upper_fade = 0.0
+	cloud_shade.lower_fade = 0.0
+	add_child(cloud_shade)
+	# Start with a cloud's edge across the sand (some of it in shade, some in the sun) rather
+	# than wherever the noise happens to leave open sky over it: the first place along the
+	# wind's way with about half the sand in shade.
+	var img := cloud_texture().get_image()
+	var wind := CLOUD_WIND.normalized()
+	var best := Vector3(-CLOUD_TRAVEL * 0.5, 15.0, -CLOUD_TRAVEL * 0.2)
+	var off := INF
+	for k in 27:
+		var p := wind * (-CLOUD_TRAVEL * 0.88 + k * 6.0) + Vector3(0, 15.0, 0)
+		var d := absf(shade_over_sand(img, p) - 0.45)
+		if d < off - 0.02:
+			off = d
+			best = p
+	cloud_shade.position = best
+
+## How much of the sand the clouds' shade covers with their decal at `at` (0 open sky, 1 all in
+## shade): the texture read at a grid of points over the sand.
+static func shade_over_sand(img: Image, at: Vector3) -> float:
+	var n := 0
+	var sum := 0.0
+	var w := img.get_width()
+	var h := img.get_height()
+	for x in range(-12, 13, 3):
+		for z in range(-12, 13, 3):
+			var u := (float(x) - at.x) / CLOUD_SPAN + 0.5
+			var v := (float(z) - at.z) / CLOUD_SPAN + 0.5
+			sum += img.get_pixel(clampi(int(u * w), 0, w - 1), clampi(int(v * h), 0, h - 1)).a
+			n += 1
+	return sum / n
+
+## The clouds' shadows as a texture: soft patches of shade, made at once (a noise texture made in
+## the background came too late for the decal, which kept the empty one it was given).
+static var _cloud_tex: ImageTexture = null
+static func cloud_texture() -> ImageTexture:
+	if _cloud_tex:
+		return _cloud_tex
+	var n := FastNoiseLite.new()
+	n.seed = 17
+	n.noise_type = FastNoiseLite.TYPE_PERLIN
+	n.frequency = 0.03
+	n.fractal_octaves = 4
+	var size := 256
+	var src := n.get_seamless_image(size, size)
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			img.set_pixel(x, y, Color(0, 0, 0, smoothstep(0.47, 0.66, src.get_pixel(x, y).r)))
+	img.generate_mipmaps()
+	_cloud_tex = ImageTexture.create_from_image(img)
+	return _cloud_tex
+
+func _move_clouds(dt: float) -> void:
+	if cloud_shade == null:
+		return
+	cloud_shade.position += CLOUD_WIND * dt
+	# Gone far enough: fade out, go back, fade in (a cloud that passed and the next one coming).
+	if not _cloud_back and Vector2(cloud_shade.position.x, cloud_shade.position.z).length() > CLOUD_TRAVEL:
+		_cloud_back = true
+	if _cloud_back:
+		_cloud_fade = maxf(0.0, _cloud_fade - dt / 4.0)
+		if _cloud_fade <= 0.0:
+			cloud_shade.position = Vector3(-CLOUD_WIND.normalized().x, 0, -CLOUD_WIND.normalized().z) * CLOUD_TRAVEL * 0.9 + Vector3(0, 15.0, 0)
+			_cloud_back = false
+	elif _cloud_fade < 1.0:
+		_cloud_fade = minf(1.0, _cloud_fade + dt / 4.0)
+	cloud_shade.modulate.a = CLOUD_DARK * _cloud_fade
+
+## The colour grade (Environment.adjustment_color_correction): a table of what the grade makes of
+## each colour, 17 a side. By day the shade leans a little to the cool of the open sky and the
+## sunlit to the gold of the sun, the middle tones a little firmer; by night the moonlight a
+## little bluer and the torchlight warmer. Made once for each.
+static var _luts := {}
+static func grade_lut(day: bool) -> ImageTexture3D:
+	if _luts.has(day):
+		return _luts[day]
+	var n := 17
+	var imgs: Array[Image] = []
+	for b in n:
+		var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+		for g in n:
+			for r in n:
+				img.set_pixel(r, g, grade(Color(float(r) / (n - 1), float(g) / (n - 1), float(b) / (n - 1)), day))
+		imgs.append(img)
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, n, n, n, false, imgs)
+	_luts[day] = t
+	return t
+
+## One colour through the grade.
+static func grade(c: Color, day: bool) -> Color:
+	var v := Vector3(c.r, c.g, c.b)
+	var l := v.dot(Vector3(0.2126, 0.7152, 0.0722))
+	# (Black itself stays black: the cool comes in over the first few shades.)
+	var shade := (1.0 - smoothstep(0.0, 0.5, l)) * minf(1.0, l * 12.0)
+	var lit := smoothstep(0.45, 1.0, l)
+	var cool := Vector3(-0.012, 0.0, 0.022) if day else Vector3(-0.014, -0.004, 0.03)
+	var warm := Vector3(0.026, 0.01, -0.024) if day else Vector3(0.032, 0.012, -0.022)
+	v += cool * shade + warm * lit
+	# A soft S through the middle tones (the ends left where they are).
+	var l2 := maxf(1e-4, v.dot(Vector3(0.2126, 0.7152, 0.0722)))
+	var s := l2 + 0.32 * (l2 - 0.5) * l2 * (1.0 - l2)
+	v *= clampf(s / l2, 0.0, 2.0)
+	return Color(clampf(v.x, 0.0, 1.0), clampf(v.y, 0.0, 1.0), clampf(v.z, 0.0, 1.0))
 
 ## What lies on the sand, drawn only (nothing to trip on): pebbles and stones, thick along the
 ## foot of the wall and scattered over the ring, and tufts of dry grass where the feet never go.
@@ -369,6 +531,7 @@ func _build_torches(day: bool) -> void:
 				sm.emitting = true
 
 func _process(_dt: float) -> void:
+	_move_clouds(_dt)
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in torches.size():
 		var l: OmniLight3D = torches[i]
@@ -560,28 +723,7 @@ func _build_upper() -> void:
 		beam.transform = Transform3D(Basis(Vector3.UP, ab), Vector3(sin(ab) * top_r, 9.2, cos(ab) * top_r))
 	# The velarium: striped cloth slanting in from the top of the arcade, rippling.
 	var flag_shader: Shader = load("res://shaders/flag.gdshader")
-	var aw := ShaderMaterial.new()
-	aw.shader = flag_shader
-	aw.set_shader_parameter("color_a", Color(0.86, 0.8, 0.66))
-	aw.set_shader_parameter("color_b", Color(0.62, 0.14, 0.1))
-	aw.set_shader_parameter("stripes", 6.0)
-	aw.set_shader_parameter("wave", 0.12)
-	if voxel:
-		aw.set_shader_parameter("cells", Vector2(45, 60))
-	for i in 24:
-		if i % 4 == 3:
-			continue
-		var a := (i + 0.5) / 24.0 * TAU
-		var pm := PlaneMesh.new()
-		pm.size = Vector2(4.5, TAU * top_r / 24.0 * 0.95)
-		pm.subdivide_width = 8
-		pm.material = aw
-		var mi := MeshInstance3D.new()
-		mi.mesh = pm
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		add_child(mi)
-		var mid := top_r - 2.0
-		mi.transform = Transform3D(Basis(Vector3.UP, a + PI / 2.0) * Basis(Vector3(0, 0, 1), deg_to_rad(-14)), Vector3(sin(a) * mid, 9.9, cos(a) * mid))
+	_build_velarium(top_r)
 	# Flags on poles along the top.
 	for i in 16:
 		var a := float(i) / 16.0 * TAU
@@ -712,6 +854,121 @@ func _build_upper() -> void:
 		arch.mesh = am
 		add_child(arch)
 		arch.position = Vector3(gx * (RADIUS + 0.1), 2.55, 0)
+
+## The velarium: sails of cloth lashed to masts along the top of the arcade and stretched in and
+## down over the stands toward the sand, cream and red by turns, sagging between their ropes and
+## rippling in the wind, two of them furled to let the sun in (from the floor of the arena they
+## were a thin striped band at the top of the arcade, seen edge on). Under them, long banners hang
+## from the arcade in red and purple, each with a gold border and a wreath. Drawing only
+## (cloth.gdshader): no one can touch them, and the fight camera never comes up to them. They
+## cast no shadow: the light on the sand stays as it was (sails on the sun's side threw half the
+## arena into shade).
+func _build_velarium(top_r: float) -> void:
+	var cloth: Shader = load("res://shaders/cloth.gdshader")
+	var sails := 20
+	var r_out := top_r + 0.3
+	var r_in := RADIUS + 3.6
+	var nr := 6
+	var na := 5
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in sails:
+		if i == 4 or i == 14:
+			continue
+		var a0 := (i + 0.03) / sails * TAU
+		var a1 := (i + 0.97) / sails * TAU
+		var col := Color(0.88, 0.82, 0.68) if i % 2 == 0 else Color(0.66, 0.18, 0.12)
+		var grid := []
+		for ir in nr + 1:
+			var u := float(ir) / nr
+			var row := []
+			for ia in na + 1:
+				var v := float(ia) / na
+				var a := lerpf(a0, a1, v)
+				var r := lerpf(r_out, r_in, u)
+				# Lashed high on the masts, falling toward its free edge, sagging between its ropes.
+				var y := lerpf(12.1, 10.7, u) - 0.6 * sin(PI * u) * (0.55 + 0.45 * sin(PI * v)) - 0.25 * sin(PI * v) * u
+				row.append([Vector3(sin(a) * r, y, cos(a) * r), Vector2(u, v)])
+			grid.append(row)
+		for ir in nr:
+			for ia in na:
+				var q: Array = [grid[ir][ia], grid[ir + 1][ia], grid[ir + 1][ia + 1], grid[ir][ia + 1]]
+				for k in [0, 1, 2, 0, 2, 3]:
+					st.set_color(col)
+					st.set_uv(q[k][1])
+					st.add_vertex(q[k][0])
+	st.generate_normals()
+	var mat := ShaderMaterial.new()
+	mat.shader = cloth
+	mat.set_shader_parameter("wave", 0.22)
+	if voxel:
+		mat.set_shader_parameter("cells", 12.0)
+	var sails_mi := MeshInstance3D.new()
+	sails_mi.name = "Velarium"
+	sails_mi.mesh = st.commit()
+	sails_mi.material_override = mat
+	sails_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(sails_mi)
+	# The masts the sails are lashed to, one between each two, along the top of the arcade.
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.42, 0.3, 0.2)
+	wood.roughness = 0.85
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.07
+	pole.bottom_radius = 0.1
+	pole.height = 3.6
+	pole.radial_segments = 6
+	pole.material = wood
+	var masts := MultiMesh.new()
+	masts.transform_format = MultiMesh.TRANSFORM_3D
+	masts.mesh = pole
+	masts.instance_count = sails
+	for i in sails:
+		var a := float(i) / sails * TAU
+		masts.set_instance_transform(i, Transform3D(Basis(), Vector3(sin(a) * r_out, 10.6, cos(a) * r_out)))
+	var masts_mi := MultiMeshInstance3D.new()
+	masts_mi.multimesh = masts
+	masts_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(masts_mi)
+	# The banners, clear of the gates (east and west) and the Emperor's box (north).
+	var bm := _cloth_strip(1.25, 3.4, 3, 10)
+	var k := 0
+	for deg in [27.0, 56.0, 124.0, 153.0, 207.0, 236.0, 304.0, 333.0]:
+		var a := deg_to_rad(deg)
+		var bmat := ShaderMaterial.new()
+		bmat.shader = cloth
+		bmat.set_shader_parameter("hanging", true)
+		bmat.set_shader_parameter("wave", 0.16)
+		bmat.set_shader_parameter("field", Color(0.62, 0.11, 0.09) if k % 2 == 0 else Color(0.36, 0.1, 0.36))
+		bmat.set_shader_parameter("trim", Color(0.92, 0.72, 0.3))
+		if voxel:
+			bmat.set_shader_parameter("cells", 10.0)
+		var ban := MeshInstance3D.new()
+		ban.mesh = bm
+		ban.material_override = bmat
+		ban.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(ban)
+		var rr := top_r - 0.55
+		ban.transform = Transform3D(Basis(Vector3.UP, a + PI), Vector3(sin(a) * rr, 10.15, cos(a) * rr))
+		k += 1
+
+## A strip of cloth `w` wide and `h` long hanging down from its top edge (at the origin), facing
+## +z, cut `nx` by `ny`: UV.y 0 at the top, 1 at the foot.
+static func _cloth_strip(w: float, h: float, nx: int, ny: int) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for iy in ny:
+		for ix in nx:
+			var q := []
+			for c in [[ix, iy], [ix + 1, iy], [ix + 1, iy + 1], [ix, iy + 1]]:
+				var u := float(c[0]) / nx
+				var v := float(c[1]) / ny
+				q.append([Vector3((u - 0.5) * w, -v * h, 0.0), Vector2(u, v)])
+			for t in [0, 1, 2, 0, 2, 3]:
+				st.set_normal(Vector3(0, 0, 1))
+				st.set_uv(q[t][1])
+				st.add_vertex(q[t][0])
+	return st.commit()
 
 ## The voxel bowl's furnishings, all out of reach of the fight: statues on the arcade and on the
 ## gatehouses, the Emperor's throne, and in each gate tunnel a rack of spears, jars and crates

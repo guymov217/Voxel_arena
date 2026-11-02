@@ -167,7 +167,8 @@ func _coat() -> void:
 	if pts.is_empty():
 		return
 	for i in pts:
-		mm.set_instance_color(i, voxel_color(vox[i][3], vox[i][4]).lerp(COAT_TINT[c], 0.55 if c == "fire" else 0.4))
+		_coat_pts[i] = true
+		mm.set_instance_color(i, _vcolor(i))
 	if Fx.current == null:
 		return
 	if c == "fire" and Fx.current.quality != "low":
@@ -367,6 +368,9 @@ func _build_mesh() -> void:
 		mmi.custom_aabb = AABB(lo - Vector3.ONE * vs, hi - lo + Vector3.ONE * vs * 2.0)
 		mm.custom_aabb = mmi.custom_aabb
 	add_child(mmi)
+	# A fast swing leaves a faint sweep in the air behind what cuts (swing_trail.gd; drawing only).
+	if Fx.current != null and not Fx.current.headless and Fx.current.quality != "low" and get_node_or_null("SwingTrail") == null:
+		add_child(load("res://scripts/fighter/swing_trail.gd").new(self))
 
 ## The sharp voxels' taper (VoxelPart.taper_code), from the weapon as it was made: when sharp
 ## voxels break off, the ones left behind them are not sharpened (the edge is broken, not new).
@@ -398,7 +402,87 @@ func _custom(i: int) -> Color:
 			"metal": c.g = 0.35
 			_: c.g = 0.2
 	c.b = 0.7 if _burn.y else 0.0
+	# Wet blood on it (bloody): the shader reads green below nought as how wet, a gloss.
+	if not _burn.x and _blood_on(i) > 0.5:
+		var b: Array = bloodied[i]
+		var wet := (1.0 - clampf(float(b[1]) / BLOOD_DRY_T, 0.0, 1.0))
+		if wet > 0.02:
+			c.g = -wet
 	return c
+
+## The voxels a coating tints (_coat), and the blood on it (bloody): voxel -> [how much 0..1,
+## how long it has been drying, seconds]. Drawing only.
+var _coat_pts := {}
+var bloodied := {}
+const BLOOD_WET := Color(0.46, 0.02, 0.03)
+const BLOOD_DRY := Color(0.22, 0.07, 0.05)
+const BLOOD_DRY_T := 90.0
+const RUST := Color(0.42, 0.3, 0.22)
+var _blood_t := 0.0
+
+## How much of voxel i the blood covers: blood lies in a patch round where it went in, with a
+## ragged edge and a few drops beyond it, each voxel wholly covered or not (a thin wash of red
+## over bright steel reads pink); the rest keep a faint film. 0 none, else 0.1..1.
+func _blood_on(i: int) -> float:
+	if not bloodied.has(i):
+		return 0.0
+	var much := float(bloodied[i][0])
+	var v: Array = vox[i]
+	var h := fposmod(sin(float(v[0]) * 12.9898 + float(v[1]) * 78.233 + float(v[2]) * 37.719) * 43758.5453, 1.0)
+	return 0.85 + 0.15 * much if much + 0.3 * (h - 0.5) > 0.42 else 0.12 * much
+
+## A voxel's colour as it is now: its stuff, a coating's tint along what cuts, the edge going to
+## rust as it dulls (wear_edge), and the blood on it, wet red drying to the brown of old blood.
+func _vcolor(i: int) -> Color:
+	var c := voxel_color(vox[i][3], vox[i][4])
+	var coat: String = design.get("imbue", "")
+	if _coat_pts.has(i) and COAT_TINT.has(coat):
+		c = c.lerp(COAT_TINT[coat], 0.55 if coat == "fire" else 0.4)
+	if dull > 0.0 and (vox[i][4] == "edge" or vox[i][4] == "point"):
+		c = c.lerp(RUST, dull * 0.75)
+	if bloodied.has(i):
+		var b: Array = bloodied[i]
+		c = c.lerp(BLOOD_WET.lerp(BLOOD_DRY, clampf(float(b[1]) / BLOOD_DRY_T, 0.0, 1.0)), _blood_on(i))
+	return c
+
+## Blood on it where it struck into flesh (drawing only): the voxels round world point `at`, the
+## nearer the more, wet and red; it dries to brown over a minute and a half (_process). Every
+## blow that draws blood adds to it and wets it again.
+func bloody(at: Vector3, amount: float) -> void:
+	if mm == null or amount <= 0.0 or vox.is_empty():
+		return
+	var q := to_local(at) / vs
+	var r := 2.6
+	var touched := []
+	for i in vox.size():
+		if alive[i] == 0 or vox[i][4] == "grip":
+			continue
+		var d := Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(q)
+		if d > r:
+			continue
+		var b: Array = bloodied.get(i, [0.0, 0.0])
+		b[0] = minf(0.85, float(b[0]) + amount * (1.0 - d / (r + 0.6)))
+		b[1] = 0.0
+		bloodied[i] = b
+		touched.append(i)
+	for i in touched:
+		mm.set_instance_color(i, _vcolor(i))
+		mm.set_instance_custom_data(i, _custom(i))
+
+func _dry_blood(dt: float) -> void:
+	_blood_t += dt
+	if _blood_t < 1.0 or mm == null:
+		return
+	var step := _blood_t
+	_blood_t = 0.0
+	for i in bloodied:
+		var b: Array = bloodied[i]
+		if float(b[1]) >= BLOOD_DRY_T:
+			continue
+		b[1] = float(b[1]) + step
+		if i < vox.size() and alive[i]:
+			mm.set_instance_color(i, _vcolor(i))
+			mm.set_instance_custom_data(i, _custom(i))
 
 ## The box the voxels still on it fill, in its own frame (a shield's cover, see Fighter).
 ## The gems set in it that are still there: {"ruby": n, ...} (Match._gems).
@@ -576,10 +660,9 @@ func wear_edge(amount: float) -> void:
 	dull = minf(DULL_MAX, dull + amount)
 	if dull - _dull_shown >= 0.04 and mm:
 		_dull_shown = dull
-		var rust := Color(0.42, 0.3, 0.22)
 		for i in vox.size():
 			if alive[i] and (vox[i][4] == "edge" or vox[i][4] == "point"):
-				mm.set_instance_color(i, voxel_color(vox[i][3], vox[i][4]).lerp(rust, dull * 0.75))
+				mm.set_instance_color(i, _vcolor(i))
 
 ## A knock of `score` on voxel `index`: tires the metal round it, chips what gives way (the
 ## web game's sparing chip: a sound weapon keeps in one piece) and, once it is battered, breaks
@@ -945,6 +1028,8 @@ func snap_drawing() -> void:
 var draw_shift := Vector3.ZERO   # drawn this much off (world): with the hand that holds it
 var draw_turn := Transform3D()    # and turned so (a hand below a broken bone swings)
 func _process(_dt: float) -> void:
+	if not bloodied.is_empty():
+		_dry_blood(_dt)
 	if vis:
 		var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
 		t = draw_turn * t

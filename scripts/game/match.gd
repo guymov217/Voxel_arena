@@ -85,6 +85,8 @@ var modes: Modes = null
 var fx: Fx
 var bone_drip_t := 0.0
 var drip_t := 0.0
+var drag_t := 0.0
+var _drag_last := {}   # part -> where it last left a furrow
 var breaths: Array = []
 var attract := false            # the menu backdrop: bots only, an orbiting camera
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
@@ -486,6 +488,8 @@ func _register(e: Dictionary) -> void:
 	combat.fighters.append(e.f)
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
+	if not headless and not (e.f is Beast):
+		e.f.stepped.connect(_on_stepped)
 	e.f.bone_bits_lost.connect(_on_bone_bits_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
 	if e.f.has_signal("note"):
@@ -1963,9 +1967,63 @@ func _banner(text: String, sub: String) -> void:
 	if role == "host":
 		Net.send_all("banner", {"text": text, "sub": sub})
 
+## A foot set down on the sand leaves its print (a peg its round mark), a little ahead of where the
+## ankle came down. Not on a body or a heap: only on the sand.
+func _on_stepped(f: Fighter, at: Vector3, yaw_: float, side: String) -> void:
+	if fx == null or at.y > 0.08 or not is_instance_valid(f):
+		return
+	var shin = f.by_name.get("shin" + side)
+	var peg: bool = shin != null and shin.prosthetic == "peg"
+	fx.footprint("peg" if peg else "foot" + side, at + Vector3(sin(yaw_), 0, cos(yaw_)) * (0.0 if peg else 0.05 * f.S), yaw_, f.S)
+
+## Every frame, drawing only: faces blink and wince, chests breathe (Physique.live); a body slid
+## or dragged over the sand leaves a furrow behind it.
+func _alive_and_marked(dt: float) -> void:
+	for e in entities:
+		var f = e.f
+		if f is Fighter and not (f is Beast) and is_instance_valid(f):
+			Physique.live(f, dt)
+	drag_t -= dt
+	if drag_t > 0.0 or fx == null:
+		return
+	drag_t = 0.1
+	if _drag_last.size() > 300:
+		_drag_last.clear()
+	for e in entities:
+		var f = e.f
+		if not (f is Fighter) or f is Beast or not is_instance_valid(f) or f.state == "stand":
+			continue
+		for prt in [f.torso, f.by_name.get("thighL"), f.by_name.get("thighR")]:
+			if prt == null or not is_instance_valid(prt) or prt.severed:
+				continue
+			var at: Vector3 = prt.global_position
+			if at.y > 0.32 * f.S:
+				continue
+			var v: Vector3 = prt.linear_velocity
+			v.y = 0.0
+			if v.length() < 0.7:
+				continue
+			var last = _drag_last.get(prt)
+			if last != null and (last as Vector3).distance_to(at) < 0.16 * f.S:
+				continue
+			_drag_last[prt] = at
+			fx.footprint("drag", at, atan2(v.x, v.z), f.S, 0.22 * f.S + v.length() * 0.06)
+
 func _on_hit(h: Dictionary) -> void:
 	if rules and role != "guest":
 		rules.on_hit(h)
+	# Blood on what drew it (drawing only): the blade or the club's head where it went in, the
+	# fist that split the skin.
+	if not headless and h.get("p") is Vector3 and h.get("res") is Dictionary and not dec.confetti:
+		var rs: Dictionary = h.res
+		var cut = rs.get("removed", [])
+		if (cut is Array and not (cut as Array).is_empty()) or rs.get("artery", false):
+			var wpn = h.get("weapon")
+			if wpn is Weapon and is_instance_valid(wpn):
+				wpn.bloody(h.p, clampf(0.35 + float(rs.get("dmg", 0.0)) / 30.0, 0.35, 0.85))
+			elif h.get("punch", false) and h.get("att_part") is VoxelPart and is_instance_valid(h.att_part):
+				var ap: VoxelPart = h.att_part
+				ap.wound(ap.to_local(h.p), 0.05 * ap.part_scale, "blood")
 	if h.get("char"):
 		h["at"] = time
 		last_hit_of[h.char] = h
@@ -3012,6 +3070,8 @@ func guest_wvox(m: Dictionary) -> void:
 func _process(dt: float) -> void:
 	_update_breaths(dt)
 	_update_tags()
+	if not headless:
+		_alive_and_marked(dt)
 	# A bone out through the skin: blood runs from the wound and drips off the limb, all the time.
 	bone_drip_t -= dt
 	if bone_drip_t <= 0.0 and not headless and fx:

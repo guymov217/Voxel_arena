@@ -68,7 +68,8 @@ void sky() {
 	if (LIGHT0_ENABLED) {
 		float disc = smoothstep(0.9993, 0.9997, sun_dot);
 		vec3 sc = LIGHT0_COLOR * LIGHT0_ENERGY;
-		col += sc * (disc * 14.0 + pow(sun_dot, 64.0) * 0.6 + pow(sun_dot, 6.0) * 0.12) * (1.0 - night);
+		// (The halo kept small and soft: a wide bright one glared over the stands, user.)
+		col += sc * (disc * 9.0 + pow(sun_dot, 96.0) * 0.4 + pow(sun_dot, 8.0) * 0.06) * (1.0 - night);
 	}
 	COLOR = col;
 }

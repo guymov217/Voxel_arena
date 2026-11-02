@@ -826,6 +826,9 @@ static func talk(f, state: int) -> void:
 		state = 0
 	if state == int(head.get_meta("talk_state", 0)):
 		return
+	# (A grimace's teeth over the mouth come off first, or each would put back the other's.)
+	if state > 0 and int(head.get_meta("expr_state", 0)) & 2:
+		express(f, false, false)
 	var saved: Dictionary = head.get_meta("talk_saved", {})
 	var list := []
 	for i in saved:
@@ -850,6 +853,103 @@ static func talk(f, state: int) -> void:
 	head.set_meta("talk_saved", saved)
 	head.set_meta("talk_state", state)
 	_redraw(head, list)
+
+# ---------- A face alive: a blink, a grimace, a breath ----------
+
+## Drawing only, every frame (Match): he blinks every few seconds; a blow that hurts screws his
+## face up for a moment (eyes squeezed, brows down, teeth bared); his chest rises and falls,
+## quicker and deeper as he runs out of breath. A dead man does none of it.
+static func live(f, dt: float) -> void:
+	var head: VoxelPart = f.head
+	if head == null or not is_instance_valid(head) or head.missing or head.severed:
+		return
+	var st: Dictionary = head.get_meta("life", {})
+	if st.is_empty():
+		st = {"blink": randf_range(0.8, 4.0), "shut": 0.0, "hurt": 0.0, "pain": float(f.pain), "ph": randf() * TAU}
+		head.set_meta("life", st)
+	var living: bool = f.alive and f.state != "dead"
+	st.blink = float(st.blink) - dt
+	if st.blink <= 0.0:
+		st.shut = 0.13
+		st.blink = randf_range(2.4, 5.5)
+	st.shut = maxf(0.0, float(st.shut) - dt)
+	# Pain leaping up is a blow that hurt.
+	if float(f.pain) > float(st.pain) + 0.06:
+		st.hurt = 0.8
+	st.pain = float(f.pain)
+	st.hurt = maxf(0.0, float(st.hurt) - dt)
+	express(f, living and float(st.shut) > 0.0, living and float(st.hurt) > 0.0)
+	var torso: VoxelPart = f.torso
+	if torso == null or not is_instance_valid(torso):
+		return
+	if living:
+		var winded := 1.0 - clampf(float(f.stamina) / 100.0, 0.0, 1.0)
+		st.ph = fmod(float(st.ph) + dt * TAU * (0.27 + 0.5 * winded), TAU)
+		var a := (0.012 + 0.022 * winded) * (0.5 + 0.5 * sin(float(st.ph)))
+		torso.draw_scale = Vector3(1.0 + a * 0.45, 1.0 + a * 0.2, 1.0 + a)
+	elif torso.draw_scale != Vector3.ONE:
+		torso.draw_scale = Vector3.ONE
+
+## His eyes shut (a blink) and his face screwed up (hurt), painted over his face as his talking
+## mouth is; what was there put back when it is over (what a blow or blood changed meanwhile
+## stays). The teeth only while he is not talking.
+static func express(f, shut: bool, hurt: bool) -> void:
+	var head: VoxelPart = f.head
+	var state := (1 if shut else 0) + (2 if hurt else 0)
+	if state == int(head.get_meta("expr_state", 0)):
+		return
+	var saved: Dictionary = head.get_meta("expr_saved", {})
+	var list := []
+	for i in saved:
+		if head.colors[i] == saved[i][1]:
+			head.colors[i] = saved[i][0]
+		list.append(i)
+	saved = {}
+	if state > 0:
+		var at := _face_at(head)
+		var lid: Color = head.get_meta("lid_c", Color(0.5, 0.33, 0.25))
+		var marks := []
+		for x in [2, 3, 6, 7]:
+			marks.append([x, 7, lid])
+			marks.append([x, 6, lid if shut else DARK])
+		if hurt:
+			marks += [[2, 8, DARK], [3, 8, DARK], [6, 8, DARK], [7, 8, DARK]]
+			if int(head.get_meta("talk_state", 0)) == 0:
+				# Teeth gritted: the upper row wide, the lower under it, the corners of the mouth dark.
+				marks += _row(2, 7, 3, WHITE) + _row(3, 6, 2, WHITE) + [[2, 2, MOUTH], [7, 2, MOUTH]]
+		for mk in marks:
+			var k := Vector2i(int(mk[0]), int(mk[1]))
+			if not at.has(k):
+				continue
+			var i: int = at[k]
+			if head.alive[i] == 0:
+				continue
+			# (A later mark over an earlier one wins, as on the face itself: the gaps between the
+			# teeth; what is put back is still what was there first.)
+			if saved.has(i):
+				saved[i][1] = mk[2]
+			else:
+				saved[i] = [head.colors[i], mk[2]]
+				list.append(i)
+			head.colors[i] = mk[2]
+	head.set_meta("expr_saved", saved)
+	head.set_meta("expr_state", state)
+	_redraw(head, list)
+
+## The front of his head: face grid (x, y) -> voxel, kept; and the colour of his eyelids (his
+## skin there, a shade darker).
+static func _face_at(head: VoxelPart) -> Dictionary:
+	if head.has_meta("face_at"):
+		return head.get_meta("face_at")
+	var front := head.grid.z - 1
+	var at := {}
+	for i in head.fx.size():
+		if head.fz[i] == front:
+			at[Vector2i(head.fx[i], head.fy[i])] = i
+	head.set_meta("face_at", at)
+	if at.has(Vector2i(0, 5)):
+		head.set_meta("lid_c", (head.colors[at[Vector2i(0, 5)]] as Color).darkened(0.18))
+	return at
 
 ## The mouth's shapes while he talks, on the face's grid (lips at y 2, teeth at y 3).
 static func talk_marks(state: int) -> Array:

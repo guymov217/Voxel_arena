@@ -52,6 +52,7 @@ signal raged(fighter: Fighter)
 signal note(fighter: Fighter, text: String)   # a word for the player about his own fighter
 signal took_up(fighter: Fighter, w: Weapon)    # a hand closed on a weapon's grip (G) and has it
 signal lodged(fighter: Fighter, w: Weapon, what: String, at: Vector3)   # "in" a blow left it in him, "free" wrenched out of him
+signal stepped(fighter: Fighter, at: Vector3, yaw: float, side: String)   # a foot set down on the sand (its print: Match)
 
 var display_name := "Gladiator"
 var slot := 0
@@ -3132,6 +3133,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					if not (moving and wants_move) and not shin.severed and Vector2(sole_at.x - ft.land.x, sole_at.z - ft.land.z).length() > 0.12 * S:
 						ft.anchor = Vector3(sole_at.x, floor_at, sole_at.z)   # (on what is under it, the sand or a heap: never where it hung in the air)
 					ft.slip = 0.0
+					stepped.emit(self, ft.anchor, yaw, side)
 			elif ft.slip > ((0.5 if sprint else 0.3) if moving else 0.18) * S and not other_up:
 				ft.swing = true
 				ft.from = ft.anchor

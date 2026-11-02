@@ -140,7 +140,9 @@ func _haze(day: bool) -> void:
 	fv.position = Vector3(0, 0.6, 0)
 	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
 	var fm := FogMaterial.new()
-	fm.density = 0.02 if day else 0.005
+	# (Thinner than it was: the sand haze over the whole floor hid the colours and the detail,
+	# user. A trace of it is left for the sun's shafts.)
+	fm.density = 0.008 if day else 0.005
 	fm.albedo = Color(0.9, 0.8, 0.62) if day else Color(0.45, 0.48, 0.6)
 	fm.height_falloff = 1.6
 	fm.edge_fade = 0.6

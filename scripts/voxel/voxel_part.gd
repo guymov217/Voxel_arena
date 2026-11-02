@@ -78,9 +78,12 @@ var draw_shift := Vector3.ZERO
 var draw_turn := Transform3D()
 ## Drawn wherever the part is drawn (its armour): top-level nodes set to its drawing each frame.
 var draw_with: Array = []
+var draw_scale := Vector3.ONE   # drawn this much fuller or smaller about its middle (a breath: Physique.live)
 func _draw_at(t: Transform3D) -> void:
 	t = draw_turn * t
 	t.origin += draw_shift
+	if draw_scale != Vector3.ONE:
+		t.basis = t.basis * Basis.from_scale(draw_scale)
 	if mmi:
 		mmi.global_transform = t
 	if skin:

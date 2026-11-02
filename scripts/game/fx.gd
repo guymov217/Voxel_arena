@@ -5,6 +5,10 @@ extends Node3D
 ## dries, scorch and acid stains). Drawing only: the host and every guest make their own.
 
 const MAX_MARKS := 180
+## Prints in the sand (footprints, a peg's round marks, the furrow a body leaves dragged): their
+## own pool, never pushing the blood out, fading as the sand settles.
+const MAX_PRINTS := 160
+const PRINT_LIFE := 45.0
 
 static var current: Fx = null
 static var _process_mats := {}
@@ -13,6 +17,7 @@ static var _textures := {}
 
 var headless := false
 var marks: Array = []
+var prints: Array = []      # {"d": Decal, "t": seconds, "a": alpha when new}
 var quality := "high"
 
 func _init(headless_ := false) -> void:
@@ -384,6 +389,95 @@ func mark(kind: String, p: Vector3, size: float, angle := -1.0) -> Decal:
 			old.d.queue_free()
 	return d
 
+## A print pressed into the sand (drawing only): `kind` "footL", "footR", "peg" (a peg leg's
+## round mark) or "drag" (a body dragged: a furrow along `yaw`, `length` long); `scale` the man's
+## size. Each darkens the sand a little and sinks it (a normal map: the sun shades its far wall).
+func footprint(kind: String, p: Vector3, yaw: float, scale: float, length := 0.0) -> void:
+	if headless or quality == "low":
+		return
+	var d := Decal.new()
+	d.texture_albedo = print_texture(kind)
+	d.texture_normal = print_texture(kind + "_n")
+	d.normal_fade = 0.6
+	var a := 0.56 if kind != "drag" else 0.4
+	d.modulate = Color(0.5, 0.34, 0.19, a)
+	match kind:
+		"peg":
+			d.size = Vector3(0.075, 0.16, 0.075) * scale
+		"drag":
+			d.size = Vector3(0.22 * scale, 0.2, maxf(0.2, length))
+		_:
+			d.size = Vector3(0.11, 0.16, 0.28) * scale
+	d.upper_fade = 0.3
+	d.lower_fade = 0.3
+	d.cull_mask = 1
+	add_child(d)
+	d.global_position = Vector3(p.x, 0.03, p.z)
+	d.rotation.y = yaw
+	prints.append({"d": d, "t": 0.0, "a": a})
+	if prints.size() > MAX_PRINTS:
+		var old = prints.pop_front()
+		if is_instance_valid(old.d):
+			old.d.queue_free()
+
+## The prints' textures, made once: a foot's sole (a heel and a ball, five toes), a peg's round,
+## a furrow; with "_n" their normal maps (each a hollow in the sand).
+static func print_texture(kind: String) -> Texture2D:
+	if _textures.has("print_" + kind):
+		return _textures["print_" + kind]
+	var normal := kind.ends_with("_n")
+	var base := kind.trim_suffix("_n")
+	var w := 32
+	var h := 64 if base != "peg" else 32
+	var left := base == "footL"
+	var depth := PackedFloat32Array()
+	depth.resize(w * h)
+	for yy in h:
+		for xx in w:
+			# (A decal's texture runs along its +z from the top row: the toes are at the bottom, the
+			# way the man faces. -1..1 across, its +x his right; the left foot the right's mirror.)
+			var x := (xx + 0.5) / w * 2.0 - 1.0
+			var y := 1.0 - (yy + 0.5) / h * 2.0     # 1 the heel's end, -1 the toes'
+			if left:
+				x = -x
+			var dv := 0.0
+			match base:
+				"footL", "footR":
+					# The heel, the ball of the foot and the outer edge between, five toes.
+					var heel := 1.0 - Vector2(x / 0.62, (y - 0.62) / 0.34).length()
+					var ball := 1.0 - Vector2((x + 0.05) / 0.78, (y + 0.22) / 0.36).length()
+					var arch := 1.0 - Vector2((x - 0.38) / 0.3, (y - 0.2) / 0.5).length()
+					dv = maxf(maxf(heel, ball), arch * 0.8)
+					for k in 5:
+						var tx := -0.62 + k * 0.29
+						var ty := -0.72 + absf(k - 1.2) * 0.05
+						var r := 0.13 if k == 0 else 0.1
+						dv = maxf(dv, 1.0 - Vector2((x - tx) / r, (y - ty) / (r * 1.3)).length())
+					dv = clampf(dv * 2.2, 0.0, 1.0)
+				"peg":
+					dv = clampf((1.0 - Vector2(x, y).length()) * 3.0, 0.0, 1.0)
+				"drag":
+					# Two or three furrows along it, softer at both ends.
+					var along := 1.0 - absf(y)
+					var ridge := 0.5 + 0.5 * cos(x * PI * 2.5)
+					dv = clampf((1.0 - absf(x)) * 2.0, 0.0, 1.0) * clampf(along * 3.0, 0.0, 1.0) * (0.72 + 0.28 * ridge)
+			depth[yy * w + xx] = dv
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for yy in h:
+		for xx in w:
+			var dv := depth[yy * w + xx]
+			if normal:
+				# The slope of the hollow (deeper inside): the normal leans away from the wall.
+				var dx := depth[yy * w + mini(xx + 1, w - 1)] - depth[yy * w + maxi(xx - 1, 0)]
+				var dy := depth[mini(yy + 1, h - 1) * w + xx] - depth[maxi(yy - 1, 0) * w + xx]
+				var n := Vector3(dx * 3.0, dy * 3.0, 1.0).normalized()
+				img.set_pixel(xx, yy, Color(n.x * 0.5 + 0.5, n.y * 0.5 + 0.5, n.z * 0.5 + 0.5, 1.0))
+			else:
+				img.set_pixel(xx, yy, Color(1, 1, 1, clampf(dv, 0.0, 1.0)))
+	var t := ImageTexture.create_from_image(img)
+	_textures["print_" + kind] = t
+	return t
+
 ## A pool that spreads under a body (a dying man): the mark grows to `size` over `seconds`.
 func pool(p: Vector3, size: float, seconds := 6.0) -> void:
 	var d := mark("blood", p, size * 0.3)
@@ -393,6 +487,24 @@ func pool(p: Vector3, size: float, seconds := 6.0) -> void:
 	tw.tween_property(d, "size", Vector3(size, 0.6, size), seconds).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 func _process(dt: float) -> void:
+	# Prints fade as the sand settles back (a quarter of a second at a time is enough).
+	_print_t += dt
+	if _print_t >= 0.25:
+		var step := _print_t
+		_print_t = 0.0
+		var keep := []
+		for pr in prints:
+			pr.t += step
+			if not is_instance_valid(pr.d):
+				continue
+			if pr.t >= PRINT_LIFE:
+				pr.d.queue_free()
+				continue
+			var fade := 1.0 - smoothstep(PRINT_LIFE * 0.55, PRINT_LIFE, pr.t)
+			var dd: Decal = pr.d
+			dd.modulate.a = float(pr.a) * fade
+			keep.append(pr)
+		prints = keep
 	# Blood dries: from red to the brown of old blood over a minute and a half.
 	for mk in marks:
 		if mk.kind != "blood" or mk.t > 90.0:
@@ -403,8 +515,14 @@ func _process(dt: float) -> void:
 			var k := clampf(mk.t / 90.0, 0.0, 1.0)
 			d.modulate = Color(0.45, 0.02, 0.02, 0.92).lerp(Color(0.24, 0.06, 0.03, 0.85), k)
 
+var _print_t := 0.0
+
 func clear() -> void:
 	for mk in marks:
 		if is_instance_valid(mk.d):
 			mk.d.queue_free()
 	marks.clear()
+	for pr in prints:
+		if is_instance_valid(pr.d):
+			pr.d.queue_free()
+	prints.clear()

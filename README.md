@@ -173,6 +173,14 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   millimetres the physics leaves open at its joint, and a block of the limb's own colour sits on
   each pivot (the deltoid at the shoulder, the elbow, hip, knee and neck) to fill the wedge two
   blocks open between them when the joint bends. An animated crowd shader, braziers, awnings, flags and the Emperor's box.
+  The finer touches, drawing only: the velarium's sails over the stands on their masts and long
+  banners from the arcade, rippling in the wind (`shaders/cloth.gdshader`); by day the shadows of
+  clouds drifting over the arena; metal that shows the bowl round it (a reflection of the arena
+  taken once); a film's colour grade (a 3D table: the shade a touch cooler, the sunlight a touch
+  more gold) and, at high and ultra, a sharpening pass; a faint sweep behind a fast swing
+  (`scripts/fighter/swing_trail.gd`); blood that stays on the blade or the fist that drew it and
+  dries brown; footprints, a peg's round marks and the furrow of a dragged body in the sand; faces
+  that blink, screw up at a blow that hurts and breathe, quicker and deeper out of breath.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows. A blow is the body's knock
   and a few hundredths of a second of shaped noise (the thwack, the slap, the wet bite); a pot of
