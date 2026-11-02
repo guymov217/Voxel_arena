@@ -21,6 +21,9 @@ Every beast, monster, giant and man has a voice of its own, built by `tools/buil
 CC0 / public-domain recordings of the real animals (pitched, layered and trimmed for the arena; the
 beasts of myth are layered from the animals they are made of: a chimera from a lion, a goat and a
 snake, a basilisk from a serpent and a cock, a cerberus from three hounds). All outputs are CC0.
+All but the rat, the rhino, the cerberus, the tiger, the elephant and the mammoth are the `--hq`
+build (Rubber Band pitch and time, a light denoise, a true limiter), each set to the loudness of the
+voice it replaced by `tools/match_voices.py`.
 The processed cuts come from [hoffspot/conquest](https://github.com/hoffspot/conquest)
 (`client/sounds`, CC0), which made them from these recordings:
 
