@@ -6176,6 +6176,18 @@ static func _world_box(p: VoxelPart) -> AABB:
 		b = b.expand(t * Vector3(h.x if i & 1 else -h.x, h.y if i & 2 else -h.y, h.z if i & 4 else -h.z))
 	return b
 
+## Every wound stops bleeding (the yard between bouts: a bout won is won, and nobody bleeds out
+## there, user): no cut, artery or stump bleeds and a torn heart's count stops. The blood he lost
+## stays lost, and the wounds stay for the physician.
+func staunch() -> void:
+	for p in parts:
+		p.bleed = 0.0
+		p.artery = 0.0
+		if p.stump:
+			p.stump_t = maxf(p.stump_t, 12.0)
+	heart_t = -1.0
+	dying = 0.0
+
 ## What losing a part means (a man dies without his head; a hydra has others).
 func on_severed(part: VoxelPart) -> void:
 	if part == head:

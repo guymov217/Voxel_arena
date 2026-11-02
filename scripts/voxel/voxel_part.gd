@@ -1602,7 +1602,9 @@ func resync_later() -> void:
 		resync()
 
 ## Old wounds (Body): the voxels a fight took stay gone, the hole healed over into a dent the
-## shape of the blow, its rim the pale, shiny pink of scar tissue. No blood, no smear.
+## shape of the blow, its rim the pale, shiny pink of scar tissue. No blood, no smear; and not a
+## wound dealt now (the fighter is not told): a scar over the heart or the liver re-tore them at
+## every spawn, and a man won his bout and bled to death in the yard (user).
 const SCAR := Color(0.78, 0.5, 0.47)
 func scar(indices: Array) -> void:
 	var gone := {}
@@ -1611,7 +1613,7 @@ func scar(indices: Array) -> void:
 			gone[Vector3i(fx[i], fy[i], fz[i])] = true
 	if gone.is_empty():
 		return
-	remove_voxels(indices, false)
+	remove_voxels(indices, false, false)
 	var touched := []
 	for i in fx.size():
 		if alive[i] == 0:

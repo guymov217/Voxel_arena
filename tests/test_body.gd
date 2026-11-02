@@ -257,3 +257,53 @@ func test_a_weapon_that_fell_with_its_arm_is_not_lost() -> void:
 	var w := m.my_wear()
 	t.check(w.get("R") is Array, "the sword is picked up off the sand, chips and all (%s)" % [w.get("R")])
 	m.queue_free()
+
+## A bout won is won (user: came back to the yard badly hurt and bled to death there). The old
+## wounds built back into him tear nothing open, over the heart and the liver too: no bleeding,
+## no torn heart counting down, the organs healed. And in the yard nothing bleeds at all, a cut
+## artery, an open cut and a fresh stump included.
+func test_nobody_bleeds_to_death_in_the_yard() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(30)
+	var tor: VoxelPart = f.torso
+	var cap := int(tor.fx.size() * 0.2)
+	var hole := []
+	for o in [Anatomy.HEART, Anatomy.LIVER, Anatomy.LUNG_L]:
+		for i in tor.fx.size():
+			if tor.organ[i] == o and hole.size() < cap:
+				hole.append(i)
+	tor.remove_voxels(hole)
+	var r := Body.merge(Body.empty(), Body.snapshot(f))
+	t.check(r.body.scars.has("torso") and (r.body.scars.torso as Array).size() >= hole.size() - 1, "the hole through the heart and the liver is kept as a scar (%d voxels)" % hole.size())
+	# Built into a man for the next bout: the scar is old, nothing in him is torn now.
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(3, 0, 0), "yaw": 0.0, "body": r.body})
+	e2.erase("bot")
+	e2.drive = func(_e): return {}
+	var g: Fighter = e2.f
+	await _steps(10)
+	t.check(g.torso.fx.size() - g.torso.alive_count >= hole.size() - 1, "the dent is there")
+	t.check(g.torso.bleed == 0.0 and g.heart_t < 0.0 and g.organ_lost.is_empty(), "and it tears nothing open: bleed %.2f, heart %.2f, organs lost %s" % [g.torso.bleed, g.heart_t, str(g.organ_lost)])
+	var b0 := g.blood
+	await _steps(240)
+	t.check(g.alive and g.blood >= b0 - 0.5, "he does not bleed from it (blood %.1f -> %.1f)" % [b0, g.blood])
+	m.queue_free()
+	await _steps(2)
+	# The yard, with that body: and a fresh cut there, an artery, an open wound and a stump.
+	var y := Match.new()
+	add_child(y)
+	y.setup({"mode": "yard", "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "body": r.body})
+	await _steps(10)
+	var h: Fighter = y.me.f
+	t.check(h.torso.bleed == 0.0 and h.heart_t < 0.0, "in the yard the old wound is shut (bleed %.2f)" % h.torso.bleed)
+	h.by_name.thighR.artery = 3.0
+	h.by_name.thighR.bleed = 4.0
+	h.torso.bleed = 5.0
+	h.by_name.forearmL.stump = true
+	h.by_name.forearmL.stump_t = 0.0
+	var b1 := h.blood
+	await _steps(5 * 120)
+	t.check(is_instance_valid(h) and h.alive and h.blood >= b1 - 1.0, "nothing bleeds in the yard: blood %.1f -> %.1f" % [b1, h.blood if is_instance_valid(h) else 0.0])
+	t.check(is_instance_valid(h) and h.by_name.thighR.artery == 0.0 and h.torso.bleed == 0.0, "the artery and the cut are staunched")
+	y.queue_free()
+	await _steps(2)

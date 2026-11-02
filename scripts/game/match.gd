@@ -1034,6 +1034,12 @@ func _physics_process(dt: float) -> void:
 				if re != null and re.kind != "remote" and re.kind != "local":
 					continue
 			Net.send_all("snap", [row], false)
+	if mode == "yard" and role != "guest":
+		# Nobody bleeds in the yard: the wounds a bout left (and a friend's blade there) are
+		# staunched, for the physician to see to (user: won the bout, bled to death in the yard).
+		for e in entities:
+			if is_instance_valid(e.f) and e.f is Fighter and e.f.alive:
+				(e.f as Fighter).staunch()
 	_check_round(dt)
 
 ## Whether a dead body has lain still a while (nothing on it moving, nothing burning on it):
