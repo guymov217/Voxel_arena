@@ -1829,6 +1829,15 @@ func bevel_bits(i: int) -> int:
 			m |= 1 << f
 	return m
 
+## What the listed voxels are made of has changed (a prosthetic fitted): their instance data
+## written again, so the shader draws them as what they now are.
+func refresh_kinds(indices: Array) -> void:
+	if mm == null or not mm.use_custom_data:
+		return
+	for i in indices:
+		if not jaw_slot.has(i):
+			mm.set_instance_custom_data(i, _custom(i, glowing.get(i, Vector2.ZERO)))
+
 ## The instance data of voxel i as it is drawn now: its kind, corner shade, bevel and glow.
 func _custom(i: int, g := Vector2.ZERO) -> Color:
 	var c := kind_data(kinds[i], ao[i] if i < ao.size() else 0, bev[i] if i < bev.size() else 0)

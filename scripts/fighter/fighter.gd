@@ -613,50 +613,113 @@ func _make_missing(part: VoxelPart) -> void:
 			near.append(i)
 		par.refresh_colors(near)
 
-## A prosthetic in the part's place: the part is reshaped (wood or iron, thinner) and works
-## only so well (VoxelPart.function), and it does not bleed.
+## A prosthetic in the part's place: the part is reshaped as the physician's work and works only
+## so well (VoxelPart.function), and it does not bleed. Each piece made of what it is made of (the
+## shader's kinds: leather, iron, bronze, wood), round where a limb is round, from the stump down
+## to where the hand or the foot was: a blade arm a tapering iron socket, riveted, with a bronze
+## ferrule the blade sits in (a thin rod stopping short of the blade left a hole in the arm, user);
+## a hook a rod from an iron collar to a curved hook; a peg a turned wooden leg with an iron shoe
+## in a hooped wooden cup. All in a leather cuff strapped over the stump, buckled in bronze.
 func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
 	p.prosthetic = kind
 	p.missing = false
-	var cx := (p.grid.x - 1) * 0.5
-	var cz := (p.grid.z - 1) * 0.5
-	var top := p.grid.y - 1
-	var cuff_from := int(top * 0.72)
 	var drop := []
 	var paint := []
 	for i in p.fx.size():
-		var dx := absf(p.fx[i] - cx)
-		var dz := absf(p.fz[i] - cz)
-		var y: int = p.fy[i]
-		if y >= cuff_from:
-			# The leather cuff strapped over the stump, an iron band round it.
-			p.colors[i] = Color(0.33, 0.21, 0.11) if y != cuff_from else Color(0.45, 0.47, 0.5)
-			paint.append(i)
-			continue
-		var keep := false
-		match kind:
-			"peg":
-				keep = dx < 1.3 and dz < 1.3 or (y > cuff_from - 3 and dx < 2.2 and dz < 2.2)
-				if keep:
-					p.colors[i] = Color(0.55, 0.38, 0.2) if (y / 2) % 2 == 0 else Color(0.48, 0.32, 0.17)
-			"hook":
-				var rod := dx < 0.8 and dz < 0.8 and y > 3
-				var curve := y <= 3 and dx < 0.8 and p.fz[i] >= cz and p.fz[i] - cz < 3.0 - absf(y - 1.5)
-				keep = rod or curve
-				if keep:
-					p.colors[i] = Color(0.5, 0.52, 0.56)
-			"blade":
-				keep = dx < 1.3 and dz < 1.3 and y > top * 0.35
-				if keep:
-					p.colors[i] = Color(0.42, 0.44, 0.48)
-		if keep:
-			paint.append(i)
-		else:
+		var cell = prosthetic_cell(kind, p.fx[i], p.fy[i], p.fz[i], p.grid)
+		if cell == null:
 			drop.append(i)
+			continue
+		p.colors[i] = cell[0]
+		p.kinds[i] = int(cell[1])
+		paint.append(i)
 	p.refresh_colors(paint)
-	p.remove_voxels(drop, false)
+	p.refresh_kinds(paint)
+	p.remove_voxels(drop, false, false)
 	p.bleed = 0.0
 	p.artery = 0.0
+
+const PRO_LEATHER := Color(0.50, 0.32, 0.17)
+const PRO_STRAP := Color(0.28, 0.17, 0.09)
+const PRO_IRON := Color(0.40, 0.34, 0.28)
+const PRO_STEEL := Color(0.50, 0.45, 0.39)
+const PRO_RIVET := Color(0.70, 0.63, 0.50)
+const PRO_BRONZE := Color(0.72, 0.50, 0.22)
+const PRO_WOOD := Color(0.55, 0.37, 0.20)
+const PRO_WOOD_DARK := Color(0.43, 0.28, 0.15)
+
+## One cell of a prosthetic (a part's grid cell x, y, z; y 0 the hand's or the foot's end): its
+## colour and kind (VoxelPart.kinds: 1 the matte leather of a cuff, 4 bronze, 5 wood, 13 forged
+## iron: leather drawn as kind 2 shone the blue of the sky on every face turned up to it), or
+## null where nothing of it is. Only the look and the shape; what it does is VoxelPart.function's.
+static func prosthetic_cell(kind: String, gx: int, y: int, gz: int, grid: Vector3i):
+	var x := float(gx) - (grid.x - 1) * 0.5
+	var z := float(gz) - (grid.z - 1) * 0.5
+	var r := sqrt(x * x + z * z)
+	var top := grid.y - 1
+	var half := minf(grid.x, grid.z) * 0.5
+	var cuff_from := int(top * 0.72)
+	var shade := 0.96 + 0.04 * float((gx * 7 + y * 3 + gz * 5) % 3)   # a little life in a flat colour
+	if y >= cuff_from:
+		# The cuff: a round cup over the stump, a band of iron at its rim, a strap round it buckled
+		# in bronze at the front. An arm's is leather; a peg's a wooden bucket of staves, hooped.
+		if r > half - 0.05:
+			return null
+		if y == top - 1:
+			if gz == grid.z - 1 and absf(x) < 1.0:
+				return [PRO_BRONZE, 4]
+			return [PRO_STRAP * shade, 1]
+		if kind == "peg":
+			if y == cuff_from or y == cuff_from + 3:
+				return [PRO_IRON * shade, 13]
+			var stave := int(floor((atan2(z, x) + PI) / (TAU / 12.0))) % 2
+			return [(PRO_WOOD if stave == 0 else PRO_WOOD_DARK) * shade, 5]
+		if y == cuff_from:
+			return [PRO_IRON * shade, 13]
+		return [PRO_LEATHER * shade, 1]
+	match kind:
+		"blade":
+			# A socket of iron tapering from the cuff to the end, the blade's grip in its mouth.
+			var rad := 1.6 if y <= 2 else (2.2 if y <= 5 else 2.6)
+			if r > rad:
+				return null
+			if y <= 1:
+				return [PRO_BRONZE * shade, 4]
+			if (y == 4 or y == cuff_from - 2) and r > rad - 0.7 and (gx + gz) % 2 == 0:
+				return [PRO_RIVET, 13]
+			return [PRO_IRON * shade, 13]
+		"hook":
+			# An iron collar, a rod down from it, and a hook curving forward and up at its end.
+			if y == cuff_from - 1:
+				return [PRO_IRON * shade, 13] if r <= 2.2 else null
+			if absf(x) > 0.6:
+				return null
+			var zi := gz - int((grid.z - 1) * 0.5) + 1   # 0..: from behind the rod to the front
+			var rod := y >= 4 and (zi == 0 or zi == 1)
+			var bend := (y == 3 or y == 2) and (zi == 0 or zi == 1)
+			var bottom := (y == 1 and zi >= 0 and zi <= 2) or (y == 0 and zi >= 1 and zi <= 3)
+			var rise := zi == 4 and y >= 1 and y <= 3
+			var tip := zi == 4 and y == 4
+			if tip:
+				return [PRO_RIVET, 13]
+			if rod:
+				return [PRO_IRON * shade, 13]
+			if bend or bottom or rise:
+				return [PRO_STEEL * shade, 13]
+			return null
+		"peg":
+			# A turned wooden leg, thick under the cup and narrowing to an iron shoe, the grain
+			# running down it; the cup a hooped wooden bucket the knee sits in.
+			if y == 0:
+				return [PRO_IRON * shade, 13] if r <= 1.6 else null
+			var rad := 2.2 if y >= cuff_from - 3 else 1.6
+			if r > rad:
+				return null
+			if y == cuff_from - 1:
+				return [PRO_IRON * shade, 13]   # a hoop where the leg goes into the cup
+			var grain := PRO_WOOD_DARK if (gx + gz) % 3 == 0 else PRO_WOOD
+			return [grain * shade, 5]
+	return null
 
 static func _is_leg(p) -> bool:
 	return String(p.part_name).begins_with("thigh") or String(p.part_name).begins_with("shin")

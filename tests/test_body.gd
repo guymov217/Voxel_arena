@@ -343,3 +343,87 @@ func test_a_fitted_prosthetic_arm_works_in_the_next_bout() -> void:
 	t.check(h.weapons.R == null and h.weapons.L != null, "nor what the smith sells him: the shield goes to the good hand, the hook stays empty")
 	m.queue_free()
 	await _steps(2)
+
+## Each prosthetic is whole from the stump to where the hand or the foot was (user: the blade arm
+## had a hole in its middle, with nothing in it): a row of it at every height of the part, the
+## end where the blade's grip sits or the foot met the sand included; and it is made of what it is
+## made of (leather, iron, bronze, wood), not drawn as skin.
+func test_every_prosthetic_is_whole_and_made_of_its_stuff() -> void:
+	var m := _match()
+	var b := Body.empty()
+	b.missing = ["forearmR", "forearmL", "shinL"]
+	b = Body.apply(Body.apply(Body.apply(b, "blade:forearmR"), "hook:forearmL"), "peg:shinL")
+	var e = m.spawn_fighter({"kind": "bot", "name": "P", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(0, 0, 3), "yaw": 0.0, "body": b})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	await _steps(5)
+	var f: Fighter = e.f
+	for n in ["forearmR", "shinL"]:
+		var p: VoxelPart = f.by_name[n]
+		var rows := {}
+		var stuff := true
+		for i in p.fx.size():
+			if p.alive[i]:
+				rows[p.fy[i]] = true
+				stuff = stuff and [1, 4, 5, 13].has(int(p.kinds[i]))
+		var gaps := []
+		for y in p.grid.y:
+			if not rows.has(y):
+				gaps.append(y)
+		t.check(gaps.is_empty(), "%s (%s): no gap from the stump to the end (rows missing: %s)" % [n, p.prosthetic, str(gaps)])
+		t.check(stuff, "%s: leather, iron, bronze and wood, not skin" % n)
+	var hook: VoxelPart = f.by_name.forearmL
+	var low := hook.grid.y
+	for i in hook.fx.size():
+		if hook.alive[i]:
+			low = mini(low, hook.fy[i])
+	t.eq(low, 0, "the hook reaches down to where the hand was")
+	m.queue_free()
+	await _steps(2)
+
+## On a peg (either leg, or both) a man stands, walks (slower than on two feet, never stopped),
+## turns full round without falling, gets up again after a fall and kicks (user: check the leg
+## prostheses look right and work right).
+func test_a_man_on_a_peg_walks_turns_rises_and_kicks() -> void:
+	for pro in [{"shinL": "peg"}, {"shinR": "peg"}, {"shinL": "peg", "shinR": "peg"}]:
+		var m := _match()
+		m.me.f.teleport(Vector3(10, 0, 10))
+		var e = m.spawn_fighter({"kind": "bot", "name": "P", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(0, 0, -4), "yaw": 0.0, "body": {"prosthetics": pro}})
+		e.erase("bot")
+		var f: Fighter = e.f
+		var st := {"mz": 0.0, "yaw": 0.0, "kick": false}
+		e.drive = func(_e): return {"mz": st.mz, "kick": st.kick, "look": {"yaw": st.yaw, "pitch": 0.0}}
+		await _steps(240)
+		t.eq(f.state, "stand", "%s: he stands" % str(pro.keys()))
+		var p0: Vector3 = f.torso.global_position
+		st.mz = 1.0
+		await _steps(4 * 120)
+		var walked := Vector2(f.torso.global_position.x - p0.x, f.torso.global_position.z - p0.z).length()
+		t.check(walked > 4.5 and walked < 8.5, "%s: he walks, slower than on two feet (%.1f m in 4 s)" % [str(pro.keys()), walked])
+		var fell := false
+		for i in 4 * 120:
+			st.yaw = TAU * float(i) / (4.0 * 120.0)
+			await get_tree().physics_frame
+			fell = fell or f.state != "stand"
+		t.check(not fell, "%s: he turns full round walking and keeps his feet" % str(pro.keys()))
+		st.mz = 0.0
+		await _steps(60)
+		f.fall(1.5, true)
+		var up := -1.0
+		for i in 8 * 120:
+			await get_tree().physics_frame
+			if f.state == "stand":
+				up = float(i) / 120.0
+				break
+		t.check(up >= 0.0 and up < 6.0, "%s: felled, he is up again (%.1f s)" % [str(pro.keys()), up])
+		await _steps(60)
+		st.kick = true
+		await get_tree().physics_frame
+		st.kick = false
+		var kicked := false
+		for i in 60:
+			await get_tree().physics_frame
+			kicked = kicked or f.kick_timer > 0.0
+		t.check(kicked, "%s: and he kicks" % str(pro.keys()))
+		m.queue_free()
+		await _steps(2)

@@ -4,7 +4,8 @@ shader_type spatial;
 // what the voxel is made of, as kind / 16: 0 skin, 1 cloth, 2 leather and hair, 3 iron and
 // steel, 4 gold and bronze, 5 wood, 6 bone and stone, 7 gems and ice, 8 fur and hide (the
 // default, beasts), 9 flesh (wet, under the skin), 10 scales, 11 chitin (a shell), 12 a
-// glowing eye. A material can force one kind for all its boxes (armour plates).
+// glowing eye, 13 forged iron (blackened and rough: a prosthetic's, which mirrored the blue sky as
+// polished steel). A material can force one kind for all its boxes (armour plates).
 //
 // The look: each kind its own roughness and shine, a little grain voxel to voxel, and each box's
 // edges a shade darker so the blocks read as blocks even in flat light. INSTANCE_CUSTOM.a over
@@ -38,10 +39,10 @@ uniform float body_bevel : hint_range(0.0, 1.0) = 0.85;   // how far a bevelled 
 uniform float oil : hint_range(0.0, 1.0) = 0.0;          // skin oiled for the arena: glossier
 uniform bool bevel_mode = false;
 
-const float ROUGH[13] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2);
-const float METAL[13] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-const float SPEC[13] = float[](0.38, 0.16, 0.3, 0.5, 0.5, 0.28, 0.4, 0.75, 0.2, 0.6, 0.55, 0.7, 0.5);
-const float GRAIN[13] = float[](0.035, 0.035, 0.06, 0.06, 0.04, 0.09, 0.05, 0.03, 0.08, 0.08, 0.06, 0.04, 0.0);
+const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
+const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
+const float SPEC[14] = float[](0.38, 0.16, 0.3, 0.5, 0.5, 0.28, 0.4, 0.75, 0.2, 0.6, 0.55, 0.7, 0.5, 0.2);
+const float GRAIN[14] = float[](0.035, 0.035, 0.06, 0.06, 0.04, 0.09, 0.05, 0.03, 0.08, 0.08, 0.06, 0.04, 0.0, 0.08);
 
 varying vec3 box_pos;
 varying flat float kind_f;
@@ -186,7 +187,7 @@ vec3 to_linear(vec3 c) {
 }
 
 void fragment() {
-	int k = int(clamp(kind_f, 0.0, 12.0));
+	int k = int(clamp(kind_f, 0.0, 13.0));
 	vec3 c = to_linear(COLOR.rgb) * tint.rgb;
 	c *= 1.0 + GRAIN[k] * (seed - 0.5) * 2.0;
 	// Distance to the nearest edge of this face of the box, 0 at the edge, 1 in the middle.

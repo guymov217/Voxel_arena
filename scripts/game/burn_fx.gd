@@ -18,7 +18,7 @@ static func surface_of_kind(k: int) -> String:
 		0, 9, 10: return "flesh"
 		1, 2, 8: return "cloth"
 		5: return "wood"
-		3, 4: return "metal"
+		3, 4, 13: return "metal"
 	return "stone"
 
 ## The surface a weapon material (data/materials.json) burns as.
