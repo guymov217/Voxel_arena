@@ -187,11 +187,11 @@ func _on_hit(_f: Fighter, info: Dictionary) -> void:
 		# (A hand to the wound for a moment, not a pause in the fight: the bouts are short, and a
 		# second and a half of it was a quarter of one.)
 		react = "clutch"
-		react_t = rng.randf_range(0.55, 1.0) * (1.0 + 0.3 * dmg / 24.0)
+		react_t = rng.randf_range(0.55, 0.95) * (1.0 + 0.25 * minf(1.0, dmg / 24.0))
 	else:
 		react = "flinch"
 		react_t = rng.randf_range(0.35, 0.6)
-	react_cd = react_t + rng.randf_range(3.0, 5.5)
+	react_cd = react_t + rng.randf_range(3.5, 6.0)   # (a hard-hit man held a wound a fifth of the bout)
 
 ## Where the free hand goes to hold the wound (a mark in the mouse pane), by the part that was hit.
 func _wound_mark(part: String) -> Dictionary:
@@ -448,8 +448,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var hand_fwd: float = 0.59 * S
 		var dy := low_y - hand_y
 		var horiz := sqrt(maxf(0.0, w.reach * w.reach - dy * dy))
-		ideal = hand_fwd + horiz * 0.65
 		swing_reach = hand_fwd + horiz * 1.0
+		# (Over a man on the sand the blade's length is all straight down, and the stand-off
+		# came to the very length he swings from: he stopped a step outside it and stood by the
+		# man for twenty seconds without a blow. He comes in inside it.)
+		ideal = minf(hand_fwd + horiz * 0.65, swing_reach - 0.35)
 		aim_small = clampf(atan2(dy, maxf(0.3, dist - hand_fwd)) / 0.92, -1.5, 0.6)
 	var keep_away = p.get("keepAway")
 	var cornered: bool = keep_away != null and dist < 1.6
@@ -478,8 +481,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.mx = strafe * 0.8
 		# A long haft is fought at its point: a man come in past it is backed away from, briskly
 		# (a spear lost every bout to a short sword, fighting at the sword's length: duel.gd).
+		# (Not a giant over a small man: where he stands is his blow's own length, `ideal` above.
+		# Kept out at a giant's reach, he backed away from a man lying six metres off, stepped in
+		# again, and stood there twenty seconds.)
 		var keep_out: float = float(STYLES.get(style, {}).get("keep_out", 0.0))
-		if keep_out > 0.0 and state != "attack" and dist < reach * keep_out and c.state == "stand":
+		if keep_out > 0.0 and not big and state != "attack" and dist < reach * keep_out and c.state == "stand":
 			inp.mz = -1.0
 			inp.mx = strafe * 0.3
 			inp.sprint = skill > 0.35 and dist < reach * keep_out * 0.85
@@ -507,11 +513,15 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# A weapon flying at us: good bots dodge or parry.
 	var tw = target.weapons.get("R") if target.get("weapons") != null else null
 	var incoming := 0.0
-	if tw:
+	# (A giant does not shy from a small man's blade beyond that man's own reach, nor from one
+	# flailing on the sand: measured by his own reach, every wave of a downed man's sword five
+	# metres off sent him a step back, and he stood off him for twenty seconds.)
+	if tw and not (big and target.state != "stand"):
 		var v: Vector3 = tw.linear_velocity
 		var d: Vector3 = me - tw.global_position
 		var sp := v.length()
-		if sp > 4.5 - diff * 1.2 and d.length() < reach * (1.1 + 0.4 * diff) and v.x * d.x + v.z * d.z > 0.0:
+		var near_r: float = (tw.reach + 0.8 * tS) * 1.2 if big else reach * (1.1 + 0.4 * diff)
+		if sp > 4.5 - diff * 1.2 and d.length() < near_r and v.x * d.x + v.z * d.z > 0.0:
 			incoming = sp
 	dodge_t = maxf(0.0, dodge_t - dt)
 	dodge_cool = maxf(0.0, dodge_cool - dt)

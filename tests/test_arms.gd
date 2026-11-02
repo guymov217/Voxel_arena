@@ -517,6 +517,50 @@ func test_two_hands_hold_a_guard_without_drifting() -> void:
 		t.check(near < 25.0, "held three seconds at (%.1f, %.1f) the blade is still on the mouse (%.0f deg off)" % [d.x, d.y, near])
 	m.queue_free()
 
+## A guard held still with the button down holds still (tremor.gd): a short blade held level
+## from a low hand (two of them, both arms hurt) had the off hand swinging from side to side three
+## times a second, its point 44 mm about its mark, and a warhammer held out in front in both hands
+## buzzed 8 mm. The set elbow of a swing would not give the guard the bend it needs.
+func test_a_guard_held_with_the_button_down_holds_still() -> void:
+	for c in [["gladius", "gladius", {"x": 0.2, "y": -0.9}, {"x": -0.2, "y": -0.9}, true], ["warhammer", "", {"x": 0.0, "y": 0.35}, {"x": 0.0, "y": 0.3}, false]]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": c[0], "off": c[1]}})
+		m.me.f.teleport(Vector3(-12, 0, 0))
+		var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": c[0], "off": c[1]}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+		e.erase("bot")
+		var f: Fighter = e.f
+		e.drive = func(_e): return {"main": c[2], "off": c[3], "power": true, "look": {"yaw": 0.0, "pitch": 0.0}}
+		if c[4]:
+			for s in ["R", "L"]:
+				f.arm[s].fore.hp *= 0.45
+				f.arm[s].upper.hp *= 0.6
+		for i in 240:
+			await get_tree().physics_frame
+		var tips := {"R": [], "L": []}
+		for i in 240:
+			await get_tree().physics_frame
+			for s in ["R", "L"]:
+				var w = f.weapons[s]
+				if w:
+					tips[s].append(w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0) - f.torso.global_position)
+		for s in ["R", "L"]:
+			var a: Array = tips[s]
+			if a.is_empty():
+				continue
+			# The part of the point's motion faster than a quarter of a second.
+			var shake := 0.0
+			var k := 15
+			for i in range(k, a.size() - k):
+				var avg := Vector3.ZERO
+				for j in range(i - k, i + k + 1):
+					avg += a[j]
+				shake += (a[i] - avg / float(2 * k + 1)).length_squared()
+			shake = sqrt(shake / float(a.size() - 2 * k)) * 1000.0
+			t.check(shake < 2.0, "%s, hand %s: the point holds still (%.1f mm about its mark)" % [c[0] + ("+" + c[1] if c[1] != "" else ""), s, shake])
+		m.queue_free()
+		await get_tree().process_frame
+
 ## Nothing touched, the blade stays where it was aimed: a ringing head or wine had the hand going
 ## round in circles on its own (user: the weapon turned with the hands in a circle instead of
 ## staying where it was last aimed; 4 m of travel in eight seconds, circles 0.4 m across).

@@ -32,12 +32,13 @@ IRON = (18, 14, 12)
 BLOOD = (150, 18, 16)
 
 # capsule: (size, key-art frame, focus x, focus y (0..1 of the frame), logo as (kind, x, y, w, h):
-# kind "line" or "stack", the box fractions of the capsule; None: no logo)
+# kind "line" or "stack", the box fractions of the capsule; None: no logo), and optionally a zoom
+# (closer in on the focus than the frame's own width)
 CAPSULES = {
-    "header_920x430": ((920, 430), "giant_wide", 0.52, 0.47, ("line", 0.05, 0.67, 0.90, 0.29)),
-    "library_header_920x430": ((920, 430), "giant_wide", 0.52, 0.47, ("line", 0.05, 0.67, 0.90, 0.29)),
+    "header_920x430": ((920, 430), "giant_wide", 0.47, 0.45, ("line", 0.05, 0.67, 0.90, 0.29), 1.15),
+    "library_header_920x430": ((920, 430), "giant_wide", 0.47, 0.45, ("line", 0.05, 0.67, 0.90, 0.29), 1.15),
     "small_462x174": ((462, 174), "giant_wide", 0.52, 0.42, ("line", 0.04, 0.18, 0.92, 0.66)),
-    "main_1232x706": ((1232, 706), "giant_wide", 0.50, 0.47, ("line", 0.08, 0.71, 0.84, 0.25)),
+    "main_1232x706": ((1232, 706), "giant_wide", 0.47, 0.46, ("line", 0.08, 0.71, 0.84, 0.25), 1.12),
     "vertical_748x896": ((748, 896), "beast_tall", 0.50, 0.55, ("stack", 0.08, 0.03, 0.84, 0.27)),
     "library_600x900": ((600, 900), "giant_tall", 0.50, 0.58, ("stack", 0.08, 0.03, 0.84, 0.25)),
     "library_hero_3840x1240": ((3840, 1240), "squad_hero", 0.50, 0.55, None),
@@ -120,10 +121,10 @@ def fit(img, max_w, max_h):
     return img.resize((max(1, int(img.width * s)), max(1, int(img.height * s))), Image.NEAREST)
 
 
-def cover(shot, size, fx, fy):
-    """Scale the shot to cover `size` and crop around the focus point."""
+def cover(shot, size, fx, fy, zoom=1.0):
+    """Scale the shot to cover `size` (`zoom` times closer) and crop around the focus point."""
     W, H = size
-    s = max(W / shot.width, H / shot.height)
+    s = max(W / shot.width, H / shot.height) * zoom
     img = shot.resize((int(shot.width * s + 0.5), int(shot.height * s + 0.5)), Image.LANCZOS)
     x = int(min(max(0, fx * img.width - W / 2), img.width - W))
     y = int(min(max(0, fy * img.height - H / 2), img.height - H))
@@ -240,12 +241,12 @@ def main():
             frames[name] = Image.open(p).convert("RGB") if p else None
         return frames[name]
 
-    for name, (size, fr, fx, fy, lg) in CAPSULES.items():
+    for name, (size, fr, fx, fy, lg, *zoom) in CAPSULES.items():
         f = frame(fr)
         if f is None:
             print("missing", fr)
             continue
-        img = vignette(grade(cover(f, size, fx, fy)), 0.42)
+        img = vignette(grade(cover(f, size, fx, fy, zoom[0] if zoom else 1.0)), 0.42)
         if lg:
             kind, x, y, w, h = lg
             img = place_logo(ground_for(img, (x, y, w, h)), logos[kind], (x, y, w, h))

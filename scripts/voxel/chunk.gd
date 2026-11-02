@@ -106,6 +106,8 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		ch.global_transform = Transform3D(Basis(q), c)
 		ch.linear_velocity = part.velocity_at(c) + dir * 1.5 + Vector3(0, 0.8, 0)
 		ch.angular_velocity = Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 8.0
+		ch.collision_layer = 0
+		ch._come_clear(0)
 	all.append(ch)
 	var cap := 40 if Fx.current and Fx.current.quality == "low" else 160
 	while all.size() > cap:
@@ -117,6 +119,40 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		if is_instance_valid(old):
 			old.queue_free()
 	return ch
+
+## Born inside what it came off and, as often, inside whoever the blow struck, a piece passes
+## through bodies (no layer of its own: only the sand and the other pieces stop it) until it is
+## clear of them; then it is a thing they knock against. (Wedged between a man's head and his
+## shoulder, a chip off a giant's blade drove him into the sand at 20 m/s.) One still in a body
+## after three seconds stays passing through: it lies in a corpse, it does not burst out of it.
+func _come_clear(tries: int) -> void:
+	if not is_inside_tree():
+		return
+	var me := weakref(self)
+	get_tree().create_timer(0.2, false, true).timeout.connect(func():
+		var c = me.get_ref()
+		if c == null or not c.is_inside_tree() or c.held_on != null or c.collision_layer != 0:
+			return
+		if not c._in_a_body():
+			c.collision_layer = VoxelPart.LAYER_DEBRIS
+		elif tries < 15:
+			c._come_clear(tries + 1))
+
+func _in_a_body() -> bool:
+	var space := get_world_3d().direct_space_state
+	var skip: Array[RID] = [get_rid()]
+	for b in get_collision_exceptions():
+		skip.append(b.get_rid())
+	for s in get_children():
+		if s is CollisionShape3D and s.shape != null:
+			var q := PhysicsShapeQueryParameters3D.new()
+			q.shape = s.shape
+			q.transform = s.global_transform
+			q.collision_mask = VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE | VoxelPart.LAYER_WEAPON
+			q.exclude = skip
+			if not space.intersect_shape(q, 1).is_empty():
+				return true
+	return false
 
 ## The strip it hung by is cut (or the body is gone): it falls away as a piece like any other.
 func let_go() -> void:

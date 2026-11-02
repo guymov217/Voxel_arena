@@ -17,7 +17,7 @@ const AXE := {"name": "Wrecker", "kind": "weapon", "twoHanded": false, "sharpnes
 	[4, 6, 0, "steel", "edge"], [4, 7, 0, "steel", "edge"], [4, 8, 0, "steel", "edge"], [4, 9, 0, "steel", "edge"], [4, 10, 0, "steel", "edge"], [4, 11, 0, "steel", "edge"], [4, 12, 0, "steel", "edge"], [4, 13, 0, "steel", "edge"], [4, 14, 0, "steel", "edge"],
 	[-1, 10, 0, "steel", "point"], [-2, 10, 0, "steel", "point"], [0, 12, 0, "steel", "point"], [0, 13, 0, "steel", "point"]]}
 const GILT := ["goldHelmet", "goldLorica", "manica", "greaves", "cape"]
-const VIEWS := {"wide": Vector2i(2560, 1440), "tall": Vector2i(1440, 2160), "hero": Vector2i(3840, 1240)}
+const VIEWS := {"wide": Vector2i(2560, 1440), "tall": Vector2i(1440, 2160), "hero": Vector2i(3840, 1240), "preview": Vector2i(1280, 720)}
 
 var m: Match
 var out := ""
@@ -65,7 +65,11 @@ func _ready() -> void:
 		var list = shots.call(String(v))
 		if list is Dictionary:
 			list = [list]
-		for k in mini((list as Array).size(), most):
+		# CAPS_PICK: only these framings, by number ("4,5").
+		var pick: Array = Array(OS.get_environment("CAPS_PICK").split(",", false)).map(func(x): return int(x))
+		for k in mini((list as Array).size(), most if pick.is_empty() else 99):
+			if not pick.is_empty() and not pick.has(k):
+				continue
 			var sh: Dictionary = list[k]
 			await _shoot("%s_%s_%d" % [scene, v, k], sh.eye, sh.at, float(sh.fov), VIEWS[String(v)], String(v) == "tall")
 	get_tree().quit()
@@ -97,6 +101,55 @@ func _framings(view: String, a: Vector3, b: Vector3, s := 1.0) -> Array:
 	return out
 
 # ---------- Staging ----------
+
+## How squarely the giant `g` stands up to the hero `me`: `ok` when he is on his feet, turned to
+## the hero and looking at him, his feet set as a fighter sets them (both down, neither wide nor
+## long), his trunk up and his weapon up, and the hero turned to him too (the art's moment, user:
+## the giant looks at his foe in a fighting stance, ready to fight). `k` loosens every bound.
+static func squared_up(g: Fighter, me: Fighter, k := 1.0) -> Dictionary:
+	var r := {"ok": false}
+	if g.state != "stand" or me.state != "stand" or not g.alive or not me.alive or g.head.severed:
+		return r
+	var gp: Vector3 = g.torso.global_position
+	var to_me := Vector3(me.torso.global_position.x - gp.x, 0, me.torso.global_position.z - gp.z)
+	r.gap = to_me.length()
+	var fwd := Vector3(sin(g.yaw), 0, cos(g.yaw))
+	r.face = rad_to_deg(fwd.angle_to(to_me))
+	var hf: Vector3 = g.head.global_transform.basis.z.normalized()
+	var to_head: Vector3 = me.head.global_position - g.head.global_position
+	r.look = rad_to_deg(Vector3(hf.x, 0, hf.z).angle_to(Vector3(to_head.x, 0, to_head.z)))
+	r.over = rad_to_deg(asin(clampf(hf.y, -1.0, 1.0)) - atan2(to_head.y, Vector2(to_head.x, to_head.z).length()))
+	var a: Vector3 = g.by_name["shinL"].global_transform * Vector3(0, -4 * Fighter.V * g.S, 0)
+	var b: Vector3 = g.by_name["shinR"].global_transform * Vector3(0, -4 * Fighter.V * g.S, 0)
+	var d := b - a
+	r.across = absf(d.dot(fwd.cross(Vector3.UP))) / g.S
+	r.along = absf(d.dot(fwd)) / g.S
+	var planted: bool = g.feet.L != null and g.feet.R != null and not g.feet.L.swing and not g.feet.R.swing
+	r.bow = rad_to_deg(g.torso.global_transform.basis.y.normalized().angle_to(Vector3.UP))
+	var w = g.weapons.get("R")
+	r.up = -9.0
+	if w:
+		r.up = ((w.global_position + PD.quat_of(w) * Vector3(0, w.reach * 0.85, 0)).y - gp.y) / g.S
+	r.hero = rad_to_deg(Vector3(sin(me.yaw), 0, cos(me.yaw)).angle_to(-to_me))
+	# His face clear: neither hand nor his weapon on the line from his eye to the hero's face
+	# (the hammer held up over his head hid it).
+	var eye: Vector3 = g.head.global_position + hf * 0.15 * g.S
+	var ray: Vector3 = (me.head.global_position - eye).normalized()
+	var pts: Array = [g.hand_world("L"), g.hand_world("R")]
+	if w:
+		for j in 5:
+			pts.append(w.global_position + PD.quat_of(w) * Vector3(0, w.reach * (0.2 * j), 0))
+	r.clear = 9.0
+	for q in pts:
+		var rel: Vector3 = (q as Vector3) - eye
+		var along_ray := rel.dot(ray)
+		if along_ray > 0.0 and along_ray < 2.5 * g.S:
+			r.clear = minf(r.clear, (rel - ray * along_ray).length() / g.S)
+	r.v = maxf(Vector2(g.v_smooth.x, g.v_smooth.z).length(), Vector2(me.v_smooth.x, me.v_smooth.z).length())
+	r.ok = planted and r.gap > 1.8 and r.gap < 6.5 * k and r.face < 12.0 * k and r.look < 15.0 * k and absf(r.over) < 20.0 * k \
+		and r.across > 0.12 and r.across < 0.45 * k and r.along < 0.48 * k and r.bow < 14.0 * k and r.up > 0.1 - 0.2 * (k - 1.0) \
+		and r.hero < 25.0 * k and r.v < 0.9 * k and r.clear > 0.15 / k
+	return r
 
 func _arena(opts: Dictionary) -> void:
 	m = Match.new()
@@ -213,24 +266,126 @@ func _ground(p: Vector3) -> Vector3:
 
 # ---------- The scenes ----------
 
-## The champion and the Cyclops: a hard blow of his axe biting into the giant, the chunks in the
-## air; the giant's one eye over the hero, the stands behind.
+## The champion and the Cyclops squared up before the clash: the giant's one eye on the hero,
+## his hammer up, the hero's gilded axe raised at him, the stands behind (CAPS_GUARD "x:y" the
+## giant's guard, CAPS_GAP the stand-off in metres).
 func _giant() -> Callable:
 	_arena({"mode": "training", "training": {"enemy": "foe:cyclops", "immortal": true, "respawn": false, "difficulty": 0.7}, "autopilot": true,
 		"loadout": {"main": AXE, "off": "", "armor": GILT}})
 	for i in 120:
 		await get_tree().physics_frame
 	var g = m.enemies()[0]
-	want_attacker = m.me.f
-	want_victim = g.f
-	wanted = 14.0
-	deep = 2
-	await _until_blow(50.0, 5)
-	var h: Vector3 = m.me.f.torso.global_position
-	var gp: Vector3 = g.f.torso.global_position
-	var S := float(g.f.S)
+	var gf: Fighter = g.f
+	var hero: Fighter = m.me.f
+	# The giant comes on at the hero; before the first blow the two square up: each turned to
+	# the other and looking him in the face, the giant's hammer up, the hero's axe up, the feet
+	# set (user: the giant looks at his foe in a fighting stance, ready to fight). Held as a
+	# fighter holds a guard, at the stand-off before the clash.
+	var gap := float(OS.get_environment("CAPS_GAP")) if OS.get_environment("CAPS_GAP") != "" else 4.0
+	var gxy: Array = Array((OS.get_environment("CAPS_GUARD") if OS.get_environment("CAPS_GUARD") != "" else "0.6:0.6").split(":"))
+	for i in 120 * 20:
+		await get_tree().physics_frame
+		var d0: Vector3 = gf.torso.global_position - hero.torso.global_position
+		if Vector2(d0.x, d0.z).length() < gap + 3.0:
+			break
+	var hxy: Array = Array((OS.get_environment("CAPS_HERO") if OS.get_environment("CAPS_HERO") != "" else "0.45:0.85").split(":"))
+	g.drive = pose_drive(gf, hero, {"x": float(gxy[0]), "y": float(gxy[1])}, 0.0, gap)
+	m.me.drive = pose_drive(hero, gf, {"x": float(hxy[0]), "y": float(hxy[1])}, 2.6, 99.0)
+	# The hero's axe has already bitten into him: a few chunks out of the giant's thigh, arm and
+	# side, on the side the camera sees (CAPS_SCARS 0: none).
+	if OS.get_environment("CAPS_SCARS") != "0":
+		for pn in ["thighL", "upperArmL", "torso", "thighR"]:
+			var part: VoxelPart = gf.by_name[pn]
+			var dir: Vector3 = part.global_position - hero.torso.global_position
+			dir.y = 0.0
+			dir = dir.normalized()
+			var side := dir.cross(Vector3.UP)
+			var pt: Vector3 = part.global_position - dir * part.half_ext.z * 1.1 + Vector3(0, part.half_ext.y * 0.2, 0)
+			gf.apply_hit(part, {"impulse": 24.0, "type": "edge", "hardness": 0.8, "sharpness": 0.9, "point": pt, "dir": dir, "axis": side, "edge": dir, "heavy": 0.3, "weapon": true, "mass": 1.5})
+			for j in 12:
+				await get_tree().physics_frame
+	for i in 120:
+		await get_tree().physics_frame
+	# Into a fighting stance, each his left foot forward (both right-handed).
+	set_stance(gf, "L", 0.22, 0.12, 0.08)
+	set_stance(hero, "L", 0.22, 0.12, 0.08)
+	for i in 60:
+		await get_tree().physics_frame
+	step_rear(gf, "L")
+	step_rear(hero, "L")
+	var k := 1.0
+	var held := 0
+	for i in 120 * 12:
+		await get_tree().physics_frame
+		if i % 240 == 239:
+			k *= 1.2
+		held = held + 1 if i > 90 and squared_up(gf, hero, k).ok else 0
+		if held >= 6:
+			break
+	print("squared up: %s" % str(squared_up(gf, hero, k)))
+	var h: Vector3 = hero.torso.global_position
+	var gp: Vector3 = gf.torso.global_position
+	var S := float(gf.S)
 	return func(view: String) -> Array:
-		return _framings(view, h, gp, S)
+		return _facing_framings(view, h, gp, S)
+
+## Sets a fighter's feet as in a guard, the lead foot forward and the rear one back and out
+## (Fighter.stance), and has him step into it, the lead foot first.
+static func set_stance(f: Fighter, lead: String, fwd: float, back: float, out: float) -> void:
+	var rear := "R" if lead == "L" else "L"
+	f.stance[lead] = Vector2(fwd, out * 0.5)
+	f.stance[rear] = Vector2(-back, out)
+	var ft = f.feet[lead]
+	if ft != null and not ft.swing:
+		ft.swing = true
+		ft.from = ft.anchor
+		ft.s = 0.0
+
+## Steps the rear foot into the guard once the lead one is down.
+static func step_rear(f: Fighter, lead: String) -> void:
+	var ft = f.feet["R" if lead == "L" else "L"]
+	if ft != null and not ft.swing:
+		ft.swing = true
+		ft.from = ft.anchor
+		ft.s = 0.0
+
+## A fighter held in a guard by hand: turned to his foe and looking him in the face, the main
+## hand where `hand` puts it, a step in while farther off than `near`, a step back while closer
+## than `room`, else standing his ground.
+static func pose_drive(f: Fighter, foe: Fighter, hand: Dictionary, room: float, near: float) -> Callable:
+	return func(_e) -> Dictionary:
+		var d: Vector3 = foe.torso.global_position - f.torso.global_position
+		var dh: Vector3 = foe.head.global_position - f.head.global_position
+		f.gaze = foe.head.global_position
+		var gap := Vector2(d.x, d.z).length()
+		var step := -0.7 if gap < room else (0.5 if gap > near else 0.0)
+		return {"mx": 0.0, "mz": step, "main": hand, "look": {"yaw": atan2(d.x, d.z), "pitch": atan2(dh.y, Vector2(dh.x, dh.z).length())}}
+
+## Framings of a hero squared up to a giant (`a` the hero, `b` the giant of size `s`): from behind
+## the hero's shoulder, a third and a half of the way round, so the giant's face is seen turned
+## on the hero; low, looking up at the giant, or at a man's height.
+func _facing_framings(view: String, a: Vector3, b: Vector3, s: float) -> Array:
+	var d := _ground(b - a)
+	var gap := d.length()
+	d = d.normalized() if gap > 0.05 else Vector3(0, 0, 1)
+	var side := d.cross(Vector3.UP)
+	var mid := _ground(a.lerp(b, 0.55))
+	var tall := 1.0 + 0.9 * (s - 1.0)
+	var dist := (2.6 + gap * 0.9) * (1.0 + 0.75 * (s - 1.0)) * float(OS.get_environment("CAPS_NEAR") if OS.get_environment("CAPS_NEAR") != "" else "0.66")
+	var fov := 44.0
+	match view:
+		"tall":
+			dist *= 0.8
+			fov = 50.0
+		"hero":
+			dist *= 1.35
+			fov = 34.0
+	var out := []
+	for ang in [30.0, -30.0, 45.0, -45.0]:
+		var dir := (-d).rotated(Vector3.UP, deg_to_rad(ang))
+		for hgt in [0.45, 1.35]:
+			out.append({"eye": mid + dir * dist + Vector3(0, hgt, 0), "at": mid + Vector3(0, tall * 0.95, 0), "fov": fov})
+	return out
 
 ## A man and a beast at each other: the hero's blow (or the beast's) at its height.
 func _beast(kind: String, weapon: String, shield: String, it_strikes := false) -> Callable:

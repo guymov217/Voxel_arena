@@ -551,6 +551,9 @@ func _blow(g: Dictionary) -> Dictionary:
 		var lk := lodge_chance(att, typ, J, thrust_k, res)
 		if lk > 0.0 and randf() < lk and att.lodge_in(vic_char, vic, p, 0.6 + clampf((J - 20.0) / 50.0, 0.0, 0.6) + (0.35 if res.get("bone", false) else 0.0)):
 			res.lodged = true
+	# A giant's blow lands once; then its weapon goes on through the man (Weapon.pass_through).
+	if is_weapon and att.holder and not thrown and J > 10.0 and not res.get("lodged", false) and vic_char is Fighter and not (vic_char is Beast) and "S" in att.holder and float(att.holder.S) > float(vic_char.S) * Fighter.GIANT_OVER:
+		att.pass_through(vic_char, 0.3)
 	if punch and not vic.severed:
 		vic.bleed += J * (0.05 if vic == vic_char.head else 0.015)
 		if vic == vic_char.head:

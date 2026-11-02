@@ -136,12 +136,24 @@ func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	# (A victim a giant's first blow cannot kill, and a giant in a rage, who grabs at every
 	# chance: which blow lands first, and whether it kills, hangs on the physics' chaos; the
 	# hold, the slam and the throw are what is tested.)
-	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, _idle, {"toughness": 6.0})
+	# He keeps coming at the giant, as a man fighting him would: the giant in his rage is blind
+	# and lurches every way, and a man who stood where he was set down was out of his reach for
+	# long spells, as chance had it, and now and then a whole run went by without a grab.
+	var gh := [null]
+	var close_in := func(e):
+		var i := _idle(e)
+		if gh[0] != null:
+			var d: Vector3 = gh[0].f.torso.global_position - e.f.torso.global_position
+			i.look = {"yaw": atan2(d.x, d.z), "pitch": 0.0}
+			i.mz = 1.0 if Vector2(d.x, d.z).length() > 1.8 else 0.0
+		return i
+	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, close_in, {"toughness": 6.0})
 	var giant = m.spawn_fighter({"kind": "bot", "name": "Giant", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.0, "strength": 2.0}, "diff": 0.9})
+	gh[0] = giant
 	giant.f.enraged = true
 	var moves := []
 	m.feed.connect(func(s): moves.append(s))
-	for k in 150:   # (grabs are rare now: user, they came too often)
+	for k in 240:   # (grabs are rare now: user, they came too often; up to two minutes, done at the throw)
 		victim.f.blood = 100.0
 		victim.f.head.hp = maxf(victim.f.head.hp, 60.0)
 		await _steps(60)
@@ -283,15 +295,31 @@ func test_a_giant_varies_his_blows() -> void:
 	seed(5)
 	var m := _match()
 	m.me.f.state = "dead"
-	var victim := _man(m, Vector3(0, 0, 2.2), PI, {}, "Victim", 0, _idle, {"toughness": 8.0})
+	var vh := [_man(m, Vector3(0, 0, 2.2), PI, {}, "Victim", 0, _idle, {"toughness": 8.0})]
 	var giant = m.spawn_fighter({"kind": "bot", "name": "Cyclops", "loadout": {"main": "warhammer"}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.6, "toughness": 1.3, "cyclops": true}, "personality": "executioner", "diff": 0.9})
 	var b: Bot = giant.bot
 	var kinds := {}
 	var landed := {}
 	m.combat.hit.connect(func(h):
-		if h.attacker == giant.f and h.char == victim.f and b.giant_kind != "":
+		if h.attacker == giant.f and h.char == vh[0].f and b.giant_kind != "":
 			landed[b.giant_kind] = true)
-	for i in 120 * 30:
+	# (Up to a minute and a half, done as soon as it has seen enough: a giant's blow takes him
+	# three or four seconds, the low one and the thrust are one in four between them, and in a
+	# fixed half minute a run now and then had seen only three kinds, as chance had it.)
+	for i in 120 * 90:
+		if kinds.size() >= 4 and (kinds.has("sweepR") or kinds.has("sweepL")) and landed.size() >= 2:
+			break
+		var victim: Dictionary = vh[0]
+		if not victim.f.alive:
+			# Two blows of the hammer on the head and he is dead, whatever his blood (the skull
+			# crushed): the next man stands in where the giant can reach him, off to the side of
+			# the body. (With nobody left to strike, the giant stood frozen in the blow he was in.)
+			var dc: Vector3 = victim.f.torso.global_position - giant.f.torso.global_position
+			dc.y = 0.0
+			var side := Vector3(dc.z, 0.0, -dc.x).normalized() if dc.length() > 0.1 else Vector3.RIGHT
+			var at: Vector3 = giant.f.torso.global_position + side * 2.2
+			victim = _man(m, Vector3(at.x, 0.0, at.z), atan2(-side.x, -side.z), {}, "Victim", 0, _idle, {"toughness": 8.0})
+			vh[0] = victim
 		victim.f.blood = 100.0
 		victim.f.head.hp = maxf(victim.f.head.hp, 50.0)
 		victim.f.torso.hp = maxf(victim.f.torso.hp, 50.0)

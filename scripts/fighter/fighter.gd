@@ -106,6 +106,7 @@ var pinned_arm := ""
 var thrown_t := 0.0
 var player := false              # a man's own fighter, his or a guest's (not a bot's)
 var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
+var beast_frame := -10           # the physics frame a beast's body last struck him, not holding him (VoxelPart)
 var v_free := Vector3.ZERO       # his trunk's speed before it did
 var w_free := Vector3.ZERO       # and its turn
 var fell_with_arm := {}          # side -> the Weapon that fell to the sand with the arm cut off holding it
@@ -187,6 +188,7 @@ var weapon_joints := {"R": null, "L": null}
 var stowed := {"R": null, "L": null}   # a weapon put out of sight while that hand throws a pot (Fighter.stow)
 var two_handed := false
 var feet := {"L": null, "R": null}
+var stance := {"L": Vector2.ZERO, "R": Vector2.ZERO}   # each foot's rest off from under its hip (forward, outward; x S): a guard's lead foot forward
 var v_smooth := Vector3.ZERO
 var hand_lead := {"R": null, "L": null}
 var lead_vel := {"R": Vector3.ZERO, "L": Vector3.ZERO}
@@ -375,6 +377,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		# longsword with a dagger is held in one hand, the dagger in the other (H joins them).
 		if main.get("twoHanded", false) and not (off is Dictionary and not off.is_empty()) and off_hand_free() and weapons.R.two_hand_off() != null:
 			two_handed = true
+			_guard_two_hander(weapons.R)
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
 		equip("L", off)
@@ -498,6 +501,7 @@ func rearm(main, off) -> void:
 		# longsword with a dagger is held in one hand, the dagger in the other (H joins them).
 		if main.get("twoHanded", false) and not (off is Dictionary and not off.is_empty()) and off_hand_free() and weapons.R.two_hand_off() != null:
 			two_handed = true
+			_guard_two_hander(weapons.R)
 			_attach_off_hand(weapons.R)
 	if off is Dictionary and not off.is_empty() and not two_handed and not weapons.L:
 		equip("L", off)
@@ -728,7 +732,8 @@ func _lock_elbow_straight(side: String, on: bool) -> void:
 ## is held in a narrow window that follows the bend the aim wants only slowly, so a heavy head
 ## (a warhammer) swings on the whole arm from the shoulder instead of folding the elbow.
 const ELBOW_SET_RATE := 0.2   # rad/s the set bend may follow the aim
-func _hold_elbow(side: String, want_bend: float, on: bool, dt: float) -> void:
+const ELBOW_GUARD_RATE := 1.5   # rad/s it bends to a guard held still
+func _hold_elbow(side: String, want_bend: float, on: bool, dt: float, guard := false) -> void:
 	var fore: VoxelPart = arm[side].fore
 	var upper: VoxelPart = arm[side].upper
 	if not (fore.joint is Generic6DOFJoint3D) or fore.severed or upper.severed or fore.hanging or upper.hanging or bool(fore.get_meta("elbow_locked", false)):
@@ -748,7 +753,7 @@ func _hold_elbow(side: String, want_bend: float, on: bool, dt: float) -> void:
 		# Straightening into the blow is quick (a heavy weapon is struck with the arms
 		# extending); giving way to more bend is slow.
 		var goal := clampf(want_bend, 0.0, ELBOW_BEND)
-		cur = move_toward(float(held), goal, (6.0 if goal < float(held) else ELBOW_SET_RATE) * dt)
+		cur = move_toward(float(held), goal, (6.0 if goal < float(held) else (ELBOW_GUARD_RATE if guard else ELBOW_SET_RATE)) * dt)
 	fore.set_meta("elbow_set", cur)
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, maxf(-0.05, cur - 0.07))
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, minf(ELBOW_BEND, cur + 0.07))
@@ -1164,6 +1169,32 @@ func _joint_at(a: RigidBody3D, b: RigidBody3D, at: Vector3, fixed: bool) -> Join
 	j.node_a = a.get_path()
 	j.node_b = b.get_path()
 	return j
+
+## A two-hander given at a bout's start: the sword arm's forearm is first bent forward at the
+## elbow (the upper arm left hanging), the weapon with it, so that the other end of the grip is in
+## front of him when the off hand closes on it. (Laid as the hanging arm had it, that end was at
+## his hip, behind his front: the hand closed on it there, let go of it a tenth of a second later,
+## and took it again in front, twice over.) Bent about the elbow's own hinge only: turned in across
+## the body as well, the forearm was set further aside than the elbow lets it go, and a longsword's
+## hands ranged a tenth less far through the rest of the bout (test_arms).
+func _guard_two_hander(w: Weapon) -> void:
+	var fore: VoxelPart = arm.R.fore
+	var upper: VoxelPart = arm.R.upper
+	if fore.missing or fore.severed or upper.missing or upper.severed:
+		return
+	var was := fore.global_transform
+	var hinge: Vector3 = upper.global_transform.basis.x.normalized()
+	var ahead: Vector3 = torso.global_transform.basis * Vector3(0, 0.15, 1.0)
+	ahead -= hinge * ahead.dot(hinge)
+	if ahead.length_squared() < 1e-6:
+		return
+	var el: Vector3 = upper.global_transform * fore.pa
+	var l2 := (hand_point - fore.ca).length()
+	_point_part(fore, fore.ca, hand_point, el, el + ahead.normalized() * l2)
+	var moved: Transform3D = fore.global_transform * was.affine_inverse()
+	for b in w.bodies():
+		if b is Node3D:
+			b.global_transform = moved * b.global_transform
 
 func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 	if not w or is_bow(w):
@@ -2193,26 +2224,45 @@ const STRUCK_V := 3.5        # m/s along the ground
 const STRUCK_VY := 1.0       # m/s upward
 const STRUCK_FRAMES := 30    # physics frames after the weapon last touched him (a quarter second)
 const STRUCK_W := 4.0        # rad/s: the turn a blow can put into him (a man lying hit flipped head over heels, user video)
+const STRUCK_LIMB := 10.0    # m/s: a leg's or the head's speed over the trunk's (a giant's plank sent a thigh at 26 m/s)
+const STRUCK_ARM := 16.0     # m/s: an arm's (his own swing goes on through it)
+const STRUCK_DOWN := 6.0     # m/s downward: driven into the sand no faster than a fall from a man's height (a giant's chop on his head took him down at 18)
 ## Whether `o` is a part of a man-shaped foe far bigger than `f` (a giant's body, not a beast's:
 ## a beast's tosses and charges are its own).
 const GIANT_OVER := 1.4
 static func is_giant_over(o, f) -> bool:
 	return o is VoxelPart and o.fighter != null and o.fighter != f and not (o.fighter is Beast) and float(o.fighter.S) > float(f.S) * GIANT_OVER
 
+## A beast's horns, head or bulk thrown about a man: a toss, not a launch (a rhino's charge sent
+## men six metres up and twenty metres a second along). Not in its hold: a crocodile's roll, a
+## python's coils, an ape's arms take him where they go.
+const BEAST_V := 7.0         # m/s along the ground
+const BEAST_VY := 3.0        # m/s upward (half a metre off the sand)
+const BEAST_W := 6.0         # rad/s of tumble
+static func is_beast_on(o, f) -> bool:
+	if not (o is VoxelPart) or not (o.fighter is Beast) or o.fighter == f or f is Beast:
+		return false
+	var b = o.fighter
+	return not (b.hug != null and b.hug.get("target") == f) and not (f.has_meta("beast_hold") and f.get_meta("beast_hold") == b)
+
 func _no_fling() -> void:
-	# His own weapon caught on a giant (on the forearm it raises) lifts him by the hand: the same.
+	# His own weapon caught on a giant (on the forearm it raises) lifts him by the hand, or a
+	# giant's weapon bearing down on his drives him by it: the same.
 	for w in weapons.values():
 		if w and is_instance_valid(w) and w.contact_monitor:
 			for b in w.get_colliding_bodies():
-				if is_giant_over(b, self):
+				if is_giant_over(b, self) or (b is Weapon and b.holder != null and b.holder != self and "S" in b.holder and float(b.holder.S) > S * GIANT_OVER):
 					struck_frame = Engine.get_physics_frames()
 					break
 	var tv: Vector3 = torso.linear_velocity
+	var now := Engine.get_physics_frames()
+	var by_weapon: bool = now - struck_frame <= STRUCK_FRAMES
+	var by_beast: bool = now - beast_frame <= STRUCK_FRAMES and not has_meta("beast_hold")
 	# (A beast's own lunges and rolls are its own, and a man in a hold goes where he is dragged.)
-	if Engine.get_physics_frames() - struck_frame <= STRUCK_FRAMES and thrown_t <= 0.0 and not (self is Beast) and not is_instance_valid(grabbed_by):
+	if (by_weapon or by_beast) and thrown_t <= 0.0 and not (self is Beast) and not is_instance_valid(grabbed_by):
 		var h := Vector2(tv.x, tv.z)
-		var h_max := maxf(STRUCK_V * sqrt(S), Vector2(v_free.x, v_free.z).length())
-		var want := Vector3(tv.x, minf(tv.y, maxf(STRUCK_VY, v_free.y)), tv.z)
+		var h_max := maxf(STRUCK_V * sqrt(S) if by_weapon else BEAST_V, Vector2(v_free.x, v_free.z).length())
+		var want := Vector3(tv.x, clampf(tv.y, minf(-STRUCK_DOWN, v_free.y), maxf(STRUCK_VY if by_weapon else BEAST_VY, v_free.y)), tv.z)
 		if h.length() > h_max:
 			h = h.limit_length(h_max)
 			want = Vector3(h.x, want.y, h.y)
@@ -2223,12 +2273,23 @@ func _no_fling() -> void:
 					p.linear_velocity += fix
 		# Nor set him spinning: the turn of his trunk is held to what it was, or STRUCK_W.
 		var tw: Vector3 = torso.angular_velocity
-		var w_max := maxf(STRUCK_W, w_free.length())
+		var w_max := maxf(STRUCK_W if by_weapon else BEAST_W, w_free.length())
 		if tw.length() > w_max:
 			var wfix := tw.limit_length(w_max) - tw
 			for p in parts:
 				if not p.severed:
 					p.angular_velocity += wfix
+		# Nor a limb whipped round on him: a leg or the head struck by a giant's plank went at
+		# 26 m/s and pulled the neck open. Its speed over the trunk's is held to what a limb can
+		# go (an arm's to more: his own swing goes on through it).
+		var t_v: Vector3 = torso.linear_velocity
+		for p in parts:
+			if p.severed or p == torso:
+				continue
+			var lim: float = (STRUCK_ARM if p == arm.L.upper or p == arm.L.fore or p == arm.R.upper or p == arm.R.fore else STRUCK_LIMB) * sqrt(S)
+			var rel: Vector3 = p.linear_velocity - t_v
+			if rel.length() > lim:
+				p.linear_velocity = t_v + rel.limit_length(lim)
 		return
 	v_free = tv
 	w_free = torso.angular_velocity
@@ -2396,6 +2457,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# the legs hung).
 	var hit := _ground_ray(space, t_pos)
 	var crouch := 1.0 - e2 if rising else (1.0 if inp.get("crouch", false) else minf(1.0, maxf(low_hand * 0.9, stoop)))
+	# A giant over a man a third his size bends at the hips, and his knees give half what a
+	# man's do to a low blow (sunk on them as deep, the cyclops sat on its heels with a leg out
+	# wide: the capsule art, user). Bent down to a grip on the sand, as far as a man.
+	var crouch_h: float = minf(crouch, maxf(low_hand * 0.45, stoop)) if S >= 1.3 and not rising and not inp.get("crouch", false) else crouch
 	var one_leg: bool = minf(leg_l, leg_r) < 0.1
 	var leg_flinch := 1.0
 	for n in ["thighL", "thighR", "shinL", "shinR"]:
@@ -2450,14 +2515,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# heavy weapon), and for a moment under every footfall and landing (land_sag), more the
 		# harder he came down (user: he floated, the legs carried nothing).
 		var burden_k := clampf(carried_kg() / 25.0, 0.0, 1.0)
-		var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch * 0.22 - stoop * 0.24 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
+		var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch_h * 0.22 - stoop * 0.24 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
 		# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
 		# reaches from the foot planted on the sand to the hip (an inverted pendulum: up as the body
 		# passes over the foot, down as the stride opens). Never higher than the legs reach, so
 		# a planted foot always stands on the sand.
 		if state == "stand" and not one_leg and hop_phase <= 0.0:
 			var pend := INF
-			var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
+			var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch_h * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
 			for sd in ["L", "R"]:
 				var ftp = feet[sd]
 				if ftp == null or ftp.swing or by_name["shin" + sd].severed:
@@ -2467,7 +2532,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
 				pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
 			if pend < INF:
-				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch * 0.2 - stoop * 0.24))
+				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch_h * 0.2 - stoop * 0.24))
 			if stance_h > 0.0:
 				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
 		desired -= land_sag   # (after the planted leg's height: walking, that is what holds him up)
@@ -2680,7 +2745,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		low_hand = 0.0
 		thrust_lean = 0.0
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
-		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S))
+		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S)) + (crouch - crouch_h) * 0.6
 		if S < 1.3:
 			lean_a = minf(lean_a, LEAN_MAX)   # (a giant leans far out over a man on the sand to reach him)
 		var lean := Quaternion(Vector3(1, 0, 0), lean_a + kneel_lean)
@@ -2734,7 +2799,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			ly = 0.3 * sin(time * 0.37 + slot)
 		ly = atan2(sin(ly), cos(ly))
 		ly = clampf(ly, -1.1, 1.1)
-		lp = clampf(lp, -0.4, 0.45)
+		# (A giant looks down at the man he fights, chin to chest: held to a man's tilt, his eye
+		# was on the air over the man's head.)
+		lp = clampf(lp, -0.4 - (0.3 if S >= 1.3 else 0.0), 0.45)
 		var look_q := Quaternion(UP, ly) * Quaternion(Vector3(1, 0, 0), -lp)
 		pd_relative(head, torso, look_q, 20.0 * neck, 0.95, 90.0 * neck * MS * S, dt)
 
@@ -2770,7 +2837,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			if feet[side]:
 				feet[side].swing = true
 		elif standing and grounded:
-			var neutral := t_pos + yaw_q * Vector3(thigh.pa.x * 1.15, 0, 0)
+			var neutral := t_pos + yaw_q * Vector3(thigh.pa.x * 1.15 + signf(thigh.pa.x) * stance[side].y * S, 0, stance[side].x * S)
 			neutral.y = _ground_under(neutral, ground_y)
 			var ft = feet[side]
 			if ft == null:
@@ -2826,6 +2893,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var over_h := _ground_under(mid_at, mid_at.y) - mid_at.y
 				ft.lift = over_h + 0.06 * S if over_h > 0.03 * S else 0.0
 				var rate: float = h_speed / step_len if moving else 4.0
+				if ft.get("gather", false):
+					rate = maxf(rate, 2.5)
 				ft.s = minf(1.0, ft.s + dt * rate)
 				# On the sand again is down: past the top of its step, a foot that touches it is
 				# planted there and then (it was held "stepping" on the sand till its half stride
@@ -2835,10 +2904,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				# Its time up but still over the sand (stepping down off a ledge, the step ended a hand
 				# above the sand below, the other foot already off it): it goes on down a moment more.
 				var high: bool = not touched and not shin.severed and float((ft.from as Vector3).y) - float((ft.land as Vector3).y) > 0.08 * S and sole_td.y - float((ft.land as Vector3).y) > 0.03 * S and float(ft.get("late", 0.0)) < 0.25
-				if (ft.s >= 1.0 or (moving and not my_swing)) and high:
+				var turn_over: bool = moving and not my_swing and not ft.get("gather", false)
+				if (ft.s >= 1.0 or turn_over) and high:
 					ft.late = float(ft.get("late", 0.0)) + dt
-				elif ft.s >= 1.0 or (moving and not my_swing) or touched:
+				elif ft.s >= 1.0 or turn_over or touched:
 					ft.swing = false
+					ft.gather = false
 					ft.late = 0.0
 					land_sag = maxf(land_sag, (0.06 + 0.03 * minf(1.0, h_speed / 3.0)) * S * clampf((leg_avg - 0.6) / 0.3, 0.0, 1.0))   # the weight comes onto the foot (hacked legs, already low on them, not at all: it sank a giant's feet in the sand)
 					# Walking, it stays where it actually came down (short of the mark, it used to be
@@ -2864,6 +2935,15 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				ft.from = ft.anchor
 				ft.s = 0.0
 				ft.land = neutral
+			elif S >= 1.3 and not other_up and Vector2(ft.anchor.x - neutral.x, ft.anchor.z - neutral.z).length() > 0.4 * S:
+				# A giant brings a foot left out wide or far behind back in under him, walking or
+				# not, its turn or not (stood on, the hips sank to that leg's reach and the other
+				# knee folded under them: a cyclops in a split).
+				ft.swing = true
+				ft.gather = true
+				ft.from = ft.anchor
+				ft.s = 0.0
+				ft.half = half
 			var ease: float = ft.s * ft.s * (3.0 - 2.0 * ft.s)
 			# The foot clears the sand by a few fingers, as a walking man's does (it went up a hand
 			# and a half, a march), a little more at a run.
@@ -3644,9 +3724,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var moving: bool = in_spd > HELD_STILL if two_handed else target_vel[side].length() > 0.3 * S
 		var high_guard: bool = not moving and float(hp_now.get("y", 0.0)) > 0.6
 		var swinging: bool = ((power and not high_guard) or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
-		# A swing is made with the arm near straight, light weapon or heavy.
-		var want_bend := minf(elbow_dir.angle_to(fore_dir), 0.35)
-		_hold_elbow(side, want_bend, swinging, dt)
+		# A swing is made with the arm near straight, light weapon or heavy. Held still with the
+		# button down (a guard, no blow yet) the arm takes the bend the guard needs: kept near
+		# straight there as well, a short blade held level from a low hand, or a hammer held out
+		# in front in both hands, wanted a bend the set elbow would not give, the drives fought
+		# over the elbow and the hand swung from side to side three times a second (tremor.gd).
+		# With both hands on a haft, to fifty degrees at most (the straight arms are what carry
+		# the hands out to the mark: given the whole bend, they reached a tenth less far).
+		var guard := not moving
+		var bend_need: float = elbow_dir.angle_to(fore_dir)
+		var want_bend := minf(bend_need, 0.35 if not guard else (0.9 if two_handed else PI))
+		_hold_elbow(side, want_bend, swinging, dt, guard)
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if has_wrist(w):
@@ -4987,11 +5075,16 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				var slot := _slot(part, lp, ld, n, width, la, vfs)
 				if slot.y <= 0.0:
 					span = maxf(span, slot.x + depth)
-			for i in part.fx.size():
-				if part.alive[i] == 0:
+			var lps := part.local_positions()
+			var al := part.alive
+			var back := -V * S
+			var deep := depth + open
+			for i in lps.size():
+				if al[i] == 0:
 					continue
-				var d := part.local_of(i) - lp
-				if abs(d.dot(n)) < width and d.dot(ld) > -V * S and d.dot(ld) < depth + open and abs(d.dot(la)) < span:
+				var d := lps[i] - lp
+				var a := d.dot(ld)
+				if a > back and a < deep and absf(d.dot(n)) < width and absf(d.dot(la)) < span:
 					remove.append(i)
 			remove = _stop_at_bone(part, remove, lp, ld, bite, res)
 			if not detached:
@@ -5016,8 +5109,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# (Only the live voxels round the channel: the whole part voxel by voxel, for each nail
 			# of a pot's hail, was a hitch.)
 			var half := (depth + open + V * S) * 0.5
+			var lps := part.local_positions()
 			for i in part.voxels_within(lp + la * (half - V * S), sqrt(half * half + r * r) + vfs * 0.01):
-				var d := part.local_of(i) - lp
+				var d := lps[i] - lp
 				var along := d.dot(la)
 				if along > -V * S and along < depth + open and (d - la * along).length() < r:
 					remove.append(i)
@@ -5381,8 +5475,9 @@ func _shield_takes(hit: Dictionary) -> bool:
 func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, step: float) -> float:
 	var seen := []
 	var slab := n != Vector3.ZERO
+	var lps := part.local_positions()
 	for i in part.dead_voxels():
-		var d := part.local_of(i) - lp
+		var d := lps[i] - lp
 		var along := d.dot(ld)
 		if along <= 0.0:
 			continue
@@ -5407,10 +5502,12 @@ func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float,
 func _slot_beside(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, vfs: float) -> float:
 	var best := 0.0
 	var best_d := INF
-	for i in part.fx.size():
-		if part.alive[i]:
+	var lps := part.local_positions()
+	var al := part.alive
+	for i in lps.size():
+		if al[i]:
 			continue
-		var d := part.local_of(i) - lp
+		var d := lps[i] - lp
 		var along := d.dot(ld)
 		if along <= 0.0 or along > vfs * 2.5 or absf(d.dot(la)) >= span:
 			continue
@@ -5429,12 +5526,14 @@ func _slot_beside(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: 
 func _slot(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, vfs: float) -> Vector2:
 	var far := 0.0
 	var left := 0.0
-	for i in part.fx.size():
-		var d := part.local_of(i) - lp
+	var lps := part.local_positions()
+	var al := part.alive
+	for i in lps.size():
+		var d := lps[i] - lp
 		if d.dot(ld) <= 0.0 or absf(d.dot(n)) >= width:
 			continue
 		var side := absf(d.dot(la))
-		if part.alive[i]:
+		if al[i]:
 			if side < vfs * 1.1:
 				left += 1.0
 		else:
@@ -5444,8 +5543,9 @@ func _slot(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, 
 ## How deep an open hole goes under a blow at `lp` heading `ld` (0 on whole skin).
 func _hollow(part: VoxelPart, lp: Vector3, ld: Vector3, width: float) -> float:
 	var seen := []
+	var lps := part.local_positions()
 	for i in part.dead_voxels():
-		var d := part.local_of(i) - lp
+		var d := lps[i] - lp
 		var along := d.dot(ld)
 		if along <= 0.0 or (d - ld * along).length() >= width:
 			continue
@@ -5466,6 +5566,17 @@ var flaps: Array = []
 const MAX_FLAPS := 8
 const FLAP_MIN := 8
 
+## The steps from a cell to those within two of it (all three axes told together), x then y then z.
+static var _lip_near: Array[Vector3i] = []
+static func _lip_offsets() -> Array[Vector3i]:
+	if _lip_near.is_empty():
+		for dx in range(-2, 3):
+			for dy in range(-2, 3):
+				for dz in range(-2, 3):
+					if absi(dx) + absi(dy) + absi(dz) <= 2:
+						_lip_near.append(Vector3i(dx, dy, dz))
+	return _lip_near
+
 func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 	var cut := []
 	for r in res.removed:
@@ -5482,23 +5593,31 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 	var cellmap := part.cell_map()
 	# The lips of the cut: the flesh left within two voxels of what was just taken.
 	var lips := {}
+	var al := part.alive
+	var near := _lip_offsets()
+	var flat := PackedInt32Array()
+	for st in near:
+		flat.append((st.x * hf + st.y) * df + st.z)
 	for i in cut:
 		var x: int = part.fx[i]
 		var y: int = part.fy[i]
 		var z: int = part.fz[i]
-		for dx in range(-2, 3):
-			for dy in range(-2, 3):
-				for dz in range(-2, 3):
-					if absi(dx) + absi(dy) + absi(dz) > 2:
-						continue
-					var xx := x + dx
-					var yy := y + dy
-					var zz := z + dz
-					if xx < 0 or yy < 0 or zz < 0 or xx >= wf or yy >= hf or zz >= df:
-						continue
-					var k := cellmap[(xx * hf + yy) * df + zz]
-					if k > 0 and part.alive[k - 1]:
-						lips[k - 1] = true
+		if x >= 2 and y >= 2 and z >= 2 and x < wf - 2 and y < hf - 2 and z < df - 2:
+			var base := (x * hf + y) * df + z
+			for o in flat:
+				var k := cellmap[base + o]
+				if k > 0 and al[k - 1]:
+					lips[k - 1] = true
+			continue
+		for st in near:
+			var xx: int = x + st.x
+			var yy: int = y + st.y
+			var zz: int = z + st.z
+			if xx < 0 or yy < 0 or zz < 0 or xx >= wf or yy >= hf or zz >= df:
+				continue
+			var k := cellmap[(xx * hf + yy) * df + zz]
+			if k > 0 and al[k - 1]:
+				lips[k - 1] = true
 	if lips.is_empty():
 		return false
 	var lip_list := PackedInt32Array(lips.keys())
@@ -5817,12 +5936,15 @@ func _off_hand_off_haft() -> void:
 func sever(part: VoxelPart, res: Dictionary, keep: PackedInt32Array) -> void:
 	if part.severed:
 		return
-	var kept := {}
+	var kept := PackedByteArray()
+	kept.resize(part.fx.size())
+	kept.fill(0)
 	for i in keep:
-		kept[i] = true
+		kept[i] = 1
 	var stump_side := []
-	for i in part.fx.size():
-		if part.alive[i] and not kept.has(i):
+	var al := part.alive
+	for i in kept.size():
+		if al[i] and kept[i] == 0:
 			stump_side.append(i)
 	if not stump_side.is_empty() and stump_side.size() < part.alive_count:
 		res.removed.append({"part": part, "indices": stump_side, "voxels": part.remove_voxels(stump_side)})
@@ -5845,6 +5967,11 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	if is_inside_tree():
 		_clear_of_body(pieces, 0)
 	if part.joint:
+		# It lets go of him at once: freed only at the frame's end, the joint held on through one
+		# more step, and a limb a giant's blow struck off dragged his trunk after it at 15 m/s,
+		# his head at 35.
+		part.joint.node_a = NodePath()
+		part.joint.node_b = NodePath()
 		part.joint.queue_free()
 		part.joint = null
 	if part.parent_part:
@@ -6225,9 +6352,11 @@ var pelvis_f := 1.0
 ## first, a light one barely notches it), and nothing beyond the last bone it got through.
 func _stop_at_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, bite: float, res: Dictionary) -> Array:
 	var bones := []
+	var lps := part.local_positions()
+	var bn := part.bone
 	for i in remove:
-		if part.bone[i]:
-			bones.append([(part.local_of(i) - lp).dot(ld), i])
+		if bn[i]:
+			bones.append([(lps[i] - lp).dot(ld), i])
 	if bones.is_empty():
 		return remove
 	res.bone = true
@@ -6240,8 +6369,8 @@ func _stop_at_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, bit
 	var stop: float = bones[n][0] if n < bones.size() else INF
 	var out := []
 	for i in remove:
-		var a := (part.local_of(i) - lp).dot(ld)
-		if part.bone[i]:
+		var a := (lps[i] - lp).dot(ld)
+		if bn[i]:
 			if a < stop or (n > 0 and a <= bones[n - 1][0]):
 				out.append(i)
 		elif a < stop:
@@ -6319,12 +6448,14 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 	if part == torso or part == head or part.fractured:
 		return
 	var cut := 0
+	var bn := part.bone
+	var al := part.alive
 	for i in remove:
-		if part.bone[i]:
+		if bn[i]:
 			cut += 1
 	var all := 0
-	for i in part.fx.size():
-		if part.alive[i] and part.bone[i]:
+	for i in bn.size():
+		if al[i] and bn[i]:
 			all += 1
 	if all == 0:
 		return

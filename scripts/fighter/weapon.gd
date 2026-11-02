@@ -979,6 +979,47 @@ func impale(c, part: VoxelPart, point: Vector3) -> bool:
 ## or lets go of it. `need`: how hard it is to pull free (s of a good pull).
 var lodge_pending = null   # {char, part, lp (in the part), steps, need}
 
+## A giant's blow lands once: its weapon then goes on through the man it struck, and the weapons
+## in his hands, for `secs` instead of carrying him off on it (a plank's low sweep took a downed
+## man along at 13 m/s, his legs at 30; a chop on his head drove his sword, and him by it, into
+## the sand at 18: what Fighter._no_fling takes off him each step, a weapon still pressing on
+## him put back). Not through one it lodges in or sticks in: that keeps its own way through him.
+var _passing := {}   # the struck fighter's id -> the bodies it passes through
+func pass_through(c, secs: float) -> void:
+	if not is_inside_tree() or c == null or not ("parts" in c) or _passing.has(c.get_instance_id()):
+		return
+	var id: int = c.get_instance_id()
+	var his: Array = []
+	for p in c.parts:
+		if is_instance_valid(p):
+			his.append(p)
+	if "weapons" in c:
+		for w2 in c.weapons.values():
+			if w2 and is_instance_valid(w2) and w2 != self:
+				his.append_array(w2.bodies())
+	_passing[id] = his
+	for b in bodies():
+		if b is PhysicsBody3D:
+			for o in his:
+				if o is PhysicsBody3D:
+					b.add_collision_exception_with(o)
+	var me := weakref(self)
+	var cr := weakref(c)
+	get_tree().create_timer(secs, false, true).timeout.connect(func():
+		var w = me.get_ref()
+		if w == null:
+			return
+		var those: Array = w._passing.get(id, [])
+		w._passing.erase(id)
+		var cc = cr.get_ref()
+		if cc != null and ((w.stuck != null and w.stuck.get("char") == cc) or (w.lodge_pending != null and w.lodge_pending.get("char") == cc)):
+			return
+		for b in w.bodies():
+			if b is PhysicsBody3D:
+				for o in those:
+					if is_instance_valid(o) and o is PhysicsBody3D:
+						b.remove_collision_exception_with(o))
+
 func lodge_in(c, part: VoxelPart, point: Vector3, need: float) -> bool:
 	if stuck != null or lodge_pending != null or holder == null or not chain_links.is_empty() or part == null or part.severed or not is_inside_tree():
 		return false

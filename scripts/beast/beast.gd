@@ -2336,7 +2336,7 @@ func _strike_go(p: VoxelPart) -> void:
 		var imp: Array = pending[p]
 		pending.erase(p)
 		if is_instance_valid(imp[0]) and not imp[0].severed:
-			imp[0].apply_central_impulse(imp[1])
+			imp[0].apply_central_impulse(_lunge_at(imp[0]) if imp.size() > 2 and imp[2] == "aim" else imp[1])
 	# A paw or a foot only hurts while it swings.
 	if p.def.get("leg", false):
 		var lo := lower_of(p)
@@ -2355,6 +2355,18 @@ func _strike_go(p: VoxelPart) -> void:
 			torso.apply_central_impulse(Vector3(0, 2.4, 0) * m + to * 1.4 * m)
 	if on_strike.is_valid():
 		on_strike.call(self, p)
+
+## A head's lunge as it snaps: at the nearest of him (his head or his trunk), fast enough to
+## cover the distance in the snap. (Aimed where he was a quarter second before, at one speed
+## whatever the distance, a hydra's heads stopped a hand short of him: 88 strikes, 10 bites.)
+func _lunge_at(h: VoxelPart) -> Vector3:
+	if target == null or not is_instance_valid(target) or not target.get("torso"):
+		return Vector3.ZERO
+	var at: Vector3 = target.torso.global_position
+	if target.get("head") and not target.head.severed and h.global_position.distance_to(target.head.global_position) < h.global_position.distance_to(at):
+		at = target.head.global_position
+	var to: Vector3 = at - h.global_position
+	return to.normalized() * clampf(to.length() / 0.18, 3.5, 7.5) * h.mass
 
 func _role_of(p: VoxelPart) -> String:
 	for a in anim:
@@ -2476,32 +2488,37 @@ func _ape_drive() -> void:
 const HEAD_SPEED := 5.5
 const HEAD_PULL := 120.0
 func _head_drive() -> void:
-	if sp.get("multiHead", false) or head.severed or head.parent_part == torso or not strikes.has(head):
+	if target == null or not is_instance_valid(target) or not target.get("torso"):
 		return
-	if target == null or not is_instance_valid(target) or not target.get("torso") or head.get_meta("landed", false):
-		return
+	# Every head striking now, each on its own neck (a hydra's heads were left to the snap's one
+	# push and stopped a hand short of him, his half metre off them: 88 strikes, 10 bites).
+	for h in (heads if sp.get("multiHead", false) else [head]):
+		if is_instance_valid(h) and not h.severed and h.parent_part != torso and strikes.has(h) and not h.get_meta("landed", false):
+			_drive_head(h)
+
+func _drive_head(h: VoxelPart) -> void:
 	# At his head and shoulders, high, where a long neck reaches down to (its root will not let
 	# it fold down to his belly).
 	var aim: Vector3 = target.head.global_position if target.get("head") and not target.head.severed else target.torso.global_position
 	var tv: Vector3 = torso.linear_velocity
 	var want: Vector3
-	if float(wind.get(head, 0.0)) > 0.0:
+	if float(wind.get(h, 0.0)) > 0.0:
 		var to: Vector3 = aim - torso.global_position
 		to.y = 0.0
 		to = to.normalized()
-		want = (head.parent_part.global_position + Vector3.UP * 0.3 * S - to * 0.2 * S - head.global_position) * 5.0
+		want = (h.parent_part.global_position + Vector3.UP * 0.3 * S - to * 0.2 * S - h.global_position) * 5.0
 	else:
-		want = (aim - head.global_position).normalized() * HEAD_SPEED * sqrt(S)
-		if Combat.current and Combat.current.touch_by(head, target, 0.03) != null:
-			head.set_meta("landed", true)
+		want = (aim - h.global_position).normalized() * HEAD_SPEED * sqrt(S)
+		if Combat.current and Combat.current.touch_by(h, target, 0.03) != null:
+			h.set_meta("landed", true)
 			return
-	var acc := ((want - (head.linear_velocity - tv)) / maxf(0.02, get_physics_process_delta_time() * 4.0)).limit_length(HEAD_PULL * sqrt(S))
-	var f := acc * head.mass
-	head.apply_central_force(f)
+	var acc := ((want - (h.linear_velocity - tv)) / maxf(0.02, get_physics_process_delta_time() * 4.0)).limit_length(HEAD_PULL * sqrt(S))
+	var f := acc * h.mass
+	h.apply_central_force(f)
 	# The neck goes with it, its end most, the body taking the push back.
-	var nk: VoxelPart = head.parent_part
+	var nk: VoxelPart = h.parent_part
 	var fn := acc * nk.mass * 0.6
-	nk.apply_force(fn, head.global_position - nk.global_position)
+	nk.apply_force(fn, h.global_position - nk.global_position)
 	torso.apply_central_force(-(f + fn) * 0.5)
 
 func _ready_to_strike(p: VoxelPart) -> bool:
@@ -2524,7 +2541,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 		for h in heads:
 			var reach_h: float = (h.parent_part.half_ext.y * 2.0 if h.parent_part != torso else 0.0) + h.half_ext.z * 2.0 + 0.4
 			if h.def.get("bite", false) and part_ok(h, 0.2) and _ready_to_strike(h) and Vector2(h.global_position.x - tp.x, h.global_position.z - tp.z).length() < reach_h:
-				_strike(h, 0.5, 1.0 + rng.randf() * 1.2, [h, ((tp - h.global_position).normalized() * 3.5 + Vector3(0, 0.6 if h.global_position.y < tp.y else 0.0, 0)) * h.mass])
+				_strike(h, 0.5, 1.4 + rng.randf() * 1.7, [h, Vector3.ZERO, "aim"])   # (fewer snaps, now that they land: about the old bites a minute)
 				# The body comes on behind the striking head, so the next heads reach too (a hydra
 				# backing off after its lunge snapped at the air a yard short).
 				if dist > 0.8 * S and not strikes.has(torso):

@@ -42,6 +42,44 @@ func test_corners_are_shaded_where_neighbours_shut_them_in() -> void:
 	t.check(((p.ao[corner] >> 8) & 15) != 0, "and shaded again when it is back")
 	p.queue_free()
 
+## The shading worked out from one read of each voxel's 27 cells (shade_bits) is what ao_bits
+## and bevel_bits give, on a holed lump with a veil and bevelled edges, through cuts and mends.
+func test_the_quick_shading_follows_the_corner_rules() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var vox := []
+	for x in 6:
+		for y in 5:
+			for z in 4:
+				if rng.randf() < 0.85:
+					vox.append([x, y, z, Color.WHITE, false, 0])
+	var p := VoxelPart.new()
+	add_child(p)
+	p.setup(null, {"name": "lump", "dims": [3, 3, 2], "grid": [6, 5, 4]}, vox, 1.0, 1.0)
+	var veil := PackedByteArray()
+	veil.resize(p.fx.size())
+	for i in p.fx.size():
+		veil[i] = 1 if rng.randf() < 0.15 else 0
+	p.set_look(veil, true)
+	var bad := 0
+	var checked := 0
+	for k in 6:
+		var cut := []
+		for i in p.fx.size():
+			if p.alive[i] == 1 and rng.randf() < 0.2:
+				cut.append(i)
+		p.remove_voxels(cut, false, false)
+		if k % 2 == 1:
+			p.restore_voxels(cut.slice(0, cut.size() / 2))
+		for i in p.fx.size():
+			if p.alive[i] == 1:
+				checked += 1
+				if p.ao[i] != p.ao_bits(i) or p.bev[i] != p.bevel_bits(i):
+					bad += 1
+	t.check(checked > 200, "enough voxels compared (%d)" % checked)
+	t.eq(bad, 0, "every living voxel's corners and bevel as the rules give them")
+	p.queue_free()
+
 func test_the_options_set_the_anti_aliasing_and_the_shading() -> void:
 	var menu = load("res://scripts/ui/menu.gd")
 	var vp := get_tree().root

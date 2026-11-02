@@ -902,6 +902,8 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 	grid = Vector3i(int(g[0]), int(g[1]), int(g[2]))
 	vf = Data.body_voxel / Data.body_res
 	part_scale = scale_
+	_lpos = PackedVector3Array()
+	_offs27 = PackedInt32Array()
 	mult = float(d.get("mult", 1.0))
 	nominal_mass = mass_
 	if d.get("pa") != null:
@@ -1337,6 +1339,18 @@ static func _v3(a) -> Vector3:
 func local_of(i: int) -> Vector3:
 	return Vector3((fx[i] - (grid.x - 1) * 0.5) * vf, (fy[i] - (grid.y - 1) * 0.5) * vf, (fz[i] - (grid.z - 1) * 0.5) * vf) * part_scale
 
+## Every voxel's local_of, worked out once (a voxel never moves in its part): a cut's passes over a
+## big creature's limb read a thousand of them each.
+var _lpos := PackedVector3Array()
+func local_positions() -> PackedVector3Array:
+	if _lpos.size() != fx.size():
+		var lp := PackedVector3Array()
+		lp.resize(fx.size())
+		for i in fx.size():
+			lp[i] = local_of(i)
+		_lpos = lp
+	return _lpos
+
 ## The living voxels whose local_of lies nearer than `r` to `p`, in index order (at most
 ## `limit` of them when it is above 0). VoxelCore does it when the extension is loaded.
 func voxels_within(p: Vector3, r: float, limit := 0) -> PackedInt32Array:
@@ -1544,17 +1558,15 @@ static func _write_colors(m: MultiMesh, rows: Array) -> void:
 func resync() -> void:
 	if mm == null:
 		return
-	var main_on := []
-	var main_off := []
-	var cols := []
+	# (Each voxel written as it is gone over: a list of them all built first, then written, was
+	# most of the hitch when a big creature's bone broke and its limb was drawn bent.)
+	var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+	var jaw := not jaw_slot.is_empty()
 	for i in fx.size():
-		if jaw_slot.has(i):
+		if jaw and jaw_slot.has(i):
 			continue
-		(main_on if alive[i] and not veiled(i) else main_off).append([i, drawn_xf(i)])
-		cols.append([i, colors[i]])
-	_write_shown(mm, main_on, true)
-	_write_shown(mm, main_off, false)
-	_write_colors(mm, cols)
+		mm.set_instance_transform(i, drawn_xf(i) if alive[i] and not veiled(i) else none)
+		mm.set_instance_color(i, colors[i])
 	if dangle_mm:
 		var d_on := []
 		var d_off := []
@@ -1736,8 +1748,9 @@ func wound(lp: Vector3, r: float, kind := "blood") -> int:
 	var target := BRUISE if kind == "bruise" else SMEAR
 	var mx := 0.55 if kind == "bruise" else 0.9
 	var touched := []
+	var lps := local_positions()
 	for i in voxels_within(lp, r):
-		var d := local_of(i).distance_to(lp)
+		var d := lps[i].distance_to(lp)
 		var k := mx * pow(1.0 - d / r, 0.6)
 		if k < 0.08:
 			continue
@@ -1834,6 +1847,90 @@ func ao_bits(i: int) -> int:
 				bits |= 1 << (f * 4 + c)
 	return bits
 
+## One face's ao_bits from the 3x3 cells beside it (cell (u+1)*3 + v+1, u and v across the face
+## as AO_FACES gives them, the middle one against the face): 0 when that one is solid.
+static var _face_ao := PackedInt32Array()
+
+static func _face_ao_table() -> PackedInt32Array:
+	if _face_ao.is_empty():
+		var t := PackedInt32Array()
+		t.resize(512)
+		for p in 512:
+			var bits := 0
+			if (p & 16) == 0:
+				for c in 4:
+					var u := 2 if c & 1 else 0
+					var v := 2 if c & 2 else 0
+					if p & (1 << (u * 3 + 1)) or p & (1 << (3 + v)) or p & (1 << (u * 3 + v)):
+						bits |= 1 << c
+			t[p] = bits
+		_face_ao = t
+	return _face_ao
+
+## The grid steps to a cell's 27 (itself and the 26 round it), in shade_bits' order: x, then y,
+## then z, each -1 to 1.
+var _offs27 := PackedInt32Array()
+func _offsets27() -> PackedInt32Array:
+	if _offs27.size() != 27:
+		var o := PackedInt32Array()
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					o.append((dx * grid.y + dy) * grid.z + dz)
+		_offs27 = o
+	return _offs27
+
+## ao_bits (bits 0-23) and bevel_bits (24-29) of voxel i together, each of the 27 cells round it
+## read once: the two read a cell up to 28 times over, and a cut on a big creature's limb
+## reshades a thousand voxels (a hitch of 3-8 ms on a gorilla's leg). The same bits (tested).
+func shade_bits(i: int) -> int:
+	var gx := grid.x
+	var gy := grid.y
+	var gz := grid.z
+	var vs := veil.size()
+	var x := fx[i]
+	var y := fy[i]
+	var z := fz[i]
+	var occ := 0   # bit a*9 + b*3 + c: the cell (x+a-1, y+b-1, z+c-1) is solid
+	if x > 0 and y > 0 and z > 0 and x < gx - 1 and y < gy - 1 and z < gz - 1:
+		var base := (x * gy + y) * gz + z
+		var offs := _offsets27()
+		for k in 27:
+			var q := cellmap[base + offs[k]] - 1
+			if q >= 0 and alive[q] == 1 and (q >= vs or veil[q] == 0):
+				occ |= 1 << k
+	else:
+		var c0 := maxi(0, 1 - z)
+		var c1 := mini(3, gz + 1 - z)
+		for a in range(maxi(0, 1 - x), mini(3, gx + 1 - x)):
+			for b in range(maxi(0, 1 - y), mini(3, gy + 1 - y)):
+				var row := ((x + a - 1) * gy + y + b - 1) * gz + z - 1
+				var bit := a * 9 + b * 3
+				for c in range(c0, c1):
+					var q := cellmap[row + c] - 1
+					if q >= 0 and alive[q] == 1 and (q >= vs or veil[q] == 0):
+						occ |= 1 << (bit + c)
+	# The 3x3 beside each face, in the table's order: +x -x +y -y, then +z and -z (every third bit).
+	var t := _face_ao_table()
+	var pz := (occ >> 2) & 0x1249249
+	pz = (pz ^ (pz >> 2)) & 0x30c30c3
+	pz = (pz ^ (pz >> 4)) & 0x300f00f
+	pz = (pz ^ (pz >> 8)) & 0xff0000ff
+	pz = (pz ^ (pz >> 16)) & 0x3ff
+	var mz := occ & 0x1249249
+	mz = (mz ^ (mz >> 2)) & 0x30c30c3
+	mz = (mz ^ (mz >> 4)) & 0x300f00f
+	mz = (mz ^ (mz >> 8)) & 0xff0000ff
+	mz = (mz ^ (mz >> 16)) & 0x3ff
+	var bits := t[(occ >> 18) & 511] | (t[occ & 511] << 4) \
+		| (t[((occ >> 6) & 7) | ((occ >> 12) & 56) | ((occ >> 18) & 448)] << 8) \
+		| (t[(occ & 7) | ((occ >> 6) & 56) | ((occ >> 12) & 448)] << 12) \
+		| (t[pz] << 16) | (t[mz] << 20)
+	if not bevel:
+		return bits
+	var shut := ((occ >> 22) & 1) | ((occ >> 3) & 2) | ((occ >> 14) & 4) | ((occ >> 7) & 8) | ((occ >> 10) & 16) | ((occ >> 7) & 32)
+	return bits | ((63 ^ shut) << 24)
+
 func _build_ao() -> void:
 	cellmap.resize(grid.x * grid.y * grid.z)
 	cellmap.fill(0)
@@ -1841,42 +1938,66 @@ func _build_ao() -> void:
 		if fx[i] >= 0 and fy[i] >= 0 and fz[i] >= 0 and fx[i] < grid.x and fy[i] < grid.y and fz[i] < grid.z:
 			cellmap[(fx[i] * grid.y + fy[i]) * grid.z + fz[i]] = i + 1
 	ao.resize(fx.size())
-	for i in fx.size():
-		ao[i] = ao_bits(i)
 	bev.resize(fx.size())
 	for i in fx.size():
-		bev[i] = bevel_bits(i)
+		var s := shade_bits(i)
+		ao[i] = s & 0xffffff
+		bev[i] = s >> 24
 
 ## Voxels gone or back: the shading of the ones round them follows (a cut opens its edges to
 ## the light, a hole's walls lie in its shadow).
 func _reshade(changed: Array) -> void:
 	if mm == null or ao.size() != fx.size():
 		return
-	var seen := {}
+	var gx := grid.x
+	var gy := grid.y
+	var gz := grid.z
+	var n := fx.size()
+	var seen := PackedByteArray()
+	seen.resize(n)
+	seen.fill(0)
+	var todo := PackedInt32Array()
+	var offs := _offsets27()
 	for i in changed:
-		if i < 0 or i >= fx.size():
+		if i < 0 or i >= n:
 			continue
-		for dx in range(-1, 2):
-			for dy in range(-1, 2):
-				for dz in range(-1, 2):
-					var j := _cell(fx[i] + dx, fy[i] + dy, fz[i] + dz)
-					if j < 0 or seen.has(j) or alive[j] == 0:
-						continue
-					seen[j] = true
-					var b := ao_bits(j)
-					var bb := bevel_bits(j)
-					if b == ao[j] and (j >= bev.size() or bb == bev[j]):
-						continue
-					ao[j] = b
-					if j < bev.size():
-						bev[j] = bb
-					var g: Vector2 = glowing.get(j, Vector2.ZERO)
-					_set_status(j, g)
+		var x := fx[i]
+		var y := fy[i]
+		var z := fz[i]
+		if x > 0 and y > 0 and z > 0 and x < gx - 1 and y < gy - 1 and z < gz - 1:
+			var base := (x * gy + y) * gz + z
+			for o in offs:
+				var j := cellmap[base + o] - 1
+				if j >= 0 and seen[j] == 0 and alive[j] == 1:
+					seen[j] = 1
+					todo.append(j)
+			continue
+		for ax in range(maxi(x - 1, 0), mini(x + 2, gx)):
+			for ay in range(maxi(y - 1, 0), mini(y + 2, gy)):
+				var row := (ax * gy + ay) * gz
+				for az in range(maxi(z - 1, 0), mini(z + 2, gz)):
+					var j := cellmap[row + az] - 1
+					if j >= 0 and seen[j] == 0 and alive[j] == 1:
+						seen[j] = 1
+						todo.append(j)
+	var nb := bev.size()
+	for j in todo:
+		var s := shade_bits(j)
+		var b := s & 0xffffff
+		var bb := s >> 24
+		if b == ao[j] and (j >= nb or bb == bev[j]):
+			continue
+		ao[j] = b
+		if j < nb:
+			bev[j] = bb
+		_set_status(j, glowing.get(j, Vector2.ZERO))
 
 func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	var out := []
 	var done := []
 	var centre := Vector3.ZERO
+	var lps := local_positions()
+	var gt := global_transform
 	for i in indices:
 		if i < 0 or i >= fx.size() or alive[i] == 0:
 			continue
@@ -1884,8 +2005,8 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 		alive_count -= 1
 		_cell_out(i)
 		done.append(i)
-		out.append({"p": world_of(i), "color": colors[i], "kind": kinds[i], "veil": veiled(i)})
-		centre += local_of(i)
+		out.append({"p": gt * lps[i], "color": colors[i], "kind": kinds[i], "veil": veiled(i)})
+		centre += lps[i]
 	if out.is_empty():
 		return out
 	set_shown(done, false)
@@ -1905,15 +2026,17 @@ func set_shown(indices: Array, on: bool) -> void:
 	var main := []
 	var jaw := []
 	var dang := []
+	# (Hidden, a voxel is drawn at no size wherever it was: where it would be drawn is not worked
+	# out for each one a limb cut off leaves behind.)
 	for i in indices:
 		if i < 0 or i >= fx.size() or (on and veiled(i)):
 			continue
 		if jaw_slot.has(i):
-			jaw.append([jaw_slot[i], local_of(i) - jaw_pivot.position])
+			jaw.append([jaw_slot[i], (local_of(i) - jaw_pivot.position) if on else Vector3.ZERO])
 		else:
-			main.append([i, drawn_xf(i)])
+			main.append([i, drawn_xf(i) if on else Transform3D()])
 			if dangle_slot.has(i):
-				dang.append([dangle_slot[i], _dangle_base(i)])
+				dang.append([dangle_slot[i], _dangle_base(i) if on else Transform3D()])
 	_write_shown(mm, main, on)
 	if dangle_mm:
 		_write_shown(dangle_mm, dang, on)
@@ -1936,18 +2059,22 @@ func set_shown(indices: Array, on: bool) -> void:
 					c.visible = keep
 
 static func _write_shown(m: MultiMesh, rows: Array, on: bool) -> void:
-	var k := 1.0 if on else 0.0
+	if not on:
+		var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+		for r in rows:
+			m.set_instance_transform(r[0], none)
+		return
 	for r in rows:
 		if r[1] is Transform3D:
-			m.set_instance_transform(r[0], r[1] if on else Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+			m.set_instance_transform(r[0], r[1])
 		else:
-			m.set_instance_transform(r[0], Transform3D(Basis().scaled(Vector3.ONE * k), r[1] * k))
+			m.set_instance_transform(r[0], Transform3D(Basis(), r[1]))
 
 ## How voxel i is drawn in a look that reshapes the man (Physique, "strong"): moved and sized
 ## within the part. Drawing only: local_of, every blow, cut and collider keep the cube.
 var shape_xf: Array = []
 func drawn_xf(i: int) -> Transform3D:
-	var t: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_of(i))
+	var t: Transform3D = shape_xf[i] if i < shape_xf.size() else Transform3D(Basis(), local_positions()[i])
 	if dangle_slot.has(i):
 		return Transform3D(Basis().scaled(Vector3.ZERO), t.origin)   # (drawn swinging, below)
 	if not kink.is_empty() and _past_break(i):
@@ -1957,7 +2084,7 @@ func drawn_xf(i: int) -> Transform3D:
 ## The voxel lies on the far side of the break, away from the joint the part hangs by.
 func _past_break(i: int) -> bool:
 	var ax: int = kink[0]
-	var c: float = local_of(i)[ax] - float(kink[1])
+	var c: float = local_positions()[i][ax] - float(kink[1])
 	return c < 0.0 if bool(kink[3]) else c > 0.0
 
 ## The broken bone drawn bent at `at` (part-local, on the bone): the far end turned `angle` about a
@@ -2264,8 +2391,9 @@ func set_look(v: PackedByteArray, bevel_on: bool) -> void:
 	if mm == null or ao.size() != fx.size():
 		return
 	for i in fx.size():
-		ao[i] = ao_bits(i)
-		bev[i] = bevel_bits(i)
+		var s := shade_bits(i)
+		ao[i] = s & 0xffffff
+		bev[i] = s >> 24
 		_set_status(i, glowing.get(i, Vector2.ZERO))
 
 ## live_cell, live_coarse, total_coarse and the dead from the voxels as they are.
@@ -2697,8 +2825,9 @@ func near_child_anchor(lump: PackedInt32Array) -> bool:
 	if pts.is_empty():
 		return false
 	var r := vf * part_scale * 2.2
+	var lps := local_positions()
 	for i in lump:
-		var lp := local_of(i)
+		var lp := lps[i]
 		for pt in pts:
 			if lp.distance_to(pt) < r:
 				return true
@@ -2832,3 +2961,5 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 				if (o is Weapon and o.holder != null and o.holder != fighter) or Fighter.is_giant_over(o, fighter):
 					fighter.struck_frame = Engine.get_physics_frames()
 					break
+				if Fighter.is_beast_on(o, fighter):
+					fighter.beast_frame = Engine.get_physics_frames()

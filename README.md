@@ -49,7 +49,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A heavy keen blade driven hard can stay in the wound, still in the hand: it is wrenched out
   by pulling (the man it is in comes with it) or let go of (G), and taken back the same way.
   None holds a man for good: the man it is in tears it out with G, pulling away frees it
-  sooner, and after three seconds it works loose by itself. A giant's blade never stays in.
+  sooner, and after three seconds it works loose by itself. A giant's blade never stays in, nor
+  carries a man off on it: a heavy blow from one goes on through him for a moment, so it knocks
+  him down where it lands instead of flinging him, or the limb it took, across the sand.
 - **Armour that wears**: every plate you put on protects the spot it covers until it is knocked
   off, at a force by its stuff (leather gives first, steel last); what came off stays off between
   fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.
@@ -63,7 +65,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   hard landing hurts. A fireball pot bursts, burns and leaves
   fire on the sand.
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A giant's blows vary:
-  a chop from above, sweeps from either side, a low sweep at the legs and a thrust.
+  a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
+  has knocked down it goes on striking; it does not stand off and watch him.
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A
   beast's jaws, claws and horns bite only in a strike (the snap after the wind-up), never by
   brushing against a man, so a lunge can be dodged or taken on the shield; a bite goes in
@@ -81,7 +84,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   bull, rhino, bear, mammoth, elephant, dragon, cerberus, manticore, griffin, chimera and
   basilisk: `Beast.FURIES`) come on harder the worse they are hurt, sooner and closer, but
   wilder, their charges, lunges and strikes thrown wide of the man. The hydra and the hound
-  press after a lunge instead of backing off (their heads strike on their own), and a dragon
+  press after a lunge instead of backing off (their heads strike on their own, each steered at
+  the man as it snaps), and a dragon
   with a man under its chin backs off a stride to pour fire on him.
 - **The campaign**: a ladder of 64 bouts, authored one by one in `scripts/game/ladder.gd`
   (who comes through the gate, who comes through the *other* gate nine seconds in or as soon
