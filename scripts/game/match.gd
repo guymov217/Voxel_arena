@@ -318,7 +318,7 @@ func setup(opts: Dictionary) -> void:
 	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign or mode == "yard" else null})
 	me.inventory = opts.get("inventory", {})
 	for p in opts.get("peers", []):
-		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
+		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "worn": clean_worn(p.get("worn")) if campaign or mode == "yard" else {}, "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
 		pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	players_count = 1 + opts.get("peers", []).size()
 	# Tests and attract mode: the player's fighter fights by itself.
@@ -509,6 +509,24 @@ func _register(e: Dictionary) -> void:
 	if role == "host":
 		Net.send_all("spawn", _spawn_msg(e))
 
+## The chips a guest says his weapons carry (Arms wear: R and L, voxel indices), as the host takes
+## them: whole numbers only, never more than a weapon could have. (His blade came into the yard
+## and the bout as new, the knocks of the last fight gone: user, weapon damage is not carried.)
+static func clean_worn(raw) -> Dictionary:
+	var out := {}
+	if not (raw is Dictionary):
+		return out
+	for side in ["R", "L"]:
+		var v = raw.get(side)
+		if not (v is Array):
+			continue
+		var list := []
+		for i in (v as Array).slice(0, 4096):
+			if (i is int or i is float) and is_finite(float(i)) and int(i) >= 0:
+				list.append(int(i))
+		out[side] = list
+	return out
+
 ## A guest who joins the room while it is in the yard: he gets the world as it stands, then a
 ## fighter of his own by the gate (its spawn reaches everyone, him included).
 func add_peer(id: int, p: Dictionary) -> void:
@@ -518,7 +536,7 @@ func add_peer(id: int, p: Dictionary) -> void:
 	for e in entities:
 		if is_instance_valid(e.f):
 			Net.send_to(id, "spawn", _spawn_msg(e))
-	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
+	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "worn": clean_worn(p.get("worn")) if mode == "yard" or mode == "campaign" else {}, "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
 	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	for e in entities:
 		e.erase("held_sig")   # (what everyone holds ready, to him too)
@@ -2951,6 +2969,8 @@ func guest_spawn(spec: Dictionary) -> void:
 	if entity_by_id(int(spec.id)) != null:
 		return
 	spec.pos = Vector3(spec.pos[0], spec.pos[1], spec.pos[2]) if spec.pos is Array else spec.pos
+	if spec.has("worn"):
+		spec.worn = clean_worn(spec.worn)
 	if spec.kind == "beast":
 		spawn_beast(spec)
 	else:

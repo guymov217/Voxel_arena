@@ -206,10 +206,14 @@ func arms() -> Dictionary:
 func set_arms(a: Dictionary) -> void:
 	Save.set_value("arms", a)
 	_net_loadout()
-	# Bought in the yard: in his hands at once, there and then.
+	# Bought in the yard: in his hands at once, there and then (with the chips the fight left in
+	# what he kept: buying a shield did not mend the sword).
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
 		var lo := Arms.loadout(Arms.sanitize(a))
 		match_.me.f.rearm(lo.main, lo.off)
+		for side in lo.worn:
+			if match_.me.f.weapons.get(side):
+				match_.me.f.weapons[side].remove_voxels(lo.worn[side])
 
 func kit() -> Dictionary:
 	return Net.sanitize_kit(Save.get_value("kit", {}))
@@ -502,8 +506,9 @@ func enter_yard(banner_text := "") -> void:
 	hub = true
 	var lo := Arms.loadout(arms())
 	# He walks about the yard as the last fight left him: his wounds on him (nobody bleeds out
-	# here), for the physician to see to.
-	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else ""}, "decrees": [], "hazards": [], "body": body()})   # (what he has: no shield he does not own)
+	# here), for the physician to see to, and his weapons with the chips the fight took out of
+	# them, for the smith to mend (user: the weapons' damage did not come back with him).
+	start({"mode": "yard", "loadout_override": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else ""}, "worn": lo.worn, "decrees": [], "hazards": [], "body": body()})   # (what he has: no shield he does not own)
 	match_.station.connect(_open_station)
 	if Sfx.music:
 		Sfx.music.set_state("yard")

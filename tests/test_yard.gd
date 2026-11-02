@@ -113,3 +113,44 @@ func test_the_board_counts_the_second_wave() -> void:
 		var text := YardPlay.next_fight(1)
 		t.check(text.contains("×3"), "the stele says three: %s" % text.replace("\n", " | "))
 	Save.set_value("stage", was)
+
+## The chips a bout took out of his weapons come back with him into the yard (user: the weapons'
+## damage from the last bout did not come back with him), and stay when he buys something else at
+## the smith: a shield bought did not mend the sword.
+func test_the_weapons_come_back_to_the_yard_as_the_bout_left_them() -> void:
+	var was = Save.get_value("arms", {})
+	var a := Arms.sanitize({})
+	a.main = Data.preset("gladius").duplicate(true)
+	a.off = null
+	var chips := []
+	for i in a.main.voxels.size():
+		if a.main.voxels[i][4] != "grip" and chips.size() < 9:
+			chips.append(i)
+	a = Arms.add_wear(a, {"R": chips})
+	Save.set_value("arms", a)
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	await _steps(20)
+	var w: Weapon = menu.match_.me.f.weapons.R
+	t.check(w != null, "his sword in hand in the yard")
+	if w:
+		t.eq(w.vox.size() - w.alive_count(), chips.size(), "with the chips the bout took out of it")
+	var a2 := Arms.sanitize(Save.get_value("arms", {}))
+	a2.off = Data.preset("roundShield").duplicate(true)
+	menu.set_arms(a2)
+	await _steps(10)
+	var w2: Weapon = menu.match_.me.f.weapons.R
+	t.check(w2 != null and menu.match_.me.f.weapons.L != null, "a shield bought at the smith, in the other hand at once")
+	if w2:
+		t.eq(w2.vox.size() - w2.alive_count(), chips.size(), "and the sword keeps its chips")
+	# A guest's chips, as the host takes them: whole numbers only, never a flood.
+	var cw := Match.clean_worn({"R": [3, 4.0, "x", -1, INF], "L": range(6000), "Q": [1]})
+	t.eq(str(cw.get("R")), str([3, 4]), "a guest's chips: only real indices")
+	t.eq((cw.get("L", []) as Array).size(), 4096, "and never more than a weapon could have")
+	t.check(not cw.has("Q"), "only the two hands")
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("arms", was)
+	await _steps(2)
