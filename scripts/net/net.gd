@@ -278,6 +278,7 @@ func _on_peer_connected(id: int) -> void:
 		var pp: ENetPacketPeer = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
 		if pp:
 			pp.set_timeout(0, 4000, 8000)
+			_no_throttle(pp)
 
 var leave_reason := ""   # why a guest's game ended, for the screen he lands on ("": the host left)
 var _banned := {}        # turned out of this room: "ip:..." or "steam:..." -> true
@@ -317,7 +318,18 @@ func _on_peer_disconnected(id: int) -> void:
 		peer_left.emit(id)
 	inputs.erase(id)
 
+## ENet sheds unreliable packets on purpose whenever the round trip wobbles (its "throttle"):
+## on a busy machine or a jittery line it threw away a quarter of the voice and of the
+## snapshots, each lost packet a hole in a voice or a hitch in a fighter. What the game sends
+## is small (tens of KB a second); it goes out whole, and what the line itself loses is lost.
+func _no_throttle(pp: ENetPacketPeer) -> void:
+	pp.throttle_configure(5000, 2, 0)
+
 func _on_connected() -> void:
+	if transport == "enet" and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+		var hp: ENetPacketPeer = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(1)
+		if hp:
+			_no_throttle(hp)
 	connected.emit()
 	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit, "body": my_body})
 

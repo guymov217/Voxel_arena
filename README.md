@@ -294,7 +294,9 @@ dropped, and a weapon that does not hold up leaves the hand empty.
   checked for being makeable. Someone who edits his own game can give his own fighter gear he
   never paid for, but nothing of anyone else's.
 
-`tests/test_net_safety.gd` covers the checks. `tests/net_host.gd`/`net_guest.gd` with `KICK=1`
+`tests/test_net_safety.gd` covers the checks. `tests/net_host.gd`/`net_guest.gd` play a bout over
+DTLS and send a tone through the proximity voice both ways: it must come through and be heard from
+the speaker's gladiator's head. With `KICK=1`
 remove a guest and see him turned away again; with `NO_DTLS=1` on the guest, an unencrypted game
 is refused.
 
@@ -306,6 +308,11 @@ reports, each second, how many physics steps the host keeps up (of 120), its CPU
 (by message type) and the size of a snapshot; each guest says how often snapshots came and the
 longest wait between two. All of them share the one machine's CPU, so the times are worse than in
 a real game, where each player has a computer of his own; the bytes are the same.
+
+ENet's packet throttle is off: whenever the round trip wobbled it threw away unreliable packets on
+purpose, up to a quarter of the voice and the snapshots on a jittery line. Without it a guest gets
+every snapshot the line carries (about 12% more of them in the load test, the longest wait down from
+over 300 ms to about 220 ms) and the voice whole.
 
 What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a
 second, the dead once a second, and in a full room (4 guests or more, or more than 10 fighters) the
