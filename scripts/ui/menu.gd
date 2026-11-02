@@ -339,7 +339,7 @@ func show_screen(s: String, msg := "") -> void:
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
 	if s != "main":
 		UIStyle.frame_over(panel, Vector2(32, 26))
-	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" else 760), 0)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" or s == "endless" or s == "endless_armour" else 760), 0)
 	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
 	# a count changed in the bag, stays put).
 	var fresh := s != was or not panel.has_meta("shown")
@@ -376,6 +376,8 @@ func show_screen(s: String, msg := "") -> void:
 		"training_armour": _training_armour(v)
 		"ff_setup": _ff_setup(v)
 		"ff_contest": _ff_contest(v)
+		"endless": _endless(v)
+		"endless_armour": _endless_armour(v)
 	if fresh and s != "main":
 		var rows := v.get_children()
 		for i in rows.size():
@@ -461,6 +463,7 @@ func _main(v: VBoxContainer) -> void:
 		entries.append(["The Ludus yard (admin)", enter_yard])
 	entries.append_array([
 		["Arena", func(): show_screen("fights")],
+		["The endless arena", func(): show_screen("endless")],
 		["Training", func(): show_screen("training")],
 		["The forge", _workshop_forge],
 		["Multiplayer", func(): show_screen("mp")],
@@ -969,15 +972,23 @@ func _workshop_forge(lesson := false) -> void:
 		f.start_lesson()
 
 ## The forge's "Try it in the arena": a training bout with the weapon on the anvil in hand and
-## the dummy picked there in front of it; Esc (or Leave) goes back to the forge as it was (to
-## the yard first, if the forge was the smith's).
+## the dummy picked there in front of it; Esc (or Leave) goes straight back to the forge as it was
+## (to the yard first, if the forge was the smith's), R starts it again with a fresh dummy. A line
+## at the top keeps the weapon's score meanwhile, and the forge shows it when he is back.
 var forge_trying = null
 var forge_try_yard := false
 var forge_try_spot = null   # where he stood in the yard (and which way he looked), to stand there again after
-func try_from_forge(f: Node, d: Dictionary, who: String, fights: bool) -> void:
+var forge_try_name := ""    # the weapon on trial and what it is tried on, for the line at the top
+var forge_try_who := ""
+var try_layer: CanvasLayer = null
+var try_label: Label = null
+var try_stats := {}
+func try_from_forge(f: Node, d: Dictionary, who: String, fights: bool, who_name := "") -> void:
 	forge_trying = f
 	forge_try_yard = in_yard()
 	forge_try_spot = null
+	forge_try_name = String(d.get("name", ""))
+	forge_try_who = who_name if who_name != "" else who
 	if forge_try_yard and match_.me and is_instance_valid(match_.me.f):
 		forge_try_spot = {"pos": match_.me.f.torso.global_position, "yaw": match_.me.f.yaw, "look": match_.input.look_yaw if match_.input else match_.me.f.yaw}
 	f.visible = false
@@ -987,9 +998,70 @@ func try_from_forge(f: Node, d: Dictionary, who: String, fights: bool) -> void:
 	if match_:
 		match_._banner("Trying it out", "Esc: back to the forge")
 
+## The line at the top while a weapon is tried: what, on whom, the keys, and the weapon's score so
+## far (its hits, the last blow and the best, the limbs it took off, the kills). Hung on every
+## new bout of the trial (R makes one), and counted afresh there.
+func _try_line() -> void:
+	if try_layer:
+		try_layer.queue_free()
+	try_layer = CanvasLayer.new()
+	try_layer.layer = 3
+	add_child(try_layer)
+	var top := CenterContainer.new()
+	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top.offset_top = 10
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.theme = UIStyle.theme()
+	try_layer.add_child(top)
+	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.modulate.a = 0.92
+	top.add_child(p)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	p.add_child(v)
+	var head := UIStyle.label(Loc.t("Trying %s against %s") % [forge_try_name if forge_try_name != "" else Loc.t("the weapon"), Loc.t(forge_try_who)], 15, UIStyle.GOLD)
+	head.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(head)
+	try_label = UIStyle.label("", 14, UIStyle.TEXT)
+	try_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	try_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(try_label)
+	var keys := UIStyle.label("Esc: back to the forge · R: start again", 12, UIStyle.MUTED)
+	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(keys)
+	try_stats = {"hits": 0, "last": 0.0, "best": 0.0, "limbs": 0, "kills": 0}
+	if match_ and match_.combat:
+		match_.combat.hit.connect(_try_on_hit)
+	_try_show()
+
+## A blow of the weapon on trial (in his hand or thrown) on what it is tried on.
+func _try_on_hit(h: Dictionary) -> void:
+	if forge_trying == null or match_ == null or match_.me == null or h.get("attacker") != match_.me.f or h.get("weapon") == null or h.get("char") == match_.me.f:
+		return
+	var res = h.get("res")
+	var dmg: float = float(res.get("dmg", 0.0)) if res is Dictionary else 0.0
+	try_stats.hits += 1
+	try_stats.last = dmg
+	try_stats.best = maxf(float(try_stats.best), dmg)
+	try_stats.limbs += (res.get("severed", []) as Array).size() if res is Dictionary else 0
+	if h.get("killed", false):
+		try_stats.kills += 1
+	_try_show()
+
+func _try_show() -> void:
+	if try_label and is_instance_valid(try_label):
+		try_label.text = Loc.t("%d hits · last blow %d · best %d · %d limbs off · %d kills") % [int(try_stats.hits), roundi(float(try_stats.last)), roundi(float(try_stats.best)), int(try_stats.limbs), int(try_stats.kills)]
+
 func back_to_forge() -> void:
 	var f = forge_trying
 	forge_trying = null
+	var tally := try_stats.duplicate()
+	if try_layer:
+		try_layer.queue_free()
+		try_layer = null
+		try_label = null
 	get_tree().paused = false
 	_end_match()
 	if forge_try_yard:
@@ -1011,6 +1083,8 @@ func back_to_forge() -> void:
 			Sfx.music.bench(true)
 		if match_ and match_.input:
 			match_.input.enabled = false
+		if f.has_method("show_try_result") and not tally.is_empty():
+			f.show_try_result(tally, forge_try_who)
 
 ## Training: My designs as the forge shows them, a card for each saved weapon (its picture, its
 ## weight and reach) to take into the main or the off hand; the ones in hand are marked.
@@ -1105,6 +1179,314 @@ func _training_forge(hand := "R") -> void:
 		f.queue_free()
 		show_screen("training"))
 	visible = true
+
+# ---------- The endless arena ----------
+
+## What the endless arena is entered with (Save "endless_kit"): the arms (a weapon off the rack,
+## or "built": forged here, Save "endless_weapon" / "endless_off_weapon"), ready-made armour,
+## a few pots, and today's challenge or a free run.
+var endless_kit := {}
+const ENDLESS_MAINS := ["built", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger"]
+const ENDLESS_OFFS := ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "built"]
+const ENDLESS_POT_KINDS := 3   # kinds of pot in the bag
+const ENDLESS_POT_EACH := 2    # and of each
+
+func _endless_kit() -> Dictionary:
+	if endless_kit.is_empty():
+		endless_kit = {"main": "gladius", "off": "roundShield", "armor": ["helmet"], "pots": ["thunderPot"], "daily": false}
+		var saved = Save.get_value("endless_kit", {})
+		if saved is Dictionary:
+			endless_kit.merge(saved, true)
+	return endless_kit
+
+func _endless_keep() -> void:
+	Save.set_value("endless_kit", endless_kit)
+
+## A hand's weapon as the kit has it: a preset's key, a forged design, or "" (none).
+func _endless_arm(side: String):
+	var k := _endless_kit()
+	var pick := String(k.get("main" if side == "R" else "off", ""))
+	if pick == "built":
+		var d: Dictionary = Save.get_value("endless_weapon" if side == "R" else "endless_off_weapon", {})
+		return d if not d.is_empty() else ("gladius" if side == "R" else "")
+	if pick == "none" or not Data.presets.has(pick):
+		return "" if side == "L" else "gladius"
+	return pick
+
+func _endless_bag() -> Dictionary:
+	var bag := {}
+	for id in _endless_kit().get("pots", []):
+		if Endless.POTS.has(id) and bag.size() < ENDLESS_POT_KINDS:
+			bag[String(id)] = ENDLESS_POT_EACH
+	return Throwables.bag_clamp(bag)
+
+func _endless(v: VBoxContainer) -> void:
+	var k := _endless_kit()
+	var rec: Dictionary = Save.get_value("endless", {})
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	var tt := UIStyle.title("The endless arena", 34)
+	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tt)
+	v.add_child(head)
+	v.add_child(UIStyle.label(Loc.t("Wave after wave of men and beasts, drawn at random, until you fall.") + " " + Loc.t("A great foe every fifth wave; between the waves a breath, and a reward to pick."), 15, UIStyle.MUTED))
+	var best := int(rec.get("best", 0))
+	var today: Dictionary = rec.get("daily", {})
+	var lines := []
+	if best > 0:
+		lines.append(Loc.t("Best: wave %d") % best)
+	if String(today.get("day", "")) == Time.get_date_string_from_system(true) and int(today.get("best", 0)) > 0:
+		lines.append(Loc.t("Today's challenge: wave %d") % int(today.best))
+	if not lines.is_empty():
+		v.add_child(UIStyle.label("  ·  ".join(lines), 16, UIStyle.GOLD))
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 28)
+	v.add_child(cols)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 8)
+	left.custom_minimum_size = Vector2(520, 0)
+	cols.add_child(left)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	left.add_child(UIStyle.label("YOUR ARMS", 13, UIStyle.BRONZE))
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 8)
+	left.add_child(g)
+	var pick := func(label_: String, keys: Array, names: Array, key: String) -> void:
+		var l := UIStyle.label(label_, 15)
+		l.custom_minimum_size = Vector2(130, 0)
+		g.add_child(l)
+		var o := OptionButton.new()
+		o.custom_minimum_size = Vector2(360, 0)
+		o.fit_to_longest_item = false
+		for n in names:
+			o.add_item(Loc.t(String(n)))
+		var at := maxi(0, keys.find(k.get(key)))
+		k[key] = keys[at]
+		o.select(at)
+		o.item_selected.connect(func(i):
+			k[key] = keys[i]
+			_endless_keep())
+		g.add_child(o)
+	var forged := func(save_key: String) -> String:
+		var d: Dictionary = Save.get_value(save_key, {})
+		return Loc.t("Forged: %s") % (String(d.name) if d.has("name") else Loc.t("none yet"))
+	pick.call("Main hand", ENDLESS_MAINS, ENDLESS_MAINS.map(func(x): return forged.call("endless_weapon") if x == "built" else Data.preset(x).get("name", x)), "main")
+	pick.call("Off hand", ENDLESS_OFFS, ENDLESS_OFFS.map(func(x): return "Nothing" if x == "none" else (forged.call("endless_off_weapon") if x == "built" else Data.preset(x).get("name", x))), "off")
+	var wb := HFlowContainer.new()
+	wb.add_theme_constant_override("h_separation", 10)
+	wb.add_theme_constant_override("v_separation", 8)
+	wb.add_child(UIStyle.button("Forge main hand", func(): _endless_forge("R")))
+	wb.add_child(UIStyle.button("Forge off hand", func(): _endless_forge("L")))
+	left.add_child(wb)
+	left.add_child(UIStyle.label(Loc.t("Armour").to_upper(), 13, UIStyle.BRONZE))
+	var worn := Armory.sanitize(k.get("armor", []))
+	var kg := 0.0
+	for id in worn:
+		kg += Armory.kg(id)
+	var al := UIStyle.label((Loc.t("Armour: %d pieces · %.1f kg") % [worn.size(), kg]) if not worn.is_empty() else "Armour: none", 15)
+	al.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_row(left, [al, UIStyle.button("Pick your armour", func(): show_screen("endless_armour"))])
+	var daily := CheckBox.new()
+	daily.text = "Today's challenge: the same waves for everyone"
+	daily.button_pressed = bool(k.get("daily", false))
+	daily.toggled.connect(func(x):
+		k.daily = x
+		_endless_keep())
+	left.add_child(daily)
+	# The pots: a few kinds, two of each, picked on and off.
+	var pots: Array = (k.get("pots", []) as Array).filter(func(id): return Endless.POTS.has(id))
+	k.pots = pots
+	right.add_child(UIStyle.label(Loc.t("YOUR BAG · %d kinds at most, %d of each") % [ENDLESS_POT_KINDS, ENDLESS_POT_EACH], 13, UIStyle.BRONZE))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
+	right.add_child(grid)
+	for id in Endless.POTS:
+		var on: bool = pots.has(id)
+		var item: Dictionary = Data.shop.get("throwables", {}).get(id, {})
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_pressed = on
+		b.disabled = not on and pots.size() >= ENDLESS_POT_KINDS
+		b.custom_minimum_size = Vector2(0, 52)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.tooltip_text = Loc.t(String(item.get("desc", "")))
+		var pot_id: String = id
+		b.toggled.connect(func(x):
+			var now: Array = k.get("pots", [])
+			if x and not now.has(pot_id) and now.size() < ENDLESS_POT_KINDS:
+				now.append(pot_id)
+			elif not x:
+				now.erase(pot_id)
+			k.pots = now
+			_endless_keep()
+			show_screen("endless"))
+		grid.add_child(b)
+		var hb := HBoxContainer.new()
+		hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		hb.offset_left = 8
+		hb.add_theme_constant_override("separation", 10)
+		hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(hb)
+		var tex := TextureRect.new()
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.custom_minimum_size = Vector2(40, 40)
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hb.add_child(tex)
+		var nm := UIStyle.label(Loc.t(String(item.get("name", id))), 15, UIStyle.TEXT if on else UIStyle.MUTED)
+		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		nm.size_flags_vertical = Control.SIZE_FILL
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hb.add_child(nm)
+		Thumbs.item(tex, id)
+	var go := _row(v, [UIStyle.button("Into the arena", _start_endless, true), UIStyle.button("Back", func(): show_screen("main"))])
+	go.alignment = BoxContainer.ALIGNMENT_END
+
+## The armour for the endless arena: the armourer's ready pieces, worn or taken off at a click
+## (a piece over the same place takes the other off), nothing paid.
+func _endless_armour(v: VBoxContainer) -> void:
+	var vp := get_viewport_rect().size
+	panel.custom_minimum_size = Vector2(minf(1180.0, maxf(760.0, vp.x - 144.0)), maxf(480.0, vp.y - 80.0))
+	var k := _endless_kit()
+	var worn := Armory.sanitize(k.get("armor", []))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var tt := UIStyle.title("Armour", 34)
+	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(tt)
+	head.add_child(UIStyle.button("Back", func(): show_screen("endless")))
+	v.add_child(head)
+	v.add_child(UIStyle.label("Nothing is paid for here. Click Wear on a piece; a piece that covers the same place takes the other off.", 13, UIStyle.MUTED))
+	var set_worn := func(now: Array) -> void:
+		k.armor = now
+		_endless_keep()
+		show_screen("endless_armour")
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 24)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(cols)
+	var left := _armour_worn_column(worn, func(id: String): set_worn.call(Armory.sanitize(k.get("armor", [])).filter(func(o): return o != id)), "No armour: put on what you like from the right.")
+	if not worn.is_empty():
+		left.add_child(UIStyle.button("Take it all off", func(): set_worn.call([])))
+	cols.add_child(left)
+	var scroll := _smith_scroll(cols)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 10)
+	scroll.add_child(right)
+	_armour_sections(right, Armory.SHOP.map(func(r): return r[0]), worn, func(col: VBoxContainer, id: String, on: bool):
+		col.add_child(UIStyle.button("Take off" if on else "Wear", func():
+			var now := Armory.sanitize(k.get("armor", []))
+			set_worn.call(now.filter(func(o): return o != id) if on else Armory.buy(now, id).worn), not on)))
+
+## The forge, free, for a hand of the endless arena's kit; back to its screen with the design
+## kept for that hand.
+func _endless_forge(hand: String) -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	var key := "endless_off_weapon" if hand == "L" else "endless_weapon"
+	var base: Dictionary = Save.get_value(key, {})
+	if base.is_empty():
+		base = Data.preset("dagger" if hand == "L" else "gladius").duplicate(true)
+	f.free_build = true
+	f.open(base, 999999, func(design, _cost):
+		if design != null:
+			Save.set_value(key, design)
+			_endless_kit()["off" if hand == "L" else "main"] = "built"
+			_endless_keep()
+		f.queue_free()
+		show_screen("endless"))
+	visible = true
+
+func _start_endless() -> void:
+	var k := _endless_kit()
+	_endless_keep()
+	var arm := Armory.sanitize(k.get("armor", []))
+	var lo := {"main": _endless_arm("R"), "off": _endless_arm("L"), "armor": arm, "armor_defs": Armory.defs_of(arm)}
+	start({"mode": "endless", "loadout_override": lo, "inventory_override": _endless_bag(), "decrees": [], "hazards": [], "endless": {"daily": bool(k.get("daily", false))}})
+
+## Between the waves: the three rewards on cards, the arena held still while one is picked
+## (a click, or 1, 2 or 3).
+var endless_layer: CanvasLayer = null
+func _endless_offer(rewards: Array) -> void:
+	_endless_close()
+	if match_ == null or match_.modes == null or match_.modes.endless == null:
+		return
+	var en: Endless = match_.modes.endless
+	endless_layer = CanvasLayer.new()
+	endless_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(endless_layer)
+	var c := CenterContainer.new()
+	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	c.theme = UIStyle.theme()
+	endless_layer.add_child(c)
+	var p := PanelContainer.new()
+	c.add_child(p)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	p.add_child(v)
+	UIStyle.frame_over(p)
+	v.add_child(UIStyle.title(Loc.t("Wave %d beaten!") % en.wave, 32))
+	v.add_child(UIStyle.label("Pick a reward: 1, 2 or 3", 15, UIStyle.MUTED))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	v.add_child(row)
+	for i in rewards.size():
+		var rw: Dictionary = rewards[i]
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(250, 132)
+		var sc := Shortcut.new()
+		var key := InputEventKey.new()
+		key.physical_keycode = [KEY_1, KEY_2, KEY_3][mini(i, 2)]
+		sc.events = [key]
+		b.shortcut = sc
+		b.shortcut_in_tooltip = false
+		var at := i
+		b.pressed.connect(func(): _endless_take(at))
+		var m := MarginContainer.new()
+		m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right", "top", "bottom"]:
+			m.add_theme_constant_override("margin_" + side, 12)
+		m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(m)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		m.add_child(col)
+		var nm := UIStyle.label("%d  ·  %s" % [i + 1, Loc.t(String(rw.title)).to_upper()], 16, UIStyle.GOLD_LIGHT)
+		nm.add_theme_font_override("font", UIStyle.serif(1, 700))
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(nm)
+		var tx := UIStyle.label(Loc.t(String(rw.text)), 15, UIStyle.TEXT)
+		tx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(tx)
+		row.add_child(b)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not Net.active():
+		get_tree().paused = true
+
+func _endless_take(i: int) -> void:
+	var en = match_.modes.endless if match_ and match_.modes else null
+	_endless_close()
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if en:
+		en.take(i)
+
+func _endless_close() -> void:
+	if endless_layer and is_instance_valid(endless_layer):
+		endless_layer.queue_free()
+	endless_layer = null
 
 # ---------- The yard: the smith ----------
 
@@ -2110,11 +2492,12 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 const FIGHT_GROUPS := [
 	["Single combat", ["duel", "bo3", "king", "gauntlet"]],
 	["The melee", ["ffa", "chaos", "teams", "pvp", "forgefight"]],
-	["Beasts and waves", ["hunt", "coop"]],
+	["Beasts and waves", ["endless", "hunt", "coop"]],
 	["Games for the Emperor", ["emperor", "hill", "lastLimb", "headball"]],
 ]
 const FIGHT_BLURBS := {
 	"duel": "One against one, a quick bout. The Emperor may throw in a decree.",
+	"endless": "Wave after wave of men and beasts, drawn at random, until you fall.",
 	"bo3": "Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.",
 	"king": "The winner stays and the next challenger walks in. Reign for seven.",
 	"gauntlet": "One foe after another, wave after wave. How long do you last?",
@@ -2136,7 +2519,8 @@ func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	var in_room := Net.active()
 	for g in FIGHT_GROUPS:
-		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop", "forgefight"].has(k) or in_room) and Edition.mode_open(k, in_room))   # (the friends' fights only in a room)
+		# (The friends' fights only in a room; the endless arena only alone.)
+		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop", "forgefight"].has(k) or in_room) and not (k == "endless" and in_room) and Edition.mode_open(k, in_room))
 		if keys.is_empty():
 			continue
 		v.add_child(UIStyle.label(Loc.t(String(g[0])).to_upper(), 13, UIStyle.BRONZE))
@@ -2156,7 +2540,13 @@ func _fights(v: VBoxContainer) -> void:
 func _fight_card(k: String) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(262, 104)
-	b.pressed.connect(func(): ff_setup() if k == "forgefight" else start({"mode": k}))
+	b.pressed.connect(func():
+		if k == "forgefight":
+			ff_setup()
+		elif k == "endless":
+			show_screen("endless")
+		else:
+			start({"mode": k}))
 	b.tooltip_text = Modes.LABELS.get(k, "")
 	var m := MarginContainer.new()
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -3489,7 +3879,7 @@ func start(opts: Dictionary) -> void:
 		opts.stage = int(Save.get_value("coop_stage", 1))
 	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
 	# campaign: the guests are sent the start and join as themselves.
-	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
+	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus", "endless"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
 		opts.role = "host"   # (alone in the room too: whoever joins is brought into what runs)
 	last_start = opts.duplicate(true)
 	_end_match()
@@ -3551,9 +3941,13 @@ func start(opts: Dictionary) -> void:
 	_apply_input_settings()
 	match_.finished.connect(_on_finished)
 	match_.lost.connect(_campaign_lost)
+	if match_.modes and match_.modes.endless:
+		match_.modes.endless.offered.connect(_endless_offer)
 	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
 	world_root.add_child(hud)
+	if forge_trying != null:
+		_try_line()
 	visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if Sfx.music:
@@ -3772,6 +4166,9 @@ func _apply_input_settings() -> void:
 
 func _end_match() -> void:
 	_backdrop_off()
+	if endless_layer:
+		_endless_close()
+		get_tree().paused = false
 	if match_:
 		match_.queue_free()
 		match_ = null
@@ -3905,7 +4302,7 @@ func _on_finished(r: Dictionary) -> void:
 		if hub or mode == "campaign" or (Net.active() and Net.is_host()):
 			enter_yard(((last_result.get("text", "") + " · ") if mode == "campaign" and last_result.get("text", "") != "" else "") + mission_text)
 		else:
-			show_screen("yard" if mode == "campaign" else "main", mission_text)
+			show_screen("yard" if mode == "campaign" else ("endless" if mode == "endless" else "main"), mission_text)
 
 ## The fight's time limit from the host (s): a number within the longest on the list, else none.
 static func _clean_fight_s(v) -> float:
@@ -4043,6 +4440,11 @@ func _unhandled_input(e: InputEvent) -> void:
 		_close_overlay()
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
+		# Trying a weapon from the forge: Esc goes straight back to it, as the line at the top
+		# says (it opened the pause menu, and the way back was a click more in there).
+		if forge_trying != null and pause_layer == null:
+			back_to_forge()
+			return
 		_toggle_pause()
 
 ## The end of the demo: the second boss is down. The campaign stops here; the demo again from
@@ -4211,8 +4613,9 @@ func _toggle_pause() -> void:
 				return
 			# Out of training, back to its own screen (to change the foe or the kit and go again).
 			var to_training: bool = match_ != null and match_.mode == "training" and match_.tut == null
+			var to_endless: bool = match_ != null and match_.mode == "endless"
 			_end_match()
-			show_screen("training" if to_training else "main")))
+			show_screen("training" if to_training else ("endless" if to_endless else "main"))))
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not Net.active():
 		get_tree().paused = true

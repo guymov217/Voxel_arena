@@ -110,6 +110,11 @@ var desperate := false   # the blow under way is the desperate one
 var p: Dictionary
 var state := "approach"
 var hand := {"x": 0.1, "y": 0.2}
+## A blade in each hand (dual()): the blow under way is struck with `att_side`, its hand's mark
+## in `hand` (as if it were the right: mirrored for the left), and the other hand's mark is kept
+## in `hand_rest`, up before him in guard. A run of blows goes from hand to hand.
+var att_side := "R"
+var hand_rest := {"x": 0.3, "y": 0.35}
 var attack: Array = []
 var key := 0
 var key_t := 0.0
@@ -250,6 +255,38 @@ func _lerp_hand(x: float, y: float, k: float) -> void:
 	k = minf(1.0, k)
 	hand.x += (x - hand.x) * k
 	hand.y += (y - hand.y) * k
+
+const DUAL_MAX_S := 1.4   # (from this size up a man is a giant: his blows are his own)
+
+## A weapon in each hand (no shield, not both hands on one haft) and the left arm good for it:
+## he fights with both.
+func dual() -> bool:
+	var l = c.weapons.L
+	return c.weapons.R != null and l != null and is_instance_valid(l) and not l.is_shield and not c.two_handed and c.hand_works("L") and c.S < DUAL_MAX_S
+
+## The blow goes to the other hand (two blades): the hand that struck comes up into guard.
+func _swap_hands() -> void:
+	var h := hand
+	hand = hand_rest
+	hand_rest = h
+	att_side = "L" if att_side == "R" else "R"
+
+## Two blades: the hand whose turn it is strikes (its mark mirrored onto the left arm when it is
+## the left), the other is held up before him, its point at the man; between blows the left one
+## is a second guard beside the right.
+func _dual_hands(inp: Dictionary, gy: float, dt: float) -> void:
+	var k := minf(1.0, dt * 6.0)
+	hand_rest.x += (0.3 - float(hand_rest.x)) * k
+	hand_rest.y += (clampf(gy + 0.15, 0.0, 0.9) - float(hand_rest.y)) * k
+	if att_side == "L":
+		inp.off = {"x": -float(hand.x), "y": float(hand.y)}
+		inp.offThrust = float(inp.get("thrust", 0.0))
+		inp.offTwist = -float(inp.get("twist", 0.0))
+		inp.thrust = 0.0
+		inp.twist = 0.0
+		inp.main = hand_rest.duplicate()
+	else:
+		inp.off = {"x": -float(hand_rest.x), "y": float(hand_rest.y)}
 
 ## The hand mark that lays the point of `w` on `at` (a stab; a couched spear on guard): the line
 ## asked for, corrected a little each step by where the point really lies (a haft in two hands
@@ -416,6 +453,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		return special
 	if state != "attack":
 		desperate = false
+		if att_side == "L":
+			_swap_hands()   # (out of a left-hand blow by whatever way: the right leads again)
 	strafe_t -= dt
 	if strafe_t <= 0.0:
 		strafe = -strafe
@@ -671,6 +710,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				var thrusts: bool = float((STYLES.get(style, STYLES.sword).attacks as Dictionary).get("thrust", 0.0)) > 0.0
 				attack = _stab_for(ATTACKS.thrust if thrusts and dist > reach and rng.randf() < 0.5 else _pick_styled())
 				feint_to = _pick(p.attacks) if diff > 0.6 and rng.randf() < (diff - 0.6) * 0.4 else []
+				# Two blades: the blow comes from either hand, the left nearly as often as the
+				# right (its stab is the stroke itself: the point is not laid as the right's is).
+				if dual() and rng.randf() < 0.45:
+					_swap_hands()
+					stab_at = ""
 			key = 0
 			key_t = 0.0
 			state = "attack"
@@ -758,10 +802,16 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			key += 1
 			key_t = 0.0
 			if key >= attack.size():
-				if (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and not desperate and rng.randf() < ((diff - 0.4) * 0.7 + float(p.get("combo", 0.0))) * (1.0 - wary) and c.stamina > 50.0):
+				# Two blades string their blows together, hand after hand, more than one does.
+				var flurry: bool = dual() and not desperate and c.stamina > 30.0 and rng.randf() < (0.25 + 0.4 * diff) * (1.0 - wary)
+				if flurry or (rage and c.stamina > 15.0 and rng.randf() < 0.85) or (diff > 0.5 and not desperate and rng.randf() < ((diff - 0.4) * 0.7 + float(p.get("combo", 0.0))) * (1.0 - wary) and c.stamina > 50.0):
 					attack = _giant_pick() if big else _stab_for(_pick_styled())
 					key = 0
 					feint_to = []
+					if dual():
+						_swap_hands()   # the next blow from the other hand
+						if att_side == "L":
+							stab_at = ""
 				else:
 					state = "guard"
 					lunge = false
@@ -818,6 +868,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		if dist < 1.4 * S and not c.weapons.L and not c.two_handed and rng.randf() < dt * 2.0:
 			inp.jabL = true
 	inp.main = hand.duplicate()
+	if dual():
+		_dual_hands(inp, gy, dt)
 	_react(dt0, inp)
 	return inp
 

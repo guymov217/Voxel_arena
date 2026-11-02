@@ -2,11 +2,16 @@
 
 The demo is the same game exported with the `demo` feature (`scripts/game/edition.gd`):
 
-- **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Cyclops at
-  bout 4, the Big Lion at bout 8). Then a plain "The end of the demo" screen: play it again from
+- **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Big Lion at
+  bout 4, the Cyclops at bout 8). Then a plain "The end of the demo" screen: play it again from
   bout 1, or back to the menu.
-- **Arena:** alone, the duel, best of three and the free-for-all. In a room, the players' brawl
-  (everyone against everyone) and the free-for-all. The other modes are not on the menu.
+- **Arena:** alone, the duel, best of three, the free-for-all and the endless arena. In a room,
+  the players' brawl (everyone against everyone) and the free-for-all. The other modes are not on
+  the menu.
+- **The endless arena** (main menu, and The Arena → Beasts and waves): its waves come from the
+  demo's own men and beasts, and its great foes, every fifth wave, are the Big Lion and the
+  Cyclops. When the player falls, the last screen says how many more great foes the full game
+  holds, without naming them.
 - **Training:** the men and beasts of the demo's bouts, plus the bear and the gorilla.
 - **Everything else is in:** the forge (voxel by voxel, gems, the gallery), the armourer's bench,
   the yard, the physician, the kill cam.

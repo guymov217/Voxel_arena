@@ -830,3 +830,47 @@ func test_a_forged_weapon_can_go_in_the_off_hand() -> void:
 	var lw = f.weapons.get("L")
 	t.check(lw != null and not lw.is_shield and String(lw.design.get("name", "")) == "Forged dirk", "in the fight he holds it in his off hand as a weapon (%s)" % (String(lw.design.get("name", "")) if lw else "nothing"))
 	m.queue_free()
+
+
+## "Try it in the arena" from the forge: a line at the top keeps the weapon's score (its hits, the
+## last blow and the best, the limbs off), Esc goes straight back to the forge, and the forge
+## shows what the weapon did there until the next try.
+func test_a_weapon_tried_in_the_arena_brings_its_score_back() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu._workshop_forge()
+	await get_tree().process_frame
+	var f = null
+	for c in menu.get_children():
+		if c.has_method("show_try_result"):
+			f = c
+	t.check(f != null, "the forge is open")
+	if f == null:
+		menu.queue_free()
+		return
+	t.check(not f.try_result.visible, "nothing tried yet, nothing shown")
+	menu.try_from_forge(f, Data.preset("gladius").duplicate(true), "gladiator", false, "A gladiator")
+	for i in 10:
+		await get_tree().physics_frame
+	t.check(menu.match_ != null and menu.try_label != null, "a bout, and the score line at the top")
+	if menu.match_ == null or menu.try_label == null:
+		menu.queue_free()
+		return
+	var me: Fighter = menu.match_.me.f
+	var foe: Fighter = menu.match_.enemies()[0].f
+	menu._try_on_hit({"attacker": me, "weapon": me.weapons.R, "char": foe, "res": {"dmg": 31.0, "severed": [foe.by_name.forearmL]}, "killed": false})
+	menu._try_on_hit({"attacker": me, "weapon": me.weapons.R, "char": foe, "res": {"dmg": 12.0, "severed": []}, "killed": false})
+	menu._try_on_hit({"attacker": foe, "weapon": null, "char": me, "res": {"dmg": 50.0}, "killed": false})
+	t.check(menu.try_label.text.begins_with("2 hits · last blow 12 · best 31 · 1 limbs off"), "his blows counted, not the foe's: %s" % menu.try_label.text)
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	menu._unhandled_input(esc)
+	await get_tree().process_frame
+	t.check(menu.forge_trying == null and menu.pause_layer == null and f.visible, "Esc: straight back to the forge, no pause menu")
+	t.check(f.try_result.visible and f.try_result.text.contains("31") and f.try_result.text.contains("A gladiator"), "and the forge shows what it did: %s" % f.try_result.text)
+	f.queue_free()
+	menu.queue_free()
+	get_tree().paused = false
+	await get_tree().process_frame

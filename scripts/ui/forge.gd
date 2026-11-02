@@ -38,6 +38,8 @@ var flown := 0.0                    # how far the walking keys have flown the vi
 var saves := 0                      # designs saved since the forge opened (the lesson reads it)
 var view_box: Control               # the anvil's view (the lesson's card lies over its foot)
 var dummy_fights := false
+var try_result: Label               # what the last "Try it in the arena" came to (show_try_result)
+var try_text := ""
 var line_from = null       # the first cell of a line or a box being drawn
 
 var viewport: SubViewport
@@ -251,6 +253,12 @@ func _build_ui() -> void:
 		end.add_child(UIStyle.button("Take it" if free_build else "Pay and take it", _take, true))
 	end.add_child(UIStyle.button("Swing it", func(): swing_t = 0.0))
 	col.add_child(_try_row())
+	try_result = UIStyle.label(try_text, 13, UIStyle.GOLD)
+	try_result.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	try_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	try_result.custom_minimum_size = Vector2(420, 0)
+	try_result.visible = try_text != ""
+	col.add_child(try_result)
 	end.add_child(UIStyle.button("Save design", _save_design, workshop))
 	end.add_child(UIStyle.button("Back" if workshop else "Leave it as it was", func(): done.call(null, 0)))
 	col.add_child(end)
@@ -553,8 +561,19 @@ func _try_row() -> HBoxContainer:
 			cost_label.text = ForgeLib.too_heavy(d)
 			return
 		if get_parent() and get_parent().has_method("try_from_forge"):
-			get_parent().try_from_forge(self, d, dummy_pick, dummy_fights)))
+			get_parent().try_from_forge(self, d, dummy_pick, dummy_fights, String(names[maxi(0, keys.find(dummy_pick))]))))
 	return row
+
+## Back from the arena: what the weapon did there (Menu.back_to_forge, its tally of the blows of
+## the weapon on what it was tried on), kept under the button until the next try.
+func show_try_result(t: Dictionary, who: String) -> void:
+	if int(t.get("hits", 0)) <= 0:
+		try_text = Loc.t("Last try against %s: no blow landed") % Loc.t(who)
+	else:
+		try_text = Loc.t("Last try against %s: %d hits · best blow %d · %d limbs off · %d kills") % [Loc.t(who), int(t.hits), roundi(float(t.get("best", 0.0))), int(t.get("limbs", 0)), int(t.get("kills", 0))]
+	if try_result and is_instance_valid(try_result):
+		try_result.text = try_text
+		try_result.visible = true
 
 func _cards_ui() -> void:
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))

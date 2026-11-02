@@ -133,9 +133,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   pauldrons): each one weighs. The bench marks the FRONT and the BACK.
   The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
   (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
-- **Modes**: training and 14 fight and party modes (duel, best of three, free for all, chaos, co-op,
+- **Modes**: training and 15 fight and party modes (duel, best of three, free for all, chaos, co-op,
   gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
-  head football, players' brawl).
+  head football, players' brawl, the endless arena).
 - **The spectacle**: the Emperor's decrees, arena hazards, the crowd's favour and the announcer,
   and drops from the stands. A lively bout earns a small crowd bonus on the pay, in proportion
   to how much fighting the crowd saw.
@@ -231,6 +231,24 @@ To use Steam:
 The Steam path was written against the GodotSteam 4.x API. It is untested here because the test
 machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
 process play a campaign round over localhost, the guest's fighter played by a bot.
+
+### The endless arena
+
+Alone, from the main menu (rules in `scripts/game/endless.gd`, the screens in `menu.gd`'s
+`_endless*`):
+
+1. Before the run: a weapon for each hand (off the rack, or forged there, free), ready-made
+   armour, and up to three kinds of pot, two of each.
+2. Wave after wave of men and beasts, drawn at random from the campaign's foes, more of them and
+   harder as the waves go. Every fifth wave a great foe walks in (the campaign's bosses, in the
+   campaign's order). A man of the waves takes up arms at random: a blade and a shield, a blade
+   in each hand, a great two-hander, or a blade alone, better ones as the waves go.
+3. A wave beaten: some blood and all the breath back, the bleeding stopped, and one of three
+   rewards picked (bind the wounds, mend the weapons, two pots, a new weapon, a piece of armour).
+   The arena waits while the player picks.
+4. The run ends when the player falls. The best wave is kept. *Today's challenge* draws the same
+   waves for everyone on the same day (UTC). With Steam, the waves beaten go on a leaderboard
+   (`endless_best`, or `endless_YYYYMMDD` for the day's challenge).
 
 ### Forge and Fight
 

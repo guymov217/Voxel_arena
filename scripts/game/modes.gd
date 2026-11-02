@@ -3,13 +3,13 @@ extends RefCounted
 ## The fight modes outside the campaign (game.js, partyModes.js): a duel, best of three, free
 ## for all, chaos, players' brawl, co-op and gauntlet waves of bots, the monster hunt, Red vs
 ## Blue, King of the Arena, the Emperor (you judge from the box), King of the Hill, Last Limb
-## Standing and head football. Host side; `m` is the Match.
+## Standing, head football and the endless arena (Endless). Host side; `m` is the Match.
 
 const TEAM_COLORS := [0xa02020, 0x2050b0, 0x208040, 0xc0a020, 0x8030a0, 0x20a0a0, 0xd06020, 0x606060]
-const ALL := ["duel", "bo3", "ffa", "chaos", "pvp", "coop", "gauntlet", "hunt", "teams", "king", "emperor", "hill", "lastLimb", "headball", "forgefight"]
+const ALL := ["duel", "bo3", "ffa", "chaos", "pvp", "coop", "gauntlet", "hunt", "teams", "king", "emperor", "hill", "lastLimb", "headball", "forgefight", "endless"]
 const TITLES := {"duel": "Test fight!", "bo3": "Duel: best of three!", "ffa": "Free for all!", "chaos": "Chaos!", "pvp": "Players brawl!", "coop": "Co-op campaign!",
 	"gauntlet": "Survive the waves!", "hunt": "Monster Hunt!", "teams": "Red vs Blue!", "king": "King of the Arena!", "emperor": "The Emperor watches!",
-	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "headball": "Head Football!", "forgefight": "Forge and Fight!"}
+	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "headball": "Head Football!", "forgefight": "Forge and Fight!", "endless": "The endless arena!"}
 const LABELS := {"teams": "Teams: players and bots split up", "hill": "Hold the circle alone for 20 s", "lastLimb": "The Emperor removes a limb from everyone every 15 s",
 	"headball": "Kick the head into the other goal (first to 3)", "king": "The winner stays, the next challenger walks in", "emperor": "1 decree · 2 beast · 3 weapon · 4 tomato · 5 gift · 6/7 the verdict",
 	"bo3": "Floored? Y yields, F fights on wounded for double the stake", "forgefight": "What you forged against the clock: to the death"}
@@ -31,6 +31,7 @@ var last_winner = null
 var difficulty := 0.7
 var fight_s := 0.0   # Forge and Fight: the host's limit on the fight (0: to the death)
 var fight_t := 0.0
+var endless: Endless = null
 
 func _init(match_: Node, mode_: String) -> void:
 	m = match_
@@ -43,7 +44,7 @@ static func handles(mode_: String) -> bool:
 static func player_team(mode_: String, i: int) -> int:
 	match mode_:
 		"teams", "headball": return i % 2
-		"coop", "gauntlet", "hunt": return 0
+		"coop", "gauntlet", "hunt", "endless": return 0
 	return i
 
 static func coop_like(mode_: String) -> bool:
@@ -98,6 +99,8 @@ func setup(opts: Dictionary) -> void:
 		"emperor":
 			emperor = {"cool": {}, "verdict": ""}
 			spawn_bots(bots, players.size(), total)
+		"endless":
+			endless = Endless.new(m, opts.get("endless", {}))
 		_:
 			spawn_bots(bots, players.size(), total)
 	match mode:
@@ -112,6 +115,8 @@ func setup(opts: Dictionary) -> void:
 			for x in [-GOAL_X, GOAL_X]:
 				_ring(Vector3(x, 0, 0), 2.2, Color(1, 1, 1, 0.4))
 	m._banner(TITLES.get(mode, "Fight!"), LABELS.get(mode, "Wave 1" if coop_like(mode) else ""))
+	if endless:
+		endless.begin()
 
 func _ring(p: Vector3, r: float, color: Color) -> void:
 	if m.headless:
@@ -206,6 +211,7 @@ func update(dt: float, local_inp: Dictionary) -> void:
 		"lastLimb": _last_limb(dt)
 		"headball": _headball(dt)
 		"emperor": _emperor(dt, local_inp)
+		"endless": endless.update(dt)
 	if mode == "bo3":
 		_bo3(dt, local_inp)
 
@@ -435,6 +441,9 @@ func check(dt: float) -> void:
 			return
 		"bo3":
 			return
+		"endless":
+			endless.check(dt, alive, humans_alive)
+			return
 		"forgefight":
 			# Out of time: the one standing with the most blood left takes it.
 			fight_t += dt
@@ -526,4 +535,5 @@ func status() -> String:
 		"king": return Loc.t("Reign: %d of %d") % [king.streak, king.max]
 		"bo3": return Loc.t("Round %d · stake %d") % [bo3.round, bo3.stake]
 		"emperor": return LABELS.emperor
+		"endless": return endless.status()
 	return TITLES.get(mode, "")
