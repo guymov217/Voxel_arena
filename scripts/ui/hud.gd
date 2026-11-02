@@ -75,6 +75,13 @@ var blind := {}
 var charge_bar: Control
 var charge_hint: Label
 var charge := 0.0
+## The thrust switched on (C): the crosshair turns into a spear's point with the stab's depth
+## beside it, and a tag under it says so and how to stab and leave (user: a toggle, with a sign
+## the player sees).
+var thrust_tag: VBoxContainer
+var thrust_hint: Label
+var thrust_mode := false
+var thrust_depth := 0.0
 var font_title: Font
 var font_ui: Font
 var font_caps: Font
@@ -692,13 +699,42 @@ func _build_crosshair() -> void:
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	crosshair.draw.connect(func():
-		# Four short ticks round a dot, each with a dark edge so it reads on sand and sky.
-		for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
-			crosshair.draw_line(d * 5.0, d * 12.0, Color(0, 0, 0, 0.5), 4.0, true)
-			crosshair.draw_line(d * 5.0, d * 12.0, Color(GOLD_PALE, 0.9), 2.0, true)
+		if thrust_mode:
+			# The thrust on: a spear's point over a ring where the blade will go in, and the
+			# depth of the stab in a bar beside it (blood red as it goes in).
+			crosshair.draw_arc(Vector2.ZERO, 11.0, 0.0, TAU, 40, Color(0, 0, 0, 0.5), 4.0, true)
+			crosshair.draw_arc(Vector2.ZERO, 11.0, 0.0, TAU, 40, Color(BLOOD_BRIGHT, 0.95), 2.0, true)
+			var tip := PackedVector2Array([Vector2(0, -21), Vector2(-5, -13), Vector2(5, -13)])
+			crosshair.draw_colored_polygon(tip, Color(0, 0, 0, 0.55))
+			crosshair.draw_colored_polygon(PackedVector2Array([Vector2(0, -19.5), Vector2(-3.6, -14), Vector2(3.6, -14)]), GOLD_PALE)
+			crosshair.draw_rect(Rect2(16, -12, 5, 24), TRACK)
+			var d := clampf(thrust_depth, 0.0, 1.0)
+			if d > 0.0:
+				crosshair.draw_rect(Rect2(16, 12 - 24 * d, 5, 24 * d), GOLD.lerp(BLOOD_BRIGHT, d))
+			crosshair.draw_rect(Rect2(16, -12, 5, 24), Color(IRON_EDGE, 0.8), false, 1.0)
+		else:
+			# Four short ticks round a dot, each with a dark edge so it reads on sand and sky.
+			for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				crosshair.draw_line(d * 5.0, d * 12.0, Color(0, 0, 0, 0.5), 4.0, true)
+				crosshair.draw_line(d * 5.0, d * 12.0, Color(GOLD_PALE, 0.9), 2.0, true)
 		crosshair.draw_circle(Vector2.ZERO, 2.4, Color(0, 0, 0, 0.5))
 		crosshair.draw_circle(Vector2.ZERO, 1.4, Color(1, 1, 1, 0.95)))
 	root.add_child(crosshair)
+	thrust_tag = VBoxContainer.new()
+	thrust_tag.set_anchors_preset(Control.PRESET_CENTER)
+	thrust_tag.position = Vector2(-160, 30)
+	thrust_tag.size = Vector2(320, 40)
+	thrust_tag.alignment = BoxContainer.ALIGNMENT_BEGIN
+	thrust_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	thrust_tag.add_theme_constant_override("separation", 0)
+	var tt := _label(Loc.t("Thrust").to_upper(), 15, BLOOD_BRIGHT, false, true)
+	tt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	thrust_tag.add_child(tt)
+	thrust_hint = _label("", 12, Color(TEXT, 0.85))
+	thrust_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	thrust_tag.add_child(thrust_hint)
+	thrust_tag.visible = false
+	root.add_child(thrust_tag)
 	charge_bar = Control.new()
 	charge_bar.set_anchors_preset(Control.PRESET_CENTER)
 	charge_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -950,6 +986,16 @@ func _process(dt: float) -> void:
 	if get_tree().paused:
 		return   # (it runs through a pause only to keep off the forge; the rest waits as before)
 	_fit()
+	var li = match_.last_local_inp if match_.last_local_inp is Dictionary else {}
+	var on: bool = bool(li.get("depthOn", false)) and match_.me != null and is_instance_valid(match_.me.f) and match_.me.f.alive
+	var dp := float(li.get("depth", 0.0)) if on else 0.0
+	if on != thrust_mode or absf(dp - thrust_depth) > 0.01:
+		thrust_mode = on
+		thrust_depth = dp
+		crosshair.queue_redraw()
+	if thrust_tag.visible != on:
+		thrust_tag.visible = on
+		thrust_hint.text = Loc.t("Hold a mouse button and push the mouse to stab · %s to switch off") % _key("thrust")
 	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
 	charge_bar.visible = ch > 0.0
 	charge_hint.visible = ch > 0.0

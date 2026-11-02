@@ -3668,6 +3668,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			thrust_line[side] = tl
 		_line_in_body(tl, t_pos, yaw_q)
 		tl.t += dt
+		# The thrust switched on and the blade not yet driven in: the line turns to the crosshair
+		# from where the hand rests (user: how does he aim the stab somewhere else? he looks
+		# there), and the stab goes in along it once he pushes.
+		if inp.get("depthOn", false) and inp.get("aimAt") is Vector3 and absf(float(inp.get("depth", 0.0))) < 0.05:
+			_line_to_mark(tl, inp.aimAt, t_pos, yaw_q, dt)
 		# (The player's mouse driving it in depth: as deep as he has pushed it, PlayerInput.depth.)
 		var dp: float = clampf(float(inp.get("depth", 0.0)), -1.0, 1.0) if inp.get("depthOn", false) else NAN
 		var ext := _thrust_ext(tl, tl.o, shoulder[side], INF, dp)
@@ -4411,6 +4416,20 @@ static func _line_in_body(tl: Dictionary, t_pos: Vector3, yaw_q: Quaternion) -> 
 		tl.dir = inv * (tl.dir_w as Vector3)
 	if tl.has("f_w"):
 		tl.f = inv * ((tl.f_w as Vector3) - t_pos)
+
+## The line of a thrust not yet driven, turned toward `at` (the crosshair) from where the hand
+## rests, quickly but not in one jump (the crosshair leaps from a man to the wall behind him);
+## never back past the shoulders, and not for a mark at the hand itself.
+static func _line_to_mark(tl: Dictionary, at: Vector3, t_pos: Vector3, yaw_q: Quaternion, dt: float) -> void:
+	var want: Vector3 = yaw_q.inverse() * (at - t_pos) - (tl.o as Vector3)
+	if want.length_squared() < 0.04:
+		return
+	want = want.normalized()
+	want.z = maxf(want.z, 0.2)
+	want = want.normalized()
+	var d: Vector3 = (tl.dir as Vector3).slerp(want, minf(1.0, dt * 12.0)).normalized()
+	tl.dir = d
+	tl.dir_w = yaw_q * d
 
 ## Where the blade should point: elevation from the hand's height, yaw from a pivot behind the
 ## hand, the edge leading the stroke; slewed at the rate the weapon allows.

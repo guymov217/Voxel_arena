@@ -17,7 +17,7 @@ const STEPS := [
 	{"id": "freelook", "title": "Look round you", "text": "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back."},
 	{"id": "swing", "title": "Swing", "text": "Hold the %s button and sweep the mouse: the sword follows your hand. Hit the dummy twice. Fast sweeps cut deep.", "mouse": ["main"]},
 	{"id": "twist", "title": "Turn the blade", "text": "Roll the wheel: the sword turns in your hand, so the edge leads the cut and not the flat. Roll it a few notches."},
-	{"id": "thrust", "title": "Thrust", "text": "Hold %s and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out.", "keys": ["thrust"]},
+	{"id": "thrust", "title": "Thrust", "text": "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).", "keys": ["thrust", "thrust"]},
 	{"id": "guard", "title": "Guard", "text": "Hold the %s button: now the mouse moves the shield. Raise it up for a moment.", "mouse": ["off"]},
 	{"id": "kick", "title": "Kick and shove", "text": "%s kicks (and stamps on a man who is down), %s shoves. Kick or shove the dummy.", "keys": ["kick", "shove"]},
 	{"id": "swap", "title": "Swap hands", "text": "%s swaps what your hands hold: the sword to the left, the shield to the right. Swap, then swap back.", "keys": ["swap"]},

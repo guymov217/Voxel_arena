@@ -16,12 +16,16 @@ var rmb := false
 var mmb := false                   # the wheel held down: the mouse turns the camera alone
 var free_look := Vector2.ZERO      # (yaw, pitch) the camera is turned off the fighter's line by it
 var thrust := 0.0
-## The thrust key held on the keyboard, the mouse drives the blade along its own line, in depth
-## (user: hold a key and the weapon goes from blows across to stabs in depth): pushed forward the
-## point goes in, drawn back it comes out again, as fast as the mouse goes; side to side it does
-## what it always does. From a pad (no mouse) the thrust drives itself out as before.
+## The thrust key switches the thrust on and off (user: a toggle, not a key to hold): in it the
+## blade points where the crosshair is, the mouse alone turns the view to aim it (up and down as
+## well: the old held key took the mouse's push for the depth, and the view could not look up or
+## down while it was held), and with the hand's button held the mouse drives the blade along its
+## own line, in depth: pushed forward the point goes in, drawn back it comes out again, as fast as
+## the mouse goes (side to side the view turns on, to follow the mark). Let go of the button and
+## the blade comes back to its guard. From a pad (no mouse) a held thrust drives itself out.
+var thrust_on := false    # the thrust switched on from the keyboard
 var depth := 0.0          # -1 drawn back toward the chest .. 0 where the hand was .. 1 the full lunge
-var depth_key := false    # the thrust held on the keyboard: the mouse has the depth
+var depth_key := false    # the thrust on from the keyboard: the mouse has the depth
 const DEPTH_PX := 240.0   # mouse travel (pixels, at sensitivity 1) from where the hand was to the full stab
 var twist := 0.0
 var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
@@ -44,7 +48,7 @@ var _digits_held := {}
 ## Presses that act once (a jump, a grab): latched between frames until the input is sampled,
 ## and sent to the host reliably.
 const ONE_SHOT := ["jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "grip", "swap"]
-const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote", "grip", "swap"]
+const LATCHED := ["jump", "kick", "grab", "taunt", "shove", "emote", "grip", "swap", "thrust"]
 const PAD := {"jump": JOY_BUTTON_A, "kick": JOY_BUTTON_B, "grab": JOY_BUTTON_X, "throw": JOY_BUTTON_Y, "shove": JOY_BUTTON_LEFT_SHOULDER,
 	"thrust": JOY_BUTTON_RIGHT_SHOULDER, "sprint": JOY_BUTTON_LEFT_STICK, "crouch": JOY_BUTTON_RIGHT_STICK, "taunt": JOY_BUTTON_BACK}
 const PAD_ITEMS := [JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_LEFT]
@@ -224,10 +228,13 @@ func _mouse(e: InputEvent) -> void:
 
 ## The mouse moved (caught): the hand whose button is down goes with it, or the view turns.
 func _motion(rel: Vector2) -> void:
-	# The thrust key held: the mouse's push on and back is the blade's depth, not its height.
-	if depth_key and not aiming:
+	# The thrust on and a hand's button held: the mouse's push on and back is the blade's depth,
+	# and side to side it turns the view (the blade follows the crosshair). Without a button the
+	# mouse turns the view both ways, as always: that is how the stab is aimed.
+	if depth_key and not aiming and (lmb or rmb):
 		depth = clampf(depth - rel.y * sensitivity * sens_y / DEPTH_PX, -1.0, 1.0)
-		rel.y = 0.0
+		look_yaw -= rel.x * 0.001 * sensitivity * sens_x
+		return
 	var both := lmb and rmb and not two_handed
 	var h = main if lmb or (rmb and two_handed) else (off if rmb else null)
 	if h == null or aiming:
@@ -246,6 +253,7 @@ func reset_hands() -> void:
 	off = {"x": -0.35, "y": 0.1}
 	thrust = 0.0
 	depth = 0.0
+	thrust_on = false
 
 ## Both hands on one haft, the off hand's mark is not its own: either button (or both) swings
 ## the weapon with the main hand's. Moved along unseen under the grip, the off hand's mark was
@@ -370,11 +378,16 @@ func sample(dt: float) -> Dictionary:
 	var hand_l := (rmb or pad_l) and not two_handed
 	# Let go of the button and the hand stays where it was aimed: it no longer slides back to a
 	# guard of its own (user: the weapon must hold the last place it was aimed at).
-	var want := 1.0 if held("thrust") else 0.0
+	var pad_thrust := _pad_holds("thrust")
+	if pressed("thrust") and not pad_thrust:
+		thrust_on = not thrust_on
+	var want := 1.0 if thrust_on or pad_thrust else 0.0
 	thrust += (want - thrust) * minf(1.0, dt * 30.0)
-	depth_key = want > 0.0 and not _pad_holds("thrust")
+	depth_key = thrust_on and not pad_thrust
 	if not depth_key:
 		depth = 0.0
+	elif not (lmb or rmb):
+		depth = move_toward(depth, 0.0, dt * 3.0)   # (the button let go: back to the guard)
 	var inp := {
 		"mx": clampf((1.0 if held("left") else 0.0) - (1.0 if held("right") else 0.0) - pad_move.x, -1.0, 1.0),
 		"mz": clampf((1.0 if held("forward") else 0.0) - (1.0 if held("back") else 0.0) - pad_move.y, -1.0, 1.0),
