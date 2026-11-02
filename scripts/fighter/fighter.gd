@@ -368,7 +368,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	for side in ["R", "L"]:
 		var fore: VoxelPart = arm[side].fore
 		if fore.prosthetic == "blade":
-			equip(side, BLADE_ARM)
+			equip(side, blade_arm(fore.pro_level))
 			fixed_hand[side] = true
 		if fore.prosthetic != "":
 			if side == "R":
@@ -526,6 +526,12 @@ const BLADE_ARM := {"name": "Blade arm", "kind": "weapon", "sharpness": 0.85, "v
 	[0, 10, 0, "steel", "edge"], [0, 11, 0, "steel", "edge"], [0, 12, 0, "steel", "edge"], [0, 13, 0, "steel", "edge"], [0, 14, 0, "steel", "edge"], [0, 15, 0, "steel", "edge"],
 	[0, 16, 0, "steel", "edge"], [0, 17, 0, "steel", "edge"], [0, 18, 0, "steel", "point"]]}
 
+## The blade arm as the smith has worked it (Body.PRO_STEPS): keener at each step.
+static func blade_arm(level: int) -> Dictionary:
+	var d: Dictionary = BLADE_ARM.duplicate(true)
+	d.sharpness = minf(1.0, float(BLADE_ARM.sharpness) + 0.05 * clampi(level, 0, 2))
+	return d
+
 ## The body a campaign has left him (Body): old wounds as healed dents, lost limbs gone with
 ## their stumps closed, prosthetics where the physician fitted them, a lost or a glass eye.
 func apply_body(b: Dictionary) -> void:
@@ -550,7 +556,7 @@ func apply_body(b: Dictionary) -> void:
 	for n in body.prosthetics:
 		var p: VoxelPart = by_name.get(n)
 		if p:
-			_fit_prosthetic(p, String(body.prosthetics[n]))
+			_fit_prosthetic(p, String(body.prosthetics[n]), Body.pro_level(body, n))
 	for s in body.eyes:
 		var ev := Body.eye_voxels(head, s)
 		if body.eyes[s] == "glass":
@@ -620,13 +626,14 @@ func _make_missing(part: VoxelPart) -> void:
 ## ferrule the blade sits in (a thin rod stopping short of the blade left a hole in the arm, user);
 ## a hook a rod from an iron collar to a curved hook; a peg a turned wooden leg with an iron shoe
 ## in a hooped wooden cup. All in a leather cuff strapped over the stump, buckled in bronze.
-func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
+func _fit_prosthetic(p: VoxelPart, kind: String, level := 0) -> void:
 	p.prosthetic = kind
+	p.pro_level = level
 	p.missing = false
 	var drop := []
 	var paint := []
 	for i in p.fx.size():
-		var cell = prosthetic_cell(kind, p.fx[i], p.fy[i], p.fz[i], p.grid)
+		var cell = prosthetic_cell(kind, p.fx[i], p.fy[i], p.fz[i], p.grid, level)
 		if cell == null:
 			drop.append(i)
 			continue
@@ -636,6 +643,7 @@ func _fit_prosthetic(p: VoxelPart, kind: String) -> void:
 	p.refresh_colors(paint)
 	p.refresh_kinds(paint)
 	p.remove_voxels(drop, false, false)
+	p.pro_full = p.alive_count
 	p.bleed = 0.0
 	p.artery = 0.0
 
@@ -652,7 +660,26 @@ const PRO_WOOD_DARK := Color(0.43, 0.28, 0.15)
 ## colour and kind (VoxelPart.kinds: 1 the matte leather of a cuff, 4 bronze, 5 wood, 13 forged
 ## iron: leather drawn as kind 2 shone the blue of the sky on every face turned up to it), or
 ## null where nothing of it is. Only the look and the shape; what it does is VoxelPart.function's.
-static func prosthetic_cell(kind: String, gx: int, y: int, gz: int, grid: Vector3i):
+static func prosthetic_cell(kind: String, gx: int, y: int, gz: int, grid: Vector3i, level := 0):
+	var cell = _prosthetic_cell(kind, gx, y, gz, grid)
+	if cell == null or level <= 0:
+		return cell
+	# The smith's work shows: refitted, its bands, rivets and buckle bronze; a master's work, the
+	# iron hammered and polished bright, the buckle gilt.
+	var c: Color = cell[0]
+	var k: int = cell[1]
+	if k == 13 and (c.is_equal_approx(PRO_RIVET) or y == int((grid.y - 1) * 0.72)):
+		return [PRO_BRONZE if level == 1 else PRO_GILT, 4]
+	if k == 4 and level >= 2:
+		return [PRO_GILT, 4]
+	if k == 13 and level >= 2:
+		return [c.lerp(PRO_POLISHED, 0.55), 13]
+	return cell
+
+const PRO_GILT := Color(0.86, 0.68, 0.30)
+const PRO_POLISHED := Color(0.62, 0.60, 0.56)
+
+static func _prosthetic_cell(kind: String, gx: int, y: int, gz: int, grid: Vector3i):
 	var x := float(gx) - (grid.x - 1) * 0.5
 	var z := float(gz) - (grid.z - 1) * 0.5
 	var r := sqrt(x * x + z * z)
@@ -3788,7 +3815,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var load := (w.mass * 0.22 + float(w.stats.get("inertia", 0.0)) * 0.9) / (float(mods.strength) * sqrt(S) * (1.7 if two_handed else 1.0)) if w else 0.0
 	var hnd := 1.0 / (1.0 + load)
 	if fixed_hand[side]:
-		hnd *= 0.6   # no wrist, no fingers: the blade goes where the stump drags it
+		hnd *= 0.6 + 0.1 * arm[side].fore.pro_level   # no wrist, no fingers: the blade goes where the stump drags it (the smith's refit steadies it)
 	handling[side] = hnd
 	var hand_goal := target_w
 	var shoulder_w = t_pos + t_rot * shoulder[side]

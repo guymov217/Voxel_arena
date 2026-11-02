@@ -19,6 +19,17 @@ const PROSTHETICS := {
 }
 ## How well a replaced part works (1 for a whole one): walking on a peg, swinging a fixed blade.
 const PROSTHETIC_FN := {"peg": 0.6, "hook": 0.75, "blade": 0.7}
+## What the smith does to a prosthetic, as he hones a blade (user: upgrade the prosthesis at the
+## smith like a weapon): each step a closer fit and better iron, the limb working a tenth nearer
+## to a whole one (a blade arm's blade keener too), and it shows: bronze fittings, then polished
+## iron. `pro_up` in the body: part -> steps taken.
+const PRO_STEPS := [
+	{"label": "Refit and rivet", "desc": "Vulcanus refits it to the stump and rivets it in bronze: it works a tenth better than the physician's. A blade arm's blade is honed keener."},
+	{"label": "A master's work", "desc": "Remade in hammered, polished iron by Vulcanus's own hand: it works a fifth better than the physician's, nearly as a limb of your own. A blade arm's blade keener still."},
+]
+const PRO_STEP_FN := 0.1
+## What each step costs, against the price of the prosthetic itself.
+const PRO_STEP_PRICE := [0.7, 1.4]
 ## The rare medicine (one old wound closed): half the elixir's price, so both follow the pay.
 const MEDICINE_BOUTS := 0.75
 const MEDICINE_MIN := 20
@@ -89,7 +100,45 @@ const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
 
 static func empty() -> Dictionary:
-	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}, "fractures": {}}
+	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}, "fractures": {}, "pro_up": {}}
+
+## The steps the smith has taken on the prosthetic of `part` (0: as the physician fitted it).
+static func pro_level(body: Dictionary, part: String) -> int:
+	var up = body.get("pro_up", {})
+	return clampi(int(up.get(part, 0)), 0, PRO_STEPS.size()) if up is Dictionary else 0
+
+## How well a prosthetic of `kind` works after `level` of the smith's steps (1: a whole limb).
+static func pro_fn(kind: String, level: int) -> float:
+	return minf(0.95, float(PROSTHETIC_FN.get(kind, 0.7)) + PRO_STEP_FN * clampi(level, 0, PRO_STEPS.size()))
+
+## What the smith's next step on a prosthetic of `kind` costs, at `level` now.
+static func pro_step_price(kind: String, level: int) -> int:
+	if level < 0 or level >= PRO_STEPS.size() or not PROSTHETICS.has(kind):
+		return 0
+	return int(round(float(PROSTHETICS[kind].price) * float(PRO_STEP_PRICE[level])))
+
+## The prosthetics the smith can work on: part -> kind (not a glass eye).
+static func smith_prosthetics(body: Dictionary) -> Dictionary:
+	var out := {}
+	var pro = body.get("prosthetics", {})
+	if pro is Dictionary:
+		for k in pro:
+			if not String(k).begins_with("eye"):
+				out[String(k)] = String(pro[k])
+	return out
+
+## The smith's next step on the prosthetic of `part`: {body, cost}, or {error}.
+static func upgrade_prosthetic(body: Dictionary, part: String) -> Dictionary:
+	var b := sanitize(body)
+	var kind: String = smith_prosthetics(b).get(part, "")
+	if kind == "":
+		return {"error": "There is no prosthetic there"}
+	var lv := pro_level(b, part)
+	if lv >= PRO_STEPS.size():
+		return {"error": "Nothing finer can be made"}
+	var cost := pro_step_price(kind, lv)
+	b.pro_up[part] = lv + 1
+	return {"body": sanitize(b), "cost": cost}
 
 static func part_names() -> Array:
 	return Data.body_parts.map(func(d): return String(d.name))
@@ -140,6 +189,16 @@ static func sanitize(raw) -> Dictionary:
 				b.eyes[s] = v
 	var nf = raw.get("fights", 0)
 	b.fights = maxi(0, int(nf) if (nf is int or nf is float) and is_finite(float(nf)) else 0)
+	# The smith's steps on a prosthetic, only on one he has, never past the last.
+	var pu = raw.get("pro_up", {})
+	if pu is Dictionary:
+		for k in pu:
+			var key := str(k)
+			var v = pu[k]
+			if b.prosthetics.has(key) and not key.begins_with("eye") and (v is int or v is float) and is_finite(float(v)):
+				var lv := clampi(int(v), 0, PRO_STEPS.size())
+				if lv > 0:
+					b.pro_up[key] = lv
 	var fx = raw.get("fractures", {})
 	if fx is Dictionary:
 		for k in fx:

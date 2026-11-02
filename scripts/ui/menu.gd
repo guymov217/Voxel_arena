@@ -301,7 +301,7 @@ func set_body(b: Dictionary) -> void:
 	# at once, his weapons in the hands it gave back (he walked about armless until the next bout).
 	# A bone set by the physician the same: whole on him there and then (user: whatever he bought,
 	# the broken arm stayed broken).
-	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures):
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up):
 		match_.rebuild(match_.me, clean)
 		return
 	# Stitched in the yard: the wounds close on him there and then.
@@ -1604,6 +1604,7 @@ func _yard(v: VBoxContainer) -> void:
 		sl.disabled = Arms.is_stick(d)
 		sl.tooltip_text = Loc.t("Vulcanus buys it for half its worth: the main hand is left with the training stick" if side == "R" else "Vulcanus buys it for half its worth: the off hand is left empty")
 		acts.add_child(sl)
+	_smith_prosthetics(mine)
 	body.add_child(VSeparator.new())
 	var rack := VBoxContainer.new()
 	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2487,6 +2488,7 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	if title != "":
 		col.add_child(UIStyle.label(Loc.t(title).to_upper(), 12, UIStyle.BRONZE))
 	card.set_meta("col", col)
+	card.set_meta("tex", tex)
 	if d is Dictionary:
 		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
 		_viewable(tex, d, Loc.t("%d voxels") % d.voxels.size())
@@ -3135,6 +3137,58 @@ func _pay(r: Dictionary) -> void:
 		return
 	add_coins(-int(r.cost))
 	set_arms(r.arms)
+	show_screen("yard")
+
+## His prosthetics on the smith's counter, worked on as a blade is (user: upgrade the prosthesis
+## at the smith like a weapon): a picture of each as it is now, how well it works, and the
+## smith's next step on it.
+func _smith_prosthetics(box: VBoxContainer) -> void:
+	var b := body()
+	var pros := Body.smith_prosthetics(b)
+	if pros.is_empty():
+		return
+	box.add_child(UIStyle.label("YOUR PROSTHETICS", 13, UIStyle.BRONZE))
+	for part in pros:
+		var kind: String = pros[part]
+		var lv := Body.pro_level(b, part)
+		var card := _smith_card(null, Body.label(part), "", 104)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.add_child(card)
+		var tex: TextureRect = card.get_meta("tex")
+		if tex.is_inside_tree():
+			Thumbs.prosthetic(tex, kind, part, lv)
+		else:
+			tex.ready.connect(func(): Thumbs.prosthetic(tex, kind, part, lv), CONNECT_ONE_SHOT)
+		var col: VBoxContainer = card.get_meta("col")
+		col.add_child(UIStyle.label(Loc.t(String(Body.PROSTHETICS[kind].name)), 17, UIStyle.TEXT))
+		var made := Loc.t(String(Body.PRO_STEPS[lv - 1].label)) if lv > 0 else Loc.t("As the physician made it")
+		col.add_child(UIStyle.label(Loc.t("%s · works %d%% as well as a limb of your own") % [made, int(round(Body.pro_fn(kind, lv) * 100.0))], 13, UIStyle.GOLD if lv > 0 else UIStyle.MUTED))
+		var acts := HFlowContainer.new()
+		acts.add_theme_constant_override("h_separation", 6)
+		acts.add_theme_constant_override("v_separation", 6)
+		col.add_child(acts)
+		var btn: Button
+		if lv < Body.PRO_STEPS.size():
+			var step: Dictionary = Body.PRO_STEPS[lv]
+			var price := Body.pro_step_price(kind, lv)
+			btn = UIStyle.button(Loc.t("%s · %d denarii") % [Loc.t(String(step.label)), price], func(): _pay_body(Body.upgrade_prosthetic(body(), part)))
+			btn.disabled = price > coins()
+			btn.tooltip_text = Loc.t(String(step.desc)) + (Loc.t(" Purse after: %d") % (coins() - price) if price <= coins() else Loc.t(" %d more needed") % (price - coins()))
+		else:
+			btn = UIStyle.button("Nothing finer can be made", func(): pass)
+			btn.disabled = true
+		acts.add_child(btn)
+
+## The smith's work on his body, paid for (a prosthetic refitted): on him at once.
+func _pay_body(r: Dictionary) -> void:
+	if r.has("error"):
+		show_screen("yard", r.error)
+		return
+	if int(r.cost) > coins():
+		show_screen("yard", "Not enough denarii")
+		return
+	add_coins(-int(r.cost))
+	set_body(r.body)
 	show_screen("yard")
 
 ## Reshaping a weapon, the smith is asked for a new one from nothing instead: the reshape is

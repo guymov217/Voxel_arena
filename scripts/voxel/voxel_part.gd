@@ -851,6 +851,8 @@ var stump_t := 0.0
 var flinch_t := 0.0
 var missing := false
 var prosthetic := ""               # "peg", "hook", "blade": what the physician fitted in its place
+var pro_level := 0                 # the smith's steps on it (Body.PRO_STEPS)
+var pro_full := 0                  # its voxels as fitted: whole, it works as well as it can
 var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
 var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
@@ -1791,11 +1793,14 @@ func function() -> float:
 		return 0.03
 	if fractured:
 		return 0.04   # broken through: the muscle cannot move what the bone no longer holds
-	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * integrity)
+	# (A prosthetic is whole as the physician made it, not as the limb it took the place of: a
+	# smaller thing, it is measured against what it was when fitted.)
+	var whole := integrity if prosthetic == "" or pro_full <= 0 else minf(1.0, float(alive_count) / float(pro_full))
+	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * whole)
 	if fracture == 1:
 		fn *= 0.6     # cracked: it holds, and every move of it hurts
 	if prosthetic != "":
-		fn = minf(fn, float(Body.PROSTHETIC_FN.get(prosthetic, 0.7)))
+		fn = minf(fn, Body.pro_fn(prosthetic, pro_level))
 	if frozen_until > 0.0 and clock() < frozen_until:
 		fn *= 0.2   # frozen stiff by a sapphire: it hardly moves until it thaws
 	return fn

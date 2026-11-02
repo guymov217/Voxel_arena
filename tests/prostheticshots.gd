@@ -1,7 +1,8 @@
 extends Node
 ## The physician's work up close (`-- --probe prostheticshots`, needs a display): a blade arm, a
 ## hook and a peg leg on a veteran in the training ground, each from the side and from the front,
-## and the whole man. PNGs go to SHOT_DIR.
+## and the whole man. PRO_LEVEL (0-2): the smith's steps on all three (Body.PRO_STEPS), the shots
+## named _lv1, _lv2. PNGs go to SHOT_DIR.
 
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
@@ -13,6 +14,9 @@ func _ready() -> void:
 	var b := Body.empty()
 	b.missing = ["shinL", "forearmR", "forearmL"]
 	b = Body.apply(Body.apply(Body.apply(b, "peg:shinL"), "blade:forearmR"), "hook:forearmL")
+	var lv := int(OS.get_environment("PRO_LEVEL")) if OS.has_environment("PRO_LEVEL") else 0
+	b.pro_up = {"shinL": lv, "forearmR": lv, "forearmL": lv}
+	var tag := ("_lv%d" % lv) if lv > 0 else ""
 	var e = m.spawn_fighter({"kind": "bot", "name": "Veteran", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 0, "pos": Vector3(0, 0, 2), "yaw": PI, "body": b})
 	e.erase("bot")
 	e.drive = func(_e): return {"main": {"x": 0.35, "y": 0.25}, "off": {"x": -0.45, "y": 0.2}}
@@ -41,6 +45,6 @@ func _ready() -> void:
 		cam.look_at(c, Vector3.UP)
 		await get_tree().process_frame
 		await get_tree().process_frame
-		get_viewport().get_texture().get_image().save_png(out.path_join(v[0] + ".png"))
-		print("saved ", v[0])
+		get_viewport().get_texture().get_image().save_png(out.path_join(v[0] + tag + ".png"))
+		print("saved ", v[0] + tag)
 	get_tree().quit()

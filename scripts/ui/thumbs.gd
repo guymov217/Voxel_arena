@@ -67,6 +67,70 @@ static func weapon(rect: TextureRect, d: Dictionary, key: String) -> void:
 		mi.rotation = Vector3(0.0, 0.5, -0.75)
 		return root)
 
+## The picture of a prosthetic on the smith's counter, as the physician made it and the smith
+## has worked it (`level`, Body.PRO_STEPS): built from the very cells it is fitted with
+## (Fighter.prosthetic_cell over the part it takes the place of), a blade arm with its blade.
+static func prosthetic(rect: TextureRect, kind: String, part: String, level: int) -> void:
+	put(rect, "pro:%s:%s:%d" % [kind, part, level], func():
+		var root := Node3D.new()
+		var g := Node3D.new()
+		root.add_child(g)
+		var metal := []
+		var matte := []
+		var vf: float = Data.body_voxel / Data.body_res
+		for d in Data.body_parts:
+			if d.name != part:
+				continue
+			var dd: Array = d.get("dims", [1, 1, 1])
+			var ga: Array = d.get("grid", [int(dd[0]) * Data.body_res, int(dd[1]) * Data.body_res, int(dd[2]) * Data.body_res])
+			var grid := Vector3i(int(ga[0]), int(ga[1]), int(ga[2]))
+			for v in d.voxels:
+				var cell = Fighter.prosthetic_cell(kind, int(v[0]), int(v[1]), int(v[2]), grid, level)
+				if cell == null:
+					continue
+				var at := Vector3(float(v[0]) - (grid.x - 1) * 0.5, float(v[1]), float(v[2]) - (grid.z - 1) * 0.5) * vf
+				(metal if int(cell[1]) in [3, 4, 13] else matte).append([at, vf, cell[0]])
+		if kind == "blade":
+			# The blade below the socket, its tang (the grip) hidden in it.
+			var wv: float = Data.weapon_voxel
+			for v in Fighter.blade_arm(level).voxels:
+				if String(v[4]) == "grip":
+					continue
+				metal.append([Vector3(float(v[0]), 2.0 - float(v[1]), float(v[2])) * wv, wv, Weapon.voxel_color(str(v[3]), str(v[4]))])
+		for set_ in [[metal, 0.4, 0.45], [matte, 0.0, 0.85]]:
+			var cells: Array = set_[0]
+			if cells.is_empty():
+				continue
+			var mat := StandardMaterial3D.new()
+			mat.vertex_color_use_as_albedo = true
+			mat.vertex_color_is_srgb = true
+			mat.metallic = set_[1]
+			mat.roughness = set_[2]
+			var bm := BoxMesh.new()
+			bm.size = Vector3.ONE * 0.98
+			bm.material = mat
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			mm.mesh = bm
+			mm.instance_count = cells.size()
+			var lo := Vector3.INF
+			var hi := -Vector3.INF
+			for i in cells.size():
+				var c: Array = cells[i]
+				var s := float(c[1])
+				mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * s), c[0]))
+				mm.set_instance_color(i, c[2])
+				lo = lo.min(c[0] - Vector3.ONE * s * 0.5)
+				hi = hi.max(c[0] + Vector3.ONE * s * 0.5)
+			var mi := MultiMeshInstance3D.new()
+			mi.multimesh = mm
+			mi.custom_aabb = AABB(lo, hi - lo)
+			g.add_child(mi)
+		# Laid on the counter at a slant: an arm with its end toward the viewer, a peg upright.
+		g.rotation = Vector3(0.0, 0.6, 0.0) if kind == "peg" else Vector3(0.0, 0.5, -2.2)
+		return root)
+
 ## The weapon's model as the shop draws it (the voxels, a chain's links and head hung on above
 ## the handle): a Node3D with one MultiMeshInstance3D, the grip at the origin.
 static func model(d: Dictionary) -> Node3D:

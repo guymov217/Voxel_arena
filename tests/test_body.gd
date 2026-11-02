@@ -427,3 +427,119 @@ func test_a_man_on_a_peg_walks_turns_rises_and_kicks() -> void:
 		t.check(kicked, "%s: and he kicks" % str(pro.keys()))
 		m.queue_free()
 		await _steps(2)
+
+## The smith works a prosthetic as he hones a blade (user: upgrade the prosthesis at the smith
+## like a weapon): two steps, each dearer, never past the last; only on a prosthetic he has; lost
+## with it (knocked off in a bout, the elixir), and a new one starts as the physician made it.
+func test_the_smith_works_a_prosthetic_step_by_step() -> void:
+	var b := Body.empty()
+	b.missing = ["forearmR", "shinL"]
+	b = Body.apply(Body.apply(b, "blade:forearmR"), "peg:shinL")
+	var on: Array = Body.smith_prosthetics(b).keys()
+	on.sort()
+	t.eq(", ".join(on), "forearmR, shinL", "both on the smith's counter")
+	t.eq(Body.pro_level(b, "forearmR"), 0, "as the physician made it")
+	var p0 := Body.pro_step_price("blade", 0)
+	var p1 := Body.pro_step_price("blade", 1)
+	t.check(p0 > 0 and p1 > p0, "each step dearer (%d, then %d)" % [p0, p1])
+	t.check(Body.pro_step_price("peg", 0) < p0, "a peg is cheaper to work than a blade arm (%d)" % Body.pro_step_price("peg", 0))
+	var r := Body.upgrade_prosthetic(b, "forearmR")
+	t.eq(int(r.get("cost", -1)), p0, "the first step at its price")
+	t.eq(Body.pro_level(r.body, "forearmR"), 1, "refitted")
+	t.eq(Body.pro_level(r.body, "shinL"), 0, "the peg not touched")
+	var r2 := Body.upgrade_prosthetic(r.body, "forearmR")
+	t.eq(int(r2.get("cost", -1)), p1, "the second step at its price")
+	t.eq(Body.pro_level(r2.body, "forearmR"), 2, "a master's work")
+	t.check(Body.upgrade_prosthetic(r2.body, "forearmR").has("error"), "nothing finer can be made")
+	t.check(Body.upgrade_prosthetic(r2.body, "shinR").has("error"), "no prosthetic, nothing to work on")
+	for lv in 3:
+		t.check(Body.pro_fn("peg", lv) > Body.pro_fn("peg", lv - 1) if lv > 0 else is_equal_approx(Body.pro_fn("peg", 0), Body.PROSTHETIC_FN.peg), "a peg works better at each step (%.2f)" % Body.pro_fn("peg", lv))
+		t.check(Body.pro_fn("hook", lv) < 1.0, "never as well as a hand of his own (%.2f)" % Body.pro_fn("hook", lv))
+	# What comes off a save or the wire: only steps on a prosthetic he has, none past the last.
+	var s := Body.sanitize({"prosthetics": {"forearmR": "blade"}, "pro_up": {"forearmR": 99, "shinL": 1, "forearmL": "x", "eyeL": 1, "thighR": -4}})
+	t.eq(str(s.pro_up), str({"forearmR": 2}), "steps only on his blade arm, at most two")
+	t.check((Body.sanitize({"prosthetics": {"forearmR": "blade"}, "pro_up": {"forearmR": -2}}).pro_up as Dictionary).is_empty(), "none below the physician's")
+	t.check((Body.sanitize({"pro_up": "junk"}).pro_up as Dictionary).is_empty(), "nothing from junk")
+	# Knocked off in a bout: the steps go with it; the new one is the physician's again.
+	var lost: Dictionary = Body.merge(r2.body, {"lost": ["forearmR"]}).body
+	t.check(not lost.prosthetics.has("forearmR") and not lost.pro_up.has("forearmR"), "the blade arm knocked off, and the smith's work with it")
+	t.eq(Body.pro_level(Body.apply(lost, "hook:forearmR"), "forearmR"), 0, "a new hook in its place is the physician's")
+	t.check((Body.apply(r2.body, "elixir:all").pro_up as Dictionary).is_empty(), "the elixir gives the arm back: no prosthetic left to have been worked")
+
+## The smith's work tells in the bout and on the sight of it: a refitted blade arm is keener and
+## steadier, a refitted peg bears more; the bands and rivets go bronze, then gilt and polished.
+func test_a_refitted_prosthetic_works_better_and_shows_it() -> void:
+	var m := _match()
+	await _steps(5)
+	var fs := []
+	for lv in 3:
+		var e = m.spawn_fighter({"kind": "bot", "name": "P%d" % lv, "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(3.0 * lv - 3.0, 0, 3), "yaw": 0.0, "body": {"prosthetics": {"forearmR": "blade", "shinL": "peg"}, "pro_up": {"forearmR": lv, "shinL": lv}}})
+		e.erase("bot")
+		e.drive = func(_e): return {"main": {"x": 0.3, "y": 0.2}}
+		fs.append(e.f)
+	await _steps(60)
+	var bronze := []
+	for lv in 3:
+		var f: Fighter = fs[lv]
+		var fore: VoxelPart = f.by_name.forearmR
+		t.eq(fore.pro_level, lv, "level %d: fitted as the smith left it" % lv)
+		t.check(is_equal_approx(fore.function(), Body.pro_fn("blade", lv)), "level %d: the blade arm works %.2f (%.2f)" % [lv, fore.function(), Body.pro_fn("blade", lv)])
+		t.check(is_equal_approx(f.by_name.shinL.function(), Body.pro_fn("peg", lv)), "level %d: the peg bears %.2f" % [lv, f.by_name.shinL.function()])
+		var w = f.weapons.R
+		t.check(w != null and is_instance_valid(w) and is_equal_approx(float(w.design.sharpness), minf(1.0, 0.85 + 0.05 * lv)), "level %d: the blade's edge %.2f" % [lv, float(w.design.sharpness) if w else -1.0])
+		var n4 := 0
+		var gilt := 0
+		for i in fore.fx.size():
+			if fore.alive[i] and fore.kinds[i] == 4:
+				n4 += 1
+				if fore.colors[i].is_equal_approx(Fighter.PRO_GILT):
+					gilt += 1
+		bronze.append([n4, gilt])
+	t.check(fs[1].handling.R > fs[0].handling.R * 1.1 and fs[2].handling.R > fs[1].handling.R * 1.1, "steadier at each step (handling %.2f, %.2f, %.2f)" % [fs[0].handling.R, fs[1].handling.R, fs[2].handling.R])
+	t.check(bronze[1][0] > bronze[0][0], "refitted: more bronze on it (%d, was %d)" % [bronze[1][0], bronze[0][0]])
+	t.check(bronze[0][1] == 0 and bronze[1][1] == 0 and bronze[2][1] >= bronze[1][0], "a master's work: its fittings gilt (%d)" % bronze[2][1])
+	m.queue_free()
+	await _steps(2)
+
+## At the smith's counter in the yard: his prosthetic with the next step and its price; paid,
+## the purse is lighter and the man in the yard has the refitted one on him at once.
+func test_the_smith_refits_a_prosthetic_in_the_yard() -> void:
+	var body0 = Save.get_value("body", {})
+	var coins0 = Save.get_value("coins", null)
+	Save.set_value("body", Body.sanitize({"missing": ["forearmR"], "prosthetics": {"forearmR": "blade"}}))
+	Save.set_value("coins", 500)
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	for i in 10:
+		await get_tree().physics_frame
+	t.eq(menu.match_.me.f.arm.R.fore.pro_level, 0, "he walks in with the physician's blade arm")
+	var price := Body.pro_step_price("blade", 0)
+	menu.smith_tab = "weapons"
+	menu.show_screen("yard")
+	await get_tree().process_frame
+	var step: Button = null
+	for b in menu.find_children("*", "Button", true, false):
+		if String(b.text).begins_with(Loc.t("Refit and rivet")):
+			step = b
+	t.check(step != null and not step.disabled and String(step.text).contains(str(price)), "the smith offers the first step at its price (%s)" % (step.text if step else "none"))
+	if step:
+		step.pressed.emit()
+	for i in 10:
+		await get_tree().physics_frame
+	t.eq(menu.coins(), 500 - price, "paid for")
+	t.eq(Body.pro_level(menu.body(), "forearmR"), 1, "kept in his save")
+	t.eq(menu.match_.me.f.arm.R.fore.pro_level, 1, "and on him in the yard at once")
+	t.check(menu.match_.me.f.weapons.R != null and menu.match_.me.f.fixed_hand.R, "the blade still his right arm")
+	menu.set_body(Body.upgrade_prosthetic(menu.body(), "forearmR").body)
+	menu.show_screen("yard")
+	await get_tree().process_frame
+	var last: Array = menu.find_children("*", "Button", true, false).filter(func(b): return String(b.text) == Loc.t("Nothing finer can be made"))
+	t.check(last.size() == 1 and last[0].disabled, "a master's work: nothing more offered")
+	var start: int = menu.START_COINS
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("body", body0 if body0 is Dictionary else {})
+	Save.set_value("coins", coins0 if coins0 != null else start)
+	await get_tree().process_frame
