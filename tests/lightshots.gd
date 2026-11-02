@@ -2,7 +2,8 @@ extends Node
 ## The same moment of a fight under several lighting looks, side by side for choosing one
 ## (`-- --probe lightshots`, needs a display; SHOT_DIR is where the PNGs go). A training bout runs
 ## on autopilot until a hard blow lands, the physics is stopped there, and every look in LOOKS is
-## put on the same frozen scene: once close on the fight, once wide over the arena.
+## put on the same frozen scene: once close on the fight, once wide over the arena. LIGHT_WAIT:
+## the most physics frames to wait for that blow (3600).
 
 const LOOKS := {
 	"a_now": {},
@@ -39,7 +40,8 @@ func _ready() -> void:
 	var m = menu.match_
 	m.combat.hit.connect(func(h): if big.is_empty() and float(h.get("J", 0.0)) > 25.0 and h.get("p") is Vector3: big = h)
 	var waited := 0
-	while big.is_empty() and waited < 120 * 30:
+	var wait_max := int(OS.get_environment("LIGHT_WAIT")) if OS.get_environment("LIGHT_WAIT") != "" else 120 * 30
+	while big.is_empty() and waited < wait_max:
 		await get_tree().physics_frame
 		waited += 1
 	for i in 4:

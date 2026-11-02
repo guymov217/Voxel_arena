@@ -96,6 +96,15 @@ func _draw_at(t: Transform3D) -> void:
 		if is_instance_valid(n):
 			n.global_transform = t
 
+## Seen through, `a` from 0 (solid) to 1 (gone), with all that is drawn with it (its armour): the
+## fight camera fades its own fighter's part that stands between it and the blow (CameraRig).
+var see_through := 0.0
+func set_see_through(a: float) -> void:
+	see_through = a
+	for gi in [mmi, skin, jaw_mesh, bone_out, dangle_mesh] + draw_with:
+		if gi != null and is_instance_valid(gi) and gi is GeometryInstance3D:
+			(gi as GeometryInstance3D).transparency = a
+
 ## An open break: the broken end of the bone stands out through the torn skin (user: it has to
 ## look like bone, very real, the break the most real thing in the game), and like everything
 ## else it is voxels and it breaks (user): a shaft of bone cubes as thick as that limb's bone,
@@ -2813,9 +2822,16 @@ func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:
 
 ## Whether there is still flesh of this part where `child` is jointed on (an upper arm's end for
 ## the forearm, the neck for the head): with none, the child hangs on nothing and must fall.
+## "Where it is jointed on" is as wide as the child is across its root (2.2 voxels at least):
+## within 2.2 voxels only, one hard thrust into the base of the neck, its channel wider than
+## that, took the head off, and a bout was over at a stab (user: the fights end too fast).
 func holds_child(child: VoxelPart) -> bool:
 	var pt := anchor_point(child)
-	return not voxels_within(pt, vf * part_scale * 2.2, 1).is_empty()
+	var r := vf * part_scale * 2.2
+	if child.def.get("ca") != null:
+		var ax: int = child._root_axis()[0]
+		r = maxf(r, 1.1 * minf(child.half_ext[(ax + 1) % 3], child.half_ext[(ax + 2) % 3]))
+	return not voxels_within(pt, r, 1).is_empty()
 
 func near_child_anchor(lump: PackedInt32Array) -> bool:
 	var pts := []

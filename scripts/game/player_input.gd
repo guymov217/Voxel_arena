@@ -16,6 +16,13 @@ var rmb := false
 var mmb := false                   # the wheel held down: the mouse turns the camera alone
 var free_look := Vector2.ZERO      # (yaw, pitch) the camera is turned off the fighter's line by it
 var thrust := 0.0
+## The thrust key held on the keyboard, the mouse drives the blade along its own line, in depth
+## (user: hold a key and the weapon goes from blows across to stabs in depth): pushed forward the
+## point goes in, drawn back it comes out again, as fast as the mouse goes; side to side it does
+## what it always does. From a pad (no mouse) the thrust drives itself out as before.
+var depth := 0.0          # -1 drawn back toward the chest .. 0 where the hand was .. 1 the full lunge
+var depth_key := false    # the thrust held on the keyboard: the mouse has the depth
+const DEPTH_PX := 240.0   # mouse travel (pixels, at sensitivity 1) from where the hand was to the full stab
 var twist := 0.0
 var aiming := false   # a bow, a crossbow or a throw in hand: the mouse turns the view, whatever is held
 var two_handed := false   # both hands on one haft: either button swings it (set_two_handed)
@@ -48,6 +55,10 @@ var _pad_items_held := {}
 
 func _ready() -> void:
 	setup_actions()
+	# A pad plugged in (again) is measured afresh where its sticks lie.
+	Input.joy_connection_changed.connect(func(dev: int, _on: bool):
+		_pad_rest.erase(dev)
+		_pad_live.erase(dev))
 
 ## Input actions from the binding table (key codes like "KeyW", "ShiftLeft", "Space").
 func setup_actions(custom := {}) -> void:
@@ -126,6 +137,16 @@ func held(id: String) -> bool:
 	var act := "va_" + id
 	return InputMap.has_action(act) and Input.is_action_pressed(act)
 
+## Whether a pad's own button for `id` is down (a thrust held on a pad, which has no mouse to
+## drive it in depth, drives itself out).
+func _pad_holds(id: String) -> bool:
+	if not PAD.has(id):
+		return false
+	for p in Input.get_connected_joypads():
+		if Input.is_joy_button_pressed(p, PAD[id]):
+			return true
+	return false
+
 func pressed(id: String) -> bool:
 	return _edges.get(id, false)
 
@@ -203,6 +224,10 @@ func _mouse(e: InputEvent) -> void:
 
 ## The mouse moved (caught): the hand whose button is down goes with it, or the view turns.
 func _motion(rel: Vector2) -> void:
+	# The thrust key held: the mouse's push on and back is the blade's depth, not its height.
+	if depth_key and not aiming:
+		depth = clampf(depth - rel.y * sensitivity * sens_y / DEPTH_PX, -1.0, 1.0)
+		rel.y = 0.0
 	var both := lmb and rmb and not two_handed
 	var h = main if lmb or (rmb and two_handed) else (off if rmb else null)
 	if h == null or aiming:
@@ -220,6 +245,7 @@ func reset_hands() -> void:
 	main = {"x": 0.1, "y": 0.15}
 	off = {"x": -0.35, "y": 0.1}
 	thrust = 0.0
+	depth = 0.0
 
 ## Both hands on one haft, the off hand's mark is not its own: either button (or both) swings
 ## the weapon with the main hand's. Moved along unseen under the grip, the off hand's mark was
@@ -230,19 +256,60 @@ func set_two_handed(on: bool) -> void:
 		off = {"x": -0.35, "y": 0.1}
 	two_handed = on
 
+## Each pad's sticks and triggers as they lie untouched, and whether it has been taken up yet.
+var _pad_rest := {}
+var _pad_live := {}
+const PAD_AXES := [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y, JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y, JOY_AXIS_TRIGGER_LEFT, JOY_AXIS_TRIGGER_RIGHT]
+
+## A pad's axes against where they lie untouched, and whether it is in use: a pad counts only
+## once a button of it is pressed or a stick or trigger is moved well off where it lay when it
+## was first seen. A stick that rests off centre, or a wheel, pedals or a virtual pad that reads
+## as a gamepad with an axis held over, walked the man off sideways by himself with the sword hand
+## up (user video 1029: "the strange drift to the left when I do nothing"). `raw` axis -> value.
+static func pad_reading(raw: Dictionary, rest: Dictionary, live: bool, buttons: bool) -> Dictionary:
+	var rel := {}
+	var moved := false
+	for ax in raw:
+		var r := float(rest.get(ax, raw[ax]))
+		rel[ax] = float(raw[ax]) - r
+		if absf(float(rel[ax])) > 0.5:
+			moved = true
+	return {"rel": rel, "live": live or buttons or moved}
+
 ## The gamepad, read once a step: sticks and triggers (buttons come through the input actions).
 func _pad(dt: float) -> void:
-	var pads := Input.get_connected_joypads()
-	if pads.is_empty():
+	var d := -1
+	for p in Input.get_connected_joypads():
+		# Only a pad the game knows for one (not a wheel, pedals or a flight stick).
+		if Input.is_joy_known(p):
+			d = p
+			break
+	if d < 0:
 		pad_move = Vector2.ZERO
 		pad_r = false
 		pad_l = false
 		return
-	var d: int = pads[0]
+	var raw := {}
+	for ax in PAD_AXES:
+		raw[ax] = Input.get_joy_axis(d, ax)
+	if not _pad_rest.has(d):
+		_pad_rest[d] = raw.duplicate()
+	var any_button := false
+	for b in [JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_START] + PAD_ITEMS:
+		if Input.is_joy_button_pressed(d, b):
+			any_button = true
+	var rd := pad_reading(raw, _pad_rest[d], bool(_pad_live.get(d, false)), any_button)
+	_pad_live[d] = rd.live
+	if not rd.live:
+		pad_move = Vector2.ZERO
+		pad_r = false
+		pad_l = false
+		return
+	var rel: Dictionary = rd.rel
 	var dz := func(v: float) -> float: return 0.0 if absf(v) < 0.18 else (v - signf(v) * 0.18) / 0.82
-	pad_move = Vector2(dz.call(Input.get_joy_axis(d, JOY_AXIS_LEFT_X)), dz.call(Input.get_joy_axis(d, JOY_AXIS_LEFT_Y)))
-	var rt := Input.get_joy_axis(d, JOY_AXIS_TRIGGER_RIGHT) > 0.3
-	var lt := Input.get_joy_axis(d, JOY_AXIS_TRIGGER_LEFT) > 0.3
+	pad_move = Vector2(dz.call(rel[JOY_AXIS_LEFT_X]), dz.call(rel[JOY_AXIS_LEFT_Y]))
+	var rt: bool = float(rel[JOY_AXIS_TRIGGER_RIGHT]) > 0.3
+	var lt: bool = float(rel[JOY_AXIS_TRIGGER_LEFT]) > 0.3
 	if left_handed:
 		var sw := rt
 		rt = lt
@@ -253,7 +320,7 @@ func _pad(dt: float) -> void:
 		jab_l = true
 	pad_r = rt
 	pad_l = lt
-	var rs := Vector2(dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_X)), dz.call(Input.get_joy_axis(d, JOY_AXIS_RIGHT_Y)))
+	var rs := Vector2(dz.call(rel[JOY_AXIS_RIGHT_X]), dz.call(rel[JOY_AXIS_RIGHT_Y]))
 	if not (pad_r or pad_l):
 		look_yaw -= rs.x * dt * 2.1 * sensitivity * sens_x
 		look_pitch = clampf(look_pitch - rs.y * dt * 1.45 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
@@ -268,9 +335,31 @@ func _pad(dt: float) -> void:
 			use_item = i
 		_pad_items_held[i] = down
 
+## Which hands are empty (a boxer's: no weapon, nothing readied in it), set by the match.
+var unarmed_r := false
+var unarmed_l := false
+func set_unarmed(r: bool, l: bool) -> void:
+	unarmed_r = r
+	unarmed_l = l
+
+## A boxer's guard: both fists up before the chin, the lead (left) one a little higher and out.
+const GUARD_MAIN := {"x": 0.1, "y": 1.0}
+const GUARD_OFF := {"x": -0.2, "y": 1.05}
+
+static func _ease_to(h: Dictionary, to: Dictionary, k: float) -> void:
+	h.x = lerpf(float(h.x), float(to.x), k)
+	h.y = lerpf(float(h.y), float(to.y), k)
+
 ## The input for this step, in the same shape as the web game's.
 func sample(dt: float) -> Dictionary:
 	_pad(dt)
+	# Empty-handed, a fist that is not being thrown goes back up into the guard (user: with no
+	# weapon he boxes, his hands in a boxer's guard); a weapon stays where it was last aimed.
+	var gk := minf(1.0, dt * 10.0)
+	if unarmed_r and not (lmb or pad_r or (two_handed and (rmb or pad_l))):
+		_ease_to(main, GUARD_MAIN, gk)
+	if unarmed_l and not (rmb or pad_l) and not two_handed:
+		_ease_to(off, GUARD_OFF, gk)
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		lmb = false   # let go of the mouse with a button down: its release never reaches us
 		rmb = false
@@ -283,6 +372,9 @@ func sample(dt: float) -> Dictionary:
 	# guard of its own (user: the weapon must hold the last place it was aimed at).
 	var want := 1.0 if held("thrust") else 0.0
 	thrust += (want - thrust) * minf(1.0, dt * 30.0)
+	depth_key = want > 0.0 and not _pad_holds("thrust")
+	if not depth_key:
+		depth = 0.0
 	var inp := {
 		"mx": clampf((1.0 if held("left") else 0.0) - (1.0 if held("right") else 0.0) - pad_move.x, -1.0, 1.0),
 		"mz": clampf((1.0 if held("forward") else 0.0) - (1.0 if held("back") else 0.0) - pad_move.y, -1.0, 1.0),
@@ -290,6 +382,8 @@ func sample(dt: float) -> Dictionary:
 		"off": off.duplicate(),
 		"thrust": 0.0 if hand_l and not hand_r else thrust,
 		"offThrust": thrust if hand_l else 0.0,
+		"depthOn": depth_key,
+		"depth": depth,
 		"power": hand_r or hand_l,
 		"jabR": jab_r,
 		"jabL": jab_l,
@@ -352,6 +446,7 @@ static func pack(inp: Dictionary) -> Array:
 	bits |= (1 if inp.get("throwOther", false) else 0) << 16
 	bits |= (1 if inp.get("grip", false) else 0) << 17
 	bits |= (1 if inp.get("revive", false) else 0) << 19
+	bits |= (1 if inp.get("depthOn", false) else 0) << 20
 	var aim = inp.get("aimAt")
 	bits |= (1 if aim is Vector3 else 0) << 18
 	var out := [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01), snappedf(float(inp.get("charging", 0.0)), 0.01)]
@@ -362,6 +457,9 @@ static func pack(inp: Dictionary) -> Array:
 		var af = inp.get("aimFrom")
 		if af is Vector3:
 			out.append_array([snappedf(af.x, 0.01), snappedf(af.y, 0.01), snappedf(af.z, 0.01), clampf(float(inp.get("wheel", 0.0)), -6.0, 6.0)])
+	# The thrust driven in depth by the mouse: how deep, last of all (bit 20 says it is there).
+	if inp.get("depthOn", false):
+		out.append(snappedf(clampf(float(inp.get("depth", 0.0)), -1.0, 1.0), 0.01))
 	return out
 
 const BITS := ["power", "sprint", "crouch", "jump", "kick", "jabR", "jabL", "grab", "throw", "taunt", "shove", "emote", "limp", "swap"]
@@ -404,4 +502,7 @@ static func unpack(a: Array) -> Dictionary:
 			out.aimFrom = Vector3(clampf(float(a[19]), -300, 300), clampf(float(a[20]), -50, 200), clampf(float(a[21]), -300, 300))
 		if a.size() > 22 and float(a[22]) != 0.0:
 			out.wheel = clampf(float(a[22]), -6.0, 6.0)
+	if bits & (1 << 20) != 0 and a.size() > 16:
+		out.depthOn = true
+		out.depth = clampf(float(a[a.size() - 1]), -1.0, 1.0)
 	return out

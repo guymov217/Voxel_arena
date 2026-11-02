@@ -183,21 +183,24 @@ func reset() -> void:
 	best = {}
 	pending.clear()
 
-## Plays the best clip, then calls `done`. Between rounds (`restore`) the fight goes on after
-## it: every body is put back where it is now, moving as it was.
-func play(done: Callable, restore := false) -> void:
-	if best.is_empty() or m.headless:
+## Plays the best clip, then calls `done`. After it every body is put back where it is now,
+## moving as it was, whether the fight goes on (between rounds) or is over: left as the clip's
+## last moment had them, the dead stood up again behind the result (user: a hyena killed before
+## the kill cam was on its feet after it). `force` plays it in a headless match (the tests).
+func play(done: Callable, force := false) -> void:
+	if best.is_empty() or (m.headless and not force):
 		done.call()
 		return
 	playing = true
+	if m.cam:
+		m.cam.clear_fade()   # (the replay shows him whole, not seen through as the fight camera had him)
 	var tree := m.get_tree()
 	tree.paused = true
 	var ids := {}
 	var now := {}
 	for b in _bodies():
 		ids[b.get_instance_id()] = b
-		if restore:
-			now[b] = [b.global_transform, b.linear_velocity, b.angular_velocity] if b is RigidBody3D else [b.global_transform]
+		now[b] = [b.global_transform, b.linear_velocity, b.angular_velocity] if b is RigidBody3D else [b.global_transform]
 	# The things thrown that are gone now (a pot in pieces) still fly in the replay.
 	if m.get("items") != null:
 		for g in m.items.ghosts:
@@ -303,7 +306,7 @@ func play(done: Callable, restore := false) -> void:
 				b.angular_velocity = now[b][2]
 			if b.has_method("draw_now"):
 				b.draw_now()
-	if restore and m.cam:
+	if m.cam:
 		m.cam.fov = fov0
 	tree.paused = false
 	playing = false

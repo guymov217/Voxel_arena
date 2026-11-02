@@ -732,7 +732,8 @@ func _input_more(e: InputEvent) -> void:
 	show_screen("controls", "%s: %s" % [what, PlayerInput.label_of(code)])
 
 func _tutorial() -> void:
-	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
+	# (A kit of its own: the pot it hands over for the kit's step, and none of the campaign's.)
+	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}, "inventory_override": {}})
 
 ## Foes kept out of the training for now (the flail fighter: the flail is not right yet).
 const TRAINING_OUT := ["flailman"]
@@ -952,17 +953,20 @@ func _training_bag(v: VBoxContainer) -> void:
 
 ## The forge from the main menu: the smith's forge as it is, to design weapons and keep them in
 ## My designs; nothing is taken from here or paid for (the smith makes a design in the campaign).
-func _workshop_forge() -> void:
+## With `lesson`, the forge's guided lesson (where the tutorial leads), on a plain gladius.
+func _workshop_forge(lesson := false) -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
 	f.free_build = true
 	f.workshop = true
 	var g: Array = f.gallery()
-	f.open((g[0] as Dictionary).duplicate(true) if not g.is_empty() else Data.preset("gladius").duplicate(true), 0, func(_d, _c):
+	f.open((g[0] as Dictionary).duplicate(true) if not g.is_empty() and not lesson else Data.preset("gladius").duplicate(true), 0, func(_d, _c):
 		f.queue_free()
 		show_screen("main"))
 	panel.visible = false
 	f.tree_exited.connect(func(): panel.visible = true)
+	if lesson:
+		f.start_lesson()
 
 ## The forge's "Try it in the arena": a training bout with the weapon on the anvil in hand and
 ## the dummy picked there in front of it; Esc (or Leave) goes back to the forge as it was (to
@@ -3820,7 +3824,8 @@ func _on_finished(r: Dictionary) -> void:
 	if match_ != was:
 		return   # restarted (R) in the meantime
 	var mode := match_.mode if match_ else "campaign"
-	if match_ and match_.tut and match_.tut.finished:
+	var to_lesson: bool = match_ != null and match_.tut != null and match_.tut.finished
+	if to_lesson:
 		Save.set_value("tutorial_done", true)
 	var mission_text := _settle_missions(r, match_.mode if match_ else "")
 	if mode == "circus" and match_ and match_.role != "guest":
@@ -3828,7 +3833,8 @@ func _on_finished(r: Dictionary) -> void:
 		_end_match()
 		_circus_finished(r, inv)
 		return
-	if match_ and match_.me and match_.role != "guest" and mode != "circus":
+	# (A kit lent for the bout, training's bag or the tutorial's pot, is not the one kept.)
+	if match_ and match_.me and match_.role != "guest" and mode != "circus" and not last_start.has("inventory_override"):
 		set_kit(match_.me.get("inventory", kit()))
 	if mode == "campaign" and match_ and match_.role == "guest":
 		# A guest's own sword takes its knocks too: the host does not keep it, he does.
@@ -3886,6 +3892,11 @@ func _on_finished(r: Dictionary) -> void:
 			_campaign_lost(r)
 			last_result = {"text": (Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
 	_end_match()
+	if to_lesson:
+		# The tutorial is done: on to the forge, to learn it there (its own lesson).
+		visible = true
+		_workshop_forge(true)
+		return
 	if Net.active() and not Net.is_host():
 		show_screen("room")
 	else:

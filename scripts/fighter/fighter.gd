@@ -89,6 +89,7 @@ const LEAN_MAX := 0.75
 var blood := 100.0
 var stamina := 100.0
 var stagger := 0.0
+var daze_t := 0.0   # rocked by a blow (a fist on the jaw): his hands and his feet answer less for a moment
 var concussion := 0.0
 var pain := 0.0
 var time := 0.0
@@ -209,6 +210,13 @@ var two_main = null    # and the main hand (for the tests)
 var two_gap = null     # the off hand's place from the main hand, along the blade's line
 var grip_wait := 0.0   # H pressed with the haft's other end behind him: the off hand reaches for it in front, and takes it once it is there
 var grip_gentle := false   # (that reach after a weapon taken up by hand: the off hand closes on the haft only once it is on it)
+## The off hand means to be on the main weapon's haft: a two-hander in both hands, or H pressed.
+## Let go of it for a moment (dragged round behind his back in a wide stroke, a weapon taken up
+## while the stroke went on) it goes after the haft and takes it again as soon as it can, for as
+## long as it takes, instead of giving up after a second and a half and leaving him swinging a
+## two-handed sword in one hand (user video 1026). Only H, the weapon leaving the hand, something
+## put in the off hand or that arm hurt past holding ends it.
+var grip_want := false
 var forearms_pass := false   # the forearms let each other by: the off hand going to the haft beside the other fist, and holding it there
 var haft_behind_t := 0.0    # how long the off hand on the haft has been dragged behind his back
 var reach := {"R": null, "L": null}   # G: a hand on its way to a weapon's grip, or closed on it and turning it into the fist
@@ -1111,12 +1119,89 @@ func equip(side: String, design: Dictionary) -> void:
 		rot = PD.quat_of(fore) * grip_q(w)
 	var hand := hand_world(side)
 	w.global_transform = Transform3D(Basis(rot), hand - rot * w.grip_main)
+	if not w.is_shield and _lift_off_sand(side, w):
+		hand = hand_world(side)
 	w.build_chain()
 	_exempt(w)
 	w.set_held_by(self)
 	weapons[side] = w
 	weapon_joints[side] = _grip_joint(fore, w, hand)
 	w.welded = not w.is_shield
+
+## The lowest a weapon reaches: the bottom of its lowest cube, where it is now (the corners of
+## the box round them all reached lower than any cube of a blade held aslant).
+static func lowest_of(w: Weapon) -> float:
+	var xf: Transform3D = w.global_transform
+	var hv: float = w.vs * 0.5
+	var down: float = (absf(xf.basis.x.y) + absf(xf.basis.y.y) + absf(xf.basis.z.y)) * hv
+	var lo := INF
+	for i in w.vox.size():
+		if w.alive[i]:
+			lo = minf(lo, (xf * (Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]) * w.vs)).y - down)
+	return lo
+
+## Put in a hand hanging low (bought at the smith, a bout begun with the hands down), a long
+## blade went in through the sand and the hand held it there (user: he ran about with the new
+## sword half under the floor; a zweihander's point was a third of a metre in): the forearm is
+## turned up about the elbow, the weapon with it, until the weapon is clear. True if it moved.
+func _lift_off_sand(side: String, w: Weapon) -> bool:
+	var fore: VoxelPart = arm[side].fore
+	var upper: VoxelPart = arm[side].upper
+	if fore.missing or fore.severed or upper.missing or upper.severed:
+		return false
+	var floor_y := ground_level + 0.03 * S
+	if lowest_of(w) >= floor_y:
+		return false
+	var el: Vector3 = upper.global_transform * fore.pa
+	# About the elbow's own hinge, the way that bends it (the hand comes up in front): turned
+	# about any other line, or the other way, an arm hanging straight down went up behind him,
+	# bent back past what an elbow does, and the joint threw it about.
+	var hinge: Vector3 = upper.global_transform.basis.x.normalized()
+	var fwd := Vector3(sin(yaw), 0.0, cos(yaw))
+	var rv: Vector3 = hand_world(side) - el
+	var sg := 1.0 if (Basis(hinge, 0.3) * rv).dot(fwd + Vector3.UP) >= (Basis(hinge, -0.3) * rv).dot(fwd + Vector3.UP) else -1.0
+	var turn := Transform3D(Basis(hinge, 0.15 * sg), Vector3.ZERO)
+	var about := Transform3D(Basis(), el) * turn * Transform3D(Basis(), -el)
+	for k in 16:
+		fore.global_transform = about * fore.global_transform
+		for b in w.bodies():
+			if b is Node3D:
+				b.global_transform = about * b.global_transform
+		if lowest_of(w) >= floor_y:
+			break
+	return true
+
+## A weapon in hand never stays in the sand: one more than a few centimetres in is pushed up at
+## its lowest point, so it drags along the top (dug in, the hand's pull held it there while he
+## ran, user). Not a weapon stuck in a body, a chain's head or one held by a man down.
+static var unground_on := true   # (probes: off, to see what it changes)
+func _unground(side: String) -> void:
+	var w: Weapon = weapons[side]
+	if not unground_on or w == null or w.is_shield or w.stuck != null or w.design.get("chain") != null or state != "stand":
+		return
+	var box: AABB = w.local_box()
+	var lo := INF
+	for i in 8:
+		lo = minf(lo, (w.global_transform * box.get_endpoint(i)).y)
+	if ground_level - lo < 0.04:
+		return
+	# The box is in: is a cube of it? (Held aslant, the box's corner dips where no cube is.)
+	var xf: Transform3D = w.global_transform
+	lo = INF
+	var at := Vector3.ZERO
+	for i in w.vox.size():
+		if w.alive[i]:
+			var q: Vector3 = xf * (Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]) * w.vs)
+			if q.y < lo:
+				lo = q.y
+				at = q
+	lo -= (absf(xf.basis.x.y) + absf(xf.basis.y.y) + absf(xf.basis.z.y)) * w.vs * 0.5
+	var depth := ground_level - lo
+	if depth < 0.04:
+		return
+	var up_v := depth * 25.0 - w.linear_velocity.y
+	if up_v > 0.0:
+		w.apply_impulse(Vector3.UP * up_v * w.mass * 0.5, at - w.global_position)
 
 ## A weapon in your hands does not collide with your own body or your other weapon.
 func _exempt(w: Weapon) -> void:
@@ -1195,6 +1280,8 @@ func _guard_two_hander(w: Weapon) -> void:
 	for b in w.bodies():
 		if b is Node3D:
 			b.global_transform = moved * b.global_transform
+	# (Brought round to the guard from a hand hanging low, its point could still be in the sand.)
+	_lift_off_sand("R", w)
 
 func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 	if not w or is_bow(w):
@@ -1255,6 +1342,9 @@ func release(side: String) -> Weapon:
 		weapon_joints.L.queue_free()
 		weapon_joints.L = null
 	two_handed = false if side == "R" else two_handed
+	if side == "R":
+		grip_want = false
+		grip_wait = 0.0
 	weapons[side] = null
 	if arm[side].fore.severed:
 		fell_with_arm[side] = w
@@ -1353,8 +1443,9 @@ func toggle_grip() -> Variant:
 	var w: Weapon = weapons.R
 	if not w or w.is_shield or not alive or w.design.get("chain") != null:
 		return null
-	if two_handed or grip_wait > 0.0:
+	if two_handed or grip_wait > 0.0 or grip_want:
 		grip_wait = 0.0
+		grip_want = false
 		if weapon_joints.L:
 			weapon_joints.L.queue_free()
 			weapon_joints.L = null
@@ -1379,6 +1470,7 @@ func toggle_grip() -> Variant:
 		return null
 	# Never onto the haft behind his back (user): where that end of it is behind him, the hand
 	# reaches for it in front and closes on it when the haft comes round (_grip_reach).
+	grip_want = true
 	if _out_front(w.global_transform * w.grip_off) != Vector3.ZERO and not is_bow(w):
 		grip_wait = 1.5
 		return "wait"
@@ -1395,16 +1487,27 @@ func _grip_reach(dt: float) -> void:
 	var w: Weapon = weapons.R
 	if two_handed:
 		grip_wait = 0.0
+		grip_want = true
 		if state == "stand" and w and weapon_joints.L and _out_front(hand_world("L")).length() > 0.04 * S:
 			haft_behind_t += dt
 			if haft_behind_t > 0.12:
 				haft_behind_t = 0.0
 				_off_hand_off_haft()
+				grip_want = true   # (let go for a moment only: it goes after the haft again)
 				grip_wait = 1.5
 		else:
 			haft_behind_t = 0.0
 		return
 	haft_behind_t = 0.0
+	# Meant to hold it in both hands: the reach goes on until the hand is on the haft again (it
+	# gave up after a second and a half, user video 1026), for as long as the off hand is free
+	# for it; it waits while that hand is busy (a pot, a weapon taken up in it ends it).
+	if grip_want and grip_wait <= 0.0:
+		if w == null or w.is_shield or weapons.L or w.design.get("chain") != null or fixed_hand.R or fixed_hand.L or w.grip_off == null:
+			grip_want = false
+		elif held_item == null and off_hand_free() and state == "stand":
+			grip_wait = 0.5
+			grip_gentle = false
 	if grip_wait <= 0.0:
 		grip_gentle = false
 		return
@@ -1839,6 +1942,7 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 			w.grip_off = w.two_hand_off()
 			grip_wait = 1.5
 			grip_gentle = true
+			grip_want = true
 			_forearms_pass(true)
 		else:
 			two_handed = true
@@ -2298,6 +2402,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
 	space = get_world_3d().direct_space_state
 	_no_fling()
+	_unground("R")
+	_unground("L")
 	for p in parts:
 		if p.flinch_t > 0.0:
 			p.flinch_t -= dt
@@ -2359,7 +2465,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var blood_f: float = minf(1.0, 0.35 + blood / 100.0)
 	pain = maxf(0.0, pain - dt * 0.2)
 	var heavy := 1.0 - 0.5 * injury
-	var stam_f := (0.3 + 0.7 * stamina / 100.0) * (0.6 + 0.4 * heavy)
+	# Out of breath he is slower and weaker, not helpless (at a third of his strength he stood
+	# and waited to be killed, user).
+	var stam_f := (0.5 + 0.5 * stamina / 100.0) * (0.6 + 0.4 * heavy)
 	var conc_f := 1.0 - concussion * 0.6
 
 	# Bleeding, recovery.
@@ -2396,6 +2504,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	_check_joints(dt)
 	keep_above_ground()
 	stagger = maxf(0.0, stagger - dt * 1.6)
+	daze_t = maxf(0.0, daze_t - dt)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
 	concussion = maxf(float(mods.drunk), concussion - dt * (0.05 if state == "stand" else 0.16))
@@ -2621,7 +2730,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if tl_m != null:
 			var d: Vector3 = tl_m.dir
 			var t_l := float(tl_m.t)
-			if t_l < THRUST_DRAW:
+			if inp.get("depthOn", false):
+				# Driven in depth by the mouse: the feet go in after the point only once the arm is
+				# nearly out, as far as it is pushed on past that (a careful probe stays where it is).
+				step = Vector3(d.x, 0.0, d.z) * clampf((float(inp.get("depth", 0.0)) - 0.6) / 0.4, 0.0, 1.0) * clampf(1.0 - 1.3 * absf(d.y), 0.0, 1.0)
+			elif t_l < THRUST_DRAW:
 				# (Not while the hand is drawn back: the step is the drive's, the body's weight going
 				# in behind the point. Stepping in from the start, the trunk went forward as the hand
 				# came back and the hand never drew back at all.)
@@ -2653,7 +2766,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
 	var load_ := Armory.burden(carried_kg())
-	var speed := (3.8 if sprint else 2.1) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
 	last_move = yaw_q * move_local if live else Vector3.ZERO
@@ -3039,7 +3152,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# ----- Arms and weapons -----
 	var power: bool = inp.get("power", false) and stamina > 3.0
 	if power:
-		stamina_use += 3.0 * dt
+		stamina_use += 1.5 * dt
 	two_front = null
 	two_gap = null
 	for side in ["R", "L"]:
@@ -3054,7 +3167,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			hp_vel[side] = hpv
 			hp_prev[side] = Vector2(float(hp_now.get("x", 0.0)), float(hp_now.get("y", 0.0)))
 			var wm: float = weapons[side].mass if weapons[side] else 0.5
-			stamina_use += (0.9 * minf(12.0, hpv.length()) + 0.03 * minf(120.0, hpa.length())) * (0.7 + 0.12 * minf(8.0, wm)) * dt
+			# (Three hard strokes emptied him and he stood waiting to be cut down, user: the work
+			# of a stroke is about half what it was.)
+			stamina_use += (0.5 * minf(12.0, hpv.length()) + 0.015 * minf(120.0, hpa.length())) * (0.7 + 0.12 * minf(8.0, wm)) * dt
 		else:
 			hp_vel[side] = Vector2.ZERO
 			var hp_now2: Dictionary = hand_input[side]
@@ -3075,7 +3190,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var rel_w: Vector3 = sw.angular_velocity - torso.angular_velocity
 		var haft: Vector3 = PD.quat_of(sw) * Vector3.UP
 		var tip := (rel_w - haft * rel_w.dot(haft)).length() * sw.reach
-		stamina_use += 0.6 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
+		stamina_use += 0.35 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	# Armour is carried: every exertion (sprinting, swinging, the struggle) costs more breath
 	# the more he has on.
 	stamina_use *= float(Armory.burden(carried_kg()).breath)
@@ -3084,7 +3199,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if S > 1.2:
 		stamina_use /= maxf(1.0, pow(S, 1.5) * float(mods.get("strength", 1.0)))
 	var still := Vector2(v_smooth.x, v_smooth.z).length() < 0.4
-	var regen := 3.0 if stamina_use > 0.02 * dt * 60.0 else (18.0 if still else 9.0)
+	# He gets his wind back between strokes and even while he works, if more slowly.
+	var regen := 7.0 if stamina_use > 0.02 * dt * 60.0 else (22.0 if still else 12.0)
 	# A chest cut open or stove in: he gets his breath back slowly.
 	regen *= (0.35 + 0.65 * torso.function()) * float(mods.get("wind", 1.0))   # (wind: the trainer's)
 	# Torn lungs draw breath slower and fill no further than they still can.
@@ -3407,7 +3523,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		return
 	var w: Weapon = weapons[side]
 	power_now = power
-	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3) * (1.35 if enraged else 1.0)
+	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3) * (1.35 if enraged else 1.0) * (1.0 - 0.6 * minf(1.0, daze_t / 0.3))
 	# A thrust is made with the whole body: the arm drives harder along the line and the body
 	# lunges after the point (held out at arm's length and no more, the point only pricked).
 	var th_in: float = float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0))
@@ -3552,11 +3668,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			thrust_line[side] = tl
 		_line_in_body(tl, t_pos, yaw_q)
 		tl.t += dt
-		var ext := _thrust_ext(tl, tl.o, shoulder[side])
+		# (The player's mouse driving it in depth: as deep as he has pushed it, PlayerInput.depth.)
+		var dp: float = clampf(float(inp.get("depth", 0.0)), -1.0, 1.0) if inp.get("depthOn", false) else NAN
+		var ext := _thrust_ext(tl, tl.o, shoulder[side], INF, dp)
 		thrust_ext[side] = ext
 		# The body leans into a level stab; a stab up or down is the arm's (leaning, the shoulder
 		# would carry the point off its line).
-		thrust_lean = maxf(thrust_lean, clampf((float(tl.t) - THRUST_DRAW) / THRUST_DRIVE, 0.0, 1.0) * clampf(1.0 - 1.5 * absf((tl.dir as Vector3).y), 0.0, 1.0))
+		var drive_k := clampf(dp, 0.0, 1.0) if not is_nan(dp) else clampf((float(tl.t) - THRUST_DRAW) / THRUST_DRIVE, 0.0, 1.0)
+		thrust_lean = maxf(thrust_lean, drive_k * clampf(1.0 - 1.5 * absf((tl.dir as Vector3).y), 0.0, 1.0))
 		target_w = t_pos + yaw_q * ((tl.o as Vector3) + (tl.dir as Vector3) * ext)
 		# Held on the line against the sag of its own weight: asked as far past it as it hangs off.
 		var dw: Vector3 = yaw_q * (tl.dir as Vector3)
@@ -3641,7 +3760,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				if not tl2.has("f_w"):
 					tl2.f_w = hand_world("L")
 				_line_in_body(tl2, t_pos, yaw_q)
-				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z))
+				var dp2: float = clampf(float(inp.get("depth", 0.0)), -1.0, 1.0) if inp.get("depthOn", false) else NAN
+				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z, dp2))
 				target_w = front - gap
 			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
 			var sh_l: Vector3 = t_pos + t_rot * shoulder.L
@@ -4298,7 +4418,7 @@ static func _line_in_body(tl: Dictionary, t_pos: Vector3, yaw_q: Quaternion) -> 
 ## along it (half an arm, to no nearer than just in front of the chest), then driven out fast
 ## past the end of the arm (reached from the shoulder `sh`), held there while the button is down.
 ## Two hands on the haft: `chest_z` is the nearer hand's, which the drawing back is kept off.
-func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF) -> float:
+func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF, depth := NAN) -> float:
 	var d: Vector3 = tl.dir
 	var o := o_l - sh
 	var reach := arm_reach * 0.98
@@ -4322,6 +4442,11 @@ func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF) -> f
 	# Driven a hand past the arm's reach: the straight arm hauls the shoulder after it, the body
 	# leaning into the stab as the feet lunge.
 	e_hi += THRUST_OVER * S
+	# Driven in depth by the player's mouse (the thrust key held): as far along the line as he has
+	# pushed it, from where the hand was (0) out to the full lunge (1) or back to the chest (-1);
+	# the arm's own pace (hand_lead) is what limits how fast it goes in.
+	if not is_nan(depth):
+		return e_hi * depth if depth >= 0.0 else -e_lo * depth
 	var t: float = tl.t
 	if t < THRUST_DRAW:
 		return e_lo * smoothstep(0.0, 1.0, t / THRUST_DRAW)
@@ -4821,9 +4946,18 @@ func _lift_out(p: VoxelPart, allow: float) -> void:
 	if p.linear_velocity.y < 0.0:
 		p.linear_velocity = Vector3(p.linear_velocity.x, 0.0, p.linear_velocity.z)
 
+## Rocked by a blow (a fist on the jaw, a kick): for `t` seconds his hands and his feet answer
+## less (user: every punch must really be felt by the one who takes it).
+func daze(t: float) -> void:
+	daze_t = maxf(daze_t, t)
+
+static var trace_falls := false   # (probes: who put him down)
+var fall_stack := []
 func fall(duration: float, force := false) -> void:
 	if state == "dead":
 		return
+	if trace_falls:
+		fall_stack = get_stack()
 	if bool(mods.get("unstoppable", false)) and not force and blood > 40.0:
 		return
 	state = "down"
@@ -5133,7 +5267,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			_bruise_organs(part, lp, ld, J)
 			_break_trunk_bones(part, lp, J, heavy, res)
 		if part == torso and lp.y < 0.0 and J > 8.0 and not detached:
-			stamina = maxf(0.0, stamina - J * 1.3)
+			stamina = maxf(0.0, stamina - J * 0.6)
 			res.winded = true
 		# A giant's bones are as much thicker as he is bigger: what breaks a man's thigh only
 		# bruises his.
@@ -5930,6 +6064,7 @@ func _off_hand_off_haft() -> void:
 	two_handed = false
 	two_front = null
 	two_gap = null
+	grip_want = false
 
 ## Cut through: the stump side stays on (removed from the falling piece), the piece with
 ## whatever hangs from it is no longer his.

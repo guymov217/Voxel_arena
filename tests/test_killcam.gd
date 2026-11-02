@@ -217,6 +217,73 @@ func test_the_kill_cam_says_how_to_skip_it() -> void:
 	t.check(said.any(func(x): return x.contains("E") and x.to_lower().contains("skip")), "and the kill cam says so (%s)" % [said])
 	kc.queue_free()
 
+## After the replay every body is where it lay before it, the fight over or going on, the clip
+## played through or skipped (user: a hyena killed before the kill cam stood on its feet after
+## it, left as the clip's last moment had it): beasts, a man beheaded, a giant, the player
+## himself, a weapon on the sand; the game runs on after it and the dead stay down.
+func test_the_dead_lie_where_they_fell_after_the_replay() -> void:
+	var cases := [
+		{"foe": "hyena", "cause": "wounds"},
+		{"foe": "wolf", "cause": "wounds", "skip": true},
+		{"foe": "boar", "cause": "wounds", "loose": true},
+		{"foe": "foe:cyclops", "cause": "wounds"},
+		{"foe": "foe:recruit", "cause": "decap"},
+		{"foe": "lion", "cause": "wounds", "me": true},
+	]
+	for c in cases:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": c.foe, "respawn": false, "difficulty": 0.3}, "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+		for i in 120 * 2:
+			await get_tree().physics_frame
+		var foe: Fighter = m.enemies()[0].f
+		var victim: Fighter = m.me.f if c.get("me", false) else foe
+		var killer: Fighter = foe if victim == m.me.f else m.me.f
+		var name_ := String(c.foe) + (" (the player killed)" if victim == m.me.f else "")
+		var up_y := victim.torso.global_position.y
+		var loose = null
+		if c.get("loose", false):
+			loose = m.spawn_loose_weapon(Data.preset("spear"), victim.torso.global_position + Vector3(0.8, 1.5, 0))
+		victim.last_attacker = killer
+		if c.cause == "decap":
+			victim.head.severed = true
+		victim.die(String(c.cause))
+		for i in 120 * 4:
+			await get_tree().physics_frame
+		t.check(m.killcam.has_clip(), "%s: the kill is on tape" % name_)
+		var before := {}
+		for b in m.killcam._bodies():
+			before[b] = (b as Node3D).global_transform
+		var down_y := victim.torso.global_position.y
+		var done := [false]
+		m.killcam.play(func(): done[0] = true, true)
+		var n := 0
+		while not done[0] and n < 120 * 40:
+			await get_tree().process_frame
+			n += 1
+			if c.get("skip", false) and n == 20:
+				Input.action_press("va_kick")
+			if c.get("skip", false) and n == 26:
+				Input.action_release("va_kick")
+		t.check(done[0], "%s: the replay ends (%d frames)" % [name_, n])
+		t.check(not get_tree().paused and not m.killcam.playing, "%s: and the game goes on after it" % name_)
+		var worst := 0.0
+		var worst_of := ""
+		for b in before:
+			if is_instance_valid(b):
+				var off: float = (b as Node3D).global_position.distance_to((before[b] as Transform3D).origin)
+				if off > worst:
+					worst = off
+					worst_of = String(b.name)
+		t.check(worst < 0.02, "%s: every body back where it lay before the replay (%.3f m off: %s)" % [name_, worst, worst_of])
+		if loose != null and is_instance_valid(loose):
+			t.check(before.has(loose), "%s: the weapon on the sand was in the replay too" % name_)
+		for i in 120:
+			await get_tree().physics_frame
+		t.check(victim.torso.global_position.y < up_y * 0.75, "%s: down a second after it (trunk at %.2f m, %.2f standing, %.2f before the replay)" % [name_, victim.torso.global_position.y, up_y, down_y])
+		m.queue_free()
+		await get_tree().process_frame
+
 ## A pot thrown is on the tape, and kept after it shatters, hidden, for the replay to show it in
 ## flight (freed at once, it never was in the kill cam: user).
 func test_a_thrown_pot_is_on_the_tape() -> void:

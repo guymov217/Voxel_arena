@@ -365,7 +365,11 @@ func _blow(g: Dictionary) -> Dictionary:
 		# a dagger a little over half a gladius's, a hammer twice), the arm's share small.
 		m_eff = 0.3 + 1.15 * pow(maxf(0.05, att.mass), 0.6)
 	else:
-		m_eff = 5.0 if bite else (3.6 if kick else (3.2 if jabbing else 2.4))
+		m_eff = 5.0 if bite else (3.6 if kick else (4.0 if jabbing else 3.0))
+		# A big man's fist or foot has his weight behind it (a giant's fist landed no harder than
+		# a man's at the same speed).
+		if punch or kick:
+			m_eff *= clampf(float(att.fighter.S), 1.0, 2.5)
 	var cap: float
 	if is_weapon:
 		cap = 70.0
@@ -379,7 +383,11 @@ func _blow(g: Dictionary) -> Dictionary:
 			cap *= float(att.get_meta("power", 1.0))   # a jab, a hook or a slam: each as hard as its swing
 	else:
 		# (A kick shoves more than it harms: three of them felled a man in a row.)
-		cap = 20.0 if kick else (22.0 if jabbing else 17.0)
+		# A fist that lands is felt (user: every punch, given or taken, must really be felt): a
+		# jab up to 30, a swung fist 24, a giant's fist with a giant's weight behind it.
+		cap = 20.0 if kick else (30.0 if jabbing else 24.0)
+		if punch:
+			cap *= clampf(float(att.fighter.S), 1.0, 2.5)
 	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
 	var heavy := 0.0
 	if is_weapon and att.is_hazard:
@@ -562,6 +570,18 @@ func _blow(g: Dictionary) -> Dictionary:
 			if not cracked0:
 				vic_char.concussion = minf(vic_char.concussion, maxf(conc0, conc0 + Fighter.CONC_PER_BLOW))
 		vic.apply_central_impulse(Vector3(dir.x, dir.y * 0.5, dir.z) * J * 0.7 * vic_char.MS)
+		# The man takes it: rocked back half a step, reeling, his hands and feet slow for a moment
+		# (a punch moved a man less than a nudge, user: knockback, stun, stagger, all of it). The
+		# harder it lands and the bigger the fist against the man, the more.
+		if vic_char is Fighter and not (vic_char is Beast) and vic_char.state == "stand":
+			var ratio := clampf(float(att.fighter.S) / maxf(0.5, float(vic_char.S)), 0.5, 2.5)
+			var k := clampf(J / 20.0, 0.3, 1.5) * ratio
+			var flat := Vector3(dir.x, 0.0, dir.z)
+			if flat.length() > 0.01:
+				vic_char.torso.apply_central_impulse((flat.normalized() * 22.0 + Vector3.UP * 2.0) * minf(k, 2.0) * vic_char.MS)
+			vic_char.stagger = minf(1.0, vic_char.stagger + 0.22 * k * (1.4 if vic == vic_char.head else 1.0))
+			vic_char.daze(0.18 + 0.2 * minf(k, 1.5))
+			vic_char.jolt_t = vic_char.time
 	if kick and not vic.severed and vic_char.get("torso"):
 		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(55.0, J * 3.0)
 		vic_char.torso.apply_central_impulse(Vector3(dir.x * m, 10.0, dir.z * m))

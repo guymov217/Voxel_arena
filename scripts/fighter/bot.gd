@@ -371,6 +371,9 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	if not c.alive:
 		return inp
 	ability_t -= dt
+	# (Counted in time, whatever he is doing: counted only while he circled, a man near the end
+	# of his blood who kept on swinging waited twice as long for his desperate blow.)
+	desperate_t -= dt
 	# Medicus: walk to the most hurt ally and patch him up.
 	if p.get("support", false):
 		var hurt = null
@@ -421,6 +424,14 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var tp: Vector3 = target.torso.global_position
 	var dist := Vector2(tp.x - me.x, tp.z - me.z).length()
 	var S := c.S
+	# A weapon broken down to a stump is thrown aside, and he fights on with his fists (a giant:
+	# his fists and his grip) or takes up another (user: the giant whose hammer broke stood there
+	# and did nothing, measuring his stand-off by the whole hammer and swinging the haft at air).
+	if c.weapons.R and c.weapons.R.is_stub() and c.state == "stand" and not c.fixed_hand.R:
+		var stub: Weapon = c.release("R")
+		if stub:
+			gave_up = stub
+			gave_up_t = 999.0
 	var w: Weapon = c.weapons.R
 	if w != style_w:
 		style_w = w
@@ -507,6 +518,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.ability = {"type": p.ability, "target": target}
 			ability_t = rng.randf_range(p.cooldown[0], p.cooldown[1])
 	var gy := clampf((tp.y + 0.3 - me.y) / S * 0.9, -0.2, 0.8)
+	# Empty-handed he boxes: both fists up before the chin.
+	if not c.weapons.R and c.held_item == null:
+		gy = maxf(gy, 0.95)
+		if not c.weapons.L:
+			inp.off = {"x": -0.2, "y": 1.05}
 	# A shield on the arm is held up before him, whoever he is (only the shield-men did).
 	if p.get("shield", false) or (c.weapons.L and c.weapons.L.is_shield):
 		inp.off = {"x": -0.28, "y": gy}
@@ -638,7 +654,6 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			var closing: float = -to_him.normalized().dot(target.torso.linear_velocity - c.torso.linear_velocity)
 			if closing > 0.7 and rng.randf() < dt * (1.0 + 9.0 * skill):
 				think = 0.0
-		desperate_t -= dt
 		if c.blood < DESPERATE_BLOOD and desperate_t <= 0.0 and not rage and c.state == "stand" and dist < reach * 2.2 and c.stamina > 8.0:
 			desperate = true
 			desperate_t = rng.randf_range(6.0, 9.0)
@@ -819,7 +834,7 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		var best = null
 		var bd := minf(8.0, dist + 1.0)
 		for w in world.get("loose", []):
-			if not is_instance_valid(w) or w.holder != null or w.is_shield or w.alive_count() < 3 or (w == gave_up and gave_up_t > 0.0):
+			if not is_instance_valid(w) or w.holder != null or w.is_shield or w.alive_count() < 3 or w.is_stub() or (w == gave_up and gave_up_t > 0.0):
 				continue
 			var d := Vector2(w.global_position.x - hand_p.x, w.global_position.z - hand_p.z).length()
 			if d < bd:

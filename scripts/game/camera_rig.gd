@@ -5,6 +5,13 @@ extends Camera3D
 var pos := Vector3(0, 3, -9)   # where it wants to be (eased toward its place behind him)
 var eye := pos                  # where it is: that, kept clear of the walls
 var look := Vector3(0, 1, 0)
+var jolt_v := Vector3.ZERO      # the view knocked aside by a blow taken, settling back
+
+## A blow taken jolts the view along `dir`, `k` 0..1 how hard (a few centimetres at most).
+func jolt(dir: Vector3, k: float) -> void:
+	var d := Vector3(dir.x, dir.y * 0.4, dir.z)
+	if d.length() > 0.001:
+		jolt_v += d.normalized() * 0.07 * clampf(k, 0.0, 1.0)
 
 func _ready() -> void:
 	# Moved every frame, after the bodies' interpolated positions: not by the physics.
@@ -65,38 +72,90 @@ static func _blocked(f, eye: Vector3, pts: Array, tip := -1) -> float:
 		if i == 2 or i == tip:
 			continue   # (the feet: the sand at his feet is no matter)
 		var to: Vector3 = pts[i]
-		var hidden := false
 		for p in f.parts:
-			if p.severed:
-				continue
-			var inv: Transform3D = p.global_transform.affine_inverse()
-			var e: Vector3 = p.half_ext * 1.1
-			var a: Vector3 = inv * eye
-			var b: Vector3 = inv * to
-			# The segment against the part's box (slab test).
-			var t0 := 0.0
-			var t1 := 1.0
-			var d := b - a
-			var miss := false
-			for ax in 3:
-				if absf(d[ax]) < 1e-6:
-					if absf(a[ax]) > e[ax]:
-						miss = true
-						break
-				else:
-					var ta := (-e[ax] - a[ax]) / d[ax]
-					var tb := (e[ax] - a[ax]) / d[ax]
-					t0 = maxf(t0, minf(ta, tb))
-					t1 = minf(t1, maxf(ta, tb))
-					if t0 > t1:
-						miss = true
-						break
-			if not miss and t1 < 0.97:
-				hidden = true
+			if not p.severed and _hides(p, eye, to):
+				n += 2.0 if i >= 3 else 1.0
 				break
-		if hidden:
-			n += 2.0 if i >= 3 else 1.0
 	return n
+
+## Whether the part stands on the line from `eye` to `to` (the segment against its box, a slab
+## test), short of the point itself.
+static func _hides(p, eye: Vector3, to: Vector3) -> bool:
+	var inv: Transform3D = p.global_transform.affine_inverse()
+	var e: Vector3 = p.half_ext * 1.1
+	var a: Vector3 = inv * eye
+	var d: Vector3 = inv * to - a
+	var t0 := 0.0
+	var t1 := 1.0
+	for ax in 3:
+		if absf(d[ax]) < 1e-6:
+			if absf(a[ax]) > e[ax]:
+				return false
+		else:
+			var ta := (-e[ax] - a[ax]) / d[ax]
+			var tb := (e[ax] - a[ax]) / d[ax]
+			t0 = maxf(t0, minf(ta, tb))
+			t1 = minf(t1, maxf(ta, tb))
+			if t0 > t1:
+				return false
+	return t1 < 0.97
+
+## Your own body between the camera and the fight is seen through (user: my own body sometimes
+## hides where my weapon lands on the foe): every part of him on the line to the foe's middle,
+## his head, the spot just struck or the blade's point coming on him fades to a ghost of itself
+## (SEE_THROUGH) while it is in the way, and comes back once it is not. The camera's turn round
+## him and its rise do what they can first; this is for what they cannot.
+const SEE_THROUGH := 0.62
+var hiders := {}      # his parts on the line to the fight, last looked
+var faded := {}       # VoxelPart -> how far it is faded now
+var fade_f = null     # whose parts those are
+
+static func _hiders(f, eye: Vector3, pts: Array) -> Dictionary:
+	var out := {}
+	for i in pts.size():
+		if i == 2:
+			continue
+		for p in f.parts:
+			if not p.severed and not out.has(p) and _hides(p, eye, pts[i]):
+				out[p] = true
+	return out
+
+## The parts eased toward solid or seen through (quickly out of the way, slowly back).
+func _fade(f, dt: float) -> void:
+	if fade_f != f:
+		_unfade()
+		fade_f = f
+	if f == null or not is_instance_valid(f):
+		return
+	for p in f.parts:
+		if not is_instance_valid(p):
+			continue
+		var want := SEE_THROUGH if hiders.has(p) else 0.0
+		var now := float(faded.get(p, 0.0))
+		if now == want:
+			continue
+		now = move_toward(now, want, dt * (6.0 if want > now else 2.5))
+		faded[p] = now
+		p.set_see_through(now)
+		var cap = f.joint_caps.get(p)
+		if cap != null and is_instance_valid(cap):
+			cap.transparency = now
+
+## Every part solid again, and nothing in the way until the camera looks again (a kill cam).
+func clear_fade() -> void:
+	_unfade()
+	hiders.clear()
+
+## The parts faded so far solid again (a new fighter followed, the fight over).
+func _unfade() -> void:
+	for p in faded:
+		if is_instance_valid(p):
+			p.set_see_through(0.0)
+			if fade_f != null and is_instance_valid(fade_f):
+				var cap = fade_f.joint_caps.get(p)
+				if cap != null and is_instance_valid(cap):
+					cap.transparency = 0.0
+	faded.clear()
 
 ## The menu's attract mode: a slow orbit around the action.
 var orbit_a := 0.0
@@ -174,7 +233,10 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 			if scan_t <= 0.0:
 				scan_t = 0.1
 				hide_k = _blocked(f, _spot(base, want, Vector2(turn, 0.0), S), pts, tip)
+				hiders = _hiders(f, eye, pts)
 			lift = 0.3 if hide_k > 0.0 else 0.0
+		else:
+			hiders.clear()
 		shift = shift.lerp(Vector2(turn, lift * (1.0 - aim_k)), minf(1.0, dt * 2.0))
 		want = _spot(base, want, shift, S)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
@@ -237,6 +299,10 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		var vy := yv - assist.x
 		var vpp := clampf(vp + assist.y, -1.5, 1.45)
 		look = eye + Vector3(sin(vy) * cos(vpp), sin(vpp), cos(vy) * cos(vpp)) * 6.0 * S
-	global_position = eye
-	if global_position.distance_to(look) > 0.01:
-		look_at(look, Vector3.UP)
+	_fade(f if f != null and is_instance_valid(f) else null, dt)
+	# A blow taken (a fist, a kick) jolts the view a little the way it came, and it settles back
+	# at once (user: every punch must be felt). Small and short: no hit-stop, no zoom.
+	jolt_v = jolt_v.lerp(Vector3.ZERO, minf(1.0, dt * 14.0))
+	global_position = eye + jolt_v
+	if global_position.distance_to(look + jolt_v * 0.4) > 0.01:
+		look_at(look + jolt_v * 0.4, Vector3.UP)

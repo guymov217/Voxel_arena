@@ -314,6 +314,7 @@ func throw_person(e: Dictionary, inp: Dictionary) -> bool:
 			p.apply_central_impulse(Vector3(aim.x * power * 0.08, power * 0.03, aim.z * power * 0.08))
 	t.thrown_by = c
 	t.thrown_t = 1.5
+	flights[t] = {"peak": 0.0, "v": Vector3.ZERO}   # (followed to where he lands: flying_hits)
 	c.stamina = maxf(0.0, c.stamina - 25.0)
 	m.feed.emit((Loc.t("%s CATAPULTED %s!") % [c.display_name, t.display_name]) if strong else (Loc.t("%s tossed %s") % [c.display_name, t.display_name]))
 	m.sfx("whoosh" if strong else "thud", t.torso.global_position)
@@ -322,8 +323,15 @@ func throw_person(e: Dictionary, inp: Dictionary) -> bool:
 		m.crowd_add(c, 12, "human catapult")
 	return true
 
-## A thrown man is a projectile: landing on someone hurts them (and him).
+## A thrown man is a projectile: landing on someone hurts them (and him). And whatever stops him,
+## the sand, the wall, another man, hurts him by how hard it stopped him (user: the giant holds a
+## man in one hand and really throws him, and it does him harm; tossed across the arena he got up
+## from the sand untouched unless he came down on his feet from high up).
+var flights := {}   # Fighter -> {peak, v}: a man thrown by another, followed to his landing
 func flying_hits(dt: float) -> void:
+	for f in flights.keys():
+		if not is_instance_valid(f) or not (f.thrown_t > 0.0) or not f.alive:
+			flights.erase(f)
 	for e in m.entities:
 		var c = e.f
 		if not (c.thrown_t > 0.0):
@@ -331,6 +339,14 @@ func flying_hits(dt: float) -> void:
 		c.thrown_t -= dt
 		var vel: Vector3 = c.torso.linear_velocity
 		var speed := vel.length()
+		var fl = flights.get(c)
+		if fl != null:
+			fl.peak = maxf(float(fl.peak), speed)
+			if float(fl.peak) > 6.0 and speed < float(fl.peak) * 0.5:
+				_throw_land(c, float(fl.peak) - speed, fl.v)
+				flights.erase(c)
+			elif speed > 1.0:
+				fl.v = vel
 		if speed < 3.5:
 			continue
 		for o in m.entities:
@@ -353,6 +369,28 @@ func flying_hits(dt: float) -> void:
 			m.crowd_add(by, 8, "human cannonball")
 			c.thrown_t = 0.0
 			break
+
+## The landing of a man thrown: a blunt blow on the trunk and the skull by how hard he was
+## stopped (as the Hand of Jupiter's, _mind_land), charged to whoever threw him.
+func _throw_land(t: Fighter, drop: float, pv: Vector3) -> void:
+	var by = t.thrown_by if t.thrown_by != null and is_instance_valid(t.thrown_by) else null
+	var J := clampf(drop * 2.6, 8.0, 52.0)
+	var dir: Vector3 = -pv.normalized() if pv.length_squared() > 1e-4 else Vector3.DOWN
+	var was_alive := t.alive
+	for pk in [[t.torso, 1.0], [t.head, 0.45]]:
+		var part: VoxelPart = pk[0]
+		if part == null or part.severed or not t.alive:
+			continue
+		var point := part.global_position
+		var res: Dictionary = t.apply_hit(part, {"impulse": J * pk[1], "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": point, "dir": dir})
+		m.report_hit({"kind": "hit", "p": point, "dir": dir, "J": J * pk[1], "type": "blunt", "char": t, "part": part, "attacker": by, "res": res, "killed": was_alive and not t.alive, "landing": true})
+	if by != null:
+		t.last_attacker = by
+	t.concussion = minf(1.0, t.concussion + 0.25 * J / 52.0)
+	t.stamina = maxf(0.0, t.stamina - J * 0.5)
+	if J > 20.0:
+		m.feed.emit(Loc.t("%s lands hard!") % t.display_name)
+	m.sfx("thud", t.torso.global_position, clampf(J / 40.0, 0.4, 1.0))
 
 ## Q: a two-handed shove at whoever stands in front. It moves a man back a step; one already
 ## off balance, winded or still getting up goes down.
@@ -893,6 +931,7 @@ func target_for(e: Dictionary, candidates: Array):
 	return null
 
 func clear() -> void:
+	flights.clear()
 	for e in m.entities:
 		if e.f is Fighter and e.f.holding != null:
 			let_go(e.f)

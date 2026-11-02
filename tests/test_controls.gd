@@ -47,3 +47,89 @@ func test_both_hands_on_a_haft_any_button_swings_it() -> void:
 	pin.set_two_handed(false)
 	t.check(float(pin.off.y) < 0.5, "the grip let go, the off hand's mark is back at its guard, not up by the head")
 	pin.queue_free()
+
+## A pad counts only once it is used: a stick or a trigger resting off centre (a worn stick, a
+## wheel or a virtual pad read as a gamepad) does not walk the man off sideways by himself with
+## his hand up (user video 1029: "the strange drift to the left when I do nothing").
+func test_a_pad_resting_off_centre_does_not_move_him() -> void:
+	var rest := {JOY_AXIS_LEFT_X: 0.3, JOY_AXIS_LEFT_Y: -0.05, JOY_AXIS_TRIGGER_RIGHT: 0.45}
+	var r := PlayerInput.pad_reading(rest.duplicate(), rest, false, false)
+	t.check(not r.live, "untouched, a pad with its stick and trigger resting off centre is not in use")
+	t.check(absf(float(r.rel[JOY_AXIS_LEFT_X])) < 1e-6 and absf(float(r.rel[JOY_AXIS_TRIGGER_RIGHT])) < 1e-6, "where they rest reads as nothing")
+	var pushed := rest.duplicate()
+	pushed[JOY_AXIS_LEFT_X] = -0.6
+	var r2 := PlayerInput.pad_reading(pushed, rest, false, false)
+	t.check(r2.live and float(r2.rel[JOY_AXIS_LEFT_X]) < -0.8, "pushed well over, it is taken up")
+	t.check(PlayerInput.pad_reading(rest.duplicate(), rest, false, true).live, "and so is a pad whose button is pressed")
+	t.check(PlayerInput.pad_reading(rest.duplicate(), rest, true, false).live, "once taken up it stays in use")
+
+## The thrust key held, the mouse drives the blade in depth (user: hold a key and the weapon goes
+## from blows across to a stab in depth): pushed forward the point goes in, drawn back it comes
+## out, the hand's height is not what moves; and it goes to the host as it is.
+func test_held_thrust_the_mouse_drives_the_blade_in_depth() -> void:
+	var pin := PlayerInput.new()
+	add_child(pin)
+	pin.main = {"x": 0.2, "y": 0.3}
+	Input.action_press("va_thrust")
+	pin.sample(1.0 / 60.0)
+	pin._motion(Vector2(0, -0.5 * PlayerInput.DEPTH_PX))   # pushed forward half way
+	var inp: Dictionary = pin.sample(1.0 / 60.0)
+	t.check(inp.depthOn and absf(float(inp.depth) - 0.5) < 0.01, "pushed half way, the point half way in (%.2f)" % float(inp.depth))
+	t.check(absf(float(inp.main.y) - 0.3) < 1e-6, "the hand's height is not what moved")
+	var back := PlayerInput.unpack(PlayerInput.pack(inp))
+	t.check(back.get("depthOn", false) and absf(float(back.get("depth", 0.0)) - 0.5) < 0.01, "it goes to the host so")
+	var aimed := inp.duplicate()
+	aimed.aimAt = Vector3(1, 2, 3)
+	aimed.aimFrom = Vector3(0, 1, 0)
+	aimed.wheel = 2.0
+	var back2 := PlayerInput.unpack(PlayerInput.pack(aimed))
+	t.check(absf(float(back2.get("depth", 0.0)) - 0.5) < 0.01 and back2.get("aimAt") == Vector3(1, 2, 3) and float(back2.get("wheel", 0.0)) == 2.0, "with an aim and a wheel turn along with it too")
+	pin._motion(Vector2(0, 3.0 * PlayerInput.DEPTH_PX))    # drawn right back
+	inp = pin.sample(1.0 / 60.0)
+	t.check(float(inp.depth) <= -0.99, "drawn back, it comes out toward the chest (%.2f)" % float(inp.depth))
+	Input.action_release("va_thrust")
+	inp = pin.sample(1.0 / 60.0)
+	t.check(not inp.depthOn and float(inp.depth) == 0.0, "let go, the mouse is the hand's again")
+	t.check(not PlayerInput.unpack(PlayerInput.pack(inp)).has("depthOn"), "and nothing of it goes to the host")
+	pin.queue_free()
+
+## In the fight: held, the point goes as deep along its line as the mouse has pushed it (from
+## where the hand was, out to the full lunge, back toward the chest).
+func test_the_point_goes_as_deep_as_the_mouse_pushes_it() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	var f: Fighter = m.me.f
+	var st := {"th": 0.0, "d": 0.0}
+	m.me.drive = func(_e): return {"main": {"x": 0.1, "y": 0.3}, "off": {"x": -0.35, "y": 0.1}, "power": true, "thrust": st.th, "depthOn": st.th > 0.0, "depth": st.d, "look": {"yaw": f.yaw, "pitch": 0.0}}
+	for i in 120:
+		await get_tree().physics_frame
+	st.th = 1.0
+	for i in 30:
+		await get_tree().physics_frame
+	var tl = f.thrust_line.R
+	t.check(tl != null, "the thrust's line is taken")
+	if tl == null:
+		m.queue_free()
+		return
+	var o: Vector3 = tl.o_w
+	var dir: Vector3 = (tl.dir_w as Vector3).normalized()
+	var a0: float = (f.hand_world("R") - o).dot(dir)
+	t.check(absf(a0) < 0.08, "held and not pushed, the hand stays where it was (%.2f m)" % a0)
+	st.d = 1.0
+	for i in 60:
+		await get_tree().physics_frame
+	var a1: float = (f.hand_world("R") - o).dot(dir)
+	t.check(a1 > 0.2, "pushed all the way, the point goes right in (%.2f m)" % a1)
+	st.d = 0.4
+	for i in 60:
+		await get_tree().physics_frame
+	var a2: float = (f.hand_world("R") - o).dot(dir)
+	t.check(a2 < a1 - 0.08 and a2 > 0.0, "drawn part way back, part way out (%.2f m)" % a2)
+	st.d = -1.0
+	for i in 60:
+		await get_tree().physics_frame
+	var a3: float = (f.hand_world("R") - o).dot(dir)
+	t.check(a3 < a2 - 0.05, "drawn right back, back toward the chest (%.2f m)" % a3)
+	m.queue_free()
+	await get_tree().physics_frame

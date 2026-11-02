@@ -94,3 +94,22 @@ func test_a_man_killed_in_the_yard_is_back_in_three_seconds() -> void:
 	t.eq(int(m.me.get("inventory", {}).get("bread", 0)), 2, "with his kit")
 	t.eq(m.humans().size(), 1, "and only once")
 	m.queue_free()
+
+## The stele names every foe of the next bout, the second wave through the other gate too (user:
+## it said two hyenas, and three came out).
+func test_the_board_counts_the_second_wave() -> void:
+	var was = Save.get_value("stage", 1)
+	var n := -1
+	for i in range(1, 70):
+		var st: Dictionary = Data.stage(i, 1)
+		var first: Array = (st.get("rounds", [[]]) as Array)[0] if not (st.get("rounds", []) as Array).is_empty() else []
+		var late: Array = st.get("late", [])
+		if first.size() == 2 and late.size() == 1 and late[0].get("beast", "") == "hyena" and first.all(func(f): return f.get("beast", "") == "hyena"):
+			n = i
+			break
+	t.check(n > 0, "a bout of two hyenas and a third later (stage %d)" % n)
+	if n > 0:
+		Save.set_value("stage", n)
+		var text := YardPlay.next_fight(1)
+		t.check(text.contains("×3"), "the stele says three: %s" % text.replace("\n", " | "))
+	Save.set_value("stage", was)

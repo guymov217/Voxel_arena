@@ -593,6 +593,63 @@ func test_the_walking_keys_fly_the_armour_bench_camera() -> void:
 	a.queue_free()
 	pi_.queue_free()
 
+## The bench's camera is worked as the forge's (user: not as easy as at the weapon forge, the
+## camera moves too fast): the wheel draws it in toward the plate under the mouse, not his middle;
+## the keys fly it across what is in view no faster than the forge's; Turn goes round smoothly.
+func test_the_armour_bench_camera_is_worked_like_the_forge() -> void:
+	var pi_ = PlayerInput.new()
+	add_child(pi_)
+	var a = load("res://scripts/ui/armour_forge.gd").new()
+	add_child(a)
+	a.open(Armory.design_piece("forearms", "iron", 0.0, 1.0, false, false, ""), "forearms", func(_d): pass)
+	a.vp.size = Vector2i(800, 600)   # (headless, nothing lays the bench out)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	# A cell of the body away from the middle of the view, under the mouse.
+	var vs: Vector2 = Vector2(a.vp.size)
+	var at := Vector2(-1, -1)
+	var cell := Vector3.ZERO
+	for cs in a.find_children("*", "CollisionShape3D", true, false):
+		if not cs.has_meta("cell"):
+			continue
+		var p: Vector2 = a.cam.unproject_position((cs as Node3D).global_position)
+		if p.distance_to(vs * 0.5) < vs.y * 0.15 or p.x < 0.0 or p.y < 0.0 or p.x > vs.x or p.y > vs.y:
+			continue
+		var hit: Dictionary = a._aim(p)
+		if not hit.is_empty():
+			at = p
+			cell = a._pos(Vector3(hit.hit))
+			break
+	t.check(at.x >= 0.0, "a plate's place under the mouse off the middle")
+	var d0: float = a.dist
+	var off0: float = (a.focus as Vector3).distance_to(cell)
+	for i in 4:
+		a._zoom(at, 0.88)
+	t.check(a.dist < d0 and (a.focus as Vector3).distance_to(cell) < off0 - 0.05, "the wheel draws in toward it (%.2f m from it, was %.2f)" % [(a.focus as Vector3).distance_to(cell), off0])
+	# Flown on W for a quarter of a second: across less of the view than the forge's crosses.
+	var c0: Vector3 = a.cam.global_position
+	var view_h: float = 2.0 * float(a.dist) * tan(deg_to_rad(a.cam.fov * 0.5))
+	Input.action_press("va_forward")
+	var el := 0.0
+	for i in 30:
+		await get_tree().process_frame
+		el += get_process_delta_time()
+	Input.action_release("va_forward")
+	var rate: float = a.cam.global_position.distance_to(c0) / maxf(1e-3, el)
+	t.check(rate / view_h < 0.95, "W crosses %.2f of the view a second (the forge's: 0.96)" % (rate / view_h))
+	# A Turn goes round him over a few frames.
+	var o0: float = a.orbit.x
+	a.turn_left += ArmourForge.TURN
+	await get_tree().process_frame
+	var o1: float = a.orbit.x
+	for i in 60:
+		await get_tree().process_frame
+	t.check(o1 - o0 < ArmourForge.TURN * 0.5 and absf(a.orbit.x - o0 - ArmourForge.TURN) < 0.01, "Turn goes round him smoothly (%.2f after a frame, %.2f in all)" % [o1 - o0, a.orbit.x - o0])
+	a.queue_free()
+	pi_.queue_free()
+
 ## The fight's HUD never stands over the forge (back from trying a weapon in the arena it came up
 ## over it and took the keys): hidden while a forge is open, back when it goes, a pause or not.
 func test_the_hud_keeps_off_the_forge() -> void:

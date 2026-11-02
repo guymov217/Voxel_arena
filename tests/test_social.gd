@@ -165,6 +165,34 @@ func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	t.check(moves.any(func(s): return s.contains("SLAMS") or s.contains("tossed")), "and hurled or slammed him (%s)" % str(moves))
 	m.queue_free()
 
+## A man a giant throws is hurt where he comes down, the wall or the sand (user: the giant holds
+## a man in one hand and really throws him, and it does him harm).
+func test_a_thrown_man_is_hurt_where_he_lands() -> void:
+	var m := _match()
+	m.me.f.state = "dead"
+	var giant = m.spawn_fighter({"kind": "bot", "name": "Giant", "loadout": {}, "team": 1, "pos": Vector3(0, 0, -6), "yaw": 0.0, "mods": {"bodyScale": 2.0}, "diff": 0.9})
+	giant.erase("bot")
+	giant.drive = _idle
+	var victim := _man(m, Vector3(0, 0, Arena.RADIUS - 3.0), 0.0, {}, "Victim", 0, _idle)
+	await _steps(60)
+	var v: Fighter = victim.f
+	var hits := []
+	m.combat.hit.connect(func(h): if h.get("char") == v and h.get("landing", false): hits.append(h))
+	# Thrown at the wall as a giant throws a man, from a metre up.
+	for p in v.parts:
+		p.linear_velocity = Vector3(0, 2.0, 11.0)
+	v.fall(2.0, true)
+	v.thrown_by = giant.f
+	v.thrown_t = 1.5
+	m.social.flights[v] = {"peak": 0.0, "v": Vector3.ZERO}
+	await _steps(180)
+	var J := 0.0
+	for h in hits:
+		J = maxf(J, float(h.J))
+	t.check(not hits.is_empty() and J >= 15.0, "he is hurt where he lands (J %.1f)" % J)
+	t.check(not hits.is_empty() and hits[0].attacker == giant.f, "charged to the giant who threw him")
+	m.queue_free()
+
 func test_inputs_survive_the_network() -> void:
 	var inp := {"mx": 0.5, "mz": -1.0, "main": {"x": 0.2, "y": -0.3}, "off": {"x": -0.4, "y": 0.1}, "thrust": 0.5, "look": {"yaw": 1.0, "pitch": 0.2},
 		"grab": true, "grabHands": "both", "throw": true, "throwPower": 0.7, "shove": true, "taunt": false, "limp": true, "kick": true}

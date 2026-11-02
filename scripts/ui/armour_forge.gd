@@ -257,12 +257,8 @@ func _build_ui() -> void:
 		pb.pressed.connect(func(): pick.call(colour))
 		pots.add_child(pb)
 	tools.add_child(pots)
-	tools.add_child(UIStyle.button("◀ Turn", func():
-		orbit.x -= TURN
-		_place_camera()))
-	tools.add_child(UIStyle.button("Turn ▶", func():
-		orbit.x += TURN
-		_place_camera()))
+	tools.add_child(UIStyle.button("◀ Turn", func(): turn_left -= TURN))
+	tools.add_child(UIStyle.button("Turn ▶", func(): turn_left += TURN))
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
 	svc.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -563,13 +559,34 @@ func _aim(at: Vector2) -> Dictionary:
 	var n: Vector3 = hit.normal
 	return {"hit": c, "plate": cs.get_meta("plate"), "place": c + Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))}
 
-## The walking keys fly the camera round him, as at the weapon forge (FlyCam).
+## The wheel draws the camera in toward what is under the mouse (or out from it), as at the
+## weapon forge: it drew in on his middle only, and a plate on a wrist was a fly and a slide
+## away (user: the bench's camera was not as easy to work as the forge's).
+func _zoom(at: Vector2, k: float) -> void:
+	var nd := clampf(dist * k, 0.3, 6.0)
+	if k < 1.0:
+		var a := _aim(at)
+		if not a.is_empty():
+			focus = focus.lerp(_pos(Vector3(a.hit)), 1.0 - nd / dist)
+	dist = nd
+	_place_camera()
+
+## The walking keys fly the camera round him, as at the weapon forge (FlyCam), as fast for what
+## is in view as there: flown at the forge's rate for its distance the bench's narrower view
+## raced across the whole man (user: the camera moves too fast). The Turn buttons go round him
+## in a quarter of a second, not in one jump.
 var view_mouse := Vector2(-1, -1)   # where the mouse is over the view (-1: off it)
+var turn_left := 0.0                # what is left of a Turn button's turn (radians)
 func _process(dt: float) -> void:
 	if cam == null:
 		return
+	if turn_left != 0.0:
+		var st := clampf(turn_left, -TURN * 4.0 * dt, TURN * 4.0 * dt)
+		orbit.x += st
+		turn_left -= st
+		_place_camera()
 	var aim := cam.project_ray_normal(view_mouse) if view_mouse.x >= 0.0 else Vector3.ZERO
-	var mv := FlyCam.step(self, cam, aim, maxf(0.5, dist * 0.9), dt)
+	var mv := FlyCam.step(self, cam, aim, maxf(0.3, dist * 0.55), dt)
 	if mv != Vector3.ZERO:
 		focus += mv
 		_place_camera()
@@ -583,12 +600,12 @@ func _on_input(e: InputEvent) -> void:
 			fo.release_focus()
 	if e is InputEventMouseButton:
 		if e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			dist = maxf(0.3, dist * 0.9)
-			_place_camera()
+			_zoom(e.position, 0.88)
 		elif e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(6.0, dist * 1.1)
-			_place_camera()
-		elif e.button_index == MOUSE_BUTTON_MIDDLE:
+			_zoom(e.position, 1.0 / 0.88)
+		elif e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and (e.alt_pressed or (not e.pressed and dragging))):
+			# (Alt and the left button turn him as the middle button does, as at the forge: a
+			# touchpad has no middle button.)
 			dragging = e.pressed
 		elif e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT:
 			if e.pressed:

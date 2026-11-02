@@ -36,7 +36,9 @@ func test_every_part_of_every_creature_can_be_hurt() -> void:
 	m.queue_free()
 
 ## Nothing stays on a body it is not joined to by voxels: the elbow end of the upper arm gone,
-## the forearm (and the hand with it) falls; the flesh at the neck gone, the head falls.
+## the forearm (and the hand with it) falls; the flesh at the neck gone, the head falls. (The
+## flesh that holds a child on is as wide round its joint as the child is across: VoxelPart.
+## holds_child.)
 func test_a_part_joined_to_nothing_falls() -> void:
 	var m := Match.new()
 	add_child(m)
@@ -49,7 +51,7 @@ func test_a_part_joined_to_nothing_falls() -> void:
 	var pt := up.anchor_point(fore)
 	var near := []
 	for i in up.fx.size():
-		if up.alive[i] and up.local_of(i).distance_to(pt) < up.vf * up.part_scale * 2.4:
+		if up.alive[i] and up.local_of(i).distance_to(pt) < _joint_r(up, fore):
 			near.append(i)
 	t.check(not near.is_empty() and near.size() < up.alive_count, "the elbow end of the upper arm (%d of %d voxels)" % [near.size(), up.alive_count])
 	up.remove_voxels(near)
@@ -61,13 +63,18 @@ func test_a_part_joined_to_nothing_falls() -> void:
 	var neck := []
 	var hp := tor.anchor_point(f.head)
 	for i in tor.fx.size():
-		if tor.alive[i] and tor.local_of(i).distance_to(hp) < tor.vf * tor.part_scale * 2.4:
+		if tor.alive[i] and tor.local_of(i).distance_to(hp) < _joint_r(tor, f.head):
 			neck.append(i)
 	tor.remove_voxels(neck)
 	for i in 60:
 		await get_tree().physics_frame
 	t.check(f.head.severed, "the neck's flesh gone, the head falls")
 	m.queue_free()
+
+## The flesh round where `child` is jointed onto `par`, all of it: as wide as the child is
+## across its root, a little over (2.4 voxels at least).
+func _joint_r(par: VoxelPart, child: VoxelPart) -> float:
+	return maxf(par.vf * par.part_scale * 2.4, 1.2 * minf(child.half_ext.x, child.half_ext.z))
 
 ## Where a limb is rooted in its parent, as a scan over all the parent's voxels finds it: the
 ## joint point kept in the box, moved onto the nearest flesh if it lies in the air.

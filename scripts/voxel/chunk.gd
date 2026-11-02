@@ -142,7 +142,8 @@ func _in_a_body() -> bool:
 	var space := get_world_3d().direct_space_state
 	var skip: Array[RID] = [get_rid()]
 	for b in get_collision_exceptions():
-		skip.append(b.get_rid())
+		if b != null:
+			skip.append(b.get_rid())
 	for s in get_children():
 		if s is CollisionShape3D and s.shape != null:
 			var q := PhysicsShapeQueryParameters3D.new()

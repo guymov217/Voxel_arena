@@ -25,6 +25,8 @@ var grip_t := 0.0
 var grip_main := Vector3.ZERO      # local
 var grip_off := Vector3.ZERO
 var reach := 0.6
+var reach_full := 0.6   # its reach as it was made (reach is what is left of it once it breaks)
+var _far0 := 0.0        # how far its business end reached past the hand as made
 var mm: MultiMesh
 var vis: MultiMeshInstance3D = null   # its voxels, drawn where it is this frame (_process)
 var net_id := -1
@@ -123,9 +125,12 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 		stats = ForgeLib.compute_stats(d)   # a forged weapon: its reach, speed and edges from its voxels
 	stats["mass"] = m
 	reach = float(stats.get("reach", 0.6)) * scale_
+	reach_full = reach
 	var grips := _grip_points()
 	grip_main = grips[0] * vs
 	grip_off = grips[1] * vs
+	_tip_dir = _business_dir()
+	_far0 = _far_from_grip()
 	can_sleep = false
 	contact_monitor = true
 	max_contacts_reported = 8
@@ -623,7 +628,43 @@ func knock(index: int, score: float) -> Dictionary:
 		Chunk.spawn(self, pv, Vector3.DOWN)
 	for d in whole:
 		_drop_piece(d)
+	if not pieces.is_empty():
+		refit_reach()
 	return {"indices": idx, "voxels": voxels, "broke": not pieces.is_empty()}
+
+## How far what is left of it reaches out past the hand, the way its business end lay as made
+## (_tip_dir): a hammer snapped above the grip keeps its haft below the hand, which strikes nothing
+## (measured every way from the hand, the long haft still counted for half the hammer's reach).
+var _tip_dir := Vector3.UP
+func _far_from_grip() -> float:
+	var far := 0.0
+	for i in vox.size():
+		if alive[i]:
+			far = maxf(far, (Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs - grip_main).dot(_tip_dir))
+	return far
+
+## The way from the hand to the farthest voxel of it as made.
+func _business_dir() -> Vector3:
+	var best := Vector3.UP
+	var bd := -1.0
+	for i in vox.size():
+		var d: Vector3 = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs - grip_main
+		if d.length() > bd:
+			bd = d.length()
+			best = d
+	return best.normalized() if best.length() > 1e-4 else Vector3.UP
+
+## Broken, it reaches only as far as what is left of it (it kept the reach it was made with: a
+## giant whose hammer broke off at the haft stood off as if it were whole and swung the stump at
+## the air, user).
+func refit_reach() -> void:
+	if _far0 <= 0.0:
+		return
+	reach = reach_full * clampf(_far_from_grip() / _far0, 0.0, 1.0)
+
+## Broken down to a stump: not worth fighting with.
+func is_stub() -> bool:
+	return not is_shield and reach < reach_full * 0.4
 
 ## Voxels `idx` are spent (explosive powder gone off): they are gone, and what they held up falls
 ## off as its own piece. Returns every index removed.
@@ -639,6 +680,7 @@ func spend(idx: Array) -> Array:
 			Chunk.spawn(self, pv, Vector3.DOWN)
 		else:
 			_drop_piece(keep)
+	refit_reach()
 	return out
 
 ## A piece broken off big enough to fight with (half a blade snapped off its hilt, a hammer's

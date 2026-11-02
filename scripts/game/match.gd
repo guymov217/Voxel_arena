@@ -989,7 +989,7 @@ func _physics_process(dt: float) -> void:
 	if tut and not over:
 		tut.update(dt, last_local_inp)
 		if tut.finished:
-			_end(true, "You are ready", "That is all there is to it. The campaign waits at the gate.")
+			_end(true, "You are ready", "Next, the forge: how to make a weapon of your own.")
 	hazards.update(dt)
 	if lion_t > 0.0:
 		lion_t -= dt
@@ -1076,6 +1076,8 @@ func _player_input(f, dt: float) -> Dictionary:
 	if input:
 		input.aiming = shooter != null or input.held("throw")
 		input.set_two_handed(f.net_two_handed if role == "guest" else f.two_handed)
+		var item_side: String = f.item_hand() if f.held_item != null else ""
+		input.set_unarmed(f.weapons.R == null and item_side != "R", f.weapons.L == null and item_side != "L")
 		_bow_sway(f, shooter, dt)
 	var inp: Dictionary = input.sample(dt) if input else {}
 	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
@@ -1288,7 +1290,7 @@ func _round_replay() -> void:
 		var ve = _entity_of(killcam.best.get("victim")) if show else null
 		Net.send_all("kcr", {"kc_v": ve.id if ve != null else -1})
 	if show:
-		await killcam.play(func(): pass, true)
+		await killcam.play(func(): pass)
 	killcam.reset()
 
 func _guest_round_replay(data: Dictionary) -> void:
@@ -1300,7 +1302,7 @@ func _guest_round_replay(data: Dictionary) -> void:
 	killcam.has_clip()
 	var ve = entity_by_id(int(data.get("kc_v", -1)))
 	if ve != null and is_instance_valid(ve.f) and killcam.choose(ve.f):
-		await killcam.play(func(): pass, true)
+		await killcam.play(func(): pass)
 	killcam.reset()
 
 ## The end of the fight on a guest: his own kill cam's best kill, then the result.
@@ -1943,6 +1945,9 @@ func _on_hit(h: Dictionary) -> void:
 		last_hit_of[h.char] = h
 	if tut:
 		tut.on_hit(h)
+	# A fist or a foot landing on the player jolts his view (camera_rig.jolt).
+	if me and cam and h.get("char") == me.f and (h.get("punch", false) or h.get("kick", false)) and h.get("dir") is Vector3:
+		cam.jolt(h.dir, float(h.get("J", 0.0)) / 25.0)
 	if me and h.get("attacker") == me.f and h.get("char") is Fighter and h.char.team != me.f.team:
 		hit_by_me[h.char] = true
 		if h.get("p") is Vector3:

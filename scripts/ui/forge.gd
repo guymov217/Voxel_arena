@@ -33,6 +33,10 @@ var redo_stack: Array = []
 var stroke := {}   # the mouse held down in the voxel view: {erase, done: cells, undo}
 var line_ghost: MultiMeshInstance3D   # the Line tool's path, shown while the end is picked
 var dummy_pick := "gladiator"       # what "Try it in the arena" puts in front of the weapon
+var lesson: ForgeLesson = null      # the guided lesson the tutorial leads into (start_lesson)
+var flown := 0.0                    # how far the walking keys have flown the view (m, the lesson reads it)
+var saves := 0                      # designs saved since the forge opened (the lesson reads it)
+var view_box: Control               # the anvil's view (the lesson's card lies over its foot)
 var dummy_fights := false
 var line_from = null       # the first cell of a line or a box being drawn
 
@@ -253,6 +257,7 @@ func _build_ui() -> void:
 	var right := Control.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(right)
+	view_box = right
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
 	svc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -441,6 +446,75 @@ func _show_mode(m: String) -> void:
 	if tool_bar:
 		_toolbar_ui()
 	_update_texts()
+
+## The guided lesson (ForgeLesson): its card over the foot of the view, one thing to do at a
+## time, Next on a page to read, and a way out of it.
+var lesson_card: PanelContainer = null
+var lesson_bits := {}
+var lesson_key := ""
+func start_lesson() -> void:
+	lesson = ForgeLesson.new(self)
+	lesson_card = PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.07, 0.05, 0.035, 0.93)
+	st.border_color = UIStyle.GOLD
+	st.set_border_width_all(1)
+	st.border_width_left = 4
+	st.set_corner_radius_all(8)
+	st.content_margin_left = 18; st.content_margin_right = 18; st.content_margin_top = 12; st.content_margin_bottom = 12
+	lesson_card.add_theme_stylebox_override("panel", st)
+	lesson_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	lesson_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	lesson_card.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	lesson_card.offset_bottom = -16
+	view_box.add_child(lesson_card)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	lesson_card.add_child(v)
+	lesson_bits.step = UIStyle.label("", 11, UIStyle.BRONZE)
+	lesson_bits.title = UIStyle.label("", 22, UIStyle.GOLD_LIGHT)
+	lesson_bits.text = UIStyle.label("", 15, UIStyle.TEXT)
+	lesson_bits.text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lesson_bits.text.custom_minimum_size = Vector2(540, 0)
+	for k in ["step", "title", "text"]:
+		v.add_child(lesson_bits[k])
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	lesson_bits.next = UIStyle.button("Next", func():
+		if lesson.finished:
+			_end_lesson()
+		else:
+			lesson.next(), true)
+	lesson_bits.skip = UIStyle.button("Skip the lesson", func():
+		lesson.skip()
+		_end_lesson())
+	row.add_child(lesson_bits.skip)
+	row.add_child(lesson_bits.next)
+	v.add_child(row)
+	_lesson_show()
+
+func _end_lesson() -> void:
+	if lesson_card:
+		lesson_card.queue_free()
+	lesson_card = null
+	lesson = null
+
+func _lesson_show() -> void:
+	if lesson == null or lesson_card == null:
+		return
+	var lv := lesson.view()
+	var key := "%s|%s|%s" % [lv.step, lv.ok, lv.get("done", false)]
+	if key == lesson_key:
+		return
+	lesson_key = key
+	lesson_bits.step.text = Loc.t("FORGE LESSON · STEP %d OF %d") % [mini(int(lv.step) + 1, int(lv.total)), int(lv.total)]
+	lesson_bits.title.text = ("✔ " if lv.ok else "") + Loc.t(String(lv.title))
+	lesson_bits.title.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if lv.ok else UIStyle.GOLD_LIGHT)
+	lesson_bits.text.text = String(lv.text)
+	lesson_bits.next.text = Loc.t("Close") if lv.get("done", false) else Loc.t("Next")
+	lesson_bits.next.visible = lv.get("done", false) or lv.get("read", false)
+	lesson_bits.skip.visible = not lv.get("done", false)
 
 ## Try it in the arena: the weapon in hand, in front of a dummy of the player's choosing (a
 ## man or a beast; standing still, or fighting back), and back to the anvil afterwards with
@@ -920,6 +994,7 @@ func _save_design() -> void:
 	g.push_front(d)
 	Save.set_value("forge_gallery", g.slice(0, GALLERY_MAX))
 	Achievements.unlock("smith")
+	saves += 1
 	cost_label.text = Loc.t("Saved to My designs: \"%s\"") % str(d.get("name", "?"))
 	if mode == "gallery":
 		_show_mode("gallery")
@@ -1443,6 +1518,7 @@ func _walk_camera(dt: float) -> void:
 		return
 	moved = true
 	idle_t = 0.0
+	flown += mv.length()
 	focus += mv
 	_place_camera()
 
@@ -1474,6 +1550,9 @@ func _process(dt: float) -> void:
 			taper_t = 0.05
 	idle_t += dt
 	_walk_camera(dt)
+	if lesson:
+		lesson.update(dt)
+		_lesson_show()
 	if idle_t > 4.0 and not dragging and not moved and swing_t < 0.0:
 		orbit.x += dt * 0.25   # left alone, it turns slowly on the anvil
 		_place_camera()

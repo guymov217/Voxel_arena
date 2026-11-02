@@ -98,3 +98,38 @@ func test_the_point_of_your_own_blade_does_not_lift_the_camera() -> void:
 	t.check(CameraRig._blocked(me, eye, pts) > 0.0, "a struck spot behind him counts as hidden")
 	t.eq(CameraRig._blocked(me, eye, pts, 3), 0.0, "the point of his own blade does not")
 	m.queue_free()
+
+## His own body in the way of the blow is seen through, and solid again once it is out of the way
+## (user: sometimes the player's own body hides where his weapon lands on the foe).
+func test_his_own_body_in_the_way_of_the_blow_is_seen_through() -> void:
+	await get_tree().physics_frame
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	var me: Fighter = m.me.f
+	await get_tree().physics_frame
+	var fwd := Vector3(sin(me.yaw), 0, cos(me.yaw))
+	var eye: Vector3 = me.torso.global_position - fwd * 2.5
+	var struck: Vector3 = me.torso.global_position + fwd * 1.2
+	var far := me.torso.global_position + Vector3(0, 9, 0)
+	var hid: Dictionary = CameraRig._hiders(me, eye, [far, far, far, struck])
+	t.check(hid.has(me.torso), "his trunk is on the line to the spot struck in front of him")
+	t.check(not hid.has(me.by_name["shinL"]), "his shins are not")
+	var cam := CameraRig.new()
+	m.add_child(cam)
+	cam.hiders = hid
+	for i in 30:
+		cam._fade(me, 1.0 / 60.0)
+	t.check(absf(me.torso.see_through - CameraRig.SEE_THROUGH) < 0.01, "in the way, it is seen through (%.2f)" % me.torso.see_through)
+	t.check(me.torso.mmi == null or absf(me.torso.mmi.transparency - CameraRig.SEE_THROUGH) < 0.01, "drawn so")
+	t.eq(me.by_name["shinL"].see_through, 0.0, "what is not in the way stays solid")
+	cam.hiders = {}
+	for i in 60:
+		cam._fade(me, 1.0 / 60.0)
+	t.eq(me.torso.see_through, 0.0, "out of the way, solid again")
+	cam.hiders = hid
+	for i in 30:
+		cam._fade(me, 1.0 / 60.0)
+	cam.clear_fade()
+	t.eq(me.torso.see_through, 0.0, "and solid at once for a kill cam")
+	m.queue_free()

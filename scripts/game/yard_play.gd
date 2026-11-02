@@ -112,7 +112,10 @@ static func next_fight(players: int) -> String:
 		return "B|FINIS\nF|" + Loc.t("The demo ends here")
 	var nx: Dictionary = Data.stage(st, maxi(1, players))
 	var lines := [Loc.t("B|PVGNA %s") % roman(st)]
-	var foes: Array = (nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []
+	var foes: Array = ((nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []).duplicate()
+	# The second wave through the other gate is on the stele too (user: it said two hyenas, and
+	# three came out).
+	foes.append_array(nx.get("late", []))
 	var names := []
 	var count := {}
 	for f in foes:
