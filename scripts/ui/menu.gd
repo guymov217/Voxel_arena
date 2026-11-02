@@ -212,7 +212,7 @@ func set_arms(a: Dictionary) -> void:
 		var lo := Arms.loadout(Arms.sanitize(a))
 		match_.me.f.rearm(lo.main, lo.off)
 		for side in lo.worn:
-			if match_.me.f.weapons.get(side):
+			if match_.me.f.weapons.get(side) and not match_.me.f.fixed_hand[side]:
 				match_.me.f.weapons[side].remove_voxels(lo.worn[side])
 
 func kit() -> Dictionary:

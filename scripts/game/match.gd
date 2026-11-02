@@ -378,9 +378,11 @@ func spawn_fighter(spec: Dictionary):
 	if spec.get("body") is Dictionary:
 		opts["body"] = Body.sanitize(spec.body)
 	f.build(spec.pos, spec.get("yaw", 0.0), _resolve_loadout(spec.loadout), opts)
-	# Chips the weapons came in with (the campaign's arms, unmended).
+	# Chips the weapons came in with (the campaign's arms, unmended): the arms' own weapon only,
+	# never a blade arm the physician riveted in its place (the sword's chips, laid on it by
+	# index, tore out its grip and the arm had nothing to swing: user, no control of the arm).
 	for side in spec.get("worn", {}):
-		if f.weapons.get(side):
+		if f.weapons.get(side) and not f.fixed_hand[side]:
 			f.weapons[side].remove_voxels(spec.worn[side])
 	# And the plates his armour came in without.
 	if spec.get("loadout") is Dictionary and spec.loadout.get("armor_wear") is Dictionary:

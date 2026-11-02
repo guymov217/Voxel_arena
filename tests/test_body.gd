@@ -307,3 +307,39 @@ func test_nobody_bleeds_to_death_in_the_yard() -> void:
 	t.check(is_instance_valid(h) and h.by_name.thighR.artery == 0.0 and h.torso.bleed == 0.0, "the artery and the cut are staunched")
 	y.queue_free()
 	await _steps(2)
+
+## The blade arm a physician fitted is that arm's weapon in the next bout, whole: the chips of the
+## sword that hand used to hold are not laid on it (by index they tore out its grip: user, no
+## control of the arm with the prosthesis); it swings where the mouse sends it; and a hook takes
+## up nothing it is handed (bought at the smith, a sword went into the hook).
+func test_a_fitted_prosthetic_arm_works_in_the_next_bout() -> void:
+	var m := _match()
+	await _steps(5)
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "P", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(3, 0, 0), "yaw": 0.0, "worn": {"R": range(0, 30), "L": []}, "body": {"prosthetics": {"forearmR": "blade"}}})
+	e2.erase("bot")
+	var g: Fighter = e2.f
+	var st := {"x": 0.1, "y": 0.15}
+	e2.drive = func(_e): return {"main": {"x": st.x, "y": st.y}, "off": {"x": -0.35, "y": 0.1}, "power": true, "look": {"yaw": g.yaw, "pitch": 0.0}}
+	await _steps(60)
+	var w = g.weapons.R
+	t.check(w != null and is_instance_valid(w) and g.fixed_hand.R, "the blade arm in the right hand")
+	if w != null and is_instance_valid(w):
+		t.eq((w as Weapon).alive_count(), (w as Weapon).vox.size(), "whole: the sword's chips are not laid on it")
+	st.x = -1.2
+	await _steps(100)
+	var at_l: Vector3 = g.torso.global_transform.affine_inverse() * g.hand_world("R")
+	st.x = 1.2
+	await _steps(100)
+	var at_r: Vector3 = g.torso.global_transform.affine_inverse() * g.hand_world("R")
+	t.check(at_l.distance_to(at_r) > 0.25, "it swings where the mouse sends it (%.2f m from one side to the other)" % at_l.distance_to(at_r))
+	var e3 = m.spawn_fighter({"kind": "bot", "name": "H", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(-3, 0, 0), "yaw": 0.0, "body": {"prosthetics": {"forearmR": "hook"}}})
+	e3.erase("bot")
+	e3.drive = func(_e): return {}
+	await _steps(10)
+	var h: Fighter = e3.f
+	t.check(h.weapons.R == null, "the hook holds nothing at the start of the bout")
+	h.rearm("gladius", "roundShield")
+	await _steps(5)
+	t.check(h.weapons.R == null and h.weapons.L != null, "nor what the smith sells him: the shield goes to the good hand, the hook stays empty")
+	m.queue_free()
+	await _steps(2)

@@ -503,6 +503,11 @@ func rearm(main, off) -> void:
 		main = Data.preset(main)
 	if off is String:
 		off = Data.preset(off)
+	# (A hook or a blade arm holds nothing it is given: as at the start of the bout.)
+	if arm.R.fore.prosthetic != "":
+		main = null
+	if arm.L.fore.prosthetic != "":
+		off = null
 	if main is Dictionary and not main.is_empty() and not weapons.R:
 		equip("R", main)
 		# A two-hander takes both hands only when nothing was given for the other one: a
