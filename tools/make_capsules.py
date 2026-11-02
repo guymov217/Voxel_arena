@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
-"""Steam capsules for WRECKSMITH from the store screenshots (docs/store/screenshots, made by the
-steamshots probe): every size the store and the library ask for, the title drawn as voxel letters
-in aged gold over a frame of the game. Needs Pillow.
+"""Every Steam capsule and store graphic for WRECKSMITH, from the key-art frames rendered by the
+game itself (tests/capsuleart.gd: staged scenes of the current build frozen at the blow and drawn
+large, with a low sun, haze and depth of field) and the voxel logo (tools/make_logo.py).
 
-    python3 tools/make_capsules.py [screenshots dir] [out dir]
+Each frame is graded like a film still (contrast, warm highlights, cool shadows, a vignette) and
+cropped to the capsule around its subject; the logo sits on a soft dark ground so it reads at the
+store's smallest size. The capsules carry the name and nothing else (Steam's rules). The feature
+banners for the store page's description each name one side of the game.
 
-Each capsule names the screenshot it is cut from and the point of it to keep in frame (BACKDROP)."""
+    python3 tools/make_capsules.py [keyart dir] [out dir]
+
+Needs Pillow and numpy. (voxel_title and the colours below are also used by the poster and
+trailer tools.)"""
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+import numpy as np
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT = os.path.join(ROOT, "tools", "fonts", "Cinzel-Black.ttf")
+CINZEL = os.path.join(ROOT, "art", "fonts", "Cinzel.ttf")
+SANS = os.path.join(ROOT, "art", "fonts", "AlegreyaSans-Medium.ttf")
 TITLE = "WRECKSMITH"
 
 GOLD_HI = (255, 226, 140)
@@ -22,17 +31,30 @@ SIDE = (78, 44, 14)
 IRON = (18, 14, 12)
 BLOOD = (150, 18, 16)
 
-# capsule: (size, screenshot, focus x, focus y (0..1 of the shot), title box as (x, y, w, h)
-# fractions of the capsule, or None for no title)
-BACKDROP = {
-    "header_920x430": ((920, 430), "03_clash", 0.5, 0.45, (0.06, 0.62, 0.88, 0.30)),
-    "small_462x174": ((462, 174), "03_clash", 0.5, 0.45, (0.05, 0.22, 0.90, 0.56)),
-    "main_1232x706": ((1232, 706), "05_monster_hunt", 0.5, 0.45, (0.08, 0.66, 0.84, 0.26)),
-    "vertical_748x896": ((748, 896), "04_bloodbath", 0.5, 0.45, (0.06, 0.06, 0.88, 0.17)),
-    "library_600x900": ((600, 900), "04_bloodbath", 0.5, 0.45, (0.06, 0.06, 0.88, 0.15)),
-    "background_1438x810": ((1438, 810), "01_title", 0.5, 0.5, None),
-    "library_hero_3840x1240": ((3840, 1240), "05_monster_hunt", 0.5, 0.5, None),
+# capsule: (size, key-art frame, focus x, focus y (0..1 of the frame), logo as (kind, x, y, w, h):
+# kind "line" or "stack", the box fractions of the capsule; None: no logo)
+CAPSULES = {
+    "header_920x430": ((920, 430), "giant_wide", 0.52, 0.47, ("line", 0.05, 0.67, 0.90, 0.29)),
+    "library_header_920x430": ((920, 430), "giant_wide", 0.52, 0.47, ("line", 0.05, 0.67, 0.90, 0.29)),
+    "small_462x174": ((462, 174), "giant_wide", 0.52, 0.42, ("line", 0.04, 0.18, 0.92, 0.66)),
+    "main_1232x706": ((1232, 706), "giant_wide", 0.50, 0.47, ("line", 0.08, 0.71, 0.84, 0.25)),
+    "vertical_748x896": ((748, 896), "beast_tall", 0.50, 0.55, ("stack", 0.08, 0.03, 0.84, 0.27)),
+    "library_600x900": ((600, 900), "giant_tall", 0.50, 0.58, ("stack", 0.08, 0.03, 0.84, 0.25)),
+    "library_hero_3840x1240": ((3840, 1240), "squad_hero", 0.50, 0.55, None),
+    "background_1438x810": ((1438, 810), "dragon_wide", 0.50, 0.50, None),
+    "event_cover_800x450": ((800, 450), "clash_wide", 0.50, 0.50, ("line", 0.06, 0.69, 0.88, 0.27)),
+    "event_header_1920x622": ((1920, 622), "dragon_wide", 0.50, 0.42, ("line", 0.25, 0.63, 0.50, 0.31)),
 }
+
+# The store page's description: a banner for each side of the game (616 wide: Steam's column).
+FEATURES = [
+    ("feature_forge", "forge_wide", "FORGE YOUR OWN WEAPON", "Voxel by voxel: its weight, its edge and its balance are what you build."),
+    ("feature_cut", "clash_wide", "EVERY BLOW CUTS THE BODY", "Limbs, armour and bone break where they are struck."),
+    ("feature_giants", "giant_wide", "CYCLOPES, TITANS, GIANTS", "Bring a giant to his knees, one chunk at a time."),
+    ("feature_beasts", "beast_wide", "24 BEASTS AND MONSTERS", "Lions, crocodiles, gorillas, hydras and dragons."),
+    ("feature_dragon", "dragon_wide", "FIRE, BLOOD, THE CROWD", "The Emperor watches. The crowd decides."),
+    ("feature_coop", "squad_wide", "FIGHT TOGETHER", "The whole campaign in co-op, up to eight friends."),
+]
 
 
 def voxel_title(height):
@@ -138,34 +160,104 @@ def blood_rule(img, y, w_frac=0.5):
     d.rectangle([(W - w) // 2, y, (W + w) // 2, y + max(2, W // 300)], fill=BLOOD)
 
 
+def grade(img, punch=1.0):
+    """A film still's grade: an S-curve, warm highlights and teal-leaning shadows, richer colour,
+    the haze pulled back a little, a touch of sharpening."""
+    a = np.asarray(img.convert("RGB")).astype(np.float32) / 255.0
+    lum = (a[..., 0] * 0.2126 + a[..., 1] * 0.7152 + a[..., 2] * 0.0722)[..., None]
+    a = np.clip((a - 0.04 * punch) / (1 - 0.04 * punch), 0, 1)
+    a = a + 0.22 * punch * a * (1 - a) * (2 * a - 1)
+    hi = np.clip((lum - 0.5) / 0.5, 0, 1)
+    lo = np.clip((0.42 - lum) / 0.42, 0, 1)
+    a = np.clip(a + hi * np.array([0.04, 0.018, -0.03]) + lo * np.array([-0.03, 0.004, 0.04]), 0, 1)
+    out = Image.fromarray((a * 255 + 0.5).astype(np.uint8))
+    out = ImageEnhance.Color(out).enhance(1.0 + 0.14 * punch)
+    return out.filter(ImageFilter.UnsharpMask(radius=1.6, percent=60, threshold=2))
+
+
+def ground_for(img, box):
+    """A soft dark ground where the logo sits, fading into the picture."""
+    W, H = img.size
+    x, y, w, h = box
+    m = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(m).rounded_rectangle([int((x - w * 0.04) * W), int((y - h * 0.12) * H), int((x + w * 1.04) * W), int((y + h * 1.12) * H)], radius=int(min(W, H) * 0.1), fill=170)
+    m = m.filter(ImageFilter.GaussianBlur(max(W, H) * 0.035))
+    return Image.composite(Image.new("RGB", (W, H), (12, 6, 3)), img, m)
+
+
+def place_logo(img, logo, box):
+    W, H = img.size
+    x, y, w, h = box
+    k = min(w * W / logo.width, h * H / logo.height)
+    lg = logo.resize((max(1, int(logo.width * k)), max(1, int(logo.height * k))), Image.LANCZOS)
+    out = img.convert("RGBA")
+    out.alpha_composite(lg, (int(x * W + (w * W - lg.width) / 2), int(y * H + (h * H - lg.height) / 2)))
+    return out.convert("RGB")
+
+
+def cinzel(size, weight=800):
+    f = ImageFont.truetype(CINZEL, size)
+    try:
+        f.set_variation_by_axes([weight])
+    except OSError:
+        pass
+    return f
+
+
+def feature(frame, title, line):
+    """A banner for the description: the frame graded, a dark plate at its foot with the line."""
+    W, H = 616, 330
+    img = vignette(grade(cover(frame, (W, H), 0.5, 0.5)), 0.45)
+    plate = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(plate).rectangle([0, int(H * 0.68), W, H], fill=205)
+    plate = plate.filter(ImageFilter.GaussianBlur(24))
+    img = Image.composite(Image.new("RGB", (W, H), (10, 5, 3)), img, plate)
+    d = ImageDraw.Draw(img)
+    ft = cinzel(28, 900)
+    fs = ImageFont.truetype(SANS, 17)
+    ty = int(H * 0.735)
+    tw = d.textlength(title, font=ft)
+    d.text(((W - tw) / 2 + 2, ty + 2), title, font=ft, fill=(0, 0, 0))
+    d.text(((W - tw) / 2, ty), title, font=ft, fill=(240, 196, 98))
+    d.rectangle([W * 0.34, ty + 39, W * 0.66, ty + 41], fill=BLOOD)
+    lw = d.textlength(line, font=fs)
+    d.text(((W - lw) / 2, ty + 49), line, font=fs, fill=(236, 226, 210))
+    return img
+
+
 def main():
-    shots = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "docs", "store", "screenshots")
+    src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "docs", "store", "keyart")
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "docs", "store", "capsules")
     os.makedirs(out, exist_ok=True)
-    for name, (size, shot, fx, fy, box) in BACKDROP.items():
-        path = os.path.join(shots, shot + ".png")
-        if not os.path.exists(path):
-            print("missing", path)
+    logos = {k: Image.open(os.path.join(out, n)).convert("RGBA") for k, n in (("line", "logo.png"), ("stack", "logo_stacked.png"))}
+    frames = {}
+
+    def frame(name):
+        if name not in frames:
+            # (the key art kept as a high-quality JPEG in the repository, a PNG straight from the render)
+            ps = [os.path.join(src, name + ext) for ext in (".png", ".jpg")]
+            p = next((q for q in ps if os.path.exists(q)), None)
+            frames[name] = Image.open(p).convert("RGB") if p else None
+        return frames[name]
+
+    for name, (size, fr, fx, fy, lg) in CAPSULES.items():
+        f = frame(fr)
+        if f is None:
+            print("missing", fr)
             continue
-        img = vignette(cover(Image.open(path).convert("RGB"), size, fx, fy))
-        if box:
-            img = shade_under(img, box)
-            W, H = size
-            x, y, w, h = box
-            title = fit(voxel_title(int(h * H * 2)), int(w * W), int(h * H))
-            tx = int(x * W + (w * W - title.width) / 2)
-            ty = int(y * H + (h * H - title.height) / 2)
-            img.paste(title, (tx, ty), title)
-            if H >= 400:
-                blood_rule(img, ty + title.height + max(4, H // 90), 0.35)
+        img = vignette(grade(cover(f, size, fx, fy)), 0.42)
+        if lg:
+            kind, x, y, w, h = lg
+            img = place_logo(ground_for(img, (x, y, w, h)), logos[kind], (x, y, w, h))
         img.save(os.path.join(out, name + ".png"))
         print("saved", name)
-    # The library logo: the title alone on transparency, centred in 1280x720.
-    logo = Image.new("RGBA", (1280, 720), (0, 0, 0, 0))
-    t = fit(voxel_title(900), 1180, 400)
-    logo.paste(t, ((1280 - t.width) // 2, (720 - t.height) // 2), t)
-    logo.save(os.path.join(out, "library_logo_1280x720.png"))
-    print("saved library_logo_1280x720")
+    for name, fr, title, line in FEATURES:
+        f = frame(fr)
+        if f is None:
+            print("missing", fr)
+            continue
+        feature(f, title, line).save(os.path.join(out, name + ".png"))
+        print("saved", name)
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ func _spikes(s: Dictionary) -> void:
 		for j in [-1, 0, 1]:
 			_vox(vox, i * 8, i * 8, 0, 7, j * 8, j * 8, "steel", "blunt")
 			_vox(vox, i * 8, i * 8, 8, 9, j * 8, j * 8, "steel", "point")
-	var w := _hazard("Spike trap", vox)
+	var w := _hazard(Loc.t("Spike trap"), vox)
 	var plate := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(1.1, 0.04, 1.1)
@@ -81,7 +81,7 @@ func _blade(s: Dictionary) -> void:
 	for sgn in [-1, 1]:
 		_vox(vox, -1, 1, 7, 8, sgn * 6, sgn * 55, "iron", "blunt")
 		_vox(vox, sgn * 2, sgn * 11, 8, 8, sgn * 15, sgn * 105, "steel", "edge")
-	var w := _hazard("Spinning blade", vox)
+	var w := _hazard(Loc.t("Spinning blade"), vox)
 	w.global_position = Vector3(s.x, 0.0, s.z)
 	list.append({"type": "blade", "w": w, "speed": float(s.speed), "angle": 0.0})
 
@@ -93,7 +93,7 @@ func _chariot(s: Dictionary) -> void:
 	for sgn in [-1, 1]:
 		_vox(vox, sgn * 16, sgn * 16, 0, 22, -26, -4, "wood", "blunt")
 		_vox(vox, sgn * 17, sgn * 38, 11, 12, -17, -13, "steel", "edge")
-	var w := _hazard("Chariot scythe", vox)
+	var w := _hazard(Loc.t("Chariot scythe"), vox)
 	var a := float(s.get("phase", 0.0))
 	var r := float(s.get("r", 7.0))
 	w.global_position = Vector3(sin(a) * r, 0, cos(a) * r)

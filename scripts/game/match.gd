@@ -309,7 +309,7 @@ func setup(opts: Dictionary) -> void:
 		modes = Modes.new(self, mode)
 		modes.setup(opts)
 		if not decrees.is_empty():
-			_banner("The Emperor decrees", ", ".join(dec.names))
+			_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
 		spectacle.on_round_start()
 		return
 	# Players: the local one, then a fighter for every friend in the room.
@@ -329,9 +329,9 @@ func setup(opts: Dictionary) -> void:
 		_spawn_round(0)
 		if stage_info.get("duel", false):
 			var first: Array = stage_info.get("rounds", [[]])[0]
-			_banner(stage_info.get("title", "Bout %d" % stage), ("One on one: %s" if first.size() <= 1 else "Together: %s") % stage_info.get("foe_name", "your opponent"))
+			_banner(stage_info.get("title", Loc.t("Bout %d") % stage), Loc.t("One on one: %s" if first.size() <= 1 else "Together: %s") % stage_info.get("foe_name", Loc.t("your opponent")))
 		else:
-			_banner(stage_info.get("title", "Stage %d" % stage), "Round 1 of 3")
+			_banner(stage_info.get("title", Loc.t("Stage %d") % stage), "Round 1 of 3")
 	elif mode == "training":
 		_spawn_training()
 		if opts.get("tutorial", false):
@@ -345,7 +345,7 @@ func setup(opts: Dictionary) -> void:
 		_send_yard_next()
 		_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight")
 	if not decrees.is_empty():
-		_banner("The Emperor decrees", ", ".join(dec.names))
+		_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
 	spectacle.on_round_start()
 
 # ---------- Spawning ----------
@@ -495,8 +495,13 @@ func _register(e: Dictionary) -> void:
 		e.f.lodged.connect(_on_lodged)
 	if e.f.has_signal("raged"):
 		e.f.raged.connect(func(f):
-			feed.emit("%s's eye is put out: he goes berserk!" % f.display_name)
-			say(f, "scream", 1.6, "rage"))
+			feed.emit(Loc.t("%s's eye is put out: he goes berserk!") % f.display_name)
+			if Voices.giant_voice(f) == "cyclops":
+				# The Cyclops has the one eye: a long scream, then he roars on as he rages blind.
+				say(f, "scream", 2.0, "rage")
+				f.set_meta("rage_t", time + 1.4)
+			else:
+				say(f, "scream", 1.6, "rage"))
 	e.f.guts_pulled.connect(func(f, g):
 		var en = entity_of(f)
 		if role == "host" and en:
@@ -518,7 +523,7 @@ func add_peer(id: int, p: Dictionary) -> void:
 	for e in entities:
 		e.erase("held_sig")   # (what everyone holds ready, to him too)
 	players_count = humans().size()
-	feed.emit("%s came into the yard" % p.name)
+	feed.emit(Loc.t("%s came into the yard") % p.name)
 	_send_yard_next()
 
 ## The board by the gate: the next fight, as many as the party is now (a friend more, a friend
@@ -534,7 +539,7 @@ func _send_yard_next() -> void:
 func drop_peer(id: int) -> void:
 	for e in entities.duplicate():
 		if e.kind == "remote" and int(e.get("peer", -1)) == id and is_instance_valid(e.f):
-			feed.emit("%s left" % e.f.display_name)
+			feed.emit(Loc.t("%s left") % e.f.display_name)
 			_remove_entity(e)
 			if role == "host":
 				Net.send_all("despawn", {"id": e.id})
@@ -670,9 +675,9 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	if returning:
 		armor = armor.filter(func(x): return not RETURN_ARMOR_OFF.has(x)) + RETURN_ARMOR
 	var names: Array = t.get("names", ["Gladiator"])
-	var nm: String = en.get("name", names[rng.randi_range(0, names.size() - 1)])
+	var nm: String = Loc.t(String(en.get("name", names[rng.randi_range(0, names.size() - 1)])))
 	if g.get("rank") and not en.get("boss", false):
-		nm = "%s %s" % [g.rank, nm]
+		nm = Loc.t({"Veteran": "Veteran %s", "Champion": "Champion %s"}.get(String(g.rank), String(g.rank) + " %s")) % nm
 	var mods: Dictionary = t.get("mods", {}).duplicate()
 	for k in g.get("mods", {}):
 		mods[k] = g.mods[k]
@@ -725,7 +730,7 @@ func _spawn_late() -> void:
 	if arena and arena.has_method("open_gate"):
 		arena.open_gate(-1)
 	sfx("horn", Vector3(-Arena.RADIUS, 2.0, 0), 0.6)
-	feed.emit("The other gate opens: %s!" % Ladder.foe_name(list))
+	feed.emit(Loc.t("The other gate opens: %s!") % Ladder.foe_name(list))
 
 ## The gates swing open as a wave comes in, with a blast of the horn.
 func _open_gates(n: int) -> void:
@@ -779,7 +784,7 @@ func mission_event(kind: String, n := 1) -> void:
 	mcount[kind] = int(mcount.get(kind, 0)) + n
 
 func circus_status() -> String:
-	var head := "Day %s · bout %d" % [["I", "II", "III", "IV", "V", "VI", "VII"][clampi(int(circus.get("day", 0)), 0, 6)], int(circus.get("bout_index", 0)) + 1]
+	var head := Loc.t("Day %s · bout %d") % [["I", "II", "III", "IV", "V", "VI", "VII"][clampi(int(circus.get("day", 0)), 0, 6)], int(circus.get("bout_index", 0)) + 1]
 	var s := rules.status() if rules else ""
 	return head + ((" · " + s) if s != "" else "")
 
@@ -870,6 +875,8 @@ func _physics_process(dt: float) -> void:
 		_drive_puppets()
 		if yard:
 			yard.update(dt, last_local_inp)
+		if modes:
+			modes.fight_t += dt   # (a timed fight's clock on the HUD, kept as the host keeps it)
 		return
 	var local_inp := {}
 	if modes and me == null and input:
@@ -924,6 +931,11 @@ func _physics_process(dt: float) -> void:
 				inp = e.bot.update(dt, tgt.f if tgt else null, _world_of(e))
 				if e.get("training", "fights") != "fights":
 					inp = _training_calm(e, inp, tgt)
+				# The Cyclops blinded bellows and roars every few seconds as he lashes about.
+				if f.enraged and f.has_meta("rage_t") and time - float(f.get_meta("rage_t")) > float(f.get_meta("rage_gap", 2.4)):
+					f.set_meta("rage_t", time)
+					f.set_meta("rage_gap", rng.randf_range(2.2, 4.2))
+					say(f, "scream", 1.4, "rampage")
 			"beast":
 				var tb = nearest_enemy(e)
 				f.target = tb.f if tb else null
@@ -1136,7 +1148,7 @@ func use_ability(c, ab: Dictionary) -> void:
 			if not p.severed:
 				p.hp = minf(100.0, p.hp + 20.0)
 		t.stagger = 0.0
-		feed.emit("%s patched up %s" % [c.display_name, t.display_name])
+		feed.emit(Loc.t("%s patched up %s") % [c.display_name, t.display_name])
 
 ## A decree in the middle of a fight (the Emperor's whims): gravity, bodies, traps change now.
 func add_runtime_decree(d: Dictionary) -> void:
@@ -1296,6 +1308,8 @@ func guest_end(data: Dictionary) -> void:
 	if over:
 		return
 	over = true
+	if Sfx.music and not headless:
+		Sfx.music.set_state("victory" if bool(data.get("won", false)) else "defeat")
 	banner.emit(str(data.get("text", "")), str(data.get("sub", "")))
 	if killcam:
 		var left := killcam.tape_left()
@@ -1574,7 +1588,7 @@ func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, 
 func _on_took_up(f, w) -> void:
 	if not is_instance_valid(w):
 		return
-	feed.emit("%s picks up a %s" % [f.display_name, String(w.design.get("name", "weapon")).to_lower()])
+	feed.emit(Loc.t("%s picks up a %s") % [f.display_name, Loc.lower(String(w.design.get("name", "Weapon")))])
 	var at: Vector3 = f.hand_world("R" if f.weapons.R == w else "L")
 	sfx("pickup", at)
 	if role == "host":
@@ -1587,7 +1601,7 @@ func _on_lodged(f, w, what: String, at: Vector3) -> void:
 		return
 	lodge_fx(what, at, w.global_transform.basis.y if is_instance_valid(w) else Vector3.UP)
 	if what == "in" and is_instance_valid(w) and w.stuck != null and is_instance_valid(w.stuck.char):
-		feed.emit("%s's %s is stuck fast in %s!" % [f.display_name, String(w.design.get("name", "weapon")).to_lower(), w.stuck.char.display_name])
+		feed.emit(Loc.t("%s's %s is stuck fast in %s!") % [f.display_name, String(w.design.get("name", "weapon")).to_lower(), w.stuck.char.display_name])
 	if role == "host":
 		Net.send_all("fx", {"k": "lodge", "w": what, "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)]}, false)
 
@@ -1676,7 +1690,7 @@ func _check_round(dt: float) -> void:
 		between -= dt
 		if between <= 0.0:
 			_spawn_round(round + 1)
-			_banner("Round %d of 3" % (round + 1), "")
+			_banner(Loc.t("Round %d of 3") % (round + 1), "")
 		return
 	# Beaten is beaten: dead, or out cold on the sand and never getting up again, or down on
 	# the sand unable to stand (crawling at most) for UNFIT_OUT seconds.
@@ -1722,14 +1736,15 @@ func _check_round(dt: float) -> void:
 	if alive_h.is_empty():
 		var crawled := humans().any(func(x): return x.f.alive)
 		_hold_beaten(humans())
-		_end(false, "You can fight no more" if crawled else "You fall", ("None of you can stand. " if crawled else "") + ("The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on."))
+		var why := ("None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "None of you can stand. The crowd moves on.") if crawled else ("The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on.")
+		_end(false, "You can fight no more" if crawled else "You fall", Loc.t(why))
 		return
 	if alive_e.is_empty():
 		if mode == "campaign":
 			round_pay += int(round(float(stage_info.get("roundPay", 10)) * PAY_SCALE))
 			if round + 1 < int(stage_info.get("rounds", []).size()):
 				between = 2.5
-				feed.emit("Round %d won" % (round + 1))
+				feed.emit(Loc.t("Round %d won") % (round + 1))
 				if role != "guest":
 					_round_wounds()
 				_round_replay()
@@ -1739,8 +1754,8 @@ func _check_round(dt: float) -> void:
 			var pay := base + round_pay + crowd
 			var purse := ("%d denarii to the party's purse" if players_count > 1 else "%d denarii") % pay
 			if crowd > 0:
-				purse += ", %d of them the crowd's" % crowd
-			_end(true, ("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, purse + ". Back to the yard: spend, mend, gear up.", pay)
+				purse += Loc.t(", %d of them the crowd's") % crowd
+			_end(true, Loc.t("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, Loc.t("%s. Back to the yard: spend, mend, gear up.") % purse, pay)
 		else:
 			_end(true, "Victory", "")
 
@@ -1768,7 +1783,7 @@ func _lift_tick(dt: float) -> void:
 		if float(e.lift_t) >= Fighter.LIFT_T:
 			e.lift_t = 0.0
 			who.f.lift()
-			feed.emit("%s lifts %s" % [f.display_name, who.f.display_name])
+			feed.emit(Loc.t("%s lifts %s") % [f.display_name, who.f.display_name])
 
 ## The nearest friend at death's door within reach of `e`, if any.
 func dying_friend_of(e: Dictionary):
@@ -1865,7 +1880,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		return   # (the fight behind the menus never ends: the fallen are replaced one at a time)
 	over = true
 	if Sfx.music and not headless and not attract:
-		Sfx.music.set_state("victory" if won else "off")
+		Sfx.music.set_state("victory" if won else "defeat")
 		music_hot = false
 	_banner(text, sub)
 	var wear := my_wear()
@@ -1907,6 +1922,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		if killcam:
 			var ve = _entity_of(killcam.best.get("victim")) if show else null
 			msg["kc_v"] = ve.id if ve != null else -1
+		Net.purse_fight_over()
 		Net.send_all("end", msg)
 	if show:
 		await killcam.play(func(): pass)
@@ -1967,19 +1983,19 @@ func _on_hit(h: Dictionary) -> void:
 		_materials(h)
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
-		feed.emit("%s kills %s" % [h.attacker.display_name, h.char.display_name])
+		feed.emit(Loc.t("%s kills %s") % [h.attacker.display_name, h.char.display_name])
 	elif h.get("rend", false):
-		feed.emit("%s TEARS %s APART!" % [h.attacker.display_name, h.char.display_name])
+		feed.emit(Loc.t("%s TEARS %s APART!") % [h.attacker.display_name, h.char.display_name])
 	elif h.res.get("severed", []).size() > 0:
-		feed.emit("%s loses the %s!" % [h.char.display_name, String(h.res.severed[0].label).to_lower()])
+		feed.emit(Loc.t("%s loses the %s!") % [h.char.display_name, Loc.lower(String(h.res.severed[0].label))])
 	elif h.res.get("fractured") is VoxelPart and h.char is Fighter:
 		var bp: VoxelPart = h.res.fractured
 		# Broken out through the skin: the blood comes out with it.
 		if bp.fracture >= 3 and fx and not headless and h.get("p") is Vector3:
 			fx.burst("confetti" if dec.confetti else "blood", h.p, 70, (h.get("dir", Vector3.UP) as Vector3 if h.get("dir") is Vector3 else Vector3.UP) * -1.0 + Vector3(0, 0.6, 0), 1.4)
-		feed.emit("%s's %s is BROKEN%s!" % [h.char.display_name, String(bp.label).to_lower(), ", the bone out through the skin" if bp.fracture >= 3 else ""])
+		feed.emit(Loc.t("%s's %s is BROKEN%s!") % [h.char.display_name, Loc.lower(String(bp.label)), Loc.t(", the bone out through the skin") if bp.fracture >= 3 else ""])
 	elif String(h.res.get("broke", "")).begins_with("skull") and h.char is Fighter:
-		feed.emit("%s's skull is %s!" % [h.char.display_name, "cracked" if h.char.skull_fracture == 1 else "broken"])
+		feed.emit(Loc.t("%s's skull is cracked!" if h.char.skull_fracture == 1 else "%s's skull is broken!") % h.char.display_name)
 	if h.get("p") is Vector3:
 		for sn in snd:
 			sfx(sn[0], h.p, sn[1])
@@ -2046,7 +2062,7 @@ func _coating(h: Dictionary) -> void:
 			if fx:
 				fx.flash(p, Color(1.0, 0.5, 0.15), 3.0, 3.0)
 			if say:
-				feed.emit("%s is set alight!" % c.display_name)
+				feed.emit(Loc.t("%s is set alight!") % c.display_name)
 		"venom":
 			if h.get("type", "blunt") == "blunt":
 				return
@@ -2057,14 +2073,14 @@ func _coating(h: Dictionary) -> void:
 			if fx:
 				fx.burst("venom", p, 14, h.get("dir", Vector3.UP), 1.5)
 			if say:
-				feed.emit("%s is poisoned!" % c.display_name)
+				feed.emit(Loc.t("%s is poisoned!") % c.display_name)
 		"frost":
 			c.slow(3.0, 0.5)
 			c.stamina = maxf(0.0, c.stamina - 10.0)
 			if fx:
 				fx.burst("frost", p, 22, Vector3.UP, 1.5)
 			if say:
-				feed.emit("%s is chilled to the bone!" % c.display_name)
+				feed.emit(Loc.t("%s is chilled to the bone!") % c.display_name)
 	if say:
 		c.set_meta("coat_say", time)
 
@@ -2099,7 +2115,7 @@ func _gems(h: Dictionary) -> void:
 				if fx:
 					fx.flash(p, Color(1.0, 0.35, 0.1), 3.0, 3.0)
 				if say:
-					feed.emit("The ruby flares: %s's %s catches fire!" % [c.display_name, _part_word(part)])
+					feed.emit(Loc.t("The ruby flares: %s's %s catches fire!") % [c.display_name, _part_word(part)])
 			"sapphire":
 				# Frozen stiff, and frostbitten: the flesh at the blow dies over the next seconds
 				# (Fire.tick "frost": white, then black, then it falls away; no blood from it).
@@ -2111,7 +2127,7 @@ func _gems(h: Dictionary) -> void:
 				if fx:
 					fx.burst("frost", p, 30, Vector3.UP, 1.8)
 				if say:
-					feed.emit("The sapphire bites cold: frostbite in %s's %s!" % [c.display_name, _part_word(part)])
+					feed.emit(Loc.t("The sapphire bites cold: frostbite in %s's %s!") % [c.display_name, _part_word(part)])
 			"emerald":
 				part.bleed += 0.5 * k
 				c.slow(4.0 * k, 0.7)
@@ -2121,7 +2137,7 @@ func _gems(h: Dictionary) -> void:
 				if fx:
 					fx.burst("venom", p, 18, h.get("dir", Vector3.UP), 1.5)
 				if say:
-					feed.emit("The emerald's poison eats into %s's %s!" % [c.display_name, _part_word(part)])
+					feed.emit(Loc.t("The emerald's poison eats into %s's %s!") % [c.display_name, _part_word(part)])
 		if say:
 			c.set_meta("gem_say", time)
 			say = false
@@ -2178,7 +2194,7 @@ func _materials(h: Dictionary) -> void:
 		_send_fx("boing", p)
 		if time - float(c.get_meta("spring_say", -9.0)) > 4.0:
 			c.set_meta("spring_say", time)
-			feed.emit("BOING! %s goes flying!" % c.display_name)
+			feed.emit(Loc.t("BOING! %s goes flying!") % c.display_name)
 	var part = h.get("part")
 	if (mat == "glue" or not w.voxels_near(p, 2.0, "glue").is_empty()) and J >= 4.0 and part is VoxelPart and not part.severed and not w.freeze and time - float(w.get_meta("glue_t", -9.0)) > GLUE_T + 0.8:
 		w.set_meta("glue_t", time)
@@ -2190,7 +2206,7 @@ func _materials(h: Dictionary) -> void:
 		glued.append({"j": j, "t": time + (GLUE_T if w.holder else GLUE_THROWN_T)})
 		if time - float(c.get_meta("glue_say", -9.0)) > 4.0:
 			c.set_meta("glue_say", time)
-			feed.emit("Stuck! The glue holds %s fast." % c.display_name)
+			feed.emit(Loc.t("Stuck! The glue holds %s fast.") % c.display_name)
 	if Data.material(mat).get("chill", false) and J >= 4.0 and c.alive:
 		c.slow(1.5, 0.7)
 		c.stamina = maxf(0.0, c.stamina - 5.0)
@@ -2203,7 +2219,7 @@ func _materials(h: Dictionary) -> void:
 		c.slow(1.0, 0.8)
 		if time - float(c.get_meta("tickle_say", -9.0)) > 5.0:
 			c.set_meta("tickle_say", time)
-			feed.emit("%s giggles helplessly!" % c.display_name)
+			feed.emit(Loc.t("%s giggles helplessly!") % c.display_name)
 
 ## Explosive powder going off: the voxels at `powder` are spent (what they held falls off), and a
 ## blast the bigger the more of it there was.
@@ -2296,7 +2312,7 @@ func _materials_tick(dt: float) -> void:
 				for side in ["R", "L"]:
 					if hf.weapons.get(side) == o:
 						hf.release(side)
-						feed.emit("The magnet tears the %s out of %s's hand!" % [String(o.design.get("name", "weapon")).to_lower(), hf.display_name])
+						feed.emit(Loc.t("The magnet tears the %s out of %s's hand!") % [String(o.design.get("name", "weapon")).to_lower(), hf.display_name])
 
 static func _part_word(part: VoxelPart) -> String:
 	var n := String(part.part_name).to_lower()
@@ -2330,7 +2346,7 @@ func _on_death(f: Fighter, cause: String) -> void:
 		if role == "host":
 			var tp := f.torso.global_position
 			Net.send_all("fx", {"k": "pool", "p": [tp.x, tp.y, tp.z], "s": f.S})
-	feed.emit("%s is %s" % [f.display_name, "dead" if cause != "decap" else "beheaded"])
+	feed.emit(Loc.t("%s is dead" if cause != "decap" else "%s is beheaded") % f.display_name)
 	if role != "guest" and cause != "decap" and time - float(f.get_meta("voice_t", -9.0)) > 0.2:
 		f.set_meta("voice_t", time)
 		say(f, Voices.death_call(f), 0.8 if f.kind != "beast" else 1.1, "death")
@@ -2468,7 +2484,7 @@ func respawn_player(e: Dictionary) -> Dictionary:
 			ne[k] = e[k]
 	if me == e:
 		me = ne
-	feed.emit("%s is back on his feet" % ne.f.display_name)
+	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
 	return ne
 
 ## The same man spawned again with another body (a prosthetic fitted between rounds): where he
@@ -2704,7 +2720,7 @@ func _venom(b, c, part: VoxelPart, at: Vector3) -> void:
 	c.pain = minf(1.0, c.pain + 0.25)
 	if not c.has_meta("venom_feed") or time - float(c.get_meta("venom_feed")) > 4.0:
 		c.set_meta("venom_feed", time)
-		feed.emit("%s is poisoned by the %s!" % [c.display_name, String(b.display_name).to_lower()])
+		feed.emit(Loc.t("%s is poisoned by the %s!") % [c.display_name, Loc.lower(String(b.display_name))])
 
 ## The manticore's volley (Beast._volley): five spikes off its tail at the man, spread a little,
 ## each a poisoned dart that sticks where it lands, bleeds and slows (a poisoned arrow's).

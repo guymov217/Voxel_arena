@@ -107,7 +107,7 @@ static func design_piece(region: String, mat: String, y0: float, y1: float, fron
 		parts[part] = cells
 	var nm := name.strip_edges().substr(0, 24)
 	if nm == "":
-		nm = "%s %s" % [mat.capitalize(), String(reg.label).to_lower()]
+		nm = Loc.t("{material} {piece}").format({"material": Loc.t(mat.capitalize()), "piece": Loc.t(String(reg.label))})
 	return {"name": nm, "mat": mat if BENCH_MATS.has(mat) else "iron", "color": 0x8c939b if mat == "steel" else null, "parts": parts}
 
 static func design_cells(def: Dictionary) -> int:
@@ -130,7 +130,7 @@ static func design_id(def: Dictionary) -> String:
 ## A design as sent by someone else (or read from a save), made safe: known stuff, known parts,
 ## cells round the part only, not too many. Null if it is not a piece at all.
 static func clean_design(def) -> Variant:
-	if not (def is Dictionary) or not (def.get("parts") is Dictionary) or not BENCH_MATS.has(String(def.get("mat", ""))):
+	if not (def is Dictionary) or not (def.get("parts") is Dictionary) or not BENCH_MATS.has(str(def.get("mat", ""))):
 		return null
 	var allowed := []
 	for r in REGIONS.values():
@@ -138,28 +138,28 @@ static func clean_design(def) -> Variant:
 	var parts := {}
 	var n := 0
 	for part in def.parts:
-		if not allowed.has(String(part)) or not (def.parts[part] is Array):
+		if not allowed.has(str(part)) or not (def.parts[part] is Array):
 			continue
-		var d := _dims(String(part))
+		var d := _dims(str(part))
 		var cells := []
 		for c in def.parts[part]:
-			if c is Array and c.size() >= 3 and n < DESIGN_MAX_CELLS:
+			if c is Array and c.size() >= 3 and n < DESIGN_MAX_CELLS and (c[0] is int or c[0] is float) and (c[1] is int or c[1] is float) and (c[2] is int or c[2] is float):
 				var x := int(c[0])
 				var y := int(c[1])
 				var z := int(c[2])
 				if x >= -DESIGN_OUT and x < int(d[0]) + DESIGN_OUT and y >= -DESIGN_OUT and y < int(d[1]) + DESIGN_OUT and z >= -DESIGN_OUT and z < int(d[2]) + DESIGN_OUT:
 					# a 4th number is the cell's paint (0xRRGGBB); a plain cell has none
-					if c.size() > 3 and (c[3] is int or c[3] is float) and int(c[3]) >= 0:
+					if c.size() > 3 and (c[3] is int or c[3] is float) and is_finite(float(c[3])) and int(c[3]) >= 0:
 						cells.append([x, y, z, int(c[3]) & 0xffffff])
 					else:
 						cells.append([x, y, z])
 					n += 1
 		if not cells.is_empty():
-			parts[String(part)] = cells
+			parts[str(part)] = cells
 	if parts.is_empty():
 		return null
-	var mat := String(def.mat)
-	return {"name": String(def.get("name", "Piece")).substr(0, 24), "mat": mat, "color": 0x8c939b if mat == "steel" else null, "parts": parts}
+	var mat := str(def.mat)
+	return {"name": Net.clean_name(def.get("name", "Piece"), 24, "Piece"), "mat": mat, "color": 0x8c939b if mat == "steel" else null, "parts": parts}
 
 ## Makes designed pieces known (Data.armor), each under the id its content gives it: the ids
 ## given back, in order (an unusable design is left out).

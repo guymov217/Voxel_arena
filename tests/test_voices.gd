@@ -78,3 +78,45 @@ func test_every_call_is_a_shaped_sound() -> void:
 		t.check(clipped < n / 50, "%s does not clip (%d samples)" % [kind, clipped])
 		t.check(tail / maxi(1, tail_n) < 0.3 * sum / n, "%s dies away at the end" % kind)
 		t.check(sum / n < peak * 0.6, "%s is shaped, not a flat buzz" % kind)
+
+## The Cyclops, and only he, screams when his one eye is put out and roars on as he rages blind:
+## his own takes, rendered and loadable; the other giants keep their own voices.
+func test_the_cyclops_screams_when_blinded() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var man: Fighter = m.me.f
+	man.mods["voice"] = "cyclops"
+	t.eq(Voices.file_key(man, "rage"), "cyclops_rage", "his eye out: his own scream")
+	t.eq(Voices.file_key(man, "rampage"), "cyclops_rampage", "then his raging")
+	t.eq(Voices.file_key(man, "death"), "cyclops_death", "and still dies in his own voice")
+	for g in ["minotaur", "titan", "troll", "giant"]:
+		man.mods["voice"] = g
+		t.check(not Voices.file_key(man, "rage").begins_with("cyclops_"), "%s does not take the Cyclops' scream" % g)
+	man.mods.erase("voice")
+	for k in [["cyclops_rage", 3], ["cyclops_rampage", 5]]:
+		for i in range(1, int(k[1]) + 1):
+			var path := Sfx.VOICE_DIR + "%s_%d.ogg" % [k[0], i]
+			t.check(ResourceLoader.exists(path) or FileAccess.file_exists(path), "%s is there" % path.get_file())
+	t.check(Sfx._voice_stream("cyclops_rage") != null, "the scream loads as a stream")
+	t.check(Sfx._voice_stream("cyclops_rampage") != null, "and the raging")
+	m.queue_free()
+
+## Blinded, the Cyclops' rampage goes on: the raging cry comes again and again while he rages.
+func test_the_blind_cyclops_roars_on() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+	var spec: Dictionary = m.enemy_spec({"e": "cyclops"}, 0, 1)
+	spec.pos = Vector3(0, 0.1, 9)
+	var e = m.spawn_fighter(spec)
+	var f: Fighter = e.f
+	t.eq(Voices.giant_voice(f), "cyclops", "the campaign's Cyclops has the Cyclops' voice")
+	f.raged.emit(f)
+	t.check(f.has_meta("rage_t"), "his scream marks when he began to rage")
+	var first := float(f.get_meta("rage_t"))
+	f.enraged = true
+	for i in 120 * 8:
+		await get_tree().physics_frame
+	t.check(float(f.get_meta("rage_t")) > first, "and he roared again as he raged (%.1f s -> %.1f s)" % [first, float(f.get_meta("rage_t"))])
+	m.queue_free()

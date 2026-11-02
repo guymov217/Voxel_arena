@@ -19,6 +19,12 @@ from scipy import signal
 
 SR = 44100
 POOL = None
+# --hq: the same voices made with better tools: pitch and time through Rubber Band (the grains of
+# the overlap-add stretch beat against each other, the "synthetic" warble), a light spectral
+# denoise of the recordings instead of a 7 kHz low-pass after, the throat effects at half depth, an
+# arena's own reflections for the room, and a gentle compressor and a true limiter in place of the
+# squash and the soft clip.
+HQ = False
 CC0 = None
 _cache = {}
 
@@ -29,9 +35,24 @@ def load(path):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-f", "f32le", "-ac", "1", "-ar", str(SR), "-"],
                          capture_output=True, check=True).stdout
     x = np.frombuffer(raw, dtype=np.float32).astype(np.float64)
+    if HQ:
+        x = ff(x, "afftdn=nr=10:nf=-50:tn=1")
     x = trim(x)
     _cache[path] = x
     return x
+
+def ff(x, chain):
+    """A mono buffer through an ffmpeg filter chain."""
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "f64le", "-ar", str(SR), "-ac", "1", "-i", "-", "-af", chain,
+                          "-f", "f64le", "-ar", str(SR), "-ac", "1", "-"], input=np.ascontiguousarray(x, dtype=np.float64).tobytes(),
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(raw, dtype=np.float64).copy()
+
+def rb(x, pitch=1.0, tempo=1.0):
+    """Rubber Band: pitch (ratio) and tempo (speed ratio) each on its own, at studio quality."""
+    if abs(pitch - 1.0) < 1e-3 and abs(tempo - 1.0) < 1e-3:
+        return x
+    return ff(x, f"rubberband=pitch={pitch:.5f}:tempo={tempo:.5f}:transients=mixed:pitchq=quality:window=standard:phase=laminar")
 
 def pool(name, n=1):
     """The n-th (1-based, cycled) cut of a conquest family: pool("wolf-call", 2)."""
@@ -69,6 +90,8 @@ def stretch(x, r):
     """Longer by r at the same pitch (phase-vocoder-less: granular overlap-add)."""
     if abs(r - 1.0) < 1e-3:
         return x
+    if HQ:
+        return rb(x, tempo=1.0 / r)
     g = int(0.06 * SR); hop_in = g // 2; hop_out = int(hop_in * r)
     win = np.hanning(g)
     out = np.zeros(int(len(x) * r) + g)
@@ -81,6 +104,8 @@ def stretch(x, r):
 def deep(x, r, keep=0.65):
     """A bigger throat: pitched down by r, then pulled back toward its own length (keep: how
     much of the slowing stays, 1.0 all of it), so a man slowed to a giant does not smear."""
+    if HQ:
+        return rb(x, pitch=r, tempo=1.0 / (1 + (1 / r - 1) * keep))
     y = shift(x, r)
     want = len(x) * (1 + (1 / r - 1) * keep)
     return stretch(y, want / len(y))
@@ -124,15 +149,19 @@ def drive(x, k=2.0):
 
 def growl(x, hz=28.0, depth=0.5):
     """Sub-harmonic pulsing (vocal-fry) over a sound."""
+    depth *= 0.5 if HQ else 1.0
     t = np.arange(len(x)) / SR
     return x * (1 - depth + depth * (0.5 + 0.5 * np.sin(2 * np.pi * hz * t)) ** 0.7)
 
 def tremolo(x, hz, depth=0.6):
+    depth *= 0.5 if HQ else 1.0
     t = np.arange(len(x)) / SR
     return x * (1 - depth * 0.5 * (1 - np.cos(2 * np.pi * hz * t)))
 
 def room(x, size=0.4, mix=0.18, seed=1):
     """A hall: decaying noise convolved in."""
+    if HQ:
+        return arena_room(x, size, mix, seed)
     rng = np.random.default_rng(seed)
     n = int(size * SR); t = np.arange(n) / SR
     ir = lp(rng.normal(0, 1, n) * np.exp(-t * (6.0 / size)), 5000)
@@ -140,6 +169,24 @@ def room(x, size=0.4, mix=0.18, seed=1):
     wet = signal.fftconvolve(x, ir)[:len(x) + n]
     dry = np.concatenate([x, np.zeros(len(wet) - len(x))])
     return dry + wet * mix * 3.0
+
+def arena_room(x, size=0.4, mix=0.18, seed=1):
+    """The arena: the first echoes off its wall and stands (dull: stone and people), then a tail
+    whose top dies first (the sand drinks it), after a short gap (the walls are far)."""
+    rng = np.random.default_rng(seed)
+    n = int(size * SR); t = np.arange(n) / SR
+    tail = rng.normal(0, 1, n)
+    tail = lp(tail, 2200) * np.exp(-t * (6.0 / size)) + hp(tail, 2200) * np.exp(-t * (15.0 / size)) * 0.6
+    tail[:int(0.014 * SR)] *= np.linspace(0, 1, int(0.014 * SR))
+    tail /= np.sqrt(np.sum(tail * tail)) + 1e-9
+    wet = signal.fftconvolve(x, tail)[:len(x) + n] * mix * 2.4
+    early = np.zeros(len(wet))
+    xl = lp(x, 3500)
+    for d, g in ((0.019, 0.22), (0.031, 0.16), (0.047, 0.12), (0.071, 0.08)):
+        i = int(d * SR)
+        early[i:i + len(x)] += xl[:len(early) - i] * g * mix * 3.0
+    dry = np.concatenate([x, np.zeros(len(wet) - len(x))])
+    return dry + wet + early
 
 def mix(*parts):
     """Layers [(sound, offset_seconds, gain), ...] (or bare sounds)."""
@@ -163,6 +210,13 @@ def norm(x, p=0.9):
     return x * (p / m) if m > 1e-9 else x
 
 def finish(x, p=0.9, hp_f=40):
+    if HQ:
+        # A gentle compressor (2.2:1 over the top 15 dB, soft knee) and a true limiter: the body
+        # brought up without the squash, no clipping, no fizz of distortion on it.
+        x = norm(np.nan_to_num(hp(x, hp_f)), 0.5)
+        x = ff(x, "acompressor=threshold=0.09:ratio=2.2:attack=8:release=140:knee=4:makeup=1,"
+                  "alimiter=limit=0.89:attack=1.5:release=50:level=disabled")
+        return np.nan_to_num(norm(env(x, 0.003, 0.03), p))
     x = np.nan_to_num(hp(x, hp_f))
     # A gentle compressor: the loud bits tamed, the body brought up.
     e = np.sqrt(np.maximum(lp(x * x, 25), 0) + 1e-9); g = 1 / (0.35 + e * 2.0); x = x * g
@@ -514,6 +568,23 @@ for _k in THROATS:
 # The giants of myth (bosses): each his own throat.
 @voice("cyclops")
 def cyclops(ev, i):
+    if ev == "rage":
+        # His one eye put out: a huge man's scream of agony, doubled by a second voice, a bear's
+        # pain under it, and the ragged breath after (user: he screams and rages).
+        scream = stretch(deep(pool("human-rough-death", i), 0.62), 1.3)
+        second = stretch(deep(pool("human-rough-hurt", i + 1), 0.58), 1.2)
+        beast = shift(pool("bear-hurt", i), 0.78)
+        gasp = fade_out(cut(drive(shift(pool("breath", i), 0.55), 1.4), 0, 0.8), 0.4) * 0.55
+        x = mix(scream, (second, 0.16, 0.7), (beast, 0.04, 0.4))
+        x = growl(drive(x, 1.7), 22, 0.32)
+        return room(seq(fade_out(x, 0.7), gasp, gap=-0.2), 1.0, 0.32)
+    if ev == "rampage":
+        # Blind and mad with it: bellows and snarls as he lashes about after the man he cannot see.
+        src = "human-rough-attack" if i <= 4 else "human-rough-hurt"   # (four cuts: the fifth a hurt one)
+        x = mix(deep(pool(src, i), 0.55), (shift(pool("troll-attack", i), 0.82), 0.06, 0.55))
+        if i % 2 == 0:
+            x = seq(x, cut(drive(shift(pool("bear-attack", i), 0.85), 1.5), 0, 0.5), gap=-0.12)
+        return room(growl(drive(x, 1.9), 26, 0.3), 0.8, 0.28)
     if ev == "call":  # a huge, slow man's bellow
         return room(growl(drive(deep(pool("human-rough-attack", i), 0.55), 1.8), 24, 0.35), 0.8, 0.28)
     if ev == "hurt":
@@ -557,14 +628,16 @@ def titan(ev, i):
     return room(fade_out(mix(deep(pool("human-rough-death", i), 0.48), (cut(thunder, 0, 2.5), 0.3, 0.8)), 1.8), 1.4, 0.38)
 
 EVENTS = {k: ["effort", "grunt", "pain", "scream", "death"] for k in ["man_light", "man_mid", "man_heavy"]}
+EVENTS["cyclops"] = ["call", "hurt", "death", "rage", "rampage"]
 # The longest a cut may run (seconds): a fight has no time for an aria.
-LIMIT = {"call": 3.2, "hurt": 1.2, "death": 4.5}
+LIMIT = {"call": 3.2, "hurt": 1.2, "death": 4.5, "rage": 3.8, "rampage": 1.9}
 
 def limit(x, ev):
     n = int(LIMIT.get(ev, 1.5) * SR)
     return fade_out(x[:n], 0.35) if len(x) > n else x
 TAKES = 3
 TAKES_OF = {"man_light": 6, "man_mid": 6, "man_heavy": 6}
+EVENT_TAKES = {"rampage": 5}
 # Quieter than the rest after finishing (peak): a bird, not a lion.
 LEVEL = {"ostrich": 0.42, "basilisk": 0.6}
 SOFT = ["man_light", "man_mid", "man_heavy", "rat"]   # already finished quietly: no limiter, no drive
@@ -587,8 +660,12 @@ def main():
     ap.add_argument("--pool", required=True); ap.add_argument("--cc0", required=True)
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "art", "audio", "voices"))
     ap.add_argument("--demo", default=""); ap.add_argument("--only", default="")
+    ap.add_argument("--events", default="", help="only these events (rage,rampage)")
+    ap.add_argument("--hq", action="store_true", help="the better tools (Rubber Band, denoise, a true limiter)")
     a = ap.parse_args()
+    global HQ
     POOL, CC0 = a.pool, a.cc0
+    HQ = a.hq
     os.makedirs(a.out, exist_ok=True)
     if a.demo:
         os.makedirs(a.demo, exist_ok=True)
@@ -597,7 +674,9 @@ def main():
             continue
         demo = []
         for ev in EVENTS.get(key, ["call", "hurt", "death"]):
-            for i in range(1, TAKES_OF.get(key, TAKES) + 1):
+            if a.events and ev not in a.events.split(","):
+                continue
+            for i in range(1, EVENT_TAKES.get(ev, TAKES_OF.get(key, TAKES)) + 1):
                 x = fn(ev, i) if key in SOFT else finish(limit(fn(ev, i), ev), LEVEL.get(key, 0.9))
                 write_ogg(x, os.path.join(a.out, f"{key}_{ev}_{i}.ogg"))
                 if a.demo and (ev in ("call", "death") or key in SOFT or i == 1):

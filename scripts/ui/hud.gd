@@ -806,41 +806,50 @@ func _key(id: String) -> String:
 		code = str(Data.controls.get("defaults", {}).get(id, ""))
 	return PlayerInput.label_of(code) if code != "" else id.to_upper()
 
+## The pot in hand by its name at the market ("thunder pot"); a guest's copy knows only its kind.
+func _held_name(f) -> String:
+	var ty := String(f.held_item.type)
+	var id := String(f.held_item.id)
+	if id == "":
+		id = str(Throwables.POTS.find_key(ty)) if Throwables.POTS.values().has(ty) else {"pot_dart": "darts"}.get(ty, ty)
+	var it: Dictionary = Data.shop.get("throwables", {}).get(id, {})
+	return Loc.lower(String(it.name)) if it.has("name") else ty.trim_prefix("pot_").replace("_", " ")
+
 ## What the nearest thing lets you do right now: a man in your hands, a pot readied, a stall,
 ## a weapon or a limb lying within reach.
 func _prompt_for(f) -> Array:
 	if not f.alive:
 		return []
 	if f.dying > 0.0:
-		return [[], "At death's door: a friend can lift you · %d s" % ceili(f.dying)]
+		return [[], Loc.t("At death's door: a friend can lift you · %d s") % ceili(f.dying)]
 	var me_e = match_.entity_of(f)
 	var dying_friend = match_.dying_friend_of(me_e) if me_e else null
 	if dying_friend != null:
-		return [["revive"], "Hold to lift %s" % dying_friend.f.display_name]
+		return [["revive"], Loc.t("Hold to lift %s") % dying_friend.f.display_name]
 	var mnd = match_.social.mind_of(me_e) if me_e and match_.social else null
 	if mnd != null:
-		return [["throw"], "%s hangs in your grip · hurl him where you look · %d s" % [mnd.t.display_name, ceili(float(mnd.left))]]
+		return [["throw"], Loc.t("%s hangs in your grip · hurl him where you look · %d s") % [mnd.t.display_name, ceili(float(mnd.left))]]
 	var croc = f.get_meta("rolled_by") if f.has_meta("rolled_by") else null
 	if croc != null and is_instance_valid(croc) and croc.hug != null and croc.hug.get("target") == f:
 		return [["back", "forward"], "Pull away to prise its jaws open · strike its head"]
 	if f.holding != null:
 		if f.holding.limb != null:
-			return [["throw"], "Throw the %s" % String(f.holding.limb.label).to_lower()]
+			return [["throw"], Loc.t("Throw the %s") % Loc.lower(String(f.holding.limb.label))]
 		return [["throw", "shove", "grab"], "Throw · slam · let go"]
 	if f.has_method("lodged_side") and f.lodged_side() != "":
 		return [["grab"], "Stuck fast in him · pull back or step away to wrench it out · let go"]
 	if f.held_item != null:
-		return [["throw"], "Hold to aim, let go to throw the %s · its number again puts it away" % String(f.held_item.type).trim_prefix("pot_").replace("_", " ")]
+		return [["throw"], Loc.t("Hold to aim, let go to throw the %s · its number again puts it away") % _held_name(f)]
 	var pos: Vector3 = f.torso.global_position
 	if match_.yard:
 		var at := Yard.station_at(pos)
 		if at != "":
 			var st: Dictionary = Yard.STATIONS[at]
 			if st.has("npc"):
-				return [["kick"], "Talk to %s" % String(st.npc.name)]
+				return [["kick"], Loc.t("Talk to %s") % Loc.t(String(st.npc.name))]
 			if at == "gate":
 				return [["kick"], "Into the arena: the next fight"]
-			return [["kick"], String(st.label)]
+			return [["kick"], Loc.t(String(st.label))]
 	var hand_r: Vector3 = f.hand_world("R")
 	var hand_l: Vector3 = f.hand_world("L")
 	# Exactly what G would take (Fighter.takeable: the grip in a hand's reach, the hand free). By
@@ -853,13 +862,13 @@ func _prompt_for(f) -> Array:
 		if best == null:
 			best = f.takeable(match_.combat.loose_weapons, side)
 	if best != null:
-		return [["grab"], "Pick up the %s" % String(best.design.get("name", "weapon")).to_lower()]
+		return [["grab"], Loc.t("Pick up the %s") % Loc.lower(String(best.design.get("name", "weapon")))]
 	for o in match_.entities:
 		for part in o.f.parts:
 			if part.severed and not part.missing and part.wielder == null and part.alive_count > 0 and part.part_name != "torso":
 				var d := minf(part.global_position.distance_to(hand_r), part.global_position.distance_to(hand_l))
 				if d < 0.9:
-					return [["grab"], "Grab the %s" % String(part.label).to_lower()]
+					return [["grab"], Loc.t("Grab the %s") % Loc.lower(String(part.label))]
 	# A weapon just taken in hand: for a few seconds, how to put both hands on it or change hands.
 	# (Not the weapons a fighter walks in with: only a change in his hands.)
 	var now_held := [f, f.weapons.R, f.weapons.L, f.two_handed]
@@ -898,14 +907,14 @@ func _place() -> void:
 			place_label.text = "THE ARENA"
 			var sub := ""
 			if m.stage_info.get("duel", false):
-				sub = "%sBOUT %d · %s" % ["CO-OP · " if m.coop else "", m.stage, String(m.stage_info.get("foe_name", "")).to_upper()]
+				sub = Loc.t("CO-OP · BOUT %d · %s" if m.coop else "BOUT %d · %s") % [m.stage, String(m.stage_info.get("foe_name", "")).to_upper()]
 			else:
-				sub = "STAGE %d · ROUND %d OF 3" % [m.stage, m.round + 1]
+				sub = Loc.t("STAGE %d · ROUND %d OF 3") % [m.stage, m.round + 1]
 			place_sub.text = sub
 		"yard":
 			place_label.text = "THE LUDUS YARD"
 			var at := Yard.station_at(m.me.f.torso.global_position) if m.me and is_instance_valid(m.me.f) else ""
-			place_sub.text = String(Yard.STATIONS[at].label).to_upper() if at != "" else "THE GATE LEADS TO THE ARENA"
+			place_sub.text = Loc.t(String(Yard.STATIONS[at].label)).to_upper() if at != "" else Loc.t("THE GATE LEADS TO THE ARENA")
 		"training":
 			place_label.text = "THE TRAINING GROUND"
 			place_sub.text = ""
@@ -948,12 +957,12 @@ func _process(dt: float) -> void:
 		var fh = match_.me.f
 		var hand := ""
 		if fh.held_item != null:
-			hand = String(fh.held_item.type).trim_prefix("pot_").replace("_", " ")
+			hand = _held_name(fh)
 		else:
 			var side: String = Social.throw_side(fh, match_.last_local_inp)
 			var w = fh.weapons.get(side)
-			hand = ("%s hand: %s" % ["right" if side == "R" else "left", String(w.design.get("name", "weapon")).to_lower()]) if w else "nothing in hand"
-		charge_hint.text = "%s · left click: the other hand · right click: call it off" % hand
+			hand = (Loc.t("right hand: %s" if side == "R" else "left hand: %s") % Loc.lower(String(w.design.get("name", "weapon")))) if w else Loc.t("nothing in hand")
+		charge_hint.text = Loc.t("%s · left click: the other hand · right click: call it off") % hand
 	if ch != charge:
 		charge = ch
 		charge_bar.queue_redraw()
@@ -996,7 +1005,7 @@ func _process(dt: float) -> void:
 		# The crowd's cheers for you.
 		for ev in match_.spectacle.events:
 			if ev.f == f and ev.amount > 0:
-				popup("+%d %s" % [ev.amount, ev.reason])
+				popup("+%d %s" % [ev.amount, Loc.t(String(ev.reason))])
 		var inv: Dictionary = me.get("inventory", {})
 		var bar := Throwables.hotbar_of(inv)
 		for i in slots.size():
@@ -1008,13 +1017,13 @@ func _process(dt: float) -> void:
 					s.pic.texture = null
 					Thumbs.item(s.pic, id)
 				s.count.text = "×%d" % int(inv[id])
-				s.name.text = "" if s.pic.texture else String(Data.shop.throwables[id].name)
-				s.panel.tooltip_text = String(Data.shop.throwables[id].name)
+				s.name.text = "" if s.pic.texture else Loc.t(String(Data.shop.throwables[id].name))
+				s.panel.tooltip_text = Loc.t(String(Data.shop.throwables[id].name))
 				s.panel.visible = true
 			else:
 				s.panel.visible = false
 		var held = f.held_item
-		held_label.text = ("IN HAND: %s" % String(held.type).trim_prefix("pot_").replace("_", " ").to_upper()) if held else ""
+		held_label.text = (Loc.t("IN HAND: %s") % _held_name(f).to_upper()) if held else ""
 		_set_prompt(_prompt_for(f))
 	else:
 		vignette.modulate.a = 0.0
@@ -1026,14 +1035,14 @@ func _process(dt: float) -> void:
 	_place()
 	var status: Label = bars.status
 	status.text = ""   # (the yard's place is in the corner and what to do there in the prompt: the plate stays the fight's size)
-	decree_label.text = ("DECREES: " + " · ".join(match_.dec.names)).to_upper() if not match_.dec.names.is_empty() else ""
+	decree_label.text = (Loc.t("DECREES: %s") % " · ".join(match_.dec.names.map(func(nm): return Loc.t(nm)))).to_upper() if not match_.dec.names.is_empty() else ""
 	if match_.tut:
 		if tut_panel == null:
 			_build_tutorial()
 		var tv: Dictionary = match_.tut.view()
 		tut_panel.visible = true
-		tut_step.text = "TUTORIAL · STEP %d OF %d" % [mini(int(tv.step) + 1, int(tv.total)), int(tv.total)]
-		tut_title.text = ("✔ " if tv.get("ok", false) else "") + String(tv.title)
+		tut_step.text = Loc.t("TUTORIAL · STEP %d OF %d") % [mini(int(tv.step) + 1, int(tv.total)), int(tv.total)]
+		tut_title.text = ("✔ " if tv.get("ok", false) else "") + Loc.t(String(tv.title))
 		tut_title.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if tv.get("ok", false) else GOLD_PALE)
 		tut_text.text = String(tv.text)
 	# The enemy in front of you.

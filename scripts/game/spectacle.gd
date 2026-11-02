@@ -144,7 +144,7 @@ func say(key: String, a = null, v = null, part := "", _center := false, cooldown
 	for ch in an.to_upper():
 		if ch >= "A" and ch <= "Z" and up.length() < 7:
 			up += ch
-	var line: String = lines[randi() % lines.size()].replace("{a}", an).replace("{v}", vn).replace("{part}", part if part != "" else "limb").replace("{A}", up if up != "" else "ROME")
+	var line: String = Loc.t(lines[randi() % lines.size()]).replace("{a}", an).replace("{v}", vn).replace("{part}", Loc.lower(part) if part != "" else "limb").replace("{A}", up if up != "" else "ROME")
 	# In the feed at the side only: across the middle of the screen a shout hid the fight.
 	m.feed.emit(line)
 	if m.role == "host":
@@ -153,6 +153,9 @@ func say(key: String, a = null, v = null, part := "", _center := false, cooldown
 
 func on_round_start() -> void:
 	say("roundStart", null, null, "", false, 0.0)
+
+## The bones a blow breaks with no part of their own to name (Fighter's res.broke), as words.
+const BROKE_WORDS := {"ribs": "Ribs", "skull": "Skull", "pelvis": "Pelvis", "ribs into the lung": "Ribs into the lung"}
 
 ## Every hit the host deals out (after the damage).
 func on_hit(h: Dictionary) -> void:
@@ -197,9 +200,9 @@ func on_hit(h: Dictionary) -> void:
 		say("friendly", a, v, "", false, 6.0)
 	var broke := ""
 	if res.get("fractured") is VoxelPart:
-		broke = String(res.fractured.label).to_lower()
+		broke = Loc.lower(String(res.fractured.label))
 	elif res.get("broke", "") != "":
-		broke = res.broke
+		broke = Loc.lower(String(BROKE_WORDS.get(res.broke, res.broke)))
 	if broke != "":
 		add(a, 12, "Bone breaker!")
 		say("bones", a, v, broke, false, 5.0)
@@ -213,7 +216,7 @@ func on_hit(h: Dictionary) -> void:
 		if sp.part_name == "head":
 			say("decap", a, v, "", true, 0.0)
 		else:
-			say("limb", a, v, String(sp.label).to_lower(), false, 2.0)
+			say("limb", a, v, String(sp.label), false, 2.0)
 	elif J > 34.0:
 		say("bigHit", a, v, "", false, 5.0)
 	if h.get("thrown", false) and J > 6.0:

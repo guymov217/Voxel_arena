@@ -55,6 +55,26 @@ var moved := false            # the player has placed the camera: no more turnin
 var idle_t := 0.0
 var fog_env: Environment       # the smithy's: its haze is laid from the weapon back (_place_camera)
 var swing_t := -1.0
+var swing_st := {}       # the swing preview's stats and grip, read once when it starts
+# What is on the anvil, kept from one change to the next (each block put on or taken off only
+# touches what changed: the whole weapon was built again for every block, and a big one made the
+# forge stutter while a stroke was dragged).
+var vox_mi: MultiMeshInstance3D = null
+var pick_body: StaticBody3D = null
+var pick_shapes := {}      # Vector3i -> its CollisionShape3D (what the mouse points at)
+var pick_box: BoxShape3D = null
+var ring_key := ""         # where the hands' rings were drawn (drawn again only when they move)
+var ring_nodes: Array = []
+# The taper of each sharp block (VoxelPart.taper_code) is most of what a change costs on a big
+# weapon (33 ms of 38 for 1100 blocks): the blocks round a change are worked out at once, the
+# rest kept, and the whole weapon again a moment after the hand stops (forgeperf.gd).
+var taper_of := {}         # Vector3i -> its taper code as drawn
+var drawn := {}            # Vector3i -> the cell as it was last drawn ([mat, job, face])
+var inst_of := {}          # Vector3i -> its instance in the multimesh
+var taper_t := -1.0        # until the whole weapon's taper is worked out again (s; -1: it is)
+var texts_due := false     # the bars and words over the anvil to bring up to date this frame
+const TAPER_NEAR := 2      # blocks this near a change have their taper worked out at once
+const TAPER_SETTLE := 0.25 # s after the last change, the whole weapon's
 
 var side_box: VBoxContainer
 var mode_row: HBoxContainer
@@ -62,7 +82,19 @@ var mode_box: VBoxContainer
 var tool_bar: PanelContainer
 var name_edit: LineEdit
 var bars: Control
-var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0}
+var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0, "armour": 0.0}
+# What a change did (user: see at once what each block does): the numbers before the latest run
+# of changes, shown against now by the bars for a moment after the last of them.
+var stat_now := {}
+var stat_base := {}
+var stat_delta := {}
+var stat_t := -100.0       # when the numbers last changed (s, Time)
+var weight_feel := ""      # "Balanced", "Head-heavy"... (ForgeLib.feel)
+var com_mark: Node3D = null   # the balance point on the weapon
+const DELTA_HOLD := 2.5    # how long a change's ▲ / ▼ stays by the bars (s)
+const BAR_ROWS := [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"]]
+const UP_C := Color(0.5, 0.82, 0.42)
+const DOWN_C := Color(0.92, 0.4, 0.3)
 var says: Label
 var verdict: Label
 var cost_label: Label
@@ -72,10 +104,14 @@ var hover_at = null      # where the mouse is over the anvil (R turns the sharp 
 ## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
 const MATS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
-const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)"], ["erase", "Erase", "Click voxels: take them off (right click erases too)"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there"]]
+const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)  [B]"], ["erase", "Erase", "Click voxels: take them off (right click erases too)  [X]"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]"]]
+## The keys at the anvil (shown on the tools' tips and in the tutorial): a tool each, a job each,
+## the two mirrors, and Q to take up the material and job of the block under the mouse.
+const TOOL_KEYS := {KEY_B: "build", KEY_X: "erase", KEY_L: "line", KEY_H: "hand"}
+const JOB_KEYS := {KEY_1: "edge", KEY_2: "point", KEY_3: "blunt", KEY_4: "grip"}
 ## What each tool asks for, shown under the anvil while it is in hand.
 const TOOL_HINT := {
-	"build": "Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one)",
+	"build": "Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one; Q takes up the block under the mouse)",
 	"erase": "Erase: click blocks, or hold the right button anywhere",
 	"line": "Line: click where it starts",
 	"hand": "Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand",
@@ -83,6 +119,8 @@ const TOOL_HINT := {
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
 	add_to_group("bench")   # (the HUD keeps off it)
+	if Sfx.music:
+		Sfx.music.bench(true)   # (the forge's own tune; the one before it when it closes)
 	design = d.duplicate(true)
 	purse = coins
 	done = cb
@@ -184,8 +222,9 @@ func _build_ui() -> void:
 	side_box.add_child(mode_box)
 	col.add_child(HSeparator.new())
 	bars = Control.new()
-	bars.custom_minimum_size = Vector2(400, 62)
+	bars.custom_minimum_size = Vector2(420, 102)
 	bars.draw.connect(_draw_bars)
+	bars.tooltip_text = "Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point."
 	col.add_child(bars)
 	says = UIStyle.label("", 13, UIStyle.TEXT)
 	says.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -415,11 +454,11 @@ func _try_row() -> HBoxContainer:
 	for k in Data.campaign.get("enemies", {}):
 		if Edition.foe_open("foe:" + k):
 			keys.append("foe:" + k)
-			names.append(String(Data.campaign.enemies[k].get("label", k)))
+			names.append(Loc.t(String(Data.campaign.enemies[k].get("label", k))))
 	for k in Data.beasts:
 		if Edition.foe_open(k) and k != "goat":
 			keys.append(k)
-			names.append(String(Data.beasts[k].get("name", k)))
+			names.append(Loc.t(String(Data.beasts[k].get("name", k))))
 	for n in names:
 		who.add_item(n)
 	who.select(maxi(0, keys.find(dummy_pick)))
@@ -458,7 +497,7 @@ func _cards_ui() -> void:
 		grid.add_child(b)
 	if base_key == "":
 		return
-	mode_box.add_child(UIStyle.label("2 · ADD UP TO %d TWISTS" % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
+	mode_box.add_child(UIStyle.label(Loc.t("2 · ADD UP TO %d TWISTS") % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
 	var cards := GridContainer.new()
 	cards.columns = 2
 	mode_box.add_child(cards)
@@ -476,7 +515,7 @@ func _cards_ui() -> void:
 		for bk in ["speed", "damage", "reach"]:
 			var dv: float = after[bk] - now[bk]
 			arrows += ("▲" if dv > 0.03 else ("▼" if dv < -0.03 else "·"))
-		var b := UIStyle.button("%s  %s" % [mdef.label, "✔" if picks.has(key) else arrows], func(): _toggle_pick(key))
+		var b := UIStyle.button("%s  %s" % [Loc.t(String(mdef.label)), "✔" if picks.has(key) else arrows], func(): _toggle_pick(key))
 		b.tooltip_text = mdef.blurb
 		b.toggle_mode = true
 		b.button_pressed = picks.has(key)
@@ -617,7 +656,7 @@ func _sharp_note(k: float) -> String:
 	var n := _sharp_blocks()
 	if free_build:
 		return "%d%%" % roundi(k * 100.0)
-	return "%d%% · honing %d (%d Cut/Stab block%s)" % [roundi(k * 100.0), Arms.honing(_jobs_now(), k), n, "" if n == 1 else "s"]
+	return Loc.t("%d%% · honing %d (%d Cut/Stab block)" if n == 1 else "%d%% · honing %d (%d Cut/Stab blocks)") % [roundi(k * 100.0), Arms.honing(_jobs_now(), k), n]
 
 func _jobs_now() -> Array:
 	return cells.values().map(func(c): return String(c[1]))
@@ -729,12 +768,12 @@ func _voxels_ui() -> void:
 			_show_line([])
 			_toolbar_ui()
 			_show_mode("voxels")
-			cost_label.text = "Click the block where the %s hand holds it (its ring: %s)" % ["main" if which == "main" else "other", "gold" if which == "main" else "bronze"])
+			cost_label.text = Loc.t("Click the block where the main hand holds it (its ring: gold)" if which == "main" else "Click the block where the other hand holds it (its ring: bronze)"))
 		pb.toggle_mode = true
 		pb.button_pressed = tool == "hand" and (hand_pick if hand_pick != "" else "main") == which
 		pb.add_theme_color_override("font_color", hd[2])
 		pb.add_theme_color_override("font_pressed_color", hd[2])
-		pb.tooltip_text = "Put the %s hand on a block: click it on the weapon" % ("main" if which == "main" else "other")
+		pb.tooltip_text = Loc.t("Put the main hand on a block: click it on the weapon" if which == "main" else "Put the other hand on a block: click it on the weapon")
 		held.add_child(pb)
 	mode_box.add_child(held)
 	var opts := HBoxContainer.new()
@@ -764,7 +803,7 @@ func _voxels_ui() -> void:
 	var sl_v := UIStyle.label(_sharp_note(sl.value), 13, UIStyle.GOLD)
 	sl_v.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sr.add_child(sl_v)
-	var tip := "Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\nHoning each Cut or Stab block costs, by the sharpness set:\n%s" % "\n".join([0.25, 0.5, 0.75, 1.0].map(func(k): return "  %d%%: %.1f denarii a block" % [roundi(k * 100.0), Arms.sharp_cost("edge", k)]))
+	var tip := Loc.t("Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\nHoning each Cut or Stab block costs, by the sharpness set:\n%s") % "\n".join([0.25, 0.5, 0.75, 1.0].map(func(k): return Loc.t("  %d%%: %.1f denarii a block") % [roundi(k * 100.0), Arms.sharp_cost("edge", k)]))
 	for c in [sl_l, sl, sl_v]:
 		c.tooltip_text = tip
 		c.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -881,7 +920,7 @@ func _save_design() -> void:
 	g.push_front(d)
 	Save.set_value("forge_gallery", g.slice(0, GALLERY_MAX))
 	Achievements.unlock("smith")
-	cost_label.text = "Saved to My designs: \"%s\"" % str(d.get("name", "?"))
+	cost_label.text = Loc.t("Saved to My designs: \"%s\"") % str(d.get("name", "?"))
 	if mode == "gallery":
 		_show_mode("gallery")
 
@@ -915,7 +954,7 @@ func _gallery_ui() -> void:
 		if scratch:
 			# At the smith: have it made as it is, for what it is worth.
 			var price := Arms.design_price(d)
-			var buy := UIStyle.button("Buy · %d" % price, func():
+			var buy := UIStyle.button(Loc.t("Buy · %d") % price, func():
 				_load_design(d)
 				_take())
 			buy.disabled = price > purse
@@ -978,22 +1017,91 @@ static func material_stats(m: String) -> String:
 	var d: Dictionary = Data.material(m)
 	var h := clampi(int(round(float(d.get("hardness", 0.5)) * 5.0)), 0, 5)
 	var w := clampi(int(round(log(maxf(0.0008, float(d.get("mass", 0.02))) / 0.0008) / log(0.22 / 0.0008) * 5.0)), 0, 5)
-	return "%s   Hardness %s   Weight %s" % [str(d.get("name", m)).get_slice(" (", 0), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
+	return Loc.t("%s   Hardness %s   Weight %s") % [Loc.t(str(d.get("name", m))).get_slice(" (", 0).get_slice("（", 0), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
 
 static func material_text(m: String) -> String:
 	var d: Dictionary = Data.material(m)
 	var h := clampi(int(round(float(d.get("hardness", 0.5)) * 5.0)), 0, 5)
 	var w := clampi(int(round(log(maxf(0.0008, float(d.get("mass", 0.02))) / 0.0008) / log(0.22 / 0.0008) * 5.0)), 0, 5)
-	return "%s: %s  Hardness %s  Weight %s" % [str(d.get("name", m)).get_slice(" (", 0), MAT_USE.get(m, ""), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
+	return Loc.t("%s: %s  Hardness %s  Weight %s") % [Loc.t(str(d.get("name", m))).get_slice(" (", 0).get_slice("（", 0), Loc.t(MAT_USE.get(m, "")), "●".repeat(h) + "○".repeat(5 - h), "●".repeat(w) + "○".repeat(5 - w)]
 
 func _draw_bars() -> void:
-	var y := 2.0
 	var font := UIStyle.serif(1)
-	for k in ["speed", "damage", "reach"]:
-		bars.draw_string(font, Vector2(0, y + 14), k.capitalize(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
-		bars.draw_rect(Rect2(80, y + 3, 300, 12), Color(0, 0, 0, 0.5))
-		bars.draw_rect(Rect2(80, y + 3, 300.0 * float(bar_vals[k]), 12), Color(0.85, 0.32, 0.2) if k == "damage" else UIStyle.GOLD)
+	# (The names as wide as the language makes them.)
+	var lw := 64.0
+	for r in BAR_ROWS + [["", "Weight"]]:
+		lw = maxf(lw, font.get_string_size(Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
+	var x0 := lw + 12.0
+	var w := maxf(120.0, bars.size.x - x0 - 70.0)
+	var fade := _delta_fade()
+	var y := 2.0
+	for r in BAR_ROWS:
+		var k: String = r[0]
+		bars.draw_string(font, Vector2(0, y + 14), Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
+		bars.draw_rect(Rect2(x0, y + 3, w, 12), Color(0, 0, 0, 0.5))
+		var col: Color = Color(0.85, 0.32, 0.2) if k == "damage" else (UIStyle.BRONZE if k == "armour" else UIStyle.GOLD)
+		bars.draw_rect(Rect2(x0, y + 3, w * float(bar_vals.get(k, 0.0)), 12), col)
+		# What the last change did to it, for a moment: ▲ 6% or ▼ 4%.
+		var dv := float(stat_delta.get(k, 0.0))
+		if fade > 0.0 and absf(dv) >= 1.0:
+			var c: Color = UP_C if dv > 0.0 else DOWN_C
+			c.a = fade
+			bars.draw_string(font, Vector2(x0 + w + 8.0, y + 14), "%s %d%%" % ["▲" if dv > 0.0 else "▼", int(round(absf(dv)))], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, c)
 		y += 20.0
+	# The weight, how it sits in the hand, and what the last change put on or took off.
+	bars.draw_string(font, Vector2(0, y + 14), Loc.t("Weight"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
+	var kg := Loc.t("%.2f kg") % float(stat_now.get("mass", 0.0))
+	bars.draw_string(font, Vector2(x0, y + 14), kg, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.TEXT)
+	var xr := x0 + font.get_string_size(kg, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 10.0
+	if weight_feel != "":
+		var fs := "·  " + Loc.t(weight_feel)
+		bars.draw_string(font, Vector2(xr, y + 14), fs, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.GOLD)
+		xr += font.get_string_size(fs, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 10.0
+	var dm := float(stat_delta.get("mass", 0.0))
+	if fade > 0.0 and absf(dm) >= 0.005:
+		var mc := UIStyle.MUTED
+		mc.a = fade
+		bars.draw_string(font, Vector2(maxf(xr, x0 + w + 8.0), y + 14), Loc.t("%+.2f kg") % dm, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, mc)
+
+## How much of a change's ▲ / ▼ is still shown: whole for DELTA_HOLD after it, then gone.
+func _delta_fade() -> float:
+	return clampf((DELTA_HOLD - (Time.get_ticks_msec() / 1000.0 - stat_t)) / 0.6, 0.0, 1.0)
+
+## The balance point on the weapon: a small white dot where its weight sits, seen through the
+## blocks, named beside it (user: see where the weight is).
+func _place_balance(st: Dictionary) -> void:
+	if weapon_root == null:
+		return
+	var vs := Data.weapon_voxel
+	if com_mark == null or not is_instance_valid(com_mark):
+		com_mark = Node3D.new()
+		var dot := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = vs * 0.42
+		sm.height = vs * 0.84
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.96, 0.95, 0.9)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = true
+		sm.material = mat
+		dot.mesh = sm
+		com_mark.add_child(dot)
+		var tag := Label3D.new()
+		tag.text = "BALANCE"
+		tag.modulate = Color(0.96, 0.95, 0.9)
+		tag.outline_size = 8
+		tag.font_size = 30
+		tag.pixel_size = vs * 0.03
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.no_depth_test = true
+		# (Beside the dot on the far side from the hand's MAIN tag, its own width away in any language.)
+		var fw: float = ThemeDB.fallback_font.get_string_size(Loc.t(tag.text), HORIZONTAL_ALIGNMENT_LEFT, -1, tag.font_size).x * tag.pixel_size
+		tag.position = Vector3(-vs * 1.1 - fw * 0.5, 0, 0)
+		com_mark.add_child(tag)
+		weapon_root.add_child(com_mark)
+	var c: Array = st.get("com", [0.0, 0.0, 0.0])
+	com_mark.position = Vector3(float(c[0]), float(c[1]), float(c[2])) * vs
+	com_mark.visible = not cells.is_empty() and weight_feel != ""
 
 func _update_texts() -> void:
 	if bars == null:
@@ -1001,12 +1109,29 @@ func _update_texts() -> void:
 	var d := _design_now()
 	var st := ForgeLib.compute_stats(d)
 	bar_vals = ForgeLib.three_bars(st)
+	# What this change did, counted from before the run of changes it belongs to (a stroke, or
+	# clicks close together): a quiet spell starts a new count.
+	var now := {"speed": float(st.swingSpeed), "damage": float(bar_vals.damage), "reach": float(st.reach), "armour": float(bar_vals.armour), "mass": float(st.mass)}
+	var t_now := Time.get_ticks_msec() / 1000.0
+	if stat_now.is_empty():
+		stat_base = now
+	elif now != stat_now:
+		if t_now - stat_t > DELTA_HOLD:
+			stat_base = stat_now
+		stat_t = t_now
+	stat_now = now
+	stat_delta = {"mass": float(now.mass) - float(stat_base.mass)}
+	for k in ["speed", "damage", "reach", "armour"]:
+		var b0 := float(stat_base[k])
+		stat_delta[k] = (float(now[k]) / b0 - 1.0) * 100.0 if b0 > 0.001 else (100.0 if float(now[k]) > 0.001 else 0.0)
+	weight_feel = ForgeLib.feel(d, st)
+	_place_balance(st)
 	bars.queue_redraw()
-	says.text = "The smith: \"%s\"" % ForgeLib.blacksmith_says(d, st)
-	verdict.text = "The dummy: %s  ·  %.1f kg, %d voxels" % [ForgeLib.dummy_verdict(d, st), st.mass, cells.size()]
+	says.text = Loc.t("The smith: \"%s\"") % Loc.t(ForgeLib.blacksmith_says(d, st))
+	verdict.text = Loc.t("The dummy: %s  ·  %d voxels") % [Loc.t(ForgeLib.dummy_verdict(d, st)), cells.size()]
 	for c in mode_box.get_children():
 		if c.has_meta("checklist"):
-			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + i.text))
+			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + Loc.t(String(i.text))))
 	cost_label.text = price_text(d)
 	var sharp := _sharp_blocks() > 0 or job == "edge" or job == "point"
 	for c in mode_box.get_children():
@@ -1028,14 +1153,14 @@ func price_text(d: Dictionary) -> String:
 	if free_build and not scratch and not workshop:
 		return "Free in training"
 	if workshop:
-		return "Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii." % Arms.design_price(d)
+		return Loc.t("Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii.") % Arms.design_price(d)
 	# Just what he has and what it costs (user: the rest was more than anyone could follow).
 	var pay: int = Arms.design_price(d) if scratch else _value_now() - original_value
 	if pay < 0:
-		return "You have %d · you get %d back" % [purse, -pay]
+		return Loc.t("You have %d · you get %d back") % [purse, -pay]
 	if pay > purse:
-		return "You have %d · this costs %d (%d more needed)" % [purse, pay, pay - purse]
-	return "You have %d · this costs %d" % [purse, pay]
+		return Loc.t("You have %d · this costs %d (%d more needed)") % [purse, pay, pay - purse]
+	return Loc.t("You have %d · this costs %d") % [purse, pay]
 
 func _value_now() -> int:
 	var s := 0
@@ -1060,41 +1185,64 @@ func _price_badge() -> void:
 		return
 	panel.visible = true
 	if workshop:
-		price_badge.text = "At the smith: %d denarii" % Arms.design_price(_design_now())
+		price_badge.text = Loc.t("At the smith: %d denarii") % Arms.design_price(_design_now())
 		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 		return
 	var pr := _price_now()
 	var pay: int = pr[0]
 	if pay < 0:
-		price_badge.text = "You have %d   ·   You get %d back" % [purse, -pay]
+		price_badge.text = Loc.t("You have %d   ·   You get %d back") % [purse, -pay]
 		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 	elif pay > purse:
-		price_badge.text = "You have %d   ·   This costs %d   (%d more needed)" % [purse, pay, pay - purse]
+		price_badge.text = Loc.t("You have %d   ·   This costs %d   (%d more needed)") % [purse, pay, pay - purse]
 		price_badge.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
 	else:
-		price_badge.text = "You have %d   ·   This costs %d" % [purse, pay]
+		price_badge.text = Loc.t("You have %d   ·   This costs %d") % [purse, pay]
 		price_badge.add_theme_color_override("font_color", UIStyle.GOLD)
 
 # ---------- The weapon on the anvil ----------
 
 func _rebuild() -> void:
-	for c in weapon_root.get_children():
-		c.queue_free()
 	var vs := Data.weapon_voxel
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * vs * 0.96
-	# Drawn as in the arena (shaders/voxel_body.gdshader: steel shines as steel, wood is grained),
-	# not as chalk-white blocks in the forge light.
-	bm.material = VoxelPart.body_material()
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	mm.mesh = bm
+	if vox_mi == null or not is_instance_valid(vox_mi):
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * vs * 0.96
+		# Drawn as in the arena (shaders/voxel_body.gdshader: steel shines as steel, wood is grained),
+		# not as chalk-white blocks in the forge light.
+		bm.material = VoxelPart.body_material()
+		var mm0 := MultiMesh.new()
+		mm0.transform_format = MultiMesh.TRANSFORM_3D
+		mm0.use_colors = true
+		mm0.use_custom_data = true
+		mm0.mesh = bm
+		vox_mi = MultiMeshInstance3D.new()
+		vox_mi.multimesh = mm0
+		weapon_root.add_child(vox_mi)
+	var mm := vox_mi.multimesh
 	mm.instance_count = cells.size()
 	var i := 0
 	var centre := Vector3.ZERO
-	# Sharp voxels drawn tapered, as on the weapon in the arena.
+	# Sharp voxels drawn tapered, as on the weapon in the arena: worked out again only round what
+	# changed (all of it when much changed at once: a weapon loaded, undone, cleared).
+	var changed := []
+	for k in cells:
+		if not drawn.has(k) or drawn[k] != cells[k]:
+			changed.append(k)
+	for k in drawn:
+		if not cells.has(k):
+			changed.append(k)
+	var redo_all := changed.size() > 48 or taper_of.is_empty()
+	var near := {}
+	if not redo_all:
+		for c in changed:
+			for dx in range(-TAPER_NEAR, TAPER_NEAR + 1):
+				for dy in range(-TAPER_NEAR, TAPER_NEAR + 1):
+					for dz in range(-TAPER_NEAR, TAPER_NEAR + 1):
+						var q: Vector3i = c + Vector3i(dx, dy, dz)
+						if cells.has(q):
+							near[q] = true
+		if not changed.is_empty():
+			taper_t = TAPER_SETTLE
 	var jobs := {}
 	var faces := {}
 	for k in cells:
@@ -1102,34 +1250,59 @@ func _rebuild() -> void:
 		if _face(k) >= 0:
 			faces[k] = _face(k)
 	var memo := {}
+	inst_of = {}
 	for k in cells:
+		if redo_all or near.has(k) or not taper_of.has(k):
+			taper_of[k] = VoxelPart.taper_code(jobs, k, _face(k), faces, memo)
 		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * vs))
 		mm.set_instance_color(i, Weapon.voxel_color(cells[k][0], cells[k][1]))
-		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, VoxelPart.taper_code(jobs, k, _face(k), faces, memo)))
+		mm.set_instance_custom_data(i, VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, int(taper_of[k])))
+		inst_of[k] = i
 		centre += Vector3(k) * vs
 		i += 1
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = mm
-	weapon_root.add_child(mi)
-	# Pickable boxes for the mouse: one static body per voxel.
-	var sb := StaticBody3D.new()
-	weapon_root.add_child(sb)
+	if redo_all:
+		taper_t = -1.0
+	for k in taper_of.keys():
+		if not cells.has(k):
+			taper_of.erase(k)
+	drawn = cells.duplicate()
+	# Pickable boxes for the mouse, one a voxel: only those of blocks put on or taken off change.
+	if pick_body == null or not is_instance_valid(pick_body):
+		pick_body = StaticBody3D.new()
+		weapon_root.add_child(pick_body)
+		pick_shapes = {}
+	if pick_box == null:
+		pick_box = BoxShape3D.new()
+		pick_box.size = Vector3.ONE * vs
+	for k in pick_shapes.keys():
+		if not cells.has(k):
+			(pick_shapes[k] as Node).free()   # (at once: a ray this frame must not find it)
+			pick_shapes.erase(k)
 	for k in cells:
-		var cs := CollisionShape3D.new()
-		var b := BoxShape3D.new()
-		b.size = Vector3.ONE * vs
-		cs.shape = b
-		cs.position = Vector3(k) * vs
-		cs.set_meta("cell", k)
-		sb.add_child(cs)
+		if not pick_shapes.has(k):
+			var cs := CollisionShape3D.new()
+			cs.shape = pick_box
+			cs.position = Vector3(k) * vs
+			cs.set_meta("cell", k)
+			pick_body.add_child(cs)
+			pick_shapes[k] = cs
 	if cells.size():
 		centre /= cells.size()
 	weapon_root.set_meta("centre", centre)
-	# Where the hands hold it: a gold ring for the main hand, a bronze one for the other.
+	# Where the hands hold it: a gold ring for the main hand, a bronze one for the other (drawn
+	# again only when a hand moves or the grip changes).
 	var g = ForgeLib.grip_points(_design_now())
-	if g != null:
+	var two_h: bool = design.get("twoHanded", false)
+	var rk := "%s|%s|%s" % [str(g.main) if g != null else "-", str(g.off) if g != null else "-", str(two_h)]
+	if rk != ring_key or ring_nodes.any(func(n): return not is_instance_valid(n)):
+		ring_key = rk
+		for n in ring_nodes:
+			if is_instance_valid(n):
+				n.queue_free()
+		ring_nodes = []
+	if g != null and ring_nodes.is_empty():
 		var hands := [[g.main, UIStyle.GOLD]]
-		if design.get("twoHanded", false):
+		if two_h:
 			hands.append([g.off, UIStyle.BRONZE])
 		for hd in hands:
 			var ring := MeshInstance3D.new()
@@ -1144,6 +1317,7 @@ func _rebuild() -> void:
 			ring.mesh = tm
 			ring.position = (hd[0] as Vector3) * vs
 			weapon_root.add_child(ring)
+			ring_nodes.append(ring)
 			var tag := Label3D.new()
 			tag.text = "MAIN" if hd[1] == UIStyle.GOLD else "OTHER"
 			tag.modulate = hd[1]
@@ -1154,6 +1328,7 @@ func _rebuild() -> void:
 			tag.no_depth_test = true
 			tag.position = (hd[0] as Vector3) * vs + Vector3(vs * 2.2, 0, 0)
 			weapon_root.add_child(tag)
+			ring_nodes.append(tag)
 	var low := INF
 	for k in cells:
 		low = minf(low, float(k.y) * vs)
@@ -1173,7 +1348,26 @@ func _rebuild() -> void:
 		if not framed:
 			_frame()
 	_place_camera()
-	_update_texts()
+	texts_due = true   # (once a frame, however many blocks a stroke put on in it: _process)
+
+## Every block's taper worked out again and drawn (after a change, once the hand has stopped).
+func _retaper() -> void:
+	taper_t = -1.0
+	if vox_mi == null or not is_instance_valid(vox_mi):
+		return
+	var mm := vox_mi.multimesh
+	var jobs := {}
+	var faces := {}
+	for k in cells:
+		jobs[k] = str(cells[k][1])
+		if _face(k) >= 0:
+			faces[k] = _face(k)
+	var memo := {}
+	for k in cells:
+		var code := VoxelPart.taper_code(jobs, k, _face(k), faces, memo)
+		if int(taper_of.get(k, -1)) != code and inst_of.has(k) and int(inst_of[k]) < mm.instance_count:
+			mm.set_instance_custom_data(int(inst_of[k]), VoxelPart.kind_data(VoxelPart.kind_of_material(str(cells[k][0])), 0, code))
+		taper_of[k] = code
 
 ## The narrower of the camera's two angles of view (a tall narrow window is narrow sideways).
 ## How far back the camera must stand for all of it, for the view as big as it is now (the
@@ -1265,6 +1459,19 @@ func _zoom(at: Vector2, k: float) -> void:
 func _process(dt: float) -> void:
 	if viewport == null:
 		return
+	if texts_due:
+		texts_due = false
+		_update_texts()
+	if bars and Time.get_ticks_msec() / 1000.0 - stat_t < DELTA_HOLD + 0.7:
+		bars.queue_redraw()   # (a change's ▲ / ▼ fading out)
+	# The whole weapon's taper once the hand has stopped (only that round each change was
+	# worked out while it moved).
+	if taper_t > 0.0:
+		taper_t -= dt
+		if taper_t <= 0.0 and stroke.is_empty():
+			_retaper()
+		elif taper_t <= 0.0:
+			taper_t = 0.05
 	idle_t += dt
 	_walk_camera(dt)
 	if idle_t > 4.0 and not dragging and not moved and swing_t < 0.0:
@@ -1272,18 +1479,21 @@ func _process(dt: float) -> void:
 		_place_camera()
 	# Swing it: the weapon swept round its grip at the speed it would really swing.
 	if swing_t >= 0.0:
-		var d := _design_now()
-		var st := ForgeLib.compute_stats(d)
-		var dur := clampf(6.0 / maxf(1.0, float(st.swingSpeed)), 0.25, 1.6)
+		# (What the weapon is, read once at the start of the swing, not every frame of it.)
+		if swing_t == 0.0 or swing_st.is_empty():
+			var d := _design_now()
+			var g0 = ForgeLib.grip_points(d)
+			swing_st = {"speed": float(ForgeLib.compute_stats(d).swingSpeed), "pivot": (g0.main if g0 != null else Vector3.ZERO) * Data.weapon_voxel}
+		var dur := clampf(6.0 / maxf(1.0, float(swing_st.speed)), 0.25, 1.6)
 		swing_t += dt
 		var k := minf(1.0, swing_t / dur)
-		var g = ForgeLib.grip_points(d)
-		var pivot: Vector3 = (g.main if g != null else Vector3.ZERO) * Data.weapon_voxel
+		var pivot: Vector3 = swing_st.pivot
 		var ang := -1.6 + 2.8 * (k * k * (3.0 - 2.0 * k))
 		var b := Basis(Vector3(1, 0, 0), ang)
 		weapon_root.transform = Transform3D(b, pivot - b * pivot)
 		if k >= 1.0:
 			swing_t = -1.0
+			swing_st = {}
 			weapon_root.transform = Transform3D.IDENTITY
 
 func _on_view_input(e: InputEvent) -> void:
@@ -1302,7 +1512,7 @@ func _on_view_input(e: InputEvent) -> void:
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			moved = true
 			_zoom(e.position, 1.0 / 0.88)
-		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels":
+		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels" and not e.alt_pressed:
 			stroke = {"erase": false, "done": {}, "undo": false}
 			_click(e.position)
 		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels" and tool == "line" and line_from != null:
@@ -1315,7 +1525,8 @@ func _on_view_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and not e.pressed and (e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT):
 		stroke = {}
 	# The middle button turns the camera round the weapon; with Shift held it slides it instead.
-	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and mode == "cards")):
+	# (Alt and the left button do the same: a touchpad has no middle button.)
+	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and (mode == "cards" or e.alt_pressed or (not e.pressed and dragging)))):
 		dragging = e.pressed
 		if e.pressed:
 			moved = true
@@ -1480,7 +1691,7 @@ func _set_hand(c: Vector3i, which := "main") -> void:
 		now[which] = at
 		design.grips = now
 	_rebuild()
-	cost_label.text = ("The %s hand holds it here" % ("main" if which == "main" else "other")) if two else "The hand holds it here"
+	cost_label.text = Loc.t("The main hand holds it here" if which == "main" else "The other hand holds it here") if two else Loc.t("The hand holds it here")
 
 ## The hand whose ring is nearest block `c` (one-handed: the only one).
 func _nearest_hand(c: Vector3i) -> String:
@@ -1503,11 +1714,18 @@ func _face(k: Vector3i) -> int:
 	var c: Array = cells.get(k, [])
 	return int(c[2]) if c.size() > 2 and (str(c[1]) == "edge" or str(c[1]) == "point") else -1
 
+## What R says a sharp block now faces, a whole line for each (ForgeLib.FACE_NAMES' order, then
+## "as the shape has it") so that every language can word it its own way.
+const FACE_LINES := {
+	"edge": ["This edge faces right (R: turn it again)", "This edge faces left (R: turn it again)", "This edge faces up (R: turn it again)", "This edge faces down (R: turn it again)", "This edge faces front (R: turn it again)", "This edge faces back (R: turn it again)", "This edge faces as the weapon's shape has it (R: turn it)"],
+	"point": ["This point faces right (R: turn it again)", "This point faces left (R: turn it again)", "This point faces up (R: turn it again)", "This point faces down (R: turn it again)", "This point faces front (R: turn it again)", "This point faces back (R: turn it again)", "This point faces as the weapon's shape has it (R: turn it)"],
+}
+
 ## Turns the sharp block `k` to face the next way: each of the six in turn, then back to as the
 ## weapon's shape has it.
 func turn_face(k: Vector3i) -> void:
 	if not cells.has(k) or not (str(cells[k][1]) == "edge" or str(cells[k][1]) == "point"):
-		cost_label.text = "Only an Edge or a Point block turns: point at one and press R"
+		cost_label.text = "Only a Cut or a Stab block turns: point at one and press R"
 		return
 	_push_undo()
 	var f := _face(k) + 1
@@ -1517,7 +1735,7 @@ func turn_face(k: Vector3i) -> void:
 	c.resize(3)
 	c[2] = f
 	cells[k] = c
-	cost_label.text = ("This %s faces %s (R: turn it again)" % [str(c[1]), ForgeLib.FACE_NAMES[f]]) if f >= 0 else "This %s faces as the weapon's shape has it (R: turn it)" % str(c[1])
+	cost_label.text = Loc.t(FACE_LINES[str(c[1])][f] if f >= 0 else FACE_LINES[str(c[1])][6])
 	_rebuild()
 
 const DULL := 0.2           # below it an edge cuts next to nothing
@@ -1540,7 +1758,7 @@ func _place(list: Array, face := -1, origin = null) -> void:
 		cost_label.text = "A new block must touch the weapon"
 		return
 	if cells.size() + add.size() > ForgeLib.MAX_VOXELS:
-		cost_label.text = "That is the most the anvil holds (%d voxels)" % ForgeLib.MAX_VOXELS
+		cost_label.text = Loc.t("That is the most the anvil holds (%d voxels)") % ForgeLib.MAX_VOXELS
 		return
 	# A first edge or point on a weapon honed to nothing (the training stick) would cut nothing:
 	# the smith hones it to a working edge at once (the slider still sets it any way after).
@@ -1578,7 +1796,7 @@ func _remove(list: Array) -> void:
 		var kept := {}
 		for c in keep:
 			kept[c] = cells[c]
-		cost_label.text = "Cut through: %d blocks fall away" % (cells.size() - keep.size())
+		cost_label.text = Loc.t("Cut through: %d blocks fall away") % (cells.size() - keep.size())
 		cells = kept
 	_rebuild()
 
@@ -1611,6 +1829,10 @@ func _redo() -> void:
 	_rebuild()
 
 func _unhandled_key_input(e: InputEvent) -> void:
+	var k := e as InputEventKey
+	if k and k.pressed and not k.echo and not k.ctrl_pressed and not k.alt_pressed and viewport and mode == "voxels" and _shortcut(k):
+		get_viewport().set_input_as_handled()
+		return
 	if e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_F and viewport:
 		_frame()   # the whole weapon back in view
 	elif e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_R and viewport and mode == "voxels" and hover_at != null:
@@ -1624,6 +1846,52 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			_redo()
 		else:
 			_undo()
+
+## A key at the anvil (TOOL_KEYS, JOB_KEYS, M and N for the mirrors, Q to take up a block's
+## material and job): true if it did something.
+func _shortcut(k: InputEventKey) -> bool:
+	var code := k.physical_keycode if k.physical_keycode != KEY_NONE else k.keycode
+	if TOOL_KEYS.has(code):
+		tool = TOOL_KEYS[code]
+		hand_pick = ""
+		line_from = null
+		_show_line([])
+		_toolbar_ui()
+		cost_label.text = TOOL_HINT.get(tool, "")
+		return true
+	if JOB_KEYS.has(code):
+		job = JOB_KEYS[code]
+		if (job == "edge" or job == "point") and float(Data.material(mat).get("hardness", 0.5)) < KEEN:
+			mat = "steel"
+		if tool == "erase":
+			tool = "build"
+		_show_mode("voxels")
+		cost_label.text = Loc.t("Next blocks: %s, %s") % [Loc.t(_job_name(job)), Loc.t(mat.capitalize())]
+		return true
+	if code == KEY_M:
+		if k.shift_pressed:
+			mirror_z = not mirror_z
+		else:
+			mirror = not mirror
+		_toolbar_ui()
+		cost_label.text = Loc.t("Mirror ⟷ %s, mirror ⇅ %s") % [Loc.t("On") if mirror else Loc.t("Off"), Loc.t("On") if mirror_z else Loc.t("Off")]
+		return true
+	if code == KEY_Q and hover_at != null:
+		var a := _aim(hover_at)
+		if not a.is_empty() and a.get("hit") != null and cells.has(a.hit):
+			mat = str(cells[a.hit][0])
+			job = str(cells[a.hit][1])
+			tool = "build"
+			_show_mode("voxels")
+			cost_label.text = Loc.t("Taken up: %s, %s (the next blocks are made of it)") % [_job_name(job), mat.capitalize()]
+			return true
+	return false
+
+func _job_name(j: String) -> String:
+	for jp in JOB_PICK:
+		if jp[0] == j:
+			return String(jp[1])
+	return j
 
 func _take() -> void:
 	var d := _design_now()
@@ -1640,3 +1908,8 @@ func _take() -> void:
 		cost_label.text = "Not enough denarii for that (a keener edge costs more)"
 		return
 	done.call(d, cost)
+
+## Closed: the music goes back to what played before the forge.
+func _exit_tree() -> void:
+	if Sfx.music:
+		Sfx.music.bench(false)

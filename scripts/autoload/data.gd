@@ -7,7 +7,6 @@ var weapon_voxel := 0.04
 var body_voxel := 0.055
 var body_res := 2
 var presets: Dictionary = {}
-var damage_tuning: Dictionary = {}
 var body_parts: Array = []
 var lobes: Dictionary = {}
 var armor: Dictionary = {}
@@ -41,7 +40,6 @@ func load_all() -> void:
 		if presets[k] is Dictionary and presets[k].get("voxels") is Array and not presets[k].has("chain"):
 			if ForgeLib.bridge(presets[k]) > 0:
 				presets[k].erase("stats")   # (worked out afresh for the joined-up weapon)
-	damage_tuning = p.get("damageTuning", {})
 	var b: Dictionary = _read("body")
 	body_parts = b.get("parts", [])
 	lobes = b.get("lobes", {})
@@ -121,8 +119,8 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 	st["late"] = late
 	st["duel"] = true
 	st["foe_name"] = Ladder.foe_name(foes)
-	var title := String(b.get("title", foes[0].get("title", "")))
-	st["title"] = ("Bout %d" % n) if title == "" else (title if boss or foes[0].has("title") else "Bout %d: %s" % [n, title])
+	var title := Loc.t(String(b.get("title", foes[0].get("title", "")))) if String(b.get("title", foes[0].get("title", ""))) != "" else ""
+	st["title"] = (Loc.t("Bout %d") % n) if title == "" else (title if boss or foes[0].has("title") else Loc.t("Bout %d: %s") % [n, title])
 	st["stagePay"] = int(st.get("stagePay", 30)) + int(st.get("roundPay", 10)) * 2
 	return st
 

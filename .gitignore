@@ -4,3 +4,4 @@ export/
 build/
 override.cfg
 docs/store/clips/
+__pycache__/

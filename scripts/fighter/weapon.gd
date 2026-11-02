@@ -671,7 +671,17 @@ func _piece_weapon(pc: Array) -> Dictionary:
 	for k in ["kind", "gem", "sharpness", "serrated", "massScale"]:
 		if design.has(k):
 			d[k] = design[k]
-	d["name"] = "Broken " + str(design.get("name", "weapon")).trim_prefix("Broken ")
+	# ("Broken %s" in the player's language, never twice over when a broken piece breaks again.)
+	var fmt := Loc.t("Broken %s")
+	var at := fmt.find("%s")
+	var pre := fmt.substr(0, at)
+	var post := fmt.substr(at + 2)
+	var base := str(design.get("name", "weapon"))
+	if pre != "" and base.begins_with(pre):
+		base = base.substr(pre.length())
+	if post != "" and base.ends_with(post):
+		base = base.substr(0, base.length() - post.length())
+	d["name"] = fmt % base
 	d["voxels"] = vs_out
 	d["grips"] = {"main": [int(near.x), int(near.y), int(near.z)], "off": [int(near.x), int(near.y) - 2, int(near.z)]}
 	d["broken"] = true
@@ -1210,7 +1220,7 @@ func build_chain() -> void:
 		prev = b
 	var head := Weapon.new()
 	head.chain_parent = self
-	head.setup({"name": design.get("name", "chain"), "voxels": hv, "sharpness": design.get("sharpness", 0.0), "serrated": design.get("serrated", false), "imbue": design.get("imbue", ""), "massScale": 0.3 if whip else 1.0, "dmgScale": design.get("dmgScale", Data.damage_tuning.get(Combat._preset_key(design), 1.0))}, wscale)
+	head.setup({"name": design.get("name", "chain"), "voxels": hv, "sharpness": design.get("sharpness", 0.0), "serrated": design.get("serrated", false), "imbue": design.get("imbue", ""), "massScale": 0.3 if whip else 1.0}, wscale)
 	head.linear_damp = 0.05
 	head.angular_damp = 0.4
 	get_parent().add_child(head)
@@ -1255,9 +1265,10 @@ func guard_chain() -> void:
 	var hs := hv.length()
 	# (Getting up counts as down for a moment: the arm hauled up with the body whipped it.)
 	var standing: bool = holder == null or not is_instance_valid(holder) or (holder.get("state") == "stand" and float(holder.get("time")) - float(holder.get("stood_at")) > 0.6)
-	var cap := 30.0 if whip else 13.0
-	# Relative to the handle: what the hand adds to the chain each step is what whirls it.
-	var cap_rel: float = (minf(16.0, 4.0 + hs * 7.0) if whip else minf(6.5, 2.0 + hs * 2.0)) if standing else (2.0 if whip else 1.5)
+	var cap := 30.0 if whip else 15.0
+	# Relative to the handle: what the hand adds to the chain each step is what whirls it (a
+	# flail's head swung hard outruns the hand well: held to a hand's pace it only patted men).
+	var cap_rel: float = (minf(16.0, 4.0 + hs * 7.0) if whip else minf(9.0, 2.0 + hs * 2.6)) if standing else (2.0 if whip else 1.5)
 	var damp := lerpf(5.0, 0.3, clampf(hs / 1.5, 0.0, 1.0)) if standing else 6.0
 	for b in chain_links + [chain_head]:
 		var p: Vector3 = b.global_position

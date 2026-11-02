@@ -3,7 +3,8 @@ extends Node
 ## ones with every weapon, and the difficulty should matter): bouts of A against B, each to the
 ## death or BOUT_S seconds (then the one with more of his blood and body left wins), every blow
 ## that lands counted. `-- --probe duel`.
-## A, B: "diff:weapon[+off][:personality]" (0.8:gladius+roundShield, 0.2:spear); BOUTS (6);
+## A, B: "diff:weapon[+off][:personality[:armour+armour]]" (0.8:gladius+roundShield, 0.2:spear,
+## 0.5:mace::helmet+lorica); ARMOR (helmet+lorica+...): on both, unless a side names its own; BOUTS (6);
 ## BOUT_S (60); MATCHUPS: several "A/B" pairs, comma-separated, instead of A and B.
 
 func _side(spec: String) -> Dictionary:
@@ -11,7 +12,12 @@ func _side(spec: String) -> Dictionary:
 	var d := float(parts[0])
 	var lo := String(parts[1]) if parts.size() > 1 else "gladius"
 	var arms := lo.split("+")
-	return {"diff": d, "main": arms[0], "off": arms[1] if arms.size() > 1 else "", "personality": String(parts[2]) if parts.size() > 2 else "standard", "name": spec}
+	var armor := []
+	if parts.size() > 3 and String(parts[3]) != "":
+		armor = Array(String(parts[3]).split("+"))
+	elif OS.get_environment("ARMOR") != "":
+		armor = Array(OS.get_environment("ARMOR").split("+"))
+	return {"diff": d, "main": arms[0], "off": arms[1] if arms.size() > 1 else "", "personality": String(parts[2]) if parts.size() > 2 and String(parts[2]) != "" else "standard", "armor": armor, "name": spec}
 
 func _health(f: Fighter) -> float:
 	if not f.alive:
@@ -23,8 +29,8 @@ func _bout(a: Dictionary, b: Dictionary, secs: float, sd: int) -> Dictionary:
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": sd, "decrees": [], "hazards": []})
 	m.me.f.teleport(Vector3(30, 0, 30))
-	var ea = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {"main": a.main, "off": a.off}, "team": 1, "pos": Vector3(0, 0.1, -2.5), "yaw": 0.0, "diff": a.diff, "personality": a.personality})
-	var eb = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": b.main, "off": b.off}, "team": 2, "pos": Vector3(0, 0.1, 2.5), "yaw": PI, "diff": b.diff, "personality": b.personality})
+	var ea = m.spawn_fighter({"kind": "bot", "name": "A", "loadout": {"main": a.main, "off": a.off, "armor": a.armor}, "team": 1, "pos": Vector3(0, 0.1, -2.5), "yaw": 0.0, "diff": a.diff, "personality": a.personality})
+	var eb = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": b.main, "off": b.off, "armor": b.armor}, "team": 2, "pos": Vector3(0, 0.1, 2.5), "yaw": PI, "diff": b.diff, "personality": b.personality})
 	if ea == null or eb == null:
 		push_error("duel: a side would not spawn")
 		get_tree().quit(1)
@@ -32,6 +38,9 @@ func _bout(a: Dictionary, b: Dictionary, secs: float, sd: int) -> Dictionary:
 	var fa: Fighter = ea.f
 	var fb: Fighter = eb.f
 	var st := {"a_hits": 0, "b_hits": 0, "a_dmg": 0.0, "b_dmg": 0.0, "a_blocked": 0, "b_blocked": 0}
+	var causes := {"A": "", "B": ""}
+	fa.died.connect(func(_f, cause): causes.A = str(cause))
+	fb.died.connect(func(_f, cause): causes.B = str(cause))
 	m.combat.hit.connect(func(h):
 		var att = h.get("attacker")
 		var vic = h.get("char")
@@ -97,7 +106,7 @@ func _bout(a: Dictionary, b: Dictionary, secs: float, sd: int) -> Dictionary:
 	var ha := _health(fa)
 	var hb := _health(fb)
 	var winner := "A" if (fa.alive and not fb.alive) or (fa.alive == fb.alive and ha > hb) else "B"
-	var out := {"winner": winner, "t": t, "a_alive": fa.alive, "b_alive": fb.alive, "ha": ha, "hb": hb}
+	var out := {"winner": winner, "t": t, "a_alive": fa.alive, "b_alive": fb.alive, "ha": ha, "hb": hb, "cause": causes.B if winner == "A" else causes.A}
 	out.merge(st)
 	m.queue_free()
 	await get_tree().physics_frame
@@ -126,6 +135,6 @@ func _ready() -> void:
 				kills += 1
 			for k in tot:
 				tot[k] += r[k]
-			print("  bout %d: %s wins in %.0f s  (A %d hits %.0f dmg, B %d hits %.0f dmg; blocked A %d B %d)" % [i + 1, r.winner, r.t, r.a_hits, r.a_dmg, r.b_hits, r.b_dmg, r.a_blocked, r.b_blocked])
+			print("  bout %d: %s wins in %.0f s  (A %d hits %.0f dmg, B %d hits %.0f dmg; blocked A %d B %d) %s" % [i + 1, r.winner, r.t, r.a_hits, r.a_dmg, r.b_hits, r.b_dmg, r.a_blocked, r.b_blocked, r.cause])
 		print("DUEL %-32s vs %-32s  A won %d of %d (%d to the death)  hits %d/%d  dmg %.0f/%.0f  blocked %d/%d  mean %.0f s" % [pr[0], pr[1], wins.A, bouts, kills, tot.a_hits, tot.b_hits, tot.a_dmg, tot.b_dmg, tot.a_blocked, tot.b_blocked, tot.t / bouts])
 	get_tree().quit()

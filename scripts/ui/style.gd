@@ -312,7 +312,7 @@ static func button(text: String, cb: Callable, primary := false) -> Button:
 ## marked with a diamond, the others get the diamond while the mouse is on them.
 static func menu_button(text: String, cb: Callable, primary := false) -> Button:
 	var b := Button.new()
-	var cap := text.to_upper()
+	var cap := Loc.t(text).to_upper()   # (in the player's language first: a capitalized line has no translation)
 	b.text = ("◆   " + cap) if primary else cap
 	b.pressed.connect(cb)
 	b.custom_minimum_size = Vector2(420, 56)
@@ -339,7 +339,7 @@ static func menu_button(text: String, cb: Callable, primary := false) -> Button:
 ## diamond marks it. `size` small (16) for the foot of the list (Settings, Quit).
 static func menu_entry(text: String, cb: Callable, size := 22) -> Button:
 	var b := Button.new()
-	var cap := text.to_upper()
+	var cap := Loc.t(text).to_upper()
 	b.text = cap
 	b.pressed.connect(cb)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -388,7 +388,7 @@ static func _band() -> GradientTexture2D:
 ## under it, where it leads in small ("Bout 5 · Legionary").
 static func hero_button(text: String, sub: String, cb: Callable) -> Button:
 	var b := Button.new()
-	b.text = text.to_upper()
+	b.text = Loc.t(text).to_upper()
 	b.pressed.connect(cb)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.custom_minimum_size = Vector2(440, 84)
@@ -412,7 +412,7 @@ static func hero_button(text: String, sub: String, cb: Callable) -> Button:
 	b.add_theme_constant_override("outline_size", 4)
 	if sub != "":
 		var l := Label.new()
-		l.text = sub.to_upper()
+		l.text = Loc.t(sub).to_upper()
 		l.add_theme_font_override("font", serif(3, 700))
 		l.add_theme_font_size_override("font_size", 13)
 		l.add_theme_color_override("font_color", Color(1.0, 0.86, 0.6, 0.85))

@@ -112,11 +112,15 @@ static func code_of(key: Key) -> String:
 		return OS.get_keycode_string(key)
 	return ""
 
+## What the keys that are not a letter or a digit read on a button (the words in the player's
+## language; the arrows were blank before, their names cut off with the Left/Right of the side keys).
+const KEY_LABELS := {"Space": "Space", "ShiftLeft": "Shift", "ShiftRight": "Shift", "ControlLeft": "Ctrl", "ControlRight": "Ctrl", "AltLeft": "Alt", "AltRight": "Alt", "Tab": "Tab", "Enter": "Enter", "Backquote": "`", "ArrowUp": "↑", "ArrowDown": "↓", "ArrowLeft": "←", "ArrowRight": "→"}
+
 ## How a binding reads on a button: "W", "Space", "Shift".
 static func label_of(code: String) -> String:
 	if code.begins_with("Key") or code.begins_with("Digit"):
 		return code.trim_prefix("Key").trim_prefix("Digit")
-	return code.trim_suffix("Left").trim_suffix("Right").replace("Arrow", "↑ " if code == "ArrowUp" else "").replace("Control", "Ctrl")
+	return Loc.t(String(KEY_LABELS.get(code, code)))
 
 func held(id: String) -> bool:
 	var act := "va_" + id
@@ -371,11 +375,18 @@ static func has_one_shot(inp: Dictionary) -> bool:
 	return false
 
 static func unpack(a: Array) -> Dictionary:
-	if a.size() < 12:
+	if a.size() < 12 or a.size() > 32:
 		return {}
+	# (Every number made a real one first: a guest's NaN or infinity got through a clamp and into
+	# the host's physics.)
+	for i in a.size():
+		if not (a[i] is float or a[i] is int):
+			return {}
+		if a[i] is float and not is_finite(a[i]):
+			a[i] = 0.0
 	var bits := int(a[11])
 	var out := {"mx": clampf(a[0], -1, 1), "mz": clampf(a[1], -1, 1), "main": {"x": clampf(a[2], -2, 2), "y": clampf(a[3], -1.6, 1.6)}, "off": {"x": clampf(a[4], -2, 2), "y": clampf(a[5], -1.6, 1.6)},
-		"thrust": clampf(a[6], -1.5, 1.5), "offThrust": clampf(a[7], -1.5, 1.5), "twist": clampf(a[8], -PI, PI), "look": {"yaw": float(a[9]), "pitch": clampf(a[10], -1.35, 1.35)}}
+		"thrust": clampf(a[6], -1.5, 1.5), "offThrust": clampf(a[7], -1.5, 1.5), "twist": clampf(a[8], -PI, PI), "look": {"yaw": clampf(float(a[9]), -1000.0, 1000.0), "pitch": clampf(a[10], -1.35, 1.35)}}
 	for i in BITS.size():
 		out[BITS[i]] = bits & (1 << i) != 0
 	out.grabHands = [null, "R", "L", "both"][(bits >> 14) & 3]

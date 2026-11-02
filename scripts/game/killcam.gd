@@ -34,18 +34,18 @@ static func score_kill(k: Dictionary) -> Dictionary:
 	var v: String = k.get("victim", "someone")
 	var a = k.get("killer")
 	var score := 10.0
-	var caption: String = ("%s killed %s" % [a, v]) if a else ("%s died" % v)
+	var caption: String = (Loc.t("%s killed %s") % [a, v]) if a else (Loc.t("%s died") % v)
 	var best_pts := 0.0
 	var picks := []
-	if k.get("out", false): picks.append([12.0, ("%s beat %s senseless" % [a, v]) if a else ("%s is out of the fight" % v)])
-	if k.get("big", false): picks.append([30.0, "%s brought down the mighty %s" % [a if a else "The arena", v]])
-	if k.get("burning", false): picks.append([20.0, ("%s burned, courtesy of %s" % [v, a]) if a else ("%s burned" % v)])
-	if k.get("unarmed", false) and a: picks.append([25.0, "%s punched %s to death" % [a, v]])
-	if k.get("thrown", false) and a: picks.append([30.0, "%s threw %s right into %s" % [a, ("a " + String(k.weapon)) if k.get("weapon") else "something", v]])
-	if k.get("friendly", false) and a: picks.append([28.0, "%s killed %s. They were on the same side" % [a, v]])
-	if k.get("self", false): picks.append([32.0, "%s managed to kill themselves" % v])
-	if k.get("decap", false): picks.append([40.0, ("%s took %s's head off%s" % [a, v, (" with a " + String(k.weapon)) if k.get("weapon") else ""]) if a else ("%s lost their head" % v)])
-	if int(k.get("multi", 1)) > 1: picks.append([18.0 * (int(k.multi) - 1), "%s: %s kills in a breath" % [a, "two" if int(k.multi) == 2 else ("three" if int(k.multi) == 3 else "a heap of")]])
+	if k.get("out", false): picks.append([12.0, (Loc.t("%s beat %s senseless") % [a, v]) if a else (Loc.t("%s is out of the fight") % v)])
+	if k.get("big", false): picks.append([30.0, Loc.t("%s brought down the mighty %s") % [a if a else Loc.t("The arena"), v]])
+	if k.get("burning", false): picks.append([20.0, (Loc.t("%s burned, courtesy of %s") % [v, a]) if a else (Loc.t("%s burned") % v)])
+	if k.get("unarmed", false) and a: picks.append([25.0, Loc.t("%s punched %s to death") % [a, v]])
+	if k.get("thrown", false) and a: picks.append([30.0, (Loc.t("%s threw a %s right into %s") % [a, String(k.weapon), v]) if k.get("weapon") else (Loc.t("%s threw something right into %s") % [a, v])])
+	if k.get("friendly", false) and a: picks.append([28.0, Loc.t("%s killed %s. They were on the same side") % [a, v]])
+	if k.get("self", false): picks.append([32.0, Loc.t("%s managed to kill themselves") % v])
+	if k.get("decap", false): picks.append([40.0, ((Loc.t("%s took %s's head off with a %s") % [a, v, String(k.weapon)]) if k.get("weapon") else (Loc.t("%s took %s's head off") % [a, v])) if a else (Loc.t("%s lost their head") % v)])
+	if int(k.get("multi", 1)) > 1: picks.append([18.0 * (int(k.multi) - 1), Loc.t("%s: two kills in a breath" if int(k.multi) == 2 else ("%s: three kills in a breath" if int(k.multi) == 3 else "%s: a heap of kills in a breath")) % a])
 	for p in picks:
 		score += p[0]
 		if p[0] >= best_pts:
@@ -130,7 +130,7 @@ func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", th
 		if p.severed:
 			severed += 1
 	var w = last_hit.get("weapon")
-	var wn = String(w.design.get("name", "")).to_lower() if w != null and is_instance_valid(w) else (wname if wname != "" else null)
+	var wn = Loc.lower(String(w.design.get("name", ""))) if w != null and is_instance_valid(w) else (wname if wname != "" else null)
 	var k := {"t": float(last_hit.get("at", m.time)) if cause == "out" else m.time, "out": cause == "out", "victim": f.display_name, "killer": kname, "decap": cause == "decap" or (f.head and f.head.severed),
 		"big": f.S >= 1.8 or f.boss, "burning": f.parts.any(func(p): return not p.spots.is_empty()),
 		"unarmed": killer is Fighter and is_instance_valid(killer) and killer.weapons.get("R") == null and killer.weapons.get("L") == null,
@@ -141,7 +141,7 @@ func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", th
 	pending.append(k)
 	# On the Steam recording's timeline, so the moment is easy to find and clip.
 	var sc := score_kill(k)
-	Net.timeline_event("Kill", String(sc.caption), 2 if float(sc.score) >= 40.0 else 1)
+	Net.timeline_event(Loc.t("Kill"), String(sc.caption), 2 if float(sc.score) >= 40.0 else 1)
 
 func _cut(k: Dictionary) -> void:
 	var sc := score_kill(k)
@@ -357,7 +357,7 @@ func _overlay(caption: String) -> void:
 	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	overlay.add_child(cap)
 	var hint := Label.new()
-	hint.text = "%s  skip" % skip_key()
+	hint.text = Loc.t("%s  skip") % skip_key()
 	hint.add_theme_font_override("font", UIStyle.serif(1))
 	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_color_override("font_color", Color(0.96, 0.92, 0.84, 0.6))

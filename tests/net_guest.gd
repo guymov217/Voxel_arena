@@ -5,6 +5,7 @@ var m: Match
 var snaps := 0
 var vox := 0
 var spawns := 0
+var helds := []
 var frames := 0
 var moved := 0
 var last_p := Vector3.ZERO
@@ -12,8 +13,24 @@ var last_p := Vector3.ZERO
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
 	Net.my_name = "Guest"
+	# NO_DTLS=1: a guest that does not speak the host's encryption (it must not get in).
+	if OS.get_environment("NO_DTLS") != "":
+		Net.dtls = false
 	print("GUEST join ", Net.join_enet("127.0.0.1", port))
 	Net.message.connect(_on)
+	# KICK=1: turned out by the host, he knocks again and is turned away again.
+	if OS.get_environment("KICK") != "":
+		var kicks := [0]
+		Net.disconnected.connect(func():
+			kicks[0] += 1
+			print("GUEST left (", kicks[0], "): ", Net.leave_reason)
+			var why := Net.leave_reason
+			Net.leave_reason = ""
+			if kicks[0] == 1:
+				await get_tree().create_timer(1.0).timeout
+				print("GUEST joins again ", Net.join_enet("127.0.0.1", port))
+			else:
+				get_tree().quit(0 if why != "" else 1))
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().physics_frame
@@ -43,9 +60,13 @@ func _on(type: String, data, _from: int) -> void:
 		"vox":
 			vox += 1
 			if m: m.guest_vox(data)
+		"held":
+			helds.append("%s/%s" % [str(data.get("t", "")), str(data.get("st", []))])
+			if m: m.guest_message(type, data)
 		"bye":
 			var me_found: bool = m != null and m.me != null
 			print("GUEST ping ", Net.ping_ms, " ms host steps ", Net.host_rate, " snaps/s ", Net.snap_rate)
+			print("GUEST held ", helds)
 			print("GUEST spawns ", spawns, " entities ", m.entities.size() if m else 0, " snaps ", snaps, " vox ", vox, " me ", me_found, " smooth ", moved, "/", frames)
 			# Moving at least on most steps (the bout keeps him busy): not stepping at snapshot rate.
 			# The meter's round trip came back: the guest knows its ping and how the host keeps up.

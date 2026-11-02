@@ -6,13 +6,13 @@ extends RefCounted
 ## Standing and head football. Host side; `m` is the Match.
 
 const TEAM_COLORS := [0xa02020, 0x2050b0, 0x208040, 0xc0a020, 0x8030a0, 0x20a0a0, 0xd06020, 0x606060]
-const ALL := ["duel", "bo3", "ffa", "chaos", "pvp", "coop", "gauntlet", "hunt", "teams", "king", "emperor", "hill", "lastLimb", "headball"]
+const ALL := ["duel", "bo3", "ffa", "chaos", "pvp", "coop", "gauntlet", "hunt", "teams", "king", "emperor", "hill", "lastLimb", "headball", "forgefight"]
 const TITLES := {"duel": "Test fight!", "bo3": "Duel: best of three!", "ffa": "Free for all!", "chaos": "Chaos!", "pvp": "Players brawl!", "coop": "Co-op campaign!",
 	"gauntlet": "Survive the waves!", "hunt": "Monster Hunt!", "teams": "Red vs Blue!", "king": "King of the Arena!", "emperor": "The Emperor watches!",
-	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "headball": "Head Football!"}
+	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "headball": "Head Football!", "forgefight": "Forge and Fight!"}
 const LABELS := {"teams": "Teams: players and bots split up", "hill": "Hold the circle alone for 20 s", "lastLimb": "The Emperor removes a limb from everyone every 15 s",
 	"headball": "Kick the head into the other goal (first to 3)", "king": "The winner stays, the next challenger walks in", "emperor": "1 decree · 2 beast · 3 weapon · 4 tomato · 5 gift · 6/7 the verdict",
-	"bo3": "Floored? Y yields, F fights on wounded for double the stake"}
+	"bo3": "Floored? Y yields, F fights on wounded for double the stake", "forgefight": "What you forged against the clock: to the death"}
 const GOAL_X := 15.0 - 2.2
 
 var m: Node
@@ -29,6 +29,8 @@ var ball := {}
 var ring: MeshInstance3D = null
 var last_winner = null
 var difficulty := 0.7
+var fight_s := 0.0   # Forge and Fight: the host's limit on the fight (0: to the death)
+var fight_t := 0.0
 
 func _init(match_: Node, mode_: String) -> void:
 	m = match_
@@ -64,6 +66,7 @@ static func spawn_pos(index: int, total: int) -> Vector3:
 ## Spawns the players (no fighter for the Emperor himself) and everything the mode starts with.
 func setup(opts: Dictionary) -> void:
 	difficulty = float(opts.get("difficulty", 0.7))
+	fight_s = maxf(0.0, float(opts.get("fight_s", 0.0)))
 	var players := []
 	if mode != "emperor":
 		players.append({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": opts.get("loadout", {"main": "gladius", "off": "roundShield"}), "skin": opts.get("skin")})
@@ -170,8 +173,8 @@ func spawn_hunt_wave() -> void:
 			var pos := Vector3(sin(a) * 7.5, 0.1, cos(a) * 7.5)
 			var scale := float(sp.get("scale", 1.0)) * float(g.get("scaleMul", 1.0)) * (1.15 if g.get("boss", false) else 1.0)
 			m.spawn_beast({"beast": g.beast, "scale": scale, "name": g.get("name", sp.get("name", g.beast)), "boss": g.get("boss", false), "team": 1, "pos": pos, "yaw": atan2(-pos.x, -pos.z)})
-		names.append(("%s (boss)" % g.get("name", sp.get("name", g.beast))) if g.get("boss", false) else ("%d × %s" % [n, sp.get("name", g.beast)]))
-	m.feed.emit("Wave %d: %s" % [wave, ", ".join(names)])
+		names.append((Loc.t("%s (boss)") % g.get("name", sp.get("name", g.beast))) if g.get("boss", false) else ("%d × %s" % [n, sp.get("name", g.beast)]))
+	m.feed.emit(Loc.t("Wave %d: %s") % [wave, ", ".join(names)])
 
 func _heal(list: Array, blood: float) -> void:
 	for h in list:
@@ -216,7 +219,7 @@ func _hill(dt: float) -> void:
 		hill.score[e.id] = float(hill.score.get(e.id, 0.0)) + dt
 		if hill.king != e.id:
 			hill.king = e.id
-			m.feed.emit("%s holds the hill" % e.f.display_name)
+			m.feed.emit(Loc.t("%s holds the hill") % e.f.display_name)
 	var k = m.entity_by_id(int(hill.king)) if hill.king != null else null
 	for e in m.entities:
 		if e.kind == "bot" and k and k.f.alive and e != k:
@@ -236,7 +239,7 @@ func _last_limb(dt: float) -> void:
 			continue
 		var part: VoxelPart = options[m.rng.randi_range(0, options.size() - 1)]
 		c.detach_limb(part, {"removed": [], "severed": []})
-	m._banner("THUMBS DOWN", "The Emperor takes a limb from everyone (%d)" % chops)
+	m._banner("THUMBS DOWN", Loc.t("The Emperor takes a limb from everyone (%d)") % chops)
 	m.sfx("boo", Vector3.ZERO)
 
 func _spawn_ball() -> void:
@@ -272,7 +275,7 @@ func _headball(dt: float) -> void:
 		var scorer := 1 if it.p.x < 0.0 else 0
 		ball.score[scorer] += 1
 		var kicker = it.get("kicker")
-		m._banner("GOAL! %s" % ["Red", "Blue"][scorer], "%d : %d%s" % [ball.score[0], ball.score[1], (" · %s scores!" % kicker.display_name) if kicker and is_instance_valid(kicker) else ""])
+		m._banner(Loc.t("GOAL! %s") % Loc.t(["Red", "Blue"][scorer]), "%d : %d%s" % [ball.score[0], ball.score[1], (Loc.t(" · %s scores!") % kicker.display_name) if kicker and is_instance_valid(kicker) else ""])
 		if kicker:
 			m.crowd_add(kicker, 20, "GOAL!")
 		m.items.remove(it)
@@ -305,25 +308,25 @@ func _emperor(_dt: float, inp: Dictionary) -> void:
 				sp = ["lion"]
 			var k: String = sp[m.rng.randi_range(0, sp.size() - 1)]
 			m.spawn_beast({"beast": k, "team": 9, "pos": Vector3(0, 0.1, 12), "yaw": PI})
-			m.feed.emit("The Emperor releases a %s!" % Data.beasts.get(k, {}).get("name", k).to_lower())
+			m.feed.emit(Loc.t("The Emperor releases a %s!") % Loc.t(String(Data.beasts.get(k, {}).get("name", k))))
 		if use.call(3, 6.0) and pick:
 			var keys := ["gladius", "axe", "mace", "spear", "warhammer", "longsword", "chicken", "fish", "plank", "dagger"]
 			m.spawn_loose_weapon(Data.preset(keys[m.rng.randi_range(0, keys.size() - 1)]), pick.torso.global_position + Vector3(randf_range(-0.8, 0.8), 5.0, randf_range(-0.8, 0.8)))
-			m.feed.emit("The Emperor throws a weapon down to %s" % pick.display_name)
+			m.feed.emit(Loc.t("The Emperor throws a weapon down to %s") % pick.display_name)
 		if use.call(4, 1.2) and pick:
 			m.items.throw_from_stands("tomato", pick.head.global_position, 0.9)
 		if use.call(5, 4.0) and pick:
 			m.items.throw_from_stands("bread" if randf() < 0.5 else "wine", pick.torso.global_position + Vector3(0.5, -pick.torso.global_position.y + 0.1, 0.5))
 			m.crowd_add(pick, 5, "imperial favour")
-			m.feed.emit("A gift from the Emperor for %s" % pick.display_name)
+			m.feed.emit(Loc.t("A gift from the Emperor for %s") % pick.display_name)
 	elif emperor.verdict == "" and last_winner and is_instance_valid(last_winner):
 		if use.call(6, 1.0):
 			emperor.verdict = "up"
-			m._banner("The Emperor: thumbs up!", "%s lives, and is paid double" % last_winner.display_name)
+			m._banner("The Emperor: thumbs up!", Loc.t("%s lives, and is paid double") % last_winner.display_name)
 			m.sfx("cheer", Vector3.ZERO)
 		elif use.call(7, 1.0):
 			emperor.verdict = "down"
-			m._banner("The Emperor: thumbs down!", "%s wins nothing today" % last_winner.display_name)
+			m._banner("The Emperor: thumbs down!", Loc.t("%s wins nothing today") % last_winner.display_name)
 			last_winner.die("wounds")
 			m.sfx("boo", Vector3.ZERO)
 
@@ -367,7 +370,7 @@ func _bo3(dt: float, inp: Dictionary) -> void:
 						p.artery = 0.0
 				if c.state == "down":
 					c.down_timer = 0.1
-		m._banner("Round %d" % bo3.round, "%s fights on, wounded. The stake is %d denarii" % [l.display_name, bo3.stake])
+		m._banner(Loc.t("Round %d") % bo3.round, Loc.t("%s fights on, wounded. The stake is %d denarii") % [l.display_name, bo3.stake])
 		wait_t = 2.0
 		return
 	if wait_t > 0.0:
@@ -391,7 +394,7 @@ func _bo3(dt: float, inp: Dictionary) -> void:
 		if c.alive:
 			m._tape_kill(c, "out")
 		m._round_replay()
-		m._banner("Round %d to %s" % [bo3.round, winner.f.display_name], "You are down. Y: yield · F: fight on, wounded, for double the stake" if e.kind == "local" else "%s is down and must choose: yield, or fight on for double the stake" % c.display_name)
+		m._banner(Loc.t("Round %d to %s") % [bo3.round, winner.f.display_name], "You are down. Y: yield · F: fight on, wounded, for double the stake" if e.kind == "local" else Loc.t("%s is down and must choose: yield, or fight on for double the stake") % c.display_name)
 		return
 
 func _bo3_end() -> void:
@@ -399,7 +402,7 @@ func _bo3_end() -> void:
 	f.sort_custom(func(x, y): return int(bo3.wins.get(x.id, 0)) > int(bo3.wins.get(y.id, 0)))
 	var w: Dictionary = f[0]
 	var score := "%d-%d" % [int(bo3.wins.get(f[0].id, 0)), int(bo3.wins.get(f[1].id, 0))]
-	m._end(w == m.me, "%s wins the duel %s" % [w.f.display_name, score], "For %d denarii" % bo3.stake, int(bo3.stake) if w == m.me else 0)
+	m._end(w == m.me, Loc.t("%s wins the duel %s") % [w.f.display_name, score], Loc.t("For %d denarii") % bo3.stake, int(bo3.stake) if w == m.me else 0)
 
 ## The end of a round, by the mode's own rules.
 func check(dt: float) -> void:
@@ -428,13 +431,19 @@ func check(dt: float) -> void:
 			if ball.score[0] >= 3 or ball.score[1] >= 3:
 				var team := 0 if ball.score[0] >= 3 else 1
 				var mine: bool = m.me != null and m.me.team == team
-				m._end(mine, "%s team wins!" % ["Red", "Blue"][team], "%d : %d" % [ball.score[0], ball.score[1]], 30 if mine else 0)
+				m._end(mine, Loc.t("%s team wins!") % Loc.t(["Red", "Blue"][team]), "%d : %d" % [ball.score[0], ball.score[1]], 30 if mine else 0)
 			return
 		"bo3":
 			return
+		"forgefight":
+			# Out of time: the one standing with the most blood left takes it.
+			fight_t += dt
+			if fight_s > 0.0 and fight_t >= fight_s:
+				_win(ForgeFight.leader(_alive_fighters()))
+				return
 		"hunt":
 			if humans_alive.is_empty():
-				m._end(false, "The monsters won in wave %d" % wave, "")
+				m._end(false, Loc.t("The monsters won in wave %d") % wave, "")
 				return
 			if not alive.any(func(e): return e.kind == "beast" and e.team == 1):
 				_heal(humans_alive, 22.0)
@@ -444,7 +453,7 @@ func check(dt: float) -> void:
 			return
 		"coop", "gauntlet":
 			if humans_alive.is_empty():
-				m._end(false, "You fell in wave %d" % wave, "")
+				m._end(false, Loc.t("You fell in wave %d") % wave, "")
 				return
 			if not alive.any(func(e): return e.kind == "bot"):
 				_heal(humans_alive, 35.0)
@@ -454,7 +463,7 @@ func check(dt: float) -> void:
 				spawn_bots(n, m.entities.size(), m.entities.size() + n)
 				if wave % 3 == 0:
 					m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(0, 0.1, 12), "yaw": PI})
-					m.feed.emit("Wave %d: the lions join in!" % wave)
+					m.feed.emit(Loc.t("Wave %d: the lions join in!") % wave)
 			return
 	if m.entities.size() < 2:
 		return
@@ -471,7 +480,7 @@ func check(dt: float) -> void:
 			break
 	if mode == "king" and winner:
 		if winner.kind == "bot" or int(king.streak) + 1 >= int(king.max):
-			m._end(winner == m.me, ("%s reigns: the players are all down after %d bouts" % [winner.f.display_name, king.streak]) if winner.kind == "bot" else ("%s is King of the Arena: %d bouts unbeaten!" % [winner.f.display_name, king.max]), "", 60 if winner == m.me else 0)
+			m._end(winner == m.me, (Loc.t("%s reigns: the players are all down after %d bouts") % [winner.f.display_name, king.streak]) if winner.kind == "bot" else (Loc.t("%s is King of the Arena: %d bouts unbeaten!") % [winner.f.display_name, king.max]), "", 60 if winner == m.me else 0)
 			return
 		king.streak += 1
 		m._round_replay()
@@ -484,7 +493,7 @@ func check(dt: float) -> void:
 				p.artery = 0.0
 		if winner == m.me:
 			m.round_pay += 10 + 8 * int(king.streak)
-		m._banner("%s holds the arena (%d)" % [c.display_name, king.streak], "The next challenger walks in")
+		m._banner(Loc.t("%s holds the arena (%d)") % [c.display_name, king.streak], "The next challenger walks in")
 		spawn_bots(1, m.entities.size(), m.entities.size() + 1)
 		wait_t = 2.0
 		return
@@ -493,7 +502,7 @@ func check(dt: float) -> void:
 func _win(winner) -> void:
 	last_winner = winner.f if winner else null
 	var mine: bool = winner != null and m.me != null and (winner == m.me or (mode == "teams" and winner.team == m.me.team))
-	var text := ("%s team wins!" % ["Red", "Blue"][winner.team % 2]) if mode == "teams" and winner else (("%s wins!" % winner.f.display_name) if winner else "Draw!")
+	var text := (Loc.t("%s team wins!") % Loc.t(["Red", "Blue"][winner.team % 2])) if mode == "teams" and winner else ((Loc.t("%s wins!") % winner.f.display_name) if winner else "Draw!")
 	var sub := "The Emperor decides: 6 thumbs up · 7 thumbs down" if mode == "emperor" else ""
 	var verdict: Dictionary = m.spectacle.verdict(winner.f if winner else null)
 	if mine:
@@ -509,11 +518,12 @@ func status() -> String:
 				if float(hill.score[id]) > bs:
 					bs = hill.score[id]
 					best = m.entity_by_id(int(id))
-			return ("%s %ds to go" % [best.f.display_name, ceili(hill.need - bs)]) if best else "nobody on the hill"
-		"lastLimb": return "next chop in %ds" % ceili(chop_t)
-		"headball": return "Red %d : %d Blue · kick the head!" % [ball.score[0], ball.score[1]]
-		"hunt", "coop", "gauntlet": return "Wave %d" % wave
-		"king": return "Reign: %d of %d" % [king.streak, king.max]
-		"bo3": return "Round %d · stake %d" % [bo3.round, bo3.stake]
+			return (Loc.t("%s %ds to go") % [best.f.display_name, ceili(hill.need - bs)]) if best else "nobody on the hill"
+		"lastLimb": return Loc.t("next chop in %ds") % ceili(chop_t)
+		"forgefight": return (Loc.t("%s left") % ForgeFight.clock(fight_s - fight_t)) if fight_s > 0.0 else Loc.t("to the death")
+		"headball": return Loc.t("Red %d : %d Blue · kick the head!") % [ball.score[0], ball.score[1]]
+		"hunt", "coop", "gauntlet": return Loc.t("Wave %d") % wave
+		"king": return Loc.t("Reign: %d of %d") % [king.streak, king.max]
+		"bo3": return Loc.t("Round %d · stake %d") % [bo3.round, bo3.stake]
 		"emperor": return LABELS.emperor
 	return TITLES.get(mode, "")

@@ -74,15 +74,15 @@ static func set_price(key: String, lv: int, stage: int) -> int:
 	return maxi(roundi(SET_MIN[lv] * k), roundi(SET_BOUTS[lv] * k * bout_pay(stage)))
 
 static func bone_label(key: String) -> String:
-	return BONES.get(key, label(key))
+	return Loc.lower(String(BONES[key])) if BONES.has(key) else label(key)
 
 ## What is wrong with a bone, in a few words.
 static func break_words(key: String, lv: int) -> String:
 	if key == "ribs":
-		return "%d broken rib%s" % [lv, "s" if lv > 1 else ""]
+		return Loc.t("%d broken ribs" if lv > 1 else "%d broken rib") % lv
 	if key == "pelvis":
-		return "a cracked pelvis"
-	return ["", "a cracked %s", "a broken %s", "an open break of the %s"][clampi(lv, 1, 3)] % bone_label(key)
+		return Loc.t("a cracked pelvis")
+	return Loc.t(["", "a cracked %s", "a broken %s", "an open break of the %s"][clampi(lv, 1, 3)]) % bone_label(key)
 
 ## The most of a part's voxels an old wound may leave missing for good.
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
@@ -126,7 +126,7 @@ static func sanitize(raw) -> Dictionary:
 			var seen := {}
 			var list := []
 			for i in sc[k]:
-				var ii := int(i)
+				var ii := int(i) if (i is int or i is float) and is_finite(float(i)) else -1
 				if ii >= 0 and ii < total and not seen.has(ii) and list.size() < cap:
 					seen[ii] = true
 					list.append(ii)
@@ -138,7 +138,8 @@ static func sanitize(raw) -> Dictionary:
 			var v := str(ey.get(s, ""))
 			if v == "lost" or v == "glass":
 				b.eyes[s] = v
-	b.fights = maxi(0, int(raw.get("fights", 0)))
+	var nf = raw.get("fights", 0)
+	b.fights = maxi(0, int(nf) if (nf is int or nf is float) and is_finite(float(nf)) else 0)
 	var fx = raw.get("fractures", {})
 	if fx is Dictionary:
 		for k in fx:
@@ -181,7 +182,7 @@ static func sanitize(raw) -> Dictionary:
 					have[int(i)] = true
 				var keep := []
 				for i in fr[k]:
-					if have.has(int(i)) and not keep.has(int(i)):
+					if (i is int or i is float) and have.has(int(i)) and not keep.has(int(i)):
 						keep.append(int(i))
 				if not keep.is_empty():
 					b.fresh[n] = keep
@@ -265,7 +266,7 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 			if d.name == n:
 				parent = str(d.parent) if d.parent != null else ""
 		if not snap.lost.has(parent):
-			news.append(("lost the %s" % label(n)) if had == "" else ("the %s was knocked off" % PROSTHETICS[had].name.to_lower()))
+			news.append((Loc.t("lost the %s") % label(n)) if had == "" else (Loc.t("the %s was knocked off") % Loc.lower(String(PROSTHETICS[had].name))))
 			doctor = doctor or n.begins_with("forearm") or n.begins_with("upperArm") or n.begins_with("shin") or n.begins_with("thigh")
 		b.missing.append(n)
 	# Last fight's wounds left unstitched have healed over into scars for good; this fight's
@@ -289,11 +290,11 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 		if not new_ones.is_empty():
 			b.fresh[n] = new_ones
 		if old.size() > had:
-			news.append("a new scar on the %s" % label(n))
+			news.append(Loc.t("a new scar on the %s") % label(n))
 	for s in snap.get("eyes_lost", []):
 		if not b.eyes.has(s):
 			b.eyes[s] = "lost"
-			news.append("lost the %s eye" % ("right" if s == "R" else "left"))
+			news.append(Loc.t("lost the right eye" if s == "R" else "lost the left eye"))
 			doctor = true
 	var fr: Dictionary = snap.get("fractures", {})
 	for k in fr:
@@ -310,7 +311,7 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 static func label(n: String) -> String:
 	for d in Data.body_parts:
 		if d.name == n:
-			return String(d.label).to_lower()
+			return Loc.lower(String(d.label))
 	return n
 
 ## One line about the state of him.
@@ -323,16 +324,16 @@ static func summary(body: Dictionary) -> String:
 			if d.name == n:
 				parent = str(d.parent) if d.parent != null else ""
 		if not b.missing.has(parent):
-			bits.append("no " + label(n))
+			bits.append(Loc.t("no %s") % label(n))
 	for k in b.prosthetics:
-		bits.append(PROSTHETICS[b.prosthetics[k]].name.to_lower())
+		bits.append(Loc.lower(String(PROSTHETICS[b.prosthetics[k]].name)))
 	for s in b.eyes:
-		bits.append(("glass %s eye" if b.eyes[s] == "glass" else "blind in the %s eye") % ("right" if s == "R" else "left"))
+		bits.append(Loc.t(("glass right eye" if s == "R" else "glass left eye") if b.eyes[s] == "glass" else ("blind in the right eye" if s == "R" else "blind in the left eye")))
 	for k in b.fractures:
 		bits.append(break_words(k, int(b.fractures[k])))
 	if not b.scars.is_empty():
-		bits.append("%d scarred part%s" % [b.scars.size(), "s" if b.scars.size() > 1 else ""])
-	return " · ".join(bits) if not bits.is_empty() else "whole"
+		bits.append(Loc.t("%d scarred parts" if b.scars.size() > 1 else "%d scarred part") % b.scars.size())
+	return " · ".join(bits) if not bits.is_empty() else Loc.t("whole")
 
 ## The rare medicine is in stock on some stages only (the same for everyone on that stage).
 static func medicine_in_stock(stage: int) -> bool:
@@ -351,15 +352,15 @@ static func offers(body: Dictionary, stage: int) -> Array:
 				if d.name == n:
 					parent = str(d.parent)
 			if b.missing.has(n) and not b.missing.has(parent):
-				out.append({"id": "%s:%s" % [kind, n], "name": "%s (%s)" % [PROSTHETICS[kind].name, label(n)], "desc": PROSTHETICS[kind].desc, "price": PROSTHETICS[kind].price})
+				out.append({"id": "%s:%s" % [kind, n], "name": "%s (%s)" % [Loc.t(String(PROSTHETICS[kind].name)), label(n)], "desc": PROSTHETICS[kind].desc, "price": PROSTHETICS[kind].price})
 	for s in ["R", "L"]:
 		if b.eyes.get(s, "") == "lost":
-			out.append({"id": "glassEye:%s" % s, "name": "Glass eye (%s)" % ("right" if s == "R" else "left"), "desc": PROSTHETICS.glassEye.desc, "price": PROSTHETICS.glassEye.price})
+			out.append({"id": "glassEye:%s" % s, "name": Loc.t("Glass eye (right)" if s == "R" else "Glass eye (left)"), "desc": PROSTHETICS.glassEye.desc, "price": PROSTHETICS.glassEye.price})
 	# Broken bones set and splinted (an open break cleaned and sewn over it too): they knit by the
 	# next bout. No elixir needed.
 	for k in b.fractures:
 		var lv := int(b.fractures[k])
-		var what := "Set the %s" % bone_label(k)
+		var what := Loc.t("Set the %s") % bone_label(k)
 		var desc := "The bone pulled straight, set and splinted: it knits by the next bout. Left alone it stays broken, and the limb no use."
 		if k == "ribs":
 			what = "Bind the ribs"
@@ -371,7 +372,7 @@ static func offers(body: Dictionary, stage: int) -> Array:
 			what = "Bind the pelvis"
 			desc = "The hips bound tight in linen: the legs bear you again. Left alone, they buckle."
 		elif lv == 1:
-			what = "Splint the cracked %s" % bone_label(k)
+			what = Loc.t("Splint the cracked %s") % bone_label(k)
 			desc = "The crack splinted until it holds: whole again by the next bout. Left alone it stays weak, and a lesser blow breaks it through."
 		elif lv == 3:
 			desc = "The bone that came out through the skin cleaned, pushed back, set and the wound sewn over it: it knits by the next bout. Left alone it stays broken, and the limb no use."
@@ -386,7 +387,7 @@ static func offers(body: Dictionary, stage: int) -> Array:
 		for n in b.scars:
 			if worst == "" or b.scars[n].size() > b.scars[worst].size():
 				worst = n
-		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": "A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been." % label(worst), "price": medicine_price(stage)})
+		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": Loc.t("A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been.") % label(worst), "price": medicine_price(stage)})
 	# The magic one: everything the campaign took, given back at once.
 	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or not b.scars.is_empty():
 		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": elixir_price(stage)})

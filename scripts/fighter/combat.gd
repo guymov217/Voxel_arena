@@ -430,12 +430,18 @@ func _blow(g: Dictionary) -> Dictionary:
 			J *= 0.5   # a flat board spinning in: it knocks a man about more than it breaks him
 		heavy = clampf((att.mass * speed - 20.0) / 40.0, 0.0, 1.0)
 	if is_weapon:
-		var key_name := _preset_key(att.design)
-		J *= float(att.design.get("dmgScale", Data.damage_tuning.get(key_name, 1.0)))
-		# Size counts on top: a small weapon (a stick, a dagger) lands lighter than a sword, a
-		# great one heavier, whatever speed it comes in at (the edge, a point and wear still
-		# decide what the blow does when it lands).
-		J *= clampf(pow(maxf(0.05, att.mass) / 1.7, 0.3), 0.55, 1.35)
+		# The same rules for every weapon, whoever made it (user: any weapon a man can build, and
+		# the cleverest wins): nothing is scaled for being a named preset (each carried a hidden
+		# multiplier of its own, and a weapon reshaped at the forge kept it).
+		# Size counts on top: a small weapon lands lighter than a sword, a great one heavier,
+		# whatever speed it comes in at. A crushing blow is all weight; an edge puts its force on
+		# a line, and there weight matters less: half the say a blunt blow gives it. A point puts
+		# it on a spot, driven by the arm and the body behind it: a dagger's goes in as a spear's.
+		var m_rel := maxf(0.05, att.mass) / 1.7
+		if g.type == "edge":
+			J *= clampf(pow(m_rel, 0.15), 0.7, 1.2)
+		elif g.type != "point":
+			J *= clampf(pow(m_rel, 0.3), 0.55, 1.35)
 	if J < (4.0 if is_weapon else 3.0):
 		return {}
 	var key := "%d:%d" % [att.get_instance_id(), vic.get_instance_id()]
@@ -519,7 +525,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false), "weapon": is_weapon})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0})
 	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
 	# is turned aside at the point it struck, so it twists off too).
 	if is_weapon and res.has("glance_n"):

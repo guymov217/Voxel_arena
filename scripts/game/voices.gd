@@ -85,6 +85,8 @@ static func file_key(f, event: String) -> String:
 	if f.get("kind") == "beast":
 		return "%s_%s" % [String(f.species), event if ["call", "hurt", "death"].has(event) else "call"]
 	var g := giant_voice(f)
+	if g == "cyclops" and (event == "rage" or event == "rampage"):
+		return "cyclops_" + event   # (his one eye put out: his own scream, his own raging)
 	if g != "":
 		return "%s_%s" % [g, "death" if event == "death" else ("call" if ["call", "effort"].has(event) else "hurt")]
 	var t := throat_of(f)

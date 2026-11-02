@@ -12,7 +12,19 @@ func _ready() -> void:
 	if OS.get_environment("LOOK") != "":
 		var l := OS.get_environment("LOOK").split(",")
 		Save.set_value("look", {"skin": int(l[0]), "cloth": int(l[1]), "hat": int(l[2]), "hair": int(l[3]), "beard": int(l[4]), "cape": int(l[5])})
+	# PICK_LANG=de (a language code, Loc.LANGS): the menus in that language, saved as menu_<screen>_<code>.png.
+	# QUALITY=low: the backdrop drawn light (a software renderer takes minutes a frame on high).
+	if OS.get_environment("QUALITY") != "":
+		var st = Save.get_value("settings", {})
+		st = st if st is Dictionary else {}
+		st["quality"] = OS.get_environment("QUALITY")
+		Save.set_value("settings", st)
+	var lang := OS.get_environment("PICK_LANG")
+	if lang != "":
+		Loc.apply(lang)
 	var menu = load("res://scripts/ui/menu.gd").new()
+	# NO_FIGHT=1: no bots fighting behind the menus (the words only, on a slow renderer).
+	menu.backdrop_off = OS.get_environment("NO_FIGHT") != ""
 	add_child(menu)
 	for i in 30:
 		await get_tree().process_frame
@@ -22,7 +34,7 @@ func _ready() -> void:
 		menu.show_screen(s)
 		for i in 45:
 			await get_tree().process_frame
-		get_viewport().get_texture().get_image().save_png(out.path_join("menu_%s.png" % s))
+		get_viewport().get_texture().get_image().save_png(out.path_join(("menu_%s_%s.png" % [s, lang]) if lang != "" else ("menu_%s.png" % s)))
 		print("saved ", s)
 	if only != "":
 		get_tree().quit()

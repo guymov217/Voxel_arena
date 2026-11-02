@@ -748,7 +748,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				x.c.bee_timer = 5.0
 				if owner_:
 					x.c.last_attacker = owner_
-				m.feed.emit("%s is covered in bees!" % x.c.display_name)
+				m.feed.emit(Loc.t("%s is covered in bees!") % x.c.display_name)
 				stung = true
 			# The swarm comes out of the broken hive and goes for the nearest foe of the thrower
 			# (anyone but him, if he has no side) within nine metres, a cloud of bees in the air
@@ -776,7 +776,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 							em.local_coords = false
 						sw.node = node
 					swarms.append(sw)
-					m.feed.emit("The hive breaks open: the swarm goes for %s!" % best.display_name)
+					m.feed.emit(Loc.t("The hive breaks open: the swarm goes for %s!") % best.display_name)
 		"pot_goat":
 			m.spawn_beast({"beast": "goat", "team": 2, "pos": Vector3(p.x, 0.1, p.z), "yaw": 0.0, "harmless": true})
 			m.feed.emit("The crowd laughs. Every beast wants the goat.")
@@ -789,7 +789,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				c.fall(4.0 if c.mods.get("cyclops", false) else 1.6, true)
 				if owner_:
 					c.last_attacker = owner_
-				m.feed.emit("%s's legs are tied up" % c.display_name)
+				m.feed.emit(Loc.t("%s's legs are tied up") % c.display_name)
 			m.sfx("slap", p)
 		"pot_oil":
 			add_zone("oil", Vector3(p.x, 0, p.z), 2.6, 14.0, owner_)
@@ -808,7 +808,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 						dropped += 1
 				if owner_:
 					c.last_attacker = owner_
-			m.feed.emit("Rotten fish sauce! %s" % ("%d weapon%s dropped in disgust." % [dropped, "s" if dropped > 1 else ""] if dropped else "The crowd holds its nose."))
+			m.feed.emit(Loc.t("Rotten fish sauce! %s") % (Loc.t("%d weapons dropped in disgust." if dropped > 1 else "%d weapon dropped in disgust.") % dropped if dropped else Loc.t("The crowd holds its nose.")))
 			if owner_:
 				m.crowd_add(owner_, 4, "disgusting")
 		"pot_honey":
@@ -820,13 +820,13 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				x.c.bee_timer = maxf(float(x.c.bee_timer), 3.5)
 				if owner_:
 					x.c.last_attacker = owner_
-				m.feed.emit("%s is dripping honey, and the bees have found him!" % x.c.display_name)
+				m.feed.emit(Loc.t("%s is dripping honey, and the bees have found him!") % x.c.display_name)
 		"pot_smoke":
 			add_zone("smoke", Vector3(p.x, 0, p.z), 3.0, 9.0, owner_)
 			m.sfx("whoosh", p)
 		"pot_mystery":
 			var pick: String = ["pot_thunder", "pot_nail", "pot_goat", "pot_bees", "pot_chickens", "pot_confetti", "pot_grape", "pot_oil"][randi() % 8]
-			m.feed.emit("The mystery amphora was... %s!" % ("a grape" if pick == "pot_grape" else ("confetti" if pick == "pot_confetti" else pick.trim_prefix("pot_"))))
+			m.feed.emit(Loc.t({"pot_thunder": "The mystery amphora was... thunder!", "pot_nail": "The mystery amphora was... nails!", "pot_goat": "The mystery amphora was... a goat!", "pot_bees": "The mystery amphora was... bees!", "pot_chickens": "The mystery amphora was... chickens!", "pot_confetti": "The mystery amphora was... confetti!", "pot_grape": "The mystery amphora was... a grape!", "pot_oil": "The mystery amphora was... oil!"}[pick]))
 			explode(pick, p, owner_)
 		"pot_confetti":
 			if m.fx:
@@ -865,7 +865,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				hv.torso.apply_central_impulse(pull.normalized() * 260.0 * hv.S * hv.S)
 				if hv.state == "stand":
 					hv.fall(1.2)
-				m.feed.emit("%s reeled in %s!" % [owner_.display_name, hv.display_name])
+				m.feed.emit(Loc.t("%s reeled in %s!") % [owner_.display_name, hv.display_name])
 				m.crowd_add(owner_, 8, "catch of the day")
 		"pot_bolt", "pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_dart", "nail":
 			_dart(type, p, owner_, dir, hit_char, hit_part, power)
@@ -880,7 +880,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			ddir.y = 0.0
 			_hit(c, part, 16.0, "blunt", part.global_position, ddir.normalized(), owner_, {"hardness": 0.8})
 			if c == owner_:
-				m.feed.emit("%s got hit by their own discus" % c.display_name)
+				m.feed.emit(Loc.t("%s got hit by their own discus") % c.display_name)
 		"pot_bignet":
 			var n := 0
 			for x in _near(p, 1.8):
@@ -890,7 +890,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				n += 1
 				if owner_:
 					x.c.last_attacker = owner_
-			m.feed.emit("%d caught in the big net" % n)
+			m.feed.emit(Loc.t("%d caught in the big net") % n)
 		"rock":
 			if hit_char and hit_part:
 				_hit(hit_char, hit_part, 9.0, "blunt", p, dir if dir != null else Vector3.DOWN, owner_, {"hardness": 0.7})
@@ -1117,7 +1117,11 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	_hit(c, part, J, "point", p, hdir, owner_)
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + (0.2 if c.S >= 1.5 else 0.5))
-		m.feed.emit("HEADSHOT! %s%s's head%s" % [(owner_.display_name + " puts one in ") if owner_ else "", c.display_name, ". Down and out." if was_alive and not c.alive else ""])
+		var down_now: bool = was_alive and not c.alive
+		if owner_:
+			m.feed.emit(Loc.t("HEADSHOT! %s puts one in %s's head. Down and out." if down_now else "HEADSHOT! %s puts one in %s's head") % [owner_.display_name, c.display_name])
+		else:
+			m.feed.emit(Loc.t("HEADSHOT! Right in %s's head. Down and out." if down_now else "HEADSHOT! Right in %s's head") % c.display_name)
 	if type == "pot_bolt":
 		part.bleed += 1.0
 		part.stick("pot_bolt", p, hdir)
@@ -1157,7 +1161,7 @@ func on_item(ev: Dictionary) -> void:
 				c.torso.apply_central_impulse(Vector3(push.x, maxf(0.0, push.y), push.z))
 				if c.state == "stand" and J > 25.0 and not c.mods.get("unstoppable", false):
 					c.fall(2.0)
-				m.feed.emit("An anvil hits %s. Classic." % c.display_name)
+				m.feed.emit(Loc.t("An anvil hits %s. Classic.") % c.display_name)
 				if owner_ and owner_ != c:
 					m.crowd_add(owner_, 10, "anvil")
 		"land":
@@ -1168,7 +1172,7 @@ func on_item(ev: Dictionary) -> void:
 		"splat":
 			if ev.type == "tomato":
 				if c:
-					m.feed.emit("SPLAT! A tomato hits %s" % c.display_name)
+					m.feed.emit(Loc.t("SPLAT! A tomato hits %s") % c.display_name)
 					m.crowd_add(c, -2, "tomato")
 				burst(ev.p, Color(0.82, 0.16, 0.11), 10, 1.5, 0.5, 0.03)
 			else:
@@ -1177,12 +1181,12 @@ func on_item(ev: Dictionary) -> void:
 			match ev.type:
 				"bread":
 					c.blood = minf(100.0, c.blood + 30.0)
-					m.feed.emit("%s eats the bread" % c.display_name)
+					m.feed.emit(Loc.t("%s eats the bread") % c.display_name)
 				"wine":
 					c.drink_wine()
-					m.feed.emit("%s downs the wine" % c.display_name)
+					m.feed.emit(Loc.t("%s downs the wine") % c.display_name)
 				"coin":
-					m.feed.emit("%s pockets a gold coin" % c.display_name)
+					m.feed.emit(Loc.t("%s pockets a gold coin") % c.display_name)
 					m.on_coin(c)
 		"caltrop":
 			var part: VoxelPart = ev.part
@@ -1198,7 +1202,7 @@ func on_item(ev: Dictionary) -> void:
 				c.slow(2.5, 0.5)
 				part.flinch_t = maxf(part.flinch_t, 0.8)
 				c.stagger = minf(1.0, c.stagger + 0.35 / float(c.S))
-				m.feed.emit("%s steps on a caltrop!" % c.display_name)
+				m.feed.emit(Loc.t("%s steps on a caltrop!") % c.display_name)
 				m.crowd_add(c, -2, "caltrop")
 			if owner_ and owner_ != c:
 				c.last_attacker = owner_
@@ -1206,16 +1210,16 @@ func on_item(ev: Dictionary) -> void:
 		"slip":
 			c.fall(1.6, true)
 			c.torso.apply_central_impulse(Vector3(0, 30.0, 0))
-			m.feed.emit("%s slipped on a banana peel!" % c.display_name)
+			m.feed.emit(Loc.t("%s slipped on a banana peel!") % c.display_name)
 			m.crowd_add(c, -3, "banana")
 			m.sfx("whoosh", ev.p)
 		"ram":
 			c.fall(1.4, true)
-			m.feed.emit("%s is bowled over by a cheese wheel" % c.display_name)
+			m.feed.emit(Loc.t("%s is bowled over by a cheese wheel") % c.display_name)
 			if owner_:
 				m.crowd_add(owner_, 6, "cheese")
 		"return":
-			m.feed.emit("%s caught the boomerang" % c.display_name)
+			m.feed.emit(Loc.t("%s caught the boomerang") % c.display_name)
 		"kick":
 			if m.modes:
 				m.modes.kick_ball(ev)
@@ -1379,7 +1383,7 @@ func update(dt: float) -> void:
 						c.fall(1.4)
 						c.torso.apply_central_impulse(Vector3(v.x * 8.0, 40.0, v.z * 8.0))
 						m.crowd_add(c, -3, "slip")
-						m.feed.emit("%s slipped in the olive oil" % c.display_name)
+						m.feed.emit(Loc.t("%s slipped in the olive oil") % c.display_name)
 					"honey":
 						c.slow(0.7, 0.3)
 						if c.bee_timer > 0.0:
@@ -1432,7 +1436,7 @@ func update(dt: float) -> void:
 					tgt.bee_timer = maxf(float(tgt.bee_timer), 5.0)
 					if sw.owner:
 						tgt.last_attacker = sw.owner
-				m.feed.emit("%s is covered in bees!" % tgt.display_name)
+				m.feed.emit(Loc.t("%s is covered in bees!") % tgt.display_name)
 				if sw.node and is_instance_valid(sw.node):
 					sw.node.queue_free()
 				swarms.erase(sw)
@@ -1539,9 +1543,9 @@ func use_item(e: Dictionary, slot: int) -> bool:
 			who.torso.hp = minf(100.0, who.torso.hp + 15.0)
 			if friend:
 				who.help_up()
-				m.feed.emit("%s bandages %s and helps %s up" % [c.display_name, who.display_name, who.display_name])
+				m.feed.emit(Loc.t("%s bandages %s and helps them up") % [c.display_name, who.display_name])
 			else:
-				m.feed.emit("%s bandaged up" % c.display_name)
+				m.feed.emit(Loc.t("%s bandaged up") % c.display_name)
 		"bread":
 			c.blood = minf(100.0, c.blood + 40.0)
 		"wine":
@@ -1550,13 +1554,13 @@ func use_item(e: Dictionary, slot: int) -> bool:
 			var cp: Vector3 = c.torso.global_position + fwd * 0.8
 			var it: Dictionary = m.items.spawn("cheese", Vector3(cp.x, 0.21, cp.z), fwd * 7.0, c)   # on its edge on the sand
 			it.grounded = true
-			m.feed.emit("%s bowled a cheese wheel" % c.display_name)
+			m.feed.emit(Loc.t("%s bowled a cheese wheel") % c.display_name)
 		"bananas":
 			for i in [-1, 0, 1]:
 				var bp: Vector3 = c.torso.global_position + fwd * 1.2 + Vector3(fwd.z * i * 0.6, 0, -fwd.x * i * 0.6)
 				var it2: Dictionary = m.items.spawn("banana", Vector3(bp.x, 0.06, bp.z), Vector3.ZERO, c)
 				it2.grounded = true
-			m.feed.emit("%s laid a banana trap" % c.display_name)
+			m.feed.emit(Loc.t("%s laid a banana trap") % c.display_name)
 		_:
 			var tgt = m.nearest_enemy(e)
 			var aim: Vector3 = tgt.f.torso.global_position if tgt else c.torso.global_position + fwd * 6.0
@@ -1587,7 +1591,7 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 		node.position = c.hand_point
 	c.held_item = {"type": type, "id": id, "node": node, "side": side}
 	if e.kind == "local":
-		m.feed.emit("%s ready: hold F to aim, let go to throw" % Data.shop.throwables.get(id, {}).get("name", id))
+		m.feed.emit(Loc.t("%s ready: hold F to aim, let go to throw") % Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))))
 
 ## The readied pot goes back into the kit (its number pressed again, or another pot readied):
 ## it was never taken out, so nothing is owed.
@@ -1598,7 +1602,7 @@ func put_away(e: Dictionary) -> void:
 	var id: String = c.held_item.id
 	drop_held(c)
 	if e.kind == "local":
-		m.feed.emit("%s put away" % Data.shop.throwables.get(id, {}).get("name", id))
+		m.feed.emit(Loc.t("%s put away") % Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))))
 
 func drop_held(c) -> void:
 	if c.held_item == null:

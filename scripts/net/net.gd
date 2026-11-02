@@ -44,6 +44,11 @@ var _held: Array = []
 var _held_due := 0
 
 func _ready() -> void:
+	# Guests talk to the host and to nobody else: what one sends the others is what the host
+	# himself passes on (a voice), so nothing reaches a guest that has not been through the
+	# host's checks.
+	if multiplayer is SceneMultiplayer:
+		(multiplayer as SceneMultiplayer).server_relay = false
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -135,16 +140,16 @@ func host_steam(public := true) -> void:
 
 func _on_lobby_created(result: int, id: int) -> void:
 	if result != 1:
-		connection_failed.emit("Steam could not make the lobby (%d)" % result)
+		connection_failed.emit(Loc.t("Steam could not make the lobby (%d)") % result)
 		return
 	lobby_id = id
 	steam.call("setLobbyData", id, "game", LOBBY_KEY)
-	steam.call("setLobbyData", id, "name", "%s's arena" % my_name)
+	steam.call("setLobbyData", id, "name", Loc.t("%s's arena") % my_name)
 	steam.call("setLobbyJoinable", id, true)
 	var p = ClassDB.instantiate("SteamMultiplayerPeer")
 	var err = p.call("create_host", 0)
 	if err != OK:
-		connection_failed.emit("Steam networking failed (%d)" % err)
+		connection_failed.emit(Loc.t("Steam networking failed (%d)") % err)
 		return
 	multiplayer.multiplayer_peer = p
 	transport = "steam"
@@ -160,7 +165,8 @@ func list_steam_lobbies() -> void:
 func _describe(list: Array) -> Array:
 	var out := []
 	for id in list:
-		out.append({"id": int(id), "name": String(steam.call("getLobbyData", id, "name")), "players": int(steam.call("getNumLobbyMembers", id)), "mode": String(steam.call("getLobbyData", id, "mode"))})
+		# (A stranger's lobby names itself: shown as a name, never as markup.)
+		out.append({"id": int(id), "name": clean_name(steam.call("getLobbyData", id, "name"), 40), "players": int(steam.call("getNumLobbyMembers", id)), "mode": clean_name(steam.call("getLobbyData", id, "mode"), 20, "")})
 	return out
 
 func join_steam(id: int) -> void:
@@ -171,7 +177,7 @@ func join_steam(id: int) -> void:
 
 func _on_lobby_joined(id: int, _perm: int, _locked: bool, response: int) -> void:
 	if response != 1:
-		connection_failed.emit("Could not join that lobby (%d)" % response)
+		connection_failed.emit(Loc.t("Could not join that lobby (%d)") % response)
 		return
 	lobby_id = id
 	var owner := int(steam.call("getLobbyOwner", id))
@@ -180,18 +186,33 @@ func _on_lobby_joined(id: int, _perm: int, _locked: bool, response: int) -> void
 	var p = ClassDB.instantiate("SteamMultiplayerPeer")
 	var err = p.call("create_client", owner, 0)
 	if err != OK:
-		connection_failed.emit("Steam networking failed (%d)" % err)
+		connection_failed.emit(Loc.t("Steam networking failed (%d)") % err)
 		return
 	multiplayer.multiplayer_peer = p
 	transport = "steam"
 
 # ---------- ENet ----------
 
+## A game joined by address is encrypted (DTLS) as Steam's sockets are: the host makes a key and a
+## certificate for the session, the guests take it without a name to check it against (friends
+## have no certificate authority between them): enough that nobody on the wire between them can
+## read the game or the voices (user: friends playing together, completely safely).
+const DTLS_NAME := "wrecksmith-host"
+var dtls := true
+
 func host_enet(port := PORT) -> Error:
 	var p := ENetMultiplayerPeer.new()
 	var err := p.create_server(port, MAX_PLAYERS)
 	if err != OK:
 		return err
+	if dtls:
+		var crypto := Crypto.new()
+		var key := crypto.generate_rsa(2048)
+		var cert := crypto.generate_self_signed_certificate(key, "CN=" + DTLS_NAME)
+		err = p.host.dtls_server_setup(TLSOptions.server(key, cert))
+		if err != OK:
+			p.close()
+			return err
 	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)   # (the guests' side does the same)
 	multiplayer.multiplayer_peer = p
 	transport = "enet"
@@ -203,6 +224,11 @@ func join_enet(address: String, port := PORT) -> Error:
 	var err := p.create_client(address, port)
 	if err != OK:
 		return err
+	if dtls:
+		err = p.host.dtls_client_setup(DTLS_NAME, TLSOptions.client_unsafe())
+		if err != OK:
+			p.close()
+			return err
 	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = p
 	transport = "enet"
@@ -223,6 +249,9 @@ func leave() -> void:
 	if steam_ready and lobby_id:
 		steam.call("leaveLobby", lobby_id)
 	lobby_id = 0
+	_banned.clear()
+	_rate.clear()
+	purse_credit.clear()
 	ping_ms = -1.0
 	host_rate = -1.0
 	guest_pings.clear()
@@ -239,12 +268,48 @@ func set_lobby_info(mode: String) -> void:
 		steam.call("setLobbyData", lobby_id, "mode", mode)
 
 func _on_peer_connected(id: int) -> void:
+	# One the host turned out of this room does not come back in.
+	if is_host() and _banned.has(_peer_key(id)):
+		_turn_away(id)
+		return
 	# The guest introduces itself with "hello". A guest whose game closes without a word is
 	# missed within seconds, not ENet's half a minute: his fighter leaves the yard with him.
 	if transport == "enet" and is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
 		var pp: ENetPacketPeer = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
 		if pp:
 			pp.set_timeout(0, 4000, 8000)
+
+var leave_reason := ""   # why a guest's game ended, for the screen he lands on ("": the host left)
+var _banned := {}        # turned out of this room: "ip:..." or "steam:..." -> true
+
+## The host turns a guest out of the room (user: friends playing together safely): he is told,
+## let go, and cannot come back in until the host opens a new room.
+func kick(id: int) -> void:
+	if not is_host() or not peers.has(id):
+		return
+	var key := _peer_key(id)
+	if key != "":
+		_banned[key] = true
+	_turn_away(id)
+
+## Tells a guest he is not wanted here, and lets him go a moment later (the word goes first).
+func _turn_away(id: int) -> void:
+	send_to(id, "kicked", {})
+	var mp := multiplayer.multiplayer_peer
+	get_tree().create_timer(0.3).timeout.connect(func():
+		# (Unless he has gone already, as a guest told to go does.)
+		if mp != null and multiplayer.multiplayer_peer == mp and multiplayer.get_peers().has(id):
+			mp.disconnect_peer(id))
+
+## Who a peer is, for the room's turned-away list: his address (ENet) or his Steam id.
+func _peer_key(id: int) -> String:
+	var mp := multiplayer.multiplayer_peer
+	if transport == "enet" and mp is ENetMultiplayerPeer:
+		var pp: ENetPacketPeer = (mp as ENetMultiplayerPeer).get_peer(id)
+		return ("ip:" + pp.get_remote_address()) if pp else ""
+	if transport == "steam" and mp != null and mp.has_method("get_steam64_from_peer_id"):
+		return "steam:%d" % int(mp.call("get_steam64_from_peer_id", id))
+	return ""
 
 func _on_peer_disconnected(id: int) -> void:
 	guest_pings.erase(id)
@@ -330,13 +395,19 @@ func send_to(id: int, type: String, data, reliable := true) -> void:
 func send_host(type: String, data, reliable := true) -> void:
 	send_to(1, type, data, reliable)
 
+## A number from the wire, or `def` where something else came (a string, a list, a NaN):
+## what a guest sends is read as data, never trusted to be of the kind it should be.
+const OFF_GRID := -9999.0   # (what a coordinate that is not a number reads as: outside every grid)
+static func num(v, def := 0.0) -> float:
+	return float(v) if (v is int or v is float) and is_finite(float(v)) else def
+
 ## A kit from the wire: only known throwables, sane counts.
 static func sanitize_kit(k) -> Dictionary:
 	var out := {}
 	if k is Dictionary:
 		for id in k:
 			if Data.shop.get("throwables", {}).has(str(id)):
-				out[str(id)] = clampi(int(k[id]), 0, 20)
+				out[str(id)] = clampi(int(num(k[id])), 0, 20)
 	return Throwables.bag_clamp(out)
 
 ## A guest's latest input; a one-shot press in it (a jump, a grab) is handed out once.
@@ -364,26 +435,180 @@ func _umsg(type: String, data) -> void:
 	if not _hold(type, data, from, false):
 		_receive(type, data, from)
 
+## What a guest may send the host a second (input at 30, voice, the meter's pings, a few
+## events): past it the rest of that second is dropped, so a flood from one guest cannot choke
+## the host or, passed on, the others.
+const MSG_PER_S := 240
+## What a guest may say to the host at all: anything else (a snapshot, a spawn, a banner, the
+## end of a bout) is the host's word alone and is dropped when a guest sends it.
+const FROM_GUESTS := ["hello", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready"]
+var _rate := {}   # peer id -> [the second's start (ms), messages in it]
+
+func _flooding(from: int) -> bool:
+	var now := Time.get_ticks_msec()
+	var r: Array = _rate.get(from, [now, 0])
+	if now - int(r[0]) >= 1000:
+		r = [now, 0]
+	r[1] = int(r[1]) + 1
+	_rate[from] = r
+	return int(r[1]) > MSG_PER_S
+
+## The party's purse is the host's own (his save): a guest puts into it no more than he has
+## taken out of it (a sale fetches half a price; a cheaper piece of armour for a dearer one),
+## what a fight's missions pay him, and a little for what he brought to sell. A game changed
+## to send more than that adds nothing more.
+const PURSE_JOIN := 400
+const PURSE_PER_FIGHT := 400   # three missions at the best rank pay 360
+var purse_credit := {}         # a guest ("ip:..."/"steam:...") -> denarii he may still put in
+
+func _purse_key(id: int) -> String:
+	var k := _peer_key(id)
+	return k if k != "" else "id:%d" % id
+
+## A guest spent `n` denarii of the purse (what it really lost): as much may come back.
+func purse_spent(id: int, n: int) -> void:
+	var k := _purse_key(id)
+	purse_credit[k] = int(purse_credit.get(k, PURSE_JOIN)) + maxi(0, n)
+
+## What of the `n` denarii a guest puts in the purse it takes.
+func purse_take(id: int, n: int) -> int:
+	var k := _purse_key(id)
+	var c := int(purse_credit.get(k, PURSE_JOIN))
+	var ok := clampi(n, 0, c)
+	purse_credit[k] = c - ok
+	return ok
+
+## A fight is over: its missions may pay every guest.
+func purse_fight_over() -> void:
+	for id in peers:
+		var k := _purse_key(int(id))
+		purse_credit[k] = int(purse_credit.get(k, PURSE_JOIN)) + PURSE_PER_FIGHT
+
+## A name from the wire as it may be shown: no markup (a name is drawn in the feed's rich
+## text), no control characters, 24 letters at most.
+static func clean_name(s, most := 24, none := "Guest") -> String:
+	var src := String(s) if (s is String or s is StringName) else (str(s) if (s is int or s is float) else "")
+	var t := ""
+	for ch in src.left(most * 4).replace("[", "(").replace("]", ")"):
+		if ch.unicode_at(0) >= 32 and ch.unicode_at(0) != 127:
+			t += ch
+	t = t.strip_edges().left(most)
+	return t if t != "" else none
+
+## A loadout from the wire: known weapons by name, a guest's own forged ones kept to what the
+## forge itself can make (its grid, its materials, its number of blocks), armour by known pieces
+## and cleaned bench designs. (A design of a million blocks, or of numbers that are not numbers,
+## would have stalled the host building it.)
+static func sanitize_loadout(lo) -> Dictionary:
+	var out := {}
+	if not (lo is Dictionary):
+		return {"main": "gladius"}
+	for side in ["main", "off"]:
+		var w = lo.get(side)
+		if w is String and (w == "" or not Data.preset(w).is_empty()):
+			out[side] = w
+		elif w is Dictionary:
+			var d = clean_design(w)
+			if d != null:
+				out[side] = d
+	if not out.has("main"):
+		out.main = "gladius"
+	if lo.get("armor_defs") is Dictionary:
+		var defs := {}
+		for k in lo.armor_defs:
+			if defs.size() >= 16:
+				break
+			var c = Armory.clean_design(lo.armor_defs[k])
+			if c != null:
+				defs[str(k).left(40)] = c
+		out.armor_defs = defs
+	if lo.get("armor") is Array:
+		var ids := []
+		for a in lo.armor:
+			if ids.size() >= 12:
+				break
+			var id := str(a).left(40)
+			if Data.armor.has(id) or (out.has("armor_defs") and out.armor_defs.has(id)):
+				ids.append(id)
+		out.armor = ids
+	return out
+
+## A forged weapon from the wire, or null: only the fields a design has, each of its kind;
+## blocks inside the forge's grid, of known materials and jobs, no more than the forge allows.
+static func clean_design(d: Dictionary) -> Variant:
+	if not (d.get("voxels") is Array) or (d.voxels as Array).is_empty() or (d.voxels as Array).size() > ForgeLib.MAX_VOXELS:
+		return null
+	var out := {"name": clean_name(d.get("name", "Weapon")).left(32), "kind": "shield" if str(d.get("kind", "weapon")) == "shield" else "weapon"}
+	var vox := []
+	for v in d.voxels:
+		if not (v is Array) or v.size() < 5:
+			return null
+		var x := int(num(v[0], OFF_GRID)); var y := int(num(v[1], OFF_GRID)); var z := int(num(v[2], OFF_GRID))
+		var mat := str(v[3]) if v[3] is String else ""; var job := str(v[4]) if v[4] is String else ""
+		if not ForgeLib.in_grid(x, y, z) or not Data.materials.has(mat) or not ["edge", "point", "blunt", "grip"].has(job):
+			return null
+		vox.append([x, y, z, mat, job, clampi(int(num(v[5])), 0, 5)] if v.size() > 5 else [x, y, z, mat, job])
+	out.voxels = vox
+	for k in ["twoHanded", "throwable", "spins", "serrated"]:
+		if d.has(k):
+			out[k] = bool(d[k])
+	out.sharpness = clampf(num(d.get("sharpness", 0.8), 0.8), 0.0, 1.0)
+	for k in ["gem", "shoots"]:
+		if d.get(k) is String and str(d[k]).length() <= 20:
+			out[k] = str(d[k])
+	if d.get("imbue") is String and ["", "fire", "frost", "venom", "poison"].has(str(d.imbue)):
+		out.imbue = str(d.imbue)
+	if d.has("durability"):
+		out.durability = clampf(num(d.durability, 1.0), 0.2, 2.5)
+	if d.get("balance") is Array and d.balance.size() >= 3:
+		var bx := num(d.balance[0], OFF_GRID); var by := num(d.balance[1], OFF_GRID); var bz := num(d.balance[2], OFF_GRID)
+		if ForgeLib.in_grid(int(bx), int(by), int(bz)):
+			out.balance = [bx, by, bz]
+	if d.get("grips") is Dictionary:
+		var g := {}
+		for hk in ["main", "off"]:
+			var gp = d.grips.get(hk)
+			if gp is Array and gp.size() == 3 and ForgeLib.in_grid(int(num(gp[0], OFF_GRID)), int(num(gp[1], OFF_GRID)), int(num(gp[2], OFF_GRID))):
+				g[hk] = [int(gp[0]), int(gp[1]), int(gp[2])]
+		out.grips = g
+	if d.get("chain") is Dictionary:
+		var head = clean_design(d.chain.get("head", {})) if d.chain.get("head") is Dictionary else null
+		if head == null:
+			return null
+		out.chain = {"head": head, "links": clampi(int(num(d.chain.get("links", 4), 4.0)), 1, 16)}
+		for k in d.chain:
+			if not out.chain.has(k) and (d.chain[k] is bool or d.chain[k] is String):
+				out.chain[k] = d.chain[k]
+	return out
+
 func _receive(type: String, data, from: int) -> void:
 	# Only the host may tell guests what happens; guests may only say hello and send input.
 	if not is_host() and from != 1:
 		return
+	if is_host() and from != 1 and (not FROM_GUESTS.has(type) or _flooding(from)):
+		return
+	if type == "kicked" and not is_host():
+		leave_reason = "The host removed you from the room"
+		leave()
+		disconnected.emit()
+		return
 	# The meter's own round trip (never passed on to the game).
 	if type == "_ping":
 		if is_host() and data is Dictionary:
-			guest_pings[from] = clampf(float(data.get("p", -1.0)), -1.0, 9999.0)
-			send_to(from, "_pong", {"t": int(data.get("t", 0)), "s": snappedf(step_rate, 0.1)}, false)
+			guest_pings[from] = clampf(num(data.get("p", -1.0), -1.0), -1.0, 9999.0)
+			send_to(from, "_pong", {"t": int(num(data.get("t", 0))), "s": snappedf(step_rate, 0.1)}, false)
 		return
 	if type == "_pong":
 		if not is_host() and data is Dictionary:
-			ping_ms = clampf(float(Time.get_ticks_msec() - int(data.get("t", 0))), 0.0, 9999.0)
-			host_rate = clampf(float(data.get("s", -1.0)), -1.0, 1000.0)
+			ping_ms = clampf(float(Time.get_ticks_msec() - int(num(data.get("t", 0)))), 0.0, 9999.0)
+			host_rate = clampf(num(data.get("s", -1.0), -1.0), -1.0, 1000.0)
 		return
 	if is_host():
 		match type:
 			"hello":
-				if data is Dictionary:
-					var info := {"name": String(data.get("name", "Guest")).left(24), "loadout": data.get("loadout", {}) if data.get("loadout") is Dictionary else {}, "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
+				# Once a guest: a second hello would have walked a second fighter of his in.
+				if data is Dictionary and not peers.has(from) and not _banned.has(_peer_key(from)):
+					var info := {"name": clean_name(data.get("name", "Guest")), "loadout": sanitize_loadout(data.get("loadout")), "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
 					peers[from] = info
 					peer_joined.emit(from, info)
 				return
@@ -398,6 +623,8 @@ func _receive(type: String, data, from: int) -> void:
 			"input":
 				if data is Array:
 					var nu := PlayerInput.unpack(data)
+					if nu.is_empty():
+						return   # (not an input: dropped, the last good one stands)
 					# A press not yet acted on survives the next packet.
 					var old: Dictionary = inputs.get(from, {})
 					for k in PlayerInput.ONE_SHOT:

@@ -100,7 +100,8 @@ static func foe_name(foes: Array) -> String:
 	var nm := String(first.get("title", first.get("name", "")))
 	if nm == "":
 		nm = String(Data.beasts.get(first.beast, {}).get("name", first.beast)) if first.has("beast") else String(Data.enemy_type(String(first.get("e", ""))).get("label", String(first.get("e", "a gladiator")).capitalize()))
+	nm = Loc.t(nm)
 	if foes.size() == 1:
 		return nm
 	var same := foes.all(func(f): return f.get("e", f.get("beast")) == first.get("e", first.get("beast")))
-	return ("%s x%d" % [nm, foes.size()]) if same else ("%s and %d more" % [nm, foes.size() - 1])
+	return ("%s x%d" % [nm, foes.size()]) if same else (Loc.t("%s and %d more") % [nm, foes.size() - 1])

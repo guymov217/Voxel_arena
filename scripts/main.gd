@@ -13,5 +13,8 @@ func _ready() -> void:
 		var probe = load("res://tests/%s.gd" % (args[args.find("--probe") + 1] if args.size() > args.find("--probe") + 1 else "probe")).new()
 		add_child(probe)
 		return
+	# The player's language (Options, else the system's): the tests and probes above stay in the
+	# game's own English.
+	Loc.apply()
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)

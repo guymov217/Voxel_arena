@@ -6,9 +6,9 @@ extends RefCounted
 
 const TAUNTS := ["Is that all Rome has?", "My grandmother hits harder!", "Come here, I have a surprise for you!", "Your mother was a hamster!", "I am right here, you cowards!", "Boo! Over here!"]
 const EMOTES := [
-	{"name": "salutes the Emperor", "favor": 3},
-	{"name": "does a little dance", "favor": 4},
-	{"name": "takes a bow", "favor": 3},
+	{"name": "salutes the Emperor", "feed": "%s salutes the Emperor", "favor": 3},
+	{"name": "does a little dance", "feed": "%s does a little dance", "favor": 4},
+	{"name": "takes a bow", "feed": "%s takes a bow", "favor": 3},
 ]
 
 var m: Node
@@ -58,12 +58,12 @@ func grab_hands(e: Dictionary, inp: Dictionary) -> Array:
 	if want == "both":
 		var sides := ["R", "L"].filter(func(s): return hand_free(c, s))
 		if sides.size() < 2:
-			_hint(e, ("Only your %s hand is free" % ("right" if sides[0] == "R" else "left")) if sides.size() else "Both hands are full")
+			_hint(e, Loc.t("Only your right hand is free" if sides[0] == "R" else "Only your left hand is free") if sides.size() else Loc.t("Both hands are full"))
 		return sides
 	if want == "R" or want == "L":
 		if hand_free(c, want):
 			return [want]
-		_hint(e, "Your %s hand is full" % ("right" if want == "R" else "left"))
+		_hint(e, Loc.t("Your right hand is full" if want == "R" else "Your left hand is full"))
 		return []
 	if hand_free(c, "R"):
 		return ["R"]
@@ -122,9 +122,13 @@ func grab_person(e: Dictionary, inp: Dictionary):
 			c.holding.extra = {"side": sides[1], "part": second.part, "joint": hand_joint(c, sides[1], second.part)}
 	var friend: bool = best.e.team == e.team
 	var t: Fighter = best.e.f
-	var lbl := String(best.part.label).to_lower()
-	var two := " with both hands" if c.holding.extra else ""
-	m.feed.emit(("%s grabbed %s by the %s%s" % [c.display_name, t.display_name, lbl, two]) if friend else ("%s grabbed %s's %s%s!" % [c.display_name, t.display_name, lbl, two]))
+	var lbl := Loc.lower(String(best.part.label))
+	var line: String
+	if friend:
+		line = "%s grabbed %s by the %s with both hands" if c.holding.extra else "%s grabbed %s by the %s"
+	else:
+		line = "%s grabbed %s's %s with both hands!" if c.holding.extra else "%s grabbed %s's %s!"
+	m.feed.emit(Loc.t(line) % [c.display_name, t.display_name, lbl])
 	m.sfx("slap", c.hand_world(side))
 	if not friend:
 		t.stagger = minf(1.0, t.stagger + 0.3)
@@ -133,7 +137,7 @@ func grab_person(e: Dictionary, inp: Dictionary):
 			for s in ["R", "L"]:
 				if best.part == t.arm[s].fore or best.part == t.arm[s].upper:
 					t.pinned_arm = s
-					m.feed.emit("%s pins %s's %s arm!" % [c.display_name, t.display_name, "sword" if s == "R" else "shield"])
+					m.feed.emit(Loc.t("%s pins %s's sword arm!" if s == "R" else "%s pins %s's shield arm!") % [c.display_name, t.display_name])
 	return t
 
 ## The other hand takes hold too, of the same man, wherever it reaches him.
@@ -144,14 +148,14 @@ func add_second_hand(e: Dictionary) -> bool:
 		return false
 	var side := "L" if h.side == "R" else "R"
 	if not hand_free(c, side):
-		_hint(e, "Your %s hand is full" % ("right" if side == "R" else "left"))
+		_hint(e, Loc.t("Your right hand is full" if side == "R" else "Your left hand is full"))
 		return false
 	var best = nearest_part(c, side, [h.target], c.mods.get("grabby", false))
 	if best == null:
-		_hint(e, "Your %s hand cannot reach him" % ("right" if side == "R" else "left"))
+		_hint(e, Loc.t("Your right hand cannot reach him" if side == "R" else "Your left hand cannot reach him"))
 		return false
 	h.extra = {"side": side, "part": best.part, "joint": hand_joint(c, side, best.part)}
-	m.feed.emit("%s gets both hands on %s" % [c.display_name, h.target.f.display_name])
+	m.feed.emit(Loc.t("%s gets both hands on %s") % [c.display_name, h.target.f.display_name])
 	m.sfx("slap", c.hand_world(side))
 	return true
 
@@ -187,7 +191,7 @@ func grab_limb(e: Dictionary):
 	for p in c.parts:
 		part.add_collision_exception_with(p)
 	var own: bool = best.e.f == c
-	m.feed.emit("%s picked up %s %s and is going to hit people with it" % [c.display_name, "their own" if own else best.e.f.display_name + "'s", String(part.label).to_lower()])
+	m.feed.emit(Loc.t("%s picked up their own %s and is going to hit people with it") % [c.display_name, Loc.lower(String(part.label))] if own else Loc.t("%s picked up %s's %s and is going to hit people with it") % [c.display_name, best.e.f.display_name, Loc.lower(String(part.label))])
 	m.crowd_add(c, 12 if own else 8, "armed with your own arm" if own else "improvised weapon")
 	return part
 
@@ -206,7 +210,7 @@ func _throw_limb(e: Dictionary, inp: Dictionary) -> void:
 		aim = from + Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch)) * 8.0
 	part.linear_velocity = c.launch_velocity(from, aim, part.mass / c.MS, maxf(0.3, float(inp.get("throwPower", 0.8))), false, 0.02, c.arm_func(h.side))
 	part.angular_velocity = Vector3(8, 0, 0)
-	m.feed.emit("%s threw a %s!" % [c.display_name, String(part.label).to_lower()])
+	m.feed.emit(Loc.t("%s threw a %s!") % [c.display_name, Loc.lower(String(part.label))])
 	m.sfx("whoosh", from)
 
 func let_go(c: Fighter) -> void:
@@ -259,7 +263,7 @@ func slam_person(e: Dictionary) -> bool:
 	t.concussion = minf(1.0, t.concussion + 0.3)
 	t.stamina = maxf(0.0, t.stamina - 30.0)
 	c.stamina = maxf(0.0, c.stamina - 20.0)
-	m.feed.emit("%s SLAMS %s into the sand!" % [c.display_name, t.display_name])
+	m.feed.emit(Loc.t("%s SLAMS %s into the sand!") % [c.display_name, t.display_name])
 	m.sfx("thud", t.torso.global_position)
 	return true
 
@@ -302,7 +306,7 @@ func throw_person(e: Dictionary, inp: Dictionary) -> bool:
 	t.torso.continuous_cd = true
 	if ratio < 0.5:
 		c.stagger = minf(1.0, c.stagger + 0.5)
-		m.feed.emit("%s strains against %s's weight" % [c.display_name, t.display_name])
+		m.feed.emit(Loc.t("%s strains against %s's weight") % [c.display_name, t.display_name])
 	t.fall(2.5 if strong else 1.2 + minf(1.5, ratio * 0.4), true)
 	t.torso.apply_central_impulse(Vector3(aim.x * power, power * (0.75 if strong else 0.35 + maxf(0.0, aim.y)), aim.z * power))
 	for p in live:
@@ -311,7 +315,7 @@ func throw_person(e: Dictionary, inp: Dictionary) -> bool:
 	t.thrown_by = c
 	t.thrown_t = 1.5
 	c.stamina = maxf(0.0, c.stamina - 25.0)
-	m.feed.emit(("%s CATAPULTED %s!" % [c.display_name, t.display_name]) if strong else ("%s tossed %s" % [c.display_name, t.display_name]))
+	m.feed.emit((Loc.t("%s CATAPULTED %s!") % [c.display_name, t.display_name]) if strong else (Loc.t("%s tossed %s") % [c.display_name, t.display_name]))
 	m.sfx("whoosh" if strong else "thud", t.torso.global_position)
 	m.say(c, "grunt", 0.9, "effort")
 	if strong:
@@ -345,7 +349,7 @@ func flying_hits(dt: float) -> void:
 			if o.f.state == "stand":
 				o.f.fall(1.5, true)
 			m.report_hit({"kind": "hit", "p": p, "dir": dir, "J": J, "type": "blunt", "char": o.f, "part": o.f.torso, "attacker": by, "res": res, "killed": was_alive and not o.f.alive})
-			m.feed.emit("%s landed on %s!" % [c.display_name, o.f.display_name])
+			m.feed.emit(Loc.t("%s landed on %s!") % [c.display_name, o.f.display_name])
 			m.crowd_add(by, 8, "human cannonball")
 			c.thrown_t = 0.0
 			break
@@ -395,7 +399,7 @@ func shove(e: Dictionary) -> bool:
 	var goes_down: bool = t.state == "rising" or t.stagger > 0.75 or t.stamina < 20.0
 	if goes_down and t.state != "down" and ratio > 0.5:
 		t.fall(1.1)
-		m.feed.emit("%s shoved %s to the sand" % [c.display_name, t.display_name])
+		m.feed.emit(Loc.t("%s shoved %s to the sand") % [c.display_name, t.display_name])
 	m.sfx("slap", t.torso.global_position)
 	return true
 
@@ -408,7 +412,7 @@ func taunt(e: Dictionary) -> bool:
 	c.taunt_t = 10.0 if loud else 5.0
 	c.taunt_pose = 1.2
 	var line: String = TAUNTS[randi() % TAUNTS.size()]
-	m.feed.emit('%s: "%s"' % [c.display_name, line])
+	m.feed.emit('%s: "%s"' % [c.display_name, Loc.t(line)])
 	m.crowd_add(c, 10 if loud else 4, "taunt")
 	m.sfx("honk" if loud else "boo", c.head.global_position)
 	var enemies: Array = m.entities.filter(func(o): return o.team != e.team and o.f.alive and (o.kind == "bot" or o.kind == "beast"))
@@ -426,7 +430,7 @@ func start_emote(e: Dictionary) -> bool:
 	c.emote_kind = (c.emote_kind + 1) % EMOTES.size()
 	c.emote_t = 1.6
 	var em: Dictionary = EMOTES[c.emote_kind]
-	m.feed.emit("%s %s" % [c.display_name, em.name])
+	m.feed.emit(Loc.t(String(em.feed)) % c.display_name)
 	m.crowd_add(c, em.favor, "showmanship")
 	return true
 
@@ -475,7 +479,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		c.limp = limp
 		if limp:
 			c.played_dead = 2.0
-			m.feed.emit("%s plays dead. Very convincing." % c.display_name)
+			m.feed.emit(Loc.t("%s plays dead. Very convincing.") % c.display_name)
 			m.crowd_add(c, 2, "drama")
 	if c.played_dead > 0.0 and not c.limp:
 		c.played_dead -= dt
@@ -633,7 +637,7 @@ func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			if te.struggle >= 1.0:
 				te.struggle = 0.0
 				let_go(c)
-				m.feed.emit("%s tore free of %s's grip!" % [t.display_name, c.display_name])
+				m.feed.emit(Loc.t("%s tore free of %s's grip!") % [t.display_name, c.display_name])
 				return inp
 			if te.kind == "local" and not te.get("struggle_hint", false):
 				te.struggle_hint = true
@@ -659,7 +663,7 @@ func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		slam_person(e)
 	elif inp.get("grab", false) and h.t > 0.3:
 		let_go(c)
-		m.feed.emit("%s let go" % c.display_name)
+		m.feed.emit(Loc.t("%s let go") % c.display_name)
 	elif h.limb == null and h.target.team != e.team and t.alive:
 		# Wrestling: the grabbed enemy struggles and both tire.
 		c.stamina = maxf(0.0, c.stamina - dt * 6.0)
@@ -667,7 +671,7 @@ func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		var odds: float = 0.25 * (pow(t.S, 2.5) * float(t.mods.strength)) / (pow(c.S, 2.5) * float(c.mods.strength)) * (0.4 + 0.8 * t.stamina / 100.0) / (0.4 + 0.8 * c.stamina / 100.0) / (1.8 if h.extra != null else 1.0)
 		if h.target.kind != "local" and h.target.kind != "remote" and randf() < dt * minf(2.0, odds):
 			let_go(c)
-			m.feed.emit("%s wriggled free" % t.display_name)
+			m.feed.emit(Loc.t("%s wriggled free") % t.display_name)
 	return inp
 
 ## After everyone moved: thrown men landing on people, thrown limbs settling.
@@ -715,7 +719,7 @@ func mind_hold(e: Dictionary) -> bool:
 		_hint(e, "The Hand of Jupiter is spent for this bout")
 		return false
 	if float(e.get("mind_cool", -1.0)) > m.time:
-		_hint(e, "The grip needs a moment (%d s)" % ceili(float(e.mind_cool) - m.time))
+		_hint(e, Loc.t("The grip needs a moment (%d s)") % ceili(float(e.mind_cool) - m.time))
 		return false
 	var inp: Dictionary = e.get("input", {})
 	var from := _aim_from(e, inp)
@@ -752,7 +756,8 @@ func mind_hold(e: Dictionary) -> bool:
 	e.mind_uses = int(e.get("mind_uses", 0)) + 1
 	e.mind_cool = m.time + MIND_REST
 	minds.append({"e": e, "t": t, "left": MIND_T, "dist": MIND_DIST, "flung": false, "prev_v": Vector3.ZERO, "peak": 0.0, "watch": 0.0, "fx_t": 0.0})
-	m.feed.emit("%s seizes %s in an unseen grip!" % [c.display_name, t.display_name] + (" He hangs where you look: F hurls him." if e.kind == "local" else ""))
+	var seize := "%s seizes %s in an unseen grip! He hangs where you look: F hurls him." if e.kind == "local" else "%s seizes %s in an unseen grip!"
+	m.feed.emit(Loc.t(seize) % [c.display_name, t.display_name])
 	m.sfx("whoosh", t.torso.global_position)
 	m.say(t, "grunt", 0.8, "pain")
 	m.crowd_add(c, 10, "the hand of Jupiter")
@@ -802,7 +807,7 @@ func minds_tick(dt: float) -> void:
 			# The grip fades: he drops where he hangs.
 			minds.erase(mnd)
 			t.fall(0.8, true)
-			m.feed.emit("The grip on %s lets go" % t.display_name)
+			m.feed.emit(Loc.t("The grip on %s lets go") % t.display_name)
 			continue
 		# The wheel draws him in or pushes him off.
 		mnd.dist = clampf(float(mnd.dist) + float(inp.get("wheel", 0.0)) * 0.5, MIND_NEAR, MIND_FAR)
@@ -843,7 +848,7 @@ func _mind_hurl(mnd: Dictionary, dir: Vector3) -> void:
 	mnd.prev_v = v
 	mnd.peak = v.length()
 	mnd.watch = 2.5
-	m.feed.emit("%s HURLS %s!" % [c.display_name, t.display_name])
+	m.feed.emit(Loc.t("%s HURLS %s!") % [c.display_name, t.display_name])
 	m.sfx("whoosh", t.torso.global_position)
 	m.crowd_add(c, 8, "hurled")
 
@@ -865,7 +870,7 @@ func _mind_land(mnd: Dictionary, drop: float) -> void:
 	t.last_attacker = c
 	t.concussion = minf(1.0, t.concussion + 0.3 * J / 52.0)
 	if J > 20.0:
-		m.feed.emit("%s lands hard!" % t.display_name)
+		m.feed.emit(Loc.t("%s lands hard!") % t.display_name)
 		if m.me != null and mnd.e == m.me and not m.headless:
 			Achievements.unlock("jupiter_hand")
 	m.sfx("thud", t.torso.global_position, clampf(J / 40.0, 0.4, 1.0))

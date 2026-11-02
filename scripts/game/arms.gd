@@ -206,7 +206,7 @@ static func oddities(run_seed: int, stage: int, n := 3) -> Array:
 			var k := mini(head.size(), rng.randi_range(3, 4 + stage))
 			for j in k:
 				head[rng.randi_range(0, head.size() - 1)][3] = gem
-			d.name = ODDITY_NAMES[rng.randi_range(0, ODDITY_NAMES.size() - 1)]
+			d.name = Loc.t(ODDITY_NAMES[rng.randi_range(0, ODDITY_NAMES.size() - 1)])
 		ForgeLib.one_piece(d)   # (the gems and swaps change no shape, but be sure: nothing in the air)
 		# Never more than a man can lift: two hands for a heavy one, and the lead of a head that
 		# is too much even so goes back to stone.

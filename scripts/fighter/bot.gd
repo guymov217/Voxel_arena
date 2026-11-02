@@ -15,13 +15,15 @@ const ALL := ["slashR", "slashL", "overhead", "thrust", "low"]
 ## A giant's blows at a man far smaller than he is: every one ends on the man, at his height
 ## (Bot.aim_small; the heights here are off that). Not only the chop from above (user: the
 ## giants only ever strike top to bottom): a sweep round from either side through him, one low
-## at his legs, a thrust of the head of the weapon into him.
+## at his legs, a thrust of the head of the weapon into him. The chop is raised over the right
+## shoulder and the thrust drawn back at the hip (raised straight up before him, or held at his
+## chin, the haft and the hands stood in front of his face: user).
 const GIANT := {
-	"chop": [[0.15, 1.0, 0.0, 0.5], [0.0, 0.0, 0.3, 0.3]],
+	"chop": [[0.8, 1.25, 0.0, 0.5], [0.0, 0.0, 0.3, 0.3]],
 	"sweepR": [[1.0, 0.1, 0.0, 0.5], [-1.0, 0.0, 0.1, 0.36]],
 	"sweepL": [[-1.0, 0.1, 0.0, 0.5], [1.0, 0.0, 0.1, 0.36]],
 	"low": [[0.95, -0.2, 0.0, 0.45], [-0.95, -0.35, 0.1, 0.34]],
-	"thrust": [[0.05, 0.3, 0.0, 0.4], [0.0, 0.1, 1.0, 0.26]],
+	"thrust": [[0.35, -0.05, 0.0, 0.4], [0.0, 0.1, 1.0, 0.26]],
 }
 const GIANT_ODDS := {"chop": 0.3, "sweepR": 0.22, "sweepL": 0.2, "low": 0.16, "thrust": 0.12}
 const PERSONALITIES := {
@@ -49,12 +51,12 @@ const PERSONALITIES := {
 ## itself (Bot.style_of), so one from the forge is fought with as its shape says.
 const STYLES := {
 	"sword": {"attacks": {"thrust": 3.0, "slashR": 2.0, "slashL": 2.0, "overhead": 1.0, "low": 1.5}, "ideal": 0.9},
-	"short": {"attacks": {"thrust": 4.0, "slashR": 2.0, "slashL": 2.0, "low": 1.0}, "ideal": 0.8},
+	"short": {"attacks": {"thrust": 4.0, "slashR": 2.0, "slashL": 2.0, "low": 1.0}, "ideal": 0.7, "close_in": true},
 	"spear": {"attacks": {"thrust": 7.0, "low": 1.5, "overhead": 0.5}, "ideal": 1.15, "keep_out": 0.75},
 	"great": {"attacks": {"slashR": 3.0, "slashL": 3.0, "overhead": 2.0, "thrust": 2.0, "low": 1.0}, "ideal": 0.95},
 	"axe": {"attacks": {"overhead": 3.5, "slashR": 2.5, "slashL": 2.5, "low": 1.5}, "ideal": 0.9},
 	"blunt": {"attacks": {"overhead": 4.0, "slashR": 2.5, "slashL": 2.5, "low": 1.0}, "ideal": 0.85},
-	"chain": {"attacks": {"overhead": 3.5, "slashR": 3.0, "slashL": 3.0}, "ideal": 0.9},
+	"chain": {"attacks": {"overhead": 3.5, "slashR": 3.0, "slashL": 3.0}, "ideal": 1.1},
 	"ranged": {"attacks": {"thrust": 1.0, "low": 1.0}, "ideal": 0.9},
 	"fists": {"attacks": {"thrust": 1.0}, "ideal": 0.9},
 }
@@ -182,8 +184,10 @@ func _on_hit(_f: Fighter, info: Dictionary) -> void:
 		react = "stagger"
 		react_t = rng.randf_range(0.5, 0.8)
 	elif free and rng.randf() < 0.75:
+		# (A hand to the wound for a moment, not a pause in the fight: the bouts are short, and a
+		# second and a half of it was a quarter of one.)
 		react = "clutch"
-		react_t = rng.randf_range(0.7, 1.3) * (1.0 + 0.4 * dmg / 24.0)
+		react_t = rng.randf_range(0.55, 1.0) * (1.0 + 0.3 * dmg / 24.0)
 	else:
 		react = "flinch"
 		react_t = rng.randf_range(0.35, 0.6)
@@ -297,6 +301,13 @@ func _stab_for(blow: Array) -> Array:
 func _pick(list: Array) -> Array:
 	giant_kind = ""
 	return ATTACKS[list[rng.randi_range(0, list.size() - 1)]]
+
+## How far the other man's weapon reaches from him (his arm and his blade, as Bot.update's reach).
+static func tw_reach(target: Node3D) -> float:
+	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
+	var ws = target.get("weapons")
+	var tw = ws.get("R") if ws is Dictionary else null
+	return 0.55 * tS + (float(tw.reach) if tw != null and is_instance_valid(tw) else 0.25) * 0.85
 
 ## The next blow: the ones his weapon is made for, his own ways on top (an executioner chops, a
 ## hoplite stabs whatever he holds).
@@ -456,6 +467,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.mz = -0.7
 		inp.mx = strafe * (0.6 if dist < reach * 1.8 else 0.2) * (0.5 if p.get("shield", false) else 1.0)
 		inp.sprint = dist > 2.5 if p.get("sprint", false) else dist > 6.0
+		# A short blade is fought inside the other man's reach, where a long one has no room to
+		# swing: past the end of his weapon in one rush, then kept there.
+		if STYLES.get(style, {}).get("close_in", false) and tw_reach(target) > reach * 1.2 and dist > reach * 0.8 and dist < tw_reach(target) + 1.6 and c.state == "stand":
+			inp.mz = 1.0
+			inp.sprint = skill > 0.3
 		if recover_t > 0.0:
 			recover_t -= dt
 			inp.mz = -0.6

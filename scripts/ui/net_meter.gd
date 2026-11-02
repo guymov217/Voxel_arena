@@ -56,13 +56,13 @@ func _process(dt: float) -> void:
 			ping = maxf(ping, float(Net.guest_pings[id]))
 	var steps: float = Net.step_rate if host else Net.host_rate
 	var lines := []
-	lines.append("[b]NET[/b] %s · %s · %d players   [color=#9a8f80](F3)[/color]" % ["host" if host else "guest", Net.transport, Net.peers.size() + 1])
-	lines.append("%s %s" % ["worst ping" if host else "ping", _grade("%d ms" % ping if ping >= 0.0 else "…", ping, 80.0, 150.0, false)])
-	lines.append("host keeps up %s" % _grade("%d/120 steps" % roundi(steps) if steps >= 0.0 else "…", steps, 112.0, 95.0, true))
+	lines.append(Loc.t("[b]NET[/b] host · %s · %d players   [color=#9a8f80](F3)[/color]" if host else "[b]NET[/b] guest · %s · %d players   [color=#9a8f80](F3)[/color]") % [Net.transport, Net.peers.size() + 1])
+	lines.append(Loc.t("worst ping %s" if host else "ping %s") % [_grade(Loc.t("%d ms") % ping if ping >= 0.0 else "…", ping, 80.0, 150.0, false)])
+	lines.append(Loc.t("host keeps up %s") % _grade(Loc.t("%d/120 steps") % roundi(steps) if steps >= 0.0 else "…", steps, 112.0, 95.0, true))
 	if not host:
-		lines.append("snapshots %s, longest wait %s" % [_grade("%d/s" % roundi(Net.snap_rate), Net.snap_rate, 25.0, 12.0, true), _grade("%d ms" % Net.snap_gap, float(Net.snap_gap), 90.0, 200.0, false)])
-		lines.append("my game %s" % _grade("%d/120 steps" % roundi(Net.step_rate), Net.step_rate, 112.0, 95.0, true))
-	lines.append("in %.0f KB/s   out %.0f KB/s" % [in_k, out_k])
+		lines.append(Loc.t("snapshots %s, longest wait %s") % [_grade("%d/s" % roundi(Net.snap_rate), Net.snap_rate, 25.0, 12.0, true), _grade(Loc.t("%d ms") % Net.snap_gap, float(Net.snap_gap), 90.0, 200.0, false)])
+		lines.append(Loc.t("my game %s") % _grade(Loc.t("%d/120 steps") % roundi(Net.step_rate), Net.step_rate, 112.0, 95.0, true))
+	lines.append(Loc.t("in %.0f KB/s   out %.0f KB/s") % [in_k, out_k])
 	label.text = "\n".join(lines)
 	var f := FileAccess.open(LOG, FileAccess.READ_WRITE)
 	if f:
@@ -81,4 +81,4 @@ static func _grade(text: String, v: float, good: float, bad: float, up: bool) ->
 		return text
 	var ok := v >= good if up else v <= good
 	var poor := v < bad if up else v > bad
-	return "[color=%s]%s[/color]" % ["#d9534f" if poor else ("#7ac36a" if ok else "#e0b44c"), text]
+	return Loc.t("[color=%s]%s[/color]") % ["#d9534f" if poor else ("#7ac36a" if ok else "#e0b44c"), text]

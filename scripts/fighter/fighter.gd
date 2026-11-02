@@ -236,6 +236,7 @@ var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
+var swing_reach := {"R": 0.0, "L": 0.0}   # how far a swung weapon's hand is put out to the end of the arm (0..1)
 var pane_prev := {"R": null, "L": null}  # last step's hand on the pane (what the mouse asked)
 var power_now := false                     # the swing button, this step (for the hand's target)
 var low_hand := 0.0
@@ -1751,6 +1752,7 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 	_exempt(w)
 	# The arm starts fresh with it: no stroke, throw or set elbow carried over from before.
 	swing_hold[side] = 0.0
+	swing_reach[side] = 0.0
 	throw_pose[side] = false
 	throwing[side] = false
 	behind_t[side] = 0.0
@@ -2242,13 +2244,13 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if g == "short":
 			note.emit(self, "The grip is too short for two hands")
 		elif g == "full" and weapons.L:
-			note.emit(self, "Your left hand holds the %s: swap hands (J) or throw it (F) first" % String(weapons.L.design.get("name", "weapon")).to_lower())
+			note.emit(self, Loc.t("Your left hand holds the %s: swap hands (J) or throw it (F) first") % Loc.lower(String(weapons.L.design.get("name", "weapon"))))
 	if inp.get("swap", false) and state == "stand":
 		# The other arm broken: what is in the good hand stays there (user), and he is told why.
 		if not swap_hands() and (weapons.R or weapons.L):
 			for sd in ["R", "L"]:
 				if arm_broken(sd):
-					note.emit(self, "Your %s arm is broken: the weapon stays in your %s hand" % ["right" if sd == "R" else "left", "left" if sd == "R" else "right"])
+					note.emit(self, Loc.t("Your right arm is broken: the weapon stays in your left hand" if sd == "R" else "Your left arm is broken: the weapon stays in your right hand"))
 					break
 	_grip_reach(dt)
 	_reach_tick(dt)
@@ -3373,7 +3375,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# A thrust with a blade (the button, not the little reach a stroke is given) is driven along
 	# the blade's own line (see below): the hand's mark is where it was, not pushed out ahead.
 	var line_on: bool = th_in > 0.5 and w != null and not w.is_shield and not w.design.has("shoots") and down_hp == null and held_item == null and shove_t <= 0.0
-	var target := hand_target_local(side, hp_used, 0.0 if line_on else thrust)
+	# A swung weapon goes out to the end of the arm (hand_target_local): out at once as the
+	# swing starts, back in after it no faster than a stroke is read. Snapped back in at once,
+	# the hand's own way back was read as a fast stroke and set the swing again: held still
+	# after a turn, the arm pumped out and in every 0.4 s and the blades jerked with it.
+	var thr_used: float = 0.0 if line_on else thrust
+	var reach_on: bool = w != null and not w.is_shield and absf(thr_used) < 0.05 and (power_now or swing_hold[side] > 0.0)
+	swing_reach[side] = move_toward(float(swing_reach[side]), 1.0 if reach_on else 0.0, (12.0 if reach_on else 2.5) * dt)
+	var target := hand_target_local(side, hp_used, thr_used)
 	# Reaching for the haft (H pressed with its end behind him): to the grip, or to the nearest
 	# place in front of the body while the grip is behind it.
 	if side == "L" and grip_wait > 0.0 and weapons.R and not two_handed:
@@ -3557,6 +3566,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# The elbow never folds in through the chest: in the body's frame it stays on its own
 		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
 		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot), t_rot)
+		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
 		if side == "R" and two_gap != null:
@@ -3855,6 +3865,42 @@ func _shooter_aim(side: String, w: Weapon, inp: Dictionary, yaw_q: Quaternion, d
 	aim_q[side] = desired
 	return desired
 
+## The elbow is never asked for inside his own trunk. The forearm's way back from the hand's mark
+## put it there for a blade held up before him (in the chest, behind its front, a hand from the
+## middle): no arm can get there, and the forearm lay jammed across the chest, the hand a span
+## short of its mark, the arm flipping between that and reaching it, and the blades shook. Out of
+## the trunk's box (with a little room) by the nearer way, aside to its own side or out in front.
+var elbow_face := {"R": "", "L": ""}   # which way the elbow was last put out of the trunk (_elbow_clear)
+func _elbow_clear(side: String, shoulder_w: Vector3, e_dir: Vector3, lu: float) -> Vector3:
+	var bt: Transform3D = torso.global_transform
+	var bi := bt.affine_inverse()
+	var e: Vector3 = torso.half_ext + Vector3(0.05, 0.0, 0.05) * S
+	var out_x := -1.0 if side == "R" else 1.0
+	var d := e_dir
+	for i in 2:
+		var l: Vector3 = bi * (shoulder_w + d * lu)
+		if absf(l.x) >= e.x or absf(l.z) >= e.z or absf(l.y) >= e.y:
+			if i == 0:
+				elbow_face[side] = ""
+			break
+		var front := e.z - l.z
+		var aside := e.x - l.x * out_x
+		# Kept to the face it was put out by till the other is clearly nearer: flipped between
+		# them step to step where both were near, the arm was thrown from one to the other.
+		var face: String = elbow_face[side]
+		if face == "" or (face == "front" and aside < front - 0.06 * S) or (face == "aside" and front < aside - 0.06 * S):
+			face = "front" if front < aside else "aside"
+		elbow_face[side] = face
+		if face == "front":
+			l.z = e.z
+		else:
+			l.x = out_x * e.x
+		var nd: Vector3 = (bt * l) - shoulder_w
+		if nd.length_squared() < 1e-8:
+			break
+		d = nd.normalized()
+	return d
+
 ## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
 ## side of the body (at most 0.22 S across the shoulder line) and at most 0.28 S above the
 ## shoulder (high enough for an overhead blow), the same for both arms, mirrored.
@@ -4104,8 +4150,8 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	# A weapon swung (the button held, or a fast stroke) goes out at the end of a straight arm:
 	# held in close the elbow had to bend to reach it, and a heavy head folded it further.
 	var w_side = weapons[side]
-	if w_side and not w_side.is_shield and absf(thrust) < 0.05 and (power_now or swing_hold[side] > 0.0) and d.length() > 1e-4:
-		d = d.normalized() * maxf(d.length(), arm_reach * 0.92)
+	if w_side and not w_side.is_shield and absf(thrust) < 0.05 and float(swing_reach[side]) > 0.0 and d.length() > 1e-4:
+		d = d.normalized() * lerpf(d.length(), maxf(d.length(), arm_reach * 0.92), float(swing_reach[side]))
 	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * 0.97 * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
 
@@ -4306,7 +4352,11 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	# the nearer side forward (without it a giant's blows came down on the flat and seldom
 	# reached a man on the sand).
 	var led := false
-	if is_bot and not is_spear(w) and w.bites() and w.edge_side() == 0.0:
+	# (Sharp on one side only, an axe: that side leads, whichever way the stroke goes; swung
+	# back the other way it struck with the blunt back of the head, and an axe was half a weapon
+	# in a bot's hands: duel.gd.)
+	var e_side: float = w.edge_side() if is_bot and not is_spear(w) and w.bites() else 0.0
+	if is_bot and not is_spear(w) and w.bites():
 		var tv: Vector3 = target_vel[side] - axis * target_vel[side].dot(axis)
 		if tv.length() > 0.9:
 			var nd := tv.normalized()
@@ -4323,7 +4373,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 			if lead.length_squared() > 1e-4:
 				var lt := lead.normalized()
 				var prev_ed: Vector3 = (aim_q[side] as Quaternion) * Vector3.RIGHT if aim_q[side] != null else lt
-				ed = lt * (1.0 if prev_ed.dot(lt) >= 0.0 else -1.0)
+				ed = lt * (e_side if e_side != 0.0 else (1.0 if prev_ed.dot(lt) >= 0.0 else -1.0))
 				led = true
 	var prev = aim_q[side]
 	if prev != null:
@@ -4694,6 +4744,17 @@ const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
 const GIANT_BLOW := 0.5  # a giant's blows, pulled (Combat): still the heaviest, not death in one or two
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
 const GLANCE_INTO := 0.35   # a weapon coming in at less than this (cosine to the plate's normal) starts to skid off
+
+## What of a blow gets through armour of hardness h, `layers` plates deep (the forge's bar reads
+## it too). A crushing blow carries through a plate (only half of what it stops); a point finds the
+## joins and drives through rings and leather better than an edge, which the plate turns (each
+## kind of weapon has its own answer to armour: user). A heavy blade the plate turns still lands
+## its weight: a great sword or a broad axe drives the plate into the man under it as a club
+## does, a light blade skids off.
+static func armour_pass(type: String, h: float, weapon_mass: float, layers := 1) -> float:
+	var absorb := minf(0.92, 0.3 + 0.55 * h + LAYER_ABSORB * (layers - 1))
+	var heavy_blade := clampf((weapon_mass - 1.5) / 3.0, 0.0, 1.0)
+	return 1.0 - absorb * (0.55 if type == "blunt" else (0.8 if type == "point" else 1.0 - 0.45 * heavy_blade))
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -4730,7 +4791,7 @@ func _fall_dying() -> void:
 	torso.hp = maxf(torso.hp, 6.0)
 	head.hp = maxf(head.hp, 6.0)
 	concussion = minf(concussion, 0.5)
-	note.emit(self, "%s is at death's door" % display_name)
+	note.emit(self, Loc.t("%s is at death's door") % display_name)
 
 ## A friend's hands: up from death's door with a little blood, able to fight on.
 func lift() -> void:
@@ -4746,7 +4807,7 @@ func lift() -> void:
 		p.bleed = 0.0
 		p.artery = 0.0
 	help_up()
-	note.emit(self, "%s is lifted" % display_name)
+	note.emit(self, Loc.t("%s is lifted") % display_name)
 	Achievements.unlock("lifted")
 
 # ---------- Wounds ----------
@@ -4831,8 +4892,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				in_most = minf(in_most, along)
 				out_most = maxf(out_most, along)
 		var layers := 1 + (int(round((out_most - in_most) / (V * S))) if out_most > in_most else 0)
-		var absorb := minf(0.92, 0.3 + 0.55 * h + LAYER_ABSORB * (layers - 1))
-		armor_f = 1.0 - (absorb * 0.55 if type == "blunt" else absorb)
+		armor_f = armour_pass(type, h, float(hit.get("mass", 0.0)), layers)
 		J *= armor_f
 		res.armor = true
 	var bleed_before := part.bleed

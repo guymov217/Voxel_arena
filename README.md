@@ -146,6 +146,13 @@ godot --headless --path . -- --test test_fight   # one suite
   them). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
   fights as cards with a line each on what they are.
+- **Languages** (`scripts/autoload/loc.gd`): English and fifteen more, Steam's most played first
+  (Simplified and Traditional Chinese, Russian, Spanish for Spain and for Latin America, Brazilian
+  Portuguese, German, Japanese, French, Polish, Korean, Turkish, Italian, Ukrainian, Thai); the
+  system's language unless one is picked in Options. Every line is written in English in the code
+  and the data; `python3 tools/i18n_extract.py . i18n/catalog.json` lists them all, and
+  `i18n/<code>.json` holds each language's lines (`tests/test_loc.gd` checks that every one keeps
+  its placeholders). A line made up with names or numbers in it goes through `Loc.t()` whole.
 - **Graphics**: the arena in 10 cm voxels (the floor smooth sand and packed earth with a fine
   voxel grain, raked rings, the trampled middle, damp sand by the wall, pebbles and dry grass) in a voxel world's manner (the bowl, gatehouses, the
   Emperor's box, the arcade and the props are models built by `tools/gen_voxel_art.py`), bodies,
@@ -219,6 +226,54 @@ To use Steam:
 The Steam path was written against the GodotSteam 4.x API. It is untested here because the test
 machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
 process play a campaign round over localhost, the guest's fighter played by a bot.
+
+### Forge and Fight
+
+A room's own game, under **The Arena → The melee** (rules in `scripts/game/forge_fight.gd`, the
+screens in `menu.gd`'s `_ff_*`):
+
+1. The host sets the times: the weapons (1 to 10 minutes), the armour (none, or 1 to 5) and a
+   limit on the fight (none, or 2 to 10 minutes).
+2. Everyone forges at once, the clock over the forge. Each hand gets a forged weapon, or the off
+   hand a plain round shield. When the time is up, whatever is on the anvil is taken as it stands,
+   if it can be held and carried.
+3. Then the armour bench, with the same clock. A piece counts once it is made.
+4. All fight to the death with what they made. At the time limit, the one standing with the most
+   blood left wins.
+
+Every kit is checked on the host like any loadout. Only forged weapons, the round shield and the
+player's own armour come through. A ready-made weapon or a piece off the armourer's rack is
+dropped, and a weapon that does not hold up leaves the hand empty.
+
+### Playing safely
+
+- **Encrypted.** Steam lobbies use Steam's encrypted networking, and players' addresses stay
+  hidden behind Steam's relays. A game joined by address is encrypted with DTLS: the host makes
+  a key for the session, and a game that does not speak it cannot join.
+- **Host-authoritative.** Guests send only their input. The host runs the physics, so a modified
+  game cannot move its fighter faster, hit harder or teleport.
+- **A short list of what guests may say.** Hello, input, voice, ping, the purse, the Forge and Fight kit and the
+  physician are allowed. Anything else from a guest (a snapshot, a spawn, a banner) is dropped.
+  Guests talk only to the host, never to each other through him.
+- **Everything from a guest is checked.**
+  - Names: no markup, 24 letters at most.
+  - Forged weapons: only what the forge can make (its grid, its materials, its block limit).
+  - Armour, kits, bodies and input: no NaNs, every value clamped.
+  - Volume: more than 240 messages a second from one guest are dropped, and a second hello is
+    ignored.
+- **The shared purse.** A guest adds no more than he spent, what his fights' missions paid, and a
+  little for what he brought to sell.
+- **Muting and removal.** Every player can be muted, and the host can remove one (room screen
+  or pause menu). A removed player cannot rejoin that room.
+- **Privacy.** Voice is push-to-talk (N). Steam lobbies can be friends-only. Nothing personal is
+  sent: only the gladiator's name, gear and body, and voice while N is held.
+- **What is not covered.** A guest's own gear and wounds are kept by his own game and only
+  checked for being makeable. Someone who edits his own game can give his own fighter gear he
+  never paid for, but nothing of anyone else's.
+
+`tests/test_net_safety.gd` covers the checks. `tests/net_host.gd`/`net_guest.gd` with `KICK=1`
+remove a guest and see him turned away again; with `NO_DTLS=1` on the guest, an unencrypted game
+is refused.
 
 ### Load test
 

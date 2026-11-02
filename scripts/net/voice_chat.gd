@@ -15,6 +15,7 @@ var talking := false
 var capture: AudioEffectCapture = null
 var mic: AudioStreamPlayer = null
 var players := {}             # peer id -> AudioStreamPlayer3D
+static var muted := {}        # peer id -> true: his voice is not played here (the room's Mute)
 var factor := 4
 var _acc := PackedVector2Array()
 
@@ -100,7 +101,7 @@ func _on_net(type: String, data, from: int) -> void:
 	if data is Dictionary:
 		who = int(data.get("f", from))
 		bytes = data.get("d")
-	if not (bytes is PackedByteArray) or bytes.size() > PACKET_FRAMES * 4 or who == Net.my_id():
+	if not (bytes is PackedByteArray) or bytes.size() > PACKET_FRAMES * 4 or who == Net.my_id() or muted.has(who):
 		return
 	var p := _player_for(who)
 	if p == null:

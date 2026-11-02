@@ -17,6 +17,7 @@ var room_list: VBoxContainer
 var _training_loaded := false
 var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
 var backdrop: Match = null      # bots fighting behind the menus, seen by an orbiting camera
+var backdrop_off := false       # (screenshots of the menus' words on a slow renderer: no fight behind them)
 var bg: ColorRect
 var shade: TextureRect
 var panel_style: StyleBoxFlat
@@ -131,13 +132,13 @@ func _ready() -> void:
 			# The yard is the room: whoever joins walks in through the gate.
 			if in_yard() and match_.role == "host":
 				match_.add_peer(int(id), _peer_spec(int(id), true))
-		if screen == "room":
-			show_screen("room"))
+		if screen == "room" or screen == "ff_setup":
+			show_screen(screen))
 	Net.peer_left.connect(func(id):
 		if match_ and match_.role == "host":
 			match_.drop_peer(int(id))
-		if screen == "room":
-			show_screen("room"))
+		if screen == "room" or screen == "ff_setup":
+			show_screen(screen))
 	Net.connected.connect(func():
 		in_room = true
 		# Online the lobby is the yard: the host walks in at once and the others join him
@@ -150,7 +151,9 @@ func _ready() -> void:
 	Net.disconnected.connect(func():
 		in_room = false
 		_end_match()
-		show_screen("mp", "The host left"))
+		var why := Net.leave_reason if Net.leave_reason != "" else "The host left"
+		Net.leave_reason = ""
+		show_screen("mp", why))
 	Net.lobbies.connect(_on_lobbies)
 	Net.my_name = Save.get_value("name", "Gladiator")
 	show_screen("main")
@@ -330,7 +333,7 @@ func show_screen(s: String, msg := "") -> void:
 	var v := _clear()
 	if in_yard() or s == "yard":
 		# The one way out of a stall; the smith seen from anywhere else leads into the yard.
-		v.add_child(UIStyle.button("◀  Leave the %s  (Esc)" % {"market": "market", "yard": "smith", "physician": "physician", "missions": "board", "gate": "gate"}.get(s, "stall"), _close_overlay if in_yard() else func(): enter_yard(), true))
+		v.add_child(UIStyle.button(Loc.t({"market": "◀  Leave the market  (Esc)", "yard": "◀  Leave the smith  (Esc)", "physician": "◀  Leave the physician  (Esc)", "missions": "◀  Leave the board  (Esc)", "gate": "◀  Leave the gate  (Esc)"}.get(s, "◀  Leave the stall  (Esc)")), _close_overlay if in_yard() else func(): enter_yard(), true))
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
@@ -371,6 +374,8 @@ func show_screen(s: String, msg := "") -> void:
 		"campaign_mode": _campaign_mode(v)
 		"training_designs": _training_designs(v)
 		"training_armour": _training_armour(v)
+		"ff_setup": _ff_setup(v)
+		"ff_contest": _ff_contest(v)
 	if fresh and s != "main":
 		var rows := v.get_children()
 		for i in rows.size():
@@ -444,7 +449,7 @@ func _main(v: VBoxContainer) -> void:
 			enter_yard()
 	var fresh_run := st <= 1 and not CampaignRun.chosen()
 	rows.append(UIStyle.hero_button("Continue the campaign" if not fresh_run else "Begin the campaign",
-		("Bout %s of %d · %s" % [YardPlay.roman(st), Data.campaign.get("stages", []).size(), CampaignRun.MODES[CampaignRun.mode()].name]) if not fresh_run else "Sixty-four bouts to freedom", go))
+		(Loc.t("Bout %s of %d · %s") % [YardPlay.roman(st), Data.campaign.get("stages", []).size(), Loc.t(String(CampaignRun.MODES[CampaignRun.mode()].name))]) if not fresh_run else "Sixty-four bouts to freedom", go))
 	var gap2 := Control.new()
 	gap2.custom_minimum_size = Vector2(0, 10)
 	rows.append(gap2)
@@ -471,7 +476,7 @@ func _main(v: VBoxContainer) -> void:
 	foot.add_child(UIStyle.menu_entry("Quit", func(): get_tree().quit(), 16))
 	rows.append(foot)
 	# Who he is and what he has, small, at the foot.
-	var who := UIStyle.label("%s  ·  %d denarii%s" % [String(Save.get_value("name", "Gladiator")), coins(), ("  ·  Unbroken" if CampaignRun.unbroken() else "")], 14, Color(UIStyle.MUTED, 0.85))
+	var who := UIStyle.label(Loc.t("%s  ·  %d denarii%s") % [String(Save.get_value("name", "Gladiator")), coins(), (Loc.t("  ·  Unbroken") if CampaignRun.unbroken() else "")], 14, Color(UIStyle.MUTED, 0.85))
 	who.autowrap_mode = TextServer.AUTOWRAP_OFF
 	rows.append(who)
 	for i in rows.size():
@@ -581,8 +586,8 @@ func _gate(v: VBoxContainer) -> void:
 				_end_match()
 				show_screen("demo_end"), true))
 		else:
-			v.add_child(UIStyle.label("Next co-op bout: %s · %s" % [cn.get("title", "Bout %d" % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
-			v.add_child(UIStyle.button("The co-op campaign · bout %d (all of you)" % cs, func(): start({"mode": "coop", "role": "host"}), true))
+			v.add_child(UIStyle.label(Loc.t("Next co-op bout: %s · %s") % [cn.get("title", Loc.t("Bout %d") % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
+			v.add_child(UIStyle.button(Loc.t("The co-op campaign · bout %d (all of you)") % cs, func(): start({"mode": "coop", "role": "host"}), true))
 	elif Net.active() and not Net.is_host():
 		v.add_child(UIStyle.label("The host leads the party through the gate.", 15, UIStyle.MUTED))
 	else:
@@ -593,8 +598,8 @@ func _gate(v: VBoxContainer) -> void:
 				_end_match()
 				show_screen("demo_end"), true))
 		else:
-			v.add_child(UIStyle.label("Next bout: %s · %s" % [nxt.get("title", "Bout %d" % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
-			v.add_child(UIStyle.button("The Campaign · bout %d" % st, func(): start({"mode": "campaign", "stage": st}), true))
+			v.add_child(UIStyle.label(Loc.t("Next bout: %s · %s") % [nxt.get("title", Loc.t("Bout %d") % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
+			v.add_child(UIStyle.button(Loc.t("The Campaign · bout %d") % st, func(): start({"mode": "campaign", "stage": st}), true))
 	if SHOW_CIRCUS:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
@@ -619,7 +624,7 @@ func _missions(v: VBoxContainer) -> void:
 	var rk := Yard.rank_of(rep)
 	v.add_child(UIStyle.title("The mission board", 34))
 	var nxt = rk.next
-	v.add_child(UIStyle.label("Rank: %s · reputation %d%s" % [rk.name, rep, (" · %s at %d" % [nxt.name, int(nxt.rep)]) if nxt else " · the highest rank"], 16, UIStyle.GOLD))
+	v.add_child(UIStyle.label(Loc.t("Rank: %s · reputation %d%s") % [Loc.t(rk.name), rep, (Loc.t(" · %s at %d") % [Loc.t(nxt.name), int(nxt.rep)]) if nxt else Loc.t(" · the highest rank")], 16, UIStyle.GOLD))
 	v.add_child(UIStyle.label(String(rk.perk), 14, UIStyle.MUTED))
 	if nxt:
 		var bar := ProgressBar.new()
@@ -634,7 +639,7 @@ func _missions(v: VBoxContainer) -> void:
 		var d: Dictionary = Yard.MISSIONS.get(ms.id, {})
 		if d.is_empty():
 			continue
-		v.add_child(UIStyle.label("%s  %s  (%d/%d) · %d denarii, %d reputation" % ["✔" if ms.get("done", false) else "·", d.text, int(ms.n), int(d.count), int(round(int(d.coins) * Yard.mission_pay(rep))), int(d.rep)], 15, Color(0.6, 0.95, 0.5) if ms.get("done", false) else UIStyle.TEXT))
+		v.add_child(UIStyle.label(Loc.t("%s  %s  (%d/%d) · %d denarii, %d reputation") % ["✔" if ms.get("done", false) else "·", Loc.t(String(d.text)), int(ms.n), int(d.count), int(round(int(d.coins) * Yard.mission_pay(rep))), int(d.rep)], 15, Color(0.6, 0.95, 0.5) if ms.get("done", false) else UIStyle.TEXT))
 
 ## A fight is over: count what it did toward the missions, pay them, and the reputation.
 func _settle_missions(r: Dictionary, mode: String) -> String:
@@ -657,11 +662,11 @@ func _settle_missions(r: Dictionary, mode: String) -> String:
 	while keep.size() < 3 and not fresh.is_empty():
 		keep.append(fresh.pop_front())
 	Save.set_value("missions", keep)
-	var text := "+%d reputation" % gain
+	var text := Loc.t("+%d reputation") % gain
 	if not done.is_empty():
-		text += " · missions done: %s (+%d denarii)" % [", ".join(done.map(func(id): return Yard.MISSIONS[id].text)), int(pay.coins)]
+		text += Loc.t(" · missions done: %s (+%d denarii)") % [", ".join(done.map(func(id): return Loc.t(String(Yard.MISSIONS[id].text)))), int(pay.coins)]
 	if after.index > before.index:
-		text += " · NEW RANK: %s!" % after.name
+		text += Loc.t(" · NEW RANK: %s!") % Loc.t(String(after.name))
 	return text
 
 func bindings() -> Dictionary:
@@ -685,7 +690,7 @@ func _controls(v: VBoxContainer) -> void:
 		var id: String = a.id
 		if not cur.has(id):
 			continue
-		var lbl := UIStyle.label(String(a.label), 14)
+		var lbl := UIStyle.label(Loc.t(String(a.label)), 14)
 		lbl.custom_minimum_size = Vector2(250, 0)
 		grid.add_child(lbl)
 		var b := UIStyle.button("Press a key…" if rebinding == id else PlayerInput.label_of(String(cur[id])), func():
@@ -720,7 +725,11 @@ func _input_more(e: InputEvent) -> void:
 			b[other] = cur[id]
 	b[id] = code
 	_set_opt("bindings", b)
-	show_screen("controls", "%s: %s" % [id, PlayerInput.label_of(code)])
+	var what := id
+	for a in Data.controls.get("actions", []):
+		if a.id == id:
+			what = Loc.t(String(a.label))
+	show_screen("controls", "%s: %s" % [what, PlayerInput.label_of(code)])
 
 func _tutorial() -> void:
 	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}})
@@ -769,7 +778,7 @@ func _training(v: VBoxContainer) -> void:
 		o.custom_minimum_size = Vector2(360, 0)
 		o.fit_to_longest_item = false
 		for n in names:
-			o.add_item(n)
+			o.add_item(Loc.t(String(n)))
 		# (The save gives numbers back as floats: 3.0 is not found among 1, 2, 3, and the list
 		# showed "One" while three were sent in. What is shown is what is used.)
 		var at := keys.find(training.get(key))
@@ -784,7 +793,7 @@ func _training(v: VBoxContainer) -> void:
 	var foes: Array = Data.campaign.enemies.keys().filter(func(k): return not TRAINING_OUT.has(k)).map(func(k): return "foe:" + k)
 	# The beasts by name, A to Z, without their "The" (the gorilla was "The Gorilla", last of
 	# forty, and not to be found).
-	var beast_name := func(k: String) -> String: return String(Data.beasts[k].name).trim_prefix("The ")
+	var beast_name := func(k: String) -> String: return String(Data.beasts[k].name).trim_prefix("The ") if Loc.code() == "en" else Loc.t(String(Data.beasts[k].name))
 	var beasts: Array = Data.beasts.keys()
 	beasts.sort_custom(func(a, b): return beast_name.call(a) < beast_name.call(b))
 	var who: Array = (["none", "gladiator"] + foes + beasts).filter(func(k): return Edition.foe_open(k))
@@ -808,9 +817,9 @@ func _training(v: VBoxContainer) -> void:
 	var gy: GridContainer = form.call("YOU")
 	var built: Dictionary = Save.get_value("training_weapon", {})
 	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "plank", "chicken", "bow", "ram"]
-	pick.call(gy, "Main hand", mains, mains.map(func(k): return ("Forged: " + String(built.get("name", "none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
+	pick.call(gy, "Main hand", mains, mains.map(func(k): return (Loc.t("Forged: %s") % (String(built.name) if built.has("name") else Loc.t("none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
-	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "spear", "longsword", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Gladius", "Axe", "Mace", "Spear", "Longsword", "Your campaign arms", "Design: " + String(built_off.get("name", "none yet"))], "my_off")
+	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "spear", "longsword", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Gladius", "Axe", "Mace", "Spear", "Longsword", "Your campaign arms", Loc.t("Design: %s") % (String(built_off.name) if built_off.has("name") else Loc.t("none yet"))], "my_off")
 	# (A flow, not a row: three buttons in a row pushed the screen past the window's right edge.)
 	var wb := HFlowContainer.new()
 	wb.add_theme_constant_override("h_separation", 10)
@@ -827,7 +836,7 @@ func _training(v: VBoxContainer) -> void:
 	var t_kg := 0.0
 	for id in t_arm:
 		t_kg += Armory.kg(id)
-	var al := UIStyle.label(("Armour: %d pieces · %.1f kg" % [t_arm.size(), t_kg]) if not t_arm.is_empty() else "Armour: none", 15)
+	var al := UIStyle.label((Loc.t("Armour: %d pieces · %.1f kg") % [t_arm.size(), t_kg]) if not t_arm.is_empty() else "Armour: none", 15)
 	al.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_row(left, [al, UIStyle.button("Armour (free in training)", func(): show_screen("training_armour"))])
 	var imm := CheckBox.new()
@@ -875,7 +884,7 @@ func _bag_clean(raw) -> Dictionary:
 func _training_bag(v: VBoxContainer) -> void:
 	var bag := _bag_clean(training.get("bag", {}))
 	training.bag = bag
-	v.add_child(UIStyle.label("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds" % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
+	v.add_child(UIStyle.label(Loc.t("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds") % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 470)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -994,6 +1003,8 @@ func back_to_forge() -> void:
 	if f != null and is_instance_valid(f):
 		f.visible = true
 		f.process_mode = Node.PROCESS_MODE_INHERIT
+		if Sfx.music:
+			Sfx.music.bench(true)
 		if match_ and match_.input:
 			match_.input.enabled = false
 
@@ -1047,12 +1058,12 @@ func _training_designs(v: VBoxContainer) -> void:
 		nm.custom_minimum_size = Vector2(200, 0)
 		col.add_child(nm)
 		var st := ForgeLib.compute_stats(dd)
-		var info := UIStyle.label("%.1f kg · reach %.1f m%s" % [float(st.mass), float(st.reach), " · two hands" if dd.get("twoHanded", false) else ""], 13, UIStyle.MUTED)
+		var info := UIStyle.label(Loc.t("%.1f kg · reach %.1f m%s") % [float(st.mass), float(st.reach), Loc.t(" · two hands") if dd.get("twoHanded", false) else ""], 13, UIStyle.MUTED)
 		info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(info)
 		UIStyle.push_down(col)
 		# (a line kept in every card, so the buttons of one in hand line up with the rest)
-		var mark := UIStyle.label(("In your %s" % ("main hand" if in_main else "off hand") if not (in_main and in_off) else "In both hands") if in_main or in_off else " ", 13, UIStyle.BRONZE)
+		var mark := UIStyle.label((Loc.t("In your %s") % Loc.t("main hand" if in_main else "off hand") if not (in_main and in_off) else "In both hands") if in_main or in_off else " ", 13, UIStyle.BRONZE)
 		mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(mark)
 		var row := HBoxContainer.new()
@@ -1113,7 +1124,7 @@ func _yard(v: VBoxContainer) -> void:
 	right.alignment = BoxContainer.ALIGNMENT_END
 	right.add_theme_constant_override("separation", 6)
 	head.add_child(right)
-	var purse := UIStyle.label("You have %d denarii" % coins(), 18, UIStyle.GOLD)
+	var purse := UIStyle.label(Loc.t("You have %d denarii") % coins(), 18, UIStyle.GOLD)
 	purse.autowrap_mode = TextServer.AUTOWRAP_OFF
 	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(purse)
@@ -1167,15 +1178,15 @@ func _yard(v: VBoxContainer) -> void:
 		var cond := int(Arms.condition(a, side) * 100.0)
 		var coat: String = Arms.COATING_NAMES.get(d.get("imbue", ""), "")
 		col.add_child(UIStyle.label(str(d.get("name", "?")), 17, UIStyle.TEXT))
-		col.add_child(UIStyle.label("%s%d voxels · condition %d%%" % [(coat + " · ") if coat != "" else "", d.voxels.size(), cond], 13, UIStyle.GOLD if cond >= 80 else (UIStyle.MUTED if cond >= 40 else Color(1, 0.55, 0.45))))
+		col.add_child(UIStyle.label(Loc.t("%s%d voxels · condition %d%%") % [(Loc.t(coat) + " · ") if coat != "" else "", d.voxels.size(), cond], 13, UIStyle.GOLD if cond >= 80 else (UIStyle.MUTED if cond >= 40 else Color(1, 0.55, 0.45))))
 		var acts := HFlowContainer.new()
 		acts.add_theme_constant_override("h_separation", 6)
 		acts.add_theme_constant_override("v_separation", 6)
 		col.add_child(acts)
 		var rc := Arms.repair_cost(a, side)
-		var mend := UIStyle.button("Mend · %d denarii" % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
+		var mend := UIStyle.button(Loc.t("Mend · %d denarii") % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
 		mend.disabled = rc == 0 or rc > coins()
-		mend.tooltip_text = "The smith puts back every voxel it has lost." + (" Purse after: %d" % (coins() - rc) if rc <= coins() else " %d more needed" % (rc - coins()))
+		mend.tooltip_text = Loc.t("The smith puts back every voxel it has lost.") + (Loc.t(" Purse after: %d") % (coins() - rc) if rc <= coins() else Loc.t(" %d more needed") % (rc - coins()))
 		acts.add_child(mend)
 		# The same things offered for either hand (user): what cannot be done to this weapon is
 		# shown, greyed, with why.
@@ -1184,23 +1195,23 @@ func _yard(v: VBoxContainer) -> void:
 			var b: Button
 			if why == "":
 				var price := Arms.upgrade_price(id, d)
-				b = UIStyle.button("%s · %d denarii" % [Arms.UPGRADES[id].label, price], func(): _pay(Arms.upgrade(arms(), side, id)))
+				b = UIStyle.button(Loc.t("%s · %d denarii") % [Loc.t(String(Arms.UPGRADES[id].label)), price], func(): _pay(Arms.upgrade(arms(), side, id)))
 				b.disabled = price > coins()
-				b.tooltip_text = String(Arms.UPGRADES[id].desc) + (" Purse after: %d" % (coins() - price) if price <= coins() else " %d more needed" % (price - coins()))
+				b.tooltip_text = Loc.t(String(Arms.UPGRADES[id].desc)) + (Loc.t(" Purse after: %d") % (coins() - price) if price <= coins() else Loc.t(" %d more needed") % (price - coins()))
 			else:
-				b = UIStyle.button("%s · %s" % [Arms.UPGRADES[id].label, why], func(): pass)
+				b = UIStyle.button("%s · %s" % [Loc.t(String(Arms.UPGRADES[id].label)), Loc.t(why)], func(): pass)
 				b.disabled = true
-				b.tooltip_text = String(Arms.UPGRADES[id].desc)
+				b.tooltip_text = Loc.t(String(Arms.UPGRADES[id].desc))
 			acts.add_child(b)
 		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
 		var nw := UIStyle.button("Forge a new one for this hand", func(): _scratch_forge(side))
-		nw.tooltip_text = "A new weapon from nothing for the %s: the one there now is traded in for half its worth" % ("main hand" if side == "R" else "off hand")
+		nw.tooltip_text = Loc.t("A new weapon from nothing for the %s: the one there now is traded in for half its worth") % Loc.t("main hand" if side == "R" else "off hand")
 		acts.add_child(nw)
 		# Selling it outright, for what a trade-in fetches (user).
 		var got := Arms.sale_price(d)
-		var sl := UIStyle.button(("Sell · you get %d denarii" % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): _sell_confirm(side))
+		var sl := UIStyle.button((Loc.t("Sell · you get %d denarii") % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): _sell_confirm(side))
 		sl.disabled = Arms.is_stick(d)
-		sl.tooltip_text = "Vulcanus buys it for half its worth: the %s is left %s" % (["main hand", "with the training stick"] if side == "R" else ["off hand", "empty"])
+		sl.tooltip_text = Loc.t("Vulcanus buys it for half its worth: the main hand is left with the training stick" if side == "R" else "Vulcanus buys it for half its worth: the off hand is left empty")
 		acts.add_child(sl)
 	body.add_child(VSeparator.new())
 	var rack := VBoxContainer.new()
@@ -1247,7 +1258,7 @@ func _yard(v: VBoxContainer) -> void:
 		tile.add_theme_stylebox_override("panel", tile_st)
 		tile.custom_minimum_size = Vector2(146, 0)
 		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tile.tooltip_text = "%s · %s hand" % [b.name, "main" if b.slot == "main" else "off"]
+		tile.tooltip_text = Loc.t("%s · main hand" if b.slot == "main" else "%s · off hand") % Loc.t(b.name)
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 4)
 		tile.add_child(box)
@@ -1282,11 +1293,11 @@ func _yard(v: VBoxContainer) -> void:
 			var afford_l: bool = Arms.base_price(b) <= coins() + int(pre_l.get("trade_in", 0))
 			var buy_l := UIStyle.button("For the off hand", func(): _pay(Arms.buy(arms(), key, "", "L")), afford_l)
 			buy_l.disabled = not afford_l
-			buy_l.tooltip_text = ("Into the off hand, %s" % ("handing in what is there" if int(pre_l.get("trade_in", 0)) > 0 else "the main hand keeps its weapon")) if afford_l else "Not enough in your purse"
+			buy_l.tooltip_text = (Loc.t("Into the off hand, %s") % Loc.t("handing in what is there" if int(pre_l.get("trade_in", 0)) > 0 else "the main hand keeps its weapon")) if afford_l else "Not enough in your purse"
 			box.add_child(buy_l)
 		grid.add_child(tile)
 		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-		_viewable(tex, Data.preset(key), "%d denarii at the smith" % Arms.base_price(b))
+		_viewable(tex, Data.preset(key), Loc.t("%d denarii at the smith") % Arms.base_price(b))
 	# As many to a row as fit the rack at the widest card's width (counted at 166 px, a card with
 	# its "For the off hand" button ran half as wide again, and the grid pushed the whole window,
 	# purse and tabs, out past the right of the screen: user).
@@ -1305,11 +1316,11 @@ func _price_lines(box: Container, price: int, trade := 0, trade_what := "") -> v
 	# Just what it costs him and what he has (user: the rest was more than anyone could follow).
 	var pay := maxi(0, price - trade)
 	var short := pay - coins()
-	var l2 := UIStyle.label(("Costs %d · you have %d" % [pay, coins()]) + ((" (%d more needed)" % short) if short > 0 else ""), 14, UIStyle.GOLD if short <= 0 else Color(1, 0.55, 0.45))
+	var l2 := UIStyle.label((Loc.t("Costs %d · you have %d") % [pay, coins()]) + ((Loc.t(" (%d more needed)") % short) if short > 0 else ""), 14, UIStyle.GOLD if short <= 0 else Color(1, 0.55, 0.45))
 	l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if trade > 0:
-		l2.tooltip_text = "%d, less %d for %s" % [price, trade, trade_what]
+		l2.tooltip_text = Loc.t("%d, less %d for %s") % [price, trade, Loc.t(trade_what)]
 	box.add_child(l2)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
@@ -1327,14 +1338,14 @@ func _sell_choice(nm: String, buy: Callable, sides: Array, bought := Callable())
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	box.add_child(v)
-	var q := UIStyle.label("Both your hands are full. Which one does Vulcanus take for the %s?" % nm, 16, UIStyle.TEXT)
+	var q := UIStyle.label(Loc.t("Both your hands are full. Which one does Vulcanus take for the %s?") % Loc.t(nm), 16, UIStyle.TEXT)
 	q.custom_minimum_size = Vector2(420, 0)
 	v.add_child(q)
 	for sd in sides:
 		var side: String = sd
 		var d = arms().main if side == "R" else arms().off
 		var r: Dictionary = buy.call(side)
-		var b := UIStyle.button("Sell the %s (%s hand) · pay %d" % [str(d.get("name", "?")) if d else "?", "main" if side == "R" else "off", int(r.get("cost", 0))], func():
+		var b := UIStyle.button(Loc.t("Sell the %s (main hand) · pay %d" if side == "R" else "Sell the %s (off hand) · pay %d") % [Loc.t(str(d.get("name", "?"))) if d else "?", int(r.get("cost", 0))], func():
 			dim.queue_free()
 			var got: Dictionary = buy.call(side)
 			if bought.is_valid() and not got.has("error") and int(got.get("cost", 0)) <= coins():
@@ -1363,10 +1374,10 @@ func _sell_confirm(side: String) -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	box.add_child(v)
-	var q := UIStyle.label("Sell the %s to Vulcanus? It is gone for good." % str(d.get("name", "it")), 16, UIStyle.TEXT)
+	var q := UIStyle.label(Loc.t("Sell the %s to Vulcanus? It is gone for good.") % Loc.t(str(d.get("name", "it"))), 16, UIStyle.TEXT)
 	q.custom_minimum_size = Vector2(420, 0)
 	v.add_child(q)
-	v.add_child(UIStyle.label("You get %d denarii · you will have %d" % [got, coins() + got], 15, UIStyle.GOLD))
+	v.add_child(UIStyle.label(Loc.t("You get %d denarii · you will have %d") % [got, coins() + got], 15, UIStyle.GOLD))
 	v.add_child(UIStyle.button("Sell it", func():
 		dim.queue_free()
 		_pay(Arms.sell(arms(), side)), true))
@@ -1420,7 +1431,7 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 			if Weapon.GEMS.has(v[3]) and not gems.has(v[3]):
 				gems.append(v[3])
 		if not gems.is_empty():
-			var info := UIStyle.label("Set with " + ", ".join(gems), 12, UIStyle.MUTED)
+			var info := UIStyle.label(Loc.t("Set with %s") % ", ".join(gems), 12, UIStyle.MUTED)
 			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			col.add_child(info)
 		if not sold.has(idx):
@@ -1453,7 +1464,7 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 			col.add_child(buy)
 		g.add_child(tile)
 		Thumbs.weapon(tex, d, "odd:%d:%d:%d" % [run_seed(), stage, idx])
-		_viewable(tex, d, "%d denarii%s" % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""])
+		_viewable(tex, d, Loc.t("%d denarii%s") % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""])
 		var keep := d.duplicate(true)
 		keep.erase("oddity")
 		var saved: bool = load("res://scripts/ui/forge.gd").gallery().any(func(o): return o.get("voxels") == keep.voxels)
@@ -1501,7 +1512,7 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.TEXT)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(nm)
-		var pr := UIStyle.label("%d blocks · made to order" % d.voxels.size(), 12, UIStyle.MUTED)
+		var pr := UIStyle.label(Loc.t("%d blocks · made to order") % d.voxels.size(), 12, UIStyle.MUTED)
 		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(pr)
 		_price_lines(col, price)
@@ -1516,7 +1527,7 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 		col.add_child(buy)
 		g2.add_child(tile)
 		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
-		_viewable(tex, d, "Your design · %d denarii to have it made" % price)
+		_viewable(tex, d, Loc.t("Your design · %d denarii to have it made") % price)
 	return true
 
 ## A list on the smith's screen that takes what height is left and scrolls within it.
@@ -1536,7 +1547,7 @@ const ARMOUR_PARTS := {"head": "head", "torso": "body", "upperArmR": "arms", "up
 ## Buy (it replaces what it clashes with, sold back for half) or Take off.
 func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 	var worn := worn_armor()
-	v.add_child(UIStyle.label(("Worn: " + ", ".join(worn.map(func(i): return String(Data.armor[i].name)))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
+	v.add_child(UIStyle.label((Loc.t("Worn: %s") % ", ".join(worn.map(func(i): return Loc.t(String(Data.armor[i].name))))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
 	var scroll := _smith_scroll(v)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1554,8 +1565,8 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 			var lost: Array = Armory.plates_lost(id, aw)
 			if int(lost[0]) > 0:
 				var mc_ := Armory.mend_cost(id, aw)
-				col.add_child(UIStyle.label("%d of %d plates knocked off · condition %d%%" % [lost[0], lost[1], int(Armory.condition(id, aw) * 100.0)], 12, Color(1, 0.55, 0.45)))
-				var mend := UIStyle.button("Mend · %d denarii" % mc_, func():
+				col.add_child(UIStyle.label(Loc.t("%d of %d plates knocked off · condition %d%%") % [lost[0], lost[1], int(Armory.condition(id, aw) * 100.0)], 12, Color(1, 0.55, 0.45)))
+				var mend := UIStyle.button(Loc.t("Mend · %d denarii") % mc_, func():
 					var m := Armory.mend(armor_wear(), id)
 					if int(m.cost) > coins():
 						show_screen("yard", "Not enough denarii")
@@ -1564,9 +1575,9 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 					set_armor_wear(m.wear)
 					show_screen("yard"))
 				mend.disabled = mc_ > coins()
-				mend.tooltip_text = "The armourer puts back every plate it has lost." + (" Purse after: %d" % (coins() - mc_) if mc_ <= coins() else " %d more needed" % (mc_ - coins()))
+				mend.tooltip_text = "The armourer puts back every plate it has lost." + (Loc.t(" Purse after: %d") % (coins() - mc_) if mc_ <= coins() else Loc.t(" %d more needed") % (mc_ - coins()))
 				col.add_child(mend)
-			col.add_child(UIStyle.button("Take off · %d denarii back" % (price / 2), func():
+			col.add_child(UIStyle.button(Loc.t("Take off · %d denarii back") % (price / 2), func():
 				var t := Armory.take_off(worn_armor(), id)
 				if not t.has("error"):
 					add_coins(-int(t.cost))
@@ -1575,7 +1586,7 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 		else:
 			var b := Armory.buy(worn, id)
 			var cost: int = int(b.get("cost", price))
-			var btn := UIStyle.button(("Buy · %d denarii" % cost) if cost > 0 else ("Swap · %d denarii back" % -cost), func():
+			var btn := UIStyle.button((Loc.t("Buy · %d denarii") % cost) if cost > 0 else (Loc.t("Swap · %d denarii back") % -cost), func():
 				var t := Armory.buy(worn_armor(), id)
 				if t.has("error"):
 					show_screen("yard", t.error)
@@ -1586,7 +1597,7 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 					set_worn_armor(t.worn)
 					show_screen("yard"), true)
 			btn.disabled = cost > coins()
-			btn.tooltip_text = ("Purse after: %d" % (coins() - cost)) if cost <= coins() else ("%d more needed" % (cost - coins()))
+			btn.tooltip_text = (Loc.t("Purse after: %d") % (coins() - cost)) if cost <= coins() else (Loc.t("%d more needed") % (cost - coins()))
 			col.add_child(btn), clampi(int((inner_w - 16.0) / 360.0), 1, 4))
 
 static func _dots(x: float) -> String:
@@ -1608,7 +1619,7 @@ func _armour_designs_row(v: VBoxContainer) -> void:
 		var d: Dictionary = designs[id]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		var l := UIStyle.label("%s · %s · %.1f kg" % [String(d.get("name", id)), String(d.get("mat", "iron")).capitalize(), Armory.design_kg(d)], 13, UIStyle.TEXT)
+		var l := UIStyle.label(Loc.t("%s · %s · %.1f kg") % [Loc.t(String(d.get("name", id))), Loc.t(String(d.get("mat", "iron")).capitalize()), Armory.design_kg(d)], 13, UIStyle.TEXT)
 		l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1702,11 +1713,11 @@ func _armour_card(id: String, worn: Array, act: Callable) -> PanelContainer:
 		if not where.has(ARMOUR_PARTS.get(k, k)):
 			where.append(ARMOUR_PARTS.get(k, k))
 	col.add_child(UIStyle.label("%s · %s" % [String(a.get("mat", "iron")).capitalize(), ", ".join(where)], 12, UIStyle.BRONZE))
-	col.add_child(UIStyle.label("Protection %s · %.1f kg" % [_dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.TEXT))
+	col.add_child(UIStyle.label(Loc.t("Protection %s · %.1f kg") % [_dots(Armory.protection(id)), Armory.kg(id)], 12, UIStyle.TEXT))
 	if not on:
 		var swaps := worn.filter(func(o): return Armory.clashes(o, id))
 		if not swaps.is_empty():
-			col.add_child(UIStyle.label("Replaces your %s" % String(Data.armor[swaps[0]].name).to_lower(), 12, UIStyle.MUTED))
+			col.add_child(UIStyle.label(Loc.t("Replaces your %s") % Loc.t(String(Data.armor[swaps[0]].name)), 12, UIStyle.MUTED))
 	act.call(col, id, on)
 	return card
 
@@ -1729,7 +1740,7 @@ func _armour_sections(parent: Control, ids: Array, worn: Array, act: Callable, c
 		# (A label in a row with nothing to fill it was squeezed to a letter a line: _row sets
 		# its wrapping off.)
 		var worn_here: int = list.filter(func(i): return worn.has(i)).size()
-		_row(parent, [UIStyle.label(String(g).to_upper(), 13, UIStyle.BRONZE)] + ([UIStyle.label("· %d worn" % worn_here, 12, UIStyle.GOLD)] if worn_here > 0 else []))
+		_row(parent, [UIStyle.label(Loc.t(String(g)).to_upper(), 13, UIStyle.BRONZE)] + ([UIStyle.label(Loc.t("· %d worn") % worn_here, 12, UIStyle.GOLD)] if worn_here > 0 else []))
 		var grid := GridContainer.new()
 		grid.columns = columns
 		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1760,18 +1771,18 @@ func _armour_worn_column(worn: Array, take_off: Callable, empty_text: String) ->
 		kg += Armory.kg(id)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		var l := UIStyle.label("%s · %.1f kg" % [String(Data.armor[id].name), Armory.kg(id)], 13, UIStyle.TEXT)
+		var l := UIStyle.label(Loc.t("%s · %.1f kg") % [Loc.t(String(Data.armor[id].name)), Armory.kg(id)], 13, UIStyle.TEXT)
 		l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
 		var b := UIStyle.button("Take off", take_off.bind(id))
-		b.tooltip_text = "Take off the " + String(Data.armor[id].name).to_lower()
+		b.tooltip_text = Loc.t("Take off the %s") % Loc.t(String(Data.armor[id].name))
 		row.add_child(b)
 		left.add_child(row)
 	var with := Armory.burden(kg)
-	left.add_child(UIStyle.label("%d piece%s · %.1f kg" % [worn.size(), "" if worn.size() == 1 else "s", kg], 14, UIStyle.TEXT))
-	left.add_child(UIStyle.label("Breath ×%.2f · pace %d%%" % [float(with.breath), int(round(float(with.pace) * 100.0))], 13, UIStyle.MUTED))
+	left.add_child(UIStyle.label(Loc.t("%d piece · %.1f kg" if worn.size() == 1 else "%d pieces · %.1f kg") % [worn.size(), kg], 14, UIStyle.TEXT))
+	left.add_child(UIStyle.label(Loc.t("Breath ×%.2f · pace %d%%") % [float(with.breath), int(round(float(with.pace) * 100.0))], 13, UIStyle.MUTED))
 	return left
 
 ## Armour for training, free: every piece the smith sells and every one of My designs, in
@@ -1835,10 +1846,12 @@ var bench := {"region": "torso", "mat": "iron", "y0": 0.3, "y1": 1.0, "front": f
 var bench_mode := "smith"
 
 func _bench_back() -> String:
-	return {"smith": "yard", "workshop": "main", "training": "training_armour"}.get(bench_mode, "yard")
+	return {"smith": "yard", "workshop": "main", "training": "training_armour", "contest": "ff_contest"}.get(bench_mode, "yard")
 
 ## Back from the armour bench to where it was opened (the main menu's forge opens again).
 func _bench_return(msg := "") -> void:
+	if bench_mode == "contest":
+		ff_open = null   # (the bench closed: the contest screen is drawn afresh as things change)
 	show_screen(_bench_back(), msg)
 	if bench_mode == "workshop":
 		_workshop_forge()
@@ -1863,12 +1876,23 @@ func _bench_worn() -> Array:
 	match bench_mode:
 		"smith": return worn_armor()
 		"training": return Armory.sanitize(training.get("armor", []))
+		"contest": return Armory.sanitize(ff.get("kit", {}).get("armor", []))
 	return []
 
 ## A piece made at a free bench (the workshop's or training's): kept in My designs, and in
 ## training put on as well.
 func _bench_keep(final: Dictionary) -> void:
 	var ids := Armory.register([final])
+	if bench_mode == "contest":
+		# Forge and Fight: made and worn for the fight (it replaces what covers the same place).
+		ff_open = null
+		if not ids.is_empty() and not ff.is_empty():
+			var r := Armory.buy(ff.kit.armor, String(ids[0]))
+			if r.has("worn"):
+				ff.kit.armor = r.worn
+			_ff_changed()
+		show_screen("ff_contest")
+		return
 	if ids.is_empty():
 		show_screen(_bench_back())
 		return
@@ -1879,7 +1903,7 @@ func _bench_keep(final: Dictionary) -> void:
 	if bench_mode == "training":
 		training.armor = Armory.buy(Armory.sanitize(training.get("armor", [])), ids[0]).worn
 		Save.set_value("training", training)
-	_bench_return("%s kept in My designs" % String(final.get("name", "The piece")) + (" and worn" if bench_mode == "training" else ""))
+	_bench_return(Loc.t("%s kept in My designs and worn" if bench_mode == "training" else "%s kept in My designs") % String(final.get("name", Loc.t("The piece"))))
 
 ## The armourer's bench: a piece of your own, where it goes, what it is made of and how much
 ## of the part it covers; what it keeps out, what it weighs and what the weight costs in breath
@@ -1909,7 +1933,7 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 		left.add_child(row)
 	pick.call("WHERE", Armory.REGIONS.keys(), func(k): return Armory.REGIONS[k].label, bench.region, func(k): bench.region = k)
 	pick.call("MATERIAL", Armory.BENCH_MATS, func(k): return String(k).capitalize(), bench.mat, func(k): bench.mat = k)
-	left.add_child(UIStyle.label("%s   Protection %s   Weight %s" % [String(bench.mat).capitalize(), _dots(float(Data.material(bench.mat).get("hardness", 0.5))), _dots(clampf(float(Data.material(bench.mat).get("mass", 0.03)) / 0.1, 0.0, 1.0))], 13, UIStyle.MUTED))
+	left.add_child(UIStyle.label(Loc.t("%s   Protection %s   Weight %s") % [Loc.t(String(bench.mat).capitalize()), _dots(float(Data.material(bench.mat).get("hardness", 0.5))), _dots(clampf(float(Data.material(bench.mat).get("mass", 0.03)) / 0.1, 0.0, 1.0))], 13, UIStyle.MUTED))
 	left.add_child(UIStyle.label("COVERS", 13, UIStyle.BRONZE))
 	for sl_def in [["From", "y0"], ["To", "y1"]]:
 		var key: String = sl_def[1]
@@ -1946,7 +1970,7 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 	opt.add_child(cp)
 	left.add_child(opt)
 	var nm := LineEdit.new()
-	nm.placeholder_text = String(def.name)
+	nm.placeholder_text = Loc.t(String(def.name))
 	nm.text = String(bench.name)
 	nm.max_length = 24
 	nm.text_changed.connect(func(x): bench.name = x)
@@ -1976,13 +2000,13 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 		worn_kg += Armory.kg(id)
 	var with := Armory.burden(worn_kg + kg)
 	var price := Armory.design_price(def)
-	right.add_child(UIStyle.label(String(def.name), 18, UIStyle.GOLD))
-	right.add_child(UIStyle.label("Protection %s" % _dots(float(Data.material(String(def.mat)).get("hardness", 0.5))), 15, UIStyle.TEXT))
-	right.add_child(UIStyle.label("Weight %.1f kg  (all you wear: %.1f kg)" % [kg, worn_kg + kg], 15, UIStyle.TEXT))
-	right.add_child(UIStyle.label("Breath when running and swinging: ×%.2f" % float(with.breath), 14, UIStyle.MUTED))
-	right.add_child(UIStyle.label("Pace: %d%%" % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
+	right.add_child(UIStyle.label(Loc.t(String(def.name)), 18, UIStyle.GOLD))
+	right.add_child(UIStyle.label(Loc.t("Protection %s") % _dots(float(Data.material(String(def.mat)).get("hardness", 0.5))), 15, UIStyle.TEXT))
+	right.add_child(UIStyle.label(Loc.t("Weight %.1f kg  (all you wear: %.1f kg)") % [kg, worn_kg + kg], 15, UIStyle.TEXT))
+	right.add_child(UIStyle.label(Loc.t("Breath when running and swinging: ×%.2f") % float(with.breath), 14, UIStyle.MUTED))
+	right.add_child(UIStyle.label(Loc.t("Pace: %d%%") % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
 	var free := bench_mode != "smith"
-	var make := UIStyle.button(("Make and wear · free in training" if bench_mode == "training" else "Keep in My designs") if free else ("Forge and wear · %d denarii" % price), func():
+	var make := UIStyle.button(("Make and wear · free in training" if bench_mode == "training" else "Keep in My designs") if free else (Loc.t("Forge and wear · %d denarii") % price), func():
 		var piece := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
 		if free:
 			_bench_keep(piece)
@@ -1997,6 +2021,8 @@ func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
 func _plate_bench(def: Dictionary, worn_kg: float) -> void:
 	var f := ArmourForge.new()
 	add_child(f)
+	if bench_mode == "contest":
+		ff_open = f   # (closed by the clock if it is still open when the time is up)
 	panel.visible = false
 	f.tree_exited.connect(func(): panel.visible = true)
 	f.open(def, String(bench.region), func(final):
@@ -2068,18 +2094,18 @@ func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
 	col.add_theme_constant_override("separation", 6)
 	row.add_child(col)
 	if title != "":
-		col.add_child(UIStyle.label(title.to_upper(), 12, UIStyle.BRONZE))
+		col.add_child(UIStyle.label(Loc.t(title).to_upper(), 12, UIStyle.BRONZE))
 	card.set_meta("col", col)
 	if d is Dictionary:
 		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
-		_viewable(tex, d, "%d voxels" % d.voxels.size())
+		_viewable(tex, d, Loc.t("%d voxels") % d.voxels.size())
 	return card
 
 ## Every other way to fight (game.js modes, partyModes.js).
 ## The fights, as cards in four groups: each says in a line what the bout is.
 const FIGHT_GROUPS := [
 	["Single combat", ["duel", "bo3", "king", "gauntlet"]],
-	["The melee", ["ffa", "chaos", "teams", "pvp"]],
+	["The melee", ["ffa", "chaos", "teams", "pvp", "forgefight"]],
 	["Beasts and waves", ["hunt", "coop"]],
 	["Games for the Emperor", ["emperor", "hill", "lastLimb", "headball"]],
 ]
@@ -2098,6 +2124,7 @@ const FIGHT_BLURBS := {
 	"hill": "Hold the circle alone for 20 seconds.",
 	"lastLimb": "Every 15 seconds the Emperor takes a limb from everyone.",
 	"headball": "Kick a severed head into the other goal. First to three.",
+	"forgefight": "Everyone forges weapons and armour against the clock, then all fight to the death with what they made.",
 }
 
 func _fights(v: VBoxContainer) -> void:
@@ -2105,10 +2132,10 @@ func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	var in_room := Net.active()
 	for g in FIGHT_GROUPS:
-		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop"].has(k) or in_room) and Edition.mode_open(k, in_room))   # (the friends' fights only in a room)
+		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop", "forgefight"].has(k) or in_room) and Edition.mode_open(k, in_room))   # (the friends' fights only in a room)
 		if keys.is_empty():
 			continue
-		v.add_child(UIStyle.label(String(g[0]).to_upper(), 13, UIStyle.BRONZE))
+		v.add_child(UIStyle.label(Loc.t(String(g[0])).to_upper(), 13, UIStyle.BRONZE))
 		var grid := GridContainer.new()
 		grid.columns = 4
 		grid.add_theme_constant_override("h_separation", 10)
@@ -2125,7 +2152,7 @@ func _fights(v: VBoxContainer) -> void:
 func _fight_card(k: String) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(262, 104)
-	b.pressed.connect(func(): start({"mode": k}))
+	b.pressed.connect(func(): ff_setup() if k == "forgefight" else start({"mode": k}))
 	b.tooltip_text = Modes.LABELS.get(k, "")
 	var m := MarginContainer.new()
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2182,34 +2209,34 @@ func _circus(v: VBoxContainer) -> void:
 		return
 	if not run.get("pending_blessing", []).is_empty():
 		v.add_child(UIStyle.title("The gods are watching", 26))
-		v.add_child(UIStyle.label("Day %s is over. Pick one blessing for the rest of the run." % ROMAN[clampi(int(run.day) - 1, 0, 6)], 15, UIStyle.MUTED))
+		v.add_child(UIStyle.label(Loc.t("Day %s is over. Pick one blessing for the rest of the run.") % ROMAN[clampi(int(run.day) - 1, 0, 6)], 15, UIStyle.MUTED))
 		for id in run.pending_blessing:
 			var b: Dictionary = Circus.blessings().get(id, {})
-			var btn := UIStyle.button("%s: %s" % [b.get("name", id), b.get("desc", "")], func():
+			var btn := UIStyle.button("%s: %s" % [Loc.t(String(b.get("name", id))), Loc.t(String(b.get("desc", "")))], func():
 				var r2 = circus_run()
 				Circus.grant(r2, id)
 				Save.set_value("circus_run", r2)
-				show_screen("circus", "%s blesses you" % b.get("name", id)), true)
+				show_screen("circus", Loc.t("%s blesses you") % Loc.t(String(b.get("name", id)))), true)
 			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			v.add_child(btn)
 		return
 	var day: Dictionary = Circus.days()[int(run.day)]
-	v.add_child(UIStyle.title("Day %s · %s" % [ROMAN[int(run.day)], day.get("theme", "")], 26))
+	v.add_child(UIStyle.title(Loc.t("Day %s · %s") % [ROMAN[int(run.day)], Loc.t(String(day.get("theme", "")))], 26))
 	for i in day.bouts.size():
 		var b: Dictionary = day.bouts[i]
 		var mark := "✔" if i < int(run.bout) else ("▶" if i == int(run.bout) else "·")
 		var col := UIStyle.MUTED if i < int(run.bout) else (UIStyle.GOLD if i == int(run.bout) else UIStyle.TEXT)
-		v.add_child(UIStyle.label("%s  %s%s" % [mark, b.name, "  · boss" if b.get("boss", false) else ""], 16, col))
+		v.add_child(UIStyle.label("%s  %s%s" % [mark, Loc.t(String(b.name)), Loc.t("  · boss") if b.get("boss", false) else ""], 16, col))
 	var bout := Circus.current(run)
 	v.add_child(UIStyle.label(String(bout.get("intro", "")), 15, UIStyle.TEXT))
-	var bl: Array = run.blessings.map(func(id): return Circus.blessings().get(id, {}).get("name", id))
+	var bl: Array = run.blessings.map(func(id): return Loc.t(String(Circus.blessings().get(id, {}).get("name", id))))
 	var inv: Array = []
 	for id in run.inventory:
 		if int(run.inventory[id]) > 0:
-			inv.append("%s ×%d" % [Data.shop.get("throwables", {}).get(id, {}).get("name", id), int(run.inventory[id])])
-	v.add_child(UIStyle.label("Gold: %d · blessings: %s · kit: %s%s" % [int(run.gold), ", ".join(bl) if not bl.is_empty() else "none yet",
-		", ".join(inv) if not inv.is_empty() else "empty", " · DAILY GAMES" if run.get("daily", false) else ""], 14, UIStyle.BRONZE))
-	_row(v, [UIStyle.button("Fight: %s" % bout.get("name", ""), _circus_fight, true), UIStyle.button("The market", func(): show_screen("circus_market")),
+			inv.append("%s ×%d" % [Loc.t(String(Data.shop.get("throwables", {}).get(id, {}).get("name", id))), int(run.inventory[id])])
+	v.add_child(UIStyle.label(Loc.t("Gold: %d · blessings: %s · kit: %s%s") % [int(run.gold), ", ".join(bl) if not bl.is_empty() else Loc.t("none yet"),
+		", ".join(inv) if not inv.is_empty() else Loc.t("nothing yet"), Loc.t(" · DAILY GAMES") if run.get("daily", false) else ""], 14, UIStyle.BRONZE))
+	_row(v, [UIStyle.button(Loc.t("Fight: %s") % Loc.t(String(bout.get("name", ""))), _circus_fight, true), UIStyle.button("The market", func(): show_screen("circus_market")),
 		UIStyle.button("Give up the run", func():
 			var r2 = circus_run()
 			r2.over = true
@@ -2223,19 +2250,19 @@ func _circus_lobby(v: VBoxContainer) -> void:
 	_row(v, [UIStyle.button("Begin a new run", func():
 		Save.set_value("circus_run", Circus.new_run(ludus()))
 		show_screen("circus", "Day I begins"), true),
-		UIStyle.button("The Daily Games · %s" % Circus.daily_label(), func():
+		UIStyle.button(Loc.t("The Daily Games · %s") % Circus.daily_label(), func():
 			Save.set_value("circus_run", Circus.new_run(ludus(), true))
 			show_screen("circus", "Today's games: the same bouts, decrees and blessings for everyone"))])
-	v.add_child(UIStyle.title("The ludus · %d denarii" % int(lu.denarii), 24))
+	v.add_child(UIStyle.title(Loc.t("The ludus · %d denarii") % int(lu.denarii), 24))
 	for id in Circus.ludus_upgrades():
 		var u: Dictionary = Circus.ludus_upgrades()[id]
 		var lvl := int(lu.levels.get(id, 0))
 		var maxed := lvl >= int(u.get("max", 1))
-		var b := UIStyle.button(("%s (%d/%d) · maxed" % [u.name, lvl, int(u.max)]) if maxed else ("%s (%d/%d) · %d" % [u.name, lvl, int(u.max), Circus.ludus_price(id, lvl)]), func():
+		var b := UIStyle.button((Loc.t("%s (%d/%d) · maxed") % [Loc.t(String(u.name)), lvl, int(u.max)]) if maxed else ("%s (%d/%d) · %d" % [Loc.t(String(u.name)), lvl, int(u.max), Circus.ludus_price(id, lvl)]), func():
 			var l2 := ludus()
 			var why = Circus.buy_upgrade(l2, id)
 			Save.set_value("ludus", l2)
-			show_screen("circus", why if why != null else "%s bought" % u.name))
+			show_screen("circus", why if why != null else Loc.t("%s bought") % Loc.t(String(u.name))))
 		b.tooltip_text = u.get("desc", "")
 		b.disabled = maxed
 		_row(v, [b, UIStyle.label(String(u.get("desc", "")), 13, UIStyle.MUTED)])
@@ -2244,7 +2271,7 @@ func _circus_lobby(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.title("Hall of Fame", 24))
 		for i in mini(5, hall.size()):
 			var h: Dictionary = hall[i]
-			v.add_child(UIStyle.label("%d. %s · %s · %d bouts, %d kills%s" % [i + 1, h.name, ("won the rudis" if h.get("campaign", false) else "crowned by the Emperor") if h.won else "fell on day %s to %s" % [ROMAN[clampi(int(h.day) - 1, 0, 6)], h.get("fate", "the arena")], int(h.bouts), int(h.kills), " · daily" if h.get("daily", false) else (" · the campaign" if h.get("campaign", false) else "")], 14, UIStyle.GOLD if h.won else UIStyle.TEXT))
+			v.add_child(UIStyle.label(Loc.t("%d. %s · %s · %d bouts, %d kills%s") % [i + 1, h.name, Loc.t("won the rudis" if h.get("campaign", false) else "crowned by the Emperor") if h.won else Loc.t("fell on day %s to %s") % [ROMAN[clampi(int(h.day) - 1, 0, 6)], Loc.t(String(h.get("fate", "the arena")))], int(h.bouts), int(h.kills), Loc.t(" · daily") if h.get("daily", false) else (Loc.t(" · the campaign") if h.get("campaign", false) else "")], 14, UIStyle.GOLD if h.won else UIStyle.TEXT))
 	_row(v, [UIStyle.button("Main menu", func(): show_screen("main"))])
 
 func _circus_market(v: VBoxContainer) -> void:
@@ -2253,7 +2280,7 @@ func _circus_market(v: VBoxContainer) -> void:
 		show_screen("circus")
 		return
 	v.add_child(UIStyle.title("The market", 32))
-	v.add_child(UIStyle.label("Gold: %d · what you buy is used in the next bouts (keys 1 to 8)" % int(run.gold), 15, UIStyle.BRONZE))
+	v.add_child(UIStyle.label(Loc.t("Gold: %d · what you buy is used in the next bouts (keys 1 to 8)") % int(run.gold), 15, UIStyle.BRONZE))
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(780, 400)
 	v.add_child(scroll)
@@ -2266,17 +2293,17 @@ func _circus_market(v: VBoxContainer) -> void:
 		var it: Dictionary = table[id]
 		var price := int(round(int(it.price) * 0.6))
 		var have := int(run.inventory.get(id, 0))
-		var lbl := UIStyle.label("%s%s" % [it.name, (" ×%d" % have) if have else ""], 15)
+		var lbl := UIStyle.label("%s%s" % [Loc.t(String(it.name)), (" ×%d" % have) if have else ""], 15)
 		lbl.custom_minimum_size = Vector2(190, 0)
 		lbl.tooltip_text = it.get("desc", "")
 		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		var b := UIStyle.button("Buy · %d gold" % price, func():
+		var b := UIStyle.button(Loc.t("Buy · %d gold") % price, func():
 			var r2 = circus_run()
 			if int(r2.gold) < price:
 				show_screen("circus_market", "Not enough gold")
 				return
 			if not Throwables.bag_has_room(r2.inventory, id):
-				show_screen("circus_market", "Your bag is full: %d of those at most, %d kinds in all" % [Throwables.stack_max(id), Throwables.BAG_KINDS])
+				show_screen("circus_market", Loc.t("Your bag is full: %d of those at most, %d kinds in all") % [Throwables.stack_max(id), Throwables.BAG_KINDS])
 				return
 			r2.gold = int(r2.gold) - price
 			r2.inventory[id] = int(r2.inventory.get(id, 0)) + 1
@@ -2312,7 +2339,7 @@ func _circus_close(run: Dictionary, fate: String) -> void:
 	Save.set_value("ludus", lu)
 	Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"), run, fate))
 	Save.set_value("circus_run", null)
-	last_result = {"text": "The ludus earns %d denarii from this run." % pay}
+	last_result = {"text": Loc.t("The ludus earns %d denarii from this run.") % pay}
 
 func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 	var run = circus_run()
@@ -2326,17 +2353,17 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 	Save.set_value("circus_run", run)
 	match state:
 		"next":
-			show_screen("circus", "Victory! +%d gold" % pay)
+			show_screen("circus", Loc.t("Victory! +%d gold") % pay)
 		"dayEnd":
-			show_screen("circus", "Victory! +%d gold. The day is done." % pay)
+			show_screen("circus", Loc.t("Victory! +%d gold. The day is done.") % pay)
 		"spared":
 			show_screen("circus", "PLUTO SAYS NO: you are sent back from the underworld. Fight the bout again.")
 		"victory":
 			_circus_close(run, "")
-			show_screen("circus", "THE EMPEROR CROWNS YOU! Seven days, and you still stand. " + last_result.text)
+			show_screen("circus", Loc.t("THE EMPEROR CROWNS YOU! Seven days, and you still stand. %s") % last_result.text)
 		"wipe":
 			_circus_close(run, String(r.get("killer", "the arena")))
-			show_screen("circus", "You fell on day %s. %s" % [ROMAN[clampi(int(run.day), 0, 6)], last_result.text])
+			show_screen("circus", Loc.t("You fell on day %s. %s") % [ROMAN[clampi(int(run.day), 0, 6)], last_result.text])
 
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
 ## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
@@ -2355,8 +2382,8 @@ func _market(v: VBoxContainer) -> void:
 	var bag := []
 	for id in k:
 		if int(k[id]) > 0:
-			bag.append("%s ×%d" % [Data.shop.throwables.get(id, {}).get("name", id), int(k[id])])
-	v.add_child(UIStyle.label("You have %d denarii · %s" % [coins(), ("In your bag: " + ", ".join(bag)) if not bag.is_empty() else "Your bag is empty"], 15, UIStyle.BRONZE))
+			bag.append("%s ×%d" % [Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))), int(k[id])])
+	v.add_child(UIStyle.label(Loc.t("You have %d denarii · %s") % [coins(), (Loc.t("In your bag: %s") % ", ".join(bag)) if not bag.is_empty() else Loc.t("Your bag is empty")], 15, UIStyle.BRONZE))
 	v.add_child(UIStyle.label("Everything here comes with you into every fight: keys 1 to 9 use it.", 13, UIStyle.MUTED))
 	var tabs: Array = []
 	for t in MARKET_TABS:
@@ -2420,7 +2447,7 @@ func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Co
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 3)
 	row.add_child(col)
-	col.add_child(UIStyle.label(String(it.name), 16, UIStyle.TEXT))
+	col.add_child(UIStyle.label(Loc.t(String(it.name)), 16, UIStyle.TEXT))
 	var d := UIStyle.label(String(it.get("desc", "")), 12, UIStyle.MUTED)
 	d.custom_minimum_size = Vector2(170, 0)
 	col.add_child(d)
@@ -2429,13 +2456,13 @@ func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Co
 		col.add_child(UIStyle.label("Hurts friends too", 11, Color(0.95, 0.55, 0.4)))
 	var price := int(it.price)
 	var room := Throwables.bag_has_room(kit(), id)
-	var b := UIStyle.button("Buy · %d denarii" % price if room else ("Bag full (%d)" % Throwables.stack_max(id) if have > 0 else "Bag full (%d kinds)" % Throwables.BAG_KINDS), func():
+	var b := UIStyle.button(Loc.t("Buy · %d denarii") % price if room else (Loc.t("Bag full (%d)") % Throwables.stack_max(id) if have > 0 else Loc.t("Bag full (%d kinds)") % Throwables.BAG_KINDS), func():
 		var k2 := kit()
 		if price > coins():
 			show_screen(back, "Not enough denarii")
 			return
 		if not Throwables.bag_has_room(k2, id):
-			show_screen(back, "Your bag is full: %d of those at most, %d kinds in all" % [Throwables.stack_max(id), Throwables.BAG_KINDS])
+			show_screen(back, Loc.t("Your bag is full: %d of those at most, %d kinds in all") % [Throwables.stack_max(id), Throwables.BAG_KINDS])
 			return
 		add_coins(-price)
 		k2[id] = int(k2.get(id, 0)) + 1
@@ -2493,7 +2520,7 @@ func _trainer(v: VBoxContainer) -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 18)
 	v.add_child(head)
-	var purse_l := UIStyle.label("Purse  %d denarii" % coins(), 15, UIStyle.GOLD)
+	var purse_l := UIStyle.label(Loc.t("Purse  %d denarii") % coins(), 15, UIStyle.GOLD)
 	purse_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	head.add_child(purse_l)
 	var sum_l := UIStyle.label(Training.summary(st).capitalize(), 15, UIStyle.BRONZE)
@@ -2501,7 +2528,7 @@ func _trainer(v: VBoxContainer) -> void:
 	sum_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	sum_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sum_l)
-	var cap_l := UIStyle.label("Bout %d: up to %d%% an ability" % [stage, cap_any], 15, UIStyle.BRONZE)
+	var cap_l := UIStyle.label(Loc.t("Bout %d: up to %d%% an ability") % [stage, cap_any], 15, UIStyle.BRONZE)
 	cap_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	head.add_child(cap_l)
 	var note := UIStyle.label("Doctore sells sessions, a per cent at a time; the arena teaches nothing, and a death takes it all with the purse.", 13, UIStyle.MUTED)
@@ -2536,7 +2563,7 @@ func _trainer(v: VBoxContainer) -> void:
 		card.add_child(col)
 		var top := HBoxContainer.new()
 		col.add_child(top)
-		var name_l := UIStyle.label("%s · %s" % [a.name, a.title], 16, UIStyle.GOLD if lv > 0 else UIStyle.TEXT)
+		var name_l := UIStyle.label("%s · %s" % [a.name, Loc.t(String(a.title))], 16, UIStyle.GOLD if lv > 0 else UIStyle.TEXT)
 		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(name_l)
@@ -2550,20 +2577,20 @@ func _trainer(v: VBoxContainer) -> void:
 		bar.show_percentage = false
 		bar.custom_minimum_size = Vector2(0, 6)
 		col.add_child(bar)
-		var d := UIStyle.label(String(a.desc), 12, UIStyle.MUTED)
+		var d := UIStyle.label(Loc.t(String(a.desc)), 12, UIStyle.MUTED)
 		d.custom_minimum_size = Vector2(0, 50)
 		col.add_child(d)
 		var r := Training.buy(st, id, stage, coins())
 		var b: Button
 		if r.has("error"):
-			var why := "Mastered" if full else ("Wait for bout %d" % (lv + Training.STEP + 1) if lv >= cap else "Train · %d denarii" % Training.price(st, id))
+			var why := "Mastered" if full else (Loc.t("Wait for bout %d") % (lv + Training.STEP + 1) if lv >= cap else Loc.t("Train · %d denarii") % Training.price(st, id))
 			if id == "virtus" and not CampaignRun.unbroken():
 				why = "Only for the Unbroken (Ironman)"
 			b = UIStyle.button(why, func(): pass)
 			b.disabled = true
 			b.tooltip_text = String(r.error)
 		else:
-			b = UIStyle.button("Train · %d denarii" % int(r.cost), func():
+			b = UIStyle.button(Loc.t("Train · %d denarii") % int(r.cost), func():
 				var r2 := Training.buy(training_stats(), id, stage, coins())
 				if r2.has("error"):
 					show_screen("trainer", r2.error)
@@ -2572,7 +2599,7 @@ func _trainer(v: VBoxContainer) -> void:
 				set_training_stats(r2.stats)
 				if int(r2.stats[id]) >= int(a.max):
 					Achievements.unlock("trained")
-				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, a.title.to_lower()]), true)
+				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, Loc.lower(String(a.title))]), true)
 		col.add_child(b)
 	v.add_child(UIStyle.button("Back to the yard" if yard else "Back", func():
 		if yard:
@@ -2635,7 +2662,7 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 		state = ", ".join(news.map(func(n): return str(n)))
 		state = state.left(1).to_upper() + state.substr(1)
 	v.add_child(UIStyle.label(state, 15, Color(1, 0.62, 0.5) if not news.is_empty() else UIStyle.MUTED))
-	v.add_child(UIStyle.label("You have %d denarii" % coins(), 18, UIStyle.GOLD))
+	v.add_child(UIStyle.label(Loc.t("You have %d denarii") % coins(), 18, UIStyle.GOLD))
 	var buy := func(id: String, price: int) -> void:
 		if price > coins():
 			return
@@ -2647,9 +2674,9 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 	var all := offers.filter(func(o): return String(o.id) == "heal:all")
 	if not all.is_empty():
 		var p_all := int(all[0].price)
-		var big := UIStyle.button("Treat everything · it costs %d" % p_all, func(): buy.call("heal:all", p_all), true)
+		var big := UIStyle.button(Loc.t("Treat everything · it costs %d") % p_all, func(): buy.call("heal:all", p_all), true)
 		big.disabled = p_all > coins()
-		big.tooltip_text = String(all[0].desc) + ("" if p_all <= coins() else "  (%d more needed)" % (p_all - coins()))
+		big.tooltip_text = Loc.t(String(all[0].desc)) + ("" if p_all <= coins() else Loc.t("  (%d more needed)") % (p_all - coins()))
 		v.add_child(big)
 	var folded := VBoxContainer.new()
 	folded.add_theme_constant_override("separation", 6)
@@ -2659,17 +2686,17 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 			continue
 		var price := int(o.price)
 		var row := HBoxContainer.new()
-		row.tooltip_text = String(o.desc)
-		var name_l := UIStyle.label(String(o.name), 16)
+		row.tooltip_text = Loc.t(String(o.desc))
+		var name_l := UIStyle.label(Loc.t(String(o.name)), 16)
 		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		name_l.tooltip_text = String(o.desc)
+		name_l.tooltip_text = Loc.t(String(o.desc))
 		name_l.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.add_child(name_l)
-		var btn := UIStyle.button("costs %d" % price, func(): buy.call(id, price))
+		var btn := UIStyle.button(Loc.t("costs %d") % price, func(): buy.call(id, price))
 		btn.disabled = price > coins()
 		btn.custom_minimum_size = Vector2(110, 0)
-		btn.tooltip_text = String(o.desc) + ("" if price <= coins() else "  (%d more needed)" % (price - coins()))
+		btn.tooltip_text = Loc.t(String(o.desc)) + ("" if price <= coins() else Loc.t("  (%d more needed)") % (price - coins()))
 		row.add_child(btn)
 		# With the one button there, the bones and the stitching one at a time are folded away.
 		if not all.is_empty() and (id.begins_with("set:") or id.begins_with("stitch:")):
@@ -2684,10 +2711,10 @@ func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, do
 			folded.queue_free()
 		else:
 			folded.visible = false
-			var more := UIStyle.button("Or one at a time (%d)" % folded.get_child_count(), func(): pass)
+			var more := UIStyle.button(Loc.t("Or one at a time (%d)") % folded.get_child_count(), func(): pass)
 			more.pressed.connect(func():
 				folded.visible = not folded.visible
-				more.text = ("Hide" if folded.visible else "Or one at a time (%d)" % folded.get_child_count()))
+				more.text = ("Hide" if folded.visible else Loc.t("Or one at a time (%d)") % folded.get_child_count()))
 			v.add_child(more)
 			v.add_child(folded)
 	else:
@@ -2762,6 +2789,270 @@ func open_forge(side: String) -> void:
 	panel.visible = false
 	f.tree_exited.connect(func(): panel.visible = true)
 
+# ---------- Forge and Fight ----------
+
+## The game under way: its phase ("weapons", "armour", "fight"), when the phase ends, the kit
+## made so far (what the fight is fought with), and on the host the kits and the "ready" of all.
+var ff := {}
+var ff_times := ForgeFight.DEFAULT.duplicate()
+var ff_open: Node = null         # the forge or the bench open now (closed by the clock)
+var ff_open_side := "main"
+var ff_timer: Timer = null
+var ff_clock_layer: CanvasLayer = null
+var ff_clock: Label = null
+
+## The host picks the times first; only the host starts it, and not alone.
+func ff_setup() -> void:
+	if not Net.active() or not Net.is_host():
+		show_screen("fights", "Only the host of a room starts Forge and Fight")
+		return
+	show_screen("ff_setup")
+
+func _ff_setup(v: VBoxContainer) -> void:
+	v.add_child(UIStyle.title("Forge and Fight", 34))
+	v.add_child(UIStyle.label("Everyone forges weapons and armour against the clock, then all fight to the death with what they made.", 15, UIStyle.MUTED))
+	for row in [["weapons", "Time to forge the weapons", ForgeFight.WEAPON_MIN], ["armour", "Time to make the armour", ForgeFight.ARMOUR_MIN], ["fight", "Time limit on the fight", ForgeFight.FIGHT_MIN]]:
+		v.add_child(UIStyle.label(Loc.t(String(row[1])).to_upper(), 13, UIStyle.BRONZE))
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 8)
+		for mins in row[2]:
+			var txt: String = (Loc.t("%d min") % mins) if int(mins) > 0 else Loc.t("No armour" if row[0] == "armour" else "To the death")
+			h.add_child(UIStyle.button(txt, func():
+				ff_times[row[0]] = int(mins)
+				show_screen("ff_setup"), int(ff_times[row[0]]) == int(mins)))
+		v.add_child(h)
+	if row_note_needed():
+		v.add_child(UIStyle.label("Wait for at least one friend in the room: it is a fight between players.", 14, Color(1, 0.6, 0.5)))
+	var go := UIStyle.button("To the forges!", func(): _ff_begin(ff_times.duplicate(), true), true)
+	go.disabled = row_note_needed()
+	_row(v, [go, UIStyle.button("Back", func(): show_screen("fights"))])
+
+func row_note_needed() -> bool:
+	return Net.peers.is_empty()
+
+## The forges are lit: everyone (the host sends it to the room) starts on his weapons.
+func _ff_begin(times, as_host: bool) -> void:
+	var t := ForgeFight.clean_times(times)
+	ff = {"times": t, "phase": "", "end": 0.0, "kit": {"main": "", "off": "", "armor": []}, "ready": false, "kits": {}, "readies": {}}
+	# Out of the yard (or whatever ran) to the forges, the pointer free.
+	_end_match()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if as_host:
+		Net.send_all("ff_begin", t)
+		Net.set_lobby_info(Loc.t("Forge and Fight"))
+	_ff_timer_on(true)
+	_ff_phase("weapons")
+
+func _ff_now() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+## A phase begins (on a guest, when the host says so): what is open closes and is kept as it
+## stands, the clock starts again, the ready marks are cleared.
+func _ff_phase(p: String) -> void:
+	if ff.is_empty():
+		return
+	_ff_close_open()
+	ff.phase = p
+	ff.end = _ff_now() + ForgeFight.phase_seconds(p, ff.times)
+	ff.ready = false
+	ff.readies = {}
+	if p == "fight":
+		_ff_send_kit()
+		if Net.is_host():
+			# The last kits a moment to come in, then the sand.
+			ff.phase = "closing"
+			get_tree().create_timer(ForgeFight.GRACE).timeout.connect(_ff_fight)
+	show_screen("ff_contest")
+
+## The host moves the room on: when the clock runs out, or everyone says he is ready.
+func _ff_tick() -> void:
+	if ff.is_empty():
+		_ff_timer_on(false)
+		return
+	if not Net.active():
+		_ff_quit()
+		return
+	var left: float = maxf(0.0, float(ff.end) - _ff_now())
+	if ff_clock:
+		ff_clock.visible = ff.phase == "weapons" or ff.phase == "armour"
+		ff_clock.text = (Loc.t("Weapons") if ff.phase == "weapons" else Loc.t("Armour")) + "  " + ForgeFight.clock(left)
+		ff_clock.add_theme_color_override("font_color", Color(1, 0.45, 0.35) if left <= 10.0 else UIStyle.GOLD_LIGHT)
+	if not Net.is_host() or not (ff.phase == "weapons" or ff.phase == "armour"):
+		return
+	var all_ready: bool = bool(ff.ready) and Net.peers.keys().all(func(id): return bool(ff.readies.get(id, false)))
+	if left <= 0.0 or all_ready:
+		var nxt := ForgeFight.next_phase(String(ff.phase), ff.times)
+		Net.send_all("ff_phase", nxt)
+		_ff_phase(nxt)
+
+func _ff_timer_on(on: bool) -> void:
+	if on and ff_timer == null:
+		ff_timer = Timer.new()
+		ff_timer.wait_time = 0.25
+		ff_timer.autostart = true
+		ff_timer.timeout.connect(_ff_tick)
+		add_child(ff_timer)
+		# The clock over everything, the forge included.
+		ff_clock_layer = CanvasLayer.new()
+		ff_clock_layer.layer = 90
+		add_child(ff_clock_layer)
+		ff_clock = UIStyle.label("", 30, UIStyle.GOLD_LIGHT)
+		ff_clock.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		ff_clock.position.y = 8
+		ff_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ff_clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ff_clock_layer.add_child(ff_clock)
+	elif not on and ff_timer != null:
+		ff_timer.queue_free()
+		ff_timer = null
+		ff_clock_layer.queue_free()
+		ff_clock_layer = null
+		ff_clock = null
+
+## Out of the contest (the room is gone): what is open shuts, nothing kept, the clock off.
+func _ff_quit() -> void:
+	if ff_open != null and is_instance_valid(ff_open):
+		for c in ff_open.tree_exited.get_connections():
+			ff_open.tree_exited.disconnect(c.callable)
+		ff_open.queue_free()
+		panel.visible = true
+	ff_open = null
+	ff = {}
+	_ff_timer_on(false)
+
+## The time is up with the forge open: what is on the anvil is taken as it stands, if it can be
+## held and carried; else the hand keeps what it had. A piece half made at the bench is lost.
+func _ff_close_open() -> void:
+	if ff_open == null or not is_instance_valid(ff_open):
+		ff_open = null
+		return
+	var f := ff_open
+	ff_open = null
+	if f.has_method("_design_now"):
+		var d: Dictionary = f._design_now()
+		var st := ForgeLib.compute_stats(d)
+		if st.get("hasGrip", false) and ForgeLib.too_heavy(d, st) == "":
+			d.stats = st
+			ff.kit[ff_open_side] = d
+			_ff_changed(false)
+	for c in f.tree_exited.get_connections():
+		f.tree_exited.disconnect(c.callable)
+	f.queue_free()
+	panel.visible = true
+
+## The kit changed: the host is told (a guest's), and the screen shows it.
+func _ff_changed(redraw := true) -> void:
+	_ff_send_kit()
+	if redraw and screen == "ff_contest" and ff_open == null:
+		show_screen("ff_contest")
+
+func _ff_send_kit() -> void:
+	if ff.is_empty() or Net.is_host():
+		return
+	var k: Dictionary = ff.kit.duplicate(true)
+	k.armor_defs = Armory.defs_of(k.armor)
+	Net.send_host("ff_kit", k)
+
+## The forge for one hand, free (the clock is the price): what it had, or a bare grip to start.
+func _ff_forge(side: String) -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	var cur = ff.kit[side]
+	var d: Dictionary = cur if cur is Dictionary else {"name": "My weapon" if side == "main" else "Off-hand weapon", "kind": "weapon", "sharpness": 0.8, "voxels": [[0, 0, 0, "wood", "grip"]]}
+	ff_open = f
+	ff_open_side = side
+	f.open(d, 0, func(design, _cost):
+		ff_open = null
+		f.queue_free()
+		if ff.is_empty():
+			return
+		if design != null:
+			ff.kit[side] = design
+			_ff_send_kit()
+		show_screen("ff_contest"))
+	f._show_mode("voxels")
+	panel.visible = false
+	f.tree_exited.connect(func(): panel.visible = true)
+
+func _ff_name(w) -> String:
+	if w is Dictionary:
+		var st: Dictionary = w.get("stats", ForgeLib.compute_stats(w))
+		return Loc.t("%s · %.1f kg · reach %.2f m") % [Loc.t(String(w.get("name", "Weapon"))), float(st.get("mass", 0.0)), float(st.get("reach", 0.0))]
+	if w == "roundShield":
+		return Loc.t("A round shield")
+	return Loc.t("Nothing yet: bare fists")
+
+func _ff_ready(on: bool) -> void:
+	ff.ready = on
+	if not Net.is_host():
+		Net.send_host("ff_ready", on)
+	show_screen("ff_contest")
+
+## The contest's own screen: the clock, what is made so far, the way to the forge or the bench.
+func _ff_contest(v: VBoxContainer) -> void:
+	if ff.is_empty():
+		v.add_child(UIStyle.label("Forge and Fight is over.", 16))
+		v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+		return
+	v.add_child(UIStyle.title("Forge and Fight", 34))
+	match String(ff.phase):
+		"weapons":
+			v.add_child(UIStyle.label(Loc.t("Forge your weapons: %d min. When the time is up, everyone fights with what is on his anvil.") % int(ff.times.weapons), 15, UIStyle.MUTED))
+			for side in ["main", "off"]:
+				v.add_child(UIStyle.label(Loc.t("MAIN HAND") if side == "main" else Loc.t("OFF HAND"), 13, UIStyle.BRONZE))
+				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", 10)
+				var nm := UIStyle.label(_ff_name(ff.kit[side]), 16)
+				nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(nm)
+				row.add_child(UIStyle.button("Keep forging" if ff.kit[side] is Dictionary else "Forge it", func(): _ff_forge(side), true))
+				if side == "off":
+					row.add_child(UIStyle.button("Round shield", func():
+						ff.kit.off = "roundShield"
+						_ff_changed()))
+					row.add_child(UIStyle.button("Empty hand", func():
+						ff.kit.off = ""
+						_ff_changed()))
+				v.add_child(row)
+		"armour":
+			v.add_child(UIStyle.label(Loc.t("Make your armour at the bench: %d min. A piece counts once it is made.") % int(ff.times.armour), 15, UIStyle.MUTED))
+			var worn: Array = Armory.sanitize(ff.kit.armor)
+			if worn.is_empty():
+				v.add_child(UIStyle.label("No armour made yet.", 15))
+			for id in worn:
+				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", 10)
+				var nm := UIStyle.label(Loc.t("%s · %.1f kg") % [Loc.t(String(Data.armor[id].get("name", id))), Armory.kg(id)], 16)
+				nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(nm)
+				row.add_child(UIStyle.button("Take off", func():
+					ff.kit.armor = (ff.kit.armor as Array).filter(func(o): return o != id)
+					_ff_changed()))
+				v.add_child(row)
+			v.add_child(UIStyle.button("Make a piece at the bench", func():
+				bench_mode = "contest"
+				_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg()), true))
+		_:
+			v.add_child(UIStyle.label("The forges go cold. To the sand!", 20, UIStyle.GOLD))
+			return
+	var waiting := 0
+	if Net.is_host():
+		waiting = Net.peers.keys().filter(func(id): return not bool(ff.readies.get(id, false))).size()
+	_row(v, [UIStyle.button("Not ready yet" if ff.ready else "I'm ready", func(): _ff_ready(not ff.ready), not ff.ready)]
+		+ ([UIStyle.label(Loc.t("%d still forging") % waiting, 14, UIStyle.MUTED)] if Net.is_host() and waiting > 0 else []))
+
+## The fight (on the host): everyone with what he made, to the death, or to the time limit.
+func _ff_fight() -> void:
+	if ff.is_empty() or not Net.is_host():
+		return
+	var kits: Dictionary = ff.kits.duplicate(true)
+	var mine: Dictionary = ff.kit.duplicate(true)
+	var limit := float(ff.times.fight) * 60.0
+	ff = {}
+	_ff_timer_on(false)
+	start({"mode": "forgefight", "role": "host", "kits": kits, "fight_s": limit, "loadout_override": {"main": mine.main, "off": mine.off, "armor": mine.armor, "armor_defs": Armory.defs_of(mine.armor)}, "decrees": [], "hazards": []})
+
 # ---------- Multiplayer ----------
 
 func _mp(v: VBoxContainer) -> void:
@@ -2773,14 +3064,14 @@ func _mp(v: VBoxContainer) -> void:
 		v.add_child(room_list)
 		Net.list_steam_lobbies()
 	else:
-		v.add_child(UIStyle.label("Steam is not running: host or join by address (LAN, or a forwarded port %d)." % Net.PORT, 14, UIStyle.MUTED))
+		v.add_child(UIStyle.label(Loc.t("Steam is not running: host or join by address (LAN, or a forwarded port %d).") % Net.PORT, 14, UIStyle.MUTED))
 	var addr := LineEdit.new()
 	addr.placeholder_text = "Host address, e.g. 192.168.1.20"
 	addr.custom_minimum_size = Vector2(300, 0)
 	_row(v, [UIStyle.button("Host by address", func():
 		var err := Net.host_enet()
 		if err != OK:
-			show_screen("mp", "Could not open port %d" % Net.PORT)), addr, UIStyle.button("Join", func():
+			show_screen("mp", Loc.t("Could not open port %d") % Net.PORT)), addr, UIStyle.button("Join", func():
 		var err := Net.join_enet(addr.text.strip_edges() if addr.text.strip_edges() != "" else "127.0.0.1")
 		if err != OK:
 			show_screen("mp", "Could not connect"))])
@@ -2803,13 +3094,13 @@ func _cmdline_room() -> void:
 		Net.my_name = args[i + 1]
 	if args.has("--host"):
 		if Net.host_enet() != OK:   # `connected` takes the host into the yard
-			show_screen("mp", "Could not open port %d" % Net.PORT)
+			show_screen("mp", Loc.t("Could not open port %d") % Net.PORT)
 		return
 	i = args.find("--join")
 	if i >= 0:
 		var addr := args[i + 1] if args.size() > i + 1 and not args[i + 1].begins_with("--") else "127.0.0.1"
 		if Net.join_enet(addr) != OK:
-			show_screen("mp", "Could not connect to %s" % addr)
+			show_screen("mp", Loc.t("Could not connect to %s") % addr)
 
 func _on_lobbies(list: Array) -> void:
 	if room_list == null or not is_instance_valid(room_list):
@@ -2821,26 +3112,53 @@ func _on_lobbies(list: Array) -> void:
 	for l in list:
 		_row(room_list, [UIStyle.label("%s · %d/8 · %s" % [l.name, l.players, l.mode], 15), UIStyle.button("Join", func(): Net.join_steam(l.id))])
 
+## The other players of the room, each with Mute (his voice not played here) and, for the host,
+## Remove (out of the room for this session): user, playing with friends safely. `redraw` brings
+## the list up to date after a press.
+func _player_rows(v: VBoxContainer, redraw: Callable) -> void:
+	for id in Net.peers.keys():
+		var pid := int(id)
+		var row: Array = [UIStyle.label("· %s" % Net.peers[id].name, 16)]
+		var mb := UIStyle.button("Unmute" if VoiceChat.muted.has(pid) else "Mute", func():
+			if VoiceChat.muted.has(pid):
+				VoiceChat.muted.erase(pid)
+			else:
+				VoiceChat.muted[pid] = true
+			redraw.call())
+		mb.tooltip_text = "Stop hearing this player's voice (only for you)"
+		row.append(mb)
+		if Net.is_host():
+			var kb := UIStyle.button("Remove", func(): pass)
+			kb.tooltip_text = "Send this player out of the room: they cannot come back until you open a new one"
+			kb.pressed.connect(func():
+				if not kb.has_meta("armed"):
+					kb.set_meta("armed", true)
+					kb.text = "Click again to remove"
+					return
+				Net.kick(pid)
+				redraw.call())
+			row.append(kb)
+		_row(v, row)
+
 func _room(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The room", 34))
 	v.add_child(UIStyle.label("You are the host." if Net.is_host() else "Joining the host's yard...", 15, UIStyle.MUTED))
-	v.add_child(UIStyle.label("· %s (you)" % Net.my_name, 16))
-	for id in Net.peers:
-		v.add_child(UIStyle.label("· %s" % Net.peers[id].name, 16))
+	v.add_child(UIStyle.label(Loc.t("· %s (you)") % Net.my_name, 16))
+	_player_rows(v, func(): show_screen("room"))
 	if Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
 		var nb := Data.stage(cs, 1 + Net.peers.size())
-		v.add_child(UIStyle.label("Co-op campaign: bout %d · %s · %s" % [cs, nb.get("foe_name", ""), CampaignRun.MODES[CampaignRun.mode(true)].name], 15, UIStyle.GOLD))
+		v.add_child(UIStyle.label(Loc.t("Co-op campaign: bout %d · %s · %s") % [cs, nb.get("foe_name", ""), Loc.t(String(CampaignRun.MODES[CampaignRun.mode(true)].name))], 15, UIStyle.GOLD))
 		if cs <= 1:
 			# Before the first bout the host says how death is dealt with for the party.
 			var mo := OptionButton.new()
 			for m in ["legionary", "ironman"]:
-				mo.add_item(String(CampaignRun.MODES[m].name))
+				mo.add_item(Loc.t(String(CampaignRun.MODES[m].name)))
 			mo.select(1 if CampaignRun.mode(true) == "ironman" else 0)
-			mo.tooltip_text = "%s\n%s" % [CampaignRun.MODES.legionary.desc, CampaignRun.MODES.ironman.desc]
+			mo.tooltip_text = "%s\n%s" % [Loc.t(String(CampaignRun.MODES.legionary.desc)), Loc.t(String(CampaignRun.MODES.ironman.desc))]
 			mo.item_selected.connect(func(i): CampaignRun.begin(["legionary", "ironman"][i], true))
 			_row(v, [UIStyle.label("Death", 15, UIStyle.MUTED), mo])
-		v.add_child(UIStyle.button("Start the co-op campaign · bout %d" % cs, func(): start({"mode": "coop", "role": "host"}), true))
+		v.add_child(UIStyle.button(Loc.t("Start the co-op campaign · bout %d") % cs, func(): start({"mode": "coop", "role": "host"}), true))
 		v.add_child(UIStyle.button("Into the yard together (shop, heal, play)", func(): enter_yard()))
 	v.add_child(UIStyle.button("Leave", func():
 		Net.leave()
@@ -2913,6 +3231,24 @@ func _check(text: String, on: bool, cb: Callable) -> CheckBox:
 	return c
 
 func _options_game(v: VBoxContainer, st: Dictionary) -> void:
+	# The language: the system's, or one picked (each named in its own tongue, never translated).
+	var lsel := OptionButton.new()
+	lsel.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	lsel.add_item(tr("Automatic") + " (%s)" % Loc.name_of(Loc.resolve("auto")))
+	for l in Loc.LANGS:
+		lsel.add_item(String(l[1]))
+	var cur := str(st.get("language", "auto"))
+	var at := 0
+	for i in Loc.LANGS.size():
+		if Loc.LANGS[i][0] == cur:
+			at = i + 1
+	lsel.select(at)
+	lsel.item_selected.connect(func(i):
+		var c: String = "auto" if i == 0 else String(Loc.LANGS[i - 1][0])
+		_set_opt("language", c)
+		Loc.apply(c)
+		show_screen("options"))
+	_opt_row(v, "Language", lsel)
 	var gore := OptionButton.new()
 	gore.add_item("Full")
 	gore.add_item("Reduced")
@@ -3194,10 +3530,17 @@ func start(opts: Dictionary) -> void:
 	if opts.get("role", "local") == "host":
 		var peers := []
 		for id in Net.peers:
-			peers.append(_peer_spec(int(id), geared, int(opts.get("stage", 1)) > 1))
+			var spec := _peer_spec(int(id), geared, int(opts.get("stage", 1)) > 1)
+			if opts.mode == "forgefight":
+				# What he forged and made (sent as he made it, made safe on arrival), and his look.
+				var kit: Dictionary = (opts.get("kits", {}) as Dictionary).get(int(id), {"main": ""})
+				var made: Dictionary = kit.duplicate(true)
+				made.armor = (spec.loadout.get("armor", []) as Array) + (kit.get("armor", []) as Array)
+				spec.loadout = made
+			peers.append(spec)
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}})
-		Net.set_lobby_info("Campaign · stage %d" % opts.get("stage", 1))
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0))})
+		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
 	match_.setup(opts)
@@ -3210,10 +3553,23 @@ func start(opts: Dictionary) -> void:
 	visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if Sfx.music:
-		Sfx.music.set_state("boss" if match_.enemies().any(func(e): return e.get("boss", false)) else "fight")
+		var mood := fight_mood(match_)
+		Sfx.music.set_state(mood)
+		# The guests hear the bout the host hears (they learn of its foes only as they come).
+		if Net.active() and Net.is_host():
+			Net.send_all("music", mood)
+
+## The music a bout calls for: a boss's, a beast hunt's, or a fight's.
+static func fight_mood(m: Match) -> String:
+	var foes := m.enemies()
+	if foes.any(func(e): return e.get("boss", false)):
+		return "boss"
+	if not foes.is_empty() and foes.all(func(e): return e.kind == "beast"):
+		return "beast"
+	return "fight"
 
 func _backdrop_on() -> void:
-	if backdrop or match_ or not visible or DisplayServer.get_name() == "headless" or not world_root.is_inside_tree():
+	if backdrop or backdrop_off or match_ or not visible or DisplayServer.get_name() == "headless" or not world_root.is_inside_tree():
 		return
 	backdrop = Match.new()
 	world_root.add_child(backdrop)
@@ -3325,7 +3681,8 @@ func _gladiator(v: VBoxContainer) -> void:
 	for k in ["hat", "hair", "beard", "cape", "eyes", "mouth"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			ob.add_item(("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))) + ("  (Ironman)" if look_locked(id) else ""))
+			var item_nm := Loc.t("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else Loc.t(String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
+			ob.add_item(Loc.t("%s  (Ironman)") % item_nm if look_locked(id) else item_nm)
 			if look_locked(id):
 				ob.set_item_disabled(ob.item_count - 1, true)
 				ob.set_item_tooltip(ob.item_count - 1, "Won by taking the rudis on Ironman, never once fallen")
@@ -3496,7 +3853,7 @@ func _on_finished(r: Dictionary) -> void:
 				Achievements.unlock("eight_bouts")
 			if int(r.stage) >= 32:
 				Achievements.unlock("halfway")
-			last_result = {"text": "Stage %d cleared: %d denarii." % [r.stage, r.pay]}
+			last_result = {"text": Loc.t("Stage %d cleared: %d denarii.") % [r.stage, r.pay]}
 			if int(r.stage) >= Data.campaign.get("stages", []).size():
 				# The last bout won: the rudis. The campaign begins again, the same man and his
 				# gear, the foes a third tougher each time round (lap).
@@ -3527,7 +3884,7 @@ func _on_finished(r: Dictionary) -> void:
 				return
 		else:
 			_campaign_lost(r)
-			last_result = {"text": ("You fell. Back to the last checkpoint: bout %d, as you left it." % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
+			last_result = {"text": (Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
 	_end_match()
 	if Net.active() and not Net.is_host():
 		show_screen("room")
@@ -3539,10 +3896,19 @@ func _on_finished(r: Dictionary) -> void:
 		else:
 			show_screen("yard" if mode == "campaign" else "main", mission_text)
 
+## The fight's time limit from the host (s): a number within the longest on the list, else none.
+static func _clean_fight_s(v) -> float:
+	if (v is float or v is int) and is_finite(float(v)):
+		return clampf(float(v), 0.0, float(ForgeFight.FIGHT_MIN.max()) * 60.0)
+	return 0.0
+
 func _on_net(type: String, data, _from: int) -> void:
 	match type:
 		"start":
 			if not Net.is_host():
+				if not ff.is_empty():
+					ff = {}   # (the forges are cold: the fight is on)
+					_ff_timer_on(false)
 				_end_match()
 				match_ = Match.new()
 				world_root.add_child(match_)
@@ -3550,7 +3916,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s"))})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
 				match_.lost.connect(_campaign_lost)
@@ -3558,6 +3924,8 @@ func _on_net(type: String, data, _from: int) -> void:
 					# A guest has the yard as the host has it: the stalls open for him too.
 					hub = true
 					match_.station.connect(_open_station)
+					if Sfx.music:
+						Sfx.music.set_state("yard")
 				hud = Hud.new(match_)
 				world_root.add_child(hud)
 				visible = false
@@ -3576,6 +3944,18 @@ func _on_net(type: String, data, _from: int) -> void:
 			# The plates the bout knocked off my armour (the host saw them go).
 			if data is Dictionary and not Net.is_host():
 				set_armor_wear(Armory.add_wear(armor_wear(), data, worn_armor()))
+		"ff_begin":
+			if not Net.is_host() and data is Dictionary:
+				_ff_begin(data, false)
+		"ff_phase":
+			if not Net.is_host() and not ff.is_empty() and (data == "armour" or data == "fight"):
+				_ff_phase(String(data))
+		"ff_kit":
+			if Net.is_host() and not ff.is_empty() and ff.phase != "fight" and Net.peers.has(_from):
+				ff.kits[_from] = ForgeFight.clean_kit(data)
+		"ff_ready":
+			if Net.is_host() and not ff.is_empty() and Net.peers.has(_from):
+				ff.readies[_from] = data == true
 		"doctor":
 			if data is Dictionary and not Net.is_host():
 				_doctor_visit(Body.sanitize(data.get("body", {})), (data.get("news", []) as Array).map(func(x): return str(x).left(80)) if data.get("news") is Array else [], int(data.get("stage", 1)), func(nb): Net.send_host("doctor_done", nb))
@@ -3599,6 +3979,9 @@ func _on_net(type: String, data, _from: int) -> void:
 		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "bone", "held":
 			if match_:
 				match_.guest_message(type, data)
+		"music":
+			if not Net.is_host() and data is String and Music.MOODS.has(data) and Sfx.music:
+				Sfx.music.set_state(data)
 		"purse":
 			# The party's purse, as the host counts it.
 			if not Net.is_host() and (data is int or data is float):
@@ -3614,8 +3997,16 @@ func _on_net(type: String, data, _from: int) -> void:
 				_end_match()
 				show_screen("campaign_end")
 		"purse_add":
-			if Net.is_host() and (data is int or data is float):
-				add_coins(clampi(int(data), -5000, 5000))
+			# What a guest spent comes off the purse; what he puts in, only as much as he may
+			# (Net.purse_take: no more than he took out, and what his fights paid).
+			if Net.is_host() and (data is int or data is float) and is_finite(float(data)):
+				var n := clampi(int(data), -5000, 5000)
+				if n < 0:
+					var before := coins()
+					add_coins(n)
+					Net.purse_spent(_from, before - coins())
+				else:
+					add_coins(Net.purse_take(_from, n))
 		"end":
 			if match_:
 				# (The pay went into the party's purse on the host's side.)
@@ -3651,20 +4042,20 @@ func _campaign_end(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 12)
 	var lap := int(Save.get_value("coop_lap" if Net.active() else "lap", 2))
 	v.add_child(UIStyle.title("THE RUDIS", 40))
-	v.add_child(UIStyle.label("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free." % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
+	v.add_child(UIStyle.label(Loc.t("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.") % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
 	v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
 	if bool(Save.get_value("unbroken_news", false)):
 		Save.set_value("unbroken_news", false)
 		var un := UIStyle.label("UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.", 16, UIStyle.GOLD)
 		un.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(un)
-	v.add_child(UIStyle.label("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger." % ROMAN[clampi(lap - 1, 0, 6)], 15, UIStyle.MUTED))
+	v.add_child(UIStyle.label(Loc.t("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.") % ROMAN[clampi(lap - 1, 0, 6)], 15, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back to the ludus", func(): show_screen("main" if not Net.active() else "room"), true))
 
 func _demo_end(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 12)
 	v.add_child(UIStyle.title("The end of the demo", 40))
-	v.add_child(UIStyle.label("You have fought through all %d bouts of the demo." % Edition.DEMO_STAGES, 17, UIStyle.TEXT))
+	v.add_child(UIStyle.label(Loc.t("You have fought through all %d bouts of the demo.") % Edition.DEMO_STAGES, 17, UIStyle.TEXT))
 	if not Net.active() or Net.is_host():
 		v.add_child(UIStyle.button("Play the demo again from bout 1", func():
 			Save.set_value("coop_stage", 1)
@@ -3683,7 +4074,7 @@ func _screenshot() -> String:
 	if img.save_png(path) != OK:
 		return ""
 	if match_ and is_instance_valid(match_):
-		match_.feed.emit("Screenshot saved: " + path.get_file())
+		match_.feed.emit(Loc.t("Screenshot saved: %s") % path.get_file())
 	return path
 
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
@@ -3732,18 +4123,18 @@ func _campaign_mode(v: VBoxContainer) -> void:
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 8)
 		card.add_child(col)
-		col.add_child(UIStyle.title(String(md.name), 26))
-		var d := UIStyle.label(String(md.desc), 14, UIStyle.TEXT)
+		col.add_child(UIStyle.title(Loc.t(String(md.name)), 26))
+		var d := UIStyle.label(Loc.t(String(md.desc)), 14, UIStyle.TEXT)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.custom_minimum_size = Vector2(0, 72)
 		col.add_child(d)
 		if m == "ironman":
-			var rw := UIStyle.label(("Earned: " if CampaignRun.unbroken() else "The reward: ") + "the Unbroken laurel, and Virtus from the trainer.", 13, UIStyle.GOLD)
+			var rw := UIStyle.label("Earned: the Unbroken laurel, and Virtus from the trainer." if CampaignRun.unbroken() else "The reward: the Unbroken laurel, and Virtus from the trainer.", 13, UIStyle.GOLD)
 			rw.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			col.add_child(rw)
-		col.add_child(UIStyle.button("Begin as a %s" % String(md.name).to_lower() if m == "legionary" else "Begin as an ironman", func():
+		col.add_child(UIStyle.button("Begin as a legionary" if m == "legionary" else "Begin as an ironman", func():
 			CampaignRun.begin(m, coop)
-			enter_yard("A new campaign begins · " + String(md.name)), m == "legionary"))
+			enter_yard(Loc.t("A new campaign begins · %s") % Loc.t(String(md.name))), m == "legionary"))
 
 func _toggle_pause() -> void:
 	if pause_layer:
@@ -3792,6 +4183,10 @@ func _toggle_pause() -> void:
 		v.add_child(UIStyle.button("Back to the yard (everyone)", func():
 			_toggle_pause()
 			enter_yard("The host called the party back")))
+	if Net.active() and not Net.peers.is_empty():
+		_player_rows(v, func():
+			_toggle_pause()
+			_toggle_pause())
 	if Net.active():
 		v.add_child(UIStyle.button("Close the room (main menu)" if Net.is_host() else "Leave the room (main menu)", func():
 			_toggle_pause()

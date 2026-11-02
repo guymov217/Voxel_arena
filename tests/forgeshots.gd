@@ -1,6 +1,6 @@
 extends Node
 ## The forge (`-- --probe forgeshots`, needs a display): the cards (an axe with two twists) and
-## the voxel tools, My designs, saved to SHOT_DIR.
+## the voxel tools, a change and what it did by the bars, My designs, saved to SHOT_DIR.
 
 func _save(f, name_: String) -> void:
 	for i in 6:
@@ -20,6 +20,19 @@ func _ready() -> void:
 	await _save(f, "cards")
 	f._show_mode("voxels")
 	await _save(f, "voxels")
+	# A change: lead put on the head; the bars show what it did (▲ / ▼) for a moment.
+	var top := -100
+	for k in f.cells:
+		top = maxi(top, k.y)
+	var add := []
+	for k in f.cells.keys():
+		if k.y >= top - 4:
+			add.append(k + Vector3i(0, 0, 1))
+			add.append(k + Vector3i(0, 0, -1))
+	f.mat = "lead"
+	f.job = "blunt"
+	f._place(add)
+	await _save(f, "change")
 	f._save_design()
 	f._show_mode("gallery")
 	for i in 30:

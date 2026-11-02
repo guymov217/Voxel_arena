@@ -1,0 +1,8078 @@
+{
+"Mic": [
+"scripts/net/voice_chat.gd:37",
+"scripts/net/voice_chat.gd:40",
+"scripts/net/voice_chat.gd:46",
+"scripts/net/voice_chat.gd:49"
+],
+"SFX": [
+"scripts/net/voice_chat.gd:131",
+"scripts/autoload/sfx.gd:31",
+"scripts/autoload/sfx.gd:36",
+"scripts/autoload/sfx.gd:41",
+"scripts/autoload/sfx.gd:45",
+"scripts/autoload/sfx.gd:63"
+],
+"Gladiator": [
+"scripts/net/net.gd:30",
+"scripts/ui/menu.gd:158",
+"scripts/ui/menu.gd:479",
+"scripts/ui/menu.gd:651",
+"scripts/ui/menu.gd:802",
+"scripts/ui/menu.gd:2340",
+"scripts/ui/menu.gd:2350",
+"scripts/ui/menu.gd:3494",
+"scripts/ui/menu.gd:3669",
+"scripts/ui/menu.gd:3862",
+"scripts/fighter/fighter.gd:56",
+"scripts/game/yard.gd:44",
+"scripts/game/modes.gd:72",
+"scripts/game/match.gd:318",
+"scripts/game/match.gd:677",
+"scripts/autoload/save.gd:5"
+],
+"Could not reach the host": [
+"scripts/net/net.gd:55"
+],
+"NET_LAG": [
+"scripts/net/net.gd:60",
+"scripts/net/net.gd:61"
+],
+"NET_LOSS": [
+"scripts/net/net.gd:61",
+"scripts/net/net.gd:61"
+],
+"Steam": [
+"scripts/net/net.gd:106",
+"scripts/net/net.gd:108"
+],
+"Steam is not running; multiplayer falls back to direct connections.": [
+"scripts/net/net.gd:113"
+],
+"Steam is not running": [
+"scripts/net/net.gd:137",
+"scripts/net/net.gd:174"
+],
+"Steam could not make the lobby (%d)": [
+"scripts/net/net.gd:143"
+],
+"%s's arena": [
+"scripts/net/net.gd:147"
+],
+"Steam networking failed (%d)": [
+"scripts/net/net.gd:152",
+"scripts/net/net.gd:189"
+],
+"Could not join that lobby (%d)": [
+"scripts/net/net.gd:180"
+],
+"CN=": [
+"scripts/net/net.gd:211"
+],
+"Guest": [
+"scripts/net/net.gd:489",
+"scripts/net/net.gd:611"
+],
+"Weapon": [
+"scripts/net/net.gd:541",
+"scripts/ui/weapon_view.gd:49",
+"scripts/ui/menu.gd:2981",
+"scripts/game/match.gd:1591"
+],
+"The host removed you from the room": [
+"scripts/net/net.gd:591"
+],
+"BLOOD": [
+"scripts/ui/hud.gd:372",
+"scripts/ui/hud.gd:792"
+],
+"BREATH": [
+"scripts/ui/hud.gd:373",
+"scripts/ui/hud.gd:792"
+],
+"THE CROWD": [
+"scripts/ui/hud.gd:374",
+"scripts/ui/hud.gd:792"
+],
+"Status": [
+"scripts/ui/hud.gd:376"
+],
+"FIRST": [
+"scripts/ui/hud.gd:727"
+],
+"BOOM": [
+"scripts/ui/hud.gd:727"
+],
+"BLOOD · CRITICAL": [
+"scripts/ui/hud.gd:791"
+],
+"WINDED": [
+"scripts/ui/hud.gd:791"
+],
+"At death's door: a friend can lift you · %d s": [
+"scripts/ui/hud.gd:824"
+],
+"Hold to lift %s": [
+"scripts/ui/hud.gd:828"
+],
+"%s hangs in your grip · hurl him where you look · %d s": [
+"scripts/ui/hud.gd:831"
+],
+"Pull away to prise its jaws open · strike its head": [
+"scripts/ui/hud.gd:834"
+],
+"Throw the %s": [
+"scripts/ui/hud.gd:837"
+],
+"Throw · slam · let go": [
+"scripts/ui/hud.gd:838"
+],
+"Stuck fast in him · pull back or step away to wrench it out · let go": [
+"scripts/ui/hud.gd:840"
+],
+"Hold to aim, let go to throw the %s · its number again puts it away": [
+"scripts/ui/hud.gd:842"
+],
+"Talk to %s": [
+"scripts/ui/hud.gd:849"
+],
+"Into the arena: the next fight": [
+"scripts/ui/hud.gd:851"
+],
+"Pick up the %s": [
+"scripts/ui/hud.gd:865"
+],
+"Grab the %s": [
+"scripts/ui/hud.gd:871"
+],
+"One hand": [
+"scripts/ui/hud.gd:883",
+"scripts/ui/forge.gd:738"
+],
+"Both hands · swap hands": [
+"scripts/ui/hud.gd:884"
+],
+"THE ARENA": [
+"scripts/ui/hud.gd:907",
+"scripts/ui/hud.gd:922",
+"scripts/ui/hud.gd:925"
+],
+"CO-OP · BOUT %d · %s": [
+"scripts/ui/hud.gd:910"
+],
+"BOUT %d · %s": [
+"scripts/ui/hud.gd:910"
+],
+"STAGE %d · ROUND %d OF 3": [
+"scripts/ui/hud.gd:912"
+],
+"THE LUDUS YARD": [
+"scripts/ui/hud.gd:915",
+"scripts/ui/menu.gd:1121",
+"scripts/ui/menu.gd:2379",
+"scripts/ui/menu.gd:2515"
+],
+"THE GATE LEADS TO THE ARENA": [
+"scripts/ui/hud.gd:917"
+],
+"THE TRAINING GROUND": [
+"scripts/ui/hud.gd:919"
+],
+"right hand: %s": [
+"scripts/ui/hud.gd:964"
+],
+"left hand: %s": [
+"scripts/ui/hud.gd:964"
+],
+"nothing in hand": [
+"scripts/ui/hud.gd:964"
+],
+"%s · left click: the other hand · right click: call it off": [
+"scripts/ui/hud.gd:965"
+],
+"IN HAND: %s": [
+"scripts/ui/hud.gd:1026"
+],
+"DECREES: %s": [
+"scripts/ui/hud.gd:1038"
+],
+"TUTORIAL · STEP %d OF %d": [
+"scripts/ui/hud.gd:1044"
+],
+"Button": [
+"scripts/ui/style.gd:123",
+"scripts/ui/style.gd:124",
+"scripts/ui/style.gd:138",
+"scripts/ui/style.gd:139",
+"scripts/ui/style.gd:140"
+],
+"Label": [
+"scripts/ui/style.gd:179"
+],
+"Frame": [
+"scripts/ui/style.gd:434"
+],
+"Red": [
+"scripts/ui/armour_forge.gd:25",
+"scripts/game/modes.gd:278",
+"scripts/game/modes.gd:434",
+"scripts/game/modes.gd:505"
+],
+"Blue": [
+"scripts/ui/armour_forge.gd:25",
+"scripts/game/modes.gd:278",
+"scripts/game/modes.gd:434",
+"scripts/game/modes.gd:505"
+],
+"Gold": [
+"scripts/ui/armour_forge.gd:25",
+"scripts/game/forge_lib.gd:858",
+"data/materials.json#name"
+],
+"White": [
+"scripts/ui/armour_forge.gd:25"
+],
+"Black": [
+"scripts/ui/armour_forge.gd:25"
+],
+"Green": [
+"scripts/ui/armour_forge.gd:25"
+],
+"Purple": [
+"scripts/ui/armour_forge.gd:25"
+],
+"Bronze": [
+"scripts/ui/armour_forge.gd:25",
+"data/materials.json#name"
+],
+"Undo": [
+"scripts/ui/armour_forge.gd:201",
+"scripts/ui/forge.gd:866"
+],
+"Clear": [
+"scripts/ui/armour_forge.gd:205",
+"scripts/ui/forge.gd:872"
+],
+"Cover all round": [
+"scripts/ui/armour_forge.gd:209"
+],
+"Mirror ⟷": [
+"scripts/ui/armour_forge.gd:216",
+"scripts/ui/forge.gd:851"
+],
+"Mirror ⇅": [
+"scripts/ui/armour_forge.gd:221",
+"scripts/ui/forge.gd:856"
+],
+"Plain": [
+"scripts/ui/armour_forge.gd:234",
+"scripts/ui/menu.gd:3684"
+],
+"◀ Turn": [
+"scripts/ui/armour_forge.gd:260"
+],
+"Turn ▶": [
+"scripts/ui/armour_forge.gd:263"
+],
+"Left click: a plate on (in the paint picked; on a plate, it paints it) · right click: off · middle drag or Turn: round him · Shift + middle drag: slide · wheel: nearer · plates may stand out from the body, up and wide (each one weighs)": [
+"scripts/ui/armour_forge.gd:316"
+],
+"Armourer's bench": [
+"scripts/ui/armour_forge.gd:322"
+],
+"WHERE": [
+"scripts/ui/armour_forge.gd:323",
+"scripts/ui/menu.gd:1934"
+],
+"  (both sides alike)": [
+"scripts/ui/armour_forge.gd:323"
+],
+"MATERIAL": [
+"scripts/ui/armour_forge.gd:334",
+"scripts/ui/menu.gd:1935"
+],
+"Name it": [
+"scripts/ui/armour_forge.gd:352",
+"scripts/ui/forge.gd:205"
+],
+"Leave the bench": [
+"scripts/ui/armour_forge.gd:362"
+],
+"Forge and wear": [
+"scripts/ui/armour_forge.gd:363"
+],
+"Keep it": [
+"scripts/ui/armour_forge.gd:363",
+"scripts/ui/menu.gd:1384"
+],
+"%d plates": [
+"scripts/ui/armour_forge.gd:379"
+],
+"Protection %d%%": [
+"scripts/ui/armour_forge.gd:380"
+],
+"Weight %.1f kg  (all you wear: %.1f kg)": [
+"scripts/ui/armour_forge.gd:381",
+"scripts/ui/menu.gd:2005"
+],
+"Breath when running and swinging ×%.2f · pace %d%%": [
+"scripts/ui/armour_forge.gd:382"
+],
+"Made at the smith: %d denarii": [
+"scripts/ui/armour_forge.gd:384"
+],
+"  (purse %d)": [
+"scripts/ui/armour_forge.gd:384"
+],
+"FRONT": [
+"scripts/ui/armour_forge.gd:406"
+],
+"BACK": [
+"scripts/ui/armour_forge.gd:406"
+],
+"Body": [
+"scripts/ui/armour_forge.gd:542",
+"scripts/ui/menu.gd:1640",
+"scripts/ui/menu.gd:1648",
+"scripts/game/armory.gd:75"
+],
+"Try it in the arena": [
+"scripts/ui/forge.gd:35",
+"scripts/ui/forge.gd:473"
+],
+"Balanced": [
+"scripts/ui/forge.gd:92",
+"scripts/game/forge_lib.gd:654",
+"scripts/game/forge_lib.gd:854"
+],
+"Head-heavy": [
+"scripts/ui/forge.gd:92",
+"scripts/game/forge_lib.gd:655"
+],
+"Speed": [
+"scripts/ui/forge.gd:95"
+],
+"Damage": [
+"scripts/ui/forge.gd:95"
+],
+"Reach": [
+"scripts/ui/forge.gd:95"
+],
+"Vs armour": [
+"scripts/ui/forge.gd:95"
+],
+"Build": [
+"scripts/ui/forge.gd:107"
+],
+"Click a face: a voxel goes on it (hold and drag for more)  [B]": [
+"scripts/ui/forge.gd:107"
+],
+"Erase": [
+"scripts/ui/forge.gd:107"
+],
+"Click voxels: take them off (right click erases too)  [X]": [
+"scripts/ui/forge.gd:107"
+],
+"Line": [
+"scripts/ui/forge.gd:107"
+],
+"Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]": [
+"scripts/ui/forge.gd:107"
+],
+"✋ Move hand": [
+"scripts/ui/forge.gd:107"
+],
+"Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]": [
+"scripts/ui/forge.gd:107"
+],
+"Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one; Q takes up the block under the mouse)": [
+"scripts/ui/forge.gd:114"
+],
+"Erase: click blocks, or hold the right button anywhere": [
+"scripts/ui/forge.gd:115"
+],
+"Line: click where it starts": [
+"scripts/ui/forge.gd:116"
+],
+"Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand": [
+"scripts/ui/forge.gd:117"
+],
+"THE FORGE": [
+"scripts/ui/forge.gd:176"
+],
+"1 · Quick start": [
+"scripts/ui/forge.gd:184"
+],
+"Pick a base weapon and up to two twists: done in two clicks.": [
+"scripts/ui/forge.gd:184"
+],
+"2 · Shape by hand": [
+"scripts/ui/forge.gd:184"
+],
+"Add, paint and take off single blocks on the anvil.": [
+"scripts/ui/forge.gd:184"
+],
+"My designs": [
+"scripts/ui/forge.gd:184",
+"scripts/ui/menu.gd:1017",
+"scripts/ui/menu.gd:1728",
+"scripts/ui/menu.gd:1735"
+],
+"Weapons you saved as templates: load one onto the anvil.": [
+"scripts/ui/forge.gd:184"
+],
+"Armour": [
+"scripts/ui/forge.gd:194",
+"scripts/ui/menu.gd:1132",
+"scripts/ui/menu.gd:2878"
+],
+"Make a piece of armour, plate by plate: where it goes, what it is made of": [
+"scripts/ui/forge.gd:195"
+],
+"Name": [
+"scripts/ui/forge.gd:201",
+"scripts/ui/menu.gd:3675"
+],
+"Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point.": [
+"scripts/ui/forge.gd:227"
+],
+"Take it": [
+"scripts/ui/forge.gd:247"
+],
+"Pay and take it": [
+"scripts/ui/forge.gd:247"
+],
+"Swing it": [
+"scripts/ui/forge.gd:248"
+],
+"Save design": [
+"scripts/ui/forge.gd:250"
+],
+"Back": [
+"scripts/ui/forge.gd:251",
+"scripts/ui/menu.gd:852",
+"scripts/ui/menu.gd:1023",
+"scripts/ui/menu.gd:1803",
+"scripts/ui/menu.gd:2149",
+"scripts/ui/menu.gd:2485",
+"scripts/ui/menu.gd:2604",
+"scripts/ui/menu.gd:2828",
+"scripts/ui/menu.gd:2996",
+"scripts/ui/menu.gd:3078",
+"scripts/ui/menu.gd:3196"
+],
+"Leave it as it was": [
+"scripts/ui/forge.gd:251"
+],
+"A gladiator": [
+"scripts/ui/forge.gd:453"
+],
+"What stands in front of the weapon": [
+"scripts/ui/forge.gd:466"
+],
+"Fights back": [
+"scripts/ui/forge.gd:469",
+"scripts/ui/menu.gd:806"
+],
+"It needs somewhere to be held: build a Grip block, or ✋ Move hand": [
+"scripts/ui/forge.gd:476",
+"scripts/ui/forge.gd:1903"
+],
+"1 · PICK A BASE": [
+"scripts/ui/forge.gd:486"
+],
+"2 · ADD UP TO %d TWISTS": [
+"scripts/ui/forge.gd:500"
+],
+"Deal again": [
+"scripts/ui/forge.gd:525"
+],
+"Customize the voxels": [
+"scripts/ui/forge.gd:530"
+],
+"New weapon": [
+"scripts/ui/forge.gd:543",
+"scripts/ui/menu.gd:2757",
+"scripts/game/forge_lib.gd:17"
+],
+"Cut": [
+"scripts/ui/forge.gd:588"
+],
+"sharp edge": [
+"scripts/ui/forge.gd:588"
+],
+"Stab": [
+"scripts/ui/forge.gd:588"
+],
+"Crush": [
+"scripts/ui/forge.gd:588"
+],
+"head, body": [
+"scripts/ui/forge.gd:588"
+],
+"Hold": [
+"scripts/ui/forge.gd:588"
+],
+"Metals": [
+"scripts/ui/forge.gd:590"
+],
+"Wood and stone": [
+"scripts/ui/forge.gd:590"
+],
+"Tricks": [
+"scripts/ui/forge.gd:590"
+],
+"Gems": [
+"scripts/ui/forge.gd:590",
+"scripts/game/tutorial.gd:18"
+],
+"Blank anvil · build from nothing": [
+"scripts/ui/forge.gd:640"
+],
+"Forge a new weapon from nothing": [
+"scripts/ui/forge.gd:642",
+"scripts/ui/menu.gd:1225"
+],
+"%d%% · honing %d (%d Cut/Stab block)": [
+"scripts/ui/forge.gd:659"
+],
+"%d%% · honing %d (%d Cut/Stab blocks)": [
+"scripts/ui/forge.gd:659"
+],
+"1 · WHAT THE BLOCK DOES": [
+"scripts/ui/forge.gd:666"
+],
+"2 · MATERIAL": [
+"scripts/ui/forge.gd:691"
+],
+"  (soft: a poor edge)": [
+"scripts/ui/forge.gd:719"
+],
+"Held in": [
+"scripts/ui/forge.gd:734"
+],
+"Two hands": [
+"scripts/ui/forge.gd:738"
+],
+"The grip is too short for two hands: two fists need a grip of 5 blocks or more": [
+"scripts/ui/forge.gd:747"
+],
+"Swung in both hands: slower to start, much more behind each blow": [
+"scripts/ui/forge.gd:756"
+],
+"In one hand: quick, the other hand free for a shield": [
+"scripts/ui/forge.gd:756"
+],
+"✋ Main hand": [
+"scripts/ui/forge.gd:759"
+],
+"✋ Other hand": [
+"scripts/ui/forge.gd:761"
+],
+"Click the block where the main hand holds it (its ring: gold)": [
+"scripts/ui/forge.gd:771"
+],
+"Click the block where the other hand holds it (its ring: bronze)": [
+"scripts/ui/forge.gd:771"
+],
+"Put the main hand on a block: click it on the weapon": [
+"scripts/ui/forge.gd:776"
+],
+"Put the other hand on a block: click it on the weapon": [
+"scripts/ui/forge.gd:776"
+],
+"Throwable": [
+"scripts/ui/forge.gd:781",
+"scripts/game/forge_lib.gd:857"
+],
+"Sharpness": [
+"scripts/ui/forge.gd:796"
+],
+"Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\\nHoning each Cut or Stab block costs, by the sharpness set:\\n%s": [
+"scripts/ui/forge.gd:806"
+],
+"  %d%%: %.1f denarii a block": [
+"scripts/ui/forge.gd:806"
+],
+"Sharpness: only for Cut and Stab blocks (none on it yet)": [
+"scripts/ui/forge.gd:817"
+],
+"Left and right alike": [
+"scripts/ui/forge.gd:852"
+],
+"Front and back alike": [
+"scripts/ui/forge.gd:857"
+],
+"Redo": [
+"scripts/ui/forge.gd:867"
+],
+"Turn sharp block (R)": [
+"scripts/ui/forge.gd:868"
+],
+"Point at an Edge or a Point block and press R: it turns to face each way in turn": [
+"scripts/ui/forge.gd:869"
+],
+"An Edge or Point block faces away from the face you put it on; R turns the one under the mouse": [
+"scripts/ui/forge.gd:870"
+],
+"Surprise me": [
+"scripts/ui/forge.gd:884"
+],
+"Say where it is held before you save it: build a Grip block, or ✋ Move hand": [
+"scripts/ui/forge.gd:916"
+],
+"Saved to My designs: \\\"%s\\\"": [
+"scripts/ui/forge.gd:923"
+],
+"MY DESIGNS": [
+"scripts/ui/forge.gd:928",
+"scripts/ui/menu.gd:1614"
+],
+"Nothing saved yet": [
+"scripts/ui/forge.gd:931"
+],
+"Load": [
+"scripts/ui/forge.gd:953"
+],
+"Buy · %d": [
+"scripts/ui/forge.gd:957"
+],
+"Delete": [
+"scripts/ui/forge.gd:962"
+],
+"Edge: cuts. Put it along the side of a blade or an axe head.": [
+"scripts/ui/forge.gd:988"
+],
+"Point: stabs and pierces armour. Put it at the tip.": [
+"scripts/ui/forge.gd:989"
+],
+"Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.": [
+"scripts/ui/forge.gd:990"
+],
+"Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.": [
+"scripts/ui/forge.gd:991"
+],
+"The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.": [
+"scripts/ui/forge.gd:994"
+],
+"The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.": [
+"scripts/ui/forge.gd:995"
+],
+"Softer and heavier: a fair edge that dulls sooner; good weight for a head.": [
+"scripts/ui/forge.gd:996"
+],
+"Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.": [
+"scripts/ui/forge.gd:997"
+],
+"Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.": [
+"scripts/ui/forge.gd:998"
+],
+"Light and fairly hard: quick little blades and points, but they chip and snap.": [
+"scripts/ui/forge.gd:999"
+],
+"Light and cheap: fast handles and long shafts that keep the weight out of the hand; no edge.": [
+"scripts/ui/forge.gd:1000"
+],
+"Next to weightless and soft: wraps a grip; hurts no one by itself.": [
+"scripts/ui/forge.gd:1001"
+],
+"The densest: a few blocks in a head give it a crushing weight and pull the balance out to it; in a pommel they balance a long blade.": [
+"scripts/ui/forge.gd:1002"
+],
+"Light, soft and squeaky: bounces off and barely hurts. For laughs.": [
+"scripts/ui/forge.gd:1003"
+],
+"Soft and slappy: knocks a man about with a loud slap, cuts nothing.": [
+"scripts/ui/forge.gd:1004"
+],
+"Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.": [
+"scripts/ui/forge.gd:1005"
+],
+"Goes off when it strikes hard: a blast that hurts everyone close, you as well.": [
+"scripts/ui/forge.gd:1006"
+],
+"Bouncy: a blow springs back hard and knocks the man away. Boing.": [
+"scripts/ui/forge.gd:1007"
+],
+"Sticks to what it hits: the weapon stays in him, or he stays on it.": [
+"scripts/ui/forge.gd:1008"
+],
+"Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.": [
+"scripts/ui/forge.gd:1009"
+],
+"Pulls iron and steel to it: blades and armour are dragged in.": [
+"scripts/ui/forge.gd:1010"
+],
+"A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.": [
+"scripts/ui/forge.gd:1011"
+],
+"A gem socket of frost: a blow may freeze the limb it strikes stiff and give it frostbite: the flesh there whitens, blackens and dies away, bloodless. More sapphires, a deeper frost. Costly.": [
+"scripts/ui/forge.gd:1012"
+],
+"A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.": [
+"scripts/ui/forge.gd:1013"
+],
+"%s   Hardness %s   Weight %s": [
+"scripts/ui/forge.gd:1020"
+],
+"%s: %s  Hardness %s  Weight %s": [
+"scripts/ui/forge.gd:1026"
+],
+"Weight": [
+"scripts/ui/forge.gd:1032",
+"scripts/ui/forge.gd:1052"
+],
+"%.2f kg": [
+"scripts/ui/forge.gd:1053"
+],
+"%+.2f kg": [
+"scripts/ui/forge.gd:1064"
+],
+"BALANCE": [
+"scripts/ui/forge.gd:1090"
+],
+"The smith: \\\"%s\\\"": [
+"scripts/ui/forge.gd:1130"
+],
+"The dummy: %s  ·  %d voxels": [
+"scripts/ui/forge.gd:1131"
+],
+"Free in training": [
+"scripts/ui/forge.gd:1154"
+],
+"Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii.": [
+"scripts/ui/forge.gd:1156"
+],
+"You have %d · you get %d back": [
+"scripts/ui/forge.gd:1160"
+],
+"You have %d · this costs %d (%d more needed)": [
+"scripts/ui/forge.gd:1162"
+],
+"You have %d · this costs %d": [
+"scripts/ui/forge.gd:1163"
+],
+"At the smith: %d denarii": [
+"scripts/ui/forge.gd:1188"
+],
+"You have %d   ·   You get %d back": [
+"scripts/ui/forge.gd:1194"
+],
+"You have %d   ·   This costs %d   (%d more needed)": [
+"scripts/ui/forge.gd:1197"
+],
+"You have %d   ·   This costs %d": [
+"scripts/ui/forge.gd:1200"
+],
+"MAIN": [
+"scripts/ui/forge.gd:1322"
+],
+"OTHER": [
+"scripts/ui/forge.gd:1322"
+],
+"Line: now click where it ends (right click: start again)": [
+"scripts/ui/forge.gd:1665"
+],
+"Too close to the other hand: two fists need 3 blocks between them": [
+"scripts/ui/forge.gd:1689"
+],
+"The main hand holds it here": [
+"scripts/ui/forge.gd:1694"
+],
+"The other hand holds it here": [
+"scripts/ui/forge.gd:1694"
+],
+"The hand holds it here": [
+"scripts/ui/forge.gd:1694"
+],
+"This edge faces right (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces left (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces up (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces down (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces front (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces back (R: turn it again)": [
+"scripts/ui/forge.gd:1720"
+],
+"This edge faces as the weapon's shape has it (R: turn it)": [
+"scripts/ui/forge.gd:1720"
+],
+"This point faces right (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces left (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces up (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces down (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces front (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces back (R: turn it again)": [
+"scripts/ui/forge.gd:1721"
+],
+"This point faces as the weapon's shape has it (R: turn it)": [
+"scripts/ui/forge.gd:1721"
+],
+"Only a Cut or a Stab block turns: point at one and press R": [
+"scripts/ui/forge.gd:1728"
+],
+"A new block must touch the weapon": [
+"scripts/ui/forge.gd:1758"
+],
+"That is the most the anvil holds (%d voxels)": [
+"scripts/ui/forge.gd:1761"
+],
+"Not enough denarii for that": [
+"scripts/ui/forge.gd:1768"
+],
+"Cut through: %d blocks fall away": [
+"scripts/ui/forge.gd:1799"
+],
+"Next blocks: %s, %s": [
+"scripts/ui/forge.gd:1869"
+],
+"Mirror ⟷ %s, mirror ⇅ %s": [
+"scripts/ui/forge.gd:1877"
+],
+"On": [
+"scripts/ui/forge.gd:1877",
+"scripts/ui/forge.gd:1877"
+],
+"Off": [
+"scripts/ui/forge.gd:1877",
+"scripts/ui/forge.gd:1877",
+"scripts/ui/menu.gd:3362",
+"scripts/ui/menu.gd:3438"
+],
+"Taken up: %s, %s (the next blocks are made of it)": [
+"scripts/ui/forge.gd:1886"
+],
+"Not enough denarii for that (a keener edge costs more)": [
+"scripts/ui/forge.gd:1908"
+],
+"[b]NET[/b] host · %s · %d players   [color=#9a8f80](F3)[/color]": [
+"scripts/ui/net_meter.gd:59"
+],
+"[b]NET[/b] guest · %s · %d players   [color=#9a8f80](F3)[/color]": [
+"scripts/ui/net_meter.gd:59"
+],
+"worst ping %s": [
+"scripts/ui/net_meter.gd:60"
+],
+"ping %s": [
+"scripts/ui/net_meter.gd:60"
+],
+"%d ms": [
+"scripts/ui/net_meter.gd:60",
+"scripts/ui/net_meter.gd:63"
+],
+"host keeps up %s": [
+"scripts/ui/net_meter.gd:61"
+],
+"%d/120 steps": [
+"scripts/ui/net_meter.gd:61",
+"scripts/ui/net_meter.gd:64"
+],
+"snapshots %s, longest wait %s": [
+"scripts/ui/net_meter.gd:63"
+],
+"my game %s": [
+"scripts/ui/net_meter.gd:64"
+],
+"in %.0f KB/s   out %.0f KB/s": [
+"scripts/ui/net_meter.gd:65"
+],
+"Close": [
+"scripts/ui/weapon_view.gd:52"
+],
+"Drag to turn it · wheel to bring it nearer": [
+"scripts/ui/weapon_view.gd:97"
+],
+"Backdrop": [
+"scripts/ui/menu.gd:65"
+],
+"The host left": [
+"scripts/ui/menu.gd:154"
+],
+"◀  Leave the market  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"◀  Leave the smith  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"◀  Leave the physician  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"◀  Leave the board  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"◀  Leave the gate  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"◀  Leave the stall  (Esc)": [
+"scripts/ui/menu.gd:336"
+],
+"WRECKSMITH": [
+"scripts/ui/menu.gd:399",
+"scripts/ui/menu.gd:4071"
+],
+"DEMO": [
+"scripts/ui/menu.gd:413"
+],
+"FORGE  ·  FIGHT  ·  FALL": [
+"scripts/ui/menu.gd:426"
+],
+"Continue the campaign": [
+"scripts/ui/menu.gd:451"
+],
+"Begin the campaign": [
+"scripts/ui/menu.gd:451"
+],
+"Bout %s of %d · %s": [
+"scripts/ui/menu.gd:452"
+],
+"Sixty-four bouts to freedom": [
+"scripts/ui/menu.gd:452"
+],
+"Bread & Circuses": [
+"scripts/ui/menu.gd:458",
+"scripts/ui/menu.gd:604"
+],
+"Your gladiator": [
+"scripts/ui/menu.gd:459",
+"scripts/ui/menu.gd:3666"
+],
+"The Ludus yard (admin)": [
+"scripts/ui/menu.gd:461"
+],
+"Arena": [
+"scripts/ui/menu.gd:463"
+],
+"Training": [
+"scripts/ui/menu.gd:464",
+"scripts/ui/menu.gd:748"
+],
+"The forge": [
+"scripts/ui/menu.gd:465",
+"scripts/game/tutorial.gd:16"
+],
+"Multiplayer": [
+"scripts/ui/menu.gd:466",
+"scripts/ui/menu.gd:3059"
+],
+"Settings": [
+"scripts/ui/menu.gd:475",
+"scripts/ui/menu.gd:4179"
+],
+"Quit": [
+"scripts/ui/menu.gd:476"
+],
+"%s  ·  %d denarii%s": [
+"scripts/ui/menu.gd:479"
+],
+"  ·  Unbroken": [
+"scripts/ui/menu.gd:479"
+],
+"Back in the yard": [
+"scripts/ui/menu.gd:508"
+],
+"The arena gate": [
+"scripts/ui/menu.gd:524",
+"scripts/ui/menu.gd:578",
+"scripts/game/yard.gd:8"
+],
+"The host leads the party through": [
+"scripts/ui/menu.gd:524"
+],
+"Pick the fight. You come back to the yard afterwards.": [
+"scripts/ui/menu.gd:579"
+],
+"You have finished the demo": [
+"scripts/ui/menu.gd:584",
+"scripts/ui/menu.gd:597"
+],
+"Next co-op bout: %s · %s": [
+"scripts/ui/menu.gd:589"
+],
+"Bout %d": [
+"scripts/ui/menu.gd:589",
+"scripts/ui/menu.gd:601",
+"scripts/game/yard_play.gd:132",
+"scripts/game/match.gd:332",
+"scripts/autoload/data.gd:123"
+],
+"The co-op campaign · bout %d (all of you)": [
+"scripts/ui/menu.gd:590"
+],
+"The host leads the party through the gate.": [
+"scripts/ui/menu.gd:592"
+],
+"Next bout: %s · %s": [
+"scripts/ui/menu.gd:601"
+],
+"The Campaign · bout %d": [
+"scripts/ui/menu.gd:602"
+],
+"An arena mode for the room": [
+"scripts/ui/menu.gd:607"
+],
+"Fights and party modes": [
+"scripts/ui/menu.gd:607"
+],
+"Close the room (main menu)": [
+"scripts/ui/menu.gd:611",
+"scripts/ui/menu.gd:4191"
+],
+"Leave the room (main menu)": [
+"scripts/ui/menu.gd:611",
+"scripts/ui/menu.gd:4191"
+],
+"Leave the yard (main menu)": [
+"scripts/ui/menu.gd:613"
+],
+"The mission board": [
+"scripts/ui/menu.gd:625",
+"scripts/game/yard.gd:11"
+],
+"Rank: %s · reputation %d%s": [
+"scripts/ui/menu.gd:627"
+],
+" · %s at %d": [
+"scripts/ui/menu.gd:627"
+],
+" · the highest rank": [
+"scripts/ui/menu.gd:627"
+],
+"For the next fight:": [
+"scripts/ui/menu.gd:637"
+],
+"%s  %s  (%d/%d) · %d denarii, %d reputation": [
+"scripts/ui/menu.gd:642"
+],
+"+%d reputation": [
+"scripts/ui/menu.gd:665"
+],
+" · missions done: %s (+%d denarii)": [
+"scripts/ui/menu.gd:667"
+],
+" · NEW RANK: %s!": [
+"scripts/ui/menu.gd:669"
+],
+"Controls": [
+"scripts/ui/menu.gd:678",
+"scripts/ui/menu.gd:3169"
+],
+"Click a key, then press the new one (Esc cancels). Gamepad: left stick walks, right stick looks; hold the right trigger and the right stick moves the sword hand, the left trigger the shield hand. A jump, B kick, X grab, Y throw, LB shove, RB thrust, D-pad uses the kit.": [
+"scripts/ui/menu.gd:679"
+],
+"Press a key…": [
+"scripts/ui/menu.gd:696"
+],
+"Reset to defaults": [
+"scripts/ui/menu.gd:701"
+],
+"Back to the defaults": [
+"scripts/ui/menu.gd:703"
+],
+"Done": [
+"scripts/ui/menu.gd:703",
+"scripts/ui/menu.gd:3707"
+],
+"That key cannot be bound": [
+"scripts/ui/menu.gd:716"
+],
+"Tutorial": [
+"scripts/ui/menu.gd:751"
+],
+"THE ENEMY": [
+"scripts/ui/menu.gd:792"
+],
+"The ": [
+"scripts/ui/menu.gd:796"
+],
+"Who": [
+"scripts/ui/menu.gd:802"
+],
+"Nobody": [
+"scripts/ui/menu.gd:802"
+],
+"How many": [
+"scripts/ui/menu.gd:803"
+],
+"One": [
+"scripts/ui/menu.gd:803"
+],
+"Two": [
+"scripts/ui/menu.gd:803"
+],
+"Three": [
+"scripts/ui/menu.gd:803"
+],
+"Their weapon": [
+"scripts/ui/menu.gd:805"
+],
+"Random": [
+"scripts/ui/menu.gd:805",
+"scripts/ui/menu.gd:3697"
+],
+"Bare hands": [
+"scripts/ui/menu.gd:805",
+"scripts/ui/menu.gd:820"
+],
+"Behaviour": [
+"scripts/ui/menu.gd:806"
+],
+"Defends only": [
+"scripts/ui/menu.gd:806"
+],
+"Stands still (a dummy)": [
+"scripts/ui/menu.gd:806"
+],
+"Walks about, never attacks": [
+"scripts/ui/menu.gd:806"
+],
+"Difficulty": [
+"scripts/ui/menu.gd:807"
+],
+"YOU": [
+"scripts/ui/menu.gd:817"
+],
+"Main hand": [
+"scripts/ui/menu.gd:820",
+"scripts/ui/menu.gd:1071",
+"scripts/ui/menu.gd:1168"
+],
+"Forged: %s": [
+"scripts/ui/menu.gd:820"
+],
+"none yet": [
+"scripts/ui/menu.gd:820",
+"scripts/ui/menu.gd:822",
+"scripts/ui/menu.gd:2237"
+],
+"Your campaign arms": [
+"scripts/ui/menu.gd:820",
+"scripts/ui/menu.gd:822"
+],
+"Off hand": [
+"scripts/ui/menu.gd:822",
+"scripts/ui/menu.gd:1075",
+"scripts/ui/menu.gd:1168"
+],
+"Nothing": [
+"scripts/ui/menu.gd:822"
+],
+"Round shield": [
+"scripts/ui/menu.gd:822",
+"scripts/ui/menu.gd:3011"
+],
+"Scutum": [
+"scripts/ui/menu.gd:822",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Dagger": [
+"scripts/ui/menu.gd:822",
+"scripts/game/forge_lib.gd:698",
+"scripts/game/forge_lib.gd:836",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Gladius": [
+"scripts/ui/menu.gd:822",
+"scripts/game/forge_lib.gd:831",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Axe": [
+"scripts/ui/menu.gd:822",
+"scripts/game/forge_lib.gd:694",
+"scripts/game/forge_lib.gd:833",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Mace": [
+"scripts/ui/menu.gd:822",
+"scripts/game/forge_lib.gd:695",
+"scripts/game/forge_lib.gd:837",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Spear": [
+"scripts/ui/menu.gd:822",
+"scripts/game/forge_lib.gd:697",
+"scripts/game/forge_lib.gd:835",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Longsword": [
+"scripts/ui/menu.gd:822",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Design: %s": [
+"scripts/ui/menu.gd:822"
+],
+"Weapons from My designs": [
+"scripts/ui/menu.gd:827"
+],
+"Forge main hand": [
+"scripts/ui/menu.gd:828"
+],
+"Build a weapon for the main hand: free in training": [
+"scripts/ui/menu.gd:829"
+],
+"Forge off hand": [
+"scripts/ui/menu.gd:831"
+],
+"Build a weapon for the off hand: free in training": [
+"scripts/ui/menu.gd:832"
+],
+"Armour: %d pieces · %.1f kg": [
+"scripts/ui/menu.gd:839"
+],
+"Armour: none": [
+"scripts/ui/menu.gd:839"
+],
+"Armour (free in training)": [
+"scripts/ui/menu.gd:841"
+],
+"I cannot die": [
+"scripts/ui/menu.gd:843"
+],
+"The enemy comes back": [
+"scripts/ui/menu.gd:847"
+],
+"Start training": [
+"scripts/ui/menu.gd:852"
+],
+"YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds": [
+"scripts/ui/menu.gd:887"
+],
+"Trying it out": [
+"scripts/ui/menu.gd:984"
+],
+"Esc: back to the forge": [
+"scripts/ui/menu.gd:984"
+],
+"Forge a new one": [
+"scripts/ui/menu.gd:1021"
+],
+"Forge one for the off hand": [
+"scripts/ui/menu.gd:1022"
+],
+"Pick a weapon you saved in the forge for either hand": [
+"scripts/ui/menu.gd:1025"
+],
+"Nothing saved yet: save a design in the forge first": [
+"scripts/ui/menu.gd:1028"
+],
+"%.1f kg · reach %.1f m%s": [
+"scripts/ui/menu.gd:1061"
+],
+" · two hands": [
+"scripts/ui/menu.gd:1061"
+],
+"In your %s": [
+"scripts/ui/menu.gd:1066"
+],
+"main hand": [
+"scripts/ui/menu.gd:1066",
+"scripts/ui/menu.gd:1208"
+],
+"off hand": [
+"scripts/ui/menu.gd:1066",
+"scripts/ui/menu.gd:1208"
+],
+"In both hands": [
+"scripts/ui/menu.gd:1066"
+],
+"The smith": [
+"scripts/ui/menu.gd:1122",
+"scripts/game/yard.gd:9"
+],
+"You have %d denarii": [
+"scripts/ui/menu.gd:1127",
+"scripts/ui/menu.gd:2665"
+],
+"Weapons": [
+"scripts/ui/menu.gd:1132",
+"scripts/ui/menu.gd:2878"
+],
+"Design armour": [
+"scripts/ui/menu.gd:1132"
+],
+"YOUR ARMS": [
+"scripts/ui/menu.gd:1160"
+],
+"Empty: buy a shield or a dagger from the rack, or have one made": [
+"scripts/ui/menu.gd:1173"
+],
+"Forge a weapon for the off hand": [
+"scripts/ui/menu.gd:1174"
+],
+"Built block by block at the anvil, paid for at what it is worth": [
+"scripts/ui/menu.gd:1175"
+],
+"%s%d voxels · condition %d%%": [
+"scripts/ui/menu.gd:1181"
+],
+"Mend · %d denarii": [
+"scripts/ui/menu.gd:1187",
+"scripts/ui/menu.gd:1569"
+],
+"Sound": [
+"scripts/ui/menu.gd:1187",
+"scripts/ui/menu.gd:3169",
+"scripts/ui/menu.gd:3353"
+],
+"The smith puts back every voxel it has lost.": [
+"scripts/ui/menu.gd:1189"
+],
+" Purse after: %d": [
+"scripts/ui/menu.gd:1189",
+"scripts/ui/menu.gd:1200",
+"scripts/ui/menu.gd:1578"
+],
+" %d more needed": [
+"scripts/ui/menu.gd:1189",
+"scripts/ui/menu.gd:1200",
+"scripts/ui/menu.gd:1578"
+],
+"%s · %d denarii": [
+"scripts/ui/menu.gd:1198"
+],
+"Reshape in the forge": [
+"scripts/ui/menu.gd:1206"
+],
+"Forge a new one for this hand": [
+"scripts/ui/menu.gd:1207"
+],
+"A new weapon from nothing for the %s: the one there now is traded in for half its worth": [
+"scripts/ui/menu.gd:1208"
+],
+"Sell · you get %d denarii": [
+"scripts/ui/menu.gd:1212"
+],
+"Sell · the stick fetches nothing": [
+"scripts/ui/menu.gd:1212"
+],
+"Vulcanus buys it for half its worth: the main hand is left with the training stick": [
+"scripts/ui/menu.gd:1214"
+],
+"Vulcanus buys it for half its worth: the off hand is left empty": [
+"scripts/ui/menu.gd:1214"
+],
+"WEAPONS FOR SALE": [
+"scripts/ui/menu.gd:1222"
+],
+"It goes in a free hand. With both hands full you pick which one he takes, for half its worth.": [
+"scripts/ui/menu.gd:1227"
+],
+"%s · main hand": [
+"scripts/ui/menu.gd:1261"
+],
+"%s · off hand": [
+"scripts/ui/menu.gd:1261"
+],
+"both hands full: you pick which one he takes": [
+"scripts/ui/menu.gd:1274"
+],
+"into both hands": [
+"scripts/ui/menu.gd:1274"
+],
+"into the main hand": [
+"scripts/ui/menu.gd:1274"
+],
+"into the off hand": [
+"scripts/ui/menu.gd:1274"
+],
+"your old one": [
+"scripts/ui/menu.gd:1279"
+],
+"what you hand in": [
+"scripts/ui/menu.gd:1279"
+],
+"Buy": [
+"scripts/ui/menu.gd:1280",
+"scripts/ui/menu.gd:1457"
+],
+"Not enough in your purse": [
+"scripts/ui/menu.gd:1287",
+"scripts/ui/menu.gd:1296"
+],
+"For the off hand": [
+"scripts/ui/menu.gd:1294"
+],
+"Into the off hand, %s": [
+"scripts/ui/menu.gd:1296"
+],
+"handing in what is there": [
+"scripts/ui/menu.gd:1296"
+],
+"the main hand keeps its weapon": [
+"scripts/ui/menu.gd:1296"
+],
+"%d denarii at the smith": [
+"scripts/ui/menu.gd:1300"
+],
+"THE SMITH'S RACK": [
+"scripts/ui/menu.gd:1311"
+],
+"Costs %d · you have %d": [
+"scripts/ui/menu.gd:1319"
+],
+" (%d more needed)": [
+"scripts/ui/menu.gd:1319"
+],
+"%d, less %d for %s": [
+"scripts/ui/menu.gd:1323"
+],
+"Both your hands are full. Which one does Vulcanus take for the %s?": [
+"scripts/ui/menu.gd:1341"
+],
+"Sell the %s (main hand) · pay %d": [
+"scripts/ui/menu.gd:1348"
+],
+"Sell the %s (off hand) · pay %d": [
+"scripts/ui/menu.gd:1348"
+],
+"Keep both": [
+"scripts/ui/menu.gd:1356"
+],
+"Sell the %s to Vulcanus? It is gone for good.": [
+"scripts/ui/menu.gd:1377"
+],
+"You get %d denarii · you will have %d": [
+"scripts/ui/menu.gd:1380"
+],
+"Sell it": [
+"scripts/ui/menu.gd:1381"
+],
+"VULCANUS'S ODDITIES · this bout only, one of each": [
+"scripts/ui/menu.gd:1399"
+],
+"Set with %s": [
+"scripts/ui/menu.gd:1434"
+],
+"Sold": [
+"scripts/ui/menu.gd:1441"
+],
+"%d denarii%s": [
+"scripts/ui/menu.gd:1467"
+],
+"In My designs": [
+"scripts/ui/menu.gd:1471"
+],
+"Save to My designs": [
+"scripts/ui/menu.gd:1471"
+],
+"YOUR DESIGNS · made to order": [
+"scripts/ui/menu.gd:1487"
+],
+"%d blocks · made to order": [
+"scripts/ui/menu.gd:1515"
+],
+"Have it made": [
+"scripts/ui/menu.gd:1519"
+],
+"Your design · %d denarii to have it made": [
+"scripts/ui/menu.gd:1530"
+],
+"Worn: %s": [
+"scripts/ui/menu.gd:1550"
+],
+"You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.": [
+"scripts/ui/menu.gd:1550"
+],
+"Your own design, from the bench.": [
+"scripts/ui/menu.gd:1561"
+],
+"%d of %d plates knocked off · condition %d%%": [
+"scripts/ui/menu.gd:1568"
+],
+"Not enough denarii": [
+"scripts/ui/menu.gd:1572",
+"scripts/ui/menu.gd:1594",
+"scripts/ui/menu.gd:2046",
+"scripts/ui/menu.gd:2462",
+"scripts/ui/menu.gd:2735",
+"scripts/game/circus.gd:141"
+],
+"The armourer puts back every plate it has lost.": [
+"scripts/ui/menu.gd:1578"
+],
+"Take off · %d denarii back": [
+"scripts/ui/menu.gd:1580"
+],
+"Buy · %d denarii": [
+"scripts/ui/menu.gd:1589",
+"scripts/ui/menu.gd:2459"
+],
+"Swap · %d denarii back": [
+"scripts/ui/menu.gd:1589"
+],
+"Purse after: %d": [
+"scripts/ui/menu.gd:1600"
+],
+"%d more needed": [
+"scripts/ui/menu.gd:1600"
+],
+"%s · %s · %.1f kg": [
+"scripts/ui/menu.gd:1622"
+],
+"Head": [
+"scripts/ui/menu.gd:1640",
+"scripts/game/armory.gd:74",
+"data/body.json#label"
+],
+"Arms": [
+"scripts/ui/menu.gd:1640"
+],
+"Legs": [
+"scripts/ui/menu.gd:1640"
+],
+"WORN": [
+"scripts/ui/menu.gd:1707"
+],
+"Protection %s · %.1f kg": [
+"scripts/ui/menu.gd:1716"
+],
+"Replaces your %s": [
+"scripts/ui/menu.gd:1720"
+],
+"· %d worn": [
+"scripts/ui/menu.gd:1743"
+],
+"YOU WEAR": [
+"scripts/ui/menu.gd:1759"
+],
+"%s · %.1f kg": [
+"scripts/ui/menu.gd:1774",
+"scripts/ui/menu.gd:3026"
+],
+"Take off": [
+"scripts/ui/menu.gd:1779",
+"scripts/ui/menu.gd:1829",
+"scripts/ui/menu.gd:3029"
+],
+"Take off the %s": [
+"scripts/ui/menu.gd:1780"
+],
+"%d piece · %.1f kg": [
+"scripts/ui/menu.gd:1784"
+],
+"%d pieces · %.1f kg": [
+"scripts/ui/menu.gd:1784"
+],
+"Breath ×%.2f · pace %d%%": [
+"scripts/ui/menu.gd:1785"
+],
+"Armour for training": [
+"scripts/ui/menu.gd:1797"
+],
+"Make a piece at the bench (free)": [
+"scripts/ui/menu.gd:1800"
+],
+"Nothing is paid for here. Click Wear on a piece; a piece that covers the same place takes the other off.": [
+"scripts/ui/menu.gd:1805"
+],
+"You wear no armour in training. Put on what you like from the right.": [
+"scripts/ui/menu.gd:1814"
+],
+"Take it all off": [
+"scripts/ui/menu.gd:1816"
+],
+"Wear": [
+"scripts/ui/menu.gd:1829"
+],
+"Delete the design": [
+"scripts/ui/menu.gd:1833"
+],
+"%s kept in My designs and worn": [
+"scripts/ui/menu.gd:1906"
+],
+"%s kept in My designs": [
+"scripts/ui/menu.gd:1906"
+],
+"The piece": [
+"scripts/ui/menu.gd:1906"
+],
+"%s   Protection %s   Weight %s": [
+"scripts/ui/menu.gd:1936"
+],
+"COVERS": [
+"scripts/ui/menu.gd:1937"
+],
+"From": [
+"scripts/ui/menu.gd:1938"
+],
+"To": [
+"scripts/ui/menu.gd:1938"
+],
+"Front and sides only": [
+"scripts/ui/menu.gd:1958"
+],
+"Cap the top": [
+"scripts/ui/menu.gd:1965"
+],
+"Protection %s": [
+"scripts/ui/menu.gd:2004"
+],
+"Breath when running and swinging: ×%.2f": [
+"scripts/ui/menu.gd:2006"
+],
+"Pace: %d%%": [
+"scripts/ui/menu.gd:2007"
+],
+"Make and wear · free in training": [
+"scripts/ui/menu.gd:2009"
+],
+"Keep in My designs": [
+"scripts/ui/menu.gd:2009"
+],
+"Forge and wear · %d denarii": [
+"scripts/ui/menu.gd:2009"
+],
+"Shape it plate by plate": [
+"scripts/ui/menu.gd:2018"
+],
+"Click to see it all round": [
+"scripts/ui/menu.gd:2069"
+],
+"%d voxels": [
+"scripts/ui/menu.gd:2101"
+],
+"Single combat": [
+"scripts/ui/menu.gd:2107"
+],
+"The melee": [
+"scripts/ui/menu.gd:2108"
+],
+"Beasts and waves": [
+"scripts/ui/menu.gd:2109"
+],
+"Games for the Emperor": [
+"scripts/ui/menu.gd:2110"
+],
+"One against one, a quick bout. The Emperor may throw in a decree.": [
+"scripts/ui/menu.gd:2113"
+],
+"Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.": [
+"scripts/ui/menu.gd:2114"
+],
+"The winner stays and the next challenger walks in. Reign for seven.": [
+"scripts/ui/menu.gd:2115"
+],
+"One foe after another, wave after wave. How long do you last?": [
+"scripts/ui/menu.gd:2116"
+],
+"Four gladiators on one sand. The last one standing wins.": [
+"scripts/ui/menu.gd:2117"
+],
+"Everyone against everyone, under three of the Emperor's decrees at once.": [
+"scripts/ui/menu.gd:2118"
+],
+"Red against Blue: players and bots split into two sides.": [
+"scripts/ui/menu.gd:2119"
+],
+"Players only, no bots: settle it among yourselves.": [
+"scripts/ui/menu.gd:2120"
+],
+"Beasts pour through the gates in waves. Each wave beaten heals you.": [
+"scripts/ui/menu.gd:2121"
+],
+"Waves of gladiators against you and your friends, side by side.": [
+"scripts/ui/menu.gd:2122"
+],
+"You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.": [
+"scripts/ui/menu.gd:2123"
+],
+"Hold the circle alone for 20 seconds.": [
+"scripts/ui/menu.gd:2124"
+],
+"Every 15 seconds the Emperor takes a limb from everyone.": [
+"scripts/ui/menu.gd:2125"
+],
+"Kick a severed head into the other goal. First to three.": [
+"scripts/ui/menu.gd:2126"
+],
+"Everyone forges weapons and armour against the clock, then all fight to the death with what they made.": [
+"scripts/ui/menu.gd:2127",
+"scripts/ui/menu.gd:2813"
+],
+"The Arena": [
+"scripts/ui/menu.gd:2131"
+],
+"Your arms from the yard stay home: these fights hand out their own weapons.": [
+"scripts/ui/menu.gd:2132"
+],
+"Back to the yard, all of you": [
+"scripts/ui/menu.gd:2147"
+],
+"III": [
+"scripts/ui/menu.gd:2197",
+"scripts/game/match.gd:787"
+],
+"VII": [
+"scripts/ui/menu.gd:2197",
+"scripts/game/match.gd:787"
+],
+"SEVEN DAYS · THE EMPEROR'S GAMES": [
+"scripts/ui/menu.gd:2201"
+],
+"BREAD & CIRCUSES": [
+"scripts/ui/menu.gd:2202"
+],
+"The gods are watching": [
+"scripts/ui/menu.gd:2211"
+],
+"Day %s is over. Pick one blessing for the rest of the run.": [
+"scripts/ui/menu.gd:2212"
+],
+"%s blesses you": [
+"scripts/ui/menu.gd:2219"
+],
+"Day %s · %s": [
+"scripts/ui/menu.gd:2224"
+],
+"  · boss": [
+"scripts/ui/menu.gd:2229"
+],
+"Gold: %d · blessings: %s · kit: %s%s": [
+"scripts/ui/menu.gd:2237"
+],
+"nothing yet": [
+"scripts/ui/menu.gd:2238"
+],
+" · DAILY GAMES": [
+"scripts/ui/menu.gd:2238"
+],
+"Fight: %s": [
+"scripts/ui/menu.gd:2239"
+],
+"The market": [
+"scripts/ui/menu.gd:2239",
+"scripts/ui/menu.gd:2282",
+"scripts/ui/menu.gd:2380",
+"scripts/game/yard.gd:10"
+],
+"Give up the run": [
+"scripts/ui/menu.gd:2240"
+],
+"gave up": [
+"scripts/ui/menu.gd:2243"
+],
+"You walk out of the arena. The ludus keeps what you earned.": [
+"scripts/ui/menu.gd:2244"
+],
+"Main menu": [
+"scripts/ui/menu.gd:2245",
+"scripts/ui/menu.gd:2275",
+"scripts/ui/menu.gd:2411",
+"scripts/ui/menu.gd:4064"
+],
+"Seven days of bouts, beasts and bosses for the Emperor. Gold buys pots between bouts; after each day a god offers a blessing. Fall once and the run is over.": [
+"scripts/ui/menu.gd:2249"
+],
+"Begin a new run": [
+"scripts/ui/menu.gd:2250"
+],
+"Day I begins": [
+"scripts/ui/menu.gd:2252"
+],
+"The Daily Games · %s": [
+"scripts/ui/menu.gd:2253"
+],
+"Today's games: the same bouts, decrees and blessings for everyone": [
+"scripts/ui/menu.gd:2255"
+],
+"The ludus · %d denarii": [
+"scripts/ui/menu.gd:2256"
+],
+"%s (%d/%d) · maxed": [
+"scripts/ui/menu.gd:2261"
+],
+"%s bought": [
+"scripts/ui/menu.gd:2265"
+],
+"Hall of Fame": [
+"scripts/ui/menu.gd:2271"
+],
+"%d. %s · %s · %d bouts, %d kills%s": [
+"scripts/ui/menu.gd:2274"
+],
+"won the rudis": [
+"scripts/ui/menu.gd:2274"
+],
+"crowned by the Emperor": [
+"scripts/ui/menu.gd:2274"
+],
+"fell on day %s to %s": [
+"scripts/ui/menu.gd:2274"
+],
+"the arena": [
+"scripts/ui/menu.gd:2274",
+"scripts/ui/menu.gd:2365"
+],
+" · daily": [
+"scripts/ui/menu.gd:2274"
+],
+" · the campaign": [
+"scripts/ui/menu.gd:2274"
+],
+"Gold: %d · what you buy is used in the next bouts (keys 1 to 8)": [
+"scripts/ui/menu.gd:2283"
+],
+"Buy · %d gold": [
+"scripts/ui/menu.gd:2300"
+],
+"Not enough gold": [
+"scripts/ui/menu.gd:2303"
+],
+"Your bag is full: %d of those at most, %d kinds in all": [
+"scripts/ui/menu.gd:2306",
+"scripts/ui/menu.gd:2465"
+],
+"Back to the games": [
+"scripts/ui/menu.gd:2316"
+],
+"The ludus earns %d denarii from this run.": [
+"scripts/ui/menu.gd:2342"
+],
+"Victory! +%d gold": [
+"scripts/ui/menu.gd:2356"
+],
+"Victory! +%d gold. The day is done.": [
+"scripts/ui/menu.gd:2358"
+],
+"PLUTO SAYS NO: you are sent back from the underworld. Fight the bout again.": [
+"scripts/ui/menu.gd:2360"
+],
+"THE EMPEROR CROWNS YOU! Seven days, and you still stand. %s": [
+"scripts/ui/menu.gd:2363"
+],
+"You fell on day %s. %s": [
+"scripts/ui/menu.gd:2366"
+],
+"Throwables": [
+"scripts/ui/menu.gd:2370"
+],
+"Traps & bowls": [
+"scripts/ui/menu.gd:2370"
+],
+"Press its number: used on you at once": [
+"scripts/ui/menu.gd:2371"
+],
+"Press its number: laid or bowled in front of you": [
+"scripts/ui/menu.gd:2371"
+],
+"Its number takes it in hand; hold F to aim, let go to throw": [
+"scripts/ui/menu.gd:2371"
+],
+"You have %d denarii · %s": [
+"scripts/ui/menu.gd:2386"
+],
+"In your bag: %s": [
+"scripts/ui/menu.gd:2386"
+],
+"Your bag is empty": [
+"scripts/ui/menu.gd:2386"
+],
+"Everything here comes with you into every fight: keys 1 to 9 use it.": [
+"scripts/ui/menu.gd:2387"
+],
+"Back to the smith": [
+"scripts/ui/menu.gd:2411"
+],
+"Hurts friends too": [
+"scripts/ui/menu.gd:2456"
+],
+"Bag full (%d)": [
+"scripts/ui/menu.gd:2459"
+],
+"Bag full (%d kinds)": [
+"scripts/ui/menu.gd:2459"
+],
+"The trainer": [
+"scripts/ui/menu.gd:2516",
+"scripts/game/yard.gd:12"
+],
+"Purse  %d denarii": [
+"scripts/ui/menu.gd:2523"
+],
+"Bout %d: up to %d%% an ability": [
+"scripts/ui/menu.gd:2531"
+],
+"Doctore sells sessions, a per cent at a time; the arena teaches nothing, and a death takes it all with the purse.": [
+"scripts/ui/menu.gd:2534"
+],
+"Mastered": [
+"scripts/ui/menu.gd:2586"
+],
+"Wait for bout %d": [
+"scripts/ui/menu.gd:2586"
+],
+"Train · %d denarii": [
+"scripts/ui/menu.gd:2586",
+"scripts/ui/menu.gd:2593"
+],
+"Only for the Unbroken (Ironman)": [
+"scripts/ui/menu.gd:2588"
+],
+"Back to the yard": [
+"scripts/ui/menu.gd:2604"
+],
+"SUPPLIES FOR THE FIGHT": [
+"scripts/ui/menu.gd:2612"
+],
+"Back to the arena": [
+"scripts/ui/menu.gd:2649"
+],
+"The physician": [
+"scripts/ui/menu.gd:2659",
+"scripts/game/yard.gd:13"
+],
+"Treat everything · it costs %d": [
+"scripts/ui/menu.gd:2677"
+],
+"  (%d more needed)": [
+"scripts/ui/menu.gd:2679",
+"scripts/ui/menu.gd:2699"
+],
+"costs %d": [
+"scripts/ui/menu.gd:2696"
+],
+"Or one at a time (%d)": [
+"scripts/ui/menu.gd:2714",
+"scripts/ui/menu.gd:2717"
+],
+"Hide": [
+"scripts/ui/menu.gd:2717",
+"scripts/game/training.gd:16"
+],
+"Nothing he needs to see to.": [
+"scripts/ui/menu.gd:2723"
+],
+"Off-hand weapon": [
+"scripts/ui/menu.gd:2757",
+"scripts/ui/menu.gd:2962"
+],
+"Mend it first: the smith reshapes only a sound weapon": [
+"scripts/ui/menu.gd:2776"
+],
+"Only the host of a room starts Forge and Fight": [
+"scripts/ui/menu.gd:2807"
+],
+"Forge and Fight": [
+"scripts/ui/menu.gd:2812",
+"scripts/ui/menu.gd:2842",
+"scripts/ui/menu.gd:2998"
+],
+"Time to forge the weapons": [
+"scripts/ui/menu.gd:2814"
+],
+"Time to make the armour": [
+"scripts/ui/menu.gd:2814"
+],
+"Time limit on the fight": [
+"scripts/ui/menu.gd:2814"
+],
+"%d min": [
+"scripts/ui/menu.gd:2819"
+],
+"No armour": [
+"scripts/ui/menu.gd:2819"
+],
+"To the death": [
+"scripts/ui/menu.gd:2819"
+],
+"Wait for at least one friend in the room: it is a fight between players.": [
+"scripts/ui/menu.gd:2825"
+],
+"To the forges!": [
+"scripts/ui/menu.gd:2826"
+],
+"My weapon": [
+"scripts/ui/menu.gd:2962"
+],
+"%s · %.1f kg · reach %.2f m": [
+"scripts/ui/menu.gd:2981"
+],
+"A round shield": [
+"scripts/ui/menu.gd:2983"
+],
+"Nothing yet: bare fists": [
+"scripts/ui/menu.gd:2984"
+],
+"Forge and Fight is over.": [
+"scripts/ui/menu.gd:2995"
+],
+"Forge your weapons: %d min. When the time is up, everyone fights with what is on his anvil.": [
+"scripts/ui/menu.gd:3001"
+],
+"MAIN HAND": [
+"scripts/ui/menu.gd:3003"
+],
+"OFF HAND": [
+"scripts/ui/menu.gd:3003"
+],
+"Keep forging": [
+"scripts/ui/menu.gd:3009"
+],
+"Forge it": [
+"scripts/ui/menu.gd:3009"
+],
+"Empty hand": [
+"scripts/ui/menu.gd:3014"
+],
+"Make your armour at the bench: %d min. A piece counts once it is made.": [
+"scripts/ui/menu.gd:3019"
+],
+"No armour made yet.": [
+"scripts/ui/menu.gd:3022"
+],
+"Make a piece at the bench": [
+"scripts/ui/menu.gd:3033"
+],
+"The forges go cold. To the sand!": [
+"scripts/ui/menu.gd:3037"
+],
+"Not ready yet": [
+"scripts/ui/menu.gd:3042"
+],
+"I'm ready": [
+"scripts/ui/menu.gd:3042"
+],
+"%d still forging": [
+"scripts/ui/menu.gd:3043"
+],
+"Fight the campaign together. The host's game runs the fight; friends join the room.": [
+"scripts/ui/menu.gd:3060"
+],
+"Host a Steam lobby": [
+"scripts/ui/menu.gd:3062"
+],
+"Friends only": [
+"scripts/ui/menu.gd:3062"
+],
+"Refresh rooms": [
+"scripts/ui/menu.gd:3062"
+],
+"Steam is not running: host or join by address (LAN, or a forwarded port %d).": [
+"scripts/ui/menu.gd:3067"
+],
+"Host address, e.g. 192.168.1.20": [
+"scripts/ui/menu.gd:3069"
+],
+"Host by address": [
+"scripts/ui/menu.gd:3071"
+],
+"Could not open port %d": [
+"scripts/ui/menu.gd:3074",
+"scripts/ui/menu.gd:3097"
+],
+"Join": [
+"scripts/ui/menu.gd:3074",
+"scripts/ui/menu.gd:3113"
+],
+"Could not connect": [
+"scripts/ui/menu.gd:3077"
+],
+"Could not connect to %s": [
+"scripts/ui/menu.gd:3103"
+],
+"No open rooms. Host one and invite your friends.": [
+"scripts/ui/menu.gd:3111"
+],
+"Unmute": [
+"scripts/ui/menu.gd:3122"
+],
+"Mute": [
+"scripts/ui/menu.gd:3122"
+],
+"Stop hearing this player's voice (only for you)": [
+"scripts/ui/menu.gd:3128"
+],
+"Remove": [
+"scripts/ui/menu.gd:3131"
+],
+"Send this player out of the room: they cannot come back until you open a new one": [
+"scripts/ui/menu.gd:3132"
+],
+"Click again to remove": [
+"scripts/ui/menu.gd:3136"
+],
+"The room": [
+"scripts/ui/menu.gd:3144"
+],
+"You are the host.": [
+"scripts/ui/menu.gd:3145"
+],
+"Joining the host's yard...": [
+"scripts/ui/menu.gd:3145"
+],
+"· %s (you)": [
+"scripts/ui/menu.gd:3146"
+],
+"Co-op campaign: bout %d · %s · %s": [
+"scripts/ui/menu.gd:3151"
+],
+"Death": [
+"scripts/ui/menu.gd:3160"
+],
+"Start the co-op campaign · bout %d": [
+"scripts/ui/menu.gd:3161"
+],
+"Into the yard together (shop, heal, play)": [
+"scripts/ui/menu.gd:3162"
+],
+"Leave": [
+"scripts/ui/menu.gd:3163"
+],
+"Game": [
+"scripts/ui/menu.gd:3169"
+],
+"Graphics": [
+"scripts/ui/menu.gd:3169",
+"scripts/ui/menu.gd:3281"
+],
+"Options": [
+"scripts/ui/menu.gd:3173"
+],
+"Back to the game": [
+"scripts/ui/menu.gd:3196"
+],
+"Automatic": [
+"scripts/ui/menu.gd:3237"
+],
+"Language": [
+"scripts/ui/menu.gd:3251"
+],
+"Full": [
+"scripts/ui/menu.gd:3253"
+],
+"Reduced": [
+"scripts/ui/menu.gd:3254"
+],
+"Gore": [
+"scripts/ui/menu.gd:3257"
+],
+"Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.": [
+"scripts/ui/menu.gd:3257"
+],
+"No decrees": [
+"scripts/ui/menu.gd:3260"
+],
+"Decrees sometimes": [
+"scripts/ui/menu.gd:3260"
+],
+"Decrees always": [
+"scripts/ui/menu.gd:3260"
+],
+"The Emperor's decrees": [
+"scripts/ui/menu.gd:3264"
+],
+"Odd rules the Emperor lays on an arena duel.": [
+"scripts/ui/menu.gd:3264"
+],
+"Kill cam: the best kill replayed at the end of a fight (alone and online)": [
+"scripts/ui/menu.gd:3265"
+],
+"Mouse sensitivity": [
+"scripts/ui/menu.gd:3268"
+],
+"Left-handed (the right button swings the main weapon)": [
+"scripts/ui/menu.gd:3269"
+],
+"Invert vertical look": [
+"scripts/ui/menu.gd:3270"
+],
+"Rebind keys · gamepad": [
+"scripts/ui/menu.gd:3271"
+],
+"Mouse looks; hold the left button and move the mouse to swing the main hand, the right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, the wheel turns the blade, H takes it in both hands, J swaps hands, Esc frees the mouse.": [
+"scripts/ui/menu.gd:3272"
+],
+"Low: no shadows or effects lighting. Ultra: global illumination and fog.": [
+"scripts/ui/menu.gd:3281"
+],
+"Anti-aliasing": [
+"scripts/ui/menu.gd:3289"
+],
+"MSAA smooths the edges of the blocks and keeps everything else sharp (4x is the best balance; 8x for strong cards). FXAA is the lightest but blurs the picture.": [
+"scripts/ui/menu.gd:3289"
+],
+"Voxel shading: corners and creases between blocks in soft shadow": [
+"scripts/ui/menu.gd:3290"
+],
+"Smooth": [
+"scripts/ui/menu.gd:3296"
+],
+"Blocky voxels": [
+"scripts/ui/menu.gd:3297"
+],
+"Bodies": [
+"scripts/ui/menu.gd:3300"
+],
+"Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.": [
+"scripts/ui/menu.gd:3300"
+],
+"Display": [
+"scripts/ui/menu.gd:3308"
+],
+"F11 toggles full screen.": [
+"scripts/ui/menu.gd:3308"
+],
+"%d × %d (this screen)": [
+"scripts/ui/menu.gd:3313"
+],
+"Window": [
+"scripts/ui/menu.gd:3319",
+"scripts/ui/menu.gd:3361"
+],
+"3D resolution": [
+"scripts/ui/menu.gd:3327"
+],
+"Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.": [
+"scripts/ui/menu.gd:3327"
+],
+"Draws in step with the screen: no tearing, no wasted frames.": [
+"scripts/ui/menu.gd:3334"
+],
+"Frame rate cap": [
+"scripts/ui/menu.gd:3342"
+],
+"A ceiling on the frames drawn a second: cooler and quieter on a strong PC, steadier on a laptop.": [
+"scripts/ui/menu.gd:3342"
+],
+"Text and menus": [
+"scripts/ui/menu.gd:3350"
+],
+"The size of the menus and the HUD: larger for a TV, a 4K screen or the Deck. Changes at once.": [
+"scripts/ui/menu.gd:3350"
+],
+"Music": [
+"scripts/ui/menu.gd:3356",
+"scripts/autoload/music.gd:91",
+"scripts/autoload/music.gd:94",
+"scripts/autoload/music.gd:102"
+],
+"Full screen": [
+"scripts/ui/menu.gd:3361"
+],
+"Full screen (exclusive)": [
+"scripts/ui/menu.gd:3361"
+],
+"Window, maximized": [
+"scripts/ui/menu.gd:3361"
+],
+"FXAA (soft)": [
+"scripts/ui/menu.gd:3362"
+],
+"SMAA": [
+"scripts/ui/menu.gd:3362"
+],
+"MSAA 2x": [
+"scripts/ui/menu.gd:3362"
+],
+"MSAA 4x": [
+"scripts/ui/menu.gd:3362"
+],
+"MSAA 8x": [
+"scripts/ui/menu.gd:3362"
+],
+"Auto": [
+"scripts/ui/menu.gd:3380"
+],
+"Smaller": [
+"scripts/ui/menu.gd:3439"
+],
+"Small": [
+"scripts/ui/menu.gd:3439"
+],
+"Normal": [
+"scripts/ui/menu.gd:3439"
+],
+"Large": [
+"scripts/ui/menu.gd:3439"
+],
+"Larger": [
+"scripts/ui/menu.gd:3439"
+],
+"Largest": [
+"scripts/ui/menu.gd:3439"
+],
+"Campaign · stage %d": [
+"scripts/ui/menu.gd:3543"
+],
+"How the crowd will know you. The champion on the right wears it as you choose.": [
+"scripts/ui/menu.gd:3667"
+],
+"Skin": [
+"scripts/ui/menu.gd:3677"
+],
+"Loincloth and cape": [
+"scripts/ui/menu.gd:3679"
+],
+"None": [
+"scripts/ui/menu.gd:3684"
+],
+"%s  (Ironman)": [
+"scripts/ui/menu.gd:3685"
+],
+"Won by taking the rudis on Ironman, never once fallen": [
+"scripts/ui/menu.gd:3688"
+],
+"Stage %d cleared: %d denarii.": [
+"scripts/ui/menu.gd:3856"
+],
+"You fell. Back to the last checkpoint: bout %d, as you left it.": [
+"scripts/ui/menu.gd:3887"
+],
+"You fell. The campaign is over; a new one begins at bout 1.": [
+"scripts/ui/menu.gd:3887"
+],
+"THE RUDIS": [
+"scripts/ui/menu.gd:4044"
+],
+"The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.": [
+"scripts/ui/menu.gd:4045"
+],
+"Your name is in the Hall of Fame.": [
+"scripts/ui/menu.gd:4046"
+],
+"UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.": [
+"scripts/ui/menu.gd:4049"
+],
+"But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.": [
+"scripts/ui/menu.gd:4052"
+],
+"Back to the ludus": [
+"scripts/ui/menu.gd:4053"
+],
+"The end of the demo": [
+"scripts/ui/menu.gd:4057"
+],
+"You have fought through all %d bouts of the demo.": [
+"scripts/ui/menu.gd:4058"
+],
+"Play the demo again from bout 1": [
+"scripts/ui/menu.gd:4060"
+],
+"Back to the room": [
+"scripts/ui/menu.gd:4064"
+],
+"Screenshot saved: %s": [
+"scripts/ui/menu.gd:4077"
+],
+"A NEW CAMPAIGN": [
+"scripts/ui/menu.gd:4105"
+],
+" · CO-OP": [
+"scripts/ui/menu.gd:4105"
+],
+"How will you die?": [
+"scripts/ui/menu.gd:4106"
+],
+"Earned: the Unbroken laurel, and Virtus from the trainer.": [
+"scripts/ui/menu.gd:4132"
+],
+"The reward: the Unbroken laurel, and Virtus from the trainer.": [
+"scripts/ui/menu.gd:4132"
+],
+"Begin as a legionary": [
+"scripts/ui/menu.gd:4135"
+],
+"Begin as an ironman": [
+"scripts/ui/menu.gd:4135"
+],
+"A new campaign begins · %s": [
+"scripts/ui/menu.gd:4137"
+],
+"Paused": [
+"scripts/ui/menu.gd:4160"
+],
+"Back to the fight": [
+"scripts/ui/menu.gd:4161"
+],
+"Back to the forge": [
+"scripts/ui/menu.gd:4163"
+],
+"Restart the campaign": [
+"scripts/ui/menu.gd:4168"
+],
+"Click again: start over from bout 1 (all progress lost)": [
+"scripts/ui/menu.gd:4172"
+],
+"Back to the yard (everyone)": [
+"scripts/ui/menu.gd:4183"
+],
+"The host called the party back": [
+"scripts/ui/menu.gd:4185"
+],
+"Leave the fight": [
+"scripts/ui/menu.gd:4195"
+],
+"Bull horns": [
+"scripts/fighter/monster_look.gd:18"
+],
+"Bull muzzle": [
+"scripts/fighter/monster_look.gd:19"
+],
+"Nose ring": [
+"scripts/fighter/monster_look.gd:20"
+],
+"Troll nose": [
+"scripts/fighter/monster_look.gd:21"
+],
+"Troll ears": [
+"scripts/fighter/monster_look.gd:22"
+],
+"Tusks": [
+"scripts/fighter/monster_look.gd:23"
+],
+"Moss hair": [
+"scripts/fighter/monster_look.gd:24"
+],
+"Weapon_": [
+"scripts/fighter/weapon.gd:90"
+],
+"Broken %s": [
+"scripts/fighter/weapon.gd:675"
+],
+"Blade arm": [
+"scripts/fighter/fighter.gd:506",
+"scripts/game/body.gd:15"
+],
+"Armor_": [
+"scripts/fighter/fighter.gd:804"
+],
+"The grip is too short for two hands": [
+"scripts/fighter/fighter.gd:2245"
+],
+"Your left hand holds the %s: swap hands (J) or throw it (F) first": [
+"scripts/fighter/fighter.gd:2247"
+],
+"Your right arm is broken: the weapon stays in your left hand": [
+"scripts/fighter/fighter.gd:2253"
+],
+"Your left arm is broken: the weapon stays in your right hand": [
+"scripts/fighter/fighter.gd:2253"
+],
+"%s is at death's door": [
+"scripts/fighter/fighter.gd:4794"
+],
+"%s is lifted": [
+"scripts/fighter/fighter.gd:4810"
+],
+"ribs into the lung": [
+"scripts/fighter/fighter.gd:6414",
+"scripts/game/spectacle.gd:158"
+],
+"Strong gladiator": [
+"scripts/fighter/physique.gd:26"
+],
+"Classic blocks": [
+"scripts/fighter/physique.gd:27"
+],
+"Sculpted": [
+"scripts/fighter/physique.gd:28"
+],
+"Heroic": [
+"scripts/fighter/physique.gd:29"
+],
+"Anatomy": [
+"scripts/fighter/physique.gd:30"
+],
+"Arena-worn": [
+"scripts/fighter/physique.gd:31"
+],
+"Oiled champion": [
+"scripts/fighter/physique.gd:32"
+],
+"Broad, muscled men built of voxels: rounded, tapered limbs, one body from neck to feet.": [
+"scripts/fighter/physique.gd:35"
+],
+"The gladiators as they were: square blocks.": [
+"scripts/fighter/physique.gd:36"
+],
+"A neck, sloped shoulders, rounded limbs, bevelled edges.": [
+"scripts/fighter/physique.gd:37"
+],
+"Sculpted, with a narrow waist under a broad chest.": [
+"scripts/fighter/physique.gd:38"
+],
+"Sculpted, the muscles drawn in light and shade.": [
+"scripts/fighter/physique.gd:39"
+],
+"Anatomy, with arena sand on the legs, old scars and linen-wrapped fists.": [
+"scripts/fighter/physique.gd:40"
+],
+"Heroic and muscled, the skin oiled to shine under the sun.": [
+"scripts/fighter/physique.gd:41"
+],
+"Wide eyes": [
+"scripts/fighter/physique.gd:742"
+],
+"Side-eye": [
+"scripts/fighter/physique.gd:742"
+],
+"Cross-eyed": [
+"scripts/fighter/physique.gd:742"
+],
+"Angry brows": [
+"scripts/fighter/physique.gd:742"
+],
+"Sleepy": [
+"scripts/fighter/physique.gd:743"
+],
+"Blue eyes": [
+"scripts/fighter/physique.gd:743"
+],
+"Green eyes": [
+"scripts/fighter/physique.gd:743"
+],
+"Mad stare": [
+"scripts/fighter/physique.gd:743"
+],
+"Wink": [
+"scripts/fighter/physique.gd:744"
+],
+"Brown eyes": [
+"scripts/fighter/physique.gd:744"
+],
+"Scarred eye": [
+"scripts/fighter/physique.gd:744"
+],
+"Tired": [
+"scripts/fighter/physique.gd:744"
+],
+"Missing tooth": [
+"scripts/fighter/physique.gd:745"
+],
+"Full grin": [
+"scripts/fighter/physique.gd:745"
+],
+"Snarl": [
+"scripts/fighter/physique.gd:745"
+],
+"Stern": [
+"scripts/fighter/physique.gd:745"
+],
+"War cry": [
+"scripts/fighter/physique.gd:746"
+],
+"Tongue out": [
+"scripts/fighter/physique.gd:746"
+],
+"One tooth left": [
+"scripts/fighter/physique.gd:746"
+],
+"Smirk": [
+"scripts/fighter/physique.gd:746"
+],
+"Buck teeth": [
+"scripts/fighter/physique.gd:747"
+],
+"Frown": [
+"scripts/fighter/physique.gd:747"
+],
+"Gold tooth": [
+"scripts/fighter/physique.gd:747"
+],
+"Grimace": [
+"scripts/fighter/physique.gd:747"
+],
+"attacker id:victim id": [
+"scripts/fighter/combat.gd:31"
+],
+"Jmax": [
+"scripts/fighter/combat.gd:76",
+"scripts/fighter/combat.gd:79"
+],
+"Tooth": [
+"scripts/voxel/voxel_part.gd:1933",
+"scripts/voxel/voxel_part.gd:2228",
+"scripts/voxel/voxel_part.gd:2242"
+],
+"Jaw": [
+"scripts/voxel/voxel_part.gd:2149"
+],
+"Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
+"scripts/game/armory.gd:15"
+],
+"Leather bracers on both forearms: the arms that parry live longer.": [
+"scripts/game/armory.gd:16"
+],
+"An iron guard over the jaw and chin.": [
+"scripts/game/armory.gd:17"
+],
+"A thick leather jerkin round the chest and belly. Cheap, and better than skin.": [
+"scripts/game/armory.gd:18"
+],
+"An iron cap riveted over the skull.": [
+"scripts/game/armory.gd:19"
+],
+"Bronze shin guards, front and sides.": [
+"scripts/game/armory.gd:20"
+],
+"Bronze plates over both thighs, where a low cut opens the big vessels.": [
+"scripts/game/armory.gd:21"
+],
+"The bronze galea: crown, sides and the back of the neck.": [
+"scripts/game/armory.gd:22"
+],
+"Iron shoulder caps over both upper arms.": [
+"scripts/game/armory.gd:23"
+],
+"The iron arm guard of the sword arm, shoulder to wrist.": [
+"scripts/game/armory.gd:24"
+],
+"The iron arm guard for the shield arm.": [
+"scripts/game/armory.gd:25"
+],
+"Steel greaves all round both shins.": [
+"scripts/game/armory.gd:26"
+],
+"Bronze scales from the hips to the shoulders.": [
+"scripts/game/armory.gd:27"
+],
+"The murmillo's steel helm: the whole head, a grilled face and the crest.": [
+"scripts/game/armory.gd:28"
+],
+"The iron lorica: chest, back and shoulders.": [
+"scripts/game/armory.gd:29"
+],
+"A golden helmet. Soft metal, but the crowd loves it.": [
+"scripts/game/armory.gd:30"
+],
+"A steel lorica from the hips to the neck. The best a smith can make.": [
+"scripts/game/armory.gd:31"
+],
+"A golden lorica. It dents easily; the Emperor approves.": [
+"scripts/game/armory.gd:32"
+],
+"Upper arms": [
+"scripts/game/armory.gd:76"
+],
+"Forearms": [
+"scripts/game/armory.gd:77"
+],
+"Thighs": [
+"scripts/game/armory.gd:78"
+],
+"Shins": [
+"scripts/game/armory.gd:79"
+],
+"{material} {piece}": [
+"scripts/game/armory.gd:110"
+],
+"Piece": [
+"scripts/game/armory.gd:162",
+"scripts/game/armory.gd:162"
+],
+"Leather cap": [
+"scripts/game/armory.gd:198"
+],
+"Leather vambraces": [
+"scripts/game/armory.gd:199"
+],
+"Leather jerkin": [
+"scripts/game/armory.gd:200"
+],
+"Bronze cuisses": [
+"scripts/game/armory.gd:201"
+],
+"Iron pauldrons": [
+"scripts/game/armory.gd:202"
+],
+"Manica (shield arm)": [
+"scripts/game/armory.gd:203"
+],
+"Steel greaves": [
+"scripts/game/armory.gd:204"
+],
+"Scale mail": [
+"scripts/game/armory.gd:205"
+],
+"Steel lorica": [
+"scripts/game/armory.gd:206"
+],
+"Murmillo helm": [
+"scripts/game/armory.gd:207"
+],
+"The armourer has no such thing": [
+"scripts/game/armory.gd:360"
+],
+"You already wear it": [
+"scripts/game/armory.gd:363"
+],
+"You do not wear it": [
+"scripts/game/armory.gd:377"
+],
+"Walk": [
+"scripts/game/tutorial.gd:9"
+],
+"W A S D to walk, hold Shift to run. Take a few steps.": [
+"scripts/game/tutorial.gd:9"
+],
+"Look": [
+"scripts/game/tutorial.gd:10"
+],
+"Move the mouse with no button held to look around. Look all the way round.": [
+"scripts/game/tutorial.gd:10"
+],
+"Swing": [
+"scripts/game/tutorial.gd:11"
+],
+"Hold the LEFT button and sweep the mouse: the sword follows your hand. Hit the dummy twice. Fast sweeps cut deep.": [
+"scripts/game/tutorial.gd:11"
+],
+"Guard": [
+"scripts/game/tutorial.gd:12"
+],
+"Hold the RIGHT button: now the mouse moves the shield. Raise it up for a moment.": [
+"scripts/game/tutorial.gd:12"
+],
+"Kick and shove": [
+"scripts/game/tutorial.gd:13"
+],
+"E kicks, Q shoves. Kick or shove the dummy.": [
+"scripts/game/tutorial.gd:13"
+],
+"Throw": [
+"scripts/game/tutorial.gd:14"
+],
+"Hold F to aim, let go to throw. Throw your sword at the dummy.": [
+"scripts/game/tutorial.gd:14"
+],
+"Pick up": [
+"scripts/game/tutorial.gd:15"
+],
+"Your hand is empty now. A javelin lies by you: walk over and press G to pick it up.": [
+"scripts/game/tutorial.gd:15"
+],
+"Blocks": [
+"scripts/game/tutorial.gd:17"
+],
+"Each block has a material (its hardness and weight) and a job: Cut makes an edge, Stab a point, Crush a heavy head that also holds it together, and Hold is where you hold it. Save design keeps a weapon in My designs to load again.": [
+"scripts/game/tutorial.gd:17"
+],
+"Ruby, sapphire and emerald are costly sockets: a blow may set the part it strikes alight, freeze it stiff with frostbite that kills the flesh, or poison it. The more stones, the surer and the fiercer.": [
+"scripts/game/tutorial.gd:18"
+],
+"The yard": [
+"scripts/game/tutorial.gd:19"
+],
+"Between bouts the yard has the smith (weapons and armour, both mended there as they wear), the market (pots, the Hand of Jupiter: twice a bout, it holds a man where you look, the wheel draws him in, F hurls him), the physician for your wounds, and the trainer: strength, blow, wind, hide, blood and footing, a session at a time, no further than the bouts you have won.": [
+"scripts/game/tutorial.gd:19"
+],
+"A real fight": [
+"scripts/game/tutorial.gd:20"
+],
+"A recruit steps in, and he fights back. Beat him. (You cannot die in here.)": [
+"scripts/game/tutorial.gd:20"
+],
+"You are ready": [
+"scripts/game/tutorial.gd:44",
+"scripts/game/match.gd:992"
+],
+"That is all there is to it. The campaign waits at the gate.": [
+"scripts/game/tutorial.gd:44",
+"scripts/game/match.gd:992"
+],
+"Training dummy": [
+"scripts/game/tutorial.gd:49",
+"scripts/game/yard_play.gd:26"
+],
+"First Blood": [
+"scripts/game/ladder.gd:19",
+"scripts/game/achievements.gd:7"
+],
+"Pork Chops": [
+"scripts/game/ladder.gd:20",
+"data/modes.json#name"
+],
+"Two Swords": [
+"scripts/game/ladder.gd:21"
+],
+"The Cyclops": [
+"scripts/game/ladder.gd:22",
+"data/campaign.json#title",
+"data/campaign.json#label",
+"data/campaign.json[]",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Coward's Friend": [
+"scripts/game/ladder.gd:23"
+],
+"The Pack": [
+"scripts/game/ladder.gd:24",
+"data/modes.json#name"
+],
+"The Skirmisher": [
+"scripts/game/ladder.gd:25"
+],
+"The Big Lion": [
+"scripts/game/ladder.gd:26",
+"scripts/game/ladder.gd:26",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#name",
+"data/campaign.json#title",
+"data/modes.json#name",
+"data/modes.json#name"
+],
+"Arrows and Teeth": [
+"scripts/game/ladder.gd:28"
+],
+"Mirror, Mirror": [
+"scripts/game/ladder.gd:29"
+],
+"The Wall": [
+"scripts/game/ladder.gd:30"
+],
+"Polyphemus the Giant": [
+"scripts/game/ladder.gd:31",
+"scripts/game/ladder.gd:62",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Laughter in the Sand": [
+"scripts/game/ladder.gd:32"
+],
+"The Net and the Axe": [
+"scripts/game/ladder.gd:33"
+],
+"The Bull": [
+"scripts/game/ladder.gd:34"
+],
+"The Hound of Hades": [
+"scripts/game/ladder.gd:35",
+"scripts/game/ladder.gd:66",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Headsman": [
+"scripts/game/ladder.gd:37",
+"data/campaign.json[]"
+],
+"The Coils": [
+"scripts/game/ladder.gd:38"
+],
+"No Brakes": [
+"scripts/game/ladder.gd:39"
+],
+"The Minotaur": [
+"scripts/game/ladder.gd:40",
+"scripts/game/ladder.gd:70",
+"data/campaign.json#title",
+"data/campaign.json#label",
+"data/campaign.json[]",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"Greek Fire": [
+"scripts/game/ladder.gd:41"
+],
+"The Tiger": [
+"scripts/game/ladder.gd:42"
+],
+"Helm and Chain": [
+"scripts/game/ladder.gd:43"
+],
+"The Titan": [
+"scripts/game/ladder.gd:44",
+"scripts/game/ladder.gd:74",
+"data/campaign.json#title",
+"data/campaign.json#label",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Bear": [
+"scripts/game/ladder.gd:46"
+],
+"The Guard": [
+"scripts/game/ladder.gd:47"
+],
+"The Crocodile Pit": [
+"scripts/game/ladder.gd:48"
+],
+"The Mammoth": [
+"scripts/game/ladder.gd:49",
+"scripts/game/ladder.gd:78",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Champion's Doctors": [
+"scripts/game/ladder.gd:50"
+],
+"The Sting": [
+"scripts/game/ladder.gd:51"
+],
+"The Phalanx": [
+"scripts/game/ladder.gd:52"
+],
+"The Hydra": [
+"scripts/game/ladder.gd:53",
+"scripts/game/ladder.gd:82",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Gorilla": [
+"scripts/game/ladder.gd:54",
+"data/beasts.json#name"
+],
+"Brothers in Arms": [
+"scripts/game/ladder.gd:55"
+],
+"The Griffin": [
+"scripts/game/ladder.gd:56",
+"data/modes.json#name"
+],
+"The Dragon": [
+"scripts/game/ladder.gd:57",
+"scripts/game/ladder.gd:86",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/modes.json#name"
+],
+"The Troll": [
+"scripts/game/ladder.gd:59"
+],
+"Chains": [
+"scripts/game/ladder.gd:60"
+],
+"The Rhinoceros": [
+"scripts/game/ladder.gd:61",
+"data/modes.json#name"
+],
+"Under the Arrows": [
+"scripts/game/ladder.gd:63"
+],
+"The Basilisk": [
+"scripts/game/ladder.gd:64"
+],
+"Fire from Both Gates": [
+"scripts/game/ladder.gd:65"
+],
+"Two Lions": [
+"scripts/game/ladder.gd:67"
+],
+"Two Headsmen": [
+"scripts/game/ladder.gd:68"
+],
+"The Chimera": [
+"scripts/game/ladder.gd:69"
+],
+"The Praetorian Guard": [
+"scripts/game/ladder.gd:71",
+"data/modes.json#name"
+],
+"The Elephant": [
+"scripts/game/ladder.gd:72",
+"data/beasts.json#name",
+"data/modes.json#name"
+],
+"Two Trolls": [
+"scripts/game/ladder.gd:73"
+],
+"The Manticore": [
+"scripts/game/ladder.gd:75"
+],
+"The Champion's Seconds": [
+"scripts/game/ladder.gd:76"
+],
+"The Pit": [
+"scripts/game/ladder.gd:77",
+"data/modes.json#name"
+],
+"The Shield Wall": [
+"scripts/game/ladder.gd:79",
+"data/modes.json#name"
+],
+"Two Crocodiles": [
+"scripts/game/ladder.gd:80"
+],
+"Trolls and Fire": [
+"scripts/game/ladder.gd:81"
+],
+"Two Bears": [
+"scripts/game/ladder.gd:83"
+],
+"The Emperor": [
+"scripts/game/ladder.gd:84",
+"scripts/game/ladder.gd:84",
+"data/campaign.json#label",
+"data/modes.json#name"
+],
+"Wings and Stings": [
+"scripts/game/ladder.gd:85"
+],
+"a gladiator": [
+"scripts/game/ladder.gd:102",
+"scripts/game/yard_play.gd:145"
+],
+"%s and %d more": [
+"scripts/game/ladder.gd:107"
+],
+"Your first kill in the arena.": [
+"scripts/game/achievements.gd:7"
+],
+"Headsman": [
+"scripts/game/achievements.gd:8"
+],
+"Ten heads taken.": [
+"scripts/game/achievements.gd:8"
+],
+"Beast Slayer": [
+"scripts/game/achievements.gd:9"
+],
+"Bring down a beast.": [
+"scripts/game/achievements.gd:9"
+],
+"The Emperor's Pet": [
+"scripts/game/achievements.gd:10"
+],
+"Beat a boss of the campaign.": [
+"scripts/game/achievements.gd:10"
+],
+"Eight Bouts": [
+"scripts/game/achievements.gd:11"
+],
+"Clear the eighth bout of the campaign.": [
+"scripts/game/achievements.gd:11"
+],
+"Halfway to the Rudis": [
+"scripts/game/achievements.gd:12"
+],
+"Clear the thirty-second bout.": [
+"scripts/game/achievements.gd:12"
+],
+"The Rudis": [
+"scripts/game/achievements.gd:13"
+],
+"Win the campaign: the wooden sword is yours.": [
+"scripts/game/achievements.gd:13"
+],
+"Twice Free": [
+"scripts/game/achievements.gd:14"
+],
+"Win the campaign a second time round.": [
+"scripts/game/achievements.gd:14"
+],
+"Unbroken": [
+"scripts/game/achievements.gd:15"
+],
+"Win the campaign on Ironman: one life, never once fallen.": [
+"scripts/game/achievements.gd:15"
+],
+"The Hand of Jupiter": [
+"scripts/game/achievements.gd:16"
+],
+"Hurl a man hard enough that his landing hurts.": [
+"scripts/game/achievements.gd:16"
+],
+"A Body of Iron": [
+"scripts/game/achievements.gd:17"
+],
+"Take one of the trainer's abilities to its best.": [
+"scripts/game/achievements.gd:17"
+],
+"Wrecksmith": [
+"scripts/game/achievements.gd:18"
+],
+"Keep a weapon of your own design.": [
+"scripts/game/achievements.gd:18"
+],
+"Armourer": [
+"scripts/game/achievements.gd:19"
+],
+"Keep a piece of armour of your own design.": [
+"scripts/game/achievements.gd:19"
+],
+"Brother in Arms": [
+"scripts/game/achievements.gd:20"
+],
+"Lift a friend from death's door.": [
+"scripts/game/achievements.gd:20"
+],
+"Javelin": [
+"scripts/game/achievements.gd:21",
+"scripts/game/forge_lib.gd:840",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Kill a man with a thrown weapon.": [
+"scripts/game/achievements.gd:21"
+],
+"Darling of the Crowd": [
+"scripts/game/achievements.gd:22"
+],
+"Win the whole crowd over in one bout.": [
+"scripts/game/achievements.gd:22"
+],
+"Vis": [
+"scripts/game/training.gd:10"
+],
+"Strength": [
+"scripts/game/training.gd:10"
+],
+"The arm's drive: a heavy weapon swung as fast as a light one, for less breath, held steadier; half of it goes into every blow.": [
+"scripts/game/training.gd:11"
+],
+"Ictus": [
+"scripts/game/training.gd:12"
+],
+"Blow": [
+"scripts/game/training.gd:12"
+],
+"Weight behind the blow: every hit that lands, lands harder.": [
+"scripts/game/training.gd:13"
+],
+"Spiritus": [
+"scripts/game/training.gd:14"
+],
+"Wind": [
+"scripts/game/training.gd:14"
+],
+"More breath in the chest, and back sooner after a sprint or a flurry.": [
+"scripts/game/training.gd:15"
+],
+"Corium": [
+"scripts/game/training.gd:16"
+],
+"A thick hide: cuts bite less, bones hold, limbs come off harder.": [
+"scripts/game/training.gd:17"
+],
+"Sanguis": [
+"scripts/game/training.gd:18"
+],
+"Blood": [
+"scripts/game/training.gd:18"
+],
+"Blood that clots: every wound bleeds slower.": [
+"scripts/game/training.gd:19"
+],
+"Firmitas": [
+"scripts/game/training.gd:20"
+],
+"Footing": [
+"scripts/game/training.gd:20"
+],
+"Hard to knock down, hard to stagger, and up again sooner.": [
+"scripts/game/training.gd:21"
+],
+"Virtus": [
+"scripts/game/training.gd:24"
+],
+"Valour": [
+"scripts/game/training.gd:24"
+],
+"Doctore teaches it only to one who took the rudis without ever falling: a little more of everything, for good. A death does not take it.": [
+"scripts/game/training.gd:25"
+],
+"The trainer knows no such thing": [
+"scripts/game/training.gd:70"
+],
+"%s is at its best: nothing more to teach": [
+"scripts/game/training.gd:74"
+],
+"Doctore teaches Virtus only to one who won the rudis on Ironman": [
+"scripts/game/training.gd:76"
+],
+"Not yet: win the next bout first": [
+"scripts/game/training.gd:78"
+],
+"The rest of the training is in the full game": [
+"scripts/game/training.gd:78"
+],
+"Not enough denarii (%d needed)": [
+"scripts/game/training.gd:81"
+],
+"E: into the arena, the next fight": [
+"scripts/game/yard.gd:8"
+],
+"E: talk to the smith · buy, mend and reshape your weapons": [
+"scripts/game/yard.gd:9"
+],
+"Vulcanus the smith": [
+"scripts/game/yard.gd:9"
+],
+"E: talk to the trader · pots, bread and gadgets": [
+"scripts/game/yard.gd:10"
+],
+"Mercator the trader": [
+"scripts/game/yard.gd:10"
+],
+"E: your missions for the next fight": [
+"scripts/game/yard.gd:11"
+],
+"E: talk to the trainer · strength, wind, hide, blood and footing, session by session": [
+"scripts/game/yard.gd:12"
+],
+"Doctore the trainer": [
+"scripts/game/yard.gd:12"
+],
+"E: talk to the physician · stitch your wounds, fit a prosthetic": [
+"scripts/game/yard.gd:13"
+],
+"Galen the physician": [
+"scripts/game/yard.gd:13"
+],
+"Tiro": [
+"scripts/game/yard.gd:43"
+],
+"A recruit. The throwables are yours to buy.": [
+"scripts/game/yard.gd:43"
+],
+"The crowd starts to know your name.": [
+"scripts/game/yard.gd:44"
+],
+"Veteran": [
+"scripts/game/yard.gd:45",
+"scripts/game/match.gd:680"
+],
+"Heavy armour is for sale to you.": [
+"scripts/game/yard.gd:45"
+],
+"Champion": [
+"scripts/game/yard.gd:46",
+"scripts/game/match.gd:132",
+"scripts/game/match.gd:680"
+],
+"Missions pay half again.": [
+"scripts/game/yard.gd:46"
+],
+"Rudiarius": [
+"scripts/game/yard.gd:47"
+],
+"Given the wooden sword: free. Every mission pays double.": [
+"scripts/game/yard.gd:47"
+],
+"Kill two enemies": [
+"scripts/game/yard.gd:66"
+],
+"Cut a limb off an enemy": [
+"scripts/game/yard.gd:67"
+],
+"Land 8 punches": [
+"scripts/game/yard.gd:68"
+],
+"Hit an enemy in the head 5 times": [
+"scripts/game/yard.gd:69"
+],
+"Kill an enemy with something thrown": [
+"scripts/game/yard.gd:70"
+],
+"Shove enemies 4 times": [
+"scripts/game/yard.gd:71"
+],
+"Be standing at the end of the fight": [
+"scripts/game/yard.gd:72"
+],
+"Help bring down a giant or a boss": [
+"scripts/game/yard.gd:73"
+],
+"Win having lost less than a third of your blood": [
+"scripts/game/yard.gd:74"
+],
+"Test fight!": [
+"scripts/game/modes.gd:10"
+],
+"Duel: best of three!": [
+"scripts/game/modes.gd:10"
+],
+"Free for all!": [
+"scripts/game/modes.gd:10"
+],
+"Chaos!": [
+"scripts/game/modes.gd:10"
+],
+"Players brawl!": [
+"scripts/game/modes.gd:10"
+],
+"Co-op campaign!": [
+"scripts/game/modes.gd:10"
+],
+"Survive the waves!": [
+"scripts/game/modes.gd:11"
+],
+"Monster Hunt!": [
+"scripts/game/modes.gd:11"
+],
+"Red vs Blue!": [
+"scripts/game/modes.gd:11"
+],
+"King of the Arena!": [
+"scripts/game/modes.gd:11"
+],
+"The Emperor watches!": [
+"scripts/game/modes.gd:11"
+],
+"King of the Hill!": [
+"scripts/game/modes.gd:12"
+],
+"Last Limb Standing!": [
+"scripts/game/modes.gd:12"
+],
+"Head Football!": [
+"scripts/game/modes.gd:12"
+],
+"Forge and Fight!": [
+"scripts/game/modes.gd:12"
+],
+"Teams: players and bots split up": [
+"scripts/game/modes.gd:13"
+],
+"Hold the circle alone for 20 s": [
+"scripts/game/modes.gd:13"
+],
+"The Emperor removes a limb from everyone every 15 s": [
+"scripts/game/modes.gd:13"
+],
+"Kick the head into the other goal (first to 3)": [
+"scripts/game/modes.gd:14"
+],
+"The winner stays, the next challenger walks in": [
+"scripts/game/modes.gd:14"
+],
+"1 decree · 2 beast · 3 weapon · 4 tomato · 5 gift · 6/7 the verdict": [
+"scripts/game/modes.gd:14"
+],
+"Floored? Y yields, F fights on wounded for double the stake": [
+"scripts/game/modes.gd:15"
+],
+"What you forged against the clock: to the death": [
+"scripts/game/modes.gd:15"
+],
+"Fight!": [
+"scripts/game/modes.gd:114"
+],
+"Wave 1": [
+"scripts/game/modes.gd:114"
+],
+"Crixus": [
+"scripts/game/modes.gd:138"
+],
+"%s (boss)": [
+"scripts/game/modes.gd:176"
+],
+"Wave %d: %s": [
+"scripts/game/modes.gd:177"
+],
+"%s holds the hill": [
+"scripts/game/modes.gd:222"
+],
+"THUMBS DOWN": [
+"scripts/game/modes.gd:242"
+],
+"The Emperor takes a limb from everyone (%d)": [
+"scripts/game/modes.gd:242"
+],
+"GOAL! %s": [
+"scripts/game/modes.gd:278"
+],
+" · %s scores!": [
+"scripts/game/modes.gd:278"
+],
+"GOAL!": [
+"scripts/game/modes.gd:280"
+],
+"The Emperor releases a %s!": [
+"scripts/game/modes.gd:311"
+],
+"The Emperor throws a weapon down to %s": [
+"scripts/game/modes.gd:315"
+],
+"imperial favour": [
+"scripts/game/modes.gd:320"
+],
+"A gift from the Emperor for %s": [
+"scripts/game/modes.gd:321"
+],
+"The Emperor: thumbs up!": [
+"scripts/game/modes.gd:325"
+],
+"%s lives, and is paid double": [
+"scripts/game/modes.gd:325"
+],
+"The Emperor: thumbs down!": [
+"scripts/game/modes.gd:329"
+],
+"%s wins nothing today": [
+"scripts/game/modes.gd:329"
+],
+"Round %d": [
+"scripts/game/modes.gd:373"
+],
+"%s fights on, wounded. The stake is %d denarii": [
+"scripts/game/modes.gd:373"
+],
+"Round %d to %s": [
+"scripts/game/modes.gd:397"
+],
+"You are down. Y: yield · F: fight on, wounded, for double the stake": [
+"scripts/game/modes.gd:397"
+],
+"%s is down and must choose: yield, or fight on for double the stake": [
+"scripts/game/modes.gd:397"
+],
+"%s wins the duel %s": [
+"scripts/game/modes.gd:405"
+],
+"For %d denarii": [
+"scripts/game/modes.gd:405"
+],
+"%s team wins!": [
+"scripts/game/modes.gd:434",
+"scripts/game/modes.gd:505"
+],
+"The monsters won in wave %d": [
+"scripts/game/modes.gd:446"
+],
+"Wave %d!": [
+"scripts/game/modes.gd:451",
+"scripts/game/modes.gd:461"
+],
+"The gates open again": [
+"scripts/game/modes.gd:451"
+],
+"You fell in wave %d": [
+"scripts/game/modes.gd:456"
+],
+"The crowd wants more blood": [
+"scripts/game/modes.gd:461"
+],
+"Wave %d: the lions join in!": [
+"scripts/game/modes.gd:466"
+],
+"%s reigns: the players are all down after %d bouts": [
+"scripts/game/modes.gd:483"
+],
+"%s is King of the Arena: %d bouts unbeaten!": [
+"scripts/game/modes.gd:483"
+],
+"%s holds the arena (%d)": [
+"scripts/game/modes.gd:496"
+],
+"The next challenger walks in": [
+"scripts/game/modes.gd:496"
+],
+"%s wins!": [
+"scripts/game/modes.gd:505"
+],
+"Draw!": [
+"scripts/game/modes.gd:505"
+],
+"The Emperor decides: 6 thumbs up · 7 thumbs down": [
+"scripts/game/modes.gd:506"
+],
+"%s %ds to go": [
+"scripts/game/modes.gd:521"
+],
+"nobody on the hill": [
+"scripts/game/modes.gd:521"
+],
+"next chop in %ds": [
+"scripts/game/modes.gd:522"
+],
+"%s left": [
+"scripts/game/modes.gd:523",
+"scripts/game/match.gd:542"
+],
+"to the death": [
+"scripts/game/modes.gd:523"
+],
+"Red %d : %d Blue · kick the head!": [
+"scripts/game/modes.gd:524"
+],
+"Wave %d": [
+"scripts/game/modes.gd:525"
+],
+"Reign: %d of %d": [
+"scripts/game/modes.gd:526"
+],
+"Round %d · stake %d": [
+"scripts/game/modes.gd:527"
+],
+"voxel art missing: ": [
+"scripts/game/voxel_art.gd:81"
+],
+"B|FINIS\\nF|": [
+"scripts/game/yard_play.gd:112"
+],
+"The demo ends here": [
+"scripts/game/yard_play.gd:112"
+],
+"B|PVGNA %s": [
+"scripts/game/yard_play.gd:114"
+],
+"and %d more": [
+"scripts/game/yard_play.gd:130"
+],
+"P|PRAEMIVM · %d DENARII": [
+"scripts/game/yard_play.gd:135"
+],
+"The Ludus yard · E to talk to the smith, the trader, the physician or the trainer · the gate leads to the arena": [
+"scripts/game/yard_play.gd:446"
+],
+"BULLSEYE! +%d": [
+"scripts/game/yard_play.gd:463"
+],
+"Off the board": [
+"scripts/game/yard_play.gd:463"
+],
+"Is that all Rome has?": [
+"scripts/game/social.gd:7"
+],
+"My grandmother hits harder!": [
+"scripts/game/social.gd:7"
+],
+"Come here, I have a surprise for you!": [
+"scripts/game/social.gd:7"
+],
+"Your mother was a hamster!": [
+"scripts/game/social.gd:7"
+],
+"I am right here, you cowards!": [
+"scripts/game/social.gd:7"
+],
+"Boo! Over here!": [
+"scripts/game/social.gd:7"
+],
+"salutes the Emperor": [
+"scripts/game/social.gd:9"
+],
+"%s salutes the Emperor": [
+"scripts/game/social.gd:9"
+],
+"does a little dance": [
+"scripts/game/social.gd:10"
+],
+"%s does a little dance": [
+"scripts/game/social.gd:10"
+],
+"takes a bow": [
+"scripts/game/social.gd:11"
+],
+"%s takes a bow": [
+"scripts/game/social.gd:11"
+],
+"Only your right hand is free": [
+"scripts/game/social.gd:61"
+],
+"Only your left hand is free": [
+"scripts/game/social.gd:61"
+],
+"Both hands are full": [
+"scripts/game/social.gd:61"
+],
+"Your right hand is full": [
+"scripts/game/social.gd:66",
+"scripts/game/social.gd:151"
+],
+"Your left hand is full": [
+"scripts/game/social.gd:66",
+"scripts/game/social.gd:151"
+],
+"%s grabbed %s by the %s with both hands": [
+"scripts/game/social.gd:128"
+],
+"%s grabbed %s by the %s": [
+"scripts/game/social.gd:128"
+],
+"%s grabbed %s's %s with both hands!": [
+"scripts/game/social.gd:130"
+],
+"%s grabbed %s's %s!": [
+"scripts/game/social.gd:130"
+],
+"%s pins %s's sword arm!": [
+"scripts/game/social.gd:140"
+],
+"%s pins %s's shield arm!": [
+"scripts/game/social.gd:140"
+],
+"Your right hand cannot reach him": [
+"scripts/game/social.gd:155"
+],
+"Your left hand cannot reach him": [
+"scripts/game/social.gd:155"
+],
+"%s gets both hands on %s": [
+"scripts/game/social.gd:158"
+],
+"%s picked up their own %s and is going to hit people with it": [
+"scripts/game/social.gd:194"
+],
+"%s picked up %s's %s and is going to hit people with it": [
+"scripts/game/social.gd:194"
+],
+"armed with your own arm": [
+"scripts/game/social.gd:195"
+],
+"improvised weapon": [
+"scripts/game/social.gd:195"
+],
+"%s threw a %s!": [
+"scripts/game/social.gd:213"
+],
+"%s SLAMS %s into the sand!": [
+"scripts/game/social.gd:266"
+],
+"%s strains against %s's weight": [
+"scripts/game/social.gd:309"
+],
+"%s CATAPULTED %s!": [
+"scripts/game/social.gd:318"
+],
+"%s tossed %s": [
+"scripts/game/social.gd:318"
+],
+"human catapult": [
+"scripts/game/social.gd:322"
+],
+"%s landed on %s!": [
+"scripts/game/social.gd:352"
+],
+"human cannonball": [
+"scripts/game/social.gd:353"
+],
+"%s shoved %s to the sand": [
+"scripts/game/social.gd:402"
+],
+"%s plays dead. Very convincing.": [
+"scripts/game/social.gd:482"
+],
+"%s tore free of %s's grip!": [
+"scripts/game/social.gd:640"
+],
+"Grabbed! Mash SPACE or hit his arm": [
+"scripts/game/social.gd:644"
+],
+"%s let go": [
+"scripts/game/social.gd:666"
+],
+"%s wriggled free": [
+"scripts/game/social.gd:674"
+],
+"The Hand of Jupiter is spent for this bout": [
+"scripts/game/social.gd:719"
+],
+"The grip needs a moment (%d s)": [
+"scripts/game/social.gd:722"
+],
+"The grip closes on nothing: look at a foe (no giants)": [
+"scripts/game/social.gd:748"
+],
+"%s seizes %s in an unseen grip! He hangs where you look: F hurls him.": [
+"scripts/game/social.gd:759"
+],
+"%s seizes %s in an unseen grip!": [
+"scripts/game/social.gd:759"
+],
+"the hand of Jupiter": [
+"scripts/game/social.gd:763"
+],
+"The grip on %s lets go": [
+"scripts/game/social.gd:810"
+],
+"%s HURLS %s!": [
+"scripts/game/social.gd:851"
+],
+"%s lands hard!": [
+"scripts/game/social.gd:873"
+],
+"Vulcan's fire": [
+"scripts/game/throwables.gd:683"
+],
+"BOOM!": [
+"scripts/game/throwables.gd:707",
+"scripts/game/match.gd:2252"
+],
+"Caltrops all over the sand. Watch your step.": [
+"scripts/game/throwables.gd:741"
+],
+"%s is covered in bees!": [
+"scripts/game/throwables.gd:751",
+"scripts/game/throwables.gd:1439"
+],
+"The hive breaks open: the swarm goes for %s!": [
+"scripts/game/throwables.gd:779"
+],
+"The crowd laughs. Every beast wants the goat.": [
+"scripts/game/throwables.gd:782"
+],
+"%s's legs are tied up": [
+"scripts/game/throwables.gd:792"
+],
+"Rotten fish sauce! %s": [
+"scripts/game/throwables.gd:811"
+],
+"%d weapons dropped in disgust.": [
+"scripts/game/throwables.gd:811"
+],
+"%d weapon dropped in disgust.": [
+"scripts/game/throwables.gd:811"
+],
+"The crowd holds its nose.": [
+"scripts/game/throwables.gd:811"
+],
+"%s is dripping honey, and the bees have found him!": [
+"scripts/game/throwables.gd:823"
+],
+"The mystery amphora was... thunder!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... nails!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... a goat!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... bees!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... chickens!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... confetti!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... a grape!": [
+"scripts/game/throwables.gd:829"
+],
+"The mystery amphora was... oil!": [
+"scripts/game/throwables.gd:829"
+],
+"A single grape rolls out. The crowd is silent.": [
+"scripts/game/throwables.gd:838"
+],
+"a grape": [
+"scripts/game/throwables.gd:840"
+],
+"CHICKENS EVERYWHERE!": [
+"scripts/game/throwables.gd:847"
+],
+"%s reeled in %s!": [
+"scripts/game/throwables.gd:868"
+],
+"catch of the day": [
+"scripts/game/throwables.gd:869"
+],
+"%s got hit by their own discus": [
+"scripts/game/throwables.gd:883"
+],
+"%d caught in the big net": [
+"scripts/game/throwables.gd:893"
+],
+"HEADSHOT! %s puts one in %s's head. Down and out.": [
+"scripts/game/throwables.gd:1122"
+],
+"HEADSHOT! %s puts one in %s's head": [
+"scripts/game/throwables.gd:1122"
+],
+"HEADSHOT! Right in %s's head. Down and out.": [
+"scripts/game/throwables.gd:1124"
+],
+"HEADSHOT! Right in %s's head": [
+"scripts/game/throwables.gd:1124"
+],
+"An anvil hits %s. Classic.": [
+"scripts/game/throwables.gd:1164"
+],
+"SPLAT! A tomato hits %s": [
+"scripts/game/throwables.gd:1175"
+],
+"%s eats the bread": [
+"scripts/game/throwables.gd:1184"
+],
+"%s downs the wine": [
+"scripts/game/throwables.gd:1187"
+],
+"%s pockets a gold coin": [
+"scripts/game/throwables.gd:1189"
+],
+"%s steps on a caltrop!": [
+"scripts/game/throwables.gd:1205"
+],
+"%s slipped on a banana peel!": [
+"scripts/game/throwables.gd:1213"
+],
+"%s is bowled over by a cheese wheel": [
+"scripts/game/throwables.gd:1218"
+],
+"%s caught the boomerang": [
+"scripts/game/throwables.gd:1222"
+],
+"%s slipped in the olive oil": [
+"scripts/game/throwables.gd:1386"
+],
+"%s bandages %s and helps them up": [
+"scripts/game/throwables.gd:1546"
+],
+"%s bandaged up": [
+"scripts/game/throwables.gd:1548"
+],
+"%s bowled a cheese wheel": [
+"scripts/game/throwables.gd:1557"
+],
+"%s laid a banana trap": [
+"scripts/game/throwables.gd:1563"
+],
+"%s ready: hold F to aim, let go to throw": [
+"scripts/game/throwables.gd:1594"
+],
+"%s put away": [
+"scripts/game/throwables.gd:1605"
+],
+"Fx": [
+"scripts/game/fx.gd:20"
+],
+"The smith has no such thing": [
+"scripts/game/arms.gd:158"
+],
+"The smith cannot make that": [
+"scripts/game/arms.gd:172"
+],
+"The Widowmaker": [
+"scripts/game/arms.gd:180"
+],
+"Old Grudge": [
+"scripts/game/arms.gd:180"
+],
+"Sorrow": [
+"scripts/game/arms.gd:180"
+],
+"The Butcher's Apology": [
+"scripts/game/arms.gd:180"
+],
+"Bonebiter": [
+"scripts/game/arms.gd:180"
+],
+"Mercy": [
+"scripts/game/arms.gd:180"
+],
+"The Last Word": [
+"scripts/game/arms.gd:180"
+],
+"Thunderjaw": [
+"scripts/game/arms.gd:180"
+],
+"Lady Ruin": [
+"scripts/game/arms.gd:180"
+],
+"The Emperor's Itch": [
+"scripts/game/arms.gd:180"
+],
+"Gutspiller": [
+"scripts/game/arms.gd:180"
+],
+"Kindly Death": [
+"scripts/game/arms.gd:180"
+],
+"Nothing in that hand to sell": [
+"scripts/game/arms.gd:319"
+],
+"Training Stick": [
+"scripts/game/arms.gd:330",
+"data/shop.json#name"
+],
+"Hone the edge": [
+"scripts/game/arms.gd:374",
+"data/shop.json#label"
+],
+"A sharper edge and point: cuts and thrusts go deeper (+10% sharpness).": [
+"scripts/game/arms.gd:374",
+"data/shop.json#desc"
+],
+"Temper the blade": [
+"scripts/game/arms.gd:375",
+"data/shop.json#label"
+],
+"Bronze and iron reforged as steel: harder, holds an edge, chips less.": [
+"scripts/game/arms.gd:375",
+"data/shop.json#desc"
+],
+"Coat with venom": [
+"scripts/game/arms.gd:376"
+],
+"Snake venom on the edge: every cut poisons. The wound bleeds more, the poisoned man slows and weakens.": [
+"scripts/game/arms.gd:376"
+],
+"Pitch and fire": [
+"scripts/game/arms.gd:377"
+],
+"Pitch on the head, set alight: it burns as you fight, and sets alight what it strikes.": [
+"scripts/game/arms.gd:377"
+],
+"Frost rune": [
+"scripts/game/arms.gd:378"
+],
+"A rune of the north: every blow chills to the bone, slowing the man it lands on and sapping his breath.": [
+"scripts/game/arms.gd:378"
+],
+"Venom": [
+"scripts/game/arms.gd:382",
+"scripts/game/forge_lib.gd:867"
+],
+"Burning": [
+"scripts/game/arms.gd:382"
+],
+"Frost": [
+"scripts/game/arms.gd:382",
+"scripts/game/forge_lib.gd:868"
+],
+"no edge to hone": [
+"scripts/game/arms.gd:406"
+],
+"as sharp as it gets": [
+"scripts/game/arms.gd:407"
+],
+"already steel": [
+"scripts/game/arms.gd:409"
+],
+"not on this one": [
+"scripts/game/arms.gd:410"
+],
+"That will not go on this one": [
+"scripts/game/arms.gd:431"
+],
+"WRECKSMITH_DEMO": [
+"scripts/game/edition.gd:22"
+],
+"Peg leg": [
+"scripts/game/body.gd:11"
+],
+"A wooden shin, strapped on below the knee. Does not bleed. You walk again, slower, and a peg is never a foot.": [
+"scripts/game/body.gd:12"
+],
+"Hook hand": [
+"scripts/game/body.gd:13"
+],
+"An iron hook in place of the hand. It cannot hold a weapon, but it rips.": [
+"scripts/game/body.gd:14"
+],
+"A blade riveted to the stump. It can never be dropped or knocked away, and it is clumsy: the arm swings it slower and less surely than a hand would.": [
+"scripts/game/body.gd:16"
+],
+"Glass eye": [
+"scripts/game/body.gd:17"
+],
+"A fine Egyptian glass eye. Nobody can say how, but the world on that side comes back, most of it.": [
+"scripts/game/body.gd:18"
+],
+"%d broken ribs": [
+"scripts/game/body.gd:82"
+],
+"%d broken rib": [
+"scripts/game/body.gd:82"
+],
+"a cracked pelvis": [
+"scripts/game/body.gd:84"
+],
+"a cracked %s": [
+"scripts/game/body.gd:85"
+],
+"a broken %s": [
+"scripts/game/body.gd:85"
+],
+"an open break of the %s": [
+"scripts/game/body.gd:85"
+],
+"lost the %s": [
+"scripts/game/body.gd:269"
+],
+"the %s was knocked off": [
+"scripts/game/body.gd:269"
+],
+"a new scar on the %s": [
+"scripts/game/body.gd:293"
+],
+"lost the right eye": [
+"scripts/game/body.gd:297"
+],
+"lost the left eye": [
+"scripts/game/body.gd:297"
+],
+"no %s": [
+"scripts/game/body.gd:327"
+],
+"glass right eye": [
+"scripts/game/body.gd:331"
+],
+"glass left eye": [
+"scripts/game/body.gd:331"
+],
+"blind in the right eye": [
+"scripts/game/body.gd:331"
+],
+"blind in the left eye": [
+"scripts/game/body.gd:331"
+],
+"%d scarred parts": [
+"scripts/game/body.gd:335"
+],
+"%d scarred part": [
+"scripts/game/body.gd:335"
+],
+"Treat everything": [
+"scripts/game/body.gd:347"
+],
+"Every broken bone set and splinted, every fresh wound cleaned and stitched, all at once: whole by the next bout, and cheaper than one at a time.": [
+"scripts/game/body.gd:347"
+],
+"Glass eye (right)": [
+"scripts/game/body.gd:358"
+],
+"Glass eye (left)": [
+"scripts/game/body.gd:358"
+],
+"Set the %s": [
+"scripts/game/body.gd:363"
+],
+"The bone pulled straight, set and splinted: it knits by the next bout. Left alone it stays broken, and the limb no use.": [
+"scripts/game/body.gd:364"
+],
+"Bind the ribs": [
+"scripts/game/body.gd:366"
+],
+"The broken ribs bound tight: you breathe freely again by the next bout. Left alone, every breath is short.": [
+"scripts/game/body.gd:367"
+],
+"Mend the skull": [
+"scripts/game/body.gd:369"
+],
+"The cracked bone lifted and bound, the head kept still: the ringing and the blurring stop. Left alone, every knock to the head goes straight to the brain.": [
+"scripts/game/body.gd:370"
+],
+"Bind the pelvis": [
+"scripts/game/body.gd:372"
+],
+"The hips bound tight in linen: the legs bear you again. Left alone, they buckle.": [
+"scripts/game/body.gd:373"
+],
+"Splint the cracked %s": [
+"scripts/game/body.gd:375"
+],
+"The crack splinted until it holds: whole again by the next bout. Left alone it stays weak, and a lesser blow breaks it through.": [
+"scripts/game/body.gd:376"
+],
+"The bone that came out through the skin cleaned, pushed back, set and the wound sewn over it: it knits by the next bout. Left alone it stays broken, and the limb no use.": [
+"scripts/game/body.gd:378"
+],
+"Stitch and dress your wounds": [
+"scripts/game/body.gd:384"
+],
+"The cuts and the crushed flesh of your last fight, cleaned, stitched and bound: they heal without a mark. Left alone, they scar over for good.": [
+"scripts/game/body.gd:384"
+],
+"Rare medicine": [
+"scripts/game/body.gd:390"
+],
+"A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been.": [
+"scripts/game/body.gd:390"
+],
+"Elixir of Asclepius": [
+"scripts/game/body.gd:393"
+],
+"A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.": [
+"scripts/game/body.gd:393"
+],
+"Ground": [
+"scripts/game/arena.gd:16"
+],
+"Film": [
+"scripts/game/arena.gd:133"
+],
+"Sand": [
+"scripts/game/arena.gd:156"
+],
+"Bowl": [
+"scripts/game/arena.gd:385"
+],
+"Senator Pompous": [
+"scripts/game/bout_rules.gd:52"
+],
+"Reinforcements: %s jumps into the arena!": [
+"scripts/game/bout_rules.gd:147"
+],
+"%s has the bomb! Hit someone to pass it!": [
+"scripts/game/bout_rules.gd:160"
+],
+"The bomb passes to %s!": [
+"scripts/game/bout_rules.gd:204"
+],
+"Grab his head and bring it to the Emperor's box!": [
+"scripts/game/bout_rules.gd:225"
+],
+"%s grabbed the head!": [
+"scripts/game/bout_rules.gd:235"
+],
+"Grab the gold! %d coins · %s": [
+"scripts/game/bout_rules.gd:266"
+],
+"Survive %s": [
+"scripts/game/bout_rules.gd:267"
+],
+"Next decree in %ds": [
+"scripts/game/bout_rules.gd:268"
+],
+"%s has the bomb · %ds": [
+"scripts/game/bout_rules.gd:270"
+],
+"A new bomb is coming": [
+"scripts/game/bout_rules.gd:270"
+],
+"Senator %d%% across · blood %d": [
+"scripts/game/bout_rules.gd:276"
+],
+"The circle: %d%%": [
+"scripts/game/bout_rules.gd:277"
+],
+"%s carries the head": [
+"scripts/game/bout_rules.gd:280"
+],
+"The head is on the sand!": [
+"scripts/game/bout_rules.gd:280"
+],
+"Kill %s": [
+"scripts/game/bout_rules.gd:281"
+],
+"the target": [
+"scripts/game/bout_rules.gd:281"
+],
+"Moon Gravity": [
+"scripts/game/decrees.gd:7"
+],
+"Every jump is a journey": [
+"scripts/game/decrees.gd:7"
+],
+"Fists Only": [
+"scripts/game/decrees.gd:8"
+],
+"All weapons were seized by the imperial treasury": [
+"scripts/game/decrees.gd:8"
+],
+"Rubber Chickens": [
+"scripts/game/decrees.gd:9"
+],
+"The official weapon of the Empire. It squeaks.": [
+"scripts/game/decrees.gd:9"
+],
+"Fish Fight": [
+"scripts/game/decrees.gd:10"
+],
+"Weapons kindly donated by the Roman fish market": [
+"scripts/game/decrees.gd:10"
+],
+"Giant Weapons": [
+"scripts/game/decrees.gd:11"
+],
+"Size does matter": [
+"scripts/game/decrees.gd:11"
+],
+"Free Wine": [
+"scripts/game/decrees.gd:12"
+],
+"Everyone had a little too much": [
+"scripts/game/decrees.gd:12"
+],
+"Fast Forward": [
+"scripts/game/decrees.gd:13"
+],
+"The Emperor has a meeting in five minutes": [
+"scripts/game/decrees.gd:13"
+],
+"Confetti Blood": [
+"scripts/game/decrees.gd:14"
+],
+"Celebrate! Every wound is a party": [
+"scripts/game/decrees.gd:14"
+],
+"Bloodbath": [
+"scripts/game/decrees.gd:15"
+],
+"Every scratch bleeds three times as much": [
+"scripts/game/decrees.gd:15"
+],
+"Paper Limbs": [
+"scripts/game/decrees.gd:16"
+],
+"Today's gladiators are made of papyrus": [
+"scripts/game/decrees.gd:16"
+],
+"Spartan Kick": [
+"scripts/game/decrees.gd:17"
+],
+"This... is... Rome! (kicks send people flying)": [
+"scripts/game/decrees.gd:17"
+],
+"Glass Weapons": [
+"scripts/game/decrees.gd:18"
+],
+"Rome's blacksmiths drink on the job. Every hit breaks something": [
+"scripts/game/decrees.gd:18"
+],
+"Spike Floor": [
+"scripts/game/decrees.gd:19"
+],
+"Watch where you step. Red plates mean trouble": [
+"scripts/game/decrees.gd:19"
+],
+"Lions' Den": [
+"scripts/game/decrees.gd:20"
+],
+"The Emperor brought his pets": [
+"scripts/game/decrees.gd:20"
+],
+"Weapon Lottery": [
+"scripts/game/decrees.gd:21"
+],
+"Everyone gets a random weapon from the armory": [
+"scripts/game/decrees.gd:21"
+],
+"Key": [
+"scripts/game/player_input.gd:73",
+"scripts/game/player_input.gd:108",
+"scripts/game/player_input.gd:121",
+"scripts/game/player_input.gd:122"
+],
+"Digit": [
+"scripts/game/player_input.gd:75",
+"scripts/game/player_input.gd:110",
+"scripts/game/player_input.gd:121",
+"scripts/game/player_input.gd:122"
+],
+"Space": [
+"scripts/game/player_input.gd:78",
+"scripts/game/player_input.gd:96",
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Tab": [
+"scripts/game/player_input.gd:82",
+"scripts/game/player_input.gd:100",
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Enter": [
+"scripts/game/player_input.gd:83",
+"scripts/game/player_input.gd:101",
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Backquote": [
+"scripts/game/player_input.gd:84",
+"scripts/game/player_input.gd:102",
+"scripts/game/player_input.gd:117"
+],
+"Shift": [
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Ctrl": [
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Alt": [
+"scripts/game/player_input.gd:117",
+"scripts/game/player_input.gd:117"
+],
+"Unknown upgrade": [
+"scripts/game/circus.gd:135"
+],
+"Already maxed": [
+"scripts/game/circus.gd:138"
+],
+"%s killed %s": [
+"scripts/game/killcam.gd:37"
+],
+"%s died": [
+"scripts/game/killcam.gd:37"
+],
+"%s beat %s senseless": [
+"scripts/game/killcam.gd:40"
+],
+"%s is out of the fight": [
+"scripts/game/killcam.gd:40"
+],
+"%s brought down the mighty %s": [
+"scripts/game/killcam.gd:41"
+],
+"The arena": [
+"scripts/game/killcam.gd:41"
+],
+"%s burned, courtesy of %s": [
+"scripts/game/killcam.gd:42"
+],
+"%s burned": [
+"scripts/game/killcam.gd:42"
+],
+"%s punched %s to death": [
+"scripts/game/killcam.gd:43"
+],
+"%s threw a %s right into %s": [
+"scripts/game/killcam.gd:44"
+],
+"%s threw something right into %s": [
+"scripts/game/killcam.gd:44"
+],
+"%s killed %s. They were on the same side": [
+"scripts/game/killcam.gd:45"
+],
+"%s managed to kill themselves": [
+"scripts/game/killcam.gd:46"
+],
+"%s took %s's head off with a %s": [
+"scripts/game/killcam.gd:47"
+],
+"%s took %s's head off": [
+"scripts/game/killcam.gd:47"
+],
+"%s lost their head": [
+"scripts/game/killcam.gd:47"
+],
+"%s: two kills in a breath": [
+"scripts/game/killcam.gd:48"
+],
+"%s: three kills in a breath": [
+"scripts/game/killcam.gd:48"
+],
+"%s: a heap of kills in a breath": [
+"scripts/game/killcam.gd:48"
+],
+"Kill": [
+"scripts/game/killcam.gd:144"
+],
+"KILL CAM": [
+"scripts/game/killcam.gd:336"
+],
+"%s  skip": [
+"scripts/game/killcam.gd:360"
+],
+"Someone in row 9 threw a FISH!": [
+"scripts/game/spectacle.gd:9"
+],
+"A rubber chicken lands on the sand. The crowd giggles.": [
+"scripts/game/spectacle.gd:9"
+],
+"A folding chair! Classic.": [
+"scripts/game/spectacle.gd:10"
+],
+"A plank falls from the scaffolding.": [
+"scripts/game/spectacle.gd:10"
+],
+"The Emperor drops his golden spork.": [
+"scripts/game/spectacle.gd:11"
+],
+"A swordfish! Still wet.": [
+"scripts/game/spectacle.gd:11"
+],
+"A goose on a stick. It is furious.": [
+"scripts/game/spectacle.gd:12"
+],
+"An angry fish on a stick slaps the ground.": [
+"scripts/game/spectacle.gd:12"
+],
+"A hammer clatters down from the stands.": [
+"scripts/game/spectacle.gd:13"
+],
+"A spring sword! BOING!": [
+"scripts/game/spectacle.gd:14"
+],
+"A glue mace. Everything sticks to it.": [
+"scripts/game/spectacle.gd:14"
+],
+"A feather duster. Deadly to the dignified.": [
+"scripts/game/spectacle.gd:15"
+],
+"A magnet club: pulls iron out of hands.": [
+"scripts/game/spectacle.gd:15"
+],
+"An icicle blade. Chills and shatters.": [
+"scripts/game/spectacle.gd:16"
+],
+"A barrel of Bad Ideas. It is explosive.": [
+"scripts/game/spectacle.gd:16"
+],
+"A bow. Hold the left button to draw, release to loose.": [
+"scripts/game/spectacle.gd:17"
+],
+"A javelin. F throws it point first.": [
+"scripts/game/spectacle.gd:18"
+],
+"A telescopic spear. C extends it.": [
+"scripts/game/spectacle.gd:18"
+],
+"A zweihander falls from the Emperor's box.": [
+"scripts/game/spectacle.gd:19"
+],
+"A trident. Very Neptune.": [
+"scripts/game/spectacle.gd:19"
+],
+"A flame pole! C breathes fire.": [
+"scripts/game/spectacle.gd:20"
+],
+"A two-person sword. Grab a friend.": [
+"scripts/game/spectacle.gd:20"
+],
+"FIRST BLOOD! {a} opens the account.": [
+"scripts/game/spectacle.gd:24"
+],
+"And {a} draws first blood! The crowd approves.": [
+"scripts/game/spectacle.gd:24"
+],
+"{a} strikes first. Someone wake up the Emperor.": [
+"scripts/game/spectacle.gd:24"
+],
+"OFF WITH THE HEAD! {v} will not be needing a helmet.": [
+"scripts/game/spectacle.gd:25"
+],
+"A clean cut! {v}'s head goes one way, the rest goes the other.": [
+"scripts/game/spectacle.gd:25"
+],
+"DECAPITATION! {a} sends {v}'s head to the stands.": [
+"scripts/game/spectacle.gd:25"
+],
+"{v} loses a {part}! That's going to leave a mark.": [
+"scripts/game/spectacle.gd:26"
+],
+"There goes {v}'s {part}. The surgeons sigh.": [
+"scripts/game/spectacle.gd:26"
+],
+"{a} relieves {v} of a {part}. The crowd wants more.": [
+"scripts/game/spectacle.gd:26"
+],
+"THROUGH THE HEART! {v} has seconds left, and knows it.": [
+"scripts/game/spectacle.gd:27"
+],
+"{a} finds {v}'s heart. The crowd holds its breath.": [
+"scripts/game/spectacle.gd:27"
+],
+"Right in the heart! {v} is already a statue.": [
+"scripts/game/spectacle.gd:27"
+],
+"{a} opens {v}'s lung! Listen to that wheeze.": [
+"scripts/game/spectacle.gd:28"
+],
+"{v} is breathing through the wrong hole now.": [
+"scripts/game/spectacle.gd:28"
+],
+"A lung for {a}! {v} will not be running far.": [
+"scripts/game/spectacle.gd:28"
+],
+"{a} carves into {v}'s liver. That one bleeds and bleeds.": [
+"scripts/game/spectacle.gd:29"
+],
+"The liver! {v}'s wine days are over.": [
+"scripts/game/spectacle.gd:29"
+],
+"{a} opens {v}'s belly! Mind your step down there.": [
+"scripts/game/spectacle.gd:30"
+],
+"{v}'s guts see the sun. The front rows regret their seats.": [
+"scripts/game/spectacle.gd:30"
+],
+"{a} skewers {v}'s stomach. Lunch is cancelled.": [
+"scripts/game/spectacle.gd:31"
+],
+"{a} cuts {v}'s spine! Those legs belong to nobody now.": [
+"scripts/game/spectacle.gd:32"
+],
+"THE SPINE! {v} folds like a wet sail.": [
+"scripts/game/spectacle.gd:32"
+],
+"{a} into the brain! {v} forgets what day it is. Forever.": [
+"scripts/game/spectacle.gd:33"
+],
+"That blow reached {v}'s brain. Goodnight.": [
+"scripts/game/spectacle.gd:33"
+],
+"CRACK! That was {v}'s {part}.": [
+"scripts/game/spectacle.gd:34"
+],
+"{a} breaks {v}'s {part}. The front row heard that one.": [
+"scripts/game/spectacle.gd:34"
+],
+"Bones go! {v}'s {part}, in pieces.": [
+"scripts/game/spectacle.gd:34"
+],
+"WHAT A HIT! {a} nearly folds {v} in half.": [
+"scripts/game/spectacle.gd:35"
+],
+"OOOH! {v} felt that one in the afterlife.": [
+"scripts/game/spectacle.gd:35"
+],
+"{a} with the mighty blow! The Emperor spills his wine.": [
+"scripts/game/spectacle.gd:35"
+],
+"{v} is down for good. {a} takes the kill.": [
+"scripts/game/spectacle.gd:36"
+],
+"{a} finishes {v}! The sand drinks again.": [
+"scripts/game/spectacle.gd:36"
+],
+"Farewell, {v}. {a} sends their regards.": [
+"scripts/game/spectacle.gd:36"
+],
+"DOUBLE KILL! {a} is on a rampage!": [
+"scripts/game/spectacle.gd:37"
+],
+"Two down for {a}! Someone check if that is legal.": [
+"scripts/game/spectacle.gd:37"
+],
+"TRIPLE KILL! {a} IS UNSTOPPABLE!": [
+"scripts/game/spectacle.gd:38"
+],
+"{a} with THREE! The crowd is on its feet!": [
+"scripts/game/spectacle.gd:38"
+],
+"{a} was nearly dead and still took {v} with them! COMEBACK!": [
+"scripts/game/spectacle.gd:39"
+],
+"Bleeding, limping, and still winning: {a} takes {v}!": [
+"scripts/game/spectacle.gd:39"
+],
+"{a} hits their own teammate {v}. The crowd laughs. {v} does not.": [
+"scripts/game/spectacle.gd:40"
+],
+"FRIENDLY FIRE! {a}, that was {v}, your friend!": [
+"scripts/game/spectacle.gd:40"
+],
+"{a} forgets which colour they are wearing. {v} pays for it.": [
+"scripts/game/spectacle.gd:40"
+],
+"The crowd is yawning. Hit someone!": [
+"scripts/game/spectacle.gd:41"
+],
+"The Emperor checks his sundial. Do something!": [
+"scripts/game/spectacle.gd:41"
+],
+"Thirty seconds without blood. Shameful.": [
+"scripts/game/spectacle.gd:41"
+],
+"REVENGE! {a} pays {v} back!": [
+"scripts/game/spectacle.gd:43"
+],
+"{a} remembers who hit them. {v} regrets it.": [
+"scripts/game/spectacle.gd:43"
+],
+"{v} is still standing with almost no blood left. Made of iron!": [
+"scripts/game/spectacle.gd:44"
+],
+"{a} throws the weapon... and HITS {v}! Incredible!": [
+"scripts/game/spectacle.gd:45"
+],
+"A flying weapon from {a} finds {v}!": [
+"scripts/game/spectacle.gd:45"
+],
+"{a} slays the beast! The Emperor's pet is no more.": [
+"scripts/game/spectacle.gd:46"
+],
+"BEAST SLAYER! {a} brings down the {v}!": [
+"scripts/game/spectacle.gd:46"
+],
+"Gladiators, to your marks! Let the sand be red!": [
+"scripts/game/spectacle.gd:47"
+],
+"The Emperor raises his hand... FIGHT!": [
+"scripts/game/spectacle.gd:47"
+],
+"Welcome to the games! Try not to die in the first ten seconds.": [
+"scripts/game/spectacle.gd:47"
+],
+"Two minutes and still going! The crowd is placing side bets.": [
+"scripts/game/spectacle.gd:48"
+],
+"The Emperor is pleased!": [
+"scripts/game/spectacle.gd:129"
+],
+"The Emperor nods, unimpressed": [
+"scripts/game/spectacle.gd:131"
+],
+"The Emperor yawns. Next time: lions.": [
+"scripts/game/spectacle.gd:132"
+],
+"ROME": [
+"scripts/game/spectacle.gd:147"
+],
+"Ribs": [
+"scripts/game/spectacle.gd:158"
+],
+"Skull": [
+"scripts/game/spectacle.gd:158"
+],
+"Pelvis": [
+"scripts/game/spectacle.gd:158"
+],
+"Ribs into the lung": [
+"scripts/game/spectacle.gd:158"
+],
+"Mighty blow": [
+"scripts/game/spectacle.gd:174"
+],
+"Deadly throw!": [
+"scripts/game/spectacle.gd:176"
+],
+"Thrown hit!": [
+"scripts/game/spectacle.gd:176"
+],
+"Decapitation!": [
+"scripts/game/spectacle.gd:179"
+],
+"Disarmed!": [
+"scripts/game/spectacle.gd:181"
+],
+"Dismembered!": [
+"scripts/game/spectacle.gd:183"
+],
+"Beast slayer!": [
+"scripts/game/spectacle.gd:185"
+],
+"Kill!": [
+"scripts/game/spectacle.gd:185"
+],
+"Heart strike!": [
+"scripts/game/spectacle.gd:189"
+],
+"Spine cut!": [
+"scripts/game/spectacle.gd:190"
+],
+"Brain strike!": [
+"scripts/game/spectacle.gd:191"
+],
+"Bone breaker!": [
+"scripts/game/spectacle.gd:207"
+],
+"Spike trap": [
+"scripts/game/hazards.gd:62"
+],
+"Spinning blade": [
+"scripts/game/hazards.gd:84"
+],
+"Chariot scythe": [
+"scripts/game/hazards.gd:96"
+],
+"VA_BODIES": [
+"scripts/game/match.gd:243",
+"scripts/game/match.gd:243"
+],
+"The Emperor decrees": [
+"scripts/game/match.gd:312",
+"scripts/game/match.gd:348"
+],
+"One on one: %s": [
+"scripts/game/match.gd:332"
+],
+"Together: %s": [
+"scripts/game/match.gd:332"
+],
+"your opponent": [
+"scripts/game/match.gd:332"
+],
+"Stage %d": [
+"scripts/game/match.gd:334"
+],
+"Round 1 of 3": [
+"scripts/game/match.gd:334"
+],
+"The Ludus yard": [
+"scripts/game/match.gd:346"
+],
+"Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight": [
+"scripts/game/match.gd:346"
+],
+"%s beats its chest and roars!": [
+"scripts/game/match.gd:472"
+],
+"%s raises its spiked tail!": [
+"scripts/game/match.gd:472"
+],
+"%s trumpets and charges!": [
+"scripts/game/match.gd:472"
+],
+"%s's eye is put out: he goes berserk!": [
+"scripts/game/match.gd:498"
+],
+"%s came into the yard": [
+"scripts/game/match.gd:526"
+],
+"Veteran %s": [
+"scripts/game/match.gd:680"
+],
+"Champion %s": [
+"scripts/game/match.gd:680"
+],
+"The other gate opens: %s!": [
+"scripts/game/match.gd:733"
+],
+"Bout": [
+"scripts/game/match.gd:758"
+],
+"Day %s · bout %d": [
+"scripts/game/match.gd:787"
+],
+"Sparring partner": [
+"scripts/game/match.gd:844"
+],
+"Lions' Den! Here comes the Emperor's pet.": [
+"scripts/game/match.gd:998"
+],
+"%s patched up %s": [
+"scripts/game/match.gd:1151"
+],
+"%s is on fire!": [
+"scripts/game/match.gd:1190"
+],
+"The poison eats into %s!": [
+"scripts/game/match.gd:1190"
+],
+"%s picks up a %s": [
+"scripts/game/match.gd:1591"
+],
+"%s's %s is stuck fast in %s!": [
+"scripts/game/match.gd:1604"
+],
+"Round %d of 3": [
+"scripts/game/match.gd:1693"
+],
+"None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
+"scripts/game/match.gd:1739"
+],
+"None of you can stand. The crowd moves on.": [
+"scripts/game/match.gd:1739"
+],
+"The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
+"scripts/game/match.gd:1739"
+],
+"The crowd moves on.": [
+"scripts/game/match.gd:1739"
+],
+"You can fight no more": [
+"scripts/game/match.gd:1740"
+],
+"You fall": [
+"scripts/game/match.gd:1740"
+],
+"Round %d won": [
+"scripts/game/match.gd:1747"
+],
+"%d denarii to the party's purse": [
+"scripts/game/match.gd:1755"
+],
+"%d denarii": [
+"scripts/game/match.gd:1755"
+],
+", %d of them the crowd's": [
+"scripts/game/match.gd:1757"
+],
+"Bout %d won": [
+"scripts/game/match.gd:1758"
+],
+"Stage %d cleared": [
+"scripts/game/match.gd:1758"
+],
+"%s. Back to the yard: spend, mend, gear up.": [
+"scripts/game/match.gd:1758"
+],
+"Victory": [
+"scripts/game/match.gd:1760"
+],
+"%s lifts %s": [
+"scripts/game/match.gd:1786"
+],
+"DEFEAT": [
+"scripts/game/match.gd:1842",
+"scripts/game/match.gd:1847"
+],
+"The Emperor turns his thumb down": [
+"scripts/game/match.gd:1842",
+"scripts/game/match.gd:1847"
+],
+"VICTORY!": [
+"scripts/game/match.gd:1849"
+],
+"The crowd roars your name": [
+"scripts/game/match.gd:1849"
+],
+"%s kills %s": [
+"scripts/game/match.gd:1986"
+],
+"%s TEARS %s APART!": [
+"scripts/game/match.gd:1988"
+],
+"%s loses the %s!": [
+"scripts/game/match.gd:1990"
+],
+"%s's %s is BROKEN%s!": [
+"scripts/game/match.gd:1996"
+],
+", the bone out through the skin": [
+"scripts/game/match.gd:1996"
+],
+"%s's skull is cracked!": [
+"scripts/game/match.gd:1998"
+],
+"%s's skull is broken!": [
+"scripts/game/match.gd:1998"
+],
+"%s is set alight!": [
+"scripts/game/match.gd:2065"
+],
+"%s is poisoned!": [
+"scripts/game/match.gd:2076"
+],
+"%s is chilled to the bone!": [
+"scripts/game/match.gd:2083"
+],
+"The ruby flares: %s's %s catches fire!": [
+"scripts/game/match.gd:2118"
+],
+"The sapphire bites cold: frostbite in %s's %s!": [
+"scripts/game/match.gd:2130"
+],
+"The emerald's poison eats into %s's %s!": [
+"scripts/game/match.gd:2140"
+],
+"a golden blow": [
+"scripts/game/match.gd:2159"
+],
+"BOING! %s goes flying!": [
+"scripts/game/match.gd:2197"
+],
+"Stuck! The glue holds %s fast.": [
+"scripts/game/match.gd:2209"
+],
+"%s giggles helplessly!": [
+"scripts/game/match.gd:2222"
+],
+"The magnet tears the %s out of %s's hand!": [
+"scripts/game/match.gd:2315"
+],
+"%s is dead": [
+"scripts/game/match.gd:2349"
+],
+"%s is beheaded": [
+"scripts/game/match.gd:2349"
+],
+"%s is back on his feet": [
+"scripts/game/match.gd:2487"
+],
+"%s spits venom!": [
+"scripts/game/match.gd:2576"
+],
+"%s breathes FIRE!": [
+"scripts/game/match.gd:2576"
+],
+"%s is poisoned by the %s!": [
+"scripts/game/match.gd:2723"
+],
+"Broken weapon": [
+"scripts/game/match.gd:2968"
+],
+"Legionary": [
+"scripts/game/campaign_run.gd:10"
+],
+"A death sends you back to the last checkpoint (every four bouts), with the purse, arms, armour, body and training you had there.": [
+"scripts/game/campaign_run.gd:10"
+],
+"Ironman": [
+"scripts/game/campaign_run.gd:11"
+],
+"One life. A death ends the run: back to bout 1 with nothing. Win the rudis this way and the Emperor gives you what no one else gets.": [
+"scripts/game/campaign_run.gd:11"
+],
+"Too heavy to lift: %.1f kg, the most is %d kg": [
+"scripts/game/forge_lib.gd:67"
+],
+"Too heavy to lift: %.1f kg, the most is %d kg (%d two-handed)": [
+"scripts/game/forge_lib.gd:68"
+],
+"Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f). Lighter at the end, or nearer the hand": [
+"scripts/game/forge_lib.gd:76"
+],
+"Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f; more two-handed). Lighter at the end, or nearer the hand": [
+"scripts/game/forge_lib.gd:77"
+],
+"Squeaky": [
+"scripts/game/forge_lib.gd:428"
+],
+"Unholy": [
+"scripts/game/forge_lib.gd:428"
+],
+"Slightly Used": [
+"scripts/game/forge_lib.gd:428"
+],
+"Grandma's": [
+"scripts/game/forge_lib.gd:428"
+],
+"The Emperor's": [
+"scripts/game/forge_lib.gd:428"
+],
+"Soggy": [
+"scripts/game/forge_lib.gd:428"
+],
+"Very Sharp": [
+"scripts/game/forge_lib.gd:428"
+],
+"Bent": [
+"scripts/game/forge_lib.gd:428"
+],
+"Legendary": [
+"scripts/game/forge_lib.gd:428"
+],
+"Questionable": [
+"scripts/game/forge_lib.gd:428"
+],
+"Haunted": [
+"scripts/game/forge_lib.gd:428"
+],
+"Discount": [
+"scripts/game/forge_lib.gd:428"
+],
+"Overcompensating": [
+"scripts/game/forge_lib.gd:428"
+],
+"Polite": [
+"scripts/game/forge_lib.gd:428"
+],
+"Angry": [
+"scripts/game/forge_lib.gd:428"
+],
+"Toothpick": [
+"scripts/game/forge_lib.gd:429"
+],
+"Cleaver": [
+"scripts/game/forge_lib.gd:429"
+],
+"Letter Opener": [
+"scripts/game/forge_lib.gd:429"
+],
+"Butter Knife": [
+"scripts/game/forge_lib.gd:429"
+],
+"Widowmaker": [
+"scripts/game/forge_lib.gd:429"
+],
+"Chopper": [
+"scripts/game/forge_lib.gd:429"
+],
+"Divorce Papers": [
+"scripts/game/forge_lib.gd:429"
+],
+"Lumberjack": [
+"scripts/game/forge_lib.gd:429"
+],
+"Problem Solver": [
+"scripts/game/forge_lib.gd:429"
+],
+"Bonker": [
+"scripts/game/forge_lib.gd:429"
+],
+"Lollipop": [
+"scripts/game/forge_lib.gd:429"
+],
+"Meat Tenderizer": [
+"scripts/game/forge_lib.gd:429"
+],
+"Headache": [
+"scripts/game/forge_lib.gd:429"
+],
+"Shish Kebab": [
+"scripts/game/forge_lib.gd:429"
+],
+"Back Scratcher": [
+"scripts/game/forge_lib.gd:429"
+],
+"Long Argument": [
+"scripts/game/forge_lib.gd:429"
+],
+"Pokey Stick": [
+"scripts/game/forge_lib.gd:429"
+],
+"Spork": [
+"scripts/game/forge_lib.gd:429"
+],
+"Fork of Destiny": [
+"scripts/game/forge_lib.gd:429"
+],
+"Pool Noodle": [
+"scripts/game/forge_lib.gd:429"
+],
+"Ladle": [
+"scripts/game/forge_lib.gd:429"
+],
+" of Doom": [
+"scripts/game/forge_lib.gd:430"
+],
+" of Mild Inconvenience": [
+"scripts/game/forge_lib.gd:430"
+],
+" (Do Not Touch)": [
+"scripts/game/forge_lib.gd:430"
+],
+" of the Drunk Senator": [
+"scripts/game/forge_lib.gd:430"
+],
+" II: The Return": [
+"scripts/game/forge_lib.gd:430"
+],
+" of Regret": [
+"scripts/game/forge_lib.gd:430"
+],
+"{adj} {noun}{suffix}": [
+"scripts/game/forge_lib.gd:441"
+],
+"An empty anvil. Draw something. Anything. Please.": [
+"scripts/game/forge_lib.gd:586"
+],
+"Lovely. And where exactly do you plan to hold it? Put a few Hold blocks at the bottom.": [
+"scripts/game/forge_lib.gd:588"
+],
+"It squeaks. The crowd will love you. Your enemies will be confused.": [
+"scripts/game/forge_lib.gd:590"
+],
+"That is a fish. I am a blacksmith. Why am I holding a fish?": [
+"scripts/game/forge_lib.gd:592"
+],
+"All gold? Shiny, heavy and soft as butter. The Emperor approves, physics does not.": [
+"scripts/game/forge_lib.gd:594"
+],
+"Is that... lead? You will need to bench press a horse to swing this.": [
+"scripts/game/forge_lib.gd:596"
+],
+"A door. You made a door. A very safe door.": [
+"scripts/game/forge_lib.gd:598"
+],
+"A fine shield. Hide behind it and judge people.": [
+"scripts/game/forge_lib.gd:598"
+],
+"Is this a weapon or a toothpick? Even the rats are laughing.": [
+"scripts/game/forge_lib.gd:600"
+],
+"You could poke someone in the next city with this.": [
+"scripts/game/forge_lib.gd:602"
+],
+"Too heavy for one hand, friend. Make it two-handed or lose the weight.": [
+"scripts/game/forge_lib.gd:604"
+],
+"All the weight is at the far end. It will hit like a cart, and turn like one too.": [
+"scripts/game/forge_lib.gd:606"
+],
+"No edge, no point, no weight. You will tickle them to death.": [
+"scripts/game/forge_lib.gd:608"
+],
+"A proper bonker. No cutting, but heads will ring like bells.": [
+"scripts/game/forge_lib.gd:610"
+],
+"Sharp and quick. Now that is a gladiator's weapon.": [
+"scripts/game/forge_lib.gd:612"
+],
+"Pointy! Thrust with C for best results.": [
+"scripts/game/forge_lib.gd:614"
+],
+"Light as a feather. Fast, but do not expect to cut through armour.": [
+"scripts/game/forge_lib.gd:616"
+],
+"Not bad. Not bad at all. Go hit something with it.": [
+"scripts/game/forge_lib.gd:617"
+],
+"Light at the tip": [
+"scripts/game/forge_lib.gd:652"
+],
+"Blocks anything. Also blocks you from moving fast.": [
+"scripts/game/forge_lib.gd:661"
+],
+"Blocks a sword. Bash with it when they get close.": [
+"scripts/game/forge_lib.gd:661"
+],
+"Hold the left button to draw, let go to loose. Arrows stick and bleed.": [
+"scripts/game/forge_lib.gd:663"
+],
+"point first": [
+"scripts/game/forge_lib.gd:665"
+],
+"end over end": [
+"scripts/game/forge_lib.gd:665"
+],
+"Made to fly, but at %.1f kg it flies short and slow. F throws it, %s.": [
+"scripts/game/forge_lib.gd:667"
+],
+"Made to fly: faster and truer from the hand than any other weapon, %s. F throws it.": [
+"scripts/game/forge_lib.gd:668"
+],
+"Barely a scratch. The dummy is laughing.": [
+"scripts/game/forge_lib.gd:671"
+],
+"Opens a limb to the bone, and comes back fast.": [
+"scripts/game/forge_lib.gd:673"
+],
+"Takes an arm clean off, if you can land it.": [
+"scripts/game/forge_lib.gd:673"
+],
+"Goes straight through. Thrust with C.": [
+"scripts/game/forge_lib.gd:675"
+],
+"Cracks ribs and knocks the dummy flat.": [
+"scripts/game/forge_lib.gd:677"
+],
+"Flattens the dummy. One swing, if it connects.": [
+"scripts/game/forge_lib.gd:677"
+],
+"Cuts deep enough to bleed them out.": [
+"scripts/game/forge_lib.gd:679"
+],
+"Hurts, bruises, nothing dramatic. Hit them twice.": [
+"scripts/game/forge_lib.gd:680"
+],
+"Give it a handle (Hold blocks)": [
+"scripts/game/forge_lib.gd:686"
+],
+"Add something that hurts (Cut, Stab or a heavy head)": [
+"scripts/game/forge_lib.gd:687"
+],
+"Sword": [
+"scripts/game/forge_lib.gd:693"
+],
+"Warhammer": [
+"scripts/game/forge_lib.gd:696",
+"scripts/game/forge_lib.gd:834",
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Club": [
+"scripts/game/forge_lib.gd:699"
+],
+"Shield": [
+"scripts/game/forge_lib.gd:700",
+"scripts/game/forge_lib.gd:838"
+],
+"Bow": [
+"scripts/game/forge_lib.gd:701",
+"scripts/game/forge_lib.gd:839"
+],
+"My %s": [
+"scripts/game/forge_lib.gd:715"
+],
+"The short sword. Quick cuts and stabs.": [
+"scripts/game/forge_lib.gd:831"
+],
+"Spatha": [
+"scripts/game/forge_lib.gd:832"
+],
+"A long cavalry sword. Reach and slashes.": [
+"scripts/game/forge_lib.gd:832"
+],
+"One heavy edge. Deep cuts, slow swings.": [
+"scripts/game/forge_lib.gd:833"
+],
+"A flat head that knocks people over.": [
+"scripts/game/forge_lib.gd:834"
+],
+"Keep them at the end of it.": [
+"scripts/game/forge_lib.gd:835"
+],
+"Tiny and fast. Get close.": [
+"scripts/game/forge_lib.gd:836"
+],
+"A ball of metal. Never goes dull.": [
+"scripts/game/forge_lib.gd:837"
+],
+"Goes in the off hand and blocks.": [
+"scripts/game/forge_lib.gd:838"
+],
+"Hold the left button to draw, release to shoot.": [
+"scripts/game/forge_lib.gd:839"
+],
+"A light spear made to be thrown. F throws it.": [
+"scripts/game/forge_lib.gd:840"
+],
+"Throwing axe": [
+"scripts/game/forge_lib.gd:841"
+],
+"A small axe that spins when thrown. F throws it.": [
+"scripts/game/forge_lib.gd:841"
+],
+"Something silly": [
+"scripts/game/forge_lib.gd:842"
+],
+"Vulcanus rolls the dice.": [
+"scripts/game/forge_lib.gd:842"
+],
+"Longer": [
+"scripts/game/forge_lib.gd:848"
+],
+"More reach, a bit heavier (a bow: a harder draw).": [
+"scripts/game/forge_lib.gd:848"
+],
+"Long": [
+"scripts/game/forge_lib.gd:848"
+],
+"Shorter": [
+"scripts/game/forge_lib.gd:849"
+],
+"Quicker, less reach.": [
+"scripts/game/forge_lib.gd:849"
+],
+"Short": [
+"scripts/game/forge_lib.gd:849",
+"scripts/game/forge_lib.gd:865"
+],
+"Heavy head": [
+"scripts/game/forge_lib.gd:850"
+],
+"Hits harder, swings slower.": [
+"scripts/game/forge_lib.gd:850"
+],
+"Heavy": [
+"scripts/game/forge_lib.gd:850"
+],
+"Razor edge": [
+"scripts/game/forge_lib.gd:851"
+],
+"Cuts deeper, bleeds more.": [
+"scripts/game/forge_lib.gd:851"
+],
+"Razor": [
+"scripts/game/forge_lib.gd:851"
+],
+"Serrated": [
+"scripts/game/forge_lib.gd:852",
+"scripts/game/forge_lib.gd:852"
+],
+"Teeth along the edge: ugly wounds.": [
+"scripts/game/forge_lib.gd:852"
+],
+"Spikes": [
+"scripts/game/forge_lib.gd:853"
+],
+"Steel points: stabbing on every hit.": [
+"scripts/game/forge_lib.gd:853"
+],
+"Spiked": [
+"scripts/game/forge_lib.gd:853"
+],
+"Lead pommel": [
+"scripts/game/forge_lib.gd:854"
+],
+"Balanced: faster swings.": [
+"scripts/game/forge_lib.gd:854"
+],
+"Long handle": [
+"scripts/game/forge_lib.gd:855"
+],
+"Steadier grip, a little more reach.": [
+"scripts/game/forge_lib.gd:855"
+],
+"Long-hafted": [
+"scripts/game/forge_lib.gd:855"
+],
+"Two-handed": [
+"scripts/game/forge_lib.gd:856"
+],
+"Much stronger swings. No shield.": [
+"scripts/game/forge_lib.gd:856"
+],
+"Great": [
+"scripts/game/forge_lib.gd:856"
+],
+"F throws it where you aim.": [
+"scripts/game/forge_lib.gd:857"
+],
+"Throwing": [
+"scripts/game/forge_lib.gd:857"
+],
+"Heavy, soft, the crowd loves it.": [
+"scripts/game/forge_lib.gd:858"
+],
+"Golden": [
+"scripts/game/forge_lib.gd:858"
+],
+"Stone": [
+"scripts/game/forge_lib.gd:859",
+"scripts/game/forge_lib.gd:859",
+"data/materials.json#name"
+],
+"Very heavy. Crushes.": [
+"scripts/game/forge_lib.gd:859"
+],
+"Explosive": [
+"scripts/game/forge_lib.gd:860"
+],
+"BOOM on a hard hit. Once.": [
+"scripts/game/forge_lib.gd:860"
+],
+"Exploding": [
+"scripts/game/forge_lib.gd:860"
+],
+"Spring": [
+"scripts/game/forge_lib.gd:861"
+],
+"Bounces people across the arena.": [
+"scripts/game/forge_lib.gd:861"
+],
+"Springy": [
+"scripts/game/forge_lib.gd:861"
+],
+"Glue": [
+"scripts/game/forge_lib.gd:862"
+],
+"Sticks to bodies and weapons.": [
+"scripts/game/forge_lib.gd:862"
+],
+"Sticky": [
+"scripts/game/forge_lib.gd:862"
+],
+"Magnet": [
+"scripts/game/forge_lib.gd:863"
+],
+"Pulls iron weapons out of hands.": [
+"scripts/game/forge_lib.gd:863"
+],
+"Magnetic": [
+"scripts/game/forge_lib.gd:863"
+],
+"Heavy draw": [
+"scripts/game/forge_lib.gd:864"
+],
+"A stiffer bow: arrows hit harder, slower to draw.": [
+"scripts/game/forge_lib.gd:864"
+],
+"War": [
+"scripts/game/forge_lib.gd:864"
+],
+"Short bow": [
+"scripts/game/forge_lib.gd:865"
+],
+"Draws fast, hits softer.": [
+"scripts/game/forge_lib.gd:865"
+],
+"Fire arrows": [
+"scripts/game/forge_lib.gd:866"
+],
+"Arrows set the sand ablaze where they land.": [
+"scripts/game/forge_lib.gd:866"
+],
+"Fire": [
+"scripts/game/forge_lib.gd:866"
+],
+"Poison arrows": [
+"scripts/game/forge_lib.gd:867"
+],
+"Wounds that keep bleeding.": [
+"scripts/game/forge_lib.gd:867"
+],
+"Ice arrows": [
+"scripts/game/forge_lib.gd:868"
+],
+"A hit slows them to a crawl.": [
+"scripts/game/forge_lib.gd:868"
+],
+"Iron rim": [
+"scripts/game/forge_lib.gd:869"
+],
+"A harder shield, heavier.": [
+"scripts/game/forge_lib.gd:869"
+],
+"Iron-rimmed": [
+"scripts/game/forge_lib.gd:869"
+],
+"Tower": [
+"scripts/game/forge_lib.gd:870",
+"scripts/game/forge_lib.gd:870"
+],
+"A door. A very safe door.": [
+"scripts/game/forge_lib.gd:870"
+],
+"{name} ({a}, {b})": [
+"scripts/game/forge_lib.gd:925"
+],
+"{name} ({a})": [
+"scripts/game/forge_lib.gd:929"
+],
+"Thing": [
+"scripts/game/forge_lib.gd:944"
+],
+"Bout %d: %s": [
+"scripts/autoload/data.gd:123"
+],
+"Master": [
+"scripts/autoload/sfx.gd:46",
+"scripts/autoload/sfx.gd:58",
+"scripts/autoload/music.gd:95"
+],
+"Crowd": [
+"scripts/autoload/sfx.gd:57",
+"scripts/autoload/sfx.gd:90"
+],
+"Save: %s could not be read; the backup was used": [
+"scripts/autoload/save.gd:32"
+],
+"Voxel Arena": [
+"scripts/autoload/save.gd:70"
+],
+"Lo": [
+"scripts/beast/beast.gd:436"
+],
+"Galea helmet": [
+"data/armor.json#name"
+],
+"Iron jaw": [
+"data/armor.json#name"
+],
+"Iron skull plate": [
+"data/armor.json#name"
+],
+"Lorica (chest plate)": [
+"data/armor.json#name"
+],
+"Manica (arm guard)": [
+"data/armor.json#name"
+],
+"Greaves (shin guards)": [
+"data/armor.json#name"
+],
+"Golden helmet": [
+"data/armor.json#name"
+],
+"Golden lorica": [
+"data/armor.json#name"
+],
+"Laurel wreath": [
+"data/armor.json#name"
+],
+"Straw hat": [
+"data/armor.json#name"
+],
+"Crested plume": [
+"data/armor.json#name"
+],
+"Horns": [
+"data/armor.json#name"
+],
+"Crown": [
+"data/armor.json#name"
+],
+"Bucket helm": [
+"data/armor.json#name"
+],
+"A feather": [
+"data/armor.json#name"
+],
+"Bandana": [
+"data/armor.json#name"
+],
+"Mohawk": [
+"data/armor.json#name"
+],
+"Long hair": [
+"data/armor.json#name"
+],
+"Curls": [
+"data/armor.json#name"
+],
+"Topknot": [
+"data/armor.json#name"
+],
+"Ponytail": [
+"data/armor.json#name"
+],
+"Braided beard": [
+"data/armor.json#name"
+],
+"Cape": [
+"data/armor.json#name"
+],
+"Roman crop": [
+"data/armor.json#name"
+],
+"Thracian spikes": [
+"data/armor.json#name"
+],
+"Gaulish braids": [
+"data/armor.json#name"
+],
+"Greek bun": [
+"data/armor.json#name"
+],
+"Suebian knot": [
+"data/armor.json#name"
+],
+"Short curls": [
+"data/armor.json#name"
+],
+"Full beard": [
+"data/armor.json#name"
+],
+"Short beard": [
+"data/armor.json#name"
+],
+"Goatee": [
+"data/armor.json#name"
+],
+"Moustache": [
+"data/armor.json#name"
+],
+"Philosopher's beard": [
+"data/armor.json#name"
+],
+"Sweat band": [
+"data/armor.json#name"
+],
+"Phrygian cap": [
+"data/armor.json#name"
+],
+"Freedman's cap": [
+"data/armor.json#name"
+],
+"Wolf pelt": [
+"data/armor.json#name"
+],
+"Stubble": [
+"data/armor.json#name"
+],
+"Mutton chops": [
+"data/armor.json#name"
+],
+"Chin strap": [
+"data/armor.json#name"
+],
+"Forked beard": [
+"data/armor.json#name"
+],
+"Short cape": [
+"data/armor.json#name"
+],
+"Unbroken laurel": [
+"data/armor.json#name"
+],
+"Lion": [
+"data/beasts.json#name"
+],
+"Lion body": [
+"data/beasts.json#label"
+],
+"Lion head": [
+"data/beasts.json#label"
+],
+"Lion left front leg": [
+"data/beasts.json#label"
+],
+"Lion left front shin": [
+"data/beasts.json#label"
+],
+"Lion right front leg": [
+"data/beasts.json#label"
+],
+"Lion right front shin": [
+"data/beasts.json#label"
+],
+"Lion left back leg": [
+"data/beasts.json#label"
+],
+"Lion left back shin": [
+"data/beasts.json#label"
+],
+"Lion right back leg": [
+"data/beasts.json#label"
+],
+"Lion right back shin": [
+"data/beasts.json#label"
+],
+"Lion tail": [
+"data/beasts.json#label"
+],
+"Lion tail tip": [
+"data/beasts.json#label"
+],
+"Lion tail tuft": [
+"data/beasts.json#label"
+],
+"Wolf": [
+"data/beasts.json#name"
+],
+"Wolf body": [
+"data/beasts.json#label"
+],
+"Wolf head": [
+"data/beasts.json#label"
+],
+"Wolf left front leg": [
+"data/beasts.json#label"
+],
+"Wolf left front shin": [
+"data/beasts.json#label"
+],
+"Wolf right front leg": [
+"data/beasts.json#label"
+],
+"Wolf right front shin": [
+"data/beasts.json#label"
+],
+"Wolf left back leg": [
+"data/beasts.json#label"
+],
+"Wolf left back shin": [
+"data/beasts.json#label"
+],
+"Wolf right back leg": [
+"data/beasts.json#label"
+],
+"Wolf right back shin": [
+"data/beasts.json#label"
+],
+"Wolf tail": [
+"data/beasts.json#label"
+],
+"Wolf tail brush": [
+"data/beasts.json#label"
+],
+"Boar": [
+"data/beasts.json#name"
+],
+"Boar body": [
+"data/beasts.json#label"
+],
+"Boar head": [
+"data/beasts.json#label"
+],
+"Boar left front leg": [
+"data/beasts.json#label"
+],
+"Boar left front shin": [
+"data/beasts.json#label"
+],
+"Boar right front leg": [
+"data/beasts.json#label"
+],
+"Boar right front shin": [
+"data/beasts.json#label"
+],
+"Boar left back leg": [
+"data/beasts.json#label"
+],
+"Boar left back shin": [
+"data/beasts.json#label"
+],
+"Boar right back leg": [
+"data/beasts.json#label"
+],
+"Boar right back shin": [
+"data/beasts.json#label"
+],
+"Boar tail": [
+"data/beasts.json#label"
+],
+"Boar left tusk": [
+"data/beasts.json#label"
+],
+"Boar right tusk": [
+"data/beasts.json#label"
+],
+"Boar left tusk tip": [
+"data/beasts.json#label"
+],
+"Boar right tusk tip": [
+"data/beasts.json#label"
+],
+"Boar tail tuft": [
+"data/beasts.json#label"
+],
+"Bear": [
+"data/beasts.json#name"
+],
+"Bear body": [
+"data/beasts.json#label"
+],
+"Bear head": [
+"data/beasts.json#label"
+],
+"Bear left front leg": [
+"data/beasts.json#label"
+],
+"Bear left front shin": [
+"data/beasts.json#label"
+],
+"Bear right front leg": [
+"data/beasts.json#label"
+],
+"Bear right front shin": [
+"data/beasts.json#label"
+],
+"Bear left back leg": [
+"data/beasts.json#label"
+],
+"Bear left back shin": [
+"data/beasts.json#label"
+],
+"Bear right back leg": [
+"data/beasts.json#label"
+],
+"Bear right back shin": [
+"data/beasts.json#label"
+],
+"Decoy Goat": [
+"data/beasts.json#name"
+],
+"Decoy Goat body": [
+"data/beasts.json#label"
+],
+"Decoy Goat head": [
+"data/beasts.json#label"
+],
+"Decoy Goat left front leg": [
+"data/beasts.json#label"
+],
+"Decoy Goat left front shin": [
+"data/beasts.json#label"
+],
+"Decoy Goat right front leg": [
+"data/beasts.json#label"
+],
+"Decoy Goat right front shin": [
+"data/beasts.json#label"
+],
+"Decoy Goat left back leg": [
+"data/beasts.json#label"
+],
+"Decoy Goat left back shin": [
+"data/beasts.json#label"
+],
+"Decoy Goat right back leg": [
+"data/beasts.json#label"
+],
+"Decoy Goat right back shin": [
+"data/beasts.json#label"
+],
+"Decoy Goat tail": [
+"data/beasts.json#label"
+],
+"Decoy Goat left horn": [
+"data/beasts.json#label"
+],
+"Decoy Goat right horn": [
+"data/beasts.json#label"
+],
+"Decoy Goat left horn tip": [
+"data/beasts.json#label"
+],
+"Decoy Goat right horn tip": [
+"data/beasts.json#label"
+],
+"Decoy Goat beard": [
+"data/beasts.json#label"
+],
+"The Elephant body": [
+"data/beasts.json#label"
+],
+"The Elephant head": [
+"data/beasts.json#label"
+],
+"The Elephant left front leg": [
+"data/beasts.json#label"
+],
+"The Elephant left front shin": [
+"data/beasts.json#label"
+],
+"The Elephant right front leg": [
+"data/beasts.json#label"
+],
+"The Elephant right front shin": [
+"data/beasts.json#label"
+],
+"The Elephant left back leg": [
+"data/beasts.json#label"
+],
+"The Elephant left back shin": [
+"data/beasts.json#label"
+],
+"The Elephant right back leg": [
+"data/beasts.json#label"
+],
+"The Elephant right back shin": [
+"data/beasts.json#label"
+],
+"The Elephant tail": [
+"data/beasts.json#label"
+],
+"The Elephant trunk": [
+"data/beasts.json#label"
+],
+"The Elephant trunk tip": [
+"data/beasts.json#label"
+],
+"The Elephant left tusk": [
+"data/beasts.json#label"
+],
+"The Elephant right tusk": [
+"data/beasts.json#label"
+],
+"The Elephant left tusk tip": [
+"data/beasts.json#label"
+],
+"The Elephant right tusk tip": [
+"data/beasts.json#label"
+],
+"The Elephant tail tuft": [
+"data/beasts.json#label"
+],
+"Tiger": [
+"data/beasts.json#name"
+],
+"Tiger body": [
+"data/beasts.json#label"
+],
+"Tiger head": [
+"data/beasts.json#label"
+],
+"Tiger left front leg": [
+"data/beasts.json#label"
+],
+"Tiger left front shin": [
+"data/beasts.json#label"
+],
+"Tiger right front leg": [
+"data/beasts.json#label"
+],
+"Tiger right front shin": [
+"data/beasts.json#label"
+],
+"Tiger left back leg": [
+"data/beasts.json#label"
+],
+"Tiger left back shin": [
+"data/beasts.json#label"
+],
+"Tiger right back leg": [
+"data/beasts.json#label"
+],
+"Tiger right back shin": [
+"data/beasts.json#label"
+],
+"Tiger tail": [
+"data/beasts.json#label"
+],
+"Tiger tail tip": [
+"data/beasts.json#label"
+],
+"Hyena": [
+"data/beasts.json#name"
+],
+"Hyena body": [
+"data/beasts.json#label"
+],
+"Hyena head": [
+"data/beasts.json#label"
+],
+"Hyena left front leg": [
+"data/beasts.json#label"
+],
+"Hyena left front shin": [
+"data/beasts.json#label"
+],
+"Hyena right front leg": [
+"data/beasts.json#label"
+],
+"Hyena right front shin": [
+"data/beasts.json#label"
+],
+"Hyena left back leg": [
+"data/beasts.json#label"
+],
+"Hyena left back shin": [
+"data/beasts.json#label"
+],
+"Hyena right back leg": [
+"data/beasts.json#label"
+],
+"Hyena right back shin": [
+"data/beasts.json#label"
+],
+"Hyena tail": [
+"data/beasts.json#label"
+],
+"Giant Rat": [
+"data/beasts.json#name"
+],
+"Giant Rat body": [
+"data/beasts.json#label"
+],
+"Giant Rat head": [
+"data/beasts.json#label"
+],
+"Giant Rat left front leg": [
+"data/beasts.json#label"
+],
+"Giant Rat left front shin": [
+"data/beasts.json#label"
+],
+"Giant Rat right front leg": [
+"data/beasts.json#label"
+],
+"Giant Rat right front shin": [
+"data/beasts.json#label"
+],
+"Giant Rat left back leg": [
+"data/beasts.json#label"
+],
+"Giant Rat left back shin": [
+"data/beasts.json#label"
+],
+"Giant Rat right back leg": [
+"data/beasts.json#label"
+],
+"Giant Rat right back shin": [
+"data/beasts.json#label"
+],
+"Giant Rat tail": [
+"data/beasts.json#label"
+],
+"Giant Rat tail tip": [
+"data/beasts.json#label"
+],
+"Crocodile": [
+"data/beasts.json#name"
+],
+"Crocodile body": [
+"data/beasts.json#label"
+],
+"Crocodile head": [
+"data/beasts.json#label"
+],
+"Crocodile left front leg": [
+"data/beasts.json#label"
+],
+"Crocodile left front shin": [
+"data/beasts.json#label"
+],
+"Crocodile right front leg": [
+"data/beasts.json#label"
+],
+"Crocodile right front shin": [
+"data/beasts.json#label"
+],
+"Crocodile left back leg": [
+"data/beasts.json#label"
+],
+"Crocodile left back shin": [
+"data/beasts.json#label"
+],
+"Crocodile right back leg": [
+"data/beasts.json#label"
+],
+"Crocodile right back shin": [
+"data/beasts.json#label"
+],
+"Crocodile tail": [
+"data/beasts.json#label"
+],
+"Crocodile tail tip": [
+"data/beasts.json#label"
+],
+"Bull": [
+"data/beasts.json#name"
+],
+"Bull body": [
+"data/beasts.json#label"
+],
+"Bull head": [
+"data/beasts.json#label"
+],
+"Bull left front leg": [
+"data/beasts.json#label"
+],
+"Bull left front shin": [
+"data/beasts.json#label"
+],
+"Bull right front leg": [
+"data/beasts.json#label"
+],
+"Bull right front shin": [
+"data/beasts.json#label"
+],
+"Bull left back leg": [
+"data/beasts.json#label"
+],
+"Bull left back shin": [
+"data/beasts.json#label"
+],
+"Bull right back leg": [
+"data/beasts.json#label"
+],
+"Bull right back shin": [
+"data/beasts.json#label"
+],
+"Bull tail": [
+"data/beasts.json#label"
+],
+"Bull left horn": [
+"data/beasts.json#label"
+],
+"Bull right horn": [
+"data/beasts.json#label"
+],
+"Bull left horn tip": [
+"data/beasts.json#label"
+],
+"Bull right horn tip": [
+"data/beasts.json#label"
+],
+"Bull dewlap": [
+"data/beasts.json#label"
+],
+"Bull tail tuft": [
+"data/beasts.json#label"
+],
+"Rhinoceros": [
+"data/beasts.json#name"
+],
+"Rhinoceros body": [
+"data/beasts.json#label"
+],
+"Rhinoceros head": [
+"data/beasts.json#label"
+],
+"Rhinoceros left front leg": [
+"data/beasts.json#label"
+],
+"Rhinoceros left front shin": [
+"data/beasts.json#label"
+],
+"Rhinoceros right front leg": [
+"data/beasts.json#label"
+],
+"Rhinoceros right front shin": [
+"data/beasts.json#label"
+],
+"Rhinoceros left back leg": [
+"data/beasts.json#label"
+],
+"Rhinoceros left back shin": [
+"data/beasts.json#label"
+],
+"Rhinoceros right back leg": [
+"data/beasts.json#label"
+],
+"Rhinoceros right back shin": [
+"data/beasts.json#label"
+],
+"Rhinoceros tail": [
+"data/beasts.json#label"
+],
+"Rhinoceros horn": [
+"data/beasts.json#label"
+],
+"Rhinoceros small horn": [
+"data/beasts.json#label"
+],
+"Giant Python": [
+"data/beasts.json#name"
+],
+"Giant Python body": [
+"data/beasts.json#label"
+],
+"Giant Python neck": [
+"data/beasts.json#label"
+],
+"Giant Python head": [
+"data/beasts.json#label"
+],
+"Giant Python coil": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Python tail": [
+"data/beasts.json#label"
+],
+"Giant Python tongue": [
+"data/beasts.json#label"
+],
+"Ostrich": [
+"data/beasts.json#name"
+],
+"Ostrich body": [
+"data/beasts.json#label"
+],
+"Ostrich neck": [
+"data/beasts.json#label"
+],
+"Ostrich head": [
+"data/beasts.json#label"
+],
+"Ostrich left front leg": [
+"data/beasts.json#label"
+],
+"Ostrich left front shin": [
+"data/beasts.json#label"
+],
+"Ostrich right front leg": [
+"data/beasts.json#label"
+],
+"Ostrich right front shin": [
+"data/beasts.json#label"
+],
+"Ostrich tail feathers": [
+"data/beasts.json#label"
+],
+"Ostrich left wing": [
+"data/beasts.json#label"
+],
+"Ostrich right wing": [
+"data/beasts.json#label"
+],
+"Mammoth": [
+"data/beasts.json#name"
+],
+"Mammoth body": [
+"data/beasts.json#label"
+],
+"Mammoth head": [
+"data/beasts.json#label"
+],
+"Mammoth left front leg": [
+"data/beasts.json#label"
+],
+"Mammoth left front shin": [
+"data/beasts.json#label"
+],
+"Mammoth right front leg": [
+"data/beasts.json#label"
+],
+"Mammoth right front shin": [
+"data/beasts.json#label"
+],
+"Mammoth left back leg": [
+"data/beasts.json#label"
+],
+"Mammoth left back shin": [
+"data/beasts.json#label"
+],
+"Mammoth right back leg": [
+"data/beasts.json#label"
+],
+"Mammoth right back shin": [
+"data/beasts.json#label"
+],
+"Mammoth tail": [
+"data/beasts.json#label"
+],
+"Mammoth trunk": [
+"data/beasts.json#label"
+],
+"Mammoth trunk tip": [
+"data/beasts.json#label"
+],
+"Mammoth left tusk": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Mammoth right tusk": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Mammoth left tusk tip": [
+"data/beasts.json#label"
+],
+"Mammoth right tusk tip": [
+"data/beasts.json#label"
+],
+"Mammoth tail tuft": [
+"data/beasts.json#label"
+],
+"Giant Scorpion": [
+"data/beasts.json#name"
+],
+"Giant Scorpion body": [
+"data/beasts.json#label"
+],
+"Giant Scorpion head": [
+"data/beasts.json#label"
+],
+"Giant Scorpion left front leg": [
+"data/beasts.json#label"
+],
+"Giant Scorpion left front shin": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right front leg": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right front shin": [
+"data/beasts.json#label"
+],
+"Giant Scorpion left middle leg": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Scorpion left middle shin": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Scorpion right middle leg": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Scorpion right middle shin": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Scorpion left back leg": [
+"data/beasts.json#label"
+],
+"Giant Scorpion left back shin": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right back leg": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right back shin": [
+"data/beasts.json#label"
+],
+"Giant Scorpion tail": [
+"data/beasts.json#label",
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Scorpion left arm": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right arm": [
+"data/beasts.json#label"
+],
+"Giant Scorpion left claw": [
+"data/beasts.json#label"
+],
+"Giant Scorpion right claw": [
+"data/beasts.json#label"
+],
+"Giant Scorpion stinger": [
+"data/beasts.json#label"
+],
+"Giant Spider": [
+"data/beasts.json#name"
+],
+"Giant Spider body": [
+"data/beasts.json#label"
+],
+"Giant Spider head": [
+"data/beasts.json#label"
+],
+"Giant Spider left front leg": [
+"data/beasts.json#label"
+],
+"Giant Spider left front shin": [
+"data/beasts.json#label"
+],
+"Giant Spider right front leg": [
+"data/beasts.json#label"
+],
+"Giant Spider right front shin": [
+"data/beasts.json#label"
+],
+"Giant Spider left middle leg": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Spider left middle shin": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Spider right middle leg": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Spider right middle shin": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Giant Spider left back leg": [
+"data/beasts.json#label"
+],
+"Giant Spider left back shin": [
+"data/beasts.json#label"
+],
+"Giant Spider right back leg": [
+"data/beasts.json#label"
+],
+"Giant Spider right back shin": [
+"data/beasts.json#label"
+],
+"Giant Spider abdomen": [
+"data/beasts.json#label"
+],
+"Giant Spider left fang": [
+"data/beasts.json#label"
+],
+"Giant Spider right fang": [
+"data/beasts.json#label"
+],
+"Cerberus": [
+"data/beasts.json#name"
+],
+"Cerberus body": [
+"data/beasts.json#label"
+],
+"Cerberus head": [
+"data/beasts.json#label"
+],
+"Cerberus left front leg": [
+"data/beasts.json#label"
+],
+"Cerberus left front shin": [
+"data/beasts.json#label"
+],
+"Cerberus right front leg": [
+"data/beasts.json#label"
+],
+"Cerberus right front shin": [
+"data/beasts.json#label"
+],
+"Cerberus left back leg": [
+"data/beasts.json#label"
+],
+"Cerberus left back shin": [
+"data/beasts.json#label"
+],
+"Cerberus right back leg": [
+"data/beasts.json#label"
+],
+"Cerberus right back shin": [
+"data/beasts.json#label"
+],
+"Cerberus tail": [
+"data/beasts.json#label"
+],
+"Cerberus left neck": [
+"data/beasts.json#label"
+],
+"Cerberus left head": [
+"data/beasts.json#label"
+],
+"Cerberus right neck": [
+"data/beasts.json#label"
+],
+"Cerberus right head": [
+"data/beasts.json#label"
+],
+"Cerberus spiked collar": [
+"data/beasts.json#label"
+],
+"Hydra": [
+"data/beasts.json#name"
+],
+"Hydra body": [
+"data/beasts.json#label"
+],
+"Hydra neck": [
+"data/beasts.json#label",
+"data/beasts.json#label",
+"data/beasts.json#label",
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Hydra head": [
+"data/beasts.json#label"
+],
+"Hydra left front leg": [
+"data/beasts.json#label"
+],
+"Hydra left front shin": [
+"data/beasts.json#label"
+],
+"Hydra right front leg": [
+"data/beasts.json#label"
+],
+"Hydra right front shin": [
+"data/beasts.json#label"
+],
+"Hydra left back leg": [
+"data/beasts.json#label"
+],
+"Hydra left back shin": [
+"data/beasts.json#label"
+],
+"Hydra right back leg": [
+"data/beasts.json#label"
+],
+"Hydra right back shin": [
+"data/beasts.json#label"
+],
+"Hydra tail": [
+"data/beasts.json#label"
+],
+"Hydra second head": [
+"data/beasts.json#label"
+],
+"Hydra third head": [
+"data/beasts.json#label"
+],
+"Hydra fourth head": [
+"data/beasts.json#label"
+],
+"Hydra fifth head": [
+"data/beasts.json#label"
+],
+"Griffin": [
+"data/beasts.json#name"
+],
+"Griffin body": [
+"data/beasts.json#label"
+],
+"Griffin head": [
+"data/beasts.json#label"
+],
+"Griffin left front leg": [
+"data/beasts.json#label"
+],
+"Griffin left front shin": [
+"data/beasts.json#label"
+],
+"Griffin right front leg": [
+"data/beasts.json#label"
+],
+"Griffin right front shin": [
+"data/beasts.json#label"
+],
+"Griffin left back leg": [
+"data/beasts.json#label"
+],
+"Griffin left back shin": [
+"data/beasts.json#label"
+],
+"Griffin right back leg": [
+"data/beasts.json#label"
+],
+"Griffin right back shin": [
+"data/beasts.json#label"
+],
+"Griffin tail": [
+"data/beasts.json#label"
+],
+"Griffin left wing": [
+"data/beasts.json#label"
+],
+"Griffin right wing": [
+"data/beasts.json#label"
+],
+"Griffin feather ruff": [
+"data/beasts.json#label"
+],
+"Griffin tail tuft": [
+"data/beasts.json#label"
+],
+"Chimera": [
+"data/beasts.json#name"
+],
+"Chimera body": [
+"data/beasts.json#label"
+],
+"Chimera head": [
+"data/beasts.json#label"
+],
+"Chimera left front leg": [
+"data/beasts.json#label"
+],
+"Chimera left front shin": [
+"data/beasts.json#label"
+],
+"Chimera right front leg": [
+"data/beasts.json#label"
+],
+"Chimera right front shin": [
+"data/beasts.json#label"
+],
+"Chimera left back leg": [
+"data/beasts.json#label"
+],
+"Chimera left back shin": [
+"data/beasts.json#label"
+],
+"Chimera right back leg": [
+"data/beasts.json#label"
+],
+"Chimera right back shin": [
+"data/beasts.json#label"
+],
+"Chimera tail": [
+"data/beasts.json#label"
+],
+"Chimera goat neck": [
+"data/beasts.json#label"
+],
+"Chimera goat head": [
+"data/beasts.json#label"
+],
+"Chimera goat horn": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Chimera snake tail": [
+"data/beasts.json#label"
+],
+"Chimera snake head": [
+"data/beasts.json#label"
+],
+"Manticore": [
+"data/beasts.json#name"
+],
+"Manticore body": [
+"data/beasts.json#label"
+],
+"Manticore head": [
+"data/beasts.json#label"
+],
+"Manticore left front leg": [
+"data/beasts.json#label"
+],
+"Manticore left front shin": [
+"data/beasts.json#label"
+],
+"Manticore right front leg": [
+"data/beasts.json#label"
+],
+"Manticore right front shin": [
+"data/beasts.json#label"
+],
+"Manticore left back leg": [
+"data/beasts.json#label"
+],
+"Manticore left back shin": [
+"data/beasts.json#label"
+],
+"Manticore right back leg": [
+"data/beasts.json#label"
+],
+"Manticore right back shin": [
+"data/beasts.json#label"
+],
+"Manticore tail": [
+"data/beasts.json#label",
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Manticore stinger": [
+"data/beasts.json#label"
+],
+"Manticore left wing": [
+"data/beasts.json#label"
+],
+"Manticore right wing": [
+"data/beasts.json#label"
+],
+"Manticore left horn": [
+"data/beasts.json#label"
+],
+"Manticore right horn": [
+"data/beasts.json#label"
+],
+"Basilisk": [
+"data/beasts.json#name"
+],
+"Basilisk body": [
+"data/beasts.json#label"
+],
+"Basilisk neck": [
+"data/beasts.json#label"
+],
+"Basilisk head": [
+"data/beasts.json#label"
+],
+"Basilisk crest": [
+"data/beasts.json#label"
+],
+"Basilisk coil": [
+"data/beasts.json#label",
+"data/beasts.json#label"
+],
+"Basilisk tail": [
+"data/beasts.json#label"
+],
+"Dragon": [
+"data/beasts.json#name"
+],
+"Dragon body": [
+"data/beasts.json#label"
+],
+"Dragon neck": [
+"data/beasts.json#label"
+],
+"Dragon head": [
+"data/beasts.json#label"
+],
+"Dragon left front leg": [
+"data/beasts.json#label"
+],
+"Dragon left front shin": [
+"data/beasts.json#label"
+],
+"Dragon right front leg": [
+"data/beasts.json#label"
+],
+"Dragon right front shin": [
+"data/beasts.json#label"
+],
+"Dragon left back leg": [
+"data/beasts.json#label"
+],
+"Dragon left back shin": [
+"data/beasts.json#label"
+],
+"Dragon right back leg": [
+"data/beasts.json#label"
+],
+"Dragon right back shin": [
+"data/beasts.json#label"
+],
+"Dragon tail": [
+"data/beasts.json#label"
+],
+"Dragon left wing": [
+"data/beasts.json#label"
+],
+"Dragon right wing": [
+"data/beasts.json#label"
+],
+"Dragon left horn": [
+"data/beasts.json#label"
+],
+"Dragon right horn": [
+"data/beasts.json#label"
+],
+"Dragon back spines": [
+"data/beasts.json#label"
+],
+"Dragon tail fin": [
+"data/beasts.json#label"
+],
+"Gorilla body": [
+"data/beasts.json#label"
+],
+"Gorilla head": [
+"data/beasts.json#label"
+],
+"Gorilla left arm": [
+"data/beasts.json#label"
+],
+"Gorilla left fist": [
+"data/beasts.json#label"
+],
+"Gorilla right arm": [
+"data/beasts.json#label"
+],
+"Gorilla right fist": [
+"data/beasts.json#label"
+],
+"Gorilla left leg": [
+"data/beasts.json#label"
+],
+"Gorilla left foot": [
+"data/beasts.json#label"
+],
+"Gorilla right leg": [
+"data/beasts.json#label"
+],
+"Gorilla right foot": [
+"data/beasts.json#label"
+],
+"Torso": [
+"data/body.json#label"
+],
+"Right arm": [
+"data/body.json#label"
+],
+"Right forearm": [
+"data/body.json#label"
+],
+"Left arm": [
+"data/body.json#label"
+],
+"Left forearm": [
+"data/body.json#label"
+],
+"Right thigh": [
+"data/body.json#label"
+],
+"Right shin": [
+"data/body.json#label"
+],
+"Left thigh": [
+"data/body.json#label"
+],
+"Left shin": [
+"data/body.json#label"
+],
+"Drunk gladiator": [
+"data/campaign.json#label"
+],
+"Drunk Lucius": [
+"data/campaign.json[]"
+],
+"Tipsy Titus": [
+"data/campaign.json[]"
+],
+"Wobbly Gaius": [
+"data/campaign.json[]"
+],
+"Recruit": [
+"data/campaign.json#label"
+],
+"Recruit Aulus": [
+"data/campaign.json[]"
+],
+"Recruit Brutus": [
+"data/campaign.json[]"
+],
+"Recruit Cassius": [
+"data/campaign.json[]"
+],
+"Recruit Drusus": [
+"data/campaign.json[]"
+],
+"Recruit Ennius": [
+"data/campaign.json[]"
+],
+"Shieldbearer": [
+"data/campaign.json#label"
+],
+"Turtle Tullius": [
+"data/campaign.json[]"
+],
+"Wall Varro": [
+"data/campaign.json[]"
+],
+"Shelly Septimus": [
+"data/campaign.json[]"
+],
+"Berserker": [
+"data/campaign.json#label"
+],
+"Bjorn the Loud": [
+"data/campaign.json[]"
+],
+"Angry Ansgar": [
+"data/campaign.json[]"
+],
+"Ulf No-Brakes": [
+"data/campaign.json[]"
+],
+"Coward": [
+"data/campaign.json#label"
+],
+"Fleeing Flavius": [
+"data/campaign.json[]"
+],
+"Runaway Rufus": [
+"data/campaign.json[]"
+],
+"Sneaky Sextus": [
+"data/campaign.json[]"
+],
+"Medicus": [
+"data/campaign.json#label"
+],
+"Doctor Galen": [
+"data/campaign.json[]"
+],
+"Nurse Nonius": [
+"data/campaign.json[]"
+],
+"Medicus Marcellus": [
+"data/campaign.json[]"
+],
+"Mimic": [
+"data/campaign.json#label"
+],
+"The Copycat": [
+"data/campaign.json[]"
+],
+"Mirror Marius": [
+"data/campaign.json[]"
+],
+"Retiarius": [
+"data/campaign.json#label"
+],
+"Netty Nero": [
+"data/campaign.json[]"
+],
+"Fisher Fabius": [
+"data/campaign.json[]"
+],
+"Retiarius Remus": [
+"data/campaign.json[]"
+],
+"Executioner": [
+"data/campaign.json#label"
+],
+"Grim Gordianus": [
+"data/campaign.json[]"
+],
+"Praetorian": [
+"data/campaign.json#label"
+],
+"Praetorian Quintus": [
+"data/campaign.json[]"
+],
+"Praetorian Severus": [
+"data/campaign.json[]"
+],
+"Praetorian Tiberius": [
+"data/campaign.json[]"
+],
+"Praetorian Vitus": [
+"data/campaign.json[]"
+],
+"Hoplite": [
+"data/campaign.json#label"
+],
+"Hoplite Leon": [
+"data/campaign.json[]"
+],
+"Hoplite Nikias": [
+"data/campaign.json[]"
+],
+"Hoplite Doros": [
+"data/campaign.json[]"
+],
+"Dimachaerus": [
+"data/campaign.json#label"
+],
+"Two-Blades Taurus": [
+"data/campaign.json[]"
+],
+"Quick Quintus": [
+"data/campaign.json[]"
+],
+"Dancer Decimus": [
+"data/campaign.json[]"
+],
+"Murmillo": [
+"data/campaign.json#label"
+],
+"Murmillo Maximus": [
+"data/campaign.json[]"
+],
+"Fishhelm Fulvius": [
+"data/campaign.json[]"
+],
+"Murmillo Marcus": [
+"data/campaign.json[]"
+],
+"Brute": [
+"data/campaign.json#label"
+],
+"Big Bassus": [
+"data/campaign.json[]"
+],
+"Ox Otho": [
+"data/campaign.json[]"
+],
+"Hammerhand Hostus": [
+"data/campaign.json[]"
+],
+"Archer": [
+"data/campaign.json#label"
+],
+"Archer Apollonius": [
+"data/campaign.json[]"
+],
+"Bowman Balbus": [
+"data/campaign.json[]"
+],
+"Sharp-eye Silvanus": [
+"data/campaign.json[]"
+],
+"Skirmisher": [
+"data/campaign.json#label"
+],
+"Veles Vibius": [
+"data/campaign.json[]"
+],
+"Skirmisher Spurius": [
+"data/campaign.json[]"
+],
+"Javelin Januarius": [
+"data/campaign.json[]"
+],
+"Fire-thrower": [
+"data/campaign.json#label"
+],
+"Vulcan's Boy": [
+"data/campaign.json[]"
+],
+"Smoky Sabinus": [
+"data/campaign.json[]"
+],
+"Firebug Faustus": [
+"data/campaign.json[]"
+],
+"Flail fighter": [
+"data/campaign.json#label"
+],
+"Chain Cato": [
+"data/campaign.json[]"
+],
+"Whirling Volusus": [
+"data/campaign.json[]"
+],
+"Ball-and-Chain Barbatus": [
+"data/campaign.json[]"
+],
+"The Champion": [
+"data/campaign.json#label",
+"data/modes.json#name"
+],
+"Victor the Unbeaten": [
+"data/campaign.json[]"
+],
+"The Giant": [
+"data/campaign.json#label"
+],
+"Troll": [
+"data/campaign.json#label"
+],
+"Old Mossback": [
+"data/campaign.json[]"
+],
+"Atlas the Lesser": [
+"data/campaign.json[]"
+],
+"Emperor Commodus": [
+"data/campaign.json[]"
+],
+"Stage 1": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 2": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 3": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 5": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 6": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 7": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 9": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 10": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 11": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 13": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 14": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 15": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 17": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 18": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 19": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 21": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 22": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 23": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 25": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 26": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 27": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 29": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 30": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 31": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 33": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 34": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 35": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 37": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 38": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 39": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 41": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 42": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 43": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 45": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 46": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 47": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 49": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 50": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 51": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 53": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 54": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 55": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 57": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 58": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 59": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 61": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 62": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Stage 63": [
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title",
+"data/campaign.json#title"
+],
+"Walk forward": [
+"data/controls.json#label"
+],
+"Walk back": [
+"data/controls.json#label"
+],
+"Step left": [
+"data/controls.json#label"
+],
+"Step right": [
+"data/controls.json#label"
+],
+"Run": [
+"data/controls.json#label"
+],
+"Jump / struggle free": [
+"data/controls.json#label"
+],
+"Crouch": [
+"data/controls.json#label"
+],
+"Thrust (reach out)": [
+"data/controls.json#label"
+],
+"Kick (stamp on a man down) · in the yard: talk": [
+"data/controls.json#label"
+],
+"Shove": [
+"data/controls.json#label"
+],
+"Pick up / grab": [
+"data/controls.json#label"
+],
+"Throw (hold to aim; left click picks the other hand, right click calls it off)": [
+"data/controls.json#label"
+],
+"Two-handed grip": [
+"data/controls.json#label"
+],
+"Swap hands": [
+"data/controls.json#label"
+],
+"Mend weapon (hold)": [
+"data/controls.json#label"
+],
+"Switch weapon head": [
+"data/controls.json#label"
+],
+"Next target": [
+"data/controls.json#label"
+],
+"Help a friend up (hold)": [
+"data/controls.json#label"
+],
+"Taunt": [
+"data/controls.json#label"
+],
+"Play dead (hold)": [
+"data/controls.json#label"
+],
+"Emote": [
+"data/controls.json#label"
+],
+"Camera view": [
+"data/controls.json#label"
+],
+"Replay the last seconds": [
+"data/controls.json#label"
+],
+"New round (single player)": [
+"data/controls.json#label"
+],
+"Talk (voice chat, hold)": [
+"data/controls.json#label"
+],
+"Steel": [
+"data/materials.json#name"
+],
+"Iron": [
+"data/materials.json#name"
+],
+"Bone": [
+"data/materials.json#name"
+],
+"Wood": [
+"data/materials.json#name"
+],
+"Leather": [
+"data/materials.json#name"
+],
+"Lead (weight)": [
+"data/materials.json#name"
+],
+"Rubber (squeaky)": [
+"data/materials.json#name"
+],
+"Fish": [
+"data/materials.json#name"
+],
+"Ice (sharp, shatters, chills)": [
+"data/materials.json#name"
+],
+"Explosive powder (BOOM)": [
+"data/materials.json#name"
+],
+"Spring (boing!)": [
+"data/materials.json#name"
+],
+"Glue (sticks to things)": [
+"data/materials.json#name"
+],
+"Feather (tickles)": [
+"data/materials.json#name"
+],
+"Magnet (pulls iron)": [
+"data/materials.json#name"
+],
+"Ruby (gem)": [
+"data/materials.json#name"
+],
+"Emerald (gem)": [
+"data/materials.json#name"
+],
+"Sapphire (gem)": [
+"data/materials.json#name"
+],
+"The Bull of Crete": [
+"data/modes.json#name"
+],
+"Marcus the Bald": [
+"data/modes.json[]"
+],
+"Lucius the Quick": [
+"data/modes.json[]"
+],
+"Day I": [
+"data/modes.json#name"
+],
+"The Opening Act": [
+"data/modes.json#theme"
+],
+"The Warm-up Act": [
+"data/modes.json#name"
+],
+"The Emperor sends in a drunk with a fish. Do not lose to the drunk with a fish.": [
+"data/modes.json#intro"
+],
+"Gold Rush": [
+"data/modes.json#name"
+],
+"The Emperor throws gold for 45 seconds. Two recruits want it too. Grab the coins!": [
+"data/modes.json#intro"
+],
+"Brutus the Bouncer": [
+"data/modes.json#name",
+"data/modes.json#name"
+],
+"He guards the gates. He is very large. He has a door-sized hammer.": [
+"data/modes.json#intro"
+],
+"Day II": [
+"data/modes.json#name"
+],
+"Beasts": [
+"data/modes.json#theme"
+],
+"Three boars. They only know one direction: forward.": [
+"data/modes.json#intro"
+],
+"Wolves and hyenas circle. Stand back to back.": [
+"data/modes.json#intro"
+],
+"The Emperor's favourite pet. Its roar knocks grown men over.": [
+"data/modes.json#intro"
+],
+"Three heads. It dies when the last one comes off. Mind the other two while you chop.": [
+"data/modes.json#intro"
+],
+"Day III": [
+"data/modes.json#name"
+],
+"The Rival School": [
+"data/modes.json#theme"
+],
+"Four shields. Flank them, kick them, or cry.": [
+"data/modes.json#intro"
+],
+"Gone Fishing": [
+"data/modes.json#name"
+],
+"Retiarii with nets. Cut your friends loose.": [
+"data/modes.json#intro"
+],
+"The rival school's best. He has heard about you.": [
+"data/modes.json#intro"
+],
+"Day IV": [
+"data/modes.json#name"
+],
+"Spectacle": [
+"data/modes.json#theme"
+],
+"Crocodile Pit": [
+"data/modes.json#name"
+],
+"Two gladiators and two crocodiles. Watch your ankles.": [
+"data/modes.json#intro"
+],
+"Chariot Race": [
+"data/modes.json#name"
+],
+"Survive 60 seconds. The chariots have scythes on the wheels.": [
+"data/modes.json#intro"
+],
+"It walks in a circle. It stomps. It does not care.": [
+"data/modes.json#intro"
+],
+"Half eagle, half lion, all claws. It pounces from above. Cut the wings and it is just a big cat.": [
+"data/modes.json#intro"
+],
+"Day V": [
+"data/modes.json#name"
+],
+"The Emperor's Whims": [
+"data/modes.json#theme"
+],
+"Whimsical": [
+"data/modes.json#name"
+],
+"A new decree every 30 seconds. Good luck.": [
+"data/modes.json#intro"
+],
+"Scorpions and spiders. Stingers and claws come off like everything else.": [
+"data/modes.json#intro"
+],
+"Hot Potato": [
+"data/modes.json#name"
+],
+"A lit bomb. Whoever hits someone passes it on. It explodes.": [
+"data/modes.json#intro"
+],
+"The Executioner": [
+"data/modes.json#name"
+],
+"He brought two doctors. Kill the doctors first.": [
+"data/modes.json#intro"
+],
+"Four heads on four necks. Take them all, or it keeps biting.": [
+"data/modes.json#intro"
+],
+"Day VI": [
+"data/modes.json#name"
+],
+"Giants": [
+"data/modes.json#theme"
+],
+"Bring Me His Head": [
+"data/modes.json#name"
+],
+"Brutus II insulted the Emperor. Kill him and carry his head to the Emperor's box.": [
+"data/modes.json#intro"
+],
+"Brutus II": [
+"data/modes.json#name"
+],
+"Cousin Brutus": [
+"data/modes.json#name"
+],
+"Escort the Senator": [
+"data/modes.json#name"
+],
+"A drunk senator must cross the arena alive. He insists.": [
+"data/modes.json#intro"
+],
+"Twice your size, an axe to match, and it does not stop. Take a leg.": [
+"data/modes.json#intro"
+],
+"Three times your size. Only the eye takes full damage. Chop the legs.": [
+"data/modes.json#intro"
+],
+"A mountain with tusks. The tusks come off. So do the legs, eventually.": [
+"data/modes.json#intro"
+],
+"Day VII": [
+"data/modes.json#name"
+],
+"The Finale": [
+"data/modes.json#theme"
+],
+"The Emperor's own guard. Armored, disciplined, rude.": [
+"data/modes.json#intro"
+],
+"Hold the Circle": [
+"data/modes.json#name"
+],
+"Stand in the Emperor's circle until the crowd is satisfied.": [
+"data/modes.json#intro"
+],
+"It breathes fire after it rears up. Cut the wings, then the head. Bring water.": [
+"data/modes.json#intro"
+],
+"Three times a man, armored, with a shield the size of a wall. Chop what you can reach.": [
+"data/modes.json#intro"
+],
+"Golden armor. A gilded mace. He cheats.": [
+"data/modes.json#intro"
+],
+"Mars": [
+"data/modes.json#name"
+],
+"+25% strength. Hit harder, swing heavier.": [
+"data/modes.json#desc"
+],
+"Mercury": [
+"data/modes.json#name"
+],
+"Winged sandals: run 25% faster.": [
+"data/modes.json#desc"
+],
+"Vulcan": [
+"data/modes.json#name"
+],
+"Your weapons never break.": [
+"data/modes.json#desc"
+],
+"Bacchus": [
+"data/modes.json#name"
+],
+"Permanently a little drunk, but immune to concussion.": [
+"data/modes.json#desc"
+],
+"Venus": [
+"data/modes.json#name"
+],
+"The crowd adores you: double favor.": [
+"data/modes.json#desc"
+],
+"Pluto": [
+"data/modes.json#name"
+],
+"Once per Day, you come back from death.": [
+"data/modes.json#desc"
+],
+"Janus": [
+"data/modes.json#name"
+],
+"Eyes in the back of your head: hits from behind do 60% less.": [
+"data/modes.json#desc"
+],
+"Fortuna": [
+"data/modes.json#name"
+],
+"A random effect every bout. Some are great. Some are a chicken.": [
+"data/modes.json#desc"
+],
+"Fortuna smiles: you are huge today": [
+"data/modes.json#text"
+],
+"Fortuna smiles: giant weapon": [
+"data/modes.json#text"
+],
+"Fortuna smiles: the strength of ten men": [
+"data/modes.json#text"
+],
+"Fortuna laughs: you had wine for breakfast": [
+"data/modes.json#text"
+],
+"Fortuna laughs: rubber chicken": [
+"data/modes.json#text"
+],
+"Fortuna shrugs: nothing happens": [
+"data/modes.json#text"
+],
+"Fatter purse": [
+"data/modes.json#name"
+],
+"+20 starting gold per level": [
+"data/modes.json#desc"
+],
+"Starter pot": [
+"data/modes.json#name"
+],
+"Start every run with a thunder pot (more per level)": [
+"data/modes.json#desc"
+],
+"Market connections": [
+"data/modes.json#name"
+],
+"One free market reroll per visit": [
+"data/modes.json#desc"
+],
+"Bakery contract": [
+"data/modes.json#name"
+],
+"Start every run with bread (more per level)": [
+"data/modes.json#desc"
+],
+"Imperial Scepter": [
+"data/presets.json#name"
+],
+"Hammer": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Nail Plank": [
+"data/presets.json#name"
+],
+"Rubber Chicken": [
+"data/presets.json#name"
+],
+"Fresh Fish": [
+"data/presets.json#name"
+],
+"Folding Chair": [
+"data/presets.json#name"
+],
+"Zweihander": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Golden Spork": [
+"data/presets.json#name"
+],
+"Trident": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Executioner's Axe": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Round Shield": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Telescopic Spear": [
+"data/presets.json#name"
+],
+"Crossbow": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Hunting Bow": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Flame Pole": [
+"data/presets.json#name"
+],
+"Swiss Army Spear": [
+"data/presets.json#name"
+],
+"Swiss Army Axe": [
+"data/presets.json#name"
+],
+"Goose on a Stick": [
+"data/presets.json#name"
+],
+"Angry Fish on a Stick": [
+"data/presets.json#name"
+],
+"Swordfish": [
+"data/presets.json#name"
+],
+"Two-Person Sword": [
+"data/presets.json#name"
+],
+"Battering Ram": [
+"data/presets.json#name"
+],
+"Flail": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Meteor Hammer": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Whip": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Imperial Flail": [
+"data/presets.json#name"
+],
+"Icicle Blade": [
+"data/presets.json#name"
+],
+"Bad Idea Mace": [
+"data/presets.json#name"
+],
+"Boing Hammer": [
+"data/presets.json#name"
+],
+"Sticky Stick": [
+"data/presets.json#name"
+],
+"The Tickler": [
+"data/presets.json#name"
+],
+"Magnetic Personality": [
+"data/presets.json#name"
+],
+"Throwing balance": [
+"data/shop.json#label"
+],
+"Weighted to fly point first: it can be thrown like a javelin (F).": [
+"data/shop.json#desc"
+],
+"Ruby socket": [
+"data/shop.json#label"
+],
+"Hits set people on fire: 3 s of burning.": [
+"data/shop.json#desc"
+],
+"Emerald socket": [
+"data/shop.json#label"
+],
+"Hits poison: slow blood loss and the shakes.": [
+"data/shop.json#desc"
+],
+"Sapphire socket": [
+"data/shop.json#label"
+],
+"Hits chill: victims move slowly.": [
+"data/shop.json#desc"
+],
+"Engrave a word": [
+"data/shop.json#label"
+],
+"Words on the blade that do something (pick one).": [
+"data/shop.json#desc"
+],
+"Thunder pot": [
+"data/shop.json#name"
+],
+"Stuns and knocks down everyone nearby. Friends included.": [
+"data/shop.json#desc"
+],
+"Nail pot": [
+"data/shop.json#name"
+],
+"Sprays nails that knock voxels off people.": [
+"data/shop.json#desc"
+],
+"Sand pot": [
+"data/shop.json#name"
+],
+"A blinding cloud. Enemies inside swing at nothing.": [
+"data/shop.json#desc"
+],
+"Greek fire": [
+"data/shop.json#name"
+],
+"Burning oil: it sprays over whoever it breaks on and pools on the sand.": [
+"data/shop.json#desc"
+],
+"Vitriol pot": [
+"data/shop.json#name"
+],
+"Acid: it sprays over whoever it breaks on and eats into the flesh; a puddle that burns the feet.": [
+"data/shop.json#desc"
+],
+"Beehive": [
+"data/shop.json#name"
+],
+"Enemies who get hit flail around for 5 seconds.": [
+"data/shop.json#desc"
+],
+"Banana bundle": [
+"data/shop.json#name"
+],
+"Three peels on the floor in front of you.": [
+"data/shop.json#desc"
+],
+"Caltrops": [
+"data/shop.json#name"
+],
+"Spiky floor patch. Anyone walking on it limps. Anyone.": [
+"data/shop.json#desc"
+],
+"Decoy goat": [
+"data/shop.json#name"
+],
+"Every beast in the arena goes after the goat.": [
+"data/shop.json#desc"
+],
+"Bandages": [
+"data/shop.json#name"
+],
+"Stops all bleeding. Used beside a fallen friend, it is his: he is up twice as fast.": [
+"data/shop.json#desc"
+],
+"Bread": [
+"data/shop.json#name"
+],
+"Restores blood (40).": [
+"data/shop.json#desc"
+],
+"Wine": [
+"data/shop.json#name"
+],
+"Full breath at once. A little drunk for ten seconds.": [
+"data/shop.json#desc"
+],
+"Bola": [
+"data/shop.json#name"
+],
+"Wraps around the legs. They fall on their face. Topples a Cyclops.": [
+"data/shop.json#desc"
+],
+"Olive oil amphora": [
+"data/shop.json#name"
+],
+"A slippery puddle. Everyone who runs through it eats sand.": [
+"data/shop.json#desc"
+],
+"Garum pot": [
+"data/shop.json#name"
+],
+"Rotten fish sauce. Enemies retch and drop their weapons.": [
+"data/shop.json#desc"
+],
+"Honey pot": [
+"data/shop.json#name"
+],
+"A sticky puddle: feet barely move. Whoever it splashes, the bees find.": [
+"data/shop.json#desc"
+],
+"Smoke pot": [
+"data/shop.json#name"
+],
+"A thick cloud. Bots inside lose their targets and swing at friends.": [
+"data/shop.json#desc"
+],
+"Mystery amphora": [
+"data/shop.json#name"
+],
+"Nobody knows. Thunder, goat, confetti, or one single grape.": [
+"data/shop.json#desc"
+],
+"Cluster chickens": [
+"data/shop.json#name"
+],
+"Six rubber chickens burst out. The crowd loses it.": [
+"data/shop.json#desc"
+],
+"Anvil": [
+"data/shop.json#name"
+],
+"Heavy. Slow throw. Craters whatever it lands on.": [
+"data/shop.json#desc"
+],
+"Harpoon": [
+"data/shop.json#name"
+],
+"Hooks an enemy and reels them in. Fish of the day.": [
+"data/shop.json#desc"
+],
+"Plumbata (3 darts)": [
+"data/shop.json#name"
+],
+"Three weighted darts in one throw. They stick in the voxels.": [
+"data/shop.json#desc"
+],
+"Discus": [
+"data/shop.json#name"
+],
+"Bounces off the wall. A ricochet hit pays gold. Can come back around.": [
+"data/shop.json#desc"
+],
+"Weighted net": [
+"data/shop.json#name"
+],
+"A big net: catches everyone standing close together.": [
+"data/shop.json#desc"
+],
+"Boomerang gladius": [
+"data/shop.json#name"
+],
+"Comes back. Catch it with a free hand, or it hits you in the head.": [
+"data/shop.json#desc"
+],
+"Cheese wheel": [
+"data/shop.json#name"
+],
+"Bowl it. It rolls and knocks people off their feet.": [
+"data/shop.json#desc"
+],
+"Fireball": [
+"data/shop.json#name"
+],
+"Bursts in a ball of flame; the blast throws men down.": [
+"data/shop.json#desc"
+],
+"Hand of Jupiter": [
+"data/shop.json#name"
+],
+"Holds a man in the air for 3 s where you look. Wheel: nearer or further. F: hurl him. Twice a bout.": [
+"data/shop.json#desc"
+]
+}

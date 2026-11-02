@@ -23,7 +23,7 @@ func _init(match_: Node) -> void:
 
 func setup() -> void:
 	for p in Yard.DUMMIES:
-		var e = m.spawn_fighter({"kind": "npc", "name": "Training dummy", "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,
+		var e = m.spawn_fighter({"kind": "npc", "name": Loc.t("Training dummy"), "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,
 			"pos": p + Vector3(0, 0.02, 0), "yaw": 0.0, "mods": {"toughness": 3.0}, "color": 0xb08a5a})
 		e.drive = func(_e): return {}
 		e.harmless = true
@@ -109,9 +109,9 @@ static func next_fight(players: int) -> String:
 	var coop := Net.active()
 	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
 	if Edition.demo_over(st):
-		return "B|FINIS\nF|The demo ends here"
+		return "B|FINIS\nF|" + Loc.t("The demo ends here")
 	var nx: Dictionary = Data.stage(st, maxi(1, players))
-	var lines := ["B|PVGNA %s" % roman(st)]
+	var lines := [Loc.t("B|PVGNA %s") % roman(st)]
 	var foes: Array = (nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []
 	var names := []
 	var count := {}
@@ -127,9 +127,9 @@ static func next_fight(players: int) -> String:
 		var rest := 0
 		for i in range(3, names.size()):
 			rest += int(count[names[i]])
-		lines.append("F|and %d more" % rest)
+		lines.append("F|" + Loc.t("and %d more") % rest)
 	if names.is_empty():
-		lines.append("F|%s" % String(nx.get("title", "Bout %d" % st)))
+		lines.append("F|%s" % String(nx.get("title", Loc.t("Bout %d") % st)))
 	var pay := Body.bout_pay(st)
 	if pay > 0:
 		lines.append("P|PRAEMIVM · %d DENARII" % pay)
@@ -139,10 +139,10 @@ static func next_fight(players: int) -> String:
 static func foe_label(f: Dictionary) -> String:
 	var nm := String(f.get("title", f.get("name", "")))
 	if nm != "":
-		return nm
+		return Loc.t(nm)
 	if f.has("beast"):
-		return String(Data.beasts.get(f.beast, {}).get("name", f.beast))
-	return String(Data.enemy_type(String(f.get("e", ""))).get("label", String(f.get("e", "a gladiator")).capitalize()))
+		return Loc.t(String(Data.beasts.get(f.beast, {}).get("name", f.beast)))
+	return Loc.t(String(Data.enemy_type(String(f.get("e", ""))).get("label", String(f.get("e", "a gladiator")).capitalize())))
 
 ## Roman numerals, as cut in stone (the bouts run past fifty).
 static func roman(n: int) -> String:
@@ -460,6 +460,6 @@ func _boards() -> void:
 				w.set_meta("scored", true)
 				w.linear_velocity *= 0.1
 				best_throw = maxi(best_throw, pts)
-				m.feed.emit(("BULLSEYE! +%d" if pts == 10 else ("+%d" if pts > 0 else "Off the board")) % pts)
+				m.feed.emit(Loc.t("BULLSEYE! +%d") % pts if pts == 10 else ("+%d" % pts if pts > 0 else Loc.t("Off the board")))
 				m.sfx("thud", p, 1.0)
 				break

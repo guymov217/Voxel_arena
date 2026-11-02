@@ -63,14 +63,18 @@ static func too_heavy(d: Dictionary, st := {}) -> String:
 	var two: bool = d.get("twoHanded", false)
 	var cap := MAX_KG_TWO if two else MAX_KG_ONE
 	if float(st.mass) > cap:
-		return "Too heavy to lift: %.1f kg, the most is %d kg%s" % [st.mass, int(cap), "" if two else " (%d two-handed)" % int(MAX_KG_TWO)]
+		if two:
+			return Loc.t("Too heavy to lift: %.1f kg, the most is %d kg") % [st.mass, int(cap)]
+		return Loc.t("Too heavy to lift: %.1f kg, the most is %d kg (%d two-handed)") % [st.mass, int(cap), int(MAX_KG_TWO)]
 	var g = grip_points(d)
 	if g != null and st.get("com") is Array:
 		var gm: Vector3 = g.main
 		var lever: float = float(st.mass) * (Vector3(st.com[0], st.com[1], st.com[2]) - gm).length() * Data.weapon_voxel
 		var lcap := MAX_LEVER_TWO if two else MAX_LEVER_ONE
 		if lever > lcap:
-			return "Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f%s). Lighter at the end, or nearer the hand" % [lever, lcap, "" if two else "; more two-handed"]
+			if two:
+				return Loc.t("Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f). Lighter at the end, or nearer the hand") % [lever, lcap]
+			return Loc.t("Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f; more two-handed). Lighter at the end, or nearer the hand") % [lever, lcap]
 	return ""
 
 ## The hand points (voxel units) for the main and the off hand, or null with no grip.
@@ -428,10 +432,16 @@ const SUFFIX := ["", "", " of Doom", " of Mild Inconvenience", " +1", " (Do Not 
 static func _pick(a: Array, rng: RandomNumberGenerator):
 	return a[rng.randi_range(0, a.size() - 1)]
 
+## (Made in the player's language, like a name he typed: "{adj} {noun}{suffix}" puts the words
+## in that language's order.)
 static func weapon_name(kind: String, rng: RandomNumberGenerator) -> String:
-	var base := "%s %s" % [_pick(ADJ, rng), _pick(NOUN[kind], rng)]
-	var full: String = base + str(_pick(SUFFIX, rng))
-	return full if full.length() <= 32 else base.substr(0, 32)
+	var adj := Loc.t(String(_pick(ADJ, rng)))
+	var noun := Loc.t(String(_pick(NOUN[kind], rng)))
+	var suffix := str(_pick(SUFFIX, rng))
+	var fmt := Loc.t("{adj} {noun}{suffix}")
+	var full := fmt.format({"adj": adj, "noun": noun, "suffix": Loc.t(suffix) if suffix != "" else ""})
+	var base := fmt.format({"adj": adj, "noun": noun, "suffix": ""})
+	return full if full.length() <= 32 else (base if base.length() <= 32 else noun.substr(0, 32))
 
 static func surprise_weapon(rng: RandomNumberGenerator) -> Dictionary:
 	var kind: String = _pick(["blade", "blade", "axe", "mace", "polearm", "silly"], rng)
@@ -575,7 +585,7 @@ static func blacksmith_says(d: Dictionary, st := {}) -> String:
 	if d.voxels.is_empty():
 		return "An empty anvil. Draw something. Anything. Please."
 	if not st.hasGrip:
-		return "Lovely. And where exactly do you plan to hold it? Mark a Grip, or press Auto-grip."
+		return "Lovely. And where exactly do you plan to hold it? Put a few Hold blocks at the bottom."
 	if share.call("rubber") > 0.5:
 		return "It squeaks. The crowd will love you. Your enemies will be confused."
 	if share.call("fish") > 0.5:
@@ -606,13 +616,43 @@ static func blacksmith_says(d: Dictionary, st := {}) -> String:
 		return "Light as a feather. Fast, but do not expect to cut through armour."
 	return "Not bad. Not bad at all. Go hit something with it."
 
-## The three numbers a fighter cares about, 0..1.
+## The numbers a fighter cares about, 0..1: how fast, how hard, how far, and how hard still
+## through an iron plate (vs_armour).
 static func three_bars(st: Dictionary) -> Dictionary:
 	return {
 		"speed": clampf(float(st.swingSpeed) / 14.0, 0.0, 1.0),
 		"damage": clampf(maxf(float(st.cut), maxf(float(st.pierce) * 0.9, float(st.crush) * 1.2)), 0.0, 1.0),
 		"reach": clampf(float(st.reach) / 1.5, 0.0, 1.0),
+		"armour": vs_armour(st),
 	}
+
+## What the weapon still does through an iron plate, on the damage bar's scale: the best of its
+## ways in after the plate has had its share, by the rule a fight uses (Fighter.armour_pass): an
+## edge skids off unless the blade is heavy, a point finds the joins, a crushing head carries
+## through (a bladed weapon's swing is its edge, not its weight).
+static func vs_armour(st: Dictionary) -> float:
+	var h := float(Data.material("iron").get("hardness", 0.85))
+	var m := float(st.mass)
+	var best := 0.0
+	if int(st.edge) > 0:
+		best = maxf(best, float(st.cut) * Fighter.armour_pass("edge", h, m))
+	if int(st.point) > 0:
+		best = maxf(best, float(st.pierce) * 0.9 * Fighter.armour_pass("point", h, m))
+	if int(st.edge) == 0:
+		best = maxf(best, minf(1.0, float(st.crush) * 1.2) * Fighter.armour_pass("blunt", h, m))
+	return clampf(best, 0.0, 1.0)
+
+## How the weight sits in the hand, in a word: where the balance point lies between the hand and
+## the tip ("" where it means nothing: a shield, a bow, a head on a chain).
+static func feel(d: Dictionary, st: Dictionary) -> String:
+	if d.get("chain") is Dictionary or d.get("kind", "weapon") == "shield" or str(d.get("shoots", "")) != "" or not st.hasGrip:
+		return ""
+	var r := float(st.balance) / maxf(0.1, float(st.reach))
+	if r < 0.35:
+		return "Light at the tip"
+	if r < 0.6:
+		return "Balanced"
+	return "Head-heavy"
 
 static func dummy_verdict(d: Dictionary, st := {}) -> String:
 	if st.is_empty():
@@ -622,10 +662,10 @@ static func dummy_verdict(d: Dictionary, st := {}) -> String:
 	if d.get("shoots", "") == "arrow":
 		return "Hold the left button to draw, let go to loose. Arrows stick and bleed."
 	if d.get("throwable", false):
-		var how := "point first" if Weapon.flies_point_first(d) else "end over end"
+		var how := Loc.t("point first") if Weapon.flies_point_first(d) else Loc.t("end over end")
 		if st.mass > 3.5:
-			return "Made to fly, but at %.1f kg it flies short and slow. F throws it, %s." % [st.mass, how]
-		return "Made to fly: faster and truer from the hand than any other weapon, %s. F throws it." % how
+			return Loc.t("Made to fly, but at %.1f kg it flies short and slow. F throws it, %s.") % [st.mass, how]
+		return Loc.t("Made to fly: faster and truer from the hand than any other weapon, %s. F throws it.") % how
 	var b := three_bars(st)
 	if b.damage < 0.15:
 		return "Barely a scratch. The dummy is laughing."
@@ -643,8 +683,8 @@ static func checklist(d: Dictionary, st := {}) -> Array:
 	if st.is_empty():
 		st = compute_stats(d)
 	return [
-		{"done": st.hasGrip, "text": "Give it a handle (Grip voxels)"},
-		{"done": st.edge + st.point > 0 or st.crush > 0.2, "text": "Add something that hurts (Edge, Point or a heavy head)"},
+		{"done": st.hasGrip, "text": "Give it a handle (Hold blocks)"},
+		{"done": st.edge + st.point > 0 or st.crush > 0.2, "text": "Add something that hurts (Cut, Stab or a heavy head)"},
 	]
 
 # ---------- Simple weapons from a handful of numbers ----------
@@ -672,7 +712,7 @@ static func simple_weapon(o: Dictionary) -> Dictionary:
 	var handle := clampi(roundi(float(p.handle)), 3, 14)
 	var mat: String = p.mat
 	var hm: String = p.get("handleMat", "wood")
-	var d := empty_design(str(p.get("name", "")) if str(p.get("name", "")) != "" else "My " + str(sh.label))
+	var d := empty_design(str(p.get("name", "")) if str(p.get("name", "")) != "" else Loc.t("My %s") % Loc.t(str(sh.label)))
 	d.sharpness = clampf(float(p.sharp), 0.0, 1.0)
 	d.twoHanded = bool(p.twoHanded) and p.shape != "shield" and p.shape != "dagger"
 	d.throwable = bool(p.throwable) and p.shape != "shield"
@@ -874,6 +914,23 @@ static func deal_modifiers(base: String, rng: RandomNumberGenerator, n := 5) -> 
 		out.append_array(draw.call(sane.filter(func(k): return not out.has(k)), n - out.size()))
 	return out.slice(0, n)
 
+## The name the cards give: "Long Razor Gladius" in English; in other languages, where an
+## adjective has to agree with its noun, the twists go after the name as tags ("Gladius (razor
+## edge)"), as many as fit in 32 letters.
+static func cards_name(label: String, mods: Array) -> String:
+	if Loc.code() == "en":
+		return (" ".join(mods.map(func(k): return MODIFIERS[k].word)) + " " + label).strip_edges().substr(0, 32)
+	var tags: Array = mods.map(func(k): return Loc.lower(String(MODIFIERS[k].label)))
+	if tags.size() >= 2:
+		var two := Loc.t("{name} ({a}, {b})").format({"name": label, "a": tags[0], "b": tags[1]})
+		if two.length() <= 32:
+			return two
+	if tags.size() >= 1:
+		var one := Loc.t("{name} ({a})").format({"name": label, "a": tags[0]})
+		if one.length() <= 32:
+			return one
+	return label.substr(0, 32)
+
 static func build_from_cards(base_key: String, mod_keys: Array, rng: RandomNumberGenerator, name := "") -> Dictionary:
 	var base: Dictionary = BASES.get(base_key, BASES.gladius)
 	var p: Dictionary = DEFAULT_SIMPLE.duplicate()
@@ -884,9 +941,8 @@ static func build_from_cards(base_key: String, mod_keys: Array, rng: RandomNumbe
 	var mods: Array = mod_keys.filter(func(k): return MODIFIERS.has(k)).slice(0, MAX_PICKS)
 	for k in mods:
 		p = apply_mod(k, p)
-	var words: Array = mods.map(func(k): return MODIFIERS[k].word)
-	var label: String = base.label if base.params != null else str(p.get("name", "Thing"))
-	p.name = name if name != "" else (" ".join(words) + " " + label).strip_edges().substr(0, 32)
+	var label: String = Loc.t(String(base.label)) if base.params != null else str(p.get("name", Loc.t("Thing")))
+	p.name = name if name != "" else cards_name(label, mods)
 	var d := simple_weapon(p)
 	if p.get("serrated", false):
 		d.serrated = true

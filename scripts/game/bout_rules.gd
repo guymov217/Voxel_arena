@@ -49,7 +49,7 @@ func setup() -> void:
 		"escort":
 			var start := Vector3(-Arena.RADIUS + 2.0, 0.02, 0)
 			goal = Vector3(Arena.RADIUS - 2.0, 0, 0)
-			var e = m.spawn_fighter({"kind": "npc", "name": "Senator Pompous", "loadout": {"main": "", "off": ""}, "team": 0, "color": 0xf4f4f0,
+			var e = m.spawn_fighter({"kind": "npc", "name": Loc.t("Senator Pompous"), "loadout": {"main": "", "off": ""}, "team": 0, "color": 0xf4f4f0,
 				"pos": start, "yaw": PI / 2, "mods": {"drunk": 0.5, "toughness": 0.8}})
 			e.drive = _senator_input
 			e.senator = true
@@ -144,7 +144,7 @@ func _reinforce(kind: String) -> void:
 	spec.pos = Vector3(sin(a) * r, 0.05, cos(a) * r)
 	spec.yaw = atan2(-spec.pos.x, -spec.pos.z)
 	m.spawn_fighter(spec)
-	m.feed.emit("Reinforcements: %s jumps into the arena!" % spec.name)
+	m.feed.emit(Loc.t("Reinforcements: %s jumps into the arena!") % spec.name)
 
 func _potato(dt: float) -> void:
 	var h = bomb.holder
@@ -157,7 +157,7 @@ func _potato(dt: float) -> void:
 			return
 		bomb.holder = alive[randi() % alive.size()].f
 		bomb.fuse = 12.0 + randf() * 6.0
-		m.feed.emit("%s has the bomb! Hit someone to pass it!" % bomb.holder.display_name)
+		m.feed.emit(Loc.t("%s has the bomb! Hit someone to pass it!") % bomb.holder.display_name)
 		m.sfx("horn", bomb.holder.torso.global_position, 1.0)
 		return
 	bomb.fuse = float(bomb.fuse) - dt
@@ -201,7 +201,7 @@ func on_hit(h: Dictionary) -> void:
 	if h.get("attacker") == bomb.holder and c != bomb.holder and c is Fighter and c.alive:
 		bomb.holder = c
 		bomb.fuse = maxf(float(bomb.fuse), 3.0)
-		m.feed.emit("The bomb passes to %s!" % c.display_name)
+		m.feed.emit(Loc.t("The bomb passes to %s!") % c.display_name)
 
 func on_coin(c) -> void:
 	if type == "goldrush" and m.humans().any(func(e): return e.f == c):
@@ -232,7 +232,7 @@ func _head() -> void:
 		for e in _alive_players():
 			if (e.f.torso.global_position * Vector3(1, 0, 1)).distance_to(trophy.global_position * Vector3(1, 0, 1)) < 0.9:
 				carrier = e.f
-				m.feed.emit("%s grabbed the head!" % e.f.display_name)
+				m.feed.emit(Loc.t("%s grabbed the head!") % e.f.display_name)
 				m.sfx("cheer", e.f.torso.global_position, 0.6)
 				break
 	else:
@@ -261,22 +261,22 @@ func default_rule() -> bool:
 
 func status() -> String:
 	var dur := float(bout.get("duration", 60 if type == "chariots" else 45))
-	var left := "%ds" % maxi(0, ceili(dur - t))
+	var left := Loc.t("%ds") % maxi(0, ceili(dur - t))
 	match type:
-		"goldrush": return "Grab the gold! %d coins · %s" % [coins, left]
-		"chariots": return "Survive %s" % left
-		"whims": return "Next decree in %ds" % maxi(0, ceili(whim_t))
+		"goldrush": return Loc.t("Grab the gold! %d coins · %s") % [coins, left]
+		"chariots": return Loc.t("Survive %s") % left
+		"whims": return Loc.t("Next decree in %ds") % maxi(0, ceili(whim_t))
 		"potato":
-			return ("%s has the bomb · %ds" % [bomb.holder.display_name, maxi(0, ceili(bomb.fuse))]) if bomb.holder and is_instance_valid(bomb.holder) else "A new bomb is coming"
+			return (Loc.t("%s has the bomb · %ds") % [bomb.holder.display_name, maxi(0, ceili(bomb.fuse))]) if bomb.holder and is_instance_valid(bomb.holder) else Loc.t("A new bomb is coming")
 		"escort":
 			if senator == null or not is_instance_valid(senator):
 				return ""
 			var total := 2.0 * (Arena.RADIUS - 2.0)
 			var done := clampf(1.0 - (senator.torso.global_position * Vector3(1, 0, 1)).distance_to(goal) / total, 0.0, 1.0)
-			return "Senator %d%% across · blood %d" % [int(done * 100.0), int(senator.blood)]
-		"hold": return "The circle: %d%%" % int(circle.fill / circle.need * 100.0)
+			return Loc.t("Senator %d%% across · blood %d") % [int(done * 100.0), int(senator.blood)]
+		"hold": return Loc.t("The circle: %d%%") % int(circle.fill / circle.need * 100.0)
 		"head":
 			if trophy:
-				return ("%s carries the head" % carrier.display_name) if carrier else "The head is on the sand!"
-			return "Kill %s" % (head_target.display_name if head_target and is_instance_valid(head_target) else "the target")
+				return (Loc.t("%s carries the head") % carrier.display_name) if carrier else Loc.t("The head is on the sand!")
+			return Loc.t("Kill %s") % (head_target.display_name if head_target and is_instance_valid(head_target) else Loc.t("the target"))
 	return ""

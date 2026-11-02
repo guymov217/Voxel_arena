@@ -71,14 +71,14 @@ static func buy(stats: Dictionary, id: String, stage: int, coins: int) -> Dictio
 	var s := sanitize(stats)
 	var lv := level(s, id)
 	if lv >= int(ABILITIES[id].max):
-		return {"error": "%s is at its best: nothing more to teach" % ABILITIES[id].title}
+		return {"error": Loc.t("%s is at its best: nothing more to teach") % Loc.t(String(ABILITIES[id].title))}
 	if bool(ABILITIES[id].get("unbroken", false)) and not CampaignRun.unbroken():
 		return {"error": "Doctore teaches Virtus only to one who won the rudis on Ironman"}
 	if lv >= cap(id, stage):
 		return {"error": "Not yet: win the next bout first" if not (Edition.demo() and lv >= DEMO_MAX) else "The rest of the training is in the full game"}
 	var p := price(s, id)
 	if coins < p:
-		return {"error": "Not enough denarii (%d needed)" % p}
+		return {"error": Loc.t("Not enough denarii (%d needed)") % p}
 	s[id] = lv + STEP
 	return {"stats": s, "cost": p}
 

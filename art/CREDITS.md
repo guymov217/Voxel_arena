@@ -82,6 +82,21 @@ The hyena's giggle and whoop are a hound's yelps, quickened and climbing; the el
 mammoth's trumpets and rumbles (`tools/elephant_voice.py`), the gorilla's chest beat and the bull's
 snort are made in code.
 
+## Music (`audio/music/*.ogg`)
+
+Every piece is played by real instruments, note by note from recorded samples
+(`tools/make_music.py`; the same tunes the game can also synthesise):
+
+- [Versilian Community Sample Library](https://github.com/sgossner/VCSL) — Versilian Studios,
+  CC0: frame drum, darbuka, tambourine, finger cymbals, tom, bass drum, suspended cymbal, claps,
+  anvil, gong, tubular bells, folk harp, psaltery, alto recorder.
+- [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) — Versilian Studios, CC0:
+  violin, viola and cello sections, contrabass, harp, oboe, F horn, tenor trombone, tuba,
+  trumpet, timpani.
+
+The Cyclops' scream and his raging (`cyclops_rage_*`, `cyclops_rampage_*`) are built by
+`tools/build_voices.py` from the same CC0 human and bear recordings as the other voices.
+
 ## Fonts (store art only)
 
 - `tools/fonts/Cinzel-Black.ttf` — Cinzel by Natanael Gama, SIL Open Font License 1.1

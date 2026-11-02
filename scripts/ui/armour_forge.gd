@@ -38,6 +38,8 @@ var name_edit: LineEdit
 ## Opens the bench for `d` (Armory.design_piece's shape) on `reg` (Armory.REGIONS).
 func open(d: Dictionary, reg: String, cb: Callable, kg_worn := 0.0, coins := -1) -> void:
 	add_to_group("bench")   # (the HUD keeps off it)
+	if Sfx.music:
+		Sfx.music.bench(true)   # (the forge's own tune; the one before it when it closes)
 	def = d.duplicate(true)
 	region = reg if Armory.REGIONS.has(reg) else "torso"
 	done = cb
@@ -318,13 +320,13 @@ func _build_ui() -> void:
 	side.add_theme_constant_override("separation", 8)
 	h.add_child(side)
 	side.add_child(UIStyle.title("Armourer's bench", 28))
-	side.add_child(UIStyle.label("WHERE" + ("  (both sides alike)" if Armory.REGIONS[region].parts.size() > 1 else ""), 13, UIStyle.BRONZE))
+	side.add_child(UIStyle.label(Loc.t("WHERE") + (Loc.t("  (both sides alike)") if Armory.REGIONS[region].parts.size() > 1 else ""), 13, UIStyle.BRONZE))
 	var regs := HFlowContainer.new()
 	regs.add_theme_constant_override("h_separation", 6)
 	regs.add_theme_constant_override("v_separation", 6)
 	for r in Armory.REGIONS:
 		var rk: String = r
-		var rb := UIStyle.button(String(Armory.REGIONS[rk].label), func(): switch_region(rk))
+		var rb := UIStyle.button(Loc.t(String(Armory.REGIONS[rk].label)), func(): switch_region(rk))
 		rb.toggle_mode = true
 		rb.button_pressed = rk == region
 		regs.add_child(rb)
@@ -374,12 +376,12 @@ func _update_info() -> void:
 	var kg := Armory.design_kg(d)
 	var with := Armory.burden(worn_kg + kg)
 	var prot := float(Data.material(mat).get("hardness", 0.5))
-	info.add_child(UIStyle.label("%d plates" % _cells_total(), 15, UIStyle.TEXT))
-	info.add_child(UIStyle.label("Protection %d%%" % int(round(prot * 100.0)), 15, UIStyle.TEXT))
-	info.add_child(UIStyle.label("Weight %.1f kg  (all you wear: %.1f kg)" % [kg, worn_kg + kg], 15, UIStyle.TEXT))
-	info.add_child(UIStyle.label("Breath when running and swinging ×%.2f · pace %d%%" % [float(with.breath), int(round(float(with.pace) * 100.0))], 13, UIStyle.MUTED))
+	info.add_child(UIStyle.label(Loc.t("%d plates") % _cells_total(), 15, UIStyle.TEXT))
+	info.add_child(UIStyle.label(Loc.t("Protection %d%%") % int(round(prot * 100.0)), 15, UIStyle.TEXT))
+	info.add_child(UIStyle.label(Loc.t("Weight %.1f kg  (all you wear: %.1f kg)") % [kg, worn_kg + kg], 15, UIStyle.TEXT))
+	info.add_child(UIStyle.label(Loc.t("Breath when running and swinging ×%.2f · pace %d%%") % [float(with.breath), int(round(float(with.pace) * 100.0))], 13, UIStyle.MUTED))
 	var price := Armory.design_price(d)
-	info.add_child(UIStyle.label(("Made at the smith: %d denarii" % price) + (("  (purse %d)" % purse) if purse >= 0 else ""), 15, UIStyle.GOLD if purse < 0 or price <= purse else UIStyle.RED))
+	info.add_child(UIStyle.label((Loc.t("Made at the smith: %d denarii") % price) + ((Loc.t("  (purse %d)") % purse) if purse >= 0 else ""), 15, UIStyle.GOLD if purse < 0 or price <= purse else UIStyle.RED))
 
 # ---------- The part on the bench ----------
 
@@ -643,3 +645,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
 		done.call(null)
+
+## Closed: the music goes back to what played before the forge.
+func _exit_tree() -> void:
+	if Sfx.music:
+		Sfx.music.bench(false)
