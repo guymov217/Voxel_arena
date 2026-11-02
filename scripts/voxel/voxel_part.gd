@@ -2272,6 +2272,7 @@ func set_look(v: PackedByteArray, bevel_on: bool) -> void:
 func _index_cells() -> void:
 	live_cell = PackedInt32Array()
 	live_cell.resize(grid.x * grid.y * grid.z)
+	_air_n = -1
 	_dead = PackedInt32Array()
 	var nc := dims.x * dims.y * dims.z
 	live_coarse = PackedInt32Array()
@@ -2376,29 +2377,65 @@ func fit_collider() -> void:
 	if any == 0:
 		for c in n:
 			solid[c] = 1 if live[c] > 0 else 0
+	# An empty cell of the box beside a solid one is solid too. (Only one beside a cell with flesh
+	# as built can be: those pairs are worked out once, not all the box's cells gone over again.)
+	if _air_n != n:
+		_index_air(w, h, d)
 	var fleshy := solid.duplicate()
+	for j in _air_of.size():
+		if fleshy[_air_by[j]] != 0:
+			solid[_air_of[j]] = 1
+	split = true
+	main_shape.disabled = true
+	var k := half_ext * 2.0 / Vector3(w, h, d)
+	# The shapes there already are moved and sized to the new boxes, and only the difference made
+	# or freed: all of them freed and made anew at every cut (a hundred on a gorilla's trunk) was
+	# a hitch of more than a hundredth of a second.
+	var bl: Array = Greedy.boxes(w, h, d, solid)
+	while boxes.size() > bl.size():
+		var gone: CollisionShape3D = boxes.pop_back()
+		gone.queue_free()
+		remove_child(gone)
+	for i in bl.size():
+		var b = bl[i]
+		var size := Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k
+		var at := Vector3((b[0] + b[3] + 1) * 0.5 - w * 0.5, (b[1] + b[4] + 1) * 0.5 - h * 0.5, (b[2] + b[5] + 1) * 0.5 - d * 0.5) * k
+		if i < boxes.size():
+			var cs: CollisionShape3D = boxes[i]
+			var bs: BoxShape3D = cs.shape
+			if bs.size != size:
+				bs.size = size
+			if cs.position != at:
+				cs.position = at
+			continue
+		var cs := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = size
+		cs.shape = shape
+		cs.position = at
+		add_child(cs)
+		boxes.append(cs)
+
+## The empty cells of the coarse box (no voxel in them as the part was built), each paired with
+## every cell beside it that had voxels: the layout, which changes only with it (_index_cells).
+var _air_of := PackedInt32Array()
+var _air_by := PackedInt32Array()
+var _air_n := -1
+func _index_air(w: int, h: int, d: int) -> void:
+	_air_of = PackedInt32Array()
+	_air_by = PackedInt32Array()
+	_air_n = w * h * d
+	var total := total_coarse
 	for z in d:
 		for y in h:
 			for x in w:
 				var c := x + w * (y + h * z)
 				if total[c] > 0:
 					continue
-				solid[c] = 1 if (_nb(fleshy, w, h, d, x - 1, y, z) or _nb(fleshy, w, h, d, x + 1, y, z) or _nb(fleshy, w, h, d, x, y - 1, z) or _nb(fleshy, w, h, d, x, y + 1, z) or _nb(fleshy, w, h, d, x, y, z - 1) or _nb(fleshy, w, h, d, x, y, z + 1)) else 0
-	_drop_boxes(false)
-	split = true
-	main_shape.disabled = true
-	var k := half_ext * 2.0 / Vector3(w, h, d)
-	for b in Greedy.boxes(w, h, d, solid):
-		var cs := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		shape.size = Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k
-		cs.shape = shape
-		cs.position = Vector3((b[0] + b[3] + 1) * 0.5 - w * 0.5, (b[1] + b[4] + 1) * 0.5 - h * 0.5, (b[2] + b[5] + 1) * 0.5 - d * 0.5) * k
-		add_child(cs)
-		boxes.append(cs)
-
-func _nb(f: PackedByteArray, w: int, h: int, d: int, x: int, y: int, z: int) -> bool:
-	return x >= 0 and y >= 0 and z >= 0 and x < w and y < h and z < d and f[x + w * (y + h * z)] != 0
+				for nb in [[x > 0, c - 1], [x < w - 1, c + 1], [y > 0, c - w], [y < h - 1, c + w], [z > 0, c - w * h], [z < d - 1, c + w * h]]:
+					if nb[0] and total[nb[1]] > 0:
+						_air_of.append(c)
+						_air_by.append(nb[1])
 
 func _drop_boxes(whole: bool) -> void:
 	for cs in boxes:
@@ -2599,17 +2636,43 @@ func anchor_point(child: VoxelPart) -> Vector3:
 	var p := child.pa
 	var hx := half_ext / 0.95
 	var pt := Vector3(clampf(p.x, -hx.x, hx.x), clampf(p.y, -hx.y, hx.y), clampf(p.z, -hx.z, hx.z))
-	var best := INF
-	var near := pt
-	for i in fx.size():
-		var d := local_of(i).distance_squared_to(pt)
-		if d < best:
-			best = d
-			near = local_of(i)
-	if sqrt(best) > vf * part_scale * 2.2:
-		pt = near
+	var near := _nearest_built(pt)
+	if near >= 0 and sqrt(local_of(near).distance_squared_to(pt)) > vf * part_scale * 2.2:
+		pt = local_of(near)
 	_anchors[child] = pt
 	return pt
+
+## The voxel of the part as it was built (dead or alive) nearest to `p` (local), the first in
+## index order of those as near; -1 for none. Looked for ring by ring out from `p`'s cell: gone
+## over voxel by voxel, once for each limb rooted in the part, a dragon's trunk (ten thousand of
+## them) took a fiftieth of a second at its first wound.
+func _nearest_built(p: Vector3) -> int:
+	var cm := cell_map()
+	var vs := vf * part_scale
+	var q := Vector3(p.x / vs + (grid.x - 1) * 0.5, p.y / vs + (grid.y - 1) * 0.5, p.z / vs + (grid.z - 1) * 0.5)
+	var c := Vector3i(clampi(roundi(q.x), 0, grid.x - 1), clampi(roundi(q.y), 0, grid.y - 1), clampi(roundi(q.z), 0, grid.z - 1))
+	var e := maxf(absf(c.x - q.x), maxf(absf(c.y - q.y), absf(c.z - q.z)))
+	var far := maxi(maxi(maxi(c.x, grid.x - 1 - c.x), maxi(c.y, grid.y - 1 - c.y)), maxi(c.z, grid.z - 1 - c.z))
+	var best := INF
+	var best_i := -1
+	for r in far + 1:
+		# Nothing in ring r (cells r out from c every way) is nearer than r - e cells.
+		if best_i >= 0 and (r - e - 0.01) * vs > sqrt(best):
+			break
+		for x in range(maxi(0, c.x - r), mini(grid.x - 1, c.x + r) + 1):
+			for y in range(maxi(0, c.y - r), mini(grid.y - 1, c.y + r) + 1):
+				var shell := absi(x - c.x) == r or absi(y - c.y) == r
+				for z in (range(maxi(0, c.z - r), mini(grid.z - 1, c.z + r) + 1) if shell else [c.z - r, c.z + r]):
+					if z < 0 or z >= grid.z:
+						continue
+					var k := cm[(x * grid.y + y) * grid.z + z]
+					if k == 0:
+						continue
+					var d := local_of(k - 1).distance_squared_to(p)
+					if d < best or (d == best and k - 1 < best_i):
+						best = d
+						best_i = k - 1
+	return best_i
 
 ## Whether a lump holds the root of `child` (its joint point is inside it).
 func lump_holds(lump: PackedInt32Array, child: VoxelPart) -> bool:

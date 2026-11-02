@@ -692,7 +692,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 				if hd.y > tp.y - 0.2 * tS:
 					aim_low = maxf(-1.0, aim_low - 2.0 * dt)
 			y = clampf(float(aim_small) + (y if giant_kind != "" else 0.0) + aim_low, -1.5, 0.6)   # the blow ends on the small man, wherever he is
-			x = 0.0                # and comes down through the middle of him, not past his shoulder
+			# and comes down through the middle of him, not past his shoulder: turned in from the
+			# hand that holds it (laid straight ahead, a titan's blow went down a body's width
+			# beside a man standing still before him, the width of its shoulders; as _point_on).
+			var to_him: Vector3 = tp - w.grip_world() if w else Vector3.ZERO
+			x = clampf(-wrapf(atan2(to_him.x, to_him.z) - c.yaw, -PI, PI) / (PI / 4.0), -0.9, 0.9) if w else 0.0
 		var windup: float = (float(p.get("windup", 1.0)) if key == 0 else 1.0) * (0.6 if rage else (1.3 if desperate else 1.0)) * (1.25 - 0.4 * skill)
 		if style == "spear" and key == 0 and not big:
 			windup *= 0.35   # (its point already laid on the man: no drawing back of the arm, the stab is driven at once)

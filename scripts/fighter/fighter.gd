@@ -1174,8 +1174,42 @@ func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 		# (The hand got there itself: it closes on the haft where it is.)
 		weapon_joints.L = _joint_at(fore, w, hand_world("L"), false)
 		return
+	# The whole arm reaches for the haft: the forearm put there alone stood a hand's breadth off
+	# the upper arm for a third of a second (the sweep), at every bout's start with a two-hander.
+	_reach_arm("L", at)
 	fore.global_position += at - hand_world("L")
 	weapon_joints.L = _joint_at(fore, w, at, false)
+
+## Lays the arm out to put its hand at `target` (world): the upper arm turned about the shoulder
+## and the forearm about the elbow, each the least way (FABRIK, the shoulder held where it is).
+## Out of reach, the arm points at it as far as it goes.
+func _reach_arm(side: String, target: Vector3) -> void:
+	var up: VoxelPart = arm[side].upper
+	var fore: VoxelPart = arm[side].fore
+	if up.parent_part == null:
+		return
+	var sh: Vector3 = up.parent_part.global_transform * up.pa
+	var el: Vector3 = up.global_transform * fore.pa
+	var l1 := (fore.pa - up.ca).length()
+	var l2 := (hand_point - fore.ca).length()
+	if l1 < 1e-4 or l2 < 1e-4:
+		return
+	for i in 8:
+		el = target + (el - target).normalized() * l2
+		el = sh + (el - sh).normalized() * l1
+	_point_part(up, up.ca, fore.pa, sh, el)
+	_point_part(fore, fore.ca, hand_point, el, el + (target - el).normalized() * l2)
+
+## Turns a part the least way that lays its own `from`→`to` along `a`→`b` (world), with `from` at `a`.
+func _point_part(p: VoxelPart, from: Vector3, to: Vector3, a: Vector3, b: Vector3) -> void:
+	var bs := p.global_transform.basis
+	var cur := (bs * (to - from)).normalized()
+	var want := (b - a).normalized()
+	if cur.dot(want) < -0.999 or want == Vector3.ZERO:
+		return
+	if cur.dot(want) < 0.99999:
+		bs = Basis(Quaternion(cur, want)) * bs
+	p.global_transform = Transform3D(bs, a - bs * from)
 
 func release(side: String) -> Weapon:
 	var w: Weapon = weapons[side]
@@ -5891,11 +5925,17 @@ var cord_arms := 1.0      # and to the arms (cut above the shoulder blades)
 
 func _count_organs() -> void:
 	organ_total = {}
+	# The guts' own voxels, for _check_belly (looked for there at the first wound to the trunk, a
+	# dragon's ten thousand voxels were gone over in the middle of a blow).
+	var guts := PackedInt32Array()
 	for p in [torso, head]:
 		for i in p.organ.size():
 			var o: int = p.organ[i]
 			if o != Anatomy.NONE:
 				organ_total[o] = int(organ_total.get(o, 0)) + 1
+				if o == Anatomy.GUTS and p == torso:
+					guts.append(i)
+	torso.set_meta("guts_idx", guts)
 
 ## 0..1: how much of an organ is left whole (voxels and bruising both).
 ## Most of his head gone, or most of his brain: no man lives through that (he lay on the sand
@@ -6055,7 +6095,7 @@ func _check_belly(res: Dictionary) -> void:
 	var gz := torso.grid.z
 	var exposed := []
 	var out := Vector3.ZERO
-	# (The guts' own voxels, not the whole trunk's, gone over after every blow.)
+	# (The guts' own voxels, not the whole trunk's, gone over after every blow: _count_organs.)
 	if not torso.has_meta("guts_idx"):
 		var gi := PackedInt32Array()
 		for i in torso.organ.size():

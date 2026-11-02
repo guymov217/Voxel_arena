@@ -407,6 +407,34 @@ func test_two_hands_stay_untangled_through_a_long_bout() -> void:
 	m.queue_free()
 	await get_tree().process_frame
 
+## The off hand goes to the haft with the whole arm, not the forearm alone: from the first frame
+## of a bout with a two-hander the elbow holds together (the forearm put on the haft by itself
+## stood a hand's breadth off the upper arm for a third of a second, at every start).
+func test_the_off_hand_takes_the_haft_with_the_elbow_whole() -> void:
+	for wk in ["zweihander", "warhammer", "executionerAxe", "spear"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		var up: VoxelPart = f.arm.L.upper
+		var fore: VoxelPart = f.arm.L.fore
+		var w: Weapon = f.weapons.R
+		t.check(f.two_handed and w != null, "%s: in both hands" % wk)
+		var on_haft := f.hand_world("L").distance_to(w.global_transform * w.grip_off) / f.S
+		var at_start := (up.global_transform * fore.pa).distance_to(fore.global_transform * fore.ca) / f.S
+		var run := 0
+		var longest := 0
+		for i in 12:
+			var g := (up.global_transform * fore.pa).distance_to(fore.global_transform * fore.ca) / f.S
+			run = run + 1 if g > 0.05 else 0
+			longest = maxi(longest, run)
+			await get_tree().physics_frame
+		t.check(on_haft < 0.02, "%s: the off hand on the haft (%.3f off)" % [wk, on_haft])
+		t.check(at_start < 0.05, "%s: the elbow whole as it takes hold (%.3f apart)" % [wk, at_start])
+		t.check(longest <= 3, "%s: the elbow never apart for more than a step or three (%d)" % [wk, longest])
+		m.queue_free()
+		await get_tree().process_frame
+
 ## Two hands on a haft go to every mark and stay there, the button down or not: a high guard with
 ## the hands at the brow in front of the face (not over the head), the trunk upright, and after
 ## fast strokes all round the blade is on the mouse within a second, never stuck short of it.

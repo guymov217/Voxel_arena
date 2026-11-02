@@ -581,6 +581,8 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var crouching := 0.93 if ai.mode == "crouch" else ((1.08 if float(ai.t) > 0.4 else 0.96) if ai.mode == "breathe" else 1.0)
 	if strikes.has(head) and head.parent_part != torso:
 		crouching = 0.8   # a long-necked beast drops its forequarters into a downward strike
+		if target != null and is_instance_valid(target) and target.get("torso") and head.global_position.y > target.torso.global_position.y + 1.5 * S:
+			crouching = 0.65   # the prey far below the jaws: it goes down further (a dragon over a man)
 	var h_want: float = float(sp.parts[0].dims[1]) * V * S * 0.5 if collapsed else height * (0.8 if legs_left < 4 else 1.0) * crouching
 	h_want *= 1.0 + 0.008 * sin(time * 1.7 / sqrt(S) + slot)   # breathing
 	var dist_g: float = pos.y - hit.position.y if hit else 99.0
@@ -948,6 +950,15 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 	var swing: float = tw.linear_velocity.length() if tw else 0.0
 	if (ai.mode == "charge" or ai.mode == "crouch" or ai.mode == "feint") and stagger > 0.3:
 		ai.mode = "recover"; ai.t = 0.7 + rng.randf() * 0.6; ai.circle = -ai.circle
+	# A man under its chest a dragon cannot bite (no neck folds back beneath itself: a man with
+	# a sword stood there and cut at it a whole bout, bitten once): it backs off a stride to
+	# have him in front of its jaws, then goes for him.
+	ai.room_cool = float(ai.get("room_cool", 0.0)) - dt
+	if species == "dragon" and t and t.alive and by_name.has("neck") and not head.severed and not by_name.neck.severed and ["charge", "recover", "stalk", "snarl"].has(String(ai.mode)) and float(ai.room_cool) <= 0.0:
+		var nb: Vector3 = torso.global_transform * by_name.neck.pa
+		var flat := Vector2(t.torso.global_position.x - nb.x, t.torso.global_position.z - nb.z).length()
+		if flat < 0.6 * by_name.neck.half_ext.y * 2.0:
+			ai.mode = "room"; ai.t = 0.8; ai.room_cool = 2.5
 	# Never a punching bag: a few seconds close in to him without going for him, it goes for him
 	# (user: a beast did next to nothing a whole bout and let a man take it apart).
 	if t and t.alive and dist < 2.2 * S and ["stalk", "snarl", "recover", "dodge"].has(String(ai.mode)):
@@ -1010,6 +1021,11 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 			want = to * spd * hurt * 0.8
 			if ai.t <= 0.0:
 				ai.mode = "recover"; ai.t = 0.5
+		"room":
+			want = -to * spd * hurt * 0.9
+			if ai.t <= 0.0:
+				ai.mode = "charge"; ai.t = 1.5
+				ai.bite_cool = minf(float(ai.bite_cool), 0.0)
 		"backstep":
 			want = -to * spd * hurt * 0.8
 			if species == "manticore":
@@ -1079,11 +1095,20 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 	if fury > 0.0:
 		to = to.rotated(Vector3.UP, _aim_err())   # thrown wide, in its fury
 	var k: float = float(sp.lunge) * (0.15 if collapsed else 1.0) * (1.0 - 0.5 * injury * (1.0 - fury)) * (0.35 + 0.65 * hind_fn())
-	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed else 1.2), to.z * mass * k))
+	# A head held high on a long neck bites down at him: the lunge threw it on and up with the
+	# body, and every bite a dragon made at the end of a charge snapped at the air a body's
+	# height over the man (24 lunges, none landed). The neck is given the time to bring it down.
+	var tt = target if target != null and is_instance_valid(target) and target.get("torso") else null
+	# (The dragon's alone: an ostrich's lunge keeps its hop.)
+	var high: bool = species == "dragon" and tt != null and by_name.has("neck") and not head.severed and head.global_position.y > tt.torso.global_position.y + 0.6
+	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed or high else 1.2), to.z * mass * k))
 	if disarmed():
 		ai.ram_t = 0.8   # nothing to bite with: the body itself is the blow
 	for h in biting_heads():
-		_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
+		if high and h == head:
+			_strike(h, 0.6, 0.0, [h, (tt.torso.global_position - h.global_position).normalized() * 4.0 * h.mass], 0.0)
+		else:
+			_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
 	ai.bite_cool = float(sp.cooldown) * STRIKE_PACE * (1.0 + injury * (1.0 - fury)) * (1.0 - 0.35 * fury)
 
 ## The ram: a beast with no bite left throws its weight at him; what it hits, it hits as hard as
@@ -2187,7 +2212,9 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		if role == "neck" or role == "head":
 			# Struck with, the neck is let fall onto the prey rather than held up over it.
 			var lunging := _fire_lunge() >= 1.0
-			_hold_up(p, a.max_t * (0.25 if st > 0.0 and float(wind.get(p, 0.0)) <= 0.0 else 1.0), dt)
+			# (A neck striking down is not held up at all: a dragon's, held a quarter up, never
+			# brought its jaws within two yards of a man's head.)
+			_hold_up(p, a.max_t * ((0.0 if role == "neck" else 0.25) if st > 0.0 and float(wind.get(p, 0.0)) <= 0.0 else 1.0), dt)
 			if lunging:
 				# Fire poured out with the neck thrust down and forward over the prey, the head level.
 				lim = NECK_DIP
@@ -2207,7 +2234,9 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		elif p == breath_part() and _fire_lunge() >= 1.0 and _breath_mark_now() is Vector3:
 			_aim_jaws(p, a.max_t, dt)   # breathing, the head is aimed in the world, not posed on the neck
 		else:
-			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t, dt, 1.0, 0.5)
+			# A neck striking is driven hard: under a dragon's head it bowed a third of the way
+			# down in the time of the bite.
+			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t * (2.0 if st > 0.0 and role == "neck" else 1.0), dt, 1.0, 0.5)
 
 ## A neck holds up its head against gravity: the drive alone only knows the neck's own weight,
 ## and a long neck under a heavy head sank back flat along the spine.
@@ -2478,7 +2507,9 @@ func _head_drive() -> void:
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)
 
-const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich", "gorilla"]
+## (The dragon rakes with its foreclaws a man who has got in under its chest, where no neck
+## can bring the jaws down: a man with a sword stood there a whole bout and was bitten once.)
+const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich", "gorilla", "dragon"]
 
 ## The attacks each body can still make, each needing the parts it is made with.
 func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:

@@ -13,6 +13,7 @@ prototype of the game.
 godot --path .                   # play (or open project.godot in the editor)
 sh run_tests.sh                  # parse check, headless test suites, two-process network test
 godot --headless --path . -- --test test_fight   # one suite
+FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated bouts, anything odd flagged
 ```
 
 `GODOT=/path/to/godot` points the scripts at a Godot binary other than `/opt/godot/...`.
