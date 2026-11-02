@@ -99,37 +99,75 @@ func test_the_point_of_your_own_blade_does_not_lift_the_camera() -> void:
 	t.eq(CameraRig._blocked(me, eye, pts, 3), 0.0, "the point of his own blade does not")
 	m.queue_free()
 
-## His own body in the way of the blow is seen through, and solid again once it is out of the way
-## (user: sometimes the player's own body hides where his weapon lands on the foe).
-func test_his_own_body_in_the_way_of_the_blow_is_seen_through() -> void:
+## His own head or arm in the way of the blow is seen through, and solid again once it is out of
+## the way (user: sometimes the player's own body hides where his weapon lands on the foe); but
+## never his trunk or legs, never for his own blade's point, a foe low on the sand or the camera
+## pressed into him (user: sometimes the player turns transparent for no reason).
+func test_his_own_arm_in_the_way_of_the_blow_is_seen_through() -> void:
 	await get_tree().physics_frame
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": []})
 	var me: Fighter = m.me.f
 	await get_tree().physics_frame
+	var arm: VoxelPart = me.by_name["upperArmR"]
 	var fwd := Vector3(sin(me.yaw), 0, cos(me.yaw))
-	var eye: Vector3 = me.torso.global_position - fwd * 2.5
-	var struck: Vector3 = me.torso.global_position + fwd * 1.2
+	var at := arm.global_position
+	var eye: Vector3 = at - fwd * 2.5
+	var struck: Vector3 = at + fwd * 1.2
 	var far := me.torso.global_position + Vector3(0, 9, 0)
 	var hid: Dictionary = CameraRig._hiders(me, eye, [far, far, far, struck])
-	t.check(hid.has(me.torso), "his trunk is on the line to the spot struck in front of him")
-	t.check(not hid.has(me.by_name["shinL"]), "his shins are not")
+	t.check(hid.has(arm), "his arm is on the line to the spot struck in front of it")
+	t.check(not hid.has(me.torso), "his trunk never fades")
+	t.check(not hid.has(me.by_name["shinL"]), "nor his legs")
+	var low := me.torso.global_position + fwd * 1.0 + Vector3(0, -0.6, 0)
+	t.check(CameraRig._hiders(me, me.torso.global_position - fwd * 2.5 + Vector3(0, 0.6, 0), [low, low, low, low]).is_empty(), "a foe low on the sand fades nothing")
+	t.check(CameraRig._hiders(me, eye, [far, far, far, far, struck], 4).is_empty(), "nor his own blade's point")
+	t.check(CameraRig._hiders(me, arm.global_position, [struck, struck, far, struck]).is_empty(), "nor anything with the camera pressed into him")
 	var cam := CameraRig.new()
 	m.add_child(cam)
 	cam.hiders = hid
 	for i in 30:
 		cam._fade(me, 1.0 / 60.0)
-	t.check(absf(me.torso.see_through - CameraRig.SEE_THROUGH) < 0.01, "in the way, it is seen through (%.2f)" % me.torso.see_through)
-	t.check(me.torso.mmi == null or absf(me.torso.mmi.transparency - CameraRig.SEE_THROUGH) < 0.01, "drawn so")
-	t.eq(me.by_name["shinL"].see_through, 0.0, "what is not in the way stays solid")
+	t.check(absf(arm.see_through - CameraRig.SEE_THROUGH) < 0.01, "in the way, it is seen through (%.2f)" % arm.see_through)
+	t.check(arm.mmi == null or absf(arm.mmi.transparency - CameraRig.SEE_THROUGH) < 0.01, "drawn so")
+	t.eq(me.torso.see_through, 0.0, "what is not in the way stays solid")
 	cam.hiders = {}
 	for i in 60:
 		cam._fade(me, 1.0 / 60.0)
-	t.eq(me.torso.see_through, 0.0, "out of the way, solid again")
+	t.eq(arm.see_through, 0.0, "out of the way, solid again")
 	cam.hiders = hid
 	for i in 30:
 		cam._fade(me, 1.0 / 60.0)
 	cam.clear_fade()
-	t.eq(me.torso.see_through, 0.0, "and solid at once for a kill cam")
+	t.eq(arm.see_through, 0.0, "and solid at once for a kill cam")
+	m.queue_free()
+
+## In a real fight (a bot duel, the camera following the player as in play) his trunk and legs are
+## never seen through, and his head and arms only now and then.
+func test_in_a_fight_he_stays_solid() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "gladiator", "difficulty": 0.8}, "seed": 5, "decrees": [], "hazards": [], "autopilot": true})
+	var me: Fighter = m.me.f
+	var body_faded := 0
+	var any_faded := 0
+	var frames := 0
+	for i in 120 * 12:
+		await get_tree().physics_frame
+		if not me.alive:
+			break
+		frames += 1
+		var b := false
+		for n in ["torso", "thighL", "thighR", "shinL", "shinR"]:
+			var p = me.by_name.get(n)
+			b = b or (p != null and p.see_through > 0.0)
+		if b:
+			body_faded += 1
+		for p in me.parts:
+			if p.see_through > 0.0:
+				any_faded += 1
+				break
+	t.eq(body_faded, 0, "his trunk and legs never seen through (of %d frames)" % frames)
+	t.check(float(any_faded) / maxf(1, frames) < 0.35, "his head or an arm seen through %d of %d frames" % [any_faded, frames])
 	m.queue_free()

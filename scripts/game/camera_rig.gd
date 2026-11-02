@@ -101,24 +101,48 @@ static func _hides(p, eye: Vector3, to: Vector3) -> bool:
 	return t1 < 0.97
 
 ## Your own body between the camera and the fight is seen through (user: my own body sometimes
-## hides where my weapon lands on the foe): every part of him on the line to the foe's middle,
-## his head, the spot just struck or the blade's point coming on him fades to a ghost of itself
-## (SEE_THROUGH) while it is in the way, and comes back once it is not. The camera's turn round
-## him and its rise do what they can first; this is for what they cannot.
-const SEE_THROUGH := 0.62
-var hiders := {}      # his parts on the line to the fight, last looked
+## hides where my weapon lands on the foe), but only his head and his arms, the parts that come
+## between the eye and the blow, and only as much as it takes: the trunk and the legs never (the
+## whole man going see-through whenever the foe was low or on the sand, or near, was the trouble:
+## user, sometimes the player turns transparent for no reason). Only what hides the foe's middle,
+## his head or the spot just struck counts (not his feet, not your own blade's point, which is at
+## your own hand); nothing below your own hips (a man on the sand, a beast's back: the line to it
+## runs down past your own arms all the time); nothing when the camera is pressed into you (every
+## line starts inside you then); and a part must be in the way two looks running (a fifth of a
+## second) before it fades, so a swing passing through the line does not flicker it.
+const SEE_THROUGH := 0.5
+const FADES := ["head", "upperArmL", "upperArmR", "forearmL", "forearmR"]
+var hiders := {}      # his parts on the line to the fight, two looks running
+var seen := {}        # parts in the way at the last look (the first of two)
 var faded := {}       # VoxelPart -> how far it is faded now
 var fade_f = null     # whose parts those are
 
-static func _hiders(f, eye: Vector3, pts: Array) -> Dictionary:
+static func _hiders(f, eye: Vector3, pts: Array, tip := -1) -> Dictionary:
 	var out := {}
+	var hips: float = f.torso.global_position.y - 0.25 * float(f.S)
+	var parts := []
+	for n in FADES:
+		var p = f.by_name.get(n)
+		if p != null and is_instance_valid(p) and not p.severed:
+			if _inside(p, eye):
+				return {}
+			parts.append(p)
 	for i in pts.size():
-		if i == 2:
+		if i == 2 or i == tip or i > 3:
 			continue
-		for p in f.parts:
-			if not p.severed and not out.has(p) and _hides(p, eye, pts[i]):
+		var to: Vector3 = pts[i]
+		if to.y < hips:
+			continue
+		for p in parts:
+			if not out.has(p) and _hides(p, eye, to):
 				out[p] = true
 	return out
+
+## Whether `eye` is in (or right up against) the part's box.
+static func _inside(p, eye: Vector3) -> bool:
+	var a: Vector3 = p.global_transform.affine_inverse() * eye
+	var e: Vector3 = p.half_ext * 1.3
+	return absf(a.x) < e.x and absf(a.y) < e.y and absf(a.z) < e.z
 
 ## The parts eased toward solid or seen through (quickly out of the way, slowly back).
 func _fade(f, dt: float) -> void:
@@ -145,6 +169,7 @@ func _fade(f, dt: float) -> void:
 func clear_fade() -> void:
 	_unfade()
 	hiders.clear()
+	seen.clear()
 
 ## The parts faded so far solid again (a new fighter followed, the fight over).
 func _unfade() -> void:
@@ -233,10 +258,16 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 			if scan_t <= 0.0:
 				scan_t = 0.1
 				hide_k = _blocked(f, _spot(base, want, Vector2(turn, 0.0), S), pts, tip)
-				hiders = _hiders(f, eye, pts)
+				var now_in := _hiders(f, eye, pts, tip)
+				hiders = {}
+				for p in now_in:
+					if seen.has(p):
+						hiders[p] = true
+				seen = now_in
 			lift = 0.3 if hide_k > 0.0 else 0.0
 		else:
 			hiders.clear()
+			seen.clear()
 		shift = shift.lerp(Vector2(turn, lift * (1.0 - aim_k)), minf(1.0, dt * 2.0))
 		want = _spot(base, want, shift, S)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
