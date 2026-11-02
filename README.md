@@ -228,6 +228,11 @@ To use Steam:
    and friends can join from the Steam overlay. Traffic goes through Steam's relay, so no ports
    need opening.
 
+**Proximity voice.** Hold N to talk: everyone in the room hears you from your gladiator's head,
+loud up close and gone by 22 m, and his mouth moves with your voice (a crack, open, or wide with the
+teeth and tongue showing, against your own microphone's loudest), timed to when the sound comes out
+of the listener's speaker. Every player can be muted from the room screen.
+
 The Steam path was written against the GodotSteam 4.x API. It is untested here because the test
 machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
 process play a campaign round over localhost, the guest's fighter played by a bot.

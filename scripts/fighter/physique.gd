@@ -811,6 +811,57 @@ static func face_marks(id: String) -> Array:
 			return _row(2, 4, 3, "skin") + _row(5, 7, 3, WHITE) + [[7, 4, LIP], [2, 2, "skin"], [3, 2, "skin"]]
 	return []
 
+# ---------- The mouth while he talks (the proximity voice) ----------
+
+## His mouth opened by how loud he speaks (1 a crack, 2 open, 3 wide: teeth and tongue showing),
+## painted over the front of his head like his face, and put back as it was when he stops (what a
+## blow or blood changed on it meanwhile stays). A dead man's mouth stays shut.
+static func talk(f, state: int) -> void:
+	if not (f is Fighter) or f is Beast or not is_instance_valid(f):
+		return
+	var head: VoxelPart = f.head
+	if head == null or not is_instance_valid(head) or head.missing:
+		return
+	if not f.alive:
+		state = 0
+	if state == int(head.get_meta("talk_state", 0)):
+		return
+	var saved: Dictionary = head.get_meta("talk_saved", {})
+	var list := []
+	for i in saved:
+		if head.colors[i] == saved[i][1]:
+			head.colors[i] = saved[i][0]
+		list.append(i)
+	saved = {}
+	if state > 0:
+		var front := head.grid.z - 1
+		var at := {}
+		for i in head.fx.size():
+			if head.fz[i] == front:
+				at[Vector2i(head.fx[i], head.fy[i])] = i
+		for mk in talk_marks(state):
+			var k := Vector2i(int(mk[0]), int(mk[1]))
+			if not at.has(k) or head.alive[at[k]] == 0:
+				continue
+			var i: int = at[k]
+			saved[i] = [head.colors[i], mk[2]]
+			head.colors[i] = mk[2]
+			list.append(i)
+	head.set_meta("talk_saved", saved)
+	head.set_meta("talk_state", state)
+	_redraw(head, list)
+
+## The mouth's shapes while he talks, on the face's grid (lips at y 2, teeth at y 3).
+static func talk_marks(state: int) -> Array:
+	match state:
+		1:
+			return [[4, 2, MOUTH], [5, 2, MOUTH]]
+		2:
+			return _row(3, 6, 2, MOUTH) + [[4, 1, MOUTH], [5, 1, MOUTH]]
+		3:
+			return _row(3, 6, 3, WHITE) + _row(3, 6, 2, MOUTH) + [[3, 1, MOUTH], [6, 1, MOUTH], [4, 1, TONGUE], [5, 1, TONGUE]]
+	return []
+
 static func _row(x0: int, x1: int, y: int, c) -> Array:
 	var out := []
 	for x in range(x0, x1 + 1):

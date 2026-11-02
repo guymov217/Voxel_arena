@@ -18,6 +18,11 @@ var players := {}             # peer id -> AudioStreamPlayer3D
 static var muted := {}        # peer id -> true: his voice is not played here (the room's Mute)
 var factor := 4
 var _acc := PackedVector2Array()
+## Each talker's mouth (Physique.talk) follows his voice: id -> {"env": loudness now, "peak": his
+## loud (each microphone is its own), "due": [[msec, loudness], ...] of what is still on its way
+## out of his speaker, so the lips move with the sound and not ahead of it}.
+var mouths := {}
+var _cap := {}                # peer id -> his player's buffer when empty (frames)
 
 func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -51,7 +56,7 @@ func _open_mic() -> bool:
 	mic.play()
 	return capture != null
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
 	var want: bool = Net.active() and InputMap.has_action("va_talk") and Input.is_action_pressed("va_talk") and menu != null and menu.match_ != null
 	if want and not talking:
 		talking = _open_mic()
@@ -68,7 +73,9 @@ func _process(_dt: float) -> void:
 			var chunk := _acc.slice(0, need)
 			_acc = _acc.slice(need)
 			Net.send_all("vc", encode(chunk, factor), false)
+			heard(Net.my_id(), rms(chunk), Time.get_ticks_msec())
 	_place()
+	animate(dt)
 
 ## Mixes the stereo capture to mono, takes every `factor`th sample (averaged), and packs 16-bit.
 static func encode(frames: PackedVector2Array, factor_: int) -> PackedByteArray:
@@ -110,8 +117,13 @@ func _on_net(type: String, data, from: int) -> void:
 	if gen == null:
 		return
 	var frames := decode(bytes)
+	if not _cap.has(who):
+		_cap[who] = gen.get_frames_available()
 	if gen.get_frames_available() >= frames.size():
 		gen.push_buffer(frames)
+	# Heard when what is ahead of it in his speaker has played.
+	var queued := maxi(0, int(_cap[who]) - gen.get_frames_available() - frames.size())
+	heard(who, rms(frames), Time.get_ticks_msec() + int(1000.0 * queued / VOICE_RATE))
 
 ## The speaker's player, made when first heard, under the match so it sits in the world.
 func _player_for(id: int) -> AudioStreamPlayer3D:
@@ -134,11 +146,66 @@ func _player_for(id: int) -> AudioStreamPlayer3D:
 	players[id] = p
 	return p
 
+## How loud a stretch of voice is (root mean square, 0..1).
+static func rms(frames: PackedVector2Array) -> float:
+	if frames.is_empty():
+		return 0.0
+	var sum := 0.0
+	for f in frames:
+		sum += f.x * f.x
+	return sqrt(sum / frames.size())
+
+## A talker's voice, as loud as `level`, reaches the ears at `at_ms`.
+func heard(id: int, level: float, at_ms: int) -> void:
+	var m: Dictionary = mouths.get(id, {"env": 0.0, "peak": 0.0, "due": []})
+	(m.due as Array).append([at_ms, level])
+	mouths[id] = m
+
+## The mouth for a voice this loud, against the talker's own loud: shut under a whisper of it.
+static func mouth_state(env: float, peak: float) -> int:
+	if env < 0.008:
+		return 0
+	var rel := env / maxf(peak, 0.04)
+	return 3 if rel > 0.7 else (2 if rel > 0.4 else (1 if rel > 0.15 else 0))
+
+## Every talker's mouth open as loud as his voice is now, shut again as it falls away.
+func animate(dt: float) -> void:
+	if mouths.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	var m = menu.match_ if menu != null and menu.get("match_") != null and is_instance_valid(menu.match_) else null
+	for id in mouths.keys():
+		var mo: Dictionary = mouths[id]
+		var env: float = float(mo.env) * exp(-dt / 0.09)
+		var due: Array = mo.due
+		while not due.is_empty() and int(due[0][0]) <= now:
+			env = maxf(env, float(due.pop_front()[1]))
+		mo.env = env
+		mo.peak = maxf(float(mo.peak) * exp(-dt / 6.0), env)
+		var f = _fighter_of(m, int(id))
+		if f != null:
+			Physique.talk(f, mouth_state(env, mo.peak))
+		if env < 0.002 and due.is_empty():
+			mouths.erase(id)
+
+## A peer's gladiator in the match (this game's own player for this game's id).
+static func _fighter_of(m, id: int):
+	if m == null:
+		return null
+	if id == Net.my_id() and m.me != null and is_instance_valid(m.me.f):
+		return m.me.f
+	for e in m.entities:
+		if int(e.get("peer", -1)) == id and is_instance_valid(e.f):
+			return e.f
+	return null
+
 func _drop(id: int) -> void:
 	var p = players.get(id)
 	if p != null and is_instance_valid(p):
 		p.queue_free()
 	players.erase(id)
+	_cap.erase(id)
+	mouths.erase(id)
 
 ## Every voice from its gladiator's head (a player without one yet speaks from the gate).
 func _place() -> void:

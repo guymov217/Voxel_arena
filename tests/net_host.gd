@@ -8,6 +8,7 @@ var vc: VoiceChat
 var vc_heard := 0
 var _tone_ph := 0.0
 var thr_min := 32
+var mouth_max := 0
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
@@ -67,6 +68,11 @@ func _ready() -> void:
 				thr_min = mini(thr_min, int(gp.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE)))
 		if i >= 120 * 3 and i < 120 * 3 + 250 and i % 5 == 0:
 			Net.send_all("vc", VoiceChat.encode(_tone(), 4), false)
+		# (Headless the voice node does not run itself: its mouths moved by hand.)
+		vc.animate(1.0 / 120.0)
+		for e in m.entities:
+			if e.kind == "remote" and is_instance_valid(e.f):
+				mouth_max = maxi(mouth_max, int(e.f.head.get_meta("talk_state", 0)))
 	var guest_moved := 0.0
 	for e in m.entities:
 		if e.kind == "remote":
@@ -80,7 +86,7 @@ func _ready() -> void:
 		if int(e.get("peer", -1)) == gid and vc.players.has(gid):
 			var mouth: Vector3 = e.f.head.global_position if not e.f.head.severed else e.f.torso.global_position
 			from_head = (vc.players[gid] as AudioStreamPlayer3D).global_position.distance_to(mouth)
-	print("HOST voice heard ", vc_heard, " speakers ", vc.players.keys(), " from his head ", snappedf(from_head, 0.01))
+	print("HOST voice heard ", vc_heard, " speakers ", vc.players.keys(), " from his head ", snappedf(from_head, 0.01), " his mouth opened to ", mouth_max)
 	if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
 		var pp: ENetPacketPeer = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(gid)
 		if pp:
@@ -88,7 +94,7 @@ func _ready() -> void:
 			print("HOST line to the guest: throttle %d/%d loss %.3f rtt %d ms" % [pp.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE), ENetPacketPeer.PACKET_THROTTLE_SCALE, pp.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS) / float(ENetPacketPeer.PACKET_LOSS_SCALE), pp.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)])
 	Net.send_all("bye", {})
 	await get_tree().create_timer(0.5).timeout
-	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 else 1)
+	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 else 1)
 
 ## 40 ms of a 300 Hz tone at half scale, as the microphone's capture would hand it over.
 func _tone() -> PackedVector2Array:
