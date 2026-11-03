@@ -523,3 +523,48 @@ func test_the_smiths_window_fits_the_screen() -> void:
 		menu.queue_free()
 		await get_tree().process_frame
 	root.content_scale_size = size0
+
+## A plate stops a cut and a stab while it holds (user: armour stops cuts and stabs, only a blunt
+## blow passes, less of it): the blade's weight goes on as a bruise, nothing of the man is cut
+## away and nothing opens; on a bare man the same blow cuts, and once the plate over the spot is
+## worn through and gone, so it does there.
+func test_a_plate_stops_cuts_and_stabs() -> void:
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var blow := func(f: Fighter, type: String) -> Dictionary:
+		var tor: VoxelPart = f.torso
+		var at: Vector3 = tor.global_transform * Vector3(0, 0, tor.half_ext.z)
+		var dir := -(tor.global_transform.basis * Vector3.BACK).normalized()
+		var alive0 := int(tor.alive_count)
+		var bleed0 := float(tor.bleed)
+		var r: Dictionary = f.apply_hit(tor, {"point": at, "dir": dir, "type": type, "hardness": 0.9, "sharpness": 0.8, "impulse": 30.0, "axis": dir if type == "point" else Vector3.RIGHT, "edge": Vector3.BACK, "weapon": true, "mass": 1.0})
+		return {"stopped": bool(r.get("stopped", false)), "cut": alive0 - int(tor.alive_count), "bled": float(tor.bleed) - bleed0, "dmg": float(r.get("dmg", 0.0))}
+	var bare: Fighter = w.fighter(Vector3(-4.0, 1.2, 0), 0.0, {})
+	var b: Dictionary = blow.call(bare, "edge")
+	t.check(b.cut > 0 and not b.stopped, "a bare man is cut (%d voxels)" % b.cut)
+	var steel: Fighter = w.fighter(Vector3(0.0, 1.2, 0), 0.0, {"armor": ["steelLorica"]})
+	var e: Dictionary = blow.call(steel, "edge")
+	t.check(e.stopped and e.cut == 0 and e.bled <= 0.0, "steel stops the edge: nothing cut (%d), no bleeding (%.3f)" % [e.cut, e.bled])
+	t.check(e.dmg > 0.0 and e.dmg < b.dmg, "its weight still bruises him, less (%.1f against %.1f bare)" % [e.dmg, b.dmg])
+	var p: Dictionary = blow.call(steel, "point")
+	t.check(p.stopped and p.cut == 0, "and the point (%d cut)" % p.cut)
+	# Blow after blow wears the plate over the spot through; then the spot is bare and cut.
+	var ad: Dictionary = steel.torso.get_meta("armor")[0]
+	var n := 0
+	while int(ad.alive) == ad.cells.size() and n < 30:
+		blow.call(steel, "edge")
+		n += 1
+	t.check(int(ad.alive) < ad.cells.size(), "the plate wears through and goes (%d blows)" % n)
+	var after: Dictionary = blow.call(steel, "edge")
+	t.check(after.cut > 0 and not after.stopped, "and the bare spot is cut (%d voxels)" % after.cut)
+	w.queue_free()
+
+## The forge reads armour the way a fight does: through a plate a club's head carries more than
+## a sword's edge, and a heavy blade more than a light one.
+func test_the_forge_reads_armour_as_a_fight_does() -> void:
+	var mace: float = ForgeLib.vs_armour(Data.preset("mace").stats)
+	var gladius: float = ForgeLib.vs_armour(Data.preset("gladius").stats)
+	t.check(mace > gladius, "a mace through iron (%.2f) beats a gladius (%.2f)" % [mace, gladius])
+	t.check(Fighter.armour_pass("edge", 0.85, 4.5) > Fighter.armour_pass("edge", 0.85, 1.0), "a heavy blade passes more of its weight than a light one")
+	t.check(Fighter.armour_pass("blunt", 0.85, 1.0) > Fighter.armour_pass("edge", 0.85, 1.0), "a club passes more than a light blade")

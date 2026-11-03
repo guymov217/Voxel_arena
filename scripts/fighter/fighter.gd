@@ -5115,18 +5115,27 @@ const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
 const GIANT_BLOW := 0.5  # a giant's blows, pulled (Combat): still the heaviest, not death in one or two
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
+const LAYER_PASS := 0.75    # and of the weight that gets through the struck one, what each passes on
 const GLANCE_INTO := 0.35   # a weapon coming in at less than this (cosine to the plate's normal) starts to skid off
 
 ## What of a blow gets through armour of hardness h, `layers` plates deep (the forge's bar reads
-## it too). A crushing blow carries through a plate (only half of what it stops); a point finds the
-## joins and drives through rings and leather better than an edge, which the plate turns (each
-## kind of weapon has its own answer to armour: user). A heavy blade the plate turns still lands
-## its weight: a great sword or a broad axe drives the plate into the man under it as a club
-## does, a light blade skids off.
+## it too). A plate stops an edge and a point outright while it holds (user: armour stops cuts and
+## stabs, only a blunt blow passes, and less of it): what reaches the man under it is the blow's
+## weight through the plate, a bruise, never a cut (apply_hit). A crushing blow carries through
+## (only half of what the plate stops); a blade carries a share of that, the heavier the more: a
+## great sword or a broad axe drives the plate into the man as a club does, a light blade rings
+## on it.
 static func armour_pass(type: String, h: float, weapon_mass: float, layers := 1) -> float:
 	var absorb := minf(0.92, 0.3 + 0.55 * h + LAYER_ABSORB * (layers - 1))
+	# (Each plate beneath the struck one takes its share of the weight too: two layers of steel
+	# soften a blow more than one, a club's as well as a blade's.)
+	var through := (1.0 - absorb * 0.55) * pow(LAYER_PASS, layers - 1)
+	if type == "blunt":
+		return through
 	var heavy_blade := clampf((weapon_mass - 1.5) / 3.0, 0.0, 1.0)
-	return 1.0 - absorb * (0.55 if type == "blunt" else (0.8 if type == "point" else 1.0 - 0.45 * heavy_blade))
+	return through * (BLADE_ON_PLATE + (1.0 - BLADE_ON_PLATE) * heavy_blade)
+const BLADE_ON_PLATE := 0.45   # what of a light blade's weight a plate passes on (a heavy one's all)
+const PLATE_OVER := 1.25       # a plate this near the spot (in voxels) lies over it: it stops a blade
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -5218,6 +5227,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# off the plates nearest it, the harder the more, and a bare spot is not covered any more.
 	var near := [] if detached else _armor_near(part, lp, V * S * 1.7)
 	var armor_f := 1.0   # what the armour left of the blow (the cap on a blow shrinks with it)
+	var stopped := false   # an edge or a point the plate took: only its weight goes on, as a blunt blow
 	if not near.is_empty():
 		var a0: Dictionary = near[0][0]
 		var h: float = Data.material(a0.mat).get("hardness", 0.6)
@@ -5267,6 +5277,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		armor_f = armour_pass(type, h, float(hit.get("mass", 0.0)), layers)
 		J *= armor_f
 		res.armor = true
+		# A plate over the spot takes the edge or the point (it is worn by it, above, and flies off
+		# when worn through): what goes on into the man is a blunt blow, the plate driven into him,
+		# and it opens nothing. Where it has gone, the gap it left lets the next blade in (the
+		# plates round the gap still take some of its weight, as before).
+		if type != "blunt" and float(near[0][2]) < V * S * PLATE_OVER:
+			type = "blunt"
+			hardness = minf(hardness, h)
+			stopped = true
+			res.stopped = true
 	var bleed_before := part.bleed
 	var dmg := 0.0
 	var remove := []
@@ -5395,7 +5414,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# (A cracked bone gives way to less.) A weapon made to crush (a mace, a hammer, a club of
 		# hard wood) is what breaks bones: the harder its head, the less it takes and the surer it
 		# is, and the worse the break (user: blunt breaks, sharp cuts). Fists and kicks as before.
-		var ck := clampf(hardness, 0.0, 1.0) if hit.get("weapon", false) else 0.0
+		var ck := clampf(hardness, 0.0, 1.0) if hit.get("weapon", false) and not stopped else 0.0
 		var cr := part.fracture == 1
 		if not detached and J > ((10.0 if cr else 16.0) - 9.0 * ck) * big and not part.fractured and part != torso and part != head and randf() < (J - ((8.0 if cr else 14.0) - 9.0 * ck) * big) * 0.06 * (1.0 + heavy) * (1.0 + 1.2 * ck) / (float(mods.toughness) * big):
 			# (The hard head makes the break worse, but out through the skin only a very hard

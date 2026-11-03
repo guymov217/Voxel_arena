@@ -55,6 +55,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **Armour that wears**: every plate you put on protects the spot it covers until it is knocked
   off, at a force by its stuff (leather gives first, steel last); what came off stays off between
   fights until the smith mends it (Mend, in the armour tab), and plates are painted on the bench.
+  A plate stops a cut and a stab outright: what reaches the man under it is only the blow's
+  weight, as a bruise (a club's most of it, a great sword's much, a light blade's little), and
+  every blow wears the plate, until it flies off and the gap it leaves lets the next blade in.
 - **The trainer** (Doctore, in the yard): six abilities bought a session at a time, never earned
   in the arena: vis (strength, half of it behind every blow), ictus (the blow), spiritus (breath), corium (a thick hide),
   sanguis (slower bleeding) and firmitas (footing). Each costs more than the last and is capped

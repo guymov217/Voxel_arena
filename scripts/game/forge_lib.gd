@@ -626,21 +626,13 @@ static func three_bars(st: Dictionary) -> Dictionary:
 		"armour": vs_armour(st),
 	}
 
-## What the weapon still does through an iron plate, on the damage bar's scale: the best of its
-## ways in after the plate has had its share, by the rule a fight uses (Fighter.armour_pass): an
-## edge skids off unless the blade is heavy, a point finds the joins, a crushing head carries
-## through (a bladed weapon's swing is its edge, not its weight).
+## What the weapon still does through an iron plate, on the damage bar's scale, by the rule a
+## fight uses (Fighter.armour_pass): a plate stops an edge and a point, so what gets through is
+## the blow's weight, all of a crushing head's, a blade's in part (the heavier, the more).
 static func vs_armour(st: Dictionary) -> float:
 	var h := float(Data.material("iron").get("hardness", 0.85))
-	var m := float(st.mass)
-	var best := 0.0
-	if int(st.edge) > 0:
-		best = maxf(best, float(st.cut) * Fighter.armour_pass("edge", h, m))
-	if int(st.point) > 0:
-		best = maxf(best, float(st.pierce) * 0.9 * Fighter.armour_pass("point", h, m))
-	if int(st.edge) == 0:
-		best = maxf(best, minf(1.0, float(st.crush) * 1.2) * Fighter.armour_pass("blunt", h, m))
-	return clampf(best, 0.0, 1.0)
+	var kind := "edge" if int(st.edge) > 0 else "blunt"
+	return clampf(minf(1.0, float(st.crush) * 1.2) * Fighter.armour_pass(kind, h, float(st.mass)), 0.0, 1.0)
 
 ## How the weight sits in the hand, in a word: where the balance point lies between the hand and
 ## the tip ("" where it means nothing: a shield, a bow, a head on a chain).

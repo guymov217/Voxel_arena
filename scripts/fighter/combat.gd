@@ -549,13 +549,13 @@ func _blow(g: Dictionary) -> Dictionary:
 	# enough stays in the wound (combat.js).
 	if thrown and is_weapon and not vic.severed and J > 9.0:
 		var keen: float = hardness * sharpness
-		if keen > 0.4 and not res.has("glance") and (g.type == "point" or (g.type == "edge" and not res.get("slid", false))) and att.has_method("impale") and att.impale(vic_char, vic, p):
+		if keen > 0.4 and not res.has("glance") and not res.get("stopped", false) and (g.type == "point" or (g.type == "edge" and not res.get("slid", false))) and att.has_method("impale") and att.impale(vic_char, vic, p):
 			res.impaled = true
 	# A heavy blade driven home stays in the wound, in the hand that struck: an axe in a shoulder,
 	# a cleaver in a thigh (not every time: the harder it lands and the more weight out at its
 	# head, the likelier, more where it met bone). It has to be wrenched out of him, dragging him
 	# with it, or let go of.
-	if is_weapon and att.holder and not thrown and not vic.severed and res.get("severed", []).is_empty() and not res.has("glance") and not res.get("slid", false) and not res.get("blocked", false):
+	if is_weapon and att.holder and not thrown and not vic.severed and res.get("severed", []).is_empty() and not res.has("glance") and not res.get("slid", false) and not res.get("blocked", false) and not res.get("stopped", false):
 		var lk := lodge_chance(att, typ, J, thrust_k, res)
 		if lk > 0.0 and randf() < lk and att.lodge_in(vic_char, vic, p, 0.6 + clampf((J - 20.0) / 50.0, 0.0, 0.6) + (0.35 if res.get("bone", false) else 0.0)):
 			res.lodged = true
