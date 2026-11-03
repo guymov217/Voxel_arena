@@ -704,8 +704,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			desperate_t = rng.randf_range(6.0, 9.0)
 			think = 0.0
 			ready = true
-		if style == "spear" and dist < reach * 0.7 and not rage and not desperate:
-			ready = false   # (in past the point a stab only pokes the shaft into him: back out first)
+		# (In past the point a stab only pokes the shaft into him: back out first. Not a giant over
+		# a small man, whose blows come down from where he stands, `ideal` above: held off there by
+		# his long haft's point, he stood over a man on the sand ten seconds without a blow.)
+		if style == "spear" and dist < reach * 0.7 and not rage and not desperate and not big:
+			ready = false
 		if ready and think <= 0.0:
 			air_t = rng.randf_range(1.5, 3.0)
 			giant_kind = ""
