@@ -857,7 +857,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			if hv == null:
 				return
 			var hdir: Vector3 = (p - owner_.torso.global_position).normalized() if owner_ else Vector3(0, 0, 1)
-			_hit(hv, hv.torso, 14.0, "point", hv.torso.global_position, hdir, owner_)
+			_hit(hv, hv.torso, 14.0 * arm_blow(owner_), "point", hv.torso.global_position, hdir, owner_)
 			hv.torso.bleed += 1.5
 			if owner_:
 				var pull: Vector3 = owner_.torso.global_position - hv.torso.global_position
@@ -878,7 +878,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			var part: VoxelPart = c.head if c.head.global_position.distance_to(p) < 0.35 else c.torso
 			var ddir: Vector3 = p - owner_.torso.global_position if owner_ else Vector3(0, 0, 1)
 			ddir.y = 0.0
-			_hit(c, part, 16.0, "blunt", part.global_position, ddir.normalized(), owner_, {"hardness": 0.8})
+			_hit(c, part, 16.0 * arm_blow(owner_), "blunt", part.global_position, ddir.normalized(), owner_, {"hardness": 0.8})
 			if c == owner_:
 				m.feed.emit(Loc.t("%s got hit by their own discus") % c.display_name)
 		"pot_bignet":
@@ -893,7 +893,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			m.feed.emit(Loc.t("%d caught in the big net") % n)
 		"rock":
 			if hit_char and hit_part:
-				_hit(hit_char, hit_part, 9.0, "blunt", p, dir if dir != null else Vector3.DOWN, owner_, {"hardness": 0.7})
+				_hit(hit_char, hit_part, 9.0 * arm_blow(owner_), "blunt", p, dir if dir != null else Vector3.DOWN, owner_, {"hardness": 0.7})
 		"net":
 			if hit_char:
 				hit_char.set_net(true, 3.0)
@@ -1113,7 +1113,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 			nail_hits_due.append([c, part, lp - ld * back, ld, owner_])
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
-	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0)) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
+	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	_hit(c, part, J, "point", p, hdir, owner_)
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + (0.2 if c.S >= 1.5 else 0.5))
@@ -1150,7 +1150,7 @@ func on_item(ev: Dictionary) -> void:
 			# crushes what it lands on and puts a man down.
 			var part: VoxelPart = ev.part
 			var spd: float = ev.speed
-			var J := minf(95.0, float(ev.mass) * spd * 0.42)
+			var J := minf(95.0, float(ev.mass) * spd * 0.42 * arm_blow(owner_))
 			m.sfx("thud", ev.p, 1.0)
 			burst(ev.p, Color(0.6, 0.5, 0.4), 14, 2.0)
 			if part and c and c.alive:
@@ -1638,6 +1638,15 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 static func throw_speed_k(power: float) -> float:
 	return 0.35 + 0.8 * clampf(power, 0.0, 1.0)
 
+## The thrower's strength (the trainer's Vis) in what he throws by hand: it leaves the hand that
+## much faster, as his weapon does (Fighter.launch_velocity), and half of it goes into the blow
+## it lands, as into a weapon's (Combat._blow).
+static func arm_speed(c) -> float:
+	return float(c.mods.get("strength", 1.0)) if is_instance_valid(c) and "mods" in c else 1.0
+
+static func arm_blow(c) -> float:
+	return 1.0 + 0.5 * (arm_speed(c) - 1.0)
+
 ## `straight`: a player's throw flies along the line to the crosshair (the flat one of the two
 ## arcs that reach it, or along the line itself when it is out of reach), never a lob.
 func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power := 0.8, side := "") -> void:
@@ -1652,6 +1661,7 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 		c.throw_anim = {"side": sd, "phase": "follow", "t": 0.35}
 	var hand: Vector3 = c.hand_world(sd) if sd != "" else c.head.global_position
 	var from: Vector3 = hand + (aim - hand).normalized() * 0.12 * c.S if aim.distance_to(hand) > 0.3 else hand
+	var sk := arm_speed(c)
 	if type == "pot_dart":
 		var fwd: Vector3 = (aim - from)
 		fwd.y = 0.0
@@ -1659,20 +1669,20 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 		for i in [-1, 0, 1]:
 			var da := aim + Vector3(fwd.z * i * 0.5, i * 0.15, -fwd.x * i * 0.5)
 			if straight:
-				m.items.spawn("pot_dart", from, Items.flat_shot(da - from, 19.0 * throw_speed_k(1.0)).normalized() * 19.0 * throw_speed_k(power), c)
+				m.items.spawn("pot_dart", from, Items.flat_shot(da - from, 19.0 * sk * throw_speed_k(1.0)).normalized() * 19.0 * sk * throw_speed_k(power), c)
 			else:
-				m.items.throw_at("pot_dart", from, da, c, 15.0)
+				m.items.throw_at("pot_dart", from, da, c, 15.0 * sk)
 	elif type == "boomerang":
-		m.items.throw_at("boomerang", from, aim, c, 12.0, 0.0)
+		m.items.throw_at("boomerang", from, aim, c, 12.0 * sk, 0.0)
 	elif straight:
 		# The wind-up is the throw: a quick flick tosses it a few paces (short of a far mark),
 		# held to the full it flies hard and far.
 		# Along the line a full throw takes to the mark, whatever the wind-up: it says how far,
 		# not which way (at its own speed every throw left at another angle: user).
-		var full: float = float(THROW_SPEED.get(type, 14.5))
+		var full: float = float(THROW_SPEED.get(type, 14.5)) * sk
 		m.items.spawn(type, from, Items.flat_shot(aim - from, full * throw_speed_k(1.0)).normalized() * full * throw_speed_k(power), c)
 	else:
-		m.items.throw_at(type, from, aim, c, THROW_SPEED.get(type, 14.5))
+		m.items.throw_at(type, from, aim, c, float(THROW_SPEED.get(type, 14.5)) * sk)
 	m.sfx("whoosh", from)
 
 # ---------- Weapons that shoot ----------

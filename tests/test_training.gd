@@ -54,3 +54,53 @@ func test_training_shows_in_the_man() -> void:
 	var s_trained: float = hit.call(me)
 	t.check(s_trained < s_plain * 0.9 and s_plain > 0.0, "the same blow rocks the trained man less (%.2f against %.2f)" % [s_trained, s_plain])
 	m.queue_free()
+
+## Strength (Vis) is in every throw too (user): a weapon, darts, a discus leave a stronger arm
+## faster, still on the line to the crosshair (a bot's lob too), and land harder: half of the
+## strength goes into the blow, as into a weapon's.
+func test_a_stronger_arm_throws_faster_and_harder() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3})
+	var me: Fighter = m.me.f
+	var foe = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 3), "yaw": PI})
+	foe.erase("bot")
+	foe.drive = func(_e): return {}
+	var v: Fighter = foe.f
+	for i in 20:
+		await get_tree().physics_frame
+	var blows := []
+	m.combat.hit.connect(func(h): if h.get("char") == v: blows.append(float(h.J)))
+	var runs := []
+	for s in [1.0, 1.3]:
+		me.mods.strength = s
+		var aim := Vector3(0.0, 1.2, 14.0)
+		var n0: int = m.items.list.size()
+		m.throwables.throw_type(me, "pot_dart", aim, null, true, 1.0)
+		m.throwables.throw_type(me, "pot_discus", aim, null, true, 1.0)
+		m.throwables.throw_type(me, "pot_discus", aim, null, false)
+		var thrown: Array = m.items.list.slice(n0)
+		var dart: Dictionary = thrown[1]   # the middle one of the three goes at the mark
+		var p0: Vector3 = dart.p
+		var dv: Vector3 = dart.vel
+		var tt := Vector2(aim.x - p0.x, aim.z - p0.z).length() / Vector2(dv.x, dv.z).length()
+		var lob: Vector3 = thrown[4].vel
+		runs.append({"weapon": me.launch_velocity(me.torso.global_position + Vector3(0, 0.3, 0), aim, 1.0, 1.0).length(),
+			"dart": dv.length(), "discus": (thrown[3].vel as Vector3).length(), "lob": Vector2(lob.x, lob.z).length(),
+			"miss": absf(p0.y + dv.y * tt - 0.5 * 9.81 * tt * tt - aim.y)})
+		for it in thrown:
+			m.items.remove(it)
+		blows.clear()
+		m.throwables.explode("pot_dart", v.torso.global_position, me, Vector3(0, 0, 1), v, v.torso)
+		m.throwables.explode("pot_discus", v.torso.global_position + Vector3(0, -0.2, 0), me, Vector3(0, 0, 1), v, v.torso)
+		runs[-1]["blows"] = blows.duplicate()
+	var a: Dictionary = runs[0]
+	var b: Dictionary = runs[1]
+	for k in ["weapon", "dart", "discus", "lob"]:
+		t.check(absf(float(b[k]) / float(a[k]) - 1.3) < 0.01, "a third more strength, a third faster: the %s (%.1f against %.1f m/s)" % [k, b[k], a[k]])
+	t.check(float(a.miss) < 0.02 and float(b.miss) < 0.02, "and still on the crosshair (%.3f and %.3f m off)" % [a.miss, b.miss])
+	t.check(a.blows.size() == 2 and b.blows.size() == 2, "the dart and the discus land (%d, %d)" % [a.blows.size(), b.blows.size()])
+	if a.blows.size() == 2 and b.blows.size() == 2:
+		for i in 2:
+			t.check(absf(float(b.blows[i]) / float(a.blows[i]) - 1.15) < 0.01, "half of it goes into the blow: %s (%.1f against %.1f)" % [["the dart", "the discus"][i], b.blows[i], a.blows[i]])
+	m.queue_free()
