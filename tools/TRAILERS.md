@@ -1,12 +1,13 @@
 # WRECKSMITH trailer kit
 
-Two trailers, rendered from the game itself on your PC. Both need Godot 4.7 and Python 3. ffmpeg,
+Three trailers, rendered from the game itself on your PC. All need Godot 4.7 and Python 3. ffmpeg,
 Pillow and numpy are found, or fetched, by the `.bat` files themselves.
 
 | Double-click | Out | What it is |
 |---|---|---|
+| `tools\make_blood_trailer.bat` | `docs\store\trailer_blood.mp4` | WRECKSMITH - THE CROWD WANTS BLOOD: the trailer that worked, its lines and order kept, made again as a film: a crane from the sky into the arena, every fight through a film camera, every kill in slow motion, cut to its own score. |
 | `tools\make_trailer.bat` | `docs\store\trailer.mp4` | The launch trailer: bot fights seen from the side, the forge, the boss music. |
-| `tools\make_rise_trailer.bat` | `docs\store\trailer_rise.mp4` | WRECKSMITH - RISE: one gladiator's rise, from his helmet's camera and a film camera on the kills, cut to its own score. The Steam trailer. |
+| `tools\make_rise_trailer.bat` | `docs\store\trailer_rise.mp4` | WRECKSMITH - RISE: one gladiator's rise, from his helmet's camera and a film camera on the kills, cut to its own score. |
 
 Godot is looked for in `D:\godot\Godot_v4.7.2-stable_win64.exe` (or its `_console.exe`). For
 another place, set it once: `setx GODOT "C:\path\to\Godot_v4.7.2-stable_win64.exe"`.
@@ -14,7 +15,56 @@ another place, set it once: `setx GODOT "C:\path\to\Godot_v4.7.2-stable_win64.ex
 A run takes 20 to 60 minutes with a graphics card. Shots already made are kept in
 `..\trailer_work` beside the project, so a stopped run carries on. To make a shot again, delete
 it there (`..\trailer_work\gorilla.mp4` for the launch trailer, `..\trailer_work\rise\lion.avi` for
-the rise trailer); to start over, delete the folder.
+the rise trailer, `..\trailer_work\blood\dragon.avi` for the crowd trailer); to start over,
+delete the folder.
+
+## The crowd trailer (WRECKSMITH - THE CROWD WANTS BLOOD), shot by shot
+
+The cut of the trailer that worked, its cards and their order kept, every shot of it made again
+from the game as a film. About 75 seconds, 1920x1080 at 30 frames a second (`set TRAILER_FPS=60`
+for 60), cut to its own score at 90 beats a minute: every cut on a beat, every kill on a beat.
+
+| Beats | Shot | Over it |
+|---|---|---|
+| 4 | Black, a heartbeat, the crowd far off | THE CROWD WANTS BLOOD |
+| 9 | A crane from the sky, high over the full stands and the awnings, coming down over the sand to the champion in gilded armour walking in from the gate, and leading him | ENTER THE ARENA |
+| 3 | The crowd on its feet under the Emperor's box, low on the sand | |
+| 10 | A duel, gladius and shield against an axe: wide on the sand, cut in close for the kill in slow motion | |
+| 10 | The big lion, its kill in slow motion | NOT EVERY FOE IS A MAN |
+| 5 | The dragon pours its fire across the sand at a man running from it | |
+| 6 | The forge: a weapon going up on the anvil voxel by voxel | FORGE YOUR WEAPON / VOXEL BY VOXEL |
+| 5 | A man charges; a wheel of cheese bowled along the sand takes him off his feet | ...AND CHEESE |
+| 6 | A free-for-all of seven, from high, the camera going round | CHOOSE YOUR CHAOS |
+| 6 | Friends, their names over their heads, against the minotaur and his wolves | BRING YOUR FRIENDS / ONLINE MULTIPLAYER |
+| 8 | The cyclops, its kill in slow motion | |
+| 8 | Montage: eight cuts, one a beat, the hardest blows of all the bouts | EVERY BLOW LANDS / EVERY BONE BREAKS |
+| 9 | The troll | |
+| 8 | The hydra: its kill in the slowest motion of all (0.15), cut to black on the blow | |
+| 2 | A breath of silence | |
+| 12 | The title on one great hit, over the champion alone in the middle, his axe raised to the crowd | the logo, COMING SOON TO STEAM, WISHLIST NOW |
+
+**The cameras.** No helmet here: every bout is seen through a film camera low on the sand, wide
+while they fight (far off, a little high, drifting slowly round them), then cut in close on the
+same side of them for the kill (a long lens, the background melting away in its depth of field),
+and wide again after. The staged shots (`tests\stageshots.gd`) each have their own move: the
+crane, a dolly along the wall, a push in behind the champion, a camera going round the melee, one
+low on the sand following the cheese. The cards are the trailer's own: gold Roman capitals spaced
+wide, a thin gold rule each side, a smaller line under; the end card has the store's logo
+(`docs\store\capsules\logo.png`).
+
+**The picture and the sound** are the rise trailer's (the same editor, grade and score maker, see
+below): motion blur from the 120 frames a second, smooth slow motion with a white flash on each
+kill, the warm hard grade with grain and cinema bars, the fight's own sound under a score made to
+the cut, brought to -14 LUFS.
+
+**What comes out.** `docs\store\trailer_blood.mp4`: H.264 High (CRF 16), AAC 320 kb/s, 48 kHz,
+fast start, ready to upload. Beside it `trailer_blood_cut.json`, the cut list.
+
+**A check without the game**: `python tools\make_blood_trailer.py --fake` cuts the whole trailer
+from made-up footage (test patterns), to see the cards, the timing and the sound. A staged shot's
+framing can be looked at without the movie maker: `set STAGE=reveal`, `set STAGE_PEEK=4`,
+`set SHOT_DIR=C:\some\folder`, then run the game with `-- --probe stageshots`: four frames of it
+are saved there.
 
 ## The rise trailer (WRECKSMITH - RISE), shot by shot
 
@@ -85,13 +135,18 @@ from made-up footage (test patterns), to see the cards, the timing and the sound
 
 ## Files
 
-- `tools\make_trailer.bat`, `tools\make_rise_trailer.bat`: double-click these.
-- `tools\make_trailer.py`, `tools\make_rise_trailer.py`: the two trailers.
-- `tools\trailer_edit.py`: the rise trailer's editor (motion blur, speed ramps, the sound with
-  the picture).
-- `tools\rise_score.py`: the rise trailer's score, made to its cue sheet; `tools\war_drums.py`:
-  its drums and voices.
+- `tools\make_blood_trailer.bat`, `tools\make_trailer.bat`, `tools\make_rise_trailer.bat`:
+  double-click these.
+- `tools\make_blood_trailer.py`, `tools\make_trailer.py`, `tools\make_rise_trailer.py`: the
+  three trailers.
+- `tools\trailer_edit.py`: the crowd and rise trailers' editor (motion blur, speed ramps, the
+  sound with the picture).
+- `tools\rise_score.py`: the crowd and rise trailers' score, made to the cue sheet;
+  `tools\war_drums.py`: its drums and voices.
 - `tools\trailer_cards.py`, `tools\make_capsules.py`, `tools\fonts\Cinzel-Black.ttf`: the cards.
 - `tests\clipshots.gd`, `tests\forgeclip.gd`, `tests\musicbed.gd`: the launch trailer's shots
-  (the forge clip is in the rise trailer too).
-- `tests\shouldershots.gd`: the rise trailer's bouts and its two cameras.
+  (the forge clip is in the other two too).
+- `tests\shouldershots.gd`: the bouts of the rise trailer (its two cameras) and of the crowd
+  trailer (CLIP_CAM=film).
+- `tests\stageshots.gd`: the crowd trailer's staged shots (the crane, the crowd, the dragon, the
+  cheese, the chaos, the friends, the finale).

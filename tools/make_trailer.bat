@@ -1,6 +1,7 @@
 @echo off
 rem The launch trailer, rendered from the game on this PC: docs\store\trailer.mp4 (1920x1080, 30 fps).
 rem With "rise" (make_rise_trailer.bat) the second one instead: docs\store\trailer_rise.mp4, over the shoulder.
+rem With "blood" (make_blood_trailer.bat) the third: docs\store\trailer_blood.mp4, THE CROWD WANTS BLOOD.
 rem Double-click this file. It needs Godot 4.7 and Python 3; ffmpeg and Pillow it finds or fetches itself:
 rem   ffmpeg: the FFMPEG variable (the ffmpeg.exe, its bin folder or the folder it was unzipped to),
 rem           the PATH (read fresh, so a PATH just edited counts), the usual install folders, or,
@@ -57,10 +58,11 @@ rem ---------- Pillow ----------
 	echo Installing Pillow for Python...
 	%PY% -m pip install --user pillow || (echo Could not install Pillow: run  pip install pillow  yourself. & pause & exit /b 1)
 )
-rem (The second trailer, "make_trailer.bat rise", makes its war drums with numpy.)
+rem (The second and third trailers, "make_trailer.bat rise" and "blood", make their war drums with numpy.)
 set "SCRIPT=tools\make_trailer.py"
 if /i "%~1"=="rise" set "SCRIPT=tools\make_rise_trailer.py"
-if /i not "%~1"=="rise" goto :deps_ok
+if /i "%~1"=="blood" set "SCRIPT=tools\make_blood_trailer.py"
+if /i not "%~1"=="rise" if /i not "%~1"=="blood" goto :deps_ok
 %PY% -c "import numpy" >nul 2>nul && goto :deps_ok
 echo Installing numpy for Python...
 %PY% -m pip install --user numpy || (echo Could not install numpy: run  pip install numpy  yourself. & pause & exit /b 1)

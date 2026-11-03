@@ -13,6 +13,10 @@ extends Node
 ##   together, drifting slowly round them, the background melting away in its depth of field. The
 ##   editor plays this part in slow motion; after it the helmet again, looking down at what fell.
 ##
+## CLIP_CAM=film (the crowd trailer): no helmet. The film camera all through the bout, wide (as
+## far again, a little higher) until the kill, then cut in close on the same side of them for it,
+## and wide again after.
+##
 ## Recorded at a frame for every physics step (--fixed-fps 120), so the editor has frames for
 ## motion blur and for a smooth slow motion. Drawn at the best the game can: MSAA, the voxels'
 ## corner shading, and supersampled (TRAILER_SSAA, the 3D drawn that much larger and scaled down).
@@ -31,6 +35,7 @@ const SHOTS := {
 	"troll": {"enemy": "foe:troll", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"giant": {"enemy": "foe:giant", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 2.6, "cine": true},
+	"duel": {"seed": 3, "enemy": "gladiator", "weapon": "axe", "main": "gladius", "off": "roundShield", "armor": ["helmet", "manica"], "strength": 2.2, "cine": true},
 }
 
 ## The film camera's part round the kill (seconds of the game's own time before and after it).
@@ -45,6 +50,8 @@ var rec0 := 0
 var from := 0
 var kill := -1          # the frame of the kill (CLIP_KILL), or -1 in the dry run
 var cine := false
+var film := false      # CLIP_CAM=film: the film camera all through, wide, and close on the kill
+var film_fresh := false
 var cam_pos := Vector3.ZERO
 var cam_look := Vector3.ZERO
 var cam_up := Vector3.UP
@@ -67,6 +74,7 @@ func _ready() -> void:
 	seconds = float(OS.get_environment("CLIP_SECONDS")) if OS.get_environment("CLIP_SECONDS") != "" else seconds
 	kill = int(OS.get_environment("CLIP_KILL")) if OS.get_environment("CLIP_KILL") != "" else -1
 	cine = bool(sh.get("cine", false)) and OS.get_environment("CLIP_CINE") != "0"
+	film = OS.get_environment("CLIP_CAM") == "film"
 	# The blows dealt in an order of their own, not the physics engine's: the undrawn pass and the
 	# drawn one (its film camera's depth of field drawn too) then fight the same bout.
 	Combat.canonical = true
@@ -77,6 +85,8 @@ func _ready() -> void:
 	var main = Data.shop.get("stick", {}).duplicate(true) if sh.main == "stick" else sh.main
 	var o := {"mode": "training", "training": {"enemy": sh.enemy, "count": int(sh.get("count", 1)), "difficulty": 0.85, "immortal": true, "respawn": false},
 		"loadout_override": {"main": main, "off": sh.off, "armor": sh.armor}}
+	if sh.has("weapon"):
+		o.training.weapon = sh.weapon
 	o["autopilot"] = true
 	o["autopilot_diff"] = 1.0
 	o["decrees"] = []
@@ -164,17 +174,27 @@ func _process(dt: float) -> void:
 		return
 	t_cam += dt
 	var f := _frame()
+	var in_kill := kill > 0 and f >= kill - int(CINE_BEFORE * 120.0) and f < kill + int(CINE_AFTER * 120.0)
 	var want := "pov"
-	if cine and kill > 0 and f >= kill - int(CINE_BEFORE * 120.0) and f < kill + int(CINE_AFTER * 120.0):
+	if film:
+		want = "cine" if in_kill else "wide"
+		# The wide framing set afresh where the drawing starts (the bout before it is unseen).
+		if from > 0 and f >= from and not film_fresh:
+			film_fresh = true
+			mode = ""
+	elif cine and in_kill:
 		want = "cine"
 	if want != mode:
+		var was := mode
 		mode = want
-		if mode == "cine":
-			_start_cine()
+		if mode == "cine" or mode == "wide":
+			# A cut between the film camera's two framings keeps to the same side of the line
+			# between them (crossing it would turn the fight round on the screen).
+			_start_cine(was == "wide" or was == "cine")
 		else:
 			cam_pos = Vector3.ZERO   # (the helmet's camera starts clean where it is)
 			m.cam.attributes = null
-	if mode == "cine":
+	if mode == "cine" or mode == "wide":
 		_cine(dt)
 	else:
 		_pov(dt)
@@ -233,13 +253,13 @@ func _pov(dt: float) -> void:
 
 ## The film camera comes in: on the side of the line between them that has the arena's middle
 ## behind it (the stands, not the wall, in the lens), low, as far off as a long lens wants.
-func _start_cine() -> void:
+func _start_cine(keep_side := false) -> void:
 	var ne = m.nearest_enemy(m.me)
 	foe = ne.f if ne and is_instance_valid(ne.f) else foe
 	cine_t = 0.0
 	cine_pos = Vector3.ZERO
 	var a: Fighter = m.me.f
-	if foe == null:
+	if foe == null or keep_side:
 		return
 	var d: Vector3 = foe.torso.global_position - a.torso.global_position
 	d.y = 0.0
@@ -265,12 +285,15 @@ func _cine(dt: float) -> void:
 	var mid: Vector3 = ha.lerp(hf, 0.58)
 	mid.y = maxf(0.9, lerpf(ha.y, hf.y, 0.5) * 0.85)
 	var span := dist + 1.2 * fs
-	var fov := 34.0 + 6.0 * clampf(fs - 1.0, 0.0, 2.0)
-	var back := span * 0.5 / tan(deg_to_rad(fov) * 0.5) * 1.15
+	# (The wide framing of the crowd trailer's film camera: as far again, a little higher, a
+	# little wider, drifting more slowly.)
+	var wide := mode == "wide"
+	var fov := 34.0 + 6.0 * clampf(fs - 1.0, 0.0, 2.0) + (8.0 if wide else 0.0)
+	var back := span * 0.5 / tan(deg_to_rad(fov) * 0.5) * (1.6 if wide else 1.15)
 	# Drifting round them, slowly, and in a little: a dolly on a curved track.
-	var turn := -0.2 + cine_t * 0.12
+	var turn := -0.2 + cine_t * (0.07 if wide else 0.12)
 	var off := (s * cos(turn) - d * sin(turn)).normalized() * back * (1.0 - 0.06 * minf(1.0, cine_t / 2.0))
-	var want := mid + off + Vector3(0, -0.35 + 0.25 * fs, 0)
+	var want := mid + off + Vector3(0, -0.35 + 0.25 * fs + (0.6 if wide else 0.0), 0)
 	want.y = maxf(0.35, want.y)
 	# Inside the ring's wall.
 	var flat := Vector2(want.x, want.z)
