@@ -99,6 +99,34 @@ func _feet_up(f: Fighter) -> float:
 			lo = minf(lo, _box_low(sh) - f._ground_under(sh.global_position, f.ground_level))
 	return lo
 
+## On open sand a man runs and walks at the pace he is meant to (3.8 and 2.1 m/s for a man his
+## size), not held back by his own feet: a run was once measured at three fifths of it.
+func test_a_man_runs_and_walks_at_his_pace() -> void:
+	var m := _match()
+	for run in [true, false]:
+		var e = m.spawn_fighter({"kind": "bot", "name": "P", "loadout": {"main": "gladius"}, "team": 1, "pos": Vector3(0, 0, -6), "yaw": 0.0})
+		e.erase("bot")
+		var go := {"on": false}
+		e.drive = func(_e): return {"mz": 1.0, "sprint": run} if go.on else {}
+		var f: Fighter = e.f
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		for i in 90:
+			await get_tree().physics_frame
+		go.on = true
+		for i in 120:
+			await get_tree().physics_frame
+		var p0 := f.torso.global_position
+		for i in 120 * 2:
+			await get_tree().physics_frame
+		var p1 := f.torso.global_position
+		var pace := Vector2(p1.x - p0.x, p1.z - p0.z).length() / 2.0
+		t.check(f.state == "stand" and pace > (3.2 if run else 1.75), "%s at %.2f m/s" % ["running" if run else "walking", pace])
+		m._remove_entity(e)
+		await get_tree().physics_frame
+	m.queue_free()
+	await get_tree().physics_frame
+
 func test_a_foot_is_always_on_the_sand_running_climbing_and_struck() -> void:
 	# User: never both feet in the air unless thrown: not running, not climbing a step, not hit.
 	var m := _match()
