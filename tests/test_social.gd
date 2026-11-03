@@ -165,6 +165,57 @@ func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	t.check(moves.any(func(s): return s.contains("SLAMS") or s.contains("tossed")), "and hurled or slammed him (%s)" % str(moves))
 	m.queue_free()
 
+## A giant over a man down on the sand stoops to him, takes hold of him there and lifts him to
+## slam or throw him (user: the giant never bent down to pick a man up and throw him; upright,
+## his hand stopped a metre over the man and closed on air). Left to himself: no grab is forced.
+func test_a_giant_stoops_to_pick_up_a_man_on_the_sand() -> void:
+	seed(5)
+	var m := _match()
+	m.me.f.state = "dead"
+	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, func(_e): return {}, {"toughness": 6.0})
+	var giant = m.spawn_fighter({"kind": "bot", "name": "Giant", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.0, "strength": 2.0}, "diff": 0.9})
+	var v: Fighter = victim.f
+	var g: Fighter = giant.f
+	var moves := []
+	m.feed.connect(func(s): moves.append(s))
+	await _steps(60)
+	var stand_y: float = g.torso.global_position.y
+	v.fall(90.0, true)
+	var held_at := -1.0   # the giant's trunk when he took hold, and the man's
+	var man_at := -1.0
+	var lifted := 0.0
+	var fell := false
+	var done := false
+	for i in 40 * 120:
+		v.blood = 100.0
+		v.head.hp = maxf(v.head.hp, 60.0)
+		# (Kept down till he is taken: a blow or his own legs had him up in three seconds.)
+		if held_at < 0.0 and v.state != "down":
+			v.fall(90.0, true)
+		await get_tree().physics_frame
+		if held_at < 0.0:
+			fell = fell or g.state != "stand"
+			if g.holding != null:
+				held_at = g.torso.global_position.y
+				man_at = v.torso.global_position.y
+		else:
+			lifted = maxf(lifted, v.torso.global_position.y)
+		if i % 30 == 0 and moves.any(func(s): return s.contains("SLAMS") or s.contains("tossed")):
+			done = true
+			break
+		if i % 120 == 0 and OS.get_environment("DEBUG_GIANT") != "":
+			var gd := Vector2(v.torso.global_position.x - g.torso.global_position.x, v.torso.global_position.z - g.torso.global_position.z).length()
+			print("  t=%.0f giant %s/%s cool %.1f reach %.2f dist %.2f weapons %s/%s  man %s y %.2f alive %s" % [i / 120.0, g.state, giant.bot.state, giant.bot.grab_cool, giant.bot.grab_reach, gd, g.weapons.R != null, g.weapons.L != null, v.state, v.torso.global_position.y, v.alive])
+	if OS.get_environment("DEBUG_GIANT") != "":
+		print("  held: giant trunk %.2f (standing %.2f), man trunk %.2f; lifted to %.2f; fell %s; %s" % [held_at, stand_y, man_at, lifted, fell, str(moves)])
+	t.check(held_at >= 0.0, "the giant took hold of the man on the sand (%s)" % str(moves))
+	t.check(man_at >= 0.0 and man_at < 0.6, "where he lay (his trunk %.2f m up)" % man_at)
+	t.check(held_at >= 0.0 and held_at < stand_y - 0.3, "bent down to him (the giant's trunk %.2f m up, %.2f m standing)" % [held_at, stand_y])
+	t.check(not fell, "and kept his feet stooping to him")
+	t.check(lifted > 1.2, "lifted him off the sand (his trunk up to %.2f m)" % lifted)
+	t.check(done, "and slammed or threw him (%s)" % str(moves))
+	m.queue_free()
+
 ## A man a giant throws is hurt where he comes down, the wall or the sand (user: the giant holds
 ## a man in one hand and really throws him, and it does him harm).
 func test_a_thrown_man_is_hurt_where_he_lands() -> void:

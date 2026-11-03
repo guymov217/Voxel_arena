@@ -227,6 +227,8 @@ var forearms_pass := false   # the forearms let each other by: the off hand goin
 var haft_behind_t := 0.0    # how long the off hand on the haft has been dragged behind his back
 var reach := {"R": null, "L": null}   # G: a hand on its way to a weapon's grip, or closed on it and turning it into the fist
 var stoop := 0.0            # bent down to a grip low by his feet (0..1): the reach sets it every step
+var grab_bend := 0.0        # bent over a man on the sand to take hold of him (0..1): see _drive_arm
+var grab_low := false       # a hand sent down to him this step (the bend is let go of when none is)
 var arm_strain := {"R": 0.0, "L": 0.0}   # how far each hand is held off its mark (m): pulling on a weapon stuck fast
 var wrench_t := {"R": 0.0, "L": 0.0}     # how long that hand has been pulling on a weapon stuck in a body
 var body_mass := 70.0   # the fighter's own body (kg), from the support spring
@@ -1733,6 +1735,7 @@ func takeable(list: Array, side: String) -> Weapon:
 ## held. One stuck in a body stays stuck in it, the hand on its grip, until it is wrenched out.
 const REACH_T := 2.2      # how long a hand goes on reaching for a grip before it gives up (s)
 const CLOSE_R := 0.12     # the palm this near the grip (x S): the fingers take it
+const GRAB_BEND_NEAR := 0.9   # a man on the sand this near (x S, along the sand): he stoops to take hold of him
 const TURN_T := 1.2       # how long the fist may take drawing it in and turning it into line (s)
 
 func reach_for(side: String, w: Weapon) -> bool:
@@ -1837,6 +1840,10 @@ func _wrench(dt: float) -> void:
 
 func _reach_tick(dt: float) -> void:
 	stoop = maxf(0.0, stoop - dt * 2.5)
+	if not grab_low:
+		grab_bend = maxf(0.0, grab_bend - dt * 2.5)
+	grab_low = false
+	stoop = maxf(stoop, grab_bend)
 	for side in ["R", "L"]:
 		var r = reach[side]
 		if r == null:
@@ -3760,6 +3767,18 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		elif rch.get("from") is Vector3:
 			var k := float(rch.get("lift", 1.0))
 			target = (rch.from as Vector3).lerp(target, k * k * (3.0 - 2.0 * k))
+	# Taking hold of a man down on the sand (a giant's grab, `grabAt`: the spot on him): the empty
+	# hand goes right down to him and he stoops to it, lower while the hand is still above him,
+	# as to a weapon on the sand (upright, the hand stopped a metre over the man and closed on
+	# air: user, the giant never bent down to pick a man up and throw him). Only with the man
+	# under his hand: stooped while still striding up to him, he went over on his face.
+	var g_at = inp.get("grabAt")
+	if g_at is Vector3 and not w and inp.get("grab", false) and inp.get("grabHands") == side and state == "stand":
+		var at: Vector3 = g_at
+		target = yaw_q.inverse() * (at - t_pos)
+		var near := Vector2(at.x - t_pos.x, at.z - t_pos.z).length() < GRAB_BEND_NEAR * S
+		grab_bend = clampf(grab_bend + dt * (2.2 if near and hand_world(side).y > at.y + 0.08 * S else -0.8), 0.0, 1.0)
+		grab_low = true
 	# A hurt arm sags, more the worse it is; it does not wander. A player's blade stays where he
 	# last aimed it: a hurt arm, a ringing head or wine had the hand going round in circles on
 	# its own, the weapon with it, with nothing touched (user: the most important of all). Their

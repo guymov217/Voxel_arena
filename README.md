@@ -75,7 +75,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   one's feet (lying, sitting, on his knees) is a stamp: the knee comes up and the foot is driven
   down onto him (`tests/stompprobe.gd`). A giant's blows vary:
   a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
-  has knocked down it goes on striking; it does not stand off and watch him.
+  has knocked down it goes on striking; it does not stand off and watch him. Now and then it
+  stoops to him instead, its hand right down on him, takes hold of him where he lies and lifts
+  him to slam or throw him (`Bot.GRAB_DOWN_RATE`, `tests/giantpickprobe.gd`).
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A
   beast's jaws, claws and horns bite only in a strike (the snap after the wind-up), never by
   brushing against a man, so a lunge can be dodged or taken on the shield; a bite goes in
