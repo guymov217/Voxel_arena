@@ -33,13 +33,13 @@ for 60), cut to its own score at 90 beats a minute: every cut on a beat, every k
 | 9 | The big lion, its kill in slow motion | NOT EVERY FOE IS A MAN |
 | 5 | The dragon pours its fire across the sand at a man running from it | |
 | 6 | The forge: the executioner's axe going up on the anvil voxel by voxel, the anvil filling the screen | FORGE YOUR WEAPON / VOXEL BY VOXEL |
-| 6 | Cut to the same axe in the champion's hands: a real fight until it takes a man's limb off, in the slowest motion (0.12) | |
+| 6 | Cut to the same axe in the champion's hands: a swordsman comes on with his blade up, the axe comes down on him edge first, in the slowest motion (0.12) | |
 | 5 | A man charges; a wheel of cheese bowled along the sand takes him off his feet | ...AND CHEESE |
 | 6 | A free-for-all of seven, from above the thick of it, the camera going round | CHOOSE YOUR CHAOS |
 | 7 | Four friends, their names over their heads, charging the minotaur in a line, low behind them; the clash in slow motion | BRING YOUR FRIENDS / ONLINE MULTIPLAYER |
 | 5 | A man charging the champion's spear takes it in the face: his head stops, his legs run on and he goes over backwards, heels over head, in slow motion | |
 | 8 | Montage: eight cuts, one a beat, the hardest blows of all the bouts, those that take a limb off first, each with a dip into slow motion as it lands | EVERY BLOW LANDS / EVERY BONE BREAKS |
-| 8 | The hydra: its kill in the slowest motion of all (0.15), cut to black on the blow | |
+| 8 | The hydra (or the troll, when no seed gives a hydra that falls): its kill in the slowest motion of all (0.15), cut to black on the blow | |
 | 2 | A breath of silence | |
 | 12 | The title on one great hit, over the champion alone in the middle, his axe raised to the crowd | the logo, COMING SOON TO STEAM, WISHLIST NOW |
 
