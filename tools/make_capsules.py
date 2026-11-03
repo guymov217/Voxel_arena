@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every Steam capsule and store graphic for WRECKSMITH, from the key-art frames rendered by the
 game itself (tests/capsuleart.gd: staged scenes of the current build frozen at the blow and drawn
-large, with a low sun, haze and depth of field) and the voxel logo (tools/make_logo.py).
+large, in clear afternoon light with depth of field) and the voxel logo (tools/make_logo.py).
 
 Each frame is graded like a film still (contrast, warm highlights, cool shadows, a vignette) and
 cropped to the capsule around its subject; the logo sits on a soft dark ground so it reads at the

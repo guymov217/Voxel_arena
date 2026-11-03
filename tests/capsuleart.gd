@@ -1,7 +1,8 @@
 extends Node
 ## The Steam capsule art (`-- --probe capsuleart`, needs a display): a scene of the game staged,
 ## played until its best moment (a hard blow, the pieces in the air), frozen there and drawn
-## large from a cinema camera: a low sun, a rim light behind the fighters, haze, depth of field.
+## large from a cinema camera: the clear afternoon of the "late" look (LOOKS), a rim light behind
+## the fighters, depth of field.
 ## CAPS_SCENE picks the scene (giant, lion, clash, dragon, squad); CAPS_VIEWS the frames (wide
 ## 2560x1440, tall 1440x2160, hero 3840x1240). PNGs: SHOT_DIR/cap_<scene>_<view>.png, put
 ## together into the capsules by tools/make_capsules.py.
@@ -18,6 +19,32 @@ const AXE := {"name": "Wrecker", "kind": "weapon", "twoHanded": false, "sharpnes
 	[-1, 10, 0, "steel", "point"], [-2, 10, 0, "steel", "point"], [0, 12, 0, "steel", "point"], [0, 13, 0, "steel", "point"]]}
 const GILT := ["goldHelmet", "goldLorica", "manica", "greaves", "cape"]
 const VIEWS := {"wide": Vector2i(2560, 1440), "tall": Vector2i(1440, 2160), "hero": Vector2i(3840, 1240), "preview": Vector2i(1280, 720)}
+
+## The light of the art: the game's own afternoon, only clearer (user: the old frames were far
+## too bright and warm, they glowed and the detail was lost in the glow). A white sun from the
+## camera's side, high enough to model the faces; open, cool shade; next to no haze and no
+## bloom; the exposure down. CAPS_LOOKS "a,b" shoots each framing in each look, to compare; the
+## art is shot in "late" (the sun lower and a little warmer than "clear", the shadows long, the
+## colour kept; "old" is the look the art had before).
+const LOOKS := {
+	"clear": {"sun": Color(1.0, 0.95, 0.88), "energy": 2.0, "elev": 34.0, "ambient": 0.45, "exposure": 0.74, "haze": 0.0015, "fog": 0.003, "scatter": 0.05, "glow": 0.3, "bloom": 0.0, "contrast": 1.1, "sat": 1.04, "rim": 0.6, "rim_col": Color(0.92, 0.95, 1.0)},
+	"dim": {"sun": Color(1.0, 0.95, 0.88), "energy": 2.0, "elev": 34.0, "ambient": 0.38, "exposure": 0.64, "haze": 0.0015, "fog": 0.003, "scatter": 0.05, "glow": 0.3, "bloom": 0.0, "contrast": 1.12, "sat": 1.05, "rim": 0.6, "rim_col": Color(0.92, 0.95, 1.0)},
+	"late": {"sun": Color(1.0, 0.89, 0.77), "energy": 2.2, "elev": 26.0, "ambient": 0.4, "exposure": 0.68, "haze": 0.003, "fog": 0.003, "scatter": 0.1, "glow": 0.35, "bloom": 0.0, "contrast": 1.12, "sat": 1.05, "rim": 0.8, "rim_col": Color(1.0, 0.9, 0.8)},
+	"old": {"sun": Color(1.0, 0.75, 0.5), "energy": 2.3, "elev": 22.8, "ambient": 0.6, "exposure": 0.95, "haze": 0.011, "fog": 0.005, "scatter": 0.25, "glow": 1.05, "bloom": 0.12, "contrast": 1.14, "sat": 1.14, "rim": 1.7, "rim_col": Color(1.0, 0.62, 0.34)},
+}
+var look := "late"
+
+## The giant's guard for the art (CAPS_POSE): `main` and `off` the hands as a fighter's input
+## gives them, `crouch` his knees bent, `twist` the haft turned. CAPS_TRY_POSES "a,b" holds him
+## in each in turn and shoots a preview of each.
+const POSES := {
+	"high": {"main": {"x": 0.6, "y": 0.6}},
+	"cocked": {"main": {"x": 0.55, "y": 0.35}, "crouch": true},
+	"low": {"main": {"x": 0.45, "y": -0.15}, "crouch": true},
+	"across": {"main": {"x": -0.1, "y": 0.25}, "crouch": true},
+	"wide": {"main": {"x": 0.75, "y": 0.2}, "crouch": true},
+	"chest": {"main": {"x": 0.3, "y": 0.15}},
+}
 
 var m: Match
 var out := ""
@@ -59,8 +86,16 @@ func _ready() -> void:
 	# Frozen at the moment: the pieces and the blood hang in the air for every frame drawn.
 	get_tree().paused = true
 	get_viewport().disable_3d = true
+	var tries: Array = Array(OS.get_environment("CAPS_TRY_POSES").split(",", false))
+	if scene == "giant" and not tries.is_empty():
+		await _try_poses(tries)
+		get_tree().quit()
+		return
 	# CAPS_MAX: only the first framings of each view (a frame of the full picture takes a minute).
 	var most := int(OS.get_environment("CAPS_MAX")) if OS.get_environment("CAPS_MAX") != "" else 99
+	var looks: Array = Array(OS.get_environment("CAPS_LOOKS").split(",", false))
+	if looks.is_empty():
+		looks = [look]
 	for v in views:
 		var list = shots.call(String(v))
 		if list is Dictionary:
@@ -71,8 +106,31 @@ func _ready() -> void:
 			if not pick.is_empty() and not pick.has(k):
 				continue
 			var sh: Dictionary = list[k]
-			await _shoot("%s_%s_%d" % [scene, v, k], sh.eye, sh.at, float(sh.fov), VIEWS[String(v)], String(v) == "tall")
+			for lk in looks:
+				look = String(lk)
+				await _shoot("%s_%s_%d%s" % [scene, v, k, "" if looks.size() == 1 else "_" + look], sh.eye, sh.at, float(sh.fov), VIEWS[String(v)], String(v) == "tall")
 	get_tree().quit()
+
+## Each guard of POSES in turn on the giant squared up to the hero, held a few seconds, then a
+## preview of it from the low three-quarter framing and the one at a man's height.
+func _try_poses(names: Array) -> void:
+	var g = m.enemies()[0]
+	var gf: Fighter = g.f
+	var hero: Fighter = m.me.f
+	var gap := float(OS.get_environment("CAPS_GAP")) if OS.get_environment("CAPS_GAP") != "" else 4.0
+	for nm in names:
+		if not POSES.has(nm):
+			print("no pose ", nm)
+			continue
+		get_tree().paused = false
+		g.drive = pose_drive(gf, hero, POSES[nm], 0.0, gap)
+		for i in 360:
+			await get_tree().physics_frame
+		get_tree().paused = true
+		print("pose %s: %s" % [nm, str(squared_up(gf, hero, 1.5))])
+		var list := _facing_framings("preview", hero.torso.global_position, gf.torso.global_position, float(gf.S))
+		for k in [0, 1]:
+			await _shoot("giantpose_%s_%d" % [nm, k], list[k].eye, list[k].at, float(list[k].fov), VIEWS.preview, false)
 
 ## Framings of two fighters (`a` the hero, `b` his foe of size `s`): from either side and from
 ## over the hero's shoulder, low (the heroic angle) or at eye height, far enough for both whole.
@@ -191,7 +249,7 @@ func _until_blow(max_s := 45.0, after := 6) -> void:
 		await get_tree().physics_frame
 	print("blow J=%.0f after %.1f s" % [float(big.get("J", 0.0)), waited / 120.0])
 
-## Low golden sun, haze for the light to show in, the crowd on its feet.
+## The arena drawn at its best (every light and shadow of ultra), the crowd on its feet.
 func _light() -> void:
 	var a: Arena = m.arena
 	if a == null:
@@ -200,32 +258,41 @@ func _light() -> void:
 	var e := a.env
 	e.sdfgi_enabled = false   # (it settles over many frames; one is drawn)
 	e.volumetric_fog_temporal_reprojection_enabled = false
-	e.volumetric_fog_density = 0.011
-	e.glow_intensity = 1.05
-	e.glow_bloom = 0.12
-	e.adjustment_saturation = 1.14
-	e.adjustment_contrast = 1.14
-	e.tonemap_exposure = 0.95
-	a.sun.light_color = Color(1.0, 0.75, 0.5)
-	a.sun.light_energy = 2.3
 	a.set_excitement(1.0)
 
-## The sun from the camera's side, low, so the faces turned to it are lit and the shadows long;
-## a warm light from behind the fighters on their edges.
+## The look (LOOKS) laid on for a shot from `eye` at `at`: the sun from the camera's side so the
+## faces turned to it are lit, a light from behind the fighters on their edges.
 func _aim_lights(eye: Vector3, at: Vector3) -> void:
+	var lk: Dictionary = LOOKS.get(look, LOOKS.clear)
 	var fwd := at - eye
 	fwd.y = 0.0
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
 	var side := fwd.cross(Vector3.UP)
+	if m.arena and m.arena.env:
+		var e: Environment = m.arena.env
+		e.tonemap_exposure = float(lk.exposure)
+		e.ambient_light_energy = float(lk.ambient)
+		e.volumetric_fog_enabled = float(lk.haze) > 0.0
+		e.volumetric_fog_density = float(lk.haze)
+		e.fog_density = float(lk.fog)
+		e.fog_sun_scatter = float(lk.scatter)
+		e.glow_intensity = float(lk.glow)
+		e.glow_bloom = float(lk.bloom)
+		e.glow_hdr_threshold = 1.3
+		e.adjustment_contrast = float(lk.contrast)
+		e.adjustment_saturation = float(lk.sat)
 	if m.arena and m.arena.sun:
-		var d := (fwd * 0.75 + side * 0.65).normalized() + Vector3(0, -0.42, 0)
-		m.arena.sun.look_at_from_position(Vector3.ZERO, d.normalized(), Vector3.UP)
+		var sun: DirectionalLight3D = m.arena.sun
+		sun.light_color = lk.sun
+		sun.light_energy = float(lk.energy)
+		var d := (fwd * 0.75 + side * 0.65).normalized() * cos(deg_to_rad(float(lk.elev))) + Vector3(0, -sin(deg_to_rad(float(lk.elev))), 0)
+		sun.look_at_from_position(Vector3.ZERO, d.normalized(), Vector3.UP)
 	if rim == null:
 		rim = DirectionalLight3D.new()
 		rim.shadow_enabled = false
-		rim.light_color = Color(1.0, 0.62, 0.34)
-		rim.light_energy = 1.7
 		add_child(rim)
+	rim.light_color = lk.rim_col
+	rim.light_energy = float(lk.rim)
 	var r := (-fwd * 0.9 - side * 0.3).normalized() + Vector3(0, -0.35, 0)
 	rim.look_at_from_position(Vector3.ZERO, r.normalized(), Vector3.UP)
 
@@ -289,7 +356,14 @@ func _giant() -> Callable:
 		if Vector2(d0.x, d0.z).length() < gap + 3.0:
 			break
 	var hxy: Array = Array((OS.get_environment("CAPS_HERO") if OS.get_environment("CAPS_HERO") != "" else "0.45:0.85").split(":"))
-	g.drive = pose_drive(gf, hero, {"x": float(gxy[0]), "y": float(gxy[1])}, 0.0, gap)
+	# His guard: CAPS_POSE by name (POSES), else CAPS_GUARD by hand, else "across": the haft held
+	# across him, his face and eye clear of his hands (raised high, his arm hid his face).
+	var guard: Dictionary = POSES.across
+	if OS.get_environment("CAPS_GUARD") != "":
+		guard = {"main": {"x": float(gxy[0]), "y": float(gxy[1])}}
+	if POSES.has(OS.get_environment("CAPS_POSE")):
+		guard = POSES[OS.get_environment("CAPS_POSE")]
+	g.drive = pose_drive(gf, hero, guard, 0.0, gap)
 	m.me.drive = pose_drive(hero, gf, {"x": float(hxy[0]), "y": float(hxy[1])}, 2.6, 99.0)
 	# The hero's axe has already bitten into him: a few chunks out of the giant's thigh, arm and
 	# side, on the side the camera sees (CAPS_SCARS 0: none).
@@ -353,13 +427,19 @@ static func step_rear(f: Fighter, lead: String) -> void:
 ## hand where `hand` puts it, a step in while farther off than `near`, a step back while closer
 ## than `room`, else standing his ground.
 static func pose_drive(f: Fighter, foe: Fighter, hand: Dictionary, room: float, near: float) -> Callable:
+	# `hand` the main hand's {x, y}, or a whole guard of POSES (its hands, knees, haft).
+	var pose: Dictionary = hand if hand.has("main") else {"main": hand}
 	return func(_e) -> Dictionary:
 		var d: Vector3 = foe.torso.global_position - f.torso.global_position
 		var dh: Vector3 = foe.head.global_position - f.head.global_position
 		f.gaze = foe.head.global_position
 		var gap := Vector2(d.x, d.z).length()
 		var step := -0.7 if gap < room else (0.5 if gap > near else 0.0)
-		return {"mx": 0.0, "mz": step, "main": hand, "look": {"yaw": atan2(d.x, d.z), "pitch": atan2(dh.y, Vector2(dh.x, dh.z).length())}}
+		var inp := {"mx": 0.0, "mz": step, "main": pose.main, "look": {"yaw": atan2(d.x, d.z), "pitch": atan2(dh.y, Vector2(dh.x, dh.z).length())}}
+		for k in ["off", "crouch", "twist"]:
+			if pose.has(k):
+				inp[k] = pose[k]
+		return inp
 
 ## Framings of a hero squared up to a giant (`a` the hero, `b` the giant of size `s`): from behind
 ## the hero's shoulder, a third and a half of the way round, so the giant's face is seen turned
