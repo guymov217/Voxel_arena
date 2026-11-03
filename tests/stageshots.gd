@@ -10,7 +10,11 @@ extends Node
 ## - cheese: a wheel of cheese bowled along the sand takes a charging man off his feet;
 ## - chaos: a free-for-all seen from above the thick of it, the camera going round;
 ## - squad: friends, their names over their heads, against the minotaur and his wolves;
-## - finale: the champion alone in the middle, his back to us, his axe raised to the crowd.
+## - finale: the champion alone in the middle, his back to us, his axe raised to the crowd;
+## - cut: the champion with the executioner's axe (the one the forge builds) brings it down on a
+##   swordsman coming at him, edge first (KEY), the film camera close beside them;
+## - spear: a man charges the champion's spear; it takes him in the face, his legs run on under
+##   him and he goes over backwards, heels over head (KEY at the blow).
 ##
 ## Tags (stdout, and TAG_LOG when set): REC_START <frame> when the shot begins, KEY <frame> at its
 ## moment (the fire, the wheel's strike, the hardest blow), HIT <frame> <J>, REC_END <frame>.
@@ -31,6 +35,10 @@ var tick_fn: Callable     # t -> void, every physics step while rolling
 var attrs: CameraAttributesPractical
 var keyed := false
 var best_j := 0.0
+var best_f := -1
+var key_tail := -1.0      # > 0: the shot ends this long after its KEY (a fight that runs until it)
+var peek_on_key := false  # STAGE_PEEK frames round the KEY, not evenly through the shot
+var peek_at := []
 
 func _ready() -> void:
 	process_priority = 1000
@@ -56,8 +64,12 @@ func _ready() -> void:
 			await _squad()
 		"finale":
 			await _finale()
+		"cut":
+			await _cut()
+		"spear":
+			await _spear()
 		_:
-			print("STAGE: reveal, crowd, dragon, cheese, chaos, squad, finale")
+			print("STAGE: reveal, crowd, dragon, cheese, chaos, squad, finale, cut, spear")
 			get_tree().quit(1)
 			return
 	if OS.get_environment("STAGE_SECONDS") != "":
@@ -77,12 +89,16 @@ func _ready() -> void:
 			m.arena.set_excitement(1.0)
 		if tick_fn.is_valid():
 			tick_fn.call(t)
-		if peek > 0 and peeked < peek and t >= dur * float(peeked) / float(peek):
+		var due: bool = (t >= float(peek_at[peeked])) if peeked < peek_at.size() else (peek_at.is_empty() and not peek_on_key and t >= dur * float(peeked) / float(peek))
+		if peek > 0 and peeked < peek and due:
 			get_viewport().disable_3d = false
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(OS.get_environment("SHOT_DIR").path_join("peek_%s_%d.png" % [shot, peeked]))
 			peeked += 1
 			get_viewport().disable_3d = true
+	# A fight that never came to its moment: the hardest blow of the champion's is its moment.
+	if key_tail > 0.0 and not keyed and best_f >= 0:
+		_tag("KEY %d" % best_f)
 	_tag("REC_END %d" % _frame())
 	get_tree().quit()
 
@@ -128,11 +144,18 @@ func _key() -> void:
 	if not keyed and rolling:
 		keyed = true
 		_tag("KEY %d" % _frame())
+		if key_tail > 0.0:
+			dur = minf(dur, t + key_tail)
+		if peek_on_key:
+			peek_at = [t + 0.02, t + 0.3, t + 0.7, t + 1.3]
 
 func _on_hit(h: Dictionary) -> void:
 	var J := float(h.get("J", 0.0))
 	if rolling and J >= 20.0:
 		_tag("HIT %d %d" % [_frame(), int(J)])
+	if rolling and m and m.me and h.get("attacker") == m.me.f and J > best_j:
+		best_j = J
+		best_f = _frame()
 
 static func _ease(x: float) -> float:
 	x = clampf(x, 0.0, 1.0)
@@ -327,47 +350,66 @@ func _thick() -> Vector3:
 	at.y = 0.8
 	return at
 
-## Friends against the minotaur and his wolves: the three of them with their names over their
-## heads, as online; behind them, low, going in.
+## Friends against the minotaur and his wolves (BRING YOUR FRIENDS): the champion and three
+## friends, their names over their heads as online, abreast across the sand; they charge the
+## minotaur together and meet him. Low behind the line as it runs, the four of them across the
+## frame and the minotaur over them in the middle; KEY at the first hard blow of the clash. (Left
+## to themselves from the start, they bunched into a scrum and the names stood one over another.)
 func _squad() -> void:
 	_start({"mode": "training", "training": {"enemy": "none", "respawn": false}, "autopilot": true,
 		"loadout_override": {"main": CapsArt.AXE, "off": "", "armor": CapsArt.GILT}})
-	m.me.f.teleport(Vector3(0, 0, 0))
-	var allies := [
-		m.spawn_fighter({"kind": "bot", "name": NAMES[0], "loadout": {"main": "gladius", "off": "scutum", "armor": ["helmet", "manica"]}, "team": 0, "pos": Vector3(-1.6, 0, -0.6), "yaw": 0.0, "diff": 0.9}),
-		m.spawn_fighter({"kind": "bot", "name": NAMES[1], "loadout": {"main": "spear", "off": "roundShield", "armor": ["helmet", "greaves"]}, "team": 0, "pos": Vector3(1.6, 0, -0.6), "yaw": 0.0, "diff": 0.9}),
-		m.spawn_fighter({"kind": "bot", "name": NAMES[2], "loadout": {"main": "longsword", "off": "", "armor": ["manica"]}, "team": 0, "pos": Vector3(0.4, 0, -1.8), "yaw": 0.0, "diff": 0.9}),
-	]
-	for al in allies:
-		m._name_tag(al.f, String(al.spec.get("name", "")))
+	var line := [m.me]
+	m.me.f.teleport(Vector3(-1.1, 0, -4.5))
+	m.me.f.yaw = 0.0
+	var kit := [{"main": "gladius", "off": "scutum", "armor": ["helmet", "manica"]}, {"main": "spear", "off": "roundShield", "armor": ["helmet", "greaves"]}, {"main": "longsword", "off": "", "armor": ["manica"]}]
+	var xs := [-3.4, 1.2, 3.5]
+	for i in 3:
+		var al = m.spawn_fighter({"kind": "bot", "name": NAMES[i], "loadout": kit[i], "team": 0, "pos": Vector3(xs[i], 0, -4.5), "yaw": 0.0, "diff": 0.9})
+		m._name_tag(al.f, NAMES[i])
+		line.append(al)
 	var spec: Dictionary = m.enemy_spec({"e": "minotaur", "boss": true}, 0, 1)
 	spec.pos = Vector3(0, 0.1, 6.5)
 	spec.yaw = PI
 	var boss = m.spawn_fighter(spec)
+	# He stands his ground, roaring, until they are nearly on him (going for them at once, he met
+	# them half a second in and there was no charge to see).
+	boss.drive = func(_e): return {"look": {"yaw": PI, "pitch": 0.2}, "main": {"x": 0.5, "y": 1.3}}
 	for i in 2:
-		m.spawn_beast({"beast": "wolf", "team": Match.ENEMY_TEAM, "pos": Vector3(-3.0 + 6.0 * i, 0.1, 5.5), "yaw": PI})
-	await _steps(int(120 * 1.6))
-	dur = 6.0
+		m.spawn_beast({"beast": "wolf", "team": Match.ENEMY_TEAM, "pos": Vector3(-4.0 + 8.0 * i, 0.1, 7.5), "yaw": PI})
+	# The charge: all four run at him together, weapons up, until they are on him; then each
+	# fights as he will.
+	var charge := func(e): return {"mz": 1.0, "sprint": true, "look": {"yaw": 0.0, "pitch": 0.0}, "main": {"x": 0.3, "y": 1.2}}
+	for e in line:
+		e.drive = charge
+	await _steps(20)
+	dur = 6.5
+	key_tail = 3.2
+	var let_go := [false]
+	tick_fn = func(tt: float) -> void:
+		if not let_go[0] and (tt > 2.2 or (is_instance_valid(boss.f) and m.me.f.torso.global_position.distance_to(boss.f.torso.global_position) < 3.4)):
+			let_go[0] = true
+			for e in line:
+				e.erase("drive")
+			boss.erase("drive")
+	var on_hit := func(h: Dictionary) -> void:
+		if rolling and float(h.get("J", 0.0)) >= 25.0 and (h.get("char") == boss.f or h.get("attacker") == boss.f):
+			_key()
+	m.combat.hit.connect(on_hit)
 	cam_fn = func(tt: float) -> Array:
-		var pts := [m.me.f.torso.global_position]
-		for al in allies:
-			if is_instance_valid(al.f) and al.f.alive:
-				pts.append(al.f.torso.global_position)
-		var sq := Vector3.ZERO
-		for p in pts:
-			sq += p
-		sq /= pts.size()
-		var bp: Vector3 = boss.f.torso.global_position if is_instance_valid(boss.f) else Vector3(0, 1.5, 6.0)
-		var d := bp - sq
-		d.y = 0.0
-		d = d.normalized() if d.length() > 0.1 else Vector3(0, 0, 1)
-		var side := d.cross(Vector3.UP)
-		var u := _ease(tt / dur)
-		# Off to the side of them, so the three names over their heads stand apart (from behind
-		# they stood one over another).
-		var eye := sq - d * lerpf(4.8, 3.4, u) + side * 2.6 + Vector3(0, 0.8, 0)
-		var at := sq.lerp(bp, 0.6) + Vector3(0, 0.9, 0)
-		return [eye, at, 50.0, eye.distance_to(at)]
+		var c := Vector3.ZERO
+		var n := 0
+		for e in line:
+			if is_instance_valid(e.f) and e.f.alive:
+				c += e.f.torso.global_position
+				n += 1
+		c = c / maxf(1, n)
+		var bp: Vector3 = boss.f.torso.global_position if is_instance_valid(boss.f) else Vector3(0, 1.5, 5.5)
+		# Low behind the running line, then, once they are on him, held off and a little higher,
+		# over their shoulders (pushed on into the scrum, a man's back filled the frame).
+		var u := _ease(tt / 2.0)
+		var eye := Vector3(c.x * 0.5, lerpf(0.55, 1.15, u), c.z - lerpf(3.6, 4.4, u))
+		var at := Vector3(bp.x * 0.6, bp.y + 0.55, bp.z)
+		return [eye, at, 54.0, eye.distance_to(Vector3(c.x, 1.0, c.z))]
 
 ## The champion alone in the middle, his back to us, his axe raised to the stands and the
 ## Emperor's box; low behind him, going in and up. The end card goes over it.
@@ -385,6 +427,168 @@ func _finale() -> void:
 		var h: Vector3 = hero.torso.global_position
 		var eye := h + Vector3(lerpf(0.9, 0.5, u), lerpf(-0.45, -0.2, u), lerpf(-4.2, -2.9, u))
 		return [eye, Vector3(0, lerpf(2.4, 3.6, u), 12.0), 50.0, eye.distance_to(h)]
+
+## A film camera on two fighters: low beside the line between them on the side of `side_ref`
+## (the stands behind them, not the wall), as far as a long lens wants for both, looking at their
+## middle; `push` brings it in over the shot.
+func _film2(a: Fighter, b: Fighter, side_ref: Vector3, back: float, height: float, fov: float) -> Array:
+	var pa: Vector3 = a.torso.global_position
+	var pb: Vector3 = b.torso.global_position if is_instance_valid(b) else pa + Vector3(1, 0, 0)
+	var mid := pa.lerp(pb, 0.5)
+	var d := pb - pa
+	d.y = 0.0
+	d = d.normalized() if d.length() > 0.05 else Vector3(1, 0, 0)
+	var s := Vector3.UP.cross(d)
+	if s.dot(side_ref) < 0.0:
+		s = -s
+	var eye := mid + s * back
+	eye.y = height
+	var flat := Vector2(eye.x, eye.z)
+	if flat.length() > 13.5:
+		flat = flat.normalized() * 13.5
+		eye = Vector3(flat.x, eye.y, flat.y)
+	var at := mid + Vector3(0, 0.15, 0)
+	return [eye, at, fov, eye.distance_to(at)]
+
+## The cut: the champion, gilded, with the executioner's axe (the very one the forge builds, for
+## the cut from the anvil to the arena). A swordsman comes on at a walk, his blade up over his
+## head; the champion raises the axe high and, as the man comes into reach, brings it straight
+## down through him with all he has, edge first: the chop is the KEY (or a limb coming off,
+## should it). The blow itself is the game's own, as hard as the swing is fast. (Swept across,
+## the axe met him with its flat or its haft whatever the timing; a free fight took a limb off in
+## one run and not in another.) The film camera close beside them, low, the Emperor's box behind.
+func _cut() -> void:
+	_start({"mode": "training", "training": {"enemy": "none", "respawn": false},
+		"loadout_override": {"main": "executionerAxe", "off": "", "armor": CapsArt.GILT}})
+	var hero: Fighter = m.me.f
+	hero.mods.strength = float(OS.get_environment("CUT_STR")) if OS.get_environment("CUT_STR") != "" else 4.5
+	hero.mods.toughness = 6.0
+	hero.teleport(Vector3(-1.6, 0, 0))
+	hero.yaw = PI * 0.5
+	var foe = m.spawn_fighter({"kind": "bot", "name": "Verus", "loadout": {"main": "gladius", "off": "", "armor": ["helmet"]}, "team": Match.ENEMY_TEAM, "pos": Vector3(5.0, 0, 0), "yaw": -PI * 0.5})
+	foe.erase("bot")
+	var cut_done := [false]
+	foe.drive = func(_e): return {} if cut_done[0] else {"mz": 1.0, "sprint": OS.get_environment("CUT_RUN") == "1", "look": {"yaw": -PI * 0.5, "pitch": 0.0}, "main": {"x": 0.2, "y": 1.5}}
+	var reach := float(OS.get_environment("CUT_REACH")) if OS.get_environment("CUT_REACH") != "" else 1.6
+	var height := float(OS.get_environment("CUT_Y")) if OS.get_environment("CUT_Y") != "" else 0.62
+	var swing_t := [-1.0]
+	var chop := OS.get_environment("CUT_MODE") != "sweep"
+	var edge := float(OS.get_environment("CUT_TWIST")) if OS.get_environment("CUT_TWIST") != "" else 0.0
+	var swing_s := float(OS.get_environment("CUT_SWING")) if OS.get_environment("CUT_SWING") != "" else 0.1
+	m.me.drive = func(_e):
+		var to: Vector3 = foe.f.torso.global_position - hero.torso.global_position
+		var yaw := atan2(to.x, to.z) if Vector2(to.x, to.z).length() > 0.3 else PI * 0.5
+		var k := -1.0
+		if swing_t[0] >= 0.0:
+			k = clampf((t - swing_t[0]) / swing_s, 0.0, 1.0)
+		if chop:
+			# Raised high over his head, then straight down through the man's raised arm.
+			var y := 1.65 if k < 0.0 else lerpf(1.65, -0.7, k)
+			return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.12, "y": y}, "power": k >= 0.0 and k < 1.0, "twist": edge}
+		var x := 0.85 if k < 0.0 else lerpf(0.85, -0.95, k)
+		return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": x, "y": height}, "power": k >= 0.0 and k < 1.0, "twist": edge}
+	await _steps(30)
+	dur = 7.0
+	key_tail = 2.6
+	peek_on_key = true
+	tick_fn = func(tt: float) -> void:
+		if swing_t[0] < 0.0 and is_instance_valid(foe.f) and Vector2(foe.f.torso.global_position.x - hero.torso.global_position.x, foe.f.torso.global_position.z - hero.torso.global_position.z).length() < reach:
+			swing_t[0] = tt
+		if OS.get_environment("STAGE_DEBUG") == "1" and int(tt * 120.0) % 12 == 0:
+			print("DBG t=%.2f gap=%.2f swing=%.2f foe=%s" % [tt, Vector2(foe.f.torso.global_position.x - hero.torso.global_position.x, foe.f.torso.global_position.z - hero.torso.global_position.z).length(), swing_t[0], foe.f.state])
+	var on_hit := func(h: Dictionary) -> void:
+		if rolling and h.get("attacker") == hero and h.get("char") == foe.f:
+			var sev: Array = (h.res.get("severed", []) as Array) if h.get("res") is Dictionary else []
+			if OS.get_environment("STAGE_DEBUG") == "1":
+				print("DBG blow %s J=%.0f severed %d type %s" % [String(h.part.name) if h.get("part") is Node else "-", float(h.get("J", 0.0)), sev.size(), str(h.get("type", "?"))])
+			# The chop landing (the edge into him, J 50 and over), or a limb coming off.
+			if not sev.is_empty() or float(h.get("J", 0.0)) >= 50.0:
+				cut_done[0] = true
+				_key()
+	m.combat.hit.connect(on_hit)
+	cam_fn = func(tt: float) -> Array:
+		return _film2(hero, foe.f, Vector3(0, 0, -1), 3.4, 1.0, 40.0)
+
+## The spear: a man with a sword raised charges the champion across the sand; the champion sets
+## his feet and thrusts for the face. It takes him there: the head stops and is driven back while
+## the legs run on under him, and he goes over backwards, heels over head, onto his back (a man
+## running into a bar; user: a man speared in the head goes over backwards, not off through the
+## air). The fall is his own body's: the blow takes his footing (he goes limp, as a man struck
+## senseless does) and the head is stopped where the legs keep the run's speed, lifting as they
+## swing. KEY at the blow. The camera low and square to the charge, wide enough for the fall.
+func _spear() -> void:
+	_start({"mode": "training", "training": {"enemy": "none", "respawn": false},
+		"loadout_override": {"main": "spear", "off": "", "armor": CapsArt.GILT}})
+	var hero: Fighter = m.me.f
+	hero.mods.strength = 3.0
+	hero.mods.toughness = 6.0
+	hero.teleport(Vector3(-2.5, 0, 0))
+	hero.yaw = PI * 0.5
+	var foe = m.spawn_fighter({"kind": "bot", "name": "Crixus", "loadout": {"main": "gladius", "off": "", "armor": []}, "team": Match.ENEMY_TEAM, "pos": Vector3(6.5, 0, float(OS.get_environment("SPEAR_Z")) if OS.get_environment("SPEAR_Z") != "" else 0.32), "yaw": -PI * 0.5})
+	foe.erase("bot")
+	foe.f.mods.toughness = 4.0
+	var struck := [false]
+	var thrust := [false]
+	var aim_y := float(OS.get_environment("SPEAR_Y")) if OS.get_environment("SPEAR_Y") != "" else 0.18
+	# He runs at the point itself (a stuntman runs at his mark): his line bends onto the spear's
+	# tip as he comes, so his face meets it however the champion's arm holds it.
+	foe.drive = func(_e):
+		if struck[0]:
+			return {}
+		var w = hero.weapons.get("R")
+		var at: Vector3 = (w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0)) if w else hero.head.global_position
+		var to: Vector3 = at - foe.f.head.global_position
+		return {"mz": 1.0, "sprint": true, "look": {"yaw": atan2(to.x, to.z), "pitch": 0.0}, "main": {"x": 0.3, "y": 1.4}}
+	m.me.drive = func(_e):
+		var to: Vector3 = foe.f.head.global_position - hero.head.global_position
+		var yaw := atan2(to.x, to.z)
+		return {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.0, "y": aim_y}, "thrust": 1.0 if thrust[0] and not struck[0] else 0.0}
+	await _steps(30)
+	dur = 6.0
+	key_tail = 3.0
+	peek_on_key = true
+	var on_hit := func(h: Dictionary) -> void:
+		if not rolling or struck[0] or h.get("attacker") != hero or h.get("char") != foe.f:
+			return
+		struck[0] = true
+		_key()
+		if OS.get_environment("STAGE_DEBUG") == "1":
+			print("DBG struck %s J=%.0f" % [String(h.part.name) if h.get("part") is Node else "-", float(h.get("J", 0.0))])
+		var v: Vector3 = foe.f.torso.linear_velocity
+		_over_backwards(foe.f, Vector3(v.x, 0, v.z).normalized() if Vector2(v.x, v.z).length() > 0.5 else Vector3(-1, 0, 0))
+	m.combat.hit.connect(on_hit)
+	tick_fn = func(_tt: float) -> void:
+		if is_instance_valid(foe.f) and not thrust[0] and foe.f.head.global_position.distance_to(hero.head.global_position) < 2.7:
+			thrust[0] = true
+		if OS.get_environment("STAGE_DEBUG") == "1" and int(_tt * 120.0) % 6 == 0:
+			var up: Vector3 = foe.f.torso.global_transform.basis.y.normalized()
+			var w = hero.weapons.get("R")
+			var tip: Vector3 = (w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0)) if w else Vector3.ZERO
+			print("DBG t=%.2f foe=%s head=%s tip=%s tilt=%.0f" % [_tt, foe.f.state, str(foe.f.head.global_position.snapped(Vector3.ONE * 0.01)), str(tip.snapped(Vector3.ONE * 0.01)), rad_to_deg(atan2(up.x, up.y))])
+	cam_fn = func(tt: float) -> Array:
+		var pf: Vector3 = foe.f.torso.global_position if is_instance_valid(foe.f) else Vector3.ZERO
+		var mid := hero.torso.global_position.lerp(pf, 0.55)
+		var eye := Vector3(mid.x, 0.75, mid.z - 5.2)
+		return [eye, mid + Vector3(0, 0.35, 0), 44.0, eye.distance_to(mid)]
+
+## A running man stopped by the head: limp (the blow takes his footing), his head and shoulders
+## stopped and driven back the way he came, his hips and legs keeping the run's speed and
+## lifting, so he turns over backwards about his middle. `run` the way he was running.
+func _over_backwards(f: Fighter, run: Vector3) -> void:
+	f.fall(2.5, true)
+	var hips: float = f.torso.global_position.y - 0.25 * f.S
+	for p in f.parts:
+		if p.severed:
+			continue
+		var h: float = (p.global_position.y - hips) / f.S
+		var v: Vector3 = p.linear_velocity
+		var along := v.dot(run)
+		if h > 0.0:
+			# Above the hips: stopped, and driven back the more the higher (the head most).
+			p.linear_velocity = v - run * along - run * (1.6 + 2.2 * h)
+		else:
+			# The hips and legs run on, and swing up.
+			p.linear_velocity = v + run * 0.6 + Vector3(0, 2.8 * minf(1.0, -h * 1.6) + 0.8, 0)
 
 ## Each timing tag goes to stdout and, when TAG_LOG names a file, there too (the window build of
 ## Godot on Windows prints nothing to a pipe).

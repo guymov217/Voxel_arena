@@ -29,27 +29,35 @@ for 60), cut to its own score at 90 beats a minute: every cut on a beat, every k
 | 4 | Black, a heartbeat, the crowd far off | THE CROWD WANTS BLOOD |
 | 9 | A crane from the sky, high over the full stands and the awnings, coming down over the sand to the champion in gilded armour walking in from the gate, and leading him | ENTER THE ARENA |
 | 3 | The crowd on its feet under the Emperor's box, low on the sand | |
-| 10 | A duel, gladius and shield against an axe: wide on the sand, cut in close for the kill in slow motion | |
-| 10 | The big lion, its kill in slow motion | NOT EVERY FOE IS A MAN |
+| 9 | The fight: blade on blade, a gladius and a dagger against a spatha, both good; a short dip into slow motion on every clean blow of his, the kill in slow motion | |
+| 9 | The big lion, its kill in slow motion | NOT EVERY FOE IS A MAN |
 | 5 | The dragon pours its fire across the sand at a man running from it | |
-| 6 | The forge: a weapon going up on the anvil voxel by voxel | FORGE YOUR WEAPON / VOXEL BY VOXEL |
+| 6 | The forge: the executioner's axe going up on the anvil voxel by voxel, the anvil filling the screen | FORGE YOUR WEAPON / VOXEL BY VOXEL |
+| 6 | Cut to the same axe in the champion's hands: a real fight until it takes a man's limb off, in the slowest motion (0.12) | |
 | 5 | A man charges; a wheel of cheese bowled along the sand takes him off his feet | ...AND CHEESE |
-| 6 | A free-for-all of seven, from high, the camera going round | CHOOSE YOUR CHAOS |
-| 6 | Friends, their names over their heads, against the minotaur and his wolves | BRING YOUR FRIENDS / ONLINE MULTIPLAYER |
-| 8 | The cyclops, its kill in slow motion | |
-| 8 | Montage: eight cuts, one a beat, the hardest blows of all the bouts | EVERY BLOW LANDS / EVERY BONE BREAKS |
-| 9 | The troll | |
+| 6 | A free-for-all of seven, from above the thick of it, the camera going round | CHOOSE YOUR CHAOS |
+| 7 | Four friends, their names over their heads, charging the minotaur in a line, low behind them; the clash in slow motion | BRING YOUR FRIENDS / ONLINE MULTIPLAYER |
+| 5 | A man charging the champion's spear takes it in the face: his head stops, his legs run on and he goes over backwards, heels over head, in slow motion | |
+| 8 | Montage: eight cuts, one a beat, the hardest blows of all the bouts, those that take a limb off first, each with a dip into slow motion as it lands | EVERY BLOW LANDS / EVERY BONE BREAKS |
 | 8 | The hydra: its kill in the slowest motion of all (0.15), cut to black on the blow | |
 | 2 | A breath of silence | |
 | 12 | The title on one great hit, over the champion alone in the middle, his axe raised to the crowd | the logo, COMING SOON TO STEAM, WISHLIST NOW |
 
+**Every blow on screen is a real one.** A bout is filmed only if its foe falls to a hard blow of
+the champion's that the camera can see, not bleeding out after it; the fight scene only after a
+real exchange (four blows either way in the five seconds before the kill). Each bout is played
+undrawn seed after seed until one does (then drawn). The duel, the cyclops and the troll are
+filmed for the montage's blows.
+
 **The cameras.** No helmet here: every bout is seen through a film camera low on the sand, wide
-while they fight (far off, a little high, drifting slowly round them), then cut in close on the
-same side of them for the kill (a long lens, the background melting away in its depth of field),
-and wide again after. The staged shots (`tests\stageshots.gd`) each have their own move: the
-crane, a dolly along the wall, a push in behind the champion, a camera going round the melee, one
-low on the sand following the cheese. The cards are the trailer's own: gold Roman capitals spaced
-wide, a thin gold rule each side, a smaller line under; the end card has the store's logo
+while they fight (far off, a little high, drifting slowly round them, jolting with the hardest
+blows), then cut in close on the same side of them for the kill (a long lens, the background
+melting away in its depth of field), and wide again after. The staged shots (`tests\stageshots.gd`)
+each have their own move: the crane, a dolly along the wall, a push in behind the champion, a
+camera going round the melee, one low on the sand following the cheese, one beside the cut, one
+square to the spear's charge, one low behind the friends' charge. The forge is the anvil alone
+(`tests\forgeclip.gd` with FORGE_CINE=1). The cards are the trailer's own: gold Roman capitals
+spaced wide, a thin gold rule each side, a smaller line under; the end card has the store's logo
 (`docs\store\capsules\logo.png`).
 
 **The picture and the sound** are the rise trailer's (the same editor, grade and score maker, see
@@ -64,7 +72,7 @@ fast start, ready to upload. Beside it `trailer_blood_cut.json`, the cut list.
 from made-up footage (test patterns), to see the cards, the timing and the sound. A staged shot's
 framing can be looked at without the movie maker: `set STAGE=reveal`, `set STAGE_PEEK=4`,
 `set SHOT_DIR=C:\some\folder`, then run the game with `-- --probe stageshots`: four frames of it
-are saved there.
+are saved there (for the cut and the spear, four round the moment itself).
 
 ## The rise trailer (WRECKSMITH - RISE), shot by shot
 

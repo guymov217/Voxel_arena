@@ -6,28 +6,33 @@ The cut of the trailer that worked, its lines and its order kept, made again as 
   cold open   THE CROWD WANTS BLOOD, on black, over a heartbeat
   the arena   a crane from the sky down over the full stands to the champion walking in:
               ENTER THE ARENA; the crowd on its feet under the Emperor's box
-  first blood a duel, its kill in slow motion
+  the fight   blade on blade, fast, two good swordsmen; a short dip into slow motion on every
+              clean blow of his, the kill in slow motion
   the beasts  the lion's kill: NOT EVERY FOE IS A MAN; the dragon's fire across the sand
-  the forge   a weapon going up on the anvil: FORGE YOUR WEAPON / VOXEL BY VOXEL
+  the forge   the executioner's axe going up on the anvil, the anvil filling the screen: FORGE
+              YOUR WEAPON / VOXEL BY VOXEL; cut to the same axe in the champion's hands taking a
+              man's arm off, in the slowest motion
   the joke    a wheel of cheese bowled along the sand takes a man off his feet: ...AND CHEESE
-  the modes   a free-for-all from high: CHOOSE YOUR CHAOS; friends, their names over their
-              heads, against the minotaur: BRING YOUR FRIENDS / ONLINE MULTIPLAYER
-  the battle  the cyclops; a montage of the hardest blows, one a beat: EVERY BLOW LANDS /
-              EVERY BONE BREAKS; the troll; the hydra, its kill in the slowest motion of all,
-              cut to black on the blow
+  the modes   a free-for-all from above the thick of it: CHOOSE YOUR CHAOS; four friends, their
+              names over their heads, charging the minotaur in a line: BRING YOUR FRIENDS /
+              ONLINE MULTIPLAYER
+  the battle  a man charging the champion's spear takes it in the face and goes over backwards,
+              heels over head; a montage of the hardest blows, one a beat, those that take a
+              limb off first: EVERY BLOW LANDS / EVERY BONE BREAKS; the hydra, its kill in the
+              slowest motion of all, cut to black on the blow
   the title   a breath of silence, then on one great hit the logo over the champion alone in
               the middle, his axe raised to the crowd: COMING SOON TO STEAM, WISHLIST NOW
 
 Every fight is seen through a film camera (not the helmet of the rise trailer): wide on the
-sand while they fight, cut in close on the same side for the kill, which eases into slow motion
-and out of it with a white flash on the blow. The game is recorded at 120 frames a second, so
-the full speed has a film camera's motion blur and the slow motion is smooth. Every cut falls on
-the beat of its own score (90 bpm, tools/rise_score.py: a heartbeat and a drone in the dark, the
-drums coming in with the arena, strings, a choir of men and a horn at each act, a sub boom and a
-braam on every kill, whooshes under the cuts, risers into the battle and the finale, a silence and
-the title hit), the fight's own sound under it (the blows, the cries, the crowd; slowed and
-muffled in the slow motion). Graded warm and hard, with a film's grain, darkened corners and
-cinema bars (2.39:1); the sound brought to -14 LUFS.
+sand while they fight, jolting with the hardest blows, cut in close on the same side for the
+kill, which eases into slow motion and out of it with a white flash on the blow. A bout is
+filmed only if its foe falls to a hard blow of the champion's that the camera can see (not
+bleeding out after it), the fight scene only after a real exchange of blows; other seeds are
+tried until one does. The game is recorded at 120 frames a second, so the full speed has a film
+camera's motion blur and the slow motion is smooth. Every cut falls on the beat of its own score
+(90 bpm, tools/rise_score.py), the fight's own sound under it (the blows, the cries, the crowd;
+slowed and muffled in the slow motion). Graded warm and hard, with a film's grain, darkened
+corners and cinema bars (2.39:1); the sound brought to -14 LUFS.
 
     python tools/make_blood_trailer.py          -> docs/store/trailer_blood.mp4 (1920x1080, 30 fps)
     TRAILER_FPS=60                              -> the same at 60 frames a second
@@ -51,21 +56,115 @@ BEAT = rt.BEAT
 REC_FPS = rt.REC_FPS
 WORK = os.path.join(mt.TMP, "blood")
 LOGO = os.path.join(os.path.dirname(HERE), "docs", "store", "capsules", "logo.png")
-# The bouts, filmed by tests/shouldershots.gd with its film camera (CLIP_CAM=film): the shot, the
-# beats before the kill lands and after it, the speed of its slow motion.
+# The bouts, filmed by tests/shouldershots.gd with its film camera (CLIP_CAM=film): the beats
+# before the kill lands and after it, the speed of its slow motion, and whether it is a scene of
+# its own (the others give the montage its blows).
 BOUTS = {
-    "duel": (6, 4, 0.3),
-    "lion": (6, 4, 0.25),
-    "cyclops": (5, 3, 0.25),
-    "minotaur": (5, 3, 0.25),
-    "troll": (6, 3, 0.25),
-    "hydra": (7, 1, 0.15),
+    "exchange": (6, 3, 0.28, True),
+    "lion": (6, 3, 0.25, True),
+    "duel": (6, 3, 0.3, False),
+    "cyclops": (5, 3, 0.25, False),
+    "troll": (6, 3, 0.25, False),
+    "hydra": (7, 1, 0.15, True),
 }
+# The climax (the hydra, else the troll): the beats before the kill and after it (cut to black on
+# the blow), the slowest slow motion of all.
+CLIMAX = (7, 1, 0.15)
+# How many blows (either way) the fight scene wants in the five seconds before its kill.
+FLURRY = {"exchange": 4}
 # The staged shots (tests/stageshots.gd), each recorded once.
-STAGES = ["reveal", "crowd", "dragon", "cheese", "chaos", "squad", "finale"]
+STAGES = ["reveal", "crowd", "dragon", "cut", "cheese", "chaos", "squad", "spear", "finale"]
 
 
 # ---------- the shots ----------
+
+def _hits(lines):
+    """The HIT lines of a run: (frame, J, the hero's blow, limbs it took off)."""
+    out = []
+    for l in lines:
+        p = l.split()
+        if len(p) >= 3 and p[0] == "HIT":
+            out.append((int(p[1]), int(p[2]), int(p[3]) if len(p) > 3 else 0, int(p[4]) if len(p) > 4 else 0))
+    return out
+
+
+def _kill_blow(lines, death):
+    """The blow that felled him: the champion's last hard blow (J 30 and over) in the two and a
+    half seconds before he fell (a man struck down goes on dying a moment or two after it), or
+    None (he bled out, or something else took him). The slow motion and the flash are on it."""
+    hs = [h for h in _hits(lines) if h[2] == 1 and h[1] >= 30 and death - int(2.5 * REC_FPS) <= h[0] <= death]
+    return hs[-1][0] if hs else None
+
+
+def _clean_kill(lines, death, flurry=0):
+    """Whether the foe fell to a blow the camera sees (_kill_blow); for a fight scene, `flurry`
+    blows either way in the five seconds before that blow too."""
+    blow = _kill_blow(lines, death)
+    if blow is None:
+        return False
+    return sum(1 for h in _hits(lines) if blow - 5 * REC_FPS <= h[0] <= blow) >= flurry
+
+
+def _draw_bout(k, seed, death, blow=None):
+    """The bout drawn round the kill its dry run found (drawn again round the kill it did make,
+    should the drawn one go another way), the film camera close from a little before the blow
+    that felled him (CLIP_BLOW): True when it was kept."""
+    avi = os.path.join(WORK, k + ".avi")
+    for _ in range(rt.DRAW_TRIES):
+        os.environ["CLIP_BLOW"] = str(blow) if blow is not None else ""
+        rec, start = rt._drawn(k, seed, death, avi)
+        os.environ.pop("CLIP_BLOW", None)
+        rec0 = mt.tagged(rec, "REC_START")
+        if rec0 is None or not os.path.exists(avi):
+            print("  %s: the recording failed (see %s)" % (k, os.path.join(WORK, k + ".rec")))
+            return False
+        d2 = rt._foe_death(rec)
+        if d2 is not None and abs(d2 - death) <= rt.KILL_SLACK:
+            hits = sorted(set(_hits(rec)))
+            blow = _kill_blow(rec, d2)
+            with open(os.path.join(WORK, k + ".json"), "w") as f:
+                json.dump({"rec0": rec0, "kill": d2, "blow": blow if blow is not None else d2, "from": start,
+                           "hits": [list(h) for h in hits], "seed": seed or ""}, f)
+            print("  %s: recorded (seed %s, the kill %.1f s in)" % (k, seed or "default", d2 / REC_FPS))
+            return True
+        if d2 is None:
+            return False
+        print("  %s: drawn, the kill fell %.1f s in, not %.1f s; drawing it again round that" % (k, d2 / REC_FPS, death / REC_FPS))
+        death = d2
+    return False
+
+
+def record_bout(k):
+    """One bout: <blood>/<k>.avi and <k>.json. Played once undrawn per seed until one ends in a
+    clean kill (and, for the fight scene, a real exchange of blows), then drawn round it; with
+    no seed so, the first that ended in a kill at all."""
+    avi = os.path.join(WORK, k + ".avi")
+    if os.path.exists(avi) and os.path.getsize(avi) and os.path.exists(os.path.join(WORK, k + ".json")):
+        print("  %s: kept" % k)
+        return
+    fallback = None
+    for seed in rt.SEEDS:
+        env = {"SHOT": k, "CLIP_DRY": "1", "CLIP_SECONDS": "75"}
+        if seed:
+            env["CLIP_SEED"] = seed
+        dry = mt.run([mt.G, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"], env, os.path.join(WORK, k + ".dry"))
+        death = rt._foe_death(dry)
+        if death is None or death <= 0:
+            print("  %s: seed %s, the foe did not fall; trying another" % (k, seed or "default"))
+            continue
+        if not _clean_kill(dry, death, FLURRY.get(k, 0)):
+            fallback = fallback or (seed, death, _kill_blow(dry, death))
+            print("  %s: seed %s, no clean blow to film at the kill; trying another" % (k, seed or "default"))
+            continue
+        if _draw_bout(k, seed, death, _kill_blow(dry, death)):
+            return
+    if fallback and _draw_bout(k, *fallback):
+        print("  %s: no seed gave a clean kill; filmed the first kill there was" % k)
+        return
+    if os.path.exists(avi):
+        os.remove(avi)
+    print("  %s: left out (no seed gave a kill to film; see %s)" % (k, os.path.join(WORK, k + ".dry")))
+
 
 def record_stage(k):
     """One staged shot: <blood>/<k>.avi and <k>.json (where it starts, its moment, its end)."""
@@ -202,34 +301,60 @@ def card_end(dir_):
 
 # ---------- the edit ----------
 
-def stage(e, srcs, metas, k, beats, start=0.0, key_beat=None, fade_in=0.0, fade_out=0.0, flash=False):
-    """A staged shot for `beats` beats from `start` s into it, or with its moment on `key_beat`;
-    its start (film s), and the moment's (or None)."""
+def _dips(times, keep_clear=()):
+    """Speed keys for a short dip into slow motion on each blow at `times` (source s): the blade
+    slows as it lands and snaps on (an action film's weight on an impact), none closer than half
+    a second to the one before or inside `keep_clear` (spans of source time left alone)."""
+    keys, last = [], -9.0
+    for t in sorted(times):
+        if t - last < 0.5 or any(a <= t <= b for a, b in keep_clear):
+            continue
+        keys += [(t - 0.09, 1.0), (t - 0.025, 0.42), (t + 0.08, 0.42), (t + 0.17, 1.0)]
+        last = t
+    return keys
+
+
+def stage(e, srcs, metas, k, beats, start=0.0, key_beat=None, fade_in=0.0, fade_out=0.0, flash=False, slow=None):
+    """A staged shot for `beats` beats from `start` s into it, or with its moment on `key_beat`
+    (eased into `slow` motion there when given); its start (film s), and the moment's (or None)."""
     src, meta = srcs[k], metas[k]
-    t_in = (meta["rec0"] + 2) / src.fps + start
+    first = (meta["rec0"] + 2) / src.fps
+    t_in = first + start
     key_t = None
+    sp = ed.Speed([])
+    kt = None
     if key_beat is not None and meta.get("key") is not None:
         kt = (meta["rec0"] + meta["key"]) / src.fps
-        t_in = max((meta["rec0"] + 2) / src.fps, kt - key_beat * BEAT)
-        key_t = kt - t_in
-    seg = ed.Segment(src, t_in, t_in + beats * BEAT + 0.5, ed.Speed([]), fade_in=fade_in, fade_out=fade_out,
-                     flash=[key_t] if (flash and key_t is not None) else [], name=k)
+        if slow:
+            sp = ed.Speed.ramp(kt, slow, before=0.12, after=0.9, ease=0.18)
+            t_in = max(first, ed.lead_for(src.fps, FPS, kt, sp, key_beat * BEAT))
+        else:
+            t_in = max(first, kt - key_beat * BEAT)
+    t_out = t_in + beats * BEAT * (1.0 if not slow else 0.6) + 3.0
+    seg = ed.Segment(src, t_in, t_out, sp, fade_in=fade_in, fade_out=fade_out, name=k)
     t0 = e.add(seg, beats)
-    if key_t is not None:
+    if kt is not None:
+        key_t = seg.film_time_of(kt, FPS)
         e.cues["hits"].append(round(t0 + key_t, 3))
+        if flash:
+            seg.flash = [key_t]
     return t0, (None if key_t is None else t0 + key_t)
 
 
-def bout(e, srcs, metas, k):
-    """A bout through the film camera, its kill eased into slow motion with a flash on the blow;
-    its start and the kill's film time."""
-    lead, after, slow = BOUTS[k]
+def bout(e, srcs, metas, k, how=None):
+    """A bout through the film camera, its kill eased into slow motion with a flash on the blow
+    and, before it, a short dip on every clean blow of the champion's; its start and the kill's
+    film time. `how`: (lead, after, slow) in place of its own (the climax's)."""
+    lead, after, slow = how if how else BOUTS[k][:3]
     src, meta = srcs[k], metas[k]
-    kt = rt.source_time(src, meta, meta["kill"])
-    if k == "hydra":
-        sp = ed.Speed.ramp(kt, slow, before=0.5, after=1.2, ease=0.35)
+    # (On the blow that felled him, not the moment he died: that can be a second or two after.)
+    kt = rt.source_time(src, meta, meta.get("blow", meta["kill"]))
+    if how is CLIMAX:
+        ramp = ed.Speed.ramp(kt, slow, before=0.5, after=1.2, ease=0.35)
     else:
-        sp = ed.Speed.ramp(kt, slow, before=0.55, after=0.6, ease=0.3)
+        ramp = ed.Speed.ramp(kt, slow, before=0.55, after=0.6, ease=0.3)
+    blows = [rt.source_time(src, meta, h[0]) for h in meta.get("hits", []) if len(h) > 2 and h[2] == 1 and h[1] >= 25]
+    sp = ed.Speed(ramp.keys + _dips(blows, [(kt - 1.3, kt + 2.0)]))
     lo = rt.source_time(src, meta, meta["from"]) + 0.05
     t_in = max(lo, ed.lead_for(src.fps, FPS, kt, sp, lead * BEAT))
     t_out = rt.source_time(src, meta, meta["kill"] + int(rt.REC_TAIL * REC_FPS)) - 0.05
@@ -256,45 +381,51 @@ def build(srcs, metas, work):
     t0 = e.add(ed.Segment(None, dur=0), 4)
     over(e, cd, "c_blood", "THE CROWD WANTS BLOOD", None, t0 + 0.3, t0 + 4 * BEAT - 0.4, 60, H * 0.46)
     # ENTER THE ARENA: the crane down from the sky, the drums coming in with it.
+    e.act("rise")
     if "reveal" in srcs:
-        e.act("rise")
         t0, _k = stage(e, srcs, metas, "reveal", 9, fade_in=0.6)
         over(e, cd, "c_arena", "ENTER THE ARENA", None, t0 + 4 * BEAT, t0 + 9 * BEAT - 0.25)
     if "crowd" in srcs:
         stage(e, srcs, metas, "crowd", 3, start=0.4)
-    e.act("rise")
-    if "duel" in srcs:
-        bout(e, srcs, metas, "duel")
+    # The fight: blade on blade, a dip on every clean blow, the kill in slow motion.
+    if "exchange" in srcs:
+        bout(e, srcs, metas, "exchange")
     e.act("battle")
     if "lion" in srcs:
         t0, hit = bout(e, srcs, metas, "lion")
         over(e, cd, "c_foe", "NOT EVERY FOE IS A MAN", None, t0 + 0.35, max(t0 + 1.6, min(t0 + 3.4, hit - 0.8)))
     if "dragon" in srcs:
         stage(e, srcs, metas, "dragon", 5, key_beat=1.5)
+    # The forge, then the same axe in the arena: a limb off in the slowest motion.
     if "forge" in srcs:
         src, meta = srcs["forge"], metas["forge"]
-        t_in = (meta["rec0"] + 6) / src.fps
-        t0 = e.add(ed.Segment(src, t_in, t_in + 8.0, ed.Speed([]), fade_in=0.15, fade_out=0.2, shutter=1.0, name="forge"), 6)
+        t_in = (meta["rec0"] + 3) / src.fps
+        t0 = e.add(ed.Segment(src, t_in, t_in + 8.0, ed.Speed([]), fade_in=0.15, shutter=1.0, name="forge"), 6)
         over(e, cd, "c_forge", "FORGE YOUR WEAPON", "VOXEL BY VOXEL", t0 + 0.4, t0 + 6 * BEAT - 0.3)
+    if "cut" in srcs:
+        stage(e, srcs, metas, "cut", 6, key_beat=2, slow=0.12, flash=True)
     if "cheese" in srcs:
-        t0, hit = stage(e, srcs, metas, "cheese", 5, key_beat=3, flash=False)
+        t0, hit = stage(e, srcs, metas, "cheese", 5, key_beat=3)
         at = hit if hit is not None else t0 + 3 * BEAT
         over(e, cd, "c_cheese", "...AND CHEESE", None, at + 0.1, t0 + 5 * BEAT - 0.2)
     if "chaos" in srcs:
         t0, _k = stage(e, srcs, metas, "chaos", 6, start=0.2)
         over(e, cd, "c_chaos", "CHOOSE YOUR CHAOS", None, t0 + 0.4, t0 + 6 * BEAT - 0.3)
     if "squad" in srcs:
-        t0, _k = stage(e, srcs, metas, "squad", 6, start=0.2)
-        over(e, cd, "c_friends", "BRING YOUR FRIENDS", "ONLINE MULTIPLAYER", t0 + 0.4, t0 + 6 * BEAT - 0.3)
-    if "cyclops" in srcs:
-        bout(e, srcs, metas, "cyclops")
+        t0, _k = stage(e, srcs, metas, "squad", 7, key_beat=3, slow=0.35)
+        # (Over the top of the frame: the names float over their heads in the lower half.)
+        over(e, cd, "c_friends", "BRING YOUR FRIENDS", "ONLINE MULTIPLAYER", t0 + 0.3, t0 + 7 * BEAT - 0.3, 64, H * 0.17)
+    e.act("climax")
+    if "spear" in srcs:
+        stage(e, srcs, metas, "spear", 5, key_beat=1.5, slow=0.3, flash=True)
     montage(e, srcs, metas, cd)
-    if "troll" in srcs:
-        bout(e, srcs, metas, "troll")
-    if "hydra" in srcs:
-        lead = BOUTS["hydra"][0]
+    # The climax: the hydra, or the troll when no seed gave a hydra that falls (it can win: its
+    # bites take a man's head apart, however tough he is).
+    last = "hydra" if "hydra" in srcs else ("troll" if "troll" in srcs else None)
+    if last:
+        lead = CLIMAX[0]
         e.cues["risers"].append([round(e.t + max(0.0, (lead - 4) * BEAT), 3), round(e.t + lead * BEAT, 3)])
-        bout(e, srcs, metas, "hydra")
+        bout(e, srcs, metas, last, CLIMAX)
     # A breath of silence, then the title on one great hit, over the champion alone.
     e.cues["silence"] = [round(e.t, 3), round(e.t + 2 * BEAT, 3)]
     e.add(ed.Segment(None, dur=0), 2)
@@ -316,19 +447,24 @@ def build(srcs, metas, work):
 
 
 def montage(e, srcs, metas, cd):
-    """A cut on every beat: the hardest blows of the bouts (not their kills), at full speed, a
-    flash on every other one, EVERY BLOW LANDS / EVERY BONE BREAKS over them."""
+    """A cut on every beat: the hardest blows of the bouts (not their kills), at full speed with
+    a dip into slow motion as each lands, a flash on every other one, EVERY BLOW LANDS / EVERY
+    BONE BREAKS over them. The champion's own blows first, those that took a limb off before
+    all."""
     pool = []
     for k in BOUTS:
         if k not in srcs:
             continue
         meta = metas[k]
-        for f, J in meta.get("hits", []):
-            if meta["from"] + 30 <= f <= meta["kill"] - int(1.2 * REC_FPS):
-                pool.append((J, k, f))
+        for h in meta.get("hits", []):
+            f, J = h[0], h[1]
+            hero = h[2] if len(h) > 2 else 0
+            sev = h[3] if len(h) > 3 else 0
+            if meta["from"] + 30 <= f <= meta.get("blow", meta["kill"]) - int(1.2 * REC_FPS):
+                pool.append(((1 if sev else 0), hero, J, k, f))
     pool.sort(reverse=True)
     picked, per = [], {}
-    for J, k, f in pool:
+    for _s, _h, J, k, f in pool:
         if per.get(k, 0) >= 2 or any(k == k2 and abs(f - f2) < REC_FPS for _j, k2, f2 in picked):
             continue
         picked.append((J, k, f))
@@ -341,15 +477,15 @@ def montage(e, srcs, metas, cd):
         picked = picked[:-1]
     if len(picked) < 2:
         return
-    e.act("climax")
     e.cues["risers"].append([round(max(0.0, e.t - 4 * BEAT), 3), round(e.t, 3)])
     t_start = e.t
     for i, (J, k, f) in enumerate(picked):
         src = srcs[k]
         th = rt.source_time(src, metas[k], f)
-        t0 = e.add(ed.Segment(src, th - 0.25, th + 1.0, ed.Speed([]), flash=[0.25] if i % 2 == 0 else [], name="montage"), 1)
+        sp = ed.Speed(_dips([th]))
+        t0 = e.add(ed.Segment(src, th - 0.3, th + 1.2, sp, flash=[0.3] if i % 2 == 0 else [], name="montage"), 1)
         if i % 2 == 0:
-            e.cues["hits"].append(round(t0 + 0.25, 3))
+            e.cues["hits"].append(round(t0 + 0.3, 3))
     half = len(picked) // 2 * BEAT
     over(e, cd, "c_m1", "EVERY BLOW LANDS", None, t_start + 0.1, t_start + half - 0.2, 72, H * 0.45)
     over(e, cd, "c_m2", "EVERY BONE BREAKS", None, t_start + half + 0.1, e.t - 0.15, 72, H * 0.45)
@@ -374,7 +510,8 @@ def fake_sources(work):
         elif k in STAGES:
             metas[k] = {"rec0": 0, "end": int(9.5 * REC_FPS), "key": int(2.5 * REC_FPS), "hits": []}
         else:
-            metas[k] = {"rec0": 0, "kill": int(6.0 * REC_FPS), "from": int(1.6 * REC_FPS), "hits": [[int(3.0 * REC_FPS), 40 + i], [int(4.0 * REC_FPS), 30 + i]]}
+            metas[k] = {"rec0": 0, "kill": int(6.0 * REC_FPS), "from": int(1.6 * REC_FPS),
+                        "hits": [[int(2.6 * REC_FPS), 40 + i, 1, 0], [int(3.4 * REC_FPS), 30 + i, 0, 0], [int(4.2 * REC_FPS), 35 + i, 1, 1]]}
     return srcs, metas
 
 
@@ -391,6 +528,9 @@ def main():
     # The rise trailer's recorder, pointed at this trailer's own work folder (its bouts are filmed
     # differently: through the film camera, not the helmet).
     rt.RTMP = WORK
+    # Drawn from further before the kill than the rise trailer's bouts: the fight scene's exchange
+    # and the blow that felled him (a second or two before he fell) want the room.
+    rt.REC_LEAD = 7.0
     os.makedirs(WORK, exist_ok=True)
     if fake:
         work = os.path.join(WORK, "fake")
@@ -404,13 +544,14 @@ def main():
     print("== the project copy")
     rt.project()
     os.environ["CLIP_CAM"] = "film"
-    print("== the bouts (each played twice: once to find the kill, once filmed at 120 frames a second)")
+    print("== the bouts (each played undrawn until a seed ends in a clean kill, then filmed at 120 frames a second)")
     for k in BOUTS:
-        rt.record(k)
+        record_bout(k)
     print("== the staged shots")
     for k in STAGES:
         record_stage(k)
     print("== the forge")
+    os.environ["FORGE_CINE"] = "1"
     rt.record_forge()
     srcs, metas = {}, {}
     for k in list(BOUTS) + STAGES + ["forge"]:

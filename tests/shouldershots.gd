@@ -34,8 +34,10 @@ const SHOTS := {
 	"titan": {"enemy": "foe:titan", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"troll": {"enemy": "foe:troll", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"giant": {"enemy": "foe:giant", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
-	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 2.6, "cine": true},
+	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 2.6, "toughness": 14.0, "cine": true},
 	"duel": {"seed": 3, "enemy": "gladiator", "weapon": "axe", "main": "gladius", "off": "roundShield", "armor": ["helmet", "manica"], "strength": 2.2, "cine": true},
+	# Blade on blade, fast: a gladius and a dagger against a spatha, the foe as good as they come.
+	"exchange": {"seed": 7, "enemy": "gladiator", "weapon": "spatha", "difficulty": 1.0, "main": "gladius", "off": "dagger", "armor": ["manica", "greaves"], "strength": 2.0, "cine": true},
 }
 
 ## The film camera's part round the kill (seconds of the game's own time before and after it).
@@ -49,6 +51,7 @@ var started := false
 var rec0 := 0
 var from := 0
 var kill := -1          # the frame of the kill (CLIP_KILL), or -1 in the dry run
+var blow := -1          # CLIP_BLOW: the blow that felled him, when it came before he fell
 var cine := false
 var film := false      # CLIP_CAM=film: the film camera all through, wide, and close on the kill
 var film_fresh := false
@@ -73,6 +76,7 @@ func _ready() -> void:
 	var sh: Dictionary = SHOTS[key]
 	seconds = float(OS.get_environment("CLIP_SECONDS")) if OS.get_environment("CLIP_SECONDS") != "" else seconds
 	kill = int(OS.get_environment("CLIP_KILL")) if OS.get_environment("CLIP_KILL") != "" else -1
+	blow = int(OS.get_environment("CLIP_BLOW")) if OS.get_environment("CLIP_BLOW") != "" else -1
 	cine = bool(sh.get("cine", false)) and OS.get_environment("CLIP_CINE") != "0"
 	film = OS.get_environment("CLIP_CAM") == "film"
 	# The blows dealt in an order of their own, not the physics engine's: the undrawn pass and the
@@ -87,12 +91,14 @@ func _ready() -> void:
 		"loadout_override": {"main": main, "off": sh.off, "armor": sh.armor}}
 	if sh.has("weapon"):
 		o.training.weapon = sh.weapon
+	if sh.has("difficulty"):
+		o.training.difficulty = float(sh.difficulty)
 	o["autopilot"] = true
 	o["autopilot_diff"] = 1.0
 	o["decrees"] = []
 	o["hazards"] = []
 	# The hero of the piece: hard to bring down and strong in the arm, so every bout is his.
-	o["mods"] = {"toughness": 6.0, "strength": float(sh.get("strength", 1.8))}
+	o["mods"] = {"toughness": float(sh.get("toughness", 6.0)), "strength": float(sh.get("strength", 1.8))}
 	o["seed"] = int(OS.get_environment("CLIP_SEED")) if OS.get_environment("CLIP_SEED") != "" else int(sh.get("seed", 7))
 	seed(int(o.seed))
 	menu.start(o)
@@ -154,7 +160,11 @@ func _on_hit(h: Dictionary) -> void:
 	if m and m.me and (h.get("attacker") == m.me.f or h.get("char") == m.me.f):
 		trauma = minf(1.0, trauma + clampf(J / 60.0, 0.0, 0.8))
 	if J >= 20.0:
-		_tag("HIT %d %d" % [_frame(), int(J)])
+		# HIT <frame> <J> <the hero's blow: 1> <limbs it took off> <the part struck>: the editor
+		# picks the hero's own clean blows, and those that take a limb off first.
+		var sev: Array = (h.get("res", {}) as Dictionary).get("severed", []) if h.get("res") is Dictionary else []
+		var pt = h.get("part")
+		_tag("HIT %d %d %d %d %s" % [_frame(), int(J), 1 if (m and m.me and h.get("attacker") == m.me.f) else 0, sev.size(), String(pt.name) if pt is Node else "-"])
 	# The trailer is loud with the fight: the hero roars into his blows, and whoever is struck
 	# cries out (men, giants and beasts in their own voices), more often and louder than in play.
 	# (The game's own clock, not the wall's: the dry pass and the drawn one must cry out alike.)
@@ -174,7 +184,9 @@ func _process(dt: float) -> void:
 		return
 	t_cam += dt
 	var f := _frame()
-	var in_kill := kill > 0 and f >= kill - int(CINE_BEFORE * 120.0) and f < kill + int(CINE_AFTER * 120.0)
+	# (From a little before the blow that felled him, when that came before he fell, through his fall.)
+	var k0 := blow if blow > 0 and blow < kill else kill
+	var in_kill := kill > 0 and f >= k0 - int(CINE_BEFORE * 120.0) and f < kill + int(CINE_AFTER * 120.0)
 	var want := "pov"
 	if film:
 		want = "cine" if in_kill else "wide"
@@ -305,11 +317,18 @@ func _cine(dt: float) -> void:
 	cine_pos = cine_pos.lerp(want, minf(1.0, dt * 4.0))
 	# A hand on the camera: a slow breath of drift.
 	var breathe := Vector3(sin(cine_t * 1.3), sin(cine_t * 1.7 + 1.0) * 0.6, sin(cine_t * 1.1 + 2.0)) * 0.025
+	# The film camera of the crowd trailer takes the hardest blows too: a short jolt, dying away
+	# (an operator's camera on the sand, not a locked-off one).
+	var shake := Vector3.ZERO
+	if film:
+		trauma = maxf(0.0, trauma - dt * 2.4)
+		var j := trauma * trauma
+		shake = Vector3(sin(t_cam * 41.0), sin(t_cam * 47.0 + 1.0), sin(t_cam * 37.0 + 2.0)) * 0.04 * j
 	var cam: Camera3D = m.cam
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.fov = fov
 	cam.near = 0.05
-	cam.global_position = cine_pos + breathe
+	cam.global_position = cine_pos + breathe + shake
 	cam.look_at(mid + Vector3(0, 0.1 * fs, 0), Vector3.UP)
 	cam.reset_physics_interpolation()
 	# The depth of a long lens: what is beyond them melts away.
