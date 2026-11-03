@@ -12,7 +12,7 @@ func test_stage_tables_match_the_web_game() -> void:
 		t.eq(st.boss, n % 4 == 0, "stage %d boss flag" % n)
 		t.check(int(st.stagePay) > 0, "stage %d pays" % n)
 	t.eq(Data.stage(26, 1).rounds[0].size(), 2, "bout 26 is a pair")
-	t.eq(Data.stage(57, 1).rounds[0].size(), 3, "bout 57 is a trio")
+	t.eq(Data.stage(59, 1).rounds[0].size(), 3, "bout 59 is a trio")
 	t.eq(Data.stage(2, 1).rounds[0].size(), 1, "a beast's bout stays one on one")
 	t.eq(Data.stage(5, 1).late.size(), 1, "bout 5 keeps a man back for the other gate")
 	t.eq(String(Data.stage(5, 1).foe_name), "Coward", "and the board names the first wave alone")
@@ -86,7 +86,8 @@ const DANGER := {"drunk": 14, "medicus": 1, "retiarius": 1, "boar": 13, "recruit
 	"wolf": 55, "hyena": 60, "ostrich": 50, "veles": 71, "hydra": 73, "berserker": 82, "executioner": 93, "dragon": 105, "cyclops": 107, "lion": 117, "brute": 118,
 	"bull": 120, "flailman": 128, "emperor": 130, "tiger": 130, "shieldbearer": 143, "python": 150, "elephant": 150, "rhino": 155, "pyro": 158, "champion": 158,
 	"griffin": 160, "mammoth": 163, "murmillo": 164, "praetorian": 166, "hoplite": 166, "scorpion": 171, "giant": 175, "cerberus": 177, "troll": 179, "gorilla": 180,
-	"chimera": 180, "basilisk": 180, "titan": 181, "manticore": 182, "spider": 186, "bear": 188, "minotaur": 194, "crocodile": 210}
+	"chimera": 180, "basilisk": 180, "titan": 181, "manticore": 182, "spider": 186, "bear": 188, "minotaur": 194, "crocodile": 210,
+	"rat": 40}
 
 static func _kind(en: Dictionary) -> String:
 	return String(en.get("e", en.get("beast", "")))
@@ -96,6 +97,7 @@ func test_the_ladder_climbs_and_never_repeats_itself() -> void:
 	var bosses := []
 	var late := 0
 	var band := []   # the mean danger of the plain bouts, eight stages at a time
+	var seen := {}   # every line-up so far (the kinds that come in, at once and later), and its bout
 	var sum := 0.0
 	var cnt := 0
 	for n in range(1, 65):
@@ -119,6 +121,15 @@ func test_the_ladder_climbs_and_never_repeats_itself() -> void:
 			cnt += 1
 		if not st.get("late", []).is_empty():
 			late += 1
+		# A new foe or a new company of them every bout (user): never the same line-up twice.
+		var kinds := {}
+		for en in first + st.get("late", []):
+			kinds[_kind(en)] = true
+		var key := kinds.keys()
+		key.sort()
+		var line := ", ".join(key)
+		t.check(not seen.has(line), "bout %d is no other bout over again (%s, as bout %d)" % [n, line, int(seen.get(line, 0))])
+		seen[line] = n
 		if n > 1:
 			var prev: Array = Data.stage(n - 1, 1).rounds[0]
 			t.check(_kind(first[0]) != _kind(prev[0]) or st.boss, "bout %d is not bout %d again (%s)" % [n, n - 1, _kind(first[0])])
@@ -126,10 +137,9 @@ func test_the_ladder_climbs_and_never_repeats_itself() -> void:
 			band.append(sum / maxf(1.0, cnt))
 			sum = 0.0
 			cnt = 0
-	t.eq(bosses, ["cyclops", "lion", "giant", "cerberus", "minotaur", "titan", "mammoth", "hydra", "dragon", "giant", "cerberus", "minotaur", "titan", "mammoth", "hydra", "dragon"], "the bosses come in the order the survey ranked them, the gentlest first, the Dragon last")
-	for i in range(1, 4):
-		t.check(band[i] > band[i - 1], "the plain bouts get harder band by band (%s)" % [band.map(func(x): return roundi(x))])
-	t.check(band[4] > band[3] * 0.8 and band[7] > band[3], "and stay hard to the end (%s)" % [band.map(func(x): return roundi(x))])
+	t.eq(bosses, ["cyclops", "lion", "elephant", "giant", "griffin", "cerberus", "troll", "minotaur", "gorilla", "titan", "chimera", "mammoth", "basilisk", "manticore", "hydra", "dragon"], "sixteen bosses, none of them twice, the gentlest first, the Dragon last")
+	for i in range(1, band.size()):
+		t.check(band[i] > band[i - 1], "the plain bouts get harder band by band, to the end (%s)" % [band.map(func(x): return roundi(x))])
 	t.check(beasts >= 20, "beasts come through the gate in their turn (%d of 64)" % beasts)
 	t.check(late >= 20, "a second gate opens on many a bout (%d)" % late)
 	for n in range(1, 25):
@@ -506,21 +516,27 @@ func test_a_friend_lifts_a_man_from_deaths_door() -> void:
 	t.check(not a.alive, "with no friend standing, his death is his own")
 	m.queue_free()
 
-## A boss who comes round a second time comes better armed: the steel set and a coated weapon,
-## where his first coming wore bronze and iron and swung a plain one.
-func test_a_returning_boss_comes_in_steel() -> void:
+## A boss of men past the 36th bout comes better armed: the steel set and his own coating on his
+## weapon, where the bosses of men before it wear bronze and iron. (Any foe's weapon may come
+## coated by chance from the twelfth bout on; the late boss's always is, with his own.)
+func test_a_late_boss_comes_in_steel() -> void:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 3})
-	for pair in [[12, 40, "frost"], [20, 48, "venom"], [24, 52, "fire"]]:
-		m.stage = int(pair[0])
-		var first := m.enemy_spec(Data.stage(int(pair[0]), 1).rounds[0][0], 0, 1)
-		m.stage = int(pair[1])
-		var again := m.enemy_spec(Data.stage(int(pair[1]), 1).rounds[0][0], 0, 1)
-		t.check(not first.loadout.armor.has("steelLorica") and String(first.loadout.main.get("imbue", "")) == "", "bout %d: the first time, no steel and a plain weapon" % int(pair[0]))
-		t.check(again.loadout.armor.has("steelLorica") and again.loadout.armor.has("murmilloHelm") and not again.loadout.armor.has("helmet"), "bout %d: in steel (%s)" % [int(pair[1]), str(again.loadout.armor)])
-		t.eq(String(again.loadout.main.get("imbue", "")), String(pair[2]), "bout %d: his weapon coated" % int(pair[1]))
-		t.check(again.loadout.armor.has("mon_horns") == first.loadout.armor.has("mon_horns"), "and still looks the part")
+	for n in [4, 16, 28, 32]:
+		m.stage = n
+		var early := m.enemy_spec(Data.stage(n, 1).rounds[0][0], 0, 1)
+		t.check(not early.loadout.armor.has("steelLorica"), "bout %d (%s): no steel (%s)" % [n, early.name, str(early.loadout.armor)])
+	var titan: Dictionary = Data.stage(40, 1).rounds[0][0]
+	t.eq(_kind(titan), "titan", "the Titan is bout 40's boss")
+	m.stage = 24
+	var first := m.enemy_spec(titan, 0, 1)
+	m.stage = 40
+	var late := m.enemy_spec(titan, 0, 1)
+	t.check(not first.loadout.armor.has("steelLorica"), "had he come by bout 24: no steel (%s)" % str(first.loadout.armor))
+	t.check(late.loadout.armor.has("steelLorica") and late.loadout.armor.has("murmilloHelm") and not late.loadout.armor.has("helmet"), "at bout 40: in steel (%s)" % str(late.loadout.armor))
+	t.eq(String(late.loadout.main.get("imbue", "")), "fire", "his weapon coated")
+	t.check(late.loadout.armor.has("mon_horns") == first.loadout.armor.has("mon_horns"), "and still looks the part")
 	m.queue_free()
 
 ## The campaign won and begun again (the rudis): the same tables, the men a third tougher and

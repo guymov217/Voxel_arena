@@ -54,8 +54,9 @@ const PLAYER_BLEED := 0.6
 const LAP_TOUGH := 0.3
 const LAP_SCALE := 0.1
 var lap := 1
-## A boss's second coming (after every boss has come once): the steel set in place of the
-## bronze and iron, and a coating on his weapon.
+## A boss of men late in the campaign (past as many bouts as the bosses' table holds, four to a
+## boss: the 36th): the steel set in place of the bronze and iron, and a coating of his own on
+## his weapon.
 const RETURN_ARMOR := ["steelLorica", "murmilloHelm", "steelGreaves", "manica"]
 const RETURN_ARMOR_OFF := ["helmet", "lorica", "greaves", "manica"]
 const RETURN_COAT := {"cyclops": "fire", "minotaur": "venom", "giant": "frost", "titan": "fire"}
@@ -664,8 +665,8 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var coat := "fire" if en.get("e", "") == "pyro" else ""
 	if coat == "" and mode == "campaign" and stage >= 12 and rng.randf() < clampf((stage - 10) * 0.025, 0.0, 0.45):
 		coat = Arms.COATINGS[rng.randi_range(0, Arms.COATINGS.size() - 1)]
-	# A boss come round again (the tables' second time through) is not the same man again:
-	# steel on him where the first time was bronze and iron, and his weapon coated.
+	# A boss of men late in the campaign comes better armed than the bosses before him: steel on
+	# him where they wore bronze and iron, and his weapon coated with his own.
 	var returning: bool = en.get("boss", false) and mode == "campaign" and stage > int(Data.campaign.get("bosses", []).size()) * int(Data.campaign.get("bossEvery", 4))
 	if returning:
 		coat = RETURN_COAT.get(String(en.get("e", "")), "fire")

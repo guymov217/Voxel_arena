@@ -98,12 +98,16 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (who comes through the gate, who comes through the *other* gate nine seconds in or as soon
   as the first is down: the board by the gate names the first wave alone), the men with the
   stage tables' gear, weapons and skill (`data/campaign.json`), a boss on every fourth bout,
-  and no kind of foe twice running. The order came from a bot-versus-bot survey of every foe
-  against a plain swordsman (what beat him, how fast, at what cost): the gentlest giant (the
-  Cyclops) is the first boss, the Dragon the last, the crocodile, the hoplite's phalanx and the
-  brutes wait for the thirties, and the bosses come round again in steel from bout 40
-  (`tests/test_campaign.gd` checks the climb, the variety and the gates). Pay, checkpoints and
-  persistent weapon wear as before.
+  and no kind of foe twice running. Every bout brings a foe of a new kind or a company of foes
+  never seen together before: no line-up comes twice, and no boss either (sixteen of them: the
+  Cyclops, the Big Lion, the Elephant, Polyphemus, the Griffin, the Hound of Hades, the Troll,
+  the Minotaur, the Gorilla, the Titan, the Chimera, the Mammoth, the Basilisk, the Manticore,
+  the Hydra, the Dragon). The order came from a bot-versus-bot survey of every foe against a
+  plain swordsman (what beat him, how fast, at what cost): each band of eight bouts is harder
+  than the one before, the crocodile, the hoplite's phalanx and the brutes wait for the
+  thirties, the kinds met alone come back later two and three kinds at once, and a boss of men
+  past bout 36 comes in steel (`tests/test_campaign.gd` checks the climb, that nothing repeats,
+  and the gates). Pay, checkpoints and persistent weapon wear as before.
 - **Ironman or Legionary** (`scripts/game/campaign_run.gd`): chosen when a campaign begins (in
   co-op the host chooses in the room). A legionary who falls goes back to the last checkpoint
   (every four bouts) with the purse, arms, armour, body and training he had there; an ironman
