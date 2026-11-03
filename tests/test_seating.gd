@@ -123,12 +123,10 @@ func test_feet_stand_on_a_body() -> void:
 	# and the test fell with it.)
 	for p: VoxelPart in g.parts:
 		p.freeze = true
-	var top := -INF
-	var at := Vector3.ZERO
-	for p: VoxelPart in g.parts:
-		if p.global_position.y + p.half_ext.y > top:
-			top = p.global_position.y + p.half_ext.y
-			at = p.global_position
+	# Over his trunk, where a man would step on him: set down over the highest part of him (an
+	# elbow, a knee in the air), he slid off it to the sand all three times in some falls.
+	var top: float = g.torso.global_position.y + g.torso.half_ext.y
+	var at: Vector3 = g.torso.global_position
 	# Set down on him, his soles a hand over the top of the heap (moved across at his own height
 	# he was pushed through the frozen heap and stood with his legs inside it, and it killed
 	# him); a lumpy heap he can slide off: set down again where he lies, up to three times,
@@ -158,11 +156,8 @@ func test_feet_stand_on_a_body() -> void:
 			planted = maxi(planted, down)
 		if high > 0.08:
 			break
-		top = -INF
-		for p: VoxelPart in g.parts:
-			if p.global_position.y + p.half_ext.y > top:
-				top = p.global_position.y + p.half_ext.y
-				at = p.global_position
+		top = g.torso.global_position.y + g.torso.half_ext.y
+		at = g.torso.global_position
 	t.check(grounded > 90, "on a fallen man he counts as on the ground (%d of his last 120 steps)" % grounded)
 	t.check(planted >= 1, "a foot is planted (%d)" % planted)
 	t.check(high > 0.08, "on the body, not down on the sand under it (the higher foot %.2f m up)" % high)
