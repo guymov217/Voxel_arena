@@ -358,6 +358,7 @@ func _build_mesh() -> void:
 	mmi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # see VoxelPart
 	mmi.top_level = true   # placed each frame where the physics' interpolation has the weapon
 	vis = mmi
+	mmi.set_instance_shader_parameter("held_item", 1.0)
 	# Fixed box: chipped voxels are scaled to nothing, which would shrink the auto box (see VoxelPart).
 	var lo := Vector3.INF
 	var hi := -Vector3.INF

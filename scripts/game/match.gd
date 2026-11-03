@@ -87,6 +87,7 @@ var bone_drip_t := 0.0
 var drip_t := 0.0
 var drag_t := 0.0
 var _drag_last := {}   # part -> where it last left a furrow
+var _slammed := {}     # torso -> when it last left the hollow of a fall
 var breaths: Array = []
 var attract := false            # the menu backdrop: bots only, an orbiting camera
 var hero: Fighter = null        # the menu's champion, posing in front of the fight
@@ -257,7 +258,7 @@ func setup(opts: Dictionary) -> void:
 	add_child(fx)
 	arena = Arena.new()
 	add_child(arena)
-	arena.build(opts.get("arena", "colosseum"), not headless)
+	arena.build(opts.get("arena", "colosseum"), not headless, str(opts.get("sky", "noon")))
 	combat = Combat.new()
 	add_child(combat)
 	social = Social.new(self)
@@ -1989,6 +1990,8 @@ func _alive_and_marked(dt: float) -> void:
 	drag_t = 0.1
 	if _drag_last.size() > 300:
 		_drag_last.clear()
+	if _slammed.size() > 100:
+		_slammed.clear()
 	for e in entities:
 		var f = e.f
 		if not (f is Fighter) or f is Beast or not is_instance_valid(f) or f.state == "stand":
@@ -2000,6 +2003,12 @@ func _alive_and_marked(dt: float) -> void:
 			if at.y > 0.32 * f.S:
 				continue
 			var v: Vector3 = prt.linear_velocity
+			# Come down hard on the sand: the hollow a body leaves.
+			if prt == f.torso and v.y < -2.0 and float(_slammed.get(prt, -9.0)) < time - 1.5:
+				_slammed[prt] = time
+				fx.footprint("body", at, f.yaw, f.S)
+				# And the sand stays on him where he came down.
+				prt.wound(prt.to_local(at + Vector3.DOWN * 0.12 * f.S), 0.2 * f.S, "dust")
 			v.y = 0.0
 			if v.length() < 0.7:
 				continue

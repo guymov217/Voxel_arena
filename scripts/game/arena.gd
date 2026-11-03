@@ -7,9 +7,15 @@ const RADIUS := 15.0
 const SEGMENTS := 36
 
 var theme := "colosseum"
+## The time of day and the weather the bout is fought under (only how it looks): "noon", "golden"
+## (late in the day, the sun low and gold), "overcast" or "evening" (dusk: the sun down behind the
+## stands, the torches lit). The host picks it (pick_sky) and tells the guests.
+var time_of_day := "noon"
+const SKIES := ["noon", "golden", "overcast", "evening"]
 
-func build(theme_ := "colosseum", visuals := true) -> void:
+func build(theme_ := "colosseum", visuals := true, sky_ := "noon") -> void:
 	theme = theme_
+	time_of_day = clean_sky(sky_)
 	if visuals:
 		Sfx.ambience(true)
 	var ground := StaticBody3D.new()
@@ -166,13 +172,288 @@ func _build_visuals() -> void:
 	_build_ground_details()
 	_build_walls()
 	_build_torches(day)
+	_build_skyline(day)
 	var atm := Atmosphere.new()
 	add_child(atm)
 	atm.build(self, day, str(Save.get_value("settings", {}).get("quality", "high")) if Save else "high")
 	if q != "low":
 		_build_reflections()
-	if day and q != "low":
+	if day and q != "low" and (time_of_day == "noon" or time_of_day == "golden"):
 		_build_cloud_shadows()
+	_time_of_day(e, sky.sky_material as ShaderMaterial, q)
+
+var skyline_mat: StandardMaterial3D = null
+var torch_base := 1.5   # the torches' light by day, about which they flicker (a little stronger on the wall)
+
+## The light of the bout's time of day, over what was set up for noon (only how it looks).
+func _time_of_day(e: Environment, skym: ShaderMaterial, q: String) -> void:
+	if theme == "night":
+		return
+	match time_of_day:
+		"golden":
+			# Late in the day: the sun low and gold, the shadows long, the sky warm at its foot.
+			sun.rotation = Vector3(deg_to_rad(-25), deg_to_rad(35), 0)
+			sun.light_color = Color(1.0, 0.74, 0.48)
+			sun.light_energy = 1.65
+			skym.set_shader_parameter("top_color", Color(0.25, 0.39, 0.68))
+			skym.set_shader_parameter("horizon_color", Color(0.98, 0.72, 0.46))
+			skym.set_shader_parameter("cloud_light", Color(1.0, 0.82, 0.6))
+			skym.set_shader_parameter("cloud_shade", Color(0.64, 0.52, 0.54))
+			e.ambient_light_color = Color(0.72, 0.68, 0.8)
+			e.fog_light_color = Color(0.92, 0.7, 0.5)
+			e.volumetric_fog_albedo = Color(0.95, 0.74, 0.52)
+			e.tonemap_exposure = 0.84
+		"overcast":
+			# A grey day: the sun a pale glow behind the cloud, the shadows soft, the colours quiet.
+			sun.light_color = Color(0.93, 0.95, 1.0)
+			sun.light_energy = 0.8
+			sun.shadow_blur = 3.0
+			skym.set_shader_parameter("top_color", Color(0.5, 0.55, 0.62))
+			skym.set_shader_parameter("horizon_color", Color(0.8, 0.79, 0.76))
+			skym.set_shader_parameter("cloud_light", Color(0.88, 0.88, 0.88))
+			skym.set_shader_parameter("cloud_shade", Color(0.54, 0.56, 0.6))
+			skym.set_shader_parameter("cover", 0.84)
+			skym.set_shader_parameter("wind", 0.02)
+			skym.set_shader_parameter("sun_disc", 0.12)
+			e.ambient_light_energy = 0.95
+			e.ambient_light_color = Color(0.8, 0.82, 0.86)
+			e.fog_density = 0.007
+			e.fog_light_color = Color(0.76, 0.76, 0.76)
+			e.adjustment_saturation = 0.98
+		"evening":
+			# Dusk: the sun gone down behind the stands (it lights only their tops), the sky still
+			# glowing where it set, the torches lit and burning brighter.
+			sun.rotation = Vector3(deg_to_rad(-6), deg_to_rad(35), 0)
+			sun.light_color = Color(1.0, 0.52, 0.36)
+			sun.light_energy = 0.9
+			skym.set_shader_parameter("top_color", Color(0.1, 0.14, 0.3))
+			skym.set_shader_parameter("horizon_color", Color(0.95, 0.52, 0.34))
+			skym.set_shader_parameter("ground_color", Color(0.18, 0.13, 0.12))
+			skym.set_shader_parameter("cloud_light", Color(0.98, 0.62, 0.52))
+			skym.set_shader_parameter("cloud_shade", Color(0.3, 0.25, 0.38))
+			skym.set_shader_parameter("cover", 0.4)
+			e.ambient_light_energy = 0.75
+			e.ambient_light_color = Color(0.64, 0.62, 0.82)
+			e.tonemap_exposure = 1.0
+			e.fog_light_color = Color(0.52, 0.42, 0.46)
+			torch_base = 2.6
+			for l in torches:
+				l.light_energy = torch_base
+				l.omni_range = 8.0
+	if skyline_mat:
+		skyline_mat.albedo_color = {"golden": Color(1.0, 0.88, 0.74), "overcast": Color(0.84, 0.86, 0.88), "evening": Color(0.42, 0.4, 0.54)}.get(time_of_day, Color.WHITE)
+	if q != "low" and (time_of_day == "noon" or time_of_day == "golden"):
+		_build_light_shafts(time_of_day == "golden")
+
+## Shafts of sunlight through the gaps in the velarium, slits between its sails and the two
+## furled ones, on the sun's side, falling in over the stands; dust turning in each. Drawing
+## only: faint, gone before they reach anything.
+func _build_light_shafts(golden: bool) -> void:
+	var top_r := RADIUS + 1.4 + 5 * 1.3 + 1.2
+	var rm := (top_r + 0.3 + RADIUS + 3.6) * 0.5
+	var dir := -sun.basis.z.normalized()
+	var hd := Vector2(dir.x, dir.z).normalized()
+	var shader: Shader = load("res://shaders/light_shaft.gdshader")
+	var quad := ArrayMesh.new()
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3(-0.5, 0, 0), Vector3(0.5, 0, 0), Vector3(0.5, 1, 0), Vector3(-0.5, 1, 0)])
+	arr[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	arr[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("color", Color(1.0, 0.8, 0.55) if golden else Color(1.0, 0.93, 0.8))
+	mat.set_shader_parameter("strength", 0.11 if golden else 0.08)
+	var shafts := []   # [angle, width]
+	for i in 20:
+		shafts.append([float(i) / 20.0 * TAU, 0.4])
+	for i in [4, 14]:
+		for k in 3:
+			shafts.append([(i + 0.25 + k * 0.25) / 20.0 * TAU, 1.3])
+	var dust := []
+	var drng := RandomNumberGenerator.new()
+	drng.seed = 77
+	for s in shafts:
+		var a: float = s[0]
+		var inward := -Vector2(sin(a), cos(a))
+		if inward.dot(hd) < 0.55:
+			continue
+		var start := Vector3(sin(a) * rm, 11.4, cos(a) * rm)
+		var length := minf(24.0, (start.y - 2.5) / maxf(0.2, -dir.y))
+		var w: float = s[1]
+		var x := dir.cross(Vector3.UP).normalized()
+		var mi := MeshInstance3D.new()
+		mi.mesh = quad
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.extra_cull_margin = w + 1.0
+		mi.transform = Transform3D(Basis(x * w, dir * length, x.cross(dir)), start)
+		add_child(mi)
+		# Dust turning in it.
+		for k in (18 if w < 1.0 else 30):
+			dust.append(start + dir * length * drng.randf_range(0.08, 0.75) + x * w * drng.randf_range(-0.4, 0.4) + x.cross(dir) * w * drng.randf_range(-0.4, 0.4))
+	_specks("ShaftDust", dust, Color(1.0, 0.86, 0.62, 0.6) if golden else Color(1.0, 0.95, 0.85, 0.5), 0.0, 7.0, 0.09, 0.02, 77)
+
+## Specks of light at `points` drawn by a shader (shaders/motes.gdshader): embers that `rise`
+## and fade, or (rise 0) dust that drifts and glints. One MultiMesh, nothing simulated, and no
+## particle system: one draws on the game's own dice when it is made (Godot seeds it so), and the
+## fight's dice must stay the fight's.
+func _specks(name_: String, points: Array, col: Color, rise: float, life: float, sway: float, size: float, seed_: int) -> void:
+	if points.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE
+	mm.mesh = q
+	mm.instance_count = points.size()
+	for i in points.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), points[i]))
+		mm.set_instance_custom_data(i, Color(rng.randf(), rng.randf(), 0.0, 0.0))
+	mm.custom_aabb = AABB(Vector3(-40, -2, -40), Vector3(80, 40, 80))
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/motes.gdshader")
+	mat.set_shader_parameter("color", col)
+	mat.set_shader_parameter("rise", rise)
+	mat.set_shader_parameter("life", life)
+	mat.set_shader_parameter("sway", sway)
+	mat.set_shader_parameter("size", size)
+	var mi := MultiMeshInstance3D.new()
+	mi.name = name_
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+## A time of day for a bout, at random, noon the most often; noon always for the yard and the
+## training ground. Its own dice: nothing the fight draws on is touched.
+static func pick_sky(mode: String) -> String:
+	if mode == "yard" or mode == "training":
+		return "noon"
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var r := rng.randf()
+	return "noon" if r < 0.45 else ("golden" if r < 0.7 else ("overcast" if r < 0.85 else "evening"))
+
+## A time of day as a guest was told it, made safe: one of SKIES, or noon.
+static func clean_sky(v) -> String:
+	var s := str(v) if v is String else "noon"
+	return s if SKIES.has(s) else "noon"
+
+## Rome round the arena, far off in the haze (drawing only): hills with cypresses and umbrella
+## pines, the roofs of the city on them and between them, temples on the heights, an aqueduct
+## striding across the plain. Boxes, one MultiMesh, no shadows: next to nothing to draw. From the
+## sand it shows through the arches of the arcade; from the stands and above, over its top.
+func _build_skyline(day: bool) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2026
+	var boxes := []   # [centre, size, yaw, colour]
+	var green := [Color(0.42, 0.46, 0.26), Color(0.5, 0.49, 0.29), Color(0.37, 0.41, 0.24)]
+	var walls := [Color(0.86, 0.76, 0.58), Color(0.8, 0.66, 0.47), Color(0.9, 0.85, 0.74), Color(0.74, 0.56, 0.4)]
+	var roofs := [Color(0.62, 0.3, 0.18), Color(0.55, 0.26, 0.16), Color(0.68, 0.37, 0.22)]
+	var cypress := Color(0.16, 0.24, 0.13)
+	var marble := Color(0.92, 0.9, 0.84)
+	# Seven hills, each a mound of stepped slabs, with the city's roofs and trees on its flanks.
+	var hills := []
+	for i in 7:
+		var a := (i + rng.randf_range(-0.25, 0.25)) / 7.0 * TAU
+		var d := rng.randf_range(200.0, 290.0)
+		var r := rng.randf_range(45.0, 80.0)
+		var h := rng.randf_range(24.0, 48.0)
+		var c := Vector3(sin(a) * d, 0.0, cos(a) * d)
+		hills.append([c, r, h])
+		var g: Color = green[i % green.size()]
+		for l in 6:
+			var k := float(l) / 6.0
+			var rl := r * pow(1.0 - k, 0.7)
+			for j in 3:
+				boxes.append([c + Vector3(0, k * h + h / 12.0, 0), Vector3(rl * 2.0, h / 6.0 + 0.5, rl * 1.25), a + j * PI / 3.0, g.darkened(0.04 * l)])
+		# Trees and houses up its sides.
+		for j in 26:
+			var ta := rng.randf() * TAU
+			var tr := sqrt(rng.randf()) * r * 0.75
+			var lift := h * pow(1.0 - tr / r, 0.7)
+			var p := c + Vector3(sin(ta) * tr, lift, cos(ta) * tr)
+			if rng.randf() < 0.5:
+				var th := rng.randf_range(7.0, 11.0)
+				boxes.append([p + Vector3(0, th * 0.5, 0), Vector3(1.6, th, 1.6), 0.0, cypress])
+			else:
+				var w := rng.randf_range(6.0, 12.0)
+				var bh := rng.randf_range(5.0, 10.0)
+				var col: Color = walls[rng.randi_range(0, walls.size() - 1)]
+				boxes.append([p + Vector3(0, bh * 0.5, 0), Vector3(w, bh, w * 0.7), ta, col])
+				boxes.append([p + Vector3(0, bh + 0.6, 0), Vector3(w * 1.1, 1.2, w * 0.8), ta, roofs[rng.randi_range(0, roofs.size() - 1)]])
+	# Temples on three of the heights: a podium, the columns, the roof with its pediment.
+	for i in [0, 2, 5]:
+		var c: Vector3 = hills[i][0]
+		var top: float = hills[i][2]
+		var face := atan2(-c.x, -c.z)   # toward the arena
+		var bas := Basis(Vector3.UP, face)
+		var at := c + Vector3(0, top, 0)
+		boxes.append([at + Vector3(0, 1.5, 0), Vector3(22, 3, 34), face, marble.darkened(0.08)])
+		for cx in 6:
+			for side in [-1.0, 1.0]:
+				var off := bas * Vector3(-8.75 + cx * 3.5, 0, side * 14.0)
+				boxes.append([at + off + Vector3(0, 9.0, 0), Vector3(1.4, 12, 1.4), face, marble])
+		boxes.append([at + Vector3(0, 9.0, 0), Vector3(14, 12, 24), face, marble.darkened(0.12)])
+		boxes.append([at + Vector3(0, 16.0, 0), Vector3(22, 2, 34), face, marble])
+		boxes.append([at + Vector3(0, 18.2, 0), Vector3(16, 2.4, 34), face, roofs[0]])
+		boxes.append([at + Vector3(0, 20.0, 0), Vector3(8, 1.6, 34), face, roofs[1]])
+	# The city between the hills: blocks of flats (insulae) in rings round the bowl.
+	for i in 140:
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(95.0, 190.0)
+		var p := Vector3(sin(a) * d, 0, cos(a) * d)
+		var w := rng.randf_range(8.0, 16.0)
+		var bh := rng.randf_range(9.0, 24.0) * (1.0 - (d - 95.0) / 300.0)
+		var col: Color = walls[rng.randi_range(0, walls.size() - 1)]
+		boxes.append([p + Vector3(0, bh * 0.5, 0), Vector3(w, bh, w * rng.randf_range(0.6, 1.0)), a, col])
+		boxes.append([p + Vector3(0, bh + 0.7, 0), Vector3(w * 1.08, 1.4, w * 0.8), a, roofs[rng.randi_range(0, roofs.size() - 1)]])
+		if rng.randf() < 0.25:
+			var pt := p + Vector3(rng.randf_range(-8, 8), 0, rng.randf_range(-8, 8))
+			boxes.append([pt + Vector3(0, 6.0, 0), Vector3(1.0, 12, 1.0), 0.0, Color(0.32, 0.24, 0.16)])
+			boxes.append([pt + Vector3(0, 12.5, 0), Vector3(9, 2.5, 9), rng.randf() * TAU, Color(0.2, 0.3, 0.16)])
+	# An aqueduct crossing the plain: piers, the arches' tops, the channel along them.
+	var aq_a := 2.3
+	var aq0 := Vector3(sin(aq_a) * 150.0, 0, cos(aq_a) * 150.0)
+	var aq_dir := Vector3(cos(aq_a), 0, -sin(aq_a))
+	var stone := Color(0.78, 0.68, 0.52)
+	for k in range(-16, 17):
+		var p := aq0 + aq_dir * (k * 12.0)
+		var yaw := atan2(aq_dir.x, aq_dir.z)
+		boxes.append([p + Vector3(0, 13.0, 0), Vector3(3.0, 26.0, 3.0), yaw, stone])
+		boxes.append([p + aq_dir * 6.0 + Vector3(0, 24.5, 0), Vector3(3.0, 3.0, 9.0), yaw, stone.darkened(0.06)])
+	boxes.append([aq0 + Vector3(0, 27.5, 0), Vector3(3.4, 3.0, 33 * 12.0), atan2(aq_dir.x, aq_dir.z), stone.darkened(0.1)])
+	# The plain it all stands on, out to the hills (under the arena's own floor, which hides it inside).
+	boxes.append([Vector3(0, -0.6, 0), Vector3(760.0, 1.0, 760.0), 0.0, Color(0.6, 0.53, 0.38)])
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var bm := BoxMesh.new()
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true   # (the colours as written: read as linear they came out washed pale)
+	mat.roughness = 1.0
+	bm.material = mat
+	skyline_mat = mat
+	mm.mesh = bm
+	mm.instance_count = boxes.size()
+	for i in boxes.size():
+		var b: Array = boxes[i]
+		# (Turned, then sized along its own sides: Basis.scaled sizes along the world's axes, and a
+		# turned box came out skewed.)
+		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, float(b[2])) * Basis.from_scale(b[1]), b[0]))
+		var col: Color = b[3]
+		mm.set_instance_color(i, col if day else col.darkened(0.55))
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Skyline"
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 ## What the arena itself is drawn with is marked (a layer of its own, STATIC_LAYER) so that the
 ## reflection taken of it holds the bowl and nothing that moves in it.
@@ -387,6 +668,57 @@ func _build_ground_details() -> void:
 	tmi.multimesh = tufts
 	tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(tmi)
+	_build_litter(rng, stone)
+
+## What the fights have left on the sand, out of the way along the wall (drawing only: nothing to
+## trip on and nothing to pick up): broken arrows stuck in it at a slant, splinters of shields,
+## bones bleached white, wisps of straw from the beasts' bedding. Clear of the gates.
+func _build_litter(rng: RandomNumberGenerator, mat: Material) -> void:
+	var items := []
+	for i in 110:
+		var a := rng.randf() * TAU
+		var rr := rng.randf_range(RADIUS - 1.7, RADIUS - 0.3)
+		var at := Vector3(sin(a) * rr, 0, cos(a) * rr)
+		if absf(at.x) > 11.5 and absf(at.z) < 2.8:
+			continue
+		var kind := rng.randf()
+		if kind < 0.32:
+			# A broken arrow stuck in at a slant: the shaft, and what is left of its feathers.
+			var tilt := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.25, 0.65))
+			var ln := rng.randf_range(0.16, 0.38)
+			items.append([Transform3D(tilt * Basis.from_scale(Vector3(0.012, ln, 0.012)), at + tilt * Vector3(0, ln * 0.3, 0)), Color(0.48, 0.34, 0.2)])
+			items.append([Transform3D(tilt * Basis.from_scale(Vector3(0.035, 0.07, 0.006)), at + tilt * Vector3(0, ln * 0.72, 0)), Color(0.86, 0.84, 0.78)])
+		elif kind < 0.58:
+			# A splinter of a shield, painted on its face.
+			var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.15, 0.15))
+			var col: Color = [Color(0.55, 0.16, 0.1), Color(0.5, 0.36, 0.2), Color(0.2, 0.28, 0.48)][rng.randi() % 3]
+			items.append([Transform3D(b * Basis.from_scale(Vector3(rng.randf_range(0.08, 0.2), 0.018, rng.randf_range(0.04, 0.09))), at + Vector3(0, 0.006, 0)), col])
+		elif kind < 0.8:
+			# A bone, bleached by the sun.
+			var b := Basis(Vector3.UP, rng.randf() * TAU)
+			items.append([Transform3D(b * Basis.from_scale(Vector3(0.026, 0.026, rng.randf_range(0.12, 0.22))), at + Vector3(0, 0.008, 0)), Color(0.86, 0.82, 0.7)])
+			items.append([Transform3D(b * Basis.from_scale(Vector3(0.045, 0.035, 0.035)), at + b * Vector3(0, 0.012, 0.08)), Color(0.84, 0.8, 0.68)])
+		else:
+			# Straw.
+			for s in 7:
+				var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, PI * 0.5 + rng.randf_range(-0.25, 0.25))
+				items.append([Transform3D(b * Basis.from_scale(Vector3(0.005, rng.randf_range(0.1, 0.2), 0.005)), at + Vector3(rng.randf_range(-0.12, 0.12), 0.006, rng.randf_range(-0.12, 0.12))), Color(0.82, 0.7, 0.38).darkened(rng.randf() * 0.2)])
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	bm.material = mat
+	mm.mesh = bm
+	mm.instance_count = items.size()
+	for i in items.size():
+		mm.set_instance_transform(i, items[i][0])
+		mm.set_instance_color(i, items[i][1])
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Litter"
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 ## The arena floor: smooth sand and packed earth (art/textures/floor_*.webp, 4 m a map) laid on
 ## in world space. Falls back to the old raked sand when the maps are missing.
@@ -497,6 +829,7 @@ func _build_torches(day: bool) -> void:
 	bowl_mat.albedo_color = Color(0.25, 0.2, 0.16)
 	bowl_mat.metallic = 0.7
 	bowl_mat.roughness = 0.4
+	var coals := []
 	for i in 8:
 		var a := (i + 0.5) / 8.0 * TAU
 		var p := Vector3(sin(a) * (RADIUS - 0.6), 0.0, cos(a) * (RADIUS - 0.6))
@@ -512,7 +845,7 @@ func _build_torches(day: bool) -> void:
 			stand.position = p + Vector3(0, 0.75, 0)
 		var l := OmniLight3D.new()
 		l.light_color = Color(1.0, 0.62, 0.3)
-		l.light_energy = 1.2 if day else 3.0
+		l.light_energy = 1.5 if day else 3.0
 		l.omni_range = 5.0 if day else 8.0
 		l.shadow_enabled = not day
 		l.light_volumetric_fog_energy = 2.0
@@ -522,6 +855,7 @@ func _build_torches(day: bool) -> void:
 		var holder := Node3D.new()
 		add_child(holder)
 		holder.position = p + Vector3(0, 1.55, 0)
+		coals.append(holder.position)
 		if Fx.current:
 			var f := Fx.current.emitter("brazier", holder, 60, 0.18)
 			if f:
@@ -529,13 +863,21 @@ func _build_torches(day: bool) -> void:
 			var sm := Fx.current.emitter("smoke", holder, 8, 0.1)
 			if sm:
 				sm.emitting = true
+	# Embers rising off the coals on the heat and fading as they climb.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var embers := []
+	for c in coals:
+		for k in 14:
+			embers.append((c as Vector3) + Vector3(rng.randf_range(-0.2, 0.2), 0.0, rng.randf_range(-0.2, 0.2)))
+	_specks("Embers", embers, Color(1.0, 0.5, 0.14, 1.0), 1.4, 2.4, 0.05, 0.024, 41)
 
 func _process(_dt: float) -> void:
 	_move_clouds(_dt)
 	var t := Time.get_ticks_msec() / 1000.0
 	for i in torches.size():
 		var l: OmniLight3D = torches[i]
-		l.light_energy = l.light_energy * 0.8 + 0.2 * ((1.2 if theme != "night" else 3.0) * (0.85 + 0.15 * sin(t * 11.0 + i * 1.7) + 0.08 * sin(t * 23.0 + i)))
+		l.light_energy = l.light_energy * 0.8 + 0.2 * ((torch_base if theme != "night" else 3.0) * (0.85 + 0.15 * sin(t * 11.0 + i * 1.7) + 0.08 * sin(t * 23.0 + i)))
 
 ## The wall: a painted podium ring with banners, then tiers of stands and an arcade.
 ## True once the voxel bowl (art/voxel/arena.glb) is in: the wall, the stands with their aisles,
@@ -634,6 +976,12 @@ static func _spectator_mesh() -> ArrayMesh:
 	box.call(Vector3(-0.035, 0.615, 0.096), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)   # eyes
 	box.call(Vector3(0.035, 0.615, 0.096), Vector3(0.016, 0.012, 0.004), 8.0, 1.0)
 	box.call(Vector3(0.06, 0.34, 0.097), Vector3(0.05, 0.15, 0.005), 9.0, 1.0)   # sash
+	box.call(Vector3(0, 0.53, -0.088), Vector3(0.1, 0.12, 0.022), 10.0, 1.0)     # long hair, down the back
+	# A sign on a stick in the right hand (hung below it here: raised, the arm turns it up over
+	# the head), and a vendor's basket on his head.
+	box.call(Vector3(0.175, 0.02, 0.0), Vector3(0.012, 0.15, 0.012), 11.0, 1.0)
+	box.call(Vector3(0.175, -0.21, 0.0), Vector3(0.14, 0.09, 0.01), 12.0, 1.0)
+	box.call(Vector3(0, 0.79, 0), Vector3(0.12, 0.05, 0.12), 13.0, 1.0)
 	return st.commit()
 
 func set_excitement(x: float) -> void:
@@ -684,9 +1032,28 @@ func _build_crowd() -> void:
 			var basis := Basis(Vector3.UP, a + PI).scaled(Vector3.ONE * sc)
 			var tun: Color = tunics[rng.randi_range(0, tunics.size() - 1)]
 			tun = tun.lerp(Color.from_hsv(rng.randf(), 0.5, 0.6), 0.25)
+			# (The colour's alpha is who he is, for the shader: 1 the common crowd, 0.5 a citizen in
+			# his toga, white with a purple stripe, mostly in the two lowest tiers.)
+			tun.a = 0.5 if rng.randf() < (0.3 if t < 2 else 0.05) else 1.0
+			# Now and then a child, smaller, on the same seat.
+			if rng.randf() < 0.07:
+				basis = basis.scaled(Vector3.ONE * 0.74)
 			var sk: Color = skins[rng.randi_range(0, skins.size() - 1)]
 			var seat_y := (2.6 if voxel else 2.55) + t * 0.7
 			list.append([Transform3D(basis, Vector3(sin(a) * (rr - 0.1), seat_y, cos(a) * (rr - 0.1))), tun, Color(sk.r, sk.g, sk.b, rng.randf())])
+	# Vendors standing in the aisles' stairs with a basket on the head (alpha 0.25).
+	if voxel:
+		for k in 12:
+			var t := 1 + k % 4
+			var rr := RADIUS + 1.4 + t * 1.3
+			var a := deg_to_rad(15.0 + 30.0 * ((k * 5) % 12)) + 0.012
+			var p := Vector2(sin(a) * rr, cos(a) * rr)
+			if (absf(p.x) > 13.0 and absf(p.y) < 2.9) or (absf(p.x) < 3.0 and p.y > 15.0):
+				continue
+			var vb := Basis(Vector3.UP, a + (PI if k % 2 else 0.0)).scaled(Vector3.ONE * 1.12)
+			var vt := Color(0.62, 0.48, 0.3, 0.25)
+			var vs := skins[k % skins.size()] as Color
+			list.append([Transform3D(vb, Vector3(p.x, 2.6 + t * 0.7 - 0.05, p.y)), vt, Color(vs.r, vs.g, vs.b, fposmod(k * 0.137, 1.0))])
 	mm.instance_count = list.size()
 	for i in list.size():
 		mm.set_instance_transform(i, list[i][0])

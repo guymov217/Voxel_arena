@@ -14,7 +14,7 @@ from numba import njit
 
 # Materials: id -> name. The game maps each name to a shader (scripts/game/voxel_art.gd).
 MATS = {1: "stone", 2: "wood", 3: "iron", 4: "bronze", 5: "gold", 6: "cloth", 7: "ember",
-        8: "plaster", 9: "marble", 10: "terracotta", 11: "straw", 12: "glow"}
+        8: "plaster", 9: "marble", 10: "terracotta", 11: "straw", 12: "glow", 13: "rust"}
 MAT_ID = {v: k for k, v in MATS.items()}
 AO_CURVE = np.array([0.42, 0.62, 0.82, 1.0], np.float32)
 

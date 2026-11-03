@@ -181,6 +181,19 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (`scripts/fighter/swing_trail.gd`); blood that stays on the blade or the fist that drew it and
   dries brown; footprints, a peg's round marks and the furrow of a dragged body in the sand; faces
   that blink, screw up at a blow that hurts and breathe, quicker and deeper out of breath.
+  The arena's materials and life, drawing only too: stone streaked with grime, damp at its foot,
+  its edges chipped; frescoes on the podium's panels (gladiators, a lion, wreaths, shields, palms)
+  on plaster that flakes, cracks and carries old blood; grain and knots in the props' wood, rust on
+  their iron, green on their bronze; a livelier crowd (togas in the best seats, women, children,
+  vendors in the aisles, signs waved, the keen on their feet when the fight is at its height); Rome
+  beyond the walls in the haze (hills, temples, roofs, an aqueduct); broken arrows, splinters,
+  bones and straw by the wall, the hollow a body leaves where it falls, blood soaking into the
+  sand; embers off the braziers; scratches and dents in steel, rivets on armour, stitches on dark
+  leather grips; bots' faces that have lived (stubble, scars, heavy brows), sweat as a man tires,
+  sand on him where he went down; the beasts' coats (a lion's mane in strands, grizzled wolves and
+  boars, a goat's patches), wet noses, a sheen on scales; and a time of day for each bout, the host
+  telling the guests: noon, late in the day (the sun low and gold), overcast, or dusk with the
+  torches lit, with shafts of sun through the velarium and dust turning in them.
 - **Audio**: procedural sounds in several takes with varied pitch, a stone-arena reverb bus, a
   crowd murmur that follows the excitement and ducks under the blows. A blow is the body's knock
   and a few hundredths of a second of shaped noise (the thwack, the slap, the wet bite); a pot of

@@ -13,6 +13,7 @@ uniform float cover : hint_range(0.0, 1.0) = 0.48;
 uniform float wind = 0.012;
 uniform float night = 0.0;
 uniform float star_gain = 6.0;
+uniform float sun_disc = 1.0;   // how much of the sun shows through (overcast: a pale glow)
 uniform sampler2D clouds_noise : filter_linear_mipmap, repeat_enable;
 uniform sampler2D stars : source_color, filter_linear_mipmap;
 
@@ -69,7 +70,7 @@ void sky() {
 		float disc = smoothstep(0.9993, 0.9997, sun_dot);
 		vec3 sc = LIGHT0_COLOR * LIGHT0_ENERGY;
 		// (The halo kept small and soft: a wide bright one glared over the stands, user.)
-		col += sc * (disc * 9.0 + pow(sun_dot, 96.0) * 0.4 + pow(sun_dot, 8.0) * 0.06) * (1.0 - night);
+		col += sc * ((disc * 9.0 + pow(sun_dot, 96.0) * 0.4) * sun_disc + pow(sun_dot, 8.0) * 0.06) * (1.0 - night);
 	}
 	COLOR = col;
 }

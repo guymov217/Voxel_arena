@@ -760,6 +760,17 @@ const GOLDEN := Color(0.95, 0.75, 0.25)
 static func face_marks(id: String) -> Array:
 	var eyes := [2, 3, 6, 7]
 	match id:
+		"bot_stubble":
+			# The jaw and the chin a shade darker, round the mouth.
+			return _row(1, 8, 0, "lid") + _row(1, 8, 1, "lid") + [[1, 2, "lid"], [8, 2, "lid"], [1, 3, "lid"], [8, 3, "lid"]]
+		"bot_scar_cheek":
+			return [[7, 5, VoxelPart.SCAR], [8, 4, VoxelPart.SCAR], [8, 3, VoxelPart.SCAR], [9, 2, VoxelPart.SCAR]]
+		"bot_scar_lip":
+			return [[3, 4, VoxelPart.SCAR], [3, 3, VoxelPart.SCAR], [3, 2, VoxelPart.SCAR], [3, 1, VoxelPart.SCAR]]
+		"bot_brows_thick":
+			return [[1, 9, "brow"], [2, 9, "brow"], [3, 9, "brow"], [6, 9, "brow"], [7, 9, "brow"], [8, 9, "brow"], [2, 8, "brow"], [7, 8, "brow"]]
+		"bot_unibrow":
+			return _row(2, 7, 9, "brow")
 		"eyes_wide":
 			return eyes.map(func(x): return [x, 7, WHITE]) + [[2, 6, WHITE], [3, 6, DARK], [6, 6, DARK], [7, 6, WHITE]]
 		"eyes_side":
@@ -887,6 +898,16 @@ static func live(f, dt: float) -> void:
 		st.ph = fmod(float(st.ph) + dt * TAU * (0.27 + 0.5 * winded), TAU)
 		var a := (0.012 + 0.022 * winded) * (0.5 + 0.5 * sin(float(st.ph)))
 		torso.draw_scale = Vector3(1.0 + a * 0.45, 1.0 + a * 0.2, 1.0 + a)
+		# Sweat: it comes as he tires, slowly, and stays a while after (a sheen on the skin).
+		var want := clampf(winded * 1.4 - 0.15, 0.0, 1.0)
+		var sw := float(st.get("sweat", 0.0))
+		sw = move_toward(sw, want, dt * (0.06 if want > sw else 0.012))
+		st.sweat = sw
+		if absf(sw - float(st.get("sweat_drawn", 0.0))) > 0.04:
+			st.sweat_drawn = sw
+			for p in f.parts:
+				if is_instance_valid(p) and p.mmi:
+					p.mmi.set_instance_shader_parameter("sweat", sw)
 	elif torso.draw_scale != Vector3.ONE:
 		torso.draw_scale = Vector3.ONE
 
@@ -985,6 +1006,14 @@ static func _faces(f) -> void:
 			ids.append(eyes[rng.randi() % eyes.size()])
 		if rng.randf() < 0.55:
 			ids.append(mouths[rng.randi() % mouths.size()])
+		# A face that has lived: stubble, a scar on the cheek, heavy brows (not on the editor's list:
+		# a bot's only, drawn after the rest).
+		if rng.randf() < 0.4:
+			ids.append("bot_stubble")
+		if rng.randf() < 0.22:
+			ids.append("bot_scar_cheek" if rng.randf() < 0.5 else "bot_scar_lip")
+		if rng.randf() < 0.3:
+			ids.append("bot_brows_thick" if rng.randf() < 0.7 else "bot_unibrow")
 	if ids.is_empty():
 		return
 	var g := head.grid

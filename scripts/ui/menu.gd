@@ -3940,6 +3940,9 @@ func start(opts: Dictionary) -> void:
 	# campaign: the guests are sent the start and join as themselves.
 	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus", "endless"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
 		opts.role = "host"   # (alone in the room too: whoever joins is brought into what runs)
+	# The time of day it is fought under (only the look; the guests are told it).
+	if not opts.has("sky"):
+		opts.sky = Arena.pick_sky(String(opts.get("mode", "")))
 	last_start = opts.duplicate(true)
 	_end_match()
 	var a := arms()
@@ -3992,7 +3995,7 @@ func start(opts: Dictionary) -> void:
 				spec.loadout = made
 			peers.append(spec)
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0))})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon"))})
 		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
@@ -4383,7 +4386,7 @@ func _on_net(type: String, data, _from: int) -> void:
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s"))})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky"))})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
 				match_.lost.connect(_campaign_lost)

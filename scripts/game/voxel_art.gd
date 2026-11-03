@@ -22,6 +22,7 @@ const KINDS := {
 	"straw": [0.16, 1.0, 0.0, 0.2, 0.0, 0.0],
 	"ember": [0.25, 0.9, 0.0, 0.2, 4.0, 1.0],
 	"glow": [0.02, 0.08, 0.0, 0.8, 0.0, 0.0],
+	"rust": [0.14, 0.96, 0.1, 0.22, 0.0, 0.0],   # iron gone to rust, bronze gone green: dull, rough
 }
 
 static var _templates := {}

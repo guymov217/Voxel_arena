@@ -1611,6 +1611,7 @@ func resync_later() -> void:
 ## wound dealt now (the fighter is not told): a scar over the heart or the liver re-tore them at
 ## every spawn, and a man won his bout and bled to death in the yard (user).
 const SCAR := Color(0.78, 0.5, 0.47)
+const DUST := Color(0.78, 0.66, 0.48)   # the arena's sand, on a body that went down in it
 func scar(indices: Array) -> void:
 	var gone := {}
 	for i in indices:
@@ -1761,8 +1762,8 @@ func update_blood(dt: float, beat: float) -> void:
 
 ## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
 func wound(lp: Vector3, r: float, kind := "blood") -> int:
-	var target := BRUISE if kind == "bruise" else SMEAR
-	var mx := 0.55 if kind == "bruise" else 0.9
+	var target := BRUISE if kind == "bruise" else (DUST if kind == "dust" else SMEAR)
+	var mx := 0.55 if kind == "bruise" else (0.5 if kind == "dust" else 0.9)
 	var touched := []
 	var lps := local_positions()
 	for i in voxels_within(lp, r):

@@ -38,6 +38,8 @@ uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
 uniform float body_bevel : hint_range(0.0, 1.0) = 0.85;   // how far a bevelled corner is pulled in
 uniform float oil : hint_range(0.0, 1.0) = 0.0;          // skin oiled for the arena: glossier
 uniform bool bevel_mode = false;
+instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
+instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
 
 const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
 const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
@@ -197,8 +199,49 @@ void fragment() {
 	float second = q.x + q.y + q.z - 1.0 - min(q.x, min(q.y, q.z));
 	float edge = 1.0 - smoothstep(1.0 - edge_width, 1.0, second);
 	c *= mix(1.0 - edge_dark, 1.0, edge);
-	if (box_half.x <= 0.0) {
-		c *= 1.0 - ao_strength * corner_shade(a, box_pos, m);
+	// What is worked into a voxel's faces (only its look): -1..1 across the face it is on.
+	vec2 fuv = (a.x >= a.y && a.x >= a.z) ? box_pos.yz : ((a.y >= a.z) ? box_pos.xz : box_pos.xy);
+	fuv /= max(m, 1e-5);
+	float seed2 = fract(seed * 7.31 + 0.17);
+	float fpx = length(fwidth(fuv)) * 1.5;   // a pixel, across the face: thin lines fade, not flicker
+	if (k == 0) {
+		// Skin: each voxel a touch warmer or cooler, as skin is.
+		c *= vec3(1.0 + 0.05 * (seed2 - 0.5), 1.0, 1.0 - 0.05 * (seed2 - 0.5));
+	} else if (k == 1) {
+		// Cloth: the weave.
+		c *= 0.965 + 0.07 * (0.5 + 0.5 * sin(fuv.x * 28.0) * sin(fuv.y * 28.0));
+	} else if (k == 3) {
+		// Steel: a scratch catching the light on some voxels, each its own way across, and a dent
+		// now and then.
+		if (seed2 < 0.42) {
+			vec2 dir = vec2(cos(seed * 6.2832), sin(seed * 6.2832));
+			float across = abs(dot(fuv, vec2(-dir.y, dir.x)) - (seed2 - 0.21) * 3.0);
+			float along = abs(dot(fuv, dir) - 0.3 * sin(seed * 17.0));
+			float line = 1.0 - smoothstep(0.035, 0.035 + fpx, across);
+			c *= 1.0 + 0.3 * line * (1.0 - smoothstep(0.4, 0.85, along));
+		}
+		if (seed2 > 0.9) {
+			c *= 1.0 - 0.16 * (1.0 - smoothstep(0.15, 0.6, length(fuv - vec2(0.25, -0.15))));
+		}
+	} else if (k == 8) {
+		// Fur: tufts a little lighter and darker.
+		c *= 1.0 + 0.07 * (seed2 - 0.5);
+	}
+	// A weapon's grip wrapped in dark leather: the stitches along it (not a pale goose's feathers).
+	if (k == 2 && held_item > 0.5 && dot(c, vec3(0.2126, 0.7152, 0.0722)) < 0.12) {
+		float stitch = step(abs(fuv.x), 0.14) * step(0.5, fract(fuv.y * 2.0 + 0.25));
+		c = mix(c, c * 1.7 + vec3(0.04), stitch * 0.65);
+	}
+	// Armour: a rivet at the corners of some of its plates.
+	if (force_kind >= 0 && (k == 3 || k == 4) && seed2 > 0.72) {
+		float rv = 1.0 - smoothstep(0.12, 0.2, length(abs(fuv) - vec2(0.62)));
+		c = mix(c, c * 1.4 + vec3(0.03), rv);
+	}
+	float cs = box_half.x <= 0.0 ? corner_shade(a, box_pos, m) : 0.0;
+	c *= 1.0 - ao_strength * cs;
+	// Bronze (not gold: it is brighter) going green where it is shut in, and in spots.
+	if (k == 4 && dot(c, vec3(0.2126, 0.7152, 0.0722)) < 0.3) {
+		c = mix(c, vec3(0.1, 0.24, 0.18), clamp(cs * 0.7 + (seed2 > 0.82 ? 0.3 : 0.0), 0.0, 0.7));
 	}
 	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
 	float hone = 0.0;
@@ -233,6 +276,11 @@ void fragment() {
 	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5) - 0.1 * hone, 0.02, 1.0);
 	METALLIC = METAL[k];
 	SPECULAR = SPEC[k];
+	if (k == 10) {
+		// Scales: a sheen of green and blue at a glancing look.
+		float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+		ALBEDO += vec3(0.0, 0.05, 0.04) * fr;
+	}
 	if (k == 12) {
 		EMISSION += c * (2.2 + 0.4 * sin(TIME * 2.0 + seed * 6.0));
 	}
@@ -242,6 +290,9 @@ void fragment() {
 		// Oiled: a wet sheen on the muscles that catches the sun.
 		ROUGHNESS = mix(ROUGHNESS, 0.26 + 0.08 * seed, oil);
 		SPECULAR = mix(SPECULAR, 0.72, oil);
+		// Out of breath: a sheen of sweat (softer than oil: a glow on the skin, not a mirror).
+		ROUGHNESS = mix(ROUGHNESS, 0.42, sweat);
+		SPECULAR = mix(SPECULAR, 0.55, sweat);
 	}
 	if (status.x < 0.0) {
 		// Wet blood on it (Weapon.bloody: green below nought): glossy while it is fresh.

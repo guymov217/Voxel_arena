@@ -57,9 +57,12 @@ def dang(th, step, off=0.0):
     return np.mod(th - off + step / 2, step) - step / 2
 
 
-def ashlar(mat, base, bl=0.6, bh=0.3, var=0.07, seed=1, dirt=0.0, mortar=0.84, vs=0.1, radial=True):
+def ashlar(mat, base, bl=0.6, bh=0.3, var=0.07, seed=1, dirt=0.0, mortar=0.84, vs=0.1, radial=True, streak=0.0, damp=0.0):
     """Dressed stone: staggered blocks bl x bh, each its own shade, darker mortar joints,
-    blotches of weathering, and (dirt) sand splashed up the lowest half metre."""
+    blotches of weathering, (dirt) sand splashed up the lowest half metre, (streak) grime run
+    down the face in long thin streaks where the rain went, and (damp) the dark of damp stone at
+    its foot. The streaks and the damp come in a few steps, not a smooth ramp, so flat runs of
+    one colour still merge into big quads."""
     def f(ix, iy, iz, x, y, z):
         if radial:
             r = np.sqrt(x * x + z * z)
@@ -85,8 +88,49 @@ def ashlar(mat, base, bl=0.6, bh=0.3, var=0.07, seed=1, dirt=0.0, mortar=0.84, v
         if dirt > 0:
             k = np.clip((0.6 - y) / 0.6, 0, 1) * dirt * (0.6 + 0.8 * hash3(b.astype(np.int64), row.astype(np.int64), 1, seed + 5))
             c = c * (1 - k[:, None]) + np.array([0.55, 0.43, 0.30])[None, :] * k[:, None]
+        if streak > 0:
+            # Long thin streaks: noise stretched up and down (a lattice 0.25 m across, 1.6 m tall).
+            st = vnoise(s / 0.25, y / 1.6, (seed % 5) * 3.0, 1.0, seed + 11)
+            k = np.round(np.clip((st - 0.6) / 0.25, 0, 1) * 3) / 3 * streak
+            c = c * (1 - 0.2 * k[:, None]) * np.array([0.98, 0.97, 0.95])[None, :] ** k[:, None]
+        if damp > 0:
+            k = np.round(np.clip((0.35 - y) / 0.35, 0, 1) * 3) / 3 * damp
+            c = c * (1 - k[:, None] * 0.45) + np.array([0.30, 0.29, 0.22])[None, :] * (k[:, None] * 0.45)
         return pack(mat, c)
     return f
+
+
+def ashlar_joints(x, y, z, bl, bh, radial=True):
+    """Where a voxel sits among ashlar's blocks: how far along its block (m) and up its course
+    (m), and the block and course it is in (the same layout as ashlar())."""
+    if radial:
+        r = np.sqrt(x * x + z * z)
+        s = np.arctan2(x, z) * r
+    else:
+        s = x + z
+    row = np.floor(y / bh)
+    sh = s + np.mod(row, 2) * bl * 0.5
+    b = np.floor(sh / bl)
+    return sh - b * bl, y - row * bh, b, row
+
+
+def chip(s, region, bl, bh, seed, p_corner=0.45, p_edge=0.05, radial=True):
+    """Knocks chips out of dressed stone (only its look: the arena's walls are their own boxes):
+    the voxel where four blocks meet often, one along a joint now and then. (Worked out for the
+    voxels of `region` alone: over the whole grid it would take gigabytes.)"""
+    idx = np.nonzero(region & (s.c != 0))
+    if len(idx[0]) == 0:
+        return
+    vs = s.vs
+    x = s.lo[0] + (idx[0] + 0.5) * vs
+    y = s.lo[1] + (idx[1] + 0.5) * vs
+    z = s.lo[2] + (idx[2] + 0.5) * vs
+    within, jy, b, row = ashlar_joints(x, y, z, bl, bh, radial)
+    h = hash3(idx[0], idx[1], idx[2], seed)
+    corner = (within < vs * 0.99) & (jy < vs * 0.99) & (h < p_corner)
+    edge = ((within < vs * 0.99) | (jy < vs * 0.99)) & (h < p_edge)
+    hit = corner | edge
+    s.c[idx[0][hit], idx[1][hit], idx[2][hit]] = 0
 
 
 PER_VOX = [True]   # off for the bowl: the shader's grain is enough there, and quads merge
@@ -102,24 +146,85 @@ def plain(mat, base, var=0.04, big=0.05, seed=2):
     return f
 
 
-def planks(mat, base, along=1, width=0.15, var=0.12, seed=4, vs=0.05):
+def planks(mat, base, along=1, width=0.15, var=0.12, seed=4, vs=0.05, post=None):
     """Boards running along axis `along`, `width` wide across the other horizontal axis, each
-    its own shade, with darker grain streaks and a dark seam between boards."""
+    its own shade, with the grain in it (lanes of darker and paler wood wandering a voxel this way
+    and that along the board), a knot now and then, greyer where the weather got at it, and a dark
+    seam between boards. `post(c, x, y, z)` may stain the colours after (rust run down from iron)."""
     def f(ix, iy, iz, x, y, z):
         idx = (ix, iy, iz)
         pos = (x, y, z)
         across = pos[2] if along != 2 else pos[0]
         if along == 2:
             across = pos[0] + pos[1] * 0.0
+        al = pos[along]
         b = np.floor(across / width)
-        n_b = hash3(b.astype(np.int64), 0, 0, seed)
+        bi = b.astype(np.int64)
+        n_b = hash3(bi, 0, 0, seed)
         lane = idx[2] if along != 2 else idx[0]
-        grain = hash3(lane, 0, b.astype(np.int64), seed + 1)
-        streak = (grain < 0.25).astype(np.float32)
-        c = tint(base, var, n_b) * (1 - 0.12 * streak)[:, None] * tint((1, 1, 1), 0.03, hash3(*idx, seed + 2))
-        seam = (across - b * width) < vs * 0.99
-        c[seam] *= 0.7
+        wander = np.floor(vnoise(al, 0 * al, b * 3.1, 0.35, seed + 3) * 2.0).astype(np.int64)
+        g = hash3(lane + wander, 0, bi, seed + 1)
+        shade = 1.0 - 0.14 * (g < 0.28) + 0.06 * (g > 0.86)
+        c = tint(base, var, n_b) * shade[:, None] * tint((1, 1, 1), 0.03, hash3(*idx, seed + 2))
+        # Knots: a dark heart and a ring round it, one in a stretch of board now and then.
+        kw = min(width, 0.3)
+        kb = np.floor(across / kw)
+        cell = np.floor(al / 0.6).astype(np.int64)
+        kbi = kb.astype(np.int64)
+        kx = (cell + 0.2 + 0.6 * hash3(cell, kbi, 0, seed + 5)) * 0.6
+        ky = (kb + 0.3 + 0.4 * hash3(cell, kbi, 1, seed + 5)) * kw
+        kd = np.sqrt((al - kx) ** 2 + ((across - ky) * 1.6) ** 2)
+        knot = hash3(cell, kbi, 2, seed + 5) < 0.35
+        c[knot & (kd < 0.035)] *= 0.55
+        c[knot & (kd >= 0.035) & (kd < 0.075)] *= 0.82
+        # Weathered: greyer in patches.
+        w = np.clip((vnoise(x, y, z, 0.45, seed + 6) - 0.55) * 2.5, 0.0, 0.35)
+        lum = (c @ np.array([0.3, 0.55, 0.15], np.float32))[:, None]
+        c = c * (1 - w[:, None]) + lum * np.array([[0.95, 0.93, 0.9]], np.float32) * w[:, None]
+        if vs > 0:
+            seam = (across - b * width) < vs * 0.99
+            c[seam] *= 0.7
+        if post is not None:
+            c = post(c, x, y, z)
         return pack(mat, c)
+    return f
+
+
+def grain(mat, base, along=1, var=0.06, seed=5):
+    """Wood in one piece (a post, a shaft, a beam): the grain along it, knots, no seams."""
+    return planks(mat, base, along=along, width=100.0, var=var, seed=seed, vs=0.0)
+
+
+RUST = (0.44, 0.21, 0.1)
+VERDIGRIS = (0.29, 0.40, 0.33)
+
+
+def rusty(base, seed=0, amount=0.42, scale=0.12):
+    """Iron gone to rust in patches (a rough, dull orange-brown: its own material), dark pits in
+    the bare metal, the bare metal itself a little uneven."""
+    def f(ix, iy, iz, x, y, z):
+        h = hash3(ix, iy, iz, seed)
+        c = tint(base, 0.05, h) * tint((1, 1, 1), 0.1, vnoise(x, y, z, 0.5, seed + 1))
+        n = vnoise(x, y, z, scale, seed + 2) * 0.8 + 0.2 * hash3(ix, iy, iz, seed + 3)
+        r = n > 1.0 - amount
+        rc = tint(RUST, 0.18, hash3(ix, iy, iz, seed + 4)) * tint((1, 1, 1), 0.12, vnoise(x, y, z, 0.05, seed + 5))
+        c[(h < 0.06) & ~r] *= 0.55
+        out = pack("iron", c)
+        out[r] = pack("rust", rc[r])
+        return out
+    return f
+
+
+def patina(base, seed=0, amount=0.3, scale=0.1):
+    """Bronze gone green in patches, most of all low down where the wet lies."""
+    def f(ix, iy, iz, x, y, z):
+        c = tint(base, 0.05, hash3(ix, iy, iz, seed)) * tint((1, 1, 1), 0.12, vnoise(x, y, z, 0.3, seed + 1))
+        n = vnoise(x, y, z, scale, seed + 2) * 0.88 + 0.12 * hash3(ix, iy, iz, seed + 3) + 0.3 * np.clip(0.45 - y, 0.0, 0.45)
+        g = n > 1.0 - amount
+        gc = tint(VERDIGRIS, 0.15, hash3(ix, iy, iz, seed + 4))
+        out = pack("bronze", c)
+        out[g] = pack("rust", gc[g])
+        return out
     return f
 
 
@@ -144,6 +249,120 @@ def text_cells(text):
     return out, len(text) * 4 - 1
 
 
+# ====================================================================== the frescoes
+
+# Pictures on the podium's panels (9 voxels high, 10 cm each), top row first: k a dark umber
+# line, s the pale grey of a blade, o ochre, w white, g laurel green, y gold, r the dark red of the
+# ground's shade. Painted as the Romans did, flat colour on red.
+MOTIFS = {
+    "gladiators": [
+        "...o.........o...",
+        "..ooo.......ooo..",
+        "..wws.......sww..",
+        "y.wwws.....swwwyy",
+        "yykwwws...swwwkyy",
+        "yy.ww..s.s..ww.yy",
+        "...ww...s...ww...",
+        "..w..w.....w..w..",
+        ".w....w...w....w.",
+    ],
+    "lion": [
+        "...........",
+        "...........",
+        "......ooo..",
+        ".....ooooo.",
+        "o..ooooooko",
+        ".oooooooooo",
+        "..oo.oo.oo.",
+        "..o..o..o..",
+        "...........",
+    ],
+    "wreath": [
+        "...ggggg...",
+        "..g.....g..",
+        ".g.......g.",
+        "g....y....g",
+        "g...yyy...g",
+        "g....y....g",
+        ".g.......g.",
+        "..g.....g..",
+        "...yy.yy...",
+    ],
+    "shield": [
+        "s.......s",
+        ".s.ooo.s.",
+        "..soooso.",
+        ".oookooo.",
+        ".ooyyyoo.",
+        ".oookooo.",
+        "..soooso.",
+        ".s.ooo.s.",
+        "s.......s",
+    ],
+    "palm": [
+        ".g.g.g.",
+        "g.ggg.g",
+        "..ggg..",
+        "g.ggg.g",
+        "...o...",
+        "...o...",
+        "...o...",
+        "...o...",
+        "..ooo..",
+    ],
+}
+FRESCO_COL = {"k": (0.22, 0.09, 0.06), "s": (0.68, 0.66, 0.60), "o": (0.82, 0.60, 0.24), "w": (0.88, 0.82, 0.68),
+              "g": (0.30, 0.42, 0.22), "y": (0.95, 0.74, 0.30), "r": (0.40, 0.10, 0.07)}
+FRESCO_ORDER = ["gladiators", "lion", "wreath", "shield", "palm", "lion", "gladiators", "wreath"]
+
+
+def fresco(ix, iy, iz, x, y, z):
+    """A painted panel of the podium (between two pilasters, 15 degrees of the wall): Pompeian
+    red with a darker band at its foot and a deep red one under its gilt top; where no banner
+    hangs, a picture in the middle (gladiators, a lion, a wreath, a shield on crossed swords, a
+    palm); and the wear of years in the arena: the plaster flaking off in patches, cracks, old
+    blood splashed up from the sand, the scratches of blades."""
+    th = np.arctan2(x, z)
+    step = math.radians(15)
+    k = np.floor(th / step).astype(np.int64)
+    u = np.floor((th - k * step) * 15.0 / 0.1).astype(np.int64)    # 0..38 across the panel
+    v = np.round((y - 0.6) / 0.1 - 0.5).astype(np.int64)             # 0 (foot) .. 8 (top)
+    n = len(x)
+    c = tint(RED, 0.04, hash3(ix, iy, iz, 300)) * tint((1, 1, 1), 0.06, vnoise(th * 15.0, y, 0, 0.6, 301))
+    c[v <= 0] *= 0.62                       # the band at the foot, darker
+    c[v >= 8] *= 0.5                        # the deep red band under the gilt
+    # The picture, on the panels without a banner in the middle (odd ones), centred.
+    odd = np.mod(k, 2) == 1
+    width = 39
+    painted = np.zeros(n, bool)
+    for idx, name in enumerate(MOTIFS):
+        pat = MOTIFS[name]
+        h, w = len(pat), len(pat[0])
+        which = np.array([FRESCO_ORDER[((i + 12) // 2) % len(FRESCO_ORDER)] == name for i in range(-12, 12)])
+        sel = odd & which[np.clip(k + 12, 0, 23)]
+        pu = u - (width - w) // 2
+        pv = (h - 1) - v
+        inside = sel & (pu >= 0) & (pu < w) & (pv >= 0) & (pv < h)
+        for i in np.nonzero(inside)[0]:
+            ch = pat[pv[i]][pu[i]]
+            if ch in FRESCO_COL:
+                c[i] = FRESCO_COL[ch]
+                painted[i] = True
+    # Wear: plaster flaked off (the pale lime under it), cracks, old blood, blade scratches.
+    flake = vnoise(th * 15.0 / 0.35, y / 0.3, 7.0, 1.0, 302)
+    off = (flake > np.where(painted, 0.88, 0.8)) & (v > 0)
+    c[off] = np.array([0.80, 0.73, 0.60]) * (0.95 + 0.1 * hash3(ix[off], iy[off], 0, 303))[:, None]
+    crack_line = np.abs(v - (3 + np.round(2.5 * np.sin(u * 0.45 + k * 1.7)))) < 0.5
+    crack = crack_line & (hash3(k, 0, 0, 304) < 0.5) & (u > 4 + np.mod(k * 7, 11)) & (u < 18 + np.mod(k * 5, 13))
+    c[crack] = np.array([0.22, 0.07, 0.05])
+    blood = (vnoise(th * 15.0 / 0.25, y / 0.2, 3.0, 1.0, 305) > 0.66) & (v <= 3) & (hash3(k, 1, 0, 306) < 0.6)
+    drip = (np.mod(u * 7 + k * 3, 11) == 0) & (v <= 4) & (hash3(k, u, 0, 307) < 0.35)
+    c[blood | drip] = c[blood | drip] * 0.35 + np.array([0.24, 0.04, 0.03]) * 0.65
+    scr = (np.mod(u - v, 9) == 0) & (hash3(k, np.floor(u / 9).astype(np.int64), 0, 308) < 0.3) & (v >= 2) & (v <= 6)
+    c[scr] = c[scr] * 0.6 + np.array([0.85, 0.72, 0.62]) * 0.4
+    return pack("plaster", c)
+
+
 # ====================================================================== the bowl
 
 def build_arena():
@@ -164,9 +383,11 @@ def build_arena():
         r0 = rr - TIER_DR / 2 if t else 15.75
         r1 = rr + TIER_DR / 2 if t < TIERS - 1 else 24.7
         top = TIER_Y0 + t * TIER_DY
-        s.put(band(r0, r1) & (Y < top - vs), ashlar("stone", TRAV_DARK, 1.0, 0.35, seed=10 + t))
+        s.put(band(r0, r1) & (Y < top - vs), ashlar("stone", TRAV_DARK, 1.0, 0.35, 0.1, seed=10 + t, streak=0.7))
         # The seat: a lighter slab with its own joints, a worn front edge.
-        s.put(band(r0, r1) & (Y >= top - vs) & (Y < top), ashlar("stone", (0.86, 0.80, 0.68), 0.9, 1.0, 0.05, seed=20 + t, mortar=0.9))
+        s.put(band(r0, r1) & (Y >= top - vs) & (Y < top), ashlar("stone", (0.86, 0.80, 0.68), 0.9, 1.0, 0.07, seed=20 + t, mortar=0.9))
+        lip = band(r0, r0 + vs) & (Y >= top - vs) & (Y < top)
+        s.carve(lip & (hash3(np.floor(th * r0 / vs).astype(np.int64), t, 0, 210 + t) < 0.14))
     # -- twelve aisles of stairs (half steps), clear of the gates and the Emperor's box.
     aisle = np.abs(dang(th, math.radians(30), math.radians(15))) * r < 0.45
     for t in range(TIERS):
@@ -182,8 +403,9 @@ def build_arena():
 
     # -- the podium wall round the sand.
     wall = band(15.0, 15.8) & (Y < 2.0)
-    s.put(wall, ashlar("stone", TRAVERTINE, 0.6, 0.3, seed=1, dirt=0.55))
-    s.put(band(14.9, 15.0) & (Y < 0.3), ashlar("stone", (0.62, 0.56, 0.47), 0.8, 0.3, seed=2, dirt=0.4))
+    s.put(wall, ashlar("stone", TRAVERTINE, 0.6, 0.3, 0.1, seed=1, dirt=0.55, streak=1.0, damp=0.6))
+    s.put(band(14.9, 15.0) & (Y < 0.3), ashlar("stone", (0.62, 0.56, 0.47), 0.8, 0.3, 0.1, seed=2, dirt=0.4, damp=0.8))
+    chip(s, band(14.9, 15.0) & (Y < 0.3), 0.8, 0.3, 201, 0.5, 0.06)
     s.put(band(14.9, 15.9) & (Y >= 1.8) & (Y < 2.0), ashlar("marble", MARBLE, 1.2, 0.2, 0.04, seed=3, mortar=0.9))
     arc = th * 15.0
     pil_d = np.abs(dang(th, math.radians(15))) * 15.0
@@ -193,7 +415,7 @@ def build_arena():
     # Painted panels between the pilasters, gold-edged; on every other one a hanging banner.
     panel = band(15.0, 15.1) & (Y >= 0.5) & (Y < 1.6) & (pil_d > 0.35)
     edge = (Y < 0.6) | (Y >= 1.5) | (pil_d < 0.45)
-    s.put(panel & ~edge, plain("plaster", RED, 0.03, 0.08, seed=5))
+    s.put(panel & ~edge, fresco)
     s.put(panel & edge, plain("gold", GOLD, 0.03, 0.03, seed=6))
     pc = dang(th, math.radians(30), math.radians(7.5)) * 15.0      # from the banner's middle
     ban_idx = np.floor((th - math.radians(7.5) + math.radians(15)) / math.radians(30)).astype(int)
@@ -219,7 +441,8 @@ def build_arena():
         av = np.abs(v)
         block = side & (u >= 14.8) & (u < 16.8) & (av < 2.4) & (Y < 3.8)
         s.carve(side & (u >= 14.8) & (u < 16.8) & (av < 2.5) & (Y >= 2.0))
-        s.put(block, ashlar("stone", TRAVERTINE, 0.6, 0.3, seed=40, dirt=0.5))
+        s.put(block, ashlar("stone", TRAVERTINE, 0.6, 0.3, 0.1, seed=40, dirt=0.5, streak=1.0, damp=0.6))
+        chip(s, block & (u < 14.9), 0.6, 0.3, 220 + (1 if gx > 0 else 0), 0.4, 0.05)
         s.put(side & (u >= 14.6) & (u < 16.9) & (av < 2.5) & (Y >= 3.8) & (Y < 4.0), ashlar("marble", MARBLE, 1.2, 0.2, 0.04, seed=41, mortar=0.9))
         s.put(side & (u >= 14.7) & (u < 14.8) & (av >= 2.0) & (av < 2.4) & (Y < 3.8), ashlar("marble", MARBLE, 2.0, 0.6, 0.04, seed=42, dirt=0.3, mortar=0.92))
         # The tunnel, sooty deeper in.
@@ -287,7 +510,7 @@ def build_arena():
     archband = band(23.85, 24.35) & (Y >= 8.6) & (Y < 9.6)
     dm = dang(th, 2 * math.pi / COLS, math.pi / COLS) * TOP_R
     hole = dm ** 2 + (Y - 7.75) ** 2 < 1.32 ** 2
-    s.put(archband & ~hole, ashlar("marble", (0.88, 0.85, 0.78), 0.5, 0.25, 0.05, seed=61, mortar=0.88))
+    s.put(archband & ~hole, ashlar("marble", (0.88, 0.85, 0.78), 0.5, 0.25, 0.06, seed=61, mortar=0.88, streak=0.6))
     s.put(band(23.7, 24.5) & (Y >= 9.6) & (Y < 9.9), ashlar("marble", MARBLE, 1.4, 0.3, 0.04, seed=62, mortar=0.9))
     s.put(band(23.6, 24.6) & (Y >= 9.9) & (Y < 10.0), pack("marble", MARBLE))
     s.put(band(23.65, 24.55) & (Y >= 9.6) & (Y < 9.7), pack("plaster", RED))
@@ -317,7 +540,7 @@ def prop(name, lo, hi, build, vs=0.05):
 
 def brazier(s):
     """A bronze tripod brazier, 1.55 m to the rim, full of glowing coals."""
-    br = plain("bronze", BRONZE, 0.05, 0.12, seed=70)
+    br = patina(BRONZE, seed=70, amount=0.17)
     for k in range(3):
         a = k * 2 * math.pi / 3
         foot = (math.sin(a) * 0.34, 0.05, math.cos(a) * 0.34)
@@ -344,14 +567,23 @@ def brazier(s):
 
 def gate_door(s):
     """A gate leaf, hinged at z = 0, 2.6 m wide and 2.4 m tall: oak boards, iron straps and studs."""
-    s.box((-0.12, 0, 0), (0.12, 2.4, 2.6), planks("wood", WOOD, along=1, width=0.433, seed=80))
+    def stain(c, x, y, z):
+        # Rust run down the boards from under each strap's studs, fading as it goes.
+        col = np.abs(np.mod(z - 0.216, 0.433) - 0.216) > 0.17
+        for by in (0.45, 1.75):
+            d = by - y
+            run = col & (d > 0) & (d < 0.5) & (hash3(np.floor(z / 0.05).astype(np.int64), int(by * 10), 0, 84) > 0.25)
+            k = (0.55 * (1.0 - d / 0.5))[:, None] * run[:, None]
+            c = c * (1 - k) + np.array([[0.36, 0.17, 0.08]], np.float32) * k
+        return c
+    s.box((-0.12, 0, 0), (0.12, 2.4, 2.6), planks("wood", WOOD, along=1, width=0.433, seed=80, post=stain))
     x, y, z = s.grids()
     for by in (0.45, 1.75):
         strap = (y >= by) & (y < by + 0.2) & (z >= 0.05) & (z < 2.55) & (np.abs(x) < 0.17)
-        s.put(strap, plain("iron", IRON, 0.05, 0.15, seed=81))
+        s.put(strap, rusty(IRON, seed=81))
         stud = (np.abs(x) < 0.22) & (np.abs(y - by - 0.1) < 0.05) & (np.abs(np.mod(z - 0.216, 0.433) - 0.216) > 0.17)
         s.put(stud & (z > 0.1) & (z < 2.5), pack("iron", (0.30, 0.29, 0.27)))
-    s.box((-0.17, 0, 0), (0.17, 2.4, 0.08), plain("iron", IRON, 0.05, 0.1, seed=82))
+    s.box((-0.17, 0, 0), (0.17, 2.4, 0.08), rusty(IRON, seed=82, amount=0.35))
     ring = s.cyl_mask((0, 1.1, 2.2), 0.13, -0.27, 0.27, axis=0, r_in=0.08) & (np.abs(x) > 0.15)
     s.put(ring, pack("iron", (0.3, 0.28, 0.26)))
     s.put((np.abs(x) < 0.16) & (np.abs(y - 1.23) < 0.04) & (np.abs(z - 2.2) < 0.04), pack("iron", IRON))
@@ -415,7 +647,16 @@ def crate(s):
     boards = (np.maximum(np.abs(x), np.abs(z)) < 0.27) & (y > 0.03) & (y < 0.57)
     def board(ix, iy, iz, xx, yy, zz):
         b = np.floor(yy / 0.1)
-        c = tint((0.66, 0.5, 0.31), 0.12, hash3(b.astype(np.int64), np.floor((xx + zz) * 3).astype(np.int64), 0, 110))
+        bi = b.astype(np.int64)
+        c = tint((0.66, 0.5, 0.31), 0.12, hash3(bi, np.floor((xx + zz) * 3).astype(np.int64), 0, 110))
+        # The grain along the board, and a knot here and there.
+        along = xx + zz
+        g = hash3(iy, np.floor(vnoise(along, 0 * along, b, 0.3, 113) * 2).astype(np.int64), bi, 114)
+        c *= (1.0 - 0.13 * (g < 0.3) + 0.06 * (g > 0.85))[:, None]
+        cell = np.floor(along / 0.25).astype(np.int64)
+        kx = (cell + 0.3 + 0.4 * hash3(cell, bi, 0, 115)) * 0.25
+        knot = (hash3(cell, bi, 1, 115) < 0.3) & (np.abs(along - kx) < 0.03)
+        c[knot] *= 0.6
         c[(yy - b * 0.1) < 0.049] *= 0.72
         return pack("wood", c)
     s.put(boards, board)
@@ -423,6 +664,10 @@ def crate(s):
     s.put(frame, plain("wood", WOOD_DARK, 0.06, 0.1, seed=111))
     brace = (np.abs((y - 0.3) - np.where(np.abs(x) > 0.28, z, x) * 0.9) < 0.04) & (np.maximum(np.abs(x), np.abs(z)) > 0.27) & (np.maximum(np.abs(x), np.abs(z)) < 0.31) & (y > 0.05) & (y < 0.55)
     s.put(brace, plain("wood", WOOD_DARK, 0.06, 0.1, seed=112))
+    corner = frame & (np.abs(x) > 0.25) & (np.abs(z) > 0.25) & ((y < 0.17) | (y > 0.43))
+    s.recolor(corner, rusty(IRON, seed=116, amount=0.5))
+    rivet = corner & ((np.abs(y - 0.1) < 0.025) | (np.abs(y - 0.5) < 0.025)) & (np.maximum(np.abs(x), np.abs(z)) > 0.29)
+    s.recolor(rivet, pack("iron", (0.36, 0.34, 0.31)))
 
 
 def weapon_rack(s):
@@ -434,7 +679,7 @@ def weapon_rack(s):
     s.box((-1.0, 0.25, -0.15), (1.0, 0.35, 0.15), wd)
     for k in range(7):
         xx = -0.725 + k * 0.25
-        s.seg((xx, 0.3, 0.025), (xx, 1.75, -0.025), 0.04, plain("wood", (0.6, 0.45, 0.28), seed=121))
+        s.seg((xx, 0.3, 0.025), (xx, 1.75, -0.025), 0.04, grain("wood", (0.6, 0.45, 0.28), seed=121 + k))
         s.seg((xx, 1.75, -0.025), (xx, 1.98, -0.03), 0.05, pack("iron", (0.45, 0.44, 0.42)))
     for sx, colr in ((-0.45, RED), (0.45, (0.18, 0.28, 0.5))):
         m = s.cyl_mask((sx, 0.55, 0.22), 0.36, 0.15, 0.22, axis=2)
@@ -457,9 +702,9 @@ def throne(s):
 
 def sign_post(s):
     """A post with a little plank board on top (2.2 m); the game puts the label above it."""
-    s.box((-0.05, 0, -0.05), (0.05, 2.2, 0.05), plain("wood", WOOD_DARK, seed=140))
+    s.box((-0.05, 0, -0.05), (0.05, 2.2, 0.05), grain("wood", WOOD_DARK, seed=140))
     s.box((-0.5, 1.75, -0.05), (0.5, 2.05, 0.05), planks("wood", (0.62, 0.46, 0.28), along=0, width=0.1, seed=141))
-    s.box((-0.05, 1.75, -0.1), (0.05, 2.05, -0.05), pack("iron", IRON))
+    s.box((-0.05, 1.75, -0.1), (0.05, 2.05, -0.05), rusty(IRON, seed=142, amount=0.5))
 
 
 def target(s):
@@ -475,7 +720,7 @@ def target(s):
     s.put(s.cyl_mask((0, 0, 0), 0.5, -0.06, 0.06, axis=2), face)
     s.put(s.cyl_mask((0, 0, 0), 0.52, -0.04, 0.06, axis=2, r_in=0.48), pack("wood", WOOD_DARK))
     for sx in (-1, 1):
-        s.seg((sx * 0.3, -0.35, 0.08), (sx * 0.4, -1.5, 0.35), 0.035, plain("wood", WOOD, seed=153))
+        s.seg((sx * 0.3, -0.35, 0.08), (sx * 0.4, -1.5, 0.35), 0.035, grain("wood", WOOD, seed=153))
     s.seg((-0.4, -1.1, 0.25), (0.4, -1.1, 0.25), 0.03, plain("wood", WOOD, seed=154))
 
 
@@ -498,8 +743,8 @@ def smithy(s):
     hood = (y >= 1.75) & (y < 2.5) & (np.abs(x + 0.8) < 0.65 - (y - 1.75) * 0.6) & (z > -0.6) & (z < 0.3 - (y - 1.75) * 0.6)
     s.put(hood, brick)
     s.box((-1.0, 2.5, -0.55), (-0.6, 3.0, -0.15), brick)
-    s.box((-1.42, 0.8, -0.62), (-1.32, 1.6, -0.52), plain("wood", WOOD_DARK, seed=163))
-    s.box((-0.28, 0.8, -0.62), (-0.18, 1.6, -0.52), plain("wood", WOOD_DARK, seed=164))
+    s.box((-1.42, 0.8, -0.62), (-1.32, 1.6, -0.52), grain("wood", WOOD_DARK, seed=163))
+    s.box((-0.28, 0.8, -0.62), (-0.18, 1.6, -0.52), grain("wood", WOOD_DARK, seed=164))
     # The anvil on its stump.
     s.cyl((0.5, 0, 0.3), 0.28, 0, 0.55, planks("wood", WOOD_DARK, along=1, width=0.07, seed=165))
     ir = plain("iron", (0.2, 0.2, 0.21), 0.04, 0.08, seed=166)
@@ -511,14 +756,14 @@ def smithy(s):
     s.box((0.26, 0.9, 0.22), (0.34, 0.98, 0.32), ir)
     # A quench barrel.
     s.cyl((1.15, 0, -0.3), 0.27, 0, 0.7, planks("wood", WOOD, along=1, width=0.08, seed=168))
-    s.cyl((1.15, 0, -0.3), 0.28, 0.12, 0.17, pack("iron", IRON))
-    s.cyl((1.15, 0, -0.3), 0.28, 0.55, 0.6, pack("iron", IRON))
+    s.cyl((1.15, 0, -0.3), 0.28, 0.12, 0.17, rusty(IRON, seed=169))
+    s.cyl((1.15, 0, -0.3), 0.28, 0.55, 0.6, rusty(IRON, seed=170))
     s.cyl((1.15, 0, -0.3), 0.22, 0.6, 0.7, pack("glow", (0.12, 0.2, 0.22)))
 
 
 def market_stall(s):
     """A market stall 2.4 m wide: posts, a striped awning, a counter of bread, fruit and jars."""
-    wd = plain("wood", WOOD, 0.06, 0.1, seed=170)
+    wd = grain("wood", WOOD, seed=170)
     for sx in (-1.15, 1.05):
         for sz in (-0.55, 0.45):
             s.box((sx, 0, sz), (sx + 0.1, 2.2 if sz < 0 else 1.9, sz + 0.1), wd)
@@ -549,7 +794,7 @@ def market_stall(s):
 
 def notice_board(s):
     """The mission board: a framed plank board on two posts, notices pinned to it."""
-    wd = plain("wood", WOOD_DARK, 0.06, 0.1, seed=180)
+    wd = grain("wood", WOOD_DARK, seed=180)
     s.box((-0.85, 0, -0.06), (-0.75, 2.1, 0.06), wd)
     s.box((0.75, 0, -0.06), (0.85, 2.1, 0.06), wd)
     s.box((-0.85, 0.85, -0.04), (0.85, 1.95, 0.04), planks("wood", WOOD, along=0, width=0.11, seed=181))
@@ -568,7 +813,7 @@ def physician(s):
     s.box((-0.9, 0.75, -0.35), (0.9, 0.82, 0.35), wd)
     for sx in (-0.82, 0.74):
         for sz in (-0.3, 0.22):
-            s.box((sx, 0, sz), (sx + 0.08, 0.75, sz + 0.08), plain("wood", WOOD_DARK, seed=191))
+            s.box((sx, 0, sz), (sx + 0.08, 0.75, sz + 0.08), grain("wood", WOOD_DARK, seed=191))
     s.box((-0.85, 0.82, -0.3), (0.2, 0.84, 0.3), plain("cloth", CREAM, 0.04, 0.1, seed=192))
     for k, (xx, h) in enumerate([(-0.6, 0.22), (-0.42, 0.16), (-0.25, 0.26), (0.45, 0.18), (0.62, 0.24)]):
         s.cyl((xx, 0, -0.12 + 0.08 * (k % 2)), 0.06 + 0.02 * (k % 2), 0.84, 0.84 + h, pack("terracotta" if k % 2 else "glow", TERRA if k % 2 else (0.35, 0.55, 0.45)))
@@ -695,13 +940,13 @@ def ludus_gate(s):
     s.put(opening & (np.abs(x) >= hw - 0.1) & (z > -0.5) & (z < 0.45), pack("stone", (0.25, 0.21, 0.17)))
     # The portcullis raised into the arch: an iron grid, its spiked foot over the way.
     bars = opening & (y > 2.75) & (z > -0.05) & (z < 0.05) & ((np.abs(np.mod(x + hw, 0.3) - 0.15) < 0.04) | (np.abs(np.mod(y, 0.3) - 0.15) < 0.035))
-    s.put(bars, plain("iron", IRON, 0.05, 0.12, seed=303))
+    s.put(bars, rusty(IRON, seed=303, amount=0.38))
     s.put(opening & (y > 2.7) & (y < 2.8) & (np.abs(np.mod(x + hw, 0.3) - 0.15) < 0.04) & (np.abs(z) < 0.05), pack("iron", (0.3, 0.29, 0.27)))
     # The oak leaves swung back against the tunnel walls.
     for sx in (-1, 1):
         leaf = (np.abs(x - sx * (hw - 0.17)) < 0.06) & (y < spring - 0.1) & (z > -0.3) & (z < 0.35)
         s.put(leaf, planks("wood", WOOD, along=1, width=0.2, seed=304 + (sx > 0)))
-        s.put(leaf & ((np.abs(y - 0.5) < 0.08) | (np.abs(y - 1.9) < 0.08)), plain("iron", IRON, 0.05, 0.12, seed=306))
+        s.put(leaf & ((np.abs(y - 0.5) < 0.08) | (np.abs(y - 1.9) < 0.08)), rusty(IRON, seed=306))
     # A worn step at the threshold, and wear on the stone.
     s.put((np.abs(x) < hw + 0.1) & (y < 0.08) & (z > -0.5) & (z < 0.75), pack("stone", (0.62, 0.56, 0.46)))
     chip = (hash3(np.floor(x / 0.05).astype(np.int64), np.floor(y / 0.05).astype(np.int64), np.floor(z / 0.05).astype(np.int64), 307) < 0.05) & body & ~opening & (z > 0.4) & (np.abs(x) > 1.75)

@@ -406,6 +406,8 @@ func footprint(kind: String, p: Vector3, yaw: float, scale: float, length := 0.0
 			d.size = Vector3(0.075, 0.16, 0.075) * scale
 		"drag":
 			d.size = Vector3(0.22 * scale, 0.2, maxf(0.2, length))
+		"body":
+			d.size = Vector3(0.5, 0.3, 0.85) * scale
 		_:
 			d.size = Vector3(0.11, 0.16, 0.28) * scale
 	d.upper_fade = 0.3
@@ -456,6 +458,10 @@ static func print_texture(kind: String) -> Texture2D:
 					dv = clampf(dv * 2.2, 0.0, 1.0)
 				"peg":
 					dv = clampf((1.0 - Vector2(x, y).length()) * 3.0, 0.0, 1.0)
+				"body":
+					# A long shallow hollow, lumpier at its edges (shoulders, hips).
+					var r := Vector2(x / 0.92, y / 0.95).length()
+					dv = clampf((1.0 - r) * 2.4, 0.0, 1.0) * (0.75 + 0.25 * cos(y * 7.0) * cos(x * 3.0))
 				"drag":
 					# Two or three furrows along it, softer at both ends.
 					var along := 1.0 - absf(y)
@@ -480,6 +486,12 @@ static func print_texture(kind: String) -> Texture2D:
 
 ## A pool that spreads under a body (a dying man): the mark grows to `size` over `seconds`.
 func pool(p: Vector3, size: float, seconds := 6.0) -> void:
+	# (Its turn from where it lies, not from the dice: the fight's own dice are left alone.)
+	var wet := mark("soak", p, size * 0.4, fposmod(p.x * 12.9898 + p.z * 78.233, TAU))
+	if wet:
+		wet.modulate = Color(0.26, 0.17, 0.1, 0.42)
+		var tw0 := create_tween()
+		tw0.tween_property(wet, "size", Vector3(size * 1.45, 0.6, size * 1.45), seconds * 1.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 	var d := mark("blood", p, size * 0.3)
 	if d == null:
 		return
