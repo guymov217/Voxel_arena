@@ -172,7 +172,9 @@ func test_a_giant_stoops_to_pick_up_a_man_on_the_sand() -> void:
 	seed(5)
 	var m := _match()
 	m.me.f.state = "dead"
-	var victim := _man(m, Vector3(0, 0, 1.6), PI, {}, "Victim", 0, func(_e): return {}, {"toughness": 6.0})
+	# The man far off at first, to take the giant's height standing (a bare-handed giant stoops
+	# to bring his fists down on a man in reach, so with the man before him he stood stooped).
+	var victim := _man(m, Vector3(0, 0, 14.0), PI, {}, "Victim", 0, func(_e): return {}, {"toughness": 6.0})
 	var giant = m.spawn_fighter({"kind": "bot", "name": "Giant", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "mods": {"bodyScale": 2.0, "strength": 2.0}, "diff": 0.9})
 	var v: Fighter = victim.f
 	var g: Fighter = giant.f
@@ -180,6 +182,7 @@ func test_a_giant_stoops_to_pick_up_a_man_on_the_sand() -> void:
 	m.feed.connect(func(s): moves.append(s))
 	await _steps(60)
 	var stand_y: float = g.torso.global_position.y
+	v.teleport(g.torso.global_position * Vector3(1, 0, 1) + Vector3(0, 0, 1.6))
 	v.fall(90.0, true)
 	var held_at := -1.0   # the giant's trunk when he took hold, and the man's
 	var man_at := -1.0
