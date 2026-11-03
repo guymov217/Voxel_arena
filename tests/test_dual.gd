@@ -45,7 +45,9 @@ func test_a_man_with_two_blades_strikes_with_both() -> void:
 			guard_frames += 1
 			if f.hand_input.L.get("y", 0.0) > 0.0:
 				left_up += 1
-		if by.R >= 2 and by.L >= 2:
+		# (Not before his guard between blows has been watched a while: with blows landing
+		# fast, two and two came in a second and left a frame or two of it to judge.)
+		if by.R >= 2 and by.L >= 2 and guard_frames > 60:
 			break
 	t.check(swung_left > 0, "he struck with the left")
 	t.check(by.L >= 1 and by.R >= 1, "and landed blows with both blades (%s)" % str(by))

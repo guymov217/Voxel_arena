@@ -353,6 +353,9 @@ func set_unarmed(r: bool, l: bool) -> void:
 ## A boxer's guard: both fists up before the chin, the lead (left) one a little higher and out.
 const GUARD_MAIN := {"x": 0.1, "y": 1.0}
 const GUARD_OFF := {"x": -0.2, "y": 1.05}
+## An empty hand beside a weapon (or a shield, or a pot readied) in the other: down at his side.
+const REST_MAIN := {"x": 0.1, "y": 0.15}
+const REST_OFF := {"x": -0.35, "y": 0.1}
 
 static func _ease_to(h: Dictionary, to: Dictionary, k: float) -> void:
 	h.x = lerpf(float(h.x), float(to.x), k)
@@ -362,12 +365,15 @@ static func _ease_to(h: Dictionary, to: Dictionary, k: float) -> void:
 func sample(dt: float) -> Dictionary:
 	_pad(dt)
 	# Empty-handed, a fist that is not being thrown goes back up into the guard (user: with no
-	# weapon he boxes, his hands in a boxer's guard); a weapon stays where it was last aimed.
+	# weapon he boxes, his hands in a boxer's guard); a weapon stays where it was last aimed. Only
+	# a man with both hands empty boxes: an empty hand beside a weapon in the other goes down to
+	# his side (user: with a sword in one hand the free one was held up in a boxer's guard).
 	var gk := minf(1.0, dt * 10.0)
+	var boxing := unarmed_r and unarmed_l
 	if unarmed_r and not (lmb or pad_r or (two_handed and (rmb or pad_l))):
-		_ease_to(main, GUARD_MAIN, gk)
+		_ease_to(main, GUARD_MAIN if boxing else REST_MAIN, gk)
 	if unarmed_l and not (rmb or pad_l) and not two_handed:
-		_ease_to(off, GUARD_OFF, gk)
+		_ease_to(off, GUARD_OFF if boxing else REST_OFF, gk)
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		lmb = false   # let go of the mouse with a button down: its release never reaches us
 		rmb = false

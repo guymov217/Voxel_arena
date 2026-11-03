@@ -78,6 +78,30 @@ func test_empty_hands_come_up_into_a_guard() -> void:
 	t.check(absf(float(pi.main.x) - 1.2) < 1e-6, "a weapon hand stays where it was aimed")
 	pi.queue_free()
 
+## Only a man with both hands empty boxes (user: with a sword in one hand the free one was held up
+## in a boxer's guard): the free hand beside a weapon goes down to his side, whichever hand holds
+## it, and once both are empty again both fists come up into the guard.
+func test_a_free_hand_beside_a_weapon_is_not_in_a_guard() -> void:
+	var pi := PlayerInput.new()
+	add_child(pi)
+	pi.set_unarmed(true, true)
+	for i in 60:
+		pi.sample(1.0 / 60.0)
+	pi.set_unarmed(false, true)   # a sword taken up in the right hand
+	for i in 60:
+		pi.sample(1.0 / 60.0)
+	t.check(float(pi.off.y) < 0.3, "a sword in the right hand: the left hangs at his side (%s)" % str(pi.off))
+	pi.set_unarmed(true, false)   # in the left (a shield, a blade)
+	pi.main = PlayerInput.GUARD_MAIN.duplicate()
+	for i in 60:
+		pi.sample(1.0 / 60.0)
+	t.check(float(pi.main.y) < 0.3, "something in the left hand: the right hangs at his side (%s)" % str(pi.main))
+	pi.set_unarmed(true, true)
+	for i in 60:
+		pi.sample(1.0 / 60.0)
+	t.check(absf(float(pi.main.y) - float(PlayerInput.GUARD_MAIN.y)) < 0.05 and absf(float(pi.off.y) - float(PlayerInput.GUARD_OFF.y)) < 0.05, "both hands empty again: both fists up in the guard (%s, %s)" % [str(pi.main), str(pi.off)])
+	pi.queue_free()
+
 ## A man swinging hard has breath for a fight's exchanges: a dozen hard strokes of a sword and he
 ## is still standing well (user: three swings and his breath was gone, and he waited to be killed).
 func test_hard_strokes_leave_him_his_breath() -> void:
