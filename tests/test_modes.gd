@@ -72,6 +72,30 @@ func test_best_of_three_pauses_for_the_loser_and_raises_the_stake() -> void:
 		t.eq(int(m.modes.bo3.stake), 60, "for double the stake")
 	m.queue_free()
 
+## Level on rounds, one each, and the man down yields: the duel goes to the other man, whichever
+## of the two it is who yields (sorted by the rounds alone, it went to whoever was first on the
+## list, the man who had just yielded as often as not).
+func test_best_of_three_level_goes_to_the_man_who_did_not_yield() -> void:
+	for who in ["the player", "his foe"]:
+		var m := _match("bo3")
+		var result := []
+		m.finished.connect(func(r): result.append(r))
+		var me = m.me
+		var foe = m.entities[1]
+		m.modes.bo3.wins = {me.id: 1, foe.id: 1}
+		m.modes.bo3.round = 2
+		m.modes.bo3.loser = me if who == "the player" else foe
+		m.modes._bo3_end()
+		for i in 30:
+			await get_tree().physics_frame
+			if not result.is_empty():
+				break
+		t.check(not result.is_empty(), "the duel is over")
+		if not result.is_empty():
+			t.eq(bool(result[0].won), who != "the player", "%s yields at one round each: the duel is the other man's" % who)
+		m.queue_free()
+		await get_tree().physics_frame
+
 func test_king_of_the_hill_counts_time_alone_in_the_circle() -> void:
 	var m := _match("hill")
 	var result := []

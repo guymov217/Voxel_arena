@@ -284,6 +284,30 @@ func test_the_dead_lie_where_they_fell_after_the_replay() -> void:
 		m.queue_free()
 		await get_tree().process_frame
 
+## A fight left in the middle of its replay (Esc to the menu, or the next fight begun): the
+## replay holds the game still and let go only at its end, so the game stayed frozen after it.
+func test_a_match_left_mid_replay_leaves_the_game_running() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "foe:recruit", "respawn": false, "difficulty": 0.3}, "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	var foe: Fighter = m.enemies()[0].f
+	foe.last_attacker = m.me.f
+	foe.die("wounds")
+	for i in 120 * 4:
+		await get_tree().physics_frame
+	t.check(m.killcam.has_clip(), "the kill is on tape")
+	m.killcam.play(func(): pass, true)
+	for i in 10:
+		await get_tree().process_frame
+	t.check(get_tree().paused and m.killcam.playing, "the replay holds the game still")
+	m.queue_free()
+	for i in 3:
+		await get_tree().process_frame
+	t.check(not get_tree().paused, "left in the middle of it, the game goes on")
+	get_tree().paused = false
+
 ## A pot thrown is on the tape, and kept after it shatters, hidden, for the replay to show it in
 ## flight (freed at once, it never was in the kill cam: user).
 func test_a_thrown_pot_is_on_the_tape() -> void:

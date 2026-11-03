@@ -23,7 +23,7 @@
 "scripts/ui/menu.gd:2769",
 "scripts/ui/menu.gd:3976",
 "scripts/ui/menu.gd:4155",
-"scripts/ui/menu.gd:4353",
+"scripts/ui/menu.gd:4355",
 "scripts/fighter/fighter.gd:64",
 "scripts/game/yard.gd:44",
 "scripts/game/modes.gd:73",
@@ -77,7 +77,7 @@
 "scripts/net/net.gd:560",
 "scripts/ui/weapon_view.gd:49",
 "scripts/ui/menu.gd:3452",
-"scripts/game/match.gd:1625"
+"scripts/game/match.gd:1642"
 ],
 "The host removed you from the room": [
 "scripts/net/net.gd:610"
@@ -222,14 +222,14 @@
 "Red": [
 "scripts/ui/armour_forge.gd:25",
 "scripts/game/modes.gd:284",
-"scripts/game/modes.gd:440",
-"scripts/game/modes.gd:514"
+"scripts/game/modes.gd:447",
+"scripts/game/modes.gd:521"
 ],
 "Blue": [
 "scripts/ui/armour_forge.gd:25",
 "scripts/game/modes.gd:284",
-"scripts/game/modes.gd:440",
-"scripts/game/modes.gd:514"
+"scripts/game/modes.gd:447",
+"scripts/game/modes.gd:521"
 ],
 "Gold": [
 "scripts/ui/armour_forge.gd:25",
@@ -1056,7 +1056,7 @@
 ],
 "WRECKSMITH": [
 "scripts/ui/menu.gd:405",
-"scripts/ui/menu.gd:4572"
+"scripts/ui/menu.gd:4574"
 ],
 "DEMO": [
 "scripts/ui/menu.gd:419"
@@ -1107,7 +1107,7 @@
 ],
 "Settings": [
 "scripts/ui/menu.gd:482",
-"scripts/ui/menu.gd:4680"
+"scripts/ui/menu.gd:4682"
 ],
 "Quit": [
 "scripts/ui/menu.gd:483"
@@ -1166,11 +1166,11 @@
 ],
 "Close the room (main menu)": [
 "scripts/ui/menu.gd:621",
-"scripts/ui/menu.gd:4692"
+"scripts/ui/menu.gd:4694"
 ],
 "Leave the room (main menu)": [
 "scripts/ui/menu.gd:621",
-"scripts/ui/menu.gd:4692"
+"scripts/ui/menu.gd:4694"
 ],
 "Leave the yard (main menu)": [
 "scripts/ui/menu.gd:623"
@@ -1985,7 +1985,7 @@
 "scripts/ui/menu.gd:2664",
 "scripts/ui/menu.gd:2694",
 "scripts/ui/menu.gd:2830",
-"scripts/ui/menu.gd:4565"
+"scripts/ui/menu.gd:4567"
 ],
 "Seven days of bouts, beasts and bosses for the Emperor. Gold buys pots between bouts; after each day a god offers a blessing. Fall once and the run is over.": [
 "scripts/ui/menu.gd:2668"
@@ -2553,94 +2553,94 @@
 "scripts/ui/menu.gd:4174"
 ],
 "Stage %d cleared: %d denarii.": [
-"scripts/ui/menu.gd:4347"
+"scripts/ui/menu.gd:4349"
 ],
 "You fell. Back to the last checkpoint: bout %d, as you left it.": [
-"scripts/ui/menu.gd:4378"
+"scripts/ui/menu.gd:4380"
 ],
 "You fell. The campaign is over; a new one begins at bout 1.": [
-"scripts/ui/menu.gd:4378"
+"scripts/ui/menu.gd:4380"
 ],
 "THE RUDIS": [
-"scripts/ui/menu.gd:4545"
-],
-"The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.": [
-"scripts/ui/menu.gd:4546"
-],
-"Your name is in the Hall of Fame.": [
 "scripts/ui/menu.gd:4547"
 ],
+"The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.": [
+"scripts/ui/menu.gd:4548"
+],
+"Your name is in the Hall of Fame.": [
+"scripts/ui/menu.gd:4549"
+],
 "UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.": [
-"scripts/ui/menu.gd:4550"
+"scripts/ui/menu.gd:4552"
 ],
 "But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.": [
-"scripts/ui/menu.gd:4553"
+"scripts/ui/menu.gd:4555"
 ],
 "Back to the ludus": [
-"scripts/ui/menu.gd:4554"
+"scripts/ui/menu.gd:4556"
 ],
 "The end of the demo": [
-"scripts/ui/menu.gd:4558"
+"scripts/ui/menu.gd:4560"
 ],
 "You have fought through all %d bouts of the demo.": [
-"scripts/ui/menu.gd:4559"
-],
-"Play the demo again from bout 1": [
 "scripts/ui/menu.gd:4561"
 ],
+"Play the demo again from bout 1": [
+"scripts/ui/menu.gd:4563"
+],
 "Back to the room": [
-"scripts/ui/menu.gd:4565"
+"scripts/ui/menu.gd:4567"
 ],
 "Screenshot saved: %s": [
-"scripts/ui/menu.gd:4578"
+"scripts/ui/menu.gd:4580"
 ],
 "A NEW CAMPAIGN": [
-"scripts/ui/menu.gd:4606"
+"scripts/ui/menu.gd:4608"
 ],
 " · CO-OP": [
-"scripts/ui/menu.gd:4606"
+"scripts/ui/menu.gd:4608"
 ],
 "How will you die?": [
-"scripts/ui/menu.gd:4607"
+"scripts/ui/menu.gd:4609"
 ],
 "Earned: the Unbroken laurel, and Virtus from the trainer.": [
-"scripts/ui/menu.gd:4633"
+"scripts/ui/menu.gd:4635"
 ],
 "The reward: the Unbroken laurel, and Virtus from the trainer.": [
-"scripts/ui/menu.gd:4633"
+"scripts/ui/menu.gd:4635"
 ],
 "Begin as a legionary": [
-"scripts/ui/menu.gd:4636"
-],
-"Begin as an ironman": [
-"scripts/ui/menu.gd:4636"
-],
-"A new campaign begins · %s": [
 "scripts/ui/menu.gd:4638"
 ],
+"Begin as an ironman": [
+"scripts/ui/menu.gd:4638"
+],
+"A new campaign begins · %s": [
+"scripts/ui/menu.gd:4640"
+],
 "Paused": [
-"scripts/ui/menu.gd:4661"
+"scripts/ui/menu.gd:4663"
 ],
 "Back to the fight": [
-"scripts/ui/menu.gd:4662"
-],
-"Back to the forge": [
 "scripts/ui/menu.gd:4664"
 ],
+"Back to the forge": [
+"scripts/ui/menu.gd:4666"
+],
 "Restart the campaign": [
-"scripts/ui/menu.gd:4669"
+"scripts/ui/menu.gd:4671"
 ],
 "Click again: start over from bout 1 (all progress lost)": [
-"scripts/ui/menu.gd:4673"
+"scripts/ui/menu.gd:4675"
 ],
 "Back to the yard (everyone)": [
-"scripts/ui/menu.gd:4684"
-],
-"The host called the party back": [
 "scripts/ui/menu.gd:4686"
 ],
+"The host called the party back": [
+"scripts/ui/menu.gd:4688"
+],
 "Leave the fight": [
-"scripts/ui/menu.gd:4696"
+"scripts/ui/menu.gd:4698"
 ],
 "Bull horns": [
 "scripts/fighter/monster_look.gd:18"
@@ -2953,7 +2953,7 @@
 ],
 "Wave %d": [
 "scripts/game/endless.gd:212",
-"scripts/game/modes.gd:534"
+"scripts/game/modes.gd:541"
 ],
 "A great foe walks in: %s!": [
 "scripts/game/endless.gd:214"
@@ -2993,7 +2993,7 @@
 ],
 "You fell in wave %d": [
 "scripts/game/endless.gd:381",
-"scripts/game/modes.gd:465"
+"scripts/game/modes.gd:472"
 ],
 "Walk": [
 "scripts/game/tutorial.gd:14"
@@ -3920,76 +3920,76 @@
 "scripts/game/modes.gd:403"
 ],
 "%s wins the duel %s": [
-"scripts/game/modes.gd:411"
+"scripts/game/modes.gd:418"
 ],
 "For %d denarii": [
-"scripts/game/modes.gd:411"
+"scripts/game/modes.gd:418"
 ],
 "%s team wins!": [
-"scripts/game/modes.gd:440",
-"scripts/game/modes.gd:514"
+"scripts/game/modes.gd:447",
+"scripts/game/modes.gd:521"
 ],
 "The monsters won in wave %d": [
-"scripts/game/modes.gd:455"
+"scripts/game/modes.gd:462"
 ],
 "Wave %d!": [
-"scripts/game/modes.gd:460",
-"scripts/game/modes.gd:470"
+"scripts/game/modes.gd:467",
+"scripts/game/modes.gd:477"
 ],
 "The gates open again": [
-"scripts/game/modes.gd:460"
+"scripts/game/modes.gd:467"
 ],
 "The crowd wants more blood": [
-"scripts/game/modes.gd:470"
+"scripts/game/modes.gd:477"
 ],
 "Wave %d: the lions join in!": [
-"scripts/game/modes.gd:475"
+"scripts/game/modes.gd:482"
 ],
 "%s reigns: the players are all down after %d bouts": [
-"scripts/game/modes.gd:492"
+"scripts/game/modes.gd:499"
 ],
 "%s is King of the Arena: %d bouts unbeaten!": [
-"scripts/game/modes.gd:492"
+"scripts/game/modes.gd:499"
 ],
 "%s holds the arena (%d)": [
-"scripts/game/modes.gd:505"
+"scripts/game/modes.gd:512"
 ],
 "The next challenger walks in": [
-"scripts/game/modes.gd:505"
+"scripts/game/modes.gd:512"
 ],
 "%s wins!": [
-"scripts/game/modes.gd:514"
+"scripts/game/modes.gd:521"
 ],
 "Draw!": [
-"scripts/game/modes.gd:514"
+"scripts/game/modes.gd:521"
 ],
 "The Emperor decides: 6 thumbs up · 7 thumbs down": [
-"scripts/game/modes.gd:515"
+"scripts/game/modes.gd:522"
 ],
 "%s %ds to go": [
-"scripts/game/modes.gd:530"
+"scripts/game/modes.gd:537"
 ],
 "nobody on the hill": [
-"scripts/game/modes.gd:530"
+"scripts/game/modes.gd:537"
 ],
 "next chop in %ds": [
-"scripts/game/modes.gd:531"
+"scripts/game/modes.gd:538"
 ],
 "%s left": [
-"scripts/game/modes.gd:532",
+"scripts/game/modes.gd:539",
 "scripts/game/match.gd:568"
 ],
 "to the death": [
-"scripts/game/modes.gd:532"
+"scripts/game/modes.gd:539"
 ],
 "Red %d : %d Blue · kick the head!": [
-"scripts/game/modes.gd:533"
+"scripts/game/modes.gd:540"
 ],
 "Reign: %d of %d": [
-"scripts/game/modes.gd:535"
+"scripts/game/modes.gd:542"
 ],
 "Round %d · stake %d": [
-"scripts/game/modes.gd:536"
+"scripts/game/modes.gd:543"
 ],
 "voxel art missing: ": [
 "scripts/game/voxel_art.gd:82"
@@ -4185,7 +4185,7 @@
 ],
 "BOOM!": [
 "scripts/game/throwables.gd:707",
-"scripts/game/match.gd:2351"
+"scripts/game/match.gd:2368"
 ],
 "Caltrops all over the sand. Watch your step.": [
 "scripts/game/throwables.gd:741"
@@ -5252,147 +5252,147 @@
 "scripts/game/match.gd:1224"
 ],
 "%s picks up a %s": [
-"scripts/game/match.gd:1625"
+"scripts/game/match.gd:1642"
 ],
 "%s's %s is stuck fast in %s!": [
-"scripts/game/match.gd:1638"
+"scripts/game/match.gd:1655"
 ],
 "Round %d of 3": [
-"scripts/game/match.gd:1727"
+"scripts/game/match.gd:1744"
 ],
 "None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1790"
 ],
 "None of you can stand. The crowd moves on.": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1790"
 ],
 "The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1790"
 ],
 "The crowd moves on.": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1790"
 ],
 "You can fight no more": [
-"scripts/game/match.gd:1774"
-],
-"You fall": [
-"scripts/game/match.gd:1774"
-],
-"Round %d won": [
-"scripts/game/match.gd:1781"
-],
-"%d denarii to the party's purse": [
-"scripts/game/match.gd:1789"
-],
-"%d denarii": [
-"scripts/game/match.gd:1789"
-],
-", %d of them the crowd's": [
 "scripts/game/match.gd:1791"
 ],
+"You fall": [
+"scripts/game/match.gd:1791"
+],
+"Round %d won": [
+"scripts/game/match.gd:1798"
+],
+"%d denarii to the party's purse": [
+"scripts/game/match.gd:1806"
+],
+"%d denarii": [
+"scripts/game/match.gd:1806"
+],
+", %d of them the crowd's": [
+"scripts/game/match.gd:1808"
+],
 "Bout %d won": [
-"scripts/game/match.gd:1792"
+"scripts/game/match.gd:1809"
 ],
 "Stage %d cleared": [
-"scripts/game/match.gd:1792"
+"scripts/game/match.gd:1809"
 ],
 "%s. Back to the yard: spend, mend, gear up.": [
-"scripts/game/match.gd:1792"
+"scripts/game/match.gd:1809"
 ],
 "Victory": [
-"scripts/game/match.gd:1794"
+"scripts/game/match.gd:1811"
 ],
 "%s lifts %s": [
-"scripts/game/match.gd:1820"
+"scripts/game/match.gd:1837"
 ],
 "DEFEAT": [
-"scripts/game/match.gd:1876",
-"scripts/game/match.gd:1881"
+"scripts/game/match.gd:1893",
+"scripts/game/match.gd:1898"
 ],
 "The Emperor turns his thumb down": [
-"scripts/game/match.gd:1876",
-"scripts/game/match.gd:1881"
+"scripts/game/match.gd:1893",
+"scripts/game/match.gd:1898"
 ],
 "VICTORY!": [
-"scripts/game/match.gd:1883"
+"scripts/game/match.gd:1900"
 ],
 "The crowd roars your name": [
-"scripts/game/match.gd:1883"
+"scripts/game/match.gd:1900"
 ],
 "%s kills %s": [
-"scripts/game/match.gd:2085"
+"scripts/game/match.gd:2102"
 ],
 "%s TEARS %s APART!": [
-"scripts/game/match.gd:2087"
+"scripts/game/match.gd:2104"
 ],
 "%s loses the %s!": [
-"scripts/game/match.gd:2089"
+"scripts/game/match.gd:2106"
 ],
 "%s's %s is BROKEN%s!": [
-"scripts/game/match.gd:2095"
+"scripts/game/match.gd:2112"
 ],
 ", the bone out through the skin": [
-"scripts/game/match.gd:2095"
+"scripts/game/match.gd:2112"
 ],
 "%s's skull is cracked!": [
-"scripts/game/match.gd:2097"
+"scripts/game/match.gd:2114"
 ],
 "%s's skull is broken!": [
-"scripts/game/match.gd:2097"
+"scripts/game/match.gd:2114"
 ],
 "%s is set alight!": [
-"scripts/game/match.gd:2164"
+"scripts/game/match.gd:2181"
 ],
 "%s is poisoned!": [
-"scripts/game/match.gd:2175"
+"scripts/game/match.gd:2192"
 ],
 "%s is chilled to the bone!": [
-"scripts/game/match.gd:2182"
+"scripts/game/match.gd:2199"
 ],
 "The ruby flares: %s's %s catches fire!": [
-"scripts/game/match.gd:2217"
+"scripts/game/match.gd:2234"
 ],
 "The sapphire bites cold: frostbite in %s's %s!": [
-"scripts/game/match.gd:2229"
+"scripts/game/match.gd:2246"
 ],
 "The emerald's poison eats into %s's %s!": [
-"scripts/game/match.gd:2239"
+"scripts/game/match.gd:2256"
 ],
 "a golden blow": [
-"scripts/game/match.gd:2258"
+"scripts/game/match.gd:2275"
 ],
 "BOING! %s goes flying!": [
-"scripts/game/match.gd:2296"
+"scripts/game/match.gd:2313"
 ],
 "Stuck! The glue holds %s fast.": [
-"scripts/game/match.gd:2308"
+"scripts/game/match.gd:2325"
 ],
 "%s giggles helplessly!": [
-"scripts/game/match.gd:2321"
+"scripts/game/match.gd:2338"
 ],
 "The magnet tears the %s out of %s's hand!": [
-"scripts/game/match.gd:2414"
+"scripts/game/match.gd:2431"
 ],
 "%s is dead": [
-"scripts/game/match.gd:2448"
+"scripts/game/match.gd:2465"
 ],
 "%s is beheaded": [
-"scripts/game/match.gd:2448"
+"scripts/game/match.gd:2465"
 ],
 "%s is back on his feet": [
-"scripts/game/match.gd:2586"
+"scripts/game/match.gd:2603"
 ],
 "%s spits venom!": [
-"scripts/game/match.gd:2675"
+"scripts/game/match.gd:2692"
 ],
 "%s breathes FIRE!": [
-"scripts/game/match.gd:2675"
+"scripts/game/match.gd:2692"
 ],
 "%s is poisoned by the %s!": [
-"scripts/game/match.gd:2822"
+"scripts/game/match.gd:2839"
 ],
 "Broken weapon": [
-"scripts/game/match.gd:3069"
+"scripts/game/match.gd:3086"
 ],
 "Legionary": [
 "scripts/game/campaign_run.gd:10"

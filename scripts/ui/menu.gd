@@ -4256,7 +4256,9 @@ func _end_match() -> void:
 	_backdrop_off()
 	if endless_layer:
 		_endless_close()
-		get_tree().paused = false
+	# No fight, nothing held still: a fight left in the middle of its replay (which pauses the
+	# game until its end) left the next screen and the next fight frozen.
+	get_tree().paused = false
 	if match_:
 		match_.queue_free()
 		match_ = null

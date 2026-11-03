@@ -1309,6 +1309,19 @@ func _entity_of(f) -> Variant:
 			return e
 	return null
 
+## A wait that ends with the match: its timer is the match's own, run paused or not, so a match
+## left while the end of a bout or a replay waits (Esc, the main menu, the next fight begun)
+## takes the wait with it. (On the tree's own timer the wait came back on a match long gone.)
+func _wait(t: float) -> Signal:
+	var tm := Timer.new()
+	tm.one_shot = true
+	tm.autostart = true
+	tm.wait_time = maxf(0.001, t)
+	tm.process_mode = Node.PROCESS_MODE_ALWAYS
+	tm.timeout.connect(tm.queue_free)
+	add_child(tm)
+	return tm.timeout
+
 ## After every round won and before the next: the best kill of that round, the same on every
 ## screen online (the host names it: "kcr"), then a fresh tape for the next round.
 func _round_replay() -> void:
@@ -1316,7 +1329,7 @@ func _round_replay() -> void:
 		return
 	var left := killcam.tape_left()
 	if left > 0.0:
-		await get_tree().create_timer(left + 0.05).timeout
+		await _wait(left + 0.05)
 	var show := killcam.has_clip()
 	if role == "host":
 		var ve = _entity_of(killcam.best.get("victim")) if show else null
@@ -1330,7 +1343,7 @@ func _guest_round_replay(data: Dictionary) -> void:
 		return
 	var left := killcam.tape_left()
 	if left > 0.0:
-		await get_tree().create_timer(left + 0.05).timeout
+		await _wait(left + 0.05)
 	killcam.has_clip()
 	var ve = entity_by_id(int(data.get("kc_v", -1)))
 	if ve != null and is_instance_valid(ve.f) and killcam.choose(ve.f):
@@ -1348,7 +1361,7 @@ func guest_end(data: Dictionary) -> void:
 	if killcam:
 		var left := killcam.tape_left()
 		if left > 0.0:
-			await get_tree().create_timer(left + 0.05).timeout
+			await _wait(left + 0.05)
 		var show := killcam.has_clip()
 		if data.has("kc_v"):
 			# The host's pick, the same kill for everyone (none, if his tape had none worth it).
@@ -1572,6 +1585,10 @@ func _exit_tree() -> void:
 	Engine.time_scale = 1.0
 	if is_inside_tree():
 		PhysicsServer3D.area_set_param(get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, 9.81)
+		# Left in the middle of a replay (it pauses the game and lets go only at its end): the
+		# game goes on, not frozen behind the menu.
+		if killcam and killcam.playing:
+			get_tree().paused = false
 
 func sfx(kind: String, at: Vector3, gain := 1.0) -> void:
 	if Sfx and not headless:
@@ -1948,7 +1965,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		# seconds after every round felt like the game had hung).
 		var left := killcam.tape_left()
 		if left > 0.0:
-			await get_tree().create_timer(left + 0.05).timeout
+			await _wait(left + 0.05)
 		show = killcam.has_clip()
 	if role == "host":
 		# Online one kill is shown, the fight's best of all, on every screen: the host names it.

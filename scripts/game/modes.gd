@@ -405,7 +405,14 @@ func _bo3(dt: float, inp: Dictionary) -> void:
 
 func _bo3_end() -> void:
 	var f: Array = m.entities.filter(func(e): return e.kind != "beast")
-	f.sort_custom(func(x, y): return int(bo3.wins.get(x.id, 0)) > int(bo3.wins.get(y.id, 0)))
+	# Level on rounds (one each, and the man down yields): the duel is his who did not yield.
+	# Sorted by the rounds alone, a level score went to whoever was first on the list, as often
+	# as not the man who had just yielded.
+	var lost_id = bo3.loser.id if bo3.get("loser") is Dictionary else null
+	f.sort_custom(func(x, y):
+		var wx := int(bo3.wins.get(x.id, 0))
+		var wy := int(bo3.wins.get(y.id, 0))
+		return wx > wy or (wx == wy and y.id == lost_id and x.id != lost_id))
 	var w: Dictionary = f[0]
 	var score := "%d-%d" % [int(bo3.wins.get(f[0].id, 0)), int(bo3.wins.get(f[1].id, 0))]
 	m._end(w == m.me, Loc.t("%s wins the duel %s") % [w.f.display_name, score], Loc.t("For %d denarii") % bo3.stake, int(bo3.stake) if w == m.me else 0)
