@@ -96,6 +96,11 @@ var pain := 0.0
 var time := 0.0
 var gait_phase := 0.0
 var kick_timer := 0.0
+var stomp_at = null   # where a kick begun over a man lying at his feet comes down (a stamp), or null
+const STOMP_BELOW := 0.25     # how far under the hip what lies before him is for a stamp (m, at S 1)
+const STOMP_CHAMBER := 0.26   # a stamp's knee is up until the kick's clock is down to this (of 0.42 s)
+const STOMP_LIFT := 0.45      # how high over the man the foot is drawn up (m, at S 1)
+const STOMP_DRIVE := 0.45     # how far into him it is driven (m, at S 1): still going hard when it lands
 var push_t := 0.0
 var kills := 0
 var last_attacker: Node = null
@@ -3035,6 +3040,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if inp.get("kick", false) and kick_timer <= 0.0 and stamina > 12.0 and standing and not leg_broken("R") and not leg_broken("L"):
 		kick_timer = 0.42
 		stamina -= 12.0
+		stomp_at = _stomp_spot(yaw_q)
 	var move_amt: float = minf(1.0, h_speed / 2.5)
 	var t_inv := t_rot.inverse()
 	var move_dir := v_smooth.normalized() if v_smooth.length_squared() >= 0.04 else Vector3.ZERO
@@ -3055,9 +3061,22 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var thigh_q := Quaternion.IDENTITY
 		var bend := 0.2
 		if kicking:
-			var chamber := kick_timer > 0.3
-			thigh_q = Quaternion(Vector3(-1, 0, 0), 1.1 if chamber else 1.45)
-			bend = 1.7 if chamber else 0.05
+			var chamber := kick_timer > (STOMP_CHAMBER if stomp_at != null else 0.3)
+			if stomp_at != null:
+				# Over a man lying at his feet the kick is a stamp (user: a man on the sand could
+				# not be kicked; out at hip height the foot went over him): the knee comes up high,
+				# the foot over him, then it is driven down onto him and through.
+				var spot: Vector3 = stomp_at
+				var mark: Vector3 = spot - Vector3(0, STOMP_DRIVE * S, 0)
+				if chamber:
+					mark = hip.lerp(spot, 0.6)
+					mark.y = spot.y + STOMP_LIFT * S
+				var ik := _leg_aim(t_inv * (mark - hip), l1, l2)
+				thigh_q = ik[0]
+				bend = ik[1]
+			else:
+				thigh_q = Quaternion(Vector3(-1, 0, 0), 1.1 if chamber else 1.45)
+				bend = 1.7 if chamber else 0.05
 			if feet[side]:
 				feet[side].swing = true
 		elif standing and grounded:
@@ -3176,21 +3195,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			ft.target_y = target.y
 			if hop_phase > 0.0 and hop_k > 0.6:
 				target.y += (hop_k - 0.6) * 0.2 * S   # the foot tucks up at the top of the hop
-			var hf := t_inv * (target - hip)
-			var d := hf.length()
-			var max_d := (l1 + l2) * 0.985
-			if d > max_d:
-				hf *= max_d / d
-				d = max_d
-			if d < 0.05:
-				hf = Vector3(0, -0.05, 0)
-				d = 0.05
-			var dirv := hf / d
-			var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
-			bend = PI - acos(clampf((l1 * l1 + l2 * l2 - d * d) / (2.0 * l1 * l2), -1.0, 1.0))
-			var axis := dirv.cross(Vector3(0, 0, 1))
-			axis = Vector3(-1, 0, 0) if axis.length_squared() < 1e-6 else axis.normalized()
-			thigh_q = Quaternion(Vector3(0, -1, 0), dirv.rotated(axis, a))
+			var ik := _leg_aim(t_inv * (target - hip), l1, l2)
+			thigh_q = ik[0]
+			bend = ik[1]
 		else:
 			bend = 0.9 if state == "down" and live else 0.2
 			if feet[side]:
@@ -4467,6 +4474,47 @@ func _own_rids() -> Array[RID]:
 		for p: VoxelPart in parts:
 			_rids.append(p.get_rid())
 	return _rids
+
+## The thigh's turn (against the trunk) and the knee's bend that put the sole at `hf` (from the
+## hip, in the trunk's frame), for a leg `l1` + `l2` long: a mark out of reach is reached for.
+static func _leg_aim(hf: Vector3, l1: float, l2: float) -> Array:
+	var d := hf.length()
+	var max_d := (l1 + l2) * 0.985
+	if d > max_d:
+		hf *= max_d / d
+		d = max_d
+	if d < 0.05:
+		hf = Vector3(0, -0.05, 0)
+		d = 0.05
+	var dirv := hf / d
+	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
+	var bend := PI - acos(clampf((l1 * l1 + l2 * l2 - d * d) / (2.0 * l1 * l2), -1.0, 1.0))
+	var axis := dirv.cross(Vector3(0, 0, 1))
+	axis = Vector3(-1, 0, 0) if axis.length_squared() < 1e-6 else axis.normalized()
+	return [Quaternion(Vector3(0, -1, 0), dirv.rotated(axis, a)), bend]
+
+## Where a kick comes down on a man (or a beast) down at his feet, lying, sitting or on his
+## knees: the first of him a stride ahead of the kicking hip (rays straight down at a few
+## distances), well under the hip; null when there is none, and the kick goes out at hip height
+## as a kick. (Not a man on his feet, whose leg stepping forward is low too; nor a dead one.)
+func _stomp_spot(yaw_q: Quaternion):
+	var thigh: VoxelPart = by_name["thighR"]
+	if thigh.severed:
+		return null
+	var space := torso.get_world_3d().direct_space_state
+	var hip: Vector3 = torso.global_position + PD.quat_of(torso) * (thigh.pa as Vector3)
+	var fwd: Vector3 = yaw_q * Vector3(0, 0, 1)
+	var q := PhysicsRayQueryParameters3D.create(hip, hip, VoxelPart.LAYER_BODY, _own_rids())
+	for k in [0.3, 0.45, 0.6, 0.75]:
+		var at: Vector3 = hip + fwd * k * S
+		q.from = at
+		q.to = at + Vector3(0, -2.0 * S, 0)
+		var h := space.intersect_ray(q)
+		if h and h.collider is VoxelPart:
+			var o = (h.collider as VoxelPart).fighter
+			if o != null and o != self and o is Fighter and (o as Fighter).alive and (o as Fighter).state != "stand" and float(h.position.y) < hip.y - STOMP_BELOW * S:
+				return h.position
+	return null
 
 ## The ground under a foot's spot: the sand, or a body lying on it there; `fallback` with
 ## nothing under it within reach.

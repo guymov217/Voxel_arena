@@ -71,7 +71,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight
   back into the guard, the elbow down (`Fighter.JAB_*`, `tests/punchprobe.gd`).
-- **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A giant's blows vary:
+- **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A kick at a man down at
+  one's feet (lying, sitting, on his knees) is a stamp: the knee comes up and the foot is driven
+  down onto him (`tests/stompprobe.gd`). A giant's blows vary:
   a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
   has knocked down it goes on striking; it does not stand off and watch him.
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A

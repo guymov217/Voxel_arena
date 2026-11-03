@@ -149,6 +149,41 @@ func test_a_kick_rarely_fells_a_man() -> void:
 	t.check(falls <= 3, "but few of them fell him (%d of 10)" % falls)
 	m.queue_free()
 
+## A kick at a man down at his feet is a stamp (user: a man on the sand could not always be
+## kicked or stamped on): the knee comes up and the foot is driven down onto him, and it lands;
+## at a man on his feet it is the kick out at hip height, as ever.
+func test_a_man_on_the_sand_is_stamped_on() -> void:
+	seed(5)
+	var m := _match()
+	var me: Fighter = m.me.f
+	me.teleport(Vector3(0, 0, 0))
+	var st := {"kick": false}
+	m.me.drive = func(_e):
+		var o := {"look": {"yaw": 0.0, "pitch": -0.5}, "kick": st.kick}
+		st.kick = false
+		return o
+	var v = _man(m, Vector3(0, 0.02, 0.9))
+	await _steps(60)
+	st.kick = true
+	await _steps(2)
+	t.check(me.kick_timer > 0.0 and me.stomp_at == null, "at a man standing before him the kick goes out as a kick")
+	await _steps(120)
+	v.f.teleport(Vector3(0, 0, 0.9))
+	v.f.yaw = PI
+	await _steps(60)
+	v.f.fall(30.0, true)
+	await _steps(240)
+	var landed := []
+	m.combat.hit.connect(func(h): if h.get("kick", false) and h.char == v.f and h.attacker == me: landed.append(snappedf(float(h.get("J", 0.0)), 0.1)))
+	me.stamina = 100.0
+	st.kick = true
+	await _steps(2)
+	t.check(me.stomp_at != null, "at a man lying at his feet it is a stamp (at %s)" % str(me.stomp_at))
+	await _steps(70)
+	t.check(landed.size() >= 1, "and it lands on him (%s)" % str(landed))
+	t.check(me.state == "stand", "and he stays on his feet")
+	m.queue_free()
+
 func test_room_on_the_anvil_to_experiment() -> void:
 	t.check(ForgeLib.in_grid(0, 80, 0) and ForgeLib.in_grid(14, 0, 5), "a 3 m pole and a wide head fit on the anvil")
 	t.check(ForgeLib.MAX_VOXELS >= 1500, "room for %d voxels" % ForgeLib.MAX_VOXELS)
