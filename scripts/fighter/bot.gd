@@ -488,6 +488,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# not swung at a giant's own height over his head.
 	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
 	var big: bool = S > tS * 1.5 and w != null
+	# Bare-handed over a man that size, his fists go down at the man himself (`jabAt`, below).
+	var over_small: bool = S > tS * 1.5 and w == null and c.held_item == null
 	var aim_small = null
 	var swing_reach := reach
 	if big:
@@ -560,8 +562,9 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.ability = {"type": p.ability, "target": target}
 			ability_t = rng.randf_range(p.cooldown[0], p.cooldown[1])
 	var gy := clampf((tp.y + 0.3 - me.y) / S * 0.9, -0.2, 0.8)
-	# Empty-handed he boxes: both fists up before the chin.
-	if not c.weapons.R and c.held_item == null:
+	# Empty-handed he boxes: both fists up before the chin. (Not a giant over a little man: up
+	# before a giant's chin they were a man's height over the man's head.)
+	if not c.weapons.R and c.held_item == null and not over_small:
 		gy = maxf(gy, 0.95)
 		if not c.weapons.L:
 			inp.off = {"x": -0.2, "y": 1.05}
@@ -831,6 +834,12 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	if w and w.design.get("throwable", false) and dist > 2.8 and dist < 8.0 and c.state == "stand" and rng.randf() < dt * 0.5:
 		inp.throw = true
 		inp.throwPower = 0.85
+	# A giant's bare fist goes down at the man's face (`jabAt`), and he stoops to bring it there:
+	# thrown straight out from his own shoulder it passed a metre over the man's head, and he
+	# never landed a blow (user: the giant whose hammer broke could not attack any more).
+	if over_small and not rage and dist < 1.6 * S and c.state == "stand":
+		var hd = target.get("head")
+		inp.jabAt = (hd.global_position as Vector3).lerp(tp, 0.35) if hd is Node3D else tp
 	if dist < (1.25 if rage else 0.95) * S and c.state == "stand" and c.stamina > 15.0:
 		jab_cd -= dt
 		if jab_cd <= 0.0:
@@ -891,13 +900,16 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		for w in world.get("loose", []):
 			if not is_instance_valid(w) or w.holder != null or w.is_shield or w.alive_count() < 3 or w.is_stub() or (w == gave_up and gave_up_t > 0.0):
 				continue
-			var d := Vector2(w.global_position.x - hand_p.x, w.global_position.z - hand_p.z).length()
+			# (To its grip, where the hand has to close: measured to the weapon's middle, a giant
+			# stood over a broken hammer with its grip two metres off and went on standing there.)
+			var gp: Vector3 = w.grip_world()
+			var d := Vector2(gp.x - hand_p.x, gp.z - hand_p.z).length()
 			if d < bd:
 				bd = d
 				best = w
 		if best:
-			inp.faceAt = best.global_position
-			inp.mz = 1.0 if bd > 0.6 else 0.0
+			inp.faceAt = best.grip_world()
+			inp.mz = 1.0 if bd > 0.35 else 0.0
 			inp.crouch = bd < 1.5
 			inp.main = {"x": 0.0, "y": -1.0}
 			inp.thrust = 0.8

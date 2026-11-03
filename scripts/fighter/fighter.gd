@@ -234,7 +234,7 @@ var forearms_pass := false   # the forearms let each other by: the off hand goin
 var haft_behind_t := 0.0    # how long the off hand on the haft has been dragged behind his back
 var reach := {"R": null, "L": null}   # G: a hand on its way to a weapon's grip, or closed on it and turning it into the fist
 var stoop := 0.0            # bent down to a grip low by his feet (0..1): the reach sets it every step
-var grab_bend := 0.0        # bent over a man on the sand to take hold of him (0..1): see _drive_arm
+var grab_bend := 0.0        # bent down to a man below him, to take hold of him or land a fist on him (0..1): see _drive_arm
 var grab_low := false       # a hand sent down to him this step (the bend is let go of when none is)
 var arm_strain := {"R": 0.0, "L": 0.0}   # how far each hand is held off its mark (m): pulling on a weapon stuck fast
 var wrench_t := {"R": 0.0, "L": 0.0}     # how long that hand has been pulling on a weapon stuck in a body
@@ -1854,6 +1854,11 @@ func _reach_tick(dt: float) -> void:
 	for side in ["R", "L"]:
 		var r = reach[side]
 		if r == null:
+			continue
+		if not is_instance_valid(r.w):
+			# (Gone while the hand went for it: taken into a typed variable it failed the whole
+			# step, every step, and the hand reached for nothing again.)
+			cancel_reach(side)
 			continue
 		var w: Weapon = r.w
 		r.t -= dt
@@ -3777,6 +3782,22 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		elif rch.get("from") is Vector3:
 			var k := float(rch.get("lift", 1.0))
 			target = (rch.from as Vector3).lerp(target, k * k * (3.0 - 2.0 * k))
+	# A bare fist at a man far below him (a giant's, `jabAt`: the man's face): thrown, it goes down
+	# at him and a little through him; and while the man is out of the arm's reach below him he
+	# stoops to him, as to a man on the sand (straight out from a giant's shoulder the fist passed
+	# a metre over the man's head: user, the giant whose hammer broke never landed a blow again).
+	var j_at = inp.get("jabAt")
+	if j_at is Vector3 and not w and held_item == null and state == "stand" and side == ("L" if weapons.R else "R"):
+		var at: Vector3 = j_at
+		var sh: Vector3 = shoulder[side]
+		var to_at: Vector3 = yaw_q.inverse() * (at - t_pos) - sh
+		var fist_reach := (UPPER_LEN + FORE_LEN) * JAB_REACH * S
+		if jk >= JAB_DRAW and jk < JAB_BACK:
+			target = sh + PD.clamp_len(to_at + to_at.normalized() * 0.12 * S, fist_reach)
+		var near := Vector2(at.x - t_pos.x, at.z - t_pos.z).length() < GRAB_BEND_NEAR * S
+		var below: bool = to_at.y < 0.0 and to_at.length() > fist_reach * 0.8
+		grab_bend = clampf(grab_bend + dt * (1.6 if near and below else -0.8), 0.0, 1.0)
+		grab_low = true
 	# Taking hold of a man down on the sand (a giant's grab, `grabAt`: the spot on him): the empty
 	# hand goes right down to him and he stoops to it, lower while the hand is still above him,
 	# as to a weapon on the sand (upright, the hand stopped a metre over the man and closed on

@@ -109,3 +109,39 @@ func test_a_broken_weapon_is_thrown_aside_and_he_fights_on() -> void:
 	t.check(landed[0] >= 1, "and he still lands blows on the man (%d)" % landed[0])
 	m.queue_free()
 	await get_tree().physics_frame
+
+## A giant with nothing in his hands and nothing to pick up brings his fists down on a man a third
+## his size: he stoops to him and the fist lands on the man's head or body, and he stays on his
+## feet (thrown straight out from a giant's shoulder, the fist passed a metre over the man's head
+## and never landed: user, the giant whose hammer broke could not attack any more).
+func test_a_bare_handed_giant_brings_his_fists_down_on_a_man() -> void:
+	var m := _match({"mode": "training", "training": {"enemy": "foe:cyclops", "immortal": true, "respawn": false, "difficulty": 0.7}, "loadout": {"main": "gladius", "off": ""}})
+	var me: Fighter = m.me.f
+	m.me.drive = func(_e): return {"main": {"x": 0.1, "y": 0.2}, "off": {"x": -0.35, "y": 0.1}, "look": {"yaw": me.yaw, "pitch": 0.0}}
+	await _steps(60)
+	var g: Fighter = m.enemies()[0].f
+	# His hammer gone altogether: nothing on the sand to take up instead.
+	for side in ["R", "L"]:
+		var w: Weapon = g.weapons[side]
+		if w:
+			g.release(side)
+			w.queue_free()
+	await _steps(2)
+	var fists := []
+	m.combat.hit.connect(func(h):
+		if h.get("attacker") == g and h.get("char") == me and h.get("punch", false):
+			fists.append(String(h.part.part_name) if h.get("part") else "?"))
+	var fell := false
+	var bent := 0.0
+	for i in 120 * 30:
+		await get_tree().physics_frame
+		fell = fell or g.state != "stand"
+		bent = maxf(bent, g.grab_bend)
+		if fists.size() >= 2:
+			break
+	t.check(fists.size() >= 2, "his fists land on the man (%s)" % str(fists))
+	t.check(fists.any(func(p): return p in ["head", "torso"]), "on his head or his body, not only his arms")
+	t.check(bent > 0.3, "stooping to him to do it (%.2f)" % bent)
+	t.check(not fell, "and he stays on his feet")
+	m.queue_free()
+	await get_tree().physics_frame

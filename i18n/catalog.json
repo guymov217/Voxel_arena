@@ -2677,25 +2677,25 @@
 "scripts/fighter/fighter.gd:942"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:2576"
+"scripts/fighter/fighter.gd:2581"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2578"
+"scripts/fighter/fighter.gd:2583"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:2584"
+"scripts/fighter/fighter.gd:2589"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:2584"
+"scripts/fighter/fighter.gd:2589"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:5299"
+"scripts/fighter/fighter.gd:5320"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:5315"
+"scripts/fighter/fighter.gd:5336"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:6993",
+"scripts/fighter/fighter.gd:7014",
 "scripts/game/spectacle.gd:158"
 ],
 "Strong gladiator": [
