@@ -166,9 +166,11 @@ Record with the game's own F9 recorder or OBS at 1920×1080 60 fps, gameplay onl
 ```
 # screenshots (needs a display or xvfb-run), 1920x1080
 SHOT_DIR=docs/store/screenshots godot --resolution 1920x1080 --path . -- --probe steamshots
-# capsules from those screenshots
+# the logo (logo.png, logo_stacked.png, library_logo_1280x720.png), then the capsules: the
+# key-art frames in docs/store/keyart (tests/capsuleart.gd) with the logo on them
+python3 tools/make_logo.py
 python3 tools/make_capsules.py
-# the key art: the poster frame and the wide frame, then the posters and the logo
+# the key art: the poster frame and the wide frame, then the posters
 SHOT_DIR=/tmp/ka KEYART_VIEW=poster godot --resolution 1200x1800 --path . -- --probe keyart
 SHOT_DIR=/tmp/ka KEYART_VIEW=wide godot --resolution 2560x1080 --path . -- --probe keyart
 python3 tools/make_keyart.py /tmp/ka docs/store/capsules

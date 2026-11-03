@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The WRECKSMITH poster and logo from the key-art frames (tests/keyart.gd): a warm graded frame
-of the game with drifting embers, the voxel title in gold over it, the line under it and the
-Steam strip at the foot. Writes poster_1200x1800.png, poster_wide_2560x1080.png, logo.png (the
-title alone, transparent) and library_logo_1280x720.png into the out dir. Needs Pillow.
+"""The WRECKSMITH posters from the key-art frames (tests/keyart.gd): a warm graded frame of the
+game with drifting embers, the voxel title in gold over it, the line under it and the Steam strip
+at the foot. Writes poster_1200x1800.png and poster_wide_2560x1080.png into the out dir (the logo
+itself, logo.png and library_logo_1280x720.png, is tools/make_logo.py's). Needs Pillow.
 
     python3 tools/make_keyart.py <frames dir> <out dir>"""
 import os
@@ -189,12 +189,6 @@ def main():
     if os.path.exists(wide_src):
         wide = Image.open(wide_src).convert("RGB")
         poster(wide, (2560, 1080), 1500, 40, strip=False).save(os.path.join(out, "poster_wide_2560x1080.png"))
-    logo = title_block(2000)
-    logo.save(os.path.join(out, "logo.png"))
-    lib = Image.new("RGBA", (1280, 720), (0, 0, 0, 0))
-    l2 = mc.fit(logo, 1240, 680)
-    lib.alpha_composite(l2, ((1280 - l2.width) // 2, (720 - l2.height) // 2))
-    lib.save(os.path.join(out, "library_logo_1280x720.png"))
     print("saved to", out)
 
 

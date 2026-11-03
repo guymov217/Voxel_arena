@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """The WRECKSMITH logo: the name in Roman capitals built of real voxels (extruded, bevelled cubes
-seen in perspective and lit by a warm key light and the forge's glow from below), forged gold
-with a hammered face, the I a gladius driven into the line, the H breaking apart into flying
-voxels, sparks rising off it. Drawn by a small painter's-algorithm voxel renderer, no engine
-needed. Writes logo.png (the master, transparent) and library_logo_1280x720.png. Needs Pillow
-and numpy.
+seen in perspective from a little below, lit by a warm key light and the forge's glow from
+beneath), forged gold with a hammered face over a body of darker gold, the I a broad gladius
+driven into the line, the H breaking apart into chunks flying off, embers rising off it; a dark
+rim, halo and shadow so it reads on any picture, down to the store's smallest capsule. Drawn by
+a small painter's-algorithm voxel renderer, no engine needed. Writes logo.png and
+logo_stacked.png (the masters, transparent) and library_logo_1280x720.png. Needs Pillow and
+numpy.
 
     python3 tools/make_logo.py [out dir] [width]"""
 import math
@@ -20,14 +22,20 @@ FONT = os.path.join(ROOT, "tools", "fonts", "Cinzel-Black.ttf")
 TITLE = "WRECKSMITH"
 SWORD_AT = 7        # the I of SMITH
 CAP = 26            # letter height in voxels
-DEPTH = 6           # how far the letters are extruded
+DEPTH = 8           # how far the letters are extruded
 SS = 3              # supersampling
+SWORD_W = 19        # the gladius's width in voxels, guard to guard
+DEBRIS = 26         # the pieces flying off the broken H
+SPARKS = 48         # embers rising off it
+LINE_GAP = 19       # between WRECK and SMITH stacked (the pommel stands in it)
 
 # Materials: base colours (sRGB) of each voxel kind.
 # Polished gold seen as metal is seen: what it mirrors. The sky's light at the top, a bright
-# band, the dark of the stands at the horizon, then the warm sand and the forge's fire below.
-GOLD_STOPS = [(0.0, (255, 246, 196)), (0.10, (255, 222, 110)), (0.38, (240, 176, 52)), (0.47, (150, 86, 18)),
-              (0.52, (92, 48, 10)), (0.60, (178, 108, 28)), (0.84, (246, 182, 64)), (1.0, (255, 126, 30))]
+# band, the dark of the stands at the horizon (a thin line: a broad dark band cut the letters in
+# two at the store's small sizes), then the warm sand and the forge's fire below.
+GOLD_STOPS = [(0.0, (255, 252, 226)), (0.08, (255, 236, 150)), (0.30, (250, 196, 76)), (0.44, (214, 140, 40)),
+              (0.50, (150, 84, 20)), (0.54, (196, 116, 30)), (0.64, (246, 176, 58)), (0.80, (255, 160, 50)),
+              (1.0, (255, 96, 28))]
 STEEL = np.array([196, 206, 220])
 STEEL_EDGE = np.array([236, 242, 248])
 STEEL_FULLER = np.array([120, 132, 148])
@@ -37,6 +45,7 @@ RUBY = np.array([210, 24, 34])
 BLOOD = np.array([150, 10, 14])
 BLOOD_DARK = np.array([86, 6, 8])
 IRON = (16, 10, 8)
+SIDE_GOLD = np.array([168, 98, 34])   # the letters' sides and undersides: the gold's body in shadow
 
 
 def letter_grid(stack=False):
@@ -56,14 +65,14 @@ def letter_grid(stack=False):
     widths = []
     for li, idx in enumerate(lines):
         x0 = 0
-        y0 = li * (CAP + 14)
+        y0 = li * (CAP + LINE_GAP)
         row = []
         for i in idx:
             ch = TITLE[i]
             w = int(math.ceil(f.getlength(ch)))
             if i == SWORD_AT:
-                row.append(["sword", x0, y0, 15])
-                x0 += 15 + track
+                row.append(["sword", x0, y0, SWORD_W])
+                x0 += SWORD_W + track
                 continue
             img = Image.new("L", (w + 4, CAP + 12), 0)
             ImageDraw.Draw(img).text((2, 2 - top), ch, font=f, fill=255)
@@ -90,37 +99,39 @@ def letter_grid(stack=False):
 
 
 def sword_cells(cx):
-    """The gladius standing in for the I: ruby pommel above the cap line, leather grip, a gold
-    guard, the blade down through the baseline. (x, y, kind)."""
+    """The gladius standing in for the I: a ruby-set pommel above the cap line, a leather grip, a
+    broad gold guard, the blade (as broad as a letter's stem, so it still reads as the I at the
+    smallest size) down through the baseline, blooded at the point. (x, y, kind)."""
     out = []
     def put(x, y, k):
         out.append((cx + x, y, k))
-    for x in range(-1, 2):
-        put(x, -11, "gold")
-    for y in range(-10, -6):
-        for x in range(-2, 3):
-            put(x, y, "ruby" if abs(x) < 2 and -10 < y < -7 else "gold")
-    for x in range(-3, 4):
-        put(x, -6, "gold")
-    for y in range(-5, 2):
+    for x in range(-2, 3):
+        put(x, -13, "gold")
+    for y in range(-12, -7):
+        for x in range(-3, 4):
+            if abs(x) == 3 and y in (-12, -8):
+                continue
+            put(x, y, "ruby" if abs(x) < 2 and -11 <= y <= -9 else "gold")
+    for x in range(-2, 3):
+        put(x, -7, "gold")
+    for y in range(-6, 1):
         for x in (-1, 0, 1):
-            put(x, y, "leather_dark" if y % 2 == 0 else "leather")
-    for x in range(-7, 8):
+            put(x, y, "leather_dark" if (y + x) % 3 == 0 else "leather")
+    for x in range(-9, 10):
+        put(x, 1, "gold")
         put(x, 2, "gold")
+    for x in range(-8, 9):
         put(x, 3, "gold")
-    for x in (-7, -6, 6, 7):
-        put(x, 4, "gold")
-    put(-7, 1, "ruby")
-    put(7, 1, "ruby")
-    for y in range(4, CAP + 2):
-        half = 3 if y < CAP - 4 else (2 if y < CAP - 2 else (1 if y < CAP else 0))
+    for x in (-9, 9):
+        put(x, 0, "ruby")
+    for y in range(4, CAP + 4):
+        half = 4 if y < CAP - 5 else (3 if y < CAP - 2 else (2 if y < CAP + 1 else (1 if y < CAP + 3 else 0)))
         for x in range(-half, half + 1):
-            k = "steel_fuller" if (x == 0 and half >= 2) else ("steel_edge" if abs(x) == half and half > 0 else "steel")
+            k = "steel_fuller" if (abs(x) <= 1 and half >= 3 and y < CAP - 4) else ("steel_edge" if abs(x) == half and half > 0 else "steel")
             put(x, y, k)
-    put(0, CAP + 2, "blood")
     # Blooded: the last of the blade red, darker where it has dried.
     rng = random.Random(4)
-    out = [(x, y, ("blood" if rng.random() < 0.75 else "blood_dark") if y >= CAP - 5 and (y >= CAP - 2 or rng.random() < 0.55) and k.startswith("steel") else k) for x, y, k in out]
+    out = [(x, y, ("blood" if rng.random() < 0.75 else "blood_dark") if y >= CAP - 4 and (y >= CAP - 1 or rng.random() < 0.55) and k.startswith("steel") else k) for x, y, k in out]
     return out
 
 
@@ -131,7 +142,7 @@ def build(stack=False):
     rng = random.Random(7)
     for entry in letters:
         if entry[0] == "sword":
-            cx = entry[1] + 7
+            cx = entry[1] + SWORD_W // 2
             for x, y, k in sword_cells(cx):
                 for z in range(0, 4):
                     vox[(x, y + entry[2], z + 1)] = k
@@ -152,6 +163,7 @@ def build(stack=False):
     hcells = letters[-1][3]
     hw = max(c[0] for c in hcells) - hx + 1
     debris = []
+    broken = []
     for (x, y, z), k in list(vox.items()):
         if x < hx or y < hy - 2:
             continue
@@ -160,14 +172,17 @@ def build(stack=False):
         # a jagged break across the top of the right stem: the H still an H
         if u > 0.64 and v < 0.13 + 0.38 * (u - 0.64) + 0.04 * math.sin(y * 2.3 + x * 1.3):
             vox.pop((x, y, z))
-            if rng.random() < 0.45:
-                t = rng.random() ** 0.8 * 8.0 + 0.8
-                ang = math.radians(rng.uniform(-62, -8))
-                debris.append({
-                    "p": (x + 2.0 + math.cos(ang) * t * 3.2, y - 1.0 + math.sin(ang) * t * 3.2 + 0.05 * t * t, z + rng.uniform(-1.5, 1.5) * t * 0.35),
-                    "rot": (rng.uniform(-1, 1) * (0.4 + t * 0.35), rng.uniform(-1, 1) * (0.4 + t * 0.35), rng.uniform(-1, 1) * (0.4 + t * 0.35)),
-                    "s": max(0.5, (2.0 if rng.random() < 0.3 else 1.15) * (1.0 - t * 0.06)),
-                    "k": k})
+            broken.append((x, y, z, k))
+    # The pieces: big ones close to the break, smaller the further they have flown.
+    for i in range(DEBRIS):
+        x, y, z, k = rng.choice(broken)
+        t = (i + rng.random()) / DEBRIS * 8.5 + 0.6
+        ang = math.radians(rng.uniform(-58, -6))
+        debris.append({
+            "p": (x + 2.5 + math.cos(ang) * t * 3.4, y - 1.0 + math.sin(ang) * t * 3.4 + 0.05 * t * t, z + rng.uniform(-1.2, 1.2) * t * 0.3),
+            "rot": (rng.uniform(-1, 1) * (0.5 + t * 0.3), rng.uniform(-1, 1) * (0.5 + t * 0.3), rng.uniform(-1, 1) * (0.5 + t * 0.3)),
+            "s": max(0.9, rng.uniform(2.0, 3.4) * (1.0 - t * 0.075)),
+            "k": k})
     return vox, debris, width, local
 
 
@@ -206,9 +221,12 @@ def render(out_w, stack=False):
     rng = random.Random(11)
     # World: x right, y up, z toward the camera. Grid y is down, so world y = -y.
     cx = width / 2.0
-    cy = -(CAP * lines + 14 * (lines - 1)) / 2.0 + 1.5
-    yaw = math.radians(-9.0)       # the right end a little nearer: the word sweeps toward you
-    pitch = math.radians(11.0)     # seen a little from above: the tops of the letters catch light
+    cy = -(CAP * lines + LINE_GAP * (lines - 1)) / 2.0 + 1.5
+    # Square on and seen a little from below: the letters stand over you on a dark base of their
+    # own undersides, lit by the forge. (Seen from above and turned, the lit tops and sides of
+    # every voxel step ran along the letters' edges like a saw.)
+    yaw = 0.0
+    pitch = math.radians(-13.0)
     cam_dist = width * 1.55
     f = cam_dist * 1.0
 
@@ -252,13 +270,16 @@ def render(out_w, stack=False):
         for (nx, ny, nz), corners in FACES:
             if (x + nx, y + ny, z + nz) in vox:
                 continue
+            fb = base
+            if kind == "gold" and nz != 1:    # darker toward the back, so the face stands clear of it
+                fb = SIDE_GOLD * (0.62 + 0.38 * z / max(1, DEPTH - 1)) * (1.0 + rng.uniform(-0.03, 0.03))
             n = rot_normal((nx, ny, nz))
             centre = world((x + 0.5 + nx * 0.5, y + 0.5 + ny * 0.5, z + 0.5 + nz * 0.5))
             to_cam = np.array([-centre[0], -centre[1], cam_dist - centre[2]])
             if float(np.dot(n, to_cam)) <= 0:
                 continue
             pts = [project(world((x + a, y + b, z + c))) for a, b, c in corners]
-            polys.append((sum(p[2] for p in pts) / 4.0, [(p[0], p[1]) for p in pts], shade(base, n, nz == 1), nz == 1))
+            polys.append((sum(p[2] for p in pts) / 4.0, [(p[0], p[1]) for p in pts], shade(fb, n, nz == 1), nz == 1))
     # The flying voxels: rotated cubes.
     for d in debris:
         base = colour(d["k"], d["p"][0], rng.uniform(0.35, 0.95) * CAP, 0, rng)
@@ -303,31 +324,35 @@ def render(out_w, stack=False):
         c = tuple(int(v) for v in col) + (255,)
         d.polygon(P, fill=c)
         if bevel:
-            # A bevel on every face: lit along its upper and left edges, dark along the others.
-            hi = tuple(int(min(255, v * 1.22 + 18)) for v in col) + (255,)
-            lo = tuple(int(v * 0.58) for v in col) + (255,)
+            # A bevel on every face: lit along its upper and left edges, dark along the others (soft:
+            # the voxels show close up, and the letter still reads whole at the smallest size).
+            hi = tuple(int(min(255, v * 1.16 + 12)) for v in col) + (255,)
+            lo = tuple(int(v * 0.68) for v in col) + (255,)
             lw = max(1, int(scale * 0.07))
             d.line([P[3], P[0], P[1]], fill=hi, width=lw)
             d.line([P[1], P[2], P[3]], fill=lo, width=lw)
         else:
-            lo = tuple(int(v * 0.72) for v in col) + (255,)
-            d.line(P + [P[0]], fill=lo, width=max(1, int(scale * 0.04)))
+            lo = tuple(int(v * 0.86) for v in col) + (255,)
+            d.line(P + [P[0]], fill=lo, width=max(1, int(scale * 0.03)))
     return img, scale
 
 
-def sparks(size, scale, rng):
-    """Embers rising off the logo, thickest about the breaking H: bright cores in a glow."""
-    W, H = size
+def sparks(size, scale, rng, box):
+    """Embers rising off the logo, thickest about the breaking H, none far from the letters (the
+    logo is cropped to what it draws: a stray ember high above would shrink it in every
+    capsule): bright cores in a glow. `box`: the letters' bounds."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
     layer = Image.new("RGBA", size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    for i in range(110):
-        if rng.random() < 0.6:
-            x = rng.uniform(0.82, 0.985) * W
-            y = rng.uniform(0.12, 0.62) * H
+    for i in range(SPARKS):
+        if rng.random() < 0.75:
+            x = x1 - w * rng.uniform(-0.02, 0.13)
+            y = y0 + h * rng.uniform(-0.12, 0.55)
         else:
-            x = rng.uniform(0.06, 0.94) * W
-            y = rng.uniform(0.14, 0.42) * H
-        s = rng.uniform(0.18, 0.55) * scale
+            x = x0 + w * rng.uniform(0.04, 0.92)
+            y = y0 - h * rng.uniform(0.0, 0.14)
+        s = rng.uniform(0.25, 0.6) * scale
         col = rng.choice([(255, 210, 120), (255, 160, 60), (255, 120, 40), (255, 236, 170)])
         a = int(rng.uniform(150, 255))
         if rng.random() < 0.35:
@@ -351,22 +376,46 @@ def glints(size, scale, rng, spots):
     return Image.alpha_composite(glow, layer)
 
 
+def grow(a, k):
+    """The alpha grown by a k x k square (a max filter, done along each axis with numpy: PIL's
+    MaxFilter takes minutes at the master's size)."""
+    m = np.array(a)
+    r = k // 2
+    for axis in (0, 1):
+        out = m.copy()
+        n = m.shape[axis]
+        for d in range(1, r + 1):
+            if axis == 0:
+                np.maximum(out[d:], m[:n - d], out=out[d:])
+                np.maximum(out[:n - d], m[d:], out=out[:n - d])
+            else:
+                np.maximum(out[:, d:], m[:, :n - d], out=out[:, d:])
+                np.maximum(out[:, :n - d], m[:, d:], out=out[:, :n - d])
+        m = out
+    return Image.fromarray(m)
+
+
 def finish(img, scale):
     """The outline that keeps it readable on any picture, a drop shadow and the forge's glow."""
     a = img.split()[3]
-    grow = a.filter(ImageFilter.MaxFilter(int(scale * 0.8) | 1))
+    rim_a = grow(a, int(scale * 1.3) | 1)
     rim = Image.new("RGBA", img.size, IRON + (0,))
-    rim.putalpha(grow.point(lambda v: int(v * 0.92)))
+    rim.putalpha(rim_a.point(lambda v: int(v * 0.96)))
     shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    sh = grow.filter(ImageFilter.GaussianBlur(scale * 1.4)).point(lambda v: int(v * 0.6))
-    shadow.paste(Image.new("RGBA", img.size, (0, 0, 0, 255)), (int(scale * 0.4), int(scale * 0.9)), sh)
-    glow_a = grow.filter(ImageFilter.GaussianBlur(scale * 3.2)).point(lambda v: int(v * 0.42))
+    sh = rim_a.filter(ImageFilter.GaussianBlur(scale * 1.6)).point(lambda v: int(v * 0.8))
+    shadow.paste(Image.new("RGBA", img.size, (0, 0, 0, 255)), (int(scale * 0.5), int(scale * 1.2)), sh)
+    # A dark halo, so the gold stands on the bright sand and sky as well as on the stands.
+    halo_a = grow(rim_a, int(scale * 2.0) | 1).filter(ImageFilter.GaussianBlur(scale * 3.0)).point(lambda v: int(v * 0.5))
+    halo = Image.new("RGBA", img.size, (14, 7, 4, 0))
+    halo.putalpha(halo_a)
+    glow_a = rim_a.filter(ImageFilter.GaussianBlur(scale * 2.2)).point(lambda v: int(v * 0.22))
     glow = Image.new("RGBA", img.size, (255, 120, 36, 0))
     glow.putalpha(glow_a)
-    out = Image.alpha_composite(glow, shadow)
+    out = Image.alpha_composite(halo, glow)
+    out = Image.alpha_composite(out, shadow)
     out = Image.alpha_composite(out, rim)
     out = Image.alpha_composite(out, img)
-    out = Image.alpha_composite(out, sparks(img.size, scale, random.Random(3)))
+    out = Image.alpha_composite(out, sparks(img.size, scale, random.Random(3), a.point(lambda v: 255 if v > 128 else 0).getbbox()))
     # Light caught on the upper left corners of a few letters.
     a2 = np.array(img.split()[3]) > 128
     rows = np.nonzero(a2.any(axis=1))[0]
