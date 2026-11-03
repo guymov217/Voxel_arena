@@ -1676,6 +1676,7 @@ func update_drips() -> void:
 
 const MAX_RUNS := 6
 var artery := 0.0              # how hard a cut artery bleeds (adds to the bleeding; slow to close)
+const ARTERY_CLOSE := 0.03      # how fast a cut artery closes of itself (a second)
 var runs: Array = []           # {lp, len, t}: blood running down from a wound
 var spurts: Array = []         # {node, lp, out}: arterial jets
 var _blood_t := 0.0
@@ -1710,7 +1711,7 @@ func open_wound(lp: Vector3, out: Vector3, cut_artery: bool, rate := 6.0) -> voi
 ## Each tick: the blood runs further down while the part bleeds; the jets pulse with the heart
 ## (`beat` 0..1, 0 when it has stopped). Painting is a few voxels a tick at most.
 func update_blood(dt: float, beat: float) -> void:
-	artery = maxf(0.0, artery - dt * 0.012)
+	artery = maxf(0.0, artery - dt * ARTERY_CLOSE)
 	var flow := bleed + artery
 	for s in spurts:
 		if is_instance_valid(s.node):

@@ -543,3 +543,36 @@ func test_the_smith_refits_a_prosthetic_in_the_yard() -> void:
 	Save.set_value("body", body0 if body0 is Dictionary else {})
 	Save.set_value("coins", coins0 if coins0 != null else start)
 	await get_tree().process_frame
+
+## A limb cut off passes through the man it came off for as long as it lies in him, however long
+## that is, and is solid to him only once clear of him. (Made solid after a few seconds whether
+## clear or not, a dummy's leg lying in the leg he stood on was thrown out by the solver, and again
+## each time his foot came down on it: it jumped about the arena on its own, user.)
+func test_a_severed_leg_inside_him_is_not_thrown_out() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var e = m.spawn_fighter({"kind": "bot", "name": "D", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var f: Fighter = e.f
+	await _steps(60)
+	var leg: VoxelPart = f.by_name.shinL
+	var stand: VoxelPart = f.by_name.shinR
+	f.detach_limb(leg, {"removed": [], "severed": []})
+	# Laid along the shin he stands on, inside it, for nine seconds (past the twenty checks after
+	# which a piece used to be made solid to him whether clear of him or not).
+	for i in 120 * 9:
+		f.blood = 100.0
+		leg.global_transform = stand.global_transform
+		leg.linear_velocity = Vector3.ZERO
+		leg.angular_velocity = Vector3.ZERO
+		await get_tree().physics_frame
+	t.check(leg.get_collision_exceptions().has(stand), "nine seconds inside the leg he stands on, the cut-off shin still passes through it")
+	var fastest := 0.0
+	var p0 := leg.global_position
+	for i in 120 * 3:
+		f.blood = 100.0
+		await get_tree().physics_frame
+		fastest = maxf(fastest, leg.linear_velocity.length())
+	t.check(fastest < 3.0, "let go, it is not thrown out of him (fastest %.2f m/s, moved %.2f m)" % [fastest, leg.global_position.distance_to(p0)])
+	m.queue_free()

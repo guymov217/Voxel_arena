@@ -17,6 +17,13 @@ const SHOULDER_L := Vector3(5.5 * V, 0.2725, 0)
 const ARM_REACH := 0.68
 const HIT_SCALE := 0.8
 const BLEED_RATE := 0.6
+const CLOT_K := 0.06
+## How hard a cut artery bleeds (before BLEED_RATE): the throat's and the trunk's great vessels
+## more than a limb's. At 6 for every one (and slow to close) a nick in a thigh bled a gladiator
+## white in under half a minute, and the fight was over by it (user: one of them always bleeds
+## to death fast, there is no long struggle).
+const ARTERY_CORE := 5.0
+const ARTERY_LIMB := 4.0
 const JAB_TIME := 0.32
 const LEG_MASS := 0.5
 ## How hard the body is pulled back over its planted feet (14 in the web game, whose legs are
@@ -2598,11 +2605,14 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# The heart pushes the blood out in beats while it still beats (a cut artery spurts with it).
 	var beat := 0.5 + 0.5 * sin(time * TAU * (1.2 + 0.6 * pain)) if state != "dead" and blood > 5.0 and heart_t < 0.0 else 0.0
 	# A wound clots at the rate the man bleeds: a player's (PLAYER_BLEED) and a hide trained
-	# to bleed slow close sooner, a berserker's slower.
+	# to bleed slow close sooner, a berserker's slower. A bad wound closes faster than a scratch
+	# does, by its own share (CLOT_K): wound on wound on one limb bled on as one great wound the
+	# whole bout, and the fight was over in a few cuts (user: someone always bled to death fast).
 	var clot := dt * 0.08 / maxf(0.3, float(mods.bleed))
+	var clot_k := dt * CLOT_K / maxf(0.3, float(mods.bleed))
 	for p in parts:
 		bleed += p.bleed + p.artery
-		p.bleed = maxf(0.0, p.bleed - clot)
+		p.bleed = maxf(0.0, p.bleed - clot - p.bleed * clot_k)
 		p.update_drips()
 		p.update_blood(dt, beat)
 		if p.stump:
@@ -5704,7 +5714,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				cut_artery = true
 			if cut_artery:
 				res.artery = true
-			part.open_wound(lp.clamp(-part.half_ext, part.half_ext), -ld, cut_artery, 6.0 / maxf(1.0, S))
+			part.open_wound(lp.clamp(-part.half_ext, part.half_ext), -ld, cut_artery, (ARTERY_CORE if part == head or part == torso or part.part_name == "neck" else ARTERY_LIMB) / maxf(1.0, S))
 		var voxels := part.remove_voxels(remove)
 		# Nothing cut away just vanishes: the slice a blade takes, the plug a point punches
 		# out, the flesh a blow crushes, all fall to the sand as pieces.
@@ -6372,13 +6382,15 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	on_severed(part)
 
 ## The cut-off `pieces` pass through his body until they have fallen clear of it: each part of
-## him they still overlap is checked again a little later, and only once apart do the two knock
-## against each other. (Made solid to him while still inside him, a piece was held there, caught
-## in the trunk, and floated in his body as he moved: user.) Given up after a few seconds: what
-## is still in him then stays passing through him.
+## him they still overlap is checked again a little later (once a second after the first few
+## seconds), and only once apart do the two knock against each other. (Made solid to him while
+## still inside him, a piece was held there, caught in the trunk, and floated in his body as he
+## moved: user. Made solid at last after a few seconds whether clear or not, a leg lying against
+## the one he stood on was thrown out of it by the solver, and again each time his foot came
+## down on it: it jumped about the arena on its own, user.)
 func _clear_of_body(pieces: Array, tries: int) -> void:
 	var me := weakref(self)   # (weak: he may be gone, a round over, before it runs)
-	get_tree().create_timer(0.7 if tries == 0 else 0.3, false, true).timeout.connect(func():
+	get_tree().create_timer(0.7 if tries == 0 else (0.3 if tries < 20 else 1.0), false, true).timeout.connect(func():
 		var f = me.get_ref()
 		if f == null:
 			return
@@ -6390,7 +6402,7 @@ func _clear_of_body(pieces: Array, tries: int) -> void:
 			for o in f.parts:
 				if not is_instance_valid(o) or pieces.has(o) or not p.get_collision_exceptions().has(o):
 					continue
-				if tries < 20 and not o.severed and pb.intersects(_world_box(o)):
+				if not o.severed and pb.intersects(_world_box(o)):
 					left = true
 				else:
 					p.remove_collision_exception_with(o)

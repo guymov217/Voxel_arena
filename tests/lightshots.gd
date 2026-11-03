@@ -3,7 +3,8 @@ extends Node
 ## (`-- --probe lightshots`, needs a display; SHOT_DIR is where the PNGs go). A training bout runs
 ## on autopilot until a hard blow lands, the physics is stopped there, and every look in LOOKS is
 ## put on the same frozen scene: once close on the fight, once wide over the arena. LIGHT_WAIT:
-## the most physics frames to wait for that blow (3600).
+## the most physics frames to wait for that blow (3600); LIGHT_FRAMES: the frames drawn before each
+## shot is kept (40); LOOK_ONLY: the looks to shoot (all).
 
 const LOOKS := {
 	"a_now": {},
@@ -32,10 +33,15 @@ var big: Dictionary = {}
 func _ready() -> void:
 	out = OS.get_environment("SHOT_DIR")
 	seed(3)
+	# The bout plays out unseen (a frame of the full picture is slow to draw without a GPU, and
+	# waiting for the blow frame by frame drawn never got past the menu); only the shots are drawn.
+	RenderingServer.render_loop_enabled = false
+	Engine.max_physics_steps_per_frame = 64
 	menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
 	for i in 30:
 		await get_tree().process_frame
+	print("menu up, the bout begins")
 	menu.start({"mode": "training", "training": {"enemy": OS.get_environment("LIGHT_FOE") if OS.get_environment("LIGHT_FOE") != "" else "bear", "immortal": true}, "autopilot": true, "decrees": [], "hazards": [], "seed": 3, "loadout_override": {"main": "axe", "off": "roundShield"}})
 	var m = menu.match_
 	m.combat.hit.connect(func(h): if big.is_empty() and float(h.get("J", 0.0)) > 25.0 and h.get("p") is Vector3: big = h)
@@ -46,6 +52,7 @@ func _ready() -> void:
 		waited += 1
 	for i in 4:
 		await get_tree().physics_frame
+	print("the blow after %d frames: %s" % [waited, "found" if not big.is_empty() else "none, the middle of the ring"])
 	PhysicsServer3D.set_active(false)
 	m.set_physics_process(false)
 	menu.hud.visible = false
@@ -73,6 +80,8 @@ func _ready() -> void:
 		["top", Vector3(0.5, 19.0, 6.0), Vector3(0, 0, 0), 60.0],
 	]
 	var only := OS.get_environment("LOOK_ONLY")
+	var settle := int(OS.get_environment("LIGHT_FRAMES")) if OS.get_environment("LIGHT_FRAMES") != "" else 40
+	RenderingServer.render_loop_enabled = true
 	for look in LOOKS:
 		if only != "" and not only.split(",").has(look):
 			continue
@@ -82,7 +91,7 @@ func _ready() -> void:
 			m.cam.global_position = sh[1]
 			m.cam.look_at(sh[2], Vector3.UP)
 			m.cam.fov = sh[3]
-			for i in 40:   # the screen-space effects and the fog settle over a few frames
+			for i in settle:   # the screen-space effects and the fog settle over a few frames
 				await get_tree().process_frame
 			get_viewport().get_texture().get_image().save_png(out.path_join("%s_%s.png" % [look, sh[0]]))
 			print("saved ", look, " ", sh[0])

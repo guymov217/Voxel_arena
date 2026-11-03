@@ -24,11 +24,11 @@
 "scripts/ui/menu.gd:3950",
 "scripts/ui/menu.gd:4129",
 "scripts/ui/menu.gd:4327",
-"scripts/fighter/fighter.gd:57",
+"scripts/fighter/fighter.gd:64",
 "scripts/game/yard.gd:44",
 "scripts/game/modes.gd:73",
-"scripts/game/match.gd:321",
-"scripts/game/match.gd:702",
+"scripts/game/match.gd:322",
+"scripts/game/match.gd:703",
 "scripts/autoload/save.gd:5"
 ],
 "Could not reach the host": [
@@ -77,7 +77,7 @@
 "scripts/net/net.gd:553",
 "scripts/ui/weapon_view.gd:49",
 "scripts/ui/menu.gd:3434",
-"scripts/game/match.gd:1624"
+"scripts/game/match.gd:1625"
 ],
 "The host removed you from the room": [
 "scripts/net/net.gd:603"
@@ -1143,7 +1143,7 @@
 "scripts/ui/menu.gd:597",
 "scripts/ui/menu.gd:609",
 "scripts/game/yard_play.gd:135",
-"scripts/game/match.gd:335",
+"scripts/game/match.gd:336",
 "scripts/autoload/data.gd:123"
 ],
 "The co-op campaign · bout %d (all of you)": [
@@ -1924,11 +1924,11 @@
 ],
 "III": [
 "scripts/ui/menu.gd:2598",
-"scripts/game/match.gd:812"
+"scripts/game/match.gd:813"
 ],
 "VII": [
 "scripts/ui/menu.gd:2598",
-"scripts/game/match.gd:812"
+"scripts/game/match.gd:813"
 ],
 "SEVEN DAYS · THE EMPEROR'S GAMES": [
 "scripts/ui/menu.gd:2602"
@@ -2667,32 +2667,32 @@
 "scripts/fighter/weapon.gd:801"
 ],
 "Blade arm": [
-"scripts/fighter/fighter.gd:525",
+"scripts/fighter/fighter.gd:539",
 "scripts/game/body.gd:15"
 ],
 "Armor_": [
-"scripts/fighter/fighter.gd:928"
+"scripts/fighter/fighter.gd:942"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:2557"
+"scripts/fighter/fighter.gd:2576"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2559"
+"scripts/fighter/fighter.gd:2578"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:2565"
+"scripts/fighter/fighter.gd:2584"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:2565"
+"scripts/fighter/fighter.gd:2584"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:5222"
+"scripts/fighter/fighter.gd:5299"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:5238"
+"scripts/fighter/fighter.gd:5315"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:6914",
+"scripts/fighter/fighter.gd:6993",
 "scripts/game/spectacle.gd:158"
 ],
 "Strong gladiator": [
@@ -2817,12 +2817,12 @@
 "scripts/fighter/combat.gd:79"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2085",
-"scripts/voxel/voxel_part.gd:2384",
-"scripts/voxel/voxel_part.gd:2398"
+"scripts/voxel/voxel_part.gd:2086",
+"scripts/voxel/voxel_part.gd:2385",
+"scripts/voxel/voxel_part.gd:2399"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:2305"
+"scripts/voxel/voxel_part.gd:2306"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:15"
@@ -3124,11 +3124,11 @@
 ],
 "You are ready": [
 "scripts/game/tutorial.gd:81",
-"scripts/game/match.gd:1017"
+"scripts/game/match.gd:1018"
 ],
 "Next, the forge: how to make a weapon of your own.": [
 "scripts/game/tutorial.gd:81",
-"scripts/game/match.gd:1017"
+"scripts/game/match.gd:1018"
 ],
 "Training dummy": [
 "scripts/game/tutorial.gd:86",
@@ -3726,15 +3726,15 @@
 ],
 "Veteran": [
 "scripts/game/yard.gd:45",
-"scripts/game/match.gd:705"
+"scripts/game/match.gd:706"
 ],
 "Heavy armour is for sale to you.": [
 "scripts/game/yard.gd:45"
 ],
 "Champion": [
 "scripts/game/yard.gd:46",
-"scripts/game/match.gd:135",
-"scripts/game/match.gd:705"
+"scripts/game/match.gd:136",
+"scripts/game/match.gd:706"
 ],
 "Missions pay half again.": [
 "scripts/game/yard.gd:46"
@@ -3974,7 +3974,7 @@
 ],
 "%s left": [
 "scripts/game/modes.gd:532",
-"scripts/game/match.gd:567"
+"scripts/game/match.gd:568"
 ],
 "to the death": [
 "scripts/game/modes.gd:532"
@@ -4182,7 +4182,7 @@
 ],
 "BOOM!": [
 "scripts/game/throwables.gd:707",
-"scripts/game/match.gd:2350"
+"scripts/game/match.gd:2351"
 ],
 "Caltrops all over the sand. Watch your step.": [
 "scripts/game/throwables.gd:741"
@@ -5175,221 +5175,221 @@
 "scripts/game/hazards.gd:96"
 ],
 "VA_BODIES": [
-"scripts/game/match.gd:246",
-"scripts/game/match.gd:246"
+"scripts/game/match.gd:247",
+"scripts/game/match.gd:247"
 ],
 "The Emperor decrees": [
-"scripts/game/match.gd:315",
-"scripts/game/match.gd:351"
+"scripts/game/match.gd:316",
+"scripts/game/match.gd:352"
 ],
 "One on one: %s": [
-"scripts/game/match.gd:335"
+"scripts/game/match.gd:336"
 ],
 "Together: %s": [
-"scripts/game/match.gd:335"
+"scripts/game/match.gd:336"
 ],
 "your opponent": [
-"scripts/game/match.gd:335"
+"scripts/game/match.gd:336"
 ],
 "Stage %d": [
-"scripts/game/match.gd:337"
+"scripts/game/match.gd:338"
 ],
 "Round 1 of 3": [
-"scripts/game/match.gd:337"
+"scripts/game/match.gd:338"
 ],
 "The Ludus yard": [
-"scripts/game/match.gd:349"
+"scripts/game/match.gd:350"
 ],
 "Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight": [
-"scripts/game/match.gd:349"
+"scripts/game/match.gd:350"
 ],
 "%s beats its chest and roars!": [
-"scripts/game/match.gd:477"
+"scripts/game/match.gd:478"
 ],
 "%s raises its spiked tail!": [
-"scripts/game/match.gd:477"
+"scripts/game/match.gd:478"
 ],
 "%s trumpets and charges!": [
-"scripts/game/match.gd:477"
+"scripts/game/match.gd:478"
 ],
 "%s's eye is put out: he goes berserk!": [
-"scripts/game/match.gd:505"
+"scripts/game/match.gd:506"
 ],
 "%s came into the yard": [
-"scripts/game/match.gd:551"
+"scripts/game/match.gd:552"
 ],
 "Veteran %s": [
-"scripts/game/match.gd:705"
+"scripts/game/match.gd:706"
 ],
 "Champion %s": [
-"scripts/game/match.gd:705"
+"scripts/game/match.gd:706"
 ],
 "The other gate opens: %s!": [
-"scripts/game/match.gd:758"
+"scripts/game/match.gd:759"
 ],
 "Bout": [
-"scripts/game/match.gd:783"
+"scripts/game/match.gd:784"
 ],
 "Day %s · bout %d": [
-"scripts/game/match.gd:812"
+"scripts/game/match.gd:813"
 ],
 "Sparring partner": [
-"scripts/game/match.gd:869"
+"scripts/game/match.gd:870"
 ],
 "Lions' Den! Here comes the Emperor's pet.": [
-"scripts/game/match.gd:1023"
+"scripts/game/match.gd:1024"
 ],
 "%s patched up %s": [
-"scripts/game/match.gd:1184"
+"scripts/game/match.gd:1185"
 ],
 "%s is on fire!": [
-"scripts/game/match.gd:1223"
+"scripts/game/match.gd:1224"
 ],
 "The poison eats into %s!": [
-"scripts/game/match.gd:1223"
+"scripts/game/match.gd:1224"
 ],
 "%s picks up a %s": [
-"scripts/game/match.gd:1624"
+"scripts/game/match.gd:1625"
 ],
 "%s's %s is stuck fast in %s!": [
-"scripts/game/match.gd:1637"
+"scripts/game/match.gd:1638"
 ],
 "Round %d of 3": [
-"scripts/game/match.gd:1726"
+"scripts/game/match.gd:1727"
 ],
 "None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:1772"
+"scripts/game/match.gd:1773"
 ],
 "None of you can stand. The crowd moves on.": [
-"scripts/game/match.gd:1772"
+"scripts/game/match.gd:1773"
 ],
 "The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:1772"
+"scripts/game/match.gd:1773"
 ],
 "The crowd moves on.": [
-"scripts/game/match.gd:1772"
+"scripts/game/match.gd:1773"
 ],
 "You can fight no more": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1774"
 ],
 "You fall": [
-"scripts/game/match.gd:1773"
+"scripts/game/match.gd:1774"
 ],
 "Round %d won": [
-"scripts/game/match.gd:1780"
+"scripts/game/match.gd:1781"
 ],
 "%d denarii to the party's purse": [
-"scripts/game/match.gd:1788"
+"scripts/game/match.gd:1789"
 ],
 "%d denarii": [
-"scripts/game/match.gd:1788"
+"scripts/game/match.gd:1789"
 ],
 ", %d of them the crowd's": [
-"scripts/game/match.gd:1790"
+"scripts/game/match.gd:1791"
 ],
 "Bout %d won": [
-"scripts/game/match.gd:1791"
+"scripts/game/match.gd:1792"
 ],
 "Stage %d cleared": [
-"scripts/game/match.gd:1791"
+"scripts/game/match.gd:1792"
 ],
 "%s. Back to the yard: spend, mend, gear up.": [
-"scripts/game/match.gd:1791"
+"scripts/game/match.gd:1792"
 ],
 "Victory": [
-"scripts/game/match.gd:1793"
+"scripts/game/match.gd:1794"
 ],
 "%s lifts %s": [
-"scripts/game/match.gd:1819"
+"scripts/game/match.gd:1820"
 ],
 "DEFEAT": [
-"scripts/game/match.gd:1875",
-"scripts/game/match.gd:1880"
+"scripts/game/match.gd:1876",
+"scripts/game/match.gd:1881"
 ],
 "The Emperor turns his thumb down": [
-"scripts/game/match.gd:1875",
-"scripts/game/match.gd:1880"
+"scripts/game/match.gd:1876",
+"scripts/game/match.gd:1881"
 ],
 "VICTORY!": [
-"scripts/game/match.gd:1882"
+"scripts/game/match.gd:1883"
 ],
 "The crowd roars your name": [
-"scripts/game/match.gd:1882"
+"scripts/game/match.gd:1883"
 ],
 "%s kills %s": [
-"scripts/game/match.gd:2084"
+"scripts/game/match.gd:2085"
 ],
 "%s TEARS %s APART!": [
-"scripts/game/match.gd:2086"
+"scripts/game/match.gd:2087"
 ],
 "%s loses the %s!": [
-"scripts/game/match.gd:2088"
+"scripts/game/match.gd:2089"
 ],
 "%s's %s is BROKEN%s!": [
-"scripts/game/match.gd:2094"
+"scripts/game/match.gd:2095"
 ],
 ", the bone out through the skin": [
-"scripts/game/match.gd:2094"
+"scripts/game/match.gd:2095"
 ],
 "%s's skull is cracked!": [
-"scripts/game/match.gd:2096"
+"scripts/game/match.gd:2097"
 ],
 "%s's skull is broken!": [
-"scripts/game/match.gd:2096"
+"scripts/game/match.gd:2097"
 ],
 "%s is set alight!": [
-"scripts/game/match.gd:2163"
+"scripts/game/match.gd:2164"
 ],
 "%s is poisoned!": [
-"scripts/game/match.gd:2174"
+"scripts/game/match.gd:2175"
 ],
 "%s is chilled to the bone!": [
-"scripts/game/match.gd:2181"
+"scripts/game/match.gd:2182"
 ],
 "The ruby flares: %s's %s catches fire!": [
-"scripts/game/match.gd:2216"
+"scripts/game/match.gd:2217"
 ],
 "The sapphire bites cold: frostbite in %s's %s!": [
-"scripts/game/match.gd:2228"
+"scripts/game/match.gd:2229"
 ],
 "The emerald's poison eats into %s's %s!": [
-"scripts/game/match.gd:2238"
+"scripts/game/match.gd:2239"
 ],
 "a golden blow": [
-"scripts/game/match.gd:2257"
+"scripts/game/match.gd:2258"
 ],
 "BOING! %s goes flying!": [
-"scripts/game/match.gd:2295"
+"scripts/game/match.gd:2296"
 ],
 "Stuck! The glue holds %s fast.": [
-"scripts/game/match.gd:2307"
+"scripts/game/match.gd:2308"
 ],
 "%s giggles helplessly!": [
-"scripts/game/match.gd:2320"
+"scripts/game/match.gd:2321"
 ],
 "The magnet tears the %s out of %s's hand!": [
-"scripts/game/match.gd:2413"
+"scripts/game/match.gd:2414"
 ],
 "%s is dead": [
-"scripts/game/match.gd:2447"
+"scripts/game/match.gd:2448"
 ],
 "%s is beheaded": [
-"scripts/game/match.gd:2447"
+"scripts/game/match.gd:2448"
 ],
 "%s is back on his feet": [
-"scripts/game/match.gd:2585"
+"scripts/game/match.gd:2586"
 ],
 "%s spits venom!": [
-"scripts/game/match.gd:2674"
+"scripts/game/match.gd:2675"
 ],
 "%s breathes FIRE!": [
-"scripts/game/match.gd:2674"
+"scripts/game/match.gd:2675"
 ],
 "%s is poisoned by the %s!": [
-"scripts/game/match.gd:2821"
+"scripts/game/match.gd:2822"
 ],
 "Broken weapon": [
-"scripts/game/match.gd:3068"
+"scripts/game/match.gd:3069"
 ],
 "Legionary": [
 "scripts/game/campaign_run.gd:10"

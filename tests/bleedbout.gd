@@ -60,7 +60,7 @@ func _ready() -> void:
 						a += p.artery
 						if p.stump:
 							s += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
-					var k2 := Fighter.BLEED_RATE * float(f.mods.bleed) / (f.S * f.S) / 120.0
+					var k2: float = Fighter.BLEED_RATE * float(f.mods.bleed) / (f.S * f.S) / 120.0
 					L.wounds += w * k2
 					L.artery += a * k2
 					L.stump += s * k2
@@ -74,7 +74,7 @@ func _ready() -> void:
 			print("stage %2d seed %d  (%.0f s)" % [stage, k, t[0]])
 			for f in order:
 				var L: Dictionary = log[f]
-				var fought := (L.died if L.died >= 0.0 else t[0]) - maxf(0.0, L.first)
+				var fought: float = (L.died if L.died >= 0.0 else t[0]) - maxf(0.0, L.first)
 				print("   %-14s %s  %2d blows (%4.0f harm, %d arteries)  lost to wounds %3.0f  artery %3.0f  stump %3.0f  worst %.1f/s  first wound %4.1f s, %s  blood %s" % [
 					L.name, ("died at %5.1f s of %-6s" % [L.died, L.cause]) if L.died >= 0.0 else "alive              ", L.hits, L.dmg, L.arteries,
 					L.wounds, L.artery, L.stump, L.peak, L.first, ("then %.1f s to death" % fought) if L.died >= 0.0 else "", str(L.blood)])

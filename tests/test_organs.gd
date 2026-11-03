@@ -419,6 +419,32 @@ func test_a_cut_artery_bleeds_out_far_faster() -> void:
 		m.queue_free()
 	t.check(lost[1] > lost[0] * 3.0 and lost[1] > 8.0, "the cut artery drains him far faster (%.1f against %.1f in 4 s)" % [lost[1], lost[0]])
 
+## A cut in the groin is deadly left alone, but not in a few breaths: half a minute on he is
+## still on his feet with blood to fight on, and a deep wound closes sooner than a scratch
+## (user: the fights end too fast, one of the two always bleeds to death quickly).
+func test_a_cut_artery_leaves_time_to_fight() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var res := _thigh_cut(v, true)
+	t.check(res.get("artery", false), "the groin cut opens the artery")
+	var b0 := v.blood
+	await _steps(120 * 30)
+	t.check(v.alive and v.blood > 20.0, "half a minute on he still has blood to fight with (%.0f)" % v.blood)
+	t.check(b0 - v.blood > 30.0, "and it has cost him dear (%.0f)" % (b0 - v.blood))
+	m.queue_free()
+	await get_tree().physics_frame
+	# A deep wound on a limb closes faster than a scratch does (its own share a second, CLOT_K).
+	var r2 := _victim()
+	var v2: Fighter = r2[1]
+	var arm_: VoxelPart = v2.by_name.upperArmR
+	arm_.bleed = 4.0
+	await _steps(120 * 10)
+	t.check(arm_.bleed < 4.0 - 0.08 * 10.0 - 0.5, "a deep wound closes by more than the steady clot alone (%.2f left)" % arm_.bleed)
+	r2[0].queue_free()
+	await get_tree().physics_frame
+
 func test_blood_runs_down_from_a_wound() -> void:
 	var r := _victim()
 	var m: Match = r[0]
