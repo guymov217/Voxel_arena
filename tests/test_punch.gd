@@ -97,3 +97,59 @@ func test_hard_strokes_leave_him_his_breath() -> void:
 	t.check(f.stamina > 45.0, "a dozen hard strokes of a longsword in armour leave him %.0f breath" % f.stamina)
 	m.queue_free()
 	await get_tree().physics_frame
+
+## A punch like a real one (user: it starts from the bent elbow, and at the end the arm
+## straightens and the fist lands): out of the guard the elbow stays bent, it opens on the way
+## out and locks straight for the blow (not before), the fist going fast, and on the way back the
+## arm folds into the guard again at once (it once hung out straight, or bent the elbow up and
+## out, and swung up before it came in).
+func test_a_punch_opens_the_elbow_on_its_way_out() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "", "off": ""}})
+	var me: Fighter = m.me.f
+	me.teleport(Vector3(0, 0, 0))
+	var st := {"jab": ""}
+	m.me.drive = func(_e):
+		var o := {"look": {"yaw": 0.0, "pitch": 0.0}, "main": PlayerInput.GUARD_MAIN, "off": PlayerInput.GUARD_OFF}
+		if st.jab != "":
+			o["jab" + String(st.jab)] = true
+			st.jab = ""
+		return o
+	var bend := func(side: String) -> float:
+		return (PD.quat_of(me.arm[side].upper) * Vector3.DOWN).angle_to(PD.quat_of(me.arm[side].fore) * Vector3.DOWN)
+	await _steps(150)
+	for side in ["R", "L"]:
+		var guard: float = bend.call(side)
+		st.jab = side
+		var start := PI      # the least bend in the punch's first frames
+		var least := PI      # the least on its way out
+		var locked_at := -1
+		var fastest := 0.0
+		var rise := -PI      # how far the upper arm rose above level once the blow was struck
+		var home := 0.0      # the bend a little after the punch is done
+		var fore: VoxelPart = me.arm[side].fore
+		for f in 60:
+			await get_tree().physics_frame
+			var b: float = bend.call(side)
+			if f < 4:
+				start = minf(start, b)
+			elif f < 26:
+				least = minf(least, b)
+				fastest = maxf(fastest, fore.velocity_at(me.hand_world(side)).length())
+			if locked_at < 0 and fore.get_meta("elbow_locked", false):
+				locked_at = f
+			if f >= 26:
+				var ua: Vector3 = PD.quat_of(me.arm[side].upper) * Vector3.DOWN
+				rise = maxf(rise, asin(clampf(ua.y, -1.0, 1.0)))
+			if f == 45:
+				home = b
+		t.check(guard > 0.8, "%s: the guard's elbow is bent (%.0f deg)" % [side, rad_to_deg(guard)])
+		t.check(start > 0.8, "%s: the punch leaves the guard with the elbow bent (%.0f deg at the least)" % [side, rad_to_deg(start)])
+		t.check(least < 0.1 and locked_at >= 4 and locked_at < 26, "%s: and the arm is straight, locked, by the end of its way out (%.0f deg; locked at step %d)" % [side, rad_to_deg(least), locked_at])
+		t.check(fastest > 8.0, "%s: the fist goes out fast (%.1f m/s)" % [side, fastest])
+		t.check(home > guard - 0.25 and not fore.get_meta("elbow_locked", false), "%s: on its way back the arm folds into the guard again (%.0f deg, the guard's %.0f)" % [side, rad_to_deg(home), rad_to_deg(guard)])
+		t.check(rise < deg_to_rad(30.0), "%s: and comes home without swinging up first (the upper arm %.0f deg above level at the most)" % [side, rad_to_deg(rise)])
+		await _steps(90)
+	m.queue_free()
+	await get_tree().physics_frame

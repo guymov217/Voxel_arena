@@ -67,6 +67,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a
   hard landing hurts. A fireball pot bursts, burns and leaves
   fire on the sand.
+- **Fists**: with an empty hand a click throws a punch from the boxer's guard: the elbow stays
+  bent as the fist is drawn in, opens on the way out and locks straight for the blow, then folds
+  straight back into the guard, the elbow down (`Fighter.JAB_*`, `tests/punchprobe.gd`).
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A giant's blows vary:
   a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
   has knocked down it goes on striking; it does not stand off and watch him.

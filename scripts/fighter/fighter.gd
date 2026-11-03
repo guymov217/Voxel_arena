@@ -246,6 +246,7 @@ var hp_prev := {"R": Vector2(0.1, 0.1), "L": Vector2(-0.35, 0.1)}   # the hand's
 var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
+var fist_home := {"R": 0.0, "L": 0.0}   # a punch's way back to the guard, still to go (s)
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
 var swing_reach := {"R": 0.0, "L": 0.0}   # how far a swung weapon's hand is put out to the end of the arm (0..1)
 var pane_prev := {"R": null, "L": null}  # last step's hand on the pane (what the mouse asked)
@@ -804,6 +805,20 @@ func _make_limited(p: VoxelPart, lim: Array) -> void:
 	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, lim[2][0])
 	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, lim[2][1])
 	p.joint = j
+
+## A jab's beats, as parts of JAB_TIME: drawn back until JAB_DRAW, driven out until JAB_BACK,
+## then home again; and how near straight the elbow has to be before it locks for the blow.
+const JAB_DRAW := 0.12
+const JAB_BACK := 0.6
+const PUNCH_LOCK_BEND := 0.25
+const JAB_COCK := 0.3   # how far the fist is drawn in before it goes (in the hand mark's reach units)
+const JAB_REACH := 1.15  # where the fist is sent on its way out, in arm lengths
+const JAB_HOME := 0.15   # how long the fist takes to come back to the guard (of JAB_TIME)
+const JAB_HOME_TIME := 0.3   # how long after a punch its arm is folded back into the guard (s)
+
+## The elbow's bend now (0: straight), the forearm's line against the upper arm's.
+func elbow_bend(side: String) -> float:
+	return (PD.quat_of(arm[side].upper) * Vector3.DOWN).angle_to(PD.quat_of(arm[side].fore) * Vector3.DOWN)
 
 func _lock_elbow_straight(side: String, on: bool) -> void:
 	var fore: VoxelPart = arm[side].fore
@@ -3632,14 +3647,25 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		stamina -= 5.0
 	jab_t[side] = maxf(0.0, jab_t[side] - dt)
 	var jk: float = 1.0 - jab_t[side] / JAB_TIME if jab_t[side] > 0.0 else -1.0
+	if jk >= JAB_BACK:
+		fist_home[side] = JAB_HOME_TIME
+	elif jk >= 0.0 or w:
+		fist_home[side] = 0.0
+	else:
+		fist_home[side] = maxf(0.0, fist_home[side] - dt)
 	var jab = null
 	if jk >= 0.0:
-		jab = -0.9 * jk / 0.12 if jk < 0.12 else (1.8 if jk < 0.6 else 1.8 * (1.0 - (jk - 0.6) / 0.4))
+		jab = -JAB_COCK * jk / JAB_DRAW if jk < JAB_DRAW else (1.8 if jk < JAB_BACK else 1.8 * maxf(0.0, 1.0 - (jk - JAB_BACK) / JAB_HOME))
 	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0)))
-	# A fist is thrown with a straight arm (character.js lockElbowOf): an empty hand with its
-	# button held, or a jab, locks the elbow rigid, so the forearm goes where the upper arm
-	# drives it and the punch lands with the whole arm behind it.
-	_lock_elbow_straight(side, not w and state == "stand" and (power or jab_t[side] > 0.0) and af > 0.25 and held_item == null and not crawling)
+	# A fist lands with the whole arm behind it (character.js lockElbowOf): the elbow locks rigid,
+	# so the forearm goes where the upper arm drives it; but only once the arm is all but
+	# straight (user: a real punch starts from the bent elbow, and the arm straightens as the fist
+	# lands). A jab leaves the guard with the elbow bent, opens it on the way out, locks it for
+	# the blow and bends it again on the way back; an empty hand with its button held stays
+	# locked while it is out straight.
+	var fist_on: bool = not w and state == "stand" and af > 0.25 and held_item == null and not crawling
+	var arm_straight: bool = bool(arm[side].fore.get_meta("elbow_locked", false)) or elbow_bend(side) < PUNCH_LOCK_BEND
+	_lock_elbow_straight(side, fist_on and arm_straight and ((jk >= JAB_DRAW and jk < JAB_BACK) if jk >= 0.0 else power))
 	if not (w and not w.is_shield and weapon_joints[side]):
 		_hold_elbow(side, 0.0, false, dt)
 	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
@@ -3976,12 +4002,19 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var k := wmax / w.angular_velocity.length()
 			w.angular_velocity *= k
 			fore.angular_velocity *= k
-	elif not w and (jab_t[side] > 0.0):
-		var jk2 = 1.0 - jab_t[side] / JAB_TIME
-		var out = jk2 > 0.1 and jk2 < 0.6
-		pd_axis(upper, Vector3(0, -1, 0), dir if out else (dir + Vector3(0, -0.35, 0)).normalized(), 30.0 if out else 14.0, 0.8, (320.0 if out else 90.0) * af * MS * S, dt)
-		pd_axis(fore, Vector3(0, -1, 0), dir, 26.0 if out else 10.0, 0.8, (220.0 if out else 60.0) * af * MS * S, dt)
-		pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 30.0 * MS, dt)
+	elif not w and jk >= JAB_DRAW and jk < JAB_BACK:
+		# On its way out a punch drives both halves of the arm along the line to the mark: the
+		# bent elbow opens as the fist goes, and is straight when it gets there. (Drawn back and
+		# on the way home the arm is a guard's, below: the elbow bent.)
+		pd_axis(upper, Vector3(0, -1, 0), dir, 30.0, 0.8, 320.0 * af * MS * S, dt)
+		pd_axis(fore, Vector3(0, -1, 0), dir, 26.0, 0.8, 220.0 * af * MS * S, dt)
+		# Locked straight (rolled about its length, the fist stays where it is), the arm is
+		# turned so that its hinge folds the forearm up toward the guard on the way home: as the
+		# blow left it rolled, the elbow folded down and out, or stayed jammed straight.
+		if bool(fore.get_meta("elbow_locked", false)):
+			_twist_to(upper, Vector3.UP, 30.0 * MS, 1.4 * MS, 90.0 * MS, dt)
+		else:
+			pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 30.0 * MS, dt)
 	else:
 		# A shield or an empty hand: the same elbow as a weapon arm, mirrored for the left, so
 		# the arm never folds in through the chest whichever hand it is.
@@ -3989,9 +4022,18 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var e_dir := _elbow_dir(side, t_rot.inverse() * (dir + Vector3(0, -0.35, 0)).normalized(), lu, t_rot)
 		var elbow = shoulder_w + e_dir * lu
 		var f_dir = (target_w - elbow).normalized() if (target_w - elbow).length_squared() > 1e-6 else dir
-		pd_axis(upper, Vector3(0, -1, 0), e_dir, 14.0, 0.8, 90.0 * af * MS * S, dt)
-		pd_axis(fore, Vector3(0, -1, 0), f_dir, 10.0, 0.8, 60.0 * af * MS * S, dt)
-		pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
+		# A fist on its way home from a punch is folded back into the guard as briskly as it
+		# went, the elbow down: the upper arm is rolled so that its hinge bends the forearm the
+		# way the guard wants it (the punch rolls the straight arm about its length, and left to
+		# the guard's own pace the hand, pulled up to its mark, swung the straight arm up with it,
+		# and the elbow bent the wrong way, up and out, or stayed jammed straight).
+		var home := 2.5 if fist_home[side] > 0.0 else 1.0
+		pd_axis(upper, Vector3(0, -1, 0), e_dir, 14.0 * home, 0.8, 90.0 * home * af * MS * S, dt)
+		pd_axis(fore, Vector3(0, -1, 0), f_dir, 10.0 * home, 0.8, 60.0 * home * af * MS * S, dt)
+		if fist_home[side] > 0.0:
+			_twist_to(upper, f_dir, 30.0 * MS, 1.4 * MS, 90.0 * MS, dt)
+		else:
+			pd_twist(upper, torso, 1.5 * MS, 0.25 * MS, 12.0 * MS, dt)
 		pd_twist(fore, upper, 1.0 * MS, 0.2 * MS, 8.0 * MS, dt)
 		if w and w.is_shield:
 			_orient_shield(w, target_w, t_pos, yaw_q, strength, dt)
@@ -4009,6 +4051,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	arm_strain[side] = (hand_goal - hand_w).length()
 	var F = (hand_goal - hand_w) * kp * m_eff + (target_vel[side] - hand_vel) * damp
 	F.y += m_eff * gravity * minf(1.0, af * 1.2)
+	if fist_home[side] > 0.0:
+		F *= 0.35
 	F = PD.clamp_len(F, 1150.0 * (1.5 if thrust_line[side] != null else 1.0) * strength * MS * float(mods.strength) * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * (2.2 if not w and jab_t[side] > 0.0 else 1.0) * (1.0 + (0.08 * minf(8.0, w.mass) if w else 0.0)))
 	# The hands never press down harder than a share of the body's own weight: bearing down on
 	# a man on the sand (or the sand itself) with an arm's whole drive lifted the striker off
@@ -4496,7 +4540,10 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var w_side = weapons[side]
 	if w_side and not w_side.is_shield and absf(thrust) < 0.05 and float(swing_reach[side]) > 0.0 and d.length() > 1e-4:
 		d = d.normalized() * lerpf(d.length(), maxf(d.length(), arm_reach * 0.92), float(swing_reach[side]))
-	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * 0.97 * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
+	# A fist thrown goes out to the end of the arm and a little past it on its way out: short of
+	# that, the hand's pull held the elbow bent and the punch never straightened.
+	var jkt: float = 1.0 - jab_t[side] / JAB_TIME
+	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * (JAB_REACH if jkt >= JAB_DRAW and jkt < JAB_BACK else 0.97) * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
 
 ## A thrust's line, kept where it lay in the arena when the stab began (o_w, dir_w, the front

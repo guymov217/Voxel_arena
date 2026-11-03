@@ -91,10 +91,13 @@ func test_a_throwing_weapon_flies_faster() -> void:
 		await get_tree().physics_frame
 	t.check(speeds[1] > speeds[0] * 1.1, "made to be thrown, it flies faster (%.1f vs %.1f m/s)" % [speeds[1], speeds[0]])
 
+## (The dummy stands where the sweep reaches him with the blade, not with its point only: a
+## pace further off the point grazed his head, and what made up the damage there was the sword
+## arm's forearm knocking into him, which came and went with how the free arm was held.)
 func test_a_sword_sweep_cuts_a_dummy() -> void:
 	var w := _world()
 	var a := w.fighter(Vector3(0, 0, 0), 0.0, {"main": "gladius"}, {"name": "a", "slot": 0})
-	var b := w.fighter(Vector3(0, 0, 1.1), PI, {}, {"name": "dummy", "slot": 1})
+	var b := w.fighter(Vector3(0, 0, 1.0), PI, {}, {"name": "dummy", "slot": 1})
 	var hits := []
 	w.combat.hit.connect(func(h):
 		if h.char == b:
