@@ -22,6 +22,9 @@ signal lobbies(list: Array)
 
 const PORT := 7777
 const MAX_PLAYERS := 8
+## The co-op campaign is fought by four at most (its bouts are made for one to four); the room,
+## and every other way to fight in it, takes eight (user).
+const CAMPAIGN_PLAYERS := 4
 const LOBBY_KEY := "voxelarena"
 
 var transport := ""             # "" | enet | steam
@@ -202,7 +205,7 @@ var dtls := true
 
 func host_enet(port := PORT) -> Error:
 	var p := ENetMultiplayerPeer.new()
-	var err := p.create_server(port, MAX_PLAYERS)
+	var err := p.create_server(port, MAX_PLAYERS - 1)   # (the guests: the host is one of the eight)
 	if err != OK:
 		return err
 	if dtls:
@@ -241,6 +244,10 @@ func active() -> bool:
 
 func is_host() -> bool:
 	return transport != "" and multiplayer.is_server()
+
+## The host: more in the room (he and his guests) than the co-op campaign takes.
+func campaign_full() -> bool:
+	return active() and is_host() and peers.size() + 1 > CAMPAIGN_PLAYERS
 
 func my_id() -> int:
 	return multiplayer.get_unique_id() if transport != "" else 1

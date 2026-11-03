@@ -110,7 +110,7 @@ static func next_fight(players: int) -> String:
 	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
 	if Edition.demo_over(st):
 		return "B|FINIS\nF|" + Loc.t("The demo ends here")
-	var nx: Dictionary = Data.stage(st, maxi(1, players))
+	var nx: Dictionary = Data.stage(st, clampi(players, 1, Net.CAMPAIGN_PLAYERS))   # (four at most fight it)
 	var lines := [Loc.t("B|PVGNA %s") % roman(st)]
 	var foes: Array = ((nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []).duplicate()
 	# The second wave through the other gate is on the stele too (user: it said two hyenas, and

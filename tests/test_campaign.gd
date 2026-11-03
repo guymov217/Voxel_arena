@@ -156,6 +156,53 @@ func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
 	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")
 
+## Four at most fight the co-op campaign; the room, and every other fight in it, takes eight
+## (user). With a fifth in the room the campaign's buttons are held back, the reason under them,
+## and it does not begin when asked; every other fight stays open to them all.
+func test_the_co_op_campaign_takes_four_at_most() -> void:
+	t.eq(Net.MAX_PLAYERS, 8, "a room takes eight")
+	t.eq(Net.CAMPAIGN_PLAYERS, 4, "the co-op campaign four")
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	Net.transport = "test"   # (the offline peer: this game is the host)
+	t.check(Net.active() and Net.is_host(), "hosting a room")
+	for id in [9, 10, 11]:
+		Net.peers[id] = {"name": "Friend %d" % id, "loadout": {"main": "gladius"}}
+	var held := func(prefix: String) -> Array:
+		return menu.find_children("*", "Button", true, false).filter(func(b): return String(b.text).begins_with(prefix)).map(func(b): return b.disabled)
+	t.check(not Net.campaign_full(), "four in the room: the campaign takes them")
+	menu.show_screen("room")
+	await get_tree().process_frame
+	t.eq(held.call("Start the co-op campaign"), [false], "four: it can be started from the room")
+	Net.peers[12] = {"name": "Friend 12", "loadout": {"main": "gladius"}}
+	t.check(Net.campaign_full(), "five: one too many")
+	menu.show_screen("room")
+	await get_tree().process_frame
+	t.eq(held.call("Start the co-op campaign"), [true], "five: held back in the room")
+	var why: String = menu.campaign_full_text()
+	t.check(why.contains("4") and why.contains("5") and why.contains("8"), "the reason names the numbers: " + why)
+	t.eq(menu.find_children("*", "Label", true, false).filter(func(l): return l.text == why).size(), 1, "and is shown under it")
+	if not Edition.demo_over(int(Save.get_value("coop_stage", 1))):
+		menu.show_screen("gate")
+		await get_tree().process_frame
+		t.eq(held.call("The co-op campaign"), [true], "held back at the yard's gate too")
+	menu.show_screen("fights")
+	await get_tree().process_frame
+	var cards: Array = menu.find_children("*", "Button", true, false).filter(func(b): return b.custom_minimum_size == Vector2(262, 104))
+	t.check(cards.size() > 8, "the fights for the room (%d)" % cards.size())
+	t.eq(cards.filter(func(b): return b.disabled).map(func(b): return b.tooltip_text), [why], "among the fights only the co-op campaign's card is held back")
+	menu.start({"mode": "coop", "role": "host"})
+	await get_tree().process_frame
+	t.check(menu.match_ == null, "asked anyway, it does not begin")
+	t.eq(menu.screen, "fights", "the screen it was asked from is drawn again")
+	t.eq(YardPlay.next_fight(6), YardPlay.next_fight(4), "the board by the gate never shows a bout for more than four")
+	for id in [9, 10, 11, 12]:
+		Net.peers.erase(id)
+	Net.transport = ""
+	menu.queue_free()
+	await get_tree().process_frame
+
 func test_the_other_gate_opens_on_the_second_wave() -> void:
 	var m := Match.new()
 	add_child(m)

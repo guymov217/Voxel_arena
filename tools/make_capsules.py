@@ -54,7 +54,7 @@ FEATURES = [
     ("feature_giants", "giant_wide", "CYCLOPES, TITANS, GIANTS", "Bring a giant to his knees, one chunk at a time."),
     ("feature_beasts", "beast_wide", "24 BEASTS AND MONSTERS", "Lions, crocodiles, gorillas, hydras and dragons."),
     ("feature_dragon", "dragon_wide", "FIRE, BLOOD, THE CROWD", "The Emperor watches. The crowd decides."),
-    ("feature_coop", "squad_wide", "FIGHT TOGETHER", "The whole campaign in co-op, up to eight friends."),
+    ("feature_coop", "squad_wide", "FIGHT TOGETHER", "The whole campaign in co-op, up to four players."),
 ]
 
 

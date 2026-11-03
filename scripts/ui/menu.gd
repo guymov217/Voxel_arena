@@ -587,7 +587,7 @@ func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
 	if Net.active() and Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
-		var cn := Data.stage(cs, 1 + Net.peers.size())
+		var cn := Data.stage(cs, mini(1 + Net.peers.size(), Net.CAMPAIGN_PLAYERS))
 		if Edition.demo_over(cs):
 			v.add_child(UIStyle.button("You have finished the demo", func():
 				Net.send_all("demo_end", {})
@@ -595,7 +595,9 @@ func _gate(v: VBoxContainer) -> void:
 				show_screen("demo_end"), true))
 		else:
 			v.add_child(UIStyle.label(Loc.t("Next co-op bout: %s · %s") % [cn.get("title", Loc.t("Bout %d") % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
-			v.add_child(UIStyle.button(Loc.t("The co-op campaign · bout %d (all of you)") % cs, func(): start({"mode": "coop", "role": "host"}), true))
+			var go := UIStyle.button(Loc.t("The co-op campaign · bout %d (all of you)") % cs, func(): start({"mode": "coop", "role": "host"}), true)
+			v.add_child(go)
+			_campaign_cap(go, v)
 	elif Net.active() and not Net.is_host():
 		v.add_child(UIStyle.label("The host leads the party through the gate.", 15, UIStyle.MUTED))
 	else:
@@ -2537,7 +2539,10 @@ func _fights(v: VBoxContainer) -> void:
 		grid.add_theme_constant_override("v_separation", 10)
 		v.add_child(grid)
 		for k in keys:
-			grid.add_child(_fight_card(k))
+			var card := _fight_card(k)
+			grid.add_child(card)
+			if k == "coop":
+				_campaign_cap(card, v)
 	if Net.active() and Net.is_host() and not Net.peers.is_empty():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
@@ -2578,6 +2583,19 @@ func _fight_card(k: String) -> Button:
 	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(blurb)
 	return b
+
+## The co-op campaign's button (the gate's, the room's, its card among the fights), held back
+## while more are in the room than the campaign takes, with the reason under it (user: four at
+## most in the campaign, eight in every other fight).
+func _campaign_cap(b: Button, v: Control) -> void:
+	if not Net.campaign_full():
+		return
+	b.disabled = true
+	b.tooltip_text = campaign_full_text()
+	v.add_child(UIStyle.label(campaign_full_text(), 15, UIStyle.MUTED))
+
+func campaign_full_text() -> String:
+	return Loc.t("The co-op campaign takes %d players at most, and %d of you are in the room. The arena modes take up to %d.") % [Net.CAMPAIGN_PLAYERS, Net.peers.size() + 1, Net.MAX_PLAYERS]
 
 ## The market (market.js): pots, food and tricks for the kit, used in a fight with 1 to 8.
 # ---------- Bread & Circuses ----------
@@ -3600,7 +3618,7 @@ func _room(v: VBoxContainer) -> void:
 	_player_rows(v, func(): show_screen("room"))
 	if Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
-		var nb := Data.stage(cs, 1 + Net.peers.size())
+		var nb := Data.stage(cs, mini(1 + Net.peers.size(), Net.CAMPAIGN_PLAYERS))
 		v.add_child(UIStyle.label(Loc.t("Co-op campaign: bout %d · %s · %s") % [cs, nb.get("foe_name", ""), Loc.t(String(CampaignRun.MODES[CampaignRun.mode(true)].name))], 15, UIStyle.GOLD))
 		if cs <= 1:
 			# Before the first bout the host says how death is dealt with for the party.
@@ -3611,7 +3629,9 @@ func _room(v: VBoxContainer) -> void:
 			mo.tooltip_text = "%s\n%s" % [Loc.t(String(CampaignRun.MODES.legionary.desc)), Loc.t(String(CampaignRun.MODES.ironman.desc))]
 			mo.item_selected.connect(func(i): CampaignRun.begin(["legionary", "ironman"][i], true))
 			_row(v, [UIStyle.label("Death", 15, UIStyle.MUTED), mo])
-		v.add_child(UIStyle.button(Loc.t("Start the co-op campaign · bout %d") % cs, func(): start({"mode": "coop", "role": "host"}), true))
+		var go := UIStyle.button(Loc.t("Start the co-op campaign · bout %d") % cs, func(): start({"mode": "coop", "role": "host"}), true)
+		v.add_child(go)
+		_campaign_cap(go, v)
 		v.add_child(UIStyle.button("Into the yard together (shop, heal, play)", func(): enter_yard()))
 	v.add_child(UIStyle.button("Leave", func():
 		Net.leave()
@@ -3936,6 +3956,12 @@ func start(opts: Dictionary) -> void:
 		opts.mode = "campaign"
 		opts.coop = true
 		opts.stage = int(Save.get_value("coop_stage", 1))
+	# Four at most in the co-op campaign: with more in the room it does not begin (its buttons are
+	# held back; this is for a friend who came in after the screen was drawn), and the screen is
+	# drawn again with the reason.
+	if opts.get("coop", false) and Net.campaign_full():
+		show_screen(screen if ["gate", "room", "fights"].has(screen) else "room")
+		return
 	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
 	# campaign: the guests are sent the start and join as themselves.
 	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus", "endless"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):

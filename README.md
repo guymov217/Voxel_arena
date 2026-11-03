@@ -264,6 +264,11 @@ To use Steam:
    and friends can join from the Steam overlay. Traffic goes through Steam's relay, so no ports
    need opening.
 
+**Room size.** A room holds 8 players (the host and 7 guests, over Steam and ENet alike), and every
+arena and party mode takes them all. The co-op campaign is for 4 at most (`Net.CAMPAIGN_PLAYERS`;
+its bouts are made for one to four): with more in the room, its buttons (room screen, yard gate,
+the arena list) are held back with the reason under them.
+
 **Proximity voice.** Hold N to talk: everyone in the room hears you from your gladiator's head,
 loud up close and gone by 22 m, and his mouth moves with your voice (a crack, open, or wide with the
 teeth and tongue showing, against your own microphone's loudest), timed to when the sound comes out
