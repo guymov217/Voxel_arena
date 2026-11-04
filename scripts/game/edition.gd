@@ -55,8 +55,14 @@ static func demo_foes() -> Dictionary:
 	_foes = {"men": men, "beasts": beasts}
 	return _foes
 
+## Foes kept out of every build for now: in the data still, out of the ladder, the training,
+## the arena's lists and the endless waves (the flail fighter: his flail is shelved, Arms.SHELVED).
+const RETIRED := ["flailman"]
+
 ## Whether foe `key` ("foe:<enemy>", a beast's key, or a plain kind) can be faced in this build.
 static func foe_open(key: String) -> bool:
+	if RETIRED.has(key.trim_prefix("foe:")):
+		return false
 	if not demo() or key == "none" or key == "gladiator":
 		return true
 	var f := demo_foes()

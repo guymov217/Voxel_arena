@@ -272,22 +272,30 @@ func _make(q: Dictionary) -> void:
 		dist *= maxf(0.2, span / FILL)
 		cam.position = c + dir * dist
 		cam.look_at(c, Vector3.UP)
-	for tries in 4:
+	var img: Image = null
+	var tries := 0
+	var shots := 0
+	while true:
 		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 		await RenderingServer.frame_post_draw
-		if not warm:
-			# The studio's first frame comes out before its world is set up: shoot it again.
+		shots += 1
+		img = vp.get_texture().get_image()
+		# The studio's first frames come out before its world is set up (on some cards more
+		# than one: empty, or filled to the corners). Such a frame is shot again as it stands:
+		# read as a thing at the edge, it had the first picture made (the thunder pot's, first
+		# on the hotbar) taken from twice as far back as the rest.
+		if not warm or (_unready(img) and shots < 12):
 			warm = true
-			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-			await RenderingServer.frame_post_draw
+			continue
 		# Last of all the picture is looked at: anything touching its edge, and it is shot again
 		# from further back.
-		if not _touches_edge(vp.get_texture().get_image()):
+		if tries >= 3 or not _touches_edge(img):
 			break
+		tries += 1
 		dist *= 1.25
 		cam.position = c + dir * dist
 		cam.look_at(c, Vector3.UP)
-	var tex := ImageTexture.create_from_image(vp.get_texture().get_image())
+	var tex := ImageTexture.create_from_image(img)
 	cache[q.key] = tex
 	for rect in q.rects:
 		if is_instance_valid(rect):
@@ -301,6 +309,15 @@ func _seen(p: Vector3) -> Vector2:
 	var half := tan(deg_to_rad(cam.fov * 0.5))
 	var z := maxf(0.001, -l.z)
 	return Vector2(l.x / (z * half), l.y / (z * half))
+
+## A frame from before the studio was ready: nothing drawn in it, or drawn into all four of its
+## corners (a thing framed with a margin all round never fills them).
+static func _unready(img: Image) -> bool:
+	if img == null or img.is_empty() or img.is_invisible():
+		return true
+	var w := img.get_width() - 1
+	var h := img.get_height() - 1
+	return [Vector2i(0, 0), Vector2i(w, 0), Vector2i(0, h), Vector2i(w, h)].all(func(p): return img.get_pixelv(p).a > 0.1)
 
 ## Something drawn in the outermost pixels of the picture (it would look cut off).
 static func _touches_edge(img: Image) -> bool:

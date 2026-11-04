@@ -26,10 +26,18 @@ static func beast_call(species: String) -> String:
 	return CALLS.get(species, "growl")
 
 ## How loud a species calls, against the rest (the hydra's roar was a din; the boar's squeals
-## were recorded some 5 dB over a wolf's or a lion's, and were far too loud, user).
-const CALL_GAIN := {"hydra": 0.45, "cerberus": 0.8, "python": 0.4, "basilisk": 0.6, "bull": 0.6, "boar": 0.45, "mammoth": 0.7}
+## were recorded some 5 dB over a wolf's or a lion's, and were far too loud, user; the tiger's
+## roar, 3 dB over the lion's and longer, "very loud", user).
+const CALL_GAIN := {"hydra": 0.45, "cerberus": 0.8, "python": 0.4, "basilisk": 0.6, "bull": 0.6, "boar": 0.45, "mammoth": 0.7, "tiger": 0.5}
 static func call_gain(species: String) -> float:
 	return float(CALL_GAIN.get(species, 1.0))
+
+## The least time between a beast's cries as it strikes: a quick pecker like the ostrich is not
+## to cry out at every peck, and the tiger's roar (over three seconds of it) is not to be started
+## again over itself at every swipe.
+const CALL_GAP := {"ostrich": 3.0, "tiger": 3.0}
+static func call_gap(species: String) -> float:
+	return float(CALL_GAP.get(species, 0.9))
 
 ## How deep the voice: a man at 1.0, the big lower (a giant three times a man's size at 0.55),
 ## the small higher.

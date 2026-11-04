@@ -43,7 +43,7 @@ const BOUTS := [
 	{"foes": [{"beast": "griffin", "boss": true, "title": "The Griffin"}]},
 	{"foes": [{"e": "pyro"}], "title": "Greek Fire"},
 	{"foes": [{"beast": "tiger"}], "title": "The Tiger"},
-	{"foes": [{"e": "murmillo"}], "late": [{"e": "flailman"}], "title": "Helm and Chain"},
+	{"foes": [{"e": "murmillo"}], "late": [{"e": "executioner"}], "title": "Helm and Axe"},
 	{"foes": [{"beast": "cerberus", "boss": true, "title": "The Hound of Hades"}]},
 	# ---- The killers (25-32): what beat the plain swordsman every time.
 	{"foes": [{"beast": "rhino"}], "title": "The Rhinoceros"},
@@ -59,7 +59,7 @@ const BOUTS := [
 	{"foes": [{"e": "brute"}], "late": [{"e": "brute"}], "title": "Brothers in Arms"},
 	{"foes": [{"beast": "spider"}], "title": "The Spider"},
 	{"foes": [{"beast": "gorilla", "boss": true, "title": "The Gorilla"}]},
-	{"foes": [{"e": "flailman"}, {"e": "flailman"}], "late": [{"e": "sagittarius"}], "title": "Chains"},
+	{"foes": [{"e": "shieldbearer"}, {"e": "shieldbearer"}], "late": [{"e": "sagittarius"}], "title": "Shields and Arrows"},
 	{"foes": [{"e": "champion"}, {"e": "executioner"}], "late": [{"e": "berserker"}], "title": "The Last of the Ludus"},
 	{"foes": [{"beast": "bear"}], "late": [{"beast": "wolf"}, {"beast": "wolf"}], "title": "The Bear and the Pack"},
 	{"foes": [{"e": "titan", "boss": true, "title": "The Titan"}]},

@@ -87,10 +87,10 @@ func test_virtus_is_taught_only_to_the_unbroken() -> void:
 	t.check(r.has("error"), "not unbroken: Doctore will not teach it (%s)" % r.get("error", ""))
 	Save.set_value("ironman_won", true)
 	r = Training.buy({}, "virtus", 1, 10000)
-	t.check(not r.has("error") and int(r.stats.virtus) == Training.STEP, "unbroken: taught even at bout 1")
+	t.check(not r.has("error") and int(r.stats.virtus) == Training.step("virtus"), "unbroken: taught even at bout 1")
 	t.check(int(r.cost) > Training.price({}, "vis"), "and dearer than any other (%d)" % r.cost)
-	var m := Training.mods_of({"virtus": 4, "vis": 2})
-	t.check(absf(float(m.strength) - 1.02 * 1.04) < 1e-4, "a little more strength on top of Vis (%.4f)" % m.strength)
+	var m := Training.mods_of({"virtus": 4, "vis": 3})
+	t.check(absf(float(m.strength) - 1.03 * 1.04) < 1e-4, "a little more strength on top of Vis (%.4f)" % m.strength)
 	t.check(absf(float(m.footing) - 1.04) < 1e-4 and absf(float(m.bleed) - 0.96) < 1e-4, "and of everything else: footing up, bleeding down")
 	t.check(Training.summary({"virtus": 4}).contains("Valour"), "the trainer's summary names it")
 

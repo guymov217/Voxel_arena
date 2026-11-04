@@ -468,8 +468,8 @@ func spawn_beast(spec: Dictionary):
 		if time - float(bb.get_meta("whoosh_t", -9.0)) > 0.3:
 			bb.set_meta("whoosh_t", time)
 			sfx("whoosh", p.global_position, 0.6)
-		# (A quick pecker like the ostrich is not to cry out at every peck.)
-		if time - float(bb.get_meta("voice_t", -9.0)) > (3.0 if bb.species == "ostrich" else 0.9):
+		# (Not a cry at every peck or swipe: Voices.call_gap.)
+		if time - float(bb.get_meta("voice_t", -9.0)) > Voices.call_gap(bb.species):
 			bb.set_meta("voice_t", time)
 			say(bb, Voices.beast_call(bb.species), 0.9, "call")
 	b.on_roar = func(bb):

@@ -745,9 +745,6 @@ func _tutorial() -> void:
 	# (A kit of its own: the pot it hands over for the kit's step, and none of the campaign's.)
 	start({"mode": "training", "tutorial": true, "training": {"enemy": "none", "respawn": false}, "inventory_override": {}})
 
-## Foes kept out of the training for now (the flail fighter: the flail is not right yet).
-const TRAINING_OUT := ["flailman"]
-
 func _training(v: VBoxContainer) -> void:
 	# The saved choices once; after that the screen is redrawn from what is being picked (each
 	# redraw read the save back over it, and a + or − in the bag came to nothing).
@@ -801,7 +798,7 @@ func _training(v: VBoxContainer) -> void:
 		o.item_selected.connect(func(i): training[key] = keys[i])
 		g.add_child(o)
 	var ge: GridContainer = form.call("THE ENEMY")
-	var foes: Array = Data.campaign.enemies.keys().filter(func(k): return not TRAINING_OUT.has(k)).map(func(k): return "foe:" + k)
+	var foes: Array = Data.campaign.enemies.keys().map(func(k): return "foe:" + k)
 	# The beasts by name, A to Z, without their "The" (the gorilla was "The Gorilla", last of
 	# forty, and not to be found).
 	var beast_name := func(k: String) -> String: return String(Data.beasts[k].name).trim_prefix("The ") if Loc.code() == "en" else Loc.t(String(Data.beasts[k].name))
@@ -2910,9 +2907,15 @@ func _physician(v: VBoxContainer) -> void:
 	for k in v.get_child_count() - n0:
 		v.move_child(v.get_child(n0 + k), 1 + k)
 
-## What the trainer has taught this gladiator (Training), kept with the campaign.
+## What the trainer has taught this gladiator (Training), kept with the campaign under "trainer"
+## (it was kept under "training", with the training ground's own choices, and each wrote over the
+## other: a session bought threw away the training ground's bag, and the training ground put back
+## what a death had taken).
 func training_stats() -> Dictionary:
-	var st := Training.sanitize(Save.get_value("training", {}))
+	var raw = Save.get_value("trainer")
+	if not (raw is Dictionary):
+		raw = Training.from_old(Save.get_value("training", {}))
+	var st := Training.sanitize(raw)
 	var vt := int(Save.get_value("virtus", 0))
 	if vt > 0:
 		st = Training.sanitize(st.merged({"virtus": vt}, true))
@@ -2924,7 +2927,7 @@ func set_training_stats(st: Dictionary) -> void:
 	if clean.has("virtus"):
 		Save.set_value("virtus", int(clean.virtus))
 	clean.erase("virtus")
-	Save.set_value("training", clean)
+	Save.set_value("trainer", clean)
 	_net_loadout()
 
 ## The trainer's yard: six abilities, a session of each for denarii, no further than the bout
@@ -2935,7 +2938,8 @@ func _trainer(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The trainer", 36))
 	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
 	var st := training_stats()
-	var cap_any := maxi(0, stage - 1)
+	var cap_any := maxi(0, stage - 1) * Training.CAP_PER_STAGE
+	cap_any -= cap_any % Training.STEP
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 18)
 	v.add_child(head)
@@ -3002,7 +3006,7 @@ func _trainer(v: VBoxContainer) -> void:
 		var r := Training.buy(st, id, stage, coins())
 		var b: Button
 		if r.has("error"):
-			var why := "Mastered" if full else (Loc.t("Wait for bout %d") % (lv + Training.STEP + 1) if lv >= cap else Loc.t("Train · %d denarii") % Training.price(st, id))
+			var why := "Mastered" if full else (Loc.t("Wait for bout %d") % Training.bout_for(lv + Training.step(id)) if lv >= cap else Loc.t("Train · %d denarii") % Training.price(st, id))
 			if id == "virtus" and not CampaignRun.unbroken():
 				why = "Only for the Unbroken (Ironman)"
 			b = UIStyle.button(why, func(): pass)
@@ -3018,7 +3022,7 @@ func _trainer(v: VBoxContainer) -> void:
 				set_training_stats(r2.stats)
 				if int(r2.stats[id]) >= int(a.max):
 					Achievements.unlock("trained")
-				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.STEP, Loc.lower(String(a.title))]), true)
+				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.step(id), Loc.lower(String(a.title))]), true)
 		col.add_child(b)
 	v.add_child(UIStyle.button("Back to the yard" if yard else "Back", func():
 		if yard:
