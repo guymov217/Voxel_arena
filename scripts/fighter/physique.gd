@@ -21,8 +21,11 @@ extends RefCounted
 ## A man's own choices (skin, hair, beard, armour) are worn over any of them. Each player picks
 ## for himself; nothing of it goes over the network.
 
-const STYLES := ["strong", "classic", "sculpted", "heroic", "anatomy", "worn", "oiled"]
+const STYLES := ["human", "strong", "classic", "sculpted", "heroic", "anatomy", "worn", "oiled"]
+## The looks a player picks between (Options, Graphics): the new one, and the gladiators as they were.
+const OFFERED := ["human", "strong"]
 const NAMES := {
+	"human": "Detailed gladiators",
 	"strong": "Strong gladiator",
 	"classic": "Classic blocks",
 	"sculpted": "Sculpted",
@@ -32,6 +35,7 @@ const NAMES := {
 	"oiled": "Oiled champion",
 }
 const BLURB := {
+	"human": "Men as they are built, in voxels half the size: muscles, hands, feet, and wounds that open on skin, fat, flesh and bone.",
 	"strong": "Broad, muscled men built of voxels: rounded, tapered limbs, one body from neck to feet.",
 	"classic": "The gladiators as they were: square blocks.",
 	"sculpted": "A neck, sloped shoulders, rounded limbs, bevelled edges.",
@@ -43,24 +47,80 @@ const BLURB := {
 const DIRS := [Vector3i(0, 0, 1), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(0, -1, 0)]
 
 static var forced := ""   # set by tests; else the player's setting
+static var fine_heads := true   # (probes: off, to see the heads as their voxels are)
 
-## The game draws every man as the strong gladiator (one look, no choice in the menus); the
-## other styles are kept for the tests and the look studies (`forced`).
+## The look the player picked (Options, Graphics: the detailed men, or the strong gladiators as
+## they were); the other styles are kept for the tests and the look studies (`forced`).
 static func current() -> String:
-	return forced if forced != "" else "strong"
+	if forced != "":
+		return forced
+	var st = Save.get_value("settings", {})
+	# (Low graphics, for the weakest cards: the classic blocks, half the new look's triangles,
+	# unless he picked a look himself in Options.)
+	if st is Dictionary and not st.has("physique") and str(st.get("quality", "high")) == "low":
+		return "strong"
+	var s := str(st.get("physique", "human")) if st is Dictionary else "human"
+	return s if OFFERED.has(s) else "human"
 
-## Men only, in their own skins: beasts, and giants with their own heads, keep theirs.
-static func applies(f) -> bool:
-	return f is Fighter and not (f is Beast) and String(f.mods.get("look", "")) == ""
+## The build a man is drawn in by the new look (FineBody): his own choice (a player's, Your
+## gladiator), else by what he is: a heavy weapon or a hard man the brute, a boss or a champion the
+## hero, the rest mostly lean champions. The same on every screen (his name and place).
+const HEAVY := ["warhammer", "zweihander", "executionerAxe", "plank", "ram", "meteorHammer", "hammer", "twoPersonSword", "imperialFlail"]
+static func build_of(f) -> String:
+	if giant_of(f) != "":
+		return giant_of(f)
+	var want := str(f.get("build_pref")) if f.get("build_pref") != null else ""
+	if FineBody.BUILDS.has(want):
+		return want
+	if not f.get("is_bot"):
+		return "hero"
+	if HEAVY.has(str(f.get("main_id"))) or float(f.mods.get("toughness", 1.0)) >= 1.3 or float(f.mods.get("bodyScale", 1.0)) > 1.25:
+		return "brute"
+	if f.get("boss") or str(f.display_name).begins_with(Loc.t("Champion %s") % ""):
+		return "hero"
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(f.display_name)) ^ int(f.slot) * 3571
+	return "hero" if rng.randf() < 0.25 else "champion"
+
+## Men only, in their own skins: beasts, and giants with their own heads, keep theirs; in the new
+## look the giants too, each a body and a head of his own (FineBody, FineHead).
+static func applies(f, style := "") -> bool:
+	if not (f is Fighter) or f is Beast:
+		return false
+	if String(f.mods.get("look", "")) == "":
+		return true
+	return (style if style != "" else current()) == "human" and giant_of(f) != ""
+
+## A giant's build and head in the new look ("" a man): the Cyclops, Polyphemus (the giant with
+## the Cyclops' one eye), the Minotaur, a troll, the Titan.
+const GIANTS := ["cyclops", "polyphemus", "minotaur", "troll", "titan"]
+static func giant_of(f) -> String:
+	var look := String(f.mods.get("look", "")) if f is Fighter else ""
+	if look == "cyclops" and String(f.mods.get("voice", "")) == "giant":
+		look = "polyphemus"
+	return look if GIANTS.has(look) else ""
 
 ## Draws `f` in `style` (the setting when empty), from whatever look he had: at spawn, or any
 ## time after, wounded or not; nothing of his state changes.
 static func dress(f, style := "") -> void:
 	if style == "":
 		style = current()
-	if not applies(f):
+	if not applies(f, style):
+		# (A giant out of the new look: his own voxels again, as he always was drawn.)
+		if f is Fighter and not (f is Beast):
+			for p in f.parts:
+				FineHead.clear(p)
+				FineBody.clear(p)
+				if p.shape_xf.size() > 0:
+					p.set_shape([])
+			f.set_meta("physique", style)
+			if f.has_method("place_armor"):
+				f.place_armor()
 		return
+	var bn := build_of(f) if style == "human" else ""
 	for p in f.parts:
+		FineHead.clear(p)
+		FineBody.clear(p)
 		_undo(p)
 		if style == "classic" or p.missing or p.prosthetic != "":
 			p.set_look(PackedByteArray(), false)
@@ -72,11 +132,34 @@ static func dress(f, style := "") -> void:
 			if p == f.get("head"):
 				if f.get("is_bot"):
 					_face(p, hash(str(f.display_name)) ^ int(f.slot) * 7919)
+				var hc = hair_choice(f)
+				if hc != null:
+					_paint_face(p, hc, false, 0, true)
 				var worn := beard_worn(p)
 				if worn != "":
-					_paint_face(p, ArmorStyle.base_color(worn, {}, f.skin), false, BEARD_PAINT.get(worn, 2), false)
+					_paint_face(p, hc if hc != null else ArmorStyle.base_color(worn, {}, f.skin), false, BEARD_PAINT.get(worn, 2), false)
 			_material(p, "classic")   # the game's own voxels: crisp, no chamfer
 			p.set_shape(shape_of(p))
+			continue
+		if style == "human":
+			# His head is the fine one (below), painted first as the strong man's is; the rest of
+			# him the fine body of his build.
+			p.set_look(PackedByteArray(), false)
+			_material(p, "classic")
+			if p == f.get("head"):
+				if giant_of(f) != "":
+					continue   # (his own head: FineHead below)
+				_paint(p, "strong")
+				if f.get("is_bot"):
+					_face(p, hash(str(f.display_name)) ^ int(f.slot) * 7919)
+				var hc_h = hair_choice(f)
+				if hc_h != null:
+					_paint_face(p, hc_h, false, 0, true)
+				var worn_h := beard_worn(p)
+				if worn_h != "":
+					_paint_face(p, hc_h if hc_h != null else ArmorStyle.base_color(worn_h, {}, f.skin), false, BEARD_PAINT.get(worn_h, 2), false)
+			else:
+				FineBody.build(f, p, bn)
 			continue
 		p.set_look(_veil(p, style), true)
 		_bare(p)
@@ -85,7 +168,12 @@ static func dress(f, style := "") -> void:
 		_material(p, style)
 		p.resync_later()
 	_faces(f)
+	# The new look's head is the fine one: a man's face, not a box (FineHead), sized to his build.
+	# (The strong gladiators keep their own heads: the old men whole, the way they were.)
+	if style == "human" and f.get("head") != null and fine_heads:
+		FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f))
 	f.set_meta("physique", style)
+	f.set_meta("build", bn)
 	if f.has_method("place_armor"):
 		f.place_armor()
 
@@ -94,6 +182,9 @@ static func restyle_all(root: Node) -> void:
 	var stack: Array = [root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		if n is Beast:
+			FineBody.dress_beast(n, current() == "human")
+			continue
 		if n is Fighter:
 			dress(n)
 			continue
@@ -687,8 +778,46 @@ static func _reach_whole(n: String) -> Vector2:
 ## A hairstyle or a beard is drawn fuller than a plate: standing off the head and each lock larger,
 ## so every style gives the head its own outline (a crest, a mane, curls, a knot).
 static func plate_xf(p: VoxelPart, c: Array, at: Vector3, id := "") -> Transform3D:
+	# The new look: on his outline there (FineBody.plate_at); on the fine head, round it (a helmet
+	# sits on the head, its rim over the brow and the ears, not on top like a bowl).
+	if p.fine.has("body"):
+		return FineBody.plate_at(p, at)
+	if p.fine.has("wtab"):
+		return _plate_head(p, c, at, id)
 	if p.shape_xf.is_empty():
 		return Transform3D(Basis(), at + inset(p, c))
+	return _plate_strong(p, c, at, id)
+
+static func _plate_head(p: VoxelPart, c: Array, at: Vector3, id: String) -> Transform3D:
+	# A giant's fine head has its horns, its tusks, its crown and its beard of its own.
+	if String(p.fine.get("giant", "")) != "" and (id.begins_with("mon_") or id == "hat_crown" or id.begins_with("beard_")):
+		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+	if id.begins_with("beard_") and int(c[1]) >= 0:
+		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (drawn on the fine jaw)
+	var r := FineHead.wrap(p, at)
+	var pos: Vector3 = r[0]
+	var cell := p.vf * p.part_scale * float(Data.body_res)
+	var wc: Vector3 = p.fine.wc
+	var dir := (pos - wc).normalized()
+	if id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id == "cape":
+		# Hair, a beard, a hat: as full as they are, a lock standing off the head.
+		var sc := Vector3.ONE * float(r[1]) * 1.04
+		if id.begins_with("hair_"):
+			pos += dir * cell * 0.22
+			sc *= 1.12
+		elif id.begins_with("beard_"):
+			sc *= Vector3(0.8, 1.0, 0.8)
+		return Transform3D(Basis.from_scale(sc), pos)
+	# A helmet's plates: tiles turned to lie on the skull, a helmet's thickness, their inner face
+	# on the head (a cube a plate drew a bowl over his head).
+	var t := FineBody.PLATE_THICK
+	var hp := wc + dir * (FineHead.outline(p, dir) + cell * t * 0.5 + maxf(0.0, (pos - wc).length() - FineHead.outline(p, dir) - cell * 0.5))
+	var up := Vector3.UP if absf(dir.y) < 0.95 else Vector3.FORWARD
+	var b := Basis.looking_at(-dir, up)
+	var tang := clampf(float(r[1]) * 1.15, 0.7, 1.2)
+	return Transform3D(b * Basis.from_scale(Vector3(tang, tang, t)), hp)
+
+static func _plate_strong(p: VoxelPart, c: Array, at: Vector3, id: String) -> Transform3D:
 	var r := shape_at(p, at, 0.0)
 	var pos: Vector3 = r[0]
 	var sc: Vector3 = r[1] * 1.04
@@ -716,6 +845,8 @@ static func fluff_xf(p: VoxelPart, xf: Transform3D) -> Transform3D:
 ## they were cut, not reaching into what is gone).
 ## Only the end rows of the cut part, the part it hung from and those that hung from it change.
 static func reshape(f, part = null) -> void:
+	if f.get_meta("physique", "") == "human":
+		return   # (the new look's ends close of themselves: FineBody)
 	var near: Array = f.parts if part == null else ([part, part.parent_part] + part.child_parts)
 	for p in near:
 		if p == null or not is_instance_valid(p) or p.shape_xf.is_empty():
@@ -745,7 +876,52 @@ const FACES := {
 	"mouth_gap": "Missing tooth", "mouth_grin": "Full grin", "mouth_snarl": "Snarl", "mouth_stern": "Stern",
 	"mouth_shout": "War cry", "mouth_tongue": "Tongue out", "mouth_toothless": "One tooth left", "mouth_smirk": "Smirk",
 	"mouth_buck": "Buck teeth", "mouth_frown": "Frown", "mouth_gold": "Gold tooth", "mouth_grimace": "Grimace",
+	"face_freckles": "Freckles", "face_stubble": "Stubble", "face_scar_cheek": "Scarred cheek", "face_scar_lip": "Split lip",
+	"face_scar_brow": "Scar through the brow", "face_brows_thick": "Heavy brows", "face_unibrow": "One brow",
+	"face_woad": "Blue woad", "face_warpaint": "War stripes", "face_ochre": "Red ochre band", "face_tattoo": "Tattooed cheek",
+	"face_blush": "Rosy cheeks", "face_skull": "Skull paint", "face_clown": "Clown paint",
+	"hc_black": "Black", "hc_dark": "Dark brown", "hc_brown": "Brown", "hc_auburn": "Auburn", "hc_ginger": "Ginger",
+	"hc_blond": "Blond", "hc_platinum": "Platinum", "hc_grey": "Grey", "hc_white": "White",
+	"hc_blue": "Dyed blue", "hc_green": "Dyed green", "hc_pink": "Dyed pink", "hc_purple": "Dyed purple",
+	"iris_brown": "Brown", "iris_hazel": "Hazel", "iris_green": "Green", "iris_blue": "Blue", "iris_grey": "Grey",
+	"iris_amber": "Amber", "iris_red": "Demon red", "iris_violet": "Violet", "iris_gold": "Gold", "iris_white": "Ghost white",
 }
+## His hair and beard the colour he chose (Your gladiator: "hc_"), and his eyes ("iris_").
+const HAIR_DYES := {
+	"hc_black": Color(0.06, 0.05, 0.05), "hc_dark": Color(0.17, 0.1, 0.06), "hc_brown": Color(0.33, 0.2, 0.1),
+	"hc_auburn": Color(0.43, 0.17, 0.08), "hc_ginger": Color(0.72, 0.32, 0.1), "hc_blond": Color(0.86, 0.7, 0.38),
+	"hc_platinum": Color(0.93, 0.89, 0.76), "hc_grey": Color(0.5, 0.49, 0.47), "hc_white": Color(0.9, 0.9, 0.88),
+	"hc_blue": Color(0.12, 0.3, 0.75), "hc_green": Color(0.15, 0.55, 0.22), "hc_pink": Color(0.93, 0.4, 0.62), "hc_purple": Color(0.45, 0.18, 0.62),
+}
+const IRISES := {
+	"iris_brown": Color(0.38, 0.22, 0.1), "iris_hazel": Color(0.5, 0.38, 0.16), "iris_green": Color(0.25, 0.52, 0.3),
+	"iris_blue": Color(0.22, 0.42, 0.72), "iris_grey": Color(0.52, 0.56, 0.6), "iris_amber": Color(0.8, 0.52, 0.12),
+	"iris_red": Color(0.85, 0.08, 0.06), "iris_violet": Color(0.5, 0.25, 0.75), "iris_gold": Color(0.95, 0.75, 0.2), "iris_white": Color(0.9, 0.92, 0.95),
+}
+const FRECKLE := Color(0.62, 0.36, 0.22)
+const WOAD := Color(0.17, 0.29, 0.62)
+const OCHRE := Color(0.6, 0.18, 0.09)
+const TATTOO := Color(0.1, 0.2, 0.3)
+const BONE_PAINT := Color(0.9, 0.88, 0.82)
+const CLOWN_WHITE := Color(0.96, 0.95, 0.92)
+const CLOWN_RED := Color(0.86, 0.1, 0.1)
+const PINK := Color(0.93, 0.45, 0.5)
+
+## The colour of hair he chose (a "hc_" piece), or null: his own, by his skin.
+static func hair_choice(f) -> Variant:
+	if not (f is Fighter):
+		return null
+	for id in f.face_ids:
+		if HAIR_DYES.has(String(id)):
+			return HAIR_DYES[String(id)]
+	return null
+
+## The colour of eyes he chose (an "iris_" piece), or null.
+static func iris_choice(ids: Array) -> Variant:
+	for id in ids:
+		if IRISES.has(String(id)):
+			return IRISES[String(id)]
+	return null
 const WHITE := Color(0.93, 0.91, 0.84)
 const DARK := Color(0.07, 0.05, 0.05)
 const MOUTH := Color(0.16, 0.05, 0.05)
@@ -820,6 +996,52 @@ static func face_marks(id: String) -> Array:
 			return _row(2, 7, 3, MOUTH) + [[5, 3, WHITE]]
 		"mouth_smirk":
 			return _row(2, 4, 3, "skin") + _row(5, 7, 3, WHITE) + [[7, 4, LIP], [2, 2, "skin"], [3, 2, "skin"]]
+		# (Face paint never on (0, 5): the cheek the look reads his skin's colour off.)
+		"face_freckles":
+			return [[1, 4, FRECKLE], [2, 5, FRECKLE], [3, 4, FRECKLE], [4, 5, FRECKLE], [5, 4, FRECKLE], [6, 5, FRECKLE], [7, 4, FRECKLE], [8, 5, FRECKLE]]
+		"face_stubble":
+			return face_marks("bot_stubble")
+		"face_scar_cheek":
+			return face_marks("bot_scar_cheek")
+		"face_scar_lip":
+			return face_marks("bot_scar_lip")
+		"face_brows_thick":
+			return face_marks("bot_brows_thick")
+		"face_unibrow":
+			return face_marks("bot_unibrow")
+		"face_scar_brow":
+			return [[6, 10, VoxelPart.SCAR], [6, 9, VoxelPart.SCAR], [7, 8, VoxelPart.SCAR], [7, 5, VoxelPart.SCAR], [8, 4, VoxelPart.SCAR]]
+		"face_woad":
+			return _row(1, 8, 8, WOAD) + _row(1, 8, 5, WOAD) + [[1, 6, WOAD], [1, 7, WOAD], [4, 6, WOAD], [4, 7, WOAD], [5, 6, WOAD], [5, 7, WOAD], [8, 6, WOAD], [8, 7, WOAD]]
+		"face_warpaint":
+			return [[1, 5, DARK], [1, 4, DARK], [3, 5, DARK], [3, 4, DARK], [6, 5, DARK], [6, 4, DARK], [8, 5, DARK], [8, 4, DARK], [1, 3, DARK], [8, 3, DARK]]
+		"face_ochre":
+			return _row(0, 9, 8, OCHRE) + [[0, 6, OCHRE], [0, 7, OCHRE], [1, 6, OCHRE], [1, 7, OCHRE], [4, 6, OCHRE], [4, 7, OCHRE], [5, 6, OCHRE], [5, 7, OCHRE], [8, 6, OCHRE], [8, 7, OCHRE], [9, 6, OCHRE], [9, 7, OCHRE]]
+		"face_tattoo":
+			return [[8, 9, TATTOO], [9, 8, TATTOO], [8, 7, TATTOO], [9, 6, TATTOO], [8, 5, TATTOO], [9, 4, TATTOO], [8, 3, TATTOO]]
+		"face_blush":
+			return [[1, 4, PINK], [2, 4, PINK], [7, 4, PINK], [8, 4, PINK]]
+		"face_skull":
+			var sk := []
+			for y in range(1, 10):
+				for x in range(1, 9):
+					sk.append([x, y, BONE_PAINT])
+			for e in [[2, 6], [3, 6], [2, 7], [3, 7], [6, 6], [7, 6], [6, 7], [7, 7], [4, 4], [5, 4], [2, 2], [4, 2], [6, 2]]:
+				sk.append([e[0], e[1], DARK])
+			return sk
+		"face_clown":
+			var cl := []
+			for y in range(1, 10):
+				for x in range(1, 9):
+					if (x == 2 or x == 3 or x == 6 or x == 7) and (y == 6 or y == 7):
+						continue   # (his eyes stay his own)
+					cl.append([x, y, CLOWN_WHITE])
+			for e in [[4, 4], [5, 4], [4, 5], [5, 5]]:
+				cl.append([e[0], e[1], CLOWN_RED])
+			cl += _row(2, 7, 2, CLOWN_RED) + [[1, 3, CLOWN_RED], [8, 3, CLOWN_RED], [1, 4, PINK], [8, 4, PINK], [2, 8, BLUE], [7, 8, BLUE]]
+			return cl
+	if IRISES.has(id):
+		return [[3, 6, IRISES[id]], [6, 6, IRISES[id]]]
 	return []
 
 # ---------- The mouth while he talks (the proximity voice) ----------
@@ -864,6 +1086,8 @@ static func talk(f, state: int) -> void:
 	head.set_meta("talk_saved", saved)
 	head.set_meta("talk_state", state)
 	_redraw(head, list)
+	var es := int(head.get_meta("expr_state", 0))
+	FineHead.mood(head, (es & 1) != 0, (es & 2) != 0, state)
 
 # ---------- A face alive: a blink, a grimace, a breath ----------
 
@@ -956,6 +1180,7 @@ static func express(f, shut: bool, hurt: bool) -> void:
 	head.set_meta("expr_saved", saved)
 	head.set_meta("expr_state", state)
 	_redraw(head, list)
+	FineHead.mood(head, shut, hurt, int(head.get_meta("talk_state", 0)))
 
 ## The front of his head: face grid (x, y) -> voxel, kept; and the colour of his eyelids (his
 ## skin there, a shade darker).

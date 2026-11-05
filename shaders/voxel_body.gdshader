@@ -38,6 +38,9 @@ uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
 uniform float body_bevel : hint_range(0.0, 1.0) = 0.85;   // how far a bevelled corner is pulled in
 uniform float oil : hint_range(0.0, 1.0) = 0.0;          // skin oiled for the arena: glossier
 uniform bool bevel_mode = false;
+uniform float patina : hint_range(0.0, 1.0) = 1.0;      // bronze gone green in its corners and spots (0: polished, the new look's armour)
+uniform float iron_metal : hint_range(0.0, 1.0) = 1.0;   // how much a mirror iron is (the new look's armour: less, so its bands read in the sun)
+uniform float scratches : hint_range(0.0, 1.0) = 1.0;    // iron's scratches and dents (the new look's armour: fainter, on its small voxels)
 instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
 instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
 
@@ -218,10 +221,10 @@ void fragment() {
 			float across = abs(dot(fuv, vec2(-dir.y, dir.x)) - (seed2 - 0.21) * 3.0);
 			float along = abs(dot(fuv, dir) - 0.3 * sin(seed * 17.0));
 			float line = 1.0 - smoothstep(0.035, 0.035 + fpx, across);
-			c *= 1.0 + 0.3 * line * (1.0 - smoothstep(0.4, 0.85, along));
+			c *= 1.0 + 0.3 * scratches * line * (1.0 - smoothstep(0.4, 0.85, along));
 		}
 		if (seed2 > 0.9) {
-			c *= 1.0 - 0.16 * (1.0 - smoothstep(0.15, 0.6, length(fuv - vec2(0.25, -0.15))));
+			c *= 1.0 - 0.16 * scratches * (1.0 - smoothstep(0.15, 0.6, length(fuv - vec2(0.25, -0.15))));
 		}
 	} else if (k == 8) {
 		// Fur: tufts a little lighter and darker.
@@ -240,8 +243,8 @@ void fragment() {
 	float cs = box_half.x <= 0.0 ? corner_shade(a, box_pos, m) : 0.0;
 	c *= 1.0 - ao_strength * cs;
 	// Bronze (not gold: it is brighter) going green where it is shut in, and in spots.
-	if (k == 4 && dot(c, vec3(0.2126, 0.7152, 0.0722)) < 0.3) {
-		c = mix(c, vec3(0.1, 0.24, 0.18), clamp(cs * 0.7 + (seed2 > 0.82 ? 0.3 : 0.0), 0.0, 0.7));
+	if (k == 4 && patina > 0.0 && dot(c, vec3(0.2126, 0.7152, 0.0722)) < 0.3) {
+		c = mix(c, vec3(0.1, 0.24, 0.18), clamp(cs * 0.7 + (seed2 > 0.82 ? 0.3 : 0.0), 0.0, 0.7) * patina);
 	}
 	// A sharp voxel: the honed line where its bevels meet, bright, smoother on metal and gems.
 	float hone = 0.0;
@@ -274,7 +277,7 @@ void fragment() {
 	}
 	ALBEDO = c;
 	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5) - 0.1 * hone, 0.02, 1.0);
-	METALLIC = METAL[k];
+	METALLIC = METAL[k] * (k == 3 ? iron_metal : 1.0);
 	SPECULAR = SPEC[k];
 	if (k == 10) {
 		// Scales: a sheen of green and blue at a glancing look.

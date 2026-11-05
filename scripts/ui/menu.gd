@@ -30,6 +30,10 @@ const SHOW_CIRCUS := false
 static func admin() -> bool:
 	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
 const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e, 0x5a3a22, 0x1d6b6b, 0x8a8a80, 0xd06a8a]
+## The builds a gladiator can have (FineBody.BUILDS, in order), as Your gladiator names them.
+const BUILD_NAMES := ["Hero: broad shoulders, narrow waist", "Champion: lean and quick", "Brute: heavy and strong"]
+## The look's slots as Your gladiator names them.
+const SLOT_NAMES := {"hat": "Hat", "hair": "Hair", "hair_colour": "Hair colour", "beard": "Beard", "cape": "Cape", "eyes": "Eyes", "eye_colour": "Eye colour", "mouth": "Mouth", "face": "Face"}
 const LOOK_SLOTS := {
 	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt", "hat_unbroken"],
 	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"],
@@ -37,6 +41,9 @@ const LOOK_SLOTS := {
 	"cape": ["", "cape", "cape_short"],
 	"eyes": ["", "eyes_wide", "eyes_side", "eyes_cross", "eyes_angry", "eyes_sleepy", "eyes_blue", "eyes_green", "eyes_mad", "eyes_wink", "eyes_brown", "eyes_scar", "eyes_tired"],
 	"mouth": ["", "mouth_gap", "mouth_grin", "mouth_snarl", "mouth_stern", "mouth_shout", "mouth_tongue", "mouth_toothless", "mouth_smirk", "mouth_buck", "mouth_frown", "mouth_gold", "mouth_grimace"],
+	"hair_colour": ["", "hc_black", "hc_dark", "hc_brown", "hc_auburn", "hc_ginger", "hc_blond", "hc_platinum", "hc_grey", "hc_white", "hc_blue", "hc_green", "hc_pink", "hc_purple"],
+	"eye_colour": ["", "iris_brown", "iris_hazel", "iris_green", "iris_blue", "iris_grey", "iris_amber", "iris_red", "iris_violet", "iris_gold", "iris_white"],
+	"face": ["", "face_freckles", "face_stubble", "face_scar_cheek", "face_scar_lip", "face_scar_brow", "face_brows_thick", "face_unibrow", "face_woad", "face_warpaint", "face_ochre", "face_tattoo", "face_blush", "face_skull", "face_clown"],
 }
 
 func _ready() -> void:
@@ -241,7 +248,7 @@ func set_worn_armor(a: Array) -> void:
 ## bought). Saved as indices, so an old or hand-edited save cannot name anything that is not there.
 func look() -> Dictionary:
 	var l: Dictionary = Save.get_value("look", {})
-	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1)}
+	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1), "build": clampi(int(l.get("build", 0)), 0, FineBody.BUILDS.size() - 1)}
 	for k in LOOK_SLOTS:
 		out[k] = clampi(int(l.get(k, 0)), 0, LOOK_SLOTS[k].size() - 1)
 		if look_locked(LOOK_SLOTS[k][out[k]]):
@@ -262,6 +269,7 @@ func _net_loadout() -> void:
 	lo["gear_wear"] = armor_wear()
 	lo["stats"] = training_stats()
 	lo["skin"] = Fighter.SKINS[lk.skin]
+	lo["build"] = FineBody.BUILDS[lk.build]
 	Net.my_loadout = lo
 
 ## A guest's look, as the host accepts it: only the cosmetic pieces and the known skins.
@@ -269,16 +277,17 @@ func _net_loadout() -> void:
 func _peer_spec(id: int, geared: bool, with_body := true) -> Dictionary:
 	var pl: Dictionary = Net.peers[id].get("loadout", {})
 	var pk := peer_look(pl)
-	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}, "armor_wear": Armory.clean_wear(pl.get("gear_wear", {}), pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}, "worn": pl.get("worn", {}) if pl.get("worn") is Dictionary else {}, "mods": Training.mods_of(Training.sanitize(pl.get("stats", {}))) if geared else {}}
+	return {"id": id, "name": Net.peers[id].name, "kit": Net.peers[id].get("kit", {}), "body": Net.peers[id].get("body", {}) if with_body else {}, "skin": pk.skin, "build": pk.build, "loadout": {"main": pl.get("main", "gladius"), "off": pl.get("off"), "armor": pk.armor + (pk.gear if geared else []), "armor_defs": Armory.defs_of(pk.gear) if geared else {}, "armor_wear": Armory.clean_wear(pl.get("gear_wear", {}), pk.gear) if geared else {}} if not pl.is_empty() else {"main": "gladius"}, "worn": pl.get("worn", {}) if pl.get("worn") is Dictionary else {}, "mods": Training.mods_of(Training.sanitize(pl.get("stats", {}))) if geared else {}}
 
 func peer_look(pl: Dictionary) -> Dictionary:
 	var ok := []
 	for k in LOOK_SLOTS:
 		ok += LOOK_SLOTS[k]
-	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, 6) if pl.get("look") is Array else []
+	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, LOOK_SLOTS.size()) if pl.get("look") is Array else []
 	var sk = pl.get("skin")
 	Armory.register(pl.get("gear_defs", {}))   # his designed pieces, made safe, under their own ids
-	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null}
+	var bd = pl.get("build")
+	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null, "build": String(bd) if bd is String and FineBody.BUILDS.has(bd) else ""}
 
 func look_armor(l: Dictionary) -> Array:
 	var a := []
@@ -3763,13 +3772,19 @@ func _options_controls(v: VBoxContainer, st: Dictionary) -> void:
 	v.add_child(UIStyle.button("Rebind keys · gamepad", func(): show_screen("controls")))
 	v.add_child(UIStyle.label("Mouse looks; hold the left button and move the mouse to swing the main hand, the right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, the wheel turns the blade, H takes it in both hands, J swaps hands, Esc frees the mouse.", 15, UIStyle.MUTED))
 
+var _chars_opt: OptionButton = null   # the Characters choice (the look Low graphics fall back to shows in it)
 func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 	var q := OptionButton.new()
 	var levels := ["low", "medium", "high", "ultra"]
 	for l in levels:
 		q.add_item(l.capitalize())
 	q.select(maxi(0, levels.find(str(st.get("quality", "high")))))
-	q.item_selected.connect(func(i): _set_opt("quality", levels[i]))
+	q.item_selected.connect(func(i):
+		_set_opt("quality", levels[i])
+		# (Low draws the characters in the classic blocks unless a look was picked below.)
+		Physique.restyle_all(get_tree().root)
+		if _chars_opt != null and is_instance_valid(_chars_opt):
+			_chars_opt.select(1 if Physique.current() == "strong" else 0))
 	_opt_row(v, "Graphics", q, "Low: no shadows or effects lighting. Ultra: global illumination and fog.")
 	var aa := OptionButton.new()
 	for a in AA_MODES:
@@ -3779,6 +3794,15 @@ func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 		_set_opt("aa", AA_MODES[i][0])
 		apply_picture(Save.get_value("settings", {})))
 	_opt_row(v, "Anti-aliasing", aa, "MSAA smooths the edges of the blocks and keeps everything else sharp (4x is the best balance; 8x for strong cards). FXAA is the lightest but blurs the picture.")
+	var gl := OptionButton.new()
+	gl.add_item("Detailed (new)")
+	gl.add_item("Classic")
+	gl.select(1 if Physique.current() == "strong" else 0)
+	_chars_opt = gl
+	gl.item_selected.connect(func(i):
+		_set_opt("physique", "strong" if i == 1 else "human")
+		Physique.restyle_all(get_tree().root))
+	_opt_row(v, "Characters", gl, "Detailed: gladiators, giants and beasts in voxels half the size, with muscles, hands and feet; wounds open on skin, fat, flesh and bone. Classic: the blocks as they were. Only the look: every blow lands the same.")
 	var vao := _check("Voxel shading: corners and creases between blocks in soft shadow", bool(st.get("voxelAO", true)), func(on):
 		_set_opt("voxelAO", on)
 		apply_picture(Save.get_value("settings", {})))
@@ -4018,6 +4042,7 @@ func start(opts: Dictionary) -> void:
 			om[k] = float(om.get(k, 1.0)) * float(tm[k])
 		opts.mods = om
 	opts.skin = Fighter.SKINS[lk.skin]
+	opts.build = FineBody.BUILDS[lk.build]
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())
 	# The decrees are drawn here, so the guests can be told them before anyone is spawned.
@@ -4155,7 +4180,7 @@ func _dress_hero() -> void:
 	# not side-on to it.
 	var cam_at: Vector3 = _hero_cam().pos
 	var yaw := atan2(cam_at.x - HERO_POS.x, cam_at.z - HERO_POS.z) - 0.2
-	backdrop.add_hero(HERO_POS, yaw, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator")
+	backdrop.add_hero(HERO_POS, yaw, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator", FineBody.BUILDS[lk.build])
 
 ## The title shot, or a close look at the champion while he is being dressed.
 func _frame_hero() -> void:
@@ -4183,10 +4208,22 @@ func _gladiator(v: VBoxContainer) -> void:
 	_swatches(v, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i))
 	v.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
 	_swatches(v, CLOTH, lk.cloth, func(i): _set_look("cloth", i))
-	for k in ["hat", "hair", "beard", "cape", "eyes", "mouth"]:
+	# His build (the detailed look draws it; the classic gladiators are all one build).
+	var bo := OptionButton.new()
+	for nm in BUILD_NAMES:
+		bo.add_item(nm)
+	bo.select(lk.build)
+	bo.fit_to_longest_item = false
+	bo.custom_minimum_size = Vector2(220, 0)
+	bo.item_selected.connect(func(i): _set_look("build", i))
+	var bl := UIStyle.label("Physique", 15, UIStyle.MUTED)
+	bl.custom_minimum_size = Vector2(64, 0)
+	_row(v, [bl, bo])
+	for k in ["hat", "hair", "hair_colour", "beard", "cape", "eyes", "eye_colour", "mouth", "face"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			var item_nm := Loc.t("Plain" if k == "eyes" or k == "mouth" else "None") if id == "" else Loc.t(String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
+			var first := "Plain" if k == "eyes" or k == "mouth" or k == "face" else ("Natural" if k.ends_with("_colour") else "None")
+			var item_nm := Loc.t(first) if id == "" else Loc.t(String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
 			ob.add_item(Loc.t("%s  (Ironman)") % item_nm if look_locked(id) else item_nm)
 			if look_locked(id):
 				ob.set_item_disabled(ob.item_count - 1, true)
@@ -4195,14 +4232,15 @@ func _gladiator(v: VBoxContainer) -> void:
 		ob.select(lk[k])
 		ob.custom_minimum_size = Vector2(260, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
-		var kl := UIStyle.label(k.capitalize(), 15, UIStyle.MUTED)
-		kl.custom_minimum_size = Vector2(64, 0)   # the four drop-downs in one column
+		var kl := UIStyle.label(Loc.t(String(SLOT_NAMES.get(k, k.capitalize()))), 15, UIStyle.MUTED)
+		kl.custom_minimum_size = Vector2(92, 0)   # the drop-downs in one column
 		ob.custom_minimum_size = Vector2(220, 0)
 		_row(v, [kl, ob])
 	_row(v, [UIStyle.button("Random", func():
 		var r := {}
 		r.skin = randi() % Fighter.SKINS.size()
 		r.cloth = randi() % CLOTH.size()
+		r.build = randi() % FineBody.BUILDS.size()
 		for k in LOOK_SLOTS:
 			r[k] = randi() % LOOK_SLOTS[k].size()
 			if look_locked(LOOK_SLOTS[k][r[k]]):

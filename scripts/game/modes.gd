@@ -70,16 +70,16 @@ func setup(opts: Dictionary) -> void:
 	fight_s = maxf(0.0, float(opts.get("fight_s", 0.0)))
 	var players := []
 	if mode != "emperor":
-		players.append({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": opts.get("loadout", {"main": "gladius", "off": "roundShield"}), "skin": opts.get("skin")})
+		players.append({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": opts.get("loadout", {"main": "gladius", "off": "roundShield"}), "skin": opts.get("skin"), "build": opts.get("build", "")})
 	for p in opts.get("peers", []):
-		players.append({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "kit": p.get("kit", {}), "skin": p.get("skin")})
+		players.append({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "kit": p.get("kit", {}), "skin": p.get("skin"), "build": p.get("build", "")})
 	var bots := bot_count(players.size())
 	var total := players.size() + bots
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var team := player_team(mode, i)
 		var pos := spawn_pos(i, total)
-		var e = m.spawn_fighter({"kind": p.kind, "peer": p.get("peer", -1), "name": p.name, "loadout": p.loadout, "team": team, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "color": TEAM_COLORS[team % TEAM_COLORS.size()], "skin": p.get("skin")})
+		var e = m.spawn_fighter({"kind": p.kind, "peer": p.get("peer", -1), "name": p.name, "loadout": p.loadout, "team": team, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "color": TEAM_COLORS[team % TEAM_COLORS.size()], "skin": p.get("skin"), "build": p.get("build", "")})
 		e.inventory = opts.get("inventory", {}) if p.kind == "local" else Net.sanitize_kit(p.get("kit", {}))
 		if p.kind == "local":
 			m.me = e

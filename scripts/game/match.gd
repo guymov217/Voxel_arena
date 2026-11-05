@@ -110,7 +110,7 @@ var circus := {}                # {bout, day, bout_index, mods, fortune}
 ## `still`: a mannequin for the dressing screen. He settles once, then stands frozen; dressed
 ## again, the new body takes the old one's exact pose (parts and weapons) and stays frozen, so
 ## nothing jitters, falls or flings its weapons when a choice changes.
-func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = null, still := false) -> Fighter:
+func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = null, still := false, build := "") -> Fighter:
 	var pose := {}
 	var old = hero if hero and is_instance_valid(hero) else null
 	if old and still and old.get_meta("frozen", false):
@@ -136,6 +136,7 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 	var o := {"name": "Champion", "slot": 7, "team": 9, "team_color": color}
 	if skin != null:
 		o["skin"] = int(skin)
+	o["build"] = build
 	hero.build(pos, yaw_, _resolve_loadout(lo), o)
 	# A soft light on his face from the camera's side: the sun is behind him on the dressing
 	# screen, and the face, hair and beard being chosen were in shadow.
@@ -319,10 +320,10 @@ func setup(opts: Dictionary) -> void:
 	# Players: the local one, then a fighter for every friend in the room.
 	var lo: Dictionary = opts.get("loadout", {"main": "gladius", "off": "roundShield"})
 	var campaign := mode == "campaign"
-	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign or mode == "yard" else null})
+	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "build": opts.get("build", ""), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign or mode == "yard" else null})
 	me.inventory = opts.get("inventory", {})
 	for p in opts.get("peers", []):
-		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "worn": clean_worn(p.get("worn")) if campaign or mode == "yard" else {}, "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
+		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if campaign or mode == "yard" else {}, "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
 		pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	players_count = 1 + opts.get("peers", []).size()
 	# Tests and attract mode: the player's fighter fights by itself.
@@ -375,6 +376,8 @@ func spawn_fighter(spec: Dictionary):
 	var opts := {"name": spec.name, "slot": entities.size(), "team": spec.team, "mods": spec.get("mods", {}), "boss": spec.get("boss", false), "bot": spec.kind == "bot"}
 	if spec.get("skin") != null:
 		opts["skin"] = int(spec.skin)
+	if spec.get("build") is String:
+		opts["build"] = spec.build
 	if spec.get("color") != null:
 		opts["team_color"] = Color.hex(int(spec.color) << 8 | 0xff)
 	elif spec.team == ENEMY_TEAM:
@@ -544,7 +547,7 @@ func add_peer(id: int, p: Dictionary) -> void:
 	for e in entities:
 		if is_instance_valid(e.f):
 			Net.send_to(id, "spawn", _spawn_msg(e))
-	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "worn": clean_worn(p.get("worn")) if mode == "yard" or mode == "campaign" else {}, "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
+	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if mode == "yard" or mode == "campaign" else {}, "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
 	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	for e in entities:
 		e.erase("held_sig")   # (what everyone holds ready, to him too)

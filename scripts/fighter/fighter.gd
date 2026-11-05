@@ -79,11 +79,13 @@ var team := 0
 var team_color := Color(0.627, 0.125, 0.125)
 var skin := Color(0.878, 0.706, 0.549)
 var is_bot := false
-var face_ids: Array = []          # the eyes and the mouth he chose (Physique.FACES), drawing only
+var face_ids: Array = []          # his eyes, mouth, face paint, hair and eye colour as he chose them (Physique.FACES), drawing only
 var kind := "fighter"
 var mods := {"bodyScale": 1.0, "strength": 1.0, "speed": 1.0, "toughness": 1.0, "bleed": 1.0, "accel": 1.0, "unstoppable": false, "drunk": 0.0}
 var S := 1.0
 var MS := 1.0
+var build_pref := ""   # the build he chose to be drawn in (Your gladiator; Physique.build_of)
+var main_id := ""      # the weapon he came in with (Physique.build_of: a heavy one, a heavy man)
 var boss := false
 
 var yaw := 0.0
@@ -303,6 +305,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	if opts.has("team_color"):
 		team_color = opts.team_color
 	skin = Color.hex(int(opts.get("skin", SKINS[slot % SKINS.size()])) << 8 | 0xff)
+	build_pref = str(opts.get("build", ""))
+	main_id = str(loadout.get("main")) if loadout.get("main") is String else ""
 	for k in opts.get("mods", {}):
 		mods[k] = opts.mods[k]
 	S = float(mods.bodyScale)
@@ -384,12 +388,14 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	for p in parts:
 		if p.parent_part:
 			_make_pin(p)
+	# (A face is painted, not worn: his eyes, his mouth, paint and scars, the colour of his hair
+	# and of his eyes, Physique. First: the hair he wears is the colour he chose.)
+	for id in loadout.get("armor", []):
+		if Physique.FACES.has(String(id)) and not face_ids.has(String(id)):
+			face_ids.append(String(id))
 	for p in parts:
 		for id in loadout.get("armor", []):
 			_add_armor(p, id)
-	for id in loadout.get("armor", []):
-		if String(id).begins_with("eyes_") or String(id).begins_with("mouth_"):
-			face_ids.append(String(id))   # (a face is painted, not worn: Physique)
 	if opts.get("body") is Dictionary:
 		apply_body(opts.body)
 	if String(mods.get("look", "")) != "":
@@ -939,7 +945,12 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	# Each cell its own colour and stuff (ArmorStyle): strands of hair, woven straw, plates
 	# with a rim and rivets, a crown's stones, a cape's folds. Only the look.
 	mesh.material = VoxelPart.body_material()
-	var looks := ArmorStyle.cells(id, a, cells, ArmorStyle.base_color(id, a, skin))
+	var bc := ArmorStyle.base_color(id, a, skin)
+	if id.begins_with("hair_") or id.begins_with("beard_"):
+		var hc = Physique.hair_choice(self)
+		if hc != null:
+			bc = hc
+	var looks := ArmorStyle.cells(id, a, cells, bc)
 	var mmesh := MultiMesh.new()
 	mmesh.transform_format = MultiMesh.TRANSFORM_3D
 	mmesh.use_colors = true
@@ -975,7 +986,9 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	for lk in looks:
 		cols.append(lk[0])
 		ks.append(int(lk[1]))
-	p.set_meta("armor", p.get_meta("armor", []) + [{"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst, "cols": cols, "kinds": ks}])
+	var ad := {"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst, "cols": cols, "kinds": ks}
+	p.set_meta("armor", p.get_meta("armor", []) + [ad])
+	FineArmor.build(self, p, ad)
 	_armor_dirty = true
 
 ## How much wear (summed blow force) knocks a plate off at last, by its stuff: leather 14,
@@ -997,6 +1010,7 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 	var at: Vector3 = (ad.pts[ci] as Vector3) + Physique.inset(part, ad.cells[ci])
 	if ad.node and is_instance_valid(ad.node):
 		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 	if part == head and not _cosmetic(String(ad.id)):
 		place_armor()   # (the hair the plate covered bursts out of the hole)
 		_hair_pop = 1.0
@@ -1031,6 +1045,7 @@ func apply_armor_wear(wear: Dictionary) -> void:
 					ad.alive -= 1
 					if ad.node and is_instance_valid(ad.node):
 						ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+						FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 	_armor_dirty = true
 
 ## The plates off him now, piece by piece, for the save (the same shape apply_armor_wear takes).
@@ -1063,6 +1078,7 @@ func place_armor() -> void:
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
 					m.set_instance_transform(ci, Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)))
+			FineArmor.build(self, p, ad)
 		_tuck_hair(p)
 
 ## Hair and a beard under a helmet are drawn tucked inside it: a lock with a plate of the helmet
@@ -1229,6 +1245,7 @@ func set_armor_pieces(ids: Array) -> void:
 		var keep := []
 		for ad in p.get_meta("armor", []):
 			if (Armory.sold(ad.id) or Armory.custom(ad.id)) and not ids.has(ad.id):
+				FineArmor.clear(ad)
 				if ad.node and is_instance_valid(ad.node):
 					ad.node.queue_free()
 			else:
@@ -1626,6 +1643,8 @@ func toggle_grip() -> Variant:
 	_attach_off_hand(w)
 	return "two"
 
+static var off_lets_go_down := true   # (probes: false, to see a fall as it was, a before picture)
+
 ## H was pressed with the other end of the haft behind him: the off hand takes it once it is out
 ## in front and in reach. And with both on it, an off hand dragged round behind his back (a low
 ## stroke across to the far hip) lets go rather than stay there; it takes hold again in front.
@@ -1634,6 +1653,14 @@ func _grip_reach(dt: float) -> void:
 		_forearms_pass(false)
 	var o := two_off()
 	var w: Weapon = weapons[two_side]
+	if two_handed and state == "down" and weapon_joints[o] and off_lets_go_down:
+		# Knocked down, the other hand lets go of the haft to break his fall, the weapon kept in the
+		# guard hand; it takes hold again once he is on his feet. (Held on, a heavy head flung over
+		# drew that arm up over his head and folded it back as he sat in the sand: user, image 6.)
+		_off_hand_off_haft()
+		grip_want = true
+		grip_wait = 0.0
+		return
 	if two_handed:
 		grip_wait = 0.0
 		grip_want = true
@@ -3551,7 +3578,9 @@ func _clip_arm_armor() -> void:
 				var inside := box.has_point(q)
 				if inside != (clip[ci] == 1):
 					clip[ci] = 1 if inside else 0
-					m.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else p.drawn_plate(ad.xf[ci]))
+					var cxf := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else p.drawn_plate(ad.xf[ci])
+					m.set_instance_transform(ci, cxf)
+					FineArmor.sync(ad, ci, cxf)
 			ad["clip"] = clip   # (a packed array is a value: the changes go back in)
 
 func _armored(p: VoxelPart) -> bool:
@@ -3608,6 +3637,78 @@ func _seat_drawing(interp := true, dt := 0.0) -> void:
 				b.draw_turn = fore.draw_turn
 	# (After the weapon: it is drawn where the hands hold it, not turned with the arm.)
 	_swivel_drawing(interp, dt)
+	_off_clear_drawing(interp, dt)
+
+## Both hands on one haft, the other hand's arm is drawn turned about the line from its shoulder to
+## its fist (the fist where it is) just as far as keeps its forearm and its elbow out of his chest
+## and the armour on it: pulled across him by the haft, the forearm lay in through the cuirass (user,
+## image 7). The least turn that does it, the elbow kept down and off his face. Drawing only, as
+## the guard arm's turn is.
+# (How far clear of his trunk's box the drawn arm keeps, of S: his chest as the new look draws it,
+# a lorica on it.)
+const OFF_CLEAR := 0.07
+var off_turn_a := 0.0
+func _off_clear_drawing(interp: bool, dt: float) -> void:
+	var side := two_off()
+	if not arm.has(side) or not swivel_on or not two_handed or torso.severed:
+		off_turn_a = 0.0
+		return
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	if up.parent_part == null or fo.parent_part != up or up.severed or fo.severed or up.hanging or fo.hanging or up.missing or fo.missing or fo.draw_turn != Transform3D() or up.draw_turn != Transform3D():
+		off_turn_a = 0.0
+		return
+	var tu := up.get_global_transform_interpolated() if interp else up.global_transform
+	var tf := fo.get_global_transform_interpolated() if interp else fo.global_transform
+	var tt := torso.get_global_transform_interpolated() if interp else torso.global_transform
+	tu.origin += up.draw_shift
+	tf.origin += fo.draw_shift
+	tt.origin += torso.draw_shift
+	var s0: Vector3 = tu * up.ca
+	var e0: Vector3 = tu * fo.pa
+	var h0: Vector3 = tf * hand_point
+	var v := h0 - s0
+	var want := 0.0
+	if v.length() > 0.05 * S:
+		var a := v.normalized()
+		var u := e0 - s0
+		var tinv := tt.affine_inverse()
+		var ext: Vector3 = torso.half_ext + Vector3.ONE * OFF_CLEAR * S
+		var hd: Vector3 = head.global_position if head and not head.severed and not head.missing else s0 + Vector3(0, 0.3 * S, 0)
+		# How deep the arm lies in him turned by c: the forearm, and the upper arm's lower half.
+		var depth := func(c: float) -> float:
+			var e1: Vector3 = s0 + Basis(a, c) * u
+			var dsum := 0.0
+			for k in 5:
+				var t := (float(k) + 0.5) / 5.0
+				for q in [e1.lerp(h0, t), s0.lerp(e1, 0.5 + 0.5 * t)]:
+					var l: Vector3 = tinv * (q as Vector3)
+					var dx := ext.x - absf(l.x)
+					var dy := ext.y - absf(l.y)
+					var dz := ext.z - absf(l.z)
+					if dx > 0.0 and dy > 0.0 and dz > 0.0:
+						dsum += minf(dx, minf(dy, dz))
+			if c != 0.0 and (e1.y > s0.y + 0.08 * S or e1.distance_to(hd) < SWIVEL_FACE * S):
+				dsum += 1.0   # (never up over his shoulder or across his face)
+			return dsum
+		var best: float = depth.call(0.0)
+		if best > 0.0:
+			for c in [0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1.0, -1.0, 1.3, -1.3]:
+				var dd: float = depth.call(c)
+				if dd < best - 1e-4:
+					best = dd
+					want = c
+					if dd <= 0.0:
+						break
+		off_turn_a = want if dt <= 0.0 else lerp_angle(off_turn_a, want, minf(1.0, dt * 12.0))
+		if absf(off_turn_a) < 0.001:
+			return
+		var turn := Basis(a, off_turn_a)
+		for pt in [up, fo]:
+			var q2: Vector3 = s0 - (pt as VoxelPart).draw_shift
+			pt.draw_turn = Transform3D(Basis(), q2) * Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(), -q2) * (pt as VoxelPart).draw_turn
+	else:
+		off_turn_a = 0.0
 
 ## Both hands on one haft, the guard hand's arm is drawn turned about the line from its shoulder to
 ## its fist, as far as stands the forearm SWIVEL_BEND off the blade's line, the fist where it is
@@ -6766,6 +6867,10 @@ func lungs() -> float:
 	return (organ_health(Anatomy.LUNG_R) + organ_health(Anatomy.LUNG_L)) * 0.5
 
 func _organ_lost(part: VoxelPart, indices: Array) -> void:
+	# (A many-headed beast's other heads have brains of their own: torn, they ring no bell in the
+	# head it fights with, or in its body.)
+	if part != head and part.def.get("head", false):
+		return
 	var lost := {}
 	for i in indices:
 		var o: int = part.organ[i]

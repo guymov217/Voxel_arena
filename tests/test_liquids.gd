@@ -62,14 +62,16 @@ func test_fire_breath_is_a_stream_a_wall_stops() -> void:
 	wall.collision_layer = VoxelPart.LAYER_WORLD
 	var cs := CollisionShape3D.new()
 	var bx := BoxShape3D.new()
-	bx.size = Vector3(4.0, 3.5, 0.3)   # wide enough that the long neck cannot look round it
+	bx.size = Vector3(4.0, 5.0, 0.3)   # wide and high enough that the long neck cannot look round it
 	cs.shape = bx
 	wall.add_child(cs)
 	m.add_child(wall)
 	await _steps(90)
-	var mouth: Vector3 = b.breath_part().global_position
-	wall.global_position = mouth.lerp(hid.torso.global_position, 0.55) + Vector3(0, -0.5, 0)
-	wall.look_at(hid.torso.global_position, Vector3.UP)
+	# (The wall stands in front of the man it hides, between him and the dragon: grown, and its
+	# long neck out in front of it, the dragon's head swung round where a wall halfway to its jaws
+	# stood, and the wall held the head off the man in the open.)
+	wall.global_position = hid.torso.global_position.lerp(b.torso.global_position, 0.3) + Vector3(0, 0.8, 0)
+	wall.look_at(hid.torso.global_position + Vector3(0, 0.8, 0), Vector3.UP)
 	m.stream(b, "fire", open_man.torso.global_position, 7.0, 0.9, open_man)
 	await _steps(180)
 	t.check(Fire.is_burning(open_man), "the man in the open is set alight by the stream")

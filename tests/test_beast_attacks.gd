@@ -84,7 +84,9 @@ func test_the_mammoth_hunts() -> void:
 
 func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	seed(9)
-	var s = await _setup("crocodile", 2.2)
+	# (As far off as it lay at the size it was modelled: grown bigger, at 2.2 m its jaws came
+	# down through him.)
+	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
 	var rolled := [false]
 	var wrenches := [0]
 	var torn := [false]
@@ -94,12 +96,14 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 			if h.res.get("rolled", false):
 				torn[0] = true)
 	# Through the roll: how far round the crocodile, the limb in its jaws and the man's trunk
-	# go on its length, and how far the bitten place gets from its teeth.
+	# go on its length, and how far the bitten place gets from its teeth. (The roll that took
+	# the limb: grown bigger and quicker to him, it has hold of him again before the time is
+	# out, on a man thrown across its back, and that is another roll.)
 	var turn := [0.0, 0.0, 0.0]
 	var gap := [0.0]
 	await _run(s[0], s[1], s[2], 16.0, func(_i):
 		var b: Beast = s[2]
-		if b.hug != null and b.hug.get("roll", false) and is_instance_valid(b.hug.part):
+		if not torn[0] and b.hug != null and b.hug.get("roll", false) and is_instance_valid(b.hug.part):
 			rolled[0] = true
 			var ax: Vector3 = PD.quat_of(b.torso) * Vector3(0, 0, 1)
 			turn[0] += absf(b.torso.angular_velocity.dot(ax)) / 120.0
@@ -123,7 +127,9 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 ## limb is twisted off.
 func test_pulling_away_breaks_the_death_roll() -> void:
 	seed(9)
-	var s = await _setup("crocodile", 2.2)
+	# (As far off as it lay at the size it was modelled: grown bigger, at 2.2 m its jaws came
+	# down through him.)
+	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
 	s[0].me.drive = func(_e): return {"mz": -1.0}
 	var rolled := [false]
 	var torn := [false]
@@ -533,4 +539,33 @@ func test_a_hurt_bull_charges_wild_and_soon() -> void:
 		last[0] = md)
 	t.check(wide[0] > 0.03, "its charges go wide (%.2f rad at most)" % wide[0])
 	t.check(recover[0] < 1.25, "and it is up again sooner (%.2f s)" % recover[0])
+	s[0].queue_free()
+
+## An elephant and a mammoth gore a man with their tusks, as a real one does (user): the head
+## swings them into him, and what lands is a blow of the tusks themselves, their weight and speed.
+func test_the_elephant_and_the_mammoth_gore_with_their_tusks() -> void:
+	for sp in ["elephant", "mammoth"]:
+		seed(12)
+		var s = await _setup(sp, 3.4)
+		var gored := [0]
+		var hardest := [0.0]
+		s[0].combat.hit.connect(func(h):
+			if h.attacker == s[2] and h.char == s[1] and h.get("att_part") != null and String(h.att_part.part_name).begins_with("tusk"):
+				gored[0] += 1
+				hardest[0] = maxf(hardest[0], float(h.J)))
+		await _run(s[0], s[1], s[2], 14.0, func(_i): pass)
+		t.check(gored[0] > 0, "the %s gored him with its tusks (%d blows, the hardest %.0f)" % [sp, gored[0], hardest[0]])
+		s[0].queue_free()
+
+## A boar slashes with its tusks, its head swung across a man's legs, and the tusks land the blow
+## (user: their tips never landed one, as the elephant's never did).
+func test_the_boar_slashes_with_its_tusks() -> void:
+	seed(13)
+	var s = await _setup("boar", 2.4)
+	var slashes := [0]
+	s[0].combat.hit.connect(func(h):
+		if h.attacker == s[2] and h.char == s[1] and h.get("att_part") != null and String(h.att_part.part_name).begins_with("tusk"):
+			slashes[0] += 1)
+	await _run(s[0], s[1], s[2], 12.0, func(_i): pass)
+	t.check(slashes[0] > 0, "the boar slashed him with its tusks (%d)" % slashes[0])
 	s[0].queue_free()

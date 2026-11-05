@@ -11,6 +11,9 @@ signal chip(info: Dictionary)
 
 const TYPE_RANK := {"point": 3, "edge": 2, "blunt": 1, "grip": 0}
 const STRIKING := ["forearmR", "forearmL", "shinR", "shinL", "head"]
+## An elephant's or a mammoth's tusk (_tusk): the weight behind it, and the most a blow of it is.
+const TUSK_M := 10.0
+const TUSK_CAP := 85.0
 
 static var current: Combat = null
 
@@ -258,7 +261,13 @@ func process_contacts(_dt: float) -> Array:
 				att = a; vic = b
 			else:
 				att = b; vic = a
-			if not (STRIKING.has(att.part_name) or att.def.get("bite", false) or att.def.get("point", false)):
+			# A tusk the head drives in a strike is the blow, whatever moves the faster (a man
+			# flung back off it moved faster than it, and the gore was read as him bumping into it).
+			if _tusk(vic) and vic.fighter.strikes_with(vic):
+				var was = att
+				att = vic
+				vic = was
+			if not (STRIKING.has(att.part_name) or att.def.get("bite", false) or att.def.get("point", false) or _tusk(att)):
 				continue
 			if att.fighter.state != "stand" or not att.fighter.alive or att.severed:
 				continue
@@ -269,7 +278,7 @@ func process_contacts(_dt: float) -> Array:
 			# with a lion was over in ten seconds and nothing he did could change it.)
 			# (A crocodile's jaws close on whatever touches them: its bite is the grab, and the
 			# hold it starts is the fight he can win by pulling free.)
-			if att.fighter is Beast and att.fighter.species != "crocodile" and not (att.fighter.strikes.has(att) or (att.parent_part != null and att.fighter.strikes.has(att.parent_part))):
+			if att.fighter is Beast and att.fighter.species != "crocodile" and not att.fighter.strikes_with(att):
 				continue
 			if att.fighter.kind != "beast" and not att.def.get("bite", false):
 				var n: String = att.part_name
@@ -336,6 +345,11 @@ func _clang(g: Dictionary, out: Array) -> void:
 ## The speed of a point driven home (m/s, along its blade) that puts all of a thrust behind it.
 const THRUST_FULL_V := 3.0
 
+## An elephant's, a mammoth's or a boar's tusk, any length of it: it lands a blow when the head that
+## drives it strikes (Beast.strikes_with), a gore or a slash, as a real one's does (user).
+static func _tusk(p) -> bool:
+	return p is VoxelPart and p.fighter is Beast and Beast.TUSKERS.has(p.fighter.species) and String(p.part_name).begins_with("tusk")
+
 func _blow(g: Dictionary) -> Dictionary:
 	var vic: VoxelPart = g.vic
 	var vic_char = vic.fighter
@@ -349,7 +363,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
 	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_timer > 0.0
-	var bite: bool = not is_weapon and not club and (att.def.get("bite", false) or att.def.get("point", false))
+	var tusk: bool = not is_weapon and not club and _tusk(att)
+	var bite: bool = not is_weapon and not club and (att.def.get("bite", false) or att.def.get("point", false) or tusk)
 	var punch: bool = not is_weapon and not club and not bite and not kick
 	if speed < (2.2 if is_weapon else (1.5 if kick else 2.0)):
 		return {}
@@ -391,6 +406,13 @@ func _blow(g: Dictionary) -> Dictionary:
 		cap = 20.0 if kick else (30.0 if jabbing else 24.0)
 		if punch:
 			cap *= clampf(float(att.fighter.S), 1.0, 2.5)
+	if tusk:
+		# A tusk is no bite (an elephant's bite is nil, and every gore landed at nothing): its blow
+		# is the weight of the head behind it, driven or swung into him (user: the blow is
+		# physical): an elephant's or a mammoth's a tonne, a boar's as heavy as its bite.
+		var huge: bool = att.fighter.species == "elephant" or att.fighter.species == "mammoth"
+		m_eff = TUSK_M if huge else 5.0
+		cap = TUSK_CAP if huge else maxf(20.0, float(att.fighter.get("bite_power")))
 	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
 	var heavy := 0.0
 	if is_weapon and att.is_hazard:
@@ -495,6 +517,13 @@ func _blow(g: Dictionary) -> Dictionary:
 		hardness = 0.5
 		heavy = maxf(heavy, 0.5)
 		attacker = att.fighter
+	elif tusk and not att.def.get("point", false):
+		# The length of a tusk driven or swung into him: a club of ivory, as heavy as the head
+		# behind it (its tip goes in as a point, below).
+		typ = "blunt"
+		hardness = 0.8
+		heavy = maxf(heavy, 0.5)
+		attacker = att.fighter
 	elif bite and att.def.get("claw", false):
 		# A paw's claws rake like knives: a cut along the swing, as deep as the blow drives it.
 		typ = "edge"
@@ -516,7 +545,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var was_alive: bool = vic_char.alive
 	# A bite takes a mouthful: the teeth close on a lump the size of the jaws, and tear it out.
-	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and J > 6.0 and not att.def.get("claw", false) and not att.def.get("fist", false) else 0.0
+	var crush := minf(0.11, (0.035 + J * 0.0012) * sqrt(float(att.fighter.S))) if bite and not tusk and J > 6.0 and not att.def.get("claw", false) and not att.def.get("fist", false) else 0.0
 	var thrust_k := 0.0
 	if is_weapon and att.holder and "thrust_amt" in att.holder:
 		thrust_k = clampf(float(att.holder.thrust_amt.get("R" if att.holder.weapons.R == att else "L", 0.0)), 0.0, 1.0)
@@ -541,7 +570,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0})
 	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
 	# is turned aside at the point it struck, so it twists off too).
 	if is_weapon and res.has("glance_n"):
@@ -549,7 +578,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		var vn := (_vel_at(att, p) - _vel_at(vic, p)).dot(gn)
 		if vn < 0.0:
 			att.apply_impulse(gn * (-vn) * 1.1 * float(res.glance) * att.mass, p - att.global_position)
-	if bite and att.fighter.has_method("bit"):
+	if bite and not tusk and att.fighter.has_method("bit"):
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:
 		vic_char.last_attacker = attacker
@@ -621,7 +650,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		var k: Dictionary = att.knock(idx, Weapon.chip_score(J * maxf(0.25, brittle) * chip_mult, mat_h, vh))
 		if not k.is_empty():
 			chip = {"indices": k.indices, "voxels": k.voxels, "broke": k.broke}
-	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
+	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite and not tusk, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
 
 ## How likely a held weapon's blow is to stay in the wound: a weapon heavy at the head (an axe,
 ## a trident: the weight out at the blade drives it in and wedges it), or a long heavy blade

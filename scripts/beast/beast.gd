@@ -83,7 +83,9 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	rng.seed = int(opts.get("seed", randi()))
 	life_rng.seed = rng.seed ^ 0x5bd1e995
 	var base_s: float = float(sp.scale)
-	S = float(opts.get("scale", base_s))
+	# The monsters stand bigger than they are modelled (user: bigger and more menacing), at
+	# whatever size they are called up: the dragon, the hydra, the gorilla...
+	S = float(opts.get("scale", base_s)) * float(sp.get("grow", 1.0))
 	var k := S / base_s
 	MS = pow(S, 2.5)
 	mods.bodyScale = S
@@ -179,6 +181,9 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	for p in parts:
 		if p.def.get("bite", false) and p.def.get("jaw") is Dictionary:
 			p.build_jaw(p.def.jaw)
+	# How it is drawn (Options: the new look rounds its voxels into a body). Drawing only.
+	if Physique.current() == "human":
+		FineBody.dress_beast(self)
 	ai = {"mode": "aim" if sp.ai == "charger" else "stalk", "t": 1.5 + rng.randf() * 1.5, "circle": 1.0 if rng.randf() < 0.5 else -1.0, "bite_cool": 2.5, "roar_cool": 4.0, "dodge_cool": 0.0, "breath_cool": 3.0, "fly_cool": 6.0, "alt": 0.0}
 
 ## Hide first: the blow is softened by what it has to get through (HIDE), then lands as on any body.
@@ -1399,8 +1404,12 @@ func _death_roll(dt: float) -> void:
 	jaw_t = minf(jaw_t, 0.1)
 	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
 	# (His weight dragging against it; and a man it cannot bring round, the teeth working out
-	# of the bite, slows it: the roll is only as fast as the hold is firm.)
-	var spin := ROLL_SPIN * (1.0 - 0.45 * pull) * float(hug.spin) * clampf(1.0 - (gap - 0.04 * S) / (0.12 * S), 0.3, 1.0)
+	# of the bite, slows it: the roll is only as fast as the hold is firm. A crocodile grown
+	# bigger than it was modelled rolls as much slower: its jaws, further out from its length,
+	# go round as fast as they did, and the man hanging from the limb in them keeps up. Rolled
+	# as fast, the jaws whirled him round a wider circle than his arm could follow, and the
+	# teeth came a fifth of a metre out of the bite.)
+	var spin := ROLL_SPIN / float(sp.get("grow", 1.0)) * (1.0 - 0.45 * pull) * float(hug.spin) * clampf(1.0 - (gap - 0.04 * S) / (0.12 * S), 0.3, 1.0)
 	torso.angular_velocity = fwd * spin
 	hug.turned = float(hug.turned) + absf(spin) * dt
 	# The man goes round with it: the limb is locked in the jaws, and his trunk is wrenched over
@@ -1418,7 +1427,8 @@ func _death_roll(dt: float) -> void:
 		tgt.last_attacker = self
 		# Two full turns and three wrenches twist a limb (never the trunk or the head) clean off.
 		# Only a hold he never fought off (three wrenches, two full turns: a second and a half
-		# of it, while pulling away prises the jaws open in about one) takes the limb.
+		# of it at the size it was modelled, more grown bigger, while pulling away prises the
+		# jaws open in about one) takes the limb.
 		if int(hug.bites) >= 3 and float(hug.turned) >= TAU * 2.0 and part != tgt.torso and part != tgt.head and not part.severed:
 			tgt.detach_limb(part, res)
 			res.rolled = true
@@ -1859,6 +1869,24 @@ func _process(dt: float) -> void:
 	for p in heads:
 		if not p.severed:
 			p.set_gape(gape, dt)
+	_chest(dt)
+
+## Its chest rises and falls, slow at rest and quick and deep when it has run (drawing only: the
+## body's box, its mass and its voxels stay as they are).
+var _chest_ph := 0.0
+var _chest_run := 0.0
+func _chest(dt: float) -> void:
+	if torso == null or not is_instance_valid(torso) or torso.severed:
+		return
+	if not alive:
+		if torso.draw_scale != Vector3.ONE:
+			torso.draw_scale = Vector3.ONE
+		return
+	var run := clampf(torso.linear_velocity.length() / maxf(1.0, float(sp.get("speed", 6.0)) * S * 0.5), 0.0, 1.0)
+	_chest_run = move_toward(_chest_run, run, dt * (0.6 if run > _chest_run else 0.1))
+	_chest_ph = fmod(_chest_ph + dt * TAU * (0.3 + 0.9 * _chest_run), TAU)
+	var a := (0.008 + 0.02 * _chest_run) * (0.5 + 0.5 * sin(_chest_ph))
+	torso.draw_scale = Vector3(1.0 + a * 0.7, 1.0 + a, 1.0 + a * 0.2)
 
 ## Breathing fire (or venom) the neck is driven forward at the prey and the head thrust out
 ## level with it, the jaws wide (a short draw back as it fills its chest, then the lunge),
@@ -1963,7 +1991,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	# A crocodile's jaws close on the limb they got and it goes into its roll.
 	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2):
 		var mp0 := mouth_point()
-		hug = {"target": c, "part": vic, "t": 3.0, "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
+		hug = {"target": c, "part": vic, "t": 3.0 * float(sp.get("grow", 1.0)), "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
 			"bite_at": vic.to_local(mp0), "turned": 0.0}
 		# Clamped, not hinged: the limb is locked in the jaws, so it turns as the head turns
 		# (on a pin it only swivelled in the mouth while the crocodile spun round it).
@@ -2272,7 +2300,11 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: fl
 			"neck":
 				return Vector3(-0.4, track * 0.3, 0)                                    # the neck rears up
 			"head":
-				if species == "boar" or species == "elephant" or species == "mammoth":
+				if (species == "elephant" or species == "mammoth") and ai.get("gore", false):
+					return Vector3(0.6, track * 0.3, 0)                                   # the head lowered, the tusks levelled at him
+				if species == "elephant" or species == "mammoth":
+					return Vector3(0.2, -signf(float(ai.get("sweep", 1.0))) * 0.45, 0)    # the tusks swung the other way, low
+				if species == "boar":
 					return Vector3(-0.15, -signf(float(ai.get("sweep", 1.0))) * 0.45, 0)   # the tusks swung the other way
 				if species == "bull" or species == "goat" or species == "rhino":
 					return Vector3(0.35, 0, 0)                                           # the horns lowered
@@ -2293,7 +2325,11 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: fl
 				drop = clampf((hd.global_position.y - target.torso.global_position.y) / maxf(0.5, p.half_ext.y * 2.0 + 0.3), 0.0, NECK_DIP - 0.3)
 			return Vector3(0.3 + drop, track * 0.3, 0)
 		"head":
-			if species == "boar" or species == "elephant" or species == "mammoth":
+			if (species == "elephant" or species == "mammoth") and ai.get("gore", false):
+				return Vector3(0.6 - 1.05 * clampf(1.0 - st / 0.5, 0.0, 1.0), track * 0.3, 0)   # the tusks driven up into him
+			if species == "elephant" or species == "mammoth":
+				return Vector3(0.4, signf(float(ai.get("sweep", 1.0))) * (0.6 - st), 0)   # a tusk sweep, low across him
+			if species == "boar":
 				return Vector3(0.1, signf(float(ai.get("sweep", 1.0))) * (0.6 - st), 0)   # a tusk sweep
 			if species == "rhino":
 				return Vector3(0.12, track * 0.3, 0)                                   # a forward horn thrust, low
@@ -2348,6 +2384,12 @@ func _strike_go(p: VoxelPart) -> void:
 		pending.erase(p)
 		if is_instance_valid(imp[0]) and not imp[0].severed:
 			imp[0].apply_central_impulse(_lunge_at(imp[0]) if imp.size() > 2 and imp[2] == "aim" else imp[1])
+	# A gore has the whole beast behind it: it lunges on as the tusks come up, a stride's worth
+	# (the head alone drove them up short of him, user).
+	if p == head and (species == "elephant" or species == "mammoth") and ai.get("gore", false) and target and is_instance_valid(target) and ground_ok:
+		var to: Vector3 = target.torso.global_position - torso.global_position
+		to.y = 0.0
+		torso.apply_central_impulse(to.normalized() * GORE_LUNGE * live_mass())
 	# A paw or a foot only hurts while it swings.
 	if p.def.get("leg", false):
 		var lo := lower_of(p)
@@ -2532,6 +2574,33 @@ func _drive_head(h: VoxelPart) -> void:
 	nk.apply_force(fn, h.global_position - nk.global_position)
 	torso.apply_central_force(-(f + fn) * 0.5)
 
+## How near the tips of its tusks come to `tp` (on the ground), INF without them; how near they
+## start a gore (the lunge carries them on to him), and the lunge (m/s, the whole beast).
+const GORE_REACH := 0.95
+const GORE_LUNGE := 1.6
+func _tusk_reach(tp: Vector3) -> float:
+	var best := INF
+	for n in ["tuskTipL", "tuskTipR"]:
+		var q: VoxelPart = by_name.get(n)
+		if q != null and not q.severed:
+			best = minf(best, Vector2(q.global_position.x - tp.x, q.global_position.z - tp.z).length())
+	return best
+
+## Whether `p` is in a strike now: its own, or the part's it hangs from; on a tusker (TUSKERS) a
+## tusk's tip or its middle too, by the head that drives the tusk (a gore's blow is the tusk's,
+## not the head's).
+const TUSKERS := ["elephant", "mammoth", "boar"]
+func strikes_with(p: VoxelPart) -> bool:
+	if strikes.has(p) or (p.parent_part != null and strikes.has(p.parent_part)):
+		return true
+	if TUSKERS.has(species):
+		var q := p.parent_part
+		while q != null and String(q.part_name).begins_with("tusk"):
+			q = q.parent_part
+			if q != null and strikes.has(q):
+				return true
+	return false
+
 func _ready_to_strike(p: VoxelPart) -> bool:
 	return strike_cool.get(p, 0.0) <= 0.0 and not strikes.has(p)
 
@@ -2620,9 +2689,20 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	# Tusks sweep sideways, horns toss upward, both only with something left of them.
 	# Close in, a charger works at him with them, blow on blow, instead of only charging home.
 	var close_in := dist < reach * 0.95
-	if (species == "boar" or species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 0.95 and facing > 0.4:
+	if species == "boar" and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and dist < reach * 0.95 and facing > 0.4:
 		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
 		_strike(head, 0.5, (1.1 if close_in else 2.0) + rng.randf() * (0.6 if close_in else 1.0))
+	# An elephant or a mammoth gores, as a real one does (user): from as far as its tusks reach,
+	# not its head, it lowers its head with the tusks levelled at him and drives them up and on
+	# into him, the head's weight behind them (_strike_pose); with him off to one side it swings
+	# them across him, low. The blow is the tusks' own (strikes_with), as heavy and as fast as
+	# they come.
+	if (species == "elephant" or species == "mammoth") and horn_fn() > 0.2 and part_ok(head) and _ready_to_strike(head) and facing > 0.4 and (_tusk_reach(tp) < GORE_REACH or dist < reach * 0.95):
+		ai.gore = facing > 0.75 and rng.randf() < 0.75
+		ai.sweep = -1.0 if rng.randf() < 0.5 else 1.0
+		var flat := Vector3(to.x, 0.0, to.z).normalized()
+		var drive := (flat + Vector3(0.0, 0.45, 0.0)).normalized() * maxf(30.0 * S, 2.5 * head.mass) * horn_fn()
+		_strike(head, 0.5, 1.3 + rng.randf() * 0.9, [head, drive] if ai.gore else [])
 	# In reach by the body's length, or by the head itself: a rhino's horn, pressed to a man's
 	# chest in its charge, was still short of the body's reach and shoved him a stride along the
 	# sand without once striking.

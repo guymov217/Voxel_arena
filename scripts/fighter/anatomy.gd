@@ -147,11 +147,14 @@ static func _organ_rgb(id: int, x: int, y: int, z: int) -> int:
 	return (int(c.r8 * k) << 16) | (int(c.g8 * k) << 8) | int(c.b8 * k)
 
 ## Species whose insides are not a beast's (a shell of chitin round a different body): no organs.
-const NO_ORGANS := ["scorpion", "spider"]
+## (Every beast has them now, the shelled ones too: a scorpion's and a spider's lie under their shell,
+## the spider's in its abdomen, user: every beast's insides as they should be. They have no bones:
+## the shell is their skeleton, Beast.BONELESS.)
+const NO_ORGANS := []
 
 ## The organs of a beast, by proportion of its body (beastBody: x across, y up, z along it, the
-## head at +z) and its head: the heart low in the chest, the lungs above it, the liver behind,
-## the guts in the belly, the brain at the back of the skull. Plain red flesh only.
+## head at +z), each of its heads and a spider's abdomen: the heart low in the chest, the lungs
+## above it, the liver behind, the guts in the belly, the brain at the back of the skull.
 static func beast_organ_at(part: String, g: Array, x: int, y: int, z: int) -> int:
 	var u := (float(x) + 0.5) / float(g[0])
 	var v := (float(y) + 0.5) / float(g[1])
@@ -169,6 +172,18 @@ static func beast_organ_at(part: String, g: Array, x: int, y: int, z: int) -> in
 	elif part == "beastHead":
 		if w > 0.12 and w < 0.45 and v > 0.5 and v < 0.85 and absf(u - 0.5) < 0.22:
 			return BRAIN
+	elif part == "abdomen":
+		# A spider's: the heart a tube along the top, the book lungs low at the front, the gut's
+		# great gland round the gut down its middle.
+		var mid := absf(u - 0.5)
+		if v > 0.62 and mid < 0.1 and w > 0.25 and w < 0.85:
+			return HEART
+		if w > 0.72 and v < 0.38 and mid > 0.06 and mid < 0.34:
+			return LUNG_R if u < 0.5 else LUNG_L
+		if v > 0.3 and v < 0.62 and mid < 0.12 and w > 0.1 and w < 0.9:
+			return GUTS
+		if v > 0.18 and v < 0.75 and mid < 0.38 and w > 0.12 and w < 0.88:
+			return LIVER
 	return NONE
 
 static func _buried(filled: Dictionary, x: int, y: int, z: int) -> bool:
@@ -183,7 +198,9 @@ static func dress_beasts(beasts: Dictionary) -> void:
 	for key in beasts:
 		var none: bool = key in NO_ORGANS
 		for d in beasts[key].get("parts", []):
-			var name := str(d.name)
+			# Every head its brain (the hydra's five, Cerberus's three, the chimera's goat and
+			# snake: user, every beast's insides as they should be).
+			var name := "beastHead" if bool(d.get("head", false)) else str(d.name)
 			# Organs lie under the skin: only a voxel with flesh on all six sides may be one (a
 			# body modelled leaning, the gorilla's, had its guts showing through the rump).
 			var filled := {}
@@ -208,3 +225,61 @@ static func dress_beasts(beasts: Dictionary) -> void:
 					v.append(id)
 				else:
 					v[5] = id
+			if name == "beastHead" and not none:
+				_brain_somewhere(d.voxels, filled, lo, hi)
+		if not none:
+			_brain_in_body(beasts[key].get("parts", []))
+
+## A head with nothing under its skin to hold a brain (a scorpion's, a flat plate): the brain in the
+## front of its body, high, where a scorpion's is (its head and its body are one there).
+static func _brain_in_body(parts: Array) -> void:
+	var head_d = null
+	var body_d = null
+	for d in parts:
+		if str(d.name) == "beastHead":
+			head_d = d
+		elif str(d.name) == "beastBody":
+			body_d = d
+	if head_d == null or body_d == null:
+		return
+	for v in head_d.voxels:
+		if int(v[5]) == BRAIN:
+			return
+	var filled := {}
+	var lo := Vector3i(1 << 20, 1 << 20, 1 << 20)
+	var hi := -lo
+	for v in body_d.voxels:
+		filled[int(v[0]) | (int(v[1]) << 8) | (int(v[2]) << 16)] = true
+		var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+		lo = Vector3i(mini(lo.x, c.x), mini(lo.y, c.y), mini(lo.z, c.z))
+		hi = Vector3i(maxi(hi.x, c.x), maxi(hi.y, c.y), maxi(hi.z, c.z))
+	var inner := []
+	for v in body_d.voxels:
+		if not v[4] and int(v[5]) == NONE and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
+			inner.append(v)
+	if inner.is_empty():
+		return
+	var c := Vector3((lo.x + hi.x) * 0.5, lo.y + (hi.y - lo.y) * 0.6, lo.z + (hi.z - lo.z) * 0.9)
+	inner.sort_custom(func(a, b): return Vector3(a[0], a[1], a[2]).distance_squared_to(c) < Vector3(b[0], b[1], b[2]).distance_squared_to(c))
+	for i in mini(inner.size(), maxi(4, ceili(inner.size() / 30.0))):
+		var v: Array = inner[i]
+		v[3] = _organ_rgb(BRAIN, int(v[0]), int(v[1]), int(v[2]))
+		v[5] = BRAIN
+
+## A head too small for the brain's place in it: its brain in the middle of what lies under the
+## skin, toward the top and the back, as much of it as a sixth of that.
+static func _brain_somewhere(voxels: Array, filled: Dictionary, lo: Vector3i, hi: Vector3i) -> void:
+	var inner := []
+	for v in voxels:
+		if int(v[5]) == BRAIN:
+			return
+		if not v[4] and _buried(filled, int(v[0]), int(v[1]), int(v[2])):
+			inner.append(v)
+	if inner.is_empty():
+		return
+	var c := Vector3((lo.x + hi.x) * 0.5, lo.y + (hi.y - lo.y) * 0.62, lo.z + (hi.z - lo.z) * 0.38)
+	inner.sort_custom(func(a, b): return Vector3(a[0], a[1], a[2]).distance_squared_to(c) < Vector3(b[0], b[1], b[2]).distance_squared_to(c))
+	for i in maxi(1, ceili(inner.size() / 6.0)):
+		var v: Array = inner[i]
+		v[3] = _organ_rgb(BRAIN, int(v[0]), int(v[1]), int(v[2]))
+		v[5] = BRAIN

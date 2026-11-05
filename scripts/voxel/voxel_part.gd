@@ -78,6 +78,9 @@ var draw_shift := Vector3.ZERO
 var draw_turn := Transform3D()
 ## Drawn wherever the part is drawn (its armour): top-level nodes set to its drawing each frame.
 var draw_with: Array = []
+## A finer look drawn over the part (FineHead: a man's head; FineBody: the rest of him in the new
+## look), kept in step with its voxels: shown and coloured with the one each lies over. Drawing only.
+var fine := {}
 var draw_scale := Vector3.ONE   # drawn this much fuller or smaller about its middle (a breath: Physique.live)
 func _draw_at(t: Transform3D) -> void:
 	t = draw_turn * t
@@ -90,11 +93,17 @@ func _draw_at(t: Transform3D) -> void:
 		skin.global_transform = t
 	if jaw_mesh and jaw_pivot:
 		jaw_mesh.global_transform = t * jaw_pivot.transform
+		var fj = fine.get("jaw_mi")
+		if fj != null:
+			fj.global_transform = jaw_mesh.global_transform
 	if bone_out:
 		bone_out.global_transform = t * bone_xf
 	if dangle_mesh:
 		_lay_bend()
 		dangle_mesh.global_transform = t * _bend_x
+		var far = fine.get("far_mi")
+		if far != null:
+			far.global_transform = t * _bend_x
 	for n in draw_with:
 		if is_instance_valid(n):
 			n.global_transform = t
@@ -104,7 +113,7 @@ func _draw_at(t: Transform3D) -> void:
 var see_through := 0.0
 func set_see_through(a: float) -> void:
 	see_through = a
-	for gi in [mmi, skin, jaw_mesh, bone_out, dangle_mesh] + draw_with:
+	for gi in [mmi, skin, jaw_mesh, bone_out, dangle_mesh, fine.get("far_mi"), fine.get("jaw_mi")] + draw_with:
 		if gi != null and is_instance_valid(gi) and gi is GeometryInstance3D:
 			(gi as GeometryInstance3D).transparency = a
 
@@ -492,6 +501,8 @@ func _lay_bend() -> void:
 		# The C++ core lays the band, voxel by voxel, in one call.
 		nc.lay_band(dangle_mm, _band_rows, _band_ix, alive, veil, g[0], g[2], g[1], b, _band_was, g[7], g[5], g[3], g[4], inv)
 		_band_was = b
+		if fine.has("far_mm"):
+			FineBody.lay(self, g, inv, b, nc)
 	else:
 		var q: Quaternion = g[0]
 		var n: Vector3 = g[2]
@@ -523,6 +534,8 @@ func _lay_bend() -> void:
 			var ms := m
 			ms[ax] = m[ax] * clampf(1.0 + k * n.dot(row[5]), 0.35, 2.6)
 			dangle_mm.set_instance_transform(int(row[0]), Transform3D(ms * (row[2] as Transform3D).basis, (lay[1] as Vector3) + m * (row[4] as Vector3)))
+		if fine.has("far_mm"):
+			FineBody.lay(self, g, inv, b, null)
 	var layers := {}
 	for ad in get_meta("armor", []):
 		var n = ad.get("node")
@@ -533,7 +546,9 @@ func _lay_bend() -> void:
 		for ci in mini(base.size(), m.instance_count):
 			if ad.on[ci] == 0 or (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
 				continue
-			m.set_instance_transform(ci, _bent(base[ci], g, layers))
+			var bxf := _bent(base[ci], g, layers)
+			m.set_instance_transform(ci, bxf)
+			FineArmor.sync(ad, ci, bxf)
 
 ## The plates' own places (part-local), straight: kept from before the limb was ever bent.
 func _plate_bases(ad: Dictionary) -> Array:
@@ -636,6 +651,9 @@ func _start_dangle() -> void:
 	_sw_w = Vector3.ZERO
 	_sw_lv = linear_velocity
 	_sw_av = angular_velocity
+	if fine.has("body"):
+		FineBody.dangle_on(self)
+		dangle_mesh.visible = false   # (its voxels drawn as the fine ones over them)
 	_lay_bend()
 	_mark_skin()
 
@@ -689,6 +707,8 @@ func _band_terms() -> void:
 	_bend_q = Quaternion(0, 0, 0, 0)
 
 func _stop_dangle() -> void:
+	if fine.has("body"):
+		FineBody.dangle_off(self)
 	if dangle_mm:
 		for ad in get_meta("armor", []):
 			var n = ad.get("node")
@@ -698,6 +718,7 @@ func _stop_dangle() -> void:
 			for ci in mini(base.size(), n.multimesh.instance_count):
 				if ad.on[ci] == 1 and not (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
 					n.multimesh.set_instance_transform(ci, base[ci])
+					FineArmor.sync(ad, ci, base[ci])
 	if dangle_mesh:
 		dangle_mesh.queue_free()
 	dangle_mesh = null
@@ -1002,6 +1023,8 @@ static func set_ao(on: bool) -> void:
 	for mat in [_body_material] + _looks.values() + _forced.values():
 		if mat:
 			mat.set_shader_parameter("ao_strength", ao_strength)
+	FineHead.material()   # (the fine head's, a shade less, follows too)
+	FineArmor.material()  # (and the new look's armour)
 
 ## A voxel kind as MultiMesh custom data (the shader reads r * 16; a >= 1 marks it set, and
 ## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits). A sharp weapon
@@ -1477,6 +1500,10 @@ func refresh_colors(indices: Array = []) -> void:
 			if dangle_slot.has(i):
 				dang.append([dangle_slot[i], colors[i]])
 	_write_colors(mm, main)
+	if fine.has("body"):
+		FineBody.colored(self, list)
+	elif not fine.is_empty():
+		FineHead.colored(self, list)
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
 	if dangle_mm:
@@ -1526,6 +1553,8 @@ func _set_status(i: int, g: Vector2) -> void:
 			jaw_mm.set_instance_custom_data(jaw_slot[i], c)
 	else:
 		mm.set_instance_custom_data(i, c)
+	if fine.has("body"):
+		FineBody.status(self, i, g)
 	if g == Vector2.ZERO:
 		glowing.erase(i)
 	else:
@@ -1612,6 +1641,7 @@ func resync_later() -> void:
 ## every spawn, and a man won his bout and bled to death in the yard (user).
 const SCAR := Color(0.78, 0.5, 0.47)
 const DUST := Color(0.78, 0.66, 0.48)   # the arena's sand, on a body that went down in it
+var scarred := {}   # voxel -> true: the rim of an old wound, healed (drawn so by a finer look)
 func scar(indices: Array) -> void:
 	var gone := {}
 	for i in indices:
@@ -1631,6 +1661,7 @@ func scar(indices: Array) -> void:
 				near += 1
 		if near > 0:
 			colors[i] = colors[i].lerp(SCAR, 0.45 + 0.1 * minf(3.0, near))
+			scarred[i] = true
 			touched.append(i)
 	refresh_colors(touched)
 
@@ -2068,6 +2099,10 @@ func set_shown(indices: Array, on: bool) -> void:
 			if dangle_slot.has(i):
 				dang.append([dangle_slot[i], _dangle_base(i) if on else Transform3D()])
 	_write_shown(mm, main, on)
+	if fine.has("body"):
+		FineBody.shown(self, indices, on)
+	elif not fine.is_empty():
+		FineHead.shown(self, indices, on)
 	if dangle_mm:
 		_write_shown(dangle_mm, dang, on)
 		_bend_q = Quaternion(0, 0, 0, 0)
@@ -2238,6 +2273,11 @@ func break_exit() -> Array:
 ## Draws the part in shape `xf` (one Transform3D per voxel), or as plain cubes when empty; only
 ## the voxels in `only` drawn again when it is given.
 func set_shape(xf: Array, only: Array = []) -> void:
+	# (Under a fine look its own voxels there stay undrawn, whatever shape it is given.)
+	if fine.has("body"):
+		xf = FineBody.masked(self, xf)
+	elif not fine.is_empty():
+		xf = FineHead.masked(self, xf)
 	shape_xf = xf
 	if not _band.is_empty():
 		_band_terms()   # (a limb bent at a break: laid round it in its new shape)

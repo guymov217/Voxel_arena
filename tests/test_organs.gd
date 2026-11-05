@@ -484,19 +484,24 @@ func _beast(sp: String) -> Array:
 	e.drive = func(_e): return {}
 	return [m, e.f]
 
-func test_beasts_have_insides_but_not_the_shelled_ones() -> void:
-	for sp in ["lion", "bull", "dragon"]:
+## (The shelled ones too, under their shell: user, every beast's insides as they should be.)
+func test_beasts_have_insides_the_shelled_ones_too() -> void:
+	for sp in ["lion", "bull", "dragon", "scorpion"]:
 		var r := _beast(sp)
 		var b: Beast = r[1]
 		var got := []
 		for o in [Anatomy.HEART, Anatomy.LUNG_L, Anatomy.LIVER, Anatomy.GUTS, Anatomy.BRAIN]:
-			if b.organ_total.get(o, 0) >= 6:
+			if b.organ_total.get(o, 0) >= (1 if sp == "scorpion" and o == Anatomy.BRAIN else 6):
 				got.append(Anatomy.organ_name(o))
 		t.check(got.size() == 5, "the %s has heart, lungs, liver, guts and brain (%s)" % [sp, got])
+		if sp == "scorpion":
+			var bone := 0
+			for p in b.parts:
+				if String(p.part_name).begins_with("leg"):
+					for i in p.bone.size():
+						bone += p.bone[i]
+			t.check(bone == 0, "a scorpion's legs are shell, no bone in them (%d)" % bone)
 		r[0].queue_free()
-	var r2 := _beast("scorpion")
-	t.check((r2[1] as Beast).organ_total.is_empty(), "a scorpion's shell holds none")
-	r2[0].queue_free()
 
 func test_a_lions_torn_heart_kills_it_a_little_slower_than_a_man() -> void:
 	var r := _beast("lion")

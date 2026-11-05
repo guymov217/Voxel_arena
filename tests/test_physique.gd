@@ -80,10 +80,11 @@ func test_every_look_keeps_the_whole_man() -> void:
 			var seen_inner := _seen(p).keys().filter(func(i): return p.organ[i] != 0 or p.bone[i] == 1).size()
 			var seen_inner_b := _seen(b).keys().filter(func(i): return b.organ[i] != 0 or b.bone[i] == 1).size()
 			t.eq(seen_inner, seen_inner_b, "%s %s: the organs and bones on show" % [style, n])
-		if style == "strong":
-			t.eq(veiled, 0, "strong: nothing veiled, every voxel drawn")
+		if style == "strong" or style == "human":
+			# (The strong man moves his voxels; the new look draws finer ones over them.)
+			t.eq(veiled, 0, style + ": nothing veiled, every voxel there")
 			for p in f.parts:
-				t.eq(p.shape_xf.size(), p.fx.size(), "strong %s: every voxel drawn in the shape" % p.part_name)
+				t.eq(p.shape_xf.size(), p.fx.size(), "%s %s: every voxel drawn in the shape" % [style, p.part_name])
 		else:
 			t.check(veiled > 300, "%s: the outline really is pared (%d voxels veiled)" % [style, veiled])
 		t.eq(f.get_meta("physique", ""), style, style + ": drawn in it")
@@ -384,3 +385,25 @@ func test_hair_bursts_out_of_a_hole_in_the_helmet() -> void:
 	t.check(shown < hair.cells.size(), "the rest stays under the plates still on (%d of %d)" % [shown, hair.cells.size()])
 	t.check(f.head.alive_count == before, "and his head is the same head")
 	w.queue_free()
+
+## Low graphics draw the characters in the classic blocks (the weakest cards: half the triangles),
+## unless a look was picked in Options; the other levels the new look.
+func test_low_graphics_fall_back_to_the_classic_look() -> void:
+	var was := Physique.forced
+	Physique.forced = ""
+	var st: Dictionary = Save.get_value("settings", {}).duplicate()
+	var low := st.duplicate()
+	low.erase("physique")
+	low["quality"] = "low"
+	Save.set_value("settings", low)
+	t.eq(Physique.current(), "strong", "Low, no look picked: the classic blocks")
+	var picked := low.duplicate()
+	picked["physique"] = "human"
+	Save.set_value("settings", picked)
+	t.eq(Physique.current(), "human", "Low, the new look picked: the new look")
+	var high := low.duplicate()
+	high["quality"] = "high"
+	Save.set_value("settings", high)
+	t.eq(Physique.current(), "human", "High, no look picked: the new look")
+	Save.set_value("settings", st)
+	Physique.forced = was
