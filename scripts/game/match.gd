@@ -170,6 +170,24 @@ func add_hero(pos: Vector3, yaw_: float, lo: Dictionary, color: Color, skin = nu
 
 var hero_still_t := -1.0
 
+## The champion on the dressing screen turned round where he stands by `a` (radians), to be
+## seen from every side (user): every body of him and of what he holds turned about the upright
+## through his middle, held as he stands; and he faces that way from now on.
+func turn_hero(a: float) -> void:
+	if hero == null or not is_instance_valid(hero):
+		return
+	var piv: Vector3 = hero.torso.global_position
+	var r := Basis(Vector3.UP, a)
+	var bodies: Array = hero.parts.duplicate()
+	for side in hero.weapons:
+		if hero.weapons[side]:
+			bodies.append(hero.weapons[side])
+	for b in bodies:
+		var t: Transform3D = b.global_transform
+		b.global_transform = Transform3D(r * t.basis, piv + r * (t.origin - piv))
+		b.snap_drawing()
+	hero.yaw = wrapf(hero.yaw + a, -PI, PI)
+
 ## The fight behind the menus begins again in place: the fighters (and what they dropped, cut
 ## off or threw) are cleared away and a fresh lot come in; the arena, the camera and the
 ## champion stay as they are.

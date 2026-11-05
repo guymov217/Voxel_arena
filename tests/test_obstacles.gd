@@ -62,3 +62,28 @@ func test_he_walks_on_over_what_lies_in_his_way() -> void:
 			t.check(not fell and went > 4.0, "%s over a %s: on his feet (%s), past it (%.1f m)" % ["running" if run else "walking", what, not fell, went])
 			m.queue_free()
 			await get_tree().physics_frame
+
+## By a gate the wall stops him where its stone is drawn: the gatehouse's front and the pillars
+## either side of the door stand 0.3 m out of the round of the wall (user: a foe pressed against
+## the wall there stood half inside a pillar).
+func test_by_a_gate_he_stops_at_the_stone() -> void:
+	for z in [0.0, 1.5, -2.2]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3})
+		m.me.f.teleport(Vector3(-12, 0, 0))
+		var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(12.0, 0, z), "yaw": PI * 0.5})
+		e.erase("bot")
+		var f: Fighter = e.f
+		e.drive = func(_e):
+			f.yaw = PI * 0.5
+			return {"mz": 1.0}
+		var deepest := -INF
+		for i in 360:
+			await get_tree().physics_frame
+			for p in f.parts:
+				deepest = maxf(deepest, p.global_position.x)
+		t.check(deepest > Arena.GATE_FRONT - 0.5, "at z %.1f he walks up to the gatehouse (%.2f m)" % [z, deepest])
+		t.check(deepest < Arena.GATE_FRONT, "and no part of him goes into its stone (deepest %.2f m, its face at %.2f)" % [deepest, Arena.GATE_FRONT])
+		m.queue_free()
+		await get_tree().process_frame

@@ -337,6 +337,8 @@ func show_screen(s: String, msg := "") -> void:
 			_end_match()
 		hub = false
 	screen = s
+	if s == "gladiator" and was != "gladiator":
+		hero_turn = 0.0
 	if backdrop and backdrop.hero and (was == "gladiator") != (s == "gladiator"):
 		_dress_hero()
 	visible = true
@@ -3981,6 +3983,17 @@ func _input(e: InputEvent) -> void:
 		set_fullscreen(on)
 		get_viewport().set_input_as_handled()
 		return
+	# The dressing screen: Esc leaves it; a drag begun anywhere off its panel turns the champion
+	# round, to be seen from every side (user).
+	if screen == "gladiator" and visible and match_ == null:
+		if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_ESCAPE:
+			show_screen("main")
+			get_viewport().set_input_as_handled()
+			return
+		if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+			_drag_turn = e.pressed and not panel.get_global_rect().has_point(e.position)
+		elif e is InputEventMouseMotion and _drag_turn and (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+			_turn_hero(e.relative.x * 0.012)
 	_input_more(e)
 
 func _set_opt(k: String, val) -> void:
@@ -4179,7 +4192,7 @@ func _dress_hero() -> void:
 	# He stands facing the camera of the screen he is on (a touch turned, his sword side forward),
 	# not side-on to it.
 	var cam_at: Vector3 = _hero_cam().pos
-	var yaw := atan2(cam_at.x - HERO_POS.x, cam_at.z - HERO_POS.z) - 0.2
+	var yaw := atan2(cam_at.x - HERO_POS.x, cam_at.z - HERO_POS.z) - 0.2 + (hero_turn if screen == "gladiator" else 0.0)
 	backdrop.add_hero(HERO_POS, yaw, {"main": "gladius", "off": "scutum", "armor": armor}, Color.hex(CLOTH[lk.cloth] << 8 | 0xff), Fighter.SKINS[lk.skin], screen == "gladiator", FineBody.BUILDS[lk.build])
 
 ## The title shot, or a close look at the champion while he is being dressed.
@@ -4192,9 +4205,20 @@ func _hero_cam() -> Dictionary:
 	return {"pos": Vector3(0.0, 1.05, -13.3), "look": Vector3(-0.35, 1.5, -3.0)}
 
 func _gladiator(v: VBoxContainer) -> void:
-	panel.custom_minimum_size.x = 620
+	panel.custom_minimum_size.x = 640
 	v.add_child(UIStyle.title("Your gladiator", 34))
 	v.add_child(UIStyle.label("How the crowd will know you. The champion on the right wears it as you choose.", 14, UIStyle.MUTED))
+	# Everything to choose in a scroll as tall as the window leaves room for, the buttons under it
+	# always in sight (taller than the window, the last choices and the way out were off the
+	# bottom of the screen, and the screen could not be left: user).
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 10)
+	scroll.add_child(body)
 	var name_edit := LineEdit.new()
 	name_edit.text = Save.get_value("name", "Gladiator")
 	name_edit.max_length = 24
@@ -4202,24 +4226,30 @@ func _gladiator(v: VBoxContainer) -> void:
 	name_edit.text_changed.connect(func(tx):
 		Save.set_value("name", tx)
 		Net.my_name = tx)
-	_row(v, [UIStyle.label("Name", 15, UIStyle.MUTED), name_edit])
+	_row(body, [UIStyle.label("Name", 15, UIStyle.MUTED), name_edit])
 	var lk := look()
-	v.add_child(UIStyle.label("Skin", 15, UIStyle.MUTED))
-	_swatches(v, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i))
-	v.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
-	_swatches(v, CLOTH, lk.cloth, func(i): _set_look("cloth", i))
+	body.add_child(UIStyle.label("Skin", 15, UIStyle.MUTED))
+	_swatches(body, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i), 38)
+	body.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
+	_swatches(body, CLOTH, lk.cloth, func(i): _set_look("cloth", i), 38)
 	# His build (the detailed look draws it; the classic gladiators are all one build).
 	var bo := OptionButton.new()
 	for nm in BUILD_NAMES:
 		bo.add_item(nm)
 	bo.select(lk.build)
 	bo.fit_to_longest_item = false
-	bo.custom_minimum_size = Vector2(220, 0)
+	bo.custom_minimum_size = Vector2(300, 0)
 	bo.item_selected.connect(func(i): _set_look("build", i))
 	var bl := UIStyle.label("Physique", 15, UIStyle.MUTED)
-	bl.custom_minimum_size = Vector2(64, 0)
-	_row(v, [bl, bo])
-	for k in ["hat", "hair", "hair_colour", "beard", "cape", "eyes", "eye_colour", "mouth", "face"]:
+	bl.custom_minimum_size = Vector2(84, 0)
+	_row(body, [bl, bo])
+	# The rest two to a row (one under another they made the screen taller than the window).
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
+	body.add_child(grid)
+	for k in ["hair", "hair_colour", "beard", "hat", "eyes", "eye_colour", "mouth", "face", "cape"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
 			var first := "Plain" if k == "eyes" or k == "mouth" or k == "face" else ("Natural" if k.ends_with("_colour") else "None")
@@ -4229,13 +4259,17 @@ func _gladiator(v: VBoxContainer) -> void:
 				ob.set_item_disabled(ob.item_count - 1, true)
 				ob.set_item_tooltip(ob.item_count - 1, "Won by taking the rudis on Ironman, never once fallen")
 		ob.fit_to_longest_item = false
+		ob.clip_text = true
+		ob.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		ob.select(lk[k])
-		ob.custom_minimum_size = Vector2(260, 0)
+		ob.custom_minimum_size = Vector2(176, 0)
 		ob.item_selected.connect(func(i): _set_look(k, i))
 		var kl := UIStyle.label(Loc.t(String(SLOT_NAMES.get(k, k.capitalize()))), 15, UIStyle.MUTED)
-		kl.custom_minimum_size = Vector2(92, 0)   # the drop-downs in one column
-		ob.custom_minimum_size = Vector2(220, 0)
-		_row(v, [kl, ob])
+		kl.custom_minimum_size = Vector2(84, 0)
+		grid.add_child(kl)
+		grid.add_child(ob)
+	# Turned round to be seen from every side: the buttons, or a drag anywhere off this panel.
+	_row(v, [UIStyle.button("◀  Turn", func(): _turn_hero(-PI / 4.0)), UIStyle.button("Turn  ▶", func(): _turn_hero(PI / 4.0)), UIStyle.label("or drag him round", 13, UIStyle.MUTED)])
 	_row(v, [UIStyle.button("Random", func():
 		var r := {}
 		r.skin = randi() % Fighter.SKINS.size()
@@ -4247,19 +4281,39 @@ func _gladiator(v: VBoxContainer) -> void:
 				r[k] = 0
 		Save.set_value("look", r)
 		_net_loadout()
-		show_screen("gladiator")), UIStyle.button("Done", func(): show_screen("main"), true)])
+		show_screen("gladiator")), UIStyle.button("Done  (Esc)", func(): show_screen("main"), true)])
+	# (As tall as all of it, no taller than the window leaves: the column's margins, the panel's,
+	# the title and its line, the two rows of buttons and the gaps between them.)
+	var room := get_viewport_rect().size.y - 80.0 - 52.0 - 64.0 - 2.0 * 46.0 - 5.0 * 12.0
+	scroll.custom_minimum_size.y = clampf(body.get_combined_minimum_size().y + 4.0, 120.0, maxf(120.0, room))
+	_fit_scroll.call_deferred(scroll, body, room)
 	_dress_hero.call_deferred()
 
-func _swatches(v: VBoxContainer, colors: Array, sel: int, cb: Callable) -> void:
+## A scroll made as tall as what is in it once that is laid out (its rows' heights are known then:
+## the swatches wrap only once they have a width), no taller than `room`.
+func _fit_scroll(scroll: ScrollContainer, body: Control, room: float) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(scroll) and is_instance_valid(body):
+		scroll.custom_minimum_size.y = clampf(body.size.y + 4.0, 120.0, maxf(120.0, room))
+
+## The champion on the dressing screen turned round where he stands, by `a` (radians).
+var hero_turn := 0.0
+var _drag_turn := false
+func _turn_hero(a: float) -> void:
+	hero_turn = wrapf(hero_turn + a, -PI, PI)
+	if backdrop and backdrop.hero and is_instance_valid(backdrop.hero):
+		backdrop.turn_hero(a)
+
+func _swatches(v: VBoxContainer, colors: Array, sel: int, cb: Callable, size := 44) -> void:
 	var h := HFlowContainer.new()   # (wraps when there are more than fit the panel)
 	h.add_theme_constant_override("h_separation", 8)
 	h.add_theme_constant_override("v_separation", 8)
 	for i in colors.size():
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(44, 44)
+		b.custom_minimum_size = Vector2(size, size)
 		var st := StyleBoxFlat.new()
 		st.bg_color = Color.hex(int(colors[i]) << 8 | 0xff)
-		st.set_corner_radius_all(22)
+		st.set_corner_radius_all(size / 2)
 		st.set_border_width_all(3 if i == sel else 1)
 		st.border_color = UIStyle.GOLD if i == sel else Color(0, 0, 0, 0.6)
 		b.add_theme_stylebox_override("normal", st)

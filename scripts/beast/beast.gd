@@ -59,7 +59,7 @@ const WINDUP := {"neck": 0.3, "head": 0.28, "tail": 0.32, "claw": 0.22, "arm": 0
 ## Thick hide, scales or shell: an edge or a point gets in only a fraction of its sharpness and
 ## some of its force skids off. A committed thrust (the man's weight behind the point) finds its
 ## way through more than a slash.
-const HIDE := {"elephant": 0.4, "mammoth": 0.45, "rhino": 0.5, "crocodile": 0.6, "dragon": 0.5, "basilisk": 0.65, "scorpion": 0.55}
+const HIDE := {"elephant": 0.55, "mammoth": 0.6, "rhino": 0.62, "crocodile": 0.7, "dragon": 0.62, "basilisk": 0.75, "scorpion": 0.68}   # (thinner by a little: user, a good cut did nothing to them)
 var regrown := {}                    # hydra: part -> voxels regrown so far
 var base_bite := 45.0
 var jaw_t := 0.0                     # counts down from JAW_T through a bite
@@ -196,6 +196,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		stagger = keep
 		return r
 	var res := apply_hit_inner(part, hit)
+	# (When it was last struck there: a hydra's wounds close only while it is let be.)
+	if float(res.get("dmg", 0.0)) > 0.0 or not (res.get("removed", []) as Array).is_empty():
+		part.set_meta("struck_t", time)
 	if species == "gorilla":
 		_dent_nerve(float(hit.get("impulse", 0.0)), res)
 	_hit_react(part, hit, res)
@@ -361,10 +364,19 @@ func _bone_core(part_name: String, voxels: Array) -> void:
 ## Beasts and monsters come apart more than men under the same blow (CHUNK: the wound a blow
 ## cuts or craters out of them is this much bigger); the giants of myth are men, not Beasts,
 ## and keep their own.
-const CHUNK := 1.25
+const CHUNK := 1.5   # (1.25 was too hard going, user: a little easier to take apart)
+
+## A part that is horn, ivory or shell all through: no hide over it to turn a blade (a tusk,
+## a horn, a dragon's spines, a sting, a fang, a claw).
+static func hard_part(part: VoxelPart) -> bool:
+	var n := String(part.part_name).to_lower()
+	for h in ["tusk", "horn", "spine", "sting", "fang", "claw"]:
+		if n.contains(h):
+			return true
+	return false
 
 func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
-	var k: float = float(HIDE.get(species, 1.0))
+	var k: float = 1.0 if hard_part(part) else float(HIDE.get(species, 1.0))
 	var typ: String = hit.get("type", "blunt")
 	hit = hit.duplicate()
 	hit.chunk = CHUNK
@@ -977,6 +989,17 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 		"stalk":
 			var r: float = float(sp.stalkRadius) * S * (1.0 - 0.35 * fury)
 			want = side * (3.2 if species == "tiger" else 2.2) + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
+			# Circling him it goes round the way a cat does, its body along its way and its head
+			# turned to him (it faced him and slid round him sideways, its legs stepping fore and
+			# aft under a body going sideways: user). Never more than two-thirds of a right angle
+			# off him, so it is soon square to him again to spring. Only while it is going round or
+			# in: one standing (held to the spot, or pouring its fire) keeps him square in front of
+			# its jaws, and one backing off from him keeps its eyes and its teeth on him. (Its legs
+			# under it, swinging fore and aft: a crocodile, a spider, a scorpion, legs spread out at
+			# its sides, goes any way it likes.)
+			if want.length() > 0.5 and want.dot(to) > -0.1 * want.length() and not disarmed() and not (breath_mark is Vector3) and Vector2(torso.linear_velocity.x, torso.linear_velocity.z).length() > 0.8 and _legs_under():
+				var off := wrapf(atan2(want.x, want.z) - yaw, -PI, PI)
+				yaw += clampf(off, -1.05, 1.05)
 			ai.ambush_cool = float(ai.get("ambush_cool", 0.0)) - dt
 			if disarmed():
 				# Nothing to bite with: no circling at a distance, it comes straight on and
@@ -1099,6 +1122,16 @@ func _in_bite_reach(t, dist: float) -> bool:
 		var d: Vector3 = t.torso.global_position - head.global_position
 		return Vector2(d.x, d.z).length() < 0.7 + 0.25 * S
 	return dist < 1.1 + 0.6 * S
+
+## Whether it walks on legs under it that swing fore and aft (a cat's, a hound's, a bear's), not
+## spread out at its sides (a crocodile's, a spider's) or on none.
+func _legs_under() -> bool:
+	if legs.is_empty():
+		return false
+	for l in legs:
+		if absf(float(l.def.get("splay", 0.0))) >= 0.3:
+			return false
+	return true
 
 func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 	if fury > 0.0:
@@ -2845,8 +2878,11 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 		torso.apply_central_impulse((to * 0.6 + Vector3(0, -0.3, 0)) * live_mass() * 0.8)
 
 ## The hydra's wounds close: voxels grow back, a few at a time, on necks and heads that are still
-## on, next to flesh that is still there, never on burnt flesh and never more than half of what
-## was lost. A head cut off stays off: no new heads.
+## on, next to flesh that is still there, never on burnt flesh, only on a part let be for a few
+## seconds (REGROW_REST) and never more than a quarter of it. A head cut off stays off: no new
+## heads. (Four every 0.6 s, up to half the part, the moment a blow had landed: the wounds closed
+## faster than a man could cut, and its heads could not be destroyed at all, user.)
+const REGROW_REST := 3.0
 func _regrow(dt: float) -> void:
 	ai.regrow_t = float(ai.get("regrow_t", 0.6)) - dt
 	if ai.regrow_t > 0.0:
@@ -2856,9 +2892,11 @@ func _regrow(dt: float) -> void:
 		var n: String = p.part_name
 		if p.severed or p.hanging or not (n.begins_with("neck") or n.begins_with("head") or p == head) or not p.spots.is_empty():
 			continue
+		if time - float(p.get_meta("struck_t", -99.0)) < REGROW_REST:
+			continue
 		var lost: int = p.fx.size() - p.alive_count
 		var done: int = regrown.get(p, 0)
-		if lost <= 0 or done >= int(p.fx.size() * 0.5):
+		if lost <= 0 or done >= int(p.fx.size() * 0.25):
 			continue
 		var live := {}
 		for i in p.fx.size():
@@ -2873,7 +2911,7 @@ func _regrow(dt: float) -> void:
 				if live.has(c + d):
 					back.append(i)
 					break
-			if back.size() >= 4:
+			if back.size() >= 3:
 				break
 		if not back.is_empty():
 			p.restore_voxels(back)

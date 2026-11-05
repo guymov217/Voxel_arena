@@ -1514,6 +1514,7 @@ func refresh_colors(indices: Array = []) -> void:
 # ---------- Fire and poison on the voxels themselves (only how they look) ----------
 
 var glowing := {}   # voxel -> Vector2(fire, poison) last written to its instance data
+var _glow_n := Vector2i.ZERO   # how many of them glow with fire (x) and with poison (y)
 
 ## Lights the voxels that fire or poison is working on (see Fire.tick, which heats them):
 ## burning ones glow and flicker orange in the shader, poisoned ones glow a sickly green. The
@@ -1555,6 +1556,8 @@ func _set_status(i: int, g: Vector2) -> void:
 		mm.set_instance_custom_data(i, c)
 	if fine.has("body"):
 		FineBody.status(self, i, g)
+	var was: Vector2 = glowing.get(i, Vector2.ZERO)
+	_glow_n += Vector2i(int(g.x > 0.0) - int(was.x > 0.0), int(g.y > 0.0) - int(was.y > 0.0))
 	if g == Vector2.ZERO:
 		glowing.erase(i)
 	else:
@@ -1576,6 +1579,11 @@ func _surface_at_spot(kind: String) -> String:
 			if best >= 0:
 				return BurnFx.surface_of_kind(kinds[best])
 	return "flesh"
+
+## Whether any voxel glows with one kind (1 fire, 2 poison). (Counted as they are written: asked
+## every frame of every part that burns, going over its glowing voxels was a cost of its own.)
+func _has_glow(channel: int) -> bool:
+	return (_glow_n.x if channel == 1 else _glow_n.y) > 0
 
 ## Puts out one kind of glow (1 fire, 2 poison) on every voxel that has it.
 func _clear_glow(channel: int) -> void:
@@ -2950,13 +2958,16 @@ func voxels_near(lp: Vector3, r: float) -> Array:
 ## Velocity of a world point on this body.
 ## Tongues of flame over the burning spots (GPU particles, where there is a screen).
 func set_flames(on: bool) -> void:
+	# (Its glow goes out with the fire, whether or not the flames were showing: put out only
+	# when they had been, a part that burned with none to show glowed on as if alight for good,
+	# user: the fire never went out.)
+	if not on and _has_glow(1):
+		_clear_glow(1)
 	if Fx.current == null or Fx.current.headless:
 		return
 	if on and flames == null:
 		flames = BurnFx.make(self, _surface_at_spot("fire"), true, part_scale)
 	if flames:
-		if flames.emitting and not on:
-			_clear_glow(1)
 		BurnFx.set_on(flames, on)
 		for s in spots:
 			if s.kind == "fire" and s.t > 0.0:
@@ -2966,13 +2977,13 @@ func set_flames(on: bool) -> void:
 ## Green bubbles of poison rising off the part while acid or venom eats into it (only how it
 ## looks; Fire.tick does the harm).
 func set_poison(on: bool) -> void:
+	if not on and _has_glow(2):
+		_clear_glow(2)
 	if Fx.current == null or Fx.current.headless:
 		return
 	if on and poison_fx == null:
 		poison_fx = BurnFx.make(self, _surface_at_spot("acid"), false, part_scale)
 	if poison_fx:
-		if poison_fx.emitting and not on:
-			_clear_glow(2)
 		BurnFx.set_on(poison_fx, on)
 		for s in spots:
 			if s.kind == "acid" and s.t > 0.0:

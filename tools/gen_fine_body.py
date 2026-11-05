@@ -45,7 +45,7 @@ BUILDS = {
                        delt=0.082, upper=(0.07, 0.056), fore=(0.062, 0.039), thigh=(0.104, 0.064), calf=(0.068, 0.04),
                        trap=0.066, lat=1.05, belly=1.6, kind="polyphemus", paunch=2.2, mantle=True,
                        palette=[[0.42, 0.38, 0.34, 2, 0], [0.86, 0.83, 0.74, 8, 0]], cloth=[0.82, 0.79, 0.7, 8]),
-    "minotaur": dict(head=0.8, neck=0.1, chest=(0.212, 0.152), waist=(0.13, 0.108), hips=(0.152, 0.106),
+    "minotaur": dict(head=1.05, neck=0.1, chest=(0.212, 0.152), waist=(0.13, 0.108), hips=(0.152, 0.106),
                      delt=0.092, upper=(0.074, 0.056), fore=(0.062, 0.037), thigh=(0.104, 0.06), calf=(0.068, 0.038),
                      trap=0.08, lat=1.5, belly=0.0, kind="minotaur", hooves=True, tail=True,
                      palette=[[0.62, 0.62, 0.62, 8, 1], [0.13, 0.1, 0.08, 2, 0], [0.1, 0.07, 0.05, 8, 0]], cloth=[0.3, 0.2, 0.12, 8]),

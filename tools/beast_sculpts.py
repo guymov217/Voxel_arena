@@ -1095,9 +1095,9 @@ def _kit(name, **P):
     KIT[name] = (lambda sp, g, vc, vk, P=P: kit(sp, g, P, vc, vk))
 
 
-_kit("griffin", heads={"beastHead": "bird"}, hooked=True, tex="fur", wings="feathers", feet={"F": "talon", "B": "paw"})
-_kit("spider", heads={"beastHead": "spider"}, tex="chitin", seg=0.1, limb_k=0.8, foot_taper=0.45, haunch=0)
-_kit("scorpion", heads={"beastHead": "scorpion"}, tex="chitin", seg=0.12, body=(0.94, 0.8, 0.96), limb_k=0.8, foot_taper=0.5, haunch=0)
+# _kit("griffin", heads={"beastHead": "bird"}, hooked=True, tex="fur", wings="feathers", feet={"F": "talon", "B": "paw"})
+# _kit("spider", heads={"beastHead": "spider"}, tex="chitin", seg=0.1, limb_k=0.8, foot_taper=0.45, haunch=0)
+# _kit("scorpion", heads={"beastHead": "scorpion"}, tex="chitin", seg=0.12, body=(0.94, 0.8, 0.96), limb_k=0.8, foot_taper=0.5, haunch=0)
 
 
 # ---------- the beasts of myth sculpted whole: the dragon and the hydra; and the great ape ----------
@@ -3316,3 +3316,670 @@ def ostrich(sp, g):
 
 
 SCULPTS["ostrich"] = ostrich
+
+
+def _feather(u, v, w, b, t, rb, rt, th):
+    """One flight feather lying flat in a wing's plane: a quill from b to t (in the plane's u, v),
+    as wide as rb at its root and rt at its tip, its vane th thick."""
+    e = (t[0] - b[0], t[1] - b[1])
+    L2 = e[0] * e[0] + e[1] * e[1]
+    k = np.clip(((u - b[0]) * e[0] + (v - b[1]) * e[1]) / max(L2, 1e-9), 0.0, 1.0)
+    du = u - (b[0] + e[0] * k)
+    dv = v - (b[1] + e[1] * k)
+    r = rb + (rt - rb) * k
+    return np.maximum(np.sqrt(du * du + dv * dv) - r, np.abs(w) - th)
+
+
+def _feather_wing(S, g, J, s, c, Ls, Hc, thick):
+    """A bird's wing (a griffin's) from its root J out along s (its span Ls), its chord along c
+    (front +, half Hc): the arm along the front edge to the wrist and the hand beyond it; the
+    coverts laid over the front of it; behind them the flight feathers one by one, the
+    secondaries along the arm with their round tips in a scallop and the primaries fanned long
+    from the hand, their tips apart (the fingers). Marked: wingarm, covert, second, primary (and
+    each feather's own number in `quill`, for its bars)."""
+    n = np.cross(s, c)
+    n = n / max(np.linalg.norm(n), 1e-9)
+    if n[1] < 0.0:
+        n = -n   # (its top face up on either side: the two wings each other's mirror)
+    corners = [J + s * a + c * b for a in (-0.05 * Ls, 1.05 * Ls) for b in (-1.15 * Hc, 1.0 * Hc)]
+    sub = _around(g, corners, thick * 3 + 0.04)
+    rx, ry, rz = sub.X - J[0], sub.Y - J[1], sub.Z - J[2]
+    u = rx * s[0] + ry * s[1] + rz * s[2]
+    v = rx * c[0] + ry * c[1] + rz * c[2]
+    w = rx * n[0] + ry * n[1] + rz * n[2]
+
+    def at(a, b_):
+        return J + s * a + c * b_
+    root, wrist, hand = (0.0, 0.5 * Hc), (0.42 * Ls, 0.72 * Hc), (0.7 * Ls, 0.5 * Hc)
+    rb = max(thick * 1.7, 0.045)
+    arm = smin(cap(sub, at(*root), at(*wrist), rb * 1.35, rb * 1.05), cap(sub, at(*wrist), at(*hand), rb * 1.05, rb * 0.7), rb * 0.5)
+    # The coverts: a plate over the front of the wing, thickest at the arm.
+    hull = _ccw([(0.0, 0.62 * Hc), wrist, (0.6 * Ls, 0.7 * Hc), (0.72 * Ls, 0.5 * Hc), (0.7 * Ls, 0.18 * Hc), (0.45 * Ls, 0.0), (0.0, -0.08 * Hc)])
+    plate = _poly2(u, v, hull) + 0.025 * Hc * np.abs(np.sin(u / max(Ls, 1e-6) * math.pi * 11.0)) * (v < 0.25 * Hc)
+    cov = np.maximum(plate, np.abs(w - thick * 0.35) - thick * (0.8 + 0.5 * np.clip(v / Hc, 0.0, 1.0)))
+    # The secondaries along the arm, their round tips scalloped along the trailing edge.
+    sec = np.full(sub.shape, INF)
+    quill = np.full(sub.shape, -1, np.int16)
+    best = np.full(sub.shape, INF)
+    ns = 9
+    for i in range(ns):
+        a = 0.03 * Ls + (0.47 * Ls) * i / (ns - 1)
+        b0 = (a, 0.1 * Hc)
+        t0 = (a + 0.06 * Ls, -0.98 * Hc + 0.05 * Hc * math.sin(i * 1.7))
+        f = _feather(u, v, w + thick * 0.15 * (i % 2), b0, t0, 0.034 * Ls, 0.025 * Ls, thick * 0.5)
+        sec = np.minimum(sec, f)
+        nb = f < best
+        best[nb] = f[nb]
+        quill[nb] = i
+    # The primaries fanned from the hand, the outer ones longest, their tips apart.
+    pri = np.full(sub.shape, INF)
+    npf = 7
+    for i in range(npf):
+        q = i / (npf - 1)   # 0 the innermost, 1 the outermost
+        b0 = (0.5 * Ls + 0.2 * Ls * q, 0.42 * Hc - 0.12 * Hc * q)
+        ang = math.radians(-78.0 + 84.0 * q)   # from back (-v) round to out along the span
+        Lf = (0.95 * Hc + (0.3 * Ls - 0.95 * Hc) * q) * (1.0 + 0.08 * math.sin(i * 2.3))
+        t0 = (b0[0] + math.cos(ang) * Lf, b0[1] + math.sin(ang) * Lf)
+        f = _feather(u, v, w - thick * 0.1 * (i % 2), b0, t0, 0.034 * Ls, 0.021 * Ls, thick * 0.5)
+        pri = np.minimum(pri, f)
+        nb = f < best
+        best[nb] = f[nb]
+        quill[nb] = 20 + i
+    wing = smin(np.minimum(np.minimum(cov, sec), pri), arm, rb * 0.6)
+    S.add(wing, 0.05, sub)
+    S.mark("wingarm", arm, sub)
+    S.mark("covert", cov, sub)
+    # (the coverts in rows, each row's edge scalloped by its feathers' round ends)
+    row = ((v / (0.13 * Hc)) + 0.3 * np.abs(np.sin(u / max(0.045 * Ls, 1e-6) * math.pi))) % 1.0
+    if "covrow" not in S.feat:
+        S.feat["covrow"] = np.zeros(g.shape, np.float32)
+    S.feat["covrow"][sub.sl] = np.maximum(S.feat["covrow"][sub.sl], ((row < 0.16) & (v < 0.55 * Hc)).astype(np.float32))
+    S.mark("second", sec, sub)
+    S.mark("primary", pri, sub)
+    if "quill" not in S.feat:
+        S.feat["quill"] = np.full(g.shape, -1, np.int16)
+    S.feat["quill"][sub.sl] = np.where(quill >= 0, quill, S.feat["quill"][sub.sl])
+    # (each cell's place along its feather, root 0 to tip 1, for the dark tips and the bars)
+    if "along" not in S.feat:
+        S.feat["along"] = np.zeros(g.shape, np.float32)
+    S.feat["along"][sub.sl] = np.maximum(S.feat["along"][sub.sl], np.clip(-v / Hc, 0.0, 1.0) * (quill >= 0) * (quill < 20) + np.clip((u - 0.5 * Ls) / (0.5 * Ls), 0.0, 1.0) * (quill >= 20))
+
+
+def _eagle_head(S, g, R, pos, half):
+    """An eagle's head in its box (forward its +z): a flat-topped skull, a jutting shelf of bone
+    over each eye that gives it its glare, the eyes gold under it; the beak great and hooked, the
+    upper mandible curving down over the lower to its point, the cere at its root with the
+    nostril in it, the gape a dark line back under the eye. Marks: head, brow, beak, cere, eye;
+    returns the eyes' middles."""
+    hx, hy, hz = (float(v) for v in half)
+    ax_, up, f = R[:, 0], R[:, 1], R[:, 2]
+
+    def L(x, y, z):
+        return pos + ax_ * (x * hx) + up * (y * hy) + f * (z * hz)
+    sub = _around(g, [L(x, y, z) for x in (-1.2, 1.2) for y in (-1.2, 1.2) for z in (-1.2, 1.2)], 0.04)
+    sk = ell_o(sub, L(0, 0.05, -0.3), R, (0.72 * hx, 0.68 * hy, 0.66 * hz))
+    sk = smin(sk, ell_o(sub, L(0, -0.05, 0.05), R, (0.6 * hx, 0.56 * hy, 0.46 * hz)), 0.05)
+    # (the crown flat and the forehead low: an eagle's skull runs straight into its beak)
+    sk = smax(sk, (sub.Y - L(0, 0.6, 0)[1]) - 0.0, 0.1)
+    brow = None
+    eyes = []
+    for sx in (-1, 1):
+        b = ell_o(sub, L(sx * 0.46, 0.34, 0.14), R, (0.3 * hx, 0.13 * hy, 0.34 * hz))
+        brow = b if brow is None else np.minimum(brow, b)
+        eyes.append(L(sx * 0.55, 0.15, 0.18))
+    sk = smin(sk, brow, 0.03)
+    # The eyes set into the head under the brow.
+    er = 0.17 * hx
+    eye = None
+    for ec in eyes:
+        sk = smax(sk, -ell_o(sub, ec + ax_ * np.sign((ec - pos) @ ax_) * er * 0.4, R, (er * 1.1, er * 1.0, er * 1.15)), 0.01)
+        e = ell_o(sub, ec, R, (er * 0.8, er * 0.95, er * 0.95))
+        eye = e if eye is None else np.minimum(eye, e)
+    # The beak: the upper mandible down a curve to its hooked point; the lower under it.
+    path = _catmull([L(0, 0.18, 0.22), L(0, 0.16, 0.55), L(0, 0.02, 0.84), L(0, -0.24, 1.0), L(0, -0.48, 0.9)], 0.02)
+    rads = np.linspace(0.34, 0.04, len(path)) * hy
+    upper = np.full(sub.shape, INF)
+    for p_, r_ in zip(path, rads):
+        upper = np.minimum(upper, ell_o(sub, p_, R, (0.62 * r_, r_, r_ * 1.05)))
+    lower = cap(sub, L(0, -0.18, 0.25), L(0, -0.26, 0.72), 0.19 * hy, 0.07 * hy)
+    lower = smax(lower, (sub.Y - L(0, -0.12, 0)[1]), 0.01)
+    beak = smin(upper, lower, 0.02)
+    cere = ell_o(sub, L(0, 0.15, 0.3), R, (0.25 * hx, 0.22 * hy, 0.14 * hz))
+    head = smin(sk, np.minimum(beak, cere), 0.04)
+    head = np.minimum(head, eye)
+    S.add(head, 0.04, sub)
+    S.mark("head", sk, sub)
+    S.mark("brow", brow, sub)
+    S.mark("beak", beak, sub)
+    S.mark("cere", cere, sub)
+    S.mark("eye", eye, sub)
+    return eyes, er, L
+
+
+def griffin(sp, g):
+    """The griffin: an eagle before and a lion behind. A white eagle's head with a shelf of bone
+    over each gold eye, its beak great and hooked and yellow; a thick neck in hackles, the breast
+    deep in white feathers; the forelegs an eagle's, feathered to the knee, the shanks yellow and
+    scaled, four toes to a foot and a black talon on each; great wings of feathers, white coverts
+    over golden flight feathers that darken to their tips, barred; behind the shoulders the lion
+    (the lion's own sculpt), its hind legs and its paws, the tail with its tuft."""
+    info = _part_info(sp)
+    K = parts_of(sp)
+    _, body, bh = K["beastBody"]
+    W, H, Lz = (float(v) for v in bh)
+    cy, zc = float(body[1]), float(body[2])
+    k = H / 0.499
+    P = dict(CATS["lion"], fur=0xc39446, light=0xe6cc94, dark=0x8a6228, mane2=0x4a2a12, mane_on=False)
+    dc, colc, kindc, _hc, _mz, _hs = _cat_k(sp, g, P, k, drop=("wingL", "wingR", "ruff"))
+    # The lion from behind the shoulders back.
+    zcut = zc + 0.05 * Lz
+    S = _Shape(g)
+    S.d = smax(dc, g.Z - zcut, 0.08)
+    lion = S.d.copy()
+    fl = vnoise(np.abs(g.X), g.Y, g.Z, 0.03, 81)
+    fl2 = vnoise(np.abs(g.X), g.Y * 0.6, g.Z, 0.05, 83)
+    # The breast and the shoulders: deep, feathered, swelling into the lion's flanks.
+    br = ell(g, (0, cy - 0.04 * H, zc + 0.42 * Lz), (0.98 * W, 1.02 * H, 0.62 * Lz))
+    br = smin(br, ell(g, (0, cy + 0.12 * H, zc + 0.12 * Lz), (0.9 * W, 0.9 * H, 0.5 * Lz)), 0.1)
+    for sx in (-1, 1):
+        br = smin(br, ell(g, (sx * 0.5 * W, cy + 0.4 * H, zc + 0.3 * Lz), (0.45 * W, 0.42 * H, 0.32 * Lz)), 0.08)
+    br = br - 0.02 * (fl - 0.5)
+    S.add(br, 0.12)
+    S.mark("breast", br)
+    # The neck rising to the head, its hackles thrown up round it (the ruff).
+    Rh, hp, hh = K["beastHead"]
+    neck_a = np.array([0.0, cy + 0.35 * H, zc + 0.62 * Lz])
+    neck_b = hp + Rh @ np.array([0.0, -0.3 * hh[1], -0.55 * hh[2]])
+    nk = cap(g, neck_a, neck_b, 0.52 * W, 0.4 * hh[0])
+    hk = vnoise(np.abs(g.X) * 1.0, g.Y * 0.4, g.Z * 0.4, 0.022, 85)
+    nk = nk - 0.05 * (hk - 0.5)
+    S.add(nk, 0.1)
+    S.mark("breast", nk)
+    if "ruff" in K:
+        _, rp, rh = K["ruff"]
+        rf = ell(g, rp + np.array([0.0, 0.0, -0.04]), (rh[0] * 0.8, rh[1] * 0.78, rh[2] * 1.4)) - 0.06 * (hk - 0.5)
+        S.add(rf, 0.06)
+        S.mark("breast", rf)
+    eyes, er, Lh = _eagle_head(S, g, Rh, hp, hh)
+    # The forelegs: an eagle's, feathered to the knee, the shank bare and scaled, a foot of four
+    # toes (three forward, one back) and a talon on each.
+    for side in ("L", "R"):
+        up_n, lo_n = "legF%s" % side, "legF%sLo" % side
+        if up_n not in info or lo_n not in info:
+            continue
+        j0, j1 = _limb_ends(info, up_n)
+        _, j2 = _limb_ends(info, lo_n)
+        r = float(K[up_n][2][0])
+        thigh = smin(ell(g, (j0[0], (j0[1] + j1[1]) * 0.5 + 0.1, j0[2] - 0.02), (r * 0.9, (j0[1] - j1[1]) * 0.62, r * 1.0)),
+                     cap(g, j0 + np.array([0, 0.1, 0]), j1 + np.array([0, 0.04, 0.02]), r * 0.85, r * 0.62), 0.06)
+        thigh = thigh - 0.03 * (fl2 - 0.5)
+        S.add(thigh, 0.08)
+        S.mark("trouser", thigh)
+        F = np.array([j2[0], j2[1], j2[2] - 0.02])
+        shank = cap(g, j1 + np.array([0, 0.02, 0.02]), F + np.array([0, 0.06, 0.0]), r * 0.4, r * 0.34)
+        S.add(shank, 0.04)
+        S.mark("shank", shank)
+        sub = _around(g, [F], r * 5.5)
+        before = S.d[sub.sl].copy()
+        _clawed_foot(S, g, F, np.array([0.0, 0.0, 1.0]), r * 0.52, (-0.55, 0.0, 0.55, math.pi), claw_k=1.6)
+        S.mark("shank", np.where(S.d[sub.sl] < before - 1e-6, S.d[sub.sl], INF), sub)
+    # The wings, a bird's.
+    for n in ("wingL", "wingR"):
+        if n not in info:
+            continue
+        R, pos, half, j, s_, par, kids = info[n]
+        th = int(np.argmin(half))
+        spn = int(np.argmax(half))
+        chd = 3 - spn - th
+        sv = pos - j
+        sv = sv - R[:, chd] * float(sv @ R[:, chd])
+        sv = sv / max(np.linalg.norm(sv), 1e-9)
+        cv = R[:, chd] if float(R[:, chd][2]) >= 0 else -R[:, chd]
+        Ls = float(np.linalg.norm(pos - j)) + float(half[spn])
+        _feather_wing(S, g, j, sv, cv, Ls * 1.02, float(half[chd]), max(g.cell * 0.7, float(half[th]) * 0.36))
+    d = S.d
+    occ = d < 0
+    thr = 0.4 * g.cell
+    # Colours: the lion's own behind; the eagle white, its feathers each a shade of its own with a
+    # darker edge; the flight feathers gold darkening to brown at their tips, barred.
+    col = colc.copy()
+    kind = kindc.copy()
+    eagle = occ & ~((lion < 0.02) & (S.feat["breast"] > 0.03))
+    white = np.array([0.95, 0.94, 0.9])
+    fw = _scales(g, np.broadcast_to(white, g.shape + (3,)).copy(), 0.06, seed=87)
+    front = eagle & (S.on("breast", 0.05) | S.on("head", 0.03) | S.on("brow", 0.02) | S.on("trouser", 0.04) | S.on("covert", 0.03) | S.on("wingarm", 0.03))
+    # (the white runs into the lion's gold at the shoulders in a ragged line)
+    seam = (g.Z - (zcut - 0.12) - 0.1 * (fl2 - 0.5)) / 0.18
+    gold = np.clip(1.0 - seam, 0.0, 1.0)[..., None]
+    col[front] = (fw * (1 - gold) + colc * gold)[front]
+    kind[front] = FUR
+    flight = occ & (S.on("second", thr) | S.on("primary", thr)) & ~S.on("covert", 0.0)
+    q = S.feat.get("quill")
+    al = S.feat.get("along")
+    if q is not None:
+        a = al[flight]
+        base = np.array([0.86, 0.68, 0.36])[None, :] * (1 - a[:, None]) + np.array([0.3, 0.2, 0.12])[None, :] * a[:, None]
+        sh = 0.9 + 0.2 * hash3(q[flight].astype(float), 0.0, 0.0, 89)
+        bar = (np.sin(a * math.pi * 9.0) > 0.55) & (a > 0.15) & (a < 0.85)
+        col[flight] = base * sh[:, None] * np.where(bar, 0.72, 1.0)[:, None]
+        kind[flight] = FUR
+    cov = occ & S.on("covert", thr) & ~flight
+    col[cov] = fw[cov] * np.where(S.feat["covrow"][cov] > 0.5, 0.8, 1.0)[:, None]
+    sh_ = occ & S.on("shank", thr)
+    scl = (np.abs(((g.Y) / 0.04) % 1.0 - 0.5) > 0.36)
+    col[sh_] = np.array([0.93, 0.74, 0.22]) * np.where(scl[sh_], 0.8, 1.0)[:, None]
+    kind[sh_] = SCALE_KIND
+    cl = S.on("claw", thr)
+    col[cl] = np.array([0.1, 0.09, 0.08])
+    kind[cl] = BONE
+    bk = S.on("beak", thr) | S.on("cere", 0.0)
+    col[bk] = np.array([0.95, 0.76, 0.2])
+    tipz = (g.Y < Lh(0, -0.18, 0)[1]) & (g.Z > Lh(0, 0, 0.85)[2])
+    col[bk & tipz] = np.array([0.55, 0.42, 0.2])
+    kind[bk] = BONE
+    gape = bk & (np.abs(g.Y - Lh(0, -0.14, 0)[1]) < 0.012) & (g.Z < Lh(0, 0, 0.72)[2])
+    col[gape] = np.array([0.2, 0.12, 0.08])
+    nost = S.on("cere", thr) & (np.abs(np.abs(g.X) - 0.05) < 0.016) & (np.abs(g.Y - Lh(0, 0.2, 0)[1]) < 0.016)
+    col[nost] = np.array([0.15, 0.1, 0.06])
+    ey = S.on("eye", thr)
+    col[ey] = np.array([0.95, 0.68, 0.12])
+    kind[ey] = WET
+    for ec in eyes:
+        pu = ey & (np.sqrt((g.Y - ec[1]) ** 2 + (g.Z - ec[2] - er * 0.3) ** 2) < er * 0.45)
+        col[pu] = np.array([0.03, 0.02, 0.02])
+    br_ = S.on("brow", 0.01) & ~ey
+    col[br_] = col[br_] * 0.93
+    return d, np.clip(col, 0, 1), kind
+
+
+SCULPTS["griffin"] = griffin
+
+
+def spider(sp, g):
+    """A great spider, a widow: all of it gleaming black chitin. The carapace domed and narrowing
+    to the head, a pit at its middle and grooves running out from it; eight eyes on the brow, the
+    two great ones in front a dull red; the jaws two swollen bulbs over the fangs, which curve in
+    under them, black to their pale points, a feeler beside each. The legs jointed, thick at the
+    thigh and tapering to the foot, each joint a knuckle, bristling; the waist a stalk; the belly a
+    great gleaming egg, a red streak down its back and the red hourglass under it, the spinnerets
+    at its end."""
+    info = _part_info(sp)
+    K = parts_of(sp)
+    _, body, bh = K["beastBody"]
+    _, hp, hh = K["beastHead"]
+    _, ap, ah = K["abdomen"]
+    S = _Shape(g)
+    hair = vnoise(np.abs(g.X), g.Y, g.Z, 0.012, 91)
+    # The carapace: a dome over the body, narrowing forward into the head.
+    cb = ell(g, (0, body[1] + 0.02, body[2] - 0.02), (bh[0] * 0.98, bh[1] * 0.78, bh[2] * 1.0))
+    ch = ell(g, (0, hp[1] - 0.04, hp[2] - 0.06), (hh[0] * 0.78, hh[1] * 0.78, hh[2] * 0.95))
+    car = smin(cb, ch, 0.12)
+    pit = ell(g, (0, body[1] + bh[1] * 0.8, body[2] - 0.05), (0.04, 0.03, 0.06))
+    car = smax(car, -pit, 0.02)
+    S.add(car)
+    S.mark("carapace", car)
+    # The eyes: two great ones in front, two over them, two pairs out at the sides.
+    eye_d = None
+    glow = None
+    top = hp[1] - 0.04 + hh[1] * 0.78
+    front = hp[2] - 0.06 + hh[2] * 0.95
+    for sx in (-1, 1):
+        for ex, ey, ez, er, big in ((0.075, -0.07, -0.02, 0.055, True), (0.07, 0.0, -0.09, 0.035, False), (0.16, -0.06, -0.08, 0.04, False), (0.18, 0.0, -0.17, 0.03, False)):
+            c = np.array([sx * ex, top + ey - 0.04, front + ez])
+            e = ell(g, c, (er, er, er))
+            eye_d = e if eye_d is None else np.minimum(eye_d, e)
+            if big:
+                glow = e if glow is None else np.minimum(glow, e)
+    S.add(eye_d, 0.0)
+    S.mark("eye", eye_d)
+    S.mark("glow", glow)
+    # The jaws over the fangs, the fangs curving in under them, a feeler beside each.
+    jaw_d = None
+    fang_d = None
+    for n in ("fangL", "fangR"):
+        if n not in info:
+            continue
+        a, b = _limb_ends(info, n)
+        sx = 1.0 if a[0] > 0 else -1.0
+        jc = np.array([sx * 0.085, hp[1] - 0.1, hp[2] + hh[2] * 0.62])
+        jw = smin(ell(g, jc, (0.085, 0.12, 0.1)), cap(g, jc, a + np.array([0, 0.02, 0.0]), 0.08, 0.06), 0.03)
+        jaw_d = jw if jaw_d is None else np.minimum(jaw_d, jw)
+        pts = _catmull([a, a + (b - a) * 0.5 + np.array([sx * 0.02, 0.0, 0.05]), b + np.array([-sx * 0.04, 0.04, 0.0])], 0.015)
+        fr = np.linspace(0.042, 0.006, len(pts))
+        sub = _around(g, pts, 0.08)
+        fg = np.full(sub.shape, INF)
+        for p_, r_ in zip(pts, fr):
+            fg = np.minimum(fg, ell(sub, p_, (r_, r_, r_)))
+        S.add(fg, 0.0, sub)
+        S.mark("fang", fg, sub)
+        S.feat.setdefault("fangtip", np.full(g.shape, INF, np.float32))
+        S.feat["fangtip"][sub.sl] = np.minimum(S.feat["fangtip"][sub.sl], np.where(fg < 0.004, np.sqrt((sub.X - pts[-1][0]) ** 2 + (sub.Y - pts[-1][1]) ** 2 + (sub.Z - pts[-1][2]) ** 2), INF))
+        # (the feeler: a short leg of its own out beside the jaw)
+        p0 = np.array([sx * 0.17, hp[1] - 0.08, hp[2] + hh[2] * 0.45])
+        p1 = p0 + np.array([sx * 0.1, 0.06, 0.16])
+        p2 = p1 + np.array([sx * 0.02, -0.16, 0.08])
+        pal = smin(cap(g, p0, p1, 0.04, 0.032), cap(g, p1, p2, 0.032, 0.03), 0.015)
+        pal = smin(pal, ell(g, p2, (0.04, 0.035, 0.045)), 0.01)
+        S.add(pal, 0.02)
+        S.mark("leg", pal)
+    S.add(jaw_d, 0.03)
+    S.mark("jaw", jaw_d)
+    # The waist and the belly: a great egg, high and round, drawn to a point at the spinnerets.
+    S.add(cap(g, (0, body[1] + 0.02, body[2] - bh[2] * 0.9), (0, ap[1] - 0.08, ap[2] + ah[2] * 0.85), 0.07, 0.08), 0.04)
+    belly = ell(g, (0, ap[1] + 0.02, ap[2] + 0.02), (ah[0] * 0.98, ah[1] * 1.0, ah[2] * 0.98))
+    belly = smin(belly, ell(g, (0, ap[1] - 0.04, ap[2] - ah[2] * 0.62), (ah[0] * 0.55, ah[1] * 0.55, ah[2] * 0.45)), 0.1)
+    S.add(belly, 0.06)
+    S.mark("belly", belly)
+    spin = None
+    for sx in (-1, 0, 1):
+        c = np.array([sx * 0.035, ap[1] - ah[1] * 0.35, ap[2] - ah[2] * 1.02])
+        s_ = ell(g, c, (0.03, 0.03, 0.045))
+        spin = s_ if spin is None else np.minimum(spin, s_)
+    S.add(spin, 0.01)
+    S.mark("spin", spin)
+    # The legs: from the side of the body up to the knee and down to the foot, each joint a
+    # knuckle; thick at the thigh, tapering to the foot; bristling.
+    for n in [p["name"] for p in sp["parts"]]:
+        if not (n.startswith("leg") and len(n) == 5 and n + "Lo" in info):
+            continue
+        j0, j1 = _limb_ends(info, n)
+        _, j2 = _limb_ends(info, n + "Lo")
+        sx = 1.0 if j1[0] > 0 else -1.0
+        r = float(K[n][2][0]) * 1.05
+        hip = np.array([sx * bh[0] * 0.82, j0[1] + 0.02, j0[2]])
+        knee = j1 + np.array([0.0, 0.03, 0.0])
+        mid = knee + (j2 - knee) * 0.52 + np.array([sx * 0.04, 0.0, 0.0])
+        foot = j2 + np.array([sx * 0.02, -0.01, 0.0])
+        coxa = ell(g, hip + np.array([sx * 0.02, 0.0, 0.0]), (r * 1.25, r * 1.1, r * 1.1))
+        femur = cap(g, hip, knee, r * 1.1, r * 0.95)
+        tib = cap(g, knee, mid, r * 0.85, r * 0.7)
+        meta = cap(g, mid, foot, r * 0.62, r * 0.42)
+        kn = np.minimum(ell(g, knee, (r * 1.15, r * 1.15, r * 1.15)), ell(g, mid, (r * 0.85, r * 0.85, r * 0.85)))
+        lg = smin(smin(smin(coxa, femur, 0.03), tib, 0.03), meta, 0.02)
+        lg = smin(lg, kn, 0.02)
+        # (bristles: short spikes over the leg)
+        lg = lg - 0.012 * np.clip((hair - 0.62) / 0.38, 0.0, 1.0)
+        S.add(lg, 0.04)
+        S.mark("leg", lg)
+        S.mark("joint", kn)
+        cl = cap(g, foot, foot + np.array([sx * 0.04, -0.03, 0.0]), r * 0.3, 0.006)
+        S.add(cl, 0.0)
+        S.mark("claw", cl)
+    d = S.d
+    occ = d < 0
+    thr = 0.4 * g.cell
+    # Colours: gleaming black, a little brown in the legs' joints and the bristles; the red streak
+    # and the hourglass; the great eyes a dull red glow, the rest gleaming black beads.
+    col = np.zeros(g.shape + (3,))
+    sh = vnoise(np.abs(g.X), g.Y, g.Z, 0.05, 93)
+    col[:] = np.array([0.095, 0.088, 0.1]) * (0.85 + 0.3 * sh[..., None])
+    kind = np.full(g.shape, CHITIN_KIND, np.uint8)
+    lgm = S.on("leg", thr)
+    br = lgm & (hair > 0.8)
+    col[br] = np.array([0.13, 0.11, 0.1])
+    kind[br] = FUR
+    jn = S.on("joint", -0.01) & occ & lgm
+    col[jn] = col[jn] * 1.35
+    bl = S.on("belly", thr)
+    # the red streak down its back, broken into spots
+    zs = (g.Z - ap[2]) / ah[2]
+    spots = (np.sin(zs * 9.0) > -0.35)
+    streak = bl & (np.abs(g.X) < (0.055 + 0.05 * np.clip(1.0 - np.abs(zs + 0.15), 0, 1)) * (0.75 + 0.5 * spots)) & (g.Y > ap[1] + ah[1] * 0.35) & (zs > -0.95) & (zs < 0.8)
+    col[streak] = np.array([0.74, 0.07, 0.04])
+    # the hourglass underneath
+    yb = ap[1] - ah[1] * 0.55
+    zz = (g.Z - ap[2]) / (ah[2] * 0.55)
+    hg = bl & (g.Y < yb) & (np.abs(zz) < 1.0) & (np.abs(g.X) < 0.05 + 0.2 * np.abs(zz) ** 1.5)
+    col[hg] = np.array([0.82, 0.08, 0.05])
+    sp_ = S.on("spin", thr)
+    col[sp_] = np.array([0.2, 0.12, 0.1])
+    gr = S.on("carapace", thr) & ~S.on("eye", thr)
+    # (grooves out from the pit over the carapace)
+    ang = np.arctan2(g.X, g.Z - (body[2] - 0.05))
+    groove = gr & (np.abs(((ang / (2 * math.pi)) * 8.0) % 1.0 - 0.5) > 0.44) & (g.Y > body[1])
+    col[groove] = col[groove] * 0.55
+    ey = S.on("eye", thr)
+    col[ey] = np.array([0.02, 0.02, 0.025])
+    kind[ey] = WET
+    gl = S.on("glow", thr)
+    col[gl] = np.array([0.6, 0.06, 0.04])
+    kind[gl] = GLOW_KIND
+    fg = S.on("fang", thr)
+    col[fg] = np.array([0.08, 0.06, 0.05])
+    kind[fg] = BONE
+    tip = fg & (S.feat["fangtip"] < 0.07)
+    col[tip] = np.array([0.82, 0.76, 0.64])
+    cl = S.on("claw", thr)
+    col[cl] = np.array([0.12, 0.1, 0.08])
+    kind[cl] = BONE
+    return d, np.clip(col, 0, 1), kind
+
+
+SCULPTS["spider"] = spider
+
+
+def scorpion(sp, g):
+    """A great scorpion in plates of gleaming rust-red chitin, darker at their edges: the head a
+    shield with its two eyes on a knob in the middle and three to each front corner; the back in
+    seven plates over one another, a keel down them; the claws great, a swollen hand and two
+    fingers toothed along their inner edges, black at the points; the legs jointed, under it; the
+    tail five swelling joints with keels along them, a bulb of venom at its end and the sting
+    curving down from it, black, its point an angry glow."""
+    info = _part_info(sp)
+    K = parts_of(sp)
+    _, body, bh = K["beastBody"]
+    _, hp, hh = K["beastHead"]
+    W, H, Lz = (float(v) for v in bh)
+    S = _Shape(g)
+    # The back: seven plates from the head shield's rear to the tail, each over the next.
+    z0, z1 = float(hp[2] - hh[2] * 0.9), float(body[2] - Lz * 0.95)
+    nplate = 7
+    plates = []
+    for i in range(nplate):
+        t = (i + 0.5) / nplate
+        zc_ = z0 + (z1 - z0) * t
+        wk = 1.0 - 0.28 * max(0.0, t - 0.55) / 0.45
+        pl = ell(g, (0, body[1] + 0.02, zc_), (W * 0.9 * wk, H * 0.95, (z0 - z1) / nplate * 0.75))
+        plates.append(pl)
+    back = plates[0]
+    for pl in plates[1:]:
+        back = smin(back, pl, 0.03)
+    belly = ell(g, (0, body[1] - 0.05, (z0 + z1) * 0.5), (W * 0.8, H * 0.7, (z0 - z1) * 0.52))
+    back = smin(back, belly, 0.06)
+    keel = cap(g, (0, body[1] + H * 0.85, z0 - 0.05), (0, body[1] + H * 0.8, z1 + 0.1), 0.035, 0.03)
+    back = smin(back, keel, 0.03)
+    S.add(back)
+    S.mark("back", back)
+    S.feat["_plates"] = (z0, z1, nplate)
+    # The head shield and its eyes.
+    shield = ell(g, (0, hp[1] - hh[1] * 0.4, hp[2] - hh[2] * 0.1), (hh[0] * 0.92, hh[1] * 1.1, hh[2] * 1.05))
+    shield = smin(shield, ell(g, (0, hp[1] - hh[1] * 0.8, hp[2] - hh[2] * 0.7), (hh[0] * 1.0, hh[1] * 1.2, hh[2] * 0.7)), 0.06)
+    S.add(shield, 0.06)
+    S.mark("shield", shield)
+    knob = ell(g, (0, hp[1] + hh[1] * 0.45, hp[2] + hh[2] * 0.05), (0.07, 0.05, 0.08))
+    S.add(knob, 0.03)
+    eyes = None
+    for sx in (-1, 1):
+        e = ell(g, (sx * 0.035, hp[1] + hh[1] * 0.75, hp[2] + hh[2] * 0.08), (0.028, 0.026, 0.028))
+        eyes = e if eyes is None else np.minimum(eyes, e)
+        for k_ in range(3):
+            e2 = ell(g, (sx * (hh[0] * 0.75 - 0.025 * k_), hp[1] + hh[1] * 0.1, hp[2] + hh[2] * (0.78 - 0.08 * k_)), (0.018, 0.018, 0.018))
+            eyes = np.minimum(eyes, e2)
+    S.add(eyes, 0.0)
+    S.mark("eye", eyes)
+    # The claws: the arm in joints to the hand, the hand swollen, two toothed fingers.
+    for side in ("L", "R"):
+        an, cn = "arm%s" % side, "claw%s" % side
+        if an not in info or cn not in info:
+            continue
+        a0, a1 = _limb_ends(info, an)
+        c0, c1 = _limb_ends(info, cn)
+        Rc, cp, ch = K[cn]
+        sx = 1.0 if a1[0] > 0 else -1.0
+        ra = float(K[an][2][0])
+        mid = (a0 + a1) * 0.5 + np.array([sx * 0.05, 0.03, 0.0])
+        arm = smin(cap(g, a0, mid, ra * 0.85, ra * 0.8), cap(g, mid, a1, ra * 0.8, ra * 0.75), 0.03)
+        arm = smin(arm, ell(g, mid, (ra * 1.0, ra * 0.9, ra * 1.0)), 0.02)
+        arm = smin(arm, ell(g, a1, (ra * 0.95, ra * 0.9, ra * 0.95)), 0.02)
+        S.add(arm, 0.04)
+        S.mark("arm", arm)
+        fwd = c1 - c0
+        Lc = float(np.linalg.norm(fwd))
+        fwd = fwd / max(Lc, 1e-9)
+        up = np.array([0.0, 1.0, 0.0])
+        inn = np.cross(up, fwd) * -sx   # (toward the middle)
+        inn = inn / max(np.linalg.norm(inn), 1e-9)
+        hw, hh_ = float(ch[0]), float(ch[1])
+        hand_c = c0 + fwd * Lc * 0.36
+        hand = ell(g, hand_c, (hw * 0.8, hh_ * 0.95, Lc * 0.31))
+        hand = smin(hand, cap(g, c0, hand_c, ra * 0.8, hw * 0.6), 0.04)
+        # the fixed finger on the inside, the movable one outside it, curving in to meet it
+        f_root = hand_c + fwd * Lc * 0.24 + inn * hw * 0.42
+        f_tip = c0 + fwd * Lc * 1.0 + inn * hw * 0.12
+        m_root = hand_c + fwd * Lc * 0.22 - inn * hw * 0.42
+        m_mid = m_root + fwd * Lc * 0.3 - inn * hw * 0.16
+        m_tip = c0 + fwd * Lc * 0.98 + inn * hw * 0.24
+        fixed = cap(g, f_root, f_tip, hw * 0.34, 0.012)
+        movab = smin(cap(g, m_root, m_mid, hw * 0.34, hw * 0.22), cap(g, m_mid, m_tip, hw * 0.22, 0.012), 0.02)
+        # (the gap between them, and their teeth along it)
+        gapc = (f_root + f_tip + m_root + m_tip) * 0.25 + fwd * Lc * 0.02
+        gap = ell(g, gapc + fwd * Lc * 0.04, (hw * 0.24, hh_ * 1.3, Lc * 0.27))
+        fingers = smax(np.minimum(fixed, movab), -gap, 0.01)
+        claw = smin(hand, fingers, 0.03)
+        S.add(claw, 0.03)
+        S.mark("claw", claw)
+        S.mark("finger", fingers)
+        S.feat.setdefault("_tips", []).extend([f_tip, m_tip])
+        S.feat.setdefault("_gaps", []).append((gapc, hw, hh_, Lc))
+    # The legs under it, each in joints to its foot.
+    for n in [p["name"] for p in sp["parts"]]:
+        if not (n.startswith("leg") and len(n) == 5 and n + "Lo" in info):
+            continue
+        j0, j1 = _limb_ends(info, n)
+        _, j2 = _limb_ends(info, n + "Lo")
+        r = float(K[n][2][0])
+        sx = 1.0 if j0[0] > 0 else -1.0
+        top = j0 + np.array([-sx * 0.02, -0.03, 0.0])
+        knee = j1 + np.array([sx * 0.05, 0.05, 0.0])
+        foot = j2 + np.array([sx * 0.02, 0.0, 0.0])
+        mid = knee + (foot - knee) * 0.55 + np.array([sx * 0.02, 0.0, 0.0])
+        lg = smin(cap(g, top, knee, r * 1.0, r * 0.85), cap(g, knee, mid, r * 0.8, r * 0.65), 0.02)
+        lg = smin(lg, cap(g, mid, foot, r * 0.6, r * 0.4), 0.02)
+        lg = smin(lg, np.minimum(ell(g, knee, (r * 1.0, r * 1.0, r * 1.0)), ell(g, mid, (r * 0.75, r * 0.75, r * 0.75))), 0.015)
+        S.add(lg, 0.03)
+        S.mark("leg", lg)
+        cl = cap(g, foot, foot + np.array([sx * 0.03, -0.03, 0.02]), r * 0.3, 0.006)
+        S.add(cl, 0.0)
+        S.mark("toe", cl)
+    # The tail: five joints, each swelling and keeled, then the bulb and the sting.
+    pts = []
+    for n in ("tail", "tail2", "tail3", "stinger"):
+        a, b = _limb_ends(info, n)
+        if not pts:
+            pts.append(a + np.array([0.0, -0.04, 0.12]))
+        pts.append(b)
+    path = _catmull(pts, 0.04)
+    acc = [0.0]
+    for i in range(len(path) - 1):
+        acc.append(acc[-1] + float(np.linalg.norm(path[i + 1] - path[i])))
+    acc = np.array(acc)
+    L_tot = float(acc[-1])
+    r0 = float(K["tail"][2][0]) * 0.92
+    seg_end = 0.78
+    nseg = 5
+    for si in range(nseg):
+        t0 = seg_end * si / nseg
+        t1 = seg_end * (si + 1) / nseg
+        idx = [i for i in range(len(path)) if t0 * L_tot <= acc[i] <= t1 * L_tot]
+        if len(idx) < 2:
+            continue
+        a, b = path[idx[0]], path[idx[-1]]
+        rr = r0 * (1.0 - 0.12 * si)
+        sub = _around(g, [a, b], rr * 1.5 + 0.05)
+        u = b - a
+        Lu = float(np.linalg.norm(u))
+        u = u / max(Lu, 1e-9)
+        tt = np.clip(((sub.X - a[0]) * u[0] + (sub.Y - a[1]) * u[1] + (sub.Z - a[2]) * u[2]) / max(Lu, 1e-9), 0, 1)
+        cx, cy_, cz = a[0] + u[0] * tt * Lu, a[1] + u[1] * tt * Lu, a[2] + u[2] * tt * Lu
+        bulge = rr * (0.64 + 0.4 * np.sin(tt * math.pi) ** 0.6)
+        dx, dy, dz = sub.X - cx, sub.Y - cy_, sub.Z - cz
+        dd = np.sqrt(dx * dx + dy * dy + dz * dz) - bulge
+        # (two keels along its top)
+        for kx in (-1, 1):
+            kk = np.sqrt((dx - kx * rr * 0.42) ** 2 + (dy - rr * 0.62) ** 2 + 0.0 * dz) - rr * 0.16 - 0.0
+            ksl = np.where((tt > 0.08) & (tt < 0.92), kk, INF)
+            dd = np.minimum(dd, np.maximum(ksl, dd - rr * 0.18))
+        S.add(dd, 0.0, sub)
+        S.mark("tail", dd, sub)
+        S.feat.setdefault("_joints", []).append((a, u))
+    i_b = int(np.searchsorted(acc, seg_end * L_tot))
+    bulb_c = path[min(i_b + 1, len(path) - 1)]
+    end = path[-1]
+    du = end - bulb_c
+    du = du / max(np.linalg.norm(du), 1e-9)
+    rb = r0 * 0.85
+    sub = _around(g, [bulb_c - du * rb * 1.5, end + du * rb * 1.5, end + np.array([0.0, -0.2, 0.3])], rb * 1.8 + 0.08)
+    bulb = ell(sub, bulb_c + du * rb * 0.6, (rb * 0.9, rb * 1.0, rb * 1.05))
+    S.add(bulb, 0.03, sub)
+    S.mark("bulb", bulb, sub)
+    b0 = bulb_c + du * rb * 1.25
+    b1 = end + np.array([0.0, -0.01, 0.08])
+    b2 = b1 + np.array([0.0, -0.04, 0.22])
+    barb = smin(cap(sub, b0, b1, rb * 0.5, rb * 0.24), cap(sub, b1, b2, rb * 0.24, 0.007), 0.02)
+    S.add(barb, 0.02, sub)
+    S.mark("sting", barb, sub)
+    d = S.d
+    occ = d < 0
+    thr = 0.4 * g.cell
+    # Colours: rust-red chitin, gleaming, darker at each plate's edges and in the joints; lighter
+    # under it; the fingers black toward their points; the bulb amber; the sting black, its point
+    # an angry glow; the eyes black beads.
+    sheen = vnoise(np.abs(g.X), g.Y, g.Z, 0.07, 95)
+    base = np.array([0.5, 0.19, 0.1])
+    col = np.zeros(g.shape + (3,))
+    col[:] = base * (0.82 + 0.36 * sheen[..., None])
+    kind = np.full(g.shape, CHITIN_KIND, np.uint8)
+    bk = S.on("back", thr)
+    zp = (g.Z - z1) / max(z0 - z1, 1e-6) * nplate
+    edge = bk & ((zp % 1.0) > 0.82) & (g.Y > body[1] - H * 0.3)
+    col[edge] = col[edge] * 0.5
+    under = occ & (g.Y < body[1] - H * 0.45) & ~S.on("leg", thr) & ~S.on("claw", thr)
+    col[under] = np.array([0.62, 0.34, 0.2]) * (0.9 + 0.2 * sheen[under])[:, None]
+    kl = bk & (np.abs(g.X) < 0.04) & (g.Y > body[1] + H * 0.7)
+    col[kl] = col[kl] * 1.3
+    sh_ = S.on("shield", thr) & ~S.on("eye", thr)
+    groove = sh_ & (np.abs(g.X) < 0.018) & (g.Z < hp[2] + hh[2] * 0.6)
+    col[groove] = col[groove] * 0.55
+    lgm = S.on("leg", thr)
+    lt = lgm & (g.Y < 0.3)
+    col[lt] = col[lt] * 0.7
+    fg = S.on("finger", thr)
+    for tp in S.feat.get("_tips", []):
+        dtp = np.sqrt((g.X - tp[0]) ** 2 + (g.Y - tp[1]) ** 2 + (g.Z - tp[2]) ** 2)
+        near = fg & (dtp < 0.28)
+        k_ = np.clip(1.0 - dtp[near] / 0.28, 0.0, 1.0)[:, None]
+        col[near] = col[near] * (1 - k_) + np.array([0.05, 0.03, 0.03]) * k_
+    for gc, hw, hh2, Lc in S.feat.get("_gaps", []):
+        teeth = fg & (ell(g, gc, (hw * 0.24, hh2 * 1.3, Lc * 0.3)) < 0.0) & (np.sin((g.Z - gc[2]) * 70.0) > 0.2)
+        col[teeth] = np.array([0.12, 0.06, 0.04])
+    tl = S.on("tail", thr)
+    for ja, ju in S.feat.get("_joints", [])[1:]:
+        ring = tl & (np.abs((g.X - ja[0]) * ju[0] + (g.Y - ja[1]) * ju[1] + (g.Z - ja[2]) * ju[2]) < 0.035) & (np.sqrt((g.X - ja[0]) ** 2 + (g.Y - ja[1]) ** 2 + (g.Z - ja[2]) ** 2) < r0 * 1.4)
+        col[ring] = col[ring] * 0.45
+    bl = S.on("bulb", thr)
+    col[bl] = np.array([0.6, 0.27, 0.09]) * (0.85 + 0.3 * sheen[bl])[:, None]
+    st = S.on("sting", thr)
+    col[st] = np.array([0.06, 0.03, 0.03])
+    tipm = st & (np.sqrt((g.X - b2[0]) ** 2 + (g.Y - b2[1]) ** 2 + (g.Z - b2[2]) ** 2) < rb * 0.55)
+    col[tipm] = np.array([0.95, 0.3, 0.06])
+    kind[tipm] = GLOW_KIND
+    ey = S.on("eye", thr)
+    col[ey] = np.array([0.02, 0.02, 0.02])
+    kind[ey] = WET
+    to = S.on("toe", thr)
+    col[to] = np.array([0.08, 0.04, 0.03])
+    kind[to] = BONE
+    return d, np.clip(col, 0, 1), kind
+
+
+SCULPTS["scorpion"] = scorpion

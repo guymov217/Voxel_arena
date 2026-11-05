@@ -183,7 +183,10 @@ func test_hide_turns_a_slash_but_not_a_thrust() -> void:
 	for r in thrust.removed:
 		n_thrust += r.indices.size()
 	t.check(slash.get("hide", false), "the hide took the slash")
-	t.check(n_slash < 12, "and little of it got in (%d voxels)" % n_slash)
+	# (A good slash gets through the hide since the beasts were made a little easier to take apart,
+	# user: a slot a row of the beast's own voxels wide and a hand's breadth long, no more. It
+	# took 8 when it only nicked the hide, and the elephant took no harm from a good cut.)
+	t.check(n_slash < 30, "and little of it got in (%d voxels)" % n_slash)
 	t.check(n_thrust > n_slash, "a committed thrust gets further in (%d vs %d)" % [n_thrust, n_slash])
 	t.check(b.mods.toughness > 1.5, "a beast is tougher than a man (%.1f)" % b.mods.toughness)
 	s[0].queue_free()

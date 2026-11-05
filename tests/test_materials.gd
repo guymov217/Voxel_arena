@@ -128,6 +128,13 @@ func test_a_kick_rarely_fells_a_man() -> void:
 	m.combat.hit.connect(func(h): if h.get("kick", false) and h.char == v.f: landed[0] += 1)
 	var falls := 0
 	for i in 10:
+		# Both on their feet again first: a man still getting up from the last kick was counted
+		# felled by this one (and kicked as a man down), so how many fell hung on the kicks before
+		# it and on what ran before the test (6 of 10 in the whole suite, 1 kick landing alone).
+		for k in 600:
+			if v.f.state == "stand" and a.f.state == "stand":
+				break
+			await get_tree().physics_frame
 		v.f.teleport(Vector3(0, 0, 0))
 		a.f.teleport(Vector3(0, 0, -0.85))
 		a.f.yaw = 0.0
@@ -136,6 +143,13 @@ func test_a_kick_rarely_fells_a_man() -> void:
 		a.f.stamina = 100.0
 		# Settled, not walked into one another or past (both walk): the kick from where he stands.
 		await _steps(30)
+		# (Wherever the walk took him, the kicker stands a kick's length in front of him: walked
+		# into the kicker's chest, half a metre off, the foot went past him, and how many landed
+		# hung on how far each had walked, 1 in 10 alone and more in the whole suite.)
+		var vp: Vector3 = v.f.torso.global_position
+		a.f.teleport(Vector3(vp.x, 0, vp.z - 0.85))
+		a.f.yaw = 0.0
+		await _steps(4)
 		kick[0] = true
 		await _steps(3)
 		kick[0] = false

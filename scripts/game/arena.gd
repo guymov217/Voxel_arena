@@ -47,8 +47,26 @@ func build(theme_ := "colosseum", visuals := true, sky_ := "noon") -> void:
 		wall.add_child(cs)
 		wall.transform = Transform3D(Basis(Vector3.UP, a), Vector3(sin(a) * r, 19, cos(a) * r))
 		add_child(wall)
+	# The gatehouses' fronts stand out of the round of the wall, flat across it (the voxel bowl's:
+	# the door's pillars 0.3 m nearer the middle than the wall's own stone): a man or a beast
+	# pressed against the wall by a gate stood half inside a pillar (user). A slab of its own
+	# for each, its face where the stone is drawn, out to where the front meets the round wall.
+	for gx in [-1.0, 1.0]:
+		var gate := StaticBody3D.new()
+		gate.collision_layer = VoxelPart.LAYER_WORLD
+		gate.collision_mask = 0
+		var gcs := CollisionShape3D.new()
+		var gbs := BoxShape3D.new()
+		gbs.size = Vector3(0.8, 40, 2.0 * sqrt(RADIUS * RADIUS - GATE_FRONT * GATE_FRONT))
+		gcs.shape = gbs
+		gate.add_child(gcs)
+		gate.position = Vector3(gx * (GATE_FRONT + 0.4), 19, 0)
+		add_child(gate)
 	if visuals:
 		_build_visuals()
+
+## How far out the gatehouses' fronts stand from the middle (east and west, flat across).
+const GATE_FRONT := 14.7
 
 var env: Environment
 var sun: DirectionalLight3D

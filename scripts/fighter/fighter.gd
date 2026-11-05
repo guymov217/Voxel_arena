@@ -5698,6 +5698,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var J: float = float(hit.get("impulse", 0.0)) * HIT_SCALE
 	var inv := part.global_transform.affine_inverse()
 	var lp: Vector3 = inv * (hit.point as Vector3)
+	# How much bigger the wound is than a man's: a beast's (Beast.CHUNK, set on the blow), a giant
+	# foe's (GIANT_CHUNK); a gladiator's as it was.
+	var chunk_k := float(hit.get("chunk", GIANT_CHUNK if giant_foe() else 1.0))
 	var basis_inv := part.global_transform.basis.orthonormalized().inverse()
 	var ld: Vector3 = (basis_inv * (hit.dir as Vector3)).normalized()
 	var la: Vector3 = (basis_inv * (hit.get("axis", hit.dir) as Vector3)).normalized()
@@ -5788,10 +5791,13 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			res.slid = true
 		part.bleed += dmg * 0.05 * (2.0 if hit.get("serrated", false) else 1.0)
 		var big: float = maxf(1.0, S)
+		# (A foe's size counts against a blade no more than a big man's and a half: the elephant,
+		# the mammoth and the dragon took no harm at all from a good cut, user.)
+		var big_c: float = maxf(1.0, _bone_s())
 		# A light cut only opens the skin; the depth climbs faster than the blow (a full swing
 		# of a keen blade still goes through a limb in one).
 		var bite := J * eff * (1.0 + 0.8 * heavy)
-		var depth: float = minf(0.3 + 0.2 * heavy, 0.011 * bite * clampf(bite / 30.0, 0.3, 1.0)) * S / pow(big, 1.5) * float(hit.get("chunk", 1.0))
+		var depth: float = minf(0.3 + 0.2 * heavy, 0.011 * bite * clampf(bite / 30.0, 0.3, 1.0)) * S / pow(big_c, 1.5) * chunk_k
 		# No one blow goes through: at most a share of how thick the part is there (a light cut
 		# a sixth, the hardest a little over half). Through comes from blows into the same wound,
 		# each one carrying on from where the last one stopped (_wound below).
@@ -5799,13 +5805,18 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# The trunk is the hardest to cut through: ribs, spine and a body's depth of flesh (a man,
 		# a beast or a monster); it takes many hard blows in one wound to halve one. The share is
 		# of a body the blade's own size: a man's sword goes no deeper into a giant than into a man.
-		var trunk := 0.55 if part == torso or part == head else 1.0
-		depth = minf(depth, thick * minf(1.0, wsz / S) * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
-		var width := V * wsz * (0.75 + 0.5 * heavy)
+		# (A beast's head, though, cuts as a limb does: behind its skull it is jaws and muscle, and
+		# the lion's, the bear's, the elephant's took a tenth of their voxels in twenty cuts, user.)
+		var trunk := 0.55 if part == torso or (part == head and not (self is Beast)) else 1.0
+		depth = minf(depth, thick * minf(1.0, wsz / maxf(1.0, _bone_s())) * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
+		# (Never narrower than a row of the part's own voxels: on a beast's voxels, three times a
+		# man's, the blade's own breadth fell between the rows and a cut that landed took nothing,
+		# from one side or another: a dragon's horn, the elephant's leg, user.)
+		var width := maxf(V * wsz * (0.75 + 0.5 * heavy), vfs * 0.55)
 		# A blow that cuts at all goes at least one layer of voxels deeper into the wound: shorter
 		# than a voxel, the same light blows only ever scraped the same mouth of it.
 		depth = maxf(depth, vfs * 1.1)
-		if J * eff > 3.0 * big:
+		if J * eff > 3.0 * big_c:
 			var n := la.cross(ld)
 			if n.length_squared() < 1e-4:
 				n = Vector3(1, 0, 0)
@@ -5849,13 +5860,16 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var th := clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)
 		dmg = J * 2.8 * eff * (1.0 + 0.7 * th)
 		part.bleed += dmg * 0.07
-		var depth: float = minf(0.3 + 0.2 * heavy + 0.25 * th, 0.02 * J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.6 * th)) * S * float(hit.get("chunk", 1.0))
+		var depth: float = minf(0.3 + 0.2 * heavy + 0.25 * th, 0.02 * J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.6 * th)) * S * chunk_k
 		# A stab or a thrown point goes in, it rarely comes out the far side: at most a share of
 		# the thickness along its line (a thrown one less, the shaft takes the blow's way off;
-		# a thrust more, the whole man leaning on it).
+		# a thrust more, the whole man leaning on it). The share is of a body the blade's size, as a
+		# cut's is (a beast's or a giant foe's no bigger than a big man's and a half: made easier on
+		# them, the slash got further into a hide than a committed thrust did), and a beast's head
+		# takes it as a limb does, as it takes a cut.
 		var stab := J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.5 * th)
-		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z) * minf(1.0, wsz / S)
-		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0) + 0.25 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.25 * th) if part == torso or part == head else 1.0))
+		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z) * minf(1.0, wsz / maxf(1.0, _bone_s()))
+		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0) + 0.25 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.25 * th) if part == torso or (part == head and not (self is Beast)) else 1.0))
 		if J * eff > 2.5:
 			var r := V * wsz * (1.2 + 0.5 * heavy + 0.25 * th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
@@ -5913,7 +5927,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		if hit.has("blast"):
 			var at_b: Vector3 = inv * (hit.blast as Vector3)
 			var bp: Vector3 = at_b.clamp(-part.half_ext, part.half_ext)
-			var rb: float = (float(hit.blast_r) - 0.6 * at_b.distance_to(bp)) * armor_f * float(hit.get("chunk", 1.0))
+			var rb: float = (float(hit.blast_r) - 0.6 * at_b.distance_to(bp)) * armor_f * chunk_k
 			for i in (part.voxels_within(bp, rb) if rb > 0.0 else PackedInt32Array()):
 				if not (shielded and part.organ[i] == Anatomy.BRAIN):
 					remove.append(i)
@@ -5976,7 +5990,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# Every cut or stab that lands takes something with it: under the threshold for a real wound
 	# it still nicks a few voxels out at the point it struck, more the harder it came in.
 	if remove.is_empty() and not detached and type != "blunt" and J * hardness * sharpness > 1.0:
-		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08)) * float(hit.get("chunk", 1.0))
+		var rn := vfs * (0.75 + minf(1.6, J * hardness * sharpness * 0.08)) * chunk_k
 		for i in part.voxels_within(lp, rn):
 			if not part.bone[i]:
 				remove.append(i)
@@ -7129,6 +7143,20 @@ var pelvis_f := 1.0
 ## Of the voxels a cut or a stab would take, bone gives way only as far as the blow is strong:
 ## a blow at BONE_BITE chops all the bone in its way; a weaker one a share of it (the nearest
 ## first, a light one barely notches it), and nothing beyond the last bone it got through.
+## A giant of myth fought as a foe (the Cyclops, the Minotaur, a troll, the Titan: a man far bigger
+## than a man), not a gladiator: he comes apart more under a blade than a gladiator does (user:
+## the foes, the monsters and the beasts a little easier to take apart; not the gladiators).
+const GIANT_CHUNK := 1.3
+func giant_foe() -> bool:
+	return not (self is Beast) and S >= 1.4
+
+## How thick his bones are to a blade: a man's and a giant gladiator's as he is big (what breaks
+## a man's thigh only bruises a giant's); a beast's or a giant foe's no thicker than a big man's
+## and a half (user: the hydra's heads and the elephant's tusks could not be cut at all; every
+## limb of a foe should come off, from any side).
+func _bone_s() -> float:
+	return minf(S, 1.8) if (self is Beast or giant_foe()) else S
+
 func _stop_at_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, bite: float, res: Dictionary) -> Array:
 	var bones := []
 	var lps := part.local_positions()
@@ -7139,11 +7167,12 @@ func _stop_at_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, bit
 	if bones.is_empty():
 		return remove
 	res.bone = true
-	var f := clampf((bite / (BONE_BITE * S) - 0.2) / 0.8, 0.0, 1.0)
+	var bs := _bone_s()
+	var f := clampf((bite / (BONE_BITE * bs) - 0.2) / 0.8, 0.0, 1.0)
 	if f >= 1.0:
 		return remove
 	bones.sort_custom(func(x, y): return x[0] < y[0])
-	var n := maxi(1 if bite >= BONE_BITE * S * 0.12 else 0, ceili(bones.size() * f))
+	var n := maxi(1 if bite >= BONE_BITE * bs * 0.12 else 0, ceili(bones.size() * f))
 	# How deep the blow gets: through the bones it chops, up to the first one it does not.
 	var stop: float = bones[n][0] if n < bones.size() else INF
 	var out := []
@@ -7273,6 +7302,57 @@ const KINK := [0.0, 0.0, 0.35, 0.55]
 ## The bone broken through: the joint above it gives (the two ends of the bone held by muscle,
 ## not by each other) and the part is drawn bent at the break, its far end pushed the way the
 ## blow went. An elbow held straight or bent for a swing is let go first.
+## Bound up and set (the endless arena's Bind your wounds, user: it healed nothing, not his
+## breaks, nothing): every bone set and straight again, its joint as it was before it broke; the
+## skull, the ribs and the pelvis whole; every part as sound as it was, the bleeding stopped,
+## his blood and his breath back, his head clear; the fire and the poison on him put out. What
+## was cut off stays off, and the scars stay.
+func bind_wounds() -> void:
+	blood = 100.0
+	stamina = 100.0
+	stagger = 0.0
+	concussion = 0.0
+	pain = 0.0
+	daze_t = 0.0
+	limp = false
+	slow_timer = 0.0
+	slow_factor = 1.0
+	skull_fracture = 0
+	skull_cracked = false
+	ribs_broken = 0
+	pelvis_f = 1.0
+	for p in parts:
+		p.bleed = 0.0
+		p.artery = 0.0
+		if p.severed or p.missing:
+			continue
+		p.hp = 100.0
+		p.spots = []
+		p.set_flames(false)
+		p.set_poison(false)
+		p.frozen_until = 0.0
+		if p.fracture > 0 or p.fractured:
+			_unbreak(p)
+
+## A broken bone set: straight, whole, its joint and its swing as they were before it broke.
+func _unbreak(part: VoxelPart) -> void:
+	part.fracture = 0
+	part.fractured = false
+	part.set_kink(Vector3.ZERO, 0.0, 0)
+	var j = part.joint
+	if j is Generic6DOFJoint3D and part.has_meta("whole_limits"):
+		var lim: Array = part.get_meta("whole_limits")
+		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, float(lim[0]))
+		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, float(lim[1]))
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, float(lim[2]))
+		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, float(lim[3]))
+		part.remove_meta("whole_limits")
+	if part.has_meta("whole_damp"):
+		part.angular_damp = float(part.get_meta("whole_damp"))
+		part.remove_meta("whole_damp")
+	part.remove_meta("blunt_blows")
+	part.remove_meta("break_range")
+
 func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO, J := 0.0) -> void:
 	for side in ["L", "R"]:
 		if arm.has(side) and (part == arm[side].upper or part == arm[side].fore):
@@ -7280,11 +7360,16 @@ func _set_broken(part: VoxelPart, lp: Vector3, level: int, ld := Vector3.ZERO, J
 			_hold_elbow(side, 0.0, false, 0.0)
 	var j = part.joint
 	if j is Generic6DOFJoint3D:
+		# (As it was whole, kept for when the bone is set again: bind_wounds.)
+		if not part.has_meta("whole_limits"):
+			part.set_meta("whole_limits", [j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT), j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)])
 		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.6)
 		j.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.6)
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT) - 0.8)
 		j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, j.get_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT) + 0.8)
 	# Rubbery, not loose as a rope: the muscle round the break damps how it swings.
+	if not part.has_meta("whole_damp"):
+		part.set_meta("whole_damp", part.angular_damp)
 	part.angular_damp = maxf(part.angular_damp, 2.5)
 	# Bent at the very spot the blow fell along the limb, the far end driven the way the blow went
 	# (any way round the bone it came from), and the harder it was the further.

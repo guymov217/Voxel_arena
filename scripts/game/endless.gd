@@ -288,7 +288,7 @@ func rewards() -> Array:
 		var id: String = can.pop_at(r.randi_range(0, can.size() - 1))
 		match id:
 			"bind":
-				out.append({"id": id, "title": "Bind your wounds", "text": "All your blood back, the bleeding stopped"})
+				out.append({"id": id, "title": "Bind your wounds", "text": "Your bones set, your wounds bound, all your blood back"})
 			"mend":
 				out.append({"id": id, "title": "Mend your weapons", "text": "Every chip and crack made good"})
 			"pot":
@@ -313,11 +313,7 @@ func take(i: int) -> void:
 	if f:
 		match String(rw.id):
 			"bind":
-				f.blood = 100.0
-				f.stamina = 100.0
-				for p in f.parts:
-					p.bleed = 0.0
-					p.artery = 0.0
+				f.bind_wounds()
 			"mend":
 				_mend(f)
 			"pot":

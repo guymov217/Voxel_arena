@@ -299,6 +299,11 @@ func _drop_on_body(d: Dictionary) -> Dictionary:
 		for part in c.parts:
 			if part.severed or part == d.skip:
 				continue
+			# (Out of reach of the part's box altogether first, by its round: every drop of a
+			# dragon's breath set against every part of a beast, a frame, was a hitch of its own.)
+			var reach: float = part.half_ext.length() + 0.03
+			if part.global_position.distance_squared_to(d.p) > reach * reach:
+				continue
 			if Social.box_distance(part, d.p) < 0.03:
 				return {"c": c, "part": part}
 	return {}
@@ -373,7 +378,7 @@ func _update_wet(dt: float) -> void:
 			# Fire eats its fuel, faster where it is thick; vitriol soaks away slowly.
 			for k in wet.keys():
 				var c: Dictionary = wet[k]
-				c.f -= step * (0.008 + 0.05 * c.f if c.k == "fire" else 0.004 + 0.02 * c.f)
+				c.f -= step * (0.013 + 0.08 * c.f if c.k == "fire" else 0.0065 + 0.032 * c.f)
 				if c.f < 0.012:
 					wet.erase(k)
 		_wet_hurt -= dt
@@ -407,7 +412,9 @@ func _wet_burns() -> void:
 				cell = wet.get(_key(Vector3(pp.x, 0.0, pp.z)))
 			if cell == null or cell.f < 0.04:
 				continue
-			if pp.y - cell.y > (0.45 if lying else 0.5) * c.S + 0.15:
+			# (As high as a pool's flames reach, a man's knee: a beast three times a man's size
+			# stood in one burning or poisoned to the shoulders, and it never went out, user.)
+			if pp.y - cell.y > (0.45 if lying else 0.5) * minf(c.S, 1.3) + 0.15:
 				continue
 			if randf() < 0.6:
 				m.add_spot(c, part, cell.k, 2.0 + 2.0 * minf(1.0, cell.f), cell.owner, Vector3(pp.x, cell.y, pp.z))

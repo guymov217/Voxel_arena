@@ -27,14 +27,39 @@ static func _spot_on(part: VoxelPart, point) -> Variant:
 			return null
 		return part.local_of(live[randi() % live.size()])
 	var lp: Vector3 = part.global_transform.affine_inverse() * (point as Vector3)
-	for i in part.fx.size():
-		if not part.alive[i]:
-			continue
+	# (The nearest found among those round the point, the reach widened until there are some: not
+	# every voxel of a big part gone over for each drop of fire that lands.)
+	var r := part.vf * part.part_scale * 2.0
+	var far := part.half_ext.length() * 2.0 + r
+	var found := PackedInt32Array()
+	while r < far:
+		found = part.voxels_within(lp, r)
+		if not found.is_empty():
+			break
+		r *= 2.0
+	if found.is_empty():
+		found = part.voxels_within(lp, far)
+	for i in found:
 		var d := part.local_of(i).distance_squared_to(lp)
 		if d < bd:
 			bd = d
 			best = i
 	return part.local_of(best) if best >= 0 else null
+
+## The `n` live voxels of `p` nearest `lp` (no further than `ring`), nearest first, as [index,
+## distance]: looked for within a few voxels first, and only if too few are there in all of
+## `ring` (whichever way, the same nearest `n`).
+static func _nearest(p: VoxelPart, lp: Vector3, ring: float, n: int, vfs: float) -> Array:
+	var q := minf(ring, vfs * 3.5)
+	var found := p.voxels_within(lp, q)
+	if found.size() < n and q < ring:
+		found = p.voxels_within(lp, ring)
+	var lps := p.local_positions()
+	var near := []
+	for i in found:
+		near.append([i, lps[i].distance_to(lp)])
+	near.sort_custom(func(a, b): return a[1] < b[1])
+	return near.slice(0, n)
 
 ## Sets `part` alight ("fire") or lets acid eat into it ("acid") at `point` for `seconds`.
 static func add_spot(part: VoxelPart, kind: String, seconds: float, point = null) -> Dictionary:
@@ -77,11 +102,8 @@ static func _frostbite(p: VoxelPart, s: Dictionary, vfs: float, host: bool, crum
 	var r: float = vfs * minf(3.0, 1.0 + s.age * 0.35)
 	var cap: float = p.fx.size() * 0.12
 	var near := []
-	for i in p.fx.size():
-		if p.alive[i]:
-			var d: float = p.local_of(i).distance_to(s.lp)
-			if d < r:
-				near.append([i, d])
+	for i in p.voxels_within(s.lp, r):
+		near.append([i, p.local_of(i).distance_to(s.lp)])
 	near.sort_custom(func(a, b): return a[1] < b[1])
 	for pair in near.slice(0, 24):
 		var i: int = pair[0]
@@ -103,15 +125,22 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 	for p in c.parts:
 		if p.spots.is_empty():
 			continue
-		var active: Array = p.spots.filter(func(s): return s.t > 0.0)
+		# (Every frame for every part that burns: a plain pass over its few spots.)
+		var active: Array = []
+		var fire := false
+		var acid_on := false
+		var frost_on := false
+		for s in p.spots:
+			if s.t > 0.0:
+				active.append(s)
+				fire = fire or s.kind == "fire"
+				acid_on = acid_on or s.kind == "acid"
+				frost_on = frost_on or s.kind == "frost"
 		if active.is_empty():
 			p.spots = []
 			p.set_flames(false)
 			p.set_poison(false)
 			continue
-		var fire := active.any(func(s): return s.kind == "fire")
-		var acid_on := active.any(func(s): return s.kind == "acid")
-		var frost_on := active.any(func(s): return s.kind == "frost")
 		if frost_on and not p.severed:
 			# Frostbite: the limb all but useless while the cold is in it, and frozen flesh
 			# does not bleed.
@@ -125,7 +154,7 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 			p.hp = maxf(0.0, p.hp - dt * ((8.0 if fire else 0.0) + (6.0 if acid_on else 0.0)) / soak)
 			if fire or acid_on:   # (frostbite does not bleed)
 				c.blood = maxf(0.0, c.blood - dt * (0.9 if acid_on else 0.6))
-		var limb: bool = p != c.torso and p != c.head and p.bone.has(1)
+		var limb = null   # (whether it has bone in it: looked up only when a spot works on it)
 		var vfs: float = p.vf * p.part_scale
 		var crumble := []
 		var touched := []
@@ -141,17 +170,15 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 				continue
 			var acid: bool = s.kind == "acid"
 			var r: float = vfs * minf(4.5 if acid else 6.0, 1.2 + s.age * (0.75 if acid else 0.7))
+			if limb == null:
+				limb = p != c.torso and p != c.head and p.bone.has(1)
 			var cap: float = p.fx.size() * (0.4 if limb else 0.25)
 			var ring: float = r + vfs * (1.5 if acid else 3.0)
-			var near := []
-			for i in p.fx.size():
-				if not p.alive[i]:
-					continue
-				var d: float = p.local_of(i).distance_to(s.lp)
-				if d < ring:
-					near.append([i, d])
-			near.sort_custom(func(a, b): return a[1] < b[1])
-			for pair in near.slice(0, 18 if acid else 34):
+			# (Only the voxels round the spot, found by the part's own lookup, and only the nearest
+			# that are worked on: every voxel of the part gone over for every spot, five times a
+			# second, then every one in reach put in order, on a beast's or a giant's parts of
+			# thousands, was a hitch whenever a dragon's breath set a creature alight, user.)
+			for pair in _nearest(p, s.lp, ring, 18 if acid else 34, vfs):
 				var i: int = pair[0]
 				var d: float = pair[1]
 				var h: float = p.heat.get(i, 0.0)
@@ -184,10 +211,18 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 				s.crawl += 0.2
 				if s.crawl >= 0.6:
 					s.crawl = 0.0
-					var edge := near.filter(func(x): return x[1] > r * 0.85 and not p.bone[x[0]])
+					# Onto the flesh at the rim of what burns.
+					var edge := []
+					var lps: PackedVector3Array = p.local_positions()
+					for i in p.voxels_within(s.lp, ring):
+						if not p.bone[i] and lps[i].distance_to(s.lp) > r * 0.85:
+							edge.append(i)
 					if not edge.is_empty() and randf() < 0.45:
-						var v: int = edge[randi() % edge.size()][0]
-						var ns := add_spot(p, "fire", maxf(1.2, s.t * 0.7), p.world_of(v))
+						var v: int = edge[randi() % edge.size()]
+						# (Each spot it spreads to burns shorter than what is left of this one: given
+						# at least 1.2 s, a beast's broad body kept passing the fire round itself
+						# and it never went out, user.)
+						var ns := add_spot(p, "fire", s.t * 0.6, p.world_of(v))
 						if not ns.is_empty() and ns.age == 0.0:
 							s.t -= 0.3
 							out.caught.append({"part": p, "spot": ns})
@@ -199,7 +234,7 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 					var q: VoxelPart = nbs[randi() % nbs.size()]
 					var at := spot_world(p, s)
 					at.y = q.global_position.y + 0.05
-					var ns := add_spot(q, "fire", 1.2 + randf() * 0.8, at)
+					var ns := add_spot(q, "fire", minf(1.2 + randf() * 0.8, s.t * 0.6), at)
 					if not ns.is_empty():
 						s.t -= 0.4
 						out.caught.append({"part": q, "spot": ns})
