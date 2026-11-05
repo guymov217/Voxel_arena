@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Преторианец Север",
  "Praetorian Tiberius": "Преторианец Тиберий",
  "Praetorian Vitus": "Преторианец Вит",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Нажмите %s: выпад включён, и клинок смотрит туда, куда смотрите вы. Удерживайте кнопку мыши и толкните мышь вперёд: клинок выходит прямо вперёд; потяните назад — и он вернётся. Выдвиньте его до конца (%s ещё раз — выключить).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Нажмите %s: клинок наводится на прицел и уходит прямо вперёд, с вашим весом за ним, и возвращается. Удерживайте %s, и остриё останется выдвинутым. Цельтесь мышью: укол идёт туда, куда вы смотрите.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Нажмите «Взмахнуть»: оружие сделает взмах с той же скоростью, что и в руке.",
  "Press a key…": "Нажмите клавишу…",
  "Press its number: laid or bowled in front of you": "Нажмите его номер: кладётся или катится перед вами",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Балансировка для броска",
  "Thrown hit!": "Попадание броском!",
  "Thrust": "Укол",
- "Thrust (press: on and off)": "Выпад (нажатие: вкл. и выкл.)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Выпад (нажатие: укол туда, куда целитесь; удержание: остриё остаётся выдвинутым)",
  "Thunder pot": "Громовой горшок",
  "Thunderjaw": "Громочелюсть",
  "Tiger": "Тигр",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Повернуть",
  "✋ Main hand": "✋ Основная рука",
  "✋ Move hand": "✋ Переставить руку",
- "✋ Other hand": "✋ Другая рука"
+ "✋ Other hand": "✋ Другая рука",
+ "One hand · other side": "Одна рука · с другой стороны",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "В правой руке %s: сначала поменяйте руки (J) или бросьте это (F)",
+ "Swap hands (both on one haft: hold it from the other side)": "Сменить руку (обе на рукояти: держать с другой стороны)"
 }

@@ -46,6 +46,18 @@ const BOW_Q := Quaternion(Vector3(1, 0, 0), PI) * Quaternion(Vector3(0, 0, 1), P
 static func grip_q(w) -> Quaternion:
 	return BOW_Q if w and str(w.design.get("shoots", "")) == "arrow" else GRIP_Q
 
+## A two-hander held from the left side is held in the left hand as the mirror of the right
+## hand's hold: the hands change over as the mirror of the grip they had (switch_two_side), and
+## held as one hand holds a blade, the forearm and the elbow would have to wring themselves half a
+## turn round on it.
+const MIRROR_GRIP_Q := Quaternion(Vector3(0, 0, 1), PI)
+func hold_q(side: String, w) -> Quaternion:
+	return MIRROR_GRIP_Q if side == "L" and two_side == "L" and w != null and not is_bow(w) else grip_q(w)
+
+## The hand that goes on the haft below the guard hand (two_side): the other one.
+func two_off() -> String:
+	return "L" if two_side == "R" else "R"
+
 static func is_bow(w) -> bool:
 	return w != null and str(w.design.get("shoots", "")) == "arrow"
 var behind_t := {"R": 0.0, "L": 0.0}
@@ -201,6 +213,12 @@ var weapons := {"R": null, "L": null}
 var weapon_joints := {"R": null, "L": null}
 var stowed := {"R": null, "L": null}   # a weapon put out of sight while that hand throws a pot (Fighter.stow)
 var two_handed := false
+## The hand at the guard with both on one haft: "R", the left below it at the pommel or the butt
+## (as most men hold a two-hander), or "L", held from the left side: J changes the hands over, the
+## left at the guard and the right below it (user: hold it in both hands from the left side too).
+## The main hand's button, wheel and thrust key go to whichever hand that is.
+var two_side := "R"
+var net_two_side := "R"   # a guest's copy (status)
 var feet := {"L": null, "R": null}
 var stance := {"L": Vector2.ZERO, "R": Vector2.ZERO}   # each foot's rest off from under its hip (forward, outward; x S): a guard's lead foot forward
 var v_smooth := Vector3.ZERO
@@ -1411,17 +1429,18 @@ func _guard_two_hander(w: Weapon) -> void:
 func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 	if not w or is_bow(w):
 		return   # the off hand of an archer draws the string; it does not hold the stave
-	var fore: VoxelPart = arm.L.fore
+	var o := two_off()
+	var fore: VoxelPart = arm[o].fore
 	var at := w.global_transform * w.grip_off
 	if not move_arm:
 		# (The hand got there itself: it closes on the haft where it is.)
-		weapon_joints.L = _joint_at(fore, w, hand_world("L"), false)
+		weapon_joints[o] = _joint_at(fore, w, hand_world(o), false)
 		return
 	# The whole arm reaches for the haft: the forearm put there alone stood a hand's breadth off
 	# the upper arm for a third of a second (the sweep), at every bout's start with a two-hander.
-	_reach_arm("L", at)
-	fore.global_position += at - hand_world("L")
-	weapon_joints.L = _joint_at(fore, w, at, false)
+	_reach_arm(o, at)
+	fore.global_position += at - hand_world(o)
+	weapon_joints[o] = _joint_at(fore, w, at, false)
 
 ## Lays the arm out to put its hand at `target` (world): the upper arm turned about the shoulder
 ## and the forearm about the elbow, each the least way (FABRIK, the shoulder held where it is).
@@ -1463,13 +1482,15 @@ func release(side: String) -> Weapon:
 	if weapon_joints[side]:
 		weapon_joints[side].queue_free()
 		weapon_joints[side] = null
-	if side == "R" and two_handed and weapon_joints.L:
-		weapon_joints.L.queue_free()
-		weapon_joints.L = null
-	two_handed = false if side == "R" else two_handed
-	if side == "R":
+	var off_s := two_off()
+	if side == two_side and two_handed and weapon_joints[off_s]:
+		weapon_joints[off_s].queue_free()
+		weapon_joints[off_s] = null
+	two_handed = false if side == two_side else two_handed
+	if side == two_side:
 		grip_want = false
 		grip_wait = 0.0
+		two_side = "R"   # (out of the left hand held from the left: the right is the guard hand again)
 	weapons[side] = null
 	if arm[side].fore.severed:
 		fell_with_arm[side] = w
@@ -1496,7 +1517,7 @@ func stow(side: String) -> bool:
 	var w: Weapon = weapons[side]
 	if w == null or stowed[side] != null or fixed_hand[side]:
 		return false
-	if side == "R" and two_handed:
+	if side == two_side and two_handed:
 		toggle_grip()
 	if weapon_joints[side]:
 		weapon_joints[side].queue_free()
@@ -1562,18 +1583,20 @@ func unstow(side: String) -> void:
 ## toggleGrip). Two hands: more power and better control of a heavy weapon; one: the off hand
 ## is free. Returns "one", "two" or null.
 func toggle_grip() -> Variant:
-	# A weapon in the left hand alone crosses to the right first, then both take it.
-	if not weapons.R and weapons.L and not weapons.L.is_shield and alive:
+	# A weapon in the left hand alone crosses to the right first, then both take it (held from the
+	# left side, J having put it there, it stays in the left and the right takes the haft below).
+	if two_side == "R" and not weapons.R and weapons.L and not weapons.L.is_shield and alive:
 		swap_hands()
-	var w: Weapon = weapons.R
+	var o := two_off()
+	var w: Weapon = weapons[two_side]
 	if not w or w.is_shield or not alive or w.design.get("chain") != null:
 		return null
 	if two_handed or grip_wait > 0.0 or grip_want:
 		grip_wait = 0.0
 		grip_want = false
-		if weapon_joints.L:
-			weapon_joints.L.queue_free()
-			weapon_joints.L = null
+		if weapon_joints[o]:
+			weapon_joints[o].queue_free()
+			weapon_joints[o] = null
 		two_handed = false
 		two_front = null
 		two_gap = null
@@ -1589,9 +1612,9 @@ func toggle_grip() -> Variant:
 	# A shield on the off arm is let fall to the sand: the hand is wanted on the haft. A weapon
 	# in it is not: H never throws a weapon away (user: H on a weapon just taken up off the sand
 	# dropped it); he is told his hand is full.
-	if weapons.L and not weapons.L.is_shield:
+	if weapons[o] and not weapons[o].is_shield:
 		return "full"
-	if weapons.L and not release("L"):
+	if weapons[o] and not release(o):
 		return null
 	# Never onto the haft behind his back (user): where that end of it is behind him, the hand
 	# reaches for it in front and closes on it when the haft comes round (_grip_reach).
@@ -1609,11 +1632,12 @@ func toggle_grip() -> Variant:
 func _grip_reach(dt: float) -> void:
 	if forearms_pass and not grip_gentle and not two_handed:
 		_forearms_pass(false)
-	var w: Weapon = weapons.R
+	var o := two_off()
+	var w: Weapon = weapons[two_side]
 	if two_handed:
 		grip_wait = 0.0
 		grip_want = true
-		if state == "stand" and w and weapon_joints.L and _out_front(hand_world("L")).length() > 0.04 * S:
+		if state == "stand" and w and weapon_joints[o] and _out_front(hand_world(o)).length() > 0.04 * S:
 			haft_behind_t += dt
 			if haft_behind_t > 0.12:
 				haft_behind_t = 0.0
@@ -1628,7 +1652,7 @@ func _grip_reach(dt: float) -> void:
 	# gave up after a second and a half, user video 1026), for as long as the off hand is free
 	# for it; it waits while that hand is busy (a pot, a weapon taken up in it ends it).
 	if grip_want and grip_wait <= 0.0:
-		if w == null or w.is_shield or weapons.L or w.design.get("chain") != null or fixed_hand.R or fixed_hand.L or w.grip_off == null:
+		if w == null or w.is_shield or weapons[o] or w.design.get("chain") != null or fixed_hand.R or fixed_hand.L or w.grip_off == null:
 			grip_want = false
 		elif held_item == null and off_hand_free() and state == "stand":
 			grip_wait = 0.5
@@ -1637,20 +1661,23 @@ func _grip_reach(dt: float) -> void:
 		grip_gentle = false
 		return
 	grip_wait -= dt
-	if w == null or w.is_shield or weapons.L or held_item != null or not off_hand_free() or state != "stand":
+	if w == null or w.is_shield or weapons[o] or held_item != null or not off_hand_free() or state != "stand":
 		grip_wait = 0.0
 		return
 	var at: Vector3 = w.global_transform * w.grip_off
-	if _out_front(at) == Vector3.ZERO and hand_world("L").distance_to(at) < (0.07 if grip_gentle else 0.35) * S:
+	if _out_front(at) == Vector3.ZERO and hand_world(o).distance_to(at) < (0.07 if grip_gentle else 0.35) * S:
 		grip_wait = 0.0
 		two_handed = true
 		_attach_off_hand(w, not grip_gentle)
 		grip_gentle = false
 
 ## J: what is in each hand changes hands (a sword to the left, a shield to the right, or the
-## one weapon across to the empty hand). Not with both hands on one haft, an arm gone or a
-## weapon fixed to a stump. Returns true if anything moved.
+## one weapon across to the empty hand); with both hands on one haft, the hands change over on it
+## (switch_two_side). Not with an arm gone or a weapon fixed to a stump. Returns true if anything
+## moved.
 func swap_hands() -> bool:
+	if alive and two_handed and held_item == null:
+		return switch_two_side()
 	if not alive or two_handed or held_item != null or (not weapons.R and not weapons.L):
 		return false
 	for side in ["R", "L"]:
@@ -1669,6 +1696,102 @@ func swap_hands() -> bool:
 			if not pick_up(pair[1], w) and not pick_up(pair[2], w):
 				w.own_t = 0.35
 	# A two-hander that crossed to the right takes the off hand back onto its haft.
+	return true
+
+## J with both hands on one haft: the hands change over and he holds it from his other side (the
+## left hand at the guard and the right below it, or back again): the arms and the weapon are
+## laid at once as the mirror of where they were, each hand where the other was, so the weapon
+## stands at the same guard on his other side (user: hold the weapon in both hands from the left
+## side too). Not in a thrust or a throw, with a hand hurt, a blade arm or the weapon stuck in a
+## man: false then.
+func switch_two_side() -> bool:
+	var m := two_side
+	var o := two_off()
+	var w: Weapon = weapons[m]
+	if w == null or not alive or not two_handed or w.is_shield or weapons[o] != null or held_item != null or state != "stand":
+		return false
+	if w.stuck != null or thrust_line[m] != null or throw_anim != null or not has_wrist(w):
+		return false
+	for sd in ["R", "L"]:
+		if fixed_hand[sd] or not hand_works(sd) or reach[sd] != null or throwing[sd] or stowed[sd] != null:
+			return false
+	var jm = weapon_joints[m]
+	var jo = weapon_joints[o]
+	if jm == null or jo == null or not is_instance_valid(jm) or not is_instance_valid(jo):
+		return false
+	# The mirror: the plane down the middle of his chest.
+	var n: Vector3 = torso.global_transform.basis.x.normalized()
+	var c0: Vector3 = torso.global_position
+	var md := func(d: Vector3) -> Vector3: return d - n * (2.0 * d.dot(n))
+	var mp := func(p: Vector3) -> Vector3: return c0 + md.call(p - c0)
+	var ma := func(a: Vector3) -> Vector3: return -md.call(a)   # (a turn: mirrored, it goes the other way)
+	# A body laid as its mirror image: its frame reflected, and reflected back about one of its own
+	# axes about which it is the same either way (an arm about its width, a weapon about its flat),
+	# so it is still turned, not turned inside out.
+	var mt := func(t: Transform3D, flip: int) -> Transform3D:
+		var ax: Array = [md.call(t.basis.x), md.call(t.basis.y), md.call(t.basis.z)]
+		ax[flip] = -(ax[flip] as Vector3)
+		return Transform3D(Basis(ax[0], ax[1], ax[2]), mp.call(t.origin))
+	# (The elbows let go of any bend they were set to: the arms change places.)
+	for sd in ["R", "L"]:
+		_hold_elbow(sd, 0.0, false, 0.0)
+		_lock_elbow_straight(sd, false)
+	var was := {}
+	for sd in ["R", "L"]:
+		var up: VoxelPart = arm[sd].upper
+		var fo: VoxelPart = arm[sd].fore
+		was[sd] = [up.global_transform, fo.global_transform, up.linear_velocity, up.angular_velocity, fo.linear_velocity, fo.angular_velocity]
+	jm.queue_free()
+	jo.queue_free()
+	weapon_joints[m] = null
+	weapon_joints[o] = null
+	for sd in ["R", "L"]:
+		var src: Array = was["L" if sd == "R" else "R"]
+		var up: VoxelPart = arm[sd].upper
+		var fo: VoxelPart = arm[sd].fore
+		up.global_transform = mt.call(src[0], 0)
+		fo.global_transform = mt.call(src[1], 0)
+		up.linear_velocity = md.call(src[2])
+		up.angular_velocity = ma.call(src[3])
+		fo.linear_velocity = md.call(src[4])
+		fo.angular_velocity = ma.call(src[5])
+		up.snap_drawing()
+		fo.snap_drawing()
+	for b in w.bodies():
+		if b is RigidBody3D:
+			b.global_transform = mt.call(b.global_transform, 2)
+			b.linear_velocity = md.call(b.linear_velocity)
+			b.angular_velocity = ma.call(b.angular_velocity)
+	w.snap_drawing()
+	weapons[o] = w
+	weapons[m] = null
+	two_side = o
+	# The guard hand's grip made where the mirror laid it (the weapon in line with the forearm, as
+	# it was in the other), the other hand closing on the haft where it is.
+	weapon_joints[o] = _grip_joint(arm[o].fore, w, hand_world(o))
+	weapon_joints[m] = _joint_at(arm[m].fore, w, hand_world(m), false)
+	# What the guard hand was doing goes over to the other, mirrored: its aim, its mark, its pace.
+	var aq = aim_q[m]
+	aim_q[o] = mt.call(Transform3D(Basis(aq as Quaternion), c0), 2).basis.get_rotation_quaternion() if aq is Quaternion else null
+	aim_q[m] = null
+	aim_tw[o] = aim_tw[m]
+	aim_w[o] = ma.call(aim_w[m] as Vector3)
+	aim_w[m] = Vector3.ZERO
+	for d in [hand_lead, prev_target]:
+		d[o] = mp.call(d[m]) if d[m] is Vector3 else d[m]
+	lead_vel[o] = md.call(lead_vel[m] as Vector3)
+	target_vel[o] = md.call(target_vel[m] as Vector3)
+	for d in [swing_reach, swing_hold, chop_mem]:
+		d[o] = d[m]
+	var hi = hand_input[m]
+	if hi is Dictionary:
+		hand_input[o] = {"x": -float(hi.get("x", 0.0)), "y": float(hi.get("y", 0.0))}
+	for d in [pane_prev, elbow_prev, thrust_aim]:
+		d[o] = null
+		d[m] = null
+	two_front = null
+	two_gap = null
+	haft_i = Vector3.ZERO
 	return true
 
 ## Slowed for `seconds` to `factor` of the pace (ice, honey, poison); a weaker slow does not
@@ -1716,7 +1839,7 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 ## The weapon in `list` that `side`'s hand would go for on G (null: none in its reach, or the hand
 ## is not free). The HUD's "Pick up" prompt asks this too, so it shows exactly when G would work.
 func takeable(list: Array, side: String) -> Weapon:
-	if not alive or weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == "L" and two_handed) or (holding != null and holding.side == side):
+	if not alive or weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == two_off() and two_handed) or (holding != null and holding.side == side):
 		return null
 	var hand := hand_world(side)
 	var best: Weapon = null
@@ -1772,7 +1895,7 @@ func _arm_exempt(_side: String, w: Weapon, on: bool) -> void:
 
 func _hand_can_take(side: String) -> bool:
 	var fore: VoxelPart = arm[side].fore
-	return alive and not weapons[side] and not fore.severed and not fore.hanging and not fore.missing and fore.prosthetic == "" and not arm[side].upper.severed and not arm[side].upper.hanging and not arm_broken(side) and not (side == "L" and two_handed) and not (holding != null and holding.side == side)
+	return alive and not weapons[side] and not fore.severed and not fore.hanging and not fore.missing and fore.prosthetic == "" and not arm[side].upper.severed and not arm[side].upper.hanging and not arm_broken(side) and not (side == two_off() and two_handed) and not (holding != null and holding.side == side)
 
 func cancel_reach(side: String) -> void:
 	var r = reach[side]
@@ -1824,15 +1947,15 @@ func _wrench(dt: float) -> void:
 		if not (w and w.stuck != null):
 			var r = reach[side]
 			w = r.w if r != null and r.phase == "fist" and is_instance_valid(r.w) and r.w.stuck != null else null
-		if w == null or (side == "L" and two_handed and weapons.R == w):
+		if w == null or (side == two_off() and two_handed and weapons[two_side] == w):
 			wrench_t[side] = 0.0
 			continue
 		if not is_instance_valid(w.stuck.get("joint")) or not is_instance_valid(w.stuck.get("part")):
 			w.unstick()   # (what it was in is gone: nothing holds it any more)
 			continue
 		var pull := clampf((float(arm_strain[side]) - 0.05 * S) / (0.22 * S), 0.0, 1.5)
-		if side == "R" and two_handed:
-			pull = maxf(pull, clampf((float(arm_strain.L) - 0.05 * S) / (0.22 * S), 0.0, 1.5)) * 1.5
+		if side == two_side and two_handed:
+			pull = maxf(pull, clampf((float(arm_strain[two_off()]) - 0.05 * S) / (0.22 * S), 0.0, 1.5)) * 1.5
 		pull *= float(mods.strength) * (0.45 + 0.55 * minf(1.0, stamina / 60.0)) * (1.0 if state == "stand" else 0.4)
 		wrench_t[side] += pull * dt
 		stamina = maxf(0.0, stamina - pull * dt * 5.0)
@@ -2071,7 +2194,7 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 	aim_q[side] = null
 	if Combat.current:
 		Combat.current.loose_weapons.erase(w)
-	if side == "R" and w.design.get("twoHanded", false) and not weapons.L and off_hand_free() and w.two_hand_off() != null:
+	if side == two_side and w.design.get("twoHanded", false) and not weapons[two_off()] and off_hand_free() and w.two_hand_off() != null:
 		if by_hand:
 			# Taken up by hand: the other hand goes to the haft too and takes it when it is there.
 			w.grip_off = w.two_hand_off()
@@ -2123,7 +2246,7 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 	if not alive or arm_func(side) < 0.05:
 		return null
 	var w: Weapon = weapons[side]
-	if not w or (side == "L" and two_handed) or fixed_hand[side]:
+	if not w or (side == two_off() and two_handed) or fixed_hand[side]:
 		return null
 	var from := w.global_transform * w.center_of_mass
 	var arm_f := arm_func(side)
@@ -2214,10 +2337,11 @@ func item_hand() -> String:
 	# hands full the off hand rather than the weapon's; the pot is never put in a fist round a hilt
 	# while another hand could take it.
 	for sd in ["L", "R"]:
-		if not weapons[sd] and hand_works(sd) and not (sd == "L" and two_handed):
+		if not weapons[sd] and hand_works(sd) and not (sd == two_off() and two_handed):
 			return sd
-	# Both full: one that can put what it holds out of sight for the throw (Fighter.stow).
-	for sd in ["L", "R"]:
+	# Both full: one that can put what it holds out of sight for the throw (Fighter.stow), the off
+	# hand first.
+	for sd in [two_off(), two_side]:
 		if hand_works(sd) and not fixed_hand[sd]:
 			return sd
 	for sd in ["L", "R"]:
@@ -2225,12 +2349,14 @@ func item_hand() -> String:
 			return sd
 	return ""
 
-## Whether the left hand can take hold of a haft beside the right: not cut off, hanging, broken,
-## lost or a prosthetic (a hand cut off by the crocodile took up a hammer with the good one).
+## Whether the off hand (the left; the right with the haft held from the left side) can take hold
+## of a haft beside the guard hand: not cut off, hanging, broken, lost or a prosthetic (a hand cut
+## off by the crocodile took up a hammer with the good one).
 func off_hand_free() -> bool:
-	var fore: VoxelPart = arm.L.fore
-	var upper: VoxelPart = arm.L.upper
-	return not (fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or upper.severed or upper.hanging or arm_broken("L"))
+	var o := two_off()
+	var fore: VoxelPart = arm[o].fore
+	var upper: VoxelPart = arm[o].upper
+	return not (fore.severed or fore.hanging or fore.missing or fore.prosthetic != "" or upper.severed or upper.hanging or arm_broken(o))
 
 ## A bone of that arm broken: it hangs, and its hand holds nothing (user).
 func arm_broken(side: String) -> bool:
@@ -2305,6 +2431,18 @@ func is_out() -> bool:
 ## skull or a ruined head still does.
 const OUT_HOLD := 0.6
 const CONC_PER_BLOW := 0.7   # the most one blow to a sound skull adds to the concussion
+const FLINCH_J := 12.0       # the least blow of a weapon an arm in a stroke flinches from (apply_hit)
+## An arm in the middle of its own stroke (its fist going past STRIKE_V against his chest): a blow of
+## a weapon with no weight behind it does not take it out of the stroke (user: in the middle of a
+## blow the arm was put out by a feeble touch of the other's, nothing behind it). An arm at rest
+## gives way to a touch as it always did.
+const STRIKE_V := 1.5
+func _arm_striking(p) -> bool:
+	for sd in ["R", "L"]:
+		if arm.has(sd) and (p == arm[sd].upper or p == arm[sd].fore):
+			var fore: VoxelPart = arm[sd].fore
+			return (fore.linear_velocity - torso.linear_velocity).length() > STRIKE_V
+	return false
 var _out_since := -1   # the physics frame he was first seen out cold (-1: he is not)
 func _out_cold_now() -> bool:
 	if state != "down" or not alive or can_stand():
@@ -2579,8 +2717,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var g = toggle_grip()
 		if g == "short":
 			note.emit(self, "The grip is too short for two hands")
-		elif g == "full" and weapons.L:
-			note.emit(self, Loc.t("Your left hand holds the %s: swap hands (J) or throw it (F) first") % Loc.lower(String(weapons.L.design.get("name", "weapon"))))
+		elif g == "full" and weapons[two_off()]:
+			note.emit(self, Loc.t("Your left hand holds the %s: swap hands (J) or throw it (F) first" if two_off() == "L" else "Your right hand holds the %s: swap hands (J) or throw it (F) first") % Loc.lower(String(weapons[two_off()].design.get("name", "weapon"))))
 	if inp.get("swap", false) and state == "stand":
 		# The other arm broken: what is in the good hand stays there (user), and he is told why.
 		if not swap_hands() and (weapons.R or weapons.L):
@@ -3012,8 +3150,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# Both hands on a haft, the shoulders turn with the stroke: out to the side the arm across
 		# the chest was at the end of its reach and the blade stopped short of the mouse.
 		if two_handed and live:
-			var hx := clampf(float(hand_input.R.get("x", 0.0)), -2.0, 2.0)
-			var low_t := clampf(-float(hand_input.R.get("y", 0.0)) - 0.4, 0.0, 1.0)   # (bent over a low guard, less)
+			var hx := clampf(float(hand_input[two_side].get("x", 0.0)), -2.0, 2.0)
+			var low_t := clampf(-float(hand_input[two_side].get("y", 0.0)) - 0.4, 0.0, 1.0)   # (bent over a low guard, less)
 			twist_two = lerpf(twist_two, -hx * TWO_HAND_TWIST * (1.0 - 0.6 * low_t), minf(1.0, dt * 6.0))
 			twist += twist_two
 		else:
@@ -3296,7 +3434,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 1.5 * dt
 	two_front = null
 	two_gap = null
-	for side in ["R", "L"]:
+	# (The guard hand first: it sets where the other is to hold the haft this step.)
+	for side in [two_side, two_off()]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
 		# The breath goes with the work of the swing while the button is down: how far the hand
 		# is sent across the pane and how sharply it is turned, more with a heavy weapon in it.
@@ -3324,7 +3463,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# body while he swings (the button down). Not the turn of the whole man (walking about and
 	# looking round with the mouse carried the sword round with him and cost breath as if every
 	# turn of the head were a cut), and not a weapon bouncing in a hand at rest.
-	var sw: Weapon = weapons.R
+	var sw: Weapon = weapons[two_side]
 	if sw and not sw.is_shield and power:
 		# Only the turn that carries the tip through the air: the blade turned about its own
 		# length (the wheel setting the edge) moves the tip a finger's breadth, not its reach.
@@ -3462,11 +3601,103 @@ func _seat_drawing(interp := true, dt := 0.0) -> void:
 		var w: Weapon = weapons[side]
 		if w == null:
 			continue
-		var fore: VoxelPart = arm[side].fore if not two_handed or side == "R" else arm.R.fore
+		var fore: VoxelPart = arm[side].fore if not two_handed or side == two_side else arm[two_side].fore
 		for b in w.bodies():
 			if b is Weapon:
 				b.draw_shift = fore.draw_shift
 				b.draw_turn = fore.draw_turn
+	# (After the weapon: it is drawn where the hands hold it, not turned with the arm.)
+	_swivel_drawing(interp, dt)
+
+## Both hands on one haft, the guard hand's arm is drawn turned about the line from its shoulder to
+## its fist, as far as stands the forearm SWIVEL_BEND off the blade's line, the fist where it is
+## and the elbow down and out to its own side: the wrist is seen bent, as a two-handed grip bends
+## it, the grip below the fist clear of the forearm, and the other hand on the grip, not on the arm
+## (user: they did not look as if they held the sword in both hands). The bodies hold the blade in
+## line with the forearm (bent in the physics, the wrist shook at a guard and let the edge creep
+## off the wheel's: test_arms); this is drawing only. A straight arm has nothing to turn.
+const SWIVEL_BEND := 0.7   # rad: about 40 degrees, a two-handed grip's wrist
+const SWIVEL_NONE := 2.0    # what leaving the arm unturned costs against a turn that is fit
+const SWIVEL_FACE := 0.26   # no turned arm comes nearer his head than this (of S)
+var swivel_a := 0.0        # the arm's turn about that line as drawn (eased)
+static var swivel_on := true   # (probes: off, to see the arm as the bodies hold it)
+func _swivel_drawing(interp: bool, dt: float) -> void:
+	var side := two_side
+	if not arm.has(side) or not swivel_on:
+		swivel_a = 0.0
+		return
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	var w = weapons[side]
+	# (A limb cut, hanging or broken is drawn as it is: nothing turned.)
+	if up.parent_part == null or fo.parent_part != up or up.severed or fo.severed or up.hanging or fo.hanging or up.missing or fo.missing or fo.draw_turn != Transform3D() or up.draw_turn != Transform3D():
+		swivel_a = 0.0
+		return
+	var ok: bool = two_handed and w != null and is_instance_valid(w) and not w.is_shield and not throwing[side]
+	var tu := up.get_global_transform_interpolated() if interp else up.global_transform
+	var tf := fo.get_global_transform_interpolated() if interp else fo.global_transform
+	tu.origin += up.draw_shift
+	tf.origin += fo.draw_shift
+	var s0: Vector3 = tu * up.ca
+	var e0: Vector3 = tu * fo.pa
+	var h0: Vector3 = tf * hand_point
+	var v := h0 - s0
+	var u := e0 - s0
+	var want := 0.0
+	if ok and v.length() > 0.05 * S:
+		var a := v.normalized()
+		var u_perp := u - a * u.dot(a)
+		var tw: Transform3D = (w as Weapon).get_global_transform_interpolated() if interp else (w as Weapon).global_transform
+		var b: Vector3 = (tw.basis * Vector3.UP).normalized()
+		var l2 := (h0 - e0).length()
+		# The forearm turned by p about the line: its cosine to the blade is (A - B cos p - C sin p) / l2.
+		var big_a := (v - a * u.dot(a)).dot(b)
+		var big_b := u_perp.dot(b)
+		var big_c := a.cross(u_perp).dot(b)
+		var r := sqrt(big_b * big_b + big_c * big_c)
+		if u_perp.length() > 0.01 * S and r > 1e-5 and l2 > 1e-4:
+			var psi := atan2(big_c, big_b)
+			var k := big_a - l2 * cos(SWIVEL_BEND)
+			var cands: Array = [psi]
+			if k < r:
+				var d := acos(clampf(k / r, -1.0, 1.0))
+				cands = [psi + d, psi - d]
+			# The one with the elbow lower and further out to its own side; never into the chest,
+			# up over the shoulder, or across his face. When neither turn will do, none: the arm as
+			# the bodies hold it (the blade swung across to his other side, the turn that bent the
+			# wrist lifted the elbow in front of his face).
+			var out_x: Vector3 = torso.global_transform.basis.x.normalized() * (-1.0 if side == "R" else 1.0)
+			var tinv := torso.global_transform.affine_inverse()
+			var hd: Vector3 = head.global_position if head and not head.severed and not head.missing else s0 + Vector3(0, 0.3 * S, 0)
+			var best := -INF
+			cands.append(0.0)
+			for c in cands:
+				var e1: Vector3 = s0 + Basis(a, float(c)) * u
+				var sc: float = -e1.y + 0.5 * (e1 - s0).dot(out_x)
+				if float(c) == 0.0:
+					sc -= SWIVEL_NONE
+				else:
+					var le: Vector3 = tinv * e1
+					if absf(le.x) < torso.half_ext.x + 0.03 * S and absf(le.y) < torso.half_ext.y and absf(le.z) < torso.half_ext.z + 0.03 * S:
+						sc -= 10.0
+					if e1.y > s0.y + 0.08 * S:
+						sc -= 10.0
+					var near_face := minf(e1.distance_to(hd), minf(((s0 + e1) * 0.5).distance_to(hd), ((e1 + h0) * 0.5).distance_to(hd)))
+					if near_face < SWIVEL_FACE * S:
+						sc -= 10.0
+				if sc > best:
+					best = sc
+					want = wrapf(float(c), -PI, PI)
+	swivel_a = want if dt <= 0.0 else lerp_angle(swivel_a, want, minf(1.0, dt * 12.0))
+	if absf(swivel_a) < 0.001 or v.length() < 0.05 * S:
+		return
+	var turn := Basis(v.normalized(), swivel_a)
+	for pt in [up, fo]:
+		# Turned about the shoulder as drawn (s0): about the point its seat's shift came from, the
+		# shift left as it was (a part is drawn turned, then shifted), so what seats the limb on
+		# the body, and the weapon on the hand, stays as it was (test_seating).
+		var q: Vector3 = s0 - (pt as VoxelPart).draw_shift
+		pt.draw_turn = Transform3D(Basis(), q) * Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(), -q) * (pt as VoxelPart).draw_turn
 
 func _draw_joint_caps(interp := true) -> void:
 	for p: VoxelPart in parts:
@@ -3571,9 +3802,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# Caught by that arm: it cannot swing until it is wrenched free.
 	if pinned_arm == side and is_instance_valid(grabbed_by):
 		af *= 0.12
-	if side == "L" and two_handed and not (off_goal != null and is_bow(weapons.R)):
-		var hand_l := hand_world("L")
-		var sh_l = t_pos + t_rot * shoulder.L
+	if side == two_off() and two_handed and not (off_goal != null and is_bow(weapons[two_side])):
+		var hand_l := hand_world(side)
+		var sh_l = t_pos + t_rot * shoulder[side]
+		var sx_l := 1.0 if side == "L" else -1.0   # (its own side: the left +x)
 		# The off arm bends at an elbow as the main one does, the elbow out to its own side, down
 		# and a little back of the line from shoulder to hand (never up over it nor in across the
 		# chest), and the upper arm is rolled so the hinge bends toward the hand: pointed straight
@@ -3603,13 +3835,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# Out, down and a little back; where that elbow would sit in the chest (the hand
 			# across the body, the haft held in front), down and forward instead: an elbow aimed
 			# into the chest was shoved up over the shoulder by it.
-			for pref_l in [Vector3(0.5, -0.7, -0.4), Vector3(0.25, -0.65, 0.75)]:
+			for pref_l in [Vector3(0.5 * sx_l, -0.7, -0.4), Vector3(0.25 * sx_l, -0.65, 0.75)]:
 				var pref: Vector3 = t_rot * (pref_l as Vector3).normalized()
 				var perp: Vector3 = pref - line * pref.dot(line)
 				if perp.length_squared() < 1e-4:
-					perp = t_rot * Vector3(1, 0, 0)
+					perp = t_rot * Vector3(sx_l, 0, 0)
 				perp = perp.normalized()
-				elbow_dir_l = _elbow_dir("L", t_rot.inverse() * (line * cos_a + perp * sin_a), lu_l, t_rot)
+				elbow_dir_l = _elbow_dir(side, t_rot.inverse() * (line * cos_a + perp * sin_a), lu_l, t_rot)
 				elbow_l = sh_l + elbow_dir_l * lu_l
 				var in_chest: Vector3 = t_rot.inverse() * (elbow_l - t_pos)
 				var th_l: Vector3 = torso.half_ext
@@ -3647,16 +3879,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# It bears its own weight and its half of the weapon's (the other arm held it all up, and a
 		# raised blade sank and crept while the mouse stood still).
 		var m_arm := (fore.nominal_mass + upper.nominal_mass * 0.5)
-		var m_bear: float = m_arm + (weapons.R.mass * 0.5 if weapons.R and two_front != null else 0.0)
+		var w_two: Weapon = weapons[two_side]
+		var m_bear: float = m_arm + (w_two.mass * 0.5 if w_two and two_front != null else 0.0)
 		fore.apply_impulse(Vector3(0, m_bear * gravity * minf(1.0, af * 1.2) * dt, 0), hand_l - fore.global_position)
 		if not on_ground:
 			torso.apply_central_impulse(Vector3(0, -m_bear * gravity * minf(1.0, af * 1.2) * dt, 0))
 		# The off hand works too: it carries its end of the haft to where the swing wants it (the
 		# front hand's place), as hard as an arm can, instead of hanging on as dead weight for the
 		# other arm to haul round (the blade lagged a stroke behind the mouse and drifted).
-		if two_front != null and weapons.R:
+		if two_front != null and w_two:
 			var vel_l := fore.velocity_at(hand_l) - torso.linear_velocity
-			var m_l: float = m_arm + weapons.R.mass * 0.5
+			var m_l: float = m_arm + w_two.mass * 0.5
 			var wn_l := 22.0
 			var J_l := PD.clamp_len((((two_front as Vector3) - hand_l) * wn_l * wn_l - vel_l * 2.0 * 0.9 * wn_l) * m_l * dt, 700.0 * af * stam_f * blood_f * MS * dt)
 			fore.apply_impulse(J_l, hand_l - fore.global_position)
@@ -3667,10 +3900,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3) * (1.35 if enraged else 1.0) * (1.0 - 0.6 * minf(1.0, daze_t / 0.3))
 	# A thrust is made with the whole body: the arm drives harder along the line and the body
 	# lunges after the point (held out at arm's length and no more, the point only pricked).
-	var th_in: float = float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0))
+	var mk := side == two_side   # (the main hand: the main button, the wheel, the thrust key)
+	var th_in: float = float(inp.get("thrust", 0.0) if mk else inp.get("offThrust", 0.0))
 	if th_in > 0.3 and state == "stand" and w and not w.is_shield and not w.design.has("shoots") and shove_t <= 0.0:
 		strength *= 1.0 + 0.6 * clampf(th_in, 0.0, 1.0)
-	var hp: Dictionary = inp.get("main" if side == "R" else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1})
+	var hp: Dictionary = inp.get("main" if mk else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1})
 	if not w and inp.get("jabR" if side == "R" else "jabL", false) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
 		jab_t[side] = JAB_TIME
 		stamina -= 5.0
@@ -3685,7 +3919,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var jab = null
 	if jk >= 0.0:
 		jab = -JAB_COCK * jk / JAB_DRAW if jk < JAB_DRAW else (1.8 if jk < JAB_BACK else 1.8 * maxf(0.0, 1.0 - (jk - JAB_BACK) / JAB_HOME))
-	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if side == "R" else inp.get("offThrust", 0.0)))
+	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if mk else inp.get("offThrust", 0.0)))
 	# A fist lands with the whole arm behind it (character.js lockElbowOf): the elbow locks rigid,
 	# so the forearm goes where the upper arm drives it; but only once the arm is all but
 	# straight (user: a real punch starts from the bent elbow, and the arm straightens as the fist
@@ -3720,10 +3954,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		thrust = 0.0
 		strength *= 2.0
 	# A throw is made with one hand: the off hand lets go of the haft as the arm draws back.
-	if (winding or following) and side == "R" and two_handed and held_item == null:
-		if weapon_joints.L:
-			weapon_joints.L.queue_free()
-			weapon_joints.L = null
+	if (winding or following) and side == two_side and two_handed and held_item == null:
+		if weapon_joints[two_off()]:
+			weapon_joints[two_off()].queue_free()
+			weapon_joints[two_off()] = null
 		two_handed = false
 	# Winding up a throw and letting it go, the hand closes hard on the weapon: it is held
 	# firm and drawn back with the arm instead of wobbling in the fist.
@@ -3767,8 +4001,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var target := hand_target_local(side, hp_used, thr_used)
 	# Reaching for the haft (H pressed with its end behind him): to the grip, or to the nearest
 	# place in front of the body while the grip is behind it.
-	if side == "L" and grip_wait > 0.0 and weapons.R and not two_handed:
-		var at_g: Vector3 = weapons.R.global_transform * weapons.R.grip_off
+	if side == two_off() and grip_wait > 0.0 and weapons[two_side] and not two_handed:
+		var at_g: Vector3 = weapons[two_side].global_transform * weapons[two_side].grip_off
 		target = yaw_q.inverse() * (at_g + _out_front(at_g) - t_pos)
 	# Reaching for a weapon (G): to its grip, wherever it lies; with it in the fist, back up from
 	# there to the guard, not in one leap.
@@ -3853,6 +4087,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# there), and the stab goes in along it once he pushes.
 		if inp.get("depthOn", false) and inp.get("aimAt") is Vector3 and absf(float(inp.get("depth", 0.0))) < 0.05:
 			_line_to_mark(tl, inp.aimAt, t_pos, yaw_q, dt)
+		elif not inp.get("depthOn", false) and inp.get("aimAt") is Vector3 and float(tl.t) < THRUST_DRAW:
+			# A stab of the thrust key: laid on the crosshair while it is drawn back, then driven
+			# out along that line (where he looks is where it goes).
+			_line_to_mark(tl, inp.aimAt, t_pos, yaw_q, 1.0)
 		# (The player's mouse driving it in depth: as deep as he has pushed it, PlayerInput.depth.)
 		var dp: float = clampf(float(inp.get("depth", 0.0)), -1.0, 1.0) if inp.get("depthOn", false) else NAN
 		var ext := _thrust_ext(tl, tl.o, shoulder[side], INF, dp)
@@ -3912,7 +4150,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# to rest it trailed a fast stroke by a tenth of a second and ran out of drive near the end.
 		var w_ff: Vector3 = PD.clamp_len(PD.rot_error(w_aim, q_was) / dt, 30.0) if q_was != null else Vector3.ZERO
 		aim_w[side] = (aim_w[side] as Vector3).lerp(w_ff, 0.5)
-		if side == "R" and two_handed and weapon_joints.L and not throw_pose[side]:
+		if side == two_side and two_handed and weapon_joints[two_off()] and not throw_pose[side]:
 			# Both hands on one haft: the front hand is the pivot. It sits ahead of its own
 			# shoulder (lower for a low guard or a blow at a man on the sand, aside with the
 			# sweep), the back hand behind it down the shaft, and a thrust drives both along it.
@@ -3943,13 +4181,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				# From where the front hand really is (the guard's mark was off it, and the stab
 				# began with a jump off its own line).
 				if not tl2.has("f_w"):
-					tl2.f_w = hand_world("L")
+					tl2.f_w = hand_world(two_off())
 				_line_in_body(tl2, t_pos, yaw_q)
 				var dp2: float = clampf(float(inp.get("depth", 0.0)), -1.0, 1.0) if inp.get("depthOn", false) else NAN
 				front = t_pos + yaw_q * ((tl2.f as Vector3) + (tl2.dir as Vector3) * _thrust_ext(tl2, tl2.o, shoulder[side], (tl2.f as Vector3).z, dp2))
 				target_w = front - gap
-			var sh_r: Vector3 = t_pos + t_rot * shoulder.R
-			var sh_l: Vector3 = t_pos + t_rot * shoulder.L
+			var sh_r: Vector3 = t_pos + t_rot * shoulder[two_side]   # (the guard hand's)
+			var sh_l: Vector3 = t_pos + t_rot * shoulder[two_off()]
 			# (Not in a thrust: that goes out to the full reach of the arm along its line.)
 			if tl2 == null:
 				for _pass in 2:
@@ -3973,7 +4211,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			two_front = front
 			two_main = target_w
 			two_gap = front - target_w if tl2 == null else null   # (a thrust drives the front hand along its line)
-		var fore_q := w_aim * grip_q(w).inverse()
+		var fore_q := w_aim * hold_q(side, w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
 		var lu := UPPER_LEN * S
 		var lf := FORE_LEN * S
@@ -3988,7 +4226,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
-		if side == "R" and two_gap != null:
+		if side == two_side and two_gap != null:
 			# The off hand's place is taken off where the main arm is really driven (its elbow and
 			# forearm as the blade's line has them), not off the mouse's mark: the arm cannot always
 			# put its hand on the mark, and the off hand sent to the mark's end of the haft pulled
@@ -4044,9 +4282,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if has_wrist(w):
 			_drive_wrist(side, w, w_aim, strength, dt)
-		if side == "R" and two_handed and weapon_joints.L and thrust_line[side] == null:
+		if side == two_side and two_handed and weapon_joints[two_off()] and thrust_line[side] == null:
 			_drive_haft(w, w_aim, strength, dt)
-		elif side == "R":
+		elif side == two_side:
 			haft_i = Vector3.ZERO
 		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
 		_free_wedged(side, w, dt)
@@ -4178,7 +4416,7 @@ func _unwedge(side: String, dt: float, yaw_q: Quaternion, t_pos: Vector3) -> voi
 	var hl: Vector3 = yaw_q.inverse() * (hand_world(side) - t_pos)
 	var te: Vector3 = torso.half_ext
 	var behind: bool = hl.z < -0.7 * te.z and absf(hl.x) < te.x + 0.15 * S and hl.y > -te.y - 0.12 * S and hl.y < te.y + 0.2 * S   # (from the hips up: a hand down at the thigh is no matter)
-	var free_hand: bool = state == "stand" and not weapons[side] and not (side == "L" and two_handed) and not throwing[side] and held_item == null
+	var free_hand: bool = state == "stand" and not weapons[side] and not (side == two_off() and two_handed) and not throwing[side] and held_item == null
 	var mates := [torso, by_name["thigh" + side], by_name["thigh" + ("L" if side == "R" else "R")]]
 	if wedged[side] < 0.0:
 		wedged[side] = minf(0.0, wedged[side] + dt)
@@ -4244,7 +4482,7 @@ func _keep_hand_front(side: String, dt: float) -> void:
 	# The hand on the haft beside the weapon hand (two hands, across to the other side) is brought
 	# round the front, not out to its own side: that way lay across the small of the back (user:
 	# H with a mace held low to the right, the off hand on the haft behind the right hip).
-	var on_haft: bool = side == "L" and two_handed and weapon_joints.L != null
+	var on_haft: bool = side == two_off() and two_handed and weapon_joints[side] != null
 	for pp in pts:
 		var l: Vector3 = inv * (pp[1] as Vector3)
 		if l.z > -e.z or absf(l.x) > e.x + 0.12 * S or l.y < -e.y - 0.1 * S or l.y > e.y + 0.25 * S:
@@ -4260,7 +4498,7 @@ func _keep_hand_front(side: String, dt: float) -> void:
 		var part: VoxelPart = pp[0]
 		var dir: Vector3 = bq * push.normalized()
 		var v_out := dir.dot(part.velocity_at(pp[1]) - torso.velocity_at(pp[1]))
-		var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0) + (weapons.R.mass * 0.5 if on_haft and weapons.R else 0.0)
+		var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0) + (weapons[two_side].mass * 0.5 if on_haft and weapons[two_side] else 0.0)
 		var acc: float = minf(push.length(), 0.3 * S) * ARM_OUT_K - minf(0.0, v_out) * 2.0 * sqrt(ARM_OUT_K)
 		var jo: Vector3 = dir * acc * m_eff * dt
 		part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
@@ -4609,7 +4847,7 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	var x := -clampf(float(hp.get("x", 0.0)), -2.0, 2.0) * 0.5 * S
 	# Both hands on the haft: out to the main hand's own side the other hand has to cross the
 	# whole chest to keep its grip, so that way the mark goes only part as far.
-	if two_handed and side == "R" and x * sh.x > 0.0:
+	if two_handed and side == two_side and x * sh.x > 0.0:
 		x *= 0.5
 	var fist := 0.12 if not weapons[side] else 0.0
 	var hy := clampf(float(hp.get("y", 0.0)), -1.6, 1.6)
@@ -4625,7 +4863,7 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 	y -= 0.3 * low * short * S
 	# Both hands go no lower than the hips: a long blade pointed down from lower than that
 	# went into the sand and could not follow the mouse.
-	if two_handed and side == "R":
+	if two_handed and side == two_side:
 		y = minf(maxf(y, -0.55 * S), 0.55 * S)
 	# "tuck": a hand held in to the body (a bot clutching a wound), not out in front of it.
 	var z := (0.40 + fist + thrust * 0.4 + 0.1 * minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * short - 0.32 * clampf(float(hp.get("tuck", 0.0)), 0.0, 1.0)) * S
@@ -4854,7 +5092,7 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 	ed = ed.normalized()
 	# The edge is where the wheel set it, and stays there through every stroke: it is not rolled
 	# over to lead the swing (that turned a pick's head over at each change of way, on its own).
-	var tw := float(inp.get("twist" if side == "R" else "offTwist", 0.0))
+	var tw := float(inp.get("twist" if side == two_side else "offTwist", 0.0))
 	ed = ed.rotated(axis, tw)
 	# A bot has no wheel: its blade (sharp on both sides) turns to lead whichever way it sweeps,
 	# the nearer side forward (without it a giant's blows came down on the flat and seldom
@@ -5034,12 +5272,12 @@ func _drive_haft(w: Weapon, w_aim: Quaternion, strength: float, dt: float) -> vo
 	var want := w_aim * Vector3.UP
 	var c := ax.cross(want)
 	var err := c.normalized() * ax.angle_to(want) if c.length_squared() > 1e-10 else Vector3.ZERO
-	var rel := w.angular_velocity - (aim_w.R as Vector3)
+	var rel := w.angular_velocity - (aim_w[two_side] as Vector3)
 	rel -= ax * rel.dot(ax)
 	# A steady pull off the line (the arms' own pose, a heavy head's weight) is worked off as he
 	# holds it: the correction grows while the blade stays off the mouse, and lets go as it comes
 	# on or as the stroke moves fast.
-	var moving := (aim_w.R as Vector3).length() > 3.0
+	var moving := (aim_w[two_side] as Vector3).length() > 3.0
 	haft_i = (haft_i + err * dt) * (0.9 if moving else 1.0)
 	haft_i -= ax * haft_i.dot(ax)   # (about the haft's line only, never its roll)
 	haft_i = PD.clamp_len(haft_i, 0.35)
@@ -5649,12 +5887,18 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# aim wanders (everyone). It heals a little over the fight.
 	if part == head and not detached and lp.z > V * S * 0.5 and absf(lp.y - V * S * 0.6) < V * S * 1.6 and J > 5.0:
 		eye_hurt = minf(1.0, eye_hurt + J * (0.012 if type == "blunt" else 0.025))
-	if not detached and part.parent_part and part.parent_part != torso:
-		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + J * 0.005)
+	# An arm flinches from a weapon's blow only if it has weight behind it: a slow touch of a blade,
+	# a stroke spent, is felt but the arm swinging on goes on with its stroke (user: a weak blow
+	# with nothing behind it took his arm out of his own stroke). The harder, the longer. (The
+	# rest flinch from any blow, as they did, and an arm from a bite, a claw or a fist.)
+	var jf: float = J - (FLINCH_J if hit.get("weapon", false) and _arm_striking(part) else 0.0)
+	if jf >= 0.0 and not detached and part.parent_part and part.parent_part != torso:
+		part.parent_part.flinch_t = maxf(part.parent_part.flinch_t, 0.1 + jf * 0.005)
 	if not detached:
 		# A wrecked trunk holds him up worse: every blow rocks him more.
 		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.0035 * (1.0 + injury) * (1.0 + 0.8 * (1.0 - minf(1.0, stamina / 40.0))) * (1.0 + 0.8 * (1.0 - torso.function())))
-		part.flinch_t = maxf(part.flinch_t, minf(0.3, 0.08 + J * 0.006))
+		if jf >= 0.0:
+			part.flinch_t = maxf(part.flinch_t, minf(0.3, 0.08 + jf * 0.006))
 		if push_t <= 0.0 and J > 4.0:
 			push_t = 0.3
 			# A fighter takes a blow and fights on: it rocks him, it does not bowl him over.
@@ -6315,7 +6559,7 @@ func hang(part: VoxelPart, res: Dictionary) -> void:
 	for side in arm:
 		if (part == arm[side].fore or part == arm[side].upper) and weapons[side]:
 			release(side)
-	if arm.has("L") and two_handed and (part == arm.L.fore or part == arm.L.upper):
+	if arm.has("L") and two_handed and (part == arm[two_off()].fore or part == arm[two_off()].upper):
 		_off_hand_off_haft()
 	if part == head:
 		concussion = minf(1.0, concussion + 0.5)
@@ -6338,9 +6582,10 @@ func _forearms_pass(on: bool) -> void:
 				a.remove_collision_exception_with(b)
 
 func _off_hand_off_haft() -> void:
-	if weapon_joints.L:
-		weapon_joints.L.queue_free()
-		weapon_joints.L = null
+	var o := two_off()
+	if weapon_joints[o]:
+		weapon_joints[o].queue_free()
+		weapon_joints[o] = null
 	two_handed = false
 	two_front = null
 	two_gap = null
@@ -6396,7 +6641,7 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	for side in arm:
 		if pieces.has(arm[side].fore) and weapons[side]:
 			release(side)
-	if arm.has("L") and two_handed and pieces.has(arm.L.fore):
+	if arm.has("L") and two_handed and pieces.has(arm[two_off()].fore):
 		_off_hand_off_haft()
 	res.severed.append(part)
 	Physique.reshape(self, part)
@@ -6863,7 +7108,7 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 		if not arm.has(side):
 			continue   # (a beast's legs are not arms)
 		if part == arm[side].upper or part == arm[side].fore:
-			if side == "L" and two_handed:
+			if side == two_off() and two_handed:
 				_off_hand_off_haft()
 			elif weapons[side]:
 				release(side)
@@ -7098,7 +7343,7 @@ func status_packed() -> Array:
 	for p in parts:
 		any = any or p.fracture > 0
 	if not any:
-		return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0, 0]
+		return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), (1 if two_handed else 0) + (2 if two_side == "L" else 0), 0]
 	var fb := PackedByteArray()
 	fb.resize(parts.size() * 3)
 	for i in parts.size():
@@ -7109,7 +7354,7 @@ func status_packed() -> Array:
 			fb[i * 3] = p.fracture | (clampi(roundi(float(p.kink[5]) / 1.4 * 63.0), 1, 63) << 2)
 			fb[i * 3 + 1] = int(p.kink[4]) & 255
 			fb[i * 3 + 2] = clampi(roundi((float(p.kink[1]) / maxf(1e-4, p.half_ext[ax]) * 0.5 + 0.5) * 255.0), 0, 255)
-	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), 1 if two_handed else 0, fb]
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), (1 if two_handed else 0) + (2 if two_side == "L" else 0), fb]
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -7126,7 +7371,8 @@ func apply_status(s) -> void:
 		if s.size() > 4:
 			dying = maxf(0.0, float(s[4]))
 		if s.size() > 5:
-			net_two_handed = int(s[5]) == 1
+			net_two_handed = (int(s[5]) & 1) == 1
+			net_two_side = "L" if (int(s[5]) & 2) != 0 else "R"
 		if s.size() > 6 and s[6] is PackedByteArray and (s[6] as PackedByteArray).size() == parts.size() * 3:
 			var fb: PackedByteArray = s[6]
 			for i in parts.size():

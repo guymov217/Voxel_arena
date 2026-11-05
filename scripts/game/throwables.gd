@@ -1214,7 +1214,22 @@ func on_item(ev: Dictionary) -> void:
 			m.crowd_add(c, -3, "banana")
 			m.sfx("whoosh", ev.p)
 		"ram":
+			# The wheel takes his feet from under him: his shins knocked on the way it rolls, his
+			# trunk carried on the way he was going, so he goes down over it (face first, running
+			# onto it), not down where he stood with his run sliding him along the sand.
+			var iv: Vector3 = (ev.item as Dictionary).get("vel", Vector3.ZERO) if ev.get("item") is Dictionary else Vector3.ZERO
+			var roll := Vector3(iv.x, 0.0, iv.z)
 			c.fall(1.4, true)
+			if roll.length() > 0.1:
+				var sweep := roll.normalized() * clampf(roll.length(), 3.0, 8.0)
+				for n in ["shinL", "shinR", "thighL", "thighR"]:
+					var lp = c.by_name.get(n)
+					if lp and not lp.severed:
+						var k := 1.0 if String(n).begins_with("shin") else 0.45
+						lp.apply_central_impulse((sweep * k + Vector3(0, 1.6 * k, 0)) * lp.mass)
+				# The run goes into the fall: he pitches over it rather than skating on.
+				var tv: Vector3 = c.torso.linear_velocity
+				c.torso.linear_velocity = Vector3(tv.x * 0.75, maxf(tv.y, 0.6), tv.z * 0.75)
 			m.feed.emit(Loc.t("%s is bowled over by a cheese wheel") % c.display_name)
 			if owner_:
 				m.crowd_add(owner_, 6, "cheese")
@@ -1578,7 +1593,7 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 	var side: String = c.item_hand()
 	if side == "":
 		return   # no hand left to hold it
-	if side == "L" and c.two_handed:
+	if side == c.two_off() and c.two_handed:
 		c.toggle_grip()   # the off hand lets go of the haft to take the pot (H takes it back)
 	# Both hands full: that hand puts what it holds out of sight and takes the pot instead; the
 	# weapon is back in it once the pot is thrown or put away (user).
@@ -1653,7 +1668,7 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 	# From the hand that throws it, a hand's breadth on toward the mark (clear of the fist): it
 	# was always the left hand's place, a span over it, whichever hand held it.
 	var sd: String = side if side != "" else c.item_hand()
-	if sd == "L" and c.two_handed:
+	if sd == c.two_off() and c.two_handed:
 		c.toggle_grip()
 	# (A bot throws at once: the hand full, it puts its weapon out of sight for the throw and has
 	# it back when the arm comes through.)

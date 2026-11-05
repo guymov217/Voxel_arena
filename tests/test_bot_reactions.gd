@@ -115,7 +115,10 @@ func _duel(reacts: bool, seed_: int) -> Dictionary:
 			print("   t=%.0f dist=%.2f a=%s/%s blood %.0f z=%s blood %.0f" % [i / 120.0, a.f.torso.global_position.distance_to(z.f.torso.global_position), a.bot.state, a.f.state, a.f.blood, z.bot.state, z.f.blood])
 		if not a.f.alive or not z.f.alive:
 			break
-	var out := {"swings": swings, "steps": steps, "reacting": reactions, "dealt": 100.0 - z.f.blood, "weapon": a.f.weapons.R != null or not a.f.alive or a.f.state != "stand"}
+	# (The harm done: the blood he took, and a kill as the whole of a man: a head or a limb taken
+	# off in one blow kills him with little of his blood spilt.)
+	var out := {"swings": swings, "steps": steps, "reacting": reactions, "dealt": 100.0 - z.f.blood + (100.0 if not z.f.alive else 0.0), "weapon": a.f.weapons.R != null or not a.f.alive or a.f.state != "stand"}
+	print("   duel %d %s: %d steps, a %s blood %.0f, z %s blood %.0f" % [seed_, "reacting" if reacts else "plain", steps, "alive" if a.f.alive else "dead", a.f.blood, "alive" if z.f.alive else "dead", z.f.blood])
 	m.queue_free()
 	return out
 

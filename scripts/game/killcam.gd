@@ -6,7 +6,10 @@ extends Node
 ## and cut into a clip, from three seconds before the blow to a second and a half after. When
 ## the match ends the best clip is shown: time stops, the bodies are put back where they were and
 ## played forward, slowing right down around the blow, the camera circling the killer and the
-## victim, black bars and a caption on screen. The voxels keep the damage they ended with.
+## victim, black bars and a caption on screen. The voxels keep the damage they ended with. The
+## blasts, flashes and sprays of the clip are on tape too and are made again as it plays (a pot's
+## blast went unseen in it: user). The clip shown is the cleanest kill: the one whose killing blow
+## took the biggest piece off the man (user: the blow of the kill, nothing before it).
 
 const RATE := 1.0 / 30.0
 const KEEP := 7.0
@@ -22,12 +25,26 @@ var clips: Array = []           # the best few clips cut so far (online the host
 var playing := false
 var overlay: CanvasLayer = null
 var vox_log: Array = []         # {t, part, idx}: every voxel lost while on tape, to put back and take again
+var fx_log: Array = []          # {t, fn, args}: every burst and flash while on tape (Fx.tape), made again in the replay
 var _heard := {}                # fighters whose voxel losses are on tape
+## A blow this long before the death is the killing blow (a leg taken off, the man down and dead
+## of it a moment later); one longer before it is not (he bled out of it, or died of another).
+const KILL_BLOW_S := 1.0
 
 func _init(match_: Node) -> void:
 	m = match_
 	name = "KillCam"
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+func _ready() -> void:
+	if m.get("fx") != null and m.fx:
+		m.fx.tape = _on_fx
+
+## A burst or a flash as it is made (Fx.tape): on tape with its time.
+func _on_fx(fn: String, args: Array) -> void:
+	if playing:
+		return
+	fx_log.append({"t": m.time, "fn": fn, "args": args})
 
 ## How good a kill was, and the line under the replay.
 static func score_kill(k: Dictionary) -> Dictionary:
@@ -54,7 +71,49 @@ static func score_kill(k: Dictionary) -> Dictionary:
 	score += minf(30.0, float(k.get("severed", 0)) * 12.0)
 	if float(k.get("J", 0.0)) > 30.0:
 		score += minf(15.0, (float(k.J) - 30.0) * 0.5)
+	# The cleanest kill first, whatever else the others had: a piece taken off by the killing blow
+	# itself puts a kill above every kill without one, and the bigger the piece (of the whole man)
+	# the higher (user).
+	var piece := float(k.get("piece", 0.0))
+	if piece > 0.0:
+		score += PIECE_FIRST + PIECE_FIRST * piece
 	return {"score": score, "caption": caption}
+
+## What a piece off the man in the killing blow puts a kill above (more than every other point
+## of a kill together).
+const PIECE_FIRST := 1000.0
+
+## The share of the man (by his voxels' volume) the biggest piece his killing blow took off made:
+## a part cut off, with whatever hung from it (an arm with its hand, a leg with its foot). 0 when
+## the blow took nothing off.
+static func piece_of(f, hit: Dictionary) -> float:
+	var res = hit.get("res")
+	if not (res is Dictionary) or not (res.get("severed") is Array) or (res.severed as Array).is_empty():
+		return 0.0
+	var vol := func(p) -> float:
+		var e: float = float(p.vf) * float(p.part_scale)
+		return float(p.alive_count) * e * e * e
+	var whole := 0.0
+	for p in f.parts:
+		if is_instance_valid(p):
+			whole += vol.call(p)
+	if whole <= 0.0:
+		return 0.0
+	var best := 0.0
+	for cut in res.severed:
+		if not is_instance_valid(cut):
+			continue
+		var v: float = vol.call(cut)
+		for p in f.parts:
+			if not is_instance_valid(p) or p == cut:
+				continue
+			var up = p.parent_part
+			while up != null and up != cut:
+				up = up.parent_part
+			if up == cut and (not p.severed or (res.severed as Array).has(p)):
+				v += vol.call(p)
+		best = maxf(best, v)
+	return clampf(best / whole, 0.0, 1.0)
 
 func _bodies() -> Array:
 	var out := []
@@ -101,6 +160,8 @@ func _physics_process(dt: float) -> void:
 		frames.pop_front()
 	while not vox_log.is_empty() and m.time - float(vox_log[0].t) > KEEP + 1.0:
 		vox_log.pop_front()
+	while not fx_log.is_empty() and m.time - float(fx_log[0].t) > KEEP + 1.0:
+		fx_log.pop_front()
 	for e in m.entities:
 		if is_instance_valid(e.f) and not _heard.has(e.f.get_instance_id()) and e.f.has_signal("voxels_lost"):
 			_heard[e.f.get_instance_id()] = true
@@ -131,7 +192,11 @@ func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", th
 			severed += 1
 	var w = last_hit.get("weapon")
 	var wn = Loc.lower(String(w.design.get("name", ""))) if w != null and is_instance_valid(w) else (wname if wname != "" else null)
-	var k := {"t": float(last_hit.get("at", m.time)) if cause == "out" else m.time, "out": cause == "out", "victim": f.display_name, "killer": kname, "decap": cause == "decap" or (f.head and f.head.severed),
+	# The killing blow: the last one, if it came at the death (not a wound he bled out of later).
+	# A clip of a piece taken off is cut round the blow, its slow motion on the cut itself.
+	var at := float(last_hit.get("at", m.time))
+	var piece := piece_of(f, last_hit) if m.time - at <= KILL_BLOW_S else 0.0
+	var k := {"t": at if cause == "out" or piece > 0.0 else m.time, "out": cause == "out", "victim": f.display_name, "killer": kname, "decap": cause == "decap" or (f.head and f.head.severed), "piece": piece,
 		"big": f.S >= 1.8 or f.boss, "burning": f.parts.any(func(p): return not p.spots.is_empty()),
 		"unarmed": killer is Fighter and is_instance_valid(killer) and killer.weapons.get("R") == null and killer.weapons.get("L") == null,
 		"thrown": thrown or (w != null and is_instance_valid(w) and w.holder == null), "weapon": wn,
@@ -217,6 +282,11 @@ func play(done: Callable, force := false) -> void:
 	for k in range(redo.size() - 1, -1, -1):
 		redo[k].part.restore_voxels(redo[k].idx)
 	var next_ev := 0
+	# The blasts, flashes and sprays of the clip, made again at their moments, in slow motion with
+	# the rest (the game is paused round them: they run on their own).
+	var fx_ev: Array = fx_log.filter(func(ev): return float(ev.t) > t0 and float(ev.t) <= t1)
+	var next_fx := 0
+	var live_fx: Array = []   # [node, its moment, its own speed (a burst) or strength (a flash)]
 	var tb: float = best.t_blow
 	var t := t0
 	var orbit := 0.0
@@ -241,6 +311,17 @@ func play(done: Callable, force := false) -> void:
 			if is_instance_valid(redo[next_ev].part):
 				redo[next_ev].part.remove_voxels(redo[next_ev].idx, false, false)
 			next_ev += 1
+		while next_fx < fx_ev.size() and float(fx_ev[next_fx].t) <= t:
+			live_fx.append_array(_fx_again(fx_ev[next_fx]))
+			next_fx += 1
+		for lf in live_fx:
+			var nd = lf[0]
+			if not is_instance_valid(nd):
+				continue
+			if nd is GPUParticles3D:
+				nd.speed_scale = float(lf[2]) * speed
+			elif nd is OmniLight3D:
+				nd.light_energy = float(lf[2]) * maxf(0.0, 1.0 - (t - float(lf[1])) / Fx.FLASH_FADE)
 		for id in ids:
 			var body = ids[id]
 			if not is_instance_valid(body):
@@ -285,6 +366,9 @@ func play(done: Callable, force := false) -> void:
 	while _skip_held() and hold < 1.5:
 		hold += 1.0 / 60.0
 		await tree.process_frame
+	for lf in live_fx:
+		if is_instance_valid(lf[0]):
+			lf[0].queue_free()
 	# (Skipped or played through: every wound back as it is now.)
 	while next_ev < redo.size():
 		if is_instance_valid(redo[next_ev].part):
@@ -311,6 +395,22 @@ func play(done: Callable, force := false) -> void:
 	tree.paused = false
 	playing = false
 	done.call()
+
+## A burst or a flash off the tape made again: its nodes, running through the pause.
+func _fx_again(ev: Dictionary) -> Array:
+	var out := []
+	if m.get("fx") == null or m.fx == null:
+		return out
+	var a: Array = ev.args
+	if ev.fn == "burst":
+		for ps in m.fx.make_burst(a[0], a[1], a[2], a[3], a[4], a[5]):
+			ps.process_mode = Node.PROCESS_MODE_ALWAYS
+			out.append([ps, float(ev.t), ps.speed_scale])
+	elif ev.fn == "flash":
+		var l: OmniLight3D = m.fx.make_light(a[0], a[1], a[2], a[3])
+		l.process_mode = Node.PROCESS_MODE_ALWAYS
+		out.append([l, float(ev.t), float(a[2])])
+	return out
 
 func _skip_held() -> bool:
 	return (InputMap.has_action("va_kick") and Input.is_action_pressed("va_kick")) or Input.is_key_pressed(KEY_ESCAPE)

@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Pretorianin Severus",
  "Praetorian Tiberius": "Pretorianin Tiberius",
  "Praetorian Vitus": "Pretorianin Vitus",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Naciśnij %s: pchnięcie jest włączone, a ostrze celuje tam, gdzie patrzysz. Przytrzymaj przycisk myszy i pchnij mysz do przodu: ostrze wychodzi prosto przed siebie; cofnij, a wróci. Wypchnij je do końca (%s ponownie je wyłącza).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Naciśnij %s: ostrze kieruje się na celownik i wychodzi prosto przed siebie, z twoim ciężarem za nim, po czym wraca. Przytrzymaj %s, a ostrze zostanie wysunięte. Celuj myszą: pchnięcie idzie tam, gdzie patrzysz.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Naciśnij „Zamachnij się”: broń zatoczy łuk tak szybko, jak w dłoni.",
  "Press a key…": "Naciśnij klawisz…",
  "Press its number: laid or bowled in front of you": "Naciśnij jego numer: kładzie się lub toczy przed tobą",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Wyważenie do rzutu",
  "Thrown hit!": "Trafienie rzutem!",
  "Thrust": "Pchnięcie",
- "Thrust (press: on and off)": "Pchnięcie (naciśnij: włącz i wyłącz)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Pchnięcie (naciśnij: pchnięcie tam, gdzie celujesz; przytrzymaj: ostrze zostaje wysunięte)",
  "Thunder pot": "Garniec gromu",
  "Thunderjaw": "Gromoszczęka",
  "Tiger": "Tygrys",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Obróć",
  "✋ Main hand": "✋ Główna ręka",
  "✋ Move hand": "✋ Przesuń dłoń",
- "✋ Other hand": "✋ Druga ręka"
+ "✋ Other hand": "✋ Druga ręka",
+ "One hand · other side": "Jedna ręka · z drugiej strony",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "W prawej ręce trzymasz: %s. Najpierw zamień ręce (J) albo rzuć (F)",
+ "Swap hands (both on one haft: hold it from the other side)": "Zamień ręce (obie na trzonku: trzymaj z drugiej strony)"
 }

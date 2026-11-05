@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "ทหารองครักษ์เซเวรุส",
  "Praetorian Tiberius": "ทหารองครักษ์ทิเบริอุส",
  "Praetorian Vitus": "ทหารองครักษ์วิตุส",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "กด %s: เปิดโหมดแทง ใบมีดจะชี้ไปทางที่คุณมอง กดปุ่มเมาส์ค้างแล้วดันเมาส์ไปข้างหน้า: ใบมีดจะพุ่งตรงออกไป ดึงกลับมันก็จะกลับเข้ามา ลองแทงให้สุด (กด %s อีกครั้งเพื่อปิด)",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "กด %s: ใบมีดจะเล็งไปที่เป้าเล็งแล้วพุ่งตรงออกไปพร้อมน้ำหนักตัว แล้วกลับมา กด %s ค้างไว้ ปลายอาวุธจะยื่นค้างอยู่ เล็งด้วยเมาส์: การแทงจะไปทางที่คุณมอง",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "กด “ลองเหวี่ยง”: อาวุธจะเหวี่ยงเร็วเท่ากับตอนอยู่ในมือจริง",
  "Press a key…": "กดปุ่ม…",
  "Press its number: laid or bowled in front of you": "กดหมายเลข: วางหรือกลิ้งไปข้างหน้าคุณ",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "ถ่วงสมดุลสำหรับขว้าง",
  "Thrown hit!": "ขว้างโดน!",
  "Thrust": "แทง",
- "Thrust (press: on and off)": "แทง (กดเพื่อเปิด/ปิด)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "แทง (กด: แทงไปยังจุดที่เล็ง; กดค้าง: ปลายอาวุธยื่นค้างไว้)",
  "Thunder pot": "หม้อสายฟ้า",
  "Thunderjaw": "ขากรรไกรสายฟ้า",
  "Tiger": "เสือ",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ หมุน",
  "✋ Main hand": "✋ มือหลัก",
  "✋ Move hand": "✋ ย้ายมือ",
- "✋ Other hand": "✋ อีกมือ"
+ "✋ Other hand": "✋ อีกมือ",
+ "One hand · other side": "มือเดียว · จับอีกข้าง",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "มือขวาถือ%sอยู่: สลับมือ (J) หรือขว้างทิ้ง (F) ก่อน",
+ "Swap hands (both on one haft: hold it from the other side)": "สลับมือ (จับสองมือ: สลับไปจับอีกข้าง)"
 }

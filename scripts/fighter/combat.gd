@@ -333,6 +333,9 @@ func _clang(g: Dictionary, out: Array) -> void:
 		if not k.is_empty():
 			out.append({"kind": "chip", "weapon": w, "indices": k.indices, "voxels": k.voxels, "p": g.p, "broke": k.broke})
 
+## The speed of a point driven home (m/s, along its blade) that puts all of a thrust behind it.
+const THRUST_FULL_V := 3.0
+
 func _blow(g: Dictionary) -> Dictionary:
 	var vic: VoxelPart = g.vic
 	var vic_char = vic.fighter
@@ -425,8 +428,13 @@ func _blow(g: Dictionary) -> Dictionary:
 			if along > (0.4 if g.type == "point" else 0.75):
 				dir = bax
 				along = 1.0
-				J = maxf(J, minf(75.0, (18.0 + 16.0 * th) * minf(1.0, swing / 1.6 + 0.5))) * (1.0 + 0.8 * th)
-				heavy = maxf(heavy, 0.45 * th)
+				# As hard as the point is driven: its own speed along the blade into him, the arm's
+				# drive and the body's lunge in it (user: a blow's harm is its momentum). A point
+				# only held out, or pushed in slowly, is no stab (it landed at half a full stab's
+				# weight, still or not, and took a man's arm out of his own stroke).
+				var drive := minf(1.0, maxf(0.0, _vel_at(att, p).dot(bax)) / THRUST_FULL_V)
+				J = maxf(J, minf(75.0, (18.0 + 16.0 * th) * drive)) * (1.0 + 0.8 * th * drive)
+				heavy = maxf(heavy, 0.45 * th * drive)
 				if g.type == "edge":
 					g = g.duplicate()
 					g.type = "point"

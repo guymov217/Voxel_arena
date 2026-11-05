@@ -14,11 +14,35 @@ func test_stats_match_the_web_game() -> void:
 			continue
 		n += 1
 		var got := ForgeLib.compute_stats(d)
+		var mats := {}
+		for v in d.voxels:
+			if v[4] == "edge" or v[4] == "point":
+				mats[v[3]] = true
 		for f in ["mass", "reach", "swingSpeed", "cut", "pierce", "inertia"]:
+			# (The edge cuts as its better half does, ForgeLib.compute_stats: where the sharp blocks
+			# are of more than one stuff, the web game's mean of them is the least it may be.)
+			if (f == "cut" or f == "pierce") and mats.size() > 1:
+				if float(got[f]) < float(want[f]) - 1e-3:
+					bad.append("%s %s %.4f under %.4f" % [k, f, got[f], want[f]])
+				continue
 			if absf(float(got[f]) - float(want[f])) > 1e-3 + absf(float(want[f])) * 1e-3:
 				bad.append("%s %s %.4f vs %.4f" % [k, f, got[f], want[f]])
 	t.check(n > 10, "checked %d presets" % n)
 	t.check(bad.is_empty(), "stats as the web game computes them %s" % str(bad.slice(0, 4)))
+
+## A stone or a gem set into a steel edge is added to it, never takes from it (user): the edge's
+## cut and the damage bar are the steel's still.
+func test_what_is_added_to_an_edge_never_takes_from_it() -> void:
+	var d := ForgeLib.empty_design("t")
+	ForgeLib.box(d, 0, 0, 0, 4, 0, 0, "wood", "grip")
+	ForgeLib.box(d, 0, 0, 5, 16, 0, 0, "steel", "edge")
+	var before := ForgeLib.compute_stats(d)
+	for y in [7, 10, 13]:
+		d.voxels.append([1, y, 0, "stone", "edge"])
+		d.voxels.append([-1, y, 0, "ruby", "edge"])
+	var after := ForgeLib.compute_stats(d)
+	t.check(float(after.cut) >= float(before.cut) - 1e-6, "stones and rubies on a steel edge: the cut is the steel's (%.3f, was %.3f)" % [after.cut, before.cut])
+	t.check(float(ForgeLib.three_bars(after).damage) >= float(ForgeLib.three_bars(before).damage) - 1e-6, "and so is the damage bar")
 
 func test_drawing_sharpening_and_grip() -> void:
 	t.eq(ForgeLib.line_cells(Vector3i(0, 0, 0), Vector3i(0, 4, 0)).size(), 5, "a line of five")

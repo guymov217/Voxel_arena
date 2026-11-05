@@ -971,7 +971,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 	match String(ai.mode):
 		"stalk":
 			var r: float = float(sp.stalkRadius) * S * (1.0 - 0.35 * fury)
-			want = side * 2.2 + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
+			want = side * (3.2 if species == "tiger" else 2.2) + to * (2.0 if dist > r * 2.0 else (-1.5 if dist < r * 1.4 else 0.0))
+			ai.ambush_cool = float(ai.get("ambush_cool", 0.0)) - dt
 			if disarmed():
 				# Nothing to bite with: no circling at a distance, it comes straight on and
 				# throws its weight at him as soon as it is close.
@@ -991,6 +992,9 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				ai.mode = "backstep"; ai.t = 1.2
 				if on_roar.is_valid():
 					on_roar.call(self)
+			elif species == "tiger" and t and t.get("yaw") != null and ai.bite_cool <= 0.0 and float(ai.ambush_cool) <= 0.0 and dist < r * 1.8 and not disarmed() and hind_fn() > 0.45 and Vector3(sin(float(t.yaw)), 0, cos(float(t.yaw))).dot(-to) < -0.1:
+				# Round on his blind side (behind his shoulder): it springs from there, at once.
+				ai.mode = "crouch"; ai.t = 0.25; ai.ambush_cool = 3.5
 			elif species == "manticore" and float(ai.get("volley_cool", 2.0)) <= 0.0 and dist < 1.6 * S and part_ok(by_name.get("stinger"), 0.2) and fn_of(["tail"]) > 0.3 and hind_fn() > 0.45:
 				# Pressed close, the manticore springs back off him, wings half spread, to fling its
 				# spikes (it only ever loosed them from a distance a man fighting it never gave it:
@@ -1002,8 +1006,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				# A dragon does not dance about: it comes on (a feint only now and then, no snarling
 				# from a distance), and every charge is told by the crouch and the roar before it.
 				# (A furious beast neither feints nor snarls.)
-				var feint_k := (0.1 if species == "dragon" else 0.25) * (1.0 - fury)
-				var snarl_k := feint_k + (0.0 if species == "dragon" else 0.15) * (1.0 - fury)
+				var feint_k := (0.1 if species == "dragon" or species == "tiger" else 0.25) * (1.0 - fury)
+				var snarl_k := feint_k + (0.0 if species == "dragon" else (0.05 if species == "tiger" else 0.15)) * (1.0 - fury)
 				if roll < feint_k:
 					ai.mode = "feint"; ai.t = 0.3
 				elif roll < snarl_k:
@@ -1044,7 +1048,7 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				_breathe()
 		"snarl":
 			if ai.t <= 0.0:
-				ai.mode = "stalk"; ai.t = 1.0 + rng.randf() * 1.5
+				ai.mode = "stalk"; ai.t = (0.6 + rng.randf() * 0.8) if species == "tiger" else 1.0 + rng.randf() * 1.5
 		"crouch":
 			if ai.t <= 0.0:
 				ai.mode = "charge"; ai.t = 2.5
@@ -1077,8 +1081,8 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 				if on_roar.is_valid():
 					on_roar.call(self)
 			elif ai.t <= 0.0:
-				ai.mode = "crouch" if rng.randf() < 0.4 else "stalk"
-				ai.t = 0.45 if ai.mode == "crouch" else 1.0 + rng.randf() * 1.5
+				ai.mode = "crouch" if rng.randf() < (0.6 if species == "tiger" else 0.4) else "stalk"
+				ai.t = 0.45 if ai.mode == "crouch" else ((0.6 + rng.randf() * 0.8) if species == "tiger" else 1.0 + rng.randf() * 1.5)
 				ai.circle = -ai.circle
 	return want
 
@@ -1102,6 +1106,7 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 	# (The dragon's alone: an ostrich's lunge keeps its hop.)
 	var high: bool = species == "dragon" and tt != null and by_name.has("neck") and not head.severed and head.global_position.y > tt.torso.global_position.y + 0.6
 	torso.apply_central_impulse(Vector3(to.x * mass * k, mass * (0.2 if collapsed or high else 1.2), to.z * mass * k))
+	ai.lunged_at = time
 	if disarmed():
 		ai.ram_t = 0.8   # nothing to bite with: the body itself is the blow
 	for h in biting_heads():
@@ -1946,6 +1951,12 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	if c and not vic.severed and kind != "" and ((kind == "sting" and att.part_name == "stinger") or (kind == "bite" and heads.has(att))):
 		if on_venom.is_valid():
 			on_venom.call(self, c, vic, vic.global_position)
+	# A tiger's pounce that lands bears a man down under its weight, and its forepaws rake him
+	# where he lies, one after the other (TIGER_RAKES).
+	if species == "tiger" and heads.has(att) and c and c.alive and not (c is Beast) and float(c.get("S")) < 1.4 and c.state == "stand" and time - float(ai.get("lunged_at", -9.0)) < 0.7 and rng.randf() < TIGER_PIN:
+		c.fall(1.3)
+		ai.rakes = TIGER_RAKES
+		ai.rake_t = 0.15
 	# A python that has its fangs in a man throws its coils round him.
 	if species == "python" and heads.has(att) and c and c.alive and hug == null and coil_cool <= 0.0 and fn_of(["coil"]) > 0.3:
 		_start_coil(c)
@@ -1965,7 +1976,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 		# the teeth came half a metre out of the bite before the hold gave.
 		for sd in c.arm:
 			if vic == c.arm[sd].fore or vic == c.arm[sd].upper:
-				if sd == "L" and c.two_handed:
+				if sd == c.two_off() and c.two_handed:
 					c.toggle_grip()
 				c.release(sd)
 	var torn := []
@@ -2527,6 +2538,8 @@ func _ready_to_strike(p: VoxelPart) -> bool:
 ## (The dragon rakes with its foreclaws a man who has got in under its chest, where no neck
 ## can bring the jaws down: a man with a sword stood there a whole bout and was bitten once.)
 const SWIPERS := ["lion", "tiger", "bear", "griffin", "cerberus", "chimera", "manticore", "ostrich", "gorilla", "dragon"]
+const TIGER_PIN := 0.65    # how often a tiger's pounce that lands bears the man down
+const TIGER_RAKES := 3     # the forepaws' blows on him then
 
 ## The attacks each body can still make, each needing the parts it is made with.
 func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
@@ -2581,6 +2594,16 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if species == "gorilla":
 		_ape_blows(dt, t, to, dist, facing)
 	# A forepaw swipe (or the ostrich's kick): a working front leg lashes out.
+	# The tiger's rake on a man it bore down: the forepaws in turn, quick.
+	if species == "tiger" and int(ai.get("rakes", 0)) > 0:
+		ai.rake_t = float(ai.get("rake_t", 0.0)) - dt
+		if float(ai.rake_t) <= 0.0:
+			var paw = by_name.get("legFL" if int(ai.rakes) % 2 == 1 else "legFR")
+			ai.rakes = int(ai.rakes) - 1
+			ai.rake_t = 0.3
+			if paw and not leg_gone(paw) and dist < reach * 1.4 and not strikes.has(paw):
+				var lo_r := lower_of(paw)
+				_strike(paw, 0.25, 0.2, [lo_r, (tp - lo_r.global_position).normalized() * maxf(20.0 * S, 4.0 * lo_r.mass)] if lo_r else [], 0.08)
 	if SWIPERS.has(species) and species != "gorilla" and dist < reach * 1.1 and facing > 0.5:
 		var best: VoxelPart = null
 		var best_f := 0.35

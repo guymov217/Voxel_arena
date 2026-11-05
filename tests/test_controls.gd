@@ -63,12 +63,11 @@ func test_a_pad_resting_off_centre_does_not_move_him() -> void:
 	t.check(PlayerInput.pad_reading(rest.duplicate(), rest, false, true).live, "and so is a pad whose button is pressed")
 	t.check(PlayerInput.pad_reading(rest.duplicate(), rest, true, false).live, "once taken up it stays in use")
 
-## The thrust key switches the thrust on and off (user: a toggle, not a key to hold). On, the
-## mouse alone turns the view both ways, to aim the stab (the held key took the mouse's push for
-## the depth, and the view could not look up or down); with a hand's button held, pushed forward
-## the point goes in, drawn back it comes out, the hand's height is not what moves, and it goes to
-## the host as it is; the button let go, the blade comes back; pressed again, the thrust is off.
-func test_the_thrust_key_switches_the_thrust_on_and_off() -> void:
+## The thrust key (user: the toggle, with the mouse pushing the point in and out, was neither
+## handy nor plain): a tap is a whole stab, the key long let go; held, the point stays out until
+## it is let go; the mouse turns the view both ways the whole time (that is how the stab is
+## aimed), the hand's mark is not what moves, and no depth goes to the host.
+func test_the_thrust_key_stabs_and_holds() -> void:
 	var pin := PlayerInput.new()
 	add_child(pin)
 	pin.main = {"x": 0.2, "y": 0.3}
@@ -76,51 +75,35 @@ func test_the_thrust_key_switches_the_thrust_on_and_off() -> void:
 		pin._edges["thrust"] = true   # (the key going down, as _process latches it for the next sample)
 	press.call()
 	var inp: Dictionary = pin.sample(1.0 / 60.0)
-	t.check(inp.depthOn and float(inp.thrust) > 0.3, "pressed once, the thrust is on")
-	for i in 10:
+	t.check(float(inp.thrust) > 0.3 and not inp.get("depthOn", false), "a tap: the stab is under way")
+	var on_t := 0.0
+	for i in 60:
 		inp = pin.sample(1.0 / 60.0)
-	t.check(inp.depthOn and float(inp.thrust) > 0.99, "and stays on, the key let go")
+		if float(inp.thrust) > 0.5:
+			on_t += 1.0 / 60.0
+	t.check(on_t >= Fighter.THRUST_DRAW + Fighter.THRUST_DRIVE, "it runs a whole stab, drawn back and driven out, the key let go at once (%.2f s)" % on_t)
+	t.check(float(inp.thrust) < 0.01, "and comes back by itself")
 	var pitch0 := pin.look_pitch
 	var yaw0 := pin.look_yaw
+	press.call()
 	pin._motion(Vector2(40, -120))
 	inp = pin.sample(1.0 / 60.0)
-	t.check(pin.look_pitch > pitch0 + 0.02 and pin.look_yaw < yaw0 - 0.01, "no button held, the mouse turns the view, up and aside (%.3f, %.3f)" % [pin.look_pitch - pitch0, pin.look_yaw - yaw0])
-	t.check(float(inp.depth) == 0.0, "and the blade is not driven")
-	pin.lmb = true
-	var pitch1 := pin.look_pitch
-	pin._motion(Vector2(30, -0.5 * PlayerInput.DEPTH_PX))   # the button held: pushed forward half way
-	t.check(absf(pin.depth - 0.5) < 0.01, "a button held and pushed half way, the point half way in (%.2f)" % pin.depth)
-	t.check(absf(pin.look_pitch - pitch1) < 1e-6 and pin.look_yaw < yaw0 - 0.02, "the push is the stab's, not the view's; aside, the view still turns")
-	pin.lmb = true
-	inp = pin.sample(1.0 / 60.0)
-	t.check(inp.depthOn and float(inp.depth) > 0.4, "so it goes into the input (%.2f)" % float(inp.depth))
-	t.check(absf(float(inp.main.y) - 0.3) < 1e-6, "the hand's height is not what moved")
-	var back := PlayerInput.unpack(PlayerInput.pack(inp))
-	t.check(back.get("depthOn", false) and absf(float(back.get("depth", 0.0)) - float(inp.depth)) < 0.01, "it goes to the host so")
-	var aimed := inp.duplicate()
-	aimed.aimAt = Vector3(1, 2, 3)
-	aimed.aimFrom = Vector3(0, 1, 0)
-	aimed.wheel = 2.0
-	var back2 := PlayerInput.unpack(PlayerInput.pack(aimed))
-	t.check(absf(float(back2.get("depth", 0.0)) - float(inp.depth)) < 0.01 and back2.get("aimAt") == Vector3(1, 2, 3) and float(back2.get("wheel", 0.0)) == 2.0, "with an aim and a wheel turn along with it too")
-	pin.lmb = true
-	pin._motion(Vector2(0, 3.0 * PlayerInput.DEPTH_PX))    # drawn right back
-	t.check(pin.depth <= -0.99, "drawn back, it comes out toward the chest (%.2f)" % pin.depth)
-	pin.lmb = false
-	for i in 40:
-		inp = pin.sample(1.0 / 60.0)
-	t.check(inp.depthOn and float(inp.depth) == 0.0, "the button let go, the blade back at its guard, the thrust still on")
+	t.check(pin.look_pitch > pitch0 + 0.02 and pin.look_yaw < yaw0 - 0.01, "in a stab the mouse turns the view, up and aside: that is how it is aimed (%.3f, %.3f)" % [pin.look_pitch - pitch0, pin.look_yaw - yaw0])
+	t.check(absf(float(inp.main.y) - 0.3) < 1e-6 and float(inp.depth) == 0.0 and not inp.get("depthOn", false), "the hand's mark is not what moved, and no depth is driven")
+	t.check(not PlayerInput.unpack(PlayerInput.pack(inp)).has("depthOn"), "and none goes to the host")
+	if InputMap.has_action("va_thrust"):
+		Input.action_press("va_thrust")
+		for i in 60:
+			inp = pin.sample(1.0 / 60.0)
+		t.check(float(inp.thrust) > 0.99, "held, the point stays out")
+		Input.action_release("va_thrust")
+		for i in 40:
+			inp = pin.sample(1.0 / 60.0)
+		t.check(float(inp.thrust) < 0.01, "let go, it comes back")
 	press.call()
-	inp = pin.sample(1.0 / 60.0)
-	t.check(not inp.depthOn and float(inp.depth) == 0.0, "pressed again, the thrust is off: the mouse is the hand's again")
-	for i in 10:
-		inp = pin.sample(1.0 / 60.0)
-	t.check(float(inp.thrust) < 0.01, "and the blade is back to its blows")
-	t.check(not PlayerInput.unpack(PlayerInput.pack(inp)).has("depthOn"), "nothing of it goes to the host")
-	press.call()
-	t.check(pin.sample(1.0 / 60.0).depthOn, "on again")
+	pin.sample(1.0 / 60.0)
 	pin.reset_hands()
-	t.check(not pin.sample(1.0 / 60.0).depthOn, "a new fighter (a bout, a respawn) starts with it off")
+	t.check(float(pin.sample(1.0 / 60.0).thrust) < 0.01, "a new fighter (a bout, a respawn) starts with no stab under way")
 	pin.queue_free()
 
 ## In the fight: held, the point goes as deep along its line as the mouse has pushed it (from

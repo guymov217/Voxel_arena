@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "近衛兵セウェルス",
  "Praetorian Tiberius": "近衛兵ティベリウス",
  "Praetorian Vitus": "近衛兵ウィトゥス",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "%s を押すと突きモードになり、刃は見ている方向を向く。マウスボタンを押したままマウスを前へ押すと、刃がまっすぐ突き出る。手前へ引くと戻る。いっぱいまで突き出そう（もう一度 %s で解除）。",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "%s を押すと、刃が照準に向けられ、体重を乗せてまっすぐ突き出され、戻ってくる。%s を押し続けると切っ先は突き出たまま。マウスで狙おう：突きは見ている所へ行く。",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "「振ってみる」を押すと、手に持った時と同じ速さで武器が振られる。",
  "Press a key…": "キーを押してください…",
  "Press its number: laid or bowled in front of you": "番号キーを押す：目の前に置くか転がす",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "投擲用の重心調整",
  "Thrown hit!": "投擲命中！",
  "Thrust": "突き",
- "Thrust (press: on and off)": "突き（押すたびに切り替え）",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "突き（押す：狙った所を突く／長押し：切っ先を突き出したまま）",
  "Thunder pot": "雷鳴の壺",
  "Thunderjaw": "雷顎",
  "Tiger": "トラ",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ 回す",
  "✋ Main hand": "✋ 利き手",
  "✋ Move hand": "✋ 手の位置",
- "✋ Other hand": "✋ 反対の手"
+ "✋ Other hand": "✋ 反対の手",
+ "One hand · other side": "片手 · 反対側で構える",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "右手に%sを持っている：先に持ち替える（J）か投げる（F）",
+ "Swap hands (both on one haft: hold it from the other side)": "持ち手を替える（両手持ちなら反対側で構える）"
 }

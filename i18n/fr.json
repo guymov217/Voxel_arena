@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Prétorien Severus",
  "Praetorian Tiberius": "Prétorien Tiberius",
  "Praetorian Vitus": "Prétorien Vitus",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Appuyez sur %s : l'estoc est activé et la lame pointe là où vous regardez. Maintenez un bouton de la souris et poussez la souris vers l'avant : la lame part droit devant ; tirez en arrière et elle revient. Allez jusqu'au bout (%s à nouveau le désactive).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Appuyez sur %s : la lame se pose sur le viseur et part droit devant, votre poids derrière elle, puis revient. Maintenez %s et la pointe reste tendue. Visez à la souris : l'estoc va là où vous regardez.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Appuyez sur « La brandir » : l'arme est brandie aussi vite qu'elle le serait en main.",
  "Press a key…": "Appuyez sur une touche…",
  "Press its number: laid or bowled in front of you": "Appuyez sur son numéro : posé ou roulé devant vous",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Équilibrage de lancer",
  "Thrown hit!": "Coup lancé !",
  "Thrust": "Estoc",
- "Thrust (press: on and off)": "Estoc (appuyer : activer et désactiver)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Estoc (appuyer : un coup d'estoc là où vous visez ; maintenir : la pointe reste tendue)",
  "Thunder pot": "Pot de tonnerre",
  "Thunderjaw": "Mâchoire-Tonnerre",
  "Tiger": "Tigre",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Tourner",
  "✋ Main hand": "✋ Main principale",
  "✋ Move hand": "✋ Déplacer la main",
- "✋ Other hand": "✋ Autre main"
+ "✋ Other hand": "✋ Autre main",
+ "One hand · other side": "Une main · de l'autre côté",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "Votre main droite tient : %s. Changez de main (J) ou lancez-le (F) d'abord",
+ "Swap hands (both on one haft: hold it from the other side)": "Changer de main (les deux sur la hampe : la tenir de l'autre côté)"
 }

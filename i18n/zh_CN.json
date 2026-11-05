@@ -1579,7 +1579,7 @@
  "Praetorian Severus": "禁卫军塞维鲁",
  "Praetorian Tiberius": "禁卫军提比略",
  "Praetorian Vitus": "禁卫军维图斯",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "按下 %s：刺击模式开启，剑刃指向你看的方向。按住鼠标键并把鼠标往前推：剑刃笔直刺出；往回拉就收回来。把它刺到底（再按 %s 关闭）。",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "按下 %s：剑刃对准准星，带着你的体重笔直刺出，再收回来。按住 %s，锋尖保持刺出。用鼠标瞄准：刺击指向你看的地方。",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "按下“挥一挥”：武器会以握在手中时的速度挥动。",
  "Press a key…": "请按一个键…",
  "Press its number: laid or bowled in front of you": "按下它的数字：放置或滚到你前方",
@@ -2209,7 +2209,7 @@
  "Throwing balance": "投掷配重",
  "Thrown hit!": "投掷命中！",
  "Thrust": "刺击",
- "Thrust (press: on and off)": "刺击（按下切换开关）",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "刺击（按下：朝准星刺出；按住：锋尖保持刺出）",
  "Thunder pot": "雷霆罐",
  "Thunderjaw": "雷颚",
  "Tiger": "老虎",
@@ -2600,5 +2600,8 @@
  "◀ Turn": "◀ 旋转",
  "✋ Main hand": "✋ 主手",
  "✋ Move hand": "✋ 移动手",
- "✋ Other hand": "✋ 另一只手"
+ "✋ Other hand": "✋ 另一只手",
+ "One hand · other side": "单手 · 换到另一侧",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "你的右手拿着%s：先换手（J）或把它扔掉（F）",
+ "Swap hands (both on one haft: hold it from the other side)": "换手（双手握持时：换到另一侧握）"
 }

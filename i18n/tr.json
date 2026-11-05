@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Pretoryen Severus",
  "Praetorian Tiberius": "Pretoryen Tiberius",
  "Praetorian Vitus": "Pretoryen Vitus",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "%s tuşuna bas: saplama açılır ve bıçak baktığın yeri gösterir. Bir fare tuşunu basılı tutup fareyi ileri it: bıçak dümdüz ileri gider; geri çekince geri gelir. Sonuna kadar it (%s tekrar basınca kapanır).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "%s tuşuna bas: bıçak nişangâha çevrilir, ağırlığın arkasında dümdüz ileri gider ve geri gelir. %s tuşunu basılı tut, uç ileride kalır. Fareyle nişan al: saplama baktığın yere gider.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "“Salla” düğmesine bas: silah elde nasıl savrulursa o hızla savrulur.",
  "Press a key…": "Bir tuşa bas…",
  "Press its number: laid or bowled in front of you": "Numarasına bas: önüne konur ya da yuvarlanır",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Fırlatma dengesi",
  "Thrown hit!": "Atışla isabet!",
  "Thrust": "Saplama",
- "Thrust (press: on and off)": "Saplama (bas: aç ve kapat)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Saplama (bas: nişan aldığın yere saplar; basılı tut: uç ileride kalır)",
  "Thunder pot": "Gök gürültüsü çömleği",
  "Thunderjaw": "Gök Gürültüsü Çene",
  "Tiger": "Kaplan",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Döndür",
  "✋ Main hand": "✋ Ana el",
  "✋ Move hand": "✋ Eli taşı",
- "✋ Other hand": "✋ Diğer el"
+ "✋ Other hand": "✋ Diğer el",
+ "One hand · other side": "Tek el · diğer taraftan",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "Sağ elinde %s var: önce elleri değiştir (J) ya da fırlat (F)",
+ "Swap hands (both on one haft: hold it from the other side)": "El değiştir (iki el saptayken: diğer taraftan tut)"
 }

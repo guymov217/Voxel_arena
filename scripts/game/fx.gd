@@ -5,6 +5,7 @@ extends Node3D
 ## dries, scorch and acid stains). Drawing only: the host and every guest make their own.
 
 const MAX_MARKS := 180
+const FLASH_FADE := 0.35   # s a flash of light takes to fade out
 ## Prints in the sand (footprints, a peg's round marks, the furrow a body leaves dragged): their
 ## own pool, never pushing the blood out, fading as the sand settles.
 const MAX_PRINTS := 160
@@ -16,6 +17,9 @@ static var _draw_meshes := {}
 static var _textures := {}
 
 var headless := false
+## Told of every one-shot effect as it is made (a burst, a flash): the kill cam keeps them on
+## tape and makes them again in its replay (a pot's blast went unseen in it: user).
+var tape: Callable = Callable()
 var marks: Array = []
 var prints: Array = []      # {"d": Decal, "t": seconds, "a": alpha when new}
 var quality := "high"
@@ -284,9 +288,19 @@ static func _draw_mesh(kind: String) -> Mesh:
 func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0, tint := Color(0, 0, 0, 0)) -> void:
 	if headless or n <= 0 or not KINDS.has(kind):
 		return
+	if tape.is_valid():
+		tape.call("burst", [kind, p, n, dir, speed_mul, tint])
+	make_burst(kind, p, n, dir, speed_mul, tint)
+
+## The burst itself, made whether or not anyone keeps it on tape: its particle systems (dust has
+## two: the grains under the puff), each freed when it is done.
+func make_burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0, tint := Color(0, 0, 0, 0)) -> Array:
+	var out := []
+	if headless or n <= 0 or not KINDS.has(kind):
+		return out
 	if kind == "dust":
 		# Sand kicked up comes in grains: voxels flung out under the soft puff.
-		burst("sandgrain", p, maxi(4, n / 2), dir, speed_mul)
+		out.append_array(make_burst("sandgrain", p, maxi(4, n / 2), dir, speed_mul))
 	if quality == "low":
 		n = maxi(1, n / 3)
 	var ps := GPUParticles3D.new()
@@ -321,6 +335,8 @@ func burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul := 1.0
 		ps.speed_scale = clampf(speed_mul, 0.3, 3.0)
 	ps.emitting = true
 	get_tree().create_timer(KINDS[kind].life / ps.speed_scale + 0.5, false).timeout.connect(ps.queue_free)
+	out.append(ps)
+	return out
 
 ## A steady emitter (flames on a burning limb, a brazier, a smoke cloud) parented to `parent`.
 func emitter(kind: String, parent: Node3D, amount := 24, radius := 0.06) -> GPUParticles3D:
@@ -343,6 +359,15 @@ func emitter(kind: String, parent: Node3D, amount := 24, radius := 0.06) -> GPUP
 func flash(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> void:
 	if headless:
 		return
+	if tape.is_valid():
+		tape.call("flash", [p, color, energy, r])
+	var l := make_light(p, color, energy, r)
+	var tw := create_tween()
+	tw.tween_property(l, "light_energy", 0.0, FLASH_FADE)
+	tw.tween_callback(l.queue_free)
+
+## The flash's light at full strength, left to whoever made it to fade (FLASH_FADE) and free.
+func make_light(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> OmniLight3D:
 	var l := OmniLight3D.new()
 	l.light_color = color
 	l.light_energy = energy
@@ -350,9 +375,7 @@ func flash(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> void:
 	l.shadow_enabled = false
 	add_child(l)
 	l.global_position = p + Vector3(0, 0.4, 0)
-	var tw := create_tween()
-	tw.tween_property(l, "light_energy", 0.0, 0.35)
-	tw.tween_callback(l.queue_free)
+	return l
 
 # ---------- Marks on the sand ----------
 

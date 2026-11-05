@@ -102,6 +102,11 @@ var stab_at := ""              # the blow under way is a stab at his "chest", "h
 ## and near the end of his blood he gathers himself for one desperate blow now and then, a lunge
 ## from further out with all his weight in it. A boss or a giant has half the wariness and all
 ## of the desperation; an enraged giant none of either.
+## Where a blade is fought from, of its reach: stood off at SWEET_IDEAL, stepping in with a blow
+## no further than SWEET_STOP, and giving ground in one under SWEET_IN.
+const SWEET_IDEAL := 0.85
+const SWEET_STOP := 0.85
+const SWEET_IN := 0.72
 const WARY_FROM := 0.4
 const WARY_BOSS := 0.5
 const DESPERATE_BLOOD := 25.0
@@ -482,7 +487,14 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var reach := 0.55 * S + (w.reach if w else 0.25) * 0.85
 	if style == "spear":
 		reach = 0.7 * S + w.reach * 0.95   # (couched out in front, its point further off than a blade held up)
-	var ideal := reach * float(p.get("ideal", STYLES.get(style, STYLES.sword).ideal)) * (1.0 + 0.3 * wary)
+	# Stood off where the blade meets him with its outer part, the fast one (user: every blow as
+	# much momentum as the weapon can give): a man who presses in to a hand's breadth (the shield
+	# men, the berserker) struck with the inner half of his blade at a walk's speed, and two of
+	# them clinched like wrestlers. A short blade is fought close all the same.
+	var ideal_k := float(p.get("ideal", STYLES.get(style, STYLES.sword).ideal))
+	if w != null and style != "short" and style != "fists":
+		ideal_k = maxf(ideal_k, SWEET_IDEAL)
+	var ideal := reach * ideal_k * (1.0 + 0.3 * wary)
 	# A giant over a man a third his size: he steps in so the blade's length is over the man,
 	# and every blow is brought down to where the man actually is (standing, or on the sand),
 	# not swung at a giant's own height over his head.
@@ -521,7 +533,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var closing := state == "attack" or think <= 0.15
 		if dist > ideal + (0.15 if closing else 0.6):
 			inp.mz = minf(1.0, float(p.get("approach", 0.8)) * (1.0 if closing else 0.6))
-		elif dist < ideal - 0.3:
+		elif dist < ideal - (0.3 if w == null or style == "short" else 0.15):
 			inp.mz = -0.7
 		inp.mx = strafe * (0.6 if dist < reach * 1.8 else 0.2) * (0.5 if p.get("shield", false) else 1.0)
 		inp.sprint = dist > 2.5 if p.get("sprint", false) else dist > 6.0
@@ -789,11 +801,16 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		_lerp_hand(x, y, kk * kk)
 		inp.thrust = th * kk
 		inp.power = p.get("power", false) or key == attack.size() - 1 or rage or desperate
-		if lunge and c.state == "stand" and dist > reach * (1.05 if style == "spear" else 0.7):
+		if lunge and c.state == "stand" and dist > reach * (1.05 if style == "spear" else SWEET_STOP):
 			inp.mz = 1.0
 			inp.mx = 0.0
 			if desperate:
 				inp.sprint = true
+		elif not big and w != null and style != "short" and style != "spear" and c.state == "stand" and dist < reach * SWEET_IN:
+			# Too close for the blade's outer part: he gives ground as he strikes, so it meets the
+			# man where it is fastest (closing on, the inner half met him at a walk's pace).
+			inp.mz = -0.8
+			inp.mx = 0.0
 		if not feint_to.is_empty() and key == 0 and key_t > 0.5:
 			if style == "spear":
 				stab_at = "head" if stab_at != "head" else "chest"   # (the point shown at one place, driven at another)

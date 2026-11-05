@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Pretoriano Severus",
  "Praetorian Tiberius": "Pretoriano Tiberius",
  "Praetorian Vitus": "Pretoriano Vitus",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Premi %s: l'affondo è attivo e la lama punta dove guardi. Tieni premuto un tasto del mouse e spingi il mouse in avanti: la lama affonda dritta; tira indietro e rientra. Spingila fino in fondo (%s di nuovo lo disattiva).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Premi %s: la lama si allinea al mirino e affonda dritta, con il tuo peso dietro, poi torna. Tieni premuto %s e la punta resta fuori. Mira con il mouse: l'affondo va dove guardi.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Premi «Brandiscila»: l'arma si muove veloce come farebbe in mano.",
  "Press a key…": "Premi un tasto…",
  "Press its number: laid or bowled in front of you": "Premi il suo numero: piazzato o fatto rotolare davanti a te",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Bilanciamento da lancio",
  "Thrown hit!": "Colpo lanciato!",
  "Thrust": "Affondo",
- "Thrust (press: on and off)": "Affondo (premi: attiva e disattiva)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Affondo (premi: un affondo dove miri; tieni premuto: la punta resta fuori)",
  "Thunder pot": "Vaso del tuono",
  "Thunderjaw": "Mascella di Tuono",
  "Tiger": "Tigre",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Ruota",
  "✋ Main hand": "✋ Mano principale",
  "✋ Move hand": "✋ Sposta mano",
- "✋ Other hand": "✋ Altra mano"
+ "✋ Other hand": "✋ Altra mano",
+ "One hand · other side": "Una mano · dall'altro lato",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "La tua mano destra tiene: %s. Prima cambia mano (J) o lancialo (F)",
+ "Swap hands (both on one haft: hold it from the other side)": "Cambia mano (entrambe sull'impugnatura: tienila dall'altro lato)"
 }

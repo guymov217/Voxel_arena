@@ -223,7 +223,7 @@ static func compute_stats(d: Dictionary) -> Dictionary:
 	var com := Vector3.ZERO
 	var edge := 0
 	var point := 0
-	var hard := 0.0
+	var hards := []
 	for v in d.voxels:
 		var m := _mass(v[3])
 		mass += m
@@ -233,7 +233,7 @@ static func compute_stats(d: Dictionary) -> Dictionary:
 				edge += 1
 			else:
 				point += 1
-			hard += float(Data.material(v[3]).get("hardness", 0.5))
+			hards.append(float(Data.material(v[3]).get("hardness", 0.5)))
 	if mass > 0.0:
 		com /= mass
 	var grips = grip_points(d)
@@ -258,8 +258,15 @@ static func compute_stats(d: Dictionary) -> Dictionary:
 		inertia += hm * pow(reach + int(d.chain.links) * CHAIN_LINK, 2) * 0.5
 		reach += int(d.chain.links) * CHAIN_LINK * 0.6 + 0.1
 	var strength := 95.0 if d.get("twoHanded", false) else 55.0
-	var sharp_n := edge + point
-	var avg_hard := hard / sharp_n if sharp_n > 0 else 0.0
+	# The edge cuts as its better half does: a stone or a gem set into a steel edge is an edge of
+	# steel still, with something added (user: what is added never takes away from what is
+	# there). Each blow is the stuff of the part of the blade that lands (Combat).
+	hards.sort()
+	hards.reverse()
+	var best_n := ceili(hards.size() * 0.5)
+	var avg_hard := 0.0
+	for i in best_n:
+		avg_hard += float(hards[i]) / best_n
 	var sharpness := float(d.get("sharpness", 0.8))
 	return {
 		"mass": mass, "com": [com.x, com.y, com.z], "balance": (com.y - g.y) * s, "inertia": inertia, "reach": reach,

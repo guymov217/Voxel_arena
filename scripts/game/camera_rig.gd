@@ -208,6 +208,10 @@ var assist := Vector2.ZERO   # the turn (yaw, pitch) it adds to keep the foe in 
 var base_y := NAN   # his height as the camera takes it: a stoop or a bob of the swing is let pass
 var focus_s := -1.0  # how far ahead of him the view looks when turned round him (eased)
 var reaim_k := 1.0   # how much the view is turned onto the place ahead of him (none while aiming)
+## Over which shoulder it looks: 1 the right, -1 the left (a two-hander held from the left side:
+## Match sets it); it goes across to the other in a moment, not at a jump.
+var view_side := 1.0
+var side_k := 1.0
 
 ## The look (yaw, pitch) that would have the view where it is now: given to the aim when a throw
 ## or a draw begins, so that the view, now along the aim, does not jump.
@@ -243,7 +247,8 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 			close = clampf((3.2 * S - dh) / (2.2 * S), 0.0, 1.0) * (1.0 - aim_k)
 		near_k = move_toward(near_k, close, dt * NEAR_RATE)
 		var back := lerpf(2.6, 2.0, aim_k) * S * cos(pitch * 0.6) + 0.8 * S * near_k
-		var want := base + Vector3(0, lerpf(0.75, 0.95, aim_k) * S - sin(pitch) * 1.6 * S + 0.35 * S * near_k, 0) - fwd * back + right * lerpf(0.55, 1.05, aim_k) * S
+		side_k = move_toward(side_k, view_side, dt * 2.5)
+		var want := base + Vector3(0, lerpf(0.75, 0.95, aim_k) * S - sin(pitch) * 1.6 * S + 0.35 * S * near_k, 0) - fwd * back + right * lerpf(0.55, 1.05, aim_k) * S * side_k
 		want.y = maxf(0.3, want.y)
 		# Close in, the camera turns part way round him, off the side his weapon arm is on: a
 		# blow lands an arm's length in front of the chest, and from straight behind the
@@ -251,7 +256,7 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		# landed out of sight: user; measured in bot duels, from straight behind 71% of the
 		# blows that landed could be seen, turned 0.9 round about 80%: ORBIT). And when even so your
 		# own body is between the camera and his middle or head, it rises a little.
-		var turn := ORBIT * near_k * (1.0 - aim_k)
+		var turn := ORBIT * near_k * (1.0 - aim_k) * side_k
 		var lift := 0.0
 		if f.alive and not pts.is_empty() and aim_k < 0.5:
 			scan_t -= dt

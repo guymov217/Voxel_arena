@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Pretoriano Severus",
  "Praetorian Tiberius": "Pretoriano Tiberius",
  "Praetorian Vitus": "Pretoriano Vitus",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Aperte %s: a estocada é ligada e a lâmina aponta para onde você olha. Segure um botão do mouse e empurre o mouse para frente: a lâmina avança reta; puxe para trás e ela volta. Avance até o fim (%s de novo desliga).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Aperte %s: a lâmina se alinha à mira e avança reta, com o seu peso atrás, e volta. Segure %s e a ponta fica estendida. Mire com o mouse: a estocada vai para onde você olha.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Aperte “Brandir”: a arma é brandida tão rápido quanto seria na mão.",
  "Press a key…": "Pressione uma tecla…",
  "Press its number: laid or bowled in front of you": "Pressione o número: colocado ou rolado à sua frente",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Balanceamento de arremesso",
  "Thrown hit!": "Acerto de arremesso!",
  "Thrust": "Estocada",
- "Thrust (press: on and off)": "Estocada (apertar: liga e desliga)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Estocada (apertar: uma estocada onde você mira; segurar: a ponta fica estendida)",
  "Thunder pot": "Pote do trovão",
  "Thunderjaw": "Mandíbula de Trovão",
  "Tiger": "Tigre",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Girar",
  "✋ Main hand": "✋ Mão principal",
  "✋ Move hand": "✋ Mover mão",
- "✋ Other hand": "✋ Outra mão"
+ "✋ Other hand": "✋ Outra mão",
+ "One hand · other side": "Uma mão · do outro lado",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "Sua mão direita segura: %s. Troque de mão (J) ou arremesse (F) primeiro",
+ "Swap hands (both on one haft: hold it from the other side)": "Trocar de mão (as duas no cabo: segurar do outro lado)"
 }

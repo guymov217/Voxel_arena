@@ -1576,7 +1576,7 @@
  "Praetorian Severus": "Преторіанець Север",
  "Praetorian Tiberius": "Преторіанець Тиберій",
  "Praetorian Vitus": "Преторіанець Віт",
- "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).": "Натисніть %s: випад увімкнено, і клинок дивиться туди, куди дивитеся ви. Утримуйте кнопку миші й штовхніть мишу вперед: клинок виходить прямо вперед; потягніть назад — і він повернеться. Висуньте його до кінця (%s ще раз — вимкнути).",
+ "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.": "Натисніть %s: клинок наводиться на приціл і йде прямо вперед, з вашою вагою за ним, і повертається. Утримуйте %s, і вістря лишиться висунутим. Цільтеся мишею: укол іде туди, куди ви дивитеся.",
  "Press Swing it: the weapon swings as fast as it would in the hand.": "Натисніть «Змахнути»: зброя зробить замах із тією ж швидкістю, що й у руці.",
  "Press a key…": "Натисніть клавішу…",
  "Press its number: laid or bowled in front of you": "Натисніть його номер: кладеться або котиться перед вами",
@@ -2206,7 +2206,7 @@
  "Throwing balance": "Балансування для кидка",
  "Thrown hit!": "Влучання кидком!",
  "Thrust": "Укол",
- "Thrust (press: on and off)": "Випад (натискання: увімк. і вимк.)",
+ "Thrust (press: a stab where you aim; hold: the point stays out)": "Випад (натискання: укол туди, куди цілитеся; утримання: вістря лишається висунутим)",
  "Thunder pot": "Громовий горщик",
  "Thunderjaw": "Громощелепа",
  "Tiger": "Тигр",
@@ -2597,5 +2597,8 @@
  "◀ Turn": "◀ Повернути",
  "✋ Main hand": "✋ Основна рука",
  "✋ Move hand": "✋ Перемістити руку",
- "✋ Other hand": "✋ Інша рука"
+ "✋ Other hand": "✋ Інша рука",
+ "One hand · other side": "Одна рука · з іншого боку",
+ "Your right hand holds the %s: swap hands (J) or throw it (F) first": "У правій руці %s: спершу поміняйте руки (J) або киньте це (F)",
+ "Swap hands (both on one haft: hold it from the other side)": "Змінити руку (обидві на руків'ї: тримати з іншого боку)"
 }

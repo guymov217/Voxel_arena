@@ -44,7 +44,7 @@ static func box_distance(part: VoxelPart, p: Vector3) -> float:
 
 static func hand_free(c: Fighter, s: String) -> bool:
 	var fore: VoxelPart = c.arm[s].fore
-	return not c.weapons[s] and not fore.severed and not fore.hanging and not (s == "L" and c.two_handed) and not (c.holding != null and c.holding.get("extra") != null and c.holding.extra.side == s)
+	return not c.weapons[s] and not fore.severed and not fore.hanging and not (s == c.two_off() and c.two_handed) and not (c.holding != null and c.holding.get("extra") != null and c.holding.extra.side == s)
 
 func _hint(e: Dictionary, text: String) -> void:
 	if e.kind == "local":
@@ -165,9 +165,9 @@ func grab_limb(e: Dictionary):
 	if not c.alive or c.holding != null:
 		return null
 	var side := ""
-	if not c.weapons.R and not c.arm.R.fore.severed:
+	if not c.weapons.R and not c.arm.R.fore.severed and not (c.two_handed and c.two_off() == "R"):
 		side = "R"
-	elif not c.weapons.L and not c.arm.L.fore.severed and not c.two_handed:
+	elif not c.weapons.L and not c.arm.L.fore.severed and not (c.two_handed and c.two_off() == "L"):
 		side = "L"
 	if side == "":
 		return null

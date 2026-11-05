@@ -1108,8 +1108,17 @@ func _player_input(f, dt: float) -> Dictionary:
 	if input:
 		input.aiming = shooter != null or input.held("throw")
 		input.set_two_handed(f.net_two_handed if role == "guest" else f.two_handed)
+		# (A two-hander held from the left side: the main marks are the left hand's.)
+		var ms: String = f.net_two_side if role == "guest" else f.two_side
+		var os := "L" if ms == "R" else "R"
+		input.set_two_side(ms)
 		var item_side: String = f.item_hand() if f.held_item != null else ""
-		input.set_unarmed(f.weapons.R == null and item_side != "R", f.weapons.L == null and item_side != "L")
+		# (A guest's copy of his man is not told when the hands change over: its weapon is still
+		# in the hand it was taken up in, which is the main marks' hand to it.)
+		if role == "guest":
+			input.set_unarmed(f.weapons.R == null and item_side != "R", f.weapons.L == null and item_side != "L")
+		else:
+			input.set_unarmed(f.weapons[ms] == null and item_side != ms, f.weapons[os] == null and item_side != os)
 		_bow_sway(f, shooter, dt)
 	var inp: Dictionary = input.sample(dt) if input else {}
 	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
@@ -3183,6 +3192,9 @@ func _process(dt: float) -> void:
 			yaw = input.look_yaw + input.free_look.x
 			pitch = clampf(input.look_pitch + input.free_look.y, -1.45, 1.35)
 		cam_aiming = aiming or sighting
+		# Over the left shoulder while he holds a two-hander from the left side (user: the camera
+		# goes with the change of sides).
+		cam.view_side = -1.0 if (f.net_two_side if role == "guest" else f.two_side) == "L" else 1.0
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe, tip_i)
 	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
 	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).

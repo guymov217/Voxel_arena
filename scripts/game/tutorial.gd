@@ -17,7 +17,7 @@ const STEPS := [
 	{"id": "freelook", "title": "Look round you", "text": "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back."},
 	{"id": "swing", "title": "Swing", "text": "Hold the %s button and sweep the mouse: the sword follows your hand. Hit the dummy twice. Fast sweeps cut deep.", "mouse": ["main"]},
 	{"id": "twist", "title": "Turn the blade", "text": "Roll the wheel: the sword turns in your hand, so the edge leads the cut and not the flat. Roll it a few notches."},
-	{"id": "thrust", "title": "Thrust", "text": "Press %s: the thrust is on and the blade points where you look. Hold a mouse button and push the mouse forward: the blade drives straight out; pull back and it comes in. Drive it all the way out (%s again switches it off).", "keys": ["thrust", "thrust"]},
+	{"id": "thrust", "title": "Thrust", "text": "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.", "keys": ["thrust", "thrust"]},
 	{"id": "guard", "title": "Guard", "text": "Hold the %s button: now the mouse moves the shield. Raise it up for a moment.", "mouse": ["off"]},
 	{"id": "kick", "title": "Kick and shove", "text": "%s kicks (and stamps on a man who is down), %s shoves. Kick or shove the dummy.", "keys": ["kick", "shove"]},
 	{"id": "swap", "title": "Swap hands", "text": "%s swaps what your hands hold: the sword to the left, the shield to the right. Swap, then swap back.", "keys": ["swap"]},
@@ -99,7 +99,7 @@ func _done(id: String, f: Fighter) -> bool:
 		"freelook": return float(s.free_t) > 0.5
 		"swing": return s.hits >= 2
 		"twist": return float(s.twisted) > 0.7
-		"thrust": return float(s.depth) > 0.6 or float(s.pad_thrust) > 0.6
+		"thrust": return float(s.depth) > 0.6 or float(s.pad_thrust) > 0.35
 		"guard": return s.guard_t > 0.8
 		"kick": return s.kicks >= 1
 		"swap": return int(s.swaps) >= 2 and sword != null and f.weapons.get("R") == sword
@@ -153,7 +153,7 @@ func update(dt: float, inp: Dictionary) -> void:
 	if inp.get("depthOn", false):
 		s.depth = maxf(float(s.depth), float(inp.get("depth", 0.0)))
 	elif float(inp.get("thrust", 0.0)) > 0.5:
-		s.pad_thrust = float(s.pad_thrust) + dt   # (a pad's thrust drives itself out)
+		s.pad_thrust = float(s.pad_thrust) + dt   # (a stab drives itself out)
 	var off: Dictionary = inp.get("off", {}) if inp.get("off") is Dictionary else {}
 	if inp.get("power", false) and inp.get("grabHands", null) == "L" and float(off.get("y", 0.0)) > 0.35:
 		s.guard_t = float(s.guard_t) + dt

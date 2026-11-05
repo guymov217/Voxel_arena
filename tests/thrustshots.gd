@@ -1,11 +1,10 @@
 extends Node
 ## The thrust on screen (`-- --probe thrustshots`, needs a display): a man facing a still foe, the
-## crosshair on him; the plain crosshair, then the thrust switched on (the spear's point over a
-## ring, the depth bar empty, THRUST and how to stab under it), then the blade pushed most of the
-## way in (the bar filled). PNGs go to SHOT_DIR.
+## crosshair on him; the plain crosshair, then a stab of the thrust key on its way out at the
+## crosshair, then the point held out (the key held). PNGs go to SHOT_DIR.
 
 var m: Match
-var push := -1.0   # the depth held each step while pushing (the button down), -1 for none
+var hold := false   # the thrust key held down
 
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
@@ -24,22 +23,20 @@ func _ready() -> void:
 	for i in 120:
 		await get_tree().physics_frame
 	await _save(out, "thrust_off.png")
-	m.input.thrust_on = true
-	for i in 120:
+	m.input.stab_left = PlayerInput.STAB_MIN   # (a tap of the key: the stab on its way)
+	for i in 30:
 		await get_tree().physics_frame
-	await _save(out, "thrust_on.png")
-	push = 0.75
-	for i in 60:
+	await _save(out, "thrust_stab.png")
+	hold = true
+	for i in 90:
 		await get_tree().physics_frame
-	await _save(out, "thrust_push.png")
+	await _save(out, "thrust_held.png")
 	get_tree().quit()
 
 func _physics_process(_dt: float) -> void:
-	# (The button held and the mouse pushed: what the mouse would do, set before the match reads
-	# the input this step.)
-	if push >= 0.0 and m and m.input:
-		m.input.lmb = true
-		m.input.depth = push
+	# (The key held: what holding it does, set before the match reads the input this step.)
+	if hold and m and m.input:
+		m.input.stab_left = PlayerInput.STAB_MIN
 
 func _save(out: String, name_: String) -> void:
 	await get_tree().process_frame

@@ -518,6 +518,10 @@ func enter_yard(banner_text := "") -> void:
 func _open_station(id: String) -> void:
 	if visible:
 		return
+	# What his weapons and armour took about the yard (a swing at the post, a friend's blade) is
+	# the smith's to mend too, and goes with him through the gate (user: damage in the yard was
+	# not counted when mending).
+	_keep_yard_wear()
 	# Alone, the gate is the way to the next bout: through it and into the arena, no menu.
 	# A room's host gets the gate's menu (the co-op campaign or another mode for everyone).
 	if id == "gate" and not Net.active():
@@ -545,6 +549,17 @@ func _open_station(id: String) -> void:
 		"physician": show_screen("physician")
 		"trainer": show_screen("trainer")
 		"gate": show_screen("gate")
+
+## The chips and dents the yard left in his gear, into the saved arms and armour (as a bout's are).
+func _keep_yard_wear() -> void:
+	if not in_yard() or match_.me == null or not is_instance_valid(match_.me.get("f")):
+		return
+	var yw: Dictionary = match_.my_wear()
+	if yw.is_empty():
+		return
+	Save.set_value("arms", Arms.add_wear(arms(), yw))
+	if yw.get("armor") is Dictionary:
+		set_armor_wear(Armory.add_wear(armor_wear(), yw.armor, worn_armor()))
 
 func _close_overlay() -> void:
 	visible = false

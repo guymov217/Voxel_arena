@@ -37,7 +37,7 @@ func test_the_tutorial_walks_through_every_key() -> void:
 	await _next(tu, "Turn the blade", "two blows on the dummy")
 	tu.s.twisted = 1.0
 	await _next(tu, "Thrust", "the wheel rolled")
-	t.check(String(tu.view().text).begins_with("Press C") and String(tu.view().text).contains("(C again"), "the thrust's key, on and off: %s" % tu.view().text)
+	t.check(String(tu.view().text).begins_with("Press C") and String(tu.view().text).contains("Hold C"), "the thrust's key, a stab and a hold: %s" % tu.view().text)
 	tu.s.depth = 1.0
 	await _next(tu, "Guard", "the blade driven out")
 	tu.s.guard_t = 1.0

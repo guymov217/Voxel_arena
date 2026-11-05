@@ -916,7 +916,7 @@ func _prompt_for(f) -> Array:
 		var w = f.weapons.R if f.weapons.R else f.weapons.L
 		if w and not w.is_shield and w.design.get("chain") == null:
 			if f.two_handed:
-				return [["grip"], "One hand"]
+				return [["grip", "swap"], "One hand · other side"]
 			return [["grip", "swap"], "Both hands · swap hands"]
 	return []
 
