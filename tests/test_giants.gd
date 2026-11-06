@@ -196,6 +196,52 @@ func test_a_man_down_for_good_is_out_of_the_bout() -> void:
 	t.check(m.over and res.get("won", true) == false, "after twelve he is out and the bout is lost (state %s down_t %.1f unfit %.1f over %s)" % [f.state, float(m.me.get("down_t", -1.0)), float(m.me.get("unfit_t", -1.0)), m.over])
 	m.queue_free()
 
+## A man with nothing left to hurt anyone with is out of the bout, crawling or not: no arm that
+## swings or holds, no legs to get up and kick on (user: one of them could not fight any more, nor
+## could the other, and the bout went on). A man who still has an arm fights on from the sand,
+## and a beast is out the same way once it has nothing to bite with and no legs to run on.
+func test_a_man_with_nothing_left_to_fight_with_is_out_of_the_bout() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 5})
+	m.me.drive = func(_e): return {}
+	for i in 30:
+		await get_tree().physics_frame
+	var e: Dictionary = m.enemies()[0]
+	var f: Fighter = e.f
+	var res := {"removed": [], "severed": []}
+	f.detach_limb(f.by_name.thighL, res)
+	f.detach_limb(f.by_name.thighR, res)
+	f.detach_limb(f.arm.L.upper, res)
+	for i in 60:
+		f.blood = 100.0
+		await get_tree().physics_frame
+	t.check(not m._spent(f), "legs and one arm gone: the other arm still fights")
+	f.detach_limb(f.arm.R.upper, res)
+	var out_at := -1.0
+	for i in 120 * 9:
+		f.blood = 100.0
+		await get_tree().physics_frame
+		if out_at < 0.0 and e.get("beaten", false):
+			out_at = i / 120.0
+	t.check(m._spent(f) or e.get("beaten", false), "legs and both arms gone: nothing left to fight with")
+	t.check(out_at > 0.0 and out_at < 8.0, "and out of the bout within the count (after %.1f s; state %s, crawling %s)" % [out_at, f.state, f.crawling])
+	var b = m.spawn_beast({"beast": "hyena", "team": Match.ENEMY_TEAM, "pos": Vector3(5, 0.1, 5), "yaw": 0.0})
+	for i in 30:
+		await get_tree().physics_frame
+	b.f.detach_limb(b.f.by_name.beastHead, {"removed": [], "severed": []})
+	for i in 10:
+		await get_tree().physics_frame
+	t.check(not m._spent(b.f), "a hyena with its head off still has its legs to run a man down")
+	for n in ["legFL", "legFR", "legBL", "legBR"]:
+		b.f.detach_limb(b.f.by_name[n], {"removed": [], "severed": []})
+	for i in 10:
+		b.f.blood = 100.0
+		await get_tree().physics_frame
+	# (Its four legs off at once, a hyena does not live: dead or spent, it is out.)
+	t.check(m._spent(b.f) or not b.f.alive, "with its legs off too it can do nothing (leg power %.2f, alive %s, disarmed %s)" % [b.f.leg_power(), b.f.alive, b.f.disarmed()])
+	m.queue_free()
+
 ## A foe the bout has counted beaten stays beaten: he does not get up and fight on after the
 ## round was called over him (and its kill cam shown).
 func test_a_beaten_foe_does_not_fight_on() -> void:

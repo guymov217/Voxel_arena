@@ -1900,13 +1900,28 @@ func _unfit(e: Dictionary, dt: float) -> bool:
 		e.down_t = 0.0 if f.crawling else float(e.get("down_t", 0.0)) + dt
 	elif float(e.stand_t) > 2.0:
 		e.down_t = 0.0
-	if down and not f.can_stand() and not f.crawling:
+	# Nothing left to hurt anyone with, he is out of it whether he crawls or not: a man with
+	# no arm that can swing or hold and no legs to get up and kick on, a beast with no bite,
+	# horn, claw, sting or fire and no legs to run a man down with (user: one of them could
+	# not fight any more, nor could the other, and the bout went on).
+	var spent := _spent(f)
+	if (down and not f.can_stand() and (not f.crawling or spent)) or (spent and not down):
 		e.unfit_t = float(e.get("unfit_t", 0.0)) + dt
 	else:
 		e.unfit_t = 0.0
 	if float(e.get("down_t", 0.0)) >= DOWN_OUT:
 		e.unfit_t = maxf(float(e.unfit_t), UNFIT_OUT)
 	return float(e.unfit_t) >= UNFIT_OUT
+
+## Can do no harm to anyone any more (_unfit): see there.
+func _spent(f) -> bool:
+	if not is_instance_valid(f) or not f.alive:
+		return false
+	if f is Beast:
+		return f.disarmed() and f.leg_power() < 0.2 and not bool(f.sp.get("flies", false))
+	if f is Fighter:
+		return f.arm_func("L") < 0.08 and f.arm_func("R") < 0.08 and not f.can_stand()
+	return false
 
 ## The bout called against them, the men it counted beaten stay down: one out cold who came
 ## round got up after the kill cam and fought on into a bout already lost (user, a cyclops).
