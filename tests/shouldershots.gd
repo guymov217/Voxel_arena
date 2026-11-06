@@ -15,7 +15,8 @@ extends Node
 ##
 ## CLIP_CAM=film (the crowd trailer): no helmet. The film camera all through the bout, wide (as
 ## far again, a little higher) until the kill, then cut in close on the same side of them for it,
-## and wide again after.
+## and wide again after. CLIP_CLOSE=<frame>,<frame>...: cut in close for those blows too (the
+## montage's: seen wide they were specks in the sand, user).
 ##
 ## Recorded at a frame for every physics step (--fixed-fps 120), so the editor has frames for
 ## motion blur and for a smooth slow motion. Drawn at the best the game can: MSAA, the voxels'
@@ -34,15 +35,25 @@ const SHOTS := {
 	"titan": {"enemy": "foe:titan", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"troll": {"enemy": "foe:troll", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
 	"giant": {"enemy": "foe:giant", "main": "warhammer", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 3.0, "cine": true},
-	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["helmet", "manica", "greaves", "lorica"], "strength": 2.6, "toughness": 14.0, "cine": true},
+	# (Begun in the middle of the sand with his back to the south wall, the hydra before him with the
+	# whole arena behind it: from the training's places it backed off its lunges into the north
+	# wall and fought the bout out against it, stuck there to the eye: user. As strong and as hard
+	# to bring down as a champion who wins it, his face behind a murmillo's grille: in a galea, at
+	# 2.6 and 14, the hydra's bites took his face away in every seed tried.)
+	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["murmilloHelm", "manica", "greaves", "steelLorica"], "strength": 3.2, "toughness": 30.0, "cine": true, "at": [0.0, 6.5, PI, 0.0, -1.5, 0.0], "precut": 2},
 	"duel": {"seed": 3, "enemy": "gladiator", "weapon": "axe", "main": "gladius", "off": "roundShield", "armor": ["helmet", "manica"], "strength": 2.2, "cine": true},
-	# Blade on blade, fast: a gladius and a dagger against a spatha, the foe as good as they come.
-	"exchange": {"seed": 7, "enemy": "gladiator", "weapon": "spatha", "difficulty": 1.0, "main": "gladius", "off": "dagger", "armor": ["manica", "greaves"], "strength": 2.0, "cine": true},
+	# Blade on blade, fast: spatha against spatha, the foe as good as they come, each fighting from
+	# where his blade's outer part meets the other. (A gladius and a dagger are short blades, fought
+	# chest to chest: the two of them hugged each other through the scene, user.)
+	"exchange": {"seed": 5, "enemy": "gladiator", "weapon": "spatha", "difficulty": 1.0, "main": "spatha", "off": "", "armor": ["manica", "greaves"], "strength": 2.0, "cine": true, "ideal": 1.1},
 }
 
 ## The film camera's part round the kill (seconds of the game's own time before and after it).
 const CINE_BEFORE := 1.1
 const CINE_AFTER := 1.3
+## The close framing round a montage blow (CLIP_CLOSE): from a moment before it to after it lands.
+const CLOSE_BEFORE := 0.55
+const CLOSE_AFTER := 1.45
 
 var menu
 var m
@@ -52,6 +63,7 @@ var rec0 := 0
 var from := 0
 var kill := -1          # the frame of the kill (CLIP_KILL), or -1 in the dry run
 var blow := -1          # CLIP_BLOW: the blow that felled him, when it came before he fell
+var close := []         # CLIP_CLOSE: blows the film camera cuts in close on
 var cine := false
 var film := false      # CLIP_CAM=film: the film camera all through, wide, and close on the kill
 var film_fresh := false
@@ -77,6 +89,8 @@ func _ready() -> void:
 	seconds = float(OS.get_environment("CLIP_SECONDS")) if OS.get_environment("CLIP_SECONDS") != "" else seconds
 	kill = int(OS.get_environment("CLIP_KILL")) if OS.get_environment("CLIP_KILL") != "" else -1
 	blow = int(OS.get_environment("CLIP_BLOW")) if OS.get_environment("CLIP_BLOW") != "" else -1
+	for c in OS.get_environment("CLIP_CLOSE").split(",", false):
+		close.append(int(c))
 	cine = bool(sh.get("cine", false)) and OS.get_environment("CLIP_CINE") != "0"
 	film = OS.get_environment("CLIP_CAM") == "film"
 	# The blows dealt in an order of their own, not the physics engine's: the undrawn pass and the
@@ -104,6 +118,43 @@ func _ready() -> void:
 	menu.start(o)
 	m = menu.match_
 	m.combat.hit.connect(_on_hit)
+	if OS.get_environment("CLIP_DIST") == "1":
+		m.me.f.died.connect(func(_f, cause): _tag("HERO_DIED %s blood %.0f" % [cause, m.me.f.blood]))
+	# (Both held off at their blades' length when not striking, stepping in to strike and out
+	# again: left to close to their sweet spot, the two spathas met chest to chest, three quarters
+	# of the bout under a yard apart, and they looked to be hugging, user. At 1.1 they fight a yard
+	# apart and land a blow every two seconds or so; much further off they only fenced.)
+	var ideal_k := float(OS.get_environment("CLIP_IDEAL")) if OS.get_environment("CLIP_IDEAL") != "" else float(sh.get("ideal", 0.0))
+	if ideal_k > 0.0:
+		for e in m.entities:
+			if e.has("bot") and e.bot != null:
+				e.bot.p = (e.bot.p as Dictionary).duplicate()
+				e.bot.p["ideal"] = ideal_k
+		if m.me.has("bot") and m.me.bot != null:
+			m.me.bot.p = (m.me.bot.p as Dictionary).duplicate()
+			m.me.bot.p["ideal"] = ideal_k
+	# A hydra come in already short of heads (PRECUT: how many of its necks are off at the start):
+	# with all five it brought down every champion in every seed tried, his face bitten away,
+	# however strong; the trailer shows only the last seconds before its fall, when most are off.
+	var precut := int(OS.get_environment("CLIP_PRECUT")) if OS.get_environment("CLIP_PRECUT") != "" else int(sh.get("precut", 0))
+	if precut > 0:
+		for e in m.entities:
+			if e != m.me and is_instance_valid(e.f) and e.f is Beast:
+				var cut := 0
+				for n in ["neck1", "neck2", "neck3", "neck4"]:
+					if cut < precut and e.f.by_name.has(n) and not e.f.by_name[n].severed:
+						e.f.detach_limb(e.f.by_name[n], {"removed": [], "severed": []})
+						cut += 1
+	# Where the bout begins, when the shot says (him: x, z, yaw; then the foe's).
+	if sh.has("at"):
+		var at: Array = sh.at
+		m.me.f.teleport(Vector3(float(at[0]), 0.0, float(at[1])))
+		m.me.f.yaw = float(at[2])
+		for e in m.entities:
+			if e != m.me and is_instance_valid(e.f):
+				e.f.teleport(Vector3(float(at[3]), 0.1, float(at[4])))
+				e.f.yaw = float(at[5])
+				break
 	# The game's own music off: the trailer lays its score over the fight's sounds (the blows,
 	# the cries, the crowd), which are kept.
 	var mb := AudioServer.get_bus_index("Music")
@@ -123,9 +174,20 @@ func _ready() -> void:
 	var dead := {}
 	var t := 0.0
 	var after := -1.0
+	# CLIP_DIST=1: how far apart he and his foe stood through the bout (the fight scene's two
+	# hugged each other: user), printed at the end.
+	var dist_log := OS.get_environment("CLIP_DIST") == "1"
+	var gaps := []
+	var rads := []      # (and how far out from the middle of the sand the foe was: on the wall?)
 	while t < seconds:
 		await get_tree().physics_frame
 		t += 1.0 / 120.0
+		if dist_log and int(t * 120.0) % 12 == 0:
+			var ne = m.nearest_enemy(m.me)
+			if ne and is_instance_valid(ne.f) and ne.f.alive and m.me.f.alive:
+				var dd: Vector3 = ne.f.torso.global_position - m.me.f.torso.global_position
+				gaps.append(Vector2(dd.x, dd.z).length())
+				rads.append(Vector2(ne.f.torso.global_position.x, ne.f.torso.global_position.z).length())
 		if from > 0 and _frame() >= from and get_viewport().disable_3d:
 			get_viewport().disable_3d = false
 		for e in m.entities:
@@ -136,6 +198,16 @@ func _ready() -> void:
 					after = t
 		if after >= 0.0 and t - after > 3.0:
 			break
+	if dist_log and not gaps.is_empty():
+		gaps.sort()
+		var n_close := 0
+		for g in gaps:
+			if float(g) < 0.9:
+				n_close += 1
+		_tag("DIST median %.2f p10 %.2f p90 %.2f under0.9 %d%%" % [float(gaps[gaps.size() / 2]), float(gaps[gaps.size() / 10]), float(gaps[gaps.size() * 9 / 10]), 100 * n_close / gaps.size()])
+		rads.sort()
+		var walled := rads.filter(func(r): return float(r) > Arena.RADIUS - 2.5).size()
+		_tag("FOE_R median %.2f p90 %.2f max %.2f near the wall %d%%" % [float(rads[rads.size() / 2]), float(rads[rads.size() * 9 / 10]), float(rads[rads.size() - 1]), 100 * walled / rads.size()])
 	_tag("REC_END %d" % _frame())
 	get_tree().quit()
 
@@ -187,6 +259,9 @@ func _process(dt: float) -> void:
 	# (From a little before the blow that felled him, when that came before he fell, through his fall.)
 	var k0 := blow if blow > 0 and blow < kill else kill
 	var in_kill := kill > 0 and f >= k0 - int(CINE_BEFORE * 120.0) and f < kill + int(CINE_AFTER * 120.0)
+	for c in close:
+		if f >= int(c) - int(CLOSE_BEFORE * 120.0) and f < int(c) + int(CLOSE_AFTER * 120.0):
+			in_kill = true
 	var want := "pov"
 	if film:
 		want = "cine" if in_kill else "wide"

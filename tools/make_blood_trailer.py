@@ -8,7 +8,8 @@ The cut of the trailer that worked, its lines and its order kept, made again as 
               ENTER THE ARENA; the crowd on its feet under the Emperor's box
   the fight   blade on blade, fast, two good swordsmen; a short dip into slow motion on every
               clean blow of his, the kill in slow motion
-  the beasts  the lion's kill: NOT EVERY FOE IS A MAN; the dragon's fire across the sand
+  the beasts  a lion leaps on a man and bears him down: NOT EVERY FOE IS A MAN; the dragon's
+              fire across the sand
   the forge   the executioner's axe going up on the anvil, the anvil filling the screen: FORGE
               YOUR WEAPON / VOXEL BY VOXEL; cut to the same axe in the champion's hands taking a
               man's arm off, in the slowest motion
@@ -73,7 +74,11 @@ CLIMAX = (7, 1, 0.15)
 # How many blows (either way) the fight scene wants in the five seconds before its kill.
 FLURRY = {"exchange": 4}
 # The staged shots (tests/stageshots.gd), each recorded once.
-STAGES = ["reveal", "crowd", "dragon", "cut", "cheese", "chaos", "squad", "spear", "finale"]
+STAGES = ["reveal", "crowd", "maul", "dragon", "cut", "cheese", "chaos", "squad", "spear", "finale"]
+# The fight drawn this long before each kill (the rise trailer's 4.2 s left the montage only the
+# blow or two just before it), and the montage's blows a bout gives: filmed close (CLIP_CLOSE).
+rt.REC_LEAD = 9.0
+MONTAGE_PER_BOUT = 2
 
 
 # ---------- the shots ----------
@@ -105,15 +110,30 @@ def _clean_kill(lines, death, flurry=0):
     return sum(1 for h in _hits(lines) if blow - 5 * REC_FPS <= h[0] <= blow) >= flurry
 
 
-def _draw_bout(k, seed, death, blow=None):
+def _montage_picks(hits, start, blow):
+    """The montage's blows in a bout (the drawn part, before its kill): those that took a limb off
+    first, then the champion's, then the hardest; a second apart at least."""
+    pool = sorted(((1 if h[3] else 0), h[2], h[1], h[0]) for h in hits if start + 30 <= h[0] <= blow - int(1.2 * REC_FPS) and h[1] >= 20)
+    picked = []
+    for _s, _hero, _J, f in reversed(pool):
+        if all(abs(f - g) >= REC_FPS for g in picked):
+            picked.append(f)
+        if len(picked) >= MONTAGE_PER_BOUT:
+            break
+    return sorted(picked)
+
+
+def _draw_bout(k, seed, death, blow=None, close=None):
     """The bout drawn round the kill its dry run found (drawn again round the kill it did make,
     should the drawn one go another way), the film camera close from a little before the blow
-    that felled him (CLIP_BLOW): True when it was kept."""
+    that felled him (CLIP_BLOW) and on the montage's blows (`close`): True when it was kept."""
     avi = os.path.join(WORK, k + ".avi")
     for _ in range(rt.DRAW_TRIES):
         os.environ["CLIP_BLOW"] = str(blow) if blow is not None else ""
+        os.environ["CLIP_CLOSE"] = ",".join(str(f) for f in (close or []))
         rec, start = rt._drawn(k, seed, death, avi)
         os.environ.pop("CLIP_BLOW", None)
+        os.environ.pop("CLIP_CLOSE", None)
         rec0 = mt.tagged(rec, "REC_START")
         if rec0 is None or not os.path.exists(avi):
             print("  %s: the recording failed (see %s)" % (k, os.path.join(WORK, k + ".rec")))
@@ -124,7 +144,7 @@ def _draw_bout(k, seed, death, blow=None):
             blow = _kill_blow(rec, d2)
             with open(os.path.join(WORK, k + ".json"), "w") as f:
                 json.dump({"rec0": rec0, "kill": d2, "blow": blow if blow is not None else d2, "from": start,
-                           "hits": [list(h) for h in hits], "seed": seed or ""}, f)
+                           "hits": [list(h) for h in hits], "close": list(close or []), "seed": seed or ""}, f)
             print("  %s: recorded (seed %s, the kill %.1f s in)" % (k, seed or "default", d2 / REC_FPS))
             return True
         if d2 is None:
@@ -156,7 +176,9 @@ def record_bout(k):
             fallback = fallback or (seed, death, _kill_blow(dry, death))
             print("  %s: seed %s, no clean blow to film at the kill; trying another" % (k, seed or "default"))
             continue
-        if _draw_bout(k, seed, death, _kill_blow(dry, death)):
+        kb = _kill_blow(dry, death)
+        start = max(0, death - int(rt.REC_LEAD * REC_FPS))
+        if _draw_bout(k, seed, death, kb, _montage_picks(_hits(dry), start, kb if kb is not None else death)):
             return
     if fallback and _draw_bout(k, *fallback):
         print("  %s: no seed gave a clean kill; filmed the first kill there was" % k)
@@ -391,7 +413,13 @@ def build(srcs, metas, work):
     if "exchange" in srcs:
         bout(e, srcs, metas, "exchange")
     e.act("battle")
-    if "lion" in srcs:
+    # The lion's leap onto a man, staged (in the lion's bout nothing happened to see: user); the
+    # bout itself when the staged shot is missing.
+    if "maul" in srcs:
+        t0, hit = stage(e, srcs, metas, "maul", 6, key_beat=3, slow=0.35)
+        at = hit if hit is not None else t0 + 3 * BEAT
+        over(e, cd, "c_foe", "NOT EVERY FOE IS A MAN", None, t0 + 0.35, max(t0 + 1.6, at - 0.5))
+    elif "lion" in srcs:
         t0, hit = bout(e, srcs, metas, "lion")
         over(e, cd, "c_foe", "NOT EVERY FOE IS A MAN", None, t0 + 0.35, max(t0 + 1.6, min(t0 + 3.4, hit - 0.8)))
     if "dragon" in srcs:
@@ -456,10 +484,14 @@ def montage(e, srcs, metas, cd):
         if k not in srcs:
             continue
         meta = metas[k]
+        close = meta.get("close")
         for h in meta.get("hits", []):
             f, J = h[0], h[1]
             hero = h[2] if len(h) > 2 else 0
             sev = h[3] if len(h) > 3 else 0
+            # (Those the film camera was in close on, when it was told which.)
+            if close is not None and not any(abs(f - c) <= 6 for c in close):
+                continue
             if meta["from"] + 30 <= f <= meta.get("blow", meta["kill"]) - int(1.2 * REC_FPS):
                 pool.append(((1 if sev else 0), hero, J, k, f))
     pool.sort(reverse=True)
