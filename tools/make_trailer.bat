@@ -69,12 +69,22 @@ echo Installing numpy for Python...
 :deps_ok
 
 rem ---------- Godot ----------
-if "%GODOT%"=="" if exist "D:\godot\Godot_v4.7.2-stable_win64_console.exe" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64_console.exe"
-if "%GODOT%"=="" if exist "D:\godot\Godot_v4.7.2-stable_win64.exe" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe"
-if "%GODOT%"=="" set "GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe"
-if exist "%GODOT%" goto :godot_ok
+rem The GODOT variable, else Godot 4.7 wherever it usually is (the project folder, the one above
+rem it, D:\godot, C:\godot, Downloads, the Desktop, or a Godot folder in those), the *_console.exe
+rem first; else godot on the PATH; else it asks: drag the exe onto the window.
+if not "%GODOT%"=="" if exist "%GODOT%" goto :godot_ok
+set "GODOT="
+for %%k in (_console "") do for %%d in ("%CD%" "%CD%\.." "D:\godot" "C:\godot" "%USERPROFILE%\Downloads" "%USERPROFILE%\Desktop") do for %%f in ("%%~d\Godot_v4.7*win64%%~k.exe") do if not defined GODOT if exist "%%~ff" set "GODOT=%%~ff"
+for %%k in (_console "") do for /d %%d in ("%USERPROFILE%\Downloads\Godot*" "%USERPROFILE%\Desktop\Godot*" "%CD%\..\Godot*") do for %%f in ("%%~d\Godot_v4.7*win64%%~k.exe") do if not defined GODOT if exist "%%~ff" set "GODOT=%%~ff"
+if defined GODOT goto :godot_ok
 where godot >nul 2>nul && set "GODOT=godot" && goto :godot_ok
-echo Godot not found at "%GODOT%": set GODOT to your Godot 4.7 *_console.exe, e.g.
+echo Could not find Godot 4.7. Download Godot 4.7.2 (Windows, 64-bit) from
+echo https://godotengine.org/download/windows/ and unzip it into this folder, or drag
+echo Godot_v4.7.2-stable_win64_console.exe onto this window now and press Enter:
+set /p "GODOT=> "
+if defined GODOT set "GODOT=%GODOT:"=%"
+if defined GODOT if exist "%GODOT%" goto :godot_ok
+echo Godot not found. Set GODOT to your Godot 4.7 *_console.exe, e.g.
 echo   setx GODOT "C:\Godot\Godot_v4.7.2-stable_win64_console.exe"
 pause
 exit /b 1

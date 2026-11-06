@@ -9,14 +9,21 @@ Pillow and numpy are found, or fetched, by the `.bat` files themselves.
 | `tools\make_trailer.bat` | `docs\store\trailer.mp4` | The launch trailer: bot fights seen from the side, the forge, the boss music. |
 | `tools\make_rise_trailer.bat` | `docs\store\trailer_rise.mp4` | WRECKSMITH - RISE: one gladiator's rise, from his helmet's camera and a film camera on the kills, cut to its own score. |
 
-Godot is looked for in `D:\godot\Godot_v4.7.2-stable_win64.exe` (or its `_console.exe`). For
-another place, set it once: `setx GODOT "C:\path\to\Godot_v4.7.2-stable_win64.exe"`.
+Godot is looked for in the `GODOT` variable, then wherever Godot 4.7 is usually unzipped: the
+project folder, the folder above it, `D:\godot`, `C:\godot`, Downloads, the Desktop, or a Godot
+folder in those (the `_console.exe` first), then `godot` on the PATH; if it is nowhere, the window
+asks for it (drag the exe onto it). To name it once: `setx GODOT "C:\path\to\Godot_v4.7.2-stable_win64_console.exe"`.
+
+Every shot is filmed in the game's own look (the detailed men) at full quality, whatever this PC's
+Options say (`FORCE_LOOK`, `FORCE_QUALITY`).
 
 A run takes 20 to 60 minutes with a graphics card. Shots already made are kept in
-`..\trailer_work` beside the project, so a stopped run carries on. To make a shot again, delete
-it there (`..\trailer_work\gorilla.mp4` for the launch trailer, `..\trailer_work\rise\lion.avi` for
-the rise trailer, `..\trailer_work\blood\dragon.avi` for the crowd trailer); to start over,
-delete the folder.
+`..\trailer_work` beside the project, so a stopped run carries on; but only for the same version of
+the game: once the game's scripts, data, shaders, scenes, probes or these tools have changed, the
+shots kept from before are thrown away and filmed again (`stamp.txt` in the work folder). To make
+one shot again, delete it there (`..\trailer_work\gorilla.mp4` for the launch trailer,
+`..\trailer_work\rise\lion.avi` for the rise trailer, `..\trailer_work\blood\dragon.avi` for the crowd
+trailer); to start over, delete the folder.
 
 ## The crowd trailer (WRECKSMITH - THE CROWD WANTS BLOOD), shot by shot
 

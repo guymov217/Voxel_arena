@@ -10,6 +10,10 @@ func _ready() -> void:
 		runner.run(args[i + 1] if args.size() > i + 1 else "")
 		return
 	if args.has("--probe"):
+		# (A trailer is filmed in the game's own look, whatever this PC's player picked in his
+		# Options: the classic blocks on low graphics filmed old men into the new trailer, user.)
+		if OS.get_environment("FORCE_LOOK") != "":
+			Physique.forced = OS.get_environment("FORCE_LOOK")
 		var probe = load("res://tests/%s.gd" % (args[args.find("--probe") + 1] if args.size() > args.find("--probe") + 1 else "probe")).new()
 		add_child(probe)
 		return

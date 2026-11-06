@@ -563,6 +563,7 @@ def main():
         return
     mt.G = mt.godot()
     print("Godot: %s\nwork dir: %s" % (mt.G, RTMP))
+    mt.fresh(RTMP)
     print("== the project copy")
     project()
     print("== the bouts (each played twice: once to find the kill, once filmed at 120 frames a second)")

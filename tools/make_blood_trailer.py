@@ -573,6 +573,7 @@ def main():
         return
     mt.G = mt.godot()
     print("Godot: %s\nwork dir: %s" % (mt.G, WORK))
+    mt.fresh(WORK)
     print("== the project copy")
     rt.project()
     os.environ["CLIP_CAM"] = "film"

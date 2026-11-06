@@ -34,6 +34,17 @@ def godot():
         if g and os.path.isfile(g):
             con = g[:-4] + "_console.exe" if g.lower().endswith(".exe") and not g.lower().endswith("_console.exe") else ""
             return con if con and os.path.isfile(con) else g
+    # Wherever Godot 4.7 usually ends up unzipped (as make_trailer.bat looks): the project, the
+    # folder above it, Downloads, the Desktop, or a Godot folder in those; the console build first.
+    import glob
+    home = os.path.expanduser("~")
+    places = [ROOT, os.path.dirname(ROOT), os.path.join(home, "Downloads"), os.path.join(home, "Desktop")]
+    for kind in ("_console", ""):
+        for d in places:
+            for pat in ("Godot_v4.7*win64%s.exe" % kind, os.path.join("Godot*", "Godot_v4.7*win64%s.exe" % kind)):
+                hits = sorted(glob.glob(os.path.join(d, pat)))
+                if hits:
+                    return hits[0]
     for name in ("godot", "godot4", "Godot_v4.7.2-stable_win64_console.exe", "Godot_v4.7.2-stable_win64.exe"):
         p = shutil.which(name)
         if p:
@@ -67,6 +78,10 @@ def run(args, env=None, log=None):
     """Runs Godot or ffmpeg, prints nothing of theirs; returns its output lines, with the timing
     tags the probes also write to TAG_LOG (the window build of Godot prints nothing to a pipe)."""
     e = dict(os.environ)
+    # Filmed in the game's own look at its full quality, whatever this PC's player picked in his
+    # Options (on low graphics, or the classic look chosen, the trailer showed the old block men).
+    e.setdefault("FORCE_LOOK", "human")
+    e.setdefault("FORCE_QUALITY", "high")
     e.update(env or {})
     tags = os.path.join(TMP, "tags.txt")
     if os.path.exists(tags):
@@ -88,6 +103,47 @@ def tagged(lines, tag):
         if l.startswith(tag + " "):
             return int(l.split()[1])
     return None
+
+
+def stamp():
+    """What the shots are filmed from: the game's scripts, data, shaders and scenes, the probes
+    that film them and these tools, by their contents (line ends aside)."""
+    import hashlib
+    h = hashlib.sha1()
+    exts = (".gd", ".json", ".gdshader", ".tscn", ".tres", ".py", ".cfg")
+    for top in ("scripts", "data", "shaders", "scenes", "tests", "tools", "project.godot"):
+        base = os.path.join(ROOT, top)
+        files = [base] if os.path.isfile(base) else [os.path.join(d, f) for d, _, fs in os.walk(base) for f in fs if f.endswith(exts)]
+        for f in sorted(files):
+            h.update(os.path.relpath(f, ROOT).replace("\\", "/").encode())
+            with open(f, "rb") as fh:
+                h.update(fh.read().replace(b"\r\n", b"\n"))
+    return h.hexdigest()
+
+
+def fresh(work):
+    """The shots kept in `work` from a run made from another version of the game are thrown away,
+    so every shot is filmed from the game as it is now. (Kept, the shots of a trailer rendered
+    before were cut into the new one, its fixes missing and its men the old blocks: user.) Within
+    one version, shots already made are still kept, so a run that stopped carries on."""
+    os.makedirs(work, exist_ok=True)
+    sp = os.path.join(work, "stamp.txt")
+    now = stamp()
+    was = ""
+    if os.path.exists(sp):
+        with open(sp) as fh:
+            was = fh.read().strip()
+    if was != now:
+        gone = 0
+        for f in os.listdir(work):
+            p = os.path.join(work, f)
+            if os.path.isfile(p) and f.endswith((".avi", ".json", ".dry", ".rec", ".mp4", ".wav", ".png")):
+                os.remove(p)
+                gone += 1
+        with open(sp, "w") as fh:
+            fh.write(now)
+        if gone:
+            print("  the game has changed since the last run: its %d old shot files thrown away, filmed again" % gone)
 
 
 def fresh_project():
@@ -227,6 +283,7 @@ if __name__ == "__main__":
     G = godot()
     os.makedirs(TMP, exist_ok=True)
     print("Godot: %s\nwork dir: %s" % (G, TMP))
+    fresh(TMP)
     print("== the project copy")
     fresh_project()
     print("== fights")
