@@ -6,6 +6,8 @@ var pos := Vector3(0, 3, -9)   # where it wants to be (eased toward its place be
 var eye := pos                  # where it is: that, kept clear of the walls
 var look := Vector3(0, 1, 0)
 var jolt_v := Vector3.ZERO      # the view knocked aside by a blow taken, settling back
+const FOV := 59.0                 # the view's height, degrees (it was 65)
+const FOV_AIM := 46.0             # aiming a throw or a shot (it was 50)
 
 ## A blow taken jolts the view along `dir`, `k` 0..1 how hard (a few centimetres at most).
 func jolt(dir: Vector3, k: float) -> void:
@@ -16,7 +18,7 @@ func jolt(dir: Vector3, k: float) -> void:
 func _ready() -> void:
 	# Moved every frame, after the bodies' interpolated positions: not by the physics.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	fov = 65.0
+	fov = FOV
 	near = 0.05
 	current = true
 	global_position = pos
@@ -220,7 +222,10 @@ func view_angles() -> Vector2:
 	return Vector2(atan2(d.x, d.z), asin(clampf(d.y, -1.0, 1.0)) + 0.12 + 0.45 * (1.0 - wall_k))
 func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null, tip := -1) -> void:
 	aim_k = move_toward(aim_k, 1.0 if aiming else 0.0, dt * 4.0)
-	fov = lerpf(65.0, 50.0, aim_k)
+	# (A little narrower than it was: the gladiators a tenth bigger on the screen and clearer, not
+	# too much, user. Drawn in nearer instead, his own head and arms came between the camera and
+	# the foe more often, and were seen through.)
+	fov = lerpf(FOV, FOV_AIM, aim_k)
 	if f == null or not is_instance_valid(f):
 		var a := Time.get_ticks_msec() / 1000.0 * 0.15
 		pos = pos.lerp(Vector3(sin(a) * 9.0, 3.5, cos(a) * 9.0), minf(1.0, dt * 2.0))

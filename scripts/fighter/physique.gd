@@ -794,12 +794,31 @@ static func _plate_head(p: VoxelPart, c: Array, at: Vector3, id: String) -> Tran
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	if id.begins_with("beard_") and int(c[1]) >= 0:
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (drawn on the fine jaw)
+	var lies := FineArmor.hair_or_hat(p, id) and not stands(p, c, id)
 	var r := FineHead.wrap(p, at)
 	var pos: Vector3 = r[0]
 	var cell := p.vf * p.part_scale * float(Data.body_res)
 	var wc: Vector3 = p.fine.wc
 	var dir := (pos - wc).normalized()
-	if id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id == "cape":
+	if FineArmor.hair_or_hat(p, id) and not lies:
+		# A lock or a piece standing out of the shell (a topknot, a ponytail, a horn, a plume): a
+		# voxel of his body's size on the shell, as far out past it as it stood out past the first
+		# voxel round the box (where it stood off the box it floated over the smaller fine head).
+		# (A piece standing out all of it, horns or a crest, sits a little into the head where it
+		# grows from; a lock over the shell rests on the shell.)
+		var fsz := p.vf * p.part_scale / float(FineHead.template().get("res", 3))
+		var lay := _lay(p, c)
+		var out_r := FineHead.outline(p, dir) + (float(maxi(lay, 1)) - 0.62) * cell if STANDING.has(id) else FineHead.outline(p, dir) + FineArmor.THICK * fsz + (float(lay) - 1.5) * cell
+		match id:
+			"hat_horns":
+				# A horn: long out of the head along its way, narrowing to its point (FineArmor).
+				var hup := Vector3.UP if absf(dir.y) < 0.95 else Vector3.FORWARD
+				return Transform3D(Basis.looking_at(-dir, hup) * Basis.from_scale(Vector3(0.62, 0.62, 1.7)), wc + dir * (out_r + cell * 0.3))
+			"hat_feather":
+				# A feather: tall and thin, standing up out of the band.
+				return Transform3D(Basis.from_scale(Vector3(0.3, 1.9, 0.75)), wc + dir * out_r + Vector3.UP * cell * 0.45)
+		return Transform3D(Basis.from_scale(Vector3.ONE * 0.98), wc + dir * out_r)
+	if not lies and (id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id == "cape"):
 		# Hair, a beard, a hat: as full as they are, a lock standing off the head.
 		var sc := Vector3.ONE * float(r[1]) * 1.04
 		if id.begins_with("hair_"):
@@ -816,6 +835,27 @@ static func _plate_head(p: VoxelPart, c: Array, at: Vector3, id: String) -> Tran
 	var b := Basis.looking_at(-dir, up)
 	var tang := clampf(float(r[1]) * 1.15, 0.7, 1.2)
 	return Transform3D(b * Basis.from_scale(Vector3(tang, tang, t)), hp)
+
+## Whether a cell of a hairstyle or a hat on the fine head stands out of the shell round the head
+## (drawn as the fine voxels it holds) rather than lying in it: what stands two voxels off the
+## head's box (a topknot, a ponytail); every cell of horns, a crest, a feather, a mohawk, spikes
+## (laid in the shell they were patches on the head); a straw hat's brim, its lowest row.
+const STANDING := ["hat_horns", "hat_crest", "hat_feather", "hair_mohawk", "hair_spikes"]
+static func stands(p: VoxelPart, c: Array, id: String) -> bool:
+	if STANDING.has(id):
+		return true
+	if id == "hat_straw" and int(c[1]) <= 4:
+		return true
+	return _lay(p, c) >= 2
+
+## How many voxels out of the part's box a piece's cell stands (0: within it).
+static func _lay(p: VoxelPart, c: Array) -> int:
+	var lay := 0
+	for ax in 3:
+		var v := int(c[ax])
+		var dm: int = p.dims[ax]
+		lay = maxi(lay, -v if v < 0 else (v - dm + 1 if v >= dm else 0))
+	return lay
 
 static func _plate_strong(p: VoxelPart, c: Array, at: Vector3, id: String) -> Transform3D:
 	var r := shape_at(p, at, 0.0)

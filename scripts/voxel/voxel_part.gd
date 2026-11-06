@@ -3035,6 +3035,38 @@ func _lie(dt: float) -> void:
 	collision_layer = LAYER_CORPSE if lie else LAYER_DEBRIS
 	collision_mask = (LAYER_WORLD | LAYER_WEAPON | LAYER_DEBRIS | LAYER_CORPSE) if lie else (LAYER_WORLD | LAYER_BODY | LAYER_WEAPON | LAYER_DEBRIS | LAYER_CORPSE)
 
+## A piece cut off is nudged, never flung, by a living body going by (a foot, a leg, a trunk), and
+## once it has come to rest on the sand by whatever brushes it, until it is in someone's hand
+## again: along the sand and up no faster than a nudge, spinning no faster; falling as fast as it
+## falls. (A bear's or a gorilla's stride kicked a severed leg across the arena at 9 m/s, again
+## and again as it went by: user, a cut-off limb jumped about the arena for no reason.)
+const CALM_V := 1.4
+const CALM_W := 5.0
+var _rested := false
+func _calm(state: PhysicsDirectBodyState3D) -> void:
+	if wielder != null:
+		_rested = false
+		return
+	if _lying:
+		_rested = true
+	var trod := false
+	if not _rested:
+		for i in state.get_contact_count():
+			var o = state.get_contact_collider_object(i)
+			if o is VoxelPart and not o.severed and o.collision_layer == LAYER_BODY:
+				trod = true
+				break
+	if not (_rested or trod):
+		return
+	var v := state.linear_velocity
+	var flat := Vector2(v.x, v.z)
+	if flat.length() > CALM_V or v.y > CALM_V:
+		flat = flat.limit_length(CALM_V)
+		state.linear_velocity = Vector3(flat.x, minf(v.y, CALM_V), flat.y)
+	var w := state.angular_velocity
+	if w.length() > CALM_W:
+		state.angular_velocity = w.limit_length(CALM_W)
+
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if severed:
 		_lie(state.step)
@@ -3051,3 +3083,6 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 					break
 				if Fighter.is_beast_on(o, fighter):
 					fighter.beast_frame = Engine.get_physics_frames()
+	# (After the contacts are told: a blow it lands is as hard as it came.)
+	if severed:
+		_calm(state)

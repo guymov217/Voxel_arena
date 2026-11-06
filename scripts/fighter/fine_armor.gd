@@ -21,19 +21,27 @@ static var _unit: BoxMesh = null
 
 ## Whether the piece is drawn as a shell on `p` as it is drawn now.
 static func wanted(p: VoxelPart, id: String) -> bool:
-	if Fighter._cosmetic(id) or p.fine.is_empty():
+	if p.fine.is_empty():
 		return false
+	if Fighter._cosmetic(id):
+		return hair_or_hat(p, id)
 	if p.fine.has("wtab"):
 		return true
 	return p.fine.has("body") and not bool(p.fine.get("beast", false)) and (p.fine.get("d", {}) as Dictionary).has("k")
+
+## A hairstyle or a hat on a man's fine head (not a giant's: his head has its own): drawn as a
+## shell round the head as a helmet is, the locks and the pieces that stand out from it as the
+## fine voxels they hold (drawn as the head's cubes, a lock or a hat's piece the size of a
+## voxel of his body, they stood off the fine head like blocks: user, the hair and the hats did
+## not fit the new heads).
+static func hair_or_hat(p: VoxelPart, id: String) -> bool:
+	return p.fine.has("wtab") and String(p.fine.get("giant", "")) == "" and (id.begins_with("hair_") or id.begins_with("hat_"))
 
 ## The shell of `ad` (a piece on `p`) drawn, or drawn again as the plates lie now; the plates'
 ## own tiles hidden. Not wanted (the classic looks): the shell gone, the tiles shown.
 static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 	var node = ad.get("node")
 	if node == null or not is_instance_valid(node):
-		return
-	if Fighter._cosmetic(String(ad.id)):
 		return
 	if not wanted(p, String(ad.id)):
 		if ad.has("shell"):
@@ -47,7 +55,12 @@ static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 	clear(ad)
 	var id := String(ad.id)
 	var skin: Color = f.skin if f is Fighter else Color(0.6, 0.4, 0.3)
-	var L := _layout(p, ad, id, ArmorStyle.base_color(id, Data.armor.get(id, {}), skin))
+	var bare := ArmorStyle.base_color(id, Data.armor.get(id, {}), skin)
+	if id.begins_with("hair_") and f is Fighter:
+		var hc = Physique.hair_choice(f)
+		if hc != null:
+			bare = hc
+	var L := _layout(p, ad, id, bare)
 	if L.is_empty():
 		return
 	# Drawn: each fine voxel a plate's, kept as where it lies on its plate's tile (a bend, a hide,
@@ -98,7 +111,7 @@ static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 ## plate on, the colours, the shading). Shared: read, never changed.
 static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Dictionary:
 	var n: int = ad.cells.size()
-	var lkey := "%s|%s|%d|%d|%d|%d|%s" % [_key(p), id, n, hash(ad.cells), hash(ad.pts), hash(ad.get("kinds", [])), bare.to_html()]
+	var lkey := "%s|%s|%d|%d|%d|%d|%s|%d" % [_key(p), id, n, hash(ad.cells), hash(ad.pts), hash(ad.get("kinds", [])), bare.to_html(), hash(ad.get("cols", []))]
 	if _shells.has(lkey):
 		return _shells[lkey]
 	var ground := _ground(p)
@@ -122,6 +135,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 			var dm := dims[ax]
 			lay = maxi(lay, -v if v < 0 else (v - dm + 1 if v >= dm else 0))
 		first[ci] = 1 if lay <= 1 else 0
+		if hair_or_hat(p, id):
+			first[ci] = 0 if Physique.stands(p, c, id) else 1
 	# Each plate's neighbours on the piece's own lattice (the 26 round it), as they lie on him: the
 	# shell runs on from a plate to its neighbour's (their tiles meet there), and past the piece's
 	# edge, where there is none, half a tile. (Its nearest neighbour's distance every way: where he
@@ -250,7 +265,9 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 					lift[kc2] = owner[kc]
 				t += 0.5
 		owner.merge(lift)
-	# A plate standing out from him (a crest, a brim): the fine voxels its tile holds.
+	# A plate standing out from him (a crest, a brim): the fine voxels its tile holds. (A horn's
+	# narrowing to its point.)
+	var taper := id == "hat_horns"
 	for ci in n:
 		if first[ci] == 1:
 			continue
@@ -273,6 +290,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 					var q := o + (Vector3(ix, iy, iz) + Vector3.ONE * 0.5) * sp
 					var l := inv * q
 					if absf(l.x) <= half and absf(l.y) <= half and absf(l.z) <= half:
+						if taper and Vector2(l.x, l.y).length() > half * (1.05 - 0.85 * (l.z + half) / (2.0 * half)):
+							continue
 						var kc := Vector3i(ix, iy, iz)
 						if not owner.has(kc):
 							owner[kc] = ci
@@ -285,9 +304,11 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	if style.get("crest", false) and p.fine.has("wc"):
 		_crest(p.fine.wc, owner, extra, o, sp)
 	if style.get("brim", false) and p.fine.has("wc"):
-		_brim(p.fine.wc, owner, extra, o, sp)
+		_brim(p.fine.wc, owner, extra, o, sp, float(style.get("brim_w", 2.0)))
 	if style.get("boss", false):
 		_boss(org, first, owner, extra, o, sp, cube)
+	if style.get("curls", false) and p.fine.has("wc"):
+		_curls(p.fine.wc, owner, o, sp)
 	# (A piece in bands: where each row of its plates lies on him, so the bands run straight and
 	# level round him, the same on his left as on his right: user, the lorica was not symmetrical.)
 	var bands := _band_rows(ad, org, o, sp, cube, p) if style.get("seams", true) else {}
@@ -714,6 +735,9 @@ static func _ring(r: int, dx: float, dz: float, lo_r: float, hi_r: float, fsz: f
 static func _shade(ad: Dictionary, ci: int, kc: Vector3i, owner: Dictionary, bare: Color, within: Dictionary, style: Dictionary, dims: Vector3i, bands := {}) -> Color:
 	var c: Array = ad.cells[ci]
 	var col := Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else bare
+	var cosmetic := Fighter._cosmetic(String(ad.id))
+	if cosmetic and ad.has("cols") and ci < (ad.cols as Array).size():
+		col = ad.cols[ci]
 	var metal := true
 	if ad.has("kinds") and ci < (ad.kinds as Array).size():
 		metal = int(ad.kinds[ci]) == 3 or int(ad.kinds[ci]) == 4
@@ -721,6 +745,10 @@ static func _shade(ad: Dictionary, ci: int, kc: Vector3i, owner: Dictionary, bar
 	for dv in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
 		if owner.get(kc + dv) == null and within.has(kc + dv):
 			rim = true   # (its rim: where the shell ends on him, not its inside or its outside face)
+	if cosmetic and String(ad.id).begins_with("hair_"):
+		# Hair in strands: lighter and darker voxel to voxel down its fall, its edge in shadow.
+		var hk := 0.86 + 0.26 * _hash(kc) * (0.7 + 0.3 * _hash(Vector3i(kc.x, 0, kc.z)))
+		return _lit(col, hk * (0.82 if rim else 1.0))
 	if bands.is_empty():
 		# One moulded piece: a hair's difference from voxel to voxel.
 		var k := 0.985 + 0.03 * _hash(kc)
@@ -889,6 +917,13 @@ const BOSS := 4
 ## the knee raised; a gold lorica moulded smooth; a skull plate or a jaw guard one smooth piece. A
 ## piece made at the bench: smooth on the head and the shins, in bands on the trunk and the arms.
 static func _style(id: String, p: VoxelPart) -> Dictionary:
+	if id.begins_with("hair_") or id.begins_with("hat_"):
+		match id:
+			"hat_straw":
+				return {"seams": false, "brim": true, "brim_w": 4.5}
+			"hair_curly", "hair_curls_top":
+				return {"seams": false, "curls": true}
+		return {"seams": false}
 	match id:
 		"helmet":
 			return {"seams": false, "crest": true, "brim": true, "plume": Color(0.62, 0.07, 0.05)}
@@ -946,7 +981,7 @@ static func _crest(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3
 
 ## A brim round the helmet at the brow (where the bowl ends over his face), two voxels wide, out
 ## from the bowl all round: each the plate's it stands out from.
-static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3) -> void:
+static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, wide := 2.0) -> void:
 	var cell := sp.x
 	var row := 1 << 30
 	for kc in owner:
@@ -967,7 +1002,7 @@ static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3,
 		if owner.has(_at(q + dir * cell, o, sp)):
 			continue   # (from the bowl's outside)
 		var t := cell * 0.5
-		while t <= cell * 2.0:
+		while t <= cell * wide:
 			var kk := _at(q + dir * t, o, sp)
 			kk.y = row
 			if not owner.has(kk) and not add.has(kk):
@@ -976,6 +1011,21 @@ static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3,
 	for kk in add:
 		owner[kk] = add[kk]
 		extra[kk] = BRIM
+
+## Curls standing out of a head of hair: here and there a voxel over its outside, each the
+## lock's it stands out of (a head of curls drawn as a smooth cap read as a crop).
+static func _curls(wc: Vector3, owner: Dictionary, o: Vector3, sp: Vector3) -> void:
+	var cell := sp.x
+	var add := {}
+	for kc in owner:
+		var q := _mid(kc, o, sp)
+		var dir := (q - wc).normalized()
+		var kk := _at(q + dir * cell, o, sp)
+		if owner.has(kk) or add.has(kk) or _hash(kc) < 0.55:
+			continue
+		add[kk] = owner[kc]
+	for kk in add:
+		owner[kk] = add[kk]
 
 ## A greave's knee raised a voxel off it (the moulded knee), over the knee in front: each the
 ## plate's under it.

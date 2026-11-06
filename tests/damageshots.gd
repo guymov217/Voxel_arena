@@ -6,6 +6,8 @@ extends Node
 
 func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
+	if OS.get_environment("STYLE") != "":
+		Physique.forced = OS.get_environment("STYLE")
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": []})

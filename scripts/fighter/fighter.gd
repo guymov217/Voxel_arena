@@ -1110,6 +1110,7 @@ func _tuck_hair(p: VoxelPart) -> void:
 			# (when the last of its plates is knocked off, the hat shows again).
 			for ci in ad.cells.size():
 				ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+				FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 			continue
 		for ci in ad.cells.size():
 			if ad.on[ci] == 1:
@@ -1153,10 +1154,15 @@ func _tuck_hair(p: VoxelPart) -> void:
 					xf = Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 					w = 0.0
 					burst = false
+			# (A lock of a shell lying on his head stays with it: swung on its own it tore the
+			# shell; one standing out of it swings.)
+			if ad.has("shell") and not Physique.stands(p, ad.cells[ci], id) and not burst:
+				w = 0.0
 			base.append(xf)
 			sway.append(w)
 			out.append(1 if burst and w > 0.0 else 0)
 			ad.node.multimesh.set_instance_transform(ci, xf)
+			FineArmor.sync(ad, ci, xf)
 		ad["base"] = base
 		ad["sway"] = sway
 		ad["out"] = out
@@ -1214,6 +1220,8 @@ func _sway_hair(dt: float) -> void:
 				xf.basis = xf.basis.scaled(Vector3.ONE * pop)
 			xf.origin += local * w
 			m.set_instance_transform(ci, xf)
+			if ad.has("shell"):
+				FineArmor.sync(ad, ci, xf)
 
 ## All he carries, kg: his armour and the weapons in his hands (a warhammer and a tower of a
 ## shield tire a man as plate does).
@@ -3549,7 +3557,11 @@ func _clip_arm_armor() -> void:
 					lo = lo.min(o)
 					hi = hi.max(o)
 		var cell: float = torso.vf * torso.part_scale * float(Data.body_res) * 0.5
-		torso.set_meta("armor_box", AABB(lo - Vector3.ONE * cell, hi - lo + Vector3.ONE * cell * 2.0) if lo.x < INF else AABB())
+		# (No wider than his chest itself: the box of a lorica's shoulder pieces, standing out over
+		# the tops of his arms, took in the arms hanging at his sides, and a manica lost every
+		# plate of its upper arm under one.)
+		var own := AABB(-torso.half_ext - Vector3.ONE * cell, (torso.half_ext + Vector3.ONE * cell) * 2.0)
+		torso.set_meta("armor_box", AABB(lo - Vector3.ONE * cell, hi - lo + Vector3.ONE * cell * 2.0).intersection(own) if lo.x < INF else AABB())
 	var box: AABB = torso.get_meta("armor_box")
 	if box.size == Vector3.ZERO:
 		return

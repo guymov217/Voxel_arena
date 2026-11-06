@@ -1595,9 +1595,11 @@ def hydra(sp, g):
             sx = 1.0 if x > 0 else -1.0
             r = float(min(K[up_n][2][0], K[up_n][2][2])) * 0.9
             sh_ = np.array([x * 0.85, cy - 0.15 * H, zj])
-            el = np.array([x * 1.42, ground + 0.48, zj + 0.04])
-            wr = np.array([x * 1.3, ground + 0.2, zj + 0.12])
-            ft = np.array([x * 1.3, ground, zj + 0.2])
+            # (Sprawled no further out than the legs' own boxes: a blade through an elbow drawn
+            # out past them met nothing.)
+            el = np.array([x * 1.2, ground + 0.48, zj + 0.04])
+            wr = np.array([x * 1.14, ground + 0.2, zj + 0.12])
+            ft = np.array([x * 1.14, ground, zj + 0.16])
             big = 1.15 if fb == "B" else 1.0
             S.add(ell(g, (x * 1.0, cy - 0.3 * H, zj), (r * 1.3 * big, r * 1.2 * big, r * 1.35 * big)), 0.16)
             S.add(cap(g, sh_, el, r * 1.0 * big, r * 0.78), 0.14)
@@ -1613,7 +1615,10 @@ def hydra(sp, g):
         ln = float(np.linalg.norm(b - a))
         rn = float(K[nk][2][0])
         npts = [a - u * 0.3, a + u * 0.33 * ln - thr * 0.08, a + u * 0.68 * ln - thr * 0.1, b + u * 0.02]
-        nrad = [rn * 1.75, rn * 1.3, rn * 1.08, rn * 0.98]
+        # (No thicker than the neck's own box over its length, broad only at the root in the
+        # shoulders: drawn wider, a blade went through the drawing of a neck and met nothing, and
+        # its heads could not be cut off, user.)
+        nrad = [rn * 1.45, rn * 1.0, rn * 0.92, rn * 0.9]
         nd = _chain(g, npts, nrad)
         S.add(nd, 0.2)
         necks.append((nk, a, b, u, thr, ln, rn, nd))
@@ -1630,8 +1635,8 @@ def hydra(sp, g):
     ta, tb = _limb_ends(info, "tail")
     tu = (tb - ta) / np.linalg.norm(tb - ta)
     rt = float(K["tail"][2][0])
-    tpts = [ta - tu * 0.5, ta + (tb - ta) * 0.35 + np.array([0, 0.03, 0]), ta + (tb - ta) * 0.75 - np.array([0, 0.05, 0]), tb + tu * 0.4 - np.array([0, 0.12, 0])]
-    trad = [rt * 1.35, rt * 0.95, rt * 0.55, rt * 0.08]
+    tpts = [ta - tu * 0.5, ta + (tb - ta) * 0.35 + np.array([0, 0.03, 0]), ta + (tb - ta) * 0.75 - np.array([0, 0.05, 0]), tb - tu * 0.04 - np.array([0, 0.06, 0])]
+    trad = [rt * 1.05, rt * 0.8, rt * 0.5, rt * 0.08]
     S.add(_chain(g, tpts, trad), 0.25)
     # Spines: a ridge of them down the back to the tail's end, and down the back of each neck.
     pts, ups, backs, hs = [], [], [], []
@@ -1644,7 +1649,7 @@ def hydra(sp, g):
         pts.append(np.array([0.0, y - 0.04, z]))
         ups.append(np.array([0.0, 1.0, 0.0]))
         backs.append(np.array([0.0, 0.0, -1.0]))
-        hs.append(0.3 * (1.0 - 0.7 * t) * (0.7 if i == 0 else 1.0))
+        hs.append(0.2 * (1.0 - 0.6 * t) * (0.7 if i == 0 else 1.0))
     for nk, a, b, u, thr, ln, rn, nd in necks:
         for t in np.linspace(0.22, 0.86, 5):
             q = a + u * t * ln - thr * (0.1 * math.sin(t * math.pi))
@@ -1652,7 +1657,7 @@ def hydra(sp, g):
             pts.append(q - thr * r_here * 0.85)
             ups.append(-thr)
             backs.append(-u)
-            hs.append(0.15 * (1.0 - 0.3 * t))
+            hs.append(0.09 * (1.0 - 0.3 * t))
     _spine_row(S, g, pts, ups, backs, hs, 0.035)
     d = S.d
     occ = d < 0
@@ -2913,20 +2918,20 @@ def cerberus(sp, g):
                 S.add(cap(g, el, wr, r * 0.72, r * 0.5), 0.12)
             else:
                 hp_ = np.array([x * 0.96, cy, zj + 0.04])
-                kn = np.array([x * 1.04, ground + 0.62 * (cy - ground), zj + 0.3])
-                hk = np.array([x * 1.0, ground + 0.36, zj - 0.22])
+                kn = np.array([x * 1.04, ground + 0.62 * (cy - ground), zj + 0.14])
+                hk = np.array([x * 1.0, ground + 0.36, zj - 0.16])
                 wr = np.array([x * 1.0, ground + 0.24, zj - 0.12])
-                S.add(ell(g, (x * 1.0, cy - 0.35 * H, zj + 0.08), (r * 1.25, r * 2.0, r * 1.6)), 0.25)
+                S.add(ell(g, (x * 1.0, cy - 0.3 * H, zj + 0.06), (r * 1.15, r * 1.55, r * 1.3)), 0.22)
                 S.add(cap(g, hp_, kn, r * 1.1, r * 0.75), 0.2)
                 S.add(cap(g, kn, hk, r * 0.72, r * 0.48), 0.12)
                 S.add(cap(g, hk, wr, r * 0.5, r * 0.5), 0.08)
             # the paw: a pad and four toes, a claw on each
-            pc = np.array([x, ground + r * 0.42, wr[2] + 0.12])
+            pc = np.array([x, ground + r * 0.42, wr[2] + 0.05])
             sub = _around(g, [pc - np.array([r * 1.5, r, r * 1.5]), pc + np.array([r * 1.5, r * 1.2, r * 2.6])], 0.05)
             paw = ell(sub, pc, (r * 0.95, r * 0.5, r * 1.15))
             S.add(cap(g, wr, pc + np.array([0, r * 0.2, 0]), r * 0.5, r * 0.6), 0.08)
             for tx in (-0.6, -0.2, 0.2, 0.6):
-                tc = pc + np.array([tx * r * 1.05, -r * 0.08, r * (1.0 - 0.25 * abs(tx))])
+                tc = pc + np.array([tx * r * 1.05, -r * 0.08, r * 0.8 * (1.0 - 0.25 * abs(tx))])
                 paw = smin(paw, ell(sub, tc, (r * 0.3, r * 0.34, r * 0.38)), 0.03)
                 cl = cap(sub, tc + np.array([0, 0.0, r * 0.25]), tc + np.array([0, -r * 0.3, r * 0.62]), r * 0.13, 0.006)
                 S.add(cl, 0, sub)
@@ -2944,8 +2949,10 @@ def cerberus(sp, g):
             base = np.array([0.0, cy + 0.2 * H, zc + 0.72 * Lz])
         mid = (base + jh) * 0.5 + np.array([0.0, 0.08, -0.04])
         pts = _catmull([base, mid, jh + Rh[:, 2] * 0.1], 0.08)
-        rn = float(hh[0]) * 0.62
-        _tube(S, g, pts, [rn * (1.25 - 0.3 * i / (len(pts) - 1)) for i in range(len(pts))], 1.0, 0.16, key="neck")
+        # (Thick as the neck's own box and no thicker: a neck drawn wider than it, a blade went
+        # through its drawing and met nothing, user.)
+        rn = float(hh[0]) * 0.5
+        _tube(S, g, pts, [rn * (1.12 - 0.22 * i / (len(pts) - 1)) for i in range(len(pts))], 1.0, 0.12, key="neck")
         heads.append((Rh, hp, hh))
     eyes = []
     for Rh, hp, hh in heads:
@@ -2960,8 +2967,8 @@ def cerberus(sp, g):
         a = -1.25 + 2.5 * i / 8
         dirv = np.array([math.sin(a), 0.0, math.cos(a)])
         p0 = cpos + np.array([0, 0.04, -0.12]) + np.array([chalf[0] * 1.05 * math.sin(a), 0.0, chalf[2] * 4.2 * math.cos(a)])
-        sub2 = _around(g, [p0, p0 + dirv * 0.22], 0.08)
-        spk = cap(sub2, p0 - dirv * 0.02, p0 + dirv * 0.22, 0.055, 0.008)
+        sub2 = _around(g, [p0, p0 + dirv * 0.12], 0.08)
+        spk = cap(sub2, p0 - dirv * 0.02, p0 + dirv * 0.12, 0.045, 0.008)
         S.add(spk, 0.0, sub2)
         S.mark("spike", spk, sub2)
     # The ridge of bristles down the back from the withers, in tufts.
@@ -2970,41 +2977,58 @@ def cerberus(sp, g):
     rg = np.maximum(rg, np.abs(g.X) - 0.12 * W)
     S.add(rg, 0.04)
     S.mark("ridge", rg)
-    # The tail: a serpent out of the rump, its head raised.
+    # The tail: a serpent out of the rump down the tail's own length, a little to one side and the
+    # other, its head the tail's end, the jaws open at whatever comes at the hound from behind.
+    # (Within the tail's own box: raised out past it, a blade through the snake met nothing, user.)
     ta, tb = _limb_ends(info, "tail")
     u = (tb - ta) / np.linalg.norm(tb - ta)
-    rt = float(K["tail"][2][0]) * 0.75
-    tpts = _catmull([ta + np.array([0, -0.06, 0.12]), ta + (tb - ta) * 0.5 + np.array([0, -0.12, 0]), tb + np.array([0.0, 0.05, -0.25]), tb + np.array([0.0, 0.42, -0.42])], 0.06)
-    _tube(S, g, tpts, [rt * (1.1 - 0.5 * i / (len(tpts) - 1)) for i in range(len(tpts))], 1.0, 0.06, key="serpent")
-    hdir = tpts[-1] - tpts[-3]
-    hdir = hdir / np.linalg.norm(hdir)
-    fwd = np.array([0.0, 0.25, 1.0])
-    fwd = fwd / np.linalg.norm(fwd)   # (it looks forward, over the back)
+    rt = float(K["tail"][2][0]) * 0.6
+    sh_ = np.array([rt * 1.3, rt * 1.05, rt * 1.8])
+    fwd = u + np.array([0.0, 0.18, 0.0])
+    fwd = fwd / np.linalg.norm(fwd)
+    hc = tb - u * sh_[2] * 1.35
+    end = hc - fwd * sh_[2] * 0.55
     side = np.array([1.0, 0.0, 0.0])
+    tpts = _catmull([ta + u * 0.03, ta + (end - ta) * 0.36 + side * 0.045, ta + (end - ta) * 0.72 - side * 0.045, end], 0.05)
+    _tube(S, g, tpts, [rt * (1.25 - 0.45 * i / (len(tpts) - 1)) for i in range(len(tpts))], 1.0, 0.05, key="serpent")
     upv = np.cross(fwd, side)
     if upv[1] < 0:
         upv = -upv
     Rs = np.stack([side, upv, fwd], axis=1)
-    sh_ = np.array([rt * 1.6, rt * 1.2, rt * 2.2])
-    _snake_head(S, g, Rs, tpts[-1] + fwd * sh_[2] * 0.6, sh_, 0.35, "snake")
+    _snake_head(S, g, Rs, hc, sh_, 0.3, "snake")
     d = S.d
     occ = d < 0
     thr_c = 0.4 * g.cell
-    # Colours: black fur, rust-dark on the chest, the belly and the legs inside; the bristles
-    # tipped red; the eyes glowing red; the mouths dark red; the teeth; the iron collar, its spikes
-    # bright; the serpent dark green.
-    black = np.array([0.075, 0.068, 0.068])
-    rust = np.array([0.24, 0.1, 0.06])
+    # Colours: a black hound marked in tan as the war dogs were (the points: the muzzles, a spot
+    # over each eye, the chest, the legs from the knee down, the belly), so its shape reads on the
+    # sand (all black, it was a blot with red eyes: user, it should look better); the bristles
+    # tipped red; the eyes glowing red; the mouths dark red; the teeth; the iron collar, its
+    # spikes bright; the serpent dark green.
+    black = np.array([0.1, 0.085, 0.08])
+    rust = np.array([0.5, 0.25, 0.1])
     col = np.zeros(g.shape + (3,))
     clump = vnoise(np.abs(g.X), g.Y, g.Z, 0.05, 41)
     fine = hash3(np.floor(np.abs(g.X) / g.cell), np.floor(g.Y / g.cell), np.floor(g.Z / g.cell), 43)
     col[:] = black
-    col = col * (0.8 + 0.45 * clump[..., None] + 0.25 * fine[..., None])
+    col = col * (0.78 + 0.5 * clump[..., None] + 0.25 * fine[..., None])
     under = np.clip((cy - 0.3 * H - g.Y) / (0.6 * H), 0, 1) * (trunk < 0.4)
     inner = np.clip(1.0 - np.abs(g.X) / (0.75 * W), 0, 1) * (g.Y < cy - 0.2 * H)
     chest = np.clip(((g.Z - (zc + 0.5 * Lz)) / (0.5 * Lz)), 0, 1) * np.clip((cy + 0.2 * H - g.Y) / H, 0, 1)
-    rk = np.clip(np.maximum(np.maximum(under, inner * 0.6), chest * 0.8), 0, 1)[..., None] * 0.75
-    col = col * (1 - rk) + rust * (0.8 + 0.4 * clump[..., None]) * rk
+    shins = np.clip((ground + 0.55 - g.Y) / 0.2, 0, 1) * (trunk > 0.0)
+    rk = np.clip(np.maximum(np.maximum(np.maximum(under, inner * 0.6), chest * 0.9), shins), 0, 1)
+    # The points on the three heads: the muzzle below the line of the mouth's top, the spots
+    # over the eyes.
+    for Rh, hp, hh in heads:
+        ax_, up_, f_ = Rh[:, 0], Rh[:, 1], Rh[:, 2]
+        rx = ((g.X - hp[0]) * ax_[0] + (g.Y - hp[1]) * ax_[1] + (g.Z - hp[2]) * ax_[2]) / float(hh[0])
+        ry = ((g.X - hp[0]) * up_[0] + (g.Y - hp[1]) * up_[1] + (g.Z - hp[2]) * up_[2]) / float(hh[1])
+        rz = ((g.X - hp[0]) * f_[0] + (g.Y - hp[1]) * f_[1] + (g.Z - hp[2]) * f_[2]) / float(hh[2])
+        muzzle = np.clip((rz - 0.28) / 0.2, 0, 1) * np.clip((0.02 - ry) / 0.12, 0, 1) * (np.abs(rx) < 1.4) * (np.abs(ry) < 1.6) * (rz < 1.4)
+        spot = ((((np.abs(rx) - 0.36) / 0.13) ** 2 + ((ry - 0.44) / 0.09) ** 2 + ((rz - 0.22) / 0.2) ** 2) < 1.0)
+        cheek = np.clip((0.15 - ry) / 0.2, 0, 1) * np.clip((rz + 0.05) / 0.25, 0, 1) * (np.abs(rx) > 0.42) * (np.abs(rx) < 1.4) * (np.abs(ry) < 1.6) * (rz < 1.0) * (rz > -0.6)
+        rk = np.maximum(rk, np.maximum(np.maximum(muzzle, spot * 1.0), cheek * 0.8))
+    rk = rk[..., None] * 0.85
+    col = col * (1 - rk) + rust * (0.75 + 0.45 * clump[..., None]) * rk
     kind = np.full(g.shape, FUR, np.uint8)
     rgm = S.on("ridge", 0.02) & occ
     col[rgm] = black * 0.8

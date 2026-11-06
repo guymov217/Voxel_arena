@@ -55,7 +55,7 @@ const MOUTH := Color(0.16, 0.05, 0.05)
 const TEETH := Color(0.93, 0.91, 0.84)
 const TONGUE := Color(0.86, 0.36, 0.42)
 const LIP_C := Color(0.6, 0.33, 0.3)
-const WHITE_C := Color(0.92, 0.9, 0.85)
+const WHITE_C := Color(0.96, 0.95, 0.9)
 const IRIS_C := Color(0.3, 0.19, 0.11)
 const PUPIL_C := Color(0.05, 0.04, 0.04)
 const GOLD := Color(0.95, 0.75, 0.25)
@@ -348,7 +348,7 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 	var chosen = Physique.iris_choice(ids)
 	if chosen != null:
 		iris = chosen
-	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.25) if not bald else skin.darkened(0.45)}
+	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55)}
 
 ## A bot's face pieces, as Physique._faces draws them (from his name and his place).
 static func _bot_ids(f) -> Array:
@@ -415,19 +415,19 @@ static func _color(c: Array, look: Dictionary) -> Color:
 		PUPIL:
 			return PUPIL_C
 		LID:
-			return skin.darkened(0.22)
+			return skin.darkened(0.34)
 		LID_LOW:
-			return skin.darkened(0.12)
+			return skin.darkened(0.2)
 		BROW:
 			return look.brow
 		LIP:
 			return skin.lerp(LIP_C, 0.55)
 		LIP_LINE:
-			return skin.lerp(LIP_C, 0.5).darkened(0.45)
+			return skin.lerp(LIP_C, 0.5).darkened(0.58)
 		NOSTRIL:
-			return skin.darkened(0.45)
+			return skin.darkened(0.55)
 		SHADE:
-			return skin.darkened(0.2)
+			return skin.darkened(0.28)
 		EAR_IN:
 			return skin.darkened(0.12)
 	var col := skin

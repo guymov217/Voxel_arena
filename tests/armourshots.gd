@@ -3,7 +3,9 @@ extends Node
 ## a lorica, a manica and greaves on a man standing at ease, from in front, from behind, from either
 ## side and from three-quarters, close: to see the pieces lie straight and alike on both sides of
 ## him (user: the lorica did not look symmetrical, nor as one was made). STYLE: the look (human).
-## PNGs to SHOT_DIR as armour_<view>.png.
+## PNGs to SHOT_DIR as armour_<view>.png. SETS: other sets to wear, `;` between sets and `,`
+## between pieces (every piece the smith sells, on the new men: user), as armour_<n>_<view>.png;
+## VIEWS: which views (front,back,left,right,three).
 
 var m
 var cam: Camera3D
@@ -35,22 +37,30 @@ func _ready() -> void:
 	m.add_child(cam)
 	cam.make_current()
 	RenderingServer.render_loop_enabled = false
-	var e = m.spawn_fighter({"kind": "bot", "name": "Quintus Rufus", "loadout": {"main": "", "off": "", "armor": ["helmet", "lorica", "manica", "greaves"]}, "team": 1, "pos": Vector3(0, 0.1, 0.0), "yaw": 0.0, "skin": 0xd9a57a})
-	e.erase("bot")
-	# At ease: both hands low at his sides, alike.
-	e.drive = func(_e): return {"main": {"x": 0.35, "y": -0.9}, "off": {"x": -0.35, "y": -0.9}}
-	var f: Fighter = e.f
-	f.build_pref = "hero"
-	Physique.dress(f)
-	for i in 150:
-		await get_tree().physics_frame
-	get_tree().paused = true
-	var c: Vector3 = f.torso.global_position
-	var at := Vector3(c.x, c.y + 0.05, c.z)
-	# (He faces +z.)
-	await _snap(out, "armour_front.png", at + Vector3(0.0, 0.25, 2.6), at)
-	await _snap(out, "armour_back.png", at + Vector3(0.0, 0.3, -2.6), at)
-	await _snap(out, "armour_left.png", at + Vector3(2.6, 0.25, 0.0), at)
-	await _snap(out, "armour_right.png", at + Vector3(-2.6, 0.25, 0.0), at)
-	await _snap(out, "armour_three.png", at + Vector3(1.6, 0.6, 2.0), at)
+	var sets: Array = [["helmet", "lorica", "manica", "greaves"]]
+	if OS.get_environment("SETS") != "":
+		sets = Array(OS.get_environment("SETS").split(";", false)).map(func(t): return Array(String(t).split(",", false)))
+	var views: Array = Array(OS.get_environment("VIEWS").split(",", false)) if OS.get_environment("VIEWS") != "" else ["front", "back", "left", "right", "three"]
+	for si in sets.size():
+		var e = m.spawn_fighter({"kind": "bot", "name": "Quintus Rufus", "loadout": {"main": "", "off": "", "armor": sets[si]}, "team": 1, "pos": Vector3(0.0, 0.1, 0.0), "yaw": 0.0, "skin": 0xd9a57a})
+		e.erase("bot")
+		# At ease: both hands low at his sides, alike.
+		e.drive = func(_e): return {"main": {"x": 0.35, "y": -0.9}, "off": {"x": -0.35, "y": -0.9}}
+		var f: Fighter = e.f
+		f.build_pref = "hero"
+		Physique.dress(f)
+		get_tree().paused = false
+		for i in 150:
+			await get_tree().physics_frame
+		get_tree().paused = true
+		var c: Vector3 = f.torso.global_position
+		var at := Vector3(c.x, c.y + 0.05, c.z)
+		var tag := "" if OS.get_environment("SETS") == "" else "%d_" % si
+		# (He faces +z.)
+		var where := {"front": Vector3(0.0, 0.25, 2.6), "back": Vector3(0.0, 0.3, -2.6), "left": Vector3(2.6, 0.25, 0.0), "right": Vector3(-2.6, 0.25, 0.0), "three": Vector3(1.6, 0.6, 2.0)}
+		for v in views:
+			await _snap(out, "armour_%s%s.png" % [tag, v], at + where[v], at)
+		print("set %d: %s" % [si, ", ".join(sets[si])])
+		get_tree().paused = false
+		f.teleport(Vector3(0.0, 0.0, -40.0 - 6.0 * si))   # (out of the next one's pictures)
 	get_tree().quit()

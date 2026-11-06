@@ -19,8 +19,12 @@ const CELL := 9   # a cell's numbers: ix, iy, iz (from the grid's corner), its v
 const OWN_COLOUR := 1 << 30
 const DEEP := 0xFFFF   # a voxel's eight cells all deep in him (drawn as it is, under the skin)
 const SKIN_K := 0.86   # the skin's light (as the body's own skin voxels are lit, on average)
-const FAT := Color(0.9, 0.78, 0.5)
-const MUSCLE := Color(0.5, 0.09, 0.08)
+const FAT := Color(0.86, 0.6, 0.44)
+const MUSCLE := Color(0.64, 0.1, 0.08)
+## Blood as the new look draws it, over the skin and in a cut: a brighter red than the body's own
+## mark (VoxelPart.SMEAR), which the fine voxels' shading took down to a brown that read as shadow
+## on the new men's muscles (user: the damage did not show on the new gladiators as it had).
+const BLOOD := Color(0.6, 0.04, 0.035)
 const BUILDS := ["hero", "champion", "brute"]
 
 static var _tpl := {}
@@ -415,9 +419,19 @@ static func _color(p: VoxelPart, s: int, j: int) -> Color:
 	var base: Dictionary = fine.base
 	if base.has(j) and p.colors[j] != base[j]:
 		var k: float = (fine.shade as PackedFloat32Array)[s]
+		# Blood and nothing else on it: his own skin under the blood, as much of it as there is.
+		var b0: Color = base[j]
+		var t := _toward(b0, p.colors[j], VoxelPart.SMEAR)
+		if t > 0.0 and _near(b0.lerp(VoxelPart.SMEAR, t), p.colors[j]):
+			var bl := BLOOD.srgb_to_linear()
+			var own: Color = (fine.own as PackedColorArray)[s]
+			return own.lerp(Color(bl.r * k, bl.g * k, bl.b * k).linear_to_srgb(), t)
 		var c := p.colors[j].srgb_to_linear()
 		return Color(c.r * k, c.g * k, c.b * k).linear_to_srgb()
 	return (fine.own as PackedColorArray)[s]
+
+static func _near(a: Color, b: Color) -> bool:
+	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) < 0.03
 
 static func _custom(p: VoxelPart, s: int, j: int, g: Vector2) -> Color:
 	var cells: PackedInt32Array = p.fine.cells
@@ -583,7 +597,7 @@ static func wound_color(p: VoxelPart, i: int, k: int, code: int) -> Color:
 	if base != null and p.colors[i] != base:
 		blood = _toward(base, p.colors[i], VoxelPart.SMEAR)
 	var c := _layer(p, i, k, code, h)
-	return c.lerp(VoxelPart.SMEAR, blood * (1.0 if code == 1 else 0.55))
+	return c.lerp(BLOOD, blood * (1.0 if code == 1 else 0.5))
 
 ## How far colour `b` has gone from `a` toward `t` (0..1).
 static func _toward(a: Color, b: Color, t: Color) -> float:

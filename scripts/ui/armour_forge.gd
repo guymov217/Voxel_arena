@@ -26,6 +26,8 @@ const PAINTS := [["Red", 0x9b1c1c], ["Blue", 0x1f3f8f], ["Gold", 0xd4a640], ["Wh
 var vp: SubViewport
 var cam: Camera3D
 var root: Node3D
+var man: Fighter = null             # the player's gladiator round the bench (_body_man)
+var man_on := ""                    # the part he was stood for
 var ghost: MeshInstance3D
 var orbit := Vector2(0.5, 0.25)
 var dist := 1.4
@@ -392,10 +394,11 @@ func _rebuild() -> void:
 		c.free()
 	var names: Array = Armory.REGIONS[region].parts
 	var first: String = names[0]
-	# The whole man, in the player's own skin and cloth, the part on the bench where it sits on
-	# him: the rest of him a shade darker, so it is plain what is being plated.
-	var body := _body_mesh(first)
-	root.add_child(body)
+	# The whole man, as the arena draws him (his look, his build, his skin and his cloth, his face
+	# and his hair), the part on the bench where it sits on him. (Made once for the part: every
+	# plate put on or taken off draws the bench again.)
+	if man == null or not is_instance_valid(man) or man_on != first:
+		_body_man(first)
 	# Which way he faces: FRONT before him (where his face and chest look), BACK behind him,
 	# and a gold line down the front of the part.
 	var mid := (Vector3(dims) - Vector3.ONE) * 0.5
@@ -479,8 +482,55 @@ func _part_origin(part: String, on: String) -> Vector3:
 	var b: Array = Data.body_def(on).get("pos", [0, 0, 0])
 	return (Vector3(float(a[0]), float(a[1]), float(a[2])) - Vector3(float(b[0]), float(b[1]), float(b[2]))) * CELL / Data.body_voxel
 
-## The player's gladiator standing round the bench: every part's outer voxels coloured as he
-## is in the arena (Fighter.build: skin, cloth, the shading and grain), those not of `on` dimmed.
+## The player's gladiator standing round the bench as the arena draws him (Fighter, Physique: the
+## new look's man, his build, his head and his hair; the classic blocks in the classic look), at
+## the bench's size, held still and out of the way of the mouse, the part `on` at the bench's
+## middle. (The bench drew the man in the old blocks whatever the look: the armour was made on a
+## man the new gladiators are not, user.)
+func _body_man(on: String) -> void:
+	if man != null and is_instance_valid(man):
+		man.free()
+	man = null
+	var lk: Dictionary = Save.get_value("look", {}) if Save.get_value("look", {}) is Dictionary else {}
+	var menu_s = load("res://scripts/ui/menu.gd")
+	var cloths: Array = menu_s.CLOTH
+	var slots: Dictionary = menu_s.LOOK_SLOTS
+	var worn := []
+	for k in slots:
+		var arr: Array = slots[k]
+		var id := String(arr[clampi(int(lk.get(k, 0)), 0, arr.size() - 1)])
+		# (Plating his head, no hat nor hair over it: the plates go where they lie on his skull.)
+		if on == "head" and (id.begins_with("hat_") or id.begins_with("hair_")):
+			continue
+		if id != "" and not menu_s.look_locked(id):
+			worn.append(id)
+	var f := Fighter.new()
+	vp.add_child(f)
+	var opts := {"name": "Bench", "slot": 7, "team": 9, "bot": false,
+		"team_color": Color.hex(int(cloths[clampi(int(lk.get("cloth", 0)), 0, cloths.size() - 1)]) << 8 | 0xff),
+		"skin": int(Fighter.SKINS[clampi(int(lk.get("skin", 0)), 0, Fighter.SKINS.size() - 1)]),
+		"build": FineBody.BUILDS[clampi(int(lk.get("build", 0)), 0, FineBody.BUILDS.size() - 1)],
+		"mods": {"bodyScale": CELL / Data.body_voxel}}
+	f.build(Vector3.ZERO, 0.0, {"main": "", "off": "", "armor": worn}, opts)
+	# Every part laid where it sits on him at rest, square to the bench as the plates are laid
+	# (_part_origin: his face and chest to FRONT), the part `on` in the middle. (Laid as he was
+	# built, he faced the bench's side and the plates stood off him.)
+	for p in f.parts:
+		p.freeze = true
+		p.collision_layer = 0
+		p.collision_mask = 0
+		p.global_transform = Transform3D(Basis(), _part_origin(String(p.part_name), on))
+		p.reset_physics_interpolation()
+	for p in f.parts:
+		if p.has_method("snap_drawing"):
+			p.snap_drawing()
+	f.set_physics_process(false)
+	man = f
+	man_on = on
+
+## The player's gladiator standing round the bench in the old blocks: every part's outer voxels
+## coloured as he is in the arena (Fighter.build: skin, cloth, the shading and grain), those not
+## of `on` dimmed. (No longer drawn: _body_man.)
 func _body_mesh(on: String) -> MultiMeshInstance3D:
 	var lk: Dictionary = Save.get_value("look", {}) if Save.get_value("look", {}) is Dictionary else {}
 	var sk_lin := Color.hex(int(Fighter.SKINS[clampi(int(lk.get("skin", 0)), 0, Fighter.SKINS.size() - 1)]) << 8 | 0xff).srgb_to_linear()
