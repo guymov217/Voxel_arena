@@ -134,7 +134,7 @@ func _add_link(group: Array, at_wound: bool) -> void:
 				first.flap_joint.queue_free()
 			first.flap_joint = _join(ch, first, (ch.global_position + first.global_position) * 0.5)
 			first.flap_of = ch
-			first.add_collision_exception_with(ch)
+			first.pass_through(ch)
 		ch.flap_joint = _join(tor, ch, gt * anchor)
 		ch.flap_of = tor
 		links.push_front(ch)
@@ -143,7 +143,7 @@ func _add_link(group: Array, at_wound: bool) -> void:
 		ch.flap_joint = _join(prev, ch, gt * start)
 		ch.flap_of = prev
 		if prev is Chunk:
-			ch.add_collision_exception_with(prev)
+			ch.pass_through(prev)
 		links.append(ch)
 
 ## A point in the trunk's frame moved out of the trunk's box, out through the face the wound is

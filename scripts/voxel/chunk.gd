@@ -13,6 +13,18 @@ var held_on: Node3D = null
 var half := Vector3.ONE * 0.02
 var flap_of: Node3D = null      # still hanging off this part by a strip of flesh
 var flap_joint: Joint3D = null
+## What it was set to pass through, kept here: asked of the physics server instead (its
+## collision exceptions), every one of them freed since printed an error, a dozen at a time
+## (user: chunk.gd _in_a_body(): Parameter "body" is null).
+var passes: Array = []
+
+func pass_through(b: PhysicsBody3D) -> void:
+	add_collision_exception_with(b)
+	passes.append(b)
+
+func stop_passing(b: PhysicsBody3D) -> void:
+	remove_collision_exception_with(b)
+	passes.erase(b)
 
 ## `voxels` are what VoxelPart.remove_voxels returned ({p: world position, color}).
 ## `part` may also be a Weapon: a piece that broke off it.
@@ -84,7 +96,7 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		own.append(part)
 	for b in own:
 		if b is PhysicsBody3D and is_instance_valid(b):
-			ch.add_collision_exception_with(b)
+			ch.pass_through(b)
 	ch.linear_damp = 0.2
 	ch.angular_damp = 0.8
 	var pm := PhysicsMaterial.new()
@@ -141,8 +153,8 @@ func _come_clear(tries: int) -> void:
 func _in_a_body() -> bool:
 	var space := get_world_3d().direct_space_state
 	var skip: Array[RID] = [get_rid()]
-	for b in get_collision_exceptions():
-		if b != null:
+	for b in passes:
+		if is_instance_valid(b):
 			skip.append(b.get_rid())
 	for s in get_children():
 		if s is CollisionShape3D and s.shape != null:
@@ -160,8 +172,8 @@ func let_go() -> void:
 	if flap_joint and is_instance_valid(flap_joint):
 		flap_joint.queue_free()
 	flap_joint = null
-	if flap_of and is_instance_valid(flap_of):
-		add_collision_exception_with(flap_of)
+	if flap_of and is_instance_valid(flap_of) and flap_of is PhysicsBody3D:
+		pass_through(flap_of)
 	collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
 	flap_of = null
 	t = 0.0

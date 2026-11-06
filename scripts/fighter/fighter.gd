@@ -4498,8 +4498,6 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		_hold_elbow(side, want_bend, swinging, dt, guard)
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
-		if has_wrist(w):
-			_drive_wrist(side, w, w_aim, strength, dt)
 		if side == two_side and two_handed and weapon_joints[two_off()] and thrust_line[side] == null:
 			_drive_haft(w, w_aim, strength, dt)
 		elif side == two_side:
@@ -4515,6 +4513,13 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			var k := wmax / w.angular_velocity.length()
 			w.angular_velocity *= k
 			fore.angular_velocity *= k
+		# The wrist last, after the cap: setting the blade's speed back (the cap, an unjam) throws
+		# away every push made before it this step (they are in the body's live state, not yet in
+		# angular_velocity), and the wrist's went with them while the blade was at the cap. A blade
+		# spun round in the hand by a blow went on spinning, half a turn and more off the edge the
+		# wheel set, until it slowed of itself (user: the angle I chose does not hold).
+		if has_wrist(w):
+			_drive_wrist(side, w, w_aim, strength, dt)
 	elif not w and jk >= JAB_DRAW and jk < JAB_BACK:
 		# On its way out a punch drives both halves of the arm along the line to the mark: the
 		# bent elbow opens as the fist goes, and is straight when it gets there. (Drawn back and
@@ -6577,7 +6582,7 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 		ch.flap_of = part
 		ch.flap_joint = j
 		# It swings against the flesh it hangs from rather than through it.
-		ch.remove_collision_exception_with(part)
+		ch.stop_passing(part)
 		ch.collision_mask |= VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE
 		flaps.append({"chunk": ch, "part": part, "link": link, "idx": idx})
 		res.flapped = true
