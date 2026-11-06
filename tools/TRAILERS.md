@@ -1,10 +1,11 @@
 # WRECKSMITH trailer kit
 
-Three trailers, rendered from the game itself on your PC. All need Godot 4.7 and Python 3. ffmpeg,
+Four trailers, rendered from the game itself on your PC. All need Godot 4.7 and Python 3. ffmpeg,
 Pillow and numpy are found, or fetched, by the `.bat` files themselves.
 
 | Double-click | Out | What it is |
 |---|---|---|
+| `tools\make_feature_trailer.bat` | `docs\store\trailer_features.mp4` | **The newest.** WRECKSMITH, the game's features one by one: every scene staged and every blow scripted, nothing left to chance. |
 | `tools\make_blood_trailer.bat` | `docs\store\trailer_blood.mp4` | WRECKSMITH - THE CROWD WANTS BLOOD: the trailer that worked, its lines and order kept, made again as a film: a crane from the sky into the arena, every fight through a film camera, every kill in slow motion, cut to its own score. |
 | `tools\make_trailer.bat` | `docs\store\trailer.mp4` | The launch trailer: bot fights seen from the side, the forge, the boss music. |
 | `tools\make_rise_trailer.bat` | `docs\store\trailer_rise.mp4` | WRECKSMITH - RISE: one gladiator's rise, from his helmet's camera and a film camera on the kills, cut to its own score. |
@@ -24,6 +25,47 @@ shots kept from before are thrown away and filmed again (`stamp.txt` in the work
 one shot again, delete it there (`..\trailer_work\gorilla.mp4` for the launch trailer,
 `..\trailer_work\rise\lion.avi` for the rise trailer, `..\trailer_work\blood\dragon.avi` for the crowd
 trailer); to start over, delete the folder.
+
+## The feature trailer (WRECKSMITH), scene by scene
+
+Started again from nothing (the crowd trailer below filmed bots fighting it out: two men
+hugging, blows into the air, a lion scene where nothing happened). Each scene shows one thing
+the game does, its line over it, and nothing in it is left to chance (`tests\featureshots.gd`):
+the men stand where they are put, every blow is scripted the way a player's mouse throws it, and
+it lands where the plan says: where the working part of the blade (its edge for a cut, its point
+for a thrust, a hammer's head) goes by the part it was swung at, the game's own blow is made
+there, as hard as the blade was moving. A limb comes off as it does in the game, blow by blow
+into the same wound. No bot and no beast chooses anything: every man is driven by the scene, a
+beast runs to where the scene sends it, and its bite comes when the scene lets it go. Every
+scene has its own camera (out of the gate backing away before him, a crane up to the Emperor,
+round the cuirass as the blows fall, at the height of the sand under the mace, high over the
+pots, high behind the friends' charge, low behind the champion under the hydra, up and back over
+the sand under the title), and in every one the men and the beasts are whole in the frame.
+
+| Beats | Scene | Line |
+|---|---|---|
+| 7 | Out of the gate into the light and the roar, at us | |
+| 5 | The stands on their feet, a crane up to the Emperor raising his hand | THE EMPEROR IS WATCHING |
+| 9 | Four swings at a man with a big shield, each where the mouse goes, as the player plays them: the game's own camera behind the champion and its HUD (the mouse's path drawn in the corner): a cut onto the shield, a sweep at his legs, a blow down on the rim, the point driven in | EVERY SWING IS YOURS / THE BLADE GOES WHERE YOUR HAND GOES |
+| 6 | An executioner's axe into a raised sword arm, twice into the same wound, the forearm off in the slowest motion | STEEL CUTS WHERE IT LANDS |
+| 8 | A warhammer on a steel cuirass, blow after blow, the plates knocked flying (seen from before him), the last in slow motion | ARMOUR DENTS, CRACKS AND FALLS |
+| 8 | A mace on one shin, then the other: both bones go, he is down on the sand and fights on from there, swinging up at the champion | BONES BREAK. MEN FIGHT ON. |
+| 6 | A lion leaps on a man and bears him down | BEASTS / LIONS, BEARS, BULLS, CROCODILES |
+| 7 | Three men charge a troll; one sweep of its plank throws them all | GIANTS |
+| 6 | The dragon's fire across the sand, the champion charging it | MONSTERS OF LEGEND |
+| 8 | Greek fire, vitriol and a thunder pot among a band of men | FIRE. POISON. THUNDER. |
+| 6 | The forge: the executioner's axe going up voxel by voxel | FORGE YOUR OWN WEAPONS / VOXEL BY VOXEL |
+| 7 | The physician's blade riveted to a stump, cutting: across his chest and back, then down on his sword arm | LOSE A HAND. GAIN A BLADE. |
+| 7 | Four friends, their names over their heads, run at the minotaur together; their four blows go in at once and it goes down on its knees | BRING YOUR FRIENDS / ONLINE CO-OP |
+| 6 | As it is played: the hammer, the mace, the blade arm and the four friends again, through the player's own camera with the HUD over it, a beat and a half each | ALL OF IT IN THE GAME / AS YOU PLAY IT |
+| 8 | The hydra's last head comes down at the champion and meets his blade swung up into it, in the slowest motion of all, cut to black on the blow | |
+| 2 | A breath of silence | |
+| 12 | The logo over the champion alone in the middle, his axe raised to the crowd | COMING SOON TO STEAM, WISHLIST NOW |
+
+Each scene is recorded once at 120 frames a second, and five of them (`POV_SCENES`) a second time
+as played, through the game's camera with its HUD (`<scene>_pov.avi`); a scene already recorded
+is kept in `..\trailer_work\feature` (delete its `.avi` to record it again). `python tools\make_feature_trailer.py --fake`
+makes the whole cut from made-up footage in a minute, to check the edit without the game.
 
 ## The crowd trailer (WRECKSMITH - THE CROWD WANTS BLOOD), shot by shot
 

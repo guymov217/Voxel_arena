@@ -2,6 +2,7 @@
 rem The launch trailer, rendered from the game on this PC: docs\store\trailer.mp4 (1920x1080, 30 fps).
 rem With "rise" (make_rise_trailer.bat) the second one instead: docs\store\trailer_rise.mp4, over the shoulder.
 rem With "blood" (make_blood_trailer.bat) the third: docs\store\trailer_blood.mp4, THE CROWD WANTS BLOOD.
+rem With "feature" (make_feature_trailer.bat) the newest: docs\store\trailer_features.mp4, the game's features one by one.
 rem Double-click this file. It needs Godot 4.7 and Python 3; ffmpeg and Pillow it finds or fetches itself:
 rem   ffmpeg: the FFMPEG variable (the ffmpeg.exe, its bin folder or the folder it was unzipped to),
 rem           the PATH (read fresh, so a PATH just edited counts), the usual install folders, or,
@@ -62,7 +63,8 @@ rem (The second and third trailers, "make_trailer.bat rise" and "blood", make th
 set "SCRIPT=tools\make_trailer.py"
 if /i "%~1"=="rise" set "SCRIPT=tools\make_rise_trailer.py"
 if /i "%~1"=="blood" set "SCRIPT=tools\make_blood_trailer.py"
-if /i not "%~1"=="rise" if /i not "%~1"=="blood" goto :deps_ok
+if /i "%~1"=="feature" set "SCRIPT=tools\make_feature_trailer.py"
+if /i not "%~1"=="rise" if /i not "%~1"=="blood" if /i not "%~1"=="feature" goto :deps_ok
 %PY% -c "import numpy" >nul 2>nul && goto :deps_ok
 echo Installing numpy for Python...
 %PY% -m pip install --user numpy || (echo Could not install numpy: run  pip install numpy  yourself. & pause & exit /b 1)
