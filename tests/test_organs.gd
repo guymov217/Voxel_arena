@@ -350,6 +350,82 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 	t.check(cut, "a blade through the chain cuts it")
 	m.queue_free()
 
+## The lengths of gut (all but the first, in the wound) whose middles lie among the live flesh of
+## his trunk.
+func _guts_in_trunk(v: Fighter, rope: GutRope) -> int:
+	var n := 0
+	var tor := v.torso
+	var vs: float = tor.vf * tor.part_scale
+	# (Not the length in the wound, nor the one hung from it there: they go through it.)
+	for li in range(2, rope.links.size()):
+		var ch = rope.links[li]
+		if not is_instance_valid(ch):
+			continue
+		var lp: Vector3 = tor.global_transform.affine_inverse() * ch.global_position
+		if absf(lp.x) > tor.half_ext.x + vs or absf(lp.y) > tor.half_ext.y + vs or absf(lp.z) > tor.half_ext.z + vs:
+			continue
+		if not tor.voxels_within(lp, vs, 1).is_empty():
+			n += 1
+	return n
+
+func test_spilled_guts_hang_out_of_him_not_through_him() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	await _open_belly(v)
+	var rope: GutRope = v.gut_rope
+	t.check(rope != null, "the belly opened, the guts out")
+	if rope == null:
+		m.queue_free()
+		return
+	# Standing, then down on his back on the sand and lying there: they hang and heap outside him,
+	# over his legs and on him, never in his trunk (they swung through it and lay in it, user).
+	var worst := 0
+	var seen := []
+	var fwd := v.torso.global_transform.basis.orthonormalized() * Vector3(0, 0, 1)
+	for k in 20:
+		await _steps(30)
+		v.blood = 100.0
+		v.heart_t = -1.0
+		if k == 6:
+			v.fall(99.0, true)
+			v.torso.apply_central_impulse(-fwd * 30.0)
+		var n := _guts_in_trunk(v, rope)
+		seen.append(n)
+		worst = maxi(worst, n)
+	var mean := 0.0
+	for n in seen:
+		mean += float(n)
+	mean /= float(seen.size())
+	# (Out of him all but a moment: a length the chain presses in is pushed back out at once, and
+	# a few at worst are in him for a quarter of a second as he goes down onto them. Before, ten
+	# lay in him standing and four or five lying, all the time.)
+	t.check(mean <= 1.2 and worst <= 4, "standing and lying, the guts stay out of his trunk (%.1f lengths in it on the whole, at worst %d: %s)" % [mean, worst, str(seen)])
+	# A blow on them is felt: the length cut away, and it hurts him.
+	var mid: Chunk = null
+	for ch in rope.links:
+		if is_instance_valid(ch) and ch.flap_of != null:
+			mid = ch
+	v.guts_queue.clear()   # (nothing more to pour out of him: no pain but the blade's)
+	v.pain = 0.0
+	var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), mid.global_position + Vector3(0.4, 0, 0))
+	var blade := Vector3.ZERO
+	for vv in w.vox:
+		blade += Vector3(vv[0], vv[1], vv[2]) * w.vs
+	blade /= float(w.vox.size())
+	var felt := 0.0
+	for i in 40:
+		w.global_position = mid.global_position + Vector3(0.3 - i * 0.03, 0, 0) - w.global_transform.basis * blade
+		w.thrown_t = 1.0
+		w.linear_velocity = Vector3(-8, 0, 0)
+		await get_tree().physics_frame
+		felt = maxf(felt, v.pain)
+		if not is_instance_valid(mid) or mid.flap_of == null:
+			break
+	t.check((not is_instance_valid(mid) or mid.flap_of == null) and felt > 0.1, "a blade through his guts cuts them and hurts him (pain %.2f)" % felt)
+	m.queue_free()
+
 func test_guts_pulled_taut_come_further_out() -> void:
 	var r := _victim()
 	var m: Match = r[0]

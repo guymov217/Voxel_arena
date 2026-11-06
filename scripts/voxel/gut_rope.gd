@@ -7,6 +7,11 @@ extends Node
 ## a blade through a link cuts the chain there. Pulled taut (he walks off from where they lie)
 ## another length slides out of the wound, until the belly is empty. Once the body is gone the
 ## whole chain falls loose and ages away like any other piece.
+## They are out of him, not in him: only the length in the wound goes through his trunk; every
+## other one is pushed back out of his flesh (and meets his legs and the sand as anything does)
+## (they swung through his body and lay in it, a lion's most of all; user: out through the belly,
+## a thing of their own). And a blow that
+## lands on them is felt: the length it meets is cut away, it bleeds, and he feels it.
 
 const FIRST_LINKS := 5     # out at once when the belly opens; the rest pour out under their weight
 const POUR_T := 0.12       # one more length slides out this often while the chain hangs clear of the sand
@@ -14,6 +19,11 @@ const MAX_LINKS := 28      # all a belly holds
 const LINK_VOX := 12       # voxels of gut a link is made of (2 x 2 x 3)
 const LINK_MASS := 0.1
 const CUT_SPEED := 2.2
+# A length among the trunk's flesh is pushed out at this many m/s for every metre it is in, up to
+# PUSH_V (at 10 and 1.5 a man lying on his back held five or six of them in him, the chain's
+# weight pressing them in).
+const PUSH_K := 60.0
+const PUSH_V := 8.0
 const GUT := Color(0.83, 0.6, 0.56)
 static var ropes: Array = []
 
@@ -76,7 +86,12 @@ func _add_link(group: Array, at_wound: bool) -> void:
 	# Hung from the wound one under the other (straight down, a little out from the belly so they
 	# clear his thighs), not stood out from him in a long rod that sprang off as it fell.
 	var down_l := (tor.global_transform.basis.orthonormalized().inverse() * Vector3.DOWN).normalized()
-	var start := anchor + along * vs * (0.5 + 0.35 * float(k)) + down_l * vs * 2.3 * float(k)
+	# (Below the wound is into him when he lies on his back or his side: then they come up out of
+	# it and fall over onto him, never laid inside him.)
+	var hang := down_l if down_l.dot(along) > -0.3 else along
+	var start := anchor + along * vs * (0.5 + 0.35 * float(k)) + hang * vs * 2.3 * float(k)
+	if k > 0:
+		start = _out_of_trunk(start, vs)
 	var voxels := []
 	var gt := tor.global_transform
 	for i in n:
@@ -99,14 +114,17 @@ func _add_link(group: Array, at_wound: bool) -> void:
 	ch.linear_velocity = tor.linear_velocity + out_w * 0.15
 	ch.angular_velocity = Vector3.ZERO
 	# They heap on the sand and on each other, hang over his legs (not through them), and a blade
-	# passing through is felt. Only the trunk they come out of is let through.
+	# passing through is felt. The trunk they come out of lets them through (they come out of it
+	# through the wound), and keeps every length out of the wound out of it (_keep_out).
 	ch.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE
 	if fighter and fighter.get("parts"):
 		for p in fighter.parts:
 			if p != tor and is_instance_valid(p):
 				ch.remove_collision_exception_with(p)
 	ch.contact_monitor = true
-	ch.max_contacts_reported = 2
+	# (Lying on the sand among the others, two contacts were taken up by the sand and the next
+	# length: the blade's was never reported, and nothing cut them there.)
+	ch.max_contacts_reported = 6
 	ch.angular_damp = 2.0
 	if at_wound and not links.is_empty():
 		var first: Chunk = links[0]
@@ -127,6 +145,60 @@ func _add_link(group: Array, at_wound: bool) -> void:
 		if prev is Chunk:
 			ch.add_collision_exception_with(prev)
 		links.append(ch)
+
+## A point in the trunk's frame moved out of the trunk's box, out through the face the wound is
+## on, where it was inside it.
+func _out_of_trunk(p: Vector3, vs: float) -> Vector3:
+	var h := torso.half_ext + Vector3.ONE * vs
+	if absf(p.x) >= h.x or absf(p.y) >= h.y or absf(p.z) >= h.z:
+		return p
+	var a := axis.abs()
+	var face := a.x * torso.half_ext.x + a.y * torso.half_ext.y + a.z * torso.half_ext.z
+	return p + axis * (face + vs * 1.5 - p.dot(axis))
+
+## A length of gut among the trunk's flesh is pushed out of it through the nearest face of its
+## box (PUSH_K, PUSH_V), the trunk pushed back by as much: the chain and the trunk only ever push
+## each other apart, so nothing carries him off.
+func _keep_out(ch: Chunk) -> void:
+	var gt := torso.global_transform
+	var l: Vector3 = gt.affine_inverse() * ch.global_position
+	var vs := torso.vf * torso.part_scale
+	var h: Vector3 = torso.half_ext + Vector3.ONE * vs
+	var d := Vector3(h.x - absf(l.x), h.y - absf(l.y), h.z - absf(l.z))
+	if d.x <= 0.0 or d.y <= 0.0 or d.z <= 0.0:
+		return
+	if torso.voxels_within(l, vs * 1.5, 1).is_empty():
+		return
+	var n := Vector3(0, 0, signf(l.z) if l.z != 0.0 else 1.0)
+	var depth := d.z
+	if d.x <= d.y and d.x <= d.z:
+		n = Vector3(signf(l.x) if l.x != 0.0 else 1.0, 0, 0)
+		depth = d.x
+	elif d.y <= d.z:
+		n = Vector3(0, signf(l.y) if l.y != 0.0 else 1.0, 0)
+		depth = d.y
+	var nw: Vector3 = (gt.basis.orthonormalized() * n).normalized()
+	var vrel: float = (ch.linear_velocity - torso.velocity_at(ch.global_position)).dot(nw)
+	var want := clampf(depth * PUSH_K, 0.0, PUSH_V)
+	if vrel >= want:
+		return
+	var J: Vector3 = nw * (ch.mass * (want - vrel))
+	ch.apply_central_impulse(J)
+	torso.apply_impulse(-J, ch.global_position - torso.global_position)
+
+## A blow that lands on a length of gut: it is cut away there, it bleeds, and he feels it.
+func _struck(ch: Chunk, w: Node3D) -> void:
+	var at := ch.global_position
+	var wv: Vector3 = w.linear_velocity if w is RigidBody3D else Vector3.ZERO
+	ch.let_go()
+	ch.linear_velocity += (wv - ch.linear_velocity) * 0.3
+	if Fx.current:
+		Fx.current.burst("blood", at, 10, (wv.normalized() if wv.length() > 0.1 else Vector3.UP) + Vector3(0, 0.5, 0), 0.7)
+	Sfx.play("slash", at, 0.45)
+	if fighter and is_instance_valid(fighter) and fighter.get("alive"):
+		fighter.pain = minf(1.0, float(fighter.pain) + 0.15)
+		if is_instance_valid(torso):
+			torso.bleed += 0.3
 
 func _join(a: PhysicsBody3D, b: PhysicsBody3D, at: Vector3) -> Joint3D:
 	var j := PinJoint3D.new()
@@ -160,8 +232,14 @@ func _physics_process(dt: float) -> void:
 		attached += 1
 		for b in ch.get_colliding_bodies():
 			if b is Weapon and (b.holder != null or b.thrown_t > 0.0) and (b.linear_velocity - ch.linear_velocity).length() > CUT_SPEED:
-				ch.let_go()
+				_struck(ch, b)
 				break
+		# Out of the wound, a length is kept out of his trunk by a push of its own, as much on him the
+		# other way (_keep_out). (Met by the trunk as a contact, a length held to the wound by the
+		# chain was wedged against it, and the two pushing each other apart without end carried him
+		# off the sand and up into the sky.)
+		if attached > 1:
+			_keep_out(ch)
 	# Hanging clear of the sand, their weight draws the next length out after them: they pour
 	# out of the wound until the end lies on the ground.
 	_pour -= dt

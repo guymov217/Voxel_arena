@@ -994,7 +994,7 @@ func _physics_process(dt: float) -> void:
 					# A pack does not all give voice at once: each of them the rarer the more of
 					# its kind are about (a run of rats screeching was a din).
 					var kin := entities.filter(func(o): return o.kind == "beast" and is_instance_valid(o.f) and o.f.alive and o.f.get("species") == f.species).size()
-					f.set_meta("voice_gap", rng.randf_range(6.0, 14.0) * maxf(1.0, kin))
+					f.set_meta("voice_gap", rng.randf_range(12.0, 24.0) * maxf(1.0, kin))
 					say(f, Voices.beast_call(f.species), 0.7, "call")
 		if e.kind == "bot" and e.get("ball_target") is Vector3:
 			var bt: Vector3 = e.ball_target
@@ -2179,7 +2179,9 @@ func _voices_on_hit(h: Dictionary) -> void:
 		var severed: bool = not h.res.get("severed", []).is_empty()
 		var grave: bool = severed or bool(h.get("killed", false))
 		var since: float = time - float(c.get_meta("voice_t", -9.0))
-		var recent: bool = since < (1.8 if J > 14.0 else 2.4)
+		# (A beast's or a monster's cry, seldomer: Voices.HURT_GAP_BIG.)
+		var big: bool = c is Beast or Voices.giant_voice(c) != ""
+		var recent: bool = since < (Voices.HURT_GAP_BIG if big else (1.8 if J > 14.0 else 2.4))
 		if (c.alive or h.get("killed", false)) and (not recent or grave):
 			c.set_meta("voice_t", time)
 			var gain := 0.7 if grave else clampf(0.2 + J / 80.0, 0.25, 0.5)

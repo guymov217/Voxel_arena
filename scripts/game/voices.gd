@@ -34,10 +34,14 @@ static func call_gain(species: String) -> float:
 
 ## The least time between a beast's cries as it strikes: a quick pecker like the ostrich is not
 ## to cry out at every peck, and the tiger's roar (over three seconds of it) is not to be started
-## again over itself at every swipe.
-const CALL_GAP := {"ostrich": 3.0, "tiger": 3.0}
+## again over itself at every swipe. (Under a second apart, the monsters' and the beasts' cries
+## filled the fight, user: fewer.)
+const CALL_GAP := {"ostrich": 6.0, "tiger": 6.0}
 static func call_gap(species: String) -> float:
-	return float(CALL_GAP.get(species, 0.9))
+	return float(CALL_GAP.get(species, 3.5))
+
+## The least time between a beast's or a monster's cries of pain (a man's: Match._voices_on_hit).
+const HURT_GAP_BIG := 4.5
 
 ## How deep the voice: a man at 1.0, the big lower (a giant three times a man's size at 0.55),
 ## the small higher.

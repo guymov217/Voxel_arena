@@ -13,6 +13,33 @@ const ACID := Color(0.561, 0.831, 0.227)
 const ACID_DARK := Color(0.227, 0.353, 0.071)
 const FROST := Color(0.78, 0.9, 1.0)
 const NECROSIS := Color(0.12, 0.08, 0.14)
+## What the acid leaves once it is spent: the flesh it ate, a dull dark green-brown.
+const ACID_SPENT := Color(0.16, 0.19, 0.07)
+
+## The fire and the acid gone out on a part: what they marked cools to the mark they leave, the
+## embers' orange to char, the acid's bright green to the dull dark of what it ate. (Left as they
+## burned, the orange and the green read as fire and poison still on the body, long after they had
+## gone out: user, the fire and the poison never go out on the enemy, and the glowing green stays
+## on a man for good.)
+static func cool(p: VoxelPart) -> void:
+	if p.heat.is_empty():
+		return
+	var touched := []
+	for i in p.heat.keys():
+		var c: Color = p.colors[i]
+		if _near(c, ACID, 0.42) or (c.g > c.r * 1.12 and c.g > c.b * 1.6):
+			p.colors[i] = c.lerp(ACID_SPENT, 0.8)
+		elif _near(c, EMBER, 0.42):
+			p.colors[i] = c.lerp(CHAR, 0.85)
+		else:
+			continue
+		touched.append(i)
+	p.heat.clear()
+	if not touched.is_empty():
+		p.refresh_colors(touched)
+
+static func _near(a: Color, b: Color, d: float) -> bool:
+	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length() < d
 
 ## A world point on (or near) a part, in its own frame, snapped onto its nearest live voxel.
 static func _spot_on(part: VoxelPart, point) -> Variant:
@@ -140,6 +167,7 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 			p.spots = []
 			p.set_flames(false)
 			p.set_poison(false)
+			cool(p)
 			continue
 		if frost_on and not p.severed:
 			# Frostbite: the limb all but useless while the cold is in it, and frozen flesh

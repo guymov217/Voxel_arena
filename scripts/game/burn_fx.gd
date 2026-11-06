@@ -25,12 +25,32 @@ static func surface_of_kind(k: int) -> String:
 static func surface_of_material(mat: String) -> String:
 	return surface_of_kind(VoxelPart.kind_of_material(mat))
 
+## How many of these are going at once in the arena, and the most there may be: past it a part
+## that catches fire (or poison) glows and chars, bubbles nothing of its own, until one goes out.
+## (Every burning limb of a dozen men and beasts alight, each with its flames, its smoke and its
+## embers, took the frames down the more there was of it, user.)
+static var live := 0
+const MAX_LIVE := 24
+const MAX_LIVE_LOW := 10
+
+static func room() -> bool:
+	var fx: Fx = Fx.current
+	return live < (MAX_LIVE_LOW if fx != null and fx.quality == "low" else MAX_LIVE)
+
+## Counted going (`on`) or stopped: set_on and make keep `live` to the emitters going.
+static func _count(main: GPUParticles3D, on: bool) -> void:
+	if bool(main.get_meta("live", false)) == on:
+		return
+	main.set_meta("live", on)
+	live = maxi(0, live + (1 if on else -1))
+
 ## An emitter of fire (or poison, `fire` false) for `surface`, under `parent`; the others it
-## needs (smoke, embers, ash, fumes, drips) ride on it as children. Null with no screen.
+## needs (smoke, embers, ash, fumes, drips) ride on it as children. Null with no screen, or with
+## as many going in the arena as there may be (room).
 ## `size` scales the spread (a part's or a weapon's size).
 static func make(parent: Node3D, surface: String, fire: bool, size := 1.0) -> GPUParticles3D:
 	var fx: Fx = Fx.current
-	if fx == null or fx.headless:
+	if fx == null or fx.headless or not room():
 		return null
 	var main: GPUParticles3D
 	if fire:
@@ -61,6 +81,12 @@ static func make(parent: Node3D, surface: String, fire: bool, size := 1.0) -> GP
 				main = fx.emitter("poison", parent, 40, 0.09 * size)
 	if main:
 		main.emitting = true
+		_count(main, true)
+		var mr := weakref(main)
+		main.tree_exiting.connect(func():
+			var mn = mr.get_ref()
+			if mn:
+				_count(mn, false))
 	return main
 
 static func _extra(fx: Fx, main: GPUParticles3D, kind: String, n: int, r: float, tint := Color(0, 0, 0, 0)) -> void:
@@ -87,7 +113,10 @@ static func set_on(main: GPUParticles3D, on: bool) -> void:
 	if main == null or not is_instance_valid(main):
 		return
 	var was := main.emitting
+	if on and not was and not bool(main.get_meta("live", false)) and not room():
+		return   # (no room for it now: the part glows, no flames)
 	main.emitting = on
+	_count(main, on)
 	for c in main.get_children():
 		if c is GPUParticles3D:
 			if not on and was and c.has_meta("smoke") and main.is_inside_tree():

@@ -4,7 +4,7 @@ class_name Arms
 ## the chips a stage leaves stay until mended; upgrades that are not voxels.
 
 static func empty() -> Dictionary:
-	return {"main": Data.shop.get("stick", {}).duplicate(true), "off": null, "wear": {"R": [], "L": []}}
+	return {"main": Data.shop.get("stick", {}).duplicate(true), "off": null, "wear": {"R": [], "L": []}, "rack": []}
 
 static func sanitize(a) -> Dictionary:
 	var out := empty()
@@ -14,6 +14,11 @@ static func sanitize(a) -> Dictionary:
 		out.main = a.main
 	if a.get("off") is Dictionary and a.off.get("voxels") is Array:
 		out.off = a.off
+	# His arms hung up on the smith's rack, kept for him while he has no hand to hold them (fit_hands).
+	if a.get("rack") is Array:
+		for d in a.rack:
+			if d is Dictionary and d.get("voxels") is Array and not d.voxels.is_empty() and out.rack.size() < RACK_MAX:
+				out.rack.append(d)
 	for side in ["R", "L"]:
 		var d = out.main if side == "R" else out.off
 		var w = a.get("wear", {}).get(side, []) if a.get("wear") is Dictionary else []
@@ -324,6 +329,77 @@ static func sell(a: Dictionary, side: String) -> Dictionary:
 		arms.off = null
 	arms.wear[side] = []
 	return {"arms": arms, "cost": -got, "got": got}
+
+## The most arms the smith keeps on his rack for a man.
+const RACK_MAX := 6
+
+## The hands he can hold a weapon in, by his body (Body): a hand lost, or a hook or a blade arm in
+## its place, holds nothing.
+static func hands_of(body: Dictionary) -> Dictionary:
+	var gone: Array = body.get("missing", []) if body.get("missing") is Array else []
+	var fitted: Dictionary = body.get("prosthetics", {}) if body.get("prosthetics") is Dictionary else {}
+	var out := {}
+	for side in ["R", "L"]:
+		var f: String = "forearm" + side
+		var u: String = "upperArm" + side
+		out[side] = not (gone.has(f) or gone.has(u) or fitted.has(f) or fitted.has(u))
+	return out
+
+## His arms fitted to the hands he has left (user): the weapon of a hand he lost goes into the hand
+## he still has, what that hand held going up on the smith's rack; with no hand to hold anything,
+## all of it goes up on the rack, kept for him there (take_from_rack). Returns {"arms", "moved":
+## [what happened, as news]}; "moved" empty when nothing needed doing.
+static func fit_hands(a: Dictionary, body: Dictionary) -> Dictionary:
+	var arms := sanitize(a)
+	var h := hands_of(body)
+	var moved: Array = []
+	var main = arms.main if not is_stick(arms.main) else null
+	var off = arms.off
+	if (h.R or main == null) and (h.L or off == null):
+		return {"arms": arms, "moved": moved}
+	if not h.R and h.L and main != null:
+		# The main weapon into the good hand; what that hand held, up on the rack.
+		if off != null:
+			arms.rack.append(off)
+			moved.append(Loc.t("The smith hung your %s on his rack") % Loc.lower(String(off.get("name", "weapon"))))
+		arms.off = main
+		arms.wear.L = arms.wear.R
+		arms.main = empty().main
+		arms.wear.R = []
+		moved.append(Loc.t("Your %s is in your left hand now") % Loc.lower(String(main.get("name", "weapon"))))
+	else:
+		# No hand left for one of them: up on the rack. (A lost left hand's shield or dagger
+		# goes up there too: the right hand keeps its own weapon.)
+		if main != null and not h.R:
+			arms.rack.append(main)
+			arms.main = empty().main
+			arms.wear.R = []
+			moved.append(Loc.t("The smith hung your %s on his rack") % Loc.lower(String(main.get("name", "weapon"))))
+		if off != null and not h.L:
+			arms.rack.append(off)
+			arms.off = null
+			arms.wear.L = []
+			moved.append(Loc.t("The smith hung your %s on his rack") % Loc.lower(String(off.get("name", "weapon"))))
+	while arms.rack.size() > RACK_MAX:
+		arms.rack.pop_front()
+	return {"arms": arms, "moved": moved}
+
+## A weapon off the smith's rack into a hand (`side`), what the hand held going up in its place.
+static func take_from_rack(a: Dictionary, i: int, side: String) -> Dictionary:
+	var arms := sanitize(a)
+	if i < 0 or i >= arms.rack.size():
+		return {"error": "Nothing there on the rack"}
+	var d: Dictionary = arms.rack[i]
+	arms.rack.remove_at(i)
+	var had = arms.main if side == "R" else arms.off
+	if had != null and not is_stick(had):
+		arms.rack.append(had)
+	if side == "R":
+		arms.main = d
+	else:
+		arms.off = d
+	arms.wear[side] = []
+	return {"arms": arms, "cost": 0}
 
 ## The training stick everyone starts with: a hand that holds it is as good as free.
 static func is_stick(d) -> bool:

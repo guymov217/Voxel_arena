@@ -2297,6 +2297,67 @@ func set_shape(xf: Array, only: Array = []) -> void:
 			on.append([i, drawn_xf(i)])
 	_write_shown(mm, on, true)
 
+## Whether this head has jaws to bite with: its lower jaw still on it, not hacked mostly away (the
+## teeth went with it then, jaw_teeth) nor cut from the skull (jaw_off). A head drawn with no jaw
+## of its own bites as it is.
+func can_bite() -> bool:
+	return jaw_pivot == null or (jaw_teeth and not jaw_off)
+
+var jaw_off := false   # the lower jaw cut away from the head and fallen (drop_jaw)
+
+## Whether the lower jaw still hangs from the skull: by its hinge, the back third of it, where a
+## live voxel of it has live flesh of the head over it, across the mouth's line. (The flesh behind
+## and under it is the throat's, which holds no jaw on: counted, a jaw cut along the mouth from ear
+## to ear hung on by the back of it. And the front of it only lies under the snout: a crocodile's,
+## its jaw the whole length of its snout, was cut free along all of it before it fell, user.)
+var _jaw_hinge_z := -1
+func jaw_held() -> bool:
+	if jaw_pivot == null or jaw_slot.is_empty():
+		return true
+	if _jaw_hinge_z < 0:
+		var z0 := 1 << 30
+		var z1 := -1
+		for i in jaw_slot:
+			z0 = mini(z0, fz[i])
+			z1 = maxi(z1, fz[i])
+		_jaw_hinge_z = z0 + maxi(2, (z1 - z0) / 3)
+	var cm := cell_map()
+	for i in jaw_slot:
+		if not alive[i] or fz[i] > _jaw_hinge_z:
+			continue
+		var y := fy[i]
+		if y + 1 >= grid.y:
+			continue
+		var k := cm[(fx[i] * grid.y + y + 1) * grid.z + fz[i]]
+		if k > 0 and alive[k - 1] and not jaw_slot.has(k - 1):
+			return true
+	return false
+
+## The lower jaw comes off: cut from the skull (jaw_held), or hacked mostly away (what is left
+## of it, held by nothing, fell: it hung in the air under the head). What is left of it falls as
+## a piece; the teeth and the gullet go with it, and the head bites no more (can_bite).
+## Returns the voxels it lost, or [] if the jaw is still on.
+func drop_jaw(dir: Vector3) -> Dictionary:
+	if jaw_off or jaw_pivot == null or severed:
+		return {}
+	var left := []
+	for i in jaw_slot:
+		if alive[i]:
+			left.append(i)
+	if not left.is_empty() and jaw_teeth and jaw_held():
+		return {}
+	jaw_off = true
+	jaw_teeth = false
+	var vox := remove_voxels(left, false) if not left.is_empty() else []
+	var piece = Chunk.spawn(self, vox, dir) if not freeze and vox.size() > 2 else null
+	for c in jaw_pivot.get_children():
+		if c is MeshInstance3D:
+			c.visible = false
+	if jaw_mouth:
+		for c in jaw_mouth.get_children():
+			c.visible = false
+	return {"part": self, "indices": left, "voxels": vox, "chunk": piece != null}
+
 ## A biting head's lower jaw on a hinge at the back of the mouth (`jw` gives where, as fractions
 ## of the head's depth and height): its voxels are drawn in their own multimesh under a pivot,
 ## with a dark gullet and teeth on the skull that show when it opens. Drawing only: the head's
@@ -2965,7 +3026,7 @@ func set_flames(on: bool) -> void:
 		_clear_glow(1)
 	if Fx.current == null or Fx.current.headless:
 		return
-	if on and flames == null:
+	if on and flames == null and BurnFx.room():
 		flames = BurnFx.make(self, _surface_at_spot("fire"), true, part_scale)
 	if flames:
 		BurnFx.set_on(flames, on)
@@ -2981,7 +3042,7 @@ func set_poison(on: bool) -> void:
 		_clear_glow(2)
 	if Fx.current == null or Fx.current.headless:
 		return
-	if on and poison_fx == null:
+	if on and poison_fx == null and BurnFx.room():
 		poison_fx = BurnFx.make(self, _surface_at_spot("acid"), false, part_scale)
 	if poison_fx:
 		BurnFx.set_on(poison_fx, on)

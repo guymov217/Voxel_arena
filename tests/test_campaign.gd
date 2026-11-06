@@ -279,6 +279,36 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	r = Arms.buy(Arms.empty(), "longsword", "", "L")
 	t.check(r.side == "L" and str(r.arms.off.name) == "Longsword", "even a longsword can be bought for the off hand")
 
+## A hand lost in a bout: the weapon goes into the hand he has left, what that hand held up on the
+## smith's rack; with no hand to hold them, both go up on the rack, and come down again into a hand
+## that can hold them (user).
+func test_a_lost_hands_weapon_goes_to_the_other_hand_or_the_rack() -> void:
+	var a: Dictionary = Arms.buy(Arms.buy(Arms.empty(), "axe").arms, "roundShield").arms
+	var shield_name := str(a.off.name)
+	t.check((Arms.fit_hands(a, Body.empty()).moved as Array).is_empty(), "both hands whole: nothing moves")
+	var no_r := Body.empty()
+	no_r.missing = ["forearmR"]
+	var r := Arms.fit_hands(a, no_r)
+	t.eq(str(r.arms.off.name), "Axe", "the right hand lost: the axe in the left hand")
+	t.check(Arms.is_stick(r.arms.main), "the main hand left with nothing to hold")
+	t.check(r.arms.rack.size() == 1 and str(r.arms.rack[0].name) == shield_name, "the shield up on the smith's rack")
+	var hooked := Body.empty()
+	hooked.prosthetics = {"forearmR": "hook"}
+	t.eq(str(Arms.fit_hands(a, hooked).arms.off.name), "Axe", "a hook holds no weapon either")
+	var no_l := Body.empty()
+	no_l.missing = ["forearmL"]
+	r = Arms.fit_hands(a, no_l)
+	t.check(str(r.arms.main.name) == "Axe" and r.arms.off == null and r.arms.rack.size() == 1, "the left hand lost: the axe stays, the shield goes up on the rack")
+	var none := Body.empty()
+	none.missing = ["upperArmR", "forearmR", "forearmL"]
+	r = Arms.fit_hands(a, none)
+	t.check(Arms.is_stick(r.arms.main) and r.arms.off == null and r.arms.rack.size() == 2, "no hand left: both up on the rack")
+	var kept: Dictionary = Arms.sanitize(r.arms)
+	t.eq(kept.rack.size(), 2, "the rack is kept with his arms")
+	var back := Arms.take_from_rack(kept, 0, "L")
+	t.check(back.has("arms") and str(back.arms.off.name) == "Axe" and back.arms.rack.size() == 1, "taken down again into a hand")
+	t.check(Arms.take_from_rack(kept, 5, "R").has("error"), "nothing there to take down")
+
 ## Either hand's weapon can be sold to the smith outright, for what a trade-in fetches (user).
 func test_a_weapon_is_sold_for_half_its_worth() -> void:
 	var a: Dictionary = Arms.buy(Arms.buy(Arms.empty(), "axe").arms, "dagger").arms

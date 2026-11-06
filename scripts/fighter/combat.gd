@@ -269,6 +269,10 @@ func process_contacts(_dt: float) -> Array:
 				vic = was
 			if not (STRIKING.has(att.part_name) or att.def.get("bite", false) or att.def.get("point", false) or _tusk(att)):
 				continue
+			# Jaws cut off or hacked away bite nothing (a crocodile's closed on whatever touched
+			# them, its jaw gone or not).
+			if att.def.get("bite", false) and not att.can_bite():
+				continue
 			if att.fighter.state != "stand" or not att.fighter.alive or att.severed:
 				continue
 			# A beast's jaws, claws and horns bite only in a strike (the snap of the jaws, the
@@ -427,8 +431,10 @@ func _blow(g: Dictionary) -> Dictionary:
 		var w_into := maxf(0.0, sv.dot(closing))
 		if vic_into > w_into:
 			J *= maxf(0.25, w_into / vic_into)
+		# A man down swings nothing, but one fighting on from the ground with his legs gone swings
+		# with what his arm and his back have in them (Fighter.fights_down).
 		if att.holder.state != "stand":
-			swing = 0.0
+			swing = swing * 0.75 if att.holder.has_method("fights_down") and att.holder.fights_down() else 0.0
 		if swing < 1.5:
 			J = minf(J, m_eff * speed * 0.5)
 		J = minf(J, m_eff * speed * 1.4)

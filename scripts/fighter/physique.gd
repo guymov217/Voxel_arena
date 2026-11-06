@@ -777,11 +777,33 @@ static func _reach_whole(n: String) -> Vector2:
 ## it stops a blow does not move.
 ## A hairstyle or a beard is drawn fuller than a plate: standing off the head and each lock larger,
 ## so every style gives the head its own outline (a crest, a mane, curls, a knot).
+## How far out (in armour cubes) a cape hangs, over a cuirass drawn on the new look.
+const CAPE_OVER := 1.0
+
+## Whether a part a cape is on also wears armour drawn as a shell (a lorica, scale mail: FineArmor).
+static func _under_cape(p: VoxelPart, id: String) -> bool:
+	for ad in p.get_meta("armor", []):
+		var other := String(ad.get("id", ""))
+		if other != id and not other.begins_with("cape") and not Fighter._cosmetic(other) and FineArmor.wanted(p, other):
+			return true
+	return false
+
 static func plate_xf(p: VoxelPart, c: Array, at: Vector3, id := "") -> Transform3D:
 	# The new look: on his outline there (FineBody.plate_at); on the fine head, round it (a helmet
 	# sits on the head, its rim over the brow and the ears, not on top like a bowl).
 	if p.fine.has("body"):
-		return FineBody.plate_at(p, at)
+		var xf := FineBody.plate_at(p, at)
+		# A cape is worn over the armour: with a cuirass's shell on the part it hangs a layer out,
+		# over it (it lay where the plates lie, and the cuirass came through it, user).
+		if id.begins_with("cape") and _under_cape(p, id):
+			var cell := p.vf * p.part_scale * float(Data.body_res)
+			var h := Vector3(p.grid) * p.vf * p.part_scale * 0.5
+			var out := Vector3(at.x, 0.0, at.z)
+			if at.y > h.y - cell * 0.25 and out.length() < Vector2(h.x, h.z).length():
+				xf.origin.y += cell * CAPE_OVER
+			elif out.length() > 0.0001:
+				xf.origin += out.normalized() * cell * CAPE_OVER
+		return xf
 	if p.fine.has("wtab"):
 		return _plate_head(p, c, at, id)
 	if p.shape_xf.is_empty():

@@ -234,6 +234,7 @@ var stroke_dir := {"R": null, "L": null}   # a bot's stroke: which way it is goi
 var stroke_idle := {"R": 0.0, "L": 0.0}
 const TWO_HAND_TWIST := 0.22   # how far the shoulders turn with a two-handed stroke, per unit of the pane across
 const TWO_HAND_TRUNK := 1.8   # how much harder the trunk holds upright with both hands on a haft
+const JUMP_V := 4.3   # m/s: the push of a jump, his whole weight behind it (sound legs)
 const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a second): held, not swung
 const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
 var twist_two := 0.0
@@ -1085,7 +1086,9 @@ func place_armor() -> void:
 ## on it or next to it is not drawn (what hangs out below, a ponytail, braids, stays). Drawing
 ## only; and as the helmet's plates are knocked off, what they covered shows again.
 static func _cosmetic(id: String) -> bool:
-	return id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id.begins_with("mon_") or id == "cape"
+	# (The short cape as the long one: cloth hung over whatever he wears, not a shell of armour
+	# laid where a cuirass lies, through which the cuirass came, user.)
+	return id.begins_with("hair_") or id.begins_with("beard_") or id.begins_with("hat_") or id.begins_with("mon_") or id.begins_with("cape")
 
 func _tuck_hair(p: VoxelPart) -> void:
 	var covered := {}
@@ -2418,6 +2421,17 @@ func can_stand() -> bool:
 		return false
 	return state != "dead" and (l > 0.15 or r > 0.15) and (l + r) * 0.5 > 0.3 and blood > 14.0 and (concussion < 0.85 or enraged)
 
+## Down for good on the sand, his legs broken or cut from under him, but awake: he fights on from
+## where he lies, his weapon swung from the ground (user: a man lying with his legs ruined keeps
+## swinging). Not a man knocked down who will be up again, nor one out cold or playing dead.
+func fights_down() -> bool:
+	if state != "down" or not alive or limp:
+		return false
+	var l := leg_func("L")
+	var r := leg_func("R")
+	var legs_gone := (l <= 0.15 and r <= 0.15) or (l + r) * 0.5 <= 0.3
+	return legs_gone and head.hp >= 30.0 and concussion < 0.85 and blood > 14.0
+
 func is_active() -> bool:
 	return state != "dead"
 
@@ -2514,6 +2528,93 @@ func _check_eye() -> void:
 			gone += 1
 	if gone >= 2:
 		enrage()
+
+## A hard blow on the face at an eye knocks it out of its socket (user): it flies out on its own,
+## the socket left empty, the eye lost (as Body reads it: most of its voxels gone). The harder the
+## blow, the surer: a fair knock now and then, a club full on the eye always.
+const EYE_POP_J := 14.0
+func _pop_eyes(lp: Vector3, J: float, res: Dictionary) -> void:
+	var need := EYE_POP_J * maxf(1.0, S)
+	if head.severed or J < need:
+		return
+	var cell := head.vf * head.part_scale * float(Data.body_res)
+	for side in ["R", "L"]:
+		if head.has_meta("eye_out_" + side):
+			continue
+		var ev := Body.eye_voxels(head, side)
+		if ev.is_empty():
+			continue
+		var c := Vector3.ZERO
+		var live := []
+		for i in ev:
+			c += head.local_of(i)
+			if head.alive[i]:
+				live.append(i)
+		c /= float(ev.size())
+		if live.is_empty() or lp.distance_to(c) > cell * 1.6:
+			continue
+		if randf() > clampf((J - need) / need + 0.25, 0.25, 1.0):
+			continue
+		head.set_meta("eye_out_" + side, true)
+		res.removed.append({"part": head, "indices": live, "voxels": head.remove_voxels(live)})
+		res.eye_out = side
+		_eyeball(head.global_transform * c, (head.global_transform.basis * Vector3.BACK).normalized(), cell)
+
+## The eye knocked out: a white ball with its iris, flying out of the face and rolling on the sand
+## (drawing, and a light thing in the world: it knocks nothing about).
+func _eyeball(at: Vector3, out: Vector3, cell: float) -> void:
+	if not is_inside_tree() or get_parent() == null:
+		return
+	var b := RigidBody3D.new()
+	b.name = "Eyeball"
+	var r := cell * 0.42
+	var ball := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 2.0
+	sm.radial_segments = 12
+	sm.rings = 6
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color(0.93, 0.9, 0.83)
+	white.roughness = 0.22
+	sm.material = white
+	ball.mesh = sm
+	b.add_child(ball)
+	var iris := MeshInstance3D.new()
+	var im := SphereMesh.new()
+	im.radius = r * 0.5
+	im.height = r * 0.5
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.22, 0.14, 0.08)
+	dark.roughness = 0.1
+	im.material = dark
+	iris.mesh = im
+	iris.position = Vector3(0, 0, -r * 0.82)
+	b.add_child(iris)
+	var cs := CollisionShape3D.new()
+	var sh := SphereShape3D.new()
+	sh.radius = r
+	cs.shape = sh
+	b.add_child(cs)
+	b.mass = 0.012 * MS
+	b.collision_layer = VoxelPart.LAYER_DEBRIS
+	b.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_DEBRIS
+	for p in parts:
+		b.add_collision_exception_with(p)
+	get_parent().add_child(b)
+	b.global_position = at + out * cell * 0.6
+	b.look_at(b.global_position + out, Vector3.UP if absf(out.dot(Vector3.UP)) < 0.95 else Vector3.FORWARD)
+	b.linear_velocity = head.linear_velocity + out * 2.2 + Vector3.UP * 1.4
+	b.angular_velocity = Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 6.0
+	b.linear_damp = 0.4
+	b.angular_damp = 1.5
+	var pm := PhysicsMaterial.new()
+	pm.bounce = 0.25
+	pm.friction = 0.6
+	b.physics_material_override = pm
+	# (Gone in half a minute, as the pieces on the sand go: bound to the eye itself, so a match
+	# ended first takes it and nothing is left waiting on a fighter already gone.)
+	get_tree().create_timer(30.0, false).timeout.connect(b.queue_free)
 
 ## Beaten, one way or the other.
 ## How far gone a man is, 0..1: the blood he has lost and the worse of his trunk and his legs
@@ -3140,7 +3241,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if sprint:
 			stamina_use += 10.0 * dt
 		if inp.get("jump", false) and stamina > 15.0:
-			torso.apply_central_impulse(Vector3(0, total_mass * 3.8 * maxf(0.3, leg_avg), 0))   # (a man's jump: it went up a metre and more and hung there)
+			# (A man's jump: at 5 it went up a metre and more and hung there; at 3.8 it barely left the
+			# sand, user.)
+			torso.apply_central_impulse(Vector3(0, total_mass * JUMP_V * maxf(0.3, leg_avg), 0))
 			stamina -= 15.0
 			jump_t = 0.9
 	# Down but alive: drag yourself along on your arms, slowly, slower still the worse you are.
@@ -4010,7 +4113,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		return
 	var w: Weapon = weapons[side]
 	power_now = power
-	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else 0.3) * (1.35 if enraged else 1.0) * (1.0 - 0.6 * minf(1.0, daze_t / 0.3))
+	# (Down with his legs gone he still fights from the ground, with less behind it: fights_down.)
+	var ground := w != null and fights_down()
+	var strength := af * stam_f * blood_f * (1.45 if power else 1.0) * (1.6 if two_handed else 1.0) * (1.0 if state == "stand" else (0.75 if ground else 0.3)) * (1.35 if enraged else 1.0) * (1.0 - 0.6 * minf(1.0, daze_t / 0.3))
 	# A thrust is made with the whole body: the arm drives harder along the line and the body
 	# lunges after the point (held out at arm's length and no more, the point only pricked).
 	var mk := side == two_side   # (the main hand: the main button, the wheel, the thrust key)
@@ -4044,7 +4149,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	_lock_elbow_straight(side, fist_on and arm_straight and ((jk >= JAB_DRAW and jk < JAB_BACK) if jk >= 0.0 else power))
 	if not (w and not w.is_shield and weapon_joints[side]):
 		_hold_elbow(side, 0.0, false, dt)
-	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
+	var down_hp = {"x": 0.4 if side == "R" else -0.4, "y": -0.5} if state != "stand" and not ground else ({"x": 0.25 if side == "R" else -0.25, "y": 0.35} if shove_t > 0.0 else null)
 	if crawling:
 		# The arms reach ahead and haul, one after the other.
 		down_hp = {"x": 0.35 if side == "R" else -0.35, "y": 0.55 + 0.45 * sin(crawl_phase + (0.0 if side == "R" else PI))}
@@ -4558,8 +4663,14 @@ func _out_front(p: Vector3) -> Vector3:
 	if l.y < -e.y - 0.25 * S or l.y > e.y + 0.35 * S:
 		return Vector3.ZERO
 	var ax := absf(l.x)
-	var zmin := -0.2 * e.z if ax > e.x + 0.06 * S else e.z + 0.06 * S
-	if ax > e.x + 0.22 * S or l.z >= zmin:
+	# In front of the chest across its width; beside it, no further back than its middle; out past
+	# the flank, free. The bound slides from one to the next as the hand goes out (it stepped from
+	# the chest's front to behind its middle at the flank's edge, and to nothing a hand further
+	# out: a two-handed stroke across from the far side shook there, its off hand let go and took
+	# hold again and again, and it fell short, user).
+	var zmin := lerpf(e.z + 0.06 * S, -0.2 * e.z, smoothstep(e.x - 0.02 * S, e.x + 0.12 * S, ax))
+	zmin = lerpf(zmin, -e.z - 0.6 * S, smoothstep(e.x + 0.14 * S, e.x + 0.3 * S, ax))
+	if l.z >= zmin:
 		return Vector3.ZERO
 	return bt.basis.orthonormalized() * Vector3(0, 0, zmin - l.z)
 
@@ -5905,9 +6016,13 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var shielded := part == head and not skull_cracked   # (as it was before this blow)
 		# It rocks him more than a cut does, but one fair blow of a hammer does not floor a man
 		# (user: blunt weapons knocked men down far too easily).
-		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.0065)
+		# A beast or a giant is rocked and rung the less the bigger it is: a club that reels a man
+		# hardly shifts a bull's weight, and its skull is as much thicker (user: monsters and
+		# beasts fell too easily from blunt blows). A man's as it was.
+		var heft := maxf(1.0, S)
+		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.0065 / sqrt(heft))
 		if part == head:
-			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0) / sqrt(maxf(1.0, S)))
+			concussion = minf(1.0, concussion + J * 0.009 * (1.6 if skull_cracked else 1.0) / heft)
 		if (part == torso or part == head) and not detached:
 			_bruise_organs(part, lp, ld, J)
 			_break_trunk_bones(part, lp, J, heavy, res)
@@ -6120,6 +6235,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			eye_hurt = maxf(eye_hurt, eye_floor)
 			concussion = minf(1.0, concussion + float(remove.size()) / maxf(1.0, float(part.fx.size())) * 1.5)
 			_check_eye()
+			_pop_eyes(lp, J, res)
 		break_loose(part, res, hit.dir, detached)
 		_check_flaps(res)
 		if part == torso and not detached and type != "blunt":
@@ -6413,6 +6529,10 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 		# never counted as cut.)
 		if lump.size() < FLAP_MIN or lump.size() >= (0.6 if part == torso or part == head else 0.4) * part.alive_count or part.near_child_anchor(lump):
 			continue
+		# (Nor the most of a head that comes off whole once cut through (break_loose): hung on as
+		# a flap, a lion's face all but cut off fell away as a piece and the head stayed on.)
+		if comes_off_whole(part) and (lump.size() >= WHOLE_OFF * part.alive_count or _holds_organ(part, lump, Anatomy.BRAIN)):
+			continue
 		var inside := {}
 		for i in lump:
 			inside[i] = true
@@ -6487,11 +6607,34 @@ func _check_flaps(res: Dictionary) -> void:
 			res.flap_off = true
 
 ## After voxels are gone: a lump cut off falls away; a limb cut clean through comes off; a limb
-## left on a thin strip hangs.
+## left on a thin strip hangs; a head that comes off whole (comes_off_whole) cut through across
+## it falls as it was, the cut in it.
 func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := false) -> void:
 	var before := part.alive_count
 	var cut_off = null
-	for lump in part.loose_lumps():
+	var lumps := part.loose_lumps()
+	# Cut through anywhere across it, such a head comes off at its joint, all of it: cut through
+	# the face, the face fell as a piece and the back of the head stayed on (a lion's, a bear's,
+	# the beast dead under half a head; user: heads come off whole). A piece of it is still a
+	# piece: the end of a snout (less than WHOLE_OFF of it, no brain in it), or what a cut along
+	# it took (an ear, the side of the skull: the head not cut through across, WHOLE_THIN). Nor is
+	# a piece with a horn or a tusk rooted in it the head: the piece falls and the horn with it
+	# (_drop_unheld), the head stays (cut off with the end of a boar's snout, all the rest of the
+	# head was lost with it).
+	var whole := not detached and part != torso and not lumps.is_empty() and comes_off_whole(part)
+	if whole:
+		var thin := part.thin_ratio()
+		for lump in lumps:
+			if lump.size() >= 0.4 * before or lump.size() == before or (thin < WHOLE_THIN and (lump.size() >= WHOLE_OFF * before or _holds_organ(part, lump, Anatomy.BRAIN))):
+				var all := PackedInt32Array()
+				var al := part.alive
+				for i in al.size():
+					if al[i]:
+						all.append(i)
+				cut_off = all
+				lumps = []
+				break
+	for lump in lumps:
 		# The torso: a lump with limbs rooted in it (the pelvis with the legs, a shoulder with
 		# its arm) comes away as a half, limbs and all; so does any big piece.
 		# Only a real chop halves a man: a big lump, or one carrying a limb's root that a strong
@@ -6501,7 +6644,7 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		if part == torso and not detached and (big_lump or root_cut):
 			_drop_half(part, lump, res, dir)
 			continue
-		var amputation: bool = not detached and part != torso and (part.near_child_anchor(lump) or lump.size() >= 0.4 * before or lump.size() == before)
+		var amputation: bool = not detached and part != torso and not whole and (part.near_child_anchor(lump) or lump.size() >= 0.4 * before or lump.size() == before)
 		if amputation and (cut_off == null or lump.size() > cut_off.size()):
 			cut_off = lump
 		elif not amputation:
@@ -6519,10 +6662,33 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		pass   # what was nearly off hangs on as a flap; the rest of the part is whole enough
 	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)) and may_hang(part):
 		hang(part, res)
+	# A head's lower jaw cut from it falls (and it bites no more): VoxelPart.drop_jaw.
+	if not detached and not part.severed and part.jaw_pivot != null:
+		var jr := part.drop_jaw(dir)
+		if not jr.is_empty():
+			res.removed.append(jr)
+			res.jaw_off = part
 
 ## Whether a part cut thin hangs by what is left of it (a beast's one head does not: see Beast).
 func may_hang(_part: VoxelPart) -> bool:
 	return true
+
+## Whether a part cut through across it anywhere comes off whole (a beast's head: see Beast); a
+## man's parts come off at the cut, what is beyond it.
+func comes_off_whole(_part: VoxelPart) -> bool:
+	return false
+
+const WHOLE_OFF := 0.15    # of such a part, the least a lump cut from across it is that takes it off
+const WHOLE_THIN := 0.3    # how thin a cut across it has left it, at its thinnest, to have cut it through
+
+static func _holds_organ(part: VoxelPart, lump: PackedInt32Array, organ_id: int) -> bool:
+	var org := part.organ
+	if org.size() != part.fx.size():
+		return false
+	for i in lump:
+		if org[i] == organ_id:
+			return true
+	return false
 
 ## Every part jointed onto `part` where `part` has no flesh left falls off, with all below it:
 ## a forearm whose elbow end of the upper arm is gone, a head on a neck cut away, a leg whose
@@ -6560,6 +6726,9 @@ func _check_joints(dt: float) -> void:
 	for p in parts:
 		if is_instance_valid(p) and not p.severed and not p.missing:
 			_drop_unheld(p, res)
+			# (A jaw eaten away by acid or burnt off falls as one cut off does.)
+			if p.jaw_pivot != null and not p.jaw_off:
+				p.drop_jaw(Vector3.DOWN)
 
 ## A half: a lump of the torso cut clean away with the limbs rooted in it. The lump becomes a
 ## body of its own and the limbs are jointed onto it, so a man cut through at the waist leaves
@@ -7464,12 +7633,15 @@ func _break_rib(lp: Vector3, J: float, res: Dictionary) -> void:
 ## Hard blunt blows to the trunk crack ribs (high) or the pelvis (low); to the head, the skull.
 func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, res: Dictionary) -> void:
 	var tough := float(mods.toughness)
+	# (A giant's or a beast's bones are as much thicker as it is bigger, its skull and its ribs
+	# as its limbs': a blow that cracks a man's skull only rings a bull's. A man's as they were.)
+	var big := maxf(1.0, S)
 	if part == head:
 		# A crack first; a blow hard enough (or onto a skull already cracked) drives a piece of
 		# it in (depressed: the brain under it struck). Never out through the scalp: only an arm
 		# or a leg breaks open (user).
-		if skull_fracture < 3 and J > 20.0 and randf() < (J - 18.0) * 0.05 * (1.0 + heavy) / tough * (1.6 if skull_cracked else 1.0):
-			var lv := 2 if J >= 34.0 * tough or skull_cracked else 1
+		if skull_fracture < 3 and J > 20.0 * big and randf() < (J - 18.0 * big) * 0.05 * (1.0 + heavy) / (tough * big) * (1.6 if skull_cracked else 1.0):
+			var lv := 2 if J >= 34.0 * tough * big or skull_cracked else 1
 			if lv > skull_fracture:
 				skull_fracture = lv
 				skull_cracked = true
@@ -7481,9 +7653,9 @@ func _break_trunk_bones(part: VoxelPart, lp: Vector3, J: float, heavy: float, re
 					organ_bruise[Anatomy.BRAIN] = minf(0.9, float(organ_bruise.get(Anatomy.BRAIN, 0.0)) + 0.15 * (lv - 1))
 		return
 	var hy := part.half_ext.y
-	if lp.y > -hy * 0.05 and J > 18.0 and randf() < (J - 16.0) * 0.05 * (1.0 + heavy) / tough:
-		_break_rib(lp, J, res)
-	elif lp.y < -hy * 0.6 and pelvis_f > 0.5 and J > 24.0 and randf() < (J - 22.0) * 0.04 * (1.0 + heavy) / tough:
+	if lp.y > -hy * 0.05 and J > 18.0 * big and randf() < (J - 16.0 * big) * 0.05 * (1.0 + heavy) / (tough * big):
+		_break_rib(lp, J / big, res)
+	elif lp.y < -hy * 0.6 and pelvis_f > 0.5 and J > 24.0 * big and randf() < (J - 22.0 * big) * 0.04 * (1.0 + heavy) / (tough * big):
 		pelvis_f = 0.5
 		res.broke = "pelvis"
 		pain = minf(1.0, pain + 0.4)
@@ -7608,7 +7780,17 @@ func apply_status(s) -> void:
 func vitality() -> float:
 	if not alive or is_beaten():
 		return 0.0
-	return clampf(minf(minf(minf(head.hp, torso.hp), blood) / 100.0, organ_vitality()), 0.0, 1.0)
+	return clampf(minf(minf(minf(part_life(head), part_life(torso)), blood) / 100.0, organ_vitality()), 0.0, 1.0)
+
+## What is left of a part's life, 0..100: its hp, and what is left of it above the share of it
+## that it dies at (the torso under 40% of itself, the head under HEAD_DEATH: apply_hit sets its
+## hp to nought then, and the plate showed half of a Cerberus's life up to the blow it died of,
+## user: the bar is not accurate).
+func part_life(p: VoxelPart) -> float:
+	if p == null or p.severed:
+		return 0.0
+	var at := HEAD_DEATH if p == head else 0.4
+	return minf(p.hp, 100.0 * clampf((p.integrity - at) / (1.0 - at), 0.0, 1.0))
 
 ## The organs' share of it: the brain torn toward BRAIN_DEATH, a torn heart's seconds running out.
 func organ_vitality(brain := true) -> float:

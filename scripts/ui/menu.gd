@@ -1629,6 +1629,29 @@ func _yard(v: VBoxContainer) -> void:
 		sl.disabled = Arms.is_stick(d)
 		sl.tooltip_text = Loc.t("Vulcanus buys it for half its worth: the main hand is left with the training stick" if side == "R" else "Vulcanus buys it for half its worth: the off hand is left empty")
 		acts.add_child(sl)
+	# What the smith keeps for him on his rack, hung up there when he lost the hand that held it
+	# (Arms.fit_hands): taken down into a hand he can hold it in, what that hand held going up.
+	if not a.rack.is_empty():
+		mine.add_child(UIStyle.label("ON THE SMITH'S RACK", 13, UIStyle.BRONZE))
+		var hands := Arms.hands_of(body())
+		for i in a.rack.size():
+			var rd: Dictionary = a.rack[i]
+			var rcard := _smith_card(rd, "Kept for you", "rack:%d:%s" % [i, str(rd.hash())], 84)
+			rcard.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			mine.add_child(rcard)
+			var rcol: VBoxContainer = rcard.get_meta("col")
+			rcol.add_child(UIStyle.label(str(rd.get("name", "?")), 16, UIStyle.TEXT))
+			var racts := HFlowContainer.new()
+			racts.add_theme_constant_override("h_separation", 6)
+			racts.add_theme_constant_override("v_separation", 6)
+			rcol.add_child(racts)
+			for hs in ["R", "L"]:
+				var idx: int = i
+				var side_: String = hs
+				var tb := UIStyle.button("Take it in the main hand" if hs == "R" else "Take it in the off hand", func(): _pay(Arms.take_from_rack(arms(), idx, side_)))
+				tb.disabled = not hands[hs]
+				tb.tooltip_text = Loc.t("Your right hand cannot hold it" if hs == "R" else "Your left hand cannot hold it") if not hands[hs] else Loc.t("Off the rack into that hand; what the hand holds now goes up in its place")
+				racts.add_child(tb)
 	_smith_prosthetics(mine)
 	body.add_child(VSeparator.new())
 	var rack := VBoxContainer.new()
@@ -4443,6 +4466,11 @@ func _on_finished(r: Dictionary) -> void:
 		if r.get("body") is Dictionary:
 			set_body(r.body)
 		set_arms(Arms.add_wear(arms(), r.get("wear", {})))
+		# A hand lost in the bout: the weapon into the hand he has left, or up on the smith's rack
+		# (user). Told with the bout's result.
+		var fitted := Arms.fit_hands(arms(), body())
+		if not (fitted.moved as Array).is_empty():
+			set_arms(fitted.arms)
 		set_armor_wear(Armory.add_wear(armor_wear(), r.get("wear", {}).get("armor", {}), worn_armor()))
 		if r.won:
 			add_coins(int(r.pay))
@@ -4489,6 +4517,8 @@ func _on_finished(r: Dictionary) -> void:
 		else:
 			_campaign_lost(r)
 			last_result = {"text": (Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
+		if r.won and not (fitted.moved as Array).is_empty():
+			last_result = {"text": (String(last_result.get("text", "")) + " " + ". ".join(fitted.moved) + ".").strip_edges()}
 	_end_match()
 	if to_lesson:
 		# The tutorial is done: on to the forge, to learn it there (its own lesson).

@@ -399,6 +399,11 @@ func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 func may_hang(part: VoxelPart) -> bool:
 	return part != head or sp.get("multiHead", false)
 
+## A beast's head (each head of a many-headed one) cut through across it anywhere comes off
+## whole, at its joint: the back of it is its neck, there is no neck of its own to cut through.
+func comes_off_whole(part: VoxelPart) -> bool:
+	return part == head or part.def.get("head", false)
+
 ## Parts that carry weight or other parts: beaten past what they can take they hang broken.
 const HANG_FIRST := ["neck", "goatNeck", "arm", "coil", "wing", "trunk", "abdomen"]
 
@@ -488,12 +493,12 @@ func vitality() -> float:
 	if not alive or is_beaten():
 		return 0.0
 	var many: bool = sp.get("multiHead", false)
-	var h := head.hp
+	var h := part_life(head)
 	if many:
 		h = 0.0
 		for hh in heads_left():
-			h = maxf(h, hh.hp)
-	var v := minf(minf(h, torso.hp), blood)
+			h = maxf(h, part_life(hh))
+	var v := minf(minf(h, part_life(torso)), blood)
 	if not many:
 		for p in parts:
 			if String(p.part_name).begins_with("neck"):
@@ -563,8 +568,18 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		bleed += 2.5
 	blood = maxf(0.0, blood - bleed * 0.3 / (S * S) * dt)
 	_organs_tick(dt)
+	# What fire or acid ate away from under a part (a leg's hip, a jaw's hinge) lets it fall, as on
+	# a man: nothing stays on a body it is not joined to (a burnt jaw hung on in the air).
+	_check_joints(dt)
 	keep_above_ground()
 	stagger = maxf(0.0, stagger - dt * 1.5)
+	# A beast rung by blows to the skull comes round as a man does: its head clears, faster lying
+	# than up (it never cleared: once rung past the point a blow fells at, every blow after it,
+	# however light and wherever it landed, put it down again; user: they fell too easily).
+	concussion = maxf(0.0, concussion - dt * (0.16 if down_t > 0.0 or collapsed_now else 0.05))
+	# Winded by a blow to the belly, it gets its breath back as a man does, as far as its lungs
+	# let it (it never did: from one such blow on, every blow rocked it nearly twice as hard).
+	stamina = minf(stamina + 12.0 * (0.35 + 0.65 * lungs()) * dt, maxf(stamina, breath_cap()))
 	nerve = minf(1.0, nerve + NERVE_BACK * dt)
 	if push_t > 0.0:
 		push_t -= dt
@@ -1417,7 +1432,7 @@ func _death_roll(dt: float) -> void:
 	var breath := clampf(tgt.stamina / 100.0, 0.0, 1.0)
 	hug.pry = float(hug.get("pry", 0.0)) + dt * pull * (0.25 + 0.75 * breath) * float(tgt.mods.get("strength", 1.0)) * PRY_RATE
 	tgt.stamina = maxf(0.0, tgt.stamina - dt * 12.0 * pull)
-	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.3 or float(hug.pry) >= 1.0 or not part_ok(head, 0.15) or gap > 0.25 * S:
+	if not is_instance_valid(part) or part.severed or not tgt.alive or hug.t <= 0.0 or stagger > float(hug.stagger0) + 0.3 or float(hug.pry) >= 1.0 or not part_ok(head, 0.15) or not head.can_bite() or gap > 0.25 * S:
 		_release_roll()   # (the limb out of its jaws, the roll is over)
 		return
 	# Whatever the joint gives under the wrench is taken back up at once: the bitten place is
@@ -1446,10 +1461,12 @@ func _death_roll(dt: float) -> void:
 	torso.angular_velocity = fwd * spin
 	hug.turned = float(hug.turned) + absf(spin) * dt
 	# The man goes round with it: the limb is locked in the jaws, and his trunk is wrenched over
-	# after it (most of the way, his own weight dragging behind).
+	# after it (most of the way, his own weight dragging behind), turned with it every step.
+	# (Eased toward it a tenth a step, or a quarter, the sand under him held him back to a third
+	# or a half of the turns of the jaws, as it happened: he lay there and was only twisted.)
 	var tw: Vector3 = tgt.torso.angular_velocity
 	var about := tw.dot(fwd)
-	tgt.torso.angular_velocity = tw + fwd * (spin * 0.75 - about) * minf(1.0, dt * 12.0)
+	tgt.torso.angular_velocity = tw + fwd * (spin * 0.75 - about)
 	if hug.tick <= 0.0 and gap < 0.12 * S:
 		hug.tick = 0.45
 		hug.bites = int(hug.bites) + 1
@@ -1803,7 +1820,7 @@ func disarmed() -> bool:
 	return sp.breath == null or not can_breathe()
 
 func biting_heads() -> Array:
-	return heads.filter(func(h): return h.def.get("bite", false) and part_ok(h, 0.15))
+	return heads.filter(func(h): return h.def.get("bite", false) and part_ok(h, 0.15) and h.can_bite())
 
 func horn_fn() -> float:
 	return fn_of(["horn", "tusk"])
@@ -2308,7 +2325,38 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 		else:
 			# A neck striking is driven hard: under a dragon's head it bowed a third of the way
 			# down in the time of the bite.
-			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t * (2.0 if st > 0.0 and role == "neck" else 1.0), dt, 1.0, 0.5)
+			# (A neck drives the head it carries as well as itself, a head turns about its joint,
+			# not its middle: _carried_k. Driven as if nothing hung on it, a neck under a heavy
+			# head swung and bobbed with every step, a cerberus's three heads like weights on
+			# springs, user: too wobbly.)
+			# Only a many-headed beast's (the cerberus's three heads were the weights on springs;
+			# driven so, a dragon breathed round a wall and a boar's tusks fell short), and no more
+			# than a step can take: braked ten times as hard, a neck's own swing was turned round
+			# within the step, and the heads buzzed, turning back every other step.
+			var load_k := 1.0
+			if (role == "neck" or role == "head") and sp.get("multiHead", false):
+				load_k = minf(_carried_k(p), CARRIED_STEP / maxf(1e-4, 2.0 * 0.9 * wn * dt))
+			pd_relative(p, p.parent_part, Quaternion.from_euler(off) * a.rest, wn, 0.9, a.max_t * (2.0 if st > 0.0 and role == "neck" else 1.0), dt, load_k, 0.5)
+
+## How much more there is to turn at a part's joint than the part about its own middle: itself
+## swung about the joint and all that hangs off it (a neck's head), against its own inertia, the
+## one the drive is reckoned on (1 with nothing on it; at most CARRIED_MAX).
+const CARRIED_MAX := 10.0
+const CARRIED_STEP := 0.8   # the most of a joint's swing its drive's braking takes out in one step
+func _carried_k(p: VoxelPart) -> float:
+	if p.parent_part == null:
+		return 1.0
+	var jp: Vector3 = p.parent_part.global_transform * p.pa
+	var own := PD.inertia_of(p)
+	var all := own + p.mass * (p.global_position - jp).length_squared()
+	var stack := p.child_parts.duplicate()
+	while not stack.is_empty():
+		var c: VoxelPart = stack.pop_back()
+		if c.severed:
+			continue
+		all += PD.inertia_of(c) + c.mass * (c.global_position - jp).length_squared()
+		stack.append_array(c.child_parts)
+	return clampf(all / own, 1.0, CARRIED_MAX)
 
 ## A neck holds up its head against gravity: the drive alone only knows the neck's own weight,
 ## and a long neck under a heavy head sank back flat along the spine.
@@ -2655,7 +2703,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if sp.get("multiHead", false):
 		for h in heads:
 			var reach_h: float = (h.parent_part.half_ext.y * 2.0 if h.parent_part != torso else 0.0) + h.half_ext.z * 2.0 + 0.4
-			if h.def.get("bite", false) and part_ok(h, 0.2) and _ready_to_strike(h) and Vector2(h.global_position.x - tp.x, h.global_position.z - tp.z).length() < reach_h:
+			if h.def.get("bite", false) and part_ok(h, 0.2) and h.can_bite() and _ready_to_strike(h) and Vector2(h.global_position.x - tp.x, h.global_position.z - tp.z).length() < reach_h:
 				_strike(h, 0.5, 1.4 + rng.randf() * 1.7, [h, Vector3.ZERO, "aim"])   # (fewer snaps, now that they land: about the old bites a minute)
 				# The body comes on behind the striking head, so the next heads reach too (a hydra
 				# backing off after its lunge snapped at the air a yard short).
@@ -2664,7 +2712,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 					torso.apply_central_impulse(to * live_mass() * 1.0)
 	# A head on a long neck (a dragon's, an ostrich's, a rearing snake's) strikes down at the
 	# prey on its own when it is in reach of the neck, without the whole body lunging.
-	if not sp.get("multiHead", false) and head.parent_part != torso and part_ok(head, 0.2) and _ready_to_strike(head):
+	if not sp.get("multiHead", false) and head.parent_part != torso and part_ok(head, 0.2) and head.can_bite() and _ready_to_strike(head):
 		var nk: VoxelPart = head.parent_part
 		var hp := head.global_position
 		var flat := Vector2(hp.x - tp.x, hp.z - tp.z).length()

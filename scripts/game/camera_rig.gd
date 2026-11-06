@@ -238,7 +238,11 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		# moment later (the view bobbed with every one), but a fall or a jump it follows.
 		if is_nan(base_y) or absf(base.y - base_y) > 1.2 * S:
 			base_y = base.y
-		base_y = lerpf(base_y, base.y, minf(1.0, dt * 2.5))
+		# His own jump it lets go up without it, nearly: he is seen to leave the sand (followed up
+		# as fast as ever, the view rose with him and the jump hardly showed, user: he can barely
+		# jump). Coming down it follows as before.
+		var jumping: bool = float(f.get("jump_t")) > 0.0 if f.get("jump_t") != null else false
+		base_y = lerpf(base_y, base.y, minf(1.0, dt * (0.4 if jumping and base.y > base_y else 2.5)))
 		base.y = base_y
 		var fwd := Vector3(sin(yaw), 0, cos(yaw))
 		var right := Vector3(-cos(yaw), 0, sin(yaw))
