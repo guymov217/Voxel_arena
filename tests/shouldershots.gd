@@ -42,10 +42,51 @@ const SHOTS := {
 	# 2.6 and 14, the hydra's bites took his face away in every seed tried.)
 	"hydra": {"enemy": "hydra", "main": "zweihander", "off": "", "armor": ["murmilloHelm", "manica", "greaves", "steelLorica"], "strength": 3.2, "toughness": 30.0, "cine": true, "at": [0.0, 6.5, PI, 0.0, -1.5, 0.0], "precut": 2},
 	"duel": {"seed": 3, "enemy": "gladiator", "weapon": "axe", "main": "gladius", "off": "roundShield", "armor": ["helmet", "manica"], "strength": 2.2, "cine": true},
-	# Blade on blade, fast: spatha against spatha, the foe as good as they come, each fighting from
-	# where his blade's outer part meets the other. (A gladius and a dagger are short blades, fought
-	# chest to chest: the two of them hugged each other through the scene, user.)
-	"exchange": {"seed": 5, "enemy": "gladiator", "weapon": "spatha", "difficulty": 1.0, "main": "spatha", "off": "", "armor": ["manica", "greaves"], "strength": 2.0, "cine": true, "ideal": 1.1},
+	# Blade on blade, fast: longsword against longsword, the foe as good as they come, each fighting
+	# from where his blade's outer part meets the other. (A gladius and a dagger are short blades,
+	# fought chest to chest: the two of them hugged each other through the scene, user. A spatha is
+	# a forge's blank, not a weapon in the rack: named here, it left both men bare-handed.)
+	"exchange": {"seed": 5, "enemy": "gladiator", "weapon": "longsword", "difficulty": 1.0, "main": "longsword", "off": "", "armor": ["manica", "greaves"], "strength": 2.0, "cine": true, "ideal": 1.1},
+}
+
+## The director's plan of each bout (CLIP_DIRECT=1, the crowd trailer): [second, what it strikes
+## at, the stroke, "kill" on the last]. Between the beats the two fight it out; on each the
+## champion steps in and strikes there with all he has, and the last one ends it. "fell": a giant
+## brought down by it (onto his knees, his head in reach for the next).
+const PLANS := {
+	"exchange": [[2.4, "arm", "slashR"], [4.0, "leg", "low"], [5.6, "arm", "slashL"], [7.2, "head", "chop", "kill"]],
+	"lion": [[2.6, "head", "slashL"], [4.6, "head", "slashR"], [6.4, "neck", "chop", "kill"]],   # (its forelegs are behind its head: a sweep at them met the head every time)
+	"duel": [[2.4, "arm", "slashR"], [4.2, "leg", "low"], [6.0, "head", "chop", "kill"]],
+	"cyclops": [[2.6, "leg", "thrust"], [4.4, "leg", "thrust", "fell"], [6.4, "torso", "thrust", "kill"]],   # (his head, beyond his body as he lay, was out of the spear's reach whichever way round)
+	"troll": [[2.6, "leg", "low"], [4.4, "leg", "slashL", "fell"], [6.4, "head", "chop", "kill"]],
+	"hydra": [[2.6, "neck", "slashR"], [4.6, "neck", "slashL"], [6.8, "neck", "slashR", "kill"]],
+	# (The rise trailer's others.)
+	"slave": [[2.4, "arm", "slashR"], [4.0, "leg", "low"], [5.6, "head", "chop", "kill"]],
+	"recruit": [[2.4, "arm", "slashR"], [4.2, "leg", "low"], [6.0, "head", "chop", "kill"]],
+	"minotaur": [[2.6, "leg", "low"], [4.4, "leg", "slashL", "fell"], [6.4, "head", "chop", "kill"]],
+}
+## A beat's parts: how long before its moment he steps in (and at most, should the foe give
+## ground), how long he holds the blow drawn back; a blow that does not land is struck again
+## (TRIES), then put home.
+const APPROACH := 0.85
+const APPROACH_MAX := 1.9
+const WIND := 0.4
+const TRIES := 3
+const SETTLE := 1.2        # a giant brought down is let come to rest before the next beat
+## The strokes, as a man's bot strikes them (Bot.ATTACKS: drawn back, then the mark thrown across
+## with a little of the arm's drive behind it), tuned on a man: [the wind's mark x and y, the
+## blow's mark x and y, the drive, how long the blow takes, the height (of his own size, from the
+## middle of his trunk) a man's part it is struck at stands]. At a part higher or lower than that
+## the marks go up or down by as much.
+## How far out along the blade each stroke meets the part best (of its reach): a sweep at the
+## legs from a little further off, a thrust at the length of it.
+const REACH_K := {"slashR": 0.55, "slashL": 0.55, "low": 0.66, "chop": 0.68, "thrust": 0.75}
+const STROKES := {
+	"slashR": [0.85, 0.8, -0.85, -0.35, 0.2, 0.28, 0.15],
+	"slashL": [-0.85, 0.75, 0.85, -0.3, 0.2, 0.28, 0.15],
+	"low": [0.9, 0.1, -0.8, -0.8, 0.2, 0.3, -0.5],
+	"chop": [-0.25, 1.2, -0.3, -0.6, 0.3, 0.3, 0.55],   # (brought down across to his middle, the blade's line through the mark: the stageshots cut's)
+	"thrust": [0.05, 0.25, 0.0, 0.3, 1.0, 0.22, 0.1],
 }
 
 ## The film camera's part round the kill (seconds of the game's own time before and after it).
@@ -78,6 +119,27 @@ var cine_side := 1.0
 var cine_t := 0.0
 var cine_pos := Vector3.ZERO
 var attrs: CameraAttributesPractical
+# The director (CLIP_DIRECT): the plan, the beat at hand and where it is in it.
+var direct := false
+var plan: Array = []
+var beat := 0
+var phase := "free"        # free, approach, wind, stroke, follow, done
+var phase_t := 0.0
+var tries := 0
+var landed := -1           # the frame the beat's blow landed on (-1: not yet)
+var landed_on := ""        # and the part it landed on
+var strike_part: VoxelPart = null
+var foe_e = null           # the foe's entity
+var hero_str := 1.0
+var killed := false
+var hero_arms := {}        # the weapon in each of his hands as the bout began
+var close_until := -1.0    # (seconds) the film camera in close until then
+var cine_until := -1.0     # (seconds) the helmet's bouts: the film camera on the kill until then
+var t_now := 0.0
+var settle_until := -1.0   # (seconds) a giant brought down: the next beat not begun until he is down
+var felled := false        # and kept down from then on
+var foe_top := 0.0         # the highest his trunk went (CLIP_DEBUG: FOE_TOP at the end)
+var spot_side := Vector3.ZERO   # (the way out from the line of a giant down on the sand, to his stand by its head)
 
 func _ready() -> void:
 	# After the match's own _process, which moves its camera every frame (cam.follow).
@@ -155,6 +217,9 @@ func _ready() -> void:
 				e.f.teleport(Vector3(float(at[3]), 0.1, float(at[4])))
 				e.f.yaw = float(at[5])
 				break
+	direct = OS.get_environment("CLIP_DIRECT") == "1" and PLANS.has(key)
+	if direct:
+		_direct_setup(key, sh)
 	# The game's own music off: the trailer lays its score over the fight's sounds (the blows,
 	# the cries, the crowd), which are kept.
 	var mb := AudioServer.get_bus_index("Music")
@@ -165,9 +230,11 @@ func _ready() -> void:
 	m.cam.set_process(false)
 	_best_picture()
 	rec0 = Engine.get_frames_drawn()
-	from = int(OS.get_environment("CLIP_FROM")) if OS.get_environment("CLIP_FROM") != "" else 0
+	from = int(OS.get_environment("CLIP_FROM")) if OS.get_environment("CLIP_FROM") != "" else (from if direct else 0)
 	get_viewport().disable_3d = OS.get_environment("CLIP_DRY") == "1" or from > 0
 	_tag("REC_START %d" % rec0)
+	if direct:
+		_tag("FROM %d" % from)
 	started = true
 	# A war cry as he goes in.
 	get_tree().create_timer(0.6).timeout.connect(func(): if m and m.me and is_instance_valid(m.me.f): m.say(m.me.f, "grunt", 1.0, "effort"))
@@ -182,6 +249,8 @@ func _ready() -> void:
 	while t < seconds:
 		await get_tree().physics_frame
 		t += 1.0 / 120.0
+		if direct:
+			_direct_tick(t)
 		if dist_log and int(t * 120.0) % 12 == 0:
 			var ne = m.nearest_enemy(m.me)
 			if ne and is_instance_valid(ne.f) and ne.f.alive and m.me.f.alive:
@@ -208,8 +277,470 @@ func _ready() -> void:
 		rads.sort()
 		var walled := rads.filter(func(r): return float(r) > Arena.RADIUS - 2.5).size()
 		_tag("FOE_R median %.2f p90 %.2f max %.2f near the wall %d%%" % [float(rads[rads.size() / 2]), float(rads[rads.size() * 9 / 10]), float(rads[rads.size() - 1]), 100 * walled / rads.size()])
+	if direct and OS.get_environment("CLIP_DEBUG") == "1":
+		_tag("FOE_TOP %.2f" % foe_top)
 	_tag("REC_END %d" % _frame())
 	get_tree().quit()
+
+## ---------- the director (CLIP_DIRECT=1) ----------
+## The bout goes by its plan (PLANS), not by the dice: it is filmed the first time, every time
+## (user: the trailer's log, seed after seed tried, a cyclops filmed on no clean kill, the hydra
+## never falling). Between the beats the two fight it out, the champion on his autopilot and the
+## foe by his own lights, the foe kept on his feet; on each beat the champion steps in to his
+## weapon's reach of the part the plan names, draws back and strikes through it with everything
+## he has, the foe held still for it (caught between his own blows), the film camera in close.
+## A blow that does not land is struck again; the last beat's ends it, on its blow. The bout is
+## drawn from a little before the first beat (FROM), the kill and the blows tagged as they land:
+## no dry run to find them, nothing to go another way when drawn.
+
+func _direct_setup(key: String, sh: Dictionary) -> void:
+	plan = PLANS[key]
+	for e in m.entities:
+		if e != m.me and is_instance_valid(e.f):
+			foe_e = e
+			break
+	if foe_e == null:
+		direct = false
+		return
+	foe = foe_e.f
+	hero_arms = {"R": m.me.f.weapons.R, "L": m.me.f.weapons.L}
+	hero_str = float(sh.get("strength", 1.8))
+	# Between the beats he fights as a good man does, not a champion: the plan's blows are his
+	# hardest, and none of his own ends it before the plan does.
+	m.me.f.mods.strength = minf(hero_str, 1.4)
+	var me = m.me
+	me.drive = func(_e): return _hero_input()
+	if foe_e.has("bot") and foe_e.bot != null:
+		var fe = foe_e
+		fe.drive = func(_e): return _foe_input()
+	# Drawn from a little before the first beat.
+	if OS.get_environment("CLIP_FROM") == "":
+		from = maxi(1, int((float(plan[0][0]) - APPROACH - 1.6) * 120.0))
+	# (Ended 3 s after the kill. Its blows struck again, a bout ran out of time with its kill to come.)
+	seconds = float(plan.back()[0]) + 30.0
+
+## The champion's hands: his autopilot between the beats, the plan's stroke on them.
+func _hero_input() -> Dictionary:
+	var hero: Fighter = m.me.f
+	var fo = foe_e.f if foe_e != null and is_instance_valid(foe_e.f) else null
+	if fo == null or not fo.alive or phase == "free" or phase == "done" or strike_part == null or not is_instance_valid(strike_part):
+		var tl = fo if fo != null and fo.alive else null
+		if tl:
+			var dl: Vector3 = tl.torso.global_position - hero.torso.global_position
+			hero.yaw = atan2(dl.x, dl.z)
+		return m.me.bot.update(1.0 / 120.0, tl, m._world_of(m.me)) if m.me.has("bot") and m.me.bot else {}
+	var b: Array = plan[beat]
+	var at: Vector3 = strike_part.global_position
+	var to: Vector3 = at - hero.torso.global_position
+	var yaw := atan2(to.x, to.z)
+	var stroke: String = b[2]
+	var sk: Array = STROKES.get(stroke, STROKES.slashR)
+	# The marks raised or lowered by how far the part stands above or below a man's (a giant's
+	# knee, a lion's neck, a hydra's raised head; a giant brought down onto the sand).
+	var off := clampf((at.y - hero.torso.global_position.y - float(sk[6]) * hero.S) / (0.45 * hero.S), -0.6, 1.0)
+	# (A slash at a man's arm no higher than at his chest: raised to his shoulder, the stroke came
+	# down through his head first.)
+	if String(b[1]) == "arm":
+		off = minf(off, 0.0)
+	var inp := {"look": {"yaw": yaw, "pitch": clampf(atan2(to.y, Vector2(to.x, to.z).length()), -0.6, 0.6)}}
+	var mz := 0.0
+	if phase == "approach" or phase == "wind":
+		var spot = _stand_spot()
+		if spot != null:
+			# (Round to it, facing the part all the way: first out from the body to the spot's own
+			# distance from it, then along it. Straight at it, he walked into the giant's arm lying at
+			# its side and pushed against it to the end.)
+			var to_s: Vector3 = (spot as Vector3) - hero.torso.global_position
+			to_s.y = 0.0
+			var out: Vector3 = spot_side * spot_side.dot(to_s)
+			if out.length() > 0.25 and spot_side.dot(to_s) > 0.0:
+				to_s = out
+			if to_s.length() > 0.08:
+				var loc: Vector3 = Quaternion(Vector3.UP, yaw).inverse() * to_s.normalized() * clampf(to_s.length() / 0.4, 0.35, 1.0)
+				inp["mx"] = loc.x
+				mz = loc.z
+		else:
+			var flat := _part_flat()
+			var want := _strike_reach()
+			if flat > want + 0.04:
+				mz = 1.0 if flat > want + 0.5 else 0.6
+			elif flat < want - 0.14:
+				mz = -0.8 if flat < want - 0.35 else -0.5
+	inp["mz"] = mz
+	var striking := phase == "stroke" or phase == "follow"
+	# A thrust at a part below him is drawn back high and driven down into it (drawn back low, the
+	# spear's point lay on the fallen cyclops' chest as he came in, held him off it, and each of
+	# his thrusts only pushed on it).
+	var wind_off := off if stroke != "thrust" or off >= 0.0 else -0.9 * off
+	inp["main"] = {"x": float(sk[2]) if striking else float(sk[0]), "y": clampf((float(sk[3]) + off) if striking else (float(sk[1]) + wind_off), -1.6, 1.6)}
+	if striking:
+		inp["thrust"] = float(sk[4])
+		if stroke == "thrust":
+			inp["aimAt"] = at
+	inp["power"] = striking
+	return inp
+
+## Where he stands for a blow at a giant down on the sand: beside the part, square to the line of
+## the body, on his own side of it (gone straight at it, the cyclops' head beyond its body, he was
+## stopped by the body two yards short of his blow, three times). Null when the foe is on his feet.
+func _stand_spot():
+	var fo = foe_e.f
+	if not felled or not (fo is Fighter) or fo.state != "down" or strike_part == null or not is_instance_valid(strike_part):
+		return null
+	var at: Vector3 = strike_part.global_position
+	var axis: Vector3 = at - fo.torso.global_position
+	axis.y = 0.0
+	if axis.length_squared() < 1e-4:
+		return null
+	axis = axis.normalized()
+	var side := Vector3(-axis.z, 0.0, axis.x)
+	if side.dot(m.me.f.torso.global_position - at) < 0.0:
+		side = -side
+	spot_side = side
+	return at + side * (_strike_reach() + minf(strike_part.half_ext.x, strike_part.half_ext.z)) + axis * 0.15 * fo.S
+
+## How far (flat) the part struck at is from his trunk, beyond its own half-width; and how far it
+## should be for his blow: where the outer part of the blade, the fast one, meets it.
+func _part_flat() -> float:
+	var hero: Fighter = m.me.f
+	var to: Vector3 = strike_part.global_position - hero.torso.global_position
+	return Vector2(to.x, to.z).length() - minf(strike_part.half_ext.x, strike_part.half_ext.z)
+
+func _strike_reach() -> float:
+	var hero: Fighter = m.me.f
+	var w: Weapon = hero.weapons.R
+	var reach: float = float(w.reach) if w else 0.8
+	var stroke: String = plan[beat][2] if beat < plan.size() else "slashR"
+	return 0.35 * hero.S + reach * float(REACH_K.get(stroke, 0.55))
+
+## The foe on a beat: still where he stands, facing the champion, his guard down (caught between
+## his own blows); his own mind the rest of the time.
+func _foe_input() -> Dictionary:
+	var fo = foe_e.f
+	var hero: Fighter = m.me.f
+	var d: Vector3 = hero.torso.global_position - fo.torso.global_position
+	var yaw := atan2(d.x, d.z)
+	# A giant brought down lies where he fell for the blow to come (turned to face the champion
+	# each moment, he swung round on the sand as the champion went round him to his head, and took
+	# his head with him).
+	if felled and fo.state != "stand":
+		return {}
+	if _held():
+		fo.yaw = yaw
+		# Caught as he draws back for a blow of his own: his blade down and out to his side (held on
+		# his guard, it took the blow every time); for a blow at his leg, his hands up over him (the
+		# hand hanging at his side took the sweep, twice in three); for one at an arm, that arm out
+		# from his side.
+		var inp := {"look": {"yaw": yaw, "pitch": 0.0}, "main": {"x": 0.9, "y": -0.9}}
+		match String(plan[beat][1]) if beat < plan.size() else "":
+			"leg":
+				inp.main = {"x": 0.35, "y": 1.1}
+				inp["off"] = {"x": -0.35, "y": 1.0}
+			"arm":
+				if strike_part != null and is_instance_valid(strike_part):
+					if String(strike_part.part_name).ends_with(String(fo.two_side)):
+						inp.main = {"x": 0.95, "y": 0.55}
+					else:
+						inp["off"] = {"x": -0.95, "y": 0.55}
+		return inp
+	fo.yaw = yaw
+	fo.gaze = hero.head.global_position
+	return foe_e.bot.update(1.0 / 120.0, hero, m._world_of(foe_e))
+
+## Whether the foe is held still for the blow coming: only for the last moments of the champion's
+## step in and his blow (held from the start of it, he stood a second and more waiting to be
+## struck). A beast stands its ground for it (Match: a beast not told to fight).
+func _held() -> bool:
+	if phase == "wind" or phase == "stroke" or phase == "follow":
+		return true
+	return phase == "approach" and strike_part != null and is_instance_valid(strike_part) and _part_flat() <= _strike_reach() + 0.45
+
+## Whether a blow on this part is the beat's: the part it struck at, or one of a piece with it
+## (the neck or the jaw by a head, the forearm by an arm, the shin by a thigh). A blow that met
+## another first is not it (the troll's last, a chop at its head on the sand, took its thigh on
+## the way down and it died of that).
+func _part_ok(p, J := 0.0) -> bool:
+	if not (p is VoxelPart) or beat >= plan.size():
+		return false
+	if p == strike_part:
+		return true
+	var fo = foe_e.f
+	var n := String(p.part_name).to_lower()
+	var b: Array = plan[beat]
+	var what := String(b[1])
+	var at_head: bool = p == fo.head or n.contains("head") or n.begins_with("neck") or n.contains("jaw")
+	if what == "head" or what == "neck":
+		if at_head:
+			return true
+	elif what == "torso":
+		return p == fo.torso
+	elif not b.has("kill"):
+		# A blow at a limb lands on whatever of him it meets first but his head, which is the
+		# kill's (struck at the limb alone, a sweep at a man's leg met the hand hanging at his side
+		# three times running, and was put home).
+		return not at_head
+	# His trunk does for a blow at the head that is not the kill; for the kill when the blow is a
+	# hard one or the head has been missed once, or on a giant down on the sand. (A chop at the
+	# head that came down on the chest, or the hammer on the troll's chest as he lay, three times
+	# over, was not his death until it was put home.)
+	return p == fo.torso and (not b.has("kill") or J >= 30.0 or tries >= 1 or felled)
+
+## The part of the foe a beat strikes at: of its kind still on him, the nearest on the side the
+## stroke comes in from (a slash in from his right, at the arm on his left, met the man's chest or
+## his head on its way across and stopped there).
+func _part_for(what: String, stroke := "") -> VoxelPart:
+	var fo = foe_e.f
+	var hero: Fighter = m.me.f
+	var best: VoxelPart = null
+	var bd := INF
+	var hp: Vector3 = hero.torso.global_position
+	var left := Vector3(cos(hero.yaw), 0.0, -sin(hero.yaw))   # (his right hand is on his -x)
+	var from := 0.0
+	match stroke:
+		"slashR", "low":
+			from = -1.0
+		"slashL":
+			from = 1.0
+	for q in fo.parts:
+		var p: VoxelPart = q
+		if p.severed or p.missing:
+			continue
+		var n := String(p.part_name).to_lower()
+		var ok := false
+		match what:
+			"arm":
+				# (The upper arm: the forearm, held out on his guard, is behind his own blade.)
+				ok = n.begins_with("upperarm") or (n.begins_with("arm") and not fo.by_name.has("upperArmR"))
+			"leg":
+				ok = n.begins_with("thigh") or (n.begins_with("leg") and not n.ends_with("lo"))
+			"neck":
+				ok = n.begins_with("neck") or (p == fo.head and not fo.by_name.has("neck"))
+			"head":
+				ok = p == fo.head or n.begins_with("head")
+			"torso":
+				ok = p == fo.torso
+		if not ok:
+			continue
+		var dd: float = p.global_position.distance_to(hp)
+		if from != 0.0:
+			dd += 0.6 * clampf(-from * (p.global_position - hp).dot(left) / (0.15 * maxf(1.0, fo.S)), 0.0, 1.0)
+		if dd < bd:
+			bd = dd
+			best = p
+	if best == null:
+		best = fo.head if not fo.head.severed else fo.torso
+	return best
+
+func _direct_tick(tt: float) -> void:
+	t_now = tt
+	if foe_e == null or not is_instance_valid(foe_e.f):
+		return
+	var fo = foe_e.f
+	var hero: Fighter = m.me.f
+	if not fo.alive:
+		if not killed:
+			killed = true
+			if beat < plan.size():
+				if landed >= 0:
+					_end_beat(tt)
+				else:
+					_tag("DIRECT the foe died at %.2f s, on beat %d of %d before its blow" % [tt, beat, plan.size()])
+			phase = "done"
+			close_until = tt + CINE_AFTER
+			cine_until = tt + CINE_AFTER
+		return
+	# Kept on his feet until the plan ends it: his blood and his life held up (the plan's blows
+	# still cut and break and take limbs off).
+	fo.blood = maxf(fo.blood, 55.0)
+	fo.torso.hp = maxf(fo.torso.hp, 35.0)
+	for hh in ([fo.head] + (fo.heads if fo.get("heads") is Array else [])):
+		if is_instance_valid(hh) and not hh.severed:
+			hh.hp = maxf(hh.hp, 35.0)
+	if fo.get("heart_t") != null:
+		fo.heart_t = -1.0
+	if fo.get("dying") != null:
+		fo.dying = 0.0
+	if fo is Beast:
+		foe_e["training"] = "stand" if _held() else "fights"
+	foe_top = maxf(foe_top, fo.torso.global_position.y)
+	# A giant brought down stays down for the blows after it (a man who can stand lies two seconds
+	# at most: the cyclops was up again and his head out of reach when the kill came).
+	if felled and fo is Fighter and fo.state == "down":
+		fo.down_timer = maxf(fo.down_timer, 0.5)
+	if beat >= plan.size():
+		return
+	var b: Array = plan[beat]
+	var t0: float = float(b[0])
+	phase_t += 1.0 / 120.0
+	if OS.get_environment("CLIP_DEBUG") == "1" and phase != "free" and int(tt * 120.0) % 6 == 0 and strike_part != null and is_instance_valid(strike_part):
+		print("DBG t=%.2f %s %.2f: %s %.2f off (wants %.2f), hand mark %s, blade gap %.2f, part at %+.2f of his trunk's height; he %s at %s moving %.2f m/s (mz %.2f mx %.2f), the foe %s, spot %s" % [tt, phase, phase_t, strike_part.part_name, _part_flat(), _strike_reach(), str(_hero_input().get("main", {})), _blade_gap(), strike_part.global_position.y - hero.torso.global_position.y, hero.state, str(hero.torso.global_position.snapped(Vector3.ONE * 0.01)), Vector2(hero.torso.linear_velocity.x, hero.torso.linear_velocity.z).length(), float(_hero_input().get("mz", 0.0)), float(_hero_input().get("mx", 0.0)), fo.state if fo is Fighter else "-", str(_stand_spot())])
+	match phase:
+		"free":
+			# (A giant brought down is let come to rest first: he went down onto his knees and slumped
+			# on over the next two seconds, the minotaur, and the blow at his head met his body.)
+			var settling: bool = felled and fo is Fighter and tt < settle_until + 2.0 and (fo.head.linear_velocity.length() > 0.4 or fo.torso.linear_velocity.length() > 0.4)
+			# A man knocked down by a blow that was not to bring him down is helped up and fought on
+			# his feet (struck at as he lay, the exchange's head on the sand, the chop met his arm).
+			var rising: bool = not felled and fo is Fighter and fo.state != "stand" and tt < t0 + 3.0
+			if rising and fo.state == "down":
+				fo.help_up()
+			if tt >= t0 - APPROACH and tt >= settle_until and not settling and not rising:
+				_rearm()
+				strike_part = _part_for(String(b[1]), String(b[2]))
+				phase = "approach"
+				phase_t = 0.0
+				landed = -1
+				landed_on = ""
+				tries = 0
+				hero.mods.strength = hero_str
+				close_until = maxf(close_until, tt + APPROACH + WIND + 0.3 + CLOSE_AFTER + (CINE_AFTER if b.has("kill") else 0.0))
+				if b.has("kill"):
+					cine_until = tt + 60.0   # (until he falls)
+		"approach":
+			# (Gone down as he came in, the beat waits for him to be up again.)
+			if not felled and fo is Fighter and fo.state != "stand" and tt < t0 + 3.0:
+				phase = "free"
+				phase_t = 0.0
+				return
+			# (His weapon knocked from his hand or his arm broken as he went in, the minotaur's: the
+			# rest of the beat was struck at it with an empty hand, three times, and put home.)
+			if hero.weapons.R == null or hero.arm_broken("R"):
+				_rearm()
+			# Stepped into his blow's reach (or as near as the time lets him): the blow drawn back.
+			if hero.state == "stand" and ((phase_t >= 0.25 and absf(_part_flat() - _strike_reach()) <= 0.14) or phase_t > APPROACH_MAX):
+				phase = "wind"
+				phase_t = 0.0
+				close_until = maxf(close_until, tt + WIND + 0.3 + CLOSE_AFTER + (CINE_AFTER if b.has("kill") else 0.0))
+		"wind":
+			if phase_t >= WIND:
+				phase = "stroke"
+				phase_t = 0.0
+		"stroke":
+			if phase_t >= float((STROKES.get(String(b[2]), STROKES.slashR) as Array)[5]):
+				phase = "follow"
+				phase_t = 0.0
+		"follow":
+			if landed >= 0 and phase_t >= 0.25:
+				_end_beat(tt)
+			elif landed < 0 and phase_t >= 0.35:
+				tries += 1
+				if tries < TRIES:
+					# Struck again: in to reach once more and drawn back.
+					_rearm()
+					strike_part = _part_for(String(b[1]), String(b[2]))
+					phase = "approach"
+					phase_t = 0.0
+				else:
+					_put_home(b)
+					_end_beat(tt)
+
+## (CLIP_DEBUG) How near his blade comes to the part struck at: its nearest cube to the part's box.
+func _blade_gap() -> float:
+	var w: Weapon = m.me.f.weapons.R
+	if w == null or strike_part == null or not is_instance_valid(strike_part):
+		return -1.0
+	var xf: Transform3D = w.global_transform
+	var inv: Transform3D = strike_part.global_transform.affine_inverse()
+	var he: Vector3 = strike_part.half_ext
+	var best := INF
+	for i in w.vox.size():
+		if not w.alive[i]:
+			continue
+		var lp: Vector3 = inv * (xf * (Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]) * w.vs))
+		best = minf(best, Vector3(maxf(absf(lp.x) - he.x, 0.0), maxf(absf(lp.y) - he.y, 0.0), maxf(absf(lp.z) - he.z, 0.0)).length())
+	return best
+
+## The champion is the champion to the end of it: an arm broken under the foe's blows, and the
+## sword fallen from it, are made good as the camera cuts in for his next blow (the sword lay on
+## the sand and the last blow of the plan was struck with an empty hand).
+func _rearm() -> void:
+	var hero: Fighter = m.me.f
+	# A blade driven into him and stuck there is pulled out for the next blow (the spear left in the
+	# cyclops' chest held the champion off him, and three thrusts after it went nowhere).
+	for side in ["R", "L"]:
+		var sw = hero.weapons[side]
+		if sw != null and is_instance_valid(sw) and sw.stuck != null:
+			sw.unstick()
+	var lost := false
+	var broke := false
+	for side in ["R", "L"]:
+		var w = hero_arms.get(side)
+		if (w != null and hero.weapons[side] != w) or hero.arm_broken(side):
+			lost = true
+		var h = hero.weapons[side]
+		if h != null and is_instance_valid(h) and not h.is_shield and h.reach < h.reach_full * 0.85:
+			broke = true
+	if lost or broke:
+		_tag("REARM%s%s" % [" (a weapon lost or an arm broken)" if lost else "", " (a weapon broken)" if broke else ""])
+	if lost:
+		hero.bind_wounds()
+		for side in ["R", "L"]:
+			var w = hero_arms.get(side)
+			if w != null and is_instance_valid(w) and hero.weapons[side] == null and (w.holder == null or w.holder == hero):
+				hero.pick_up(side, w)
+	# A weapon broken under the blows is had afresh, as it was made (the troll's: the hammer's head
+	# broke off at the haft, and the last blows were struck with the stump).
+	if broke:
+		var was_two := hero.two_handed
+		var d := {}
+		for side in ["R", "L"]:
+			var w = hero_arms.get(side)
+			d[side] = (w.design as Dictionary).duplicate(true) if w != null and is_instance_valid(w) else {}
+		hero.rearm(d.R, d.L)
+		if was_two and not hero.two_handed:
+			hero.toggle_grip()
+		hero_arms = {"R": hero.weapons.R, "L": hero.weapons.L}
+
+## The beat's blow has landed: what it is to do beyond the blow itself.
+func _landed(h: Dictionary) -> void:
+	var b: Array = plan[beat]
+	_tag("CLOSE %d" % landed)
+	var fo = foe_e.f
+	if b.has("fell") and fo.has_method("fall"):
+		fo.fall(3.5, true)
+		felled = true
+	if b.has("kill"):
+		_tag("BLOW %d" % landed)
+		if fo.alive:
+			fo.spared = true
+			fo.die("trailer")
+
+## A blow that would not land, three times over: put home where the plan says (rare: a beast that
+## would not stand, a giant's swing in the way), as hard as his own.
+func _put_home(b: Array) -> void:
+	var fo = foe_e.f
+	var hero: Fighter = m.me.f
+	var p: VoxelPart = strike_part if is_instance_valid(strike_part) and not strike_part.severed else fo.torso
+	var from_h: Vector3 = hero.torso.global_position
+	var dir: Vector3 = (p.global_position - from_h)
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length_squared() > 1e-6 else Vector3(0, 0, 1)
+	var at: Vector3 = p.global_position - dir * minf(p.half_ext.x, p.half_ext.z)
+	var w: Weapon = hero.weapons.R
+	var blunt: bool = w != null and not w.bites()
+	var hit := {"point": at, "dir": dir, "type": "blunt" if blunt else "edge", "hardness": 0.9, "sharpness": 0.0 if blunt else 0.9, "impulse": 45.0, "heavy": 0.6, "axis": Vector3.UP, "edge": dir, "weapon": true, "mass": w.mass if w else 1.5}
+	var res: Dictionary = fo.apply_hit(p, hit)
+	if Combat.current:
+		Combat.current.hit.emit({"kind": "hit", "p": at, "dir": dir, "J": 45.0, "type": hit.type, "char": fo, "part": p, "attacker": hero, "res": res, "killed": not fo.alive})
+	if landed < 0:
+		landed = _frame()
+		landed_on = String(p.name)
+		_landed({})
+
+func _end_beat(tt: float) -> void:
+	var b: Array = plan[beat]
+	_tag("DIRECT beat %d at %.2f s (planned %.1f): %s %s, landed on the %s on frame %d after %d tries%s, the foe %s" % [beat, tt, float(b[0]), b[1], b[2], landed_on, landed, mini(tries + 1, TRIES), " (put home)" if tries >= TRIES else "", "alive" if foe_e.f.alive else "dead"])
+	beat += 1
+	phase = "free" if beat < plan.size() else "done"
+	phase_t = 0.0
+	strike_part = null
+	m.me.f.mods.strength = minf(hero_str, 1.4)
+	if b.has("kill"):
+		close_until = maxf(close_until, tt + CINE_AFTER)
+	# (Struck at while he was still going down, the troll's head was a yard further off by the
+	# time the blow fell, and it fell on nothing.)
+	if b.has("fell"):
+		settle_until = tt + SETTLE
 
 ## The best the game draws: MSAA, the voxels' corner shading, the 3D supersampled.
 func _best_picture() -> void:
@@ -237,6 +768,10 @@ func _on_hit(h: Dictionary) -> void:
 		var sev: Array = (h.get("res", {}) as Dictionary).get("severed", []) if h.get("res") is Dictionary else []
 		var pt = h.get("part")
 		_tag("HIT %d %d %d %d %s" % [_frame(), int(J), 1 if (m and m.me and h.get("attacker") == m.me.f) else 0, sev.size(), String(pt.name) if pt is Node else "-"])
+	if direct and landed < 0 and (phase == "stroke" or phase == "follow") and m and m.me and h.get("attacker") == m.me.f and foe_e != null and h.get("char") == foe_e.f and J >= 14.0 and _part_ok(h.get("part"), J):
+		landed = _frame()
+		landed_on = String(h.part.name)
+		_landed(h)
 	# The trailer is loud with the fight: the hero roars into his blows, and whoever is struck
 	# cries out (men, giants and beasts in their own voices), more often and louder than in play.
 	# (The game's own clock, not the wall's: the dry pass and the drawn one must cry out alike.)
@@ -262,6 +797,10 @@ func _process(dt: float) -> void:
 	for c in close:
 		if f >= int(c) - int(CLOSE_BEFORE * 120.0) and f < int(c) + int(CLOSE_AFTER * 120.0):
 			in_kill = true
+	if direct:
+		# (Through the film camera every beat is seen close; from the helmet, only the kill is
+		# cut to the film camera, as it was.)
+		in_kill = t_now < (close_until if film else cine_until)
 	var want := "pov"
 	if film:
 		want = "cine" if in_kill else "wide"

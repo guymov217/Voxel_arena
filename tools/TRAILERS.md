@@ -46,15 +46,22 @@ for 60), cut to its own score at 90 beats a minute: every cut on a beat, every k
 | 7 | Four friends, their names over their heads, charging the minotaur in a line, low behind them; the clash in slow motion | BRING YOUR FRIENDS / ONLINE MULTIPLAYER |
 | 5 | A man charging the champion's spear takes it in the face: his head stops, his legs run on and he goes over backwards, heels over head, in slow motion | |
 | 8 | Montage: eight cuts, one a beat, the hardest blows of all the bouts, those that take a limb off first, each with a dip into slow motion as it lands | EVERY BLOW LANDS / EVERY BONE BREAKS |
-| 8 | The hydra (or the troll, when no seed gives a hydra that falls): its kill in the slowest motion of all (0.15), cut to black on the blow | |
+| 8 | The hydra: its kill in the slowest motion of all (0.15), cut to black on the blow | |
 | 2 | A breath of silence | |
 | 12 | The title on one great hit, over the champion alone in the middle, his axe raised to the crowd | the logo, COMING SOON TO STEAM, WISHLIST NOW |
 
-**Every blow on screen is a real one.** A bout is filmed only if its foe falls to a hard blow of
-the champion's that the camera can see, not bleeding out after it; the fight scene only after a
-real exchange (four blows either way in the five seconds before the kill). Each bout is played
-undrawn seed after seed until one does (then drawn). The duel, the cyclops and the troll are
-filmed for the montage's blows.
+**Every blow on screen is a real one, and every bout is filmed once.** Each bout goes by its own
+plan (`PLANS` in `tests\shouldershots.gd`): between its beats the champion and his foe fight it
+out; on each beat the champion steps into his weapon's reach of the part the plan names (an arm,
+a leg, a giant's knee, a hydra's neck), on the side his stroke comes in from, draws back and
+strikes through it with everything he has, the foe caught as he draws back for a blow of his own,
+the camera cut in close. The last beat's blow is the kill, on the head (on the fallen cyclops, a
+spear driven down into his chest): a blow that meets anything else first is struck again. A
+giant brought down is struck where he lies, a man knocked down is let up first, and a weapon
+broken or knocked away is back in the champion's hand as the camera cuts in. Nothing is left to
+the dice, so there are no seeds to try, no run to find the kill first and no second drawing: the
+log shows one line per bout. The duel, the cyclops and the troll are filmed for the montage's
+blows.
 
 **The cameras.** No helmet here: every bout is seen through a film camera low on the sand, wide
 while they fight (far off, a little high, drifting slowly round them, jolting with the hardest
@@ -132,14 +139,13 @@ YouTube play at. Everything is the game's own: free to use anywhere.
 **What comes out.** `docs\store\trailer_rise.mp4`: H.264 High (CRF 16), AAC 320 kb/s, 48 kHz,
 fast start, ready to upload to Steam as is. Beside it `trailer_rise_cut.json`, the cut list.
 
-**How long.** Each bout is played twice (once to find the kill, once filmed): with a graphics card
-the shots take 20-40 minutes and the edit 5-15. A run that is stopped carries on where it was.
+**How long.** Each bout is filmed once, by its plan: with a graphics card the shots take 15-30
+minutes and the edit 5-15. A run that is stopped carries on where it was.
 
-**If a bout will not end with the foe down**, the kit tries other seeds by itself; a bout that
-never does is left out and the cut is made from the rest. Should a filmed bout go another way
-than its first run did, it is filmed again round the kill it made (it says so as it goes). To
-film a bout again, delete its `.avi` in `..\trailer_work\rise`; to film all again, delete the
-folder.
+**Every bout ends on its plan's last blow**, the first time (`PLANS` in `tests\shouldershots.gd`):
+no seeds are tried and nothing is filmed twice. A blow of the plan that does not land is struck
+again where he stands, and the foe falls on the last beat's. To film a bout again, delete its `.avi`
+in `..\trailer_work\rise`; to film all again, delete the folder.
 
 **Settings** (set before running, e.g. `set TRAILER_SSAA=2`): `TRAILER_FPS` 30 or 60;
 `TRAILER_SSAA` the supersampling (1.5; 2 for the sharpest picture, slower); `TRAILER_AA` the MSAA

@@ -51,8 +51,7 @@ BPM = 90.0
 BEAT = 60.0 / BPM                  # 2/3 s: 20 frames at 30 fps, 40 at 60
 BAR_PX = 138                       # the cinema bars (2.39:1 in 16:9)
 RTMP = os.path.join(mt.TMP, "rise")
-SEEDS = ["", "3", "11", "21", "5", "9", "14", "27"]
-REC_LEAD, REC_TAIL = 4.2, 2.6      # seconds of the fight kept before the kill and after it
+REC_TAIL = 2.6                     # seconds of the fight kept after the kill
 # The bouts in order: the shot, the card (its number small, what it is large), the beats before
 # the kill lands and after it, and the speed of its slow motion.
 BOUTS = [
@@ -83,69 +82,30 @@ def _foe_death(lines):
     return None
 
 
-KILL_SLACK = REC_FPS // 4          # how far the drawn kill may fall from the one it was framed on
-DRAW_TRIES = 3
-
-
-def _dry(k, seed):
-    """The bout run without drawing: the frame its foe falls on, or None."""
-    env = {"SHOT": k, "CLIP_DRY": "1", "CLIP_SECONDS": "75"}
-    if seed:
-        env["CLIP_SEED"] = seed
-    dry = mt.run([mt.G, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"], env, os.path.join(RTMP, k + ".dry"))
-    d = _foe_death(dry)
-    return d if d is not None and d > 0 else None
-
-
-def _drawn(k, seed, death, avi):
-    """The bout drawn into <k>.avi from REC_LEAD before `death` to REC_TAIL after it: its output
-    lines and the frame the drawing starts on."""
-    start = max(0, death - int(REC_LEAD * REC_FPS))
-    env = {"SHOT": k, "CLIP_FROM": str(start), "CLIP_KILL": str(death), "CLIP_SECONDS": "%.1f" % ((death + REC_TAIL * REC_FPS) / REC_FPS + 1.5)}
-    if seed:
-        env["CLIP_SEED"] = seed
-    rec = mt.run([mt.G, "--write-movie", avi, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"], env, os.path.join(RTMP, k + ".rec"))
-    return rec, start
-
-
 def record(k):
-    """One bout: <rise>/<k>.avi (every frame of the game from the start, black until the kept
-    part) and <k>.json (where it starts, the kill, the hard blows).
-
-    The bout is run twice: once undrawn, to find the frame its foe falls on, then drawn from a
-    little before it. The two go the same way (the game's dice are seeded and nothing in the
-    fight reads the wall clock), but should the drawn one go another way, the kill would fall in
-    the black or outside the film camera's part: it is drawn again round the kill it did make."""
+    """One bout: <rise>/<k>.avi and <k>.json (where its drawing starts, the kill, the hard blows),
+    filmed once. The bout goes by its director's plan (tests/shouldershots.gd, PLANS: the
+    champion's blows on their beats, the last one the kill), so there is nothing to look for
+    first: no seeds tried, no run to find the kill, no second drawing (seed after seed tried in
+    the crowd trailer's log, a cyclops filmed on no clean kill, the hydra never falling: user)."""
     avi = os.path.join(RTMP, k + ".avi")
     if os.path.exists(avi) and os.path.getsize(avi) and os.path.exists(_meta_path(k)):
         print("  %s: kept" % k)
         return
-    for seed in SEEDS:
-        death = _dry(k, seed)
-        if death is None:
-            print("  %s: seed %s, the foe did not fall; trying another" % (k, seed or "default"))
-            continue
-        for _ in range(DRAW_TRIES):
-            rec, start = _drawn(k, seed, death, avi)
-            rec0 = mt.tagged(rec, "REC_START")
-            if rec0 is None or not os.path.exists(avi):
-                print("  %s: the recording failed (see %s)" % (k, os.path.join(RTMP, k + ".rec")))
-                return
-            d2 = _foe_death(rec)
-            if d2 is not None and abs(d2 - death) <= KILL_SLACK:
-                hits = sorted({(int(p[1]), int(p[2])) for p in (l.split() for l in rec) if len(p) >= 3 and p[0] == "HIT"})
-                with open(_meta_path(k), "w") as f:
-                    json.dump({"rec0": rec0, "kill": d2, "from": start, "hits": [list(h) for h in hits], "seed": seed or ""}, f)
-                print("  %s: recorded (seed %s, the kill %.1f s in)" % (k, seed or "default", d2 / REC_FPS))
-                return
-            if d2 is None:
-                break
-            print("  %s: drawn, the kill fell %.1f s in, not %.1f s; drawing it again round that" % (k, d2 / REC_FPS, death / REC_FPS))
-            death = d2
-        print("  %s: seed %s would not hold its kill; trying another" % (k, seed or "default"))
-    if os.path.exists(avi):
-        os.remove(avi)
-    print("  %s: left out (no seed gave a kill to film; see %s and .rec)" % (k, os.path.join(RTMP, k + ".dry")))
+    rec = mt.run([mt.G, "--write-movie", avi, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"],
+                 {"SHOT": k, "CLIP_DIRECT": "1"}, os.path.join(RTMP, k + ".rec"))
+    rec0 = mt.tagged(rec, "REC_START")
+    death = _foe_death(rec)
+    if rec0 is None or death is None or not os.path.exists(avi):
+        if os.path.exists(avi):
+            os.remove(avi)
+        print("  %s: the recording failed (see %s)" % (k, os.path.join(RTMP, k + ".rec")))
+        return
+    start = mt.tagged(rec, "FROM") or 0
+    hits = sorted({(int(p[1]), int(p[2])) for p in (l.split() for l in rec) if len(p) >= 3 and p[0] == "HIT"})
+    with open(_meta_path(k), "w") as f:
+        json.dump({"rec0": rec0, "kill": death, "from": start, "hits": [list(h) for h in hits], "seed": ""}, f)
+    print("  %s: recorded (the kill %.1f s in)" % (k, death / REC_FPS))
 
 
 def record_forge():
@@ -566,7 +526,7 @@ def main():
     mt.fresh(RTMP)
     print("== the project copy")
     project()
-    print("== the bouts (each played twice: once to find the kill, once filmed at 120 frames a second)")
+    print("== the bouts (each filmed once at 120 frames a second, by its plan)")
     for b in BOUTS:
         record(b[0])
     print("== the forge")

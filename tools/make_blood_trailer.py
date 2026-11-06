@@ -26,10 +26,11 @@ The cut of the trailer that worked, its lines and its order kept, made again as 
 
 Every fight is seen through a film camera (not the helmet of the rise trailer): wide on the
 sand while they fight, jolting with the hardest blows, cut in close on the same side for the
-kill, which eases into slow motion and out of it with a white flash on the blow. A bout is
-filmed only if its foe falls to a hard blow of the champion's that the camera can see (not
-bleeding out after it), the fight scene only after a real exchange of blows; other seeds are
-tried until one does. The game is recorded at 120 frames a second, so the full speed has a film
+kill, which eases into slow motion and out of it with a white flash on the blow. Every bout goes
+by its plan (tests/shouldershots.gd, PLANS): the two fight it out between its beats, and on each
+beat the champion steps in and strikes where it says with all he has, the film camera in close;
+the last beat's blow is the kill. So each is filmed once, the first time, nothing tried again.
+The game is recorded at 120 frames a second, so the full speed has a film
 camera's motion blur and the slow motion is smooth. Every cut falls on the beat of its own score
 (90 bpm, tools/rise_score.py), the fight's own sound under it (the blows, the cries, the crowd;
 slowed and muffled in the slow motion). Graded warm and hard, with a film's grain, darkened
@@ -71,14 +72,8 @@ BOUTS = {
 # The climax (the hydra, else the troll): the beats before the kill and after it (cut to black on
 # the blow), the slowest slow motion of all.
 CLIMAX = (7, 1, 0.15)
-# How many blows (either way) the fight scene wants in the five seconds before its kill.
-FLURRY = {"exchange": 4}
 # The staged shots (tests/stageshots.gd), each recorded once.
 STAGES = ["reveal", "crowd", "maul", "dragon", "cut", "cheese", "chaos", "squad", "spear", "finale"]
-# The fight drawn this long before each kill (the rise trailer's 4.2 s left the montage only the
-# blow or two just before it), and the montage's blows a bout gives: filmed close (CLIP_CLOSE).
-rt.REC_LEAD = 9.0
-MONTAGE_PER_BOUT = 2
 
 
 # ---------- the shots ----------
@@ -101,91 +96,35 @@ def _kill_blow(lines, death):
     return hs[-1][0] if hs else None
 
 
-def _clean_kill(lines, death, flurry=0):
-    """Whether the foe fell to a blow the camera sees (_kill_blow); for a fight scene, `flurry`
-    blows either way in the five seconds before that blow too."""
-    blow = _kill_blow(lines, death)
-    if blow is None:
-        return False
-    return sum(1 for h in _hits(lines) if blow - 5 * REC_FPS <= h[0] <= blow) >= flurry
-
-
-def _montage_picks(hits, start, blow):
-    """The montage's blows in a bout (the drawn part, before its kill): those that took a limb off
-    first, then the champion's, then the hardest; a second apart at least."""
-    pool = sorted(((1 if h[3] else 0), h[2], h[1], h[0]) for h in hits if start + 30 <= h[0] <= blow - int(1.2 * REC_FPS) and h[1] >= 20)
-    picked = []
-    for _s, _hero, _J, f in reversed(pool):
-        if all(abs(f - g) >= REC_FPS for g in picked):
-            picked.append(f)
-        if len(picked) >= MONTAGE_PER_BOUT:
-            break
-    return sorted(picked)
-
-
-def _draw_bout(k, seed, death, blow=None, close=None):
-    """The bout drawn round the kill its dry run found (drawn again round the kill it did make,
-    should the drawn one go another way), the film camera close from a little before the blow
-    that felled him (CLIP_BLOW) and on the montage's blows (`close`): True when it was kept."""
-    avi = os.path.join(WORK, k + ".avi")
-    for _ in range(rt.DRAW_TRIES):
-        os.environ["CLIP_BLOW"] = str(blow) if blow is not None else ""
-        os.environ["CLIP_CLOSE"] = ",".join(str(f) for f in (close or []))
-        rec, start = rt._drawn(k, seed, death, avi)
-        os.environ.pop("CLIP_BLOW", None)
-        os.environ.pop("CLIP_CLOSE", None)
-        rec0 = mt.tagged(rec, "REC_START")
-        if rec0 is None or not os.path.exists(avi):
-            print("  %s: the recording failed (see %s)" % (k, os.path.join(WORK, k + ".rec")))
-            return False
-        d2 = rt._foe_death(rec)
-        if d2 is not None and abs(d2 - death) <= rt.KILL_SLACK:
-            hits = sorted(set(_hits(rec)))
-            blow = _kill_blow(rec, d2)
-            with open(os.path.join(WORK, k + ".json"), "w") as f:
-                json.dump({"rec0": rec0, "kill": d2, "blow": blow if blow is not None else d2, "from": start,
-                           "hits": [list(h) for h in hits], "close": list(close or []), "seed": seed or ""}, f)
-            print("  %s: recorded (seed %s, the kill %.1f s in)" % (k, seed or "default", d2 / REC_FPS))
-            return True
-        if d2 is None:
-            return False
-        print("  %s: drawn, the kill fell %.1f s in, not %.1f s; drawing it again round that" % (k, d2 / REC_FPS, death / REC_FPS))
-        death = d2
-    return False
-
-
 def record_bout(k):
-    """One bout: <blood>/<k>.avi and <k>.json. Played once undrawn per seed until one ends in a
-    clean kill (and, for the fight scene, a real exchange of blows), then drawn round it; with
-    no seed so, the first that ended in a kill at all."""
+    """One bout: <blood>/<k>.avi and <k>.json, filmed once. The bout goes by its director's plan
+    (tests/shouldershots.gd, PLANS: the champion's blows on their beats, the last one the kill), so
+    there is nothing to look for first: no seeds tried, no dry run, no second drawing; the kill,
+    the blow that dealt it and the montage's blows are tagged as they happen (user: seed after
+    seed tried in the log, a cyclops filmed on no clean kill, the hydra never falling)."""
     avi = os.path.join(WORK, k + ".avi")
     if os.path.exists(avi) and os.path.getsize(avi) and os.path.exists(os.path.join(WORK, k + ".json")):
         print("  %s: kept" % k)
         return
-    fallback = None
-    for seed in rt.SEEDS:
-        env = {"SHOT": k, "CLIP_DRY": "1", "CLIP_SECONDS": "75"}
-        if seed:
-            env["CLIP_SEED"] = seed
-        dry = mt.run([mt.G, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"], env, os.path.join(WORK, k + ".dry"))
-        death = rt._foe_death(dry)
-        if death is None or death <= 0:
-            print("  %s: seed %s, the foe did not fall; trying another" % (k, seed or "default"))
-            continue
-        if not _clean_kill(dry, death, FLURRY.get(k, 0)):
-            fallback = fallback or (seed, death, _kill_blow(dry, death))
-            print("  %s: seed %s, no clean blow to film at the kill; trying another" % (k, seed or "default"))
-            continue
-        kb = _kill_blow(dry, death)
-        start = max(0, death - int(rt.REC_LEAD * REC_FPS))
-        if _draw_bout(k, seed, death, kb, _montage_picks(_hits(dry), start, kb if kb is not None else death)):
-            return
-    if fallback and _draw_bout(k, *fallback):
-        print("  %s: no seed gave a clean kill; filmed the first kill there was" % k)
+    rec = mt.run([mt.G, "--write-movie", avi, "--fixed-fps", str(REC_FPS), "--path", mt.PROJ, "--", "--probe", "shouldershots"],
+                 {"SHOT": k, "CLIP_DIRECT": "1"}, os.path.join(WORK, k + ".rec"))
+    rec0 = mt.tagged(rec, "REC_START")
+    death = rt._foe_death(rec)
+    if rec0 is None or death is None or not os.path.exists(avi):
+        if os.path.exists(avi):
+            os.remove(avi)
+        print("  %s: the recording failed (see %s)" % (k, os.path.join(WORK, k + ".rec")))
         return
-    if os.path.exists(avi):
-        os.remove(avi)
-    print("  %s: left out (no seed gave a kill to film; see %s)" % (k, os.path.join(WORK, k + ".dry")))
+    blow = mt.tagged(rec, "BLOW")
+    if blow is None:
+        blow = _kill_blow(rec, death)
+    start = mt.tagged(rec, "FROM") or 0
+    close = sorted({int(l.split()[1]) for l in rec if l.startswith("CLOSE ")})
+    hits = sorted(set(_hits(rec)))
+    with open(os.path.join(WORK, k + ".json"), "w") as f:
+        json.dump({"rec0": rec0, "kill": death, "blow": blow if blow is not None else death, "from": start,
+                   "hits": [list(h) for h in hits], "close": close, "seed": ""}, f)
+    print("  %s: recorded (the kill %.1f s in, %d blows of his close)" % (k, death / REC_FPS, len(close)))
 
 
 def record_stage(k):
@@ -560,9 +499,6 @@ def main():
     # The rise trailer's recorder, pointed at this trailer's own work folder (its bouts are filmed
     # differently: through the film camera, not the helmet).
     rt.RTMP = WORK
-    # Drawn from further before the kill than the rise trailer's bouts: the fight scene's exchange
-    # and the blow that felled him (a second or two before he fell) want the room.
-    rt.REC_LEAD = 7.0
     os.makedirs(WORK, exist_ok=True)
     if fake:
         work = os.path.join(WORK, "fake")
@@ -577,7 +513,7 @@ def main():
     print("== the project copy")
     rt.project()
     os.environ["CLIP_CAM"] = "film"
-    print("== the bouts (each played undrawn until a seed ends in a clean kill, then filmed at 120 frames a second)")
+    print("== the bouts (each filmed once at 120 frames a second, by its plan)")
     for k in BOUTS:
         record_bout(k)
     print("== the staged shots")
