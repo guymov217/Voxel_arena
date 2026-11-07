@@ -285,6 +285,30 @@ var fist_home := {"R": 0.0, "L": 0.0}   # a punch's way back to the guard, still
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
 var swing_reach := {"R": 0.0, "L": 0.0}   # how far a swung weapon's hand is put out to the end of the arm (0..1)
 var pane_prev := {"R": null, "L": null}  # last step's hand on the pane (what the mouse asked)
+## A man's own marks come in as fast as his screen draws (his mouse is read once a frame) or a
+## guest's packets arrive, not every step of the physics: at 60 a second the mark stood still one
+## step and jumped two the next, and the hand, the blade and the elbow's set went with it, swung
+## and held by turns (user: a stroke in both hands, the arms and the sword flicker). Each mark is
+## eased onto where it is sent over MARK_EASE seconds, which spreads every jump over the steps
+## between them; a bot's marks move every step and are taken as they are.
+## (Kept in full: a mark held still comes through as it was sent, to the last digit.)
+const MARK_EASE := 0.03
+var mark_eased := {"R": null, "L": null}
+func _ease_mark(side: String, hp: Dictionary, dt: float) -> Dictionary:
+	if not player:
+		return hp
+	var tx := float(hp.get("x", 0.0))
+	var ty := float(hp.get("y", 0.0))
+	var was = mark_eased[side]
+	if was is Array:
+		var k := 1.0 - exp(-dt / MARK_EASE)
+		tx = float(was[0]) + (tx - float(was[0])) * k
+		ty = float(was[1]) + (ty - float(was[1])) * k
+	mark_eased[side] = [tx, ty]
+	var out := hp.duplicate()
+	out.x = tx
+	out.y = ty
+	return out
 var power_now := false                     # the swing button, this step (for the hand's target)
 var low_hand := 0.0
 var shoulder := {"R": SHOULDER_R, "L": SHOULDER_L}
@@ -1824,6 +1848,10 @@ func switch_two_side() -> bool:
 	var hi = hand_input[m]
 	if hi is Dictionary:
 		hand_input[o] = {"x": -float(hi.get("x", 0.0)), "y": float(hi.get("y", 0.0))}
+	var em = mark_eased[m]
+	var eo = mark_eased[o]
+	mark_eased[o] = [-float(em[0]), float(em[1])] if em is Array else null
+	mark_eased[m] = [-float(eo[0]), float(eo[1])] if eo is Array else null
 	for d in [pane_prev, elbow_prev, thrust_aim]:
 		d[o] = null
 		d[m] = null
@@ -4122,7 +4150,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var th_in: float = float(inp.get("thrust", 0.0) if mk else inp.get("offThrust", 0.0))
 	if th_in > 0.3 and state == "stand" and w and not w.is_shield and not w.design.has("shoots") and shove_t <= 0.0:
 		strength *= 1.0 + 0.6 * clampf(th_in, 0.0, 1.0)
-	var hp: Dictionary = inp.get("main" if mk else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1})
+	var hp: Dictionary = _ease_mark(side, inp.get("main" if mk else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}), dt)
 	if not w and inp.get("jabR" if side == "R" else "jabL", false) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
 		jab_t[side] = JAB_TIME
 		stamina -= 5.0
