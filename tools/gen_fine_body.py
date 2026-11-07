@@ -6,7 +6,9 @@ waist) and the brute (heavy, a belly, a bull neck). Every cell of each part's sk
 voxel it lies over and the shade the muscles under it give it; for every body voxel, which of its
 eight half-size cells are inside the man and how deep (what a wound opens on: skin, fat, then the
 voxel's own flesh, organ or bone); the outline of each limb by height and angle (where armour is
-laid); the size of his head (the fine head drawn smaller: tools/gen_fine_head.py).
+laid); the size of his head (the fine head drawn smaller: tools/gen_fine_head.py). The three
+fighters in broad forms only (Man.shapes_chunky: a sculptor's blocking out, chunky in voxels, not
+every small muscle and groove); the giants with all of theirs.
 
     python3 tools/gen_fine_body.py data/fine_body.json
 
@@ -89,11 +91,32 @@ def smin(a, b, k):
     return np.minimum(a, b) - h * h * k * 0.25
 
 
+# The three fighters' arms and legs heavier with muscle than their builds' radii (user).
+LIMB_K = {"upper": 1.15, "fore": 1.12, "delt": 1.1, "thigh": 1.12, "calf": 1.12}
+
+
+def back_v2(P, B, add):
+    """A fighter's back (user): flat across (the rib cage cut off behind, a plane, not a dome rising
+    to its middle), two ridges down the spine with the groove between them, the lats broad up by
+    the shoulder blades and drawn in to a narrow waist."""
+    cw, cd = B["chest"]
+    zb = -0.008 - cd * 0.78
+    add("torso", "ribs", np.maximum(ell(P, (0, 1.29, -0.008), (cw, 0.19, cd)), zb - P[2]))
+    for sx in (-1, 1):
+        add("torso", "lat", smin(ell(P, (sx * 0.128, 1.335, -0.05), (0.088, 0.13, 0.062)),
+                                 cap(P, (sx * 0.075, 1.08, -0.06), (sx * 0.215, 1.405, -0.03), 0.04, 0.034), 0.03))
+        add("torso", "erector", cap(P, (sx * 0.036, 0.97, zb + 0.022), (sx * 0.034, 1.42, zb + 0.016), 0.026, 0.02))
+
+
 # --- the man ------------------------------------------------------------------------------------
 class Man:
     """The game's joints (data/body.json), and the man's shapes about them."""
 
     def __init__(self, parts, B):
+        if not B.get("kind"):
+            B = dict(B)
+            for k, m in LIMB_K.items():
+                B[k] = tuple(v * m for v in B[k]) if isinstance(B[k], tuple) else B[k] * m
         self.B = B
         by = {p["name"]: p for p in parts}
         self.parts = by
@@ -115,6 +138,9 @@ class Man:
     def shapes(self, P):
         """[(part, name, sdf, kind)]: every shape of him, the part it belongs to, and whether it is
         muscle (its edges meeting another's are a groove)."""
+        return self.shapes_full(P) if self.B.get("kind") else self.shapes_chunky(P)
+
+    def shapes_full(self, P):
         B = self.B
         cw, cd = B["chest"]
         ww, wd = B["waist"]
@@ -211,14 +237,66 @@ class Man:
             add("torso", "tuft", ell(P, (0.0, 0.5, -0.15), (0.03, 0.06, 0.03)), "skin")
         return out
 
+    def shapes_chunky(self, P):
+        """His broad forms only, as a sculptor blocks a man out: the chest, the waist and the hips,
+        a plate of the belly, the pectorals, the back (back_v2), the shoulders, the arms and legs
+        each one mass with the swell of its muscle, a fist, a foot."""
+        B = self.B
+        ww, wd = B["waist"]
+        hw, hd = B["hips"]
+        cd = B["chest"][1]
+        out = []
+
+        def add(part, name, d, kind="muscle"):
+            out.append((part, name, d, kind))
+
+        back_v2(P, B, add)
+        add("torso", "waist", ell(P, (0, 1.06, -0.004 + 0.012 * B["belly"]), (ww + 0.006, 0.16, wd)))
+        add("torso", "pelvis", ell(P, (0, 0.935, -0.012), (hw, 0.09, hd)))
+        add("torso", "abs", ell(P, (0, 1.07, wd * 0.38 + 0.012 * B["belly"]), (0.084, 0.16, 0.06 + 0.012 * B["belly"])))
+        for sx in (-1, 1):
+            add("torso", "pec", ell(P, (sx * 0.086, 1.355, cd * 0.6), (0.1, 0.075, 0.058)))
+            add("torso", "glute", ell(P, (sx * 0.07, 0.905, -0.066), (0.08, 0.09, 0.066)))
+            add("torso", "trap", cap(P, (0, 1.56, -0.05), (sx * 0.235, 1.47, -0.026), B["trap"] + 0.006, 0.03))
+            # (The shoulder's own mass between the trapezius and the deltoid: without it a raised
+            # arm left the big cells open there, holes at the top of the back.)
+            add("torso", "cuff", cap(P, (sx * 0.11, 1.468, -0.012), (sx * 0.27, 1.46, -0.004), 0.05, 0.055))
+        add("torso", "neck", cap(P, (0, 1.44, -0.016), (0, 1.62, 0.0), B["neck"], B["neck"] * 0.92))
+        for sx, side in ((-1, "R"), (1, "L")):
+            S, E, W = self.S[sx], self.E[sx], self.W[sx]
+            u = nrm(E - S)
+            f = nrm(W - E)
+            ua, ub = B["upper"]
+            fa, fb = B["fore"]
+            up, fo = "upperArm" + side, "forearm" + side
+            add(up, "delt", ell(P, S + u * 0.03 + np.array([sx * 0.008, -0.01, 0]), (B["delt"], 0.1, B["delt"] * 1.04)))
+            add(up, "upper", cap(P, S, E, ua, ub * 0.92))
+            add(up, "arm", ell(P, S + u * 0.19 + np.array([0, 0.0, 0.004]), (ua * 0.86, 0.12, ua * 0.92)))
+            add(fo, "fore", cap(P, E, W, fa, fb))
+            add(fo, "forearm", ell(P, E + f * 0.075, (fa * 0.9, 0.085, fa * 0.86)))
+            fc = W + f * 0.055 + np.array([0, 0, 0.008])
+            add(fo, "fist", ell(P, fc, (0.044, 0.055, 0.05)), "skin")
+        for sx, side in ((-1, "R"), (1, "L")):
+            Hj, K, A = self.Hj[sx], self.K[sx], self.A[sx]
+            ta, tb = B["thigh"]
+            ca, cb = B["calf"]
+            th, sh = "thigh" + side, "shin" + side
+            add(th, "thigh", cap(P, Hj + np.array([sx * 0.02, 0.03, 0]), K, ta, tb))
+            add(th, "quad", ell(P, (sx * 0.118, 0.68, 0.016), (ta * 0.84, 0.18, ta * 0.8)))
+            add(sh, "shin", cap(P, K, A + np.array([0, 0.02, 0]), ca, cb))
+            add(sh, "calf", ell(P, (sx * 0.11, 0.335, -0.03), (ca * 0.92, 0.1, ca * 0.86)))
+            add(sh, "foot", ell(P, (sx * 0.118, 0.034, 0.04), (0.048, 0.036, 0.118)), "skin")
+        return out
+
     def field(self, P):
         """The skin's distance (negative inside), the shape nearest each point, the margin to the
         next one (a groove where two muscles meet), and the parts of the shapes."""
         sh = self.shapes(P)
         D = np.stack([d for _, _, d, _ in sh], 0)
         d = D[0]
+        kb = 0.022 if self.B.get("kind") else 0.04   # (the broad forms blended wider)
         for k in range(1, len(sh)):
-            d = smin(d, D[k], 0.022)
+            d = smin(d, D[k], kb)
         d = np.maximum(d, -P[1])
         self.wool = None
         if self.B.get("mantle"):
@@ -285,6 +363,18 @@ AO_FACES = [((1, 0, 0), 1, 2), ((-1, 0, 0), 1, 2), ((0, 1, 0), 0, 2), ((0, -1, 0
 MARGIN = 10   # fine cells round the part's grid (a deltoid, a fist and a foot stand out of it)
 
 
+def _box3(a):
+    """Each value the mean of its cell and the 26 round it (the edge's own value past the edge)."""
+    pad = np.pad(a, 1, mode="edge")
+    out = np.zeros_like(a)
+    nx, ny, nz = a.shape
+    for i in range(3):
+        for j in range(3):
+            for k in range(3):
+                out += pad[i:i + nx, j:j + ny, k:k + nz]
+    return out / 27.0
+
+
 def _shift(a, d):
     out = np.zeros_like(a)
     src = [slice(None)] * 3
@@ -314,6 +404,8 @@ def part_cells(man, name, pdef):
     Z = pos[2] + lo[2] + (IZ + 0.5) * FV
     P = (X, Y, Z)
     d, first, gap, d1, sh = man.field(P)
+    if not man.B.get("kind"):
+        d = _box3(d)   # (a fighter's skin evened: a single cell standing out or a pit a cell deep gone)
     names, who = part_of(man, P)
     mine = who == names.index(name)
     # Round a joint, both parts that meet there (inside the ball about its pivot).
@@ -336,16 +428,26 @@ def part_cells(man, name, pdef):
     # The shade the muscles give the skin: a groove where two meet, darker; the lines of the
     # abdomen, the nipples, the navel.
     kinds = np.array([k for _, _, _, k in sh])
-    groove = (gap < 0.0028) & (d1 > -0.007) & (kinds[first] == "muscle")
     shade = np.full(X.shape, 200, np.int32)
-    shade[groove] = 176
     front = Z > 0.03
-    abs_l = front & (np.abs(X) < 0.07) & ((np.abs(Y - 1.172) < FV * 0.5) | (np.abs(Y - 1.106) < FV * 0.5) | (np.abs(Y - 1.04) < FV * 0.5))
-    abs_l |= front & (np.abs(X) < FV * 0.5) & (Y > 0.99) & (Y < 1.22)
-    shade[abs_l & (name == "torso")] = 170
-    for sx in (-1, 1):
-        shade[(np.abs(X - sx * 0.096) < 0.009) & (np.abs(Y - 1.34) < 0.009) & front & (name == "torso")] = 128
-    shade[(np.abs(X) < 0.008) & (np.abs(Y - 1.0) < 0.008) & front & (name == "torso")] = 100
+    if not man.B.get("kind"):
+        # A fighter's few clean lines only: under the pectorals, down the belly and across it
+        # twice, the navel.
+        tor = name == "torso"
+        pecl = front & (np.abs(Y - 1.282) < FV * 0.5) & (np.abs(X) > 0.018) & (np.abs(X) < 0.165)
+        abs_l = front & (np.abs(X) < 0.062) & ((np.abs(Y - 1.17) < FV * 0.5) | (np.abs(Y - 1.09) < FV * 0.5))
+        abs_l |= front & (np.abs(X) < FV * 0.5) & (Y > 1.0) & (Y < 1.28)
+        shade[(pecl | abs_l) & tor] = 178
+        shade[(np.abs(X) < FV * 0.5) & (np.abs(Y - 0.985) < FV * 0.5) & front & tor] = 120
+    else:
+        groove = (gap < 0.0028) & (d1 > -0.007) & (kinds[first] == "muscle")
+        shade[groove] = 176
+        abs_l = front & (np.abs(X) < 0.07) & ((np.abs(Y - 1.172) < FV * 0.5) | (np.abs(Y - 1.106) < FV * 0.5) | (np.abs(Y - 1.04) < FV * 0.5))
+        abs_l |= front & (np.abs(X) < FV * 0.5) & (Y > 0.99) & (Y < 1.22)
+        shade[abs_l & (name == "torso")] = 170
+        for sx in (-1, 1):
+            shade[(np.abs(X - sx * 0.096) < 0.009) & (np.abs(Y - 1.34) < 0.009) & front & (name == "torso")] = 128
+        shade[(np.abs(X) < 0.008) & (np.abs(Y - 1.0) < 0.008) & front & (name == "torso")] = 100
     # Corner shading against the whole of him (VoxelPart.ao_bits).
     ao = np.zeros(X.shape, np.int64)
     at = lambda dd: _shift(inside, (-dd[0], -dd[1], -dd[2]))
