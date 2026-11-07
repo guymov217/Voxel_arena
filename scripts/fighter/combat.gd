@@ -418,6 +418,13 @@ func _blow(g: Dictionary) -> Dictionary:
 		m_eff = TUSK_M if huge else 5.0
 		cap = TUSK_CAP if huge else maxf(20.0, float(att.fighter.get("bite_power")))
 	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
+	if bite and att.fighter is Beast:
+		# A beast's blow lands as hard as it is struck, as a weapon's does: what the contact reads
+		# off a great weight leaning into a man (a paw resting on his arm, jaws closing slowly) is
+		# not a blow, a touch at most (user: every touch of a monster wrecked his arm, even one with
+		# nothing behind it). (Still a touch: one dropped as no blow at all, a beast at a man's side
+		# struck nothing for seconds on end.)
+		J = minf(J, maxf(4.0, m_eff * speed * 1.4))
 	var heavy := 0.0
 	if is_weapon and att.is_hazard:
 		J = minf(40.0, maxf(J, 6.0 * speed))

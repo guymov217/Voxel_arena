@@ -5918,6 +5918,7 @@ func lift() -> void:
 
 # ---------- Wounds ----------
 
+const CRUSH_OF_LIMB := 0.6   # how wide a crater a crushing blow leaves at most, of the part's half thickness
 ## A blow lands on `part` (the same hit as the web game's applyHit: impulse, type, hardness,
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
@@ -6214,6 +6215,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# loose falls away as pieces.
 	var crush: float = float(hit.get("crush", 0.0))
 	if crush > 0.0:
+		# A bite is a mouthful of a limb, not the whole of it at once: the crater never wider than
+		# most of the limb's thickness (a big beast's bite took an arm's whole width, the arm gone
+		# at a bite however lightly it closed: user). (A falling anvil still flattens what it lands on.)
+		if hit.get("bite", false) and part != torso and part != head:
+			crush = minf(crush, CRUSH_OF_LIMB * minf(part.half_ext.x, part.half_ext.z))
 		# From the nearest point of the part (a heavy thing's middle may be outside it).
 		var cp := lp.clamp(-part.half_ext, part.half_ext)
 		for i in part.voxels_within(cp, crush):
