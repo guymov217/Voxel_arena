@@ -1015,12 +1015,19 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	FineArmor.build(self, p, ad)
 	_armor_dirty = true
 
-## How much wear (summed blow force) knocks a plate off at last, by its stuff: leather 14,
-## bronze 29, iron 31, steel 35 (in blow force, J: a gladius cut is about 24, a hammer blow
-## 32, a heavy hammer blow 95: a cut goes through leather at once and dents nothing off steel
-## or iron until it adds up; a hammer takes an iron plate at a blow and two or three off steel
-## when swung with weight behind it).
-const PLATE_WEAR := 23.0
+## How much wear (summed blow force) knocks a plate off at last, by its stuff: leather 13, gold
+## 19, bronze 26, iron 28, steel 32 (in blow force, J: a gladius cut is about 24-30, a hammer
+## blow 32, a heavy hammer blow 95). A blow takes off at once a plate for each of these in its
+## force, the nearest first, a blunt one PLATE_BURST times as many (it crumples and bursts them
+## where an edge or a point bites through the one it meets): a cut goes through leather at once,
+## takes a plate off iron at once and one off steel at the second; a hammer bursts two off steel,
+## a heavy hammer eight. And where a plate gives, those round it already worn most of the way
+## through (PLATE_SPREAD) give with it: the armour comes apart once it starts to. (A plate went
+## at about every second or third blow and a cut dented nothing off iron at once: user, the
+## armour does not feel as if it breaks.)
+const PLATE_WEAR := 21.0
+const PLATE_BURST := 1.8
+const PLATE_SPREAD := 0.6
 static func plate_wear(mat: String) -> float:
 	return PLATE_WEAR * (0.5 + float(Data.material(mat).get("hardness", 0.6)))
 
@@ -5971,13 +5978,14 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# Every plate guards the spot it sits on until it is worn through: each blow near
 			# it, from whatever side and at whatever angle, wears it (the nearest most), and
 			# at plate_wear it gives and flies off. A blow carrying several plates' worth of
-			# wear takes that many of the nearest at once (a hammer through a leather cap).
+			# wear takes that many of the nearest at once (a hammer through a leather cap), a blunt
+			# one more; once one gives, those round it worn most of the way through go with it.
 			var thr := plate_wear(ad.mat)
 			if not ad.has("wear"):
 				ad.wear = PackedFloat32Array()
 				ad.wear.resize(ad.cells.size())
 			ad.wear[ci] += force * (1.0 - float(near[k][2]) / reach)
-			if k < int(force / thr) or ad.wear[ci] >= thr:
+			if k < int((PLATE_BURST if type == "blunt" else 1.0) * force / thr) or ad.wear[ci] >= thr or (gone > 0 and ad.wear[ci] >= PLATE_SPREAD * thr):
 				_knock_plate(part, ad, ci, hit.dir, force)
 				gone += 1
 		if gone > 0:
