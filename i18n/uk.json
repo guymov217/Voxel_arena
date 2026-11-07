@@ -2653,5 +2653,9 @@
  "Turn  ▶": "Повернути  ▶",
  "or drag him round": "або поверніть його мишею",
  "Your bones set, your wounds bound, all your blood back": "Кістки вправлено, рани перев'язано, уся кров повернулася",
- "Done  (Esc)": "Готово  (Esc)"
+ "Done  (Esc)": "Готово  (Esc)",
+ "Easy": "Легко",
+ "Medium": "Середньо",
+ "Hard": "Складно",
+ "Extreme": "Екстрим"
 }

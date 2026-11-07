@@ -2653,5 +2653,9 @@
  "Turn  ▶": "Obróć  ▶",
  "or drag him round": "lub obróć go, przeciągając",
  "Your bones set, your wounds bound, all your blood back": "Kości nastawione, rany opatrzone, cała krew wróciła",
- "Done  (Esc)": "Gotowe  (Esc)"
+ "Done  (Esc)": "Gotowe  (Esc)",
+ "Easy": "Łatwy",
+ "Medium": "Średni",
+ "Hard": "Trudny",
+ "Extreme": "Ekstremalny"
 }

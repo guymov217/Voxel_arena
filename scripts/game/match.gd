@@ -883,7 +883,7 @@ func _spawn_training() -> void:
 			spec.diff = skill   # the slider, not the campaign's stage
 			e = spawn_fighter(spec)
 		else:
-			var w: String = training.get("weapon", "gladius")
+			var w: String = training.get("weapon", "random")
 			if w == "random":
 				w = ["gladius", "axe", "spear", "mace"][rng.randi_range(0, 3)]
 			e = spawn_fighter({"kind": "bot", "name": "Sparring partner", "loadout": {"main": "" if w == "fists" else w, "off": ""}, "team": ENEMY_TEAM, "pos": pos, "yaw": PI, "diff": skill, "personality": "archer" if w == "bow" or w == "crossbow" else "standard"})

@@ -2653,5 +2653,9 @@
  "Turn  ▶": "回転  ▶",
  "or drag him round": "またはドラッグして回す",
  "Your bones set, your wounds bound, all your blood back": "骨を接ぎ、傷を縛り、血はすべて戻る",
- "Done  (Esc)": "完了  (Esc)"
+ "Done  (Esc)": "完了  (Esc)",
+ "Easy": "簡単",
+ "Medium": "普通",
+ "Hard": "難しい",
+ "Extreme": "エクストリーム"
 }

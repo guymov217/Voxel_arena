@@ -2656,5 +2656,9 @@
  "Turn  ▶": "旋转  ▶",
  "or drag him round": "或拖动来旋转",
  "Your bones set, your wounds bound, all your blood back": "接好骨头，包扎伤口，血量全部恢复",
- "Done  (Esc)": "完成  (Esc)"
+ "Done  (Esc)": "完成  (Esc)",
+ "Easy": "简单",
+ "Medium": "中等",
+ "Hard": "困难",
+ "Extreme": "极限"
 }

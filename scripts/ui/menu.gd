@@ -15,7 +15,7 @@ var over_match := false   # a menu screen opened over a running match (Settings 
 var cmd_bot := false
 var room_list: VBoxContainer
 var _training_loaded := false
-var training := {"enemy": "gladiator", "weapon": "gladius", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
+var training := {"enemy": "gladiator", "count": 1, "difficulty": 0.5, "behaviour": "fights", "my_main": "built", "my_off": "roundShield", "immortal": true, "respawn": true}
 var backdrop: Match = null      # bots fighting behind the menus, seen by an orbiting camera
 var backdrop_off := false       # (screenshots of the menus' words on a slow renderer: no fight behind them)
 var bg: ColorRect
@@ -835,19 +835,16 @@ func _training(v: VBoxContainer) -> void:
 		training.enemy = "gladiator"
 	pick.call(ge, "Who", who, who.map(func(k): return "Nobody" if k == "none" else ("Gladiator" if k == "gladiator" else (Data.campaign.enemies[k.trim_prefix("foe:")].get("label", k) if k.begins_with("foe:") else beast_name.call(k)))), "enemy")
 	pick.call(ge, "How many", [1, 2, 3], ["One", "Two", "Three"], "count")
-	var weapons := ["random", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "bow"]
-	pick.call(ge, "Their weapon", weapons, weapons.map(func(k): return "Random" if k == "random" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k))), "weapon")
 	pick.call(ge, "Behaviour", ["fights", "defends", "still", "moves"], ["Fights back", "Defends only", "Stands still (a dummy)", "Walks about, never attacks"], "behaviour")
-	var dl := UIStyle.label("Difficulty", 15)
-	ge.add_child(dl)
-	var diff := HSlider.new()
-	diff.min_value = 0.1
-	diff.max_value = 1.0
-	diff.step = 0.05
-	diff.value = training.difficulty
-	diff.custom_minimum_size = Vector2(360, 24)
-	diff.value_changed.connect(func(x): training.difficulty = x)
-	ge.add_child(diff)
+	# How hard, by name, not a slider (user): the nearest of the four to what was set before.
+	var levels := [0.25, 0.5, 0.75, 1.0]
+	var was := float(training.get("difficulty", 0.5))
+	var near_l: float = levels[0]
+	for lv in levels:
+		if absf(float(lv) - was) < absf(near_l - was):
+			near_l = lv
+	training.difficulty = near_l
+	pick.call(ge, "Difficulty", levels, ["Easy", "Medium", "Hard", "Extreme"], "difficulty")
 	var gy: GridContainer = form.call("YOU")
 	var built: Dictionary = Save.get_value("training_weapon", {})
 	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "plank", "chicken", "bow", "ram"]
@@ -898,6 +895,9 @@ func _training_loadout() -> Dictionary:
 	return {"main": main if main != null else "", "off": off if off != null else "", "armor": arm, "armor_defs": Armory.defs_of(arm)}
 
 func _start_training() -> void:
+	# (No weapon is picked for the enemy: a sparring partner comes with one of his own, a foe or a
+	# beast with its own; one picked in an older save is let go, user.)
+	training.erase("weapon")
 	Save.set_value("training", training)
 	var opts := {"mode": "training", "training": training.duplicate(), "loadout_override": _training_loadout()}
 	var bag := _bag_clean(training.get("bag", {}))

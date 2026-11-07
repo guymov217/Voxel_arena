@@ -2656,5 +2656,9 @@
  "Turn  ▶": "Drehen  ▶",
  "or drag him round": "oder mit der Maus drehen",
  "Your bones set, your wounds bound, all your blood back": "Knochen gerichtet, Wunden verbunden, all dein Blut zurück",
- "Done  (Esc)": "Fertig  (Esc)"
+ "Done  (Esc)": "Fertig  (Esc)",
+ "Easy": "Leicht",
+ "Medium": "Mittel",
+ "Hard": "Schwer",
+ "Extreme": "Extrem"
 }

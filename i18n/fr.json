@@ -2653,5 +2653,9 @@
  "Turn  ▶": "Tourner  ▶",
  "or drag him round": "ou fais-le tourner à la souris",
  "Your bones set, your wounds bound, all your blood back": "Os remis en place, plaies bandées, tout ton sang revenu",
- "Done  (Esc)": "Terminé  (Esc)"
+ "Done  (Esc)": "Terminé  (Esc)",
+ "Easy": "Facile",
+ "Medium": "Moyen",
+ "Hard": "Difficile",
+ "Extreme": "Extrême"
 }

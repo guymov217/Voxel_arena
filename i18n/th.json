@@ -2653,5 +2653,9 @@
  "Turn  ▶": "หมุน  ▶",
  "or drag him round": "หรือลากเพื่อหมุน",
  "Your bones set, your wounds bound, all your blood back": "จัดกระดูก พันแผล เลือดกลับมาเต็ม",
- "Done  (Esc)": "เสร็จ  (Esc)"
+ "Done  (Esc)": "เสร็จ  (Esc)",
+ "Easy": "ง่าย",
+ "Medium": "ปานกลาง",
+ "Hard": "ยาก",
+ "Extreme": "สุดขีด"
 }

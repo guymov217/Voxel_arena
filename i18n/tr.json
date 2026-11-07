@@ -2653,5 +2653,9 @@
  "Turn  ▶": "Döndür  ▶",
  "or drag him round": "ya da sürükleyerek döndür",
  "Your bones set, your wounds bound, all your blood back": "Kemiklerin yerine oturdu, yaraların sarıldı, tüm kanın geri geldi",
- "Done  (Esc)": "Tamam  (Esc)"
+ "Done  (Esc)": "Tamam  (Esc)",
+ "Easy": "Kolay",
+ "Medium": "Orta",
+ "Hard": "Zor",
+ "Extreme": "Aşırı"
 }
