@@ -120,8 +120,8 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 			hid[i] = 1
 			xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (xf[i] as Transform3D).origin)
 	p.set_shape(xf)
-	# The fine voxels.
-	var cells: Array = t.cells
+	# The fine voxels (the face with the nose he chose).
+	var cells: Array = t.cells if giant != "" else _cells_for(t, look.ids)
 	var n := cells.size()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -189,6 +189,31 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 	p.fine = fine
 	_paint(p)
 	mi.global_transform = p.global_transform
+
+## The face's cells with the nose he chose (Your gladiator: a "nose_" piece; the template's own
+## nose, a broad one, without), each worked out once from what that nose changes of the face.
+static var _nose_cells := {}
+static func _cells_for(t: Dictionary, ids: Array) -> Array:
+	var nose := ""
+	for id in ids:
+		if String(id).begins_with("nose_"):
+			nose = String(id).trim_prefix("nose_")
+	var noses: Dictionary = t.get("noses", {})
+	if nose == "" or not noses.has(nose):
+		return t.cells
+	if _nose_cells.has(nose):
+		return _nose_cells[nose]
+	var d: Dictionary = noses[nose]
+	var drop := {}
+	for k in d.drop:
+		drop[Vector3i(int(k[0]), int(k[1]), int(k[2]))] = true
+	var out := []
+	for c in t.cells:
+		if not drop.has(Vector3i(int(c[0]), int(c[1]), int(c[2]))):
+			out.append(c)
+	out.append_array(d.add)
+	_nose_cells[nose] = out
+	return out
 
 ## His head's outline seen from its middle, for what is worn on it (wrap): the farthest of its
 ## fine voxels out each way, SPH_AZ round by SPH_EL from under the chin to the crown.
@@ -350,13 +375,17 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 		iris = chosen
 	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55)}
 
+const BOT_EYES := ["eyes_angry", "eyes_tired", "eyes_scar", "eyes_blue", "eyes_green", "eyes_brown"]
+const BOT_MOUTHS := ["mouth_stern", "mouth_snarl", "mouth_frown", "mouth_grimace", "mouth_gap", "mouth_smirk", "mouth_gold"]
 ## A bot's face pieces, as Physique._faces draws them (from his name and his place).
 static func _bot_ids(f) -> Array:
 	var ids := []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(str(f.display_name)) ^ int(f.slot) * 104729
-	var eyes := Physique.FACES.keys().filter(func(k): return k.begins_with("eyes_"))
-	var mouths := Physique.FACES.keys().filter(func(k): return k.begins_with("mouth_"))
+	# A fighter's looks only (a tongue out, buck teeth or crossed eyes on half the men he faced
+	# made a joke of them: user, the faces should be a gladiator's).
+	var eyes := BOT_EYES
+	var mouths := BOT_MOUTHS
 	if rng.randf() < 0.45:
 		ids.append(eyes[rng.randi() % eyes.size()])
 	if rng.randf() < 0.55:
@@ -367,6 +396,9 @@ static func _bot_ids(f) -> Array:
 		ids.append("bot_scar_cheek" if rng.randf() < 0.5 else "bot_scar_lip")
 	if rng.randf() < 0.3:
 		ids.append("bot_brows_thick" if rng.randf() < 0.7 else "bot_unibrow")
+	# A nose of his own, now and then (the broad one the rest).
+	if rng.randf() < 0.55:
+		ids.append(["nose_straight", "nose_roman", "nose_broken", "nose_small"][rng.randi() % 4])
 	return ids
 
 static func _near(a: Color, b: Color, d: float) -> bool:

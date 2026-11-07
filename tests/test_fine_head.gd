@@ -113,3 +113,31 @@ func test_hair_eyes_and_face_paint_as_he_chose() -> void:
 	var pk: Dictionary = menu.peer_look({"look": all + ["hc_fake", 7]})
 	t.eq((pk.armor as Array).size(), all.size(), "a guest's whole look taken, a slot each, nothing else")
 	menu.free()
+
+## The nose he chose (Your gladiator): each of the template's noses drawn on the face in place of
+## its own broad one, and nothing but the nose changes (user: the veteran's face for every man, his
+## nose his own to pick).
+func test_the_nose_he_chose() -> void:
+	var w := _world()
+	var base: Array = _man(w, "human", Vector3(0, 1.2, 0), ["none"]).head.fine.cells
+	var a := {}
+	for c in base:
+		a[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = true
+	var x := 3.0
+	for nm in ["straight", "roman", "broken", "small"]:
+		var f := _man(w, "human", Vector3(x, 1.2, 0), ["nose_" + nm])
+		x += 3.0
+		var b := {}
+		for c in f.head.fine.cells:
+			b[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = true
+		var changed := []
+		for k in a:
+			if not b.has(k):
+				changed.append(k)
+		for k in b:
+			if not a.has(k):
+				changed.append(k)
+		t.check(not changed.is_empty(), "the %s nose is drawn (%d fine voxels other than the broad one's)" % [nm, changed.size()])
+		var elsewhere := changed.filter(func(k): return absf(float(k.x) - 15.0) > 6.0 or float(k.z) < 22.0)
+		t.check(elsewhere.is_empty(), "the %s nose: only the nose changes (%d voxels elsewhere)" % [nm, elsewhere.size()])
+	w.queue_free()

@@ -942,6 +942,7 @@ const FACES := {
 	"face_scar_brow": "Scar through the brow", "face_brows_thick": "Heavy brows", "face_unibrow": "One brow",
 	"face_woad": "Blue woad", "face_warpaint": "War stripes", "face_ochre": "Red ochre band", "face_tattoo": "Tattooed cheek",
 	"face_blush": "Rosy cheeks", "face_skull": "Skull paint", "face_clown": "Clown paint",
+	"nose_straight": "Straight nose", "nose_roman": "Roman nose", "nose_broken": "Broken nose", "nose_small": "Small nose",
 	"hc_black": "Black", "hc_dark": "Dark brown", "hc_brown": "Brown", "hc_auburn": "Auburn", "hc_ginger": "Ginger",
 	"hc_blond": "Blond", "hc_platinum": "Platinum", "hc_grey": "Grey", "hc_white": "White",
 	"hc_blue": "Dyed blue", "hc_green": "Dyed green", "hc_pink": "Dyed pink", "hc_purple": "Dyed purple",
@@ -1287,8 +1288,9 @@ static func _faces(f) -> void:
 	if f.is_bot and ids.is_empty():
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash(str(f.display_name)) ^ int(f.slot) * 104729
-		var eyes := FACES.keys().filter(func(k): return k.begins_with("eyes_"))
-		var mouths := FACES.keys().filter(func(k): return k.begins_with("mouth_"))
+		# (A fighter's looks only, as on the new heads: FineHead.BOT_EYES.)
+		var eyes: Array = FineHead.BOT_EYES
+		var mouths: Array = FineHead.BOT_MOUTHS
 		if rng.randf() < 0.45:
 			ids.append(eyes[rng.randi() % eyes.size()])
 		if rng.randf() < 0.55:

@@ -33,7 +33,7 @@ const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8
 ## The builds a gladiator can have (FineBody.BUILDS, in order), as Your gladiator names them.
 const BUILD_NAMES := ["Hero: broad shoulders, narrow waist", "Champion: lean and quick", "Brute: heavy and strong"]
 ## The look's slots as Your gladiator names them.
-const SLOT_NAMES := {"hat": "Hat", "hair": "Hair", "hair_colour": "Hair colour", "beard": "Beard", "cape": "Cape", "eyes": "Eyes", "eye_colour": "Eye colour", "mouth": "Mouth", "face": "Face"}
+const SLOT_NAMES := {"hat": "Hat", "hair": "Hair", "hair_colour": "Hair colour", "beard": "Beard", "cape": "Cape", "eyes": "Eyes", "eye_colour": "Eye colour", "mouth": "Mouth", "face": "Face", "nose": "Nose", "scar": "Scar"}
 const LOOK_SLOTS := {
 	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt", "hat_unbroken"],
 	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"],
@@ -44,6 +44,10 @@ const LOOK_SLOTS := {
 	"hair_colour": ["", "hc_black", "hc_dark", "hc_brown", "hc_auburn", "hc_ginger", "hc_blond", "hc_platinum", "hc_grey", "hc_white", "hc_blue", "hc_green", "hc_pink", "hc_purple"],
 	"eye_colour": ["", "iris_brown", "iris_hazel", "iris_green", "iris_blue", "iris_grey", "iris_amber", "iris_red", "iris_violet", "iris_gold", "iris_white"],
 	"face": ["", "face_freckles", "face_stubble", "face_scar_cheek", "face_scar_lip", "face_scar_brow", "face_brows_thick", "face_unibrow", "face_woad", "face_warpaint", "face_ochre", "face_tattoo", "face_blush", "face_skull", "face_clown"],
+	# (A nose and a scar of his own choosing, besides paint or stubble: the veteran's face is the
+	# one every man has, his broken nose, scar and stubble each his own to pick: user.)
+	"nose": ["", "nose_straight", "nose_roman", "nose_broken", "nose_small"],
+	"scar": ["", "face_scar_brow", "face_scar_cheek", "face_scar_lip"],
 }
 
 func _ready() -> void:
@@ -4272,10 +4276,10 @@ func _gladiator(v: VBoxContainer) -> void:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 8)
 	body.add_child(grid)
-	for k in ["hair", "hair_colour", "beard", "hat", "eyes", "eye_colour", "mouth", "face", "cape"]:
+	for k in ["hair", "hair_colour", "beard", "hat", "eyes", "eye_colour", "mouth", "nose", "face", "scar", "cape"]:
 		var ob := OptionButton.new()
 		for id in LOOK_SLOTS[k]:
-			var first := "Plain" if k == "eyes" or k == "mouth" or k == "face" else ("Natural" if k.ends_with("_colour") else "None")
+			var first := "Plain" if k == "eyes" or k == "mouth" or k == "face" else ("Natural" if k.ends_with("_colour") else ("Broad nose" if k == "nose" else "None"))
 			var item_nm := Loc.t(first) if id == "" else Loc.t(String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
 			ob.add_item(Loc.t("%s  (Ironman)") % item_nm if look_locked(id) else item_nm)
 			if look_locked(id):
