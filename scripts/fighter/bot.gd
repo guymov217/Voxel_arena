@@ -535,7 +535,10 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 			inp.mz = minf(1.0, float(p.get("approach", 0.8)) * (1.0 if closing else 0.6))
 		elif dist < ideal - (0.3 if w == null or style == "short" else 0.15):
 			inp.mz = -0.7
-		inp.mx = strafe * (0.6 if dist < reach * 1.8 else 0.2) * (0.5 if p.get("shield", false) else 1.0)
+		# He circles only once he is near: coming in from further off he walks straight at the man
+		# (drifting aside as he came, he opened every bout with a walk off to one side, always the
+		# same one, and only then came on to fight: user).
+		inp.mx = strafe * (0.6 if dist < reach * 1.8 else 0.0) * (0.5 if p.get("shield", false) else 1.0)
 		inp.sprint = dist > 2.5 if p.get("sprint", false) else dist > 6.0
 		# A short blade is fought inside the other man's reach, where a long one has no room to
 		# swing: past the end of his weapon in one rush, then kept there.

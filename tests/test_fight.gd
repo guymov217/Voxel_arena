@@ -393,3 +393,28 @@ func test_a_shield_takes_blows_and_breaks_under_them() -> void:
 	t.check(blocked > 25, "the shield took the blows (%d of 40)" % blocked)
 	t.check(n1 < n0 * 0.7, "and it is battered and broken by them (%d of %d voxels left)" % [n1, n0])
 	m.queue_free()
+
+## At a bout's start the enemy walks straight at the man, not off to one side first (user: every
+## bout he opened with a walk off to the right, and only then came on to fight).
+func test_the_foe_comes_straight_in() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "gladiator", "count": 1, "behaviour": "fights", "difficulty": 0.6, "immortal": true, "respawn": false}, "headless": true, "seed": 3, "loadout": {"main": "gladius", "off": ""}})
+	m.me.drive = func(_e): return {}
+	var foe: Fighter = null
+	for e in m.entities:
+		if e != m.me:
+			foe = e.f
+	var start: Vector3 = foe.torso.global_position
+	var me_at: Vector3 = m.me.f.torso.global_position
+	var line := Vector3(me_at.x - start.x, 0, me_at.z - start.z).normalized()
+	var off := 0.0
+	for i in 240:
+		await get_tree().physics_frame
+		if Vector2(me_at.x - foe.torso.global_position.x, me_at.z - foe.torso.global_position.z).length() < 2.6:
+			break
+		var d: Vector3 = foe.torso.global_position - start
+		d.y = 0.0
+		off = maxf(off, absf(d.cross(line).y))
+	t.check(off < 0.3, "he comes on along the line to the man (%.2f m aside at most)" % off)
+	m.queue_free()
