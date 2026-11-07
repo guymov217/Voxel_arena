@@ -13,6 +13,11 @@ extends RefCounted
 ## and the plates are still worked out (hidden).
 
 const THICK := 2.0          # the shell, fine voxels thick
+## A piece of armour's shell in voxels this many times the fine ones each way, fewer and bigger, and
+## closer on him (user): laid on a fine shell COARSE_THICK fine voxels thick, each of its voxels
+## kept where its middle lies in that (_coarse). A hairstyle or a hat the fine voxels' own.
+const COARSE := 1.5
+const COARSE_THICK := 1.5
 const BAND_KEEP := 24       # parts' grounds kept (a build, a part, a size each)
 const SHELL_KEEP := 24      # shells kept (a piece on a build's part)
 static var _bands := {}
@@ -114,9 +119,10 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	var lkey := "%s|%s|%d|%d|%d|%d|%s|%d" % [_key(p), id, n, hash(ad.cells), hash(ad.pts), hash(ad.get("kinds", [])), bare.to_html(), hash(ad.get("cols", []))]
 	if _shells.has(lkey):
 		return _shells[lkey]
-	var ground := _ground(p)
+	var ground := _ground(p, 1.0 if Fighter._cosmetic(id) else COARSE)
 	if ground.is_empty():
 		return {}
+	var kf := float(ground.get("k", 1.0))   # (its voxels', of the fine ones)
 	# Each plate where the look lays it, straight (its tile), and how far out of the box it stands.
 	var base := []
 	base.resize(n)
@@ -257,7 +263,7 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 			if n3.length() < 0.0001:
 				continue
 			n3 = n3.normalized()
-			var reach := LIFT * clampf((ax - (hb.x - cube * 2.0)) / cube, 0.0, 1.0)
+			var reach := LIFT / kf * clampf((ax - (hb.x - cube * 2.0)) / cube, 0.0, 1.0)
 			var t := 0.5
 			while t <= reach:
 				var kc2 := Vector3i(((q + n3 * sp.x * t - o) / sp).floor())
@@ -304,7 +310,7 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	if style.get("crest", false) and p.fine.has("wc"):
 		_crest(p.fine.wc, owner, extra, o, sp)
 	if style.get("brim", false) and p.fine.has("wc"):
-		_brim(p.fine.wc, owner, extra, o, sp, float(style.get("brim_w", 2.0)))
+		_brim(p.fine.wc, owner, extra, o, sp, float(style.get("brim_w", 2.0)) / kf)
 	if style.get("boss", false):
 		_boss(org, first, owner, extra, o, sp, cube)
 	if style.get("curls", false) and p.fine.has("wc"):
@@ -479,22 +485,53 @@ static func _key(p: VoxelPart) -> String:
 	return "b|%s|%s|%.5f" % [String(p.fine.get("build", "")), String(p.part_name), p.vf * p.part_scale]
 
 ## The fine voxels just outside him there, THICK deep, on the lattice he is drawn on:
-## {o, sp (the lattice: a voxel's middle at o + (i + 0.5) * sp), pts (their middles), idx (their i)}.
-static func _ground(p: VoxelPart) -> Dictionary:
-	var key := _key(p)
+## {o, sp (the lattice: a voxel's middle at o + (i + 0.5) * sp), pts (their middles), idx (their i)};
+## `k` over 1, the voxels that many times bigger (_coarse).
+static func _ground(p: VoxelPart, k := 1.0) -> Dictionary:
+	var key := _key(p) + ("|%.2f" % k)
 	if _bands.has(key):
 		return _bands[key]
-	var out := _ground_head(p) if p.fine.has("wtab") else _ground_body(p)
+	var thick := THICK if k <= 1.0 else COARSE_THICK
+	var out := _ground_head(p, thick) if p.fine.has("wtab") else _ground_body(p, thick)
+	if k > 1.0 and not out.is_empty():
+		out = _coarse(out, k)
 	if _bands.size() >= BAND_KEEP:
 		_bands.erase(_bands.keys()[0])
 	_bands[key] = out
 	return out
 
+## The fine shell `g` on a lattice `k` times as big: each of its voxels kept where its middle lies in
+## one of the fine shell's (not every one a fine voxel only touches: kept, the shell stood a voxel
+## off him, bulky, its edges ragged). The line down his middle (x = 0) between two of its voxels,
+## as the fine lattice's: the same on his left as on his right.
+static func _coarse(g: Dictionary, k: float) -> Dictionary:
+	var o: Vector3 = g.o
+	var sp: Vector3 = g.sp
+	var cs := sp * k
+	var oc := Vector3(-ceilf(-o.x / cs.x - 0.0001) * cs.x, o.y, o.z)
+	var fi: PackedInt32Array = g.idx
+	var seen := {}
+	var pts := PackedVector3Array()
+	var idx := PackedInt32Array()
+	for s in fi.size() / 3:
+		var lo := o + Vector3(fi[s * 3], fi[s * 3 + 1], fi[s * 3 + 2]) * sp
+		# (A coarse voxel's middle in this fine one: at most one, the coarse lattice the wider.)
+		var j := Vector3i(((lo - oc) / cs - Vector3.ONE * 0.5).ceil())
+		var m := oc + (Vector3(j) + Vector3.ONE * 0.5) * cs
+		if m.x >= lo.x + sp.x or m.y >= lo.y + sp.y or m.z >= lo.z + sp.z or seen.has(j):
+			continue
+		seen[j] = true
+		pts.append(m)
+		idx.append(j.x)
+		idx.append(j.y)
+		idx.append(j.z)
+	return {"o": oc, "sp": cs, "pts": pts, "idx": idx, "within": seen, "k": k}
+
 ## Round the fine head, seen from its middle: the farthest of its fine voxels each way (finer than
 ## FineHead's own outline, smoothed), the shell from there out.
 const H_AZ := 96
 const H_EL := 48
-static func _ground_head(p: VoxelPart) -> Dictionary:
+static func _ground_head(p: VoxelPart, thick := THICK) -> Dictionary:
 	var fine := p.fine
 	var cxf: Array = fine.xf
 	if cxf.is_empty():
@@ -554,7 +591,7 @@ static func _ground_head(p: VoxelPart) -> Dictionary:
 					mx = maxf(mx, r2)
 					cntn += 1.0
 			sm[el * H_AZ + az] = maxf(s / cntn, mx - cell * 0.35)
-	var T := THICK * cell
+	var T := thick * cell
 	var seen := {}
 	var pts := PackedVector3Array()
 	var idx := PackedInt32Array()
@@ -603,7 +640,7 @@ static func _hlook(tab: PackedFloat32Array, fe: float, fa: float) -> float:
 ## (his fine voxels' own), the shell from there out; where he narrows from one row to the next
 ## (his shoulders up to his neck) the step between filled; over his top and under his end a cap.
 const B_ANG := 64
-static func _ground_body(p: VoxelPart) -> Dictionary:
+static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
 	var d: Dictionary = p.fine.get("d", {})
 	if d.is_empty():
 		return {}
@@ -653,12 +690,12 @@ static func _ground_body(p: VoxelPart) -> Dictionary:
 				tab[r * B_ANG + a] = nt[a]
 			if not empty:
 				break
-	var T := THICK * fsz
+	var T := thick * fsz
 	var seen := {}
 	var pts := PackedVector3Array()
 	var idx := PackedInt32Array()
 	var sub := 3
-	var caps := int(ceilf(THICK))
+	var caps := int(ceilf(thick))
 	for r in rows:
 		for a in B_ANG * sub:
 			var fa := (float(a) + 0.5) / float(sub) - 0.5
@@ -771,8 +808,12 @@ static func _band_light(kc: Vector3i, bands: Dictionary, rim: bool, metal: bool)
 	var row := _row_at(q.y, bands)
 	var k := 1.0
 	var f1 := fposmod(row + 0.5, 1.0)   # (0 at a hoop's lower edge, 1 at its top)
+	# (A line a voxel wide at the least, or on big voxels a hoop's groove, a rivet, came and went
+	# hoop to hoop as its voxels' middles fell.)
+	var rh := _row_h(q.y, bands)
+	var gw := maxf(0.2, fs / rh)
 	if not bands.trunk:
-		k = 0.64 if f1 < 0.2 else 0.84 + 0.3 * f1
+		k = 0.64 if f1 < gw else 0.84 + 0.3 * f1
 	else:
 		var hb: Vector3 = bands.hb
 		var ax := absf(q.x)
@@ -787,10 +828,13 @@ static func _band_light(kc: Vector3i, bands: Dictionary, rim: bool, metal: bool)
 			var phi := atan2(maxf(q.y - c.y, 0.0), ax - c.x)
 			var p0 := atan2(hb.y + cube * 0.5 - c.y, hb.x * NECK - c.x)   # (at the neck)
 			var f := fposmod((p0 - phi) / maxf(p0, 0.5) * 6.0, 1.0)   # (0 under the edge of the strip inside it, 1 at its own edge)
-			k = 0.62 if f < 0.16 else (1.16 if f > 0.84 else 0.88 + 0.22 * f)
+			var arc := Vector2(ax - c.x, q.y - c.y).length() * maxf(p0, 0.5) / 6.0
+			var e := clampf(fs / maxf(arc, 1e-4), 0.16, 0.45)
+			k = 0.62 if f < e else (1.16 if f > 1.0 - e else 0.88 + 0.22 * f)
 		elif zone == BREAST:
-			var fb := (row - float(bands.breast)) / maxf(float(bands.top_side) + 0.5 - float(bands.breast), 0.5)
-			k = 0.62 if fb < 0.12 else 0.97 + 0.1 * fb
+			var bh := maxf(float(bands.top_side) + 0.5 - float(bands.breast), 0.5)
+			var fb := (row - float(bands.breast)) / bh
+			k = 0.62 if fb < maxf(0.12, fs / (rh * bh)) else 0.97 + 0.1 * fb
 			if ax > hb.x - cube * 0.5 - fs * 1.5:
 				k = 1.14   # its edge, beside the shoulder guard
 			elif q.z > 0.0 and ax < 0.55 * fs:
@@ -798,12 +842,12 @@ static func _band_light(kc: Vector3i, bands: Dictionary, rim: bool, metal: bool)
 			elif q.z > 0.0 and ax < 1.6 * fs and absf(fb - 0.5) < 0.14:
 				k = 1.5    # a rivet each side
 		else:
-			k = 0.62 if f1 < 0.2 else 0.84 + 0.3 * f1
+			k = 0.62 if f1 < gw else 0.84 + 0.3 * f1
 			if q.z > 0.0 and ax < 0.55 * fs:
 				k = 0.66   # the closure down the front
-			elif q.z > 0.0 and ax < 1.6 * fs and absf(f1 - 0.6) < 0.14:
+			elif q.z > 0.0 and ax < 1.6 * fs and absf(f1 - 0.6) < maxf(0.14, 0.5 * fs / rh):
 				k = 1.5    # a rivet each side of it, polished
-			elif q.z < 0.0 and ax < 0.55 * fs and f1 >= 0.2:
+			elif q.z < 0.0 and ax < 0.55 * fs and f1 >= gw:
 				k = 0.84   # where the halves meet down the back
 	if rim:
 		k = maxf(k, 1.12) if metal else 0.8
@@ -854,6 +898,17 @@ static func _row_at(y: float, bands: Dictionary) -> float:
 		if y < ys[i + 1]:
 			return float(r0 + i) + (y - ys[i]) / maxf(ys[i + 1] - ys[i], 1e-4)
 	return float(r0 + n - 1) + (y - ys[n - 1]) / maxf(ys[n - 1] - ys[n - 2], 1e-4)
+
+## The height of the piece's row at `y` (as _row_at reads them: its plates' spacing there).
+static func _row_h(y: float, bands: Dictionary) -> float:
+	var ys: PackedFloat32Array = bands.ys
+	var n := ys.size()
+	if n == 1:
+		return float(bands.cube)
+	var i := 0
+	while i < n - 2 and y >= ys[i + 1]:
+		i += 1
+	return maxf(ys[i + 1] - ys[i], 1e-4)
 
 ## A piece in bands on part `pn`: its rows' heights (each the middle of its plates as they lie),
 ## where its lattice is, and whether it is the trunk's (the closure, the strips).
