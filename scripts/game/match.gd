@@ -511,8 +511,6 @@ func _register(e: Dictionary) -> void:
 	combat.fighters.append(e.f)
 	e.f.died.connect(_on_death)
 	e.f.voxels_lost.connect(_on_voxels_lost)
-	if not headless and not (e.f is Beast):
-		e.f.stepped.connect(_on_stepped)
 	e.f.bone_bits_lost.connect(_on_bone_bits_lost)
 	e.f.guts_spilled.connect(_on_guts_spilled)
 	if e.f.has_signal("note"):
@@ -2030,15 +2028,6 @@ func _banner(text: String, sub: String) -> void:
 	banner.emit(text, sub)
 	if role == "host":
 		Net.send_all("banner", {"text": text, "sub": sub})
-
-## A foot set down on the sand leaves its print (a peg its round mark), a little ahead of where the
-## ankle came down. Not on a body or a heap: only on the sand.
-func _on_stepped(f: Fighter, at: Vector3, yaw_: float, side: String) -> void:
-	if fx == null or at.y > 0.08 or not is_instance_valid(f):
-		return
-	var shin = f.by_name.get("shin" + side)
-	var peg: bool = shin != null and shin.prosthetic == "peg"
-	fx.footprint("peg" if peg else "foot" + side, at + Vector3(sin(yaw_), 0, cos(yaw_)) * (0.0 if peg else 0.05 * f.S), yaw_, f.S)
 
 ## Every frame, drawing only: faces blink and wince, chests breathe (Physique.live); a body slid
 ## or dragged over the sand leaves a furrow behind it.
