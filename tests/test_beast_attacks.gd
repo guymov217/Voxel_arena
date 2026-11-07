@@ -572,3 +572,29 @@ func test_the_boar_slashes_with_its_tusks() -> void:
 	await _run(s[0], s[1], s[2], 12.0, func(_i): pass)
 	t.check(slashes[0] > 0, "the boar slashed him with its tusks (%d)" % slashes[0])
 	s[0].queue_free()
+
+## A beast with no bite left throws its weight at him: a light one's ram (a hyena's) rocks him and
+## he keeps his feet; a heavy one's (a bear's) bowls him over (user: a hyena put him down at every
+## touch).
+func test_a_light_beasts_ram_rocks_a_heavy_ones_fells() -> void:
+	for pair in [["hyena", false], ["bear", true]]:
+		var s = await _setup(pair[0], 1.4)
+		var m: Match = s[0]
+		var man: Fighter = s[1]
+		var b: Beast = s[2]
+		var rams := [0]
+		var felled := [false]
+		var stag := [0.0]
+		m.combat.hit.connect(func(h):
+			if h.get("ram", false) and h.char == man and rams[0] == 0:
+				rams[0] += 1
+				felled[0] = man.state == "down"
+				stag[0] = man.stagger)
+		await _run(m, man, b, 8.0, func(_i):
+			if rams[0] == 0:
+				b.ai.ram_t = 0.5)
+		t.check(rams[0] == 1, "%s: its weight thrown at him" % pair[0])
+		t.eq(felled[0], pair[1], "%s's ram: %s" % [pair[0], "bowled over" if pair[1] else "he keeps his feet"])
+		if not pair[1]:
+			t.check(stag[0] > 0.2, "%s's ram: rocked (stagger %.2f)" % [pair[0], stag[0]])
+		m.queue_free()

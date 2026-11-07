@@ -1169,8 +1169,18 @@ func _lunge(to: Vector3, mass: float, collapsed: bool) -> void:
 			_strike(h, 0.35, 0.0, [h, Vector3(to.x * 40.0 * S, 15.0 * float(sp.get("lungeUp", 1.0) if sp.get("lungeUp", 0) else 1.0), to.z * 40.0 * S)], 0.0)
 	ai.bite_cool = float(sp.cooldown) * STRIKE_PACE * (1.0 + injury * (1.0 - fury)) * (1.0 - 0.35 * fury)
 
+const RAM_FELLS := 3.0   # (of his weight: a beast this much heavier bowls him over with its ram)
+
+## What a body weighs as the engine has it (its parts still on it).
+static func _weight(c) -> float:
+	var w := 0.0
+	for p in c.parts:
+		if not p.severed:
+			w += (p as RigidBody3D).mass
+	return w
+
 ## The ram: a beast with no bite left throws its weight at him; what it hits, it hits as hard as
-## the contact (the impulse the engine put through him), and he goes down under it.
+## the contact (the impulse the engine put through him), and he goes down under a heavy one.
 func _ram(dt: float) -> void:
 	ai.ram_t = float(ai.get("ram_t", 0.0)) - dt
 	if ai.ram_t <= 0.0 or Combat.current == null:
@@ -1192,8 +1202,17 @@ func _ram(dt: float) -> void:
 	var was: bool = t.alive
 	var res: Dictionary = t.apply_hit(part, {"impulse": J, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": dir, "heavy": 0.8})
 	t.last_attacker = self
+	# Off his feet under a beast RAM_FELLS times his weight (a boar, a lion, a bear) or a charge at
+	# full tilt; a lighter one's ram (a hyena's, a wolf's, its jaws gone) rocks him, and blow on blow
+	# may yet put him down (a hyena felled him at every touch: user).
+	var heavy: bool = _weight(self) >= RAM_FELLS * _weight(t) or float(ai.get("charge_t", 0.0)) > 0.0
 	if t.has_method("fall") and t.state == "stand":
-		t.fall(1.2, true)
+		if heavy:
+			t.fall(1.2, true)
+		elif t.get("stagger") != null:
+			t.stagger = minf(1.0, float(t.stagger) + 0.3 * clampf(J / 18.0, 0.5, 1.4))
+			if t.has_method("daze"):
+				t.daze(0.25)
 	Combat.current.hit.emit({"kind": "hit", "p": at, "dir": dir, "J": J, "type": "blunt", "char": t, "part": part, "attacker": self, "res": res, "killed": was and not t.alive, "ram": true})
 	ai.bite_cool = maxf(float(ai.bite_cool), 1.0)
 
