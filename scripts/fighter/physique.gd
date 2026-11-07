@@ -440,6 +440,13 @@ static func _face(p: VoxelPart, seed: int) -> void:
 ## A beard worn (the cosmetic piece) is drawn in the strong look as the face's own voxels in the
 ## hair's colour (fine, on the jaw), its cells only for what hangs below the chin (plate_xf).
 const BEARD_PAINT := {"beard_full": 2, "beard_braided": 2, "beard_philosopher": 2, "beard_forked": 2, "beard_short": 1, "beard_stubble": 7, "beard_goatee": 3, "beard_moustache": 4, "beard_mutton": 5, "beard_chinstrap": 6}
+## The hairstyle he wears (a "hair_" piece on his head), or "".
+static func hair_worn(p: VoxelPart) -> String:
+	for ad in p.get_meta("armor", []):
+		if String(ad.id).begins_with("hair_"):
+			return String(ad.id)
+	return ""
+
 static func beard_worn(p: VoxelPart) -> String:
 	for ad in p.get_meta("armor", []):
 		if String(ad.id).begins_with("beard_"):
@@ -816,6 +823,8 @@ static func _plate_head(p: VoxelPart, c: Array, at: Vector3, id: String) -> Tran
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	if id.begins_with("beard_") and int(c[1]) >= 0:
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (drawn on the fine jaw)
+	if id.begins_with("hair_") and String(p.fine.get("giant", "")) == "":
+		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (his hair is the fine head's own: FineHead "hairs")
 	var lies := FineArmor.hair_or_hat(p, id) and not stands(p, c, id)
 	var r := FineHead.wrap(p, at)
 	var pos: Vector3 = r[0]

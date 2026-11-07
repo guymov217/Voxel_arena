@@ -1154,6 +1154,16 @@ func _tuck_hair(p: VoxelPart) -> void:
 				capped[c + Vector3i.DOWN] = true
 	if p == head:
 		_hair = []
+		# The fine head's own hair (the new look's): under a helmet's plates still on him or a
+		# hat's, tucked away.
+		if not p.fine.is_empty() and p.fine.has("wtab"):
+			var over := covered.duplicate()
+			for ad in p.get_meta("armor", []):
+				if String(ad.id).begins_with("hat_") and covered.is_empty():
+					for ci in ad.cells.size():
+						if ad.on[ci] == 1:
+							over[Vector3i(int(ad.cells[ci][0]), int(ad.cells[ci][1]), int(ad.cells[ci][2]))] = true
+			FineHead.tuck(p, over)
 	for ad in p.get_meta("armor", []):
 		var id := String(ad.id)
 		if not (id.begins_with("hair_") or id.begins_with("beard_")) or ad.node == null or not is_instance_valid(ad.node):

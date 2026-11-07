@@ -34,13 +34,13 @@ static func wanted(p: VoxelPart, id: String) -> bool:
 		return true
 	return p.fine.has("body") and not bool(p.fine.get("beast", false)) and (p.fine.get("d", {}) as Dictionary).has("k")
 
-## A hairstyle or a hat on a man's fine head (not a giant's: his head has its own): drawn as a
-## shell round the head as a helmet is, the locks and the pieces that stand out from it as the
-## fine voxels they hold (drawn as the head's cubes, a lock or a hat's piece the size of a
-## voxel of his body, they stood off the fine head like blocks: user, the hair and the hats did
-## not fit the new heads).
+## A hat on a man's fine head (not a giant's: his head has its own): drawn as a shell round the
+## head as a helmet is, the pieces that stand out from it as the fine voxels they hold (drawn as
+## the head's cubes, a hat's piece the size of a voxel of his body, they stood off the fine head
+## like blocks: user, the hats did not fit the new heads). (A hairstyle is the fine head's own
+## hair: FineHead "hairs".)
 static func hair_or_hat(p: VoxelPart, id: String) -> bool:
-	return p.fine.has("wtab") and String(p.fine.get("giant", "")) == "" and (id.begins_with("hair_") or id.begins_with("hat_"))
+	return p.fine.has("wtab") and String(p.fine.get("giant", "")) == "" and id.begins_with("hat_")
 
 ## The shell of `ad` (a piece on `p`) drawn, or drawn again as the plates lie now; the plates'
 ## own tiles hidden. Not wanted (the classic looks): the shell gone, the tiles shown.

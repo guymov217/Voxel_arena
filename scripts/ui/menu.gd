@@ -36,7 +36,8 @@ const BUILD_NAMES := ["Hero: broad shoulders, narrow waist", "Champion: lean and
 const SLOT_NAMES := {"hat": "Hat", "hair": "Hair", "hair_colour": "Hair colour", "beard": "Beard", "cape": "Cape", "eyes": "Eyes", "eye_colour": "Eye colour", "mouth": "Mouth", "face": "Face", "nose": "Nose", "scar": "Scar"}
 const LOOK_SLOTS := {
 	"hat": ["", "hat_laurel", "hat_crest", "hat_straw", "hat_horns", "hat_crown", "hat_feather", "hat_bandana", "hat_headband", "hat_phrygian", "hat_pileus", "hat_pelt", "hat_unbroken"],
-	"hair": ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"],
+	# (The man bald, "None"; the hairstyles of the arena's day: FineHead.STYLES, user.)
+	"hair": ["", "hair_crop", "hair_curls_top", "hair_curly", "hair_long", "hair_braids", "hair_suebian", "hair_topknot", "hair_bun"],
 	"beard": ["", "beard_braided", "beard_full", "beard_short", "beard_goatee", "beard_moustache", "beard_philosopher", "beard_stubble", "beard_mutton", "beard_chinstrap", "beard_forked"],
 	"cape": ["", "cape", "cape_short"],
 	"eyes": ["", "eyes_wide", "eyes_side", "eyes_cross", "eyes_angry", "eyes_sleepy", "eyes_blue", "eyes_green", "eyes_mad", "eyes_wink", "eyes_brown", "eyes_scar", "eyes_tired"],
@@ -250,13 +251,24 @@ func set_worn_armor(a: Array) -> void:
 
 ## The player's own gladiator: skin, cloth colour and the cosmetic pieces (no armour: that is
 ## bought). Saved as indices, so an old or hand-edited save cannot name anything that is not there.
+## (An older save's hairstyle is its index into the list as it was, HAIR_V1: the same style read
+## from it, or the arena's nearest for one no longer offered, and saved so.)
+const HAIR_V1 := ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", "hair_ponytail", "hair_crop", "hair_spikes", "hair_braids", "hair_bun", "hair_suebian", "hair_curls_top"]
+const LOOK_V := 2
 func look() -> Dictionary:
 	var l: Dictionary = Save.get_value("look", {})
-	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1), "build": clampi(int(l.get("build", 0)), 0, FineBody.BUILDS.size() - 1)}
+	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1), "build": clampi(int(l.get("build", 0)), 0, FineBody.BUILDS.size() - 1), "v": LOOK_V}
+	var old := not l.is_empty() and int(l.get("v", 1)) < LOOK_V
 	for k in LOOK_SLOTS:
-		out[k] = clampi(int(l.get(k, 0)), 0, LOOK_SLOTS[k].size() - 1)
+		var i := int(l.get(k, 0))
+		if k == "hair" and old:
+			var was: String = HAIR_V1[clampi(i, 0, HAIR_V1.size() - 1)]
+			i = maxi(0, LOOK_SLOTS.hair.find(String(FineHead.RETIRED.get(was, was))))
+		out[k] = clampi(i, 0, LOOK_SLOTS[k].size() - 1)
 		if look_locked(LOOK_SLOTS[k][out[k]]):
 			out[k] = 0
+	if old:
+		Save.set_value("look", out)
 	return out
 
 ## A look piece not yet earned: the Unbroken laurel is the Ironman's (CampaignRun).
@@ -4298,7 +4310,7 @@ func _gladiator(v: VBoxContainer) -> void:
 	# Turned round to be seen from every side: the buttons, or a drag anywhere off this panel.
 	_row(v, [UIStyle.button("◀  Turn", func(): _turn_hero(-PI / 4.0)), UIStyle.button("Turn  ▶", func(): _turn_hero(PI / 4.0)), UIStyle.label("or drag him round", 13, UIStyle.MUTED)])
 	_row(v, [UIStyle.button("Random", func():
-		var r := {}
+		var r := {"v": LOOK_V}
 		r.skin = randi() % Fighter.SKINS.size()
 		r.cloth = randi() % CLOTH.size()
 		r.build = randi() % FineBody.BUILDS.size()

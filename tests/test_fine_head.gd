@@ -141,3 +141,114 @@ func test_the_nose_he_chose() -> void:
 		var elsewhere := changed.filter(func(k): return absf(float(k.x) - 15.0) > 6.0 or float(k.z) < 22.0)
 		t.check(elsewhere.is_empty(), "the %s nose: only the nose changes (%d voxels elsewhere)" % [nm, elsewhere.size()])
 	w.queue_free()
+
+## The man bald, each hairstyle of the arena's day his hair, sitting on his head (user: the base man
+## completely bald, every hairstyle fitted to him, of that period): no style, no hair; each style its
+## own cells round his scalp, out of his head and close on it; a style no longer offered drawn as the
+## nearest; a receding man's temples bare; the hair piece's own blocks not drawn.
+func test_bald_and_the_hairstyles_of_the_day() -> void:
+	var w := _world()
+	var count_hair := func(f: Fighter) -> int:
+		var n := 0
+		for c in f.head.fine.cells:
+			if int(c[3]) == FineHead.HAIR:
+				n += 1
+		return n
+	Physique.forced = "human"
+	var bare := w.fighter(Vector3(0, 1.2, 0), 0.0, {}, {"skin": 0xc68e5e})
+	Physique.forced = ""
+	t.eq(count_hair.call(bare), 0, "no hairstyle: bald, no hair on him")
+	var skin: Color = bare.head.fine.look.skin
+	var crown_bare := true
+	var own: PackedColorArray = bare.head.fine.own
+	for s in (bare.head.fine.cells as Array).size():
+		var c: Array = bare.head.fine.cells[s]
+		if int(c[3]) == FineHead.SKIN and (int(c[4]) & FineHead.CAP) != 0 and absf(own[s].r - own[s].g) < 0.02:
+			crown_bare = false   # (a hair's grey or brown, not his skin's warm tone)
+	t.check(crown_bare, "his crown his skin")
+	var x := 3.0
+	var t0: Dictionary = FineHead.template()
+	for st in FineHead.STYLES:
+		Physique.forced = "human"
+		var f := w.fighter(Vector3(x, 1.2, 0), 0.0, {"armor": [st]}, {"skin": 0xc68e5e})
+		Physique.forced = ""
+		x += 3.0
+		var n: int = count_hair.call(f)
+		t.check(n > 300, "%s drawn as his hair (%d cells)" % [st, n])
+		t.eq(String(f.head.fine.look.style), st, "%s read as the style he wears" % st)
+		# Close on his head: every cell of it over his scalp, a voxel of it or two out (but the
+		# style's own locks off it: a fall, braids, a knot).
+		var far := 0
+		var c0: Vector3 = f.head.fine.wc
+		for s in (f.head.fine.cells as Array).size():
+			var c: Array = f.head.fine.cells[s]
+			if int(c[3]) != FineHead.HAIR or (int(c[4]) & FineHead.HAIR_EXTRA) != 0:
+				continue
+			var v: Vector3 = (f.head.fine.xf[s] as Transform3D).origin - c0
+			if v.length() > FineHead.outline(f.head, v.normalized()) + f.head.vf * f.head.part_scale * 1.2:
+				far += 1
+		t.check(far < n / 50, "%s close on his head (%d of %d off it)" % [st, far, n])
+		# The piece's own blocks not drawn (his hair is the fine head's).
+		for ad in f.head.get_meta("armor", []):
+			if String(ad.id) == st and ad.node != null:
+				var shown := 0
+				for ci in (ad.cells as Array).size():
+					if Physique.plate_xf(f.head, ad.cells[ci], ad.pts[ci] as Vector3, st).basis.get_scale().length() > 0.001:
+						shown += 1
+				t.eq(shown, 0, "%s: the piece's own blocks not drawn" % st)
+	Physique.forced = "human"
+	var old := w.fighter(Vector3(x, 1.2, 0), 0.0, {"armor": ["hair_mohawk"]}, {"skin": 0xc68e5e})
+	var crop := w.fighter(Vector3(x + 3.0, 1.2, 0), 0.0, {"armor": ["hair_crop"]}, {"skin": 0xc68e5e})
+	var rec := w.fighter(Vector3(x + 6.0, 1.2, 0), 0.0, {"armor": ["hair_crop"]}, {"skin": 0xc68e5e})
+	Physique.forced = ""
+	t.eq(String(old.head.fine.look.style), "hair_crop", "a mohawk (no longer offered) drawn as the Roman crop")
+	rec.face_ids = ["hair_receding"]
+	Physique.dress(rec, "human")
+	t.check(count_hair.call(rec) < count_hair.call(crop), "a receding man's temples bare (%d of %d)" % [count_hair.call(rec), count_hair.call(crop)])
+	# A bot: a style of the day by his name, the same each time; now and then none.
+	var styles := {}
+	for i in 24:
+		var b := w.fighter(Vector3(0, 1.2, 6.0 + float(i) * 2.0), 0.0, {}, {"skin": 0xc68e5e})
+		b.is_bot = true
+		b.display_name = "Bot %d" % i
+		Physique.dress(b, "human")
+		styles[String(b.head.fine.look.style)] = true
+	t.check(styles.size() >= 4 and (styles.has("hair_crop") or styles.has("hair_curls_top")), "the bots' hair of the day, by name (%s)" % ", ".join(styles.keys()))
+
+## Under a helmet his hair is tucked away (the helmet sits on his head, not on his hair); what hangs
+## below it shows; a hat over the crown the same.
+func test_hair_tucked_under_a_helmet() -> void:
+	var w := _world()
+	Physique.forced = "human"
+	var f := w.fighter(Vector3(0, 1.2, 0), 0.0, {"armor": ["hair_long", "helmet"]}, {"skin": 0xc68e5e})
+	Physique.forced = ""
+	var tucked: Dictionary = f.head.fine.get("tucked", {})
+	var under := 0
+	var out := 0
+	var extra_out := 0
+	for s in (f.head.fine.cells as Array).size():
+		var c: Array = f.head.fine.cells[s]
+		if int(c[3]) != FineHead.HAIR:
+			continue
+		if tucked.has(s):
+			under += 1
+		else:
+			out += 1
+			if (int(c[4]) & FineHead.HAIR_EXTRA) != 0:
+				extra_out += 1
+	t.check(under > out, "his hair under the helmet tucked away (%d tucked, %d shown)" % [under, out])
+	t.check(extra_out > 0, "what hangs below it shows (%d)" % extra_out)
+
+## An older save's hairstyle (its index into the list as it was) read as the same style, or the
+## arena's nearest for one no longer offered, and saved so.
+func test_an_old_saves_hairstyle() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	var keep = Save.get_value("look", {})
+	for pair in [[6, "hair_crop"], [1, "hair_crop"], [5, "hair_long"], [7, "hair_curls_top"], [11, "hair_curls_top"], [9, "hair_bun"], [10, "hair_suebian"], [0, ""]]:
+		Save.set_value("look", {"hair": pair[0], "skin": 1})
+		var l: Dictionary = menu.look()
+		t.eq(String(menu.LOOK_SLOTS.hair[l.hair]), String(pair[1]), "the old list's hairstyle %d read as %s" % pair)
+		t.eq(int((Save.get_value("look", {}) as Dictionary).get("v", 1)), int(menu.LOOK_V), "and saved so")
+		t.eq(int(menu.look().hair), int(l.hair), "the same when read again")
+	Save.set_value("look", keep)
+	menu.free()

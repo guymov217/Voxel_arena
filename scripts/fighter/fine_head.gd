@@ -39,7 +39,7 @@ static func template() -> Dictionary:
 	return _tpl
 
 # The template's feature codes (gen_fine_head.FEAT) and what may cover a cell.
-enum {SKIN, WHITE, IRIS, PUPIL, LID, BROW, LIP, LIP_LINE, NOSTRIL, SHADE, BLUSH, LIGHT, EAR_IN, LID_LOW}
+enum {SKIN, WHITE, IRIS, PUPIL, LID, BROW, LIP, LIP_LINE, NOSTRIL, SHADE, BLUSH, LIGHT, EAR_IN, LID_LOW, HAIR}
 const CAP := 1
 const CAP_RECEDE_OFF := 2
 const NAPE := 4
@@ -49,6 +49,15 @@ const JAW := 32
 const CHIN := 64
 const LIP_TOP := 128
 const GOATEE := 256
+const HAIR_EXTRA := 512   # (a hair cell of a knot, a braid, a fall: kept on a receding man)
+
+## The man bald and each hairstyle of the arena's day sitting on him (user): their hair is the
+## template's own cells for it ("hairs", tools/gen_fine_head.py), round his scalp as his head is
+## shaped. One he wears (a "hair_" piece) drawn so; one no longer offered taken as the nearest of
+## these (an old save's). A bot one of them by his name, now and then none (shaved).
+const STYLES := ["hair_crop", "hair_curls_top", "hair_curly", "hair_long", "hair_braids", "hair_suebian", "hair_topknot", "hair_bun"]
+const RETIRED := {"hair_mohawk": "hair_crop", "hair_spikes": "hair_curls_top", "hair_ponytail": "hair_long"}
+const BOT_STYLES := ["hair_crop", "hair_crop", "hair_crop", "hair_curls_top", "hair_curls_top", "hair_curls_top", "hair_curly", "hair_long", "hair_braids", "hair_suebian", "hair_topknot", "hair_bun"]
 
 const DARK := Color(0.07, 0.05, 0.05)
 const MOUTH := Color(0.16, 0.05, 0.05)
@@ -121,7 +130,7 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 			xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (xf[i] as Transform3D).origin)
 	p.set_shape(xf)
 	# The fine voxels (the face with the nose he chose).
-	var cells: Array = t.cells if giant != "" else _cells_for(t, look.ids)
+	var cells: Array = t.cells if giant != "" else _cells_for(t, look.ids, String(look.get("style", "")))
 	var n := cells.size()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -157,11 +166,18 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 				of[j] = []
 			of[j].append(s)
 		own[s] = _color(c, look) if c.size() < 12 else _giant_color(c)
-		# (The face's own cells, by where they sit on it: what the pieces and the moods draw on.)
-		if int(c[3]) != SKIN or float(c[2]) > 25.0:
+		# (The face's own cells, by where they sit on it: what the pieces and the moods draw on. Not
+		# his hair's, over his brow.)
+		if int(c[3]) != HAIR and (int(c[3]) != SKIN or float(c[2]) > 25.0):
 			front[Vector2i(int(c[0]), int(c[1]))] = s
 	var fine := {"mm": mm, "par": par, "own": own, "xf": cxf, "of": of, "front": front, "look": look, "cells": cells, "hid": hid, "hs": hs, "pivot": pivot, "giant": giant}
-	var ol := _outline(cxf, fsz * sc.x * hs)
+	# (His head's outline without his hair: a helmet or a hat sits on his head, the hair under it
+	# tucked, tuck.)
+	var head_xf := []
+	for s in n:
+		if int((cells[s] as Array)[3]) != HAIR:
+			head_xf.append(cxf[s])
+	var ol := _outline(head_xf, fsz * sc.x * hs)
 	fine.wc = ol[0]
 	fine.wtab = ol[1]
 	# What each of the head's voxels is now: a later change to it (blood) shows through.
@@ -193,7 +209,26 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 ## The face's cells with the nose he chose (Your gladiator: a "nose_" piece; the template's own
 ## nose, a broad one, without), each worked out once from what that nose changes of the face.
 static var _nose_cells := {}
-static func _cells_for(t: Dictionary, ids: Array) -> Array:
+static var _hair_cells := {}
+static func _cells_for(t: Dictionary, ids: Array, style := "") -> Array:
+	var face := _nose_for(t, ids)
+	var hairs: Dictionary = t.get("hairs", {})
+	if style == "" or not hairs.has(style):
+		return face
+	# His hair over it (a receding man's temples bare: the cells over them not his).
+	var rec := ids.has("hair_receding")
+	var key := "%d|%s|%s" % [face.size(), style, rec]
+	if _hair_cells.has(key) and (_hair_cells[key] as Array)[0] == face:
+		return (_hair_cells[key] as Array)[1]
+	var out := face.duplicate()
+	for c in hairs[style]:
+		if rec and (int(c[4]) & CAP_RECEDE_OFF) != 0 and (int(c[4]) & HAIR_EXTRA) == 0:
+			continue
+		out.append(c)
+	_hair_cells[key] = [face, out]
+	return out
+
+static func _nose_for(t: Dictionary, ids: Array) -> Array:
 	var nose := ""
 	for id in ids:
 		if String(id).begins_with("nose_"):
@@ -338,6 +373,11 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 		bald = _near(hair, skin, 0.16)
 	var beard := 0
 	var beard_c := hair
+	# The hairstyle he wears, or none: bald.
+	var style := Physique.hair_worn(p)
+	style = String(RETIRED.get(style, style))
+	if not STYLES.has(style):
+		style = ""
 	if f is Fighter and f.get("is_bot") and String(f.mods.get("look", "")) == "":
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash(str(f.display_name)) ^ int(f.slot) * 7919
@@ -347,6 +387,8 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 		hair = hc
 		beard_c = hc
 		bald = shaved
+		if style == "" and not shaved:
+			style = BOT_STYLES[rng.randi() % BOT_STYLES.size()]
 	# The colour of hair he chose: on his crown, his brows and his beard (never read as a shaved
 	# crown, a blond on a fair skin).
 	var hc = Physique.hair_choice(f)
@@ -373,7 +415,7 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 	var chosen = Physique.iris_choice(ids)
 	if chosen != null:
 		iris = chosen
-	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55)}
+	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55), "style": style}
 
 const BOT_EYES := ["eyes_angry", "eyes_tired", "eyes_scar", "eyes_blue", "eyes_green", "eyes_brown"]
 const BOT_MOUTHS := ["mouth_stern", "mouth_snarl", "mouth_frown", "mouth_grimace", "mouth_gap", "mouth_smirk", "mouth_gold"]
@@ -405,10 +447,9 @@ static func _near(a: Color, b: Color, d: float) -> bool:
 	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b) < d * 3.0
 
 static func _hairy(c: Array, look: Dictionary) -> bool:
-	var bits := int(c[4])
-	if not look.bald and (bits & (CAP | NAPE | SIDE)) != 0:
+	if int(c[3]) == HAIR:
 		return true
-	return _beard_on(bits, int(look.beard))
+	return _beard_on(int(c[4]), int(look.beard))
 
 static func _beard_on(bits: int, beard: int) -> bool:
 	match beard:
@@ -462,17 +503,17 @@ static func _color(c: Array, look: Dictionary) -> Color:
 			return skin.darkened(0.28)
 		EAR_IN:
 			return skin.darkened(0.12)
+		HAIR:
+			# His hair: its strands lighter and darker as the template combs it (a curl's top lit).
+			var hc: Color = look.hair
+			var hk := k * (1.0 + (grain - 1.0) * 2.0)
+			return Color(clampf(hc.r * hk, 0.0, 1.0), clampf(hc.g * hk, 0.0, 1.0), clampf(hc.b * hk, 0.0, 1.0), 1.0)
 	var col := skin
 	if feat == BLUSH:
 		col = Color(skin.r * 1.02, skin.g * 0.97, skin.b * 0.96)
 	elif feat == LIGHT:
 		col = skin.lightened(0.06)
-	# Hair over the crown, the nape and before the ears; a receding man's temples bare; a beard.
-	if (bits & (CAP | NAPE | SIDE)) != 0:
-		if look.bald:
-			col = skin.darkened(0.06).lerp(look.hair, 0.12) if (bits & CAP) != 0 else col
-		elif not (look.ids.has("hair_receding") and (bits & CAP_RECEDE_OFF) != 0):
-			col = (look.hair as Color).lerp((look.hair as Color).lightened(0.25), 0.25 * fposmod(grain * 37.0, 1.0))
+	# (His scalp bare: the hair is his hairstyle's own cells over it.) A beard.
 	var beard := int(look.beard)
 	if beard > 0 and _beard_on(bits, beard):
 		var kb := 0.35 if beard == 1 else (0.3 if beard == 7 else 0.88)
@@ -690,17 +731,56 @@ static func _mark(feat: int, x: float, y: float, ex: float, ey: float, ids: Arra
 static func _speck(x: float, y: float) -> float:
 	return float(posmod(hash(Vector2i(int(floorf(x * 2.0)), int(floorf(y * 2.0))) + Vector2i(7, 13)), 1000)) / 1000.0
 
-## The head's voxels shown or hidden (a blow knocking some out): the fine voxels over them with them.
+## The head's voxels shown or hidden (a blow knocking some out): the fine voxels over them with them
+## (his hair tucked under a helmet or a hat stays so).
 static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 	var fine: Dictionary = p.fine
 	var of: Dictionary = fine.of
 	var mm: MultiMesh = fine.mm
 	var cxf: Array = fine.xf
+	var tucked: Dictionary = fine.get("tucked", {})
 	for i in indices:
 		if not of.has(i):
 			continue
 		for s in of[i]:
-			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
+			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 and not tucked.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
+
+## His hair under a helmet or a hat not drawn: a cell of it whose head voxel has a plate of one on it
+## or next to it (`covered`: the plates' cells on him); what hangs out below (a fall, braids) stays,
+## and as a helmet's plates are knocked off what they covered shows again. Drawing only.
+static func tuck(p: VoxelPart, covered: Dictionary) -> void:
+	var fine: Dictionary = p.fine
+	if fine.is_empty() or not fine.has("mm") or String(fine.get("giant", "")) != "":
+		return
+	var cells: Array = fine.cells
+	var par: PackedInt32Array = fine.par
+	var mm: MultiMesh = fine.mm
+	var cxf: Array = fine.xf
+	var was: Dictionary = fine.get("tucked", {})
+	var now := {}
+	if not covered.is_empty():
+		for s in cells.size():
+			var c: Array = cells[s]
+			if int(c[3]) != HAIR:
+				continue
+			# (The head voxel it lies over, in the helmet's cells: the plates are laid on the part's
+			# own voxels, the fine head's cells over its fine ones.)
+			var v := Vector3i(int(c[6]) * p.dims.x / p.grid.x, int(c[7]) * p.dims.y / p.grid.y, int(c[8]) * p.dims.z / p.grid.z)
+			var under := false
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for dz in [-1, 0, 1]:
+						if covered.has(v + Vector3i(dx, dy, dz)):
+							under = true
+			if under:
+				now[s] = true
+	fine["tucked"] = now
+	for s in cells.size():
+		if not (now.has(s) or was.has(s)):
+			continue
+		var j: int = par[s]
+		var alive: bool = j >= 0 and p.alive[j] == 1
+		mm.set_instance_transform(s, cxf[s] if alive and not now.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
 
 ## The head's voxels coloured again (blood, a burn, the look): the fine voxels over them follow a
 ## change that is not the look's own.
