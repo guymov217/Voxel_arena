@@ -86,7 +86,9 @@ func test_joints_stay_closed_through_a_fight() -> void:
 		if cap == null or not cap.visible:
 			continue
 		caps += 1
-		var pivot: Vector3 = p.global_transform * p.ca + p.draw_shift
+		# (The pivot as it is drawn: turned with the part's drawing, as a two-handed guard arm's
+		# swing about its shoulder carries its elbow round, then shifted.)
+		var pivot: Vector3 = (p.draw_turn * p.global_transform) * p.ca + p.draw_shift
 		var sc: Vector3 = cap.global_transform.basis.get_scale()
 		var along: Vector3 = cap.global_transform.basis.y.normalized()
 		# Its middle on the pivot's line (a deltoid runs on past it, along the arm).

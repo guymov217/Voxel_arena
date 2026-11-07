@@ -3781,6 +3781,68 @@ func _seat_drawing(interp := true, dt := 0.0) -> void:
 	# (After the weapon: it is drawn where the hands hold it, not turned with the arm.)
 	_swivel_drawing(interp, dt)
 	_off_clear_drawing(interp, dt)
+	_grip_drawing(interp)
+
+## A blade in the fist is drawn held fast there. The wrist turns it about its own line to the
+## edge the aim wants (_drive_wrist), where the forearm's own turn on the elbow cannot follow it
+## with the elbow bent: so the hand is drawn turned with the blade, the forearm about its own
+## length (its elbow and its fist where they are), as far as a forearm turns (GRIP_DRAW_TURN on
+## the upper arm); past that the upper arm is drawn turned about its own length too, as the
+## shoulder turns an arm (GRIP_DRAW_UPPER, the elbow where it is), and only past both does the
+## rest turn in the hand (the wheel set half round). On screen the blade never turns nor shakes in
+## the hand (user video: drawn as the bodies hold it, it turned a third of a turn in the fist in a
+## plain stroke, and the fist whipped round on it after a chop, as the elbow straightened and let
+## the forearm's turn go; with the forearm's turn alone, a chop from high still began with the
+## blade a tenth of a turn round in the fist). Between them the two take any turn the shorter way
+## round (half a turn), so the hand never does; where the turn the forearm needs on the upper arm
+## passes half a turn (a two-handed guard arm swung far round by its drawn turn, _swivel_drawing)
+## the upper arm's goes over from one side to the other, which an arm about its own length hardly
+## shows. Drawing only, as the guard arm's turn is; the weapon is drawn where it is.
+const GRIP_DRAW_TURN := 1.75
+const GRIP_DRAW_UPPER := PI - GRIP_DRAW_TURN
+static var grip_draw_on := true   # (probes: off, to see the hand as the bodies hold it)
+func _grip_drawing(interp: bool) -> void:
+	if not grip_draw_on:
+		return
+	for side in ["R", "L"]:
+		var w = weapons[side]
+		if w == null or not is_instance_valid(w) or not has_wrist(w) or weapon_joints[side] == null or (two_handed and side != two_side) or throwing[side]:
+			continue
+		var up: VoxelPart = arm[side].upper
+		var fo: VoxelPart = arm[side].fore
+		if fo.parent_part != up or up.severed or fo.severed or up.hanging or fo.hanging or up.missing or fo.missing or up.fractured or fo.fractured:
+			continue
+		var tf := fo.get_global_transform_interpolated() if interp else fo.global_transform
+		var tw: Transform3D = (w as Weapon).get_global_transform_interpolated() if interp else (w as Weapon).global_transform
+		var tu := up.get_global_transform_interpolated() if interp else up.global_transform
+		var qf := (fo.draw_turn.basis * tf.basis).orthonormalized().get_rotation_quaternion()
+		var qw := ((w as Weapon).draw_turn.basis * tw.basis).orthonormalized().get_rotation_quaternion()
+		var qu := (up.draw_turn.basis * tu.basis).orthonormalized().get_rotation_quaternion()
+		# The blade's turn in the fist about the forearm's length, from the grip it is held in.
+		var m: Quaternion = qf.inverse() * qw * hold_q(side, w).inverse()
+		var th := wrapf(2.0 * atan2(m.y, m.w), -PI, PI)
+		var du: Quaternion = qu.inverse() * qf
+		var t0 := wrapf(2.0 * atan2(du.y, du.w), -PI, PI)
+		# The forearm's turn on the upper arm the blade needs (the shorter way round); past the
+		# forearm's own, the upper arm's turn takes the rest (about the line from the shoulder to the
+		# elbow as drawn).
+		var need := wrapf(t0 + th, -PI, PI)
+		var over := need - clampf(need, -GRIP_DRAW_TURN, GRIP_DRAW_TURN)
+		var ua := clampf(over, -GRIP_DRAW_UPPER, GRIP_DRAW_UPPER)
+		th = need - t0 - (over - ua)
+		if absf(ua) > 0.001:
+			var tud := up.draw_turn * tu
+			var sd: Vector3 = tud * up.ca + up.draw_shift
+			var ax: Vector3 = sd - (tud * fo.pa + up.draw_shift)
+			if ax.length() > 0.01:
+				var qs: Vector3 = sd - up.draw_shift
+				up.draw_turn = Transform3D(Basis(), qs) * Transform3D(Basis(ax.normalized(), ua), Vector3.ZERO) * Transform3D(Basis(), -qs) * up.draw_turn
+		if absf(th) < 0.001:
+			continue
+		# Turned about its length through the fist as drawn: the shift it was seated by kept.
+		var h0: Vector3 = (fo.draw_turn * tf) * hand_point + fo.draw_shift
+		var q: Vector3 = h0 - fo.draw_shift
+		fo.draw_turn = Transform3D(Basis(), q) * Transform3D(Basis(qf * Vector3.UP, th), Vector3.ZERO) * Transform3D(Basis(), -q) * fo.draw_turn
 
 ## Both hands on one haft, the other hand's arm is drawn turned about the line from its shoulder to
 ## its fist (the fist where it is) just as far as keeps its forearm and its elbow out of his chest
@@ -3864,11 +3926,19 @@ const SWIVEL_BEND := 0.7   # rad: about 40 degrees, a two-handed grip's wrist
 const SWIVEL_NONE := 2.0    # what leaving the arm unturned costs against a turn that is fit
 const SWIVEL_FACE := 0.26   # no turned arm comes nearer his head than this (of S)
 var swivel_a := 0.0        # the arm's turn about that line as drawn (eased)
+var swivel_e = null        # the elbow as last drawn, from the shoulder (the turn keeps to it)
+## What throwing the drawn elbow across to another turn costs, a metre of it (of S), and how fast
+## the drawn turn goes round at most (rad/s): the two turns that bend the wrist were near even
+## through a stroke, the drawn arm flipped from one to the other and back, half a turn and more in
+## a stroke, the fist going round the grip (user video).
+const SWIVEL_STICK := 2.0
+const SWIVEL_RATE := 9.0
 static var swivel_on := true   # (probes: off, to see the arm as the bodies hold it)
 func _swivel_drawing(interp: bool, dt: float) -> void:
 	var side := two_side
 	if not arm.has(side) or not swivel_on:
 		swivel_a = 0.0
+		swivel_e = null
 		return
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
@@ -3876,6 +3946,7 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 	# (A limb cut, hanging or broken is drawn as it is: nothing turned.)
 	if up.parent_part == null or fo.parent_part != up or up.severed or fo.severed or up.hanging or fo.hanging or up.missing or fo.missing or fo.draw_turn != Transform3D() or up.draw_turn != Transform3D():
 		swivel_a = 0.0
+		swivel_e = null
 		return
 	var ok: bool = two_handed and w != null and is_instance_valid(w) and not w.is_shield and not throwing[side]
 	var tu := up.get_global_transform_interpolated() if interp else up.global_transform
@@ -3929,10 +4000,17 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 					var near_face := minf(e1.distance_to(hd), minf(((s0 + e1) * 0.5).distance_to(hd), ((e1 + h0) * 0.5).distance_to(hd)))
 					if near_face < SWIVEL_FACE * S:
 						sc -= 10.0
+				if swivel_e is Vector3 and dt > 0.0:
+					sc -= SWIVEL_STICK * (e1 - s0).distance_to(swivel_e) / S
 				if sc > best:
 					best = sc
 					want = wrapf(float(c), -PI, PI)
-	swivel_a = want if dt <= 0.0 else lerp_angle(swivel_a, want, minf(1.0, dt * 12.0))
+	if dt <= 0.0:
+		swivel_a = want
+	else:
+		var step := angle_difference(swivel_a, want) * minf(1.0, dt * 12.0)
+		swivel_a = wrapf(swivel_a + clampf(step, -SWIVEL_RATE * dt, SWIVEL_RATE * dt), -PI, PI)
+	swivel_e = Basis(v.normalized(), swivel_a) * u if v.length() > 0.05 * S else null
 	if absf(swivel_a) < 0.001 or v.length() < 0.05 * S:
 		return
 	var turn := Basis(v.normalized(), swivel_a)
