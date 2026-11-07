@@ -3579,8 +3579,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# The sand is under the sole, standing as lying: the legs pass through the ground while
 		# he stands (the spring holds him), and a weak leg's step dragged its foot along under
 		# the sand (a cyclops with hacked shins stood knee-deep, user). Pushed up only, never
-		# along, so it does not catch.
-		if standing and (grounded or (rising and hit)) and not shin.severed:
+		# along, so it does not catch. A weak leg's foot whatever the trunk's height: held up off
+		# the sand by its spring, the trunk read as not on the ground, and the foot swung along
+		# under the sand half a leg deep, nothing stopping it.
+		if standing and (grounded or (rising and hit) or (hit and leg_func(side) < 0.6)) and not shin.severed:
 			var sole_f := shin.global_transform * Vector3(0, -4 * V * S, 0)
 			var pen := ground_y - sole_f.y
 			if pen > 0.005 * S:
