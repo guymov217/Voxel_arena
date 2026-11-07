@@ -9,6 +9,10 @@ shader_type spatial;
 // crowd, 0.5 a citizen in a toga, 0.25 a vendor with his basket). At the height of the fight the
 // keen ones stand up.
 uniform float excitement : hint_range(0.0, 1.0) = 0.2;
+// The spectator in fine voxels (Arena._spectator_mesh_fine): an arm's sleeve and its bare forearm
+// and hand (tag .25 over the arm's), the lap, the bare shins (.25) and the sandals (.4), the lips
+// (.25 over the eyes').
+uniform bool fine = false;
 varying vec3 col;
 
 float h1(float x) {
@@ -69,9 +73,18 @@ void vertex() {
 	} else if (tag > 0.5 && tag < 1.5) {
 		col = INSTANCE_CUSTOM.rgb;
 	} else if (tag > 3.5 && tag < 4.5) {
-		col = woman ? tunic * 0.85 : tunic * 0.45;
+		float sub = fract(tag + 0.001);
+		if (!fine) {
+			col = woman ? tunic * 0.85 : tunic * 0.45;
+		} else if (sub > 0.3) {
+			col = vec3(0.3, 0.19, 0.1);
+		} else if (sub > 0.1) {
+			col = woman ? tunic * 0.85 : INSTANCE_CUSTOM.rgb;
+		} else {
+			col = woman ? tunic * 0.85 : tunic * 0.9;
+		}
 	} else if (tag > 1.5 && tag < 3.5) {
-		col = mix(tunic, INSTANCE_CUSTOM.rgb, 0.5);
+		col = !fine ? mix(tunic, INSTANCE_CUSTOM.rgb, 0.5) : (fract(tag + 0.001) > 0.1 ? INSTANCE_CUSTOM.rgb : tunic);
 	} else if (tag > 4.5 && tag < 5.5) {
 		float k = h1(ph + 0.91);
 		col = k < 0.35 ? vec3(0.05, 0.04, 0.035) : (k < 0.65 ? vec3(0.22, 0.12, 0.06) : (k < 0.8 ? vec3(0.42, 0.18, 0.08) : (k < 0.92 ? vec3(0.78, 0.62, 0.32) : vec3(0.6, 0.58, 0.55))));
@@ -81,7 +94,8 @@ void vertex() {
 	} else if (tag > 6.5 && tag < 7.5) {
 		col = vec3(0.2, 0.12, 0.06);
 	} else if (tag > 7.5 && tag < 8.5) {
-		col = vec3(0.04, 0.03, 0.03);
+		// The eyes; the lips (.25) a darker red of the skin.
+		col = fract(tag + 0.001) > 0.1 ? INSTANCE_CUSTOM.rgb * vec3(0.66, 0.42, 0.38) : vec3(0.04, 0.03, 0.03);
 	} else if (tag > 8.5) {
 		col = toga ? vec3(0.42, 0.1, 0.38) : vec3(0.9, 0.86, 0.76);
 	} else {

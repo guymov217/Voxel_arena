@@ -1002,6 +1002,241 @@ static func _spectator_mesh() -> ArrayMesh:
 	box.call(Vector3(0, 0.79, 0), Vector3(0.12, 0.05, 0.12), 13.0, 1.0)
 	return st.commit()
 
+## A spectator in the fighters' own grain (the new look): small voxels instead of a dozen boxes,
+## a round head with eyes, brows, a nose and a mouth, hair, ears and a neck, a tunic narrower at
+## the waist with a belt, sleeves and bare forearms with hands, a seated man's thighs and shins and
+## sandals. The same tags and places as the boxes (shaders/crowd.gdshader colours and moves them):
+## UV2.x the tag (its tenths say which piece of an arm or a leg: .25 bare skin, .5 leather), UV2.y
+## a baked shade (lit from above, a voxel in a hollow darker). Faces between pieces that move apart
+## (an arm and the trunk) or that may be folded away (a hat, a sash, long hair, a sign, a basket)
+## are kept; the rest of each surface is merged into as few quads as it takes.
+const CROWD_V := 0.03
+
+static func _spectator_mesh_fine() -> ArrayMesh:
+	var V := CROWD_V
+	var cells := {}   # Vector3i -> tag
+	var at := func(p: Vector3) -> Vector3i:
+		return Vector3i(roundi(p.x / V), roundi(p.y / V), roundi(p.z / V))
+	var centre := func(c: Vector3i) -> Vector3:
+		return Vector3(c) * V
+	# Fills the cells whose centres pass `inside` within the box lo..hi with `tag`; `over` lets it
+	# write over cells already set (else only empty ones are taken: an optional piece never takes
+	# the place of the body under it).
+	var fill := func(lo: Vector3, hi: Vector3, inside: Callable, tag: float, over: bool) -> void:
+		var a: Vector3i = at.call(lo)
+		var b: Vector3i = at.call(hi)
+		for x in range(a.x, b.x + 1):
+			for y in range(a.y, b.y + 1):
+				for z in range(a.z, b.z + 1):
+					var c := Vector3i(x, y, z)
+					if not over and cells.has(c):
+						continue
+					if inside.call(centre.call(c)):
+						cells[c] = tag
+	var ell := func(o: Vector3, r: Vector3) -> Callable:
+		return func(p: Vector3) -> bool:
+			var d := (p - o) / r
+			return d.length_squared() <= 1.0
+	var cyl_y := func(o: Vector3, r: float, y0: float, y1: float) -> Callable:
+		return func(p: Vector3) -> bool:
+			return p.y >= y0 and p.y <= y1 and Vector2(p.x - o.x, p.z - o.z).length() <= r
+	# The trunk: a rounded section, broad at the chest, narrower at the waist, the shoulders
+	# rounded off into the neck.
+	var trunk := func(p: Vector3) -> bool:
+		var k := clampf((p.y - 0.14) / 0.3, 0.0, 1.0)
+		var hx := lerpf(0.118, 0.142, smoothstep(0.0, 0.75, k)) - 0.05 * smoothstep(0.86, 1.0, k)
+		var hz := lerpf(0.078, 0.088, smoothstep(0.2, 0.7, k)) - 0.02 * smoothstep(0.9, 1.0, k)
+		return pow(absf(p.x) / hx, 2.6) + pow(absf(p.z) / hz, 2.6) <= 1.0
+	fill.call(Vector3(-0.16, 0.13, -0.11), Vector3(0.16, 0.47, 0.11), trunk, 0.0, true)
+	# A belt round the waist.
+	var on_trunk := func(p: Vector3) -> bool:
+		var c: Vector3i = at.call(p)
+		return cells.has(c) and cells[c] == 0.0
+	fill.call(Vector3(-0.16, 0.165, -0.11), Vector3(0.16, 0.19, 0.11), on_trunk, 7.0, true)
+	# The neck and the head (a face to the sand: +z), and the ears.
+	fill.call(Vector3(-0.05, 0.44, -0.05), Vector3(0.05, 0.53, 0.05), cyl_y.call(Vector3.ZERO, 0.042, 0.44, 0.53), 1.0, true)
+	# (Rounded off at the corners but flat in front, for a face that reads: an egg at this grain
+	# leaves a lone voxel standing out in the middle of it.)
+	var head := func(p: Vector3) -> bool:
+		return pow(absf(p.x) / 0.082, 3.0) + pow(absf(p.z) / 0.084, 3.0) + pow(absf(p.y - 0.6) / 0.098, 2.4) <= 1.0
+	fill.call(Vector3(-0.1, 0.49, -0.1), Vector3(0.1, 0.71, 0.1), head, 1.0, true)
+	for sx in [-1.0, 1.0]:
+		fill.call(Vector3(minf(sx * 0.1, sx * 0.07), 0.58, -0.02), Vector3(maxf(sx * 0.1, sx * 0.07), 0.625, 0.02), ell.call(Vector3(sx * 0.082, 0.6, 0.0), Vector3(0.016, 0.026, 0.018)), 1.0, true)
+	# Hair: a cap over the crown and down the back of the head, short above the brow, one voxel
+	# deep over the head (every voxel touching it there, at a corner as well: an egg-shaped cap
+	# left the corners of the head bare, the skin showing through the hair in spots).
+	var by_head := func(p: Vector3) -> bool:
+		var c: Vector3i = at.call(p)
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				for dz in range(-1, 2):
+					var nb := c + Vector3i(dx, dy, dz)
+					if cells.has(nb) and cells[nb] == 1.0 and nb.y * V > 0.54:
+						return true
+		return false
+	var hair := func(p: Vector3) -> bool:
+		if not ((p.y > 0.655 and p.z < 0.06) or p.y > 0.672 or (p.z < -0.035 and p.y > 0.56)):
+			return false
+		return by_head.call(p)
+	fill.call(Vector3(-0.11, 0.55, -0.11), Vector3(0.11, 0.73, 0.11), hair, 5.0, false)
+	# The face, set into the flat of the head's front: the eyes with the brows over them (the hair's
+	# colour, flush with the skin: a brow standing out throws a shadow over the eye), the nose one
+	# voxel out below them and the lips (tag 8.25: a darker red of the skin, not a black hole).
+	var front := func(x: float, y: float) -> Vector3i:
+		var best := Vector3i(0, 0, -999)
+		for c in cells:
+			if c.x == roundi(x / V) and c.y == roundi(y / V) and cells[c] == 1.0 and c.z > best.z:
+				best = c
+		return best
+	for sx in [-1.0, 1.0]:
+		var e: Vector3i = front.call(sx * 0.03, 0.6)
+		if e.z > -999:
+			cells[e] = 8.0
+		var br: Vector3i = front.call(sx * 0.03, 0.63)
+		if br.z > -999:
+			cells[br] = 5.0
+	var nose: Vector3i = front.call(0.0, 0.57)
+	if nose.z > -999:
+		cells[nose + Vector3i(0, 0, 1)] = 1.0
+	var mouth: Vector3i = front.call(0.0, 0.54)
+	if mouth.z > -999:
+		cells[mouth] = 8.25
+	# The arms, hanging from the shoulders where the shader turns them up: a sleeve on the upper
+	# arm, the bare forearm below it and the hand.
+	for side in [-1.0, 1.0]:
+		var tag := 2.0 if side < 0.0 else 3.0
+		var ox: float = side * 0.172
+		fill.call(Vector3(ox - 0.05, 0.3, -0.05), Vector3(ox + 0.05, 0.465, 0.05), cyl_y.call(Vector3(ox, 0, 0), 0.046, 0.3, 0.465), tag, true)
+		fill.call(Vector3(ox - 0.045, 0.19, -0.045), Vector3(ox + 0.045, 0.3, 0.045), cyl_y.call(Vector3(ox, 0, 0.004), 0.036, 0.19, 0.3), tag + 0.25, true)
+		fill.call(Vector3(ox - 0.045, 0.13, -0.045), Vector3(ox + 0.045, 0.2, 0.05), ell.call(Vector3(ox, 0.165, 0.008), Vector3(0.033, 0.042, 0.04)), tag + 0.25, true)
+	# Sitting: the thighs out in front, the shins down to the step, sandals.
+	for sx in [-1.0, 1.0]:
+		var lx: float = sx * 0.062
+		var thigh := func(p: Vector3) -> bool:
+			return p.z <= 0.17 and Vector2(p.x - lx, (p.y - 0.115) * 1.1).length() <= 0.056
+		var shin := func(p: Vector3) -> bool:
+			return Vector2(p.x - lx, p.z - 0.165).length() <= 0.042
+		var sole := func(p: Vector3) -> bool:
+			return absf(p.x - lx) <= 0.04 and p.z >= 0.12 and p.z <= 0.235
+		fill.call(Vector3(lx - 0.06, 0.06, -0.06), Vector3(lx + 0.06, 0.17, 0.18), thigh, 4.0, true)
+		fill.call(Vector3(lx - 0.05, 0.02, 0.12), Vector3(lx + 0.05, 0.12, 0.21), shin, 4.25, true)
+		fill.call(Vector3(lx - 0.05, -0.005, 0.11), Vector3(lx + 0.05, 0.025, 0.25), sole, 4.4, true)
+	# Optional pieces (the shader folds them away on those without): never in the body's place.
+	# A sash across the chest from the left shoulder to the right hip, laid on the tunic.
+	var sash := func(p: Vector3) -> bool:
+		var line_x := lerpf(0.11, -0.1, (p.y - 0.18) / 0.28)
+		if absf(p.x - line_x) > 0.032:
+			return false
+		var below: Vector3i = at.call(p - Vector3(0, 0, V))
+		return cells.has(below) and cells[below] == 0.0
+	fill.call(Vector3(-0.17, 0.18, 0.0), Vector3(0.17, 0.46, 0.13), sash, 9.0, false)
+	# Long hair down the back.
+	var long_hair := func(p: Vector3) -> bool:
+		return absf(p.x) <= 0.078 and p.z <= -0.045 and p.z >= -0.115 and Vector2(p.x / 0.08, (p.z + 0.06) / 0.06).length() <= 1.25
+	fill.call(Vector3(-0.09, 0.44, -0.13), Vector3(0.09, 0.64, -0.03), long_hair, 10.0, false)
+	# A hat: a brim and a crown.
+	fill.call(Vector3(-0.15, 0.7, -0.15), Vector3(0.15, 0.735, 0.15), cyl_y.call(Vector3.ZERO, 0.135, 0.7, 0.735), 6.0, false)
+	fill.call(Vector3(-0.09, 0.735, -0.09), Vector3(0.09, 0.8, 0.09), cyl_y.call(Vector3.ZERO, 0.078, 0.735, 0.8), 6.0, false)
+	# A sign on a stick hanging from the right hand, and a vendor's basket on the head.
+	var any := func(_p: Vector3) -> bool:
+		return true
+	var basket := func(p: Vector3) -> bool:
+		return Vector2(p.x, p.z).length() <= 0.12 - 0.25 * maxf(0.0, 0.76 - p.y)
+	fill.call(Vector3(0.15, -0.13, -0.02), Vector3(0.2, 0.14, 0.02), cyl_y.call(Vector3(0.172, 0, 0), 0.014, -0.13, 0.14), 11.0, false)
+	fill.call(Vector3(0.03, -0.3, -0.015), Vector3(0.31, -0.12, 0.015), any, 12.0, false)
+	fill.call(Vector3(-0.13, 0.74, -0.13), Vector3(0.13, 0.84, 0.13), basket, 13.0, false)
+	return _voxel_crowd_mesh(cells, V)
+
+## Which pieces move or fold away apart from the rest: a face between two of them is drawn.
+static func _crowd_group(tag: float) -> int:
+	var t := floori(tag + 0.001)
+	if t == 2:
+		return 1   # the left arm
+	if t == 3:
+		return 2   # the right arm
+	if t == 11 or t == 12:
+		return 3   # the sign (with the right arm, but folded away on most)
+	if t == 6 or t == 9 or t == 10 or t == 13:
+		return 4 + t   # each optional piece its own
+	return 0
+
+const _CROWD_FACES := [[Vector3i(1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, 0, 1)], [Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 1, 0)],
+	[Vector3i(0, 1, 0), Vector3i(0, 0, 1), Vector3i(1, 0, 0)], [Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(0, 0, 1)],
+	[Vector3i(0, 0, 1), Vector3i(1, 0, 0), Vector3i(0, 1, 0)], [Vector3i(0, 0, -1), Vector3i(0, 1, 0), Vector3i(1, 0, 0)]]
+
+static func _voxel_crowd_mesh(cells: Dictionary, V: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for f in _CROWD_FACES:
+		var n: Vector3i = f[0]
+		var u: Vector3i = f[1]
+		var v: Vector3i = f[2]
+		# (Gently: the sun lights the faces again, and two strong steps over every stair of a round
+		# surface stripe it.)
+		var face_lit := 1.0 if n.y > 0 else (0.78 if n.y < 0 else 0.93)
+		# The faces this way, slice by slice along n: [tag, shade] at each (u, v).
+		var slices := {}
+		for c in cells:
+			var tag: float = cells[c]
+			var nb: Vector3i = c + n
+			if cells.has(nb) and _crowd_group(cells[nb]) == _crowd_group(tag):
+				continue
+			# A hollow is darker: the cells round the one in front of the face.
+			var crowd := 0
+			for d in [u, -u, v, -v]:
+				if cells.has(nb + d):
+					crowd += 1
+			var shade := snappedf(face_lit * (1.0 - 0.05 * crowd), 0.01)
+			var k: int = c.x * n.x + c.y * n.y + c.z * n.z
+			if not slices.has(k):
+				slices[k] = {}
+			var a := Vector2i(c.x * u.x + c.y * u.y + c.z * u.z, c.x * v.x + c.y * v.y + c.z * v.z)
+			slices[k][a] = [tag, shade]
+		for k in slices:
+			var grid: Dictionary = slices[k]
+			var done := {}
+			var keys := grid.keys()
+			keys.sort_custom(func(p, q): return p.y < q.y or (p.y == q.y and p.x < q.x))
+			for a: Vector2i in keys:
+				if done.has(a):
+					continue
+				var key: Array = grid[a]
+				# As far along u as the same face goes, then as many rows along v as are whole.
+				var w := 1
+				while grid.has(a + Vector2i(w, 0)) and not done.has(a + Vector2i(w, 0)) and grid[a + Vector2i(w, 0)] == key:
+					w += 1
+				var h := 1
+				var whole := true
+				while whole:
+					for i in w:
+						var b := a + Vector2i(i, h)
+						if not grid.has(b) or done.has(b) or grid[b] != key:
+							whole = false
+							break
+					if whole:
+						h += 1
+				for j in h:
+					for i in w:
+						done[a + Vector2i(i, j)] = true
+				# The quad: the face of the cells a..a+(w-1,h-1), half a voxel out along n.
+				var base := Vector3(n) * (float(k) + 0.5) + Vector3(u) * (float(a.x) - 0.5) + Vector3(v) * (float(a.y) - 0.5)
+				var du := Vector3(u) * float(w)
+				var dv := Vector3(v) * float(h)
+				var q := [base * V, (base + du) * V, (base + du + dv) * V, (base + dv) * V]
+				for idx in [0, 2, 1, 0, 3, 2]:
+					st.set_normal(Vector3(n))
+					st.set_color(Color(1, 1, 1))
+					st.set_uv2(Vector2(float(key[0]), float(key[1])))
+					st.add_vertex(q[idx])
+	return st.commit()
+
+static var _fine_mesh: ArrayMesh = null
+## The crowd in the fine grain unless the men are drawn as the classic blocks (Options, Graphics;
+## low graphics).
+static func fine_crowd() -> bool:
+	var look := Physique.current()
+	return look != "classic" and look != "strong"
+
 func set_excitement(x: float) -> void:
 	excitement = clampf(x, 0.0, 1.0)
 
@@ -1019,16 +1254,19 @@ static func _seat_free(a: float, rr: float) -> bool:
 	return true
 
 func _build_crowd() -> void:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	var mesh := _spectator_mesh()
+	var fine := fine_crowd()
+	var mesh: ArrayMesh
+	if fine:
+		if _fine_mesh == null:
+			_fine_mesh = _spectator_mesh_fine()
+		mesh = _fine_mesh.duplicate()
+	else:
+		mesh = _spectator_mesh()
 	crowd_mat = ShaderMaterial.new()
 	crowd_mat.shader = load("res://shaders/crowd.gdshader")
 	crowd_mat.set_shader_parameter("excitement", 0.2)
+	crowd_mat.set_shader_parameter("fine", fine)
 	mesh.surface_set_material(0, crowd_mat)
-	mm.mesh = mesh
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1234
 	var skins := [Color(0.88, 0.71, 0.55), Color(0.78, 0.56, 0.37), Color(0.6, 0.39, 0.25), Color(0.43, 0.27, 0.16), Color(0.95, 0.79, 0.65)]
@@ -1072,16 +1310,62 @@ func _build_crowd() -> void:
 			var vt := Color(0.62, 0.48, 0.3, 0.25)
 			var vs := skins[k % skins.size()] as Color
 			list.append([Transform3D(vb, Vector3(p.x, 2.6 + t * 0.7 - 0.05, p.y)), vt, Color(vs.r, vs.g, vs.b, fposmod(k * 0.137, 1.0))])
-	mm.instance_count = list.size()
-	for i in list.size():
-		mm.set_instance_transform(i, list[i][0])
-		mm.set_instance_color(i, list[i][1])
-		mm.set_instance_custom_data(i, list[i][2])
+	if not fine:
+		_crowd_part(list, mesh, Vector3.ZERO, 0.0, 0.0)
+	else:
+		# Near the eye, each spectator in the fine grain; further off than CROWD_NEAR the boxes, which
+		# show as much from there (the fine ones everywhere drew 1.4 times the frame's time with no
+		# graphics card). The stands in CROWD_SECTORS, each its own pair, measured from its middle.
+		var box := _spectator_mesh()
+		crowd_far_mat = crowd_mat.duplicate()
+		crowd_far_mat.set_shader_parameter("fine", false)
+		box.surface_set_material(0, crowd_far_mat)
+		var groups := {}
+		for e in list:
+			var o: Vector3 = (e[0] as Transform3D).origin
+			var k := int(floorf((atan2(o.x, o.z) + PI) / TAU * CROWD_SECTORS)) % CROWD_SECTORS
+			if not groups.has(k):
+				groups[k] = []
+			groups[k].append(e)
+		for k in groups:
+			var g: Array = groups[k]
+			var c := Vector3.ZERO
+			for e in g:
+				c += (e[0] as Transform3D).origin
+			c /= float(g.size())
+			_crowd_part(g, mesh, c, 0.0, CROWD_NEAR)
+			_crowd_part(g, box, c, CROWD_NEAR, 0.0)
+	_build_upper()
+
+const CROWD_NEAR := 26.0
+const CROWD_SECTORS := 16
+var crowd_far_mat: ShaderMaterial
+
+## One MultiMesh of spectators (`items`: [transform, tunic, custom]) drawn with `mesh`, placed at
+## `at` (the instances relative to it), seen from `begin` m to `end` m off (0: no limit).
+func _crowd_part(items: Array, mesh: Mesh, at: Vector3, begin: float, end: float) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.use_custom_data = true
+	mm.mesh = mesh
+	mm.instance_count = items.size()
+	for i in items.size():
+		var t: Transform3D = items[i][0]
+		mm.set_instance_transform(i, Transform3D(t.basis, t.origin - at))
+		mm.set_instance_color(i, items[i][1])
+		mm.set_instance_custom_data(i, items[i][2])
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	inst.position = at
+	if begin > 0.0:
+		inst.visibility_range_begin = begin
+		inst.visibility_range_begin_margin = 1.5
+	if end > 0.0:
+		inst.visibility_range_end = end
+		inst.visibility_range_end_margin = 1.5
 	add_child(inst)
-	_build_upper()
 
 ## Above and round the stands: an arcade of columns, the striped awning (velarium), flags on
 ## poles, the Emperor's box under a purple canopy, and the two great gates.
@@ -1472,4 +1756,6 @@ func _physics_process(_dt: float) -> void:
 		Sfx.crowd(excitement)
 		var cur: float = crowd_mat.get_shader_parameter("excitement")
 		crowd_mat.set_shader_parameter("excitement", lerpf(cur, excitement, 0.02))
+		if crowd_far_mat:
+			crowd_far_mat.set_shader_parameter("excitement", lerpf(cur, excitement, 0.02))
 		excitement = maxf(0.15, excitement - _dt * 0.03)
