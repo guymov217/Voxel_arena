@@ -106,7 +106,7 @@ static func add_spot(part: VoxelPart, kind: String, seconds: float, point = null
 			n += 1
 	if n >= (5 if kind == "fire" else 3):
 		return {}
-	var s := {"kind": kind, "lp": lp, "t": seconds, "age": 0.0, "removed": 0, "clock": 0.0, "crawl": 0.0}
+	var s := {"kind": kind, "lp": lp, "t": seconds, "age": 0.0, "removed": 0, "crawl": 0.0}
 	part.spots.append(s)
 	return s
 
@@ -144,6 +144,23 @@ static func _frostbite(p: VoxelPart, s: Dictionary, vfs: float, host: bool, crum
 		if host and p.heat[i] >= 1.4 and s.removed < cap and crumble.size() < 2:
 			crumble.append(i)
 			s.removed += 1
+
+## The work at the spots (the flesh burned and eaten away, the colours, the oil creeping on) is
+## done SPOT_EVERY seconds apart, each part at its own time within that, and no more than
+## DUE_PER_STEP parts of everyone's in one step (a part whose turn it is when the step has had
+## its share waits for the next, and never through a second turn). On one clock for every spot, all the parts a pot or a breath
+## set alight together did all of it in the same step: 30 to 40 ms five times a second with four
+## men alight, and nothing between (user: the frames drop when an enemy starts to burn or is
+## poisoned). Only that work waits; the burn's harm goes on every step.
+const SPOT_EVERY := 0.2
+const DUE_PER_STEP := 1
+static var _due_frame := -1
+static var _due_left := 0
+## A part's place in the fifth of a second: by its place in the body and its man's slot.
+static func _phase(c, p: VoxelPart) -> float:
+	var i: int = c.parts.find(p)
+	var slot = c.get("slot")
+	return fposmod(float(maxi(0, i)) * 0.0731 + float(slot if slot is int else 0) * 0.0419, SPOT_EVERY)
 
 static func tick(c, dt: float, host := true) -> Dictionary:
 	var out := {"removed": [], "caught": []}
@@ -186,13 +203,22 @@ static func tick(c, dt: float, host := true) -> Dictionary:
 		var vfs: float = p.vf * p.part_scale
 		var crumble := []
 		var touched := []
+		if p.spot_clock < 0.0:
+			p.spot_clock = _phase(c, p)
+		p.spot_clock += dt
+		var frame := Engine.get_physics_frames()
+		if frame != _due_frame:
+			_due_frame = frame
+			_due_left = DUE_PER_STEP
+		var due: bool = p.spot_clock >= SPOT_EVERY and (_due_left > 0 or p.spot_clock >= 2.0 * SPOT_EVERY)
+		if due:
+			_due_left -= 1
+			p.spot_clock = fposmod(p.spot_clock, SPOT_EVERY)
 		for s in active:
 			s.t -= dt * (2.6 if s.kind == "fire" and rolling else 1.0)
 			s.age += dt
-			s.clock += dt
-			if s.clock < 0.2:
+			if not due:
 				continue
-			s.clock = 0.0
 			if s.kind == "frost":
 				_frostbite(p, s, vfs, host, crumble, touched)
 				continue

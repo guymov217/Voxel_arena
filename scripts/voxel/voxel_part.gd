@@ -880,6 +880,7 @@ var pro_full := 0                  # its voxels as fitted: whole, it works as we
 var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
 var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
+var spot_clock := -1.0          # the part's own time in the spots' work (Fire.tick; below 0: not yet set)
 var heat := {}                   # voxel -> how charred (or melted) it is
 var flames: GPUParticles3D = null
 var poison_fx: GPUParticles3D = null   # green voxels rising off where acid or venom eats in
@@ -1379,13 +1380,15 @@ func local_of(i: int) -> Vector3:
 ## Every voxel's local_of, worked out once (a voxel never moves in its part): a cut's passes over a
 ## big creature's limb read a thousand of them each.
 var _lpos := PackedVector3Array()
+var _lpos_s := -1.0   # (the voxel size they were worked out for: a part scaled anew has them anew)
 func local_positions() -> PackedVector3Array:
-	if _lpos.size() != fx.size():
+	if _lpos.size() != fx.size() or _lpos_s != vf * part_scale:
 		var lp := PackedVector3Array()
 		lp.resize(fx.size())
 		for i in fx.size():
 			lp[i] = local_of(i)
 		_lpos = lp
+		_lpos_s = vf * part_scale
 	return _lpos
 
 ## The living voxels whose local_of lies nearer than `r` to `p`, in index order (at most
@@ -1394,13 +1397,64 @@ func voxels_within(p: Vector3, r: float, limit := 0) -> PackedInt32Array:
 	var nc := Greedy.core()
 	if nc:
 		return nc.within(fx, fy, fz, alive, grid, vf, part_scale, p, r, limit)
+	return _within_script(p, r, limit)
+
+func _within_script(p: Vector3, r: float, limit := 0) -> PackedInt32Array:
+	# Without the extension (a player's own copy on Windows) only the grid's cells round the point
+	# are gone over, not every voxel of the part: a lion's trunk has eleven thousand, and every spot
+	# of fire on it asked two or three times a fifth of a second, 10 to 20 ms each time in script
+	# (user: the frames drop when an enemy starts to burn or is poisoned). The same test on each
+	# voxel, and the same ones in the same order as going over them all.
 	var out := PackedInt32Array()
-	for i in fx.size():
-		if alive[i] and local_of(i).distance_to(p) < r:
-			out.append(i)
-			if limit > 0 and out.size() >= limit:
-				break
+	var lps := local_positions()
+	var n := fx.size()
+	var s := vf * part_scale
+	var lo := Vector3i.ZERO
+	var hi := Vector3i(-1, -1, -1)
+	if s > 0.0 and r > 0.0:
+		var c := Vector3((grid.x - 1) * 0.5, (grid.y - 1) * 0.5, (grid.z - 1) * 0.5)
+		var a := (p - Vector3(r, r, r)) / s + c
+		var b := (p + Vector3(r, r, r)) / s + c
+		lo = Vector3i(maxi(0, floori(a.x) - 1), maxi(0, floori(a.y) - 1), maxi(0, floori(a.z) - 1))
+		hi = Vector3i(mini(grid.x - 1, ceili(b.x) + 1), mini(grid.y - 1, ceili(b.y) + 1), mini(grid.z - 1, ceili(b.z) + 1))
+		if hi.x < lo.x or hi.y < lo.y or hi.z < lo.z:
+			return out
+	if s <= 0.0 or r <= 0.0 or (hi.x - lo.x + 1) * (hi.y - lo.y + 1) * (hi.z - lo.z + 1) >= n or not _cells_single():
+		for i in n:
+			if alive[i] and lps[i].distance_to(p) < r:
+				out.append(i)
+				if limit > 0 and out.size() >= limit:
+					break
+		return out
+	var cm := cell_map()
+	for x in range(lo.x, hi.x + 1):
+		for y in range(lo.y, hi.y + 1):
+			var row := (x * grid.y + y) * grid.z
+			for z in range(lo.z, hi.z + 1):
+				var i := cm[row + z] - 1
+				if i >= 0 and alive[i] and lps[i].distance_to(p) < r:
+					out.append(i)
+	out.sort()
+	if limit > 0 and out.size() > limit:
+		out.resize(limit)
 	return out
+
+## Whether no two voxels share a cell of the grid (the cell map holds one each): then the cells round
+## a point are all the voxels there. Worked out once.
+var _single := -1
+func _cells_single() -> bool:
+	if _single < 0:
+		var cm := cell_map()
+		var n := 0
+		for v in cm:
+			if v > 0:
+				n += 1
+		var inside := 0
+		for i in fx.size():
+			if fx[i] >= 0 and fy[i] >= 0 and fz[i] >= 0 and fx[i] < grid.x and fy[i] < grid.y and fz[i] < grid.z:
+				inside += 1
+		_single = 1 if n == fx.size() and inside == fx.size() else 0
+	return _single == 1
 
 func world_of(i: int) -> Vector3:
 	return global_transform * local_of(i)
