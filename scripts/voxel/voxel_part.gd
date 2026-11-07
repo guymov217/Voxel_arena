@@ -3113,16 +3113,32 @@ func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
 	if stuck.size() >= (40 if nail else 12):
 		return
 	var vis := Items.visual(type)
-	add_child(vis)
+	# Carried with the part as it is drawn (seated on its joint, turned with a bend, its breath),
+	# not as the body has it: on the body itself, an arrow in a hydra's neck stood off the neck
+	# and shook as the neck was drawn back onto its joint frame after frame (user).
+	var hold := Node3D.new()
+	hold.top_level = true
+	hold.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	add_child(hold)
+	hold.global_transform = global_transform
+	hold.add_child(vis)
+	draw_with.append(hold)
 	var lp: Vector3 = global_transform.affine_inverse() * world_p
 	var ld: Vector3 = (global_transform.basis.orthonormalized().inverse() * dir).normalized()
-	# Where it entered: back along its line to the surface of the part's box.
+	# Where it entered: back along its line to the surface of the part's box, then on along it to
+	# the flesh, past the box's empty corners to the first voxel there is (a neck is round in its
+	# box: stuck where the box began, an arrow's point stood in the air short of it, user).
 	var back := 0.3
 	for k in 3:
 		var v := -ld[k]
 		if absf(v) > 1e-4:
 			back = minf(back, maxf(0.0, ((half_ext[k] if v > 0.0 else -half_ext[k]) - lp[k]) / v))
 	var entry := lp - ld * back
+	var step := maxf(0.005, vf * part_scale)
+	var went := 0.0
+	while went + step <= back and voxels_within(entry, step * 0.9, 1).is_empty():
+		entry += ld * step
+		went += step
 	# The models' points are at +z: laid along the way it flew (in the part's own frame), point
 	# first into the wound, the head, fletching or butt standing out.
 	var out := 0.025 if nail else (0.24 if type.begins_with("pot_arrow") else (0.1 if type == "pot_bolt" else 0.12))
