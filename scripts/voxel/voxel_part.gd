@@ -897,9 +897,20 @@ var ca := Vector3.ZERO           # joint point on this part (own frame)
 var mm: MultiMesh
 var mmi: MultiMeshInstance3D
 var main_shape: CollisionShape3D
-var boxes: Array = []            # CollisionShape3D, while the part has holes
+var boxes: Array = []            # CollisionShape3D, while the part has holes (or is fitted)
 var split := false
 var half_ext := Vector3.ONE
+## What is drawn of the part, as boxes laid along it (own frame; none: the part's whole box): its
+## collider is kept to them, whole or cut (fit_collider). A giant of myth is drawn slimmer than
+## his boxes (FineBody.fit_giant): a shin's box a hand wider than the shin drawn in it, a forearm's
+## swung through the air beside the arm on screen, knocked a man down with nothing drawn touching
+## him (user). The weight, the inertia and the joints stay the box's.
+var fit_slabs: Array = []
+
+func fit_to(slabs: Array) -> void:
+	fit_slabs = slabs
+	if main_shape != null:
+		fit_collider()
 
 static var _box_mesh_cache := {}
 static var _material: StandardMaterial3D
@@ -2692,7 +2703,9 @@ func fit_collider() -> void:
 			holes += 1
 		any += solid[c]
 	if holes == 0:
-		if split:
+		if not fit_slabs.is_empty():
+			_set_boxes(fit_slabs)   # (whole: as it is drawn)
+		elif split:
 			_drop_boxes(true)
 		return
 	if any == 0:
@@ -2706,21 +2719,37 @@ func fit_collider() -> void:
 	for j in _air_of.size():
 		if fleshy[_air_by[j]] != 0:
 			solid[_air_of[j]] = 1
+	var k := half_ext * 2.0 / Vector3(w, h, d)
+	var bl: Array = Greedy.boxes(w, h, d, solid)
+	var list := []
+	for b in bl:
+		var box := AABB(Vector3(b[0] - w * 0.5, b[1] - h * 0.5, b[2] - d * 0.5) * k, Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k)
+		# (Kept to what is drawn of it, fit_slabs: the rest is air on screen.)
+		for sl in fit_slabs:
+			var cut := box.intersection(sl)
+			if cut.size.x > 0.0001 and cut.size.y > 0.0001 and cut.size.z > 0.0001:
+				list.append(cut)
+		if fit_slabs.is_empty():
+			list.append(box)
+	if list.is_empty():
+		for b in bl:
+			list.append(AABB(Vector3(b[0] - w * 0.5, b[1] - h * 0.5, b[2] - d * 0.5) * k, Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k))
+	_set_boxes(list)
+
+## The collider as these boxes (own frame), the whole box laid aside. The shapes there already are
+## moved and sized to the new boxes, and only the difference made or freed: all of them freed and
+## made anew at every cut (a hundred on a gorilla's trunk) was a hitch of more than a hundredth of
+## a second.
+func _set_boxes(list: Array) -> void:
 	split = true
 	main_shape.disabled = true
-	var k := half_ext * 2.0 / Vector3(w, h, d)
-	# The shapes there already are moved and sized to the new boxes, and only the difference made
-	# or freed: all of them freed and made anew at every cut (a hundred on a gorilla's trunk) was
-	# a hitch of more than a hundredth of a second.
-	var bl: Array = Greedy.boxes(w, h, d, solid)
-	while boxes.size() > bl.size():
+	while boxes.size() > list.size():
 		var gone: CollisionShape3D = boxes.pop_back()
 		gone.queue_free()
 		remove_child(gone)
-	for i in bl.size():
-		var b = bl[i]
-		var size := Vector3(b[3] - b[0] + 1, b[4] - b[1] + 1, b[5] - b[2] + 1) * k
-		var at := Vector3((b[0] + b[3] + 1) * 0.5 - w * 0.5, (b[1] + b[4] + 1) * 0.5 - h * 0.5, (b[2] + b[5] + 1) * 0.5 - d * 0.5) * k
+	for i in list.size():
+		var size: Vector3 = (list[i] as AABB).size
+		var at: Vector3 = (list[i] as AABB).get_center()
 		if i < boxes.size():
 			var cs: CollisionShape3D = boxes[i]
 			var bs: BoxShape3D = cs.shape

@@ -446,3 +446,125 @@ func test_a_falling_giant_stays_on_the_sand() -> void:
 	t.check(g.torso.global_position.y > 0.0 and g.torso.global_position.y < 2.0 * g.S, "he lies on the floor, not under it (%.2f m)" % g.torso.global_position.y)
 	m.queue_free()
 
+
+## How far points on a part's collider faces lie from what is drawn of it in its giant's build
+## (own frame: its fine voxels that lie over a voxel of it): [mean, most], m (most counted to
+## 0.16 m).
+func _off_drawing(p: VoxelPart, bn: String) -> Array:
+	var d := FineBody.part_data(bn, String(p.part_name))
+	var L := FineBody._layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(p.vf * p.part_scale, 0.00001)), false)
+	var B := 0.08
+	var near := {}
+	var par: PackedInt32Array = L.par
+	for s in par.size():
+		if par[s] < 0:
+			continue
+		var c: Vector3 = (L.xf[s] as Transform3D).origin
+		var k := Vector3i((c / B).floor())
+		if not near.has(k):
+			near[k] = []
+		(near[k] as Array).append(c)
+	var h := Vector3.ONE * float(L.fsz) * 0.5
+	var sum := 0.0
+	var most := 0.0
+	var n := 0
+	for c in p.get_children():
+		if not (c is CollisionShape3D) or (c as CollisionShape3D).disabled or not ((c as CollisionShape3D).shape is BoxShape3D):
+			continue
+		var sz: Vector3 = ((c as CollisionShape3D).shape as BoxShape3D).size
+		for ax in 3:
+			for sg in [-1.0, 1.0]:
+				for u in 3:
+					for v in 3:
+						var q := Vector3.ZERO
+						q[ax] = sg * 0.5
+						q[(ax + 1) % 3] = (u + 0.5) / 3.0 - 0.5
+						q[(ax + 2) % 3] = (v + 0.5) / 3.0 - 0.5
+						var w: Vector3 = (c as CollisionShape3D).position + q * sz
+						var best := 2.0 * B
+						var k0 := Vector3i((w / B).floor())
+						for dx in range(-2, 3):
+							for dy in range(-2, 3):
+								for dz in range(-2, 3):
+									for cc in near.get(k0 + Vector3i(dx, dy, dz), []):
+										best = minf(best, ((w - cc).abs() - h).max(Vector3.ZERO).length())
+						sum += best
+						most = maxf(most, best)
+						n += 1
+	return [sum / maxf(1.0, n), most]
+
+func _shapes_of(p: VoxelPart) -> Array:
+	var out := []
+	for c in p.get_children():
+		if c is CollisionShape3D and not (c as CollisionShape3D).disabled:
+			out.append([(c as CollisionShape3D).position.snapped(Vector3.ONE * 0.0001), ((c as CollisionShape3D).shape as BoxShape3D).size.snapped(Vector3.ONE * 0.0001)])
+	return out
+
+## The user: a giant knocked a man down with nothing on screen touching him, his shin's box a hand
+## wider than the shin drawn in it, his forearm's swung through the air beside the arm on screen.
+## What strikes and is struck of a giant is what is drawn of him: each limb's boxes kept to his
+## build's sculpt (FineBody.fit_giant), whole and cut, the same in any look.
+func test_a_giant_strikes_and_is_struck_where_he_is_drawn() -> void:
+	for kind in ["cyclops", "minotaur", "troll", "titan"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+		m.me.f.teleport(Vector3(0, 0, -12))
+		var spec: Dictionary = m.enemy_spec({"e": kind}, 0, 1)
+		spec.pos = Vector3(0, 0.1, 4.0)
+		spec.yaw = PI
+		var g: Fighter = m.spawn_fighter(spec).f
+		var bn := Physique.giant_of(g)
+		for n in ["forearmR", "forearmL", "shinR", "shinL"]:
+			var off := _off_drawing(g.by_name[n], bn)
+			printerr("   : %s %s: box faces off the drawing, mean %.3f m, most %.3f m" % [kind, n, off[0], off[1]])
+			t.check(off[0] < 0.045 and off[1] < 0.15, "%s %s: struck where it is drawn (box faces off the drawing: mean %.3f m, most %.3f m)" % [kind, n, off[0], off[1]])
+		# The same in the old look (drawn as his voxels): the look is drawing only.
+		var was := {}
+		for p in g.parts:
+			was[p.part_name] = _shapes_of(p)
+		Physique.dress(g, "classic")
+		var same := true
+		for p in g.parts:
+			same = same and _shapes_of(p) == was[p.part_name]
+		Physique.dress(g)
+		t.check(same, "%s: the same boxes in the old look" % kind)
+		# Cut into: what is left is still struck where it is drawn.
+		var fa: VoxelPart = g.by_name.forearmR
+		var lps := fa.local_positions()
+		var chop := []
+		for i in fa.fx.size():
+			if lps[i].x > 0.0 and absf(lps[i].y) < fa.half_ext.y * 0.4:
+				chop.append(i)
+		fa.remove_voxels(chop)
+		fa.fit_collider()
+		var cut := _off_drawing(fa, bn)
+		t.check(fa.split and cut[0] < 0.05, "%s: a forearm cut into still struck where it is drawn (mean %.3f m, %d boxes)" % [kind, cut[0], fa.shape_count()])
+		m.queue_free()
+		await get_tree().physics_frame
+
+## The arm a giant holds his weapon in with both hands is drawn where it is: the turn of the drawing
+## about the shoulder that lays a man's elbow out of his chest (Fighter._swivel_drawing) drew a
+## giant's a third of a metre off it, and his arm struck a man where nothing was drawn (user).
+func test_a_giants_guard_arm_is_drawn_where_it_is() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var spec: Dictionary = m.enemy_spec({"e": "cyclops"}, 0, 1)
+	spec.pos = Vector3(0, 0.1, 4.0)
+	spec.yaw = PI
+	var e = m.spawn_fighter(spec)
+	var g: Fighter = e.f
+	for i in 90:
+		await get_tree().physics_frame
+	g.two_handed = true
+	for i in 30:
+		g._seat_drawing(false, 1.0 / 60.0)
+	var most := 0.0
+	for p in [g.arm[g.two_side].upper, g.arm[g.two_side].fore]:
+		var td: Transform3D = (p as VoxelPart).draw_turn * (p as VoxelPart).global_transform
+		td.origin += (p as VoxelPart).draw_shift
+		most = maxf(most, td.origin.distance_to((p as VoxelPart).global_position))
+	t.check(absf(g.swivel_a) < 0.001 and most < 0.06, "his guard arm drawn where it is (turned %.2f, drawn %.3f m off)" % [g.swivel_a, most])
+	m.queue_free()

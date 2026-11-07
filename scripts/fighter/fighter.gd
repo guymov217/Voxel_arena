@@ -426,6 +426,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		MonsterLook.paint_face(self, String(mods.look))
 	# How he is drawn (Options: the gladiators' look). Drawing only.
 	Physique.dress(self)
+	# A giant of myth is struck where he is drawn, in any look (FineBody.fit_giant).
+	FineBody.fit_giant(self)
 	var main = loadout.get("main")
 	var off = loadout.get("off")
 	# A blade arm carries its own blade; a hook carries nothing.
@@ -3862,7 +3864,7 @@ const OFF_CLEAR := 0.07
 var off_turn_a := 0.0
 func _off_clear_drawing(interp: bool, dt: float) -> void:
 	var side := two_off()
-	if not arm.has(side) or not swivel_on or not two_handed or torso.severed:
+	if not arm.has(side) or not swivel_on or not two_handed or torso.severed or giant_foe():
 		off_turn_a = 0.0
 		return
 	var up: VoxelPart = arm[side].upper
@@ -3943,7 +3945,9 @@ const SWIVEL_RATE := 9.0
 static var swivel_on := true   # (probes: off, to see the arm as the bodies hold it)
 func _swivel_drawing(interp: bool, dt: float) -> void:
 	var side := two_side
-	if not arm.has(side) or not swivel_on:
+	# (Not a giant's: his arm is long enough that the turn drew it a third of a metre off where it
+	# is, and it struck a man where nothing was drawn, user. His is drawn as the bodies hold it.)
+	if not arm.has(side) or not swivel_on or giant_foe():
 		swivel_a = 0.0
 		swivel_e = null
 		return

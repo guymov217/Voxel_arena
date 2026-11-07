@@ -230,6 +230,74 @@ static func build(f, p: VoxelPart, bn: String, on := true) -> void:
 		if p.dangle_mesh:
 			p.dangle_mesh.visible = false
 
+## A giant of myth is drawn slimmer than his boxes (his build's sculpt): each part's collider is
+## kept to it (VoxelPart.fit_to), layer by layer along the part, so that what strikes and is struck
+## is what is drawn (user: a giant knocked a man down with nothing on screen touching him). In any
+## look: the same fight in every look (the classic giant drawn as his voxels, a little fuller).
+static func fit_giant(f) -> void:
+	var bn := Physique.giant_of(f)
+	if bn == "":
+		return
+	for p: VoxelPart in f.parts:
+		if p == f.head or p.missing or p.prosthetic != "":
+			continue
+		var d := part_data(bn, String(p.part_name))
+		if d.is_empty() or (d.sub as PackedInt32Array).size() != p.grid.x * p.grid.y * p.grid.z:
+			continue
+		var vox := p.vf * p.part_scale
+		p.fit_to(slabs(p, _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)), false)))
+
+## What is drawn of a part (its fine voxels that lie over a voxel of it), as boxes laid along it
+## (own frame): one to each layer of its box along the line it hangs by, round what is drawn in
+## that layer and never past the box, layers alike taken as one.
+static func slabs(p: VoxelPart, L: Dictionary) -> Array:
+	var ax: int = p._root_axis()[0]
+	var n: int = p.dims[ax]
+	var he := p.half_ext
+	var cell: float = he[ax] * 2.0 / float(n)
+	var lo := []
+	var hi := []
+	for k in n:
+		lo.append(Vector3.INF)
+		hi.append(-Vector3.INF)
+	var par: PackedInt32Array = L.par
+	var xf: Array = L.xf
+	var h := Vector3.ONE * float(L.fsz) * 0.5
+	for s in par.size():
+		if par[s] < 0:
+			continue
+		var c: Vector3 = (xf[s] as Transform3D).origin
+		if absf(c[ax]) > he[ax]:
+			continue   # (over the joint, on the part beside it: drawn with that one)
+		var k := clampi(int(floor((c[ax] + he[ax]) / cell)), 0, n - 1)
+		lo[k] = (lo[k] as Vector3).min(c - h)
+		hi[k] = (hi[k] as Vector3).max(c + h)
+	var whole := AABB(-he, he * 2.0)
+	var out := []
+	for k in n:
+		var layer := whole
+		layer.position[ax] = -he[ax] + cell * k
+		layer.size[ax] = cell
+		var b := layer
+		if (lo[k] as Vector3).x <= (hi[k] as Vector3).x:
+			var cut := layer.intersection(AABB(lo[k], hi[k] - lo[k]))
+			if cut.has_volume():
+				cut.position[ax] = layer.position[ax]
+				cut.size[ax] = cell
+				b = cut
+		# (The layer before it as good as the same across: the two one box.)
+		if not out.is_empty():
+			var last: AABB = out[out.size() - 1]
+			var same := true
+			for a in 3:
+				if a != ax and (absf(last.position[a] - b.position[a]) > 0.012 * p.part_scale or absf(last.end[a] - b.end[a]) > 0.012 * p.part_scale):
+					same = false
+			if same:
+				out[out.size() - 1] = last.merge(b)
+				continue
+		out.append(b)
+	return out
+
 ## What a part of a build (or of a beast) is drawn with that is the same for every man of it,
 ## worked out once a build, a part and a size: each fine voxel's place, the voxel it lies over,
 ## its shade, the voxels' own map and which are drawn, and the drawing's buffer (the places and
