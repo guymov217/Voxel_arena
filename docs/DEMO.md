@@ -125,5 +125,5 @@ godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECK
   days.
 - **Steam Next Fest:** register in Steamworks (*Marketing → Steam Next Fest*) and have the demo
   live a few weeks before the festival.
-- **Trailer:** cut the first seconds from kill cam clips, and lead with the gorilla, the cyclops
-  and the forge.
+- **Trailer:** `tools\make_trailer75.bat` (`tools/TRAILER.md`), the 75-second one, made from
+  the game.

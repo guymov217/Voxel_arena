@@ -144,22 +144,15 @@ awards or "out now" text. The capsules here are made from real game frames with 
 them. They are good for a first page. A hand-painted key art is the one thing worth paying an
 artist for later.
 
-## The trailer (30 to 45 seconds; the first 5 decide)
+## The trailer (75 seconds; the first 5 decide)
 
-Steam autoplays the first trailer muted, so the first seconds must read without sound.
+Steam autoplays the first trailer muted, so the first seconds must read without sound: it opens
+on a blow landing, and its lines are on screen.
 
-| Time | Shot | Text on screen |
-|---|---|---|
-| 0–3 s | The gorilla grabs a gladiator and tears him in two | — |
-| 3–6 s | The forge: a weapon built voxel by voxel, fast | BUILD IT. |
-| 6–10 s | First person: that weapon swung into a man, a limb flies | SWING IT. |
-| 10–16 s | Fast cuts: elephant stomp, crocodile death roll, Cyclops | — |
-| 16–22 s | Four friends against the Minotaur, the crowd on its feet | UP TO 8 PLAYERS |
-| 22–28 s | The silliest weapons: the goose, the chicken, the two-person sword | — |
-| 28–33 s | Kill cam slow motion of the best kill | — |
-| 33–38 s | Logo | WRECKSMITH · Wishlist on Steam |
-
-Record with the game's own F9 recorder or OBS at 1920×1080 60 fps, gameplay only.
+`tools\make_trailer75.bat` makes it from the game itself on a PC with a graphics card, shot by
+shot to its production script: `docs\store\trailer75.mp4` (1920x1080, H.264, AAC, ready to
+upload), a version without text beside it, and the cut list. The shots, the rules they are made
+by and what each shows: `tools/TRAILER.md`.
 
 ## Remaking the screenshots and capsules
 

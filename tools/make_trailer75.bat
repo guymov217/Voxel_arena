@@ -1,15 +1,15 @@
 @echo off
-rem The launch trailer, rendered from the game on this PC: docs\store\trailer.mp4 (1920x1080, 30 fps).
-rem With "rise" (make_rise_trailer.bat) the second one instead: docs\store\trailer_rise.mp4, over the shoulder.
-rem With "blood" (make_blood_trailer.bat) the third: docs\store\trailer_blood.mp4, THE CROWD WANTS BLOOD.
-rem With "feature" (make_feature_trailer.bat) the newest: docs\store\trailer_features.mp4, the game's features one by one.
-rem Double-click this file. It needs Godot 4.7 and Python 3; ffmpeg and Pillow it finds or fetches itself:
+rem WRECKSMITH - the 75-second trailer, made from the game itself on this PC, shot by shot to its
+rem production script (tools\TRAILER.md): docs\store\trailer75.mp4 (1920x1080, 30 fps), beside it
+rem trailer75_clean.mp4 (no text) and trailer75_cut.json (the cut list). Double-click this file.
+rem It needs Godot 4.7 and Python 3; ffmpeg, Pillow and numpy it finds or fetches itself:
 rem   ffmpeg: the FFMPEG variable (the ffmpeg.exe, its bin folder or the folder it was unzipped to),
 rem           the PATH (read fresh, so a PATH just edited counts), the usual install folders, or,
 rem           if it is nowhere, downloaded once (about 100 MB) into ..\trailer_work\ffmpeg.
-rem   Godot:  the GODOT variable, else D:\godot\Godot_v4.7.2-stable_win64(_console).exe, else godot on the PATH.
-rem 20-40 minutes with a graphics card; shots already made are kept, so a run that was stopped
-rem carries on. Work files go to ..\trailer_work beside the project.
+rem   Godot:  the GODOT variable, else Godot 4.7 wherever it is usually unzipped, else godot on the PATH.
+rem 30-60 minutes with a graphics card; shots already recorded are kept, so a run that was stopped
+rem carries on. Work files go to ..\trailer_work beside the project. Arguments go on to the script:
+rem   make_trailer75.bat --shots 1,2     record those two shots again
 setlocal
 cd /d "%~dp0\.."
 
@@ -54,21 +54,16 @@ if not exist "%FF%ffprobe.exe" (
 set "PATH=%FF%;%PATH%"
 echo ffmpeg: %FF%
 
-rem ---------- Pillow ----------
+rem ---------- Pillow and numpy ----------
 %PY% -c "import PIL" >nul 2>nul || (
 	echo Installing Pillow for Python...
 	%PY% -m pip install --user pillow || (echo Could not install Pillow: run  pip install pillow  yourself. & pause & exit /b 1)
 )
-rem (The second and third trailers, "make_trailer.bat rise" and "blood", make their war drums with numpy.)
-set "SCRIPT=tools\make_trailer.py"
-if /i "%~1"=="rise" set "SCRIPT=tools\make_rise_trailer.py"
-if /i "%~1"=="blood" set "SCRIPT=tools\make_blood_trailer.py"
-if /i "%~1"=="feature" set "SCRIPT=tools\make_feature_trailer.py"
-if /i not "%~1"=="rise" if /i not "%~1"=="blood" if /i not "%~1"=="feature" goto :deps_ok
-%PY% -c "import numpy" >nul 2>nul && goto :deps_ok
-echo Installing numpy for Python...
-%PY% -m pip install --user numpy || (echo Could not install numpy: run  pip install numpy  yourself. & pause & exit /b 1)
-:deps_ok
+%PY% -c "import numpy" >nul 2>nul || (
+	echo Installing numpy for Python...
+	%PY% -m pip install --user numpy || (echo Could not install numpy: run  pip install numpy  yourself. & pause & exit /b 1)
+)
+set "SCRIPT=tools\make_trailer75.py"
 
 rem ---------- Godot ----------
 rem The GODOT variable, else Godot 4.7 wherever it usually is (the project folder, the one above
@@ -93,7 +88,7 @@ exit /b 1
 :godot_ok
 echo Godot: %GODOT%
 
-%PY% %SCRIPT%
+%PY% %SCRIPT% %*
 echo.
 pause
 endlocal

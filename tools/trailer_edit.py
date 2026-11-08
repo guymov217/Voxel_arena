@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The trailer's editor (tools/make_rise_trailer.py drives it): cuts recorded game footage into a
+"""The trailer's editor (tools/make_trailer75.py drives it): cuts recorded game footage into a
 finished picture and sound, frame by frame, the way a cutting room does.
 
 The game is recorded at 120 frames a second (a frame for every physics step), so the editor has

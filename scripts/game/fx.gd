@@ -29,7 +29,7 @@ func _init(headless_ := false) -> void:
 	name = "Fx"
 	if not headless and Save:
 		quality = str(Save.get_value("settings", {}).get("quality", "high"))
-	# (A trailer filmed at its own quality, not the player's: tools/make_trailer.py.)
+	# (A trailer filmed at its own quality, not the player's: tools/make_trailer75.py.)
 	if OS.get_environment("FORCE_QUALITY") != "":
 		quality = OS.get_environment("FORCE_QUALITY")
 

@@ -28,8 +28,8 @@ long campaign on real hardware before a release date is set.
    short and long description from `STEAM_PAGE.md`, fill in the content survey (violence and
    optional gore: the Gore setting turns blood, organs and severing down), the age rating
    questionnaire, and the system requirements once measured (below).
-3. **A trailer**: the plan and the render kit are in `STEAM_PAGE.md`; it has to be recorded on a
-   PC with a GPU (F9 records gameplay in the game).
+3. **A trailer**: `tools\make_trailer75.bat` makes the 75-second trailer from the game on a PC
+   with a graphics card (`tools/TRAILER.md`).
 4. **Builds**: the *Builds* workflow exports Windows, Linux and macOS, full game and demo. macOS
    builds are not signed or notarized (Steam does not require it for Windows/Linux; for macOS
    it does, with an Apple developer account), so ship Windows (and Linux) first.
