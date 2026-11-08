@@ -4,8 +4,9 @@ extends Node
 ## large from a cinema camera: the clear afternoon of the "late" look (LOOKS), a rim light behind
 ## the fighters, depth of field.
 ## CAPS_SCENE picks the scene (giant, lion, clash, dragon, squad); CAPS_VIEWS the frames (wide
-## 2560x1440, tall 1440x2160, hero 3840x1240). PNGs: SHOT_DIR/cap_<scene>_<view>.png, put
-## together into the capsules by tools/make_capsules.py.
+## 2560x1440, tall 1440x2160, hero 3840x1240, main 2464x1412: the main capsule at twice its size);
+## CAPS_FRAMING=side the main capsule's framings (_side_framings). PNGs:
+## SHOT_DIR/cap_<scene>_<view>_<n>.png, put together into the capsules by tools/make_capsules.py.
 
 ## The hero's own weapon: a forged war axe, gold and steel, a ruby set in it.
 const AXE := {"name": "Wrecker", "kind": "weapon", "twoHanded": false, "sharpness": 0.9, "voxels": [
@@ -18,7 +19,8 @@ const AXE := {"name": "Wrecker", "kind": "weapon", "twoHanded": false, "sharpnes
 	[4, 6, 0, "steel", "edge"], [4, 7, 0, "steel", "edge"], [4, 8, 0, "steel", "edge"], [4, 9, 0, "steel", "edge"], [4, 10, 0, "steel", "edge"], [4, 11, 0, "steel", "edge"], [4, 12, 0, "steel", "edge"], [4, 13, 0, "steel", "edge"], [4, 14, 0, "steel", "edge"],
 	[-1, 10, 0, "steel", "point"], [-2, 10, 0, "steel", "point"], [0, 12, 0, "steel", "point"], [0, 13, 0, "steel", "point"]]}
 const GILT := ["goldHelmet", "goldLorica", "manica", "greaves", "cape"]
-const VIEWS := {"wide": Vector2i(2560, 1440), "tall": Vector2i(1440, 2160), "hero": Vector2i(3840, 1240), "preview": Vector2i(1280, 720)}
+const VIEWS := {"wide": Vector2i(2560, 1440), "tall": Vector2i(1440, 2160), "hero": Vector2i(3840, 1240), "preview": Vector2i(1280, 720),
+	"main": Vector2i(2464, 1412), "mprev": Vector2i(1232, 706)}   # (the main capsule, twice its size; and as it is)
 
 ## The light of the art: the game's own afternoon, only clearer (user: the old frames were far
 ## too bright and warm, they glowed and the detail was lost in the glow). A white sun from the
@@ -135,6 +137,8 @@ func _try_poses(names: Array) -> void:
 ## Framings of two fighters (`a` the hero, `b` his foe of size `s`): from either side and from
 ## over the hero's shoulder, low (the heroic angle) or at eye height, far enough for both whole.
 func _framings(view: String, a: Vector3, b: Vector3, s := 1.0) -> Array:
+	if OS.get_environment("CAPS_FRAMING") == "side":
+		return _side_framings(a, b, s)
 	var d := _ground(b - a)
 	var gap := d.length()
 	d = d.normalized() if gap > 0.05 else Vector3(0, 0, 1)
@@ -445,6 +449,8 @@ static func pose_drive(f: Fighter, foe: Fighter, hand: Dictionary, room: float, 
 ## the hero's shoulder, a third and a half of the way round, so the giant's face is seen turned
 ## on the hero; low, looking up at the giant, or at a man's height.
 func _facing_framings(view: String, a: Vector3, b: Vector3, s: float) -> Array:
+	if OS.get_environment("CAPS_FRAMING") == "side":
+		return _side_framings(a, b, s)
 	var d := _ground(b - a)
 	var gap := d.length()
 	d = d.normalized() if gap > 0.05 else Vector3(0, 0, 1)
@@ -593,3 +599,24 @@ func _squad() -> Callable:
 	var S := float(boss.f.S) if is_instance_valid(boss.f) else 2.0
 	return func(view: String) -> Array:
 		return _framings(view, squad, bp, S)
+
+## The main capsule's framings (CAPS_FRAMING=side): to one side of the line from the hero `a` to
+## his foe `b` (of size `s`), standing between them along it, near the hero: each of the two is
+## seen three-quarters from the front, the hero big and near, the foe beyond him; low (a giant
+## towering) or at the chest. Both sides, two places along the line, two heights.
+func _side_framings(a: Vector3, b: Vector3, s: float) -> Array:
+	var d := _ground(b - a)
+	var gap := d.length()
+	d = d.normalized() if gap > 0.05 else Vector3(0, 0, 1)
+	var side := d.cross(Vector3.UP)
+	var tall := 1.0 + 0.9 * (s - 1.0)
+	var outm := float(OS.get_environment("CAPS_OUT")) if OS.get_environment("CAPS_OUT") != "" else 1.8 + 0.9 * (s - 1.0)
+	var fov := float(OS.get_environment("CAPS_FOVA")) if OS.get_environment("CAPS_FOVA") != "" else 50.0 + 6.0 * (s - 1.0)
+	var out := []
+	for sg in [1.0, -1.0]:
+		for al in [0.15, 0.35]:
+			for hgt in [0.35, 0.95]:
+				var eye := _ground(a + d * gap * al + side * sg * outm) + Vector3(0, hgt, 0)
+				var at := _ground(a.lerp(b, 0.5)) + Vector3(0, tall * 0.85, 0)
+				out.append({"eye": eye, "at": at, "fov": fov})
+	return out

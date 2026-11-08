@@ -160,7 +160,9 @@ by and what each shows: `tools/TRAILER.md`.
 # screenshots (needs a display or xvfb-run), 1920x1080
 SHOT_DIR=docs/store/screenshots godot --resolution 1920x1080 --path . -- --probe steamshots
 # the logo (logo.png, logo_stacked.png, library_logo_1280x720.png), then the capsules: the
-# key-art frames in docs/store/keyart (tests/capsuleart.gd) with the logo on them
+# key-art frames in docs/store/keyart (tests/capsuleart.gd) with the logo on them; the main
+# capsule's frame (keyart/giant_main.jpg) is cap_giant_main_2.png from
+#   CAPS_SCENE=giant CAPS_FRAMING=side CAPS_VIEWS=main SHOT_DIR=/tmp/k godot --path . -- --probe capsuleart
 python3 tools/make_logo.py
 python3 tools/make_capsules.py
 # the key art: the poster frame and the wide frame, then the posters
