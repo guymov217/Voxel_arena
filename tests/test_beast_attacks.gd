@@ -31,7 +31,9 @@ func _run(m: Match, man: Fighter, b: Beast, seconds: float, each: Callable) -> v
 
 func test_the_scorpion_stings_and_poisons() -> void:
 	seed(5)
-	var s = await _setup("scorpion", 2.6)
+	# No shield on his arm: it is the sting this tests, not the shield (a shield that wears as
+	# little as it does now could keep every sting off him the whole time, run after run).
+	var s = await _setup("scorpion", 2.6, {"main": "gladius", "off": ""})
 	var stings := [0]
 	s[0].combat.hit.connect(func(h): if h.attacker == s[2] and h.get("part") and h.res and h.char == s[1] and String(h.get("weapon_part", "")) == "": pass)
 	var poisoned := [false]
