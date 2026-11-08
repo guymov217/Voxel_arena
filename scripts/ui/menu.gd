@@ -25,6 +25,12 @@ const HERO_POS := Vector3(-1.45, 0, -9.7)
 ## Bread & Circuses is set aside for now (its screens and code stay, ready to come back).
 const SHOW_CIRCUS := false
 
+## The Ludus yard is the lobby of the campaign and of a party (between bouts, at a campaign's start,
+## a room's host); the main menu has no door of its own to it (one let a new player through the
+## gate into the first bout without choosing how the campaign deals with death: user). `-- --admin`
+## on the command line (or "admin" in the save) shows one, for testing.
+static func admin() -> bool:
+	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
 const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e, 0x5a3a22, 0x1d6b6b, 0x8a8a80, 0xd06a8a]
 ## The builds a gladiator can have (FineBody.BUILDS, in order), as Your gladiator names them.
 const BUILD_NAMES := ["Hero: broad shoulders, narrow waist", "Champion: lean and quick", "Brute: heavy and strong"]
@@ -486,8 +492,8 @@ func _main(v: VBoxContainer) -> void:
 	if SHOW_CIRCUS:
 		entries.append(["Bread & Circuses", func(): show_screen("circus")])
 	entries.append(["Your gladiator", func(): show_screen("gladiator")])
-	# The walkable yard, everyone's (the campaign goes back to it between bouts too).
-	entries.append(["The Ludus yard", enter_yard])
+	if admin():
+		entries.append(["The Ludus yard (admin)", enter_yard])
 	entries.append_array([
 		["Arena", func(): show_screen("fights")],
 		["The endless arena", func(): show_screen("endless")],
