@@ -1907,7 +1907,8 @@ func function() -> float:
 	var whole := integrity if prosthetic == "" or pro_full <= 0 else minf(1.0, float(alive_count) / float(pro_full))
 	var fn := clampf(hp / 100.0, 0.0, 1.0) * (0.4 + 0.6 * whole)
 	if fracture == 1:
-		fn *= 0.6     # cracked: it holds, and every move of it hurts
+		fn *= 0.75    # cracked: it holds, and every move of it hurts (at 0.6, with the blow's harm, one
+		              # blow left an arm no use: user)
 	if prosthetic != "":
 		fn = minf(fn, Body.pro_fn(prosthetic, pro_level))
 	if frozen_until > 0.0 and clock() < frozen_until:

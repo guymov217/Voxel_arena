@@ -150,6 +150,7 @@ var hold_move := ""
 var follow_t := 0.0
 var hold_side := "L"            # the hand a man is held in (the hoist and throw follow it)
 var ability_t := 1.0
+var swat_t := 0.0               # how long he has been swatting at bees on him
 var draw_t := -0.8
 var panic_t := 0.0             # enraged: when the blind lurch changes
 var air_t := 0.0               # enraged: the next swing at the air, whatever is in reach
@@ -415,6 +416,19 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	_react_clock(dt0)
 	if not c.alive:
 		return inp
+	# Covered in bees (a honey pot's swarm, a broken hive): he swats at them, his blade and his free
+	# hand swung about his head this way and that, backing off (what goes through a bee kills it:
+	# Throwables). The beehive's "flail about" never happened: nothing read it.
+	if float(c.swarmed) > 0.0 or float(c.bee_timer) > 0.0:
+		swat_t += dt
+		inp.main = {"x": sin(swat_t * 7.0) * 0.9, "y": 0.85 + cos(swat_t * 5.3) * 0.55}
+		inp.off = {"x": -0.45 + sin(swat_t * 9.0 + 1.0) * 0.45, "y": 1.0 + cos(swat_t * 6.1) * 0.35}
+		inp.power = true
+		inp.mz = -0.35
+		inp.mx = sin(swat_t * 1.3) * 0.4
+		_react(dt0, inp)
+		return inp
+	swat_t = 0.0
 	ability_t -= dt
 	# (Counted in time, whatever he is doing: counted only while he circled, a man near the end
 	# of his blood who kept on swinging waited twice as long for his desperate blow.)

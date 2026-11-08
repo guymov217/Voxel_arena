@@ -265,7 +265,11 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		# landed out of sight: user; measured in bot duels, from straight behind 71% of the
 		# blows that landed could be seen, turned 0.9 round about 80%: ORBIT). And when even so your
 		# own body is between the camera and his middle or head, it rises a little.
-		var turn := ORBIT * near_k * (1.0 - aim_k) * side_k
+		# (It no longer turns round him by itself, nor rises over him when his own body hides the
+		# foe, nor turns to keep the foe in the frame: the player turns it, always, and only a wall
+		# moves it (user: stop the camera moving and locking onto the giant's face; the player
+		# controls the camera in every state, but where a corner of the arena pushes it).)
+		var turn := 0.0
 		var lift := 0.0
 		if f.alive and not pts.is_empty() and aim_k < 0.5:
 			scan_t -= dt
@@ -278,7 +282,6 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 					if seen.has(p):
 						hiders[p] = true
 				seen = now_in
-			lift = 0.3 if hide_k > 0.0 else 0.0
 		else:
 			hiders.clear()
 			seen.clear()
@@ -312,35 +315,7 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		if absf(shift.x) > 1e-3 and Vector2(to_f.x, to_f.z).length() > 0.3:
 			yv = yaw + wrapf(atan2(to_f.x, to_f.z) - yaw, -PI, PI) * reaim_k
 		var fwd_v := Vector3(sin(yv), 0, cos(yv))
-		# The foe stays in the picture: when his head, his feet or the spot just struck would
-		# leave the frame, the view turns just far enough to keep them in (the mouse still
-		# steers; the crosshair, the middle of the view, goes where the view goes).
-		var want_as := Vector2.ZERO
-		if not pts.is_empty() and f.alive and aim_k < 0.5:
-			var f0 := fwd_v * cos(vp) + Vector3(0, sin(vp), 0)
-			var r0 := f0.cross(Vector3.UP).normalized()
-			var u0 := r0.cross(f0)
-			var tv := tan(deg_to_rad(fov) * 0.5)
-			var vsz := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(16, 9)
-			var lim_v := atan(0.72 * tv)
-			var lim_h := atan(0.78 * tv * vsz.x / maxf(1.0, vsz.y))
-			var hmin := INF; var hmax := -INF; var vmin := INF; var vmax := -INF
-			for p in pts:
-				var rel: Vector3 = (p as Vector3) - eye
-				var z := rel.dot(f0)
-				if z < 0.3:
-					continue
-				var x := rel.dot(r0)
-				var y := rel.dot(u0)
-				var ah := atan2(x, z)
-				var av := atan2(y, sqrt(x * x + z * z))
-				hmin = minf(hmin, ah); hmax = maxf(hmax, ah)
-				vmin = minf(vmin, av); vmax = maxf(vmax, av)
-			if hmax > -INF:
-				want_as.x = _shift(hmin, hmax, lim_h)
-				want_as.y = _shift(vmin, vmax, lim_v)
-		want_as = Vector2(clampf(want_as.x, -0.5, 0.5), clampf(want_as.y, -0.6, 0.6))
-		assist = Vector2.ZERO if aiming else assist.lerp(want_as, minf(1.0, dt * 5.0))
+		assist = Vector2.ZERO
 		var vy := yv - assist.x
 		var vpp := clampf(vp + assist.y, -1.5, 1.45)
 		look = eye + Vector3(sin(vy) * cos(vpp), sin(vpp), cos(vy) * cos(vpp)) * 6.0 * S

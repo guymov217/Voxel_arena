@@ -339,3 +339,139 @@ func test_the_wind_up_sets_how_hard_a_pot_flies() -> void:
 		m.queue_free()
 	t.check(float(far[0.3]) < 9.0, "a flick falls well short of a mark 14 m off (%.1f m)" % far[0.3])
 	t.check(float(far[1.0]) > 12.5, "a full wind-up reaches it (%.1f m)" % far[1.0])
+
+## A banana peel under a sole floors whoever steps on it, a man or a beast (user: the banana peels
+## did nothing; they looked for a man's shins only).
+func test_a_banana_peel_floors_a_man_and_a_beast() -> void:
+	seed(6)
+	var m := _match()
+	var man := _man(m, Vector3(-2, 0, 0), 0.0, {}, "Walker", 1, _idle)
+	var lion = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(3, 0.1, 0), "yaw": 0.0, "harmless": true})
+	await _steps(120)
+	for c in [man.f, lion.f]:
+		var sole: Vector3 = c.soles()[0][1]
+		var it: Dictionary = m.items.spawn("banana", Vector3(sole.x, 0.06, sole.z), Vector3.ZERO, null)
+		it.grounded = true
+	var man_down := false
+	var lion_down := false
+	for i in 30:
+		await get_tree().physics_frame
+		man_down = man_down or man.f.state != "stand"
+		lion_down = lion_down or float(lion.f.down_t) > 0.0
+	t.check(man_down, "the man stepped on the peel and went down")
+	t.check(lion_down, "and the lion went over on its side")
+	m.queue_free()
+
+## Olive oil floors anyone who moves in it, a walker as well as a runner; standing still in it a
+## man keeps his feet (user: the oil pot did nothing: only a runner went down, and in a fight
+## nobody runs).
+func test_olive_oil_floors_a_walker_but_not_one_standing_still() -> void:
+	seed(7)
+	var m := _match()
+	var walker := _man(m, Vector3(-1.0, 0, -2.5), 0.0, {}, "Walker", 1, func(_e): return {"main": {"x": 0.1, "y": 0.1}, "mz": 0.5, "look": {"yaw": 0.0, "pitch": 0.0}})
+	var still := _man(m, Vector3(1.2, 0, 0.5), 0.0, {}, "Still", 1, _idle)
+	m.throwables.add_zone("oil", Vector3(0, 0, 0), 2.6, 14.0)
+	var down := false
+	var still_down := false
+	for i in 600:
+		await get_tree().physics_frame
+		down = down or walker.f.state != "stand"
+		still_down = still_down or still.f.state != "stand"
+	t.check(down, "a man walking through the oil went down")
+	t.check(not still_down, "one standing still in it kept his feet")
+	m.queue_free()
+
+## A caltrop goes into the foot of whatever steps on it: a man's, a lion's, the Cerberus's (user:
+## the caltrops did nothing to the Cerberus; make sure they work on everyone), and it limps.
+func test_a_caltrop_goes_into_any_foot() -> void:
+	seed(8)
+	var m := _match()
+	var man := _man(m, Vector3(-3, 0, 0), 0.0, {}, "Man", 1, _idle)
+	var lion = m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(0.5, 0.1, 0), "yaw": 0.0, "harmless": true})
+	var dog = m.spawn_beast({"beast": "cerberus", "team": 1, "pos": Vector3(5, 0.1, 0), "yaw": 0.0, "harmless": true})
+	await _steps(120)
+	var who := [man.f, lion.f, dog.f]
+	var feet := []
+	for c in who:
+		var so: Array = c.soles()
+		t.check(so.size() == (2 if c == man.f else 4), "%s stands on %d soles" % [c.display_name, so.size()])
+		var part: VoxelPart = so[0][0]
+		feet.append([part, part.hp, part.bleed])
+		var it: Dictionary = m.items.spawn("caltrop", Vector3((so[0][1] as Vector3).x, 0.03, (so[0][1] as Vector3).z), Vector3.ZERO, null)
+		it.grounded = true
+	await _steps(20)
+	for k in who.size():
+		var c = who[k]
+		var p: VoxelPart = feet[k][0]
+		t.check(p.hp < float(feet[k][1]) or p.bleed > float(feet[k][2]), "%s: the spike went into the foot" % c.display_name)
+		t.check(c.slow_timer > 0.0, "%s limps" % c.display_name)
+	m.queue_free()
+
+## A thunder pot going off beside a man in armour blows plates off the side of him turned to it,
+## and wears the rest; a fire pot's blast does it on a smaller scale (user: the pots did no harm to
+## armour at all, the thunder pot least of all).
+func test_a_blast_blows_plates_off_armour() -> void:
+	seed(9)
+	var m := _match()
+	var b := _man(m, Vector3(0, 0, 0), PI, {"armor": ["helmet", "lorica", "manica", "greaves"]}, "Armoured", 1, _idle)
+	var c := _man(m, Vector3(6, 0, 0), PI, {"armor": ["helmet", "lorica", "manica", "greaves"]}, "Also armoured", 1, _idle)
+	await _steps(120)
+	var plates := func(f: Fighter) -> int:
+		var n := 0
+		for p in f.parts:
+			for ad in p.get_meta("armor", []):
+				n += int(ad.alive)
+		return n
+	var b0: int = plates.call(b.f)
+	var c0: int = plates.call(c.f)
+	# (In front of him, at his knees: the pot burst at his feet.)
+	m.throwables.explode("pot_thunder", b.f.torso.global_position + Vector3(0, -0.7, -0.6), null)
+	m.throwables.explode("pot_fireball", c.f.torso.global_position + Vector3(0, -0.3, -0.5), null)
+	await _steps(10)
+	var b1: int = plates.call(b.f)
+	var c1: int = plates.call(c.f)
+	t.check(b0 - b1 >= 12, "the thunder pot blew %d plates off him (of %d)" % [b0 - b1, b0])
+	t.check(b1 > b0 / 3, "not every last one: the side away from it held (%d left)" % b1)
+	t.check(c0 - c1 >= 2, "the fireball pot's blast took %d off the other" % (c0 - c1))
+	m.queue_free()
+
+## A honey pot broken on a man brings a swarm down on him, the thrower's: they sting him (his blood
+## goes down), a blade swung fast through one kills it, a man they cover swats at them and kills
+## some, and they leave him when he is dead (user: the honey pot did nothing; it must bring bees
+## that attack the man it hit, that he can kill and that can kill him).
+func test_a_honey_pot_brings_bees_that_sting_and_can_be_killed() -> void:
+	seed(10)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -3), 0.0, {"main": "gladius", "off": ""}, "Thrower", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 0), PI, {"main": "gladius", "off": ""}, "Target", 1, _idle)
+	await _steps(60)
+	m.throwables.explode("pot_honey", b.f.torso.global_position, a.f, Vector3(0, 0, 1), b.f, b.f.torso)
+	t.eq(m.throwables.hives.size(), 1, "a swarm on the man it broke on")
+	t.eq(m.throwables.hives[0].bees.size(), Throwables.BEES, "of %d bees" % Throwables.BEES)
+	t.check(m.throwables.hives[0].target == b.f, "on him, not on the thrower")
+	var blood0: float = b.f.blood
+	await _steps(600)
+	t.check(b.f.blood < blood0 - 3.0, "they stung him: his blood %.1f, was %.1f" % [b.f.blood, blood0])
+	t.check(b.f.last_attacker == a.f, "the thrower's bees")
+	# The rule: a blade going fast through a bee kills it; still, it does not.
+	var w: Weapon = a.f.weapons.R
+	var mid: Vector3 = w.global_transform * w.local_box().get_center()
+	w.linear_velocity = Vector3.ZERO
+	w.angular_velocity = Vector3.ZERO
+	t.check(not m.throwables._swatted(mid), "a blade held still kills nothing")
+	w.linear_velocity = Vector3(6, 0, 0)
+	t.check(m.throwables._swatted(mid), "swung through a bee, it kills it")
+	w.linear_velocity = Vector3.ZERO
+	# A bot they cover swats about his head at them, and kills some.
+	var c = m.spawn_fighter({"kind": "bot", "name": "Swatter", "loadout": {"main": "gladius", "off": ""}, "team": 1, "pos": Vector3(4, 0.1, 0), "yaw": PI})
+	await _steps(30)
+	m.throwables.bees_on(c.f, a.f, c.f.head.global_position + Vector3(0, 0.3, 0))
+	var hv: Dictionary = m.throwables.hives.back()
+	await _steps(1200)
+	var left: int = hv.bees.filter(func(x): return x.on).size()
+	t.check(left < Throwables.BEES, "he swatted %d of them out of the air" % (Throwables.BEES - left))
+	# Dead, they leave him.
+	b.f.die("test")
+	await _steps(600)
+	t.check(not m.throwables.hives.any(func(h): return h.target == b.f), "he is dead: his bees have left him")
+	m.queue_free()

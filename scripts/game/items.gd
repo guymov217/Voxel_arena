@@ -418,22 +418,24 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 func _foot_on(c, p: Vector3):
 	var s: float = c.S
 	if c.state == "stand":
-		for n in ["shinL", "shinR"]:
-			var sp = c.by_name.get(n)
-			if sp and not sp.severed:
-				var foot: Vector3 = sp.global_transform * Vector3(0, -sp.half_ext.y * 0.9, 0)
-				if Vector2(foot.x - p.x, foot.z - p.z).length() < 0.1 * s and foot.y < 0.2 * s:
-					return sp
+		for so in c.soles():
+			var foot: Vector3 = so[1]
+			if Vector2(foot.x - p.x, foot.z - p.z).length() < 0.1 * s and foot.y < 0.2 * s:
+				return so[0]
 		return null
 	for q in c.parts:
 		if not q.severed and q.global_position.distance_to(p) < q.half_ext.length() * 0.8:
 			return q
 	return null
 
+## A sole of his (a man's, a beast's: Fighter.soles) coming down within `r` of `p` (a big body's
+## feet the wider apart, its reach the wider).
 func _near_feet(c, p: Vector3, r: float) -> bool:
-	for n in ["shinL", "shinR"]:
-		var sp = c.by_name.get(n)
-		if sp and not sp.severed and Vector2(sp.global_position.x - p.x, sp.global_position.z - p.z).length() < r:
+	var s: float = float(c.S)
+	var rr: float = r * maxf(1.0, sqrt(s))
+	for so in c.soles():
+		var sole: Vector3 = so[1]
+		if Vector2(sole.x - p.x, sole.z - p.z).length() < rr and sole.y < p.y + 0.25 * s:
 			return true
 	return false
 

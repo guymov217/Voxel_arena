@@ -50,6 +50,7 @@ var plate_name: Label
 var plate_bar: Control
 var plate_trail := 1.0
 var plate_val := 1.0
+var plate_out := false   # the enemy on the plate is beaten (out of the fight), alive: the bar greyed
 var plate_target = null
 var plate_flash := 0.0
 var decree_label: Label
@@ -524,7 +525,9 @@ func _build_plate() -> void:
 		plate_bar.draw_rect(Rect2(0, 0, w, 9), TRACK)
 		_gauge(plate_bar, 0.0, w * plate_trail, 1.0, 7.0, Color(1, 0.9, 0.8, 0.35), Color(1, 0.9, 0.8, 0.35))
 		var fl := Color(1, 1, 1, plate_flash * 0.5)
-		_gauge(plate_bar, 0.0, w * plate_val, 1.0, 7.0, BLOOD.lerp(Color.WHITE, plate_flash * 0.5), BLOOD.lerp(BLOOD_BRIGHT, plate_val).lerp(Color.WHITE, plate_flash * 0.5))
+		var lo_c := BLOOD if not plate_out else Color(0.4, 0.38, 0.36)
+		var hi_c := BLOOD.lerp(BLOOD_BRIGHT, plate_val) if not plate_out else Color(0.58, 0.55, 0.52)
+		_gauge(plate_bar, 0.0, w * plate_val, 1.0, 7.0, lo_c.lerp(Color.WHITE, plate_flash * 0.5), hi_c.lerp(Color.WHITE, plate_flash * 0.5))
 		for q in [0.25, 0.5, 0.75]:
 			plate_bar.draw_line(Vector2(w * q, 1), Vector2(w * q, 8), Color(0, 0, 0, 0.4), 1.0)
 		plate_bar.draw_rect(Rect2(0, 0, w, 9), Color(IRON_EDGE, 0.6), false, 1.0)
@@ -1103,7 +1106,8 @@ func _process(dt: float) -> void:
 			plate_flash = 1.0
 		plate_val = val
 		plate_trail = maxf(plate_val, plate_trail - dt * 0.25)
-		plate_name.text = ("☠ " if t.get("boss", false) else "") + t.f.display_name.to_upper()
+		plate_out = t.f.alive and t.f.is_beaten()
+		plate_name.text = ("☠ " if t.get("boss", false) else "") + ((Loc.t("%s is out of the fight") % t.f.display_name).to_upper() if plate_out else t.f.display_name.to_upper())
 		plate_name.add_theme_color_override("font_color", BLOOD_BRIGHT if t.get("boss", false) else GOLD)
 		plate_bar.queue_redraw()
 		plate.queue_redraw()

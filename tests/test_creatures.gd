@@ -336,3 +336,31 @@ func test_every_part_breaks_by_its_harm() -> void:
 	w.queue_free()
 	await get_tree().physics_frame
 	await get_tree().physics_frame
+
+## A leg cut off lies still on the sand as dead flesh does: the motors of its own joints (its knee)
+## let go of it; and a dead beast's legs go slack (user: pieces of a body turned and rolled about
+## the arena by themselves).
+func test_a_cut_off_leg_lies_still_and_a_dead_beast_goes_slack() -> void:
+	var w := _world()
+	var b := _beast(w, "lion", Vector3(0, 0.7, 0), 0.0)
+	await _run(w, [b], 1.5)
+	var leg: VoxelPart = b.legs[0]
+	var lo: VoxelPart = b.lower_of(leg)
+	var knee := lo.joint as Generic6DOFJoint3D
+	t.check(knee != null, "the knee is a joint with a motor")
+	_cut(b, leg.part_name)
+	t.check(not knee.get_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR) and not knee.get_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR), "cut off, its knee's motor lets go")
+	await _run(w, [b], 3.0)
+	var spin := leg.angular_velocity.length() + lo.angular_velocity.length()
+	var drift := Vector2(leg.linear_velocity.x, leg.linear_velocity.z).length()
+	t.check(spin < 0.6 and drift < 0.2, "the leg lies still on the sand (turning %.2f rad/s, moving %.2f m/s)" % [spin, drift])
+	b.die("test")
+	await _run(w, [b], 0.5)
+	var on := 0
+	for l in b.legs:
+		for p in [l, b.lower_of(l)]:
+			var j := p.joint as Generic6DOFJoint3D if p else null
+			if j and (j.get_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR) or j.get_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR)):
+				on += 1
+	t.eq(on, 0, "dead, none of its legs is driven")
+	w.queue_free()

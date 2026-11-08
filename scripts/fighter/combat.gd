@@ -652,7 +652,8 @@ func _blow(g: Dictionary) -> Dictionary:
 			res.tripped = true
 	var chip := {}
 	if is_weapon and not g.box.is_empty():
-		var vh := 0.5
+		# What the blade met: armour, bone, or only flesh (soft: it hardly tires the metal).
+		var vh := 0.85 if res.get("armor", false) else (0.55 if res.get("bone", false) else 0.15)
 		var idx: int = att.voxel_near(g.box, p)
 		var mat_h: float = Data.material(g.mat).get("hardness", 0.5)
 		# Every cut and stab blunts the edge a little (bone, armour, the sand of a fall).

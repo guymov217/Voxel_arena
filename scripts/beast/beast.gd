@@ -479,18 +479,50 @@ func can_stand() -> bool:
 func fall(_duration: float, _force := false) -> void:
 	stagger = 1.0
 
+## The lowest segment of each leg it has left and where its sole is (Fighter.soles): what a banana
+## peel or a caltrop meets (they looked for a man's shins only, and a beast walked over them as if
+## they were not there: user, the caltrops did nothing to the Cerberus).
+func soles() -> Array:
+	var out := []
+	for l in legs:
+		if l.severed:
+			continue
+		var lo := lower_of(l)
+		var sp: VoxelPart = lo if lo != null and not lo.severed else l
+		out.append([sp, sp.global_transform * Vector3(0, -sp.half_ext.y * 0.9, 0)])
+	return out
+
+## Its legs go from under it (a banana peel, oil) and it goes over on its side a moment, as a man
+## goes down (a beast's fall only rocks it: blows were made to fell beasts less). A serpent or a
+## beast on the wing does not slip.
+func slip(duration: float) -> void:
+	if not alive or legs.is_empty() or flying:
+		return
+	stagger = 1.0
+	down_t = maxf(down_t, duration)
+
 func set_standing(_on: bool) -> void:
 	pass
 
 func on_severed(part: VoxelPart) -> void:
+	# What comes off is dead flesh: the motors of its own joints (a leg cut off at the hip keeps
+	# its knee) let go of it at once. Left on, the knee went on driving at its last pace and
+	# strength for good, and the leg lying on the sand writhed and rolled about the arena by
+	# itself (user).
+	var stack := [part]
+	while not stack.is_empty():
+		var q: VoxelPart = stack.pop_back()
+		_leg_motor_off(q)
+		stack.append_array(q.child_parts)
 	if part == head and not sp.get("multiHead", false):
 		die("decap")
 
 ## As a man's (Fighter.vitality), with what else ends a beast: the neck a single head is carried
-## on (broken, it dies on the spot), and its fight is over once it is down and spent (is_out).
-## Many-headed, the best head left counts, and no one brain.
+## on (broken, it dies on the spot). Down and spent (is_out) it is out of the fight, not dead: the
+## plate shows what life is left in it, as a man's. Many-headed, the best head left counts, and no
+## one brain.
 func vitality() -> float:
-	if not alive or is_beaten():
+	if not alive:
 		return 0.0
 	var many: bool = sp.get("multiHead", false)
 	var h := part_life(head)
@@ -583,13 +615,24 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	nerve = minf(1.0, nerve + NERVE_BACK * dt)
 	if push_t > 0.0:
 		push_t -= dt
+	# Slowed (a caltrop in a foot) and netted (a bola, a weighted net) as a man is, for as long (its
+	# own step never ran them down: a netted beast wore the net for good, and was not slowed by it).
+	slow_timer = maxf(0.0, slow_timer - dt)
+	if net_timer > 0.0:
+		net_timer -= dt
+		if net_timer <= 0.0:
+			set_net(false)
 	if alive and (blood <= 0.0 or torso.hp <= 0.0 or (heads_left().is_empty() if sp.get("multiHead", false) else head.hp <= 0.0)):
 		die("wounds")
 	if alive and neck_broken():
 		die("neck")
 	if not alive:
+		# Dead, its legs are slack: the motors that walked it let go (left on, a carcass went on
+		# pushing its legs at their last pace, and it crept and rolled on the sand: user).
 		for l in legs:
 			for p in [l, lower_of(l)]:
+				if p:
+					_leg_motor_off(p)
 				if p and not p.severed:
 					p.angular_damp = 1.5
 		_topple(dt)
@@ -750,6 +793,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var down := down_t > 0.0
 	var want := Vector3.ZERO
 	var hurt: float = 0.0 if down else heavy * (0.5 + 0.5 * torso.function()) * (0.18 if collapsed else (maxf(0.25, pow(float(legs_left) / maxf(1.0, legs.size()), 1.5)) if missing > 0 else 0.4 + 0.6 * lp))
+	hurt *= (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	# A bite is only as strong as the best head left to bite with; with no working head the beast
 	# can neither see its prey nor attack it.
 	var biters := biting_heads()
@@ -1670,10 +1714,17 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		if fl > 0.0:
 			planted = false
 		var splay: float = float(leg.def.get("splay", 0.0))
-		if leg.hanging:
-			continue
 		var lo := lower_of(leg)
+		# A leg hanging by a strip is driven no more, and its joints go slack (their motors kept
+		# the last pace they were given and worked the dangling leg round and round).
+		if leg.hanging:
+			_leg_motor_off(leg)
+			if lo:
+				_leg_motor_off(lo)
+			continue
 		var lo_ok: bool = lo != null and not lo.severed and not lo.hanging
+		if lo != null and not lo_ok:
+			_leg_motor_off(lo)
 		if planted:
 			# Walking and standing the leg is driven stiff, angle and pace both: a soft spring on so
 			# light a limb gave way to the sand's friction, the foot was dragged along under the

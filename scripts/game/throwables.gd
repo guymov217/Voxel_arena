@@ -18,6 +18,10 @@ var m: Node
 var zones: Array = []
 var drops: Array = []
 var swarms: Array = []   # bees out of a broken hive on their way to a man: {pos, target, owner, t, node}
+var hives: Array = []    # a honey pot's bees on a man: {target, owner, t, buzz, bees: [{p, v, on, cool, ph, dive, at, part}]}
+var _bee_mm: MultiMeshInstance3D = null
+var _bee_send := 0.0
+var _bee_guest := PackedVector3Array()   # on a guest: where the host last said the bees are
 var next_zone := 1
 var headless := false
 
@@ -97,6 +101,8 @@ func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vecto
 	if extra.has("blast"):
 		h.blast = extra.blast
 		h.blast_r = extra.blast_r
+		h.blast_power = extra.get("blast_power", J)
+		h.blast_radius = extra.get("blast_radius", 3.0)
 	var res: Dictionary = c.apply_hit(part, h)
 	if owner_ and owner_ != c:
 		c.last_attacker = owner_
@@ -151,7 +157,7 @@ func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
 			first = false
 			if J < 3.0:
 				continue
-			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6, "blast": p, "blast_r": rb})
+			_hit(c, h.part, J, "blunt", h.face, (h.face - p).normalized(), owner_, {"hardness": 0.6, "blast": p, "blast_r": rb, "blast_power": power, "blast_radius": radius})
 			# The shock goes through the trunk and the skull: what is inside is hurt under the
 			# skin, a beast's as a man's, wherever the blast struck him.
 			if c.alive and (h.part == c.torso or h.part == c.head) and c.has_method("blast_shock"):
@@ -820,13 +826,15 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.crowd_add(owner_, 4, "disgusting")
 		"pot_honey":
 			add_zone("honey", Vector3(p.x, 0, p.z), 2.0, 12.0, owner_)
-			# Bees love it: whoever the honey splashed over is covered in them for a while.
+			# Bees love it: the man it broke on has a swarm on him, the thrower's, and whoever else
+			# the honey splashed over a few (bees_on).
 			for x in _near(p, 1.6):
 				if x.c == owner_:
 					continue
-				x.c.bee_timer = maxf(float(x.c.bee_timer), 3.5)
-				if owner_:
-					x.c.last_attacker = owner_
+				var on_him: bool = x.c == hit_char
+				if not on_him and x.d > 1.0:
+					continue
+				bees_on(x.c, owner_, p, BEES if on_him else BEES_SPLASHED)
 				m.feed.emit(Loc.t("%s is dripping honey, and the bees have found him!") % x.c.display_name)
 		"pot_smoke":
 			add_zone("smoke", Vector3(p.x, 0, p.z), 3.0, 9.0, owner_)
@@ -1215,8 +1223,9 @@ func on_item(ev: Dictionary) -> void:
 				c.last_attacker = owner_
 			m.report_hit({"kind": "hit", "p": ev.p, "dir": Vector3.UP, "J": Jc, "type": "point", "char": c, "part": part, "attacker": owner_, "res": res, "killed": was and not c.alive})
 		"slip":
-			c.fall(1.6, true)
-			c.torso.apply_central_impulse(Vector3(0, 30.0, 0))
+			c.slip(1.6)
+			if c is Fighter and not (c is Beast):
+				c.torso.apply_central_impulse(Vector3(0, 30.0, 0))
 			m.feed.emit(Loc.t("%s slipped on a banana peel!") % c.display_name)
 			m.crowd_add(c, -3, "banana")
 			m.sfx("whoosh", ev.p)
@@ -1372,6 +1381,210 @@ func inside(type: String, pos: Vector3) -> bool:
 			return true
 	return false
 
+# ---------- A honey pot's bees ----------
+
+## A honey pot that breaks on a man brings the bees down on him (user: the honey pot did nothing;
+## it must bring bees that fight for the one who threw it, sting the man it hit and harm him, that
+## he can kill and that can kill him). Each bee flies round his head and now and then dives at a
+## part of him and stings it: the game's own point hit where it lands (armour turns it), and a
+## sting that goes in is a little venom in the blood. A blade, a fist or a foot going fast through
+## a bee kills it (anyone's); they leave him when he dies, or tire after BEE_LIFE.
+const BEES := 14
+const BEES_SPLASHED := 5
+const BEE_LIFE := 25.0
+const BEE_SPEED := 5.0
+const BEE_STING_J := 4.0
+const BEE_VENOM := 0.35      # blood a sting that goes in costs (of 100)
+const BEE_SIZE := 0.045
+const BEE_CAP := 64
+
+func bees_on(c, owner_, at: Vector3, n := BEES) -> void:
+	if c == null or not is_instance_valid(c) or not c.alive or m.role == "guest":
+		return
+	var bees := []
+	for i in n:
+		var a := randf() * TAU
+		bees.append({"p": at + Vector3(cos(a) * 0.15, 0.1 + randf() * 0.3, sin(a) * 0.15), "v": Vector3(cos(a), 1.2, sin(a)) * 2.0, "on": true, "cool": 0.8 + randf() * 1.8, "ph": randf() * TAU, "dive": 0.0, "at": Vector3.ZERO, "part": null})
+	hives.append({"target": c, "owner": owner_, "t": 0.0, "buzz": 0.0, "bees": bees})
+	if owner_ and owner_ != c:
+		c.last_attacker = owner_
+
+## The part of him a bee goes for: anywhere, the head and the arms the likeliest.
+func _bee_spot(c) -> VoxelPart:
+	var pool := []
+	for p in c.parts:
+		if p.severed:
+			continue
+		var w := 3 if p == c.head else (2 if c.arm.has("R") and (p == c.arm.R.fore or p == c.arm.L.fore or p == c.arm.R.upper or p == c.arm.L.upper) else 1)
+		for k in w:
+			pool.append(p)
+	return pool[randi() % pool.size()] if not pool.is_empty() else null
+
+func _sting(hv: Dictionary, b: Dictionary) -> void:
+	var c = hv.target
+	var part = b.part
+	if not is_instance_valid(c) or not c.alive or part == null or not is_instance_valid(part) or part.severed:
+		return
+	var at: Vector3 = b.p
+	var d: Vector3 = part.global_position - at
+	d = d.normalized() if d.length_squared() > 1e-6 else Vector3.DOWN
+	var res: Dictionary = c.apply_hit(part, {"impulse": BEE_STING_J, "type": "point", "hardness": 0.5, "sharpness": 1.0, "point": at, "dir": d, "axis": d})
+	if hv.owner and hv.owner != c:
+		c.last_attacker = hv.owner
+	if res.get("armor", false):
+		return   # (on the plate: it turns the sting)
+	c.blood = maxf(0.0, c.blood - BEE_VENOM)
+	c.pain = minf(1.0, float(c.pain) + 0.05)
+	part.flinch_t = maxf(part.flinch_t, 0.12)
+
+## Anything going fast through a bee kills it: a weapon's blade or haft, a fist, a foot (anyone's).
+func _swatted(bp: Vector3) -> bool:
+	for e in m.entities:
+		var f = e.f
+		if not is_instance_valid(f) or not f.alive:
+			continue
+		if f is Fighter and not (f is Beast):
+			for sd in ["R", "L"]:
+				var w = f.weapons.get(sd)
+				if w and is_instance_valid(w):
+					var lp: Vector3 = w.global_transform.affine_inverse() * bp
+					if w.local_box().grow(0.03).has_point(lp) and w.velocity_at(bp).length() > 1.6:
+						return true
+				var fore: VoxelPart = f.arm[sd].fore
+				if not fore.severed and fore.global_position.distance_to(bp) < 0.11 * f.S and fore.linear_velocity.length() > 2.2:
+					return true
+			for n in ["shinL", "shinR"]:
+				var sh = f.by_name.get(n)
+				if sh and not sh.severed and sh.global_position.distance_to(bp) < 0.12 * f.S and sh.linear_velocity.length() > 2.5:
+					return true
+	return false
+
+func _bees_update(dt: float) -> void:
+	var host: bool = m.role != "guest"
+	if host:
+		for hv in hives.duplicate():
+			hv.t += dt
+			var c = hv.target
+			var gone: bool = not is_instance_valid(c) or not c.alive or hv.t > BEE_LIFE
+			var head_at := Vector3.ZERO
+			var S := 1.0
+			if not gone:
+				S = float(c.S)
+				head_at = c.head.global_position if c.head and not c.head.severed else c.torso.global_position + Vector3(0, 0.3 * S, 0)
+			var live := 0
+			for b in hv.bees:
+				if not b.on:
+					continue
+				if gone:
+					# They leave him: up and away.
+					b.v = b.v.lerp(Vector3(b.v.x, 3.0, b.v.z), minf(1.0, dt * 2.0))
+					b.p += b.v * dt
+					if b.p.y > 6.0:
+						b.on = false
+					else:
+						live += 1
+					continue
+				live += 1
+				b.ph += dt * (4.0 + fposmod(float(b.ph) * 13.0, 1.0))
+				b.cool -= dt
+				var goal: Vector3
+				if b.dive > 0.0:
+					goal = b.at
+				else:
+					var r := 0.36 * S
+					goal = head_at + Vector3(cos(b.ph * 0.9) * r, sin(b.ph * 1.7) * 0.22 * S - 0.12 * S, sin(b.ph * 0.9) * r)
+				var to: Vector3 = goal - b.p
+				var want: Vector3 = to.normalized() * minf(BEE_SPEED * (1.6 if b.dive > 0.0 else 1.0), to.length() * 7.0) if to.length() > 1e-4 else Vector3.ZERO
+				b.v = b.v.lerp(want, minf(1.0, dt * 7.0)) + Vector3(randf() - 0.5, (randf() - 0.5) * 0.6, randf() - 0.5) * 9.0 * dt
+				b.p += b.v * dt
+				if b.dive > 0.0:
+					b.dive -= dt
+					if b.p.distance_to(b.at) < 0.06 * S or b.dive <= 0.0:
+						_sting(hv, b)
+						b.dive = 0.0
+						b.cool = 1.0 + randf() * 1.6
+				elif b.cool <= 0.0:
+					var part: VoxelPart = _bee_spot(c)
+					if part:
+						var out: Vector3 = b.p - part.global_position
+						out = out.normalized() if out.length_squared() > 1e-6 else Vector3.UP
+						b.part = part
+						b.at = part.global_position + out * part.half_ext.length() * 0.55
+						b.dive = 0.7
+					else:
+						b.cool = 0.5
+				if _swatted(b.p):
+					b.on = false
+					live -= 1
+					if m.fx:
+						m.fx.burst("debris", b.p, 3, Vector3.DOWN, 0.3, Color(0.85, 0.65, 0.1))
+			if not gone and live > 0:
+				c.swarmed = 0.3
+				hv.buzz -= dt
+				if hv.buzz <= 0.0:
+					hv.buzz = 0.5
+					m.sfx("buzz", head_at, clampf(0.25 + 0.04 * live, 0.3, 0.8))
+			if live <= 0:
+				hives.erase(hv)
+		_bee_send -= dt
+		if m.role == "host" and _bee_send <= 0.0 and (not hives.is_empty() or _bee_guest.size() > 0):
+			_bee_send = 0.1
+			var flat := []
+			for hv in hives:
+				for b in hv.bees:
+					if b.on and flat.size() < BEE_CAP * 3:
+						flat.append_array([roundi(b.p.x * 100.0), roundi(b.p.y * 100.0), roundi(b.p.z * 100.0)])
+			Net.send_all("bees", {"b": flat}, false)
+			_bee_guest = PackedVector3Array() if flat.is_empty() else PackedVector3Array([Vector3.ONE])   # (a word that there were some: the empty list goes out once)
+	_draw_bees(dt)
+
+## A guest is told where the host's bees are (they hover about that a little between words).
+func set_bees(flat: Array) -> void:
+	var out := PackedVector3Array()
+	for i in range(0, mini(flat.size(), BEE_CAP * 3) - 2, 3):
+		out.append(Vector3(float(flat[i]), float(flat[i + 1]), float(flat[i + 2])) / 100.0)
+	_bee_guest = out
+
+func _draw_bees(dt: float) -> void:
+	if headless:
+		return
+	var pts := PackedVector3Array()
+	var vel := PackedVector3Array()
+	if m.role != "guest":
+		for hv in hives:
+			for b in hv.bees:
+				if b.on:
+					pts.append(b.p)
+					vel.append(b.v)
+	else:
+		var tt: float = m.time
+		for i in _bee_guest.size():
+			var q: Vector3 = _bee_guest[i]
+			pts.append(q + Vector3(sin(tt * 11.0 + i), cos(tt * 13.0 + i * 1.7), sin(tt * 9.0 + i * 2.3)) * 0.04)
+			vel.append(Vector3(cos(tt * 11.0 + i), 0.0, -sin(tt * 9.0 + i)))
+		if _bee_guest.size() > 0 and fposmod(tt, 0.5) < dt:
+			m.sfx("buzz", _bee_guest[0], 0.5)
+	if _bee_mm == null or not is_instance_valid(_bee_mm):
+		if pts.is_empty():
+			return
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * BEE_SIZE
+		var mat := StandardMaterial3D.new()
+		mat.vertex_color_use_as_albedo = true
+		mat.roughness = 0.7
+		bm.material = mat
+		_bee_mm = _mm(bm, BEE_CAP * 2)
+	var mm := _bee_mm.multimesh
+	var n := mini(pts.size(), BEE_CAP)
+	for i in n:
+		# A bee: its yellow body and, along the way it flies, its black hind stripe.
+		var d: Vector3 = vel[i].normalized() if vel[i].length_squared() > 1e-6 else Vector3.FORWARD
+		mm.set_instance_transform(i * 2, Transform3D(Basis(), pts[i]))
+		mm.set_instance_color(i * 2, Color(0.95, 0.74, 0.12))
+		mm.set_instance_transform(i * 2 + 1, Transform3D(Basis().scaled(Vector3(1.05, 1.05, 0.5)), pts[i] - d * BEE_SIZE * 0.55))
+		mm.set_instance_color(i * 2 + 1, Color(0.08, 0.06, 0.04))
+	mm.visible_instance_count = n * 2
+
 ## Bots in sand or smoke, or covered in bees, cannot fight properly.
 func impaired(c) -> bool:
 	return c.bee_timer > 0.0 or inside("sand", c.torso.global_position) or inside("smoke", c.torso.global_position)
@@ -1382,6 +1595,7 @@ func _floor_y(p: Vector3) -> float:
 	return float(hit.position.y) if not hit.is_empty() else 0.0
 
 func update(dt: float) -> void:
+	_bees_update(dt)
 	_nails_tick(dt)
 	_nail_hits_tick()
 	_update_drops(dt)
@@ -1400,9 +1614,13 @@ func update(dt: float) -> void:
 				var v: Vector3 = c.torso.linear_velocity
 				match z.type:
 					"oil":
-						if c.state != "stand" or Vector2(v.x, v.z).length() < 1.1:
+						# Anyone who moves in it may go over, the faster the surer; standing still he
+						# keeps his feet (only a runner went down in it, and in a fight nobody runs:
+						# the oil did nothing, user). A beast's legs go from under it as a man's.
+						var spd_o := Vector2(v.x, v.z).length()
+						if c.state != "stand" or spd_o < 0.35 * sqrt(float(c.S)) or randf() > 0.1 + 0.8 * clampf((spd_o - 0.35) / 1.1, 0.0, 1.0):
 							continue
-						c.fall(1.4)
+						c.slip(1.4)
 						c.torso.apply_central_impulse(Vector3(v.x * 8.0, 40.0, v.z * 8.0))
 						m.crowd_add(c, -3, "slip")
 						m.feed.emit(Loc.t("%s slipped in the olive oil") % c.display_name)
@@ -1425,11 +1643,9 @@ func update(dt: float) -> void:
 						if Vector2(v.x, v.z).length() < 0.5:
 							continue
 						var shin = null
-						for n in ["shinL", "shinR"]:
-							var sp = c.by_name.get(n)
-							if sp and not sp.severed:
-								shin = sp
-								break
+						for so in c.soles():
+							shin = so[0]
+							break
 						if shin:
 							var sp2: Vector3 = shin.global_position
 							_hit(c, shin, 5.0, "point", Vector3(sp2.x, 0.05, sp2.z), Vector3.UP, z.owner)
@@ -1504,6 +1720,10 @@ func clear() -> void:
 		if sw.node and is_instance_valid(sw.node):
 			sw.node.queue_free()
 	swarms.clear()
+	hives.clear()
+	_bee_guest = PackedVector3Array()
+	if _bee_mm and is_instance_valid(_bee_mm):
+		_bee_mm.multimesh.visible_instance_count = 0
 	drops.clear()
 	wet.clear()
 

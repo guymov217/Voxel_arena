@@ -5,7 +5,7 @@ extends RigidBody3D
 ## weight and inertia come from the voxels, and hard knocks chip voxels off (weapon.js and
 ## durability.js in the web game).
 
-const CHIP_THRESHOLDS := [20.0, 38.0, 60.0]
+const CHIP_THRESHOLDS := [24.0, 44.0, 68.0]   # (20, 38, 60: blades chipped too easily: user)
 
 var design: Dictionary = {}
 var stats: Dictionary = {}
@@ -676,7 +676,8 @@ func knock(index: int, score: float) -> Dictionary:
 	if fatigue.size() != vox.size():
 		fatigue.resize(vox.size())
 	var v0 := Vector3(vox[index][0], vox[index][1], vox[index][2])
-	var eff := score + fatigue[index]
+	# (The worn spot counts for three quarters: counted whole, a few blows into flesh chipped a blade.)
+	var eff := score + 0.75 * fatigue[index]
 	var worn := []
 	for i in vox.size():
 		if alive[i]:
@@ -868,7 +869,8 @@ func durability() -> float:
 const FATIGUE_BREAK := 60.0
 const FATIGUE_SPOT := 0.5        # of a knock's score, into the voxel struck
 const FATIGUE_NEAR := 0.2        # and into those round it
-const WEAR_LIMIT := 7.0          # the fatigue a steel voxel takes before it crumbles
+const WEAR_LIMIT := 14.0         # the fatigue a steel voxel takes before it crumbles (at 7, two or
+                                 # three good cuts into a man wore the edge off: user)
 
 ## How much use voxel `i` stands before it wears off: the harder the stuff the longer; a grip,
 ## wrapped and held, twice as long; a shield, made to take blows, half as long again.

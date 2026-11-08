@@ -179,3 +179,29 @@ func test_in_a_fight_he_stays_solid() -> void:
 		m.queue_free()
 		await get_tree().physics_frame
 	t.check(float(all_any) / maxf(1, all_frames) < 0.35, "his head or an arm seen through %d of %d frames in three fights" % [all_any, all_frames])
+
+## The view goes where the mouse points, whatever the foe: a giant's head high over the frame does
+## not turn it up to his face, nor does it go round him close in (user: stop the camera moving by
+## itself and locking onto the giant's face; the player controls the camera always, only a corner
+## of the arena moves it).
+func test_the_view_goes_where_the_mouse_points() -> void:
+	await get_tree().physics_frame
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	var me: Fighter = m.me.f
+	await get_tree().physics_frame
+	var cam := CameraRig.new()
+	m.add_child(cam)
+	var c := me.torso.global_position
+	var fwd := Vector3(sin(me.yaw), 0, cos(me.yaw))
+	# A giant a stride in front of him: his middle, his head four metres up, his feet.
+	var pts := [c + fwd * 1.6 + Vector3(0, 1.0, 0), c + fwd * 1.6 + Vector3(0, 4.0, 0), c + fwd * 1.6 - Vector3(0, c.y, 0)]
+	for i in 240:
+		cam.follow(me, me.yaw, 0.0, 1.0 / 60.0, false, pts)
+	var d := (cam.look - cam.eye).normalized()
+	var off := wrapf(atan2(d.x, d.z) - me.yaw, -PI, PI)
+	t.check(absf(off) < 0.03, "it looks the way he faces (off by %.3f rad)" % off)
+	t.check(d.y < 0.0, "as low as the mouse has it, not up at the giant's face (%.2f)" % d.y)
+	t.check(cam.shift.length() < 0.001, "and it has not gone round him (%s)" % str(cam.shift))
+	m.queue_free()

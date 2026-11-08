@@ -18,7 +18,7 @@ var _crowd_want := 0.3
 var _duck := 0.0
 var music: Music = null
 var _ui_player: AudioStreamPlayer = null
-const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14, "slash": 0.2, "stab": 0.22, "boom": 1.8}
+const LENGTH := {"grunt": 0.3, "pain": 0.45, "scream": 0.9, "growl": 0.7, "hiss": 0.6, "trumpet": 1.0, "screech": 0.6, "roar": 1.1, "clang": 0.5, "whoosh": 0.35, "cheer": 1.4, "boo": 1.2, "honk": 0.45, "slap": 0.12, "pickup": 0.12, "bell": 1.2, "horn": 1.0, "draw": 0.5, "twang": 0.4, "shatter": 0.45, "thump": 0.28, "boing": 0.5, "squeak": 0.18, "freeze": 0.4, "giggle": 0.6, "tick": 0.07, "scrape": 0.32, "chop": 0.22, "crunch": 0.28, "flat": 0.14, "slash": 0.2, "stab": 0.22, "boom": 1.8, "buzz": 0.6}
 
 func _ready() -> void:
 	_vary.randomize()
@@ -176,6 +176,15 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 				lp2 += (lp - lp2) * k
 				ph += TAU * 220.0 * tone / RATE
 				s = lp2 * 2.6 * exp(-t * 280.0) + sin(ph) * 0.4 * exp(-t * 50.0) + sin(ph * 2.1) * 0.15 * exp(-t * 80.0)
+			"buzz":
+				# A swarm's drone: wings beating, the pitch wavering, swelling and fading.
+				var L: float = LENGTH[kind]
+				var e := sin(PI * minf(1.0, t / L))
+				ph += TAU * (210.0 + 35.0 * sin(TAU * 11.0 * t) + 20.0 * sin(TAU * 3.0 * t)) * tone / RATE
+				var bz := 0.0
+				for hh in [1, 2, 3, 4, 5]:
+					bz += sin(ph * hh) / hh
+				s = bz * e * 0.3
 			"whoosh":
 				# Air parted by a swing: a band of noise that rises and falls, rounded on top.
 				var L: float = LENGTH[kind]

@@ -152,6 +152,7 @@ var slow_timer := 0.0
 var slow_factor := 1.0
 var net_timer := 0.0
 var bee_timer := 0.0
+var swarmed := 0.0       # a honey pot's bees on him (Throwables.hives): a bot swats at them
 var wine_timer := 0.0
 var armor_kg := 0.0      # what the armour on him weighs now (plates knocked off lighten it)
 var _armor_dirty := true
@@ -1035,7 +1036,7 @@ static func plate_wear(mat: String) -> float:
 
 ## A plate knocked off: gone from him, it flies off the way the blow drove it, a piece of its
 ## own (what is left of him is uncovered there).
-func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force: float) -> void:
+func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force: float, fly := true) -> void:
 	ad.on[ci] = 0
 	part.remove_meta("armor_box")
 	ad.alive -= 1
@@ -1048,7 +1049,7 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 		place_armor()   # (the hair the plate covered bursts out of the hole)
 		_hair_pop = 1.0
 		_hair_lagv += dir.normalized() * 0.6 if dir.length_squared() > 1e-6 else Vector3.ZERO
-	if part.freeze or not part.is_inside_tree():
+	if part.freeze or not part.is_inside_tree() or not fly:
 		return
 	# The plate as voxels of the body's own size, two to a side, in its colour and stuff.
 	var c: Color = ad.cols[ci] if ad.has("cols") else Color(0.5, 0.5, 0.5)
@@ -2452,11 +2453,14 @@ func leg_broken(side: String) -> bool:
 	var s: VoxelPart = by_name.get("shin" + side)
 	return (t != null and t.fractured) or (s != null and s.fractured)
 
+## How much of its strength the arm has, 0..1: what is left of its two parts (VoxelPart.function),
+## on a curve that keeps a hurt arm of use (one fair blow cost an arm three quarters of its
+## strength and it was no use: user); a ruined or broken one is still none.
 func arm_func(side: String) -> float:
 	var a: Dictionary = arm[side]
 	if a.upper.severed or a.fore.severed:
 		return 0.0
-	return minf(a.upper.function(), a.fore.function()) * cord_arms
+	return pow(minf(a.upper.function(), a.fore.function()), 0.6) * cord_arms
 
 ## Whether the legs can hold him up: one good leg will do (he hops), two battered ones will
 ## not; neither will bleeding out or a head too rung to balance. Down, he crawls.
@@ -2867,6 +2871,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var live := state != "dead"
 	shove_t = maxf(0.0, shove_t - dt)
 	slow_timer = maxf(0.0, slow_timer - dt)
+	swarmed = maxf(0.0, swarmed - dt)
 	if throw_anim != null:
 		throw_anim.t -= dt
 		if throw_anim.t <= 0.0:
@@ -5819,6 +5824,22 @@ func fall(duration: float, force := false) -> void:
 	down_timer = duration
 	set_standing(false)
 
+## The parts he stands on and where their soles are, in the world: [[part, sole], ...] (a man's
+## shins; a beast's lowest leg segments, Beast.soles). What a banana peel, a caltrop or a rolling
+## cheese meets.
+func soles() -> Array:
+	var out := []
+	for n in ["shinL", "shinR"]:
+		var sp: VoxelPart = by_name.get(n)
+		if sp and not sp.severed:
+			out.append([sp, sp.global_transform * Vector3(0, -sp.half_ext.y * 0.9, 0)])
+	return out
+
+## His feet go from under him (a banana peel, oil): down on the sand for `duration`, whatever his
+## footing.
+func slip(duration: float) -> void:
+	fall(duration, true)
+
 ## Moves the whole body (every part, its weapons) so the torso stands over `p`, at rest.
 ## Moves him (and what he holds) to `p` on the sand, at the height he is; with `feet_at_y`, up or
 ## down as well, so that his lowest sole stands at p.y (set down on a heap, a crate, a body: moved
@@ -5848,7 +5869,9 @@ func teleport(p: Vector3, feet_at_y := false) -> void:
 ## At death's door (a party, co-op): a man whose wounds would kill him falls instead, his
 ## bleeding stopped, DYING_T seconds for a friend to lift him before they do. Only when the
 ## match says so (a friend still stands), never a beheading, and once per fall.
-const LIMB_BLOW := 55.0  # the most one blow takes off a limb (a limb has 100)
+const LIMB_BLOW := 40.0  # the most one blow takes off a man's limb (a limb has 100): one fair blow
+                         # left an arm no use (it was 55 and the crack on top: user)
+const LIMB_BLOW_BEAST := 55.0   # a beast's or a monster's
 const BITE_LIMB := 30.0  # and the most a bite or a claw does (two bites took both arms)
 const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
@@ -5966,6 +5989,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	# (A weapon's: the teeth of a bite are where they close, already in the limb.)
 	if not detached and hit.get("weapon", false):
 		lp = _to_flesh(part, lp, ld, V * S * 1.2, V * S * 3.0)
+	# A blast (a thunder pot, powder, Vulcan's fire) meets the armour on the whole side of him turned
+	# to it, not at one spot: every plate there is worn by it as hard as it was where the plate sits,
+	# and blown off worn through; right against it they all go (user: the pots did no harm to armour,
+	# the thunder pot least of all).
+	if hit.has("blast") and not detached:
+		_blast_plates(part, inv * (hit.blast as Vector3), float(hit.get("blast_power", J)), float(hit.get("blast_radius", 3.0)), float(hit.get("blast_r", 0.2)), res)
 	# Armour takes it first, where there is armour (character.js armorNear): the blow knocks
 	# off the plates nearest it, the harder the more, and a bare spot is not covered any more.
 	var near := [] if detached else _armor_near(part, lp, V * S * 1.7)
@@ -6304,7 +6333,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
 		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
 		# number's.
-		dmg = minf(dmg, (BITE_LIMB if hit.get("bite", false) else LIMB_BLOW) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
+		dmg = minf(dmg, (BITE_LIMB if hit.get("bite", false) else (LIMB_BLOW_BEAST if self is Beast else LIMB_BLOW)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	# One blow opens one wound: however hard it came, the bleeding it starts is bounded (a
 	# dragon's bite once bled a man white in a minute from a single wound); a cut artery is
 	# its own matter (part.artery), and wound on wound still adds up.
@@ -7593,7 +7622,7 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 	# through, under the skin.
 	if q >= 0.3 or (part.fracture == 1 and q >= 0.12):
 		_fracture(part, lp, J, res, 2, ld)
-	elif cut > 0 or (res.get("bone", false) and J > 18.0 * big):
+	elif cut >= 2 or (res.get("bone", false) and J > 18.0 * big):   # (a notch, not a single grain of it)
 		_fracture(part, lp, J, res, 1, ld)
 
 ## Blows that break bone (a man's, x his size): a blunt blow past BREAK_J breaks it through
@@ -7608,6 +7637,40 @@ const OPEN_J := 60.0
 ## never breaks one open. Giants' bones are as much thicker as they are bigger.
 const OPEN_AFTER := 6
 const BLOW_COUNTS_J := 10.0
+
+## A blast's work on the plates of `part` (apply_hit): `at_b` where it went off, in the part's own
+## frame; `power` and `radius` the blast's own (Throwables.blast), `crater` how far it blows what
+## is right against it away. A plate turned to it takes the blast's force where it sits, one turned
+## away a quarter of it; worn through (plate_wear), it is blown off. (A few of them fly as pieces,
+## BLAST_PLATES_FLY a part; the rest are gone in the blast: dozens of pieces at once were a stall.)
+const BLAST_PLATE_WEAR := 1.4
+const BLAST_PLATES_FLY := 6
+func _blast_plates(part: VoxelPart, at_b: Vector3, power: float, radius: float, crater: float, res: Dictionary) -> void:
+	var gone := 0
+	var basis := part.global_transform.basis
+	for ad in part.get_meta("armor", []):
+		var thr := plate_wear(ad.mat)
+		if not ad.has("wear"):
+			ad.wear = PackedFloat32Array()
+			ad.wear.resize(ad.cells.size())
+		for i in ad.pts.size():
+			if not ad.on[i]:
+				continue
+			var pt: Vector3 = ad.pts[i]
+			var to_b: Vector3 = at_b - pt
+			var d_w := (basis * to_b).length()   # (in the world's metres)
+			if d_w >= radius:
+				continue
+			var facing := 1.0
+			if pt.length_squared() > 1e-8 and to_b.length_squared() > 1e-8:
+				facing = clampf(pt.normalized().dot(to_b.normalized()), 0.0, 1.0)
+			var f := pow(1.0 - d_w / radius, 1.5) * (0.25 + 0.75 * facing)
+			ad.wear[i] += power * f * BLAST_PLATE_WEAR
+			if d_w < crater or ad.wear[i] >= thr:
+				_knock_plate(part, ad, i, (basis * -to_b).normalized(), power * f, gone < BLAST_PLATES_FLY)
+				gone += 1
+	if gone > 0:
+		res.armor_hit = int(res.get("armor_hit", 0)) + gone
 
 ## Whether a blunt blow of `J` on `part` breaks it out through the skin (see OPEN_AFTER).
 func _opens(part: VoxelPart, J: float) -> bool:
@@ -7913,11 +7976,13 @@ func apply_status(s) -> void:
 
 ## How far from death he is, 0..1 (the enemy's health plate): whatever ends him soonest, of the
 ## head, the torso, the blood running out, the brain (BRAIN_DEATH of it torn is death) and a torn
-## heart's last seconds; and nothing once he is beaten (out cold, the bout is over). The plate
-## read the head, the torso and the blood only, and a man went down for good with a third of it
-## left on it (user: the bar is not accurate).
+## heart's last seconds. The plate read the head, the torso and the blood only, and a man went
+## down for good with a third of it left on it (user: the bar is not accurate). Out of the fight
+## (out cold, down for good) he is not dead: the plate still shows what is left of his life, and
+## says he is out (it read nought, and a man on nought lay there alive taking blow after blow:
+## user). Nought is dead.
 func vitality() -> float:
-	if not alive or is_beaten():
+	if not alive:
 		return 0.0
 	return clampf(minf(minf(minf(part_life(head), part_life(torso)), blood) / 100.0, organ_vitality()), 0.0, 1.0)
 

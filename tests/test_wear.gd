@@ -254,3 +254,29 @@ func _near(w: Weapon, spot: int) -> int:
 				bd = d
 				best = i
 	return best
+
+## One fair cut into a man's forearm leaves the arm of use, weaker; a second leaves it weak (user:
+## after one blow the arms were no use any more: ease the harm the limbs take a little).
+func test_one_fair_cut_leaves_the_arm_of_use() -> void:
+	seed(12)
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 12})
+	m.me.f.teleport(Vector3(0, 0, -6))
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": PI})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var f: Fighter = e.f
+	for i in 10:
+		await get_tree().physics_frame
+	var cut := func() -> void:
+		var af: Transform3D = f.arm.R.fore.global_transform
+		f.apply_hit(f.arm.R.fore, {"impulse": 25.0, "type": "edge", "hardness": 0.8, "sharpness": 0.9, "point": af * Vector3(f.arm.R.fore.half_ext.x, 0, 0), "dir": -(af.basis * Vector3.RIGHT).normalized(), "axis": af.basis * Vector3.FORWARD, "edge": -(af.basis * Vector3.RIGHT).normalized(), "weapon": true})
+	cut.call()
+	var one := f.arm_func("R")
+	t.check(not f.arm.R.fore.severed and not f.arm_broken("R"), "one fair cut: the forearm cut into, not off nor broken through")
+	t.check(one >= 0.5, "and the arm still has %.2f of its strength" % one)
+	cut.call()
+	var two := f.arm_func("R")
+	t.check(two < one, "a second cut: weaker (%.2f)" % two)
+	m.queue_free()

@@ -386,6 +386,14 @@ func test_the_health_plate_counts_every_way_to_die() -> void:
 	man.heart_t = 1.0
 	t.check(man.vitality() < 0.1, "his heart torn, seconds to live (%.2f)" % man.vitality())
 	man.heart_t = -1.0
+	# Out of the fight is not dead: knocked out cold, the plate still shows the life left in him
+	# (it read nought, and a man on nought lay there alive taking blow after blow: user).
+	man.fall(3.0)
+	for i in 100:
+		man.concussion = 1.0   # (kept out cold: it clears a little every step)
+		await get_tree().physics_frame
+	t.check(man.alive and man.is_beaten(), "out cold, he is out of the fight")
+	t.check(man.vitality() > 0.5, "and the plate shows the life left in him (%.2f)" % man.vitality())
 	b.die("test")
 	t.eq(b.vitality(), 0.0, "dead, it is empty")
 	s[0].queue_free()

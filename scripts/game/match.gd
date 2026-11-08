@@ -1519,6 +1519,9 @@ func guest_message(type: String, data) -> void:
 		"wet":
 			if data is Dictionary and data.get("c") is Array:
 				throwables.set_wet(data.c)
+		"bees":
+			if data is Dictionary and data.get("b") is Array:
+				throwables.set_bees(data.b)
 		"breath":
 			if data is Dictionary and data.get("d") is Array and (data.d as Array).size() == 3:
 				var eb = entity_by_id(int(data.get("id", -1)))
