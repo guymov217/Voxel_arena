@@ -68,8 +68,11 @@ static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 			bare = hc
 	# (A helmet over a hairstyle not seen yet, laid out in one frame, was a tenth to a quarter of
 	# a second's hitch as training's next foe came in.)
-	var L: Dictionary = await _layout(p, ad, id, bare, {"t": Time.get_ticks_usec(), "fine": p.fine} if staged else {})
-	if staged and (not is_instance_valid(p) or not is_instance_valid(node)):
+	var pace := {"t": Time.get_ticks_usec(), "fine": p.fine} if staged else {}
+	var L: Dictionary = await _layout(p, ad, id, bare, pace)
+	# (Gone while it was worked out, or drawn anew: whoever drew him anew laid his armour again,
+	# and that is not to be taken off him.)
+	if staged and (not is_instance_valid(p) or not is_instance_valid(node) or not is_same(p.fine, pace.fine)):
 		return
 	clear(ad)
 	if L.is_empty():

@@ -201,6 +201,47 @@ func test_a_new_foes_helmet_is_laid_out_over_a_few_frames() -> void:
 	m.queue_free()
 	await get_tree().process_frame
 
+## Drawn anew (a look picked in Options) while his helmet is being worked out: the helmet laid on
+## him then stays on him (the one given up, as it ended, took it off him again).
+func test_a_man_drawn_anew_while_his_helmet_is_worked_out_keeps_it() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3})
+	m.me.f.teleport(Vector3(0, 0, -14))
+	m.me.drive = func(_e): return {}
+	await get_tree().physics_frame
+	var e = m.spawn_fighter({"kind": "bot", "name": "Anew", "loadout": {"main": "gladius", "off": "", "armor": ["murmilloHelm", "hair_curly"]}, "team": 1, "pos": Vector3(0, 0.1, 4.0), "yaw": PI})
+	var f: Fighter = e.f
+	var helm := {}
+	for ad in f.head.get_meta("armor", []):
+		if String(ad.id) == "murmilloHelm":
+			helm = ad
+	FineArmor._bands.clear()
+	FineArmor._shells.clear()
+	FineArmor.clear(helm)
+	FineArmor.pace_us = 0   # (a frame's wait at every turn: it is laid out over many)
+	var done := [false]
+	var lay := func():
+		await FineArmor.build(f, f.head, helm, true)
+		done[0] = true
+	lay.call()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	t.check(not done[0] and not helm.has("shell"), "his helmet being worked out")
+	Physique.dress(f)
+	var given = helm.shell.mi if helm.get("shell") is Dictionary else null
+	t.check(given != null and is_instance_valid(given), "drawn anew, in his helmet at once")
+	for i in 240:
+		if done[0]:
+			break
+		await get_tree().process_frame
+	FineArmor.pace_us = 4000
+	t.check(done[0], "the one being worked out given up")
+	t.check(helm.get("shell") is Dictionary and is_instance_valid(helm.shell.mi) and is_same(helm.shell.mi, given), "and the helmet he was given stays on him")
+	t.check(not (helm.node as Node3D).visible, "its plates' own tiles not shown under it")
+	m.queue_free()
+	await get_tree().process_frame
+
 static func _kept_shell(piece: String) -> Dictionary:
 	for k in FineArmor._shells:
 		if String(k).contains(piece):
