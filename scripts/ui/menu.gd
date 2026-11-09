@@ -1850,11 +1850,12 @@ func run_seed() -> int:
 ## The oddities on the stall this bout: one-off weapons of the smith's own, other ones each bout
 ## and each run; one bought is gone.
 func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> bool:
-	var stage := int(Save.get_value("stage", 1))
+	# (In a party, the bout the party is on: the solo campaign's was shown there.)
+	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
 	var key := "%d:%d" % [run_seed(), stage]
 	var sold: Array = (Save.get_value("oddities_sold", {}) as Dictionary).get(key, [])
 	var list := Arms.oddities(run_seed(), stage)
-	box.add_child(UIStyle.label("VULCANUS'S ODDITIES · this bout only, one of each", 13, UIStyle.GOLD))
+	box.add_child(UIStyle.label("VULCANUS'S MASTERWORKS · this bout only, one of each", 13, UIStyle.GOLD))
 	var g := GridContainer.new()
 	g.columns = columns
 	g.add_theme_constant_override("h_separation", 10)
@@ -1865,11 +1866,11 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 		var d: Dictionary = dv
 		var idx := int(d.oddity.i)
 		var price := Arms.oddity_price(d)
+		var tier := int(d.oddity.get("tier", 1))
 		var tile := PanelContainer.new()
 		var st := tile_st.duplicate()
-		if d.oddity.rare:
-			st.border_color = UIStyle.GOLD
-			st.set_border_width_all(2)
+		st.border_color = Masterworks.colour(tier)
+		st.set_border_width_all(2 if tier < 4 else 3)
 		tile.add_theme_stylebox_override("panel", st)
 		tile.custom_minimum_size = Vector2(146, 0)
 		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1879,11 +1880,14 @@ func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) ->
 		var tex := TextureRect.new()
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 96)
+		tex.custom_minimum_size = Vector2(0, 150)   # (a great weapon, laid across: seen whole)
 		col.add_child(tex)
 		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.GOLD if d.oddity.rare else UIStyle.TEXT)
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(nm)
+		var tl := UIStyle.label(Masterworks.title(tier), 12, Masterworks.colour(tier))
+		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(tl)
 		var gems := []
 		for v in d.voxels:
 			if Weapon.GEMS.has(v[3]) and not gems.has(v[3]):

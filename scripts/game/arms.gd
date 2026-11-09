@@ -180,57 +180,29 @@ static func buy_design(a: Dictionary, d: Dictionary, sell := "", price := -1, ha
 	nd.erase("oddity")
 	return _acquire(a, nd, design_price(nd) if price < 0 else price, nd.get("kind", "weapon") == "shield" or hand == "L", sell, hand == "R")
 
-# ---------- Vulcanus's oddities: a few one-off weapons each bout ----------
+# ---------- Vulcanus's masterworks: a few one-off weapons each bout ----------
 
-const ODDITY_NAMES := ["The Widowmaker", "Old Grudge", "Sorrow", "The Butcher's Apology", "Bonebiter", "Mercy", "The Last Word", "Thunderjaw", "Lady Ruin", "The Emperor's Itch", "Gutspiller", "Kindly Death"]
-const ODDITY_MARKUP := 1.3
-
-## The odd weapons on the smith's stall for `stage` of the campaign run `run_seed`: the same
-## on every visit through the bout, other ones the next bout and other ones every run. Later
-## bouts bring better stuff: steel for iron, lead in the heads, and now and then gem sockets.
+## The one-off weapons on the smith's stall for `stage` of the campaign run `run_seed`: the same
+## on every visit through the bout, other ones the next bout and other ones every run; finer,
+## bigger and dearer the further the campaign goes (Masterworks: great swords, axes and mauls, one
+## a tier under the bout's, one of it, one above).
 static func oddities(run_seed: int, stage: int, n := 3) -> Array:
-	var out := []
-	for i in n:
-		var rng := RandomNumberGenerator.new()
-		rng.seed = hash([run_seed, stage, i])
-		var d := ForgeLib.surprise_weapon(rng)
-		var better := clampf(0.15 + 0.07 * stage, 0.15, 0.85)
-		var gem_p := clampf(0.04 * (stage - 1), 0.0, 0.5)
-		var gem: String = ["ruby", "sapphire", "emerald"][rng.randi_range(0, 2)]
-		var head := []
-		for v in d.voxels:
-			if v[4] != "grip" and v[3] != "wood":
-				head.append(v)
-		for v in head:
-			if v[3] == "iron" and rng.randf() < better:
-				v[3] = "steel"
-			elif v[3] == "stone" and v[4] == "blunt" and rng.randf() < better * 0.5:
-				v[3] = "lead"
-		var rare := rng.randf() < gem_p and not head.is_empty()
-		if rare:
-			var k := mini(head.size(), rng.randi_range(3, 4 + stage))
-			for j in k:
-				head[rng.randi_range(0, head.size() - 1)][3] = gem
-			d.name = Loc.t(ODDITY_NAMES[rng.randi_range(0, ODDITY_NAMES.size() - 1)])
-		ForgeLib.one_piece(d)   # (the gems and swaps change no shape, but be sure: nothing in the air)
-		# Never more than a man can lift: two hands for a heavy one, and the lead of a head that
-		# is too much even so goes back to stone.
-		if ForgeLib.too_heavy(d) != "":
-			d.twoHanded = true
-		if ForgeLib.too_heavy(d) != "":
-			for v in d.voxels:
-				if v[3] == "lead":
-					v[3] = "stone"
-		d.erase("stats")
-		d["oddity"] = {"stage": stage, "i": i, "rare": rare}
-		out.append(d)
-	return out
+	return Masterworks.stall(run_seed, stage, n)
 
-## What an oddity costs: what it is worth to make, and a little more for being one of a kind.
+## What a masterwork costs: what it is worth to make, and more for being one of a kind, the more
+## the finer its tier; within its tier's band (Masterworks.PRICE), never less than a little over
+## its worth.
 static func oddity_price(d: Dictionary) -> int:
 	var nd := d.duplicate()
 	nd.erase("oddity")
-	return int(ceil(design_price(nd) * ODDITY_MARKUP))
+	var t := clampi(int((d.get("oddity", {}) as Dictionary).get("tier", 1)) if d.get("oddity") is Dictionary else 1, 1, Masterworks.MARKUP.size())
+	var worth := float(design_price(nd))
+	var band: Array = Masterworks.PRICE[t - 1]
+	var lo := float(band[0])
+	var hi := float(band[1])
+	# (Up the band as it is worth: at its floor, every cheap one cost the same round sum.)
+	var ask := lo + (hi - lo) * clampf(worth * float(Masterworks.MARKUP[t - 1]) / hi, 0.0, 1.0)
+	return int(ceil(maxf(ask, worth * 1.1)))
 
 ## What the smith asks to make a design: its stuff, block by block, and his labour on it, or
 ## what it can do in a fight, whichever is more (lead is cheap stuff, a lead head is not a cheap

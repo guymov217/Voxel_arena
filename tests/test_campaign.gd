@@ -402,6 +402,44 @@ func test_the_smiths_oddities() -> void:
 	t.check(steel[1] > steel[0], "later bouts: more steel (%d vs %d)" % [steel[1], steel[0]])
 	t.check(gems[0] == 0 and gems[1] > 0, "gem sockets only later (%d at bout 1, %d at bout 12)" % gems)
 
+## Vulcanus's masterworks grow with the campaign (user): the first bouts' are fine steel and no
+## gems, the late bouts' a tier or more above, dearer, keener and set with gems; three kinds on
+## each stall; every one two-handed, with a grip, liftable, within its tier's load on the arms, and
+## taken by the host as it is in a party.
+func test_the_masterworks_grow_with_the_campaign() -> void:
+	var early := []
+	var late := []
+	var cost := [0, 0]
+	var bad := []
+	for seed_ in 10:
+		for k in 2:
+			var stage: int = [1, 50][k]
+			var kinds := {}
+			for d in Arms.oddities(seed_ * 17 + 5, stage):
+				var tier := int(d.oddity.tier)
+				(early if k == 0 else late).append(tier)
+				kinds[d.oddity.kind] = true
+				cost[k] += Arms.oddity_price(d)
+				var st := ForgeLib.compute_stats(d)
+				var why := ForgeLib.too_heavy(d, st)
+				if why != "" or not d.twoHanded or ForgeLib.grip_points(d) == null or Masterworks.load_of(st) > Masterworks.LOAD[tier - 1] + 0.61:
+					bad.append("%s (%s, tier %d, load %.2f) %s" % [d.name, d.oddity.kind, tier, Masterworks.load_of(st), why])
+				# (In a party the host takes a guest's weapon as the forge could make it, or he
+				# fights with a gladius: within its grid, of its stuff, no more blocks than it holds.)
+				if Net.clean_design(d) == null:
+					bad.append("%s (%s, tier %d): refused over the wire" % [d.name, d.oddity.kind, tier])
+			t.eq(kinds.size(), 3, "three kinds on the stall at bout %d" % stage)
+	t.check(early.max() <= 2 and late.min() >= 5, "tiers I-II at the first bout (%s), V-VI at bout 50 (%s)" % [early, late])
+	t.check(cost[1] > 4 * cost[0], "the late stall far dearer: %d against %d" % [cost[1], cost[0]])
+	t.check(bad.is_empty(), "every masterwork can be lifted and swung within its tier: %s" % ", ".join(bad.slice(0, 3)))
+	# The tiers follow the bouts through the run, never going back.
+	var last := 0
+	for stage in range(1, 65):
+		var tier := Masterworks.tier_of(stage)
+		t.check(tier >= last, "tier %d at bout %d (after %d)" % [tier, stage, last])
+		last = tier
+	t.eq(Masterworks.tier_of(64), 6, "the last bouts: godforged")
+
 ## Every oddity (and every "surprise me") is one piece: no voxel off on its own in the air.
 func test_every_oddity_is_one_piece() -> void:
 	var bad := 0
