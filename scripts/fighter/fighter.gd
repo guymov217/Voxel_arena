@@ -4409,7 +4409,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# there whatever pushed it (user: never behind the back): after a moment it passes through
 	# them, straight to its mark in front, and is solid again once out in front.
 	_unwedge(side, dt, yaw_q, t_pos)
-	target = _clear_body(target, yaw_q, t_pos)
+	target = _clear_body(target, yaw_q, t_pos, side)
 	var target_w := t_pos + yaw_q * target
 	# A thrust is a straight stab along the blade, wherever it points: the line the blade is on
 	# when the button goes down is kept where it lies (in the arena, not on the body: a lean or a
@@ -4628,6 +4628,19 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var bend_need: float = elbow_dir.angle_to(fore_dir)
 		var want_bend := minf(bend_need, 0.35 if not guard else (0.9 if two_handed else PI))
 		_hold_elbow(side, want_bend, swinging, dt, guard)
+		# Held near straight (a swing), the arm lies along the line from the shoulder to the hand;
+		# bent, the forearm runs from the elbow to it: the hand's goal moved out until that, as thick
+		# as it is drawn, is out of the trunk as it is drawn (_outline). (With only the elbow asked
+		# out, a swing across him locked the arm straight and the hand's pull took the upper arm
+		# back in, a hand's breadth into the chest.)
+		var sculpt = _trunk_sculpt(side)
+		if sculpt != null and thrust_line[side] == null:
+			var g2 := _hand_off_trunk(side, sculpt, shoulder_w, elbow, hand_goal, lu, lf, want_bend < 0.5)
+			if not g2.is_equal_approx(hand_goal):
+				hand_goal = g2
+				if side == two_side and two_gap != null:
+					two_front = hand_goal + (two_gap as Vector3)
+					two_front += _out_front(two_front)
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if side == two_side and two_handed and weapon_joints[two_off()] and thrust_line[side] == null:
@@ -4670,6 +4683,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# the arm never folds in through the chest whichever hand it is.
 		var lu := UPPER_LEN * S
 		var e_dir := _elbow_dir(side, t_rot.inverse() * (dir + Vector3(0, -0.35, 0)).normalized(), lu, t_rot)
+		# (Out of the trunk as it is drawn, as a weapon arm's is: _elbow_off_trunk.)
+		var sculpt = _trunk_sculpt(side)
+		if sculpt != null:
+			e_dir = _elbow_off_trunk(side, sculpt, shoulder_w, e_dir, lu)
 		var elbow = shoulder_w + e_dir * lu
 		var f_dir = (target_w - elbow).normalized() if (target_w - elbow).length_squared() > 1e-6 else dir
 		# A fist on its way home from a punch is folded back into the guard as briskly as it
@@ -4725,19 +4742,32 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 ## other): the elbow, the forearm and the hand are pushed back out of the torso and the head,
 ## out the front, or out to the arm's own side if they are behind the middle.
 const ARM_OUT_K := 900.0
+const UPPER_OUT := 4.0   # the upper arm's middle pushed out of the drawn trunk this much harder
 func _keep_arm_out(side: String, dt: float) -> void:
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
 	var out_x := -1.0 if side == "R" else 1.0
-	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0)]]
+	var sculpt = _trunk_sculpt(side)
+	# [the part, the point, where along the part it is (its frame's y: how thick it is there)]
+	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0), -up.half_ext.y]]
 	# The middle of the upper arm too, but not with both hands on a haft: reaching across the
 	# chest for the other end of it, the off arm's lies along the front of the chest, at the
 	# box's corner by the shoulder, and pushed out from there all the time it twisted the haft
-	# off the mouse (a longsword aimed out to the right stood 69 degrees short of it).
+	# off the mouse (a longsword aimed out to the right stood 69 degrees short of it). Kept out
+	# of the drawn trunk, its lower half too (the elbow's end of it went in first).
 	if not two_handed:
-		pts.append([up, up.global_position])
+		pts.append([up, up.global_position, 0.0])
+		if sculpt != null:
+			pts.append([up, up.global_transform * Vector3(0, -0.5 * up.half_ext.y, 0), -0.5 * up.half_ext.y])
 	if not fo.severed:
-		pts.append_array([[fo, fo.global_position], [fo, hand_world(side)]])
+		pts.append_array([[fo, fo.global_position, 0.0], [fo, hand_world(side), hand_point.y]])
+	# Each limb is drawn seated on its joint (_seat_drawing): by as much as the joint has given,
+	# toward the socket. Where it is drawn is what is kept out of the drawn trunk.
+	var seat := {up: Vector3.ZERO, fo: Vector3.ZERO}
+	if sculpt != null and up.joint != null:
+		seat[up] = torso.global_transform * up.pa - up.global_transform * up.ca
+		if fo.joint != null and not fo.severed:
+			seat[fo] = (seat[up] as Vector3) + up.global_transform * fo.pa - fo.global_transform * fo.ca
 	for body in [torso, head]:
 		if body.severed:
 			continue
@@ -4745,23 +4775,173 @@ func _keep_arm_out(side: String, dt: float) -> void:
 		var bi := bt.affine_inverse()
 		var bq := PD.quat_of(body)
 		var e: Vector3 = body.half_ext + Vector3(0.02, 0.0, 0.02) * S
+		var drawn: bool = body == torso and sculpt != null
 		for pp in pts:
 			var l: Vector3 = bi * (pp[1] as Vector3)
-			if absf(l.x) >= e.x or absf(l.y) >= e.y or absf(l.z) >= e.z:
-				continue
-			var front := e.z - l.z
-			var aside := e.x - l.x * out_x
-			var push := Vector3(0, 0, front) if front < aside or l.z > 0.0 else Vector3(out_x * aside, 0, 0)
+			var push: Vector3
+			if drawn:
+				# Out of the trunk as it is drawn, the limb as thick as it is drawn there (_outline).
+				l = bi * ((pp[1] as Vector3) + (seat[pp[0]] as Vector3))
+				push = _out_of_trunk(sculpt, l, _limb_r(pp[0], pp[2]) + _plate_pad(l.y))
+				if push == Vector3.ZERO:
+					continue
+			else:
+				if absf(l.x) >= e.x or absf(l.y) >= e.y or absf(l.z) >= e.z:
+					continue
+				var front := e.z - l.z
+				var aside := e.x - l.x * out_x
+				push = Vector3(0, 0, front) if front < aside or l.z > 0.0 else Vector3(out_x * aside, 0, 0)
 			var part: VoxelPart = pp[0]
 			var v_out := (bq * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
 			var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
 			# A soft, critically damped push (a stiff one fought a two-handed grip and set the
-			# hands buzzing at the hilt).
-			var acc: float = push.length() * ARM_OUT_K - minf(0.0, v_out) * 2.0 * sqrt(ARM_OUT_K)
+			# hands buzzing at the hilt). The upper arm's own middle (not with two hands on a haft)
+			# harder, out of the drawn trunk: pushed there it has the whole arm and its weapon to
+			# turn about the shoulder, and soft it lagged into the chest through a stroke across him.
+			var k_out := ARM_OUT_K * (UPPER_OUT if drawn and part == up and float(pp[2]) > -0.75 * up.half_ext.y else 1.0)
+			var acc: float = push.length() * k_out - minf(0.0, v_out) * 2.0 * sqrt(k_out)
 			var jo: Vector3 = bq * push.normalized() * acc * m_eff * dt
 			part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 			body.apply_central_impulse(-jo)   # (the arm pushes off his own body, not off the air)
 	_keep_hand_front(side, dt)
+
+## What of him his arms are kept out of is what is drawn of him (user: his arms went in through
+## his armour and his chest as he swung; kept out of the trunk's box, a hand narrower than the
+## chest is drawn at the shoulders, the limbs taken as points, an arm swung across him sank a
+## hand's breadth into the chest, more in armour): the trunk as the new look sculpts his build
+## (its outline by fine row and way round its line, FineBody), with a cuirass's thickness on it
+## where he wears one, and each limb a ball as thick as it is drawn there, its own plates on. Read
+## off the build's sculpt, not off what is drawn: the same in every look, with a screen or without,
+## so the fight does not change with how he is drawn. A man of no such sculpt (a beast) keeps the
+## box. The rows of the sculpt he is not in (it fills them from the nearest) are left out.
+const TRUNK_PLATE := 2.0   # a cuirass's shell off the chest, fine voxels (as FineArmor lays it)
+const LIMB_PLATE := 1.5    # a manica's or a vambrace's off the arm
+static var _sculpts := {}  # build|part|voxel -> outline (shared: read, never changed)
+var _outlines := {}        # part name -> [build, voxel, outline or null]
+func _outline(p: VoxelPart):
+	var key := String(p.part_name)
+	var vox := p.vf * p.part_scale
+	var pref = get("build_pref")
+	var have = _outlines.get(key)
+	if have is Array and have[0] == pref and is_equal_approx(float(have[1]), vox):
+		return have[2]
+	var o = null
+	if Physique.applies(self, "human"):
+		var bn := Physique.build_of(self)
+		var ck := "%s|%s|%.6f" % [bn, key, vox]
+		if _sculpts.has(ck):
+			o = _sculpts[ck]
+		else:
+			var tpl := FineBody.template()
+			var b = tpl.get("builds", {}).get(bn)
+			var pd = (b.get("parts", {}) as Dictionary).get(key) if b is Dictionary else null
+			if pd is Dictionary and pd.get("prof") is Array and pd.get("cells") is Array and not (pd.prof as Array).is_empty():
+				var na := int(tpl.get("na", 32))
+				var margin := int(tpl.get("margin", 10))
+				var fsz := vox / float(int(tpl.get("res", 2)))
+				var k := vox / 0.0275   # (the sculpt is laid out for a voxel of 0.0275)
+				var flat := PackedFloat32Array()
+				var mean := PackedFloat32Array()
+				for row in pd.prof:
+					var s := 0.0
+					for v in row:
+						flat.append(float(v) * k)
+						s += float(v) * k
+					mean.append(s / float(maxi(1, (row as Array).size())))
+				var cells: Array = pd.cells
+				var lo_r := 1 << 20
+				var hi_r := -(1 << 20)
+				for c in range(1, cells.size(), FineBody.CELL):
+					lo_r = mini(lo_r, int(cells[c]))
+					hi_r = maxi(hi_r, int(cells[c]))
+				if lo_r <= hi_r:
+					var ylo := -float(p.grid.y) * vox * 0.5 - float(margin) * fsz
+					o = {"prof": flat, "mean": mean, "na": na, "fsz": fsz, "ylo": ylo, "r0": lo_r + margin, "r1": mini(hi_r + margin, (pd.prof as Array).size() - 1),
+						"y0": ylo + float(lo_r + margin) * fsz, "y1": ylo + float(hi_r + margin + 1) * fsz}
+			_sculpts[ck] = o
+	_outlines[key] = [pref, vox, o]
+	return o
+
+## The trunk's drawn outline his arm `side` is kept out of (_outline), or null (the trunk's box, as
+## before): in armour (a cuirass on him, or plates on that arm: there the drawn trunk and arm are a
+## hand fuller than the box and the point, bare they are near it), on his feet and his own man.
+## Down, flung or limp, his arms go where they fall; while a beast has him (a crocodile's jaws in
+## its roll, an ape's grip) or a man holds that arm, the grip has the say over where the arm goes.
+func _trunk_sculpt(side: String):
+	if state != "stand" or (pinned_arm == side and is_instance_valid(grabbed_by)):
+		return null
+	if not (_armored(torso) or _armored(arm[side].upper) or _armored(arm[side].fore)):
+		return null
+	for m in ["beast_hold", "rolled_by"]:
+		if has_meta(m) and is_instance_valid(get_meta(m)):
+			return null
+	return _outline(torso)
+
+## The sculpt's row (fractional, within the rows he is in) at `y` along the part.
+static func _sculpt_row(o: Dictionary, y: float) -> float:
+	return clampf((y - float(o.ylo)) / float(o.fsz) - 0.5, float(o.r0), float(o.r1))
+
+## How far out from the part's line it is drawn at `y` along it, the way `ang` round it.
+static func _sculpt_r(o: Dictionary, y: float, ang: float) -> float:
+	var na: int = o.na
+	var fr := _sculpt_row(o, y)
+	var r0 := int(fr)
+	var r1 := mini(r0 + 1, int(o.r1))
+	var wr := fr - float(r0)
+	var fa := (ang + PI) / TAU * float(na) - 0.5
+	var a0f := floorf(fa)
+	var wa := fa - a0f
+	var a0 := posmod(int(a0f), na)
+	var a1 := (a0 + 1) % na
+	var pf: PackedFloat32Array = o.prof
+	return lerpf(lerpf(pf[r0 * na + a0], pf[r0 * na + a1], wa), lerpf(pf[r1 * na + a0], pf[r1 * na + a1], wa), wr)
+
+## How thick (a ball's radius) limb `p` is drawn at `y` along it (its frame), its plates on: the
+## sculpt's own outline there, the mean of the ways round (0: no sculpt, a point as before).
+func _limb_r(p: VoxelPart, y: float) -> float:
+	var o = _outline(p)
+	if o == null:
+		return 0.0
+	var fr := _sculpt_row(o, y)
+	var r0 := int(fr)
+	var mean: PackedFloat32Array = o.mean
+	var r := lerpf(mean[r0], mean[mini(r0 + 1, int(o.r1))], fr - float(r0))
+	return r + (LIMB_PLATE * float(o.fsz) if _armored(p) else 0.0)
+
+## A cuirass's thickness on the trunk at `y` (the trunk's frame): over the rows its plates cover
+## (and a fine voxel past them), none elsewhere or without one.
+var _plate_span := [-1, Vector2.ZERO]   # [the trunk's pieces counted, the plates' rows (y from..to)]
+func _plate_pad(y: float) -> float:
+	var ads: Array = torso.get_meta("armor", [])
+	if int(_plate_span[0]) != ads.size():
+		var lo := INF
+		var hi := -INF
+		for ad in ads:
+			if _cosmetic(String(ad.id)):
+				continue
+			for q in ad.pts:
+				lo = minf(lo, (q as Vector3).y)
+				hi = maxf(hi, (q as Vector3).y)
+		_plate_span = [ads.size(), Vector2(lo, hi)]
+	var span: Vector2 = _plate_span[1]
+	var o = _outline(torso)
+	if o == null or span.x > span.y:
+		return 0.0
+	var vox := torso.vf * torso.part_scale
+	if y < span.x - vox or y > span.y + vox:
+		return 0.0
+	return TRUNK_PLATE * float(o.fsz)
+
+## How far (the trunk's frame) a ball of radius `r` round `l` (the trunk's frame) has to go to be
+## out of the trunk as it is drawn (`o`, _outline): straight out from its line. ZERO when it is.
+static func _out_of_trunk(o: Dictionary, l: Vector3, r: float) -> Vector3:
+	if l.y < float(o.y0) - r or l.y > float(o.y1) + r:
+		return Vector3.ZERO
+	var d := Vector2(l.x, l.z).length()
+	var pen := _sculpt_r(o, l.y, atan2(l.z, l.x)) + r - d
+	if pen <= 0.0:
+		return Vector3.ZERO
+	return (Vector3(l.x, 0.0, l.z) / d if d > 1e-4 else Vector3(0, 0, 1)) * pen
 
 var wedged := {"R": 0.0, "L": 0.0}   # how long a free hand has been caught behind the back (s); < 0: passing through
 func _unwedge(side: String, dt: float, yaw_q: Quaternion, t_pos: Vector3) -> void:
@@ -4916,6 +5096,9 @@ func _shooter_aim(side: String, w: Weapon, inp: Dictionary, yaw_q: Quaternion, d
 ## the trunk's box (with a little room) by the nearer way, aside to its own side or out in front.
 var elbow_face := {"R": "", "L": ""}   # which way the elbow was last put out of the trunk (_elbow_clear)
 func _elbow_clear(side: String, shoulder_w: Vector3, e_dir: Vector3, lu: float) -> Vector3:
+	var sculpt = _trunk_sculpt(side)
+	if sculpt != null:
+		return _elbow_off_trunk(side, sculpt, shoulder_w, e_dir, lu)
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var e: Vector3 = torso.half_ext + Vector3(0.05, 0.0, 0.05) * S
@@ -4945,6 +5128,63 @@ func _elbow_clear(side: String, shoulder_w: Vector3, e_dir: Vector3, lu: float) 
 		d = nd.normalized()
 	return d
 
+## The elbow asked for where the upper arm, as thick as it is drawn, lies out of the trunk as it is
+## drawn (_outline) from its middle down to the elbow: the elbow moved out (straight out from the
+## trunk's line) as far as the deepest of it is in, the shoulder where it is. (Its half by the
+## shoulder is in the shoulder's own flesh: that is where it grows out of him.) Swung across him,
+## the arm's middle went a hand's breadth into the chest drawn round it.
+func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_dir: Vector3, lu: float) -> Vector3:
+	var bt: Transform3D = torso.global_transform
+	var bi := bt.affine_inverse()
+	var up: VoxelPart = arm[side].upper
+	var d := e_dir
+	for i in 3:
+		var move := Vector3.ZERO
+		for t: float in [0.5, 0.75, 1.0]:
+			var l: Vector3 = bi * (shoulder_w + d * (lu * t))
+			var push: Vector3 = _out_of_trunk(sculpt, l, _limb_r(up, lu * (0.5 - t)) + _plate_pad(l.y)) / t
+			if push.length_squared() > move.length_squared():
+				move = push
+		if move == Vector3.ZERO:
+			break
+		var nd: Vector3 = d * lu + bt.basis * move
+		if nd.length_squared() < 1e-8:
+			break
+		d = nd.normalized()
+	return d
+
+## The hand's goal moved out (straight out from the trunk's line) until the arm reaching it lies
+## out of the trunk as it is drawn, as thick as it is drawn: `straight`, the whole arm along the
+## line from the shoulder (the upper arm from its middle, and the forearm); else the forearm along
+## the line from the elbow.
+func _hand_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, elbow_w: Vector3, goal: Vector3, lu: float, lf: float, straight: bool) -> Vector3:
+	var bt: Transform3D = torso.global_transform
+	var bi := bt.affine_inverse()
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	if fo.severed:
+		return goal
+	# [how far along the line, the part, where along the part]
+	var marks := [[lu * 0.5, up, 0.0], [lu * 0.75, up, -0.25 * lu], [lu, up, -0.5 * lu], [lu + lf * 0.5, fo, 0.0]] if straight else [[lf * 0.35, fo, 0.15 * lf], [lf * 0.7, fo, -0.2 * lf]]
+	var from := shoulder_w if straight else elbow_w
+	var g := goal
+	for i in 3:
+		var span := (g - from).length()
+		if span < 0.05 * S:
+			break
+		var dirv := (g - from) / span
+		var move := Vector3.ZERO
+		for mk in marks:
+			var dist: float = minf(float(mk[0]), span)
+			var l: Vector3 = bi * (from + dirv * dist)
+			var push: Vector3 = _out_of_trunk(sculpt, l, _limb_r(mk[1], float(mk[2])) + _plate_pad(l.y)) * (span / dist)
+			if push.length_squared() > move.length_squared():
+				move = push
+		if move == Vector3.ZERO:
+			break
+		g += bt.basis * move
+	return g
+
 ## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
 ## side of the body (at most 0.22 S across the shoulder line) and at most 0.28 S above the
 ## shoulder (high enough for an overhead blow), the same for both arms, mirrored.
@@ -4960,11 +5200,20 @@ func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion) ->
 
 ## A hand's mark (in the yaw frame, from the torso) moved out of the torso and the head to the
 ## front of them: neither hand is ever pulled in through its own body.
-func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3) -> Vector3:
+func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3, side := "R") -> Vector3:
 	var th: Vector3 = torso.half_ext
 	var tz := th.z + 0.09 * S
 	if target.y < th.y and target.y > -th.y * 1.1 and absf(target.x) < th.x + 0.05 * S and target.z < tz:
 		target.z = tz
+	# And out of the trunk as it is drawn, the hand as thick as the arm is drawn there (_outline):
+	# beside the chest, by the shoulders and in a cuirass it is fuller than the box.
+	var sculpt = _trunk_sculpt(side)
+	if sculpt != null and not torso.severed and not arm[side].fore.severed:
+		var bt: Transform3D = torso.global_transform
+		var l: Vector3 = bt.affine_inverse() * (t_pos + yaw_q * target)
+		var push := _out_of_trunk(sculpt, l, _limb_r(arm[side].fore, hand_point.y) + _plate_pad(l.y))
+		if push != Vector3.ZERO:
+			target += yaw_q.inverse() * (bt.basis * push)
 	if not head.severed:
 		var hh: Vector3 = head.half_ext
 		var hl := yaw_q.inverse() * (head.global_position - t_pos)
