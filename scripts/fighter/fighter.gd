@@ -346,6 +346,11 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	var sk_lin := skin.srgb_to_linear()
 	var plain_insides := Anatomy.gore() == "reduced"
 	var tm_lin := team_color.srgb_to_linear()
+	# Built a part a frame (Match.spawn_fighter_staged: a man brought in while a fight goes on,
+	# out of the world until he is whole): in one frame, a whole man was a stop of a quarter of a
+	# second, every time training brought the next foe in as one died (user: the frames dropped
+	# as men bled and burnt to death).
+	var staged := bool(opts.get("staged", false))
 	for d in Data.body_parts:
 		var voxels := []
 		for v in d.voxels:
@@ -399,6 +404,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		if d.parent != null:
 			p.parent_part = by_name[d.parent]
 			p.parent_part.child_parts.append(p)
+		if staged:
+			await get_tree().process_frame
 	torso = by_name.torso
 	head = by_name.head
 	_count_organs()
@@ -426,7 +433,10 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	if String(mods.get("look", "")) != "":
 		MonsterLook.paint_face(self, String(mods.look))
 	# How he is drawn (Options: the gladiators' look). Drawing only.
-	Physique.dress(self)
+	if staged:
+		await Physique.dress(self, "", true)
+	else:
+		Physique.dress(self)
 	# A giant of myth is struck where he is drawn, in any look (FineBody.fit_giant).
 	FineBody.fit_giant(self)
 	var main = loadout.get("main")

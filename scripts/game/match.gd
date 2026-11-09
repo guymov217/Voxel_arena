@@ -375,6 +375,41 @@ func setup(opts: Dictionary) -> void:
 
 ## spec: {kind, name, loadout, team, pos, yaw, mods, personality, diff, color, boss, worn}
 func spawn_fighter(spec: Dictionary):
+	var mk := _new_fighter(spec)
+	var f: Fighter = mk[0]
+	f.build(spec.pos, spec.get("yaw", 0.0), _resolve_loadout(spec.loadout), mk[1])
+	return _fighter_in(f, spec)
+
+## The same, brought in while a fight goes on (training's next foe as one dies): built a part a
+## frame, out of the world (not moving, not drawn, not struck) until he is whole, then in. Built
+## in one frame, a man was a stop of a quarter of a second (user: the frames dropped as men bled
+## and burnt to death). The entity when he is in, null if the match went first.
+func spawn_fighter_staged(spec: Dictionary):
+	var mk := _new_fighter(spec)
+	var f: Fighter = mk[0]
+	f.process_mode = Node.PROCESS_MODE_DISABLED
+	f.visible = false
+	var opts: Dictionary = mk[1]
+	opts.staged = true
+	await f.build(spec.pos, spec.get("yaw", 0.0), _resolve_loadout(spec.loadout), opts)
+	if not is_instance_valid(f) or not is_inside_tree() or over:
+		if is_instance_valid(f):
+			f.queue_free()
+		return null
+	f.process_mode = Node.PROCESS_MODE_INHERIT
+	f.visible = true
+	for p in f.parts:
+		p.snap_drawing()
+	return _fighter_in(f, spec)
+
+## Training's next foe, built over the frames that follow while the fight goes on.
+func _respawn_staged(spec: Dictionary, training_: String) -> void:
+	var ne = await spawn_fighter_staged(spec)
+	if ne:
+		ne.training = training_
+
+## A fighter made for `spec` (in the tree, not yet built) and how he is to be built.
+func _new_fighter(spec: Dictionary) -> Array:
 	# Pieces designed at the armourer's bench come with the spec (a guest has never seen them).
 	if spec.get("loadout") is Dictionary and spec.loadout.get("armor_defs") is Dictionary:
 		Armory.register(spec.loadout.armor_defs)
@@ -402,7 +437,10 @@ func spawn_fighter(spec: Dictionary):
 		opts["team_color"] = Color(0.19, 0.19, 0.19)
 	if spec.get("body") is Dictionary:
 		opts["body"] = Body.sanitize(spec.body)
-	f.build(spec.pos, spec.get("yaw", 0.0), _resolve_loadout(spec.loadout), opts)
+	return [f, opts]
+
+## A built fighter into the fight: his weapons' chips and his armour's wear, and the entity.
+func _fighter_in(f: Fighter, spec: Dictionary) -> Dictionary:
 	# Chips the weapons came in with (the campaign's arms, unmended): the arms' own weapon only,
 	# never a blade arm the physician riveted in its place (the sword's chips, laid on it by
 	# index, tore out its grip and the arm had nothing to swing: user, no control of the arm).
@@ -1919,9 +1957,12 @@ func _check_round(dt: float) -> void:
 				e.respawned = true
 				var spec: Dictionary = e.spec.duplicate()
 				spec.erase("id")
-				var ne = spawn_beast(spec) if e.kind == "beast" else spawn_fighter(spec)
-				if ne:
-					ne.training = e.get("training", "fights")
+				if e.kind == "beast":
+					var nb = spawn_beast(spec)
+					if nb:
+						nb.training = e.get("training", "fights")
+				else:
+					_respawn_staged(spec, String(e.get("training", "fights")))
 		_training_tick(dt)
 		return
 	if mode == "yard":

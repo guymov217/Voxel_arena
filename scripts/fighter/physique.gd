@@ -102,7 +102,7 @@ static func giant_of(f) -> String:
 
 ## Draws `f` in `style` (the setting when empty), from whatever look he had: at spawn, or any
 ## time after, wounded or not; nothing of his state changes.
-static func dress(f, style := "") -> void:
+static func dress(f, style := "", staged := false) -> void:
 	if style == "":
 		style = current()
 	if not applies(f, style):
@@ -160,6 +160,8 @@ static func dress(f, style := "") -> void:
 					_paint_face(p, hc_h if hc_h != null else ArmorStyle.base_color(worn_h, {}, f.skin), false, BEARD_PAINT.get(worn_h, 2), false)
 			else:
 				FineBody.build(f, p, bn)
+				if staged:
+					await (f as Node).get_tree().process_frame   # (a part a frame: Fighter.build)
 			continue
 		p.set_look(_veil(p, style), true)
 		_bare(p)
@@ -171,10 +173,14 @@ static func dress(f, style := "") -> void:
 	# The new look's head is the fine one: a man's face, not a box (FineHead), sized to his build.
 	# (The strong gladiators keep their own heads: the old men whole, the way they were.)
 	if style == "human" and f.get("head") != null and fine_heads:
+		if staged:
+			await (f as Node).get_tree().process_frame
 		FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f))
 	f.set_meta("physique", style)
 	f.set_meta("build", bn)
 	if f.has_method("place_armor"):
+		if staged:
+			await (f as Node).get_tree().process_frame
 		f.place_armor()
 
 ## Every man in the tree under `root` drawn in the setting's look again (Options).
