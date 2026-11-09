@@ -1769,11 +1769,55 @@ func add_drip(lp: Vector3) -> void:
 	ps.position = lp
 	drips.append({"node": ps, "lp": lp})
 
+## A limb cut off: for the first seconds the stump pours out along where the limb was, in gushes
+## with the beat, and the blood comes down on the sand under it. Drawing only (what he loses is the
+## stump's bleeding: Fighter); the drip it leaves after is add_drip's.
+const STREAM_T := 3.2
+func add_stream(lp: Vector3) -> void:
+	var fx_ := Fx.current
+	if fx_ == null or fx_.headless or freeze or severed:
+		return
+	var ps: GPUParticles3D = fx_.emitter("stream", self, 70, vf * part_scale * 0.9)
+	if ps == null:
+		return
+	ps.position = lp
+	var o := lp.normalized() if lp.length_squared() > 1e-8 else Vector3.DOWN
+	var axis := Vector3.UP.cross(o)
+	if axis.length_squared() > 1e-6:
+		ps.basis = Basis(axis.normalized(), Vector3.UP.angle_to(o))
+	elif o.y < 0.0:
+		ps.basis = Basis(Vector3.RIGHT, PI)
+	ps.emitting = true
+	var pulse := func(t: float) -> void:
+		var beat := pow(0.5 + 0.5 * cos(t * TAU * 1.4), 2.0)
+		ps.amount_ratio = clampf(0.2 + 0.8 * beat * (1.0 - t / STREAM_T), 0.05, 1.0)
+	var tw := ps.create_tween()
+	tw.tween_method(pulse, 0.0, STREAM_T, STREAM_T)
+	tw.tween_callback(func() -> void: ps.emitting = false)
+	tw.tween_interval(1.2)
+	tw.tween_callback(ps.queue_free)
+	# (Where it comes down it pools, a little out from the stump the way it pours.)
+	var me := weakref(self)
+	for k in 10:
+		get_tree().create_timer(0.35 + 0.3 * k, false).timeout.connect(func() -> void:
+			var pt = me.get_ref()
+			if pt != null and is_instance_valid(fx_) and not pt.severed:
+				var at: Vector3 = pt.to_global(lp)
+				var out: Vector3 = pt.global_transform.basis.orthonormalized() * o
+				fx_.blood_at(Vector3(at.x + out.x * 0.3, 0.0, at.z + out.z * 0.3), 0.28 * (1.0 - 0.05 * k)))
+
 ## The drips follow how hard the part bleeds: heavier while it pours, gone once it has closed.
+## What they let fall pools on the sand under them (a man who stands bleeding stands in his blood;
+## one who walks leaves a trail).
+var _pool_at := 0.0
 func update_drips() -> void:
 	if drips.is_empty():
 		return
 	var flow := clampf((bleed + (2.0 if stump else 0.0)) / 1.2, 0.0, 1.0)
+	var pool_now := false
+	if flow > 0.03 and Fx.current != null and not Fx.current.headless and clock() >= _pool_at:
+		_pool_at = clock() + 0.5
+		pool_now = true
 	for i in range(drips.size() - 1, -1, -1):
 		var d = drips[i]
 		if not is_instance_valid(d.node) or severed:
@@ -1784,6 +1828,9 @@ func update_drips() -> void:
 		var ps: GPUParticles3D = d.node
 		ps.emitting = flow > 0.03
 		ps.amount_ratio = clampf(0.15 + flow, 0.15, 1.0)
+		if pool_now and ps.emitting:
+			var at := ps.global_position
+			Fx.current.blood_at(Vector3(at.x, 0.0, at.z), 0.06 + 0.14 * flow)
 
 # ---------- Blood on the body ----------
 # Every open wound bleeds where it is: blood runs down the skin from it the way gravity takes it
@@ -1877,8 +1924,9 @@ func update_blood(dt: float, beat: float) -> void:
 	if not painted.is_empty():
 		refresh_colors(painted)
 
-## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows.
-func wound(lp: Vector3, r: float, kind := "blood") -> int:
+## Paint a wound: blood soaks in around cuts, bruises darken under blunt blows (and swell, unless
+## `swell` is false: round a hole, where the hole is what shows).
+func wound(lp: Vector3, r: float, kind := "blood", swell := true) -> int:
 	var target := BRUISE if kind == "bruise" else (DUST if kind == "dust" else SMEAR)
 	var mx := 0.55 if kind == "bruise" else (0.5 if kind == "dust" else 0.9)
 	var touched := []
@@ -1891,6 +1939,9 @@ func wound(lp: Vector3, r: float, kind := "blood") -> int:
 		colors[i] = colors[i].lerp(target, k)
 		touched.append(i)
 	refresh_colors(touched)
+	# A bruise swells (only how the skin is drawn: FineBody.swell).
+	if kind == "bruise" and swell and fine.has("body") and not touched.is_empty():
+		FineBody.swell(self, lp, r * 1.2, clampf(r / (vf * part_scale) * 0.24, 0.2, 0.6))
 	return touched.size()
 
 # ---------- Losing voxels ----------
@@ -2165,6 +2216,153 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	if notify and fighter and fighter.has_method("on_part_voxels_lost"):
 		fighter.on_part_voxels_lost(self, done, out)
 	return out
+
+## Cut through below where it hangs: what of it the blade did not take (`indices`, the side the
+## part it hangs from is on) stays on him as the limb's stump, not on the falling piece. All it is
+## drawn with there (its skin, the plates of its armour, the cut across it) is drawn on that part
+## from now on, where it was, and moves with it; the piece no longer draws it. Drawing only: what a
+## blade meets there is that part, as at any stump; the voxels go from the piece as they always did.
+## (They went and were drawn nowhere: a forearm cut below the elbow came off at the elbow, the length
+## of it between gone, user: every falling piece must be the very piece cut off him.)
+## Returns the middle of the cut across the stump in that part's frame (null: nothing was drawn).
+func leave_on_stump(indices: Array):
+	var host = parent_part
+	if host == null or not is_instance_valid(host) or not is_inside_tree() or mm == null:
+		return null
+	if DisplayServer.get_name() == "headless" or (Fx.current != null and Fx.current.headless):
+		return null
+	var mine := {}
+	for i in indices:
+		if (i is int or i is float) and int(i) >= 0 and int(i) < fx.size() and alive[int(i)] == 1:
+			mine[int(i)] = true
+	if mine.is_empty():
+		return null
+	var lps := local_positions()
+	# Where it sat on the part it hangs from, its joint closed (a blow had pulled it off a little).
+	var rel: Transform3D = (host as VoxelPart).global_transform.affine_inverse() * global_transform
+	rel.basis = rel.basis.orthonormalized()
+	rel.origin = pa - rel.basis * ca   # (pa: its joint's point on the part it hangs from)
+	var made := 0
+	for src in [mmi] + draw_with:
+		if not (src is MultiMeshInstance3D) or not is_instance_valid(src) or not (src as MultiMeshInstance3D).visible:
+			continue
+		var smm: MultiMesh = (src as MultiMeshInstance3D).multimesh
+		if smm == null or smm.mesh == null:
+			continue
+		var n := smm.instance_count if smm.visible_instance_count < 0 else smm.visible_instance_count
+		# (Read off its buffer at once, 12 floats of its place a voxel then its colour and its data:
+		# asked one at a time, a limb's few thousand fine voxels were a hitch of their own.)
+		var buf := smm.buffer
+		var stride := 12 + (4 if smm.use_colors else 0) + (4 if smm.use_custom_data else 0)
+		var take := []
+		for k in mini(n, buf.size() / stride):
+			var o := k * stride
+			if buf[o] * buf[o] + buf[o + 4] * buf[o + 4] + buf[o + 8] * buf[o + 8] < 1e-12:
+				continue   # (not drawn)
+			if _side_of(Vector3(buf[o + 3], buf[o + 7], buf[o + 11]), mine, lps) == 1:
+				take.append(k)
+		if take.is_empty():
+			continue
+		var cm := MultiMesh.new()
+		cm.transform_format = MultiMesh.TRANSFORM_3D
+		cm.use_colors = smm.use_colors
+		cm.use_custom_data = smm.use_custom_data
+		cm.mesh = smm.mesh
+		cm.instance_count = take.size()
+		var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+		var box := AABB()
+		for q in take.size():
+			var k: int = take[q]
+			var t := rel * smm.get_instance_transform(k)
+			cm.set_instance_transform(q, t)
+			box = AABB(t.origin, Vector3.ZERO) if q == 0 else box.expand(t.origin)
+			if smm.use_colors:
+				cm.set_instance_color(q, smm.get_instance_color(k))
+			if smm.use_custom_data:
+				cm.set_instance_custom_data(q, smm.get_instance_custom_data(k))
+			smm.set_instance_transform(k, none)   # (the piece no longer has it)
+		box = box.grow(vf * part_scale * 2.0)
+		cm.custom_aabb = box
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "stump_end"
+		mi.multimesh = cm
+		mi.material_override = (src as MultiMeshInstance3D).material_override
+		mi.top_level = true
+		mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+		mi.custom_aabb = box
+		mi.transparency = (host as VoxelPart).see_through
+		host.add_child(mi)
+		mi.global_transform = (host as VoxelPart).global_transform
+		(host as VoxelPart).draw_with.append(mi)
+		made += 1
+	if made == 0:
+		return null
+	# The cut across it: those of its voxels the blade bared (beside a voxel it took).
+	var face := Vector3.ZERO
+	var nf := 0
+	var gy := grid.y
+	var gz := grid.z
+	for i in mine:
+		var x := fx[i]
+		var y := fy[i]
+		var z := fz[i]
+		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var nx: int = x + d.x
+			var ny: int = y + d.y
+			var nz: int = z + d.z
+			if nx < 0 or ny < 0 or nz < 0 or nx >= grid.x or ny >= gy or nz >= gz:
+				continue
+			var j := cellmap[(nx * gy + ny) * gz + nz] - 1
+			if j >= 0 and alive[j] == 0 and not mine.has(j):
+				face += lps[i]
+				nf += 1
+				break
+	if nf == 0:
+		var far := -1.0
+		for i in mine:
+			var dd := lps[i].distance_squared_to(ca)
+			if dd > far:
+				far = dd
+				face = lps[i]
+		nf = 1
+	return rel * (face / float(nf))
+
+## Which side of a cut a point of the part lies on (its own frame): 1 that of `mine`, 2 the rest
+## of the living voxels, 0 none near: the side of the voxel nearest it, looked for a few voxels
+## round it at most (the plates of armour lie a voxel or two out from him).
+func _side_of(o: Vector3, mine: Dictionary, lps: PackedVector3Array) -> int:
+	var vox := vf * part_scale
+	var g := o / vox + Vector3((grid.x - 1) * 0.5, (grid.y - 1) * 0.5, (grid.z - 1) * 0.5)
+	var gx := roundi(g.x)
+	var gyy := roundi(g.y)
+	var gzz := roundi(g.z)
+	for r in 4:
+		var best := 0
+		var bd := INF
+		for dx in range(-r, r + 1):
+			var x := gx + dx
+			if x < 0 or x >= grid.x:
+				continue
+			for dy in range(-r, r + 1):
+				var y := gyy + dy
+				if y < 0 or y >= grid.y:
+					continue
+				for dz in range(-r, r + 1):
+					if maxi(absi(dx), maxi(absi(dy), absi(dz))) != r:
+						continue
+					var z := gzz + dz
+					if z < 0 or z >= grid.z:
+						continue
+					var j := cellmap[(x * grid.y + y) * grid.z + z] - 1
+					if j < 0 or alive[j] == 0:
+						continue
+					var d := lps[j].distance_squared_to(o)
+					if d < bd:
+						bd = d
+						best = 1 if mine.has(j) else 2
+		if best != 0:
+			return best
+	return 0
 
 ## Shows or hides voxels by writing the multimesh's instance buffer in one go (12 transform
 ## floats then 4 colour floats per voxel). Setting a single instance's transform after the first

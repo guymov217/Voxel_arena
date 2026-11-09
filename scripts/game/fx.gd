@@ -93,6 +93,8 @@ static func texture(kind: String) -> Texture2D:
 const KINDS := {
 	"blood": {"color": Color(0.5, 0.02, 0.02), "life": 0.9, "speed": [1.8, 4.8], "spread": 42.0, "gravity": -9.8, "size": [0.028, 0.07], "tex": "", "drag": 0.3, "shade": true},
 	"spurt": {"color": Color(0.5, 0.02, 0.02), "life": 0.75, "speed": [2.4, 4.2], "spread": 7.0, "gravity": -9.8, "size": [0.02, 0.04], "tex": "", "shade": true},
+	# A stump pouring (VoxelPart.add_stream): a thick, slow jet that falls.
+	"stream": {"color": Color(0.5, 0.02, 0.02), "life": 0.7, "speed": [0.8, 2.0], "spread": 10.0, "gravity": -9.8, "size": [0.022, 0.046], "tex": "", "shade": true},
 	"drip": {"color": Color(0.45, 0.01, 0.01), "life": 1.1, "speed": [0.05, 0.35], "spread": 25.0, "gravity": -9.8, "size": [0.022, 0.045], "tex": "", "shade": true},
 	"bloodmist": {"color": Color(0.5, 0.03, 0.03, 0.55), "life": 0.5, "speed": [0.5, 1.6], "spread": 60.0, "gravity": -2.0, "size": [0.08, 0.2], "tex": "soft", "drag": 2.0, "grow": 1.6, "shade": true},
 	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "", "emit": 6.0, "add": true},
@@ -136,7 +138,7 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 	pm.damping_max = k.get("drag", 0.0) * 1.5
 	pm.scale_min = 1.0
 	pm.scale_max = k.size[1] / k.size[0]
-	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind in ["blood", "acid", "drip", "poisondrip"] else ParticleProcessMaterial.COLLISION_RIGID
+	pm.collision_mode = ParticleProcessMaterial.COLLISION_HIDE_ON_CONTACT if kind in ["blood", "acid", "drip", "poisondrip", "stream"] else ParticleProcessMaterial.COLLISION_RIGID
 	pm.collision_bounce = 0.2
 	if k.get("swirl", false):
 		pm.turbulence_enabled = true
@@ -383,8 +385,9 @@ func make_light(p: Vector3, color: Color, energy := 8.0, r := 6.0) -> OmniLight3
 # ---------- Marks on the sand ----------
 
 ## A mark projected down onto the sand at `p` (x, z): blood, a scorch, an acid stain. Old marks
-## go when there are too many; blood darkens as it dries.
-func mark(kind: String, p: Vector3, size: float, angle := -1.0) -> Decal:
+## go when there are too many; blood darkens as it dries. `stretch`: that much longer along
+## `angle` (a drop that landed flying).
+func mark(kind: String, p: Vector3, size: float, angle := -1.0, stretch := 1.0) -> Decal:
 	if headless or quality == "low":
 		return null
 	var d := Decal.new()
@@ -401,7 +404,7 @@ func mark(kind: String, p: Vector3, size: float, angle := -1.0) -> Decal:
 		_:
 			d.texture_albedo = texture("soft")
 			d.modulate = Color(0.3, 0.25, 0.2, 0.5)
-	d.size = Vector3(size, 0.6, size)
+	d.size = Vector3(size, 0.6, size * stretch)
 	d.upper_fade = 0.2
 	d.lower_fade = 0.2
 	d.cull_mask = 1
@@ -410,10 +413,49 @@ func mark(kind: String, p: Vector3, size: float, angle := -1.0) -> Decal:
 	d.rotation.y = angle if angle >= 0.0 else randf() * TAU
 	marks.append({"d": d, "kind": kind, "t": 0.0})
 	if marks.size() > MAX_MARKS:
-		var old = marks.pop_front()
+		# The oldest small mark goes, not a pool (the first forty looked over).
+		var k := 0
+		for i in mini(40, marks.size() - 1):
+			var dd = marks[i].d
+			if not is_instance_valid(dd) or maxf((dd as Decal).size.x, (dd as Decal).size.z) < 0.5:
+				k = i
+				break
+		var old = marks[k]
+		marks.remove_at(k)
 		if is_instance_valid(old.d):
 			old.d.queue_free()
 	return d
+
+## Blood come down on the sand at `p` (x, z), a mark `size` across: onto the pool already there,
+## which spreads by as much (round, up to `cap` across) and is wet again; else a mark of its own
+## (`angle`, `stretch`: a drop that landed flying). What keeps running out of a man in one place
+## pools under him (VoxelPart's drips, a stump's stream), and drops that fall together run together.
+func blood_at(p: Vector3, size: float, angle := -1.0, stretch := 1.0, cap := 1.5) -> void:
+	if headless or quality == "low":
+		return
+	var best = null
+	var bd := INF
+	for i in range(marks.size() - 1, maxi(-1, marks.size() - 61), -1):
+		var mk = marks[i]
+		if mk.kind != "blood" or not is_instance_valid(mk.d):
+			continue
+		var dc: Decal = mk.d
+		var dist := Vector2(dc.global_position.x - p.x, dc.global_position.z - p.z).length()
+		# (Within a hand's breadth of a pool it runs into it: drops that each made a mark of their
+		# own used up the marks, and the pools went first.)
+		if dist < maxf(maxf(dc.size.x, dc.size.z) * 0.42, 0.22) and dist < bd:
+			bd = dist
+			best = mk
+	if best == null:
+		mark("blood", p, size, angle, stretch)
+		return
+	var d: Decal = best.d
+	var s0 := maxf(d.size.x, d.size.z)
+	var s := minf(maxf(cap, s0), sqrt(s0 * s0 + 0.6 * size * size))
+	var k := 0.6 * size * size / maxf(s * s, 1e-4)
+	d.size = Vector3(s, d.size.y, s)
+	d.global_position = Vector3(lerpf(d.global_position.x, p.x, k), d.global_position.y, lerpf(d.global_position.z, p.z, k))
+	best.t = 0.0
 
 ## A print pressed into the sand (drawing only): `kind` "footL", "footR", "peg" (a peg leg's
 ## round mark) or "drag" (a body dragged: a furrow along `yaw`, `length` long); `scale` the man's

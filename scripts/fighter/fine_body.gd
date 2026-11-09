@@ -19,8 +19,18 @@ const CELL := 9   # a cell's numbers: ix, iy, iz (from the grid's corner), its v
 const OWN_COLOUR := 1 << 30
 const DEEP := 0xFFFF   # a voxel's eight cells all deep in him (drawn as it is, under the skin)
 const SKIN_K := 0.86   # the skin's light (as the body's own skin voxels are lit, on average)
-const FAT := Color(0.86, 0.6, 0.44)
-const MUSCLE := Color(0.64, 0.1, 0.08)
+const FAT := Color(0.92, 0.72, 0.46)       # (yellower, and the flesh redder: a cut reads skin, fat,
+const MUSCLE := Color(0.72, 0.08, 0.065)   # flesh, where it read as one brown: user)
+## The lips of a cut: fresh blood along them, darker in spots where it has begun to clot.
+const FRESH := Color(0.78, 0.04, 0.035)
+const CLOT := Color(0.36, 0.015, 0.02)
+## How wet what a wound bares looks (the shader's gloss, -status.x), by its depth: the skin's torn
+## edge, the fat, the flesh and the organs; a bone less.
+const WET := [0.0, 0.55, 0.7, 0.9]
+const WET_BONE := 0.45
+## Fresh blood on the skin: as glossy as there is blood on it.
+const WET_SMEAR := 0.6
+const BONE := Color(0.93, 0.89, 0.8)
 ## Blood as the new look draws it, over the skin and in a cut: a brighter red than the body's own
 ## mark (VoxelPart.SMEAR), which the fine voxels' shading took down to a brown that read as shadow
 ## on the new men's muscles (user: the damage did not show on the new gladiators as it had).
@@ -519,6 +529,13 @@ static func _custom(p: VoxelPart, s: int, j: int, g: Vector2) -> Color:
 	var c := VoxelPart.kind_data(0 if k == 1 else k, cells[s * CELL + 7], 0)
 	c.g = g.x
 	c.b = g.y
+	# Fresh blood on it (and nothing else): wet, as much as there is blood, unless it burns.
+	if g.x <= 0.0 and j >= 0:
+		var b0 = (p.fine.base as Dictionary).get(j)
+		if b0 != null and p.colors[j] != b0:
+			var t := _toward(b0, p.colors[j], VoxelPart.SMEAR)
+			if t > 0.12 and _near((b0 as Color).lerp(VoxelPart.SMEAR, t), p.colors[j]):
+				c.g = -WET_SMEAR * t
 	return c
 
 ## `xf` (the part's voxels as a look draws them) with those under the skin not drawn, nor those a
@@ -665,7 +682,12 @@ static func wound_color(p: VoxelPart, i: int, k: int, code: int) -> Color:
 	if base != null and p.colors[i] != base:
 		blood = _toward(base, p.colors[i], VoxelPart.SMEAR)
 	var c := _layer(p, i, k, code, h)
-	return c.lerp(BLOOD, blood * (1.0 if code == 1 else 0.5))
+	# (Bone keeps its ivory under the blood: it shows in the cut.)
+	c = c.lerp(BLOOD, blood * (1.0 if code == 1 else (0.2 if p.kinds[i] == 6 else 0.5)))
+	# The lips of the cut (the skin it opened): fresh blood along them, darker in spots.
+	if code == 1:
+		c = c.lerp(FRESH if h > 0.3 else CLOT, 0.7 + 0.2 * h)
+	return c
 
 ## How far colour `b` has gone from `a` toward `t` (0..1).
 static func _toward(a: Color, b: Color, t: Color) -> float:
@@ -690,7 +712,7 @@ static func _layer(p: VoxelPart, i: int, k: int, code: int, h: float) -> Color:
 		return Color(MUSCLE.r * stripe * (0.92 + 0.16 * h), MUSCLE.g * stripe * (0.9 + 0.2 * h), MUSCLE.b * stripe * (0.9 + 0.2 * h))
 	var own := p.colors[i]
 	if kind == 6:
-		return own.darkened(0.06 * h)   # bone
+		return BONE.darkened(0.08 * h)   # bone: ivory, whatever blood ran over the voxel
 	if p.organ.size() > i and p.organ[i] != 0:
 		return own.lightened(0.05 * h) if h > 0.5 else own.darkened(0.08 * h)
 	var st := 0.88 if ((k & 1) + ((k >> 2) & 1)) % 2 == 0 else 1.04
@@ -711,6 +733,7 @@ static func _write_wound(p: VoxelPart, i: int) -> void:
 	var c := p.local_positions()[i]
 	var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
 	var bent := _bent_of(p, i)
+	var healed := p.scarred.has(i)
 	for k in 8:
 		var cc := (code >> (2 * k)) & 3
 		var at := c + (Vector3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1)) - Vector3(0.5, 0.5, 0.5)) * fsz
@@ -719,7 +742,8 @@ static func _write_wound(p: VoxelPart, i: int) -> void:
 		wm.set_instance_color(slot * 8 + k, wound_color(p, i, k, cc))
 		var kd := 0 if cc == 1 else (9 if cc == 2 or p.kinds[i] <= 2 else int(p.kinds[i]))
 		var cu := VoxelPart.kind_data(kd, 0, 0)
-		cu.g = g.x
+		# Wet (unless it burns, or healed long since).
+		cu.g = g.x if g.x > 0.0 or healed else -(WET_BONE if kd == 6 else float(WET[cc]))
 		cu.b = g.y
 		wm.set_instance_custom_data(slot * 8 + k, cu)
 
@@ -757,11 +781,57 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 	var wound: Dictionary = fine.wound
 	for i in indices:
 		if of.has(i):
+			var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
 			for s in (of[i] as Array):
 				var at := _slot(fine, s)
 				(at[0] as MultiMesh).set_instance_color(at[1], _color(p, s, i))
+				(at[0] as MultiMesh).set_instance_custom_data(at[1], _custom(p, s, i, g))   # (wet with blood)
 		if wound.has(i):
 			_write_wound(p, i)
+
+## A bruising blow swells: the skin over it raised, out from the bone toward where the blow fell,
+## and its fine voxels a little larger, as much as the blow was hard (`k`, of a voxel), up to a
+## limit. Only how the skin is drawn: what is struck and what is cut is the part's voxels, as they
+## were (a swollen thigh is cut off as easily as any other).
+const SWELL_MAX := 1.1
+static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
+	var fine: Dictionary = p.fine
+	if fine.get("mm") == null or fine.get("beast", false) or r <= 0.0:
+		return
+	if p.dangle_mm != null and not p.kink.is_empty():
+		return   # (a limb drawn bent at a break: its skin is laid round the bend, not here)
+	if not fine.has("xf0"):
+		# (The layout's places are shared by every man of the build: his own copy, to swell.)
+		fine.xf0 = fine.xf
+		fine.xf = (fine.xf as Array).duplicate()
+		fine.swell = {}
+	var g := p.grid
+	var ax := 0 if g.x >= g.y and g.x >= g.z else (1 if g.y >= g.z else 2)
+	var n := lp
+	n[ax] = 0.0
+	if n.length_squared() < 1e-8:
+		return
+	n = n.normalized()
+	var vox := p.vf * p.part_scale
+	var x0s: Array = fine.xf0
+	var xs: Array = fine.xf
+	var sw: Dictionary = fine.swell
+	var of: Dictionary = fine.of
+	for i in p.voxels_within(lp, r):
+		if not of.has(i):
+			continue
+		for s in (of[i] as Array):
+			var x0: Transform3D = x0s[s]
+			var f := clampf(1.0 - x0.origin.distance_to(lp) / r, 0.0, 1.0)
+			if f <= 0.0:
+				continue
+			f = f * f * (3.0 - 2.0 * f)
+			var w := minf(SWELL_MAX, float(sw.get(s, 0.0)) + k * f)
+			sw[s] = w
+			xs[s] = Transform3D(x0.basis.scaled(Vector3.ONE * (1.0 + 0.3 * w)), x0.origin + n * w * vox)
+			if p.alive[i] == 1:
+				var at := _slot(fine, s)
+				(at[0] as MultiMesh).set_instance_transform(at[1], at[2])
 
 ## Fire or poison working on voxel `i` (VoxelPart._set_status): the fine voxels over it glow too.
 static func status(p: VoxelPart, i: int, g: Vector2) -> void:

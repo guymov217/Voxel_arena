@@ -6395,6 +6395,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# out, the flesh a blow crushes, all fall to the sand as pieces.
 		var piece = Chunk.spawn(part, voxels, hit.dir) if not part.freeze and voxels.size() >= 1 else null
 		res.removed.append({"part": part, "indices": remove, "voxels": voxels, "chunk": piece != null})
+		# A crushing blow bruises the flesh round the hole it made (only its colour: swollen skin
+		# drawn over the hole hid it).
+		if type == "blunt" and not detached and J > 6.0:
+			part.wound(lp, minf(0.16, 0.06 + J * 0.002) * S, "bruise", false)
 		# What is gone from the head takes sight with it, and stays gone: the view closes in
 		# (players) and the aim wanders (everyone), more the more of the head is lost.
 		if part == head and not detached:
@@ -7055,8 +7059,8 @@ func _off_hand_off_haft() -> void:
 	two_gap = null
 	grip_want = false
 
-## Cut through: the stump side stays on (removed from the falling piece), the piece with
-## whatever hangs from it is no longer his.
+## Cut through: the stump side stays on (removed from the falling piece, drawn on the part it
+## hangs from: VoxelPart.leave_on_stump), the piece with whatever hangs from it is no longer his.
 func sever(part: VoxelPart, res: Dictionary, keep: PackedInt32Array) -> void:
 	if part.severed:
 		return
@@ -7071,7 +7075,12 @@ func sever(part: VoxelPart, res: Dictionary, keep: PackedInt32Array) -> void:
 		if al[i] and kept[i] == 0:
 			stump_side.append(i)
 	if not stump_side.is_empty() and stump_side.size() < part.alive_count:
+		var face = part.leave_on_stump(stump_side)
+		if face != null:
+			part.set_meta("cut_face", face)   # (where the stump bleeds from: detach_limb)
+		part.set_meta("stump_end", true)      # (the guests draw it there too: Match._on_voxels_lost)
 		res.removed.append({"part": part, "indices": stump_side, "voxels": part.remove_voxels(stump_side)})
+		part.remove_meta("stump_end")
 	detach_limb(part, res)
 
 func detach_limb(part: VoxelPart, res: Dictionary) -> void:
@@ -7099,8 +7108,11 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		part.joint.queue_free()
 		part.joint = null
 	if part.parent_part:
+		# (It bleeds from the cut across what of the limb stays on him, if any: sever.)
+		var at: Vector3 = part.get_meta("cut_face") if part.has_meta("cut_face") else part.parent_part.anchor_point(part)
 		part.parent_part.stump = true
-		part.parent_part.add_drip(part.parent_part.anchor_point(part))
+		part.parent_part.add_drip(at)
+		part.parent_part.add_stream(at)
 		part.parent_part.stump_t = 0.0
 	for side in arm:
 		if pieces.has(arm[side].fore) and weapons[side]:

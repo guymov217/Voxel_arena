@@ -1552,7 +1552,8 @@ func guest_message(type: String, data) -> void:
 						if data.get("g") is Array and (data.g as Array).size() == 3:
 							glance_fx(fp, Vector3(data.g[0], data.g[1], data.g[2]).limit_length(1.0), fj)
 						elif fj > 6.0:
-							hit_fx(fp, fd, fj, str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)))
+							var wv = entity_by_id(int(data.get("v", -1)))
+							hit_fx(fp, fd, fj, str(data.get("t", "blunt")), bool(data.get("s", false)), bool(data.get("a", false)), wv.f if wv else null, int(clampf(float(data.get("o", -1)), -1.0, 2000.0)))
 						if data.get("sn") is Array:
 							for sn in (data.sn as Array).slice(0, 3):
 								if sn is Array and sn.size() == 2 and HIT_SOUNDS.has(str(sn[0])):
@@ -1650,21 +1651,141 @@ func has_gadget(e: Dictionary, id: String) -> bool:
 	return e.get("gadgets", []).has(id)
 
 ## Blood, sparks and marks for a blow at `p` (host and guests alike): a cut sprays, a thrust
-## spurts, a blunt blow bruises with little blood; a limb coming off opens the floodgates.
-func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, artery := false) -> void:
+## spurts, a blunt blow bruises with little blood; a limb coming off opens the floodgates. As much
+## blood as the wound is big (`opened`: the voxels the blow took out of him; -1 not known, then as
+## hard as the blow was): a nick spits a little, a gash throws a spray, a limb off a fountain. What
+## it throws comes down on the sand and lands on whoever stands close in its way (`victim` not).
+func hit_fx(p: Vector3, dir: Vector3, J: float, type: String, severed := false, artery := false, victim = null, opened := -1) -> void:
 	if headless:
 		return
 	if artery and not dec.confetti:
 		# A cut artery sprays: a jet of blood back out of the wound, and a splash on the sand.
 		fx.burst("spurt", p, 90, (-dir + Vector3(0, 0.5, 0)).normalized(), 1.3)
-		fx.mark("blood", Vector3(p.x - dir.x * 0.6, 0, p.z - dir.z * 0.6), 0.6)
+		fx.blood_at(Vector3(p.x - dir.x * 0.6, 0, p.z - dir.z * 0.6), 0.6)
 	arena.set_excitement(maxf(arena.excitement, minf(1.0, J / 45.0 + (0.6 if severed else 0.0))))
-	var n := int(clampf(J * (1.6 if type == "edge" else (1.2 if type == "point" else 0.5)), 4.0, 140.0)) + (120 if severed else 0)
-	fx.burst("confetti" if dec.confetti else "blood", p, n, (dir + Vector3(0, 0.6, 0)).normalized(), 0.8 + J / 40.0)
-	if J > 8.0 and not dec.confetti and type != "blunt":
-		fx.burst("bloodmist", p, int(clampf(J * 0.5, 4.0, 40.0)), (dir + Vector3(0, 0.3, 0)).normalized())
-	if J > 12.0 and not dec.confetti:
-		fx.mark("blood", Vector3(p.x + dir.x * 0.4, 0, p.z + dir.z * 0.4), clampf(0.15 + J * 0.012, 0.2, 0.9) * (1.8 if severed else 1.0))
+	# (A gladius's nick on a chest takes some fifty voxels, a deep cut a hundred and twenty.)
+	var w := clampf(opened / 120.0, 0.0, 2.5) if opened >= 0 else clampf(J / 28.0, 0.15, 2.0)
+	var flesh := 1.0 if type != "blunt" else 0.5
+	var n := int(clampf((4.0 + 46.0 * w) * flesh, 3.0, 140.0)) + (120 if severed else 0)
+	var up := (dir + Vector3(0, 0.6, 0)).normalized()
+	fx.burst("confetti" if dec.confetti else "blood", p, n, up, 0.8 + J / 40.0)
+	if w > 0.15 and not dec.confetti and type != "blunt":
+		fx.burst("bloodmist", p, int(clampf(4.0 + 16.0 * w, 4.0, 40.0)), (dir + Vector3(0, 0.3, 0)).normalized())
+	if dec.confetti:
+		return
+	if w > 0.2 or severed:
+		fx.blood_at(Vector3(p.x + dir.x * 0.4, 0, p.z + dir.z * 0.4), clampf(0.12 + 0.22 * w, 0.14, 0.7) * (1.8 if severed else 1.0))
+	_drops(p, up, int(round((1.0 + 4.0 * w) * flesh)), 1.5 + J / 25.0, clampf(0.06 + 0.05 * w, 0.06, 0.18))
+	if type != "blunt" and J > 8.0 and w > 0.1:
+		_cast_off(p, dir, J, w)
+	if severed:
+		# The fountain: blood thrown up out of him as the limb goes (the stump pours on after:
+		# VoxelPart.add_stream), and a pool where it comes down.
+		fx.burst("spurt", p, 160, (Vector3.UP * 0.9 - dir * 0.3).normalized(), 1.5)
+		_late_mark(p, 0.75, 0.45)
+	if w > 0.12:
+		_spatter(p, dir, clampf(w * flesh * 0.8, 0.0, 1.0), victim)
+
+## What a blade carries out of the wound flies on the way the blow was going: a spray along it, and
+## drops on the sand in a line, smaller the further they flew, landing a moment after; as much as
+## the wound gave (`w`).
+func _cast_off(p: Vector3, dir: Vector3, J: float, w: float) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length() < 0.05:
+		return
+	var fd := flat.normalized()
+	fx.burst("blood", p + fd * 0.05, int(clampf(6.0 + 30.0 * w, 6.0, 70.0)), (fd + Vector3(0, 0.22, 0)).normalized(), 1.3 + J / 50.0)
+	var side := Vector3(-fd.z, 0.0, fd.x)
+	var ang := atan2(fd.x, fd.z)
+	for i in 1 + int(clampf(3.0 * w, 0.0, 4.0)):
+		var at := p + fd * (0.5 + 0.45 * i + randf() * 0.15) + side * randf_range(-0.1, 0.1)
+		_late_mark(at, clampf(0.06 + 0.08 * w, 0.06, 0.3) * (1.0 - 0.12 * i), 0.25 + 0.07 * i, ang, 1.8)
+
+## Drops of a spray coming down on the sand where they would: `n` of them flung along `d` at up to
+## `speed`, each landing when it would (and running together where they fall together).
+func _drops(p: Vector3, d: Vector3, n: int, speed: float, size: float) -> void:
+	for i in mini(n, 12):
+		var v := (d + Vector3(randf_range(-0.5, 0.5), randf_range(-0.2, 0.4), randf_range(-0.5, 0.5))).normalized() * speed * randf_range(0.35, 0.8)
+		var t := (v.y + sqrt(maxf(0.0, v.y * v.y + 19.6 * maxf(0.05, p.y)))) / 9.8
+		var at := p + Vector3(v.x, 0.0, v.z) * t
+		_late_mark(at, size * randf_range(0.7, 1.3), minf(t, 1.2), atan2(v.x, v.z), 1.0 + 0.3 * Vector2(v.x, v.z).length())
+
+## Blood on the sand under `at` a moment from now (when what was thrown comes down): pooling with
+## what is there.
+func _late_mark(at: Vector3, size: float, delay: float, angle := -1.0, stretch := 1.0) -> void:
+	get_tree().create_timer(delay, false).timeout.connect(func() -> void:
+		if is_instance_valid(fx):
+			fx.blood_at(Vector3(at.x, 0.0, at.z), size, angle, stretch))
+
+## Blood thrown off a wound lands on whoever stands close in its way, friend or foe: the man who
+## struck, a man beside them (arms, chest, face, thighs: the nearer the more, more on the side it
+## flew to), and a shield held there, the wounded man's own too; as much as the wound gave
+## (`amount` 0..1). Drawing only.
+func _spatter(p: Vector3, dir: Vector3, amount: float, victim) -> void:
+	var fd := Vector3(dir.x, 0.0, dir.z)
+	fd = fd.normalized() if fd.length_squared() > 1e-4 else Vector3.ZERO
+	var spots := 0
+	for e in entities:
+		var a = e.get("f")
+		if a == victim or not is_instance_valid(a) or not (a is Fighter) or a is Beast:
+			continue
+		var f: Fighter = a
+		if f.torso == null or f.torso.global_position.distance_to(p) > 2.2 * f.S:
+			continue
+		var reach := (0.6 + 0.7 * amount) * f.S
+		for pt in [f.arm.R.fore, f.arm.R.upper, f.torso, f.head, f.arm.L.fore, f.arm.L.upper, f.by_name.get("thighR"), f.by_name.get("thighL")]:
+			if pt == null or not is_instance_valid(pt):
+				continue
+			var part: VoxelPart = pt
+			if part.severed or part.missing:
+				continue
+			var q := part.to_local(p)
+			var lp := q.clamp(-part.half_ext, part.half_ext)
+			var to := part.to_global(lp) - p
+			var near := to.length()
+			if near > reach:
+				continue
+			# (More where the blood flew, along the blow; less behind it. Spread over the side that
+			# faces the wound, not into him.)
+			var way := 1.0 if fd == Vector3.ZERO or near < 1e-3 else clampf(0.55 + 0.6 * fd.dot(to / near), 0.25, 1.15)
+			var o := q - lp
+			var ax := 0 if absf(o.x) >= absf(o.y) and absf(o.x) >= absf(o.z) else (1 if absf(o.y) >= absf(o.z) else 2)
+			var v := part.vf * part.part_scale
+			var k := int(round((1.0 - near / reach) * way * (2.0 + 8.0 * amount)))
+			for i in k:
+				var jit := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * v * 3.5
+				jit[ax] = 0.0
+				part.wound((lp + jit).clamp(-part.half_ext, part.half_ext), v * randf_range(1.2, 2.2) * (0.8 + 0.4 * amount), "blood")
+			spots += k
+			if spots >= 20:
+				return
+		var sh = f.weapons.get("L")
+		if is_instance_valid(sh) and sh is Weapon and sh.is_shield:
+			_spray_on(sh, p, amount)
+	if is_instance_valid(victim) and victim is Fighter:
+		var vs = victim.weapons.get("L")
+		if is_instance_valid(vs) and vs is Weapon and vs.is_shield:
+			_spray_on(vs, p, amount)
+
+## Spots of blood on a weapon (a shield) where it is nearest `p`, if it is near.
+func _spray_on(w: Weapon, p: Vector3, amount: float) -> void:
+	if w.vox.is_empty():
+		return
+	var q := w.to_local(p) / w.vs
+	var best := -1
+	var bd := INF
+	for i in w.vox.size():
+		if w.alive[i] == 0:
+			continue
+		var d := Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]).distance_squared_to(q)
+		if d < bd:
+			bd = d
+			best = i
+	if best < 0 or sqrt(bd) * w.vs > 1.4:
+		return
+	var c := Vector3(w.vox[best][0], w.vox[best][1], w.vox[best][2])
+	for s in 3 + int(amount * 5.0):
+		w.bloody(w.to_global((c + Vector3(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0), randf_range(-1.0, 1.0))) * w.vs), 0.45 + 0.4 * amount)
 
 ## A hand has closed on a weapon it reached for (G) and holds it now.
 func _on_took_up(f, w) -> void:
@@ -2120,6 +2241,11 @@ func _on_hit(h: Dictionary) -> void:
 	if h.get("p") is Vector3:
 		var dir: Vector3 = h.get("dir", Vector3.UP) if h.get("dir") is Vector3 else Vector3.UP
 		var art: bool = h.res.get("artery", false)
+		# (How big the wound is: the voxels the blow took out of him.)
+		var opened := 0
+		for rm in h.res.get("removed", []):
+			if rm is Dictionary and rm.get("indices") != null:
+				opened += (rm.indices as Array).size()
 		# A blow that skidded off a plate throws sparks along the way it went, and no blood.
 		var skid = null
 		if h.res.get("glance_n") is Vector3:
@@ -2127,9 +2253,13 @@ func _on_hit(h: Dictionary) -> void:
 			skid = (dir - gn * dir.dot(gn) + gn * 0.35).normalized()
 			glance_fx(h.p, skid, jn)
 		elif jn > 6.0:
-			hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art)
+			hit_fx(h.p, dir, jn, String(h.get("type", "blunt")), not h.res.get("severed", []).is_empty(), art, h.get("char"), opened)
 		if role == "host":
-			var msg := {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art, "sn": snd}
+			var msg := {"k": "hit", "p": [snappedf(h.p.x, 0.01), snappedf(h.p.y, 0.01), snappedf(h.p.z, 0.01)], "d": [snappedf(dir.x, 0.01), snappedf(dir.y, 0.01), snappedf(dir.z, 0.01)], "J": snappedf(jn, 0.1), "t": h.get("type", "blunt"), "s": not h.res.get("severed", []).is_empty(), "a": art, "sn": snd, "o": opened}
+			# (Who was struck: the blood thrown lands on the others round him on every screen.)
+			var ev = entity_of(h.get("char")) if h.get("char") != null else null
+			if ev:
+				msg.v = ev.id
 			if skid != null:
 				msg.g = [snappedf(skid.x, 0.01), snappedf(skid.y, 0.01), snappedf(skid.z, 0.01)]
 			Net.send_all("fx", msg, false)
@@ -2516,7 +2646,11 @@ func _on_voxels_lost(f: Fighter, part_index: int, indices: Array, _voxels: Array
 		return
 	var e = entity_of(f)
 	if e:
-		Net.send_all("vox", {"id": e.id, "part": part_index, "idx": indices})
+		var msg := {"id": e.id, "part": part_index, "idx": indices}
+		# (What of a limb cut through stays on him: the guests draw it on his stump as the host does.)
+		if part_index >= 0 and part_index < f.parts.size() and f.parts[part_index].get_meta("stump_end", false):
+			msg.end = true
+		Net.send_all("vox", msg)
 
 ## The host tells the guests where an open break's bone was struck and how hard (the cubes there
 ## knocked off on every screen, the end snapped off with them when the blow went through it).
@@ -3112,7 +3246,10 @@ func guest_spawn(spec: Dictionary) -> void:
 func guest_vox(m: Dictionary) -> void:
 	var e = entity_by_id(int(m.id))
 	if e and int(m.part) >= 0 and int(m.part) < e.f.parts.size():
-		e.f.parts[int(m.part)].remove_voxels(m.idx, false)
+		var p: VoxelPart = e.f.parts[int(m.part)]
+		if m.get("end", false) == true and m.idx is Array:
+			p.leave_on_stump(m.idx)   # (what of a limb cut through stays on his stump)
+		p.remove_voxels(m.idx, false)
 
 ## A broken-off piece the host describes, taken only as voxels of known stuff and a grip on one
 ## of them (nothing else of it is trusted).

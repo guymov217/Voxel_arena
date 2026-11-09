@@ -165,6 +165,7 @@ var react_t := 0.0
 var react_cd := 0.0            # no reaction again before this has run down
 var react_part := ""
 var react_dir := 1.0           # which way the flinch sways
+var limp_ph := 0.0             # the step a lame leg falters on
 
 func _init(fighter: Fighter, difficulty := 0.5, personality := "standard", seed_ := 0) -> void:
 	c = fighter
@@ -188,13 +189,21 @@ func _on_hit(_f: Fighter, info: Dictionary) -> void:
 	var nerve := 0.35 if p.get("power", false) and p.get("sprint", false) else 0.9   # berserkers shrug it off
 	if p.get("shield", false) or p.has("keepAway"):
 		nerve = 1.2
-	if rng.randf() > clampf(dmg / 30.0, 0.1, 0.65) * nerve * (1.15 - 0.4 * diff):
+	var hit_part := str(info.get("part_name", "torso"))
+	var leg := hit_part.begins_with("thigh") or hit_part.begins_with("shin")
+	var opened := not (info.get("removed", []) as Array).is_empty()
+	# (A little likelier than it was, and a cut leg likelier still: user, NPCs only.)
+	if rng.randf() > clampf(dmg / 24.0, 0.12, 0.75) * nerve * (1.15 - 0.4 * diff) * (1.5 if leg and opened else 1.0):
 		return
-	react_part = str(info.get("part_name", "torso"))
+	react_part = hit_part
 	react_dir = -1.0 if rng.randf() < 0.5 else 1.0
 	var big: bool = dmg > 16.0
 	var free: bool = not c.weapons.L and not c.two_handed and c.hand_works("L")
-	if big and rng.randf() < 0.5:
+	if leg and (opened or (dmg > 10.0 and rng.randf() < 0.6)):
+		# Cut in the leg: down on that knee a moment, a hand to it.
+		react = "kneel"
+		react_t = rng.randf_range(0.7, 1.1) * (1.0 + 0.25 * minf(1.0, dmg / 24.0))
+	elif big and rng.randf() < 0.5:
 		react = "stagger"
 		react_t = rng.randf_range(0.5, 0.8)
 	elif free and rng.randf() < 0.75:
@@ -237,10 +246,18 @@ func _react_clock(dt: float) -> void:
 		react = ""
 
 func _react(_dt: float, inp: Dictionary) -> void:
+	_hurt_limbs(_dt, inp)
 	if react == "":
 		return
 	var swinging: bool = state == "attack"
 	match react:
+		"kneel":
+			inp.crouch = true
+			if not swinging:
+				inp.mz = 0.0
+				inp.mx = 0.0
+			if not c.weapons.L and not c.two_handed and c.hand_works("L"):
+				inp.off = _wound_mark(react_part)
 		"clutch":
 			if not c.weapons.L and not c.two_handed:
 				inp.off = _wound_mark(react_part)
@@ -259,6 +276,21 @@ func _react(_dt: float, inp: Dictionary) -> void:
 				inp.mz = -0.9
 				inp.mx = react_dir * 0.6
 				inp.crouch = true
+
+## His body shows what was done to it (NPCs only: a player's limbs are his own to move): a ruined
+## free arm hangs at his side instead of coming up into guard, and a leg badly hurt makes him
+## falter on it, step by step.
+func _hurt_limbs(dt: float, inp: Dictionary) -> void:
+	if c is Beast or not c.alive or c.state != "stand":
+		return
+	if not c.weapons.L and not c.two_handed and not c.arm.L.fore.severed and react != "clutch" and c.arm_func("L") < 0.4:
+		inp.off = {"x": clampf(-(float(c.shoulder.L.x) + 0.1 * c.S) / (0.5 * c.S), -2.0, 2.0), "y": -1.5, "tuck": 1.0}
+	var lame := minf(c.leg_func("L"), c.leg_func("R"))
+	if lame > 0.0 and lame < 0.6 and absf(float(inp.mz)) + absf(float(inp.mx)) > 0.1:
+		limp_ph += dt * TAU * 1.6
+		var k := lerpf(0.5 + 0.5 * absf(sin(limp_ph)), 1.0, lame / 0.6)
+		inp.mz = float(inp.mz) * k
+		inp.mx = float(inp.mx) * k
 
 func _lerp_hand(x: float, y: float, k: float) -> void:
 	k = minf(1.0, k)

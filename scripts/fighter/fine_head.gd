@@ -521,7 +521,7 @@ static func _color(c: Array, look: Dictionary) -> Color:
 	return Color(clampf(col.r * k * grain, 0.0, 1.0), clampf(col.g * k * grain, 0.0, 1.0), clampf(col.b * k * grain, 0.0, 1.0), 1.0)
 
 ## The face's pieces and his mood drawn on its fine voxels: `mood` 1 his eyes shut (a blink), 2
-## his face screwed up (hurt), and `talk` 0..3 his mouth open as he speaks.
+## his face screwed up (hurt), 4 with it crying out, and `talk` 0..3 his mouth open as he speaks.
 static func _paint(p: VoxelPart, mood := 0, talk := 0) -> void:
 	var fine: Dictionary = p.fine
 	if fine.is_empty() or String(fine.get("giant", "")) != "":
@@ -575,7 +575,11 @@ static func _mark(feat: int, x: float, y: float, ex: float, ey: float, ids: Arra
 	if mood & 2:
 		if feat == BROW or (absf(absf(x) - ex) < 3.5 and dy > 1.6 and dy < 2.8):
 			return DARK
-		if talk == 0 and (feat == LIP_LINE or feat == LIP) and y < -7.6 and y > -10.4:
+		if talk == 0 and mood & 4:
+			# Crying out: the mouth wide open, the upper teeth bared.
+			if absf(x) < 3.0 and y < -7.6 and y > -12.0:
+				return TEETH if y > -8.6 and absf(x) < 2.7 else MOUTH
+		elif talk == 0 and (feat == LIP_LINE or feat == LIP) and y < -7.6 and y > -10.4:
 			return TEETH if absf(x) < 2.6 and fposmod(x, 2.0) < 1.6 else MOUTH
 	# His mouth as he talks.
 	if talk > 0 and absf(x) < 3.0:
@@ -801,7 +805,7 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 			mm.set_instance_color(s, p.colors[i] if marked else paint.get(s, own[s]))
 
 ## His mood and his talking mouth drawn on the fine face (Physique.express and talk).
-static func mood(p: VoxelPart, shut: bool, hurt: bool, talk: int) -> void:
+static func mood(p: VoxelPart, shut: bool, hurt: bool, talk: int, cry := false) -> void:
 	if p.fine.is_empty():
 		return
-	_paint(p, (1 if shut else 0) + (2 if hurt else 0), talk)
+	_paint(p, (1 if shut else 0) + (2 if hurt else 0) + (4 if cry and hurt else 0), talk)
