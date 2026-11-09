@@ -785,10 +785,31 @@ static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 		for s in of[i]:
 			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 and not tucked.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
 
-## His hair under a helmet or a hat not drawn: a cell of it whose head voxel has a plate of one on it
-## or next to it (`covered`: the plates' cells on him); what hangs out below (a fall, braids) stays,
-## and as a helmet's plates are knocked off what they covered shows again. Drawing only.
-static func tuck(p: VoxelPart, covered: Dictionary) -> void:
+## The ways out of his head, seen from its middle, that a helmet's or a hat's shell is told by
+## (some 6 degrees across: a voxel of its shell spans one or two).
+const TUCK_AZ := 64
+const TUCK_EL := 32
+static func tuck_bin(d: Vector3) -> int:
+	var r := d.length()
+	if r < 0.000001:
+		return 0
+	var az := posmod(int(floorf((atan2(d.z, d.x) + PI) / TAU * TUCK_AZ)), TUCK_AZ)
+	var el := clampi(int(floorf((asin(clampf(d.y / r, -1.0, 1.0)) + PI * 0.5) / PI * TUCK_EL)), 0, TUCK_EL - 1)
+	return el * TUCK_AZ + az
+
+## A cell of a knot, a bun or a braid tied up on his hair (not of his hair as it lies on him).
+static func extra_hair(c: Array) -> bool:
+	return int(c[3]) == HAIR and c.size() > 4 and (int(c[4]) & HAIR_EXTRA) != 0
+
+## His hair under a helmet or a hat: all of it stays on him, the piece laid over it (FineArmor: his
+## head as his hair shapes it), so that where the piece leaves a gap, or a plate of it is knocked
+## off, it is his hair that shows, never his bare scalp (user: tucked away, the scalp showed bare
+## through the helmet and round its edge, and a strip of his fringe was left on his forehead
+## hanging on nothing). Only what is tied up on his hair, a topknot, a bun, a knot, the top of a
+## braid, goes under the piece where its shell lies over it, seen from his head's middle (`bins`:
+## the ways the shells of the plates still on him cover, FineArmor.cover), and comes out again
+## as the plates over it are knocked off. Drawing only.
+static func tuck(p: VoxelPart, bins: Dictionary) -> void:
 	var fine: Dictionary = p.fine
 	if fine.is_empty() or not fine.has("mm") or String(fine.get("giant", "")) != "":
 		return
@@ -798,21 +819,18 @@ static func tuck(p: VoxelPart, covered: Dictionary) -> void:
 	var cxf: Array = fine.xf
 	var was: Dictionary = fine.get("tucked", {})
 	var now := {}
-	if not covered.is_empty():
+	if not bins.is_empty() and fine.has("wc"):
+		# (The way out of his head of each cell tied up on his hair: the same for as long as the
+		# head is drawn so.)
+		if not fine.has("hbin"):
+			var hb := PackedInt32Array()
+			hb.resize(cells.size())
+			for s in cells.size():
+				hb[s] = tuck_bin((cxf[s] as Transform3D).origin - (fine.wc as Vector3)) if extra_hair(cells[s]) else -1
+			fine["hbin"] = hb
+		var hbin: PackedInt32Array = fine.hbin
 		for s in cells.size():
-			var c: Array = cells[s]
-			if int(c[3]) != HAIR:
-				continue
-			# (The head voxel it lies over, in the helmet's cells: the plates are laid on the part's
-			# own voxels, the fine head's cells over its fine ones.)
-			var v := Vector3i(int(c[6]) * p.dims.x / p.grid.x, int(c[7]) * p.dims.y / p.grid.y, int(c[8]) * p.dims.z / p.grid.z)
-			var under := false
-			for dx in [-1, 0, 1]:
-				for dy in [-1, 0, 1]:
-					for dz in [-1, 0, 1]:
-						if covered.has(v + Vector3i(dx, dy, dz)):
-							under = true
-			if under:
+			if hbin[s] >= 0 and bins.has(hbin[s]):
 				now[s] = true
 	fine["tucked"] = now
 	for s in cells.size():

@@ -159,3 +159,50 @@ func test_the_next_foe_is_brought_in_over_a_few_frames() -> void:
 			t.check(nf.alive and nf.parts.size() == 10 and nf.visible and nf.process_mode == Node.PROCESS_MODE_INHERIT, "whole, drawn and in the fight")
 		m.queue_free()
 		await get_tree().process_frame
+
+## A foe brought in while the fight goes on in a helmet over a hairstyle not laid out before (a
+## helmet is laid over each hairstyle, FineArmor): its shell is worked out a little a frame (in
+## one, a tenth to a quarter of a second's hitch), and comes out as it would laid out at once.
+func test_a_new_foes_helmet_is_laid_out_over_a_few_frames() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3})
+	m.me.f.teleport(Vector3(0, 0, -14))
+	m.me.drive = func(_e): return {}
+	await get_tree().physics_frame
+	FineArmor._bands.clear()
+	FineArmor._shells.clear()
+	FineArmor.pace_us = 0   # (a frame's wait at every turn: it is laid out over many)
+	var f0 := Engine.get_process_frames()
+	var e = await m.spawn_fighter_staged({"kind": "bot", "name": "Late", "loadout": {"main": "gladius", "off": "", "armor": ["murmilloHelm", "hair_curly"]}, "team": 1, "pos": Vector3(0, 0.1, 4.0), "yaw": PI})
+	var frames := Engine.get_process_frames() - f0
+	FineArmor.pace_us = 4000
+	t.check(e != null, "he comes in")
+	if e == null:
+		m.queue_free()
+		return
+	t.check(frames > 100, "his helmet worked out over many frames (%d)" % frames)
+	var helm := {}
+	for ad in e.f.head.get_meta("armor", []):
+		if String(ad.id) == "murmilloHelm":
+			helm = ad
+	t.check(helm.get("shell") is Dictionary and is_instance_valid(helm.shell.mi), "in his helmet, drawn")
+	var paced := _kept_shell("|murmilloHelm|")
+	# The same laid out at once, nothing kept.
+	FineArmor._bands.clear()
+	FineArmor._shells.clear()
+	FineArmor.clear(helm)
+	FineArmor.build(e.f, e.f.head, helm)
+	var once := _kept_shell("|murmilloHelm|")
+	t.check(not paced.is_empty() and not once.is_empty(), "laid out both ways")
+	t.eq(int(paced.get("cnt", -1)), int(once.get("cnt", -2)), "as many of its voxels")
+	t.check(paced.get("buf") == once.get("buf"), "each where it was and of the colour it was")
+	t.check(helm.get("shell") is Dictionary and is_instance_valid(helm.shell.mi), "and drawn again at once")
+	m.queue_free()
+	await get_tree().process_frame
+
+static func _kept_shell(piece: String) -> Dictionary:
+	for k in FineArmor._shells:
+		if String(k).contains(piece):
+			return FineArmor._shells[k]
+	return {}

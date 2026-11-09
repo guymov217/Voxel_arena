@@ -43,8 +43,10 @@ static func hair_or_hat(p: VoxelPart, id: String) -> bool:
 	return p.fine.has("wtab") and String(p.fine.get("giant", "")) == "" and id.begins_with("hat_")
 
 ## The shell of `ad` (a piece on `p`) drawn, or drawn again as the plates lie now; the plates'
-## own tiles hidden. Not wanted (the classic looks): the shell gone, the tiles shown.
-static func build(f, p: VoxelPart, ad: Dictionary) -> void:
+## own tiles hidden. Not wanted (the classic looks): the shell gone, the tiles shown. `staged`: a
+## man built while the fight goes on (Fighter.build): a shell not laid out before is worked out a
+## little a frame (_pace), not all in one.
+static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 	var node = ad.get("node")
 	if node == null or not is_instance_valid(node):
 		return
@@ -57,7 +59,6 @@ static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 	if sh is Dictionary and String(sh.key) == key and is_instance_valid(sh.mi):
 		sync_all(p, ad)
 		return
-	clear(ad)
 	var id := String(ad.id)
 	var skin: Color = f.skin if f is Fighter else Color(0.6, 0.4, 0.3)
 	var bare := ArmorStyle.base_color(id, Data.armor.get(id, {}), skin)
@@ -65,7 +66,12 @@ static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 		var hc = Physique.hair_choice(f)
 		if hc != null:
 			bare = hc
-	var L := _layout(p, ad, id, bare)
+	# (A helmet over a hairstyle not seen yet, laid out in one frame, was a tenth to a quarter of
+	# a second's hitch as training's next foe came in.)
+	var L: Dictionary = await _layout(p, ad, id, bare, {"t": Time.get_ticks_usec(), "fine": p.fine} if staged else {})
+	if staged and (not is_instance_valid(p) or not is_instance_valid(node)):
+		return
+	clear(ad)
 	if L.is_empty():
 		return
 	# Drawn: each fine voxel a plate's, kept as where it lies on its plate's tile (a bend, a hide,
@@ -104,22 +110,31 @@ static func build(f, p: VoxelPart, ad: Dictionary) -> void:
 	mi.custom_aabb = (node as MultiMeshInstance3D).custom_aabb
 	mm.custom_aabb = mi.custom_aabb
 	mi.transparency = p.see_through
+	if p.fine.has("wtab"):
+		# (A helmet's or a hat's small voxels, stepped round his head, shadowed one another in the
+		# sun in dark blots that read as holes in it: user. It casts none; his head under it does.)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	p.add_child(mi)
 	mi.global_transform = p.global_transform
 	p.draw_with.append(mi)
-	ad["shell"] = {"key": key, "mi": mi, "mm": mm, "rel": L.rel, "of": of, "plate": L.plate, "now": now, "xk": L.xk}
+	ad["shell"] = {"key": key, "mi": mi, "mm": mm, "rel": L.rel, "of": of, "plate": L.plate, "now": now, "xk": L.xk, "cover": L.get("cover", {})}
 	(node as Node3D).visible = false
 
 ## A piece's shell on a part as the part is drawn (its build, its size), the same for every man of
 ## it, worked out once: each plate's tile, which fine voxels of the ground round him are which
 ## plate's, each voxel's place on its plate's tile, and the drawing's buffer (the places with every
-## plate on, the colours, the shading). Shared: read, never changed.
-static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Dictionary:
+## plate on, the colours, the shading). Shared: read, never changed. `pace` not empty: worked out
+## a little a frame (build `staged`), and nothing kept if he is gone or drawn anew meanwhile.
+static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace := {}) -> Dictionary:
 	var n: int = ad.cells.size()
 	var lkey := "%s|%s|%d|%d|%d|%d|%s|%d" % [_key(p), id, n, hash(ad.cells), hash(ad.pts), hash(ad.get("kinds", [])), bare.to_html(), hash(ad.get("cols", []))]
 	if _shells.has(lkey):
-		return _shells[lkey]
-	var ground := _ground(p, 1.0 if Fighter._cosmetic(id) else COARSE)
+		var kept: Dictionary = _shells[lkey]
+		_shells.erase(lkey)   # (the last used kept the longest: a helmet a hairstyle, more of them)
+		_shells[lkey] = kept
+		return kept
+	var staged := pace.has("t")
+	var ground: Dictionary = await _ground(p, 1.0 if Fighter._cosmetic(id) else COARSE, pace)
 	if ground.is_empty():
 		return {}
 	var kf := float(ground.get("k", 1.0))   # (its voxels', of the fine ones)
@@ -200,6 +215,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	var pts: PackedVector3Array = ground.pts
 	var idx: PackedInt32Array = ground.idx
 	for s in pts.size():
+		if staged and (s & 127) == 127 and not await _pace(p, pace):
+			return {}
 		var q := pts[s]
 		var best := INF
 		var who := -1
@@ -230,6 +247,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 		ylo -= cube * 0.5
 		var wide := {}   # (the plates in a bucket and the two rings of buckets round it: 3 cubes)
 		for s in pts.size():
+			if staged and (s & 127) == 127 and not await _pace(p, pace):
+				return {}
 			var kc := Vector3i(idx[s * 3], idx[s * 3 + 1], idx[s * 3 + 2])
 			if owner.has(kc) or pts[s].y < ylo or not _under_guard(pts[s], hb, cube):
 				continue
@@ -277,6 +296,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	for ci in n:
 		if first[ci] == 1:
 			continue
+		if staged and not await _pace(p, pace):
+			return {}
 		var xf: Transform3D = base[ci]
 		var inv := xf.affine_inverse()
 		var half := p.vf * p.part_scale * float(Data.body_res) * 0.49
@@ -303,6 +324,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 							owner[kc] = ci
 	if owner.is_empty():
 		return {}
+	if staged and not await _pace(p, pace):
+		return {}
 	# The piece as the gladiators wore it (only the look; see _style): a galea's crest with its
 	# plume and its brim at the brow, a greave's knee.
 	var style := _style(id, p)
@@ -311,6 +334,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	if style.has("face") and p.fine.has("eyes") and p.fine.has("wc"):
 		if style.get("closed", false):
 			_close_face(p, owner, ground, org, first, o, sp)
+		if style.has("down_to_brow"):
+			_down_to_brow(p, owner, ground, org, first, sp, float(style.down_to_brow))
 		_open_face(p, owner, o, sp, String(style.face), float(style.get("eye_r", 1.3)))
 	if style.get("crest", false) and p.fine.has("wc"):
 		_crest(p.fine.wc, owner, extra, o, sp, float(style.get("crest_h", 1.0)), float(style.get("plume_h", 2.0)) if style.has("plume") else 0.0, style.get("griffin", false))
@@ -323,10 +348,18 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 		_neck(p.fine.wc, owner, extra, o, sp, float(style.neck) / kf)
 	if style.get("boss", false):
 		_boss(org, first, owner, extra, o, sp, cube)
+	if style.get("cap", false) and p.fine.has("wc"):
+		_iron_cap(p.fine.wc, owner, extra, o, sp, ground.within)
 	if style.get("curls", false) and p.fine.has("wc"):
 		_curls(p.fine.wc, owner, o, sp)
+	if staged and not await _pace(p, pace):
+		return {}
+	if p.fine.has("wtab"):
+		_fill_pinholes(owner, ground.within)
 	if style.has("face"):
 		_keep_whole(owner, extra)
+	if staged and not await _pace(p, pace):
+		return {}
 	# (A piece in bands: where each row of its plates lies on him, so the bands run straight and
 	# level round him, the same on his left as on his right: user, the lorica was not symmetrical.)
 	var bands := _band_rows(ad, org, o, sp, cube, p) if style.get("seams", true) else {}
@@ -343,6 +376,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	var keys := owner.keys()
 	var box := Basis.from_scale(sp * 1.04)
 	for s in cnt:
+		if staged and (s & 127) == 127 and not await _pace(p, pace):
+			return {}
 		var kc: Vector3i = keys[s]
 		var ci: int = owner[kc]
 		plate[s] = ci
@@ -380,6 +415,10 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 				col = _lit(col, 1.06)
 			BOSS:
 				col = _lit(col, 1.16)
+			BAND:
+				col = _lit(col, 1.18)
+			RIVET, KNOB:
+				col = BRASS
 		buf[b + 12] = col.r
 		buf[b + 13] = col.g
 		buf[b + 14] = col.b
@@ -390,10 +429,51 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 		buf[b + 18] = cu.b
 		buf[b + 19] = cu.a
 	var out := {"cnt": cnt, "base": base, "rel": rel, "of": of, "plate": plate, "buf": buf, "xk": xk}
+	if p.fine.has("wc"):
+		out["cover"] = _cover(p.fine.wc, keys, plate, first, xk, o, sp)
+	if staged and not await _pace(p, pace):
+		return {}
 	if _shells.size() >= SHELL_KEEP:
 		_shells.erase(_shells.keys()[0])
 	_shells[lkey] = out
 	return out
+
+## On a head: the ways out of it (FineHead.tuck_bin, seen from its middle `wc`) each plate's voxels
+## lying on him cover, not a crest's, a brim's or a hat's piece standing out from him: what is tied
+## up on his hair under them (a topknot, a bun) goes under the piece (FineHead.tuck), as far as the
+## shell is drawn and no further. Plate -> its ways.
+static func _cover(wc: Vector3, keys: Array, plate: PackedInt32Array, first: PackedByteArray, xk: PackedByteArray, o: Vector3, sp: Vector3) -> Dictionary:
+	var by := {}
+	var h := sp * 0.5
+	for s in keys.size():
+		var ci := plate[s]
+		if first[ci] == 0 or xk[s] != 0:
+			continue
+		if not by.has(ci):
+			by[ci] = {}
+		var q: Vector3 = o + (Vector3(keys[s]) + Vector3.ONE * 0.5) * sp - wc
+		# (Its middle's way and those of points round it short of its corners: never past the
+		# shell's own edge, or his scalp showed bare along it.)
+		(by[ci] as Dictionary)[FineHead.tuck_bin(q)] = true
+		for cx in [-1.0, 1.0]:
+			for cy in [-1.0, 1.0]:
+				for cz in [-1.0, 1.0]:
+					(by[ci] as Dictionary)[FineHead.tuck_bin(q + Vector3(cx, cy, cz) * h * 0.6)] = true
+	var out := {}
+	for ci in by:
+		out[ci] = PackedInt32Array((by[ci] as Dictionary).keys())
+	return out
+
+## The ways out of his head the shell of `ad` covers with the plates still on him, into `bins`.
+static func cover(ad: Dictionary, bins: Dictionary) -> void:
+	var sh = ad.get("shell")
+	if not (sh is Dictionary) or not is_instance_valid(sh.mi):
+		return
+	var cv: Dictionary = sh.get("cover", {})
+	for ci in cv:
+		if int(ci) < ad.on.size() and ad.on[int(ci)] == 1:
+			for b in (cv[ci] as PackedInt32Array):
+				bins[b] = true
 
 ## How far from its plate (`d`: from the plate to the fine voxel, along him) the plate's shell reaches
 ## that way: on to the neighbour that lies that way (`nb`: to each of its neighbours), else, past
@@ -492,24 +572,51 @@ static func clear(ad: Dictionary) -> void:
 	if node != null and is_instance_valid(node):
 		(node as Node3D).visible = true
 
+## A shell worked out a little a frame (build `staged`): this frame's share spent (pace_us, in
+## microseconds; a test sets none, a frame's wait at every turn), a frame's wait; and whether it
+## goes on, the part still there and drawn as it was (`pace.fine`).
+static var pace_us := 4000
+static func _pace(p, pace: Dictionary) -> bool:
+	if Time.get_ticks_usec() - int(pace.t) < pace_us:
+		return true
+	if not await Physique._frame(p) or not _still(p, pace):
+		return false
+	pace.t = Time.get_ticks_usec()
+	return true
+
+static func _still(p, pace: Dictionary) -> bool:
+	return is_instance_valid(p) and (p as Node).is_inside_tree() and is_same(p.fine, pace.get("fine"))
+
 # ---------- The ground the shell lies on ----------
 
 static func _key(p: VoxelPart) -> String:
 	if p.fine.has("wtab"):
-		return "h|%s|%s|%s|%.5f" % [String(p.fine.get("giant", "")), str(p.grid), str(snappedf(float(p.fine.get("hs", 1.0)), 0.0001)), p.vf * p.part_scale]
+		# (And his hair: a helmet is laid over his head as his hair shapes it, sitting on his hair.)
+		var look: Dictionary = p.fine.get("look", {})
+		var hair := "%s%s" % [String(look.get("style", "")), "-" if (look.get("ids", []) as Array).has("hair_receding") else ""]
+		return "h|%s|%s|%s|%.5f|%s" % [String(p.fine.get("giant", "")), str(p.grid), str(snappedf(float(p.fine.get("hs", 1.0)), 0.0001)), p.vf * p.part_scale, hair]
 	return "b|%s|%s|%.5f" % [String(p.fine.get("build", "")), String(p.part_name), p.vf * p.part_scale]
 
 ## The fine voxels just outside him there, THICK deep, on the lattice he is drawn on:
 ## {o, sp (the lattice: a voxel's middle at o + (i + 0.5) * sp), pts (their middles), idx (their i)};
-## `k` over 1, the voxels that many times bigger (_coarse).
-static func _ground(p: VoxelPart, k := 1.0) -> Dictionary:
+## `k` over 1, the voxels that many times bigger (_coarse). `pace`: a little a frame (_layout).
+static func _ground(p: VoxelPart, k := 1.0, pace := {}) -> Dictionary:
 	var key := _key(p) + ("|%.2f" % k)
 	if _bands.has(key):
-		return _bands[key]
+		var kept: Dictionary = _bands[key]
+		_bands.erase(key)   # (the last used kept the longest)
+		_bands[key] = kept
+		return kept
 	var thick := THICK if k <= 1.0 else COARSE_THICK
-	var out := _ground_head(p, thick) if p.fine.has("wtab") else _ground_body(p, thick)
+	var out: Dictionary
+	if p.fine.has("wtab"):
+		out = await _ground_head(p, thick, pace)
+	else:
+		out = await _ground_body(p, thick, pace)
 	if k > 1.0 and not out.is_empty():
-		out = _coarse(out, k)
+		out = await _coarse(out, k, p, pace)
+	if pace.has("t") and not _still(p, pace):
+		return {}   # (he is gone, or drawn anew while it was worked out: not his, nothing kept)
 	if _bands.size() >= BAND_KEEP:
 		_bands.erase(_bands.keys()[0])
 	_bands[key] = out
@@ -519,7 +626,7 @@ static func _ground(p: VoxelPart, k := 1.0) -> Dictionary:
 ## one of the fine shell's (not every one a fine voxel only touches: kept, the shell stood a voxel
 ## off him, bulky, its edges ragged). The line down his middle (x = 0) between two of its voxels,
 ## as the fine lattice's: the same on his left as on his right.
-static func _coarse(g: Dictionary, k: float) -> Dictionary:
+static func _coarse(g: Dictionary, k: float, p = null, pace := {}) -> Dictionary:
 	var o: Vector3 = g.o
 	var sp: Vector3 = g.sp
 	var cs := sp * k
@@ -528,7 +635,10 @@ static func _coarse(g: Dictionary, k: float) -> Dictionary:
 	var seen := {}
 	var pts := PackedVector3Array()
 	var idx := PackedInt32Array()
+	var staged := pace.has("t")
 	for s in fi.size() / 3:
+		if staged and (s & 1023) == 1023 and not await _pace(p, pace):
+			return {}
 		var lo := o + Vector3(fi[s * 3], fi[s * 3 + 1], fi[s * 3 + 2]) * sp
 		# (A coarse voxel's middle in this fine one: at most one, the coarse lattice the wider.)
 		var j := Vector3i(((lo - oc) / cs - Vector3.ONE * 0.5).ceil())
@@ -546,11 +656,12 @@ static func _coarse(g: Dictionary, k: float) -> Dictionary:
 ## FineHead's own outline, smoothed), the shell from there out.
 const H_AZ := 96
 const H_EL := 48
-static func _ground_head(p: VoxelPart, thick := THICK) -> Dictionary:
+static func _ground_head(p: VoxelPart, thick := THICK, pace := {}) -> Dictionary:
 	var fine := p.fine
 	var cxf: Array = fine.xf
 	if cxf.is_empty():
 		return {}
+	var staged := pace.has("t")
 	var hs := float(fine.get("hs", 1.0))
 	var t: Dictionary = FineHead.giant_template(String(fine.get("giant", ""))) if String(fine.get("giant", "")) != "" else FineHead.template()
 	var res := int(t.get("res", 3))
@@ -565,14 +676,23 @@ static func _ground_head(p: VoxelPart, thick := THICK) -> Dictionary:
 	var cell := sp.x
 	var tab := PackedFloat32Array()
 	tab.resize(H_AZ * H_EL)
-	for tr in cxf:
-		var v: Vector3 = (tr as Transform3D).origin - c
+	# (His head as his hair shapes it, the piece on his hair: not on a knot or a bun tied up on it,
+	# which goes under the piece instead, FineHead.tuck; a helmet stood up over a topknot.)
+	var cells: Array = fine.get("cells", [])
+	for s in cxf.size():
+		if staged and (s & 1023) == 1023 and not await _pace(p, pace):
+			return {}
+		if s < cells.size() and FineHead.extra_hair(cells[s]):
+			continue
+		var v: Vector3 = (cxf[s] as Transform3D).origin - c
 		var r := v.length()
 		if r < 0.0001:
 			continue
 		var k := _hbin(v / r)
 		tab[k] = maxf(tab[k], r + cell * 0.5)
 	for pass_ in 12:
+		if staged and not await _pace(p, pace):
+			return {}
 		var empty := false
 		var nt := tab.duplicate()
 		for el in H_EL:
@@ -595,6 +715,8 @@ static func _ground_head(p: VoxelPart, thick := THICK) -> Dictionary:
 	# than a third of a voxel.
 	var sm := tab.duplicate()
 	for el in H_EL:
+		if staged and (el & 7) == 7 and not await _pace(p, pace):
+			return {}
 		for az in H_AZ:
 			var s := 0.0
 			var mx := 0.0
@@ -612,6 +734,8 @@ static func _ground_head(p: VoxelPart, thick := THICK) -> Dictionary:
 	var idx := PackedInt32Array()
 	var sub := 2
 	for el in H_EL * sub:
+		if staged and not await _pace(p, pace):
+			return {}
 		var e := (float(el) + 0.5) / float(H_EL * sub)
 		var lat := e * PI - PI * 0.5
 		for az in H_AZ * sub:
@@ -655,10 +779,11 @@ static func _hlook(tab: PackedFloat32Array, fe: float, fa: float) -> float:
 ## (his fine voxels' own), the shell from there out; where he narrows from one row to the next
 ## (his shoulders up to his neck) the step between filled; over his top and under his end a cap.
 const B_ANG := 64
-static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
+static func _ground_body(p: VoxelPart, thick := THICK, pace := {}) -> Dictionary:
 	var d: Dictionary = p.fine.get("d", {})
 	if d.is_empty():
 		return {}
+	var staged := pace.has("t")
 	var cells: PackedInt32Array = d.cells
 	var tpl := FineBody.template()
 	var margin := int(tpl.get("margin", 10))
@@ -672,6 +797,8 @@ static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
 	tab.resize(rows * B_ANG)
 	var n := cells.size() / FineBody.CELL
 	for s in n:
+		if staged and (s & 1023) == 1023 and not await _pace(p, pace):
+			return {}
 		var ix := cells[s * FineBody.CELL]
 		var iy := cells[s * FineBody.CELL + 1]
 		var iz := cells[s * FineBody.CELL + 2]
@@ -685,6 +812,8 @@ static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
 		tab[r * B_ANG + a] = maxf(tab[r * B_ANG + a], rho)
 	# A row with him in it has him all the way round (a way between two of his voxels: theirs).
 	for r in rows:
+		if staged and (r & 7) == 7 and not await _pace(p, pace):
+			return {}
 		var any := false
 		for a in B_ANG:
 			if tab[r * B_ANG + a] > 0.0:
@@ -712,6 +841,8 @@ static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
 	var sub := 3
 	var caps := int(ceilf(thick))
 	for r in rows:
+		if staged and not await _pace(p, pace):
+			return {}
 		for a in B_ANG * sub:
 			var fa := (float(a) + 0.5) / float(sub) - 0.5
 			var a0 := posmod(int(floorf(fa)), B_ANG)
@@ -749,6 +880,8 @@ static func _ground_body(p: VoxelPart, thick := THICK) -> Dictionary:
 	# left him bare there.)
 	var face := {}
 	for s in n:
+		if staged and (s & 1023) == 1023 and not await _pace(p, pace):
+			return {}
 		var key2 := Vector2i(cells[s * FineBody.CELL], cells[s * FineBody.CELL + 1])
 		var iz := cells[s * FineBody.CELL + 2]
 		var cur: Vector2i = face.get(key2, Vector2i(iz, iz))
@@ -806,7 +939,7 @@ static func _shade(ad: Dictionary, ci: int, kc: Vector3i, owner: Dictionary, bar
 		var k := 0.985 + 0.03 * _hash(kc)
 		if rim:
 			k = 1.16 if metal else 0.8
-		return _lit(col, k)
+		return _lit(col, k * float(style.get("dark", 1.0)))
 	return _lit(col, _band_light(kc, bands, rim, metal))
 
 ## Iron in bands, as a lorica's hoops were (and a manica's lames): each of the piece's rows a hoop,
@@ -979,6 +1112,10 @@ const CREST := 1
 const PLUME := 2
 const BRIM := 3
 const BOSS := 4
+const BAND := 5
+const RIVET := 6
+const KNOB := 7
+const BRASS := Color(0.8, 0.6, 0.3)
 
 ## How a piece is drawn on the new look, as the arena saw it in its day (only the look: its plates,
 ## what they stop and weigh are the piece's own), every helmet with his eyes left open (user: what
@@ -1008,7 +1145,9 @@ static func _style(id: String, p: VoxelPart) -> Dictionary:
 			return {"seams": false, "crest": true, "crest_h": 1.5, "plume_h": 1.5, "griffin": true, "brim": true, "brim_w": 2.5, "plume": Color(0.93, 0.9, 0.84), "face": "open"}
 		"murmilloHelm":
 			return {"seams": false, "crest": true, "crest_h": 3.0, "brim": true, "brim_w": 2.5, "brim_at": "brow", "face": "visor"}
-		"leatherCap", "skullPlate":
+		"skullPlate":
+			return {"seams": false, "face": "open", "cap": true, "dark": 0.8, "down_to_brow": 2.0}
+		"leatherCap":
 			return {"seams": false, "face": "open"}
 		"ironJaw", "goldLorica", "cape_short":
 			return {"seams": false}
@@ -1020,6 +1159,78 @@ static func _style(id: String, p: VoxelPart) -> Dictionary:
 	if pn == "head" or pn.begins_with("shin"):
 		return {"seams": false}
 	return {"seams": true}
+
+## An iron cap as a smith rivets one over the skull: round its edge a band standing a voxel off
+## the bowl with brass rivets in it all the way round, the same on his left as on his right, and a
+## brass knob on the crown. (Its smooth bowl alone, all of a grey, read as a woollen cap or as grey
+## curls: user, it looked bad and silly.)
+static func _iron_cap(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, within: Dictionary) -> void:
+	var cell := sp.x
+	var add := {}
+	var fx := (wc.x - o.x) / sp.x - 0.5
+	var cols := []
+	for ix in [int(floorf(fx)), int(ceilf(fx))]:
+		if absf(float(ix) - fx) < 0.75 and not cols.has(ix):
+			cols.append(ix)
+	var fz := (wc.z - o.z) / sp.z - 0.5
+	var step := TAU / 14.0
+	for kc in owner:
+		if extra.has(kc):
+			continue
+		var q := _mid(kc, o, sp)
+		var d := q - wc
+		if d.length() < 0.0001:
+			continue
+		var out := _at(q + d.normalized() * cell, o, sp)
+		if owner.has(out) or add.has(out):
+			continue   # (from the bowl's outside)
+		var edge := false
+		for dv in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			if owner.get(kc + dv) == null and within.has(kc + dv):
+				edge = true
+		if edge:
+			var a := absf(atan2(d.x, d.z))   # (0 in front, PI behind: the same either side)
+			add[out] = [owner[kc], RIVET if fposmod(a + step * 0.5, step) < step * 0.3 else BAND]
+	# The knob on the crown: over the bowl's top in the middle.
+	var top := Vector3i.ZERO
+	var best := -INF
+	for kc in owner:
+		if cols.has(kc.x) and not extra.has(kc) and absf(float(kc.z) - fz) < 1.0 and kc.y > best:
+			best = kc.y
+			top = kc
+	if best > -INF:
+		for kk in [top + Vector3i(0, 1, 0), top + Vector3i(0, 2, 0)]:
+			add[kk] = [owner[top], KNOB]
+	for kk in add:
+		if not owner.has(kk):
+			owner[kk] = add[kk][0]
+			extra[kk] = add[kk][1]
+
+## A cap brought down all round his head to a level line `gap` of its voxels over his brows (over
+## his ears at the sides), where its own plates stop higher: each voxel of the ground over that line
+## the nearest plate's (the iron cap sat back on his crown, his whole forehead bare: user, it
+## should take in more of his head). Only its drawing: what the plates stop is theirs.
+static func _down_to_brow(p: VoxelPart, owner: Dictionary, ground: Dictionary, org: PackedVector3Array, first: PackedByteArray, sp: Vector3, gap: float) -> void:
+	var lo := float(p.fine.brow_y) + sp.y * gap
+	var pts: PackedVector3Array = ground.pts
+	var idx: PackedInt32Array = ground.idx
+	for s in pts.size():
+		var kc := Vector3i(idx[s * 3], idx[s * 3 + 1], idx[s * 3 + 2])
+		if owner.has(kc):
+			continue
+		var q := pts[s]
+		if q.y < lo:
+			continue
+		var best := INF
+		var who := -1
+		for ci in org.size():
+			if first[ci] == 1:
+				var dd := q.distance_squared_to(org[ci])
+				if dd < best:
+					best = dd
+					who = ci
+		if who >= 0:
+			owner[kc] = who
 
 ## A fine voxel's place on the shell's lattice, and the middle of one.
 static func _at(q: Vector3, o: Vector3, sp: Vector3) -> Vector3i:
@@ -1197,6 +1408,33 @@ static func _open_face(p: VoxelPart, owner: Dictionary, o: Vector3, sp: Vector3,
 			cut[kc] = true
 	for kc in cut:
 		owner.erase(kc)
+
+## Pinholes in a shell round a head: a cell of its ground left out with the shell drawn round it on
+## four faces of the six or more, filled, each the plate most of those round it are (user: holes
+## in the helmets). Its edge, drawn on fewer sides, stays where it is.
+static func _fill_pinholes(owner: Dictionary, within: Dictionary) -> void:
+	for pass_ in 2:
+		var add := {}
+		for kc in within:
+			if owner.has(kc):
+				continue
+			var n := 0
+			var votes := {}
+			for dv in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				var w = owner.get(kc + dv)
+				if w != null:
+					n += 1
+					votes[w] = int(votes.get(w, 0)) + 1
+			if n < 4:
+				continue
+			var best = null
+			for w in votes:
+				if best == null or int(votes[w]) > int(votes[best]):
+					best = w
+			add[kc] = best
+		if add.is_empty():
+			return
+		owner.merge(add)
 
 ## A helmet hangs together: what its face's cut left on its own (a voxel or two of a visor's grille
 ## where the cheek turns) is left out of it (user: no armour voxels in the air).

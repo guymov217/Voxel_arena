@@ -215,16 +215,19 @@ func test_bald_and_the_hairstyles_of_the_day() -> void:
 		styles[String(b.head.fine.look.style)] = true
 	t.check(styles.size() >= 4 and (styles.has("hair_crop") or styles.has("hair_curls_top")), "the bots' hair of the day, by name (%s)" % ", ".join(styles.keys()))
 
-## Under a helmet his hair is tucked away (the helmet sits on his head, not on his hair); what hangs
-## below it shows; a hat over the crown the same.
-func test_hair_tucked_under_a_helmet() -> void:
+## Under a helmet his hair stays on him, the helmet laid over it (user: tucked away, his bare scalp
+## showed through the helmet, and would where a plate of it was knocked off): only what is tied up
+## on his hair goes under it (the top of a fall, a topknot), what hangs below shows, and a knot
+## comes out again as the plates over it are knocked off.
+func test_hair_under_a_helmet() -> void:
 	var w := _world()
 	Physique.forced = "human"
 	var f := w.fighter(Vector3(0, 1.2, 0), 0.0, {"armor": ["hair_long", "helmet"]}, {"skin": 0xc68e5e})
+	var k := w.fighter(Vector3(2.0, 1.2, 0), 0.0, {"armor": ["hair_topknot", "helmet"]}, {"skin": 0xc68e5e})
 	Physique.forced = ""
 	var tucked: Dictionary = f.head.fine.get("tucked", {})
+	var plain := 0
 	var under := 0
-	var out := 0
 	var extra_out := 0
 	for s in (f.head.fine.cells as Array).size():
 		var c: Array = f.head.fine.cells[s]
@@ -232,12 +235,27 @@ func test_hair_tucked_under_a_helmet() -> void:
 			continue
 		if tucked.has(s):
 			under += 1
-		else:
-			out += 1
-			if (int(c[4]) & FineHead.HAIR_EXTRA) != 0:
-				extra_out += 1
-	t.check(under > out, "his hair under the helmet tucked away (%d tucked, %d shown)" % [under, out])
+			if not FineHead.extra_hair(c):
+				plain += 1
+		elif FineHead.extra_hair(c):
+			extra_out += 1
+	t.eq(plain, 0, "none of the hair on his head is taken away under the helmet")
+	t.check(under > 0, "the top of his fall goes under it (%d)" % under)
 	t.check(extra_out > 0, "what hangs below it shows (%d)" % extra_out)
+	var knot := func() -> int:
+		var n := 0
+		var tk: Dictionary = k.head.fine.get("tucked", {})
+		for s in tk:
+			if FineHead.extra_hair(k.head.fine.cells[s]):
+				n += 1
+		return n
+	t.check(knot.call() > 0, "a topknot goes under the helmet (%d)" % knot.call())
+	for ad in k.head.get_meta("armor", []):
+		if String(ad.id) == "helmet":
+			for ci in ad.on.size():
+				if ad.on[ci] == 1:
+					k._knock_plate(k.head, ad, ci, Vector3.UP, 1.0, false)
+	t.eq(knot.call(), 0, "and comes out again as the helmet's plates are knocked off")
 
 ## An older save's hairstyle (its index into the list as it was) read as the same style, or the
 ## arena's nearest for one no longer offered, and saved so.

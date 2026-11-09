@@ -186,9 +186,12 @@ static func dress(f, style := "", staged := false) -> void:
 	f.set_meta("physique", style)
 	f.set_meta("build", bn)
 	if f.has_method("place_armor"):
-		if staged and not await _frame(f):
-			return
-		f.place_armor()
+		if staged:
+			if not await _frame(f):
+				return
+			await f.place_armor(true)
+		else:
+			f.place_armor()
 
 ## A frame's wait in a dress made over a few frames, and whether he is still there after it (a man
 ## taken out while he was being built, a test's arena torn down: nothing more is done to him).

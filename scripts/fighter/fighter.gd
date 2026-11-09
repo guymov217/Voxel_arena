@@ -1126,8 +1126,10 @@ func armor_wear() -> Dictionary:
 	return out
 
 ## His armour drawn again on the outline of his look (Physique): each plate still on him pulled
-## in onto the voxels drawn under it. Where it stops blows ("pts") stays as it was.
-func place_armor() -> void:
+## in onto the voxels drawn under it. Where it stops blows ("pts") stays as it was. `staged`: a
+## man built while the fight goes on (build): a shell laid out for the first time, a helmet over
+## a hairstyle not seen yet, worked out over a few frames (FineArmor.build).
+func place_armor(staged := false) -> void:
 	for p in parts:
 		for ad in p.get_meta("armor", []):
 			if ad.node == null or not is_instance_valid(ad.node):
@@ -1138,7 +1140,12 @@ func place_armor() -> void:
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
 					m.set_instance_transform(ci, Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)))
-			FineArmor.build(self, p, ad)
+			if staged:
+				await FineArmor.build(self, p, ad, true)
+				if not is_inside_tree():
+					return
+			else:
+				FineArmor.build(self, p, ad)
 		_tuck_hair(p)
 
 ## Hair and a beard under a helmet are drawn tucked inside it: a lock with a plate of the helmet
@@ -1181,16 +1188,18 @@ func _tuck_hair(p: VoxelPart) -> void:
 				capped[c + Vector3i.DOWN] = true
 	if p == head:
 		_hair = []
-		# The fine head's own hair (the new look's): under a helmet's plates still on him or a
-		# hat's, tucked away.
+		# The fine head's own hair (the new look's): under the shell of a helmet's plates still on
+		# him, or of a hat's (not worn under a helmet), tucked away.
 		if not p.fine.is_empty() and p.fine.has("wtab"):
-			var over := covered.duplicate()
+			var bins := {}
 			for ad in p.get_meta("armor", []):
-				if String(ad.id).begins_with("hat_") and covered.is_empty():
-					for ci in ad.cells.size():
-						if ad.on[ci] == 1:
-							over[Vector3i(int(ad.cells[ci][0]), int(ad.cells[ci][1]), int(ad.cells[ci][2]))] = true
-			FineHead.tuck(p, over)
+				if not _cosmetic(String(ad.id)):
+					FineArmor.cover(ad, bins)
+			if covered.is_empty():
+				for ad in p.get_meta("armor", []):
+					if String(ad.id).begins_with("hat_"):
+						FineArmor.cover(ad, bins)
+			FineHead.tuck(p, bins)
 	for ad in p.get_meta("armor", []):
 		var id := String(ad.id)
 		if not (id.begins_with("hair_") or id.begins_with("beard_")) or ad.node == null or not is_instance_valid(ad.node):
