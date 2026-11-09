@@ -63,6 +63,12 @@ func set_value(key: String, value) -> void:
 	data[key] = value
 	save()
 
+## The key gone from the save (read again as its default).
+func erase(key: String) -> void:
+	if data.has(key):
+		data.erase(key)
+		save()
+
 ## The game was called Voxel Arena: Godot keeps user:// by the project's name, so the old save
 ## sits in a sibling folder. Copied over once, it keeps the campaign through the rename.
 func _migrate_old_name() -> void:

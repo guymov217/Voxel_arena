@@ -20,16 +20,17 @@ func test_a_legionary_goes_back_to_the_checkpoint_as_he_left_it() -> void:
 	Save.set_value("coins", 240)
 	Save.set_value("arms", {"main": "gladius"})
 	Save.set_value("armor_worn", ["helmet"])
-	Save.set_value("training", {"vis": 4})
+	Save.set_value("trainer", {"vis": 4})
 	Save.set_value("body", {"missing": ["forearmL"]})
 	Save.set_value("checkpoint", 5)
 	Save.set_value("stage", 5)
 	CampaignRun.keep()
-	# Two bouts on, poorer, more hurt, then dead.
+	# Two bouts on, poorer, more hurt, taught more (Virtus too), then dead.
 	Save.set_value("coins", 12)
 	Save.set_value("arms", {"main": "axe"})
 	Save.set_value("armor_worn", [])
-	Save.set_value("training", {"vis": 8})
+	Save.set_value("trainer", {"vis": 8})
+	Save.set_value("virtus", 3)
 	Save.set_value("body", {"missing": ["forearmL", "shinR"]})
 	Save.set_value("stage", 7)
 	t.eq(CampaignRun.fall_back(), 5, "dead at bout 7: back to bout 5")
@@ -37,7 +38,8 @@ func test_a_legionary_goes_back_to_the_checkpoint_as_he_left_it() -> void:
 	t.eq(int(Save.get_value("coins", 0)), 240, "with the purse he had there")
 	t.eq(str(Save.get_value("arms", {}).get("main", "")), "gladius", "his arms")
 	t.eq((Save.get_value("armor_worn", []) as Array).size(), 1, "his armour")
-	t.eq(int(Save.get_value("training", {}).get("vis", 0)), 4, "his training")
+	t.eq(int(Save.get_value("trainer", {}).get("vis", 0)), 4, "what the trainer had taught him")
+	t.eq(Save.get_value("virtus"), null, "and not the Virtus he was taught after it")
 	t.eq((Save.get_value("body", {}).get("missing", []) as Array).size(), 1, "and his body as it was")
 	t.eq(CampaignRun.fall_back(), 5, "and as often as he falls")
 
@@ -141,6 +143,59 @@ func test_a_legionary_fallen_in_a_bout_comes_back_without_what_it_did_to_him() -
 	menu._end_match()
 	menu.queue_free()
 	await get_tree().process_frame
+
+## In the co-op campaign a guest falls back with the party, as he walked into the checkpoint's bout
+## (user: it must hold alone and in co-op alike): what the bouts after it did to him (a forearm
+## off, plates off his armour) and what he bought and was taught since is gone when the party falls
+## and the host goes back to it; and the host is told him so (Net.my_body, Net.my_loadout).
+func test_a_guest_goes_back_to_the_checkpoint_with_the_party() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	# His own as he walks into the checkpoint's bout, bout 5.
+	Save.set_value("body", Body.empty())
+	Save.set_value("arms", {"main": "gladius"})
+	Save.set_value("armor_worn", ["helmet"])
+	Save.set_value("armor_wear", {})
+	Save.set_value("trainer", {"vis": 2})
+	menu.set_kit({"greekFire": 1})
+	var before := {}
+	for key in CampaignRun.OWN:
+		before[key] = _as_saved(Save.get_value(key))
+	menu._on_net("start", {"mode": "campaign", "stage": 5, "coop": true, "keep": true, "run": 77}, 1)
+	await get_tree().process_frame
+	t.check(not (Save.get_value("coop_own_save", {}) as Dictionary).is_empty(), "into the checkpoint's bout (the host's word): kept as he goes in")
+	menu._end_match()
+	# Bout 5 won with a forearm off (the host's word); in the yard a lorica bought, Vis taught, a pot more.
+	menu._on_net("body", {"missing": ["forearmL"]}, 1)
+	menu.set_worn_armor(["helmet", "lorica"])
+	Save.set_value("trainer", {"vis": 4})
+	menu.set_kit({"greekFire": 3})
+	# Bout 6, not the checkpoint's: nothing kept going in. Lost: the plates off his helmet (the
+	# host's word), and the host goes back to bout 5.
+	menu._on_net("start", {"mode": "campaign", "stage": 6, "coop": true, "run": 77}, 1)
+	await get_tree().process_frame
+	menu._on_net("armor_wear", {"helmet": {"head": [0, 1, 2]}}, 1)
+	t.check(not menu.armor_wear().is_empty(), "the plates off his helmet in the save")
+	# (The game shut and started again in between: the save read back from its file.)
+	Save.set_value("coop_own_save", JSON.parse_string(JSON.stringify(Save.get_value("coop_own_save", {}))))
+	# (Another run's word, another host's: not his to go back to.)
+	menu._on_net("fell_back", {"stage": 5, "run": 12}, 1)
+	t.check(not menu.armor_wear().is_empty() and int(menu.fell_back) == 0, "another run's checkpoint: he stays as he is")
+	menu._on_net("fell_back", {"stage": 5, "run": 77}, 1)
+	for key in CampaignRun.OWN:
+		t.eq(_as_saved(Save.get_value(key)), before[key], "%s as he walked into bout 5" % key)
+	t.eq(int(menu.fell_back), 5, "back at bout 5 with the party")
+	t.check((Net.my_body.get("missing", []) as Array).is_empty(), "the host told him whole (%s)" % str(Net.my_body.get("missing", [])))
+	t.eq(Net.my_loadout.get("gear", []), ["helmet"], "in his helmet alone")
+	menu._end_match()
+	menu.queue_free()
+	await get_tree().process_frame
+
+## A value as the save's file holds it (JSON: a number read back from it is a float, 2 is 2.0).
+static func _as_saved(v) -> String:
+	return JSON.stringify(JSON.parse_string(JSON.stringify(v)))
 
 func test_an_ironman_starts_over_and_takes_the_rudis_for_good() -> void:
 	CampaignRun.begin("ironman")

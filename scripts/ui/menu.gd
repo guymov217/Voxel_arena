@@ -4077,6 +4077,7 @@ func start(opts: Dictionary) -> void:
 	_end_match()
 	var a := arms()
 	var lo := Arms.loadout(a)
+	var checkpoint_bout := false
 	opts.name = Save.get_value("name", "Gladiator")
 	if opts.mode == "campaign":
 		opts.loadout = {"main": lo.main, "off": lo.off}
@@ -4084,7 +4085,9 @@ func start(opts: Dictionary) -> void:
 		if int(opts.get("stage", 1)) <= 1:
 			set_body(Body.empty())
 		opts.body = body()
-		# Through the gate into a checkpoint's bout: a death brings him back as he went in.
+		# Through the gate into a checkpoint's bout: a death brings him back as he went in (and his
+		# guests are told to keep themselves as they go in).
+		checkpoint_bout = CampaignRun.walks_in(int(opts.get("stage", 1)), bool(opts.get("coop", false)))
 		CampaignRun.walk_in(int(opts.get("stage", 1)), bool(opts.get("coop", false)))
 	else:
 		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
@@ -4128,7 +4131,7 @@ func start(opts: Dictionary) -> void:
 				spec.loadout = made
 			peers.append(spec)
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon"))})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
 		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
 	match_ = Match.new()
 	world_root.add_child(match_)
@@ -4434,6 +4437,18 @@ func _end_match() -> void:
 ## cam cannot come back to the bout he fell in; and again, harmlessly, when the result is read.
 var fell_back := 0   # the bout a Legionary went back to on his last death (0: the run ended)
 
+## A guest of the co-op campaign, the party fallen after the checkpoint (the host's word: bout `at`
+## of his run `run`): his own put back as he walked into the checkpoint's bout
+## (CampaignRun.keep_own), the bout he lost and all it did to him gone, and the host told
+## (Net.push_me). Nothing kept there (he came after it): he stays as he is.
+func _guest_fell_back(at: int, run: int) -> void:
+	if not CampaignRun.fall_back_own(at, run):
+		return
+	fell_back = clampi(at, 1, 999)
+	Net.my_body = body()
+	Net.my_kit = kit()
+	_net_loadout()
+
 func _campaign_lost(r: Dictionary) -> void:
 	# Legionary: back to the last checkpoint as he left it; Ironman (or none yet): it is over.
 	var back := CampaignRun.fall_back(bool(r.get("coop", false)))
@@ -4443,6 +4458,11 @@ func _campaign_lost(r: Dictionary) -> void:
 		_net_loadout()
 		if Net.active():
 			Net.send_all("purse", coins())
+			if Net.is_host() and not r.get("told", false):
+				# The party goes back with me: each guest puts himself back as he walked into the
+				# checkpoint's bout (called again as the result is read: told once).
+				r["told"] = true
+				Net.send_all("fell_back", {"stage": back, "run": int(Save.get_value("run_seed", 0))})
 		return
 	var sk := "coop_stage" if r.get("coop", false) else "stage"
 	var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -4486,8 +4506,13 @@ func _on_finished(r: Dictionary) -> void:
 	if match_ and match_.me and match_.role != "guest" and mode != "circus" and not last_start.has("inventory_override"):
 		set_kit(match_.me.get("inventory", kit()))
 	if mode == "campaign" and match_ and match_.role == "guest":
-		# A guest's own sword takes its knocks too: the host does not keep it, he does.
-		set_arms(Arms.add_wear(arms(), match_.my_wear()))
+		if not r.get("won", false) and fell_back > 0:
+			# Back at the checkpoint with the party, as I walked into its bout: the lost bout's
+			# chips are not in my blade.
+			last_result = {"text": Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back}
+		else:
+			# A guest's own sword takes its knocks too: the host does not keep it, he does.
+			set_arms(Arms.add_wear(arms(), match_.my_wear()))
 	if mode == "campaign" and match_ and match_.role != "guest":
 		var sk := "coop_stage" if r.get("coop", false) else "stage"
 		var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -4583,6 +4608,10 @@ func _on_net(type: String, data, _from: int) -> void:
 				var hz: Array = (data.get("hazards", []) as Array).filter(func(h): return h is Dictionary and ["spikes", "blade", "chariot"].has(h.get("type"))).slice(0, 8) if data.get("hazards") is Array else []
 				if data.mode == "campaign" and int(data.stage) <= 1:
 					set_body(Body.empty())
+				fell_back = 0
+				if data.mode == "campaign" and data.get("keep") == true:
+					# Into the checkpoint's bout (the host's word): what a fall brings me back to.
+					CampaignRun.keep_own(int(Net.num(data.get("stage"))), int(Net.num(data.get("run"))))
 				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky"))})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
@@ -4611,6 +4640,10 @@ func _on_net(type: String, data, _from: int) -> void:
 			# The plates the bout knocked off my armour (the host saw them go).
 			if data is Dictionary and not Net.is_host():
 				set_armor_wear(Armory.add_wear(armor_wear(), data, worn_armor()))
+		"fell_back":
+			# The party fell after the checkpoint and the host goes back to it: so do I.
+			if not Net.is_host() and data is Dictionary:
+				_guest_fell_back(int(Net.num(data.get("stage"))), int(Net.num(data.get("run"))))
 		"ff_begin":
 			if not Net.is_host() and data is Dictionary:
 				_ff_begin(data, false)

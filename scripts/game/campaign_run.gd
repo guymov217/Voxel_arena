@@ -11,8 +11,14 @@ const MODES := {
 	"ironman": {"name": "Ironman", "desc": "One life. A death ends the run: back to bout 1 with nothing. Win the rudis this way and the Emperor gives you what no one else gets."},
 }
 
-## What a checkpoint keeps: every key a death takes.
-const KEPT := ["coins", "body", "arms", "armor_worn", "armor_wear", "training", "kit", "run_seed", "oddities_sold"]
+## What a checkpoint keeps: every key a death takes. (The trainer's teaching is kept under
+## "trainer" and Virtus under its own: under "training", an old save's key for it now holding the
+## training ground's settings, a death left him what he had been taught since the checkpoint.)
+const KEPT := ["coins", "body", "arms", "armor_worn", "armor_wear", "trainer", "virtus", "kit", "run_seed", "oddities_sold"]
+
+## What a guest in the co-op campaign keeps of his own (the purse, the run and the smith's
+## oddities are the host's): his body, his arms, his armour, his teaching, his bag.
+const OWN := ["body", "arms", "armor_worn", "armor_wear", "trainer", "virtus", "kit"]
 
 static func _k(key: String, coop: bool) -> String:
 	return ("coop_" + key) if coop else key
@@ -33,13 +39,29 @@ static func begin(m: String, coop := false) -> void:
 
 ## A checkpoint bout won: what he walks out with is kept, to come back to after a death.
 static func keep(coop := false) -> void:
-	var snap := {}
-	for key in KEPT:
+	var snap := _snap(KEPT)
+	snap["lap"] = Save.get_value(_k("lap", coop), 1)
+	Save.set_value(_k("checkpoint_save", coop), snap)
+
+## The save's `keys` as they are now, each its own copy, and which keys it took ("_keys": one not
+## in the save then is not in it after a death either; one an older checkpoint did not take is
+## left as it is).
+static func _snap(keys: Array) -> Dictionary:
+	var snap := {"_keys": keys.duplicate()}
+	for key in keys:
 		var v = Save.get_value(key, null)
 		if v != null:
 			snap[key] = _copy(v)
-	snap["lap"] = Save.get_value(_k("lap", coop), 1)
-	Save.set_value(_k("checkpoint_save", coop), snap)
+	return snap
+
+## The save's `keys` put back as `snap` had them.
+static func _put_back(snap: Dictionary, keys: Array) -> void:
+	var took: Array = snap.get("_keys", []) if snap.get("_keys") is Array else []
+	for key in keys:
+		if snap.has(key):
+			Save.set_value(key, _copy(snap[key]))
+		elif took.has(key):
+			Save.erase(key)
 
 ## A value of the save as it is now, its own (the checkpoint's: nothing done to the save after it,
 ## in place or not, reaches it; nor does what is done to what a death puts back).
@@ -52,11 +74,38 @@ static func _copy(v):
 ## that bout left on him came back with a death after the physician had closed them: back in the
 ## yard with a fight's wounds instead of as he left the checkpoint, user.)
 static func walk_in(stage: int, coop := false) -> void:
-	if mode(coop) != "legionary" or stage != int(Save.get_value(_k("checkpoint", coop), 1)):
-		return
-	var snap = Save.get_value(_k("checkpoint_save", coop), {})
-	if snap is Dictionary and not (snap as Dictionary).is_empty():
+	if walks_in(stage, coop):
 		keep(coop)
+
+## Whether bout `stage` is a Legionary run's checkpoint bout, with a checkpoint kept to fall back
+## to: walking into it keeps him as he goes in (walk_in; and the host tells his guests, keep_own).
+static func walks_in(stage: int, coop := false) -> bool:
+	if mode(coop) != "legionary" or stage != int(Save.get_value(_k("checkpoint", coop), 1)):
+		return false
+	var snap = Save.get_value(_k("checkpoint_save", coop), {})
+	return snap is Dictionary and not (snap as Dictionary).is_empty()
+
+## A guest walking into the co-op campaign's checkpoint bout `stage` of the host's run `run` (the
+## host's word: walks_in on his side): his own as he goes in, kept to come back to if the party
+## falls in a bout after it.
+static func keep_own(stage: int, run: int) -> void:
+	var snap := _snap(OWN)
+	snap["_at"] = [stage, run]
+	Save.set_value("coop_own_save", snap)
+
+## The party fallen and the host gone back to his checkpoint `stage` of run `run` (fall_back on
+## his side): a guest's own put back as he walked into that bout. False if he kept nothing there
+## (he came after it, or what he kept was another run's, another host's).
+static func fall_back_own(stage: int, run: int) -> bool:
+	var snap = Save.get_value("coop_own_save", {})
+	if not (snap is Dictionary) or (snap as Dictionary).is_empty():
+		return false
+	# (Read back from the save file its numbers are floats: compared as whole numbers.)
+	var at = snap.get("_at")
+	if not (at is Array) or (at as Array).size() != 2 or int(at[0]) != stage or int(at[1]) != run:
+		return false
+	_put_back(snap, OWN)
+	return true
 
 ## The bout a death would send him back to now (0: none, the run would be over).
 static func falls_back_to(coop := false) -> int:
@@ -77,9 +126,7 @@ static func fall_back(coop := false) -> int:
 	if not (snap is Dictionary) or (snap as Dictionary).is_empty():
 		return 0
 	at = maxi(1, at)
-	for key in KEPT:
-		if snap.has(key):
-			Save.set_value(key, _copy(snap[key]))
+	_put_back(snap, KEPT)
 	Save.set_value(_k("lap", coop), int(snap.get("lap", 1)))
 	Save.set_value(_k("stage", coop), at)
 	return at

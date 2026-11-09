@@ -597,7 +597,7 @@ static func clean_worn(raw) -> Dictionary:
 func add_peer(id: int, p: Dictionary) -> void:
 	if role != "host":
 		return
-	Net.send_to(id, "start", {"mode": mode, "stage": stage, "coop": coop, "decrees": decrees.map(func(d): return d.id), "hazards": hazard_specs})
+	Net.send_to(id, "start", {"mode": mode, "stage": stage, "coop": coop, "decrees": decrees.map(func(d): return d.id), "hazards": hazard_specs, "keep": mode == "campaign" and CampaignRun.walks_in(stage, coop), "run": int(Save.get_value("run_seed", 0))})
 	for e in entities:
 		if is_instance_valid(e.f):
 			Net.send_to(id, "spawn", _spawn_msg(e))
@@ -3406,8 +3406,10 @@ func _process(dt: float) -> void:
 			pitch = clampf(input.look_pitch + input.free_look.y, -1.45, 1.35)
 		cam_aiming = aiming or sighting
 		# Over the left shoulder while he holds a two-hander from the left side (user: the camera
-		# goes with the change of sides).
-		cam.view_side = -1.0 if (f.net_two_side if role == "guest" else f.two_side) == "L" else 1.0
+		# goes with the change of sides). (A guest's gladiator not in yet, the host's word on its
+		# way: none, and the camera goes round the arena, CameraRig.follow.)
+		var held_side: String = "" if f == null or not is_instance_valid(f) else String(f.net_two_side if role == "guest" else f.two_side)
+		cam.view_side = -1.0 if held_side == "L" else 1.0
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe, tip_i)
 	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
 	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).
