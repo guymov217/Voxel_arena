@@ -89,6 +89,8 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	# (As far off as it lay at the size it was modelled: grown bigger, at 2.2 m its jaws came
 	# down through him.)
 	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
+	# (The roll itself: its first bite on a limb rolls. How seldom a bite does is the next test's.)
+	s[2].roll_chance = 1.0
 	var rolled := [false]
 	var wrenches := [0]
 	var torn := [false]
@@ -99,13 +101,20 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 				torn[0] = true)
 	# Through the roll: how far round the crocodile, the limb in its jaws and the man's trunk
 	# go on its length, and how far the bitten place gets from its teeth. (The roll that took
-	# the limb: grown bigger and quicker to him, it has hold of him again before the time is
-	# out, on a man thrown across its back, and that is another roll.)
+	# the limb is the one measured; grown bigger and quicker to him, it has hold of him again
+	# after, on a man thrown across its back, but rolls him again only once its while is out.)
 	var turn := [0.0, 0.0, 0.0]
 	var gap := [0.0]
-	await _run(s[0], s[1], s[2], 16.0, func(_i):
+	var starts: Array = []   # (s) when each roll began...
+	var ends: Array = []     # ...and ended
+	await _run(s[0], s[1], s[2], 16.0, func(i):
 		var b: Beast = s[2]
-		if not torn[0] and b.hug != null and b.hug.get("roll", false) and is_instance_valid(b.hug.part):
+		var rolling: bool = b.hug != null and b.hug.get("roll", false)
+		if rolling and starts.size() == ends.size():
+			starts.append(i / 120.0)
+		elif not rolling and starts.size() > ends.size():
+			ends.append(i / 120.0)
+		if not torn[0] and rolling and is_instance_valid(b.hug.part):
 			rolled[0] = true
 			var ax: Vector3 = PD.quat_of(b.torso) * Vector3(0, 0, 1)
 			turn[0] += absf(b.torso.angular_velocity.dot(ax)) / 120.0
@@ -123,6 +132,37 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	t.check(gap[0] < 0.15, "the teeth never left the bite (at most %.2f m off)" % gap[0])
 	t.check(wrenches[0] >= 3, "the roll wrenched at the limb (%d)" % wrenches[0])
 	t.check(torn[0], "and tore it off")
+	# Out of its roll, it lets him be a while before the next (user: it went into its death roll
+	# whenever it wanted and took a limb every time).
+	var soon := false
+	for k in range(1, starts.size()):
+		if float(starts[k]) - float(ends[k - 1]) < Beast.ROLL_COOL - 0.05:
+			soon = true
+	t.check(not soon, "a while before it rolled him again (rolls began at %s s, ended at %s s)" % [str(starts), str(ends)])
+	s[0].queue_free()
+
+## Not every bite on a limb starts a roll (user: it went into its death roll at every chance):
+## of the bites that could, most do not.
+func test_the_crocodile_rolls_only_now_and_then() -> void:
+	seed(9)
+	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
+	var chances := [0]
+	var rolls := [0]
+	s[0].combat.hit.connect(func(h):
+		var b: Beast = s[2]
+		if h.attacker != b or h.char != s[1] or not h.get("bite", false) or h.get("roll", false) or not b.heads.has(h.get("att_part")):
+			return
+		if h.part == s[1].torso or h.part == s[1].head or b.coil_cool > 0.0:
+			return
+		# (The roll the bite began is on by now: the jaws' hold starts as the bite lands.)
+		var began: bool = b.hug != null and b.hug.get("roll", false) and b.hug.part == h.part and int(b.hug.bites) == 0
+		if b.hug == null or began:
+			chances[0] += 1
+			if began:
+				rolls[0] += 1)
+	await _run(s[0], s[1], s[2], 24.0, func(_i): pass)
+	t.check(chances[0] >= 3, "it bit his limbs, free to roll him (%d bites)" % chances[0])
+	t.check(rolls[0] < chances[0], "and went into its roll on only some of them (%d of %d)" % [rolls[0], chances[0]])
 	s[0].queue_free()
 
 ## A man in its roll fights it: pulling away the whole time prises the jaws open before the
@@ -132,6 +172,7 @@ func test_pulling_away_breaks_the_death_roll() -> void:
 	# (As far off as it lay at the size it was modelled: grown bigger, at 2.2 m its jaws came
 	# down through him.)
 	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
+	s[2].roll_chance = 1.0   # (its first bite on a limb rolls)
 	s[0].me.drive = func(_e): return {"mz": -1.0}
 	var rolled := [false]
 	var torn := [false]

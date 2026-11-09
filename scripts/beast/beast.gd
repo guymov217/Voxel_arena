@@ -8,7 +8,12 @@ extends Fighter
 
 const JAW_T := 0.55
 const ROLL_SPIN := 7.5   # a crocodile's death roll, rad/s (slowed by the man fighting it)
-const PRY_RATE := 1.1    # how fast pulling away prises its jaws open (1 is free)
+const PRY_RATE := 1.7    # how fast pulling away prises its jaws open (1 is free)
+# A crocodile's roll (user: it went into its death roll whenever it wanted and took a limb every
+# time): a bite on a limb starts one only now and then, and not again for a while after one; and
+# pulling away prises the jaws open sooner (PRY_RATE, was 1.1), before the limb is twisted off.
+const ROLL_CHANCE := 0.4     # of the bites that land on a limb, those that start a roll
+const ROLL_COOL := 12.0      # (s) after one roll before the next
 
 var species := "lion"
 var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
@@ -37,6 +42,7 @@ var on_breath: Callable
 var on_venom: Callable               # (beast, victim, part, point): poison where it struck
 const VENOMOUS := {"scorpion": "sting", "manticore": "sting", "spider": "bite", "python": "bite", "basilisk": "bite"}
 var coil_cool := 0.0
+var roll_chance := ROLL_CHANCE   # (a crocodile's: a test of the roll itself sets it to 1)
 var on_stomp: Callable
 var on_roar: Callable
 var on_thump: Callable   # a fist on its own chest (the gorilla's display): the drum is heard
@@ -1541,7 +1547,7 @@ func _death_roll(dt: float) -> void:
 		# Two full turns and three wrenches twist a limb (never the trunk or the head) clean off.
 		# Only a hold he never fought off (three wrenches, two full turns: a second and a half
 		# of it at the size it was modelled, more grown bigger, while pulling away prises the
-		# jaws open in about one) takes the limb.
+		# jaws open in about two thirds of one) takes the limb.
 		if int(hug.bites) >= 3 and float(hug.turned) >= TAU * 2.0 and part != tgt.torso and part != tgt.head and not part.severed:
 			tgt.detach_limb(part, res)
 			res.rolled = true
@@ -1556,7 +1562,7 @@ func _release_roll() -> void:
 			hug.target.remove_meta("rolled_by")
 		hug = null
 		_free_holds()
-		coil_cool = 5.0
+		coil_cool = ROLL_COOL
 		ai.mode = "recover"
 		ai.t = 1.5
 		ai.bite_cool = 2.0
@@ -2109,7 +2115,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	if species == "python" and heads.has(att) and c and c.alive and hug == null and coil_cool <= 0.0 and fn_of(["coil"]) > 0.3:
 		_start_coil(c)
 	# A crocodile's jaws close on the limb they got and it goes into its roll.
-	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2):
+	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2) and (roll_chance >= 1.0 or rng.randf() < roll_chance):
 		var mp0 := mouth_point()
 		hug = {"target": c, "part": vic, "t": 3.0 * float(sp.get("grow", 1.0)), "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
 			"bite_at": vic.to_local(mp0), "turned": 0.0}
