@@ -5246,13 +5246,12 @@ func _keep_hand_front(side: String, dt: float) -> void:
 	# getting up is always put right.)
 	if torso.severed or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or (throwing[side] and fo.global_position.y > torso.global_position.y) or (pinned_arm == side and is_instance_valid(grabbed_by)) or (has_meta("beast_hold") and is_instance_valid(get_meta("beast_hold"))):
 		return
-	# Not with a beast on him (an ape's grip, a croc's jaws, a python's coils: they have their
-	# own say over where his arms go, and the push fought them).
-	if Combat.current != null and kind != "beast":
-		var tp := torso.global_position
-		for o in Combat.current.fighters:
-			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive and o.torso.global_position.distance_to(tp) < 4.0 * maxf(1.0, o.S):
-				return
+	# Not while a beast has hold of him (an ape's grip, a croc's jaws, a python's coils: they have
+	# their own say over where his arms go, and the push fought them). Only then: off whenever a
+	# beast was near him, it was off for a beast's whole bout, and his hands went round behind his
+	# back with the sword in them and stayed there (user, against a crocodile).
+	if _beast_has_me():
+		return
 	var out_x := -1.0 if side == "R" else 1.0
 	var bt: Transform3D = torso.global_transform
 	var inv := bt.affine_inverse()
@@ -5285,6 +5284,20 @@ func _keep_hand_front(side: String, dt: float) -> void:
 		var jo: Vector3 = dir * acc * m_eff * dt
 		part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 		torso.apply_central_impulse(-jo)
+
+## Whether a beast has hold of him now: an ape's grip, a crocodile's jaws in its roll, a python's
+## coils round him.
+func _beast_has_me() -> bool:
+	for m in ["beast_hold", "rolled_by"]:
+		if has_meta(m) and is_instance_valid(get_meta(m)):
+			return true
+	if Combat.current != null and kind != "beast":
+		for o in Combat.current.fighters:
+			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive:
+				var h = o.get("hug")
+				if h is Dictionary and h.get("target") == self:
+					return true
+	return false
 
 ## Where a bow or a crossbow points: at the player's crosshair (aimAt), a bot's target (gaze),
 ## or straight ahead. A bow lies with the arrow (+x) on that line and the stave upright; a
