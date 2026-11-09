@@ -1619,14 +1619,17 @@ func _set_status(i: int, g: Vector2) -> void:
 			jaw_mm.set_instance_custom_data(jaw_slot[i], c)
 	else:
 		mm.set_instance_custom_data(i, c)
-	if fine.has("body"):
-		FineBody.status(self, i, g)
 	var was: Vector2 = glowing.get(i, Vector2.ZERO)
 	_glow_n += Vector2i(int(g.x > 0.0) - int(was.x > 0.0), int(g.y > 0.0) - int(was.y > 0.0))
 	if g == Vector2.ZERO:
 		glowing.erase(i)
 	else:
 		glowing[i] = g
+	# (Set before the fine look is told: the wound drawn over a voxel the fire ate reads its glow
+	# from `glowing`. Told first, it read the fire still on it as it went out, and the burn's
+	# wound flickered as if alight for good, user: the fire never went out.)
+	if fine.has("body"):
+		FineBody.status(self, i, g)
 
 ## What the part is made of where the first live spot of `kind` is: the nearest living voxel's
 ## kind of stuff (skin, cloth, fur...), as a BurnFx surface.
