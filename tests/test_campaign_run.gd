@@ -87,6 +87,61 @@ func test_a_legionary_comes_back_as_he_walked_into_the_checkpoints_bout() -> voi
 	menu.queue_free()
 	await get_tree().process_frame
 
+## A Legionary who falls after the checkpoint comes back to it as he walked into its bout, through
+## the whole of a bout lost (the moment he falls, the banner, the result read): nothing that bout
+## did to him (a forearm off, his blade's chips, the plates off his armour, the pots he drank) is
+## on him, in the save or on the man in the next bout (user: back at the checkpoint with the
+## damage of the bout he lost; it must be the checkpoint's save, all of it, as it was).
+func test_a_legionary_fallen_in_a_bout_comes_back_without_what_it_did_to_him() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	CampaignRun.begin("legionary")
+	# Bout 4 won (the checkpoint: bout 5 next), whole, a purse, his armour on.
+	Save.set_value("coins", 300)
+	Save.set_value("body", Body.empty())
+	Save.set_value("armor_worn", ["helmet", "lorica"])
+	Save.set_value("checkpoint", 5)
+	Save.set_value("stage", 5)
+	CampaignRun.keep()
+	menu.start({"mode": "campaign", "stage": 5})
+	await get_tree().process_frame
+	var kept: Dictionary = (Save.get_value("checkpoint_save", {}) as Dictionary).duplicate(true)
+	var m: Match = menu.match_
+	var f: Fighter = m.me.f
+	for i in 30:
+		await get_tree().physics_frame
+	# In the bout: his left forearm off, then he falls.
+	var fore: VoxelPart = f.arm.L.fore
+	var all := PackedInt32Array()
+	for i in fore.fx.size():
+		if fore.alive[i]:
+			all.append(i)
+	f.sever(fore, {"severed": []}, all)
+	for i in 10:
+		await get_tree().physics_frame
+	f.die("test")
+	# The bout ends and its result is read (after its banner and the kill cam).
+	var t0 := Time.get_ticks_msec()
+	while menu.match_ == m and Time.get_ticks_msec() - t0 < 40000:
+		await get_tree().process_frame
+	t.check(menu.match_ != m, "the bout ended and its result was read")
+	t.eq(int(Save.get_value("stage", 0)), 5, "back to bout 5")
+	for key in CampaignRun.KEPT:
+		if kept.has(key):
+			t.eq(JSON.stringify(Save.get_value(key)), JSON.stringify(kept[key]), "%s as he walked into bout 5" % key)
+	var b: Dictionary = menu.body()
+	t.check((b.missing as Array).is_empty(), "his forearm on him again (%s)" % str(b.missing))
+	# Into bout 5 again: the man as he went in.
+	menu.start({"mode": "campaign", "stage": 5})
+	await get_tree().process_frame
+	var f2: Fighter = menu.match_.me.f
+	t.check(not f2.arm.L.fore.severed and not f2.arm.L.fore.missing, "and in the next bout his forearm is on him")
+	menu._end_match()
+	menu.queue_free()
+	await get_tree().process_frame
+
 func test_an_ironman_starts_over_and_takes_the_rudis_for_good() -> void:
 	CampaignRun.begin("ironman")
 	Save.set_value("checkpoint", 9)

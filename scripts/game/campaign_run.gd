@@ -37,9 +37,14 @@ static func keep(coop := false) -> void:
 	for key in KEPT:
 		var v = Save.get_value(key, null)
 		if v != null:
-			snap[key] = v
+			snap[key] = _copy(v)
 	snap["lap"] = Save.get_value(_k("lap", coop), 1)
 	Save.set_value(_k("checkpoint_save", coop), snap)
+
+## A value of the save as it is now, its own (the checkpoint's: nothing done to the save after it,
+## in place or not, reaches it; nor does what is done to what a death puts back).
+static func _copy(v):
+	return v.duplicate(true) if v is Dictionary or v is Array else v
 
 ## The checkpoint's own bout begins (the first after it, the one a death sends him back to): he
 ## walks out of the yard into it as he is now, and that is what is kept, the physician's mending
@@ -74,7 +79,7 @@ static func fall_back(coop := false) -> int:
 	at = maxi(1, at)
 	for key in KEPT:
 		if snap.has(key):
-			Save.set_value(key, snap[key])
+			Save.set_value(key, _copy(snap[key]))
 	Save.set_value(_k("lap", coop), int(snap.get("lap", 1)))
 	Save.set_value(_k("stage", coop), at)
 	return at
