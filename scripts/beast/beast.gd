@@ -2999,13 +2999,15 @@ func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 ## on, next to flesh that is still there, never on burnt flesh, only on a part let be for a few
 ## seconds (REGROW_REST) and never more than a quarter of it. A head cut off stays off: no new
 ## heads. (Four every 0.6 s, up to half the part, the moment a blow had landed: the wounds closed
-## faster than a man could cut, and its heads could not be destroyed at all, user.)
-const REGROW_REST := 3.0
+## faster than a man could cut, and its heads could not be destroyed at all, user. Then three
+## every 0.6 s after three seconds let be; slower still, its fight a little easier, user.)
+const REGROW_REST := 4.0
+const REGROW_TICK := 0.8
 func _regrow(dt: float) -> void:
-	ai.regrow_t = float(ai.get("regrow_t", 0.6)) - dt
+	ai.regrow_t = float(ai.get("regrow_t", REGROW_TICK)) - dt
 	if ai.regrow_t > 0.0:
 		return
-	ai.regrow_t = 0.6
+	ai.regrow_t = REGROW_TICK
 	for p in parts:
 		var n: String = p.part_name
 		if p.severed or p.hanging or not (n.begins_with("neck") or n.begins_with("head") or p == head) or not p.spots.is_empty():

@@ -206,9 +206,18 @@ def nearest(g, w):
 
 
 JOINT_OVERLAP = 3    # fine cells a part's skin reaches on past where its neighbour's begins, at their joint
+# A beast whose necks rise side by side out of one chest (the hydra's five): the skin between two
+# of them was laid by whichever neck was the nearer, so a neck that bowed or turned on its own left
+# a hole in its side where its neighbour's skin had lain, and one bowed far to strike opened at its
+# root (user: make sure the hydra looks whole). Its necks reach into each other's skin as into a
+# joint's; every joint of it reaches further than most, and its necks' roots (and the necks beside
+# each other) further still: (every joint, the necks').
+NECKS_SIDE_BY_SIDE = {"hydra": (6, 10)}
 
 
 def part_cells(pi, p, g, d, col, kind, own, vid, kin):
+    """`kin`: the parts it is jointed to, each with how many fine cells its skin reaches on into
+    theirs."""
     gp = np.array(p["grid"], int)
     v = 0.0275 * float(p["scale"])
     h = v / RES
@@ -229,9 +238,8 @@ def part_cells(pi, p, g, d, col, kind, own, vid, kin):
     # where they lie still, alike): turned at the joint, a knee or a neck shows no crack.
     over = np.zeros_like(mine)
     if kin:
-        joint = inside & np.isin(ow, list(kin))
         grow = mine.copy()
-        for _ in range(JOINT_OVERLAP):
+        for step in range(1, max(kin.values()) + 1):
             g2 = grow.copy()
             for ax in range(3):
                 for dl in (-1, 1):
@@ -239,7 +247,10 @@ def part_cells(pi, p, g, d, col, kind, own, vid, kin):
                     dv[ax] = dl
                     g2 |= _shift(grow, dv, False)
             grow = g2 & inside
-        over = grow & joint & ~mine
+            for k, reach in kin.items():
+                if reach == step:
+                    over |= grow & (ow == k)
+        over &= ~mine
     out_n = np.zeros_like(inside)
     for ax in range(3):
         for dl in (-1, 1):
@@ -421,12 +432,23 @@ def main(out_dir, only):
         total = 0
         for pi, p in enumerate(sp["parts"]):
             # The parts it is jointed to: its parent and its children.
-            kin = set()
+            fan = NECKS_SIDE_BY_SIDE.get(name)
+            kin = {}
             if p.get("parent") in names:
-                kin.add(names.index(p["parent"]))
+                kin[names.index(p["parent"])] = fan[0] if fan else JOINT_OVERLAP
             for qi, q in enumerate(sp["parts"]):
                 if q.get("parent") == p["name"]:
-                    kin.add(qi)
+                    kin[qi] = fan[0] if fan else JOINT_OVERLAP
+            if fan:
+                for qi, q in enumerate(sp["parts"]):
+                    if not q["name"].startswith("neck"):
+                        continue
+                    if p["name"].startswith("neck") and (q["name"] == p["name"] or q.get("parent") != p.get("parent")):
+                        continue
+                    if p["name"].startswith("neck") or q.get("parent") == p["name"]:
+                        kin[qi] = fan[1]   # (a neck beside it, or one of its own necks)
+                if p["name"].startswith("neck") and p.get("parent") in names:
+                    kin[names.index(p["parent"])] = fan[1]   # (the body its root is in)
             r = part_cells(pi, p, g, d, col, kind, own, vid, kin)
             if r is not None:
                 parts[p["name"]] = r
