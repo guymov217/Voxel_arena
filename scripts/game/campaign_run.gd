@@ -41,6 +41,27 @@ static func keep(coop := false) -> void:
 	snap["lap"] = Save.get_value(_k("lap", coop), 1)
 	Save.set_value(_k("checkpoint_save", coop), snap)
 
+## The checkpoint's own bout begins (the first after it, the one a death sends him back to): he
+## walks out of the yard into it as he is now, and that is what is kept, the physician's mending
+## and what he bought there since included. (Kept only as the checkpoint bout was won, the wounds
+## that bout left on him came back with a death after the physician had closed them: back in the
+## yard with a fight's wounds instead of as he left the checkpoint, user.)
+static func walk_in(stage: int, coop := false) -> void:
+	if mode(coop) != "legionary" or stage != int(Save.get_value(_k("checkpoint", coop), 1)):
+		return
+	var snap = Save.get_value(_k("checkpoint_save", coop), {})
+	if snap is Dictionary and not (snap as Dictionary).is_empty():
+		keep(coop)
+
+## The bout a death would send him back to now (0: none, the run would be over).
+static func falls_back_to(coop := false) -> int:
+	if mode(coop) != "legionary":
+		return 0
+	var snap = Save.get_value(_k("checkpoint_save", coop), {})
+	if not (snap is Dictionary) or (snap as Dictionary).is_empty():
+		return 0
+	return maxi(1, int(Save.get_value(_k("checkpoint", coop), 1)))
+
 ## After a death: in a Legionary run with a checkpoint kept, put everything back as it was there
 ## and return the bout he goes on from; 0 when the run is over (Ironman, or no checkpoint yet).
 static func fall_back(coop := false) -> int:

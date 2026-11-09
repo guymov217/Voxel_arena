@@ -1819,7 +1819,12 @@ func _check_round(dt: float) -> void:
 		var crawled := humans().any(func(x): return x.f.alive)
 		_hold_beaten(humans())
 		var why := ("None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "None of you can stand. The crowd moves on.") if crawled else ("The crowd moves on. Your campaign ends here: the next begins at the first bout." if mode == "campaign" else "The crowd moves on.")
-		_end(false, "You can fight no more" if crawled else "You fall", Loc.t(why))
+		var sub := Loc.t(why)
+		# A Legionary goes back to his checkpoint, not to the first bout (it said the campaign was over).
+		var back := CampaignRun.falls_back_to(coop) if mode == "campaign" else 0
+		if back > 0:
+			sub = Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % back
+		_end(false, "You can fight no more" if crawled else "You fall", sub)
 		return
 	if alive_e.is_empty():
 		if mode == "campaign":

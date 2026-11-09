@@ -41,6 +41,52 @@ func test_a_legionary_goes_back_to_the_checkpoint_as_he_left_it() -> void:
 	t.eq((Save.get_value("body", {}).get("missing", []) as Array).size(), 1, "and his body as it was")
 	t.eq(CampaignRun.fall_back(), 5, "and as often as he falls")
 
+## Through the gate into the checkpoint's bout, what he walks in with is what a death brings him
+## back to: what the physician mended in the yard after the checkpoint was won stays mended (user:
+## back in the yard with a fight's wounds instead of as he left the checkpoint).
+func test_a_legionary_comes_back_as_he_walked_into_the_checkpoints_bout() -> void:
+	var menu = load("res://scripts/ui/menu.gd").new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	CampaignRun.begin("legionary")
+	CampaignRun.walk_in(1)
+	t.eq(CampaignRun.falls_back_to(), 0, "no checkpoint yet: walking into bout 1 keeps none")
+	# Bout 4 won (the checkpoint: bout 5 next), a forearm lost in it.
+	Save.set_value("coins", 300)
+	Save.set_value("body", {"missing": ["forearmL"]})
+	Save.set_value("checkpoint", 5)
+	Save.set_value("stage", 5)
+	CampaignRun.keep()
+	t.eq(CampaignRun.falls_back_to(), 5, "a death now goes back to bout 5")
+	# In the yard: the physician gives the forearm back for 120.
+	Save.set_value("coins", 180)
+	Save.set_value("body", {"missing": []})
+	CampaignRun.walk_in(6)
+	t.eq(int((Save.get_value("checkpoint_save", {}) as Dictionary).get("coins", 0)), 300, "not the checkpoint's bout: nothing kept")
+	menu.start({"mode": "campaign", "stage": 5})
+	await get_tree().process_frame
+	var kept: Dictionary = Save.get_value("checkpoint_save", {})
+	t.eq(int(kept.get("coins", 0)), 180, "through the gate into bout 5: kept as he went in")
+	menu._end_match()
+	# Bout 5 won, a shin lost; bout 6 lost.
+	Save.set_value("coins", 260)
+	Save.set_value("body", {"missing": ["shinR"]})
+	Save.set_value("stage", 6)
+	menu._campaign_lost({})
+	t.eq(int(Save.get_value("stage", 0)), 5, "dead at bout 6: back to bout 5")
+	t.eq(int(Save.get_value("coins", 0)), 180, "with the purse he went in with")
+	t.check((menu.body().missing as Array).is_empty(), "and whole, as the physician left him (%s)" % str(menu.body().missing))
+	t.eq(Net.my_body.get("missing", []), [], "and a room he joins is told so")
+	CampaignRun.begin("ironman")
+	Save.set_value("checkpoint", 5)
+	CampaignRun.keep()
+	Save.set_value("coins", 999)
+	CampaignRun.walk_in(5)
+	t.eq(CampaignRun.falls_back_to(), 0, "an ironman has no checkpoint to go back to")
+	menu.queue_free()
+	await get_tree().process_frame
+
 func test_an_ironman_starts_over_and_takes_the_rudis_for_good() -> void:
 	CampaignRun.begin("ironman")
 	Save.set_value("checkpoint", 9)

@@ -4081,6 +4081,8 @@ func start(opts: Dictionary) -> void:
 		if int(opts.get("stage", 1)) <= 1:
 			set_body(Body.empty())
 		opts.body = body()
+		# Through the gate into a checkpoint's bout: a death brings him back as he went in.
+		CampaignRun.walk_in(int(opts.get("stage", 1)), bool(opts.get("coop", false)))
 	else:
 		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
 	if opts.get("autopilot", false) or cmd_bot:
@@ -4434,6 +4436,7 @@ func _campaign_lost(r: Dictionary) -> void:
 	var back := CampaignRun.fall_back(bool(r.get("coop", false)))
 	fell_back = back
 	if back > 0:
+		Net.my_body = body()   # (the checkpoint's, put back in the save: what a room is told)
 		_net_loadout()
 		if Net.active():
 			Net.send_all("purse", coins())
