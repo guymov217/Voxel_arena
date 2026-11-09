@@ -14,6 +14,10 @@ const PRY_RATE := 1.7    # how fast pulling away prises its jaws open (1 is free
 # pulling away prises the jaws open sooner (PRY_RATE, was 1.1), before the limb is twisted off.
 const ROLL_CHANCE := 0.4     # of the bites that land on a limb, those that start a roll
 const ROLL_COOL := 12.0      # (s) after one roll before the next
+# The many-headed bite one head at a time, a while apart (user: the hydra's heads all bit at once
+# and he was dead in half a second, there was no fighting it), and the hydra's five less hard.
+const HEADS_GAP := 0.7       # (s) after any head's bite before the next head's
+const HYDRA_BITE := 0.65     # of the bite its data gives
 
 var species := "lion"
 var skill := 0.7   # how keen it is (training's difficulty slider): how soon it strikes again
@@ -99,7 +103,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	mods.toughness = float(sp.get("toughness", 1.55)) * (1.3 if boss else 1.0)
 	yaw = yaw_
 	height = float(sp.height) * S
-	bite_power = float(sp.get("bite", 45.0))
+	bite_power = float(sp.get("bite", 45.0)) * (HYDRA_BITE if species == "hydra" else 1.0)
 	base_bite = bite_power
 	var yaw_q := Quaternion(UP, yaw)
 	for d in sp.parts:
@@ -2777,10 +2781,14 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	var tp: Vector3 = _wild(t.torso.global_position)
 	# Many heads: each snaps on its own, when it is in reach and ready, so the bites come staggered.
 	if sp.get("multiHead", false):
+		ai.heads_gap = maxf(0.0, float(ai.get("heads_gap", 0.0)) - dt)
 		for h in heads:
+			if float(ai.heads_gap) > 0.0:
+				break   # (one head at a time: HEADS_GAP)
 			var reach_h: float = (h.parent_part.half_ext.y * 2.0 if h.parent_part != torso else 0.0) + h.half_ext.z * 2.0 + 0.4
 			if h.def.get("bite", false) and part_ok(h, 0.2) and h.can_bite() and _ready_to_strike(h) and Vector2(h.global_position.x - tp.x, h.global_position.z - tp.z).length() < reach_h:
 				_strike(h, 0.5, 1.4 + rng.randf() * 1.7, [h, Vector3.ZERO, "aim"])   # (fewer snaps, now that they land: about the old bites a minute)
+				ai.heads_gap = HEADS_GAP
 				# The body comes on behind the striking head, so the next heads reach too (a hydra
 				# backing off after its lunge snapped at the air a yard short).
 				if dist > 0.8 * S and not strikes.has(torso):
