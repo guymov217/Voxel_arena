@@ -289,6 +289,7 @@ func _net_loadout() -> void:
 	lo["skin"] = Fighter.SKINS[lk.skin]
 	lo["build"] = FineBody.BUILDS[lk.build]
 	Net.my_loadout = lo
+	Net.push_me()
 
 ## A guest's look, as the host accepts it: only the cosmetic pieces and the known skins.
 ## What the host spawns for a guest: his name, kit, body and the look and arms he sent.
@@ -324,6 +325,7 @@ func set_body(b: Dictionary) -> void:
 	var was := Body.sanitize(Save.get_value("body", {}))
 	Save.set_value("body", clean)
 	Net.my_body = clean
+	Net.push_me()
 	# A limb or an eye given back in the yard (the Elixir, a prosthetic): he stands there with it
 	# at once, his weapons in the hands it gave back (he walked about armless until the next bout).
 	# A bone set by the physician the same: whole on him there and then (user: whatever he bought,
@@ -342,6 +344,7 @@ func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)
 	Save.set_value("kit", clean)
 	Net.my_kit = clean
+	Net.push_me()
 	# Bought in the yard: the gladiator walking about in it has it in his bag at once (and the
 	# yard ending does not write the old bag back over the purchase).
 	if match_ and is_instance_valid(match_) and match_.me and match_.mode == "yard":

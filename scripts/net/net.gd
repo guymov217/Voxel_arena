@@ -414,6 +414,22 @@ func send_to(id: int, type: String, data, reliable := true) -> void:
 func send_host(type: String, data, reliable := true) -> void:
 	send_to(1, type, data, reliable)
 
+## A guest's own gladiator as he is now (his arms, his armour, his bag, his body) told the host
+## whenever it changes, once a frame at most (the smith, the physician, a bout's end, a death that
+## sends the party back to the checkpoint): the host fights him as he is, not as he came into the
+## room.
+var _me_due := false
+func push_me() -> void:
+	if _me_due or not active() or is_host():
+		return
+	_me_due = true
+	_push_me.call_deferred()
+
+func _push_me() -> void:
+	_me_due = false
+	if active() and not is_host():
+		send_host("me", {"loadout": my_loadout, "kit": my_kit, "body": my_body})
+
 ## A number from the wire, or `def` where something else came (a string, a list, a NaN):
 ## what a guest sends is read as data, never trusted to be of the kind it should be.
 const OFF_GRID := -9999.0   # (what a coordinate that is not a number reads as: outside every grid)
@@ -460,7 +476,7 @@ func _umsg(type: String, data) -> void:
 const MSG_PER_S := 240
 ## What a guest may say to the host at all: anything else (a snapshot, a spawn, a banner, the
 ## end of a bout) is the host's word alone and is dropped when a guest sends it.
-const FROM_GUESTS := ["hello", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready"]
+const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready"]
 var _rate := {}   # peer id -> [the second's start (ms), messages in it]
 
 func _flooding(from: int) -> bool:
@@ -550,6 +566,30 @@ static func sanitize_loadout(lo) -> Dictionary:
 			if Data.armor.has(id) or (out.has("armor_defs") and out.armor_defs.has(id)):
 				ids.append(id)
 		out.armor = ids
+	# A guest's own gladiator (Menu._net_loadout): his look, the armourer's pieces he wears, those he
+	# designed and the plates off them, his teaching, his skin and build, the chips in his blades.
+	# Kept to their kind and size here; what they hold is made safe where it is read (Menu.peer_look,
+	# Armory.register, Armory.clean_wear, Training.sanitize, Match.clean_worn). (Dropped here, the
+	# host fought every guest bare: no armour, no look, nothing he had been taught.)
+	for k in ["look", "gear"]:
+		if lo.get(k) is Array:
+			out[k] = (lo[k] as Array).slice(0, 16).filter(func(x): return x is String).map(func(x): return str(x).left(40))
+	if lo.get("gear_defs") is Dictionary:
+		var gd := {}
+		for k in lo.gear_defs:
+			if gd.size() >= 16:
+				break
+			var c = Armory.clean_design(lo.gear_defs[k])
+			if c != null:
+				gd[str(k).left(40)] = c
+		out.gear_defs = gd
+	for k in ["gear_wear", "stats", "worn"]:
+		if lo.get(k) is Dictionary and var_to_bytes(lo[k]).size() <= 65536:
+			out[k] = (lo[k] as Dictionary).duplicate(true)
+	if lo.get("skin") is int or lo.get("skin") is float:
+		out.skin = int(num(lo.skin))
+	if lo.get("build") is String:
+		out.build = str(lo.build).left(24)
 	return out
 
 ## A forged weapon from the wire, or null: only the fields a design has, each of its kind;
@@ -630,6 +670,13 @@ func _receive(type: String, data, from: int) -> void:
 					var info := {"name": clean_name(data.get("name", "Guest")), "loadout": sanitize_loadout(data.get("loadout")), "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
 					peers[from] = info
 					peer_joined.emit(from, info)
+				return
+			"me":
+				# A guest's gladiator as he is now (push_me), read as his hello was.
+				if data is Dictionary and peers.has(from):
+					peers[from].loadout = sanitize_loadout(data.get("loadout"))
+					peers[from].kit = sanitize_kit(data.get("kit"))
+					peers[from].body = Body.sanitize(data.get("body"))
 				return
 			"vc":
 				# A guest's voice: on to the other guests, and heard here.

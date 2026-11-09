@@ -20,6 +20,10 @@ var thr_min := 32
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
 	Net.my_name = "Guest"
+	# His own gladiator: the armour he wears and his look reach the host with his hello; a wound
+	# taken after it, with "me" (Net.push_me).
+	Net.my_loadout = {"main": "gladius", "gear": ["helmet"], "look": ["hair_crop"], "stats": {"vis": 2}}
+	Net.my_body = Body.empty()
 	# NO_DTLS=1: a guest that does not speak the host's encryption (it must not get in).
 	if OS.get_environment("NO_DTLS") != "":
 		Net.dtls = false
@@ -66,6 +70,8 @@ func _on(type: String, data, _from: int) -> void:
 			m = Match.new()
 			add_child(m)
 			m.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "headless": true, "autopilot": true})
+			Net.my_body = {"missing": ["forearmL"]}
+			Net.push_me()
 		"spawn":
 			spawns += 1
 			if m: m.guest_spawn(data)

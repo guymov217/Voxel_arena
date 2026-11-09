@@ -40,7 +40,9 @@ fight came out one way after one set of tests and another way after a different 
   shadow native properties (`scale`, `name`...).
 - Full-screen Controls: use `set_anchors_and_offsets_preset`, not `set_anchors_preset`.
 - Multiplayer is host-authoritative: anything the host changes mid-round goes to guests in a
-  message (Match.guest_message) and is sanitized on arrival.
+  message (Match.guest_message) and is sanitized on arrival. A guest's own gladiator (arms,
+  armour, look, teaching, bag, body) lives in his own save: he tells the host in his hello and
+  again whenever it changes ("me", Net.push_me), and the host fights him as that (Net.peers).
 - `scripts/voxel/greedy.gd` uses the C++ VoxelCore when it is loaded and falls back to GDScript;
   keep both in step (tests/test_native.gd).
 - The arena's art is voxel models (art/voxel/*.glb) built by `python3 tools/gen_voxel_art.py`

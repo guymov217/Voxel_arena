@@ -43,6 +43,8 @@ func _ready() -> void:
 		print("HOST kicked ", gid, ", in the room after: ", Net.peers.keys(), " banned ", Net._banned.keys())
 		get_tree().quit(0 if Net.peers.is_empty() else 1)
 		return
+	var gear_in: Array = Net.peers.values()[0].loadout.get("gear", [])
+	print("HOST the guest's armour from his hello ", gear_in, " his teaching ", Net.peers.values()[0].loadout.get("stats", {}))
 	var peers := []
 	for id in Net.peers:
 		peers.append({"id": id, "name": Net.peers[id].name, "loadout": {"main": "axe"}})
@@ -92,9 +94,12 @@ func _ready() -> void:
 		if pp:
 			print("HOST lowest throttle on the way ", thr_min)
 			print("HOST line to the guest: throttle %d/%d loss %.3f rtt %d ms" % [pp.get_statistic(ENetPacketPeer.PEER_PACKET_THROTTLE), ENetPacketPeer.PACKET_THROTTLE_SCALE, pp.get_statistic(ENetPacketPeer.PEER_PACKET_LOSS) / float(ENetPacketPeer.PACKET_LOSS_SCALE), pp.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)])
+	# What the guest told of himself since his hello ("me"): the forearm he lost.
+	var told: Array = (Net.peers[gid].get("body", {}) as Dictionary).get("missing", [])
+	print("HOST the guest as he is now: missing ", told)
 	Net.send_all("bye", {})
 	await get_tree().create_timer(0.5).timeout
-	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 else 1)
+	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 and gear_in == ["helmet"] and told.has("forearmL") else 1)
 
 ## 40 ms of a 300 Hz tone at half scale, as the microphone's capture would hand it over.
 func _tone() -> PackedVector2Array:
