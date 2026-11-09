@@ -27,7 +27,10 @@ godot --headless --path . -- --test test_fight
 ```
 
 Run `run_tests.sh` before committing. Physics tests must stay deterministic (seed the RNG, set
-velocities; compare numbers or names, never whole nodes).
+velocities; compare numbers or names, never whole nodes). `run_tests.sh` runs the suites on one
+worker thread (an `override.cfg` while they run): on the pool's threads the physics' jobs came
+back in a different order run to run, and the same tests passed one run and failed the next. Run
+a suite by hand with `[threading] worker_pool/max_threads=1` in `override.cfg` to get the same.
 
 ## Conventions
 

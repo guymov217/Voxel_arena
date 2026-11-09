@@ -13,8 +13,26 @@ fail=0
 errs=$(sh ./check.sh)
 if [ -n "$errs" ]; then echo "$errs"; fail=1; else echo "parse: ok"; fi
 # --fixed-fps: one physics step to every frame, however fast the machine, so what runs per frame
-# and what runs per step keep in step and a run comes out the same every time.
+# and what runs per step keep in step and a run comes out the same every time. And one worker
+# thread: the physics' jobs ran in parallel on the pool, and with many bodies about (the fight
+# behind the menu) the order they came back in changed from run to run, and with it every fight
+# after: the same tests passed one run and failed the next, in no order (override.cfg, only while
+# the tests run; one of your own is left as it is, and the tests run with it).
+mark="; run_tests.sh: one worker thread while the tests run (removed after them)"
+ours=0
+if [ ! -f override.cfg ] || head -n 1 override.cfg | grep -qF "$mark"; then
+	printf '%s\n[threading]\n\nworker_pool/max_threads=1\n' "$mark" > override.cfg
+	ours=1
+	trap 'rm -f override.cfg' EXIT
+	trap 'rm -f override.cfg; exit 130' INT TERM
+else
+	echo "override.cfg of your own: the tests run with it (and may not come out the same every run)" >&2
+fi
 timeout 3600 "$G" --headless --fixed-fps 120 --path . -- --test || fail=1
+if [ $ours -eq 1 ]; then
+	rm -f override.cfg
+	trap - EXIT INT TERM
+fi
 export NET_PORT=${NET_PORT:-17777}
 timeout 120 "$G" --headless --path . -- --probe net_host > /tmp/va_net_host.log 2>&1 &
 hp=$!
