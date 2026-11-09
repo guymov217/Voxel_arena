@@ -1311,7 +1311,8 @@ func _build_crowd() -> void:
 			var vs := skins[k % skins.size()] as Color
 			list.append([Transform3D(vb, Vector3(p.x, 2.6 + t * 0.7 - 0.05, p.y)), vt, Color(vs.r, vs.g, vs.b, fposmod(k * 0.137, 1.0))])
 	if not fine:
-		_crowd_part(list, mesh, Vector3.ZERO, 0.0, 0.0)
+		# (The boxes themselves: they cast the crowd's shadow as they always did.)
+		_crowd_part(list, mesh, Vector3.ZERO, 0.0, 0.0).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	else:
 		# Near the eye, each spectator in the fine grain; further off than CROWD_NEAR the boxes, which
 		# show as much from there (the fine ones everywhere drew 1.4 times the frame's time with no
@@ -1334,7 +1335,15 @@ func _build_crowd() -> void:
 				c += (e[0] as Transform3D).origin
 			c /= float(g.size())
 			_crowd_part(g, mesh, c, 0.0, CROWD_NEAR)
-			_crowd_part(g, box, c, CROWD_NEAR, 0.0)
+			var far := _crowd_part(g, box, c, CROWD_NEAR, 0.0)
+			# The crowd's shadow is cast by its boxes, near or far: each man of it drawn again into
+			# the sun's shadow in all his faces was a million triangles a frame, a quarter of a
+			# fight's, for a shadow that could not be told from the boxes' on the stands (#130).
+			var sh := MultiMeshInstance3D.new()
+			sh.multimesh = far.multimesh
+			sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			sh.position = c
+			add_child(sh)
 	_build_upper()
 
 const CROWD_NEAR := 26.0
@@ -1342,8 +1351,9 @@ const CROWD_SECTORS := 16
 var crowd_far_mat: ShaderMaterial
 
 ## One MultiMesh of spectators (`items`: [transform, tunic, custom]) drawn with `mesh`, placed at
-## `at` (the instances relative to it), seen from `begin` m to `end` m off (0: no limit).
-func _crowd_part(items: Array, mesh: Mesh, at: Vector3, begin: float, end: float) -> void:
+## `at` (the instances relative to it), seen from `begin` m to `end` m off (0: no limit). Casting no
+## shadow: the boxes cast the crowd's (_build_crowd).
+func _crowd_part(items: Array, mesh: Mesh, at: Vector3, begin: float, end: float) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -1357,7 +1367,7 @@ func _crowd_part(items: Array, mesh: Mesh, at: Vector3, begin: float, end: float
 		mm.set_instance_custom_data(i, items[i][2])
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	inst.position = at
 	if begin > 0.0:
 		inst.visibility_range_begin = begin
@@ -1366,6 +1376,7 @@ func _crowd_part(items: Array, mesh: Mesh, at: Vector3, begin: float, end: float
 		inst.visibility_range_end = end
 		inst.visibility_range_end_margin = 1.5
 	add_child(inst)
+	return inst
 
 ## Above and round the stands: an arcade of columns, the striped awning (velarium), flags on
 ## poles, the Emperor's box under a purple canopy, and the two great gates.
