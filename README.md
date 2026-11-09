@@ -246,6 +246,10 @@ cp ../native/voxel_core.gdextension.in ../native/voxel_core.gdextension
 
 The release builds (GitHub Actions) build it for Windows, Linux and macOS and load it.
 
+The Linux and Windows libraries are committed (`native/bin/`, with the `.gdextension` that loads
+them), so a checkout on either runs the C++ core as it is. After changing `extension/src`, build
+both again (Windows with `use_mingw=yes`) and commit them with it.
+
 The CI workflow builds it for all three platforms before exporting.
 
 ## Multiplayer and GodotSteam

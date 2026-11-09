@@ -1,5 +1,5 @@
-bin/
-# Made from voxel_core.gdextension.in where the library is built (CI, or a local build):
-# without it the game runs the GDScript fallback and the editor stays quiet.
-voxel_core.gdextension
-voxel_core.gdextension.uid
+# The libraries built for Linux and Windows are kept here (a Windows checkout gets the C++ core
+# without building it); others built locally (macOS, debug builds) stay out.
+bin/*
+!bin/libvoxelcore.linux.template_release.x86_64.so
+!bin/libvoxelcore.windows.template_release.x86_64.dll

@@ -13,7 +13,7 @@ shaders/            crowd, flag, sky and voxel shaders (voxel.gdshader: the aren
 art/voxel/          the arena and its props as .glb, made by tools/gen_voxel_art.py (do not hand-edit; rebuild)
 tools/              gen_voxel_art.py + voxlib.py (the voxel art), gen_textures.py
 tests/              test_*.gd suites, plus probes (steamshots, beastshots, momentshots, net_host...)
-native/             voxel_core.gdextension.in (copied to .gdextension where the library is built); the built library goes in native/bin/ (not committed)
+native/             voxel_core.gdextension (+ .in, its template); the Linux and Windows libraries in native/bin/ (committed: rebuild both after changing extension/src)
 extension/          C++ source of the voxel core (godot-cpp 4.4, scons); has a .gdignore
 .github/workflows/  builds the extension and exports Windows, Linux and macOS
 ```
