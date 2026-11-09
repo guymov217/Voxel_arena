@@ -31,6 +31,8 @@ velocities; compare numbers or names, never whole nodes). `run_tests.sh` runs th
 worker thread (an `override.cfg` while they run): on the pool's threads the physics' jobs came
 back in a different order run to run, and the same tests passed one run and failed the next. Run
 a suite by hand with `[threading] worker_pool/max_threads=1` in `override.cfg` to get the same.
+Each test runs in a physics world of its own (tests/runner.gd): in one shared world, a test's
+fight came out one way after one set of tests and another way after a different set.
 
 ## Conventions
 

@@ -25,6 +25,12 @@ func run(only: String) -> void:
 				continue
 			current = "%s.%s" % [f.get_basename(), n]
 			Save.reset()
+			# And in a physics world of its own: in the one world they all shared, the physics
+			# handed out its bodies' places as the tests before had left them, and with them the
+			# order it worked them in, and a test's fight came out one way after one set of tests
+			# and another way after a different set (a change to one beast's test failed another
+			# beast's, and a fight between two men, further on).
+			get_tree().root.world_3d = World3D.new()
 			# Each test draws the same random numbers every run (Godot seeds its generator afresh
 			# at start-up): a blow's chips, a bot's whims and a wound's wander are the same each
 			# time, so a test passes or fails the same way, and a failure can be run again.

@@ -11,6 +11,9 @@ func _steps(n: int) -> void:
 		await get_tree().physics_frame
 
 func _arena(sp: String) -> Array:
+	# Each beast in a physics world of its own, as each test is (runner.gd): in the one before it,
+	# the second beast's fight came out as the first one's had left the world.
+	get_tree().root.world_3d = World3D.new()
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": sp, "immortal": true}, "headless": true, "seed": 7, "decrees": [], "hazards": [], "loadout": {"main": "", "off": ""}})

@@ -415,15 +415,19 @@ func test_spilled_guts_hang_out_of_him_not_through_him() -> void:
 		blade += Vector3(vv[0], vv[1], vv[2]) * w.vs
 	blade /= float(w.vox.size())
 	var felt := 0.0
+	# (The length it is aimed at, or the one beside it the blade meets first: then the one aimed at
+	# goes off on the blade, cut from him above it. Either is his guts cut.)
+	var hanging: Array = rope.links.filter(func(ch): return is_instance_valid(ch) and ch.flap_of != null)
+	var cut := func() -> bool: return hanging.any(func(ch): return not is_instance_valid(ch) or ch.flap_of == null)
 	for i in 40:
 		w.global_position = mid.global_position + Vector3(0.3 - i * 0.03, 0, 0) - w.global_transform.basis * blade
 		w.thrown_t = 1.0
 		w.linear_velocity = Vector3(-8, 0, 0)
 		await get_tree().physics_frame
 		felt = maxf(felt, v.pain)
-		if not is_instance_valid(mid) or mid.flap_of == null:
+		if cut.call():
 			break
-	t.check((not is_instance_valid(mid) or mid.flap_of == null) and felt > 0.1, "a blade through his guts cuts them and hurts him (pain %.2f)" % felt)
+	t.check(cut.call() and felt > 0.1, "a blade through his guts cuts them and hurts him (pain %.2f)" % felt)
 	m.queue_free()
 
 func test_guts_pulled_taut_come_further_out() -> void:
