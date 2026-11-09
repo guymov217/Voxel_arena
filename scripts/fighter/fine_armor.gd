@@ -449,8 +449,11 @@ static func sync(ad: Dictionary, ci: int, xf: Transform3D) -> void:
 	var mm: MultiMesh = sh.mm
 	var rel: Array = sh.rel
 	(sh.now as Dictionary)[ci] = xf   # (where each plate's tile is drawn now: read back, never off the drawing)
+	# (A fine voxel under a raised arm's armour stays hidden: Fighter._clip_shoulder_guards.)
+	var vc: PackedByteArray = sh.get("vclip", PackedByteArray())
 	for s in (sh.of as Dictionary).get(ci, []):
-		mm.set_instance_transform(s, xf * (rel[s] as Transform3D))
+		var hide := int(s) < vc.size() and vc[int(s)] == 1
+		mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if hide else xf * (rel[s] as Transform3D))
 
 ## Every plate's shell as its tile is drawn now (laid again where it is still on him).
 static func sync_all(p: VoxelPart, ad: Dictionary) -> void:

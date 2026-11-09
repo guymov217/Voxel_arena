@@ -3749,6 +3749,247 @@ func _clip_arm_armor() -> void:
 					m.set_instance_transform(ci, cxf)
 					FineArmor.sync(ad, ci, cxf)
 			ad["clip"] = clip   # (a packed array is a value: the changes go back in)
+	_clip_shoulder_guards()
+
+## A shoulder's own armour is worn over the cuirass's guard on that shoulder (user: the pieces of
+## armour went into one another, no-clip): where the arm's armour (a pauldron, a manica's top) is
+## raised into the guard the cuirass's shell stands out over the arm with, the guard's fine voxels
+## inside the arm's armour as it is drawn (_arm_reach) are not drawn while they are. Worked out
+## again only when the arm has moved on the trunk. Drawing only: the plates still stop blows.
+const GUARD_PAD := 0.25   # (voxels) past the arm's armour a guard's fine voxel still counts as under it
+func _clip_shoulder_guards() -> void:
+	var vox := torso.vf * torso.part_scale
+	var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+	var tt := _drawn_xf(torso)
+	for ad in torso.get_meta("armor", []):
+		if _cosmetic(String(ad.id)) or not FineArmor._over_top(ad, torso):
+			continue
+		var sh = ad.get("shell")
+		if not (sh is Dictionary) or not is_instance_valid(sh.mi):
+			continue
+		var mm: MultiMesh = sh.mm
+		var rel: Array = sh.rel
+		var plate: PackedInt32Array = sh.plate
+		if not sh.has("guard"):
+			# The shell's fine voxels out over each arm (FineArmor._over_shoulder, past the trunk's
+			# side), where its plates lie now, and how they hang together (_guard_links).
+			var hb := Vector3(torso.grid) * vox * 0.5
+			var cube := vox * float(Data.body_res)
+			var ir := PackedInt32Array()
+			var il := PackedInt32Array()
+			var pr := PackedVector3Array()
+			var pl := PackedVector3Array()
+			var rest := PackedVector3Array()
+			var h := 0.0
+			for s in rel.size():
+				var at = (sh.now as Dictionary).get(plate[s])
+				if not (at is Transform3D) or (at as Transform3D).basis.x.length_squared() < 1e-10:
+					continue
+				var t: Transform3D = (at as Transform3D) * (rel[s] as Transform3D)
+				var q := t.origin
+				h = maxf(h, t.basis.x.length())
+				if absf(q.x) > hb.x - cube and FineArmor._over_shoulder(q, hb, cube):
+					if q.x < 0.0:
+						ir.append(s)
+						pr.append(q)
+					else:
+						il.append(s)
+						pl.append(q)
+				else:
+					rest.append(q)
+			# (Packed arrays are values: filled first, then put in.)
+			var gd := {"R": ir, "L": il, "pR": pr, "pL": pl}
+			for side in ["R", "L"]:
+				var lk := _guard_links(gd["p" + side], rest, h)
+				gd["adj" + side] = lk[0]
+				gd["anc" + side] = lk[1]
+			sh["guard"] = gd
+			var vc := PackedByteArray()
+			vc.resize(rel.size())
+			sh["vclip"] = vc
+		var vclip: PackedByteArray = sh.vclip
+		for side in ["R", "L"]:
+			var idx: PackedInt32Array = sh.guard[side]
+			if idx.is_empty():
+				continue
+			var up: VoxelPart = by_name.get("upperArm" + side)
+			var on := up != null and not up.severed and not up.missing and _armored(up)
+			if not on and int(sh.get("n" + side, 0)) == 0:
+				continue   # (nothing of it hidden, nothing over it)
+			var to_arm := _drawn_xf(up).affine_inverse() * tt if on else Transform3D()
+			# (Still where it was on him: nothing to work out again.)
+			var last = sh.get("at" + side)
+			if on and last is Transform3D and (last as Transform3D).origin.distance_to(to_arm.origin) < 0.003 and ((last as Transform3D).basis.get_rotation_quaternion().angle_to(to_arm.basis.get_rotation_quaternion())) < 0.02:
+				continue
+			sh["at" + side] = to_arm if on else null
+			var reach = _arm_reach(up) if on else null
+			var qa: PackedVector3Array = to_arm * (sh.guard["p" + side] as PackedVector3Array) if on else PackedVector3Array()
+			var hide := PackedByteArray()
+			hide.resize(idx.size())
+			if on:
+				for k in idx.size():
+					if _in_reach(reach, qa[k], GUARD_PAD * vox):
+						hide[k] = 1
+				hide = _cut_off(hide, sh.guard["adj" + side], sh.guard["anc" + side])
+			var hidden := 0
+			for k in idx.size():
+				var s := idx[k]
+				var under: bool = hide[k] == 1
+				if under:
+					hidden += 1
+				if under != (vclip[s] == 1):
+					vclip[s] = 1 if under else 0
+					var at = (sh.now as Dictionary).get(plate[s], none)
+					mm.set_instance_transform(s, none if under or not (at is Transform3D) else (at as Transform3D) * (rel[s] as Transform3D))
+			sh["n" + side] = hidden
+		sh["vclip"] = vclip
+
+## How a guard's fine voxels `pts` hang together: each one's neighbours among them (centres within
+## 1.8 voxels of `h`), and whether it touches the rest of the shell (`rest`), that holds it on him.
+static func _guard_links(pts: PackedVector3Array, rest: PackedVector3Array, h: float) -> Array:
+	var r := 1.8 * h
+	var adj := []
+	var anc := PackedByteArray()
+	anc.resize(pts.size())
+	if r <= 0.0:
+		adj.resize(pts.size())
+		adj.fill(PackedInt32Array())
+		return [adj, anc]
+	var grid := {}
+	for i in pts.size():
+		var c := Vector3i((pts[i] / r).floor())
+		if not grid.has(c):
+			grid[c] = []
+		(grid[c] as Array).append(i)
+	var held := {}
+	for q in rest:
+		var c := Vector3i((q / r).floor())
+		if not held.has(c):
+			held[c] = []
+		(held[c] as Array).append(q)
+	for i in pts.size():
+		var c := Vector3i((pts[i] / r).floor())
+		var nb := PackedInt32Array()
+		var on_rest := false
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				for dz in [-1, 0, 1]:
+					var d := Vector3i(dx, dy, dz)
+					for j in grid.get(c + d, []):
+						if j != i and pts[i].distance_to(pts[j]) <= r:
+							nb.append(j)
+					if not on_rest:
+						for q in held.get(c + d, []):
+							if pts[i].distance_to(q) <= r:
+								on_rest = true
+								break
+		adj.append(nb)
+		anc[i] = 1 if on_rest else 0
+	return [adj, anc]
+
+## `hide` (by guard voxel) and every voxel of the guard the hidden ones cut off from the rest of the
+## shell (_guard_links): a bit of it left on its own would hang in the air (user: no armour voxels
+## in the air).
+static func _cut_off(hide: PackedByteArray, adj: Array, anc: PackedByteArray) -> PackedByteArray:
+	var seen := PackedByteArray()
+	seen.resize(hide.size())
+	var todo := PackedInt32Array()
+	for k in hide.size():
+		if hide[k] == 0 and anc[k] == 1:
+			seen[k] = 1
+			todo.append(k)
+	var at := 0
+	while at < todo.size():
+		var k := todo[at]
+		at += 1
+		for j in (adj[k] as PackedInt32Array):
+			if hide[j] == 0 and seen[j] == 0:
+				seen[j] = 1
+				todo.append(j)
+	for k in hide.size():
+		if hide[k] == 0 and seen[k] == 0:
+			hide[k] = 1
+	return hide
+
+## Where a part is drawn (seated on its joint, turned with a bend or the grip: _seat_drawing).
+func _drawn_xf(p: VoxelPart) -> Transform3D:
+	var t := p.draw_turn * p.get_global_transform_interpolated()
+	t.origin += p.draw_shift
+	return t
+
+## How far out from the line of upper arm `up` its armour is drawn (its shell, else its plates),
+## by row along the arm and way round it (the arm's frame): worked out once for what it wears.
+const REACH_NA := 24
+func _arm_reach(up: VoxelPart) -> Dictionary:
+	var ads: Array = up.get_meta("armor", [])
+	var key := ""
+	for ad in ads:
+		if not _cosmetic(String(ad.id)) and ad.node != null and is_instance_valid(ad.node):
+			key += "%s%s," % [ad.id, "+" if ad.get("shell") is Dictionary else "-"]
+	var have = up.get_meta("arm_reach") if up.has_meta("arm_reach") else null
+	if have is Dictionary and String(have.key) == key:
+		return have
+	var pts := PackedVector3Array()
+	var hs := PackedFloat32Array()
+	for ad in ads:
+		if _cosmetic(String(ad.id)) or ad.node == null or not is_instance_valid(ad.node):
+			continue
+		var base: Array = up._plate_bases(ad)
+		var sh = ad.get("shell")
+		if sh is Dictionary:
+			var rel: Array = sh.rel
+			for ci in (sh.of as Dictionary):
+				var b: Transform3D = base[int(ci)]
+				for s in sh.of[ci]:
+					var t: Transform3D = b * (rel[int(s)] as Transform3D)
+					pts.append(t.origin)
+					hs.append(0.5 * t.basis.x.length())
+		else:
+			var hv := up.vf * up.part_scale * 0.5
+			for b in base:
+				if (b as Transform3D).basis.x.length_squared() > 1e-10:
+					pts.append((b as Transform3D).origin)
+					hs.append(hv)
+	var out := {"key": key, "rows": 0}
+	if not pts.is_empty():
+		var dy := up.vf * up.part_scale
+		var y0 := INF
+		var y1 := -INF
+		for q in pts:
+			y0 = minf(y0, q.y)
+			y1 = maxf(y1, q.y)
+		var rows := int(floorf((y1 - y0) / dy)) + 1
+		var r := PackedFloat32Array()
+		r.resize(rows * REACH_NA)
+		for i in pts.size():
+			var q := pts[i]
+			var ri := clampi(int(floorf((q.y - y0) / dy)), 0, rows - 1)
+			var ai := posmod(int(floorf((atan2(q.z, q.x) + PI) / TAU * float(REACH_NA))), REACH_NA)
+			r[ri * REACH_NA + ai] = maxf(r[ri * REACH_NA + ai], Vector2(q.x, q.z).length() + hs[i])
+		out = {"key": key, "rows": rows, "y0": y0, "dy": dy, "r": r}
+	up.set_meta("arm_reach", out)
+	return out
+
+## Whether `q` (the arm's frame) lies within its armour's reach (_arm_reach) and `pad` more: in
+## the rows the armour covers, as far out as it reaches thereabouts.
+static func _in_reach(reach: Dictionary, q: Vector3, pad: float) -> bool:
+	var rows: int = reach.rows
+	if rows == 0:
+		return false
+	var fr := (q.y - float(reach.y0)) / float(reach.dy)
+	if fr < -0.5 or fr > float(rows) - 0.5:
+		return false
+	var ri := clampi(int(floorf(fr)), 0, rows - 1)
+	var ai := posmod(int(floorf((atan2(q.z, q.x) + PI) / TAU * float(REACH_NA))), REACH_NA)
+	var r: PackedFloat32Array = reach.r
+	var far := 0.0
+	for dr in [-1, 0, 1]:
+		var rr: int = ri + dr
+		if rr < 0 or rr >= rows:
+			continue
+		for da in [-1, 0, 1]:
+			far = maxf(far, r[rr * REACH_NA + posmod(ai + da, REACH_NA)])
+	return far > 0.0 and Vector2(q.x, q.z).length() < far + pad
 
 func _armored(p: VoxelPart) -> bool:
 	for ad in p.get_meta("armor", []):
