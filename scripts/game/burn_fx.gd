@@ -37,6 +37,21 @@ static func room() -> bool:
 	var fx: Fx = Fx.current
 	return live < (MAX_LIVE_LOW if fx != null and fx.quality == "low" else MAX_LIVE)
 
+## How many may be made in one physics step, arena-wide: a pot or a breath that set a dozen parts
+## alight made all their flames and bubbles in the step after it, at 0.7 ms each (with the rest,
+## 30 ms with four men alight, 90 with four lions: user, the frames still drop when a foe catches
+## fire or is poisoned). The others are made a step or two later; the part glows meanwhile.
+const MAKE_PER_STEP := 2
+static var _made_step := -1
+static var _made_n := 0
+
+static func may_make() -> bool:
+	var step := Engine.get_physics_frames()
+	if step != _made_step:
+		_made_step = step
+		_made_n = 0
+	return _made_n < MAKE_PER_STEP
+
 ## Counted going (`on`) or stopped: set_on and make keep `live` to the emitters going.
 static func _count(main: GPUParticles3D, on: bool) -> void:
 	if bool(main.get_meta("live", false)) == on:
@@ -50,8 +65,9 @@ static func _count(main: GPUParticles3D, on: bool) -> void:
 ## `size` scales the spread (a part's or a weapon's size).
 static func make(parent: Node3D, surface: String, fire: bool, size := 1.0) -> GPUParticles3D:
 	var fx: Fx = Fx.current
-	if fx == null or fx.headless or not room():
+	if fx == null or fx.headless or not room() or not may_make():
 		return null
+	_made_n += 1
 	var main: GPUParticles3D
 	if fire:
 		match surface:
@@ -99,13 +115,20 @@ static func _extra(fx: Fx, main: GPUParticles3D, kind: String, n: int, r: float,
 		e.set_meta("smoke", true)
 	if tint.a > 0.0:
 		var pm: ParticleProcessMaterial = e.process_material
+		pm.color_ramp = _ramp(tint)
+	e.emitting = true
+
+## A smoke's colour fading out, made once for each colour (a texture made for every emitter).
+static var _ramps := {}
+static func _ramp(tint: Color) -> GradientTexture1D:
+	if not _ramps.has(tint):
 		var g := Gradient.new()
 		g.set_color(0, tint)
 		g.set_color(1, Color(tint.r, tint.g, tint.b, 0.0))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
-		pm.color_ramp = gt
-	e.emitting = true
+		_ramps[tint] = gt
+	return _ramps[tint]
 
 ## Turns an emitter made by make() (and what rides on it) on or off. When a fire goes out its
 ## smoke goes on rising a while from what smoulders.

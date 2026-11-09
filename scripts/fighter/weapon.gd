@@ -547,17 +547,23 @@ var _poison_fx: GPUParticles3D = null
 ## its main material gives off. Nothing about the weapon itself changes.
 func set_burn(fire: bool, poison: bool) -> void:
 	var want := Vector2i(1 if fire else 0, 1 if poison else 0)
-	if want == _burn or mm == null or not mm.use_custom_data:
+	if mm == null or not mm.use_custom_data:
 		return
-	_burn = want
-	for i in vox.size():
-		mm.set_instance_custom_data(i, _custom(i))
-	var surface := _main_surface()
-	var size := clampf(reach * 1.6, 0.6, 3.0)
-	if fire and _burn_fx == null:
-		_burn_fx = BurnFx.make(self, surface, true, size)
-	if poison and _poison_fx == null:
-		_poison_fx = BurnFx.make(self, surface, false, size)
+	# (Its flames may wait a step for their turn to be made, BurnFx.may_make: asked again then.)
+	var lacking := (fire and _burn_fx == null) or (poison and _poison_fx == null)
+	if want == _burn and not (lacking and BurnFx.room() and BurnFx.may_make()):
+		return
+	if want != _burn:
+		_burn = want
+		for i in vox.size():
+			mm.set_instance_custom_data(i, _custom(i))
+	if lacking:
+		var surface := _main_surface()
+		var size := clampf(reach * 1.6, 0.6, 3.0)
+		if fire and _burn_fx == null:
+			_burn_fx = BurnFx.make(self, surface, true, size)
+		if poison and _poison_fx == null:
+			_poison_fx = BurnFx.make(self, surface, false, size)
 	BurnFx.set_on(_burn_fx, fire)
 	BurnFx.set_on(_poison_fx, poison)
 

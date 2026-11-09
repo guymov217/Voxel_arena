@@ -1633,14 +1633,26 @@ func _set_status(i: int, g: Vector2) -> void:
 func _surface_at_spot(kind: String) -> String:
 	for s in spots:
 		if s.kind == kind and s.t > 0.0:
+			# (The nearest among those round the spot, the reach widened until there are some, as
+			# Fire._spot_on finds it: every voxel of the part gone over for each flame made, a
+			# lion's trunk's eleven thousand, was a hitch as a beast caught fire, user.)
+			var lp: Vector3 = s.lp
+			var r := vf * part_scale * 2.0
+			var far := half_ext.length() * 2.0 + r
+			var found := PackedInt32Array()
+			while r < far and found.is_empty():
+				found = voxels_within(lp, r)
+				r *= 2.0
+			if found.is_empty():
+				found = voxels_within(lp, far)
+			var lps := local_positions()
 			var best := -1
 			var bd := INF
-			for i in fx.size():
-				if alive[i]:
-					var d := local_of(i).distance_squared_to(s.lp)
-					if d < bd:
-						bd = d
-						best = i
+			for i in found:
+				var d := lps[i].distance_squared_to(lp)
+				if d < bd:
+					bd = d
+					best = i
 			if best >= 0:
 				return BurnFx.surface_of_kind(kinds[best])
 	return "flesh"
@@ -3110,7 +3122,7 @@ func set_flames(on: bool) -> void:
 		_clear_glow(1)
 	if Fx.current == null or Fx.current.headless:
 		return
-	if on and flames == null and BurnFx.room():
+	if on and flames == null and BurnFx.room() and BurnFx.may_make():
 		flames = BurnFx.make(self, _surface_at_spot("fire"), true, part_scale)
 	if flames:
 		BurnFx.set_on(flames, on)
@@ -3126,7 +3138,7 @@ func set_poison(on: bool) -> void:
 		_clear_glow(2)
 	if Fx.current == null or Fx.current.headless:
 		return
-	if on and poison_fx == null and BurnFx.room():
+	if on and poison_fx == null and BurnFx.room() and BurnFx.may_make():
 		poison_fx = BurnFx.make(self, _surface_at_spot("acid"), false, part_scale)
 	if poison_fx:
 		BurnFx.set_on(poison_fx, on)
