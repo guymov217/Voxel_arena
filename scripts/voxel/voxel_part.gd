@@ -1580,6 +1580,7 @@ func refresh_colors(indices: Array = []) -> void:
 
 var glowing := {}   # voxel -> Vector2(fire, poison) last written to its instance data
 var _glow_n := Vector2i.ZERO   # how many of them glow with fire (x) and with poison (y)
+const GLOW_STEP := 1.0 / 16.0  # how finely a glow's strength is written (_write_glow)
 
 ## Lights the voxels that fire or poison is working on (see Fire.tick, which heats them):
 ## burning ones glow and flicker orange in the shader, poisoned ones glow a sickly green. The
@@ -1604,11 +1605,15 @@ func _write_glow(list: Array) -> void:
 					bd = d
 					best = s
 			if best != null and bd < reach:
+				# (In sixteenths, and written again only when it moves one: the heat changes a
+				# little every tick of the fire, and every burning voxel's fine cells were written
+				# again each time, a frame's hitch for a few limbs alight. The flame's flicker is
+				# the shader's own.)
 				if best.kind == "fire":
-					g.x = clampf(h / 1.2, 0.15, 1.0)
+					g.x = snappedf(clampf(h / 1.2, 0.15, 1.0), GLOW_STEP)
 				else:
-					g.y = clampf(h / 0.8, 0.2, 1.0)
-		if g == Vector2.ZERO and not glowing.has(i):
+					g.y = snappedf(clampf(h / 0.8, 0.2, 1.0), GLOW_STEP)
+		if g == glowing.get(i, Vector2.ZERO):
 			continue
 		_set_status(i, g)
 
