@@ -180,6 +180,24 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 	var ol := _outline(head_xf, fsz * sc.x * hs)
 	fine.wc = ol[0]
 	fine.wtab = ol[1]
+	# Where his eyes and his brows are on the head (its frame): a helmet's shell is drawn leaving
+	# them open (FineArmor._open_face). Not a giant's: his face is his own.
+	if giant == "":
+		var mid := float(p.grid.x * res) * 0.5
+		var eyes := [null, null]
+		var brow := -INF
+		for s in n:
+			var c: Array = cells[s]
+			var ft := int(c[3])
+			var q: Vector3 = (cxf[s] as Transform3D).origin
+			if ft == WHITE or ft == IRIS or ft == PUPIL or ft == LID or ft == LID_LOW:
+				var k := 0 if float(c[0]) + 0.5 < mid else 1
+				eyes[k] = AABB(q, Vector3.ZERO) if eyes[k] == null else (eyes[k] as AABB).expand(q)
+			elif ft == BROW:
+				brow = maxf(brow, q.y)
+		if eyes[0] != null and eyes[1] != null:
+			fine.eyes = eyes
+			fine.brow_y = brow if brow > -INF else maxf((eyes[0] as AABB).end.y, (eyes[1] as AABB).end.y) + fsz * hs
 	# What each of the head's voxels is now: a later change to it (blood) shows through.
 	var base := {}
 	for j in of:

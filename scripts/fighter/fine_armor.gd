@@ -307,14 +307,26 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color) -> Di
 	# plume and its brim at the brow, a greave's knee.
 	var style := _style(id, p)
 	var extra := {}
+	# His eyes left open (user: what bothered him in the helmets was that they covered his eyes).
+	if style.has("face") and p.fine.has("eyes") and p.fine.has("wc"):
+		if style.get("closed", false):
+			_close_face(p, owner, ground, org, first, o, sp)
+		_open_face(p, owner, o, sp, String(style.face), float(style.get("eye_r", 1.3)))
 	if style.get("crest", false) and p.fine.has("wc"):
-		_crest(p.fine.wc, owner, extra, o, sp)
+		_crest(p.fine.wc, owner, extra, o, sp, float(style.get("crest_h", 1.0)), float(style.get("plume_h", 2.0)) if style.has("plume") else 0.0, style.get("griffin", false))
 	if style.get("brim", false) and p.fine.has("wc"):
-		_brim(p.fine.wc, owner, extra, o, sp, float(style.get("brim_w", 2.0)) / kf)
+		var at_y := INF
+		if style.get("brim_at", "") == "brow" and p.fine.has("brow_y"):
+			at_y = float(p.fine.brow_y) + sp.y * 1.5
+		_brim(p.fine.wc, owner, extra, o, sp, float(style.get("brim_w", 2.0)) / kf, at_y, float(style.get("brim_arc", -2.0)))
+	if style.has("neck") and p.fine.has("wc"):
+		_neck(p.fine.wc, owner, extra, o, sp, float(style.neck) / kf)
 	if style.get("boss", false):
 		_boss(org, first, owner, extra, o, sp, cube)
 	if style.get("curls", false) and p.fine.has("wc"):
 		_curls(p.fine.wc, owner, o, sp)
+	if style.has("face"):
+		_keep_whole(owner, extra)
 	# (A piece in bands: where each row of its plates lies on him, so the bands run straight and
 	# level round him, the same on his left as on his right: user, the lorica was not symmetrical.)
 	var bands := _band_rows(ad, org, o, sp, cube, p) if style.get("seams", true) else {}
@@ -969,25 +981,36 @@ const BRIM := 3
 const BOSS := 4
 
 ## How a piece is drawn on the new look, as the arena saw it in its day (only the look: its plates,
-## what they stop and weigh are the piece's own): a galea one smooth bowl of bronze with a broad
-## brim at the brow and a crest along the top, a plume of dyed horsehair on it (the gold one's
-## white); a lorica and a manica in iron bands; greaves one moulded piece,
-## the knee raised; a gold lorica moulded smooth; a skull plate or a jaw guard one smooth piece. A
-## piece made at the bench: smooth on the head and the shins, in bands on the trunk and the arms.
+## what they stop and weigh are the piece's own), every helmet with his eyes left open (user: what
+## bothered him in the helmets was that they covered his eyes): the galea a bowl of bronze with a
+## peak at the brow, a guard flaring over the nape and a crest with a plume of dyed horsehair, his
+## face open between its cheeks; the gold one a thraex's parade helm, its broad brim above his
+## brows, its crest hooked forward as a griffin's head, a white plume; the murmillo's helm its broad
+## brim, a tall crest and a visor grilled over the face, round holes at his eyes; the secutor's (the
+## smooth egg the net cannot catch) round holes at his eyes and a low fin; a leather cap or an iron
+## skull plate on the crown above his brows; a lorica and a manica in iron bands; greaves one
+## moulded piece, the knee raised; a gold lorica moulded smooth. A piece made at the bench: smooth
+## on the head and the shins, in bands on the trunk and the arms.
 static func _style(id: String, p: VoxelPart) -> Dictionary:
 	if id.begins_with("hair_") or id.begins_with("hat_"):
 		match id:
 			"hat_straw":
 				return {"seams": false, "brim": true, "brim_w": 4.5}
+			"hat_bucket":
+				return {"seams": false, "face": "eyes", "eye_r": 2.4, "closed": true, "crest": true, "crest_h": 1.5}
 			"hair_curly", "hair_curls_top":
 				return {"seams": false, "curls": true}
 		return {"seams": false}
 	match id:
 		"helmet":
-			return {"seams": false, "crest": true, "brim": true, "plume": Color(0.62, 0.07, 0.05)}
+			return {"seams": false, "crest": true, "plume": Color(0.62, 0.07, 0.05), "brim": true, "brim_w": 1.0, "brim_arc": 0.45, "neck": 2.5, "face": "open"}
 		"goldHelmet":
-			return {"seams": false, "crest": true, "brim": true, "plume": Color(0.93, 0.9, 0.84)}
-		"skullPlate", "ironJaw", "goldLorica", "cape_short":
+			return {"seams": false, "crest": true, "crest_h": 1.5, "plume_h": 1.5, "griffin": true, "brim": true, "brim_w": 2.5, "plume": Color(0.93, 0.9, 0.84), "face": "open"}
+		"murmilloHelm":
+			return {"seams": false, "crest": true, "crest_h": 3.0, "brim": true, "brim_w": 2.5, "brim_at": "brow", "face": "visor"}
+		"leatherCap", "skullPlate":
+			return {"seams": false, "face": "open"}
+		"ironJaw", "goldLorica", "cape_short":
 			return {"seams": false}
 		"lorica", "manica":
 			return {"seams": true}
@@ -1006,9 +1029,10 @@ static func _mid(kc: Vector3i, o: Vector3, sp: Vector3) -> Vector3:
 	return o + (Vector3(kc) + Vector3.ONE * 0.5) * sp
 
 ## A crest along the top of a helmet, from the brow to the nape, on the head's middle (one row of
-## voxels, or the two either side of the middle: as wide each side), standing a voxel off the bowl,
-## and on it the plume, two more: each the plate's under it.
-static func _crest(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3) -> void:
+## voxels, or the two either side of the middle: as wide each side), standing `high` voxels off the
+## bowl, and on it the plume, `plume` more: each the plate's under it. `hook`: its front end
+## curled forward and down over the brow, a thraex's griffin's head.
+static func _crest(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, high := 1.0, plume := 2.0, hook := false) -> void:
 	var cell := sp.x
 	var fx := (wc.x - o.x) / sp.x - 0.5
 	var cols := []
@@ -1016,6 +1040,9 @@ static func _crest(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3
 		if absf(float(ix) - fx) < 0.75 and not cols.has(ix):
 			cols.append(ix)
 	var add := {}
+	var front := -INF
+	var tip := Vector3.ZERO
+	var tip_k := Vector3i.ZERO
 	for kc in owner:
 		if not cols.has(kc.x):
 			continue
@@ -1027,36 +1054,64 @@ static func _crest(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3
 		if owner.has(_at(q + dir * cell, o, sp)):
 			continue   # (from the bowl's outside)
 		var t := cell * 0.5
-		while t <= cell * 3.0:
+		while t <= cell * (high + plume):
 			var kk := _at(q + dir * t, o, sp)
 			kk.x = kc.x
 			if not owner.has(kk) and not add.has(kk):
-				add[kk] = [owner[kc], CREST if t <= cell * 1.0 else PLUME]
+				add[kk] = [owner[kc], CREST if t <= cell * high else PLUME]
 			t += cell * 0.5
+		if d.z > front:
+			front = d.z
+			tip = q + dir * cell * high
+			tip_k = kc
+	if hook and front > -INF:
+		# Forward off the crest's front end and curled a little down: the beak (well above his brow:
+		# hung lower it shaded his face), drawn whole, half a voxel at a time along it (laid in steps,
+		# its tip hung on its own in the air in front of him).
+		var fwd := Vector3(0.0, 0.0, 1.0)
+		var bend := tip + fwd * cell * 1.8
+		var end := tip + (fwd + Vector3.DOWN * 0.6).normalized() * cell * 2.4
+		for seg in [[tip, bend], [bend, end]]:
+			var a: Vector3 = seg[0]
+			var b: Vector3 = seg[1]
+			var n := maxi(1, ceili(a.distance_to(b) / (cell * 0.5)))
+			for i in range(1, n + 1):
+				var kk := _at(a.lerp(b, float(i) / float(n)), o, sp)
+				for ix in cols:
+					kk.x = ix
+					if not owner.has(kk) and not add.has(kk):
+						add[kk] = [owner[tip_k], CREST]
 	for kk in add:
 		owner[kk] = add[kk][0]
 		extra[kk] = add[kk][1]
 
-## A brim round the helmet at the brow (where the bowl ends over his face), two voxels wide, out
-## from the bowl all round: each the plate's it stands out from.
-static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, wide := 2.0) -> void:
+## A brim round the helmet, `wide` voxels, out from the bowl all round: at the brow (where the bowl
+## ends over his face), or at the height `at_y` (a visor's helm: over his eyes). `arc`: only as far
+## round as faces that much forward (-1 all round; a galea's peak, the front only): each the plate's
+## it stands out from.
+static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, wide := 2.0, at_y := INF, arc := -2.0) -> void:
 	var cell := sp.x
 	var row := 1 << 30
-	for kc in owner:
-		var d := _mid(kc, o, sp) - wc
-		if d.z > 0.75 * d.length():
-			row = mini(row, kc.y)   # (the bowl's lowest over his face: the brow)
+	if at_y < INF:
+		row = int(floorf((at_y - o.y) / sp.y))
+	else:
+		for kc in owner:
+			var d := _mid(kc, o, sp) - wc
+			if d.z > 0.75 * d.length():
+				row = mini(row, kc.y)   # (the bowl's lowest over his face: the brow)
 	if row == 1 << 30:
 		return
 	var add := {}
 	for kc in owner:
-		if kc.y != row:
-			continue
+		if kc.y != row or extra.has(kc):
+			continue   # (out of the bowl itself: not off a crest's hook come down to the brow)
 		var q := _mid(kc, o, sp)
 		var h := Vector3(q.x - wc.x, 0.0, q.z - wc.z)
 		if h.length() < 0.0001:
 			continue
 		var dir := h.normalized()
+		if dir.z < arc:
+			continue
 		if owner.has(_at(q + dir * cell, o, sp)):
 			continue   # (from the bowl's outside)
 		var t := cell * 0.5
@@ -1069,6 +1124,140 @@ static func _brim(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3,
 	for kk in add:
 		owner[kk] = add[kk]
 		extra[kk] = BRIM
+
+## A galea's guard over the nape: from the bowl's lowest row at the back, `wide` voxels out and
+## sloping down, flared round the back of the neck.
+static func _neck(wc: Vector3, owner: Dictionary, extra: Dictionary, o: Vector3, sp: Vector3, wide := 2.5) -> void:
+	var cell := sp.x
+	var row := 1 << 30
+	for kc in owner:
+		var d := _mid(kc, o, sp) - wc
+		if d.z < -0.6 * d.length():
+			row = mini(row, kc.y)   # (the bowl's lowest at the back: over the nape)
+	if row == 1 << 30:
+		return
+	var add := {}
+	for kc in owner:
+		if kc.y > row + 1:
+			continue
+		var q := _mid(kc, o, sp)
+		var h := Vector3(q.x - wc.x, 0.0, q.z - wc.z)
+		if h.length() < 0.0001:
+			continue
+		var dir := h.normalized()
+		if dir.z > -0.35:
+			continue   # (round the back only: his cheeks are open)
+		if owner.has(_at(q + dir * cell, o, sp)):
+			continue
+		var way := (dir + Vector3.DOWN * 0.45).normalized()
+		var t := cell * 0.5
+		while t <= cell * wide:
+			var kk := _at(q + way * t, o, sp)
+			if not owner.has(kk) and not add.has(kk):
+				add[kk] = owner[kc]
+			t += cell * 0.5
+	for kk in add:
+		owner[kk] = add[kk]
+		extra[kk] = BRIM
+
+## His eyes left open in a helmet's shell (the head's eyes and brows: FineHead.build). "open": the
+## shell no lower over his face than his brows, between his cheeks (the cheek guards and the sides
+## as they are); "eyes": a round hole at each eye (a secutor's, the visor's); "visor": those, and a
+## grille over the rest of his face under them (square holes between bars a voxel wide). Only how
+## it is drawn: the plates stop what they stopped.
+static func _open_face(p: VoxelPart, owner: Dictionary, o: Vector3, sp: Vector3, how: String, eye_r := 1.3) -> void:
+	var fine: Dictionary = p.fine
+	var wc: Vector3 = fine.wc
+	var cell := sp.x
+	var el: AABB = fine.eyes[0]
+	var er: AABB = fine.eyes[1]
+	var brow: float = fine.brow_y
+	var half_w := 0.0
+	for e: AABB in [el, er]:
+		half_w = maxf(half_w, maxf(absf(e.position.x - wc.x), absf(e.end.x - wc.x)))
+	var cut := {}
+	for kc in owner:
+		var q := _mid(kc, o, sp)
+		var d := q - wc
+		if d.z <= 0.0 or d.z < 0.3 * d.length():
+			continue   # (his face only: the back and the sides of his head stay)
+		if how == "open":
+			if q.y < brow + cell * 0.6 and absf(q.x - wc.x) < half_w + cell * 1.6:
+				cut[kc] = true
+			continue
+		var hole := false
+		for e: AABB in [el, er]:
+			var c3 := e.get_center()
+			var r := maxf(e.size.x, e.size.y) * 0.5 + cell * eye_r
+			if Vector2(q.x - c3.x, (q.y - c3.y) * 1.3).length() < r:
+				hole = true
+		if hole:
+			cut[kc] = true
+		elif how == "visor" and q.y < brow - cell * 0.5 and d.z > 0.55 * d.length() and posmod(kc.x, 3) != 0 and posmod(kc.y, 3) != 0:
+			cut[kc] = true
+	for kc in cut:
+		owner.erase(kc)
+
+## A helmet hangs together: what its face's cut left on its own (a voxel or two of a visor's grille
+## where the cheek turns) is left out of it (user: no armour voxels in the air).
+static func _keep_whole(owner: Dictionary, extra: Dictionary) -> void:
+	var seen := {}
+	var groups := []
+	var big := 0
+	for kc in owner:
+		if seen.has(kc):
+			continue
+		seen[kc] = true
+		var g := [kc]
+		var i := 0
+		while i < g.size():
+			var c: Vector3i = g[i]
+			i += 1
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for dz in [-1, 0, 1]:
+						var nb := c + Vector3i(dx, dy, dz)
+						if owner.has(nb) and not seen.has(nb):
+							seen[nb] = true
+							g.append(nb)
+		groups.append(g)
+		big = maxi(big, g.size())
+	if groups.size() < 2:
+		return
+	var kept := false
+	for g in groups:
+		if (g as Array).size() == big and not kept:
+			kept = true
+			continue
+		for kc in g:
+			owner.erase(kc)
+			extra.erase(kc)
+
+## A closed face (a secutor's): every fine voxel round his face from his chin to his brow drawn as
+## the shell, the nearest plate's (a hat's plates leave the middle of his face open).
+static func _close_face(p: VoxelPart, owner: Dictionary, ground: Dictionary, org: PackedVector3Array, first: PackedByteArray, o: Vector3, sp: Vector3) -> void:
+	var wc: Vector3 = p.fine.wc
+	var pts: PackedVector3Array = ground.pts
+	var idx: PackedInt32Array = ground.idx
+	var top := float(p.fine.brow_y) + sp.y
+	for s in pts.size():
+		var kc := Vector3i(idx[s * 3], idx[s * 3 + 1], idx[s * 3 + 2])
+		if owner.has(kc):
+			continue
+		var q := pts[s]
+		var d := q - wc
+		if d.z <= 0.0 or d.z < 0.3 * d.length() or q.y > top:
+			continue
+		var best := INF
+		var who := -1
+		for ci in org.size():
+			if first[ci] == 1:
+				var dd := q.distance_squared_to(org[ci])
+				if dd < best:
+					best = dd
+					who = ci
+		if who >= 0:
+			owner[kc] = who
 
 ## Curls standing out of a head of hair: here and there a voxel over its outside, each the
 ## lock's it stands out of (a head of curls drawn as a smooth cap read as a crop).
