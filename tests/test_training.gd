@@ -108,3 +108,54 @@ func test_a_stronger_arm_throws_faster_and_harder() -> void:
 		for i in 2:
 			t.check(absf(float(b.blows[i]) / float(a.blows[i]) - 1.15) < 0.01, "half of it goes into the blow: %s (%.1f against %.1f)" % [["the dart", "the discus"][i], b.blows[i], a.blows[i]])
 	m.queue_free()
+
+## Training's next foe is brought in over a few frames as one dies (Match.spawn_fighter_staged: built
+## whole in the frame of the death, the game stopped each time): he comes in whole, drawn and in
+## the fight. Taken out while he is still being dressed (the arena gone), nothing more is done to
+## him: the dressing went on with him gone and the game crashed.
+func test_the_next_foe_is_brought_in_over_a_few_frames() -> void:
+	for gone in [false, true]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "gladiator", "count": 1, "difficulty": 0.5}, "decrees": [], "hazards": [], "headless": true, "seed": 3})
+		m.me.f.teleport(Vector3(0, 0, -14))
+		m.me.drive = func(_e): return {}
+		for i in 30:
+			await get_tree().physics_frame
+		var foe = null
+		for e in m.entities:
+			if e.team == Match.ENEMY_TEAM and e.f.alive:
+				foe = e
+		t.check(foe != null, "a foe to fight")
+		if foe == null:
+			m.queue_free()
+			return
+		var n0 := m.entities.size()
+		foe.f.die("test")
+		if gone:
+			var dressing = null
+			for i in 300:
+				await get_tree().process_frame
+				for c in m.get_children():
+					if c is Fighter and (c as Fighter).parts.size() == 10 and not c.has_meta("physique"):
+						dressing = c
+				if dressing != null:
+					break
+			t.check(dressing != null, "caught him being dressed")
+			m.queue_free()
+			for i in 60:
+				await get_tree().process_frame
+			t.check(not is_instance_valid(dressing), "the arena gone under him: he went with it, and the game goes on")
+			continue
+		var came := -1
+		for i in 300:
+			await get_tree().process_frame
+			if m.entities.size() > n0:
+				came = i
+				break
+		t.check(came > 2, "the next one comes in a few frames after the death (%d)" % came)
+		if came > 0:
+			var nf: Fighter = m.entities.back().f
+			t.check(nf.alive and nf.parts.size() == 10 and nf.visible and nf.process_mode == Node.PROCESS_MODE_INHERIT, "whole, drawn and in the fight")
+		m.queue_free()
+		await get_tree().process_frame

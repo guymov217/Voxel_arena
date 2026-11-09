@@ -150,7 +150,10 @@ static func mapped(p: VoxelPart, d: Dictionary, q: Vector3, size := 1.0) -> Tran
 	return Transform3D(Basis.from_scale(Vector3(k, 1.0, k) * size), Vector3(q.x * k, q.y, q.z * k))
 
 ## Drawn on `p` (any of his parts but the head) in build `bn`, or taken off (`on` false).
-static func build(f, p: VoxelPart, bn: String, on := true) -> void:
+## Built over a few frames with `staged` (a man built while the fight goes on, Match.spawn_fighter_
+## staged: his trunk's thousands of fine voxels in one frame were a hitch of their own).
+const STAGE_CELLS := 3000
+static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> void:
 	clear(p)
 	if not on or p.missing or p.prosthetic != "" or String(p.part_name) == "head":
 		return
@@ -180,6 +183,9 @@ static func build(f, p: VoxelPart, bn: String, on := true) -> void:
 		var j := par[s]
 		if j >= 0:
 			own[s] = _own(p, j, shade[s], sk_lin, beast, cells[s * CELL + 8], d)
+		if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+			if not await Physique._frame(p):
+				return
 	var base := {}
 	for j in of:
 		base[j] = p.colors[j]
@@ -206,6 +212,9 @@ static func build(f, p: VoxelPart, bn: String, on := true) -> void:
 			buf[o + 13] = c.g
 			buf[o + 14] = c.b
 			buf[o + 15] = 1.0
+			if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+				if not await Physique._frame(p) or not is_same(p.fine, fine):
+					return
 		mm.buffer = buf
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
@@ -787,7 +796,7 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 				(at[0] as MultiMesh).set_instance_color(at[1], _color(p, s, i))
 				(at[0] as MultiMesh).set_instance_custom_data(at[1], _custom(p, s, i, g))   # (wet with blood)
 		if wound.has(i):
-			_write_wound(p, i)
+			_write_wound_glow(p, i, true)
 
 ## A bruising blow swells: the skin over it raised, out from the bone toward where the blow fell,
 ## and its fine voxels a little larger, as much as the blow was hard (`k`, of a voxel), up to a
@@ -845,7 +854,31 @@ static func status(p: VoxelPart, i: int, g: Vector2) -> void:
 			var at := _slot(fine, s)
 			(at[0] as MultiMesh).set_instance_custom_data(at[1], _custom(p, s, i, g))
 	if fine.wound.has(i):
+		_write_wound_glow(p, i)
+
+## A wound's cells as the fire or the poison on it changes (`paint` false), or the colour of the
+## voxel it bares (blood on it, a burn charring it: `paint`): their shading, and their colours with
+## `paint`; where they lie as it was. (Written whole, each burning voxel's wound as the fire went
+## out over a limb was a frame's hitch: user, the game stuttered with the fire.)
+static func _write_wound_glow(p: VoxelPart, i: int, paint := false) -> void:
+	var fine: Dictionary = p.fine
+	var wm = fine.get("wmm")
+	var slot: int = fine.wound[i]
+	if wm == null or slot * 8 + 8 > (wm as MultiMesh).instance_count:
 		_write_wound(p, i)
+		return
+	var code: int = (fine.code as PackedInt32Array)[i]
+	var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
+	var healed := p.scarred.has(i)
+	for k in 8:
+		var cc := (code >> (2 * k)) & 3
+		if paint:
+			(wm as MultiMesh).set_instance_color(slot * 8 + k, wound_color(p, i, k, cc))
+		var kd := 0 if cc == 1 else (9 if cc == 2 or p.kinds[i] <= 2 else int(p.kinds[i]))
+		var cu := VoxelPart.kind_data(kd, 0, 0)
+		cu.g = g.x if g.x > 0.0 or healed else -(WET_BONE if kd == 6 else float(WET[cc]))
+		cu.b = g.y
+		(wm as MultiMesh).set_instance_custom_data(slot * 8 + k, cu)
 
 # ---------- A bone broken through: the skin bent with the limb ----------
 

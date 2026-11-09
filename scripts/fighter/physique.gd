@@ -158,10 +158,12 @@ static func dress(f, style := "", staged := false) -> void:
 				var worn_h := beard_worn(p)
 				if worn_h != "":
 					_paint_face(p, hc_h if hc_h != null else ArmorStyle.base_color(worn_h, {}, f.skin), false, BEARD_PAINT.get(worn_h, 2), false)
+			elif staged:
+				await FineBody.build(f, p, bn, true, true)
+				if not await _frame(f):   # (a part a frame: Fighter.build)
+					return
 			else:
 				FineBody.build(f, p, bn)
-				if staged:
-					await (f as Node).get_tree().process_frame   # (a part a frame: Fighter.build)
 			continue
 		p.set_look(_veil(p, style), true)
 		_bare(p)
@@ -174,14 +176,27 @@ static func dress(f, style := "", staged := false) -> void:
 	# (The strong gladiators keep their own heads: the old men whole, the way they were.)
 	if style == "human" and f.get("head") != null and fine_heads:
 		if staged:
-			await (f as Node).get_tree().process_frame
-		FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f))
+			if not await _frame(f):
+				return
+			await FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f), true)
+			if not is_instance_valid(f) or not (f as Node).is_inside_tree():
+				return
+		else:
+			FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f))
 	f.set_meta("physique", style)
 	f.set_meta("build", bn)
 	if f.has_method("place_armor"):
-		if staged:
-			await (f as Node).get_tree().process_frame
+		if staged and not await _frame(f):
+			return
 		f.place_armor()
+
+## A frame's wait in a dress made over a few frames, and whether he is still there after it (a man
+## taken out while he was being built, a test's arena torn down: nothing more is done to him).
+static func _frame(f) -> bool:
+	if not is_instance_valid(f) or not (f as Node).is_inside_tree():
+		return false
+	await (f as Node).get_tree().process_frame
+	return is_instance_valid(f) and (f as Node).is_inside_tree()
 
 ## Every man in the tree under `root` drawn in the setting's look again (Options).
 static func restyle_all(root: Node) -> void:

@@ -6,6 +6,7 @@ extends Node3D
 ## front of the body with a weapon welded in line with the forearm), wounded voxel by voxel.
 
 const V := 0.055
+const STAGE_VOXELS := 1200   # a part's voxels coloured a frame, built staged (build)
 const LEG := 16 * V
 const TORSO_H := 11 * V
 const TORSO_Y := LEG + TORSO_H / 2.0
@@ -351,9 +352,17 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	# second, every time training brought the next foe in as one died (user: the frames dropped
 	# as men bled and burnt to death).
 	var staged := bool(opts.get("staged", false))
+	if staged:
+		await get_tree().process_frame   # (not in the frame that brought him in: a death, a round's end)
+		if not is_inside_tree():
+			return
 	for d in Data.body_parts:
 		var voxels := []
 		for v in d.voxels:
+			if staged and voxels.size() % STAGE_VOXELS == STAGE_VOXELS - 1:
+				await get_tree().process_frame   # (his trunk's thousands of voxels over a few frames)
+				if not is_inside_tree():
+					return
 			var c: Color
 			var kind := 2
 			match int(v[3]):
@@ -406,6 +415,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			p.parent_part.child_parts.append(p)
 		if staged:
 			await get_tree().process_frame
+			if not is_inside_tree():
+				return
 	torso = by_name.torso
 	head = by_name.head
 	_count_organs()
@@ -435,6 +446,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 	# How he is drawn (Options: the gladiators' look). Drawing only.
 	if staged:
 		await Physique.dress(self, "", true)
+		if not is_inside_tree():
+			return
 	else:
 		Physique.dress(self)
 	# A giant of myth is struck where he is drawn, in any look (FineBody.fit_giant).
@@ -1056,7 +1069,10 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 		FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 	if part == head and not _cosmetic(String(ad.id)):
-		place_armor()   # (the hair the plate covered bursts out of the hole)
+		# The hair the plate covered bursts out of the hole. (Only his head's: every piece on him
+		# laid again, his lorica's thousands of voxels with it, each plate off his helmet cost
+		# twenty milliseconds of a frame.)
+		_tuck_hair(head)
 		_hair_pop = 1.0
 		_hair_lagv += dir.normalized() * 0.6 if dir.length_squared() > 1e-6 else Vector3.ZERO
 	if part.freeze or not part.is_inside_tree() or not fly:

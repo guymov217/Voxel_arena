@@ -88,7 +88,10 @@ static func material() -> ShaderMaterial:
 ## Drawn on the head of `f` (his look as it is painted now: his skin, his hair, his beard, the face
 ## pieces he chose), or taken off again (`on` false, or a head the template does not fit). `hs`:
 ## drawn this much smaller, down onto his neck (the new look's builds, FineBody.head_scale).
-static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
+## Built over a few frames with `staged` (a man built while the fight goes on: his head's
+## thousands of fine voxels in one frame were a hitch of their own).
+const STAGE_CELLS := 2500
+static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged := false) -> void:
 	clear(p)
 	var t := giant_template(giant) if giant != "" else template()
 	if not on or t.is_empty() or p.missing or p.severed:
@@ -170,6 +173,12 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 		# his hair's, over his brow.)
 		if int(c[3]) != HAIR and (int(c[3]) != SKIN or float(c[2]) > 25.0):
 			front[Vector2i(int(c[0]), int(c[1]))] = s
+		if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+			if not await Physique._frame(p) or not p.fine.is_empty():
+				return
+	if staged:
+		if not await Physique._frame(p) or not p.fine.is_empty():
+			return
 	var fine := {"mm": mm, "par": par, "own": own, "xf": cxf, "of": of, "front": front, "look": look, "cells": cells, "hid": hid, "hs": hs, "pivot": pivot, "giant": giant}
 	# (His head's outline without his hair: a helmet or a hat sits on his head, the hair under it
 	# tucked, tuck.)
@@ -203,6 +212,9 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 	for j in of:
 		base[j] = p.colors[j]
 	fine.base = base
+	if staged:
+		if not await Physique._frame(p) or not p.fine.is_empty():
+			return
 	for s in n:
 		var j: int = par[s]
 		var alive: bool = j >= 0 and p.alive[j] == 1
@@ -211,12 +223,18 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "") -> void:
 		var c: Array = cells[s]
 		var kd := (HAIR_KIND if _hairy(c, look) else 0) if c.size() < 12 else int(c[11])
 		mm.set_instance_custom_data(s, VoxelPart.kind_data(kd, int(c[9]), 0))
+		if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+			if not await Physique._frame(p) or not p.fine.is_empty():
+				return
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
 	mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	mi.top_level = true
 	mi.custom_aabb = AABB(-half * 1.4, half * 2.8)
 	mm.custom_aabb = mi.custom_aabb
+	if staged:
+		if not await Physique._frame(p) or not p.fine.is_empty():
+			return
 	p.add_child(mi)
 	fine.mi = mi
 	p.draw_with.append(mi)
