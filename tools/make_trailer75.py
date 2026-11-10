@@ -113,7 +113,9 @@ def run(args, env=None, log=None):
         if "SCRIPT ERROR:" in ln or (ln.startswith("ERROR:") and not shutdown_leak):
             errors.append(ln)
     if p.returncode or errors:
-        raise RuntimeError("Godot failed (%s): %s\n%s" % (p.returncode, log or "import", "\n".join(errors[:8] or lines[-12:])))
+        code = "0x%08X" % (p.returncode & 0xFFFFFFFF)
+        hint = " (native access violation; the last logged asset is not necessarily the cause)" if code == "0xC0000005" else ""
+        raise RuntimeError("Godot failed (%s, %s)%s: %s\n%s" % (p.returncode, code, hint, log or "import", "\n".join(errors[:8] or lines[-12:])))
     return lines
 
 
@@ -159,9 +161,14 @@ def fresh_project(g):
     shutil.copytree(ROOT, PROJ, ignore=shutil.ignore_patterns(".git", "store", "trailer_work", ".godot", "*.mp4"))
     with open(os.path.join(PROJ, "override.cfg"), "w") as f:
         f.write("[display]\nwindow/size/viewport_width=%d\nwindow/size/viewport_height=%d\n" % (1600, 900)
+                + "[editor]\nimport/use_multiple_threads=false\n"
                 + "[threading]\nworker_pool/max_threads=1\n"
                 + "[application]\nconfig/use_custom_user_dir=true\nconfig/custom_user_dir_name=\"wrecksmith_trailer\"\n")
-    run([g, "--headless", "--path", PROJ, "--import"])
+    # The importer has its own parallelism switch; worker_pool/max_threads alone
+    # does not select serial resource import. Keep this scoped to the capture copy.
+    import_log = os.path.join(WORK, "import.log")
+    print("Importing capture project serially; full log: %s" % import_log, flush=True)
+    run([g, "--headless", "--verbose", "--path", PROJ, "--import"], log=import_log)
 
 
 def tags_of(lines):

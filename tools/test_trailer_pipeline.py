@@ -2,6 +2,9 @@
 
 Run: python -m unittest discover -s tools -p 'test_trailer*.py'
 """
+import os
+import tempfile
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -17,6 +20,34 @@ class TrailerContracts(unittest.TestCase):
     def meta(self, seconds=12):
         return {"rec0": 0, "end": int(seconds * 120), "seconds": seconds,
                 "key": 2.0, "marks": {}, "hits": [], "take": 11}
+
+
+    def test_capture_import_is_serial_before_engine_starts(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, proj, work = [os.path.join(d, n) for n in ("root", "project", "work")]
+            os.makedirs(root)
+            os.makedirs(work)
+            Path(root, "project.godot").write_text("config_version=5\n")
+            def engine(args, **kwargs):
+                cfg = Path(proj, "override.cfg").read_text()
+                self.assertIn("[editor]\nimport/use_multiple_threads=false", cfg)
+                self.assertIn("--import", args)
+                self.assertIn("--verbose", args)
+                self.assertEqual(kwargs["log"], os.path.join(work, "import.log"))
+                return []
+            with patch.object(film, "ROOT", root), patch.object(film, "PROJ", proj), patch.object(film, "WORK", work), patch.object(film, "run", side_effect=engine) as run:
+                film.fresh_project("godot")
+                run.assert_called_once()
+            self.assertFalse(Path(root, "override.cfg").exists())
+
+    def test_native_crash_keeps_full_log_and_decodes_windows_status(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "import.log")
+            result = SimpleNamespace(returncode=3221225477, stdout="earlier diagnostic\nfont import\n")
+            with patch.object(film, "WORK", d), patch.object(film.subprocess, "run", return_value=result):
+                with self.assertRaisesRegex(RuntimeError, "0xC0000005"):
+                    film.run(["godot", "--headless", "--import"], log=log)
+            self.assertIn("earlier diagnostic", Path(log).read_text())
 
     def test_exact_timeline_and_frame_grid(self):
         for fps in (30, 60):
