@@ -8,7 +8,7 @@ LENGTH = 75.0
 END_START = 70.0
 # [id, in, out, direction, recording, anchor, optional speed ramp]
 SHOTS = [
-    [1, 0, 1.3, "Cold open: low side close-up; a readable wind-up and axe impact", "1", ("key", 0.65), None],
+    [1, 0, 1.3, "Cold open: medium side view; both fighters and the full axe arc stay readable", "1", ("key", 0.65), None],
     [2, 1.3, 4, "Pull out to the fighters: keep the reaction and the next attack readable", "3", ("key", -0.65), None],
     [3, 4, 6, "Crane over the duel to establish the arena and its scale", "4", ("key", 0.65), None],
     [4, 6, 7.5, "Push into the real forge; make the building tool recognizable", "14f", ("t", 0.0), None],
@@ -69,7 +69,7 @@ DROPS = [(29.1, 32.6, 0.06), (61.65, 62.65, 0.15), (67.0, 69.8, 0.04)]
 BOOMS = [12.0, 44.0, 70.0]
 RISES = [(11.2, 12.0), (43.1, 44.0), (60.7, 62.0)]
 NEEDS = {
-    "1": ["KEY"], "3": ["KEY"], "4": ["KEY"],
+    "1": ["KEY", "hook return"], "3": ["KEY", "hook return"], "4": ["KEY"],
     "14f": ["KEY"], "15": ["KEY"], "16": ["KEY"], "17": ["KEY"],
     "combo": ["combo first", "combo return", "combo kick"],
     "combo_close": ["combo first", "combo return", "combo kick"],
@@ -85,6 +85,7 @@ GROUPS = [["1", "3"], ["14f", "15", "16"], ["combo", "combo_close"], ["21", "22"
 TAKES = [11, 12, 13, 14, 15]
 # Events that must occur INSIDE an edited shot, not merely somewhere in its source recording.
 VISIBLE = {
+    2: ["hook return"],
     8: ["combo first", "combo return"], 9: ["combo kick"],
     10: ["down foe"], 11: ["severed foe"], 12: ["grab", "down foe"],
     13: ["lodged", "free"], 15: ["prosthetic"], 21: ["cut giant"],

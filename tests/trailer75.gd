@@ -488,6 +488,16 @@ func _run_ticks(tt: float) -> void:
 ## of their waists, close on the arm and still until the blow (cut on it); 2 under his chest,
 ## three-quarters, the wound and his reaction; 3 wide and a little high, going with them as the
 ## champion presses on and the man gives ground.
+## Continuous input targets, not animation of the physical weapon or body.
+static func _hand_path(tt: float, points: Array) -> Vector2:
+	if tt <= float(points[0][0]):
+		return points[0][1]
+	for i in range(1, points.size()):
+		if tt <= float(points[i][0]):
+			var u := (tt - float(points[i - 1][0])) / (float(points[i][0]) - float(points[i - 1][0]))
+			return (points[i - 1][1] as Vector2).lerp(points[i][1], _ease(u))
+	return points[-1][1]
+
 func _hook() -> void:
 	_champion("executionerAxe", Vector3(-0.95, 0, 0.0), PI * 0.5)
 	var foe = _foe("murmillo", Vector3(0.75, 0, 0.1), -PI * 0.5, {"main": "gladius", "armor": ["helmet"]})
@@ -500,13 +510,30 @@ func _hook() -> void:
 	hero_inp = {"look": {"yaw": PI * 0.5, "pitch": 0.0}, "main": {"x": -0.1, "y": 1.6}}
 	await _steps(100)
 	dur = 5.2
-	# The axe down across the raised forearm; drawn back, and again across him.
-	var strokes := [[0.75, 0.24, Vector2(-0.1, 1.6), Vector2(-0.35, -0.7)], [2.9, 0.3, Vector2(0.9, 0.9), Vector2(-0.8, -0.1)]]
+	# A continuous hand path: impact -> low follow-through -> recovery outside the
+	# opponent -> second diagonal. The generic stroke helper can jump back to the
+	# previous endpoint at the next wind-up; do not use it for this close-up.
+	var path := [
+		[0.0, Vector2(-0.1, 1.6)], [0.75, Vector2(-0.1, 1.6)],
+		[1.02, Vector2(-0.35, -0.7)], [1.18, Vector2(-0.35, -0.7)],
+		[1.55, Vector2(0.65, -0.35)], [1.98, Vector2(0.9, 0.9)],
+		[2.12, Vector2(0.9, 0.9)], [2.44, Vector2(-0.8, -0.1)],
+		[2.66, Vector2(-0.8, -0.1)], [3.18, Vector2(0.05, 0.6)],
+	]
 	tick_fn = func(tt: float) -> void:
-		var s := _stroke_at(tt, strokes, Vector2(-0.1, 1.6) if tt < 0.75 else Vector2(0.05, 0.6))
-		hero_inp = {"look": {"yaw": PI * 0.5, "pitch": 0.0}, "main": {"x": (s[0] as Vector2).x, "y": (s[0] as Vector2).y}, "power": s[1], "mz": 0.5 if tt > 2.3 and tt < 3.2 else 0.0}
-		back[0] = -0.6 if tt > 1.6 and tt < 3.8 else 0.0
+		var mk := _hand_path(tt, path)
+		var gap: Vector3 = ff.torso.global_position - hero.torso.global_position
+		gap.y = 0.0
+		# Approach only while recovering, ease in/out, stop before crowding him.
+		var advance := _ease((tt - 1.35) / 0.25) * (1.0 - _ease((tt - 2.0) / 0.25))
+		var pace := clampf((gap.length() - 1.65) * 1.5, 0.0, 0.45) * advance
+		hero_inp = {"look": {"yaw": PI * 0.5, "pitch": 0.0},
+			"main": {"x": mk.x, "y": mk.y},
+			"power": (tt >= 0.75 and tt < 1.12) or (tt >= 2.12 and tt < 2.54),
+			"mz": pace if ff.alive and ff.state == "stand" else 0.0}
+		back[0] = -0.25 * _ease((tt - 1.3) / 0.3) * (1.0 - _ease((tt - 2.0) / 0.3))
 	_on_blow(hero, ff, 0.5)
+	_mark_blow(hero, ff, "hook return", 2.12)
 	_watch_man(ff, "foe")
 	_lodges()
 	match shot:
@@ -514,9 +541,10 @@ func _hook() -> void:
 			cam_fn = _still(func(_tt: float) -> Array:
 				# (On the sun's side of them, +z: from the other, the men were black against the sky.)
 				# (Square to the arm and back from it: closer, his body filled half the picture.)
-				var arm: Vector3 = ff.by_name.forearmR.global_position
-				var eye := Vector3(arm.x - 0.4, 1.0, arm.z + 1.55)
-				return [eye, arm + Vector3(-0.15, -0.05, 0), 40.0, 0.0])
+				var mid := (hero.torso.global_position + ff.torso.global_position) * 0.5
+				mid.y = 1.15
+				# Both upper bodies and the full axe arc stay in frame.
+				return [mid + Vector3(0.0, 0.15, 3.3), mid, 48.0, 0.0])
 		"2":
 			cam_fn = func(tt: float) -> Array:
 				# Before him, three-quarters, past the champion's shoulder: his face, the arm and the axe
