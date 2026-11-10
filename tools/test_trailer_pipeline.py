@@ -49,6 +49,29 @@ class TrailerContracts(unittest.TestCase):
                     film.run(["godot", "--headless", "--import"], log=log)
             self.assertIn("earlier diagnostic", Path(log).read_text())
 
+    def test_renderer_cleanup_only_after_completed_capture(self):
+        leak = "ERROR: 3 shaders of type SceneForwardClusteredShaderRD were never freed"
+        cases = [
+            ("REC_END 720\n" + leak, 0, True),
+            (leak + "\nREC_END 720", 0, False),
+            (leak, 0, False),
+            ("REC_END 720\n" + leak, 1, False),
+            ("REC_END 720\nERROR: Shader compilation failed", 0, False),
+            ("REC_END 720\nSCRIPT ERROR: Invalid access", 0, False),
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            for output, status, accepted in cases:
+                with self.subTest(output=output, status=status):
+                    result = SimpleNamespace(returncode=status, stdout=output)
+                    with patch.object(film, "WORK", d), patch.object(film.subprocess, "run", return_value=result):
+                        if accepted:
+                            log = os.path.join(d, "capture.rec")
+                            film.run(["godot", "--write-movie", "shot.avi"], log=log)
+                            self.assertIn(leak, Path(log).read_text())
+                        else:
+                            with self.assertRaises(RuntimeError):
+                                film.run(["godot", "--write-movie", "shot.avi"])
+
     def test_exact_timeline_and_frame_grid(self):
         for fps in (30, 60):
             with patch.object(film, "FPS", fps):
@@ -118,3 +141,4 @@ class TrailerContracts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

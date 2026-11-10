@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -101,15 +102,18 @@ def run(args, env=None, log=None):
     if log:
         with open(log, "w") as f:
             f.write("\n".join(lines))
-    # Godot 4.6's dummy renderer reports shutdown-only RID leaks in this project,
-    # including on the unchanged branch. Preserve those in the log; they cannot
-    # validate/invalidate choreography. Any script error or earlier engine error is fatal.
+    # Known resource-cleanup diagnostics can follow a completed capture on both
+    # dummy and Forward+ renderers. Keep them in the log. Never forgive shader
+    # compilation errors, errors before REC_END, or a nonzero process exit.
     completed = False
     errors = []
     for ln in lines:
         if ln.startswith("REC_END "):
             completed = True
-        shutdown_leak = ("at exit" in ln or "RID allocations" in ln) and completed
+        shutdown_leak = completed and (
+            "at exit" in ln or "RID allocations" in ln or
+            re.fullmatch(r"ERROR: [0-9]+ shaders? of type [A-Za-z0-9_]+ were never freed\.?", ln) is not None
+        )
         if "SCRIPT ERROR:" in ln or (ln.startswith("ERROR:") and not shutdown_leak):
             errors.append(ln)
     if p.returncode or errors:
@@ -873,3 +877,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
