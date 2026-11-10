@@ -37,6 +37,7 @@ const SHOTS := {
 	"21": "cyclops", "22": "cyclops", "23": "giantlegs", "24": "cyclops", "24b": "lion", "24c": "minotaur",
 	"25": "yard", "26": "smith", "27": "physician", "28": "training",
 	"29": "melee", "30": "head", "31": "head", "32": "head",
+	"combo": "combo", "combo_close": "combo", "lodge_wide": "lodge",
 }
 
 var shot := ""
@@ -78,6 +79,8 @@ func _ready() -> void:
 			await _hook()
 		"duel":
 			await _duel()
+		"combo":
+			await _combo()
 		"hammer":
 			await _hammer()
 		"mace":
@@ -156,7 +159,13 @@ func _ready() -> void:
 				if float(peek_at[peeked]) - warm > t + 1.0 / 120.0:
 					get_viewport().disable_3d = true
 					RenderingServer.render_loop_enabled = false
+	_tag("SCENE_END %.3f" % t)
 	_tag("REC_END %d" % _frame())
+	# Dispose the scene before shutting the renderer down (also keeps headless audits clean).
+	rolling = false
+	menu.queue_free()
+	for i in 3:
+		await get_tree().process_frame
 	get_tree().quit()
 
 ## SHOT_DEBUG=1: where everyone is, four times a second (to stage a scene by).
@@ -265,7 +274,10 @@ func _process(_dt: float) -> void:
 	cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.near = 0.05
 	cam.fov = float(c[2])
-	cam.global_position = c[0]
+	# A fighter falling must never pull the filming camera beneath the arena floor.
+	var eye: Vector3 = c[0]
+	eye.y = maxf(0.18, eye.y)
+	cam.global_position = eye
 	var fwd: Vector3 = (c[1] as Vector3) - (c[0] as Vector3)
 	cam.look_at(c[1], Vector3.UP if absf(fwd.normalized().y) < 0.98 else Vector3.FORWARD)
 	if c.size() > 4 and absf(float(c[4])) > 1e-4:
@@ -355,6 +367,60 @@ static func _stroke_at(tt: float, strokes: Array, rest: Vector2) -> Array:
 		elif tt >= st + float(s[1]) + 0.35 and tt < nxt - back:
 			mk = (s[3] as Vector2).lerp(rest, _ease((tt - st - float(s[1]) - 0.35) / 0.4))
 	return [mk, power, thrust]
+
+## A normal-speed combination. The actors follow one shared timeline for both camera angles.
+## Every outcome marker comes from a real contact, never from the input command itself.
+## A missed return stroke or kick rejects the take in the editor.
+func _combo() -> void:
+	_champion("gladius", Vector3(-0.85, 0, 0), PI * 0.5, "roundShield")
+	var foe = _foe("praetorian", Vector3(0.55, 0, 0), -PI * 0.5,
+		{"main": "gladius", "armor": ["helmet", "lorica", "greaves"]})
+	var ff: Fighter = foe.f
+	foe.drive = func(_e):
+		var to: Vector3 = hero.torso.global_position - ff.torso.global_position
+		var counter := _stroke_at(t, [[2.65, 0.3, Vector2(0.9, 1.1), Vector2(-0.6, -0.15)]], Vector2(0.4, 1.2))
+		return {"look": {"yaw": atan2(to.x, to.z), "pitch": 0.0},
+			"main": {"x": counter[0].x, "y": counter[0].y}, "power": counter[1]}
+	await _steps(90)
+	dur = 6.0
+	var strokes := [[0.85, 0.26, Vector2(0.95, 1.05), Vector2(-0.8, -0.3)],
+		[1.85, 0.27, Vector2(-0.9, 0.75), Vector2(0.85, -0.2)]]
+	tick_fn = func(tt: float) -> void:
+		var to: Vector3 = ff.torso.global_position - hero.torso.global_position
+		to.y = 0
+		var s := _stroke_at(tt, strokes, Vector2(0.4, 0.6))
+		var close := 0.9 if tt > 2.7 else 1.25
+		var pace := clampf((to.length() - close) * 1.5, 0.0, 0.65)
+		hero_inp = {"look": {"yaw": atan2(to.x, to.z), "pitch": 0.0},
+			"main": {"x": s[0].x, "y": s[0].y}, "off": {"x": -0.3, "y": 0.65},
+			"power": s[1] and ff.state == "stand", "mz": pace if tt < 3.65 and ff.state == "stand" else 0.0,
+			"kick": tt >= 3.7 and tt < 3.725 and ff.state == "stand"}
+	var landed := {}
+	m.combat.hit.connect(func(h: Dictionary) -> void:
+		if not rolling or h.get("attacker") != hero or h.get("char") != ff or float(h.get("J", 0)) < 5.0:
+			return
+		var beat := ""
+		if h.get("kick", false) and t >= 3.7:
+			beat = "combo kick"
+		elif t >= 0.85 and t < 1.65 and h.get("weapon") == hero.weapons.R:
+			beat = "combo first"
+		elif t >= 1.85 and t < 2.6 and h.get("weapon") == hero.weapons.R:
+			beat = "combo return"
+		if beat != "" and not landed.has(beat):
+			landed[beat] = true
+			_mark(beat)
+			_key())
+	_watch_man(ff, "foe")
+	# Both cameras stay on +z: screen direction is preserved across the cut at scene 3.35s.
+	var fol := []
+	cam_fn = func(tt: float) -> Array:
+		var mid: Vector3 = _follow(fol, (hero.torso.global_position + ff.torso.global_position) * 0.5, 0.1)
+		mid.y = 1.0
+		var u := _ease(tt / dur)
+		var offset := Vector3(lerpf(-0.7, 0.3, u), 0.3, 4.5)
+		if shot == "combo_close":
+			offset = Vector3(-1.8, 0.2, 3.6)
+		return [mid + offset, mid, 48.0, 0.0]
 
 ## Watches `a`'s blows on `f` from `from_t` on: the first that lands by `a`'s own weapon or body
 ## (J at least `min_j`) is the shot's moment (KEY), and calls `done` with it. Only watches: the
@@ -712,8 +778,9 @@ func _lodge() -> void:
 	var foe = _foe("recruit", Vector3(0.4, 0, 0.0), -PI * 0.5, {"main": "gladius", "armor": []})
 	var ff: Fighter = foe.f
 	foe.drive = func(_e): return {"look": {"yaw": -PI * 0.5, "pitch": 0.0}, "main": {"x": 0.35, "y": 1.1}, "off": {"x": -0.4, "y": 0.1}}
+	hero_inp = {"look": {"yaw": PI * 0.5, "pitch": 0.0}, "main": {"x": 0.75, "y": 1.5}}
 	await _steps(90)
-	dur = 3.4
+	dur = 6.5 if shot == "lodge_wide" else 3.4
 	var stuck := [-1.0]
 	hero.lodged.connect(func(_f, _w, what: String, _at):
 		if what == "in" and stuck[0] < 0.0:
@@ -722,9 +789,9 @@ func _lodge() -> void:
 	_lodges()
 	var strokes := [[0.9, 0.24, Vector2(0.75, 1.5), Vector2(-0.3, -0.2)]]
 	tick_fn = func(tt: float) -> void:
-		var s := _stroke_at(tt, strokes, Vector2(0.3, 0.6))
+		var s := _stroke_at(tt, strokes, Vector2(0.75, 1.5) if tt < 0.9 else Vector2(0.3, 0.6))
 		var mk: Vector2 = s[0]
-		var pull: bool = float(stuck[0]) >= 0.0 and tt > float(stuck[0]) + 0.55
+		var pull: bool = float(stuck[0]) >= 0.0 and tt > float(stuck[0]) + (1.0 if shot == "lodge_wide" else 0.55)
 		if pull:
 			mk = Vector2(0.65, 0.2)
 		hero_inp = {"look": {"yaw": PI * 0.5, "pitch": 0.0}, "main": {"x": mk.x, "y": mk.y}, "power": s[1] and stuck[0] < 0.0, "mz": -0.7 if pull else 0.0}
@@ -733,6 +800,10 @@ func _lodge() -> void:
 		var c: Vector3 = ff.by_name.upperArmR.global_position if is_instance_valid(ff.by_name.get("upperArmR")) else ff.torso.global_position
 		var eye := c + Vector3(1.25, 0.1, 0.95)
 		return [eye, c + Vector3(-0.35, -0.1, 0), 42.0, eye.distance_to(c)]
+	if shot == "lodge_wide":
+		# The joke needs both bodies and a locked camera; cutting to the wound hides the tug.
+		cam_fn = _still(func(_tt: float) -> Array:
+			return [Vector3(-0.1, 1.2, 4.4), Vector3(0.05, 1.0, 0), 46.0, 0.0])
 
 ## THE ARMOUR STRUCK (20): the champion in his armour stands to a brute's hammer; two blows land on
 ## his cuirass, one each way, its plates knocked off. Low, three-quarters.
@@ -974,7 +1045,7 @@ func _head() -> void:
 		var v0 := OS.get_environment("HEAD_STROKE").split(",")
 		hero_inp.main = {"x": float(v0[0]), "y": float(v0[1])}
 	await _steps(90)
-	dur = 4.5
+	dur = 6.0
 	# The axe up and over from his right, down into the man's head; and again.
 	var strokes := [[1.0, 0.26, Vector2(0.3, 1.6), Vector2(-0.5, -0.2)], [2.1, 0.26, Vector2(0.3, 1.6), Vector2(-0.5, -0.2)]]
 	if OS.get_environment("HEAD_STROKE") != "":
@@ -1328,7 +1399,7 @@ func _physician() -> void:
 	var st: Vector3 = Yard.STATIONS.physician.p
 	hero.teleport(st + Vector3(2.6, 0, 3.2))
 	await _steps(60)
-	dur = 3.6
+	dur = 5.0
 	var stage := [0]
 	tick_fn = func(tt: float) -> void:
 		if stage[0] == 0:
@@ -1346,6 +1417,8 @@ func _physician() -> void:
 					offer = String(o.id)
 			m.rebuild(m.me, Body.sanitize(Body.apply(body, offer)))
 			hero = m.me.f
+			if offer != "" and hero.arm.L.fore.prosthetic == "hook":
+				_mark("prosthetic")
 			hero_inp["off"] = {"x": -0.25, "y": 0.8}   # (he lifts the hook to look at it)
 			menu._close_overlay()
 			if menu.hud:

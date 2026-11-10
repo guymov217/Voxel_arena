@@ -1,30 +1,11 @@
 #!/usr/bin/env python3
-"""WRECKSMITH - the 75-second trailer, made from the game itself, shot by shot to its production
-script (tools/TRAILER.md): 31 shots at the script's own times (the armourer's bench left out),
-its eight lines of text, the logo and WISHLIST NOW ON STEAM.
+"""Record and edit the 75-second WRECKSMITH director's cut from the game.
 
-Every shot is staged in the game and recorded by its movie maker (tests/trailer75.gd): the men
-are put where they stand and driven as a player's mouse and keys drive them; every blow, cut,
-fall and grab is the game's own. Several shots are one scene filmed again by another camera
-(the scene goes the same way every time). The editor (tools/trailer_edit.py) cuts each shot on
-its moment (the blow it is cut on, read from the scene's tags), eases into and out of slow motion
-where the script asks for it, blends the 120 game frames a second into the film's (a film
-camera's motion blur), grades the picture a little, lays the lines of text over it, and mixes the
-game's own sound under the game's own music (art/audio/music), brought to -14 LUFS.
-
-    python tools/make_trailer75.py             -> docs/store/trailer75.mp4 (1920x1080, 30 fps)
-                                                  docs/store/trailer75_clean.mp4 (no text)
-                                                  docs/store/trailer75_cut.json (the cut list)
-    TRAILER_FPS=60                             -> the same at 60 frames a second
-    python tools/make_trailer75.py --preview   -> a rough cut at 640x360 from 30 fps recordings
-                                                  (no graphics card: a computer without one
-                                                  renders in software, slowly)
-    python tools/make_trailer75.py --fake      -> the whole cut from made-up footage (a check of
-                                                  the timing, the text and the sound)
-    --shots 1,2,24b                            -> record only those (again)
-
-Needs Godot 4.7 with a display, ffmpeg (with ffprobe), numpy and Pillow. Work files go to
-<trailer_work>/t75 (or t75_preview); shots already recorded are kept until the game changes."""
+See tools/TRAILER.md for the storyboard and quality gates. No failed take is
+exported as black or a freeze frame. --preview is a 640x360 rough cut; --fake
+checks the editing pipeline with test patterns, never gameplay. --audit runs
+the choreography without rendering; --plan prints the editorial shot list.
+"""
 import hashlib
 import json
 import math
@@ -49,102 +30,15 @@ PROJ = os.path.join(TMP, "project")
 FPS = int(os.environ.get("TRAILER_FPS", "30"))
 W, H = (640, 360) if PREVIEW else (1920, 1080)
 REC_FPS = 30 if PREVIEW else 120
-FONT = os.path.join(HERE, "fonts", "InterDisplay-Black.otf")
+FONT = os.path.join(ROOT, "art", "fonts", "AlegreyaSans-Bold.ttf")
 LOGO = os.path.join(OUT, "capsules", "logo.png")
 MUSIC = os.path.join(ROOT, "art", "audio", "music")
-LENGTH = 75.0
 
-# ---------- the script ----------
-
-# Each shot: [number, start, end, what it shows, the recording, where it is cut]. Where it is
-# cut: ("key", s): the shot's moment (its KEY tag: the blow it cuts on) s film seconds into the
-# shot (negative: that long before it starts); ("mark", what, s): the same for a MARK; ("t", s):
-# from s seconds into the scene. slow: [(seconds from the moment, speed), ...] the speed of the
-# picture eased between those (1 before the first and after the last); cuts: a shot made of
-# several short pieces [(recording, scene seconds, length)].
-SHOTS = [
-    [1, 0.0, 1.5, "ECU low side, still: the axe comes down on the man's arm; cut on the blow", "1", ("key", 1.45), None],
-    [2, 1.5, 3.0, "CU three-quarters low: the cut arm, the axe on into his thigh and stuck there; a short slow motion", "2", ("key", 0.05), [(0.0, 0.45), (0.45, 0.45), (0.75, 1.0)]],
-    [3, 3.0, 5.0, "WS a little high, going with them: the champion presses on, the man gives ground", "3", ("key", -0.9), None],
-    [4, 5.0, 7.0, "WS high over the arena, pushing in: the two of them engaged in the middle", "4", ("key", 0.6), None],
-    [5, 7.0, 10.0, "FS low, going along: the champion comes on, the man turns to face him", "5", ("t", 0.2), None],
-    [6, 10.0, 13.0, "Medium-wide, side on: they trade blows, sword on shield", "6", ("key", 0.5), None],
-    [7, 13.0, 15.0, "MS low before the champion: the warhammer down on the man; a ramp on the blow", "7", ("key", 1.15), [(0.02, 0.35), (0.4, 0.35), (0.65, 1.0)]],
-    [8, 15.0, 17.0, "CU side: the mace into his shin", "8", ("key", 1.0), None],
-    [9, 17.0, 19.0, "CU a little high, side on: the second chop into the same wound takes his arm off; slow at the cut", "9", ("key", 0.85), [(-0.02, 0.35), (0.45, 0.35), (0.7, 1.0)]],
-    [10, 19.0, 21.0, "FS side on, going with him: the warhammer into his legs, and he goes down", "10", ("key", 0.6), None],
-    [11, 21.0, 23.0, "MS three-quarters, a little high: the champion takes hold of him and throws him", "11", ("key", 0.55), None],
-    [12, 23.0, 25.0, "Medium-close, side on: the kick in his chest", "12", ("key", 0.9), None],
-    [13, 25.0, 27.0, "CU three-quarters from behind him: the axe stuck in him, wrenched out", "13", ("mark", "free", 1.55), None],
-    [14, 27.0, 29.0, "Medium-wide three-quarters, pushing in: the forge", "14f", ("t", 0.0), None],
-    [15, 29.0, 32.0, "CU a little high: the axe built block by block (three cuts)", None, None, None],
-    [16, 32.0, 34.0, "CU side on: the axe done, the forge's camera round it", "16", ("key", 0.15), None],
-    [17, 34.0, 39.0, "The same axe in the arena: close on its head, then into a man", "17", ("key", 2.2), None],
-    [20, 39.0, 45.0, "FS low three-quarters: a brute's hammer on his armour, twice", "20", ("key", 1.3), None],
-    [21, 45.0, 49.0, "EWS very low, rising: the cyclops comes at the champion", "21", ("t", 0.0), None],
-    [22, 49.0, 52.0, "FS low, side on: the cyclops's blow, the champion thrown", "22", ("key", 1.3), None],
-    [23, 52.0, 55.0, "Medium-wide from behind the champion: up again, his cuts into the giant's legs", "23", ("mark", "cut giant", 0.8), None],
-    [24, 55.0, 58.0, "Low three-quarters, two quick cuts: the big lion's charge bowls the champion over; the minotaur's axe on him", None, None, None],
-    [25, 58.0, 60.0, "WS a little high: the champion crossing the yard", "25", ("t", 0.6), None],
-    [26, 60.0, 62.0, "MS over the shoulder: at the smith's, his stall opened", "26", ("key", 1.4), None],
-    [27, 62.0, 64.0, "MS three-quarters: the physician fits a hook to the stump", "27", ("key", 1.0), None],
-    [28, 64.0, 66.0, "FS a little low: training on the sparring partner", "28", ("t", 0.35), None],
-    [29, 66.0, 68.0, "WS low three-quarters: the melee, the champion in it", "29", ("t", 0.4), None],
-    [30, 68.0, 70.0, "CU side on: the axe down into his head, the blow he dies of; a ramp into slow motion", "30", ("key", 0.75), [(-0.05, 0.25), (0.5, 0.25), (0.8, 1.0)]],
-    # (The kill cam slows right down round the blow: it comes 5.1 s into its replay.)
-    [31, 70.0, 72.0, "The game's own kill cam of it", "31", ("mark", "killcam", -3.8), None],
-    [32, 72.0, 73.0, "A little high, three-quarters: the champion over the man", "32", ("key", -1.5), None],
-    [33, 73.0, 75.0, "Black, the logo, the lines, WISHLIST NOW ON STEAM", None, None, None],
-]
-# The pieces of 15 (the haft, the head, the edge going on) and of 24 (the big lion's charge
-# bowling the champion over, the minotaur's axe on him): [recording, how it is cut, film seconds].
-CUTS = {
-    15: [["15", ("t", 1.0), 1.0], ["15", ("t", 3.2), 1.0], ["15", ("t", 5.1), 1.0]],
-    24: [["24b", ("key", 0.55), 1.5], ["24c", ("key", 0.5), 1.5]],
-}
-# The lines (PART 3 of the script), at its times.
-TEXT = [
-    (5.0, 8.0, "PHYSICS-DRIVEN COMBAT"),
-    (13.0, 17.0, "EVERY HIT MATTERS"),
-    (17.0, 23.0, "BRUTAL. PHYSICAL. UNPREDICTABLE."),
-    (27.0, 34.0, "BUILD YOUR OWN WEAPONS"),
-    (38.0, 45.0, "CUSTOMIZE YOUR GLADIATOR"),
-    (45.0, 58.0, "FACE THE UNTHINKABLE"),
-    (58.0, 66.0, "FIGHT. HEAL. PREPARE."),
-]
-END_LINES = ["BUILD YOUR WEAPON.", "ENTER THE ARENA.", "SURVIVE THE FIGHT."]
-END_CALL = "WISHLIST NOW ON STEAM"
-# The music (PART 4): the game's own pieces, one to each stretch of the curve, the strongest (or
-# the quietest) stretch of each.
-MUSIC_PLAN = [
-    (0.0, 5.0, "boss2", "hard"),      # impact and tension
-    (5.0, 13.0, "fight", "mid"),      # the rhythm
-    (13.0, 27.0, "fight3", "hard"),   # the combat building
-    (27.0, 45.0, "forge", "mid"),     # a change of rhythm: making and fitting out
-    (45.0, 58.0, "boss", "hard"),     # the giants
-    (58.0, 66.0, "yard", "soft"),     # the yard, quieter
-    (66.0, 73.0, "boss2", "hard"),    # the finale
-    (73.0, 75.0, "victory", "start"),  # the logo's sting
-]
-# What each recording must have caught for its shot (KEY: its moment; the rest, MARKs): a take
-# without them is filmed again with the next take's dice (SHOT_SEED). The shots of one scene seen by
-# different cameras (GROUPS) are all filmed with the same take, so a cut between them is one moment.
-NEEDS = {
-    "1": ["KEY"], "2": ["KEY"], "3": ["KEY"],
-    "4": ["KEY"], "5": ["KEY"], "6": ["KEY"],
-    "7": ["KEY", "down foe"], "8": ["KEY"], "9": ["severed foe"], "10": ["KEY", "down foe"],
-    "11": ["grab", "down foe"], "12": ["KEY"], "13": ["lodged", "free"],
-    "14f": ["KEY"], "15": ["KEY"], "16": ["KEY"], "17": ["KEY"],
-    "20": ["KEY"],
-    "21": ["KEY"], "22": ["KEY"], "23": ["cut giant"], "24b": ["KEY"], "24c": ["KEY"],
-    "26": ["KEY"], "27": ["KEY"], "28": ["KEY"], "29": ["KEY"],
-    "30": ["KEY"], "31": ["killcam"], "32": ["KEY"],
-}
-GROUPS = [["1", "2", "3"], ["4", "5", "6"], ["14f", "15", "16"], ["21", "22"], ["30", "31", "32"]]
-TAKES = [11, 12, 13, 14, 15]
-
-DROP = (70.05, 71.25)                 # the music drops away under the kill cam, then hits hard on its blow
-BOOMS = [1.45, 71.3, 73.0]            # a deep hit under these moments (the hook's blow, the kill cam's, the logo)
+# The director's cut is one editable source of truth, shared with validation and tests.
+from trailer_plan import (SHOTS, CUTS, TEXT, END_LINES, END_CALL, MUSIC_PLAN,
+                          NEEDS, GROUPS, TAKES, DROPS, BOOMS, RISES, VISIBLE,
+                          END_START, LENGTH)
+END_CALL = os.environ.get("TRAILER_CTA", END_CALL).strip()
 
 # ---------- running Godot ----------
 
@@ -198,7 +92,8 @@ def run(args, env=None, log=None):
     if os.path.exists(tags):
         os.remove(tags)
     e["TAG_LOG"] = tags
-    p = subprocess.run(args, env=e, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    p = subprocess.run(args, env=e, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                       timeout=int(os.environ.get("TRAILER_TIMEOUT", "1800")))
     lines = [ln.strip() for ln in (p.stdout or "").splitlines()]
     if os.path.exists(tags):
         with open(tags) as f:
@@ -206,30 +101,47 @@ def run(args, env=None, log=None):
     if log:
         with open(log, "w") as f:
             f.write("\n".join(lines))
+    # Godot 4.6's dummy renderer reports shutdown-only RID leaks in this project,
+    # including on the unchanged branch. Preserve those in the log; they cannot
+    # validate/invalidate choreography. Any script error or earlier engine error is fatal.
+    completed = False
+    errors = []
+    for ln in lines:
+        if ln.startswith("REC_END "):
+            completed = True
+        shutdown_leak = ("at exit" in ln or "RID allocations" in ln) and completed
+        if "SCRIPT ERROR:" in ln or (ln.startswith("ERROR:") and not shutdown_leak):
+            errors.append(ln)
+    if p.returncode or errors:
+        raise RuntimeError("Godot failed (%s): %s\n%s" % (p.returncode, log or "import", "\n".join(errors[:8] or lines[-12:])))
     return lines
 
 
-def stamp():
+def stamp(engine=""):
     """What the shots are filmed from: the game's scripts, data, shaders and scenes, the probe and
     these tools, by their contents (line ends aside)."""
     h = hashlib.sha1()
-    exts = (".gd", ".json", ".gdshader", ".tscn", ".tres", ".py", ".cfg")
-    for top in ("scripts", "data", "shaders", "scenes", "tests/trailer75.gd", "tests/capsuleart.gd", "tools/make_trailer75.py", "project.godot"):
+    h.update((engine + str(REC_FPS) + os.environ.get("FORCE_LOOK", "human") + os.environ.get("FORCE_QUALITY", "high")
+              + os.environ.get("TRAILER_RENDERER", "forward_plus") + os.environ.get("TRAILER_SSAA", "1.5")
+              + os.environ.get("TRAILER_AA", "msaa4")).encode())
+    exts = (".gd", ".json", ".gdshader", ".tscn", ".tres", ".py", ".cfg", ".so", ".dll", ".glb", ".ogg", ".png")
+    for top in ("scripts", "data", "shaders", "scenes", "art", "native/bin", "tests/trailer75.gd", "tests/capsuleart.gd", "tools/make_trailer75.py", "tools/trailer_plan.py", "tools/trailer_edit.py", "project.godot"):
         base = os.path.join(ROOT, top)
         files = [base] if os.path.isfile(base) else [os.path.join(d, f) for d, _, fs in os.walk(base) for f in fs if f.endswith(exts)]
         for f in sorted(files):
             h.update(os.path.relpath(f, ROOT).replace("\\", "/").encode())
             with open(f, "rb") as fh:
-                h.update(fh.read().replace(b"\r\n", b"\n"))
+                content = fh.read()
+                h.update(content.replace(b"\r\n", b"\n") if f.endswith((".gd", ".json", ".gdshader", ".tscn", ".tres", ".py", ".cfg")) else content)
     return h.hexdigest()
 
 
-def fresh():
+def fresh(engine=""):
     """Shots kept from a run made from another version of the game are thrown away (every shot is
     filmed from the game as it is now); within one version a stopped run carries on."""
     os.makedirs(WORK, exist_ok=True)
     sp = os.path.join(WORK, "stamp.txt")
-    now = stamp()
+    now = stamp(engine)
     was = open(sp).read().strip() if os.path.exists(sp) else ""
     if was != now:
         for f in os.listdir(WORK):
@@ -254,7 +166,7 @@ def fresh_project(g):
 
 def tags_of(lines):
     """The scene's tags: {rec0, end, key (scene seconds), marks {what: seconds}, hits [...]}."""
-    out = {"rec0": None, "end": None, "key": None, "marks": {}, "hits": []}
+    out = {"rec0": None, "end": None, "key": None, "marks": {}, "hits": [], "seconds": None}
     for ln in lines:
         p = ln.split()
         if not p:
@@ -263,6 +175,8 @@ def tags_of(lines):
             out["rec0"] = int(p[1])
         elif p[0] == "REC_END":
             out["end"] = int(p[1])
+        elif p[0] == "SCENE_END" and len(p) >= 2:
+            out["seconds"] = float(p[1])
         elif p[0] == "KEY" and len(p) >= 3 and out["key"] is None:
             out["key"] = float(p[2])
         elif p[0] == "MARK" and len(p) >= 4:
@@ -299,7 +213,10 @@ def record(g, shot, take=11):
     env = {"SHOT": shot, "SHOT_SEED": str(take)}
     if PREVIEW:
         env.update({"TRAILER_SSAA": "1", "TRAILER_AA": "fxaa"})
-    lines = run([g, "--write-movie", avi, "--fixed-fps", str(REC_FPS), "--resolution", "%dx%d" % (W, H), "--path", PROJ, "--", "--probe", "trailer75"],
+    renderer = os.environ.get("TRAILER_RENDERER", "forward_plus")
+    if renderer not in ("forward_plus", "mobile", "gl_compatibility"):
+        raise ValueError("Unknown TRAILER_RENDERER")
+    lines = run([g, "--rendering-method", renderer, "--write-movie", avi, "--fixed-fps", str(REC_FPS), "--resolution", "%dx%d" % (W, H), "--path", PROJ, "--", "--probe", "trailer75"],
                 env, os.path.join(WORK, shot + ".rec"))
     tg = tags_of(lines)
     tg["take"] = take
@@ -317,25 +234,32 @@ def record(g, shot, take=11):
 
 
 def record_all(g, wanted):
-    """Every recording: a scene's shots with one take, the first take whose first shot caught all
-    it should; the others of the scene with the same take. Returns {shot: what it lacks}."""
+    """Accept a camera group only when ALL angles pass with the SAME seed."""
     lacks = {}
     done = set()
     for r in wanted:
         if r in done:
             continue
         group = next((gr for gr in GROUPS if r in gr), [r])
-        group = [x for x in group if x in wanted]
-        chosen = TAKES[0]
+        # Rerecord the entire group even when --shots names only one angle.
+        group = [x for x in group if x in recordings()]
+        failures = {}
         for take in TAKES:
-            lack = record(g, group[0], take)
-            chosen = take
-            if not lack:
+            failures = {x: record(g, x, take) for x in group}
+            failures = {x: why for x, why in failures.items() if why}
+            if not failures:
+                try:
+                    metas = {x: json.load(open(os.path.join(WORK, x + ".json"))) for x in group}
+                    check_continuity(group, metas)
+                    for x in group:
+                        source = ed.Source(os.path.join(WORK, x + ".avi"))
+                        validate_recording(x, source, metas[x])
+                except ValueError as e:
+                    failures[group[0]] = [str(e)]
+            if not failures:
                 break
-            print("  %s: filmed again with another take" % group[0])
-        lacks[group[0]] = record(g, group[0], chosen) if lack else []
-        for x in group[1:]:
-            lacks[x] = record(g, x, chosen)
+            print("  %s: retrying group: %s" % (", ".join(group), failures), flush=True)
+        lacks.update(failures)
         done.update(group)
     return {k: v for k, v in lacks.items() if v}
 
@@ -352,6 +276,107 @@ def recordings():
                 out.append(p[0])
     return out
 
+
+def validate_plan():
+    """Reject gaps, overlaps, duplicate ids, off-grid cuts and unknown source requirements."""
+    if FPS not in (30, 60):
+        raise ValueError("TRAILER_FPS must be 30 or 60")
+    cursor, seen = 0.0, set()
+    for num, a, b, _what, rec, how, _slow in SHOTS:
+        if num in seen or abs(a - cursor) > 1e-6 or b <= a:
+            raise ValueError("invalid timeline at shot %s" % num)
+        if any(abs(v * FPS - round(v * FPS)) > 1e-6 for v in (a, b)):
+            raise ValueError("shot %s is not on a film frame" % num)
+        if num != 33 and num not in CUTS and (not rec or not how):
+            raise ValueError("shot %s has no source" % num)
+        if num in CUTS and abs(sum(p[2] for p in CUTS[num]) - (b - a)) > 1e-6:
+            raise ValueError("shot %s: insert lengths do not add up" % num)
+        seen.add(num)
+        cursor = b
+    if abs(cursor - LENGTH) > 1e-6 or SHOTS[-1][1] != END_START:
+        raise ValueError("incorrect end card timing")
+    if any(a < 0 or b > END_START or b <= a for a, b, _text in TEXT):
+        raise ValueError("invalid text cue")
+
+
+def check_continuity(group, metas):
+    """Different cameras must have matching gameplay event times, not just matching seed labels."""
+    first = metas[group[0]]
+    for rec in group[1:]:
+        other = metas[rec]
+        if other.get("take") != first.get("take"):
+            raise ValueError("mixed takes in %s" % group)
+        for name in NEEDS.get(group[0], []):
+            a = first.get("key") if name == "KEY" else first.get("marks", {}).get(name)
+            b = other.get("key") if name == "KEY" else other.get("marks", {}).get(name)
+            if a is None or b is None or abs(a - b) > 2.0 / 120.0:
+                raise ValueError("continuity drift: %s / %s" % (rec, name))
+
+
+def require_visible(num, seg, meta):
+    t0 = meta["rec0"] / seg.src.fps
+    lo, hi = seg.plan[0][0] / seg.src.fps, seg.plan[-1][1] / seg.src.fps
+    for event in VISIBLE.get(num, []):
+        event_time = meta.get("marks", {}).get(event)
+        if event_time is None or not lo - 1.0 / FPS <= t0 + event_time <= hi:
+            raise ValueError("shot %s: %s is outside the edit" % (num, event))
+
+
+def validate_recording(rec, source, meta):
+    if meta.get("rec0") is None or meta.get("end") is None or meta.get("seconds") is None:
+        raise ValueError("%s: incomplete recording metadata" % rec)
+    lacks = missing(rec, meta)
+    if lacks:
+        raise ValueError("%s: %s" % (rec, ", ".join(lacks)))
+    for num, a, b, _what, recording, how, slow in SHOTS:
+        for prec, phow, duration in CUTS.get(num, [[recording, how, b - a]]):
+            if prec == rec:
+                seg = piece(source, meta, phow, duration, slow if num not in CUTS else None)
+                require_visible(num, seg, meta)
+
+
+def audit(g, wanted):
+    """Headless contact/timing audit, with the same physics rate as full-quality recording.
+
+    This does not certify framing or rendered audio. That still needs a real preview.
+    """
+    from types import SimpleNamespace
+    report, done = {}, set()
+    for rec in wanted:
+        if rec in done:
+            continue
+        group = next((gr for gr in GROUPS if rec in gr), [rec])
+        metas, errors = {}, {}
+        for take in TAKES:
+            errors = {}
+            for x in group:
+                logfile = os.path.join(WORK, x + ".audit.log")
+                lines = run([g, "--headless", "--fixed-fps", "120", "--path", PROJ, "--", "--probe", "trailer75"],
+                            {"SHOT": x, "SHOT_SEED": str(take)}, logfile)
+                meta = tags_of(lines)
+                meta["take"] = take
+                metas[x] = meta
+                try:
+                    source = SimpleNamespace(fps=120, dur=meta.get("seconds") or 0.0)
+                    validate_recording(x, source, meta)
+                except ValueError as e:
+                    errors[x] = str(e)
+            if not errors:
+                try:
+                    check_continuity(group, metas)
+                except ValueError as e:
+                    errors[rec] = str(e)
+            print("audit %s / take %s: %s" % (group, take, errors or "PASS"), flush=True)
+            if not errors:
+                break
+        for x in group:
+            report[x] = {"metadata": metas[x], "error": errors.get(x)}
+        done.update(group)
+    with open(os.path.join(WORK, "audit.json"), "w") as f:
+        json.dump({"visual_review": False, "shots": report}, f, indent=2)
+    if any(r["error"] for r in report.values()):
+        raise ValueError("Choreography audit failed; see %s" % os.path.join(WORK, "audit.json"))
+
 # ---------- made-up footage (--fake) ----------
 
 def fake(shot):
@@ -360,13 +385,15 @@ def fake(shot):
     meta = os.path.join(WORK, shot + ".json")
     if os.path.exists(avi) and os.path.exists(meta):
         return
-    secs = 14.0 if shot == "31" else 9.0
+    secs = 16.0
     subprocess.check_call(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=%dx%d:rate=%d:duration=%.2f" % (W, H, REC_FPS, secs),
                            "-f", "lavfi", "-i", "sine=frequency=%d:sample_rate=48000:duration=%.2f" % (200 + 13 * len(shot) * 7, secs),
                            "-vf", "drawtext=fontfile='%s':text='SHOT %s':fontsize=%d:fontcolor=white:x=40:y=40" % (FONT.replace("\\", "/").replace(":", "\\:"), shot, H // 8),
                            "-c:v", "mjpeg", "-q:v", "4", "-c:a", "pcm_s16le", "-shortest", avi])
-    tg = {"rec0": REC_FPS // 2, "end": int((secs - 0.6) * REC_FPS), "key": 2.0,
-          "marks": {"free": 2.6, "killcam": 4.0, "down giant": 2.2}, "hits": []}
+    tg = {"rec0": REC_FPS // 2, "end": int((secs - 0.6) * REC_FPS), "key": 2.5,
+          "marks": {n: 2.3 for n in NEEDS.get(shot, []) if n != "KEY"}, "hits": [], "seconds": 15.0}
+    tg["marks"].update({"lodged": 2.5, "free": 3.6, "combo first": 1.1, "combo return": 2.2,
+                        "combo kick": 3.8, "prosthetic": 2.5, "cut giant": 1.2, "down foe": 2.9})
     with open(meta, "w") as f:
         json.dump(tg, f)
 
@@ -407,14 +434,16 @@ def piece(src, meta, how, secs, slow=None):
         t_in = ed.lead_for(src.fps, FPS, moment, sp, into, lo=0.0, hi=into * 4.0 + 1.0) if into > 0.0 else moment
     else:
         t_in = moment + (-into) * 1.0
-    t_in = max(1.0 / src.fps, t_in)
-    seg = ed.Segment(src, t_in, src.dur, sp)
+    if t_in < t0 - 1.0 / src.fps:
+        raise ValueError("insufficient lead-in: the edit would include scene setup")
+    t_in = max(t0, t_in)
+    t_out = min(src.dur, t0 + meta["seconds"]) if meta.get("seconds") is not None else src.dur
+    seg = ed.Segment(src, t_in, t_out, sp)
     seg.prepare(FPS)
     n = int(round(secs * FPS))
     short = n - len(seg.plan)
     if short > 0:
-        last = seg.plan[-1] if seg.plan else (t_in * src.fps, t_in * src.fps + 1)
-        seg.plan += [last] * short
+        raise ValueError("insufficient tail: %d missing frames (freeze frames are forbidden)" % short)
     seg.plan = seg.plan[:n]
     seg.short = max(0, short)
     seg.t_in = t_in
@@ -440,20 +469,15 @@ def cut(srcs, metas):
         made = 0
         for k, (prec, phow, psecs) in enumerate(pieces):
             n = total - made if k == len(pieces) - 1 else int(round(psecs * FPS))
-            if prec not in srcs:
-                seg = ed.Segment(None, dur=n / FPS)
-                seg.prepare(FPS)
-                sheet.append({"shot": num, "start": a + made / FPS, "end": a + (made + n) / FPS, "what": what, "source": "MISSING: recording %s" % prec})
-            else:
-                try:
-                    seg = piece(srcs[prec], metas[prec], phow, n / FPS, slow if len(pieces) == 1 else None)
-                    sheet.append({"shot": num, "start": round(a + made / FPS, 3), "end": round(a + (made + n) / FPS, 3), "what": what, "source": prec + ".avi",
-                                  "in": round(seg.t_in, 3), "moment": round(seg.moment, 3), "slow": slow if len(pieces) == 1 else None,
-                                  "short_frames": seg.short})
-                except ValueError as e:
-                    seg = ed.Segment(None, dur=n / FPS)
-                    seg.prepare(FPS)
-                    sheet.append({"shot": num, "start": a + made / FPS, "end": a + (made + n) / FPS, "what": what, "source": "MISSING: %s in %s" % (e, prec)})
+            if prec not in srcs or prec not in metas:
+                raise ValueError("shot %s: missing recording %s" % (num, prec))
+            seg = piece(srcs[prec], metas[prec], phow, n / FPS, slow if len(pieces) == 1 else None)
+            require_visible(num, seg, metas[prec])
+            sheet.append({"shot": num, "start": round(a + made / FPS, 3), "end": round(a + (made + n) / FPS, 3),
+                          "what": what, "source": prec + ".avi", "take": metas[prec].get("take"),
+                          "in": round(seg.t_in, 3), "out": round(seg.plan[-1][1] / seg.src.fps, 3),
+                          "moment": round(seg.moment, 3), "slow": slow if len(pieces) == 1 else None,
+                          "short_frames": 0})
             segs.append(seg)
             made += n
     return segs, sheet
@@ -471,6 +495,12 @@ def card(path, lines, size, anchor="lower-left", sub=None):
     from PIL import Image, ImageDraw, ImageFilter
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dr = ImageDraw.Draw(im)
+    # Long copy must fit even in the 360p review copy, with the same safe margins.
+    while size > 12:
+        f = _font(size)
+        if max(sum(dr.textlength(ch, font=f) for ch in ln) + size * 0.06 * max(0, len(ln) - 1) for ln in lines) <= W * 0.88:
+            break
+        size -= 1
     f = _font(size)
     track = size * 0.06
     widths = []
@@ -512,6 +542,12 @@ def end_cards(dir_):
             lw = int(W * 0.46)
             lg = logo.resize((lw, int(logo.height * lw / logo.width)), Image.LANCZOS)
             im.alpha_composite(lg, ((W - lw) // 2, int(H * (0.3 if lines else 0.42)) - lg.height // 2))
+        else:
+            # A missing optional artwork must never leave an unbranded end card.
+            from PIL import ImageDraw
+            dr = ImageDraw.Draw(im)
+            f = _font(int(H * 0.105))
+            dr.text((W * 0.5, H * 0.32), "WRECKSMITH", font=f, fill="white", anchor="mm")
         if lines:
             tp = os.path.join(dir_, name + "_t.png")
             card(tp, lines, int(H * (0.05 if len(lines) > 1 else 0.065)), anchor="centre")
@@ -536,10 +572,11 @@ def overlay_graph(cards, ends, with_text):
     if with_text:
         for (a, b, _), p in zip(TEXT, cards):
             items.append((a, b, p, True))
-        items.append((73.0, 74.0, ends[0], False))
-        items.append((74.0, 75.0, ends[1], False))
+        items.append((END_START, LENGTH if not END_CALL else END_START + 2.0, ends[0], False))
+        if END_CALL:
+            items.append((END_START + 2.0, LENGTH, ends[1], False))
     else:
-        items.append((73.0, 75.0, ends[2], False))
+        items.append((END_START, LENGTH, ends[2], False))
     inputs = []
     for a, b, p, slide in items:
         inputs.append(["-loop", "1", "-t", "%.2f" % LENGTH, "-i", p])
@@ -560,6 +597,64 @@ def load_audio(path):
     return np.frombuffer(raw, np.float32).reshape(-1, 2).copy()
 
 
+def music_envelope(n):
+    """Smooth duck/recovery; silence is deliberate space for foley, not an abrupt edit."""
+    g = np.ones(n, np.float32)
+    for start, end, level in DROPS:
+        a, b = int(start * ed.AR), int(end * ed.AR)
+        ramp = min(int(0.1 * ed.AR), a, n - b)
+        g[a:b] = level
+        if ramp > 0:
+            g[a-ramp:a] = np.linspace(1.0, level, ramp)
+            g[b:b+ramp] = np.linspace(level, 1.0, ramp)
+    # Let the logo's ring-out end cleanly.
+    tail = min(n, int(0.45 * ed.AR))
+    g[-tail:] *= np.linspace(1.0, 0.0, tail)
+    return g
+
+
+def riser(start, end, n):
+    """Original restrained air/metal swell: an editorial transition, not a fake weapon sound."""
+    out = np.zeros((n, 2), np.float32)
+    a, b = max(0, int(start * ed.AR)), min(n, int(end * ed.AR))
+    if b <= a:
+        return out
+    u = np.linspace(0.0, 1.0, b-a, dtype=np.float32)
+    rng = np.random.default_rng(a)
+    noise = rng.standard_normal(b-a).astype(np.float32)
+    noise = np.convolve(noise, np.ones(8, np.float32) / 8, mode="same")
+    phase = np.cumsum(110.0 + 380.0 * u ** 2) * (2 * math.pi / ed.AR)
+    envelope = u ** 2 * np.minimum(1.0, (1.0 - u) * 60.0)
+    signal = (noise * 0.6 + np.sin(phase) * 0.12) * envelope
+    out[a:b, 0] = signal
+    out[a:b, 1] = signal * 0.9
+    return out
+
+
+def contact_accents(segs, metas):
+    """Map observed high-energy hits through the speed ramps into the FILM clock."""
+    cues, offset = [], 0.0
+    for seg in segs:
+        if seg.src:
+            rec = os.path.splitext(os.path.basename(seg.src.path))[0]
+            meta = metas[rec]
+            scene0 = meta["rec0"] / seg.src.fps
+            lo = seg.plan[0][0] / seg.src.fps
+            hi = seg.plan[-1][1] / seg.src.fps
+            for hit in meta.get("hits", []):
+                at = scene0 + hit["t"]
+                if hit["J"] < 35 or not lo <= at <= hi:
+                    continue
+                film = offset + seg.film_time_of(at, FPS)
+                # Sparse accents retain the real metallic/flesh sound of the game.
+                if any(a <= film <= b for a, b, _level in DROPS):
+                    continue
+                if not cues or film - cues[-1] >= 0.65:
+                    cues.append(film)
+        offset += seg.duration(FPS)
+    return cues
+
+
 def music_bed():
     """The game's own pieces laid along the curve: for each stretch, the strongest (or the
     quietest) run of its piece that long, cross-faded into the next; the drop under the kill cam."""
@@ -570,7 +665,7 @@ def music_bed():
     for a, b, name, kind in MUSIC_PLAN:
         path = os.path.join(MUSIC, name + ".ogg")
         if not os.path.exists(path):
-            continue
+            raise ValueError("Missing score cue: %s" % path)
         x = load_audio(path)
         need = int((b - a) * ed.AR) + xf
         if len(x) < need:
@@ -602,13 +697,7 @@ def music_bed():
         end = min(n, start + len(seg))
         bed[start:end] += seg[:end - start]
         chosen.append({"from": a, "to": b, "piece": name + ".ogg", "at": round(off / ed.AR, 2)})
-    # The drop: the music falls away under the kill cam's first moment, then comes back hard.
-    d0, d1 = int(DROP[0] * ed.AR), int(DROP[1] * ed.AR)
-    ramp = int(0.08 * ed.AR)
-    g = np.ones(n, np.float32)
-    g[d0:d1] = 0.12
-    g[d0 - ramp:d0] = np.linspace(1.0, 0.12, ramp)
-    bed *= g[:, None]
+    bed *= music_envelope(n)[:, None]
     return bed, chosen
 
 
@@ -630,7 +719,7 @@ def boom(at, n):
     return out
 
 
-def mix(segs, path_wav):
+def mix(segs, path_wav, metas):
     """The game's own sound of every shot (slowed with the picture), the music under it giving
     way to the loudest of it, the hits; to -14 LUFS."""
     game = ed.render_sound(segs, FPS)
@@ -645,16 +734,43 @@ def mix(segs, path_wav):
     hits = np.zeros((n, 2), np.float32)
     for at in BOOMS:
         hits += boom(at, n)
-    out = game * 1.0 + bed * 0.6 * duck[:, None] + hits * 0.5
+    contacts = contact_accents(segs, metas)
+    for at in contacts:
+        hits += boom(at, n) * 0.18
+    for a, b in RISES:
+        hits += riser(a, b, n) * 0.5
+    out = game + bed * 0.6 * duck[:, None] + hits * 0.5
+    tail = min(n, int(0.18 * ed.AR))
+    out[-tail:] *= np.linspace(1.0, 0.0, tail)[:, None]
     raw = path_wav + ".raw.wav"
     ed.write_wav(raw, out / max(1.0, float(np.abs(out).max())))
     ed.loudnorm(raw, path_wav, tp=-1.5)   # (-1 asked of it came out at -0.9 after the AAC)
     os.remove(raw)
-    return chosen
+    return {"music": chosen, "contact_accents": contacts, "rises": RISES, "drops": DROPS,
+            "target_lufs": -14, "true_peak_ceiling_dbtp": -1.5}
 
 # ---------- the whole ----------
 
+def verify_export(path):
+    info = json.loads(subprocess.check_output([
+        "ffprobe", "-v", "error", "-count_frames", "-show_streams", "-show_format", "-of", "json", path]))
+    video = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+    sound = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
+    if not video or not sound:
+        raise ValueError("Export has missing picture or audio: %s" % path)
+    if (video["width"], video["height"]) != (W, H) or int(video["nb_read_frames"]) != round(LENGTH * FPS):
+        raise ValueError("Export dimensions/frame count mismatch: %s" % path)
+    if abs(float(info["format"]["duration"]) - LENGTH) > 0.1:
+        raise ValueError("Export duration mismatch: %s" % path)
+    return {"frames": int(video["nb_read_frames"]), "duration": float(info["format"]["duration"]),
+            "video_codec": video["codec_name"], "audio_codec": sound["codec_name"]}
+
 def main():
+    validate_plan()
+    if "--plan" in sys.argv:
+        for num, a, b, what, _rec, _how, _slow in SHOTS:
+            print("%02d  %05.1f-%05.1f  %s" % (num, a, b, what))
+        return
     ffmpeg_on_path()
     for tool in ("ffmpeg", "ffprobe"):
         if not shutil.which(tool):
@@ -662,16 +778,25 @@ def main():
     os.makedirs(WORK, exist_ok=True)
     only = None
     if "--shots" in sys.argv:
-        only = sys.argv[sys.argv.index("--shots") + 1].split(",")
+        ix = sys.argv.index("--shots") + 1
+        if ix >= len(sys.argv):
+            raise ValueError("--shots needs comma-separated recording ids")
+        only = sys.argv[ix].split(",")
     wanted = recordings()
+    if only and any(r not in wanted for r in only):
+        raise ValueError("Unknown recording. Choose from: %s" % ",".join(wanted))
     if FAKE:
         for r in wanted:
             fake(r)
     else:
-        fresh()
         g = godot()
+        engine = subprocess.check_output([g, "--version"], text=True).strip()
+        fresh(engine)
         print("Godot: %s" % g)
         fresh_project(g)
+        if "--audit" in sys.argv:
+            audit(g, only or wanted)
+            return
         if only:
             for r in only:
                 for ext in (".avi", ".json"):
@@ -679,8 +804,10 @@ def main():
                     if os.path.exists(p):
                         os.remove(p)
         lacks = record_all(g, only or wanted)
-        for r, lack in lacks.items():
-            print("  WARNING: %s still lacks %s in every take: look at it before using the trailer" % (r, ", ".join(lack)))
+        if lacks:
+            with open(os.path.join(WORK, "rejected_takes.json"), "w") as f:
+                json.dump(lacks, f, indent=2)
+            raise ValueError("No trailer exported: failed takes %s. See rejected_takes.json" % lacks)
         if only:
             return
     srcs, metas = {}, {}
@@ -690,6 +817,9 @@ def main():
             srcs[r] = ed.Source(avi)
             metas[r] = json.load(open(meta))
     segs, sheet = cut(srcs, metas)
+    if not FAKE:
+        for group in GROUPS:
+            check_continuity(group, metas)
     frames = sum(s.frames for s in segs)
     print("the cut: %d frames, %.2f s" % (frames, frames / FPS))
     cards = []
@@ -706,10 +836,13 @@ def main():
     enc = ed.encoder(pic, W, H, FPS, "[0:v]format=yuv420p[v]", crf=12 if not PREVIEW else 18)
     ed.render_picture(segs, W, H, FPS, lambda f: enc.stdin.write(f.tobytes()))
     enc.stdin.close()
-    enc.wait()
+    if enc.wait():
+        raise RuntimeError("Picture encoder failed; no final trailer was published")
     wav = os.path.join(WORK, "sound.wav")
-    chosen = mix(segs, wav)
+    sound = mix(segs, wav, metas)
+    pending = []
     for with_text, name in ((True, base + ".mp4"), (False, base + "_clean.mp4")):
+        temp_output = os.path.join(out_dir, "." + name + ".partial.mp4")
         graph, inputs = overlay_graph(cards, ends, with_text)
         args = ["ffmpeg", "-y", "-v", "error", "-i", pic]
         for x in inputs:
@@ -717,14 +850,18 @@ def main():
         args += ["-i", wav, "-filter_complex", graph, "-map", "[v]", "-map", "%d:a" % (len(inputs) + 1),
                  "-c:v", "libx264", "-preset", "slow", "-crf", "16" if not PREVIEW else "22", "-profile:v", "high", "-pix_fmt", "yuv420p",
                  "-r", str(FPS), "-c:a", "aac", "-b:a", "320k", "-ar", str(ed.AR), "-t", "%.3f" % LENGTH, "-movflags", "+faststart",
-                 os.path.join(out_dir, name)]
+                 temp_output]
         subprocess.check_call(args)
-        print("  -> %s" % os.path.join(out_dir, name))
+        verified = verify_export(temp_output)
+        pending.append((temp_output, os.path.join(out_dir, name), verified))
+    # Keep previous masters until both new encodes have actually passed verification.
+    for temp_output, destination, _verified in pending:
+        os.replace(temp_output, destination)
+        print("  -> %s" % destination)
     with open(os.path.join(out_dir, base + "_cut.json"), "w") as f:
-        json.dump({"fps": FPS, "size": [W, H], "shots": sheet, "text": TEXT, "music": chosen}, f, indent=1)
-    missing = [s for s in sheet if str(s.get("source", "")).startswith("MISSING")]
-    if missing:
-        print("missing: %s" % ", ".join("%d (%s)" % (s["shot"], s["source"]) for s in missing))
+        json.dump({"fps": FPS, "size": [W, H], "shots": sheet, "text": TEXT, "sound": sound,
+                   "exports": [v for _t, _d, v in pending],
+                   "synthetic_test": FAKE, "visual_review_required": True}, f, indent=1)
 
 
 if __name__ == "__main__":

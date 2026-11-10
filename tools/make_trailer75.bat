@@ -89,10 +89,11 @@ exit /b 1
 echo Godot: %GODOT%
 
 %PY% %SCRIPT% %*
+set "TRAILER_RESULT=%ERRORLEVEL%"
+if not "%TRAILER_RESULT%"=="0" echo Trailer export failed. Read the errors above; the previous masters were kept.
 echo.
 pause
-endlocal
-exit /b 0
+endlocal & exit /b %TRAILER_RESULT%
 
 rem %1: an ffmpeg.exe, the bin folder it is in, or a folder ffmpeg was unzipped into.
 :tryff
