@@ -30,7 +30,8 @@ const PRO_STEPS := [
 const PRO_STEP_FN := 0.1
 ## What each step costs, against the price of the prosthetic itself.
 const PRO_STEP_PRICE := [0.7, 1.4]
-## The rare medicine (one old wound closed): half the elixir's price, so both follow the pay.
+## The rare medicine (the worst hurt part of him made whole): half the elixir's price, so both
+## follow the pay.
 const MEDICINE_BOUTS := 0.75
 const MEDICINE_MIN := 20
 ## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, old wounds).
@@ -398,6 +399,46 @@ static func summary(body: Dictionary) -> String:
 static func medicine_in_stock(stage: int) -> bool:
 	return (stage * 7 + 3) % 4 == 0
 
+## The broken bones that are a part's own (the keys of `fractures`): the skull in the head, the
+## ribs and the pelvis in the torso, a limb's own.
+static func bones_of(part: String) -> Array:
+	if part == "head":
+		return ["skull"]
+	return ["ribs", "pelvis"] if part == "torso" else [part]
+
+## The scarred part of him worst hurt, which the rare medicine is for: the one with the largest
+## share of itself gone (by the count alone it was always the torso, the largest of him, with a
+## forearm half gone beside it), a broken bone in it counted. "" for a body with no scar.
+static func worst_wound(body: Dictionary) -> String:
+	var b := sanitize(body)
+	var worst := ""
+	var most := -1.0
+	for n in b.scars:
+		var hurt := float((b.scars[n] as Array).size()) / maxf(1.0, voxel_count(n))
+		for k in bones_of(n):
+			hurt += 0.2 * minf(3.0, float(b.fractures.get(k, 0)))
+		if hurt > most:
+			most = hurt
+			worst = n
+	return worst
+
+## True when an old wound of `was` (a scar, not one of the last fight's wounds still fresh) is
+## closed in `now`: the rare medicine or the Elixir, not the physician's needle.
+static func old_wound_closed(was: Dictionary, now: Dictionary) -> bool:
+	var a := sanitize(was)
+	var b := sanitize(now)
+	for n in a.scars:
+		var fresh := {}
+		for i in a.fresh.get(n, []):
+			fresh[int(i)] = true
+		var kept := {}
+		for i in b.scars.get(n, []):
+			kept[int(i)] = true
+		for i in a.scars[n]:
+			if not kept.has(int(i)) and not fresh.has(int(i)):
+				return true
+	return false
+
 ## What the physician can do for this body: [{id, name, desc, price, part}].
 static func offers(body: Dictionary, stage: int) -> Array:
 	var b := sanitize(body)
@@ -442,11 +483,10 @@ static func offers(body: Dictionary, stage: int) -> Array:
 	if fresh_n > 0:
 		out.append({"id": "stitch:all", "name": "Stitch and dress your wounds", "desc": "The cuts and the crushed flesh of your last fight, cleaned, stitched and bound: they heal without a mark. Left alone, they scar over for good.", "price": stitch_price(b)})
 	if not b.scars.is_empty() and medicine_in_stock(stage):
-		var worst := ""
-		for n in b.scars:
-			if worst == "" or b.scars[n].size() > b.scars[worst].size():
-				worst = n
-		out.append({"id": "medicine:%s" % worst, "name": "Rare medicine", "desc": Loc.t("A jar of something black from the East. The physician has one today. It closes the worst of your old wounds (the %s) as if it had never been.") % label(worst), "price": medicine_price(stage)})
+		# The part it is for is in its name (user: bought for a broken arm, and nothing happened:
+		# it was for another part of him, and said so only when pointed at).
+		var worst := worst_wound(b)
+		out.append({"id": "medicine:%s" % worst, "name": "%s (%s)" % [Loc.t("Rare medicine"), label(worst)], "desc": Loc.t("A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.") % label(worst), "price": medicine_price(stage)})
 	# The magic one: everything the campaign took, given back at once.
 	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or not b.scars.is_empty():
 		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": elixir_price(stage)})
@@ -469,7 +509,10 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 			if b.eyes.get(n, "") == "lost":
 				b.eyes[n] = "glass"
 		"medicine":
+			# The part whole again, flesh and bone (it closed the scar and left the arm broken).
 			b.scars.erase(n)
+			for k in bones_of(n):
+				b.fractures.erase(k)
 		"set":
 			b.fractures.erase(n)
 		"heal":

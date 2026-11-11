@@ -329,16 +329,20 @@ func set_body(b: Dictionary) -> void:
 	# A limb or an eye given back in the yard (the Elixir, a prosthetic): he stands there with it
 	# at once, his weapons in the hands it gave back (he walked about armless until the next bout).
 	# A bone set by the physician the same: whole on him there and then (user: whatever he bought,
-	# the broken arm stayed broken).
-	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up):
+	# the broken arm stayed broken). An old wound closed the same (user: he bought the rare
+	# medicine and nothing happened: the scar stayed on him until the next bout).
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up or Body.old_wound_closed(was, clean)):
 		match_.rebuild(match_.me, clean)
 		return
-	# Stitched in the yard: the wounds close on him there and then.
-	if in_yard() and match_.me and is_instance_valid(match_.me.f) and clean.fresh.is_empty():
+	# Stitched in the yard: the wounds close on him there and then (each fresh wound that is closed
+	# now: the rare medicine closes one part's and leaves the others open).
+	if in_yard() and match_.me and is_instance_valid(match_.me.f):
 		for n in was.fresh:
 			var p = match_.me.f.by_name.get(n)
-			if p:
-				p.restore_voxels(was.fresh[n])
+			var open: Array = clean.fresh.get(n, [])
+			var closed: Array = (was.fresh[n] as Array).filter(func(i): return not open.has(i))
+			if p and not closed.is_empty():
+				p.restore_voxels(closed)
 
 func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)
@@ -4437,6 +4441,9 @@ func _end_match() -> void:
 ## cam cannot come back to the bout he fell in; and again, harmlessly, when the result is read.
 var fell_back := 0   # the bout a Legionary went back to on his last death (0: the run ended)
 
+## What a player dead on the sand in a bout his party won is told in the yard (Match._note_fall).
+const CARRIED_OFF := "You were carried off the sand: the physician will see to your wounds."
+
 ## A guest of the co-op campaign, the party fallen after the checkpoint (the host's word: bout `at`
 ## of his run `run`): his own put back as he walked into the checkpoint's bout
 ## (CampaignRun.keep_own), the bout he lost and all it did to him gone, and the host told
@@ -4513,6 +4520,8 @@ func _on_finished(r: Dictionary) -> void:
 		else:
 			# A guest's own sword takes its knocks too: the host does not keep it, he does.
 			set_arms(Arms.add_wear(arms(), match_.my_wear()))
+			if r.get("won", false) and r.get("fell", false):
+				last_result = {"text": Loc.t(CARRIED_OFF)}
 	if mode == "campaign" and match_ and match_.role != "guest":
 		var sk := "coop_stage" if r.get("coop", false) else "stage"
 		var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -4539,6 +4548,8 @@ func _on_finished(r: Dictionary) -> void:
 			if int(r.stage) >= 32:
 				Achievements.unlock("halfway")
 			last_result = {"text": Loc.t("Stage %d cleared: %d denarii.") % [r.stage, r.pay]}
+			if r.get("fell", false):
+				last_result.text += " " + Loc.t(CARRIED_OFF)
 			if int(r.stage) >= Data.campaign.get("stages", []).size():
 				# The last bout won: the rudis. The campaign begins again, the same man and his
 				# gear, the foes a third tougher each time round (lap).
@@ -4633,7 +4644,7 @@ func _on_net(type: String, data, _from: int) -> void:
 			if match_ and data is Dictionary:
 				match_.guest_despawn(int(data.get("id", -1)))
 		"body":
-			# The host's word on what the stage left on me (a fall: whole again).
+			# The host's word on what the stage left on me (dead in a bout the party won: as I died).
 			if data is Dictionary and not Net.is_host():
 				set_body(data)
 		"armor_wear":
@@ -4659,6 +4670,12 @@ func _on_net(type: String, data, _from: int) -> void:
 		"doctor":
 			if data is Dictionary and not Net.is_host():
 				_doctor_visit(Body.sanitize(data.get("body", {})), (data.get("news", []) as Array).map(func(x): return str(x).left(80)) if data.get("news") is Array else [], int(data.get("stage", 1)), func(nb): Net.send_host("doctor_done", nb))
+		"me":
+			# A guest the physician saw to in the yard: the host's copy of him, the one that moves,
+			# is built again with the body he has now (his arm was set on his own screen and hung
+			# broken on everyone's until the next bout).
+			if Net.is_host() and in_yard() and Net.peers.has(_from):
+				match_.peer_body(_from, Net.peers[_from].get("body", {}))
 		"doctor_done":
 			if match_ and Net.is_host() and data is Dictionary:
 				for e in match_.humans():

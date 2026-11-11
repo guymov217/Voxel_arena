@@ -695,3 +695,115 @@ func test_the_crowd_pays_for_a_lively_bout() -> void:
 	t.check(h > 0.4 and h <= 1.0, "a bout of blows runs hot (%.2f)" % h)
 	t.check(int(round(100 * Match.CROWD_BONUS * h)) <= 25, "and the crowd's bonus stays small (%d on 100)" % int(round(100 * Match.CROWD_BONUS * h)))
 	m.queue_free()
+
+## A player dead on the sand in a bout his party goes on to win is carried off it: he walks into
+## the yard alive with the wounds he died of (the limb he lost, the bone broken, the flesh torn),
+## not whole as he came into the campaign (a death healed him of everything). What is done to
+## his body after his death is not on him, and the body is one he can live in.
+func test_a_man_dead_in_a_bout_won_is_carried_off_with_his_wounds() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "role": "host", "headless": true, "peers": [{"id": 2, "name": "Friend", "loadout": {"main": "axe"}}], "seed": 9})
+	for e in m.enemies():
+		e.erase("bot")
+		e.drive = func(_e): return {"limp": true}
+	var a: Fighter = m.me.f
+	var friend: Dictionary = m.humans().filter(func(x): return x.kind == "remote")[0]
+	friend.drive = func(_e): return {}
+	var said := []
+	m.feed.connect(func(line): said.append(String(line)))
+	var results := []
+	m.finished.connect(func(r): results.append(r))
+	for i in 30:
+		await get_tree().physics_frame
+	# The bout's wounds: a forearm off, a hole in the thigh, the shin broken, and what kills him,
+	# his chest and his head stove in.
+	a.detach_limb(a.by_name.forearmL, {"removed": [], "severed": []})
+	var th: VoxelPart = a.by_name.thighR
+	var hole := []
+	for i in th.fx.size():
+		if th.fx[i] < 2 and th.fy[i] > 6 and th.fy[i] < 10:
+			hole.append(i)
+	th.remove_voxels(hole)
+	a.by_name.shinR.fracture = 2
+	a.torso.remove_voxels(Array(a.torso.voxels_within(Vector3(0, 0.05, a.torso.half_ext.z), 0.14)), false, false)
+	a.head.remove_voxels(Array(a.head.voxels_within(Vector3(0, 0, a.head.half_ext.z), 0.07)), false, false)
+	var chest_gone := a.torso.fx.size() - a.torso.alive_count
+	t.check(chest_gone > 100, "his chest stove in (%d voxels)" % chest_gone)
+	a.spared = true   # (no door left open: he dies of it)
+	a.die("wounds")
+	t.check(not a.alive and friend.f.alive, "he is dead on the sand, his friend still stands")
+	for i in 3:
+		await get_tree().physics_frame
+	# A blade swung over his body after it takes a leg off the corpse: not his to carry.
+	a.detach_limb(a.by_name.shinL, {"removed": [], "severed": []})
+	friend.f.by_name.thighL.remove_voxels([1, 2, 3, 4, 5, 6])
+	for i in 3:
+		await get_tree().physics_frame
+	var bodies := m.final_bodies()
+	var b: Dictionary = bodies[m.me.id]
+	t.check(b.missing.has("forearmL"), "the forearm he lost is still lost")
+	t.check(not b.missing.has("shinL"), "what was cut off his body afterwards is not")
+	t.check(b.scars.has("thighR") and b.scars.has("torso") and b.scars.has("head"), "his wounds are on him: %s" % Body.summary(b))
+	t.eq(int(b.fractures.get("shinR", 0)), 2, "the shin still broken")
+	t.check(not (b.fresh as Dictionary).is_empty(), "the wounds fresh, for the physician to close")
+	t.check((bodies[friend.id].scars as Dictionary).has("thighL"), "the living are read as they stand")
+	# A man of that body lives, and takes a knock.
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(7, 0, -7), "yaw": 0.0, "body": b})
+	e2.erase("bot")
+	e2.drive = func(_e): return {}
+	var g: Fighter = e2.f
+	for i in 240:
+		await get_tree().physics_frame
+	t.check(g.alive and g.dying <= 0.0, "a man of that body lives")
+	t.check(g.torso.integrity > 0.6 and g.head.integrity > 0.6, "his trunk and his head well above what kills (%.2f, %.2f of them left)" % [g.torso.integrity, g.head.integrity])
+	t.check(g.heart_t < 0.0 and g.organ_lost.is_empty() and g.torso.bleed == 0.0, "nothing in him torn open or bleeding")
+	var front: Vector3 = g.torso.global_transform.basis.z
+	g.apply_hit(g.torso, {"impulse": 10.0, "type": "blunt", "hardness": 0.3, "sharpness": 0.0, "point": g.torso.global_position + front * g.torso.half_ext.z, "dir": -front, "axis": -front, "edge": Vector3.ZERO})
+	for i in 60:
+		await get_tree().physics_frame
+	t.check(g.alive, "and a knock on the chest does not kill him")
+	# The party wins the bout: he is carried off, told so, and the body the bout hands him is that one.
+	for e in m.enemies():
+		e.f.die("test")
+	for i in 10:
+		await get_tree().physics_frame
+	t.check(results.size() == 1 and bool(results[0].won), "the bout is won without him")
+	if results.size() == 1:
+		t.check(bool(results[0].get("fell", false)), "the result says he fell")
+		t.check((results[0].body.missing as Array).has("forearmL") and not (results[0].body.missing as Array).has("shinL"), "and hands him the body he died in")
+	t.check(said.any(func(x): return x.contains("carried off the sand")), "the arena is told he is carried off the sand")
+	m.queue_free()
+
+## Beheaded, he is carried off with his head on (a body must have one), the rest of his wounds
+## kept; and a man who dies on the bout's last step is read as he lies.
+func test_a_man_beheaded_is_carried_off_with_a_head() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "role": "host", "headless": true, "peers": [{"id": 2, "name": "Friend", "loadout": {"main": "axe"}}], "seed": 9})
+	for e in m.enemies():
+		e.erase("bot")
+		e.drive = func(_e): return {"limp": true}
+	var a: Fighter = m.me.f
+	var friend: Dictionary = m.humans().filter(func(x): return x.kind == "remote")[0]
+	friend.drive = func(_e): return {}
+	for i in 30:
+		await get_tree().physics_frame
+	a.detach_limb(a.by_name.forearmR, {"removed": [], "severed": []})
+	a.head.severed = true
+	a.die("decap")
+	t.check(not a.alive, "his head off, he is dead")
+	# (The very step he died: nothing read yet, he is read as he lies.)
+	var now: Dictionary = m.final_bodies()[m.me.id]
+	t.check((now.missing as Array).has("forearmR") and not (now.missing as Array).has("head"), "read the step he died: the arm lost, a head on him")
+	for i in 3:
+		await get_tree().physics_frame
+	var b: Dictionary = m.final_bodies()[m.me.id]
+	t.check((b.missing as Array).has("forearmR") and not (b.missing as Array).has("head") and not (b.fractures as Dictionary).has("skull"), "carried off: the arm lost, his head whole on him")
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(7, 0, -7), "yaw": 0.0, "body": b})
+	e2.erase("bot")
+	e2.drive = func(_e): return {}
+	for i in 120:
+		await get_tree().physics_frame
+	t.check(e2.f.alive and not e2.f.head.severed and e2.f.state == "stand", "a man of that body stands, his head on")
+	m.queue_free()

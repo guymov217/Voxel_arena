@@ -677,6 +677,7 @@ func _receive(type: String, data, from: int) -> void:
 					peers[from].loadout = sanitize_loadout(data.get("loadout"))
 					peers[from].kit = sanitize_kit(data.get("kit"))
 					peers[from].body = Body.sanitize(data.get("body"))
+					message.emit(type, null, from)   # (the yard builds him again as he is now)
 				return
 			"vc":
 				# A guest's voice: on to the other guests, and heard here.

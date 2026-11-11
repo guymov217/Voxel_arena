@@ -2709,5 +2709,8 @@
  "Tomb Gavel": "Grabhammer",
  "Thunderhead": "Gewitterkopf",
  "Anvilfall": "Ambossfall",
- "Titan's Gavel": "Titanenhammer"
+ "Titan's Gavel": "Titanenhammer",
+ "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Ein Topf mit etwas Schwarzem aus dem Osten. Der Heiler hat heute einen. Er macht den am schlimmsten verletzten Teil von dir (%s) wieder ganz, Fleisch und Knochen, als wäre er nie verletzt gewesen.",
+ "%s is carried off the sand": "%s wird aus dem Sand getragen",
+ "You were carried off the sand: the physician will see to your wounds.": "Du wurdest aus dem Sand getragen: Der Heiler kümmert sich um deine Wunden."
 }

@@ -1123,6 +1123,7 @@ func _physics_process(dt: float) -> void:
 		for e in entities:
 			if is_instance_valid(e.f) and e.f is Fighter and e.f.alive:
 				(e.f as Fighter).staunch()
+	_read_fallen()
 	_check_round(dt)
 
 ## Whether a dead body has lain still a while (nothing on it moving, nothing burning on it):
@@ -1435,7 +1436,8 @@ func guest_end(data: Dictionary) -> void:
 			show = ve != null and is_instance_valid(ve.f) and killcam.choose(ve.f)
 		if show:
 			await killcam.play(func(): pass)
-	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0))})
+	# (Dead on the sand as the bout ended: carried off it, if the party won.)
+	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0)), "fell": me != null and is_instance_valid(me.f) and not me.f.alive})
 
 func guest_message(type: String, data) -> void:
 	match type:
@@ -2150,9 +2152,18 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	var wear := my_wear()
 	var result := {"won": won, "stage": stage, "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
 	if mode == "campaign" and role != "guest":
-		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are.
+		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are (the
+		# dead among them carried off the sand as they died: final_bodies).
+		if won:
+			for e in humans():
+				if fell(e) and is_instance_valid(e.f):
+					var line := Loc.t("%s is carried off the sand") % e.f.display_name
+					feed.emit(line)
+					if role == "host":
+						Net.send_all("feed", line)
 		var bodies := final_bodies() if won else {}
 		result["body"] = bodies.get(me.id, Body.empty()) if me else Body.empty()
+		result["fell"] = me != null and fell(me)
 		if role == "host":
 			for e in humans():
 				if e.kind == "remote":
@@ -2655,6 +2666,7 @@ static func _part_word(part: VoxelPart) -> String:
 func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":
 		spectacle.on_death(f)
+		_note_fall(f)
 	_tape_kill(f, cause)
 	if me and f != me.f and f.last_attacker == me.f:
 		mission_event("kill")
@@ -2803,6 +2815,19 @@ func doctor_done(id: int, body_: Dictionary) -> void:
 		return
 	rebuild(e, Body.sanitize(body_))
 
+## A guest's body as it is now (the physician saw to him in the yard, and he told the host): his
+## fighter here is built again with it, where what shows or works on him changed.
+func peer_body(peer: int, body_) -> void:
+	if role != "host" or mode != "yard":
+		return
+	var nb := Body.sanitize(body_)
+	for e in humans():
+		if e.kind == "remote" and int(e.peer) == peer and is_instance_valid(e.f):
+			var was := Body.sanitize(e.f.body)
+			if nb.missing != was.missing or nb.prosthetics != was.prosthetics or nb.eyes != was.eyes or nb.fractures != was.fractures or nb.pro_up != was.pro_up or nb.scars != was.scars:
+				rebuild(e, nb)
+			return
+
 const YARD_RESPAWN := 3.0
 
 ## A fallen player up again where he first came in (the host's word; the guests are sent the
@@ -2864,12 +2889,36 @@ func guest_despawn(id: int) -> void:
 		if me == e:
 			me = null
 
-## Every player's body at the end of the stage: {entity id: body}, read off what is left of them.
+## A player dead in a campaign bout his party goes on to win is carried off the sand: he walks
+## into the yard alive, with the wounds he died of (the limb he lost still lost, the bones broken,
+## the flesh torn), for the physician to see to, not whole as he came into the campaign (a death
+## cost him nothing: it healed him). The wounds are read a step after the blow that killed him:
+## all that blow took off him is on them then, and nothing done to his body afterwards is (a
+## corpse is still cut by a blade swung over it). The body it makes is one he can live in (Body
+## keeps a head and a trunk above what kills, and an old wound tears nothing open).
+func _note_fall(f: Fighter) -> void:
+	if mode != "campaign":
+		return
+	var e = entity_of(f)
+	if e != null and (e.kind == "local" or e.kind == "remote") and not e.has("fell_tick"):
+		e.fell_tick = tick
+
+func _read_fallen() -> void:
+	for e in humans():
+		if e.has("fell_tick") and not e.has("fell_body") and tick > int(e.fell_tick) and is_instance_valid(e.f):
+			e.fell_body = Body.merge(e.f.body, Body.snapshot(e.f)).body
+
+## Whether this player fell in the bout (dead on the sand, whoever won it).
+func fell(e: Dictionary) -> bool:
+	return e.has("fell_tick")
+
+## Every player's body at the end of the stage: {entity id: body}, read off what is left of them;
+## a dead man's as it was when he died (_note_fall; read now if he died this very step).
 func final_bodies() -> Dictionary:
 	var out := {}
 	for e in humans():
 		if is_instance_valid(e.f):
-			out[e.id] = Body.merge(e.f.body, Body.snapshot(e.f)).body if e.f.alive else Body.empty()
+			out[e.id] = e.fell_body if e.has("fell_body") else Body.merge(e.f.body, Body.snapshot(e.f)).body
 	return out
 
 func entity_of(f) -> Variant:

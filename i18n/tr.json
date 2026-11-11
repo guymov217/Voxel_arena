@@ -2706,5 +2706,8 @@
  "Tomb Gavel": "Mezar Tokmağı",
  "Thunderhead": "Gök Gürültüsü",
  "Anvilfall": "Örs Düşüşü",
- "Titan's Gavel": "Titanın Tokmağı"
+ "Titan's Gavel": "Titanın Tokmağı",
+ "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Doğu'dan gelmiş kara bir şeyle dolu bir kavanoz. Hekimde bugün bir tane var. En ağır yaralı yerini (%s) etiyle kemiğiyle, hiç yaralanmamış gibi yeniden sapasağlam yapar.",
+ "%s is carried off the sand": "%s kumdan taşınarak çıkarılıyor",
+ "You were carried off the sand: the physician will see to your wounds.": "Kumdan taşınarak çıkarıldın: hekim yaralarınla ilgilenecek."
 }

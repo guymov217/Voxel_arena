@@ -235,6 +235,96 @@ func test_a_bone_set_in_the_yard_is_whole_at_once() -> void:
 	Save.set_value("body", body0 if body0 is Dictionary else {})
 	await get_tree().process_frame
 
+## The rare medicine is for the part of him worst hurt, flesh and bone, and its name says which
+## (user: bought for a broken arm, nothing happened and the arm was not healed).
+func test_the_rare_medicine_makes_the_worst_part_whole() -> void:
+	t.check(Body.medicine_in_stock(3), "in stock at the third bout")
+	# A forearm a fifth gone and broken through; a torso with more voxels out, and far less of itself.
+	var nf := int(Body.voxel_count("forearmL") * 0.2)
+	var nt := nf + 10
+	var b := Body.sanitize({"scars": {"forearmL": range(nf), "torso": range(nt)}, "fractures": {"forearmL": 2, "ribs": 1}})
+	t.check(float(nt) / Body.voxel_count("torso") < 0.2, "the torso has lost more voxels and less of itself")
+	t.eq(Body.worst_wound(b), "forearmL", "the forearm is the worst of him, not the torso with more voxels gone")
+	var o: Array = Body.offers(b, 3).filter(func(x): return String(x.id).begins_with("medicine"))
+	t.eq(o.size(), 1, "one jar")
+	t.eq(String(o[0].id), "medicine:forearmL", "for the forearm")
+	t.check(String(o[0].name).contains(Body.label("forearmL")), "and its name says so: " + String(o[0].name))
+	var healed := Body.apply(b, String(o[0].id))
+	t.check(not healed.scars.has("forearmL") and not healed.fractures.has("forearmL"), "the forearm whole again, flesh and bone")
+	t.check(healed.scars.has("torso") and int(healed.fractures.get("ribs", 0)) == 1, "the rest of him as it was")
+	# For the torso it knits the ribs and the pelvis with it, for the head the skull.
+	var b2 := Body.sanitize({"scars": {"torso": range(20), "head": range(10)}, "fractures": {"ribs": 3, "pelvis": 1, "skull": 2}})
+	var h2 := Body.apply(b2, "medicine:torso")
+	t.check(not h2.scars.has("torso") and not h2.fractures.has("ribs") and not h2.fractures.has("pelvis") and int(h2.fractures.get("skull", 0)) == 2, "the torso's bones with it, the skull not")
+	t.check(not Body.apply(b2, "medicine:head").fractures.has("skull"), "the skull with the head")
+	# What the yard asks: an old wound closed, or only the last fight's, which the needle closes.
+	t.check(Body.old_wound_closed(b, healed), "an old wound is closed")
+	var fr := Body.sanitize({"scars": {"thighR": [1, 2, 3]}, "fresh": {"thighR": [1, 2, 3]}})
+	t.check(not Body.old_wound_closed(fr, Body.apply(fr, "stitch:all")), "stitching the last fight's wounds closes no old one")
+
+## Bought in the yard, the rare medicine shows on him there and then: the old wound closed, the
+## bone under it whole, the arm working (user: he bought it and nothing happened).
+func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
+	var body0 = Save.get_value("body", {})
+	var n := int(Body.voxel_count("forearmL") * 0.2)
+	Save.set_value("body", Body.sanitize({"scars": {"forearmL": range(n), "upperArmR": range(40), "thighR": range(12), "shinL": range(8)}, "fresh": {"thighR": range(12), "shinL": range(8)}, "fractures": {"forearmL": 2}}))
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	for i in 10:
+		await get_tree().physics_frame
+	var f: Fighter = menu.match_.me.f
+	var gone := func(g: Fighter, part: String) -> int: return g.by_name[part].fx.size() - g.by_name[part].alive_count
+	t.check(gone.call(f, "forearmL") == n and f.by_name.forearmL.fractured, "he walks in with the old wound in the forearm and the bone broken")
+	var arm0 := f.arm_func("L")
+	# The forearm: an old wound and a broken bone.
+	menu.set_body(Body.apply(menu.body(), "medicine:forearmL"))
+	for i in 10:
+		await get_tree().physics_frame
+	var g: Fighter = menu.match_.me.f
+	t.eq(gone.call(g, "forearmL"), 0, "the old wound in the forearm closed on him at once")
+	t.check(g.by_name.forearmL.fracture == 0 and g.arm_func("L") > arm0 + 0.5, "and the bone whole: the arm works again (%.2f, was %.2f)" % [g.arm_func("L"), arm0])
+	t.check(gone.call(g, "upperArmR") == 40 and gone.call(g, "thighR") == 12, "the rest of him as he was")
+	# The upper arm: an old wound, no bone broken under it (nothing else of him changes).
+	menu.set_body(Body.apply(menu.body(), "medicine:upperArmR"))
+	for i in 10:
+		await get_tree().physics_frame
+	var h: Fighter = menu.match_.me.f
+	t.eq(gone.call(h, "upperArmR"), 0, "an old wound alone closes at once too")
+	# The thigh: the last fight's wound, the shin's still open beside it.
+	menu.set_body(Body.apply(menu.body(), "medicine:thighR"))
+	for i in 10:
+		await get_tree().physics_frame
+	var k: Fighter = menu.match_.me.f
+	t.check(gone.call(k, "thighR") == 0 and gone.call(k, "shinL") == 8, "a fresh wound closed by it closes at once, the other stays open")
+	t.check((menu.body().scars as Dictionary).keys() == ["shinL"], "and his save has only the shin left: %s" % str((menu.body().scars as Dictionary).keys()))
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("body", body0 if body0 is Dictionary else {})
+	await get_tree().process_frame
+
+## A guest the physician saw to in the yard is whole on the host's side too, where his fighter
+## lives: the host builds him again with the body he has now (Match.peer_body).
+func test_a_guest_healed_in_the_yard_is_built_again_by_the_host() -> void:
+	var hurt := Body.sanitize({"scars": {"forearmL": range(20)}, "fractures": {"forearmL": 2}})
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 2, "name": "Friend", "loadout": {"main": "axe"}, "body": hurt}]})
+	await _steps(10)
+	var guest := func() -> Fighter: return m.humans().filter(func(x): return x.kind == "remote")[0].f
+	var f: Fighter = guest.call()
+	t.check(f.by_name.forearmL.fractured, "the guest walks the yard with a broken forearm")
+	m.peer_body(2, hurt)
+	await _steps(2)
+	t.check(guest.call() == f, "told the same body again, he is left as he is")
+	m.peer_body(2, Body.apply(hurt, "medicine:forearmL"))
+	await _steps(10)
+	var g: Fighter = guest.call()
+	t.check(g != f and g.by_name.forearmL.fracture == 0 and g.by_name.forearmL.alive_count == g.by_name.forearmL.fx.size(), "healed: the host builds him again, whole")
+	t.eq(m.humans().size(), 2, "still the two of them in the yard")
+	m.queue_free()
+
 ## A weapon that fell to the sand with the arm cut off holding it comes back from the bout with
 ## the chips it had, not "lost" down to its grip.
 func test_a_weapon_that_fell_with_its_arm_is_not_lost() -> void:
