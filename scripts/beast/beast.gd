@@ -1962,6 +1962,11 @@ func can_breathe() -> bool:
 
 # ---------- Animation ----------
 
+## With the game paused (the kill cam) a beast is drawn as its bodies are: nothing of it is seated
+## on its joints or capped, as a man is (Fighter.draw_now).
+func draw_now() -> void:
+	pass
+
 ## The jaws, drawing only (host and guests alike): they gape on the lunge and snap shut on the
 ## bite, hang wide while it breathes, open a little in a snarl or a hold, and hang open dead.
 func _process(dt: float) -> void:

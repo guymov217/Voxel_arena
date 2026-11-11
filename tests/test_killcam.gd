@@ -327,3 +327,62 @@ func test_a_thrown_pot_is_on_the_tape() -> void:
 	t.check(is_instance_valid(n) and not n.visible, "shattered, its look is kept hidden for the replay")
 	t.check(m.items.ghosts.any(func(g): return g[0] == n), "among the things gone the replay still shows")
 	m.queue_free()
+
+## All through the replay every man is drawn whole: his joints closed and capped and his hands
+## turned to their grips, worked out off the bodies where the tape puts them. They were left as
+## the fight's last frame had worked them out, so a forearm with its hand, and the blocks that cap
+## his joints, hung in the air beside him in every kill cam (user).
+func test_the_replay_draws_every_man_whole() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "foe:recruit", "respawn": false, "difficulty": 0.3}, "headless": true, "killcam": true, "seed": 4, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	# He walks on as the foe dies: nothing in the clip is where the fight ends.
+	m.me.drive = func(_e): return {"mz": 1.0, "mx": 0.5}
+	for i in 120 * 2:
+		await get_tree().physics_frame
+	var foe: Fighter = m.enemies()[0].f
+	foe.last_attacker = m.me.f
+	foe.die("wounds")
+	for i in 120 * 3:
+		await get_tree().physics_frame
+	t.check(m.killcam.has_clip(), "the kill is on tape")
+	# The fight's last frame as the game draws it (headless, nothing is drawn by itself): every
+	# joint seated and capped, and the sword hand turned to its grip (the turn is the world's, the
+	# fist's place in it: the very thing that goes wrong drawn anywhere else).
+	var men: Array = m.entities.map(func(e): return e.f).filter(func(f): return is_instance_valid(f) and not (f is Beast))
+	for f in men:
+		f.draw_now()
+	var fore: VoxelPart = m.me.f.arm.R.fore
+	var fist: Vector3 = fore.global_transform * m.me.f.hand_point
+	fore.draw_turn = Transform3D(Basis(), fist) * Transform3D(Basis(fore.global_transform.basis.y.normalized(), 0.9), Vector3.ZERO) * Transform3D(Basis(), -fist)
+	var done := [false]
+	m.killcam.play(func(): done[0] = true, true)
+	var worst := 0.0
+	var worst_cap := 0.0
+	var caps := 0
+	var seen := 0
+	var n := 0
+	while not done[0] and n < 120 * 40:
+		await get_tree().process_frame
+		n += 1
+		if not m.killcam.playing or n % 5 != 0:
+			continue
+		seen += 1
+		for f: Fighter in men:
+			for p: VoxelPart in f.parts:
+				var par: VoxelPart = p.parent_part
+				if par == null or p.joint == null or p.severed or p.hanging or p.missing or par.severed:
+					continue
+				# The joint as it is drawn, from the limb's side and from the side it hangs from.
+				var pivot: Vector3 = (p.draw_turn * p.global_transform) * p.ca + p.draw_shift
+				var socket: Vector3 = (par.draw_turn * par.global_transform) * (par.bend_of(p.pa) * p.pa) + par.draw_shift
+				worst = maxf(worst, pivot.distance_to(socket))
+				var cap: MeshInstance3D = f.joint_caps.get(p)
+				if cap != null and cap.visible:
+					caps += 1
+					worst_cap = maxf(worst_cap, cap.global_position.distance_to(pivot))
+	t.check(done[0] and seen > 20, "the replay played through (%d frames of it looked at)" % seen)
+	t.check(worst < 0.002, "every joint of every man is drawn closed all through it (worst %.1f mm open)" % (1000.0 * worst))
+	t.check(caps > 0 and worst_cap < 0.25 * m.me.f.S, "and the block on each joint sits on its joint (worst %.2f m off)" % worst_cap)
+	m.queue_free()
+	await get_tree().process_frame

@@ -322,6 +322,7 @@ func play(done: Callable, force := false) -> void:
 				nd.speed_scale = float(lf[2]) * speed
 			elif nd is OmniLight3D:
 				nd.light_energy = float(lf[2]) * maxf(0.0, 1.0 - (t - float(lf[1])) / Fx.FLASH_FADE)
+		var put: Array = []
 		for id in ids:
 			var body = ids[id]
 			if not is_instance_valid(body):
@@ -336,11 +337,8 @@ func play(done: Callable, force := false) -> void:
 			var xa: Transform3D = a.xf.get(id, b2.xf.get(id))
 			var xb: Transform3D = b2.xf.get(id, xa)
 			body.global_transform = xa.interpolate_with(xb, u)
-			# (Drawn here: with the game paused the bodies' own drawing does not follow them.)
-			if body.has_method("draw_now"):
-				body.draw_now()
-			elif _comes_and_goes(body):
-				body.reset_physics_interpolation()
+			put.append(body)
+		_draw(put)
 		# The camera circles the pair, close, a little low.
 		var pk = best.killer
 		var pv = best.victim
@@ -388,13 +386,29 @@ func play(done: Callable, force := false) -> void:
 			if b is RigidBody3D:
 				b.linear_velocity = now[b][1]
 				b.angular_velocity = now[b][2]
-			if b.has_method("draw_now"):
-				b.draw_now()
+	_draw(now.keys())
 	if m.cam:
 		m.cam.fov = fov0
 	tree.paused = false
 	playing = false
 	done.call()
+
+## The bodies just put where the tape has them, drawn there: with the game paused their own
+## drawing does not follow them. Each man first (Fighter.draw_now): his joints closed and capped
+## and his hands turned to their grips off the bodies as they are put now. Left as the fight's
+## last frame had worked them out, a forearm with its hand, and the blocks that cap his joints,
+## hung in the air beside the man all through the replay (user, every kill cam).
+func _draw(bodies: Array) -> void:
+	for e in m.entities:
+		if is_instance_valid(e.f):
+			e.f.draw_now()
+	for b in bodies:
+		if not is_instance_valid(b):
+			continue
+		if b.has_method("draw_now"):
+			b.draw_now()
+		elif _comes_and_goes(b):
+			b.reset_physics_interpolation()
 
 ## A burst or a flash off the tape made again: its nodes, running through the pause.
 func _fx_again(ev: Dictionary) -> Array:
