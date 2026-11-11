@@ -280,9 +280,10 @@ func process_contacts(_dt: float) -> Array:
 			# merely bumps into a man as it mauls or turns is no bite. (Every touch of the jaws
 			# at a walk's speed was one, a bite every half second whatever the man did: a bout
 			# with a lion was over in ten seconds and nothing he did could change it.)
-			# (A crocodile's jaws close on whatever touches them: its bite is the grab, and the
-			# hold it starts is the fight he can win by pulling free.)
-			if att.fighter is Beast and att.fighter.species != "crocodile" and not att.fighter.strikes_with(att):
+			# (A crocodile's too. Its jaws closed on whatever touched them, and grown to stand as
+			# high as a man's hands they touched his arms all the time: near forty bites in half a
+			# minute, both arms gone before he had kicked it five times, user.)
+			if att.fighter is Beast and not att.fighter.strikes_with(att):
 				continue
 			if att.fighter.kind != "beast" and not att.def.get("bite", false):
 				var n: String = att.part_name
@@ -570,6 +571,8 @@ func _blow(g: Dictionary) -> Dictionary:
 	# heaviest of all, but not every one of them at the most a head can take (the cap on a
 	# blow comes down with it: Fighter.apply_hit "pull").
 	var pull := 1.0
+	if bite and att.fighter is Beast:
+		pull = float(Beast.BITE_PULL.get(att.fighter.species, 1.0))
 	# The trainer's blow: a man taught to put his weight behind it hits harder; and strength
 	# (the arm's drive) puts half of itself behind every blow too.
 	if attacker and "mods" in attacker and not bite:
@@ -583,7 +586,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0, "unarmed": punch or kick})
 	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
 	# is turned aside at the point it struck, so it twists off too).
 	if is_weapon and res.has("glance_n"):

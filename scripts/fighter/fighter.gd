@@ -6801,6 +6801,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# at a bite however lightly it closed: user). (A falling anvil still flattens what it lands on.)
 		if hit.get("bite", false) and part != torso and part != head:
 			crush = minf(crush, CRUSH_OF_LIMB * minf(part.half_ext.x, part.half_ext.z))
+		# (A bite pulled, a crocodile's or a wrench of its roll, takes as much smaller a mouthful.)
+		if hit.get("bite", false):
+			crush *= float(hit.get("pull", 1.0))
 		# From the nearest point of the part (a heavy thing's middle may be outside it).
 		var cp := lp.clamp(-part.half_ext, part.half_ext)
 		for i in part.voxels_within(cp, crush):

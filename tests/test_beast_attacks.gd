@@ -91,6 +91,11 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
 	# (The roll itself: its first bite on a limb rolls. How seldom a bite does is the next test's.)
 	s[2].roll_chance = 1.0
+	# (His limbs already torn up: the roll that twists one off. A sound limb is only mauled: the
+	# test after the next.)
+	for p: VoxelPart in s[1].parts:
+		if p != s[1].torso and p != s[1].head:
+			p.hp = 40.0
 	var rolled := [false]
 	var wrenches := [0]
 	var torn := [false]
@@ -129,7 +134,10 @@ func test_the_crocodile_grabs_a_limb_and_rolls() -> void:
 	t.check(turn[0] > TAU * 1.5, "it rolled right over, more than one and a half turns (%.0f deg)" % rad_to_deg(turn[0]))
 	t.check(turn[1] > turn[0] * 0.8, "the limb went round with the jaws (%.0f of %.0f deg)" % [rad_to_deg(turn[1]), rad_to_deg(turn[0])])
 	t.check(turn[2] > turn[0] * 0.5, "and the man was rolled over with it (%.0f deg)" % rad_to_deg(turn[2]))
-	t.check(gap[0] < 0.15, "the teeth never left the bite (at most %.2f m off)" % gap[0])
+	# (As near as a wrench still tears at it, 0.12 of its size: by an upper arm, which its lunge now
+	# takes as often as a hand, the man's trunk drags behind and the place slides a hand's breadth
+	# further along the jaws at each turn than a forearm did.)
+	t.check(gap[0] < 0.12 * s[2].S, "the teeth never left the bite (at most %.2f m off)" % gap[0])
 	t.check(wrenches[0] >= 3, "the roll wrenched at the limb (%d)" % wrenches[0])
 	t.check(torn[0], "and tore it off")
 	# Out of its roll, it lets him be a while before the next (user: it went into its death roll
@@ -194,6 +202,89 @@ func test_pulling_away_breaks_the_death_roll() -> void:
 	t.check(freed[0], "pulling away prised the jaws open (pry %.2f)" % pry[0])
 	t.check(not torn[0], "before the limb was twisted off")
 	t.check(not marked[0], "and he is out of it")
+	s[0].queue_free()
+
+## A sound limb in its roll is wrenched three times and let go: torn up, weak, still his (user:
+## it wrecked his arms far too easily, a limb gone at every roll he did not fight off in time).
+## Only one already torn up when the jaws closed on it is twisted off (the roll's own test).
+func test_a_sound_limb_is_mauled_in_the_roll_not_taken() -> void:
+	seed(9)
+	var s = await _setup("crocodile", 2.2 * float(Data.beasts.crocodile.get("grow", 1.0)))
+	s[2].roll_chance = 1.0
+	var b: Beast = s[2]
+	var wrenches := [0]
+	var torn := [false]
+	var limb := [null]
+	var done := [false]
+	s[0].combat.hit.connect(func(h):
+		if h.attacker == b and h.char == s[1] and h.get("roll", false) and not done[0]:
+			wrenches[0] += 1
+			limb[0] = h.part
+			if h.res.get("rolled", false):
+				torn[0] = true)
+	var rolling := [false]
+	await _run(s[0], s[1], b, 12.0, func(_i):
+		var on: bool = b.hug != null and b.hug.get("roll", false)
+		if on:
+			rolling[0] = true
+		elif rolling[0]:
+			done[0] = true)   # (its first roll is over: the next, on a limb now torn up, is not this test's)
+	t.check(done[0], "it rolled him, and the roll ended")
+	t.eq(wrenches[0], 3, "three wrenches at the limb")
+	var p: VoxelPart = limb[0]
+	t.check(p != null and not torn[0] and not p.severed, "and the jaws let go of it: the limb is still his")
+	t.check(p != null and p.hp > 0.0 and p.hp < 100.0, "torn up, not dead (%.0f of its hundred)" % (p.hp if p != null else -1.0))
+
+## A crocodile's jaws bite in its strike, as every beast's do, not at a touch (user: it wrecked
+## his arms far too easily; its head stands as high as a man's hands, and bit whatever it touched,
+## near forty times in half a minute).
+func test_a_crocodiles_jaws_do_not_bite_at_a_touch() -> void:
+	seed(9)
+	# (No shield on the arm its head meets: it is the bite this tests, not the shield.)
+	var s = await _setup("crocodile", 8.0, {"main": "gladius", "off": ""})
+	var m: Match = s[0]
+	var b: Beast = s[2]
+	var man: Fighter = s[1]
+	b.roll_chance = 0.0
+	for i in 30:
+		b.target = null
+		await get_tree().physics_frame
+	var arm: VoxelPart = man.arm.L.fore
+	# Its head swung against his forearm at a run's speed (the contact as the physics reports it).
+	var touch := func() -> Array:
+		m.combat.pending = [{"a": b.head, "b": arm, "sa": 0, "sb": 0, "p": arm.global_position, "J": 30.0}]
+		m.combat.vel[b.head.get_instance_id()] = [Vector3(0, 0, -5.0), Vector3.ZERO]
+		m.combat.vel[arm.get_instance_id()] = [Vector3.ZERO, Vector3.ZERO]
+		return m.combat.process_contacts(0.0)
+	b.strikes.clear()
+	var hp0 := arm.hp
+	t.check((touch.call() as Array).is_empty() and arm.hp == hp0, "its head only touching him bites nothing")
+	b.strikes[b.head] = 0.3
+	m.combat.cool.clear()
+	var hits: Array = touch.call()
+	t.check(hits.size() == 1 and hits[0].get("bite", false) and arm.hp < hp0, "in the snap of its jaws it bites (the forearm at %.0f)" % arm.hp)
+	m.queue_free()
+
+## A crocodile's skull is bone under scute: a foot or a fist does it less harm than it does
+## another beast's head (user: it took real harm from kicks to the head too easily), a weapon's
+## blow what it did.
+func test_a_crocodiles_skull_shrugs_off_a_kick() -> void:
+	seed(9)
+	var s = await _setup("crocodile", 8.0)
+	var b: Beast = s[2]
+	for i in 30:
+		b.target = null
+		await get_tree().physics_frame
+	# A blow of 20 down onto the top of a part, a man's foot (unarmed) or not.
+	var blow := func(part: VoxelPart, unarmed: bool) -> float:
+		var at: Vector3 = part.global_transform * Vector3(0, part.half_ext.y, 0)
+		return float(b.apply_hit(part, {"impulse": 20.0, "type": "blunt", "hardness": 0.3, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN, "axis": Vector3.DOWN, "edge": Vector3.ZERO, "wsz": 1.0, "unarmed": unarmed}).dmg)
+	var club: float = blow.call(b.head, false)
+	var kick: float = blow.call(b.head, true)
+	t.check(club > 0.0 and kick > 0.0 and kick < club * 0.7, "a kick on its skull does well under what a club's blow as hard does (%.1f against %.1f)" % [kick, club])
+	var trunk_club: float = blow.call(b.torso, false)
+	var trunk: float = blow.call(b.torso, true)
+	t.check(trunk > 0.0 and absf(trunk - trunk_club) < 0.01, "on its body a kick is a blow like any other (%.1f, %.1f)" % [trunk, trunk_club])
 	s[0].queue_free()
 
 func test_the_elephant_charges_and_crushes() -> void:

@@ -14,6 +14,21 @@ const PRY_RATE := 1.7    # how fast pulling away prises its jaws open (1 is free
 # pulling away prises the jaws open sooner (PRY_RATE, was 1.1), before the limb is twisted off.
 const ROLL_CHANCE := 0.4     # of the bites that land on a limb, those that start a roll
 const ROLL_COOL := 12.0      # (s) after one roll before the next
+# And what a roll does (user: it wrecked his arms far too easily): each wrench of it is a bite,
+# pulled (ROLL_WRENCH of a bite's worst on a limb), and only a limb already torn up as the jaws
+# closed on it (under ROLL_TEAR of its hundred) is rolled until it is twisted off; a sound one is
+# wrenched three times (it is left torn up, weak, still his) and let go.
+const ROLL_WRENCH := 0.4
+const ROLL_TEAR := 60.0
+## A bite pulled (Combat: the most it does at once comes down with it, as a giant's blow's does).
+## A crocodile's: its head stands as high as a man's hands and it is all of it he can strike, so
+## his sword arm is in its jaws' way bout after bout (user: it wrecked his arms far too easily;
+## a man who fought by himself had his sword arm dead in six bouts of six).
+const BITE_PULL := {"crocodile": 0.7}
+## A skull that is all bone under scute: a foot or a fist does this much of its harm to the head
+## (user: the crocodile took real harm from kicks to the head too easily: its head is all of it a
+## man can reach, so every kick landed there). A weapon's blow as it was.
+const HARD_SKULL := {"crocodile": 0.6}
 # The many-headed bite one head at a time, a while apart (user: the hydra's heads all bit at once
 # and he was dead in half a second, there was no fighting it), and the hydra's five less hard.
 const HEADS_GAP := 0.7       # (s) after any head's bite before the next head's
@@ -390,6 +405,8 @@ func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var typ: String = hit.get("type", "blunt")
 	hit = hit.duplicate()
 	hit.chunk = CHUNK
+	if part == head and hit.get("unarmed", false) and HARD_SKULL.has(species):
+		hit.impulse = float(hit.get("impulse", 0.0)) * float(HARD_SKULL[species])
 	if k < 1.0 and not part.severed and (typ == "edge" or typ == "point"):
 		var th := clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)
 		var kk := lerpf(k, 1.0, 0.6 * th)
@@ -1186,6 +1203,14 @@ func _hunt(dt: float, t, to: Vector3, dist: float, hurt: float, collapsed: bool,
 ## Close enough to bite: a head on a long neck (a dragon's) is judged by where the head is,
 ## not the body: from the body's distance it snapped at the air two metres short of the man.
 func _in_bite_reach(t, dist: float) -> bool:
+	# A crocodile's jaws are most of its own length out in front of it, and more grown as it
+	# stands now: judged from its body, it had run its snout into him before ever it lunged, and the
+	# snap of its jaws, the snout already against him, was no blow at all. (It bit by touching him
+	# instead, near forty times in half a minute: Combat.) From the jaws: a stride of sand to snap
+	# across.
+	if species == "crocodile" and t.get("torso") and not head.severed:
+		var dm: Vector3 = t.torso.global_position - mouth_point()
+		return Vector2(dm.x, dm.z).length() < 0.4 + 0.35 * S
 	if by_name.has("neck") and not sp.get("multiHead", false) and t.get("torso") and not head.severed:
 		# Over the ground: the head is held high and strikes down onto him.
 		var d: Vector3 = t.torso.global_position - head.global_position
@@ -1546,18 +1571,22 @@ func _death_roll(dt: float) -> void:
 		var J := bite_power * 0.7
 		var dir: Vector3 = (part.global_position - mp).normalized()
 		var was: bool = tgt.alive
-		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": mp, "dir": dir, "axis": dir, "crush": 0.07, "wsz": S})
+		var res: Dictionary = tgt.apply_hit(part, {"impulse": J, "type": "point", "hardness": 0.9, "sharpness": 1.0, "point": mp, "dir": dir, "axis": dir, "crush": 0.07, "wsz": S, "bite": true, "pull": ROLL_WRENCH})
 		tgt.last_attacker = self
-		# Two full turns and three wrenches twist a limb (never the trunk or the head) clean off.
-		# Only a hold he never fought off (three wrenches, two full turns: a second and a half
-		# of it at the size it was modelled, more grown bigger, while pulling away prises the
-		# jaws open in about two thirds of one) takes the limb.
-		if int(hug.bites) >= 3 and float(hug.turned) >= TAU * 2.0 and part != tgt.torso and part != tgt.head and not part.severed:
-			tgt.detach_limb(part, res)
-			res.rolled = true
+		# Three wrenches are the roll, on a limb (never the trunk or the head): a hold he never fought
+		# off (a second and a half of it, while pulling away prises the jaws open in about two
+		# thirds of one). A sound limb is let go then, mauled. One already torn up when the jaws
+		# closed on it is rolled on until it has gone twice round, and twisted clean off.
+		var over := false
+		if int(hug.bites) >= 3 and part != tgt.torso and part != tgt.head and not part.severed:
+			if float(hug.get("hp0", 0.0)) >= ROLL_TEAR:
+				over = true
+			elif float(hug.turned) >= TAU * 2.0:
+				tgt.detach_limb(part, res)
+				res.rolled = true
 		if Combat.current:
 			Combat.current.hit.emit({"kind": "hit", "att_part": head, "p": mp, "dir": dir, "J": J, "type": "point", "char": tgt, "part": part, "attacker": self, "res": res, "killed": was and not tgt.alive, "bite": true, "roll": true})
-		if part.severed:
+		if part.severed or over:
 			_release_roll()
 
 func _release_roll() -> void:
@@ -2127,7 +2156,7 @@ func bit(att: VoxelPart, vic: VoxelPart, res: Dictionary, dir: Vector3) -> void:
 	if species == "crocodile" and heads.has(att) and c and c.alive and not (c is Beast) and hug == null and coil_cool <= 0.0 and not vic.severed and vic != c.torso and vic != c.head and part_ok(head, 0.2) and (roll_chance >= 1.0 or rng.randf() < roll_chance):
 		var mp0 := mouth_point()
 		hug = {"target": c, "part": vic, "t": 3.0 * float(sp.get("grow", 1.0)), "tick": 0.45, "stagger0": stagger, "roll": true, "spin": 1.0 if rng.randf() < 0.5 else -1.0, "bites": 0,
-			"bite_at": vic.to_local(mp0), "turned": 0.0}
+			"bite_at": vic.to_local(mp0), "turned": 0.0, "hp0": vic.hp}
 		# Clamped, not hinged: the limb is locked in the jaws, so it turns as the head turns
 		# (on a pin it only swivelled in the mouth while the crocodile spun round it).
 		holds.append(_joint_at(head, vic, mp0, true))
