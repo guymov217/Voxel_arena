@@ -5,6 +5,7 @@ extends Node3D
 ## plant their feet and step with a two-bone solver, hands that follow the mouse on a pane in
 ## front of the body with a weapon welded in line with the forearm), wounded voxel by voxel.
 
+const FineSmooth := preload("res://scripts/fighter/fine_smooth.gd")
 const V := 0.055
 const STAGE_VOXELS := 1200   # a part's voxels coloured a frame, built staged (build)
 const LEG := 16 * V
@@ -3729,6 +3730,7 @@ func _process(_dt: float) -> void:
 		return
 	_seat_drawing(true, _dt)
 	_draw_joint_caps()
+	_bend_drawing()
 	_sway_hair(_dt)
 	_clip_arm_armor()
 
@@ -4042,6 +4044,72 @@ func _armored(p: VoxelPart) -> bool:
 func draw_now() -> void:
 	_seat_drawing(false)
 	_draw_joint_caps(false)
+	_bend_drawing(false)
+
+## A knee and an elbow under the smooth skin (FineSmooth.geo; drawing only): the thigh and the
+## shin, the upper arm and the forearm, are drawn as one skin bent round the joint (voxel_body.
+## gdshader: bend_at, bend_turn), and with them all that is drawn with them, their wounds and
+## their armour. Two stiff pieces turned on one another met in a seam, the end of the one standing
+## out of the other (user: the knees and the join between the two looked wrong; a knee has to
+## look like a knee). Not a limb cut, hanging or broken (that one is drawn turned at its break).
+const BEND_KNEE := 0.085    # how far each way along the limb from the joint the bend is spread (m)
+const BEND_ELBOW := 0.06
+var _bent := {}             # part -> what was last drawn bent with it
+func _bend_drawing(interp := true) -> void:
+	if _bent.is_empty() and not FineSmooth.skinned():
+		return
+	for side in ["R", "L"]:
+		for pair in [[by_name.get("thigh" + side), by_name.get("shin" + side), BEND_KNEE], [arm[side].upper, arm[side].fore, BEND_ELBOW]]:
+			var up: VoxelPart = pair[0]
+			var low: VoxelPart = pair[1]
+			if up == null or low == null:
+				continue
+			var on: bool = low.parent_part == up and low.joint != null and up.fine.get("smooth", false) and low.fine.get("smooth", false) and up.fine.has("mi") and low.fine.has("mi") \
+					and not (up.severed or low.severed or up.hanging or low.hanging or up.missing or low.missing or up.fractured or low.fractured)
+			if not on:
+				_bend_set(up, Vector4.ZERO, Vector4.ZERO)
+				_bend_set(low, Vector4.ZERO, Vector4.ZERO)
+				continue
+			var tu := up.draw_turn * (up.get_global_transform_interpolated() if interp else up.global_transform)
+			var tl := low.draw_turn * (low.get_global_transform_interpolated() if interp else low.global_transform)
+			var b := bend_of(tu.basis, tl.basis, tl * low.ca + low.draw_shift, float(pair[2]) * S)
+			_bend_set(up, b[0], b[1])
+			_bend_set(low, b[2], b[3])
+
+## A bend's two shares (voxel_body.gdshader bend_at, bend_turn), the upper part's then the lower
+## one's: the joint as it is drawn (`pivot`, world), how far each way along the limb the bend is
+## spread (`h`: under 0 for the upper part, whose joint is at its low end), and the lower part's
+## turn from the upper one's, the shorter way round (its axis and the angle; the upper part's from
+## the lower's the same turn back).
+static func bend_of(up: Basis, low: Basis, pivot: Vector3, h: float) -> Array:
+	var q := low.orthonormalized().get_rotation_quaternion() * up.orthonormalized().get_rotation_quaternion().inverse()
+	if q.w < 0.0:
+		q = -q
+	var v := Vector3(q.x, q.y, q.z)
+	var sl := v.length()
+	var axis := v / sl if sl > 1e-5 else Vector3.RIGHT
+	var angle := 2.0 * atan2(sl, q.w) if sl > 1e-5 else 0.0
+	return [Vector4(pivot.x, pivot.y, pivot.z, -h), Vector4(axis.x, axis.y, axis.z, angle), Vector4(pivot.x, pivot.y, pivot.z, h), Vector4(axis.x, axis.y, axis.z, -angle)]
+
+func _bend_set(p: VoxelPart, at: Vector4, turn: Vector4) -> void:
+	var was: Array = _bent.get(p, [])
+	if at.w == 0.0 and was.is_empty():
+		return
+	# (What is no longer drawn with the part, a plate knocked off it, is drawn as it is again.)
+	for n in was:
+		if is_instance_valid(n) and (at.w == 0.0 or not p.draw_with.has(n)):
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_at", Vector4.ZERO)
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_turn", Vector4.ZERO)
+	if at.w == 0.0:
+		_bent.erase(p)
+		return
+	var now := []
+	for n in p.draw_with:
+		if is_instance_valid(n) and n is GeometryInstance3D:
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_at", at)
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_turn", turn)
+			now.append(n)
+	_bent[p] = now
 
 ## What the physics leaves open of a joint (a few millimetres under load, a couple of
 ## centimetres in a hard blow) is closed on screen: each joined part is drawn moved so that
@@ -4328,11 +4396,23 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 		var q: Vector3 = s0 - (pt as VoxelPart).draw_shift
 		pt.draw_turn = Transform3D(Basis(), q) * Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(), -q) * (pt as VoxelPart).draw_turn
 
+## A part of a man drawn fine (one of the three builds, or his head): not a giant's, nor a beast's.
+static func _fine_man(p: VoxelPart) -> bool:
+	if p.fine.is_empty():
+		return false
+	if p.fine.has("body"):
+		return FineBody.BUILDS.has(String(p.fine.get("build", "")))
+	return String(p.fine.get("giant", "")) == ""
+
 func _draw_joint_caps(interp := true) -> void:
 	for p: VoxelPart in parts:
 		var par: VoxelPart = p.parent_part
 		var cap: MeshInstance3D = joint_caps.get(p)
 		var show := par != null and p.joint != null and not p.severed and not p.hanging and not p.missing and not par.severed and not par.missing and p.prosthetic == "" and p.alive_count > 0
+		# (Not on a man drawn fine, FineBody and FineHead: his skin closes over the joint itself, and
+		# a plain block of one colour stood out of it. User: a strange block under the chin.)
+		if show and _fine_man(p) and _fine_man(par):
+			show = false
 		if not show:
 			if cap:
 				cap.visible = false

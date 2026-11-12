@@ -93,6 +93,13 @@ def smin(a, b, k):
 
 # The three fighters' arms and legs heavier with muscle than their builds' radii (user).
 LIMB_K = {"upper": 1.15, "fore": 1.12, "delt": 1.1, "thigh": 1.12, "calf": 1.12}
+# A fighter's flanks (shapes_chunky): how far out past the waist's own half width they stand, and
+# how thick they are; and how far over the hip joint the thigh's round top is.
+FLANK = 0.046
+FLANK_R = 0.06
+FLANK_HIP = 0.032   # thicker by this much where they meet the hips
+FLANK_MAX = 0.176   # (a man thick in the waist already has them)
+HIP_UP = 0.03
 
 
 def back_v2(P, B, add):
@@ -134,6 +141,7 @@ class Man:
             self.K[sx] = sh + np.array(by["shin" + side]["ca"])            # the knee
             self.A[sx] = np.array([sh[0], 0.075, -0.012])                    # the ankle
         self.neck = pos("torso") + np.array(by["head"]["pa"])              # the neck's pivot
+        self.hinge = {}
 
     def shapes(self, P):
         """[(part, name, sdf, kind)]: every shape of him, the part it belongs to, and whether it is
@@ -251,16 +259,31 @@ class Man:
             out.append((part, name, d, kind))
 
         back_v2(P, B, add)
+        zb = -0.008 - cd * 0.78   # (the flat of his back, as back_v2 cuts it)
         add("torso", "waist", ell(P, (0, 1.06, -0.004 + 0.012 * B["belly"]), (ww + 0.006, 0.16, wd)))
         add("torso", "pelvis", ell(P, (0, 0.935, -0.012), (hw, 0.09, hd)))
+        # His flanks: the trunk goes down into the hips without a step (user: the pelvis must join
+        # the trunk as a man's does, no strange change of thickness; a waist half as wide as the
+        # hips stood on them like a post on a shelf).
+        fr = FLANK_R
+        for sx in (-1, 1):
+            fx = sx * (min(ww + FLANK, FLANK_MAX) - fr)
+            add("torso", "flank", cap(P, (fx, 1.06, -0.006), (fx, 1.195, -0.006), fr))
+            add("torso", "flank", cap(P, (fx, 0.94, -0.006), (fx, 1.06, -0.006), fr + FLANK_HIP, fr))
         add("torso", "abs", ell(P, (0, 1.07, wd * 0.38 + 0.012 * B["belly"]), (0.084, 0.16, 0.06 + 0.012 * B["belly"])))
         for sx in (-1, 1):
             add("torso", "pec", ell(P, (sx * 0.086, 1.355, cd * 0.6), (0.1, 0.075, 0.058)))
             add("torso", "glute", ell(P, (sx * 0.07, 0.905, -0.066), (0.08, 0.09, 0.066)))
-            add("torso", "trap", cap(P, (0, 1.56, -0.05), (sx * 0.235, 1.47, -0.026), B["trap"] + 0.006, 0.03))
+            # The trapezius: a slope from the neck down to the shoulder, and the flat of it under
+            # the slope, down between the shoulder blades (user: something strange on his back, at
+            # the trapezius by the neck. A beam alone, it lay on the shoulders like a roll round
+            # the neck, a fold under it across the back and a hump behind the neck).
+            add("torso", "trap", cap(P, (0, 1.54, -0.036), (sx * 0.235, 1.47, -0.026), B["trap"], 0.03))
+            add("torso", "trapb", ell(P, (sx * 0.105, 1.45, zb + 0.058), (0.125, 0.075, 0.058)))
             # (The shoulder's own mass between the trapezius and the deltoid: without it a raised
             # arm left the big cells open there, holes at the top of the back.)
             add("torso", "cuff", cap(P, (sx * 0.11, 1.468, -0.012), (sx * 0.27, 1.46, -0.004), 0.05, 0.055))
+        add("torso", "nape", ell(P, (0, 1.43, zb + 0.052), (0.1, 0.11, 0.052)))
         add("torso", "neck", cap(P, (0, 1.44, -0.016), (0, 1.62, 0.0), B["neck"], B["neck"] * 0.92))
         for sx, side in ((-1, "R"), (1, "L")):
             S, E, W = self.S[sx], self.E[sx], self.W[sx]
@@ -274,6 +297,7 @@ class Man:
             add(up, "arm", ell(P, S + u * 0.19 + np.array([0, 0.0, 0.004]), (ua * 0.86, 0.12, ua * 0.92)))
             add(fo, "fore", cap(P, E, W, fa, fb))
             add(fo, "forearm", ell(P, E + f * 0.075, (fa * 0.9, 0.085, fa * 0.86)))
+            add(fo, "elbow", ell(P, E + np.array([0, 0.0, -fa * 0.6]), (0.028, 0.032, fa * 0.52)), "skin")
             fc = W + f * 0.055 + np.array([0, 0, 0.008])
             add(fo, "fist", ell(P, fc, (0.044, 0.055, 0.05)), "skin")
         for sx, side in ((-1, "R"), (1, "L")):
@@ -281,10 +305,12 @@ class Man:
             ta, tb = B["thigh"]
             ca, cb = B["calf"]
             th, sh = "thigh" + side, "shin" + side
-            add(th, "thigh", cap(P, Hj + np.array([sx * 0.02, 0.03, 0]), K, ta, tb))
+            add(th, "thigh", cap(P, Hj + np.array([sx * 0.02, HIP_UP, 0]), K, ta, tb))
             add(th, "quad", ell(P, (sx * 0.118, 0.68, 0.016), (ta * 0.84, 0.18, ta * 0.8)))
             add(sh, "shin", cap(P, K, A + np.array([0, 0.02, 0]), ca, cb))
             add(sh, "calf", ell(P, (sx * 0.11, 0.335, -0.03), (ca * 0.92, 0.1, ca * 0.86)))
+            # The kneecap, and the point of the elbow (below): the two joints read as joints.
+            add(sh, "knee", ell(P, K + np.array([0, 0.012, ca * 0.62]), (0.035, 0.04, ca * 0.54)), "skin")
             add(sh, "foot", ell(P, (sx * 0.118, 0.034, 0.04), (0.048, 0.036, 0.118)), "skin")
         return out
 
@@ -342,6 +368,15 @@ def part_of(man, P):
         m = d < best
         best = np.where(m, d, best)
         who = np.where(m, k + 1, who)
+    if not man.B.get("kind"):
+        # A fighter's arm and leg are cut level at the elbow and the knee: by the nearer bone the
+        # thicker part's share ran down over the thinner as a skirt, a rim in the air when the joint
+        # bent.
+        for sx, side in ((-1, "R"), (1, "L")):
+            for up, low, piv in (("upperArm", "forearm", man.E[sx]), ("thigh", "shin", man.K[sx])):
+                iu, il = names.index(up + side), names.index(low + side)
+                both = (who == iu) | (who == il)
+                who = np.where(both, np.where(P[1] >= piv[1], iu, il), who)
     return names, who
 
 
@@ -350,10 +385,37 @@ def joints_of(man):
     js = []
     for sx, side in ((-1, "R"), (1, "L")):
         js.append((man.S[sx], "torso", "upperArm" + side, JOINT_R["shoulder"]))
-        js.append((man.E[sx], "upperArm" + side, "forearm" + side, JOINT_R["elbow"]))
+        js.append((man.E[sx], "upperArm" + side, "forearm" + side, hinge_r(man, "elbow", sx)))
         js.append((man.Hj[sx], "torso", "thigh" + side, JOINT_R["hip"]))
-        js.append((man.K[sx], "thigh" + side, "shin" + side, JOINT_R["knee"]))
+        js.append((man.K[sx], "thigh" + side, "shin" + side, hinge_r(man, "knee", sx)))
     return js
+
+
+def hinge_r(man, which, sx):
+    """The ball both parts draw round a knee or an elbow. A fighter's: as big as the limb is across
+    there, so the upper part ends in the joint's own round and the lower turns in it (user: the
+    knee must look like a knee; a ball smaller than the limb left the thigh a rim that stood out
+    over the shin when the knee bent). A giant's as it was."""
+    if man.B.get("kind"):
+        return JOINT_R[which]
+    key = (which, sx)
+    if key not in man.hinge:
+        piv = man.K[sx] if which == "knee" else man.E[sx]
+        a = np.arange(-0.16, 0.1601, 0.004)
+        X, Z = np.meshgrid(piv[0] + a, piv[2] + a, indexing="ij")
+        P = (X, np.full(X.shape, piv[1]), Z)
+        side = "R" if sx < 0 else "L"
+        own = (("thigh" if which == "knee" else "upperArm") + side, ("shin" if which == "knee" else "forearm") + side)
+        # (The limb's own shapes, without the kneecap and the elbow's point, which stand out of it.)
+        d = None
+        for part, nm, dd, _ in man.shapes(P):
+            if part in own and nm not in ("knee", "elbow"):
+                d = dd if d is None else smin(d, dd, 0.04)
+        r = np.sqrt((X - piv[0]) ** 2 + (Z - piv[2]) ** 2)
+        m = d < 0.0
+        # (A hair inside the limb: on its skin the round would lie in the skin of the part beside it.)
+        man.hinge[key] = float(r[m].max()) - FV * 0.5 if m.any() else JOINT_R[which]
+    return man.hinge[key]
 
 
 # --- a part's cells ------------------------------------------------------------------------------
@@ -506,6 +568,18 @@ def part_cells(man, name, pdef):
         cx, cy, cz = nx, ny, nz
     paint = _paint(man, P, d, first, sh, skin)
     idx = np.argwhere(skin)
+    # A fighter's body as it is drawn on his smooth skin (the game's smooth look only: the cubes
+    # keep their few lines): where it differs from the shade above, [cell, shade] by turns. Not on
+    # what he wears.
+    lines = []
+    if not man.B.get("kind"):
+        base = shade[skin]
+        worn = deco[cx, cy, cz] if deco.any() else np.zeros(base.shape, bool)
+        det = _details(man, name, P)[skin]
+        det = np.where(det != 200, det, _form_tones(name, sh, skin, worn))
+        det = np.where(worn, base, np.where(base < 150, base, det))   # (the navel stays)
+        for i in np.flatnonzero(det != base):
+            lines += [int(i), int(det[i])]
     cells = np.stack([idx[:, 0] - MARGIN, idx[:, 1] - MARGIN, idx[:, 2] - MARGIN, cx, cy, cz, shade[skin], ao[skin], paint[skin]], 1).astype(np.int64)
     cells = [int(v) for v in cells.reshape(-1)]
     # Each voxel's eight half cells, where they map to on him: inside him (and his part's, or the
@@ -533,8 +607,229 @@ def part_cells(man, name, pdef):
             for c in range(RES):
                 s = a + RES * b + RES * RES * c
                 sub |= code[a::RES, b::RES, c::RES].astype(np.int64) << (2 * s)
-    return {"lo": [MARGIN, MARGIN, MARGIN], "cells": cells, "sub": [int(v) for v in sub.reshape(-1)],
-            "prof": [[round(float(v), 4) for v in row] for row in prof], "k": [[round(float(v), 4) for v in row] for row in K]}
+    out = {"lo": [MARGIN, MARGIN, MARGIN], "cells": cells, "sub": [int(v) for v in sub.reshape(-1)],
+           "prof": [[round(float(v), 4) for v in row] for row in prof], "k": [[round(float(v), 4) for v in row] for row in K]}
+    if lines:
+        out["lines"] = lines
+    return out
+
+
+# The tones a fighter's body is drawn in on his smooth skin (of 200, his skin as it is): what is
+# drawn is brought to the nearest of them, so every fine cell is a tile of one flat tone, as a
+# man is drawn in a few colours on squared paper.
+TONES = np.array([112, 140, 168, 200, 218, 232])
+LINE, SOFT, SHADE, LIGHT, BRIGHT = 112, 140, 168, 218, 232
+
+
+# How much of a part's bare skin is drawn in the shade of its folds, in their deeper shade, and in
+# the light of what stands out round.
+FORM_SHARE = (0.13, 0.04, 0.16)
+
+
+def _form_tones(name, sh, skin, worn):
+    """His own shape drawn on his smooth skin in flat tones (with _details: the lines a shape as
+    broad as his does not have): where he folds in, between the two halves of his chest, under
+    it, down his spine, behind a knee, the shade a fold lies in, as far as the skin within a hand
+    of it shuts the sky off; where he stands out round, the kneecap, a shoulder, a calf, a light.
+    By the part's own limb alone (an arm by his side does not shade his flank: it moves). For each
+    skin cell, 200 where none."""
+    if name == "torso":
+        group = {"torso"}
+    else:
+        group = {"upperArm" + name[-1], "forearm" + name[-1]} if "rm" in name else {"thigh" + name[-1], "shin" + name[-1]}
+    d = None
+    for part, nm, dd, _ in sh:
+        if part in group:
+            d = dd if d is None else smin(d, dd, 0.04)
+    d = _box3(d)
+    gx, gy, gz = np.gradient(d, FV)
+    gl = np.sqrt(gx * gx + gy * gy + gz * gz) + 1e-9
+    idx = np.argwhere(skin)
+    i, j, l = idx[:, 0], idx[:, 1], idx[:, 2]
+    n = d.shape
+    nx, ny, nz = gx[i, j, l] / gl[i, j, l], gy[i, j, l] / gl[i, j, l], gz[i, j, l] / gl[i, j, l]
+    occ = np.zeros(len(idx))
+    for h in (1.5, 3.0, 4.5, 6.0):
+        pi = np.clip(np.rint(i + nx * h).astype(int), 0, n[0] - 1)
+        pj = np.clip(np.rint(j + ny * h).astype(int), 0, n[1] - 1)
+        pl = np.clip(np.rint(l + nz * h).astype(int), 0, n[2] - 1)
+        occ += np.clip(d[i, j, l] + h * FV - d[pi, pj, pl], 0.0, None) / (h * FV)
+    # How round he is there (over 0 a swell), two fine cells across.
+    k = 2
+    pad = np.pad(d, k, mode="edge")
+    lap = (pad[2 * k:, k:-k, k:-k] + pad[:-2 * k, k:-k, k:-k] + pad[k:-k, 2 * k:, k:-k] + pad[k:-k, :-2 * k, k:-k]
+           + pad[k:-k, k:-k, 2 * k:] + pad[k:-k, k:-k, :-2 * k] - 6.0 * d) / (k * FV) ** 2
+    c = _box3(lap)[i, j, l]
+    out = np.full(len(idx), 200, np.int32)
+    bare = ~worn
+    if bare.sum() > 50:
+        qo = np.quantile(occ[bare], [1.0 - FORM_SHARE[0], 1.0 - FORM_SHARE[1]])
+        qc = np.quantile(c[bare], 1.0 - FORM_SHARE[2])
+        out[c > qc] = LIGHT
+        out[(occ > qo[0]) & (occ > 0.02)] = SHADE
+        out[(occ > qo[1]) & (occ > 0.05)] = SOFT
+    # Specks: a tile whose tone fewer than two of the tiles round it share is his skin's own.
+    grid = np.full(n, -1, np.int32)
+    grid[i, j, l] = out
+    padg = np.pad(grid, 1, constant_values=-1)
+    same = np.zeros(len(idx), np.int32)
+    for a in (-1, 0, 1):
+        for b in (-1, 0, 1):
+            for e in (-1, 0, 1):
+                if a or b or e:
+                    same += padg[i + 1 + a, j + 1 + b, l + 1 + e] == out
+    out[(out != 200) & (same < 2)] = 200
+    return out
+
+
+def _details(man, name, P):
+    """A fighter's body drawn on his smooth skin, each fine cell a tile of it a tone darker or
+    lighter (200: his skin as it is; user: details over all his body, so that he is not a smooth
+    wax doll, and still a man of voxels: the tones are few and flat, TONES). A man's body as it is
+    drawn: the light on the belly of each muscle, the line where two meet, a shade under what
+    stands out. On his chest the pectorals, the breastbone between them, the collarbones, the
+    nipples; his belly's blocks, its middle line and the lines across it, the saw of muscle on his
+    ribs; on his back the spine's groove between its two columns, the shoulder blades, the
+    trapezius, the lower edge of the broad muscles, the two dimples over the hips; the deltoid's
+    cap and its edge, the two muscles of the arm, the point of the elbow, the wrist, the fingers
+    of the fist; the muscles of the thigh, the kneecap, the shin's bone, the calf's two halves,
+    the tendon of the heel and the ankle's bones; the toes."""
+    X, Y, Z = P
+    B = man.B
+    det = np.full(X.shape, 200.0)
+
+    def mark(mask, dist, value, core=FV * 0.55, soft=FV * 1.0):
+        k = np.clip((soft - np.abs(dist)) / (soft - core), 0.0, 1.0)
+        v = 200.0 + (value - 200.0) * k
+        m = mask & (k > 0)
+        if value < 200:
+            det[m] = np.minimum(det[m], v[m])
+        else:
+            det[m] = np.where(det[m] >= 200.0, np.maximum(det[m], v[m]), det[m])
+
+    def patch(mask, value):
+        mark(mask, np.zeros(X.shape), value)
+
+    def seg(a, b, ax=(0, 1)):
+        """How far from the line a..b, in the plane of the two axes `ax` (0 x, 1 y, 2 z)."""
+        U, V = P[ax[0]], P[ax[1]]
+        du, dv = b[0] - a[0], b[1] - a[1]
+        t = np.clip(((U - a[0]) * du + (V - a[1]) * dv) / max(1e-12, du * du + dv * dv), 0.0, 1.0)
+        return np.sqrt((U - a[0] - t * du) ** 2 + (V - a[1] - t * dv) ** 2)
+
+    def ring(c, r, ax=(0, 1)):
+        """How far from the ellipse round `c` of radii `r`, and how far out of it (1 on it)."""
+        U, V = P[ax[0]], P[ax[1]]
+        rr = np.sqrt(((U - c[0]) / r[0]) ** 2 + ((V - c[1]) / r[1]) ** 2)
+        return (rr - 1.0) * min(r), rr
+
+    front = Z > 0.02
+    back = Z < -0.02
+    if name == "torso":
+        cw = B["chest"][0]
+        for sx in (-1, 1):
+            side = X * sx > 0.0
+            # The pectoral's lower edge, a line from under the arm in to the breastbone.
+            d_, rr = ring((sx * 0.086, 1.355), (0.1, 0.075))
+            mark(front & side & (Y < 1.345) & (X * sx < cw - 0.012), d_, LINE)
+            mark(front & (Z > 0.05), np.sqrt((X - sx * 0.098) ** 2 + (Y - 1.335) ** 2), LINE, FV * 0.55, FV * 0.85)   # a nipple
+            mark(front & (Z > 0.03), seg((sx * 0.03, 1.456), (sx * 0.2, 1.474)), BRIGHT, FV * 0.5, FV * 1.2)            # a collarbone
+            mark(front & (Z > 0.03), seg((sx * 0.03, 1.456 - FV * 1.6), (sx * 0.19, 1.474 - FV * 1.6)), SHADE, FV * 0.5, FV * 0.9)
+            mark(front & (Y > 1.03) & (Y < 1.262), np.abs(X - sx * 0.076), SHADE)                                      # the belly's edge
+            # The belly's blocks, each lit; the saw of muscle on the ribs beside them.
+            for yc, ry in ((1.243, 0.013), (1.184, 0.019), (1.116, 0.019), (1.052, 0.016)):
+                _, br = ring((sx * 0.038, yc), (0.021, ry))
+                patch(front & (br < 1.0), LIGHT)
+            for k in range(3):
+                y0 = 1.262 - k * 0.046
+                mark(front & side & (Z < 0.115), seg((sx * 0.104, y0), (sx * 0.146, y0 - 0.02)), SOFT, FV * 0.5, FV * 0.9)
+            mark(front & (Z > 0.02), seg((sx * 0.014, 1.468), (sx * 0.056, 1.6)), SHADE, FV * 0.5, FV * 0.9)            # the neck's cord
+            # The shoulder blade: its inner edge round to its point, lit within; the trapezius
+            # down to its point; the broad muscle's lower edge; a dimple over the hip.
+            d_, rr = ring((sx * 0.116, 1.378), (0.06, 0.088))
+            mark(back & side & (X * sx < 0.126) & (Y < 1.41), d_, SOFT)
+            patch(back & (rr < 0.5), LIGHT)
+            mark(back & side, seg((sx * 0.012, 1.19), (sx * 0.062, 1.3)), SHADE, FV * 0.5, FV * 0.9)
+            mark(back & side, seg((sx * 0.2, 1.29), (sx * 0.075, 1.09)), SHADE, FV * 0.5, FV * 0.95)
+            mark(back, np.sqrt((X - sx * 0.047) ** 2 + (Y - 1.005) ** 2), SOFT, FV * 0.6, FV * 1.0)
+            patch(back & (np.abs(X - sx * 0.04) < 0.013) & (Y > 1.03) & (Y < 1.24), LIGHT)                              # a column of the spine
+        mark(front & (Y > 1.3) & (Y < 1.432), np.abs(X), SOFT, FV * 0.5, FV * 0.9)                                      # the breastbone
+        mark(front & (Y > 1.03) & (Y < 1.3), np.abs(X), LINE, FV * 0.5, FV * 0.9)                                       # the belly's middle
+        for ly in (1.218, 1.15, 1.082):
+            mark(front & (np.abs(X) < 0.07), np.abs(Y - ly), SOFT, FV * 0.5, FV * 0.9)
+        mark(back & (Y > 1.0) & (Y < 1.3), np.abs(X), SOFT, FV * 0.5, FV * 0.9)                                         # the spine's groove
+        patch(back & (np.sqrt(X ** 2 + (Y - 1.468) ** 2) < 0.014), LIGHT)                                               # the knob at the neck's root
+    elif name.startswith("upperArm"):
+        sx = -1 if name.endswith("R") else 1
+        S, E = man.S[sx], man.E[sx]
+        u = nrm(E - S)
+        lx = (X - S[0]) * sx        # out from the arm's line (inward under 0)
+        dc = S + u * 0.03 + np.array([sx * 0.008, -0.01, 0])
+        dl = ell(P, dc, (B["delt"], 0.1, B["delt"] * 1.04))
+        # The deltoid's edge: down to a point on the outside of the arm, up again to the front and
+        # the back (not a band round the arm).
+        phi = np.arctan2(Z, lx)
+        ye = dc[1] - 0.112 + 0.05 * np.abs(phi) / 1.6
+        mark((np.abs(phi) < 1.9) & (lx > -0.02), Y - ye, SOFT, FV * 0.5, FV * 0.9)
+        patch((dl < -0.016) & (Y > dc[1] - 0.03) & (lx > -0.01), LIGHT)                                                 # and its cap
+        mark((lx > 0.02) & (Y < dc[1] - 0.125) & (Y > E[1] + 0.1), np.abs(Z + 0.004), SHADE, FV * 0.5, FV * 0.9)        # between the two muscles
+        _, br = ring((S[0] + sx * 0.004, S[1] - 0.2), (0.026, 0.062))
+        patch(front & (br < 1.0), LIGHT)                                                                                # the biceps
+        mark(back & (Y < dc[1] - 0.15) & (Y > E[1] + 0.1), np.abs(lx - 0.004), SHADE, FV * 0.5, FV * 0.9)               # the triceps: its two heads
+        for k in (-1, 1):
+            _, br = ring((S[0] + sx * (0.004 + k * 0.026), S[1] - 0.19), (0.014, 0.055))
+            patch(back & (br < 1.0), LIGHT)
+    elif name.startswith("forearm"):
+        sx = -1 if name.endswith("R") else 1
+        E, W = man.E[sx], man.W[sx]
+        f = nrm(W - E)
+        lx = (X - E[0]) * sx
+        fc = W + f * 0.055 + np.array([0, 0, 0.008])
+        patch(back & (np.sqrt((X - E[0]) ** 2 + (Y - E[1]) ** 2) < 0.02), BRIGHT)                                       # the point of the elbow
+        mark(back & (Y < E[1] - 0.01), ring((E[0], E[1]), (0.027, 0.03))[0], SHADE, FV * 0.5, FV * 0.9)
+        mark((lx > 0.015) & (Y < E[1] - 0.04) & (Y > E[1] - 0.14), np.abs(Z - 0.006), SHADE, FV * 0.5, FV * 0.9)        # between its two groups
+        _, br = ring((E[0], E[1] - 0.085), (0.024, 0.05))
+        patch(front & (br < 1.0), LIGHT)
+        mark(np.abs(Z) < 1.0, np.abs(Y - (W[1] + 0.004)), SOFT, FV * 0.45, FV * 0.9)                                    # the wrist
+        for k in (-1, 0, 1):
+            mark((Z > fc[2] + 0.012) & (np.abs(Y - fc[1]) < 0.04), np.abs(X - (fc[0] + k * 0.021)), LINE, FV * 0.45, FV * 0.8)   # between the fingers
+        mark((Z > fc[2] - 0.01) & (Y > fc[1] + 0.012), np.abs(Y - (fc[1] + 0.03)), BRIGHT, FV * 0.5, FV * 0.9)          # the knuckles
+    elif name.startswith("thigh"):
+        sx = -1 if name.endswith("R") else 1
+        K = man.K[sx]
+        lx = (X - K[0]) * sx
+        _, br = ring((K[0] + sx * 0.006, 0.67), (0.026, 0.12))
+        patch(front & (br < 1.0), LIGHT)                                                                                # the straight muscle down its front
+        mark(front & (Y > K[1] + 0.1) & (Y < 0.82), np.abs(lx - 0.047), SHADE, FV * 0.5, FV * 0.9)                      # and the outer one beside it
+        d_, rr = ring((K[0] - sx * 0.03, K[1] + 0.085), (0.032, 0.056))
+        mark(front & (Y < K[1] + 0.085) & (lx < -0.012), d_, SHADE, FV * 0.5, FV * 0.9)                                 # the drop of muscle over the knee
+        patch(front & (rr < 0.5), LIGHT)
+        mark(back & (Y > K[1] + 0.07) & (Y < 0.82), np.abs(lx - 0.002), SOFT, FV * 0.5, FV * 0.9)                       # the back of the thigh
+        for k in (-1, 1):
+            _, br = ring((K[0] + sx * (0.002 + k * 0.034), 0.66), (0.017, 0.1))
+            patch(back & (br < 1.0), LIGHT)
+        mark(back & (np.abs(lx) < 0.07), np.abs(Y - (K[1] + 0.03)), SHADE, FV * 0.5, FV * 0.9)                          # the fold behind the knee
+    elif name.startswith("shin"):
+        sx = -1 if name.endswith("R") else 1
+        K, A = man.K[sx], man.A[sx]
+        lx = (X - K[0]) * sx
+        d_, rr = ring((K[0], K[1] + 0.012), (0.034, 0.04))
+        patch(front & (rr < 0.8), BRIGHT)                                                                               # the kneecap
+        mark(front & (Y < K[1] - 0.012), d_ - FV * 0.8, SOFT, FV * 0.5, FV * 0.9)                                       # and the shade under it
+        mark(front & (Y < K[1] - 0.075) & (Y > A[1] + 0.05), np.abs(lx - 0.004), BRIGHT, FV * 0.5, FV * 0.9)            # the shin's bone
+        mark(front & (Y < K[1] - 0.075) & (Y > A[1] + 0.07), np.abs(lx - 0.004 - FV * 2.0), SHADE, FV * 0.5, FV * 0.9)  # and the muscle beside it
+        mark(back & (Y < K[1] - 0.04) & (Y > 0.27), np.abs(lx - 0.0), SOFT, FV * 0.5, FV * 0.9)                         # the calf's two halves
+        for k in (-1, 1):
+            _, br = ring((K[0] + sx * k * 0.03, 0.335), (0.017, 0.062))
+            patch(back & (br < 1.0), LIGHT)
+        mark(back & (Y < 0.24) & (Y > 0.09), np.abs(lx), LIGHT, FV * 0.5, FV * 0.9)                                     # the heel's tendon
+        for k in (-1, 1):
+            patch((np.sqrt((Y - 0.088) ** 2 + (Z + 0.012) ** 2) < 0.016) & (lx * k > 0.02), BRIGHT)                     # an ankle bone
+        for k in (-1, 0, 1):
+            mark((Z > 0.118) & (Y > 0.012), np.abs(X - (sx * 0.12 + k * 0.017)), LINE, FV * 0.45, FV * 0.8)            # between the toes
+    # Each tile the nearest of the few tones.
+    q = TONES[np.argmin(np.abs(det[..., None] - TONES[None, None, None, :]), axis=-1)]
+    return q.astype(np.int32)
 
 
 def _paint(man, P, d, first, sh, skin):

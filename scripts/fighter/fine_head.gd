@@ -11,6 +11,7 @@ extends RefCounted
 ## it still are, and show through a wound. The face's pieces he chose (Physique.FACES), a bot's
 ## stubble and scars, a blink, a grimace and a mouth that talks are drawn on it fine.
 
+const FineSmooth := preload("res://scripts/fighter/fine_smooth.gd")
 const FILE := "res://data/fine_head.json"
 static var _tpl := {}
 static var _giants := {}   # a giant's own head (tools/gen_fine_giant_heads.py): kind -> template
@@ -83,6 +84,8 @@ static func material() -> ShaderMaterial:
 		# (Nor the rim of light round every small box: it drew bright lines down the face.)
 		_mat.set_shader_parameter("rim_amount", 0.03)
 	_mat.set_shader_parameter("ao_strength", VoxelPart.ao_strength * AO_K)
+	_mat.set_shader_parameter("smooth_shade", FineSmooth.k if FineSmooth.live() else 0.0)
+	FineSmooth.follow(_mat)
 	return _mat
 
 ## Drawn on the head of `f` (his look as it is painted now: his skin, his hair, his beard, the face
@@ -103,11 +106,13 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 	var vox := p.vf * p.part_scale
 	var fsz := vox / float(res)
 	var look := _look(f, p)
+	look["smooth"] = giant == "" and FineSmooth.skinned()   # (his face's lines drawn on it: _face_tone)
 	# The head's own voxels: those wholly inside the fine head drawn as they are, the rest not.
 	var keep := {}
 	for k in t.keep:
 		keep[Vector3i(int(k[0]), int(k[1]), int(k[2]))] = true
 	var xf: Array = p.shape_xf.duplicate() if p.shape_xf.size() == p.fx.size() else []
+	var shaped := not xf.is_empty()
 	if xf.is_empty():
 		var lps := p.local_positions()
 		xf.resize(p.fx.size())
@@ -125,9 +130,10 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 			xf[i] = Transform3D(o0.basis.scaled(Vector3.ONE * hs), pivot + (o0.origin - pivot) * hs)
 		if not keep.has(Vector3i(p.fx[i], p.fy[i], p.fz[i])):
 			# (The neck the strong look draws down into the shoulders stays as it is drawn: the
-			# fine head ends at the jaw.)
+			# fine head ends at the jaw. Only a head drawn in that shape: the plain head's lowest
+			# layer, a hair under its box, stayed whole under a brute's chin, a plate. User.)
 			var o: Transform3D = xf[i]
-			if o.origin.y - o.basis.get_scale().y * vox * 0.5 < -p.half_ext.y:
+			if (shaped or giant != "") and o.origin.y - o.basis.get_scale().y * vox * 0.5 < -p.half_ext.y:
 				continue
 			hid[i] = 1
 			xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (xf[i] as Transform3D).origin)
@@ -179,6 +185,23 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 	if staged:
 		if not await Physique._frame(p) or not p.fine.is_empty():
 			return
+	# The way his head faces at each fine voxel, in its colour's alpha (FineSmooth: the smooth light).
+	var skin: ShaderMaterial = null
+	if FineSmooth.live() and giant == "":
+		var at := PackedInt32Array()
+		at.resize(n * 3)
+		for s in n:
+			var c: Array = cells[s]
+			at[s * 3] = int(c[0])
+			at[s * 3 + 1] = int(c[1])
+			at[s * 3 + 2] = int(c[2])
+		var sol := FineSmooth.solid(at, FineSmooth.triples(keep.keys()), res, true)
+		var light := FineSmooth.blurred(sol, FineSmooth.HEAD_REACH)
+		var na := FineSmooth.ways(at, light)
+		for s in n:
+			own[s].a = na[s]
+		if FineSmooth.skinned():
+			skin = FineSmooth.skin(FineSmooth.corners(at, sol, FineSmooth.blurred(sol, FineSmooth.HEAD_GEO_REACH), light), material())
 	var fine := {"mm": mm, "par": par, "own": own, "xf": cxf, "of": of, "front": front, "look": look, "cells": cells, "hid": hid, "hs": hs, "pivot": pivot, "giant": giant}
 	# (His head's outline without his hair: a helmet or a hat sits on his head, the hair under it
 	# tucked, tuck.)
@@ -239,6 +262,8 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 	fine.mi = mi
 	p.draw_with.append(mi)
 	p.fine = fine
+	if skin != null:
+		mi.material_override = skin
 	_paint(p)
 	mi.global_transform = p.global_transform
 
@@ -549,12 +574,59 @@ static func _color(c: Array, look: Dictionary) -> Color:
 		col = Color(skin.r * 1.02, skin.g * 0.97, skin.b * 0.96)
 	elif feat == LIGHT:
 		col = skin.lightened(0.06)
+	if feat == SKIN and look.get("smooth", false):
+		k *= _face_tone(float(c[0]) + 0.5 - 15.0, float(c[1]) + 0.5 - 18.0, float(c[2]) + 0.5 - 15.0)
 	# (His scalp bare: the hair is his hairstyle's own cells over it.) A beard.
 	var beard := int(look.beard)
 	if beard > 0 and _beard_on(bits, beard):
 		var kb := 0.35 if beard == 1 else (0.3 if beard == 7 else 0.88)
 		col = col.lerp(look.beard_c, kb)
 	return Color(clampf(col.r * k * grain, 0.0, 1.0), clampf(col.g * k * grain, 0.0, 1.0), clampf(col.b * k * grain, 0.0, 1.0), 1.0)
+
+## A man's face drawn on his smooth head, each fine voxel a tile of it a tone darker or lighter
+## (user: the head was too smooth; under the smooth skin the steps that made its planes are gone):
+## the eyes set in their sockets, the sides of the nose, the fold from its wing to the corner of
+## the mouth, the cheekbone lit and the hollow under it, the ridge of the brow and a line across
+## the forehead, the temples, the jaw's edge, the chin, the fold at the nape. `x`, `y`, `z`: the
+## fine voxel's place from the head's middle (fine voxels, the face toward +z;
+## tools/gen_fine_head.py: the eyes at 5.2 out and 2.2 up, the mouth at -9.5, the chin at -14).
+const FACE_SHADE := 0.9
+const FACE_SOFT := 0.82
+const FACE_LIGHT := 1.06
+static func _face_tone(x: float, y: float, z: float) -> float:
+	var ax := absf(x)
+	var t := 1.0
+	if z > 8.0:
+		if ax < 8.6 and y > 5.4 and y < 6.7:
+			t = FACE_LIGHT   # the ridge of the brow
+		if pow((ax - 8.0) / 2.7, 2.0) + pow((y + 0.5) / 1.3, 2.0) < 1.0:
+			t = FACE_LIGHT   # the cheekbone
+		if ax < 2.3 and absf(y + 13.7) < 1.3:
+			t = FACE_LIGHT   # the chin
+		if pow((ax - 5.2) / 3.8, 2.0) + pow((y - 1.9) / 2.9, 2.0) < 1.0 and y < 3.5:
+			t = FACE_SHADE   # the socket round the eye
+		if ax > 1.2 and ax < 2.7 and y > -4.4 and y < 2.4 and z > 11.2:
+			t = FACE_SHADE   # the side of the nose
+		if ax < 5.8 and absf(y - 9.5) < 0.5 and z > 10.0:
+			t = FACE_SHADE   # a line across the forehead
+		if _off_line(ax, y, 3.0, -5.6, 4.5, -9.3) < 0.6:
+			t = FACE_SOFT    # from the nose's wing to the corner of the mouth
+	if z > 2.5 and _off_line(ax, y, 10.3, -3.0, 6.4, -7.6) < 0.95:
+		t = FACE_SHADE       # the hollow of the cheek
+	if ax > 10.4 and y > 2.4 and y < 8.0 and z > 2.0 and z < 9.6:
+		t = FACE_SHADE       # the temple
+	if z > -1.0 and z < 9.5 and _off_line(ax, y, 10.2, -10.6, 4.6, -15.4) < 0.75:
+		t = FACE_SHADE       # the jaw's edge
+	if z < -6.0 and ax < 7.5 and absf(y + 9.5) < 0.55:
+		t = FACE_SOFT        # the fold at the nape
+	return t
+
+## How far (u, v) lies from the line a..b.
+static func _off_line(u: float, v: float, ax: float, ay: float, bx: float, by: float) -> float:
+	var d := Vector2(bx - ax, by - ay)
+	var q := Vector2(u - ax, v - ay)
+	var t := clampf(q.dot(d) / d.length_squared(), 0.0, 1.0)
+	return (q - d * t).length()
 
 ## The face's pieces and his mood drawn on its fine voxels: `mood` 1 his eyes shut (a blink), 2
 ## his face screwed up (hurt), 4 with it crying out, and `talk` 0..3 his mouth open as he speaks.
@@ -593,6 +665,7 @@ static func _paint(p: VoxelPart, mood := 0, talk := 0) -> void:
 		# (Marked since: blood, a burn, a scar on the voxel it lies on.)
 		if j >= 0 and base.has(j) and p.colors[j] != base[j] and not p.get_meta("expr_saved", {}).has(j) and not p.get_meta("talk_saved", {}).has(j):
 			col = p.colors[j]
+		col.a = own[s].a   # (the way it faces: FineSmooth)
 		mm.set_instance_color(s, col)
 
 ## What a face piece or a mood draws on the face's fine voxel at (x, y) (fine voxels from the
@@ -856,7 +929,9 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 			continue
 		var marked: bool = base.has(i) and p.colors[i] != base[i] and not expr.has(i) and not talking.has(i)
 		for s in of[i]:
-			mm.set_instance_color(s, p.colors[i] if marked else paint.get(s, own[s]))
+			var col: Color = p.colors[i] if marked else paint.get(s, own[s])
+			col.a = own[s].a   # (the way it faces: FineSmooth)
+			mm.set_instance_color(s, col)
 
 ## His mood and his talking mouth drawn on the fine face (Physique.express and talk).
 static func mood(p: VoxelPart, shut: bool, hurt: bool, talk: int, cry := false) -> void:

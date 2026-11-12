@@ -66,7 +66,8 @@ func test_his_choices_are_drawn_fine() -> void:
 	for s in cells.size():
 		if int(cells[s][3]) == FineHead.IRIS:
 			iris += 1
-			if own[s].is_equal_approx(Physique.BLUE):
+			# (Its colour: what a fine voxel's alpha holds is the way its skin faces, FineSmooth.)
+			if Color(own[s], 1.0).is_equal_approx(Physique.BLUE):
 				blue += 1
 	t.check(iris > 0 and blue == iris, "every iris voxel blue (%d of %d)" % [blue, iris])
 	var grin: Dictionary = h.fine.get("paint", {})

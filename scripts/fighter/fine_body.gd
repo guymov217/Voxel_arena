@@ -12,6 +12,7 @@ extends RefCounted
 ## eight half-size cells, as deep in him as they are: the skin, the fat under it, then the
 ## voxel's own flesh, organ or bone. A bone broken through bends the skin with the limb.
 
+const FineSmooth := preload("res://scripts/fighter/fine_smooth.gd")
 const FILE := "res://data/fine_body.json"
 const CELL := 9   # a cell's numbers: ix, iy, iz (from the grid's corner), its voxel's x, y, z, shade, ao, paint
 ## A sculpted beast's fine voxel (tools/gen_fine_beasts.py) carries its own colour and kind in its
@@ -67,7 +68,7 @@ static func part_data(bn: String, part: String) -> Dictionary:
 				for v in row:
 					k.append(float(v))
 			out = {"cells": PackedInt32Array(pd.cells), "sub": PackedInt32Array(pd.sub), "k": k, "rows": (pd.k as Array).size(), "na": int(template().get("na", 32)),
-				"palette": b.get("palette", []), "cloth": b.get("cloth", [])}
+				"palette": b.get("palette", []), "cloth": b.get("cloth", []), "lines": PackedInt32Array(pd.get("lines", []))}
 	_parsed[key] = out
 	return out
 
@@ -166,7 +167,9 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	if sub.size() != g.x * g.y * g.z:
 		return
 	var vox := p.vf * p.part_scale
-	var L := _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)), beast)
+	# (A man's skin smooth, FineSmooth: a layout of its own. Not a giant's, nor a beast's.)
+	var man := BUILDS.has(bn)
+	var L := _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)) + ("|smooth" if man and FineSmooth.live() else "") + ("|geo" if man and FineSmooth.skinned() else ""), beast)
 	var cells: PackedInt32Array = d.cells
 	var fsz: float = L.fsz
 	var n: int = L.n
@@ -189,8 +192,10 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	var base := {}
 	for j in of:
 		base[j] = p.colors[j]
-	var fine := {"body": true, "build": bn, "par": par, "own": own, "shade": shade, "xf": L.xf, "of": of, "base": base,
-		"hid": L.hid, "code": L.code, "sub": d.sub, "fsz": fsz, "sk": sk_lin, "wound": {}, "wfree": [], "wn": 0, "cells": cells, "d": d, "beast": beast}
+	var na: PackedFloat32Array = L.na
+	var fine := {"body": true, "build": bn, "par": par, "own": own, "shade": shade, "xf": L.xf, "of": of, "base": base, "na": na,
+		"hid": L.hid, "code": L.code, "sub": d.sub, "fsz": fsz, "sk": sk_lin, "wound": {}, "wfree": [], "wn": 0, "cells": cells, "d": d, "beast": beast,
+		"smooth": L.skin != null}
 	p.fine = fine
 	if _drawing():
 		var mm := MultiMesh.new()
@@ -211,7 +216,7 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 			buf[o + 12] = c.r
 			buf[o + 13] = c.g
 			buf[o + 14] = c.b
-			buf[o + 15] = 1.0
+			buf[o + 15] = na[s] if na.size() == n else 1.0
 			if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
 				if not await Physique._frame(p) or not is_same(p.fine, fine):
 					return
@@ -231,6 +236,8 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		p.draw_with.append(mi)
 		mi.global_transform = p.global_transform
 		mi.transparency = p.see_through
+		if L.skin != null:
+			mi.material_override = L.skin
 		# The part's own voxels are not drawn at all under the fine ones (what a wound bares is drawn
 		# as the wound's cells): half the boxes a man is drawn with.
 		if p.mmi:
@@ -359,13 +366,16 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 	buf.resize(n * 20)
 	var pal: Array = d.get("palette", [])
 	var cloth: Array = d.get("cloth", [])
+	var smooth := key.contains("|smooth")
+	var skinned := key.contains("|geo")
+	var grain_k := FineSmooth.GRAIN if skinned else 1.0
 	for s in n:
 		var o := s * CELL
 		var j := p._cell(cells[o + 3], cells[o + 4], cells[o + 5])
 		par[s] = j
 		var lp := lo + (Vector3(cells[o], cells[o + 1], cells[o + 2]) + Vector3(0.5, 0.5, 0.5)) * fsz
 		cxf[s] = Transform3D(Basis(), lp)
-		var grain := 1.0 + (float(absi(hash(Vector3i(cells[o], cells[o + 1], cells[o + 2]))) % 1000) / 1000.0 - 0.5) * 0.05
+		var grain := 1.0 + (float(absi(hash(Vector3i(cells[o], cells[o + 1], cells[o + 2]))) % 1000) / 1000.0 - 0.5) * 0.05 * grain_k
 		shade[s] = float(cells[o + 6]) / 200.0 * grain
 		# (An Array, not a packed one: a packed array read out of the dictionary is a copy, and
 		# what was appended to it never reached the dictionary.)
@@ -396,9 +406,98 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 		buf[b + 17] = cu.g
 		buf[b + 18] = cu.b
 		buf[b + 19] = cu.a
-	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code}
+	# The way a man's body faces at each fine voxel (FineSmooth: the smooth light), its ends at a
+	# joint taken to run on: an upper arm's and a thigh's low end, the trunk's (the hips), a
+	# forearm's, a shin's and a thigh's high one.
+	var na := PackedFloat32Array()
+	var skin: ShaderMaterial = null
+	if smooth:
+		var at := _fine_at(cells)
+		# Under the smooth skin his body's lines are drawn on it (tools/gen_fine_body.py _details:
+		# [fine voxel, its shade] by turns), each fine voxel a tile a shade darker or lighter.
+		if skinned:
+			var lines: PackedInt32Array = d.get("lines", PackedInt32Array())
+			for li in range(0, lines.size() - 1, 2):
+				var s: int = lines[li]
+				if s >= 0 and s < n:
+					var grain := 1.0 + (float(absi(hash(Vector3i(cells[s * CELL], cells[s * CELL + 1], cells[s * CELL + 2]))) % 1000) / 1000.0 - 0.5) * 0.05 * grain_k
+					shade[s] = maxf(0.3, 1.0 + (float(lines[li + 1]) / 200.0 - 1.0) * FineSmooth.LINES) * grain
+		var bn := key.get_slice("|", 0)
+		var own := _smooth_solid(p, d, bn, vox)
+		var sol := _smooth_joined(p, d, bn, vox)
+		var reach := FineSmooth.REACH_TRUNK if String(p.part_name) == "torso" else FineSmooth.REACH
+		var light := FineSmooth.blurred(sol, reach)
+		# (The part's own ends, under the parts beside it, by its own shape: FineSmooth.corners.)
+		var alone := is_same(own, sol)
+		var own_light := light if alone else FineSmooth.blurred(own, reach)
+		na = FineSmooth.ways(at, light, sol, own_light)
+		if skinned:
+			var shape := FineSmooth.blurred(sol, FineSmooth.GEO_REACH)
+			skin = FineSmooth.skin(FineSmooth.corners(at, sol, shape, light, own, shape if alone else FineSmooth.blurred(own, FineSmooth.GEO_REACH), own_light), FineHead.material())
+	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code, "na": na, "skin": skin}
 	_layouts[key] = L
 	return L
+
+## A part's fine voxels (its cells' places), x y z by turns, as FineSmooth takes them.
+static func _fine_at(cells: PackedInt32Array) -> PackedInt32Array:
+	var n := cells.size() / CELL
+	var at := PackedInt32Array()
+	at.resize(n * 3)
+	for s in n:
+		at[s * 3] = cells[s * CELL]
+		at[s * 3 + 1] = cells[s * CELL + 1]
+		at[s * 3 + 2] = cells[s * CELL + 2]
+	return at
+
+## A part's own solid for the smooth skin (FineSmooth.solid: its fine voxels and what they close
+## in), worked out once a build, a part and a size; and that with what is jointed onto the part
+## beside it, by the joint (its thighs' tops under the trunk, the trunk over a thigh: FineSmooth.
+## joined), each where it hangs at rest.
+static var _solids := {}
+static func _smooth_solid(p: VoxelPart, d: Dictionary, bn: String, vox: float) -> Dictionary:
+	var key := "%s|%s|%s" % [bn, p.part_name, snappedf(vox, 0.00001)]
+	if _solids.has(key):
+		return _solids[key]
+	var g := p.grid
+	var sub: PackedInt32Array = d.sub
+	var inner := PackedInt32Array()
+	for i in p.fx.size():
+		if sub[(p.fx[i] * g.y + p.fy[i]) * g.z + p.fz[i]] == DEEP:
+			inner.append(p.fx[i])
+			inner.append(p.fy[i])
+			inner.append(p.fz[i])
+	var pn := String(p.part_name)
+	var sol := FineSmooth.solid(_fine_at(d.cells), inner, 2, pn.begins_with("upperArm") or pn.begins_with("thigh") or pn == "torso", pn.begins_with("forearm") or pn.begins_with("shin") or pn.begins_with("thigh"))
+	_solids[key] = sol
+	return sol
+
+static func _smooth_joined(p: VoxelPart, d: Dictionary, bn: String, vox: float) -> Dictionary:
+	var own := _smooth_solid(p, d, bn, vox)
+	var f = p.fighter
+	if f == null or not ("parts" in f):
+		return own
+	var fsz := vox / 2.0
+	var lo_p := -Vector3(p.grid) * vox * 0.5
+	var beside := []
+	for q: VoxelPart in f.parts:
+		if q == p or String(q.part_name) == "head":
+			continue
+		var child := q.parent_part == p
+		if not child and p.parent_part != q:
+			continue
+		if not is_equal_approx(q.vf * q.part_scale, vox):
+			continue
+		var qd := part_data(bn, String(q.part_name))
+		if qd.is_empty() or (qd.sub as PackedInt32Array).size() != q.grid.x * q.grid.y * q.grid.z:
+			continue
+		# (Where the other's own frame lies in this part's, at rest: its joint's two points one.)
+		var off: Vector3 = (q.pa - q.ca) if child else (p.ca - p.pa)
+		var joint: Vector3 = q.pa if child else p.ca
+		var sh: Vector3 = (-Vector3(q.grid) * vox * 0.5 + off - lo_p) / fsz
+		var limb: VoxelPart = q if child else p
+		var r := maxf(limb.half_ext.x, limb.half_ext.z) / fsz * 1.3 + 3.0
+		beside.append([_smooth_solid(q, qd, bn, vox), Vector3i(roundi(sh.x), roundi(sh.y), roundi(sh.z)), (joint - lo_p) / fsz, r])
+	return FineSmooth.joined(own, beside)
 
 ## A biting head's lower jaw (VoxelPart.build_jaw): the fine voxels over its voxels drawn with it,
 ## turning on its hinge as it opens; its own voxels not drawn.
@@ -788,12 +887,16 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 		return
 	var of: Dictionary = fine.of
 	var wound: Dictionary = fine.wound
+	var na: PackedFloat32Array = fine.get("na", PackedFloat32Array())
 	for i in indices:
 		if of.has(i):
 			var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
 			for s in (of[i] as Array):
 				var at := _slot(fine, s)
-				(at[0] as MultiMesh).set_instance_color(at[1], _color(p, s, i))
+				var col := _color(p, s, i)
+				if s < na.size():
+					col.a = na[s]   # (the way it faces: FineSmooth)
+				(at[0] as MultiMesh).set_instance_color(at[1], col)
 				(at[0] as MultiMesh).set_instance_custom_data(at[1], _custom(p, s, i, g))   # (wet with blood)
 		if wound.has(i):
 			_write_wound_glow(p, i, true)

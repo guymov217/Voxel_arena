@@ -187,3 +187,49 @@ func test_native_trunk_matches_the_gdscript() -> void:
 	t.check(bad.is_empty(), "the arms are kept out of the trunk the same in C++ and GDScript, to the bit (off: %s of %d)" % [bad.slice(0, 4), bad.size()])
 	t.check(moved[0] > 60 and moved[1] > 60 and moved[2] > 60, "and the points tried were in the trunk as well as out of it (moved out: %s of 600)" % [moved])
 	m.queue_free()
+
+
+func test_native_smooth_matches_the_gdscript() -> void:
+	# (#151) The men's smooth skin (FineSmooth: a part's solid, the part beside it joined on at the
+	# joint, the blurred shapes, the way each fine voxel faces, where its corners are drawn): the
+	# C++ gives the script's own numbers. A forearm with its upper arm at the elbow.
+	if Greedy.core() == null:
+		t.check(true, "no native core built: the men are drawn as cubes")
+		return
+	var FS = preload("res://scripts/fighter/fine_smooth.gd")
+	var fore := FineBody._fine_at(FineBody.part_data("hero", "forearmR").cells)
+	var upper := FineBody._fine_at(FineBody.part_data("hero", "upperArmR").cells)
+	t.check(fore.size() > 900 and upper.size() > 900, "the hero's arm has its fine voxels (%d, %d)" % [fore.size() / 3, upper.size() / 3])
+	var got := {}
+	var took := {}
+	for native in [false, true]:
+		Greedy.use_native = native
+		var t0 := Time.get_ticks_usec()
+		var own: Dictionary = FS.solid(fore, PackedInt32Array([2, 6, 2, 3, 9, 3]), 2, false, true)
+		var other: Dictionary = FS.solid(upper, PackedInt32Array(), 2, true, false)
+		# (The upper arm's grid 28 fine voxels over the forearm's; the elbow at the forearm's top.)
+		var sol: Dictionary = FS.joined(own, [[other, Vector3i(0, 28, 0), Vector3(6.0, 28.0, 6.0), 9.5]])
+		var shape: Dictionary = FS.blurred(sol, 2)
+		var light: Dictionary = FS.blurred(sol, 3)
+		var own_shape: Dictionary = FS.blurred(own, 2)
+		var own_light: Dictionary = FS.blurred(own, 3)
+		got[native] = {"solid": own.f, "size": [own.sx, own.sy, own.sz, own.lo, own.pad], "joined": sol.f, "added": sol.added, "shape": shape.f, "light": light.f,
+			"ways": FS.ways(fore, light, sol, own_light), "corners": FS.corners(fore, sol, shape, light, own, own_shape, own_light), "alone": FS.corners(fore, own, own_shape, own_light)}
+		took[native] = Time.get_ticks_usec() - t0
+	Greedy.use_native = true
+	t.check(int(took[false]) > 4 * int(took[true]), "the script works it out itself, and the core many times faster (%d ms, %d ms)" % [int(took[false]) / 1000, int(took[true]) / 1000])
+	for k in got[false]:
+		t.check(got[false][k] == got[true][k], "the C++ core's %s is the script's own" % k)
+	var added: PackedInt32Array = got[true].added
+	t.check(added.size() > 100, "the upper arm is joined on at the elbow (%d of its fine voxels)" % added.size())
+	var cd: PackedFloat32Array = got[true].corners
+	var moved := 0
+	var far := 0.0
+	for i in range(0, cd.size(), 4):
+		var d := Vector3(cd[i], cd[i + 1], cd[i + 2])
+		if d != Vector3.ZERO:
+			moved += 1
+			far = maxf(far, d.length())
+	t.check(moved > fore.size() / 3, "the skin's corners are moved onto his shape (%d of them)" % moved)
+	t.check(far <= FS.HELD_OUT + 1e-4, "none further than it is held to (%.2f of a fine voxel)" % far)
+

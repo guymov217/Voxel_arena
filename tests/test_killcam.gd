@@ -383,6 +383,7 @@ func test_the_replay_draws_every_man_whole() -> void:
 					worst_cap = maxf(worst_cap, cap.global_position.distance_to(pivot))
 	t.check(done[0] and seen > 20, "the replay played through (%d frames of it looked at)" % seen)
 	t.check(worst < 0.002, "every joint of every man is drawn closed all through it (worst %.1f mm open)" % (1000.0 * worst))
-	t.check(caps > 0 and worst_cap < 0.25 * m.me.f.S, "and the block on each joint sits on its joint (worst %.2f m off)" % worst_cap)
+	# (Men drawn fine have no block on their joints: their skin closes over them, tests/test_smooth.gd.)
+	t.check(worst_cap < 0.25 * m.me.f.S, "and a block drawn on a joint sits on its joint (%d of them, worst %.2f m off)" % [caps, worst_cap])
 	m.queue_free()
 	await get_tree().process_frame

@@ -73,8 +73,11 @@ func test_joints_stay_closed_through_a_fight() -> void:
 	t.check(drawn_worst < 0.0005, "on screen every joint is closed (worst drawn %.2f mm)" % (1000.0 * drawn_worst))
 	t.check(wep_off < 0.0005, "and the weapon is drawn with the hand that holds it")
 	# Every joint capped (the deltoid, elbows, hips, knees, the neck): a block of the limb's own
-	# thickness on its pivot, turned with the arm at the shoulder, with the parent elsewhere.
+	# thickness on its pivot, turned with the arm at the shoulder, with the parent elsewhere. Of a
+	# man drawn in his own voxels (the strong look): drawn fine, his skin closes over his joints
+	# itself and no block is drawn on them (tests/test_smooth.gd).
 	var f0: Fighter = m.me.f
+	Physique.dress(f0, "strong")
 	f0.draw_now()
 	var caps := 0
 	var off := 0.0

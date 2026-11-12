@@ -32,8 +32,6 @@ const SHOW_CIRCUS := false
 static func admin() -> bool:
 	return OS.get_cmdline_user_args().has("--admin") or bool(Save.get_value("admin", false))
 const CLOTH := [0x8a1c14, 0x1f4f8f, 0x2f6b2a, 0x6b2a7a, 0xc89a2a, 0x2a2a2a, 0xe8e0d0, 0xb4541e, 0x5a3a22, 0x1d6b6b, 0x8a8a80, 0xd06a8a]
-## The builds a gladiator can have (FineBody.BUILDS, in order), as Your gladiator names them.
-const BUILD_NAMES := ["Hero: broad shoulders, narrow waist", "Champion: lean and quick", "Brute: heavy and strong"]
 ## The look's slots as Your gladiator names them.
 const SLOT_NAMES := {"hat": "Hat", "hair": "Hair", "hair_colour": "Hair colour", "beard": "Beard", "cape": "Cape", "eyes": "Eyes", "eye_colour": "Eye colour", "mouth": "Mouth", "face": "Face", "nose": "Nose", "scar": "Scar"}
 const LOOK_SLOTS := {
@@ -259,7 +257,7 @@ const HAIR_V1 := ["", "hair_mohawk", "hair_long", "hair_curly", "hair_topknot", 
 const LOOK_V := 2
 func look() -> Dictionary:
 	var l: Dictionary = Save.get_value("look", {})
-	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1), "build": clampi(int(l.get("build", 0)), 0, FineBody.BUILDS.size() - 1), "v": LOOK_V}
+	var out := {"skin": clampi(int(l.get("skin", 0)), 0, Fighter.SKINS.size() - 1), "cloth": clampi(int(l.get("cloth", 0)), 0, CLOTH.size() - 1), "build": 0, "v": LOOK_V}   # (one build for every player, the hero: user, so that none looks the heavier man)
 	var old := not l.is_empty() and int(l.get("v", 1)) < LOOK_V
 	for k in LOOK_SLOTS:
 		var i := int(l.get(k, 0))
@@ -305,8 +303,8 @@ func peer_look(pl: Dictionary) -> Dictionary:
 	var arm: Array = (pl.get("look", []) as Array).filter(func(id): return id is String and id != "" and ok.has(id)).slice(0, LOOK_SLOTS.size()) if pl.get("look") is Array else []
 	var sk = pl.get("skin")
 	Armory.register(pl.get("gear_defs", {}))   # his designed pieces, made safe, under their own ids
-	var bd = pl.get("build")
-	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null, "build": String(bd) if bd is String and FineBody.BUILDS.has(bd) else ""}
+	# (His build is not his to choose: every player is drawn as the one man, Physique.build_of.)
+	return {"armor": arm, "gear": Armory.sanitize(pl.get("gear", [])), "skin": int(sk) if (sk is int or sk is float) and Fighter.SKINS.has(int(sk)) else null, "build": ""}
 
 func look_armor(l: Dictionary) -> Array:
 	var a := []
@@ -4289,17 +4287,6 @@ func _gladiator(v: VBoxContainer) -> void:
 	_swatches(body, Fighter.SKINS, lk.skin, func(i): _set_look("skin", i), 38)
 	body.add_child(UIStyle.label("Loincloth and cape", 15, UIStyle.MUTED))
 	_swatches(body, CLOTH, lk.cloth, func(i): _set_look("cloth", i), 38)
-	# His build (the detailed look draws it; the classic gladiators are all one build).
-	var bo := OptionButton.new()
-	for nm in BUILD_NAMES:
-		bo.add_item(nm)
-	bo.select(lk.build)
-	bo.fit_to_longest_item = false
-	bo.custom_minimum_size = Vector2(300, 0)
-	bo.item_selected.connect(func(i): _set_look("build", i))
-	var bl := UIStyle.label("Physique", 15, UIStyle.MUTED)
-	bl.custom_minimum_size = Vector2(84, 0)
-	_row(body, [bl, bo])
 	# The rest two to a row (one under another they made the screen taller than the window).
 	var grid := GridContainer.new()
 	grid.columns = 4
@@ -4331,7 +4318,7 @@ func _gladiator(v: VBoxContainer) -> void:
 		var r := {"v": LOOK_V}
 		r.skin = randi() % Fighter.SKINS.size()
 		r.cloth = randi() % CLOTH.size()
-		r.build = randi() % FineBody.BUILDS.size()
+		r.build = 0
 		for k in LOOK_SLOTS:
 			r[k] = randi() % LOOK_SLOTS[k].size()
 			if look_locked(LOOK_SLOTS[k][r[k]]):

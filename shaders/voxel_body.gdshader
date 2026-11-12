@@ -38,12 +38,34 @@ uniform float point_thin : hint_range(0.0, 1.0) = 0.08;
 uniform float body_bevel : hint_range(0.0, 1.0) = 0.85;   // how far a bevelled corner is pulled in
 uniform float oil : hint_range(0.0, 1.0) = 0.0;          // skin oiled for the arena: glossier
 uniform bool bevel_mode = false;
+// The fine look's smooth light (FineSmooth): how far a face is lit by the way the body faces there
+// (the instance colour's alpha, 2 and up: an octahedron's 32 by 32) and not by its own. The cube
+// is where it was; only its light changes. 0: every cube lit as a cube. Its shadow is cast from
+// smooth_inset of a voxel further in (a cube's faces turned from the sun lay in the cube's own
+// shadow, and a skin lit as one surface showed them as dark streaks).
+uniform float smooth_shade : hint_range(0.0, 1.0) = 0.0;
+uniform float smooth_inset : hint_range(0.0, 3.0) = 1.0;
+// The smooth skin (FineSmooth.skin): each cube's corners drawn moved onto the body's shape, by
+// smooth_tex (eight texels a cube, a row of 256 cubes: the move in cubes, and the way the body
+// faces at the corner). A corner is moved the same for every cube it is a corner of.
+uniform sampler2D smooth_tex : filter_nearest, repeat_disable;
+uniform float smooth_geo : hint_range(0.0, 1.0) = 0.0;
+uniform float grain_k : hint_range(0.0, 4.0) = 1.0;      // the grain voxel to voxel, of each kind's own (the smooth skin's tiles: more)
 uniform float patina : hint_range(0.0, 1.0) = 1.0;      // bronze gone green in its corners and spots (0: polished, the new look's armour)
 uniform float iron_metal : hint_range(0.0, 1.0) = 1.0;   // how much a mirror iron is (the new look's armour: less, so its bands read in the sun)
 uniform float scratches : hint_range(0.0, 1.0) = 1.0;    // iron's scratches and dents (the new look's armour: fainter, on its small voxels)
 instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
 instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
 instance uniform float pallor = 0.0;      // the skin gone pale from blood lost, 0..1 (Physique.pale)
+// A knee or an elbow under the smooth skin (Fighter._bend_drawing): the two parts that meet there
+// are drawn as one skin bent round the joint, not as two stiff pieces turned on one another. All
+// that is drawn with the part within bend_at.w of the joint along its length is turned about the
+// joint (bend_at.xyz, world) toward the other part's turn from this one's (bend_turn: its axis,
+// world, and the angle): not at all at that distance on the part's own side, half of it at the
+// joint, all of it at that distance past it. Both parts do the same from their two sides, so they
+// meet at every angle. bend_at.w under 0: the joint is at the part's low end; 0: no bend.
+instance uniform vec4 bend_at = vec4(0.0);
+instance uniform vec4 bend_turn = vec4(0.0);
 
 const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
 const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
@@ -60,6 +82,26 @@ varying flat float spike_code; // a point's place on a run of points (bits 0..3)
 
 void vertex() {
 	box_pos = VERTEX;
+	float way_code = COLOR.a;
+	if (smooth_geo > 0.0 && COLOR.a > 1.5) {
+		int ci = (VERTEX.x > 0.0 ? 1 : 0) + (VERTEX.y > 0.0 ? 2 : 0) + (VERTEX.z > 0.0 ? 4 : 0);
+		vec4 cd = texelFetch(smooth_tex, ivec2((INSTANCE_ID % 256) * 8 + ci, INSTANCE_ID / 256), 0);
+		VERTEX += cd.xyz * (abs(VERTEX.x) * 2.0 / 1.04) * smooth_geo;
+		way_code = cd.a;
+	}
+	if (smooth_shade > 0.0 && way_code > 1.5) {
+		float code = floor(way_code - 2.0 + 0.5);
+		vec2 e = vec2(floor(code / 32.0), mod(code, 32.0)) / 31.0 * 2.0 - 1.0;
+		vec3 way = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+		float under = clamp(-way.z, 0.0, 1.0);
+		way.x += way.x >= 0.0 ? -under : under;
+		way.y += way.y >= 0.0 ? -under : under;
+		way = normalize(way);
+		if (IN_SHADOW_PASS) {
+			VERTEX -= way * abs(VERTEX.x) * 2.0 * smooth_inset * smooth_shade;
+		}
+		NORMAL = normalize(mix(NORMAL, way, smooth_shade));
+	}
 	float kc = INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0;
 	kind_f = force_kind >= 0 ? float(force_kind) : mod(kc, 16.0);
 	taper_code = INSTANCE_CUSTOM.a > 0.5 ? floor(kc / 16.0) : 0.0;
@@ -154,6 +196,23 @@ void vertex() {
 	seed = fract(sin(float(INSTANCE_ID) * 12.9898 + 4.1414) * 43758.5453);
 	status = INSTANCE_CUSTOM.a > 0.5 ? INSTANCE_CUSTOM.gb : vec2(0.0);
 	ao_code = INSTANCE_CUSTOM.a > 0.5 ? max(0.0, floor(INSTANCE_CUSTOM.a - 1.0 + 0.5)) : 0.0;
+	if (bend_at.w != 0.0) {
+		mat3 m3 = mat3(MODEL_MATRIX);
+		vec3 rel = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz - bend_at.xyz;
+		float t = clamp(dot(rel, normalize(m3[1])) / bend_at.w * 0.5 + 0.5, 0.0, 1.0);
+		float w = t * t * (3.0 - 2.0 * t);
+		if (w > 0.0) {
+			float a = bend_turn.w * w;
+			vec3 ax = bend_turn.xyz;
+			float ca = cos(a);
+			float sa = sin(a);
+			vec3 d = rel * ca + cross(ax, rel) * sa + ax * dot(ax, rel) * (1.0 - ca) - rel;
+			VERTEX += vec3(dot(m3[0], d) / dot(m3[0], m3[0]), dot(m3[1], d) / dot(m3[1], m3[1]), dot(m3[2], d) / dot(m3[2], m3[2]));
+			vec3 nw = m3 * NORMAL;
+			nw = nw * ca + cross(ax, nw) * sa + ax * dot(ax, nw) * (1.0 - ca);
+			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
+		}
+	}
 }
 
 // How shut in this point of the face is (0 open, 1 in a corner), from the face's 4 corner bits.
@@ -195,7 +254,7 @@ vec3 to_linear(vec3 c) {
 void fragment() {
 	int k = int(clamp(kind_f, 0.0, 13.0));
 	vec3 c = to_linear(COLOR.rgb) * tint.rgb;
-	c *= 1.0 + GRAIN[k] * (seed - 0.5) * 2.0;
+	c *= 1.0 + GRAIN[k] * grain_k * (seed - 0.5) * 2.0;
 	// Distance to the nearest edge of this face of the box, 0 at the edge, 1 in the middle.
 	vec3 a = abs(box_pos);
 	float m = max(a.x, max(a.y, a.z));

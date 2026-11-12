@@ -62,6 +62,14 @@ public:
 	Vector3 sculpt_out(const Dictionary &o, const Vector3 &l, double limb_r, double band_lo, double band_hi, double band_pad) const;
 	Vector3 sculpt_elbow(const Dictionary &o, const Transform3D &bt, const Transform3D &bi, const Vector3 &shoulder_w, const Vector3 &e_dir, double lu, double r_half, double r_three, double r_whole, double band_lo, double band_hi, double band_pad) const;
 	Vector3 sculpt_hand(const Dictionary &o, const Transform3D &bt, const Transform3D &bi, const Vector3 &from, const Vector3 &goal, double size, const PackedFloat64Array &marks, double band_lo, double band_hi, double band_pad) const;
+	// The fine look's smooth skin (FineSmooth: solid, joined, blurred's passes, ways, corners), as
+	// the script does them. `at`, `inner`: fine voxels, x y z by turns. A field is the script's
+	// {f, sx, sy, sz, lo, pad}; an empty one where the script is given none.
+	Dictionary smooth_solid(const PackedInt32Array &at, const PackedInt32Array &inner, int res, bool seal_lo, bool seal_hi, int pad) const;
+	Dictionary smooth_joined(const Dictionary &sol, const Array &beside) const;
+	PackedFloat32Array smooth_blur(const PackedFloat32Array &f, int sx, int sy, int sz, int r) const;
+	PackedFloat32Array smooth_ways(const PackedInt32Array &at, const Dictionary &fld, const Dictionary &sol, const Dictionary &own_fld) const;
+	PackedFloat32Array smooth_corners(const PackedInt32Array &at, const Dictionary &sol, const Dictionary &shape, const Dictionary &light, const Dictionary &own, const Dictionary &own_shape, const Dictionary &own_light, double held_in, double held_out, int even_r) const;
 	PackedFloat64Array skin_nearest(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &half_ext, double max_depth, const Vector3 &want) const;
 };
 

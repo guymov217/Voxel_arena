@@ -5,6 +5,7 @@ extends RigidBody3D
 ## hole in it, boxes over the flesh that is left take over the collisions, so a blade can sink
 ## into the wound it cut (as in the web game's character.js).
 
+const FineSmooth := preload("res://scripts/fighter/fine_smooth.gd")
 const LAYER_WORLD := 1
 const LAYER_BODY := 2
 const LAYER_WEAPON := 4
@@ -2294,7 +2295,10 @@ func leave_on_stump(indices: Array):
 		var mi := MultiMeshInstance3D.new()
 		mi.name = "stump_end"
 		mi.multimesh = cm
-		mi.material_override = (src as MultiMeshInstance3D).material_override
+		# (Not a smooth skin's own material: its corners are read by each fine voxel's place in the
+		# drawing they were made for, and these are in a drawing of their own. The plain one.)
+		var over: Material = (src as MultiMeshInstance3D).material_override
+		mi.material_override = null if FineSmooth.is_skin(over) else over
 		mi.top_level = true
 		mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		mi.custom_aabb = box

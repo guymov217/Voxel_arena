@@ -25,6 +25,11 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sculpt_out", "o", "l", "limb_r", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_out);
 	ClassDB::bind_method(D_METHOD("sculpt_elbow", "o", "bt", "bi", "shoulder_w", "e_dir", "lu", "r_half", "r_three", "r_whole", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_elbow);
 	ClassDB::bind_method(D_METHOD("sculpt_hand", "o", "bt", "bi", "from", "goal", "size", "marks", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_hand);
+	ClassDB::bind_method(D_METHOD("smooth_solid", "at", "inner", "res", "seal_lo", "seal_hi", "pad"), &VoxelCore::smooth_solid);
+	ClassDB::bind_method(D_METHOD("smooth_joined", "sol", "beside"), &VoxelCore::smooth_joined);
+	ClassDB::bind_method(D_METHOD("smooth_blur", "f", "sx", "sy", "sz", "r"), &VoxelCore::smooth_blur);
+	ClassDB::bind_method(D_METHOD("smooth_ways", "at", "fld", "sol", "own_fld"), &VoxelCore::smooth_ways);
+	ClassDB::bind_method(D_METHOD("smooth_corners", "at", "sol", "shape", "light", "own", "own_shape", "own_light", "held_in", "held_out", "even_r"), &VoxelCore::smooth_corners);
 	ClassDB::bind_method(D_METHOD("skin_nearest", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "half_ext", "max_depth", "want"), &VoxelCore::skin_nearest);
 }
 
