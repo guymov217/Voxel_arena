@@ -2792,31 +2792,31 @@
 "scripts/fighter/fighter.gd:1022"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2655"
+"scripts/fighter/fighter.gd:2663"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:2942"
+"scripts/fighter/fighter.gd:2950"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2944"
+"scripts/fighter/fighter.gd:2952"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2944"
+"scripts/fighter/fighter.gd:2952"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:2950"
+"scripts/fighter/fighter.gd:2958"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:2950"
+"scripts/fighter/fighter.gd:2958"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:6673"
-],
-"%s is lifted": [
 "scripts/fighter/fighter.gd:6689"
 ],
+"%s is lifted": [
+"scripts/fighter/fighter.gd:6705"
+],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:8583",
+"scripts/fighter/fighter.gd:8605",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3057,12 +3057,12 @@
 "scripts/fighter/combat.gd:82"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2417",
-"scripts/voxel/voxel_part.gd:2782",
-"scripts/voxel/voxel_part.gd:2796"
+"scripts/voxel/voxel_part.gd:2418",
+"scripts/voxel/voxel_part.gd:2783",
+"scripts/voxel/voxel_part.gd:2797"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:2703"
+"scripts/voxel/voxel_part.gd:2704"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:15"

@@ -52,6 +52,7 @@ var jaw_mesh: MultiMeshInstance3D = null
 var _snap_until := 0
 func _ready() -> void:
 	snap_drawing()
+	set_physics_process(severed)   # (only a piece cut off looks under itself: _physics_process)
 
 func snap_drawing() -> void:
 	_snap_until = Engine.get_physics_frames() + 2
@@ -2988,6 +2989,8 @@ func _set_boxes(list: Array) -> void:
 		cs.position = at
 		add_child(cs)
 		boxes.append(cs)
+	if severed:
+		weigh_as_left()
 
 ## The empty cells of the coarse box (no voxel in them as the part was built), each paired with
 ## every cell beside it that had voxels: the layout, which changes only with it (_index_cells).
@@ -3018,9 +3021,54 @@ func _drop_boxes(whole: bool) -> void:
 	if whole:
 		split = false
 		main_shape.disabled = false
+		if severed:
+			weigh_as_left()
 
 func shape_count() -> int:
 	return boxes.size() if split else 1
+
+## A piece cut off carries its weight where its flesh is: at the middle of what is left of it (its
+## collider's boxes), turning as that turns. On the body the weight stays the whole box's, whatever
+## is cut from it (see build); kept so on the piece, the weight of the far half of a forearm was at
+## its cut end and past it, in the air: it stood up on that end on the sand, the hand in the air,
+## or hung there under the sand like a keel and was "lifted out" of it again and again (user video:
+## a piece on the floor that would not lie still).
+func weigh_as_left() -> void:
+	var vol := 0.0
+	var at := Vector3.ZERO
+	if split:
+		for cs: CollisionShape3D in boxes:
+			var s: Vector3 = (cs.shape as BoxShape3D).size
+			vol += s.x * s.y * s.z
+			at += cs.position * (s.x * s.y * s.z)
+	if vol <= 0.0:
+		var w := half_ext * 2.0
+		center_of_mass = Vector3.ZERO
+		inertia = Vector3(w.y * w.y + w.z * w.z, w.x * w.x + w.z * w.z, w.x * w.x + w.y * w.y) * mass / 12.0
+		return
+	at /= vol
+	var turn := Vector3.ZERO
+	for cs: CollisionShape3D in boxes:
+		var s: Vector3 = (cs.shape as BoxShape3D).size
+		var d: Vector3 = cs.position - at
+		var m: float = mass * s.x * s.y * s.z / vol
+		turn += Vector3((s.y * s.y + s.z * s.z) / 12.0 + d.y * d.y + d.z * d.z, (s.x * s.x + s.z * s.z) / 12.0 + d.x * d.x + d.z * d.z, (s.x * s.x + s.y * s.y) / 12.0 + d.x * d.x + d.y * d.y) * m
+	center_of_mass = at
+	inertia = turn.max(Vector3.ONE * 1e-6)
+
+## How low what there is of it to touch reaches, in the world (its collider: the whole box, or
+## the boxes of the flesh left once it has a hole).
+func low_y() -> float:
+	var t := global_transform
+	var b := t.basis.orthonormalized()
+	var down := Vector3(absf(b.x.y), absf(b.y.y), absf(b.z.y))
+	if not split:
+		return t.origin.y - down.dot(half_ext)
+	var low := INF
+	var row := Vector3(b.x.y, b.y.y, b.z.y)
+	for cs: CollisionShape3D in boxes:
+		low = minf(low, t.origin.y + row.dot(cs.position) - down.dot((cs.shape as BoxShape3D).size * 0.5))
+	return low
 
 # ---------- Coming apart ----------
 
@@ -3399,7 +3447,8 @@ func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
 	stuck.append(vis)
 
 func velocity_at(p: Vector3) -> Vector3:
-	return linear_velocity + angular_velocity.cross(p - global_position)
+	# (About where its weight is: the box's middle on the body; a piece cut off, weigh_as_left.)
+	return linear_velocity + angular_velocity.cross(p - (global_position if center_of_mass == Vector3.ZERO else global_transform * center_of_mass))
 
 ## A piece cut off and lying still on the sand is walked over, as the dead are (Weapon._lie: a
 ## man stepping on a lopped-off arm went down over it); it is a thing that hits again once it
@@ -3425,10 +3474,22 @@ func _lie(dt: float) -> void:
 ## and again as it went by: user, a cut-off limb jumped about the arena for no reason.)
 const CALM_V := 1.4
 const CALM_W := 5.0
+## And having lain still a while it sleeps, as the dead do (Match._at_rest): the physics wakes it
+## the moment anything touches or pushes it, and it sleeps again once that is over. (Awake, a leg
+## off at the thigh with a body lying across its shin turned its thigh to and fro on the knee for
+## as long as it lay there: nothing a sleeping thing does.)
+const REST_AFTER := 1.5   # s
+const REST_V := 0.2       # m/s
 var _rested := false
+var _rest_t := 0.0
 func _calm(state: PhysicsDirectBodyState3D) -> void:
 	if wielder != null:
 		_rested = false
+		_rest_t = 0.0
+		return
+	_rest_t = (_rest_t + state.step) if _lying and state.linear_velocity.length_squared() < REST_V * REST_V else 0.0
+	if _rest_t > REST_AFTER:
+		state.sleeping = true
 		return
 	if _lying:
 		_rested = true
@@ -3449,6 +3510,22 @@ func _calm(state: PhysicsDirectBodyState3D) -> void:
 	var w := state.angular_velocity
 	if w.length() > CALM_W:
 		state.angular_velocity = w.limit_length(CALM_W)
+
+## Asleep, it looks under itself now and then: what it lay on gone from under it (a body carried
+## off the sand, a lump sunk into it: the physics wakes nothing for that, and it hung there in the
+## air), it wakes and falls.
+const UNDER_EVERY := 0.5   # s
+var _under_t := 0.0
+func _physics_process(dt: float) -> void:
+	if not sleeping or freeze:
+		return
+	_under_t += dt
+	if _under_t < UNDER_EVERY:
+		return
+	_under_t = 0.0
+	if not test_move(global_transform, Vector3(0.0, -0.05 * part_scale, 0.0)):
+		_rest_t = 0.0
+		sleeping = false
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if severed:

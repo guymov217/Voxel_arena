@@ -666,3 +666,85 @@ func test_a_severed_leg_inside_him_is_not_thrown_out() -> void:
 		fastest = maxf(fastest, leg.linear_velocity.length())
 	t.check(fastest < 3.0, "let go, it is not thrown out of him (fastest %.2f m/s, moved %.2f m)" % [fastest, leg.global_position.distance_to(p0)])
 	m.queue_free()
+
+## A piece cut off lies on the sand where it fell and stays there, its owner alive or not (user
+## video: a piece on the floor hopping up and dropping back again and again, for no reason). Where
+## a man's parts are kept above the sand it is measured as what is left of it (the end it was cut
+## from is air), it carries its weight where its flesh is (so it lies, and does not stand up on the
+## cut), and lying still it sleeps until something moves it.
+func test_a_piece_cut_off_lies_still_by_its_living_owner() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var e = m.spawn_fighter({"kind": "bot", "name": "D", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	var f: Fighter = e.f
+	await _steps(60)
+	# The elbow end of one forearm, a fifth of it (the rest of its box, towards the hand, is air),
+	# and the hand end of the other, a third of it.
+	var top: VoxelPart = f.by_name.forearmL
+	var far: VoxelPart = f.by_name.forearmR
+	for cut in [[top, 0.8, true], [far, 0.35, false]]:
+		var p: VoxelPart = cut[0]
+		var keep := PackedInt32Array()
+		for i in p.fx.size():
+			if p.alive[i] and (p.fy[i] >= p.grid.y * float(cut[1])) == bool(cut[2]):
+				keep.append(i)
+		f.sever(p, {"removed": [], "severed": []}, keep)
+	t.check(top.center_of_mass.y > top.half_ext.y * 0.5 and far.center_of_mass.y < -far.half_ext.y * 0.4, "each piece carries its weight where its flesh is (at %.3f and %.3f of boxes %.3f long each way)" % [top.center_of_mass.y, far.center_of_mass.y, top.half_ext.y])
+	# The first set down on its cut a pace from him, the air of its box under the sand; the other
+	# laid flat on the sand at his other side.
+	top.global_transform = Transform3D(Basis(), Vector3(1.2, 0.0, 0.0))
+	top.global_position.y += 0.002 - top.low_y()
+	far.global_transform = Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-1.2, 0.0, 0.0))
+	far.global_position.y += 0.002 - far.low_y()
+	for p: VoxelPart in [top, far]:
+		p.linear_velocity = Vector3.ZERO
+		p.angular_velocity = Vector3.ZERO
+	var y0 := top.global_position.y
+	t.check(y0 - top.half_ext.y < -0.25 * f.S, "by its whole box the first is deep under the sand (%.2f m): what lifted it out again and again" % (y0 - top.half_ext.y))
+	var rose := 0.0
+	var fastest := 0.0
+	for i in 120 * 4:
+		f.blood = 100.0
+		await get_tree().physics_frame
+		rose = maxf(rose, absf(top.global_position.y - y0))
+		if i > 60:
+			fastest = maxf(fastest, maxf(top.linear_velocity.length(), far.linear_velocity.length()))
+	t.check(f.alive and f.state == "stand", "its owner stands there alive (%s)" % f.state)
+	t.check(rose < 0.02 and fastest < 0.1, "the piece on its cut stays where it lies (it rose or sank %.3f m; fastest %.2f m/s)" % [rose, fastest])
+	t.check(absf(far.global_transform.basis.y.y) < 0.35, "the hand end lies flat, it does not stand up on its cut (its length %.2f upright)" % absf(far.global_transform.basis.y.y))
+	t.check(top.sleeping and far.sleeping, "lying still, they sleep (%s, %s)" % [str(top.sleeping), str(far.sleeping)])
+	# Kicked, a sleeping piece moves, and lies still again.
+	var from := far.global_position
+	far.apply_central_impulse(Vector3(0.0, 0.2, 1.2) * far.mass)
+	await _steps(40)
+	t.check(far.global_position.distance_to(from) > 0.05, "kicked, it moves (%.2f m)" % far.global_position.distance_to(from))
+	for i in 120 * 4:
+		f.blood = 100.0
+		await get_tree().physics_frame
+	t.check(far.sleeping and far.linear_velocity.length() < 0.01, "and lies still again (asleep %s, %.2f m/s)" % [str(far.sleeping), far.linear_velocity.length()])
+	# Asleep on something that is then taken from under it (a body carried off the sand), it does
+	# not hang there in the air: it wakes and falls.
+	var block := StaticBody3D.new()
+	var bs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.6, 0.4, 0.6)
+	bs.shape = box
+	block.add_child(bs)
+	block.collision_layer = VoxelPart.LAYER_WORLD
+	m.add_child(block)
+	block.global_position = Vector3(3.0, 0.2, 0.0)
+	top.global_transform = Transform3D(Basis(), Vector3(3.0, 0.4, 0.0))
+	top.global_position.y += 0.402 - top.low_y()
+	top.sleeping = false
+	for i in 120 * 4:
+		f.blood = 100.0
+		await get_tree().physics_frame
+	t.check(top.sleeping and top.low_y() > 0.35, "set on a block, it sleeps there (asleep %s, its underside %.2f m up)" % [str(top.sleeping), top.low_y()])
+	block.queue_free()
+	for i in 120 * 2:
+		f.blood = 100.0
+		await get_tree().physics_frame
+	t.check(top.low_y() < 0.05, "the block gone from under it, it falls to the sand (its underside %.2f m up, asleep %s)" % [top.low_y(), str(top.sleeping)])
+	m.queue_free()

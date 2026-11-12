@@ -187,6 +187,36 @@ func test_throws_wind_up_and_fly_true() -> void:
 		t.check(spins[k][0] > 5.0 and spins[k][1] < 0.2, "the %s turns end over end (spin %.1f, along the flight %.2f)" % [k, spins[k][0], spins[k][1]])
 	w.queue_free()
 
+## A weapon held in both hands is thrown with one: while it is wound up the other hand lets go of
+## the haft and keeps clear of it, and takes hold again if the throw is called off. (It went after
+## the haft, drawn back over the shoulder and out of its reach, for the whole wind-up: user, a throw
+## from both hands, the hands shaking hard.)
+func test_a_throw_from_both_hands_is_wound_up_with_steady_hands() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "warhammer"}, {"name": "A"})
+	var rest := func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}}
+	await _step(w, 120, rest)
+	t.check(f.two_handed and f.weapon_joints[f.two_off()] != null, "a warhammer is held in both hands")
+	var off: VoxelPart = f.arm[f.two_off()].fore
+	var main: VoxelPart = f.arm[f.two_side].fore
+	var top := 0.0
+	var jerk := 0.0
+	var was := [off.angular_velocity, main.angular_velocity]
+	for i in 150:
+		f.control(1.0 / 120.0, {"main": {"x": 0.1, "y": 0.1}, "charging": minf(1.0, 0.2 + i / 120.0)})
+		await get_tree().physics_frame
+		if i > 30:
+			top = maxf(top, maxf(off.angular_velocity.length(), main.angular_velocity.length()))
+			jerk += ((off.angular_velocity - was[0]) as Vector3).length() + ((main.angular_velocity - was[1]) as Vector3).length()
+		was = [off.angular_velocity, main.angular_velocity]
+	jerk /= 119.0
+	t.check(not f.two_handed and f.weapon_joints[f.two_off()] == null and f.weapons[f.two_side] != null, "wound up, it is in the one hand that throws it")
+	t.check(top < 15.0 and jerk < 3.0, "and both arms are steady through the wind-up (fastest forearm %.1f rad/s; their spin changing %.1f rad/s a step)" % [top, jerk])
+	await _step(w, 240, rest)
+	var wp: Weapon = f.weapons[f.two_side]
+	t.check(f.two_handed and wp != null and f.hand_world(f.two_off()).distance_to(wp.global_transform * wp.grip_off) < 0.12, "the throw called off, both hands are on it again")
+	w.queue_free()
+
 ## H takes the off hand onto the haft and lets go again.
 func test_h_switches_the_grip() -> void:
 	var w := _world()

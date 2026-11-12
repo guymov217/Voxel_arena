@@ -1765,6 +1765,14 @@ func _grip_reach(dt: float) -> void:
 			haft_behind_t = 0.0
 		return
 	haft_behind_t = 0.0
+	# A throw is made with one hand (_drive_arm lets the other go of the haft): while it is wound
+	# up and let fly the other hand keeps clear of it, and takes hold again only if the weapon is
+	# still his afterwards. (It went after the haft drawn back over the shoulder, out of its reach
+	# and behind him, the whole wind-up long: user, a throw from both hands, the hands shaking hard.)
+	if throwing[two_side]:
+		grip_wait = 0.0
+		grip_gentle = false
+		return
 	# Meant to hold it in both hands: the reach goes on until the hand is on the haft again (it
 	# gave up after a second and a half, user video 1026), for as long as the off hand is free
 	# for it; it waits while that hand is busy (a pot, a weapon taken up in it ends it).
@@ -6538,6 +6546,14 @@ func _lift_out(p: VoxelPart, allow: float) -> void:
 	var low := c.y - (absf(b.x.y) * h.x + absf(b.y.y) * h.y + absf(b.z.y) * h.z)
 	if low >= -allow:
 		return
+	if p.severed:
+		# A piece cut off is what is left of it, not the box of the whole part: the end it was cut
+		# from is air. Lying with that end down it was "under the sand" by its box, set back on top a
+		# hand's width up, fell, and was set back again, for as long as its owner lived (user video:
+		# a piece on the floor hopping about for no reason).
+		low = p.low_y()
+		if low >= -allow:
+			return
 	p.global_position = c + Vector3(0.0, -low, 0.0)
 	if p.linear_velocity.y < 0.0:
 		p.linear_velocity = Vector3(p.linear_velocity.x, 0.0, p.linear_velocity.z)
@@ -7832,6 +7848,12 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 	for p in pieces:
 		p.severed = true
 		p.hp = 0.0
+		p.weigh_as_left()
+		# Dead flesh: lying still, it sleeps as the dead do (Match._at_rest), and whatever touches it
+		# wakes it. (Kept awake, a leg off at the thigh with a body lying across its shin turned its
+		# thigh to and fro on the knee for as long as it lay there, with nothing touching it.)
+		p.can_sleep = true
+		p.set_physics_process(true)
 		p.collision_layer = VoxelPart.LAYER_DEBRIS
 		p.collision_mask = VoxelPart.LAYER_WORLD | VoxelPart.LAYER_BODY | VoxelPart.LAYER_WEAPON | VoxelPart.LAYER_DEBRIS | VoxelPart.LAYER_CORPSE
 	# The piece still overlaps the stump it came off: meeting its owner's body at once, the
