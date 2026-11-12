@@ -66,6 +66,13 @@ instance uniform float pallor = 0.0;      // the skin gone pale from blood lost,
 // meet at every angle. bend_at.w under 0: the joint is at the part's low end; 0: no bend.
 instance uniform vec4 bend_at = vec4(0.0);
 instance uniform vec4 bend_turn = vec4(0.0);
+// A man's foot level on the sand (Fighter._foot_drawing): the foot is drawn with his shin, and a
+// shin that leans drove its toes into the sand and lifted its heel. All that is drawn with the
+// shin under his ankle (foot_at.xyz, world; within foot_at.w of it along the shin the turn is
+// spread) is turned about the ankle by foot_turn.xyz (a turn's axis, world, as long as its angle)
+// and moved foot_turn.w up. foot_at.w 0: as it is.
+instance uniform vec4 foot_at = vec4(0.0);
+instance uniform vec4 foot_turn = vec4(0.0);
 
 const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
 const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
@@ -210,6 +217,26 @@ void vertex() {
 			VERTEX += vec3(dot(m3[0], d) / dot(m3[0], m3[0]), dot(m3[1], d) / dot(m3[1], m3[1]), dot(m3[2], d) / dot(m3[2], m3[2]));
 			vec3 nw = m3 * NORMAL;
 			nw = nw * ca + cross(ax, nw) * sa + ax * dot(ax, nw) * (1.0 - ca);
+			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
+		}
+	}
+	if (foot_at.w != 0.0) {
+		mat3 m3 = mat3(MODEL_MATRIX);
+		vec3 rel = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz - foot_at.xyz;
+		float t = clamp(0.5 - dot(rel, normalize(m3[1])) / foot_at.w * 0.5, 0.0, 1.0);
+		float w = t * t * (3.0 - 2.0 * t);
+		if (w > 0.0) {
+			vec3 d = vec3(0.0, foot_turn.w * w, 0.0);
+			vec3 nw = m3 * NORMAL;
+			float a = length(foot_turn.xyz);
+			if (a > 0.00001) {
+				vec3 ax = foot_turn.xyz / a;
+				float ca = cos(a * w);
+				float sa = sin(a * w);
+				d += rel * ca + cross(ax, rel) * sa + ax * dot(ax, rel) * (1.0 - ca) - rel;
+				nw = nw * ca + cross(ax, nw) * sa + ax * dot(ax, nw) * (1.0 - ca);
+			}
+			VERTEX += vec3(dot(m3[0], d) / dot(m3[0], m3[0]), dot(m3[1], d) / dot(m3[1], m3[1]), dot(m3[2], d) / dot(m3[2], m3[2]));
 			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
 		}
 	}

@@ -3731,6 +3731,7 @@ func _process(_dt: float) -> void:
 	_seat_drawing(true, _dt)
 	_draw_joint_caps()
 	_bend_drawing()
+	_foot_drawing()
 	_sway_hair(_dt)
 	_clip_arm_armor()
 
@@ -4045,6 +4046,7 @@ func draw_now() -> void:
 	_seat_drawing(false)
 	_draw_joint_caps(false)
 	_bend_drawing(false)
+	_foot_drawing(false)
 
 ## A knee and an elbow under the smooth skin (FineSmooth.geo; drawing only): the thigh and the
 ## shin, the upper arm and the forearm, are drawn as one skin bent round the joint (voxel_body.
@@ -4091,25 +4093,64 @@ static func bend_of(up: Basis, low: Basis, pivot: Vector3, h: float) -> Array:
 	var angle := 2.0 * atan2(sl, q.w) if sl > 1e-5 else 0.0
 	return [Vector4(pivot.x, pivot.y, pivot.z, -h), Vector4(axis.x, axis.y, axis.z, angle), Vector4(pivot.x, pivot.y, pivot.z, h), Vector4(axis.x, axis.y, axis.z, -angle)]
 
-func _bend_set(p: VoxelPart, at: Vector4, turn: Vector4) -> void:
-	var was: Array = _bent.get(p, [])
+func _bend_set(p: VoxelPart, at: Vector4, turn: Vector4, at_name := &"bend_at", turn_name := &"bend_turn", held: Dictionary = _bent) -> void:
+	var was: Array = held.get(p, [])
 	if at.w == 0.0 and was.is_empty():
 		return
 	# (What is no longer drawn with the part, a plate knocked off it, is drawn as it is again.)
 	for n in was:
 		if is_instance_valid(n) and (at.w == 0.0 or not p.draw_with.has(n)):
-			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_at", Vector4.ZERO)
-			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_turn", Vector4.ZERO)
+			(n as GeometryInstance3D).set_instance_shader_parameter(at_name, Vector4.ZERO)
+			(n as GeometryInstance3D).set_instance_shader_parameter(turn_name, Vector4.ZERO)
 	if at.w == 0.0:
-		_bent.erase(p)
+		held.erase(p)
 		return
 	var now := []
 	for n in p.draw_with:
 		if is_instance_valid(n) and n is GeometryInstance3D:
-			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_at", at)
-			(n as GeometryInstance3D).set_instance_shader_parameter(&"bend_turn", turn)
+			(n as GeometryInstance3D).set_instance_shader_parameter(at_name, at)
+			(n as GeometryInstance3D).set_instance_shader_parameter(turn_name, turn)
 			now.append(n)
-	_bent[p] = now
+	held[p] = now
+
+## A man's foot level on the sand (drawing only; voxel_body.gdshader: foot_at, foot_turn). His foot
+## is drawn with his shin, in one piece with it: a shin that leaned, as it does at every step and
+## in his guard, drove the toes into the sand and lifted the heel (user: better feet). While he is
+## on it, what is drawn under his ankle is turned level about the ankle, its sole at the height of
+## the shin's own (the foot of the shin's part, which is what stands on the sand). Not a foot in
+## the air (it goes with the shin, a kick's or a leap's), nor a shin that lies (a man down, or on
+## his knees); not a leg cut, hanging or broken.
+const FOOT_ANKLE := Vector3(0.0, -0.145, -0.012)   # the ankle in the shin's frame (tools/gen_fine_body.py: Man.A)
+const FOOT_SOLE := 0.075                           # the sole under it
+const FOOT_BAND := 0.03                            # how far each way along the shin from the ankle the turn is spread
+const FOOT_LEAN := Vector2(0.75, 1.15)             # the shin's lean (rad): level up to the one, as the shin from the other
+const FOOT_LIFT := Vector2(0.12, 0.3)              # the sole over the sand (m) likewise
+var _footed := {}                                  # shin -> what was last drawn levelled with it
+func _foot_drawing(interp := true) -> void:
+	for side in ["R", "L"]:
+		var sh: VoxelPart = by_name.get("shin" + side)
+		if sh == null:
+			continue
+		var b := [Vector4.ZERO, Vector4.ZERO]
+		if sh.fine.has("mi") and _fine_man(sh) and not (sh.severed or sh.hanging or sh.missing or sh.fractured):
+			b = foot_level(sh.draw_turn * (sh.get_global_transform_interpolated() if interp else sh.global_transform), sh.draw_shift, S, ground_level)
+		_bend_set(sh, b[0], b[1], &"foot_at", &"foot_turn", _footed)
+
+## A level foot's two numbers (voxel_body.gdshader foot_at, foot_turn) for a shin drawn at `t`,
+## moved `shift`, of a man `s` times a man's size on sand at `ground`: the ankle and the band the
+## turn is spread over, and the turn (the shorter way from the shin's line to upright, less as
+## the shin lies or the foot is off the sand) with how far up the foot is moved for its sole to
+## be where the shin's is. Both zero: the foot as it is.
+static func foot_level(t: Transform3D, shift: Vector3, s: float, ground: float) -> Array:
+	var up := t.basis.y.normalized()
+	var lean := up.angle_to(Vector3.UP)
+	var sole := t * Vector3(0.0, -4.0 * V * s, 0.0) + shift
+	var k := (1.0 - smoothstep(FOOT_LEAN.x, FOOT_LEAN.y, lean)) * (1.0 - smoothstep(FOOT_LIFT.x * s, FOOT_LIFT.y * s, sole.y - ground))
+	if k <= 0.001 or lean <= 0.002:
+		return [Vector4.ZERO, Vector4.ZERO]
+	var ankle := t * (FOOT_ANKLE * s) + shift
+	var rot := up.cross(Vector3.UP).normalized() * (lean * k)
+	return [Vector4(ankle.x, ankle.y, ankle.z, FOOT_BAND * s), Vector4(rot.x, rot.y, rot.z, (sole.y - (ankle.y - FOOT_SOLE * s)) * k)]
 
 ## What the physics leaves open of a joint (a few millimetres under load, a couple of
 ## centimetres in a hard blow) is closed on screen: each joined part is drawn moved so that
@@ -5204,23 +5245,31 @@ func _outline(p: VoxelPart):
 				var margin := int(tpl.get("margin", 10))
 				var fsz := vox / float(int(tpl.get("res", 2)))
 				var k := vox / 0.0275   # (the sculpt is laid out for a voxel of 0.0275)
+				# (The outline kept for the fight where the sculpt has one, tools/gen_fine_body.py "keep":
+				# his broad forms, which a muscle drawn fuller since does not change.)
+				var kept: bool = pd.get("keep") is Array and pd.get("keep_rows") is Array and not (pd.keep as Array).is_empty()
+				var prof: Array = pd.keep if kept else pd.prof
 				var flat := PackedFloat32Array()
 				var mean := PackedFloat32Array()
-				for row in pd.prof:
+				for row in prof:
 					var s := 0.0
 					for v in row:
 						flat.append(float(v) * k)
 						s += float(v) * k
 					mean.append(s / float(maxi(1, (row as Array).size())))
-				var cells: Array = pd.cells
 				var lo_r := 1 << 20
 				var hi_r := -(1 << 20)
-				for c in range(1, cells.size(), FineBody.CELL):
-					lo_r = mini(lo_r, int(cells[c]))
-					hi_r = maxi(hi_r, int(cells[c]))
+				if kept:
+					lo_r = int(pd.keep_rows[0])
+					hi_r = int(pd.keep_rows[1])
+				else:
+					var cells: Array = pd.cells
+					for c in range(1, cells.size(), FineBody.CELL):
+						lo_r = mini(lo_r, int(cells[c]))
+						hi_r = maxi(hi_r, int(cells[c]))
 				if lo_r <= hi_r:
 					var ylo := -float(p.grid.y) * vox * 0.5 - float(margin) * fsz
-					o = {"prof": flat, "mean": mean, "na": na, "fsz": fsz, "ylo": ylo, "r0": lo_r + margin, "r1": mini(hi_r + margin, (pd.prof as Array).size() - 1),
+					o = {"prof": flat, "mean": mean, "na": na, "fsz": fsz, "ylo": ylo, "r0": lo_r + margin, "r1": mini(hi_r + margin, prof.size() - 1),
 						"y0": ylo + float(lo_r + margin) * fsz, "y1": ylo + float(hi_r + margin + 1) * fsz}
 			_sculpts[ck] = o
 	_outlines[key] = [pref, vox, o]

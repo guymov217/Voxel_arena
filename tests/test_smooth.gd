@@ -111,6 +111,107 @@ func test_a_bent_knee_is_one_skin() -> void:
 	var straight: Array = Fighter.bend_of(Basis(), Basis(), Vector3.ZERO, h)
 	t.check(is_zero_approx((straight[1] as Vector4).w), "a straight limb is not bent")
 
+## voxel_body.gdshader's level foot, on a point of the world drawn with a shin whose length lies along `along`.
+func _levelled(x: Vector3, along: Vector3, at: Vector4, turn: Vector4) -> Vector3:
+	var c := Vector3(at.x, at.y, at.z)
+	var rel := x - c
+	var k := clampf(0.5 - rel.dot(along.normalized()) / at.w * 0.5, 0.0, 1.0)
+	var w := k * k * (3.0 - 2.0 * k)
+	if w <= 0.0:
+		return x
+	var rot := Vector3(turn.x, turn.y, turn.z)
+	var d := Vector3(0.0, turn.w * w, 0.0)
+	if rot.length() > 0.00001:
+		d += rel.rotated(rot.normalized(), rot.length() * w) - rel
+	return x + d
+
+func test_a_foot_is_level_on_the_sand() -> void:
+	# (User: better feet.) A man's foot is drawn with his shin, and a shin leans at every step and
+	# in his guard: the foot is drawn turned level about the ankle (Fighter.foot_level, the shader's
+	# foot_at and foot_turn), its sole where the shin's own foot stands. Drawing only.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var worst := 0.0
+	var stray := 0.0
+	for k in 40:
+		var b := Basis(Vector3.UP, rng.randf_range(-PI, PI)) * Basis(Vector3(cos(float(k)), 0.0, sin(float(k))), rng.randf_range(0.05, 0.7))
+		var at := Transform3D(b, Vector3(rng.randf_range(-3, 3), 0.0, rng.randf_range(-3, 3)))
+		at.origin.y -= (at * Vector3(0.0, -4.0 * Fighter.V, 0.0)).y   # (the foot of the shin on the sand)
+		var lv: Array = Fighter.foot_level(at, Vector3.ZERO, 1.0, 0.0)
+		if not t.check((lv[0] as Vector4).w > 0.0, "a leaning shin's foot is levelled"):
+			return
+		for j in 12:
+			# (A point of his sole, in the shin's frame: from the heel to the toes.)
+			var q := Vector3(rng.randf_range(-0.05, 0.05), -4.0 * Fighter.V, rng.randf_range(-0.08, 0.17))
+			worst = maxf(worst, absf(_levelled(at * q, b.y, lv[0], lv[1]).y))
+		var shin := at * Vector3(0.02, -0.06, 0.01)
+		stray = maxf(stray, _levelled(shin, b.y, lv[0], lv[1]).distance_to(shin))
+	t.check(worst < 0.001, "his sole lies on the sand from heel to toe, however the shin leans (%.2f mm off it at worst)" % (worst * 1000.0))
+	t.check(stray < 1e-6, "and the shin over the ankle is drawn where it is")
+	var none := [Vector4.ZERO, Vector4.ZERO]
+	t.check(Fighter.foot_level(Transform3D(Basis(), Vector3(0, 4.0 * Fighter.V, 0)), Vector3.ZERO, 1.0, 0.0) == none, "an upright shin's foot is as it is")
+	t.check(Fighter.foot_level(Transform3D(Basis(Vector3.RIGHT, 1.3), Vector3(0, 0.1, 0)), Vector3.ZERO, 1.0, 0.0) == none, "a shin that lies keeps its foot (a man down)")
+	t.check(Fighter.foot_level(Transform3D(Basis(Vector3.RIGHT, 0.4), Vector3(0, 0.7, 0)), Vector3.ZERO, 1.0, 0.0) == none, "and a foot in the air goes with its shin (a kick)")
+
+func test_the_fight_reads_his_broad_forms() -> void:
+	# (User: a little more muscle on his arms and legs, and the game not hurt.) What his arms are
+	# kept out of is read off his sculpt (Fighter._outline): his trunk's and his arms' outlines as
+	# they were before the bellies of his muscles were put on them are kept beside the drawn ones
+	# (tools/gen_fine_body.py "keep"), and those are what the fight reads.
+	var tpl := FineBody.template()
+	for bn in FineBody.BUILDS:
+		var parts: Dictionary = tpl.builds[bn].parts
+		var kept := 0
+		for pn in ["torso", "upperArmR", "upperArmL", "forearmR", "forearmL"]:
+			kept += 1 if parts[pn].get("keep") is Array and (parts[pn].keep as Array).size() == (parts[pn].prof as Array).size() and parts[pn].get("keep_rows") is Array else 0
+		t.eq(kept, 5, "the %s's trunk and arms keep the outline the fight reads" % bn)
+		# (The drawn arm is the fuller: its muscles' bellies stand out of the kept one.)
+		var fuller := 0.0
+		var rows: Array = parts.upperArmR.keep_rows
+		for r in range(int(rows[0]) + 10 + 8, int(rows[1]) + 10 - 8):
+			for a in (parts.upperArmR.prof[r] as Array).size():
+				fuller += float(parts.upperArmR.prof[r][a]) - float(parts.upperArmR.keep[r][a])
+		t.check(fuller > 0.0, "the %s's arm is drawn the fuller of the two" % bn)
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	for i in 10:
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	var pd: Dictionary = tpl.builds[Physique.build_of(f)].parts.upperArmR
+	var o = f._outline(f.by_name.upperArmR)
+	if t.check(o is Dictionary, "a man's arm has its outline"):
+		var k: float = f.by_name.upperArmR.vf * f.by_name.upperArmR.part_scale / 0.0275
+		var off := 0.0
+		var na: int = o.na
+		for r in (pd.keep as Array).size():
+			for a in na:
+				off = maxf(off, absf(float((o.prof as PackedFloat32Array)[r * na + a]) - float(pd.keep[r][a]) * k))
+		t.check(off < 1e-5, "the outline the fight reads is the kept one (%.4f mm off it)" % (off * 1000.0))
+		t.eq(int(o.r0), int(pd.keep_rows[0]) + int(tpl.margin), "over the rows he is in there")
+	m.queue_free()
+	await get_tree().process_frame
+
+func test_his_feet_are_bare_in_their_sandals() -> void:
+	# (User: better feet.) The game's own voxels at his foot are a boot's; the fine body paints his
+	# foot on them (tools/gen_fine_body.py _paint): his own skin, the straps, and the sole under it.
+	var tpl := FineBody.template()
+	for bn in FineBody.BUILDS:
+		var b: Dictionary = tpl.builds[bn]
+		var cells: Array = b.parts.shinR.cells
+		var n := [0, 0, 0, 0]
+		var sole_ok := true
+		var high := 0
+		for c in range(0, cells.size(), FineBody.CELL):
+			var paint := int(cells[c + 8])
+			n[clampi(paint, 0, 3)] += 1
+			if int(cells[c + 1]) == 0 and paint != 3:
+				sole_ok = false
+			if paint != 0 and int(cells[c + 1]) > 7:
+				high += 1
+		t.check((b.get("palette", []) as Array).size() >= 3 and n[1] > 60 and n[2] > 30 and n[3] > 20, "the %s's foot: his skin, the straps and the sole (%d, %d, %d fine voxels)" % [bn, n[1], n[2], n[3]])
+		t.check(sole_ok and high == 0, "its lowest layer all sole, and nothing painted over his ankle")
+
 func test_nothing_but_his_skin_is_drawn_on_a_man() -> void:
 	var m := Match.new()
 	add_child(m)
