@@ -96,6 +96,13 @@ def smin(a, b, k):
     return np.minimum(a, b) - h * h * k * 0.25
 
 
+def smin_v(a, b, k):
+    """smin with a width of its own at every point (`k`, an array; none where it is 0)."""
+    k = np.maximum(k, 1e-9)
+    h = np.clip(k - np.abs(a - b), 0.0, None) / k
+    return np.minimum(a, b) - h * h * k * 0.25
+
+
 # The three fighters' arms and legs heavier with muscle than their builds' radii (user; and a
 # little more again, with the bellies of their muscles on them, shapes_chunky).
 LIMB_K = {"upper": 1.15, "fore": 1.12, "delt": 1.1, "thigh": 1.12, "calf": 1.12}
@@ -112,6 +119,10 @@ FLANK_HIP = 0.032   # thicker by this much where they meet the hips
 FLANK_MAX = 0.176   # (a man thick in the waist already has them)
 HIP_UP = 0.03
 
+
+# A fighter's arm is one with his trunk only inside the round of his shoulder (JOINT_R, drawn by
+# both): wholly at this far inside it, not at all at its edge (Man.field).
+SHOULDER_SOFT = 0.02
 
 # A fighter's foot (user: better feet; one egg of a shape, it read as a boot's lump): where its
 # middle line lies out from the shin's (the middle of a fine cell, so its toes fall on whole
@@ -177,6 +188,7 @@ class Man:
             self.A[sx] = np.array([sh[0], 0.075, -0.012])                    # the ankle
         self.neck = pos("torso") + np.array(by["head"]["pa"])              # the neck's pivot
         self.hinge = {}
+        self.own = None   # (a fighter's trunk and legs alone, and each arm alone: field)
 
     def shapes(self, P):
         """[(part, name, sdf, kind)]: every shape of him, the part it belongs to, and whether it is
@@ -392,10 +404,34 @@ class Man:
         next one (a groove where two muscles meet), and the parts of the shapes."""
         sh = self.shapes(P)
         D = np.stack([d for _, _, d, _ in sh], 0)
-        d = D[0]
         kb = 0.022 if self.B.get("kind") else 0.04   # (the broad forms blended wider)
-        for k in range(1, len(sh)):
-            d = smin(d, D[k], kb)
+        self.own = None
+        if self.B.get("kind") or self.plain:
+            d = D[0]
+            for k in range(1, len(sh)):
+                d = smin(d, D[k], kb)
+        else:
+            # A fighter's arms are one with his trunk in the round of the shoulder and apart from
+            # it everywhere else (user: strange spiky lumps under his armpits, as if he were
+            # melting). Run together all the way down, an arm hanging by his side was webbed to
+            # his flank and his hip, and the web was shared out between the two: his arm raised,
+            # the trunk's share of it stood out of his side under the armpit; run together only
+            # near the armpit, a sliver of it still hung there.
+            body = None
+            arm = {-1: None, 1: None}
+            for k, (part, _, _, _) in enumerate(sh):
+                sx = -1 if part in ("upperArmR", "forearmR") else (1 if part in ("upperArmL", "forearmL") else 0)
+                if sx:
+                    arm[sx] = D[k] if arm[sx] is None else smin(arm[sx], D[k], kb)
+                else:
+                    body = D[k] if body is None else smin(body, D[k], kb)
+            d = body
+            for sx in (-1, 1):
+                c = self.S[sx]
+                r = np.sqrt((P[0] - c[0]) ** 2 + (P[1] - c[1]) ** 2 + (P[2] - c[2]) ** 2)
+                d = smin_v(d, arm[sx], kb * np.clip((JOINT_R["shoulder"] - r) / SHOULDER_SOFT, 0.0, 1.0))
+            # (His trunk and legs alone, and each arm alone: whose flesh a point is, _own_cells.)
+            self.own = (np.maximum(body, -P[1]), {sx: np.maximum(arm[sx], -P[1]) for sx in (-1, 1)})
         d = np.maximum(d, -P[1])
         self.wool = None
         if self.B.get("mantle"):
@@ -419,9 +455,9 @@ class Man:
 JOINT_R = {"shoulder": 0.075, "elbow": 0.055, "hip": 0.085, "knee": 0.06}
 
 
-def part_of(man, P):
+def part_of(man, P, arms=True):
     """For every point, the part it is drawn with: the bone it is nearest, each limb's by its own
-    thickness, the trunk's by its own."""
+    thickness, the trunk's by its own. (`arms` False: his arms left out, the trunk's or a leg's.)"""
     segs = []
     for sx, side in ((-1, "R"), (1, "L")):
         segs.append(("upperArm" + side, man.S[sx], man.E[sx], 0.06))
@@ -437,6 +473,8 @@ def part_of(man, P):
     tr = np.maximum(0.0, np.abs(P[0]) - 0.09) / 0.13 + np.maximum(0.0, P[1] - 1.5) / 0.1 + np.maximum(0.0, 0.9 - P[1]) / 0.08
     best = tr
     for k, (n, a, b, r) in enumerate(segs):
+        if not arms and "rm" in n:
+            continue
         d = cap(P, a, b, 0.0) / r
         m = d < best
         best = np.where(m, d, best)
@@ -534,6 +572,29 @@ def _own_cells(man, name, P):
         d = _box3(d)   # (a fighter's skin evened: a single cell standing out or a pit a cell deep gone)
     names, who = part_of(man, P)
     mine = who == names.index(name)
+    if man.own is not None:
+        # Each of them its own flesh, all of it and nothing else (Man.field: a fighter's arms are
+        # apart from his trunk outside the round of the shoulder): an arm is drawn whole, his
+        # trunk and legs whole, each evened by itself, and where one lies in the other (an arm
+        # hanging against his flank, a hand by his thigh) both draw it, the one inside the other.
+        # Shared out by the nearest bone, the side of his trunk an arm hung against went up with
+        # the arm and the arm's inside stayed on his flank; and the skin evened as one, what
+        # filled the fold between the two was neither's, and its share hung on each as a sliver
+        # when the arm came up.
+        body, arm = man.own
+        eb = _box3(body)
+        ea = {sx: _box3(arm[sx]) for sx in (-1, 1)}
+        ball = np.zeros(X.shape, bool)
+        for sx in (-1, 1):
+            c = man.S[sx]
+            ball |= np.sqrt((X - c[0]) ** 2 + (Y - c[1]) ** 2 + (Z - c[2]) ** 2) < JOINT_R["shoulder"]
+        d = np.minimum(np.minimum(eb, np.minimum(ea[-1], ea[1])), np.where(ball, d, np.inf))
+        side = {"R": -1, "L": 1}.get(name[-1]) if "rm" in name else None
+        if side is not None:
+            mine = (ea[side] < 0.0) & ((Y >= man.E[side][1]) == name.startswith("upper"))
+        else:
+            _, rest = part_of(man, P, False)
+            mine = (eb < 0.0) & (rest == names.index(name))
     # Round a joint, both parts that meet there (inside the ball about its pivot).
     for piv, a, b, jr in joints_of(man):
         if name in (a, b):

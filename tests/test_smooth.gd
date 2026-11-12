@@ -212,6 +212,38 @@ func test_his_feet_are_bare_in_their_sandals() -> void:
 		t.check((b.get("palette", []) as Array).size() >= 3 and n[1] > 60 and n[2] > 30 and n[3] > 20, "the %s's foot: his skin, the straps and the sole (%d, %d, %d fine voxels)" % [bn, n[1], n[2], n[3]])
 		t.check(sole_ok and high == 0, "its lowest layer all sole, and nothing painted over his ankle")
 
+func test_nothing_of_his_trunk_hangs_under_his_armpit() -> void:
+	# (User: strange spiky lumps under his armpits; and then: bits there still, as if he were
+	# melting.) His trunk and his arm are each drawn of their own flesh alone and are one only in the
+	# round of the shoulder, which both draw (tools/gen_fine_body.py _own_cells). Under that round
+	# nothing of his trunk lies out past his flank: there a share of the fold of skin between the two
+	# was drawn with his trunk, and stood out of his side when the arm came up.
+	var tpl := FineBody.template()
+	var body = JSON.parse_string(FileAccess.get_file_as_string("res://data/body.json"))
+	var grid := Vector3.ZERO
+	var at := Vector3.ZERO
+	for p in body.parts:
+		if p.name == "torso":
+			grid = Vector3(p.grid[0], p.grid[1], p.grid[2])
+		elif p.name == "upperArmR":
+			at = Vector3(p.pa[0], p.pa[1], p.pa[2])   # (his shoulder, in his trunk's frame)
+	var vox := 0.0275
+	var cell := vox / float(tpl.res)
+	var round := 0.075
+	for bn in FineBody.BUILDS:
+		var cells: Array = tpl.builds[bn].parts.torso.cells
+		var widest := 0.0
+		var seen := 0
+		for c in range(0, cells.size(), FineBody.CELL):
+			var q := Vector3(int(cells[c]) + 0.5, int(cells[c + 1]) + 0.5, int(cells[c + 2]) + 0.5) * cell - grid * vox * 0.5
+			if q.y > at.y - 0.085 or q.y < at.y - 0.26:
+				continue
+			if Vector3(absf(q.x) - absf(at.x), q.y - at.y, q.z).length() < round + cell:
+				continue
+			seen += 1
+			widest = maxf(widest, absf(q.x))
+		t.check(seen > 200 and widest < 0.235, "under the %s's shoulders his trunk goes no further out than his flank (%.3f m from his middle, of %d fine voxels there)" % [bn, widest, seen])
+
 func test_nothing_but_his_skin_is_drawn_on_a_man() -> void:
 	var m := Match.new()
 	add_child(m)
