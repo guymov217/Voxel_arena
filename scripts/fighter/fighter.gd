@@ -3660,6 +3660,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	two_front = null
 	two_gap = null
 	# (The guard hand first: it sets where the other is to hold the haft this step.)
+	_arm_phase = true
+	_sculpt_memo.clear()
+	_limb_memo.clear()
+	_plate_memo = null
 	for side in [two_side, two_off()]:
 		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
 		# The breath goes with the work of the swing while the button is down: how far the hand
@@ -3683,6 +3687,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# passes into its own chest or head.
 		if not arm[side].upper.severed:
 			_keep_arm_out(side, dt)
+	_arm_phase = false
 
 	# A blade whirled hard winds him: the swing's own speed, the weapon turning against his
 	# body while he swings (the button down). Not the turn of the whole man (walking about and
@@ -5024,8 +5029,9 @@ func _keep_arm_out(side: String, dt: float) -> void:
 	var fo: VoxelPart = arm[side].fore
 	var out_x := -1.0 if side == "R" else 1.0
 	var sculpt = _trunk_sculpt(side)
+	var up_t: Transform3D = up.global_transform
 	# [the part, the point, where along the part it is (its frame's y: how thick it is there)]
-	var pts := [[up, up.global_transform * Vector3(0, -up.half_ext.y, 0), -up.half_ext.y]]
+	var pts := [[up, up_t * Vector3(0, -up.half_ext.y, 0), -up.half_ext.y]]
 	# The middle of the upper arm too, but not with both hands on a haft: reaching across the
 	# chest for the other end of it, the off arm's lies along the front of the chest, at the
 	# box's corner by the shoulder, and pushed out from there all the time it twisted the haft
@@ -5034,22 +5040,22 @@ func _keep_arm_out(side: String, dt: float) -> void:
 	if not two_handed:
 		pts.append([up, up.global_position, 0.0])
 		if sculpt != null:
-			pts.append([up, up.global_transform * Vector3(0, -0.5 * up.half_ext.y, 0), -0.5 * up.half_ext.y])
+			pts.append([up, up_t * Vector3(0, -0.5 * up.half_ext.y, 0), -0.5 * up.half_ext.y])
 	if not fo.severed:
 		pts.append_array([[fo, fo.global_position, 0.0], [fo, hand_world(side), hand_point.y]])
 	# Each limb is drawn seated on its joint (_seat_drawing): by as much as the joint has given,
 	# toward the socket. Where it is drawn is what is kept out of the drawn trunk.
 	var seat := {up: Vector3.ZERO, fo: Vector3.ZERO}
 	if sculpt != null and up.joint != null:
-		seat[up] = torso.global_transform * up.pa - up.global_transform * up.ca
+		seat[up] = torso.global_transform * up.pa - up_t * up.ca
 		if fo.joint != null and not fo.severed:
-			seat[fo] = (seat[up] as Vector3) + up.global_transform * fo.pa - fo.global_transform * fo.ca
+			seat[fo] = (seat[up] as Vector3) + up_t * fo.pa - fo.global_transform * fo.ca
 	for body in [torso, head]:
 		if body.severed:
 			continue
 		var bt: Transform3D = body.global_transform
 		var bi := bt.affine_inverse()
-		var bq := PD.quat_of(body)
+		var bq = null   # (its turn: asked only where a point is in it)
 		var e: Vector3 = body.half_ext + Vector3(0.02, 0.0, 0.02) * S
 		var drawn: bool = body == torso and sculpt != null
 		for pp in pts:
@@ -5058,7 +5064,7 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			if drawn:
 				# Out of the trunk as it is drawn, the limb as thick as it is drawn there (_outline).
 				l = bi * ((pp[1] as Vector3) + (seat[pp[0]] as Vector3))
-				push = _out_of_trunk(sculpt, l, _limb_r(pp[0], pp[2]) + _plate_pad(l.y))
+				push = _limb_out(sculpt, l, pp[0], pp[2])
 				if push == Vector3.ZERO:
 					continue
 			else:
@@ -5068,7 +5074,9 @@ func _keep_arm_out(side: String, dt: float) -> void:
 				var aside := e.x - l.x * out_x
 				push = Vector3(0, 0, front) if front < aside or l.z > 0.0 else Vector3(out_x * aside, 0, 0)
 			var part: VoxelPart = pp[0]
-			var v_out := (bq * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
+			if bq == null:
+				bq = PD.quat_of(body)
+			var v_out := ((bq as Quaternion) * push.normalized()).dot(part.velocity_at(pp[1]) - body.velocity_at(pp[1]))
 			var m_eff: float = (0.0 if fo.severed else fo.nominal_mass) + up.nominal_mass * 0.5 + (weapons[side].mass if weapons[side] else 0.0)
 			# A soft, critically damped push (a stiff one fought a two-handed grip and set the
 			# hands buzzing at the hilt). The upper arm's own middle (not with two hands on a haft)
@@ -5076,7 +5084,7 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			# turn about the shoulder, and soft it lagged into the chest through a stroke across him.
 			var k_out := ARM_OUT_K * (UPPER_OUT if drawn and part == up and float(pp[2]) > -0.75 * up.half_ext.y else 1.0)
 			var acc: float = push.length() * k_out - minf(0.0, v_out) * 2.0 * sqrt(k_out)
-			var jo: Vector3 = bq * push.normalized() * acc * m_eff * dt
+			var jo: Vector3 = (bq as Quaternion) * push.normalized() * acc * m_eff * dt
 			part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 			body.apply_central_impulse(-jo)   # (the arm pushes off his own body, not off the air)
 	_keep_hand_front(side, dt)
@@ -5146,12 +5154,29 @@ func _outline(p: VoxelPart):
 func _trunk_sculpt(side: String):
 	if state != "stand" or (pinned_arm == side and is_instance_valid(grabbed_by)):
 		return null
+	if _arm_phase:
+		if not _sculpt_memo.has(side):
+			_sculpt_memo[side] = _trunk_sculpt_worn(side)
+		return _sculpt_memo[side]
+	return _trunk_sculpt_worn(side)
+
+func _trunk_sculpt_worn(side: String):
 	if not (_armored(torso) or _armored(arm[side].upper) or _armored(arm[side].fore)):
 		return null
 	for m in ["beast_hold", "rolled_by"]:
 		if has_meta(m) and is_instance_valid(get_meta(m)):
 			return null
 	return _outline(torso)
+
+## The arms' part of a step (control). What its many askers ask is the same all through it (the
+## trunk's outline his arms are kept out of, how thick each limb is drawn, where his cuirass
+## lies: nothing in it changes his armour or his build) and is worked out once for all of them:
+## asked afresh each time, dozens of times an arm, it was a fifth of a step of a fight (#150).
+## Outside it every asker works its answer out as before.
+var _arm_phase := false
+var _sculpt_memo := {}   # side -> the trunk's outline for that arm, or null
+var _limb_memo := {}     # part -> {where along it -> how thick it is drawn there}
+var _plate_memo = null   # [from, to, how thick]: the cuirass on the trunk (_plate_band)
 
 ## The sculpt's row (fractional, within the rows he is in) at `y` along the part.
 static func _sculpt_row(o: Dictionary, y: float) -> float:
@@ -5175,6 +5200,19 @@ static func _sculpt_r(o: Dictionary, y: float, ang: float) -> float:
 ## How thick (a ball's radius) limb `p` is drawn at `y` along it (its frame), its plates on: the
 ## sculpt's own outline there, the mean of the ways round (0: no sculpt, a point as before).
 func _limb_r(p: VoxelPart, y: float) -> float:
+	if _arm_phase:
+		var row = _limb_memo.get(p)
+		if row == null:
+			row = {}
+			_limb_memo[p] = row
+		var have = row.get(y)
+		if have == null:
+			have = _limb_r_now(p, y)
+			row[y] = have
+		return have
+	return _limb_r_now(p, y)
+
+func _limb_r_now(p: VoxelPart, y: float) -> float:
 	var o = _outline(p)
 	if o == null:
 		return 0.0
@@ -5188,6 +5226,19 @@ func _limb_r(p: VoxelPart, y: float) -> float:
 ## (and a fine voxel past them), none elsewhere or without one.
 var _plate_span := [-1, Vector2.ZERO]   # [the trunk's pieces counted, the plates' rows (y from..to)]
 func _plate_pad(y: float) -> float:
+	var b := _plate_band_now()
+	return 0.0 if y < float(b[0]) or y > float(b[1]) else float(b[2])
+
+func _plate_band_now() -> Array:
+	if _arm_phase:
+		if _plate_memo == null:
+			_plate_memo = _plate_band()
+		return _plate_memo
+	return _plate_band()
+
+## The cuirass on the trunk: [from, to (along the trunk, its frame), how thick it is]; from above
+## to where there is none.
+func _plate_band() -> Array:
 	var ads: Array = torso.get_meta("armor", [])
 	if int(_plate_span[0]) != ads.size():
 		var lo := INF
@@ -5202,11 +5253,9 @@ func _plate_pad(y: float) -> float:
 	var span: Vector2 = _plate_span[1]
 	var o = _outline(torso)
 	if o == null or span.x > span.y:
-		return 0.0
+		return [INF, -INF, 0.0]
 	var vox := torso.vf * torso.part_scale
-	if y < span.x - vox or y > span.y + vox:
-		return 0.0
-	return TRUNK_PLATE * float(o.fsz)
+	return [span.x - vox, span.y + vox, TRUNK_PLATE * float(o.fsz)]
 
 ## How far (the trunk's frame) a ball of radius `r` round `l` (the trunk's frame) has to go to be
 ## out of the trunk as it is drawn (`o`, _outline): straight out from its line. ZERO when it is.
@@ -5218,6 +5267,16 @@ static func _out_of_trunk(o: Dictionary, l: Vector3, r: float) -> Vector3:
 	if pen <= 0.0:
 		return Vector3.ZERO
 	return (Vector3(l.x, 0.0, l.z) / d if d > 1e-4 else Vector3(0, 0, 1)) * pen
+
+## How far a ball as thick as limb `p` is drawn at `y` along it, its plates on, has to go from `l`
+## (the trunk's frame) to be out of the trunk as it is drawn (`o`), with his cuirass on it there.
+## (The C++ core's, when it is built: asked for every point of both arms every step.)
+func _limb_out(o: Dictionary, l: Vector3, p: VoxelPart, y: float) -> Vector3:
+	var nc := Greedy.core()
+	if nc:
+		var b := _plate_band_now()
+		return nc.sculpt_out(o, l, _limb_r(p, y), b[0], b[1], b[2])
+	return _out_of_trunk(o, l, _limb_r(p, y) + _plate_pad(l.y))
 
 var wedged := {"R": 0.0, "L": 0.0}   # how long a free hand has been caught behind the back (s); < 0: passing through
 func _unwedge(side: String, dt: float, yaw_q: Quaternion, t_pos: Vector3) -> void:
@@ -5426,6 +5485,10 @@ func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_d
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var up: VoxelPart = arm[side].upper
+	var nc := Greedy.core()
+	if nc:
+		var b := _plate_band_now()
+		return nc.sculpt_elbow(sculpt, bt, bi, shoulder_w, e_dir, lu, _limb_r(up, lu * (0.5 - 0.5)), _limb_r(up, lu * (0.5 - 0.75)), _limb_r(up, lu * (0.5 - 1.0)), b[0], b[1], b[2])
 	var d := e_dir
 	for i in 3:
 		var move := Vector3.ZERO
@@ -5453,9 +5516,15 @@ func _hand_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, elbo
 	var fo: VoxelPart = arm[side].fore
 	if fo.severed:
 		return goal
+	var from := shoulder_w if straight else elbow_w
+	var nc := Greedy.core()
+	if nc:
+		# [how far along the line, how thick the limb is drawn there] a mark, as below.
+		var mk := PackedFloat64Array([lu * 0.5, _limb_r(up, 0.0), lu * 0.75, _limb_r(up, -0.25 * lu), lu, _limb_r(up, -0.5 * lu), lu + lf * 0.5, _limb_r(fo, 0.0)]) if straight else PackedFloat64Array([lf * 0.35, _limb_r(fo, 0.15 * lf), lf * 0.7, _limb_r(fo, -0.2 * lf)])
+		var b := _plate_band_now()
+		return nc.sculpt_hand(sculpt, bt, bi, from, goal, S, mk, b[0], b[1], b[2])
 	# [how far along the line, the part, where along the part]
 	var marks := [[lu * 0.5, up, 0.0], [lu * 0.75, up, -0.25 * lu], [lu, up, -0.5 * lu], [lu + lf * 0.5, fo, 0.0]] if straight else [[lf * 0.35, fo, 0.15 * lf], [lf * 0.7, fo, -0.2 * lf]]
-	var from := shoulder_w if straight else elbow_w
 	var g := goal
 	for i in 3:
 		var span := (g - from).length()
@@ -5500,7 +5569,7 @@ func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3, side := "R"
 	if sculpt != null and not torso.severed and not arm[side].fore.severed:
 		var bt: Transform3D = torso.global_transform
 		var l: Vector3 = bt.affine_inverse() * (t_pos + yaw_q * target)
-		var push := _out_of_trunk(sculpt, l, _limb_r(arm[side].fore, hand_point.y) + _plate_pad(l.y))
+		var push := _limb_out(sculpt, l, arm[side].fore, hand_point.y)
 		if push != Vector3.ZERO:
 			target += yaw_q.inverse() * (bt.basis * push)
 	if not head.severed:

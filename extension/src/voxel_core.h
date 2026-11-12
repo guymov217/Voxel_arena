@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/rigid_body3d.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/string_name.hpp>
@@ -54,6 +55,13 @@ public:
 	// x the bone's line); `ix`: [slot, voxel] a row. Dead and veiled voxels are passed over, and
 	// those past the bend unless the last layout (`b_was` long) had them in it.
 	void lay_band(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &ix, const PackedByteArray &alive, const PackedByteArray &veil, const Quaternion &q, const Vector3 &n, double theta, double b, double b_was, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &inv) const;
+	// A man's arms kept out of his trunk as it is drawn (Fighter._out_of_trunk with the limb's
+	// thickness and the cuirass's on it, _elbow_off_trunk, _hand_off_trunk), as the script does
+	// them. `o`: the trunk's outline (Fighter._outline); `bt`, `bi`: the trunk's transform and its
+	// inverse; `band_*`: the cuirass (Fighter._plate_band); `marks`: [how far along, how thick] a mark.
+	Vector3 sculpt_out(const Dictionary &o, const Vector3 &l, double limb_r, double band_lo, double band_hi, double band_pad) const;
+	Vector3 sculpt_elbow(const Dictionary &o, const Transform3D &bt, const Transform3D &bi, const Vector3 &shoulder_w, const Vector3 &e_dir, double lu, double r_half, double r_three, double r_whole, double band_lo, double band_hi, double band_pad) const;
+	Vector3 sculpt_hand(const Dictionary &o, const Transform3D &bt, const Transform3D &bi, const Vector3 &from, const Vector3 &goal, double size, const PackedFloat64Array &marks, double band_lo, double band_hi, double band_pad) const;
 	PackedFloat64Array skin_nearest(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &half_ext, double max_depth, const Vector3 &want) const;
 };
 

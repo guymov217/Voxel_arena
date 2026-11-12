@@ -3455,13 +3455,19 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		# caps what that adds to his speed: a man's shins caught in a giant's striding legs were
 		# flung at 25 m/s and sent him into the sky, user).
 		if fighter and "struck_frame" in fighter:
+			# (Most of what a part touches is the sand, or his own parts: let go at once.)
 			for i in state.get_contact_count():
 				var o = state.get_contact_collider_object(i)
-				if (o is Weapon and o.holder != null and o.holder != fighter) or Fighter.is_giant_over(o, fighter):
-					fighter.struck_frame = Engine.get_physics_frames()
-					break
-				if Fighter.is_beast_on(o, fighter):
-					fighter.beast_frame = Engine.get_physics_frames()
+				if o is Weapon:
+					if o.holder != null and o.holder != fighter:
+						fighter.struck_frame = Engine.get_physics_frames()
+						break
+				elif o is VoxelPart and o.fighter != null and o.fighter != fighter:
+					if Fighter.is_giant_over(o, fighter):
+						fighter.struck_frame = Engine.get_physics_frames()
+						break
+					if Fighter.is_beast_on(o, fighter):
+						fighter.beast_frame = Engine.get_physics_frames()
 	# (After the contacts are told: a blow it lands is as hard as it came.)
 	if severed:
 		_calm(state)
