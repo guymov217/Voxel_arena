@@ -19,14 +19,29 @@ const INK := Color(0.14, 0.08, 0.025)
 
 static var _theme: Theme
 static var _cinzel: FontFile
+static var _cinzel_read := false
 static var _body := {}
 static var _hooked := false
+
+## A font of art/fonts: as the editor imported it, or (in a checkout it has not imported, where
+## the engine has no loader for a .ttf: an error at every call, user, a lot of errors in the
+## debugger) read from the file itself. Nothing: the file is not there.
+static func _font(path: String) -> FontFile:
+	if Arena.imported(path):
+		return load(path) as FontFile
+	if FileAccess.file_exists(path):
+		var f := FontFile.new()
+		if f.load_dynamic_font(path) == OK:
+			Arena._as_it_is(path)
+			return f
+	return null
 
 ## The Roman capitals: Cinzel at weight `weight`, spaced out like an inscription. (Its small
 ## letters are small capitals, so "The forge" reads as an inscription too.)
 static func serif(spacing := 2, weight := 700) -> Font:
-	if _cinzel == null:
-		_cinzel = load("res://art/fonts/Cinzel.ttf") as FontFile
+	if not _cinzel_read:
+		_cinzel_read = true
+		_cinzel = _font("res://art/fonts/Cinzel.ttf")
 	var v := FontVariation.new()
 	if _cinzel:
 		v.base_font = _cinzel
@@ -42,7 +57,7 @@ static func serif(spacing := 2, weight := 700) -> Font:
 ## The face for reading: Alegreya Sans ("regular", "medium" or "bold").
 static func body(cut := "regular") -> Font:
 	if not _body.has(cut):
-		var f := load("res://art/fonts/AlegreyaSans-%s.ttf" % cut.capitalize()) as FontFile
+		var f := _font("res://art/fonts/AlegreyaSans-%s.ttf" % cut.capitalize())
 		_body[cut] = f if f else ThemeDB.fallback_font
 	return _body[cut]
 

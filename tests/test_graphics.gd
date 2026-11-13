@@ -244,3 +244,41 @@ func test_long_items_are_pictured_across_the_view() -> void:
 	t.eq(pot.rotation, Vector3.ZERO, "a pot is pictured as it is")
 	dart.free()
 	pot.free()
+
+## A file of art/ the editor has not imported is read as it is, with no error: a picture whose
+## .import names an imported file that is not there (the floor's maps in a checkout not yet
+## imported: three errors a map), and a font with no .import at all (no loader for it, an error
+## at every call; user: a lot of errors in the debugger).
+func test_art_not_imported_is_read_as_it_is() -> void:
+	var dir := "user://t_not_imported"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var img := Image.create(8, 4, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.2, 0.4, 0.6))
+	img.save_png(dir + "/pic.png")
+	var f := FileAccess.open(dir + "/pic.png.import", FileAccess.WRITE)
+	f.store_string("[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\npath.bptc=\"%s/pic.png-none.bptc.ctex\"\n" % dir)
+	f.close()
+	t.check(ResourceLoader.exists(dir + "/pic.png"), "the engine takes a picture with an .import beside it as one it can load")
+	t.check(not Arena.imported(dir + "/pic.png"), "it is not imported: what its .import names is not there")
+	var tex := Arena.load_texture(dir + "/pic.png")
+	t.check(tex != null and tex is ImageTexture, "so it is read from the picture itself")
+	if tex:
+		t.eq(Vector2i(tex.get_size()), Vector2i(8, 4), "all of it")
+	t.check(Arena.load_texture(dir + "/none.png") == null, "a picture that is not there is none")
+	# The game's own floor, whichever way this checkout is.
+	for name_ in ["floor_sand_albedo", "floor_sand_normal", "floor_earth_albedo", "floor_earth_normal"]:
+		var m := Arena.load_texture("res://art/textures/%s.webp" % name_)
+		t.check(m != null and m.get_width() == 2048, "the floor's map %s is had" % name_)
+	t.check(Arena.sand_material() is ShaderMaterial, "and the floor is drawn with its own shader")
+	# A font the editor never saw.
+	var ff := FileAccess.open(dir + "/Cinzel.ttf", FileAccess.WRITE)
+	ff.store_buffer(FileAccess.get_file_as_bytes("res://art/fonts/Cinzel.ttf"))
+	ff.close()
+	t.check(not Arena.imported(dir + "/Cinzel.ttf"), "a font with no .import is not imported")
+	var font := UIStyle._font(dir + "/Cinzel.ttf")
+	t.check(font != null and font.get_font_name() == "Cinzel", "and is read from its own file (%s)" % (font.get_font_name() if font else "none"))
+	t.check(UIStyle._font(dir + "/none.ttf") == null, "a font that is not there is none")
+	t.check(UIStyle.serif() is FontVariation and (UIStyle.serif() as FontVariation).base_font is FontFile, "the menus' capitals are Cinzel's")
+	for n in ["pic.png", "pic.png.import", "Cinzel.ttf"]:
+		DirAccess.remove_absolute(dir + "/" + n)
+	DirAccess.remove_absolute(dir)

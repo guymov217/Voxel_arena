@@ -788,16 +788,47 @@ static func sky_material(day: bool) -> ShaderMaterial:
 		m.set_shader_parameter("stars", load_texture("res://art/sky/night_stars.jpg"))
 	return m
 
-## A texture from art/: the imported resource, or (in a checkout that was never opened in the
-## editor) the image file itself.
+## A texture from art/: the imported resource, or (in a checkout the editor has not imported,
+## or not this file) the image file itself.
 static func load_texture(path: String) -> Texture2D:
-	if ResourceLoader.exists(path):
+	if imported(path):
 		return load(path)
+	if not FileAccess.file_exists(path):
+		return null
 	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
 	if img == null or img.is_empty():
 		return null
 	img.generate_mipmaps()
+	_as_it_is(path)
 	return ImageTexture.create_from_image(img)
+
+## Whether a file of art/ (an image, a font, a sound) can be loaded as the editor imported it:
+## the engine knows it, and what its .import names as imported is there. A file the editor never
+## saw has no .import and is not known at all. One whose .import came with the checkout (the
+## floor's maps, for their settings) is known with nothing imported behind it: loading it failed
+## with three errors a map, at every arena built (user: a lot of errors in the debugger).
+static func imported(path: String) -> bool:
+	if not ResourceLoader.exists(path):
+		return false
+	var cf := ConfigFile.new()
+	if not FileAccess.file_exists(path + ".import") or cf.load(path + ".import") != OK or not cf.has_section("remap"):
+		return true   # (not a file that is imported)
+	var named := false
+	for key in cf.get_section_keys("remap"):
+		if key == "path" or String(key).begins_with("path."):
+			named = true
+			if FileAccess.file_exists(String(cf.get_value("remap", key))):
+				return true
+	return not named
+
+## Said once a run, in the log: the game's files are read as they are here, not imported (it
+## starts slower and its textures take more memory), and what sets that right.
+static var _told := false
+static func _as_it_is(path: String) -> void:
+	if _told:
+		return
+	_told = true
+	print("Not imported here: %s and others are read from the files themselves. Open the project in the Godot editor once and let it finish importing." % path)
 
 static var _surfaces := {}
 ## A tiling surface from art/textures (sand, stone), laid on in world space so it never

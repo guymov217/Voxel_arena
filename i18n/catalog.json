@@ -214,17 +214,17 @@
 "scripts/game/killcam.gd:57"
 ],
 "Button": [
-"scripts/ui/style.gd:123",
-"scripts/ui/style.gd:124",
 "scripts/ui/style.gd:138",
 "scripts/ui/style.gd:139",
-"scripts/ui/style.gd:140"
+"scripts/ui/style.gd:153",
+"scripts/ui/style.gd:154",
+"scripts/ui/style.gd:155"
 ],
 "Label": [
-"scripts/ui/style.gd:179"
+"scripts/ui/style.gd:194"
 ],
 "Frame": [
-"scripts/ui/style.gd:434"
+"scripts/ui/style.gd:449"
 ],
 "Red": [
 "scripts/ui/armour_forge.gd:25",
@@ -4821,13 +4821,13 @@
 "scripts/game/arena.gd:736"
 ],
 "Embers": [
-"scripts/game/arena.gd:891"
+"scripts/game/arena.gd:922"
 ],
 "Bowl": [
-"scripts/game/arena.gd:908"
+"scripts/game/arena.gd:939"
 ],
 "Velarium": [
-"scripts/game/arena.gd:1587"
+"scripts/game/arena.gd:1618"
 ],
 "Senator Pompous": [
 "scripts/game/bout_rules.gd:52"
