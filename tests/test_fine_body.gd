@@ -309,3 +309,158 @@ func test_armour_is_one_shell() -> void:
 	# The classic look: the plates again.
 	Physique.dress(f, "strong")
 	t.check(not ad.has("shell") and (ad.node as Node3D).visible, "the classic look draws the helmet's plates again")
+
+## A piece's cells (VoxelPart.piece_cells: 20 numbers each): [where, colour, data] of each.
+func _cells(buf: PackedFloat32Array) -> Array:
+	var out := []
+	for k in buf.size() / 20:
+		var o := k * 20
+		out.append([Vector3(buf[o + 3], buf[o + 7], buf[o + 11]), Color(buf[o + 12], buf[o + 13], buf[o + 14], buf[o + 15]), Color(buf[o + 16], buf[o + 17], buf[o + 18], buf[o + 19])])
+	return out
+
+## A piece cut off a man of the new look is drawn of what was drawn of him there (user: the piece
+## that fell from him was a piece of a square character that had nothing to do with him; every
+## piece that falls from a character must be a piece that is literally his): his head's fine
+## voxels and the flesh behind them, not the head's own boxes with the classic look's face on
+## them; his arm's skin and the fat and the flesh the cut bares; a plate of his armour its own
+## voxels of the shell. In the classic looks, his own voxels as they are drawn.
+func test_a_piece_cut_off_him_is_a_piece_of_him() -> void:
+	var w := _world()
+	var f := _man(w, "human", Vector3(0, 1.2, 0), "hero", null, ["lorica"])
+	var h: VoxelPart = f.head
+	# His face: the front of his head, one voxel deep.
+	var face := []
+	var over := 0
+	var hid := 0
+	for i in h.fx.size():
+		if h.alive[i] == 1 and h.fz[i] == h.grid.z - 1:
+			face.append(i)
+			over += ((h.fine.of as Dictionary).get(i, []) as Array).size()
+			hid += 1 if int((h.fine.hid as PackedByteArray)[i]) == 1 and (h.fine.of as Dictionary).has(i) else 0
+	t.check(face.size() > 20 and over > face.size(), "his face: %d of his head's voxels, %d fine ones drawn over them" % [face.size(), over])
+	var eye: Color = Color.BLACK
+	var skin_c: Color = f.skin
+	var vox := h.remove_voxels(face, false)
+	var pc := h.piece_cells(vox)
+	t.check(not pc.is_empty() and pc.get("mesh") is Mesh, "what was drawn of his face goes with the piece")
+	if not pc.is_empty():
+		var cells := _cells(pc.buf)
+		t.check(cells.size() >= over, "his face's own fine voxels (%d for %d)" % [cells.size(), over])
+		# Behind his skin: flesh (wet, red), not the hollow back of a mask.
+		var flesh := 0
+		var far := 0.0
+		var dark := 0
+		for c in cells:
+			var col: Color = c[1]
+			if col.r > 0.5 and col.g < 0.2 and col.b < 0.2 and (c[2] as Color).g < 0.0:
+				flesh += 1
+			elif col.r + col.g + col.b < 0.6:
+				dark += 1
+			var at: Vector3 = c[0]
+			far = maxf(far, maxf(absf(at.x) - h.half_ext.x, maxf(absf(at.y) - h.half_ext.y, absf(at.z) - h.half_ext.z)))
+		t.check(flesh > hid / 3, "with flesh behind his skin (%d slabs of it, for %d of his head's voxels under the shell)" % [flesh, hid])
+		t.check(dark > 0, "his eyes and his brows as they were drawn (%d dark fine voxels)" % dark)
+		t.check(far < h.vf * h.part_scale * 1.5, "where they were on him (%.3f m off his head's box at most)" % far)
+	var ch := Chunk.spawn(h, vox, Vector3.FORWARD)
+	t.check(ch != null, "cut off, it falls as a piece")
+	if ch != null and not pc.is_empty():
+		t.eq(ch.boxes, 0, "none of his head's own boxes is drawn on it (the classic look's square face)")
+		t.eq(ch.cells, (pc.buf as PackedFloat32Array).size() / 20, "it is drawn of his own")
+	# A slice off his arm: his skin as it was drawn, and what the cut bares under it.
+	var arm: VoxelPart = f.by_name["upperArmL"]
+	var slice := Array(arm.voxels_within(Vector3(arm.half_ext.x, 0.0, 0.0), arm.vf * arm.part_scale * 2.6))
+	var skin := 0
+	for i in slice:
+		skin += ((arm.fine.of as Dictionary).get(i, []) as Array).size()
+	var avox := arm.remove_voxels(slice, false)
+	var apc := arm.piece_cells(avox)
+	t.check(slice.size() > 8 and not apc.is_empty(), "a slice off his arm (%d voxels): what was drawn of it goes with it" % slice.size())
+	if not apc.is_empty():
+		var cells := _cells(apc.buf)
+		var fat := 0
+		var red := 0
+		for c in cells:
+			var col: Color = c[1]
+			if col.r > 0.7 and col.g > 0.5 and col.b < 0.55 and col.g > col.b * 1.3 and (c[2] as Color).g < 0.0:
+				fat += 1
+			elif col.r > 0.5 and col.g < 0.2:
+				red += 1
+		t.check(cells.size() > skin and skin > 0, "his skin's fine voxels (%d) and what the cut bares (%d cells in all)" % [skin, cells.size()])
+		t.check(fat > 0 and red > 0, "fat under his skin and flesh under it (%d, %d)" % [fat, red])
+	var ca := Chunk.spawn(arm, avox, Vector3.RIGHT)
+	t.check(ca != null and ca.boxes == 0 and ca.cells > 0, "it falls drawn of that, none of his arm's own boxes")
+	# A plate knocked off his cuirass: its own voxels of the shell.
+	var lor := _piece(f.torso, "lorica")
+	t.check(lor.has("shell"), "his cuirass is a shell")
+	if lor.has("shell"):
+		f.torso.freeze = false
+		var ci := -1
+		for c in (lor.shell.of as Dictionary):
+			if ((lor.shell.of as Dictionary)[c] as Array).size() > 3:
+				ci = int(c)
+				break
+		var own: int = ((lor.shell.of as Dictionary)[ci] as Array).size()
+		t.eq(FineArmor.taken(lor, ci).size() / 20, own, "a plate's own voxels of the shell")
+		var before := Chunk.all.size()
+		f._knock_plate(f.torso, lor, ci, Vector3.FORWARD, 30.0)
+		t.check(Chunk.all.size() == before + 1, "a plate knocked off flies off as a piece")
+		if Chunk.all.size() == before + 1:
+			var cp: Chunk = Chunk.all[Chunk.all.size() - 1]
+			t.check(cp.cells == own and cp.boxes == 0, "drawn of its own voxels of the shell, not as a cube of its stuff (%d cells for %d, %d boxes)" % [cp.cells, own, cp.boxes])
+		t.eq(FineArmor.taken(lor, ci).size(), 0, "off him, nothing of it is left to take")
+		f.torso.freeze = true
+	# The classic look: his own voxels, as they are drawn on him.
+	var g := _man(w, "classic", Vector3(3, 1.2, 0))
+	var ga: VoxelPart = g.by_name["upperArmL"]
+	var gs := Array(ga.voxels_within(Vector3(ga.half_ext.x, 0.0, 0.0), ga.vf * ga.part_scale * 2.6))
+	var gvox := ga.remove_voxels(gs, false)
+	t.check(ga.piece_cells(gvox).is_empty(), "the classic look draws his own voxels")
+	var cg := Chunk.spawn(ga, gvox, Vector3.RIGHT)
+	t.check(cg != null and cg.cells == 0 and cg.boxes == gs.size(), "and a piece of him is those, as they were drawn")
+
+## What a cut leaves of a limb on him stays only where it touches him (user: a piece hung in the
+## air by his shoulder where his arm was cut off): the far side of the arm's top, with nothing of
+## the arm between it and his trunk, falls as a piece of its own.
+func test_nothing_of_a_stump_hangs_in_the_air() -> void:
+	var w := _world()
+	var f := _man(w, "human")
+	var arm: VoxelPart = f.by_name["upperArmL"]
+	var top := arm.grid.y - 1
+	# The arm's two top layers, by how far from his trunk they lie (his left arm: out along +x).
+	var inner := []
+	var outer := []
+	var mid := []
+	for i in arm.fx.size():
+		if arm.alive[i] == 0 or arm.fy[i] < top - 1:
+			continue
+		if arm.fx[i] <= 1:
+			inner.append(i)
+		elif arm.fx[i] >= arm.grid.x - 2:
+			outer.append(i)
+		else:
+			mid.append(i)
+	t.check(inner.size() > 3 and outer.size() > 3 and mid.size() > 0, "the top of his arm: the side by his trunk, the far side, and between (%d, %d, %d voxels)" % [inner.size(), outer.size(), mid.size()])
+	t.eq(arm.stump_loose(inner + mid + outer).size(), 0, "whole, the top of his arm is on him")
+	var loose: Array = arm.stump_loose(inner + outer)
+	t.check(loose.size() == 1 and (loose[0] as Array).size() == outer.size(), "with nothing of it between, its far side touches nothing of him (%d groups)" % loose.size())
+	t.eq(arm.stump_loose(inner).size(), 0, "the side by his trunk does")
+	# Cut off below them with the middle gone: the far side falls, the near side is his stump.
+	arm.remove_voxels(mid, false)
+	var keep := PackedInt32Array()
+	for i in arm.fx.size():
+		if arm.alive[i] == 1 and arm.fy[i] < top - 1:
+			keep.append(i)
+	arm.freeze = false
+	var res := {"removed": [], "severed": []}
+	f.sever(arm, res, keep)
+	var fell := 0
+	var left := 0
+	for r in res.removed:
+		var idx: Array = Array(r.indices)
+		if idx.size() == outer.size() and outer.has(idx[0]):
+			fell += 1
+			t.check(r.get("chunk", false), "its far side falls as a piece of its own")
+		elif idx.size() == inner.size() and inner.has(idx[0]):
+			left += 1
+			t.check(not r.get("chunk", false), "the side by his trunk stays on him as the stump")
+	t.check(fell == 1 and left == 1 and arm.severed, "the arm cut off: what touched nothing of him fell, what touched him stayed (%d, %d)" % [fell, left])

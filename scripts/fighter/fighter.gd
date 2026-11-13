@@ -1066,6 +1066,8 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 	ad.alive -= 1
 	_armor_dirty = true
 	var at: Vector3 = (ad.pts[ci] as Vector3) + Physique.inset(part, ad.cells[ci])
+	# (What the piece's shell drew of the plate, as it lay on him: the plate that flies off.)
+	var own := FineArmor.taken(ad, ci) if fly and not part.freeze else PackedFloat32Array()
 	if ad.node and is_instance_valid(ad.node):
 		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 		FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
@@ -1087,6 +1089,20 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 		for dy in [-q, q]:
 			for dz in [-q, q]:
 				voxels.append({"p": part.global_transform * (at + Vector3(dx, dy, dz)), "color": c, "kind": kind})
+	# Drawn as a shell on him, it is drawn as its own voxels of that shell as it flies and lies
+	# (Chunk.spawn): the very plate, curved as it lay on him, not a cube of its stuff (user: every
+	# piece that falls from a character is a piece that is literally his). The piece's own body
+	# where they are drawn (the shell lies on him as he is drawn, not on his box).
+	if own.size() >= 20:
+		var mid := Vector3.ZERO
+		for k in own.size() / 20:
+			mid += Vector3(own[k * 20 + 3], own[k * 20 + 7], own[k * 20 + 11])
+		mid /= float(own.size() / 20)
+		for v in voxels:
+			v.p = (v.p as Vector3) + part.global_transform.basis * (mid - at)
+			v["cells"] = PackedFloat32Array()
+		voxels[0]["cells"] = own
+		voxels[0]["cm"] = FineArmor.cell_mesh()
 	var out := (part.global_transform.basis * at).normalized()
 	var d: Vector3 = dir.normalized() if dir.length_squared() > 1e-6 else out
 	Chunk.spawn(part, voxels, (d * 0.6 + out * 0.4 + Vector3.UP * 0.25).normalized() * clampf(force / 40.0, 0.6, 2.0))
@@ -7838,6 +7854,19 @@ func sever(part: VoxelPart, res: Dictionary, keep: PackedInt32Array) -> void:
 	for i in kept.size():
 		if al[i] and kept[i] == 0:
 			stump_side.append(i)
+	# What of the stump's side is not joined to him any more falls (user: a piece hung in the air
+	# by his shoulder where his arm was cut off): a bit of the limb's end the blade left on its
+	# far side, with nothing of the limb between it and him. Only what touches the part the limb
+	# hung from stays on him as its stump.
+	if not stump_side.is_empty() and stump_side.size() < part.alive_count:
+		for lump in part.stump_loose(stump_side):
+			var gone := {}
+			for i in lump:
+				gone[i] = true
+			stump_side = stump_side.filter(func(i): return not gone.has(i))
+			var vox := part.remove_voxels(lump, false)
+			var piece = Chunk.spawn(part, vox, Vector3.DOWN * 0.3) if not part.freeze else null
+			res.removed.append({"part": part, "indices": lump, "voxels": vox, "chunk": piece != null})
 	if not stump_side.is_empty() and stump_side.size() < part.alive_count:
 		var face = part.leave_on_stump(stump_side)
 		if face != null:

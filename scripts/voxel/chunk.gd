@@ -12,6 +12,8 @@ var held_for := 0.0
 var held_on: Node3D = null
 var half := Vector3.ONE * 0.02
 var flap_of: Node3D = null      # still hanging off this part by a strip of flesh
+var boxes := 0                  # how many of its voxels are drawn as the part's own boxes
+var cells := 0                  # and how many cells of a finer look it is drawn of (spawn)
 var flap_joint: Joint3D = null
 ## What it was set to pass through, kept here: asked of the physics server instead (its
 ## collision exceptions), every one of them freed since printed an error, a dozen at a time
@@ -49,6 +51,22 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 	mm.use_custom_data = voxels[0].has("kind")
 	mm.mesh = part.mm.mesh
 	mm.instance_count = voxels.size()
+	# What a finer look drew of them (a man's fine skin, his face, the flesh under them: VoxelPart.
+	# piece_cells; a shell of armour's own voxels, given with the piece): the piece is drawn of
+	# that, and the part's own boxes of it are not drawn (user: the piece that fell from him was
+	# a piece of a square character that had nothing to do with him).
+	var fine := PackedFloat32Array()
+	var cell_mesh: Mesh = null
+	if not wpn and part.has_method("piece_cells"):
+		var pc: Dictionary = part.piece_cells(voxels)
+		if not pc.is_empty():
+			fine = pc.buf
+			cell_mesh = pc.mesh
+	for v in voxels:
+		if v.has("cells") and v.get("cm") is Mesh:
+			fine.append_array(v.cells)
+			cell_mesh = v.cm
+	var as_cells := cell_mesh != null and fine.size() >= 20
 	var lo := Vector3.ONE * 1e9
 	var hi := -Vector3.ONE * 1e9
 	for i in voxels.size():
@@ -57,10 +75,11 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		hi = hi.max(d)
 		# A voxel a gladiator's look kept out of sight (Physique) stays out of sight on the
 		# piece too; it is still part of the piece and its weight.
-		var shown := 0.0 if voxels[i].get("veil", false) else 1.0
+		var shown := 0.0 if voxels[i].get("veil", false) or (as_cells and (voxels[i].has("i") or voxels[i].has("cells"))) else 1.0
 		# (A cube of an open break is smaller than a voxel, and turned with the bone it came off:
 		# VoxelPart.break_bone_out.)
 		var vb: Basis = voxels[i].get("b", Basis())
+		ch.boxes += 1 if shown > 0.0 else 0
 		mm.set_instance_transform(i, Transform3D(vb.scaled(Vector3.ONE * shown * float(voxels[i].get("s", 1.0))), d))
 		mm.set_instance_color(i, voxels[i].color)
 		if mm.use_custom_data:
@@ -68,6 +87,21 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	ch.add_child(mmi)
+	if as_cells:
+		# (The cells lie in the part's frame: drawn under the piece where the part was.)
+		var fmm := MultiMesh.new()
+		fmm.transform_format = MultiMesh.TRANSFORM_3D
+		fmm.use_colors = true
+		fmm.use_custom_data = true
+		fmm.mesh = cell_mesh
+		fmm.instance_count = fine.size() / 20
+		fmm.buffer = fine
+		ch.cells = fmm.instance_count
+		var fmi := MultiMeshInstance3D.new()
+		fmi.name = "cells"
+		fmi.multimesh = fmm
+		fmi.transform = Transform3D(Basis(q), c).affine_inverse() * part.global_transform
+		ch.add_child(fmi)
 	var vs: float = part.vs if wpn else part.vf * part.part_scale
 	ch.half = ((hi - lo) * 0.5 + Vector3.ONE * vs * 0.5).max(Vector3.ONE * 0.01)
 	var shape := CollisionShape3D.new()

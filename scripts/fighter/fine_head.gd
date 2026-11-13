@@ -860,6 +860,117 @@ static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 		for s in of[i]:
 			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 and not tucked.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
 
+## A fine voxel's colour as it is drawn now (_paint): what a face piece or his mood draws on it,
+## else its own; the mark on the voxel it lies on if that was marked since (blood, a burn).
+static func cell_color(p: VoxelPart, s: int) -> Color:
+	var fine: Dictionary = p.fine
+	var own: PackedColorArray = fine.own
+	var j: int = (fine.par as PackedInt32Array)[s]
+	var col: Color = (fine.get("paint", {}) as Dictionary).get(s, own[s])
+	var base: Dictionary = fine.base
+	if j >= 0 and base.has(j) and p.colors[j] != base[j] and not p.get_meta("expr_saved", {}).has(j) and not p.get_meta("talk_saved", {}).has(j):
+		col = p.colors[j]
+	col.a = own[s].a
+	return col
+
+## What a fine voxel is made of, for the shader (build).
+static func cell_data(p: VoxelPart, s: int) -> Color:
+	var c: Array = (p.fine.cells as Array)[s]
+	var kd := (HAIR_KIND if _hairy(c, p.fine.look) else 0) if c.size() < 12 else int(c[11])
+	return VoxelPart.kind_data(kd, int(c[9]), 0)
+
+## What the fine head drew of voxels `idx` of the head, cut off it as one piece (VoxelPart.
+## piece_cells): the fine voxels over each as they are drawn now (his face, his hair, the blood on
+## them; not his hair tucked under a helmet), and what of his head lies under them: a voxel wholly
+## inside the fine head as it is (the skull, the brain: drawn through a wound on him too), and
+## behind the skin of one that is not, flesh, as far in as the voxel goes. Not the head's own
+## voxels under the shell: they are the classic look's face, a square one (user: the piece that
+## fell from him was a piece of a square character that had nothing to do with him). {buf, mesh}.
+static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
+	var fine: Dictionary = p.fine
+	var of: Dictionary = fine.of
+	var mm: MultiMesh = fine.mm
+	var cxf: Array = fine.xf
+	var tpl: Array = fine.cells
+	var tucked: Dictionary = fine.get("tucked", {})
+	var hid: PackedByteArray = fine.hid
+	var hs: float = fine.get("hs", 1.0)
+	var pivot: Vector3 = fine.get("pivot", Vector3.ZERO)
+	var wc: Vector3 = fine.get("wc", Vector3.ZERO)
+	var vox := p.vf * p.part_scale
+	var lps := p.local_positions()
+	var shaped := p.shape_xf.size() == p.fx.size()
+	var fsz := mm.mesh.get_aabb().size.x / 1.04 if mm.mesh != null else vox / 3.0
+	var res := maxi(1, roundi(vox / fsz))
+	# (A cell is drawn with the fine voxels' own box: one of the head's voxels is `res` of them across.)
+	var big := float(res) / 1.04
+	var sc := Vector3(1.06, 1.04, 1.04)
+	var buf := PackedFloat32Array()
+	var skin_at := {}   # where his skin's fine voxels of the piece lie (the template's own places)
+	var lining := {}    # the place behind each, toward the middle of his head -> where it is drawn
+	for i in idx:
+		if i < 0 or i >= p.fx.size():
+			continue
+		var mid := pivot + (lps[i] * sc - pivot) * hs   # the voxel's middle as the fine head is laid on it
+		var size := sc * hs * vox
+		# (The way in, toward the middle of his head: along the axis the voxel lies furthest out on.
+		# Not by where his skin lies in the voxel: his face lies back from the front of his head's
+		# box, in the inner side of its voxels, and the flesh was laid in front of it.)
+		var out_w := mid - wc
+		var ax := 0 if absf(out_w.x) >= absf(out_w.y) and absf(out_w.x) >= absf(out_w.z) else (1 if absf(out_w.y) >= absf(out_w.z) else 2)
+		var sg := 1.0 if out_w[ax] >= 0.0 else -1.0
+		var n := 0
+		var inner := float(res)
+		for s in (of.get(i, []) as Array):
+			if tucked.has(s):
+				continue
+			var t: Transform3D = cxf[s]
+			FineBody.put_cell(buf, t, cell_color(p, s), cell_data(p, s))
+			inner = minf(inner, floorf(((t.origin[ax] - mid[ax]) / size[ax] * sg + 0.5) * float(res)))
+			var c: Array = tpl[s]
+			var at := Vector3i(int(c[0]), int(c[1]), int(c[2]))
+			skin_at[at] = true
+			var back := at
+			back[ax] -= int(sg)
+			if not lining.has(back):
+				var bt := t
+				bt.origin[ax] -= sg * size[ax] / float(res)
+				lining[back] = bt
+			n += 1
+		if i < hid.size() and hid[i] == 0:
+			# His head's own voxel, wholly inside the fine head: as it is drawn through a wound.
+			var vt: Transform3D = p.shape_xf[i] if shaped else Transform3D(Basis(), lps[i])
+			if vt.basis.x.length_squared() < 1e-10:
+				vt = Transform3D(Basis().scaled(Vector3.ONE * hs), pivot + (lps[i] - pivot) * hs)
+			var cu := VoxelPart.kind_data(int(p.kinds[i]), 0, 0)
+			cu.g = -(FineBody.WET_BONE if int(p.kinds[i]) == 6 else 0.7)
+			var col: Color = p.colors[i]
+			col.a = 1.0
+			FineBody.put_cell(buf, Transform3D(vt.basis.scaled(Vector3.ONE * big), vt.origin), col, cu)
+		elif n > 0:
+			# Behind his skin there: flesh, from the voxel's inner side out to the innermost of the
+			# skin's fine voxels in it.
+			var th := clampf(inner, 0.0, float(res)) / float(res)   # how much of the voxel lies behind them
+			if th < 0.2:
+				continue
+			var bs := Vector3.ONE * big * 0.98
+			bs[ax] = big * th
+			var at := mid
+			at[ax] -= sg * (0.5 - th * 0.5) * size[ax]
+			FineBody.put_cell(buf, Transform3D(Basis.from_scale(bs * sc * hs), at), _flesh(i), FLESH_DATA)
+	# The flesh his skin lies on: a fine voxel of it behind each of his skin's (seen from behind, the
+	# piece was the hollow back of a mask, in the colour of his skin).
+	for at: Vector3i in lining:
+		if not skin_at.has(at):
+			FineBody.put_cell(buf, lining[at], _flesh(hash(at)), FLESH_DATA)
+	return {"buf": buf, "mesh": mm.mesh} if not buf.is_empty() else {}
+
+## Flesh cut open, wet (a shade of its own by `seed`), and what it is for the shader.
+static var FLESH_DATA := Color(9.0 / 16.0, -0.9, 0.0, 1.0)
+static func _flesh(seed: int) -> Color:
+	var h := float(absi(seed) % 1000) / 1000.0
+	return Color(FineBody.MUSCLE.r * (0.9 + 0.2 * h), FineBody.MUSCLE.g * (0.9 + 0.2 * h), FineBody.MUSCLE.b * (0.9 + 0.2 * h))
+
 ## The ways out of his head, seen from its middle, that a helmet's or a hat's shell is told by
 ## (some 6 degrees across: a voxel of its shell spans one or two).
 const TUCK_AZ := 64

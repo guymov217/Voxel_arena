@@ -860,6 +860,79 @@ static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 		elif fine.wound.has(i):
 			_cover(p, i)
 
+## A cell as a MultiMesh holds it (its place, its colour, its data: 20 numbers), onto `buf`.
+static func put_cell(buf: PackedFloat32Array, t: Transform3D, col: Color, cu: Color) -> void:
+	var b := t.basis
+	buf.append_array([b.x.x, b.y.x, b.z.x, t.origin.x, b.x.y, b.y.y, b.z.y, t.origin.y, b.x.z, b.y.z, b.z.z, t.origin.z, col.r, col.g, col.b, col.a, cu.r, cu.g, cu.b, cu.a])
+
+## What the fine look drew of voxels `idx` of the part, cut off it as one piece (VoxelPart.
+## piece_cells): the skin's fine voxels over each as they are drawn (his own colours, the blood
+## and the dirt on them), and where the cut bares a voxel (a voxel of the part beside it is not of
+## the piece) its eight half cells as deep in him as they lie, fat, flesh, an organ, bone, as a
+## wound in him is drawn (_write_wound). {buf, mesh}.
+static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
+	var fine: Dictionary = p.fine
+	var of: Dictionary = fine.of
+	var cxf: Array = fine.xf
+	var par: PackedInt32Array = fine.par
+	var na: PackedFloat32Array = fine.get("na", PackedFloat32Array())
+	var code: PackedInt32Array = fine.code
+	var fsz: float = fine.fsz
+	var drawn: bool = fine.get("mm") != null
+	var lps := p.local_positions()
+	var gone := {}
+	for i in idx:
+		gone[i] = true
+	var buf := PackedFloat32Array()
+	for i in idx:
+		if i < 0 or i >= p.fx.size():
+			continue
+		var skin := 0
+		for s in (of.get(i, []) as Array):
+			var col: Color
+			var cu: Color
+			if drawn:
+				var at := _slot(fine, s)
+				col = (at[0] as MultiMesh).get_instance_color(at[1])
+				cu = (at[0] as MultiMesh).get_instance_custom_data(at[1])
+			else:
+				col = _color(p, s, par[s])
+				col.a = na[s] if na.size() == cxf.size() else 1.0
+				cu = _custom(p, s, par[s], p.glowing.get(i, Vector2.ZERO))
+			put_cell(buf, cxf[s], col, cu)
+			skin += 1
+		# Bared by the cut: a voxel of the part beside it that is not of the piece (left on him,
+		# or gone before: an older wound).
+		var c := Vector3i(p.fx[i], p.fy[i], p.fz[i])
+		var bared := skin == 0
+		if not bared:
+			for dd in VoxelPart.AO_FACES:
+				var q: Vector3i = c + (dd[0] as Vector3i)
+				var k := p._cell(q.x, q.y, q.z)
+				if k >= 0 and not gone.has(k):
+					bared = true
+					break
+		if not bared:
+			continue
+		var cd := code[i]
+		if cd == 0:
+			continue
+		var kk := k_at(p, fine.d, lps[i])
+		var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
+		var healed := p.scarred.has(i)
+		for k in 8:
+			var cc := (cd >> (2 * k)) & 3
+			# (His skin there is drawn already, as it was on him.)
+			if cc == 0 or (cc == 1 and skin > 0):
+				continue
+			var at := lps[i] + (Vector3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1)) - Vector3(0.5, 0.5, 0.5)) * fsz
+			var kd := 0 if cc == 1 else (9 if cc == 2 or p.kinds[i] <= 2 else int(p.kinds[i]))
+			var cu := VoxelPart.kind_data(kd, 0, 0)
+			cu.g = g.x if g.x > 0.0 or healed else -(WET_BONE if kd == 6 else float(WET[cc]))
+			cu.b = g.y
+			put_cell(buf, Transform3D(Basis.from_scale(Vector3(kk, 1.0, kk)), Vector3(at.x * kk, at.y, at.z * kk)), wound_color(p, i, k, cc), cu)
+	return {"buf": buf, "mesh": _box(fsz)} if not buf.is_empty() else {}
+
 ## An alive voxel with a dead one of the part beside it (a face open on the wound).
 static func _open(p: VoxelPart, i: int) -> bool:
 	if int((p.fine.code as PackedInt32Array)[i]) == 0:

@@ -12,6 +12,7 @@ extends RefCounted
 ## the plates, where they stop a blow and what they weigh are the piece's own (Fighter._add_armor),
 ## and the plates are still worked out (hidden).
 
+const FineSmooth := preload("res://scripts/fighter/fine_smooth.gd")
 const THICK := 2.0          # the shell, fine voxels thick
 ## A piece of armour's shell in voxels this many times the fine ones each way, fewer and bigger, and
 ## closer on him (user): laid on a fine shell COARSE_THICK fine voxels thick, each of its voxels
@@ -549,6 +550,32 @@ static func sync(ad: Dictionary, ci: int, xf: Transform3D) -> void:
 	for s in (sh.of as Dictionary).get(ci, []):
 		var hide := int(s) < vc.size() and vc[int(s)] == 1
 		mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if hide else xf * (rel[s] as Transform3D))
+
+## What the shell drew of plate `ci` as it lies now, its voxels in the part's frame, 20 numbers
+## each as a MultiMesh holds them: a plate knocked off flies off as these (Fighter._knock_plate),
+## the very plate, in the shape it lay on him (user: every piece that falls from a character is a
+## piece that is literally his).
+static func taken(ad: Dictionary, ci: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var sh = ad.get("shell")
+	if not (sh is Dictionary) or not is_instance_valid(sh.mi):
+		return out
+	var at = (sh.now as Dictionary).get(ci)
+	if not (at is Transform3D) or (at as Transform3D).basis.x.length_squared() < 1e-10:
+		return out
+	var mm: MultiMesh = sh.mm
+	var rel: Array = sh.rel
+	for s in (sh.of as Dictionary).get(ci, []):
+		# (Each lit as the cube it is, not as the shell faced there: a plate tumbles and lies any
+		# way up, and its voxels' other sides were lit as the one that faced out of him.)
+		var col := mm.get_instance_color(int(s))
+		col.a = FineSmooth.NONE
+		FineBody.put_cell(out, (at as Transform3D) * (rel[int(s)] as Transform3D), col, mm.get_instance_custom_data(int(s)))
+	return out
+
+## What a voxel of a shell is drawn with.
+static func cell_mesh() -> Mesh:
+	return _unit
 
 ## Every plate's shell as its tile is drawn now (laid again where it is still on him).
 static func sync_all(p: VoxelPart, ad: Dictionary) -> void:

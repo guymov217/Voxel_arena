@@ -2213,7 +2213,7 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 		alive_count -= 1
 		_cell_out(i)
 		done.append(i)
-		out.append({"p": gt * lps[i], "color": colors[i], "kind": kinds[i], "veil": veiled(i)})
+		out.append({"p": gt * lps[i], "color": colors[i], "kind": kinds[i], "veil": veiled(i), "i": i})
 		centre += lps[i]
 	if out.is_empty():
 		return out
@@ -2225,6 +2225,76 @@ func remove_voxels(indices: Array, smear := true, notify := true) -> Array:
 	fit_collider()
 	if notify and fighter and fighter.has_method("on_part_voxels_lost"):
 		fighter.on_part_voxels_lost(self, done, out)
+	return out
+
+## What a finer look drew of the voxels of a piece cut off (`voxels`: what remove_voxels gave of
+## them): {buf: their cells, 20 numbers a cell as a MultiMesh holds them, in the part's frame;
+## mesh: what a cell is drawn with}, or nothing in a look that draws the part's own voxels. A
+## piece is drawn of these (Chunk.spawn): the very flesh that was cut off him, his skin and his
+## face as they were drawn and what lies under them, not the part's boxes (user: the piece that
+## fell from him was a piece of a square character that had nothing to do with him; every piece
+## that falls from a character must be a piece that is literally his).
+func piece_cells(voxels: Array) -> Dictionary:
+	if fine.is_empty() or not fine.has("of"):
+		return {}
+	var idx := PackedInt32Array()
+	for v in voxels:
+		if v.has("i"):
+			idx.append(int(v.i))
+	if idx.is_empty():
+		return {}
+	return FineBody.taken(self, idx) if fine.has("body") else FineHead.taken(self, idx)
+
+## Of the voxels a cut leaves on the stump's side (`indices`: sever), those not joined to him any
+## more: each group of them that hangs together (face to face) and touches nothing of the part the
+## limb hangs from (none of that part's flesh within STUMP_TOUCH voxels of any of it, the joint
+## closed). A limb's end is as wide as the limb; the part it hangs from is not, and a blade
+## through a shoulder left the far side of the arm's top standing off him in the air (user).
+## Groups of indices; none where it hangs from nothing (the trunk) or all of it touches him.
+const STUMP_TOUCH := 1.8
+func stump_loose(indices: Array) -> Array:
+	var host = parent_part
+	if host == null or not is_instance_valid(host) or indices.is_empty():
+		return []
+	var mine := {}
+	for i in indices:
+		if int(i) >= 0 and int(i) < fx.size():
+			mine[int(i)] = true
+	var lps := local_positions()
+	var rel := Transform3D(((host as VoxelPart).global_transform.affine_inverse() * global_transform).basis.orthonormalized(), Vector3.ZERO) if is_inside_tree() and (host as VoxelPart).is_inside_tree() else Transform3D()
+	rel.origin = pa - rel.basis * ca
+	# (As far again as the joint itself stands off that part's flesh: a gorilla's arms are jointed
+	# on the rounded corners of its chest, in the air.)
+	var reach := STUMP_TOUCH * maxf(vf * part_scale, (host as VoxelPart).vf * (host as VoxelPart).part_scale) + (host as VoxelPart).anchor_point(self).distance_to(pa)
+	var cm := cell_map()
+	var seen := {}
+	var out := []
+	for i0: int in mine:
+		if seen.has(i0):
+			continue
+		seen[i0] = true
+		var lump := [i0]
+		var k := 0
+		while k < lump.size():
+			var i: int = lump[k]
+			k += 1
+			var x := fx[i]
+			var y := fy[i]
+			var z := fz[i]
+			for nb in [[x - 1, y, z], [x + 1, y, z], [x, y - 1, z], [x, y + 1, z], [x, y, z - 1], [x, y, z + 1]]:
+				if nb[0] < 0 or nb[1] < 0 or nb[2] < 0 or nb[0] >= grid.x or nb[1] >= grid.y or nb[2] >= grid.z:
+					continue
+				var j: int = cm[(nb[0] * grid.y + nb[1]) * grid.z + nb[2]] - 1
+				if j >= 0 and mine.has(j) and not seen.has(j):
+					seen[j] = true
+					lump.append(j)
+		var held := false
+		for i in lump:
+			if not (host as VoxelPart).voxels_within(rel * lps[i], reach, 1).is_empty():
+				held = true
+				break
+		if not held:
+			out.append(lump)
 	return out
 
 ## Cut through below where it hangs: what of it the blade did not take (`indices`, the side the
