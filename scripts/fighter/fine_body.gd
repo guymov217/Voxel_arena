@@ -105,11 +105,8 @@ static func beast_data(species: String, part: String) -> Dictionary:
 			# (And its shape drawn on its hide under it, a tone a fine voxel: form_tones there.)
 			if pd.get("st") is String:
 				out["st"] = Marshalls.base64_to_raw(pd.st)
-		# (What its sculpt says of how the part is drawn: carried by the part it hangs from, "with"
-		# [where it hinges and the axis it lifts about, as the beast stands at rest, and how much of
-		# its joint's bend]; its joints not drawn as one skin, "stiff": Beast._carried_drawing.)
-		if pd.get("with") is Array and (pd.with as Array).size() >= 7:
-			out["with"] = PackedFloat32Array(pd.with)
+		# (What its sculpt says of how the part is drawn: its joints not as one skin, "stiff":
+		# Beast._bend_drawing.)
 		if pd.has("stiff"):
 			out["stiff"] = true
 	_parsed[key] = out
@@ -245,8 +242,8 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		mi.multimesh = mm
 		mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		mi.top_level = true
-		# (As far round the part as its fine voxels lie: a scorpion's legs are drawn far off the
-		# parts that carry them, and went out of sight with the part's own box out of the view.)
+		# (As far round the part as its fine voxels lie: drawn further off its box than a fixed
+		# band round it, they went out of sight when the box itself was out of the view.)
 		var ext := Vector3(p.grid) * vox * 0.5 + Vector3.ONE * fsz * maxf(12.0, float(L.get("far_out", 0)) + 2.0)
 		mi.custom_aabb = AABB(-ext, ext * 2.0)
 		mm.custom_aabb = mi.custom_aabb

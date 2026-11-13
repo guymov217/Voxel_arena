@@ -419,27 +419,74 @@ func test_a_sting_is_held_curled_at_its_foe_and_a_serpent_reared() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
-## A scorpion's shin is drawn with its thigh (user: it has to look like a scorpion, its legs
-## spread out to its sides; the parts that carry them are folded under it): as it sits on the
-## upper part at rest, lifted about the knee it is drawn at by a share of what its own joint is
-## bent, either way; the knee stays where it is and the foot comes up. Hanging broken, folded up.
-func test_a_carried_shin_is_drawn_on_its_thigh() -> void:
-	var up := Transform3D(Basis(Vector3.UP, 0.4), Vector3(1, 2, 3))
-	var rel := Transform3D(Basis(Vector3.BACK, 1.3), Vector3(0.2, -0.3, 0.0))
-	var hinge := Vector3(0.5, 0.2, 0.0)
-	var foot: Vector3 = rel.affine_inverse() * (hinge + Vector3(0.4, -0.5, 0.0))   # (a point of the shin, in its own frame)
-	var knee: Vector3 = rel.affine_inverse() * hinge
-	var still := Beast.carried_at(up, up * rel, rel, hinge, Vector3.BACK, 0.55)
-	t.check(still.is_equal_approx(up * rel), "its knee as at rest, it is drawn where it sits on the upper part")
-	var lifts := []
-	for bend in [0.8, -0.8]:
-		var low: Transform3D = up * Transform3D(Basis(Vector3.RIGHT, bend), Vector3(0.3, 0.1, -0.2)) * rel   # its own part, turned at its joint
-		var drawn := Beast.carried_at(up, low, rel, hinge, Vector3.BACK, 0.55)
-		t.check((drawn * knee).is_equal_approx(up * hinge), "the knee it is drawn at stays where it is (bent %.1f)" % bend)
-		lifts.append((up.affine_inverse() * (drawn * foot)).y - (up.affine_inverse() * (still * foot)).y)
-	t.check(lifts[0] > 0.15 and is_equal_approx(lifts[0], lifts[1]), "its foot comes up as the knee bends, either way alike (%.2f, %.2f)" % [lifts[0], lifts[1]])
-	var broken := Beast.carried_at(up, up * rel, rel, hinge, Vector3.BACK, 0.55, true)
-	t.check((up.affine_inverse() * (broken * foot)).y - (up.affine_inverse() * (still * foot)).y > lifts[0], "hanging broken it is drawn folded up at the knee")
+## A scorpion's legs are where they are drawn (user: it has to look like a scorpion, its legs
+## spread out to its sides. Drawn so over legs that stayed folded under its body, a blade through
+## a leg met nothing, and a leg cut off was drawn sunk in the sand a stride from its piece): each
+## thigh up and out from its hip to a knee, each shin down from there to the sand well clear of
+## the body's side, the foot on the sand; the body as high over it as it rode on its folded legs.
+## Stepping, the feet come off the sand and are set down again. And a leg cut off lies on the sand
+## where it fell, what is drawn of it with it.
+func test_a_scorpions_legs_stand_out_at_its_sides() -> void:
+	var w := _world()
+	var b := _beast(w, "scorpion", Vector3(0, 0.2, 0))
+	await _run(w, [b], 2.5)
+	var k: float = b.S / float(b.sp.scale)
+	var inv: Transform3D = b.torso.global_transform.affine_inverse()
+	var bad := []
+	for leg: VoxelPart in b.legs:
+		var lo: VoxelPart = b.lower_of(leg)
+		var knee: Vector3 = inv * (leg.global_transform * lo.pa)
+		var foot: Vector3 = inv * (lo.global_transform * Vector3(0, -lo.half_ext.y, 0))
+		var hip: Vector3 = inv * (b.torso.global_transform * leg.pa)
+		var side := signf(hip.x)
+		var low: float = b._box_low(lo) - b.ground_y
+		if not (knee.x * side > hip.x * side + 0.25 * k and knee.y > hip.y + 0.05 * k and foot.x * side > b.torso.half_ext.x + 0.4 * k and absf(low) < 0.05 * k):
+			bad.append("%s knee %s foot %s, %.2f over the sand" % [leg.part_name, str(knee.snapped(Vector3.ONE * 0.01)), str(foot.snapped(Vector3.ONE * 0.01)), low])
+	t.check(bad.is_empty(), "each leg up and out to its knee and down to the sand clear of the body: " + ", ".join(bad))
+	var rides: float = b.torso.global_position.y - b.ground_y
+	t.check(absf(rides - 0.44 * k) < 0.03 * k, "the body rides as high as it did (%.3f over the sand, %.3f on its folded legs)" % [rides, 0.44 * k])
+	# Stepping: a man far off to walk to; each foot is off the sand for a part of its stride.
+	var man := w.fighter(Vector3(0, 0, -14), 0.0, {}, {"name": "Man", "slot": 0})
+	b.target = man
+	var hi := {}
+	var lo_y := {}
+	for s in int(2.0 / DT):
+		man.control(DT, {})
+		b.control(DT)
+		await get_tree().physics_frame
+		if s < 60:
+			continue
+		for leg: VoxelPart in b.legs:
+			var y: float = b._box_low(b.lower_of(leg)) - b.ground_y
+			hi[leg] = maxf(float(hi.get(leg, -1.0)), y)
+			lo_y[leg] = minf(float(lo_y.get(leg, 9.0)), y)
+	var steps := 0
+	for leg in hi:
+		if float(hi[leg]) > 0.05 * k and float(lo_y[leg]) < 0.03 * k:
+			steps += 1
+	t.check(steps >= 6, "walking, its feet come off the sand and are set down again (%d of %d legs)" % [steps, b.legs.size()])
+	# Cut off: a whole leg, and a shin.
+	man.teleport(Vector3(0, 0, 40))
+	_cut(b, "legML")
+	_cut(b, "legNRLo")
+	await _run(w, [b], 2.5)
+	for n in ["legML", "legMLLo", "legNRLo"]:
+		var pc: VoxelPart = b.by_name[n]
+		var cells: PackedInt32Array = pc.fine.get("cells", PackedInt32Array())
+		var fsz: float = float(pc.fine.get("fsz", 0.0))
+		var lowest := INF
+		var highest := -INF
+		for c in cells.size() / FineBody.CELL:
+			var at: Vector3 = pc.global_transform * (Vector3(cells[c * FineBody.CELL] + 0.5, cells[c * FineBody.CELL + 1] + 0.5, cells[c * FineBody.CELL + 2] + 0.5) * fsz - Vector3(pc.grid) * pc.vf * pc.part_scale * 0.5)
+			lowest = minf(lowest, at.y)
+			highest = maxf(highest, at.y)
+		# (Within a hand's breadth of the sand: the rim of the body's skin it takes with it at its
+		# root, as every limb cut off does, may lie under it.)
+		t.check(pc.severed and cells.size() > 0 and lowest > b.ground_y - 0.12 * k and highest < b.ground_y + 0.5 * k and pc.draw_turn.is_equal_approx(Transform3D()),
+				"cut off, the %s lies on the sand and is drawn there (drawn from %.2f to %.2f over it)" % [n, lowest - b.ground_y, highest - b.ground_y])
+	w.queue_free()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 
 ## A leg cut off lies still on the sand as dead flesh does: the motors of its own joints (its knee)
 ## let go of it; and a dead beast's legs go slack (user: pieces of a body turned and rolled about

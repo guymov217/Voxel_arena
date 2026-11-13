@@ -4168,24 +4168,6 @@ def _bez(p0, p1, p2, n):
     return [(1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t * t * p2 for t in np.linspace(0.0, 1.0, n)]
 
 
-def _along(g, pts):
-    """How far along a line of points each cell of the grid lies, 0 at its first and 1 at its last
-    (by the nearest of its pieces)."""
-    acc = [0.0]
-    for i in range(len(pts) - 1):
-        acc.append(acc[-1] + float(np.linalg.norm(pts[i + 1] - pts[i])))
-    best = np.full(g.shape, INF)
-    out = np.zeros(g.shape)
-    for i in range(len(pts) - 1):
-        a, ab = pts[i], pts[i + 1] - pts[i]
-        t = np.clip(((g.X - a[0]) * ab[0] + (g.Y - a[1]) * ab[1] + (g.Z - a[2]) * ab[2]) / max(float(ab @ ab), 1e-9), 0.0, 1.0)
-        dd = (g.X - a[0] - ab[0] * t) ** 2 + (g.Y - a[1] - ab[1] * t) ** 2 + (g.Z - a[2] - ab[2] * t) ** 2
-        m = dd < best
-        best[m] = dd[m]
-        out[m] = ((acc[i] + (acc[i + 1] - acc[i]) * t) / max(acc[-1], 1e-9))[m]
-    return out
-
-
 def _sting_tail(S, g, info, sizes, bulb=(0.126, 0.116, 0.15), root_in=0.09, sting_k=1.0):
     """A scorpion's tail on the three parts that carry it and the sting (tail, tail2, tail3 and
     stinger, as they are at rest: curled up over the back toward its foe): two blocks of shell to
@@ -4289,9 +4271,9 @@ def scorpion(sp, g):
     back and forward, the bulb of venom hanging from the last over the head and the sting curving
     on down and in from it. The arms in two joints out to the claws: a slim hand and two long
     fingers bowed toward each other, toothed inside, dark at their points. Eight thin legs the
-    colour of sand spread out to its sides, each up to a knee and down to the ground in joints
-    (drawn off the parts that carry them, which are folded under it: its thigh with the upper one,
-    its shin with the lower, carried by the upper: see the game's Beast._carried_drawing)."""
+    colour of sand spread out to its sides, each up to a knee and down to the ground in joints:
+    drawn on the two parts that are the leg (data/beasts.json: its thigh from the hip up and out
+    to the knee, its shin from there down to the sand), so what is struck there is the leg."""
     info = _part_info(sp)
     K = parts_of(sp)
     _, body, bh = K["beastBody"]
@@ -4377,23 +4359,23 @@ def scorpion(sp, g):
         S.mark("finger", fingers, sub)
         tips += [fx[-1], mv[-1]]
     # --- the legs: thin, in joints, spread out to its sides ---
-    claims = []
-    carried = {}
     stiff = []
-    leg_all = np.full(g.shape, INF)
-    ground = float(body[1]) - 0.435      # the sand as it stands on it (its body rides that high: Beast, ride_adj)
     for n in [p["name"] for p in sp["parts"]]:
         if not (n.startswith("leg") and len(n) == 5 and n + "Lo" in info):
             continue
-        j0, _ = _limb_ends(info, n)
+        j0, k1 = _limb_ends(info, n)            # its hip, its knee
+        _, f1 = _limb_ends(info, n + "Lo")      # the end of its shin
         sx = 1.0 if j0[0] > 0 else -1.0
-        zi = float(j0[2])
-        fan = zi / 0.38
-        r0 = np.array([sx * 0.38, yc - 0.03, zi])
-        r1 = np.array([sx * 0.5, yc + 0.005, zi + fan * 0.01])
-        k1 = np.array([sx * 0.78, yc + 0.14, zi + fan * 0.045])
-        an_ = np.array([sx * 1.0, yc - 0.135, zi + fan * 0.09])
-        ft = np.array([sx * 1.1, ground + 0.036, zi + fan * 0.12])
+        # The sand it stands on: the lowest of its shin's box (the body rides so high: Beast, ride_adj).
+        Rl, pl, hl = info[n + "Lo"][:3]
+        ground = float(pl[1] - (np.abs(Rl[1, :]) * hl * 0.95).sum())
+        along = (f1 - k1) / np.linalg.norm(f1 - k1)
+        side = np.cross(np.cross(along, up), along)       # out of the shin's line, upward: its ankle stands out of it
+        side /= np.linalg.norm(side)
+        r0 = j0 + np.array([-sx * 0.02, -0.02, 0.0])      # (its root in the body's side: cut off, the end of the stump)
+        r1 = j0 + (k1 - j0) * 0.2 + np.array([0.0, -0.027, 0.0])
+        an_ = k1 + (f1 - k1) * 0.5 + side * 0.045
+        ft = np.array([f1[0], ground + 0.036, f1[2]])
         sub = _around(g, [r0, k1, an_, ft], 0.12)
         thigh = np.minimum(cap(sub, r0, r1, 0.066, 0.06), cap(sub, r1, k1, 0.057, 0.048))
         thigh = np.minimum(thigh, ell(sub, k1, (0.056, 0.056, 0.056)))
@@ -4403,18 +4385,7 @@ def scorpion(sp, g):
         S.mark("leg", np.minimum(thigh, shin), sub)
         S.mark("knee", np.minimum(ell(sub, k1, (0.056, 0.056, 0.056)), ell(sub, an_, (0.045, 0.045, 0.045))), sub)
         S.mark("toe", ell(sub, ft, (0.05, 0.05, 0.05)), sub)
-        leg_all[sub.sl] = np.minimum(leg_all[sub.sl], np.minimum(thigh, shin))
-        # Whose they are: the thigh the upper part's, the shin the lower's (where each is the nearer).
-        t_full = np.full(g.shape, INF)
-        s_full = np.full(g.shape, INF)
-        t_full[sub.sl] = thigh
-        s_full[sub.sl] = shin
-        near = 1.6 * cell
-        claims.append(((t_full < near) & (t_full <= s_full), n, _along(g, [r0, r1, k1])))
-        claims.append(((s_full < near) & (s_full < t_full), n + "Lo", _along(g, [k1, an_, ft])))
-        # (The shin is drawn carried by the upper part, lifted about the knee as the leg's own
-        # knee bends: where the knee is, the axis it lifts about, how much of the bend.)
-        carried[n + "Lo"] = [k1[0], k1[1], k1[2], 0.0, 0.0, sx, 0.55]
+        # (Hard shell in joints: each piece turns stiff on the next, no skin run on over the joint.)
         stiff += [n, n + "Lo"]
     # --- the tail: six blocks of shell arched up over the back, the bulb and the sting ---
     blocks, b2 = _sting_tail(S, g, info, [(0.18, 0.152), (0.178, 0.15), (0.174, 0.147), (0.168, 0.143), (0.16, 0.137), (0.152, 0.131)])
@@ -4483,7 +4454,7 @@ def scorpion(sp, g):
     ey = S.on("eye", thr)
     col[ey] = np.array([0.03, 0.03, 0.03])
     kind[ey] = NOSE
-    return d, np.clip(col, 0, 1), kind, {"claims": claims, "with": carried, "stiff": stiff}
+    return d, np.clip(col, 0, 1), kind, {"stiff": stiff}
 
 
 SCULPTS["scorpion"] = scorpion

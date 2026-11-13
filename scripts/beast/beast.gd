@@ -42,6 +42,7 @@ var heads: Array = []
 var wings: Array = []
 var gait := 0.0
 const LEG_MOTOR_SIGN := -1.0   # Jolt's joint motor turns the child the other way round the axis
+const ARCH_LIFT_MAX := 0.33    # the most an arched leg's knee opens to lift its foot (rad): inside the joint's stop across the leg, 0.35
 var gait_rate := 0.0     # how fast the stride turns over (rad/s)
 var ground_y := 0.0      # the sand under the body, for where the feet go
 var ground_ok := false
@@ -187,7 +188,6 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			# (How it sits at rest on the part it hangs from: its joint is drawn from there, _bend_drawing.)
 			p.set_meta("rest_on", (p.parent_part.get_meta("rest_basis") as Basis).inverse() * local.basis)
 		p.set_meta("rest_basis", local.basis)
-		p.set_meta("rest_xf", local)   # (where it is as the beast stands at rest: _carried_drawing)
 		# (An upright leg stands on its foot: drawn level on the sand, _foot_drawing.)
 		if d.leg and d.lower and local.basis.y.y > 0.95 and absf(float(d.get("splay", 0.0))) < 0.3:
 			p.set_meta("paw", true)
@@ -500,6 +500,11 @@ func stride_amp(speed: float) -> float:
 func leg_len() -> float:
 	if _leg_len > 0.0:
 		return _leg_len
+	# (A leg arched out to its side and down to the sand steps at the pace of the leg its stride
+	# was set by, `stride`: a scorpion's, its shins once two voxels folded under it.)
+	if sp.has("stride"):
+		_leg_len = float(sp.stride) * S
+		return _leg_len
 	for l in legs:
 		var lo := lower_of(l)
 		_leg_len = l.half_ext.y * 2.0 + (lo.half_ext.y * 2.0 if lo else 0.0)
@@ -539,68 +544,10 @@ func _bend_drawing(interp := true) -> void:
 				JOINT_OVER * par.vf * par.part_scale * 0.5, JOINT_BAND * p.vf * p.part_scale * 0.5))
 
 ## A part whose joints are not drawn as one skin (its sculpt's word, FineBody.beast_data): a
-## scorpion's leg, hard shell jointed, and drawn off the part that carries it, far from the joint.
+## scorpion's leg, hard shell in joints, each piece turning stiff on the next.
 static func _stiff(p: VoxelPart) -> bool:
 	var d = p.fine.get("d")
 	return d is Dictionary and (d as Dictionary).get("stiff", false)
-
-## A part drawn carried by the part it hangs from (drawing only; its sculpt's word, "with":
-## FineBody.beast_data, tools/beast_sculpts.py). A scorpion's legs are drawn spread out to its
-## sides, each up to a knee and down to the sand (user: it has to look like a scorpion), off the
-## two parts that carry each of them, which are folded under its body: the thigh with the upper
-## part, which swings it fore and aft about its hip, and the shin with the lower. Drawn where its
-## own part is, the shin swung about that part's joint under the body, a yard from the knee it is
-## drawn at, and came away from its thigh. It is drawn as it sits at rest on the upper part,
-## lifted about the drawn knee by a share of what its own joint is bent: the foot comes up off
-## the sand while the leg is carried forward and is set down again. A shin that hangs broken is
-## drawn folded up at the knee; one cut off or gone as it is (it falls from where it was drawn).
-const CARRY_BROKEN := 0.9
-static var _carry_kinds := {}   # species -> whether its sculpt has a part drawn so
-var _carried := {}              # the parts drawn so now
-
-func _carried_drawing(interp := true) -> void:
-	if not _carry_kinds.has(species):
-		var any := false
-		for d in sp.parts:
-			if FineBody.beast_data(species, str(d.name)).has("with"):
-				any = true
-				break
-		_carry_kinds[species] = any
-	if not _carry_kinds[species] and _carried.is_empty():
-		return
-	var k := S / float(sp.scale)
-	for p: VoxelPart in parts:
-		var d = p.fine.get("d")
-		var w = (d as Dictionary).get("with") if d is Dictionary else null
-		var par: VoxelPart = p.parent_part
-		var on: bool = w is PackedFloat32Array and par != null and par.has_meta("rest_xf") and p.has_meta("rest_xf") \
-				and not (p.severed or p.missing or par.severed or par.missing)
-		if not on:
-			if _carried.has(p):
-				_carried.erase(p)
-				p.draw_turn = Transform3D()
-				p.draw_shift = Vector3.ZERO
-			continue
-		var inv: Transform3D = (par.get_meta("rest_xf") as Transform3D).affine_inverse()
-		var rel: Transform3D = inv * (p.get_meta("rest_xf") as Transform3D)
-		var hinge: Vector3 = inv * (Vector3(w[0], w[1], w[2]) * k)
-		var axis: Vector3 = (inv.basis * Vector3(w[3], w[4], w[5])).normalized()
-		var tu := par.get_global_transform_interpolated() if interp else par.global_transform
-		var tl := p.get_global_transform_interpolated() if interp else p.global_transform
-		p.draw_turn = carried_at(par.draw_turn * tu, tl, rel, hinge, axis, w[6], p.hanging or p.fractured) * tl.affine_inverse()
-		p.draw_shift = par.draw_shift
-		_carried[p] = true
-
-## Where a carried part is drawn: on the part it hangs from (drawn at `up`) as it sits on it at
-## rest (`rel`), lifted about `hinge` round `axis` (both in that part's own frame) by `share` of
-## what its own joint is bent from rest about that part's x (the part itself is at `low`); or,
-## `broken`, folded up there.
-static func carried_at(up: Transform3D, low: Transform3D, rel: Transform3D, hinge: Vector3, axis: Vector3, share: float, broken := false) -> Transform3D:
-	var lift := CARRY_BROKEN
-	if not broken:
-		var q := ((up.basis.orthonormalized().inverse() * low.basis.orthonormalized()) * rel.basis.orthonormalized().inverse()).get_rotation_quaternion()
-		lift = absf(wrapf(2.0 * atan2(q.x, q.w), -PI, PI)) * share
-	return up * Transform3D(Basis(), hinge) * Transform3D(Basis(axis, lift), Vector3.ZERO) * Transform3D(Basis(), -hinge) * rel
 
 ## A joint's share for the part that hangs there (voxel_body.gdshader joint_at, joint_turn,
 ## joint_dir): the joint as it is drawn (`pivot`, world), the way from it into the part (to its
@@ -1971,7 +1918,23 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 		if fl > 0.0:
 			planted = false
 		var splay: float = float(leg.def.get("splay", 0.0))
+		var fan: float = float(leg.def.get("fan", 0.0))   # (modelled turned fore or aft at its hip: a scorpion's legs, fanned out)
 		var lo := lower_of(leg)
+		# Where its shin is driven on the thigh, and how fast: bent fore and aft about the knee,
+		# as a leg under the body bends. An arched leg's knee (a scorpion's, `lift`: the thigh up
+		# and out to it, the shin down from it to the sand) is hinged across the leg: bent, the
+		# shin swings out and up about it and the foot comes off the sand, by that much of the
+		# bend (not of the little a standing leg is bent: its foot stays down), as far as the
+		# knee's stop that way lets it.
+		var lo_q := Quaternion.IDENTITY
+		var lo_v := Vector3(knee_v, 0, 0)
+		if lo != null:
+			var ls: float = float(lo.def.get("splay", 0.0))
+			lo_q = Quaternion.from_euler(Vector3(knee, 0, ls))
+			if lo.def.has("lift"):
+				var up_by: float = float(lo.def.lift) * maxf(0.0, knee - 0.06)
+				lo_q = Quaternion.from_euler(Vector3(0, 0, ls - signf(ls) * minf(up_by, ARCH_LIFT_MAX)))
+				lo_v = Vector3(0, 0, -signf(ls) * float(lo.def.lift) * knee_v if up_by > 0.0 and up_by < ARCH_LIFT_MAX else 0.0)
 		# A leg hanging by a strip is driven no more, and its joints go slack (their motors kept
 		# the last pace they were given and worked the dangling leg round and round).
 		if leg.hanging:
@@ -1986,15 +1949,15 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 			# Walking and standing the leg is driven stiff, angle and pace both: a soft spring on so
 			# light a limb gave way to the sand's friction, the foot was dragged along under the
 			# body and the beast seemed to glide with its legs paddling the air.
-			_leg_motor(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay)), Vector3(hip_v, 0, 0), max_t, dt)
+			_leg_motor(leg, torso, Quaternion.from_euler(Vector3(hip, fan, splay)), Vector3(hip_v, 0, 0), max_t, dt)
 			if lo_ok:
-				_leg_motor(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), Vector3(knee_v, 0, 0), max_t, dt)
+				_leg_motor(lo, leg, lo_q, lo_v, max_t, dt)
 			continue
 		_leg_motor_off(leg)
-		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, 0, splay + sp_off)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
+		pd_relative(leg, torso, Quaternion.from_euler(Vector3(hip, fan, splay + sp_off)), wn, 0.9, max_t, dt, 3.0, LEG_REACT)
 		if lo_ok:
 			_leg_motor_off(lo)
-			pd_relative(lo, leg, Quaternion.from_euler(Vector3(knee, 0, float(lo.def.get("splay", 0.0)))), wn, 0.9, max_t * 0.7, dt, 3.0, LEG_REACT)
+			pd_relative(lo, leg, lo_q, wn, 0.9, max_t * 0.7, dt, 3.0, LEG_REACT)
 
 ## A leg joint steered by its relative spin: toward the angle it should have, plus the pace the
 ## stride moves it at (`ff`, in the parent's frame), most of the gap closed each step.
@@ -2212,7 +2175,6 @@ func can_breathe() -> bool:
 ## With the game paused (the kill cam) a beast is drawn as its bodies are: nothing of it is seated
 ## on its joints or capped, as a man is (Fighter.draw_now); its joints' skin and its paws are.
 func draw_now() -> void:
-	_carried_drawing(false)
 	_bend_drawing(false)
 	_foot_drawing(false)
 
@@ -2255,7 +2217,6 @@ func _process(dt: float) -> void:
 			p.set_gape(gape, dt)
 	_chest(dt)
 	if DisplayServer.get_name() != "headless":
-		_carried_drawing()
 		_bend_drawing()
 		_foot_drawing()
 

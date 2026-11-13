@@ -20,10 +20,6 @@ import beast_sculpts as BS
 RES = 2
 MARGIN = 16          # fine cells round a part's grid its sculpt may reach to (a mane, a paw)
 PAD = 10             # cells round the beast on the sculpt's grid
-# A beast drawn far off some of its parts (the scorpion's legs, spread out to its sides: the parts
-# that carry them are folded under it): further round each part, and round the beast.
-MARGINS = {"scorpion": 36}
-PADS = {"scorpion": 16}
 CELL = 9             # a cell's numbers: ix, iy, iz (fine, from the part's corner), cx, cy, cz (its voxel), shade, ao, paint
 OWN = 1 << 30        # paint: a colour (0xRRGGBB) and a kind (bits 24..29) of its own (FineBody.OWN_COLOUR)
 AO_FACES = [((1, 0, 0), 1, 2), ((-1, 0, 0), 1, 2), ((0, 1, 0), 0, 2), ((0, -1, 0), 0, 2), ((0, 0, 1), 0, 1), ((0, 0, -1), 0, 1)]
@@ -57,7 +53,7 @@ def _blur(f, passes=1):
     return f
 
 
-def world_grid(sp, pad=PAD):
+def world_grid(sp):
     """A grid round the whole beast at rest, half its voxels' size."""
     v = min(0.0275 * float(p["scale"]) for p in sp["parts"])
     h = v / RES
@@ -71,11 +67,11 @@ def world_grid(sp, pad=PAD):
                 for sz in (-1, 1):
                     corners.append(pos + R @ (half * np.array([sx, sy, sz])))
     corners = np.array(corners)
-    lo = corners.min(0) - pad * h
-    n = np.ceil((corners.max(0) + pad * h - lo) / h).astype(int)
+    lo = corners.min(0) - PAD * h
+    n = np.ceil((corners.max(0) + PAD * h - lo) / h).astype(int)
     # Even across and centred on the beast's middle (x 0): its left and right sampled alike, so an
     # eye, a nostril, a stripe is the mirror of the other (user: the lion's eyes were not alike).
-    half_x = max(abs(corners[:, 0].min()), abs(corners[:, 0].max())) + pad * h
+    half_x = max(abs(corners[:, 0].min()), abs(corners[:, 0].max())) + PAD * h
     nx = int(np.ceil(half_x / h)) * 2
     lo[0] = -nx * h * 0.5
     n[0] = nx
@@ -132,50 +128,6 @@ def labels(sp, g):
             own[take] = so[take]
             vid[take] = sv[take]
     return _mirrored(sp, own, vid)
-
-
-def claim(sp, g, own, vid, mask, pname, along=None):
-    """The sculpt's own word on whose some of its cells are (`mask`, on the grid): part `pname`'s,
-    however far from its voxels they lie (a scorpion's legs are drawn spread out to its sides, off
-    the parts that carry them, folded under it: by the nearest voxel they were its body's, and
-    stood still on it). Each over the voxel of the part nearest it; with `along` (0..1 for each
-    cell of the grid, from the part's joint to its far end as it is drawn), over the row of the
-    part's voxels as far along its own length, so that what is cut off the part's end goes from
-    the end of what is drawn."""
-    names = [p["name"] for p in sp["parts"]]
-    pi = names.index(pname)
-    p = sp["parts"][pi]
-    gp = np.array(p["grid"], int)
-    v = 0.0275 * float(p["scale"])
-    R = BS.quat_m(p["rot"])
-    pos = np.array(p["pos"], float)
-    occ = np.zeros(tuple(gp), bool)
-    for q in p["voxels"]:
-        occ[q[0], q[1], q[2]] = True
-    vox = np.argwhere(occ)
-    ii = np.argwhere(mask)
-    if not len(ii):
-        return
-    w = g.lo + (ii + 0.5) * g.cell
-    f = ((w - pos) @ R) / v + gp * 0.5 - 0.5      # (in voxels, a voxel's middle a whole number)
-    if along is not None:
-        ax = int(np.argmax(gp))
-        ca = p.get("ca")
-        t = np.clip(along[ii[:, 0], ii[:, 1], ii[:, 2]], 0.0, 1.0)
-        at_high = ca is not None and ca[ax] > 0      # (its joint at its high end: drawn from there down)
-        f[:, ax] = (1.0 - t) * (gp[ax] - 1) if at_high else t * (gp[ax] - 1)
-    best = np.zeros(len(ii), int)
-    bd = np.full(len(ii), np.inf)
-    for c0 in range(0, len(vox), 2048):
-        vc = vox[c0:c0 + 2048]
-        d2 = ((f[:, None, :] - vc[None, :, :]) ** 2).sum(-1)
-        j = d2.argmin(1)
-        m = d2[np.arange(len(ii)), j] < bd
-        bd[m] = d2[np.arange(len(ii)), j][m]
-        best[m] = c0 + j[m]
-    vb = vox[best]
-    own[ii[:, 0], ii[:, 1], ii[:, 2]] = pi
-    vid[ii[:, 0], ii[:, 1], ii[:, 2]] = (vb[:, 0] * gp[1] + vb[:, 1]) * gp[2] + vb[:, 2]
 
 
 def _mirrored(sp, own, vid):
@@ -451,9 +403,9 @@ JOINT_OVERLAP = 3    # fine cells a part's skin reaches on past where its neighb
 NECKS_SIDE_BY_SIDE = {"hydra": (6, 10)}
 
 
-def part_cells(pi, p, g, d, col, kind, own, vid, kin, MARGIN=MARGIN):
+def part_cells(pi, p, g, d, col, kind, own, vid, kin):
     """`kin`: the parts it is jointed to, each with how many fine cells its skin reaches on into
-    theirs. `MARGIN`: how far round its grid its cells may lie (fine cells)."""
+    theirs."""
     gp = np.array(p["grid"], int)
     v = 0.0275 * float(p["scale"])
     h = v / RES
@@ -660,8 +612,7 @@ def main(out_dir, only):
     for name, sp in beasts.items():
         if (name not in BS.SCULPTS and name not in BS.KIT) or (only and name not in only):
             continue
-        g = world_grid(sp, PADS.get(name, PAD))
-        margin = MARGINS.get(name, MARGIN)
+        g = world_grid(sp)
         own, vid = labels(sp, g)
         extra = {}
         if name in BS.KIT:
@@ -670,11 +621,8 @@ def main(out_dir, only):
         else:
             made = BS.SCULPTS[name](sp, g)
             d, col, kind = made[:3]
-            # (What else a sculpt may say: whose some of its cells are, "claims"; a part drawn
-            # carried by the part it hangs from, "with"; parts whose joints are not one skin, "stiff".)
+            # (What else a sculpt may say: the parts whose joints are not drawn as one skin, "stiff".)
             extra = made[3] if len(made) > 3 else {}
-            for mask, pname, along in extra.get("claims", []):
-                claim(sp, g, own, vid, mask, pname, along)
         names = [p["name"] for p in sp["parts"]]
         parts = {}
         total = 0
@@ -697,16 +645,14 @@ def main(out_dir, only):
                         kin[qi] = fan[1]   # (a neck beside it, or one of its own necks)
                 if p["name"].startswith("neck") and p.get("parent") in names:
                     kin[names.index(p["parent"])] = fan[1]   # (the body its root is in)
-            r = part_cells(pi, p, g, d, col, kind, own, vid, kin, margin)
+            r = part_cells(pi, p, g, d, col, kind, own, vid, kin)
             if r is not None:
-                if p["name"] in extra.get("with", {}):
-                    r["with"] = [round(float(x), 4) for x in extra["with"][p["name"]]]
                 if p["name"] in extra.get("stiff", ()):
                     r["stiff"] = 1
                 parts[p["name"]] = r
                 total += len(r["cells"]) // CELL
         with open(os.path.join(out_dir, name + ".json"), "w") as fh:
-            json.dump({"res": RES, "margin": margin, "parts": parts}, fh, separators=(",", ":"))
+            json.dump({"res": RES, "margin": MARGIN, "parts": parts}, fh, separators=(",", ":"))
         print(name, total, "cells", flush=True)
 
 

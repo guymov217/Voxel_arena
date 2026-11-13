@@ -157,6 +157,31 @@ func test_the_same_blows_do_the_same_to_a_beast_in_the_new_look() -> void:
 	t.check(cut > Data.beasts.size() / 2, "the blows cut deep into most of them (%d of %d)" % [cut, Data.beasts.size()])
 	w.queue_free()
 
+## What is drawn of a part is drawn where the part is (what is struck there is that part, and cut
+## off it falls from there): the middle of all its fine cells lies in its own voxels' box. A
+## scorpion's shins were once drawn a stride off the parts that carried them, legs spread out to
+## its sides over legs folded under its body: a blade passed through them, and cut off they were
+## drawn sunk in the sand.
+func test_a_part_is_drawn_where_it_is() -> void:
+	var bad := []
+	var n := 0
+	for k in Data.beasts:
+		for d in Data.beasts[k].parts:
+			var cells: PackedInt32Array = FineBody.beast_data(k, str(d.name)).get("cells", PackedInt32Array())
+			if cells.is_empty():
+				continue
+			n += 1
+			var mid := Vector3.ZERO
+			for c in cells.size() / FineBody.CELL:
+				mid += Vector3(cells[c * FineBody.CELL] + 0.5, cells[c * FineBody.CELL + 1] + 0.5, cells[c * FineBody.CELL + 2] + 0.5)
+			mid /= float(cells.size() / FineBody.CELL)
+			var g := Vector3(int(d.grid[0]), int(d.grid[1]), int(d.grid[2])) * 2.0
+			var out: float = maxf(maxf(maxf(-mid.x, mid.x - g.x), maxf(-mid.y, mid.y - g.y)), maxf(-mid.z, mid.z - g.z))
+			if out > 1.0:
+				bad.append("%s %s by %.1f" % [k, d.name, out])
+	t.check(n > 300, "every beast's parts are drawn (%d)" % n)
+	t.check(bad.is_empty(), "the middle of a part's drawing out of its own box (fine cells): " + ", ".join(bad))
+
 func test_a_beast_drawn_new_comes_apart_with_its_drawing() -> void:
 	var w := _world()
 	var checked := 0
