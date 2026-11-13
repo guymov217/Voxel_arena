@@ -131,9 +131,11 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 		if not keep.has(Vector3i(p.fx[i], p.fy[i], p.fz[i])):
 			# (The neck the strong look draws down into the shoulders stays as it is drawn: the
 			# fine head ends at the jaw. Only a head drawn in that shape: the plain head's lowest
-			# layer, a hair under its box, stayed whole under a brute's chin, a plate. User.)
+			# layer, a hair under its box, stayed whole under a brute's chin, a plate. User. And
+			# under every giant's: his box is a shade smaller than his head, so the whole of its
+			# lowest layer passed for neck, a plate under his neck. User.)
 			var o: Transform3D = xf[i]
-			if (shaped or giant != "") and o.origin.y - o.basis.get_scale().y * vox * 0.5 < -p.half_ext.y:
+			if shaped and giant == "" and o.origin.y - o.basis.get_scale().y * vox * 0.5 < -p.half_ext.y:
 				continue
 			hid[i] = 1
 			xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (xf[i] as Transform3D).origin)
@@ -187,7 +189,7 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 			return
 	# The way his head faces at each fine voxel, in its colour's alpha (FineSmooth: the smooth light).
 	var skin: ShaderMaterial = null
-	if FineSmooth.live() and giant == "":
+	if FineSmooth.live():
 		var at := PackedInt32Array()
 		at.resize(n * 3)
 		for s in n:

@@ -177,6 +177,11 @@ func test_missing_voxels_stay_missing() -> void:
 ## no joint of his or of the creature's comes apart (the two sides of every joint stay within a
 ## few centimetres), nothing flies off at absurd speed, he is never launched into the air, and
 ## every number stays finite.
+## (His speed is read at every step, and as a whole: thrown, all of him goes. One limb's own speed
+## is let go higher for the step a blow takes: a chimera's forepaw at 14 m/s on his thigh whips
+## the shin round the knee at 20 to 27 m/s for one step, and read every sixth step that passed or
+## failed by how far off the chimera started: 12.6 m/s where the test stands it, 20.8 and 22.0
+## from 18 and 24 cm further back.)
 func test_attacks_stay_physical() -> void:
 	var bad := []
 	for k in Data.beasts:
@@ -197,7 +202,8 @@ func test_attacks_stay_physical() -> void:
 			b = _beast(w, k, Vector3(0, 0.2, 2.2 + 0.9 * b_size(k)))
 		b.target = man
 		b.ai.fly_cool = 999.0
-		var vmax := 0.0
+		var vmax := 0.0    # the fastest he goes, all of him
+		var vpart := 0.0   # the fastest any one part of him goes
 		var ymax := 0.0
 		var gap := 0.0
 		var gap_at := ""
@@ -206,6 +212,14 @@ func test_attacks_stay_physical() -> void:
 			man.control(DT, {})
 			b.control(DT)
 			await get_tree().physics_frame
+			var mom := Vector3.ZERO
+			var mass := 0.0
+			for p in man.parts:
+				if not p.severed:
+					vpart = maxf(vpart, p.linear_velocity.length())
+					mom += p.linear_velocity * p.mass
+					mass += p.mass
+			vmax = maxf(vmax, (mom / maxf(mass, 0.001)).length())
 			if s % 6 != 0:
 				continue
 			for f in [man, b]:
@@ -216,12 +230,11 @@ func test_attacks_stay_physical() -> void:
 					if p.severed:
 						continue
 					if f == man:
-						vmax = maxf(vmax, p.linear_velocity.length())
 						ymax = maxf(ymax, pos.y)
 					if p.joint and p.parent_part and not p.parent_part.severed and p.def.get("ca") != null:
 						gap = maxf(gap, (p.parent_part.global_transform * p.pa).distance_to(p.global_transform * p.ca))
-		if not finite or vmax > 20.0 or ymax > 3.0 or gap > 0.12 * maxf(1.0, b.S):
-			bad.append("%s v %.1f y %.1f gap %.2f at %s%s" % [k, vmax, ymax, gap, gap_at, "" if finite else " NaN"])
+		if not finite or vmax > 20.0 or vpart > 40.0 or ymax > 3.0 or gap > 0.12 * maxf(1.0, b.S):
+			bad.append("%s v %.1f (a part %.1f) y %.1f gap %.2f at %s%s" % [k, vmax, vpart, ymax, gap, gap_at, "" if finite else " NaN"])
 		w.queue_free()
 		await get_tree().process_frame
 	t.check(bad.is_empty(), "unphysical: " + ", ".join(bad))
@@ -336,6 +349,97 @@ func test_every_part_breaks_by_its_harm() -> void:
 	w.queue_free()
 	await get_tree().physics_frame
 	await get_tree().physics_frame
+
+## A horn or a tusk is hard through and through (user: one that breaks is not to dangle like a
+## limb, it is rigid): beaten with a club it cracks and is chipped away, stiff on him until it is
+## broken through and off, never broken under its skin and drawn bent with its end swinging, as a
+## leg's bone is, nor hanging by a strip; a blade through it takes it off.
+func test_a_horn_and_a_tusk_break_rigid() -> void:
+	var w := _world()
+	var bull := _beast(w, "bull", Vector3(0, 0.2, 0))
+	var jumbo := _beast(w, "elephant", Vector3(8, 0.3, 0))
+	for i in 30:
+		await get_tree().physics_frame
+	seed(11)
+	for pair in [[bull, "hornL"], [bull, "hornTipR"], [jumbo, "tuskL"], [jumbo, "tuskTipR"]]:
+		var b: Beast = pair[0]
+		var p: VoxelPart = b.by_name[pair[1]]
+		t.check(b.is_hard(p) and not b.may_hang(p), "the %s's %s is hard" % [b.species, pair[1]])
+		for k in 40:
+			_blow(b, p, "blunt")
+			b.blood = 100.0
+			b.alive = true
+		var flapped: bool = b.flaps.any(func(fl): return fl.part == p)
+		t.check(not p.fractured and p.kink.is_empty() and p.dangle_mm == null and not p.hanging and not flapped,
+				"the %s's %s beaten with a club forty times is stiff on him or broken off, never bent or hanging (broken %s, bent %s, swinging %s, hanging %s, a piece of it on a strip %s, off %s, crack %d)" % [b.species, pair[1], str(p.fractured), str(not p.kink.is_empty()), str(p.dangle_mm != null), str(p.hanging), str(flapped), str(p.severed), p.fracture])
+	# (A leg under the same club does break and bend: the rule is the horn's, not the club's.)
+	var leg: VoxelPart = bull.by_name["legFL"]
+	for k in 40:
+		_blow(bull, leg, "blunt")
+		bull.blood = 100.0
+		bull.alive = true
+	t.check(leg.fractured or leg.hanging, "his leg under the same club breaks (broken %s, hanging %s)" % [str(leg.fractured), str(leg.hanging)])
+	var horn: VoxelPart = bull.by_name["hornR"]
+	var cut := _cut_free(bull, horn)
+	t.check(cut >= 1 and horn.severed and not horn.hanging, "a blade through the horn takes it off, a stiff piece (%s blows)" % (str(cut) if cut >= 0 else "not in 30"))
+	w.queue_free()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+## A scorpion's tail is curled in toward its foe (user; it stood up behind it like a club, the
+## sting at the sky): held, it arches up over the back and forward, the sting forward of the
+## tail's root and over the head, its point forward and down. The manticore's the same, its sting
+## pointing forward. And a tail that carries a head bears its weight (user: the chimera's serpent
+## hung limp, its head at its hocks): the serpent stands reared over the rump, its head well over
+## the back.
+func test_a_sting_is_held_curled_at_its_foe_and_a_serpent_reared() -> void:
+	var w := _world()
+	var sc := _beast(w, "scorpion", Vector3(-7, 0.2, 0))
+	var mt := _beast(w, "manticore", Vector3(0, 0.3, 0))
+	var ch := _beast(w, "chimera", Vector3(8, 0.3, 0))
+	await _run(w, [sc, mt, ch], 2.5)
+	for b: Beast in [sc, mt]:
+		var k: float = b.S / float(b.sp.scale)
+		var inv: Transform3D = b.torso.global_transform.affine_inverse()
+		var stg: VoxelPart = b.by_name.stinger
+		var tail: VoxelPart = b.by_name.tail
+		var root: Vector3 = inv * (tail.global_transform * tail.ca)
+		var at: Vector3 = inv * stg.global_position
+		var way: Vector3 = (inv.basis * (stg.global_transform.basis * Vector3.UP)).normalized()   # from its joint to its point
+		t.check(at.z > root.z + 0.6 * k, "the %s's sting hangs forward of its tail's root (%.2f, the root %.2f)" % [b.species, at.z, root.z])
+		t.check(way.z > 0.3 and way.y < 0.2, "the %s's sting points forward, not at the sky (its way %s)" % [b.species, str(way.snapped(Vector3.ONE * 0.01))])
+		if b == sc:
+			var crown: float = (inv * b.head.global_position).y + b.head.half_ext.y
+			t.check(at.y > crown + 0.15 * k and way.y < -0.3, "the scorpion's sting hangs over its head, its point down at its foe (%.2f over the body's middle, the head's top %.2f; its way %s)" % [at.y, crown, str(way.snapped(Vector3.ONE * 0.01))])
+	var kc: float = ch.S / float(ch.sp.scale)
+	var sn: VoxelPart = ch.by_name.snakeHead
+	var up_by: float = (ch.torso.global_transform.affine_inverse() * sn.global_position).y - ch.torso.half_ext.y
+	t.check(up_by > 0.5 * kc, "the chimera's serpent is reared up, its head over the back (%.2f over it)" % up_by)
+	w.queue_free()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+## A scorpion's shin is drawn with its thigh (user: it has to look like a scorpion, its legs
+## spread out to its sides; the parts that carry them are folded under it): as it sits on the
+## upper part at rest, lifted about the knee it is drawn at by a share of what its own joint is
+## bent, either way; the knee stays where it is and the foot comes up. Hanging broken, folded up.
+func test_a_carried_shin_is_drawn_on_its_thigh() -> void:
+	var up := Transform3D(Basis(Vector3.UP, 0.4), Vector3(1, 2, 3))
+	var rel := Transform3D(Basis(Vector3.BACK, 1.3), Vector3(0.2, -0.3, 0.0))
+	var hinge := Vector3(0.5, 0.2, 0.0)
+	var foot: Vector3 = rel.affine_inverse() * (hinge + Vector3(0.4, -0.5, 0.0))   # (a point of the shin, in its own frame)
+	var knee: Vector3 = rel.affine_inverse() * hinge
+	var still := Beast.carried_at(up, up * rel, rel, hinge, Vector3.BACK, 0.55)
+	t.check(still.is_equal_approx(up * rel), "its knee as at rest, it is drawn where it sits on the upper part")
+	var lifts := []
+	for bend in [0.8, -0.8]:
+		var low: Transform3D = up * Transform3D(Basis(Vector3.RIGHT, bend), Vector3(0.3, 0.1, -0.2)) * rel   # its own part, turned at its joint
+		var drawn := Beast.carried_at(up, low, rel, hinge, Vector3.BACK, 0.55)
+		t.check((drawn * knee).is_equal_approx(up * hinge), "the knee it is drawn at stays where it is (bent %.1f)" % bend)
+		lifts.append((up.affine_inverse() * (drawn * foot)).y - (up.affine_inverse() * (still * foot)).y)
+	t.check(lifts[0] > 0.15 and is_equal_approx(lifts[0], lifts[1]), "its foot comes up as the knee bends, either way alike (%.2f, %.2f)" % [lifts[0], lifts[1]])
+	var broken := Beast.carried_at(up, up * rel, rel, hinge, Vector3.BACK, 0.55, true)
+	t.check((up.affine_inverse() * (broken * foot)).y - (up.affine_inverse() * (still * foot)).y > lifts[0], "hanging broken it is drawn folded up at the knee")
 
 ## A leg cut off lies still on the sand as dead flesh does: the motors of its own joints (its knee)
 ## let go of it; and a dead beast's legs go slack (user: pieces of a body turned and rolled about

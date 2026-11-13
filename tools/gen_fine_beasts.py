@@ -12,7 +12,7 @@ their places, every collider and what a blow does are the beast's own, untouched
 
 One file a sculpted beast (data/fine_beasts/<species>.json), read the first time one is drawn.
 numpy."""
-import json, os, sys, math
+import base64, json, os, sys, math
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import beast_sculpts as BS
@@ -20,6 +20,10 @@ import beast_sculpts as BS
 RES = 2
 MARGIN = 16          # fine cells round a part's grid its sculpt may reach to (a mane, a paw)
 PAD = 10             # cells round the beast on the sculpt's grid
+# A beast drawn far off some of its parts (the scorpion's legs, spread out to its sides: the parts
+# that carry them are folded under it): further round each part, and round the beast.
+MARGINS = {"scorpion": 36}
+PADS = {"scorpion": 16}
 CELL = 9             # a cell's numbers: ix, iy, iz (fine, from the part's corner), cx, cy, cz (its voxel), shade, ao, paint
 OWN = 1 << 30        # paint: a colour (0xRRGGBB) and a kind (bits 24..29) of its own (FineBody.OWN_COLOUR)
 AO_FACES = [((1, 0, 0), 1, 2), ((-1, 0, 0), 1, 2), ((0, 1, 0), 0, 2), ((0, -1, 0), 0, 2), ((0, 0, 1), 0, 1), ((0, 0, -1), 0, 1)]
@@ -53,7 +57,7 @@ def _blur(f, passes=1):
     return f
 
 
-def world_grid(sp):
+def world_grid(sp, pad=PAD):
     """A grid round the whole beast at rest, half its voxels' size."""
     v = min(0.0275 * float(p["scale"]) for p in sp["parts"])
     h = v / RES
@@ -67,11 +71,11 @@ def world_grid(sp):
                 for sz in (-1, 1):
                     corners.append(pos + R @ (half * np.array([sx, sy, sz])))
     corners = np.array(corners)
-    lo = corners.min(0) - PAD * h
-    n = np.ceil((corners.max(0) + PAD * h - lo) / h).astype(int)
+    lo = corners.min(0) - pad * h
+    n = np.ceil((corners.max(0) + pad * h - lo) / h).astype(int)
     # Even across and centred on the beast's middle (x 0): its left and right sampled alike, so an
     # eye, a nostril, a stripe is the mirror of the other (user: the lion's eyes were not alike).
-    half_x = max(abs(corners[:, 0].min()), abs(corners[:, 0].max())) + PAD * h
+    half_x = max(abs(corners[:, 0].min()), abs(corners[:, 0].max())) + pad * h
     nx = int(np.ceil(half_x / h)) * 2
     lo[0] = -nx * h * 0.5
     n[0] = nx
@@ -128,6 +132,50 @@ def labels(sp, g):
             own[take] = so[take]
             vid[take] = sv[take]
     return _mirrored(sp, own, vid)
+
+
+def claim(sp, g, own, vid, mask, pname, along=None):
+    """The sculpt's own word on whose some of its cells are (`mask`, on the grid): part `pname`'s,
+    however far from its voxels they lie (a scorpion's legs are drawn spread out to its sides, off
+    the parts that carry them, folded under it: by the nearest voxel they were its body's, and
+    stood still on it). Each over the voxel of the part nearest it; with `along` (0..1 for each
+    cell of the grid, from the part's joint to its far end as it is drawn), over the row of the
+    part's voxels as far along its own length, so that what is cut off the part's end goes from
+    the end of what is drawn."""
+    names = [p["name"] for p in sp["parts"]]
+    pi = names.index(pname)
+    p = sp["parts"][pi]
+    gp = np.array(p["grid"], int)
+    v = 0.0275 * float(p["scale"])
+    R = BS.quat_m(p["rot"])
+    pos = np.array(p["pos"], float)
+    occ = np.zeros(tuple(gp), bool)
+    for q in p["voxels"]:
+        occ[q[0], q[1], q[2]] = True
+    vox = np.argwhere(occ)
+    ii = np.argwhere(mask)
+    if not len(ii):
+        return
+    w = g.lo + (ii + 0.5) * g.cell
+    f = ((w - pos) @ R) / v + gp * 0.5 - 0.5      # (in voxels, a voxel's middle a whole number)
+    if along is not None:
+        ax = int(np.argmax(gp))
+        ca = p.get("ca")
+        t = np.clip(along[ii[:, 0], ii[:, 1], ii[:, 2]], 0.0, 1.0)
+        at_high = ca is not None and ca[ax] > 0      # (its joint at its high end: drawn from there down)
+        f[:, ax] = (1.0 - t) * (gp[ax] - 1) if at_high else t * (gp[ax] - 1)
+    best = np.zeros(len(ii), int)
+    bd = np.full(len(ii), np.inf)
+    for c0 in range(0, len(vox), 2048):
+        vc = vox[c0:c0 + 2048]
+        d2 = ((f[:, None, :] - vc[None, :, :]) ** 2).sum(-1)
+        j = d2.argmin(1)
+        m = d2[np.arange(len(ii)), j] < bd
+        bd[m] = d2[np.arange(len(ii)), j][m]
+        best[m] = c0 + j[m]
+    vb = vox[best]
+    own[ii[:, 0], ii[:, 1], ii[:, 2]] = pi
+    vid[ii[:, 0], ii[:, 1], ii[:, 2]] = (vb[:, 0] * gp[1] + vb[:, 1]) * gp[2] + vb[:, 2]
 
 
 def _mirrored(sp, own, vid):
@@ -205,6 +253,194 @@ def nearest(g, w):
     return np.clip(i, 0, np.array(g.shape) - 1)
 
 
+# --- the smooth skin -------------------------------------------------------------------------
+# (FineSmooth: the game works a man's out as he is drawn, each part with what is jointed onto it.
+# A beast's is worked out here, each part's on the whole beast at rest, so that its skin runs on
+# across its joints; the game reads it with the sculpt, FineBody. User: the gladiators' smooth skin
+# on every monster and beast.)
+REACH, REACH_TRUNK, REACH_HEAD = 3, 4, 2        # how far the shape is blurred for the light (FineSmooth)
+GEO_REACH, GEO_REACH_HEAD = 2, 1                # and for where the skin is drawn
+EVEN_R, HELD_OUT, HELD_IN = 4, 0.7, 0.45
+STEP = 160.0                                    # a corner's move, of a fine cell, as whole numbers
+VK = 1024                                       # a corner's place as one number: ((x + 64) * VK + y + 64) * VK + z + 64
+FACES = [[(1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)], [(0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0)],
+         [(0, 1, 0), (0, 1, 1), (1, 1, 1), (1, 1, 0)], [(0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)],
+         [(0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)], [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)]]
+STEPS = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
+
+
+def _box_mean(f, r, rim="edge"):
+    """`f` blurred: the mean of the 2r + 1 round each cell along each axis, twice over."""
+    f = f.astype(np.float64)
+    for ax in range(3):
+        for _ in range(2):
+            pad = [(r, r) if a == ax else (0, 0) for a in range(3)]
+            p = np.pad(f, pad, mode=rim) if rim == "edge" else np.pad(f, pad, mode="constant")
+            c = np.cumsum(p, axis=ax)
+            c = np.concatenate([np.zeros_like(np.take(c, [0], axis=ax)), c], axis=ax)
+            n = f.shape[ax]
+            f = (np.take(c, np.arange(2 * r + 1, 2 * r + 1 + n), axis=ax) - np.take(c, np.arange(0, n), axis=ax)) / (2 * r + 1)
+    return f.astype(np.float32)
+
+
+def _at_corners(f):
+    """A field at its cells' corners (corner (i, j, k): the low corner of cell (i, j, k)): its slope
+    there, a fine cell, and how full it is."""
+    n = f.shape
+    A = np.pad(f, 1, mode="edge")
+    s = lambda a, b, c: A[a:a + n[0] + 1, b:b + n[1] + 1, c:c + n[2] + 1]
+    a000, a001, a010, a011, a100, a101, a110, a111 = s(0, 0, 0), s(0, 0, 1), s(0, 1, 0), s(0, 1, 1), s(1, 0, 0), s(1, 0, 1), s(1, 1, 0), s(1, 1, 1)
+    gx = ((a100 + a101 + a110 + a111) - (a000 + a001 + a010 + a011)) * 0.25
+    gy = ((a010 + a011 + a110 + a111) - (a000 + a001 + a100 + a101)) * 0.25
+    gz = ((a001 + a011 + a101 + a111) - (a000 + a010 + a100 + a110)) * 0.25
+    return gx, gy, gz, (a000 + a001 + a010 + a011 + a100 + a101 + a110 + a111) * 0.125
+
+
+def _encode(nx, ny, nz):
+    """A way as FineSmooth.encode has it, less the 2 (an octahedron's 32 by 32); -1: none."""
+    s = np.abs(nx) + np.abs(ny) + np.abs(nz)
+    ok = s > 1e-6
+    s = np.where(ok, s, 1.0)
+    ox, oy = nx / s, ny / s
+    neg = nz < 0.0
+    fx = (1.0 - np.abs(oy)) * np.where(ox >= 0.0, 1.0, -1.0)
+    fy = (1.0 - np.abs(ox)) * np.where(oy >= 0.0, 1.0, -1.0)
+    ox, oy = np.where(neg, fx, ox), np.where(neg, fy, oy)
+    u = np.clip(np.floor((ox * 0.5 + 0.5) * 31.0 + 0.5), 0, 31).astype(np.int64)
+    v = np.clip(np.floor((oy * 0.5 + 0.5) * 31.0 + 0.5), 0, 31).astype(np.int64)
+    return np.where(ok, u * 32 + v, -1)
+
+
+def smooth_skin(inside, idx, margin, kind="", dd=None, h=1.0):
+    """The smooth skin of a part's fine cells `idx` ([n, 3], on the lattice of `inside`: the whole
+    beast there), three strings of bytes in base 64: the way each cell faces (two bytes, the low
+    first; 0xFFFF none); of its cells' corners, each once in the order of their places (VK), which
+    are on the skin (a bit each, the low bit first); and for each of those its move and its way,
+    five bytes (the move's three in steps of 1 / STEP about 128, the way's low eight bits, its
+    high two with 128 for none). `dd`: the sculpt's own distance on that lattice (its cells `h`),
+    for what is too thin for the blur to shape."""
+    sol = inside.astype(np.float32)
+    light = _box_mean(sol, REACH_TRUNK if kind == "trunk" else (REACH_HEAD if kind == "head" else REACH))
+    shape = _box_mean(sol, GEO_REACH_HEAD if kind == "head" else GEO_REACH)
+    n = np.array(inside.shape)
+    # Each cell's way: down the slope of the light's field.
+    L = np.pad(light, 1, mode="edge")
+    wx = L[2:, 1:-1, 1:-1] - L[:-2, 1:-1, 1:-1]
+    wy = L[1:-1, 2:, 1:-1] - L[1:-1, :-2, 1:-1]
+    wz = L[1:-1, 1:-1, 2:] - L[1:-1, 1:-1, :-2]
+    i, j, k = idx[:, 0], idx[:, 1], idx[:, 2]
+    ways = _encode(-wx[i, j, k], -wy[i, j, k], -wz[i, j, k])
+    # The corners on the beast's skin (any part's): of a face with nothing of it beyond.
+    on = np.zeros(tuple(n + 1), bool)
+    for d, st in enumerate(STEPS):
+        bare = inside & ~_shift(inside, (-st[0], -st[1], -st[2]), False)
+        for o in FACES[d]:
+            on[o[0]:o[0] + n[0], o[1]:o[1] + n[1], o[2]:o[2] + n[2]] |= bare
+    gx, gy, gz, w = _at_corners(shape)
+    gl = np.sqrt(gx * gx + gy * gy + gz * gz)
+    ok = on & (gl > 0.02)
+    glz = np.where(ok, gl, 1.0)
+    out_by = np.where(ok, np.clip((w - 0.5) / glz, -2.5, 2.5), 0.0).astype(np.float32)
+    even = _box_mean(out_by, EVEN_R, "zero")
+    cover = _box_mean(ok.astype(np.float32), EVEN_R, "zero")
+    mv = np.where(ok & (cover > 1e-6), np.clip(out_by - even / np.maximum(cover, 1e-6), -HELD_IN, HELD_OUT), 0.0)
+    mx, my, mz = -gx / glz * mv, -gy / glz * mv, -gz / glz * mv
+    if dd is not None:
+        # What is thin (a horn's point, a tusk, a claw, a thin tail: nowhere two cells deep): the
+        # blur has nothing of it left to shape and the evening leaves its stairs as they are, so it
+        # was drawn in bare cubes, a horn's point a block, a tusk a flight of steps. There each
+        # corner goes to the sculpt's own skin instead, straight down its slope.
+        deep = (-dd / h).astype(np.float32)
+        for ax in range(3):
+            pd_ = np.pad(deep, [(2, 2) if a == ax else (0, 0) for a in range(3)], mode="edge")
+            deep = np.max(np.stack([np.take(pd_, np.arange(o, o + deep.shape[ax]), axis=ax) for o in range(5)], 0), 0)
+        thin = np.clip((1.7 - deep) / 0.6, 0.0, 1.0)
+        sgx, sgy, sgz, sc_ = _at_corners((dd / h).astype(np.float32))
+        tc = np.where(on, _at_corners(thin)[3], 0.0)
+        g2 = np.maximum(sgx * sgx + sgy * sgy + sgz * sgz, 0.05)
+        sx_, sy_, sz_ = -sc_ * sgx / g2, -sc_ * sgy / g2, -sc_ * sgz / g2
+        far = np.minimum(1.0, 0.75 / np.maximum(np.sqrt(sx_ * sx_ + sy_ * sy_ + sz_ * sz_), 1e-6))
+        mx = mx * (1.0 - tc) + sx_ * far * tc
+        my = my * (1.0 - tc) + sy_ * far * tc
+        mz = mz * (1.0 - tc) + sz_ * far * tc
+    lx, ly, lz, _ = _at_corners(light)
+    cw = _encode(-lx, -ly, -lz)
+    # The corners of this part's cells, each once, in the order of their places (as the game lists
+    # them again from the cells: FineBody); which of them are on the skin, and those ones' moves
+    # and ways. The rest (under the skin, where a wound opens) are drawn where they are.
+    vi = np.concatenate([idx + np.array([c & 1, (c >> 1) & 1, (c >> 2) & 1]) for c in range(8)], 0)
+    key = ((vi[:, 0] - margin + 64) * VK + (vi[:, 1] - margin + 64)) * VK + (vi[:, 2] - margin + 64)
+    key, first = np.unique(key, return_index=True)
+    vx, vy, vz = vi[first, 0], vi[first, 1], vi[first, 2]
+    lit = on[vx, vy, vz]
+    bits = np.packbits(lit.astype(np.uint8), bitorder="little")
+    vx, vy, vz = vx[lit], vy[lit], vz[lit]
+    q = lambda m: (np.clip(np.floor(m[vx, vy, vz] * STEP + 0.5), -127, 127).astype(np.int64) + 128).astype(np.uint8)
+    wc = cw[vx, vy, vz]
+    none = wc < 0
+    wc = np.where(none, 0, wc)
+    rec = np.stack([q(mx), q(my), q(mz), (wc & 255).astype(np.uint8), ((wc >> 8) | np.where(none, 128, 0)).astype(np.uint8)], 1)
+    w16 = np.where(ways < 0, 0xFFFF, ways).astype("<u2")
+    b64 = lambda b: base64.b64encode(b.tobytes()).decode("ascii")
+    return b64(w16), b64(bits), b64(rec)
+
+
+# --- its shape drawn on its hide ---------------------------------------------------------------
+# (gen_fine_body._form_tones, a fighter's: user, what was done for the gladiators on every monster
+# and beast.) Under the smooth skin a beast's own shape is drawn on its hide in flat tones: where it
+# folds in (behind a shoulder, under the jaw, between its haunches and its belly), the shade a fold
+# lies in, as far as the hide within a hand of it shuts the sky off; where it stands out round (a
+# shoulder, a haunch, the ridge of its back, a knee), a light. Each fine cell a tile of one tone.
+TONE_SOFT, TONE_SHADE, TONE_LIGHT = 140, 168, 218
+FORM_SHARE = (0.13, 0.04, 0.16)   # how much of a part's hide lies in shade, in the deeper shade, in the light
+HIDE = (8, 10, 11)                # fur, scales, shell (never an eye, a tooth, a claw, a horn)
+
+
+def form_tones(dd, h, idx, ow, group, hide):
+    """For each of a part's skin cells `idx` (on the lattice of `dd`, the beast's shape there, cells
+    of `h`): the tone it is drawn in, 0 its hide as it is. By the part and the parts it is jointed
+    to alone (`group`, of `ow`, whose each cell is): a leg by its flank does not shade the flank,
+    it moves. Only its hide (`hide`, of each cell)."""
+    gx, gy, gz = np.gradient(dd.astype(np.float64), h)
+    gl = np.sqrt(gx * gx + gy * gy + gz * gz) + 1e-9
+    i, j, l = idx[:, 0], idx[:, 1], idx[:, 2]
+    n = dd.shape
+    nx, ny, nz = gx[i, j, l] / gl[i, j, l], gy[i, j, l] / gl[i, j, l], gz[i, j, l] / gl[i, j, l]
+    kin = np.isin(ow, list(group))
+    occ = np.zeros(len(idx))
+    for hh in (1.5, 3.0, 4.5, 6.0):
+        pi = np.clip(np.rint(i + nx * hh).astype(int), 0, n[0] - 1)
+        pj = np.clip(np.rint(j + ny * hh).astype(int), 0, n[1] - 1)
+        pl = np.clip(np.rint(l + nz * hh).astype(int), 0, n[2] - 1)
+        occ += np.where(kin[pi, pj, pl], np.clip(dd[i, j, l] + hh * h - dd[pi, pj, pl], 0.0, None) / (hh * h), 0.0)
+    # How round it is there (over 0 a swell), two fine cells across.
+    k = 2
+    pad = np.pad(dd.astype(np.float64), k, mode="edge")
+    lap = (pad[2 * k:, k:-k, k:-k] + pad[:-2 * k, k:-k, k:-k] + pad[k:-k, 2 * k:, k:-k] + pad[k:-k, :-2 * k, k:-k]
+           + pad[k:-k, k:-k, 2 * k:] + pad[k:-k, k:-k, :-2 * k] - 6.0 * dd) / (k * h) ** 2
+    c = _box_mean(lap, 1)[i, j, l]
+    out = np.zeros(len(idx), np.int32)
+    if hide.sum() > 50:
+        qo = np.quantile(occ[hide], [1.0 - FORM_SHARE[0], 1.0 - FORM_SHARE[1]])
+        qc = np.quantile(c[hide], 1.0 - FORM_SHARE[2])
+        out[c > qc] = TONE_LIGHT
+        out[(occ > qo[0]) & (occ > 0.02)] = TONE_SHADE
+        out[(occ > qo[1]) & (occ > 0.05)] = TONE_SOFT
+        out[~hide] = 0
+    # Specks: a tile whose tone fewer than two of the tiles round it share is its hide's own.
+    grid = np.full(n, -1, np.int32)
+    grid[i, j, l] = out
+    padg = np.pad(grid, 1, constant_values=-1)
+    same = np.zeros(len(idx), np.int32)
+    for a in (-1, 0, 1):
+        for b in (-1, 0, 1):
+            for e in (-1, 0, 1):
+                if a or b or e:
+                    same += padg[i + 1 + a, j + 1 + b, l + 1 + e] == out
+    out[(out != 0) & (same < 2)] = 0
+    return out.astype(np.uint8)
+
+
 JOINT_OVERLAP = 3    # fine cells a part's skin reaches on past where its neighbour's begins, at their joint
 # A beast whose necks rise side by side out of one chest (the hydra's five): the skin between two
 # of them was laid by whichever neck was the nearer, so a neck that bowed or turned on its own left
@@ -215,9 +451,9 @@ JOINT_OVERLAP = 3    # fine cells a part's skin reaches on past where its neighb
 NECKS_SIDE_BY_SIDE = {"hydra": (6, 10)}
 
 
-def part_cells(pi, p, g, d, col, kind, own, vid, kin):
+def part_cells(pi, p, g, d, col, kind, own, vid, kin, MARGIN=MARGIN):
     """`kin`: the parts it is jointed to, each with how many fine cells its skin reaches on into
-    theirs."""
+    theirs. `MARGIN`: how far round its grid its cells may lie (fine cells)."""
     gp = np.array(p["grid"], int)
     v = 0.0275 * float(p["scale"])
     h = v / RES
@@ -326,7 +562,11 @@ def part_cells(pi, p, g, d, col, kind, own, vid, kin):
                 s = a + RES * b + RES * RES * c
                 sub |= depth[a::RES, b::RES, c::RES] << (2 * s)
     sub[~occ] = 0
-    return {"cells": [int(x) for x in cells.reshape(-1)], "sub": [int(x) for x in sub.reshape(-1)]}
+    low = p["name"].lower()
+    sw, sn, sv = smooth_skin(inside, idx, MARGIN, "trunk" if low == "beastbody" else ("head" if "head" in low else ""), dd, h)
+    st = form_tones(dd, h, idx, ow, {pi} | set(kin.keys()), np.isin(kd, HIDE))
+    return {"cells": [int(x) for x in cells.reshape(-1)], "sub": [int(x) for x in sub.reshape(-1)], "sw": sw, "sn": sn, "sv": sv,
+            "st": base64.b64encode(st.tobytes()).decode("ascii")}
 
 
 # The beasts' own paint (BeastStyle's rules, as the classic look reads its voxels).
@@ -420,13 +660,21 @@ def main(out_dir, only):
     for name, sp in beasts.items():
         if (name not in BS.SCULPTS and name not in BS.KIT) or (only and name not in only):
             continue
-        g = world_grid(sp)
+        g = world_grid(sp, PADS.get(name, PAD))
+        margin = MARGINS.get(name, MARGIN)
         own, vid = labels(sp, g)
+        extra = {}
         if name in BS.KIT:
             vc, vk = voxel_paint(sp, g, name)
             d, col, kind = BS.KIT[name](sp, g, vc, vk)
         else:
-            d, col, kind = BS.SCULPTS[name](sp, g)
+            made = BS.SCULPTS[name](sp, g)
+            d, col, kind = made[:3]
+            # (What else a sculpt may say: whose some of its cells are, "claims"; a part drawn
+            # carried by the part it hangs from, "with"; parts whose joints are not one skin, "stiff".)
+            extra = made[3] if len(made) > 3 else {}
+            for mask, pname, along in extra.get("claims", []):
+                claim(sp, g, own, vid, mask, pname, along)
         names = [p["name"] for p in sp["parts"]]
         parts = {}
         total = 0
@@ -449,12 +697,16 @@ def main(out_dir, only):
                         kin[qi] = fan[1]   # (a neck beside it, or one of its own necks)
                 if p["name"].startswith("neck") and p.get("parent") in names:
                     kin[names.index(p["parent"])] = fan[1]   # (the body its root is in)
-            r = part_cells(pi, p, g, d, col, kind, own, vid, kin)
+            r = part_cells(pi, p, g, d, col, kind, own, vid, kin, margin)
             if r is not None:
+                if p["name"] in extra.get("with", {}):
+                    r["with"] = [round(float(x), 4) for x in extra["with"][p["name"]]]
+                if p["name"] in extra.get("stiff", ()):
+                    r["stiff"] = 1
                 parts[p["name"]] = r
                 total += len(r["cells"]) // CELL
         with open(os.path.join(out_dir, name + ".json"), "w") as fh:
-            json.dump({"res": RES, "parts": parts}, fh, separators=(",", ":"))
+            json.dump({"res": RES, "margin": margin, "parts": parts}, fh, separators=(",", ":"))
         print(name, total, "cells", flush=True)
 
 

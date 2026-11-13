@@ -73,6 +73,16 @@ instance uniform vec4 bend_turn = vec4(0.0);
 // and moved foot_turn.w up. foot_at.w 0: as it is.
 instance uniform vec4 foot_at = vec4(0.0);
 instance uniform vec4 foot_turn = vec4(0.0);
+// A beast's joint under the smooth skin (Beast._bend_drawing): its skin runs on from the part it
+// hangs from into the part, not two stiff pieces turned on one another. All that is drawn with
+// the part near the joint (joint_at.xyz, world) is turned about it by joint_turn.xyz (a turn's
+// axis, world, as long as its angle: the turn that sets the part as it sits at rest on the part
+// it hangs from): all of that turn up to joint_dir.w along the part from the joint (joint_dir.xyz,
+// world, from the joint into the part: where the two skins lie over each other), less and less
+// over joint_at.w more, none beyond. joint_at.w 0: as it is.
+instance uniform vec4 joint_at = vec4(0.0);
+instance uniform vec4 joint_turn = vec4(0.0);
+instance uniform vec4 joint_dir = vec4(0.0);
 
 const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
 const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
@@ -237,6 +247,22 @@ void vertex() {
 				nw = nw * ca + cross(ax, nw) * sa + ax * dot(ax, nw) * (1.0 - ca);
 			}
 			VERTEX += vec3(dot(m3[0], d) / dot(m3[0], m3[0]), dot(m3[1], d) / dot(m3[1], m3[1]), dot(m3[2], d) / dot(m3[2], m3[2]));
+			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
+		}
+	}
+	if (joint_at.w != 0.0) {
+		mat3 m3 = mat3(MODEL_MATRIX);
+		vec3 rel = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz - joint_at.xyz;
+		float t = clamp((dot(rel, joint_dir.xyz) - joint_dir.w) / joint_at.w, 0.0, 1.0);
+		float a = length(joint_turn.xyz) * (1.0 - t * t * (3.0 - 2.0 * t));
+		if (a > 0.00001) {
+			vec3 ax = normalize(joint_turn.xyz);
+			float ca = cos(a);
+			float sa = sin(a);
+			vec3 d = rel * ca + cross(ax, rel) * sa + ax * dot(ax, rel) * (1.0 - ca) - rel;
+			VERTEX += vec3(dot(m3[0], d) / dot(m3[0], m3[0]), dot(m3[1], d) / dot(m3[1], m3[1]), dot(m3[2], d) / dot(m3[2], m3[2]));
+			vec3 nw = m3 * NORMAL;
+			nw = nw * ca + cross(ax, nw) * sa + ax * dot(ax, nw) * (1.0 - ca);
 			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
 		}
 	}

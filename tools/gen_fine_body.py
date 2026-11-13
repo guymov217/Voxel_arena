@@ -130,10 +130,23 @@ SHOULDER_SOFT = 0.02
 FOOT_X = 0.11 + FV * 0.5
 
 
-def foot(P, sx):
+# A giant's bare foot, how much bigger than a fighter's it is each way (about FOOT_C on the sand,
+# under his ankle): a troll's broad and long, the one-eyed giants' heavy; a titan's a man's.
+FOOT_BIG = {"troll": (1.3, 1.22, 1.2), "cyclops": (1.14, 1.1, 1.1), "polyphemus": (1.14, 1.1, 1.1)}
+FOOT_C = (0.113, -0.012)
+
+
+def foot_big(P, sx, big):
+    """The points a fighter's foot is asked at for a foot `big` times it each way."""
+    return (sx * FOOT_C[0] + (P[0] - sx * FOOT_C[0]) / big[0], P[1] / big[1], FOOT_C[1] + (P[2] - FOOT_C[1]) / big[2])
+
+
+def foot(P, sx, big=None):
     """The heel, the instep down from the ankle to the ball of the foot, the ball its widest, and
     the toes: the big one inside and the longest, the others shorter out to the little one. Its
     own shapes run together closely (the body's are blended wide, and it was a lump again)."""
+    if big is not None:
+        return foot(foot_big(P, sx, big), sx) * min(big)
     x0 = sx * FOOT_X
     d = ell(P, (sx * 0.113, 0.034, -0.046), (0.033, 0.04, 0.035))                             # the heel
     d = smin(d, cap(P, (sx * 0.112, 0.06, -0.004), (x0, 0.028, 0.088), 0.036, 0.026), 0.016)   # the instep
@@ -141,6 +154,25 @@ def foot(P, sx):
     d = smin(d, ell(P, (x0 - sx * 0.031, 0.016, 0.142), (0.019, 0.018, 0.03)), 0.012)          # the big toe
     d = smin(d, ell(P, (x0 + sx * 0.006, 0.014, 0.136), (0.022, 0.016, 0.03)), 0.012)          # the toes beside it
     d = smin(d, ell(P, (x0 + sx * 0.03, 0.013, 0.124), (0.02, 0.015, 0.028)), 0.012)           # out to the little one
+    return d
+
+
+def hoof(P, sx):
+    """A cloven hoof (the minotaur's; a man's foot with a lump round its ankle was no hoof): its
+    wall wider and longer at the sole than at the crown and sloped forward to the toe, flat on the
+    sand, cleft in two toes in front, and the two dew claws behind the fetlock over it."""
+    x0 = sx * 0.115
+    H = 0.088
+    t = np.clip(P[1] / H, 0.0, 1.0)
+    a = 0.05 - 0.015 * t
+    b = 0.06 - 0.022 * t
+    zc = 0.036 - 0.04 * t
+    d = (np.sqrt(((P[0] - x0) / a) ** 2 + ((P[2] - zc) / b) ** 2) - 1.0) * a
+    d = np.maximum(d, P[1] - H)
+    cleft = np.maximum(np.abs(P[0] - x0) - 0.0058, np.maximum(0.038 - P[2], P[1] - 0.066))
+    d = np.maximum(d, -cleft)
+    for k in (-1, 1):
+        d = np.minimum(d, ell(P, (x0 + k * 0.02, 0.104, -0.043), (0.011, 0.016, 0.013)))   # a dew claw
     return d
 
 
@@ -261,9 +293,15 @@ class Man:
             add(sh, "glat", ell(P, (sx * 0.134, 0.345, -0.04), (ca * 0.64, 0.08, ca * 0.66)))
             add(sh, "tib", ell(P, (sx * 0.126, 0.3, 0.028), (ca * 0.46, 0.11, ca * 0.44)))
             add(sh, "achilles", cap(P, (sx * 0.11, 0.21, -0.047), (sx * 0.11, 0.055, -0.052), 0.013), "skin")
-            add(sh, "heel", ell(P, (sx * 0.11, 0.036, -0.052), (0.032, 0.036, 0.038)), "skin")
-            add(sh, "foot", ell(P, (sx * 0.118, 0.032, 0.05), (0.045, 0.031, 0.105)), "skin")
-            add(sh, "toes", ell(P, (sx * 0.126, 0.017, 0.152), (0.046, 0.018, 0.036)), "skin")
+            if self.plain:
+                add(sh, "heel", ell(P, (sx * 0.11, 0.036, -0.052), (0.032, 0.036, 0.038)), "skin")
+                add(sh, "foot", ell(P, (sx * 0.118, 0.032, 0.05), (0.045, 0.031, 0.105)), "skin")
+                add(sh, "toes", ell(P, (sx * 0.126, 0.017, 0.152), (0.046, 0.018, 0.036)), "skin")
+            elif B.get("hooves"):
+                add(sh, "hoof", hoof(P, sx), "skin")
+            else:
+                # (A giant's bare foot as a fighter's is made: a heel, an instep, the ball, the toes.)
+                add(sh, "foot", foot(P, sx, FOOT_BIG.get(B["kind"])), "skin")
             add(sh, "ankle", ell(P, A + np.array([0, 0.005, 0]), (0.034, 0.03, 0.034)), "skin")
         # A giant's own: a paunch, a hump, knobbed joints and big feet, warts; hooves and a tail.
         if B.get("paunch"):
@@ -274,13 +312,14 @@ class Man:
             for sx, side in ((-1, "R"), (1, "L")):
                 add("upperArm" + side, "knob_e", ell(P, self.E[sx] + np.array([0, 0.0, -0.03]), (0.045, 0.045, 0.04)), "skin")
                 add("thigh" + side, "knob_k", ell(P, self.K[sx] + np.array([0, 0.0, 0.035]), (0.05, 0.05, 0.04)), "skin")
-                add("shin" + side, "bigfoot", ell(P, (sx * 0.12, 0.035, 0.06), (0.058, 0.04, 0.125)), "skin")
+                if self.plain:
+                    add("shin" + side, "bigfoot", ell(P, (sx * 0.12, 0.035, 0.06), (0.058, 0.04, 0.125)), "skin")
             rng = np.random.default_rng(7)
             for i in range(13):
                 c = np.array([rng.uniform(0.02, 0.25), rng.uniform(1.0, 1.5), rng.uniform(-0.16, 0.16)])
                 for sx in (-1.0, 1.0):   # (in pairs, the same both sides)
                     add("torso", "wart", ell(P, c * np.array([sx, 1.0, 1.0]), (0.012, 0.012, 0.012)), "skin")
-        if B.get("hooves"):
+        if B.get("hooves") and self.plain:
             for sx, side in ((-1, "R"), (1, "L")):
                 add("shin" + side, "hoof", cap(P, (sx * 0.118, 0.0, 0.035), (sx * 0.118, 0.07, 0.03), 0.06, 0.052), "skin")
         if B.get("tail"):
@@ -406,7 +445,7 @@ class Man:
         D = np.stack([d for _, _, d, _ in sh], 0)
         kb = 0.022 if self.B.get("kind") else 0.04   # (the broad forms blended wider)
         self.own = None
-        if self.B.get("kind") or self.plain:
+        if self.plain:
             d = D[0]
             for k in range(1, len(sh)):
                 d = smin(d, D[k], kb)
@@ -442,6 +481,10 @@ class Man:
             mant |= band & (Y > 1.41) & (Y < 1.53) & (np.abs(X) < 0.3) & (Z < 0.07)
             self.wool = mant & (d >= 0.0)
             d = np.where(mant, np.minimum(d, -0.0005), d)
+            if self.own is not None:
+                # (The fleece is his trunk's: lying outside his own flesh it was nobody's, and the
+                # giant drawn as a fighter is had none on his back.)
+                self.own = (np.where(mant, np.minimum(self.own[0], -0.0005), self.own[0]), self.own[1])
         order = np.argsort(D, axis=0)
         first = order[0]
         gap = np.take_along_axis(D, order[1:2], 0)[0] - np.take_along_axis(D, order[0:1], 0)[0]
@@ -479,10 +522,10 @@ def part_of(man, P, arms=True):
         m = d < best
         best = np.where(m, d, best)
         who = np.where(m, k + 1, who)
-    if not man.B.get("kind"):
-        # A fighter's arm and leg are cut level at the elbow and the knee: by the nearer bone the
+    if not (man.B.get("kind") and man.plain):
+        # An arm and a leg are cut level at the elbow and the knee: by the nearer bone the
         # thicker part's share ran down over the thinner as a skirt, a rim in the air when the joint
-        # bent.
+        # bent. (A giant as the fight reads him, `plain`: as he always was.)
         for sx, side in ((-1, "R"), (1, "L")):
             for up, low, piv in (("upperArm", "forearm", man.E[sx]), ("thigh", "shin", man.K[sx])):
                 iu, il = names.index(up + side), names.index(low + side)
@@ -507,7 +550,7 @@ def hinge_r(man, which, sx):
     there, so the upper part ends in the joint's own round and the lower turns in it (user: the
     knee must look like a knee; a ball smaller than the limb left the thigh a rim that stood out
     over the shin when the knee bent). A giant's as it was."""
-    if man.B.get("kind"):
+    if man.B.get("kind") and man.plain:
         return JOINT_R[which]
     key = (which, sx)
     if key not in man.hinge:
@@ -520,7 +563,7 @@ def hinge_r(man, which, sx):
         # (The limb's own shapes, without the kneecap and the elbow's point, which stand out of it.)
         d = None
         for part, nm, dd, _ in man.shapes(P):
-            if part in own and nm not in ("knee", "elbow"):
+            if part in own and nm not in ("knee", "elbow", "knob_e", "knob_k"):
                 d = dd if d is None else smin(d, dd, 0.04)
         r = np.sqrt((X - piv[0]) ** 2 + (Z - piv[2]) ** 2)
         m = d < 0.0
@@ -568,8 +611,8 @@ def _own_cells(man, name, P):
     """His field over the part's lattice (Man.field), and which of its cells are the part's."""
     X, Y, Z = P
     d, first, gap, d1, sh = man.field(P)
-    if not man.B.get("kind"):
-        d = _box3(d)   # (a fighter's skin evened: a single cell standing out or a pit a cell deep gone)
+    even = (lambda a: a) if man.B.get("kind") else _box3
+    d = even(d)   # (a fighter's skin evened: a single cell standing out or a pit a cell deep gone; not a giant's, whose warts and grooves are that small)
     names, who = part_of(man, P)
     mine = who == names.index(name)
     if man.own is not None:
@@ -582,8 +625,8 @@ def _own_cells(man, name, P):
         # filled the fold between the two was neither's, and its share hung on each as a sliver
         # when the arm came up.
         body, arm = man.own
-        eb = _box3(body)
-        ea = {sx: _box3(arm[sx]) for sx in (-1, 1)}
+        eb = even(body)
+        ea = {sx: even(arm[sx]) for sx in (-1, 1)}
         ball = np.zeros(X.shape, bool)
         for sx in (-1, 1):
             c = man.S[sx]
@@ -680,8 +723,9 @@ def part_cells(man, name, pdef):
     # it is drawn): the trunk's and the arms' outlines in his broad forms alone, as they were
     # before the bellies of his muscles were put on him, and the rows he is in there. The fight
     # is not to change with a muscle drawn fuller (user: do not hurt the game).
+    # (A giant's legs too: sculpted anew, with a fighter's foot or a hoof, he is read as he was.)
     keep = None
-    if not man.B.get("kind") and (name == "torso" or "rm" in name):
+    if name == "torso" or "rm" in name or (man.B.get("kind") and not man.plain):
         pm = Man(man.made_of[0], man.made_of[1], True)
         dk, _, _, _, _, mk = _own_cells(pm, name, P)
         ok = (dk < 0.0) & mk
@@ -734,6 +778,20 @@ def part_cells(man, name, pdef):
         det = np.where(worn, base, np.where(base < 150, base, det))   # (the navel stays)
         for i in np.flatnonzero(det != base):
             lines += [int(i), int(det[i])]
+    else:
+        # A giant's: his shape in the same flat tones, over the grooves his muscles already have,
+        # and his toes. Not on what is painted on him that is not his skin (his hair, a hoof, moss;
+        # a titan's bronze and a minotaur's hide are his skin's own colour: they take them).
+        base = shade[skin]
+        worn = deco[cx, cy, cz] if deco.any() else np.zeros(base.shape, bool)
+        other = np.array([False] + [not int(e[4]) for e in (man.B.get("palette") or [])])
+        worn = worn | other[np.clip(paint[skin], 0, len(other) - 1)]
+        det = _form_tones(name, sh, skin, worn)
+        toe = _giant_toes(man, name, P, inside)[skin]
+        det = np.where(toe != 200, toe, det)
+        det = np.where(worn | (base < 190), base, det)
+        for i in np.flatnonzero(det != base):
+            lines += [int(i), int(det[i])]
     cells = np.stack([idx[:, 0] - MARGIN, idx[:, 1] - MARGIN, idx[:, 2] - MARGIN, cx, cy, cz, shade[skin], ao[skin], paint[skin]], 1).astype(np.int64)
     cells = [int(v) for v in cells.reshape(-1)]
     # Each voxel's eight half cells, where they map to on him: inside him (and his part's, or the
@@ -768,6 +826,36 @@ def part_cells(man, name, pdef):
     if keep is not None:
         out["keep"] = [[round(float(v), 4) for v in row] for row in keep[0]]
         out["keep_rows"] = [keep[1], keep[2]]
+    if man.B.get("kind") and not man.plain:
+        out["fit"] = _fit(part_cells(Man(man.made_of[0], man.made_of[1], True), name, pdef)["cells"], pdef)
+    return out
+
+
+def _fit(cells, pdef):
+    """What a giant's colliders are fitted to (FineBody.fit_giant: boxes laid along each part round
+    what is drawn of it): the fine cells he was first sculpted in (`cells`, the plain man's), row
+    by row along the part's own line: the line's axis first, then for each row with cells its
+    place along the line and the least and the greatest of its cells' places the other two ways
+    (the axes in their order). The game lays the rows in its layers itself, as it always has. His
+    skin sculpted anew is drawing only: he strikes and is struck by the boxes he always had."""
+    ca = [float(v) for v in (pdef.get("ca") or [0, 0, 0])]
+    ax = 1                                               # (VoxelPart._root_axis)
+    if abs(ca[0]) > abs(ca[ax]):
+        ax = 0
+    if abs(ca[2]) > abs(ca[ax]):
+        ax = 2
+    oa, ob = [a for a in range(3) if a != ax]
+    there = {(int(v[0]), int(v[1]), int(v[2])) for v in pdef["voxels"]}
+    rows = {}
+    for row in np.array(cells, np.int64).reshape(-1, CELL):
+        if (int(row[3]), int(row[4]), int(row[5])) not in there:
+            continue
+        i, qa, qb = int(row[ax]), int(row[oa]), int(row[ob])
+        r = rows.get(i)
+        rows[i] = [qa, qb, qa, qb] if r is None else [min(r[0], qa), min(r[1], qb), max(r[2], qa), max(r[3], qb)]
+    out = [ax]
+    for i in sorted(rows):
+        out += [i] + rows[i]
     return out
 
 
@@ -837,6 +925,26 @@ def _form_tones(name, sh, skin, worn):
                     same += padg[i + 1 + a, j + 1 + b, l + 1 + e] == out
     out[(out != 200) & (same < 2)] = 200
     return out
+
+
+def _giant_toes(man, name, P, inside):
+    """A giant's toes drawn as a fighter's are (_details): the big one apart from the rest, a nail
+    on the end of each; in the cells his foot's own size brings them to. 200 where none."""
+    X, Y, Z = P
+    det = np.full(X.shape, 200, np.int32)
+    if not name.startswith("shin") or man.B.get("hooves"):
+        return det
+    big = FOOT_BIG.get(man.B["kind"], (1.0, 1.0, 1.0))
+    gap_x = FOOT_C[0] + (0.11 - FV * 0.5 - FOOT_C[0]) * big[0]   # between the big toe and the next, out from his middle
+    toes_z = FOOT_C[1] + (8 * FV - FOOT_C[1]) * big[2]           # where the toes begin
+    zone = Y < FOOT_TOP * big[1]
+    gap = np.floor(np.abs(X) / FV + 1e-6) == math.floor(gap_x / FV + 1e-6)
+    toes = np.floor(Z / FV + 1e-6) >= math.floor(toes_z / FV + 1e-6)
+    det[zone & toes & gap & (Y > FV)] = SOFT
+    ahead = ~_shift(inside, (0, 0, -1))
+    over = ~_shift(inside, (0, -1, 0))
+    det[zone & toes & ~gap & ahead & over & inside] = BRIGHT
+    return det
 
 
 def _details(man, name, P, inside=None):

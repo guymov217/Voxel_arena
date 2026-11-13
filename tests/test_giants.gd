@@ -543,6 +543,47 @@ func test_a_giant_strikes_and_is_struck_where_he_is_drawn() -> void:
 		m.queue_free()
 		await get_tree().physics_frame
 
+## The giants sculpted anew (a smooth skin, limbs that run on at their joints, a fighter's feet and
+## the Minotaur's hooves: user, what was done for the gladiators on every monster) strike and are
+## struck by the boxes they always had: each part's fit is kept in his build (tools/gen_fine_body.py
+## "fit": the giant as he was first sculpted, row by row) and his boxes are made of that, not of
+## what is drawn of him now. His new skin is drawing only.
+func test_a_giant_sculpted_anew_keeps_the_boxes_he_had() -> void:
+	# (An upper arm's boxes as they were before: their sizes, from its hand end up.)
+	var was := {
+		"cyclops": [Vector3(0.3575, 0.1358, 0.3575), Vector3(0.286, 0.1358, 0.3575), Vector3(0.3825, 0.6792, 0.4075)],
+		"troll": [Vector3(0.253, 0.1202, 0.2846), Vector3(0.253, 0.1202, 0.253), Vector3(0.253, 0.2403, 0.3162), Vector3(0.3384, 0.3605, 0.3605)],
+	}
+	for kind in ["cyclops", "giant", "minotaur", "troll", "titan"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 5})
+		m.me.f.teleport(Vector3(0, 0, -12))
+		var spec: Dictionary = m.enemy_spec({"e": kind}, 0, 1)
+		spec.pos = Vector3(0, 0.1, 4.0)
+		spec.yaw = PI
+		var g: Fighter = m.spawn_fighter(spec).f
+		var bn := Physique.giant_of(g)
+		var kept_all := true
+		var parts_n := 0
+		for p: VoxelPart in g.parts:
+			if p == g.head:
+				continue
+			parts_n += 1
+			var d := FineBody.part_data(bn, String(p.part_name))
+			var kept := FineBody.slabs_kept(p, d.get("fit", PackedInt32Array()), p.vf * p.part_scale)
+			kept_all = kept_all and not kept.is_empty() and kept == p.fit_slabs
+		t.check(kept_all and parts_n == 9, "%s: each of his parts struck by the boxes kept in his build (%d parts)" % [kind, parts_n])
+		if was.has(kind):
+			var got: Array = (g.by_name.upperArmR as VoxelPart).fit_slabs
+			var same: bool = got.size() == (was[kind] as Array).size()
+			if same:
+				for i in got.size():
+					same = same and ((got[i] as AABB).size - (was[kind][i] as Vector3)).length() < 0.0006
+			t.check(same, "%s: his upper arm's boxes the ones it had (%d boxes)" % [kind, got.size()])
+		m.queue_free()
+		await get_tree().physics_frame
+
 ## The arm a giant holds his weapon in with both hands is drawn where it is: the turn of the drawing
 ## about the shoulder that lays a man's elbow out of his chest (Fighter._swivel_drawing) drew a
 ## giant's a third of a metre off it, and his arm struck a man where nothing was drawn (user).

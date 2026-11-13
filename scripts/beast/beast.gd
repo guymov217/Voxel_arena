@@ -60,6 +60,20 @@ var rng := RandomNumberGenerator.new()
 var on_breath: Callable
 var on_venom: Callable               # (beast, victim, part, point): poison where it struck
 const VENOMOUS := {"scorpion": "sting", "manticore": "sting", "spider": "bite", "python": "bite", "basilisk": "bite"}
+## A stinger's tail modelled as it is held, curled up over the back with the sting hanging over
+## the head toward its foe (user: a scorpion's tail is curled in toward its foe; it was modelled
+## arched away behind it and raised a radian at each joint, which stood it up like a club with the
+## sting at the sky). Each joint, radians about it from how it is modelled: [held, cocked, struck].
+## Held a little back of that (the joints' drive gives under the tail's own weight by as much, so
+## it hangs as modelled); cocked, reared up and back a little more; struck, the root thrown forward
+## and the curl opened out, so the sting comes down and forward at him.
+## (The manticore's the same, user: its tail too. Cocked and struck through the very stands it
+## took before, straight up and then thrown forward over its back; making ready to fling its
+## spikes it rears up from the curl, where it was raised further.)
+const CURLED_TAIL := {
+	"scorpion": {"tail": [-0.03, -0.24, 0.73], "tail2": [-0.28, -0.22, -0.16], "tail3": [-0.3, 0.01, -0.29]},
+	"manticore": {"tail": [-0.03, 0.1225, 0.723], "tail2": [-0.058, -0.391, 0.21], "tail3": [-0.12, -0.594, 0.007]},
+}
 var coil_cool := 0.0
 var roll_chance := ROLL_CHANCE   # (a crocodile's: a test of the roll itself sets it to 1)
 var on_stomp: Callable
@@ -170,6 +184,13 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		if d.parent != null and by_name.has(d.parent):
 			p.parent_part = by_name[d.parent]
 			p.parent_part.child_parts.append(p)
+			# (How it sits at rest on the part it hangs from: its joint is drawn from there, _bend_drawing.)
+			p.set_meta("rest_on", (p.parent_part.get_meta("rest_basis") as Basis).inverse() * local.basis)
+		p.set_meta("rest_basis", local.basis)
+		p.set_meta("rest_xf", local)   # (where it is as the beast stands at rest: _carried_drawing)
+		# (An upright leg stands on its foot: drawn level on the sand, _foot_drawing.)
+		if d.leg and d.lower and local.basis.y.y > 0.95 and absf(float(d.get("splay", 0.0))) < 0.3:
+			p.set_meta("paw", true)
 	torso = by_name.beastBody
 	head = by_name.beastHead
 	_count_organs()
@@ -424,7 +445,16 @@ func apply_hit_inner(part: VoxelPart, hit: Dictionary) -> Dictionary:
 ## root: it is held up, as weak as its wounds leave it, until it comes off (and the beast dies).
 ## A thunder pot at the root of a griffin's head once left it lolling on a live griffin (user).
 func may_hang(part: VoxelPart) -> bool:
-	return part != head or sp.get("multiHead", false)
+	return (part != head or sp.get("multiHead", false)) and not is_hard(part)
+
+## A horn and a tusk are hard through and through (user: one that breaks is not to dangle like a
+## limb, it is rigid). It does not break under its skin and bend there with its end swinging, nor
+## hang by a strip of itself: it cracks, it is chipped and cut into, and broken or cut through it
+## comes off as the stiff piece it is.
+const HARD := ["horn", "goatHorn", "tusk"]
+func is_hard(part: VoxelPart) -> bool:
+	var n := String(part.part_name)
+	return HARD.any(func(h): return n.begins_with(h))
 
 ## A beast's head (each head of a many-headed one) cut through across it anywhere comes off
 ## whole, at its joint: the back of it is its neck, there is no neck of its own to cut through.
@@ -478,6 +508,194 @@ func leg_len() -> float:
 		_leg_len = 0.5 * S
 	return _leg_len
 var _leg_len := 0.0
+
+# ---------- Its joints drawn as one skin ----------
+
+## A beast's joints under the smooth skin (drawing only; voxel_body.gdshader: joint_at, joint_turn,
+## joint_dir. User: what was done for the gladiators on every monster and beast, their joints one
+## skin). Each part's skin reaches a few fine voxels on into the part it hangs from, and that one's
+## into it (tools/gen_fine_beasts.py), which hides the joint only while it is at rest: turned, a
+## knee, a neck or a tail opened a step on one side and stood through on the other. What is drawn
+## with a part near its joint is turned back to where it sits at rest on the part it hangs from:
+## all of the way where the two skins lie over each other, less and less over a little more of the
+## part. Its skin runs on out of the other's at any angle.
+const JOINT_OVER := 4.0    # fine voxels (of the part it hangs from) the two skins lie over each other: the sculpt's three, and one
+const JOINT_BAND := 5.0    # fine voxels (its own) the turn dies out over
+var _jointed := {}
+
+func _bend_drawing(interp := true) -> void:
+	if _jointed.is_empty() and not FineSmooth.skinned():
+		return
+	for p: VoxelPart in parts:
+		var par: VoxelPart = p.parent_part
+		var on: bool = par != null and p.joint != null and p.has_meta("rest_on") and p.fine.get("smooth", false) and par.fine.get("smooth", false) \
+				and not (p.severed or p.hanging or p.missing or p.fractured or par.severed or par.missing) and not _stiff(p)
+		if not on:
+			_joint_set(p, [])
+			continue
+		var tp := par.draw_turn * (par.get_global_transform_interpolated() if interp else par.global_transform)
+		var tc := p.draw_turn * (p.get_global_transform_interpolated() if interp else p.global_transform)
+		_joint_set(p, joint_of(tp.basis, tc.basis, p.get_meta("rest_on"), tc * p.ca + p.draw_shift, tc.origin + p.draw_shift,
+				JOINT_OVER * par.vf * par.part_scale * 0.5, JOINT_BAND * p.vf * p.part_scale * 0.5))
+
+## A part whose joints are not drawn as one skin (its sculpt's word, FineBody.beast_data): a
+## scorpion's leg, hard shell jointed, and drawn off the part that carries it, far from the joint.
+static func _stiff(p: VoxelPart) -> bool:
+	var d = p.fine.get("d")
+	return d is Dictionary and (d as Dictionary).get("stiff", false)
+
+## A part drawn carried by the part it hangs from (drawing only; its sculpt's word, "with":
+## FineBody.beast_data, tools/beast_sculpts.py). A scorpion's legs are drawn spread out to its
+## sides, each up to a knee and down to the sand (user: it has to look like a scorpion), off the
+## two parts that carry each of them, which are folded under its body: the thigh with the upper
+## part, which swings it fore and aft about its hip, and the shin with the lower. Drawn where its
+## own part is, the shin swung about that part's joint under the body, a yard from the knee it is
+## drawn at, and came away from its thigh. It is drawn as it sits at rest on the upper part,
+## lifted about the drawn knee by a share of what its own joint is bent: the foot comes up off
+## the sand while the leg is carried forward and is set down again. A shin that hangs broken is
+## drawn folded up at the knee; one cut off or gone as it is (it falls from where it was drawn).
+const CARRY_BROKEN := 0.9
+static var _carry_kinds := {}   # species -> whether its sculpt has a part drawn so
+var _carried := {}              # the parts drawn so now
+
+func _carried_drawing(interp := true) -> void:
+	if not _carry_kinds.has(species):
+		var any := false
+		for d in sp.parts:
+			if FineBody.beast_data(species, str(d.name)).has("with"):
+				any = true
+				break
+		_carry_kinds[species] = any
+	if not _carry_kinds[species] and _carried.is_empty():
+		return
+	var k := S / float(sp.scale)
+	for p: VoxelPart in parts:
+		var d = p.fine.get("d")
+		var w = (d as Dictionary).get("with") if d is Dictionary else null
+		var par: VoxelPart = p.parent_part
+		var on: bool = w is PackedFloat32Array and par != null and par.has_meta("rest_xf") and p.has_meta("rest_xf") \
+				and not (p.severed or p.missing or par.severed or par.missing)
+		if not on:
+			if _carried.has(p):
+				_carried.erase(p)
+				p.draw_turn = Transform3D()
+				p.draw_shift = Vector3.ZERO
+			continue
+		var inv: Transform3D = (par.get_meta("rest_xf") as Transform3D).affine_inverse()
+		var rel: Transform3D = inv * (p.get_meta("rest_xf") as Transform3D)
+		var hinge: Vector3 = inv * (Vector3(w[0], w[1], w[2]) * k)
+		var axis: Vector3 = (inv.basis * Vector3(w[3], w[4], w[5])).normalized()
+		var tu := par.get_global_transform_interpolated() if interp else par.global_transform
+		var tl := p.get_global_transform_interpolated() if interp else p.global_transform
+		p.draw_turn = carried_at(par.draw_turn * tu, tl, rel, hinge, axis, w[6], p.hanging or p.fractured) * tl.affine_inverse()
+		p.draw_shift = par.draw_shift
+		_carried[p] = true
+
+## Where a carried part is drawn: on the part it hangs from (drawn at `up`) as it sits on it at
+## rest (`rel`), lifted about `hinge` round `axis` (both in that part's own frame) by `share` of
+## what its own joint is bent from rest about that part's x (the part itself is at `low`); or,
+## `broken`, folded up there.
+static func carried_at(up: Transform3D, low: Transform3D, rel: Transform3D, hinge: Vector3, axis: Vector3, share: float, broken := false) -> Transform3D:
+	var lift := CARRY_BROKEN
+	if not broken:
+		var q := ((up.basis.orthonormalized().inverse() * low.basis.orthonormalized()) * rel.basis.orthonormalized().inverse()).get_rotation_quaternion()
+		lift = absf(wrapf(2.0 * atan2(q.x, q.w), -PI, PI)) * share
+	return up * Transform3D(Basis(), hinge) * Transform3D(Basis(axis, lift), Vector3.ZERO) * Transform3D(Basis(), -hinge) * rel
+
+## A joint's share for the part that hangs there (voxel_body.gdshader joint_at, joint_turn,
+## joint_dir): the joint as it is drawn (`pivot`, world), the way from it into the part (to its
+## `middle`), how far along that the turn is whole (`over`) and how much further it dies out over
+## (`band`), and the turn itself, the shorter way round: the one that sets the part (`part`, as it
+## is turned now) as it sits at rest (`rest_on`) on the part it hangs from (`par`). Nothing for a
+## part jointed at its own middle (a collar, a ruff: it does not swing).
+static func joint_of(par: Basis, part: Basis, rest_on: Basis, pivot: Vector3, middle: Vector3, over: float, band: float) -> Array:
+	var along := middle - pivot
+	if along.length() < 0.02 or band <= 0.0:
+		return []
+	var q := (par.orthonormalized() * rest_on).get_rotation_quaternion() * part.orthonormalized().get_rotation_quaternion().inverse()
+	if q.w < 0.0:
+		q = -q
+	var v := Vector3(q.x, q.y, q.z)
+	var sl := v.length()
+	var turn := v / sl * (2.0 * atan2(sl, q.w)) if sl > 1e-5 else Vector3.ZERO
+	var dir := along.normalized()
+	return [Vector4(pivot.x, pivot.y, pivot.z, band), Vector4(turn.x, turn.y, turn.z, 0.0), Vector4(dir.x, dir.y, dir.z, over)]
+
+func _joint_set(p: VoxelPart, b: Array) -> void:
+	var was: Array = _jointed.get(p, [])
+	if b.is_empty() and was.is_empty():
+		return
+	var drawn: Array = p.draw_with + [p.fine.get("jaw_mi")]
+	# (What is no longer drawn with the part is drawn as it is again.)
+	for n in was:
+		if is_instance_valid(n) and (b.is_empty() or not drawn.has(n)):
+			for k in [&"joint_at", &"joint_turn", &"joint_dir"]:
+				(n as GeometryInstance3D).set_instance_shader_parameter(k, Vector4.ZERO)
+	if b.is_empty():
+		_jointed.erase(p)
+		return
+	var now := []
+	for n in drawn:
+		if n != null and is_instance_valid(n) and n is GeometryInstance3D:
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"joint_at", b[0])
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"joint_turn", b[1])
+			(n as GeometryInstance3D).set_instance_shader_parameter(&"joint_dir", b[2])
+			now.append(n)
+	_jointed[p] = now
+
+## A beast's feet level on the sand (drawing only; voxel_body.gdshader: foot_at, foot_turn. User:
+## the gladiators' feet on every monster and beast, its paws and hooves level on the ground). A
+## paw is drawn with the leg over it, in one piece with it, at the foot of the leg's own box: a
+## leg that leaned, as it does at every step and as it stands, drove the toes into the sand or
+## lifted them off it and stood the paw on its edge. While the leg stands on it, what is drawn
+## under its ankle (PAW_ANKLE up the leg) is turned level about the ankle and set with its sole
+## where the foot of the leg's box is lowest, which is what stands on the sand. Not a foot carried
+## high through the air (it goes with its leg), a leg that lies, or one cut, hanging or broken;
+## nor a leg that stands out sideways (a spider's, a crocodile's).
+const PAW_ANKLE := 0.3                  # the ankle, of the lower leg's own length up from its foot
+const PAW_LEAN := Vector2(0.75, 1.15)   # the leg's lean (rad): level up to the one, as the leg from the other
+const PAW_NEAR := Vector2(0.3, 0.65)    # its foot over the sand, of the leg's own length, likewise
+var _pawed := {}
+
+func _foot_drawing(interp := true) -> void:
+	for p: VoxelPart in parts:
+		if not p.has_meta("paw"):
+			continue
+		var b := [Vector4.ZERO, Vector4.ZERO]
+		var up: VoxelPart = p.parent_part
+		if alive and p.fine.has("mi") and p.fine.get("smooth", false) and not (p.severed or p.hanging or p.missing or p.fractured or up == null or up.severed or up.hanging):
+			b = paw_level(p.draw_turn * (p.get_global_transform_interpolated() if interp else p.global_transform), p.draw_shift, p.half_ext, _paw_deep(p), ground_y)
+		_bend_set(p, b[0], b[1], &"foot_at", &"foot_turn", _pawed)
+
+## How far under the foot of its leg's box a paw is drawn (its sculpt's lowest fine voxels).
+func _paw_deep(p: VoxelPart) -> float:
+	if not p.has_meta("paw_deep"):
+		var lo := 0
+		var cells: PackedInt32Array = p.fine.get("cells", PackedInt32Array())
+		for s in cells.size() / FineBody.CELL:
+			lo = mini(lo, cells[s * FineBody.CELL + 1])
+		p.set_meta("paw_deep", -lo * float(p.fine.get("fsz", 0.0)))
+	return p.get_meta("paw_deep")
+
+## A level paw's two numbers (voxel_body.gdshader foot_at, foot_turn) for a lower leg drawn at `t`,
+## moved `shift`, its box `half` each way and its paw drawn `deep` under the box, on sand at
+## `ground`: the ankle and the band the turn is spread over, and the turn (the shorter way from
+## the leg's line to upright, less as the leg lies or its foot is off the sand) with how far the
+## paw is moved for its sole to be where the box's foot is lowest. Both zero: the paw as it is.
+static func paw_level(t: Transform3D, shift: Vector3, half: Vector3, deep: float, ground: float) -> Array:
+	var up := t.basis.y.normalized()
+	var lean := up.angle_to(Vector3.UP)
+	var foot := t * Vector3(0.0, -half.y, 0.0) + shift
+	var low := foot.y - absf(t.basis.x.normalized().y) * half.x - absf(t.basis.z.normalized().y) * half.z
+	var len := half.y * 2.0
+	var k := (1.0 - smoothstep(PAW_LEAN.x, PAW_LEAN.y, lean)) * (1.0 - smoothstep(PAW_NEAR.x * len, PAW_NEAR.y * len, low - ground))
+	if k <= 0.001:
+		return [Vector4.ZERO, Vector4.ZERO]
+	var ank := len * PAW_ANKLE
+	var ankle := foot + up * ank
+	var rot := up.cross(Vector3.UP).normalized() * (lean * k) if lean > 0.002 else Vector3.ZERO
+	# (Turned level about its ankle, its sole is the ankle's height and its own depth under it.)
+	return [Vector4(ankle.x, ankle.y, ankle.z, ank * 0.5), Vector4(rot.x, rot.y, rot.z, (low - (ankle.y - ank - deep)) * k)]
 
 func lower_of(leg: VoxelPart) -> VoxelPart:
 	if _lower.has(leg):
@@ -1992,9 +2210,11 @@ func can_breathe() -> bool:
 # ---------- Animation ----------
 
 ## With the game paused (the kill cam) a beast is drawn as its bodies are: nothing of it is seated
-## on its joints or capped, as a man is (Fighter.draw_now).
+## on its joints or capped, as a man is (Fighter.draw_now); its joints' skin and its paws are.
 func draw_now() -> void:
-	pass
+	_carried_drawing(false)
+	_bend_drawing(false)
+	_foot_drawing(false)
 
 ## The jaws, drawing only (host and guests alike): they gape on the lunge and snap shut on the
 ## bite, hang wide while it breathes, open a little in a snarl or a hold, and hang open dead.
@@ -2034,6 +2254,10 @@ func _process(dt: float) -> void:
 		if not p.severed:
 			p.set_gape(gape, dt)
 	_chest(dt)
+	if DisplayServer.get_name() != "headless":
+		_carried_drawing()
+		_bend_drawing()
+		_foot_drawing()
 
 ## Its chest rises and falls, slow at rest and quick and deep when it has run (drawing only: the
 ## body's box, its mass and its voxels stay as they are).
@@ -2261,10 +2485,12 @@ func _setup_anim() -> void:
 				j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, 0.35)
 		# Strong enough to hold up everything hanging off it (a neck carries its head).
 		var carried := 0.0
+		var heady := false   # a tail that ends in a head (the chimera's serpent): a neck, held up
 		var stack := [p]
 		while not stack.is_empty():
 			var c: VoxelPart = stack.pop_back()
 			carried += c.mass
+			heady = heady or (c != p and c.def.get("head", false))
 			stack.append_array(c.child_parts)
 		var reach := maxf(p.half_ext.x, maxf(p.half_ext.y, p.half_ext.z)) * 2.0
 		var mt := 60.0 * carried * reach + 20.0
@@ -2274,7 +2500,7 @@ func _setup_anim() -> void:
 		# A neck modelled leaning far back over the spine is carried more upright.
 		var up := rest * Vector3.UP
 		var lean := maxf(0.0, atan2(-up.z, up.y) - 0.35) if role == "neck" else 0.0
-		anim.append({"part": p, "role": role, "rest": rest, "i": anim.size(), "max_t": mt, "lean": lean})
+		anim.append({"part": p, "role": role, "rest": rest, "i": anim.size(), "max_t": mt, "lean": lean, "heady": heady and role == "tail"})
 
 ## The dragon is a living thing between its attacks, not a machine waiting for the next one
 ## (user: it is too robotic): it breathes slow and deep (the neck and the folded wings rise and
@@ -2358,7 +2584,8 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 					# Arched up over the back, the sting poised above the head, swaying (raised higher
 					# still and quivering as a manticore makes ready to fling its spikes).
 					var vk: float = clampf(float(ai.get("volley", 0.0)) / VOLLEY_WIND, 0.0, 1.0)
-					off.x = 1.0 + 0.05 * sin(time * 1.3 + i) + vk * (0.25 + 0.06 * sin(time * 40.0 + i))
+					var held: float = float(CURLED_TAIL[species].get(String(p.part_name), [0.0])[0]) if CURLED_TAIL.has(species) else 1.0
+					off.x = held + 0.05 * sin(time * 1.3 + i) + vk * (0.25 + 0.06 * sin(time * 40.0 + i)) * (-0.8 if CURLED_TAIL.has(species) else 1.0)
 					off.y = sin(time * 0.9 - i * 0.6) * 0.12 + track * 0.25
 				else:
 					var k := 0.18 + (0.22 if moving else 0.0) + (0.3 if threat or ai.mode == "charge" else 0.0)
@@ -2421,6 +2648,11 @@ func _animate(dt: float, moving: bool, yaw_rate: float, to: Vector3, dist: float
 			if lunging:
 				# Fire poured out with the neck thrust down and forward over the prey, the head level.
 				lim = NECK_DIP
+		if a.get("heady", false):
+			# A tail that carries a head is a neck: it bears its own weight and its head's (user:
+			# the chimera's serpent hung limp, its head at its hocks. Driven as a tail it gave by
+			# half a radian at each joint under the head's weight, down to the joints' stops).
+			_hold_up(p, a.max_t, dt)
 		var wn: float = ROLE_WN[role]
 		if (role == "neck" or role == "head") and _fire_lunge() >= 1.0:
 			wn *= 1.6   # the thrust is quick and hard, not a slow sway forward
@@ -2505,6 +2737,8 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: fl
 					return Vector3(0.35, 0, 0)                                           # the horns lowered
 				return Vector3(-0.4, track * 0.3, 0)                                    # the jaws drawn back
 			"tail":
+				if CURLED_TAIL.has(species):
+					return Vector3(float(CURLED_TAIL[species].get(String(p.part_name), [0.0, 0.0, 0.0])[1]), track * 0.3, 0)
 				return Vector3(-0.3, track * 0.3, 0)                                    # the sting cocked higher
 			"claw":
 				return Vector3(0, signf(p.pa.x) * 0.35, 0)                              # the pincer opened wide
@@ -2532,6 +2766,8 @@ func _strike_pose(p: VoxelPart, role: String, st: float, track: float, _dist: fl
 				return Vector3(-0.3, 0, 0)                                              # the horn toss
 			return Vector3(0.45, track * 0.3, 0)                                        # a bite
 		"tail":
+			if CURLED_TAIL.has(species):
+				return Vector3(float(CURLED_TAIL[species].get(String(p.part_name), [0.0, 0.0, 0.0])[2]), track * 0.3, 0)
 			return Vector3(0.3, track * 0.3, 0)                                        # the sting driven forward over the back
 		"claw":
 			return Vector3(0, -signf(p.pa.x) * 0.45, 0)                                # the pincer snaps shut
@@ -2840,7 +3076,7 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 	if by_name.has("stinger"):
 		var stg: VoxelPart = by_name.stinger
 		var chain_ok := fn_of(["tail"]) > 0.3
-		if part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and dist < reach * 1.3 and facing > 0.3:
+		if species != "manticore" and part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and dist < reach * 1.3 and facing > 0.3:
 			_strike(stg, 0.7, 2.2 + rng.randf(), [stg, (tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * maxf(30.0 * S, 4.0 * stg.mass)])
 			for n in ["tail", "tail2", "tail3"]:
 				if by_name.has(n) and part_ok(by_name[n], 0.1):
@@ -2849,7 +3085,13 @@ func _abilities(dt: float, t, to: Vector3, dist: float, cur: float) -> void:
 					by_name[n].set_meta("strike_lead", false)
 		# The manticore's tail is not long enough to sting over its back at a man before it: it
 		# stings one at its side or behind it (flanking the claws), within the tail's reach.
-		elif species == "manticore" and part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and stg.global_position.distance_to(tp) < 1.3 * S:
+		# (Only there, at its flank behind its middle or behind it: it struck at a man before it too,
+		# as a scorpion does, and never reached him, one sting in eight bouts. Curled forward over
+		# its back as its tail now is, user, the sting hangs over its shoulders and came down on a
+		# man under its chest every time, twelve in eight. Before its middle a man is its jaws' and
+		# its claws'; the tail stays poised.)
+		elif species == "manticore" and part_ok(stg, 0.2) and chain_ok and _ready_to_strike(stg) and stg.global_position.distance_to(tp) < 1.3 * S \
+				and (torso.global_transform.affine_inverse() * tp).z < -torso.half_ext.z * 0.15:
 			_strike(stg, 0.7, 2.2 + rng.randf(), [stg, (tp + Vector3(0, 0.3, 0) - stg.global_position).normalized() * maxf(30.0 * S, 4.0 * stg.mass)])
 	if species == "manticore":
 		_volley(dt, tp, dist, facing)

@@ -96,6 +96,9 @@ def parts_of(sp):
 # ---------- the big cats ----------
 
 FUR, WET, BONE = 8, 7, 6
+MOIST = 9
+NOSE = 2         # a nose: a dull sheen (leather's), not the hard highlight of a wet ball            # a nose's leather: a sheen on it, not a mirror (wet, it shone the sky's blue)
+MANE_COAT = 0.035    # the least depth of a mane where it lies on the hide as a coat
 
 CATS = {
     "lion": dict(fur=0xc8913f, light=0xead09a, dark=0x9c6a2c, mane=0x84461c, mane2=0x5e2c10, nose=0x4a2a24, eye=0xd8a030, ear=0x6a4420, mane_on=True, stripes=False, head=1.2, leg=1.08),
@@ -124,6 +127,7 @@ def cat(sp, g, P):
     # The legs, from the shoulder and the hip down to the paw, its toes and claws forward.
     legs = None
     claws = None
+    gmin = min(K[n][1][1] - K[n][2][1] for n in ("legFLLo", "legBLLo"))
     for fb, up, lo_n in (("F", "legFL", "legFLLo"), ("F", "legFR", "legFRLo"), ("B", "legBL", "legBLLo"), ("B", "legBR", "legBRLo")):
         _, pu, hu = K[up]
         _, pl, hl = K[lo_n]
@@ -164,7 +168,9 @@ def cat(sp, g, P):
     sk = smin(sk, ell(g, mz, np.array([0.155, 0.125, 0.16]) * hs), 0.06)
     for sx in (-1, 1):
         sk = smin(sk, ell(g, mz + np.array([sx * 0.07, -0.015, 0.08]) * hs, np.array([0.085, 0.075, 0.075]) * hs), 0.03)
-        sk = smin(sk, ell(g, hc + np.array([sx * 0.1, 0.075, 0.19]) * hs, np.array([0.085, 0.04, 0.06]) * hs), 0.03)
+        # (The brow a ridge slanting down to the nose, a scowl: over the eye's outer end, not down
+        # over all of it; seen from a man's height a level brow hid half the eye.)
+        sk = smin(sk, cap(g, hc + np.array([sx * 0.03, 0.068, 0.2]) * hs, hc + np.array([sx * 0.185, 0.118, 0.15]) * hs, 0.034 * hs, 0.028 * hs), 0.03)
     sk = smin(sk, cap(g, hc + np.array([0, 0.02, 0.18]) * hs, mz + np.array([0, 0.07, 0.1]) * hs, 0.055 * hs, 0.05 * hs), 0.04)
     chin = mz + np.array([0.0, -0.11, -0.03]) * hs
     sk = smin(sk, ell(g, chin, np.array([0.11, 0.065, 0.12]) * hs), 0.04)
@@ -172,7 +178,10 @@ def cat(sp, g, P):
     for sx in (-1, 1):
         ec = hc + np.array([sx * 0.105, 0.02, 0.215]) * hs
         eyes.append(ec)
-        sk = smax(sk, -ell(g, ec + np.array([0, 0, 0.03]) * hs, np.array([0.05, 0.035, 0.04]) * hs), 0.015)
+        # (A shallow socket and the ball of the eye in it: sunk deep under the brow the eye was a
+        # dark slit.)
+        sk = smax(sk, -ell(g, ec + np.array([0, 0, 0.045]) * hs, np.array([0.055, 0.04, 0.04]) * hs), 0.012)
+        sk = smin(sk, ell(g, ec + np.array([0, 0, -0.012]) * hs, np.array([0.045, 0.036, 0.03]) * hs), 0.008)
     ears = None
     for sx in (-1, 1):
         e = ell(g, hc + np.array([sx * 0.19, 0.2, -0.04]) * hs, np.array([0.085, 0.08, 0.035]) * hs)
@@ -190,18 +199,24 @@ def cat(sp, g, P):
         m = m - 0.07 * (n1 - 0.5) - 0.035 * (n2 - 0.5)
         face = ell(g, mz + np.array([0, 0.06, 0.02]) * hs, np.array([0.33, 0.36, 0.3]) * hs)
         mane = smax(m, -face, 0.05)
+        # Over the back of his neck it is whole (user: the mane on his back was not). It lay as
+        # shallow there as his hide is high: the top of his neck stood through it, and between
+        # its tufts every other cell was his hide's gold. Where it grows there, his neck from
+        # above and a hand down each side, his hide wears it as a coat of its own depth, in the
+        # same tufts: none of him shows through it, and its edge is one line.
+        saddle = np.maximum((np.sqrt((g.X / 0.36) ** 2 + ((g.Z - (zf - 0.32)) / 0.46) ** 2) - 1.0) * 0.36 - 0.07 * (n1 - 0.5), (top - 0.3) - g.Y)
+        mane = np.minimum(mane, np.maximum(saddle, d - (MANE_COAT + 0.05 * n1 + 0.02 * n2)))
         d = np.minimum(d, mane)
-    # The tail along its parts, the lion's tuft at its end.
-    pts = []
-    for n in ("tail", "tailTip"):
-        if n in K:
-            R, pos, half = K[n]
-            pts.append(pos + R @ np.array([0, 0, half[2]]))
-            pts.append(pos - R @ np.array([0, 0, half[2]]))
+    # The tail along its parts, the lion's tuft at its end. One curve through its joints (user:
+    # the tail was a stick with a sharp bend in it, drawn straight from joint to joint): it falls
+    # from the rump, sweeps round under its joint and back, and its end turns up a little.
+    ends = _tail_points(K, ("tail", "tailTip"))
     tail = None
-    for a, b in zip(pts[0::2], pts[1::2]):
-        t = cap(g, a, b, 0.055, 0.045)
-        tail = t if tail is None else smin(tail, t, 0.04)
+    if len(ends) == 2:
+        way = _tail_curve(ends[0][0], ends[0][1], ends[1][1])
+        tail = _chain(g, way, np.linspace(0.057, 0.043, len(way)))
+    elif ends:
+        tail = cap(g, ends[0][0], ends[0][1], 0.055, 0.045)
     if tail is not None:
         d = smin(d, tail, 0.05)
     tuft = None
@@ -220,33 +235,32 @@ def cat(sp, g, P):
     base = fur[None, None, None, :] * (1.0 + 0.16 * (clump - 0.5) + 0.06 * (fine - 0.5))[..., None]
     back = np.clip((g.Y - (top - 0.25)) / 0.25, 0, 1) * (np.abs(g.X) < 0.25)
     base = base * (1 - 0.18 * back)[..., None]
-    belly = np.clip((bot + 0.25 - g.Y) / 0.25, 0, 1) * (g.Z < zf) * (g.Z > zb + 0.2) * (g.Y > 0.8)
-    inner = (np.abs(g.X) < 0.16) & (g.Y < 1.0) & (g.Y > 0.3)
-    lt = np.maximum(belly, inner * 0.7)
+    # Its underside pale, one tone running into the other (user: the cream lay in a band across
+    # the top of every leg and in a square down the inside of each; it made no sense and did not
+    # blend): where the skin of its trunk looks down, its belly and the floor of its chest, the
+    # more the further under it is; and the inner side of each leg, less, fading out to the paw.
+    nx_, ny_, _ = _facing(g, d)
+    soft = 0.2 * (clump - 0.5)
+    belly = np.clip((-ny_ - P.get("under", 0.2)) / 0.5 + soft, 0.0, 1.0) * (g.Y > bot - 0.25) * (g.Y < body[1]) * (g.Z < zf + 0.1) * (g.Z > zb)
+    inner = np.clip((-np.sign(g.X) * nx_ - 0.35) / 0.4 + soft, 0.0, 1.0) * (legs < 0.04) * np.clip((g.Y - (gmin + 0.12)) / 0.15, 0.0, 1.0)
+    lt = np.maximum(belly, inner * P.get("inner", 0.5))
     col[:] = base * (1 - lt[..., None]) + light[None, None, None, :] * (1.0 + 0.08 * (clump - 0.5))[..., None] * lt[..., None]
     near_mz = ell(g, mz + np.array([0, -0.02, 0.06]) * hs, np.array([0.15, 0.12, 0.14]) * hs) < 0.01
     near_ch = ell(g, chin, np.array([0.12, 0.075, 0.13]) * hs) < 0.01
     col[near_mz | near_ch] = light * (0.98 + 0.06 * (fine[near_mz | near_ch] - 0.5))[:, None]
     nose = ell(g, mz + np.array([0, 0.07, 0.13]) * hs, np.array([0.06, 0.045, 0.06]) * hs) < 0
     col[nose] = hexc(P["nose"])
-    kind[nose] = WET
+    kind[nose] = MOIST
     mouth = (np.abs(g.Y - (mz[1] - 0.075 * hs)) < 0.012) & (g.Z > mz[2] - 0.02) & (np.abs(g.X) < 0.12 * hs)
     col[mouth & occ] = (0.16, 0.08, 0.06)
-    for ec in eyes:
-        e = ell(g, ec, np.array([0.05, 0.035, 0.045]) * hs) < 0.004
-        col[e] = hexc(P["eye"])
-        kind[e] = WET
-        pupil = e & (np.abs(g.X - ec[0]) < 0.012) & (np.abs(g.Y - ec[1]) < 0.03)
-        col[pupil] = (0.04, 0.03, 0.02)
-        rim = (ell(g, ec, np.array([0.065, 0.048, 0.055]) * hs) < 0.004) & ~e
-        col[rim & (g.Z > ec[2] - 0.02)] = (0.18, 0.1, 0.06)
     col[ears < 0.004] = hexc(P["ear"])
     inner_e = (ears < 0.004) & (g.Z > hc[2] - 0.04 * hs + 0.015)
     col[inner_e] = light * 0.85
     if mane is not None:
         # (All of the mane's own room, not only where it is the outermost: the head and the chest
         # come through its tufts here and there, and stayed golden flecks in the dark mane.)
-        mk = mane < 0.012
+        # (And the tips of his ears where they stand a finger out of it: pale specks on the mane.)
+        mk = (mane < 0.012) | ((ears < 0.004) & (mane < 0.05))
         mn = vnoise(np.abs(g.X), g.Y, g.Z, 0.035, 7)
         mc = hexc(P["mane"])[None, :] * (1 - mn[mk])[:, None] + hexc(P["mane2"])[None, :] * mn[mk][:, None]
         col[mk] = mc * (1.0 + 0.1 * (fine[mk] - 0.5))[:, None]
@@ -255,7 +269,7 @@ def cat(sp, g, P):
     if P["stripes"]:
         wv = vnoise(np.abs(g.X), g.Y, g.Z, 0.12, 4)
         s1 = np.sin((g.Z * 9.5 + (g.Y - 1.3) * 3.0 + wv * 2.4) * math.pi)
-        st = (s1 > 0.8) & (g.Y > bot + 0.1) & ~(belly > 0.4) & (sk >= 0.004)
+        st = (s1 > 0.8) & (g.Y > bot + 0.1) & ~(belly > 0.75) & (sk >= 0.004)
         legst = (np.sin((g.Y * 11.0 + wv * 2.0) * math.pi) > 0.8) & (g.Y < 0.9) & (np.abs(g.X) > 0.2)
         facest = (np.sin(((g.Y - hc[1]) * 18.0 + np.abs(g.X) * 7.0 + wv) * math.pi) > 0.9) & (sk < 0.004) & (g.Z < mz[2] - 0.05) & ((np.abs(g.X) > 0.16 * hs) | (g.Y > hc[1] + 0.12 * hs))
         tailst = (np.sin(((g.Z + g.Y) * 10.0) * math.pi) > 0.6) & (tail < 0.004) if tail is not None else np.zeros_like(st)
@@ -267,7 +281,101 @@ def cat(sp, g, P):
     ck = claws < 0.003
     col[ck] = (0.9, 0.86, 0.76)
     kind[ck] = BONE
+    # The eyes last, over every marking (user: the lion's eyes were not whole).
+    iris = hexc(P["eye"])
+    for ec in eyes[:1]:
+        # (Its iris is not wet to the light as it was: in the arena it shone white with the sky.)
+        stamp(g, col, kind, ec, EYE, {"L": ((0.06, 0.04, 0.03), None), "l": (fur * 0.45, None), "A": (iris, None),
+                                      "P": ((0.02, 0.015, 0.015), None), "w": (light, None)}, ec[2] - 0.09 * hs, ec[2] + 0.09 * hs, row=1)
     return d, np.clip(col, 0, 1), kind
+
+
+def _tail_curve(p0, p1, p2, n=7):
+    """A tail's line from its root `p0` through its joint `p1` to its end `p2`, in one curve: it
+    leaves the root falling steeper than its first part lies, passes the joint the way the whole
+    of it runs, and comes to its end turned up. Points along it, `n` a part."""
+    up = np.array([0.0, 1.0, 0.0])
+    l0, l1 = np.linalg.norm(p1 - p0), np.linalg.norm(p2 - p1)
+    unit = lambda v: v / np.linalg.norm(v)
+    t0 = unit(unit(p1 - p0) - up * 0.3) * l0
+    t1 = unit(p2 - p0) * (l0 + l1) * 0.5
+    t2 = unit(unit(p2 - p1) + up * 0.35) * l1
+    out = []
+    for a, ta, b, tb in ((p0, t0, p1, t1), (p1, t1, p2, t2)):
+        for k in range(n):
+            t = k / n
+            out.append((2 * t ** 3 - 3 * t ** 2 + 1) * a + (t ** 3 - 2 * t ** 2 + t) * ta + (-2 * t ** 3 + 3 * t ** 2) * b + (t ** 3 - t ** 2) * tb)
+    out.append(p2)
+    return out
+
+
+def _facing(g, d):
+    """Which way the skin faces at every cell: the distance's own slope, a unit way."""
+    gx, gy, gz = np.gradient(d, g.cell)
+    gl = np.sqrt(gx * gx + gy * gy + gz * gz) + 1e-9
+    return gx / gl, gy / gl, gz / gl
+
+
+# A big cat's eye drawn whole on the grid's own cells, as a face is drawn on squared paper (user:
+# the lion's eyes were not whole: laid as a small ball in a ring, the few cells a ball that size
+# came to were a slit of a pupil with flecks of its rim round it). A hunter's eye, not a kitten's
+# (user: the lion's and the tiger's eyes are to look aggressive, not innocent), and a cat's as it
+# is, not a face drawn angry (user: something in his eyes did not look real: two black strokes
+# for brows over a white of the eye, as big as half his face). An amber iris with its round black
+# pupil in it, under a heavy dark lid that comes lower at the nose's side than at the outer one
+# (the scowl is the lid's and the brow's own ridge, nothing drawn over them); a softer line under
+# the eye and the pale fur below that. Rows from the top, columns from the nose outwards: L the
+# dark lid, l the softer line under the eye, A the iris, P the pupil, w the pale fur.
+EYE = ["..LLLL",
+       "LLAAAL",
+       "lAAPAl",
+       ".llll.",
+       ".wwww."]
+
+
+def stamp(g, col, kind, at, rows, tones, lo, hi, row=0, side=False):
+    """`rows` (strings, the top one first; a column a fine cell) painted on the cells of a head,
+    the same both sides of the beast: the row `row` of them on the cells level with `at`, their
+    middle column on the cell `at` is in. On its face (columns counted from the beast's middle
+    outwards, on the cells between `lo` and `hi` in front), or on its `side` (columns counted from
+    the front backwards, on the cells from `lo` to `hi` out from its middle). `tones`: a letter's
+    colour and its kind (None: as it is)."""
+    c = g.cell
+    if side:
+        iu = int(math.floor((at[2] - g.lo[2]) / c)) - np.floor((g.Z - g.lo[2]) / c).astype(int) + len(rows[0]) // 2
+        near = (np.abs(g.X) > lo) & (np.abs(g.X) < hi)
+    else:
+        iu = np.floor(np.abs(g.X) / c).astype(int) - int(math.floor(abs(at[0]) / c)) + len(rows[0]) // 2
+        near = (g.Z > lo) & (g.Z < hi)
+    jv = np.floor((g.Y - g.lo[1]) / c).astype(int) - int(math.floor((at[1] - g.lo[1]) / c))
+    for r, line in enumerate(rows):
+        for q, ch in enumerate(line):
+            if ch == ".":
+                continue
+            m = near & (iu == q) & (jv == row - r)
+            col[m] = tones[ch][0]
+            if tones[ch][1] is not None:
+                kind[m] = tones[ch][1]
+
+
+# The eyes of the dogs, the bear, the boar and the grazers, drawn whole on the grid's cells as the
+# cats' are (they were pits a cell or two across with a white spark in them: a dot, or nothing,
+# from a man's height; and wet as glass, they shone the sky's blue). A hunter's: amber either
+# side of its pupil between dark corners, under a dark lid set a cell further out than the eye,
+# so it slants. A bear's, a rat's: small and dark under its lid. A grazer's, on the side of its
+# head: its iris and its pupil in a dark rim. Rows from the top; columns from the nose outwards,
+# or from the front backwards: L the dark lid or rim, l a softer one, A the iris, P the pupil.
+EYES_QUAD = {
+    "hunter": [".LLLL",
+               "LAPAL"],
+    "small": ["ll",
+              "PP"],
+    "beady": ["PP",
+              "PP"],
+    "plain": ["lll",
+              "APA",
+              "www"],
+}
 
 
 SCULPTS = {name: (lambda sp, g, P=P: cat(sp, g, P)) for name, P in CATS.items()}
@@ -276,18 +384,18 @@ SCULPTS = {name: (lambda sp, g, P=P: cat(sp, g, P)) for name, P in CATS.items()}
 # ---------- the dogs, the bear and the boar ----------
 
 QUADS = {
-    "wolf": dict(head="dog", ears="pointed", tail="bushy", fur=0x8e8e96, light=0xd8d4cc, dark=0x55555d, nose=0x141214, eye=0xd8a030, leg=1.0, mark="saddle"),
-    "hyena": dict(head="dog", ears="round", tail="tufted", fur=0xb89a6a, light=0xd8c49a, dark=0x3e2c1c, nose=0x141010, eye=0x8a5a20, leg=1.0, mark="spots", ridge=True),
-    "bear": dict(head="bear", ears="round", tail="none", fur=0x7c4426, light=0xa47a4c, dark=0x4a2814, nose=0x120e0c, eye=0x2a1a10, leg=1.05, mark="none", hump=True, paw="bear", back=0.8),
+    "wolf": dict(eyes="hunter", head="dog", ears="pointed", tail="bushy", fur=0x8e8e96, light=0xd8d4cc, dark=0x55555d, nose=0x141214, eye=0xd8a030, leg=1.0, mark="saddle"),
+    "hyena": dict(eyes="hunter", face="hyena", head="dog", ears="round", tail="tufted", fur=0xb89a6a, light=0xd8c49a, dark=0x3e2c1c, ear=0x6e5236, spot=0x4c3622, nose=0x1c1614, eye=0x8a5a20, leg=1.0, mark="spots", ridge=True),
+    "bear": dict(eyes="bead_front", head="bear", ears="round", tail="none", fur=0x74492c, light=0x9e7a50, dark=0x46291a, nose=0x120e0c, eye=0x2a1a10, leg=1.05, mark="none", hump=True, paw="bear", back=0.8),
     # A wild boar (user: it looked like a brown lump): a long wedge of a head ending in the disc of
     # its snout, small eyes, ears pricked; the trunk deep in the chest and narrow, the belly drawn
     # up to the hind legs; a crest of bristles down the spine (hair, not a hump); a coarse coat
     # grizzled grey over dark brown, the legs darker; the tusks long and white, curled up.
-    "boar": dict(head="boar", ears="pointed", tail="thin", fur=0x58493f, light=0x84766a, dark=0x261d18, nose=0x7a5e58, eye=0x140c08, leg=0.9, mark="grizzle", ridge="crest", paw="hoof", trunk="boar", tusk_k=1.35, eye_r=0.055),
-    "bull": dict(head="bovine", ears="side", tail="thin", fur=0x262020, light=0x4a3a34, dark=0x141010, nose=0x3e3232, eye=0x1a0e08, leg=1.0, mark="none", paw="hoof"),
-    "goat": dict(head="bovine", ears="side", tail="short", fur=0xece6d6, light=0xf6f2ea, dark=0x8a8478, nose=0x6a5a54, eye=0xb08020, leg=0.9, mark="none", paw="hoof", snout=0.68),
-    "rat": dict(head="dog", ears="big", tail="rat", fur=0x5a4a44, light=0x8a7a72, dark=0x3a2e2a, nose=0xd08a8a, eye=0x0a0606, leg=1.0, mark="none"),
-    "rhino": dict(head="bovine", ears="side", tail="thin", fur=0x9a9288, light=0xaaa298, dark=0x6a645c, nose=0x6a645c, eye=0x1a1410, leg=1.05, mark="hide", paw="hoof"),
+    "boar": dict(head="boar", ears="pointed", tail="thin", fur=0x58493f, light=0x84766a, dark=0x261d18, nose=0x7a5e58, eye=0x6a4420, leg=0.9, mark="grizzle", ridge="crest", paw="hoof", trunk="boar", tusk_k=1.35, eye_r=0.055, horn_r=0.95),
+    "bull": dict(head="bovine", ears="side", tail="thin", fur=0x46362e, light=0x6a5448, dark=0x221a16, nose=0x4a3c3a, eye=0x7a4418, leg=1.0, mark="none", paw="hoof", horn_tip=0x2a2420, muzzle=0x6e5c52),
+    "goat": dict(head="bovine", ears="side", tail="short", fur=0xece6d6, light=0xf6f2ea, dark=0x8a8478, nose=0x8a6e68, eye=0xb08020, leg=0.9, mark="none", paw="hoof", snout=0.68, horn_r=1.15, nose_k=0.6),
+    "rat": dict(eyes="beady", face="rat", head="dog", ears="big", tail="rat", fur=0x5a4a44, light=0x8a7a72, dark=0x3a2e2a, nose=0xd08a8a, eye=0x0a0606, leg=1.0, mark="none"),
+    "rhino": dict(head="rhino", ears="side", tail="thin", fur=0x9a9288, light=0xaaa298, dark=0x6a645c, nose=0x847c72, eye=0x5e3e22, leg=1.05, mark="hide", paw="pillar", nails=3),
     "elephant": dict(head="elephant", ears="fan", tail="thin", fur=0x9a9a9e, light=0xaeaeb0, dark=0x6e6e74, nose=0x7a7a80, eye=0x1a1410, leg=1.0, mark="hide", paw="pillar", eye_r=0.06),
     "mammoth": dict(head="elephant", ears="small_fan", tail="thin", fur=0x8a5a32, light=0xa8784a, dark=0x4e301a, nose=0x5a3a22, eye=0x1a1008, leg=1.0, mark="shaggy", paw="pillar", back=0.92, eye_r=0.055),
 }
@@ -357,7 +465,30 @@ def quad(sp, g, P):
         hip = pu[1] + hu[1]
         zc = pu[2]
         r0 = hu[0] * 0.92 * P.get("leg", 1.0)
-        if fb == "F":
+        if paw == "pillar":
+            # An elephant's leg (user: its legs were not an elephant's; a dog's they were, a thigh
+            # and a thin shank under it, the hind ones with a hock): a column straight down from
+            # the shoulder or the hip, nearly as thick at the foot as at the top; its knee a low
+            # swell half way down; the foot a round pad a little wider than the leg, flat on the
+            # sand (it ran on a hand's breadth under the leg's own foot, into the sand), its
+            # nails round the front of it.
+            zk = 0.5 * (zc + pl[2])
+            l = cap(g, (x, hip, zc), (x, ground + r0 * 0.5, pl[2]), r0, r0 * 0.82)
+            l = smin(l, ell(g, (x, knee, zk + (0.1 if fb == "F" else 0.06) * r0), (r0 * 0.88, r0 * 0.42, r0 * 0.9)), 0.07)
+            l = smin(l, ell(g, (x, ground + r0 * 0.3, pl[2] + r0 * 0.06), (r0 * 0.98, r0 * 0.42, r0 * 1.04)), 0.07)
+            l = np.maximum(l, ground - g.Y)
+        elif paw == "bear":
+            # A bear's legs (user: they were not a bear's; a dog's thin shanks on broad flat
+            # feet, the hind ones with a hock): thick all the way down, short and straight. The
+            # foreleg a column from the shoulder to the wrist; the hind leg a heavy thigh and a
+            # thick shank straight under it. It walks on the whole of its foot.
+            if fb == "F":
+                l = cap(g, (x, hip, zc), (x, ground + r0 * 0.5, pl[2] - 0.01), r0 * 1.05, r0 * 0.8)
+                l = smin(l, ell(g, (x + sx * 0.02, hip - 0.04, zc), (r0 * 1.0, (hip - knee) * 0.7, r0 * 1.25)), 0.08)
+            else:
+                l = ell(g, (x + sx * 0.01, hip - 0.02, zc + 0.03), (r0 * 1.05, (hip - knee) * 0.85, r0 * 1.4))
+                l = smin(l, cap(g, (x, knee + 0.08, zc), (x, ground + r0 * 0.5, pl[2] - 0.02), r0 * 0.95, r0 * 0.8), 0.08)
+        elif fb == "F":
             l = cap(g, (x, hip, zc), (x, knee + 0.02, pl[2] - 0.01), r0 * 1.02, r0 * 0.66)
             l = smin(l, ell(g, (x + sx * 0.01, hip - 0.04, zc + 0.01), (r0 * 0.9, (hip - knee) * 0.62, r0 * 1.2)), 0.08)
             l = smin(l, cap(g, (x, knee + 0.02, pl[2] - 0.01), (x, ground + 0.06, pl[2] - 0.02), r0 * 0.62, r0 * 0.5), 0.06)
@@ -371,17 +502,28 @@ def quad(sp, g, P):
             hooves = hf if hooves is None else np.minimum(hooves, hf)
             l = smin(l, hf, 0.03)
         elif paw == "pillar":
-            l = smin(l, cap(g, (x, ground + 0.25, pl[2]), (x, ground + 0.08, pl[2]), r0 * 0.6, r0 * 0.66), 0.08)
-            for tx in (-0.5, 0.0, 0.5):
-                nl = ell(g, (x + tx * r0 * 0.55, ground + 0.06, pl[2] + r0 * 0.6), (r0 * 0.14, 0.05, r0 * 0.1))
+            for a in ((-0.8, 0.0, 0.8) if P.get("nails") == 3 else (-1.0, -0.35, 0.35, 1.0)):
+                nl = ell(g, (x + math.sin(a) * r0 * 0.93, ground + r0 * 0.16, pl[2] + r0 * 0.06 + math.cos(a) * r0 * 1.0), (r0 * 0.17, r0 * 0.16, r0 * 0.1))
+                nl = np.maximum(nl, ground - g.Y)
                 claws = nl if claws is None else np.minimum(claws, nl)
+        elif paw == "bear":
+            # (The whole foot on the sand: a broad pad, longer behind on the hind foot, the heel;
+            # five toes across its front and a long claw on each.)
+            back = 0.25 if fb == "B" else 0.0
+            l = smin(l, ell(g, (x, ground + 0.075, pz - back * r0 * 0.6), (r0 * 0.98, 0.085, r0 * (1.15 + back))), 0.05)
+            l = np.maximum(l, ground - g.Y)
+            for tx in (-0.7, -0.35, 0.0, 0.35, 0.7):
+                tc = (x + tx * r0 * 0.98, ground + 0.05, pz + r0 * (1.05 - 0.22 * abs(tx)))
+                l = smin(l, np.maximum(ell(g, tc, (r0 * 0.2, 0.055, r0 * 0.26)), ground - g.Y), 0.02)
+                cl = cap(g, (tc[0], ground + 0.045, tc[2] + r0 * 0.18), (tc[0], ground + 0.012, tc[2] + r0 * 0.56), 0.02, 0.008)
+                claws = cl if claws is None else np.minimum(claws, cl)
         else:
-            big = 1.2 if paw == "bear" else 1.0
+            big = 1.0
             l = smin(l, ell(g, (x, ground + 0.05 * big, pz), (r0 * 0.78 * big, 0.06 * big * big, r0 * 1.0 * big)), 0.05)
             for tx in (-0.55, -0.18, 0.18, 0.55):
                 tc = (x + tx * r0 * 0.95 * big, ground + 0.04, pz + r0 * 0.8 * big)
                 l = smin(l, ell(g, tc, (r0 * 0.26 * big, 0.045, r0 * 0.3 * big)), 0.02)
-                cl = cap(g, (tc[0], ground + 0.03, tc[2] + r0 * 0.2 * big), (tc[0], ground + 0.01, tc[2] + r0 * (0.42 if paw == "bear" else 0.34) * big), 0.016 * big, 0.008)
+                cl = cap(g, (tc[0], ground + 0.03, tc[2] + r0 * 0.2 * big), (tc[0], ground + 0.01, tc[2] + r0 * 0.34 * big), 0.016 * big, 0.008)
                 claws = cl if claws is None else np.minimum(claws, cl)
         legs = l if legs is None else np.minimum(legs, l)
     if legs is not None:
@@ -394,43 +536,104 @@ def quad(sp, g, P):
     # The head, by its kind.
     kind_h = P["head"]
     eyes = []
+    lips = None
     if kind_h == "dog":
-        hc = hp + np.array([0, 0.16 * hy, -0.22 * hz])
+        # A wolf's head, a hyena's, a rat's (user: their faces looked terrible; one ball with a
+        # stub of a muzzle and a ring for a nose did for all three). Each by what it is: its
+        # skull, the fall of its brow to the muzzle, its cheeks, the muzzle by its own length and
+        # breadth with the jaw under it, and the nose standing on the muzzle's end.
+        face = P.get("face", "wolf")
+        #        the skull's half sizes, the muzzle's root and end radii and how far forward it ends, the cheeks' breadth, the nose's size
+        F = {"wolf": ((0.56, 0.5, 0.48), 0.27, 0.15, 0.95, 0.26, 0.11),
+             "hyena": ((0.6, 0.54, 0.5), 0.34, 0.215, 0.88, 0.3, 0.105),
+             "rat": ((0.5, 0.48, 0.44), 0.36, 0.1, 0.92, 0.0, 0.09)}[face]
+        hc = hp + np.array([0, 0.14 * hy, -0.25 * hz])
+        sk = ell(g, hc, (F[0][0] * hx, F[0][1] * hy, F[0][2] * hz))
+        mz_a = hp + np.array([0, -0.1 * hy, 0.18 * hz])
+        mz_b = hp + np.array([0, -0.2 * hy, F[3] * hz])
+        if face == "rat":
+            # (A cone from the skull to the nose: no brow, no cheeks.)
+            mz_a = hp + np.array([0, 0.04 * hy, -0.08 * hz])
+            mz_b = hp + np.array([0, -0.16 * hy, F[3] * hz])
+        else:
+            sk = smin(sk, cap(g, hp + np.array([0, 0.1 * hy, -0.05 * hz]), hp + np.array([0, -0.1 * hy, 0.36 * hz]), 0.42 * hx, (F[1] + 0.02) * hx), 0.07)
+            for sx in (-1, 1):
+                sk = smin(sk, ell(g, hp + np.array([sx * 0.42 * hx, -0.16 * hy, -0.18 * hz]), (F[4] * hx, 0.34 * hy, 0.36 * hz)), 0.06)
+                sk = smin(sk, ell(g, hp + np.array([sx * 0.26 * hx, 0.3 * hy, 0.08 * hz]), (0.2 * hx, 0.1 * hy, 0.18 * hz)), 0.04)
+        sk = smin(sk, cap(g, mz_a, mz_b, F[1] * hx, F[2] * hx), 0.05)
+        jaw = cap(g, hp + np.array([0, -0.34 * hy, 0.08 * hz]), hp + np.array([0, -0.37 * hy, (F[3] - 0.12) * hz]), 0.72 * F[1] * hx, 0.66 * F[2] * hx)
+        if face != "rat":
+            sk = smin(sk, jaw, 0.03)
+        else:
+            # (Its small jaw under the muzzle's root, over the head's own jaw voxels: with nothing
+            # of the sculpt there the game drew the classic jaw, a grey box under its nose.)
+            sk = smin(sk, cap(g, hp + np.array([0, -0.4 * hy, -0.05 * hz]), hp + np.array([0, -0.33 * hy, 0.6 * hz]), 0.2 * hx, 0.1 * hx), 0.03)
+        nose_c = mz_b + np.array([0, 0.45 * F[2] * hx, 0.55 * F[2] * hx])
+        nose_r = (F[5] * hx, 0.9 * F[5] * hx, 0.9 * F[5] * hx)
+        # (Its lips: the line its mouth shuts on, along the muzzle's sides and round its end.)
+        ax_t = np.clip((g.Z - mz_a[2]) / (mz_b[2] - mz_a[2]), 0.0, 1.15)
+        lip_y = mz_a[1] + (mz_b[1] - mz_a[1]) * ax_t - 0.6 * (F[1] + (F[2] - F[1]) * np.clip(ax_t, 0, 1)) * hx
+        lips = (np.abs(g.Y - lip_y) < 0.55 * g.cell) & (g.Z > mz_a[2] + 0.3 * (mz_b[2] - mz_a[2])) & (np.abs(g.X) < 0.4 * hx)
+        if face == "rat":
+            lips = (np.abs(g.Y - (hp[1] - 0.4 * hy)) < 0.55 * g.cell) & (g.Z > hp[2] + 0.14 * hz) & (g.Z < hp[2] + 0.56 * hz)
+        for sx in (-1, 1):
+            eyes.append(hp + np.array([sx * (0.3 if face != "rat" else 0.3) * hx, (0.16 if face != "rat" else 0.2) * hy, (0.24 if face != "rat" else 0.0) * hz]))
+        ear_c = [hp + np.array([sx * 0.42 * hx, 0.6 * hy, -0.3 * hz]) for sx in (-1, 1)]
+        if face == "rat":
+            ear_c = [hp + np.array([sx * 0.46 * hx, 0.4 * hy, -0.42 * hz]) for sx in (-1, 1)]
+    elif kind_h == "bear":
+        # A bear's head (user: it did not look like a bear at all; a ball with a pale square
+        # stuck on it, a stuffed toy's): a broad skull with the fur of its cheeks wide either
+        # side; the brow coming steeply down to a long muzzle that narrows to its end, the big
+        # nose standing on the end of it; the jaw under the muzzle; small eyes set by the
+        # muzzle's root; small round ears wide apart on top.
+        hc = hp + np.array([0, 0.1 * hy, -0.24 * hz])
         sk = ell(g, hc, (0.6 * hx, 0.56 * hy, 0.5 * hz))
         for sx in (-1, 1):
-            sk = smin(sk, ell(g, hp + np.array([sx * 0.3 * hx, -0.06 * hy, -0.05 * hz]), (0.34 * hx, 0.38 * hy, 0.42 * hz)), 0.05)
-        mz_a = hp + np.array([0, -0.04 * hy, 0.1 * hz])
-        mz_b = hp + np.array([0, -0.2 * hy, 0.86 * hz])
-        sk = smin(sk, cap(g, mz_a, mz_b, 0.36 * hx, 0.22 * hx), 0.06)
-        sk = smin(sk, cap(g, hp + np.array([0, -0.36 * hy, 0.05 * hz]), hp + np.array([0, -0.4 * hy, 0.72 * hz]), 0.25 * hx, 0.15 * hx), 0.05)
-        nose_c = hp + np.array([0, -0.12 * hy, 0.93 * hz])
-        nose_r = (0.16 * hx, 0.12 * hy, 0.08 * hz)
+            sk = smin(sk, ell(g, hp + np.array([sx * 0.36 * hx, -0.14 * hy, -0.1 * hz]), (0.32 * hx, 0.36 * hy, 0.4 * hz)), 0.07)
+            sk = smin(sk, ell(g, hp + np.array([sx * 0.2 * hx, 0.26 * hy, 0.14 * hz]), (0.2 * hx, 0.14 * hy, 0.2 * hz)), 0.05)
+        sk = smin(sk, cap(g, hp + np.array([0, 0.1 * hy, 0.0]), hp + np.array([0, -0.12 * hy, 0.46 * hz]), 0.38 * hx, 0.27 * hx), 0.08)
+        sk = smin(sk, cap(g, hp + np.array([0, -0.15 * hy, 0.34 * hz]), hp + np.array([0, -0.2 * hy, 0.9 * hz]), 0.25 * hx, 0.17 * hx), 0.05)
+        sk = smin(sk, ell(g, hp + np.array([0, -0.4 * hy, 0.5 * hz]), (0.17 * hx, 0.1 * hy, 0.36 * hz)), 0.04)
+        nose_c = hp + np.array([0, -0.11 * hy, 1.03 * hz])
+        nose_r = (0.105 * hx, 0.085 * hy, 0.085 * hz)
         for sx in (-1, 1):
-            eyes.append(hp + np.array([sx * 0.32 * hx, 0.14 * hy, 0.28 * hz]))
-        ear_c = [hp + np.array([sx * 0.42 * hx, 0.6 * hy, -0.3 * hz]) for sx in (-1, 1)]
-    elif kind_h == "bear":
-        hc = hp + np.array([0, 0.08 * hy, -0.18 * hz])
-        sk = ell(g, hc, (0.56 * hx, 0.52 * hy, 0.5 * hz))
-        for sx in (-1, 1):
-            sk = smin(sk, ell(g, hp + np.array([sx * 0.3 * hx, -0.14 * hy, 0.0]), (0.36 * hx, 0.36 * hy, 0.4 * hz)), 0.06)
-        sk = smin(sk, cap(g, hp + np.array([0, -0.1 * hy, 0.2 * hz]), hp + np.array([0, -0.22 * hy, 0.74 * hz]), 0.3 * hx, 0.22 * hx), 0.07)
-        sk = smin(sk, ell(g, hp + np.array([0, -0.4 * hy, 0.45 * hz]), (0.2 * hx, 0.12 * hy, 0.28 * hz)), 0.05)
-        nose_c = hp + np.array([0, -0.14 * hy, 0.82 * hz])
-        nose_r = (0.14 * hx, 0.1 * hy, 0.07 * hz)
-        for sx in (-1, 1):
-            eyes.append(hp + np.array([sx * 0.26 * hx, 0.14 * hy, 0.28 * hz]))
-        ear_c = [hp + np.array([sx * 0.44 * hx, 0.52 * hy, -0.28 * hz]) for sx in (-1, 1)]
+            eyes.append(hp + np.array([sx * 0.22 * hx, 0.1 * hy, 0.33 * hz]))
+        ear_c = [hp + np.array([sx * 0.46 * hx, 0.5 * hy, -0.32 * hz]) for sx in (-1, 1)]
     elif kind_h == "bovine":
         hc = hp + np.array([0, 0.16 * hy, -0.18 * hz])
         sk = ell(g, hc, (0.56 * hx, 0.56 * hy, 0.52 * hz))
         sn = P.get("snout", 1.0)
         sk = smin(sk, cap(g, hp + np.array([0, 0.05 * hy, 0.0]), hp + np.array([0, -0.18 * hy, (0.68 + 0.2 * (1.0 - sn)) * hz]), 0.4 * hx * sn, 0.36 * hx * sn), 0.08)
         sk = smin(sk, ell(g, hp + np.array([0, -0.4 * hy, 0.4 * hz]), (0.3 * hx, 0.16 * hy, 0.4 * hz)), 0.05)
-        nose_c = hp + np.array([0, -0.2 * hy, (0.9 + 0.2 * (1.0 - sn)) * hz])
-        nose_r = (0.36 * hx * sn, 0.3 * hy * sn, 0.08 * hz)
+        # (A goat's nose small on the end of its muzzle: the whole end dark, it was a ball.)
+        nk = P.get("nose_k", 1.0)
+        nose_c = hp + np.array([0, (-0.2 + 0.1 * (1.0 - nk)) * hy, (0.9 + 0.2 * (1.0 - sn)) * hz])
+        nose_r = (0.36 * hx * sn * nk, 0.3 * hy * sn * nk, 0.08 * hz)
         for sx in (-1, 1):
             eyes.append(hp + np.array([sx * 0.44 * hx, 0.2 * hy, 0.12 * hz]))
         ear_c = [hp + np.array([sx * 0.5 * hx, 0.28 * hy, -0.3 * hz]) for sx in (-1, 1)]
+    elif kind_h == "rhino":
+        # A rhinoceros's head (user: its face was not a rhinoceros's; a bull's small skull with a
+        # horn as wide as itself on it): long and low, the back of the skull high between the
+        # ears, the face running down from it to the boss the great horn stands on, the upper lip
+        # wide and square under that with the jaw behind it; small eyes low on its sides, a brow
+        # over each; its ears stiff tubes at the back of the skull.
+        hc = hp + np.array([0, 0.12 * hy, -0.45 * hz])
+        sk = ell(g, hc, (0.62 * hx, 0.62 * hy, 0.5 * hz))
+        sk = smin(sk, cap(g, hp + np.array([0, 0.0, -0.3 * hz]), hp + np.array([0, -0.12 * hy, 0.62 * hz]), 0.56 * hx, 0.44 * hx), 0.1)
+        sk = smin(sk, ell(g, hp + np.array([0, 0.1 * hy, 0.62 * hz]), (0.34 * hx, 0.26 * hy, 0.3 * hz)), 0.08)
+        sk = smin(sk, ell(g, hp + np.array([0, -0.3 * hy, 0.74 * hz]), (0.46 * hx, 0.3 * hy, 0.26 * hz)), 0.07)
+        sk = smin(sk, ell(g, hp + np.array([0, -0.46 * hy, 0.2 * hz]), (0.4 * hx, 0.2 * hy, 0.6 * hz)), 0.06)
+        for sx in (-1, 1):
+            sk = smin(sk, ell(g, hp + np.array([sx * 0.5 * hx, 0.14 * hy, -0.05 * hz]), (0.14 * hx, 0.12 * hy, 0.2 * hz)), 0.05)
+        nose_c = hp + np.array([0, -0.26 * hy, 0.97 * hz])
+        nose_r = (0.3 * hx, 0.12 * hy, 0.06 * hz)
+        for sx in (-1, 1):
+            eyes.append(hp + np.array([sx * 0.56 * hx, -0.02 * hy, 0.0]))
+        ear_c = [hp + np.array([sx * 0.42 * hx, 0.5 * hy, -0.62 * hz]) for sx in (-1, 1)]
+        # (Its mouth: the line under the square lip, back along each side.)
+        lips = (np.abs(g.Y - (hp[1] - 0.44 * hy)) < 0.55 * g.cell) & (g.Z > hp[2] + 0.4 * hz) & (np.abs(g.X) < 0.5 * hx)
     elif kind_h == "elephant":
         # (Its head's box is as wide as its ears: the skull goes by its height.)
         hc = hp + np.array([0, 0.18 * hy, -0.05 * hz])
@@ -450,8 +653,21 @@ def quad(sp, g, P):
         sk = smin(sk, cap(g, hp + np.array([0, -0.3 * hy, -0.12 * hz]), hp + np.array([0, -0.38 * hy, 0.62 * hz]), 0.28 * hx, 0.15 * hx), 0.06)
         for sx in (-1, 1):
             sk = smin(sk, ell(g, hp + np.array([sx * 0.26 * hx, -0.12 * hy, -0.2 * hz]), (0.26 * hx, 0.3 * hy, 0.32 * hz)), 0.05)
+        # (Its jaw carried on under the snout, its lip swollen over each tusk's root: the tusks
+        # grow out of the jaw there, they hung in the air beside the snout.)
+        sk = smin(sk, cap(g, hp + np.array([0, -0.38 * hy, 0.5 * hz]), hp + np.array([0, -0.37 * hy, 0.76 * hz]), 0.15 * hx, 0.13 * hx), 0.05)
+        for n in ("tuskL", "tuskR"):
+            if n in K:
+                Rt, pt, ht = K[n]
+                root = min((pt - Rt @ np.array([0, ht[1], 0]), pt + Rt @ np.array([0, ht[1], 0])), key=lambda e: abs(e[0]))
+                gum = root + np.array([-np.sign(root[0]) * 0.14 * hx, -0.01 * hy, -0.07 * hz])
+                sk = smin(sk, ell(g, gum, (0.21 * hx, 0.19 * hy, 0.21 * hz)), 0.05)
         nose_c = hp + np.array([0, -0.2 * hy, 0.97 * hz])
         nose_r = (0.22 * hx, 0.19 * hy, 0.05 * hz)
+        # (The line its mouth shuts on, along the snout's sides from its corner to the tusks.)
+        ax_t = np.clip((g.Z - (hp[2] - 0.12 * hz)) / (1.02 * hz), 0.0, 1.0)
+        lip_y = hp[1] + (0.02 - 0.22 * ax_t) * hy - 0.6 * (0.4 - 0.2 * ax_t) * hx
+        lips = (np.abs(g.Y - lip_y) < 0.55 * g.cell) & (g.Z > hp[2] + 0.12 * hz) & (g.Z < hp[2] + 0.8 * hz)
         for sx in (-1, 1):
             eyes.append(hp + np.array([sx * 0.33 * hx, 0.2 * hy, -0.02 * hz]))
         ear_c = [hp + np.array([sx * 0.3 * hx, 0.46 * hy, -0.46 * hz]) for sx in (-1, 1)]
@@ -468,21 +684,57 @@ def quad(sp, g, P):
     nose = ell(g, nose_c, nose_r)
     sk = smin(sk, nose, 0.02)
     er = P.get("eye_r", 0.09 * hx)
+    beads = None
     for ec in eyes:
+        if P.get("eyes") in ("beady", "bead_front"):
+            # (A rat's: a black bead standing out of the side of its head; a bear's small dark
+            # eyes the same, to the front. Drawn into a socket on the grid they came out a ragged
+            # black patch, two slanted dashes.)
+            n_ = np.array([np.sign(ec[0]) * 0.85, 0.45, 0.25]) if P["eyes"] == "beady" else np.array([np.sign(ec[0]) * 0.4, 0.3, 0.86])
+            n_ /= np.linalg.norm(n_)
+            ii = np.clip(np.floor((ec - g.lo) / g.cell).astype(int), 0, np.array(g.shape) - 1)
+            bc = ec + n_ * max(-float(sk[ii[0], ii[1], ii[2]]), 0.0)
+            rb_ = max(1.3 * g.cell, (0.1 if P["eyes"] == "beady" else 0.062) * hx)
+            b_ = ell(g, bc, (rb_, rb_, rb_))
+            beads = b_ if beads is None else np.minimum(beads, b_)
+            continue
         sk = smax(sk, -ell(g, ec + np.array([0, 0, 0.6 * er]), (er, er * 0.75, er * 0.8)), 0.012)
+    if beads is not None:
+        sk = np.minimum(sk, beads)
     ears = None
+    ear_in = None
     for sx, ec in zip((-1, 1), ear_c):
-        if P["ears"] == "pointed":
+        if kind_h == "boar":
+            # (A boar's: broad leaves standing up and a little out, hollow to the front: dark
+            # cones, they were two flat wedges on its head.)
+            mid = ec + np.array([sx * 0.07 * hx, 0.26 * hy, -0.03 * hz])
+            e = ell(g, mid, (0.15 * hx, 0.32 * hy, 0.075 * hz))
+            hollow = ell(g, mid + np.array([sx * 0.01 * hx, -0.03 * hy, 0.08 * hz]), (0.075 * hx, 0.2 * hy, 0.06 * hz))
+            e = smax(e, -hollow, 0.01)
+            ear_in = hollow if ear_in is None else np.minimum(ear_in, hollow)
+        elif P["ears"] == "pointed":
             e = cap(g, ec, ec + np.array([sx * 0.1 * hx, 0.5 * hy, -0.1 * hz]), 0.2 * hx, 0.025)
         elif P["ears"] == "flap":
             e = cap(g, ec, ec + np.array([sx * 0.28 * hx, 0.32 * hy, -0.12 * hz]), 0.14 * hx, 0.03)
+        elif kind_h == "rhino":
+            e = cap(g, ec, ec + np.array([sx * 0.14 * hx, 0.44 * hy, -0.04 * hz]), 0.1 * hx, 0.13 * hx)
+            e = smax(e, -ell(g, ec + np.array([sx * 0.2 * hx, 0.4 * hy, 0.02 * hz]), (0.08 * hx, 0.14 * hy, 0.08 * hz)), 0.012)
         elif P["ears"] == "side":
             e = cap(g, ec, ec + np.array([sx * 0.42 * hx, -0.04 * hy, -0.08 * hz]), 0.13 * hx, 0.05 * hx)
         elif P["ears"] == "big":
-            e = ell(g, ec + np.array([sx * 0.05 * hx, 0.16 * hy, 0]), (0.3 * hx, 0.32 * hy, 0.07 * hz))
+            # (A rat's: round, thin, standing out from the side of its head, hollow to the front.)
+            e = ell(g, ec + np.array([sx * 0.1 * hx, 0.16 * hy, 0]), (0.27 * hx, 0.29 * hy, 0.09 * hz))
+        elif P["ears"] == "round" and kind_h == "dog":
+            # (A hyena's: round and thick, hollow to the front.)
+            e = ell(g, ec + np.array([sx * 0.04 * hx, 0.06 * hy, 0]), (0.2 * hx, 0.24 * hy, 0.12 * hz))
+            e = smax(e, -ell(g, ec + np.array([sx * 0.04 * hx, 0.05 * hy, 0.11 * hz]), (0.13 * hx, 0.16 * hy, 0.09 * hz)), 0.012)
         elif P["ears"] in ("fan", "small_fan"):
             k_e = 1.0 if P["ears"] == "fan" else 0.45
             e = ell(g, ec + np.array([sx * 0.42 * hy * k_e, -0.05 * hy, 0.0]), (0.5 * hy * k_e, 0.72 * hy * k_e, 0.07 * hy))
+        elif kind_h == "bear":
+            # (Round and thick, hollow to the front: flat discs, they were spikes from the side.)
+            e = ell(g, ec + np.array([0, 0.08 * hy, 0]), (0.17 * hx, 0.18 * hy, 0.13 * hz))
+            e = smax(e, -ell(g, ec + np.array([0, 0.07 * hy, 0.12 * hz]), (0.11 * hx, 0.12 * hy, 0.1 * hz)), 0.012)
         else:
             e = ell(g, ec + np.array([0, 0.1 * hy, 0]), (0.18 * hx, 0.2 * hy, 0.08 * hz))
         ears = e if ears is None else np.minimum(ears, e)
@@ -495,15 +747,19 @@ def quad(sp, g, P):
         # past the middle of the back, in tufts (each bristle a column).
         # (Along the top of the back from the shoulders, and on from the nape to them: from the head,
         # carried low, it ran under the back.)
-        a0 = np.array([0, top - 0.04 * Hh, zf - 0.08 * L])
-        a1 = np.array([0, top - 0.06 * Hh, body[2] - 0.3 * L])
-        tuft = vnoise(np.abs(g.X), g.Y, g.Z, 0.025, 11)
-        crest_spine = cap(g, a0, a1, 0.3 * W, 0.2 * W)
-        crest_spine = np.minimum(crest_spine, cap(g, hc + np.array([0, 0.5 * hy, -0.3 * hz]), a0, 0.2 * W, 0.3 * W))
-        crest_spine = crest_spine - 0.05 * (tuft - 0.3)
-        slab = np.abs(g.X) - 0.07 * W
-        ridge = np.maximum(crest_spine, slab)
-        d = np.minimum(d, ridge)
+        # (A ridge round in section, broad where it stands on the back and running into it, its
+        # top in tufts along its length: a thin slab on edge, it was a plank on the boar's back.)
+        a0 = np.array([0, top - 0.06 * Hh, zf - 0.08 * L])
+        a1 = np.array([0, top - 0.22 * Hh, body[2] - 0.34 * L])
+        tuft = vnoise(0.0 * g.X, 0.0 * g.Y, g.Z, 0.06, 11)
+        narrow = Grid.__new__(Grid)
+        narrow.X, narrow.Y, narrow.Z = g.X / 0.55, g.Y, g.Z
+        crest_spine = cap(narrow, a0, a1, 0.3 * W, 0.24 * W)
+        crest_spine = np.minimum(crest_spine, cap(narrow, hc + np.array([0, 0.36 * hy, -0.3 * hz]), a0, 0.2 * W, 0.3 * W))
+        # (In tufts only where it stands clear of the back: its low end broke up into specks.)
+        crest_spine = crest_spine - 0.03 * (tuft - 0.5) * np.clip((d - crest_spine) / 0.04, 0.0, 1.0)
+        ridge = crest_spine
+        d = smin(d, ridge, 0.04)
     elif P.get("ridge"):
         n1 = vnoise(np.abs(g.X), g.Y, g.Z, 0.04, 11)
         ridge = cap(g, hc + np.array([0, 0.45 * hy, -0.1 * hz]), (0, top - 0.02, body[2] - 0.1 * L), 0.12 * W, 0.08 * W) - 0.05 * (n1 - 0.4)
@@ -512,7 +768,7 @@ def quad(sp, g, P):
     tail = None
     segs = _tail_points(K, ("tail", "tailTip"))
     for a, b in segs:
-        r_a, r_b = {"bushy": (0.1, 0.11), "tufted": (0.06, 0.08), "thin": (0.035, 0.025), "rat": (0.045, 0.012), "short": (0.04, 0.03)}.get(P["tail"], (0.05, 0.04))
+        r_a, r_b = {"bushy": (0.075, 0.09), "tufted": (0.06, 0.08), "thin": (0.035, 0.025), "rat": (0.045, 0.012), "short": (0.04, 0.03)}.get(P["tail"], (0.05, 0.04))
         t = cap(g, a, b, r_a, r_b)
         if P["tail"] == "bushy":
             t = t - 0.03 * (vnoise(np.abs(g.X), g.Y, g.Z, 0.035, 13) - 0.5)
@@ -530,8 +786,52 @@ def quad(sp, g, P):
     tusks = None
     horns = None
     pmap = {p["name"]: p for p in sp["parts"]}
+    # A boar's tusks, an elephant's and a bull's or a goat's horns, each one curve from its root
+    # (sunk in the lip, in the skull) through its joint to its point, never thinner than a cell:
+    # two straight pieces at an angle, they were a bent bar stuck on beside the head, its point a
+    # speck in the air.
+    curved = []
+    horn_ends = []
+    grown = {"boar": "tusk", "bovine": "horn", "elephant": "tusk"}.get(kind_h)
+    for sd in ("L", "R") if grown else ():
+        # Its parts in order from the head: the root's, then each one that grows from the last.
+        chain = [grown + sd] if grown + sd in K else []
+        while chain:
+            nxt = [n for n in K if n.startswith(grown) and pmap[n].get("parent") == chain[-1]]
+            if not nxt:
+                break
+            chain.append(nxt[0])
+        if len(chain) < 2:
+            continue
+        ends = []
+        for n in chain:
+            R, pos, half = K[n]
+            ends.append((pos - R @ np.array([0, half[1], 0]), pos + R @ np.array([0, half[1], 0])))
+        poly = list(sorted(ends[0], key=lambda e: np.linalg.norm(e - hp)))
+        for e in ends[1:]:
+            poly.append(max(e, key=lambda q: np.linalg.norm(q - poly[-1])))
+        tk = P.get("tusk_k", 1.0) if grown == "tusk" else 1.0
+        poly[-1] = poly[-2] + (poly[-1] - poly[-2]) * (1.0 + 0.6 * (tk - 1.0))
+        if kind_h == "boar":
+            poly[0] = poly[0] + np.array([-np.sign(poly[0][0]) * 0.1 * hx, 0.0, -0.04 * hz])
+        else:
+            poly[0] = poly[0] + (hc - poly[0]) * 0.25
+        # (One curve through them: from each joint's side to the next's, bent at the joint.)
+        way = [poly[0]]
+        for i in range(1, len(poly) - 1):
+            a0 = way[-1]
+            a2 = poly[i + 1] if i == len(poly) - 2 else 0.5 * (poly[i] + poly[i + 1])
+            way += [(1 - t) ** 2 * a0 + 2 * (1 - t) * t * poly[i] + t * t * a2 for t in np.linspace(0.0, 1.0, 9)[1:]]
+        r0 = P.get("horn_r", 0.75) * K[chain[0]][2][0] * tk
+        t = _chain(g, way, np.maximum(r0 * (1.0 - 0.85 * np.linspace(0.0, 1.0, len(way)) ** 1.5), 0.88 * g.cell))
+        if grown == "tusk":
+            tusks = t if tusks is None else np.minimum(tusks, t)
+        else:
+            horns = t if horns is None else np.minimum(horns, t)
+            horn_ends.append((poly[-1], sum(np.linalg.norm(poly[i + 1] - poly[i]) for i in range(len(poly) - 1))))
+        curved += chain
     for n in K:
-        if not (n.startswith("tusk") or n.startswith("horn")):
+        if not (n.startswith("tusk") or n.startswith("horn")) or n in curved:
             continue
         R, pos, half = K[n]
         e0 = pos - R @ np.array([0, half[1], 0])
@@ -543,7 +843,17 @@ def quad(sp, g, P):
         ra = 0.75 * half[0] if not tip or n in ("horn", "hornSmall") else 0.55 * half[0]
         rb = 0.45 * half[0] if not tip else 0.12 * half[0]
         if n in ("horn", "hornSmall"):
-            ra = 0.95 * half[0]
+            # (A rhinoceros's horn: a cone bowed forward, sweeping back to its point, whole all the
+            # way: a straight cone thinner than a cell at its end, its point came out broken.)
+            ax_h = (e1 - e0) / np.linalg.norm(e1 - e0)
+            fw_h = np.array([0.0, 0.0, 1.0]) - ax_h * ax_h[2]
+            fw_h = fw_h / max(np.linalg.norm(fw_h), 1e-6)
+            mid_h = 0.5 * (e0 + e1) + fw_h * 0.16 * np.linalg.norm(e1 - e0)
+            b0 = e0 - ax_h * 0.3 * half[0]
+            way = [(1 - t) ** 2 * b0 + 2 * (1 - t) * t * mid_h + t * t * e1 for t in np.linspace(0.0, 1.0, 11)]
+            t = _chain(g, way, np.maximum(0.82 * half[0] * (1.0 - 0.88 * np.linspace(0.0, 1.0, len(way)) ** 1.3), 0.88 * g.cell))
+            horns = t if horns is None else np.minimum(horns, t)
+            continue
         tk = P.get("tusk_k", 1.0) if n.startswith("tusk") else 1.0
         if tk != 1.0:
             # (Longer at the tip, as thick as the scale at the root: a boar's are a hand long.)
@@ -578,7 +888,7 @@ def quad(sp, g, P):
     beard = None
     if "beard" in K:
         R, pos, half = K["beard"]
-        beard = cap(g, pos + R @ np.array([0, half[1], 0]), pos - R @ np.array([0, half[1] * 0.6, 0]), 0.75 * half[1] * 0.5, 0.2 * half[0]) - 0.012 * (vnoise(np.abs(g.X), g.Y, g.Z, 0.015, 5) - 0.5)
+        beard = cap(g, pos + R @ np.array([0, half[1], 0]), pos - R @ np.array([0, half[1] * 0.6, 0]), 0.75 * half[1] * 0.5, max(0.2 * half[0], 0.9 * g.cell)) - 0.012 * (vnoise(np.abs(g.X), g.Y, g.Z, 0.015, 5) - 0.5)
         d = smin(d, beard, 0.02)
     occ = d < 0
     # Colours and kinds.
@@ -591,7 +901,17 @@ def quad(sp, g, P):
     fine = hash3(np.floor(np.abs(g.X) / g.cell * 0.5), np.floor(g.Y / g.cell * 0.5), np.floor(g.Z / g.cell * 0.5), 2)
     base = fur[None, None, None, :] * (1.0 + 0.18 * (clump - 0.5) + 0.07 * (fine - 0.5))[..., None]
     col[:] = base
-    belly = np.clip((bot + 0.22 * Hh * 2 - g.Y) / (0.22 * Hh * 2), 0, 1) * (g.Z < zf) * (g.Z > zb) * (g.Y > bot - 0.1)
+    # Its underside pale, one tone running into the other, as the cats' (user, of the lion: the
+    # pale of the belly lay in a band across the top of every leg, cut off in a line; it made no
+    # sense and did not blend): where the skin of its trunk looks down, and less on the inner
+    # side of each leg, fading out to the foot.
+    nx_, ny_, _ = _facing(g, d)
+    soft = 0.2 * (clump - 0.5)
+    belly = np.clip((-ny_ - 0.2) / 0.5 + soft, 0.0, 1.0) * (g.Y > bot - 0.5 * Hh) * (g.Y < body[1]) * (g.Z < zf + 0.1) * (g.Z > zb)
+    if legs is not None:
+        gmin = min(K[n][1][1] - K[n][2][1] for n in K if n.startswith("leg") and n.endswith("Lo"))
+        inner = np.clip((-np.sign(g.X) * nx_ - 0.35) / 0.4 + soft, 0.0, 1.0) * (legs < 0.04) * np.clip((g.Y - (gmin + 0.25 * Hh)) / (0.3 * Hh), 0.0, 1.0)
+        belly = np.maximum(belly, inner * 0.5)
     col = col * (1 - belly[..., None] * 0.7) + light[None, None, None, :] * (belly[..., None] * 0.7)
     if P["mark"] == "grizzle":
         # Coarse bristles, dark at the root and pale at the tip: a grey over the brown, in flecks;
@@ -607,38 +927,103 @@ def quad(sp, g, P):
         sad = np.clip((g.Y - (top - 0.35 * Hh)) / (0.3 * Hh), 0, 1) * (g.Z > zb - 0.1) * (g.Z < zf + 0.2)
         col = col * (1 - sad[..., None] * 0.6) + dark[None, None, None, :] * sad[..., None] * 0.6
     if P["mark"] == "spots":
-        sp_n = vnoise(np.abs(g.X), g.Y, g.Z, 0.06, 21)
-        spots = (sp_n > 0.68) & (g.Y > 0.25) & (sk >= 0.004)
-        col[spots] = dark * 1.1
+        # Round spots of all sizes, scattered (a lattice of them, each off its place and some
+        # missing), dark brown: patches cut out of a noise, near black, were blotches of camouflage.
+        per = 0.1
+        ax_, ay_, az_ = np.abs(g.X) / per, g.Y / per, g.Z / per
+        ix_, iy_, iz_ = np.floor(ax_).astype(np.int64), np.floor(ay_).astype(np.int64), np.floor(az_).astype(np.int64)
+        near = np.full(g.X.shape, 9.0, np.float32)
+        for ox in (-1, 0, 1):
+            for oy in (-1, 0, 1):
+                for oz in (-1, 0, 1):
+                    jx, jy, jz = ix_ + ox, iy_ + oy, iz_ + oz
+                    there = hash3(jx, jy, jz, 53) > 0.22
+                    px_ = jx + 0.5 + 0.96 * (hash3(jx, jy, jz, 21) - 0.5)
+                    py_ = jy + 0.5 + 0.96 * (hash3(jx, jy, jz, 22) - 0.5)
+                    pz_ = jz + 0.5 + 0.96 * (hash3(jx, jy, jz, 23) - 0.5)
+                    rad = 0.3 + 0.2 * hash3(jx, jy, jz, 24)
+                    dist = np.sqrt((ax_ - px_) ** 2 + (ay_ - py_) ** 2 + (az_ - pz_) ** 2) / rad
+                    near = np.where(there, np.minimum(near, dist), near)
+        # (On its trunk and its legs: none on its neck and its chest.)
+        spots = (near < 1.0) & (g.Y > 0.3) & (sk >= 0.004) & (belly < 0.4) & (g.Z < zf - 0.04 * L)
+        col[spots] = hexc(P["spot"]) if P.get("spot") else dark * 1.1
     # The muzzle and the face (a dog's light cheeks and a dark muzzle; a bear's pale snout).
     near_mz = (sk < 0.004) & (g.Z > hp[2] + 0.3 * hz) & (g.Y < hp[1] + 0.05 * hy)
     if kind_h == "dog":
-        col[near_mz] = (dark * 0.9 if P["mark"] == "spots" else light * 0.95)
+        face = P.get("face", "wolf")
+        if face == "hyena":
+            # (Its muzzle dark to behind the nose, and a dark patch round each eye.)
+            # (Dark brown, not near black: in the arena's light the whole muzzle was one black ball.)
+            mz_c = np.array([0.36, 0.27, 0.19])
+            mzk = np.clip((g.Z - (hp[2] + 0.42 * hz)) / (0.22 * hz), 0.0, 1.0) * (sk < 0.004) * (g.Y < hp[1] + 0.1 * hy)
+            col[:] = col * (1 - 0.85 * mzk[..., None]) + mz_c[None, None, None, :] * (0.85 * mzk[..., None])
+            for ec in eyes:
+                pk = (ell(g, ec, (0.2 * hx, 0.14 * hy, 0.3 * hz)) < 0) & (sk < 0.004)
+                col[pk] = col[pk] * 0.62 + mz_c[None, :] * 0.34
+        elif face == "wolf":
+            # (A wolf's mask: its cheeks, the sides of its muzzle, its jaw and its throat pale; the
+            # top of its muzzle and its brow the coat's own grey, darker between the eyes.)
+            under = (sk < 0.004) & (g.Z > hp[2] - 0.2 * hz) & (g.Y < lip_y + 0.9 * g.cell)
+            col[under] = light[None, :] * (0.94 + 0.1 * (clump[under] - 0.5))[:, None]
+            ck_ = np.clip((np.abs(g.X) - 0.26 * hx) / (0.16 * hx), 0.0, 1.0) * np.clip((hp[1] + 0.04 * hy - g.Y) / (0.2 * hy), 0.0, 1.0) * (sk < 0.004) * (g.Z > hp[2] - 0.5 * hz)
+            col[:] = col * (1 - 0.8 * ck_[..., None]) + light[None, None, None, :] * (0.8 * ck_[..., None])
+            brow = (sk < 0.004) & (np.abs(g.X) < 0.16 * hx) & (g.Y > hp[1] + 0.05 * hy) & (g.Z > hp[2] - 0.1 * hz)
+            col[brow] = col[brow] * 0.8
+        if lips is not None:
+            col[lips & (sk < 0.004)] = {"wolf": dark * 1.05, "hyena": np.array([0.2, 0.15, 0.11])}.get(face, fur * 0.5)
+    elif kind_h == "boar":
+        col[lips & (sk < 0.004)] = dark * 0.6
+    elif kind_h == "rhino":
+        col[lips & (sk < 0.004)] = dark * 0.55
+        for sx in (-1, 1):
+            nst = ell(g, hp + np.array([sx * 0.24 * hx, -0.16 * hy, 0.96 * hz]), (0.07 * hx, 0.05 * hy, 0.1 * hz)) < 0.004
+            col[nst & (sk < 0.004)] = dark * 0.4
     elif kind_h == "bear":
-        col[near_mz] = light
+        # (Its muzzle paler than its face, running into it: the whole lower half of its face one
+        # pale square, it was a toy's.)
+        mzk = np.clip((g.Z - (hp[2] + 0.42 * hz)) / (0.3 * hz), 0.0, 1.0) * (sk < 0.004) * (g.Y < hp[1] + 0.12 * hy)
+        col[:] = col * (1 - 0.6 * mzk[..., None]) + light[None, None, None, :] * (0.6 * mzk[..., None])
     col[nose < 0.004] = hexc(P["nose"])
-    kind[nose < 0.004] = WET
-    for ec in eyes:
-        e = ell(g, ec, (er, er * 0.75, er * 0.8)) < 0.004
-        # (the lids round it, a shade darker than the face: an eye set in, not a hole)
-        lid = (ell(g, ec, (er * 1.7, er * 1.3, er * 1.4)) < 0.004) & ~e & occ
-        col[lid] = col[lid] * 0.78
-        col[e] = hexc(P["eye"])
-        kind[e] = WET
-        pupil = e & (np.abs(g.X - ec[0]) < er * 0.35) & (np.abs(g.Y - ec[1]) < er * 0.45)
-        col[pupil] = (0.03, 0.02, 0.02)
-        glint = e & (g.Y > ec[1] + er * 0.25) & (np.abs(g.Z - (ec[2] + er * 0.5)) < er * 0.3)
-        col[glint] = (0.85, 0.85, 0.82)
+    kind[nose < 0.004] = MOIST if kind_h == "boar" else NOSE
+    if beads is not None:
+        col[beads < 0.004] = (0.045, 0.035, 0.035)
+        kind[beads < 0.004] = NOSE
+    if eyes and beads is None:
+        ek_ = P.get("eyes", "plain")
+        on_side = kind_h in ("bovine", "elephant", "boar", "pig", "rhino")
+        tones = {"L": (np.array([0.06, 0.045, 0.04]), None), "l": (fur * 0.42, None), "A": (hexc(P["eye"]), None), "P": (np.array([0.02, 0.015, 0.015]), None),
+                 "w": (fur * 0.4 + np.array([0.6, 0.54, 0.48]) * 0.6, None)}
+        ec = eyes[0]
+        if on_side:
+            stamp(g, col, kind, ec, EYES_QUAD[ek_], tones, abs(ec[0]) - 0.16 * hx, 9.0, row=1 if ek_ != "hunter" else 1, side=True)
+        else:
+            stamp(g, col, kind, ec, EYES_QUAD[ek_], tones, ec[2] - 0.14 * hz, ec[2] + 0.2 * hz, row=1)
     if ears is not None:
         ek = ears < 0.004
         col[ek] = fur * 0.82 if P["mark"] in ("none", "hide", "shaggy") else dark
+        if P.get("ear"):
+            col[ek] = hexc(P["ear"])[None, :] * (0.92 + 0.16 * clump[ek])[:, None]
+        if ear_in is not None:
+            col[ek] = fur[None, :] * (0.66 + 0.2 * (clump[ek] - 0.5))[:, None]
+            col[ek & (ear_in < 0.012)] = dark * 1.15
     if ridge is not None:
         rk = (ridge < 0.004) & (d >= ridge - 0.004)
         col[rk] = dark * (0.9 + 0.2 * fine[rk])[:, None]
         if P.get("ridge") == "crest":
-            # The bristles' tips pale (the crest's top), their roots dark.
-            tipk = rk & (crest_spine > -0.03)
-            col[tipk] = col[tipk] * 0.4 + light[None, :] * 0.75
+            # The bristles dark brown (not black: a block on its back), their tips pale along the
+            # crest's top.
+            col[rk] = dark * (1.35 + 0.3 * fine[rk])[:, None]
+            tipk = rk & (np.abs(g.X) < 0.07 * W)
+            col[tipk] = col[tipk] * 0.45 + light[None, :] * 0.6
+    if kind_h == "bovine":
+        # Its muzzle paler round the nose, two dark nostrils in the nose.
+        if P.get("muzzle"):
+            mk_ = (np.clip((g.Z - (nose_c[2] - 0.34 * hz)) / (0.16 * hz), 0.0, 1.0) * (sk < 0.004) * (nose >= 0.004) * (g.Y < hp[1] + 0.1 * hy))[..., None]
+            col[:] = col * (1 - 0.7 * mk_) + hexc(P["muzzle"])[None, None, None, :] * (0.7 * mk_)
+        sn_ = P.get("snout", 1.0) * P.get("nose_k", 1.0)
+        for sx in (-1, 1):
+            nst = ell(g, nose_c + np.array([sx * max(0.17 * hx * sn_, 1.5 * g.cell), 0.04 * hy * sn_, 0.02 * hz]), (max(0.075 * hx * sn_, 0.52 * g.cell), max(0.07 * hy * sn_, 0.52 * g.cell), 0.08 * hz)) < 0.004
+            col[nst & (nose < 0.004)] = (0.07, 0.05, 0.05)
     if kind_h == "boar":
         # The snout's disc: pinkish grey, two dark nostrils in it.
         dk = nose < 0.004
@@ -658,8 +1043,14 @@ def quad(sp, g, P):
     if horns is not None:
         hk = horns < 0.004
         hn = vnoise(np.abs(g.X), g.Y, g.Z, 0.05, 17)
-        col[hk] = (np.array([0.84, 0.78, 0.64]) * (0.8 + 0.3 * hn[hk])[:, None])
+        col[hk] = ((hexc(P["horn_c"]) if P.get("horn_c") else np.array([0.84, 0.78, 0.64])) * (0.8 + 0.3 * hn[hk])[:, None])
         kind[hk] = BONE
+        if P.get("horn_tip"):
+            # (A bull's: pale, their points dark.)
+            for tip_, len_ in horn_ends:
+                far = np.sqrt((g.X - tip_[0]) ** 2 + (g.Y - tip_[1]) ** 2 + (g.Z - tip_[2]) ** 2)
+                k_ = (np.clip(1.0 - (far - 0.18 * len_) / (0.14 * len_), 0.0, 1.0) * hk)[..., None]
+                col[:] = col * (1 - k_) + hexc(P["horn_tip"])[None, None, None, :] * k_
     if beard is not None:
         col[beard < 0.004] = dark * 1.25
     if trunk is not None:
@@ -1531,7 +1922,7 @@ def dragon(sp, g):
     kind[mo] = GLOW_KIND
     ns = (S.feat.get("nostril", np.full(g.shape, INF)) < thr_c * 1.5) & occ & ~th_k
     col[ns] = np.array([0.16, 0.03, 0.03])
-    kind[ns] = 7
+    kind[ns] = NOSE
     ey = S.on("eye", thr_c)
     col[ey] = np.array([1.0, 0.78, 0.12])
     kind[ey] = GLOW_KIND
@@ -1697,10 +2088,10 @@ def hydra(sp, g):
     kind[th_k] = BONE
     mo = S.on("mouth", thr_c) & ~th_k
     col[mo] = np.array([0.42, 0.05, 0.06])
-    kind[mo] = 7
+    kind[mo] = MOIST
     ns = (S.feat.get("nostril", np.full(g.shape, INF)) < thr_c * 1.5) & occ & ~th_k
     col[ns] = np.array([0.03, 0.06, 0.03])
-    kind[ns] = 7
+    kind[ns] = NOSE
     ey = S.on("eye", thr_c)
     col[ey] = np.array([1.0, 0.86, 0.15])
     kind[ey] = GLOW_KIND
@@ -1838,8 +2229,10 @@ def gorilla(sp, g):
     thr_c = 0.4 * g.cell
     # Colours: black-brown fur in clumps, the tips lighter; the saddle of the back silver, the crown
     # a rusty brown; the face, the hands and the soles bare black skin, glossy; the eyes dark brown.
-    fur = np.array([0.085, 0.078, 0.082])
-    silver = np.array([0.56, 0.56, 0.58])
+    # (Charcoal, not black: in the arena's light a coat this dark was one black shape with no
+    # body in it.)
+    fur = np.array([0.2, 0.19, 0.2])
+    silver = np.array([0.6, 0.6, 0.62])
     col = np.zeros(g.shape + (3,))
     fine = hash3(np.floor(np.abs(g.X) / g.cell), np.floor(g.Y / g.cell), np.floor(g.Z / g.cell), 8)
     col[:] = fur
@@ -1853,17 +2246,27 @@ def gorilla(sp, g):
     kind = np.full(g.shape, FUR, np.uint8)
     # (grey-black, a shade above the fur: the face, the chest and the hands stand out of the coat as
     # they do on the animal, glossy)
-    skin = np.array([0.2, 0.19, 0.2])
+    # (Leather's dull sheen: wet, its face was a mirror of the sky with no feature to be seen.)
+    skin = np.array([0.33, 0.31, 0.32])
     face = (np.abs(g.X - hp[0]) < 0.42 * h) & (g.Y < hp[1] + 0.24 * h) & (g.Y > hp[1] - 0.86 * h) & (g.Z > hp[2] + 0.5 * h) & (np.abs(g.X - hp[0]) < 0.42 * h - np.clip(hp[1] - 0.5 * h - g.Y, 0, None) * 0.4)
     pecs = np.minimum(ell(g, (-0.24 * sxw, top - 0.52, float(jL[2]) + 0.18), (0.3 * sxw, 0.17, 0.3)), ell(g, (0.24 * sxw, top - 0.52, float(jL[2]) + 0.18), (0.3 * sxw, 0.17, 0.3)))
     chest = (trunk < 0.6 * g.cell) & (pecs < 0.0) & (g.Z > float(jL[2]) - 0.1)
     bare = (face | chest | S.on("hand", thr_c) & (g.Y < ground + 0.16) | S.on("sole", thr_c) & (g.Y < ground + 0.06)) & occ
-    col[bare] = skin * (0.85 + 0.35 * fine[bare])[:, None]
-    col[chest & occ] = col[chest & occ] * 0.7
-    kind[bare] = 7
+    col[bare] = skin * (0.9 + 0.2 * fine[bare])[:, None]
+    col[chest & occ] = col[chest & occ] * 0.8
+    kind[bare] = NOSE
+    # (Its face's own lines: the nostrils and the shut mouth dark, the brow's shelf darker than
+    # the cheeks under it.)
+    fk = face & occ
+    for sx in (-1, 1):
+        nst = ell(g, P(sx * 0.12, -0.17, 0.97), (0.09 * h, 0.075 * h, 0.1 * h)) < 0.0
+        col[nst & fk] = np.array([0.07, 0.06, 0.06])
+    mouth = (np.abs(g.Y - (hp[1] - 0.52 * h)) < 0.6 * g.cell) & (np.abs(g.X - hp[0]) < 0.3 * h) & (g.Z > hp[2] + 0.7 * h)
+    col[mouth & fk] = np.array([0.1, 0.085, 0.085])
+    browk = fk & (g.Y > hp[1] + 0.1 * h)
+    col[browk] = col[browk] * 0.72
     ey = S.on("eye", thr_c)
-    col[ey] = np.array([0.3, 0.16, 0.07])
-    kind[ey] = 7
+    col[ey] = np.array([0.5, 0.3, 0.12])
     for ec in eyes:
         pupil = ey & (np.abs(g.X - ec[0]) < 0.03 * h + 0.3 * g.cell) & (np.abs(g.Y - ec[1]) < 0.03 * h + 0.3 * g.cell)
         col[pupil] = np.array([0.02, 0.01, 0.01])
@@ -2068,8 +2471,10 @@ def crocodile(sp, g):
     thr_c = 0.4 * g.cell
     # Colours: olive above with darker bands across the back and the tail, the scutes darker still
     # on their tops, the flanks paler, the belly pale yellow in square plates.
-    olive = np.array([0.24, 0.27, 0.13])
-    dark = np.array([0.1, 0.11, 0.06])
+    # (A shade lighter: in the arena's light the olive this dark was near black, its snout a
+    # black ball.)
+    olive = np.array([0.36, 0.4, 0.2])
+    dark = np.array([0.17, 0.19, 0.1])
     pale = np.array([0.8, 0.74, 0.5])
     col = np.zeros(g.shape + (3,))
     col[:] = olive
@@ -2097,7 +2502,7 @@ def crocodile(sp, g):
     col[ns] = np.array([0.05, 0.04, 0.03])
     ey = S.on("eye", thr_c)
     col[ey] = np.array([0.72, 0.62, 0.16])
-    kind[ey] = WET
+    kind[ey] = NOSE
     f = Rh[:, 2]
     upv = Rh[:, 1]
     for c in S.feat.get("_eyes", []):
@@ -2348,7 +2753,7 @@ def basilisk(sp, g):
     kind[th_k] = BONE
     mo = S.on("mouth", thr_c) & ~th_k
     col[mo] = np.array([0.55, 0.12, 0.14])
-    kind[mo] = WET
+    kind[mo] = MOIST
     # (the head: a dark band back from each eye, the lips and the jaw under them pale)
     hd_ = S.on("head", thr_c)
     lx = (g.X - hp[0]) * ax_[0] + (g.Y - hp[1]) * ax_[1] + (g.Z - hp[2]) * ax_[2]
@@ -2476,7 +2881,9 @@ def chimera(sp, g):
     info = _part_info(sp)
     K = parts_of(sp)
     k = float(K["beastBody"][2][1]) / 0.499   # (the lion's trunk is 0.499 high: a lion that much larger)
-    P = dict(CATS["lion"], mane=0x6a3214, mane2=0x3a1a0a, head=1.24)
+    # (Its legs as a lion's are for its size: the parts that carry them are a fifth wider than a
+    # lion's would be, and by their width its hind legs were hams on thick stumps; user.)
+    P = dict(CATS["lion"], mane=0x6a3214, mane2=0x3a1a0a, head=1.24, leg=0.9)
     d, col, kind, hc, mz, hs = _cat_k(sp, g, P, k, drop=("tail", "tail2"))
     S = _Shape(g)
     S.d = d
@@ -2501,13 +2908,15 @@ def chimera(sp, g):
         hn = smin(hn, cap(sub, mid, tip, rh * 0.62, 0.01), 0.02)
         S.add(hn, 0.04, sub)
         S.mark("horn", hn, sub)
-    # The serpent: from the root of the tail, scaled, up and back, its head bent down to strike.
+    # The serpent: out of the root of the tail, scaled, reared up over the rump as a cobra rears,
+    # its head raised and turned on the foe (user: it hung limp behind: as it is modelled now, and
+    # held up, Beast._animate). One curve through the joints of the parts that carry it.
     t0, t1 = _limb_ends(info, "tail")
     _, t2 = _limb_ends(info, "tail2")
     Rs, spos, sh_ = K["snakeHead"]
     js = info["snakeHead"][3]
     rt = float(K["tail"][2][0])
-    tpts = _catmull([t0 + np.array([0, -0.05, 0.12]), t0 + (t1 - t0) * 0.55 + np.array([0, 0.05, 0]), t1 + np.array([0, 0.06, -0.05]), t2 + np.array([0, 0.0, 0.08]), js], 0.08)
+    tpts = _catmull([t0 + np.array([0, -0.08, 0.14]), t0 + (t1 - t0) * 0.5, t1, t1 + (t2 - t1) * 0.5, js], 0.08)
     trad = [rt * (0.9 + 0.35 * min(1.0, 3.0 * i / (len(tpts) - 1)) - 0.2 * i / (len(tpts) - 1)) for i in range(len(tpts))]
     _tube(S, g, tpts, trad, 1.0, 0.05, key="serpent")
     seyes = _snake_head(S, g, Rs, spos + Rs[:, 2] * float(sh_[2]) * 0.15, sh_ * np.array([1.25, 1.2, 1.1]), 0.35, "snake")
@@ -2536,7 +2945,7 @@ def chimera(sp, g):
         kind[hk] = BONE
     ge = S.on("goat_eye", thr_c)
     col[ge] = np.array([0.9, 0.62, 0.1])
-    kind[ge] = WET
+    kind[ge] = NOSE
     for c in geyes:
         bar = ge & (np.abs(g.Y - c[1]) < 0.4 * g.cell + 0.01) & (np.abs(g.Z - c[2]) < 0.05)
         col[bar] = np.array([0.03, 0.02, 0.02])
@@ -2547,11 +2956,22 @@ def chimera(sp, g):
     scol = _scales(g, scol, 0.05)
     col[sn] = scol[sn]
     kind[sn] = SCALE_KIND
-    under = sn & ~S.on("snake", thr_c) & (g.Y < np.interp(g.Z, [p[2] for p in tpts][::-1], [p[1] for p in tpts][::-1]) - 0.06)
+    # (Its belly pale: the side of it that faces forward where it stands up, down where it lies.)
+    best = np.full(g.shape, INF)
+    side_in = np.zeros(g.shape)
+    for i in range(len(tpts) - 1):
+        a_, b_ = tpts[i], tpts[i + 1]
+        u_ = (b_ - a_) / max(np.linalg.norm(b_ - a_), 1e-9)
+        m_ = (a_ + b_) * 0.5
+        dd_ = (g.X - m_[0]) ** 2 + (g.Y - m_[1]) ** 2 + (g.Z - m_[2]) ** 2
+        nearer = dd_ < best
+        best[nearer] = dd_[nearer]
+        side_in[nearer] = (-(g.Y - m_[1]) * u_[2] + (g.Z - m_[2]) * u_[1])[nearer]
+    under = sn & ~S.on("snake", thr_c) & (side_in > 0.35 * rt)
     col[under] = np.array([0.78, 0.7, 0.4])
     smo = S.on("snake_mouth", thr_c) & occ
     col[smo] = np.array([0.55, 0.12, 0.14])
-    kind[smo] = WET
+    kind[smo] = MOIST
     th = S.on("tooth", thr_c)
     col[th] = np.array([0.93, 0.9, 0.8])
     kind[th] = BONE
@@ -2646,11 +3066,14 @@ def _man_face(S, g, hc, hs):
 def manticore(sp, g):
     """The manticore: a great red lion (the lion's own sculpt), its mane black, two sabre fangs down
     over its lip and short horns back from its brow; a bat's wings from its shoulders; for a tail
-    a scorpion's, in plates of black chitin arching up over its back, the sting at its end."""
+    a scorpion's, in blocks of black-red shell curled up over its back, the sting at its end."""
     info = _part_info(sp)
     K = parts_of(sp)
     k = float(K["beastBody"][2][1]) / 0.499
-    P = dict(CATS["lion"], fur=0xa3361f, light=0xd9935c, dark=0x5e180e, mane=0x2a0c08, mane2=0x120404, nose=0x2a0e0c, eye=0xf2c41a, ear=0x4a160c, head=1.24)
+    # (Its legs as a lion's are for its size, not by the width of the parts that carry them, a
+    # fifth wider than a lion's would be: its hind legs were hams on thick stumps, out of all
+    # proportion; user.)
+    P = dict(CATS["lion"], fur=0xa3361f, light=0xd9935c, dark=0x5e180e, mane=0x2a0c08, mane2=0x120404, nose=0x2a0e0c, eye=0xf2c41a, ear=0x4a160c, head=1.24, leg=0.9)
     d, col, kind, hc, mz, hs = _cat_k(sp, g, P, k, drop=("tail", "tail2", "tail3", "stinger"))
     S = _Shape(g)
     S.d = d
@@ -2681,75 +3104,20 @@ def manticore(sp, g):
         cv = R[:, chd] if float(R[:, chd][2]) >= 0 else -R[:, chd]
         Ls = float(np.linalg.norm(pos - j)) + float(half[spn])
         _wing_full(S, g, j, sv, cv, Ls * 1.04, float(half[chd]) * 1.05, max(g.cell * 0.6, float(half[th]) * 0.4))
-    # The scorpion's tail: out of the rump, arching up and over in plates, the sting at its end.
-    pts = []
-    for n in ("tail", "tail2", "tail3", "stinger"):
-        a, b = _limb_ends(info, n)
-        if not pts:
-            pts.append(a + np.array([0.0, -0.06, 0.14]))
-        pts.append(b)
-    path = _catmull(pts, 0.05)
-    L_tot = float(sum(np.linalg.norm(path[i + 1] - path[i]) for i in range(len(path) - 1)))
-    r0 = float(K["tail"][2][0]) * 0.95
-    nseg = 9
-    acc = [0.0]
-    for i in range(len(path) - 1):
-        acc.append(acc[-1] + float(np.linalg.norm(path[i + 1] - path[i])))
-    acc = np.array(acc)
-    seg_end = 0.86   # (the sting's bulb from here on)
-    for si in range(nseg):
-        t0 = seg_end * si / nseg
-        t1 = seg_end * (si + 1) / nseg
-        idx = [i for i in range(len(path)) if t0 * L_tot <= acc[i] <= t1 * L_tot]
-        if len(idx) < 2:
-            continue
-        a, b = path[idx[0]], path[idx[-1]]
-        rr = r0 * (1.0 - 0.38 * (si / nseg))
-        sub = _around(g, [a, b], rr * 1.4 + 0.05)
-        # (each plate swelling between its ends, narrower where it meets the next)
-        u = b - a
-        Lu = float(np.linalg.norm(u))
-        u = u / max(Lu, 1e-9)
-        tt = np.clip(((sub.X - a[0]) * u[0] + (sub.Y - a[1]) * u[1] + (sub.Z - a[2]) * u[2]) / max(Lu, 1e-9), 0, 1)
-        cx, cy_, cz = a[0] + u[0] * tt * Lu, a[1] + u[1] * tt * Lu, a[2] + u[2] * tt * Lu
-        bulge = rr * (0.8 + 0.3 * np.sin(tt * math.pi))
-        dd = np.sqrt((sub.X - cx) ** 2 + (sub.Y - cy_) ** 2 + (sub.Z - cz) ** 2) - bulge
-        S.add(dd, 0.0, sub)
-        S.mark("chitin", dd, sub)
-    # the sting: a bulb, then the barb curving forward and down
-    i_b = int(np.searchsorted(acc, seg_end * L_tot))
-    bulb_c = path[min(i_b + 2, len(path) - 1)]
-    end = path[-1]
-    du = end - bulb_c
-    du = du / max(np.linalg.norm(du), 1e-9)
-    rb = r0 * 0.95
-    sub = _around(g, [bulb_c - du * rb * 1.5, end + np.array([0, -0.1, 0.45])], rb * 1.6 + 0.08)
-    bulb = ell(sub, bulb_c + du * rb * 0.5, (rb * 0.95, rb * 1.1, rb * 0.95))
-    S.add(bulb, 0.03, sub)
-    S.mark("chitin", bulb, sub)
-    b0 = bulb_c + du * rb * 1.4
-    b1 = b0 + du * rb * 1.2 + np.array([0.0, 0.0, rb * 0.9])
-    b2 = b1 + np.array([0.0, rb * 0.3, rb * 1.3])
-    barb = smin(cap(sub, b0, b1, rb * 0.42, rb * 0.22), cap(sub, b1, b2, rb * 0.22, 0.008), 0.02)
-    S.add(barb, 0.02, sub)
-    S.mark("sting", barb, sub)
+    # The scorpion's tail: out of the rump, curled up over its back in blocks of shell, the bulb and
+    # the sting hanging over its shoulders toward its foe (user: the manticore's tail looked bad
+    # and odd, a glossy tube; a scorpion's tail is curled in toward its foe: the scorpion's own).
+    blocks, sting_tip = _sting_tail(S, g, info, [(0.17, 0.145), (0.168, 0.143), (0.162, 0.14), (0.156, 0.135), (0.148, 0.128), (0.14, 0.122)],
+        bulb=(0.13, 0.12, 0.17), root_in=0.12, sting_k=1.25)
     d = S.d
     occ = d < 0
     thr_c = 0.4 * g.cell
     col = np.array(col, copy=True)
     kind = np.array(kind, copy=True)
-    # Colours: the chitin black with a red sheen, each plate's edges lighter; the sting black, its
-    # barb red-tipped; the wings' membranes dark red, their bones darker; fangs and horns.
-    ch = S.on("chitin", 0.03) & occ
+    # Colours: the tail's shell black-red, its keels lighter, its joints black, the bulb dark red,
+    # the sting black at its point; the wings' membranes dark red, their bones darker; fangs and horns.
     sheen = vnoise(np.abs(g.X), g.Y, g.Z, 0.08, 19)
-    col[ch] = np.array([0.16, 0.05, 0.04]) * (0.8 + 0.5 * sheen[ch])[:, None]
-    kind[ch] = CHITIN_KIND
-    st = S.on("sting", thr_c)
-    col[st] = np.array([0.08, 0.03, 0.03])
-    kind[st] = CHITIN_KIND
-    tipm = st & (np.linalg.norm(np.stack([g.X - b2[0], g.Y - b2[1], g.Z - b2[2]]), axis=0) < rb * 0.6)
-    col[tipm] = np.array([0.9, 0.25, 0.05])
-    kind[tipm] = GLOW_KIND
+    _sting_tail_paint(S, g, col, kind, blocks, sting_tip, thr_c, sheen, (0.3, 0.105, 0.085), (0.44, 0.17, 0.12), (0.09, 0.035, 0.035), (0.42, 0.12, 0.08), (0.3, 0.07, 0.05), (0.07, 0.03, 0.03))
     if "membrane" in S.feat:
         wg = S.on("membrane", thr_c)
         vein = vnoise(np.abs(g.X), g.Y, g.Z, 0.12, 5)
@@ -2786,17 +3154,17 @@ def manticore(sp, g):
     kind[bd] = FUR
     fm = S.on("face_mouth", thr_c) & occ
     col[fm] = np.array([0.22, 0.04, 0.04])
-    kind[fm] = WET
+    kind[fm] = MOIST
     ew = S.on("eye_white", thr_c)
     col[ew] = np.array([0.88, 0.84, 0.74])
-    kind[ew] = WET
+    kind[ew] = NOSE
     ir = ew & (S.feat["iris"] < thr_c)
     col[ir] = np.array([1.0, 0.78, 0.2])
     kind[ir] = GLOW_KIND
     for ec in face_eyes:
         pupil = ir & (np.abs(g.X - ec[0]) < 0.5 * g.cell) & (np.abs(g.Y - ec[1]) < 0.5 * g.cell)
         col[pupil] = np.array([0.05, 0.02, 0.01])
-        kind[pupil] = WET
+        kind[pupil] = NOSE
     th_k = S.on("tooth", thr_c)
     col[th_k] = np.array([0.94, 0.9, 0.8])
     kind[th_k] = BONE
@@ -3052,10 +3420,10 @@ def cerberus(sp, g):
     for key in ("hound_mouth", "snake_mouth"):
         mo = S.on(key, thr_c) & occ
         col[mo] = np.array([0.42, 0.06, 0.06])
-        kind[mo] = WET
+        kind[mo] = MOIST
     ns = (S.feat.get("hound_nose", np.full(g.shape, INF)) < thr_c) & occ
     col[ns] = np.array([0.03, 0.025, 0.025])
-    kind[ns] = WET
+    kind[ns] = NOSE
     th = S.on("tooth", thr_c)
     col[th] = np.array([0.92, 0.88, 0.76])
     kind[th] = BONE
@@ -3186,10 +3554,10 @@ def python(sp, g):
     col[mo] = np.array([0.12, 0.07, 0.05])
     tg_ = S.on("tongue", thr_c)
     col[tg_] = np.array([0.18, 0.06, 0.07])
-    kind[tg_] = WET
+    kind[tg_] = MOIST
     ey = S.on("eye", thr_c)
     col[ey] = np.array([0.78, 0.5, 0.12])
-    kind[ey] = WET
+    kind[ey] = NOSE
     _slits(S, g, ey, Rh, hh, col)
     return d, np.clip(col, 0, 1), kind
 
@@ -3331,9 +3699,13 @@ def ostrich(sp, g):
     col[ck] = np.array([0.22, 0.2, 0.18])
     kind[ck] = BONE
     ey = S.on("eye", thr_c)
-    col[ey] = np.array([0.14, 0.08, 0.05])
-    kind[ey] = WET
+    # (A great brown eye with its pupil, the lashes over it: all one dark brown, it was a hole in
+    # the side of the head.)
+    col[ey] = np.array([0.42, 0.26, 0.12])
+    kind[ey] = NOSE
     for ec in eyes:
+        pupil = ey & (np.abs(g.Y - ec[1] + 0.3 * g.cell) < 0.52 * g.cell) & (np.abs(g.Z - ec[2]) < 0.52 * g.cell)
+        col[pupil] = np.array([0.03, 0.02, 0.02])
         lash = ey & (g.Y > ec[1] + 0.012) & (np.abs(g.Z - ec[2]) < 0.025)
         col[lash] = np.array([0.03, 0.02, 0.02])
     return d, np.clip(col, 0, 1), kind
@@ -3607,7 +3979,7 @@ def griffin(sp, g):
     col[nost] = np.array([0.15, 0.1, 0.06])
     ey = S.on("eye", thr)
     col[ey] = np.array([0.95, 0.68, 0.12])
-    kind[ey] = WET
+    kind[ey] = NOSE
     for ec in eyes:
         pu = ey & (np.sqrt((g.Y - ec[1]) ** 2 + (g.Z - ec[2] - er * 0.3) ** 2) < er * 0.45)
         col[pu] = np.array([0.03, 0.02, 0.02])
@@ -3764,7 +4136,7 @@ def spider(sp, g):
     col[groove] = col[groove] * 0.55
     ey = S.on("eye", thr)
     col[ey] = np.array([0.02, 0.02, 0.025])
-    kind[ey] = WET
+    kind[ey] = NOSE
     gl = S.on("glow", thr)
     col[gl] = np.array([0.6, 0.06, 0.04])
     kind[gl] = GLOW_KIND
@@ -3782,228 +4154,336 @@ def spider(sp, g):
 SCULPTS["spider"] = spider
 
 
+def _rbox(g, c, ax, half, r):
+    """A box with rounded edges: its middle, its three axes (unit), its half sizes along them and
+    its edges' radius."""
+    dx, dy, dz = g.X - c[0], g.Y - c[1], g.Z - c[2]
+    q = [np.abs(dx * a[0] + dy * a[1] + dz * a[2]) - (h - r) for a, h in zip(ax, half)]
+    out = np.sqrt(np.maximum(q[0], 0.0) ** 2 + np.maximum(q[1], 0.0) ** 2 + np.maximum(q[2], 0.0) ** 2)
+    return out + np.minimum(np.maximum(q[0], np.maximum(q[1], q[2])), 0.0) - r
+
+
+def _bez(p0, p1, p2, n):
+    """Points along a curve from p0 to p2, drawn toward p1."""
+    return [(1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t * t * p2 for t in np.linspace(0.0, 1.0, n)]
+
+
+def _along(g, pts):
+    """How far along a line of points each cell of the grid lies, 0 at its first and 1 at its last
+    (by the nearest of its pieces)."""
+    acc = [0.0]
+    for i in range(len(pts) - 1):
+        acc.append(acc[-1] + float(np.linalg.norm(pts[i + 1] - pts[i])))
+    best = np.full(g.shape, INF)
+    out = np.zeros(g.shape)
+    for i in range(len(pts) - 1):
+        a, ab = pts[i], pts[i + 1] - pts[i]
+        t = np.clip(((g.X - a[0]) * ab[0] + (g.Y - a[1]) * ab[1] + (g.Z - a[2]) * ab[2]) / max(float(ab @ ab), 1e-9), 0.0, 1.0)
+        dd = (g.X - a[0] - ab[0] * t) ** 2 + (g.Y - a[1] - ab[1] * t) ** 2 + (g.Z - a[2] - ab[2] * t) ** 2
+        m = dd < best
+        best[m] = dd[m]
+        out[m] = ((acc[i] + (acc[i + 1] - acc[i]) * t) / max(acc[-1], 1e-9))[m]
+    return out
+
+
+def _sting_tail(S, g, info, sizes, bulb=(0.126, 0.116, 0.15), root_in=0.09, sting_k=1.0):
+    """A scorpion's tail on the three parts that carry it and the sting (tail, tail2, tail3 and
+    stinger, as they are at rest: curled up over the back toward its foe): two blocks of shell to
+    each part, the joint between the two a little out of line so the arch runs round and not in
+    three straight lengths; each block rounded at every edge, a little full in its middle, keeled
+    along its four edges, a deep crease between it and the next with the joint in it (shallower,
+    the smooth skin closed the creases and the tail was a sausage; user). The bulb of venom hangs
+    from the last, the sting curving on down and in from it. `sizes`: each block's half width and
+    half depth (six). Marks "tail", "keel", "joint", "bulb", "sting"; gives the blocks [(middle,
+    way, half length)] and the sting's point."""
+    ex = np.array([1.0, 0.0, 0.0])
+    def out_of(u):       # (the outside of the curl: the way a block's back faces)
+        return np.array([0.0, u[2], -u[1]])
+    J0, e1 = _limb_ends(info, "tail")
+    _, e2 = _limb_ends(info, "tail2")
+    _, e3 = _limb_ends(info, "tail3")
+    uA, uB, uC = (e1 - J0) / np.linalg.norm(e1 - J0), (e2 - e1) / np.linalg.norm(e2 - e1), (e3 - e2) / np.linalg.norm(e3 - e2)
+    m1 = (J0 + e1) * 0.5 + out_of(uA) * 0.036
+    m2 = (e1 + e2) * 0.5 + out_of(uB) * 0.03
+    m3 = (e2 + e3) * 0.5 + out_of(uC) * 0.027
+    chain = [J0 - uA * root_in, m1, e1, m2, e2, m3, e3]
+    NECK = 0.05          # half the gap between two blocks: a crease three cells wide, the joint deep in it
+    blocks = []
+    for i in range(len(sizes)):
+        p0, p1 = chain[i], chain[i + 1]
+        u = (p1 - p0) / np.linalg.norm(p1 - p0)
+        L = float(np.linalg.norm(p1 - p0))
+        nn = out_of(u)
+        a, b = sizes[i]
+        hl = L * 0.5 - NECK
+        mid_ = (p0 + p1) * 0.5
+        sub = _around(g, [p0, p1], a + 0.1)
+        dx, dy, dz = sub.X - mid_[0], sub.Y - mid_[1], sub.Z - mid_[2]
+        qa = dx / a
+        qb = (dy * nn[1] + dz * nn[2]) / b
+        qc = (dy * u[1] + dz * u[2]) / hl
+        blk = ((np.abs(qa) ** 3.4 + np.abs(qb) ** 3.4 + np.abs(qc) ** 3.4) ** (1.0 / 3.4) - 1.0) * min(a, b, hl) * 0.82
+        for sa in (-1.0, 1.0):
+            for sb in (-1.0, 1.0):
+                o = ex * sa * a * 0.7 + nn * sb * b * 0.7
+                kl = cap(sub, mid_ - u * hl * 0.55 + o, mid_ + u * hl * 0.55 + o, 0.05, 0.05)
+                blk = np.minimum(blk, kl)
+                S.mark("keel", kl - 0.006, sub)
+        S.add(blk, 0.0, sub)
+        S.mark("tail", blk, sub)
+        if i > 0:
+            ball = ell(sub, p0, (a * 0.5, b * 0.56, b * 0.56))
+            S.add(ball, 0.0, sub)
+            S.mark("joint", ball, sub)
+        blocks.append((mid_, u, hl))
+    R_, sp_pos, sh_half, sj, _, _, _ = info["stinger"]
+    far = sp_pos + (sp_pos - sj)
+    uS = (far - sj) / np.linalg.norm(far - sj)
+    thS = math.degrees(math.atan2(uS[1], -uS[2]))
+    way = lambda deg: np.array([0.0, math.sin(math.radians(deg)), -math.cos(math.radians(deg))])
+    b0 = sj + uS * (bulb[2] * 2.0)
+    b1 = b0 + way(thS + 14.0) * 0.12 * sting_k
+    b2 = b1 + way(thS + 40.0) * 0.115 * sting_k
+    sub = _around(g, [sj, b0, b1, b2], 0.22)
+    ballS = ell(sub, sj, (0.078, 0.074, 0.074))
+    bl = ell_o(sub, sj + uS * (bulb[2] + 0.04), np.stack([ex, out_of(uS), uS], 1), bulb)
+    sting = _chain(sub, [b0 - uS * 0.05, b0, b1, b2], [0.07, 0.06, 0.045, 0.035])
+    S.add(ballS, 0.0, sub)
+    S.mark("joint", ballS, sub)
+    S.add(smin(bl, sting, 0.03), 0.0, sub)
+    S.mark("bulb", bl, sub)
+    S.mark("sting", sting, sub)
+    return blocks, b2
+
+
+def _sting_tail_paint(S, g, col, kind, blocks, tip, thr, grain, shell, keel, joint, bulb, sting, point, k=SCALE_KIND):
+    """A sting's tail's colours (see _sting_tail): its blocks `shell`, darker toward each one's
+    two ends where it turns in to its joints, their keels `keel`, the joints `joint`; the bulb;
+    the sting `sting` darkening to `point` at its end. A satin sheen (scales'), not a mirror: as
+    glass it showed the sky, blue, and the sand."""
+    tl = S.on("tail", thr)
+    col[tl] = np.array(shell) * (0.94 + 0.12 * grain[tl])[:, None]
+    kl_ = S.on("keel", thr) & tl
+    col[kl_] = np.array(keel)
+    for mid_, u_, hl_ in blocks:
+        t_ = np.abs((g.Y - mid_[1]) * u_[1] + (g.Z - mid_[2]) * u_[2]) / hl_
+        near_ = tl & (np.sqrt((g.X - mid_[0]) ** 2 + (g.Y - mid_[1]) ** 2 + (g.Z - mid_[2]) ** 2) < hl_ + 0.2) & (t_ > 0.62) & (t_ < 1.3)
+        col[near_] = col[near_] * (1.0 - 0.45 * np.clip((t_[near_] - 0.62) / 0.38, 0.0, 1.0))[:, None]
+    jn = S.on("joint", thr) & ~tl
+    col[jn] = np.array(joint)
+    bu = S.on("bulb", thr)
+    col[bu] = np.array(bulb) * (0.9 + 0.2 * grain[bu])[:, None]
+    st = S.on("sting", thr) & ~bu
+    dts = np.sqrt((g.X - tip[0]) ** 2 + (g.Y - tip[1]) ** 2 + (g.Z - tip[2]) ** 2)
+    ks = np.clip(1.0 - dts[st] / 0.26, 0.0, 1.0)[:, None] ** 0.6
+    col[st] = np.array(sting) * (1 - ks) + np.array(point) * ks
+    for m in (tl, jn, bu, st):
+        kind[m] = k
+
+
 def scorpion(sp, g):
-    """A great scorpion in plates of gleaming rust-red chitin, darker at their edges: the head a
-    shield with its two eyes on a knob in the middle and three to each front corner; the back in
-    seven plates over one another, a keel down them; the claws great, a swollen hand and two
-    fingers toothed along their inner edges, black at the points; the legs jointed, under it; the
-    tail five swelling joints with keels along them, a bulb of venom at its end and the sting
-    curving down from it, black, its point an angry glow."""
+    """A great scorpion as it stands to fight (user: it has to look like a scorpion, and its tail
+    is curled in toward its foe). Flat and broad: the head shield with its two eyes on a knob, the
+    back in seven plates each over the next, a notch at its side between every two. The tail thick,
+    five blocks of shell with a joint between each, keeled along their edges, arched up over the
+    back and forward, the bulb of venom hanging from the last over the head and the sting curving
+    on down and in from it. The arms in two joints out to the claws: a slim hand and two long
+    fingers bowed toward each other, toothed inside, dark at their points. Eight thin legs the
+    colour of sand spread out to its sides, each up to a knee and down to the ground in joints
+    (drawn off the parts that carry them, which are folded under it: its thigh with the upper one,
+    its shin with the lower, carried by the upper: see the game's Beast._carried_drawing)."""
     info = _part_info(sp)
     K = parts_of(sp)
     _, body, bh = K["beastBody"]
     _, hp, hh = K["beastHead"]
     W, H, Lz = (float(v) for v in bh)
     S = _Shape(g)
-    # The back: seven plates from the head shield's rear to the tail, each over the next.
-    z0, z1 = float(hp[2] - hh[2] * 0.9), float(body[2] - Lz * 0.95)
+    ex = np.array([1.0, 0.0, 0.0])
+    up = np.array([0.0, 1.0, 0.0])
+    cell = g.cell
+    # --- the body: a low dome over a flat belly, widest behind its middle ---
+    yc = float(body[1]) - 0.005
+    zr, zf = float(body[2] - Lz) - 0.03, float(hp[2] + hh[2]) - 0.02
+    zc0 = float(hp[2] - hh[2]) - 0.02                 # the head shield's rear edge: the back's plates from here
+    zt = float(body[2] - Lz) + 0.02                   # ... to here, where the tail begins
+    kz = [zr, zr + 0.19, zr + 0.49, zr + 0.84, 0.40, zc0, 0.85, 1.02, zf]
+    Wz = np.interp(g.Z, kz, [0.22, 0.37, 0.47, 0.50, 0.49, 0.46, 0.42, 0.37, 0.30])
+    HU = [0.14, 0.18, 0.20, 0.20, 0.20, 0.21, 0.235, 0.165, 0.085]     # (the shield low at its front edge)
+    Hu = np.interp(g.Z, kz, HU)
+    Hd = np.interp(g.Z, kz, [0.10, 0.125, 0.13, 0.13, 0.13, 0.13, 0.12, 0.09, 0.07])
     nplate = 7
-    plates = []
-    for i in range(nplate):
-        t = (i + 0.5) / nplate
-        zc_ = z0 + (z1 - z0) * t
-        wk = 1.0 - 0.28 * max(0.0, t - 0.55) / 0.45
-        pl = ell(g, (0, body[1] + 0.02, zc_), (W * 0.9 * wk, H * 0.95, (z0 - z1) / nplate * 0.75))
-        plates.append(pl)
-    back = plates[0]
-    for pl in plates[1:]:
-        back = smin(back, pl, 0.03)
-    belly = ell(g, (0, body[1] - 0.05, (z0 + z1) * 0.5), (W * 0.8, H * 0.7, (z0 - z1) * 0.52))
-    back = smin(back, belly, 0.06)
-    keel = cap(g, (0, body[1] + H * 0.85, z0 - 0.05), (0, body[1] + H * 0.8, z1 + 0.1), 0.035, 0.03)
-    back = smin(back, keel, 0.03)
-    S.add(back)
-    S.mark("back", back)
-    S.feat["_plates"] = (z0, z1, nplate)
-    # The head shield and its eyes.
-    shield = ell(g, (0, hp[1] - hh[1] * 0.4, hp[2] - hh[2] * 0.1), (hh[0] * 0.92, hh[1] * 1.1, hh[2] * 1.05))
-    shield = smin(shield, ell(g, (0, hp[1] - hh[1] * 0.8, hp[2] - hh[2] * 0.7), (hh[0] * 1.0, hh[1] * 1.2, hh[2] * 0.7)), 0.06)
-    S.add(shield, 0.06)
-    S.mark("shield", shield)
-    knob = ell(g, (0, hp[1] + hh[1] * 0.45, hp[2] + hh[2] * 0.05), (0.07, 0.05, 0.08))
-    S.add(knob, 0.03)
-    eyes = None
-    for sx in (-1, 1):
-        e = ell(g, (sx * 0.035, hp[1] + hh[1] * 0.75, hp[2] + hh[2] * 0.08), (0.028, 0.026, 0.028))
-        eyes = e if eyes is None else np.minimum(eyes, e)
-        for k_ in range(3):
-            e2 = ell(g, (sx * (hh[0] * 0.75 - 0.025 * k_), hp[1] + hh[1] * 0.1, hp[2] + hh[2] * (0.78 - 0.08 * k_)), (0.018, 0.018, 0.018))
-            eyes = np.minimum(eyes, e2)
-    S.add(eyes, 0.0)
+    Lp = (zc0 - zt) / nplate
+    sp_ = (zc0 - g.Z) / Lp
+    on_back = (sp_ > -0.02) & (sp_ < nplate)
+    frac = sp_ - np.floor(sp_)
+    edge_d = np.minimum(frac, 1.0 - frac) * Lp        # how far from the line between two plates (metres)
+    # (each plate rises to its rear edge, over the next one's front; a notch at the side between them)
+    Hu = Hu + np.where(on_back, 0.032 * (frac - 0.55), 0.0)
+    Wz = Wz - np.where(on_back, 0.04 * np.exp(-(edge_d / 0.03) ** 2), 0.0)
+    hh_ = np.where(g.Y > yc, Hu, Hd)
+    pw = np.where(g.Y > yc, 2.7, 2.2)
+    rho = (np.abs(g.X / Wz) ** pw + np.abs((g.Y - yc) / hh_) ** pw) ** (1.0 / pw)
+    trunk = (rho - 1.0) * np.minimum(Wz, hh_) * 0.85
+    trunk = smax(trunk, np.abs(g.Z - (zr + zf) * 0.5) - (zf - zr) * 0.5, 0.07)
+    S.add(trunk)
+    S.mark("trunk", trunk)
+    # The knob on the head shield, its two eyes on it.
+    ey_z = float(hp[2]) + 0.0
+    y_top = yc + float(np.interp(ey_z, kz, HU))
+    S.add(ell(g, (0.0, y_top - 0.012, ey_z), (0.085, 0.04, 0.09)), 0.03)
+    eyes = np.minimum(ell(g, (0.048, y_top + 0.01, ey_z + 0.015), (0.033, 0.03, 0.033)), ell(g, (-0.048, y_top + 0.01, ey_z + 0.015), (0.033, 0.03, 0.033)))
+    S.add(eyes)
     S.mark("eye", eyes)
-    # The claws: the arm in joints to the hand, the hand swollen, two toothed fingers.
+    # Its jaws under the shield's front edge: two short pincers.
+    jaws = None
+    for sx in (-1.0, 1.0):
+        j_ = cap(g, (sx * 0.088, yc - 0.01, zf - 0.09), (sx * 0.078, yc - 0.045, zf + 0.085), 0.062, 0.044)
+        jaws = j_ if jaws is None else np.minimum(jaws, j_)
+    S.add(jaws, 0.02)
+    S.mark("jaw", jaws)
+    # --- the arms and the claws ---
+    tips = []
     for side in ("L", "R"):
-        an, cn = "arm%s" % side, "claw%s" % side
+        an, cn = "arm" + side, "claw" + side
         if an not in info or cn not in info:
             continue
         a0, a1 = _limb_ends(info, an)
         c0, c1 = _limb_ends(info, cn)
-        Rc, cp, ch = K[cn]
         sx = 1.0 if a1[0] > 0 else -1.0
-        ra = float(K[an][2][0])
-        mid = (a0 + a1) * 0.5 + np.array([sx * 0.05, 0.03, 0.0])
-        arm = smin(cap(g, a0, mid, ra * 0.85, ra * 0.8), cap(g, mid, a1, ra * 0.8, ra * 0.75), 0.03)
-        arm = smin(arm, ell(g, mid, (ra * 1.0, ra * 0.9, ra * 1.0)), 0.02)
-        arm = smin(arm, ell(g, a1, (ra * 0.95, ra * 0.9, ra * 0.95)), 0.02)
-        S.add(arm, 0.04)
-        S.mark("arm", arm)
-        fwd = c1 - c0
-        Lc = float(np.linalg.norm(fwd))
-        fwd = fwd / max(Lc, 1e-9)
-        up = np.array([0.0, 1.0, 0.0])
-        inn = np.cross(up, fwd) * -sx   # (toward the middle)
-        inn = inn / max(np.linalg.norm(inn), 1e-9)
-        hw, hh_ = float(ch[0]), float(ch[1])
-        hand_c = c0 + fwd * Lc * 0.36
-        hand = ell(g, hand_c, (hw * 0.8, hh_ * 0.95, Lc * 0.31))
-        hand = smin(hand, cap(g, c0, hand_c, ra * 0.8, hw * 0.6), 0.04)
-        # the fixed finger on the inside, the movable one outside it, curving in to meet it
-        f_root = hand_c + fwd * Lc * 0.24 + inn * hw * 0.42
-        f_tip = c0 + fwd * Lc * 1.0 + inn * hw * 0.12
-        m_root = hand_c + fwd * Lc * 0.22 - inn * hw * 0.42
-        m_mid = m_root + fwd * Lc * 0.3 - inn * hw * 0.16
-        m_tip = c0 + fwd * Lc * 0.98 + inn * hw * 0.24
-        fixed = cap(g, f_root, f_tip, hw * 0.34, 0.012)
-        movab = smin(cap(g, m_root, m_mid, hw * 0.34, hw * 0.22), cap(g, m_mid, m_tip, hw * 0.22, 0.012), 0.02)
-        # (the gap between them, and their teeth along it)
-        gapc = (f_root + f_tip + m_root + m_tip) * 0.25 + fwd * Lc * 0.02
-        gap = ell(g, gapc + fwd * Lc * 0.04, (hw * 0.24, hh_ * 1.3, Lc * 0.27))
-        fingers = smax(np.minimum(fixed, movab), -gap, 0.01)
-        claw = smin(hand, fingers, 0.03)
-        S.add(claw, 0.03)
-        S.mark("claw", claw)
-        S.mark("finger", fingers)
-        S.feat.setdefault("_tips", []).extend([f_tip, m_tip])
-        S.feat.setdefault("_gaps", []).append((gapc, hw, hh_, Lc))
-    # The legs under it, each in joints to its foot.
+        da = (a1 - a0) / max(np.linalg.norm(a1 - a0), 1e-9)
+        outw = np.cross(up, da) * sx
+        el = (a0 + a1) * 0.5 + outw * 0.07
+        sub = _around(g, [a0, el, a1], 0.2)
+        arm = smin(cap(sub, a0, el, 0.08, 0.088), cap(sub, el, a1, 0.09, 0.08), 0.02)
+        arm = np.minimum(arm, np.minimum(ell(sub, a0, (0.092, 0.092, 0.092)), ell(sub, el, (0.1, 0.1, 0.1))))
+        arm = np.minimum(arm, ell(sub, a1, (0.086, 0.086, 0.086)))
+        S.add(arm, 0.03, sub)
+        S.mark("arm", arm, sub)
+        S.mark("ball", np.minimum(ell(sub, el, (0.1, 0.1, 0.1)), ell(sub, a1, (0.086, 0.086, 0.086))), sub)
+        Lc = float(np.linalg.norm(c1 - c0))
+        dc = (c1 - c0) / max(Lc, 1e-9)
+        inn = -np.cross(up, dc) * sx
+        Rm = np.stack([inn, up, dc], 1)
+        sub = _around(g, [c0, c1, c0 + inn * 0.24, c0 - inn * 0.26, c1 + inn * 0.24, c1 - inn * 0.26], 0.12)
+        hand = ell_o(sub, c0 + dc * 0.19, Rm, (0.14, 0.104, 0.235))
+        # (the fingers bowed apart and in again to their points: a slot between them the whole way)
+        fx = _bez(c0 + dc * 0.3 + inn * 0.085, c0 + dc * 0.6 + inn * 0.22, c0 + dc * (Lc - 0.01) + inn * 0.055, 11)
+        mv = _bez(c0 + dc * 0.28 - inn * 0.095, c0 + dc * 0.58 - inn * 0.235, c0 + dc * (Lc - 0.03) - inn * 0.055, 11)
+        rr = [0.058 - 0.024 * (i / 10.0) ** 1.1 for i in range(11)]
+        fingers = np.minimum(_chain(sub, fx, rr), _chain(sub, mv, rr))
+        claw = smin(hand, fingers, 0.035)
+        S.add(claw, 0.0, sub)
+        S.mark("hand", hand, sub)
+        S.mark("finger", fingers, sub)
+        tips += [fx[-1], mv[-1]]
+    # --- the legs: thin, in joints, spread out to its sides ---
+    claims = []
+    carried = {}
+    stiff = []
+    leg_all = np.full(g.shape, INF)
+    ground = float(body[1]) - 0.435      # the sand as it stands on it (its body rides that high: Beast, ride_adj)
     for n in [p["name"] for p in sp["parts"]]:
         if not (n.startswith("leg") and len(n) == 5 and n + "Lo" in info):
             continue
-        j0, j1 = _limb_ends(info, n)
-        _, j2 = _limb_ends(info, n + "Lo")
-        r = float(K[n][2][0])
+        j0, _ = _limb_ends(info, n)
         sx = 1.0 if j0[0] > 0 else -1.0
-        top = j0 + np.array([-sx * 0.02, -0.03, 0.0])
-        knee = j1 + np.array([sx * 0.05, 0.05, 0.0])
-        foot = j2 + np.array([sx * 0.02, 0.0, 0.0])
-        mid = knee + (foot - knee) * 0.55 + np.array([sx * 0.02, 0.0, 0.0])
-        lg = smin(cap(g, top, knee, r * 1.0, r * 0.85), cap(g, knee, mid, r * 0.8, r * 0.65), 0.02)
-        lg = smin(lg, cap(g, mid, foot, r * 0.6, r * 0.4), 0.02)
-        lg = smin(lg, np.minimum(ell(g, knee, (r * 1.0, r * 1.0, r * 1.0)), ell(g, mid, (r * 0.75, r * 0.75, r * 0.75))), 0.015)
-        S.add(lg, 0.03)
-        S.mark("leg", lg)
-        cl = cap(g, foot, foot + np.array([sx * 0.03, -0.03, 0.02]), r * 0.3, 0.006)
-        S.add(cl, 0.0)
-        S.mark("toe", cl)
-    # The tail: five joints, each swelling and keeled, then the bulb and the sting.
-    pts = []
-    for n in ("tail", "tail2", "tail3", "stinger"):
-        a, b = _limb_ends(info, n)
-        if not pts:
-            pts.append(a + np.array([0.0, -0.04, 0.12]))
-        pts.append(b)
-    path = _catmull(pts, 0.04)
-    acc = [0.0]
-    for i in range(len(path) - 1):
-        acc.append(acc[-1] + float(np.linalg.norm(path[i + 1] - path[i])))
-    acc = np.array(acc)
-    L_tot = float(acc[-1])
-    r0 = float(K["tail"][2][0]) * 0.92
-    seg_end = 0.78
-    nseg = 5
-    for si in range(nseg):
-        t0 = seg_end * si / nseg
-        t1 = seg_end * (si + 1) / nseg
-        idx = [i for i in range(len(path)) if t0 * L_tot <= acc[i] <= t1 * L_tot]
-        if len(idx) < 2:
-            continue
-        a, b = path[idx[0]], path[idx[-1]]
-        rr = r0 * (1.0 - 0.12 * si)
-        sub = _around(g, [a, b], rr * 1.5 + 0.05)
-        u = b - a
-        Lu = float(np.linalg.norm(u))
-        u = u / max(Lu, 1e-9)
-        tt = np.clip(((sub.X - a[0]) * u[0] + (sub.Y - a[1]) * u[1] + (sub.Z - a[2]) * u[2]) / max(Lu, 1e-9), 0, 1)
-        cx, cy_, cz = a[0] + u[0] * tt * Lu, a[1] + u[1] * tt * Lu, a[2] + u[2] * tt * Lu
-        bulge = rr * (0.64 + 0.4 * np.sin(tt * math.pi) ** 0.6)
-        dx, dy, dz = sub.X - cx, sub.Y - cy_, sub.Z - cz
-        dd = np.sqrt(dx * dx + dy * dy + dz * dz) - bulge
-        # (two keels along its top)
-        for kx in (-1, 1):
-            kk = np.sqrt((dx - kx * rr * 0.42) ** 2 + (dy - rr * 0.62) ** 2 + 0.0 * dz) - rr * 0.16 - 0.0
-            ksl = np.where((tt > 0.08) & (tt < 0.92), kk, INF)
-            dd = np.minimum(dd, np.maximum(ksl, dd - rr * 0.18))
-        S.add(dd, 0.0, sub)
-        S.mark("tail", dd, sub)
-        S.feat.setdefault("_joints", []).append((a, u))
-    i_b = int(np.searchsorted(acc, seg_end * L_tot))
-    bulb_c = path[min(i_b + 1, len(path) - 1)]
-    end = path[-1]
-    du = end - bulb_c
-    du = du / max(np.linalg.norm(du), 1e-9)
-    rb = r0 * 0.85
-    sub = _around(g, [bulb_c - du * rb * 1.5, end + du * rb * 1.5, end + np.array([0.0, -0.2, 0.3])], rb * 1.8 + 0.08)
-    bulb = ell(sub, bulb_c + du * rb * 0.6, (rb * 0.9, rb * 1.0, rb * 1.05))
-    S.add(bulb, 0.03, sub)
-    S.mark("bulb", bulb, sub)
-    b0 = bulb_c + du * rb * 1.25
-    b1 = end + np.array([0.0, -0.01, 0.08])
-    b2 = b1 + np.array([0.0, -0.04, 0.22])
-    barb = smin(cap(sub, b0, b1, rb * 0.5, rb * 0.24), cap(sub, b1, b2, rb * 0.24, 0.007), 0.02)
-    S.add(barb, 0.02, sub)
-    S.mark("sting", barb, sub)
+        zi = float(j0[2])
+        fan = zi / 0.38
+        r0 = np.array([sx * 0.38, yc - 0.03, zi])
+        r1 = np.array([sx * 0.5, yc + 0.005, zi + fan * 0.01])
+        k1 = np.array([sx * 0.78, yc + 0.14, zi + fan * 0.045])
+        an_ = np.array([sx * 1.0, yc - 0.135, zi + fan * 0.09])
+        ft = np.array([sx * 1.1, ground + 0.036, zi + fan * 0.12])
+        sub = _around(g, [r0, k1, an_, ft], 0.12)
+        thigh = np.minimum(cap(sub, r0, r1, 0.066, 0.06), cap(sub, r1, k1, 0.057, 0.048))
+        thigh = np.minimum(thigh, ell(sub, k1, (0.056, 0.056, 0.056)))
+        shin = np.minimum(cap(sub, k1, an_, 0.047, 0.04), cap(sub, an_, ft, 0.04, 0.035))
+        shin = np.minimum(shin, ell(sub, an_, (0.045, 0.045, 0.045)))
+        S.add(np.minimum(thigh, shin), 0.0, sub)
+        S.mark("leg", np.minimum(thigh, shin), sub)
+        S.mark("knee", np.minimum(ell(sub, k1, (0.056, 0.056, 0.056)), ell(sub, an_, (0.045, 0.045, 0.045))), sub)
+        S.mark("toe", ell(sub, ft, (0.05, 0.05, 0.05)), sub)
+        leg_all[sub.sl] = np.minimum(leg_all[sub.sl], np.minimum(thigh, shin))
+        # Whose they are: the thigh the upper part's, the shin the lower's (where each is the nearer).
+        t_full = np.full(g.shape, INF)
+        s_full = np.full(g.shape, INF)
+        t_full[sub.sl] = thigh
+        s_full[sub.sl] = shin
+        near = 1.6 * cell
+        claims.append(((t_full < near) & (t_full <= s_full), n, _along(g, [r0, r1, k1])))
+        claims.append(((s_full < near) & (s_full < t_full), n + "Lo", _along(g, [k1, an_, ft])))
+        # (The shin is drawn carried by the upper part, lifted about the knee as the leg's own
+        # knee bends: where the knee is, the axis it lifts about, how much of the bend.)
+        carried[n + "Lo"] = [k1[0], k1[1], k1[2], 0.0, 0.0, sx, 0.55]
+        stiff += [n, n + "Lo"]
+    # --- the tail: six blocks of shell arched up over the back, the bulb and the sting ---
+    blocks, b2 = _sting_tail(S, g, info, [(0.18, 0.152), (0.178, 0.15), (0.174, 0.147), (0.168, 0.143), (0.16, 0.137), (0.152, 0.131)])
     d = S.d
     occ = d < 0
-    thr = 0.4 * g.cell
-    # Colours: rust-red chitin, gleaming, darker at each plate's edges and in the joints; lighter
-    # under it; the fingers black toward their points; the bulb amber; the sting black, its point
-    # an angry glow; the eyes black beads.
-    sheen = vnoise(np.abs(g.X), g.Y, g.Z, 0.07, 95)
-    base = np.array([0.5, 0.19, 0.1])
+    thr = 0.5 * cell
+    # --- its colours (after the animal: a dark shell, the claws redder, the legs the colour of
+    # sand): the back grey-brown, each plate's rear edge and the notches dark, a paler line down
+    # its middle; the head shield darker; pale under it; the tail dark chestnut, its keels
+    # lighter and beaded, its joints nearly black; the bulb red-brown, the sting black at its
+    # point; the hands red, the fingers darker to black points, their teeth pale. A satin sheen
+    # (scales'), not a mirror (as glass it showed the sky and the sand, a balloon); the legs dull.
+    grain = vnoise(np.abs(g.X), g.Y, g.Z, 0.05, 95)
     col = np.zeros(g.shape + (3,))
-    col[:] = base * (0.82 + 0.36 * sheen[..., None])
-    kind = np.full(g.shape, CHITIN_KIND, np.uint8)
-    bk = S.on("back", thr)
-    zp = (g.Z - z1) / max(z0 - z1, 1e-6) * nplate
-    edge = bk & ((zp % 1.0) > 0.82) & (g.Y > body[1] - H * 0.3)
-    col[edge] = col[edge] * 0.5
-    under = occ & (g.Y < body[1] - H * 0.45) & ~S.on("leg", thr) & ~S.on("claw", thr)
-    col[under] = np.array([0.62, 0.34, 0.2]) * (0.9 + 0.2 * sheen[under])[:, None]
-    kl = bk & (np.abs(g.X) < 0.04) & (g.Y > body[1] + H * 0.7)
-    col[kl] = col[kl] * 1.3
-    sh_ = S.on("shield", thr) & ~S.on("eye", thr)
-    groove = sh_ & (np.abs(g.X) < 0.018) & (g.Z < hp[2] + hh[2] * 0.6)
-    col[groove] = col[groove] * 0.55
-    lgm = S.on("leg", thr)
-    lt = lgm & (g.Y < 0.3)
-    col[lt] = col[lt] * 0.7
-    fg = S.on("finger", thr)
-    for tp in S.feat.get("_tips", []):
+    kind = np.full(g.shape, SCALE_KIND, np.uint8)
+    back_c = np.array([0.45, 0.335, 0.24])
+    col[:] = back_c * (0.92 + 0.16 * grain[..., None])
+    tr = S.on("trunk", thr * 3.0)
+    kind[tr] = FUR      # (the back and the shield dull, grained: only the tail and the claws shine)
+    topside = tr & (g.Y > yc - 0.02)
+    shield = topside & (g.Z > zc0)
+    col[shield] = np.array([0.37, 0.255, 0.18]) * (0.92 + 0.16 * grain[shield])[:, None]
+    seam = topside & on_back & (edge_d < 0.02)
+    col[seam] = col[seam] * 0.45
+    rim = topside & on_back & (frac > 0.72) & ~seam
+    col[rim] = col[rim] * 1.12
+    mid = topside & (np.abs(g.X) < 0.03) & (g.Z < zc0 - 0.02) & ~seam
+    col[mid] = col[mid] * 1.22
+    groove = shield & (np.abs(g.X) < 0.02) & (g.Z > ey_z + 0.1)
+    col[groove] = col[groove] * 0.6
+    under = tr & (g.Y < yc - 0.07)
+    col[under] = np.array([0.46, 0.35, 0.24]) * (0.92 + 0.16 * grain[under])[:, None]
+    # (three small eyes at each front corner of the shield)
+    for sx in (-1.0, 1.0):
+        for k_ in range(3):
+            wz = zf - 0.075 - 0.045 * k_
+            wx = float(np.interp(wz, kz, [0.22, 0.37, 0.47, 0.50, 0.49, 0.46, 0.42, 0.37, 0.30])) * 0.86
+            dot = occ & (np.abs(g.X - sx * wx) < cell * 0.55) & (np.abs(g.Z - wz) < cell * 0.55) & (g.Y > yc + 0.06) & (d > -cell * 0.9) & (g.Y < yc + 0.06 + cell * 1.2)
+            col[dot] = np.array([0.03, 0.03, 0.03])
+            kind[dot] = NOSE
+    jw = S.on("jaw", thr) & (g.Y < yc + 0.01) & (g.Z > zf - 0.07)
+    col[jw] = np.array([0.5, 0.25, 0.14]) * (0.9 + 0.2 * grain[jw])[:, None]
+    jt = jw & (g.Z > zf + 0.03)
+    col[jt] = np.array([0.2, 0.1, 0.07])
+    am = S.on("arm", thr)
+    col[am] = np.array([0.43, 0.215, 0.14]) * (0.9 + 0.2 * grain[am])[:, None]
+    bl_ = S.on("ball", thr) & am
+    col[bl_] = col[bl_] * 0.72
+    hd = S.on("hand", thr)
+    col[hd] = np.array([0.6, 0.26, 0.14]) * (0.9 + 0.2 * grain[hd])[:, None]
+    fg = S.on("finger", thr) & ~hd
+    col[fg] = np.array([0.5, 0.2, 0.115]) * (0.9 + 0.2 * grain[fg])[:, None]
+    for tp in tips:
         dtp = np.sqrt((g.X - tp[0]) ** 2 + (g.Y - tp[1]) ** 2 + (g.Z - tp[2]) ** 2)
-        near = fg & (dtp < 0.28)
-        k_ = np.clip(1.0 - dtp[near] / 0.28, 0.0, 1.0)[:, None]
-        col[near] = col[near] * (1 - k_) + np.array([0.05, 0.03, 0.03]) * k_
-    for gc, hw, hh2, Lc in S.feat.get("_gaps", []):
-        teeth = fg & (ell(g, gc, (hw * 0.24, hh2 * 1.3, Lc * 0.3)) < 0.0) & (np.sin((g.Z - gc[2]) * 70.0) > 0.2)
-        col[teeth] = np.array([0.12, 0.06, 0.04])
-    tl = S.on("tail", thr)
-    for ja, ju in S.feat.get("_joints", [])[1:]:
-        ring = tl & (np.abs((g.X - ja[0]) * ju[0] + (g.Y - ja[1]) * ju[1] + (g.Z - ja[2]) * ju[2]) < 0.035) & (np.sqrt((g.X - ja[0]) ** 2 + (g.Y - ja[1]) ** 2 + (g.Z - ja[2]) ** 2) < r0 * 1.4)
-        col[ring] = col[ring] * 0.45
-    bl = S.on("bulb", thr)
-    col[bl] = np.array([0.6, 0.27, 0.09]) * (0.85 + 0.3 * sheen[bl])[:, None]
-    st = S.on("sting", thr)
-    col[st] = np.array([0.06, 0.03, 0.03])
-    tipm = st & (np.sqrt((g.X - b2[0]) ** 2 + (g.Y - b2[1]) ** 2 + (g.Z - b2[2]) ** 2) < rb * 0.55)
-    col[tipm] = np.array([0.95, 0.3, 0.06])
-    kind[tipm] = GLOW_KIND
+        nearm = fg & (dtp < 0.2)
+        k_ = np.clip(1.0 - dtp[nearm] / 0.2, 0.0, 1.0)[:, None] ** 0.7
+        col[nearm] = col[nearm] * (1 - k_) + np.array([0.13, 0.06, 0.05]) * k_
+    lg = S.on("leg", thr)
+    col[lg] = np.array([0.8, 0.66, 0.38]) * (0.93 + 0.14 * grain[lg])[:, None]
+    kn = S.on("knee", thr) & lg
+    col[kn] = np.array([0.62, 0.47, 0.25])
+    to = S.on("toe", thr) & lg
+    col[to] = np.array([0.5, 0.36, 0.2])
+    kind[lg] = NOSE
+    _sting_tail_paint(S, g, col, kind, blocks, b2, thr, grain, (0.44, 0.225, 0.15), (0.58, 0.32, 0.2), (0.13, 0.075, 0.06), (0.56, 0.27, 0.13), (0.42, 0.18, 0.1), (0.09, 0.045, 0.04))
     ey = S.on("eye", thr)
-    col[ey] = np.array([0.02, 0.02, 0.02])
-    kind[ey] = WET
-    to = S.on("toe", thr)
-    col[to] = np.array([0.08, 0.04, 0.03])
-    kind[to] = BONE
-    return d, np.clip(col, 0, 1), kind
+    col[ey] = np.array([0.03, 0.03, 0.03])
+    kind[ey] = NOSE
+    return d, np.clip(col, 0, 1), kind, {"claims": claims, "with": carried, "stiff": stiff}
 
 
 SCULPTS["scorpion"] = scorpion

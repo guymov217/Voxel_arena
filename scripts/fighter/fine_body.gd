@@ -37,6 +37,9 @@ const BONE := Color(0.93, 0.89, 0.8)
 ## on the new men's muscles (user: the damage did not show on the new gladiators as it had).
 const BLOOD := Color(0.6, 0.04, 0.035)
 const BUILDS := ["hero", "champion", "brute"]
+## The giants' builds: their skin smooth and their limbs' joints run on as a man's are (user: what
+## was done for the gladiators on every monster and beast).
+const GIANTS := ["cyclops", "polyphemus", "minotaur", "troll", "titan"]
 
 static var _tpl := {}
 static var _parsed := {}
@@ -68,7 +71,8 @@ static func part_data(bn: String, part: String) -> Dictionary:
 				for v in row:
 					k.append(float(v))
 			out = {"cells": PackedInt32Array(pd.cells), "sub": PackedInt32Array(pd.sub), "k": k, "rows": (pd.k as Array).size(), "na": int(template().get("na", 32)),
-				"palette": b.get("palette", []), "cloth": b.get("cloth", []), "lines": PackedInt32Array(pd.get("lines", []))}
+				"palette": b.get("palette", []), "cloth": b.get("cloth", []), "lines": PackedInt32Array(pd.get("lines", [])),
+				"fit": PackedInt32Array(pd.get("fit", []))}
 	_parsed[key] = out
 	return out
 
@@ -93,6 +97,21 @@ static func beast_data(species: String, part: String) -> Dictionary:
 	var pd = (_beasts[species] as Dictionary).get("parts", {}).get(part)
 	if pd is Dictionary:
 		out = {"cells": PackedInt32Array(pd.cells), "sub": PackedInt32Array(pd.sub), "beast": true}
+		# (Its smooth skin, worked out with its sculpt: tools/gen_fine_beasts.py, _beast_smooth.)
+		if pd.get("sw") is String and pd.get("sn") is String and pd.get("sv") is String:
+			out["sw"] = Marshalls.base64_to_raw(pd.sw)
+			out["sn"] = Marshalls.base64_to_raw(pd.sn)
+			out["sv"] = Marshalls.base64_to_raw(pd.sv)
+			# (And its shape drawn on its hide under it, a tone a fine voxel: form_tones there.)
+			if pd.get("st") is String:
+				out["st"] = Marshalls.base64_to_raw(pd.st)
+		# (What its sculpt says of how the part is drawn: carried by the part it hangs from, "with"
+		# [where it hinges and the axis it lifts about, as the beast stands at rest, and how much of
+		# its joint's bend]; its joints not drawn as one skin, "stiff": Beast._carried_drawing.)
+		if pd.get("with") is Array and (pd.with as Array).size() >= 7:
+			out["with"] = PackedFloat32Array(pd.with)
+		if pd.has("stiff"):
+			out["stiff"] = true
 	_parsed[key] = out
 	return out
 
@@ -167,8 +186,9 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	if sub.size() != g.x * g.y * g.z:
 		return
 	var vox := p.vf * p.part_scale
-	# (A man's skin smooth, FineSmooth: a layout of its own. Not a giant's, nor a beast's.)
-	var man := BUILDS.has(bn)
+	# (A man's skin smooth, FineSmooth: a layout of its own; a giant's as a man's.)
+	# (And a beast's, which comes with its sculpt: _beast_smooth.)
+	var man := BUILDS.has(bn) or GIANTS.has(bn) or (beast and d.has("sw") and (d.sw as PackedByteArray).size() == (d.cells as PackedInt32Array).size() / CELL * 2)
 	var L := _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)) + ("|smooth" if man and FineSmooth.live() else "") + ("|geo" if man and FineSmooth.skinned() else ""), beast)
 	var cells: PackedInt32Array = d.cells
 	var fsz: float = L.fsz
@@ -195,7 +215,7 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	var na: PackedFloat32Array = L.na
 	var fine := {"body": true, "build": bn, "par": par, "own": own, "shade": shade, "xf": L.xf, "of": of, "base": base, "na": na,
 		"hid": L.hid, "code": L.code, "sub": d.sub, "fsz": fsz, "sk": sk_lin, "wound": {}, "wfree": [], "wn": 0, "cells": cells, "d": d, "beast": beast,
-		"smooth": L.skin != null}
+		"smooth": L.skin != null, "jaw_corners": L.jaw_corners}
 	p.fine = fine
 	if _drawing():
 		var mm := MultiMesh.new()
@@ -225,7 +245,9 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		mi.multimesh = mm
 		mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 		mi.top_level = true
-		var ext := Vector3(p.grid) * vox * 0.5 + Vector3.ONE * fsz * 12.0
+		# (As far round the part as its fine voxels lie: a scorpion's legs are drawn far off the
+		# parts that carry them, and went out of sight with the part's own box out of the view.)
+		var ext := Vector3(p.grid) * vox * 0.5 + Vector3.ONE * fsz * maxf(12.0, float(L.get("far_out", 0)) + 2.0)
 		mi.custom_aabb = AABB(-ext, ext * 2.0)
 		mm.custom_aabb = mi.custom_aabb
 		p.add_child(mi)
@@ -271,7 +293,11 @@ static func fit_giant(f) -> void:
 		if d.is_empty() or (d.sub as PackedInt32Array).size() != p.grid.x * p.grid.y * p.grid.z:
 			continue
 		var vox := p.vf * p.part_scale
-		p.fit_to(slabs(p, _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)), false)))
+		# (By the fit kept in his build, tools/gen_fine_body.py "fit": the boxes of the giant as he
+		# was first sculpted. His skin sculpted anew since, smooth, a fighter's feet, is drawing
+		# only: he strikes and is struck by the boxes he always had, to the last bit.)
+		var kept := slabs_kept(p, d.get("fit", PackedInt32Array()), vox)
+		p.fit_to(kept if not kept.is_empty() else slabs(p, _layout(p, d, bn + "|" + String(p.part_name) + "|" + str(snappedf(vox, 0.00001)), false)))
 
 ## What is drawn of a part (its fine voxels that lie over a voxel of it), as boxes laid along it
 ## (own frame): one to each layer of its box along the line it hangs by, round what is drawn in
@@ -298,6 +324,53 @@ static func slabs(p: VoxelPart, L: Dictionary) -> Array:
 		var k := clampi(int(floor((c[ax] + he[ax]) / cell)), 0, n - 1)
 		lo[k] = (lo[k] as Vector3).min(c - h)
 		hi[k] = (hi[k] as Vector3).max(c + h)
+	return _slab_boxes(p, lo, hi)
+
+## The same boxes from a build's kept fit (`fit`: the axis of the part's line, then for each row
+## of fine voxels along it its place and the least and the greatest places, the other two ways,
+## of the fine voxels the giant was first sculpted in): each place made as _layout makes a fine
+## voxel's and laid in its layer as slabs() lays it, so the boxes are the ones slabs() made of
+## those fine voxels, to the last bit. Empty if the build keeps none (or for another line).
+static func slabs_kept(p: VoxelPart, fit: PackedInt32Array, vox: float) -> Array:
+	var ax: int = p._root_axis()[0]
+	var n: int = p.dims[ax]
+	if fit.size() < 6 or (fit.size() - 1) % 5 != 0 or fit[0] != ax:
+		return []
+	var he := p.half_ext
+	var cell: float = he[ax] * 2.0 / float(n)
+	var fsz := vox / 2.0
+	var lo_p := -Vector3(p.grid) * vox * 0.5
+	var h := Vector3.ONE * float(fsz) * 0.5
+	var oa := 1 if ax == 0 else 0
+	var ob := 1 if ax == 2 else 2
+	var lo := []
+	var hi := []
+	for k in n:
+		lo.append(Vector3.INF)
+		hi.append(-Vector3.INF)
+	for r in range(1, fit.size(), 5):
+		var q0 := Vector3.ZERO
+		var q1 := Vector3.ZERO
+		q0[ax] = fit[r]
+		q1[ax] = fit[r]
+		q0[oa] = fit[r + 1]
+		q0[ob] = fit[r + 2]
+		q1[oa] = fit[r + 3]
+		q1[ob] = fit[r + 4]
+		var c0 := lo_p + (q0 + Vector3(0.5, 0.5, 0.5)) * fsz
+		var c1 := lo_p + (q1 + Vector3(0.5, 0.5, 0.5)) * fsz
+		if absf(c0[ax]) > he[ax]:
+			continue   # (over the joint, on the part beside it)
+		var k := clampi(int(floor((c0[ax] + he[ax]) / cell)), 0, n - 1)
+		lo[k] = (lo[k] as Vector3).min(c0 - h)
+		hi[k] = (hi[k] as Vector3).max(c1 + h)
+	return _slab_boxes(p, lo, hi)
+
+static func _slab_boxes(p: VoxelPart, lo: Array, hi: Array) -> Array:
+	var ax: int = p._root_axis()[0]
+	var n: int = p.dims[ax]
+	var he := p.half_ext
+	var cell: float = he[ax] * 2.0 / float(n)
 	var whole := AABB(-he, he * 2.0)
 	var out := []
 	for k in n:
@@ -364,6 +437,11 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 	var of := {}
 	var buf := PackedFloat32Array()
 	buf.resize(n * 20)
+	var far_out := 0    # how far out of the part's own grid its fine voxels lie, the furthest of them
+	for s in n:
+		for a in 3:
+			var c := cells[s * CELL + a]
+			far_out = maxi(far_out, maxi(-c, c - g[a] * res + 1))
 	var pal: Array = d.get("palette", [])
 	var cloth: Array = d.get("cloth", [])
 	var smooth := key.contains("|smooth")
@@ -411,7 +489,24 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 	# forearm's, a shin's and a thigh's high one.
 	var na := PackedFloat32Array()
 	var skin: ShaderMaterial = null
-	if smooth:
+	var jaw_corners := PackedFloat32Array()
+	if smooth and beast:
+		var made := _beast_smooth(d, cells, n, skinned)
+		na = made[0]
+		# Under the smooth skin its shape is drawn on its hide (as a man's body's lines are, below):
+		# each fine voxel a tile of the tone the sculpt gave it, where it gave it one.
+		var st: PackedByteArray = d.get("st", PackedByteArray())
+		if skinned and st.size() == n:
+			for s in n:
+				if st[s] != 0:
+					var grain := 1.0 + (float(absi(hash(Vector3i(cells[s * CELL], cells[s * CELL + 1], cells[s * CELL + 2]))) % 1000) / 1000.0 - 0.5) * 0.05 * grain_k
+					shade[s] = maxf(0.3, 1.0 + (float(st[s]) / 200.0 - 1.0) * FineSmooth.LINES) * grain
+		if skinned and not (made[1] as PackedFloat32Array).is_empty():
+			skin = FineSmooth.skin(made[1], FineHead.material())
+			# (A head's jaw is a drawing of its own, _jaw_on: its corners are picked out of these.)
+			if not p.jaw_slot.is_empty():
+				jaw_corners = made[1]
+	elif smooth:
 		var at := _fine_at(cells)
 		# Under the smooth skin his body's lines are drawn on it (tools/gen_fine_body.py _details:
 		# [fine voxel, its shade] by turns), each fine voxel a tile a shade darker or lighter.
@@ -434,9 +529,70 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 		if skinned:
 			var shape := FineSmooth.blurred(sol, FineSmooth.GEO_REACH)
 			skin = FineSmooth.skin(FineSmooth.corners(at, sol, shape, light, own, shape if alone else FineSmooth.blurred(own, FineSmooth.GEO_REACH), own_light), FineHead.material())
-	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code, "na": na, "skin": skin}
+	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code, "na": na, "skin": skin, "jaw_corners": jaw_corners, "far_out": far_out}
 	_layouts[key] = L
 	return L
+
+## A beast's smooth skin (user: the gladiators' smooth skin on every monster and beast), which is
+## worked out with its sculpt on the whole beast at rest (tools/gen_fine_beasts.py smooth_skin: a
+## beast's parts are its skin shared out among them, no shut solids to work it out from here, and
+## its skin has to run on across its joints): [the way each fine voxel faces (FineSmooth.ways), its
+## corners' moves and ways (FineSmooth.corners; none unless `skinned`)]. `sw`: two bytes a fine
+## voxel, its way (0xFFFF none). The corners of its fine voxels, each once in the order of their
+## places: `sn` a bit each, whether it is on the skin; `sv` five bytes for each that is, its move's
+## three (steps of 1/160 of a fine voxel about 128), its way's low eight bits, the high two (128:
+## none). A corner under the skin is drawn where it is, lit as its cube.
+static func _beast_smooth(d: Dictionary, cells: PackedInt32Array, n: int, skinned: bool) -> Array:
+	var sw: PackedByteArray = d.sw
+	var na := PackedFloat32Array()
+	na.resize(n)
+	for s in n:
+		var c := sw[s * 2] | (sw[s * 2 + 1] << 8)
+		na[s] = FineSmooth.NONE if c == 0xFFFF else 2.0 + float(c)
+	var cd := PackedFloat32Array()
+	if not skinned:
+		return [na, cd]
+	var keys := PackedInt64Array()
+	keys.resize(n * 8)
+	for s in n:
+		var base := ((cells[s * CELL] + 64) * 1024 + cells[s * CELL + 1] + 64) * 1024 + cells[s * CELL + 2] + 64
+		for c in 8:
+			keys[s * 8 + c] = base + (c & 1) * 1048576 + ((c >> 1) & 1) * 1024 + ((c >> 2) & 1)
+	var sorted := keys.duplicate()
+	sorted.sort()
+	var sn: PackedByteArray = d.sn
+	var sv: PackedByteArray = d.sv
+	# Each corner once, and where the five bytes of those on the skin are (-1: under it).
+	var uniq := PackedInt64Array()
+	var slot := PackedInt32Array()
+	var last := -1
+	var lit := 0
+	for k in sorted:
+		if k == last:
+			continue
+		last = k
+		var i := uniq.size()
+		uniq.append(k)
+		if (i >> 3) < sn.size() and (sn[i >> 3] & (1 << (i & 7))) != 0:
+			slot.append(lit)
+			lit += 1
+		else:
+			slot.append(-1)
+	if lit * 5 != sv.size():
+		return [na, cd]   # (not this sculpt's: drawn as cubes, lit smooth)
+	cd.resize(n * 32)
+	for q in n * 8:
+		var j := slot[uniq.bsearch(keys[q])]
+		var o := q * 4
+		if j < 0:
+			cd[o + 3] = FineSmooth.NONE
+			continue
+		var b := j * 5
+		cd[o] = float(sv[b] - 128) / 160.0
+		cd[o + 1] = float(sv[b + 1] - 128) / 160.0
+		cd[o + 2] = float(sv[b + 2] - 128) / 160.0
+		cd[o + 3] = FineSmooth.NONE if (sv[b + 4] & 128) != 0 else 2.0 + float(sv[b + 3] | ((sv[b + 4] & 3) << 8))
+	return [na, cd]
 
 ## A part's fine voxels (its cells' places), x y z by turns, as FineSmooth takes them.
 static func _fine_at(cells: PackedInt32Array) -> PackedInt32Array:
@@ -516,6 +672,10 @@ static func _jaw_on(p: VoxelPart) -> void:
 			jc[s] = idx.size()
 			idx.append(s)
 	if idx.is_empty():
+		# (No fine voxel over the jaw's own voxels: they are still not drawn in this look. Left
+		# shown, they were a box of the classic head under a slender snout.)
+		if p.jaw_mesh:
+			p.jaw_mesh.visible = false
 		return
 	var off: Vector3 = p.jaw_pivot.position
 	var jm := MultiMesh.new()
@@ -541,6 +701,17 @@ static func _jaw_on(p: VoxelPart) -> void:
 	mi.custom_aabb = mm.custom_aabb
 	mi.transparency = p.see_through
 	p.add_child(mi)
+	# Under the smooth skin the jaw's fine voxels have their corners as the head's have (a skin of
+	# their own: the corners are read by each fine voxel's place in its drawing).
+	var hc: PackedFloat32Array = fine.get("jaw_corners", PackedFloat32Array())
+	if hc.size() == n * 32:
+		var jcd := PackedFloat32Array()
+		jcd.resize(idx.size() * 32)
+		for k in idx.size():
+			var s: int = idx[k]
+			for q in 32:
+				jcd[k * 32 + q] = hc[s * 32 + q]
+		mi.material_override = FineSmooth.skin(jcd, FineHead.material())
 	fine.jaw_mm = jm
 	fine.jaw_mi = mi
 	fine.jaw_cell = jc

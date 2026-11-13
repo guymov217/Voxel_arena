@@ -2810,13 +2810,13 @@
 "scripts/fighter/fighter.gd:2958"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:6689"
+"scripts/fighter/fighter.gd:6691"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:6705"
+"scripts/fighter/fighter.gd:6707"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:8605",
+"scripts/fighter/fighter.gd:8617",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -6271,7 +6271,7 @@
 "scripts/autoload/save.gd:76"
 ],
 "Lo": [
-"scripts/beast/beast.gd:485"
+"scripts/beast/beast.gd:703"
 ],
 "Galea helmet": [
 "data/armor.json#name"

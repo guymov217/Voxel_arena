@@ -4445,12 +4445,14 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 		var q: Vector3 = s0 - (pt as VoxelPart).draw_shift
 		pt.draw_turn = Transform3D(Basis(), q) * Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(), -q) * (pt as VoxelPart).draw_turn
 
-## A part of a man drawn fine (one of the three builds, or his head): not a giant's, nor a beast's.
+## A part of a man drawn fine (one of the three builds, or his head), or of a giant's body (his
+## skin a man's too: FineBody.GIANTS); not a giant's own head, nor a beast's.
 static func _fine_man(p: VoxelPart) -> bool:
 	if p.fine.is_empty():
 		return false
 	if p.fine.has("body"):
-		return FineBody.BUILDS.has(String(p.fine.get("build", "")))
+		var bn := String(p.fine.get("build", ""))
+		return FineBody.BUILDS.has(bn) or FineBody.GIANTS.has(bn)
 	return String(p.fine.get("giant", "")) == ""
 
 func _draw_joint_caps(interp := true) -> void:
@@ -7411,7 +7413,8 @@ func _make_flaps(part: VoxelPart, res: Dictionary) -> bool:
 		if r.part == part:
 			cut.append_array(r.indices)
 	var made := false
-	if part.freeze or part.severed or part.hanging or cut.is_empty() or flaps.size() >= MAX_FLAPS or not part.is_inside_tree():
+	# (Nor of what is hard through and through, a horn or a tusk: no piece of it hangs and swings.)
+	if part.freeze or part.severed or part.hanging or cut.is_empty() or flaps.size() >= MAX_FLAPS or not part.is_inside_tree() or is_hard(part):
 		return false
 	var wf: int = part.grid.x
 	var hf: int = part.grid.y
@@ -7599,6 +7602,12 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 ## Whether a part cut thin hangs by what is left of it (a beast's one head does not: see Beast).
 func may_hang(_part: VoxelPart) -> bool:
 	return true
+
+## Whether a part is hard through and through (a beast's horn, its tusk: see Beast). Such a part
+## does not break under its skin and bend there with the piece past the break swinging, as a
+## limb's bone does, and nothing of it hangs on by a strip: it is stiff until it is off.
+func is_hard(_part: VoxelPart) -> bool:
+	return false
 
 ## Whether a part cut through across it anywhere comes off whole (a beast's head: see Beast); a
 ## man's parts come off at the cut, what is beyond it.
@@ -8333,6 +8342,9 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 	# Out through the skin only in an arm or a leg (user): anywhere else broken through at worst.
 	if level >= 3 and not can_break_open(part):
 		level = 2
+	# (And what is hard through and through only cracks: a beast's horn, its tusk. Beast.is_hard.)
+	if level >= 2 and is_hard(part):
+		level = 1
 	if level <= part.fracture:
 		return
 	var was := part.fracture
