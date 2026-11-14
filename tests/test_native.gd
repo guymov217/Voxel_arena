@@ -701,3 +701,177 @@ func test_native_swelling_matches_the_gdscript() -> void:
 	t.check(swollen > 400 and full > 10, "fine voxels swollen by the blows, some to the limit (%d, %d)" % [swollen, full])
 	t.eq(off, 0, "every fine voxel raised where the script raises it and swollen as much, to the float")
 	m.queue_free()
+
+## A man and a beast as they are first made (VoxelPart.setup, FineBody.build): where each voxel
+## is, the maps of its cells, its shading, its drawing and its fine voxels' own colours, by the
+## C++ core the same as by the script, number for number; and one made again of what was kept of
+## the first (Fighter._listed, Beast._listed_beasts) the same as one made anew. Then, cut into:
+## the maps and the shading of a part with voxels gone.
+func test_native_build_matches_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("shade_all") or not nc.has_method("fine_own"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	Physique.forced = "human"
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 5, "decrees": [], "hazards": []})
+	var made := []
+	for how in ["core", "script", "kept"]:
+		if how != "kept":
+			Fighter._listed.clear()
+			Beast._listed_beasts.clear()
+		Greedy.use_native = how != "script"
+		var man = m.spawn_fighter({"kind": "bot", "name": "Quintus Rufus", "loadout": {"main": "", "off": "", "armor": ["lorica", "greaves"]}, "team": 1, "pos": Vector3(-6.0 + 3.0 * made.size(), 0.1, 4.0), "yaw": 0.0, "skin": 0xd9a57a, "build": "hero"})
+		var lion = m.spawn_beast({"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(-6.0 + 5.0 * made.size(), 0.1, 9.0), "yaw": PI, "harmless": true})
+		Greedy.use_native = true
+		made.append([how, man.f, lion.f])
+	var giant = m.spawn_fighter(m.enemy_spec({"e": "cyclops", "boss": true}, 0, 1))
+	Physique.forced = ""
+	t.check(Fighter._listed.size() >= 1 and Beast._listed_beasts.size() == 1, "a man's and a lion's voxels kept for the next of them")
+	var voxels := 0
+	var fines := 0
+	var off := []
+	for other in [1, 2]:
+		for who in [1, 2]:
+			var a: Fighter = made[0][who]
+			var b: Fighter = made[other][who]
+			for pa: VoxelPart in a.parts:
+				var pb: VoxelPart = b.by_name[pa.part_name]
+				var what := "%s %s, by the core and %s" % ["man" if who == 1 else "lion", pa.part_name, "by the script" if other == 1 else "of what was kept"]
+				voxels += pa.fx.size()
+				var same := pa.fx == pb.fx and pa.fy == pb.fy and pa.fz == pb.fz and pa.bone == pb.bone and pa.kinds == pb.kinds and pa.organ == pb.organ and pa.alive == pb.alive
+				same = same and pa.cellmap == pb.cellmap and pa.ao == pb.ao and pa.bev == pb.bev and pa.local_positions() == pb.local_positions()
+				same = same and pa.cell_map() == pb.cell_map() and pa.live_cell == pb.live_cell and pa.live_coarse == pb.live_coarse and pa.total_coarse == pb.total_coarse and pa._dead == pb._dead
+				# (A man's face is his own, by where he stands in the list: painted on his head's voxels.)
+				if pa != a.head:
+					same = same and pa.colors == pb.colors
+				# (Without the core a man's skin is not the smooth one: another look, its own shades.
+				# What the core makes of the look he has is held to the script below.)
+				if other == 2 and pa.fine.has("body") and pb.fine.has("body"):
+					fines += (pa.fine.own as PackedColorArray).size()
+					same = same and (pa.fine.own as PackedColorArray) == (pb.fine.own as PackedColorArray) and (pa.fine.par as PackedInt32Array) == (pb.fine.par as PackedInt32Array) and (pa.fine.base as Dictionary).size() == (pb.fine.base as Dictionary).size()
+				elif pa.fine.has("body") != pb.fine.has("body"):
+					same = false
+				if not same:
+					off.append(what)
+	t.check(voxels > 60000 and fines > 20000, "men and lions made three ways, part by part (%d voxels, %d fine ones)" % [voxels, fines])
+	t.eq(off.size(), 0, "each part the same made by the core, by the script and of what was kept%s" % ("" if off.is_empty() else ": " + ", ".join(off.slice(0, 4))))
+	# His fine voxels' own colours as the core made them, beside the script's (FineBody._own); and
+	# the drawing made of them: the look's own, his colours in it, the fine voxels over a voxel
+	# gone put away.
+	var own_n := 0
+	var own_off := 0
+	var painted := 0
+	var buf_off := 0
+	for f: Fighter in [made[0][1], made[0][2], giant.f]:
+		for p: VoxelPart in f.parts:
+			if not p.fine.has("body"):
+				continue
+			var fine: Dictionary = p.fine
+			var par: PackedInt32Array = fine.par
+			var shade: PackedFloat32Array = fine.shade
+			var cells: PackedInt32Array = fine.cells
+			var own: PackedColorArray = fine.own
+			var n := par.size()
+			for s in n:
+				var j := par[s]
+				if j < 0:
+					continue
+				own_n += 1
+				if cells[s * FineBody.CELL + 8] != 0:
+					painted += 1
+				if own[s] != FineBody._own(p, j, shade[s], fine.sk, fine.beast, cells[s * FineBody.CELL + 8], fine.d):
+					own_off += 1
+			# (Without a screen no drawing is made: one stands in for the look's, some voxels gone.)
+			var tmpl := PackedFloat32Array()
+			tmpl.resize(n * 20)
+			for q in tmpl.size():
+				tmpl[q] = float((q * 37) % 101) * 0.25 - 3.0
+			var alive := p.alive.duplicate()
+			for i in range(0, alive.size(), 7):
+				alive[i] = 0
+			for na: PackedFloat32Array in [fine.na as PackedFloat32Array, PackedFloat32Array()]:
+				var got: Array = nc.fine_own(p.colors, p.kinds, alive, par, shade, cells, (fine.d as Dictionary).get("palette", []), (fine.d as Dictionary).get("cloth", []), fine.sk, fine.beast, tmpl, na)
+				var want := tmpl.duplicate()
+				for s in n:
+					var j := par[s]
+					var o := s * 20
+					if j < 0 or alive[j] == 0:
+						for q in 12:
+							want[o + q] = 0.0
+					want[o + 12] = own[s].r
+					want[o + 13] = own[s].g
+					want[o + 14] = own[s].b
+					want[o + 15] = na[s] if na.size() == n else 1.0
+				if got.size() != 2 or (got[0] as PackedColorArray) != own or (got[1] as PackedFloat32Array) != want:
+					buf_off += 1
+	t.check(own_n > 40000 and painted > 5000, "the fine voxels of a man, a lion and a giant (%d, %d of them painted by the build)" % [own_n, painted])
+	t.eq(own_off, 0, "each one's own colour as the core makes it, the script's to the float")
+	t.eq(buf_off, 0, "and the drawing made of them, the script's to the float")
+	# The drawing a part is given as it is made, beside the script's voxel by voxel.
+	var rows_off := 0
+	var rows_n := 0
+	for p: VoxelPart in [made[0][1].torso, made[0][1].by_name["shinL"], made[0][2].torso]:
+		var got: PackedFloat32Array = nc.part_rows(p.local_positions(), p.colors, p.kinds, p.ao, p.bev)
+		var want := PackedFloat32Array()
+		for i in p.fx.size():
+			var x: Transform3D = Transform3D(Basis(), p.local_positions()[i])
+			var c := p.colors[i]
+			var cu := p._custom(i)
+			want.append_array([x.basis.x.x, x.basis.y.x, x.basis.z.x, x.origin.x, x.basis.x.y, x.basis.y.y, x.basis.z.y, x.origin.y, x.basis.x.z, x.basis.y.z, x.basis.z.z, x.origin.z, c.r, c.g, c.b, c.a, cu.r, cu.g, cu.b, cu.a])
+		rows_n += want.size() / 20
+		if got != want:
+			rows_off += 1
+	t.check(rows_n > 5000, "the drawings of three parts (%d voxels)" % rows_n)
+	t.eq(rows_off, 0, "a part's drawing as the core makes it, the script's voxel by voxel")
+	# Cut into: the maps of its cells and the shading of every voxel, some of them gone.
+	var cut_off := 0
+	var gone := 0
+	for p: VoxelPart in [made[0][1].torso, made[0][2].torso, made[0][2].by_name.get("head", made[0][2].parts[1])]:
+		p.freeze = true
+		var lps := p.local_positions()
+		for blow in 3:
+			p.remove_voxels(Array(p.voxels_within(lps[(blow * 977 + 131) % lps.size()], p.vf * p.part_scale * 3.2)))
+		gone += p.fx.size() - p.alive_count
+		p.bevel = not p.bevel
+		var both: Array = nc.shade_all(p.fx, p.fy, p.fz, p.cellmap, p.alive, p.veil, p.grid, p.bevel)
+		for i in p.fx.size():
+			var s := p.shade_bits(i)
+			if both[0][i] != s & 0xffffff or both[1][i] != s >> 24:
+				cut_off += 1
+		p.bevel = not p.bevel
+		p._index_cells()
+		var by_core := [p._cell_map, p.live_cell, p.live_coarse, p.total_coarse, p._dead]
+		Greedy.use_native = false
+		p._index_cells()
+		Greedy.use_native = true
+		var by_script := [p._cell_map, p.live_cell, p.live_coarse, p.total_coarse, p._dead]
+		for k in 5:
+			if by_core[k] != by_script[k]:
+				cut_off += 1
+	t.check(gone > 300, "voxels cut out of a man and a lion (%d)" % gone)
+	t.eq(cut_off, 0, "the shading and the maps of a part cut into, by the core as by the script")
+	# What was kept is each one's own: the man and the lion made of what was kept cut into and
+	# bloodied, the ones it was kept of are as they were, and one made after is whole.
+	var shared := 0
+	for who in [1, 2]:
+		var cut: VoxelPart = (made[2][who] as Fighter).torso
+		cut.freeze = true
+		cut.remove_voxels(Array(cut.voxels_within(cut.local_positions()[cut.fx.size() / 3], cut.vf * cut.part_scale * 3.0)))
+		cut.wound(cut.local_positions()[cut.fx.size() / 2], cut.vf * cut.part_scale * 6.0, "blood")
+		if cut.alive_count == cut.fx.size():
+			shared += 1   # (nothing cut: nothing tried)
+		var before: VoxelPart = (made[1][who] as Fighter).torso
+		var after: VoxelPart
+		if who == 1:
+			after = m.spawn_fighter({"kind": "bot", "name": "Quintus Rufus", "loadout": {"main": "", "off": "", "armor": []}, "team": 1, "pos": Vector3(8.0, 0.1, 4.0), "yaw": 0.0, "skin": 0xd9a57a, "build": "hero"}).f.torso
+		else:
+			after = m.spawn_beast({"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(14.0, 0.1, 9.0), "yaw": PI, "harmless": true}).f.torso
+		for p: VoxelPart in [before, after]:
+			if p.alive_count != p.fx.size() or p.alive.count(0) > 0 or p.colors == cut.colors or p.alive == cut.alive:
+				shared += 1
+		if before.colors != after.colors or before.ao != after.ao or before.kinds != after.kinds:
+			shared += 1
+	t.eq(shared, 0, "one cut into and bloodied: the others made of the same are whole, and so is the next")
+	m.queue_free()

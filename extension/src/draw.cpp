@@ -331,3 +331,38 @@ void VoxelCore::lay_plates(Object *plates, Object *shell, const PackedFloat32Arr
 		}
 	}
 }
+
+// VoxelPart.set_shape's drawing, a whole part in a call: every voxel still on it (not veiled,
+// not its jaw's: `skip`) set where its shape has it (`shape`, a place a voxel; past its end, the
+// voxel's own place `lpos`, unturned). Not a part bent at a break (the script's, as it was).
+// A lion's twenty thousand voxels, one by one in the script, were 70 ms of its coming in.
+void VoxelCore::shape_all(Object *multimesh, const Array &shape, const PackedVector3Array &lpos, const PackedByteArray &alive, const PackedByteArray &veil, const PackedInt32Array &skip) const {
+	MultiMesh *mm = multimesh != nullptr ? Object::cast_to<MultiMesh>(multimesh) : nullptr;
+	const int64_t n = lpos.size();
+	if (mm == nullptr || alive.size() < n) {
+		return;
+	}
+	std::vector<uint8_t> out((size_t)n, 0);
+	for (int64_t q = 0; q < skip.size(); q++) {
+		const int64_t i = skip[q];
+		if (i >= 0 && i < n) {
+			out[i] = 1;
+		}
+	}
+	const uint8_t *al = alive.ptr();
+	const uint8_t *vl = veil.ptr();
+	const int64_t vs = veil.size();
+	const int64_t ns = shape.size();
+	const Vector3 *lp = lpos.ptr();
+	for (int64_t i = 0; i < n; i++) {
+		if (al[i] == 0 || (i < vs && vl[i] == 1) || out[i] != 0) {
+			continue;
+		}
+		if (i < ns) {
+			const Transform3D t = shape[i];
+			mm->set_instance_transform((int32_t)i, t);
+		} else {
+			mm->set_instance_transform((int32_t)i, Transform3D(Basis(), lp[i]));
+		}
+	}
+}

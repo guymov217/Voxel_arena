@@ -143,14 +143,23 @@ func spawn_bots(n: int, offset: int, total: int) -> void:
 	var names: Array = Data.modes.get("botNames", ["Crixus"])
 	var los: Array = Data.modes.get("randomLoadouts", [{"main": "gladius", "off": "roundShield"}])
 	var personalities := ["standard", "berserker", "duelist", "turtle", "brute", "skirmisher"]
+	# (A wave that comes in while the fight goes on: over the frames that follow, Match.bring_in.)
+	var staged: bool = m.staging()
+	var specs := []
 	for i in n:
 		var idx := offset + i
 		var team := 1 if coop_like(mode) else (idx % 2 if mode == "teams" or mode == "headball" else idx)
 		var pos := spawn_pos(idx, total)
 		var lo: Dictionary = los[m.rng.randi_range(0, los.size() - 1)]
-		m.spawn_fighter({"kind": "bot", "name": names[(idx + wave * 3) % names.size()], "loadout": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else ""},
+		var spec := {"kind": "bot", "name": names[(idx + wave * 3) % names.size()], "loadout": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else ""},
 			"team": team, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": _bot_mods(), "diff": difficulty, "personality": personalities[m.rng.randi_range(0, personalities.size() - 1)],
-			"color": 0x303030 if coop_like(mode) else TEAM_COLORS[team % TEAM_COLORS.size()]})
+			"color": 0x303030 if coop_like(mode) else TEAM_COLORS[team % TEAM_COLORS.size()]}
+		if staged:
+			specs.append(spec)
+		else:
+			m.spawn_fighter(spec)
+	if staged:
+		m.bring_in(specs)
 
 func hunt_wave(n: int) -> Array:
 	var table: Array = Data.modes.get("huntWaves", [])
@@ -169,6 +178,9 @@ func spawn_hunt_wave() -> void:
 		total += 1 if g.get("boss", false) else int(g.n) + int((players - 1) / 2)
 	var i := 0
 	var names := []
+	# (A wave that comes in while the hunt goes on: over the frames that follow, Match.bring_in.)
+	var staged: bool = m.staging()
+	var specs := []
 	for g in groups:
 		var n: int = 1 if g.get("boss", false) else int(g.n) + int((players - 1) / 2)
 		var sp: Dictionary = Data.beasts.get(g.beast, {})
@@ -177,8 +189,14 @@ func spawn_hunt_wave() -> void:
 			i += 1
 			var pos := Vector3(sin(a) * 7.5, 0.1, cos(a) * 7.5)
 			var scale := float(sp.get("scale", 1.0)) * float(g.get("scaleMul", 1.0)) * (1.15 if g.get("boss", false) else 1.0)
-			m.spawn_beast({"beast": g.beast, "scale": scale, "name": g.get("name", sp.get("name", g.beast)), "boss": g.get("boss", false), "team": 1, "pos": pos, "yaw": atan2(-pos.x, -pos.z)})
+			var spec := {"kind": "beast", "beast": g.beast, "scale": scale, "name": g.get("name", sp.get("name", g.beast)), "boss": g.get("boss", false), "team": 1, "pos": pos, "yaw": atan2(-pos.x, -pos.z)}
+			if staged:
+				specs.append(spec)
+			else:
+				m.spawn_beast(spec)
 		names.append((Loc.t("%s (boss)") % g.get("name", sp.get("name", g.beast))) if g.get("boss", false) else ("%d × %s" % [n, sp.get("name", g.beast)]))
+	if staged:
+		m.bring_in(specs)
 	m.feed.emit(Loc.t("Wave %d: %s") % [wave, ", ".join(names)])
 
 func _heal(list: Array, blood: float) -> void:
@@ -421,6 +439,9 @@ func _bo3_end() -> void:
 func check(dt: float) -> void:
 	if m.over:
 		return
+	# (Not while a wave is still on its way in, built over these frames: Match.bring_in.)
+	if m.coming > 0:
+		return
 	# One who has lain unable to stand for a while is out (Match._unfit), as in any bout.
 	var alive: Array = m.entities.filter(func(e): return e.f.alive and not m._unfit(e, dt) and not e.get("harmless", false))
 	var humans_alive: Array = m.humans().filter(func(e): return e.f.alive and float(e.get("unfit_t", 0.0)) < Match.UNFIT_OUT)
@@ -478,7 +499,7 @@ func check(dt: float) -> void:
 				var n := mini(5, ceili(wave * 0.7) + m.players_count - 1)
 				spawn_bots(n, m.entities.size(), m.entities.size() + n)
 				if wave % 3 == 0:
-					m.spawn_beast({"beast": "lion", "team": 1, "pos": Vector3(0, 0.1, 12), "yaw": PI})
+					m.bring_in([{"kind": "beast", "beast": "lion", "team": 1, "pos": Vector3(0, 0.1, 12), "yaw": PI}])
 					m.feed.emit(Loc.t("Wave %d: the lions join in!") % wave)
 			return
 	if m.entities.size() < 2:

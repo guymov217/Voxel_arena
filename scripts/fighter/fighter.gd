@@ -323,6 +323,8 @@ var space: PhysicsDirectSpaceState3D
 
 # ---------- Building ----------
 
+static var _listed := {}   # skin|colours|gore -> {part name -> {d, voxels, packed}}: build
+const LISTED_MAX := 24
 func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void:
 	display_name = opts.get("name", display_name)
 	slot = int(opts.get("slot", 0))
@@ -357,9 +359,24 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		await get_tree().process_frame   # (not in the frame that brought him in: a death, a round's end)
 		if not is_inside_tree():
 			return
+	# What a body's voxels are listed as is the same for every man of the same skin and colours
+	# (and gore): listed once, kept, with what each part works out of them (VoxelPart.setup):
+	# a tenth of a second of every man's coming in (user: the frame rate drops as a foe comes
+	# into a fight).
+	var list_key := "%s|%s|%s" % [skin.to_html(), team_color.to_html(), str(plain_insides)]
+	if not _listed.has(list_key):
+		if _listed.size() >= LISTED_MAX:
+			_listed.clear()
+		_listed[list_key] = {}
+	var listed: Dictionary = _listed[list_key]
 	for d in Data.body_parts:
 		var voxels := []
-		for v in d.voxels:
+		var have = listed.get(d.name)
+		if not (have is Dictionary and is_same(have.d, d) and (have.voxels as Array).size() == (d.voxels as Array).size()):
+			have = null
+		else:
+			voxels = have.voxels
+		for v in (d.voxels if have == null else []):
 			if staged and voxels.size() % STAGE_VOXELS == STAGE_VOXELS - 1:
 				await get_tree().process_frame   # (his trunk's thousands of voxels over a few frames)
 				if not is_inside_tree():
@@ -397,9 +414,12 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 				if plain_insides:
 					c = Color.hex(0x9e1b1bff)
 			voxels.append([v[0], v[1], v[2], c, v[5], kind, organ])
+		if have == null:
+			have = {"d": d, "voxels": voxels}
+			listed[d.name] = have
 		var p := VoxelPart.new()
 		var m: float = float(d.mass) * MS * (LEG_MASS if d.leg else 1.0)
-		p.setup(self, d, voxels, S, m)
+		p.setup(self, d, voxels, S, m, have)
 		p.linear_damp = 0.1
 		p.angular_damp = 1.5 if d.name == "torso" else (3.0 if d.name == "head" else 0.6)
 		p.collision_layer = VoxelPart.LAYER_BODY

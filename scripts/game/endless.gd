@@ -175,6 +175,9 @@ func check(_dt: float, alive: Array, humans_alive: Array) -> void:
 		return
 	if phase != "fight":
 		return
+	# (Not while the wave is still on its way in, built over these frames: Match.bring_in.)
+	if m.coming > 0:
+		return
 	if not alive.any(func(e): return int(e.team) == Match.ENEMY_TEAM):
 		_beaten()
 
@@ -194,19 +197,35 @@ func _spawn_wave() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([seed_base, wave, "arms"])
 	var names := []
-	for i in list.size():
-		var en: Dictionary = list[i]
-		var spec: Dictionary = m.enemy_spec(en, i, list.size())
-		var e
-		if spec.kind == "beast":
-			spec.scale = float(spec.scale) * (1.0 + minf(0.25, 0.01 * wave))
-			e = m.spawn_beast(spec)
-		else:
-			_arm(spec, en, r)
-			e = m.spawn_fighter(spec)
-		if e:
-			e["endless_wave"] = wave
-			names.append(String(e.f.display_name))
+	if m.staging():
+		# (The wave over the frames that follow, each foe out of the world until he is whole:
+		# Match.bring_in. All of it in this one frame was a stop of a second or two.)
+		var specs := []
+		for i in list.size():
+			var en: Dictionary = list[i]
+			var spec: Dictionary = m.enemy_spec(en, i, list.size())
+			if spec.kind == "beast":
+				spec.scale = float(spec.scale) * (1.0 + minf(0.25, 0.01 * wave))
+			else:
+				_arm(spec, en, r)
+			specs.append(spec)
+			names.append(String(spec.get("name", "")))
+		var w := wave
+		m.bring_in(specs, func(e): e["endless_wave"] = w)
+	else:
+		for i in list.size():
+			var en: Dictionary = list[i]
+			var spec: Dictionary = m.enemy_spec(en, i, list.size())
+			var e
+			if spec.kind == "beast":
+				spec.scale = float(spec.scale) * (1.0 + minf(0.25, 0.01 * wave))
+				e = m.spawn_beast(spec)
+			else:
+				_arm(spec, en, r)
+				e = m.spawn_fighter(spec)
+			if e:
+				e["endless_wave"] = wave
+				names.append(String(e.f.display_name))
 	m._open_gates(list.size())
 	var boss: bool = list.any(func(x): return x.get("boss", false))
 	m._banner(Loc.t("Wave %d") % wave, ", ".join(names))

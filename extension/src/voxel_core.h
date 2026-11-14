@@ -75,6 +75,12 @@ public:
 	PackedInt32Array fine_show(Object *part, const PackedInt32Array &indices, bool on, bool apply) const;
 	PackedFloat32Array fine_taken(Object *part, const PackedInt32Array &idx, int res, int margin) const;
 	void fine_swell(Object *part, const PackedInt32Array &voxels, const Vector3 &lp, double r, double k, const Vector3 &n, double vox, double swell_max) const;
+	Array shade_all(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const;
+	PackedVector3Array local_all(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const Vector3i &grid, double vf, double scale) const;
+	Array index_cells(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, const Vector3i &dims, int res) const;
+	PackedFloat32Array part_rows(const PackedVector3Array &lpos, const PackedColorArray &colors, const PackedByteArray &kinds, const PackedInt32Array &ao, const PackedInt32Array &bev) const;
+	void shape_all(Object *multimesh, const Array &shape, const PackedVector3Array &lpos, const PackedByteArray &alive, const PackedByteArray &veil, const PackedInt32Array &skip) const;
+	Array fine_own(const PackedColorArray &colors, const PackedByteArray &kinds, const PackedByteArray &alive, const PackedInt32Array &par, const PackedFloat32Array &shade, const PackedInt32Array &cells, const Array &palette, const Array &cloth, const Color &sk_lin, bool beast, const PackedFloat32Array &buf, const PackedFloat32Array &na) const;
 	// VoxelPart._reshade's search with shade_bits of each voxel found; a weapon's voxels round a
 	// point and the one nearest it (Weapon.bloody, Match._spray_on).
 	PackedInt32Array reshade(const PackedInt32Array &changed, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const;

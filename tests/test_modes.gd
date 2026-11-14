@@ -44,6 +44,35 @@ func test_the_hunt_sends_wave_after_wave() -> void:
 	t.check(m.modes.frozen(), "a countdown before they come")
 	m.queue_free()
 
+## With a screen the next wave is built over the frames that follow (Match.bring_in), not in the
+## frame the last beast of the wave before falls (a wave of beasts in one frame was a stop of a
+## second and more, user: the frame rate drops); and no third wave is called for while the
+## second is still on its way in.
+func test_the_hunts_next_wave_comes_in_over_the_frames_that_follow() -> void:
+	var m := _match("hunt")
+	m.stage_always = true
+	for b in m.entities.filter(func(e): return e.kind == "beast"):
+		b.f.die("wounds")
+	await _steps(2)
+	t.eq(m.modes.wave, 2, "wave 2 called for")
+	var want := 0
+	for g in Data.modes.huntWaves[1]:
+		want += 1 if g.get("boss", false) else int(g.n)
+	t.eq(m.coming, want, "all of it on its way in (%d)" % want)
+	t.eq(m.entities.filter(func(e): return e.kind == "beast" and e.f.alive).size(), 0, "none of it on the sand in the frame the last of the first wave fell")
+	var frames := 0
+	var waves := 2
+	while m.coming > 0 and frames < 3000:
+		await get_tree().process_frame
+		frames += 1
+		waves = maxi(waves, int(m.modes.wave))
+	t.check(frames > 8 and frames < 3000, "built over the frames that follow (%d of them)" % frames)
+	t.eq(m.entities.filter(func(e): return e.kind == "beast" and e.f.alive).size(), want, "then all of it on the sand")
+	await _steps(4)
+	t.eq(maxi(waves, int(m.modes.wave)), 2, "and no third wave called for meanwhile")
+	t.check(not m.over, "the hunt goes on")
+	m.queue_free()
+
 func test_the_king_stays_and_the_next_challenger_walks_in() -> void:
 	var m := _match("king")
 	var before := m.entities.size()

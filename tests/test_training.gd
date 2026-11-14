@@ -160,6 +160,62 @@ func test_the_next_foe_is_brought_in_over_a_few_frames() -> void:
 		m.queue_free()
 		await get_tree().process_frame
 
+## A beast brought in while the fight goes on is built a part a frame too (Match.
+## spawn_beast_staged: a lion in one frame was a stop of half a second, user: the frame rate
+## drops in a fight): out of the world until it is whole, then in, the same beast as one built
+## in a frame; and if the arena goes while it is being made, it goes with it.
+func test_a_beast_is_brought_in_over_a_few_frames() -> void:
+	for gone in [false, true]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3})
+		m.me.drive = func(_e): return {}
+		var n0 := m.entities.size()
+		var spec := {"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(0, 0.1, 8), "yaw": PI}
+		var box := [null, false]
+		var bring := func() -> void:
+			box[0] = await m.spawn_beast_staged(spec)
+			box[1] = true
+		bring.call()
+		t.eq(m.entities.size(), n0, "not in the fight in the frame that called for it")
+		var making = null
+		for c in m.get_children():
+			if c is Beast:
+				making = c
+		t.check(making != null and not (making as Beast).visible and (making as Node).process_mode == Node.PROCESS_MODE_DISABLED, "being made out of the world")
+		if gone:
+			for i in 4:
+				await get_tree().process_frame
+			m.queue_free()
+			for i in 60:
+				await get_tree().process_frame
+			t.check(not is_instance_valid(making), "the arena gone under it: it went with it, and the game goes on")
+			continue
+		var frames := 0
+		while not box[1] and frames < 900:
+			await get_tree().process_frame
+			frames += 1
+		t.check(frames > 8 and frames < 900, "made over the frames that follow (%d of them)" % frames)
+		var e = box[0]
+		if not t.check(e != null and m.entities.has(e), "then in the fight"):
+			m.queue_free()
+			continue
+		var b: Beast = e.f
+		t.check(b == making and b.visible and b.process_mode != Node.PROCESS_MODE_DISABLED and b.alive, "whole, drawn and moving")
+		var plain = m.spawn_beast({"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(6, 0.1, 8), "yaw": PI})
+		var same: bool = b.parts.size() == plain.f.parts.size()
+		for p: VoxelPart in b.parts:
+			var q: VoxelPart = plain.f.by_name.get(p.part_name)
+			same = same and q != null and p.fx == q.fx and p.colors == q.colors and p.ao == q.ao and p.fine.has("body") == q.fine.has("body") and (p.joint != null) == (q.joint != null)
+			if same and p.fine.has("body"):
+				same = (p.fine.own as PackedColorArray) == (q.fine.own as PackedColorArray)
+		t.check(same, "the same beast as one built in a frame, part for part")
+		t.eq(b.legs.size(), plain.f.legs.size(), "on as many legs")
+		for i in 240:
+			await get_tree().physics_frame
+		t.check(b.alive and b.torso.global_position.y > 0.2 and b.torso.global_position.y < 3.0, "standing on the sand two seconds on (its body at %.2f)" % b.torso.global_position.y)
+		m.queue_free()
+
 ## A foe brought in while the fight goes on in a helmet over a hairstyle not laid out before (a
 ## helmet is laid over each hairstyle, FineArmor): its shell is worked out a little a frame (in
 ## one, a tenth to a quarter of a second's hitch), and comes out as it would laid out at once.

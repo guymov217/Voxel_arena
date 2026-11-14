@@ -961,7 +961,12 @@ var skin: MeshInstance3D = null
 var _skin_dirty := false
 
 ## `voxels`: [[fx, fy, fz, Color, bone, kind, organ], ...] on the fine grid (kind and organ optional).
-func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float) -> void:
+## `kept`: what keeps these voxels for the next part made of the very same (a man of the same skin
+## and colours, a beast of the same kind: Fighter.build, Beast.build_beast), or null. What is
+## worked out of them here voxel by voxel (where each is, its colour with its grain, what it is)
+## is put in it, and a part made of them again is given that, not made to work it out again
+## (user: the frame rate drops as a foe comes into a fight). Each part its own copy of them.
+func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float, kept = null) -> void:
 	fighter = owner_node
 	def = d.duplicate()   # its own: what one creature sets on its part (a fist, a bite) is not every one's after it
 	part_name = d.get("name", "part")
@@ -982,18 +987,33 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 	if d.get("ca") != null:
 		ca = _v3(d.ca) * scale_
 	var n := voxels.size()
-	fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n); kinds.resize(n); organ.resize(n)
-	for i in n:
-		var v: Array = voxels[i]
-		fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
-		# A little grain voxel to voxel (skin, cloth and fur are never one flat colour).
-		var c: Color = v[3]
-		var k := grain(i)
-		colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
-		bone[i] = 1 if v[4] else 0
-		kinds[i] = int(v[5]) if v.size() > 5 else 8
-		organ[i] = int(v[6]) if v.size() > 6 else 0
-		alive[i] = 1
+	var pk = kept.get("packed") if kept is Dictionary else null
+	if pk is Dictionary and int(pk.n) == n and pk.dims == dims:
+		# (Copies: a packed array given is the same array, and a wound on this part would be a
+		# wound on every part made of what was kept.)
+		fx = (pk.fx as PackedInt32Array).duplicate()
+		fy = (pk.fy as PackedInt32Array).duplicate()
+		fz = (pk.fz as PackedInt32Array).duplicate()
+		colors = (pk.colors as PackedColorArray).duplicate()
+		alive = (pk.alive as PackedByteArray).duplicate()
+		bone = (pk.bone as PackedByteArray).duplicate()
+		kinds = (pk.kinds as PackedByteArray).duplicate()
+		organ = (pk.organ as PackedByteArray).duplicate()
+	else:
+		fx.resize(n); fy.resize(n); fz.resize(n); colors.resize(n); alive.resize(n); bone.resize(n); kinds.resize(n); organ.resize(n)
+		for i in n:
+			var v: Array = voxels[i]
+			fx[i] = int(v[0]); fy[i] = int(v[1]); fz[i] = int(v[2])
+			# A little grain voxel to voxel (skin, cloth and fur are never one flat colour).
+			var c: Color = v[3]
+			var k := grain(i)
+			colors[i] = Color(clampf(c.r * k, 0.0, 1.0), clampf(c.g * k, 0.0, 1.0), clampf(c.b * k, 0.0, 1.0), 1.0)
+			bone[i] = 1 if v[4] else 0
+			kinds[i] = int(v[5]) if v.size() > 5 else 8
+			organ[i] = int(v[6]) if v.size() > 6 else 0
+			alive[i] = 1
+		if kept is Dictionary:
+			kept["packed"] = {"n": n, "dims": dims, "fx": fx.duplicate(), "fy": fy.duplicate(), "fz": fz.duplicate(), "colors": colors.duplicate(), "alive": alive.duplicate(), "bone": bone.duplicate(), "kinds": kinds.duplicate(), "organ": organ.duplicate()}
 	alive_count = n
 	_index_cells()
 	# Physics: the box carries the weight; inertia from the whole box, centred, so a dent never
@@ -1418,10 +1438,14 @@ var _lpos := PackedVector3Array()
 var _lpos_s := -1.0   # (the voxel size they were worked out for: a part scaled anew has them anew)
 func local_positions() -> PackedVector3Array:
 	if _lpos.size() != fx.size() or _lpos_s != vf * part_scale:
+		var nc = Greedy.core()
 		var lp := PackedVector3Array()
-		lp.resize(fx.size())
-		for i in fx.size():
-			lp[i] = local_of(i)
+		if nc != null and nc.has_method("local_all"):
+			lp = nc.local_all(fx, fy, fz, grid, vf, part_scale)
+		if lp.size() != fx.size():
+			lp.resize(fx.size())
+			for i in fx.size():
+				lp[i] = local_of(i)
 		_lpos = lp
 		_lpos_s = vf * part_scale
 	return _lpos
@@ -1520,10 +1544,21 @@ func _build_mesh() -> void:
 	mm.mesh = _box_mesh_cache[key]
 	mm.instance_count = fx.size()
 	_build_ao()
-	for i in fx.size():
-		mm.set_instance_transform(i, drawn_xf(i))
-		mm.set_instance_color(i, colors[i])
-		mm.set_instance_custom_data(i, _custom(i))
+	# (All of them as one buffer from the C++ core where there is one, a part as it is first made:
+	# every voxel where it lies, whole, its colour, its kind and its shading. One voxel set by
+	# itself first: the engine keeps its own copy then, FineBody._keep_in_memory.)
+	var nc = Greedy.core()
+	var rows := PackedFloat32Array()
+	if nc != null and nc.has_method("part_rows") and shape_xf.is_empty() and dangle_slot.is_empty() and kink.is_empty() and fx.size() > 0:
+		rows = nc.part_rows(local_positions(), colors, kinds, ao, bev)
+	if rows.size() == fx.size() * 20 and not rows.is_empty():
+		FineBody._keep_in_memory(mm)
+		mm.buffer = rows
+	else:
+		for i in fx.size():
+			mm.set_instance_transform(i, drawn_xf(i))
+			mm.set_instance_color(i, colors[i])
+			mm.set_instance_custom_data(i, _custom(i))
 	mmi = MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	# Not interpolated on its own: an interpolated multimesh kept drawing the voxels it was
@@ -2175,11 +2210,25 @@ func shade_bits(i: int) -> int:
 	return bits | ((63 ^ shut) << 24)
 
 func _build_ao() -> void:
-	cellmap.resize(grid.x * grid.y * grid.z)
-	cellmap.fill(0)
-	for i in fx.size():
-		if fx[i] >= 0 and fy[i] >= 0 and fz[i] >= 0 and fx[i] < grid.x and fy[i] < grid.y and fz[i] < grid.z:
-			cellmap[(fx[i] * grid.y + fy[i]) * grid.z + fz[i]] = i + 1
+	var cells := grid.x * grid.y * grid.z
+	if cells > 0 and _cell_map.size() == cells:
+		# (The same map as _index_cells has just made: where each voxel is. Its own copy.)
+		cellmap = _cell_map.duplicate()
+	else:
+		cellmap.resize(cells)
+		cellmap.fill(0)
+		for i in fx.size():
+			if fx[i] >= 0 and fy[i] >= 0 and fz[i] >= 0 and fx[i] < grid.x and fy[i] < grid.y and fz[i] < grid.z:
+				cellmap[(fx[i] * grid.y + fy[i]) * grid.z + fz[i]] = i + 1
+	# (Every voxel's shading by the C++ core in one call where there is one: a man's ten thousand
+	# voxels, one by one here, were 60 ms of his coming into a fight.)
+	var nc = Greedy.core()
+	if nc != null and nc.has_method("shade_all"):
+		var both: Array = nc.shade_all(fx, fy, fz, cellmap, alive, veil, grid, bevel)
+		if both.size() == 2 and (both[0] as PackedInt32Array).size() == fx.size():
+			ao = both[0]
+			bev = both[1]
+			return
 	ao.resize(fx.size())
 	bev.resize(fx.size())
 	for i in fx.size():
@@ -2706,6 +2755,12 @@ func set_shape(xf: Array, only: Array = []) -> void:
 		_band_terms()   # (a limb bent at a break: laid round it in its new shape)
 	if mm == null:
 		return
+	# (A whole part, not bent at a break: every voxel of it set by the C++ core in one call where
+	# there is one. One by one here they were a tenth of the stop a beast coming in was.)
+	var nc = Greedy.core()
+	if only.is_empty() and dangle_slot.is_empty() and kink.is_empty() and nc != null and nc.has_method("shape_all"):
+		nc.shape_all(mm, shape_xf, local_positions(), alive, veil, PackedInt32Array(jaw_slot.keys()))
+		return
 	var on := []
 	for i in (only if not only.is_empty() else range(fx.size())):
 		if alive[i] and not veiled(i) and not jaw_slot.has(i):
@@ -2952,9 +3007,21 @@ func set_look(v: PackedByteArray, bevel_on: bool) -> void:
 
 ## live_cell, live_coarse, total_coarse and the dead from the voxels as they are.
 func _index_cells() -> void:
+	_air_n = -1
+	# (In the C++ core where there is one: every voxel of a part gone over here, as it is made,
+	# was a part of the stop a man or a beast coming into a fight was, user: the frame rate drops.)
+	var core = Greedy.core()
+	if core != null and core.has_method("index_cells"):
+		var made: Array = core.index_cells(fx, fy, fz, alive, grid, dims, Data.body_res)
+		if made.size() == 5:
+			_cell_map = made[0]
+			live_cell = made[1]
+			live_coarse = made[2]
+			total_coarse = made[3]
+			_dead = made[4]
+			return
 	live_cell = PackedInt32Array()
 	live_cell.resize(grid.x * grid.y * grid.z)
-	_air_n = -1
 	_dead = PackedInt32Array()
 	var nc := dims.x * dims.y * dims.z
 	live_coarse = PackedInt32Array()

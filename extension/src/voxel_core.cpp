@@ -36,6 +36,12 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("fine_show", "part", "indices", "on", "apply"), &VoxelCore::fine_show);
 	ClassDB::bind_method(D_METHOD("fine_taken", "part", "idx", "res", "margin"), &VoxelCore::fine_taken);
 	ClassDB::bind_method(D_METHOD("fine_swell", "part", "voxels", "lp", "r", "k", "n", "vox", "swell_max"), &VoxelCore::fine_swell);
+	ClassDB::bind_method(D_METHOD("shade_all", "fx", "fy", "fz", "cellmap", "alive", "veil", "grid", "bevel"), &VoxelCore::shade_all);
+	ClassDB::bind_method(D_METHOD("local_all", "fx", "fy", "fz", "grid", "vf", "scale"), &VoxelCore::local_all);
+	ClassDB::bind_method(D_METHOD("index_cells", "fx", "fy", "fz", "alive", "grid", "dims", "res"), &VoxelCore::index_cells);
+	ClassDB::bind_method(D_METHOD("part_rows", "lpos", "colors", "kinds", "ao", "bev"), &VoxelCore::part_rows);
+	ClassDB::bind_method(D_METHOD("shape_all", "multimesh", "shape", "lpos", "alive", "veil", "skip"), &VoxelCore::shape_all);
+	ClassDB::bind_method(D_METHOD("fine_own", "colors", "kinds", "alive", "par", "shade", "cells", "palette", "cloth", "sk_lin", "beast", "buf", "na"), &VoxelCore::fine_own);
 	ClassDB::bind_method(D_METHOD("sculpt_out", "o", "l", "limb_r", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_out);
 	ClassDB::bind_method(D_METHOD("sculpt_elbow", "o", "bt", "bi", "shoulder_w", "e_dir", "lu", "r_half", "r_three", "r_whole", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_elbow);
 	ClassDB::bind_method(D_METHOD("sculpt_hand", "o", "bt", "bi", "from", "goal", "size", "marks", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_hand);

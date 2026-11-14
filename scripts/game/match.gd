@@ -408,6 +408,46 @@ func _respawn_staged(spec: Dictionary, training_: String) -> void:
 	if ne:
 		ne.training = training_
 
+## Foes brought into a fight that is going on (a bout's second wave, its next round, a wave of
+## the endless arena, of a hunt, of the party's bouts): each built over the frames that follow,
+## out of the world until whole, one after another (spawn_fighter_staged, spawn_beast_staged),
+## not all of them in the frame that called for them: a man is a third of a second of work, a
+## lion half, and a wave of four was a stop of two seconds in the middle of the fight (user: the
+## frame rate drops in a fight). `coming` counts those not yet in: no round or wave is won while
+## its foes are still on their way (_check_round, Endless.check, Modes.check). `on_in`: called
+## with each as it comes in. Only the host's or a lone player's game with a screen, once the
+## fight is on (staging): a guest builds what the host sends as it always did, and without a
+## screen (the tests, the benchmark fights) every foe is built in the frame that calls for him,
+## as before, so a fight plays out the same to the bit.
+var coming := 0
+var stage_in := true        # (false: never staged)
+var stage_always := false   # (a test's: staged without a screen too, from the first frame)
+func staging() -> bool:
+	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless" and time > 1.0))
+
+func bring_in(specs: Array, on_in := Callable()) -> void:
+	if not staging():
+		for spec in specs:
+			var e0 = spawn_beast(spec) if spec.get("kind", "") == "beast" else spawn_fighter(spec)
+			if e0 and on_in.is_valid():
+				on_in.call(e0)
+		return
+	coming += specs.size()
+	var left := specs.size()
+	for spec in specs:
+		if over or not is_inside_tree():
+			break
+		var e = null
+		if spec.get("kind", "") == "beast":
+			e = await spawn_beast_staged(spec)
+		else:
+			e = await spawn_fighter_staged(spec)
+		left -= 1
+		coming -= 1
+		if e and on_in.is_valid():
+			on_in.call(e)
+	coming -= left
+
 ## A fighter made for `spec` (in the tree, not yet built) and how he is to be built.
 func _new_fighter(spec: Dictionary) -> Array:
 	# Pieces designed at the armourer's bench come with the spec (a guest has never seen them).
@@ -512,7 +552,44 @@ static func ease_yaw(cur: float, to: float, dt: float) -> float:
 func spawn_beast(spec: Dictionary):
 	var b := Beast.new()
 	add_child(b)
-	b.build_beast(spec.beast, spec.pos, spec.get("yaw", 0.0), {"name": spec.get("name", Data.beasts.get(spec.beast, {}).get("name", spec.beast)), "scale": spec.scale if spec.get("scale") != null else Data.beasts.get(spec.beast, {}).get("scale", 1.0), "boss": spec.get("boss", false), "team": spec.team, "seed": rng.randi()})
+	b.build_beast(spec.beast, spec.pos, spec.get("yaw", 0.0), _beast_opts(spec))
+	return _beast_in(b, spec)
+
+## How a beast is built for `spec`.
+func _beast_opts(spec: Dictionary) -> Dictionary:
+	return {"name": spec.get("name", Data.beasts.get(spec.beast, {}).get("name", spec.beast)), "scale": spec.scale if spec.get("scale") != null else Data.beasts.get(spec.beast, {}).get("scale", 1.0), "boss": spec.get("boss", false), "team": spec.team, "seed": rng.randi()}
+
+## The same, brought in while a fight goes on (bring_in, training's next beast as one dies): built
+## a part a frame, out of the world (not moving, not drawn, not struck) until it is whole, then
+## in, as spawn_fighter_staged brings a man. Built in one frame a lion was a stop of half a
+## second. The entity when it is in, null if the match went first.
+func spawn_beast_staged(spec: Dictionary):
+	var b := Beast.new()
+	add_child(b)
+	b.process_mode = Node.PROCESS_MODE_DISABLED
+	b.visible = false
+	var opts := _beast_opts(spec)
+	opts.staged = true
+	await b.build_beast(spec.beast, spec.pos, spec.get("yaw", 0.0), opts)
+	if not is_instance_valid(b) or not is_inside_tree() or over or b.torso == null:
+		if is_instance_valid(b):
+			b.queue_free()
+		return null
+	b.process_mode = Node.PROCESS_MODE_INHERIT
+	b.visible = true
+	for p in b.parts:
+		p.snap_drawing()
+	return _beast_in(b, spec)
+
+## Training's next beast, built over the frames that follow while the fight goes on.
+func _respawn_beast_staged(spec: Dictionary, training_: String) -> void:
+	var nb = await spawn_beast_staged(spec)
+	if nb:
+		nb.training = training_
+
+## A built beast into the fight: what it does to the match (its breath, its stomp, its cries), and
+## the entity.
+func _beast_in(b: Beast, spec: Dictionary) -> Dictionary:
 	b.gravity = dec.gravity
 	b.on_breath = _breath
 	b.on_stomp = _stomp
@@ -788,12 +865,19 @@ func _spawn_round(r: int) -> void:
 	if r >= rounds.size():
 		return
 	var list: Array = rounds[r]
-	for i in list.size():
-		var spec := enemy_spec(list[i], i, list.size())
-		if spec.kind == "beast":
-			spawn_beast(spec)
-		else:
-			spawn_fighter(spec)
+	if staging():
+		# (A later round's foes, while the players stand on the sand: over the frames that follow.)
+		var specs := []
+		for i in list.size():
+			specs.append(enemy_spec(list[i], i, list.size()))
+		bring_in(specs)
+	else:
+		for i in list.size():
+			var spec := enemy_spec(list[i], i, list.size())
+			if spec.kind == "beast":
+				spawn_beast(spec)
+			else:
+				spawn_fighter(spec)
 	_open_gates(list.size())
 	late_wave = stage_info.get("late", []).duplicate(true) if r == 0 else []
 	late_at = time + Ladder.LATE_AFTER
@@ -804,12 +888,19 @@ func _spawn_round(r: int) -> void:
 func _spawn_late() -> void:
 	var list := late_wave
 	late_wave = []
-	for i in list.size():
-		var spec := enemy_spec(list[i], 2 * i + 1, 2 * (i + 1))   # the odd slots: the far gate
-		if spec.kind == "beast":
-			spawn_beast(spec)
-		else:
-			spawn_fighter(spec)
+	if staging():
+		# (In the middle of the fight: over the frames that follow, bring_in.)
+		var specs := []
+		for i in list.size():
+			specs.append(enemy_spec(list[i], 2 * i + 1, 2 * (i + 1)))
+		bring_in(specs)
+	else:
+		for i in list.size():
+			var spec := enemy_spec(list[i], 2 * i + 1, 2 * (i + 1))   # the odd slots: the far gate
+			if spec.kind == "beast":
+				spawn_beast(spec)
+			else:
+				spawn_fighter(spec)
 	if arena and arena.has_method("open_gate"):
 		arena.open_gate(-1)
 	sfx("horn", Vector3(-Arena.RADIUS, 2.0, 0), 0.6)
@@ -2067,7 +2158,8 @@ func _check_round(dt: float) -> void:
 	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
 	# beaten: he does not get up and fight on after its kill cam. (Before that, a man who comes
 	# round gets up and fights again.)
-	if alive_e.is_empty() and mode != "training" and mode != "yard":
+	# (Not while foes are still on their way in, built over these frames: bring_in.)
+	if alive_e.is_empty() and coming == 0 and mode != "training" and mode != "yard":
 		_hold_beaten(enemies())
 	# Beaten without dying (out cold, or down for good): on the kill cam's tape as a kill.
 	for x in entities:
@@ -2081,9 +2173,12 @@ func _check_round(dt: float) -> void:
 				var spec: Dictionary = e.spec.duplicate()
 				spec.erase("id")
 				if e.kind == "beast":
-					var nb = spawn_beast(spec)
-					if nb:
-						nb.training = e.get("training", "fights")
+					if staging():
+						_respawn_beast_staged(spec, String(e.get("training", "fights")))
+					else:
+						var nb = spawn_beast(spec)
+						if nb:
+							nb.training = e.get("training", "fights")
 				else:
 					_respawn_staged(spec, String(e.get("training", "fights")))
 		_training_tick(dt)
@@ -2111,7 +2206,7 @@ func _check_round(dt: float) -> void:
 			sub = Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % back
 		_end(false, "You can fight no more" if crawled else "You fall", sub)
 		return
-	if alive_e.is_empty():
+	if alive_e.is_empty() and coming == 0:
 		if mode == "campaign":
 			round_pay += int(round(float(stage_info.get("roundPay", 10)) * PAY_SCALE))
 			if round + 1 < int(stage_info.get("rounds", []).size()):

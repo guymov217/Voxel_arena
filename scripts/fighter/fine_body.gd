@@ -113,10 +113,16 @@ static func beast_data(species: String, part: String) -> Dictionary:
 	return out
 
 ## A beast drawn in the new look (`on`), or as its own voxels again.
-static func dress_beast(b, on := true) -> void:
+## `staged`: a part a frame (Beast.build_beast, a beast brought in while a fight goes on).
+static func dress_beast(b, on := true, staged := false) -> void:
 	for p in b.parts:
 		if on:
-			build(b, p, "beast:" + String(b.species))
+			if staged:
+				await build(b, p, "beast:" + String(b.species), true, true)
+				if not await Physique._frame(b):
+					return
+			else:
+				build(b, p, "beast:" + String(b.species))
 		else:
 			clear(p)
 
@@ -207,19 +213,28 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	# not (a copy: a wound changes them, man by man).
 	p.set_shape((L.vxf as Array).duplicate())
 	var sk_lin: Color = (f.skin as Color).srgb_to_linear() if f is Fighter else Color(0.4, 0.2, 0.12)
+	var na: PackedFloat32Array = L.na
+	# (His fine voxels' own colours and the drawing they are given, by the C++ core in one call
+	# where there is one: user, the frame rate drops as a foe comes into a fight; every fine voxel
+	# of a man gone over twice here was a fifth of the stop.)
+	var core = Greedy.core()
+	var made: Array = core.fine_own(p.colors, p.kinds, p.alive, par, shade, cells, d.get("palette", []), d.get("cloth", []), sk_lin, beast, L.buf if _drawing() else PackedFloat32Array(), na) if core != null and core.has_method("fine_own") else []
 	var own := PackedColorArray()
-	own.resize(n)
-	for s in n:
-		var j := par[s]
-		if j >= 0:
-			own[s] = _own(p, j, shade[s], sk_lin, beast, cells[s * CELL + 8], d)
-		if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
-			if not await Physique._frame(p):
-				return
+	if made.size() == 2 and (made[0] as PackedColorArray).size() == n:
+		own = made[0]
+	else:
+		made = []
+		own.resize(n)
+		for s in n:
+			var j := par[s]
+			if j >= 0:
+				own[s] = _own(p, j, shade[s], sk_lin, beast, cells[s * CELL + 8], d)
+			if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+				if not await Physique._frame(p):
+					return
 	var base := {}
 	for j in of:
 		base[j] = p.colors[j]
-	var na: PackedFloat32Array = L.na
 	var fine := {"body": true, "build": bn, "par": par, "own": own, "shade": shade, "xf": L.xf, "of": of, "base": base, "na": na,
 		"hid": L.hid, "code": L.code, "sub": d.sub, "fsz": fsz, "sk": sk_lin, "wound": {}, "wfree": [], "wn": 0, "cells": cells, "d": d, "beast": beast,
 		"smooth": L.skin != null, "jaw_corners": L.jaw_corners}
@@ -232,21 +247,25 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		mm.mesh = _box(fsz)
 		mm.instance_count = n
 		# One buffer for all of them (the places and the kinds the build's; the colours his own).
-		var buf: PackedFloat32Array = (L.buf as PackedFloat32Array).duplicate()
-		for s in n:
-			var j := par[s]
-			var o := s * 20
-			if j < 0 or p.alive[j] == 0:
-				for q in 12:
-					buf[o + q] = 0.0
-			var c := _color(p, s, j)
-			buf[o + 12] = c.r
-			buf[o + 13] = c.g
-			buf[o + 14] = c.b
-			buf[o + 15] = na[s] if na.size() == n else 1.0
-			if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
-				if not await Physique._frame(p) or not is_same(p.fine, fine):
-					return
+		var buf := PackedFloat32Array()
+		if made.size() == 2 and (made[1] as PackedFloat32Array).size() == n * 20:
+			buf = made[1]
+		else:
+			buf = (L.buf as PackedFloat32Array).duplicate()
+			for s in n:
+				var j := par[s]
+				var o := s * 20
+				if j < 0 or p.alive[j] == 0:
+					for q in 12:
+						buf[o + q] = 0.0
+				var c := _color(p, s, j)
+				buf[o + 12] = c.r
+				buf[o + 13] = c.g
+				buf[o + 14] = c.b
+				buf[o + 15] = na[s] if na.size() == n else 1.0
+				if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
+					if not await Physique._frame(p) or not is_same(p.fine, fine):
+						return
 		_keep_in_memory(mm)
 		mm.buffer = buf
 		var mi := MultiMeshInstance3D.new()
@@ -279,9 +298,12 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	fine["nat"] = nc != null and nc.has_method("fine_ready") and nc.fine_ready(p)
 	# The wounds he came in with (old ones healed into dents, Body): bared as any other.
 	var bare := PackedInt32Array()
-	for i in p.fx.size():
-		if p.alive[i] == 1 and _open(p, i):
-			bare.append(i)
+	# (None of him gone, none bared: every voxel of a whole part asked was a tenth of the stop a
+	# man coming into a fight was.)
+	if p.alive_count < p.fx.size():
+		for i in p.fx.size():
+			if p.alive[i] == 1 and _open(p, i):
+				bare.append(i)
 	for i in bare:
 		_expose(p, i, false)
 	_wounds(p, bare, 0)

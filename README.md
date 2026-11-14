@@ -238,7 +238,10 @@ frame, for a quarter of what the GDScript cost; `lay_plates`: the armour on it a
 it), and what a blow changes of the fine look (`fine_show`, `fine_wound`, `fine_colored`,
 `fine_taken`: the fine voxels over the voxels knocked out, the wound's cells, the blood soaked in
 round it, the piece cut off; `reshade`: the shading round the cut; `fine_swell`: a bruise's
-swelling), a third of the time the blow took in the script. To build it for Linux, then load it:
+swelling), a third of the time the blow took in the script. And what a man or a beast is made of
+as he comes into a fight (`shade_all`, `local_all`, `index_cells`, `part_rows`, `shape_all`,
+`fine_own`: each voxel's shading and place, the maps of a part's cells, its drawing, its fine
+voxels' own colours), a tenth of the time. To build it for Linux, then load it:
 
 ```bash
 cd extension

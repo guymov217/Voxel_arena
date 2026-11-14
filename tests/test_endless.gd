@@ -124,6 +124,42 @@ func test_a_wave_comes_in_and_is_beaten() -> void:
 	t.eq(en.wave, 2, "wave 2 comes in")
 	m.queue_free()
 
+## With a screen a wave is built over the frames that follow (Match.bring_in), not all of it in
+## the frame of the horn: none of it on the sand at once, the wave not beaten while its foes are
+## still on their way in, each marked as the wave's as it comes in.
+func test_a_wave_comes_in_over_the_frames_that_follow() -> void:
+	var m := _match()
+	m.stage_always = true
+	var en: Endless = m.modes.endless
+	en.wave = 5   # (the sixth wave: several foes)
+	en.update(Endless.START_DELAY + 0.1)
+	var want := en.plan(6).size()
+	t.eq(en.wave, 6, "wave 6 called for")
+	t.eq(en.phase, "fight", "the fight on")
+	t.check(want >= 2, "several foes in it (%d)" % want)
+	t.eq(m.coming, want, "all of them on their way in")
+	t.eq(m.enemies().size(), 0, "none on the sand in the frame of the horn")
+	var frames := 0
+	var beaten := false
+	var seen := 0
+	while m.coming > 0 and frames < 3000:
+		await get_tree().process_frame
+		frames += 1
+		beaten = beaten or en.phase != "fight"
+		seen = maxi(seen, m.enemies().size())
+	t.check(frames > 10 and frames < 3000, "built over the frames that follow (%d of them)" % frames)
+	t.check(not beaten, "the wave not beaten while it was still on its way in")
+	var foes := m.enemies()
+	t.eq(foes.size(), want, "all of it on the sand")
+	for e in foes:
+		t.eq(int(e.get("endless_wave", 0)), 6, "%s marked as the wave's" % e.f.display_name)
+		t.check(e.f.alive and e.f.visible and e.f.process_mode != Node.PROCESS_MODE_DISABLED, "%s whole and in the fight" % e.f.display_name)
+	for e in foes:
+		e.f.die("wounds")
+	await _steps(3)
+	t.eq(en.phase, "rest", "then beaten as any wave")
+	m.queue_free()
+
 func test_each_reward_gives_what_it_says() -> void:
 	var m := _match()
 	var en: Endless = m.modes.endless

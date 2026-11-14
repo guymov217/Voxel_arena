@@ -699,18 +699,9 @@ PackedFloat32Array VoxelCore::fine_taken(Object *part, const PackedInt32Array &i
 	return out;
 }
 
-// VoxelPart._reshade's search and shade_bits: the living voxels within one cell of any of
-// `changed` (the 27 cells round each), each once, in the script's order, each with its shading
-// (shade_bits: the corner bits of its six faces, and with `bevel` its open faces above them).
-// Two numbers each: the voxel, its bits.
-PackedInt32Array VoxelCore::reshade(const PackedInt32Array &changed, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const {
-	PackedInt32Array out;
-	const int64_t n = fx.size();
-	const int64_t gx = grid.x, gy = grid.y, gz = grid.z;
-	if (fy.size() < n || fz.size() < n || alive.size() < n || cellmap.size() < gx * gy * gz) {
-		return out;
-	}
-	// VoxelPart._face_ao_table.
+namespace {
+// VoxelPart._face_ao_table.
+const int32_t *fn_face_table() {
 	static int32_t face[512];
 	static bool face_made = false;
 	if (!face_made) {
@@ -729,6 +720,55 @@ PackedInt32Array VoxelCore::reshade(const PackedInt32Array &changed, const Packe
 		}
 		face_made = true;
 	}
+	return face;
+}
+
+// VoxelPart.shade_bits of the voxel at (x, y, z).
+int64_t fn_shade_bits(int64_t x, int64_t y, int64_t z, const int32_t *cm, const uint8_t *al, const uint8_t *vl, int64_t vs, int64_t n, int64_t gx, int64_t gy, int64_t gz, bool bevel, const int32_t *face) {
+	int64_t occ = 0; // bit a*9 + b*3 + c: the cell (x+a-1, y+b-1, z+c-1) is solid
+	for (int64_t a = (1 - x > 0 ? 1 - x : 0); a < (gx + 1 - x < 3 ? gx + 1 - x : 3); a++) {
+		for (int64_t b = (1 - y > 0 ? 1 - y : 0); b < (gy + 1 - y < 3 ? gy + 1 - y : 3); b++) {
+			const int64_t row = ((x + a - 1) * gy + y + b - 1) * gz + z - 1;
+			const int64_t bit = a * 9 + b * 3;
+			for (int64_t c = (1 - z > 0 ? 1 - z : 0); c < (gz + 1 - z < 3 ? gz + 1 - z : 3); c++) {
+				const int64_t k = (int64_t)cm[row + c] - 1;
+				if (k >= 0 && k < n && al[k] == 1 && (k >= vs || vl[k] == 0)) {
+					occ |= (int64_t)1 << (bit + c);
+				}
+			}
+		}
+	}
+	int64_t pz = (occ >> 2) & 0x1249249;
+	pz = (pz ^ (pz >> 2)) & 0x30c30c3;
+	pz = (pz ^ (pz >> 4)) & 0x300f00f;
+	pz = (pz ^ (pz >> 8)) & 0xff0000ff;
+	pz = (pz ^ (pz >> 16)) & 0x3ff;
+	int64_t mz = occ & 0x1249249;
+	mz = (mz ^ (mz >> 2)) & 0x30c30c3;
+	mz = (mz ^ (mz >> 4)) & 0x300f00f;
+	mz = (mz ^ (mz >> 8)) & 0xff0000ff;
+	mz = (mz ^ (mz >> 16)) & 0x3ff;
+	int64_t bits = face[(occ >> 18) & 511] | ((int64_t)face[occ & 511] << 4) | ((int64_t)face[((occ >> 6) & 7) | ((occ >> 12) & 56) | ((occ >> 18) & 448)] << 8) | ((int64_t)face[(occ & 7) | ((occ >> 6) & 56) | ((occ >> 12) & 448)] << 12) | ((int64_t)face[pz] << 16) | ((int64_t)face[mz] << 20);
+	if (bevel) {
+		const int64_t shut = ((occ >> 22) & 1) | ((occ >> 3) & 2) | ((occ >> 14) & 4) | ((occ >> 7) & 8) | ((occ >> 10) & 16) | ((occ >> 7) & 32);
+		bits |= (63 ^ shut) << 24;
+	}
+	return bits;
+}
+} // namespace
+
+// VoxelPart._reshade's search and shade_bits: the living voxels within one cell of any of
+// `changed` (the 27 cells round each), each once, in the script's order, each with its shading
+// (shade_bits: the corner bits of its six faces, and with `bevel` its open faces above them).
+// Two numbers each: the voxel, its bits.
+PackedInt32Array VoxelCore::reshade(const PackedInt32Array &changed, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const {
+	PackedInt32Array out;
+	const int64_t n = fx.size();
+	const int64_t gx = grid.x, gy = grid.y, gz = grid.z;
+	if (fy.size() < n || fz.size() < n || alive.size() < n || cellmap.size() < gx * gy * gz) {
+		return out;
+	}
+	const int32_t *face = fn_face_table();
 	const int32_t *cm = cellmap.ptr();
 	const int32_t *px = fx.ptr();
 	const int32_t *py = fy.ptr();
@@ -764,37 +804,160 @@ PackedInt32Array VoxelCore::reshade(const PackedInt32Array &changed, const Packe
 	int32_t *o = out.ptrw();
 	for (size_t q = 0; q < todo.size(); q++) {
 		const int64_t i = todo[q];
-		const int64_t x = px[i], y = py[i], z = pz_[i];
-		int64_t occ = 0; // bit a*9 + b*3 + c: the cell (x+a-1, y+b-1, z+c-1) is solid
-		for (int64_t a = (1 - x > 0 ? 1 - x : 0); a < (gx + 1 - x < 3 ? gx + 1 - x : 3); a++) {
-			for (int64_t b = (1 - y > 0 ? 1 - y : 0); b < (gy + 1 - y < 3 ? gy + 1 - y : 3); b++) {
-				const int64_t row = ((x + a - 1) * gy + y + b - 1) * gz + z - 1;
-				const int64_t bit = a * 9 + b * 3;
-				for (int64_t c = (1 - z > 0 ? 1 - z : 0); c < (gz + 1 - z < 3 ? gz + 1 - z : 3); c++) {
-					const int64_t k = (int64_t)cm[row + c] - 1;
-					if (k >= 0 && k < n && al[k] == 1 && (k >= vs || vl[k] == 0)) {
-						occ |= (int64_t)1 << (bit + c);
-					}
-				}
+		o[q * 2] = (int32_t)i;
+		o[q * 2 + 1] = (int32_t)fn_shade_bits(px[i], py[i], pz_[i], cm, al, vl, vs, n, gx, gy, gz, bevel, face);
+	}
+	return out;
+}
+
+// VoxelPart._build_ao's shading: every voxel's shade_bits, as [ao (the corner bits of its six
+// faces), bev (its open faces)], a part's whole in one call (a man's ten thousand voxels were
+// 60 ms of his coming in, one by one in the script).
+Array VoxelCore::shade_all(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const {
+	Array out;
+	const int64_t n = fx.size();
+	const int64_t gx = grid.x, gy = grid.y, gz = grid.z;
+	if (fy.size() < n || fz.size() < n || alive.size() < n || cellmap.size() < gx * gy * gz) {
+		return out;
+	}
+	const int32_t *face = fn_face_table();
+	const int32_t *cm = cellmap.ptr();
+	const int32_t *px = fx.ptr();
+	const int32_t *py = fy.ptr();
+	const int32_t *pz_ = fz.ptr();
+	const uint8_t *al = alive.ptr();
+	const uint8_t *vl = veil.ptr();
+	const int64_t vs = veil.size();
+	PackedInt32Array ao, bev;
+	ao.resize(n);
+	bev.resize(n);
+	int32_t *pa = ao.ptrw();
+	int32_t *pb = bev.ptrw();
+	for (int64_t i = 0; i < n; i++) {
+		const int64_t s = fn_shade_bits(px[i], py[i], pz_[i], cm, al, vl, vs, n, gx, gy, gz, bevel, face);
+		pa[i] = (int32_t)(s & 0xffffff);
+		pb[i] = (int32_t)(s >> 24);
+	}
+	out.push_back(ao);
+	out.push_back(bev);
+	return out;
+}
+
+// VoxelPart.local_positions: every voxel's local_of.
+PackedVector3Array VoxelCore::local_all(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const Vector3i &grid, double vf, double scale) const {
+	PackedVector3Array out;
+	const int64_t n = fx.size();
+	if (fy.size() < n || fz.size() < n) {
+		return out;
+	}
+	const double cx = (grid.x - 1) * 0.5, cy = (grid.y - 1) * 0.5, cz = (grid.z - 1) * 0.5;
+	const real_t sc = (real_t)scale;
+	out.resize(n);
+	Vector3 *o = out.ptrw();
+	const int32_t *px = fx.ptr();
+	const int32_t *py = fy.ptr();
+	const int32_t *pz_ = fz.ptr();
+	for (int64_t i = 0; i < n; i++) {
+		o[i] = Vector3((real_t)((px[i] - cx) * vf), (real_t)((py[i] - cy) * vf), (real_t)((pz_[i] - cz) * vf)) * sc;
+	}
+	return out;
+}
+
+// VoxelPart._index_cells: [every grid cell's voxel (its index + 1; 0 none), the living one's, the
+// living voxels of each coarse cell, all its voxels, the dead ones].
+Array VoxelCore::index_cells(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, const Vector3i &dims, int res) const {
+	Array out;
+	const int64_t n = fx.size();
+	const int64_t cells = (int64_t)grid.x * grid.y * grid.z;
+	const int64_t nc = (int64_t)dims.x * dims.y * dims.z;
+	if (fy.size() < n || fz.size() < n || alive.size() < n || res <= 0 || cells < 0 || nc < 0) {
+		return out;
+	}
+	PackedInt32Array cell_map, live_cell, live_coarse, total_coarse, dead;
+	cell_map.resize(cells);
+	live_cell.resize(cells);
+	live_coarse.resize(nc);
+	total_coarse.resize(nc);
+	cell_map.fill(0);
+	live_cell.fill(0);
+	live_coarse.fill(0);
+	total_coarse.fill(0);
+	int32_t *cmw = cell_map.ptrw();
+	int32_t *lcw = live_cell.ptrw();
+	int32_t *lco = live_coarse.ptrw();
+	int32_t *tco = total_coarse.ptrw();
+	const int32_t *px = fx.ptr();
+	const int32_t *py = fy.ptr();
+	const int32_t *pz_ = fz.ptr();
+	const uint8_t *al = alive.ptr();
+	for (int64_t i = 0; i < n; i++) {
+		const int64_t at = ((int64_t)px[i] * grid.y + py[i]) * grid.z + pz_[i];
+		if (at < 0 || at >= cells) {
+			return Array(); // (a voxel out of its part's grid: the script's to say so)
+		}
+		cmw[at] = (int32_t)(i + 1);
+		if (al[i] != 0) {
+			lcw[at] = (int32_t)(i + 1);
+		} else {
+			dead.push_back((int32_t)i);
+		}
+		const int64_t c = (int64_t)(px[i] / res) + dims.x * ((int64_t)(py[i] / res) + dims.y * (int64_t)(pz_[i] / res));
+		if (c >= 0 && c < nc) {
+			tco[c] += 1;
+			if (al[i] != 0) {
+				lco[c] += 1;
 			}
 		}
-		int64_t pz = (occ >> 2) & 0x1249249;
-		pz = (pz ^ (pz >> 2)) & 0x30c30c3;
-		pz = (pz ^ (pz >> 4)) & 0x300f00f;
-		pz = (pz ^ (pz >> 8)) & 0xff0000ff;
-		pz = (pz ^ (pz >> 16)) & 0x3ff;
-		int64_t mz = occ & 0x1249249;
-		mz = (mz ^ (mz >> 2)) & 0x30c30c3;
-		mz = (mz ^ (mz >> 4)) & 0x300f00f;
-		mz = (mz ^ (mz >> 8)) & 0xff0000ff;
-		mz = (mz ^ (mz >> 16)) & 0x3ff;
-		int64_t bits = face[(occ >> 18) & 511] | ((int64_t)face[occ & 511] << 4) | ((int64_t)face[((occ >> 6) & 7) | ((occ >> 12) & 56) | ((occ >> 18) & 448)] << 8) | ((int64_t)face[(occ & 7) | ((occ >> 6) & 56) | ((occ >> 12) & 448)] << 12) | ((int64_t)face[pz] << 16) | ((int64_t)face[mz] << 20);
-		if (bevel) {
-			const int64_t shut = ((occ >> 22) & 1) | ((occ >> 3) & 2) | ((occ >> 14) & 4) | ((occ >> 7) & 8) | ((occ >> 10) & 16) | ((occ >> 7) & 32);
-			bits |= (63 ^ shut) << 24;
-		}
-		o[q * 2] = (int32_t)i;
-		o[q * 2 + 1] = (int32_t)bits;
+	}
+	out.push_back(cell_map);
+	out.push_back(live_cell);
+	out.push_back(live_coarse);
+	out.push_back(total_coarse);
+	out.push_back(dead);
+	return out;
+}
+
+// VoxelPart._build_mesh's drawing as one buffer (20 numbers a voxel, as a MultiMesh holds
+// them): each voxel where it lies (`lpos`, unturned, whole), its colour, and what it is made of
+// with its shading (VoxelPart._custom: kind_data(kind, ao, bev), no glow).
+PackedFloat32Array VoxelCore::part_rows(const PackedVector3Array &lpos, const PackedColorArray &colors, const PackedByteArray &kinds, const PackedInt32Array &ao, const PackedInt32Array &bev) const {
+	PackedFloat32Array out;
+	const int64_t n = lpos.size();
+	if (colors.size() < n || kinds.size() < n) {
+		return out;
+	}
+	out.resize(n * 20);
+	float *o = out.ptrw();
+	const Vector3 *lp = lpos.ptr();
+	const Color *col = colors.ptr();
+	const uint8_t *kd = kinds.ptr();
+	const int32_t *pa = ao.ptr();
+	const int32_t *pb = bev.ptr();
+	const int64_t na = ao.size(), nb = bev.size();
+	for (int64_t i = 0; i < n; i++) {
+		float *r = o + i * 20;
+		r[0] = 1.0f;
+		r[1] = 0.0f;
+		r[2] = 0.0f;
+		r[3] = lp[i].x;
+		r[4] = 0.0f;
+		r[5] = 1.0f;
+		r[6] = 0.0f;
+		r[7] = lp[i].y;
+		r[8] = 0.0f;
+		r[9] = 0.0f;
+		r[10] = 1.0f;
+		r[11] = lp[i].z;
+		r[12] = col[i].r;
+		r[13] = col[i].g;
+		r[14] = col[i].b;
+		r[15] = col[i].a;
+		const int64_t a_ = i < na ? pa[i] : 0;
+		const int64_t taper = i < nb ? pb[i] : 0;
+		r[16] = (float)((double)((int64_t)kd[i] + 16 * (taper & 0xFFFF)) / 16.0);
+		r[17] = 0.0f;
+		r[18] = 0.0f;
+		r[19] = (float)(1.0 + (double)a_ + (double)(taper >> 16) / 1024.0);
 	}
 	return out;
 }
@@ -899,4 +1062,94 @@ void VoxelCore::fine_swell(Object *part, const PackedInt32Array &voxels, const V
 			}
 		}
 	}
+}
+
+// FineBody.build's colours: each fine voxel's own colour in the look (_own: his skin lit as the
+// muscles under it shade it, or what the build paints there, or the colour of the voxel it lies
+// on), and with `buf` (the build's drawing, every plate on: 20 numbers a fine voxel) the drawing
+// a man of it is given: those colours in it, the way each faces (`na`) with them, and the fine
+// voxels over nothing of him, or over a voxel gone, put away. [own, buf]; a man's eleven
+// thousand fine voxels were gone over twice in the script each time one of him came into a fight.
+Array VoxelCore::fine_own(const PackedColorArray &colors, const PackedByteArray &kinds, const PackedByteArray &alive, const PackedInt32Array &par, const PackedFloat32Array &shade, const PackedInt32Array &cells, const Array &palette, const Array &cloth, const Color &sk_lin, bool beast, const PackedFloat32Array &buf, const PackedFloat32Array &na) const {
+	Array out;
+	const int64_t n = par.size();
+	const int64_t nv = colors.size();
+	if (shade.size() < n || cells.size() < n * FN_CELL || kinds.size() < nv || alive.size() < nv) {
+		return out;
+	}
+	// (The palette read once: [r, g, b, kind, lit as skin].)
+	const int64_t np = palette.size();
+	std::vector<Color> pal_rgb((size_t)np);
+	std::vector<uint8_t> pal_skin((size_t)np, 0);
+	for (int64_t q = 0; q < np; q++) {
+		const Variant ev = palette[q];
+		if (ev.get_type() != Variant::ARRAY) {
+			return out;
+		}
+		const Array e = ev;
+		if (e.size() < 5) {
+			return out;
+		}
+		pal_rgb[q] = Color((float)(double)e[0], (float)(double)e[1], (float)(double)e[2]);
+		pal_skin[q] = (int64_t)e[4] == 1 ? 1 : 0;
+	}
+	const bool has_cloth = cloth.size() >= 4;
+	const Color cloth_lin = has_cloth ? Color((float)(double)cloth[0], (float)(double)cloth[1], (float)(double)cloth[2]).srgb_to_linear() : Color();
+	const Color skin_lit = sk_lin * (float)FN_SKIN_K;
+	PackedColorArray own;
+	own.resize(n);
+	Color *po = own.ptrw();
+	const int32_t *pp = par.ptr();
+	const float *ps = shade.ptr();
+	const int32_t *pc = cells.ptr();
+	const Color *col = colors.ptr();
+	const uint8_t *kd = kinds.ptr();
+	for (int64_t s = 0; s < n; s++) {
+		const int64_t j = pp[s];
+		if (j < 0 || j >= nv) {
+			po[s] = Color();
+			continue;
+		}
+		const int64_t k_ = kd[j];
+		const int64_t paint = pc[s * FN_CELL + 8];
+		Color c;
+		if (paint & FN_OWN_COLOUR) {
+			c = Color((float)((paint >> 16) & 255) / 255.0f, (float)((paint >> 8) & 255) / 255.0f, (float)(paint & 255) / 255.0f, 1.0f).srgb_to_linear();
+		} else if (paint > 0 && paint <= np) {
+			const Color &rgb = pal_rgb[paint - 1];
+			c = pal_skin[paint - 1] ? Color((float)((double)sk_lin.r * (double)rgb.r), (float)((double)sk_lin.g * (double)rgb.g), (float)((double)sk_lin.b * (double)rgb.b)) * (float)FN_SKIN_K : rgb.srgb_to_linear();
+		} else if (k_ == 1 && has_cloth) {
+			c = cloth_lin;
+		} else if (!beast && (k_ == 0 || k_ >= 6)) {
+			c = skin_lit;
+		} else {
+			c = col[j].srgb_to_linear();
+		}
+		const double k = (double)ps[s];
+		po[s] = Color((float)((double)c.r * k), (float)((double)c.g * k), (float)((double)c.b * k)).linear_to_srgb();
+	}
+	out.push_back(own);
+	PackedFloat32Array made;
+	if (buf.size() >= n * 20 && n > 0) {
+		made = buf;
+		float *b = made.ptrw();
+		const uint8_t *al = alive.ptr();
+		const bool faced = na.size() == n;
+		const float *pn = na.ptr();
+		for (int64_t s = 0; s < n; s++) {
+			const int64_t j = pp[s];
+			float *r = b + s * 20;
+			if (j < 0 || j >= nv || al[j] == 0) {
+				for (int q = 0; q < 12; q++) {
+					r[q] = 0.0f;
+				}
+			}
+			r[12] = po[s].r;
+			r[13] = po[s].g;
+			r[14] = po[s].b;
+			r[15] = faced ? pn[s] : 1.0f;
+		}
+	}
+	out.push_back(made);
+	return out;
 }

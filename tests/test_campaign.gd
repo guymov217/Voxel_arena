@@ -221,6 +221,60 @@ func test_the_other_gate_opens_on_the_second_wave() -> void:
 	t.check(said.any(func(x): return String(x).begins_with("The other gate opens")), "the feed says so (%s)" % [said])
 	m.queue_free()
 
+## With a screen the second wave is built over the frames that follow (Match.bring_in: a man in
+## one frame was a stop of a third of a second in the middle of the fight, user: the frame rate
+## drops): not in the frame that calls for him, out of the world until he is whole, then in as he
+## always came; and the bout is not won meanwhile, though no foe stands on the sand.
+func test_the_second_wave_comes_in_over_the_frames_that_follow() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 5, "headless": true, "loadout": {"main": "gladius", "off": "roundShield"}, "seed": 5})
+	t.check(not m.staging(), "without a screen every foe is built in the frame that calls for him")
+	m.stage_always = true
+	t.check(m.staging(), "as with a screen, for the test")
+	var said := []
+	m.feed.connect(func(s): said.append(s))
+	t.eq(m.enemies().size(), 1, "the coward comes in alone")
+	m.me.drive = func(_e): return {}
+	m.enemies()[0].f.die("test")
+	var called := -1
+	for i in 240:
+		await get_tree().physics_frame
+		if m.coming > 0:
+			called = i
+			break
+	t.check(called >= 0, "the first man down: the second wave is called for")
+	t.eq(m.coming, 1, "one foe on his way in")
+	t.eq(m.enemies().size(), 1, "not on the sand in the frame that called for him")
+	t.check(said.any(func(x): return String(x).begins_with("The other gate opens")), "the gate opens and the feed says so at once")
+	var making = null
+	for c in m.get_children():
+		if c is Fighter and not m.entities.any(func(e): return e.f == c):
+			making = c
+	t.check(making != null and not (making as Fighter).visible and (making as Node).process_mode == Node.PROCESS_MODE_DISABLED, "being made out of the world: not drawn, not moving, not struck")
+	var frames := 0
+	var won := false
+	while m.coming > 0 and frames < 900:
+		await get_tree().process_frame
+		frames += 1
+		won = won or m.over or m.between > 0.0
+	t.check(frames > 5 and frames < 900, "made over the frames that follow (%d of them)" % frames)
+	t.check(not won, "and the bout not won meanwhile, with no foe standing")
+	t.eq(m.enemies().size(), 2, "then in")
+	var late = m.enemies()[1]
+	t.check(late.f == making and late.f.alive and late.f.visible and late.f.process_mode != Node.PROCESS_MODE_DISABLED, "the man who was being made, whole and in the fight")
+	t.check(late.f.torso.global_position.x < -2.0, "through the far gate (x %.1f)" % late.f.torso.global_position.x)
+	t.eq(late.f.parts.size(), 10, "every part of him")
+	t.check(late.has("bot"), "and his wits about him")
+	t.eq(said.filter(func(x): return String(x).begins_with("The other gate opens")).size(), 1, "the gate opened once")
+	late.f.die("test")
+	for i in 360:
+		await get_tree().physics_frame
+		if m.over or m.between > 0.0:
+			break
+	t.check(m.over or m.between > 0.0, "the second man down too: the round is won")
+	m.queue_free()
+
 func test_the_giants_of_myth_look_the_part() -> void:
 	var m := Match.new()
 	add_child(m)

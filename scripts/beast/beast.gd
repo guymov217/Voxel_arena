@@ -111,6 +111,8 @@ const NECK_DIP := 2.0
 const ROLE_LIM := {"tail": 0.7, "coil": 0.9, "neck": 0.55, "head": 0.6, "wing": 1.1, "trunk": 0.8, "arm": 0.6, "claw": 0.5}
 const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing": 20.0, "trunk": 14.0, "arm": 22.0, "claw": 26.0}
 
+static var _listed_beasts := {}   # kind|gore -> {part name -> {d, voxels, packed}}: build_beast
+const LISTED_BEASTS_MAX := 40
 func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> void:
 	kind = "beast"
 	species = species_
@@ -136,21 +138,45 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 	bite_power = float(sp.get("bite", 45.0)) * (HYDRA_BITE if species == "hydra" else 1.0)
 	base_bite = bite_power
 	var yaw_q := Quaternion(UP, yaw)
+	# What a kind's voxels are listed as (its hide's marks, its organs, the bone in it) is the same
+	# for every beast of the kind (and gore): listed once, kept, with what each part works out of
+	# them (VoxelPart.setup): a third of a second of a lion's coming in (user: the frame rate
+	# drops as a foe comes into a fight).
+	# Built a part a frame (Match.spawn_beast_staged: a beast brought in while a fight goes on,
+	# out of the world until it is whole): in one frame a lion was a stop of half a second (user:
+	# the frame rate drops in a fight).
+	var staged := bool(opts.get("staged", false))
+	if staged:
+		await get_tree().process_frame   # (not in the frame that called for it)
+		if not is_inside_tree():
+			return
+	var plain := Anatomy.gore() == "reduced"
+	var list_key := "%s|%s" % [species, str(plain)]
+	if not _listed_beasts.has(list_key):
+		if _listed_beasts.size() >= LISTED_BEASTS_MAX:
+			_listed_beasts.clear()
+		_listed_beasts[list_key] = {}
+	var listed: Dictionary = _listed_beasts[list_key]
 	for d in sp.parts:
 		var voxels := []
-		for v in d.voxels:
+		var have = listed.get(str(d.name))
+		if not (have is Dictionary and is_same(have.d, d) and (have.voxels as Array).size() == (d.voxels as Array).size()):
+			have = null
+		else:
+			voxels = have.voxels
+		for v in (d.voxels if have == null else []):
 			voxels.append([v[0], v[1], v[2], Color.hex(int(v[3]) << 8 | 0xff), v[4]])
-		# Only how it looks: fur, scales or shell, markings, bone, eyes (BeastStyle).
-		voxels = BeastStyle.style_part(species, str(d.name), d.get("grid", [1, 1, 1]), voxels)
-		# The organs inside (Anatomy.dress_beasts): wet flesh, their id carried with each voxel.
-		var plain := Anatomy.gore() == "reduced"
-		for i in voxels.size():
-			var organ: int = int(d.voxels[i][5]) if d.voxels[i].size() > 5 else 0
-			if organ != Anatomy.NONE:
-				voxels[i][5] = 9
-				if plain:
-					voxels[i][3] = BeastStyle.FLESH_A
-			voxels[i].append(organ)
+		if have == null:
+			# Only how it looks: fur, scales or shell, markings, bone, eyes (BeastStyle).
+			voxels = BeastStyle.style_part(species, str(d.name), d.get("grid", [1, 1, 1]), voxels)
+			# The organs inside (Anatomy.dress_beasts): wet flesh, their id carried with each voxel.
+			for i in voxels.size():
+				var organ: int = int(d.voxels[i][5]) if d.voxels[i].size() > 5 else 0
+				if organ != Anatomy.NONE:
+					voxels[i][5] = 9
+					if plain:
+						voxels[i][3] = BeastStyle.FLESH_A
+				voxels[i].append(organ)
 		var p := VoxelPart.new()
 		var dd: Dictionary = d.duplicate()
 		dd.erase("voxels")
@@ -161,10 +187,13 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		if d.leg:
 			var n_legs: int = maxi(2, sp.parts.filter(func(q): return q.get("leg", false) and not q.get("lower", false)).size())
 			m_part = maxf(m_part, float(sp.parts[0].mass) * (0.14 if d.lower else 0.2) / float(n_legs))
-		_bone_core(str(d.name), voxels)
-		if d.get("parent") == null:
-			_bury_bones(voxels, 3)
-		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS)
+		if have == null:
+			_bone_core(str(d.name), voxels)
+			if d.get("parent") == null:
+				_bury_bones(voxels, 3)
+			have = {"d": d, "voxels": voxels}
+			listed[str(d.name)] = have
+		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS, have)
 		p.linear_damp = 0.3
 		p.angular_damp = 2.0
 		p.collision_layer = VoxelPart.LAYER_BODY
@@ -191,6 +220,10 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		# (An upright leg stands on its foot: drawn level on the sand, _foot_drawing.)
 		if d.leg and d.lower and local.basis.y.y > 0.95 and absf(float(d.get("splay", 0.0))) < 0.3:
 			p.set_meta("paw", true)
+		if staged:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
 	torso = by_name.beastBody
 	head = by_name.beastHead
 	_count_organs()
@@ -229,7 +262,12 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			p.build_jaw(p.def.jaw)
 	# How it is drawn (Options: the new look rounds its voxels into a body). Drawing only.
 	if Physique.current() == "human":
-		FineBody.dress_beast(self)
+		if staged:
+			await FineBody.dress_beast(self, true, true)
+			if not is_inside_tree():
+				return
+		else:
+			FineBody.dress_beast(self)
 	ai = {"mode": "aim" if sp.ai == "charger" else "stalk", "t": 1.5 + rng.randf() * 1.5, "circle": 1.0 if rng.randf() < 0.5 else -1.0, "bite_cool": 2.5, "roar_cool": 4.0, "dodge_cool": 0.0, "breath_cool": 3.0, "fly_cool": 6.0, "alt": 0.0}
 
 ## Hide first: the blow is softened by what it has to get through (HIDE), then lands as on any body.
