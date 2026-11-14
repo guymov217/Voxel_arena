@@ -45,6 +45,7 @@ func setup() -> void:
 			"pos": p + Vector3(0, 0.02, 0), "yaw": face_yaw, "mods": {"toughness": 5.0}, "color": s.npc.color})
 		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, work_yaw, randf() * TAU)
 		n.harmless = true
+		n.works = String(s.npc.get("work", "")) != ""   # (he moves at it: while he may be seen, he is at it, Match._stands_idle)
 		# A keeper is at his work, not there to be fenced with: a visitor's blades pass through
 		# him, his body does not (swords held out at the physician lay on his working arms, cut
 		# him and shook in the man's hands, user video 1135).

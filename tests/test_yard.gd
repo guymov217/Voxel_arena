@@ -76,6 +76,77 @@ func test_training_brings_the_giant() -> void:
 	t.check(en.size() == 1 and en[0].f.boss and en[0].f.S > 3.0, "the giant stands in the training ring (%s)" % [en[0].f.display_name if en.size() else "nobody"])
 	m.queue_free()
 
+## Those who only stand in the yard rest (user: the lobby's frame rate drops sharply for
+## nothing): six men stand in it beside the players, each as dear a step as a man in a fight. One
+## who only stands (a dummy, the smith, the trainer) rests while no player is near him: his parts
+## sleep as he stands and he is not driven. One who moves at his work (the trader, the physician)
+## rests only where no player may see him at it. A player near him, a player's eyes on him at his
+## work, or anything that touches him, and he is at once the man he was.
+func test_those_who_only_stand_in_the_yard_rest() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}]})
+	var of := func(f): return m.entities.filter(func(e): return e.f == f)[0]
+	var dummy = of.call(m.yard.dummies[0])
+	var trader = null
+	var physician = null
+	var still := [dummy, of.call(m.yard.dummies[1])]
+	for k in m.yard.keepers:
+		var e = of.call(k)
+		if not e.get("works", false):
+			still.append(e)
+		elif k.torso.global_position.x > 0.0:
+			trader = e
+		else:
+			physician = e
+	t.check(still.size() == 4 and trader != null and physician != null, "two dummies, two keepers who only stand, two at their work")
+	# The friend stands by the gate's far side looking up the yard, the trader before him, the
+	# physician behind him (no screen here: the host's own eyes see nothing).
+	await _steps(420)
+	var resting := func(e) -> bool: return e.get("idle", false) and e.f.parts.all(func(p): return p.severed or p.sleeping)
+	t.check(still.all(resting), "nobody near them, those who only stand rest, every part of them asleep (%d of 4)" % still.filter(resting).size())
+	t.check(resting.call(physician), "and one at his work behind every player's back")
+	t.check(not trader.get("idle", false), "one at his work before a player's eyes is at it")
+	var y0 := still.map(func(e): return e.f.torso.global_position.y)
+	await _steps(240)
+	var stood := true
+	for i in still.size():
+		var f: Fighter = still[i].f
+		if not f.alive or f.state != "stand" or absf(f.torso.global_position.y - float(y0[i])) > 0.005:
+			stood = false
+	t.check(stood and still.all(resting), "they stand as they stood, two seconds on")
+	# The friend turns round: the physician is at his work, the trader rests.
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": PI, "pitch": 0.0}}))
+	await _steps(60)
+	t.check(not physician.get("idle", false), "looked at, the physician is at his work at once")
+	await _steps(300)
+	t.check(resting.call(trader), "and the trader, nobody looking his way any more, rests")
+	Net.inputs.erase(77)
+	# A player walks up to a dummy: it is awake, and stands.
+	m.me.f.teleport(m.yard.dummies[0].torso.global_position + Vector3(1.6, 0.0, 0.0))
+	await _steps(3)
+	t.check(not dummy.get("idle", false) and dummy.f.parts.all(func(p): return p.severed or (not p.sleeping and not p.can_sleep)), "a player near it, a dummy is awake")
+	await _steps(120)
+	t.check(dummy.f.alive and dummy.f.state == "stand" and absf(dummy.f.torso.global_position.y - float(y0[0])) < 0.05, "and stands as it stood")
+	# He walks off: it rests again; a javelin thrown into it wakes it.
+	m.me.f.teleport(Vector3(0.0, 0.0, -6.0))
+	await _steps(300)
+	t.check(resting.call(dummy), "he goes, and it rests again")
+	var w := m.spawn_loose_weapon(Data.preset("javelin"), dummy.f.torso.global_position + Vector3(1.2, 0.15, 0.0))
+	w.linear_velocity = Vector3(-9.0, 0.0, 0.0)
+	var woke := false
+	for i in 60:
+		await get_tree().physics_frame
+		if not dummy.get("idle", false):
+			woke = true
+	t.check(woke, "struck, it is awake")
+	# What a camera has in its sight (the host's own screen).
+	var cam := Transform3D(Basis.looking_at(Vector3(0, 0, 1)), Vector3(0, 1.5, 0))
+	t.check(Match.sees(cam, 59.0, 16.0 / 9.0, Vector3(3, 1, 12)), "what stands before a camera is in its sight")
+	t.check(Match.sees(cam, 59.0, 16.0 / 9.0, Vector3(12, 1, 10)) and not Match.sees(cam, 59.0, 16.0 / 9.0, Vector3(17, 1, 10)), "and what stands just off the screen's edge, not what stands well off it")
+	t.check(not Match.sees(cam, 59.0, 16.0 / 9.0, Vector3(3, 1, -12)), "nor what stands behind it")
+	m.queue_free()
+
 ## Killed in the yard (by a friend, as like as not), a player is back three seconds later.
 func test_a_man_killed_in_the_yard_is_back_in_three_seconds() -> void:
 	var m := Match.new()

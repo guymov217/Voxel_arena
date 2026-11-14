@@ -3586,8 +3586,9 @@ func _calm(state: PhysicsDirectBodyState3D) -> void:
 ## air), it wakes and falls.
 const UNDER_EVERY := 0.5   # s
 var _under_t := 0.0
+var stands_idle := false   # asleep on a man who stands idle (Match._stands_idle): he holds it up, it lies on nothing
 func _physics_process(dt: float) -> void:
-	if not sleeping or freeze:
+	if not sleeping or freeze or stands_idle:
 		return
 	_under_t += dt
 	if _under_t < UNDER_EVERY:

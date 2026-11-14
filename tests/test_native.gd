@@ -233,3 +233,117 @@ func test_native_smooth_matches_the_gdscript() -> void:
 	t.check(moved > fore.size() / 3, "the skin's corners are moved onto his shape (%d of them)" % moved)
 	t.check(far <= FS.HELD_OUT + 1e-4, "none further than it is held to (%.2f of a fine voxel)" % far)
 
+
+## What takes a set_instance_transform as a MultiMesh does, and keeps what it was given.
+class Kept extends RefCounted:
+	var got := {}
+	func set_instance_transform(i: int, x: Transform3D) -> void:
+		got[i] = x
+
+## A man's drawing work a frame that the C++ core does (user: the frame rate drops sharply in a
+## fight): the fine voxels of a shoulder guard hidden under his arm's armour (Fighter._in_reach on
+## each, then _cut_off), and what is drawn on the voxels of a limb bent at a break set where the
+## bend has each (VoxelPart._bent). The same masks, bit for bit, and the same places.
+func test_native_drawing_matches_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("guard_reach"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 29
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	# An arm's reach (Fighter._arm_reach's table, some of it empty), a guard's voxels round it.
+	var off := 0
+	var cut_off := 0
+	var chg_off := 0
+	for k in 30:
+		var rows := rng.randi_range(0, 9)
+		var r := PackedFloat32Array()
+		r.resize(rows * Fighter.REACH_NA)
+		for i in r.size():
+			r[i] = rng.randf_range(0.03, 0.11) if rng.randf() < 0.7 else 0.0
+		var reach := {"key": "", "rows": rows, "y0": rng.randf_range(-0.3, 0.0), "dy": rng.randf_range(0.02, 0.05), "r": r}
+		var pts := PackedVector3Array()
+		for i in rng.randi_range(1, 400):
+			pts.append(Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.45, 0.25), rng.randf_range(-0.2, 0.2)))
+		var to_arm := Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))), rv.call(0.1))
+		var pad := rng.randf_range(0.0, 0.02)
+		var qa: PackedVector3Array = to_arm * pts
+		var want := PackedByteArray()
+		want.resize(pts.size())
+		for i in pts.size():
+			if Fighter._in_reach(reach, qa[i], pad):
+				want[i] = 1
+		var got: PackedByteArray = nc.guard_reach(pts, to_arm, r, rows, Fighter.REACH_NA, float(reach.y0), float(reach.dy), pad)
+		if got != want:
+			off += 1
+		# How they hang together (Fighter._guard_links), and what the hidden ones cut off.
+		var lk := Fighter._guard_links(pts, PackedVector3Array([pts[0], pts[pts.size() / 2]]), 0.03)
+		var flat := PackedInt32Array()
+		var at := PackedInt32Array([0])
+		for nb in lk[0]:
+			flat.append_array(nb)
+			at.append(flat.size())
+		var mask := PackedByteArray()
+		mask.resize(pts.size())
+		for i in pts.size():
+			mask[i] = 1 if rng.randf() < 0.3 else 0
+		if nc.guard_cut(mask, flat, at, lk[1]) != Fighter._cut_off(mask.duplicate(), lk[0], lk[1]):
+			cut_off += 1
+		var turned := PackedInt32Array()
+		for i in pts.size():
+			if mask[i] != want[i]:
+				turned.append(i)
+		if nc.bytes_changed(mask, want) != turned:
+			chg_off += 1
+	t.eq(off, 0, "the same voxels of a guard within an arm's reach")
+	t.eq(cut_off, 0, "the same cut off by them from the rest of the shell")
+	t.eq(chg_off, 0, "and the same places where one mask is not the other")
+	t.check(nc.bytes_changed(PackedByteArray([1]), PackedByteArray([1, 0, 1])) == PackedInt32Array([0, 1, 2]), "against a mask of another length, every place")
+	# A limb bent at a break: what is drawn on its voxels, where the bend has each.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	var worst := 0.0
+	var moved := 0
+	var left := 0
+	for part_name in ["forearmR", "shinL", "upperArmL"]:
+		var p: VoxelPart = m.me.f.by_name[part_name]
+		p.set_kink(Vector3.ZERO, 0.8, 40)
+		for trial in 6:
+			p._sw_q = Quaternion((rv.call(1.0) as Vector3 + Vector3(0, 0.02, 0)).normalized(), rng.randf_range(0.05, 1.8))
+			p._bend_x = p._bend_for(p._sw_q)
+			var g := p._bend_geom()
+			var rows := PackedFloat32Array()
+			var slots := PackedInt32Array()
+			var want := {}
+			var layers := {}
+			var pv := p._dangle_pivot()
+			var tip: Vector3 = p._across()[2]
+			for i in 120:
+				var lp := Vector3(rng.randf_range(-p.half_ext.x, p.half_ext.x), rng.randf_range(-p.half_ext.y, p.half_ext.y), rng.randf_range(-p.half_ext.z, p.half_ext.z))
+				# (A voxel's middle is on the part's lattice: the bend's layers are a few heights along it.)
+				lp[int(g[5])] = snappedf(lp[int(g[5])], p.vf * p.part_scale * 0.5)
+				var x := Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))).scaled(Vector3.ONE * rng.randf_range(0.2, 1.0)), lp + rv.call(0.01))
+				var bx := x.basis
+				rows.append_array([bx.x.x, bx.y.x, bx.z.x, x.origin.x, bx.x.y, bx.y.y, bx.z.y, x.origin.y, bx.x.z, bx.y.z, bx.z.z, x.origin.z, lp.x, lp.y, lp.z])
+				slots.append(i * 3 + 1)
+				if (lp - pv).dot(tip) > 0.0:
+					want[i * 3 + 1] = (p._bent(Transform3D(Basis(), lp), g, layers) * Transform3D(Basis(), -lp)) * x
+			var kept := Kept.new()
+			nc.lay_cells(kept, rows, slots, g[0], g[2], g[1], g[6], g[7], g[5], g[3], g[4], p._bend_x)
+			left += 120 - want.size()
+			for s in want:
+				if not kept.got.has(s):
+					worst = INF
+					continue
+				moved += 1
+				var a: Transform3D = want[s]
+				var b: Transform3D = kept.got[s]
+				worst = maxf(worst, maxf(a.origin.distance_to(b.origin), maxf(a.basis.x.distance_to(b.basis.x), maxf(a.basis.y.distance_to(b.basis.y), a.basis.z.distance_to(b.basis.z)))))
+			if kept.got.size() != want.size():
+				worst = INF
+		p.set_kink(Vector3.ZERO, 0.0, 0)
+	t.check(moved > 300 and left > 300, "cells past the break and cells before it (%d, %d)" % [moved, left])
+	t.check(worst < 1e-5, "each past the break set where the bend has its voxel, those before it left as they are (off by %.7f at most)" % worst)
+	m.queue_free()

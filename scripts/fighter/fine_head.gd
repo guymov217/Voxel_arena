@@ -906,6 +906,7 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 	var big := float(res) / 1.04
 	var sc := Vector3(1.06, 1.04, 1.04)
 	var buf := PackedFloat32Array()
+	var reads := FineBody._drawing()
 	var skin_at := {}   # where his skin's fine voxels of the piece lie (the template's own places)
 	var lining := {}    # the place behind each, toward the middle of his head -> where it is drawn
 	for i in idx:
@@ -925,7 +926,11 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 			if tucked.has(s):
 				continue
 			var t: Transform3D = cxf[s]
-			FineBody.put_cell(buf, t, cell_color(p, s), cell_data(p, s))
+			# (As it is drawn, read off the drawing where there is one to read: the same, quicker.)
+			if reads:
+				FineBody.put_cell(buf, t, mm.get_instance_color(s), mm.get_instance_custom_data(s))
+			else:
+				FineBody.put_cell(buf, t, cell_color(p, s), cell_data(p, s))
 			inner = minf(inner, floorf(((t.origin[ax] - mid[ax]) / size[ax] * sg + 0.5) * float(res)))
 			var c: Array = tpl[s]
 			var at := Vector3i(int(c[0]), int(c[1]), int(c[2]))

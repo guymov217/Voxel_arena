@@ -3870,6 +3870,14 @@ func _clip_shoulder_guards() -> void:
 				var lk := _guard_links(gd["p" + side], rest, h)
 				gd["adj" + side] = lk[0]
 				gd["anc" + side] = lk[1]
+				# (The same on end, for the C++ core: every voxel's neighbours, and where each one's begin.)
+				var flat := PackedInt32Array()
+				var at_ := PackedInt32Array([0])
+				for nb in lk[0]:
+					flat.append_array(nb)
+					at_.append(flat.size())
+				gd["adjF" + side] = flat
+				gd["adjA" + side] = at_
 			sh["guard"] = gd
 			var vc := PackedByteArray()
 			vc.resize(rel.size())
@@ -3889,27 +3897,59 @@ func _clip_shoulder_guards() -> void:
 			if on and last is Transform3D and (last as Transform3D).origin.distance_to(to_arm.origin) < 0.003 and ((last as Transform3D).basis.get_rotation_quaternion().angle_to(to_arm.basis.get_rotation_quaternion())) < 0.02:
 				continue
 			sh["at" + side] = to_arm if on else null
-			var reach = _arm_reach(up) if on else null
-			var qa: PackedVector3Array = to_arm * (sh.guard["p" + side] as PackedVector3Array) if on else PackedVector3Array()
-			var hide := PackedByteArray()
-			hide.resize(idx.size())
-			if on:
-				for k in idx.size():
-					if _in_reach(reach, qa[k], GUARD_PAD * vox):
-						hide[k] = 1
-				hide = _cut_off(hide, sh.guard["adj" + side], sh.guard["anc" + side])
-			var hidden := 0
-			for k in idx.size():
+			var hide := guard_hidden(sh.guard, side, _arm_reach(up), to_arm, GUARD_PAD * vox) if on else PackedByteArray()
+			if not on:
+				hide.resize(idx.size())
+			# (Hidden as they were: nothing to draw anew. Most frames of a stroke: the arm moves, and
+			# the same voxels of the guard lie under it.)
+			var hid = sh.get("hid" + side)
+			if hid is PackedByteArray and (hid as PackedByteArray) == hide:
+				continue
+			sh["hid" + side] = hide
+			# (Only the voxels whose turn it is: a few a frame, of the guard's hundreds.)
+			var nc := Greedy.core()
+			var turned: PackedInt32Array
+			if nc != null and nc.has_method("bytes_changed") and hid is PackedByteArray:
+				turned = nc.bytes_changed(hid, hide)
+			else:
+				turned = PackedInt32Array(range(idx.size()))
+			for k in turned:
 				var s := idx[k]
 				var under: bool = hide[k] == 1
-				if under:
-					hidden += 1
 				if under != (vclip[s] == 1):
 					vclip[s] = 1 if under else 0
 					var at = (sh.now as Dictionary).get(plate[s], none)
 					mm.set_instance_transform(s, none if under or not (at is Transform3D) else (at as Transform3D) * (rel[s] as Transform3D))
-			sh["n" + side] = hidden
+			sh["n" + side] = hide.count(1)
 		sh["vclip"] = vclip
+
+## Which of a guard's fine voxels (`gd`: Fighter._clip_shoulder_guards' own, side `side`) are not
+## drawn while the arm is where `to_arm` has it (the trunk's frame to the arm's): those within its
+## armour's `reach` (_arm_reach, _in_reach) and `pad`, and those they cut off from the rest of the
+## shell (_cut_off). A byte a voxel. The C++ core's work when it is loaded (VoxelCore.guard_hide):
+## voxel by voxel here, the guards of four men in a fight were seven milliseconds of every frame
+## (user: the frame rate drops sharply fighting three praetorians).
+static func guard_hidden(gd: Dictionary, side: String, reach: Dictionary, to_arm: Transform3D, pad: float) -> PackedByteArray:
+	var pts: PackedVector3Array = gd["p" + side]
+	var nc := Greedy.core()
+	if nc != null and not (nc.has_method("guard_reach") and gd.has("adjF" + side)):
+		nc = null   # (a core built before it could)
+	var under: PackedByteArray
+	if nc != null:
+		under = nc.guard_reach(pts, to_arm, reach.get("r", PackedFloat32Array()), int(reach.rows), REACH_NA, float(reach.get("y0", 0.0)), float(reach.get("dy", 1.0)), pad)
+	else:
+		var qa: PackedVector3Array = to_arm * pts
+		under.resize(pts.size())
+		for k in pts.size():
+			if _in_reach(reach, qa[k], pad):
+				under[k] = 1
+	# (The same voxels under his arm as the last time: cut off by them, the same.)
+	var cut = gd.get("cut" + side)
+	if cut is Array and (cut[0] as PackedByteArray) == under:
+		return cut[1]
+	var hide: PackedByteArray = nc.guard_cut(under, gd["adjF" + side], gd["adjA" + side], gd["anc" + side]) if nc != null else _cut_off(under.duplicate(), gd["adj" + side], gd["anc" + side])
+	gd["cut" + side] = [under, hide]
+	return hide
 
 ## How a guard's fine voxels `pts` hang together: each one's neighbours among them (centres within
 ## 1.8 voxels of `h`), and whether it touches the rest of the shell (`rest`), that holds it on him.

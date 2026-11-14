@@ -880,12 +880,19 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 	var fsz: float = fine.fsz
 	var drawn: bool = fine.get("mm") != null
 	var lps := p.local_positions()
-	var gone := {}
+	var n := p.fx.size()
+	var mine := PackedByteArray()   # the piece's own voxels
+	mine.resize(n)
 	for i in idx:
-		gone[i] = true
+		if i >= 0 and i < n:
+			mine[i] = 1
+	var cm := p.cell_map()
+	var gx := p.grid.x
+	var gy := p.grid.y
+	var gz := p.grid.z
 	var buf := PackedFloat32Array()
 	for i in idx:
-		if i < 0 or i >= p.fx.size():
+		if i < 0 or i >= n:
 			continue
 		var skin := 0
 		for s in (of.get(i, []) as Array):
@@ -903,15 +910,18 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 			skin += 1
 		# Bared by the cut: a voxel of the part beside it that is not of the piece (left on him,
 		# or gone before: an older wound).
-		var c := Vector3i(p.fx[i], p.fy[i], p.fz[i])
+		var x := p.fx[i]
+		var y := p.fy[i]
+		var z := p.fz[i]
 		var bared := skin == 0
 		if not bared:
-			for dd in VoxelPart.AO_FACES:
-				var q: Vector3i = c + (dd[0] as Vector3i)
-				var k := p._cell(q.x, q.y, q.z)
-				if k >= 0 and not gone.has(k):
-					bared = true
-					break
+			var at := (x * gy + y) * gz + z
+			bared = (x > 0 and cm[at - gy * gz] > 0 and mine[cm[at - gy * gz] - 1] == 0) \
+				or (x < gx - 1 and cm[at + gy * gz] > 0 and mine[cm[at + gy * gz] - 1] == 0) \
+				or (y > 0 and cm[at - gz] > 0 and mine[cm[at - gz] - 1] == 0) \
+				or (y < gy - 1 and cm[at + gz] > 0 and mine[cm[at + gz] - 1] == 0) \
+				or (z > 0 and cm[at - 1] > 0 and mine[cm[at - 1] - 1] == 0) \
+				or (z < gz - 1 and cm[at + 1] > 0 and mine[cm[at + 1] - 1] == 0)
 		if not bared:
 			continue
 		var cd := code[i]
@@ -1006,6 +1016,9 @@ static func _cover(p: VoxelPart, i: int) -> void:
 	var slot: int = wound[i]
 	wound.erase(i)
 	(fine.wfree as Array).append(slot)
+	if fine.has("wt"):
+		(fine.wt as Dictionary).erase(i)
+	fine.erase("wpack")
 	var wm: MultiMesh = fine.get("wmm")
 	if wm != null and slot * 8 + 8 <= wm.instance_count:
 		var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
@@ -1083,10 +1096,20 @@ static func _write_wound(p: VoxelPart, i: int) -> void:
 	var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
 	var bent := _bent_of(p, i)
 	var healed := p.scarred.has(i)
+	# (Where each cell lies on the limb unbent, kept: a limb bent at a break draws them anew every
+	# frame it swings, _lay_wound.)
+	var own := []
+	own.resize(8)
+	if not fine.has("wt"):
+		fine.wt = {}
+	(fine.wt as Dictionary)[i] = own
+	fine.erase("wpack")
 	for k in 8:
 		var cc := (code >> (2 * k)) & 3
 		var at := c + (Vector3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1)) - Vector3(0.5, 0.5, 0.5)) * fsz
 		var t := mapped(p, fine.d, at, 0.97 if cc == 1 else 1.0)
+		if cc != 0:
+			own[k] = t
 		wm.set_instance_transform(slot * 8 + k, (bent * t) if cc != 0 else Transform3D(Basis().scaled(Vector3.ZERO), t.origin))
 		wm.set_instance_color(slot * 8 + k, wound_color(p, i, k, cc))
 		var kd := 0 if cc == 1 else (9 if cc == 2 or p.kinds[i] <= 2 else int(p.kinds[i]))
@@ -1285,6 +1308,7 @@ static func dangle_on(p: VoxelPart) -> void:
 	fine.rows = rows
 	fine.ix = ix
 	fine.band_was = INF
+	fine.erase("wpack")   # (the wound's cells past this break: packed anew, _lay_wound)
 
 ## Laid round the bend as the swing has it (VoxelPart._lay_bend): `g` the bend, `inv` the far
 ## piece's place undone, `nc` the C++ core (or null).
@@ -1315,9 +1339,73 @@ static func lay(p: VoxelPart, g: Array, inv: Transform3D, b: float, nc) -> void:
 				continue
 			far.set_instance_transform(k, cxf[s] if sb >= b else inv * p._bent(cxf[s], g, layers))
 	fine.band_was = b
-	# The wound's cells past the break, bent with it.
-	for i in fine.wound:
-		_write_wound(p, i)
+	_lay_wound(p, g, nc)
+
+## The wound's cells past the break, bent with the limb: each set where the bend has its voxel
+## (VoxelPart._bent), as _write_wound draws it. Only where they lie: written whole every frame the
+## limb swung (their shapes worked out again, their colours, their wetness), the cells of one
+## broken arm's wounds were three and a half milliseconds of every frame (user: the frame rate
+## drops sharply in a fight). What they are is kept as it was written (fine.wt), and packed once
+## a change of the wound (fine.wpack) for the C++ core (VoxelCore.lay_cells), which sets them all
+## in one call; without it, cell by cell here.
+static func _lay_wound(p: VoxelPart, g: Array, nc) -> void:
+	var fine: Dictionary = p.fine
+	var wm = fine.get("wmm")
+	if wm == null or (fine.wound as Dictionary).is_empty():
+		return
+	if not fine.has("wpack"):
+		fine.wpack = _wound_pack(p)
+	var pack: Dictionary = fine.wpack
+	var slots: PackedInt32Array = pack.slots
+	if slots.is_empty():
+		return
+	if nc != null and nc.has_method("lay_cells"):
+		nc.lay_cells(wm, pack.rows, slots, g[0], g[2], g[1], g[6], g[7], g[5], g[3], g[4], p._bend_x)
+		return
+	var lps: PackedVector3Array = pack.lps
+	var ts: Array = pack.ts
+	var layers := {}
+	var at := Vector3(INF, INF, INF)
+	var bent := Transform3D()
+	for r in slots.size():
+		if lps[r] != at:
+			at = lps[r]
+			bent = p._bent(Transform3D(Basis(), at), g, layers) * Transform3D(Basis(), -at)
+		(wm as MultiMesh).set_instance_transform(slots[r], bent * (ts[r] as Transform3D))
+
+## The wound's cells that the bend moves (those of the voxels past the break), as _lay_wound sets
+## them: {slots: where each is in the wound's mesh, ts: its place unbent, lps: the middle of its
+## voxel; rows: the same for the C++ core, 15 floats a cell (its place as a MultiMesh holds it,
+## then its voxel's middle)}.
+static func _wound_pack(p: VoxelPart) -> Dictionary:
+	var fine: Dictionary = p.fine
+	var wt: Dictionary = fine.get("wt", {})
+	var wound: Dictionary = fine.wound
+	var slots := PackedInt32Array()
+	var lps := PackedVector3Array()
+	var rows := PackedFloat32Array()
+	var ts := []
+	if p.kink.is_empty():
+		return {"slots": slots, "ts": ts, "lps": lps, "rows": rows}
+	var pv := p._dangle_pivot()
+	var tip: Vector3 = p._across()[2]
+	var lpos := p.local_positions()
+	for i in wound:
+		var lp: Vector3 = lpos[i]
+		var own = wt.get(i)
+		if own == null or (lp - pv).dot(tip) <= 0.0:
+			continue   # (before the break: drawn where it was written)
+		var slot: int = wound[i]
+		for k in 8:
+			if own[k] == null:
+				continue
+			var t: Transform3D = own[k]
+			var bx := t.basis
+			slots.append(slot * 8 + k)
+			ts.append(t)
+			lps.append(lp)
+			rows.append_array([bx.x.x, bx.y.x, bx.z.x, t.origin.x, bx.x.y, bx.y.y, bx.z.y, t.origin.y, bx.x.z, bx.y.z, bx.z.z, t.origin.z, lp.x, lp.y, lp.z])
+	return {"slots": slots, "ts": ts, "lps": lps, "rows": rows}
 
 ## The limb straight again (VoxelPart._stop_dangle): the fine voxels back in the part's own drawing.
 static func dangle_off(p: VoxelPart) -> void:
@@ -1336,7 +1424,7 @@ static func dangle_off(p: VoxelPart) -> void:
 	var mi = fine.get("far_mi")
 	if mi != null and is_instance_valid(mi):
 		mi.queue_free()
-	for k in ["far_mm", "far_mi", "far_slot", "rows", "ix", "band_was"]:
+	for k in ["far_mm", "far_mi", "far_slot", "rows", "ix", "band_was", "wpack"]:
 		fine.erase(k)
 	for i in fine.wound:
 		_write_wound(p, i)

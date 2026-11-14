@@ -973,6 +973,12 @@ func _physics_process(dt: float) -> void:
 		# moves one (a blow, a blast, a man treading on it) has it seen to again at once.
 		if not f.alive and _at_rest(e, f, dt) and (tick + int(e.get("id", 0))) % REST_EVERY != 0:
 			continue
+		# And one who only stands where he is put, nobody near him nor watching him work (the
+		# yard's keepers at their stalls, its dummies): each cost as much as a man in a fight, six
+		# of them the yard's whole step five times over (user: the lobby's frame rate drops
+		# sharply for nothing).
+		if f.alive and e.get("harmless", false) and _stands_idle(e, f, dt):
+			continue
 		var inp := {}
 		# Tests (and the tutorial) can drive any fighter by hand.
 		var kind_: String = "drive" if e.has("drive") else String(e.kind)
@@ -1145,6 +1151,111 @@ func _at_rest(e: Dictionary, f, dt: float) -> bool:
 				p.can_sleep = true
 				p.sleeping = true
 	return resting
+
+## Whether a man who harms nobody and only stands where he is put (`harmless`: a stall's keeper,
+## a dummy) stands idle: on his feet where he stands, nothing burning on him, no player within
+## IDLE_NEAR of him and, if he moves at his work (`works`: the trader over his wares, the
+## physician at his table), none who may see him at it (_in_sight), for IDLE_AFTER. Then his
+## parts sleep as he stands and he is not driven at all, until a player comes within IDLE_NEAR
+## again, looks his way while he works, or anything touches him (the physics wakes what is
+## touched: a thrown blade, a man walked into), when he is at once the man he was. Nothing seen
+## changes: one who stands still stands as still asleep, and one at his work is at it whenever
+## he is looked at. On the host, as all of him is: a guest draws him as he is told.
+const IDLE_NEAR := 5.0
+const IDLE_FAR := 6.0      # (as far again before he is let stand idle: no flicker at the edge)
+const IDLE_AFTER := 1.0
+func _stands_idle(e: Dictionary, f, dt: float) -> bool:
+	if not (f is Fighter):
+		return false
+	var idle: bool = e.get("idle", false)
+	var at: Vector3 = f.torso.global_position
+	var reach := IDLE_FAR if not idle else IDLE_NEAR
+	var near := false
+	for h in entities:
+		if (h.kind == "local" or h.kind == "remote") and is_instance_valid(h.f) and Vector2(h.f.torso.global_position.x - at.x, h.f.torso.global_position.z - at.z).length_squared() < reach * reach:
+			near = true
+			break
+	if not near and e.get("works", false):
+		near = _in_sight(at)
+	if idle:
+		# (Touched, his parts are awake again: a part of his own, or what he holds.)
+		var woken := near
+		if not woken:
+			for p in f.parts:
+				if not p.severed and not p.sleeping:
+					woken = true
+					break
+		if not woken:
+			return true
+		e.idle = false
+		e.idle_t = 0.0
+		for b in _idle_bodies(f):
+			b.can_sleep = false
+			b.sleeping = false
+			if b is VoxelPart:
+				b.stands_idle = false
+		return false
+	# (Where he stands: his trunk all but still. Struck or shoved, he is seen to until he is.)
+	var still: bool = not near and f.state == "stand" and f.torso.linear_velocity.length_squared() < 0.04
+	if still:
+		for p in f.parts:
+			if not p.severed and not p.spots.is_empty():
+				still = false
+				break
+	e.idle_t = float(e.get("idle_t", 0.0)) + dt if still else 0.0
+	if e.idle_t < IDLE_AFTER:
+		return false
+	e.idle = true
+	for b in _idle_bodies(f):
+		b.can_sleep = true
+		b.sleeping = true
+		if b is VoxelPart:
+			b.stands_idle = true
+	return true
+
+## Whether a player may see what stands at `at`: on this machine's own screen (its camera's
+## view), or before a guest, whose camera the host does not have: the way he looks, from behind
+## him, as wide as the widest screen.
+const SIGHT_MARGIN := 12.0    # degrees round the view (a man's own width, six paces off)
+const GUEST_EYE_BACK := 6.0   # how far behind a guest his camera is taken to be
+func _in_sight(at: Vector3) -> bool:
+	var p := at + Vector3(0.0, 0.3, 0.0)
+	if not headless:
+		var c := get_viewport().get_camera_3d()
+		var vs: Vector2 = get_viewport().get_visible_rect().size
+		if c != null and sees(c.global_transform, c.fov, vs.x / maxf(vs.y, 1.0), p):
+			return true
+	for h in entities:
+		if h.kind == "remote" and is_instance_valid(h.f):
+			var fwd := Vector3(sin(h.f.yaw), 0.0, cos(h.f.yaw))
+			var eye: Vector3 = h.f.torso.global_position - fwd * GUEST_EYE_BACK
+			if sees(Transform3D(Basis.looking_at(fwd), eye), CameraRig.FOV, 2.4, p):
+				return true
+	return false
+
+## Whether a camera at `xf` (looking along its -z, `fov` degrees high, `aspect` times as wide)
+## has point `p` in its view or within SIGHT_MARGIN of it.
+static func sees(xf: Transform3D, fov: float, aspect: float, p: Vector3) -> bool:
+	var d := xf.affine_inverse() * p
+	if d.z >= 0.0:
+		return false
+	var half := deg_to_rad(fov * 0.5)
+	var pad := deg_to_rad(SIGHT_MARGIN)
+	return absf(d.y) < -d.z * tan(minf(half + pad, 1.5)) and absf(d.x) < -d.z * tan(minf(atan(tan(half) * aspect) + pad, 1.5))
+
+## The bodies of a man that sleep as he stands idle: his parts on him, and what he holds.
+func _idle_bodies(f) -> Array:
+	var out := []
+	for p in f.parts:
+		if not p.severed:
+			out.append(p)
+	for side in f.weapons:
+		var w = f.weapons[side]
+		if w != null and is_instance_valid(w):
+			for b in w.bodies():
+				if is_instance_valid(b) and b is RigidBody3D:
+					out.append(b)
+	return out
 
 ## The player's own hands on his fighter: the same for the host's player and for a guest on his
 ## own machine (whose input then goes to the host): the bow's aim mode and sway, E by a keeper,

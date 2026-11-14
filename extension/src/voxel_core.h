@@ -13,6 +13,7 @@
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
 
@@ -55,6 +56,13 @@ public:
 	// x the bone's line); `ix`: [slot, voxel] a row. Dead and veiled voxels are passed over, and
 	// those past the bend unless the last layout (`b_was` long) had them in it.
 	void lay_band(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &ix, const PackedByteArray &alive, const PackedByteArray &veil, const Quaternion &q, const Vector3 &n, double theta, double b, double b_was, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &inv) const;
+	// A man's drawing work a frame (draw.cpp): the fine voxels of a shoulder guard that lie under
+	// his arm's armour or are cut off by those (Fighter._clip_shoulder_guards), and what is drawn
+	// on the voxels of a limb bent at a break, set where the bend has each (FineBody.lay).
+	PackedByteArray guard_reach(const PackedVector3Array &pts, const Transform3D &to_arm, const PackedFloat32Array &reach, int rows, int na, double y0, double dy, double pad) const;
+	PackedByteArray guard_cut(const PackedByteArray &hide_in, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc) const;
+	PackedInt32Array bytes_changed(const PackedByteArray &was, const PackedByteArray &now) const;
+	void lay_cells(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &slots, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	// A man's arms kept out of his trunk as it is drawn (Fighter._out_of_trunk with the limb's
 	// thickness and the cuirass's on it, _elbow_off_trunk, _hand_off_trunk), as the script does
 	// them. `o`: the trunk's outline (Fighter._outline); `bt`, `bi`: the trunk's transform and its
