@@ -137,6 +137,16 @@ static func _box(fsz: float) -> BoxMesh:
 static func _drawing() -> bool:
 	return DisplayServer.get_name() != "headless"
 
+## A drawing about to be given its voxels whole (`buffer`) is kept in memory as well, from the
+## start: one voxel of it set by itself first (the engine then keeps its own copy, and the buffer
+## given after with it). Given whole to a drawing never set voxel by voxel, the first voxel
+## changed later (the first wound of a part, the first plate knocked off a piece) had the engine
+## read the whole drawing back from the graphics card, and wait for every frame in hand to do
+## it: a stall at the first blow on each part of each man (user: the frame rate drops in a fight).
+static func _keep_in_memory(mm: MultiMesh) -> void:
+	if mm.instance_count > 0:
+		mm.set_instance_transform(0, Transform3D())
+
 ## The map's factor at a point of the part's box (part-local): bilinear in the fine row (by its
 ## height) and the way round the part's line, as tools/gen_fine_body.py _k_at.
 static func k_at(p: VoxelPart, d: Dictionary, q: Vector3) -> float:
@@ -237,6 +247,7 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 			if staged and s % STAGE_CELLS == STAGE_CELLS - 1:
 				if not await Physique._frame(p) or not is_same(p.fine, fine):
 					return
+		_keep_in_memory(mm)
 		mm.buffer = buf
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
@@ -263,13 +274,17 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 			p.mmi.visible = false
 	if p.jaw_pivot != null and not p.jaw_slot.is_empty() and fine.has("mm"):
 		_jaw_on(p)
+	# (What a blow changes of the look is done in the C++ core where it reads this look: _core.)
+	var nc = Greedy.core()
+	fine["nat"] = nc != null and nc.has_method("fine_ready") and nc.fine_ready(p)
 	# The wounds he came in with (old ones healed into dents, Body): bared as any other.
-	var bare := []
+	var bare := PackedInt32Array()
 	for i in p.fx.size():
 		if p.alive[i] == 1 and _open(p, i):
 			bare.append(i)
 	for i in bare:
-		_expose(p, i)
+		_expose(p, i, false)
+	_wounds(p, bare, 0)
 	if p.dangle_mm != null:
 		dangle_on(p)
 		if p.dangle_mesh:
@@ -831,6 +846,24 @@ static func masked(p: VoxelPart, xf: Array) -> Array:
 ## them with them, and the wound's cells round them.
 static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 	var fine: Dictionary = p.fine
+	var nc = _core(fine)
+	if nc != null:
+		# (In the C++ core: the fine voxels put away or back, and which voxels to look at.)
+		var looked: PackedInt32Array = nc.fine_show(p, PackedInt32Array(indices), on, true)
+		if fine.has("far_mm"):
+			fine.band_was = INF
+		var wounds: Dictionary = fine.wound
+		var bare := PackedInt32Array()
+		for q in looked.size() / 2:
+			var i := looked[q * 2]
+			if looked[q * 2 + 1] == 1:
+				if not wounds.has(i):
+					_expose(p, i, false)
+					bare.append(i)
+			elif wounds.has(i):
+				_cover(p, i)
+		_wounds(p, bare, 0)
+		return
 	var of: Dictionary = fine.of
 	var mm: MultiMesh = fine.get("mm")
 	var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
@@ -872,6 +905,11 @@ static func put_cell(buf: PackedFloat32Array, t: Transform3D, col: Color, cu: Co
 ## wound in him is drawn (_write_wound). {buf, mesh}.
 static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 	var fine: Dictionary = p.fine
+	var nc = _core(fine)
+	if nc != null:
+		var tp := template()
+		var cut: PackedFloat32Array = nc.fine_taken(p, idx, int(tp.get("res", 2)), int(tp.get("margin", 10)))
+		return {"buf": cut, "mesh": _box(fine.fsz)} if not cut.is_empty() else {}
 	var of: Dictionary = fine.of
 	var cxf: Array = fine.xf
 	var par: PackedInt32Array = fine.par
@@ -986,7 +1024,7 @@ static func _wound_mm(p: VoxelPart) -> MultiMesh:
 
 ## Voxel `i` bared by a wound: drawn as its cells as deep in him as they lie (skin, fat, flesh,
 ## organ or bone), the box it is drawn as (if any) put away.
-static func _expose(p: VoxelPart, i: int) -> void:
+static func _expose(p: VoxelPart, i: int, write := true) -> void:
 	var fine: Dictionary = p.fine
 	var wound: Dictionary = fine.wound
 	if wound.has(i):
@@ -1005,7 +1043,9 @@ static func _expose(p: VoxelPart, i: int) -> void:
 			p.shape_xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (p.shape_xf[i] as Transform3D).origin)
 		if p.mm != null:
 			p.mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
-	_write_wound(p, i)
+	# (`write` false: its cells are written with the others the blow bared, _wounds.)
+	if write:
+		_write_wound(p, i)
 
 ## Voxel `i` no longer bared (put back, or gone itself): its cells taken away, its box as before.
 static func _cover(p: VoxelPart, i: int) -> void:
@@ -1080,6 +1120,75 @@ static func _layer(p: VoxelPart, i: int, k: int, code: int, h: float) -> Color:
 	var st := 0.88 if ((k & 1) + ((k >> 2) & 1)) % 2 == 0 else 1.04
 	return Color(own.r * st * (0.92 + 0.12 * h), own.g * st * (0.92 + 0.12 * h), own.b * st * (0.92 + 0.12 * h), 1.0)
 
+## The C++ core where it does what a blow changes of this look (VoxelCore's fine_*: asked when the
+## look was made, build), or null: the script does it, as it did.
+static func _core(fine: Dictionary):
+	if not fine.get("nat", false):
+		return null
+	return Greedy.core()
+
+## The cells of the bared voxels `voxels` written: whole (`mode` 0: _write_wound), or as the fire
+## or the poison on them changes (1), or that and their colours (2: _write_wound_glow). All of
+## them in one call of the C++ core where it reads this look (user: the frame rate drops in a
+## fight; a blow that bared a hundred voxels was 15 ms of this, cell by cell in the script). On a
+## limb drawn bent at a break the core gives the cells and sets what they are; where the bend
+## has each is set here.
+static func _wounds(p: VoxelPart, voxels: PackedInt32Array, mode: int) -> void:
+	if voxels.is_empty():
+		return
+	var fine: Dictionary = p.fine
+	var nc = _core(fine)
+	var bent: bool = p.dangle_mm != null and not p.kink.is_empty()
+	var wm = fine.get("wmm") if mode != 0 else _wound_mm(p)
+	if nc == null or wm == null:
+		for i in voxels:
+			if mode == 0:
+				_write_wound(p, i)
+			else:
+				_write_wound_glow(p, i, mode == 2)
+		return
+	var wound: Dictionary = fine.wound
+	var top := 0
+	for i in voxels:
+		top = maxi(top, int(wound[i]))
+	if mode == 0:
+		# (Made larger, all its cells are written again: _grow.)
+		var grown := false
+		while top * 8 + 8 > (wm as MultiMesh).instance_count:
+			(wm as MultiMesh).instance_count = (wm as MultiMesh).instance_count * 2
+			grown = true
+		if grown:
+			(wm as MultiMesh).visible_instance_count = mini((wm as MultiMesh).instance_count, int(fine.wn) * 8)
+			voxels = PackedInt32Array(wound.keys())
+		(wm as MultiMesh).visible_instance_count = maxi((wm as MultiMesh).visible_instance_count, mini((wm as MultiMesh).instance_count, int(fine.wn) * 8))
+	elif top * 8 + 8 > (wm as MultiMesh).instance_count:
+		for i in voxels:
+			_write_wound_glow(p, i, mode == 2)
+		return
+	var tp := template()
+	var rows: PackedFloat32Array = nc.fine_wound(p, voxels, mode, true, not bent, int(tp.get("res", 2)), int(tp.get("margin", 10)))
+	if mode != 0:
+		return
+	# (Where each cell lies on the limb unbent, kept: _lay_wound.)
+	if not fine.has("wt"):
+		fine.wt = {}
+	var wt: Dictionary = fine.wt
+	for q in voxels.size():
+		wt[voxels[q]] = rows.slice(q * 160, q * 160 + 160)
+	fine.erase("wpack")
+	if bent:
+		# (A limb drawn bent at a break: each cell set where the bend has its voxel, as _write_wound
+		# sets it; its colour and what it is are the core's.)
+		for q in voxels.size():
+			var i := voxels[q]
+			var at := _bent_of(p, i)
+			var slot := int(wound[i])
+			var cd: int = (fine.code as PackedInt32Array)[i]
+			for k in 8:
+				var o := q * 160 + k * 20
+				var t := Transform3D(Basis(Vector3(rows[o], rows[o + 4], rows[o + 8]), Vector3(rows[o + 1], rows[o + 5], rows[o + 9]), Vector3(rows[o + 2], rows[o + 6], rows[o + 10])), Vector3(rows[o + 3], rows[o + 7], rows[o + 11]))
+				(wm as MultiMesh).set_instance_transform(slot * 8 + k, (at * t) if (cd >> (2 * k)) & 3 != 0 else t)
+
 static func _write_wound(p: VoxelPart, i: int) -> void:
 	var fine: Dictionary = p.fine
 	var slot: int = fine.wound[i]
@@ -1148,6 +1257,21 @@ static func colored(p: VoxelPart, indices: Array) -> void:
 	var fine: Dictionary = p.fine
 	var mm: MultiMesh = fine.get("mm")
 	if mm == null:
+		return
+	var nc = _core(fine)
+	if nc != null:
+		# (In the C++ core: the blood a blow soaked into a few hundred voxels was milliseconds of
+		# this, fine voxel by fine voxel, a dozen times a blow.)
+		var tp := template()
+		var list := PackedInt32Array(indices)
+		nc.fine_colored(p, list, true, int(tp.get("res", 2)), int(tp.get("margin", 10)), true)
+		var wounds: Dictionary = fine.wound
+		if not wounds.is_empty():
+			var bared := PackedInt32Array()
+			for i in list:
+				if wounds.has(i):
+					bared.append(i)
+			_wounds(p, bared, 2)
 		return
 	var of: Dictionary = fine.of
 	var wound: Dictionary = fine.wound
@@ -1222,6 +1346,29 @@ static func status(p: VoxelPart, i: int, g: Vector2) -> void:
 			(at[0] as MultiMesh).set_instance_custom_data(at[1], _custom(p, s, i, g))
 	if fine.wound.has(i):
 		_write_wound_glow(p, i)
+
+## `status` for many voxels at once, each glowing as it does (p.glowing): their shading changed
+## (VoxelPart._reshade round a cut). In one call of the C++ core where it reads this look.
+static func statuses(p: VoxelPart, voxels: PackedInt32Array) -> void:
+	if voxels.is_empty():
+		return
+	var fine: Dictionary = p.fine
+	if fine.get("mm") == null:
+		return
+	var nc = _core(fine)
+	if nc == null:
+		for i in voxels:
+			status(p, i, p.glowing.get(i, Vector2.ZERO))
+		return
+	var tp := template()
+	nc.fine_colored(p, voxels, true, int(tp.get("res", 2)), int(tp.get("margin", 10)), false)
+	var wounds: Dictionary = fine.wound
+	if not wounds.is_empty():
+		var bared := PackedInt32Array()
+		for i in voxels:
+			if wounds.has(i):
+				bared.append(i)
+		_wounds(p, bared, 1)
 
 ## A wound's cells as the fire or the poison on it changes (`paint` false), or the colour of the
 ## voxel it bares (blood on it, a burn charring it: `paint`): their shading, and their colours with
@@ -1396,6 +1543,20 @@ static func _wound_pack(p: VoxelPart) -> Dictionary:
 		if own == null or (lp - pv).dot(tip) <= 0.0:
 			continue   # (before the break: drawn where it was written)
 		var slot: int = wound[i]
+		if own is PackedFloat32Array:
+			# (As the C++ core wrote them, _wounds: twenty numbers a cell, its place first.)
+			var cd: int = (fine.code as PackedInt32Array)[i]
+			var fl: PackedFloat32Array = own
+			for k in 8:
+				if (cd >> (2 * k)) & 3 == 0:
+					continue
+				var o := k * 20
+				slots.append(slot * 8 + k)
+				ts.append(Transform3D(Basis(Vector3(fl[o], fl[o + 4], fl[o + 8]), Vector3(fl[o + 1], fl[o + 5], fl[o + 9]), Vector3(fl[o + 2], fl[o + 6], fl[o + 10])), Vector3(fl[o + 3], fl[o + 7], fl[o + 11])))
+				lps.append(lp)
+				rows.append_array(fl.slice(o, o + 12))
+				rows.append_array([lp.x, lp.y, lp.z])
+			continue
 		for k in 8:
 			if own[k] == null:
 				continue

@@ -1,1 +1,1 @@
-{"enabled_classes": ["Object", "RefCounted", "OS", "FileAccess", "Image", "Mutex", "Semaphore", "WorkerThreadPool", "XMLParser", "ClassDBSingleton", "EditorPlugin", "Node", "Node3D", "CollisionObject3D", "PhysicsBody3D", "RigidBody3D"]}
+{"enabled_classes": ["Object", "RefCounted", "OS", "FileAccess", "Image", "Mutex", "Semaphore", "WorkerThreadPool", "XMLParser", "ClassDBSingleton", "EditorPlugin", "Node", "Node3D", "CollisionObject3D", "PhysicsBody3D", "RigidBody3D", "MultiMesh"]}

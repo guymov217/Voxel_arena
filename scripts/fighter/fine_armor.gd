@@ -105,6 +105,7 @@ static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 	mm.use_custom_data = true
 	mm.mesh = _unit
 	mm.instance_count = cnt
+	FineBody._keep_in_memory(mm)
 	mm.buffer = buf
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm

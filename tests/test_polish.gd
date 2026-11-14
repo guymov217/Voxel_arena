@@ -307,3 +307,35 @@ func test_the_arena_wears_its_cloth_and_shows_in_metal() -> void:
 		t.check(sand.layers & Arena.STATIC_LAYER, "the sand in it")
 		t.check(ar.get_node_or_null("CloudShadows") != null, "by day the clouds' shadows")
 	ar.free()
+
+## What a fight's effects are made of is made before the fight (user: the frame rate drops in a
+## fight: the first burst of blood, the first wound that dripped, made its material as the blow
+## landed and the engine compiled its shader then). Every kind's material, its emitter's (out of
+## a sphere, kept: its shader lives as long as one made so does) and its mesh; a blow that throws
+## its blood past a part draws nothing of the part anew.
+func test_effects_are_made_before_the_fight() -> void:
+	Fx._warm = false
+	Fx.warm()
+	var n := 0
+	for kind in Fx.KINDS:
+		n += 1
+		if not t.check(Fx._process_mats.has(kind) and Fx._sphere_mats.has(kind) and Fx._draw_meshes.has(kind), "%s: its materials and its mesh are made" % kind):
+			continue
+		var base: ParticleProcessMaterial = Fx._process_mats[kind]
+		var sph: ParticleProcessMaterial = Fx._sphere_mats[kind]
+		t.check(sph.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_SPHERE and base.emission_shape != ParticleProcessMaterial.EMISSION_SHAPE_SPHERE, "%s: an emitter's out of a sphere, a burst's from a point" % kind)
+		t.check(is_equal_approx(sph.spread, base.spread) and sph.gravity == base.gravity and is_same(sph.color_ramp, base.color_ramp), "%s: the emitter's is the kind's own otherwise" % kind)
+	t.check(n > 20, "every kind (%d)" % n)
+	for tx in ["soft", "splat", "ring", "spark", "flame", "print_body", "print_drag", "print_body_n", "print_drag_n"]:
+		t.check(Fx._textures.has(tx), "the texture %s is made" % tx)
+	# Blood thrown past a part touches none of its voxels: nothing of it is coloured anew.
+	var w := TestWorld.new()
+	add_child(w)
+	w.ready_arena()
+	var f := w.fighter(Vector3(0, 1.2, 0), 0.0, {}, {})
+	var p: VoxelPart = f.torso
+	var was := p.colors.duplicate()
+	t.eq(p.wound(Vector3(9.0, 9.0, 9.0), 0.05, "blood"), 0, "a spot of blood that lands past the part touches no voxel of it")
+	t.check(p.colors == was, "and colours none")
+	t.check(p.wound(Vector3(0.0, 0.0, p.half_ext.z), p.vf * p.part_scale * 3.0, "blood") > 0 and p.colors != was, "one that lands on it soaks in")
+	w.queue_free()

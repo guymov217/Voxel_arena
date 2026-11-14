@@ -95,6 +95,10 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		fmm.use_custom_data = true
 		fmm.mesh = cell_mesh
 		fmm.instance_count = fine.size() / 20
+		# (Kept in memory from the start: the engine reads a drawing it draws in between the
+		# physics steps when the piece comes into the scene, and one given whole it read back
+		# from the graphics card, the frames in hand waited for: every piece cut off was a stall.)
+		FineBody._keep_in_memory(fmm)
 		fmm.buffer = fine
 		ch.cells = fmm.instance_count
 		var fmi := MultiMeshInstance3D.new()

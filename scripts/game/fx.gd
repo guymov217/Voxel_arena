@@ -32,6 +32,31 @@ func _init(headless_ := false) -> void:
 	# (A trailer filmed at its own quality, not the player's: tools/make_trailer75.py.)
 	if OS.get_environment("FORCE_QUALITY") != "":
 		quality = OS.get_environment("FORCE_QUALITY")
+	if not headless:
+		warm()
+
+## Everything a fight's effects are made of, made before the first fight of a session (user: the
+## frame rate drops in a fight). Made when first wanted, the first burst of each kind (blood,
+## sparks, dust), the first wound that dripped and the first mark on the sand made their
+## material, mesh and texture as the blow landed, and the engine compiled the material's shader
+## there and then: 30 ms and more each. (Kept from then on, as they were: _process_mats,
+## _draw_meshes, _textures.)
+static var _warm := false
+static func warm() -> void:
+	if _warm:
+		return
+	_warm = true
+	for kind in KINDS:
+		_process_mat(kind).get_rid()   # (asked for, its shader is made now)
+		_sphere_mat(kind).get_rid()
+		var mesh := _draw_mesh(kind)
+		if mesh is PrimitiveMesh and (mesh as PrimitiveMesh).material != null:
+			(mesh as PrimitiveMesh).material.get_rid()
+	for t in ["soft", "splat", "ring", "spark", "flame"]:
+		texture(t)
+	for t in ["body", "drag"]:
+		print_texture(t)
+		print_texture(t + "_n")
 
 func _enter_tree() -> void:
 	current = self
@@ -252,6 +277,17 @@ static func _process_mat(kind: String) -> ParticleProcessMaterial:
 	_process_mats[kind] = pm
 	return pm
 
+## A kind's material for a steady emitter (out of a sphere), kept as the kind's own is. The engine
+## keeps a material's shader only while a material made so lives: made for each emitter and freed
+## with it, the shader was compiled again for the next wound that dripped.
+static var _sphere_mats := {}
+static func _sphere_mat(kind: String) -> ParticleProcessMaterial:
+	if not _sphere_mats.has(kind):
+		var pm: ParticleProcessMaterial = _process_mat(kind).duplicate()
+		pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		_sphere_mats[kind] = pm
+	return _sphere_mats[kind]
+
 static func _draw_mesh(kind: String) -> Mesh:
 	if _draw_meshes.has(kind):
 		return _draw_meshes[kind]
@@ -350,8 +386,7 @@ func emitter(kind: String, parent: Node3D, amount := 24, radius := 0.06) -> GPUP
 	var ps := GPUParticles3D.new()
 	ps.amount = amount
 	ps.lifetime = KINDS[kind].life
-	var pm: ParticleProcessMaterial = _process_mat(kind).duplicate()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	var pm: ParticleProcessMaterial = _sphere_mat(kind).duplicate()
 	pm.emission_sphere_radius = radius
 	ps.process_material = pm
 	ps.draw_pass_1 = _draw_mesh(kind)

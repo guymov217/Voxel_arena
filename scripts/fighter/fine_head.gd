@@ -637,35 +637,59 @@ static func _paint(p: VoxelPart, mood := 0, talk := 0) -> void:
 	if fine.is_empty() or String(fine.get("giant", "")) != "":
 		return   # (a giant's face is its own: no man's eyes and mouth drawn on it)
 	var look: Dictionary = fine.look
-	var ids: Array = look.ids
-	var cells: Array = fine.cells
 	var own: PackedColorArray = fine.own
-	var paint := {}
-	var t := template()
-	var res := int(t.res)
-	var cx := float(p.grid.x * res) * 0.5
-	var cy := float(p.grid.y * res) * 0.5
-	var ex := float(t.eye[0])
-	var ey := float(t.eye[1])
-	var skin: Color = look.skin
-	for key in fine.front:
-		var s: int = fine.front[key]
-		var c: Array = cells[s]
-		var feat := int(c[3])
-		var x := float(key.x) + 0.5 - cx
-		var y := float(key.y) + 0.5 - cy
-		var col = _mark(feat, x, y, ex, ey, ids, mood, talk, look)
-		if col != null:
-			paint[s] = col
+	# What a mood and a mouth paint on this face is the same every time (the face's pieces and the
+	# look do not change while the head is drawn so): worked out once each, kept (fine.paints).
+	var paints: Dictionary = fine.get("paints", {})
+	var state := mood * 4 + talk
+	if not paints.has(state):
+		var ids: Array = look.ids
+		var cells: Array = fine.cells
+		var made := {}
+		var t := template()
+		var res := int(t.res)
+		var cx := float(p.grid.x * res) * 0.5
+		var cy := float(p.grid.y * res) * 0.5
+		var ex := float(t.eye[0])
+		var ey := float(t.eye[1])
+		for key in fine.front:
+			var s: int = fine.front[key]
+			var c: Array = cells[s]
+			var feat := int(c[3])
+			var x := float(key.x) + 0.5 - cx
+			var y := float(key.y) + 0.5 - cy
+			var col = _mark(feat, x, y, ex, ey, ids, mood, talk, look)
+			if col != null:
+				made[s] = col
+		paints[state] = made
+		fine["paints"] = paints
+	var paint: Dictionary = paints[state]
 	var mm: MultiMesh = fine.mm
 	var par: PackedInt32Array = fine.par
 	var base: Dictionary = fine.base
+	var expr: Dictionary = p.get_meta("expr_saved", {})
+	var talking: Dictionary = p.get_meta("talk_saved", {})
+	# Only the fine voxels whose paint is another now are drawn anew (user: the frame rate drops;
+	# every one of the head's was, at every blink of every man: 5 ms each time). The rest are as
+	# they were drawn: a voxel marked since (blood, a burn) is drawn again when it is marked
+	# (colored). The first time, all of them.
+	var was = fine.get("paint")
 	fine.paint = paint
-	for s in own.size():
+	var todo: Array = []
+	if was == null:
+		todo = range(own.size())
+	else:
+		for s in (was as Dictionary):
+			if not paint.has(s) or paint[s] != was[s]:
+				todo.append(s)
+		for s in paint:
+			if not (was as Dictionary).has(s):
+				todo.append(s)
+	for s in todo:
 		var j := par[s]
 		var col: Color = paint.get(s, own[s])
 		# (Marked since: blood, a burn, a scar on the voxel it lies on.)
-		if j >= 0 and base.has(j) and p.colors[j] != base[j] and not p.get_meta("expr_saved", {}).has(j) and not p.get_meta("talk_saved", {}).has(j):
+		if j >= 0 and base.has(j) and p.colors[j] != base[j] and not expr.has(j) and not talking.has(j):
 			col = p.colors[j]
 		col.a = own[s].a   # (the way it faces: FineSmooth)
 		mm.set_instance_color(s, col)

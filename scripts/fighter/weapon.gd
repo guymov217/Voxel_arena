@@ -455,10 +455,15 @@ func bloody(at: Vector3, amount: float) -> void:
 	var q := to_local(at) / vs
 	var r := 2.6
 	var touched := []
-	for i in vox.size():
-		if alive[i] == 0 or vox[i][4] == "grip":
+	var places := voxel_places()
+	# (The voxels round it found by the C++ core where there is one: every voxel of a shield was
+	# gone over here for each of the eight spots a blow's blood throws on it.)
+	var nc = Greedy.core()
+	var near: PackedInt32Array = nc.points_near(places, alive, _vgrip, q, r) if nc != null and nc.has_method("points_near") else PackedInt32Array(range(vox.size()))
+	for i in near:
+		if alive[i] == 0 or _vgrip[i] == 1:
 			continue
-		var d := Vector3(vox[i][0], vox[i][1], vox[i][2]).distance_to(q)
+		var d := places[i].distance_to(q)
 		if d > r:
 			continue
 		var b: Array = bloodied.get(i, [0.0, 0.0])
@@ -469,6 +474,23 @@ func bloody(at: Vector3, amount: float) -> void:
 	for i in touched:
 		mm.set_instance_color(i, _vcolor(i))
 		mm.set_instance_custom_data(i, _custom(i))
+
+## Where its voxels are (in voxels, as `vox` has them), and which are its grip (_vgrip): worked
+## out once, for the searches over them (bloody, Match._spray_on).
+var _vplaces := PackedVector3Array()
+var _vgrip := PackedByteArray()
+func voxel_places() -> PackedVector3Array:
+	if _vplaces.size() != vox.size():
+		var pl := PackedVector3Array()
+		var gr := PackedByteArray()
+		pl.resize(vox.size())
+		gr.resize(vox.size())
+		for i in vox.size():
+			pl[i] = Vector3(vox[i][0], vox[i][1], vox[i][2])
+			gr[i] = 1 if vox[i][4] == "grip" else 0
+		_vplaces = pl
+		_vgrip = gr
+	return _vplaces
 
 func _dry_blood(dt: float) -> void:
 	_blood_t += dt

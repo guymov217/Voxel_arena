@@ -1925,13 +1925,20 @@ func _spray_on(w: Weapon, p: Vector3, amount: float) -> void:
 	var q := w.to_local(p) / w.vs
 	var best := -1
 	var bd := INF
-	for i in w.vox.size():
-		if w.alive[i] == 0:
-			continue
-		var d := Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]).distance_squared_to(q)
-		if d < bd:
-			bd = d
-			best = i
+	var places := w.voxel_places()
+	var nc = Greedy.core()
+	if nc != null and nc.has_method("point_nearest"):
+		best = nc.point_nearest(places, w.alive, q)
+		if best >= 0:
+			bd = places[best].distance_squared_to(q)
+	else:
+		for i in w.vox.size():
+			if w.alive[i] == 0:
+				continue
+			var d := places[i].distance_squared_to(q)
+			if d < bd:
+				bd = d
+				best = i
 	if best < 0 or sqrt(bd) * w.vs > 1.4:
 		return
 	var c := Vector3(w.vox[best][0], w.vox[best][1], w.vox[best][2])

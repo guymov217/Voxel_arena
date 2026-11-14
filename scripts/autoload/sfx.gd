@@ -36,6 +36,33 @@ func _ready() -> void:
 		p.bus = "SFX"
 		add_child(p)
 		_players.append(p)
+	_bank_thread = Thread.new()
+	_bank_thread.start(_fill_bank, Thread.PRIORITY_LOW)
+
+## Every sound made before it is first heard (user: the frame rate drops in a fight). Made when
+## first played, a blow's sound took the frame the blow landed in: 30 to 80 ms each, at the first
+## cut, the first stab, the first bone broken of every session and at each take of each. A
+## thread of its own makes them all from the game's start, the blows first; one asked for before
+## its turn is made then and there, as it was. (The same sounds: each is made of its kind and
+## its take alone.)
+const BANK := ["tick", "murmur", "thud", "slash", "chop", "flat", "stab", "crunch", "scrape", "whoosh", "clang", "slap", "thump", "pickup", "horn", "cheer", "boo", "bell", "draw", "twang", "shatter", "boom", "buzz", "boing", "honk", "squeak", "freeze", "giggle", "grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar"]
+var _bank_thread: Thread = null
+var _bank_stop := false
+var _cache_lock := Mutex.new()   # the sounds made (_cache), read and written from both threads
+var _make_lock := Mutex.new()    # one sound made at a time (the making keeps its filters' state here)
+
+func _fill_bank() -> void:
+	for kind in BANK:
+		for take in (1 if kind == "murmur" else TAKES):
+			if _bank_stop:
+				return
+			_make(kind, take)
+
+func _exit_tree() -> void:
+	_bank_stop = true
+	if _bank_thread != null:
+		_bank_thread.wait_to_finish()
+		_bank_thread = null
 
 func _buses() -> void:
 	if AudioServer.get_bus_index("SFX") >= 0:
@@ -88,7 +115,7 @@ func ambience(on: bool) -> void:
 	if on and _ambience == null:
 		_ambience = AudioStreamPlayer.new()
 		_ambience.bus = "Crowd"
-		_ambience.stream = _murmur()
+		_ambience.stream = _make("murmur")
 		_ambience.volume_db = -40.0
 		add_child(_ambience)
 		_ambience.play()
@@ -134,8 +161,24 @@ func _murmur() -> AudioStreamWAV:
 
 func _make(kind: String, take := 0) -> AudioStreamWAV:
 	var key := "%s#%d" % [kind, take]
-	if _cache.has(key):
-		return _cache[key]
+	_cache_lock.lock()
+	var got = _cache.get(key)
+	_cache_lock.unlock()
+	if got != null:
+		return got
+	_make_lock.lock()
+	_cache_lock.lock()
+	got = _cache.get(key)
+	_cache_lock.unlock()
+	if got == null:
+		got = _murmur() if kind == "murmur" else _render(kind, take)
+		_cache_lock.lock()
+		_cache[key] = got
+		_cache_lock.unlock()
+	_make_lock.unlock()
+	return got
+
+func _render(kind: String, take: int) -> AudioStreamWAV:
 	var n := int(RATE * float(LENGTH.get(kind, 0.25)))
 	var data := PackedByteArray()
 	data.resize(n * 2)
@@ -148,7 +191,6 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 		bw.format = AudioStreamWAV.FORMAT_16_BITS
 		bw.mix_rate = RATE
 		bw.data = data
-		_cache[key] = bw
 		return bw
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(kind) + take * 7919
@@ -284,7 +326,6 @@ func _make(kind: String, take := 0) -> AudioStreamWAV:
 	w.format = AudioStreamWAV.FORMAT_16_BITS
 	w.mix_rate = RATE
 	w.data = data
-	_cache[key] = w
 	return w
 
 ## The blows' own sounds (a cut biting in, the flat of a blade, bone giving, steel skidding off

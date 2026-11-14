@@ -1619,7 +1619,7 @@ func _write_glow(list: Array) -> void:
 			continue
 		_set_status(i, g)
 
-func _set_status(i: int, g: Vector2) -> void:
+func _set_status(i: int, g: Vector2, fine_too := true) -> void:
 	var c := _custom(i, g)
 	if jaw_slot.has(i):
 		if jaw_mm:
@@ -1635,7 +1635,8 @@ func _set_status(i: int, g: Vector2) -> void:
 	# (Set before the fine look is told: the wound drawn over a voxel the fire ate reads its glow
 	# from `glowing`. Told first, it read the fire still on it as it went out, and the burn's
 	# wound flickered as if alight for good, user: the fire never went out.)
-	if fine.has("body"):
+	# (`fine_too` false: the fine look is told of many at once, FineBody.statuses.)
+	if fine_too and fine.has("body"):
 		FineBody.status(self, i, g)
 
 ## What the part is made of where the first live spot of `kind` is: the nearest living voxel's
@@ -1948,6 +1949,10 @@ func wound(lp: Vector3, r: float, kind := "blood", swell := true) -> int:
 			continue
 		colors[i] = colors[i].lerp(target, k)
 		touched.append(i)
+	# (Nothing of the part within its reach: nothing to draw again. An empty list is every voxel
+	# to refresh_colors: blood thrown at a man had every part it missed drawn anew, whole.)
+	if touched.is_empty():
+		return 0
 	refresh_colors(touched)
 	# A bruise swells (only how the skin is drawn: FineBody.swell).
 	if kind == "bruise" and swell and fine.has("body") and not touched.is_empty():
@@ -2161,6 +2166,28 @@ func _reshade(changed: Array) -> void:
 	var gy := grid.y
 	var gz := grid.z
 	var n := fx.size()
+	var nb := bev.size()
+	var turned := PackedInt32Array()
+	var nc = Greedy.core()
+	if nc != null and nc.has_method("reshade"):
+		# (In the C++ core: the voxels round the cut found and each one's shading worked out,
+		# 12 microseconds a voxel here and a few hundred of them a blow.)
+		var found: PackedInt32Array = nc.reshade(PackedInt32Array(changed), fx, fy, fz, cellmap, alive, veil, grid, bevel)
+		for q in found.size() / 2:
+			var j := found[q * 2]
+			var s := found[q * 2 + 1]
+			var b := s & 0xffffff
+			var bb := s >> 24
+			if b == ao[j] and (j >= nb or bb == bev[j]):
+				continue
+			ao[j] = b
+			if j < nb:
+				bev[j] = bb
+			_set_status(j, glowing.get(j, Vector2.ZERO), false)
+			turned.append(j)
+		if fine.has("body"):
+			FineBody.statuses(self, turned)
+		return
 	var seen := PackedByteArray()
 	seen.resize(n)
 	seen.fill(0)
@@ -2188,7 +2215,6 @@ func _reshade(changed: Array) -> void:
 					if j >= 0 and seen[j] == 0 and alive[j] == 1:
 						seen[j] = 1
 						todo.append(j)
-	var nb := bev.size()
 	for j in todo:
 		var s := shade_bits(j)
 		var b := s & 0xffffff

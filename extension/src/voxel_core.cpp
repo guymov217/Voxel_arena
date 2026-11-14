@@ -26,6 +26,14 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("guard_cut", "hide", "adj", "adj_at", "anc"), &VoxelCore::guard_cut);
 	ClassDB::bind_method(D_METHOD("bytes_changed", "was", "now"), &VoxelCore::bytes_changed);
 	ClassDB::bind_method(D_METHOD("lay_cells", "multimesh", "rows", "slots", "q", "n", "theta", "b", "k", "axis", "pv", "tip", "far_x"), &VoxelCore::lay_cells);
+	ClassDB::bind_method(D_METHOD("fine_ready", "part"), &VoxelCore::fine_ready);
+	ClassDB::bind_method(D_METHOD("fine_colored", "part", "indices", "apply", "res", "margin", "colors"), &VoxelCore::fine_colored);
+	ClassDB::bind_method(D_METHOD("reshade", "changed", "fx", "fy", "fz", "cellmap", "alive", "veil", "grid", "bevel"), &VoxelCore::reshade);
+	ClassDB::bind_method(D_METHOD("points_near", "pts", "alive", "skip", "q", "r"), &VoxelCore::points_near);
+	ClassDB::bind_method(D_METHOD("point_nearest", "pts", "alive", "q"), &VoxelCore::point_nearest);
+	ClassDB::bind_method(D_METHOD("fine_wound", "part", "voxels", "mode", "apply", "apply_xf", "res", "margin"), &VoxelCore::fine_wound);
+	ClassDB::bind_method(D_METHOD("fine_show", "part", "indices", "on", "apply"), &VoxelCore::fine_show);
+	ClassDB::bind_method(D_METHOD("fine_taken", "part", "idx", "res", "margin"), &VoxelCore::fine_taken);
 	ClassDB::bind_method(D_METHOD("sculpt_out", "o", "l", "limb_r", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_out);
 	ClassDB::bind_method(D_METHOD("sculpt_elbow", "o", "bt", "bi", "shoulder_w", "e_dir", "lu", "r_half", "r_three", "r_whole", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_elbow);
 	ClassDB::bind_method(D_METHOD("sculpt_hand", "o", "bt", "bi", "from", "goal", "size", "marks", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_hand);

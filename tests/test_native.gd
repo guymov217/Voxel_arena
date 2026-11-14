@@ -347,3 +347,202 @@ func test_native_drawing_matches_the_gdscript() -> void:
 	t.check(moved > 300 and left > 300, "cells past the break and cells before it (%d, %d)" % [moved, left])
 	t.check(worst < 1e-5, "each past the break set where the bend has its voxel, those before it left as they are (off by %.7f at most)" % worst)
 	m.queue_free()
+
+## The numbers of FineBody.put_cell that are not the same in two buffers of cells.
+func _cells_off(a: PackedFloat32Array, b: PackedFloat32Array) -> int:
+	if a.size() != b.size():
+		return maxi(a.size(), b.size())
+	var off := 0
+	for i in a.size():
+		if a[i] != b[i]:
+			off += 1
+	return off
+
+## What a blow changes of the fine look that the C++ core does (user: the frame rate drops in a
+## fight): the blood soaked into the skin round a wound (FineBody.colored), the wound's own cells
+## (_write_wound, _write_wound_glow), which voxels a wound is looked at for when some are knocked
+## out (shown), and what is drawn of a piece cut off (taken). On a man, a beast and a giant, cut
+## into, bloodied, bruised, scarred and alight: the same numbers as the script's, every one.
+func test_native_wounds_match_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("fine_wound"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	Physique.forced = "human"
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 5, "decrees": [], "hazards": []})
+	var lion = m.spawn_beast({"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(5, 0.1, 6.0), "yaw": PI, "harmless": true})
+	var giant = m.spawn_fighter(m.enemy_spec({"e": "cyclops", "boss": true}, 0, 1))
+	Physique.forced = ""
+	var tp := FineBody.template()
+	var res := int(tp.get("res", 2))
+	var margin := int(tp.get("margin", 10))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var parts := [m.me.f.torso, m.me.f.by_name["forearmR"], m.me.f.by_name["thighL"], giant.f.torso, giant.f.by_name["upperArmL"]]
+	for bp in lion.f.parts:
+		if bp.fine.has("body") and parts.size() < 8:
+			parts.append(bp)
+	t.check(parts.size() >= 7, "a man's parts, a giant's and a beast's (%d)" % parts.size())
+	var seen := 0
+	for p: VoxelPart in parts:
+		var who := "%s %s" % [String(p.fighter.display_name), p.part_name]
+		if not t.check(p.fine.has("body") and p.fine.get("nat", false), "%s: drawn fine, and the core reads its look" % who):
+			continue
+		for b in [p]:
+			b.freeze = true
+		var fine: Dictionary = p.fine
+		var n := p.fx.size()
+		var lps := p.local_positions()
+		# Two cuts into him, blood and a bruise round them, a scar, fire and poison.
+		for blow in 2:
+			var at: Vector3 = lps[rng.randi_range(0, n - 1)]
+			var cut := Array(p.voxels_within(at, p.vf * p.part_scale * rng.randf_range(2.0, 3.6)))
+			p.remove_voxels(cut)
+		p.wound(lps[rng.randi_range(0, n - 1)], p.vf * p.part_scale * 5.0, "blood")
+		p.wound(lps[rng.randi_range(0, n - 1)], p.vf * p.part_scale * 4.0, "bruise")
+		var bare_all := PackedInt32Array((fine.wound as Dictionary).keys())
+		for q in bare_all.size():
+			if q % 7 == 0:
+				p.scarred[bare_all[q]] = true
+			elif q % 5 == 0:
+				p.glowing[bare_all[q]] = Vector2(0.5, 0.0)
+			elif q % 11 == 0:
+				p.glowing[bare_all[q]] = Vector2(0.0, 0.4375)
+		for i in range(0, n, 13):
+			p.glowing[i] = Vector2(0.25, 0.0)
+		# 1. The skin's fine voxels, coloured.
+		var of: Dictionary = fine.of
+		var na: PackedFloat32Array = fine.get("na", PackedFloat32Array())
+		var all := PackedInt32Array(range(n))
+		var want := PackedFloat32Array()
+		var marked := 0
+		for i in all:
+			if not of.has(i):
+				continue
+			var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
+			if p.colors[i] != (fine.base as Dictionary).get(i):
+				marked += 1
+			for s in (of[i] as Array):
+				var col := FineBody._color(p, s, i)
+				if s < na.size():
+					col.a = na[s]
+				var cu := FineBody._custom(p, s, i, g)
+				want.append_array([0.0, float(s), col.r, col.g, col.b, col.a, cu.r, cu.g, cu.b, cu.a])
+		t.check(marked > 10, "%s: blood and a bruise on his skin (%d voxels of it)" % [who, marked])
+		t.eq(_cells_off(nc.fine_colored(p, all, false, res, margin, true), want), 0, "%s: his skin's fine voxels coloured as the script colours them (%d)" % [who, want.size() / 10])
+		# 2. The wound's cells.
+		t.check(bare_all.size() > 20, "%s: voxels bared by the cuts (%d)" % [who, bare_all.size()])
+		var fsz: float = fine.fsz
+		var cells := PackedFloat32Array()
+		for i in bare_all:
+			var code: int = (fine.code as PackedInt32Array)[i]
+			var g: Vector2 = p.glowing.get(i, Vector2.ZERO)
+			var healed: bool = p.scarred.has(i)
+			for k in 8:
+				var cc := (code >> (2 * k)) & 3
+				var at := lps[i] + (Vector3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1)) - Vector3(0.5, 0.5, 0.5)) * fsz
+				var x := FineBody.mapped(p, fine.d, at, 0.97 if cc == 1 else 1.0)
+				if cc == 0:
+					x = Transform3D(Basis().scaled(Vector3.ZERO), x.origin)
+				var kd := 0 if cc == 1 else (9 if cc == 2 or p.kinds[i] <= 2 else int(p.kinds[i]))
+				var cu := VoxelPart.kind_data(kd, 0, 0)
+				cu.g = g.x if g.x > 0.0 or healed else -(FineBody.WET_BONE if kd == 6 else float(FineBody.WET[cc]))
+				cu.b = g.y
+				FineBody.put_cell(cells, x, FineBody.wound_color(p, i, k, cc), cu)
+		var whole: PackedFloat32Array = nc.fine_wound(p, bare_all, 0, false, false, res, margin)
+		t.eq(_cells_off(whole, cells), 0, "%s: a wound's cells as the script writes them (%d)" % [who, cells.size() / 20])
+		var glow: PackedFloat32Array = nc.fine_wound(p, bare_all, 2, false, false, res, margin)
+		var only: PackedFloat32Array = nc.fine_wound(p, bare_all, 1, false, false, res, margin)
+		var glow_off := 0
+		for o in range(0, cells.size(), 20):
+			for z in 8:
+				if glow[o + 12 + z] != cells[o + 12 + z]:
+					glow_off += 1
+			for z in 4:
+				if only[o + 16 + z] != cells[o + 16 + z]:
+					glow_off += 1
+		t.eq(glow_off, 0, "%s: and their colours and their glow alone, the same" % who)
+		# 3. Voxels knocked out: which are looked at for a wound, and which lie open on it.
+		var some := PackedInt32Array([-1, n + 4])
+		for i in 60:
+			some.append(rng.randi_range(0, n - 1))
+		var near := {}
+		for i in some:
+			if i < 0 or i >= n:
+				continue
+			near[i] = true
+			for dd in VoxelPart.AO_FACES:
+				var qv: Vector3i = Vector3i(p.fx[i], p.fy[i], p.fz[i]) + (dd[0] as Vector3i)
+				var k := p._cell(qv.x, qv.y, qv.z)
+				if k >= 0:
+					near[k] = true
+		var looked := PackedInt32Array()
+		var open := 0
+		for i in near:
+			var is_open: bool = p.alive[i] == 1 and FineBody._open(p, i)
+			open += int(is_open)
+			looked.append_array([i, 1 if is_open else 0])
+		t.check(nc.fine_show(p, some, false, false) == looked, "%s: the same voxels looked at for a wound, in the same order, the same of them open (%d of %d)" % [who, open, near.size()])
+		# 4. A piece cut off: what is drawn of it.
+		var idx := p.voxels_within(lps[rng.randi_range(0, n - 1)], p.vf * p.part_scale * 3.2)
+		for i in bare_all.slice(0, 12):
+			if not idx.has(i):
+				idx.append(i)
+		Greedy.use_native = false
+		var piece: PackedFloat32Array = FineBody.taken(p, idx).get("buf", PackedFloat32Array())
+		Greedy.use_native = true
+		t.check(piece.size() >= 20 * 8, "%s: a piece of %d voxels is drawn of %d cells" % [who, idx.size(), piece.size() / 20])
+		t.eq(_cells_off(nc.fine_taken(p, idx, res, margin), piece), 0, "%s: a piece cut off drawn of the same cells" % who)
+		t.check((FineBody.taken(p, idx).get("buf", PackedFloat32Array()) as PackedFloat32Array) == piece, "%s: and FineBody gives the core's" % who)
+		# 5. The shading round a cut: the voxels found and each one's bits (VoxelPart._reshade).
+		var cut_at := PackedInt32Array([-3, n + 1])
+		for i in 40:
+			cut_at.append(rng.randi_range(0, n - 1))
+		var found := PackedInt32Array()
+		var met := {}
+		for i in cut_at:
+			if i < 0 or i >= n:
+				continue
+			for ax in range(maxi(p.fx[i] - 1, 0), mini(p.fx[i] + 2, p.grid.x)):
+				for ay in range(maxi(p.fy[i] - 1, 0), mini(p.fy[i] + 2, p.grid.y)):
+					for az in range(maxi(p.fz[i] - 1, 0), mini(p.fz[i] + 2, p.grid.z)):
+						var j := p._cell(ax, ay, az)
+						if j >= 0 and not met.has(j) and p.alive[j] == 1:
+							met[j] = true
+							found.append_array([j, p.shade_bits(j)])
+		t.check(found.size() > 200 and nc.reshade(cut_at, p.fx, p.fy, p.fz, p.cellmap, p.alive, p.veil, p.grid, p.bevel) == found, "%s: the same voxels shaded anew round a cut, the same shading (%d)" % [who, found.size() / 2])
+		seen += 1
+	t.check(seen >= 7, "every one of them looked at (%d)" % seen)
+	# A weapon's voxels round where blood struck it, and the one nearest (Weapon.bloody, Match._spray_on).
+	var off := 0
+	var some_near := 0
+	for w: Weapon in [m.me.f.weapons.R, m.me.f.weapons.L, giant.f.weapons.R]:
+		if w == null or w.vox.is_empty():
+			continue
+		var places := w.voxel_places()
+		# (Some of it broken off.)
+		var alive := w.alive.duplicate()
+		for i in range(0, alive.size(), 5):
+			alive[i] = 0
+		for trial in 40:
+			var q := places[rng.randi_range(0, places.size() - 1)] + Vector3(rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0))
+			var near := PackedInt32Array()
+			var best := -1
+			var bd := INF
+			for i in w.vox.size():
+				if alive[i] == 0:
+					continue
+				var d2 := Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]).distance_squared_to(q)
+				if d2 < bd:
+					bd = d2
+					best = i
+				if w.vox[i][4] != "grip" and not Vector3(w.vox[i][0], w.vox[i][1], w.vox[i][2]).distance_to(q) > 2.6:
+					near.append(i)
+			some_near += near.size()
+			if nc.points_near(places, alive, w._vgrip, q, 2.6) != near or nc.point_nearest(places, alive, q) != best:
+				off += 1
+	t.check(some_near > 200, "voxels of the weapons round the points tried (%d)" % some_near)
+	t.eq(off, 0, "the same voxels of a weapon round a point, and the same one nearest it")
+	m.queue_free()

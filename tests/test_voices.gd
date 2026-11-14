@@ -120,3 +120,42 @@ func test_the_blind_cyclops_roars_on() -> void:
 		await get_tree().physics_frame
 	t.check(float(f.get_meta("rage_t")) > first, "and he roared again as he raged (%.1f s -> %.1f s)" % [first, float(f.get_meta("rage_t"))])
 	m.queue_free()
+
+## Every sound is made before it is first heard (user: the frame rate drops in a fight: made at
+## its first blow, a blow's sound stalled the frame it landed in): the bank lists every kind the
+## game plays, a sound made once is the same sound after, and one asked for while another thread
+## makes the bank is made whole, once.
+func test_sounds_are_made_before_they_are_heard() -> void:
+	for kind in Sfx.LENGTH:
+		t.check(Sfx.BANK.has(kind), "%s is made beforehand" % kind)
+	for kind in Sfx.BLOWS:
+		t.check(Sfx.BANK.has(kind), "a blow's %s is made beforehand" % kind)
+	t.check(Sfx.BANK.find("thud") < Sfx.BANK.find("boom") and Sfx.BANK.find("chop") < Sfx.BANK.find("cheer"), "the blows first")
+	var a := Sfx._make("chop", 1)
+	t.check(a != null and a.data.size() == int(Sfx.RATE * float(Sfx.LENGTH["chop"])) * 2, "a sound is made whole")
+	t.check(is_same(a, Sfx._make("chop", 1)), "and is the one sound from then on")
+	# Asked for here while a thread makes them: each made once, the two given the one sound.
+	var th := Thread.new()
+	var theirs := []
+	th.start(func():
+		for k in ["flat", "stab", "slap", "twang"]:
+			for take in Sfx.TAKES:
+				theirs.append(Sfx._make(k, take)))
+	var mine := []
+	for k in ["twang", "slap", "stab", "flat"]:
+		for take in Sfx.TAKES:
+			mine.append([k, take, Sfx._make(k, take)])
+	th.wait_to_finish()
+	t.eq(theirs.size(), 12, "the thread made its sounds")
+	var same := 0
+	var whole := 0
+	for row in mine:
+		var w: AudioStreamWAV = row[2]
+		if is_same(w, Sfx._make(row[0], row[1])) and theirs.has(w):
+			same += 1
+		if w.data.size() == int(Sfx.RATE * float(Sfx.LENGTH.get(row[0], 0.25))) * 2:
+			whole += 1
+	t.eq(same, 12, "asked for from two threads, each sound is made once")
+	t.eq(whole, 12, "and whole")
+	var mur := Sfx._make("murmur")
+	t.check(mur != null and mur.loop_mode == AudioStreamWAV.LOOP_FORWARD and is_same(mur, Sfx._make("murmur")), "the crowd's murmur with them, made once")
