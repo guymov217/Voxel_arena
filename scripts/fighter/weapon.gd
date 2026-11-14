@@ -449,7 +449,7 @@ func _vcolor(i: int) -> Color:
 ## Blood on it where it struck into flesh (drawing only): the voxels round world point `at`, the
 ## nearer the more, wet and red; it dries to brown over a minute and a half (_process). Every
 ## blow that draws blood adds to it and wets it again.
-func bloody(at: Vector3, amount: float) -> void:
+func bloody(at: Vector3, amount: float, later = null) -> void:
 	if mm == null or amount <= 0.0 or vox.is_empty():
 		return
 	var q := to_local(at) / vs
@@ -471,7 +471,19 @@ func bloody(at: Vector3, amount: float) -> void:
 		b[1] = 0.0
 		bloodied[i] = b
 		touched.append(i)
-	for i in touched:
+	# (`later`, a dictionary: the voxels are drawn once for all the spots a blow throws on it,
+	# draw_blood, not again for each.)
+	if later is Dictionary:
+		for i in touched:
+			later[i] = true
+		return
+	draw_blood(touched)
+
+## The voxels `list` drawn as the blood on them has them now (bloody).
+func draw_blood(list: Array) -> void:
+	if mm == null:
+		return
+	for i in list:
 		mm.set_instance_color(i, _vcolor(i))
 		mm.set_instance_custom_data(i, _custom(i))
 
@@ -492,10 +504,20 @@ func voxel_places() -> PackedVector3Array:
 		_vgrip = gr
 	return _vplaces
 
+## (One weapon's blood is drawn drier in a frame; the next one due waits for the next frame, and
+## dries by as much the longer when its turn comes. The weapons one blow's blood wetted came due
+## together, every second: six of them were 5 ms of that frame, user: the frame rate drops.)
+static var _dry_frame := -1
+static var _dry_who := 0
 func _dry_blood(dt: float) -> void:
 	_blood_t += dt
 	if _blood_t < 1.0 or mm == null:
 		return
+	var frame := Engine.get_process_frames()
+	if _dry_frame == frame and _dry_who != get_instance_id():
+		return
+	_dry_frame = frame
+	_dry_who = get_instance_id()
 	var step := _blood_t
 	_blood_t = 0.0
 	for i in bloodied:

@@ -62,6 +62,7 @@ public:
 	PackedByteArray guard_reach(const PackedVector3Array &pts, const Transform3D &to_arm, const PackedFloat32Array &reach, int rows, int na, double y0, double dy, double pad) const;
 	PackedByteArray guard_cut(const PackedByteArray &hide_in, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc) const;
 	PackedInt32Array bytes_changed(const PackedByteArray &was, const PackedByteArray &now) const;
+	void lay_plates(Object *plates, Object *shell, const PackedFloat32Array &base, const PackedByteArray &on, const PackedByteArray &clip, const PackedInt32Array &of_at, const PackedInt32Array &of, const PackedFloat32Array &rel, const PackedByteArray &vclip, Dictionary now, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	void lay_cells(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &slots, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	// What a blow changes of a man's fine look (fine.cpp; `part` a VoxelPart with FineBody's look on
 	// it, `res` and `margin` the look's template's): the fine voxels over its voxels coloured as they
@@ -73,6 +74,7 @@ public:
 	PackedFloat32Array fine_wound(Object *part, const PackedInt32Array &voxels, int mode, bool apply, bool apply_xf, int res, int margin) const;
 	PackedInt32Array fine_show(Object *part, const PackedInt32Array &indices, bool on, bool apply) const;
 	PackedFloat32Array fine_taken(Object *part, const PackedInt32Array &idx, int res, int margin) const;
+	void fine_swell(Object *part, const PackedInt32Array &voxels, const Vector3 &lp, double r, double k, const Vector3 &n, double vox, double swell_max) const;
 	// VoxelPart._reshade's search with shade_bits of each voxel found; a weapon's voxels round a
 	// point and the one nearest it (Weapon.bloody, Match._spray_on).
 	PackedInt32Array reshade(const PackedInt32Array &changed, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedInt32Array &cellmap, const PackedByteArray &alive, const PackedByteArray &veil, const Vector3i &grid, bool bevel) const;

@@ -79,6 +79,50 @@ func test_his_choices_are_drawn_fine() -> void:
 	FineHead.mood(h, false, false, 0)
 	t.eq((h.fine.paint as Dictionary).size(), grin.size(), "and open again")
 
+## What a mood or a word paints on a face is the face's own pieces with the mood over them where
+## it draws (FineHead._state_paint, worked out without going over the pieces again): the same,
+## fine voxel for fine voxel, as every piece of the face gone over in that mood (_mark), for
+## every mood and every mouth, on a plain face and on painted ones.
+func test_a_mood_paints_over_the_faces_own_pieces() -> void:
+	var w := _world()
+	var x := 0.0
+	var states := 0
+	var marks := 0
+	var mooded := 0
+	var off := 0
+	for faces in [["none"], ["eyes_blue", "mouth_grin"], ["eyes_angry", "mouth_gap"], ["eyes_wink", "eyes_scar"], ["eyes_mad", "mouth_gold"], ["eyes_side"], ["eyes_wide", "eyes_tired"]]:
+		var f := _man(w, "human", Vector3(x, 1.2, 0), faces)
+		x += 3.0
+		var h: VoxelPart = f.head
+		if not t.check(not h.fine.is_empty() and h.fine.has("front"), "a fine head (%s)" % ", ".join(faces)):
+			continue
+		var fine: Dictionary = h.fine
+		var tp := FineHead.template()
+		var res := int(tp.res)
+		var cx := float(h.grid.x * res) * 0.5
+		var cy := float(h.grid.y * res) * 0.5
+		var plain: Dictionary = FineHead._state_paint(h, 0, 0)
+		for mood in [0, 1, 2, 3, 6, 7]:
+			for talk in 4:
+				var got: Dictionary = FineHead._state_paint(h, mood, talk)
+				var want := {}
+				for key in fine.front:
+					var s: int = fine.front[key]
+					var col = FineHead._mark(int(fine.cells[s][3]), float(key.x) + 0.5 - cx, float(key.y) + 0.5 - cy, float(tp.eye[0]), float(tp.eye[1]), fine.look.ids, mood, talk, fine.look)
+					if col != null:
+						want[s] = col
+				states += 1
+				marks += want.size()
+				if got.size() != want.size():
+					off += 1
+				for s in want:
+					if not got.has(s) or got[s] != want[s]:
+						off += 1
+					elif not plain.has(s) or plain[s] != want[s]:
+						mooded += 1
+	t.check(states >= 150 and marks > 5000 and mooded > 1000, "moods and mouths on plain and painted faces (%d of them: %d fine voxels painted, %d of them by the mood)" % [states, marks, mooded])
+	t.eq(off, 0, "a mood over the face's own pieces paints what going over every piece in that mood paints")
+
 ## Your gladiator's face as he likes it, serious or silly (user): the colour of his hair and of his
 ## eyes, and his face's paint and scars, each drawn on the fine face and in the classic look; and
 ## the room takes them from a guest.

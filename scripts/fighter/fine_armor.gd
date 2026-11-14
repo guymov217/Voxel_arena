@@ -552,6 +552,49 @@ static func sync(ad: Dictionary, ci: int, xf: Transform3D) -> void:
 		var hide := int(s) < vc.size() and vc[int(s)] == 1
 		mm.set_instance_transform(s, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if hide else xf * (rel[s] as Transform3D))
 
+## Places as a MultiMesh holds them, twelve numbers each (the basis by rows, each with its
+## origin after it), for the C++ core.
+static func place_rows(places: Array) -> PackedFloat32Array:
+	var rows := PackedFloat32Array()
+	rows.resize(places.size() * 12)
+	for s in places.size():
+		if not (places[s] is Transform3D):
+			continue
+		var t: Transform3D = places[s]
+		var bx := t.basis
+		var o := s * 12
+		rows[o] = bx.x.x
+		rows[o + 1] = bx.y.x
+		rows[o + 2] = bx.z.x
+		rows[o + 3] = t.origin.x
+		rows[o + 4] = bx.x.y
+		rows[o + 5] = bx.y.y
+		rows[o + 6] = bx.z.y
+		rows[o + 7] = t.origin.y
+		rows[o + 8] = bx.x.z
+		rows[o + 9] = bx.y.z
+		rows[o + 10] = bx.z.z
+		rows[o + 11] = t.origin.z
+	return rows
+
+## A shell's fine voxels by plate (`of_at`: where each plate's begin in `of`) and their places in
+## their plates (`rel`, place_rows), for the C++ core (VoxelCore.lay_plates: a limb in armour
+## bent at a break). Made once a shell.
+static func bend_pack(sh: Dictionary, plates: int) -> Dictionary:
+	var pk = sh.get("bend_pack")
+	if pk is Dictionary and int(pk.plates) == plates:
+		return pk
+	var of: Dictionary = sh.of
+	var at := PackedInt32Array([0])
+	var flat := PackedInt32Array()
+	for ci in plates:
+		for s in of.get(ci, []):
+			flat.append(int(s))
+		at.append(flat.size())
+	pk = {"plates": plates, "of_at": at, "of": flat, "rel": place_rows(sh.rel)}
+	sh["bend_pack"] = pk
+	return pk
+
 ## What the shell drew of plate `ci` as it lies now, its voxels in the part's frame, 20 numbers
 ## each as a MultiMesh holds them: a plate knocked off flies off as these (Fighter._knock_plate),
 ## the very plate, in the shape it lay on him (user: every piece that falls from a character is a

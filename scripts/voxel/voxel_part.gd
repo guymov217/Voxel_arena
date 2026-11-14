@@ -539,18 +539,40 @@ func _lay_bend() -> void:
 		if fine.has("far_mm"):
 			FineBody.lay(self, g, inv, b, null)
 	var layers := {}
+	var pc = Greedy.core()
+	if pc != null and not pc.has_method("lay_plates"):
+		pc = null
 	for ad in get_meta("armor", []):
 		var n = ad.get("node")
 		if n == null or not is_instance_valid(n):
 			continue
 		var m: MultiMesh = n.multimesh
 		var base: Array = _plate_bases(ad)
+		if pc != null:
+			# (In the C++ core, a piece in a call: every plate set where the bend has it and every
+			# fine voxel of its shell with it, each frame the limb swings, was half a millisecond
+			# of every frame for each broken limb in armour.)
+			var sh = ad.get("shell")
+			var shelled: bool = sh is Dictionary and is_instance_valid(sh.mi)
+			var spk: Dictionary = FineArmor.bend_pack(sh, base.size()) if shelled else {}
+			pc.lay_plates(m, sh.mm if shelled else null, _plate_rows(ad, base), ad.on, ad.get("clip", PackedByteArray()), spk.get("of_at", PackedInt32Array()), spk.get("of", PackedInt32Array()), spk.get("rel", PackedFloat32Array()), sh.get("vclip", PackedByteArray()) if shelled else PackedByteArray(), sh.now if shelled else {}, g[0], g[2], g[1], b, g[7], g[5], g[3], g[4], _bend_x)
+			continue
 		for ci in mini(base.size(), m.instance_count):
 			if ad.on[ci] == 0 or (ad.has("clip") and (ad.clip as PackedByteArray)[ci] == 1):
 				continue
 			var bxf := _bent(base[ci], g, layers)
 			m.set_instance_transform(ci, bxf)
 			FineArmor.sync(ad, ci, bxf)
+
+## The plates' places straight (_plate_bases) as the C++ core takes them (lay_plates): twelve
+## numbers each, as a MultiMesh holds a place. Packed once for as long as they are these.
+func _plate_rows(ad: Dictionary, base: Array) -> PackedFloat32Array:
+	var have = ad.get("bend_rows")
+	if have is Array and is_same(have[0], base):
+		return have[1]
+	var rows := FineArmor.place_rows(base)
+	ad["bend_rows"] = [base, rows]
+	return rows
 
 ## The plates' own places (part-local), straight: kept from before the limb was ever bent.
 func _plate_bases(ad: Dictionary) -> Array:
@@ -1594,6 +1616,7 @@ func _write_glow(list: Array) -> void:
 	if live.is_empty() and glowing.is_empty():
 		return
 	var reach := vf * part_scale * 8.0
+	var turned := PackedInt32Array()
 	for i in list:
 		var h: float = heat.get(i, 0.0)
 		var g := Vector2.ZERO
@@ -1617,7 +1640,11 @@ func _write_glow(list: Array) -> void:
 					g.y = snappedf(clampf(h / 0.8, 0.2, 1.0), GLOW_STEP)
 		if g == glowing.get(i, Vector2.ZERO):
 			continue
-		_set_status(i, g)
+		_set_status(i, g, false)
+		turned.append(i)
+	# (The fine look told of them all at once: FineBody.statuses.)
+	if fine.has("body"):
+		FineBody.statuses(self, turned)
 
 func _set_status(i: int, g: Vector2, fine_too := true) -> void:
 	var c := _custom(i, g)
@@ -1677,13 +1704,16 @@ func _has_glow(channel: int) -> bool:
 func _clear_glow(channel: int) -> void:
 	if mm == null:
 		return
-	for i in glowing.keys():
+	var turned := PackedInt32Array(glowing.keys())
+	for i in turned:
 		var g: Vector2 = glowing[i]
 		if channel == 1:
 			g.x = 0.0
 		else:
 			g.y = 0.0
-		_set_status(i, g)
+		_set_status(i, g, false)
+	if fine.has("body"):
+		FineBody.statuses(self, turned)
 
 static func _write_colors(m: MultiMesh, rows: Array) -> void:
 	# Per instance: with physics interpolation on, a whole-buffer write did not always reach the

@@ -7194,7 +7194,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# (Teeth tear, they do not open an artery: a bite's bleeding is its own, BITE_BLEED;
 			# a bite in the thigh once bled a man white in seconds.)
 			var cut_artery := false
-			for i in (remove if not hit.get("bite", false) else []):
+			for i in (remove if not hit.get("bite", false) and Anatomy.ARTERY_PARTS.has(String(part.part_name)) else []):
 				if Anatomy.artery_at(part.part_name, part.fx[i], part.fy[i], part.fz[i]) and not part.bone[i]:
 					cut_artery = true
 					break

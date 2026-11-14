@@ -846,3 +846,57 @@ int VoxelCore::point_nearest(const PackedVector3Array &pts, const PackedByteArra
 	}
 	return best;
 }
+
+// FineBody.swell: the skin's fine voxels over the voxels `voxels` (those within `r` of `lp`)
+// raised and made larger, as much as the blow was hard (`k`), out along `n`: each one's place
+// kept (fine.xf), how far it is swollen (fine.swell), and set on its drawing where its voxel
+// lives. `vox`: the part's voxel; `swell_max`: FineBody.SWELL_MAX.
+void VoxelCore::fine_swell(Object *part, const PackedInt32Array &voxels, const Vector3 &lp, double r, double k, const Vector3 &n, double vox, double swell_max) const {
+	const FinePart f(part, 2, 10);
+	if (!f.ok || !f.fine.has("xf0") || !f.fine.has("swell")) {
+		return;
+	}
+	const Array x0s = f.fine["xf0"];
+	Array xs = f.fine["xf"];
+	Dictionary sw = f.fine["swell"];
+	const int64_t cells_n = f.par.size();
+	if (x0s.size() < cells_n || xs.size() < cells_n) {
+		return;
+	}
+	for (int64_t q = 0; q < voxels.size(); q++) {
+		const int64_t i = voxels[q];
+		if (i < 0 || i >= f.n) {
+			continue;
+		}
+		const Variant ov = f.of.get(i, Variant());
+		if (ov.get_type() != Variant::ARRAY) {
+			continue;
+		}
+		const Array over = ov;
+		for (int64_t e = 0; e < over.size(); e++) {
+			const int64_t s = over[e];
+			if (s < 0 || s >= cells_n) {
+				continue;
+			}
+			const Transform3D x0 = x0s[s];
+			double fr = fn_clamp(1.0 - (double)x0.origin.distance_to(lp) / r, 0.0, 1.0);
+			if (fr <= 0.0) {
+				continue;
+			}
+			fr = fr * fr * (3.0 - 2.0 * fr);
+			const double was = sw.get(s, 0.0);
+			const double w = swell_max < was + k * fr ? swell_max : was + k * fr;
+			sw[s] = w;
+			const Transform3D t(x0.basis.scaled(Vector3(1.0, 1.0, 1.0) * (real_t)(1.0 + 0.3 * w)), x0.origin + n * (real_t)w * (real_t)vox);
+			xs[s] = t;
+			if (f.alive[i] == 1) {
+				int64_t slot = 0;
+				int which = 0;
+				MultiMesh *m = f.slot_of(s, slot, which);
+				if (m != nullptr) {
+					m->set_instance_transform((int32_t)slot, which == 2 ? Transform3D(t.basis, t.origin - f.jaw_off) : t);
+				}
+			}
+		}
+	}
+}

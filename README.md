@@ -234,10 +234,11 @@ must print exactly the same ones as before. `tools/replay_bench.sh` times the sa
 versions are compared on exactly the same work. The limbs' PD drives (`motor_rel`, `pd_relative`,
 `pd_axis`, `pd_twist`) run in C++ too, giving the very floats the GDScript gives. So does the
 drawing of a limb bent at a break (`lay_band`: the voxels over the break laid round the bend every
-frame, for a quarter of what the GDScript cost), and what a blow changes of the fine look
-(`fine_show`, `fine_wound`, `fine_colored`, `fine_taken`: the fine voxels over the voxels knocked
-out, the wound's cells, the blood soaked in round it, the piece cut off; `reshade`: the shading
-round the cut), a third of the time the blow took in the script. To build it for Linux, then load it:
+frame, for a quarter of what the GDScript cost; `lay_plates`: the armour on it and its shell with
+it), and what a blow changes of the fine look (`fine_show`, `fine_wound`, `fine_colored`,
+`fine_taken`: the fine voxels over the voxels knocked out, the wound's cells, the blood soaked in
+round it, the piece cut off; `reshade`: the shading round the cut; `fine_swell`: a bruise's
+swelling), a third of the time the blow took in the script. To build it for Linux, then load it:
 
 ```bash
 cd extension

@@ -237,8 +237,11 @@ func test_native_smooth_matches_the_gdscript() -> void:
 ## What takes a set_instance_transform as a MultiMesh does, and keeps what it was given.
 class Kept extends RefCounted:
 	var got := {}
+	var count := 0
 	func set_instance_transform(i: int, x: Transform3D) -> void:
 		got[i] = x
+	func get_instance_count() -> int:
+		return count
 
 ## A man's drawing work a frame that the C++ core does (user: the frame rate drops sharply in a
 ## fight): the fine voxels of a shoulder guard hidden under his arm's armour (Fighter._in_reach on
@@ -545,4 +548,156 @@ func test_native_wounds_match_the_gdscript() -> void:
 				off += 1
 	t.check(some_near > 200, "voxels of the weapons round the points tried (%d)" % some_near)
 	t.eq(off, 0, "the same voxels of a weapon round a point, and the same one nearest it")
+	m.queue_free()
+
+## A limb in armour bent at a break (VoxelPart._lay_bend): every plate of the piece set where the
+## bend has it and every fine voxel of its shell with it, by the C++ core in one call
+## (lay_plates), the same places as the script's (_bent, FineArmor.sync): plates knocked off and
+## put away passed over, the shell's hidden voxels left hidden, each tile's place noted.
+func test_native_bent_armour_matches_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("lay_plates"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 53
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	var off := 0
+	var plates_set := 0
+	var voxels_set := 0
+	var hidden := 0
+	var passed := 0
+	for part_name in ["forearmR", "shinL", "upperArmL"]:
+		var p: VoxelPart = m.me.f.by_name[part_name]
+		p.set_kink(Vector3.ZERO, 0.8, 40)
+		for trial in 5:
+			p._sw_q = Quaternion((rv.call(1.0) as Vector3 + Vector3(0, 0.02, 0)).normalized(), rng.randf_range(0.05, 1.8))
+			p._bend_x = p._bend_for(p._sw_q)
+			var g := p._bend_geom()
+			# A piece of sixty plates along the limb, a shell of some fine voxels over each.
+			var base := []
+			var on := PackedByteArray()
+			var clip := PackedByteArray()
+			var of := {}
+			var rel := []
+			var vclip := PackedByteArray()
+			for ci in 60:
+				var lp := Vector3(rng.randf_range(-p.half_ext.x, p.half_ext.x), rng.randf_range(-p.half_ext.y, p.half_ext.y), rng.randf_range(-p.half_ext.z, p.half_ext.z)) * 1.2
+				base.append(Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))).scaled(Vector3.ONE * rng.randf_range(0.3, 1.0)), lp))
+				on.append(0 if rng.randf() < 0.15 else 1)
+				clip.append(1 if rng.randf() < 0.1 else 0)
+				var over := []
+				for q in rng.randi_range(0, 6):
+					over.append(rel.size())
+					rel.append(Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0, 0.01, 0)).normalized(), rng.randf_range(-1.0, 1.0))).scaled(Vector3.ONE * rng.randf_range(0.2, 0.6)), rv.call(0.5)))
+					vclip.append(1 if rng.randf() < 0.2 else 0)
+				if not over.is_empty():
+					of[ci] = over
+			var sh := {"of": of, "rel": rel}
+			var pk := FineArmor.bend_pack(sh, base.size())
+			# As the script lays it.
+			var want_plate := {}
+			var want_voxel := {}
+			var want_now := {}
+			var layers := {}
+			for ci in base.size():
+				if on[ci] == 0 or clip[ci] == 1:
+					passed += 1
+					continue
+				var bxf := p._bent(base[ci], g, layers)
+				want_plate[ci] = bxf
+				want_now[ci] = bxf
+				for s in of.get(ci, []):
+					var hide: bool = vclip[int(s)] == 1
+					hidden += int(hide)
+					want_voxel[int(s)] = Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if hide else bxf * (rel[int(s)] as Transform3D)
+			var plates := Kept.new()
+			plates.count = base.size()
+			var shell := Kept.new()
+			var now := {}
+			nc.lay_plates(plates, shell, FineArmor.place_rows(base), on, clip, pk.of_at, pk.of, pk.rel, vclip, now, g[0], g[2], g[1], g[6], g[7], g[5], g[3], g[4], p._bend_x)
+			plates_set += plates.got.size()
+			voxels_set += shell.got.size()
+			if plates.got.size() != want_plate.size() or shell.got.size() != want_voxel.size() or now.size() != want_now.size():
+				off += 1
+				continue
+			for ci in want_plate:
+				if not plates.got.has(ci) or plates.got[ci] != want_plate[ci] or now.get(ci) != want_now[ci]:
+					off += 1
+			for s in want_voxel:
+				if not shell.got.has(s) or shell.got[s] != want_voxel[s]:
+					off += 1
+		p.set_kink(Vector3.ZERO, 0.0, 0)
+	t.check(plates_set > 500 and voxels_set > 1500 and hidden > 100 and passed > 100, "plates and the fine voxels of their shells laid round the bend, some hidden, some passed over (%d, %d, %d, %d)" % [plates_set, voxels_set, hidden, passed])
+	t.eq(off, 0, "every plate and every fine voxel of its shell set where the script sets it, to the float")
+	m.queue_free()
+
+## A bruise's swelling (FineBody.swell): the skin's fine voxels raised and made larger by the C++
+## core (fine_swell), the same places and the same swelling as the script's, blow on blow up to
+## the limit. (Without a screen a man has no drawing: one that keeps nothing stands in for it
+## here, and what is held to is what the swelling keeps, fine.xf and fine.swell.)
+func test_native_swelling_matches_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("fine_swell"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	Physique.forced = "human"
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 5, "decrees": [], "hazards": []})
+	var giant = m.spawn_fighter(m.enemy_spec({"e": "cyclops", "boss": true}, 0, 1))
+	Physique.forced = ""
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var swollen := 0
+	var full := 0
+	var off := 0
+	for p: VoxelPart in [m.me.f.torso, m.me.f.by_name["thighL"], m.me.f.by_name["forearmR"], giant.f.by_name["upperArmL"]]:
+		var who := "%s %s" % [String(p.fighter.display_name), p.part_name]
+		if not t.check(p.fine.has("body") and p.fine.get("nat", false), "%s: drawn fine, and the core reads its look" % who):
+			continue
+		var fine: Dictionary = p.fine
+		var count := (fine.par as PackedInt32Array).size()
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.instance_count = count
+		fine.mm = mm
+		var lps := p.local_positions()
+		var vox := p.vf * p.part_scale
+		var blows := []
+		for b in 7:
+			# (Every third blow where the one before it fell: the swelling there at its limit.)
+			var at: Vector3 = blows[b - 1][0] if b % 3 == 2 else lps[rng.randi_range(0, lps.size() - 1)]
+			blows.append([at, vox * rng.randf_range(3.0, 6.5), rng.randf_range(0.3, 0.6)])
+		var got := []
+		for native in [true, false]:
+			if fine.has("xf0"):
+				fine.xf = (fine.xf0 as Array).duplicate()
+				fine.swell = {}
+			Greedy.use_native = native
+			for b in blows:
+				FineBody.swell(p, b[0], b[1], b[2])
+			Greedy.use_native = true
+			got.append([(fine.xf as Array).duplicate(), (fine.swell as Dictionary).duplicate()])
+		fine.erase("mm")
+		var xa: Array = got[0][0]
+		var xb: Array = got[1][0]
+		var sa: Dictionary = got[0][1]
+		var sb: Dictionary = got[1][1]
+		if not t.check(xa.size() == count and xb.size() == count and sa.size() == sb.size(), "%s: as many fine voxels swollen by the core as by the script (%d, %d)" % [who, sa.size(), sb.size()]):
+			continue
+		for s in count:
+			if (xa[s] as Transform3D) != (xb[s] as Transform3D):
+				off += 1
+		for s in sb:
+			if not sa.has(s) or float(sa[s]) != float(sb[s]):
+				off += 1
+			swollen += 1
+			if float(sb[s]) >= FineBody.SWELL_MAX:
+				full += 1
+	t.check(swollen > 400 and full > 10, "fine voxels swollen by the blows, some to the limit (%d, %d)" % [swollen, full])
+	t.eq(off, 0, "every fine voxel raised where the script raises it and swollen as much, to the float")
 	m.queue_free()

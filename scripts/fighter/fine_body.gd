@@ -1313,6 +1313,11 @@ static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
 		return
 	n = n.normalized()
 	var vox := p.vf * p.part_scale
+	var nc = _core(fine)
+	if nc != null and nc.has_method("fine_swell"):
+		# (In the C++ core: a bruise's few hundred fine voxels were 5 ms of the blow here.)
+		nc.fine_swell(p, p.voxels_within(lp, r), lp, r, k, n, vox, SWELL_MAX)
+		return
 	var x0s: Array = fine.xf0
 	var xs: Array = fine.xf
 	var sw: Dictionary = fine.swell

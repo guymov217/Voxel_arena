@@ -57,6 +57,27 @@ func _fill_bank() -> void:
 			if _bank_stop:
 				return
 			_make(kind, take)
+	# The rendered voices with them (read from their files when a man first cried out, each was
+	# a few files read in the fight).
+	for key in _voice_keys():
+		if _bank_stop:
+			return
+		_voice_takes(key)
+
+## Every rendered voice there is a file of ("<key>_<take>.ogg" in VOICE_DIR; in an exported game
+## the files are listed by what they were imported to).
+func _voice_keys() -> Array:
+	var keys := {}
+	for nm in DirAccess.get_files_at(VOICE_DIR):
+		var base := String(nm).trim_suffix(".import").trim_suffix(".remap")
+		if not base.ends_with(".ogg"):
+			continue
+		var cut := base.trim_suffix(".ogg").rsplit("_", true, 1)
+		if cut.size() == 2 and String(cut[1]).is_valid_int():
+			keys[cut[0]] = true
+	var out := keys.keys()
+	out.sort()
+	return out
 
 func _exit_tree() -> void:
 	_bank_stop = true
@@ -586,7 +607,7 @@ var _vary := RandomNumberGenerator.new()
 
 ## A take of a rendered voice, never the one heard last (a man struck twice cried the one cry).
 func _pick_take(key: String) -> AudioStream:
-	var takes: Array = _voices[key]
+	var takes: Array = _voice_takes(key)
 	if takes.is_empty():
 		return null
 	var i := _vary.randi() % takes.size()
@@ -596,8 +617,17 @@ func _pick_take(key: String) -> AudioStream:
 	return takes[i]
 
 func _voice_stream(key: String) -> AudioStream:
-	if _voices.has(key):
-		return _pick_take(key)
+	return _pick_take(key)
+
+## A rendered voice's takes, loaded once: by the bank's thread before they are first cried
+## (_fill_bank), or here when asked for before its turn.
+var _voices_lock := Mutex.new()
+func _voice_takes(key: String) -> Array:
+	_voices_lock.lock()
+	var got = _voices.get(key)
+	_voices_lock.unlock()
+	if got != null:
+		return got
 	var takes := []
 	for i in range(1, MAX_TAKES + 1):
 		var path := VOICE_DIR + "%s_%d.ogg" % [key, i]
@@ -608,8 +638,14 @@ func _voice_stream(key: String) -> AudioStream:
 			st = AudioStreamOggVorbis.load_from_file(path)
 		if st:
 			takes.append(st)
-	_voices[key] = takes
-	return _pick_take(key)
+	_voices_lock.lock()
+	# (Loaded by the other thread meanwhile: its takes are the ones.)
+	if _voices.has(key):
+		takes = _voices[key]
+	else:
+		_voices[key] = takes
+	_voices_lock.unlock()
+	return takes
 
 ## A character's voice: `pitch` 1.0 for a man, lower for the big (a giant at 0.6, an elephant at
 ## 0.5), higher for the small. `file` names a rendered voice ("lion_call"); without one, or

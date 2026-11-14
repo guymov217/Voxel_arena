@@ -1942,8 +1942,11 @@ func _spray_on(w: Weapon, p: Vector3, amount: float) -> void:
 	if best < 0 or sqrt(bd) * w.vs > 1.4:
 		return
 	var c := Vector3(w.vox[best][0], w.vox[best][1], w.vox[best][2])
+	# (The spots lie over one another: each voxel they wet is drawn once, after them all.)
+	var wet := {}
 	for s in 3 + int(amount * 5.0):
-		w.bloody(w.to_global((c + Vector3(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0), randf_range(-1.0, 1.0))) * w.vs), 0.45 + 0.4 * amount)
+		w.bloody(w.to_global((c + Vector3(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0), randf_range(-1.0, 1.0))) * w.vs), 0.45 + 0.4 * amount, wet)
+	w.draw_blood(wet.keys())
 
 ## A hand has closed on a weapon it reached for (G) and holds it now.
 func _on_took_up(f, w) -> void:

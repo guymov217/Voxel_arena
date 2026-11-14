@@ -6,6 +6,7 @@
 
 #include "voxel_core.h"
 
+#include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector2.hpp>
@@ -217,5 +218,116 @@ void VoxelCore::lay_cells(Object *multimesh, const PackedFloat32Array &rows, con
 			xo = m.xform(to) + bo;
 		}
 		multimesh->call(set_xf, sl[row], Transform3D(xb, xo));
+	}
+}
+
+namespace {
+
+// VoxelPart._arc_at, number for number as the script works it out (the angle in double).
+Vector3 dr_arc_exact(double s, double b, const Vector3 &n, double theta, const Vector3 &tip, const Vector3 &pv) {
+	if (theta < 1e-4) {
+		return pv + tip * (real_t)s;
+	}
+	const double ph = theta * s / b;
+	const Vector3 sum = tip * (real_t)std::sin(ph) + n.cross(tip) * (real_t)(1.0 - std::cos(ph)) + n * n.dot(tip) * (real_t)(ph - std::sin(ph));
+	return pv + sum * (real_t)(b / theta);
+}
+
+struct DrPlateLayer {
+	real_t s;
+	Basis rs;
+	Vector3 a;
+};
+
+Transform3D dr_xf(const float *f) {
+	return Transform3D(Basis(f[0], f[1], f[2], f[4], f[5], f[6], f[8], f[9], f[10]), Vector3(f[3], f[7], f[11]));
+}
+
+} // namespace
+
+// VoxelPart._lay_bend's armour: the plates of a piece on a limb bent at a break, each set where
+// the bend has it (VoxelPart._bent of its place straight) on the piece's own drawing `plates`,
+// and the fine voxels of its shell over it with it on `shell` (FineArmor.sync), where each
+// plate's tile is drawn noted in `now`. `base`: the plates' places straight, 12 numbers each as a
+// MultiMesh holds them; one knocked off (`on` 0) or put away (`clip` 1) is passed over; `of_at`,
+// `of`: the shell's fine voxels over each plate; `rel`: each one's place in its plate (12
+// numbers); `vclip`: 1 where one is hidden. The bend as lay_cells takes it.
+void VoxelCore::lay_plates(Object *plates, Object *shell, const PackedFloat32Array &base, const PackedByteArray &on, const PackedByteArray &clip, const PackedInt32Array &of_at, const PackedInt32Array &of, const PackedFloat32Array &rel, const PackedByteArray &vclip, Dictionary now, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const {
+	if (plates == nullptr || axis < 0 || axis > 2) {
+		return;
+	}
+	static const StringName set_xf("set_instance_transform");
+	static const StringName get_count("get_instance_count");
+	MultiMesh *pm = Object::cast_to<MultiMesh>(plates);
+	MultiMesh *sm = shell != nullptr ? Object::cast_to<MultiMesh>(shell) : nullptr;
+	int64_t count = base.size() / 12;
+	const int64_t have = pm != nullptr ? pm->get_instance_count() : (int64_t)plates->call(get_count);
+	count = count < have ? count : have;
+	const float *bs = base.ptr();
+	const int64_t n_on = on.size();
+	const int64_t n_clip = clip.size();
+	const int64_t n_rel = rel.size() / 12;
+	const float *rl = rel.ptr();
+	const int64_t n_vclip = vclip.size();
+	const bool shelled = shell != nullptr && of_at.size() > count;
+	const Transform3D none(Basis::from_scale(Vector3()), Vector3());
+	std::vector<DrPlateLayer> layers;
+	for (int64_t ci = 0; ci < count; ci++) {
+		if (ci >= n_on || on[ci] == 0 || (ci < n_clip && clip[ci] == 1)) {
+			continue;
+		}
+		const Transform3D at = dr_xf(bs + ci * 12);
+		Transform3D bxf;
+		const real_t s = (at.origin - pv).dot(tip);
+		if (s <= 0.0) {
+			bxf = at;
+		} else if ((double)s >= b) {
+			bxf = far_x * at;
+		} else {
+			const Vector3 off = at.origin - pv - tip * s;
+			const Vector3 cr = off.cross(tip);
+			const DrPlateLayer *lay = nullptr;
+			for (const DrPlateLayer &l : layers) {
+				if (l.s == s) {
+					lay = &l;
+					break;
+				}
+			}
+			if (lay == nullptr) {
+				DrPlateLayer l;
+				l.s = s;
+				l.rs = Basis(Quaternion().slerp(q, (real_t)((double)s / b)));
+				l.a = dr_arc_exact((double)s, b, n, theta, tip, pv);
+				layers.push_back(l);
+				lay = &layers.back();
+			}
+			double stretch = 1.0 + k * (double)n.dot(cr);
+			stretch = stretch < 0.35 ? 0.35 : (stretch > 2.6 ? 2.6 : stretch);
+			Vector3 sc(1.0, 1.0, 1.0);
+			sc[axis] = (real_t)stretch;
+			bxf = Transform3D(lay->rs * Basis::from_scale(sc) * at.basis, lay->a + lay->rs.xform(off));
+		}
+		if (pm != nullptr) {
+			pm->set_instance_transform((int32_t)ci, bxf);
+		} else {
+			plates->call(set_xf, ci, bxf);
+		}
+		if (!shelled) {
+			continue;
+		}
+		now[ci] = bxf;
+		for (int64_t e = of_at[ci]; e < of_at[ci + 1] && e < of.size(); e++) {
+			const int64_t fv = of[e];
+			if (fv < 0 || fv >= n_rel) {
+				continue;
+			}
+			const bool hide = fv < n_vclip && vclip[fv] == 1;
+			const Transform3D x = hide ? none : bxf * dr_xf(rl + fv * 12);
+			if (sm != nullptr) {
+				sm->set_instance_transform((int32_t)fv, x);
+			} else {
+				shell->call(set_xf, fv, x);
+			}
+		}
 	}
 }

@@ -90,6 +90,9 @@ static func organ_at(part: String, x: int, y: int, z: int) -> int:
 ## The big vessels near the skin, where a cut bleeds out in seconds and spurts with every beat:
 ## the throat (under the jaw, and the root of the neck on the trunk), the groin (high on the
 ## inside of a thigh), the armpit (high on the inside of an upper arm). A beast's neck and throat.
+## The parts artery_at has an artery in (asked before every voxel of a cut is: most cuts are
+## into a part with none).
+const ARTERY_PARTS := ["head", "torso", "thighR", "thighL", "upperArmR", "upperArmL", "neck"]
 static func artery_at(part: String, x: int, y: int, z: int) -> bool:
 	match part:
 		"head":

@@ -630,40 +630,56 @@ static func _off_line(u: float, v: float, ax: float, ay: float, bx: float, by: f
 	var t := clampf(q.dot(d) / d.length_squared(), 0.0, 1.0)
 	return (q - d * t).length()
 
+## What a mood and a mouth paint on this face: {fine voxel -> its colour}. The same every time
+## (the face's pieces and the look do not change while the head is drawn so): worked out once
+## each, kept (fine.paints). The face's own pieces (no mood, his mouth shut) are under every mood;
+## a mood or a word paints over them only where it draws (_mood_mark), and is worked out without
+## going over the pieces again (user: the frame rate drops; a man's first hurt face, his first
+## cry, his first word were each 3 ms of the frame they came in, a blow's as often as not).
+static func _state_paint(p: VoxelPart, mood: int, talk: int) -> Dictionary:
+	var fine: Dictionary = p.fine
+	if not fine.has("paints"):
+		fine["paints"] = {}
+	var paints: Dictionary = fine.paints
+	var state := mood * 4 + talk
+	if paints.has(state):
+		return paints[state]
+	var look: Dictionary = fine.look
+	var cells: Array = fine.cells
+	var t := template()
+	var res := int(t.res)
+	var cx := float(p.grid.x * res) * 0.5
+	var cy := float(p.grid.y * res) * 0.5
+	var ex := float(t.eye[0])
+	var ey := float(t.eye[1])
+	var made := {}
+	if state == 0:
+		var ids: Array = look.ids
+		for key in fine.front:
+			var s: int = fine.front[key]
+			var c: Array = cells[s]
+			var col = _mark(int(c[3]), float(key.x) + 0.5 - cx, float(key.y) + 0.5 - cy, ex, ey, ids, 0, 0, look)
+			if col != null:
+				made[s] = col
+	else:
+		made = _state_paint(p, 0, 0).duplicate()
+		for key in fine.front:
+			var s: int = fine.front[key]
+			var c: Array = cells[s]
+			var col = _mood_mark(int(c[3]), float(key.x) + 0.5 - cx, float(key.y) + 0.5 - cy, ex, ey, mood, talk, look)
+			if col != null:
+				made[s] = col
+	paints[state] = made
+	return made
+
 ## The face's pieces and his mood drawn on its fine voxels: `mood` 1 his eyes shut (a blink), 2
 ## his face screwed up (hurt), 4 with it crying out, and `talk` 0..3 his mouth open as he speaks.
 static func _paint(p: VoxelPart, mood := 0, talk := 0) -> void:
 	var fine: Dictionary = p.fine
 	if fine.is_empty() or String(fine.get("giant", "")) != "":
 		return   # (a giant's face is its own: no man's eyes and mouth drawn on it)
-	var look: Dictionary = fine.look
 	var own: PackedColorArray = fine.own
-	# What a mood and a mouth paint on this face is the same every time (the face's pieces and the
-	# look do not change while the head is drawn so): worked out once each, kept (fine.paints).
-	var paints: Dictionary = fine.get("paints", {})
-	var state := mood * 4 + talk
-	if not paints.has(state):
-		var ids: Array = look.ids
-		var cells: Array = fine.cells
-		var made := {}
-		var t := template()
-		var res := int(t.res)
-		var cx := float(p.grid.x * res) * 0.5
-		var cy := float(p.grid.y * res) * 0.5
-		var ex := float(t.eye[0])
-		var ey := float(t.eye[1])
-		for key in fine.front:
-			var s: int = fine.front[key]
-			var c: Array = cells[s]
-			var feat := int(c[3])
-			var x := float(key.x) + 0.5 - cx
-			var y := float(key.y) + 0.5 - cy
-			var col = _mark(feat, x, y, ex, ey, ids, mood, talk, look)
-			if col != null:
-				made[s] = col
-		paints[state] = made
-		fine["paints"] = paints
-	var paint: Dictionary = paints[state]
+	var paint := _state_paint(p, mood, talk)
 	var mm: MultiMesh = fine.mm
 	var par: PackedInt32Array = fine.par
 	var base: Dictionary = fine.base
@@ -694,13 +710,14 @@ static func _paint(p: VoxelPart, mood := 0, talk := 0) -> void:
 		col.a = own[s].a   # (the way it faces: FineSmooth)
 		mm.set_instance_color(s, col)
 
-## What a face piece or a mood draws on the face's fine voxel at (x, y) (fine voxels from the
-## middle of the face; `feat` what it is), or null.
-static func _mark(feat: int, x: float, y: float, ex: float, ey: float, ids: Array, mood: int, talk: int, look: Dictionary):
+## What his mood (shut, screwed up, crying out) or his talking mouth draws on the face's fine
+## voxel at (x, y), or null: none of it there, and the face's own pieces draw what they draw
+## (_mark). All of a face that a mood changes.
+static func _mood_mark(feat: int, x: float, y: float, ex: float, ey: float, mood: int, talk: int, look: Dictionary):
+	if mood == 0 and talk == 0:
+		return null
 	var skin: Color = look.skin
 	var eye: bool = feat == WHITE or feat == IRIS or feat == PUPIL or feat == LID or feat == LID_LOW
-	var sx := 1.0 if x > 0.0 else -1.0
-	var dx := x - sx * ex   # across the eye (+ toward his left)
 	var dy := y - ey
 	# His mood first: shut, or screwed up.
 	if eye and (mood & 1 or mood & 2):
@@ -726,6 +743,20 @@ static func _mark(feat: int, x: float, y: float, ex: float, ey: float, ids: Arra
 			if talk == 3 and y < -10.4 and absf(x) < 1.6:
 				return TONGUE
 			return MOUTH
+	return null
+
+## What a face piece or a mood draws on the face's fine voxel at (x, y) (fine voxels from the
+## middle of the face; `feat` what it is), or null.
+static func _mark(feat: int, x: float, y: float, ex: float, ey: float, ids: Array, mood: int, talk: int, look: Dictionary):
+	# His mood first, and his mouth as he talks.
+	var mooded = _mood_mark(feat, x, y, ex, ey, mood, talk, look)
+	if mooded != null:
+		return mooded
+	var skin: Color = look.skin
+	var eye: bool = feat == WHITE or feat == IRIS or feat == PUPIL or feat == LID or feat == LID_LOW
+	var sx := 1.0 if x > 0.0 else -1.0
+	var dx := x - sx * ex   # across the eye (+ toward his left)
+	var dy := y - ey
 	for id in ids:
 		match String(id):
 			"eyes_wide":
