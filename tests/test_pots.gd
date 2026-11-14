@@ -248,3 +248,59 @@ func test_a_thunder_pot_craters_the_spot_it_went_off_at() -> void:
 	t.check(lost >= 10, "it blows flesh away (%d voxels)" % lost)
 	t.check(near >= lost * 0.7 and on_side >= lost * 0.8, "from where it went off (%d of %d within 0.4 m, %d on that flank)" % [near, lost, on_side])
 	m.queue_free()
+
+## A goat and the chickens out of their pots: there in the step the pot broke where nothing is
+## drawn, as they always were; where the game brings things in over frames (a screen, Match.
+## staging: the goat made in one step was a seventh of a second's stop, the six chickens a tenth),
+## the goat is built over the frames that follow and the chickens come out one a frame.
+func test_a_goat_and_the_chickens_come_out_of_their_pots() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	await _steps(10)
+	var goats := func() -> int:
+		return m.entities.filter(func(e): return e.f is Beast and String(e.f.species) == "goat").size()
+	m.throwables.explode("pot_goat", Vector3(3, 0.3, 0), m.me.f)
+	t.eq(goats.call(), 1, "without a screen the goat is out of its pot at once")
+	var w0: int = m.combat.loose_weapons.size()
+	m.throwables.explode("pot_chickens", Vector3(-3, 0.3, 0), m.me.f)
+	t.eq(m.combat.loose_weapons.size(), w0 + 6, "and the six chickens")
+	m.stage_always = true
+	m.throwables.explode("pot_goat", Vector3(3, 0.3, 4), m.me.f)
+	t.check(goats.call() == 1 and m.coming == 1, "brought in over frames, the next goat is on its way, not there yet")
+	var w1: int = m.combat.loose_weapons.size()
+	m.throwables.explode("pot_chickens", Vector3(-3, 0.3, 4), m.me.f)
+	t.eq(m.combat.loose_weapons.size(), w1 + 1, "and one chicken is out, the rest to come")
+	var n := 0
+	while (goats.call() < 2 or m.combat.loose_weapons.size() < w1 + 6) and n < 900:
+		await get_tree().physics_frame
+		n += 1
+	t.check(goats.call() == 2 and m.coming == 0, "the goat comes in (%d steps)" % n)
+	t.eq(m.combat.loose_weapons.size(), w1 + 6, "and all six chickens")
+	var harmless: int = m.entities.filter(func(e): return e.f is Beast and String(e.f.species) == "goat" and bool(e.get("harmless", false))).size()
+	t.eq(harmless, 2, "both goats harm nobody")
+	m.queue_free()
+
+## A pot's nails are all of one shape and bounce one way: one of each made for every nail of the
+## hundred and twenty was a part of the stop the pot made.
+func test_a_pots_nails_are_of_one_shape() -> void:
+	seed(5)
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	await _steps(5)
+	m.throwables.explode("pot_nail", Vector3(0, 1.0, 0), m.me.f)
+	var shapes := {}
+	var bounces := {}
+	var n := 0
+	for fl in m.throwables.flying_nails:
+		var b: RigidBody3D = fl.b
+		n += 1
+		bounces[b.physics_material_override] = true
+		for c in b.get_children():
+			if c is CollisionShape3D:
+				shapes[c.shape] = true
+	t.check(n >= 60, "the nails fly (%d)" % n)
+	t.check(shapes.size() == 1 and bounces.size() == 1, "all of one shape and one way of bouncing (%d, %d)" % [shapes.size(), bounces.size()])
+	if shapes.size() == 1:
+		var bx: BoxShape3D = shapes.keys()[0]
+		t.check(bx.size.is_equal_approx(Vector3(0.014, 0.014, 0.09)), "a nail's own")
+	m.queue_free()

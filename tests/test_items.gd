@@ -475,3 +475,78 @@ func test_a_honey_pot_brings_bees_that_sting_and_can_be_killed() -> void:
 	await _steps(600)
 	t.check(not m.throwables.hives.any(func(h): return h.target == b.f), "he is dead: his bees have left him")
 	m.queue_free()
+
+## Every box of a size and a colour that things are drawn of is one mesh, as it is one material
+## (Items._box): a pot's hundred and twenty nails were three hundred meshes made in the step it broke.
+func test_boxes_of_a_size_and_colour_are_one_mesh() -> void:
+	var meshes := func(g: Node3D) -> Array:
+		var out := []
+		for c in g.get_children():
+			if c is MeshInstance3D:
+				out.append(c.mesh)
+		return out
+	var a := Items.visual("nail")
+	var b := Items.visual("nail")
+	var c := Items.visual("bread")
+	var ma: Array = meshes.call(a)
+	var mb: Array = meshes.call(b)
+	var mc: Array = meshes.call(c)
+	t.check(ma.size() >= 1 and ma.size() == mb.size(), "a nail is drawn of boxes (%d)" % ma.size())
+	var same := ma.size() == mb.size()
+	var whole := true
+	for i in mini(ma.size(), mb.size()):
+		same = same and is_same(ma[i], mb[i])
+		var bm := ma[i] as BoxMesh
+		whole = whole and bm != null and bm.size.x > 0.0 and bm.size.y > 0.0 and bm.size.z > 0.0 and bm.material != null
+	t.check(same, "two nails are drawn of the same meshes")
+	t.check(whole, "each a box of its size, in its material")
+	var other := true
+	for x in mc:
+		for y in ma:
+			other = other and not is_same(x, y)
+	t.check(mc.size() >= 2 and other, "a loaf of bread of its own")
+	a.free()
+	b.free()
+	c.free()
+
+## The chest armour's box, that an arm's plates gone into the chest are not drawn inside (Fighter.
+## _clip_arm_armor), follows the plates left on the chest: worked out from where each plate is drawn,
+## kept from when the piece was laid on him (a plate knocked off had every other one's place worked
+## out again in the frame after the blow), as it is when all of it is worked out anew.
+func test_the_chest_armours_box_follows_the_plates_left() -> void:
+	var m := _match()
+	var e := _man(m, Vector3(0, 0, 0), PI, {"armor": ["helmet", "lorica", "manica", "greaves"]}, "Armoured", 1, _idle)
+	await _steps(20)
+	var f: Fighter = e.f
+	f._clip_arm_armor()
+	t.check(f.torso.has_meta("armor_box"), "a man in a cuirass has its box")
+	var box0: AABB = f.torso.get_meta("armor_box", AABB())
+	var kept := 0
+	for ad in f.torso.get_meta("armor", []):
+		if ad.get("box_o") is PackedVector3Array:
+			kept += 1
+	t.check(kept >= 1 and box0.size.x > 0.0, "where its plates are drawn is kept (%d pieces)" % kept)
+	# The plates of the top of it knocked off: the box comes down with them.
+	var gone := 0
+	for ad in f.torso.get_meta("armor", []):
+		if Fighter._cosmetic(String(ad.id)):
+			continue
+		var top := -INF
+		for ci in ad.cells.size():
+			if ad.on[ci] == 1:
+				top = maxf(top, (ad.pts[ci] as Vector3).y)
+		for ci in ad.cells.size():
+			if ad.on[ci] == 1 and (ad.pts[ci] as Vector3).y > top - f.torso.half_ext.y * 0.5:
+				f._knock_plate(f.torso, ad, ci, Vector3.UP, 1.0, false)
+				gone += 1
+	t.check(gone >= 4 and not f.torso.has_meta("armor_box"), "plates knocked off the top of it (%d): its box is to be worked out again" % gone)
+	f._clip_arm_armor()
+	var box1: AABB = f.torso.get_meta("armor_box", AABB())
+	for ad in f.torso.get_meta("armor", []):
+		ad.erase("box_o")
+	f.torso.remove_meta("armor_box")
+	f._clip_arm_armor()
+	var box2: AABB = f.torso.get_meta("armor_box", AABB())
+	t.check(box1.is_equal_approx(box2), "from the places kept, the same box as worked out anew")
+	t.check(box1.end.y < box0.end.y - 0.001, "lower than it was (%.3f, was %.3f)" % [box1.end.y, box0.end.y])
+	m.queue_free()

@@ -65,11 +65,19 @@ static func _kind_of_color(c: Color) -> int:
 		return 5            # wood, clay
 	return 2
 
+## (One mesh for every box of a size and colour, as there is one material: the hundred and
+## twenty nails of a pot were three hundred meshes made in the step it broke.)
+static var _box_meshes := {}
 static func _box(g: Node3D, w: float, h: float, d: float, color: int, x := 0.0, y := 0.0, z := 0.0) -> void:
 	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(w, h, d)
-	bm.material = _mat(color, bm.size)
+	var size := Vector3(w, h, d)
+	var key := "%d:%s" % [color, size]
+	var bm: BoxMesh = _box_meshes.get(key)
+	if bm == null:
+		bm = BoxMesh.new()
+		bm.size = size
+		bm.material = _mat(color, size)
+		_box_meshes[key] = bm
 	mi.mesh = bm
 	mi.position = Vector3(x, y, z)
 	g.add_child(mi)

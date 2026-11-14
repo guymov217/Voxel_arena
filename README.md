@@ -241,7 +241,16 @@ round it, the piece cut off; `reshade`: the shading round the cut; `fine_swell`:
 swelling), a third of the time the blow took in the script. And what a man or a beast is made of
 as he comes into a fight (`shade_all`, `local_all`, `index_cells`, `part_rows`, `shape_all`,
 `fine_own`: each voxel's shading and place, the maps of a part's cells, its drawing, its fine
-voxels' own colours), a tenth of the time. To build it for Linux, then load it:
+voxels' own colours), a tenth of the time.
+
+What a blow has drawn is kept out of the step it lands in where it can be (a thunder pot's blast
+is thirty blows in one step): the piece past a new break is set swinging in the frame after, one
+limb a frame (`VoxelPart.start_due`); a part's own boxes are not written while a finer look draws
+it, and are written whole if that look is taken off (`_boxes`, `boxes_back`); the plates one blow
+knocks off a helmet lay his hair again once (`Fighter._tuck_end`); and what comes out of a pot (a
+goat, the chickens) comes in over the frames that follow, as a wave's foes do (`Match.bring_in`).
+
+To build it for Linux, then load it:
 
 ```bash
 cd extension

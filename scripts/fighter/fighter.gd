@@ -1078,6 +1078,16 @@ const PLATE_SPREAD := 0.6
 static func plate_wear(mat: String) -> float:
 	return PLATE_WEAR * (0.5 + float(Data.material(mat).get("hardness", 0.6)))
 
+## The plates one blow knocks off his helmet: his hair is laid again once for them all, when the
+## last has gone (laid again for each, a blast's ten plates were twenty milliseconds of its frame).
+var _tuck_hold := 0
+var _tuck_due := false
+func _tuck_end() -> void:
+	_tuck_hold -= 1
+	if _tuck_hold <= 0 and _tuck_due:
+		_tuck_due = false
+		_tuck_hair(head)
+
 ## A plate knocked off: gone from him, it flies off the way the blow drove it, a piece of its
 ## own (what is left of him is uncovered there).
 func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force: float, fly := true) -> void:
@@ -1095,7 +1105,10 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 		# The hair the plate covered bursts out of the hole. (Only his head's: every piece on him
 		# laid again, his lorica's thousands of voxels with it, each plate off his helmet cost
 		# twenty milliseconds of a frame.)
-		_tuck_hair(head)
+		if _tuck_hold > 0:
+			_tuck_due = true
+		else:
+			_tuck_hair(head)
 		_hair_pop = 1.0
 		_hair_lagv += dir.normalized() * 0.6 if dir.length_squared() > 1e-6 else Vector3.ZERO
 	if part.freeze or not part.is_inside_tree() or not fly:
@@ -1173,6 +1186,7 @@ func place_armor(staged := false) -> void:
 				continue
 			var m: MultiMesh = ad.node.multimesh
 			ad.erase("xf")   # (the arm's plates against the chest: worked out again, _clip_arm_armor)
+			ad.erase("box_o")
 			p.remove_meta("armor_box")
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
@@ -3772,6 +3786,11 @@ var joint_caps := {}
 func _process(_dt: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	# (A bone broken in the step just done: the piece past the break set swinging now, before
+	# the limb below it is seated on its end: VoxelPart.start_due.)
+	for p in parts:
+		if p._dangle_due:
+			p.start_due()
 	_seat_drawing(true, _dt)
 	_draw_joint_caps()
 	_bend_drawing()
@@ -3793,9 +3812,20 @@ func _clip_arm_armor() -> void:
 		for ad in torso.get_meta("armor", []):
 			if _cosmetic(String(ad.id)) or ad.node == null or not is_instance_valid(ad.node):
 				continue
+			# (Where each plate of the piece is drawn: worked out once for the piece as it is laid
+			# on him, place_armor. Worked out again for every plate left each time one was knocked
+			# off his chest, it was milliseconds of the frame after the blow.)
+			var os = ad.get("box_o")
+			if not (os is PackedVector3Array) or (os as PackedVector3Array).size() != ad.cells.size():
+				var fresh := PackedVector3Array()
+				fresh.resize(ad.cells.size())
+				for ci in ad.cells.size():
+					fresh[ci] = Physique.plate_xf(torso, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)).origin
+				ad["box_o"] = fresh
+				os = fresh
 			for ci in ad.cells.size():
 				if ad.on[ci] == 1:
-					var o: Vector3 = Physique.plate_xf(torso, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)).origin
+					var o: Vector3 = os[ci]
 					lo = lo.min(o)
 					hi = hi.max(o)
 		var cell: float = torso.vf * torso.part_scale * float(Data.body_res) * 0.5
@@ -4127,6 +4157,9 @@ func _armored(p: VoxelPart) -> bool:
 ## Drawn where the bodies are now, with the game paused (the kill cam): the joints closed and
 ## capped off the bodies' own transforms, not the interpolation's.
 func draw_now() -> void:
+	for p in parts:
+		if p._dangle_due:
+			p.start_due()
 	_seat_drawing(false)
 	_draw_joint_caps(false)
 	_bend_drawing(false)
@@ -6846,6 +6879,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var force := J * (1.0 + 0.6 * heavy)   # a dent knocks a plate as a cut does; the blow's bite is another matter (armor_f)
 		var gone := 0
 		var reach := V * S * 1.7
+		_tuck_hold += 1
 		for k in near.size():
 			var ad: Dictionary = near[k][0]
 			var ci: int = near[k][1]
@@ -6862,6 +6896,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if k < int((PLATE_BURST if type == "blunt" else 1.0) * force / thr) or ad.wear[ci] >= thr or (gone > 0 and ad.wear[ci] >= PLATE_SPREAD * thr):
 				_knock_plate(part, ad, ci, hit.dir, force)
 				gone += 1
+		_tuck_end()
 		if gone > 0:
 			res.armor_hit = gone
 		# Plate on plate: armour built thicker (the bench's second and third layers under the
@@ -8522,6 +8557,7 @@ const BLAST_PLATES_FLY := 6
 func _blast_plates(part: VoxelPart, at_b: Vector3, power: float, radius: float, crater: float, res: Dictionary) -> void:
 	var gone := 0
 	var basis := part.global_transform.basis
+	_tuck_hold += 1
 	for ad in part.get_meta("armor", []):
 		var thr := plate_wear(ad.mat)
 		if not ad.has("wear"):
@@ -8543,6 +8579,7 @@ func _blast_plates(part: VoxelPart, at_b: Vector3, power: float, radius: float, 
 			if d_w < crater or ad.wear[i] >= thr:
 				_knock_plate(part, ad, i, (basis * -to_b).normalized(), power * f, gone < BLAST_PLATES_FLY)
 				gone += 1
+	_tuck_end()
 	if gone > 0:
 		res.armor_hit = int(res.get("armor_hit", 0)) + gone
 

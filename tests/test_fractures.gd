@@ -514,3 +514,34 @@ func test_a_break_follows_the_blow() -> void:
 	t.check(not ex.is_empty() and (ex[1] as Vector3).dot(-ld3) > 0.98, "an open break comes out on the side the blow came from")
 	t.check(absf((ex[0] as Vector3)[fo._root_axis()[0]] - float(fo.kink[1])) < 0.01, "and at the break itself")
 	m.queue_free()
+
+## Where nothing is drawn nothing swings: a break is drawn at once as it always was, no piece of it
+## waiting on a frame to be set swinging (VoxelPart.start_due, a screen's); and what changes of a
+## part while its own boxes are out of sight (under a finer look that draws it) is not written to
+## them, and is when they are drawn again (boxes_back).
+func test_a_break_without_a_screen_and_boxes_out_of_sight() -> void:
+	var mv := _victim()
+	var m: Match = mv[0]
+	var v: Fighter = mv[1]
+	await _steps(10)
+	var p: VoxelPart = v.by_name["forearmR"]
+	var ax: int = p._root_axis()[0]
+	var at := Vector3.ZERO
+	at[ax] = p.half_ext[ax] * 0.1
+	p.set_kink(at, 0.4, 40)
+	t.check(not p.kink.is_empty() and not p._dangle_due and not p.bent_drawn(), "broken, drawn at once: nothing waits to be set swinging")
+	p.start_due()
+	t.check(p.dangle_mm == null and not p.kink.is_empty(), "and nothing is")
+	p.set_kink(Vector3.ZERO, 0.0, 0)
+	t.check(p.kink.is_empty(), "set straight again")
+	var q: VoxelPart = v.by_name["thighL"]
+	t.check(q.mmi != null and q._boxes() and not q._boxes_stale, "drawn, a part's own boxes are written")
+	q.mmi.visible = false
+	var left0 := q.alive_count
+	q.wound(Vector3(0, 0, q.half_ext.z), 0.08, "bruise")
+	q.remove_voxels(q.voxels_within(Vector3(q.half_ext.x, 0, 0), 0.05))
+	t.check(not q._boxes() and q._boxes_stale, "out of sight they are not (%d voxels gone)" % (left0 - q.alive_count))
+	q.mmi.visible = true
+	q.boxes_back()
+	t.check(q._boxes() and not q._boxes_stale, "and are written whole when they are drawn again")
+	m.queue_free()

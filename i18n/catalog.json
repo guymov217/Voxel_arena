@@ -2792,31 +2792,31 @@
 "scripts/fighter/fighter.gd:1042"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2699"
+"scripts/fighter/fighter.gd:2713"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:2986"
+"scripts/fighter/fighter.gd:3000"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2988"
+"scripts/fighter/fighter.gd:3002"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:2988"
+"scripts/fighter/fighter.gd:3002"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:2994"
+"scripts/fighter/fighter.gd:3008"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:2994"
+"scripts/fighter/fighter.gd:3008"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:6767"
+"scripts/fighter/fighter.gd:6800"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:6783"
+"scripts/fighter/fighter.gd:6816"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:8706",
+"scripts/fighter/fighter.gd:8743",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3057,12 +3057,12 @@
 "scripts/fighter/combat.gd:82"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2593",
-"scripts/voxel/voxel_part.gd:2964",
-"scripts/voxel/voxel_part.gd:2978"
+"scripts/voxel/voxel_part.gd:2712",
+"scripts/voxel/voxel_part.gd:3090",
+"scripts/voxel/voxel_part.gd:3104"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:2885"
+"scripts/voxel/voxel_part.gd:3011"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:15"
@@ -4417,147 +4417,147 @@
 "scripts/game/social.gd:889"
 ],
 "Vulcan's fire": [
-"scripts/game/throwables.gd:696"
+"scripts/game/throwables.gd:708"
 ],
 "BOOM!": [
-"scripts/game/throwables.gd:720",
+"scripts/game/throwables.gd:732",
 "scripts/game/match.gd:2810"
 ],
 "Caltrops all over the sand. Watch your step.": [
-"scripts/game/throwables.gd:754"
+"scripts/game/throwables.gd:766"
 ],
 "%s is covered in bees!": [
-"scripts/game/throwables.gd:764",
-"scripts/game/throwables.gd:1677"
+"scripts/game/throwables.gd:776",
+"scripts/game/throwables.gd:1700"
 ],
 "The hive breaks open: the swarm goes for %s!": [
-"scripts/game/throwables.gd:792"
+"scripts/game/throwables.gd:804"
 ],
 "The crowd laughs. Every beast wants the goat.": [
-"scripts/game/throwables.gd:795"
+"scripts/game/throwables.gd:809"
 ],
 "%s's legs are tied up": [
-"scripts/game/throwables.gd:805"
+"scripts/game/throwables.gd:819"
 ],
 "Rotten fish sauce! %s": [
-"scripts/game/throwables.gd:824"
-],
-"%d weapons dropped in disgust.": [
-"scripts/game/throwables.gd:824"
-],
-"%d weapon dropped in disgust.": [
-"scripts/game/throwables.gd:824"
-],
-"The crowd holds its nose.": [
-"scripts/game/throwables.gd:824"
-],
-"%s is dripping honey, and the bees have found him!": [
 "scripts/game/throwables.gd:838"
 ],
+"%d weapons dropped in disgust.": [
+"scripts/game/throwables.gd:838"
+],
+"%d weapon dropped in disgust.": [
+"scripts/game/throwables.gd:838"
+],
+"The crowd holds its nose.": [
+"scripts/game/throwables.gd:838"
+],
+"%s is dripping honey, and the bees have found him!": [
+"scripts/game/throwables.gd:852"
+],
 "The mystery amphora was... thunder!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... nails!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... a goat!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... bees!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... chickens!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... confetti!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... a grape!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "The mystery amphora was... oil!": [
-"scripts/game/throwables.gd:844"
+"scripts/game/throwables.gd:858"
 ],
 "A single grape rolls out. The crowd is silent.": [
-"scripts/game/throwables.gd:853"
+"scripts/game/throwables.gd:867"
 ],
 "a grape": [
-"scripts/game/throwables.gd:855"
+"scripts/game/throwables.gd:869"
 ],
 "CHICKENS EVERYWHERE!": [
-"scripts/game/throwables.gd:862"
+"scripts/game/throwables.gd:879"
 ],
 "%s reeled in %s!": [
-"scripts/game/throwables.gd:883"
+"scripts/game/throwables.gd:900"
 ],
 "catch of the day": [
-"scripts/game/throwables.gd:884"
+"scripts/game/throwables.gd:901"
 ],
 "%s got hit by their own discus": [
-"scripts/game/throwables.gd:898"
+"scripts/game/throwables.gd:915"
 ],
 "%d caught in the big net": [
-"scripts/game/throwables.gd:908"
+"scripts/game/throwables.gd:925"
 ],
 "HEADSHOT! %s puts one in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1137"
+"scripts/game/throwables.gd:1160"
 ],
 "HEADSHOT! %s puts one in %s's head": [
-"scripts/game/throwables.gd:1137"
+"scripts/game/throwables.gd:1160"
 ],
 "HEADSHOT! Right in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1139"
+"scripts/game/throwables.gd:1162"
 ],
 "HEADSHOT! Right in %s's head": [
-"scripts/game/throwables.gd:1139"
+"scripts/game/throwables.gd:1162"
 ],
 "An anvil hits %s. Classic.": [
-"scripts/game/throwables.gd:1179"
-],
-"SPLAT! A tomato hits %s": [
-"scripts/game/throwables.gd:1190"
-],
-"%s eats the bread": [
-"scripts/game/throwables.gd:1199"
-],
-"%s downs the wine": [
 "scripts/game/throwables.gd:1202"
 ],
+"SPLAT! A tomato hits %s": [
+"scripts/game/throwables.gd:1213"
+],
+"%s eats the bread": [
+"scripts/game/throwables.gd:1222"
+],
+"%s downs the wine": [
+"scripts/game/throwables.gd:1225"
+],
 "%s pockets a gold coin": [
-"scripts/game/throwables.gd:1204"
+"scripts/game/throwables.gd:1227"
 ],
 "%s steps on a caltrop!": [
-"scripts/game/throwables.gd:1220"
+"scripts/game/throwables.gd:1243"
 ],
 "%s slipped on a banana peel!": [
-"scripts/game/throwables.gd:1229"
+"scripts/game/throwables.gd:1252"
 ],
 "%s is bowled over by a cheese wheel": [
-"scripts/game/throwables.gd:1249"
+"scripts/game/throwables.gd:1272"
 ],
 "%s caught the boomerang": [
-"scripts/game/throwables.gd:1253"
+"scripts/game/throwables.gd:1276"
 ],
 "%s slipped in the olive oil": [
-"scripts/game/throwables.gd:1626"
+"scripts/game/throwables.gd:1649"
 ],
 "%s bandages %s and helps them up": [
-"scripts/game/throwables.gd:1788"
+"scripts/game/throwables.gd:1811"
 ],
 "%s bandaged up": [
-"scripts/game/throwables.gd:1790"
+"scripts/game/throwables.gd:1813"
 ],
 "%s bowled a cheese wheel": [
-"scripts/game/throwables.gd:1799"
+"scripts/game/throwables.gd:1822"
 ],
 "%s laid a banana trap": [
-"scripts/game/throwables.gd:1805"
+"scripts/game/throwables.gd:1828"
 ],
 "%s ready: hold F to aim, let go to throw": [
-"scripts/game/throwables.gd:1836"
+"scripts/game/throwables.gd:1859"
 ],
 "%s put away": [
-"scripts/game/throwables.gd:1847"
+"scripts/game/throwables.gd:1870"
 ],
 "Fx": [
 "scripts/game/fx.gd:29"

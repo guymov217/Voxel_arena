@@ -671,6 +671,18 @@ func shatter(p: Vector3, type: String, dir = null) -> void:
 	if p.y < 0.6:
 		fx.mark("splat", Vector3(p.x, 0.01, p.z), 0.6)
 
+## The chickens out of their pot one a frame, where the game brings things in over frames
+## (Match.staging): the six made in the step the pot broke were a tenth of a second's stop.
+func _chickens_out(chicken: Dictionary, p: Vector3) -> void:
+	for i in 6:
+		if i > 0:
+			await get_tree().process_frame
+			if not is_inside_tree() or not is_instance_valid(m) or not m.is_inside_tree():
+				return
+		var w = m.spawn_loose_weapon(chicken, p + Vector3(randf_range(-0.2, 0.2), 0.4 + i * 0.1, randf_range(-0.2, 0.2)))
+		if w:
+			w.linear_velocity = Vector3(randf_range(-3.5, 3.5), 4.0 + randf() * 4.0, randf_range(-3.5, 3.5))
+
 func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null, power := 1.0) -> void:
 	var pot := type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
 	if pot:
@@ -791,7 +803,9 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 					swarms.append(sw)
 					m.feed.emit(Loc.t("The hive breaks open: the swarm goes for %s!") % best.display_name)
 		"pot_goat":
-			m.spawn_beast({"beast": "goat", "team": 2, "pos": Vector3(p.x, 0.1, p.z), "yaw": 0.0, "harmless": true})
+			# (Brought in over the frames that follow where the game can, Match.bring_in: made
+			# in the step its pot broke, the goat stopped the fight for a seventh of a second.)
+			m.bring_in([{"kind": "beast", "beast": "goat", "team": 2, "pos": Vector3(p.x, 0.1, p.z), "yaw": 0.0, "harmless": true}])
 			m.feed.emit("The crowd laughs. Every beast wants the goat.")
 		"pot_bola":
 			for x in _near(p, 1.5):
@@ -855,10 +869,13 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.crowd_add(owner_, -3, "a grape")
 		"pot_chickens":
 			var chicken := Data.preset("chicken")
-			for i in 6:
-				var w = m.spawn_loose_weapon(chicken, p + Vector3(randf_range(-0.2, 0.2), 0.4 + i * 0.1, randf_range(-0.2, 0.2)))
-				if w:
-					w.linear_velocity = Vector3(randf_range(-3.5, 3.5), 4.0 + randf() * 4.0, randf_range(-3.5, 3.5))
+			if m.has_method("staging") and m.staging():
+				_chickens_out(chicken, p)
+			else:
+				for i in 6:
+					var w = m.spawn_loose_weapon(chicken, p + Vector3(randf_range(-0.2, 0.2), 0.4 + i * 0.1, randf_range(-0.2, 0.2)))
+					if w:
+						w.linear_velocity = Vector3(randf_range(-3.5, 3.5), 4.0 + randf() * 4.0, randf_range(-3.5, 3.5))
 			m.feed.emit("CHICKENS EVERYWHERE!")
 			if owner_:
 				m.crowd_add(owner_, 10, "chickens")
@@ -945,6 +962,8 @@ func nail_burst(p: Vector3, fwd: Vector3, sd: int, owner_, visual: bool) -> void
 const LOOSE_NAILS := 48
 var loose_nails: Array = []
 var flying_nails: Array = []
+static var _nail_pm: PhysicsMaterial = null
+static var _nail_shape: BoxShape3D = null
 
 func _nail_body(at: Vector3, vel: Vector3) -> RigidBody3D:
 	if not m.is_inside_tree():
@@ -952,13 +971,17 @@ func _nail_body(at: Vector3, vel: Vector3) -> RigidBody3D:
 	var b := RigidBody3D.new()
 	b.mass = 0.02
 	b.continuous_cd = true
-	b.physics_material_override = PhysicsMaterial.new()
-	b.physics_material_override.bounce = 0.35
-	b.physics_material_override.friction = 0.7
+	# (One shape and one way of bouncing for every nail: a pot's hundred and twenty each had
+	# their own made in the step it broke.)
+	if _nail_pm == null:
+		_nail_pm = PhysicsMaterial.new()
+		_nail_pm.bounce = 0.35
+		_nail_pm.friction = 0.7
+		_nail_shape = BoxShape3D.new()
+		_nail_shape.size = Vector3(0.014, 0.014, 0.09)
+	b.physics_material_override = _nail_pm
 	var cs := CollisionShape3D.new()
-	var bx := BoxShape3D.new()
-	bx.size = Vector3(0.014, 0.014, 0.09)
-	cs.shape = bx
+	cs.shape = _nail_shape
 	b.add_child(cs)
 	if not m.headless:
 		b.add_child(Items.visual("nail"))

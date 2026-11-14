@@ -776,6 +776,8 @@ static func clear(p: VoxelPart) -> void:
 		p.dangle_mesh.visible = true
 	if p.jaw_mesh:
 		p.jaw_mesh.visible = true
+	# (What was not written to its own boxes while they were out of sight under this look.)
+	p.boxes_back()
 	for k in ["mi", "wmi", "jaw_mi"]:
 		var mi = p.fine.get(k)
 		if mi != null and is_instance_valid(mi):
@@ -1063,7 +1065,7 @@ static func _expose(p: VoxelPart, i: int, write := true) -> void:
 		# A voxel drawn as it is (wholly inside him): drawn as its cells now.
 		if p.shape_xf.size() > i:
 			p.shape_xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (p.shape_xf[i] as Transform3D).origin)
-		if p.mm != null:
+		if p.mm != null and p._boxes():
 			p.mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 	# (`write` false: its cells are written with the others the blow bared, _wounds.)
 	if write:
@@ -1088,7 +1090,7 @@ static func _cover(p: VoxelPart, i: int) -> void:
 			wm.set_instance_transform(slot * 8 + k, none)
 	if int((fine.hid as PackedByteArray)[i]) == 0 and p.shape_xf.size() > i:
 		p.shape_xf[i] = mapped(p, fine.d, p.local_positions()[i])
-		if p.mm != null and p.alive[i] == 1:
+		if p.mm != null and p.alive[i] == 1 and p._boxes():
 			p.mm.set_instance_transform(i, p.drawn_xf(i))
 
 ## The colour of a bared voxel's cell `k` (0..7), `code` deep: the skin as the skin is drawn, the
@@ -1320,7 +1322,7 @@ static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
 	var fine: Dictionary = p.fine
 	if fine.get("mm") == null or fine.get("beast", false) or r <= 0.0:
 		return
-	if p.dangle_mm != null and not p.kink.is_empty():
+	if p.bent_drawn():
 		return   # (a limb drawn bent at a break: its skin is laid round the bend, not here)
 	if not fine.has("xf0"):
 		# (The layout's places are shared by every man of the build: his own copy, to swell.)
@@ -1604,11 +1606,18 @@ static func dangle_off(p: VoxelPart) -> void:
 	var par: PackedInt32Array = fine.par
 	var cxf: Array = fine.xf
 	var fslot: PackedInt32Array = fine.far_slot
+	var far: MultiMesh = fine.far_mm
 	if mm != null:
 		for s in par.size():
 			if fslot[s] >= 0:
 				var j := par[s]
 				mm.set_instance_transform(s, cxf[s] if j >= 0 and p.alive[j] == 1 else Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+				# (As it came to look while it swung: the blood and the bruises of the blows since
+				# the break were drawn on the piece that swung only, and were gone from him when
+				# the limb was bent further or set.)
+				if far != null and fslot[s] < far.instance_count:
+					mm.set_instance_color(s, far.get_instance_color(fslot[s]))
+					mm.set_instance_custom_data(s, far.get_instance_custom_data(fslot[s]))
 	var mi = fine.get("far_mi")
 	if mi != null and is_instance_valid(mi):
 		mi.queue_free()

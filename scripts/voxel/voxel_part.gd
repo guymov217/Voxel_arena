@@ -62,6 +62,8 @@ func snap_drawing() -> void:
 func _process(_dt: float) -> void:
 	if mmi == null and skin == null:
 		return
+	if _dangle_due:
+		start_due()
 	if dangle_mesh:
 		swing_now(_dt)
 	_draw_at(global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated())
@@ -69,6 +71,8 @@ func _process(_dt: float) -> void:
 ## Drawn where the body is now, with the game paused (the kill cam puts the bodies back where
 ## they were and plays them forward while nothing else runs: _process with it).
 func draw_now() -> void:
+	if _dangle_due:
+		start_due()
 	_draw_at(global_transform)
 	snap_drawing()
 
@@ -395,6 +399,88 @@ func _column_top(c1: int, c2: int, k: int, sg: float) -> float:
 var dangle_slot := {}
 var dangle_mm: MultiMesh = null
 var dangle_mesh: MultiMeshInstance3D = null
+## The piece past a new break is set swinging in the frame after the blow, a limb a frame
+## (start_due): set at once, each was milliseconds of the step the blow fell in, and a blast
+## breaks ten bones in one step.
+var _dangle_due := false
+static var _dangle_frame := -1
+static var _dangle_n := 0
+const DANGLES_A_FRAME := 1
+
+## Whether there is anything to draw a broken limb's swinging piece on (_start_dangle).
+func _dangles() -> bool:
+	return mm != null and DisplayServer.get_name() != "headless"
+
+## Drawn bent at a break, or about to be (start_due).
+func bent_drawn() -> bool:
+	return not kink.is_empty() and (dangle_mm != null or _dangle_due)
+
+## Each frame, by its fighter before he seats his limbs on one another and by the part itself:
+## the piece past a break just made is set swinging (one limb a frame, DANGLES_A_FRAME).
+func start_due() -> void:
+	if not _dangle_due:
+		return
+	if kink.is_empty():
+		_dangle_due = false
+		return
+	var f := Engine.get_process_frames()
+	if f != _dangle_frame:
+		_dangle_frame = f
+		_dangle_n = 0
+	if _dangle_n >= DANGLES_A_FRAME:
+		return
+	_dangle_n += 1
+	_dangle_due = false
+	_start_dangle()
+	if dangle_mm == null:
+		resync()
+	elif _boxes():
+		# Whole till now, and what is past the break drawn swinging from here on: only that is
+		# taken out of the part's own drawing; nothing else of it has changed. (Every voxel of it
+		# drawn again, and of the piece that swings a second time, was three milliseconds a break.)
+		var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+		for i in dangle_slot:
+			if not jaw_slot.has(i):
+				mm.set_instance_transform(i, none)
+
+## The part's own boxes, and those of the piece past a break, are out of sight under a finer look
+## that draws it (FineBody): what changes of them is not written to them (it was a share of every
+## blow's drawing, and of every frame a broken limb swung), and they are written whole if the
+## finer look is ever taken off (boxes_back).
+var _boxes_stale := false
+func _boxes() -> bool:
+	if mmi != null and not mmi.visible:
+		_boxes_stale = true
+		return false
+	return true
+
+func _dangle_boxes() -> bool:
+	if dangle_mesh != null and not dangle_mesh.visible:
+		_boxes_stale = true
+		return false
+	return true
+
+## Its own boxes are drawn again (FineBody.clear): all that was not written to them is.
+func boxes_back() -> void:
+	if not _boxes_stale or mm == null:
+		return
+	_boxes_stale = false
+	if dangle_mm:
+		for i in dangle_slot:
+			var sl: int = dangle_slot[i]
+			var k := 1.0 if alive[i] and not veiled(i) else 0.0
+			var base := _dangle_base(i)
+			dangle_mm.set_instance_transform(sl, Transform3D(base.basis.scaled(Vector3.ONE * k), base.origin))
+			dangle_mm.set_instance_color(sl, colors[i])
+			dangle_mm.set_instance_custom_data(sl, _custom(i))
+		_band_was = INF
+		for row in _band:
+			row[6] = false
+	resync()
+	if mm.use_custom_data:
+		for i in fx.size():
+			if not jaw_slot.has(i):
+				mm.set_instance_custom_data(i, _custom(i, glowing.get(i, Vector2.ZERO)))
 var _sw_q := Quaternion()           # the swing, part-local, about the break
 var _sw_w := Vector3.ZERO           # its angular velocity
 var _sw_lv := Vector3.ZERO          # the part's velocity (world) last frame
@@ -499,10 +585,12 @@ func _lay_bend() -> void:
 		_band_was = INF
 		for row in _band:
 			row[6] = false
+	var boxes := _dangle_boxes()
 	if nc:
 		# The C++ core lays the band, voxel by voxel, in one call.
-		nc.lay_band(dangle_mm, _band_rows, _band_ix, alive, veil, g[0], g[2], g[1], b, _band_was, g[7], g[5], g[3], g[4], inv)
-		_band_was = b
+		if boxes:
+			nc.lay_band(dangle_mm, _band_rows, _band_ix, alive, veil, g[0], g[2], g[1], b, _band_was, g[7], g[5], g[3], g[4], inv)
+			_band_was = b
 		if fine.has("far_mm"):
 			FineBody.lay(self, g, inv, b, nc)
 	else:
@@ -516,7 +604,7 @@ func _lay_bend() -> void:
 		# Each layer of voxels along the bone is turned and placed on the arc alike: worked out
 		# once a layer (with the far piece's inverse folded in), then each voxel stretched and set.
 		var lay_of := {}
-		for row in _band:
+		for row in (_band if boxes else []):
 			var i: int = row[1]
 			if not alive[i] or veiled(i):
 				continue
@@ -632,9 +720,17 @@ func _start_dangle() -> void:
 		return
 	_stop_dangle()
 	var idx := []
-	for i in fx.size():
-		if _past_break(i):
-			idx.append(i)
+	var lps := local_positions()
+	var k_ax: int = kink[0]
+	var k_at := float(kink[1])
+	if bool(kink[3]):
+		for i in fx.size():
+			if lps[i][k_ax] - k_at < 0.0:
+				idx.append(i)
+	else:
+		for i in fx.size():
+			if lps[i][k_ax] - k_at > 0.0:
+				idx.append(i)
 	if idx.is_empty():
 		return
 	dangle_mm = MultiMesh.new()
@@ -643,23 +739,28 @@ func _start_dangle() -> void:
 	dangle_mm.use_custom_data = true
 	dangle_mm.mesh = mm.mesh
 	dangle_mm.instance_count = idx.size()
+	# (Under a finer look the piece's own boxes are not drawn, and not written: boxes_back.)
+	var boxes := not fine.has("body")
+	if not boxes:
+		_boxes_stale = true
 	for s in idx.size():
 		var i: int = idx[s]
 		dangle_slot[i] = s
-		var k := 1.0 if alive[i] and not veiled(i) else 0.0
-		var base := _dangle_base(i)
-		dangle_mm.set_instance_transform(s, Transform3D(base.basis.scaled(Vector3.ONE * k), base.origin))
-		dangle_mm.set_instance_color(s, colors[i])
-		dangle_mm.set_instance_custom_data(s, _custom(i))
+		if boxes:
+			var k := 1.0 if alive[i] and not veiled(i) else 0.0
+			var base := _dangle_base(i)
+			dangle_mm.set_instance_transform(s, Transform3D(base.basis.scaled(Vector3.ONE * k), base.origin))
+			dangle_mm.set_instance_color(s, colors[i])
+			dangle_mm.set_instance_custom_data(s, _custom(i))
 	dangle_mm.custom_aabb = mmi.custom_aabb
 	# The voxels over the break: laid round the bend as it swings (_lay_bend).
 	var pv := _dangle_pivot()
 	var tip: Vector3 = _across()[2]
 	var reach := _band_len(PI)
 	_band = []
-	for i in idx:
-		if (local_of(i) - pv).dot(tip) < reach:
-			_band.append([dangle_slot[i], i])
+	for s in idx.size():
+		if (lps[idx[s]] - pv).dot(tip) < reach:
+			_band.append([s, idx[s]])
 	_band_terms()
 	_hang_r = _hang_reach()
 	_bend_q = Quaternion(0, 0, 0, 0)
@@ -731,6 +832,7 @@ func _band_terms() -> void:
 	_bend_q = Quaternion(0, 0, 0, 0)
 
 func _stop_dangle() -> void:
+	_dangle_due = false
 	if fine.has("body"):
 		FineBody.dangle_off(self)
 	if dangle_mm:
@@ -1616,21 +1718,27 @@ func refresh_colors(indices: Array = []) -> void:
 	var main := []
 	var jaw := []
 	var dang := []
-	for i in list:
-		if jaw_slot.has(i):
-			jaw.append([jaw_slot[i], colors[i]])
-		else:
-			main.append([i, colors[i]])
-			if dangle_slot.has(i):
-				dang.append([dangle_slot[i], colors[i]])
-	_write_colors(mm, main)
+	# (Its own boxes only while they are drawn: _boxes.)
+	var boxes := _boxes()
+	var dboxes := dangle_mm != null and _dangle_boxes()
+	if boxes or dboxes or not jaw_slot.is_empty():
+		for i in list:
+			if jaw_slot.has(i):
+				jaw.append([jaw_slot[i], colors[i]])
+			else:
+				if boxes:
+					main.append([i, colors[i]])
+				if dboxes and dangle_slot.has(i):
+					dang.append([dangle_slot[i], colors[i]])
+	if boxes:
+		_write_colors(mm, main)
 	if fine.has("body"):
 		FineBody.colored(self, list)
 	elif not fine.is_empty():
 		FineHead.colored(self, list)
 	if jaw_mm:
 		_write_colors(jaw_mm, jaw)
-	if dangle_mm:
+	if dboxes:
 		_write_colors(dangle_mm, dang)
 	_write_glow(list)
 	_mark_skin()
@@ -1766,23 +1874,27 @@ func resync() -> void:
 	# most of the hitch when a big creature's bone broke and its limb was drawn bent.)
 	var none := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	var jaw := not jaw_slot.is_empty()
-	for i in fx.size():
-		if jaw and jaw_slot.has(i):
-			continue
-		mm.set_instance_transform(i, drawn_xf(i) if alive[i] and not veiled(i) else none)
-		mm.set_instance_color(i, colors[i])
+	# (Its own boxes only while they are drawn: _boxes.)
+	var boxes := _boxes()
+	if boxes:
+		for i in fx.size():
+			if jaw and jaw_slot.has(i):
+				continue
+			mm.set_instance_transform(i, drawn_xf(i) if alive[i] and not veiled(i) else none)
+			mm.set_instance_color(i, colors[i])
 	if dangle_mm:
-		var d_on := []
-		var d_off := []
-		var d_col := []
-		for i in dangle_slot:
-			(d_on if alive[i] and not veiled(i) else d_off).append([dangle_slot[i], _dangle_base(i)])
-			d_col.append([dangle_slot[i], colors[i]])
-		_write_shown(dangle_mm, d_on, true)
-		_write_shown(dangle_mm, d_off, false)
-		_write_colors(dangle_mm, d_col)
+		if _dangle_boxes():
+			var d_on := []
+			var d_off := []
+			var d_col := []
+			for i in dangle_slot:
+				(d_on if alive[i] and not veiled(i) else d_off).append([dangle_slot[i], _dangle_base(i)])
+				d_col.append([dangle_slot[i], colors[i]])
+			_write_shown(dangle_mm, d_on, true)
+			_write_shown(dangle_mm, d_off, false)
+			_write_colors(dangle_mm, d_col)
 		_bend_q = Quaternion(0, 0, 0, 0)
-	if veil.size() > 0 or bevel:
+	if boxes and (veil.size() > 0 or bevel):
 		for i in fx.size():
 			if not jaw_slot.has(i):
 				mm.set_instance_custom_data(i, _custom(i, glowing.get(i, Vector2.ZERO)))
@@ -2090,7 +2202,7 @@ func bevel_bits(i: int) -> int:
 ## What the listed voxels are made of has changed (a prosthetic fitted): their instance data
 ## written again, so the shader draws them as what they now are.
 func refresh_kinds(indices: Array) -> void:
-	if mm == null or not mm.use_custom_data:
+	if mm == null or not mm.use_custom_data or not _boxes():
 		return
 	for i in indices:
 		if not jaw_slot.has(i):
@@ -2559,24 +2671,31 @@ func set_shown(indices: Array, on: bool) -> void:
 	var main := []
 	var jaw := []
 	var dang := []
+	# (Its own boxes only while they are drawn: _boxes.)
+	var boxes := _boxes()
+	var dboxes := dangle_mm != null and _dangle_boxes()
 	# (Hidden, a voxel is drawn at no size wherever it was: where it would be drawn is not worked
 	# out for each one a limb cut off leaves behind.)
-	for i in indices:
-		if i < 0 or i >= fx.size() or (on and veiled(i)):
-			continue
-		if jaw_slot.has(i):
-			jaw.append([jaw_slot[i], (local_of(i) - jaw_pivot.position) if on else Vector3.ZERO])
-		else:
-			main.append([i, drawn_xf(i) if on else Transform3D()])
-			if dangle_slot.has(i):
-				dang.append([dangle_slot[i], _dangle_base(i) if on else Transform3D()])
-	_write_shown(mm, main, on)
+	if boxes or dboxes or not jaw_slot.is_empty():
+		for i in indices:
+			if i < 0 or i >= fx.size() or (on and veiled(i)):
+				continue
+			if jaw_slot.has(i):
+				jaw.append([jaw_slot[i], (local_of(i) - jaw_pivot.position) if on else Vector3.ZERO])
+			else:
+				if boxes:
+					main.append([i, drawn_xf(i) if on else Transform3D()])
+				if dboxes and dangle_slot.has(i):
+					dang.append([dangle_slot[i], _dangle_base(i) if on else Transform3D()])
+	if boxes:
+		_write_shown(mm, main, on)
 	if fine.has("body"):
 		FineBody.shown(self, indices, on)
 	elif not fine.is_empty():
 		FineHead.shown(self, indices, on)
 	if dangle_mm:
-		_write_shown(dangle_mm, dang, on)
+		if dboxes:
+			_write_shown(dangle_mm, dang, on)
 		_bend_q = Quaternion(0, 0, 0, 0)
 	_mark_skin()
 	if jaw_mm:
@@ -2637,7 +2756,14 @@ func set_kink(at: Vector3, angle: float, code: int) -> void:
 		return
 	var kb := _kink_basis(at, angle, code)
 	var ra := _root_axis()
+	var was := not kink.is_empty()
 	kink = [int(ra[0]), float(kb[1]), kb[0], bool(ra[1]), code, angle]
+	if not was and _dangles():
+		# A bone whole till now, and a screen to draw it on: the piece past the break is set
+		# swinging in the frame after the blow (start_due).
+		_dangle_due = true
+		return
+	_dangle_due = false
 	_start_dangle()
 	resync()
 

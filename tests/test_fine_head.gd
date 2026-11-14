@@ -315,3 +315,37 @@ func test_an_old_saves_hairstyle() -> void:
 		t.eq(int(menu.look().hair), int(l.hair), "the same when read again")
 	Save.set_value("look", keep)
 	menu.free()
+
+## The plates one blow knocks off his helmet: his hair is laid again once, when the last of them has
+## gone (Fighter._tuck_end), as it lies when it is laid again after each (a blast's ten plates each
+## laid it anew, twenty milliseconds of the blast's frame).
+func test_plates_knocked_off_in_one_blow_lay_his_hair_once() -> void:
+	var w := _world()
+	Physique.forced = "human"
+	var k := w.fighter(Vector3(0, 1.2, 0), 0.0, {"armor": ["hair_topknot", "helmet"]}, {"skin": 0xc68e5e})
+	var each := w.fighter(Vector3(2.0, 1.2, 0), 0.0, {"armor": ["hair_topknot", "helmet"]}, {"skin": 0xc68e5e})
+	Physique.forced = ""
+	var helmet := func(f: Fighter) -> Dictionary:
+		for ad in f.head.get_meta("armor", []):
+			if String(ad.id) == "helmet":
+				return ad
+		return {}
+	var tucked := func(f: Fighter) -> Array:
+		var keys: Array = (f.head.fine.get("tucked", {}) as Dictionary).keys()
+		keys.sort()
+		return keys
+	var before: int = (tucked.call(k) as Array).size()
+	# A blast over the top of his head, behind: the plates turned to it go, the rest hold.
+	var res := {}
+	k._blast_plates(k.head, Vector3(0, k.head.half_ext.y + 0.12, -k.head.half_ext.z - 0.1), 40.0, 3.0, 0.0, res)
+	var ha: Dictionary = helmet.call(k)
+	var hb: Dictionary = helmet.call(each)
+	var gone := int(res.get("armor_hit", 0))
+	t.check(gone >= 2 and int(ha.alive) > 0, "the blast takes plates off his helmet (%d, %d left)" % [gone, int(ha.alive)])
+	t.check(k._tuck_hold == 0 and not k._tuck_due, "his hair is laid when the last of them has gone")
+	# The same plates off the other man one by one, his hair laid after each.
+	for ci in ha.on.size():
+		if ha.on[ci] == 0 and hb.on[ci] == 1:
+			each._knock_plate(each.head, hb, ci, Vector3.UP, 1.0, false)
+	t.check(tucked.call(k) == tucked.call(each), "as it lies laid after each plate (%d under the helmet still, %d before)" % [(tucked.call(k) as Array).size(), before])
+	t.check((tucked.call(k) as Array).size() < before, "what the plates held under it is out")
