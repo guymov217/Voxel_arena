@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "Молот титана",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Банка чогось чорного зі Сходу. Сьогодні в лікаря є одна. Вона робить найтяжче поранену частину вашого тіла (%s) знову цілою, плоть і кістку, ніби її ніколи й не ранили.",
  "%s is carried off the sand": "%s виносять з піску",
- "You were carried off the sand: the physician will see to your wounds.": "Вас винесли з піску: лікар подбає про ваші рани."
+ "You were carried off the sand: the physician will see to your wounds.": "Вас винесли з піску: лікар подбає про ваші рани.",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s мс на кадр · найдовший за 5 с %s мс · %s кадрів довше 33 мс",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "фізика %.1f мс за крок · кадр без фізики %.1f мс (малювання %.1f мс) · відеокарта %.1f мс",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 перемикає повноекранний режим. F3 показує частоту кадрів."
 }

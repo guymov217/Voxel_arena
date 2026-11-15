@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "ค้อนไททัน",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "โถใส่ของสีดำจากตะวันออก วันนี้หมอมีอยู่หนึ่งโถ มันทำให้ส่วนที่บาดเจ็บหนักที่สุดของคุณ (%s) กลับมาสมบูรณ์ ทั้งเนื้อและกระดูก ราวกับไม่เคยบาดเจ็บ",
  "%s is carried off the sand": "%s ถูกหามออกจากลานทราย",
- "You were carried off the sand: the physician will see to your wounds.": "คุณถูกหามออกจากลานทราย หมอจะดูแลบาดแผลของคุณ"
+ "You were carried off the sand: the physician will see to your wounds.": "คุณถูกหามออกจากลานทราย หมอจะดูแลบาดแผลของคุณ",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s ms ต่อเฟรม · นานสุดใน 5 วินาที %s ms · %s เฟรมเกิน 33 ms",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "ฟิสิกส์ %.1f ms ต่อขั้น · เฟรมไม่รวมฟิสิกส์ %.1f ms (การวาด %.1f ms) · การ์ดจอ %.1f ms",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 สลับโหมดเต็มจอ F3 แสดงอัตราเฟรม"
 }

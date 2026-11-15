@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "泰坦之槌",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "一罐來自東方的黑色東西。醫師今天正好有一罐。它能讓你傷得最重的部位（%s）連皮肉帶骨頭完好如初，就像從沒受過傷。",
  "%s is carried off the sand": "%s 被抬出了沙地",
- "You were carried off the sand: the physician will see to your wounds.": "你被抬出了沙地：醫師會處理你的傷口。"
+ "You were carried off the sand: the physician will see to your wounds.": "你被抬出了沙地：醫師會處理你的傷口。",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · 每幀 %s 毫秒 · 5 秒內最長 %s 毫秒 · 超過 33 毫秒的幀 %s",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "物理 每步 %.1f 毫秒 · 不含物理的影格 %.1f 毫秒 (繪製 %.1f 毫秒) · 顯示卡 %.1f 毫秒",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 切換全螢幕。F3 顯示幀率。"
 }

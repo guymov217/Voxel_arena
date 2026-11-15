@@ -71,6 +71,8 @@ func _ready() -> void:
 	_cmdline_room.call_deferred()
 	world_root = Node3D.new()
 	get_parent().add_child.call_deferred(world_root)
+	# F3: the frame rate in the corner, wherever he is (FpsMeter).
+	get_tree().root.add_child.call_deferred(FpsMeter.new())
 	bg = ColorRect.new()
 	bg.color = Color(0.06, 0.045, 0.035)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -3873,7 +3875,7 @@ func _options_graphics(v: VBoxContainer, st: Dictionary) -> void:
 	dm.item_selected.connect(func(i):
 		_set_opt("display", DISPLAY_MODES[i][0])
 		apply_display(Save.get_value("settings", {})))
-	_opt_row(v, "Display", dm, "F11 toggles full screen.")
+	_opt_row(v, "Display", dm, "F11 toggles full screen. F3 shows the frame rate.")
 	var ws := OptionButton.new()
 	var sizes := window_sizes()
 	var scr := DisplayServer.screen_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1920, 1080)

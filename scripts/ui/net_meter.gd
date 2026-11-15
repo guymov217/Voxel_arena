@@ -1,10 +1,10 @@
 class_name NetMeter
 extends CanvasLayer
-## F3 in a room: how the connection is doing, in the corner of the screen, green, amber or
-## red: the round trip to the host (each guest's, on the host), whether the host's game keeps
-## up (120 physics steps a second), how often snapshots come and the longest wait between two,
-## and what goes in and out. While it is open a line a second goes to user://net_log.csv, the
-## record of a test to send on.
+## F3 in a room (with the frame rate's meter, FpsMeter): how the connection is doing, in the
+## corner of the screen, green, amber or red: the round trip to the host (each guest's, on the
+## host), whether the host's game keeps up (120 physics steps a second), how often snapshots
+## come and the longest wait between two, and what goes in and out. While it is open a line a
+## second goes to user://net_log.csv, the record of a test to send on.
 
 const LOG := "user://net_log.csv"
 var label: RichTextLabel

@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "Młot Tytana",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Słój czegoś czarnego ze Wschodu. Lekarz ma dziś jeden. Przywraca najciężej zranioną część twojego ciała (%s) do całości, ciało i kość, jakby nigdy nie była zraniona.",
  "%s is carried off the sand": "%s zostaje wyniesiony z piasku",
- "You were carried off the sand: the physician will see to your wounds.": "Wyniesiono cię z piasku: lekarz zajmie się twoimi ranami."
+ "You were carried off the sand: the physician will see to your wounds.": "Wyniesiono cię z piasku: lekarz zajmie się twoimi ranami.",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s ms na klatkę · najdłuższa w 5 s %s ms · %s klatek ponad 33 ms",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "fizyka %.1f ms na krok · klatka bez fizyki %.1f ms (rysowanie %.1f ms) · karta graficzna %.1f ms",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 przełącza pełny ekran. F3 pokazuje liczbę klatek na sekundę."
 }

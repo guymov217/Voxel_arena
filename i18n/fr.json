@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "Maillet du Titan",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Un pot de quelque chose de noir venu d'Orient. Le médecin en a un aujourd'hui. Il rend entière la partie la plus meurtrie de votre corps (%s), chair et os, comme si elle n'avait jamais été blessée.",
  "%s is carried off the sand": "%s est emporté hors du sable",
- "You were carried off the sand: the physician will see to your wounds.": "On vous a emporté hors du sable : le médecin s'occupera de vos blessures."
+ "You were carried off the sand: the physician will see to your wounds.": "On vous a emporté hors du sable : le médecin s'occupera de vos blessures.",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s ms par image · la pire sur 5 s %s ms · %s images au-delà de 33 ms",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "physique %.1f ms par pas · image hors physique %.1f ms (dessin %.1f ms) · carte graphique %.1f ms",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 bascule en plein écran. F3 affiche la fréquence d'images."
 }

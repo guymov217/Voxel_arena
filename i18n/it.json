@@ -2709,5 +2709,8 @@
  "Titan's Gavel": "Martello del Titano",
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Un vasetto di qualcosa di nero dall'Oriente. Oggi il medico ne ha uno. Rende di nuovo integra la parte più malridotta del tuo corpo (%s), carne e ossa, come se non fosse mai stata ferita.",
  "%s is carried off the sand": "%s viene portato via dalla sabbia",
- "You were carried off the sand: the physician will see to your wounds.": "Sei stato portato via dalla sabbia: il medico si occuperà delle tue ferite."
+ "You were carried off the sand: the physician will see to your wounds.": "Sei stato portato via dalla sabbia: il medico si occuperà delle tue ferite.",
+ "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s ms per fotogramma · il peggiore in 5 s %s ms · %s fotogrammi oltre 33 ms",
+ "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "fisica %.1f ms per passo · fotogramma senza fisica %.1f ms (disegno %.1f ms) · scheda video %.1f ms",
+ "F11 toggles full screen. F3 shows the frame rate.": "F11 attiva/disattiva lo schermo intero. F3 mostra la frequenza dei fotogrammi."
 }

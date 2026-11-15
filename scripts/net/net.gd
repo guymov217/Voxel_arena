@@ -64,16 +64,19 @@ func _ready() -> void:
 		set_lag(int(OS.get_environment("NET_LAG")), float(OS.get_environment("NET_LOSS")) if OS.get_environment("NET_LOSS") != "" else 0.0)
 
 var meter: CanvasLayer = null
-func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F3 and active():
-		if meter and is_instance_valid(meter):
-			meter.queue_free()
-			meter = null
-			stats_on = false
-		else:
-			meter = load("res://scripts/ui/net_meter.gd").new()
-			add_child(meter)
-			stats_on = true
+## The connection's meter in the corner, open or put away: F3 in a room, with the frame rate's
+## (FpsMeter, which has the key).
+func show_meter(on: bool) -> void:
+	if on == (meter != null and is_instance_valid(meter)):
+		return
+	if on:
+		meter = load("res://scripts/ui/net_meter.gd").new()
+		add_child(meter)
+		stats_on = true
+	else:
+		meter.queue_free()
+		meter = null
+		stats_on = false
 
 func set_lag(ms: int, loss_pct := 0.0) -> void:
 	lag_ms = maxi(0, ms)
