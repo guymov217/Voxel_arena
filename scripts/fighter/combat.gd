@@ -287,12 +287,17 @@ func process_contacts(_dt: float) -> Array:
 				continue
 			if att.fighter.kind != "beast" and not att.def.get("bite", false):
 				var n: String = att.part_name
-				if n.begins_with("shin") and not att.fighter.kick_timer > 0.0:
+				if n.begins_with("shin") and not att.fighter.kick_strike():
 					continue
 				var own: float = (_lin(att) - _lin(att.fighter.torso)).length()
-				if n.begins_with("forearm") and own < (1.5 if att.fighter.jab_t[n.right(1)] > 0.0 else 2.5):
-					continue
-				if n == "head" and own < 3.0:
+				# A fist strikes while it is thrown or swung (Fighter.fist_strike), not whenever it
+				# moves: drawn in, on its way home, or flung aside by a blow it is a touch.
+				if n.begins_with("forearm"):
+					var fs: int = att.fighter.fist_strike(n.right(1))
+					if fs == 0 or own < (1.5 if fs == 2 else 2.5):
+						continue
+				# (Nor is a head rocked by the blow it has just taken a butt at the man who dealt it.)
+				if n == "head" and (own < 3.0 or att.fighter.daze_t > 0.0):
 					continue
 		else:
 			continue
@@ -349,6 +354,8 @@ func _clang(g: Dictionary, out: Array) -> void:
 
 ## The speed of a point driven home (m/s, along its blade) that puts all of a thrust behind it.
 const THRUST_FULL_V := 3.0
+## How much of the hardest a punch can land (its cap) makes it a punch that has landed, and ends it.
+const JAB_SOLID := 0.6
 
 ## An elephant's, a mammoth's or a boar's tusk, any length of it: it lands a blow when the head that
 ## drives it strikes (Beast.strikes_with), a gore or a slash, as a real one's does (user).
@@ -367,7 +374,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	if is_weapon and att.holder == null and not att.thrown_t > 0.0 and not att.is_hazard:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
-	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_timer > 0.0
+	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_strike()
 	var tusk: bool = not is_weapon and not club and _tusk(att)
 	var bite: bool = not is_weapon and not club and (att.def.get("bite", false) or att.def.get("point", false) or tusk)
 	var punch: bool = not is_weapon and not club and not bite and not kick
@@ -381,7 +388,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var fist: bool = bite and att.def.get("fist", false)
 	if fist and speed < 3.0:
 		return {}
-	var jabbing: bool = punch and att.fighter.jab_t.get(att.part_name.right(1), 0.0) > 0.0
+	var jabbing: bool = punch and att.fighter.fist_strike(att.part_name.right(1)) == 2
 	var m_eff: float
 	if is_weapon or club:
 		# The bigger the weapon, the harder it lands: its weight is most of the blow (a stick or
@@ -499,8 +506,17 @@ func _blow(g: Dictionary) -> Dictionary:
 	var key := "%d:%d" % [att.get_instance_id(), vic.get_instance_id()]
 	if not _cooldown(key, J, 0.14):
 		return {}
-	if not bite and not _cooldown("blow:%d:%d" % [att.get_instance_id(), vic_char.get_instance_id()], J, 0.32):
+	var blow_key := "blow:%d:%d" % [att.get_instance_id(), vic_char.get_instance_id()]
+	var before = cool.get(blow_key)
+	if not bite and not _cooldown(blow_key, J, 0.32):
 		return {}
+	# One strike of a fist or a foot lands once on a man. A harder contact of the same strike (the
+	# fist through his guard and on to his head, a touch that grows into the blow as the arm
+	# drives on) lands with what the first left of it, not whole on top of it: one punch was two
+	# and three blows, 8 and 14 on the forearm and 30 on the head.
+	var j_whole := J
+	if (punch or kick) and before != null and time - float(before[0]) < 0.32:
+		J -= float(before[1])
 	if bite and not _cooldown("bite:%d" % att.get_instance_id(), J, 0.45):
 		return {}
 	var typ := "blunt"
@@ -598,6 +614,10 @@ func _blow(g: Dictionary) -> Dictionary:
 		att.fighter.bit(att, vic, res, dir)
 	if attacker:
 		vic_char.last_attacker = attacker
+	# A punch that has landed does not go on to the end of its reach: the fist starts home. (One
+	# that landed solidly: a touch on the way, his forearm brushed, does not stop it.)
+	if jabbing and j_whole >= JAB_SOLID * cap:
+		att.fighter.jab_landed(att.part_name.right(1))
 	# A thrown blade that lands edge-on, or a point that lands point first, and bites deep
 	# enough stays in the wound (combat.js).
 	if thrown and is_weapon and not vic.severed and J > 9.0:

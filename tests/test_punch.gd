@@ -17,7 +17,7 @@ func _punch(m: Match, att: Fighter, vic: Fighter, speed: float) -> Dictionary:
 	# (The combat reads the bodies' speeds as they were at the start of the step.)
 	m.combat.vel[fist.get_instance_id()] = [fist.linear_velocity, Vector3.ZERO]
 	m.combat.vel[vic.head.get_instance_id()] = [vic.head.linear_velocity, Vector3.ZERO]
-	att.jab_t["R"] = Fighter.JAB_TIME * 0.5
+	att.jab_t["R"] = Fighter.JAB_TIME * (1.0 - 0.5 * (Fighter.JAB_DRAW + Fighter.JAB_BACK))   # (on its way out)
 	var v0: Vector3 = vic.torso.linear_velocity
 	var h: Dictionary = m.combat._blow({"att": fist, "vic": vic.head, "J": 0.0, "rank": 0, "type": "blunt", "mat": "", "box": {}, "p": vic.head.global_position - dir * 0.08})
 	var out := {"hit": h, "stagger": vic.stagger, "daze": vic.daze_t}
@@ -175,5 +175,51 @@ func test_a_punch_opens_the_elbow_on_its_way_out() -> void:
 		t.check(home > guard - 0.25 and not fore.get_meta("elbow_locked", false), "%s: on its way back the arm folds into the guard again (%.0f deg, the guard's %.0f)" % [side, rad_to_deg(home), rad_to_deg(guard)])
 		t.check(rise < deg_to_rad(30.0), "%s: and comes home without swinging up first (the upper arm %.0f deg above level at the most)" % [side, rad_to_deg(rise)])
 		await _steps(90)
+	m.queue_free()
+	await get_tree().physics_frame
+
+## A punch is one motion (user: it jumped from the pullback to its full reach): its mark never
+## jumps from one step to the next, it is drawn in first and is out at the end of the drive; and
+## the trunk is most of the way round before the fist is out.
+func test_a_punch_is_one_motion() -> void:
+	var worst := 0.0
+	var dk := 1.0 / (Fighter.JAB_TIME * 120.0)
+	var k := 0.0
+	while k < 1.0:
+		worst = maxf(worst, absf(Fighter.jab_reach_at(minf(1.0, k + dk)) - Fighter.jab_reach_at(k)))
+		k += dk
+	t.check(worst < 0.6, "the fist's mark moves on step by step (the most in one step %.2f)" % worst)
+	t.check(Fighter.jab_reach_at(Fighter.JAB_DRAW * 0.9) < 0.0 and Fighter.jab_reach_at(Fighter.JAB_OUT) > 1.7, "drawn in first, out at the end of the drive")
+	t.check(Fighter.jab_reach_at(1.0) < 0.01, "and home at the end")
+	t.check(Fighter.jab_turn_at(Fighter.JAB_DRAW) > 0.5 and Fighter.jab_turn_at(Fighter.JAB_OUT) > 0.99, "the trunk is turning before the fist goes (%.2f) and round when it is out" % Fighter.jab_turn_at(Fighter.JAB_DRAW))
+
+## A fist strikes while it is thrown or swung, not drawn in or on its way home or flung by a blow
+## (any touch of it while the punch's clock ran was a punch); a foot while it goes out, not as the
+## knee comes up or the foot is set down.
+func test_fists_and_feet_strike_only_on_their_way() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "", "off": ""}})
+	var me: Fighter = m.me.f
+	var at := func(k: float) -> int:
+		me.jab_t["R"] = Fighter.JAB_TIME * (1.0 - k)
+		return me.fist_strike("R")
+	t.eq(at.call(0.05), 0, "drawn in: no punch")
+	t.eq(at.call(0.25), 2, "on its way out: a punch")
+	t.eq(at.call(0.8), 0, "on its way home: no punch")
+	me.jab_t["R"] = 0.0
+	me.fist_swing["R"] = 0.0
+	t.eq(me.fist_strike("R"), 0, "a hand at rest (or knocked aside) strikes nothing")
+	me.fist_swing["R"] = 0.1
+	t.eq(me.fist_strike("R"), 1, "swung by its owner it strikes")
+	me.fist_swing["R"] = 0.0
+	me.stomp_at = null
+	me.kick_timer = Fighter.KICK_TIME - 0.03
+	t.check(not me.kick_strike(), "the knee coming up kicks nothing")
+	me.kick_timer = Fighter.KICK_TIME - 0.18
+	t.check(me.kick_strike(), "the foot going out kicks")
+	me.kick_timer = Fighter.KICK_TIME - 0.38
+	t.check(not me.kick_strike(), "nor does the foot being set down")
+	me.kick_timer = 0.0
 	m.queue_free()
 	await get_tree().physics_frame

@@ -2093,7 +2093,14 @@ static func hit_sounds(h: Dictionary) -> Array:
 		"point":
 			out.append(["stab", g])
 		_:
-			out.append(["thud", g])
+			# A fist lands short and dry, a foot or a stamp heavier: the same thud, the fist's a
+			# little lighter than its weight, the foot's a little fuller.
+			if h.get("punch", false):
+				out.append(["thud", clampf(0.2 + J / 45.0, 0.2, 0.75)])
+			elif h.get("kick", false):
+				out.append(["thud", clampf(0.4 + J / 25.0, 0.4, 1.0)])
+			else:
+				out.append(["thud", g])
 	# (Laid under the blow's own sound, not over it: two and three at full strength at once
 	# were a din.)
 	# A bone broken through is heard over the blow: a loud, wet snap.
@@ -2102,7 +2109,9 @@ static func hit_sounds(h: Dictionary) -> Array:
 	elif res.get("bone", false):
 		out.append(["crunch", clampf(0.25 + J / 60.0, 0.25, 0.6)])
 	if res.get("armor", false):
-		out.append(["clang", g * 0.3])
+		# Bare flesh on a plate is heard as that: the plate rings louder than under a weapon's
+		# blow, the thud of the knuckles or the heel under it.
+		out.append(["clang", g * (0.6 if h.get("punch", false) or h.get("kick", false) else 0.3)])
 	return out
 
 ## Sparks off a plate a weapon skidded across, thrown on along `dir` (host and guests).
@@ -2490,6 +2499,10 @@ func _on_hit(h: Dictionary) -> void:
 	# A fist or a foot landing on the player jolts his view (camera_rig.jolt).
 	if me and cam and h.get("char") == me.f and (h.get("punch", false) or h.get("kick", false)) and h.get("dir") is Vector3:
 		cam.jolt(h.dir, float(h.get("J", 0.0)) / 25.0)
+	# And a fist or a foot of his own that lands, a little: felt through his own arm or leg, back
+	# along the blow (only one that lands solidly; a third of what a blow taken does at the most).
+	if me and cam and h.get("attacker") == me.f and h.get("char") != me.f and (h.get("punch", false) or h.get("kick", false)) and h.get("dir") is Vector3 and float(h.get("J", 0.0)) > 8.0:
+		cam.jolt(-(h.dir as Vector3), float(h.get("J", 0.0)) / 90.0)
 	if me and h.get("attacker") == me.f and h.get("char") is Fighter and h.char.team != me.f.team:
 		hit_by_me[h.char] = true
 		if h.get("p") is Vector3:

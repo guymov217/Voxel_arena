@@ -119,6 +119,28 @@ var time := 0.0
 var gait_phase := 0.0
 var kick_timer := 0.0
 var stomp_at = null   # where a kick begun over a man lying at his feet comes down (a stamp), or null
+const KICK_TIME := 0.42      # a kick, from the knee coming up to the foot set down (s)
+var kick_wn := 1.0           # how fast the kicking leg goes to its pose this beat (of LEG_WN)
+## A front kick's pose `e` seconds into it: [the thigh raised forward (rad), the knee's bend (rad),
+## how fast the leg is driven to it]. The weight goes onto the other foot as the knee comes up
+## (the chamber), the foot is driven out fast, drawn back in to the chamber, then set down.
+static func kick_pose(e: float) -> Array:
+	if e < 0.12:
+		return [lerpf(0.4, 1.15, PD.smooth(0.0, 0.1, e)), 1.8, 1.0]
+	if e < 0.24:
+		return [1.45, 0.05, 1.25]
+	if e < 0.34:
+		return [1.05, 1.6, 1.2]
+	return [0.35, 0.5, 0.8]
+## Whether the kicking foot strikes now: on its way out and out (not as the knee comes up, nor
+## drawn back in or set down); a stamp, once it is driven down. For the combat.
+func kick_strike() -> bool:
+	if kick_timer <= 0.0:
+		return false
+	if stomp_at != null:
+		return kick_timer <= STOMP_CHAMBER + 0.03
+	var e := KICK_TIME - kick_timer
+	return e >= 0.1 and e < 0.3
 const STOMP_BELOW := 0.25     # how far under the hip what lies before him is for a stamp (m, at S 1)
 const STOMP_CHAMBER := 0.26   # a stamp's knee is up until the kick's clock is down to this (of 0.42 s)
 const STOMP_LIFT := 0.45      # how high over the man the foot is drawn up (m, at S 1)
@@ -284,6 +306,12 @@ var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
 var fist_home := {"R": 0.0, "L": 0.0}   # a punch's way back to the guard, still to go (s)
+var jab_twist_was := 0.0   # the trunk's turn behind a punch, as it was asked the step before (rad)
+var jab_next := {"R": false, "L": false}   # a punch asked for while that hand's last was on its way home
+var fist_swing := {"R": 0.0, "L": 0.0}   # how much longer the hand counts as swung by its owner (s): fist_strike
+var mark_was := {"R": null, "L": null}   # the hand's mark over the body the step before
+const FIST_SWING_V := 1.5   # how fast the mark has to be sent over the body to be a swing (m/s, at S 1)
+const FIST_SWING_T := 0.15  # and how long after that the hand still is one (it trails its mark)
 var swing_hold := {"R": 0.0, "L": 0.0}   # seconds the elbow stays set after a fast stroke
 var swing_reach := {"R": 0.0, "L": 0.0}   # how far a swung weapon's hand is put out to the end of the arm (0..1)
 var pane_prev := {"R": null, "L": null}  # last step's hand on the pane (what the mouse asked)
@@ -915,15 +943,75 @@ func _make_limited(p: VoxelPart, lim: Array) -> void:
 	j.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, lim[2][1])
 	p.joint = j
 
-## A jab's beats, as parts of JAB_TIME: drawn back until JAB_DRAW, driven out until JAB_BACK,
-## then home again; and how near straight the elbow has to be before it locks for the blow.
-const JAB_DRAW := 0.12
-const JAB_BACK := 0.6
+## A jab's beats, as parts of JAB_TIME: the fist drawn in a little until JAB_DRAW (the load), sent
+## out faster and faster until JAB_OUT, out at the end of its reach until JAB_BACK, then home to
+## the guard; and how near straight the elbow has to be before it locks for the blow. One motion
+## (jab_reach_at): it was drawn back, sent the whole way in one jump and held out straight for a
+## tenth of a second, the trunk turning after it was out (user). A fist that lands does not
+## wait out there: it starts home at once (jab_landed).
+const JAB_DRAW := 0.14
+const JAB_OUT := 0.3
+const JAB_BACK := 0.46
 const PUNCH_LOCK_BEND := 0.25
 const JAB_COCK := 0.3   # how far the fist is drawn in before it goes (in the hand mark's reach units)
+const JAB_FULL := 1.8   # and how far it is sent (the same units: past the end of the arm)
 const JAB_REACH := 1.15  # where the fist is sent on its way out, in arm lengths
-const JAB_HOME := 0.15   # how long the fist takes to come back to the guard (of JAB_TIME)
+const JAB_HOME := 0.2   # how long the fist's mark takes to come back to the guard (of JAB_TIME)
 const JAB_HOME_TIME := 0.3   # how long after a punch its arm is folded back into the guard (s)
+const JAB_TURN := 0.5   # how far the trunk turns behind a punch, that shoulder forward (rad)
+const JAB_LEAN := 0.08  # and how far it leans in behind it (rad)
+
+## Where a punch's hand mark is `k` of the way through it (0..1 of JAB_TIME), in the mark's
+## reach units: drawn in, sent out gathering speed, out, and home fast at first.
+static func jab_reach_at(k: float) -> float:
+	if k < JAB_DRAW:
+		var u := k / JAB_DRAW
+		return -JAB_COCK * u * u * (3.0 - 2.0 * u)
+	if k < JAB_OUT:
+		var u2 := (k - JAB_DRAW) / (JAB_OUT - JAB_DRAW)
+		return -JAB_COCK + (JAB_FULL + JAB_COCK) * u2 * u2
+	if k < JAB_BACK:
+		return JAB_FULL
+	var v := maxf(0.0, 1.0 - (k - JAB_BACK) / JAB_HOME)
+	return JAB_FULL * v * v
+
+## How far round the trunk is behind a punch `k` of the way through it (0..1; under 0, no punch):
+## it goes before the fist (most of the way while the fist is still drawn in), is round by the
+## time the fist is at the end of its reach, and comes back with it.
+static func jab_turn_at(k: float) -> float:
+	if k < 0.0:
+		return 0.0
+	if k < JAB_OUT:
+		var u := 1.0 - k / JAB_OUT
+		return 1.0 - u * u
+	if k < JAB_BACK:
+		return 1.0
+	var v := clampf((k - JAB_BACK) / (0.92 - JAB_BACK), 0.0, 1.0)
+	return 1.0 - v * v * (3.0 - 2.0 * v)
+
+## What the fist of that hand is doing, for the combat: 2 while a punch is on its way out (the
+## beats from JAB_DRAW to JAB_BACK), 1 while its owner swings the empty hand himself (its mark
+## sent across by the mouse or a bot's aim), 0 otherwise: a punch being drawn in or on its way
+## home, an arm knocked aside by a blow, a hand carried round by the trunk. Only the first two
+## strike (any touch of a fist while its punch's clock ran was a punch, drawn in or coming home;
+## and an arm flung by the blow it had just taken punched the man who dealt it).
+func fist_strike(side: String) -> int:
+	var t: float = jab_t.get(side, 0.0)
+	if t > 0.0:
+		var k := 1.0 - t / JAB_TIME
+		return 2 if k >= JAB_DRAW and k < JAB_BACK else 0
+	return 1 if float(fist_swing.get(side, 0.0)) > 0.0 else 0
+
+## A punch of that hand has landed, and solidly (the combat's blow, as it lands; a graze on the
+## way, a forearm brushed, does not stop it): the fist does not go on to the end of its reach and
+## wait there as one that met nothing does, it starts home at once.
+func jab_landed(side: String) -> void:
+	var t: float = jab_t.get(side, 0.0)
+	if t <= 0.0:
+		return
+	var k := 1.0 - t / JAB_TIME
+	if k >= JAB_DRAW and k < JAB_BACK:
+		jab_t[side] = JAB_TIME * (1.0 - JAB_BACK - 0.5 * JAB_HOME)
 
 ## The elbow's bend now (0: straight), the forearm's line against the upper arm's.
 func elbow_bend(side: String) -> float:
@@ -3354,6 +3442,13 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					var side_w2 := yaw_q * Vector3(1, 0, 0)
 					var off1 := Vector3(fs.anchor.x - t_pos.x, 0, fs.anchor.z - t_pos.z)
 					move_world += PD.clamp_len(side_w2 * off1.dot(side_w2) * 0.6 * STANCE_K, 0.25)
+		# As the knee comes up the weight goes over the standing foot (sideways only, and only
+		# then: drawn on over it through the kick, the body went into the kick with the foot and
+		# it landed half as hard again).
+		if kick_timer > KICK_TIME - 0.12 and stomp_at == null and feet.L and not feet.L.swing and not by_name["shinL"].severed:
+			var side_k := yaw_q * Vector3(1, 0, 0)
+			var off_k := Vector3(feet.L.anchor.x - t_pos.x, 0, feet.L.anchor.z - t_pos.z)
+			move_world += PD.clamp_len(side_k * off_k.dot(side_k) * STANCE_K, 0.2)
 		if planted == 2 and feet.L and feet.R:
 			var mid: Vector3 = ((feet.L.anchor as Vector3) + (feet.R.anchor as Vector3)) * 0.5
 			var off := Vector3(mid.x - t_pos.x, 0, mid.z - t_pos.z)
@@ -3417,19 +3512,33 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		low_hand = 0.0
 		thrust_lean = 0.0
 		var kneel_lean := 0.75 * (1.0 - e2) if rising else 0.0
-		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S)) + (crouch - crouch_h) * 0.6
+		# A punch has the trunk behind it: turned, the punching shoulder forward, and leant in. The
+		# later of two punches has the trunk, the turn of the one before giving way to it as it
+		# comes (added up, a left on the heels of a right held the trunk square between them, and
+		# stiff); two thrown together turn it neither way, and it leans in behind both.
+		var jk_r: float = 1.0 - float(jab_t.R) / JAB_TIME if float(jab_t.R) > 0.0 else -1.0
+		var jk_l: float = 1.0 - float(jab_t.L) / JAB_TIME if float(jab_t.L) > 0.0 else -1.0
+		var turn_r := jab_turn_at(jk_r)
+		var turn_l := jab_turn_at(jk_l)
+		var jab_lean := maxf(turn_r, turn_l) * JAB_LEAN
+		if jk_r >= 0.0 and jk_l >= 0.0:
+			if jk_r < jk_l:
+				turn_l *= 1.0 - turn_r
+			elif jk_l < jk_r:
+				turn_r *= 1.0 - turn_l
+		var jab_twist := (turn_r - turn_l) * JAB_TURN
+		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S)) + (crouch - crouch_h) * 0.6 + jab_lean
 		if S < 1.3:
 			lean_a = minf(lean_a, LEAN_MAX)   # (a giant leans far out over a man on the sand to reach him)
 		var lean := Quaternion(Vector3(1, 0, 0), lean_a + kneel_lean)
 		if h_speed < 0.4 and live:
 			var sway := 7.0 if one_leg else 1.0
 			lean = Quaternion(Vector3(0, 0, 1), 0.01 * sway * sin(time * 0.6 * sqrt(sway) + slot * 2)) * Quaternion(Vector3(1, 0, 0), 0.012 * sway * sin(time * 0.9 * sqrt(sway) + slot)) * lean
-		var twist := 0.0
-		for s in ["R", "L"]:
-			var t: float = jab_t[s]
-			if t > 0.0:
-				var k := 1.0 - t / JAB_TIME
-				twist += (1.0 if s == "R" else -1.0) * 0.5 * (k / 0.15 if k < 0.15 else (1.0 if k < 0.6 else 1.0 - (k - 0.6) / 0.4))
+		var twist := jab_twist
+		# (How fast that turn is meant to go, for the drive below: held to the turn alone, the
+		# trunk came round a tenth of a second behind the fist.)
+		var twist_rate := (jab_twist - jab_twist_was) / dt
+		jab_twist_was = jab_twist
 		# Both hands on a haft, the shoulders turn with the stroke: out to the side the arm across
 		# the chest was at the end of its reach and the blade stopped short of the mouse.
 		if two_handed and live:
@@ -3452,7 +3561,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if not rising and not jolted and tilt > LEAN_MAX * 0.8:
 			hold *= 1.0 + 3.0 * clampf((tilt - LEAN_MAX * 0.8) / 0.5, 0.0, 1.0)
 		var wn := (8.0 if rising else 12.0) * sqrt(balance) * sqrt(hold)
-		var tq := (err * (wn * wn) - torso.angular_velocity * (2.0 * wn)) * I
+		var tq := (err * (wn * wn) - (torso.angular_velocity - UP * twist_rate) * (2.0 * wn)) * I
 		torso.apply_torque_impulse(PD.clamp_len(tq, 1400.0 * balance * MS * S * hold) * dt)
 
 	# ----- Head -----
@@ -3481,7 +3590,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	kick_timer = maxf(0.0, kick_timer - dt)
 	# (Not on a broken leg, nor standing on one: it is no use at all, user.)
 	if inp.get("kick", false) and kick_timer <= 0.0 and stamina > 12.0 and standing and not leg_broken("R") and not leg_broken("L"):
-		kick_timer = 0.42
+		kick_timer = KICK_TIME
 		stamina -= 12.0
 		stomp_at = _stomp_spot(yaw_q)
 	var move_amt: float = minf(1.0, h_speed / 2.5)
@@ -3505,6 +3614,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var bend := 0.2
 		if kicking:
 			var chamber := kick_timer > (STOMP_CHAMBER if stomp_at != null else 0.3)
+			# A stamp follows the man under it while the knee is up: rolled or dragged aside, the
+			# foot comes down where he is now, not where he lay when the kick began.
+			if stomp_at != null and chamber:
+				var again = _stomp_spot(yaw_q)
+				if again != null:
+					stomp_at = again
 			if stomp_at != null:
 				# Over a man lying at his feet the kick is a stamp (user: a man on the sand could
 				# not be kicked; out at hip height the foot went over him): the knee comes up high,
@@ -3518,8 +3633,13 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				thigh_q = ik[0]
 				bend = ik[1]
 			else:
-				thigh_q = Quaternion(Vector3(-1, 0, 0), 1.1 if chamber else 1.45)
-				bend = 1.7 if chamber else 0.05
+				# A front kick's beats (kick_pose): the knee drawn up, the foot driven out, drawn
+				# back in, set down. (It went out and stayed out at hip height a quarter of a
+				# second, then dropped straight.)
+				var kp := kick_pose(KICK_TIME - kick_timer)
+				thigh_q = Quaternion(Vector3(-1, 0, 0), kp[0])
+				bend = kp[1]
+				kick_wn = kp[2]
 			if feet[side]:
 				feet[side].swing = true
 		elif standing and grounded:
@@ -3691,9 +3811,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var m2 := 1.0 / (1.0 / maxf(0.05, shin.mass) + r2.length_squared() / PD.inertia_of(shin))
 				var fy := clampf(-over * 0.25 * m2 / (dt * dt) - maxf(0.0, sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0)
 				shin.apply_impulse(Vector3(0, fy * dt, 0), r2)
-		motor_rel(thigh, torso, thigh_q, LEG_WN * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
+		var wn_k: float = kick_wn if kicking and stomp_at == null else 1.0
+		motor_rel(thigh, torso, thigh_q, LEG_WN * wn_k * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
-			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
+			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * wn_k * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
 		# The sand is under the sole, standing as lying: the legs pass through the ground while
 		# he stands (the spring holds him), and a weak leg's step dragged its foot along under
 		# the sand (a cyclops with hacked shins stood knee-deep, user). Pushed up only, never
@@ -4641,6 +4762,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var fore: VoxelPart = a.fore
 	var e_was = elbow_prev[side]   # last step's elbow line, only while a weapon arm drives on
 	elbow_prev[side] = null
+	fist_swing[side] = maxf(0.0, float(fist_swing[side]) - dt)
 	if upper.severed or fore.severed or upper.hanging or fore.hanging or not live:
 		if not live and fore.has_meta("elbow_set"):
 			_hold_elbow(side, 0.0, false, dt)
@@ -4776,9 +4898,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if th_in > 0.3 and state == "stand" and w and not w.is_shield and not w.design.has("shoots") and shove_t <= 0.0:
 		strength *= 1.0 + 0.6 * clampf(th_in, 0.0, 1.0)
 	var hp: Dictionary = _ease_mark(side, inp.get("main" if mk else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}), dt)
-	if not w and inp.get("jabR" if side == "R" else "jabL", false) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
+	# (Asked for again while that hand's punch is on its way home: kept, and thrown as it ends. The
+	# second click of a quick pair was lost, the fist not yet back.)
+	var jab_in: bool = inp.get("jabR" if side == "R" else "jabL", false)
+	if jab_in and jab_t[side] > 0.0 and 1.0 - float(jab_t[side]) / JAB_TIME >= JAB_BACK:
+		jab_next[side] = true
+	if not w and (jab_in or jab_next[side]) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
 		jab_t[side] = JAB_TIME
 		stamina -= 5.0
+		jab_next[side] = false
+	elif jab_t[side] <= 0.0 or w:
+		jab_next[side] = false
 	jab_t[side] = maxf(0.0, jab_t[side] - dt)
 	var jk: float = 1.0 - jab_t[side] / JAB_TIME if jab_t[side] > 0.0 else -1.0
 	if jk >= JAB_BACK:
@@ -4789,7 +4919,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		fist_home[side] = maxf(0.0, fist_home[side] - dt)
 	var jab = null
 	if jk >= 0.0:
-		jab = -JAB_COCK * jk / JAB_DRAW if jk < JAB_DRAW else (1.8 if jk < JAB_BACK else 1.8 * maxf(0.0, 1.0 - (jk - JAB_BACK) / JAB_HOME))
+		jab = jab_reach_at(jk)
 	var thrust: float = 1.0 if shove_t > 0.0 else (jab if jab != null else float(inp.get("thrust", 0.0) if mk else inp.get("offThrust", 0.0)))
 	# A fist lands with the whole arm behind it (character.js lockElbowOf): the elbow locks rigid,
 	# so the forearm goes where the upper arm drives it; but only once the arm is all but
@@ -4870,6 +5000,14 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var reach_on: bool = w != null and not w.is_shield and absf(thr_used) < 0.05 and (power_now or swing_hold[side] > 0.0)
 	swing_reach[side] = move_toward(float(swing_reach[side]), 1.0 if reach_on else 0.0, (12.0 if reach_on else 2.5) * dt)
 	var target := hand_target_local(side, hp_used, thr_used)
+	# Whether its owner is swinging this empty hand himself (the mouse, a bot's aim): how fast he
+	# sends its mark over his body, not how fast the hand goes (an arm knocked aside by a blow
+	# moves fast, and its mark not at all; nor is a mark shaken by a knock on the head, or moved
+	# out of the body's way, a swing). For the combat: fist_strike.
+	var m_was = mark_was[side]
+	mark_was[side] = target
+	if m_was != null and (target - (m_was as Vector3)).length() > FIST_SWING_V * S * dt:
+		fist_swing[side] = FIST_SWING_T
 	# Reaching for the haft (H pressed with its end behind him): to the grip, or to the nearest
 	# place in front of the body while the grip is behind it.
 	if side == two_off() and grip_wait > 0.0 and weapons[two_side] and not two_handed:
@@ -4932,6 +5070,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	_unwedge(side, dt, yaw_q, t_pos)
 	target = _clear_body(target, yaw_q, t_pos, side)
 	var target_w := t_pos + yaw_q * target
+	# The other fist's punch turns the trunk (jab_twist_was): an empty hand not itself thrown goes
+	# round with its shoulder, held where it was on him. (Left where it was before him, the guard
+	# hand's arm straightened as its shoulder went back, and reached out beside the punch.)
+	# Thrown itself, it lets go of the trunk's turn as it is drawn in (its punch goes where it is
+	# aimed, before him) and takes it up again on its way home: no jump at either end.
+	if not w and jab_twist_was != 0.0 and held_item == null and state == "stand":
+		var carry := 1.0
+		if jk >= 0.0:
+			carry = 1.0 - PD.smooth(0.0, JAB_DRAW, jk) if jk < JAB_BACK else PD.smooth(JAB_BACK, 1.0, jk)
+		if carry > 0.0:
+			target_w = t_pos + yaw_q * (Quaternion(UP, jab_twist_was * carry) * target)
 	# A thrust is a straight stab along the blade, wherever it points: the line the blade is on
 	# when the button goes down is kept where it lies (in the arena, not on the body: a lean or a
 	# lunge only gives the arm more reach along it, where carried with the trunk the point sank

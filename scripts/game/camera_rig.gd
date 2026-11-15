@@ -9,6 +9,9 @@ var jolt_v := Vector3.ZERO      # the view knocked aside by a blow taken, settli
 const FOV := 59.0                 # the view's height, degrees (it was 65)
 const FOV_AIM := 46.0             # aiming a throw or a shot (it was 50)
 
+## How far out from the middle of the arena the camera may stand (m): a hand's width inside its wall.
+const WALL_IN := Arena.RADIUS - 0.25
+
 ## A blow taken jolts the view along `dir`, `k` 0..1 how hard (a few centimetres at most).
 func jolt(dir: Vector3, k: float) -> void:
 	var d := Vector3(dir.x, dir.y * 0.4, dir.z)
@@ -289,6 +292,13 @@ func follow(f, yaw: float, pitch: float, dt: float, aiming := false, foe = null,
 		want = _spot(base, want, shift, S)
 		pos = pos.lerp(want, minf(1.0, dt * 10.0))
 		eye = _clear_of_walls(base + Vector3(0, 0.5 * S, 0), pos, S, dt)
+		# Never out past the arena's wall: down at its foot, his chest a hand's width from it, the
+		# way out to the camera started there and ended a finger past the wall, the fight seen
+		# from outside it.
+		var r_eye := Vector2(eye.x, eye.z).length()
+		if r_eye > WALL_IN:
+			eye.x *= WALL_IN / r_eye
+			eye.z *= WALL_IN / r_eye
 		# The view looks where the mouse points: all the way down at the sand at your feet,
 		# or up at the stands (it used to look at a point two strides ahead, and looking down
 		# hardly tilted it).

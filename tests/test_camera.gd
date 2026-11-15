@@ -81,7 +81,11 @@ func test_pinned_to_the_wall_the_camera_holds_still_and_sees() -> void:
 		t.check(r.turn < 300.0, "%s: the view holds (%.0f degrees in all)" % [sc[0], r.turn])
 		t.check(r.behind_wall == 0, "%s: never behind the wall (%d frames)" % [sc[0], r.behind_wall])
 		t.check(r.inside == 0, "%s: never inside his own body (%d frames)" % [sc[0], r.inside])
-		t.check(r.hidden < r.n * 0.1, "%s: the foe in sight (hidden %d of %d frames)" % [sc[0], r.hidden, r.n])
+		# (Looking along the wall the foe is off to his side, and the camera no longer goes round
+		# him or rises over him to keep him in sight (user: only the player turns the camera):
+		# whether the foe steps behind him there is the fight's doing, not the camera's.)
+		if sc[4] == sc[2]:
+			t.check(r.hidden < r.n * 0.1, "%s: the foe in sight (hidden %d of %d frames)" % [sc[0], r.hidden, r.n])
 
 func test_the_point_of_your_own_blade_does_not_lift_the_camera() -> void:
 	await get_tree().physics_frame

@@ -70,10 +70,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **Fists**: with both hands empty he stands in a boxer's guard (an empty hand beside a weapon
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight
-  back into the guard, the elbow down (`Fighter.JAB_*`, `tests/punchprobe.gd`).
+  back into the guard, the elbow down (`Fighter.JAB_*`, `tests/punchprobe.gd`). The punch is one
+  motion (`jab_reach_at`): a short load, out faster and faster, home again; the trunk turns and
+  leans in ahead of the fist (`jab_turn_at`, the later of two punches taking it), the guard hand
+  goes round with it, and a click while that fist is still coming home is thrown as it gets
+  there. A fist strikes only while it is thrown or swung by its owner (`fist_strike`), one that
+  lands solidly starts home at once, and one strike of a fist or a foot lands once on a man
+  whatever parts of him it crosses. A front kick shifts the weight onto the standing foot as the
+  knee comes up, drives the foot out, draws it back in and sets it down (`kick_pose`); it
+  strikes only on its way out (`kick_strike`).
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A kick at a man down at
   one's feet (lying, sitting, on his knees) is a stamp: the knee comes up and the foot is driven
-  down onto him (`tests/stompprobe.gd`). A giant's blows vary:
+  down onto him, where he is while the knee is up (`tests/stompprobe.gd`). A giant's blows vary:
   a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
   has knocked down it goes on striking; it does not stand off and watch him. Now and then it
   stoops to him instead, its hand right down on him, takes hold of him where he lies and lifts
