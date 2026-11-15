@@ -2710,6 +2710,12 @@
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "동방에서 온 검은 무언가가 든 단지. 오늘 의사에게 하나 있습니다. 가장 심하게 다친 부위(%s)를 살과 뼈까지, 다친 적이 없었던 것처럼 온전하게 되돌립니다.",
  "%s is carried off the sand": "%s이(가) 모래 위에서 실려 나갑니다",
  "You were carried off the sand: the physician will see to your wounds.": "당신은 모래 위에서 실려 나왔습니다. 상처는 의사가 돌봐 줄 것입니다.",
+ "K|PRO POPVLO": "K|PRO POPVLO",
+ "for the crowd: one more foe, double the prize": "관중을 위한 싸움: 적 하나 더, 상금 두 배",
+ "%d of %d stand here": "%d / %d명이 여기 서 있음",
+ "%s · you stand for this fight, the host leads the party through": "%s · 이 싸움을 골라 서 있습니다. 호스트가 일행을 이끕니다",
+ "%s · E: through the gate to this fight": "%s · E: 문을 지나 이 싸움으로",
+ "For the crowd: %s": "관중을 위해: %s",
  "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · 프레임당 %s ms · 5초 중 최장 %s ms · 33 ms 초과 프레임 %s",
  "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "물리 단계당 %.1f ms · 물리 제외 프레임 %.1f ms (그리기 %.1f ms) · 그래픽 카드 %.1f ms",
  "F11 toggles full screen. F3 shows the frame rate.": "F11로 전체 화면을 전환합니다. F3으로 프레임 속도를 표시합니다."

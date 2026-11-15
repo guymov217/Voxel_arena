@@ -69,8 +69,10 @@ func body_def(name: String) -> Dictionary:
 	return {}
 
 ## The campaign's stage `n` for `players` players (the tables run to 64; past that the last
-## boss cycle repeats, harder).
-func stage(n: int, players: int = 1) -> Dictionary:
+## boss cycle repeats, harder). Fought as the ladder's bout `bout` (0: its own, `n`; another of the
+## stretch chosen at the gate: GateChoice), the crowd's fight if `crowd` (one more of its foes,
+## the prize doubled). The gear, the pay and the checkpoint are the stage's whichever bout it is.
+func stage(n: int, players: int = 1, bout: int = 0, crowd := false) -> Dictionary:
 	var rows: Array = campaign.get("stages", [])
 	if rows.is_empty():
 		return {}
@@ -82,6 +84,8 @@ func stage(n: int, players: int = 1) -> Dictionary:
 	out["boss"] = row.get("boss", false)
 	out["checkpoint"] = row.get("checkpoint", null)
 	out["gear"] = row.get("gear", {})
+	out["bout"] = bout if bout >= 1 and bout <= Ladder.BOUTS.size() else clampi(n, 1, maxi(1, Ladder.BOUTS.size()))
+	out["crowd"] = crowd
 	return duel(out, players)
 
 ## The campaign is a ladder of single bouts, authored bout by bout in Ladder (scripts/game/
@@ -93,13 +97,16 @@ func stage(n: int, players: int = 1) -> Dictionary:
 ## tougher for each friend. The second wave comes as authored, for a party as for one man.
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var n := int(st.get("n", 1))
-	var b := Ladder.bout(n)
+	var b := Ladder.bout(int(st.get("bout", n)))
 	if b.is_empty():
 		return st
 	var gear: Dictionary = st.get("gear", {})
 	var foes: Array = []
 	for en in b.get("foes", []):
 		foes.append(_ladder_foe(en, gear))
+	# The crowd's fight: one more of the first of them (GateChoice.crowd_ok: never a named man).
+	if bool(st.get("crowd", false)) and not foes.is_empty():
+		foes.append((foes[0] as Dictionary).duplicate(true))
 	var late: Array = []
 	for en in b.get("late", []):
 		late.append(_ladder_foe(en, gear))
@@ -122,6 +129,9 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 	var title := Loc.t(String(b.get("title", foes[0].get("title", "")))) if String(b.get("title", foes[0].get("title", ""))) != "" else ""
 	st["title"] = (Loc.t("Bout %d") % n) if title == "" else (title if boss or foes[0].has("title") else Loc.t("Bout %d: %s") % [n, title])
 	st["stagePay"] = int(st.get("stagePay", 30)) + int(st.get("roundPay", 10)) * 2
+	if bool(st.get("crowd", false)):
+		st["stagePay"] = int(st.stagePay) * 2
+		st["roundPay"] = int(st.get("roundPay", 10)) * 2
 	return st
 
 ## A ladder entry as the match spawns it: with the stage's gear (a beast ignores it).

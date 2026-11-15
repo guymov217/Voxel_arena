@@ -41,8 +41,8 @@ const ELIXIR_BOUTS := 1.5
 const ELIXIR_MIN := 35
 
 ## What winning the bout at `stage` pays one man (its stage pay and its round, as Match pays them).
-static func bout_pay(stage: int) -> int:
-	var st := Data.stage(maxi(1, stage), 1)
+static func bout_pay(stage: int, crowd := false) -> int:
+	var st := Data.stage(maxi(1, stage), 1, 0, crowd)
 	return int(round(float(st.get("stagePay", 30)) * Match.PAY_SCALE)) + int(round(float(st.get("roundPay", 10)) * Match.PAY_SCALE))
 
 static func elixir_price(stage: int) -> int:

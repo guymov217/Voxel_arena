@@ -558,17 +558,16 @@ func _open_station(id: String) -> void:
 	# the smith's to mend too, and goes with him through the gate (user: damage in the yard was
 	# not counted when mending).
 	_keep_yard_wear()
-	# Alone, the gate is the way to the next bout: through it and into the arena, no menu.
-	# A room's host gets the gate's menu (the co-op campaign or another mode for everyone).
-	if id == "gate" and not Net.active():
-		var st := int(Save.get_value("stage", 1))
-		if Edition.demo_over(st):
-			_end_match()
-			show_screen("demo_end")
-			return
-		start({"mode": "campaign", "stage": st})
+	# Alone, the gate is the way to the next bout: through it and into the arena, no menu (to the
+	# first board's fight; another board's, E at that board). A room's host gets the gate's menu
+	# (the co-op campaign or another mode for everyone); at a board he leads the party through.
+	if id.begins_with("fight") and not (Net.active() and not Net.is_host()):
+		_through_gate(int(id.substr(5)))
 		return
-	if id == "gate" and Net.active() and not Net.is_host():
+	if id == "gate" and not Net.active():
+		_through_gate(0)
+		return
+	if (id == "gate" or id.begins_with("fight")) and Net.active() and not Net.is_host():
 		match_._banner("The arena gate", "The host leads the party through")
 		return
 	visible = true
@@ -633,12 +632,41 @@ func _leave_room() -> void:
 	over_match = false
 	show_screen("main")
 
+## The fight the party is for (GateChoice): the board most of them stand by in the yard, the host
+## by board `board` (-1: at the gate or in a menu, his own vote none).
+func _party_pick(board: int) -> Dictionary:
+	var offers := GateChoice.now(true)
+	var stands: Array = match_.yard.stands() if match_ and is_instance_valid(match_) and match_.yard else []
+	if not stands.is_empty():
+		stands[0] = board
+	return offers[GateChoice.majority(stands, offers.size())]
+
+## Through the gate to a fight on offer by it: alone, board `board`'s (0: the gate's own); the
+## host leads the party to the one most of them stand by (his own board counting, -1: none).
+func _through_gate(board: int) -> void:
+	var coop := Net.active()
+	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
+	if Edition.demo_over(st):
+		if coop:
+			Net.send_all("demo_end", {})
+		_end_match()
+		show_screen("demo_end")
+		return
+	if coop:
+		var co := _party_pick(board)
+		start({"mode": "coop", "role": "host", "bout": int(co.bout), "crowd": String(co.kind) == "crowd"})
+		return
+	var offers := GateChoice.now(false)
+	var o: Dictionary = offers[clampi(board, 0, offers.size() - 1)]
+	start({"mode": "campaign", "stage": st, "bout": int(o.bout), "crowd": String(o.kind) == "crowd"})
+
 func _gate(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The arena gate", 34))
 	v.add_child(UIStyle.label("Pick the fight. You come back to the yard afterwards.", 15, UIStyle.MUTED))
 	if Net.active() and Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
-		var cn := Data.stage(cs, mini(1 + Net.peers.size(), Net.CAMPAIGN_PLAYERS))
+		var co := _party_pick(-1)
+		var cn := Data.stage(cs, mini(1 + Net.peers.size(), Net.CAMPAIGN_PLAYERS), int(co.bout), String(co.kind) == "crowd")
 		if Edition.demo_over(cs):
 			v.add_child(UIStyle.button("You have finished the demo", func():
 				Net.send_all("demo_end", {})
@@ -646,21 +674,22 @@ func _gate(v: VBoxContainer) -> void:
 				show_screen("demo_end"), true))
 		else:
 			v.add_child(UIStyle.label(Loc.t("Next co-op bout: %s · %s") % [cn.get("title", Loc.t("Bout %d") % cs), cn.get("foe_name", "")], 15, UIStyle.GOLD))
-			var go := UIStyle.button(Loc.t("The co-op campaign · bout %d (all of you)") % cs, func(): start({"mode": "coop", "role": "host"}), true)
+			var go := UIStyle.button(Loc.t("The co-op campaign · bout %d (all of you)") % cs, func(): _through_gate(-1), true)
 			v.add_child(go)
 			_campaign_cap(go, v)
 	elif Net.active() and not Net.is_host():
 		v.add_child(UIStyle.label("The host leads the party through the gate.", 15, UIStyle.MUTED))
 	else:
 		var st := int(Save.get_value("stage", 1))
-		var nxt := Data.stage(st)
+		var so: Dictionary = GateChoice.now(false)[0]
+		var nxt := Data.stage(st, 1, int(so.bout), String(so.kind) == "crowd")
 		if Edition.demo_over(st):
 			v.add_child(UIStyle.button("You have finished the demo", func():
 				_end_match()
 				show_screen("demo_end"), true))
 		else:
 			v.add_child(UIStyle.label(Loc.t("Next bout: %s · %s") % [nxt.get("title", Loc.t("Bout %d") % st), nxt.get("foe_name", "")], 15, UIStyle.GOLD))
-			v.add_child(UIStyle.button(Loc.t("The Campaign · bout %d") % st, func(): start({"mode": "campaign", "stage": st}), true))
+			v.add_child(UIStyle.button(Loc.t("The Campaign · bout %d") % st, func(): _through_gate(0), true))
 	if SHOW_CIRCUS:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
@@ -4064,6 +4093,10 @@ func start(opts: Dictionary) -> void:
 		opts.mode = "campaign"
 		opts.coop = true
 		opts.stage = int(Save.get_value("coop_stage", 1))
+	# A bout of the campaign is the fight chosen at the gate (GateChoice), else the gate's own (on a
+	# boss's day the boss the run drew).
+	if opts.get("mode") == "campaign" and not opts.has("bout"):
+		opts.bout = int(GateChoice.at(int(opts.get("stage", 1)), bool(opts.get("coop", false)))[0].bout)
 	# Four at most in the co-op campaign: with more in the room it does not begin (its buttons are
 	# held back; this is for a friend who came in after the screen was drawn), and the screen is
 	# drawn again with the reason.
@@ -4465,6 +4498,7 @@ func _campaign_lost(r: Dictionary) -> void:
 	Save.set_value(sk, 1)
 	Save.set_value("coop_lap" if r.get("coop", false) else "lap", 1)
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+	GateChoice.clear(bool(r.get("coop", false)))
 	Save.set_value("oddities_sold", {})
 	Save.set_value(ck, 1)
 	Save.set_value("coins", START_COINS)
@@ -4525,6 +4559,7 @@ func _on_finished(r: Dictionary) -> void:
 		set_armor_wear(Armory.add_wear(armor_wear(), r.get("wear", {}).get("armor", {}), worn_armor()))
 		if r.won:
 			add_coins(int(r.pay))
+			GateChoice.mark_won(int(r.get("bout", r.stage)), bool(r.get("coop", false)))
 			if r.get("checkpoint") != null:
 				Save.set_value(ck, int(r.checkpoint))
 			Save.set_value(sk, int(r.stage) + 1)
@@ -4554,6 +4589,7 @@ func _on_finished(r: Dictionary) -> void:
 				Save.set_value(lk, int(Save.get_value(lk, 1)) + 1)
 				Save.set_value(sk, 1)
 				Save.set_value(ck, 1)
+				GateChoice.clear(bool(r.get("coop", false)))   # (every bout to win again)
 				CampaignRun.keep(bool(r.get("coop", false)))   # (the next time round starts as he is now)
 				if Net.active():
 					Net.send_all("campaign_end", {})
@@ -4771,6 +4807,7 @@ func _demo_end(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.button("Play the demo again from bout 1", func():
 			Save.set_value("coop_stage", 1)
 			Save.set_value("coop_checkpoint", 1)
+			GateChoice.clear(true)
 			restart_campaign(), true))
 	v.add_child(UIStyle.button("Main menu" if not Net.active() else "Back to the room", func(): show_screen("main" if not Net.active() else "room")))
 
@@ -4791,6 +4828,7 @@ func _screenshot() -> String:
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+	GateChoice.clear(false)
 	Save.set_value("oddities_sold", {})
 	Save.set_value("coins", START_COINS)
 	Save.set_value("stage", 1)

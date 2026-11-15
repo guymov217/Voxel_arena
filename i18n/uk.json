@@ -2710,6 +2710,12 @@
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Банка чогось чорного зі Сходу. Сьогодні в лікаря є одна. Вона робить найтяжче поранену частину вашого тіла (%s) знову цілою, плоть і кістку, ніби її ніколи й не ранили.",
  "%s is carried off the sand": "%s виносять з піску",
  "You were carried off the sand: the physician will see to your wounds.": "Вас винесли з піску: лікар подбає про ваші рани.",
+ "K|PRO POPVLO": "K|PRO POPVLO",
+ "for the crowd: one more foe, double the prize": "для натовпу: на одного ворога більше, подвійна нагорода",
+ "%d of %d stand here": "тут стоять %d з %d",
+ "%s · you stand for this fight, the host leads the party through": "%s · ви стоїте за цей бій, господар веде загін",
+ "%s · E: through the gate to this fight": "%s · E: крізь ворота на цей бій",
+ "For the crowd: %s": "Для натовпу: %s",
  "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s мс на кадр · найдовший за 5 с %s мс · %s кадрів довше 33 мс",
  "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "фізика %.1f мс за крок · кадр без фізики %.1f мс (малювання %.1f мс) · відеокарта %.1f мс",
  "F11 toggles full screen. F3 shows the frame rate.": "F11 перемикає повноекранний режим. F3 показує частоту кадрів."

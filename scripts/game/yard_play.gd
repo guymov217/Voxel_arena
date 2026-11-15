@@ -53,21 +53,22 @@ func setup() -> void:
 			kp.collision_layer = KEEPER_LAYER
 			kp.collision_mask &= ~VoxelPart.LAYER_WEAPON
 		keepers.append(n.f)
-	set_next(next_fight(m.humans().size()))
+	set_boards(board_texts(m.humans().size()))
 	scenery()
 
 ## What stands in the yard for the eye (on the host and on every guest alike): the stations'
-## signs, rings and furniture, the throwing boards and the board of the next fight.
+## signs, rings and furniture, the throwing boards and the boards of the fights on offer.
 func scenery() -> void:
 	if m.headless:
 		return
+	scenery_on = true
 	# No signs over the stations: each is what it looks like (the smithy, the stall, the
 	# physician's table), and the way to the arena is a gateway to walk into.
 	_gate()
 	for p in Yard.TARGETS:
 		_board(p)
 	_dress_stations()
-	_next_board()
+	set_boards(board_texts_now if not board_texts_now.is_empty() else [next_text])
 
 ## The gateway to the arena where the gate is: a stone arch to walk in under (E there takes him
 ## to the next fight), solid at its piers and over the arch, open through the middle, braziers
@@ -102,17 +103,32 @@ func _gate() -> void:
 			br.add_child(l)
 			l.position = Vector3(0, 1.8, 0)
 
-## The next fight through the gate (the campaign's next bout; in a room, the party's), as the
-## stele beside the gate reads it: a line a row, each tagged with what it is: B the bout (in
-## numerals), F a foe (by name, the same ones counted: "Veles ×2"; three at most, then "+N"),
-## P the prize. (An untagged line, from an older host, is read as a foe.)
+## The next fight through the gate (the campaign's next bout; in a room, the party's): the first
+## of the boards' (board_texts), the one the gate itself leads to.
 static func next_fight(players: int) -> String:
+	return String(board_texts(players)[0])
+
+## The boards by the gate, one a fight on offer there (GateChoice: the ladder's bout, the crowd's
+## fight, another of the stretch; on a boss's day one), as each reads. The demo's end: one.
+static func board_texts(players: int) -> Array:
 	var coop := Net.active()
 	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
 	if Edition.demo_over(st):
-		return "B|FINIS\nF|" + Loc.t("The demo ends here")
-	var nx: Dictionary = Data.stage(st, clampi(players, 1, Net.CAMPAIGN_PLAYERS))   # (four at most fight it)
+		return ["B|FINIS\nF|" + Loc.t("The demo ends here")]
+	var out := []
+	for o in GateChoice.now(coop):
+		out.append(fight_text(st, players, int(o.bout), String(o.kind) == "crowd"))
+	return out
+
+## A fight as a board reads it: a line a row, each tagged with what it is: B the bout (in
+## numerals), K the crowd's fight, F a foe (by name, the same ones counted: "Veles ×2"; three at
+## most, two on the crowd's, then "+N"), P the prize. (An untagged line, from an older host, is
+## read as a foe.)
+static func fight_text(st: int, players: int, bout := 0, crowd := false) -> String:
+	var nx: Dictionary = Data.stage(st, clampi(players, 1, Net.CAMPAIGN_PLAYERS), bout, crowd)   # (four at most fight it)
 	var lines := [Loc.t("B|PVGNA %s") % roman(st)]
+	if crowd:
+		lines.append(Loc.t("K|PRO POPVLO"))
 	var foes: Array = ((nx.get("rounds", [[]]) as Array)[0] if not (nx.get("rounds", []) as Array).is_empty() else []).duplicate()
 	# The second wave through the other gate is on the stele too (user: it said two hyenas, and
 	# three came out).
@@ -124,17 +140,18 @@ static func next_fight(players: int) -> String:
 		if not count.has(n):
 			names.append(n)
 		count[n] = int(count.get(n, 0)) + 1
-	for i in mini(3, names.size()):
+	var most := 2 if crowd else 3   # (six lines a board)
+	for i in mini(most, names.size()):
 		var n: String = names[i]
 		lines.append("F|%s%s" % [n, (" ×%d" % count[n]) if int(count[n]) > 1 else ""])
-	if names.size() > 3:
+	if names.size() > most:
 		var rest := 0
-		for i in range(3, names.size()):
+		for i in range(most, names.size()):
 			rest += int(count[names[i]])
 		lines.append("F|" + Loc.t("and %d more") % rest)
 	if names.is_empty():
 		lines.append("F|%s" % String(nx.get("title", Loc.t("Bout %d") % st)))
-	var pay := Body.bout_pay(st)
+	var pay := Body.bout_pay(st, crowd)
 	if pay > 0:
 		lines.append("P|PRAEMIVM · %d DENARII" % pay)
 	return "\n".join(lines)
@@ -157,51 +174,133 @@ static func roman(n: int) -> String:
 			n -= int(pair[0])
 	return out
 
-## The text on the stele (the host's own, or what the host sent: six lines at most).
+## The text on the board by the gate (an older host's word: one board).
 func set_next(text: String) -> void:
-	var lines: Array = Array(text.split("\n")).slice(0, 6).map(func(l): return String(l).left(48))
-	next_text = "\n".join(lines)
-	if next_root == null or not is_instance_valid(next_root):
+	set_boards([text])
+
+## The boards' texts (the host's own, or what the host sent: three boards, six lines each at most):
+## as many boards stand by the gate as there are fights on offer, each painted with its own.
+func set_boards(texts: Array) -> void:
+	var clean := []
+	for t in texts.slice(0, BOARD_AT.size()):
+		clean.append("\n".join(Array(str(t).split("\n")).slice(0, 6).map(func(l): return String(l).left(48))))
+	if clean.is_empty():
+		clean = [""]
+	board_texts_now = clean
+	next_text = String(clean[0])
+	if not scenery_on:
 		return
-	for c in next_lines:
+	while boards.size() > clean.size():
+		var gone: Dictionary = boards.pop_back()
+		if is_instance_valid(gone.root):
+			gone.root.queue_free()
+	while boards.size() < clean.size():
+		boards.append({"root": _stele(boards.size()), "lines": []})
+	next_root = boards[0].root
+	for i in clean.size():
+		_paint_board(boards[i], String(clean[i]))
+
+func _paint_board(b: Dictionary, text: String) -> void:
+	var root: Node3D = b.root
+	for c in b.lines:
 		if is_instance_valid(c):
 			c.queue_free()
-	next_lines = []
+	b.lines = []
 	var bout := ""
+	var kind := ""
 	var foes := []
 	var prize := ""
-	for l in lines:
+	for l in text.split("\n"):
 		var tag: String = String(l).left(2)
 		var body: String = String(l).substr(2) if tag.ends_with("|") else String(l)
 		match tag:
 			"B|": bout = body
+			"K|": kind = body
 			"P|": prize = body
-			_: foes.append(body)
-	# Cut and painted in the Pompeian way: the bout big in red, a rule, the foes in black, the
-	# prize small at the foot.
+			_:
+				if body != "":
+					foes.append(body)
+	# Cut and painted in the Pompeian way: the bout big in red (the crowd's fight said under it),
+	# a rule, the foes in black, the prize small at the foot.
 	var y := 2.2
 	if bout != "":
-		next_lines.append(_paint(bout, 64, y, PAINT_RED))
+		b.lines.append(_paint(root, bout, 64, y, PAINT_RED))
 		y -= 0.3
-	next_lines.append(_rule(y + 0.06))
+	if kind != "":
+		b.lines.append(_paint(root, kind, 30, y + 0.04, PAINT_RED))
+		y -= 0.16
+	b.lines.append(_rule(root, y + 0.06))
 	# The foes in the middle of the face between the rule and the prize.
 	var step := 0.27 if foes.size() <= 2 else 0.21
-	var fy := 1.42 + step * (foes.size() - 1) * 0.5
+	var fy := (y + 0.06 + 1.0) * 0.5 - 0.06 + step * (foes.size() - 1) * 0.5
 	for f in foes:
-		next_lines.append(_paint(f, 52 if foes.size() <= 2 else 38, fy, PAINT_BLACK))
+		b.lines.append(_paint(root, f, 52 if foes.size() <= 2 else 38, fy, PAINT_BLACK))
 		fy -= step
-	next_lines.append(_rule(1.0))
+	b.lines.append(_rule(root, 1.0))
 	if prize != "":
-		next_lines.append(_paint(prize, 26, 0.86, PAINT_RED))
+		b.lines.append(_paint(root, prize, 26, 0.86, PAINT_RED))
 
 const PAINT_RED := Color(0.55, 0.09, 0.06)
 const PAINT_BLACK := Color(0.13, 0.1, 0.09)
 const STELE_PX := 300.0   # the face between the mouldings, 1.2 m, in the letters' pixels
-var next_root: Node3D = null
-var next_lines: Array = []
+## Where the boards stand, off the gate: the first (the gate's own fight) where the one board always
+## stood, left of the gate as one faces it from the yard; the second right of it; the third further
+## round on the left.
+const BOARD_AT := [Vector3(4.2, 0, -0.9), Vector3(-4.2, 0, -0.9), Vector3(7.2, 0, -2.9)]
+const BOARD_STAND := 1.3   # how far in front of its face one stands to choose a board (m)
+const BOARD_R := 1.1       # and how near that spot
+var board_texts_now: Array = []   # what each board reads (the host's own, or what he sent)
+var boards: Array = []            # [{"root", "lines"}], built (on a screen) as many as there are texts
+var scenery_on := false
+var next_root: Node3D = null      # (the first board's: what the gate itself leads to)
 
-## A line of letters painted on the stele's face, made smaller until it fits.
-func _paint(text: String, size: int, y: float, c: Color) -> Label3D:
+## Where one stands to choose board `i`: in front of its face, toward the middle of the yard.
+static func board_spot(i: int) -> Vector3:
+	var at: Vector3 = Yard.STATIONS.gate.p + BOARD_AT[i]
+	return at - Vector3(at.x, 0, at.z).normalized() * BOARD_STAND
+
+## The board whose spot `p` is on (-1: none).
+func board_at(p: Vector3) -> int:
+	for i in board_texts_now.size():
+		var sp := board_spot(i)
+		if Vector2(p.x - sp.x, p.z - sp.z).length() < BOARD_R:
+			return i
+	return -1
+
+## What is under a man's feet: a board by the gate ("fight0", "fight1"...), else a station.
+func station_here(p: Vector3) -> String:
+	var b := board_at(p)
+	return ("fight%d" % b) if b >= 0 else Yard.station_at(p)
+
+## The board each of the party stands by now (-1: none), the host first (GateChoice.majority).
+func stands() -> Array:
+	var out := []
+	for e in m.humans():
+		out.append(board_at(e.f.torso.global_position) if is_instance_valid(e.f) else -1)
+	return out
+
+## What a board says to the one standing by it: its foes (the crowd's fight said so), in a room how
+## many of the party stand there, and what E does.
+func board_prompt(i: int) -> String:
+	var text: String = String(board_texts_now[i]) if i >= 0 and i < board_texts_now.size() else ""
+	var foes := []
+	var crowd := false
+	for l in text.split("\n"):
+		if l.begins_with("F|"):
+			foes.append(l.substr(2))
+		elif l.begins_with("K|"):
+			crowd = true
+	var what := ", ".join(foes)
+	if crowd:
+		what += " · " + Loc.t("for the crowd: one more foe, double the prize")
+	if Net.active():
+		what += " · " + Loc.t("%d of %d stand here") % [stands().count(i), m.humans().size()]
+		if not Net.is_host():
+			return Loc.t("%s · you stand for this fight, the host leads the party through") % what
+	return Loc.t("%s · E: through the gate to this fight") % what
+
+## A line of letters painted on a board's face, made smaller until it fits.
+func _paint(root: Node3D, text: String, size: int, y: float, c: Color) -> Label3D:
 	var l := Label3D.new()
 	l.font = UIStyle.serif(2)
 	l.pixel_size = 0.004
@@ -216,11 +315,11 @@ func _paint(text: String, size: int, y: float, c: Color) -> Label3D:
 	while size > 14 and l.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > STELE_PX:
 		size -= 2
 	l.font_size = size
-	next_root.add_child(l)
+	root.add_child(l)
 	return l
 
 ## A painted rule between the bout and the foes.
-func _rule(y: float) -> MeshInstance3D:
+func _rule(root: Node3D, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.9, 0.025, 0.004)
@@ -230,19 +329,19 @@ func _rule(y: float) -> MeshInstance3D:
 	bm.material = sm
 	mi.mesh = bm
 	mi.position = Vector3(0, y, 0.121)
-	next_root.add_child(mi)
+	root.add_child(mi)
 	return mi
 
-## A stele of whitewashed stone on a plinth beside the gate, a pediment over it: what the next
-## bout is, painted on it in red and black as the games were announced on the walls of Pompeii.
-## A torch on an iron bracket lights it at night.
-func _next_board() -> void:
+## A stele of whitewashed stone on a plinth beside the gate, a pediment over it: a fight on offer,
+## painted on it in red and black as the games were announced on the walls of Pompeii (board `i`
+## of BOARD_AT). A torch on an iron bracket lights it at night.
+func _stele(i: int) -> Node3D:
 	var gp: Vector3 = Yard.STATIONS.gate.p
-	var at := gp + Vector3(4.2, 0, -0.9)
-	next_root = Node3D.new()
-	m.add_child(next_root)
-	next_root.global_position = at
-	next_root.rotation.y = VoxelArt.facing_centre(at)
+	var at: Vector3 = gp + BOARD_AT[i]
+	var root := Node3D.new()
+	m.add_child(root)
+	root.global_position = at
+	root.rotation.y = VoxelArt.facing_centre(at)
 	var mat := func(c: Color, rough := 0.95, metal := 0.0) -> StandardMaterial3D:
 		var sm := StandardMaterial3D.new()
 		sm.albedo_color = c
@@ -258,7 +357,7 @@ func _next_board() -> void:
 		mi.material_override = sm
 		mi.position = pos
 		mi.rotation = rot
-		next_root.add_child(mi)
+		root.add_child(mi)
 	var bx := func(size: Vector3) -> BoxMesh:
 		var bm := BoxMesh.new()
 		bm.size = size
@@ -286,7 +385,7 @@ func _next_board() -> void:
 	flame.light_energy = 1.1
 	flame.omni_range = 3.2
 	flame.position = Vector3(0.78, 2.45, 0.35)
-	next_root.add_child(flame)
+	root.add_child(flame)
 	var fire := MeshInstance3D.new()
 	var sp := SphereMesh.new()
 	sp.radius = 0.06
@@ -300,8 +399,8 @@ func _next_board() -> void:
 	sp.material = fm
 	fire.mesh = sp
 	fire.position = Vector3(0.78, 2.38, 0.26)
-	next_root.add_child(fire)
-	set_next(next_text)
+	root.add_child(fire)
+	return root
 
 ## A stall keeper at his work, facing his workplace (`work_yaw`), or turned to a man who comes up.
 func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -> Dictionary:
@@ -446,8 +545,11 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 			next_t = 4.0
 			m._send_yard_next()
 	if m.me and is_instance_valid(m.me.f):
-		at = Yard.station_at(m.me.f.torso.global_position)
-		hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader, the physician or the trainer · the gate leads to the arena"
+		at = station_here(m.me.f.torso.global_position)
+		if at.begins_with("fight"):
+			hint = board_prompt(int(at.substr(5)))
+		else:
+			hint = ("%s · %s" % [Yard.STATIONS[at].label, Yard.STATIONS[at].hint]) if at != "" else "The Ludus yard · E to talk to the smith, the trader, the physician or the trainer · the gate leads to the arena"
 		# E talks to a stall's keeper; the gate is walked into (G there as well).
 		last_at = at
 		if at != "" and local_inp.get("talk", false):

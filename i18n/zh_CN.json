@@ -2713,6 +2713,12 @@
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "一罐来自东方的黑色东西。医师今天正好有一罐。它能让你伤得最重的部位（%s）连皮肉带骨头完好如初，就像从没受过伤。",
  "%s is carried off the sand": "%s 被抬出了沙地",
  "You were carried off the sand: the physician will see to your wounds.": "你被抬出了沙地：医师会处理你的伤口。",
+ "K|PRO POPVLO": "K|PRO POPVLO",
+ "for the crowd: one more foe, double the prize": "为观众而战：多一个敌人，奖金翻倍",
+ "%d of %d stand here": "%d/%d 人站在这里",
+ "%s · you stand for this fight, the host leads the party through": "%s · 你选择了这场战斗，由主机带队通过",
+ "%s · E: through the gate to this fight": "%s · E：穿过大门进行这场战斗",
+ "For the crowd: %s": "为观众而战：%s",
  "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · 每帧 %s 毫秒 · 5 秒内最长 %s 毫秒 · 超过 33 毫秒的帧 %s",
  "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "物理 每步 %.1f 毫秒 · 不含物理的帧 %.1f 毫秒 (绘制 %.1f 毫秒) · 显卡 %.1f 毫秒",
  "F11 toggles full screen. F3 shows the frame rate.": "F11 切换全屏。F3 显示帧率。"

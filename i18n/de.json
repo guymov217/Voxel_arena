@@ -2713,6 +2713,12 @@
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "Ein Topf mit etwas Schwarzem aus dem Osten. Der Heiler hat heute einen. Er macht den am schlimmsten verletzten Teil von dir (%s) wieder ganz, Fleisch und Knochen, als wäre er nie verletzt gewesen.",
  "%s is carried off the sand": "%s wird aus dem Sand getragen",
  "You were carried off the sand: the physician will see to your wounds.": "Du wurdest aus dem Sand getragen: Der Heiler kümmert sich um deine Wunden.",
+ "K|PRO POPVLO": "K|PRO POPVLO",
+ "for the crowd: one more foe, double the prize": "für die Menge: ein Gegner mehr, doppelter Preis",
+ "%d of %d stand here": "%d von %d stehen hier",
+ "%s · you stand for this fight, the host leads the party through": "%s · du stehst für diesen Kampf, der Gastgeber führt die Gruppe hindurch",
+ "%s · E: through the gate to this fight": "%s · E: durch das Tor zu diesem Kampf",
+ "For the crowd: %s": "Für die Menge: %s",
  "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · %s ms pro Bild · schlechtestes in 5 s %s ms · %s Bilder über 33 ms",
  "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "Physik %.1f ms pro Schritt · Frame ohne Physik %.1f ms (Zeichnen %.1f ms) · Grafikkarte %.1f ms",
  "F11 toggles full screen. F3 shows the frame rate.": "F11 schaltet den Vollbildmodus um. F3 zeigt die Bildrate."

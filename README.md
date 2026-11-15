@@ -120,6 +120,16 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   thirties, the kinds met alone come back later two and three kinds at once, and a boss of men
   past bout 36 comes in steel (`tests/test_campaign.gd` checks the climb, that nothing repeats,
   and the gates). Pay, checkpoints and persistent weapon wear as before.
+- **The fight chosen at the gate** (`scripts/game/gate_choice.gd`): before every bout the boards
+  by the yard's gate offer two or three bouts of the stretch of eight the run has reached, none
+  won yet this time round: the ladder's own, the crowd's fight (that bout with one more of its
+  foes, for double the prize) and another of the stretch drawn by the run (a beast hunt for a
+  bout of men, men for beasts). A stage is fought as the bout chosen with the stage's own gear,
+  pay and checkpoint (`Data.stage(n, players, bout, crowd)`), every bout is won once a time round
+  whatever the way, and the won bouts go back with a checkpoint. A boss's day is the boss the run
+  drew of its stretch's two (never the last stretch's: the Dragon ends it). Alone, E at a board;
+  the gate itself leads to the first. In a room each stands by the board he wants and the host
+  leads the party to the one most stand by (his own when as many stand by two).
 - **Ironman or Legionary** (`scripts/game/campaign_run.gd`): chosen when a campaign begins (in
   co-op the host chooses in the room). A legionary who falls goes back to the last checkpoint
   (every four bouts) with the purse, arms, armour, body and training he had there; an ironman
@@ -146,7 +156,7 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **The Ludus yard**: a walkable hub (`scripts/game/yard.gd`, `yard_play.gd`). It has stations
   (the arena gate, the smith, the market and the mission board; press G at one), two training
   dummies that never fall, three throwing boards that score a throw, and by the gate a board
-  that names the next fight (the party's, in a room). Three missions per fight pay denarii and reputation, and reputation
+  for each fight on offer (the party's, in a room: the fight chosen at the gate). Three missions per fight pay denarii and reputation, and reputation
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click

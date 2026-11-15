@@ -37,9 +37,10 @@ static func begin(m: String, coop := false) -> void:
 	Save.set_value(_k("campaign_mode", coop), m if MODES.has(m) else "legionary")
 	Save.set_value(_k("checkpoint_save", coop), {})
 
-## A checkpoint bout won: what he walks out with is kept, to come back to after a death.
+## A checkpoint bout won: what he walks out with is kept, to come back to after a death (and the
+## bouts won by then, chosen at the gate: GateChoice).
 static func keep(coop := false) -> void:
-	var snap := _snap(KEPT)
+	var snap := _snap(KEPT + [GateChoice.key(coop)])
 	snap["lap"] = Save.get_value(_k("lap", coop), 1)
 	Save.set_value(_k("checkpoint_save", coop), snap)
 
@@ -126,7 +127,7 @@ static func fall_back(coop := false) -> int:
 	if not (snap is Dictionary) or (snap as Dictionary).is_empty():
 		return 0
 	at = maxi(1, at)
-	_put_back(snap, KEPT)
+	_put_back(snap, KEPT + [GateChoice.key(coop)])
 	Save.set_value(_k("lap", coop), int(snap.get("lap", 1)))
 	Save.set_value(_k("stage", coop), at)
 	return at

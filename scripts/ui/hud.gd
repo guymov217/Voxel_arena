@@ -881,7 +881,9 @@ func _prompt_for(f) -> Array:
 		return [["throw"], Loc.t("Hold to aim, let go to throw the %s · its number again puts it away") % _held_name(f)]
 	var pos: Vector3 = f.torso.global_position
 	if match_.yard:
-		var at := Yard.station_at(pos)
+		var at: String = match_.yard.station_here(pos)
+		if at.begins_with("fight"):
+			return [["kick"], match_.yard.board_prompt(int(at.substr(5)))]
 		if at != "":
 			var st: Dictionary = Yard.STATIONS[at]
 			if st.has("npc"):

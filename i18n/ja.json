@@ -2710,6 +2710,12 @@
  "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": "東方の黒い何かが入った壺。今日は医師がひとつ持っている。最もひどく傷ついた部位（%s）を、肉も骨も、まるで傷ついたことがなかったかのように元どおりにする。",
  "%s is carried off the sand": "%sが砂の上から運び出される",
  "You were carried off the sand: the physician will see to your wounds.": "あなたは砂の上から運び出された。傷は医師が診てくれる。",
+ "K|PRO POPVLO": "K|PRO POPVLO",
+ "for the crowd: one more foe, double the prize": "観衆のための戦い：敵が一人多く、賞金は倍",
+ "%d of %d stand here": "%d / %d 人がここに立っている",
+ "%s · you stand for this fight, the host leads the party through": "%s · この戦いを選んで立っている。ホストが仲間を連れて通る",
+ "%s · E: through the gate to this fight": "%s · E：門をくぐってこの戦いへ",
+ "For the crowd: %s": "観衆のために：%s",
  "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": "%s FPS · 1フレーム %s ms · 直近5秒の最長 %s ms · 33 ms超のフレーム %s",
  "physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms": "物理 1ステップ %.1f ms · 物理以外のフレーム %.1f ms (描画 %.1f ms) · GPU %.1f ms",
  "F11 toggles full screen. F3 shows the frame rate.": "F11でフルスクリーンを切り替えます。F3でフレームレートを表示します。"

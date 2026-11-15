@@ -348,11 +348,13 @@ func setup(opts: Dictionary) -> void:
 	if opts.get("autopilot", false):
 		me.bot = Bot.new(me.f, float(opts.get("autopilot_diff", 0.9)), "standard", 99)
 	if mode == "campaign":
-		stage_info = Data.stage(stage, players_count)
+		# (The bout chosen at the gate: the ladder's own, another of its stretch, the crowd's fight.)
+		stage_info = Data.stage(stage, players_count, int(opts.get("bout", 0)), bool(opts.get("crowd", false)))
 		_spawn_round(0)
 		if stage_info.get("duel", false):
 			var first: Array = stage_info.get("rounds", [[]])[0]
-			_banner(stage_info.get("title", Loc.t("Bout %d") % stage), Loc.t("One on one: %s" if first.size() <= 1 else "Together: %s") % stage_info.get("foe_name", Loc.t("your opponent")))
+			var sub := "For the crowd: %s" if stage_info.get("crowd", false) else ("One on one: %s" if first.size() <= 1 else "Together: %s")
+			_banner(stage_info.get("title", Loc.t("Bout %d") % stage), Loc.t(sub) % stage_info.get("foe_name", Loc.t("your opponent")))
 		else:
 			_banner(stage_info.get("title", Loc.t("Stage %d") % stage), "Round 1 of 3")
 	elif mode == "training":
@@ -686,14 +688,14 @@ func add_peer(id: int, p: Dictionary) -> void:
 	feed.emit(Loc.t("%s came into the yard") % p.name)
 	_send_yard_next()
 
-## The board by the gate: the next fight, as many as the party is now (a friend more, a friend
-## less, the bout is sized again), on the host and on every guest's board.
+## The boards by the gate: the fights on offer (GateChoice), as many as the party is now (a friend
+## more, a friend less, each bout is sized again), on the host and on every guest's boards.
 func _send_yard_next() -> void:
 	if yard == null or role != "host":
 		return
-	yard.set_next(YardPlay.next_fight(humans().size()))
+	yard.set_boards(YardPlay.board_texts(humans().size()))
 	if Net.active():
-		Net.send_all("yard_next", {"t": yard.next_text})
+		Net.send_all("yard_next", {"t": yard.next_text, "o": yard.board_texts_now})
 
 ## A guest who left: his fighter goes, here and on every guest's screen.
 func drop_peer(id: int) -> void:
@@ -1381,7 +1383,7 @@ func _player_input(f, dt: float) -> Dictionary:
 			input.set_unarmed(f.weapons[ms] == null and item_side != ms, f.weapons[os] == null and item_side != os)
 		_bow_sway(f, shooter, dt)
 	var inp: Dictionary = input.sample(dt) if input else {}
-	if yard and inp.get("kick", false) and Yard.station_at(f.torso.global_position) != "":
+	if yard and inp.get("kick", false) and yard.station_here(f.torso.global_position) != "":
 		inp.kick = false
 		inp.talk = true
 	# (A man held in the Hand of Jupiter hangs where the crosshair points: the aim goes every
@@ -1656,7 +1658,11 @@ func guest_message(type: String, data) -> void:
 						Chunk.spawn(prt, bits, Vector3.DOWN)
 		"yard_next":
 			if yard and data is Dictionary:
-				yard.set_next(str(data.get("t", "")))
+				# (Three boards at most, six short lines each: set_boards cuts what is longer.)
+				if data.get("o") is Array and not (data.o as Array).is_empty():
+					yard.set_boards((data.o as Array).slice(0, YardPlay.BOARD_AT.size()).map(func(x): return str(x).left(400)))
+				else:
+					yard.set_next(str(data.get("t", "")))
 		"kcr":
 			if data is Dictionary:
 				_guest_round_replay(data)
@@ -2375,7 +2381,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		music_hot = false
 	_banner(text, sub)
 	var wear := my_wear()
-	var result := {"won": won, "stage": stage, "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	var result := {"won": won, "stage": stage, "bout": int(stage_info.get("bout", stage)), "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
 	if mode == "campaign" and role != "guest":
 		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are (the
 		# dead among them carried off the sand as they died: final_bodies).
