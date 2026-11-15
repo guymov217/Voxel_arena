@@ -253,6 +253,15 @@ var board_texts_now: Array = []   # what each board reads (the host's own, or wh
 var boards: Array = []            # [{"root", "lines"}], built (on a screen) as many as there are texts
 var scenery_on := false
 var next_root: Node3D = null      # (the first board's: what the gate itself leads to)
+# The party's picks of the gate's fights (GateScreen): each one's the card he lit on his screen, or
+# the board he last walked up to, whichever came last (the host's; his own under 1).
+var picks := {}                   # peer id -> board
+var _stood := {}                  # peer id -> the board he stood by the tick before (-1: none)
+var _picks_sent := []             # what the guests were told of them last
+var _picks_t := 0.0
+var _picks_age := 0.0             # (said again now and then: a guest who came in later hears it)
+var gate_info := {}               # (a guest's) the fights on offer, as the host sent them (clean_gate)
+var picks_seen := {}              # (a guest's) the party's picks, as the host sent them (clean_picks)
 
 ## Where one stands to choose board `i`: in front of its face, toward the middle of the yard.
 static func board_spot(i: int) -> Vector3:
@@ -272,12 +281,91 @@ func station_here(p: Vector3) -> String:
 	var b := board_at(p)
 	return ("fight%d" % b) if b >= 0 else Yard.station_at(p)
 
-## The board each of the party stands by now (-1: none), the host first (GateChoice.majority).
+## The board each of the party is for now (-1: none), the host first (GateChoice.majority): the
+## one he picked on his gate screen or last walked up to, whichever came last.
 func stands() -> Array:
 	var out := []
 	for e in m.humans():
-		out.append(board_at(e.f.torso.global_position) if is_instance_valid(e.f) else -1)
+		var peer := _peer_of(e)
+		if picks.has(peer):
+			out.append(int(picks[peer]))
+		else:
+			out.append(board_at(e.f.torso.global_position) if is_instance_valid(e.f) else -1)
 	return out
+
+func _peer_of(e: Dictionary) -> int:
+	return 1 if e.kind == "local" else int(e.get("peer", -1))
+
+## A board walked up to is his pick (until he picks another, here or on his screen).
+func _follow_stands() -> void:
+	for e in m.humans():
+		var peer := _peer_of(e)
+		var b := board_at(e.f.torso.global_position) if is_instance_valid(e.f) else -1
+		if b != int(_stood.get(peer, -1)):
+			_stood[peer] = b
+			if b >= 0:
+				picks[peer] = b
+
+## A pick at the gate's cards (the host's own, or a guest's over the wire: a board's number,
+## anything else none).
+func take_pick(peer: int, v) -> void:
+	if (v is int or v is float) and is_finite(float(v)) and int(v) >= 0 and int(v) < board_texts_now.size():
+		picks[peer] = int(v)
+	else:
+		picks.erase(peer)
+
+## The names of those for each board ([[names] a board]), the host first.
+func pick_names() -> Array:
+	var out := []
+	for i in board_texts_now.size():
+		out.append([])
+	var st := stands()
+	var hs: Array = m.humans()
+	for j in hs.size():
+		var b := int(st[j])
+		if b >= 0 and b < out.size() and is_instance_valid(hs[j].f):
+			(out[b] as Array).append(String(hs[j].f.display_name))
+	return out
+
+## The party's picks told to the guests when they change (their screens and boards show them).
+func _send_picks(dt: float) -> void:
+	_picks_t -= dt
+	if _picks_t > 0.0 or not Net.active():
+		return
+	_picks_t = 0.5
+	_picks_age += 0.5
+	var now := [pick_names(), GateChoice.majority(stands(), board_texts_now.size())]
+	if now != _picks_sent or _picks_age >= 4.0:
+		_picks_sent = now
+		_picks_age = 0.0
+		Net.send_all("gate_picks", {"v": now[0], "l": now[1]})
+
+## The fights on offer as a guest is told them (the host's yard_next): the stage, the time round
+## and [bout, kind] a board, made safe; {} when there is nothing to choose (the demo's end).
+static func clean_gate(v) -> Dictionary:
+	if not (v is Dictionary) or not (v.get("b") is Array):
+		return {}
+	var n := Ladder.BOUTS.size()
+	var b := []
+	for x in (v.b as Array).slice(0, BOARD_AT.size()):
+		if x is Array and (x as Array).size() == 2 and (x[0] is int or x[0] is float) and is_finite(float(x[0])) and ["ladder", "crowd", "other", "boss"].has(str(x[1])):
+			b.append({"bout": clampi(int(x[0]), 1, n), "kind": str(x[1])})
+	if b.is_empty():
+		return {}
+	var s = v.get("s", 1)
+	var l = v.get("l", 1)
+	return {"s": clampi(int(s), 1, n) if (s is int or s is float) and is_finite(float(s)) else 1, "l": clampi(int(l), 1, 99) if (l is int or l is float) and is_finite(float(l)) else 1, "b": b}
+
+## The party's picks as a guest is told them, made safe: names a board (names as names, four at
+## most), and the board most of them are for.
+static func clean_picks(v) -> Dictionary:
+	if not (v is Dictionary) or not (v.get("v") is Array):
+		return {}
+	var by := []
+	for x in (v.v as Array).slice(0, BOARD_AT.size()):
+		by.append((x as Array).slice(0, Net.CAMPAIGN_PLAYERS).map(func(n): return Net.clean_name(n)) if x is Array else [])
+	var l = v.get("l", -1)
+	return {"v": by, "l": clampi(int(l), -1, BOARD_AT.size() - 1) if (l is int or l is float) and is_finite(float(l)) else -1}
 
 ## What a board says to the one standing by it: its foes (the crowd's fight said so), in a room how
 ## many of the party stand there, and what E does.
@@ -294,10 +382,13 @@ func board_prompt(i: int) -> String:
 	if crowd:
 		what += " · " + Loc.t("for the crowd: one more foe, double the prize")
 	if Net.active():
-		what += " · " + Loc.t("%d of %d stand here") % [stands().count(i), m.humans().size()]
+		var n := stands().count(i)
+		if not Net.is_host() and not picks_seen.is_empty():
+			n = ((picks_seen.v as Array)[i] as Array).size() if i < (picks_seen.v as Array).size() else 0
+		what += " · " + Loc.t("%d of %d for this fight") % [n, m.humans().size()]
 		if not Net.is_host():
-			return Loc.t("%s · you stand for this fight, the host leads the party through") % what
-	return Loc.t("%s · E: through the gate to this fight") % what
+			return Loc.t("%s · you stand for this fight · E: the gate's fights") % what
+	return Loc.t("%s · E: choose your fight") % what
 
 ## A line of letters painted on a board's face, made smaller until it fits.
 func _paint(root: Node3D, text: String, size: int, y: float, c: Color) -> Label3D:
@@ -540,6 +631,8 @@ func update(_dt: float, local_inp: Dictionary) -> void:
 			if is_instance_valid(e.f):
 				e.f.blood = maxf(e.f.blood, 50.0)
 		_boards()
+		_follow_stands()
+		_send_picks(_dt)
 		next_t -= _dt
 		if next_t <= 0.0:
 			next_t = 4.0

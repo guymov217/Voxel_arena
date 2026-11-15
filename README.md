@@ -127,9 +127,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   bout of men, men for beasts). A stage is fought as the bout chosen with the stage's own gear,
   pay and checkpoint (`Data.stage(n, players, bout, crowd)`), every bout is won once a time round
   whatever the way, and the won bouts go back with a checkpoint. A boss's day is the boss the run
-  drew of its stretch's two (never the last stretch's: the Dragon ends it). Alone, E at a board;
-  the gate itself leads to the first. In a room each stands by the board he wants and the host
-  leads the party to the one most stand by (his own when as many stand by two).
+  drew of its stretch's two (never the last stretch's: the Dragon ends it). E at the gate or at a
+  board opens the gate's cards (`scripts/ui/gate_screen.gd`): a card for each fight on offer, its
+  kind on a ribbon, its foes by name with what they carry and what it pays, and the foes
+  themselves, the very ones the fight brings (`Match.bout_foes`: the same names, faces and arms,
+  the second wave as it will come), standing in the arena itself (one built for the cards in a
+  world of their own, late in the day: the wall, the stands and their crowd, the gates, the
+  Emperor's box), each kind of fight in its own place in it. The card under the pointer (or
+  picked with ← →) comes forward lit, its foes take their stance and stir, its view comes nearer
+  and turns with a drag; its button, a double click, Enter or E goes through the gate, Esc back to
+  the yard. A boss's day is one big card. In a room each one's pick is the card he picked on his own
+  screen or the board he last walked up to, the names of those for each fight are on its card,
+  and the host leads the party to the one most of them picked (his own when as many pick two).
 - **A party's own glory** (`scripts/game/party_glory.gd`): in the co-op campaign, after every bout
   won the crowd crowns the one of the party it loved most (the most favour, above indifference):
   he brings the party's purse a fifth of the bout's prize more and wears a laurel wreath through

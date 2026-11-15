@@ -10,6 +10,7 @@ signal finished(result: Dictionary)
 signal lost(result: Dictionary)   # a campaign bout lost: at once, before the kill cam (the save resets then)
 @warning_ignore("unused_signal")   # sent by the yard (YardPlay)
 signal station(id: String)
+signal gate_picks   # (a guest's) the party's picks at the gate, as the host told them (yard.picks_seen)
 ## The campaign's physician: a player lost a limb or an eye this round (Body). The menu shows
 ## the local one; the host asks a guest over the network.
 signal doctor(e: Dictionary, body: Dictionary, news: Array)
@@ -33,6 +34,7 @@ var me = null
 var over := false
 var between := 0.0
 var late_wave: Array = []   # the bout's second wave (Ladder "late"), not yet in
+var late_specs: Array = []  # and as it will come: drawn with the first wave (the gate's cards show it: bout_foes)
 var late_at := 0.0
 var doctor_wait := {}            # entity id -> true while that player is at the physician
 var doctor_t := 0.0
@@ -708,7 +710,10 @@ func _send_yard_next() -> void:
 		return
 	yard.set_boards(YardPlay.board_texts(humans().size()))
 	if Net.active():
-		Net.send_all("yard_next", {"t": yard.next_text, "o": yard.board_texts_now})
+		# (And the fights themselves, for a guest's gate screen to show: none at the demo's end.)
+		var cs := int(Save.get_value("coop_stage", 1))
+		var g := {"s": cs, "l": int(Save.get_value("coop_lap", 1)), "b": [] if Edition.demo_over(cs) else GateChoice.now(true).map(func(o): return [int(o.bout), String(o.kind)])}
+		Net.send_all("yard_next", {"t": yard.next_text, "o": yard.board_texts_now, "g": g})
 
 ## A guest who left: his fighter goes, here and on every guest's screen.
 func drop_peer(id: int) -> void:
@@ -730,7 +735,7 @@ func _spawn_msg(e: Dictionary) -> Dictionary:
 		s["peer"] = 1
 	return s
 
-func _resolve_loadout(lo: Dictionary) -> Dictionary:
+static func _resolve_loadout(lo: Dictionary) -> Dictionary:
 	var out := {}
 	for k in ["main", "off"]:
 		var v = lo.get(k)
@@ -794,6 +799,36 @@ static func ladder_skill(st: int) -> float:
 	# A slow climb: the foes fight at their best from the 24th bout, not the ninth (their
 	# toughness and weapons keep rising the whole way).
 	return clampf(0.6 + 0.4 * float(st - 1) / 23.0, 0.6, 1.0)
+
+## The second wave's foes as they will come: through the far gate (the odd slots).
+func _late_specs(list: Array) -> Array:
+	var out := []
+	for i in list.size():
+		out.append(enemy_spec(list[i], 2 * i + 1, 2 * (i + 1)))
+	return out
+
+## The foes of a campaign bout as the fight will bring them (the gate's cards stand them up:
+## GateScreen), drawn as setup and _spawn_round draw them for a bout nobody seeded: the first wave,
+## then the second. Each {"spec", "slot": his place among the fighters (a man's face is drawn from
+## his name and it), "late": of the second wave}.
+static func bout_foes(st: int, players: int, bout: int, crowd: bool, lap_ := 1) -> Array:
+	var m := Match.new()
+	m.mode = "campaign"
+	m.stage = st
+	m.lap = maxi(1, lap_)
+	m.rng.seed = st * 1009 + 7
+	var info := Data.stage(st, players, bout, crowd)
+	var rounds: Array = info.get("rounds", [])
+	var first: Array = rounds[0] if not rounds.is_empty() else []
+	var out := []
+	for i in first.size():
+		out.append({"spec": m.enemy_spec(first[i], i, first.size()), "slot": players + i, "late": false})
+		m.rng.randi()   # (his wits, or a beast's own chances, drawn as he is brought in: _fighter_in, _beast_opts)
+	var late := m._late_specs(info.get("late", []))
+	for i in late.size():
+		out.append({"spec": late[i], "slot": players + first.size() + i, "late": true})
+	m.free()
+	return out
 
 func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var gx := 1.0 if i % 2 == 0 else -1.0
@@ -895,6 +930,7 @@ func _spawn_round(r: int) -> void:
 				spawn_fighter(spec)
 	_open_gates(list.size())
 	late_wave = stage_info.get("late", []).duplicate(true) if r == 0 else []
+	late_specs = _late_specs(late_wave)
 	late_at = time + Ladder.LATE_AFTER
 
 ## The bout's second wave (Ladder "late"): through the other gate, LATE_AFTER seconds in or as
@@ -902,20 +938,11 @@ func _spawn_round(r: int) -> void:
 ## gate named the first wave alone: the surprise is the point).
 func _spawn_late() -> void:
 	var list := late_wave
+	var specs := late_specs if late_specs.size() == list.size() else _late_specs(list)
 	late_wave = []
-	if staging():
-		# (In the middle of the fight: over the frames that follow, bring_in.)
-		var specs := []
-		for i in list.size():
-			specs.append(enemy_spec(list[i], 2 * i + 1, 2 * (i + 1)))
-		bring_in(specs)
-	else:
-		for i in list.size():
-			var spec := enemy_spec(list[i], 2 * i + 1, 2 * (i + 1))   # the odd slots: the far gate
-			if spec.kind == "beast":
-				spawn_beast(spec)
-			else:
-				spawn_fighter(spec)
+	late_specs = []
+	# (In the middle of the fight: over the frames that follow, bring_in.)
+	bring_in(specs)
 	if arena and arena.has_method("open_gate"):
 		arena.open_gate(-1)
 	sfx("horn", Vector3(-Arena.RADIUS, 2.0, 0), 0.6)
@@ -1676,6 +1703,11 @@ func guest_message(type: String, data) -> void:
 					yard.set_boards((data.o as Array).slice(0, YardPlay.BOARD_AT.size()).map(func(x): return str(x).left(400)))
 				else:
 					yard.set_next(str(data.get("t", "")))
+				yard.gate_info = YardPlay.clean_gate(data.get("g"))
+		"gate_picks":
+			if yard:
+				yard.picks_seen = YardPlay.clean_picks(data)
+				gate_picks.emit()
 		"kcr":
 			if data is Dictionary:
 				_guest_round_replay(data)

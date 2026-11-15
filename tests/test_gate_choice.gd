@@ -2,7 +2,7 @@ extends Node
 ## The fight chosen at the gate (GateChoice; the campaign a different way each run, user): what the
 ## boards offer, that a whole run wins every bout of the ladder once whatever is chosen, the
 ## party's choice, the bout and the crowd's fight as the match fights them, the won bouts kept with
-## a checkpoint, and the boards in the yard and the gate in the menu.
+## a checkpoint, and the boards in the yard and the gate's cards (GateScreen) over it.
 
 var t
 
@@ -123,10 +123,12 @@ func test_the_boards_by_the_gate() -> void:
 	t.eq(m.yard.stands(), [-1], "he stands by none of them")
 	m.me.f.teleport(YardPlay.board_spot(2))
 	await get_tree().physics_frame
+	await get_tree().physics_frame
 	t.eq(m.yard.stands(), [2], "and then by the third")
 	m.queue_free()
 	await get_tree().physics_frame
-	# Through the menu: E at the third board, and the bout that board offered is fought.
+	# Through the menu: E at the third board, the gate's cards with the third forward; through the
+	# gate with it, and the bout that board offered is fought.
 	var menu = load("res://scripts/ui/menu.gd").new()
 	menu.backdrop_off = true
 	add_child(menu)
@@ -135,13 +137,39 @@ func test_the_boards_by_the_gate() -> void:
 	await get_tree().process_frame
 	menu._open_station("fight2")
 	await get_tree().process_frame
-	t.check(menu.match_ != null and menu.match_.mode == "campaign" and int(menu.match_.stage_info.get("bout", 0)) == int(offers[2].bout), "E at the third board: its bout (%d)" % int(offers[2].bout))
+	t.check(menu.gate_screen != null and menu.gate_screen.at == 2, "E at the third board: the gate's cards, the third forward")
+	t.check(menu.match_ != null and menu.match_.mode == "yard", "still in the yard while he chooses")
+	if menu.gate_screen:
+		menu.gate_screen._press(2)
+		await _through(menu)
+	t.check(menu.match_ != null and menu.match_.mode == "campaign" and int(menu.match_.stage_info.get("bout", 0)) == int(offers[2].bout), "its fight: its bout (%d)" % int(offers[2].bout))
 	menu._end_match()
 	menu.enter_yard()
 	await get_tree().process_frame
 	menu._open_station("fight1")
 	await get_tree().process_frame
-	t.check(menu.match_ != null and bool(menu.match_.stage_info.get("crowd", false)), "E at the crowd's board: the crowd's fight")
+	if menu.gate_screen:
+		menu.gate_screen._press(1)
+		await _through(menu)
+	t.check(menu.match_ != null and bool(menu.match_.stage_info.get("crowd", false)), "the crowd's card: the crowd's fight")
+	# Esc at the gate: back to the yard as it was.
+	menu._end_match()
+	menu.enter_yard()
+	await get_tree().process_frame
+	menu._open_station("gate")
+	await get_tree().process_frame
+	t.check(menu.gate_screen != null and menu.gate_screen.at == 0, "at the gate itself: the gate's cards, the first forward")
+	if menu.gate_screen:
+		menu.gate_screen.close()
+	await get_tree().process_frame
+	t.check(menu.gate_screen == null and not menu.visible and menu.match_ != null and menu.match_.mode == "yard" and menu.match_.input.enabled, "Esc: back in the yard, his hands on him again")
 	menu._end_match()
 	menu.queue_free()
+	await get_tree().process_frame
+
+## (Through the gate: the screen goes dark, then the fight.)
+func _through(menu) -> void:
+	var t0 := Time.get_ticks_msec()
+	while menu.gate_screen != null and Time.get_ticks_msec() - t0 < 3000:
+		await get_tree().process_frame
 	await get_tree().process_frame

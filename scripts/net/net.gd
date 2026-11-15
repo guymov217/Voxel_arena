@@ -479,7 +479,7 @@ func _umsg(type: String, data) -> void:
 const MSG_PER_S := 240
 ## What a guest may say to the host at all: anything else (a snapshot, a spawn, a banner, the
 ## end of a bout) is the host's word alone and is dropped when a guest sends it.
-const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready", "rudis_vote"]
+const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready", "rudis_vote", "gate_pick"]
 var _rate := {}   # peer id -> [the second's start (ms), messages in it]
 
 func _flooding(from: int) -> bool:

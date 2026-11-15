@@ -560,17 +560,11 @@ func _open_station(id: String) -> void:
 	# the smith's to mend too, and goes with him through the gate (user: damage in the yard was
 	# not counted when mending).
 	_keep_yard_wear()
-	# Alone, the gate is the way to the next bout: through it and into the arena, no menu (to the
-	# first board's fight; another board's, E at that board). A room's host gets the gate's menu
-	# (the co-op campaign or another mode for everyone); at a board he leads the party through.
-	if id.begins_with("fight") and not (Net.active() and not Net.is_host()):
-		_through_gate(int(id.substr(5)))
-		return
-	if id == "gate" and not Net.active():
-		_through_gate(0)
-		return
-	if (id == "gate" or id.begins_with("fight")) and Net.active() and not Net.is_host():
-		match_._banner("The arena gate", "The host leads the party through")
+	# The gate and the boards by it: the gate's fights, a card each (GateScreen), the board's own
+	# lit (the gate's: the first, the one it leads to).
+	# (A room's host at the gate when the demo is over: the gate's menu, with the modes for the room.)
+	if (id == "gate" or id.begins_with("fight")) and not (id == "gate" and Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
+		_gate_open(-1 if id == "gate" else int(id.substr(5)))
 		return
 	visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -634,14 +628,102 @@ func _leave_room() -> void:
 	over_match = false
 	show_screen("main")
 
-## The fight the party is for (GateChoice): the board most of them stand by in the yard, the host
-## by board `board` (-1: at the gate or in a menu, his own vote none).
+## The fight the party is for (GateChoice): the board most of them are for (YardPlay.stands: the
+## card each picked on his gate screen, or the board he last walked up to), the host for board
+## `board` (-1: his own as it is).
 func _party_pick(board: int) -> Dictionary:
 	var offers := GateChoice.now(true)
 	var stands: Array = match_.yard.stands() if match_ and is_instance_valid(match_) and match_.yard else []
-	if not stands.is_empty():
+	if not stands.is_empty() and board >= 0:
 		stands[0] = board
 	return offers[GateChoice.majority(stands, offers.size())]
+
+# ---------- The gate's fights (GateScreen) ----------
+
+var gate_screen: GateScreen = null
+
+## The gate's cards over the yard, board `board`'s forward (-1: at the gate itself, the first's).
+## Alone: through the gate to the one he takes. In a room each one's pick is on the cards (the
+## board he stands at is his, until he picks another here; a guest's pick is told to the host),
+## and the host leads them through (or into another mode for the room). At the demo's end there is
+## nothing to choose: straight to its end.
+func _gate_open(board: int) -> void:
+	if gate_screen and is_instance_valid(gate_screen):
+		return
+	var coop := Net.active()
+	var guest := coop and not Net.is_host()
+	var yard: YardPlay = match_.yard if match_ and is_instance_valid(match_) else null
+	var st := int(Save.get_value("coop_stage" if coop else "stage", 1))
+	var lap := int(Save.get_value("coop_lap" if coop else "lap", 1))
+	var offers := GateChoice.now(coop)
+	if guest:
+		var gi: Dictionary = yard.gate_info if yard else {}
+		if gi.is_empty():
+			# (Nothing to choose, or a host of a game from before the gate's cards: the boards only.)
+			match_._banner("The arena gate", "The host leads the party through")
+			return
+		offers = gi.b
+		st = int(gi.s)
+		lap = int(gi.l)
+	elif Edition.demo_over(st):
+		_through_gate(0)
+		return
+	var mine := board
+	if board < 0 and coop and not guest and yard:
+		mine = int(yard.picks.get(1, -1))
+	var o := {"at": maxi(board, maxi(mine, 0)), "mine": mine, "party": coop, "host": not guest, "lap": lap, "previews": DisplayServer.get_name() != "headless"}
+	if coop and not guest:
+		if Net.campaign_full():
+			o.lead_block = campaign_full_text()
+		o.extras = [[Loc.t("An arena mode for the room"), func():
+			_gate_shut()
+			_end_match()
+			show_screen("fights")], [Loc.t("Close the room (main menu)"), func():
+			_gate_shut()
+			_leave_room()]]
+	visible = true
+	screen = "gate_cards"
+	panel.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if match_.input:
+		match_.input.enabled = false
+	if hud:
+		hud.visible = false
+	gate_screen = GateScreen.open(self, offers, st, match_.humans().size() if coop else 1, o)
+	gate_screen.chosen.connect(func(i: int):
+		_gate_shut()
+		_through_gate(i))
+	gate_screen.closed.connect(func():
+		_gate_shut()
+		_close_overlay())
+	if coop:
+		gate_screen.voted.connect(func(i: int):
+			if guest:
+				Net.send_host("gate_pick", i)
+			elif yard:
+				yard.take_pick(1, i))
+		if guest:
+			match_.gate_picks.connect(_gate_seen)
+			_gate_seen()
+		elif yard:
+			gate_screen.refresh = func(g: GateScreen):
+				g.set_votes(yard.pick_names(), GateChoice.majority(yard.stands(), offers.size()))
+
+## (A guest's) the party's picks on his cards, as the host told them.
+func _gate_seen() -> void:
+	var yard: YardPlay = match_.yard if match_ and is_instance_valid(match_) else null
+	if gate_screen and is_instance_valid(gate_screen) and yard and not yard.picks_seen.is_empty():
+		gate_screen.set_votes(yard.picks_seen.v, int(yard.picks_seen.l))
+
+## The gate's cards gone (through the gate, back to the yard, the match over).
+func _gate_shut() -> void:
+	if gate_screen and is_instance_valid(gate_screen):
+		gate_screen.queue_free()
+	gate_screen = null
+	if match_ and is_instance_valid(match_) and match_.gate_picks.is_connected(_gate_seen):
+		match_.gate_picks.disconnect(_gate_seen)
+	if panel:
+		panel.visible = true
 
 ## Through the gate to a fight on offer by it: alone, board `board`'s (0: the gate's own); the
 ## host leads the party to the one most of them stand by (his own board counting, -1: none).
@@ -4103,7 +4185,10 @@ func start(opts: Dictionary) -> void:
 	# held back; this is for a friend who came in after the screen was drawn), and the screen is
 	# drawn again with the reason.
 	if opts.get("coop", false) and Net.campaign_full():
-		show_screen(screen if ["gate", "room", "fights"].has(screen) else "room")
+		if screen == "gate_cards" and in_yard():
+			_gate_open(0)   # (the gate's cards again, the reason under them)
+		else:
+			show_screen(screen if ["gate", "room", "fights"].has(screen) else "room")
 		return
 	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
 	# campaign: the guests are sent the start and join as themselves.
@@ -4449,6 +4534,7 @@ func _apply_input_settings() -> void:
 		match_.input.invert_y = bool(st.get("invertY", false))
 
 func _end_match() -> void:
+	_gate_shut()
 	_backdrop_off()
 	if endless_layer:
 		_endless_close()
@@ -4728,6 +4814,10 @@ func _on_net(type: String, data, _from: int) -> void:
 			# broken on everyone's until the next bout).
 			if Net.is_host() and in_yard() and Net.peers.has(_from):
 				match_.peer_body(_from, Net.peers[_from].get("body", {}))
+		"gate_pick":
+			# A guest's pick of the gate's fights (a board's number, anything else none).
+			if match_ and Net.is_host() and match_.yard:
+				match_.yard.take_pick(_from, data)
 		"doctor_done":
 			if match_ and Net.is_host() and data is Dictionary:
 				for e in match_.humans():
@@ -4745,7 +4835,7 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "bone", "held":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "bone", "held":
 			if match_:
 				match_.guest_message(type, data)
 		"music":
