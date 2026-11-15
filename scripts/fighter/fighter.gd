@@ -3925,6 +3925,7 @@ func _process(_dt: float) -> void:
 func _clip_arm_armor() -> void:
 	if torso == null or not _armored(torso):
 		return
+	_limbs_in_armor()
 	var tinv := torso.get_global_transform_interpolated().affine_inverse()
 	# The chest armour's own box (its plates stand out from the chest), kept until it changes.
 	if not torso.has_meta("armor_box"):
@@ -3955,7 +3956,13 @@ func _clip_arm_armor() -> void:
 		# plate of its upper arm under one.)
 		var own := AABB(-torso.half_ext - Vector3.ONE * cell, (torso.half_ext + Vector3.ONE * cell) * 2.0)
 		torso.set_meta("armor_box", AABB(lo - Vector3.ONE * cell, hi - lo + Vector3.ONE * cell * 2.0).intersection(own) if lo.x < INF else AABB())
+		# (And in the new look, within the box, his outline under the shell: a box round his chest
+		# takes in what lies beside it, at his sides and over his shoulders, and the top of a
+		# manica beside his shoulder was not drawn, his arm bare there, user: holes in the armour.)
+		torso.set_meta("armor_outline", FineArmor.outline(torso))
 	var box: AABB = torso.get_meta("armor_box")
+	var ol: Dictionary = torso.get_meta("armor_outline", {})
+	var ol_pad: float = torso.vf * torso.part_scale * 0.25
 	if box.size == Vector3.ZERO:
 		return
 	for n in ["upperArmL", "upperArmR"]:
@@ -3980,7 +3987,7 @@ func _clip_arm_armor() -> void:
 				if ad.on[ci] == 0:
 					continue
 				var q: Vector3 = to_t * (ad.xf[ci] as Transform3D).origin
-				var inside := box.has_point(q)
+				var inside := box.has_point(q) and (ol.is_empty() or FineArmor.in_outline(ol, q, ol_pad))
 				if inside != (clip[ci] == 1):
 					clip[ci] = 1 if inside else 0
 					var cxf := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside else p.drawn_plate(ad.xf[ci])
@@ -3988,6 +3995,100 @@ func _clip_arm_armor() -> void:
 					FineArmor.sync(ad, ci, cxf)
 			ad["clip"] = clip   # (a packed array is a value: the changes go back in)
 	_clip_shoulder_guards()
+
+## An arm's own flesh does not come through the armour of his trunk (user: stray voxels in the
+## armour, that belong to nothing). A cuirass's shell lies down his sides under his armpits and
+## out over the tops of his arms, where the arms themselves are as he stands, and its voxels came
+## out through an arm's skin: a grey square on a bare arm, teeth hanging under the shoulder guard's
+## edge. Each shell on his trunk is told where his upper arms are drawn now (voxel_body.gdshader:
+## limb_a0.., a round cone each, _limb_cone: the arm's own width, no wider, or the guard's voxels
+## over the front of his shoulder, outside his arm, are hidden with it, user: holes in the
+## armour) and draws none of its voxels whose middle lies in one while it does: under a raised
+## arm his side is armoured whole. Drawing only: the plates are where they were and stop what
+## they did.
+var limbs_told: Array = []   # what his trunk's shells were last told: his left arm's two ends, his right's (world; .w how wide)
+func _limbs_in_armor(interp := true) -> void:
+	var cones := [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
+	var i := 0
+	for n in ["upperArmL", "upperArmR"]:
+		var up: VoxelPart = by_name.get(n)
+		if up != null and not up.severed and not up.missing:
+			var c := _limb_cone(up)
+			if not c.is_empty():
+				var t := up.draw_turn * (up.get_global_transform_interpolated() if interp else up.global_transform)
+				t.origin += up.draw_shift
+				var k := t.basis.x.length()
+				var a: Vector3 = t * Vector3(0.0, float(c.top), 0.0)
+				var b: Vector3 = t * Vector3(0.0, float(c.end), 0.0)
+				cones[i] = Vector4(a.x, a.y, a.z, float(c.r_top) * k)
+				cones[i + 1] = Vector4(b.x, b.y, b.z, float(c.r_end) * k)
+		i += 2
+	limbs_told = cones
+	for ad in torso.get_meta("armor", []):
+		var sh = ad.get("shell")
+		if _cosmetic(String(ad.id)) or not (sh is Dictionary) or not is_instance_valid(sh.mi):
+			continue
+		var mi: GeometryInstance3D = sh.mi
+		mi.set_instance_shader_parameter("limb_a0", cones[0])
+		mi.set_instance_shader_parameter("limb_a1", cones[1])
+		mi.set_instance_shader_parameter("limb_b0", cones[2])
+		mi.set_instance_shader_parameter("limb_b1", cones[3])
+
+## A limb as a round cone along its own length (the part's frame): {top, end: the heights of its
+## two ends' middles, r_top, r_end: how far out its skin is round each}, from the fine look's
+## drawing of it (FineBody), worked out once a build's part. Empty: not drawn in the fine look.
+static var _limb_cones := {}
+func _limb_cone(p: VoxelPart) -> Dictionary:
+	if not p.fine.has("body"):
+		return {}
+	var bn := String(p.fine.get("build", ""))
+	var fv := p.vf * p.part_scale / float(Data.body_res)
+	var key := "%s|%s|%.5f|%s" % [bn, p.part_name, fv, str(p.grid)]
+	if _limb_cones.has(key):
+		return _limb_cones[key]
+	var out := {}
+	var d := FineBody.part_data(bn, String(p.part_name))
+	if not d.is_empty():
+		out = limb_cone(d.cells, -Vector3(p.grid) * p.vf * p.part_scale * 0.5, fv)
+	_limb_cones[key] = out
+	return out
+
+## The cone of a limb drawn as fine cells `cells` (FineBody.CELL numbers each; a cell's middle at
+## lo + (its place + 0.5) * fv): its skin's reach round its length row by row (the mean of how far
+## it goes each way across), the widest row of its upper two fifths and of its lower two.
+static func limb_cone(cells: PackedInt32Array, lo: Vector3, fv: float) -> Dictionary:
+	var rows := {}   # row -> [+x, -x, +z, -z]
+	var n := cells.size() / FineBody.CELL
+	for i in n:
+		var q := lo + (Vector3(cells[i * FineBody.CELL], cells[i * FineBody.CELL + 1], cells[i * FineBody.CELL + 2]) + Vector3.ONE * 0.5) * fv
+		var r: int = cells[i * FineBody.CELL + 1]
+		if not rows.has(r):
+			rows[r] = [0.0, 0.0, 0.0, 0.0]
+		var e: Array = rows[r]
+		e[0] = maxf(e[0], q.x)
+		e[1] = maxf(e[1], -q.x)
+		e[2] = maxf(e[2], q.z)
+		e[3] = maxf(e[3], -q.z)
+	if rows.is_empty():
+		return {}
+	var ys := rows.keys()
+	ys.sort()
+	var r0: int = ys[0]
+	var r1: int = ys[ys.size() - 1]
+	var span := float(r1 - r0)
+	var r_top := 0.0
+	var r_end := 0.0
+	for r in ys:
+		var e: Array = rows[r]
+		var reach: float = (e[0] + e[1] + e[2] + e[3]) * 0.25 + fv * 0.5
+		var h := (float(r - r0) / span) if span > 0.0 else 0.5
+		if h >= 0.6:
+			r_top = maxf(r_top, reach)
+		if h <= 0.4:
+			r_end = maxf(r_end, reach)
+	var y_hi := lo.y + (float(r1) + 1.0) * fv
+	var y_lo := lo.y + float(r0) * fv
+	return {"top": maxf(y_hi - r_top, (y_hi + y_lo) * 0.5), "end": minf(y_lo + r_end, (y_hi + y_lo) * 0.5), "r_top": r_top, "r_end": r_end}
 
 ## A shoulder's own armour is worn over the cuirass's guard on that shoulder (user: the pieces of
 ## armour went into one another, no-clip): where the arm's armour (a pauldron, a manica's top) is
@@ -4285,6 +4386,8 @@ func draw_now() -> void:
 	_draw_joint_caps(false)
 	_bend_drawing(false)
 	_foot_drawing(false)
+	if torso != null and _armored(torso):
+		_limbs_in_armor(false)
 
 ## A knee and an elbow under the smooth skin (FineSmooth.geo; drawing only): the thigh and the
 ## shin, the upper arm and the forearm, are drawn as one skin bent round the joint (voxel_body.

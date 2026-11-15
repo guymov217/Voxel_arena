@@ -1183,6 +1183,8 @@ static func set_ao(on: bool) -> void:
 			mat.set_shader_parameter("ao_strength", ao_strength)
 	FineHead.material()   # (the fine head's, a shade less, follows too)
 	FineArmor.material()  # (and the new look's armour)
+	if FineArmor._lit_mat != null:
+		FineArmor.lit_material()
 
 ## A voxel kind as MultiMesh custom data (the shader reads r * 16; a >= 1 marks it set, and
 ## what a carries over 1 is the voxel's corner shading, `ao`, see ao_bits). A sharp weapon

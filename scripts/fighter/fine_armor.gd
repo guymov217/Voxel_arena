@@ -19,11 +19,27 @@ const THICK := 2.0          # the shell, fine voxels thick
 ## kept where its middle lies in that (_coarse). A hairstyle or a hat the fine voxels' own.
 const COARSE := 1.5
 const COARSE_THICK := 1.5
+## The fine look's smooth light on a piece of armour's shell (FineSmooth, as on his body: each of
+## its voxels lit by the way the shell faces there, the shape as a whole, not by the cube's own
+## faces. The light alone: its voxels stay the cubes they are, user, the game's voxels are to stay
+## voxels; with their corners moved onto the shape a helmet was a smooth bowl). LIGHT_REACH: how
+## far the shell's shape is blurred for it (its voxels). LIGHT_LEAN: the furthest a voxel's way
+## may lean off its own plate's way out of him (the cosine): at a piece's free edge the shape
+## turns in under it, and the voxels there were lit as from below, black, holes in the piece.
+const LIGHT_REACH := 2
+const LIGHT_LEAN := 0.5
+const LIGHT_GAP := 3        # how far under a plate the gap between it and him is taken as filled (the shell's voxels)
+const LIGHT_EDGE := 0.3     # a voxel with less of the piece round it than this is at its edge (the piece blurred a voxel each way: a third in a sheet of it one voxel thick, two ninths at its straight edge)
+const LIGHT_EDGE_W := 0.1   # and by this much less, all at its edge
+const LIGHT_ROUGH := 0.56   # the least roughness of its metal under the smooth light (material)
+const LIGHT_OWN := 0.04     # a voxel's own way's weight beside those round it, as they are evened out (their blur, its own a twenty-seventh of it)
+const LIGHT_SKY := 0.95     # how far a piece's top takes the light of what is round it as its sides do (lit_material: in the shade its top was the sky's blue)
 const BAND_KEEP := 24       # parts' grounds kept (a build, a part, a size each)
 const SHELL_KEEP := 24      # shells kept (a piece on a build's part)
 static var _bands := {}
 static var _shells := {}
 static var _unit: BoxMesh = null
+static var _unit_lit: BoxMesh = null   # (a piece lit by its shape: lit_material)
 
 ## Whether the piece is drawn as a shell on `p` as it is drawn now.
 static func wanted(p: VoxelPart, id: String) -> bool:
@@ -85,6 +101,11 @@ static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 		_unit = BoxMesh.new()
 		_unit.size = Vector3.ONE
 		_unit.material = material()
+	var lit := FineSmooth.live() and not Fighter._cosmetic(id)
+	if lit and _unit_lit == null:
+		_unit_lit = BoxMesh.new()
+		_unit_lit.size = Vector3.ONE
+		_unit_lit.material = lit_material()
 	var cnt: int = L.cnt
 	var of: Dictionary = L.of
 	var base: Array = L.base
@@ -103,7 +124,7 @@ static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
 	mm.use_custom_data = true
-	mm.mesh = _unit
+	mm.mesh = _unit_lit if lit else _unit
 	mm.instance_count = cnt
 	FineBody._keep_in_memory(mm)
 	mm.buffer = buf
@@ -133,6 +154,9 @@ static func build(f, p: VoxelPart, ad: Dictionary, staged := false) -> void:
 static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace := {}) -> Dictionary:
 	var n: int = ad.cells.size()
 	var lkey := "%s|%s|%d|%d|%d|%d|%s|%d" % [_key(p), id, n, hash(ad.cells), hash(ad.pts), hash(ad.get("kinds", [])), bare.to_html(), hash(ad.get("cols", []))]
+	var lit := FineSmooth.live() and not Fighter._cosmetic(id)
+	if lit:
+		lkey += "|lit"
 	if _shells.has(lkey):
 		var kept: Dictionary = _shells[lkey]
 		_shells.erase(lkey)   # (the last used kept the longest: a helmet a hairstyle, more of them)
@@ -361,6 +385,13 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace 
 		return {}
 	if p.fine.has("wtab"):
 		_fill_pinholes(owner, ground.within)
+	else:
+		await _tidy(owner, extra, ground.within, skin_test(ground), pace, p)
+		if staged and not _still(p, pace):
+			return {}
+		_rim_round_limbs(owner, extra, rest_cones(p), o, sp)
+		if staged and not await _pace(p, pace):
+			return {}
 	if style.has("face"):
 		_keep_whole(owner, extra)
 	if staged and not await _pace(p, pace):
@@ -380,6 +411,167 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace 
 	xk.resize(cnt)
 	var keys := owner.keys()
 	var box := Basis.from_scale(sp * 1.04)
+	# (The piece on a grid of numbers, 1 where a voxel of it lies: its rim and its voxels' corner
+	# shading are read off it, _ao_at.)
+	var alo: Vector3i = keys[0]
+	var ahi := alo
+	for kc: Vector3i in keys:
+		alo = alo.min(kc)
+		ahi = ahi.max(kc)
+	alo -= Vector3i.ONE * 2
+	ahi += Vector3i.ONE * 2
+	var ady := ahi.y - alo.y + 1
+	var adz := ahi.z - alo.z + 1
+	var ag := PackedByteArray()
+	ag.resize((ahi.x - alo.x + 1) * ady * adz)
+	for kc: Vector3i in keys:
+		ag[((kc.x - alo.x) * ady + (kc.y - alo.y)) * adz + (kc.z - alo.z)] = 1
+	var aof := _ao_steps(PackedInt32Array([ady * adz, adz, 1]))
+	var a6 := PackedInt32Array([ady * adz, -ady * adz, adz, -adz, 1, -1])
+	var d6 := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	# The way the shell faces at each of its voxels (the smooth light). Its shape: the shell and him
+	# under it, his own fine voxels on the shell's lattice.
+	var na := PackedFloat32Array()
+	if lit:
+		# (Each plate's way out of him: its tile's thin side, turned to point away from his middle.)
+		var mid: Vector3 = p.fine.get("wc", Vector3.ZERO)
+		var outs := PackedVector3Array()
+		outs.resize(n)
+		for ci in n:
+			outs[ci] = nrm[ci] if nrm[ci].dot(org[ci] - mid) >= 0.0 else -nrm[ci]
+		var under := {}
+		var done := 0
+		for t in p.fine.get("xf", []):
+			var j := Vector3i((((t as Transform3D).origin - o) / sp).floor())
+			if not owner.has(j):
+				under[j] = true
+			done += 1
+			if staged and (done & 1023) == 0 and not await _pace(p, pace):
+				return {}
+		# (And the parts jointed on to this one, where they hang at rest: a cuirass's shoulder
+		# guards lie over the tops of his arms, which are not his trunk's fine voxels.)
+		var who = p.fighter
+		if p.fine.has("body") and who != null and "parts" in who:
+			var bn := String(p.fine.get("build", ""))
+			for q: VoxelPart in who.parts:
+				if q == p or String(q.part_name) == "head" or not (q.parent_part == p or p.parent_part == q):
+					continue
+				var qd := FineBody.part_data(bn, String(q.part_name))
+				if qd.is_empty():
+					continue
+				var qf := q.vf * q.part_scale * 0.5
+				var q_lo: Vector3 = -Vector3(q.grid) * qf + ((q.pa - q.ca) if q.parent_part == p else (p.ca - p.pa))
+				var qc: PackedInt32Array = qd.cells
+				for i in qc.size() / FineBody.CELL:
+					var j := Vector3i(((q_lo + (Vector3(qc[i * FineBody.CELL], qc[i * FineBody.CELL + 1], qc[i * FineBody.CELL + 2]) + Vector3.ONE * 0.5) * qf - o) / sp).floor())
+					if not owner.has(j):
+						under[j] = true
+					done += 1
+					if staged and (done & 1023) == 0 and not await _pace(p, pace):
+						return {}
+		# (And what lies between a plate and him: where a piece stands off him, a shoulder guard's
+		# rim over his arm, the shell's shape turned in under it, into the gap.)
+		var gap := {}
+		for kc: Vector3i in keys:
+			var way_out: Vector3 = outs[owner[kc]]
+			for deep in range(1, LIGHT_GAP + 1):
+				var below := Vector3i((Vector3(kc) + Vector3.ONE * 0.5 - way_out * float(deep)).floor())
+				if under.has(below):
+					break
+				if not owner.has(below):
+					gap[below] = true
+			done += 1
+			if staged and (done & 511) == 0 and not await _pace(p, pace):
+				return {}
+		under.merge(gap)
+		var at := FineSmooth.triples(keys)
+		var sol := FineSmooth.solid(at, FineSmooth.triples(under.keys()), 1, true, not p.fine.has("wtab"))
+		na = FineSmooth.ways(at, FineSmooth.blurred(sol, LIGHT_REACH))
+		if staged and not await _pace(p, pace):
+			return {}
+		# On the shape's own grid (FineSmooth.solid): how much of the piece lies round each of its
+		# voxels, and each voxel's way evened with those round it, by the core's blur. (Asked of
+		# the dictionary of places voxel by voxel, 26 round each, these were a tenth of a second.)
+		var fsy: int = sol.sy
+		var fsz: int = sol.sz
+		var flo: Vector3i = sol.lo
+		var fpad: int = sol.pad
+		var total: int = (sol.f as PackedFloat32Array).size()
+		var cell := PackedInt32Array()
+		cell.resize(cnt)
+		var occ := PackedFloat32Array()
+		occ.resize(total)
+		for s in cnt:
+			var kc: Vector3i = keys[s]
+			var i := ((kc.x - flo.x + fpad) * fsy + kc.y - flo.y + fpad) * fsz + kc.z - flo.z + fpad
+			cell[s] = i
+			occ[i] = 1.0
+		var grid := {"sx": sol.sx, "sy": fsy, "sz": fsz, "lo": flo, "pad": fpad}
+		grid["f"] = occ
+		var dens: PackedFloat32Array = FineSmooth.blurred(grid, 1).f
+		# (At the piece's free edge its voxels are lit as their own plate faces, more so the less
+		# of the piece lies round them: the edge of a plate catching the light, as it did.)
+		var dec := _decoded()
+		var wx := PackedFloat32Array()
+		var wy := PackedFloat32Array()
+		var wz := PackedFloat32Array()
+		wx.resize(total)
+		wy.resize(total)
+		wz.resize(total)
+		var ws := PackedVector3Array()
+		ws.resize(cnt)
+		for s in cnt:
+			var way_out: Vector3 = outs[owner[keys[s]]]
+			var w: Vector3 = dec[int(na[s]) - 2] if na[s] > 1.5 else way_out
+			var i := cell[s]
+			var edge := clampf((LIGHT_EDGE - dens[i]) / LIGHT_EDGE_W, 0.0, 1.0)
+			if edge > 0.0:
+				w = w.lerp(way_out, edge).normalized()
+			ws[s] = w
+			wx[i] = w.x
+			wy[i] = w.y
+			wz[i] = w.z
+		if staged and not await _pace(p, pace):
+			return {}
+		# (And each as those round it: one voxel of a guard's corner, turned to the sun where the
+		# rest were not, was a white square on the piece, user, stray pieces in the armour.)
+		grid["f"] = wx
+		wx = FineSmooth.blurred(grid, 1).f
+		grid["f"] = wy
+		wy = FineSmooth.blurred(grid, 1).f
+		grid["f"] = wz
+		wz = FineSmooth.blurred(grid, 1).f
+		var lim := sqrt(1.0 - LIGHT_LEAN * LIGHT_LEAN)
+		for s in cnt:
+			var i := cell[s]
+			var w := Vector3(wx[i], wy[i], wz[i]) + ws[s] * LIGHT_OWN
+			var l := w.length()
+			w = w / l if l > 0.0001 else ws[s]
+			# (Held within LIGHT_LEAN of its plate's way out of him: lean.)
+			var way_out: Vector3 = outs[owner[keys[s]]]
+			var d := w.dot(way_out)
+			if d < LIGHT_LEAN:
+				var side := w - way_out * d
+				var sl := side.length()
+				w = way_out if sl < 0.001 else side / sl * lim + way_out * LIGHT_LEAN
+			na[s] = FineSmooth.encode(w)
+	# (What is the same for every voxel of a plate, or of the piece, is worked out once: a voxel's
+	# share of the work was most of the time a piece took to lay out.)
+	var cosmetic := Fighter._cosmetic(id)
+	var hair := cosmetic and id.begins_with("hair_")
+	var kinds: Array = ad.kinds if ad.has("kinds") else []
+	var cols: Array = ad.cols if cosmetic and ad.has("cols") else []
+	var within: Dictionary = ground.within
+	var dark := float(style.get("dark", 1.0))
+	var inv := []                      # each plate's tile, the other way
+	inv.resize(n)
+	var pcol := PackedColorArray()     # each plate's own colour
+	pcol.resize(n)
+	var pkind := PackedByteArray()     # 1: worked out; 2: of metal
+	pkind.resize(n)
+	var bx := box.x.x
+	var by := box.y.y
+	var bz := box.z.z
 	for s in cnt:
 		if staged and (s & 127) == 127 and not await _pace(p, pace):
 			return {}
@@ -390,23 +582,29 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace 
 		if not of.has(ci):
 			of[ci] = []
 		(of[ci] as Array).append(s)
-		var cxf := Transform3D(box, o + (Vector3(kc) + Vector3.ONE * 0.5) * sp)
-		rel[s] = (base[ci] as Transform3D).affine_inverse() * cxf
+		if pkind[ci] == 0:
+			var c: Array = ad.cells[ci]
+			pcol[ci] = cols[ci] if ci < cols.size() else (Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else bare)
+			pkind[ci] = 3 if ci >= kinds.size() or int(kinds[ci]) == 3 or int(kinds[ci]) == 4 else 1
+			inv[ci] = (base[ci] as Transform3D).affine_inverse()
+		var mid := o + (Vector3(kc) + Vector3.ONE * 0.5) * sp
+		rel[s] = (inv[ci] as Transform3D) * Transform3D(box, mid)
 		var b := s * 20
-		buf[b] = cxf.basis.x.x
-		buf[b + 1] = cxf.basis.y.x
-		buf[b + 2] = cxf.basis.z.x
-		buf[b + 3] = cxf.origin.x
-		buf[b + 4] = cxf.basis.x.y
-		buf[b + 5] = cxf.basis.y.y
-		buf[b + 6] = cxf.basis.z.y
-		buf[b + 7] = cxf.origin.y
-		buf[b + 8] = cxf.basis.x.z
-		buf[b + 9] = cxf.basis.y.z
-		buf[b + 10] = cxf.basis.z.z
-		buf[b + 11] = cxf.origin.z
-		var kd: int = int(ad.kinds[ci]) if ad.has("kinds") and ci < (ad.kinds as Array).size() else 3
-		var col := _shade(ad, ci, kc, owner, bare, ground.within, style, p.dims, bands)
+		buf[b] = bx
+		buf[b + 3] = mid.x
+		buf[b + 5] = by
+		buf[b + 7] = mid.y
+		buf[b + 10] = bz
+		buf[b + 11] = mid.z
+		var kd: int = int(kinds[ci]) if ci < kinds.size() else 3
+		# (Its rim: where the shell ends on him, not its inside or its outside face.)
+		var at := ((kc.x - alo.x) * ady + (kc.y - alo.y)) * adz + (kc.z - alo.z)
+		var rim := false
+		for f in 6:
+			if ag[at + a6[f]] == 0 and within.has(kc + (d6[f] as Vector3i)):
+				rim = true
+				break
+		var col := _shade(pcol[ci], pkind[ci] == 3, rim, hair, kc, dark, bands)
 		xk[s] = int(extra.get(kc, 0))
 		match int(xk[s]):
 			CREST:
@@ -427,8 +625,8 @@ static func _layout(p: VoxelPart, ad: Dictionary, id: String, bare: Color, pace 
 		buf[b + 12] = col.r
 		buf[b + 13] = col.g
 		buf[b + 14] = col.b
-		buf[b + 15] = col.a
-		var cu := VoxelPart.kind_data(kd, _ao(kc, owner), 0)
+		buf[b + 15] = na[s] if na.size() == cnt else col.a
+		var cu := VoxelPart.kind_data(kd, _ao_at(ag, at, aof), 0)
 		buf[b + 16] = cu.r
 		buf[b + 17] = cu.g
 		buf[b + 18] = cu.b
@@ -520,6 +718,15 @@ static func _near(near: Dictionary, bucket: Dictionary, kb: Vector3i) -> PackedI
 	near[kb] = l
 	return l
 
+## Every way a voxel can carry (FineSmooth.decode of 2 + its number), worked out once.
+static var _dec := PackedVector3Array()
+static func _decoded() -> PackedVector3Array:
+	if _dec.is_empty():
+		_dec.resize(1024)
+		for c in 1024:
+			_dec[c] = FineSmooth.decode(2.0 + float(c))
+	return _dec
+
 ## The shell's material: the fine voxels' own, as his body's and his head's (the blocks' darkened
 ## each small voxel's edges), its bronze polished as the arena's was, never gone green in its
 ## corners and in spots (on thousands of small voxels the helmet was drawn as curly hair, user).
@@ -537,6 +744,25 @@ static func material() -> ShaderMaterial:
 		_mat.set_shader_parameter("scratches", 0.3)
 	_mat.set_shader_parameter("ao_strength", VoxelPart.ao_strength * FineHead.AO_K)
 	return _mat
+
+## The stuff of a piece lit by its shape (the smooth light; not a hat's, not the classic looks'):
+## the shells' own (material), with the shader's ARMOUR_LIGHT set. Under the smooth light a voxel
+## is lit as the shell faces there, all of it one way: polished as the cubes were, the few that
+## faced the sun were white squares on the piece (user: stray pieces in the armour), so a broader,
+## softer sheen (metal_rough); and the light of what is round it taken on its top as on its sides
+## (sky_hold: voxel_body.gdshader, env_n).
+static var _lit_mat: ShaderMaterial = null
+static func lit_material() -> ShaderMaterial:
+	if _lit_mat == null:
+		_lit_mat = material().duplicate()
+		var sh := Shader.new()
+		sh.code = (_lit_mat.shader as Shader).code.replace("shader_type spatial;", "shader_type spatial;\n#define ARMOUR_LIGHT")
+		_lit_mat.shader = sh
+	_lit_mat.set_shader_parameter("ao_strength", VoxelPart.ao_strength * FineHead.AO_K)
+	_lit_mat.set_shader_parameter("smooth_shade", FineSmooth.k)
+	_lit_mat.set_shader_parameter("metal_rough", LIGHT_ROUGH)
+	_lit_mat.set_shader_parameter("sky_hold", LIGHT_SKY)
+	return _lit_mat
 
 ## The shell of plate `ci` drawn as its tile is drawn now (`xf`: where the tile is, or nothing).
 static func sync(ad: Dictionary, ci: int, xf: Transform3D) -> void:
@@ -724,7 +950,11 @@ static func _coarse(g: Dictionary, k: float, p = null, pace := {}) -> Dictionary
 		idx.append(j.x)
 		idx.append(j.y)
 		idx.append(j.z)
-	return {"o": oc, "sp": cs, "pts": pts, "idx": idx, "within": seen, "k": k}
+	var out := {"o": oc, "sp": cs, "pts": pts, "idx": idx, "within": seen, "k": k}
+	for kept in ["skin", "outline"]:
+		if g.has(kept):
+			out[kept] = g[kept]
+	return out
 
 ## Round the fine head, seen from its middle: the farthest of its fine voxels each way (finer than
 ## FineHead's own outline, smoothed), the shell from there out.
@@ -870,12 +1100,20 @@ static func _ground_body(p: VoxelPart, thick := THICK, pace := {}) -> Dictionary
 	var tab := PackedFloat32Array()
 	tab.resize(rows * B_ANG)
 	var n := cells.size() / FineBody.CELL
+	# (And his skin's fine voxels themselves as a grid of the fine lattice, 1 where one lies: _skin_in.)
+	var fdim := p.grid * 2 + Vector3i.ONE * margin * 2
+	var occ := PackedByteArray()
+	occ.resize(fdim.x * fdim.y * fdim.z)
 	for s in n:
 		if staged and (s & 1023) == 1023 and not await _pace(p, pace):
 			return {}
 		var ix := cells[s * FineBody.CELL]
 		var iy := cells[s * FineBody.CELL + 1]
 		var iz := cells[s * FineBody.CELL + 2]
+		var fx := ix + margin
+		var fz := iz + margin
+		if fx >= 0 and fx < fdim.x and iy + margin >= 0 and iy + margin < fdim.y and fz >= 0 and fz < fdim.z:
+			occ[(fx * fdim.y + iy + margin) * fdim.z + fz] = 1
 		var r := iy + margin
 		if r < 0 or r >= rows:
 			continue
@@ -971,7 +1209,42 @@ static func _ground_body(p: VoxelPart, thick := THICK, pace := {}) -> Dictionary
 					idx.append(iv.x)
 					idx.append(iv.y)
 					idx.append(iv.z)
-	return {"o": o, "sp": sp, "pts": pts, "idx": idx, "within": seen}
+	return {"o": o, "sp": sp, "pts": pts, "idx": idx, "within": seen, "skin": {"occ": occ, "dim": fdim, "o": o, "fsz": fsz},
+		"outline": {"tab": tab, "rows": rows, "margin": margin, "fsz": fsz, "h": h, "thick": T}}
+
+## The outline of a part of his body under its armour (_ground_body: how far out of his middle
+## he reaches, row by row and way by way round him), as the shell over him was laid out: empty
+## where none was laid on it yet. For in_outline.
+static func outline(p: VoxelPart) -> Dictionary:
+	for k in [COARSE, 1.0]:
+		var g = _bands.get(_key(p) + ("|%.2f" % k))
+		if g is Dictionary and (g as Dictionary).has("outline"):
+			return g.outline
+	return {}
+
+## Whether point `q` (the part's frame) lies within his outline there (`ol`: outline), the shell
+## laid over it and `pad` more taken in: under his armour, not out past it.
+static func in_outline(ol: Dictionary, q: Vector3, pad: float) -> bool:
+	var fsz: float = ol.fsz
+	var h: Vector3 = ol.h
+	var rows: int = ol.rows
+	var fr := (q.y + h.y) / fsz - 0.5 + float(int(ol.margin))
+	if fr < 0.0 or fr > float(rows - 1):
+		return false
+	var r0 := int(floorf(fr))
+	var r1 := mini(r0 + 1, rows - 1)
+	var wr := fr - float(r0)
+	var fa := (atan2(q.z, q.x) + PI) / TAU * float(B_ANG) - 0.5
+	var a0 := posmod(int(floorf(fa)), B_ANG)
+	var a1 := (a0 + 1) % B_ANG
+	var wa := fa - floorf(fa)
+	var tab: PackedFloat32Array = ol.tab
+	var e0 := tab[r0 * B_ANG + a0] * (1.0 - wa) + tab[r0 * B_ANG + a1] * wa
+	var e1 := tab[r1 * B_ANG + a0] * (1.0 - wa) + tab[r1 * B_ANG + a1] * wa
+	# (A row with none of him in it reaches nowhere: no shell is laid there.)
+	if e0 <= 0.0 or e1 <= 0.0:
+		return false
+	return Vector2(q.x, q.z).length() < e0 * (1.0 - wr) + e1 * wr + float(ol.thick) + pad
 
 static func _ring(r: int, dx: float, dz: float, lo_r: float, hi_r: float, fsz: float, o: Vector3, sp: Vector3, seen: Dictionary, pts: PackedVector3Array, idx: PackedInt32Array) -> void:
 	var rr := lo_r
@@ -991,20 +1264,8 @@ static func _ring(r: int, dx: float, dz: float, lo_r: float, hi_r: float, fsz: f
 
 ## A fine voxel's colour: its plate's stuff (or the paint the bench put on it), a bright rim where
 ## the shell ends with a rivet now and then, a dark line where one row of plates meets the next.
-static func _shade(ad: Dictionary, ci: int, kc: Vector3i, owner: Dictionary, bare: Color, within: Dictionary, style: Dictionary, dims: Vector3i, bands := {}) -> Color:
-	var c: Array = ad.cells[ci]
-	var col := Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else bare
-	var cosmetic := Fighter._cosmetic(String(ad.id))
-	if cosmetic and ad.has("cols") and ci < (ad.cols as Array).size():
-		col = ad.cols[ci]
-	var metal := true
-	if ad.has("kinds") and ci < (ad.kinds as Array).size():
-		metal = int(ad.kinds[ci]) == 3 or int(ad.kinds[ci]) == 4
-	var rim := false
-	for dv in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
-		if owner.get(kc + dv) == null and within.has(kc + dv):
-			rim = true   # (its rim: where the shell ends on him, not its inside or its outside face)
-	if cosmetic and String(ad.id).begins_with("hair_"):
+static func _shade(col: Color, metal: bool, rim: bool, hair: bool, kc: Vector3i, dark: float, bands := {}) -> Color:
+	if hair:
 		# Hair in strands: lighter and darker voxel to voxel down its fall, its edge in shadow.
 		var hk := 0.86 + 0.26 * _hash(kc) * (0.7 + 0.3 * _hash(Vector3i(kc.x, 0, kc.z)))
 		return _lit(col, hk * (0.82 if rim else 1.0))
@@ -1013,7 +1274,7 @@ static func _shade(ad: Dictionary, ci: int, kc: Vector3i, owner: Dictionary, bar
 		var k := 0.985 + 0.03 * _hash(kc)
 		if rim:
 			k = 1.16 if metal else 0.8
-		return _lit(col, k * float(style.get("dark", 1.0)))
+		return _lit(col, k * dark)
 	return _lit(col, _band_light(kc, bands, rim, metal))
 
 ## Iron in bands, as a lorica's hoops were (and a manica's lames): each of the piece's rows a hoop,
@@ -1027,12 +1288,17 @@ static func _band_light(kc: Vector3i, bands: Dictionary, rim: bool, metal: bool)
 	var q: Vector3 = (bands.o as Vector3) + (Vector3(kc) + Vector3.ONE * 0.5) * (bands.sp as Vector3)
 	var cube: float = bands.cube
 	var fs: float = (bands.sp as Vector3).x
-	var row := _row_at(q.y, bands)
+	# (The row and its height at this voxel's height on him: read once a height.)
+	var at_y: Dictionary = bands.at_y
+	if not at_y.has(kc.y):
+		at_y[kc.y] = PackedFloat64Array([_row_at(q.y, bands), _row_h(q.y, bands)])
+	var ry: PackedFloat64Array = at_y[kc.y]
+	var row := ry[0]
 	var k := 1.0
 	var f1 := fposmod(row + 0.5, 1.0)   # (0 at a hoop's lower edge, 1 at its top)
 	# (A line a voxel wide at the least, or on big voxels a hoop's groove, a rivet, came and went
 	# hoop to hoop as its voxels' middles fell.)
-	var rh := _row_h(q.y, bands)
+	var rh := ry[1]
 	var gw := maxf(0.2, fs / rh)
 	if not bands.trunk:
 		k = 0.64 if f1 < gw else 0.84 + 0.3 * f1
@@ -1164,7 +1430,7 @@ static func _band_rows(ad: Dictionary, org: PackedVector3Array, o: Vector3, sp: 
 			top_side = maxf(top_side, float(c[1]))
 	var breast := top_side - 1.5 if top_side - float(r0) >= 4.0 else INF
 	return {"ys": ys, "r0": r0, "top_side": top_side, "breast": breast, "o": o, "sp": sp, "cube": cube, "trunk": _over_top(ad, p),
-		"hb": Vector3(p.grid) * p.vf * p.part_scale * 0.5}
+		"hb": Vector3(p.grid) * p.vf * p.part_scale * 0.5, "at_y": {}}
 
 ## Whether piece `ad` is a cuirass: on the trunk, over the shoulders too (a lorica; not a cape).
 static func _over_top(ad: Dictionary, p: VoxelPart) -> bool:
@@ -1510,6 +1776,470 @@ static func _fill_pinholes(owner: Dictionary, within: Dictionary) -> void:
 			return
 		owner.merge(add)
 
+## The edge of a piece on his trunk round an arm that hangs through it (user: stray voxels in the
+## armour, teeth hanging under a shoulder guard's edge). What of the piece lies in the arm is not
+## drawn while the arm is there (Fighter._limbs_in_armor: the arm as a round cone, the same one
+## here, as he stands). What that leaves of a row the arm takes most of, a few voxels side by side
+## hanging under the guard's edge with none of the piece drawn under them, is left out of the
+## piece, row by row up to the first that runs on round the arm: its edge there is whole rows.
+## Never the last of a plate's voxels, nor what stands out of the piece on purpose (`extra`).
+const RIM_NEAR := 3.0   # how far from the arm (the piece's voxels) its edge is looked at
+const RIM_RUN := 8      # fewer voxels than this side by side in a row, with none under them, hang
+static func _rim_round_limbs(owner: Dictionary, extra: Dictionary, cones: Array, o: Vector3, sp: Vector3) -> void:
+	if cones.is_empty() or owner.is_empty():
+		return
+	# (Only what lies in the box round the arms is measured against them.)
+	var reach := sp.x * RIM_NEAR
+	var box := AABB()
+	var ca := PackedVector3Array()
+	var cab := PackedVector3Array()
+	var cinv := PackedFloat32Array()
+	for k in cones.size():
+		for e in 2:
+			var r := float(cones[k][2 + e]) + reach
+			var b := AABB((cones[k][e] as Vector3) - Vector3.ONE * r, Vector3.ONE * r * 2.0)
+			box = b if k == 0 and e == 0 else box.merge(b)
+		ca.append(cones[k][0])
+		cab.append((cones[k][1] as Vector3) - (cones[k][0] as Vector3))
+		cinv.append(1.0 / maxf(cab[k].length_squared(), 1e-8))
+	# The piece on a grid of numbers: 1 a voxel of it that is drawn, 2 one in an arm (not drawn
+	# while the arm is there), and 4 more on one near an arm. (Asked of the dictionary of places
+	# voxel by voxel, a cuirass's rim was a fiftieth of a second and more.)
+	var lo: Vector3i = owner.keys()[0]
+	var hi := lo
+	for kc: Vector3i in owner:
+		lo = lo.min(kc)
+		hi = hi.max(kc)
+	lo -= Vector3i.ONE * 2
+	hi += Vector3i.ONE * 2
+	var dy := hi.y - lo.y + 1
+	var dz := hi.z - lo.z + 1
+	var sx := dy * dz
+	var gr := PackedByteArray()
+	gr.resize((hi.x - lo.x + 1) * sx)
+	var seeds := PackedInt32Array()
+	for kc: Vector3i in owner:
+		var q := o + (Vector3(kc) + Vector3.ONE * 0.5) * sp
+		var v := 1
+		if box.has_point(q):
+			var d := INF
+			for k in ca.size():
+				var t := clampf((q - ca[k]).dot(cab[k]) * cinv[k], 0.0, 1.0)
+				d = minf(d, q.distance_to(ca[k] + cab[k] * t) - lerpf(float(cones[k][2]), float(cones[k][3]), t))
+			if d < 0.0:
+				v = 2
+			elif d < reach:
+				v = 5
+		var at := ((kc.x - lo.x) * dy + (kc.y - lo.y)) * dz + (kc.z - lo.z)
+		gr[at] = v
+		if v == 5:
+			seeds.append(at)
+	if seeds.is_empty():
+		return
+	var o8 := PackedInt32Array([sx, -sx, 1, -1, sx + 1, sx - 1, -sx + 1, -sx - 1])   # round a place in its row
+	var seen := PackedByteArray()
+	seen.resize(gr.size())
+	var left := {}   # plate -> how many voxels it has
+	for pass_ in 6:
+		var drop := PackedInt32Array()
+		var marked := PackedInt32Array()
+		for at0 in seeds:
+			if seen[at0] != 0 or gr[at0] != 5:
+				continue
+			# (The voxels drawn side by side with it in its row, as far as RIM_RUN of them.)
+			var run := PackedInt32Array([at0])
+			seen[at0] = 1
+			marked.append(at0)
+			var i := 0
+			while i < run.size() and run.size() < RIM_RUN:
+				var c := run[i]
+				i += 1
+				for d in o8:
+					var nb := c + d
+					if (gr[nb] & 3) == 1 and not run.has(nb):
+						run.append(nb)
+						seen[nb] = 1
+						marked.append(nb)
+			if run.size() >= RIM_RUN:
+				continue
+			var held := false
+			for c in run:
+				if (gr[c - dz] & 3) == 1 or (gr[c] & 4) == 0:
+					held = true
+					break
+			if not held:
+				if left.is_empty():
+					for kc in owner:
+						left[owner[kc]] = int(left.get(owner[kc], 0)) + 1
+				for c in run:
+					var kc := lo + Vector3i(c / sx, (c / dz) % dy, c % dz)
+					if extra.has(kc) or int(left[owner[kc]]) <= 1:
+						held = true
+						break
+			if not held:
+				drop.append_array(run)
+		if drop.is_empty():
+			break
+		for c in marked:
+			seen[c] = 0
+		# (A row left out bares the one over it: only what stood on these is looked at again.)
+		seeds = PackedInt32Array()
+		for c in drop:
+			if gr[c] == 0:
+				continue
+			var kc := lo + Vector3i(c / sx, (c / dz) % dy, c % dz)
+			left[owner[kc]] = int(left[owner[kc]]) - 1
+			owner.erase(kc)
+			gr[c] = 0
+			if gr[c + dz] == 5:
+				seeds.append(c + dz)
+
+## The arms that hang beside trunk `p`, each as a round cone as he stands, in the trunk's frame:
+## [its upper end's middle, its lower end's, how far out it reaches round each] (Fighter.
+## _limb_cone). None: not a trunk, or no arms.
+static var _arm_cones := {}   # a build's arm at a size -> its cone (Fighter.limb_cone)
+static func rest_cones(p: VoxelPart) -> Array:
+	var out := []
+	var who = p.fighter
+	if who == null or not (who is Fighter) or String(p.part_name) != "torso" or not p.fine.has("body"):
+		return out
+	# (From the build's own drawing of his arms, not from the arms as they are drawn now: his
+	# trunk's armour may be laid before his arms are drawn.)
+	var bn := String(p.fine.get("build", ""))
+	for q: VoxelPart in (who as Fighter).parts:
+		if q.parent_part != p or not String(q.part_name).begins_with("upperArm"):
+			continue
+		var key := "%s|%s|%.5f|%s" % [bn, q.part_name, q.vf * q.part_scale, str(q.grid)]
+		if not _arm_cones.has(key):
+			var qd := FineBody.part_data(bn, String(q.part_name))
+			_arm_cones[key] = {} if qd.is_empty() else Fighter.limb_cone(qd.cells, -Vector3(q.grid) * q.vf * q.part_scale * 0.5, q.vf * q.part_scale / float(Data.body_res))
+		var c: Dictionary = _arm_cones[key]
+		if c.is_empty():
+			continue
+		var off: Vector3 = q.pa - q.ca
+		out.append([off + Vector3(0.0, float(c.top), 0.0), off + Vector3(0.0, float(c.end), 0.0), float(c.r_top), float(c.r_end)])
+	return out
+
+## How far outside the nearest of `cones` point `q` lies (under 0: inside one), as the shader
+## reads them (voxel_body.gdshader, in_limb).
+static func cone_gap(cones: Array, q: Vector3) -> float:
+	var best := INF
+	for c in cones:
+		var a: Vector3 = c[0]
+		var ab: Vector3 = (c[1] as Vector3) - a
+		var t := clampf((q - a).dot(ab) / maxf(ab.length_squared(), 1e-8), 0.0, 1.0)
+		best = minf(best, q.distance_to(a + ab * t) - lerpf(float(c[2]), float(c[3]), t))
+	return best
+
+## A piece on his body drawn whole and clean (user: no stray voxels in the armour that belong to
+## nothing; its edges were ragged, a voxel hanging under them here and there, and a voxel or two
+## lay apart from it on his skin). A gap in it is shut where the piece is drawn most of the way
+## round it: a pinhole his skin showed through, a notch in its edge; and a pit in it that his own
+## flesh comes out through (`skin`: the places his flesh lies in, a dictionary of them or a test
+## of one; the ledge of a chest's muscle between two of a cuirass's rows, the piece on three sides
+## of it or more: an orange hole under the collar). A voxel with little of the piece round it, a
+## tooth on its edge, is left out, unless all its plate's are such (a strip one plate wide stays
+## whole). And what lies apart from the piece, a voxel or two past its edge, is left out where
+## its plates are drawn in the piece itself. Never the last of a plate's voxels (every plate is
+## drawn), nor what stands out of the piece on purpose (`extra`: a boss, a rivet).
+## (On a grid of numbers of its own, a place's plate + 1: its 26 neighbours are 26 numbers off
+## it. Asked of the dictionary of places one by one, a cuirass was a fifth of a second.)
+const STRAY := 6      # the most voxels lying apart that are left out
+const TOOTH := 4      # a voxel with no more of the piece round it than this (of 26) is a tooth on its edge
+const NOTCH := 5      # a gap with this many of the piece round it (of 26), two of them face to face with it, is shut
+const SEEN := 6       # how far straight out of a pit nothing of the piece or of him lies, for his flesh in it to show
+const TIDY_PAD := SEEN + 2   # the grid's margin round the piece (a place as far out of it as a pit's flesh is looked for is looked at, and what lies round it read)
+static func _tidy(owner: Dictionary, extra: Dictionary, within: Dictionary, skin = null, pace := {}, p = null) -> void:
+	if owner.is_empty():
+		return
+	var lo: Vector3i = owner.keys()[0]
+	var hi := lo
+	for kc: Vector3i in owner:
+		lo = lo.min(kc)
+		hi = hi.max(kc)
+	lo -= Vector3i.ONE * TIDY_PAD
+	hi += Vector3i.ONE * TIDY_PAD
+	var dy := hi.y - lo.y + 1
+	var dz := hi.z - lo.z + 1
+	var sx := dy * dz
+	var g := PackedInt32Array()
+	g.resize((hi.x - lo.x + 1) * sx)
+	for kc: Vector3i in owner:
+		g[((kc.x - lo.x) * dy + (kc.y - lo.y)) * dz + (kc.z - lo.z)] = int(owner[kc]) + 1
+	var o6 := PackedInt32Array([sx, -sx, dz, -dz, 1, -1])
+	var d6 := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	var o26 := PackedInt32Array()
+	for ax in [-1, 0, 1]:
+		for ay in [-1, 0, 1]:
+			for az in [-1, 0, 1]:
+				if ax != 0 or ay != 0 or az != 0:
+					o26.append(ax * sx + ay * dz + az)
+	var paced := not pace.is_empty()
+	# Each voxel as it was last counted: a tooth (1) or sound (2). The first pass looks at all of
+	# the piece; each pass after it only where the one before changed it (all of it again, pass
+	# after pass, was three quarters of the work).
+	var state := PackedByteArray()
+	state.resize(g.size())
+	var flag := PackedByteArray()   # (a place already listed in this pass)
+	flag.resize(g.size())
+	var few := {}       # its voxels with fewer than STRAY of it round them
+	var sound := {}     # plate (+ 1) -> how many of its voxels are not teeth
+	var teeth := {}     # plate (+ 1) -> its voxels that are
+	var shut_before := PackedInt32Array()    # the gaps shut in the pass before
+	var off_before := PackedInt32Array()     # the teeth taken off in it
+	for pass_ in 4:
+		var changed := false
+		var n := 0
+		var shut := PackedInt32Array()
+		if pass_ < 3:
+			# Its gaps shut: the places with none of it that two of its voxels or more lie face to face with.
+			var cands := PackedInt32Array()
+			if pass_ == 0:
+				var faces := PackedByteArray()
+				faces.resize(g.size())
+				for kc: Vector3i in owner:
+					var at := ((kc.x - lo.x) * dy + (kc.y - lo.y)) * dz + (kc.z - lo.z)
+					for d in o6:
+						var j := at + d
+						if g[j] == 0:
+							faces[j] += 1
+							if faces[j] == 2:
+								cands.append(j)
+					n += 1
+					if paced and (n & 255) == 0 and not await _pace(p, pace):
+						return
+			else:
+				# (Round a gap shut and a tooth taken off; and straight out from the tooth as far as
+				# a pit's flesh is looked for, _bare: it stood in the way.)
+				for at in shut_before:
+					for d in o26:
+						var j := at + d
+						if g[j] == 0 and flag[j] == 0:
+							flag[j] = 1
+							cands.append(j)
+				for at in off_before:
+					if g[at] == 0 and flag[at] == 0:
+						flag[at] = 1
+						cands.append(at)
+					for d in o26:
+						var j := at + d
+						if g[j] == 0 and flag[j] == 0:
+							flag[j] = 1
+							cands.append(j)
+					if skin != null:
+						for d in o6:
+							for t in range(2, SEEN + 1):
+								var j := at + d * t
+								if g[j] == 0 and flag[j] == 0:
+									flag[j] = 1
+									cands.append(j)
+				for j in cands:
+					flag[j] = 0
+			var add := []
+			for at in cands:
+				n += 1
+				if paced and (n & 127) == 0 and not await _pace(p, pace):
+					return
+				var by_face := 0
+				for d in o6:
+					if g[at + d] != 0:
+						by_face += 1
+				if by_face < 2:
+					continue
+				var round_ := 0
+				for d in o26:
+					if g[at + d] != 0:
+						round_ += 1
+						if round_ >= NOTCH:
+							break
+				if round_ < NOTCH:
+					continue
+				var kc := lo + Vector3i(at / sx, (at / dz) % dy, at % dz)
+				if not within.has(kc) and (by_face < 3 or skin == null or not _in(skin, kc) or not _bare(g, at, o6, d6, skin, kc)):
+					continue
+				# (The plate most of its neighbours face to face are.)
+				var best := 0
+				var most := 0
+				for d in o6:
+					var w := g[at + d]
+					if w == 0:
+						continue
+					var c := 0
+					for e in o6:
+						if g[at + e] == w:
+							c += 1
+					if c > most:
+						most = c
+						best = w
+				add.append([at, kc, best])
+			for e in add:
+				g[int(e[0])] = int(e[2])
+				owner[e[1]] = int(e[2]) - 1
+				shut.append(int(e[0]))
+				changed = true
+		# Its teeth off (not after the last pass: only counted then). Counted: all of it the first
+		# time, then those with a gap shut or a tooth taken off beside them.
+		var again := PackedInt32Array()
+		if pass_ == 0:
+			for kc: Vector3i in owner:
+				again.append(((kc.x - lo.x) * dy + (kc.y - lo.y)) * dz + (kc.z - lo.z))
+		else:
+			for at in shut:
+				if flag[at] == 0:
+					flag[at] = 1
+					again.append(at)
+			for at in shut + off_before:
+				for d in o26:
+					var j := at + d
+					if g[j] != 0 and flag[j] == 0:
+						flag[j] = 1
+						again.append(j)
+			for j in again:
+				flag[j] = 0
+		var touched := {}   # the plates with a voxel that is now a tooth, or now is not
+		for at in again:
+			n += 1
+			if paced and (n & 255) == 0 and not await _pace(p, pace):
+				return
+			var c := 0
+			for d in o26:
+				if g[at + d] != 0:
+					c += 1
+					if c >= STRAY:
+						break
+			if c < STRAY:
+				few[at] = true
+			elif pass_ > 0:
+				few.erase(at)
+			var now := 2
+			if c <= TOOTH and not extra.has(lo + Vector3i(at / sx, (at / dz) % dy, at % dz)):
+				now = 1
+			var was := state[at]
+			if was == now:
+				continue
+			var w := g[at]
+			if was == 2:
+				sound[w] = int(sound[w]) - 1
+			elif was == 1:
+				(teeth[w] as Dictionary).erase(at)
+			if now == 2:
+				sound[w] = int(sound.get(w, 0)) + 1
+			else:
+				if not teeth.has(w):
+					teeth[w] = {}
+				(teeth[w] as Dictionary)[at] = true
+			state[at] = now
+			touched[w] = true
+		var off := PackedInt32Array()
+		if pass_ < 3:
+			for w in touched:
+				if int(sound.get(w, 0)) <= 0 or not teeth.has(w):
+					continue
+				var tw: Dictionary = teeth[w]
+				for at: int in tw:
+					owner.erase(lo + Vector3i(at / sx, (at / dz) % dy, at % dz))
+					g[at] = 0
+					state[at] = 0
+					few.erase(at)
+					off.append(at)
+					changed = true
+				tw.clear()
+		shut_before = shut
+		off_before = off
+		if not changed:
+			break
+	# What lies apart from the piece: a few of its voxels touching one another (by a corner at
+	# least) and nothing else of it. (Looked for from the voxels with little of it round them:
+	# each of such a few has.)
+	var seen := {}
+	var strays := []
+	var apart := {}   # plate (+ 1) -> how many of its voxels lie so
+	for at0: int in few:
+		if seen.has(at0) or g[at0] == 0:
+			continue
+		var grp := PackedInt32Array([at0])
+		var i := 0
+		while i < grp.size() and grp.size() <= STRAY:
+			var at := grp[i]
+			i += 1
+			for d in o26:
+				var j := at + d
+				if g[j] != 0 and not grp.has(j):
+					grp.append(j)
+		for at in grp:
+			seen[at] = true
+		if grp.size() <= STRAY:
+			strays.append(grp)
+			for at in grp:
+				apart[g[at]] = int(apart.get(g[at], 0)) + 1
+	if strays.is_empty():
+		return
+	var total := {}   # plate (+ 1) -> how many voxels it has
+	for kc in owner:
+		total[int(owner[kc]) + 1] = int(total.get(int(owner[kc]) + 1, 0)) + 1
+	for grp: PackedInt32Array in strays:
+		# (Left out only where each of its plates is drawn in the piece itself, and none of it
+		# stands out on purpose.)
+		var kept := false
+		for at in grp:
+			if extra.has(lo + Vector3i(at / sx, (at / dz) % dy, at % dz)) or int(total[g[at]]) <= int(apart.get(g[at], 0)):
+				kept = true
+				break
+		if kept:
+			continue
+		for at in grp:
+			owner.erase(lo + Vector3i(at / sx, (at / dz) % dy, at % dz))
+
+## The test of a place of a ground's lattice for _tidy's `skin`: whether one of his skin's fine
+## voxels reaches a quarter of the way into it or more (_skin_in). None where the ground keeps no
+## grid of them.
+static func skin_test(ground: Dictionary):
+	if not ground.has("skin"):
+		return null
+	var sk: Dictionary = ground.skin
+	var fsz: float = sk.fsz
+	# (A fine voxel reaches a quarter of the way into a place when its middle lies in the place
+	# widened by a quarter of a fine voxel each way: the first of them along each line, as a
+	# number of the place's own.)
+	var a: Vector3 = ((ground.o as Vector3) - (sk.o as Vector3)) / fsz - Vector3.ONE * 0.75
+	var b: Vector3 = (ground.sp as Vector3) / fsz
+	return _skin_in.bind(sk.occ, sk.dim, a, b)
+
+## Whether one of his skin's fine voxels (`occ`: the fine lattice as a grid `dim` big, 1 where one
+## lies) has its middle in place `kc` of a piece's lattice widened by a quarter of a fine voxel
+## each way: along each line the fine voxels from ceil(a + kc * b), as far as b and a half on.
+static func _skin_in(kc: Vector3i, occ: PackedByteArray, dim: Vector3i, a: Vector3, b: Vector3) -> bool:
+	var at := a + Vector3(kc) * b
+	var i0 := Vector3i(at.ceil()).max(Vector3i.ZERO)
+	var i1 := Vector3i((at + b + Vector3.ONE * 0.5).ceil()).min(dim)
+	for x in range(i0.x, i1.x):
+		for y in range(i0.y, i1.y):
+			var row := (x * dim.y + y) * dim.z
+			for z in range(i0.z, i1.z):
+				if occ[row + z] != 0:
+					return true
+	return false
+
+## Whether his flesh lies in place `kc` (`skin`: the places it lies in, or a test of one).
+static func _in(skin, kc: Vector3i) -> bool:
+	return bool((skin as Callable).call(kc)) if skin is Callable else (skin as Dictionary).has(kc)
+
+## Whether his flesh at place `kc` (number `at` on grid `g`) shows: some way straight out from it
+## there is none of the piece, and none of him, as far as SEEN places.
+static func _bare(g: PackedInt32Array, at: int, o6: PackedInt32Array, d6: Array, skin, kc: Vector3i) -> bool:
+	for f in 6:
+		var free := true
+		for t in range(1, SEEN + 1):
+			var j := at + o6[f] * t
+			if j < 0 or j >= g.size():
+				break   # (off the grid: past the piece)
+			if g[j] != 0 or _in(skin, kc + (d6[f] as Vector3i) * t):
+				free = false
+				break
+		if free:
+			return true
+	return false
+
 ## A helmet hangs together: what its face's cut left on its own (a voxel or two of a visor's grille
 ## where the cheek turns) is left out of it (user: no armour voxels in the air).
 static func _keep_whole(owner: Dictionary, extra: Dictionary) -> void:
@@ -1613,24 +2343,41 @@ static func _boss(org: PackedVector3Array, first: PackedByteArray, owner: Dictio
 		owner[kk] = add[kk]
 		extra[kk] = BOSS
 
-## Its corners shaded by the shell's own voxels round it (VoxelPart.ao_bits).
-static func _ao(kc: Vector3i, owner: Dictionary) -> int:
+## A voxel's corners shaded by the shell's own voxels round it (VoxelPart.ao_bits), read off the
+## piece as a grid of numbers `g` (1: of the piece), the voxel's place in it `at`. `steps`: the
+## places looked at, from _ao_steps. (Asked of the dictionary of places, with the faces' own
+## tables read voxel by voxel, it was a third of the time a piece took to lay out.)
+static func _ao_at(g: PackedByteArray, at: int, steps: PackedInt32Array) -> int:
 	var bits := 0
+	var k := 0
+	for f in 6:
+		var nb := at + steps[k]
+		if g[nb] == 0:
+			for cc in 4:
+				var j := k + 1 + cc * 3
+				if g[nb + steps[j]] != 0 or g[nb + steps[j + 1]] != 0 or g[nb + steps[j + 2]] != 0:
+					bits |= 1 << (f * 4 + cc)
+		k += 13
+	return bits
+
+## For _ao_at, on a grid where a step along x, y, z is `step` places: face by face (VoxelPart.
+## AO_FACES), the place the face looks on, then for each of its four corners the three places
+## round that one that shade the corner.
+static func _ao_steps(step: PackedInt32Array) -> PackedInt32Array:
+	var out := PackedInt32Array()
 	for f in 6:
 		var fd: Array = VoxelPart.AO_FACES[f]
-		var nb: Vector3i = kc + (fd[0] as Vector3i)
-		if owner.has(nb):
-			continue
-		var ua := Vector3i.ZERO
-		ua[int(fd[1])] = 1
-		var va := Vector3i.ZERO
-		va[int(fd[2])] = 1
+		var dir: Vector3i = fd[0]
+		out.append(dir.x * step[0] + dir.y * step[1] + dir.z * step[2])
+		var ua := step[int(fd[1])]
+		var va := step[int(fd[2])]
 		for cc in 4:
-			var su := 1 if cc & 1 else -1
-			var sv := 1 if cc & 2 else -1
-			if owner.has(nb + ua * su) or owner.has(nb + va * sv) or owner.has(nb + ua * su + va * sv):
-				bits |= 1 << (f * 4 + cc)
-	return bits
+			var su := ua if cc & 1 else -ua
+			var sv := va if cc & 2 else -va
+			out.append(su)
+			out.append(sv)
+			out.append(su + sv)
+	return out
 
 static func _hash(v: Vector3i) -> float:
 	return float(posmod(hash(v + Vector3i(31, 17, 5)), 1000)) / 1000.0

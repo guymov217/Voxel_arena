@@ -302,3 +302,309 @@ func test_every_player_is_the_one_build() -> void:
 	m.queue_free()
 	await get_tree().process_frame
 
+## A man in armour, in the smooth look, standing (his hands where `hands` holds them: main x, y,
+## off x, y): the pieces' shells laid.
+func _armoured(m: Match, armor: Array, hands := [0.35, -0.9, -0.35, -0.9]) -> Fighter:
+	Physique.forced = "human"
+	var e = m.spawn_fighter({"kind": "bot", "name": "Quintus", "build": "hero", "loadout": {"main": "", "off": "", "armor": armor}, "team": 1, "pos": Vector3(4, 0.1, 4), "yaw": 0.0})
+	Physique.forced = ""
+	e.erase("bot")
+	e.drive = func(_e): return {"main": {"x": hands[0], "y": hands[1]}, "off": {"x": hands[2], "y": hands[3]}}
+	for i in 40:
+		await get_tree().physics_frame
+	return e.f
+
+func test_armour_is_lit_by_its_shape() -> void:
+	# (User: the smooth light on the armour, which keeps the game's voxels voxels.) Each voxel of a
+	# piece's shell carries the way the shell faces there (FineArmor: its shape as a whole, as his
+	# skin's), never further off its own plate's way out of him than LIGHT_LEAN (at a piece's free
+	# edge the shape turns in under it: lit from below, black holes), and its metal is not a mirror
+	# of the sun (a voxel that faced it was a white square, user: stray pieces in the armour). A
+	# hat's shell carries none. Without the core the men are cubes, and so is what they wear.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	var f: Fighter = await _armoured(m, ["helmet", "lorica", "manica", "greaves", "hat_bucket"])
+	var live := FineSmooth.live()
+	var shells := 0
+	var lit := 0
+	var unlit := 0
+	var hat_lit := 0
+	var leaning := 0
+	var worst := 1.0
+	var own_stuff := 0
+	for p: VoxelPart in f.parts:
+		var mid: Vector3 = p.fine.get("wc", Vector3.ZERO)
+		for ad in p.get_meta("armor", []):
+			var sh = ad.get("shell")
+			if not (sh is Dictionary):
+				continue
+			var buf: PackedFloat32Array = (sh.mm as MultiMesh).buffer
+			var plate: PackedInt32Array = sh.plate
+			var stuff: Material = ((sh.mm as MultiMesh).mesh as BoxMesh).material
+			if Fighter._cosmetic(String(ad.id)):
+				for s in (sh.mm as MultiMesh).instance_count:
+					if buf[s * 20 + 15] > 1.5:
+						hat_lit += 1
+				if stuff != FineArmor.material():
+					hat_lit += 1
+				continue
+			shells += 1
+			if stuff == (FineArmor.lit_material() if live else FineArmor.material()):
+				own_stuff += 1
+			var outs := {}
+			for s in (sh.mm as MultiMesh).instance_count:
+				var a := buf[s * 20 + 15]
+				if a < 1.5:
+					unlit += 1
+					continue
+				lit += 1
+				var ci := plate[s]
+				if not outs.has(ci):
+					var xf := Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id))
+					var thin := xf.basis.x
+					for col in [xf.basis.y, xf.basis.z]:
+						if (col as Vector3).length() < thin.length():
+							thin = col
+					thin = thin.normalized()
+					outs[ci] = thin if thin.dot(xf.origin - mid) >= 0.0 else -thin
+				var d := FineSmooth.decode(a).dot(outs[ci])
+				worst = minf(worst, d)
+				# (A way is one of 32 x 32: a few degrees off what was worked out.)
+				if d < FineArmor.LIGHT_LEAN - 0.1:
+					leaning += 1
+	t.check(shells >= 4, "his helmet, his cuirass, his arm's and his shins' armour are shells (%d)" % shells)
+	if live:
+		t.check(lit > 2000 and unlit == 0, "every voxel of them carries the way the shell faces there (%d, %d without)" % [lit, unlit])
+		t.eq(leaning, 0, "none further off its plate's way out of him than the lean allowed (the furthest: cosine %.2f for %.2f)" % [worst, FineArmor.LIGHT_LEAN])
+		var lm := FineArmor.lit_material()
+		t.check(own_stuff == shells and is_equal_approx(float(lm.get_shader_parameter("metal_rough")), FineArmor.LIGHT_ROUGH), "each drawn with the stuff of a piece lit by its shape: its metal's sheen broad, not a mirror's")
+		t.check((lm.shader as Shader).code.contains("#define ARMOUR_LIGHT") and is_equal_approx(float(lm.get_shader_parameter("sky_hold")), FineArmor.LIGHT_SKY), "and the light of what is round it taken on its top as on its sides (not the open sky's blue across his shoulders)")
+	else:
+		t.check(lit == 0, "no native core built: the armour is lit as cubes (%d)" % lit)
+		t.eq(own_stuff, shells, "and drawn with the stuff it was")
+	t.eq(hat_lit, 0, "a hat is lit as the cubes it is, and drawn with the stuff it was")
+	var rough = FineArmor.material().get_shader_parameter("metal_rough")
+	t.check((rough == null or is_zero_approx(float(rough))) and not (FineArmor.material().shader as Shader).code.contains("#define ARMOUR_LIGHT"), "that stuff polished as it was")
+	m.queue_free()
+	await get_tree().process_frame
+
+func test_armour_has_no_stray_voxels() -> void:
+	# (User: no stray voxels in the armour that belong to nothing.) FineArmor._tidy on a piece laid
+	# out by hand: a sheet of two plates, ten by ten and two voxels thick, with a pinhole in it, a
+	# tooth standing on its corner, a few voxels lying apart from it, a strip of a third plate that
+	# is all edge, and a boss set on its other corner on purpose.
+	var owner := {}
+	var within := {}
+	for x in 10:
+		for z in 10:
+			for y in 2:
+				owner[Vector3i(x, y, z)] = 0 if x < 5 else 1
+	for x in range(-2, 18):
+		for z in range(-2, 18):
+			for y in 2:
+				within[Vector3i(x, y, z)] = true
+	owner.erase(Vector3i(4, 1, 4))             # a pinhole
+	owner[Vector3i(9, 2, 9)] = 1               # a tooth
+	var apart := []                            # six voxels apart (off the ground it is laid on), each with five of them round it
+	for x in [14, 15]:
+		for y in [5, 6]:
+			for z in [14, 15]:
+				if not (x == 15 and z == 15):
+					apart.append(Vector3i(x, y, z))
+	for kc in apart:
+		owner[kc] = 0
+	owner[Vector3i(16, 0, 3)] = 1              # and one alone
+	for z in 3:
+		owner[Vector3i(13, 0, z)] = 2          # a third plate: a strip one voxel wide, apart
+	var extra := {Vector3i(0, 2, 0): FineArmor.BOSS}
+	owner[Vector3i(0, 2, 0)] = 0               # a boss on its corner
+	FineArmor._tidy(owner, extra, within)
+	t.check(owner.has(Vector3i(4, 1, 4)), "a pinhole in a piece is shut")
+	t.check(not owner.has(Vector3i(9, 2, 9)), "a tooth on its edge is left out")
+	t.check(not apart.any(func(kc): return owner.has(kc)) and not owner.has(Vector3i(16, 0, 3)), "and a few voxels lying apart from it, or one")
+	t.check(owner.has(Vector3i(13, 0, 0)) and owner.has(Vector3i(13, 0, 1)) and owner.has(Vector3i(13, 0, 2)), "a plate that is all edge is drawn whole")
+	t.check(owner.has(Vector3i(0, 2, 0)), "what stands out of the piece on purpose stays")
+	var whole := 0
+	for x in 10:
+		for z in 10:
+			for y in 2:
+				if owner.has(Vector3i(x, y, z)):
+					whole += 1
+	t.eq(whole, 200, "and the piece itself is whole")
+	t.eq(owner.size(), 204, "nothing more is drawn, nothing less")
+	# His skin through the piece (the ledge of a chest's muscle between two of a cuirass's rows):
+	# a pit in the piece with his skin in it, off the ground the piece is laid on, is shut; his
+	# skin under the piece and past its edge is left as it is.
+	owner = {}
+	within = {}
+	var skin := {}
+	for x in 7:
+		for z in 7:
+			skin[Vector3i(x, -1, z)] = true
+			if x < 5:
+				owner[Vector3i(x, 0, z)] = 0
+				within[Vector3i(x, 0, z)] = true
+	owner.erase(Vector3i(2, 0, 3))
+	within.erase(Vector3i(2, 0, 3))
+	skin[Vector3i(2, 0, 3)] = true
+	skin[Vector3i(5, 0, 3)] = true             # his skin past the piece's edge
+	FineArmor._tidy(owner, {}, within, skin)
+	t.check(owner.has(Vector3i(2, 0, 3)), "where his skin came out through a pit in the piece, the piece is shut over it")
+	t.check(not owner.has(Vector3i(5, 0, 3)) and not owner.has(Vector3i(2, -1, 3)), "his skin past its edge and under it is left as it is")
+
+func test_an_arm_is_not_drawn_through_the_cuirass() -> void:
+	# (User: stray pieces of voxels in the armour: a grey square on his bare arm, teeth hanging
+	# under the shoulder guard's edge.) A cuirass's shell lies down his sides and out over the tops
+	# of his arms, where the arms themselves are: what of it lies in an arm is not drawn while the
+	# arm is there (the shader's limb_a0.., a round cone a limb: Fighter._limbs_in_armor), and the
+	# guard's edge round the arm is whole rows (FineArmor._rim_round_limbs). Drawing only.
+	# The cone of a limb drawn as a round bar, 8 fine voxels across and 24 long.
+	var cells := PackedInt32Array()
+	for y in 24:
+		for x in 8:
+			for z in 8:
+				if Vector2(x - 3.5, z - 3.5).length() < 4.0:
+					var c := PackedInt32Array()
+					c.resize(FineBody.CELL)
+					c[0] = x
+					c[1] = y
+					c[2] = z
+					cells.append_array(c)
+	var fv := 0.01
+	var cone := Fighter.limb_cone(cells, Vector3(-0.04, -0.12, -0.04), fv)
+	t.check(absf(float(cone.r_top) - 0.04) < 0.006 and absf(float(cone.r_end) - 0.04) < 0.006, "a round bar's cone is as wide as the bar (%.3f, %.3f for 0.04)" % [cone.r_top, cone.r_end])
+	t.check(is_equal_approx(float(cone.top) + float(cone.r_top), 0.12) and is_equal_approx(float(cone.end) - float(cone.r_end), -0.12), "and as long, round at both ends")
+	var one := [[Vector3(0.0, 0.2, 0.0), Vector3(0.0, -0.2, 0.0), 0.1, 0.06]]
+	t.check(FineArmor.cone_gap(one, Vector3(0.05, 0.2, 0.0)) < 0.0 and FineArmor.cone_gap(one, Vector3(0.11, 0.2, 0.0)) > 0.0, "a point is in the cone or out of it by how wide it is there, at its top")
+	t.check(FineArmor.cone_gap(one, Vector3(0.07, -0.2, 0.0)) > 0.0 and FineArmor.cone_gap(one, Vector3(0.0, -0.25, 0.0)) < 0.0 and FineArmor.cone_gap(one, Vector3(0.0, -0.27, 0.0)) > 0.0, "and at its end, which is round")
+	# A guard laid out by hand round an upright arm: whole rings from row 0 up, and under them
+	# (row -1) only what the arm left of a ring: three voxels side by side on one side, a long arc
+	# on the other. The three hang, the arc is the guard's edge.
+	var sp := Vector3.ONE * 0.02
+	var arm := [[Vector3(0.0, 0.3, 0.0), Vector3(0.0, -0.3, 0.0), 0.1, 0.1]]
+	var owner := {}
+	for y in range(-1, 4):
+		for x in range(-8, 8):
+			for z in range(-8, 8):
+				var q := (Vector3(x, y, z) + Vector3.ONE * 0.5) * sp
+				var r := Vector2(q.x, q.z).length()
+				if r < 0.07 or r > 0.135:
+					continue
+				if y == -1 and r >= 0.1 and not ((z >= 5 and absi(x) <= 1) or z <= -2):
+					continue
+				owner[Vector3i(x, y, z)] = 0
+	var hanging := []
+	var arc := 0
+	var in_arm := 0
+	for kc: Vector3i in owner:
+		var q := (Vector3(kc) + Vector3.ONE * 0.5) * sp
+		if FineArmor.cone_gap(arm, q) < 0.0:
+			in_arm += 1
+		elif kc.y == -1 and kc.z >= 5:
+			hanging.append(kc)
+		elif kc.y == -1:
+			arc += 1
+	var before := owner.size()
+	FineArmor._rim_round_limbs(owner, {}, arm, Vector3.ZERO, sp)
+	var hung := 0
+	for kc in hanging:
+		if owner.has(kc):
+			hung += 1
+	t.check(hanging.size() >= 2 and hanging.size() < FineArmor.RIM_RUN and hung == 0, "a few voxels left hanging under a guard's edge by the arm are left out (%d of %d still there)" % [hung, hanging.size()])
+	t.check(arc >= FineArmor.RIM_RUN and owner.size() == before - hanging.size(), "a row that runs on round the arm is its edge, and what lies in the arm is kept for when the arm is away (%d in the arm, %d in the row, %d of %d left)" % [in_arm, arc, owner.size(), before])
+	# On a man: each shell on his trunk is told where his two upper arms are.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	var f: Fighter = await _armoured(m, ["lorica", "manica"])
+	var lor = null
+	for ad in f.torso.get_meta("armor", []):
+		if String(ad.id) == "lorica" and ad.get("shell") is Dictionary:
+			lor = ad.shell
+	t.check(lor != null, "the cuirass is a shell")
+	if lor != null:
+		var rest := FineArmor.rest_cones(f.torso)
+		t.check(rest.size() == 2 and absf(float(rest[0][2]) - float(rest[1][2])) < 0.001 and float(rest[0][2]) > float(rest[0][3]), "his arms as he stands: two cones, the same, wider at the shoulder (%s)" % str(rest.map(func(c): return [snappedf(c[2], 0.001), snappedf(c[3], 0.001)])))
+		# (What lies in them as he stands: his flank under the armpit and the guard's inside.)
+		var buf: PackedFloat32Array = (lor.mm as MultiMesh).buffer
+		var inside := 0
+		for s in (lor.mm as MultiMesh).instance_count:
+			if FineArmor.cone_gap(rest, Vector3(buf[s * 20 + 3], buf[s * 20 + 7], buf[s * 20 + 11])) < 0.0:
+				inside += 1
+		t.check(inside > 100, "what of the cuirass lies in his arms as he stands is there to be drawn when they are raised (%d voxels)" % inside)
+		f._limbs_in_armor(false)
+		var k := 0
+		for side in ["upperArmL", "upperArmR"]:
+			var a: Vector4 = f.limbs_told[k]
+			var b: Vector4 = f.limbs_told[k + 1]
+			k += 2
+			var up: VoxelPart = f.by_name[side]
+			var mid := (Vector3(a.x, a.y, a.z) + Vector3(b.x, b.y, b.z)) * 0.5
+			t.check(a.w > 0.08 and a.w < 0.13 and b.w > 0.06 and b.w < a.w and mid.distance_to(up.global_position) < 0.06, "the shell is told where his %s is (%.3f and %.3f wide, %.3f m off its middle)" % [side, a.w, b.w, mid.distance_to(up.global_position)])
+		# It follows the arm: raised, the cone goes with it.
+		var up_l: VoxelPart = f.by_name["upperArmL"]
+		var was: Vector4 = f.limbs_told[1]
+		up_l.global_transform = Transform3D(up_l.global_transform.basis.rotated(Vector3(0, 0, 1), 1.2), up_l.global_position + Vector3(0.1, 0.1, 0.0))
+		f._seat_drawing(false)
+		f._limbs_in_armor(false)
+		var now: Vector4 = f.limbs_told[1]
+		t.check(Vector3(now.x, now.y, now.z).distance_to(Vector3(was.x, was.y, was.z)) > 0.1, "and where it goes as he raises it")
+		# An arm cut off is not there.
+		up_l.severed = true
+		f._limbs_in_armor(false)
+		t.check(is_zero_approx((f.limbs_told[0] as Vector4).w) and (f.limbs_told[2] as Vector4).w > 0.0, "an arm cut off hides nothing of it")
+		up_l.severed = false
+	m.queue_free()
+	await get_tree().process_frame
+
+func test_the_arm_armour_shows_beside_his_chest() -> void:
+	# (User: holes in the armour.) An arm's armour is not drawn where it has gone in under his
+	# cuirass (Fighter._clip_arm_armor), and only there: raised to his side, the top of a manica
+	# lies in the box round his chest, beside it, and was not drawn, his arm bare between it and
+	# his shoulder. What is hidden lies within his outline under the shell (FineArmor.in_outline).
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	var f: Fighter = await _armoured(m, ["lorica", "manica"], [0.98, 0.1, -0.98, 0.1])
+	# (Where each plate is drawn: read back off the drawing on a screen, which tells nothing here.)
+	for p: VoxelPart in f.parts:
+		if not String(p.part_name).begins_with("upperArm"):
+			continue
+		for ad in p.get_meta("armor", []):
+			var xf := []
+			for ci in ad.cells.size():
+				xf.append(Physique.plate_xf(p, ad.cells[ci], ad.pts[ci] as Vector3, String(ad.id)))
+			ad["xf"] = xf
+			var fresh := PackedByteArray()
+			fresh.resize(ad.cells.size())
+			ad["clip"] = fresh
+	f._clip_arm_armor()
+	var box: AABB = f.torso.get_meta("armor_box", AABB())
+	var ol: Dictionary = f.torso.get_meta("armor_outline", {})
+	t.check(not ol.is_empty() or not FineSmooth.live(), "his outline under the cuirass is read from its shell")
+	var tinv := f.torso.get_global_transform_interpolated().affine_inverse()
+	var in_box := 0
+	var hidden := 0
+	var stray := 0
+	for p: VoxelPart in f.parts:
+		if not String(p.part_name).begins_with("upperArm"):
+			continue
+		var to_t := tinv * p.get_global_transform_interpolated()
+		for ad in p.get_meta("armor", []):
+			if not ad.has("clip"):
+				continue
+			for ci in ad.cells.size():
+				var q: Vector3 = to_t * (ad.xf[ci] as Transform3D).origin
+				if box.has_point(q):
+					in_box += 1
+				if ad.clip[ci] == 1:
+					hidden += 1
+					if not ol.is_empty() and not FineArmor.in_outline(ol, q, 0.0001 + f.torso.vf * f.torso.part_scale * 0.25):
+						stray += 1
+	t.check(in_box > 0, "raised to his side, the top of his manica lies in the box round his chest (%d plates)" % in_box)
+	if not ol.is_empty():
+		t.check(hidden < in_box, "and is drawn where it lies beside his chest, not under the cuirass (%d of %d hidden)" % [hidden, in_box])
+		t.eq(stray, 0, "what of it is hidden lies within his outline")
+	m.queue_free()
+	await get_tree().process_frame

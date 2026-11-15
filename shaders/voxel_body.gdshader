@@ -54,6 +54,8 @@ uniform float grain_k : hint_range(0.0, 4.0) = 1.0;      // the grain voxel to v
 uniform float patina : hint_range(0.0, 1.0) = 1.0;      // bronze gone green in its corners and spots (0: polished, the new look's armour)
 uniform float iron_metal : hint_range(0.0, 1.0) = 1.0;   // how much a mirror iron is (the new look's armour: less, so its bands read in the sun)
 uniform float scratches : hint_range(0.0, 1.0) = 1.0;    // iron's scratches and dents (the new look's armour: fainter, on its small voxels)
+uniform float metal_rough : hint_range(0.0, 1.0) = 0.0;  // the least roughness of iron and bronze (armour under the smooth light: a voxel lit by the shell's shape was a mirror of the sun, a white square)
+uniform float sky_hold : hint_range(0.0, 1.0) = 0.0;     // ARMOUR_LIGHT: how far a piece's top takes the light of what is round it as its sides do (see env_n)
 instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
 instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
 instance uniform float pallor = 0.0;      // the skin gone pale from blood lost, 0..1 (Physique.pale)
@@ -83,6 +85,16 @@ instance uniform vec4 foot_turn = vec4(0.0);
 instance uniform vec4 joint_at = vec4(0.0);
 instance uniform vec4 joint_turn = vec4(0.0);
 instance uniform vec4 joint_dir = vec4(0.0);
+// A limb beside a piece of armour that is another part's (Fighter._limbs_in_armor): a cuirass's
+// shell lies down his sides and out over the tops of his arms, where the arms' own flesh is, and
+// its voxels came out through an arm's skin, half a voxel here and there (user: stray voxels in
+// the armour). A voxel of the piece whose middle lies inside the limb as it is drawn now (a round
+// cone, limb_a0.xyz to limb_a1.xyz, world, its radius .w at each end, round at both ends) is not
+// drawn while it lies there. limb_a0.w 0: none. Two limbs: a and b.
+instance uniform vec4 limb_a0 = vec4(0.0);
+instance uniform vec4 limb_a1 = vec4(0.0);
+instance uniform vec4 limb_b0 = vec4(0.0);
+instance uniform vec4 limb_b1 = vec4(0.0);
 
 const float ROUGH[14] = float[](0.58, 0.97, 0.72, 0.34, 0.38, 0.8, 0.62, 0.1, 0.92, 0.3, 0.42, 0.22, 0.2, 0.86);
 const float METAL[14] = float[](0.0, 0.0, 0.0, 0.85, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12);
@@ -96,10 +108,40 @@ varying flat vec2 status;   // INSTANCE_CUSTOM.g: burning, .b: poisoned (0..1)
 varying flat float ao_code; // the corner bits (an integer held exactly in a float)
 varying flat float taper_code;
 varying flat float spike_code; // a point's place on a run of points (bits 0..3) and the run's length (4..7)
+#ifdef ARMOUR_LIGHT
+// A piece of armour lit by its shape (FineArmor.lit_material: this shader with ARMOUR_LIGHT set).
+// Lit by the way the shape faces, a piece's top (a cuirass over his shoulders, a helmet's crown)
+// faces the open sky all over, every face of every voxel there, and in the shade it took the
+// sky's blue whole: a blue band across a steel cuirass seen from behind, green on gold. As cubes
+// only the voxels' top faces took the sky; the faces seen took the warm stone round the arena. So
+// the two lights are taken apart: the sun's (and every lamp's) by the way the shape faces (sun_n,
+// light()), the light of what is round it (the sky, the arena's reflection) by env_n: the same
+// way, but where it faces up, laid level, as the piece's sides face. Where the shape faces
+// straight up and has no level way of its own, each face of the voxel by its own, as a cube's
+// was: its sides the stone round him, its top face alone the sky.
+varying flat float way_lit;    // 1: lit by the way its shape faces (smooth_shade), not by its own faces
+varying flat vec3 env_n;       // (view space)
+varying vec3 sun_n;            // fragment() to light()
+varying float sun_spec;
+#endif
+
+bool in_limb(vec3 p, vec4 a, vec4 b) {
+	if (a.w <= 0.0) {
+		return false;
+	}
+	vec3 ab = b.xyz - a.xyz;
+	float t = clamp(dot(p - a.xyz, ab) / max(dot(ab, ab), 1e-8), 0.0, 1.0);
+	vec3 d = p - (a.xyz + ab * t);
+	float r = mix(a.w, b.w, t);
+	return dot(d, d) < r * r;
+}
 
 void vertex() {
 	box_pos = VERTEX;
 	float way_code = COLOR.a;
+#ifdef ARMOUR_LIGHT
+	vec3 face_n = NORMAL;
+#endif
 	if (smooth_geo > 0.0 && COLOR.a > 1.5) {
 		int ci = (VERTEX.x > 0.0 ? 1 : 0) + (VERTEX.y > 0.0 ? 2 : 0) + (VERTEX.z > 0.0 ? 4 : 0);
 		vec4 cd = texelFetch(smooth_tex, ivec2((INSTANCE_ID % 256) * 8 + ci, INSTANCE_ID / 256), 0);
@@ -119,6 +161,9 @@ void vertex() {
 		}
 		NORMAL = normalize(mix(NORMAL, way, smooth_shade));
 	}
+#ifdef ARMOUR_LIGHT
+	way_lit = (smooth_shade > 0.0 && way_code > 1.5) ? 1.0 : 0.0;
+#endif
 	float kc = INSTANCE_CUSTOM.a > 0.5 ? floor(INSTANCE_CUSTOM.r * 16.0 + 0.5) : 8.0;
 	kind_f = force_kind >= 0 ? float(force_kind) : mod(kc, 16.0);
 	taper_code = INSTANCE_CUSTOM.a > 0.5 ? floor(kc / 16.0) : 0.0;
@@ -266,6 +311,26 @@ void vertex() {
 			NORMAL = normalize(vec3(dot(m3[0], nw), dot(m3[1], nw), dot(m3[2], nw)));
 		}
 	}
+	if (limb_a0.w > 0.0 || limb_b0.w > 0.0) {
+		vec3 mid = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+		if (in_limb(mid, limb_a0, limb_a1) || in_limb(mid, limb_b0, limb_b1)) {
+			VERTEX = vec3(0.0);
+		}
+	}
+#ifdef ARMOUR_LIGHT
+	{
+		vec3 nw = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+		vec3 fw = normalize((MODEL_MATRIX * vec4(face_n, 0.0)).xyz);
+		// (Its level way: the shape's own, or as that runs out, the face's.)
+		float lean = length(nw.xz);
+		float own = smoothstep(0.15, 0.5, lean);
+		vec2 lv = nw.xz / max(lean, 1e-5) * own + fw.xz * (1.0 - own);
+		float ll = length(lv);
+		float held = ll > 1e-3 ? sky_hold * smoothstep(0.0, 0.4, nw.y) : 0.0;
+		vec3 level = vec3(lv.x, 0.0, lv.y) / max(ll, 1e-3);
+		env_n = (VIEW_MATRIX * vec4(normalize(mix(nw, level, held)), 0.0)).xyz;
+	}
+#endif
 }
 
 // How shut in this point of the face is (0 open, 1 in a corner), from the face's 4 corner bits.
@@ -399,6 +464,9 @@ void fragment() {
 	ROUGHNESS = clamp(ROUGH[k] + 0.08 * (seed - 0.5) - 0.1 * hone, 0.02, 1.0);
 	METALLIC = METAL[k] * (k == 3 ? iron_metal : 1.0);
 	SPECULAR = SPEC[k];
+	if (k == 3 || k == 4) {
+		ROUGHNESS = max(ROUGHNESS, metal_rough);
+	}
 	if (k == 10) {
 		// Scales: a sheen of green and blue at a glancing look.
 		float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
@@ -438,4 +506,42 @@ void fragment() {
 	}
 	RIM = rim_amount * (k == 3 || k == 4 ? 0.3 : 1.0);
 	RIM_TINT = 0.6;
+#ifdef ARMOUR_LIGHT
+	sun_n = NORMAL;
+	sun_spec = SPECULAR;
+	if (way_lit > 0.5) {
+		NORMAL = normalize(env_n);
+	}
+#endif
 }
+
+#ifdef ARMOUR_LIGHT
+// The sun's light and every lamp's on a piece of armour lit by its shape: as the engine reckons it
+// itself (Burley's diffuse, GGX with Schlick's Fresnel), by the way the shape faces (sun_n) and
+// not by the way its surroundings' light is taken (NORMAL, here env_n).
+void light() {
+	vec3 n = normalize(sun_n);
+	float nl = max(min(dot(n, LIGHT), 1.0), 0.0);
+	float nv = max(dot(n, VIEW), 1e-4);
+	vec3 h = normalize(VIEW + LIGHT);
+	float nh = clamp(dot(n, h), 0.0, 1.0);
+	float lh = clamp(dot(LIGHT, h), 0.0, 1.0);
+	if (METALLIC < 1.0) {
+		float fd90 = 2.0 * lh * lh * ROUGHNESS - 0.5;
+		float fdv = 1.0 + fd90 * pow(1.0 - nv, 5.0);
+		float fdl = 1.0 + fd90 * pow(1.0 - nl, 5.0);
+		DIFFUSE_LIGHT += LIGHT_COLOR * ((1.0 / PI) * fdv * fdl * nl) * ATTENUATION;
+	}
+	if (ROUGHNESS > 0.0) {
+		float a = ROUGHNESS * ROUGHNESS;
+		float a2 = a * a;
+		float d = 1.0 + (a2 - 1.0) * nh * nh;
+		float dist = a2 / (PI * d * d);
+		float vis = 0.5 / mix(2.0 * nl * nv, nl + nv, a);
+		vec3 f0 = mix(vec3(0.16 * sun_spec * sun_spec), ALBEDO, METALLIC);
+		float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), METALLIC, 1.0);
+		vec3 fres = f0 + (f90 - f0) * pow(1.0 - lh, 5.0);
+		SPECULAR_LIGHT += (nl * dist * vis) * fres * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT;
+	}
+}
+#endif

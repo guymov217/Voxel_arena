@@ -2778,6 +2778,12 @@
 "Moss hair": [
 "scripts/fighter/monster_look.gd:24"
 ],
+"shader_type spatial;": [
+"scripts/fighter/fine_armor.gd:759"
+],
+"shader_type spatial;\\n#define ARMOUR_LIGHT": [
+"scripts/fighter/fine_armor.gd:759"
+],
 "Weapon_": [
 "scripts/fighter/weapon.gd:92"
 ],
@@ -2810,13 +2816,13 @@
 "scripts/fighter/fighter.gd:3096"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:6949"
+"scripts/fighter/fighter.gd:7052"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:6965"
+"scripts/fighter/fighter.gd:7068"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:8892",
+"scripts/fighter/fighter.gd:8995",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3057,12 +3063,12 @@
 "scripts/fighter/combat.gd:82"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2712",
-"scripts/voxel/voxel_part.gd:3090",
-"scripts/voxel/voxel_part.gd:3104"
+"scripts/voxel/voxel_part.gd:2714",
+"scripts/voxel/voxel_part.gd:3092",
+"scripts/voxel/voxel_part.gd:3106"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:3011"
+"scripts/voxel/voxel_part.gd:3013"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:15"
