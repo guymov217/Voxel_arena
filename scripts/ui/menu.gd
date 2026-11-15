@@ -228,6 +228,7 @@ func set_arms(a: Dictionary) -> void:
 		for side in lo.worn:
 			if match_.me.f.weapons.get(side) and not match_.me.f.fixed_hand[side]:
 				match_.me.f.weapons[side].remove_voxels(lo.worn[side])
+	_sync_my_spec()
 
 func kit() -> Dictionary:
 	return Net.sanitize_kit(Save.get_value("kit", {}))
@@ -248,8 +249,33 @@ func set_worn_armor(a: Array) -> void:
 	Save.set_value("armor_worn", Armory.sanitize(a))
 	Save.set_value("armor_wear", Armory.clean_wear(Save.get_value("armor_wear", {}), Armory.sanitize(a)))   # a piece taken off takes its wear with it
 	_net_loadout()
+	_armour_on_him()
+
+## The yard's man as the save has him now (his arms bought, mended or reshaped, his armour bought,
+## taken off or mended): what he is built again from (Match.rebuild: the physician, the smith; a
+## fall in the yard).
+func _sync_my_spec() -> void:
+	if not in_yard() or match_.me == null or not (match_.me.get("spec") is Dictionary):
+		return
+	var sp: Dictionary = match_.me.spec
+	var lo := Arms.loadout(arms())
+	var lod: Dictionary = (sp.get("loadout", {}) as Dictionary).duplicate() if sp.get("loadout") is Dictionary else {}
+	lod["main"] = lo.main if lo.main else ""
+	lod["off"] = lo.off if lo.off else ""
+	lod["armor"] = look_armor(look()) + worn_armor()
+	lod["armor_defs"] = Armory.defs_of(worn_armor())
+	lod["armor_wear"] = armor_wear()
+	sp["loadout"] = lod
+	sp["worn"] = lo.worn
+
+## His armour bought, taken off or mended at the smith: on him in the yard at once as the save has
+## it, built again with it (in a room on every screen: Match.rebuild, as the physician's work).
+## (Mended, it stayed broken on him: the plates still off him were counted again as the yard's
+## wear the next time a stall or the gate was opened, and the mending undone: user.)
+func _armour_on_him() -> void:
+	_sync_my_spec()
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
-		match_.me.f.set_armor_pieces(worn_armor())
+		match_.rebuild(match_.me, body())
 
 ## The player's own gladiator: skin, cloth colour and the cosmetic pieces (no armour: that is
 ## bought). Saved as indices, so an old or hand-edited save cannot name anything that is not there.
@@ -332,6 +358,7 @@ func set_body(b: Dictionary) -> void:
 	# the broken arm stayed broken). An old wound closed the same (user: he bought the rare
 	# medicine and nothing happened: the scar stayed on him until the next bout).
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up or Body.old_wound_closed(was, clean)):
+		_sync_my_spec()
 		match_.rebuild(match_.me, clean)
 		return
 	# Stitched in the yard: the wounds close on him there and then (each fresh wound that is closed
@@ -493,7 +520,7 @@ func _main(v: VBoxContainer) -> void:
 			enter_yard()
 	var fresh_run := st <= 1 and not CampaignRun.chosen()
 	rows.append(UIStyle.hero_button("Continue the campaign" if not fresh_run else "Begin the campaign",
-		(Loc.t("Bout %s of %d · %s") % [YardPlay.roman(st), Data.campaign.get("stages", []).size(), Loc.t(String(CampaignRun.MODES[CampaignRun.mode()].name))]) if not fresh_run else "Sixty-four bouts to freedom", go))
+		(Loc.t("Bout %s of %d · %s") % [str(st), Data.campaign.get("stages", []).size(), Loc.t(String(CampaignRun.MODES[CampaignRun.mode()].name))]) if not fresh_run else "Sixty-four bouts to freedom", go))
 	var gap2 := Control.new()
 	gap2.custom_minimum_size = Vector2(0, 10)
 	rows.append(gap2)
@@ -560,11 +587,10 @@ func _open_station(id: String) -> void:
 	# the smith's to mend too, and goes with him through the gate (user: damage in the yard was
 	# not counted when mending).
 	_keep_yard_wear()
-	# The gate and the boards by it: the gate's fights, a card each (GateScreen), the board's own
-	# lit (the gate's: the first, the one it leads to).
+	# The gate: the gate's fights, a card each (GateScreen).
 	# (A room's host at the gate when the demo is over: the gate's menu, with the modes for the room.)
-	if (id == "gate" or id.begins_with("fight")) and not (id == "gate" and Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
-		_gate_open(-1 if id == "gate" else int(id.substr(5)))
+	if id == "gate" and not (Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
+		_gate_open()
 		return
 	visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -628,9 +654,8 @@ func _leave_room() -> void:
 	over_match = false
 	show_screen("main")
 
-## The fight the party is for (GateChoice): the board most of them are for (YardPlay.stands: the
-## card each picked on his gate screen, or the board he last walked up to), the host for board
-## `board` (-1: his own as it is).
+## The fight the party is for (GateChoice): the one most of them are for (YardPlay.stands: the
+## card each picked on his gate screen), the host for card `board` (-1: his own as it is).
 func _party_pick(board: int) -> Dictionary:
 	var offers := GateChoice.now(true)
 	var stands: Array = match_.yard.stands() if match_ and is_instance_valid(match_) and match_.yard else []
@@ -642,12 +667,11 @@ func _party_pick(board: int) -> Dictionary:
 
 var gate_screen: GateScreen = null
 
-## The gate's cards over the yard, board `board`'s forward (-1: at the gate itself, the first's).
-## Alone: through the gate to the one he takes. In a room each one's pick is on the cards (the
-## board he stands at is his, until he picks another here; a guest's pick is told to the host),
-## and the host leads them through (or into another mode for the room). At the demo's end there is
-## nothing to choose: straight to its end.
-func _gate_open(board: int) -> void:
+## The gate's cards over the yard, the first forward (the host's: his pick, if he has one).
+## Alone: through the gate to the one he takes. In a room each one's pick is on the cards (a
+## guest's pick is told to the host), and the host leads them through (or into another mode for
+## the room). At the demo's end there is nothing to choose: straight to its end.
+func _gate_open() -> void:
 	if gate_screen and is_instance_valid(gate_screen):
 		return
 	var coop := Net.active()
@@ -659,7 +683,7 @@ func _gate_open(board: int) -> void:
 	if guest:
 		var gi: Dictionary = yard.gate_info if yard else {}
 		if gi.is_empty():
-			# (Nothing to choose, or a host of a game from before the gate's cards: the boards only.)
+			# (Nothing to choose, or a host of a game from before the gate's cards.)
 			match_._banner("The arena gate", "The host leads the party through")
 			return
 		offers = gi.b
@@ -668,10 +692,10 @@ func _gate_open(board: int) -> void:
 	elif Edition.demo_over(st):
 		_through_gate(0)
 		return
-	var mine := board
-	if board < 0 and coop and not guest and yard:
+	var mine := -1
+	if coop and not guest and yard:
 		mine = int(yard.picks.get(1, -1))
-	var o := {"at": maxi(board, maxi(mine, 0)), "mine": mine, "party": coop, "host": not guest, "lap": lap, "previews": DisplayServer.get_name() != "headless"}
+	var o := {"at": maxi(mine, 0), "mine": mine, "party": coop, "host": not guest, "lap": lap, "previews": DisplayServer.get_name() != "headless"}
 	if coop and not guest:
 		if Net.campaign_full():
 			o.lead_block = campaign_full_text()
@@ -1689,6 +1713,14 @@ func _yard(v: VBoxContainer) -> void:
 			smith_tab = tab_id
 			show_screen("yard"), tab_id == smith_tab))
 	_row(right, tabs).alignment = BoxContainer.ALIGNMENT_END
+	# All his armour mended at once, on whichever tab (user: an option to mend the armour).
+	var all_ := Armory.mend_all(armor_wear(), worn_armor())
+	if int(all_.cost) > 0:
+		var mend_all := UIStyle.button(Loc.t("Mend all armour · %d denarii") % int(all_.cost), _mend_all_armour, true)
+		mend_all.size_flags_horizontal = Control.SIZE_SHRINK_END
+		mend_all.disabled = int(all_.cost) > coins()
+		mend_all.tooltip_text = Loc.t("The armourer puts back every plate your armour has lost.") + (Loc.t(" Purse after: %d") % (coins() - int(all_.cost)) if int(all_.cost) <= coins() else Loc.t(" %d more needed") % (int(all_.cost) - coins()))
+		right.add_child(mend_all)
 	if not last_result.is_empty():
 		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
 	v.add_child(HSeparator.new())
@@ -2112,6 +2144,17 @@ func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> 
 		_viewable(tex, d, Loc.t("Your design · %d denarii to have it made") % price)
 	return true
 
+## Every worn piece mended at once at the smith, and whole on him in the yard there and then.
+func _mend_all_armour() -> void:
+	var m := Armory.mend_all(armor_wear(), worn_armor())
+	if int(m.cost) > coins():
+		show_screen("yard", "Not enough denarii")
+		return
+	add_coins(-int(m.cost))
+	set_armor_wear(m.wear)
+	_armour_on_him()
+	show_screen("yard")
+
 ## A list on the smith's screen that takes what height is left and scrolls within it.
 func _smith_scroll(parent: Control) -> ScrollContainer:
 	var scroll := ScrollContainer.new()
@@ -2155,6 +2198,7 @@ func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
 						return
 					add_coins(-int(m.cost))
 					set_armor_wear(m.wear)
+					_armour_on_him()
 					show_screen("yard"))
 				mend.disabled = mc_ > coins()
 				mend.tooltip_text = "The armourer puts back every plate it has lost." + (Loc.t(" Purse after: %d") % (coins() - mc_) if mc_ <= coins() else Loc.t(" %d more needed") % (mc_ - coins()))
@@ -4186,7 +4230,7 @@ func start(opts: Dictionary) -> void:
 	# drawn again with the reason.
 	if opts.get("coop", false) and Net.campaign_full():
 		if screen == "gate_cards" and in_yard():
-			_gate_open(0)   # (the gate's cards again, the reason under them)
+			_gate_open()   # (the gate's cards again, the reason under them)
 		else:
 			show_screen(screen if ["gate", "room", "fights"].has(screen) else "room")
 		return
@@ -4809,13 +4853,13 @@ func _on_net(type: String, data, _from: int) -> void:
 			if data is Dictionary and not Net.is_host():
 				_doctor_visit(Body.sanitize(data.get("body", {})), (data.get("news", []) as Array).map(func(x): return str(x).left(80)) if data.get("news") is Array else [], int(data.get("stage", 1)), func(nb): Net.send_host("doctor_done", nb))
 		"me":
-			# A guest the physician saw to in the yard: the host's copy of him, the one that moves,
-			# is built again with the body he has now (his arm was set on his own screen and hung
-			# broken on everyone's until the next bout).
+			# A guest the physician or the smith saw to in the yard: the host's copy of him, the one
+			# that moves, is built again with the body and the armour he has now (his arm was set on
+			# his own screen and hung broken on everyone's until the next bout).
 			if Net.is_host() and in_yard() and Net.peers.has(_from):
-				match_.peer_body(_from, Net.peers[_from].get("body", {}))
+				match_.peer_body(_from, Net.peers[_from].get("body", {}), _peer_spec(_from, true).get("loadout", {}))
 		"gate_pick":
-			# A guest's pick of the gate's fights (a board's number, anything else none).
+			# A guest's pick of the gate's fights (a card's number, anything else none).
 			if match_ and Net.is_host() and match_.yard:
 				match_.yard.take_pick(_from, data)
 		"doctor_done":
@@ -5104,7 +5148,7 @@ func _campaign_end(v: VBoxContainer) -> void:
 		var un := UIStyle.label("UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.", 16, UIStyle.GOLD)
 		un.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(un)
-	v.add_child(UIStyle.label(Loc.t("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.") % ROMAN[clampi(lap - 1, 0, 6)], 15, UIStyle.MUTED))
+	v.add_child(UIStyle.label(Loc.t("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.") % str(lap), 15, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back to the ludus", func(): show_screen("main" if not Net.active() else "room"), true))
 
 func _demo_end(v: VBoxContainer) -> void:

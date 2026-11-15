@@ -1,6 +1,6 @@
 class_name GateChoice
 ## The fight chosen at the gate (the campaign a different way each run, user). Before every bout
-## the boards by the yard's gate offer two or three of the ladder's bouts (Ladder) from the stretch
+## the yard's gate offers two or three of the ladder's bouts (Ladder) from the stretch
 ## of eight the campaign has reached, none of them won yet this time round: the ladder's own (or,
 ## won already, the first of the stretch still to win); the crowd's fight, that bout with one more
 ## of its foes for double the prize; and another of the stretch's bouts drawn by the run (a beast
@@ -8,9 +8,9 @@ class_name GateChoice
 ## stretches keep their order (their gear, their pay and their checkpoints are the stage's:
 ## Data.stage), and every run takes its own way through them. A boss's bout is no choice: which
 ## of the stretch's two bosses comes first is the run's draw (never in the last stretch: the
-## Dragon ends it). Alone he walks up to the board of the fight he wants; a party stands each by
-## the board he wants, and the one most of them stand by is fought (the host's, as many by two).
-## DOM-free: the yard draws the boards, the menu starts what is chosen.
+## Dragon ends it). Alone he picks the card of the fight he wants (GateScreen); a party picks each
+## the card he wants, and the one most of them picked is fought (the host's, as many by two).
+## DOM-free: the gate's cards show the fights, the menu starts what is chosen.
 
 const BAND := 8   # a stretch of the ladder: two bosses, six bouts between
 
@@ -35,7 +35,7 @@ static func _rng(run_seed: int, salt: Array) -> RandomNumberGenerator:
 	r.seed = hash([run_seed] + salt)
 	return r
 
-## What the boards offer at `stage` of a run drawn by `run_seed`, with the ladder's bouts in `won`
+## What the gate offers at `stage` of a run drawn by `run_seed`, with the ladder's bouts in `won`
 ## won already this time round: [{"bout": n, "kind": "ladder" | "crowd" | "other" | "boss"}]. The
 ## first is the one the gate itself leads to.
 static func offers(stage: int, run_seed: int, won: Array) -> Array:
@@ -64,9 +64,9 @@ static func offers(stage: int, run_seed: int, won: Array) -> Array:
 		out.append({"bout": int(pool[_rng(run_seed, ["other", stage]).randi_range(0, pool.size() - 1)]), "kind": "other"})
 	return out
 
-## The board most of a party stand by. `stands`: the board each stands by (-1 for none), the
-## host's first. As many by two: the host's if his is one of them, else the first of them;
-## nobody by any: the first board (the gate's own).
+## The fight most of a party picked. `stands`: the fight each picked (-1 for none), the host's
+## first. As many by two: the host's if his is one of them, else the first of them; nobody's
+## pick: the first (the gate's own).
 static func majority(stands: Array, n_offers: int) -> int:
 	if n_offers <= 0:
 		return 0
@@ -94,11 +94,11 @@ static func won_list(coop: bool) -> Array:
 	var v = Save.get_value(key(coop), [])
 	return (v as Array).map(func(x): return int(x)) if v is Array else []
 
-## The boards' offers now, as the save has the run (its seed, the time round, its stage).
+## The gate's offers now, as the save has the run (its seed, the time round, its stage).
 static func now(coop: bool) -> Array:
 	return at(int(Save.get_value("coop_stage" if coop else "stage", 1)), coop)
 
-## The boards' offers at `stage` of the run in the save. (A run begun before there was a choice
+## The gate's offers at `stage` of the run in the save. (A run begun before there was a choice
 ## at the gate has no list of bouts won: it walked the ladder in order, the stretch's bouts before
 ## `stage` are won.)
 static func at(stage: int, coop: bool) -> Array:

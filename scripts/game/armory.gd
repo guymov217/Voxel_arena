@@ -354,6 +354,26 @@ static func mend(w: Dictionary, id: String) -> Dictionary:
 	out.erase(id)
 	return {"wear": out, "cost": cost}
 
+## Every worn piece mended at once: the smith's price for all of them, and no wear after.
+static func mend_all(w: Dictionary, worn: Array) -> Dictionary:
+	var cost := 0
+	for id in worn:
+		cost += mend_cost(String(id), w)
+	return {"wear": {}, "cost": cost}
+
+## Whether `after` has a plate on that `now` has off (Armory wear both): some of it mended.
+static func mended(now: Dictionary, after: Dictionary) -> bool:
+	for id in now:
+		if not (now[id] is Dictionary):
+			continue
+		var piece = after.get(id)
+		for part in now[id]:
+			var off = piece.get(part) if piece is Dictionary else null
+			for c in now[id][part]:
+				if not (off is Array and (off as Array).has(c)):
+					return true
+	return false
+
 ## Buying `id`: what is worn after (the clashing pieces taken off, sold back for half) and the cost.
 static func buy(worn: Array, id: String) -> Dictionary:
 	if not (sold(id) or custom(id)) or not Data.armor.has(id):

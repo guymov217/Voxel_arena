@@ -377,7 +377,7 @@ func setup(opts: Dictionary) -> void:
 		yard = YardPlay.new(self)
 		yard.setup()
 		_send_yard_next()
-		_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight")
+		_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer")
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
 	spectacle.on_round_start()
@@ -703,8 +703,8 @@ func add_peer(id: int, p: Dictionary) -> void:
 	feed.emit(Loc.t("%s came into the yard") % p.name)
 	_send_yard_next()
 
-## The boards by the gate: the fights on offer (GateChoice), as many as the party is now (a friend
-## more, a friend less, each bout is sized again), on the host and on every guest's boards.
+## The fights on offer at the gate (GateChoice), as many as the party is now (a friend more, a
+## friend less, each bout is sized again), on the host's cards and on every guest's.
 func _send_yard_next() -> void:
 	if yard == null or role != "host":
 		return
@@ -1698,9 +1698,9 @@ func guest_message(type: String, data) -> void:
 						Chunk.spawn(prt, bits, Vector3.DOWN)
 		"yard_next":
 			if yard and data is Dictionary:
-				# (Three boards at most, six short lines each: set_boards cuts what is longer.)
+				# (Three fights at most, six short lines each: set_boards cuts what is longer.)
 				if data.get("o") is Array and not (data.o as Array).is_empty():
-					yard.set_boards((data.o as Array).slice(0, YardPlay.BOARD_AT.size()).map(func(x): return str(x).left(400)))
+					yard.set_boards((data.o as Array).slice(0, YardPlay.MOST_FIGHTS).map(func(x): return str(x).left(400)))
 				else:
 					yard.set_next(str(data.get("t", "")))
 				yard.gate_info = YardPlay.clean_gate(data.get("g"))
@@ -3139,16 +3139,31 @@ func doctor_done(id: int, body_: Dictionary) -> void:
 		return
 	rebuild(e, Body.sanitize(body_))
 
-## A guest's body as it is now (the physician saw to him in the yard, and he told the host): his
-## fighter here is built again with it, where what shows or works on him changed.
-func peer_body(peer: int, body_) -> void:
+## A guest's body as it is now (the physician saw to him in the yard, and he told the host), and
+## his armour (the smith): his fighter here is built again with them, where what shows or works on
+## him changed.
+func peer_body(peer: int, body_, lo := {}) -> void:
 	if role != "host" or mode != "yard":
 		return
 	var nb := Body.sanitize(body_)
 	for e in humans():
 		if e.kind == "remote" and int(e.peer) == peer and is_instance_valid(e.f):
 			var was := Body.sanitize(e.f.body)
-			if nb.missing != was.missing or nb.prosthetics != was.prosthetics or nb.eyes != was.eyes or nb.fractures != was.fractures or nb.pro_up != was.pro_up or nb.scars != was.scars:
+			var again: bool = nb.missing != was.missing or nb.prosthetics != was.prosthetics or nb.eyes != was.eyes or nb.fractures != was.fractures or nb.pro_up != was.pro_up or nb.scars != was.scars
+			# His armour bought, taken off or mended at the smith (`lo`, his loadout as he sent it):
+			# on him as it is now, on every screen (user: mending the armour, in a room too).
+			var sl: Dictionary = e.spec.get("loadout", {}) if e.spec.get("loadout") is Dictionary else {}
+			if not lo.is_empty() and (sl.get("armor", []) != lo.get("armor", []) or Armory.mended(e.f.armor_wear(), lo.get("armor_wear", {}))):
+				var nl := sl.duplicate()
+				for k in ["main", "off"]:
+					if lo.has(k):
+						nl[k] = lo[k]   # (and in his hands what he holds on his own screen)
+				nl["armor"] = lo.get("armor", [])
+				nl["armor_defs"] = lo.get("armor_defs", {})
+				nl["armor_wear"] = lo.get("armor_wear", {})
+				e.spec["loadout"] = nl
+				again = true
+			if again:
 				rebuild(e, nb)
 			return
 

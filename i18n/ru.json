@@ -2777,5 +2777,8 @@
  "The party's pick": "Выбор отряда",
  "%d of %d for this fight": "%d из %d за этот бой",
  "%s · you stand for this fight · E: the gate's fights": "%s · вы стоите за этот бой · E: бои у ворот",
- "%s · E: choose your fight": "%s · E: выбери свой бой"
+ "%s · E: choose your fight": "%s · E: выбери свой бой",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "Подойдите к месту и нажмите G · манекены и мишени для бросков · у ворот можно выбрать бой",
+ "Mend all armour · %d denarii": "Починить все доспехи · %d денариев",
+ "The armourer puts back every plate your armour has lost.": "Бронник вернёт на место каждую пластину, потерянную вашими доспехами."
 }

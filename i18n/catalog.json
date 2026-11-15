@@ -20,15 +20,15 @@
 "Gladiator": [
 "scripts/net/net.gd:33",
 "scripts/ui/menu.gd:172",
-"scripts/ui/menu.gd:524",
-"scripts/ui/menu.gd:825",
-"scripts/ui/menu.gd:974",
-"scripts/ui/menu.gd:2947",
-"scripts/ui/menu.gd:2957",
-"scripts/ui/menu.gd:4205",
-"scripts/ui/menu.gd:4404",
-"scripts/ui/menu.gd:4680",
-"scripts/ui/menu.gd:5064",
+"scripts/ui/menu.gd:551",
+"scripts/ui/menu.gd:849",
+"scripts/ui/menu.gd:998",
+"scripts/ui/menu.gd:2991",
+"scripts/ui/menu.gd:3001",
+"scripts/ui/menu.gd:4249",
+"scripts/ui/menu.gd:4448",
+"scripts/ui/menu.gd:4724",
+"scripts/ui/menu.gd:5108",
 "scripts/fighter/fighter.gd:77",
 "scripts/game/yard.gd:44",
 "scripts/game/modes.gd:73",
@@ -81,130 +81,130 @@
 "Weapon": [
 "scripts/net/net.gd:603",
 "scripts/ui/weapon_view.gd:49",
-"scripts/ui/menu.gd:3647",
+"scripts/ui/menu.gd:3691",
 "scripts/game/match.gd:2097"
 ],
 "The host removed you from the room": [
 "scripts/net/net.gd:653"
 ],
 "For the crowd": [
-"scripts/ui/gate_screen.gd:84"
+"scripts/ui/gate_screen.gd:90"
 ],
 "PRO POPVLO": [
-"scripts/ui/gate_screen.gd:84"
+"scripts/ui/gate_screen.gd:90"
 ],
 "One more of them, and the crowd pays double for it.": [
-"scripts/ui/gate_screen.gd:84"
+"scripts/ui/gate_screen.gd:90"
 ],
 "A boss's day": [
-"scripts/ui/gate_screen.gd:86"
+"scripts/ui/gate_screen.gd:92"
 ],
 "No choosing today: the boss waits for you.": [
-"scripts/ui/gate_screen.gd:86"
+"scripts/ui/gate_screen.gd:92"
 ],
 "A beast hunt": [
-"scripts/ui/gate_screen.gd:89"
+"scripts/ui/gate_screen.gd:95"
 ],
 "VENATIO": [
-"scripts/ui/gate_screen.gd:89"
+"scripts/ui/gate_screen.gd:95"
 ],
 "Another bout of this stretch of the ladder, against beasts.": [
-"scripts/ui/gate_screen.gd:89"
+"scripts/ui/gate_screen.gd:95"
 ],
 "Men with blades": [
-"scripts/ui/gate_screen.gd:90"
+"scripts/ui/gate_screen.gd:96"
 ],
 "MVNVS": [
-"scripts/ui/gate_screen.gd:90"
+"scripts/ui/gate_screen.gd:96"
 ],
 "Another bout of this stretch of the ladder, against men.": [
-"scripts/ui/gate_screen.gd:90"
+"scripts/ui/gate_screen.gd:96"
 ],
 "The ladder's bout": [
-"scripts/ui/gate_screen.gd:91"
+"scripts/ui/gate_screen.gd:97"
 ],
 "The fight the ladder has set you.": [
-"scripts/ui/gate_screen.gd:91"
+"scripts/ui/gate_screen.gd:97"
 ],
 "One more foe": [
-"scripts/ui/gate_screen.gd:119"
+"scripts/ui/gate_screen.gd:125"
 ],
 "Double prize": [
-"scripts/ui/gate_screen.gd:120"
+"scripts/ui/gate_screen.gd:126"
 ],
 "A second wave": [
-"scripts/ui/gate_screen.gd:122"
+"scripts/ui/gate_screen.gd:128"
 ],
 "A boss": [
-"scripts/ui/gate_screen.gd:124"
+"scripts/ui/gate_screen.gd:130"
 ],
 "The arena gate": [
-"scripts/ui/gate_screen.gd:185",
-"scripts/ui/menu.gd:663",
-"scripts/ui/menu.gd:748",
+"scripts/ui/gate_screen.gd:191",
+"scripts/ui/menu.gd:687",
+"scripts/ui/menu.gd:772",
 "scripts/game/yard.gd:8"
 ],
 "Bout %s of the ladder · choose your fight": [
-"scripts/ui/gate_screen.gd:200"
+"scripts/ui/gate_screen.gd:206"
 ],
 "Bout %s of the ladder · a boss's day: no choosing": [
-"scripts/ui/gate_screen.gd:202"
+"scripts/ui/gate_screen.gd:208"
 ],
 "Bout %s of the ladder · each of you picks a fight, and the host leads you to the one most of you picked": [
-"scripts/ui/gate_screen.gd:204"
+"scripts/ui/gate_screen.gd:210"
 ],
 "Lead the party through": [
-"scripts/ui/gate_screen.gd:223"
+"scripts/ui/gate_screen.gd:229"
 ],
 "◀  Back to the yard  (Esc)": [
-"scripts/ui/gate_screen.gd:247"
+"scripts/ui/gate_screen.gd:253"
 ],
 "through the gate": [
-"scripts/ui/gate_screen.gd:282"
+"scripts/ui/gate_screen.gd:288"
 ],
 "this fight is my pick": [
-"scripts/ui/gate_screen.gd:284"
+"scripts/ui/gate_screen.gd:290"
 ],
 "Enter": [
-"scripts/ui/gate_screen.gd:285",
+"scripts/ui/gate_screen.gd:291",
 "scripts/game/player_input.gd:97",
 "scripts/game/player_input.gd:115",
 "scripts/game/player_input.gd:131",
 "scripts/game/player_input.gd:131"
 ],
 "Esc": [
-"scripts/ui/gate_screen.gd:285"
+"scripts/ui/gate_screen.gd:291"
 ],
 "back to the yard": [
-"scripts/ui/gate_screen.gd:285"
+"scripts/ui/gate_screen.gd:291"
 ],
 "drag a card to turn its foes": [
-"scripts/ui/gate_screen.gd:285"
+"scripts/ui/gate_screen.gd:291"
 ],
 "choose a fight": [
-"scripts/ui/gate_screen.gd:287"
+"scripts/ui/gate_screen.gd:293"
 ],
 "Armed with: %s": [
-"scripts/ui/gate_screen.gd:459"
+"scripts/ui/gate_screen.gd:480"
 ],
 "Prize": [
-"scripts/ui/gate_screen.gd:466"
+"scripts/ui/gate_screen.gd:487"
 ],
 "%d denarii": [
-"scripts/ui/gate_screen.gd:482",
+"scripts/ui/gate_screen.gd:503",
 "scripts/game/match.gd:2286"
 ],
 "Your pick": [
-"scripts/ui/gate_screen.gd:905"
+"scripts/ui/gate_screen.gd:1014"
 ],
 "Pick this fight": [
-"scripts/ui/gate_screen.gd:905"
+"scripts/ui/gate_screen.gd:1014"
 ],
 "Fight": [
-"scripts/ui/gate_screen.gd:907"
+"scripts/ui/gate_screen.gd:1016"
 ],
 "The party's pick": [
-"scripts/ui/gate_screen.gd:977"
+"scripts/ui/gate_screen.gd:1086"
 ],
 "BLOOD": [
 "scripts/ui/hud.gd:380",
@@ -262,75 +262,75 @@
 "scripts/ui/hud.gd:881"
 ],
 "Talk to %s": [
-"scripts/ui/hud.gd:890"
+"scripts/ui/hud.gd:888"
 ],
 "Into the arena: the next fight": [
-"scripts/ui/hud.gd:892"
+"scripts/ui/hud.gd:890"
 ],
 "Pick up the %s": [
-"scripts/ui/hud.gd:906"
+"scripts/ui/hud.gd:904"
 ],
 "Grab the %s": [
-"scripts/ui/hud.gd:912"
+"scripts/ui/hud.gd:910"
 ],
 "One hand · other side": [
-"scripts/ui/hud.gd:924"
+"scripts/ui/hud.gd:922"
 ],
 "Both hands · swap hands": [
-"scripts/ui/hud.gd:925"
+"scripts/ui/hud.gd:923"
 ],
 "THE ARENA": [
-"scripts/ui/hud.gd:948",
-"scripts/ui/hud.gd:963",
-"scripts/ui/hud.gd:966"
+"scripts/ui/hud.gd:946",
+"scripts/ui/hud.gd:961",
+"scripts/ui/hud.gd:964"
 ],
 "CO-OP · BOUT %d · %s": [
-"scripts/ui/hud.gd:951"
+"scripts/ui/hud.gd:949"
 ],
 "BOUT %d · %s": [
-"scripts/ui/hud.gd:951"
+"scripts/ui/hud.gd:949"
 ],
 "STAGE %d · ROUND %d OF 3": [
-"scripts/ui/hud.gd:953"
+"scripts/ui/hud.gd:951"
 ],
 "THE LUDUS YARD": [
-"scripts/ui/hud.gd:956",
-"scripts/ui/menu.gd:1675",
-"scripts/ui/menu.gd:2986",
-"scripts/ui/menu.gd:3128"
+"scripts/ui/hud.gd:954",
+"scripts/ui/menu.gd:1699",
+"scripts/ui/menu.gd:3030",
+"scripts/ui/menu.gd:3172"
 ],
 "THE GATE LEADS TO THE ARENA": [
-"scripts/ui/hud.gd:958"
+"scripts/ui/hud.gd:956"
 ],
 "THE TRAINING GROUND": [
-"scripts/ui/hud.gd:960"
+"scripts/ui/hud.gd:958"
 ],
 "Hold a mouse button and push the mouse to stab · %s to switch off": [
-"scripts/ui/hud.gd:1003"
+"scripts/ui/hud.gd:1001"
 ],
 "right hand: %s": [
-"scripts/ui/hud.gd:1015"
+"scripts/ui/hud.gd:1013"
 ],
 "left hand: %s": [
-"scripts/ui/hud.gd:1015"
+"scripts/ui/hud.gd:1013"
 ],
 "nothing in hand": [
-"scripts/ui/hud.gd:1015"
+"scripts/ui/hud.gd:1013"
 ],
 "%s · left click: the other hand · right click: call it off": [
-"scripts/ui/hud.gd:1016"
+"scripts/ui/hud.gd:1014"
 ],
 "IN HAND: %s": [
-"scripts/ui/hud.gd:1077"
+"scripts/ui/hud.gd:1075"
 ],
 "DECREES: %s": [
-"scripts/ui/hud.gd:1089"
+"scripts/ui/hud.gd:1087"
 ],
 "TUTORIAL · STEP %d OF %d": [
-"scripts/ui/hud.gd:1095"
+"scripts/ui/hud.gd:1093"
 ],
 "%s is out of the fight": [
-"scripts/ui/hud.gd:1112",
+"scripts/ui/hud.gd:1110",
 "scripts/game/killcam.gd:57"
 ],
 "Button": [
@@ -354,28 +354,28 @@
 ],
 "Blue": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:982",
+"scripts/fighter/physique.gd:996",
 "scripts/game/modes.gd:302",
 "scripts/game/modes.gd:468",
 "scripts/game/modes.gd:542"
 ],
 "Gold": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:983",
+"scripts/fighter/physique.gd:997",
 "scripts/game/forge_lib.gd:857",
 "data/materials.json#name"
 ],
 "White": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:980"
+"scripts/fighter/physique.gd:994"
 ],
 "Black": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:979"
+"scripts/fighter/physique.gd:993"
 ],
 "Green": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:996"
 ],
 "Purple": [
 "scripts/ui/armour_forge.gd:25"
@@ -406,7 +406,7 @@
 ],
 "Plain": [
 "scripts/ui/armour_forge.gd:236",
-"scripts/ui/menu.gd:4425"
+"scripts/ui/menu.gd:4469"
 ],
 "◀ Turn": [
 "scripts/ui/armour_forge.gd:262"
@@ -422,14 +422,14 @@
 ],
 "WHERE": [
 "scripts/ui/armour_forge.gd:321",
-"scripts/ui/menu.gd:2516"
+"scripts/ui/menu.gd:2560"
 ],
 "  (both sides alike)": [
 "scripts/ui/armour_forge.gd:321"
 ],
 "MATERIAL": [
 "scripts/ui/armour_forge.gd:332",
-"scripts/ui/menu.gd:2517"
+"scripts/ui/menu.gd:2561"
 ],
 "Name it": [
 "scripts/ui/armour_forge.gd:350",
@@ -443,7 +443,7 @@
 ],
 "Keep it": [
 "scripts/ui/armour_forge.gd:361",
-"scripts/ui/menu.gd:1962"
+"scripts/ui/menu.gd:1994"
 ],
 "%d plates": [
 "scripts/ui/armour_forge.gd:377"
@@ -453,7 +453,7 @@
 ],
 "Weight %.1f kg  (all you wear: %.1f kg)": [
 "scripts/ui/armour_forge.gd:379",
-"scripts/ui/menu.gd:2587"
+"scripts/ui/menu.gd:2631"
 ],
 "Breath when running and swinging ×%.2f · pace %d%%": [
 "scripts/ui/armour_forge.gd:380"
@@ -475,8 +475,8 @@
 ],
 "Body": [
 "scripts/ui/armour_forge.gd:588",
-"scripts/ui/menu.gd:2222",
-"scripts/ui/menu.gd:2230",
+"scripts/ui/menu.gd:2266",
+"scripts/ui/menu.gd:2274",
 "scripts/game/armory.gd:75"
 ],
 "Try it in the arena": [
@@ -559,26 +559,26 @@
 ],
 "My designs": [
 "scripts/ui/forge.gd:190",
-"scripts/ui/menu.gd:1263",
-"scripts/ui/menu.gd:2310",
-"scripts/ui/menu.gd:2317"
+"scripts/ui/menu.gd:1287",
+"scripts/ui/menu.gd:2354",
+"scripts/ui/menu.gd:2361"
 ],
 "Weapons you saved as templates: load one onto the anvil.": [
 "scripts/ui/forge.gd:190"
 ],
 "Armour": [
 "scripts/ui/forge.gd:200",
-"scripts/ui/menu.gd:1454",
-"scripts/ui/menu.gd:1531",
-"scripts/ui/menu.gd:1686",
-"scripts/ui/menu.gd:3544"
+"scripts/ui/menu.gd:1478",
+"scripts/ui/menu.gd:1555",
+"scripts/ui/menu.gd:1710",
+"scripts/ui/menu.gd:3588"
 ],
 "Make a piece of armour, plate by plate: where it goes, what it is made of": [
 "scripts/ui/forge.gd:201"
 ],
 "Name": [
 "scripts/ui/forge.gd:207",
-"scripts/ui/menu.gd:4410"
+"scripts/ui/menu.gd:4454"
 ],
 "Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point.": [
 "scripts/ui/forge.gd:233"
@@ -598,18 +598,18 @@
 ],
 "Back": [
 "scripts/ui/forge.gd:263",
-"scripts/ui/menu.gd:1021",
-"scripts/ui/menu.gd:1269",
-"scripts/ui/menu.gd:1519",
-"scripts/ui/menu.gd:1534",
-"scripts/ui/menu.gd:2385",
-"scripts/ui/menu.gd:2737",
-"scripts/ui/menu.gd:3092",
-"scripts/ui/menu.gd:3218",
-"scripts/ui/menu.gd:3494",
-"scripts/ui/menu.gd:3662",
-"scripts/ui/menu.gd:3744",
-"scripts/ui/menu.gd:3864"
+"scripts/ui/menu.gd:1045",
+"scripts/ui/menu.gd:1293",
+"scripts/ui/menu.gd:1543",
+"scripts/ui/menu.gd:1558",
+"scripts/ui/menu.gd:2429",
+"scripts/ui/menu.gd:2781",
+"scripts/ui/menu.gd:3136",
+"scripts/ui/menu.gd:3262",
+"scripts/ui/menu.gd:3538",
+"scripts/ui/menu.gd:3706",
+"scripts/ui/menu.gd:3788",
+"scripts/ui/menu.gd:3908"
 ],
 "Leave it as it was": [
 "scripts/ui/forge.gd:263"
@@ -636,7 +636,7 @@
 ],
 "Fights back": [
 "scripts/ui/forge.gd:551",
-"scripts/ui/menu.gd:976"
+"scripts/ui/menu.gd:1000"
 ],
 "It needs somewhere to be held: build a Grip block, or ✋ Move hand": [
 "scripts/ui/forge.gd:558",
@@ -662,7 +662,7 @@
 ],
 "New weapon": [
 "scripts/ui/forge.gd:636",
-"scripts/ui/menu.gd:3423",
+"scripts/ui/menu.gd:3467",
 "scripts/game/forge_lib.gd:17"
 ],
 "Cut": [
@@ -701,7 +701,7 @@
 ],
 "Forge a new weapon from nothing": [
 "scripts/ui/forge.gd:735",
-"scripts/ui/menu.gd:1803"
+"scripts/ui/menu.gd:1835"
 ],
 "%d%% · honing %d (%d Cut/Stab block)": [
 "scripts/ui/forge.gd:752"
@@ -799,7 +799,7 @@
 ],
 "MY DESIGNS": [
 "scripts/ui/forge.gd:1022",
-"scripts/ui/menu.gd:2196"
+"scripts/ui/menu.gd:2240"
 ],
 "Nothing saved yet": [
 "scripts/ui/forge.gd:1025"
@@ -1028,8 +1028,8 @@
 "Off": [
 "scripts/ui/forge.gd:1975",
 "scripts/ui/forge.gd:1975",
-"scripts/ui/menu.gd:4045",
-"scripts/ui/menu.gd:4121"
+"scripts/ui/menu.gd:4089",
+"scripts/ui/menu.gd:4165"
 ],
 "Taken up: %s, %s (the next blocks are made of it)": [
 "scripts/ui/forge.gd:1984"
@@ -1209,1732 +1209,1741 @@
 "scripts/ui/menu.gd:168"
 ],
 "◀  Leave the market  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "◀  Leave the smith  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "◀  Leave the physician  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "◀  Leave the board  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "◀  Leave the gate  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "◀  Leave the stall  (Esc)": [
-"scripts/ui/menu.gd:376"
+"scripts/ui/menu.gd:403"
 ],
 "WRECKSMITH": [
-"scripts/ui/menu.gd:443",
-"scripts/ui/menu.gd:5127"
+"scripts/ui/menu.gd:470",
+"scripts/ui/menu.gd:5171"
 ],
 "DEMO": [
-"scripts/ui/menu.gd:457"
+"scripts/ui/menu.gd:484"
 ],
 "FORGE  ·  FIGHT  ·  FALL": [
-"scripts/ui/menu.gd:470"
+"scripts/ui/menu.gd:497"
 ],
 "Continue the campaign": [
-"scripts/ui/menu.gd:495"
+"scripts/ui/menu.gd:522"
 ],
 "Begin the campaign": [
-"scripts/ui/menu.gd:495"
+"scripts/ui/menu.gd:522"
 ],
 "Bout %s of %d · %s": [
-"scripts/ui/menu.gd:496"
+"scripts/ui/menu.gd:523"
 ],
 "Sixty-four bouts to freedom": [
-"scripts/ui/menu.gd:496"
+"scripts/ui/menu.gd:523"
 ],
 "Bread & Circuses": [
-"scripts/ui/menu.gd:502",
-"scripts/ui/menu.gd:778"
+"scripts/ui/menu.gd:529",
+"scripts/ui/menu.gd:802"
 ],
 "Your gladiator": [
-"scripts/ui/menu.gd:503",
-"scripts/ui/menu.gd:4390"
+"scripts/ui/menu.gd:530",
+"scripts/ui/menu.gd:4434"
 ],
 "The Ludus yard (admin)": [
-"scripts/ui/menu.gd:505"
+"scripts/ui/menu.gd:532"
 ],
 "Arena": [
-"scripts/ui/menu.gd:507"
+"scripts/ui/menu.gd:534"
 ],
 "The endless arena": [
-"scripts/ui/menu.gd:508",
-"scripts/ui/menu.gd:1396"
+"scripts/ui/menu.gd:535",
+"scripts/ui/menu.gd:1420"
 ],
 "Training": [
-"scripts/ui/menu.gd:509",
-"scripts/ui/menu.gd:920"
+"scripts/ui/menu.gd:536",
+"scripts/ui/menu.gd:944"
 ],
 "The forge": [
-"scripts/ui/menu.gd:510"
+"scripts/ui/menu.gd:537"
 ],
 "Multiplayer": [
-"scripts/ui/menu.gd:511",
-"scripts/ui/menu.gd:3725"
+"scripts/ui/menu.gd:538",
+"scripts/ui/menu.gd:3769"
 ],
 "Settings": [
-"scripts/ui/menu.gd:520",
-"scripts/ui/menu.gd:5236"
+"scripts/ui/menu.gd:547",
+"scripts/ui/menu.gd:5280"
 ],
 "Quit": [
-"scripts/ui/menu.gd:521"
+"scripts/ui/menu.gd:548"
 ],
 "%s  ·  %d denarii%s": [
-"scripts/ui/menu.gd:524"
+"scripts/ui/menu.gd:551"
 ],
 "  ·  Unbroken": [
-"scripts/ui/menu.gd:524"
+"scripts/ui/menu.gd:551"
 ],
 "Back in the yard": [
-"scripts/ui/menu.gd:554"
+"scripts/ui/menu.gd:581"
 ],
 "The host leads the party through": [
-"scripts/ui/menu.gd:663"
+"scripts/ui/menu.gd:687"
 ],
 "An arena mode for the room": [
-"scripts/ui/menu.gd:678",
-"scripts/ui/menu.gd:781"
+"scripts/ui/menu.gd:702",
+"scripts/ui/menu.gd:805"
 ],
 "Close the room (main menu)": [
-"scripts/ui/menu.gd:681",
-"scripts/ui/menu.gd:785",
-"scripts/ui/menu.gd:5248"
+"scripts/ui/menu.gd:705",
+"scripts/ui/menu.gd:809",
+"scripts/ui/menu.gd:5292"
 ],
 "Pick the fight. You come back to the yard afterwards.": [
-"scripts/ui/menu.gd:749"
+"scripts/ui/menu.gd:773"
 ],
 "You have finished the demo": [
-"scripts/ui/menu.gd:755",
-"scripts/ui/menu.gd:771"
+"scripts/ui/menu.gd:779",
+"scripts/ui/menu.gd:795"
 ],
 "Next co-op bout: %s · %s": [
-"scripts/ui/menu.gd:760"
+"scripts/ui/menu.gd:784"
 ],
 "Bout %d": [
-"scripts/ui/menu.gd:760",
-"scripts/ui/menu.gd:775",
-"scripts/game/yard_play.gd:153",
+"scripts/ui/menu.gd:784",
+"scripts/ui/menu.gd:799",
+"scripts/game/yard_play.gd:152",
 "scripts/game/match.gd:366",
 "scripts/autoload/data.gd:130"
 ],
 "The co-op campaign · bout %d (all of you)": [
-"scripts/ui/menu.gd:761"
+"scripts/ui/menu.gd:785"
 ],
 "The host leads the party through the gate.": [
-"scripts/ui/menu.gd:765"
+"scripts/ui/menu.gd:789"
 ],
 "Next bout: %s · %s": [
-"scripts/ui/menu.gd:775"
+"scripts/ui/menu.gd:799"
 ],
 "The Campaign · bout %d": [
-"scripts/ui/menu.gd:776"
+"scripts/ui/menu.gd:800"
 ],
 "Fights and party modes": [
-"scripts/ui/menu.gd:781"
+"scripts/ui/menu.gd:805"
 ],
 "Leave the room (main menu)": [
-"scripts/ui/menu.gd:785",
-"scripts/ui/menu.gd:5248"
+"scripts/ui/menu.gd:809",
+"scripts/ui/menu.gd:5292"
 ],
 "Leave the yard (main menu)": [
-"scripts/ui/menu.gd:787"
+"scripts/ui/menu.gd:811"
 ],
 "The mission board": [
-"scripts/ui/menu.gd:799",
+"scripts/ui/menu.gd:823",
 "scripts/game/yard.gd:11"
 ],
 "Rank: %s · reputation %d%s": [
-"scripts/ui/menu.gd:801"
+"scripts/ui/menu.gd:825"
 ],
 " · %s at %d": [
-"scripts/ui/menu.gd:801"
+"scripts/ui/menu.gd:825"
 ],
 " · the highest rank": [
-"scripts/ui/menu.gd:801"
+"scripts/ui/menu.gd:825"
 ],
 "For the next fight:": [
-"scripts/ui/menu.gd:811"
+"scripts/ui/menu.gd:835"
 ],
 "%s  %s  (%d/%d) · %d denarii, %d reputation": [
-"scripts/ui/menu.gd:816"
+"scripts/ui/menu.gd:840"
 ],
 "+%d reputation": [
-"scripts/ui/menu.gd:839"
+"scripts/ui/menu.gd:863"
 ],
 " · missions done: %s (+%d denarii)": [
-"scripts/ui/menu.gd:841"
+"scripts/ui/menu.gd:865"
 ],
 " · NEW RANK: %s!": [
-"scripts/ui/menu.gd:843"
+"scripts/ui/menu.gd:867"
 ],
 "Controls": [
-"scripts/ui/menu.gd:852",
-"scripts/ui/menu.gd:3837"
+"scripts/ui/menu.gd:876",
+"scripts/ui/menu.gd:3881"
 ],
 "Click a key, then press the new one (Esc cancels). Gamepad: left stick walks, right stick looks; hold the right trigger and the right stick moves the sword hand, the left trigger the shield hand. A jump, B kick, X grab, Y throw, LB shove, RB thrust, D-pad uses the kit.": [
-"scripts/ui/menu.gd:853"
+"scripts/ui/menu.gd:877"
 ],
 "Press a key…": [
-"scripts/ui/menu.gd:870"
+"scripts/ui/menu.gd:894"
 ],
 "Reset to defaults": [
-"scripts/ui/menu.gd:875"
+"scripts/ui/menu.gd:899"
 ],
 "Back to the defaults": [
-"scripts/ui/menu.gd:877"
+"scripts/ui/menu.gd:901"
 ],
 "Done": [
-"scripts/ui/menu.gd:877"
+"scripts/ui/menu.gd:901"
 ],
 "That key cannot be bound": [
-"scripts/ui/menu.gd:890"
+"scripts/ui/menu.gd:914"
 ],
 "Tutorial": [
-"scripts/ui/menu.gd:923"
+"scripts/ui/menu.gd:947"
 ],
 "THE ENEMY": [
-"scripts/ui/menu.gd:964"
+"scripts/ui/menu.gd:988"
 ],
 "The ": [
-"scripts/ui/menu.gd:968"
+"scripts/ui/menu.gd:992"
 ],
 "Who": [
-"scripts/ui/menu.gd:974"
+"scripts/ui/menu.gd:998"
 ],
 "Nobody": [
-"scripts/ui/menu.gd:974"
+"scripts/ui/menu.gd:998"
 ],
 "How many": [
-"scripts/ui/menu.gd:975"
+"scripts/ui/menu.gd:999"
 ],
 "One": [
-"scripts/ui/menu.gd:975"
+"scripts/ui/menu.gd:999"
 ],
 "Two": [
-"scripts/ui/menu.gd:975"
+"scripts/ui/menu.gd:999"
 ],
 "Three": [
-"scripts/ui/menu.gd:975"
+"scripts/ui/menu.gd:999"
 ],
 "Behaviour": [
-"scripts/ui/menu.gd:976"
+"scripts/ui/menu.gd:1000"
 ],
 "Defends only": [
-"scripts/ui/menu.gd:976"
+"scripts/ui/menu.gd:1000"
 ],
 "Stands still (a dummy)": [
-"scripts/ui/menu.gd:976"
+"scripts/ui/menu.gd:1000"
 ],
 "Walks about, never attacks": [
-"scripts/ui/menu.gd:976"
+"scripts/ui/menu.gd:1000"
 ],
 "Difficulty": [
-"scripts/ui/menu.gd:985"
+"scripts/ui/menu.gd:1009"
 ],
 "Easy": [
-"scripts/ui/menu.gd:985"
+"scripts/ui/menu.gd:1009"
 ],
 "Medium": [
-"scripts/ui/menu.gd:985"
+"scripts/ui/menu.gd:1009"
 ],
 "Hard": [
-"scripts/ui/menu.gd:985"
+"scripts/ui/menu.gd:1009"
 ],
 "Extreme": [
-"scripts/ui/menu.gd:985"
+"scripts/ui/menu.gd:1009"
 ],
 "YOU": [
-"scripts/ui/menu.gd:986"
+"scripts/ui/menu.gd:1010"
 ],
 "Main hand": [
-"scripts/ui/menu.gd:989",
-"scripts/ui/menu.gd:1317",
-"scripts/ui/menu.gd:1446",
-"scripts/ui/menu.gd:1722"
+"scripts/ui/menu.gd:1013",
+"scripts/ui/menu.gd:1341",
+"scripts/ui/menu.gd:1470",
+"scripts/ui/menu.gd:1754"
 ],
 "Forged: %s": [
-"scripts/ui/menu.gd:989",
-"scripts/ui/menu.gd:1445"
+"scripts/ui/menu.gd:1013",
+"scripts/ui/menu.gd:1469"
 ],
 "none yet": [
-"scripts/ui/menu.gd:989",
-"scripts/ui/menu.gd:991",
-"scripts/ui/menu.gd:1445",
-"scripts/ui/menu.gd:2844"
+"scripts/ui/menu.gd:1013",
+"scripts/ui/menu.gd:1015",
+"scripts/ui/menu.gd:1469",
+"scripts/ui/menu.gd:2888"
 ],
 "Your campaign arms": [
-"scripts/ui/menu.gd:989",
-"scripts/ui/menu.gd:991"
+"scripts/ui/menu.gd:1013",
+"scripts/ui/menu.gd:1015"
 ],
 "Bare hands": [
-"scripts/ui/menu.gd:989"
+"scripts/ui/menu.gd:1013"
 ],
 "Off hand": [
-"scripts/ui/menu.gd:991",
-"scripts/ui/menu.gd:1321",
-"scripts/ui/menu.gd:1447",
-"scripts/ui/menu.gd:1722"
+"scripts/ui/menu.gd:1015",
+"scripts/ui/menu.gd:1345",
+"scripts/ui/menu.gd:1471",
+"scripts/ui/menu.gd:1754"
 ],
 "Nothing": [
-"scripts/ui/menu.gd:991",
-"scripts/ui/menu.gd:1447"
+"scripts/ui/menu.gd:1015",
+"scripts/ui/menu.gd:1471"
 ],
 "Round shield": [
-"scripts/ui/menu.gd:991",
-"scripts/ui/menu.gd:3677"
+"scripts/ui/menu.gd:1015",
+"scripts/ui/menu.gd:3721"
 ],
 "Scutum": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Dagger": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "scripts/game/forge_lib.gd:697",
 "scripts/game/forge_lib.gd:835",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Gladius": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "scripts/game/forge_lib.gd:830",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Axe": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "scripts/game/forge_lib.gd:693",
 "scripts/game/forge_lib.gd:832",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Mace": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "scripts/game/forge_lib.gd:694",
 "scripts/game/forge_lib.gd:836",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Spear": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "scripts/game/forge_lib.gd:696",
 "scripts/game/forge_lib.gd:834",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Longsword": [
-"scripts/ui/menu.gd:991",
+"scripts/ui/menu.gd:1015",
 "data/presets.json#name",
 "data/shop.json#name"
 ],
 "Design: %s": [
-"scripts/ui/menu.gd:991"
+"scripts/ui/menu.gd:1015"
 ],
 "Weapons from My designs": [
-"scripts/ui/menu.gd:996"
+"scripts/ui/menu.gd:1020"
 ],
 "Forge main hand": [
-"scripts/ui/menu.gd:997",
-"scripts/ui/menu.gd:1451"
+"scripts/ui/menu.gd:1021",
+"scripts/ui/menu.gd:1475"
 ],
 "Build a weapon for the main hand: free in training": [
-"scripts/ui/menu.gd:998"
+"scripts/ui/menu.gd:1022"
 ],
 "Forge off hand": [
-"scripts/ui/menu.gd:1000",
-"scripts/ui/menu.gd:1452"
+"scripts/ui/menu.gd:1024",
+"scripts/ui/menu.gd:1476"
 ],
 "Build a weapon for the off hand: free in training": [
-"scripts/ui/menu.gd:1001"
+"scripts/ui/menu.gd:1025"
 ],
 "Armour: %d pieces · %.1f kg": [
-"scripts/ui/menu.gd:1008",
-"scripts/ui/menu.gd:1459"
+"scripts/ui/menu.gd:1032",
+"scripts/ui/menu.gd:1483"
 ],
 "Armour: none": [
-"scripts/ui/menu.gd:1008",
-"scripts/ui/menu.gd:1459"
+"scripts/ui/menu.gd:1032",
+"scripts/ui/menu.gd:1483"
 ],
 "Armour (free in training)": [
-"scripts/ui/menu.gd:1010"
+"scripts/ui/menu.gd:1034"
 ],
 "I cannot die": [
-"scripts/ui/menu.gd:1012"
+"scripts/ui/menu.gd:1036"
 ],
 "The enemy comes back": [
-"scripts/ui/menu.gd:1016"
+"scripts/ui/menu.gd:1040"
 ],
 "Start training": [
-"scripts/ui/menu.gd:1021"
+"scripts/ui/menu.gd:1045"
 ],
 "YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds": [
-"scripts/ui/menu.gd:1059"
+"scripts/ui/menu.gd:1083"
 ],
 "Trying it out": [
-"scripts/ui/menu.gd:1167"
+"scripts/ui/menu.gd:1191"
 ],
 "Esc: back to the forge": [
-"scripts/ui/menu.gd:1167"
+"scripts/ui/menu.gd:1191"
 ],
 "Trying %s against %s": [
-"scripts/ui/menu.gd:1191"
+"scripts/ui/menu.gd:1215"
 ],
 "the weapon": [
-"scripts/ui/menu.gd:1191"
+"scripts/ui/menu.gd:1215"
 ],
 "Esc: back to the forge · R: start again": [
-"scripts/ui/menu.gd:1199"
-],
-"%d hits · last blow %d · best %d · %d limbs off · %d kills": [
 "scripts/ui/menu.gd:1223"
 ],
+"%d hits · last blow %d · best %d · %d limbs off · %d kills": [
+"scripts/ui/menu.gd:1247"
+],
 "Forge a new one": [
-"scripts/ui/menu.gd:1267"
+"scripts/ui/menu.gd:1291"
 ],
 "Forge one for the off hand": [
-"scripts/ui/menu.gd:1268"
+"scripts/ui/menu.gd:1292"
 ],
 "Pick a weapon you saved in the forge for either hand": [
-"scripts/ui/menu.gd:1271"
+"scripts/ui/menu.gd:1295"
 ],
 "Nothing saved yet: save a design in the forge first": [
-"scripts/ui/menu.gd:1274"
+"scripts/ui/menu.gd:1298"
 ],
 "%.1f kg · reach %.1f m%s": [
-"scripts/ui/menu.gd:1307"
+"scripts/ui/menu.gd:1331"
 ],
 " · two hands": [
-"scripts/ui/menu.gd:1307"
+"scripts/ui/menu.gd:1331"
 ],
 "In your %s": [
-"scripts/ui/menu.gd:1312"
+"scripts/ui/menu.gd:1336"
 ],
 "main hand": [
-"scripts/ui/menu.gd:1312",
-"scripts/ui/menu.gd:1762"
+"scripts/ui/menu.gd:1336",
+"scripts/ui/menu.gd:1794"
 ],
 "off hand": [
-"scripts/ui/menu.gd:1312",
-"scripts/ui/menu.gd:1762"
+"scripts/ui/menu.gd:1336",
+"scripts/ui/menu.gd:1794"
 ],
 "In both hands": [
-"scripts/ui/menu.gd:1312"
+"scripts/ui/menu.gd:1336"
 ],
 "Wave after wave of men and beasts, drawn at random, until you fall.": [
-"scripts/ui/menu.gd:1400",
-"scripts/ui/menu.gd:2697"
+"scripts/ui/menu.gd:1424",
+"scripts/ui/menu.gd:2741"
 ],
 "A great foe every fifth wave; between the waves a breath, and a reward to pick.": [
-"scripts/ui/menu.gd:1400"
+"scripts/ui/menu.gd:1424"
 ],
 "Best: wave %d": [
-"scripts/ui/menu.gd:1405",
+"scripts/ui/menu.gd:1429",
 "scripts/game/endless.gd:393"
 ],
 "Today's challenge: wave %d": [
-"scripts/ui/menu.gd:1407"
+"scripts/ui/menu.gd:1431"
 ],
 "YOUR ARMS": [
-"scripts/ui/menu.gd:1421",
-"scripts/ui/menu.gd:1714"
+"scripts/ui/menu.gd:1445",
+"scripts/ui/menu.gd:1746"
 ],
 "Pick your armour": [
-"scripts/ui/menu.gd:1461"
+"scripts/ui/menu.gd:1485"
 ],
 "Today's challenge: the same waves for everyone": [
-"scripts/ui/menu.gd:1463",
+"scripts/ui/menu.gd:1487",
 "scripts/game/endless.gd:162"
 ],
 "YOUR BAG · %d kinds at most, %d of each": [
-"scripts/ui/menu.gd:1472"
+"scripts/ui/menu.gd:1496"
 ],
 "Into the arena": [
-"scripts/ui/menu.gd:1519"
+"scripts/ui/menu.gd:1543"
 ],
 "Nothing is paid for here. Click Wear on a piece; a piece that covers the same place takes the other off.": [
-"scripts/ui/menu.gd:1536",
-"scripts/ui/menu.gd:2387"
+"scripts/ui/menu.gd:1560",
+"scripts/ui/menu.gd:2431"
 ],
 "No armour: put on what you like from the right.": [
-"scripts/ui/menu.gd:1545"
+"scripts/ui/menu.gd:1569"
 ],
 "Take it all off": [
-"scripts/ui/menu.gd:1547",
-"scripts/ui/menu.gd:2398"
+"scripts/ui/menu.gd:1571",
+"scripts/ui/menu.gd:2442"
 ],
 "Take off": [
-"scripts/ui/menu.gd:1556",
-"scripts/ui/menu.gd:2361",
-"scripts/ui/menu.gd:2411",
-"scripts/ui/menu.gd:3695"
+"scripts/ui/menu.gd:1580",
+"scripts/ui/menu.gd:2405",
+"scripts/ui/menu.gd:2455",
+"scripts/ui/menu.gd:3739"
 ],
 "Wear": [
-"scripts/ui/menu.gd:1556",
-"scripts/ui/menu.gd:2411"
+"scripts/ui/menu.gd:1580",
+"scripts/ui/menu.gd:2455"
 ],
 "Wave %d beaten!": [
-"scripts/ui/menu.gd:1607",
+"scripts/ui/menu.gd:1631",
 "scripts/game/endless.gd:187"
 ],
 "Pick a reward: 1, 2 or 3": [
-"scripts/ui/menu.gd:1608"
+"scripts/ui/menu.gd:1632"
 ],
 "The smith": [
-"scripts/ui/menu.gd:1676",
+"scripts/ui/menu.gd:1700",
 "scripts/game/yard.gd:9"
 ],
 "You have %d denarii": [
-"scripts/ui/menu.gd:1681",
-"scripts/ui/menu.gd:3279"
+"scripts/ui/menu.gd:1705",
+"scripts/ui/menu.gd:3323"
 ],
 "Weapons": [
-"scripts/ui/menu.gd:1686",
-"scripts/ui/menu.gd:3544"
+"scripts/ui/menu.gd:1710",
+"scripts/ui/menu.gd:3588"
 ],
 "Design armour": [
-"scripts/ui/menu.gd:1686"
+"scripts/ui/menu.gd:1710"
 ],
-"Empty: buy a shield or a dagger from the rack, or have one made": [
-"scripts/ui/menu.gd:1727"
+"Mend all armour · %d denarii": [
+"scripts/ui/menu.gd:1719"
 ],
-"Forge a weapon for the off hand": [
-"scripts/ui/menu.gd:1728"
-],
-"Built block by block at the anvil, paid for at what it is worth": [
-"scripts/ui/menu.gd:1729"
-],
-"%s%d voxels · condition %d%%": [
-"scripts/ui/menu.gd:1735"
-],
-"Mend · %d denarii": [
-"scripts/ui/menu.gd:1741",
-"scripts/ui/menu.gd:2151"
-],
-"Sound": [
-"scripts/ui/menu.gd:1741",
-"scripts/ui/menu.gd:3837",
-"scripts/ui/menu.gd:4036"
-],
-"The smith puts back every voxel it has lost.": [
-"scripts/ui/menu.gd:1743"
+"The armourer puts back every plate your armour has lost.": [
+"scripts/ui/menu.gd:1722"
 ],
 " Purse after: %d": [
-"scripts/ui/menu.gd:1743",
-"scripts/ui/menu.gd:1754",
-"scripts/ui/menu.gd:2160",
-"scripts/ui/menu.gd:3389"
+"scripts/ui/menu.gd:1722",
+"scripts/ui/menu.gd:1775",
+"scripts/ui/menu.gd:1786",
+"scripts/ui/menu.gd:2204",
+"scripts/ui/menu.gd:3433"
 ],
 " %d more needed": [
-"scripts/ui/menu.gd:1743",
-"scripts/ui/menu.gd:1754",
-"scripts/ui/menu.gd:2160",
-"scripts/ui/menu.gd:3389"
+"scripts/ui/menu.gd:1722",
+"scripts/ui/menu.gd:1775",
+"scripts/ui/menu.gd:1786",
+"scripts/ui/menu.gd:2204",
+"scripts/ui/menu.gd:3433"
 ],
-"%s · %d denarii": [
-"scripts/ui/menu.gd:1752",
-"scripts/ui/menu.gd:3387"
+"Empty: buy a shield or a dagger from the rack, or have one made": [
+"scripts/ui/menu.gd:1759"
 ],
-"Reshape in the forge": [
+"Forge a weapon for the off hand": [
 "scripts/ui/menu.gd:1760"
 ],
-"Forge a new one for this hand": [
+"Built block by block at the anvil, paid for at what it is worth": [
 "scripts/ui/menu.gd:1761"
 ],
+"%s%d voxels · condition %d%%": [
+"scripts/ui/menu.gd:1767"
+],
+"Mend · %d denarii": [
+"scripts/ui/menu.gd:1773",
+"scripts/ui/menu.gd:2194"
+],
+"Sound": [
+"scripts/ui/menu.gd:1773",
+"scripts/ui/menu.gd:3881",
+"scripts/ui/menu.gd:4080"
+],
+"The smith puts back every voxel it has lost.": [
+"scripts/ui/menu.gd:1775"
+],
+"%s · %d denarii": [
+"scripts/ui/menu.gd:1784",
+"scripts/ui/menu.gd:3431"
+],
+"Reshape in the forge": [
+"scripts/ui/menu.gd:1792"
+],
+"Forge a new one for this hand": [
+"scripts/ui/menu.gd:1793"
+],
 "A new weapon from nothing for the %s: the one there now is traded in for half its worth": [
-"scripts/ui/menu.gd:1762"
+"scripts/ui/menu.gd:1794"
 ],
 "Sell · you get %d denarii": [
-"scripts/ui/menu.gd:1766"
+"scripts/ui/menu.gd:1798"
 ],
 "Sell · the stick fetches nothing": [
-"scripts/ui/menu.gd:1766"
+"scripts/ui/menu.gd:1798"
 ],
 "Vulcanus buys it for half its worth: the main hand is left with the training stick": [
-"scripts/ui/menu.gd:1768"
-],
-"Vulcanus buys it for half its worth: the off hand is left empty": [
-"scripts/ui/menu.gd:1768"
-],
-"ON THE SMITH'S RACK": [
-"scripts/ui/menu.gd:1773"
-],
-"Kept for you": [
-"scripts/ui/menu.gd:1777"
-],
-"Take it in the main hand": [
-"scripts/ui/menu.gd:1789"
-],
-"Take it in the off hand": [
-"scripts/ui/menu.gd:1789"
-],
-"Your right hand cannot hold it": [
-"scripts/ui/menu.gd:1791"
-],
-"Your left hand cannot hold it": [
-"scripts/ui/menu.gd:1791"
-],
-"Off the rack into that hand; what the hand holds now goes up in its place": [
-"scripts/ui/menu.gd:1791"
-],
-"WEAPONS FOR SALE": [
 "scripts/ui/menu.gd:1800"
 ],
-"It goes in a free hand. With both hands full you pick which one he takes, for half its worth.": [
+"Vulcanus buys it for half its worth: the off hand is left empty": [
+"scripts/ui/menu.gd:1800"
+],
+"ON THE SMITH'S RACK": [
 "scripts/ui/menu.gd:1805"
 ],
+"Kept for you": [
+"scripts/ui/menu.gd:1809"
+],
+"Take it in the main hand": [
+"scripts/ui/menu.gd:1821"
+],
+"Take it in the off hand": [
+"scripts/ui/menu.gd:1821"
+],
+"Your right hand cannot hold it": [
+"scripts/ui/menu.gd:1823"
+],
+"Your left hand cannot hold it": [
+"scripts/ui/menu.gd:1823"
+],
+"Off the rack into that hand; what the hand holds now goes up in its place": [
+"scripts/ui/menu.gd:1823"
+],
+"WEAPONS FOR SALE": [
+"scripts/ui/menu.gd:1832"
+],
+"It goes in a free hand. With both hands full you pick which one he takes, for half its worth.": [
+"scripts/ui/menu.gd:1837"
+],
 "%s · main hand": [
-"scripts/ui/menu.gd:1839"
+"scripts/ui/menu.gd:1871"
 ],
 "%s · off hand": [
-"scripts/ui/menu.gd:1839"
+"scripts/ui/menu.gd:1871"
 ],
 "both hands full: you pick which one he takes": [
-"scripts/ui/menu.gd:1852"
+"scripts/ui/menu.gd:1884"
 ],
 "into both hands": [
-"scripts/ui/menu.gd:1852"
+"scripts/ui/menu.gd:1884"
 ],
 "into the main hand": [
-"scripts/ui/menu.gd:1852"
+"scripts/ui/menu.gd:1884"
 ],
 "into the off hand": [
-"scripts/ui/menu.gd:1852"
+"scripts/ui/menu.gd:1884"
 ],
 "your old one": [
-"scripts/ui/menu.gd:1857"
-],
-"what you hand in": [
-"scripts/ui/menu.gd:1857"
-],
-"Buy": [
-"scripts/ui/menu.gd:1858",
-"scripts/ui/menu.gd:2039"
-],
-"Not enough in your purse": [
-"scripts/ui/menu.gd:1865",
-"scripts/ui/menu.gd:1874"
-],
-"For the off hand": [
-"scripts/ui/menu.gd:1872"
-],
-"Into the off hand, %s": [
-"scripts/ui/menu.gd:1874"
-],
-"handing in what is there": [
-"scripts/ui/menu.gd:1874"
-],
-"the main hand keeps its weapon": [
-"scripts/ui/menu.gd:1874"
-],
-"%d denarii at the smith": [
-"scripts/ui/menu.gd:1878"
-],
-"THE SMITH'S RACK": [
 "scripts/ui/menu.gd:1889"
 ],
+"what you hand in": [
+"scripts/ui/menu.gd:1889"
+],
+"Buy": [
+"scripts/ui/menu.gd:1890",
+"scripts/ui/menu.gd:2071"
+],
+"Not enough in your purse": [
+"scripts/ui/menu.gd:1897",
+"scripts/ui/menu.gd:1906"
+],
+"For the off hand": [
+"scripts/ui/menu.gd:1904"
+],
+"Into the off hand, %s": [
+"scripts/ui/menu.gd:1906"
+],
+"handing in what is there": [
+"scripts/ui/menu.gd:1906"
+],
+"the main hand keeps its weapon": [
+"scripts/ui/menu.gd:1906"
+],
+"%d denarii at the smith": [
+"scripts/ui/menu.gd:1910"
+],
+"THE SMITH'S RACK": [
+"scripts/ui/menu.gd:1921"
+],
 "Costs %d · you have %d": [
-"scripts/ui/menu.gd:1897"
+"scripts/ui/menu.gd:1929"
 ],
 " (%d more needed)": [
-"scripts/ui/menu.gd:1897"
+"scripts/ui/menu.gd:1929"
 ],
 "%d, less %d for %s": [
-"scripts/ui/menu.gd:1901"
+"scripts/ui/menu.gd:1933"
 ],
 "Both your hands are full. Which one does Vulcanus take for the %s?": [
-"scripts/ui/menu.gd:1919"
+"scripts/ui/menu.gd:1951"
 ],
 "Sell the %s (main hand) · pay %d": [
-"scripts/ui/menu.gd:1926"
-],
-"Sell the %s (off hand) · pay %d": [
-"scripts/ui/menu.gd:1926"
-],
-"Keep both": [
-"scripts/ui/menu.gd:1934"
-],
-"Sell the %s to Vulcanus? It is gone for good.": [
-"scripts/ui/menu.gd:1955"
-],
-"You get %d denarii · you will have %d": [
 "scripts/ui/menu.gd:1958"
 ],
+"Sell the %s (off hand) · pay %d": [
+"scripts/ui/menu.gd:1958"
+],
+"Keep both": [
+"scripts/ui/menu.gd:1966"
+],
+"Sell the %s to Vulcanus? It is gone for good.": [
+"scripts/ui/menu.gd:1987"
+],
+"You get %d denarii · you will have %d": [
+"scripts/ui/menu.gd:1990"
+],
 "Sell it": [
-"scripts/ui/menu.gd:1959"
+"scripts/ui/menu.gd:1991"
 ],
 "VULCANUS'S MASTERWORKS · this bout only, one of each": [
-"scripts/ui/menu.gd:1978"
+"scripts/ui/menu.gd:2010"
 ],
 "Set with %s": [
-"scripts/ui/menu.gd:2016"
+"scripts/ui/menu.gd:2048"
 ],
 "Sold": [
-"scripts/ui/menu.gd:2023"
+"scripts/ui/menu.gd:2055"
 ],
 "%d denarii%s": [
-"scripts/ui/menu.gd:2049"
+"scripts/ui/menu.gd:2081"
 ],
 "In My designs": [
-"scripts/ui/menu.gd:2053"
+"scripts/ui/menu.gd:2085"
 ],
 "Save to My designs": [
-"scripts/ui/menu.gd:2053"
+"scripts/ui/menu.gd:2085"
 ],
 "YOUR DESIGNS · made to order": [
-"scripts/ui/menu.gd:2069"
-],
-"%d blocks · made to order": [
-"scripts/ui/menu.gd:2097"
-],
-"Have it made": [
 "scripts/ui/menu.gd:2101"
 ],
+"%d blocks · made to order": [
+"scripts/ui/menu.gd:2129"
+],
+"Have it made": [
+"scripts/ui/menu.gd:2133"
+],
 "Your design · %d denarii to have it made": [
-"scripts/ui/menu.gd:2112"
-],
-"Worn: %s": [
-"scripts/ui/menu.gd:2132"
-],
-"You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.": [
-"scripts/ui/menu.gd:2132"
-],
-"Your own design, from the bench.": [
-"scripts/ui/menu.gd:2143"
-],
-"%d of %d plates knocked off · condition %d%%": [
-"scripts/ui/menu.gd:2150"
+"scripts/ui/menu.gd:2144"
 ],
 "Not enough denarii": [
-"scripts/ui/menu.gd:2154",
-"scripts/ui/menu.gd:2176",
-"scripts/ui/menu.gd:2628",
-"scripts/ui/menu.gd:3069",
-"scripts/ui/menu.gd:3349",
-"scripts/ui/menu.gd:3401",
+"scripts/ui/menu.gd:2151",
+"scripts/ui/menu.gd:2197",
+"scripts/ui/menu.gd:2220",
+"scripts/ui/menu.gd:2672",
+"scripts/ui/menu.gd:3113",
+"scripts/ui/menu.gd:3393",
+"scripts/ui/menu.gd:3445",
 "scripts/game/circus.gd:141"
 ],
+"Worn: %s": [
+"scripts/ui/menu.gd:2175"
+],
+"You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.": [
+"scripts/ui/menu.gd:2175"
+],
+"Your own design, from the bench.": [
+"scripts/ui/menu.gd:2186"
+],
+"%d of %d plates knocked off · condition %d%%": [
+"scripts/ui/menu.gd:2193"
+],
 "The armourer puts back every plate it has lost.": [
-"scripts/ui/menu.gd:2160"
-],
-"Take off · %d denarii back": [
-"scripts/ui/menu.gd:2162"
-],
-"Buy · %d denarii": [
-"scripts/ui/menu.gd:2171",
-"scripts/ui/menu.gd:3066"
-],
-"Swap · %d denarii back": [
-"scripts/ui/menu.gd:2171"
-],
-"Purse after: %d": [
-"scripts/ui/menu.gd:2182"
-],
-"%d more needed": [
-"scripts/ui/menu.gd:2182"
-],
-"%s · %s · %.1f kg": [
 "scripts/ui/menu.gd:2204"
 ],
+"Take off · %d denarii back": [
+"scripts/ui/menu.gd:2206"
+],
+"Buy · %d denarii": [
+"scripts/ui/menu.gd:2215",
+"scripts/ui/menu.gd:3110"
+],
+"Swap · %d denarii back": [
+"scripts/ui/menu.gd:2215"
+],
+"Purse after: %d": [
+"scripts/ui/menu.gd:2226"
+],
+"%d more needed": [
+"scripts/ui/menu.gd:2226"
+],
+"%s · %s · %.1f kg": [
+"scripts/ui/menu.gd:2248"
+],
 "Head": [
-"scripts/ui/menu.gd:2222",
+"scripts/ui/menu.gd:2266",
 "scripts/game/armory.gd:74",
 "data/body.json#label"
 ],
 "Arms": [
-"scripts/ui/menu.gd:2222"
+"scripts/ui/menu.gd:2266"
 ],
 "Legs": [
-"scripts/ui/menu.gd:2222"
+"scripts/ui/menu.gd:2266"
 ],
 "WORN": [
-"scripts/ui/menu.gd:2289"
+"scripts/ui/menu.gd:2333"
 ],
 "Protection %s · %.1f kg": [
-"scripts/ui/menu.gd:2298"
+"scripts/ui/menu.gd:2342"
 ],
 "Replaces your %s": [
-"scripts/ui/menu.gd:2302"
+"scripts/ui/menu.gd:2346"
 ],
 "· %d worn": [
-"scripts/ui/menu.gd:2325"
+"scripts/ui/menu.gd:2369"
 ],
 "YOU WEAR": [
-"scripts/ui/menu.gd:2341"
+"scripts/ui/menu.gd:2385"
 ],
 "%s · %.1f kg": [
-"scripts/ui/menu.gd:2356",
-"scripts/ui/menu.gd:3692"
+"scripts/ui/menu.gd:2400",
+"scripts/ui/menu.gd:3736"
 ],
 "Take off the %s": [
-"scripts/ui/menu.gd:2362"
+"scripts/ui/menu.gd:2406"
 ],
 "%d piece · %.1f kg": [
-"scripts/ui/menu.gd:2366"
+"scripts/ui/menu.gd:2410"
 ],
 "%d pieces · %.1f kg": [
-"scripts/ui/menu.gd:2366"
+"scripts/ui/menu.gd:2410"
 ],
 "Breath ×%.2f · pace %d%%": [
-"scripts/ui/menu.gd:2367"
+"scripts/ui/menu.gd:2411"
 ],
 "Armour for training": [
-"scripts/ui/menu.gd:2379"
+"scripts/ui/menu.gd:2423"
 ],
 "Make a piece at the bench (free)": [
-"scripts/ui/menu.gd:2382"
+"scripts/ui/menu.gd:2426"
 ],
 "You wear no armour in training. Put on what you like from the right.": [
-"scripts/ui/menu.gd:2396"
+"scripts/ui/menu.gd:2440"
 ],
 "Delete the design": [
-"scripts/ui/menu.gd:2415"
+"scripts/ui/menu.gd:2459"
 ],
 "%s kept in My designs and worn": [
-"scripts/ui/menu.gd:2488"
+"scripts/ui/menu.gd:2532"
 ],
 "%s kept in My designs": [
-"scripts/ui/menu.gd:2488"
+"scripts/ui/menu.gd:2532"
 ],
 "The piece": [
-"scripts/ui/menu.gd:2488"
+"scripts/ui/menu.gd:2532"
 ],
 "%s   Protection %s   Weight %s": [
-"scripts/ui/menu.gd:2518"
+"scripts/ui/menu.gd:2562"
 ],
 "COVERS": [
-"scripts/ui/menu.gd:2519"
+"scripts/ui/menu.gd:2563"
 ],
 "From": [
-"scripts/ui/menu.gd:2520"
+"scripts/ui/menu.gd:2564"
 ],
 "To": [
-"scripts/ui/menu.gd:2520"
+"scripts/ui/menu.gd:2564"
 ],
 "Front and sides only": [
-"scripts/ui/menu.gd:2540"
+"scripts/ui/menu.gd:2584"
 ],
 "Cap the top": [
-"scripts/ui/menu.gd:2547"
+"scripts/ui/menu.gd:2591"
 ],
 "Protection %s": [
-"scripts/ui/menu.gd:2586"
+"scripts/ui/menu.gd:2630"
 ],
 "Breath when running and swinging: ×%.2f": [
-"scripts/ui/menu.gd:2588"
+"scripts/ui/menu.gd:2632"
 ],
 "Pace: %d%%": [
-"scripts/ui/menu.gd:2589"
+"scripts/ui/menu.gd:2633"
 ],
 "Make and wear · free in training": [
-"scripts/ui/menu.gd:2591"
+"scripts/ui/menu.gd:2635"
 ],
 "Keep in My designs": [
-"scripts/ui/menu.gd:2591"
+"scripts/ui/menu.gd:2635"
 ],
 "Forge and wear · %d denarii": [
-"scripts/ui/menu.gd:2591"
+"scripts/ui/menu.gd:2635"
 ],
 "Shape it plate by plate": [
-"scripts/ui/menu.gd:2600"
+"scripts/ui/menu.gd:2644"
 ],
 "Click to see it all round": [
-"scripts/ui/menu.gd:2651"
+"scripts/ui/menu.gd:2695"
 ],
 "%d voxels": [
-"scripts/ui/menu.gd:2684"
+"scripts/ui/menu.gd:2728"
 ],
 "Single combat": [
-"scripts/ui/menu.gd:2690"
+"scripts/ui/menu.gd:2734"
 ],
 "The melee": [
-"scripts/ui/menu.gd:2691"
-],
-"Beasts and waves": [
-"scripts/ui/menu.gd:2692"
-],
-"Games for the Emperor": [
-"scripts/ui/menu.gd:2693"
-],
-"One against one, a quick bout. The Emperor may throw in a decree.": [
-"scripts/ui/menu.gd:2696"
-],
-"Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.": [
-"scripts/ui/menu.gd:2698"
-],
-"The winner stays and the next challenger walks in. Reign for seven.": [
-"scripts/ui/menu.gd:2699"
-],
-"One foe after another, wave after wave. How long do you last?": [
-"scripts/ui/menu.gd:2700"
-],
-"Four gladiators on one sand. The last one standing wins.": [
-"scripts/ui/menu.gd:2701"
-],
-"Everyone against everyone, under three of the Emperor's decrees at once.": [
-"scripts/ui/menu.gd:2702"
-],
-"Red against Blue: players and bots split into two sides.": [
-"scripts/ui/menu.gd:2703"
-],
-"Players only, no bots: settle it among yourselves.": [
-"scripts/ui/menu.gd:2704"
-],
-"Beasts pour through the gates in waves. Each wave beaten heals you.": [
-"scripts/ui/menu.gd:2705"
-],
-"Waves of gladiators against you and your friends, side by side.": [
-"scripts/ui/menu.gd:2706"
-],
-"You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.": [
-"scripts/ui/menu.gd:2707"
-],
-"Hold the circle alone for 20 seconds.": [
-"scripts/ui/menu.gd:2708"
-],
-"Every 15 seconds the Emperor takes a limb from everyone.": [
-"scripts/ui/menu.gd:2709"
-],
-"Kick a severed head into the other goal. First to three.": [
-"scripts/ui/menu.gd:2710"
-],
-"Everyone forges weapons and armour against the clock, then all fight to the death with what they made.": [
-"scripts/ui/menu.gd:2711",
-"scripts/ui/menu.gd:3479"
-],
-"The Arena": [
-"scripts/ui/menu.gd:2715"
-],
-"Your arms from the yard stay home: these fights hand out their own weapons.": [
-"scripts/ui/menu.gd:2716"
-],
-"Back to the yard, all of you": [
 "scripts/ui/menu.gd:2735"
 ],
+"Beasts and waves": [
+"scripts/ui/menu.gd:2736"
+],
+"Games for the Emperor": [
+"scripts/ui/menu.gd:2737"
+],
+"One against one, a quick bout. The Emperor may throw in a decree.": [
+"scripts/ui/menu.gd:2740"
+],
+"Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.": [
+"scripts/ui/menu.gd:2742"
+],
+"The winner stays and the next challenger walks in. Reign for seven.": [
+"scripts/ui/menu.gd:2743"
+],
+"One foe after another, wave after wave. How long do you last?": [
+"scripts/ui/menu.gd:2744"
+],
+"Four gladiators on one sand. The last one standing wins.": [
+"scripts/ui/menu.gd:2745"
+],
+"Everyone against everyone, under three of the Emperor's decrees at once.": [
+"scripts/ui/menu.gd:2746"
+],
+"Red against Blue: players and bots split into two sides.": [
+"scripts/ui/menu.gd:2747"
+],
+"Players only, no bots: settle it among yourselves.": [
+"scripts/ui/menu.gd:2748"
+],
+"Beasts pour through the gates in waves. Each wave beaten heals you.": [
+"scripts/ui/menu.gd:2749"
+],
+"Waves of gladiators against you and your friends, side by side.": [
+"scripts/ui/menu.gd:2750"
+],
+"You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.": [
+"scripts/ui/menu.gd:2751"
+],
+"Hold the circle alone for 20 seconds.": [
+"scripts/ui/menu.gd:2752"
+],
+"Every 15 seconds the Emperor takes a limb from everyone.": [
+"scripts/ui/menu.gd:2753"
+],
+"Kick a severed head into the other goal. First to three.": [
+"scripts/ui/menu.gd:2754"
+],
+"Everyone forges weapons and armour against the clock, then all fight to the death with what they made.": [
+"scripts/ui/menu.gd:2755",
+"scripts/ui/menu.gd:3523"
+],
+"The Arena": [
+"scripts/ui/menu.gd:2759"
+],
+"Your arms from the yard stay home: these fights hand out their own weapons.": [
+"scripts/ui/menu.gd:2760"
+],
+"Back to the yard, all of you": [
+"scripts/ui/menu.gd:2779"
+],
 "The co-op campaign takes %d players at most, and %d of you are in the room. The arena modes take up to %d.": [
-"scripts/ui/menu.gd:2786"
+"scripts/ui/menu.gd:2830"
 ],
 "III": [
-"scripts/ui/menu.gd:2804",
+"scripts/ui/menu.gd:2848",
 "scripts/game/match.gd:1003",
 "scripts/game/masterworks.gd:113"
 ],
 "VII": [
-"scripts/ui/menu.gd:2804",
+"scripts/ui/menu.gd:2848",
 "scripts/game/match.gd:1003"
 ],
 "SEVEN DAYS · THE EMPEROR'S GAMES": [
-"scripts/ui/menu.gd:2808"
+"scripts/ui/menu.gd:2852"
 ],
 "BREAD & CIRCUSES": [
-"scripts/ui/menu.gd:2809"
+"scripts/ui/menu.gd:2853"
 ],
 "The gods are watching": [
-"scripts/ui/menu.gd:2818"
+"scripts/ui/menu.gd:2862"
 ],
 "Day %s is over. Pick one blessing for the rest of the run.": [
-"scripts/ui/menu.gd:2819"
+"scripts/ui/menu.gd:2863"
 ],
 "%s blesses you": [
-"scripts/ui/menu.gd:2826"
+"scripts/ui/menu.gd:2870"
 ],
 "Day %s · %s": [
-"scripts/ui/menu.gd:2831"
+"scripts/ui/menu.gd:2875"
 ],
 "  · boss": [
-"scripts/ui/menu.gd:2836"
+"scripts/ui/menu.gd:2880"
 ],
 "Gold: %d · blessings: %s · kit: %s%s": [
-"scripts/ui/menu.gd:2844"
+"scripts/ui/menu.gd:2888"
 ],
 "nothing yet": [
-"scripts/ui/menu.gd:2845"
+"scripts/ui/menu.gd:2889"
 ],
 " · DAILY GAMES": [
-"scripts/ui/menu.gd:2845"
+"scripts/ui/menu.gd:2889"
 ],
 "Fight: %s": [
-"scripts/ui/menu.gd:2846"
+"scripts/ui/menu.gd:2890"
 ],
 "The market": [
-"scripts/ui/menu.gd:2846",
-"scripts/ui/menu.gd:2889",
-"scripts/ui/menu.gd:2987",
+"scripts/ui/menu.gd:2890",
+"scripts/ui/menu.gd:2933",
+"scripts/ui/menu.gd:3031",
 "scripts/game/yard.gd:10"
 ],
 "Give up the run": [
-"scripts/ui/menu.gd:2847"
+"scripts/ui/menu.gd:2891"
 ],
 "gave up": [
-"scripts/ui/menu.gd:2850"
+"scripts/ui/menu.gd:2894"
 ],
 "You walk out of the arena. The ludus keeps what you earned.": [
-"scripts/ui/menu.gd:2851"
+"scripts/ui/menu.gd:2895"
 ],
 "Main menu": [
-"scripts/ui/menu.gd:2852",
-"scripts/ui/menu.gd:2882",
-"scripts/ui/menu.gd:3018",
-"scripts/ui/menu.gd:5120"
+"scripts/ui/menu.gd:2896",
+"scripts/ui/menu.gd:2926",
+"scripts/ui/menu.gd:3062",
+"scripts/ui/menu.gd:5164"
 ],
 "Seven days of bouts, beasts and bosses for the Emperor. Gold buys pots between bouts; after each day a god offers a blessing. Fall once and the run is over.": [
-"scripts/ui/menu.gd:2856"
+"scripts/ui/menu.gd:2900"
 ],
 "Begin a new run": [
-"scripts/ui/menu.gd:2857"
+"scripts/ui/menu.gd:2901"
 ],
 "Day I begins": [
-"scripts/ui/menu.gd:2859"
+"scripts/ui/menu.gd:2903"
 ],
 "The Daily Games · %s": [
-"scripts/ui/menu.gd:2860"
+"scripts/ui/menu.gd:2904"
 ],
 "Today's games: the same bouts, decrees and blessings for everyone": [
-"scripts/ui/menu.gd:2862"
+"scripts/ui/menu.gd:2906"
 ],
 "The ludus · %d denarii": [
-"scripts/ui/menu.gd:2863"
-],
-"%s (%d/%d) · maxed": [
-"scripts/ui/menu.gd:2868"
-],
-"%s bought": [
-"scripts/ui/menu.gd:2872"
-],
-"Hall of Fame": [
-"scripts/ui/menu.gd:2878"
-],
-"%d. %s · %s · %d bouts, %d kills%s": [
-"scripts/ui/menu.gd:2881"
-],
-"won the rudis": [
-"scripts/ui/menu.gd:2881"
-],
-"crowned by the Emperor": [
-"scripts/ui/menu.gd:2881"
-],
-"fell on day %s to %s": [
-"scripts/ui/menu.gd:2881"
-],
-"the arena": [
-"scripts/ui/menu.gd:2881",
-"scripts/ui/menu.gd:2972"
-],
-" · daily": [
-"scripts/ui/menu.gd:2881"
-],
-" · the campaign": [
-"scripts/ui/menu.gd:2881"
-],
-"Gold: %d · what you buy is used in the next bouts (keys 1 to 8)": [
-"scripts/ui/menu.gd:2890"
-],
-"Buy · %d gold": [
 "scripts/ui/menu.gd:2907"
 ],
+"%s (%d/%d) · maxed": [
+"scripts/ui/menu.gd:2912"
+],
+"%s bought": [
+"scripts/ui/menu.gd:2916"
+],
+"Hall of Fame": [
+"scripts/ui/menu.gd:2922"
+],
+"%d. %s · %s · %d bouts, %d kills%s": [
+"scripts/ui/menu.gd:2925"
+],
+"won the rudis": [
+"scripts/ui/menu.gd:2925"
+],
+"crowned by the Emperor": [
+"scripts/ui/menu.gd:2925"
+],
+"fell on day %s to %s": [
+"scripts/ui/menu.gd:2925"
+],
+"the arena": [
+"scripts/ui/menu.gd:2925",
+"scripts/ui/menu.gd:3016"
+],
+" · daily": [
+"scripts/ui/menu.gd:2925"
+],
+" · the campaign": [
+"scripts/ui/menu.gd:2925"
+],
+"Gold: %d · what you buy is used in the next bouts (keys 1 to 8)": [
+"scripts/ui/menu.gd:2934"
+],
+"Buy · %d gold": [
+"scripts/ui/menu.gd:2951"
+],
 "Not enough gold": [
-"scripts/ui/menu.gd:2910"
+"scripts/ui/menu.gd:2954"
 ],
 "Your bag is full: %d of those at most, %d kinds in all": [
-"scripts/ui/menu.gd:2913",
-"scripts/ui/menu.gd:3072"
+"scripts/ui/menu.gd:2957",
+"scripts/ui/menu.gd:3116"
 ],
 "Back to the games": [
-"scripts/ui/menu.gd:2923"
-],
-"The ludus earns %d denarii from this run.": [
-"scripts/ui/menu.gd:2949"
-],
-"Victory! +%d gold": [
-"scripts/ui/menu.gd:2963"
-],
-"Victory! +%d gold. The day is done.": [
-"scripts/ui/menu.gd:2965"
-],
-"PLUTO SAYS NO: you are sent back from the underworld. Fight the bout again.": [
 "scripts/ui/menu.gd:2967"
 ],
+"The ludus earns %d denarii from this run.": [
+"scripts/ui/menu.gd:2993"
+],
+"Victory! +%d gold": [
+"scripts/ui/menu.gd:3007"
+],
+"Victory! +%d gold. The day is done.": [
+"scripts/ui/menu.gd:3009"
+],
+"PLUTO SAYS NO: you are sent back from the underworld. Fight the bout again.": [
+"scripts/ui/menu.gd:3011"
+],
 "THE EMPEROR CROWNS YOU! Seven days, and you still stand. %s": [
-"scripts/ui/menu.gd:2970"
+"scripts/ui/menu.gd:3014"
 ],
 "You fell on day %s. %s": [
-"scripts/ui/menu.gd:2973"
+"scripts/ui/menu.gd:3017"
 ],
 "Throwables": [
-"scripts/ui/menu.gd:2977"
+"scripts/ui/menu.gd:3021"
 ],
 "Traps & bowls": [
-"scripts/ui/menu.gd:2977"
+"scripts/ui/menu.gd:3021"
 ],
 "Press its number: used on you at once": [
-"scripts/ui/menu.gd:2978"
+"scripts/ui/menu.gd:3022"
 ],
 "Press its number: laid or bowled in front of you": [
-"scripts/ui/menu.gd:2978"
+"scripts/ui/menu.gd:3022"
 ],
 "Its number takes it in hand; hold F to aim, let go to throw": [
-"scripts/ui/menu.gd:2978"
+"scripts/ui/menu.gd:3022"
 ],
 "You have %d denarii · %s": [
-"scripts/ui/menu.gd:2993"
+"scripts/ui/menu.gd:3037"
 ],
 "In your bag: %s": [
-"scripts/ui/menu.gd:2993"
+"scripts/ui/menu.gd:3037"
 ],
 "Your bag is empty": [
-"scripts/ui/menu.gd:2993"
+"scripts/ui/menu.gd:3037"
 ],
 "Everything here comes with you into every fight: keys 1 to 9 use it.": [
-"scripts/ui/menu.gd:2994"
+"scripts/ui/menu.gd:3038"
 ],
 "Back to the smith": [
-"scripts/ui/menu.gd:3018"
+"scripts/ui/menu.gd:3062"
 ],
 "Hurts friends too": [
-"scripts/ui/menu.gd:3063"
+"scripts/ui/menu.gd:3107"
 ],
 "Bag full (%d)": [
-"scripts/ui/menu.gd:3066"
+"scripts/ui/menu.gd:3110"
 ],
 "Bag full (%d kinds)": [
-"scripts/ui/menu.gd:3066"
+"scripts/ui/menu.gd:3110"
 ],
 "The trainer": [
-"scripts/ui/menu.gd:3129",
+"scripts/ui/menu.gd:3173",
 "scripts/game/yard.gd:12"
 ],
 "Purse  %d denarii": [
-"scripts/ui/menu.gd:3137"
+"scripts/ui/menu.gd:3181"
 ],
 "Bout %d: up to %d%% an ability": [
-"scripts/ui/menu.gd:3145"
+"scripts/ui/menu.gd:3189"
 ],
 "Doctore sells sessions, a per cent at a time; the arena teaches nothing, and a death takes it all with the purse.": [
-"scripts/ui/menu.gd:3148"
+"scripts/ui/menu.gd:3192"
 ],
 "Mastered": [
-"scripts/ui/menu.gd:3200"
+"scripts/ui/menu.gd:3244"
 ],
 "Wait for bout %d": [
-"scripts/ui/menu.gd:3200"
+"scripts/ui/menu.gd:3244"
 ],
 "Train · %d denarii": [
-"scripts/ui/menu.gd:3200",
-"scripts/ui/menu.gd:3207"
+"scripts/ui/menu.gd:3244",
+"scripts/ui/menu.gd:3251"
 ],
 "Only for the Unbroken (Ironman)": [
-"scripts/ui/menu.gd:3202"
+"scripts/ui/menu.gd:3246"
 ],
 "Back to the yard": [
-"scripts/ui/menu.gd:3218",
-"scripts/ui/menu.gd:4969"
+"scripts/ui/menu.gd:3262",
+"scripts/ui/menu.gd:5013"
 ],
 "SUPPLIES FOR THE FIGHT": [
-"scripts/ui/menu.gd:3226"
+"scripts/ui/menu.gd:3270"
 ],
 "Back to the arena": [
-"scripts/ui/menu.gd:3263"
+"scripts/ui/menu.gd:3307"
 ],
 "The physician": [
-"scripts/ui/menu.gd:3273",
+"scripts/ui/menu.gd:3317",
 "scripts/game/yard.gd:13"
 ],
 "Treat everything · it costs %d": [
-"scripts/ui/menu.gd:3291"
+"scripts/ui/menu.gd:3335"
 ],
 "  (%d more needed)": [
-"scripts/ui/menu.gd:3293",
-"scripts/ui/menu.gd:3313"
+"scripts/ui/menu.gd:3337",
+"scripts/ui/menu.gd:3357"
 ],
 "costs %d": [
-"scripts/ui/menu.gd:3310"
+"scripts/ui/menu.gd:3354"
 ],
 "Or one at a time (%d)": [
-"scripts/ui/menu.gd:3328",
-"scripts/ui/menu.gd:3331"
+"scripts/ui/menu.gd:3372",
+"scripts/ui/menu.gd:3375"
 ],
 "Hide": [
-"scripts/ui/menu.gd:3331",
+"scripts/ui/menu.gd:3375",
 "scripts/game/training.gd:18"
 ],
 "Nothing he needs to see to.": [
-"scripts/ui/menu.gd:3337"
+"scripts/ui/menu.gd:3381"
 ],
 "YOUR PROSTHETICS": [
-"scripts/ui/menu.gd:3363"
+"scripts/ui/menu.gd:3407"
 ],
 "As the physician made it": [
-"scripts/ui/menu.gd:3377"
+"scripts/ui/menu.gd:3421"
 ],
 "%s · works %d%% as well as a limb of your own": [
-"scripts/ui/menu.gd:3378"
+"scripts/ui/menu.gd:3422"
 ],
 "Nothing finer can be made": [
-"scripts/ui/menu.gd:3391",
+"scripts/ui/menu.gd:3435",
 "scripts/game/body.gd:139"
 ],
 "Off-hand weapon": [
-"scripts/ui/menu.gd:3423",
-"scripts/ui/menu.gd:3628"
+"scripts/ui/menu.gd:3467",
+"scripts/ui/menu.gd:3672"
 ],
 "Mend it first: the smith reshapes only a sound weapon": [
-"scripts/ui/menu.gd:3442"
+"scripts/ui/menu.gd:3486"
 ],
 "Only the host of a room starts Forge and Fight": [
-"scripts/ui/menu.gd:3473"
+"scripts/ui/menu.gd:3517"
 ],
 "Forge and Fight": [
-"scripts/ui/menu.gd:3478",
-"scripts/ui/menu.gd:3508",
-"scripts/ui/menu.gd:3664"
+"scripts/ui/menu.gd:3522",
+"scripts/ui/menu.gd:3552",
+"scripts/ui/menu.gd:3708"
 ],
 "Time to forge the weapons": [
-"scripts/ui/menu.gd:3480"
+"scripts/ui/menu.gd:3524"
 ],
 "Time to make the armour": [
-"scripts/ui/menu.gd:3480"
+"scripts/ui/menu.gd:3524"
 ],
 "Time limit on the fight": [
-"scripts/ui/menu.gd:3480"
+"scripts/ui/menu.gd:3524"
 ],
 "%d min": [
-"scripts/ui/menu.gd:3485"
+"scripts/ui/menu.gd:3529"
 ],
 "No armour": [
-"scripts/ui/menu.gd:3485"
+"scripts/ui/menu.gd:3529"
 ],
 "To the death": [
-"scripts/ui/menu.gd:3485"
+"scripts/ui/menu.gd:3529"
 ],
 "Wait for at least one friend in the room: it is a fight between players.": [
-"scripts/ui/menu.gd:3491"
+"scripts/ui/menu.gd:3535"
 ],
 "To the forges!": [
-"scripts/ui/menu.gd:3492"
+"scripts/ui/menu.gd:3536"
 ],
 "My weapon": [
-"scripts/ui/menu.gd:3628"
+"scripts/ui/menu.gd:3672"
 ],
 "%s · %.1f kg · reach %.2f m": [
-"scripts/ui/menu.gd:3647"
+"scripts/ui/menu.gd:3691"
 ],
 "A round shield": [
-"scripts/ui/menu.gd:3649"
+"scripts/ui/menu.gd:3693"
 ],
 "Nothing yet: bare fists": [
-"scripts/ui/menu.gd:3650"
+"scripts/ui/menu.gd:3694"
 ],
 "Forge and Fight is over.": [
-"scripts/ui/menu.gd:3661"
+"scripts/ui/menu.gd:3705"
 ],
 "Forge your weapons: %d min. When the time is up, everyone fights with what is on his anvil.": [
-"scripts/ui/menu.gd:3667"
+"scripts/ui/menu.gd:3711"
 ],
 "MAIN HAND": [
-"scripts/ui/menu.gd:3669"
+"scripts/ui/menu.gd:3713"
 ],
 "OFF HAND": [
-"scripts/ui/menu.gd:3669"
+"scripts/ui/menu.gd:3713"
 ],
 "Keep forging": [
-"scripts/ui/menu.gd:3675"
+"scripts/ui/menu.gd:3719"
 ],
 "Forge it": [
-"scripts/ui/menu.gd:3675"
+"scripts/ui/menu.gd:3719"
 ],
 "Empty hand": [
-"scripts/ui/menu.gd:3680"
+"scripts/ui/menu.gd:3724"
 ],
 "Make your armour at the bench: %d min. A piece counts once it is made.": [
-"scripts/ui/menu.gd:3685"
+"scripts/ui/menu.gd:3729"
 ],
 "No armour made yet.": [
-"scripts/ui/menu.gd:3688"
+"scripts/ui/menu.gd:3732"
 ],
 "Make a piece at the bench": [
-"scripts/ui/menu.gd:3699"
-],
-"The forges go cold. To the sand!": [
-"scripts/ui/menu.gd:3703"
-],
-"Not ready yet": [
-"scripts/ui/menu.gd:3708"
-],
-"I'm ready": [
-"scripts/ui/menu.gd:3708"
-],
-"%d still forging": [
-"scripts/ui/menu.gd:3709"
-],
-"Fight the campaign together. The host's game runs the fight; friends join the room.": [
-"scripts/ui/menu.gd:3726"
-],
-"Host a Steam lobby": [
-"scripts/ui/menu.gd:3728"
-],
-"Friends only": [
-"scripts/ui/menu.gd:3728"
-],
-"Refresh rooms": [
-"scripts/ui/menu.gd:3728"
-],
-"Steam is not running: host or join by address (LAN, or a forwarded port %d).": [
-"scripts/ui/menu.gd:3733"
-],
-"Host address, e.g. 192.168.1.20": [
-"scripts/ui/menu.gd:3735"
-],
-"Host by address": [
-"scripts/ui/menu.gd:3737"
-],
-"Could not open port %d": [
-"scripts/ui/menu.gd:3740",
-"scripts/ui/menu.gd:3763"
-],
-"Join": [
-"scripts/ui/menu.gd:3740",
-"scripts/ui/menu.gd:3779"
-],
-"Could not connect": [
 "scripts/ui/menu.gd:3743"
 ],
-"Could not connect to %s": [
-"scripts/ui/menu.gd:3769"
+"The forges go cold. To the sand!": [
+"scripts/ui/menu.gd:3747"
 ],
-"No open rooms. Host one and invite your friends.": [
+"Not ready yet": [
+"scripts/ui/menu.gd:3752"
+],
+"I'm ready": [
+"scripts/ui/menu.gd:3752"
+],
+"%d still forging": [
+"scripts/ui/menu.gd:3753"
+],
+"Fight the campaign together. The host's game runs the fight; friends join the room.": [
+"scripts/ui/menu.gd:3770"
+],
+"Host a Steam lobby": [
+"scripts/ui/menu.gd:3772"
+],
+"Friends only": [
+"scripts/ui/menu.gd:3772"
+],
+"Refresh rooms": [
+"scripts/ui/menu.gd:3772"
+],
+"Steam is not running: host or join by address (LAN, or a forwarded port %d).": [
 "scripts/ui/menu.gd:3777"
 ],
+"Host address, e.g. 192.168.1.20": [
+"scripts/ui/menu.gd:3779"
+],
+"Host by address": [
+"scripts/ui/menu.gd:3781"
+],
+"Could not open port %d": [
+"scripts/ui/menu.gd:3784",
+"scripts/ui/menu.gd:3807"
+],
+"Join": [
+"scripts/ui/menu.gd:3784",
+"scripts/ui/menu.gd:3823"
+],
+"Could not connect": [
+"scripts/ui/menu.gd:3787"
+],
+"Could not connect to %s": [
+"scripts/ui/menu.gd:3813"
+],
+"No open rooms. Host one and invite your friends.": [
+"scripts/ui/menu.gd:3821"
+],
 "Unmute": [
-"scripts/ui/menu.gd:3788"
+"scripts/ui/menu.gd:3832"
 ],
 "Mute": [
-"scripts/ui/menu.gd:3788"
+"scripts/ui/menu.gd:3832"
 ],
 "Stop hearing this player's voice (only for you)": [
-"scripts/ui/menu.gd:3794"
+"scripts/ui/menu.gd:3838"
 ],
 "Remove": [
-"scripts/ui/menu.gd:3797"
-],
-"Send this player out of the room: they cannot come back until you open a new one": [
-"scripts/ui/menu.gd:3798"
-],
-"Click again to remove": [
-"scripts/ui/menu.gd:3802"
-],
-"The room": [
-"scripts/ui/menu.gd:3810"
-],
-"You are the host.": [
-"scripts/ui/menu.gd:3811"
-],
-"Joining the host's yard...": [
-"scripts/ui/menu.gd:3811"
-],
-"· %s (you)": [
-"scripts/ui/menu.gd:3812"
-],
-"Co-op campaign: bout %d · %s · %s": [
-"scripts/ui/menu.gd:3817"
-],
-"Death": [
-"scripts/ui/menu.gd:3826"
-],
-"Start the co-op campaign · bout %d": [
-"scripts/ui/menu.gd:3827"
-],
-"Into the yard together (shop, heal, play)": [
-"scripts/ui/menu.gd:3830"
-],
-"Leave": [
-"scripts/ui/menu.gd:3831"
-],
-"Game": [
-"scripts/ui/menu.gd:3837"
-],
-"Graphics": [
-"scripts/ui/menu.gd:3837",
-"scripts/ui/menu.gd:3955"
-],
-"Options": [
 "scripts/ui/menu.gd:3841"
 ],
+"Send this player out of the room: they cannot come back until you open a new one": [
+"scripts/ui/menu.gd:3842"
+],
+"Click again to remove": [
+"scripts/ui/menu.gd:3846"
+],
+"The room": [
+"scripts/ui/menu.gd:3854"
+],
+"You are the host.": [
+"scripts/ui/menu.gd:3855"
+],
+"Joining the host's yard...": [
+"scripts/ui/menu.gd:3855"
+],
+"· %s (you)": [
+"scripts/ui/menu.gd:3856"
+],
+"Co-op campaign: bout %d · %s · %s": [
+"scripts/ui/menu.gd:3861"
+],
+"Death": [
+"scripts/ui/menu.gd:3870"
+],
+"Start the co-op campaign · bout %d": [
+"scripts/ui/menu.gd:3871"
+],
+"Into the yard together (shop, heal, play)": [
+"scripts/ui/menu.gd:3874"
+],
+"Leave": [
+"scripts/ui/menu.gd:3875"
+],
+"Game": [
+"scripts/ui/menu.gd:3881"
+],
+"Graphics": [
+"scripts/ui/menu.gd:3881",
+"scripts/ui/menu.gd:3999"
+],
+"Options": [
+"scripts/ui/menu.gd:3885"
+],
 "Back to the game": [
-"scripts/ui/menu.gd:3864"
+"scripts/ui/menu.gd:3908"
 ],
 "Automatic": [
-"scripts/ui/menu.gd:3905"
+"scripts/ui/menu.gd:3949"
 ],
 "Language": [
-"scripts/ui/menu.gd:3919"
+"scripts/ui/menu.gd:3963"
 ],
 "Full": [
-"scripts/ui/menu.gd:3921"
-],
-"Reduced": [
-"scripts/ui/menu.gd:3922"
-],
-"Gore": [
-"scripts/ui/menu.gd:3925"
-],
-"Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.": [
-"scripts/ui/menu.gd:3925"
-],
-"No decrees": [
-"scripts/ui/menu.gd:3928"
-],
-"Decrees sometimes": [
-"scripts/ui/menu.gd:3928"
-],
-"Decrees always": [
-"scripts/ui/menu.gd:3928"
-],
-"The Emperor's decrees": [
-"scripts/ui/menu.gd:3932"
-],
-"Odd rules the Emperor lays on an arena duel.": [
-"scripts/ui/menu.gd:3932"
-],
-"Kill cam: the best kill replayed at the end of a fight (alone and online)": [
-"scripts/ui/menu.gd:3933"
-],
-"Mouse sensitivity": [
-"scripts/ui/menu.gd:3936"
-],
-"Left-handed (the right button swings the main weapon)": [
-"scripts/ui/menu.gd:3937"
-],
-"Invert vertical look": [
-"scripts/ui/menu.gd:3938"
-],
-"Rebind keys · gamepad": [
-"scripts/ui/menu.gd:3939"
-],
-"Mouse looks; hold the left button and move the mouse to swing the main hand, the right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, the wheel turns the blade, H takes it in both hands, J swaps hands, Esc frees the mouse.": [
-"scripts/ui/menu.gd:3940"
-],
-"Low: no shadows or effects lighting. Ultra: global illumination and fog.": [
-"scripts/ui/menu.gd:3955"
-],
-"Anti-aliasing": [
-"scripts/ui/menu.gd:3963"
-],
-"MSAA smooths the edges of the blocks and keeps everything else sharp (4x is the best balance; 8x for strong cards). FXAA is the lightest but blurs the picture.": [
-"scripts/ui/menu.gd:3963"
-],
-"Detailed (new)": [
 "scripts/ui/menu.gd:3965"
 ],
-"Classic": [
+"Reduced": [
 "scripts/ui/menu.gd:3966"
 ],
-"Characters": [
+"Gore": [
+"scripts/ui/menu.gd:3969"
+],
+"Reduced: the insides drawn as plain flesh, no guts spill. The wounds hurt the same. From the next fight.": [
+"scripts/ui/menu.gd:3969"
+],
+"No decrees": [
 "scripts/ui/menu.gd:3972"
 ],
-"Detailed: gladiators, giants and beasts in voxels half the size, with muscles, hands and feet; wounds open on skin, fat, flesh and bone. Classic: the blocks as they were. Only the look: every blow lands the same.": [
+"Decrees sometimes": [
 "scripts/ui/menu.gd:3972"
 ],
-"Voxel shading: corners and creases between blocks in soft shadow": [
-"scripts/ui/menu.gd:3973"
+"Decrees always": [
+"scripts/ui/menu.gd:3972"
 ],
-"Smooth": [
-"scripts/ui/menu.gd:3979"
+"The Emperor's decrees": [
+"scripts/ui/menu.gd:3976"
 ],
-"Blocky voxels": [
+"Odd rules the Emperor lays on an arena duel.": [
+"scripts/ui/menu.gd:3976"
+],
+"Kill cam: the best kill replayed at the end of a fight (alone and online)": [
+"scripts/ui/menu.gd:3977"
+],
+"Mouse sensitivity": [
 "scripts/ui/menu.gd:3980"
 ],
-"Bodies": [
+"Left-handed (the right button swings the main weapon)": [
+"scripts/ui/menu.gd:3981"
+],
+"Invert vertical look": [
+"scripts/ui/menu.gd:3982"
+],
+"Rebind keys · gamepad": [
 "scripts/ui/menu.gd:3983"
 ],
-"Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.": [
-"scripts/ui/menu.gd:3983"
+"Mouse looks; hold the left button and move the mouse to swing the main hand, the right button for the shield. WASD move, Shift run, Space jump, Ctrl crouch, E kick, C thrust, the wheel turns the blade, H takes it in both hands, J swaps hands, Esc frees the mouse.": [
+"scripts/ui/menu.gd:3984"
 ],
-"Display": [
-"scripts/ui/menu.gd:3991"
+"Low: no shadows or effects lighting. Ultra: global illumination and fog.": [
+"scripts/ui/menu.gd:3999"
 ],
-"F11 toggles full screen. F3 shows the frame rate.": [
-"scripts/ui/menu.gd:3991"
+"Anti-aliasing": [
+"scripts/ui/menu.gd:4007"
 ],
-"%d × %d (this screen)": [
-"scripts/ui/menu.gd:3996"
+"MSAA smooths the edges of the blocks and keeps everything else sharp (4x is the best balance; 8x for strong cards). FXAA is the lightest but blurs the picture.": [
+"scripts/ui/menu.gd:4007"
 ],
-"Window": [
-"scripts/ui/menu.gd:4002",
-"scripts/ui/menu.gd:4044"
+"Detailed (new)": [
+"scripts/ui/menu.gd:4009"
 ],
-"3D resolution": [
+"Classic": [
 "scripts/ui/menu.gd:4010"
 ],
-"Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.": [
-"scripts/ui/menu.gd:4010"
+"Characters": [
+"scripts/ui/menu.gd:4016"
 ],
-"Draws in step with the screen: no tearing, no wasted frames.": [
+"Detailed: gladiators, giants and beasts in voxels half the size, with muscles, hands and feet; wounds open on skin, fat, flesh and bone. Classic: the blocks as they were. Only the look: every blow lands the same.": [
+"scripts/ui/menu.gd:4016"
+],
+"Voxel shading: corners and creases between blocks in soft shadow": [
 "scripts/ui/menu.gd:4017"
 ],
+"Smooth": [
+"scripts/ui/menu.gd:4023"
+],
+"Blocky voxels": [
+"scripts/ui/menu.gd:4024"
+],
+"Bodies": [
+"scripts/ui/menu.gd:4027"
+],
+"Smooth: a skin drawn over the voxels (they still take every cut). Applies from the next fight.": [
+"scripts/ui/menu.gd:4027"
+],
+"Display": [
+"scripts/ui/menu.gd:4035"
+],
+"F11 toggles full screen. F3 shows the frame rate.": [
+"scripts/ui/menu.gd:4035"
+],
+"%d × %d (this screen)": [
+"scripts/ui/menu.gd:4040"
+],
+"Window": [
+"scripts/ui/menu.gd:4046",
+"scripts/ui/menu.gd:4088"
+],
+"3D resolution": [
+"scripts/ui/menu.gd:4054"
+],
+"Auto: full up to 1440p, sharpened down on 4K and wider screens. Menus are always sharp.": [
+"scripts/ui/menu.gd:4054"
+],
+"Draws in step with the screen: no tearing, no wasted frames.": [
+"scripts/ui/menu.gd:4061"
+],
 "Frame rate cap": [
-"scripts/ui/menu.gd:4025"
+"scripts/ui/menu.gd:4069"
 ],
 "A ceiling on the frames drawn a second: cooler and quieter on a strong PC, steadier on a laptop.": [
-"scripts/ui/menu.gd:4025"
+"scripts/ui/menu.gd:4069"
 ],
 "Text and menus": [
-"scripts/ui/menu.gd:4033"
+"scripts/ui/menu.gd:4077"
 ],
 "The size of the menus and the HUD: larger for a TV, a 4K screen or the Deck. Changes at once.": [
-"scripts/ui/menu.gd:4033"
+"scripts/ui/menu.gd:4077"
 ],
 "Music": [
-"scripts/ui/menu.gd:4039",
+"scripts/ui/menu.gd:4083",
 "scripts/autoload/music.gd:91",
 "scripts/autoload/music.gd:94",
 "scripts/autoload/music.gd:102"
 ],
 "Full screen": [
-"scripts/ui/menu.gd:4044"
+"scripts/ui/menu.gd:4088"
 ],
 "Full screen (exclusive)": [
-"scripts/ui/menu.gd:4044"
+"scripts/ui/menu.gd:4088"
 ],
 "Window, maximized": [
-"scripts/ui/menu.gd:4044"
+"scripts/ui/menu.gd:4088"
 ],
 "FXAA (soft)": [
-"scripts/ui/menu.gd:4045"
+"scripts/ui/menu.gd:4089"
 ],
 "SMAA": [
-"scripts/ui/menu.gd:4045"
+"scripts/ui/menu.gd:4089"
 ],
 "MSAA 2x": [
-"scripts/ui/menu.gd:4045"
+"scripts/ui/menu.gd:4089"
 ],
 "MSAA 4x": [
-"scripts/ui/menu.gd:4045"
+"scripts/ui/menu.gd:4089"
 ],
 "MSAA 8x": [
-"scripts/ui/menu.gd:4045"
+"scripts/ui/menu.gd:4089"
 ],
 "Auto": [
-"scripts/ui/menu.gd:4063"
+"scripts/ui/menu.gd:4107"
 ],
 "Smaller": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Small": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Normal": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Large": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Larger": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Largest": [
-"scripts/ui/menu.gd:4122"
+"scripts/ui/menu.gd:4166"
 ],
 "Campaign · stage %d": [
-"scripts/ui/menu.gd:4259"
+"scripts/ui/menu.gd:4303"
 ],
 "How the crowd will know you. The champion on the right wears it as you choose.": [
-"scripts/ui/menu.gd:4391"
+"scripts/ui/menu.gd:4435"
 ],
 "Skin": [
-"scripts/ui/menu.gd:4412"
+"scripts/ui/menu.gd:4456"
 ],
 "Loincloth and cape": [
-"scripts/ui/menu.gd:4414"
+"scripts/ui/menu.gd:4458"
 ],
 "Natural": [
-"scripts/ui/menu.gd:4425"
+"scripts/ui/menu.gd:4469"
 ],
 "Broad nose": [
-"scripts/ui/menu.gd:4425"
+"scripts/ui/menu.gd:4469"
 ],
 "None": [
-"scripts/ui/menu.gd:4425"
+"scripts/ui/menu.gd:4469"
 ],
 "%s  (Ironman)": [
-"scripts/ui/menu.gd:4427"
+"scripts/ui/menu.gd:4471"
 ],
 "Won by taking the rudis on Ironman, never once fallen": [
-"scripts/ui/menu.gd:4430"
+"scripts/ui/menu.gd:4474"
 ],
 "◀  Turn": [
-"scripts/ui/menu.gd:4442"
+"scripts/ui/menu.gd:4486"
 ],
 "Turn  ▶": [
-"scripts/ui/menu.gd:4442"
+"scripts/ui/menu.gd:4486"
 ],
 "or drag him round": [
-"scripts/ui/menu.gd:4442"
+"scripts/ui/menu.gd:4486"
 ],
 "Random": [
-"scripts/ui/menu.gd:4443"
+"scripts/ui/menu.gd:4487"
 ],
 "Done  (Esc)": [
-"scripts/ui/menu.gd:4454"
+"scripts/ui/menu.gd:4498"
 ],
 "You were carried off the sand: the physician will see to your wounds.": [
-"scripts/ui/menu.gd:4559"
+"scripts/ui/menu.gd:4603"
 ],
 "You fell. Back to the last checkpoint: bout %d, as you left it.": [
-"scripts/ui/menu.gd:4634",
-"scripts/ui/menu.gd:4712",
+"scripts/ui/menu.gd:4678",
+"scripts/ui/menu.gd:4756",
 "scripts/game/match.gd:2266"
 ],
 "Stage %d cleared: %d denarii.": [
-"scripts/ui/menu.gd:4670"
+"scripts/ui/menu.gd:4714"
 ],
 "You fell. The campaign is over; a new one begins at bout 1.": [
-"scripts/ui/menu.gd:4712"
+"scripts/ui/menu.gd:4756"
 ],
 "Most kills: %s (%d)": [
-"scripts/ui/menu.gd:4933"
+"scripts/ui/menu.gd:4977"
 ],
 "Lifted the most friends: %s (%d)": [
-"scripts/ui/menu.gd:4933"
+"scripts/ui/menu.gd:4977"
 ],
 "Left the most limbs on the sand: %s (%d)": [
-"scripts/ui/menu.gd:4934"
+"scripts/ui/menu.gd:4978"
 ],
 "The crowd's favourite most often: %s (%d bouts)": [
-"scripts/ui/menu.gd:4934"
+"scripts/ui/menu.gd:4978"
 ],
 "THE SCROLL OF THE GAMES": [
-"scripts/ui/menu.gd:4963"
+"scripts/ui/menu.gd:5007"
 ],
 "The run is over. The scribe reads out what each of you did in it.": [
-"scripts/ui/menu.gd:4964"
+"scripts/ui/menu.gd:5008"
 ],
 "Back to the room": [
-"scripts/ui/menu.gd:4967",
-"scripts/ui/menu.gd:5120"
+"scripts/ui/menu.gd:5011",
+"scripts/ui/menu.gd:5164"
 ],
 "Bouts": [
-"scripts/ui/menu.gd:4981"
+"scripts/ui/menu.gd:5025"
 ],
 "Kills": [
-"scripts/ui/menu.gd:4981"
+"scripts/ui/menu.gd:5025"
 ],
 "Friends lifted": [
-"scripts/ui/menu.gd:4981"
+"scripts/ui/menu.gd:5025"
 ],
 "Limbs lost": [
-"scripts/ui/menu.gd:4981"
+"scripts/ui/menu.gd:5025"
 ],
 "Crowned": [
-"scripts/ui/menu.gd:4981"
+"scripts/ui/menu.gd:5025"
 ],
 "ONE RUDIS": [
-"scripts/ui/menu.gd:5013"
+"scripts/ui/menu.gd:5057"
 ],
 "The Emperor rises. The crowd is on its feet. He holds out one wooden sword, not one for each of you: one of you goes free. Share the glory, all of you named on the scroll, or fight one another for it on the sand?": [
-"scripts/ui/menu.gd:5014"
+"scripts/ui/menu.gd:5058"
 ],
 "Share the glory": [
-"scripts/ui/menu.gd:5021"
+"scripts/ui/menu.gd:5065"
 ],
 "Fight for it": [
-"scripts/ui/menu.gd:5022"
+"scripts/ui/menu.gd:5066"
 ],
 "You would share the glory. %d of %d have spoken.": [
-"scripts/ui/menu.gd:5025"
+"scripts/ui/menu.gd:5069"
 ],
 "You would fight for it. %d of %d have spoken.": [
-"scripts/ui/menu.gd:5025"
+"scripts/ui/menu.gd:5069"
 ],
 "Settle it with those who have spoken": [
-"scripts/ui/menu.gd:5028"
+"scripts/ui/menu.gd:5072"
 ],
 "THE RUDIS": [
-"scripts/ui/menu.gd:5094"
+"scripts/ui/menu.gd:5138"
 ],
 "%s took the one rudis, won on the sand from the friends who walked the ladder with him.": [
-"scripts/ui/menu.gd:5096"
+"scripts/ui/menu.gd:5140"
 ],
 "The glory shared: %s, named together in the Hall of Fame.": [
-"scripts/ui/menu.gd:5098"
+"scripts/ui/menu.gd:5142"
 ],
 "The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.": [
-"scripts/ui/menu.gd:5099"
+"scripts/ui/menu.gd:5143"
 ],
 "Your name is in the Hall of Fame.": [
-"scripts/ui/menu.gd:5101"
+"scripts/ui/menu.gd:5145"
 ],
 "UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.": [
-"scripts/ui/menu.gd:5104"
+"scripts/ui/menu.gd:5148"
 ],
 "But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.": [
-"scripts/ui/menu.gd:5107"
+"scripts/ui/menu.gd:5151"
 ],
 "Back to the ludus": [
-"scripts/ui/menu.gd:5108"
+"scripts/ui/menu.gd:5152"
 ],
 "The end of the demo": [
-"scripts/ui/menu.gd:5112"
+"scripts/ui/menu.gd:5156"
 ],
 "You have fought through all %d bouts of the demo.": [
-"scripts/ui/menu.gd:5113"
+"scripts/ui/menu.gd:5157"
 ],
 "Play the demo again from bout 1": [
-"scripts/ui/menu.gd:5115"
+"scripts/ui/menu.gd:5159"
 ],
 "Screenshot saved: %s": [
-"scripts/ui/menu.gd:5133"
+"scripts/ui/menu.gd:5177"
 ],
 "A NEW CAMPAIGN": [
-"scripts/ui/menu.gd:5162"
+"scripts/ui/menu.gd:5206"
 ],
 " · CO-OP": [
-"scripts/ui/menu.gd:5162"
+"scripts/ui/menu.gd:5206"
 ],
 "How will you die?": [
-"scripts/ui/menu.gd:5163"
+"scripts/ui/menu.gd:5207"
 ],
 "Earned: the Unbroken laurel, and Virtus from the trainer.": [
-"scripts/ui/menu.gd:5189"
+"scripts/ui/menu.gd:5233"
 ],
 "The reward: the Unbroken laurel, and Virtus from the trainer.": [
-"scripts/ui/menu.gd:5189"
+"scripts/ui/menu.gd:5233"
 ],
 "Begin as a legionary": [
-"scripts/ui/menu.gd:5192"
+"scripts/ui/menu.gd:5236"
 ],
 "Begin as an ironman": [
-"scripts/ui/menu.gd:5192"
+"scripts/ui/menu.gd:5236"
 ],
 "A new campaign begins · %s": [
-"scripts/ui/menu.gd:5194"
+"scripts/ui/menu.gd:5238"
 ],
 "Paused": [
-"scripts/ui/menu.gd:5217"
+"scripts/ui/menu.gd:5261"
 ],
 "Back to the fight": [
-"scripts/ui/menu.gd:5218"
+"scripts/ui/menu.gd:5262"
 ],
 "Back to the forge": [
-"scripts/ui/menu.gd:5220"
+"scripts/ui/menu.gd:5264"
 ],
 "Restart the campaign": [
-"scripts/ui/menu.gd:5225"
+"scripts/ui/menu.gd:5269"
 ],
 "Click again: start over from bout 1 (all progress lost)": [
-"scripts/ui/menu.gd:5229"
+"scripts/ui/menu.gd:5273"
 ],
 "Back to the yard (everyone)": [
-"scripts/ui/menu.gd:5240"
+"scripts/ui/menu.gd:5284"
 ],
 "The host called the party back": [
-"scripts/ui/menu.gd:5242"
+"scripts/ui/menu.gd:5286"
 ],
 "Leave the fight": [
-"scripts/ui/menu.gd:5252"
+"scripts/ui/menu.gd:5296"
 ],
 "%s FPS · %s ms a frame · worst in 5 s %s ms · %s frames over 33 ms": [
 "scripts/ui/fps_meter.gd:104"
@@ -2979,38 +2988,38 @@
 "scripts/fighter/weapon.gd:852"
 ],
 "Blade arm": [
-"scripts/fighter/fighter.gd:662",
+"scripts/fighter/fighter.gd:659",
 "scripts/game/body.gd:15"
 ],
 "Armor_": [
-"scripts/fighter/fighter.gd:1130"
+"scripts/fighter/fighter.gd:1127"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2953"
+"scripts/fighter/fighter.gd:2950"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:3240"
+"scripts/fighter/fighter.gd:3237"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3242"
+"scripts/fighter/fighter.gd:3239"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3242"
+"scripts/fighter/fighter.gd:3239"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:3248"
+"scripts/fighter/fighter.gd:3245"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:3248"
+"scripts/fighter/fighter.gd:3245"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7204"
+"scripts/fighter/fighter.gd:7201"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7220"
+"scripts/fighter/fighter.gd:7217"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9147",
+"scripts/fighter/fighter.gd:9144",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3067,181 +3076,181 @@
 "scripts/game/match.gd:890"
 ],
 "Wide eyes": [
-"scripts/fighter/physique.gd:968"
+"scripts/fighter/physique.gd:982"
 ],
 "Side-eye": [
-"scripts/fighter/physique.gd:968"
+"scripts/fighter/physique.gd:982"
 ],
 "Cross-eyed": [
-"scripts/fighter/physique.gd:968"
+"scripts/fighter/physique.gd:982"
 ],
 "Angry brows": [
-"scripts/fighter/physique.gd:968"
+"scripts/fighter/physique.gd:982"
 ],
 "Sleepy": [
-"scripts/fighter/physique.gd:969"
+"scripts/fighter/physique.gd:983"
 ],
 "Blue eyes": [
-"scripts/fighter/physique.gd:969"
+"scripts/fighter/physique.gd:983"
 ],
 "Green eyes": [
-"scripts/fighter/physique.gd:969"
+"scripts/fighter/physique.gd:983"
 ],
 "Mad stare": [
-"scripts/fighter/physique.gd:969"
+"scripts/fighter/physique.gd:983"
 ],
 "Wink": [
-"scripts/fighter/physique.gd:970"
+"scripts/fighter/physique.gd:984"
 ],
 "Brown eyes": [
-"scripts/fighter/physique.gd:970"
+"scripts/fighter/physique.gd:984"
 ],
 "Scarred eye": [
-"scripts/fighter/physique.gd:970"
+"scripts/fighter/physique.gd:984"
 ],
 "Tired": [
-"scripts/fighter/physique.gd:970"
+"scripts/fighter/physique.gd:984"
 ],
 "Missing tooth": [
-"scripts/fighter/physique.gd:971"
+"scripts/fighter/physique.gd:985"
 ],
 "Full grin": [
-"scripts/fighter/physique.gd:971"
+"scripts/fighter/physique.gd:985"
 ],
 "Snarl": [
-"scripts/fighter/physique.gd:971"
+"scripts/fighter/physique.gd:985"
 ],
 "Stern": [
-"scripts/fighter/physique.gd:971"
+"scripts/fighter/physique.gd:985"
 ],
 "War cry": [
-"scripts/fighter/physique.gd:972"
+"scripts/fighter/physique.gd:986"
 ],
 "Tongue out": [
-"scripts/fighter/physique.gd:972"
+"scripts/fighter/physique.gd:986"
 ],
 "One tooth left": [
-"scripts/fighter/physique.gd:972"
+"scripts/fighter/physique.gd:986"
 ],
 "Smirk": [
-"scripts/fighter/physique.gd:972"
+"scripts/fighter/physique.gd:986"
 ],
 "Buck teeth": [
-"scripts/fighter/physique.gd:973"
+"scripts/fighter/physique.gd:987"
 ],
 "Frown": [
-"scripts/fighter/physique.gd:973"
+"scripts/fighter/physique.gd:987"
 ],
 "Gold tooth": [
-"scripts/fighter/physique.gd:973"
+"scripts/fighter/physique.gd:987"
 ],
 "Grimace": [
-"scripts/fighter/physique.gd:973"
+"scripts/fighter/physique.gd:987"
 ],
 "Freckles": [
-"scripts/fighter/physique.gd:974"
+"scripts/fighter/physique.gd:988"
 ],
 "Stubble": [
-"scripts/fighter/physique.gd:974",
+"scripts/fighter/physique.gd:988",
 "data/armor.json#name"
 ],
 "Scarred cheek": [
-"scripts/fighter/physique.gd:974"
+"scripts/fighter/physique.gd:988"
 ],
 "Split lip": [
-"scripts/fighter/physique.gd:974"
+"scripts/fighter/physique.gd:988"
 ],
 "Scar through the brow": [
-"scripts/fighter/physique.gd:975"
+"scripts/fighter/physique.gd:989"
 ],
 "Heavy brows": [
-"scripts/fighter/physique.gd:975"
+"scripts/fighter/physique.gd:989"
 ],
 "One brow": [
-"scripts/fighter/physique.gd:975"
+"scripts/fighter/physique.gd:989"
 ],
 "Blue woad": [
-"scripts/fighter/physique.gd:976"
+"scripts/fighter/physique.gd:990"
 ],
 "War stripes": [
-"scripts/fighter/physique.gd:976"
+"scripts/fighter/physique.gd:990"
 ],
 "Red ochre band": [
-"scripts/fighter/physique.gd:976"
+"scripts/fighter/physique.gd:990"
 ],
 "Tattooed cheek": [
-"scripts/fighter/physique.gd:976"
+"scripts/fighter/physique.gd:990"
 ],
 "Rosy cheeks": [
-"scripts/fighter/physique.gd:977"
+"scripts/fighter/physique.gd:991"
 ],
 "Skull paint": [
-"scripts/fighter/physique.gd:977"
+"scripts/fighter/physique.gd:991"
 ],
 "Clown paint": [
-"scripts/fighter/physique.gd:977"
+"scripts/fighter/physique.gd:991"
 ],
 "Straight nose": [
-"scripts/fighter/physique.gd:978"
+"scripts/fighter/physique.gd:992"
 ],
 "Roman nose": [
-"scripts/fighter/physique.gd:978"
+"scripts/fighter/physique.gd:992"
 ],
 "Broken nose": [
-"scripts/fighter/physique.gd:978"
+"scripts/fighter/physique.gd:992"
 ],
 "Small nose": [
-"scripts/fighter/physique.gd:978"
+"scripts/fighter/physique.gd:992"
 ],
 "Dark brown": [
-"scripts/fighter/physique.gd:979"
+"scripts/fighter/physique.gd:993"
 ],
 "Brown": [
-"scripts/fighter/physique.gd:979",
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:993",
+"scripts/fighter/physique.gd:996"
 ],
 "Auburn": [
-"scripts/fighter/physique.gd:979"
+"scripts/fighter/physique.gd:993"
 ],
 "Ginger": [
-"scripts/fighter/physique.gd:979"
+"scripts/fighter/physique.gd:993"
 ],
 "Blond": [
-"scripts/fighter/physique.gd:980"
+"scripts/fighter/physique.gd:994"
 ],
 "Platinum": [
-"scripts/fighter/physique.gd:980"
+"scripts/fighter/physique.gd:994"
 ],
 "Grey": [
-"scripts/fighter/physique.gd:980",
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:994",
+"scripts/fighter/physique.gd:996"
 ],
 "Dyed blue": [
-"scripts/fighter/physique.gd:981"
+"scripts/fighter/physique.gd:995"
 ],
 "Dyed green": [
-"scripts/fighter/physique.gd:981"
+"scripts/fighter/physique.gd:995"
 ],
 "Dyed pink": [
-"scripts/fighter/physique.gd:981"
+"scripts/fighter/physique.gd:995"
 ],
 "Dyed purple": [
-"scripts/fighter/physique.gd:981"
+"scripts/fighter/physique.gd:995"
 ],
 "Hazel": [
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:996"
 ],
 "Amber": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:997"
 ],
 "Demon red": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:997"
 ],
 "Violet": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:997"
 ],
 "Ghost white": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:997"
 ],
 "attacker id:victim id": [
 "scripts/fighter/combat.gd:34"
@@ -3362,13 +3371,13 @@
 "scripts/game/armory.gd:207"
 ],
 "The armourer has no such thing": [
-"scripts/game/armory.gd:360"
+"scripts/game/armory.gd:380"
 ],
 "You already wear it": [
-"scripts/game/armory.gd:363"
+"scripts/game/armory.gd:383"
 ],
 "You do not wear it": [
-"scripts/game/armory.gd:377"
+"scripts/game/armory.gd:397"
 ],
 "To the last breath!": [
 "scripts/game/endless.gd:162"
@@ -3565,7 +3574,7 @@
 ],
 "Training dummy": [
 "scripts/game/tutorial.gd:86",
-"scripts/game/yard_play.gd:26"
+"scripts/game/yard_play.gd:27"
 ],
 "First Blood": [
 "scripts/game/ladder.gd:22",
@@ -3939,7 +3948,7 @@
 ],
 "a gladiator": [
 "scripts/game/ladder.gd:108",
-"scripts/game/yard_play.gd:166"
+"scripts/game/yard_play.gd:165"
 ],
 "%s and %d more": [
 "scripts/game/ladder.gd:113"
@@ -4425,43 +4434,31 @@
 "scripts/game/voxel_art.gd:82"
 ],
 "B|FINIS\\nF|": [
-"scripts/game/yard_play.gd:117"
+"scripts/game/yard_play.gd:116"
 ],
 "The demo ends here": [
-"scripts/game/yard_play.gd:117"
+"scripts/game/yard_play.gd:116"
 ],
 "B|PVGNA %s": [
-"scripts/game/yard_play.gd:129"
+"scripts/game/yard_play.gd:128"
 ],
 "K|PRO POPVLO": [
-"scripts/game/yard_play.gd:131"
+"scripts/game/yard_play.gd:130"
 ],
 "and %d more": [
-"scripts/game/yard_play.gd:151"
+"scripts/game/yard_play.gd:150"
 ],
 "P|PRAEMIVM · %d DENARII": [
-"scripts/game/yard_play.gd:156"
-],
-"for the crowd: one more foe, double the prize": [
-"scripts/game/yard_play.gd:383"
-],
-"%d of %d for this fight": [
-"scripts/game/yard_play.gd:388"
-],
-"%s · you stand for this fight · E: the gate's fights": [
-"scripts/game/yard_play.gd:390"
-],
-"%s · E: choose your fight": [
-"scripts/game/yard_play.gd:391"
+"scripts/game/yard_play.gd:155"
 ],
 "The Ludus yard · E to talk to the smith, the trader, the physician or the trainer · the gate leads to the arena": [
-"scripts/game/yard_play.gd:645"
+"scripts/game/yard_play.gd:414"
 ],
 "BULLSEYE! +%d": [
-"scripts/game/yard_play.gd:662"
+"scripts/game/yard_play.gd:431"
 ],
 "Off the board": [
-"scripts/game/yard_play.gd:662"
+"scripts/game/yard_play.gd:431"
 ],
 "Is that all Rome has?": [
 "scripts/game/social.gd:7"
@@ -5621,7 +5618,7 @@
 "The Ludus yard": [
 "scripts/game/match.gd:380"
 ],
-"Walk to a station and press G · dummies and throwing boards to play · the board by the gate names your next fight": [
+"Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": [
 "scripts/game/match.gd:380"
 ],
 "%s beats its chest and roars!": [
@@ -5801,19 +5798,19 @@
 "scripts/game/match.gd:3016"
 ],
 "%s is back on his feet": [
-"scripts/game/match.gd:3171"
+"scripts/game/match.gd:3186"
 ],
 "%s spits venom!": [
-"scripts/game/match.gd:3284"
+"scripts/game/match.gd:3299"
 ],
 "%s breathes FIRE!": [
-"scripts/game/match.gd:3284"
+"scripts/game/match.gd:3299"
 ],
 "%s is poisoned by the %s!": [
-"scripts/game/match.gd:3431"
+"scripts/game/match.gd:3446"
 ],
 "Broken weapon": [
-"scripts/game/match.gd:3681"
+"scripts/game/match.gd:3696"
 ],
 "Legionary": [
 "scripts/game/campaign_run.gd:10"
@@ -6480,7 +6477,7 @@
 "scripts/autoload/save.gd:76"
 ],
 "Lo": [
-"scripts/beast/beast.gd:688"
+"scripts/beast/beast.gd:686"
 ],
 "Galea helmet": [
 "data/armor.json#name"

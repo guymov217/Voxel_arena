@@ -2780,5 +2780,8 @@
  "The party's pick": "大家的选择",
  "%d of %d for this fight": "%d/%d 人选了这场",
  "%s · you stand for this fight · E: the gate's fights": "%s · 你选择了这场战斗 · E：大门的战斗",
- "%s · E: choose your fight": "%s · E：选择你的战斗"
+ "%s · E: choose your fight": "%s · E：选择你的战斗",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "走到一个摊位按 G · 有木人和投掷靶可以玩 · 大门处可以选择要打的战斗",
+ "Mend all armour · %d denarii": "修复全部盔甲 · %d 第纳尔",
+ "The armourer puts back every plate your armour has lost.": "铠甲匠会补回你的盔甲失去的每一块甲片。"
 }

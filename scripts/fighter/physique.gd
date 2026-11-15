@@ -195,10 +195,24 @@ static func dress(f, style := "", staged := false) -> void:
 
 ## A frame's wait in a dress made over a few frames, and whether he is still there after it (a man
 ## taken out while he was being built, a test's arena torn down: nothing more is done to him).
+## With `budget_us` set (the gate's cards, built while nothing else asks for the frame), no wait
+## while this frame's share of building is not spent: a man in a few frames, not in thirty (user:
+## the men came in one after another before his eyes).
+static var budget_us := 0
+static var _budget_frame := -1
+static var _budget_from := 0
 static func _frame(f) -> bool:
 	if not is_instance_valid(f) or not (f as Node).is_inside_tree():
 		return false
+	if budget_us > 0:
+		if Engine.get_process_frames() != _budget_frame:
+			_budget_frame = Engine.get_process_frames()
+			_budget_from = Time.get_ticks_usec()
+		if Time.get_ticks_usec() - _budget_from < budget_us:
+			return true
 	await (f as Node).get_tree().process_frame
+	_budget_frame = Engine.get_process_frames()
+	_budget_from = Time.get_ticks_usec()
 	return is_instance_valid(f) and (f as Node).is_inside_tree()
 
 ## Every man in the tree under `root` drawn in the setting's look again (Options).

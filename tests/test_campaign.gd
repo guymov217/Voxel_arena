@@ -196,7 +196,7 @@ func test_the_co_op_campaign_takes_four_at_most() -> void:
 	await get_tree().process_frame
 	t.check(menu.match_ == null, "asked anyway, it does not begin")
 	t.eq(menu.screen, "fights", "the screen it was asked from is drawn again")
-	t.eq(YardPlay.next_fight(6), YardPlay.next_fight(4), "the board by the gate never shows a bout for more than four")
+	t.eq(YardPlay.next_fight(6), YardPlay.next_fight(4), "the gate never offers a bout for more than four")
 	for id in [9, 10, 11, 12]:
 		Net.peers.erase(id)
 	Net.transport = ""

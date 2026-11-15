@@ -2777,5 +2777,8 @@
  "The party's pick": "일행의 선택",
  "%d of %d for this fight": "%d / %d명이 이 싸움을 선택",
  "%s · you stand for this fight · E: the gate's fights": "%s · 이 싸움을 골라 서 있습니다 · E: 문의 싸움들",
- "%s · E: choose your fight": "%s · E: 싸움 고르기"
+ "%s · E: choose your fight": "%s · E: 싸움 고르기",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "장소로 가서 G를 누르세요 · 허수아비와 투척 과녁으로 놀 수 있음 · 문에서 고를 수 있는 싸움을 볼 수 있음",
+ "Mend all armour · %d denarii": "갑옷 전부 수리 · %d 데나리우스",
+ "The armourer puts back every plate your armour has lost.": "갑옷장이가 당신의 갑옷이 잃어버린 판을 모두 되돌려 놓습니다."
 }

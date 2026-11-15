@@ -2777,5 +2777,8 @@
  "The party's pick": "Grubun seçimi",
  "%d of %d for this fight": "%d / %d kişi bu dövüş için",
  "%s · you stand for this fight · E: the gate's fights": "%s · bu dövüş için duruyorsun · E: kapıdaki dövüşler",
- "%s · E: choose your fight": "%s · E: dövüşünü seç"
+ "%s · E: choose your fight": "%s · E: dövüşünü seç",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "Bir istasyona yürü ve G'ye bas · oynamak için kuklalar ve atış tahtaları · kapı sunulan dövüşleri gösterir",
+ "Mend all armour · %d denarii": "Tüm zırhı onar · %d dinar",
+ "The armourer puts back every plate your armour has lost.": "Zırhçı, zırhının kaybettiği her plakayı yerine koyar."
 }

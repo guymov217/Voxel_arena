@@ -9,10 +9,11 @@ extends Control
 ## they carry, what the fight pays. The card the pointer is on (or ← → pick) comes forward, lit:
 ## its foes stir (they stand as they stand in a fight; the others hold still), the view comes
 ## nearer, follows the pointer and turns with a drag. Its button, a double click, Enter or E goes
-## through the gate; Esc, or the button in the corner, goes back to the yard. In a room each of the
-## party picks a card (here, or by walking up to its board in the yard), the names of those for it
-## are on each card, and the host leads them through to the one most of them picked
-## (GateChoice.majority).
+## through the gate; Esc, or the button in the corner, goes back to the yard. Each view is behind
+## the gate's bars until its foes stand in it; then they are seen through the bars, and the gate
+## is drawn up. In a room each of the
+## party picks a card, the names of those for it are on each card, and the host leads them through
+## to the one most of them picked (GateChoice.majority).
 
 signal chosen(i: int)   # through the gate: alone to card i; the host leads the party (his own pick i, -1 none)
 signal voted(i: int)    # in a room: card i is my pick
@@ -22,6 +23,8 @@ const VIEW := Vector2i(376, 300)
 const VIEW_ALONE := Vector2i(600, 330)   # a lone card's (a boss's day): the one fight, seen bigger
 const MOST_SHOWN := 4    # foes stood in a card's view (all of them are named under it)
 const SETTLE := 1.6      # seconds a foe has to take his stance before he is held still
+const STAND := 0.5       # seconds a card's foes stand in their places before its gate is drawn up
+const BUILD_US := 10000  # the share of a frame (us) the foes are built in while the cards are up
 const FOE_R := 9.0       # how far from the arena's middle a card's foes stand
 const FOV := 40.0
 ## Where in the arena a fight of each kind is shown, in degrees round it (0: under the Emperor's
@@ -56,6 +59,9 @@ var _t := 0.0
 var _refresh_t := 0.0
 var _votes_shown := []
 var _was_3d_off := false
+var _budgeted := false
+var _was_budget := 0
+var _was_pace := 0
 
 ## The gate's cards over `parent` (the menu): `offers` (GateChoice) at `stage` for `players`.
 ## `o`: at (the card come forward first), mine, party, host, lap, previews, lead_block, extras.
@@ -90,7 +96,7 @@ static func kind_of(o: Dictionary) -> Dictionary:
 			return {"title": "Men with blades", "latin": "MVNVS", "line": "Another bout of this stretch of the ladder, against men.", "color": Color(0.29, 0.34, 0.42)}
 	return {"title": "The ladder's bout", "latin": "", "line": "The fight the ladder has set you.", "color": Color(0.5, 0.36, 0.17)}
 
-## A fight's foes as a board names them (YardPlay.fight_text's F lines).
+## A fight's foes as the gate names them (YardPlay.fight_text's F lines).
 static func foe_lines(text: String) -> Array:
 	var out := []
 	for l in text.split("\n"):
@@ -202,7 +208,7 @@ func _build() -> void:
 		sub_text = Loc.t("Bout %s of the ladder · a boss's day: no choosing")
 	elif party:
 		sub_text = Loc.t("Bout %s of the ladder · each of you picks a fight, and the host leads you to the one most of you picked")
-	var sub := UIStyle.label(sub_text % YardPlay.roman(stage), 17, UIStyle.MUTED)
+	var sub := UIStyle.label(sub_text % str(stage), 17, UIStyle.MUTED)
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
@@ -336,7 +342,7 @@ func _card(row: HBoxContainer, i: int, o: Dictionary) -> Dictionary:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_theme_constant_override("separation", 0)
 	panel.add_child(col)
-	# The ribbon: what kind of fight, and which bout of the ladder in numerals.
+	# The ribbon: what kind of fight, and which bout of the ladder it is.
 	var rib := PanelContainer.new()
 	rib.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var rs := StyleBoxFlat.new()
@@ -365,7 +371,7 @@ func _card(row: HBoxContainer, i: int, o: Dictionary) -> Dictionary:
 	kt.clip_text = true
 	rh.add_child(kt)
 	var num := Label.new()
-	num.text = YardPlay.roman(bout)
+	num.text = str(bout)
 	num.add_theme_font_override("font", UIStyle.serif(2, 700))
 	num.add_theme_font_size_override("font_size", 18)
 	num.add_theme_color_override("font_color", Color(1, 0.95, 0.85, 0.6))
@@ -405,6 +411,21 @@ func _card(row: HBoxContainer, i: int, o: Dictionary) -> Dictionary:
 		# A new view shows whatever was in the graphics memory until it has drawn once: kept clear till then.
 		svc.modulate.a = 0.0
 		_reveal(svc)
+	if world:
+		# Till its foes are in and stand in their places the view is behind the gate's bars and the
+		# dark of the passage; then the bars are drawn up (user: the men came in one after another
+		# before his eyes; a gate that opens for each fight).
+		var hold := Control.new()
+		hold.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hold.clip_contents = true
+		hold.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		svc.add_child(hold)
+		var bars := Control.new()
+		bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bars.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		bars.draw.connect(_draw_bars.bind(bars))
+		hold.add_child(bars)
+		c["bars"] = bars
 	# The view's edges darkened, its foot run into the card under it; over it, what sets the fight apart.
 	var shade := TextureRect.new()
 	shade.texture = _vignette()
@@ -561,6 +582,20 @@ static func _vignette() -> GradientTexture2D:
 		_vig.height = 128
 	return _vig
 
+static var _pass: GradientTexture2D
+static func _passage() -> GradientTexture2D:
+	if _pass == null:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.62, 1.0])
+		g.colors = PackedColorArray([Color(0.026, 0.019, 0.015), Color(0.05, 0.034, 0.024), Color(0.3, 0.17, 0.07)])
+		_pass = GradientTexture2D.new()
+		_pass.gradient = g
+		_pass.fill_from = Vector2(0, 0)
+		_pass.fill_to = Vector2(0, 1)
+		_pass.width = 8
+		_pass.height = 128
+	return _pass
+
 static var _foot: GradientTexture2D
 static func _foot_fade() -> GradientTexture2D:
 	if _foot == null:
@@ -639,12 +674,30 @@ func _fill() -> void:
 	var order := range(cards.size())
 	order.erase(at)
 	order.push_front(at)
+	_budgets(true)
 	for i in order:
 		if done or not is_inside_tree() or i >= cards.size():
-			return
+			break
 		await _foes(cards[i])
 		if i < cards.size():
 			cards[i].built = true
+	_budgets(false)
+
+## While the cards' foes are built, a good share of every frame goes to it (Physique.budget_us,
+## FineArmor.pace_us: a man in a few frames, the yard behind the cards standing about); as it was
+## once they are in, or the cards gone.
+func _budgets(on: bool) -> void:
+	if on == _budgeted:
+		return
+	_budgeted = on
+	if on:
+		_was_budget = Physique.budget_us
+		_was_pace = FineArmor.pace_us
+		Physique.budget_us = BUILD_US
+		FineArmor.pace_us = maxi(FineArmor.pace_us, BUILD_US)
+	else:
+		Physique.budget_us = _was_budget
+		FineArmor.pace_us = _was_pace
 
 func _foes(c: Dictionary) -> void:
 	var list: Array = (c.specs as Array).slice(0, MOST_SHOWN)
@@ -829,6 +882,60 @@ func _settling(c: Dictionary) -> bool:
 		return false
 	return not bool(c.get("built", false)) or (c.foes as Array).any(func(w): return is_instance_valid(w) and not bool(w.get_meta("held", false)))
 
+## A card's foes all in, each a moment in his place on his feet (or none could be built).
+func _standing(c: Dictionary) -> bool:
+	return bool(c.get("built", false)) and (c.foes as Array).all(func(w): return not is_instance_valid(w) or bool(w.get_meta("held", false)) or float(w.get_meta("settle", 0.0)) >= STAND)
+
+## The gate over a card's view drawn up: its foes stand there, ready. The dark of the passage gives
+## way first, the foes seen through the bars; the portcullis jolts as the winch takes its weight,
+## then rises, slow at first, swaying a little on its chains, out of sight.
+func _lift(c: Dictionary) -> void:
+	c.up = true
+	var bars: Control = c.bars
+	var put := func(v: float, k: String):
+		bars.set_meta(k, v)
+		bars.queue_redraw()
+	var tw := bars.create_tween()
+	tw.tween_method(put.bind("dark"), 1.0, 0.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_method(put.bind("jolt"), 0.0, -6.0, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_method(put.bind("jolt"), -6.0, -2.0, 0.14).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tw.tween_method(put.bind("up"), 0.0, 1.0, 1.0).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(func(): bars.get_parent().visible = false)
+
+## The gate's iron bars over a card's view, with the dark of the passage behind them (`dark`: 1 the
+## passage, 0 the arena seen through the bars) and the sand's light at its foot; `jolt` and `up`
+## (0 down, 1 drawn up out of sight) lift it, swaying on its chains as it goes.
+static func _draw_bars(ci: Control) -> void:
+	var sz := ci.size
+	var dark_ := float(ci.get_meta("dark", 1.0))
+	if dark_ > 0.0:
+		ci.draw_texture_rect(_passage(), Rect2(Vector2.ZERO, sz), false, Color(1, 1, 1, dark_))
+	var up := float(ci.get_meta("up", 0.0))
+	var dy := -up * (sz.y + 24.0) + float(ci.get_meta("jolt", 0.0)) * (1.0 - up)
+	var dx := sin(up * 31.0) * 1.2 * sin(up * PI)
+	var iron := Color(0.16, 0.145, 0.13)
+	var lit := Color(0.44, 0.37, 0.28)
+	var dark := Color(0.055, 0.045, 0.038)
+	var n := maxi(5, int(round(sz.x / 36.0)))
+	var gap := sz.x / float(n)
+	var foot := sz.y - 18.0
+	for k in n:
+		var x := gap * (k + 0.5) + dx
+		ci.draw_rect(Rect2(x - 4.5, dy, 9.0, foot), iron)
+		ci.draw_rect(Rect2(x - 4.5, dy, 2.0, foot), lit)
+		ci.draw_rect(Rect2(x + 2.5, dy, 2.0, foot), dark)
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(x - 4.5, dy + foot), Vector2(x + 4.5, dy + foot), Vector2(x, dy + sz.y - 2.0)]), iron)
+		ci.draw_line(Vector2(x - 4.5, dy + foot), Vector2(x, dy + sz.y - 2.0), lit, 1.5)
+	for r in [0.17, 0.46, 0.75]:
+		var y: float = dy + sz.y * float(r)
+		ci.draw_rect(Rect2(dx, y - 5.0, sz.x, 10.0), iron)
+		ci.draw_rect(Rect2(dx, y - 5.0, sz.x, 2.0), lit)
+		ci.draw_rect(Rect2(dx, y + 3.0, sz.x, 2.0), dark)
+		for k in n:
+			var x := gap * (k + 0.5) + dx
+			ci.draw_rect(Rect2(x - 4.0, y - 4.0, 8.0, 8.0), Color(0.3, 0.25, 0.18))
+			ci.draw_rect(Rect2(x - 3.0, y - 3.0, 3.0, 3.0), Color(0.62, 0.52, 0.36))
+
 ## A foe held as he stands (every part of him kept where it is), or let go again.
 func _hold(w: Fighter, on: bool) -> void:
 	for b in _bodies(w):
@@ -849,6 +956,8 @@ func _process(dt: float) -> void:
 		# are still coming in or taking their stance is drawn every frame; the others keep their
 		# last picture, their view still: one arena drawn a frame, not three.
 		var live: bool = j == at or float(c.near) > 0.0 or bool(c.hover) or _settling(c)
+		if c.has("bars") and not bool(c.get("up", false)) and _standing(c):
+			_lift(c)
 		var vp: SubViewport = c.vp
 		if live:
 			c.t = float(c.get("t", 0.0)) + dt
@@ -986,6 +1095,7 @@ func close() -> void:
 	closed.emit()
 
 func _exit_tree() -> void:
+	_budgets(false)
 	if previews and is_instance_valid(get_viewport()):
 		get_viewport().disable_3d = _was_3d_off
 	if arena and is_instance_valid(arena):

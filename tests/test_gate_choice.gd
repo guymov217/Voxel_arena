@@ -1,8 +1,8 @@
 extends Node
 ## The fight chosen at the gate (GateChoice; the campaign a different way each run, user): what the
-## boards offer, that a whole run wins every bout of the ladder once whatever is chosen, the
+## gate offers, that a whole run wins every bout of the ladder once whatever is chosen, the
 ## party's choice, the bout and the crowd's fight as the match fights them, the won bouts kept with
-## a checkpoint, and the boards in the yard and the gate's cards (GateScreen) over it.
+## a checkpoint, and the gate in the yard and its cards (GateScreen) over it.
 
 var t
 
@@ -108,47 +108,43 @@ func test_the_won_bouts_go_back_with_a_checkpoint() -> void:
 	t.eq(GateChoice.won_list(false), [1, 2, 3, 4], "with the bouts won by then, and not the one after")
 	t.eq(GateChoice.won_list(true), [], "the party's own are not touched")
 
-## The yard: a board a fight on offer, each a place to stand; E there goes through to it.
-func test_the_boards_by_the_gate() -> void:
+## The yard: the fights on offer, chosen at the gate (no boards by it: user); E there, the gate's
+## cards, and through to the one taken.
+func test_the_gate_offers_its_fights() -> void:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
 	var offers := GateChoice.now(false)
-	t.eq(m.yard.board_texts_now.size(), offers.size(), "a board for each fight on offer (%d)" % offers.size())
-	t.check(String(m.yard.board_texts_now[1]).contains("K|"), "the crowd's board says so")
-	for i in offers.size():
-		t.eq(m.yard.station_here(YardPlay.board_spot(i)), "fight%d" % i, "board %d has a place to stand by it" % i)
+	t.eq(m.yard.board_texts_now.size(), offers.size(), "a fight on offer for each of the gate's (%d)" % offers.size())
+	t.check(String(m.yard.board_texts_now[1]).contains("K|"), "the crowd's fight says so")
 	t.eq(m.yard.station_here(Yard.STATIONS.gate.p), "gate", "and the gate is the gate")
-	t.check(m.yard.board_prompt(0).contains("E:"), "a board tells him what E does: %s" % m.yard.board_prompt(0))
-	t.eq(m.yard.stands(), [-1], "he stands by none of them")
-	m.me.f.teleport(YardPlay.board_spot(2))
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-	t.eq(m.yard.stands(), [2], "and then by the third")
+	t.eq(m.yard.stands(), [-1], "he has picked none of them")
 	m.queue_free()
 	await get_tree().physics_frame
-	# Through the menu: E at the third board, the gate's cards with the third forward; through the
-	# gate with it, and the bout that board offered is fought.
+	# Through the menu: E at the gate, the gate's cards; the third taken, and the bout it offered is
+	# fought.
 	var menu = load("res://scripts/ui/menu.gd").new()
 	menu.backdrop_off = true
 	add_child(menu)
 	await get_tree().process_frame
 	menu.enter_yard()
 	await get_tree().process_frame
-	menu._open_station("fight2")
+	menu._open_station("gate")
 	await get_tree().process_frame
-	t.check(menu.gate_screen != null and menu.gate_screen.at == 2, "E at the third board: the gate's cards, the third forward")
+	t.check(menu.gate_screen != null and menu.gate_screen.at == 0, "E at the gate: the gate's cards, the first forward")
 	t.check(menu.match_ != null and menu.match_.mode == "yard", "still in the yard while he chooses")
 	if menu.gate_screen:
+		menu.gate_screen._focus(2)
 		menu.gate_screen._press(2)
 		await _through(menu)
 	t.check(menu.match_ != null and menu.match_.mode == "campaign" and int(menu.match_.stage_info.get("bout", 0)) == int(offers[2].bout), "its fight: its bout (%d)" % int(offers[2].bout))
 	menu._end_match()
 	menu.enter_yard()
 	await get_tree().process_frame
-	menu._open_station("fight1")
+	menu._open_station("gate")
 	await get_tree().process_frame
 	if menu.gate_screen:
+		menu.gate_screen._focus(1)
 		menu.gate_screen._press(1)
 		await _through(menu)
 	t.check(menu.match_ != null and bool(menu.match_.stage_info.get("crowd", false)), "the crowd's card: the crowd's fight")

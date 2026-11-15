@@ -2777,5 +2777,8 @@
  "The party's pick": "A escolha do grupo",
  "%d of %d for this fight": "%d de %d por esta luta",
  "%s · you stand for this fight · E: the gate's fights": "%s · você está por esta luta · E: as lutas do portão",
- "%s · E: choose your fight": "%s · E: escolha sua luta"
+ "%s · E: choose your fight": "%s · E: escolha sua luta",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "Vá até uma banca e pressione G · bonecos e alvos para arremessar · o portão mostra as lutas oferecidas",
+ "Mend all armour · %d denarii": "Consertar toda a armadura · %d denários",
+ "The armourer puts back every plate your armour has lost.": "O armeiro repõe cada placa que sua armadura perdeu."
 }

@@ -503,6 +503,81 @@ func test_knocked_plates_stay_off_until_mended() -> void:
 	var mended := Armory.mend(saved, "steelLorica")
 	t.check(int(mended.cost) > 0 and not mended.wear.has("steelLorica"), "mended: whole again for %d" % int(mended.cost))
 
+## The smith mends all his armour at once (user: an option to mend the armour, alone and in a
+## room): whole on him in the yard there and then, and still mended when a stall or the gate is
+## opened after (the plates still off him in the yard were counted again as the yard's wear, and
+## the mending undone).
+func test_armour_mended_in_the_yard_stays_mended() -> void:
+	var off := {"steelLorica": {"torso": [0, 1, 2]}}
+	t.check(not Armory.mended({}, off), "nothing off: nothing mended")
+	t.check(not Armory.mended(off, off), "the same plates off: nothing mended")
+	t.check(not Armory.mended(off, {"steelLorica": {"torso": [0, 1, 2, 3]}}), "more off: nothing mended")
+	t.check(Armory.mended(off, {"steelLorica": {"torso": [0, 2]}}), "a plate back on: mended")
+	t.check(Armory.mended(off, {}), "all of it back on: mended")
+	t.eq(int(Armory.mend_all(off, ["steelLorica"]).cost), Armory.mend_cost("steelLorica", off), "all of it costs what each piece does")
+	Save.set_value("coins", 1000)
+	Save.set_value("armor_worn", ["steelLorica"])
+	Save.set_value("armor_wear", off)
+	var menu = load("res://scripts/ui/menu.gd").new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	await _steps(4)
+	t.eq(menu.match_.me.f.armor_wear().get("steelLorica", {}).get("torso", []), [0, 1, 2], "he comes into the yard with the plates off")
+	menu._open_station("smith")
+	await get_tree().process_frame
+	var cost := int(Armory.mend_all(menu.armor_wear(), menu.worn_armor()).cost)
+	var btn: Button = _button(menu, "Mend all armour")
+	t.check(btn != null and not btn.disabled, "the smith offers to mend all of it, %d denarii" % cost)
+	if btn:
+		btn.pressed.emit()
+	await _steps(3)
+	t.eq(int(Save.get_value("coins", 0)), 1000 - cost, "paid for")
+	t.check(menu.armor_wear().is_empty(), "the save has it whole")
+	t.check(menu.match_.me.f.armor_wear().is_empty(), "and it is whole on him in the yard at once (%s)" % str(menu.match_.me.f.armor_wear()))
+	t.check(_button(menu, "Mend all armour") == null, "nothing more to mend")
+	menu._close_overlay()
+	await get_tree().process_frame
+	menu._open_station("market")
+	await get_tree().process_frame
+	t.check(menu.armor_wear().is_empty(), "a stall opened after: still whole (%s)" % str(menu.armor_wear()))
+	menu._close_overlay()
+	menu._end_match()
+	menu.queue_free()
+	await get_tree().process_frame
+
+## In a room the host builds a guest again with his armour as the smith left it on his own screen
+## (bought, taken off or mended), so it is so on every screen; the same armour, nothing is done.
+func test_a_guests_mended_armour_on_every_screen() -> void:
+	var wear := {"steelLorica": {"torso": [0, 1]}}
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "name": "Ann", "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""},
+		"peers": [{"id": 2, "name": "Bob", "loadout": {"main": "axe", "armor": ["steelLorica"], "armor_wear": wear}}]})
+	await _steps(2)
+	var bob := func(): return m.humans().filter(func(e): return e.kind == "remote")[0]
+	var f0: Fighter = bob.call().f
+	t.eq(f0.armor_wear().get("steelLorica", {}).get("torso", []), [0, 1], "Bob comes into the yard with two plates off")
+	m.peer_body(2, {}, {"main": "axe", "armor": ["steelLorica"], "armor_wear": wear})
+	await _steps(2)
+	t.check(is_same(bob.call().f, f0), "the same armour: he is not built again")
+	m.peer_body(2, {}, {"main": "axe", "armor": ["steelLorica"], "armor_wear": {}})
+	await _steps(2)
+	var f1: Fighter = bob.call().f
+	t.check(not is_same(f1, f0) and f1.armor_wear().is_empty(), "mended on his screen: whole on the host's, and so on every guest's (%s)" % str(f1.armor_wear()))
+	m.queue_free()
+	await get_tree().physics_frame
+
+static func _button(n: Node, starts: String) -> Button:
+	if n is Button and (n as Button).visible and String((n as Button).text).begins_with(starts):
+		return n
+	for c in n.get_children():
+		var b := _button(c, starts)
+		if b != null:
+			return b
+	return null
+
 ## The smith's window fits the screen, its rack of weapons and all (a card with its "For the off
 ## hand" button ran wider than the columns were counted for, and the rack pushed the purse, the
 ## tabs and the last column of cards off the right of the screen: user).

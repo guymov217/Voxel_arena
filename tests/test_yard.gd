@@ -1,6 +1,6 @@
 extends Node
 ## The Ludus yard (yard.js): the stations, the dummies that never fall, the throwing boards and
-## the board of the next fight; missions counted from a fight and paid; ranks from reputation.
+## the next fight; missions counted from a fight and paid; ranks from reputation.
 
 var t
 
@@ -33,7 +33,7 @@ func test_the_yard_plays() -> void:
 	var nx := Data.stage(int(Save.get_value("stage", 1)))
 	var first: Dictionary = (nx.get("rounds", [[{}]]) as Array)[0][0]
 	t.check(m.yard.next_text.contains(YardPlay.foe_label(first)), "the stele by the gate names the next foe (%s)" % m.yard.next_text.replace("\n", " / "))
-	t.check(m.yard.next_text.contains("PVGNA " + YardPlay.roman(int(Save.get_value("stage", 1)))), "and the bout, in numerals")
+	t.check(m.yard.next_text.contains("PVGNA %d\n" % int(Save.get_value("stage", 1))), "and the bout, its number as numbers are written (%s)" % m.yard.next_text.replace("\n", " / "))
 	t.check(m.find_children("*", "Fighter", true, false).all(func(f): return f.display_name != "Ring champion"), "no shoving ring any more")
 	var opened := []
 	m.station.connect(func(id): opened.append(id))

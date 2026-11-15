@@ -406,8 +406,7 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 			voxels = have.voxels
 		for v in (d.voxels if have == null else []):
 			if staged and voxels.size() % STAGE_VOXELS == STAGE_VOXELS - 1:
-				await get_tree().process_frame   # (his trunk's thousands of voxels over a few frames)
-				if not is_inside_tree():
+				if not await Physique._frame(self):   # (his trunk's thousands of voxels over a few frames)
 					return
 			var c: Color
 			var kind := 2
@@ -462,10 +461,8 @@ func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void
 		if d.parent != null:
 			p.parent_part = by_name[d.parent]
 			p.parent_part.child_parts.append(p)
-		if staged:
-			await get_tree().process_frame
-			if not is_inside_tree():
-				return
+		if staged and not await Physique._frame(self):
+			return
 	torso = by_name.torso
 	head = by_name.head
 	_count_organs()

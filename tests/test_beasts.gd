@@ -52,6 +52,31 @@ func test_a_lion_bites() -> void:
 	t.check(man.total_hp() < 1000.0 or man.blood < 100.0, "the man is hurt")
 	w.queue_free()
 
+## A beast whose one head is beaten past use dies of it, as a man does of a ruined head (a wolf
+## stood where it was, alive and harmless, and the bout went on round it: user); one frozen stiff
+## by a sapphire only waits to thaw.
+func test_a_head_past_use_kills_the_beast() -> void:
+	var w := _world()
+	var b := _beast(w, "wolf", Vector3(0, 0.2, 0))
+	for i in 30:
+		b.control(1.0 / 120.0)
+		await get_tree().physics_frame
+	t.check(b.alive, "the wolf stands")
+	b.head.hp = 40.0
+	b.head.frozen_until = VoxelPart.clock() + 5.0
+	for i in 5:
+		b.control(1.0 / 120.0)
+		await get_tree().physics_frame
+	t.check(b.alive, "its head frozen stiff, it lives to thaw (fn %.3f)" % b.head.function())
+	b.head.frozen_until = 0.0
+	var cause := [""]
+	b.died.connect(func(_b, c): cause[0] = c)
+	b.head.hp = 8.0
+	b.control(1.0 / 120.0)
+	await get_tree().physics_frame
+	t.check(not b.alive, "its head beaten to a tenth of itself, it is dead (%s, fn %.3f)" % [cause[0], b.head.function()])
+	w.queue_free()
+
 ## A single head on a long neck: with the neck broken (cut through, hanging by a thread or
 ## crushed), the ostrich is dead; a hydra only loses that head.
 func test_a_broken_neck_kills_the_ostrich() -> void:

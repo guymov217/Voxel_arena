@@ -2777,5 +2777,8 @@
  "The party's pick": "Вибір загону",
  "%d of %d for this fight": "%d з %d за цей бій",
  "%s · you stand for this fight · E: the gate's fights": "%s · ви стоїте за цей бій · E: бої біля воріт",
- "%s · E: choose your fight": "%s · E: обери свій бій"
+ "%s · E: choose your fight": "%s · E: обери свій бій",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "Підійдіть до місця й натисніть G · манекени та мішені для кидків · біля воріт можна обрати бій",
+ "Mend all armour · %d denarii": "Полагодити всі обладунки · %d денаріїв",
+ "The armourer puts back every plate your armour has lost.": "Зброяр поверне на місце кожну пластину, втрачену вашими обладунками."
 }

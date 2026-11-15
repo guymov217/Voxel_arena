@@ -129,8 +129,8 @@ func test_a_party_picks_its_fight() -> void:
 	t.check(not h.done, "not even with the keys")
 	await _gone(h)
 
-## The party's picks at the host's: each one's the card he picked or the board he last walked up to,
-## whichever came last; a pick that is not a board is none.
+## The party's picks at the host's: each one's the card he picked last; a pick that is not a card
+## is none.
 func test_the_hosts_tally_of_the_picks() -> void:
 	var m := Match.new()
 	add_child(m)
@@ -143,15 +143,14 @@ func test_the_hosts_tally_of_the_picks() -> void:
 	m.yard.take_pick(2, "1")
 	t.eq(m.yard.stands(), [-1, -1], "a pick that is not a number is none")
 	m.yard.take_pick(2, n)
-	t.eq(m.yard.stands()[1], -1, "nor one past the boards")
+	t.eq(m.yard.stands()[1], -1, "nor one past the cards")
 	m.yard.take_pick(2, NAN)
 	t.eq(m.yard.stands()[1], -1, "nor nothing at all")
-	m.yard.take_pick(2, 0)
+	m.yard.take_pick(2, n - 1)
 	var bob = m.humans().filter(func(e): return e.kind == "remote")[0]
-	bob.f.teleport(YardPlay.board_spot(n - 1))
 	for i in 3:
 		await get_tree().physics_frame
-	t.eq(m.yard.stands()[1], n - 1, "walked up to the last board: his pick now")
+	t.eq(m.yard.stands()[1], n - 1, "the last card: his pick, where he stands in the yard notwithstanding (%s)" % str(bob.f.torso.global_position))
 	var names: Array = m.yard.pick_names()
 	t.check((names[n - 1] as Array).has("Bob"), "his name on it: %s" % str(names))
 	m.queue_free()
@@ -160,7 +159,7 @@ func test_the_hosts_tally_of_the_picks() -> void:
 ## What a guest is told of the gate's fights and of the party's picks, made safe.
 func test_the_gate_from_the_wire_is_made_safe() -> void:
 	var gi := YardPlay.clean_gate({"s": 1e9, "l": -3, "b": [[3, "ladder"], [1e9, "crowd"], ["x", "other"], [2, "dragon"], [5, "other"]]})
-	t.eq(gi.get("b", []), [{"bout": 3, "kind": "ladder"}, {"bout": Ladder.BOUTS.size(), "kind": "crowd"}], "bouts as bouts, kinds as kinds, three boards at most")
+	t.eq(gi.get("b", []), [{"bout": 3, "kind": "ladder"}, {"bout": Ladder.BOUTS.size(), "kind": "crowd"}], "bouts as bouts, kinds as kinds, three fights at most")
 	t.eq([int(gi.s), int(gi.l)], [Ladder.BOUTS.size(), 1], "the stage and the time round in bounds")
 	t.eq(YardPlay.clean_gate({"b": []}), {}, "nothing to choose: nothing")
 	t.eq(YardPlay.clean_gate("x"), {}, "not a gate: nothing")
@@ -168,13 +167,13 @@ func test_the_gate_from_the_wire_is_made_safe() -> void:
 	t.eq((pk.v[0] as Array).size(), Net.CAMPAIGN_PLAYERS, "no more names than a party holds")
 	t.check(not String(pk.v[0][0]).contains("["), "a name as a name: %s" % str(pk.v[0][0]))
 	t.eq(pk.v[1], [], "a card's names that are not a list: none")
-	t.eq(int(pk.l), YardPlay.BOARD_AT.size() - 1, "the card they are led to is a card")
+	t.eq(int(pk.l), YardPlay.MOST_FIGHTS - 1, "the card they are led to is a card")
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "yard", "role": "guest", "headless": true, "seed": 1, "decrees": [], "hazards": []})
 	var told := []
 	m.gate_picks.connect(func(): told.append(true))
-	m.guest_message("yard_next", {"t": "B|X", "o": ["B|PVGNA III\nF|Recruit"], "g": {"s": 3, "l": 1, "b": [[3, "ladder"]]}})
+	m.guest_message("yard_next", {"t": "B|X", "o": ["B|PVGNA 3\nF|Recruit"], "g": {"s": 3, "l": 1, "b": [[3, "ladder"]]}})
 	t.eq(m.yard.gate_info.get("b", []), [{"bout": 3, "kind": "ladder"}], "the guest knows the fights on offer")
 	m.guest_message("gate_picks", {"v": [["Ann"], ["Bob"]], "l": 1})
 	t.eq([m.yard.picks_seen.get("l"), told], [1, [true]], "and the party's picks, his cards told")

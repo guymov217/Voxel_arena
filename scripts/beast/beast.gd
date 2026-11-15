@@ -220,10 +220,8 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 		# (An upright leg stands on its foot: drawn level on the sand, _foot_drawing.)
 		if d.leg and d.lower and local.basis.y.y > 0.95 and absf(float(d.get("splay", 0.0))) < 0.3:
 			p.set_meta("paw", true)
-		if staged:
-			await get_tree().process_frame
-			if not is_inside_tree():
-				return
+		if staged and not await Physique._frame(self):
+			return
 	torso = by_name.beastBody
 	head = by_name.beastHead
 	_count_organs()
@@ -852,7 +850,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		net_timer -= dt
 		if net_timer <= 0.0:
 			set_net(false)
-	if alive and (blood <= 0.0 or torso.hp <= 0.0 or (heads_left().is_empty() if sp.get("multiHead", false) else head.hp <= 0.0)):
+	if alive and (blood <= 0.0 or torso.hp <= 0.0 or (heads_left().is_empty() if sp.get("multiHead", false) else head.hp <= 0.0 or head_wrecked())):
 		die("wounds")
 	if alive and neck_broken():
 		die("neck")
@@ -2128,6 +2126,20 @@ func neck_broken() -> bool:
 		if String(p.part_name).begins_with("neck") and (p.severed or p.hanging or p.hp <= 0.0):
 			return true
 	return false
+
+## Its one head past any use (beaten to a tenth of itself, or hanging): with no head that works a
+## beast can neither find its prey nor bite it, and it dies of it as of a head struck off, as a man
+## does of a ruined head (a wolf stood where it was, alive and harmless, and the bout went on
+## round it: user). Frozen stiff by a sapphire is not wrecked: that thaws.
+func head_wrecked() -> bool:
+	if sp.get("multiHead", false) or head == null:
+		return false
+	if head.severed or head.hanging:
+		return true
+	var fn := head.function()
+	if head.frozen_until > 0.0 and VoxelPart.clock() < head.frozen_until:
+		fn /= 0.2
+	return fn <= 0.1
 
 func part_ok(p: VoxelPart, need := 0.25) -> bool:
 	return p != null and not p.severed and not p.hanging and p.hp > 0.0 and p.function() > need

@@ -2777,5 +2777,8 @@
  "The party's pick": "仲間の選択",
  "%d of %d for this fight": "%d / %d 人がこの戦いを選択",
  "%s · you stand for this fight · E: the gate's fights": "%s · この戦いを選んで立っている · E：門の戦い",
- "%s · E: choose your fight": "%s · E：戦いを選ぶ"
+ "%s · E: choose your fight": "%s · E：戦いを選ぶ",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "持ち場まで歩いて G · 人形と的当てで遊べる · 門で選べる戦いが見られる",
+ "Mend all armour · %d denarii": "鎧をすべて修理 · %d デナリウス",
+ "The armourer puts back every plate your armour has lost.": "鎧職人が、あなたの鎧から失われた板をすべて元に戻す。"
 }

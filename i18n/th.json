@@ -2777,5 +2777,8 @@
  "The party's pick": "ตัวเลือกของกลุ่ม",
  "%d of %d for this fight": "%d จาก %d คนเลือกการต่อสู้นี้",
  "%s · you stand for this fight · E: the gate's fights": "%s · คุณยืนเลือกการต่อสู้นี้ · E: การต่อสู้ที่ประตู",
- "%s · E: choose your fight": "%s · E: เลือกการต่อสู้ของคุณ"
+ "%s · E: choose your fight": "%s · E: เลือกการต่อสู้ของคุณ",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "เดินไปที่จุดต่าง ๆ แล้วกด G · มีหุ่นซ้อมและเป้าขว้างให้เล่น · ที่ประตูมีไฟต์ให้เลือก",
+ "Mend all armour · %d denarii": "ซ่อมชุดเกราะทั้งหมด · %d เดนาริอุส",
+ "The armourer puts back every plate your armour has lost.": "ช่างเกราะจะเติมแผ่นเกราะทุกแผ่นที่ชุดเกราะของคุณเสียไปคืน"
 }

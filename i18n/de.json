@@ -2780,5 +2780,8 @@
  "The party's pick": "Wahl der Gruppe",
  "%d of %d for this fight": "%d von %d für diesen Kampf",
  "%s · you stand for this fight · E: the gate's fights": "%s · du stehst für diesen Kampf · E: die Kämpfe am Tor",
- "%s · E: choose your fight": "%s · E: wähle deinen Kampf"
+ "%s · E: choose your fight": "%s · E: wähle deinen Kampf",
+ "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer": "Geh zu einer Station und drück G · Puppen und Wurfscheiben zum Spielen · das Tor zeigt die angebotenen Kämpfe",
+ "Mend all armour · %d denarii": "Ganze Rüstung ausbessern · %d Denare",
+ "The armourer puts back every plate your armour has lost.": "Der Plattner setzt jede Platte wieder ein, die deine Rüstung verloren hat."
 }
