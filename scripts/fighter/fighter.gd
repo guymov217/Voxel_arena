@@ -1189,6 +1189,8 @@ func _knock_plate(part: VoxelPart, ad: Dictionary, ci: int, dir: Vector3, force:
 	if ad.node and is_instance_valid(ad.node):
 		ad.node.multimesh.set_instance_transform(ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 		FineArmor.sync(ad, ci, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+	if part == head and wreath != null:
+		_fit_wreath()
 	if part == head and not _cosmetic(String(ad.id)):
 		# The hair the plate covered bursts out of the hole. (Only his head's: every piece on him
 		# laid again, his lorica's thousands of voxels with it, each plate off his helmet cost
@@ -1286,6 +1288,8 @@ func place_armor(staged := false) -> void:
 			else:
 				FineArmor.build(self, p, ad)
 		_tuck_hair(p)
+	if wreath != null:
+		_fit_wreath()
 
 ## Hair and a beard under a helmet are drawn tucked inside it: a lock with a plate of the helmet
 ## on it or next to it is not drawn (what hangs out below, a ponytail, braids, stays). Drawing
@@ -1388,6 +1392,154 @@ func _tuck_hair(p: VoxelPart) -> void:
 		ad["out"] = out
 		if p == head:
 			_hair.append(ad)
+
+# ---------- The crowd's favourite's laurel ----------
+
+## The crowd's favourite of a party (PartyGlory) wears a laurel through his next bout: a wreath of
+## leaves in two greens round his head (over his helmet if he wears one), open over his brow and
+## tied at the back, its two red ribbons hanging behind. Drawing only, on his head, where his head
+## goes; fitted again as what is on his head changes (a helmet put on, its plates knocked off).
+var wreath: MultiMeshInstance3D = null
+var _wreath_front := Vector3.FORWARD   # head-local: the way his face looks (his own forward at the crowning)
+const WREATH_AT := 0.8      # how high round the head, from his chin (0) to his crown (1)
+const WREATH_GAP := 0.42    # radians either side of the brow left open
+const WREATH_GREENS := [Color(0.1, 0.22, 0.06), Color(0.2, 0.34, 0.09), Color(0.15, 0.28, 0.08)]
+const WREATH_RIBBON := Color(0.6, 0.09, 0.07)
+
+func set_wreath(on: bool) -> void:
+	if wreath != null and is_instance_valid(wreath):
+		if head != null and is_instance_valid(head):
+			head.draw_with.erase(wreath)
+		wreath.queue_free()
+	wreath = null
+	if not on or head == null or not is_instance_valid(head):
+		return
+	wreath = MultiMeshInstance3D.new()
+	wreath.name = "wreath"
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.8
+	box.material = mat
+	mm.mesh = box
+	wreath.multimesh = mm
+	# (Drawn where his head is drawn, as its armour is: VoxelPart.draw_with.)
+	wreath.top_level = true
+	wreath.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	head.add_child(wreath)
+	wreath.global_transform = head.global_transform
+	head.draw_with.append(wreath)
+	var fwd := head.global_transform.basis.inverse() * Vector3(sin(yaw), 0.0, cos(yaw))
+	fwd.y = 0.0
+	_wreath_front = fwd.normalized() if fwd.length() > 0.01 else Vector3.BACK
+	_fit_wreath()
+	# (A helmet's shell laid out over the frames after he came in: fitted to it once it is there.)
+	if is_inside_tree():
+		for t in [0.3, 1.5, 4.0]:
+			get_tree().create_timer(t, false).timeout.connect(_fit_wreath)
+
+## The wreath laid round his head as it is drawn now: his face and skull (the fine head's voxels,
+## not the box his head's blows are taken in), and what is on it (a helmet's shell, a hat, his
+## hair), at WREATH_AT of his head's height, a little out from it.
+func _fit_wreath() -> void:
+	if wreath == null or not is_instance_valid(wreath) or head == null:
+		return
+	# (What is drawn of his head and on it: its voxels' middles, head-local, as every drawing of the
+	# head lays them out where it draws the head.)
+	var skin := PackedVector3Array()
+	var over := PackedVector3Array()
+	var own_mm = head.fine.get("mm") if head.fine is Dictionary else null
+	for n in head.get_children():
+		if n == wreath or n == head.mmi or not (n is MultiMeshInstance3D) or (n as MultiMeshInstance3D).multimesh == null:
+			continue
+		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
+		var cnt := mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+		for i in cnt:
+			var t := mm.get_instance_transform(i)
+			if t.basis.x.length_squared() < 1e-8:
+				continue   # (a plate knocked off, a voxel cut away)
+			if mm == own_mm:
+				skin.append(t.origin)
+			elif (n as Node3D).visible:
+				over.append(t.origin)
+	if skin.is_empty():
+		# (The classic look: his head is the part's own voxels.)
+		var lp := head.local_positions()
+		for i in lp.size():
+			if head.alive[i] == 1:
+				skin.append(lp[i])
+	if skin.is_empty():
+		wreath.multimesh.instance_count = 0
+		return
+	var lo := INF
+	var hi := -INF
+	for q in skin:
+		lo = minf(lo, q.y)
+		hi = maxf(hi, q.y)
+	var y := lo + (hi - lo) * WREATH_AT
+	var band := maxf((hi - lo) * 0.06, head.vf * head.part_scale * 0.6)
+	var x0 := INF
+	var x1 := -INF
+	var z0 := INF
+	var z1 := -INF
+	for q in skin + over:
+		if absf(q.y - y) <= band:
+			x0 = minf(x0, q.x)
+			x1 = maxf(x1, q.x)
+			z0 = minf(z0, q.z)
+			z1 = maxf(z1, q.z)
+	if x0 > x1 or z0 > z1:
+		wreath.multimesh.instance_count = 0
+		return
+	var v := head.vf * head.part_scale
+	var c := Vector3((x0 + x1) * 0.5, y, (z0 + z1) * 0.5)
+	var rx := (x1 - x0) * 0.5 + v * (0.9 if not over.is_empty() else 0.6)
+	var rz := (z1 - z0) * 0.5 + v * (0.9 if not over.is_empty() else 0.6)
+	var xfs := []
+	var cols := []
+	var front := atan2(_wreath_front.z / rz, _wreath_front.x / rx)
+	var n := maxi(18, int(TAU * sqrt((rx * rx + rz * rz) * 0.5) / (v * 0.62)))
+	var ll := v * 1.55   # a leaf's length, width and thickness
+	var lw := v * 0.6
+	var lt := v * 0.24
+	for i in n:
+		var th := front + PI + (float(i) + 0.5) / float(n) * TAU
+		var dth := wrapf(th - front, -PI, PI)
+		if absf(dth) < WREATH_GAP:
+			continue
+		var at := c + Vector3(rx * cos(th), 0.0, rz * sin(th))
+		var out := Vector3(cos(th) / rx, 0.0, sin(th) / rz).normalized()
+		var along := Vector3(-rx * sin(th), 0.0, rz * cos(th)).normalized()
+		var toward := along if dth < 0.0 else -along   # (the leaves lie toward the brow from the knot)
+		for k in 2:
+			var lift := 0.55 if k == 0 else -0.4
+			var d := (toward + Vector3.UP * lift + out * 0.2).normalized()
+			var wa := d.cross(out).normalized()
+			var na := wa.cross(d).normalized()
+			var o := at + out * (v * 0.1) + Vector3.UP * (lift * v * 0.45) + d * (ll * 0.3)
+			xfs.append(Transform3D(Basis(wa * lw, d * ll, na * lt), o))
+			cols.append(WREATH_GREENS[(i + k) % WREATH_GREENS.size()])
+	# The knot at the back and its two ribbons.
+	var back := c + Vector3(rx * cos(front + PI), 0.0, rz * sin(front + PI))
+	var bout := Vector3(cos(front + PI) / rx, 0.0, sin(front + PI) / rz).normalized()
+	var bside := Vector3.UP.cross(bout).normalized()
+	xfs.append(Transform3D(Basis(bside * v * 0.9, Vector3.UP * v * 0.7, bout * v * 0.5), back + bout * v * 0.25))
+	cols.append(WREATH_RIBBON)
+	for sgn: float in [-1.0, 1.0]:
+		var d := (Vector3.DOWN + bside * sgn * 0.25 + bout * 0.35).normalized()
+		var wa := bside
+		var na := wa.cross(d).normalized()
+		xfs.append(Transform3D(Basis(wa * v * 0.45, d * v * 2.6, na * v * 0.12), back + bout * v * 0.35 + bside * sgn * v * 0.3 + d * v * 1.3))
+		cols.append(WREATH_RIBBON)
+	var mm := wreath.multimesh
+	mm.instance_count = xfs.size()
+	for i in xfs.size():
+		mm.set_instance_transform(i, xfs[i])
+		mm.set_instance_color(i, cols[i])
 
 ## The hair is alive (drawing only): each lock lags the head on a spring as he moves, swings
 ## and takes blows, the long locks hanging lowest the most; a tuft burst out of a broken helmet

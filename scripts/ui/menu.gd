@@ -411,6 +411,8 @@ func show_screen(s: String, msg := "") -> void:
 		"circus_market": _circus_market(v)
 		"demo_end": _demo_end(v)
 		"campaign_end": _campaign_end(v)
+		"scroll": _scroll(v)
+		"rudis": _rudis(v)
 		"campaign_mode": _campaign_mode(v)
 		"training_designs": _training_designs(v)
 		"training_armour": _training_armour(v)
@@ -4170,6 +4172,10 @@ func start(opts: Dictionary) -> void:
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
 		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
+	# The crowd's favourite of the party's last bout wears the laurel, in the yard and through the
+	# next bout (PartyGlory; the host's save).
+	if opts.get("role", "local") == "host" and (opts.mode == "yard" or bool(opts.get("coop", false))):
+		opts.crowned = String(Save.get_value("coop_favourite", ""))
 	match_ = Match.new()
 	world_root.add_child(match_)
 	match_.setup(opts)
@@ -4557,6 +4563,10 @@ func _on_finished(r: Dictionary) -> void:
 		if not (fitted.moved as Array).is_empty():
 			set_arms(fitted.arms)
 		set_armor_wear(Armory.add_wear(armor_wear(), r.get("wear", {}).get("armor", {}), worn_armor()))
+		# The party's run set down on its scroll, and the crowd's favourite of the bout (PartyGlory).
+		if r.get("coop", false) and r.get("party") is Dictionary:
+			Save.set_value("coop_scroll", PartyGlory.add_bout(_party_scroll(), r.party, String(r.get("favourite", ""))))
+			Save.set_value("coop_favourite", String(r.get("favourite", "")))
 		if r.won:
 			add_coins(int(r.pay))
 			GateChoice.mark_won(int(r.get("bout", r.stage)), bool(r.get("coop", false)))
@@ -4579,8 +4589,10 @@ func _on_finished(r: Dictionary) -> void:
 				# gear, the foes a third tougher each time round (lap).
 				var lk := "coop_lap" if r.get("coop", false) else "lap"
 				var kills := int(r.get("kills", {}).size()) if r.get("kills") is Dictionary else 0
-				Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"),
-					{"day": 7, "won": true, "kills": kills, "bouts_won": int(r.stage), "campaign": true}, ""))
+				var party: bool = bool(r.get("coop", false)) and Net.active()
+				if not party:
+					Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), Save.get_value("name", "Gladiator"),
+						{"day": 7, "won": true, "kills": kills, "bouts_won": int(r.stage), "campaign": true}, ""))
 				Achievements.unlock("rudis")
 				if CampaignRun.won(bool(r.get("coop", false))):
 					Save.set_value("unbroken_news", true)
@@ -4591,8 +4603,14 @@ func _on_finished(r: Dictionary) -> void:
 				Save.set_value(ck, 1)
 				GateChoice.clear(bool(r.get("coop", false)))   # (every bout to win again)
 				CampaignRun.keep(bool(r.get("coop", false)))   # (the next time round starts as he is now)
+				if party:
+					# A party: the Emperor has one rudis for it (PartyGlory), the scroll unrolled.
+					_end_match()
+					_rudis_open(kills, int(r.stage))
+					return
 				if Net.active():
 					Net.send_all("campaign_end", {})
+				rudis_end = {}
 				_end_match()
 				show_screen("campaign_end")
 				return
@@ -4606,6 +4624,8 @@ func _on_finished(r: Dictionary) -> void:
 		else:
 			_campaign_lost(r)
 			last_result = {"text": (Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
+			if r.get("coop", false) and fell_back <= 0 and Net.active():
+				_scroll_open("lost")   # (the run is over: its scroll unrolled for the party)
 		if r.won and not (fitted.moved as Array).is_empty():
 			last_result = {"text": (String(last_result.get("text", "")) + " " + ". ".join(fitted.moved) + ".").strip_edges()}
 	_end_match()
@@ -4613,6 +4633,13 @@ func _on_finished(r: Dictionary) -> void:
 		# The tutorial is done: on to the forge, to learn it there (its own lesson).
 		visible = true
 		_workshop_forge(true)
+		return
+	if scroll_due:
+		scroll_due = false
+		show_screen("scroll")
+		return
+	if mode == "pvp" and bool(last_start.get("rudis", false)) and Net.active() and Net.is_host():
+		_rudis_won(String(r.get("winner", "")))
 		return
 	if Net.active() and not Net.is_host():
 		show_screen("room")
@@ -4736,8 +4763,38 @@ func _on_net(type: String, data, _from: int) -> void:
 				show_screen("demo_end")
 		"campaign_end":
 			if not Net.is_host():
+				# How the party's one rudis went (PartyGlory), as the host says: names as names.
+				rudis_end = {}
+				if data is Dictionary and (data.get("winner") is String):
+					rudis_end = {"winner": Net.clean_name(data.winner)}
+				elif data is Dictionary and (data.get("shared") is Array):
+					rudis_end = {"shared": (data.shared as Array).slice(0, PartyGlory.MOST).map(func(x): return Net.clean_name(x))}
 				_end_match()
 				show_screen("campaign_end")
+		"scroll":
+			# The run is over: its scroll, as the host keeps it (made safe: PartyGlory.clean).
+			if not Net.is_host() and data is Dictionary:
+				scroll_shown = PartyGlory.clean(data.get("s"))
+				scroll_why = "lost"
+				_end_match()
+				show_screen("scroll")
+		"rudis_ask":
+			if not Net.is_host() and data is Dictionary:
+				scroll_shown = PartyGlory.clean(data.get("s"))
+				scroll_why = "won"
+				rudis_mine = ""
+				rudis_end = {}
+				rudis_count = [0, 1 + Net.peers.size()]
+				_end_match()
+				show_screen("rudis")
+		"rudis_count":
+			if not Net.is_host() and data is Dictionary:
+				rudis_count = [clampi(int(Net.num(data.get("n"))), 0, 8), clampi(int(Net.num(data.get("of"))), 0, 8)]
+				if screen == "rudis":
+					show_screen("rudis")
+		"rudis_vote":
+			if Net.is_host() and data is String:
+				rudis_take(_from, String(data))
 		"purse_add":
 			# What a guest spent comes off the purse; what he puts in, only as much as he may
 			# (Net.purse_take: no more than he took out, and what his fights paid).
@@ -4781,6 +4838,162 @@ func _unhandled_input(e: InputEvent) -> void:
 			return
 		_toggle_pause()
 
+# ---------- The party's glory: the run's scroll and one rudis (PartyGlory) ----------
+
+const HONOUR_TEXT := {"kills": "Most kills: %s (%d)", "lifts": "Lifted the most friends: %s (%d)",
+	"limbs": "Left the most limbs on the sand: %s (%d)", "fav": "The crowd's favourite most often: %s (%d bouts)"}
+var scroll_shown := {}     # the scroll on the screen: the host's save's, or what the host sent
+var scroll_why := ""       # "lost": the run is over; "won": the ladder is won (the rudis follows)
+var scroll_due := false    # (the host's: the scroll, not the yard, once the bout is put away)
+var rudis_votes := {}      # (the host's) who would do what: 1 for the host, a guest by his id
+var rudis_count := [0, 0]  # how many have spoken, of how many (a guest's: as the host tells it)
+var rudis_mine := ""       # what I would do
+var rudis_kills := 0       # (the host's: the Hall of Fame's entry)
+var rudis_stage := 0
+var rudis_end := {}        # how the one rudis went: {"winner": name} or {"shared": [names]}
+
+## The run's scroll as the host's save keeps it.
+static func _party_scroll() -> Dictionary:
+	var v = Save.get_value("coop_scroll", {})
+	return v if v is Dictionary else {}
+
+## The run is over: its scroll unrolled for the party (the host's, told to the guests), and a new
+## one begun.
+func _scroll_open(why: String) -> void:
+	scroll_shown = _party_scroll()
+	scroll_why = why
+	Save.set_value("coop_scroll", {})
+	Save.set_value("coop_favourite", "")
+	if Net.active() and Net.is_host():
+		Net.send_all("scroll", {"s": scroll_shown, "why": why})
+	scroll_due = true
+
+func _scroll(v: VBoxContainer) -> void:
+	v.add_theme_constant_override("separation", 10)
+	v.add_child(UIStyle.title("THE SCROLL OF THE GAMES", 36))
+	v.add_child(UIStyle.label("The run is over. The scribe reads out what each of you did in it.", 15, UIStyle.MUTED))
+	_scroll_rows(v)
+	if Net.active() and not Net.is_host():
+		v.add_child(UIStyle.button("Back to the room", func(): show_screen("room"), true))
+	else:
+		v.add_child(UIStyle.button("Back to the yard", func(): enter_yard(""), true))
+
+## The scroll's honours, then each of the party's tallies.
+func _scroll_rows(v: VBoxContainer) -> void:
+	for h in PartyGlory.honours(scroll_shown):
+		v.add_child(UIStyle.label(Loc.t(HONOUR_TEXT[h[0]]) % [h[1], h[2]], 17, UIStyle.GOLD))
+	if scroll_shown.is_empty():
+		return
+	var g := GridContainer.new()
+	g.columns = 6
+	g.add_theme_constant_override("h_separation", 22)
+	var cells := []
+	for t in ["", "Bouts", "Kills", "Friends lifted", "Limbs lost", "Crowned"]:
+		cells.append(UIStyle.label(t, 13, UIStyle.MUTED))
+	for n in scroll_shown:
+		var row: Dictionary = scroll_shown[n] if scroll_shown[n] is Dictionary else {}
+		cells.append(UIStyle.label(String(n), 15, UIStyle.TEXT))
+		for k in ["bouts", "kills", "lifts", "limbs", "fav"]:
+			cells.append(UIStyle.label(str(int(row.get(k, 0))), 15, UIStyle.TEXT))
+	for c in cells:
+		(c as Label).autowrap_mode = TextServer.AUTOWRAP_OFF   # (a column as wide as what is in it)
+		g.add_child(c)
+	v.add_child(g)
+
+## The ladder won by a party: the Emperor has one rudis for it. The scroll unrolled; each says
+## whether he would share the glory or fight the others for it, and the host counts (PartyGlory.
+## verdict). Alone in the room: it is his.
+func _rudis_open(kills: int, stage: int) -> void:
+	scroll_shown = _party_scroll()
+	scroll_why = "won"
+	rudis_votes = {}
+	rudis_mine = ""
+	rudis_kills = kills
+	rudis_stage = stage
+	rudis_end = {}
+	if Net.peers.is_empty():
+		_rudis_settle("share")
+		return
+	rudis_count = [0, 1 + Net.peers.size()]
+	Net.send_all("rudis_ask", {"s": scroll_shown})
+	show_screen("rudis")
+
+func _rudis(v: VBoxContainer) -> void:
+	v.add_theme_constant_override("separation", 10)
+	v.add_child(UIStyle.title("ONE RUDIS", 40))
+	var t := UIStyle.label("The Emperor rises. The crowd is on its feet. He holds out one wooden sword, not one for each of you: one of you goes free. Share the glory, all of you named on the scroll, or fight one another for it on the sand?", 16, UIStyle.TEXT)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(t)
+	_scroll_rows(v)
+	if rudis_mine == "":
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		row.add_child(UIStyle.button("Share the glory", func(): _rudis_vote("share"), true))
+		row.add_child(UIStyle.button("Fight for it", func(): _rudis_vote("fight")))
+		v.add_child(row)
+	else:
+		v.add_child(UIStyle.label(Loc.t("You would share the glory. %d of %d have spoken." if rudis_mine == "share" else "You would fight for it. %d of %d have spoken.") % [rudis_count[0], rudis_count[1]], 15, UIStyle.GOLD))
+	# (A friend gone quiet, or gone: the host settles it with the word of those who spoke.)
+	if Net.is_host() and not rudis_votes.is_empty() and rudis_votes.size() < 1 + Net.peers.size():
+		v.add_child(UIStyle.button("Settle it with those who have spoken", func(): _rudis_settle(PartyGlory.verdict(rudis_votes.values()))))
+
+func _rudis_vote(choice: String) -> void:
+	rudis_mine = choice
+	if Net.active() and not Net.is_host():
+		Net.send_host("rudis_vote", choice)
+		show_screen("rudis")
+		return
+	rudis_take(1, choice)
+
+## (The host's) a word on the one rudis: when the whole room has spoken, the party's word.
+func rudis_take(id: int, choice: String) -> void:
+	if scroll_why != "won" or not rudis_end.is_empty() or not ["share", "fight"].has(choice):
+		return
+	rudis_votes[id] = choice
+	rudis_count = [rudis_votes.size(), 1 + Net.peers.size()]
+	Net.send_all("rudis_count", {"n": rudis_count[0], "of": rudis_count[1]})
+	if rudis_votes.size() >= 1 + Net.peers.size():
+		_rudis_settle(PartyGlory.verdict(rudis_votes.values()))
+	elif screen == "rudis":
+		show_screen("rudis")
+
+## (The host's) the party's word. Shared: the rudis is all of theirs, their names together in the
+## Hall of Fame. Fought for: the players' brawl, and the last of them on his feet takes it
+## (_rudis_won).
+func _rudis_settle(verdict: String) -> void:
+	if verdict == "fight" and not Net.peers.is_empty():
+		rudis_end = {"fight": true}
+		start({"mode": "pvp", "rudis": true})
+		return
+	_rudis_shared()
+
+## (The host's) the glory shared: the rudis is all of theirs, all named on the scroll.
+func _rudis_shared() -> void:
+	var names: Array = scroll_shown.keys().map(func(n): return String(n))
+	if names.is_empty():
+		names = [String(Save.get_value("name", "Gladiator"))]
+	rudis_end = {"shared": names}
+	_rudis_hall(" & ".join(names))
+	if Net.active():
+		Net.send_all("campaign_end", rudis_end)
+	show_screen("campaign_end")
+
+## (The host's) the brawl for the one rudis is over: the last of them on his feet takes it (none
+## left standing: it is shared after all).
+func _rudis_won(winner: String) -> void:
+	if winner == "":
+		_rudis_shared()
+		return
+	rudis_end = {"winner": winner}
+	_rudis_hall(winner)
+	Net.send_all("campaign_end", rudis_end)
+	show_screen("campaign_end")
+
+func _rudis_hall(name_: String) -> void:
+	Save.set_value("hall", Circus.hall_add(Save.get_value("hall", []), name_, {"day": 7, "won": true, "kills": rudis_kills, "bouts_won": rudis_stage, "campaign": true}, ""))
+	Save.set_value("coop_scroll", {})
+	Save.set_value("coop_favourite", "")
+
 ## The end of the demo: the second boss is down. The campaign stops here; the demo again from
 ## bout 1, or back to the menu.
 ## The campaign won: the rudis, the wooden sword of a gladiator set free. The next campaign
@@ -4789,8 +5002,13 @@ func _campaign_end(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 12)
 	var lap := int(Save.get_value("coop_lap" if Net.active() else "lap", 2))
 	v.add_child(UIStyle.title("THE RUDIS", 40))
+	if rudis_end.has("winner"):
+		v.add_child(UIStyle.label(Loc.t("%s took the one rudis, won on the sand from the friends who walked the ladder with him.") % String(rudis_end.winner), 18, UIStyle.GOLD))
+	elif rudis_end.has("shared") and (rudis_end.shared as Array).size() > 1:
+		v.add_child(UIStyle.label(Loc.t("The glory shared: %s, named together in the Hall of Fame.") % ", ".join(rudis_end.shared), 18, UIStyle.GOLD))
 	v.add_child(UIStyle.label(Loc.t("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.") % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
-	v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
+	if not rudis_end.has("winner") or String(rudis_end.winner) == String(Save.get_value("name", "")):
+		v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
 	if bool(Save.get_value("unbroken_news", false)):
 		Save.set_value("unbroken_news", false)
 		var un := UIStyle.label("UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.", 16, UIStyle.GOLD)

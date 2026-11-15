@@ -130,6 +130,15 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   drew of its stretch's two (never the last stretch's: the Dragon ends it). Alone, E at a board;
   the gate itself leads to the first. In a room each stands by the board he wants and the host
   leads the party to the one most stand by (his own when as many stand by two).
+- **A party's own glory** (`scripts/game/party_glory.gd`): in the co-op campaign, after every bout
+  won the crowd crowns the one of the party it loved most (the most favour, above indifference):
+  he brings the party's purse a fifth of the bout's prize more and wears a laurel wreath through
+  the next bout and in the yard (`Fighter.set_wreath`: leaves in two greens round his head or
+  his helmet, tied at the back). The run's scroll counts each man's kills, the friends he lifted,
+  the limbs he left on the sand and his crowns, bout by bout, and is unrolled for the party when
+  the run ends. At the end of the ladder the Emperor has one rudis for the party: each says
+  whether to share the glory (their names together in the Hall of Fame) or to fight one another
+  for it in the players' brawl (the last on his feet takes it).
 - **Ironman or Legionary** (`scripts/game/campaign_run.gd`): chosen when a campaign begins (in
   co-op the host chooses in the room). A legionary who falls goes back to the last checkpoint
   (every four bouts) with the purse, arms, armour, body and training he had there; an ironman

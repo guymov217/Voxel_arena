@@ -61,6 +61,12 @@ const RETURN_ARMOR := ["steelLorica", "murmilloHelm", "steelGreaves", "manica"]
 const RETURN_ARMOR_OFF := ["helmet", "lorica", "greaves", "manica"]
 const RETURN_COAT := {"cyclops": "fire", "minotaur": "venom", "giant": "frost", "titan": "fire"}
 var kills := {}
+## The party's own tallies of the bout, by name (PartyGlory: the kills, the friends lifted, the
+## limbs left on the sand), the one the crowd crowned at its end, and the one who wears the laurel
+## through it (the crowd's favourite of the bout before: the host's word, opts "crowned").
+var party_tally := {}
+var favourite_now := ""
+var crowned := ""
 var rng := RandomNumberGenerator.new()
 var next_id := 1
 var training: Dictionary = {}
@@ -270,6 +276,7 @@ func setup(opts: Dictionary) -> void:
 	coop = bool(opts.get("coop", false))
 	lap = maxi(1, int(opts.get("lap", Save.get_value("coop_lap" if coop else "lap", 1)))) if mode == "campaign" else 1
 	role = opts.get("role", "local")
+	crowned = String(opts.get("crowned", "")) if role != "guest" else ""
 	training = opts.get("training", {})
 	circus = opts.get("circus", {})
 	headless = opts.get("headless", false)
@@ -499,6 +506,12 @@ func _fighter_in(f: Fighter, spec: Dictionary) -> Dictionary:
 		f.mods.bleed = float(f.mods.get("bleed", 1.0)) * PLAYER_BLEED
 		f.spare = _may_spare
 		f.player = true
+	# The crowd's favourite of the bout before wears the laurel (the host's word; a guest draws it as
+	# the spawn says, a plain yes and nothing else).
+	if role != "guest" and (spec.kind == "remote" or spec.kind == "local") and crowned != "" and String(spec.get("name", "")) == crowned:
+		spec["wreath"] = true
+	if spec.get("wreath") is bool and bool(spec.wreath):
+		f.set_wreath(true)
 	var e := {"id": spec.get("id", next_id), "f": f, "kind": spec.kind, "team": spec.team, "peer": spec.get("peer", -1), "boss": spec.get("boss", false), "spec": spec}
 	next_id = maxi(next_id, e.id) + 1
 	if spec.kind == "bot":
@@ -2233,10 +2246,17 @@ func _check_round(dt: float) -> void:
 				return
 			var base := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE))
 			var crowd := int(round(base * CROWD_BONUS * spectacle.heat(humans())))
-			var pay := base + round_pay + crowd
+			# A party: the crowd crowns its favourite of them, who brings the purse a share more
+			# and wears the laurel through the next bout (PartyGlory).
+			favourite_now = PartyGlory.favourite(party_favour()) if coop else ""
+			var fav := PartyGlory.bonus(base) if favourite_now != "" else 0
+			var pay := base + round_pay + crowd + fav
 			var purse := ("%d denarii to the party's purse" if players_count > 1 else "%d denarii") % pay
 			if crowd > 0:
 				purse += Loc.t(", %d of them the crowd's") % crowd
+			if fav > 0:
+				purse += Loc.t(", %d for its favourite, %s") % [fav, favourite_now]
+				feed.emit(Loc.t("The crowd crowns %s its favourite") % favourite_now)
 			_end(true, Loc.t("Bout %d won" if stage_info.get("duel", false) else "Stage %d cleared") % stage, Loc.t("%s. Back to the yard: spend, mend, gear up.") % purse, pay)
 		else:
 			_end(true, "Victory", "")
@@ -2247,6 +2267,34 @@ func _may_spare(f: Fighter, _cause: String) -> bool:
 	if role == "guest" or mode == "yard" or mode == "training":
 		return false
 	return humans().any(func(x): return x.f != f and x.f is Fighter and x.f.alive and x.f.dying <= 0.0 and not x.f.is_beaten())
+
+## A man of the party's tally (PartyGlory): `k` (kills, lifts, limbs) by `n`. The host's (or a lone
+## game's) count, in the co-op campaign; anyone else (a foe, a beast) is not counted.
+func _tally(f, k: String, n := 1) -> void:
+	if not coop or role == "guest" or f == null or not is_instance_valid(f):
+		return
+	var e = entity_of(f)
+	if e == null or not (e.kind == "local" or e.kind == "remote"):
+		return
+	var row: Dictionary = party_tally.get(f.display_name, {})
+	row[k] = int(row.get(k, 0)) + n
+	party_tally[f.display_name] = row
+
+## The party's tallies of the bout, every one of them in it (a man who did none of it, too).
+func party_tallies() -> Dictionary:
+	var out := party_tally.duplicate(true)
+	for e in humans():
+		if is_instance_valid(e.f) and not out.has(e.f.display_name):
+			out[e.f.display_name] = {}
+	return out
+
+## How much the crowd loves each of the party now (Spectacle), by name.
+func party_favour() -> Dictionary:
+	var out := {}
+	for e in humans():
+		if is_instance_valid(e.f):
+			out[e.f.display_name] = spectacle.get_favor(e.f)
+	return out
 
 ## A friend beside a man at death's door holds the revive key LIFT_T seconds to lift him.
 func _lift_tick(dt: float) -> void:
@@ -2265,6 +2313,7 @@ func _lift_tick(dt: float) -> void:
 		if float(e.lift_t) >= Fighter.LIFT_T:
 			e.lift_t = 0.0
 			who.f.lift()
+			_tally(f, "lifts")
 			feed.emit(Loc.t("%s lifts %s") % [f.display_name, who.f.display_name])
 
 ## The nearest friend at death's door within reach of `e`, if any.
@@ -2382,6 +2431,11 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	_banner(text, sub)
 	var wear := my_wear()
 	var result := {"won": won, "stage": stage, "bout": int(stage_info.get("bout", stage)), "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
+	if coop and role != "guest":
+		result["party"] = party_tallies()
+		result["favourite"] = favourite_now if won else ""
+	if modes and modes.last_winner != null and is_instance_valid(modes.last_winner):
+		result["winner"] = String(modes.last_winner.display_name)   # (the one rudis fought for: PartyGlory)
 	if mode == "campaign" and role != "guest":
 		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are (the
 		# dead among them carried off the sand as they died: final_bodies).
@@ -2556,8 +2610,11 @@ func _on_hit(h: Dictionary) -> void:
 		_gems(h)
 		_gold(h)
 		_materials(h)
+	if h.res.get("severed", []).size() > 0:
+		_tally(h.char, "limbs", (h.res.severed as Array).size())
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
+		_tally(h.attacker, "kills")
 		feed.emit(Loc.t("%s kills %s") % [h.attacker.display_name, h.char.display_name])
 	elif h.get("rend", false):
 		feed.emit(Loc.t("%s TEARS %s APART!") % [h.attacker.display_name, h.char.display_name])
