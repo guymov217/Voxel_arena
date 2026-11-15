@@ -3345,6 +3345,19 @@ def cerberus(sp, g):
     rg = np.maximum(rg, np.abs(g.X) - 0.12 * W)
     S.add(rg, 0.04)
     S.mark("ridge", rg)
+    # A ruff of bristles round the roots of the three necks, where they come out of the chest:
+    # the three one beast (user: it looked incomplete), shaggy, in tufts, over the collar's band.
+    ruff = None
+    roots = [np.array([0.0, cy + 0.42 * H, zc + 0.78 * Lz])]
+    for nk in ("neckL", "neckR"):
+        jn = info[nk][3]
+        roots.append(np.array([jn[0] * 0.95, jn[1] + 0.04, jn[2] + 0.02]))
+    shag = vnoise(np.abs(g.X), g.Y, g.Z, 0.035, 31)
+    for rp in roots:
+        r_ = ell(g, rp, (0.36 * W, 0.34 * H, 0.2 * Lz)) - 0.07 * (shag - 0.35)
+        ruff = r_ if ruff is None else smin(ruff, r_, 0.08)
+    S.add(ruff, 0.06)
+    S.mark("ruff", ruff)
     # The tail: a serpent out of the rump down the tail's own length, a little to one side and the
     # other, its head the tail's end, the jaws open at whatever comes at the hound from behind.
     # (Within the tail's own box: raised out past it, a blade through the snake met nothing, user.)
@@ -3372,8 +3385,8 @@ def cerberus(sp, g):
     # sand (all black, it was a blot with red eyes: user, it should look better); the bristles
     # tipped red; the eyes glowing red; the mouths dark red; the teeth; the iron collar, its
     # spikes bright; the serpent dark green.
-    black = np.array([0.1, 0.085, 0.08])
-    rust = np.array([0.5, 0.25, 0.1])
+    black = np.array([0.16, 0.13, 0.115])
+    rust = np.array([0.66, 0.34, 0.13])
     col = np.zeros(g.shape + (3,))
     clump = vnoise(np.abs(g.X), g.Y, g.Z, 0.05, 41)
     fine = hash3(np.floor(np.abs(g.X) / g.cell), np.floor(g.Y / g.cell), np.floor(g.Z / g.cell), 43)
@@ -3398,10 +3411,10 @@ def cerberus(sp, g):
     rk = rk[..., None] * 0.85
     col = col * (1 - rk) + rust * (0.75 + 0.45 * clump[..., None]) * rk
     kind = np.full(g.shape, FUR, np.uint8)
-    rgm = S.on("ridge", 0.02) & occ
-    col[rgm] = black * 0.8
-    tips = rgm & (tuft > 0.62)
-    col[tips] = np.array([0.4, 0.08, 0.04])
+    rgm = (S.on("ridge", 0.02) | S.on("ruff", 0.02)) & occ
+    col[rgm] = black * 0.75
+    tips = rgm & ((tuft > 0.62) | (shag > 0.66))
+    col[tips] = np.array([0.5, 0.11, 0.05])
     sn = (S.on("serpent", 0.03) | S.on("snake", thr_c)) & occ
     scol = np.zeros(g.shape + (3,))
     scol[:] = np.array([0.1, 0.18, 0.1])

@@ -195,16 +195,16 @@
 "scripts/game/match.gd:2286"
 ],
 "Your pick": [
-"scripts/ui/gate_screen.gd:886"
+"scripts/ui/gate_screen.gd:905"
 ],
 "Pick this fight": [
-"scripts/ui/gate_screen.gd:886"
+"scripts/ui/gate_screen.gd:905"
 ],
 "Fight": [
-"scripts/ui/gate_screen.gd:888"
+"scripts/ui/gate_screen.gd:907"
 ],
 "The party's pick": [
-"scripts/ui/gate_screen.gd:958"
+"scripts/ui/gate_screen.gd:977"
 ],
 "BLOOD": [
 "scripts/ui/hud.gd:380",
