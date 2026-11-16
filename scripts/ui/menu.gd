@@ -1009,7 +1009,7 @@ func _training(v: VBoxContainer) -> void:
 	pick.call(ge, "Difficulty", levels, ["Easy", "Medium", "Hard", "Extreme"], "difficulty")
 	var gy: GridContainer = form.call("YOU")
 	var built: Dictionary = Save.get_value("training_weapon", {})
-	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "plank", "chicken", "bow", "ram"]
+	var mains := ["built", "campaign", "fists", "gladius", "longsword", "zweihander", "falx", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger", "plank", "chicken", "bow", "ram"]
 	pick.call(gy, "Main hand", mains, mains.map(func(k): return (Loc.t("Forged: %s") % (String(built.name) if built.has("name") else Loc.t("none yet"))) if k == "built" else ("Your campaign arms" if k == "campaign" else ("Bare hands" if k == "fists" else Data.preset(k).get("name", k)))), "my_main")
 	var built_off: Dictionary = Save.get_value("training_off_weapon", {})
 	pick.call(gy, "Off hand", ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "spear", "longsword", "campaign", "built"], ["Nothing", "Round shield", "Scutum", "Dagger", "Gladius", "Axe", "Mace", "Spear", "Longsword", "Your campaign arms", Loc.t("Design: %s") % (String(built_off.name) if built_off.has("name") else Loc.t("none yet"))], "my_off")
@@ -1378,7 +1378,7 @@ func _training_forge(hand := "R") -> void:
 ## or "built": forged here, Save "endless_weapon" / "endless_off_weapon"), ready-made armour,
 ## a few pots, and today's challenge or a free run.
 var endless_kit := {}
-const ENDLESS_MAINS := ["built", "gladius", "longsword", "zweihander", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger"]
+const ENDLESS_MAINS := ["built", "gladius", "longsword", "zweihander", "falx", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger"]
 const ENDLESS_OFFS := ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "built"]
 const ENDLESS_POT_KINDS := 3   # kinds of pot in the bag
 const ENDLESS_POT_EACH := 2    # and of each

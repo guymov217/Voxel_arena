@@ -21,7 +21,7 @@ const TWO_HAND := ["spear", "trident", "longsword", "executionerAxe", "zweihande
 const SIDEARM := ["dagger", "gladius", "axe", "mace", "hammer"]
 const SHIELDS := ["roundShield", "scutum"]
 ## The weapons a reward may be: real ones (a rubber chicken is a foe's joke, not a prize).
-const PRIZE_ARMS := ["gladius", "axe", "mace", "hammer", "spear", "trident", "longsword", "executionerAxe", "zweihander", "warhammer"]
+const PRIZE_ARMS := ["gladius", "axe", "mace", "hammer", "spear", "trident", "longsword", "executionerAxe", "zweihander", "falx", "warhammer"]
 ## What a man of the waves may wear from which wave on.
 const ARMOUR_BY_WAVE := [[4, "helmet"], [7, "manica"], [10, "greaves"], [13, "lorica"]]
 ## The campaign's great men: a boss wave's, never an ordinary one's.

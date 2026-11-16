@@ -52,7 +52,7 @@ func test_a_two_hander_is_taken_again_in_both_hands() -> void:
 ## in through the sand, and run with it stays on top of the sand (user: he ran with the new
 ## sword half under the floor).
 func test_a_weapon_in_hand_never_lies_in_the_sand() -> void:
-	for nm in ["zweihander", "longsword", "spear"]:
+	for nm in ["zweihander", "longsword", "spear", "falx"]:
 		var m := _match({"mode": "yard", "loadout_override": {"main": "", "off": ""}})
 		var f: Fighter = m.me.f
 		var run := [false]

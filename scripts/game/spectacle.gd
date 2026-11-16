@@ -16,7 +16,7 @@ const DROPS := [
 	["icicle", "An icicle blade. Chills and shatters.", 2], ["badIdea", "A barrel of Bad Ideas. It is explosive.", 1],
 	["bow", "A bow. Hold the left button to draw, release to loose.", 2],
 	["javelin", "A javelin. F throws it point first.", 3], ["telescopicSpear", "A telescopic spear. C extends it.", 1],
-	["zweihander", "A zweihander falls from the Emperor's box.", 1], ["trident", "A trident. Very Neptune.", 2],
+	["zweihander", "A greatsword falls from the Emperor's box.", 1], ["trident", "A trident. Very Neptune.", 2],
 	["flamePole", "A flame pole! C breathes fire.", 1], ["twoPersonSword", "A two-person sword. Grab a friend.", 1],
 ]
 const DROP_INTERVAL := [110.0, 190.0]

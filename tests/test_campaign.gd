@@ -333,6 +333,45 @@ func test_buying_fills_a_free_hand_or_asks_what_to_sell() -> void:
 	r = Arms.buy(Arms.empty(), "longsword", "", "L")
 	t.check(r.side == "L" and str(r.arms.off.name) == "Longsword", "even a longsword can be bought for the off hand")
 
+## The falx is on the smith's rack beside the long swords (user: add the falx): a two-hander on
+## a wooden haft, its blade curved forward with the edge along the inner side of the curve and a
+## point at its end; a man can carry it, both hands find room on the haft, and it is bought into
+## the main hand like the others.
+func test_the_falx_is_on_the_smiths_rack() -> void:
+	var keys: Array = Arms.bases().map(func(b): return String(b.key))
+	t.check(keys.has("falx") and keys.find("falx") == keys.find("zweihander") + 1, "on the rack, after the greatsword")
+	var d: Dictionary = Data.preset("falx")
+	t.eq(String(d.get("name", "")), "Falx", "by its name")
+	t.check(bool(d.get("twoHanded", false)), "held in both hands")
+	var st: Dictionary = ForgeLib.compute_stats(d)
+	t.eq(ForgeLib.too_heavy(d, st), "", "a man can carry it")
+	t.check(ForgeLib.two_hand_points(d) != null, "both hands find room on the haft")
+	t.check(int(st.edge) >= 12 and int(st.point) >= 1, "an edge and a point (%d, %d)" % [int(st.edge), int(st.point)])
+	t.check(absf(float(st.mass) - float(d.stats.mass)) < 0.01 and absf(float(st.reach) - float(d.stats.reach)) < 0.01 and absf(float(st.swingSpeed) - float(d.stats.swingSpeed)) < 0.01, "its stats as the forge reckons them")
+	# Curved forward: the blade's end stands well off the haft's line, to the side an axe's edge is on.
+	var top_y := -1000000
+	var top_x := 0
+	var edge_x := 0.0
+	var back_x := 0.0
+	var edges := 0
+	var backs := 0
+	for v in d.voxels:
+		if int(v[1]) > top_y:
+			top_y = int(v[1])
+			top_x = int(v[0])
+		if v[4] == "edge":
+			edge_x += float(v[0])
+			edges += 1
+		elif v[3] == "iron" and int(v[1]) > 20:
+			back_x += float(v[0])
+			backs += 1
+	t.check(top_x >= 5, "its end stands forward of the haft (%d blocks)" % top_x)
+	t.check(edges > 0 and backs > 0 and edge_x / edges > back_x / backs, "the edge on the inner side of the curve, forward of the blade's back")
+	t.check(float(st.mass) < float(Data.preset("longsword").stats.mass) and float(st.reach) > float(Data.preset("executionerAxe").stats.reach), "lighter than the longsword, longer than the axe")
+	var r := Arms.buy(Arms.empty(), "falx")
+	t.eq(str(r.arms.main.name), "Falx", "bought into the main hand")
+	t.check(int(r.cost) == Arms.base_price(Arms.base("falx")) and int(r.cost) > 0, "at its price (%d)" % int(r.cost))
+
 ## A hand lost in a bout: the weapon goes into the hand he has left, what that hand held up on the
 ## smith's rack; with no hand to hold them, both go up on the rack, and come down again into a hand
 ## that can hold them (user).

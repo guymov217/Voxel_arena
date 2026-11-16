@@ -2995,31 +2995,31 @@
 "scripts/fighter/fighter.gd:1127"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2950"
+"scripts/fighter/fighter.gd:2962"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:3237"
+"scripts/fighter/fighter.gd:3249"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3239"
+"scripts/fighter/fighter.gd:3251"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3239"
+"scripts/fighter/fighter.gd:3251"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:3245"
+"scripts/fighter/fighter.gd:3257"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:3245"
+"scripts/fighter/fighter.gd:3257"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7201"
+"scripts/fighter/fighter.gd:7345"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7217"
+"scripts/fighter/fighter.gd:7361"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9144",
+"scripts/fighter/fighter.gd:9306",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -5340,7 +5340,7 @@
 "A telescopic spear. C extends it.": [
 "scripts/game/spectacle.gd:18"
 ],
-"A zweihander falls from the Emperor's box.": [
+"A greatsword falls from the Emperor's box.": [
 "scripts/game/spectacle.gd:19"
 ],
 "A trident. Very Neptune.": [
@@ -8687,7 +8687,11 @@
 "Folding Chair": [
 "data/presets.json#name"
 ],
-"Zweihander": [
+"Greatsword": [
+"data/presets.json#name",
+"data/shop.json#name"
+],
+"Falx": [
 "data/presets.json#name",
 "data/shop.json#name"
 ],

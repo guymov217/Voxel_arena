@@ -107,7 +107,7 @@ func test_a_dragged_stroke_builds_many_voxels_with_one_undo() -> void:
 ## The kinds of weapon are told apart, a blunt one is not honed, and the smith makes any weapon
 ## into any other: a hammer into a blade, for what the blade is worth over the hammer.
 func test_reshaping_into_another_kind_costs_the_difference() -> void:
-	var want := {"gladius": "blade", "longsword": "blade", "zweihander": "blade", "dagger": "blade", "axe": "axe", "executionerAxe": "axe",
+	var want := {"gladius": "blade", "longsword": "blade", "zweihander": "blade", "dagger": "blade", "axe": "axe", "executionerAxe": "axe", "falx": "axe",
 		"spear": "spear", "javelin": "spear", "trident": "spear", "mace": "blunt", "warhammer": "blunt", "hammer": "blunt",
 		"roundShield": "shield", "scutum": "shield", "bow": "bow", "crossbow": "crossbow", "flail": "chain"}
 	for k in want:
