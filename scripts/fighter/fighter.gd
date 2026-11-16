@@ -1823,6 +1823,16 @@ func _guard_two_hander(w: Weapon) -> void:
 func _attach_off_hand(w: Weapon, move_arm := true) -> void:
 	if not w or is_bow(w):
 		return   # the off hand of an archer draws the string; it does not hold the stave
+	# Both hands on one haft, the arms let each other by for as long as they hold it (_grip_reach
+	# ends it), as they did already when the haft was taken up by hand (pick_up). The bodies hold
+	# the blade in line with the guard arm's forearm, which is drawn turned off it, elbow down
+	# (_swivel_drawing): the other hand's place on the haft lies in the middle of that forearm as
+	# the bodies have it, and its own forearm, knocking against what is not drawn there, was
+	# thrown up over it, the elbow by his head and the forearm down across his face, and lay
+	# jammed there whatever drove it (user, an image). A man's arms only: a giant's guard arm is
+	# drawn where it is.
+	if not forearms_pass and elbow_low_on and S < 1.6:
+		_forearms_pass(true)
 	var o := two_off()
 	var fore: VoxelPart = arm[o].fore
 	var at := w.global_transform * w.grip_off
@@ -2026,7 +2036,9 @@ static var off_lets_go_down := true   # (probes: false, to see a fall as it was,
 ## in front and in reach. And with both on it, an off hand dragged round behind his back (a low
 ## stroke across to the far hip) lets go rather than stay there; it takes hold again in front.
 func _grip_reach(dt: float) -> void:
-	if forearms_pass and not grip_gentle and not two_handed:
+	# (The grip over, the arms knock against each other again once they are apart: switched back
+	# while one still lay through the other, they were thrown apart.)
+	if forearms_pass and not grip_gentle and not two_handed and _arms_apart():
 		_forearms_pass(false)
 	var o := two_off()
 	var w: Weapon = weapons[two_side]
@@ -4016,6 +4028,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# passes into its own chest or head.
 		if not arm[side].upper.severed:
 			_keep_arm_out(side, dt)
+			_keep_elbow_low(side, dt)
 	_arm_phase = false
 
 	# A blade whirled hard winds him: the swing's own speed, the weapon turning against his
@@ -4756,6 +4769,7 @@ func _grip_drawing(interp: bool) -> void:
 # (How far clear of his trunk's box the drawn arm keeps, of S: his chest as the new look draws it,
 # a lorica on it.)
 const OFF_CLEAR := 0.07
+const OFF_STAY := 0.05   # what a radian away from the turn it has costs another turn (m sunk)
 var off_turn_a := 0.0
 func _off_clear_drawing(interp: bool, dt: float) -> void:
 	var side := two_off()
@@ -4784,10 +4798,17 @@ func _off_clear_drawing(interp: bool, dt: float) -> void:
 		var tinv := tt.affine_inverse()
 		var ext: Vector3 = torso.half_ext + Vector3.ONE * OFF_CLEAR * S
 		var hd: Vector3 = head.global_position if head and not head.severed and not head.missing else s0 + Vector3(0, 0.3 * S, 0)
-		# How deep the arm lies in him turned by c: the forearm, and the upper arm's lower half.
+		# The guard arm as it is drawn (its own turn is worked out before this one).
+		var guard: Array = _arm_drawn(two_side, interp)
+		# (Up as his body has it: bent forward over a stroke across him, an elbow level in the
+		# world stood up over his shoulder.)
+		var up_b: Vector3 = tt.basis.y.normalized()
+		# How deep the arm lies in him turned by c: the forearm, and the upper arm's lower half;
+		# and how far into the guard arm (turned out of his chest it was drawn through the other
+		# forearm, the two crossed before him at one height).
 		var depth := func(c: float) -> float:
 			var e1: Vector3 = s0 + Basis(a, c) * u
-			var dsum := 0.0
+			var dsum := ARMS_DEPTH * _arms_sunk(s0, e1, h0, guard)
 			for k in 5:
 				var t := (float(k) + 0.5) / 5.0
 				for q in [e1.lerp(h0, t), s0.lerp(e1, 0.5 + 0.5 * t)]:
@@ -4797,18 +4818,33 @@ func _off_clear_drawing(interp: bool, dt: float) -> void:
 					var dz := ext.z - absf(l.z)
 					if dx > 0.0 and dy > 0.0 and dz > 0.0:
 						dsum += minf(dx, minf(dy, dz))
-			if c != 0.0 and (e1.y > s0.y + 0.08 * S or e1.distance_to(hd) < SWIVEL_FACE * S):
-				dsum += 1.0   # (never up over his shoulder or across his face)
+			# (Never up over his shoulder or across his face, whatever else it would clear.)
+			if c != 0.0 and ((e1 - s0).dot(up_b) > 0.08 * S or minf(e1.distance_to(hd), ((e1 + h0) * 0.5).distance_to(hd)) < SWIVEL_FACE * S):
+				dsum += 100.0
 			return dsum
-		var best: float = depth.call(0.0)
+		# (The turn it has is kept unless another is better by more than a little: two turns near
+		# even, one each side of his shoulder's height, and the drawn arm went to and fro between
+		# them over the top. And no turn past one that stands the elbow up over his shoulder or
+		# lays the arm across his face: the arm would be drawn going round to it that way.)
+		var stay := OFF_STAY if dt > 0.0 else 0.0
+		var best: float = depth.call(0.0) + stay * absf(off_turn_a)
 		if best > 0.0:
-			for c in [0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1.0, -1.0, 1.3, -1.3]:
-				var dd: float = depth.call(c)
-				if dd < best - 1e-4:
-					best = dd
-					want = c
-					if dd <= 0.0:
-						break
+			var shut := [false, false]
+			var found := false
+			for mag in [0.25, 0.5, 0.75, 1.0, 1.3]:
+				for k in 2:
+					if shut[k] or found:
+						continue
+					var c: float = mag if k == 0 else -mag
+					var dd: float = depth.call(c)
+					if dd >= 100.0:
+						shut[k] = true
+						continue
+					dd += stay * absf(c - off_turn_a)
+					if dd < best - 1e-4:
+						best = dd
+						want = c
+						found = dd <= 0.0
 		off_turn_a = want if dt <= 0.0 else lerp_angle(off_turn_a, want, minf(1.0, dt * 12.0))
 		if absf(off_turn_a) < 0.001:
 			return
@@ -4818,6 +4854,42 @@ func _off_clear_drawing(interp: bool, dt: float) -> void:
 			pt.draw_turn = Transform3D(Basis(), q2) * Transform3D(turn, Vector3.ZERO) * Transform3D(Basis(), -q2) * (pt as VoxelPart).draw_turn
 	else:
 		off_turn_a = 0.0
+
+## An arm as it is drawn now: [shoulder, elbow, fist], or [] with the arm cut, hanging or gone.
+func _arm_drawn(side: String, interp: bool) -> Array:
+	if not arm.has(side):
+		return []
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	if up.parent_part == null or fo.parent_part != up or up.severed or fo.severed or up.hanging or fo.hanging or up.missing or fo.missing:
+		return []
+	var tu := up.draw_turn * (up.get_global_transform_interpolated() if interp else up.global_transform)
+	var tf := fo.draw_turn * (fo.get_global_transform_interpolated() if interp else fo.global_transform)
+	tu.origin += up.draw_shift
+	tf.origin += fo.draw_shift
+	return [tu * up.ca, tf * fo.ca, tf * hand_point]
+
+## How far an arm drawn with its shoulder, elbow and fist at s, e, h lies sunk in the arm `other`
+## ([shoulder, elbow, fist], or []): the two forearms and each forearm against the other's upper
+## arm, as far as their middle lines are nearer than two arms' thickness lets them be (m). The
+## wrists are left out: two fists on one haft lie side by side.
+const ARMS_ROOM := 0.12    # of S: middle lines nearer than this, and one arm is drawn in the other
+const ARMS_WRIST := 0.72   # of a forearm's length from its elbow: past this it is the wrist
+const ARMS_DEPTH := 3.0    # what a metre sunk in the other arm costs the off arm's drawn turn, in metres sunk in his chest
+const SWIVEL_ARMS := 30.0  # and the guard arm's, against its score (leaving it unturned costs SWIVEL_NONE)
+func _arms_sunk(s: Vector3, e: Vector3, h: Vector3, other: Array) -> float:
+	if other.size() < 3:
+		return 0.0
+	var os: Vector3 = other[0]
+	var oe: Vector3 = other[1]
+	var ow: Vector3 = oe.lerp(other[2], ARMS_WRIST)
+	var w: Vector3 = e.lerp(h, ARMS_WRIST)
+	var room := ARMS_ROOM * S
+	var sunk := 0.0
+	for pair in [[e, w, oe, ow], [e, w, os, oe], [s, e, oe, ow]]:
+		var q := Geometry3D.get_closest_points_between_segments(pair[0], pair[1], pair[2], pair[3])
+		sunk += maxf(0.0, room - (q[0] as Vector3).distance_to(q[1]))
+	return sunk
 
 ## Both hands on one haft, the guard hand's arm is drawn turned about the line from its shoulder to
 ## its fist, as far as stands the forearm SWIVEL_BEND off the blade's line, the fist where it is
@@ -4892,16 +4964,18 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 			var hd: Vector3 = head.global_position if head and not head.severed and not head.missing else s0 + Vector3(0, 0.3 * S, 0)
 			var best := -INF
 			cands.append(0.0)
+			# (The other arm, as the bodies hold it: its own drawn turn comes after this one.)
+			var other: Array = _arm_drawn(two_off(), interp)
 			for c in cands:
 				var e1: Vector3 = s0 + Basis(a, float(c)) * u
-				var sc: float = -e1.y + 0.5 * (e1 - s0).dot(out_x)
+				var sc: float = -e1.y + 0.5 * (e1 - s0).dot(out_x) - SWIVEL_ARMS * _arms_sunk(s0, e1, h0, other) / S
 				if float(c) == 0.0:
 					sc -= SWIVEL_NONE
 				else:
 					var le: Vector3 = tinv * e1
 					if absf(le.x) < torso.half_ext.x + 0.03 * S and absf(le.y) < torso.half_ext.y and absf(le.z) < torso.half_ext.z + 0.03 * S:
 						sc -= 10.0
-					if e1.y > s0.y + 0.08 * S:
+					if (e1 - s0).dot(torso.global_transform.basis.y.normalized()) > 0.08 * S:
 						sc -= 10.0
 					var near_face := minf(e1.distance_to(hd), minf(((s0 + e1) * 0.5).distance_to(hd), ((e1 + h0) * 0.5).distance_to(hd)))
 					if near_face < SWIVEL_FACE * S:
@@ -5494,7 +5568,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
 		# The elbow never folds in through the chest: in the body's frame it stays on its own
 		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
-		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot), t_rot)
+		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot, -(t_rot.inverse() * fore_dir).y * lf), t_rot)
 		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
@@ -6028,6 +6102,62 @@ func _keep_hand_front(side: String, dt: float) -> void:
 		part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 		torso.apply_central_impulse(-jo)
 
+## The elbow never stands up over its own shoulder with the hand hanging below it (user, an
+## image: a haft in both hands, the off arm's elbow up by the head and its forearm folded down
+## across the face; the arms jammed there and the strokes went stiff). The elbow lies on a circle
+## round the line from the shoulder to the hand, and the arm turns freely about that line: in a
+## wide stroke it went up over the top to the inner side, where it leans on the head, and nothing
+## brought it back (its own weight takes it further in toward the neck, and the drives, which ask
+## for an elbow down and out, push it the short way there, through the head; with every drive of
+## the arm off it stayed as it was). So an elbow higher than the shoulder and the hand allow is
+## turned about the line, always the one way round: up over the top to the arm's own outer side
+## and on down, the harder the further over it is. The hand stays where it is (it is on the line).
+## Not a hand raised (a high guard, a blow from overhead, a throw drawn back): there the elbow is
+## under the hand.
+const ELBOW_OVER := 0.06        # the elbow this far over the shoulder is level with it still (of S)
+const ELBOW_OVER_HAND := 0.04   # or this far over the hand, where that is the higher
+const ELBOW_SOFT := 0.03        # the push begins this far under that
+const ELBOW_LOW_K := 900.0
+static var elbow_low_on := true   # (probes: off, to see the arms as they were)
+func _keep_elbow_low(side: String, dt: float) -> void:
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	if not elbow_low_on or S >= 1.6 or fo.severed or fo.hanging or up.hanging or fo.fractured or up.fractured:
+		return
+	# Only while he has his body to himself, on his feet (as _keep_hand_front).
+	if torso.severed or not alive or limp or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or throwing[side] or (pinned_arm == side and is_instance_valid(grabbed_by)) or _beast_has_me():
+		return
+	var bt: Transform3D = torso.global_transform
+	var up_b: Vector3 = bt.basis.y.normalized()
+	var sh: Vector3 = bt * up.pa
+	var el: Vector3 = up.global_transform * fo.pa
+	var hd: Vector3 = hand_world(side)
+	var over := (el - sh).dot(up_b) - (maxf(ELBOW_OVER * S, (hd - sh).dot(up_b) + ELBOW_OVER_HAND * S) - ELBOW_SOFT * S)
+	if over <= 0.0:
+		return
+	var n: Vector3 = hd - sh
+	if n.length_squared() < 0.0025 * S * S:
+		return
+	n = n.normalized()
+	# The circle's top, and the way round from it: out to the arm's own side, forward where the
+	# line itself runs out that way.
+	var top: Vector3 = up_b - n * up_b.dot(n)
+	var r: Vector3 = (el - sh) - n * (el - sh).dot(n)
+	if top.length_squared() < 0.0225 or r.length_squared() < 0.0016 * S * S:
+		return
+	top = top.normalized()
+	var way: Vector3 = n.cross(top)
+	if way.dot(bt.basis * Vector3(-1.0 if side == "R" else 1.0, 0.0, 0.5)) < 0.0:
+		way = -way
+	var rh: Vector3 = r.normalized()
+	var t: Vector3 = (way * rh.dot(top) - top * rh.dot(way)).normalized()
+	var v_t := t.dot(up.velocity_at(el) - torso.velocity_at(el))
+	var m_eff: float = (up.nominal_mass + fo.nominal_mass) * 0.5
+	var acc: float = minf(over, 0.25 * S) * ELBOW_LOW_K - minf(0.0, v_t) * 2.0 * sqrt(ELBOW_LOW_K)
+	var j: Vector3 = t * acc * m_eff * dt
+	up.apply_impulse(j, el - up.global_position)
+	torso.apply_central_impulse(-j)   # (the arm turns against his own body, not against the air)
+
 ## Whether a beast has hold of him now: an ape's grip, a crocodile's jaws in its roll, a python's
 ## coils round him.
 func _beast_has_me() -> bool:
@@ -6195,14 +6325,28 @@ func _hand_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, elbo
 ## The elbow's direction from the shoulder (a direction in the body's frame): kept on its own
 ## side of the body (at most 0.22 S across the shoulder line) and at most 0.28 S above the
 ## shoulder (high enough for an overhead blow), the same for both arms, mirrored.
-func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion) -> Vector3:
+## `drop`: how far under the elbow the hand is to hang (m; a hand over its elbow, negative). An
+## elbow is up over its shoulder only under a hand that is up: with the hand to hang from it, it
+## is level with the shoulder at most (ELBOW_LEVEL), and what the two caps take goes forward, the
+## elbow out in front of the chest. (A blade aimed down across him from a hand held over at the
+## other side asked the forearm, in line with it, back up toward his own shoulder's side; kept
+## from crossing the chest, the elbow was sent up instead, to the height of the head in front of
+## his face, the forearm hanging down across it: user, an image.)
+const ELBOW_LEVEL := 0.02   # of S: how far over the shoulder an elbow goes with its hand under it
+func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion, drop := -INF) -> Vector3:
 	var flip := side == "L"
 	if flip:
 		e_local.x = -e_local.x
-	e_local = _limit_dir(e_local.normalized(), 0, 0.22 * S / lu)
+	var cx := 0.22 * S / lu
+	var cy := lerpf(0.28, ELBOW_LEVEL, smoothstep(-0.06 * S, 0.02 * S, drop if elbow_low_on else -INF)) * S / lu
+	e_local = _limit_dir(e_local.normalized(), 0, cx)
+	e_local = _limit_dir(e_local, 1, cy)
+	if e_local.x > cx + 1e-4:
+		# (Both caps: what is left of it is forward.)
+		e_local.x = cx
+		e_local.z = sqrt(maxf(0.0, 1.0 - cx * cx - e_local.y * e_local.y)) * (-1.0 if e_local.z < -0.05 else 1.0)
 	if flip:
 		e_local.x = -e_local.x
-	e_local = _limit_dir(e_local, 1, 0.28 * S / lu)
 	return (t_rot * e_local).normalized()
 
 ## A hand's mark (in the yaw frame, from the torso) moved out of the torso and the head to the
@@ -8309,9 +8453,24 @@ func hang(part: VoxelPart, res: Dictionary) -> void:
 		concussion = minf(1.0, concussion + 0.5)
 	part.angular_damp = 2.0
 
-## The off hand lets go of the two-handed haft: its arm is cut, hanging or broken. Still joined
-## to the hammer by the hand that was gone, the stump spun round and round after it (user video,
-## the forearm taken by the crocodile) and the main arm was dragged into a knot.
+## Whether the two arms are clear of each other now (each forearm of the other arm's two bones).
+func _arms_apart() -> bool:
+	if not arm.has("L") or not arm.has("R"):
+		return true
+	var seg := func(sd: String) -> Array:
+		var up: VoxelPart = arm[sd].upper
+		var fo: VoxelPart = arm[sd].fore
+		var el: Vector3 = up.global_transform * fo.pa
+		return [up.global_transform * up.ca, el, hand_world(sd)]
+	var l: Array = seg.call("L")
+	var r: Array = seg.call("R")
+	var room := 0.17 * S   # two arms' thickness, a little over
+	for pair in [[l[1], l[2], r[1], r[2]], [l[1], l[2], r[0], r[1]], [l[0], l[1], r[1], r[2]]]:
+		var pts := Geometry3D.get_closest_points_between_segments(pair[0], pair[1], pair[2], pair[3])
+		if (pts[0] as Vector3).distance_to(pts[1]) < room:
+			return false
+	return true
+
 ## The forearms pass each other (on) or knock against each other again (off): the off hand
 ## comes in beside the main fist on the haft, where the two would otherwise jam.
 func _forearms_pass(on: bool) -> void:
@@ -8325,6 +8484,9 @@ func _forearms_pass(on: bool) -> void:
 			else:
 				a.remove_collision_exception_with(b)
 
+## The off hand lets go of the two-handed haft: its arm is cut, hanging or broken. Still joined
+## to the hammer by the hand that was gone, the stump spun round and round after it (user video,
+## the forearm taken by the crocodile) and the main arm was dragged into a knot.
 func _off_hand_off_haft() -> void:
 	var o := two_off()
 	if weapon_joints[o]:

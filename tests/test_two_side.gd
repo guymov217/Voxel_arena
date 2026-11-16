@@ -184,3 +184,56 @@ func test_both_hands_are_drawn_on_the_grip() -> void:
 			t.check(off_body.distance_to(w.global_transform * w.grip_main) < 0.03, "%s %s: the weapon drawn where it is (%.3f)" % [side, preset, off_body.distance_to(w.global_transform * w.grip_main)])
 			m.queue_free()
 			await _steps(2)
+
+## An elbow never stands up over its shoulder with its hand hanging under it, the forearm down
+## across his face (user, an image: a haft in both hands held up at his own side, the other arm's
+## elbow by his head; the arms jammed there). Held at the marks where it stood, each come to from
+## the rest: as the bodies hold the arms, and as they are drawn; and neither arm is drawn lying
+## in the other.
+func test_an_elbow_never_stands_over_the_face() -> void:
+	for preset in ["longsword", "zweihander"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": preset, "off": ""}})
+		var f: Fighter = m.me.f
+		f.teleport(Vector3(5, 0, 0))
+		var pose := {"main": {"x": 0.1, "y": 0.15}, "power": false, "look": {"yaw": f.yaw, "pitch": 0.0}, "mx": 0.0, "mz": 0.0}
+		m.me.drive = func(_e): return pose
+		await _steps(150)
+		if not t.check(f.two_handed and f.two_side == "R", "%s: in both hands" % preset):
+			m.queue_free()
+			await _steps(2)
+			continue
+		for mark in [Vector2(1.5, 0.8), Vector2(-2.0, -0.4), Vector2(2.0, -0.8)]:
+			pose.main = {"x": 0.1, "y": 0.15}
+			await _steps(90)
+			pose.main = {"x": mark.x, "y": mark.y}
+			await _steps(170)
+			f.draw_now()
+			var up_b: Vector3 = f.torso.global_transform.basis.y.normalized()
+			var drawn := {}
+			for sd in ["R", "L"]:
+				var up: VoxelPart = f.arm[sd].upper
+				var fo: VoxelPart = f.arm[sd].fore
+				var sh: Vector3 = up.global_transform * up.ca
+				var el: Vector3 = up.global_transform * fo.pa
+				var hd: Vector3 = f.hand_world(sd)
+				var du := Transform3D(up.draw_turn.basis, up.draw_turn.origin + up.draw_shift) * up.global_transform
+				var df := Transform3D(fo.draw_turn.basis, fo.draw_turn.origin + fo.draw_shift) * fo.global_transform
+				var sh_d: Vector3 = du * up.ca
+				var el_d: Vector3 = df * fo.ca
+				var hd_d: Vector3 = df * f.hand_point
+				drawn[sd] = [sh_d, el_d, hd_d]
+				print("%s (%.1f, %.1f) %s: elbow %.2f over the shoulder and %.2f over the hand; drawn %.2f and %.2f" % [preset, mark.x, mark.y, sd, (el - sh).dot(up_b), (el - hd).dot(up_b), (el_d - sh_d).dot(up_b), (el_d - hd_d).dot(up_b)])
+				t.check(not ((el - sh).dot(up_b) > 0.1 * f.S and (el - hd).dot(up_b) > 0.08 * f.S), "%s (%.1f, %.1f): the %s elbow not up over its shoulder and hand (%.2f, %.2f)" % [preset, mark.x, mark.y, sd, (el - sh).dot(up_b), (el - hd).dot(up_b)])
+				t.check(not ((el_d - sh_d).dot(up_b) > 0.1 * f.S and (el_d - hd_d).dot(up_b) > 0.08 * f.S), "%s (%.1f, %.1f): nor drawn there (%.2f, %.2f)" % [preset, mark.x, mark.y, (el_d - sh_d).dot(up_b), (el_d - hd_d).dot(up_b)])
+			# The forearms as drawn, their wrists left out (two fists on one haft lie side by side).
+			var l: Array = drawn.L
+			var r: Array = drawn.R
+			var q := Geometry3D.get_closest_points_between_segments(l[1], (l[1] as Vector3).lerp(l[2], 0.72), r[1], (r[1] as Vector3).lerp(r[2], 0.72))
+			var gap: float = (q[0] as Vector3).distance_to(q[1])
+			print("%s (%.1f, %.1f): the forearms drawn %.3f apart" % [preset, mark.x, mark.y, gap])
+			t.check(gap > 0.035 * f.S, "%s (%.1f, %.1f): one forearm not drawn in the other (%.3f)" % [preset, mark.x, mark.y, gap])
+			t.check(f.two_handed, "%s (%.1f, %.1f): both hands still on it" % [preset, mark.x, mark.y])
+		m.queue_free()
+		await _steps(2)
