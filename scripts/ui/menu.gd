@@ -299,9 +299,13 @@ func look() -> Dictionary:
 		Save.set_value("look", out)
 	return out
 
-## A look piece not yet earned: the Unbroken laurel is the Ironman's (CampaignRun).
+## A look piece not yet earned: the Unbroken laurel is the Ironman's (CampaignRun), the freedman's
+## cap his who took the rudis ("freed": _grant_rudis).
 static func look_locked(id: String) -> bool:
-	return id == "hat_unbroken" and not CampaignRun.unbroken()
+	return (id == "hat_unbroken" and not CampaignRun.unbroken()) or (id == "hat_pileus" and not bool(Save.get_value("freed", false)))
+## How a piece not yet earned is shown in the picker: its note and what earns it.
+const LOOK_LOCKS := {"hat_unbroken": ["%s  (Ironman)", "Won by taking the rudis on Ironman, never once fallen"],
+	"hat_pileus": ["%s  (the rudis)", "Won with the rudis: the whole campaign won"]}
 
 ## What the room is told about us: the arms, plus the look (other players see your hat).
 func _net_loadout() -> void:
@@ -3017,14 +3021,14 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 			show_screen("circus", Loc.t("You fell on day %s. %s") % [ROMAN[clampi(int(run.day), 0, 6)], last_result.text])
 
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
-## used and what it costs; tabs for the things thrown, the things laid down and the supplies.
-const MARKET_TABS := [["throw", "Throwables"], ["place", "Traps & bowls"]]   # the supplies are the physician's
+## used and what it costs; tabs by what a ware does (Market). A ware the trader has not brought
+## yet lies on his table all the same, with the bout whose boss brings it.
 const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Its number takes it in hand; hold F to aim, let go to throw"}
-const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery"]
-var market_tab := "throw"
+const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery", "torch"]
+var market_tab := "fire"
 
 static func kit_use(id: String) -> String:
-	return "self" if ["bandage", "bread", "wine"].has(id) else ("place" if ["bananas", "cheese"].has(id) else "throw")
+	return "self" if ["bandage", "bread", "wine", "waterSkin"].has(id) else ("place" if ["bananas", "cheese"].has(id) else "throw")
 
 func _market(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
@@ -3036,8 +3040,12 @@ func _market(v: VBoxContainer) -> void:
 			bag.append("%s ×%d" % [Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))), int(k[id])])
 	v.add_child(UIStyle.label(Loc.t("You have %d denarii · %s") % [coins(), (Loc.t("In your bag: %s") % ", ".join(bag)) if not bag.is_empty() else Loc.t("Your bag is empty")], 15, UIStyle.BRONZE))
 	v.add_child(UIStyle.label("Everything here comes with you into every fight: keys 1 to 9 use it.", 13, UIStyle.MUTED))
+	var at := _market_at()
+	var open := Market.opened(Net.active(), at.x, at.y)
+	if Market.wares(market_tab).is_empty():
+		market_tab = Market.TABS[0][0]
 	var tabs: Array = []
-	for t in MARKET_TABS:
+	for t in Market.TABS:
 		var tab_id: String = t[0]
 		var tb := UIStyle.button(t[1], func():
 			market_tab = tab_id
@@ -3054,14 +3062,28 @@ func _market(v: VBoxContainer) -> void:
 	grid.add_theme_constant_override("v_separation", 12)
 	scroll.add_child(grid)
 	var table: Dictionary = Data.shop.get("throwables", {})
-	for id in table:
-		if kit_use(id) != market_tab:
+	for id in Market.wares(market_tab):
+		if not table.has(id):
 			continue
-		grid.add_child(_market_card(id, table[id], int(k.get(id, 0))))
+		var after := 0 if Market.is_open(id, open) else Market.comes_after(id)
+		grid.add_child(_market_card(id, table[id], int(k.get(id, 0)), "market", after, Market.price(id, int(table[id].price), at.x)))
 	if not in_yard():
 		_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
 
-func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Control:
+## The bout the campaign is on and its time round, for the trader's table: alone his own; in a
+## party the party's (a guest is told the host's with the gate's fights: YardPlay.gate_info).
+func _market_at() -> Vector2i:
+	var coop := Net.active()
+	if coop and not Net.is_host():
+		var yard: YardPlay = match_.yard if match_ and is_instance_valid(match_) else null
+		var gi: Dictionary = yard.gate_info if yard else {}
+		if not gi.is_empty():
+			return Vector2i(int(gi.s), int(gi.l))
+	return Vector2i(int(Save.get_value("coop_stage" if coop else "stage", 1)), int(Save.get_value("coop_lap" if coop else "lap", 1)))
+
+## A ware on its card. `after`: not brought yet, the bout whose boss brings it; `cost`: its price
+## now (the list's if -1).
+func _market_card(id: String, it: Dictionary, have: int, back := "market", after := 0, cost := -1) -> Control:
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(286, 0)
 	var st := StyleBoxFlat.new()
@@ -3105,7 +3127,13 @@ func _market_card(id: String, it: Dictionary, have: int, back := "market") -> Co
 	col.add_child(UIStyle.label(MARKET_USE[kit_use(id)], 11, UIStyle.BRONZE))
 	if FRIENDLY_FIRE.has(id):
 		col.add_child(UIStyle.label("Hurts friends too", 11, Color(0.95, 0.55, 0.4)))
-	var price := int(it.price)
+	if after > 0:
+		card.modulate = Color(1, 1, 1, 0.55)
+		var later := UIStyle.button(Loc.t("After the boss of bout %d") % after, func(): pass)
+		later.disabled = true
+		col.add_child(later)
+		return card
+	var price := int(it.price) if cost < 0 else cost
 	var room := Throwables.bag_has_room(kit(), id)
 	var b := UIStyle.button(Loc.t("Buy · %d denarii") % price if room else (Loc.t("Bag full (%d)") % Throwables.stack_max(id) if have > 0 else Loc.t("Bag full (%d kinds)") % Throwables.BAG_KINDS), func():
 		var k2 := kit()
@@ -4468,10 +4496,11 @@ func _gladiator(v: VBoxContainer) -> void:
 		for id in LOOK_SLOTS[k]:
 			var first := "Plain" if k == "eyes" or k == "mouth" or k == "face" else ("Natural" if k.ends_with("_colour") else ("Broad nose" if k == "nose" else "None"))
 			var item_nm := Loc.t(first) if id == "" else Loc.t(String(Physique.FACES.get(id, Data.armor.get(id, {}).get("name", id))))
-			ob.add_item(Loc.t("%s  (Ironman)") % item_nm if look_locked(id) else item_nm)
+			var lock_note: Array = LOOK_LOCKS.get(id, LOOK_LOCKS.hat_unbroken)
+			ob.add_item(Loc.t(String(lock_note[0])) % item_nm if look_locked(id) else item_nm)
 			if look_locked(id):
 				ob.set_item_disabled(ob.item_count - 1, true)
-				ob.set_item_tooltip(ob.item_count - 1, "Won by taking the rudis on Ironman, never once fallen")
+				ob.set_item_tooltip(ob.item_count - 1, String(lock_note[1]))
 		ob.fit_to_longest_item = false
 		ob.clip_text = true
 		ob.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -4697,6 +4726,13 @@ func _on_finished(r: Dictionary) -> void:
 		if r.get("coop", false) and r.get("party") is Dictionary:
 			Save.set_value("coop_scroll", PartyGlory.add_bout(_party_scroll(), r.party, String(r.get("favourite", ""))))
 			Save.set_value("coop_favourite", String(r.get("favourite", "")))
+		elif not r.get("coop", false):
+			# Alone: the bout on his run's scroll (RunScroll), won or a fall.
+			var mine := {}
+			if r.get("party") is Dictionary:
+				for row in (r.party as Dictionary).values():
+					mine = row
+			Save.set_value("run_scroll", RunScroll.add_bout(_run_scroll(), mine, bool(r.won)))
 		if r.won:
 			add_coins(int(r.pay))
 			GateChoice.mark_won(int(r.get("bout", r.stage)), bool(r.get("coop", false)))
@@ -4714,6 +4750,12 @@ func _on_finished(r: Dictionary) -> void:
 			last_result = {"text": Loc.t("Stage %d cleared: %d denarii.") % [r.stage, r.pay]}
 			if r.get("fell", false):
 				last_result.text += " " + Loc.t(CARRIED_OFF)
+			# A boss beaten: the trader brings one more ware (Market).
+			var mk_coop := bool(r.get("coop", false))
+			var mk_had := Market.saved(mk_coop)
+			var mk_has := Market.opened(mk_coop, int(r.stage) + 1, int(Save.get_value("coop_lap" if mk_coop else "lap", 1)))
+			if mk_has > mk_had:
+				last_result.text += " " + Loc.t("The trader brings a new ware: %s.") % Loc.t(String(Data.shop.get("throwables", {}).get(Market.AFTER_BOSS[mk_has - 1], {}).get("name", "")))
 			if int(r.stage) >= Data.campaign.get("stages", []).size():
 				# The last bout won: the rudis. The campaign begins again, the same man and his
 				# gear, the foes a third tougher each time round (lap).
@@ -4741,6 +4783,14 @@ func _on_finished(r: Dictionary) -> void:
 				if Net.active():
 					Net.send_all("campaign_end", {})
 				rudis_end = {}
+				if not bool(r.get("coop", false)):
+					run_shown = _run_scroll()   # (his run's scroll, read out under the rudis)
+					Save.set_value("run_scroll", {})
+					# The scene in the arena first (EndingScene: the Emperor rises, the rudis in his
+					# hand), then the rudis screen.
+					if match_ and is_instance_valid(match_) and not match_.headless and not Net.active():
+						var scene := EndingScene.play(match_, hud)
+						await scene.done
 				_end_match()
 				show_screen("campaign_end")
 				return
@@ -4756,6 +4806,12 @@ func _on_finished(r: Dictionary) -> void:
 			last_result = {"text": (Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back) if fell_back > 0 else "You fell. The campaign is over; a new one begins at bout 1."}
 			if r.get("coop", false) and fell_back <= 0 and Net.active():
 				_scroll_open("lost")   # (the run is over: its scroll unrolled for the party)
+			elif not r.get("coop", false) and fell_back <= 0:
+				# Alone, the run is over: his scroll unrolled, a new one begun.
+				run_shown = _run_scroll()
+				Save.set_value("run_scroll", {})
+				scroll_shown = {}
+				scroll_due = true
 		if r.won and not (fitted.moved as Array).is_empty():
 			last_result = {"text": (String(last_result.get("text", "")) + " " + ". ".join(fitted.moved) + ".").strip_edges()}
 	_end_match()
@@ -4986,6 +5042,28 @@ var rudis_kills := 0       # (the host's: the Hall of Fame's entry)
 var rudis_stage := 0
 var rudis_end := {}        # how the one rudis went: {"winner": name} or {"shared": [names]}
 
+## A lone man's run's scroll as the save keeps it (RunScroll), and the one read out at its end.
+static func _run_scroll() -> Dictionary:
+	var v = Save.get_value("run_scroll", {})
+	return v if v is Dictionary else {}
+var run_shown := {}
+
+## His run's scroll read out: what he did, and the weapon that killed the most.
+func _run_scroll_rows(v: VBoxContainer, scroll: Dictionary) -> void:
+	var g := GridContainer.new()
+	g.columns = RunScroll.ROWS.size()
+	g.add_theme_constant_override("h_separation", 26)
+	for kt in RunScroll.ROWS:
+		var l := UIStyle.label(String(kt[1]), 13, UIStyle.MUTED)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		g.add_child(l)
+	for kt in RunScroll.ROWS:
+		g.add_child(UIStyle.label(str(int(scroll.get(kt[0], 0))), 22, UIStyle.TEXT))
+	v.add_child(g)
+	var bw := RunScroll.best_weapon(scroll)
+	if not bw.is_empty():
+		v.add_child(UIStyle.label(Loc.t("The weapon that killed the most: %s (%d)") % [Loc.t(String(bw[0])), int(bw[1])], 17, UIStyle.GOLD))
+
 ## The run's scroll as the host's save keeps it.
 static func _party_scroll() -> Dictionary:
 	var v = Save.get_value("coop_scroll", {})
@@ -5005,6 +5083,11 @@ func _scroll_open(why: String) -> void:
 func _scroll(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 10)
 	v.add_child(UIStyle.title("THE SCROLL OF THE GAMES", 36))
+	if not Net.active() and scroll_shown.is_empty():
+		v.add_child(UIStyle.label("The run is over. The scribe reads out what you did in it.", 15, UIStyle.MUTED))
+		_run_scroll_rows(v, run_shown)
+		v.add_child(UIStyle.button("Back to the yard", func(): enter_yard(""), true))
+		return
 	v.add_child(UIStyle.label("The run is over. The scribe reads out what each of you did in it.", 15, UIStyle.MUTED))
 	_scroll_rows(v)
 	if Net.active() and not Net.is_host():
@@ -5143,6 +5226,13 @@ func _campaign_end(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.label(Loc.t("The Emperor rises. The crowd is on its feet. The wooden sword is put in your hand: %d bouts, every beast and monster of the ladder, and you are free.") % Data.campaign.get("stages", []).size(), 17, UIStyle.TEXT))
 	if not rudis_end.has("winner") or String(rudis_end.winner) == String(Save.get_value("name", "")):
 		v.add_child(UIStyle.label("Your name is in the Hall of Fame.", 15, UIStyle.GOLD))
+		_grant_rudis()
+		var gift := UIStyle.label("The Emperor's gilded rudis hangs on the smith's rack, yours to fight with, and the freedman's cap is yours to wear (Your gladiator: Hat).", 15, UIStyle.GOLD)
+		gift.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(gift)
+	if not Net.active() and not run_shown.is_empty():
+		v.add_child(UIStyle.label("THE SCROLL OF THE GAMES", 20, UIStyle.BRONZE))
+		_run_scroll_rows(v, run_shown)
 	if bool(Save.get_value("unbroken_news", false)):
 		Save.set_value("unbroken_news", false)
 		var un := UIStyle.label("UNBROKEN. One life, and you never fell. The Emperor sets a laurel of gold on your head (Your gladiator: Hat), and Doctore will teach you Virtus, which no death can take.", 16, UIStyle.GOLD)
@@ -5150,6 +5240,22 @@ func _campaign_end(v: VBoxContainer) -> void:
 		v.add_child(un)
 	v.add_child(UIStyle.label(Loc.t("But the arena calls. Campaign %s waits in the yard: your gladiator, his arms and his purse as they are; the foes a third tougher, the beasts bigger.") % str(lap), 15, UIStyle.MUTED))
 	v.add_child(UIStyle.button("Back to the ludus", func(): show_screen("main" if not Net.active() else "room"), true))
+
+## The rudis won (alone, the brawl for it won, or the glory shared): the Emperor's gilded wooden
+## sword hung on the smith's rack for him, once, and the freedman's cap his to wear (user: a real
+## reward at the campaign's end).
+func _grant_rudis() -> void:
+	Save.set_value("freed", true)
+	var a := arms()
+	var held := [a.get("main"), a.get("off")] + (a.get("rack", []) as Array)
+	if held.any(func(d): return d is Dictionary and String(d.get("name", "")) == "Rudis"):
+		return
+	var rack: Array = a.get("rack", [])
+	rack.append(Data.preset("rudis").duplicate(true))
+	while rack.size() > Arms.RACK_MAX:
+		rack.pop_front()
+	a["rack"] = rack
+	set_arms(a)
 
 func _demo_end(v: VBoxContainer) -> void:
 	v.add_theme_constant_override("separation", 12)
@@ -5180,6 +5286,7 @@ func _screenshot() -> String:
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
+	Save.set_value("run_scroll", {})
 	GateChoice.clear(false)
 	Save.set_value("oddities_sold", {})
 	Save.set_value("coins", START_COINS)

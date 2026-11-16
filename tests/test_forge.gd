@@ -214,10 +214,39 @@ func test_no_block_hangs_in_the_air() -> void:
 	t.eq(ForgeLib.pieces(f.cells).size(), 1, "one piece")
 	f.queue_free()
 
+## The four tricks are set aside for now (user): not a block on the anvil, not a twist dealt, not in
+## the random stock; the weapons already made with them keep them, and they are still materials.
+func test_the_trick_blocks_are_set_aside_for_now() -> void:
+	var forge = load("res://scripts/ui/forge.gd")
+	t.eq(ForgeLib.SET_ASIDE.size(), 4, "four tricks set aside")
+	var bad := []
+	for m in ForgeLib.SET_ASIDE:
+		if forge.MATS.has(m):
+			bad.append("%s on the anvil" % m)
+		if forge.MAT_GROUPS.any(func(g): return (g[1] as Array).has(m)):
+			bad.append("%s in a row of swatches" % m)
+		if ForgeLib.SIMPLE_MATERIALS.has(m) or ForgeLib.WILD.has(m):
+			bad.append("%s in the random stock" % m)
+		if not Data.materials.has(m):
+			bad.append("%s no longer a material" % m)
+	var rng := RandomNumberGenerator.new()
+	for seed in 40:
+		rng.seed = seed
+		for base in ForgeLib.BASES.keys():
+			for k in ForgeLib.deal_modifiers(base, rng):
+				if ForgeLib.SET_ASIDE.has(k):
+					bad.append("%s dealt on %s" % [k, base])
+	t.check(bad.is_empty(), "the tricks are out of the forge %s" % [bad.slice(0, 6)])
+	t.check(forge.MAT_GROUPS.size() == 3, "three rows of swatches: metals, wood bone stone, gems")
+	# A weapon made with one still holds it: the smith's Magnetic Personality.
+	var magnet := Data.preset("magnet")
+	t.check(magnet.voxels.any(func(v): return String(v[3]) == "magnet"), "a weapon made with a trick keeps it")
+
 ## A blank anvil: one block of grip, and a weapon built up from it block by block; at the smith
 ## every block put on is paid for. The stock is the short list, each stuff for its own job.
 func test_a_weapon_from_a_blank_anvil() -> void:
-	t.check(not ForgeLib.SIMPLE_MATERIALS.has("fish") and not load("res://scripts/ui/forge.gd").MATS.has("bronze"), "the stock is the short list")
+	t.check(not ForgeLib.SIMPLE_MATERIALS.has("fish") and not load("res://scripts/ui/forge.gd").MATS.has("fish"), "the stock is the short list")
+	t.check(load("res://scripts/ui/forge.gd").MATS.has("bronze") and load("res://scripts/ui/forge.gd").MATS.has("bone"), "bronze and bone on the anvil (user)")
 	t.check(load("res://scripts/ui/forge.gd").MATS.has("ruby") and load("res://scripts/ui/forge.gd").MATS.has("lead"), "gems and lead kept")
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -898,3 +927,19 @@ func test_a_weapon_tried_in_the_arena_brings_its_score_back() -> void:
 	menu.queue_free()
 	get_tree().paused = false
 	await get_tree().process_frame
+
+## The durability bar beside the four (user: how long a weapon lasts): the harder its stuff the
+## longer, a brittle one shatters, a tiny one has little to lose before it is spent.
+func test_the_durability_bar_follows_what_it_is_made_of() -> void:
+	var dur := func(d: Dictionary) -> float: return ForgeLib.durability_bar(d)
+	var made := func(stuff: String) -> Dictionary:
+		var d := Data.preset("gladius").duplicate(true)
+		d.voxels = (d.voxels as Array).map(func(v): return [v[0], v[1], v[2], stuff if String(v[4]) != "grip" else v[3], v[4]])
+		return d
+	t.check(dur.call(made.call("steel")) > dur.call(made.call("bronze")) and dur.call(made.call("bronze")) > dur.call(made.call("bone")) and dur.call(made.call("bone")) > dur.call(made.call("wood")), "steel outlasts bronze, bronze bone, bone wood")
+	t.check(dur.call(made.call("ice")) < dur.call(made.call("iron")) * 0.5, "ice, hard as it is, shatters")
+	t.check(dur.call(Data.preset("longsword")) > dur.call(Data.preset("spear")) and dur.call(Data.preset("spear")) > dur.call(Data.preset("fish")), "a steel sword outlasts a spear on a wooden haft, and that a fish")
+	t.check(dur.call(Data.preset("longsword")) > dur.call(Data.preset("dagger")), "a little dagger has less to lose than a sword of the same steel")
+	for k in Data.presets:
+		var b: float = dur.call(Data.preset(k))
+		t.check(b >= 0.0 and b <= 1.0, "%s on the bar's scale (%.2f)" % [k, b])

@@ -1762,10 +1762,12 @@ func guest_message(type: String, data) -> void:
 			fh.held_item = null
 			var th := str(data.get("t", ""))
 			var sh := str(data.get("s", ""))
-			if (sh == "R" or sh == "L") and (Throwables.POTS.values().has(th) or th == "pot_dart" or th == "boomerang"):
+			if (sh == "R" or sh == "L") and (Throwables.POTS.values().has(th) or Throwables.HELD.values().has(th)):
 				var node := Items.visual(th)
 				fh.arm[sh].fore.add_child(node)
 				node.position = fh.hand_point
+				if th == "torch":
+					throwables.light_torch(node)
 				fh.held_item = {"type": th, "id": "", "node": node, "side": sh}
 		"wloose":
 			var e = entity_by_id(int(data.get("id", -1))) if data is Dictionary else null
@@ -1825,6 +1827,16 @@ func guest_message(type: String, data) -> void:
 					if data.get("m") is Array and (data.m as Array).size() == 3:
 						mk = Vector3(float(data.m[0]), float(data.m[1]), float(data.m[2]))
 					stream(eb.f, "venom" if data.get("kind") == "venom" else "fire", mk, clampf(float(data.get("r", 6.0)), 1.0, 30.0), 0.9)
+		"douse":
+			# The host's man poured a water skin over himself: his fire and acid out here too.
+			if data is Dictionary:
+				var ed = entity_by_id(int(data.get("id", -1)))
+				if ed and is_instance_valid(ed.f):
+					throwables.douse(ed.f)
+		"zone_off":
+			# Oil lit on the host: gone here too (its fire comes as a zone of its own).
+			if data is Dictionary and Throwables.ZONE_COLORS.has(str(data.get("type"))) and data.get("p") is Array and (data.p as Array).size() == 3:
+				throwables.zone_off(str(data.type), Vector3(float(data.p[0]), float(data.p[1]), float(data.p[2])))
 		"spot":
 			if data is Dictionary:
 				var e = entity_by_id(int(data.get("id", -1)))
@@ -1865,6 +1877,8 @@ func guest_message(type: String, data) -> void:
 					"nails":
 						var nd := Vector3(data.d[0], data.d[1], data.d[2]).limit_length(1.0) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.ZERO
 						throwables.nail_burst(fp, nd, int(data.get("n", 0)), null, true)
+					"torch":
+						throwables.lay_torch(fp, Net.num(data.get("y")))
 					"boing":
 						sfx("boing", fp, 0.8)
 					"stomp":
@@ -2300,10 +2314,11 @@ func _may_spare(f: Fighter, _cause: String) -> bool:
 		return false
 	return humans().any(func(x): return x.f != f and x.f is Fighter and x.f.alive and x.f.dying <= 0.0 and not x.f.is_beaten())
 
-## A man of the party's tally (PartyGlory): `k` (kills, lifts, limbs) by `n`. The host's (or a lone
-## game's) count, in the co-op campaign; anyone else (a foe, a beast) is not counted.
+## A man of the party's tally (PartyGlory; alone, his run's scroll: RunScroll): `k` (kills, lifts,
+## limbs lost, cut: limbs he cut off, RunScroll.WEAPON and a weapon's name: its kills) by `n`. The
+## host's (or a lone game's) count, in the campaign; anyone else (a foe, a beast) is not counted.
 func _tally(f, k: String, n := 1) -> void:
-	if not coop or role == "guest" or f == null or not is_instance_valid(f):
+	if not (coop or mode == "campaign") or role == "guest" or f == null or not is_instance_valid(f):
 		return
 	var e = entity_of(f)
 	if e == null or not (e.kind == "local" or e.kind == "remote"):
@@ -2463,8 +2478,9 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	_banner(text, sub)
 	var wear := my_wear()
 	var result := {"won": won, "stage": stage, "bout": int(stage_info.get("bout", stage)), "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
-	if coop and role != "guest":
+	if (coop or mode == "campaign") and role != "guest":
 		result["party"] = party_tallies()
+	if coop and role != "guest":
 		result["favourite"] = favourite_now if won else ""
 	if modes and modes.last_winner != null and is_instance_valid(modes.last_winner):
 		result["winner"] = String(modes.last_winner.display_name)   # (the one rudis fought for: PartyGlory)
@@ -2644,9 +2660,13 @@ func _on_hit(h: Dictionary) -> void:
 		_materials(h)
 	if h.res.get("severed", []).size() > 0:
 		_tally(h.char, "limbs", (h.res.severed as Array).size())
+		if h.attacker:
+			_tally(h.attacker, "cut", (h.res.severed as Array).size())
 	if h.killed and h.attacker:
 		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
 		_tally(h.attacker, "kills")
+		if h.get("weapon") and is_instance_valid(h.weapon) and String(h.weapon.design.get("name", "")) != "":
+			_tally(h.attacker, RunScroll.WEAPON + String(h.weapon.design.name).left(40))
 		feed.emit(Loc.t("%s kills %s") % [h.attacker.display_name, h.char.display_name])
 	elif h.get("rend", false):
 		feed.emit(Loc.t("%s TEARS %s APART!") % [h.attacker.display_name, h.char.display_name])

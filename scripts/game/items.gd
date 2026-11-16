@@ -10,8 +10,8 @@ const TYPES := {
 	"bread": {"size": 0.16}, "wine": {"size": 0.18}, "tomato": {"size": 0.1}, "banana": {"size": 0.12}, "coin": {"size": 0.06},
 	"rock": {"size": 0.12, "projectile": true}, "net": {"size": 0.3, "projectile": true},
 	"pot_thunder": {"size": 0.16, "projectile": true, "pot": 0x6a4a8a}, "pot_nail": {"size": 0.16, "projectile": true, "pot": 0x5b5f66},
-	"pot_fireball": {"size": 0.15, "projectile": true, "pot": 0xd0481a}, "gauntlet": {"size": 0.2},
-	"pot_sand": {"size": 0.16, "projectile": true, "pot": 0xd8c08a}, "pot_fire": {"size": 0.16, "projectile": true, "pot": 0xff7a1a},
+	"torch": {"size": 0.12, "projectile": true}, "gauntlet": {"size": 0.2}, "waterskin": {"size": 0.16},
+	"pot_fire": {"size": 0.16, "projectile": true, "pot": 0xff7a1a},
 	"pot_acid": {"size": 0.16, "projectile": true, "pot": 0x8fd43a}, "pot_bees": {"size": 0.18, "projectile": true, "pot": 0xe8b830},
 	"pot_caltrops": {"size": 0.14, "projectile": true, "pot": 0x444444}, "pot_goat": {"size": 0.2, "projectile": true, "pot": 0x8b5a2b},
 	"pot_bola": {"size": 0.14, "projectile": true}, "pot_oil": {"size": 0.18, "projectile": true, "pot": 0x6b7a2a},
@@ -82,6 +82,22 @@ static func _box(g: Node3D, w: float, h: float, d: float, color: int, x := 0.0, 
 	mi.position = Vector3(x, y, z)
 	g.add_child(mi)
 
+## A box of flame: lit from within, not by the sun.
+static func _flame(g: Node3D, w: float, h: float, d: float, color: Color, x := 0.0, y := 0.0, z := 0.0) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(w, h, d)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	bm.material = mat
+	mi.mesh = bm
+	mi.position = Vector3(x, y, z)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.set_meta("flame", Vector3(x, y, z))   # (where it stands on the model, and how tall: it flickers)
+	mi.set_meta("flame_h", h)
+	g.add_child(mi)
+
 ## What an item looks like (items.js makeItemVisual), nose along +z for darts.
 static func visual(type: String) -> Node3D:
 	var g := Node3D.new()
@@ -102,9 +118,22 @@ static func visual(type: String) -> Node3D:
 			var s := 0.6 if type == "net" else 0.9
 			for i in 5:
 				_box(g, s, 0.01, 0.01, 0x8a6a3a, 0, 0, -s / 2 + i * s / 4); _box(g, 0.01, 0.01, s, 0x8a6a3a, -s / 2 + i * s / 4, 0, 0)
-		"pot_fireball":
-			# A clay sphere, cracked, the fire showing through.
-			_box(g, 0.15, 0.15, 0.15, 0x3a2418); _box(g, 0.16, 0.05, 0.05, 0xff8a1a, 0, 0.03, 0); _box(g, 0.05, 0.16, 0.05, 0xffb03a, 0.02, 0, 0.02); _box(g, 0.05, 0.05, 0.16, 0xff6a10, -0.02, -0.02, 0)
+		"torch":
+			# Burning pitch on a stick: the wooden haft, the pitch-soaked rag wound round its head,
+			# and the flame standing up out of it.
+			_box(g, 0.035, 0.44, 0.035, 0x6b4426, 0, 0.13, 0)
+			_box(g, 0.075, 0.1, 0.075, 0x2e2218, 0, 0.36, 0)
+			_box(g, 0.06, 0.02, 0.085, 0x4a3524, 0, 0.33, 0)
+			_flame(g, 0.085, 0.13, 0.085, Color(1.0, 0.45, 0.08), 0, 0.46, 0)
+			_flame(g, 0.055, 0.11, 0.055, Color(1.0, 0.75, 0.2), 0.005, 0.53, 0)
+			_flame(g, 0.03, 0.07, 0.03, Color(1.0, 0.93, 0.6), 0, 0.59, 0)
+		"waterskin":
+			# A goatskin of water: the bulging bag, its tied neck and the strap.
+			_box(g, 0.16, 0.2, 0.1, 0x7a5232, 0, -0.02, 0)
+			_box(g, 0.12, 0.06, 0.12, 0x7a5232, 0, -0.1, 0)
+			_box(g, 0.05, 0.07, 0.05, 0x5a3a22, 0, 0.11, 0)
+			_box(g, 0.06, 0.015, 0.06, 0x3a2a1a, 0, 0.13, 0)
+			_box(g, 0.2, 0.02, 0.02, 0x3a2a1a, 0, 0.06, 0.05)
 		"gauntlet":
 			# A bronze hand, open: the palm, four fingers and a thumb.
 			_box(g, 0.12, 0.03, 0.12, 0xa5702b); _box(g, 0.12, 0.04, 0.06, 0x7a5220, 0, 0, -0.08)

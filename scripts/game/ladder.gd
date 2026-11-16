@@ -81,14 +81,16 @@ const BOUTS := [
 	{"foes": [{"beast": "tiger"}, {"beast": "tiger"}], "late": [{"beast": "bear"}], "title": "Stripes and Claws"},
 	{"foes": [{"e": "hoplite"}, {"e": "hoplite"}], "late": [{"e": "shieldbearer"}], "title": "The Shield Wall"},
 	{"foes": [{"beast": "manticore", "boss": true, "title": "The Manticore"}]},
-	# ---- The last (57-64): three kinds at once, the Emperor himself, the Dragon at the end.
+	# ---- The last (57-64): three kinds at once, the Emperor's own champion in his gold, the
+	# Dragon at the end. (Not the Emperor himself: he watches from his box, gives the thumb and
+	# frees the one who wins the last bout.)
 	{"foes": [{"beast": "crocodile"}], "late": [{"beast": "scorpion"}, {"beast": "scorpion"}], "title": "Scales and Stings"},
 	{"foes": [{"e": "executioner"}, {"e": "executioner"}], "late": [{"e": "brute"}, {"e": "brute"}], "title": "The Butchers"},
 	{"foes": [{"e": "murmillo"}, {"e": "hoplite"}, {"e": "sagittarius"}], "late": [{"e": "praetorian"}], "title": "The Legion"},
 	{"foes": [{"beast": "hydra", "boss": true, "title": "The Hydra"}]},
 	{"foes": [{"beast": "bear"}, {"beast": "tiger"}], "late": [{"beast": "rhino"}], "title": "The Menagerie"},
 	{"foes": [{"beast": "spider"}, {"beast": "scorpion"}], "late": [{"beast": "python"}], "title": "Venom"},
-	{"foes": [{"e": "emperor", "name": "The Emperor", "title": "The Emperor"}], "late": [{"e": "praetorian"}, {"e": "praetorian"}]},
+	{"foes": [{"e": "emperor", "name": "The Emperor's Champion", "title": "The Emperor's Champion"}], "late": [{"e": "praetorian"}, {"e": "praetorian"}]},
 	{"foes": [{"beast": "dragon", "boss": true, "title": "The Dragon"}]},
 ]
 

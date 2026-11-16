@@ -633,6 +633,30 @@ static func three_bars(st: Dictionary) -> Dictionary:
 		"armour": vs_armour(st),
 	}
 
+## How well a weapon stands its blows, 0 to 1, by the rules a fight wears it down by (Weapon):
+## each block wears away the slower the harder its stuff (Weapon.wear_limit) and chips the less
+## (Weapon.chip_score), a brittle one (ice) shatters; the more blocks, the more it can lose before
+## it is spent; and a weapon made to last (Weapon.DURABILITY: the warhammer) lasts. Counted over
+## what strikes and parries, not the grip the hands keep.
+static func durability_bar(d: Dictionary) -> float:
+	var vox: Array = (d.get("voxels", []) as Array).duplicate()
+	if d.get("chain") is Dictionary and (d.chain as Dictionary).get("head") is Dictionary:
+		vox += (d.chain.head as Dictionary).get("voxels", [])
+	var strike := vox.filter(func(v): return String(v[4]) != "grip")
+	if strike.is_empty():
+		strike = vox
+	if strike.is_empty():
+		return 0.0
+	var tough := 0.0
+	for v in strike:
+		var md: Dictionary = Data.material(String(v[3]))
+		var h := float(md.get("hardness", 0.5))
+		tough += (0.5 + h) / 1.5 * (h + 0.15) / 1.15 / (1.0 + float(md.get("brittle", 0.0)))
+	tough /= strike.size()
+	var size := clampf(0.7 + 0.3 * vox.size() / 60.0, 0.7, 1.15)
+	var made := maxf(0.2, float(d.get("durability", Weapon.DURABILITY.get(Combat._preset_key(d), 1.0))))
+	return clampf(tough * size * made / 1.15, 0.0, 1.0)
+
 ## What the weapon still does through an iron plate, on the damage bar's scale, by the rule a
 ## fight uses (Fighter.armour_pass): a plate stops an edge and a point, so what gets through is
 ## the blow's weight, all of a crushing head's, a blade's in part (the heavier, the more).
@@ -699,7 +723,12 @@ const SIMPLE_SHAPES := {
 	"shield": {"label": "Shield", "blade": [8, 14], "width": [4, 8]},
 	"bow": {"label": "Bow", "blade": [7, 14], "width": [1, 2]},
 }
-const SIMPLE_MATERIALS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet"]
+## The four tricks set aside for now (user: take them out of the forge): the explosive, spring, glue
+## and magnet blocks are not on the anvil, not dealt as twists, not in the random stock. Weapons
+## already made with them (the smith's bases, a save) keep them and fight as before; taking this
+## list empty puts them all back.
+const SET_ASIDE := ["explosive", "spring", "glue", "magnet"]
+const SIMPLE_MATERIALS := ["steel", "iron", "wood", "stone", "lead", "gold"]
 const DEFAULT_SIMPLE := {"shape": "sword", "blade": 20, "width": 2, "handle": 5, "mat": "steel", "handleMat": "wood", "pommel": 1, "spikes": false, "twoHanded": false, "throwable": false, "sharp": 0.8}
 
 static func simple_weapon(o: Dictionary) -> Dictionary:
@@ -869,7 +898,7 @@ const MODIFIERS := {
 	"tower": {"label": "Tower", "blurb": "A door. A very safe door.", "word": "Tower", "fits": ["shield"], "blade": 4, "width": 2},
 }
 const MAX_PICKS := 2
-const WILD := ["explosive", "spring", "glue", "magnet", "gold", "lead"]
+const WILD := ["gold", "lead"]
 
 static func mod_fits(key: String, base: String) -> bool:
 	var f = MODIFIERS[key].fits
@@ -898,7 +927,7 @@ static func apply_mod(key: String, p: Dictionary) -> Dictionary:
 
 ## `n` cards that fit the base: mostly sensible ones, then a wild one.
 static func deal_modifiers(base: String, rng: RandomNumberGenerator, n := 5) -> Array:
-	var fit: Array = MODIFIERS.keys().filter(func(k): return mod_fits(k, base))
+	var fit: Array = MODIFIERS.keys().filter(func(k): return mod_fits(k, base) and not SET_ASIDE.has(k))
 	var sane: Array = fit.filter(func(k): return not WILD.has(k))
 	var odd: Array = fit.filter(func(k): return WILD.has(k))
 	var draw := func(pool: Array, k: int) -> Array:

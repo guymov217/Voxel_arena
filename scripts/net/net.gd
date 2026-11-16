@@ -439,13 +439,14 @@ const OFF_GRID := -9999.0   # (what a coordinate that is not a number reads as: 
 static func num(v, def := 0.0) -> float:
 	return float(v) if (v is int or v is float) and is_finite(float(v)) else def
 
-## A kit from the wire: only known throwables, sane counts.
+## A kit from the wire: only known throwables (an old kind under its new name), sane counts.
 static func sanitize_kit(k) -> Dictionary:
 	var out := {}
 	if k is Dictionary:
 		for id in k:
-			if Data.shop.get("throwables", {}).has(str(id)):
-				out[str(id)] = clampi(int(num(k[id])), 0, 20)
+			var key := str(Throwables.RENAMED.get(str(id), str(id)))
+			if Data.shop.get("throwables", {}).has(key):
+				out[key] = clampi(int(out.get(key, 0)) + int(num(k[id])), 0, 20)
 	return Throwables.bag_clamp(out)
 
 ## A guest's latest input; a one-shot press in it (a jump, a grab) is handed out once.

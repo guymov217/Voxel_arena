@@ -108,16 +108,16 @@ func test_the_hotbar_eats_bread_and_bots_throw_pots() -> void:
 	var m := _match()
 	var a := _man(m, Vector3(0, 0, -4), 0.0, {}, "Kit", 0, _idle)
 	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
-	a.inventory = {"bread": 1, "sandPot": 1}
+	a.inventory = {"bread": 1, "smoke": 1}
 	a.f.blood = 40.0
-	t.eq(Throwables.hotbar_of(a.inventory), ["sandPot", "bread"], "the hotbar in shop order")
-	t.check(m.throwables.use_item(a, 1), "bread used")
+	t.eq(Throwables.hotbar_of(a.inventory), ["bread", "smoke"], "the hotbar in shop order")
+	t.check(m.throwables.use_item(a, 0), "bread used")
 	t.check(a.f.blood > 70.0, "blood back (%.0f)" % a.f.blood)
-	t.eq(Throwables.hotbar_of(a.inventory), ["sandPot"], "the bread is gone")
+	t.eq(Throwables.hotbar_of(a.inventory), ["smoke"], "the bread is gone")
 	m.throwables.use_item(a, 0)
-	t.check(m.items.list.any(func(it): return it.type == "pot_sand"), "a bot throws the pot at once")
+	t.check(m.items.list.any(func(it): return it.type == "pot_smoke"), "a bot throws the pot at once")
 	await _steps(150)
-	t.check(m.throwables.zones.any(func(z): return z.type == "sand"), "and it made a sand cloud")
+	t.check(m.throwables.zones.any(func(z): return z.type == "smoke"), "and it made a cloud of sand and smoke")
 	# A player readies it in hand instead, and F throws it.
 	a.kind = "local"
 	a.inventory = {"thunderPot": 1}
@@ -319,14 +319,14 @@ func test_the_wind_up_sets_how_hard_a_pot_flies() -> void:
 		var m := _match()
 		var a := _man(m, Vector3(0, 0, -6), 0.0, {}, "Thrower", 0, _idle)
 		a.kind = "local"
-		a.inventory = {"sandPot": 1}
+		a.inventory = {"smoke": 1}
 		await _steps(30)
 		m.throwables.use_item(a, 0)
 		var from: Vector3 = a.f.torso.global_position
 		m.throwables.throw_held(a, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": power, "aimAt": from + Vector3(0, 0, 14.0)})
 		var it = null
 		for x in m.items.list:
-			if x.type == "pot_sand":
+			if x.type == "pot_smoke":
 				it = x
 		t.check(it != null, "thrown (power %.1f)" % power)
 		var reach := 0.0
@@ -408,7 +408,7 @@ func test_a_caltrop_goes_into_any_foot() -> void:
 	m.queue_free()
 
 ## A thunder pot going off beside a man in armour blows plates off the side of him turned to it,
-## and wears the rest; a fire pot's blast does it on a smaller scale (user: the pots did no harm to
+## and wears the rest; a smaller blast does it on a smaller scale (user: the pots did no harm to
 ## armour at all, the thunder pot least of all).
 func test_a_blast_blows_plates_off_armour() -> void:
 	seed(9)
@@ -426,13 +426,13 @@ func test_a_blast_blows_plates_off_armour() -> void:
 	var c0: int = plates.call(c.f)
 	# (In front of him, at his knees: the pot burst at his feet.)
 	m.throwables.explode("pot_thunder", b.f.torso.global_position + Vector3(0, -0.7, -0.6), null)
-	m.throwables.explode("pot_fireball", c.f.torso.global_position + Vector3(0, -0.3, -0.5), null)
+	m.throwables.blast(c.f.torso.global_position + Vector3(0, -0.3, -0.5), 2.6, 22.0, null)
 	await _steps(10)
 	var b1: int = plates.call(b.f)
 	var c1: int = plates.call(c.f)
 	t.check(b0 - b1 >= 12, "the thunder pot blew %d plates off him (of %d)" % [b0 - b1, b0])
 	t.check(b1 > b0 / 3, "not every last one: the side away from it held (%d left)" % b1)
-	t.check(c0 - c1 >= 2, "the fireball pot's blast took %d off the other" % (c0 - c1))
+	t.check(c0 - c1 >= 2, "the smaller blast took %d off the other" % (c0 - c1))
 	m.queue_free()
 
 ## A honey pot broken on a man brings a swarm down on him, the thrower's: they sting him (his blood

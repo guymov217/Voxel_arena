@@ -5,9 +5,15 @@ extends Node3D
 ## smoke), the burning spray of Greek fire, the hotbar of a campaign kit, and the weapons that
 ## shoot (bows, crossbows, flame poles). Host side; `m` is the Match.
 
-const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "sandPot": "pot_sand", "greekFire": "pot_fire", "vitriol": "pot_acid", "beehive": "pot_bees",
+const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "greekFire": "pot_fire", "vitriol": "pot_acid",
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
-	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet", "fireball": "pot_fireball"}
+	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
+## The things a hand holds ready that are not pots (thrown with F all the same).
+const HELD := {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch"}
+## Kit items that are no more, and what an old bag's are now (user: the sand pot and the smoke
+## pot made one; the beehive and the fireball gone, the honey pot's bees and Greek fire in their
+## place).
+const RENAMED := {"sandPot": "smoke", "beehive": "honey", "fireball": "greekFire"}
 const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
 const NAILS := 120
 const CALTROPS := 14
@@ -32,8 +38,8 @@ func _init(match_: Node) -> void:
 ## What a bag holds: nine kinds at most (one for each number key), and of each as many as can
 ## be carried into a fight: one of a heavy thing, three pots or bombs, five of something light.
 const BAG_KINDS := 9
-const STACK_HEAVY := ["anvil", "goat", "bigNet", "beehive", "harpoon"]
-const STACK_LIGHT := ["bandage", "bread", "wine", "bananas", "cheese", "darts", "caltrops", "discus"]
+const STACK_HEAVY := ["anvil", "goat", "bigNet", "harpoon"]
+const STACK_LIGHT := ["bandage", "bread", "wine", "waterSkin", "bananas", "cheese", "darts", "caltrops", "discus"]
 
 static func stack_max(id: String) -> int:
 	return 1 if STACK_HEAVY.has(id) else (5 if STACK_LIGHT.has(id) else 3)
@@ -55,11 +61,22 @@ static func bag_has_room(inv: Dictionary, id: String) -> bool:
 ## A bag cut down to what it may hold (an old save, a guest's kit): each stack to its most,
 ## and only the first nine kinds.
 static func bag_clamp(inv: Dictionary) -> Dictionary:
+	inv = renamed(inv)
 	var out := {}
 	for id in Data.shop.get("throwables", {}):
 		var n := mini(int(inv.get(id, 0)), stack_max(id))
 		if n > 0 and out.size() < BAG_KINDS:
 			out[id] = n
+	return out
+
+## A bag with its old kinds under their new names (RENAMED), counts added together.
+static func renamed(inv: Dictionary) -> Dictionary:
+	if not inv.keys().any(func(k): return RENAMED.has(str(k))):
+		return inv
+	var out := {}
+	for k in inv:
+		var id := str(RENAMED.get(str(k), str(k)))
+		out[id] = int(out.get(id, 0)) + int(inv[k])
 	return out
 
 static func hotbar_of(inv: Dictionary) -> Array:
@@ -655,7 +672,7 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 ## struck someone, else on the sand.
 ## Every pot breaks like a pot, whatever was in it: glazed shards flung off the way it was going
 ## and bouncing on the sand, a puff of clay dust, a splash of what it held, a crack of clay.
-const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_sand": Color(0.86, 0.76, 0.52), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5), "pot_fireball": Color(1.0, 0.45, 0.1)}
+const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5)}
 func shatter(p: Vector3, type: String, dir = null) -> void:
 	m.sfx("shatter", p, 1.0)
 	var fx: Fx = m.fx
@@ -688,24 +705,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 	if pot:
 		shatter(p, type, dir)
 	match type:
-		"pot_fireball":
-			# Vulcan's fire: a ball of flame with a shock in it (a thunder pot's little brother),
-			# burning what it breaks on and a small pool of fire where it fell.
-			m.sfx("boom", p, 0.7)
-			flash(p, Color(1.0, 0.55, 0.2), 12.0, 8.0)
-			if m.fx:
-				m.fx.burst("blastfire", p + Vector3(0, 0.2, 0), 90, Vector3.UP, 1.6)
-				m.fx.burst("smoke", p + Vector3(0, 0.4, 0), 40, Vector3.UP, 1.3)
-				m.fx.burst("sparks", p, 60, Vector3.UP, 1.8)
-				m.fx.mark("scorch", p, 1.8)
-			if m.role == "host":
-				m._send_fx("boom", p, 3)
-			blast(p, 2.6, 22.0, owner_)
-			splash_burning(p, dir, 30, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null)
-			for k in 4:
-				add_liquid("fire", Vector3(p.x + randf_range(-0.3, 0.3), _floor_y(p), p.z + randf_range(-0.3, 0.3)), 0.22, owner_)
-			if owner_:
-				m.crowd_add(owner_, 6, "Vulcan's fire")
 		"pot_thunder":
 			m.sfx("boom", p, 1.0)
 			flash(p, Color(1.0, 0.8, 0.55), 14.0, 10.0)
@@ -741,9 +740,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 			nail_burst(p, fwd, sd, owner_, false)
 			if m.role == "host":
 				Net.send_all("fx", {"k": "nails", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)], "d": [snappedf(fwd.x, 0.01), snappedf(fwd.y, 0.01), snappedf(fwd.z, 0.01)], "n": sd}, false)
-		"pot_sand":
-			add_zone("sand", p, 3.2, 6.0, owner_)
-			m.sfx("slap", p)
 		"pot_fire":
 			# Broken on the ground, most of it is a pool there at once; the rest flies.
 			if p.y < 0.35 or hit_char == null:
@@ -851,8 +847,26 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				bees_on(x.c, owner_, p, BEES if on_him else BEES_SPLASHED)
 				m.feed.emit(Loc.t("%s is dripping honey, and the bees have found him!") % x.c.display_name)
 		"pot_smoke":
-			add_zone("smoke", Vector3(p.x, 0, p.z), 3.0, 9.0, owner_)
+			# Sand and smoke (the sand pot and the smoke pot made one, user): a cloud that blinds.
+			add_zone("smoke", Vector3(p.x, 0, p.z), 3.2, 8.0, owner_)
 			m.sfx("whoosh", p)
+			m.sfx("slap", p, 0.6)
+		"torch":
+			# A torch thrown: what it strikes catches fire; on the sand it lies burning a while,
+			# and spilled oil it falls in (or beside) goes up in flames.
+			m.sfx("whoosh", p, 0.6)
+			if m.fx:
+				m.fx.burst("sparks", p, 24, Vector3.UP, 1.0)
+			if hit_char and hit_char.alive and hit_part:
+				m.add_spot(hit_char, hit_part, "fire", TORCH_BURN + 1.5, owner_, p)
+			add_zone("fire", Vector3(p.x, 0, p.z), 0.5, TORCH_LIE, owner_)
+			var yaw := randf() * TAU
+			lay_torch(p, yaw)
+			if m.role == "host":
+				Net.send_all("fx", {"k": "torch", "p": [snappedf(p.x, 0.01), snappedf(p.y, 0.01), snappedf(p.z, 0.01)], "y": snappedf(yaw, 0.01)})
+			for z in zones.duplicate():
+				if z.type == "oil" and z.t > 0.0 and Vector2(p.x - z.p.x, p.z - z.p.z).length() < float(z.r) + 0.5:
+					ignite_oil(z, owner_)
 		"pot_mystery":
 			var pick: String = ["pot_thunder", "pot_nail", "pot_goat", "pot_bees", "pot_chickens", "pot_confetti", "pot_grape", "pot_oil"][randi() % 8]
 			m.feed.emit(Loc.t({"pot_thunder": "The mystery amphora was... thunder!", "pot_nail": "The mystery amphora was... nails!", "pot_goat": "The mystery amphora was... a goat!", "pot_bees": "The mystery amphora was... bees!", "pot_chickens": "The mystery amphora was... chickens!", "pot_confetti": "The mystery amphora was... confetti!", "pot_grape": "The mystery amphora was... a grape!", "pot_oil": "The mystery amphora was... oil!"}[pick]))
@@ -1288,12 +1302,12 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		var cm := CylinderMesh.new()
 		cm.top_radius = r
 		cm.bottom_radius = r
-		cm.height = 1.6 if type == "sand" or type == "smoke" else 0.02
+		cm.height = 1.6 if type == "smoke" else 0.02
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = ZONE_COLORS.get(type, Color.WHITE)
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if type == "fire" else BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		if type == "sand" or type == "smoke":
+		if type == "smoke":
 			mat.albedo_color.a = 0.3
 		cm.material = mat
 		if type == "fire" or type == "acid" or type == "oil" or type == "honey":
@@ -1303,7 +1317,7 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 			cm.bottom_radius = r * 1.7
 		mi.mesh = cm
 		add_child(mi)
-		mi.global_position = Vector3(p.x, 0.8 if type == "sand" or type == "smoke" else 0.02, p.z)
+		mi.global_position = Vector3(p.x, 0.8 if type == "smoke" else 0.02, p.z)
 		z.node = mi
 	zones.append(z)
 	if m.fx and (type == "fire" or type == "acid"):
@@ -1317,7 +1331,7 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		var sm: GPUParticles3D = m.fx.emitter("fire_smoke", z.node, int(clampf(r * 26.0, 8.0, 40.0)), r * 0.6)
 		if sm:
 			sm.position = Vector3(0, 0.4, 0)
-	if m.fx and type == "sand" and z.node:
+	if m.fx and type == "smoke" and z.node:
 		# The cloud itself: voxel grains of sand turning in the air, and the haze thinner.
 		(z.node.mesh.material as StandardMaterial3D).albedo_color.a = 0.2
 		var sc: GPUParticles3D = m.fx.emitter("sandcloud", z.node, int(clampf(r * 150.0, 80.0, 500.0)), r * 0.85)
@@ -1608,9 +1622,209 @@ func _draw_bees(dt: float) -> void:
 		mm.set_instance_color(i * 2 + 1, Color(0.08, 0.06, 0.04))
 	mm.visible_instance_count = n * 2
 
-## Bots in sand or smoke, or covered in bees, cannot fight properly.
+## Bots in the cloud of sand and smoke, or covered in bees, cannot fight properly.
 func impaired(c) -> bool:
-	return c.bee_timer > 0.0 or inside("sand", c.torso.global_position) or inside("smoke", c.torso.global_position)
+	return c.bee_timer > 0.0 or inside("smoke", c.torso.global_position)
+
+# ---------- The torch, the oil, the water skin ----------
+
+## A torch in hand (user: one that burns the foe, not only lights oil): burning pitch on a stick
+## held upright in the fist. What its flame touches catches fire (anyone but the one who holds
+## it); lowered into spilled oil, the oil goes up. Thrown (F), it does the same where it lands.
+const TORCH_TIP := 0.47      # the flame over the fist (m)
+const TORCH_REACH := 0.12    # a part this near the flame catches
+const TORCH_BURN := 3.0      # s of fire where it touches
+const TORCH_COOL := 0.6      # s before it sets anyone alight again
+const TORCH_LIE := 6.0       # s it burns on where it lies, thrown
+const OIL_BURN := 10.0       # s spilled oil burns once lit
+var _torch_cool := {}        # instance id of the holder -> s
+var _laid_torches: Array = []   # thrown torches lying burning (drawing only)
+const TORCH_HEAD := 0.36     # the rag round the torch's head, up its stick (Items: "torch")
+var _oil_t := 0.0
+
+## Where the flame of a held torch is.
+static func torch_tip(c) -> Vector3:
+	var side: String = c.held_item.get("side", "")
+	return (c.hand_world(side) if side != "" else c.head.global_position) + Vector3.UP * TORCH_TIP
+
+## Flames and a little light on a torch's head (drawing only).
+func light_torch(node: Node3D) -> void:
+	if headless or node == null or m.fx == null:
+		return
+	var fl = m.fx.emitter("fire", node, 24, 0.045)
+	if fl:
+		fl.position = Vector3(0, 0.43, 0)
+		fl.emitting = true
+	var lt := OmniLight3D.new()
+	lt.light_color = Color(1.0, 0.62, 0.25)
+	lt.light_energy = 1.4
+	lt.omni_range = 3.0
+	lt.position = Vector3(0, 0.5, 0)
+	node.add_child(lt)
+
+## A thrown torch lies where it fell, burning as long as its fire on the sand (drawing only;
+## guests are sent it): the stick on its side, the flame standing up out of its head.
+func lay_torch(p: Vector3, yaw: float) -> void:
+	if headless:
+		return
+	var node := Items.visual("torch")
+	add_child(node)
+	node.global_transform = Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, PI * 0.5 - 0.1), Vector3(p.x, 0.04, p.z))
+	var head: Vector3 = node.global_transform * Vector3(0, TORCH_HEAD, 0)
+	_flicker(node, 0.0)
+	light_torch(node)
+	for ch in node.get_children():
+		if ch is GPUParticles3D or ch is OmniLight3D:
+			ch.global_transform = Transform3D(Basis(), head + Vector3.UP * (0.07 if ch is GPUParticles3D else 0.14))
+	_laid_torches.append(node)
+	get_tree().create_timer(TORCH_LIE, false).timeout.connect(node.queue_free)
+
+## A torch in the hand stands upright whatever the hand does, and every torch's flame flickers
+## (drawing only).
+func _torch_looks() -> void:
+	var t := Time.get_ticks_msec() * 0.001
+	for e in m.entities:
+		var c = e.f
+		if not is_instance_valid(c) or not ("held_item" in c) or c.held_item == null or c.held_item.get("type") != "torch":
+			continue
+		var nd = c.held_item.get("node")
+		if nd and is_instance_valid(nd) and nd.is_inside_tree():
+			nd.global_basis = Basis()
+			_flicker(nd, t)
+	for nd in _laid_torches.duplicate():
+		if not is_instance_valid(nd):
+			_laid_torches.erase(nd)
+		elif nd.is_inside_tree():
+			_flicker(nd, t)
+
+## A torch's flame never stands still: each of its boxes grows and shrinks at its own pace, its
+## foot on the rag, standing straight up however the torch lies.
+static func _flicker(nd: Node3D, t: float) -> void:
+	var head: Vector3 = nd.global_transform * Vector3(0, TORCH_HEAD, 0)
+	var k0 := float(nd.get_instance_id() % 97)
+	var i := 0
+	for ch in nd.get_children():
+		if not ch.has_meta("flame"):
+			continue
+		var fa: Vector3 = ch.get_meta("flame")
+		var h: float = ch.get_meta("flame_h", 0.1)
+		var k := k0 + 1.7 * i
+		var sy := 1.0 + 0.22 * sin(t * 7.3 + k) + 0.08 * sin(t * 17.0 + 2.0 * k)
+		var sxz := 1.0 + 0.1 * sin(t * 10.0 + 0.6 * k)
+		ch.global_transform = Transform3D(Basis.from_scale(Vector3(sxz, sy, sxz)), head + Vector3(fa.x, fa.y - TORCH_HEAD + (sy - 1.0) * h * 0.5, fa.z))
+		i += 1
+
+func _torches(dt: float) -> void:
+	for e in m.entities:
+		var c = e.f
+		if not is_instance_valid(c) or not ("held_item" in c) or c.held_item == null or c.held_item.get("type") != "torch" or not c.alive:
+			continue
+		var tip := torch_tip(c)
+		if tip.y < 0.6:
+			for z in zones.duplicate():
+				if z.type == "oil" and z.t > 0.0 and Vector2(tip.x - z.p.x, tip.z - z.p.z).length() < float(z.r):
+					ignite_oil(z, c)
+		var key: int = c.get_instance_id()
+		var cool: float = float(_torch_cool.get(key, 0.0)) - dt
+		_torch_cool[key] = cool
+		if cool > 0.0:
+			continue
+		for x in _near(tip, 4.0):
+			var o = x.c
+			if o == c:
+				continue
+			var hit = null
+			for part in o.parts:
+				if part.severed or part.missing:
+					continue
+				var reach: float = part.half_ext.length() + TORCH_REACH
+				if part.global_position.distance_squared_to(tip) > reach * reach:
+					continue
+				if Social.box_distance(part, tip) < TORCH_REACH:
+					hit = part
+					break
+			if hit:
+				m.add_spot(o, hit, "fire", TORCH_BURN, c, tip)
+				_torch_cool[key] = TORCH_COOL
+				if m.fx:
+					m.fx.burst("sparks", tip, 10, Vector3.UP, 0.6)
+				break
+
+## Spilled oil set alight: where it lay, a fire as wide that burns a while.
+func ignite_oil(z: Dictionary, by = null) -> void:
+	if z.get("type") != "oil" or float(z.t) <= 0.0:
+		return
+	z.t = 0.0
+	add_zone("fire", z.p, float(z.r), OIL_BURN, by if by != null else z.get("owner"))
+	m.sfx("whoosh", z.p)
+	if m.fx:
+		m.fx.burst("blastfire", z.p + Vector3(0, 0.2, 0), 60, Vector3.UP, 1.2)
+	m.feed.emit(Loc.t("The oil goes up in flames!"))
+	if m.role == "host":
+		Net.send_all("zone_off", {"type": "oil", "p": [z.p.x, z.p.y, z.p.z]})
+
+## Oil that fire reaches catches too: a fire on the sand (a torch lying there, burning arrows) or
+## burning liquid (Greek fire) within it.
+func _oil_catches(dt: float) -> void:
+	_oil_t -= dt
+	if _oil_t > 0.0:
+		return
+	_oil_t = 0.25
+	for z in zones.duplicate():
+		if z.type != "oil" or z.t <= 0.0:
+			continue
+		var by = null
+		var lit := false
+		for f in zones:
+			if f.type == "fire" and f.t > 0.0 and Vector2(f.p.x - z.p.x, f.p.z - z.p.z).length() < float(z.r) + float(f.r) * 0.8:
+				lit = true
+				by = f.get("owner")
+				break
+		if not lit:
+			for k in wet:
+				var w: Dictionary = wet[k]
+				if w.k == "fire" and float(w.f) > FILM and Vector2((k.x + 0.5) * CELL - z.p.x, (k.z + 0.5) * CELL - z.p.z).length() < float(z.r):
+					lit = true
+					by = w.get("owner")
+					break
+		if lit:
+			ignite_oil(z, by)
+
+## A guest told the oil at `p` is gone (lit on the host).
+func zone_off(type: String, p: Vector3) -> void:
+	for z in zones:
+		if z.type == type and Vector2(z.p.x - p.x, z.p.z - p.z).length() < 0.05:
+			z.t = 0.0
+
+## The water skin poured over him: the fire on him out, the acid washed off (frostbite stays).
+func douse(c) -> void:
+	var wet_parts := []
+	for p in c.parts:
+		if p.spots.is_empty():
+			continue
+		var keep: Array = p.spots.filter(func(s): return s.kind != "fire" and s.kind != "acid")
+		if keep.size() == p.spots.size():
+			continue
+		p.spots = keep
+		p.set_flames(false)
+		p.set_poison(false)
+		# (Out at once, not left to burn down: the flames already in the air go with it.)
+		for fx_node in [p.flames, p.poison_fx]:
+			if fx_node and is_instance_valid(fx_node):
+				fx_node.visible = false
+		Fire.cool(p)
+		wet_parts.append(p)
+	if m.fx:
+		# Water poured over him: a splash off his head and shoulders (the blood's spray, clear and
+		# pale blue), and steam off every part it put out.
+		m.fx.burst("blood", c.head.global_position + Vector3(0, 0.2, 0), 70, Vector3.UP, 0.55, Color(0.62, 0.8, 1.0, 0.85))
+		for p in wet_parts:
+			m.fx.burst("dust", p.global_position, 14, Vector3.UP, 0.5, Color(0.92, 0.93, 0.95, 0.55))
+	m.sfx("slap", c.torso.global_position, 0.5)
+	if m.role == "host":
+		var e = m.entity_of(c)
+		if e:
+			Net.send_all("douse", {"id": e.id})
 
 ## The height of what is under `p` (the sand, or the crate it broke on).
 func _floor_y(p: Vector3) -> float:
@@ -1623,6 +1837,10 @@ func update(dt: float) -> void:
 	_nail_hits_tick()
 	_update_drops(dt)
 	_update_wet(dt)
+	_torch_looks()
+	if m.role != "guest":
+		_torches(dt)
+		_oil_catches(dt)
 	for z in zones.duplicate():
 		z.t -= dt
 		z.tick -= dt
@@ -1785,7 +2003,7 @@ func use_item(e: Dictionary, slot: int) -> bool:
 		return true
 	var fwd := Vector3(sin(c.yaw), 0, cos(c.yaw))
 	var player: bool = e.kind == "local" or e.kind == "remote"
-	var hand_type = POTS.get(id, {"darts": "pot_dart", "boomerang": "boomerang"}.get(id))
+	var hand_type = POTS.get(id, HELD.get(id))
 	if hand_type != null and player:
 		hold_item(e, hand_type, id)   # still in the kit (and on the hotbar) until it is thrown
 		return true
@@ -1815,6 +2033,9 @@ func use_item(e: Dictionary, slot: int) -> bool:
 			c.blood = minf(100.0, c.blood + 40.0)
 		"wine":
 			c.drink_wine()
+		"waterSkin":
+			douse(c)
+			m.feed.emit(Loc.t("%s empties a water skin over the burns") % c.display_name)
 		"cheese":
 			var cp: Vector3 = c.torso.global_position + fwd * 0.8
 			var it: Dictionary = m.items.spawn("cheese", Vector3(cp.x, 0.21, cp.z), fwd * 7.0, c)   # on its edge on the sand
@@ -1854,6 +2075,8 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 		node = Items.visual(type)
 		c.arm[side].fore.add_child(node)
 		node.position = c.hand_point
+		if type == "torch":
+			light_torch(node)
 	c.held_item = {"type": type, "id": id, "node": node, "side": side}
 	if e.kind == "local":
 		m.feed.emit(Loc.t("%s ready: hold F to aim, let go to throw") % Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))))

@@ -65,8 +65,21 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **The Hand of Jupiter**: a telekinesis charge from the market seizes the foe under the
   crosshair, up to 12 m off (a man or a beast; not a giant, not the great monsters of myth), for three seconds (twice a
   bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a
-  hard landing hurts. A fireball pot bursts, burns and leaves
-  fire on the sand.
+  hard landing hurts. Its price follows the purses (`Market.price`: nine tenths of the best
+  a bout has paid by then, in fives), so its two lifts a bout never cost next to nothing.
+- **The market** (`scripts/game/market.gd`): the trader's wares lie in five tabs by what they do
+  (Fire & blast, Floor traps, Snares & tricks, Thrown arms, For the crowd). Something of every
+  tab is on the table from the first visit (`Market.BASIC`) and one more ware is brought after
+  each boss beaten, in the order of `Market.AFTER_BOSS` (the torch after the first, then the goat,
+  the bola, Greek fire...); a ware not yet come lies dim with the bout it comes after, and in the
+  second time round the campaign everything is there. The count is kept in the save (alone and in
+  a party apart) and a death never takes a ware off the table. Training has every ware, free; the
+  physician sells what is used on oneself (bandages, bread, wine, the water skin). The torch is
+  held in the free hand (what its flame touches catches fire, and spilled oil goes up) or thrown
+  (it burns where it lands); the water skin, poured over oneself, puts out the fire on him and
+  washes off acid; the smoke pot is the old sand pot and smoke pot in one; Greek fire is the old
+  fireball pot, burning oil that pools on the sand; the beehive is gone (the honey pot's bees stay).
+  A bag from an older save keeps its wares under their new names.
 - **Fists**: with both hands empty he stands in a boxer's guard (an empty hand beside a weapon
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight
@@ -148,6 +161,16 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the run ends. At the end of the ladder the Emperor has one rudis for the party: each says
   whether to share the glory (their names together in the Hall of Fame) or to fight one another
   for it in the players' brawl (the last on his feet takes it).
+- **The campaign's end** (`scripts/ui/ending_scene.gd`, `scripts/game/run_scroll.gd`): the ladder
+  ends with the Dragon on bout 64 (bout 63's foe, in the Emperor's gold, is the Emperor's
+  Champion: the Emperor himself watches from his box), and the campaign closes in the arena
+  itself: the crowd on its feet, the Emperor rising in his box to give the thumb, the rudis put
+  in the gladiator's hand and held up while the crowd roars, then the rudis screen (26 seconds;
+  any key or click skips it). The rudis is his for good: a
+  wooden sword in the rack that fights as one, and the freedman's cap, a look picked in Your
+  Gladiator that is locked until then. A man alone keeps a run's scroll too (`RunScroll`: the bouts
+  won, the kills, the limbs he cut off and lost, the falls and the weapon that killed the most,
+  counted bout by bout in `Match._tally`), unrolled when the run ends, by the rudis or by a death.
 - **Ironman or Legionary** (`scripts/game/campaign_run.gd`): chosen when a campaign begins (in
   co-op the host chooses in the room). A legionary who falls goes back to the last checkpoint
   (every four bouts) with the purse, arms, armour, body and training he had there; an ironman
@@ -181,10 +204,19 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (the rings are marked MAIN and OTHER). Two fists need 3 blocks (12 cm) between them, so a
   short grip (gladius, dagger, hammer) stays one-handed; a long one taken in two hands with H
   puts the other hand at the far end of the grip, so the hands never crush together mid-swing.
+  The forge's bars (speed, damage, reach, against armour) have a fifth beside them, how well the
+  weapon stands its blows (`ForgeLib.durability_bar`, by the rules a fight wears a weapon by:
+  harder stuff wears slower and chips less, ice shatters, more blocks can lose more, a weapon made
+  to last lasts). The smith's stock has bronze, a soft metal for edges, and bone, light and quick. The four tricks
+  (explosive, spring, glue, magnet) are set aside for now (`ForgeLib.SET_ASIDE`): not on the anvil,
+  not dealt as twists; a weapon already made with them keeps them.
 - **Armour at the forge**: the forge's Armour tab opens the armour bench, a body part in the
   round with plates put on it voxel by voxel (where it goes and its stuff picked on the bench).
   Up to 2400 plates, and they may stand up to 6 blocks out from the body (crests, wide
-  pauldrons): each one weighs. The bench marks the FRONT and the BACK.
+  pauldrons): each one weighs. The bench marks the FRONT and the BACK. It shows the piece as the
+  arena draws it, on the man himself (every plate laid where a fight lays it on his outline, in the
+  new look, and a moment after the last change the piece's own shell over them: its rim, rivets and
+  bands), so what is built there is what he wears.
   The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
   (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
 - **Modes**: training and 15 fight and party modes (duel, best of three, free for all, chaos, co-op,

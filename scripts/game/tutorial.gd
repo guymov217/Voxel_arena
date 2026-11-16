@@ -26,14 +26,14 @@ const STEPS := [
 	{"id": "grab", "title": "Grab", "text": "By the dummy, hold a mouse button and press %s: that hand takes hold of him (both buttons, both hands). %s throws him, %s again lets go. Take hold of him.", "keys": ["grab", "throw", "grab"]},
 	{"id": "pickup", "title": "Pick up", "text": "A longsword lies by you: walk over and press %s to pick it up.", "keys": ["grab"], "setup": "longsword"},
 	{"id": "both", "title": "Both hands", "text": "%s puts both hands on the hilt: slower to start, much more behind each blow; again, and one hand lets go. Take it in both hands.", "keys": ["grip"]},
-	{"id": "items", "title": "Your kit", "text": "The number keys take up what is in your kit, the slots at the bottom: press 1 for the sand pot, then %s throws it at the dummy. The market sells pots for the campaign.", "keys": ["throw"], "setup": "pot"},
+	{"id": "items", "title": "Your kit", "text": "The number keys take up what is in your kit, the slots at the bottom: press 1 for the smoke pot, then %s throws it at the dummy. The market sells pots for the campaign.", "keys": ["throw"], "setup": "pot"},
 	{"id": "crowd", "title": "The crowd", "text": "%s taunts the crowd, %s strikes a pose: the crowd loves a show. Do one.", "keys": ["taunt", "emote"]},
 	{"id": "keys", "title": "More keys", "read": 12.0, "text": "Hold %s to play dead. Hold %s by a fallen friend to lift him. With friends in a room, hold %s to talk. %s starts the round again. Esc pauses; the options change any key.", "keys": ["limp", "revive", "talk", "restart"]},
 	{"id": "body", "title": "Blood and breath", "read": 10.0, "text": "Two bars: your blood (wounds bleed until they close; a cut artery spurts) and your breath (every hard stroke costs some; out of breath you are slower and weaker). The figure shows every wound and every piece you have lost."},
 	{"id": "yard", "title": "The yard", "read": 10.0, "text": "Between bouts the yard has the smith (weapons and armour, both mended there as they wear), the market (pots, the Hand of Jupiter: twice a bout, it holds a man where you look, the wheel draws him in, F hurls him), the physician for your wounds, and the trainer: strength, blow, wind, hide, blood and footing, a session at a time, no further than the bouts you have won."},
 	{"id": "fight", "title": "A real fight", "text": "A recruit steps in, and he fights back. Beat him. (You cannot die in here.)", "setup": "fight"},
 ]
-const POT := "sandPot"   # the kit's step: a pot that blinds, and hurts nobody
+const POT := "smoke"   # the kit's step: a pot that blinds, and hurts nobody
 
 var m: Node
 var i := 0

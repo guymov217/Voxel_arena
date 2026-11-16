@@ -326,7 +326,7 @@ func test_a_click_picks_the_other_throwing_hand() -> void:
 		act[0] = {}
 		return i)
 	a.kind = "local"   # a player: the throw leaves the hand at once, at the crosshair
-	a.inventory = {"sandPot": 1, "bread": 1}
+	a.inventory = {"smoke": 1, "bread": 1}
 	await _steps(60)
 	var blade: Weapon = a.f.weapons.R
 	var shield: Weapon = a.f.weapons.L
@@ -335,20 +335,20 @@ func test_a_click_picks_the_other_throwing_hand() -> void:
 	t.check(a.f.weapons.L == null and a.f.weapons.R == blade, "the other hand threw the shield and kept the blade")
 	t.check(shield.thrown_t > 0.0, "the shield flies")
 	# A pot readied: F throws that, not the blade; its number again puts it away.
-	act[0] = {"useItem": 0}
+	act[0] = {"useItem": 1}
 	await _steps(3)
-	t.check(a.f.held_item != null and a.f.held_item.id == "sandPot", "the pot is in hand")
-	t.eq(int(a.inventory.sandPot), 1, "and still counted in the kit until thrown")
-	act[0] = {"useItem": 0}
+	t.check(a.f.held_item != null and a.f.held_item.id == "smoke", "the pot is in hand")
+	t.eq(int(a.inventory.smoke), 1, "and still counted in the kit until thrown")
+	act[0] = {"useItem": 1}
 	await _steps(3)
 	t.check(a.f.held_item == null, "its number again puts it away")
-	t.eq(Throwables.hotbar_of(a.inventory), ["sandPot", "bread"], "still on the hotbar")
-	act[0] = {"useItem": 0}
+	t.eq(Throwables.hotbar_of(a.inventory), ["bread", "smoke"], "still on the hotbar")
+	act[0] = {"useItem": 1}
 	await _steps(3)
 	act[0] = {"throw": true, "throwPower": 0.8}
 	await _steps(30)
 	t.check(a.f.held_item == null and a.f.weapons.R == blade, "F threw the readied pot, not the blade in the right hand")
-	t.eq(int(a.inventory.sandPot), 0, "the thrown pot left the kit")
+	t.eq(int(a.inventory.smoke), 0, "the thrown pot left the kit")
 	act[0] = {"throw": true, "throwPower": 0.8, "throwOther": true}
 	await _steps(30)
 	t.check(a.f.weapons.R == null and blade.thrown_t > 0.0, "with the kit empty and the left hand bare, F throws the blade whatever was picked")

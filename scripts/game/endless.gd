@@ -34,7 +34,7 @@ const BIG_BEASTS := ["goat", "elephant", "mammoth", "dragon", "hydra", "cerberus
 ## The first waves' beasts.
 const WEAK_BEASTS := ["rat", "hyena", "wolf", "boar", "ostrich"]
 ## The pots the stands may throw down between waves, and the armour a reward may be.
-const POTS := ["thunderPot", "nailPot", "greekFire", "sandPot", "vitriol", "bola"]
+const POTS := ["thunderPot", "nailPot", "greekFire", "smoke", "vitriol", "bola"]
 const PIECES := ["helmet", "manica", "greaves", "lorica"]
 
 signal offered(rewards: Array)

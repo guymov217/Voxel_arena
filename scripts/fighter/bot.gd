@@ -448,9 +448,9 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	_react_clock(dt0)
 	if not c.alive:
 		return inp
-	# Covered in bees (a honey pot's swarm, a broken hive): he swats at them, his blade and his free
-	# hand swung about his head this way and that, backing off (what goes through a bee kills it:
-	# Throwables). The beehive's "flail about" never happened: nothing read it.
+	# Covered in bees (a honey pot's swarm, a mystery amphora's): he swats at them, his blade and his
+	# free hand swung about his head this way and that, backing off (what goes through a bee kills
+	# it: Throwables).
 	if float(c.swarmed) > 0.0 or float(c.bee_timer) > 0.0:
 		swat_t += dt
 		inp.main = {"x": sin(swat_t * 7.0) * 0.9, "y": 0.85 + cos(swat_t * 5.3) * 0.55}

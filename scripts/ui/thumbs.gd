@@ -188,7 +188,7 @@ static func model(d: Dictionary) -> Node3D:
 static func item_type(id: String) -> Variant:
 	if Throwables.POTS.has(id):
 		return Throwables.POTS[id]
-	return {"darts": "pot_dart", "boomerang": "boomerang", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
+	return {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "waterSkin": "waterskin", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # the pictures come in behind a paused game too
@@ -198,6 +198,10 @@ func _ready() -> void:
 	vp.transparent_bg = true
 	vp.msaa_3d = Viewport.MSAA_4X
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	# The game eases what it draws between physics steps; a picture is shot where its camera
+	# was just put, not from where the last picture's was (the water skin, made after the
+	# torch, came out small and low, framed as the torch had been).
+	vp.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(vp)
 	var env := WorldEnvironment.new()
 	var e := Environment.new()

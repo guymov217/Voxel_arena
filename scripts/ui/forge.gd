@@ -88,7 +88,7 @@ var mode_box: VBoxContainer
 var tool_bar: PanelContainer
 var name_edit: LineEdit
 var bars: Control
-var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0, "armour": 0.0}
+var bar_vals := {"speed": 0.0, "damage": 0.0, "reach": 0.0, "armour": 0.0, "durability": 0.0}
 # What a change did (user: see at once what each block does): the numbers before the latest run
 # of changes, shown against now by the bars for a moment after the last of them.
 var stat_now := {}
@@ -98,7 +98,8 @@ var stat_t := -100.0       # when the numbers last changed (s, Time)
 var weight_feel := ""      # "Balanced", "Head-heavy"... (ForgeLib.feel)
 var com_mark: Node3D = null   # the balance point on the weapon
 const DELTA_HOLD := 2.5    # how long a change's ▲ / ▼ stays by the bars (s)
-const BAR_ROWS := [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"]]
+const BAR_ROWS := [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"], ["durability", "Durability"]]
+const DURABILITY_C := Color(0.56, 0.7, 0.8)   # (the durability bar: cold steel)
 const UP_C := Color(0.5, 0.82, 0.42)
 const DOWN_C := Color(0.92, 0.4, 0.3)
 var says: Label
@@ -106,9 +107,11 @@ var verdict: Label
 var cost_label: Label
 var hover_at = null      # where the mouse is over the anvil (R turns the sharp block there)
 
-## The smith's stock, each for its own job: two metals for edges, three weights from light to
-## dense for hafts and heads, gold for the crowd, four tricks and three gem sockets.
-const MATS := ["steel", "iron", "wood", "stone", "lead", "gold", "explosive", "spring", "glue", "magnet", "ruby", "sapphire", "emerald"]
+## The smith's stock, each for its own job: three metals for edges (bronze the old soft one),
+## bone for light quick blades, three weights from light to dense for hafts and heads, gold for the
+## crowd and three gem sockets. (The four tricks, explosive, spring, glue and magnet, are set aside
+## for now, user: ForgeLib.SET_ASIDE.)
+const MATS := ["steel", "iron", "bronze", "wood", "bone", "stone", "lead", "gold", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
 const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)  [B]"], ["erase", "Erase", "Click voxels: take them off (right click erases too)  [X]"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]"]]
 ## The keys at the anvil (shown on the tools' tips and in the tutorial): a tool each, a job each,
@@ -228,7 +231,7 @@ func _build_ui() -> void:
 	side_box.add_child(mode_box)
 	col.add_child(HSeparator.new())
 	bars = Control.new()
-	bars.custom_minimum_size = Vector2(420, 102)
+	bars.custom_minimum_size = Vector2(420, 122)
 	bars.draw.connect(_draw_bars)
 	bars.tooltip_text = "Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point."
 	col.add_child(bars)
@@ -679,8 +682,8 @@ func _from_cards() -> void:
 ## What a block does, in the words a player thinks in: it cuts, it stabs, it crushes, it is
 ## held. (The job names stay the game's own: edge, point, blunt, grip.)
 const JOB_PICK := [["edge", "Cut", "sharp edge"], ["point", "Stab", "point"], ["blunt", "Crush", "head, body"], ["grip", "Hold", "grip"]]
-## The materials in four rows, the way a smith sorts them.
-const MAT_GROUPS := [["Metals", ["steel", "iron", "gold", "lead"]], ["Wood and stone", ["wood", "stone"]], ["Tricks", ["explosive", "spring", "glue", "magnet"]], ["Gems", ["ruby", "sapphire", "emerald"]]]
+## The materials in three rows, the way a smith sorts them.
+const MAT_GROUPS := [["Metals", ["steel", "iron", "bronze", "gold", "lead"]], ["Wood, bone, stone", ["wood", "bone", "stone"]], ["Gems", ["ruby", "sapphire", "emerald"]]]
 const KEEN := 0.5   # a material softer than this holds no edge worth the name
 
 static func _swatch(c: Color, px := 18) -> ImageTexture:
@@ -1133,7 +1136,7 @@ func _draw_bars() -> void:
 		var k: String = r[0]
 		bars.draw_string(font, Vector2(0, y + 14), Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
 		bars.draw_rect(Rect2(x0, y + 3, w, 12), Color(0, 0, 0, 0.5))
-		var col: Color = Color(0.85, 0.32, 0.2) if k == "damage" else (UIStyle.BRONZE if k == "armour" else UIStyle.GOLD)
+		var col: Color = Color(0.85, 0.32, 0.2) if k == "damage" else (UIStyle.BRONZE if k == "armour" else (DURABILITY_C if k == "durability" else UIStyle.GOLD))
 		bars.draw_rect(Rect2(x0, y + 3, w * float(bar_vals.get(k, 0.0)), 12), col)
 		# What the last change did to it, for a moment: ▲ 6% or ▼ 4%.
 		var dv := float(stat_delta.get(k, 0.0))
@@ -1203,9 +1206,10 @@ func _update_texts() -> void:
 	var d := _design_now()
 	var st := ForgeLib.compute_stats(d)
 	bar_vals = ForgeLib.three_bars(st)
+	bar_vals["durability"] = ForgeLib.durability_bar(d)
 	# What this change did, counted from before the run of changes it belongs to (a stroke, or
 	# clicks close together): a quiet spell starts a new count.
-	var now := {"speed": float(st.swingSpeed), "damage": float(bar_vals.damage), "reach": float(st.reach), "armour": float(bar_vals.armour), "mass": float(st.mass)}
+	var now := {"speed": float(st.swingSpeed), "damage": float(bar_vals.damage), "reach": float(st.reach), "armour": float(bar_vals.armour), "durability": float(bar_vals.durability), "mass": float(st.mass)}
 	var t_now := Time.get_ticks_msec() / 1000.0
 	if stat_now.is_empty():
 		stat_base = now
@@ -1215,8 +1219,8 @@ func _update_texts() -> void:
 		stat_t = t_now
 	stat_now = now
 	stat_delta = {"mass": float(now.mass) - float(stat_base.mass)}
-	for k in ["speed", "damage", "reach", "armour"]:
-		var b0 := float(stat_base[k])
+	for k in ["speed", "damage", "reach", "armour", "durability"]:
+		var b0 := float(stat_base.get(k, 0.0))
 		stat_delta[k] = (float(now[k]) / b0 - 1.0) * 100.0 if b0 > 0.001 else (100.0 if float(now[k]) > 0.001 else 0.0)
 	weight_feel = ForgeLib.feel(d, st)
 	_place_balance(st)

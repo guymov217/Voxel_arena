@@ -6,7 +6,7 @@ func _ready() -> void:
 	var out := OS.get_environment("SHOT_DIR")
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
-	for tab in (OS.get_environment("SHOT_ONLY").split(",", false) if OS.get_environment("SHOT_ONLY") != "" else PackedStringArray(["throw", "place", "self"])):
+	for tab in (OS.get_environment("SHOT_ONLY").split(",", false) if OS.get_environment("SHOT_ONLY") != "" else PackedStringArray(Market.TABS.map(func(t): return t[0]))):
 		menu.market_tab = tab
 		menu.show_screen("market")
 		for i in 40:

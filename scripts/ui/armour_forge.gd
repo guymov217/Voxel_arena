@@ -36,6 +36,15 @@ var dragging := false
 var stroke := {}
 var info: VBoxContainer
 var name_edit: LineEdit
+## The piece as the arena draws it, on the man round the bench (user: the bench fitted to the
+## armours as they are now and to the new body): every plate laid where a fight lays it on him
+## (_cell_xf: Physique.plate_xf, on his outline in the new look), and a moment after the last
+## change the piece's own shell over them (FineArmor, his look's: its rim, its rivets, its bands),
+## worked out on him under this name.
+const BENCH_ID := "custom_bench"   # (as a piece made here is named in a fight: Armory.design_id)
+const SHELL_WAIT := 0.3            # s after the last change before the shell is worked out
+var shell_due := -1.0
+var plates_mi: MultiMeshInstance3D = null
 
 ## Opens the bench for `d` (Armory.design_piece's shape) on `reg` (Armory.REGIONS).
 func open(d: Dictionary, reg: String, cb: Callable, kg_worn := 0.0, coins := -1) -> void:
@@ -443,19 +452,21 @@ func _rebuild() -> void:
 	var at := []
 	var cols := []
 	for part in names:
-		var dd := Armory._dims(part)
-		var pd := Vector3i(int(dd[0]), int(dd[1]), int(dd[2]))
 		for c in shown.get(part, []):
-			at.append(_part_origin(part, first) + (Vector3(float(c[0]), float(c[1]), float(c[2])) - (Vector3(pd) - Vector3.ONE) * 0.5) * CELL)
+			at.append(_cell_xf(part, Vector3(float(c[0]), float(c[1]), float(c[2]))))
 			cols.append(Color.hex((int(c[3]) << 8) | 0xff) if c.size() > 3 else bare)
 	pmm.instance_count = at.size()
 	for i in at.size():
-		pmm.set_instance_transform(i, Transform3D(Basis(), at[i]))
+		pmm.set_instance_transform(i, at[i])
 		pmm.set_instance_color(i, cols[i])
 	var pi := MultiMeshInstance3D.new()
 	pi.multimesh = pmm
 	root.add_child(pi)
-	# For the mouse: a box for every cell of the part and every plate.
+	plates_mi = pi
+	# The shell a moment after the last change; the plates show until it is there.
+	_clear_shell()
+	shell_due = SHELL_WAIT
+	# For the mouse: a box for every cell of the part and every plate, where each lies on him.
 	var sb := StaticBody3D.new()
 	root.add_child(sb)
 	var add_box := func(c: Vector3i, plate: bool) -> void:
@@ -463,7 +474,8 @@ func _rebuild() -> void:
 		var b := BoxShape3D.new()
 		b.size = Vector3.ONE * CELL
 		cs.shape = b
-		cs.position = _pos(Vector3(c))
+		var xf := _cell_xf(first, Vector3(c))
+		cs.transform = Transform3D(xf.basis.orthonormalized(), xf.origin)
 		cs.set_meta("cell", c)
 		cs.set_meta("plate", plate)
 		sb.add_child(cs)
@@ -475,6 +487,69 @@ func _rebuild() -> void:
 		add_box.call(c, true)
 	_place_camera()
 	_update_info()
+
+## Where a plate in cell `c` of `part` lies on the man round the bench, as a fight lays it on him
+## (Physique.plate_xf: on his outline in the new look, a tile turned to it), in the bench's space.
+func _cell_xf(part: String, c: Vector3) -> Transform3D:
+	var dd := Armory._dims(part)
+	var pd := Vector3(float(dd[0]), float(dd[1]), float(dd[2]))
+	var at := (c - (pd - Vector3.ONE) * 0.5) * CELL
+	var origin := _part_origin(part, Armory.REGIONS[region].parts[0])
+	var mp := _man_part(part)
+	if mp == null:
+		return Transform3D(Basis(), origin + at)
+	return Transform3D(Basis(), origin) * Physique.plate_xf(mp, [int(round(c.x)), int(round(c.y)), int(round(c.z))], at, BENCH_ID)
+
+func _man_part(part: String) -> VoxelPart:
+	if man == null or not is_instance_valid(man):
+		return null
+	for p in man.parts:
+		if String(p.part_name) == part:
+			return p
+	return null
+
+## The piece's shell on the man as a fight draws it (Fighter._add_armor, FineArmor), over the
+## plates, which hide under it. (Only in the new look: the old one draws the plates themselves.)
+func _build_shell() -> void:
+	_clear_shell()
+	var names: Array = Armory.REGIONS[region].parts
+	var mp0 := _man_part(String(names[0]))
+	if mp0 == null or not (mp0.fine.has("body") or mp0.fine.has("wtab")) or cells.is_empty():
+		return
+	Data.armor[BENCH_ID] = design_now()
+	var made := false
+	for part in names:
+		var mp := _man_part(String(part))
+		if mp == null:
+			continue
+		man._add_armor(mp, BENCH_ID)
+		for ad in mp.get_meta("armor", []):
+			if ad.get("id") == BENCH_ID and ad.has("shell"):
+				made = true
+	Data.armor.erase(BENCH_ID)
+	if made and plates_mi and is_instance_valid(plates_mi):
+		plates_mi.visible = false
+
+func _clear_shell() -> void:
+	if man == null or not is_instance_valid(man):
+		return
+	for p in man.parts:
+		var list: Array = p.get_meta("armor", [])
+		if not list.any(func(ad): return ad.get("id") == BENCH_ID):
+			continue
+		var keep := []
+		for ad in list:
+			if ad.get("id") != BENCH_ID:
+				keep.append(ad)
+				continue
+			FineArmor.clear(ad)
+			var nd = ad.get("node")
+			if nd != null and is_instance_valid(nd):
+				p.draw_with.erase(nd)
+				nd.queue_free()
+		p.set_meta("armor", keep)
+	if plates_mi and is_instance_valid(plates_mi):
+		plates_mi.visible = true
 
 ## Where `part` sits on the bench, with the part `on` (the one being plated) in the middle.
 func _part_origin(part: String, on: String) -> Vector3:
@@ -607,7 +682,19 @@ func _aim(at: Vector2) -> Dictionary:
 		return {}
 	var c: Vector3i = cs.get_meta("cell")
 	var n: Vector3 = hit.normal
-	return {"hit": c, "plate": cs.get_meta("plate"), "place": c + Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))}
+	# The cell on that face: of the six round it, the one lying most that way from it on him
+	# (laid on his outline, a cell's own axes are turned from the grid's).
+	var first: String = Armory.REGIONS[region].parts[0]
+	var o := _cell_xf(first, Vector3(c)).origin
+	var best := Vector3i(roundi(n.x), roundi(n.y), roundi(n.z))
+	var most := -INF
+	for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var w := _cell_xf(first, Vector3(c + d)).origin - o
+		var k := w.normalized().dot(n) if w.length() > 1e-5 else -INF
+		if k > most:
+			most = k
+			best = d
+	return {"hit": c, "plate": cs.get_meta("plate"), "place": c + best}
 
 ## The wheel draws the camera in toward what is under the mouse (or out from it), as at the
 ## weapon forge: it drew in on his middle only, and a plate on a wrist was a fly and a slide
@@ -617,7 +704,7 @@ func _zoom(at: Vector2, k: float) -> void:
 	if k < 1.0:
 		var a := _aim(at)
 		if not a.is_empty():
-			focus = focus.lerp(_pos(Vector3(a.hit)), 1.0 - nd / dist)
+			focus = focus.lerp(_cell_xf(Armory.REGIONS[region].parts[0], Vector3(a.hit)).origin, 1.0 - nd / dist)
 	dist = nd
 	_place_camera()
 
@@ -630,6 +717,10 @@ var turn_left := 0.0                # what is left of a Turn button's turn (radi
 func _process(dt: float) -> void:
 	if cam == null:
 		return
+	if shell_due > 0.0 and stroke.is_empty():
+		shell_due -= dt
+		if shell_due <= 0.0:
+			_build_shell()
 	if turn_left != 0.0:
 		var st := clampf(turn_left, -TURN * 4.0 * dt, TURN * 4.0 * dt)
 		orbit.x += st
@@ -703,7 +794,7 @@ func _hover(at: Vector2) -> void:
 		c = a.place if can_hold(a.place) else null
 	ghost.visible = c != null
 	if c != null:
-		ghost.position = _pos(Vector3(c))
+		ghost.transform = _cell_xf(Armory.REGIONS[region].parts[0], Vector3(c))
 		var col := Color.hex((paint << 8) | 0xff) if paint >= 0 else Weapon.voxel_color(String(def.mat), "blunt")
 		col.a = 0.5
 		(ghost.mesh.material as StandardMaterial3D).albedo_color = col

@@ -182,22 +182,78 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 	t.eq(float(PlayerInput.unpack(packed).get("wheel", 0.0)), -2.0, "a guest's wheel travels with his crosshair")
 	m.queue_free()
 
-## A fireball: Vulcan's fire in a clay sphere, a blast with flames in it and fire on the sand.
-func test_a_fireball_blasts_and_burns() -> void:
+## The trader's wares (user: the beehive and the fireball gone, the sand pot and the smoke pot one,
+## a water skin and a torch added): on the market as they are now, and an old bag's gone kinds
+## under their new names.
+func test_the_trader_wares_as_they_are_now() -> void:
+	var sh: Dictionary = Data.shop.throwables
+	for gone in ["beehive", "fireball", "sandPot"]:
+		t.check(not sh.has(gone) and not Throwables.POTS.has(gone), "no %s on the market" % gone)
+	for now in ["smoke", "torch", "waterSkin", "telekinesis"]:
+		t.check(sh.has(now), "%s on the market" % now)
+	var menu_s = load("res://scripts/ui/menu.gd")
+	t.eq(menu_s.kit_use("waterSkin"), "self", "the water skin is poured over yourself (the physician's supplies)")
+	t.eq(menu_s.kit_use("torch"), "throw", "the torch is taken in hand and thrown")
+	var old := Net.sanitize_kit({"sandPot": 2, "smoke": 1, "beehive": 1, "fireball": 1})
+	t.eq(int(old.get("smoke", 0)), 3, "an old bag's sand pots are smoke pots now")
+	t.check(int(old.get("honey", 0)) == 1 and int(old.get("greekFire", 0)) == 1, "its beehive a honey pot, its fireball Greek fire")
+
+## A torch in hand burns what its flame touches (anyone but him), and lowered into spilled oil the
+## oil goes up; thrown, it burns where it lands; a water skin poured over a burning man puts him
+## out (user: a torch that burns the foe, not only lights oil; a water skin).
+func test_a_torch_burns_and_lights_oil_and_water_puts_it_out() -> void:
 	var m := _match()
 	m.me.f.teleport(Vector3(0, 0, -12))
 	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
-	await _steps(20)
-	var wet_before: int = m.throwables.wet.size()
-	m.throwables.explode("pot_fireball", v.torso.global_position + Vector3(0, -0.2, -0.4), m.me.f, Vector3.BACK)
-	await _steps(5)
-	t.check(v.last_attacker == m.me.f and v.torso.linear_velocity.length() > 0.5 or v.state != "stand", "the blast throws him (%s)" % v.state)
-	t.check(m.throwables.wet.size() > wet_before, "fire on the sand")
-	t.check(Throwables.POTS.has("fireball") and Data.shop.throwables.has("fireball") and Data.shop.throwables.has("telekinesis"), "both are on the market")
+	await _steps(30)
+	var me: Dictionary = m.me
+	me.inventory = {"torch": 2, "waterSkin": 1}
+	var bar := Throwables.hotbar_of(me.inventory)
+	m.throwables.use_item(me, bar.find("torch"))
+	t.check(me.f.held_item != null and me.f.held_item.type == "torch", "the torch is in hand")
+	await _steps(2)
+	t.check(not Fire.is_burning(me.f), "it does not burn the man who holds it")
+	# The flame put to his arm: he catches.
+	var tip := Throwables.torch_tip(me.f)
+	v.teleport(tip + Vector3(0, -1.25, 0.25))
+	var touched := false
+	for i in 60:
+		await get_tree().physics_frame
+		if Fire.is_burning(v):
+			touched = true
+			break
+		tip = Throwables.torch_tip(me.f)
+		var near: VoxelPart = v.arm.R.upper
+		v.torso.global_position += tip - near.global_position
+	t.check(touched, "what its flame touches catches fire")
+	# Lowered into spilled oil: it goes up.
+	var oil: Dictionary = m.throwables.add_zone("oil", Vector3(tip.x, 0, tip.z), 2.6, 14.0, null)
+	m.throwables.ignite_oil(oil, me.f)
+	await _steps(2)
+	t.check(not m.throwables.zones.has(oil) or oil.t <= 0.0, "lit, the oil is gone")
+	t.check(m.throwables.zones.any(func(z): return z.type == "fire" and Vector2(z.p.x - tip.x, z.p.z - tip.z).length() < 0.1 and z.r > 2.0), "and a fire as wide burns where it lay")
+	# Thrown into oil on the sand five metres off: the oil goes up there too.
+	var oil2: Dictionary = m.throwables.add_zone("oil", Vector3(6, 0, 6), 2.6, 14.0, null)
+	m.throwables.explode("torch", Vector3(6.4, 0.05, 6.2), me.f)
+	await _steps(2)
+	t.check(oil2.t <= 0.0, "a torch thrown into spilled oil sets it ablaze")
+	# Greek fire reaching oil sets it going as well.
+	var oil3: Dictionary = m.throwables.add_zone("oil", Vector3(-6, 0, 6), 2.6, 14.0, null)
+	m.throwables.add_liquid("fire", Vector3(-6.5, 0, 6.3), 0.4, me.f)
+	await _steps(40)
+	t.check(oil3.t <= 0.0, "burning oil from a Greek fire pot that runs into it lights it")
+	# The water skin: his fire out.
+	m.add_spot(me.f, me.f.torso, "fire", 8.0, v, null)
+	t.check(Fire.is_burning(me.f), "set alight")
+	m.throwables.put_away(me)
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("waterSkin"))
+	t.check(not Fire.is_burning(me.f), "the water skin puts the fire on him out")
+	t.eq(int(me.inventory.get("waterSkin", 0)), 0, "and it is used up")
 	m.queue_free()
 
-## A beehive broken short of the man: the swarm comes out and goes for him, and within a couple
-## of seconds he is covered (a pot that broke on the sand five metres off did nothing: user).
+## The bees of a broken hive (a mystery amphora's): the swarm comes out short of the man and goes
+## for him, and within a couple of seconds he is covered (a pot that broke on the sand five metres
+## off did nothing: user).
 func test_a_broken_hive_sends_its_swarm_at_the_nearest_foe() -> void:
 	var m := _match()
 	m.me.f.teleport(Vector3(0, 0, -12))

@@ -643,3 +643,42 @@ func test_the_forge_reads_armour_as_a_fight_does() -> void:
 	t.check(mace > gladius, "a mace through iron (%.2f) beats a gladius (%.2f)" % [mace, gladius])
 	t.check(Fighter.armour_pass("edge", 0.85, 4.5) > Fighter.armour_pass("edge", 0.85, 1.0), "a heavy blade passes more of its weight than a light one")
 	t.check(Fighter.armour_pass("blunt", 0.85, 1.0) > Fighter.armour_pass("edge", 0.85, 1.0), "a club passes more than a light blade")
+
+## The bench fitted to the new body and to the armour as a fight draws it (user): a plate is laid
+## where a fight lays it on him (Physique.plate_xf: on his outline), not on the old body's grid;
+## a moment after the last change the piece's own shell is on the man round the bench, the plates
+## hidden under it, and a change takes it off until the next pause.
+func test_the_bench_lays_plates_where_he_wears_them() -> void:
+	var f := ArmourForge.new()
+	add_child(f)
+	f.open({"name": "Mine", "mat": "iron", "parts": {}}, "torso", func(_d): pass)
+	await get_tree().process_frame
+	var mp: VoxelPart = f._man_part("torso")
+	t.check(mp != null and mp.fine.has("body"), "the man round the bench is drawn in the new look")
+	var c := Vector3i(int(f.dims.x / 2), int(f.dims.y / 2), f.dims.z)
+	t.check(f.add_plate(c), "a plate on the front of his chest")
+	# (The plates' own transforms are the rendering server's, and a headless run keeps none: the
+	# box the mouse finds a plate by lies where the bench draws it, both from _cell_xf.)
+	var box: CollisionShape3D = null
+	for n in f.root.find_children("*", "CollisionShape3D", true, false):
+		if n.get_meta("cell", null) == c and n.get_meta("plate", false):
+			box = n
+	t.check(box != null, "the plate has its box for the mouse")
+	var at := (Vector3(c) - (Vector3(f.dims) - Vector3.ONE) * 0.5) * ArmourForge.CELL
+	var worn: Transform3D = Transform3D(Basis(), f._part_origin("torso", "torso")) * Physique.plate_xf(mp, [c.x, c.y, c.z], at, ArmourForge.BENCH_ID)
+	t.check(f._cell_xf("torso", Vector3(c)).origin.distance_to(worn.origin) < 0.001, "laid where a fight lays it on him")
+	t.check(box != null and box.position.distance_to(worn.origin) < 0.001, "and the mouse finds it there")
+	t.check(worn.origin.distance_to(f._pos(Vector3(c))) > 0.005, "not on the old body's grid (%.3f m off it)" % worn.origin.distance_to(f._pos(Vector3(c))))
+	for i in 80:
+		await get_tree().process_frame
+	var shell := func() -> bool:
+		for ad in mp.get_meta("armor", []):
+			if ad.get("id") == ArmourForge.BENCH_ID and ad.has("shell"):
+				return true
+		return false
+	t.check(shell.call(), "a moment later the piece's own shell is on him")
+	t.check(not f.plates_mi.visible, "the plates hidden under it")
+	t.check(not Data.armor.has(ArmourForge.BENCH_ID), "and nothing of it left among the pieces the game knows")
+	f.add_plate(c + Vector3i(0, 1, 0))
+	t.check(not shell.call() and f.plates_mi.visible, "a change: the plates show until the next pause")
+	f.queue_free()

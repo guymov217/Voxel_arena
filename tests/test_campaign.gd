@@ -900,3 +900,75 @@ func test_a_man_beheaded_is_carried_off_with_a_head() -> void:
 		await get_tree().physics_frame
 	t.check(e2.f.alive and not e2.f.head.severed and e2.f.state == "stand", "a man of that body stands, his head on")
 	m.queue_free()
+
+## The campaign won: the Emperor's gilded rudis hung on the smith's rack, and the freedman's cap
+## his to wear (user: a real reward at the campaign's end); never a second rudis.
+func test_the_rudis_won_hangs_on_the_rack_and_frees_the_cap() -> void:
+	var menu_s = load("res://scripts/ui/menu.gd")
+	t.check(menu_s.look_locked("hat_pileus"), "the freedman's cap waits for the rudis")
+	var d: Dictionary = Data.preset("rudis")
+	t.check(not d.is_empty() and (d.get("voxels", []) as Array).all(func(v): return ["wood", "gold"].has(String(v[3])) and String(v[4]) != "edge" and String(v[4]) != "point"), "the rudis: wood and gold, no edge, no point")
+	t.check(not (Data.shop.get("bases", []) as Array).any(func(b): return String(b.get("key", "")) == "rudis"), "and it is not for sale")
+	var menu = menu_s.new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	menu.rudis_end = {}
+	for i in 2:
+		menu.show_screen("campaign_end")
+		await get_tree().process_frame
+	t.check(not menu_s.look_locked("hat_pileus"), "won: the cap is his")
+	var rack: Array = menu.arms().get("rack", [])
+	t.eq(rack.filter(func(x): return String(x.get("name", "")) == "Rudis").size(), 1, "one rudis on the smith's rack, however often the end is shown")
+	menu.queue_free()
+
+## The campaign's end in the arena (EndingScene; user: a short scene, skippable): the gladiator
+## held to the scene's pose, the rudis put in his hand at its time, the Emperor before his throne;
+## skipped, it ends at once and gives the man back.
+func test_the_ending_scene_gives_the_rudis_and_can_be_skipped() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 9})
+	for e in m.enemies():
+		e.f.die("test")
+	var s := EndingScene.play(m, null)
+	var ended := []
+	s.done.connect(func(): ended.append(true))
+	t.check(m.me.has("drive"), "the gladiator is the scene's to move")
+	t.check(s.emperor != null and is_instance_valid(s.emperor), "the Emperor stands in his box")
+	t.check(s.cam.global_position.distance_to(m.me.f.torso.global_position) < 5.0, "the camera is by him from the first frame, not where it was made (the world's middle)")
+	s.t = 14.2
+	for i in 3:
+		await get_tree().process_frame
+	var w = m.me.f.weapons.get("R")
+	t.check(w != null and String(w.design.get("name", "")) == "Rudis", "the rudis is in his hand")
+	s.finish()
+	await get_tree().process_frame
+	t.eq(ended.size(), 1, "skipped: the scene is over")
+	t.check(not m.me.has("drive"), "and the gladiator is his own again")
+	m.queue_free()
+	await get_tree().physics_frame
+
+## The ending's camera stands clear of a fallen foe (the Dragon lies where it fell, and a shot that
+## would stand inside its body stands beside it), and the first shot has the foe behind him.
+func test_the_ending_scene_camera_stands_clear_of_a_fallen_foe() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 9})
+	for i in 5:
+		await get_tree().physics_frame
+	var foe = m.enemies()[0]
+	foe.f.die("test")
+	var s := EndingScene.play(m, null)
+	var tp: Vector3 = m.me.f.torso.global_position
+	var at: Vector3 = foe.f.torso.global_position
+	t.check(not s._clear_at(at), "the fallen foe's body is in the way where it lies")
+	var q: Vector3 = s._place(at, tp)
+	t.check(s._clear_at(q), "the camera stands clear of it")
+	t.check(q.distance_to(at) > 0.3, "and not where it lies")
+	var way: Vector3 = s._foe_way(tp)
+	var to := Vector3(at.x - tp.x, 0.0, at.z - tp.z)
+	t.check(way.normalized().dot(to.normalized()) > 0.99, "the way to the foe is known (%.2f)" % way.normalized().dot(to.normalized()))
+	s.finish()
+	m.queue_free()
+	await get_tree().physics_frame

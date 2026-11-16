@@ -139,6 +139,8 @@ static func set_on(main: GPUParticles3D, on: bool) -> void:
 	if on and not was and not bool(main.get_meta("live", false)) and not room():
 		return   # (no room for it now: the part glows, no flames)
 	main.emitting = on
+	if on:
+		main.visible = true   # (hidden when a water skin put it out: Throwables.douse)
 	_count(main, on)
 	for c in main.get_children():
 		if c is GPUParticles3D:
