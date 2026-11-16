@@ -596,7 +596,10 @@ func test_a_dazed_or_drunk_mans_blade_holds_still() -> void:
 ## comes out with the hand (user: the sword went into a head and stuck there; an axe stayed in
 ## two times in six before).
 func test_a_blade_pulled_out_of_a_head_comes_free() -> void:
-	for mark in [Vector2(-0.4, 0.6), Vector2(0.4, 0.9)]:
+	# (The axe lies where its mark asks, so the marks are those that bring it down against the
+	# head, both from his left of it: from (0.4, 0.9) it lay above the head, never in it, and the
+	# test was not testing what it says.)
+	for mark in [Vector2(-0.25, 0.5), Vector2(-0.15, 0.6)]:
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": "axe", "off": ""}})
@@ -617,6 +620,7 @@ func test_a_blade_pulled_out_of_a_head_comes_free() -> void:
 			e.f.head.hp = maxf(e.f.head.hp, 50.0)
 		var w: Weapon = f.weapons.R
 		var hp: VoxelPart = e.f.head
+		t.check(w.get_colliding_bodies().has(hp), "%s: the axe lies against the head before it is drawn off" % mark)
 		var gone := hp.voxels_within(hp.global_transform.affine_inverse() * (w.global_transform * Vector3(0, w.reach * 0.8, 0)), 0.06)
 		if not gone.is_empty():
 			hp.remove_voxels(Array(gone))

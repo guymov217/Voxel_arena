@@ -1046,7 +1046,12 @@ func _lock_elbow_straight(side: String, on: bool) -> void:
 ## (a warhammer) swings on the whole arm from the shoulder instead of folding the elbow.
 const ELBOW_SET_RATE := 0.2   # rad/s the set bend may follow the aim
 const ELBOW_GUARD_RATE := 1.5   # rad/s it bends to a guard held still
-func _hold_elbow(side: String, want_bend: float, on: bool, dt: float, guard := false) -> void:
+## A stroke with both hands on the haft: the set follows the bend asked as fast as it
+## straightens, up to a right angle and a little more (given every bend, a warhammer's head
+## folded the elbow, and its diagonal strokes ran further behind the mouse).
+const ELBOW_TWO_RATE := 6.0
+const ELBOW_TWO_BEND := 1.6
+func _hold_elbow(side: String, want_bend: float, on: bool, dt: float, rate := ELBOW_SET_RATE) -> void:
 	var fore: VoxelPart = arm[side].fore
 	var upper: VoxelPart = arm[side].upper
 	if not (fore.joint is Generic6DOFJoint3D) or fore.severed or upper.severed or fore.hanging or upper.hanging or bool(fore.get_meta("elbow_locked", false)):
@@ -1066,7 +1071,7 @@ func _hold_elbow(side: String, want_bend: float, on: bool, dt: float, guard := f
 		# Straightening into the blow is quick (a heavy weapon is struck with the arms
 		# extending); giving way to more bend is slow.
 		var goal := clampf(want_bend, 0.0, ELBOW_BEND)
-		cur = move_toward(float(held), goal, (6.0 if goal < float(held) else (ELBOW_GUARD_RATE if guard else ELBOW_SET_RATE)) * dt)
+		cur = move_toward(float(held), goal, (6.0 if goal < float(held) else rate) * dt)
 	fore.set_meta("elbow_set", cur)
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, maxf(-0.05, cur - 0.07))
 	j.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, minf(ELBOW_BEND, cur + 0.07))
@@ -5620,10 +5625,15 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# over the elbow and the hand swung from side to side three times a second (tremor.gd).
 		# With both hands on a haft, to fifty degrees at most (the straight arms are what carry
 		# the hands out to the mark: given the whole bend, they reached a tenth less far).
+		# A stroke in both hands is not made near straight: the other arm on the haft has its say
+		# in how far this one bends, and an elbow set for the stroke at a fifth of a radian's bend
+		# stood against it. A longsword struck across to its own side ran 16 degrees under the
+		# mouse's line and 30 behind it (or did not, the least thing different: three men struck
+		# side by side went the one way, one alone the other).
 		var guard := not moving
 		var bend_need: float = elbow_dir.angle_to(fore_dir)
-		var want_bend := minf(bend_need, 0.35 if not guard else (0.9 if two_handed else PI))
-		_hold_elbow(side, want_bend, swinging, dt, guard)
+		var want_bend := minf(bend_need, (0.9 if two_handed else PI) if guard else (ELBOW_TWO_BEND if two_handed else 0.35))
+		_hold_elbow(side, want_bend, swinging, dt, ELBOW_GUARD_RATE if guard else (ELBOW_TWO_RATE if two_handed else ELBOW_SET_RATE))
 		# Held near straight (a swing), the arm lies along the line from the shoulder to the hand;
 		# bent, the forearm runs from the elbow to it: the hand's goal moved out until that, as thick
 		# as it is drawn, is out of the trunk as it is drawn (_outline). (With only the elbow asked
@@ -6976,6 +6986,20 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	var fore: VoxelPart = arm[side].fore
 	var rot := PD.quat_of(fore)
 	var err := PD.rot_error(fore_q, rot)
+	# A blade in one hand held still, pointing down and out to a side: the forearm is driven on to
+	# its line, and no more. Its turn about its own length is the elbow's to give (a hinge: the
+	# forearm lies as the upper arm's roll and the bend leave it), and the edge is the wrist's
+	# (_drive_wrist turns the blade in the hand). Driven to that turn as well, the arm stretched
+	# out low pressed against the hinge, the upper arm was taken off its own line with it, and a
+	# light blade lay 12 to 24 degrees off the mouse (a dagger most, driven as lightly as it
+	# weighs). Not in a swing, nor while the blade is still on its way (a giant's plank driven to
+	# the line alone came down on a man a third less often), nor held up: there it made no
+	# difference but a degree or two the worse.
+	if has_wrist(w) and not two_handed and thrust_line[side] == null:
+		var moving := maxf((aim_w[side] as Vector3).length(), maxf(fore.angular_velocity.length(), w.angular_velocity.length()))
+		var low := smoothstep(0.1, -0.3, ((aim_q[side] as Quaternion) * Vector3.UP).y)
+		var line := PD.dir_error(rot * Vector3(0, -1, 0), fore_q * Vector3(0, -1, 0))
+		err = err.lerp(line, (1.0 - smoothstep(1.0, 4.0, moving)) * low)
 	# In a thrust the wrist and forearm lock the blade on its line: it is driven along it, not
 	# turned off it by the push of the arm.
 	var hold := 1.8 if thrust_line[side] != null else 1.0

@@ -2992,34 +2992,34 @@
 "scripts/game/body.gd:15"
 ],
 "Armor_": [
-"scripts/fighter/fighter.gd:1127"
+"scripts/fighter/fighter.gd:1132"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2962"
+"scripts/fighter/fighter.gd:2967"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:3249"
+"scripts/fighter/fighter.gd:3254"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3251"
+"scripts/fighter/fighter.gd:3256"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3251"
+"scripts/fighter/fighter.gd:3256"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:3257"
+"scripts/fighter/fighter.gd:3262"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:3257"
+"scripts/fighter/fighter.gd:3262"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7367"
+"scripts/fighter/fighter.gd:7391"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7383"
+"scripts/fighter/fighter.gd:7407"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9328",
+"scripts/fighter/fighter.gd:9352",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [

@@ -161,3 +161,120 @@ func test_a_low_blade_goes_along_the_sand_with_the_mouse() -> void:
 	t.check(l > 3.0 and l < 30.0, "a little to the left of it, a little to his left (%.0f deg)" % l)
 	t.check(r < -3.0 and r > -30.0, "a little to the right, a little to his right (%.0f deg)" % r)
 	m.queue_free()
+
+## The mark taken from its rest to `to` as the mouse takes it (four units of the pane a second),
+## then held: how far the blade lies off the line the fighter himself asks of it (degrees), over
+## a quarter second, a second and a third after it got there.
+func _held_off(f: Fighter, box: Dictionary, to: Vector2) -> float:
+	var h := {"x": 0.1, "y": 0.15}
+	box.i = {"main": h.duplicate(), "power": false}
+	await _steps(70)
+	for i in 300:
+		var d := to - Vector2(float(h.x), float(h.y))
+		if d.length() < 0.01:
+			break
+		PlayerInput.slide(h, d.normalized() * minf(4.0 / 120.0, d.length()))
+		box.i = {"main": h.duplicate(), "power": true}
+		await get_tree().physics_frame
+	await _steps(160)
+	var w: Weapon = f.weapons[f.two_side]
+	var sum := Vector3.ZERO
+	for i in 30:
+		await get_tree().physics_frame
+		sum += PD.quat_of(w) * Vector3.UP
+	return rad_to_deg(sum.normalized().angle_to((f.aim_q[f.two_side] as Quaternion) * Vector3.UP))
+
+## A blade in one hand held still low out to either side lies where it is asked (it lay 12 to 24
+## degrees off: the forearm, driven to turn about its own length as well, pressed against the
+## elbow's hinge and took the upper arm off its line; the lighter the blade, the further off).
+func test_a_light_blade_held_low_out_to_a_side_lies_where_it_is_asked() -> void:
+	for wk in ["dagger", "gladius"]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": wk, "off": ""}})
+		var f: Fighter = m.me.f
+		var box := {"i": {"main": {"x": 0.1, "y": 0.15}, "power": false}}
+		m.me.drive = func(_e): return box.i
+		await _steps(90)
+		var offs := []
+		for mk in [Vector2(1.84, -0.61), Vector2(-1.84, -0.61), Vector2(1.41, -1.13), Vector2(-1.41, -1.13)]:
+			offs.append(await _held_off(f, box, mk))
+		var mean: float = (offs[0] + offs[1] + offs[2] + offs[3]) / 4.0
+		var worst: float = offs.max()
+		t.check(mean < (17.5 if wk == "dagger" else 12.5), "%s: held low out to a side, the blade lies near where it is asked (%.1f degrees off on the whole; %.1f %.1f %.1f %.1f)" % [wk, mean, offs[0], offs[1], offs[2], offs[3]])
+		t.check(worst < (19.5 if wk == "dagger" else 15.5), "%s: at none of the four marks far off (%.1f at worst)" % [wk, worst])
+		t.eq(f.state, "stand", "%s: on his feet throughout" % wk)
+		m.queue_free()
+		await get_tree().process_frame
+
+## A stroke straight across him from his left to his right, the mouse at six units of the pane a
+## second, every man in `box` driven alike (they face `yaw`): [how far off the level `f`'s blade
+## runs (rms, degrees), how far behind the line asked of it it runs (mean, worst)].
+func _stroke_right(f: Fighter, box: Dictionary, yaw: float) -> Array:
+	var put := func(mk: Vector2, power: bool) -> void:
+		box.i = {"main": {"x": mk.x, "y": mk.y}, "power": power, "thrust": 0.0, "look": {"yaw": yaw, "pitch": 0.0}, "mx": 0.0, "mz": 0.0}
+	var mark := Vector2(0.1, 0.15)
+	put.call(mark, false)
+	await _steps(60)
+	var a := Vector2(-1.94, 0.0)
+	var b := Vector2(1.94, 0.0)
+	while mark.distance_to(a) > 0.01:
+		var d0 := a - mark
+		mark += d0.normalized() * minf(4.0 / 120.0, d0.length())
+		put.call(mark, true)
+		await get_tree().physics_frame
+	await _steps(100)
+	var w: Weapon = f.weapons[f.two_side]
+	var yq := Quaternion(Vector3.UP, f.yaw).inverse()
+	var off2 := 0.0
+	var lag := 0.0
+	var lag_max := 0.0
+	var n := 0
+	var after := 42
+	while mark.distance_to(b) > 0.005 or after > 0:
+		if mark.distance_to(b) > 0.005:
+			var d1 := b - mark
+			mark += d1.normalized() * minf(6.0 / 120.0, d1.length())
+			put.call(mark, true)
+		else:
+			after -= 1
+		await get_tree().physics_frame
+		var bl: Vector3 = PD.quat_of(w) * Vector3.UP
+		var up := rad_to_deg(asin(clampf((yq * bl).y, -1.0, 1.0)))
+		off2 += up * up
+		var lg := rad_to_deg(bl.angle_to((f.aim_q[f.two_side] as Quaternion) * Vector3.UP))
+		lag += lg
+		lag_max = maxf(lag_max, lg)
+		n += 1
+	return [sqrt(off2 / n), lag / n, lag_max]
+
+## With both hands on the haft a stroke across to the weapon's own side keeps to the mouse's
+## line and keeps up with it. The main arm's elbow, set near straight for a stroke, stood against
+## the bend the other arm on the haft asks of it, and a longsword's blade ran 16 degrees under the
+## line and 30 behind it: as often as not, and which, the least thing decided (three men struck
+## side by side, as here, went that way; one alone did not).
+func test_a_stroke_in_both_hands_keeps_to_the_mouses_line() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	m.me.f.teleport(Vector3(0, 0, 40))
+	var box := {"i": {"main": {"x": 0.1, "y": 0.15}, "power": false, "thrust": 0.0, "look": {"yaw": PI, "pitch": 0.0}, "mx": 0.0, "mz": 0.0}}
+	var men := {}
+	var k := 0
+	for wk in ["warhammer", "longsword", "gladius"]:
+		var e = m.spawn_fighter({"kind": "bot", "name": wk, "loadout": {"main": wk, "off": ""}, "team": 1, "pos": Vector3((k - 1) * 6.0, 0.1, -3.0), "yaw": PI, "build": "hero"})
+		e.erase("bot")
+		e.drive = func(_e): return box.i
+		e.f.player = true
+		e.f.is_bot = false
+		men[wk] = e.f
+		k += 1
+	await _steps(150)
+	var f: Fighter = men.longsword
+	t.check(f.two_handed, "the longsword is in both hands")
+	var r: Array = await _stroke_right(f, box, PI)
+	t.check(r[0] < 5.0, "struck across to his right, the longsword runs level with the mouse (%.1f degrees off its line, rms)" % r[0])
+	t.check(r[1] < 7.0 and r[2] < 14.0, "and keeps up with it (%.1f degrees behind on the whole, %.1f at worst)" % [r[1], r[2]])
+	t.eq(f.state, "stand", "on his feet throughout")
+	m.queue_free()
+	await get_tree().process_frame
