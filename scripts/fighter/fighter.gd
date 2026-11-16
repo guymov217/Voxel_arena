@@ -6756,28 +6756,38 @@ func _spear_trued(side: String, w: Weapon, axis: Vector3, dt: float) -> Vector3:
 	var y2 := a_yaw + fix
 	return Vector3(sin(y2) * flat, axis.y, cos(y2) * flat)
 
+## The pane a hand's mark lies on: 2 across and 1.6 up and down from its middle, and round (the
+## ellipse through those four ends: PlayerInput.slide keeps a player's mark on it).
+const PANE := Vector2(2.0, 1.6)
+
+## The way a mark on the pane lays a blade, in his own frame (+x his left, +y up, +z ahead):
+## tilted off straight ahead toward where the mark lies from the pane's middle, the further the
+## further out it is, by a right angle at the pane's rim: straight up at its top, level out to
+## the side at its sides, straight down at its foot, and every way between at the rim between
+## them. So the blade's point goes the way the mouse goes, whichever way that is and wherever
+## the blade stands. (Asked as a turn aside and a lift, the turn aside did nothing to a blade
+## stood up or pointed down: raised over his head, it answered nothing to the mouse pulled left
+## or right, and stuck there; user, a video.)
+static func aim_dir(hx: float, hy: float) -> Vector3:
+	var r := Vector2(hx / PANE.x, hy / PANE.y).length()
+	if r < 1e-5:
+		return Vector3(0, 0, 1)
+	var th := minf(r, 1.0) * PI / 2.0
+	var az := Vector2(hx, hy).normalized()
+	return Vector3(-az.x * sin(th), az.y * sin(th), cos(th))
+
 func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_q: Quaternion, inp: Dictionary, dt: float) -> Quaternion:
 	if w.design.has("shoots") and not w.design.get("chain"):
 		return _shooter_aim(side, w, inp, yaw_q, dt)
-	var local := (yaw_q.inverse() * (target_w - t_pos)) / S
 	var hy := float(hand_input[side].get("y", 0.15))
-	# Right up and right down at the ends of the pane (the sand stops a long blade short below).
-	var elev := clampf(hy * PI / 2.0 / 1.6, -PI / 2.0, PI / 2.0)
-	# Both hands on the haft swing it about the middle of the chest, one about its own shoulder.
-	var shx: float = 0.0 if two_handed else shoulder[side].x / S
-	var pivot := Vector3(shx + (local.x - shx) * 0.2, local.y, local.z - 0.28)
-	var flat := Vector3(local.x - pivot.x, 0, local.z - pivot.z)
-	if flat.length_squared() < 1e-4:
-		flat = Vector3(0, 0, 1)
-	flat = flat.normalized()
-	if not is_spear(w):
-		# The sweep comes from the mouse itself, the wrists and forearms carrying the blade round
-		# (90 degrees either way at the ends of the pane), not from how far the hands can get: in
-		# one hand or two, light or heavy, every blade sweeps as wide.
-		# (Narrower the lower the blade: low across the body it would end up behind the back.)
-		var sweep := -clampf(float(hand_input[side].get("x", 0.0)), -2.0, 2.0) * PI / 4.0 * (1.0 - 0.45 * clampf(-elev / 1.2, 0.0, 1.0))
-		flat = Vector3(sin(sweep), 0, cos(sweep))
-	var axis := yaw_q * Vector3(flat.x * cos(elev), sin(elev), flat.z * cos(elev))
+	# The blade lies the way the mark lies from the pane's middle (aim_dir): the sweep and the
+	# lift both come from the mouse itself, the wrists and forearms carrying the blade round, not
+	# from how far the hands can get: in one hand or two, light or heavy, every blade turns as far.
+	var axis_l := aim_dir(float(hand_input[side].get("x", 0.0)), hy)
+	# (How far it is lifted: right up and right down at the pane's top and foot; the sand stops a
+	# long blade short below.)
+	var elev := asin(clampf(axis_l.y, -1.0, 1.0))
+	var axis := yaw_q * axis_l
 	if is_spear(w) and not throw_pose[side]:
 		# A spear is held couched, its point on the line the fighter looks along; the mouse
 		# moves the point about that line (up for an overhand grip, aside to cover), it does
@@ -6830,15 +6840,27 @@ func weapon_aim(side: String, w: Weapon, target_w: Vector3, t_pos: Vector3, yaw_
 		var reach_w := maxf(0.2, w.reach + 0.04 * S)
 		if axis.y < 0.0 and axis.y * reach_w < -floor_gap:
 			var ny := clampf(-floor_gap / reach_w, -1.0, 0.0)
-			var hz := Vector3(axis.x, 0, axis.z)
-			hz = hz.normalized() if hz.length_squared() > 1e-6 else yaw_q * Vector3(0, 0, 1)
-			axis = hz * sqrt(1.0 - ny * ny) + Vector3(0, ny, 0)
+			if is_spear(w):
+				var hz := Vector3(axis.x, 0, axis.z)
+				hz = hz.normalized() if hz.length_squared() > 1e-6 else yaw_q * Vector3(0, 0, 1)
+				axis = hz * sqrt(1.0 - ny * ny) + Vector3(0, ny, 0)
+			else:
+				# What the point cannot go down, it goes forward: it stays as far out to the side
+				# as the mouse has it, so along the sand it still goes left and right with the
+				# mouse. (Kept on its heading instead, a blade asked nearly straight down swung a
+				# quarter turn round for a finger's breadth of the mouse: the heading of a blade
+				# that points down is whatever little it leans.)
+				var la_f := yaw_q.inverse() * axis
+				var level := sqrt(maxf(0.0, 1.0 - ny * ny))
+				var lx := clampf(la_f.x, -level, level)
+				axis = yaw_q * Vector3(lx, ny, sqrt(maxf(0.0, level * level - lx * lx)))
 	if throw_pose[side]:
 		# A spear being thrown points where it will go, at the mark (or ahead and a touch up).
 		var at = inp.get("aimAt")
 		var fly: Vector3 = ((at as Vector3) - target_w).normalized() if at is Vector3 and (at as Vector3).distance_to(target_w) > 0.5 else yaw_q * Vector3(0, 0.17, 1).normalized()
 		axis = (fly + Vector3(0, 0.08, 0)).normalized()
-	low_hand = maxf(low_hand, maxf(0.0, -elev - 0.2) * (1.0 + 0.8 * clampf((0.95 - w.reach) / 0.5, 0.0, 1.0)))
+	# (He bends to a low blow by how low the mark is on the pane, whichever way the blade lies.)
+	low_hand = maxf(low_hand, maxf(0.0, -clampf(hy / PANE.y, -1.0, 1.0) * PI / 2.0 - 0.2) * (1.0 + 0.8 * clampf((0.95 - w.reach) / 0.5, 0.0, 1.0)))
 	var raise_k := smoothstep(0.5, 1.2, elev)
 	var ed := yaw_q * Vector3((1.0 if side == "R" else -1.0) * (1.0 - raise_k), 0, raise_k)
 	ed -= axis * ed.dot(axis)

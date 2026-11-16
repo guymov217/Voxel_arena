@@ -235,9 +235,20 @@ func _motion(rel: Vector2) -> void:
 		return
 	var s := 0.0024 * sensitivity
 	for hh in ([main, off] if both else [h]):
-		var lim := 2.0
-		hh.x = clampf(hh.x + rel.x * s, -lim, lim)
-		hh.y = clampf(hh.y - rel.y * s, -1.6, 1.6)
+		slide(hh, Vector2(rel.x, -rel.y) * s)
+
+## The mouse moved by `d` (pane units, up positive): the mark `h` goes with it and stays on the
+## pane (Fighter.PANE: round). Pushed on past the pane's rim it slides along the rim the way the
+## mouse goes. (Kept to a square pane it stopped dead along the top and in the corners: with the
+## weapon raised, the mouse pulled left or right moved the mark along the top edge, where the
+## blade stood straight up all the way, and nothing answered; user, a video.)
+static func slide(h: Dictionary, d: Vector2) -> void:
+	var n := Vector2((float(h.x) + d.x) / Fighter.PANE.x, (float(h.y) + d.y) / Fighter.PANE.y)
+	var l := n.length()
+	if l > 1.0:
+		n /= l
+	h.x = n.x * Fighter.PANE.x
+	h.y = n.y * Fighter.PANE.y
 
 ## Both hands back at their guard (a new fighter of ours: a bout, the yard, a respawn).
 func reset_hands() -> void:
@@ -342,9 +353,7 @@ func _pad(dt: float) -> void:
 		look_pitch = clampf(look_pitch - rs.y * dt * 1.45 * sensitivity * sens_y * (-1.0 if invert_y else 1.0), -1.45, 1.35)
 	else:
 		for hh in ([main] if pad_r or (pad_l and two_handed) else []) + ([off] if pad_l and not two_handed else []):
-			var lim := 2.0
-			hh.x = clampf(hh.x + rs.x * dt * 3.2 * sensitivity, -lim, lim)
-			hh.y = clampf(hh.y - rs.y * dt * 3.2 * sensitivity, -1.6, 1.6)
+			slide(hh, Vector2(rs.x, -rs.y) * dt * 3.2 * sensitivity)
 	for i in PAD_ITEMS.size():
 		var down := Input.is_joy_button_pressed(d, PAD_ITEMS[i])
 		if down and not _pad_items_held.get(i, false):
