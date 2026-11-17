@@ -7329,6 +7329,7 @@ const LIMB_BLOW_BEAST := 55.0   # a beast's or a monster's
 const BITE_LIMB := 30.0  # and the most a bite or a claw does (two bites took both arms)
 const BITE_BLEED := 0.4  # a bite's wound bleeds this much of a blade's
 const BLEED_BLOW := 4.0  # the most bleeding one blow's wound starts
+const POINT_ORGAN_BLEED := 4.0  # and the most more that what one stab tears inside him pours (a torn heart is its own matter)
 const GIANT_BLOW := 0.5  # a giant's blows, pulled (Combat): still the heaviest, not death in one or two
 const LAYER_ABSORB := 0.06  # what each layer of armour under the struck one adds
 const LAYER_PASS := 0.75    # and of the weight that gets through the struck one, what each passes on
@@ -7420,6 +7421,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		res.blocked = true
 		return res
 	organs_hit = []
+	var torso_bleed0 := torso.bleed
 	var detached := part.severed
 	var keep_stagger := stagger
 	var keep_conc := concussion
@@ -7610,10 +7612,14 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# them, the slash got further into a hide than a committed thrust did), and a beast's head
 		# takes it as a limb does, as it takes a cut.
 		var stab := J * eff * (1.0 + 0.8 * heavy) * (1.0 + 0.5 * th)
+		# (A thrust takes more weight behind it to go as deep as it can: the stronger the man and the
+		# heavier his weapon, the nearer the most; a trunk is gone through by two or three thrusts into
+		# the same wound, not by one: user.)
+		var stab_full := 70.0 + 30.0 * th
 		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z) * minf(1.0, wsz / maxf(1.0, _bone_s()))
-		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / 70.0, 0.0, 1.0) + 0.25 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.25 * th) if part == torso or (part == head and not (self is Beast)) else 1.0))
+		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / stab_full, 0.0, 1.0) + 0.2 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.1 * th) if part == torso or (part == head and not (self is Beast)) else 1.0))
 		if J * eff > 2.5:
-			var r := V * wsz * (1.2 + 0.5 * heavy + 0.25 * th)
+			var r := V * wsz * lerpf(1.2 + 0.5 * heavy, 0.7 + 0.3 * heavy, th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			# (Only the live voxels round the channel: the whole part voxel by voxel, for each nail
 			# of a pot's hail, was a hitch.)
@@ -7787,7 +7793,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
 		# (Armour counts against a heavy blow too: a blow past the cap is capped lower for it,
 		# else a club through a steel cuirass hurt as much as through a tunic.)
-		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
+		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * lerpf(1.0, clampf(float(hit.get("tpower", 1.0)), 0.2, 1.3), clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	elif not detached:
 		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
 		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
@@ -7804,6 +7810,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		stagger = keep_stagger
 		concussion = keep_conc
 		dmg = 0.0
+	# (What the same lunge has already done to this part is not done twice: Combat "prior".)
+	if not detached and float(hit.get("prior", 0.0)) > 0.0:
+		dmg = maxf(0.0, dmg - float(hit.prior))
 	part.hp = maxf(0.0, part.hp - dmg)
 	res.dmg = dmg
 	# Blood runs from every cut and stab that opened the skin (a bruise does not bleed).
@@ -7871,6 +7880,10 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		_check_flaps(res)
 		if part == torso and not detached and type != "blunt":
 			_check_belly(res)
+		# One stab opens one wound inside as well: what it tore pours as much as POINT_ORGAN_BLEED more
+		# (a thrust to the belly took 220 coils and bled a man dead in three seconds).
+		if type == "point" and not hit.get("bite", false) and not organs_hit.has(Anatomy.HEART) and not res.get("spilled", false):
+			torso.bleed = minf(torso.bleed, torso_bleed0 + BLEED_BLOW + POINT_ORGAN_BLEED)
 		if not part.severed and part.integrity < (HEAD_DEATH if part == head else 0.4):
 			part.hp = 0.0
 	# One knock rings the head and may floor him, all it does at once (the blow, the crater, the

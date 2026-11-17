@@ -28,6 +28,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   but a few studs) bruises and pulps rather than taking flesh away, and breaks bones sooner and
   worse the harder its head; blades cut. A nail pot's nails each punch a hole of their own where
   they go in, bleed and stay in; the ones that miss bounce and lie on the sand.
+  A thrust is as hard as the man behind it and the weapon in his hand (`Combat.thrust_power`: his
+  strength, the training's Vis, in proportion, and the weapon's weight): a knife to the belly hurts
+  and bleeds him but does not kill him at once or go through him, and one lunge is one blow
+  (`tests/test_thrust.gd`).
 - **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
   at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
   out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle

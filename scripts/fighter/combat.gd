@@ -354,6 +354,17 @@ func _clang(g: Dictionary, out: Array) -> void:
 
 ## The speed of a point driven home (m/s, along its blade) that puts all of a thrust behind it.
 const THRUST_FULL_V := 3.0
+## What a man puts behind a thrust, as a share of the full lunge (user: it went through a man at
+## the campaign's start, and a knife to the belly killed him at once): the man's own strength (the
+## training's Vis: the stronger, the harder) and the weight of the weapon (a dagger's point has
+## little behind it, a spear's more, a gladius's the most; none beyond that). THRUST_BASE is what a
+## man untaught drives with a gladius.
+const THRUST_BASE := 0.9
+const THRUST_MASS_REF := 1.7     # kg: a gladius
+const THRUST_MASS_EXP := 0.35
+static func thrust_power(mass: float, strength: float) -> float:
+	var weight := clampf(pow(maxf(0.05, mass) / THRUST_MASS_REF, THRUST_MASS_EXP), 0.5, 1.1)
+	return THRUST_BASE * weight * clampf(strength, 0.5, 2.0)
 ## How much of the hardest a punch can land (its cap) makes it a punch that has landed, and ends it.
 const JAB_SOLID := 0.6
 
@@ -434,6 +445,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		# struck nothing for seconds on end.)
 		J = minf(J, maxf(4.0, m_eff * speed * 1.4))
 	var heavy := 0.0
+	var tpow := 1.0   # (what a man and his weapon put behind a thrust: THRUST_BASE and what comes of strength and weight)
 	if is_weapon and att.is_hazard:
 		J = minf(40.0, maxf(J, 6.0 * speed))
 	if is_weapon and att.holder:
@@ -476,6 +488,10 @@ func _blow(g: Dictionary) -> Dictionary:
 				# only held out, or pushed in slowly, is no stab (it landed at half a full stab's
 				# weight, still or not, and took a man's arm out of his own stroke).
 				var drive := minf(1.0, maxf(0.0, _vel_at(att, p).dot(bax)) / THRUST_FULL_V)
+				# (As much of it as this man, with this weapon, can put behind the point.)
+				var push := thrust_power(att.mass, float(att.holder.mods.get("strength", 1.0)) if "mods" in att.holder else 1.0)
+				tpow = push
+				drive *= push
 				J = maxf(J, minf(75.0, (18.0 + 16.0 * th) * drive)) * (1.0 + 0.8 * th * drive)
 				heavy = maxf(heavy, 0.45 * th * drive)
 				if g.type == "edge":
@@ -602,7 +618,17 @@ func _blow(g: Dictionary) -> Dictionary:
 	var stag0: float = float(vic_char.get("stagger")) if kick and vic_char.get("stagger") != null else 0.0
 	var conc0: float = float(vic_char.get("concussion")) if vic_char.get("concussion") != null else 0.0
 	var cracked0: bool = bool(vic_char.get("skull_cracked"))
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0, "unarmed": punch or kick})
+	# One thrust is one blow: a point that touches him and drives on in the same lunge (a spear's long
+	# shaft, a touch that grows into the stab) lands with what the first contact left of it, not whole
+	# on top of it (a spear's one thrust was two and three blows, 80 of a man's 100).
+	var prior := 0.0
+	var dealt_key := "dealt:%d:%d" % [att.get_instance_id(), vic.get_instance_id()]
+	var dealt = cool.get(dealt_key)
+	if is_weapon and typ == "point" and thrust_k > 0.3 and dealt != null and time - float(dealt[0]) < 0.32:
+		prior = float(dealt[1])
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "tpower": tpow if typ == "point" else 1.0, "prior": prior, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "mass": att.mass if is_weapon else 0.0, "unarmed": punch or kick})
+	if is_weapon and typ == "point" and thrust_k > 0.3:
+		cool[dealt_key] = [float(dealt[0]) if prior > 0.0 else time, prior + float(res.get("dmg", 0.0))]
 	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
 	# is turned aside at the point it struck, so it twists off too).
 	if is_weapon and res.has("glance_n"):

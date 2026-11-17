@@ -3142,13 +3142,13 @@
 "scripts/fighter/fighter.gd:3262"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7391"
+"scripts/fighter/fighter.gd:7392"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7407"
+"scripts/fighter/fighter.gd:7408"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9352",
+"scripts/fighter/fighter.gd:9365",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
