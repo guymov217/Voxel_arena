@@ -3169,7 +3169,7 @@ func peer_body(peer: int, body_, lo := {}) -> void:
 	for e in humans():
 		if e.kind == "remote" and int(e.peer) == peer and is_instance_valid(e.f):
 			var was := Body.sanitize(e.f.body)
-			var again: bool = nb.missing != was.missing or nb.prosthetics != was.prosthetics or nb.eyes != was.eyes or nb.fractures != was.fractures or nb.pro_up != was.pro_up or nb.scars != was.scars
+			var again: bool = nb.missing != was.missing or nb.prosthetics != was.prosthetics or nb.eyes != was.eyes or nb.fractures != was.fractures or nb.pro_up != was.pro_up or nb.scars != was.scars or nb.fresh != was.fresh
 			# His armour bought, taken off or mended at the smith (`lo`, his loadout as he sent it):
 			# on him as it is now, on every screen (user: mending the armour, in a room too).
 			var sl: Dictionary = e.spec.get("loadout", {}) if e.spec.get("loadout") is Dictionary else {}

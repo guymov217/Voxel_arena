@@ -115,7 +115,7 @@ class Radar extends Control:
 			var p := _pt(i, 1.0, radius, c)
 			var dir := (p - c).normalized()
 			var head: String = String(names[i]).to_upper()
-			var sub: String = "%s · %d%%" % [Loc.t(String(titles[i])), int(round(float(levels[i])))]
+			var sub: String = "%s · %d%%" % [Loc.t(String(titles[i])), Training.shown(String(ids[i]), float(levels[i]))]
 			var hw := font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 			var sw := body.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 			var at := p + dir * 14.0
@@ -168,7 +168,7 @@ func setup(leave: Button) -> void:
 	head.add_child(names)
 	var cap_any := maxi(0, stage_n - 1) * Training.CAP_PER_STAGE
 	cap_any -= cap_any % Training.STEP
-	var cap_l := UIStyle.label(Loc.t("Bout %d: up to %d%% an ability") % [stage_n, cap_any], 14, UIStyle.BRONZE)
+	var cap_l := UIStyle.label(Loc.t("Bout %d: up to %d%% an ability") % [stage_n, Training.shown("vis", cap_any)], 14, UIStyle.BRONZE)
 	cap_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	cap_l.clip_text = true
 	cap_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -276,7 +276,7 @@ func _card(id: String, axis: int) -> Control:
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(name_l)
-	var lv_l := UIStyle.label("%d / %d%%" % [lv, int(a.max)], 14, UIStyle.GOLD if lv > 0 else UIStyle.MUTED)
+	var lv_l := UIStyle.label("%d / %d%%" % [Training.shown(id, lv), Training.shown(id, int(a.max))], 14, UIStyle.GOLD if lv > 0 else UIStyle.MUTED)
 	lv_l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	top.add_child(lv_l)
 	var bar := StationKit.Bar.new(8.0, UIStyle.GOLD)
@@ -290,7 +290,7 @@ func _card(id: String, axis: int) -> Control:
 		var d := UIStyle.label(Loc.t(String(a.desc)), 12, UIStyle.MUTED)
 		d.custom_minimum_size = Vector2(maxf(120.0, (right_w if axis < 0 else right_w * 0.5) - 60.0), 0)
 		col.add_child(d)
-	var nextl := UIStyle.label(Loc.t("Next session: +%d%% %s") % [Training.step(id), Loc.lower(String(a.title))], 12, StationKit.GOOD if not r.has("error") else Color(UIStyle.MUTED, 0.75))
+	var nextl := UIStyle.label(Loc.t("Next session: +%d%% %s") % [Training.shown(id, lv + Training.step(id)) - Training.shown(id, lv), Loc.lower(String(a.title))], 12, StationKit.GOOD if not r.has("error") else Color(UIStyle.MUTED, 0.75))
 	nextl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	nextl.clip_text = true
 	nextl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

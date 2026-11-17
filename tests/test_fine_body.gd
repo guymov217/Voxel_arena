@@ -133,18 +133,20 @@ func test_a_wound_opens_on_skin_fat_and_flesh() -> void:
 	p.restore_voxels(hole)
 	t.eq((p.fine.wound as Dictionary).size(), 0, "the voxels put back: nothing bared")
 
-func test_old_wounds_are_scars() -> void:
+func test_open_wounds_are_dents_and_old_scars_are_marks() -> void:
 	var w := _world()
-	var b := Body.empty()
 	var dent := []
 	for x in range(6, 10):
 		for y in range(13, 16):
 			dent.append((x * 22 + y) * 10 + 9)
+	# The last fight's wound, still open: the dent, in the pink of a scar, no flesh open in it.
+	var b := Body.empty()
 	b.scars = {"torso": dent}
+	b.fresh = {"torso": dent}
 	var f := _man(w, "human", Vector3(0, 1.2, 0), "", b)
 	var p: VoxelPart = f.torso
 	var wound: Dictionary = p.fine.wound
-	t.check(wound.size() > 0, "the old wound's dent drawn (%d voxels)" % wound.size())
+	t.check(wound.size() > 0, "the open wound's dent drawn (%d voxels)" % wound.size())
 	var pink := 0
 	for i in wound:
 		if p.scarred.has(i):
@@ -152,6 +154,20 @@ func test_old_wounds_are_scars() -> void:
 			if c.is_equal_approx(p.colors[i]) or c.r > c.g:
 				pink += 1
 	t.check(pink > 0, "its rim in the pink of the scar, no flesh open in it (%d)" % pink)
+	# An old wound, healed over: a mark on the skin and nothing taken from him (user: a dent is a
+	# disadvantage to the man who has it).
+	var b2 := Body.empty()
+	b2.scars = {"torso": dent}
+	var f2 := _man(w, "human", Vector3(4, 1.2, 0), "", b2)
+	var clean := _man(w, "human", Vector3(8, 1.2, 0))
+	var p2: VoxelPart = f2.torso
+	t.eq(p2.fx.size() - p2.alive_count, 0, "an old wound takes no voxel from him")
+	t.eq((p2.fine.wound as Dictionary).size(), 0, "and leaves no dent to draw")
+	var paler := 0
+	for i in dent:
+		if i < p2.fx.size() and p2.colors[i] != clean.torso.colors[i]:
+			paler += 1
+	t.check(paler > 0, "only a mark on the skin where it was (%d voxels paler)" % paler)
 
 func test_prosthetics_and_lost_limbs_stay_as_they_are() -> void:
 	var w := _world()

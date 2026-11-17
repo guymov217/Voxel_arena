@@ -675,7 +675,20 @@ func apply_body(b: Dictionary) -> void:
 	for n in body.scars:
 		var p: VoxelPart = by_name.get(n)
 		if p:
-			p.scar(body.scars[n])
+			# The last fight's wounds are still open: dents, till the physician closes them. Every older
+			# one (and each he has had stitched) has healed over into a scar: a mark on the skin and no
+			# dent (user: a dent is a disadvantage to the man who has it).
+			var open := {}
+			for i in body.get("fresh", {}).get(n, []):
+				open[int(i)] = true
+			var dents := []
+			var healed := []
+			for i in body.scars[n]:
+				(dents if open.has(int(i)) else healed).append(int(i))
+			if not dents.is_empty():
+				p.scar(dents)
+			if not healed.is_empty():
+				p.mark_scar(healed)
 	# The last fight's wounds are still open: blood round each, not yet the pink of a scar.
 	for n in body.get("fresh", {}):
 		var fp: VoxelPart = by_name.get(n)
@@ -7519,6 +7532,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			res.stopped = true
 	var bleed_before := part.bleed
 	var dmg := 0.0
+	# What the trainer's Ictus puts behind the blow reaches the damage a blow is held to as well (a blow
+	# that was at its cap did the same at any strength of blow: the +9% of a few sessions was not felt).
+	var might := clampf(float(hit.get("might", 1.0)), 1.0, 2.0)
 	var remove := []
 	var vfs := part.vf * part.part_scale
 	# A wound is the size of what made it: a gladius opens the same cut in a giant as in a man
@@ -7793,12 +7809,12 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# (A thrust driven home goes past the cap a blow keeps to: it is the deep wound that kills.)
 		# (Armour counts against a heavy blow too: a blow past the cap is capped lower for it,
 		# else a club through a steel cuirass hurt as much as through a tunic.)
-		dmg = minf(dmg, (16.0 if part == head else 28.0) * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * lerpf(1.0, clampf(float(hit.get("tpower", 1.0)), 0.2, 1.3), clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
+		dmg = minf(dmg, (16.0 if part == head else 28.0) * might * (1.0 + 0.7 * clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * lerpf(1.0, clampf(float(hit.get("tpower", 1.0)), 0.2, 1.3), clampf(float(hit.get("thrust", 0.0)), 0.0, 1.0)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	elif not detached:
 		# A limb too: one blow (a dragon's bite, a rhino's horn) cannot take a whole limb's
 		# worth of hurt; cutting it clean off is the blade's work (the wound above), not the
 		# number's.
-		dmg = minf(dmg, (BITE_LIMB if hit.get("bite", false) else (LIMB_BLOW_BEAST if self is Beast else LIMB_BLOW)) * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
+		dmg = minf(dmg, (BITE_LIMB if hit.get("bite", false) else (LIMB_BLOW_BEAST if self is Beast else LIMB_BLOW)) * might * part.mult / float(mods.toughness) * (0.7 if boss else 1.0) * armor_f * float(hit.get("pull", 1.0)))
 	# One blow opens one wound: however hard it came, the bleeding it starts is bounded (a
 	# dragon's bite once bled a man white in a minute from a single wound); a cut artery is
 	# its own matter (part.artery), and wound on wound still adds up.

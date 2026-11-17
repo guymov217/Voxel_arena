@@ -1,8 +1,8 @@
 class_name Body
 extends RefCounted
 ## The gladiator's body between fights in the campaign (physician.js, extended): the limbs he
-## has lost, what replaced them, every hole the fights left in him (healed over into a dent the
-## shape of the blow), and his eyes. It is read off his fighter after every round, the physician
+## has lost, what replaced them, every wound the fights left in him (open for the physician to close,
+## then healed over into a scar: a mark on the skin the shape of the blow, no dent), and his eyes. It is read off his fighter after every round, the physician
 ## sees to it for a price, and a new campaign (or a fall back to the checkpoint) starts him whole.
 ## Plain data, so it is saved as it is and sent over the network to the host in co-op.
 
@@ -523,13 +523,8 @@ static func apply(body: Dictionary, id: String) -> Dictionary:
 			b = empty()
 			b.fights = fights
 		"stitch":
-			for p in b.fresh:
-				var gone := {}
-				for i in b.fresh[p]:
-					gone[int(i)] = true
-				b.scars[p] = (b.scars.get(p, []) as Array).filter(func(i): return not gone.has(int(i)))
-				if (b.scars[p] as Array).is_empty():
-					b.scars.erase(p)
+			# (The wounds close and heal over into scars: a mark on the skin, no dent. They are no longer
+			# fresh: nothing of the man is open.)
 			b.fresh = {}
 	return sanitize(b)
 

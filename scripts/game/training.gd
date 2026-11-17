@@ -30,9 +30,21 @@ const ABILITIES := {
 const ORDER := ["vis", "ictus", "spiritus", "corium", "sanguis", "firmitas"]
 ## The six it adds to, each with its sign (blood: slower is better).
 const VIRTUS_MODS := {"strength": 1, "blow": 1, "wind": 1, "toughness": 1, "bleed": -1, "footing": 1}
-const STEP := 3           # per cent a session (Virtus its own: step())
+const STEP := 3           # points a session (Virtus its own: step())
 const CAP_PER_STAGE := 2  # per cent a bout: no buying a champion's body in the first week
 const DEMO_MAX := 6       # the demo's trainer teaches two sessions of each
+
+## What `level` points of an ability do for the man, in per cent (user: what the trainer gives must be
+## felt: a session was 3 per cent of a thing, and 3 per cent is not felt). The first sessions count
+## about twice what they did, each after it less, and at 45 points (what the ablest ability reaches)
+## it is what it always was: a man trained to the limit is hardly more than he was, a man who has had
+## a few sessions is much more. (The points are what is saved and sold and capped; this is what they
+## are worth. Virtus is its own: its per cents are what it says.)
+const EFFECT_START := 2.0   # per cent of effect a first point counts for
+const EFFECT_AT := 45.0     # and the points at which a point is worth one per cent again
+static func effect(level: float) -> float:
+	var l := maxf(0.0, level)
+	return EFFECT_START * EFFECT_AT * l / (l + EFFECT_AT)
 
 ## The per cent one session of `id` teaches.
 static func step(id: String) -> int:
@@ -110,17 +122,21 @@ static func mods_of(stats: Dictionary) -> Dictionary:
 	for id in st:
 		var a: Dictionary = ABILITIES[id]
 		if String(a.mod) != "":
-			out[a.mod] = 1.0 + float(a.sign) * float(level(st, id)) / 100.0
+			out[a.mod] = 1.0 + float(a.sign) * effect(float(level(st, id))) / 100.0
 	var vt := level(st, "virtus")
 	if vt > 0:
 		for m in VIRTUS_MODS:
 			out[m] = float(out.get(m, 1.0)) * (1.0 + float(VIRTUS_MODS[m]) * float(vt) / 100.0)
 	return out
 
+## What `id` at `lv` points is worth to him, in per cent, as the trainer and the yard say it.
+static func shown(id: String, lv: float) -> int:
+	return int(round(lv)) if id == "virtus" else int(round(effect(lv)))
+
 ## A line for the yard: what he has learned.
 static func summary(stats: Dictionary) -> String:
 	var bits := []
 	for id in ORDER + ["virtus"]:
 		if level(stats, id) > 0:
-			bits.append("%s +%d%%" % [ABILITIES[id].title, level(stats, id)])
+			bits.append("%s +%d%%" % [ABILITIES[id].title, shown(id, level(stats, id))])
 	return ", ".join(bits) if not bits.is_empty() else "untrained"

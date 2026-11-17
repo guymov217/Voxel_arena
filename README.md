@@ -65,7 +65,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **The trainer** (Doctore, in the yard): six abilities bought a session at a time, never earned
   in the arena: vis (strength: half of it behind every blow, and all of it in every throw, a weapon, a pot, darts, a discus, which leave the hand faster and land harder), ictus (the blow), spiritus (breath), corium (a thick hide),
   sanguis (slower bleeding) and firmitas (footing). Each costs more than the last and is capped
-  by the bout you have reached (`scripts/game/training.gd`).
+  by the bout you have reached (`scripts/game/training.gd`). What the points are worth is shown as
+  it is (`Training.effect`): the first sessions count about twice what they did (one is over five
+  per cent, three about fifteen), each after it a little less, and at 45 points it is what it always
+  was; Ictus raises the damage a blow is held to as well as its weight.
 - **The Hand of Jupiter**: a telekinesis charge from the market seizes the foe under the
   crosshair, up to 12 m off (a man or a beast; not a giant, not the great monsters of myth), for three seconds (twice a
   bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a

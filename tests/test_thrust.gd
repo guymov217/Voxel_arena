@@ -14,12 +14,12 @@ func _steps(n: int) -> void:
 ## stands and takes it: `aim` "down" at his belly, "level" at his chest. {hits: [{part, J, dmg}], dmg:
 ## what the trunk lost, hole: the share of the trunk's thickness (along the stab) that is gone,
 ## alive: whether he lives `after` seconds on}.
-func _stab(wk: String, str_k: float, aim: String, after := 0) -> Dictionary:
+func _stab(wk: String, str_k: float, aim: String, after := 0, blow := 1.0) -> Dictionary:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3})
 	m.me.f.teleport(Vector3(-12, 0, 8))
-	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": wk}, "team": 1, "pos": Vector3.ZERO, "yaw": 0.0, "mods": {"strength": str_k}})
+	var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": wk}, "team": 1, "pos": Vector3.ZERO, "yaw": 0.0, "mods": {"strength": str_k, "blow": blow}})
 	e.erase("bot")
 	var f: Fighter = e.f
 	var st := {"thrust": 0.0}
@@ -127,3 +127,9 @@ func _victim() -> Array:
 	e.erase("bot")
 	e.drive = func(_e): return {}
 	return [m, e.f]
+
+## What the trainer teaches of the blow (Ictus) is in a real stab too: the same thrust does more.
+func test_a_trained_thrust_does_more() -> void:
+	var plain := await _stab("gladius", 1.0, "down")
+	var trained := await _stab("gladius", 1.0, "down", 0, 1.0 + Training.effect(15.0) / 100.0)
+	t.check(trained.dmg > plain.dmg * 1.15, "fifteen points of Ictus: the same thrust does a fifth more (%.1f against %.1f)" % [trained.dmg, plain.dmg])

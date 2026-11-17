@@ -175,7 +175,7 @@ func test_one_treatment_sees_to_everything() -> void:
 	t.eq(Body.price_of("heal:all", b, 6), int(all[0].price), "priced the same asked again")
 	var healed := Body.apply(b, "heal:all")
 	t.check((healed.fractures as Dictionary).is_empty() and (healed.fresh as Dictionary).is_empty(), "every bone set and every wound stitched")
-	t.check(not (healed.scars as Dictionary).has("torso"), "the stitched wounds leave no scar")
+	t.check((healed.scars as Dictionary).has("torso"), "the stitched wounds heal into scars: a mark on him, nothing open")
 	t.check(not Body.offers(Body.sanitize({"fractures": {"shinR": 1}}), 6).any(func(o): return String(o.id) == "heal:all"), "not offered for a single thing")
 
 ## Drunk in the yard, the Elixir gives the hand back there and then, with the weapon in it (he
@@ -262,8 +262,9 @@ func test_the_rare_medicine_makes_the_worst_part_whole() -> void:
 	var fr := Body.sanitize({"scars": {"thighR": [1, 2, 3]}, "fresh": {"thighR": [1, 2, 3]}})
 	t.check(not Body.old_wound_closed(fr, Body.apply(fr, "stitch:all")), "stitching the last fight's wounds closes no old one")
 
-## Bought in the yard, the rare medicine shows on him there and then: the old wound closed, the
-## bone under it whole, the arm working (user: he bought it and nothing happened).
+## Bought in the yard, the rare medicine shows on him there and then: the old scar gone from his
+## skin, the bone under it whole, the arm working (user: he bought it and nothing happened). An old
+## wound is a mark on the skin, not a dent (the last fight's open wounds are the dents).
 func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 	var body0 = Save.get_value("body", {})
 	var n := int(Body.voxel_count("forearmL") * 0.2)
@@ -276,22 +277,30 @@ func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 		await get_tree().physics_frame
 	var f: Fighter = menu.match_.me.f
 	var gone := func(g: Fighter, part: String) -> int: return g.by_name[part].fx.size() - g.by_name[part].alive_count
-	t.check(gone.call(f, "forearmL") == n and f.by_name.forearmL.fractured, "he walks in with the old wound in the forearm and the bone broken")
+	var marks := func(g: Fighter, part: String, was: Array) -> int:
+		var c := 0
+		for k in was.size():
+			if g.by_name[part].colors[k] != was[k]:
+				c += 1
+		return c
+	t.check(gone.call(f, "forearmL") == 0 and gone.call(f, "upperArmR") == 0 and f.by_name.forearmL.fractured, "he walks in with the old wounds as scars on his skin, no dent, and the bone broken")
+	var arm_colours := []
+	for k in n:
+		arm_colours.append(f.by_name.forearmL.colors[k])
 	var arm0 := f.arm_func("L")
-	# The forearm: an old wound and a broken bone.
+	# The forearm: an old scar and a broken bone.
 	menu.set_body(Body.apply(menu.body(), "medicine:forearmL"))
 	for i in 10:
 		await get_tree().physics_frame
 	var g: Fighter = menu.match_.me.f
-	t.eq(gone.call(g, "forearmL"), 0, "the old wound in the forearm closed on him at once")
+	t.check(marks.call(g, "forearmL", arm_colours) > 0 and not (menu.body().scars as Dictionary).has("forearmL"), "the scar on the forearm gone from his skin at once")
 	t.check(g.by_name.forearmL.fracture == 0 and g.arm_func("L") > arm0 + 0.5, "and the bone whole: the arm works again (%.2f, was %.2f)" % [g.arm_func("L"), arm0])
-	t.check(gone.call(g, "upperArmR") == 40 and gone.call(g, "thighR") == 12, "the rest of him as he was")
-	# The upper arm: an old wound, no bone broken under it (nothing else of him changes).
+	t.check(gone.call(g, "upperArmR") == 0 and gone.call(g, "thighR") == 12, "the rest of him as he was")
+	# The upper arm: an old scar, no bone broken under it (nothing else of him changes).
 	menu.set_body(Body.apply(menu.body(), "medicine:upperArmR"))
 	for i in 10:
 		await get_tree().physics_frame
-	var h: Fighter = menu.match_.me.f
-	t.eq(gone.call(h, "upperArmR"), 0, "an old wound alone closes at once too")
+	t.check(not (menu.body().scars as Dictionary).has("upperArmR"), "an old scar alone goes too")
 	# The thigh: the last fight's wound, the shin's still open beside it.
 	menu.set_body(Body.apply(menu.body(), "medicine:thighR"))
 	for i in 10:
@@ -299,6 +308,42 @@ func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 	var k: Fighter = menu.match_.me.f
 	t.check(gone.call(k, "thighR") == 0 and gone.call(k, "shinL") == 8, "a fresh wound closed by it closes at once, the other stays open")
 	t.check((menu.body().scars as Dictionary).keys() == ["shinL"], "and his save has only the shin left: %s" % str((menu.body().scars as Dictionary).keys()))
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("body", body0 if body0 is Dictionary else {})
+	await get_tree().process_frame
+
+## An old wound is a mark on the skin and nothing taken from him (user: a scar that leaves a dent is a
+## disadvantage to the man who has it); the last fight's wound is open, a dent, till the needle closes
+## it, and closed it heals into a scar there and then.
+func test_a_healed_wound_is_a_scar_not_a_dent() -> void:
+	var body0 = Save.get_value("body", {})
+	Save.set_value("body", Body.sanitize({"scars": {"torso": range(60), "thighR": range(30)}, "fresh": {"thighR": range(30)}}))
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	for i in 10:
+		await get_tree().physics_frame
+	var f: Fighter = menu.match_.me.f
+	var gone := func(g: Fighter, part: String) -> int: return g.by_name[part].fx.size() - g.by_name[part].alive_count
+	t.eq(gone.call(f, "torso"), 0, "an old wound leaves no dent in his trunk")
+	t.eq(gone.call(f, "thighR"), 30, "the last fight's wound is open: a dent")
+	var thigh_colours := []
+	for k in 30:
+		thigh_colours.append(f.by_name.thighR.colors[k])
+	# The needle: the dent fills at once, and the wound is a scar on him.
+	menu.set_body(Body.apply(menu.body(), "stitch:all"))
+	for i in 5:
+		await get_tree().physics_frame
+	var th: VoxelPart = menu.match_.me.f.by_name.thighR
+	t.eq(th.fx.size() - th.alive_count, 0, "stitched: the dent is filled")
+	var paler := 0
+	for k in 30:
+		if th.colors[k] != thigh_colours[k]:
+			paler += 1
+	t.check(paler > 0, "and it is a scar on his skin now (%d voxels paler)" % paler)
+	t.check((menu.body().scars as Dictionary).has("thighR") and (menu.body().fresh as Dictionary).is_empty(), "his save keeps the scar and nothing is open")
 	menu._end_match()
 	menu.queue_free()
 	Save.set_value("body", body0 if body0 is Dictionary else {})

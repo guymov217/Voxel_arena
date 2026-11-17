@@ -1940,6 +1940,37 @@ func scar(indices: Array) -> void:
 			touched.append(i)
 	refresh_colors(touched)
 
+## An old wound healed over, as a mark on the skin and no more (user: a scar that leaves a dent is a
+## disadvantage to the man who has it): the voxels the blow took are still there, paler, with a fainter
+## rim round them. (`scar` is the wound still open: the dent, till the physician has closed it.)
+const SCAR_MARK := Color(0.93, 0.76, 0.70)
+const SIDES := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+func mark_scar(indices: Array) -> void:
+	var marked := {}
+	for i in indices:
+		if i >= 0 and i < fx.size() and alive[i] != 0:
+			marked[Vector3i(fx[i], fy[i], fz[i])] = true
+	if marked.is_empty():
+		return
+	var touched := []
+	for i in fx.size():
+		if alive[i] == 0:
+			continue
+		var c := Vector3i(fx[i], fy[i], fz[i])
+		var w := 0.0
+		if marked.has(c):
+			w = 0.7
+		else:
+			var near := 0
+			for d in SIDES:
+				if marked.has(c + d):
+					near += 1
+			w = 0.16 * minf(2.0, float(near))
+		if w > 0.0:
+			colors[i] = colors[i].lightened(0.1 * w).lerp(SCAR_MARK, w)
+			touched.append(i)
+	refresh_colors(touched)
+
 ## Blood runs from a wound at `lp` (part-local) for as long as the part bleeds: a dripping
 ## emitter there, at most a few per part (a new wound near an old one shares its drip).
 const MAX_DRIPS := 4

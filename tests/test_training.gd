@@ -31,10 +31,54 @@ func test_the_trainer_sells_sessions_within_the_bouts_cap() -> void:
 	t.eq(Training.sanitize({"virtus": 4}).get("virtus"), 4, "Valour keeps its sessions of 2%")
 	t.eq(Training.from_old({"vis": 4, "corium": 24, "enemy": "bear", "bag": {}}), {"vis": 6, "corium": 36}, "the old save's sessions are kept, at today's 3% (the training ground's own keys left out)")
 	var m := Training.mods_of({"vis": 9, "sanguis": 21, "spiritus": 6, "firmitas": 9, "ictus": 3, "corium": 12})
-	t.check(is_equal_approx(m.strength, 1.09) and is_equal_approx(m.bleed, 0.79) and is_equal_approx(m.wind, 1.06) and is_equal_approx(m.footing, 1.09) and is_equal_approx(m.blow, 1.03) and is_equal_approx(m.toughness, 1.12), "the abilities become the man's mods (%s)" % [m])
+	t.check(is_equal_approx(m.strength, 1.0 + Training.effect(9.0) / 100.0) and is_equal_approx(m.bleed, 1.0 - Training.effect(21.0) / 100.0) and is_equal_approx(m.wind, 1.0 + Training.effect(6.0) / 100.0) and is_equal_approx(m.footing, 1.0 + Training.effect(9.0) / 100.0) and is_equal_approx(m.blow, 1.0 + Training.effect(3.0) / 100.0) and is_equal_approx(m.toughness, 1.0 + Training.effect(12.0) / 100.0), "the abilities become the man's mods, each worth what its points are worth (%s)" % [m])
 	Edition.forced = true
 	t.eq(Training.cap("corium", 40), Training.DEMO_MAX, "the demo's trainer teaches two sessions")
 	Edition.forced = null
+
+## What a point of training is worth (user: what the trainer gives must be felt): the first sessions
+## count about twice what they did, each after it a little less, and at the most the ablest ability
+## reaches it is what it always was.
+func test_the_first_sessions_count_for_more() -> void:
+	t.eq(Training.effect(0.0), 0.0, "nothing taught, nothing gained")
+	t.check(Training.effect(3.0) >= 5.0, "one session is worth over five per cent, not three (%.1f)" % Training.effect(3.0))
+	t.check(Training.effect(9.0) >= 14.0, "three sessions over fourteen (%.1f)" % Training.effect(9.0))
+	t.check(absf(Training.effect(45.0) - 45.0) < 0.5, "at 45 points it is what it always was (%.1f)" % Training.effect(45.0))
+	var was := 0.0
+	var last_gain := 99.0
+	for lv in range(3, 46, 3):
+		var e := Training.effect(float(lv))
+		t.check(e > was and e - was <= last_gain + 0.001, "%d points: worth more than fewer, each session a little less than the one before (%.1f)" % [lv, e])
+		last_gain = e - was
+		was = e
+	t.eq(Training.shown("virtus", 4.0), 4, "Valour's per cents are what they say")
+	t.eq(Training.shown("vis", 9.0), int(round(Training.effect(9.0))), "the others are shown as what they are worth")
+	t.check(Training.summary({"vis": 9}).contains("+%d%%" % Training.shown("vis", 9.0)), "and the yard says so")
+
+## The blow a man has trained reaches the damage a blow is held to as well: a blow at its cap did the
+## same at any strength of blow, and the few per cent of a few sessions were not felt.
+func test_a_trained_blow_does_more_than_a_plain_one() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 5})
+	m.me.f.teleport(Vector3(0, 0, -8))
+	var dmg := []
+	for k in 2:
+		var e = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(3 * k, 0.1, 0), "yaw": PI})
+		e.erase("bot")
+		e.drive = func(_e): return {}
+		var v: Fighter = e.f
+		for i in 20:
+			await get_tree().physics_frame
+		v.torso.hp = 1000.0
+		var gt := v.torso.global_transform
+		var fwd := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		var hit := {"impulse": 90.0, "type": "edge", "hardness": 0.9, "sharpness": 0.9, "point": gt * Vector3(0.0, 0.0, v.torso.half_ext.z), "dir": -fwd, "axis": gt.basis.orthonormalized() * Vector3(1, 0, 0), "edge": -fwd}
+		if k == 1:
+			hit["might"] = 1.0 + Training.effect(15.0) / 100.0
+		dmg.append(float((v.apply_hit(v.torso, hit) as Dictionary).dmg))
+	t.check(dmg[0] > 5.0 and dmg[1] > dmg[0] * 1.15, "fifteen points of Ictus: a blow at its cap does a fifth more (%.1f against %.1f)" % [dmg[1], dmg[0]])
+	m.queue_free()
 
 ## What he was taught shows in him: more breath, a steadier stance, a heavier blow.
 func test_training_shows_in_the_man() -> void:
@@ -42,8 +86,8 @@ func test_training_shows_in_the_man() -> void:
 	add_child(m)
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "mods": Training.mods_of({"spiritus": 21, "firmitas": 21, "ictus": 15, "vis": 9})})
 	var me: Fighter = m.me.f
-	t.check(is_equal_approx(float(me.mods.strength), 1.09) and is_equal_approx(float(me.mods.blow), 1.15), "the mods are on him")
-	t.check(me.breath_cap() > 119.0, "a fifth more breath (%.0f)" % me.breath_cap())
+	t.check(is_equal_approx(float(me.mods.strength), 1.0 + Training.effect(9.0) / 100.0) and is_equal_approx(float(me.mods.blow), 1.0 + Training.effect(15.0) / 100.0), "the mods are on him")
+	t.check(me.breath_cap() > 125.0, "a quarter more breath (%.0f)" % me.breath_cap())
 	var plain = m.spawn_fighter({"kind": "bot", "name": "P", "loadout": {}, "team": 1, "pos": Vector3(3, 0, 0), "yaw": PI})
 	plain.erase("bot")
 	plain.drive = func(_e): return {}
