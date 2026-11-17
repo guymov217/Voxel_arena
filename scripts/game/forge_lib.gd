@@ -633,6 +633,13 @@ static func three_bars(st: Dictionary) -> Dictionary:
 		"armour": vs_armour(st),
 	}
 
+## The five bars of a weapon, each 0 to 1: speed, damage, reach, against armour, durability (the
+## forge's, and the smith's showcase of a weapon).
+static func five_bars(d: Dictionary) -> Dictionary:
+	var b := three_bars(compute_stats(d))
+	b["durability"] = durability_bar(d)
+	return b
+
 ## How well a weapon stands its blows, 0 to 1, by the rules a fight wears it down by (Weapon):
 ## each block wears away the slower the harder its stuff (Weapon.wear_limit) and chips the less
 ## (Weapon.chip_score), a brittle one (ice) shatters; the more blocks, the more it can lose before

@@ -198,8 +198,8 @@ func _build_ui() -> void:
 		b.set_meta("mode", key)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mode_row.add_child(b)
-	# Armour is made at the same forge: plate by plate on the body part, its own bench.
-	if get_parent() and get_parent().has_method("armour_from_forge"):
+	# Armour is made at the same forge: plate by plate on the body part, its own bench (while it is open).
+	if Armory.plate_bench_open and get_parent() and get_parent().has_method("armour_from_forge"):
 		var ab := UIStyle.button("Armour", func(): get_parent().armour_from_forge(self))
 		ab.tooltip_text = "Make a piece of armour, plate by plate: where it goes, what it is made of"
 		ab.set_meta("mode", "armour")

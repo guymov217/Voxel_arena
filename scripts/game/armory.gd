@@ -3,6 +3,12 @@ class_name Armory
 ## come from armor.json; the newer ones are shaped here as shells of plates round the body's
 ## parts (cells just outside a part's voxel box, in its own dims), so they always fit the body.
 
+## Whether the armourer's bench plate by plate (ArmourForge: a piece of armour made voxel by voxel
+## from nothing) is open to the player. It is taken down for now (user: full of faults on the
+## present armour and characters): all its code stays, and every way into it asks this. A test
+## that goes in by one of them sets it, and puts it back.
+static var plate_bench_open := false
+
 ## id, price. Ordered as on the smith's rack: light leather first, the steel and gold last.
 const SHOP := [
 	["leatherCap", 25], ["vambraces", 30], ["ironJaw", 30], ["leatherJerkin", 45], ["skullPlate", 45],

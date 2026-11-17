@@ -18,6 +18,15 @@ const BASIC := ["thunderPot", "nailPot", "smoke", "bananas", "caltrops", "oliveO
 ## last boss's bout ends the campaign, and from the second time round everything is there.
 const AFTER_BOSS := ["torch", "goat", "bola", "greekFire", "cheese", "honey", "discus", "garum", "harpoon", "vitriol", "boomerang", "bigNet", "anvil", "chickens", "telekinesis"]
 
+## The trader's road: what each boss brings, in the order they come, with the bout whose boss
+## brings it and whether it is on the table yet (`opened` brought so far); the next to come is marked.
+static func road(opened: int) -> Array:
+	var out := []
+	for i in AFTER_BOSS.size():
+		var id: String = AFTER_BOSS[i]
+		out.append({"id": id, "bout": comes_after(id), "brought": i < opened, "next": i == opened})
+	return out
+
 static func tab_of(id: String) -> String:
 	for t in TABS:
 		if (t[2] as Array).has(id):

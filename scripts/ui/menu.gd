@@ -1687,255 +1687,7 @@ func _endless_close() -> void:
 # ---------- The yard: the smith ----------
 
 func _yard(v: VBoxContainer) -> void:
-	# The smith takes the whole window: a header, then your arms on the left and the rack on
-	# the right, each scrolling on its own so nothing is ever cut off.
-	var vp := get_viewport_rect().size
-	panel.custom_minimum_size = Vector2(maxf(640.0, vp.x - 144.0), maxf(420.0, vp.y - 80.0))
-	if v.get_child_count() > 0 and v.get_child(0) is Button:
-		v.get_child(0).size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 16)
-	v.add_child(head)
-	var names := VBoxContainer.new()
-	names.add_theme_constant_override("separation", 0)
-	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(names)
-	names.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
-	names.add_child(UIStyle.title("The smith", 36))
-	var right := VBoxContainer.new()
-	right.alignment = BoxContainer.ALIGNMENT_END
-	right.add_theme_constant_override("separation", 6)
-	head.add_child(right)
-	var purse := UIStyle.label(Loc.t("You have %d denarii") % coins(), 18, UIStyle.GOLD)
-	purse.autowrap_mode = TextServer.AUTOWRAP_OFF
-	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	right.add_child(purse)
-	var tabs: Array = []
-	for t in [["weapons", "Weapons"], ["armour", "Armour"], ["bench", "Design armour"]]:
-		var tab_id: String = t[0]
-		tabs.append(UIStyle.button(t[1], func():
-			smith_tab = tab_id
-			show_screen("yard"), tab_id == smith_tab))
-	_row(right, tabs).alignment = BoxContainer.ALIGNMENT_END
-	# All his armour mended at once, on whichever tab (user: an option to mend the armour).
-	var all_ := Armory.mend_all(armor_wear(), worn_armor())
-	if int(all_.cost) > 0:
-		var mend_all := UIStyle.button(Loc.t("Mend all armour · %d denarii") % int(all_.cost), _mend_all_armour, true)
-		mend_all.size_flags_horizontal = Control.SIZE_SHRINK_END
-		mend_all.disabled = int(all_.cost) > coins()
-		mend_all.tooltip_text = Loc.t("The armourer puts back every plate your armour has lost.") + (Loc.t(" Purse after: %d") % (coins() - int(all_.cost)) if int(all_.cost) <= coins() else Loc.t(" %d more needed") % (int(all_.cost) - coins()))
-		right.add_child(mend_all)
-	if not last_result.is_empty():
-		v.add_child(UIStyle.label(last_result.get("text", ""), 16))
-	v.add_child(HSeparator.new())
-	var inner_w := panel.custom_minimum_size.x - 64.0
-	if smith_tab == "armour":
-		_smith_armour(v, inner_w)
-		return
-	if smith_tab == "bench":
-		bench_mode = "smith"
-		_armour_bench(v, inner_w)
-		return
-	var a := arms()
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 20)
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(body)
-	# Your arms, as they are: a picture of each with what the smith can do to it.
-	var left_w := clampf(inner_w * 0.36, 330.0, 500.0)
-	var left := VBoxContainer.new()
-	left.custom_minimum_size.x = left_w
-	left.add_theme_constant_override("separation", 8)
-	body.add_child(left)
-	left.add_child(UIStyle.label("YOUR ARMS", 13, UIStyle.BRONZE))
-	var lscroll := _smith_scroll(left)
-	var mine := VBoxContainer.new()
-	mine.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mine.add_theme_constant_override("separation", 10)
-	lscroll.add_child(mine)
-	for side in ["R", "L"]:
-		var d = a.main if side == "R" else a.off
-		var card := _smith_card(d, ("Main hand" if side == "R" else "Off hand"), "arm:%s:%s" % [side, str(d.hash()) if d != null else "none"], 104)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mine.add_child(card)
-		var col: VBoxContainer = card.get_meta("col")
-		if d == null:
-			col.add_child(UIStyle.label("Empty: buy a shield or a dagger from the rack, or have one made", 14, UIStyle.MUTED))
-			var mk := UIStyle.button("Forge a weapon for the off hand", func(): _scratch_forge("L"))
-			mk.tooltip_text = "Built block by block at the anvil, paid for at what it is worth"
-			col.add_child(mk)
-			continue
-		var cond := int(Arms.condition(a, side) * 100.0)
-		var coat: String = Arms.COATING_NAMES.get(d.get("imbue", ""), "")
-		col.add_child(UIStyle.label(str(d.get("name", "?")), 17, UIStyle.TEXT))
-		col.add_child(UIStyle.label(Loc.t("%s%d voxels · condition %d%%") % [(Loc.t(coat) + " · ") if coat != "" else "", d.voxels.size(), cond], 13, UIStyle.GOLD if cond >= 80 else (UIStyle.MUTED if cond >= 40 else Color(1, 0.55, 0.45))))
-		var acts := HFlowContainer.new()
-		acts.add_theme_constant_override("h_separation", 6)
-		acts.add_theme_constant_override("v_separation", 6)
-		col.add_child(acts)
-		var rc := Arms.repair_cost(a, side)
-		var mend := UIStyle.button(Loc.t("Mend · %d denarii") % rc if rc > 0 else "Sound", func(): _pay(Arms.repair(arms(), side)))
-		mend.disabled = rc == 0 or rc > coins()
-		mend.tooltip_text = Loc.t("The smith puts back every voxel it has lost.") + (Loc.t(" Purse after: %d") % (coins() - rc) if rc <= coins() else Loc.t(" %d more needed") % (rc - coins()))
-		acts.add_child(mend)
-		# The same things offered for either hand (user): what cannot be done to this weapon is
-		# shown, greyed, with why.
-		for id in ["whetstone", "temper"]:
-			var why := Arms.upgrade_why_not(id, d)
-			var b: Button
-			if why == "":
-				var price := Arms.upgrade_price(id, d)
-				b = UIStyle.button(Loc.t("%s · %d denarii") % [Loc.t(String(Arms.UPGRADES[id].label)), price], func(): _pay(Arms.upgrade(arms(), side, id)))
-				b.disabled = price > coins()
-				b.tooltip_text = Loc.t(String(Arms.UPGRADES[id].desc)) + (Loc.t(" Purse after: %d") % (coins() - price) if price <= coins() else Loc.t(" %d more needed") % (price - coins()))
-			else:
-				b = UIStyle.button("%s · %s" % [Loc.t(String(Arms.UPGRADES[id].label)), Loc.t(why)], func(): pass)
-				b.disabled = true
-				b.tooltip_text = Loc.t(String(Arms.UPGRADES[id].desc))
-			acts.add_child(b)
-		acts.add_child(UIStyle.button("Reshape in the forge", func(): open_forge(side)))
-		var nw := UIStyle.button("Forge a new one for this hand", func(): _scratch_forge(side))
-		nw.tooltip_text = Loc.t("A new weapon from nothing for the %s: the one there now is traded in for half its worth") % Loc.t("main hand" if side == "R" else "off hand")
-		acts.add_child(nw)
-		# Selling it outright, for what a trade-in fetches (user).
-		var got := Arms.sale_price(d)
-		var sl := UIStyle.button((Loc.t("Sell · you get %d denarii") % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): _sell_confirm(side))
-		sl.disabled = Arms.is_stick(d)
-		sl.tooltip_text = Loc.t("Vulcanus buys it for half its worth: the main hand is left with the training stick" if side == "R" else "Vulcanus buys it for half its worth: the off hand is left empty")
-		acts.add_child(sl)
-	# What the smith keeps for him on his rack, hung up there when he lost the hand that held it
-	# (Arms.fit_hands): taken down into a hand he can hold it in, what that hand held going up.
-	if not a.rack.is_empty():
-		mine.add_child(UIStyle.label("ON THE SMITH'S RACK", 13, UIStyle.BRONZE))
-		var hands := Arms.hands_of(body())
-		for i in a.rack.size():
-			var rd: Dictionary = a.rack[i]
-			var rcard := _smith_card(rd, "Kept for you", "rack:%d:%s" % [i, str(rd.hash())], 84)
-			rcard.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			mine.add_child(rcard)
-			var rcol: VBoxContainer = rcard.get_meta("col")
-			rcol.add_child(UIStyle.label(str(rd.get("name", "?")), 16, UIStyle.TEXT))
-			var racts := HFlowContainer.new()
-			racts.add_theme_constant_override("h_separation", 6)
-			racts.add_theme_constant_override("v_separation", 6)
-			rcol.add_child(racts)
-			for hs in ["R", "L"]:
-				var idx: int = i
-				var side_: String = hs
-				var tb := UIStyle.button("Take it in the main hand" if hs == "R" else "Take it in the off hand", func(): _pay(Arms.take_from_rack(arms(), idx, side_)))
-				tb.disabled = not hands[hs]
-				tb.tooltip_text = Loc.t("Your right hand cannot hold it" if hs == "R" else "Your left hand cannot hold it") if not hands[hs] else Loc.t("Off the rack into that hand; what the hand holds now goes up in its place")
-				racts.add_child(tb)
-	_smith_prosthetics(mine)
-	body.add_child(VSeparator.new())
-	var rack := VBoxContainer.new()
-	rack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rack.add_theme_constant_override("separation", 8)
-	body.add_child(rack)
-	var rh := HBoxContainer.new()
-	var rl := UIStyle.label("WEAPONS FOR SALE", 13, UIStyle.BRONZE)
-	rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rh.add_child(rl)
-	rh.add_child(UIStyle.button("Forge a new weapon from nothing", _scratch_forge, true))
-	rack.add_child(rh)
-	rack.add_child(UIStyle.label("It goes in a free hand. With both hands full you pick which one he takes, for half its worth.", 13, UIStyle.MUTED))
-	var scroll := _smith_scroll(rack)
-	var rack_w := inner_w - left_w - 60.0
-	var grid := GridContainer.new()
-	grid.columns = clampi(int(rack_w / 166.0), 2, 8)
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	var rack_box := VBoxContainer.new()
-	rack_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rack_box.add_theme_constant_override("separation", 10)
-	scroll.add_child(rack_box)
-	rack_box.add_child(grid)
-	var tile_st := StyleBoxFlat.new()
-	tile_st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-	tile_st.border_color = UIStyle.BRONZE_DARK
-	tile_st.set_border_width_all(1)
-	tile_st.set_corner_radius_all(8)
-	tile_st.content_margin_left = 8; tile_st.content_margin_right = 8; tile_st.content_margin_top = 8; tile_st.content_margin_bottom = 8
-	for b in Arms.bases():
-		var key: String = b.key
-		var pre := Arms.buy(arms(), key)
-		var choose: bool = pre.has("choose")
-		var trade := 0
-		if choose:
-			for sd in pre.choose:
-				trade = maxi(trade, Arms.value(arms().main if sd == "R" else arms().off) / 2)
-		else:
-			trade = int(pre.get("trade_in", 0))
-		var afford: bool = Arms.base_price(b) <= coins() + trade
-		var tile := PanelContainer.new()
-		tile.add_theme_stylebox_override("panel", tile_st)
-		tile.custom_minimum_size = Vector2(146, 0)
-		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tile.tooltip_text = Loc.t("%s · main hand" if b.slot == "main" else "%s · off hand") % Loc.t(b.name)
-		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 4)
-		tile.add_child(box)
-		var tex := TextureRect.new()
-		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 96)
-		tex.modulate = Color.WHITE if afford else Color(1, 1, 1, 0.45)
-		box.add_child(tex)
-		var nm := UIStyle.label(str(b.name), 14, UIStyle.TEXT if afford else UIStyle.MUTED)
-		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(nm)
-		var goes := "both hands full: you pick which one he takes" if choose else ("into both hands" if pre.get("sold", []).size() > 1 else ("into the main hand" if pre.get("side", "R") == "R" else "into the off hand"))
-		var pr := UIStyle.label(goes, 12, UIStyle.MUTED)
-		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		pr.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(pr)
-		_price_lines(box, Arms.base_price(b), trade, "your old one" if choose else "what you hand in")
-		var buy := UIStyle.button("Buy", func():
-			var r := Arms.buy(arms(), key)
-			if r.has("choose"):
-				_sell_choice(str(b.name), func(sd): return Arms.buy(arms(), key, sd), r.choose)
-			else:
-				_pay(r), afford)
-		buy.disabled = not afford
-		buy.tooltip_text = "" if afford else "Not enough in your purse"
-		UIStyle.push_down(box)
-		box.add_child(buy)
-		# A one-handed weapon can be had for the off hand too (what is there is handed in).
-		if Arms.off_hand_ok(key):
-			var pre_l := Arms.buy(arms(), key, "", "L")
-			var afford_l: bool = Arms.base_price(b) <= coins() + int(pre_l.get("trade_in", 0))
-			var buy_l := UIStyle.button("For the off hand", func(): _pay(Arms.buy(arms(), key, "", "L")), afford_l)
-			buy_l.disabled = not afford_l
-			buy_l.tooltip_text = (Loc.t("Into the off hand, %s") % Loc.t("handing in what is there" if int(pre_l.get("trade_in", 0)) > 0 else "the main hand keeps its weapon")) if afford_l else "Not enough in your purse"
-			box.add_child(buy_l)
-		grid.add_child(tile)
-		Thumbs.weapon(tex, Data.preset(key), "base:" + key)
-		_viewable(tex, Data.preset(key), Loc.t("%d denarii at the smith") % Arms.base_price(b))
-	# As many to a row as fit the rack at the widest card's width (counted at 166 px, a card with
-	# its "For the off hand" button ran half as wide again, and the grid pushed the whole window,
-	# purse and tabs, out past the right of the screen: user).
-	var tile_w := 146.0
-	for c in grid.get_children():
-		tile_w = maxf(tile_w, c.get_combined_minimum_size().x)
-	grid.columns = clampi(int((rack_w + 10.0) / (tile_w + 10.0)), 1, 8)
-	# The bout's oddities, his own designs (made to order), then the smith's rack.
-	var odd := _smith_oddities(rack_box, grid.columns, tile_st)
-	if _smith_designs(rack_box, grid.columns, tile_st) or odd:
-		rack_box.add_child(UIStyle.label("THE SMITH'S RACK", 13, UIStyle.BRONZE))
-		rack_box.move_child(grid, rack_box.get_child_count() - 1)
-
-## What a thing costs him (less what his old one fetches) and what he has, under it.
-func _price_lines(box: Container, price: int, trade := 0, trade_what := "") -> void:
-	# Just what it costs him and what he has (user: the rest was more than anyone could follow).
-	var pay := maxi(0, price - trade)
-	var short := pay - coins()
-	var l2 := UIStyle.label((Loc.t("Costs %d · you have %d") % [pay, coins()]) + ((Loc.t(" (%d more needed)") % short) if short > 0 else ""), 14, UIStyle.GOLD if short <= 0 else Color(1, 0.55, 0.45))
-	l2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	if trade > 0:
-		l2.tooltip_text = Loc.t("%d, less %d for %s") % [price, trade, Loc.t(trade_what)]
-	box.add_child(l2)
+	SmithScreen.build(self, v)
 
 ## Both hands full: which one the smith takes in part exchange for what is bought.
 func _sell_choice(nm: String, buy: Callable, sides: Array, bought := Callable()) -> void:
@@ -2003,151 +1755,6 @@ func run_seed() -> int:
 		Save.set_value("run_seed", randi())
 	return int(Save.get_value("run_seed", 0))
 
-## The oddities on the stall this bout: one-off weapons of the smith's own, other ones each bout
-## and each run; one bought is gone.
-func _smith_oddities(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> bool:
-	# (In a party, the bout the party is on: the solo campaign's was shown there.)
-	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
-	var key := "%d:%d" % [run_seed(), stage]
-	var sold: Array = (Save.get_value("oddities_sold", {}) as Dictionary).get(key, [])
-	var list := Arms.oddities(run_seed(), stage)
-	box.add_child(UIStyle.label("VULCANUS'S MASTERWORKS · this bout only, one of each", 13, UIStyle.GOLD))
-	var g := GridContainer.new()
-	g.columns = columns
-	g.add_theme_constant_override("h_separation", 10)
-	g.add_theme_constant_override("v_separation", 10)
-	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(g)
-	for dv in list:
-		var d: Dictionary = dv
-		var idx := int(d.oddity.i)
-		var price := Arms.oddity_price(d)
-		var tier := int(d.oddity.get("tier", 1))
-		var tile := PanelContainer.new()
-		var st := tile_st.duplicate()
-		st.border_color = Masterworks.colour(tier)
-		st.set_border_width_all(2 if tier < 4 else 3)
-		tile.add_theme_stylebox_override("panel", st)
-		tile.custom_minimum_size = Vector2(146, 0)
-		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 4)
-		tile.add_child(col)
-		var tex := TextureRect.new()
-		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 150)   # (a great weapon, laid across: seen whole)
-		col.add_child(tex)
-		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.GOLD if d.oddity.rare else UIStyle.TEXT)
-		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(nm)
-		var tl := UIStyle.label(Masterworks.title(tier), 12, Masterworks.colour(tier))
-		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(tl)
-		var gems := []
-		for v in d.voxels:
-			if Weapon.GEMS.has(v[3]) and not gems.has(v[3]):
-				gems.append(v[3])
-		if not gems.is_empty():
-			var info := UIStyle.label(Loc.t("Set with %s") % ", ".join(gems), 12, UIStyle.MUTED)
-			info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			col.add_child(info)
-		if not sold.has(idx):
-			_price_lines(col, price)
-		UIStyle.push_down(col)
-		if sold.has(idx):
-			col.add_child(UIStyle.label("Sold", 13, UIStyle.MUTED))
-			tex.modulate = Color(1, 1, 1, 0.35)
-		else:
-			var mark_sold := func():
-				var all: Dictionary = Save.get_value("oddities_sold", {})
-				var got: Array = all.get(key, [])
-				if not got.has(idx):
-					got.append(idx)
-				all[key] = got
-				Save.set_value("oddities_sold", all)
-			var pay := func(r: Dictionary):
-				if r.has("error") or int(r.get("cost", 0)) > coins():
-					_pay(r)
-					return
-				mark_sold.call()
-				_pay(r)
-			var buy := UIStyle.button("Buy", func():
-				var r := Arms.buy_design(arms(), d, "", price)
-				if r.has("choose"):
-					_sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(arms(), d, sd, price), r.choose, mark_sold)
-				else:
-					pay.call(r), true)
-			buy.disabled = price > coins() + (Arms.value(arms().main) + Arms.value(arms().off)) / 2
-			col.add_child(buy)
-		g.add_child(tile)
-		Thumbs.weapon(tex, d, "odd:%d:%d:%d" % [run_seed(), stage, idx])
-		_viewable(tex, d, Loc.t("%d denarii%s") % [price, (" · " + ", ".join(gems)) if not gems.is_empty() else ""])
-		var keep := d.duplicate(true)
-		keep.erase("oddity")
-		var saved: bool = load("res://scripts/ui/forge.gd").gallery().any(func(o): return o.get("voxels") == keep.voxels)
-		var sv := UIStyle.button("In My designs" if saved else "Save to My designs", func():
-			var mine: Array = load("res://scripts/ui/forge.gd").gallery()
-			if not mine.any(func(o): return o.get("voxels") == keep.voxels):
-				mine.push_front(keep)
-				Save.set_value("forge_gallery", mine.slice(0, 24))
-			show_screen("yard"))
-		sv.disabled = saved
-		col.add_child(sv)
-	return true
-
-## The player's own designs (My designs, from the forge), made by the smith at what they are
-## worth: their stuff block by block and his labour. Bought, one goes in a free hand like any.
-func _smith_designs(box: VBoxContainer, columns: int, tile_st: StyleBoxFlat) -> bool:
-	var designs: Array = load("res://scripts/ui/forge.gd").gallery()
-	if designs.is_empty():
-		return false
-	box.add_child(UIStyle.label("YOUR DESIGNS · made to order", 13, UIStyle.BRONZE))
-	var g2 := GridContainer.new()
-	g2.columns = columns
-	g2.add_theme_constant_override("h_separation", 10)
-	g2.add_theme_constant_override("v_separation", 10)
-	g2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(g2)
-	for dv in designs:
-		var d: Dictionary = dv
-		var pre := Arms.buy_design(arms(), d)
-		if pre.has("error"):
-			continue
-		var price := Arms.design_price(d)
-		var tile := PanelContainer.new()
-		tile.add_theme_stylebox_override("panel", tile_st)
-		tile.custom_minimum_size = Vector2(146, 0)
-		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 4)
-		tile.add_child(col)
-		var tex := TextureRect.new()
-		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex.custom_minimum_size = Vector2(0, 96)
-		col.add_child(tex)
-		var nm := UIStyle.label(str(d.get("name", "?")), 14, UIStyle.TEXT)
-		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(nm)
-		var pr := UIStyle.label(Loc.t("%d blocks · made to order") % d.voxels.size(), 12, UIStyle.MUTED)
-		pr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(pr)
-		_price_lines(col, price)
-		var buy := UIStyle.button("Have it made", func():
-			var r := Arms.buy_design(arms(), d)
-			if r.has("choose"):
-				_sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(arms(), d, sd), r.choose)
-			else:
-				_pay(r), true)
-		buy.disabled = price > coins() + (Arms.value(arms().main) + Arms.value(arms().off)) / 2   # (with what he could trade in)
-		UIStyle.push_down(col)
-		col.add_child(buy)
-		g2.add_child(tile)
-		Thumbs.weapon(tex, d, "gallery:%d" % d.hash())
-		_viewable(tex, d, Loc.t("Your design · %d denarii to have it made") % price)
-	return true
-
 ## Every worn piece mended at once at the smith, and whole on him in the yard there and then.
 func _mend_all_armour() -> void:
 	var m := Armory.mend_all(armor_wear(), worn_armor())
@@ -2169,102 +1776,20 @@ func _smith_scroll(parent: Control) -> ScrollContainer:
 	return scroll
 
 var smith_tab := "weapons"
+var smith_group := "arms"      # the list on the smith's right: arms, sale, works, designs
+var smith_sel := {}            # what lies on his anvil
+var armour_sel := ""           # the piece of armour he is looking at
+var armour_region := "all"     # and the part of the body the rack is shown for
+var trainer_prev := {}         # what the trainer had taught him before the session just bought (the radar moves from it)
+var station_note := {}         # what a deed leaves to show when its stall is drawn again: the price that rises from the purse, why it could not be done (warn), the ability to light on the radar (axis)
 
 const ARMOUR_PARTS := {"head": "head", "torso": "body", "upperArmR": "arms", "upperArmL": "arms", "forearmR": "forearms", "forearmL": "forearms", "thighR": "thighs", "thighL": "thighs", "shinR": "shins", "shinL": "shins"}
-
-## The armourer's rack: every piece with a figure showing what it covers, what it is made of, and
-## Buy (it replaces what it clashes with, sold back for half) or Take off.
-func _smith_armour(v: VBoxContainer, inner_w: float) -> void:
-	var worn := worn_armor()
-	v.add_child(UIStyle.label((Loc.t("Worn: %s") % ", ".join(worn.map(func(i): return Loc.t(String(Data.armor[i].name))))) if not worn.is_empty() else "You wear no armour. What you buy here goes with you into every bout of the campaign; the plates a fight knocks off are back on for the next.", 14, UIStyle.MUTED))
-	var scroll := _smith_scroll(v)
-	var box := VBoxContainer.new()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation", 10)
-	scroll.add_child(box)
-	var ids: Array = Armory.SHOP.map(func(r): return r[0])
-	ids = (Save.get_value("armor_designs", {}) as Dictionary).keys().filter(func(i): return Armory.custom(String(i))) + ids
-	# The pieces in sections by the part of the body, as in training, each with its price and,
-	# worn, its condition and the armourer's mending.
-	_armour_sections(box, ids, worn, func(col: VBoxContainer, id: String, on: bool):
-		col.add_child(UIStyle.label(String(Armory.BLURB.get(id, "Your own design, from the bench.")), 12, UIStyle.MUTED))
-		var price := Armory.price(id)
-		if on:
-			var aw := armor_wear()
-			var lost: Array = Armory.plates_lost(id, aw)
-			if int(lost[0]) > 0:
-				var mc_ := Armory.mend_cost(id, aw)
-				col.add_child(UIStyle.label(Loc.t("%d of %d plates knocked off · condition %d%%") % [lost[0], lost[1], int(Armory.condition(id, aw) * 100.0)], 12, Color(1, 0.55, 0.45)))
-				var mend := UIStyle.button(Loc.t("Mend · %d denarii") % mc_, func():
-					var m := Armory.mend(armor_wear(), id)
-					if int(m.cost) > coins():
-						show_screen("yard", "Not enough denarii")
-						return
-					add_coins(-int(m.cost))
-					set_armor_wear(m.wear)
-					_armour_on_him()
-					show_screen("yard"))
-				mend.disabled = mc_ > coins()
-				mend.tooltip_text = "The armourer puts back every plate it has lost." + (Loc.t(" Purse after: %d") % (coins() - mc_) if mc_ <= coins() else Loc.t(" %d more needed") % (mc_ - coins()))
-				col.add_child(mend)
-			col.add_child(UIStyle.button(Loc.t("Take off · %d denarii back") % (price / 2), func():
-				var t := Armory.take_off(worn_armor(), id)
-				if not t.has("error"):
-					add_coins(-int(t.cost))
-					set_worn_armor(t.worn)
-				show_screen("yard")))
-		else:
-			var b := Armory.buy(worn, id)
-			var cost: int = int(b.get("cost", price))
-			var btn := UIStyle.button((Loc.t("Buy · %d denarii") % cost) if cost > 0 else (Loc.t("Swap · %d denarii back") % -cost), func():
-				var t := Armory.buy(worn_armor(), id)
-				if t.has("error"):
-					show_screen("yard", t.error)
-				elif int(t.cost) > coins():
-					show_screen("yard", "Not enough denarii")
-				else:
-					add_coins(-int(t.cost))
-					set_worn_armor(t.worn)
-					show_screen("yard"), true)
-			btn.disabled = cost > coins()
-			btn.tooltip_text = (Loc.t("Purse after: %d") % (coins() - cost)) if cost <= coins() else (Loc.t("%d more needed") % (cost - coins()))
-			col.add_child(btn), clampi(int((inner_w - 16.0) / 360.0), 1, 4))
 
 static func _dots(x: float) -> String:
 	var n := clampi(int(round(x * 5.0)), 0, 5)
 	return "●".repeat(n) + "○".repeat(5 - n)
 
 # ---------- Armour at the forge and in training ----------
-
-## The pieces kept in My designs, one line, each with a bin.
-func _armour_designs_row(v: VBoxContainer) -> void:
-	var designs: Dictionary = Save.get_value("armor_designs", {})
-	if designs.is_empty():
-		return
-	v.add_child(UIStyle.label("MY DESIGNS", 13, UIStyle.BRONZE))
-	# A line a piece: its name, metal and weight, and a bin at the end. (In a flow container
-	# the wrapping label was squeezed to a letter's width, one letter a line: user screenshot.)
-	for idv in designs:
-		var id: String = idv
-		var d: Dictionary = designs[id]
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var l := UIStyle.label(Loc.t("%s · %s · %.1f kg") % [Loc.t(String(d.get("name", id))), Loc.t(String(d.get("mat", "iron")).capitalize()), Armory.design_kg(d)], 13, UIStyle.TEXT)
-		l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(l)
-		var bin := UIStyle.button("✕", func():
-			var ds: Dictionary = Save.get_value("armor_designs", {})
-			ds.erase(id)
-			Save.set_value("armor_designs", ds)
-			training.armor = Armory.sanitize(training.get("armor", [])).filter(func(o): return o != id)
-			Save.set_value("training", training)
-			show_screen(screen))
-		bin.custom_minimum_size = Vector2(44, 0)
-		row.add_child(bin)
-		v.add_child(row)
 
 ## Which part of the body a piece is for, for the sections of an armour screen.
 const ARMOUR_REGIONS := [["Head", ["head"]], ["Body", ["torso"]], ["Arms", ["upperArmR", "upperArmL", "forearmR", "forearmL"]], ["Legs", ["thighR", "thighL", "shinR", "shinL"]]]
@@ -2427,9 +1952,10 @@ func _training_armour(v: VBoxContainer) -> void:
 	var tt := UIStyle.title("Armour for training", 34)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tt)
-	head.add_child(UIStyle.button("Make a piece at the bench (free)", func():
-		bench_mode = "training"
-		_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())))
+	if Armory.plate_bench_open:
+		head.add_child(UIStyle.button("Make a piece at the bench (free)", func():
+			bench_mode = "training"
+			_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg())))
 	head.add_child(UIStyle.button("Back", func(): show_screen("training")))
 	v.add_child(head)
 	v.add_child(UIStyle.label("Nothing is paid for here. Click Wear on a piece; a piece that covers the same place takes the other off.", 13, UIStyle.MUTED))
@@ -2535,118 +2061,6 @@ func _bench_keep(final: Dictionary) -> void:
 		Save.set_value("training", training)
 	_bench_return(Loc.t("%s kept in My designs and worn" if bench_mode == "training" else "%s kept in My designs") % String(final.get("name", Loc.t("The piece"))))
 
-## The armourer's bench: a piece of your own, where it goes, what it is made of and how much
-## of the part it covers; what it keeps out, what it weighs and what the weight costs in breath
-## and pace, all as you choose; then made, paid for and worn.
-func _armour_bench(v: VBoxContainer, _inner_w: float) -> void:
-	var def := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 28)
-	v.add_child(body)
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 8)
-	left.custom_minimum_size = Vector2(520, 0)
-	body.add_child(left)
-	var pick := func(label: String, keys: Array, names: Callable, cur: String, set: Callable) -> void:
-		left.add_child(UIStyle.label(label, 13, UIStyle.BRONZE))
-		var row := HFlowContainer.new()
-		row.add_theme_constant_override("h_separation", 6)
-		row.add_theme_constant_override("v_separation", 6)
-		for k in keys:
-			var key: String = k
-			var b := UIStyle.button(names.call(key), func():
-				set.call(key)
-				show_screen(_bench_back()))
-			b.toggle_mode = true
-			b.button_pressed = key == cur
-			row.add_child(b)
-		left.add_child(row)
-	pick.call("WHERE", Armory.REGIONS.keys(), func(k): return Armory.REGIONS[k].label, bench.region, func(k): bench.region = k)
-	pick.call("MATERIAL", Armory.BENCH_MATS, func(k): return String(k).capitalize(), bench.mat, func(k): bench.mat = k)
-	left.add_child(UIStyle.label(Loc.t("%s   Protection %s   Weight %s") % [Loc.t(String(bench.mat).capitalize()), _dots(float(Data.material(bench.mat).get("hardness", 0.5))), _dots(clampf(float(Data.material(bench.mat).get("mass", 0.03)) / 0.1, 0.0, 1.0))], 13, UIStyle.MUTED))
-	left.add_child(UIStyle.label("COVERS", 13, UIStyle.BRONZE))
-	for sl_def in [["From", "y0"], ["To", "y1"]]:
-		var key: String = sl_def[1]
-		var row := HBoxContainer.new()
-		var l := UIStyle.label(sl_def[0], 14, UIStyle.MUTED)
-		l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		l.custom_minimum_size = Vector2(60, 0)
-		row.add_child(l)
-		var sl := HSlider.new()
-		sl.min_value = 0.0
-		sl.max_value = 1.0
-		sl.step = 0.05
-		sl.value = float(bench[key])
-		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sl.drag_ended.connect(func(_c):
-			bench[key] = sl.value
-			show_screen(_bench_back()))
-		row.add_child(sl)
-		left.add_child(row)
-	var opt := HBoxContainer.new()
-	var fr := CheckBox.new()
-	fr.text = "Front and sides only"
-	fr.button_pressed = bench.front
-	fr.toggled.connect(func(x):
-		bench.front = x
-		show_screen(_bench_back()))
-	opt.add_child(fr)
-	var cp := CheckBox.new()
-	cp.text = "Cap the top"
-	cp.button_pressed = bench.cap
-	cp.toggled.connect(func(x):
-		bench.cap = x
-		show_screen(_bench_back()))
-	opt.add_child(cp)
-	left.add_child(opt)
-	var nm := LineEdit.new()
-	nm.placeholder_text = Loc.t(String(def.name))
-	nm.text = String(bench.name)
-	nm.max_length = 24
-	nm.text_changed.connect(func(x): bench.name = x)
-	left.add_child(nm)
-	# What it comes to: the figure with what it covers, and the numbers.
-	var right := VBoxContainer.new()
-	right.add_theme_constant_override("separation", 8)
-	body.add_child(right)
-	var fig := Control.new()
-	fig.custom_minimum_size = Vector2(120, 220)
-	var covered: Array = (def.parts as Dictionary).keys()
-	var mc := Weapon.voxel_color(String(def.mat), "blunt")
-	fig.draw.connect(func():
-		fig.draw_set_transform(Vector2(4, 4), 0.0, Vector2(1.6, 1.6))
-		for k in Hud.LAYOUT:
-			var rr: Rect2 = Hud.LAYOUT[k]
-			var sb := StyleBoxFlat.new()
-			sb.set_corner_radius_all(4 if k != "head" else 10)
-			sb.bg_color = mc if covered.has(k) else Color(1, 1, 1, 0.08)
-			sb.border_color = Color(1, 1, 1, 0.3) if covered.has(k) else Color(1, 1, 1, 0.06)
-			sb.set_border_width_all(1)
-			fig.draw_style_box(sb, rr.grow(-1.0)))
-	right.add_child(fig)
-	var kg := Armory.design_kg(def)
-	var worn_kg := 0.0
-	for id in _bench_worn():
-		worn_kg += Armory.kg(id)
-	var with := Armory.burden(worn_kg + kg)
-	var price := Armory.design_price(def)
-	right.add_child(UIStyle.label(Loc.t(String(def.name)), 18, UIStyle.GOLD))
-	right.add_child(UIStyle.label(Loc.t("Protection %s") % _dots(float(Data.material(String(def.mat)).get("hardness", 0.5))), 15, UIStyle.TEXT))
-	right.add_child(UIStyle.label(Loc.t("Weight %.1f kg  (all you wear: %.1f kg)") % [kg, worn_kg + kg], 15, UIStyle.TEXT))
-	right.add_child(UIStyle.label(Loc.t("Breath when running and swinging: ×%.2f") % float(with.breath), 14, UIStyle.MUTED))
-	right.add_child(UIStyle.label(Loc.t("Pace: %d%%") % int(round(float(with.pace) * 100.0)), 14, UIStyle.MUTED))
-	var free := bench_mode != "smith"
-	var make := UIStyle.button(("Make and wear · free in training" if bench_mode == "training" else "Keep in My designs") if free else (Loc.t("Forge and wear · %d denarii") % price), func():
-		var piece := Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, bench.name)
-		if free:
-			_bench_keep(piece)
-		else:
-			_forge_armour(piece), true)
-	make.disabled = not free and price > coins()
-	right.add_child(make)
-	# Or plate by plate, as a weapon is built at the forge (from the shape above).
-	right.add_child(UIStyle.button("Shape it plate by plate", func(): _plate_bench(def, worn_kg)))
-
 ## The armourer's bench voxel by voxel (ArmourForge) over the smith's screen.
 func _plate_bench(def: Dictionary, worn_kg: float) -> void:
 	var f := ArmourForge.new()
@@ -2688,49 +2102,8 @@ func _forge_armour(final: Dictionary) -> void:
 		return
 	add_coins(-int(t.cost))   # what it costs, less what any piece it replaces fetches
 	set_worn_armor(t.worn)
+	Achievements.unlock("armourer")
 	show_screen("yard")
-
-## A weapon's picture that opens it in the round (WeaponView) when clicked.
-func _viewable(tex: TextureRect, d, line := "") -> void:
-	if not (d is Dictionary) or not (d.get("voxels") is Array):
-		return
-	tex.mouse_filter = Control.MOUSE_FILTER_STOP
-	tex.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	tex.tooltip_text = "Click to see it all round"
-	tex.gui_input.connect(func(e):
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			WeaponView.show_for(self, d, line))
-
-## A card on the smith's counter: a picture of the weapon and a column for what goes with it.
-func _smith_card(d, title: String, key: String, pic := 128) -> PanelContainer:
-	var card := PanelContainer.new()
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-	st.border_color = UIStyle.BRONZE_DARK
-	st.set_border_width_all(1)
-	st.set_corner_radius_all(8)
-	st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 8; st.content_margin_bottom = 8
-	card.add_theme_stylebox_override("panel", st)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	card.add_child(row)
-	var tex := TextureRect.new()
-	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tex.custom_minimum_size = Vector2(pic, pic)
-	row.add_child(tex)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 6)
-	row.add_child(col)
-	if title != "":
-		col.add_child(UIStyle.label(Loc.t(title).to_upper(), 12, UIStyle.BRONZE))
-	card.set_meta("col", col)
-	card.set_meta("tex", tex)
-	if d is Dictionary:
-		row.ready.connect(func(): Thumbs.weapon(tex, d, key), CONNECT_ONE_SHOT)
-		_viewable(tex, d, Loc.t("%d voxels") % d.voxels.size())
-	return card
 
 ## Every other way to fight (game.js modes, partyModes.js).
 ## The fights, as cards in four groups: each says in a line what the bout is.
@@ -2815,7 +2188,7 @@ func _fight_card(k: String) -> Button:
 	nm.add_theme_color_override("font_color", UIStyle.GOLD_LIGHT)
 	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(nm)
-	var blurb := UIStyle.label(FIGHT_BLURBS.get(k, Modes.LABELS.get(k, "")), 15, UIStyle.MUTED)
+	var blurb := UIStyle.label(_forge_fight_line() if k == "forgefight" else FIGHT_BLURBS.get(k, Modes.LABELS.get(k, "")), 15, UIStyle.MUTED)
 	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(blurb)
 	return b
@@ -2948,22 +2321,27 @@ func _circus_market(v: VBoxContainer) -> void:
 		var it: Dictionary = table[id]
 		var price := int(round(int(it.price) * 0.6))
 		var have := int(run.inventory.get(id, 0))
-		var lbl := UIStyle.label("%s%s" % [Loc.t(String(it.name)), (" ×%d" % have) if have else ""], 15)
+		# (What he carries of it, of the most he can hold; and when none fit, the reason in the button.)
+		var carry := StationKit.carry_of(run.inventory, id)
+		var none := String(carry.why) != ""
+		var lbl := UIStyle.label("%s  %d/%d" % [Loc.t(String(it.name)), have, int(carry.max)], 15, StationKit.BAD if none else UIStyle.TEXT)
 		lbl.custom_minimum_size = Vector2(190, 0)
 		lbl.tooltip_text = it.get("desc", "")
 		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		var b := UIStyle.button(Loc.t("Buy · %d gold") % price, func():
+		var b := UIStyle.button(StationKit.carry_short(carry) if none else Loc.t("Buy · %d gold") % price, func():
 			var r2 = circus_run()
 			if int(r2.gold) < price:
 				show_screen("circus_market", "Not enough gold")
 				return
 			if not Throwables.bag_has_room(r2.inventory, id):
-				show_screen("circus_market", Loc.t("Your bag is full: %d of those at most, %d kinds in all") % [Throwables.stack_max(id), Throwables.BAG_KINDS])
+				show_screen("circus_market", StationKit.carry_short(StationKit.carry_of(r2.inventory, id)))
 				return
 			r2.gold = int(r2.gold) - price
 			r2.inventory[id] = int(r2.inventory.get(id, 0)) + 1
 			Save.set_value("circus_run", r2)
 			show_screen("circus_market"))
+		b.disabled = none
+		b.tooltip_text = StationKit.carry_line(carry)
 		var row := HBoxContainer.new()
 		row.add_child(lbl)
 		row.add_child(b)
@@ -3026,49 +2404,13 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Its number takes it in hand; hold F to aim, let go to throw"}
 const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery", "torch"]
 var market_tab := "fire"
+var market_sel := ""        # the ware on the trader's stand
 
 static func kit_use(id: String) -> String:
 	return "self" if ["bandage", "bread", "wine", "waterSkin"].has(id) else ("place" if ["bananas", "cheese"].has(id) else "throw")
 
 func _market(v: VBoxContainer) -> void:
-	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
-	v.add_child(UIStyle.title("The market", 36))
-	var k := kit()
-	var bag := []
-	for id in k:
-		if int(k[id]) > 0:
-			bag.append("%s ×%d" % [Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))), int(k[id])])
-	v.add_child(UIStyle.label(Loc.t("You have %d denarii · %s") % [coins(), (Loc.t("In your bag: %s") % ", ".join(bag)) if not bag.is_empty() else Loc.t("Your bag is empty")], 15, UIStyle.BRONZE))
-	v.add_child(UIStyle.label("Everything here comes with you into every fight: keys 1 to 9 use it.", 13, UIStyle.MUTED))
-	var at := _market_at()
-	var open := Market.opened(Net.active(), at.x, at.y)
-	if Market.wares(market_tab).is_empty():
-		market_tab = Market.TABS[0][0]
-	var tabs: Array = []
-	for t in Market.TABS:
-		var tab_id: String = t[0]
-		var tb := UIStyle.button(t[1], func():
-			market_tab = tab_id
-			show_screen("market"), tab_id == market_tab)
-		tabs.append(tb)
-	_row(v, tabs)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(900, 470)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	v.add_child(scroll)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 12)
-	grid.add_theme_constant_override("v_separation", 12)
-	scroll.add_child(grid)
-	var table: Dictionary = Data.shop.get("throwables", {})
-	for id in Market.wares(market_tab):
-		if not table.has(id):
-			continue
-		var after := 0 if Market.is_open(id, open) else Market.comes_after(id)
-		grid.add_child(_market_card(id, table[id], int(k.get(id, 0)), "market", after, Market.price(id, int(table[id].price), at.x)))
-	if not in_yard():
-		_row(v, [UIStyle.button("Back to the smith", func(): show_screen("yard")), UIStyle.button("Main menu", func(): show_screen("main"))])
+	MarketScreen.build(self, v)
 
 ## The bout the campaign is on and its time round, for the trader's table: alone his own; in a
 ## party the party's (a guest is told the host's with the gate's fights: YardPlay.gate_info).
@@ -3081,94 +2423,22 @@ func _market_at() -> Vector2i:
 			return Vector2i(int(gi.s), int(gi.l))
 	return Vector2i(int(Save.get_value("coop_stage" if coop else "stage", 1)), int(Save.get_value("coop_lap" if coop else "lap", 1)))
 
-## A ware on its card. `after`: not brought yet, the bout whose boss brings it; `cost`: its price
-## now (the list's if -1).
-func _market_card(id: String, it: Dictionary, have: int, back := "market", after := 0, cost := -1) -> Control:
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(286, 0)
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-	st.border_color = UIStyle.BRONZE if have > 0 else UIStyle.BRONZE_DARK
-	st.set_border_width_all(1)
-	st.set_corner_radius_all(6)
-	st.content_margin_left = 10; st.content_margin_right = 10; st.content_margin_top = 8; st.content_margin_bottom = 8
-	card.add_theme_stylebox_override("panel", st)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	card.add_child(row)
-	# The model, on a dark medallion, with how many are in the bag.
-	var pic := PanelContainer.new()
-	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.05, 0.04, 0.03, 0.9)
-	ps.set_corner_radius_all(40)
-	pic.add_theme_stylebox_override("panel", ps)
-	pic.custom_minimum_size = Vector2(84, 84)
-	pic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var tex := TextureRect.new()
-	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tex.custom_minimum_size = Vector2(84, 84)
-	pic.add_child(tex)
-	if have > 0:
-		var own := UIStyle.label("×%d" % have, 13, UIStyle.GOLD)
-		own.size_flags_vertical = Control.SIZE_SHRINK_END
-		own.size_flags_horizontal = Control.SIZE_SHRINK_END
-		pic.add_child(own)
-	row.add_child(pic)
-	tex.tree_entered.connect(func(): Thumbs.item(tex, id), CONNECT_ONE_SHOT)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 3)
-	row.add_child(col)
-	col.add_child(UIStyle.label(Loc.t(String(it.name)), 16, UIStyle.TEXT))
-	var d := UIStyle.label(String(it.get("desc", "")), 12, UIStyle.MUTED)
-	d.custom_minimum_size = Vector2(170, 0)
-	col.add_child(d)
-	col.add_child(UIStyle.label(MARKET_USE[kit_use(id)], 11, UIStyle.BRONZE))
-	if FRIENDLY_FIRE.has(id):
-		col.add_child(UIStyle.label("Hurts friends too", 11, Color(0.95, 0.55, 0.4)))
-	if after > 0:
-		card.modulate = Color(1, 1, 1, 0.55)
-		var later := UIStyle.button(Loc.t("After the boss of bout %d") % after, func(): pass)
-		later.disabled = true
-		col.add_child(later)
-		return card
-	var price := int(it.price) if cost < 0 else cost
-	var room := Throwables.bag_has_room(kit(), id)
-	var b := UIStyle.button(Loc.t("Buy · %d denarii") % price if room else (Loc.t("Bag full (%d)") % Throwables.stack_max(id) if have > 0 else Loc.t("Bag full (%d kinds)") % Throwables.BAG_KINDS), func():
-		var k2 := kit()
-		if price > coins():
-			show_screen(back, "Not enough denarii")
-			return
-		if not Throwables.bag_has_room(k2, id):
-			show_screen(back, Loc.t("Your bag is full: %d of those at most, %d kinds in all") % [Throwables.stack_max(id), Throwables.BAG_KINDS])
-			return
-		add_coins(-price)
-		k2[id] = int(k2.get(id, 0)) + 1
-		set_kit(k2)
-		if Sfx:
-			Sfx.play("pickup", Vector3.ZERO, 0.6)
-		show_screen(back), price <= coins() and room)
-	b.disabled = price > coins() or not room
-	col.add_child(b)
-	return card
-
-## The physician's stall in the yard: the same treatments as between rounds.
+## The physician's stall in the yard: the same treatments as between rounds, and his supplies for
+## the fight (PhysicianScreen).
 func _physician(v: VBoxContainer) -> void:
 	var yard := in_yard()
-	_doctor_panel(v, body(), [], int(Save.get_value("stage", 1)), func(nb):
-		set_body(nb)
-		if yard:
-			_close_overlay()
-		else:
-			show_screen("yard"), "" if yard else "Back", func(nb):
-		set_body(nb)
-		show_screen("physician"))
-	# His supplies under his name, above the treatments.
-	var n0 := v.get_child_count()
-	_medicine(v)
-	for k in v.get_child_count() - n0:
-		v.move_child(v.get_child(n0 + k), 1 + k)
+	PhysicianScreen.build(self, v, panel, {
+		"body": body(), "stage": int(Save.get_value("stage", 1)), "supplies": true,
+		"done_text": "" if yard else "Back",
+		"done": func(nb):
+			set_body(nb)
+			if yard:
+				_close_overlay()
+			else:
+				show_screen("yard"),
+		"changed": func(nb):
+			set_body(nb)
+			show_screen("physician")})
 
 ## What the trainer has taught this gladiator (Training), kept with the campaign under "trainer"
 ## (it was kept under "training", with the training ground's own choices, and each wrote over the
@@ -3196,117 +2466,7 @@ func set_training_stats(st: Dictionary) -> void:
 ## The trainer's yard: six abilities, a session of each for denarii, no further than the bout
 ## allows. Alone and in a party alike (each man trains his own body from the party's purse).
 func _trainer(v: VBoxContainer) -> void:
-	var yard := in_yard()
-	v.add_child(UIStyle.label("THE LUDUS YARD", 13, UIStyle.BRONZE))
-	v.add_child(UIStyle.title("The trainer", 36))
-	var stage := int(Save.get_value("coop_stage" if Net.active() else "stage", 1))
-	var st := training_stats()
-	var cap_any := maxi(0, stage - 1) * Training.CAP_PER_STAGE
-	cap_any -= cap_any % Training.STEP
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 18)
-	v.add_child(head)
-	var purse_l := UIStyle.label(Loc.t("Purse  %d denarii") % coins(), 15, UIStyle.GOLD)
-	purse_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	head.add_child(purse_l)
-	var sum_l := UIStyle.label(Training.summary(st).capitalize(), 15, UIStyle.BRONZE)
-	sum_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	sum_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	sum_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(sum_l)
-	var cap_l := UIStyle.label(Loc.t("Bout %d: up to %d%% an ability") % [stage, cap_any], 15, UIStyle.BRONZE)
-	cap_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	head.add_child(cap_l)
-	var note := UIStyle.label("Doctore sells sessions, a per cent at a time; the arena teaches nothing, and a death takes it all with the purse.", 13, UIStyle.MUTED)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(note)
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
-	v.add_child(grid)
-	for id in Training.ORDER + ["virtus"]:
-		var a: Dictionary = Training.ABILITIES[id]
-		var lv := Training.level(st, id)
-		var cap := Training.cap(id, stage)
-		var full := lv >= int(a.max)
-		var card := PanelContainer.new()
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var cs := StyleBoxFlat.new()
-		cs.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-		cs.border_color = UIStyle.GOLD if full or id == "virtus" else (UIStyle.BRONZE if lv > 0 else UIStyle.BRONZE_DARK)
-		cs.set_border_width_all(1)
-		if id == "virtus":
-			# The Unbroken's own: a row to itself, framed in gold.
-			cs.set_border_width_all(2)
-			cs.bg_color = Color(0.16, 0.11, 0.05, 0.95)
-		cs.set_corner_radius_all(6)
-		cs.content_margin_left = 10; cs.content_margin_right = 10; cs.content_margin_top = 6; cs.content_margin_bottom = 8
-		card.add_theme_stylebox_override("panel", cs)
-		(grid if id != "virtus" else v).add_child(card)
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 4)
-		card.add_child(col)
-		var top := HBoxContainer.new()
-		col.add_child(top)
-		var name_l := UIStyle.label("%s · %s" % [a.name, Loc.t(String(a.title))], 16, UIStyle.GOLD if lv > 0 else UIStyle.TEXT)
-		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top.add_child(name_l)
-		var lv_l := UIStyle.label("%d / %d%%" % [lv, int(a.max)], 14, UIStyle.GOLD if lv > 0 else UIStyle.MUTED)
-		lv_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		top.add_child(lv_l)
-		var bar := ProgressBar.new()
-		bar.min_value = 0
-		bar.max_value = int(a.max)
-		bar.value = lv
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 6)
-		col.add_child(bar)
-		var d := UIStyle.label(Loc.t(String(a.desc)), 12, UIStyle.MUTED)
-		d.custom_minimum_size = Vector2(0, 50)
-		col.add_child(d)
-		var r := Training.buy(st, id, stage, coins())
-		var b: Button
-		if r.has("error"):
-			var why := "Mastered" if full else (Loc.t("Wait for bout %d") % Training.bout_for(lv + Training.step(id)) if lv >= cap else Loc.t("Train · %d denarii") % Training.price(st, id))
-			if id == "virtus" and not CampaignRun.unbroken():
-				why = "Only for the Unbroken (Ironman)"
-			b = UIStyle.button(why, func(): pass)
-			b.disabled = true
-			b.tooltip_text = String(r.error)
-		else:
-			b = UIStyle.button(Loc.t("Train · %d denarii") % int(r.cost), func():
-				var r2 := Training.buy(training_stats(), id, stage, coins())
-				if r2.has("error"):
-					show_screen("trainer", r2.error)
-					return
-				add_coins(-int(r2.cost))
-				set_training_stats(r2.stats)
-				if int(r2.stats[id]) >= int(a.max):
-					Achievements.unlock("trained")
-				show_screen("trainer", "%s: +%d%% %s" % [a.name, Training.step(id), Loc.lower(String(a.title))]), true)
-		col.add_child(b)
-	v.add_child(UIStyle.button("Back to the yard" if yard else "Back", func():
-		if yard:
-			_close_overlay()
-		else:
-			show_screen("yard")))
-
-## The physician's supplies for the fight (bandages, bread, wine), into the bag like the market's.
-func _medicine(v: VBoxContainer) -> void:
-	v.add_child(UIStyle.label("SUPPLIES FOR THE FIGHT", 13, UIStyle.BRONZE))
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	v.add_child(grid)
-	var k := kit()
-	var table: Dictionary = Data.shop.get("throwables", {})
-	for id in table:
-		if kit_use(id) == "self":
-			grid.add_child(_market_card(id, table[id], int(k.get(id, 0)), "physician"))
-	v.add_child(HSeparator.new())
+	TrainerScreen.build(self, v)
 
 ## Between rounds: a player who lost a limb or an eye is taken to the physician (an overlay on
 ## the paused arena). `done` gets the body he leaves with.
@@ -3324,94 +2484,22 @@ func _doctor_visit(b: Dictionary, news: Array, stage_: int, done: Callable) -> v
 		cc.theme = UIStyle.theme()
 		layer.add_child(cc)
 		var p := PanelContainer.new()
+		p.add_theme_stylebox_override("panel", panel_style)
 		cc.add_child(p)
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 8)
 		p.add_child(v)
-		UIStyle.frame_over(p)
-		_doctor_panel(v, cur[0], news, stage_, func(nb):
-			layer.queue_free()
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			done.call(nb), "Back to the arena", func(nb):
-			cur[0] = nb
-			rebuild.call(rebuild))
+		UIStyle.frame_over(p, Vector2(32, 26))
+		PhysicianScreen.build(self, v, p, {
+			"body": cur[0], "news": news, "stage": stage_, "done_text": "Back to the arena",
+			"done": func(nb):
+				layer.queue_free()
+				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+				done.call(nb),
+			"changed": func(nb):
+				cur[0] = nb
+				rebuild.call(rebuild)})
 	build.call(build)
-
-func _doctor_panel(v: VBoxContainer, b: Dictionary, news: Array, stage_: int, done: Callable, done_text: String, changed: Callable) -> void:
-	# Kept simple (user: badly hurt there were piles of things to buy, and the prices unclear):
-	# what you have, one button that sees to everything, the bottle that gives back what was lost,
-	# and the separate treatments folded away under it.
-	v.custom_minimum_size = Vector2(460, 0)
-	v.add_child(UIStyle.title("The physician", 30))
-	var state := Body.summary(b)
-	if not news.is_empty():
-		state = ", ".join(news.map(func(n): return str(n)))
-		state = state.left(1).to_upper() + state.substr(1)
-	v.add_child(UIStyle.label(state, 15, Color(1, 0.62, 0.5) if not news.is_empty() else UIStyle.MUTED))
-	v.add_child(UIStyle.label(Loc.t("You have %d denarii") % coins(), 18, UIStyle.GOLD))
-	var buy := func(id: String, price: int) -> void:
-		if price > coins():
-			return
-		add_coins(-price)
-		if Sfx:
-			Sfx.play("pickup", Vector3.ZERO, 0.6)
-		changed.call(Body.apply(b, id))
-	var offers := Body.offers(b, stage_)
-	var all := offers.filter(func(o): return String(o.id) == "heal:all")
-	if not all.is_empty():
-		var p_all := int(all[0].price)
-		var big := UIStyle.button(Loc.t("Treat everything · it costs %d") % p_all, func(): buy.call("heal:all", p_all), true)
-		big.disabled = p_all > coins()
-		big.tooltip_text = Loc.t(String(all[0].desc)) + ("" if p_all <= coins() else Loc.t("  (%d more needed)") % (p_all - coins()))
-		v.add_child(big)
-	var folded := VBoxContainer.new()
-	folded.add_theme_constant_override("separation", 6)
-	for o in offers:
-		var id := String(o.id)
-		if id == "heal:all":
-			continue
-		var price := int(o.price)
-		var row := HBoxContainer.new()
-		row.tooltip_text = Loc.t(String(o.desc))
-		var name_l := UIStyle.label(Loc.t(String(o.name)), 16)
-		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
-		name_l.tooltip_text = Loc.t(String(o.desc))
-		name_l.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.add_child(name_l)
-		var btn := UIStyle.button(Loc.t("costs %d") % price, func(): buy.call(id, price))
-		btn.disabled = price > coins()
-		btn.custom_minimum_size = Vector2(110, 0)
-		btn.tooltip_text = Loc.t(String(o.desc)) + ("" if price <= coins() else Loc.t("  (%d more needed)") % (price - coins()))
-		row.add_child(btn)
-		# With the one button there, the bones and the stitching one at a time are folded away.
-		if not all.is_empty() and (id.begins_with("set:") or id.begins_with("stitch:")):
-			folded.add_child(row)
-		else:
-			v.add_child(row)
-	if folded.get_child_count() > 0:
-		if all.is_empty():
-			for c in folded.get_children():
-				folded.remove_child(c)
-				v.add_child(c)
-			folded.queue_free()
-		else:
-			folded.visible = false
-			var more := UIStyle.button(Loc.t("Or one at a time (%d)") % folded.get_child_count(), func(): pass)
-			more.pressed.connect(func():
-				folded.visible = not folded.visible
-				more.text = ("Hide" if folded.visible else Loc.t("Or one at a time (%d)") % folded.get_child_count()))
-			v.add_child(more)
-			v.add_child(folded)
-	else:
-		folded.queue_free()
-	if offers.is_empty():
-		v.add_child(UIStyle.label("Nothing he needs to see to.", 15, UIStyle.MUTED))
-	if done_text != "":
-		var foot := HBoxContainer.new()
-		foot.alignment = BoxContainer.ALIGNMENT_END
-		foot.add_child(UIStyle.button(done_text, func(): done.call(b), true))
-		v.add_child(foot)
 
 func _pay(r: Dictionary) -> void:
 	if r.has("error"):
@@ -3423,46 +2511,6 @@ func _pay(r: Dictionary) -> void:
 	add_coins(-int(r.cost))
 	set_arms(r.arms)
 	show_screen("yard")
-
-## His prosthetics on the smith's counter, worked on as a blade is (user: upgrade the prosthesis
-## at the smith like a weapon): a picture of each as it is now, how well it works, and the
-## smith's next step on it.
-func _smith_prosthetics(box: VBoxContainer) -> void:
-	var b := body()
-	var pros := Body.smith_prosthetics(b)
-	if pros.is_empty():
-		return
-	box.add_child(UIStyle.label("YOUR PROSTHETICS", 13, UIStyle.BRONZE))
-	for part in pros:
-		var kind: String = pros[part]
-		var lv := Body.pro_level(b, part)
-		var card := _smith_card(null, Body.label(part), "", 104)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		box.add_child(card)
-		var tex: TextureRect = card.get_meta("tex")
-		if tex.is_inside_tree():
-			Thumbs.prosthetic(tex, kind, part, lv)
-		else:
-			tex.ready.connect(func(): Thumbs.prosthetic(tex, kind, part, lv), CONNECT_ONE_SHOT)
-		var col: VBoxContainer = card.get_meta("col")
-		col.add_child(UIStyle.label(Loc.t(String(Body.PROSTHETICS[kind].name)), 17, UIStyle.TEXT))
-		var made := Loc.t(String(Body.PRO_STEPS[lv - 1].label)) if lv > 0 else Loc.t("As the physician made it")
-		col.add_child(UIStyle.label(Loc.t("%s · works %d%% as well as a limb of your own") % [made, int(round(Body.pro_fn(kind, lv) * 100.0))], 13, UIStyle.GOLD if lv > 0 else UIStyle.MUTED))
-		var acts := HFlowContainer.new()
-		acts.add_theme_constant_override("h_separation", 6)
-		acts.add_theme_constant_override("v_separation", 6)
-		col.add_child(acts)
-		var btn: Button
-		if lv < Body.PRO_STEPS.size():
-			var step: Dictionary = Body.PRO_STEPS[lv]
-			var price := Body.pro_step_price(kind, lv)
-			btn = UIStyle.button(Loc.t("%s · %d denarii") % [Loc.t(String(step.label)), price], func(): _pay_body(Body.upgrade_prosthetic(body(), part)))
-			btn.disabled = price > coins()
-			btn.tooltip_text = Loc.t(String(step.desc)) + (Loc.t(" Purse after: %d") % (coins() - price) if price <= coins() else Loc.t(" %d more needed") % (price - coins()))
-		else:
-			btn = UIStyle.button("Nothing finer can be made", func(): pass)
-			btn.disabled = true
-		acts.add_child(btn)
 
 ## The smith's work on his body, paid for (a prosthetic refitted): on him at once.
 func _pay_body(r: Dictionary) -> void:
@@ -3548,8 +2596,13 @@ func ff_setup() -> void:
 
 func _ff_setup(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("Forge and Fight", 34))
-	v.add_child(UIStyle.label("Everyone forges weapons and armour against the clock, then all fight to the death with what they made.", 15, UIStyle.MUTED))
+	v.add_child(UIStyle.label(_forge_fight_line(), 15, UIStyle.MUTED))
+	# (With the armour bench down there is no time to set for the armour: none is made.)
+	if not Armory.plate_bench_open:
+		ff_times["armour"] = 0
 	for row in [["weapons", "Time to forge the weapons", ForgeFight.WEAPON_MIN], ["armour", "Time to make the armour", ForgeFight.ARMOUR_MIN], ["fight", "Time limit on the fight", ForgeFight.FIGHT_MIN]]:
+		if row[0] == "armour" and not Armory.plate_bench_open:
+			continue
 		v.add_child(UIStyle.label(Loc.t(String(row[1])).to_upper(), 13, UIStyle.BRONZE))
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 8)
@@ -3564,6 +2617,12 @@ func _ff_setup(v: VBoxContainer) -> void:
 	var go := UIStyle.button("To the forges!", func(): _ff_begin(ff_times.duplicate(), true), true)
 	go.disabled = row_note_needed()
 	_row(v, [go, UIStyle.button("Back", func(): show_screen("fights"))])
+
+## What Forge and Fight is, in a line: with the armour bench down, only weapons are forged.
+func _forge_fight_line() -> String:
+	if Armory.plate_bench_open:
+		return FIGHT_BLURBS["forgefight"]
+	return "Everyone forges weapons against the clock, then all fight to the death with what they made."
 
 func row_note_needed() -> bool:
 	return Net.peers.is_empty()
@@ -3768,9 +2827,10 @@ func _ff_contest(v: VBoxContainer) -> void:
 					ff.kit.armor = (ff.kit.armor as Array).filter(func(o): return o != id)
 					_ff_changed()))
 				v.add_child(row)
-			v.add_child(UIStyle.button("Make a piece at the bench", func():
-				bench_mode = "contest"
-				_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg()), true))
+			if Armory.plate_bench_open:
+				v.add_child(UIStyle.button("Make a piece at the bench", func():
+					bench_mode = "contest"
+					_plate_bench(Armory.design_piece(bench.region, bench.mat, bench.y0, bench.y1, bench.front, bench.cap, ""), _bench_worn_kg()), true))
 		_:
 			v.add_child(UIStyle.label("The forges go cold. To the sand!", 20, UIStyle.GOLD))
 			return

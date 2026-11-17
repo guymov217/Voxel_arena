@@ -591,6 +591,25 @@ func test_a_refitted_prosthetic_works_better_and_shows_it() -> void:
 	m.queue_free()
 	await _steps(2)
 
+## The smith's job called `title` (a card, or a button on a small screen), found on the screen.
+static func _job(root: Node, title: String) -> Control:
+	for c in root.find_children("*", "Control", true, false):
+		if c.has_meta("job") and String(c.get_meta("job")) == title:
+			return c
+	return null
+
+## Waits out the hammer's work at the anvil (the job is paid when the last blow has fallen).
+func _hammered(root: Node) -> void:
+	var sm: SmithScreen = null
+	for n in root.find_children("*", "VBoxContainer", true, false):
+		if n is SmithScreen:
+			sm = n
+	var guard := 0
+	while sm != null and is_instance_valid(sm) and sm.busy and guard < 600:
+		await get_tree().process_frame
+		guard += 1
+	await get_tree().process_frame
+
 ## At the smith's counter in the yard: his prosthetic with the next step and its price; paid,
 ## the purse is lighter and the man in the yard has the refitted one on him at once.
 func test_the_smith_refits_a_prosthetic_in_the_yard() -> void:
@@ -607,15 +626,15 @@ func test_the_smith_refits_a_prosthetic_in_the_yard() -> void:
 	t.eq(menu.match_.me.f.arm.R.fore.pro_level, 0, "he walks in with the physician's blade arm")
 	var price := Body.pro_step_price("blade", 0)
 	menu.smith_tab = "weapons"
+	menu.smith_group = "arms"
+	menu.smith_sel = {"kind": "pro", "part": "forearmR"}
 	menu.show_screen("yard")
 	await get_tree().process_frame
-	var step: Button = null
-	for b in menu.find_children("*", "Button", true, false):
-		if String(b.text).begins_with(Loc.t("Refit and rivet")):
-			step = b
-	t.check(step != null and not step.disabled and String(step.text).contains(str(price)), "the smith offers the first step at its price (%s)" % (step.text if step else "none"))
+	var step := _job(menu, Loc.t("Refit and rivet"))
+	t.check(step != null and bool(step.get_meta("ok")), "the smith offers the first step (%s)" % ("none" if step == null else "shut"))
 	if step:
-		step.pressed.emit()
+		step.get_meta("cb").call()
+		await _hammered(menu)
 	for i in 10:
 		await get_tree().physics_frame
 	t.eq(menu.coins(), 500 - price, "paid for")
@@ -623,10 +642,11 @@ func test_the_smith_refits_a_prosthetic_in_the_yard() -> void:
 	t.eq(menu.match_.me.f.arm.R.fore.pro_level, 1, "and on him in the yard at once")
 	t.check(menu.match_.me.f.weapons.R != null and menu.match_.me.f.fixed_hand.R, "the blade still his right arm")
 	menu.set_body(Body.upgrade_prosthetic(menu.body(), "forearmR").body)
+	menu.smith_sel = {"kind": "pro", "part": "forearmR"}
 	menu.show_screen("yard")
 	await get_tree().process_frame
-	var last: Array = menu.find_children("*", "Button", true, false).filter(func(b): return String(b.text) == Loc.t("Nothing finer can be made"))
-	t.check(last.size() == 1 and last[0].disabled, "a master's work: nothing more offered")
+	var last := _job(menu, "Nothing finer can be made")
+	t.check(last != null and not bool(last.get_meta("ok")), "a master's work: nothing more offered")
 	var start: int = menu.START_COINS
 	menu._end_match()
 	menu.queue_free()

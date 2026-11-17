@@ -58,9 +58,9 @@ static func leader(alive: Array):
 			tie = true
 	return null if tie else best
 
-## The phase after `phase`: the armour if there is time for it, then the fight.
+## The phase after `phase`: the armour if there is time for it (and its bench is open), then the fight.
 static func next_phase(phase: String, times: Dictionary) -> String:
-	if phase == "weapons" and int(times.get("armour", 0)) > 0:
+	if phase == "weapons" and int(times.get("armour", 0)) > 0 and Armory.plate_bench_open:
 		return "armour"
 	return "fight"
 

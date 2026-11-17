@@ -22,9 +22,14 @@ func test_times_from_the_host() -> void:
 func test_phases_in_order() -> void:
 	var with_armour := {"weapons": 3, "armour": 2, "fight": 0}
 	var no_armour := {"weapons": 3, "armour": 0, "fight": 0}
+	# (The armour bench is down for the player: its phase is skipped, whatever time is set for it.)
+	t.eq(Armory.plate_bench_open, false, "the armour bench is down")
+	t.eq(ForgeFight.next_phase("weapons", with_armour), "fight", "the bench down: weapons, then the fight")
+	Armory.plate_bench_open = true
 	t.eq(ForgeFight.next_phase("weapons", with_armour), "armour", "weapons, then armour")
 	t.eq(ForgeFight.next_phase("armour", with_armour), "fight", "then the fight")
 	t.eq(ForgeFight.next_phase("weapons", no_armour), "fight", "no armour time: straight to the fight")
+	Armory.plate_bench_open = false
 	t.eq(ForgeFight.phase_seconds("weapons", with_armour), 180.0, "minutes into seconds")
 	t.eq(ForgeFight.clock(125.2), "2:06", "the clock rounds up")
 	t.eq(ForgeFight.clock(-3.0), "0:00", "and never runs below nothing")

@@ -943,3 +943,16 @@ func test_the_durability_bar_follows_what_it_is_made_of() -> void:
 	for k in Data.presets:
 		var b: float = dur.call(Data.preset(k))
 		t.check(b >= 0.0 and b <= 1.0, "%s on the bar's scale (%.2f)" % [k, b])
+
+## The smith's showcase shows a weapon by five bars: the forge's four and how long it lasts.
+func test_the_five_bars_are_the_four_and_the_durability() -> void:
+	for k in ["gladius", "warhammer", "spear", "dagger"]:
+		var d := Data.preset(k)
+		var four := ForgeLib.three_bars(ForgeLib.compute_stats(d))
+		var five := ForgeLib.five_bars(d)
+		t.eq(five.size(), 5, "%s: five bars" % k)
+		var same := true
+		for b in four:
+			same = same and is_equal_approx(float(five[b]), float(four[b]))
+		t.check(same, "%s: the first four are the forge's" % k)
+		t.check(is_equal_approx(float(five.durability), ForgeLib.durability_bar(d)), "%s: the fifth is how long it lasts" % k)

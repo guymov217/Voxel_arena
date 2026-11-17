@@ -425,14 +425,20 @@ func test_the_smith_offers_both_hands_the_same() -> void:
 	await get_tree().process_frame
 	menu.set_arms(Arms.buy(Arms.buy(Arms.empty(), "warhammer").arms, "gladius", "", "L").arms)
 	menu.smith_tab = "weapons"
-	menu.show_screen("yard")
-	await get_tree().process_frame
+	menu.smith_group = "arms"
 	var seen := {}
-	for b in menu.find_children("*", "Button", true, false):
-		var k := String(b.text).get_slice(" · ", 0)
-		seen[k] = int(seen.get(k, 0)) + 1
-	for k in ["Sound", "Hone the edge", "Temper the blade", "Reshape in the forge", "Forge a new one for this hand", "Sell"]:
-		t.eq(int(seen.get(k, 0)), 2, "%s: offered for both hands" % k)
+	for side in ["R", "L"]:
+		menu.smith_sel = {"kind": "arm", "side": side}
+		menu.show_screen("yard")
+		await get_tree().process_frame
+		var jobs: Array = menu.find_children("*", "Control", true, false).filter(func(c): return c.has_meta("job")).map(func(c): return String(c.get_meta("job")))
+		var buttons: Array = menu.find_children("*", "Button", true, false).map(func(b): return String(b.text).get_slice(" · ", 0).strip_edges())
+		for k in ["Mend", "Hone the edge", "Temper the blade"]:
+			t.check(jobs.has(k), "%s: offered for the %s hand" % [k, side])
+		for k in ["Reshape in the forge", "Forge a new one for this hand", "Sell"]:
+			t.check(buttons.has(k), "%s: offered for the %s hand" % [k, side])
+		seen[side] = [jobs.size()]
+	t.eq(seen.R, seen.L, "the same number of jobs for both")
 	menu.queue_free()
 	await get_tree().process_frame
 

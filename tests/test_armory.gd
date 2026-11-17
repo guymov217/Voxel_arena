@@ -218,6 +218,8 @@ func test_armour_plate_by_plate() -> void:
 ## body, picked on the bench). From the main menu's forge the piece is kept in My designs, free,
 ## and the forge opens again; in training's forge it is kept and worn; the fighter goes out in it.
 func test_armour_is_made_at_the_forge() -> void:
+	# (The bench is down for the player; this goes in as if it were open.)
+	Armory.plate_bench_open = true
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
 	await get_tree().process_frame
@@ -267,6 +269,7 @@ func test_armour_is_made_at_the_forge() -> void:
 	t.check(n >= 1 and f.armor_weight() > 0.0, "the fighter wears it (%d pieces on, %.1f kg)" % [n, f.armor_weight()])
 	menu.queue_free()
 	await get_tree().process_frame
+	Armory.plate_bench_open = false
 
 func _cover(bench: ArmourForge) -> void:
 	for c in Armory._wrap([bench.dims.x, bench.dims.y, bench.dims.z], 0, bench.dims.y - 1, "all"):

@@ -199,6 +199,21 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   dummies that never fall, three throwing boards that score a throw, and by the gate a board
   for each fight on offer (the party's, in a room: the fight chosen at the gate). Three missions per fight pay denarii and reputation, and reputation
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
+- **The yard's stalls**: G at a station opens its screen over the yard, each with a live 3D view
+  (it draws only while it is on the screen). The market
+  (`scripts/ui/market_screen.gd`): the ware on a stand that turns with Buy and a count under it, what
+  he carries of it and how many more fit (or why none: the most he can hold, or every slot taken;
+  `StationKit.carry_of`, the same words at the physician's supplies), the five tabs, the trader's road of what each boss brings, the bag along the foot. The smith
+  (`smith_screen.gd`): the weapon on his anvil, the hammer coming down when a job is paid for; your
+  arms, his wares, his masterworks and your own designs in four lists; `armour_shop.gd` the rack with
+  the gladiator, in the new look, trying each piece on, and `armour_bench.gd` the bench for armour
+  of your own making. The trainer (`trainer_screen.gd`): a radar of the six abilities that grows with
+  each session. The physician (`physician_screen.gd`): the man stripped, what the arena left on him
+  in numbered pins on his body and in the list, the supplies for the fight. They are drawn with
+  `station_kit.gd` (cards, purse, bars, the price that rises from the purse, the red line that says
+  why a deed cannot be done), `stage3d.gd` (the 3D view) and `menu_man.gd` (the player's gladiator
+  for the dressing room); what is bought, mended or taught is Menu's, as it was. They fit the
+  interface scale and the shape of the window (`tests/test_stations.gd`).
 - **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
   (the rings are marked MAIN and OTHER). Two fists need 3 blocks (12 cm) between them, so a
@@ -210,7 +225,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   to last lasts). The smith's stock has bronze, a soft metal for edges, and bone, light and quick. The four tricks
   (explosive, spring, glue, magnet) are set aside for now (`ForgeLib.SET_ASIDE`): not on the anvil,
   not dealt as twists; a weapon already made with them keeps them.
-- **Armour at the forge**: the forge's Armour tab opens the armour bench, a body part in the
+- **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
+  Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
+  shown; every line of it is still here, and a test that goes in sets the switch). The forge's
+  Armour tab opens the armour bench, a body part in the
   round with plates put on it voxel by voxel (where it goes and its stuff picked on the bench).
   Up to 2400 plates, and they may stand up to 6 blocks out from the body (crests, wide
   pauldrons): each one weighs. The bench marks the FRONT and the BACK. It shows the piece as the
@@ -397,7 +415,8 @@ screens in `menu.gd`'s `_ff_*`):
 2. Everyone forges at once, the clock over the forge. Each hand gets a forged weapon, or the off
    hand a plain round shield. When the time is up, whatever is on the anvil is taken as it stands,
    if it can be held and carried.
-3. Then the armour bench, with the same clock. A piece counts once it is made.
+3. Then the armour bench, with the same clock. A piece counts once it is made. (While the
+   bench is down, `Armory.plate_bench_open`, this step is skipped: no time is asked for it.)
 4. All fight to the death with what they made. At the time limit, the one standing with the most
    blood left wins.
 
