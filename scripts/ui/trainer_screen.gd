@@ -230,6 +230,7 @@ func setup(leave: Button) -> void:
 	left.add_child(sum_l)
 	# The cards.
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	body.add_child(sc)
@@ -253,7 +254,7 @@ func setup(leave: Button) -> void:
 		radar.pulse(int(line.axis))
 	if not menu.in_yard():
 		var row := HBoxContainer.new()
-		row.add_child(UIStyle.button("Back", func(): menu.show_screen("yard")))
+		row.add_child(StationKit.button("Back", func(): menu.show_screen("yard")))
 		add_child(row)
 
 func _card(id: String, axis: int) -> Control:
@@ -289,7 +290,7 @@ func _card(id: String, axis: int) -> Control:
 		var d := UIStyle.label(Loc.t(String(a.desc)), 12, UIStyle.MUTED)
 		d.custom_minimum_size = Vector2(maxf(120.0, (right_w if axis < 0 else right_w * 0.5) - 60.0), 0)
 		col.add_child(d)
-	var nextl := UIStyle.label(Loc.t("Next session: +%d%% %s") % [Training.step(id), Loc.lower(String(a.title))], 12, StationKit.GOOD if not r.has("error") else Color(UIStyle.MUTED, 0.6))
+	var nextl := UIStyle.label(Loc.t("Next session: +%d%% %s") % [Training.step(id), Loc.lower(String(a.title))], 12, StationKit.GOOD if not r.has("error") else Color(UIStyle.MUTED, 0.75))
 	nextl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	nextl.clip_text = true
 	nextl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -300,11 +301,11 @@ func _card(id: String, axis: int) -> Control:
 		var why := "Mastered" if full else (Loc.t("Wait for bout %d") % Training.bout_for(lv + Training.step(id)) if lv >= cap else Loc.t("Train · %d denarii") % Training.price(st, id))
 		if virtus and not CampaignRun.unbroken():
 			why = "Only for the Unbroken (Ironman)"
-		b = UIStyle.button(why, func(): pass)
+		b = StationKit.button(why, func(): pass)
 		b.disabled = true
 		b.tooltip_text = String(r.error)
 	else:
-		b = UIStyle.button(Loc.t("Train · %d denarii") % int(r.cost), func():
+		b = StationKit.button(Loc.t("Train · %d denarii") % int(r.cost), func():
 			var r2: Dictionary = Training.buy(menu.training_stats(), id, stage_n, menu.coins())
 			if r2.has("error"):
 				menu.show_screen("trainer", r2.error)
@@ -319,18 +320,24 @@ func _card(id: String, axis: int) -> Control:
 				Sfx.play("thump", Vector3.ZERO, 0.7)
 			menu.show_screen("trainer"), true)
 	b.autowrap_mode = TextServer.AUTOWRAP_OFF
+	b.set_meta("key", "train:" + id)
 	col.add_child(b)
-	# Pointing at a card shows on the radar what one more session of it would give.
+	# Pointing at a card (or reaching its button with the keys) shows on the radar what one more session
+	# of it would give.
 	card.mouse_filter = Control.MOUSE_FILTER_PASS
-	card.mouse_entered.connect(func():
+	var show_next := func():
 		if axis >= 0 and not r.has("error"):
 			var g: Array = []
 			for k in Training.ORDER.size():
 				g.append(-1.0)
 			g[axis] = float(lv + Training.step(id))
 			radar.ghost = g
-			radar.queue_redraw())
-	card.mouse_exited.connect(func():
+			radar.queue_redraw()
+	var hide_next := func():
 		radar.ghost = []
-		radar.queue_redraw())
+		radar.queue_redraw()
+	card.mouse_entered.connect(show_next)
+	card.mouse_exited.connect(hide_next)
+	b.focus_entered.connect(show_next)
+	b.focus_exited.connect(hide_next)
 	return card

@@ -22,6 +22,7 @@ class Pin extends Control:
 		mouse_filter = Control.MOUSE_FILTER_STOP if hit else Control.MOUSE_FILTER_IGNORE
 		if hit:
 			mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			set_meta("mouse_only", true)   # (the list beside him does as much with the keys)
 
 	func _draw() -> void:
 		var c := size * 0.5
@@ -152,7 +153,7 @@ func setup(leave: Button) -> void:
 	var all := offers.filter(func(o): return String(o.id) == "heal:all")
 	if not all.is_empty():
 		var p_all := int(all[0].price)
-		var big := UIStyle.button(Loc.t("Treat everything · it costs %d") % p_all, func(): _treat("heal:all", p_all), true)
+		var big := StationKit.button(Loc.t("Treat everything · it costs %d") % p_all, func(): _treat("heal:all", p_all), true)
 		big.disabled = p_all > menu.coins()
 		big.autowrap_mode = TextServer.AUTOWRAP_OFF
 		big.tooltip_text = Loc.t(String(all[0].desc)) + ("" if p_all <= menu.coins() else Loc.t("  (%d more needed)") % (p_all - menu.coins()))
@@ -160,6 +161,7 @@ func setup(leave: Button) -> void:
 			StationKit.shrink(big, 15, 10.0, 6.0)
 		right.add_child(big)
 	list_scroll = ScrollContainer.new()
+	list_scroll.follow_focus = true
 	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	list_scroll.custom_minimum_size.y = 90.0 if compact else 120.0
@@ -185,7 +187,7 @@ func setup(leave: Button) -> void:
 		else:
 			foot.add_child(StationKit.spacer())
 		if done_text != "":
-			var back := UIStyle.button(done_text, func(): done.call(b), true)
+			var back := StationKit.button(done_text, func(): done.call(b), true)
 			back.size_flags_vertical = Control.SIZE_SHRINK_END
 			foot.add_child(back)
 	man_stage.built.connect(_pins_on, CONNECT_ONE_SHOT)
@@ -195,6 +197,7 @@ func setup(leave: Button) -> void:
 	StationKit.show_note(panel, purse, line)
 
 func _empty(c: Node) -> void:
+	StationKit.keep_focus(c)
 	for x in c.get_children():
 		c.remove_child(x)
 		x.queue_free()
@@ -312,7 +315,7 @@ func _group_row(i: int) -> Control:
 			d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			col.add_child(d)
 			var price := int(o.price)
-			var btn := UIStyle.button(Loc.t("%s · %d denarii") % [Loc.t(String(o.name)), price], func(): _treat(String(o.id), price), true)
+			var btn := StationKit.button(Loc.t("%s · %d denarii") % [Loc.t(String(o.name)), price], func(): _treat(String(o.id), price), true)
 			btn.disabled = price > menu.coins()
 			btn.autowrap_mode = TextServer.AUTOWRAP_OFF
 			btn.tooltip_text = "" if price <= menu.coins() else Loc.t("  (%d more needed)") % (price - menu.coins())
@@ -321,11 +324,11 @@ func _group_row(i: int) -> Control:
 			col.add_child(btn)
 		card.set_meta("on", true)
 	else:
-		card.gui_input.connect(func(e: InputEvent):
-			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-				_pick(key))
+		StationKit.pickable(card, func(): _pick(key), "row:" + key)
 		card.mouse_entered.connect(func(): _hot(key, true))
 		card.mouse_exited.connect(func(): _hot(key, false))
+		card.focus_entered.connect(func(): _hot(key, true))
+		card.focus_exited.connect(func(): _hot(key, false))
 	return card
 
 ## The row under the mouse lights its pin on the man.
@@ -368,7 +371,7 @@ func _elixir(o: Dictionary) -> Control:
 		var d := UIStyle.label(Loc.t(String(o.desc)), _fs(12), UIStyle.MUTED)
 		d.custom_minimum_size.x = maxf(160.0, right_w - 300.0)
 		col.add_child(d)
-	var btn := UIStyle.button(Loc.t("%d denarii") % price, func(): _treat(String(o.id), price), true)
+	var btn := StationKit.button(Loc.t("%d denarii") % price, func(): _treat(String(o.id), price), true)
 	btn.disabled = price > menu.coins()
 	btn.autowrap_mode = TextServer.AUTOWRAP_OFF
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -453,7 +456,7 @@ func _supplies(inline: bool) -> Control:
 			cl.tooltip_text = cl.text
 		col.add_child(cl)
 		var price := int(it.price)
-		var buy := UIStyle.button(StationKit.carry_short(carry) if none else Loc.t("Buy · %d denarii") % price, func(): _buy_supply(id, price), price <= menu.coins() and not none)
+		var buy := StationKit.button(StationKit.carry_short(carry) if none else Loc.t("Buy · %d denarii") % price, func(): _buy_supply(id, price), price <= menu.coins() and not none)
 		buy.disabled = price > menu.coins() or none
 		buy.tooltip_text = StationKit.carry_line(carry)
 		buy.autowrap_mode = TextServer.AUTOWRAP_OFF

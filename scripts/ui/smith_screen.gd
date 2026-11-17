@@ -129,7 +129,7 @@ func _header(leave: Button) -> void:
 		right.add_child(b)
 	var all_: Dictionary = Armory.mend_all(menu.armor_wear(), menu.worn_armor())
 	if int(all_.cost) > 0:
-		var mend_all := UIStyle.button(Loc.t("Mend all armour · %d denarii") % int(all_.cost), menu._mend_all_armour, true)
+		var mend_all := StationKit.button(Loc.t("Mend all armour · %d denarii") % int(all_.cost), menu._mend_all_armour, true)
 		mend_all.disabled = int(all_.cost) > menu.coins()
 		mend_all.autowrap_mode = TextServer.AUTOWRAP_OFF
 		mend_all.tooltip_text = Loc.t("The armourer puts back every plate your armour has lost.") + (Loc.t(" Purse after: %d") % (menu.coins() - int(all_.cost)) if int(all_.cost) <= menu.coins() else Loc.t(" %d more needed") % (int(all_.cost) - menu.coins()))
@@ -164,7 +164,7 @@ func _pills() -> void:
 		_pills()
 		_list(), compact)
 	pills.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var forge := UIStyle.button("Forge a new weapon from nothing", func(): menu._scratch_forge(), true)
+	var forge := StationKit.button("Forge a new weapon from nothing", func(): menu._scratch_forge(), true)
 	forge.autowrap_mode = TextServer.AUTOWRAP_OFF
 	if compact:
 		StationKit.shrink(forge, 13, 10.0, 4.0)
@@ -242,6 +242,7 @@ func _pick(s: Dictionary) -> void:
 func _list() -> void:
 	_empty(list_host)
 	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size.y = 110.0
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -288,6 +289,10 @@ func _grid() -> GridContainer:
 	g.add_theme_constant_override("h_separation", 10)
 	g.add_theme_constant_override("v_separation", 10)
 	return g
+
+## What names a thing of the smith's (an arm, a rack's place, a ware) for the focus to find it again.
+func _key_of(r: Dictionary) -> String:
+	return "%s:%s" % [r.get("kind", ""), r.get("key", r.get("i", r.get("side", r.get("part", ""))))]
 
 ## One of his arms as a row: a picture, what it is, how sound.
 func _row(r: Dictionary) -> Control:
@@ -342,7 +347,7 @@ func _row(r: Dictionary) -> Control:
 			name_ = Loc.t(String(Body.PROSTHETICS[pk].name))
 			sub = Loc.t("%s · works %d%% as well as a limb of your own") % [Loc.t(String(Body.PRO_STEPS[lv - 1].label)) if lv > 0 else Loc.t("As the physician made it"), int(round(Body.pro_fn(pk, lv) * 100.0))]
 			tex.tree_entered.connect(func(): Thumbs.prosthetic(tex, pk, part, lv), CONNECT_ONE_SHOT)
-	col.add_child(StationKit.kicker(title, UIStyle.BRONZE, 11, true))
+	col.add_child(StationKit.kicker(title, UIStyle.BRONZE, 12, true))
 	var n := UIStyle.label(name_, 16 if compact else 18, UIStyle.TEXT)
 	n.autowrap_mode = TextServer.AUTOWRAP_OFF
 	n.clip_text = true
@@ -357,9 +362,9 @@ func _row(r: Dictionary) -> Control:
 		var bar := StationKit.Bar.new(6.0, UIStyle.GOLD if cond >= 0.8 else (UIStyle.BRONZE if cond >= 0.4 else StationKit.BAD))
 		bar.value = cond
 		col.add_child(bar)
-	card.gui_input.connect(func(e: InputEvent):
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_pick(r))
+	StationKit.pickable(card, func(): _pick(r), "row:" + _key_of(r))
+	if on:
+		card.set_meta("start", true)
 	return card
 
 func _tile_frame(r: Dictionary, border: Color, width := 1) -> PanelContainer:
@@ -369,11 +374,9 @@ func _tile_frame(r: Dictionary, border: Color, width := 1) -> PanelContainer:
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	t.mouse_filter = Control.MOUSE_FILTER_STOP
 	t.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	t.gui_input.connect(func(e: InputEvent):
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_pick(r))
-	t.mouse_entered.connect(func(): t.modulate = Color(1.1, 1.06, 1.0))
-	t.mouse_exited.connect(func(): t.modulate = Color.WHITE)
+	StationKit.pickable(t, func(): _pick(r), "tile:" + _key_of(r))
+	if on:
+		t.set_meta("start", true)
 	return t
 
 func _tile_body(t: PanelContainer, d: Dictionary, key: String, name_: String, sub: String, sub_color: Color) -> TextureRect:
@@ -544,6 +547,7 @@ func _work(then: Callable, strikes := 3, cost := 0) -> void:
 func _detail() -> void:
 	_empty(detail_card)
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.custom_minimum_size.y = 60.0
@@ -582,7 +586,7 @@ func _flow() -> HFlowContainer:
 func _job(title: String, desc: String, price: String, ok: bool, why: String, cb: Callable) -> Control:
 	if compact:
 		# (Room is short: a button, what it is for in its tip.)
-		var b := UIStyle.button(Loc.t(title) + "  ·  " + (price.get_slice(" ", 0) if ok else Loc.t(why)), cb, ok)
+		var b := StationKit.button(Loc.t(title) + "  ·  " + (price.get_slice(" ", 0) if ok else Loc.t(why)), cb, ok)
 		b.disabled = not ok
 		b.autowrap_mode = TextServer.AUTOWRAP_OFF
 		b.tooltip_text = Loc.t(desc)
@@ -604,11 +608,11 @@ func _job(title: String, desc: String, price: String, ok: bool, why: String, cb:
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(t)
 	if not compact:
-		var d := UIStyle.label(Loc.t(desc), 12, UIStyle.MUTED if ok else Color(UIStyle.MUTED, 0.6))
+		var d := UIStyle.label(Loc.t(desc), 12, UIStyle.MUTED if ok else Color(UIStyle.MUTED, 0.75))
 		d.custom_minimum_size.x = 120.0
 		d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(d)
-	var p := UIStyle.label(price if ok else Loc.t(why), 14, UIStyle.GOLD if ok else Color(UIStyle.MUTED, 0.7))
+	var p := UIStyle.label(price if ok else Loc.t(why), 14, UIStyle.GOLD if ok else Color(UIStyle.MUTED, 0.75))
 	p.autowrap_mode = TextServer.AUTOWRAP_OFF
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(p)
@@ -616,13 +620,7 @@ func _job(title: String, desc: String, price: String, ok: bool, why: String, cb:
 	card.set_meta("ok", ok)
 	card.set_meta("cb", cb)
 	if ok:
-		card.mouse_filter = Control.MOUSE_FILTER_STOP
-		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		card.gui_input.connect(func(e: InputEvent):
-			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-				cb.call())
-		card.mouse_entered.connect(func(): card.modulate = Color(1.12, 1.08, 1.0))
-		card.mouse_exited.connect(func(): card.modulate = Color.WHITE)
+		StationKit.pickable(card, cb, "job:" + title)
 	return card
 
 func _detail_arm(col: VBoxContainer) -> void:
@@ -634,7 +632,7 @@ func _detail_arm(col: VBoxContainer) -> void:
 		var e := UIStyle.label("Empty: buy a shield or a dagger from the rack, or have one made", 14, UIStyle.MUTED)
 		e.custom_minimum_size.x = left_w - 50.0
 		col.add_child(e)
-		var mk := UIStyle.button("Forge a weapon for the off hand", func(): menu._scratch_forge("L"))
+		var mk := StationKit.button("Forge a weapon for the off hand", func(): menu._scratch_forge("L"))
 		mk.tooltip_text = "Built block by block at the anvil, paid for at what it is worth"
 		col.add_child(mk)
 		return
@@ -668,15 +666,15 @@ func _detail_arm(col: VBoxContainer) -> void:
 	if not compact:
 		more = _flow()
 		col.add_child(more)
-	var rs := UIStyle.button("Reshape in the forge", func(): menu.open_forge(side))
+	var rs := StationKit.button("Reshape in the forge", func(): menu.open_forge(side))
 	StationKit.shrink(rs, 14, 12.0, 6.0)
 	more.add_child(rs)
-	var nw := UIStyle.button("Forge a new one for this hand", func(): menu._scratch_forge(side))
+	var nw := StationKit.button("Forge a new one for this hand", func(): menu._scratch_forge(side))
 	nw.tooltip_text = Loc.t("A new weapon from nothing for the %s: the one there now is traded in for half its worth") % Loc.t("main hand" if side == "R" else "off hand")
 	StationKit.shrink(nw, 14, 12.0, 6.0)
 	more.add_child(nw)
 	var got := Arms.sale_price(d)
-	var sl := UIStyle.button((Loc.t("Sell · you get %d denarii") % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): menu._sell_confirm(side))
+	var sl := StationKit.button((Loc.t("Sell · you get %d denarii") % got) if not Arms.is_stick(d) else "Sell · the stick fetches nothing", func(): menu._sell_confirm(side))
 	sl.disabled = Arms.is_stick(d)
 	sl.tooltip_text = Loc.t("Vulcanus buys it for half its worth: the main hand is left with the training stick" if side == "R" else "Vulcanus buys it for half its worth: the off hand is left empty")
 	StationKit.shrink(sl, 14, 12.0, 6.0)
@@ -691,7 +689,7 @@ func _detail_rack(col: VBoxContainer) -> void:
 	col.add_child(racts)
 	for hs in ["R", "L"]:
 		var side_: String = hs
-		var tb := UIStyle.button("Take it in the main hand" if hs == "R" else "Take it in the off hand", func(): menu._pay(Arms.take_from_rack(menu.arms(), i, side_)))
+		var tb := StationKit.button("Take it in the main hand" if hs == "R" else "Take it in the off hand", func(): menu._pay(Arms.take_from_rack(menu.arms(), i, side_)))
 		tb.disabled = not hands[hs]
 		tb.tooltip_text = Loc.t("Your right hand cannot hold it" if hs == "R" else "Your left hand cannot hold it") if not hands[hs] else Loc.t("Off the rack into that hand; what the hand holds now goes up in its place")
 		racts.add_child(tb)
@@ -739,7 +737,7 @@ func _detail_base(col: VBoxContainer) -> void:
 	_cost_lines(col, Arms.base_price(b), int(c.trade), "your old one" if c.choose else "what you hand in")
 	var row := _flow()
 	col.add_child(row)
-	var buy := UIStyle.button("Buy", func():
+	var buy := StationKit.button("Buy", func():
 		var r := Arms.buy(menu.arms(), key)
 		if r.has("choose"):
 			menu._sell_choice(str(b.name), func(sd): return Arms.buy(menu.arms(), key, sd), r.choose)
@@ -751,7 +749,7 @@ func _detail_base(col: VBoxContainer) -> void:
 	if Arms.off_hand_ok(key):
 		var pre_l := Arms.buy(a, key, "", "L")
 		var afford_l: bool = Arms.base_price(b) <= menu.coins() + int(pre_l.get("trade_in", 0))
-		var buy_l := UIStyle.button("For the off hand", func(): menu._pay(Arms.buy(menu.arms(), key, "", "L")), afford_l)
+		var buy_l := StationKit.button("For the off hand", func(): menu._pay(Arms.buy(menu.arms(), key, "", "L")), afford_l)
 		buy_l.disabled = not afford_l
 		buy_l.tooltip_text = (Loc.t("Into the off hand, %s") % Loc.t("handing in what is there" if int(pre_l.get("trade_in", 0)) > 0 else "the main hand keeps its weapon")) if afford_l else "Not enough in your purse"
 		row.add_child(buy_l)
@@ -787,7 +785,7 @@ func _detail_odd(col: VBoxContainer) -> void:
 				got.append(idx)
 			all[key] = got
 			Save.set_value("oddities_sold", all)
-		var buy := UIStyle.button("Buy", func():
+		var buy := StationKit.button("Buy", func():
 			var r := Arms.buy_design(menu.arms(), d, "", price)
 			if r.has("choose"):
 				menu._sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(menu.arms(), d, sd, price), r.choose, mark_sold)
@@ -800,7 +798,7 @@ func _detail_odd(col: VBoxContainer) -> void:
 	var keep := d.duplicate(true)
 	keep.erase("oddity")
 	var saved: bool = load("res://scripts/ui/forge.gd").gallery().any(func(o): return o.get("voxels") == keep.voxels)
-	var sv := UIStyle.button("In My designs" if saved else "Save to My designs", func():
+	var sv := StationKit.button("In My designs" if saved else "Save to My designs", func():
 		var mine: Array = load("res://scripts/ui/forge.gd").gallery()
 		if not mine.any(func(o): return o.get("voxels") == keep.voxels):
 			mine.push_front(keep)
@@ -814,7 +812,7 @@ func _detail_design(col: VBoxContainer) -> void:
 	var price := Arms.design_price(d)
 	_head(col, "Your design · made to order", str(d.get("name", "?")), Loc.t("%d blocks · made to order") % d.voxels.size())
 	_cost_lines(col, price)
-	var buy := UIStyle.button("Have it made", func():
+	var buy := StationKit.button("Have it made", func():
 		var r := Arms.buy_design(menu.arms(), d)
 		if r.has("choose"):
 			menu._sell_choice(str(d.get("name", "it")), func(sd): return Arms.buy_design(menu.arms(), d, sd), r.choose)
@@ -824,6 +822,7 @@ func _detail_design(col: VBoxContainer) -> void:
 	col.add_child(buy)
 
 func _empty(c: Node) -> void:
+	StationKit.keep_focus(c)
 	for x in c.get_children():
 		c.remove_child(x)
 		x.queue_free()

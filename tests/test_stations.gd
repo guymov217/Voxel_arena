@@ -562,3 +562,183 @@ func test_the_market_tells_how_many_more_of_a_ware_he_can_buy() -> void:
 	t.check(buttons.has(Loc.t("All %d slots are taken") % Throwables.BAG_KINDS), "and so does a button")
 	_gone(pair)
 	await _steps(2)
+
+# ---------- The keys and the pad (#223) ----------
+
+func _stock() -> void:
+	Save.set_value("coins", 900)
+	Save.set_value("stage", 13)
+	Save.set_value("kit", {"thunderPot": 3, "bread": 5})
+	Save.set_value("body", _wounded())
+	Save.set_value("arms", _arms())
+	Save.set_value("armor_worn", ["lorica", "greaves", "helmet"])
+	Save.set_value("forge_gallery", [Data.preset("warhammer").duplicate(true), Data.preset("axe").duplicate(true)])
+
+const STALL_SHOTS := [
+	["market", "the market", {"market_tab": "fire", "market_sel": ""}],
+	["market", "the market's floor traps", {"market_tab": "floor", "market_sel": ""}],
+	["yard", "the smith's arms", {"smith_tab": "weapons", "smith_group": "arms", "smith_sel": {"kind": "arm", "side": "R"}}],
+	["yard", "the smith's wares", {"smith_group": "sale", "smith_sel": {"kind": "base", "key": "longsword"}}],
+	["yard", "the masterworks", {"smith_group": "works", "smith_sel": {"kind": "odd", "i": 1}}],
+	["yard", "his designs", {"smith_group": "designs", "smith_sel": {"kind": "design", "i": 0}}],
+	["yard", "the armour rack", {"smith_tab": "armour", "armour_sel": "steelLorica"}],
+	["yard", "the armour bench", {"smith_tab": "bench"}],
+	["trainer", "the trainer", {}],
+	["physician", "the physician", {}],
+]
+
+## What the mouse can click the keys and the pad can reach, in every stall: each card takes the
+## focus (the pins on the man are a shortcut for the mouse, the list beside him is the same with the
+## keys); and each button is big enough to hit and its writing legible.
+func test_every_stall_can_be_used_with_the_keys_and_its_buttons_are_big_enough() -> void:
+	_stock()
+	var pair := _menu()
+	var menu: Control = pair[0]
+	var cards := 0
+	var unreachable := []
+	var small := []
+	var faint := []
+	for shot in STALL_SHOTS:
+		for k in shot[2]:
+			menu.set(k, shot[2][k])
+		menu.show_screen(shot[0])
+		await _steps(30)
+		for n in menu.panel.find_children("*", "Control", true, false):
+			var c := n as Control
+			if not c.is_visible_in_tree() or c.get_global_rect().size.x < 2.0:
+				continue
+			if c is BaseButton:
+				if c.get_global_rect().size.y < 31.0:
+					small.append("%s: %s (%d high)" % [shot[1], (c as Button).text if c is Button else "a box", int(c.get_global_rect().size.y)])
+			elif c is Label:
+				var fs := (c as Label).get_theme_font_size("font_size")
+				if (c as Label).text.strip_edges() != "" and fs < 12:
+					faint.append("%s: %s (%d)" % [shot[1], (c as Label).text.left(14), fs])
+			elif c.mouse_filter == Control.MOUSE_FILTER_STOP and c.get_signal_connection_list("gui_input").size() > 0 and not c.has_meta("mouse_only"):
+				cards += 1
+				if c.focus_mode == Control.FOCUS_NONE:
+					unreachable.append("%s: a card" % shot[1])
+	_gone(pair)
+	t.check(cards >= 20, "the stalls have cards to pick (%d)" % cards)
+	t.check(unreachable.is_empty(), "every card takes the focus (%d cannot: %s)" % [unreachable.size(), "; ".join(unreachable.slice(0, 3))])
+	t.check(small.is_empty(), "every button is big enough to hit (%d are not: %s)" % [small.size(), "; ".join(small.slice(0, 3))])
+	t.check(faint.is_empty(), "no writing is set under 12 (%d lines: %s)" % [faint.size(), "; ".join(faint.slice(0, 3))])
+
+## Enter picks the card the focus is on, and the focus stays on it when the grid is drawn again.
+func test_a_ware_is_picked_with_enter_and_the_focus_stays_with_it() -> void:
+	Save.set_value("coins", 900)
+	Save.set_value("stage", 13)
+	Save.set_value("kit", {})
+	StationKit.keys_on = true
+	var pair := _menu()
+	var menu: Control = pair[0]
+	menu.market_tab = "fire"
+	menu.market_sel = ""
+	menu.show_screen("market")
+	await _steps(30)
+	var ms: MarketScreen = _screen(menu, MarketScreen)
+	var tile: Control = null
+	for n in ms.find_children("*", "PanelContainer", true, false):
+		if n.has_meta("key") and String(n.get_meta("key")).begins_with("tile:") and String(n.get_meta("key")) != "tile:" + ms.sel:
+			tile = n
+			break
+	t.check(tile != null, "there is another ware to pick")
+	if tile != null:
+		var id := String(tile.get_meta("key")).substr(5)
+		tile.grab_focus()
+		t.check(tile.has_focus(), "the card takes the focus")
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_ENTER
+		ev.pressed = true
+		tile.gui_input.emit(ev)
+		await _steps(8)
+		t.eq(ms.sel, id, "Enter picks the ware")
+		var f := menu.get_viewport().gui_get_focus_owner()
+		t.check(f != null and f.has_meta("key") and String(f.get_meta("key")) == "tile:" + id, "and the focus is on it still, in the grid drawn again")
+	StationKit.keys_on = false
+	_gone(pair)
+
+## Buying with the keys does not lose the place: the focus is on the button that was pressed.
+func test_buying_with_the_keys_keeps_the_focus() -> void:
+	Save.set_value("coins", 900)
+	Save.set_value("stage", 13)
+	Save.set_value("kit", {})
+	StationKit.keys_on = true
+	var pair := _menu()
+	var menu: Control = pair[0]
+	menu.market_tab = "fire"
+	menu.market_sel = ""
+	menu.show_screen("market")
+	await _steps(30)
+	var ms: MarketScreen = _screen(menu, MarketScreen)
+	t.check(ms.buy_btn != null and not ms.buy_btn.disabled, "there is a ware to buy")
+	if ms.buy_btn != null:
+		ms.buy_btn.grab_focus()
+		ms.buy_btn.pressed.emit()
+		await _steps(10)
+		var f := menu.get_viewport().gui_get_focus_owner()
+		t.check(f != null and ms.is_ancestor_of(f), "after the purchase the keys are still in the stall (%s)" % [f])
+		t.check(f != null and f.has_meta("key") and String(f.get_meta("key")) == "buy", "on the Buy button, drawn again")
+	StationKit.keys_on = false
+	_gone(pair)
+
+## A stall that opens while the keys are in use takes the focus, on what it offers (not on the door).
+func test_a_stall_opens_with_the_focus_on_what_it_offers() -> void:
+	Save.set_value("coins", 900)
+	Save.set_value("stage", 13)
+	StationKit.keys_on = true
+	var pair := _menu()
+	var menu: Control = pair[0]
+	for s in ["market", "trainer", "physician", "yard"]:
+		menu.show_screen(s)
+		await _steps(12)
+		var f := menu.get_viewport().gui_get_focus_owner()
+		t.check(f != null and menu.panel.is_ancestor_of(f), "the %s opens with the focus in it" % s)
+		t.check(f != null and not f.has_meta("leave"), "and not on the way out (%s)" % [f])
+	StationKit.keys_on = false
+	_gone(pair)
+
+## The pad's B leaves a stall as Esc does.
+func test_the_pads_b_leaves_a_stall() -> void:
+	var pair := _menu()
+	var menu: Control = pair[0]
+	menu.show_screen("market")
+	await _steps(5)
+	t.check(menu.visible, "the market is open")
+	var b := InputEventJoypadButton.new()
+	b.button_index = JOY_BUTTON_B
+	b.pressed = true
+	menu._unhandled_input(b)
+	t.check(not menu.visible, "B leaves it")
+	_gone(pair)
+
+## The pad's A picks the card the focus is on, and presses a button it is on.
+func test_the_pads_a_picks_a_card_and_presses_a_button() -> void:
+	Save.set_value("coins", 900)
+	Save.set_value("stage", 13)
+	Save.set_value("kit", {})
+	StationKit.keys_on = true
+	var pair := _menu()
+	var menu: Control = pair[0]
+	menu.market_tab = "fire"
+	menu.market_sel = ""
+	menu.show_screen("market")
+	await _steps(30)
+	var ms: MarketScreen = _screen(menu, MarketScreen)
+	var tile: Control = null
+	for n in ms.find_children("*", "PanelContainer", true, false):
+		if n.has_meta("key") and String(n.get_meta("key")).begins_with("tile:") and String(n.get_meta("key")) != "tile:" + ms.sel:
+			tile = n
+			break
+	var a := InputEventJoypadButton.new()
+	a.button_index = JOY_BUTTON_A
+	a.pressed = true
+	t.check(a.is_action_pressed("ui_accept"), "the pad's A is an accept in the menus")
+	if tile != null:
+		var id := String(tile.get_meta("key")).substr(5)
+		tile.grab_focus()
+		tile.gui_input.emit(a)
+		await _steps(8)
+		t.eq(ms.sel, id, "A picks the ware")
+	StationKit.keys_on = false
+	_gone(pair)

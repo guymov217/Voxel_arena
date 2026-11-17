@@ -198,6 +198,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   screen, F12 a screenshot, F3 the frame rate in the corner (`scripts/ui/fps_meter.gd`: frames
   a second, the mean and the longest frame, the longest physics step and frame without physics,
   and the drawing and the graphics card's time in ms; in a room the connection's meter with it).
+  The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
+  pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
+  the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a
+  click), a stall opens on what it sells, and the place is kept when the screen is drawn again
+  after a pick or a purchase (`StationKit.pickable`, `focus_key`, `tests/test_stations.gd`).
 - **The Ludus yard**: a walkable hub (`scripts/game/yard.gd`, `yard_play.gd`). It has stations
   (the arena gate, the smith, the market and the mission board; press G at one), two training
   dummies that never fall, three throwing boards that score a throw, and by the gate a board

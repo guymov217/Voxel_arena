@@ -48,6 +48,7 @@ func setup() -> void:
 	detail_card.custom_minimum_size.y = 190.0
 	left.add_child(detail_card)
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(sc)
@@ -59,6 +60,7 @@ func setup() -> void:
 	_changed(true)
 
 func _empty(c: Node) -> void:
+	StationKit.keep_focus(c)
 	for x in c.get_children():
 		c.remove_child(x)
 		x.queue_free()
@@ -136,6 +138,7 @@ func _controls() -> void:
 	var opts := _group("Shape")
 	var fr := CheckBox.new()
 	fr.text = Loc.t("Front and sides only")
+	fr.custom_minimum_size.y = 32.0   # (a box and a line of writing a hand can hit)
 	fr.button_pressed = b.front
 	fr.toggled.connect(func(x):
 		b.front = x
@@ -143,6 +146,7 @@ func _controls() -> void:
 	opts.add_child(fr)
 	var cp := CheckBox.new()
 	cp.text = Loc.t("Cap the top")
+	cp.custom_minimum_size.y = 32.0
 	cp.button_pressed = b.cap
 	cp.toggled.connect(func(x):
 		b.cap = x
@@ -170,6 +174,7 @@ func _detail(def: Dictionary) -> void:
 	outer.add_theme_constant_override("separation", 8)
 	detail_card.add_child(outer)
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.custom_minimum_size.y = 60.0
@@ -199,12 +204,12 @@ func _detail(def: Dictionary) -> void:
 	acts.add_theme_constant_override("h_separation", 8)
 	acts.add_theme_constant_override("v_separation", 8)
 	outer.add_child(acts)
-	var make := UIStyle.button(Loc.t("Forge and wear · %d denarii") % price, func():
+	var make := StationKit.button(Loc.t("Forge and wear · %d denarii") % price, func():
 		menu._forge_armour(_def()), true)
 	make.disabled = price > menu.coins()
 	make.autowrap_mode = TextServer.AUTOWRAP_OFF
 	acts.add_child(make)
 	if Armory.plate_bench_open:
-		var plate := UIStyle.button("Shape it plate by plate", func(): menu._plate_bench(_def(), worn_kg))
+		var plate := StationKit.button("Shape it plate by plate", func(): menu._plate_bench(_def(), worn_kg))
 		StationKit.shrink(plate, 14, 12.0, 8.0)
 		acts.add_child(plate)

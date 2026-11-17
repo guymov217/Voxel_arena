@@ -79,6 +79,7 @@ func _region_of(id: String) -> String:
 	return "My designs" if designs.has(id) else String(menu._armour_region(id))
 
 func _empty(c: Node) -> void:
+	StationKit.keep_focus(c)
 	for x in c.get_children():
 		c.remove_child(x)
 		x.queue_free()
@@ -101,6 +102,7 @@ func _pills() -> void:
 func _list() -> void:
 	_empty(list_host)
 	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size.y = 110.0
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -167,11 +169,9 @@ func _tile(id: String) -> Control:
 	tag.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(tag)
-	t.gui_input.connect(func(e: InputEvent):
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_pick(id))
-	t.mouse_entered.connect(func(): t.modulate = Color(1.1, 1.06, 1.0))
-	t.mouse_exited.connect(func(): t.modulate = Color.WHITE)
+	StationKit.pickable(t, func(): _pick(id), "tile:" + id)
+	if chosen:
+		t.set_meta("start", true)
 	return t
 
 func _pick(id: String) -> void:
@@ -208,6 +208,7 @@ func _detail() -> void:
 	outer.add_theme_constant_override("separation", 8)
 	detail_card.add_child(outer)
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.custom_minimum_size.y = 60.0
@@ -253,7 +254,7 @@ func _detail() -> void:
 			var dmg := UIStyle.label(Loc.t("%d of %d plates knocked off · condition %d%%") % [lost[0], lost[1], int(Armory.condition(sel, aw) * 100.0)], 13, StationKit.BAD)
 			dmg.custom_minimum_size.x = left_w - 50.0
 			col.add_child(dmg)
-			var mend := UIStyle.button(Loc.t("Mend · %d denarii") % mc_, func():
+			var mend := StationKit.button(Loc.t("Mend · %d denarii") % mc_, func():
 				var m: Dictionary = Armory.mend(menu.armor_wear(), sel)
 				if int(m.cost) > menu.coins():
 					menu.show_screen("yard", "Not enough denarii")
@@ -266,7 +267,7 @@ func _detail() -> void:
 			mend.disabled = mc_ > menu.coins()
 			mend.tooltip_text = "The armourer puts back every plate it has lost." + (Loc.t(" Purse after: %d") % (menu.coins() - mc_) if mc_ <= menu.coins() else Loc.t(" %d more needed") % (mc_ - menu.coins()))
 			acts.add_child(mend)
-		var off := UIStyle.button(Loc.t("Take off · %d denarii back") % (price / 2), func():
+		var off := StationKit.button(Loc.t("Take off · %d denarii back") % (price / 2), func():
 			var t: Dictionary = Armory.take_off(menu.worn_armor(), sel)
 			if not t.has("error"):
 				menu.add_coins(-int(t.cost))
@@ -276,7 +277,7 @@ func _detail() -> void:
 	else:
 		var b: Dictionary = Armory.buy(worn, sel)
 		var cost: int = int(b.get("cost", price))
-		var btn := UIStyle.button((Loc.t("Buy · %d denarii") % cost) if cost > 0 else (Loc.t("Swap · %d denarii back") % -cost), func():
+		var btn := StationKit.button((Loc.t("Buy · %d denarii") % cost) if cost > 0 else (Loc.t("Swap · %d denarii back") % -cost), func():
 			var t: Dictionary = Armory.buy(menu.worn_armor(), sel)
 			if t.has("error"):
 				menu.show_screen("yard", t.error)

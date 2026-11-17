@@ -122,8 +122,8 @@ func setup(leave: Button) -> void:
 	if menu.in_yard() == false:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
-		row.add_child(UIStyle.button("Back to the smith", func(): menu.show_screen("yard")))
-		row.add_child(UIStyle.button("Main menu", func(): menu.show_screen("main")))
+		row.add_child(StationKit.button("Back to the smith", func(): menu.show_screen("yard")))
+		row.add_child(StationKit.button("Main menu", func(): menu.show_screen("main")))
 		add_child(row)
 
 func _first_of(t: String) -> String:
@@ -168,6 +168,7 @@ func _pills() -> void:
 func _grid() -> void:
 	_empty(grid_host)
 	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size.y = 110.0
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -223,7 +224,7 @@ func _tile(id: String, h: float, fresh: bool) -> Control:
 	if after <= 0:
 		t.tooltip_text = StationKit.carry_line(carry)
 	if after > 0 or fresh:
-		var tag := UIStyle.label("LOCKED" if after > 0 else "NEW", 10, UIStyle.INK if after <= 0 else UIStyle.MUTED)
+		var tag := UIStyle.label("LOCKED" if after > 0 else "NEW", 12, UIStyle.INK if after <= 0 else UIStyle.MUTED)
 		tag.autowrap_mode = TextServer.AUTOWRAP_OFF
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -247,11 +248,9 @@ func _tile(id: String, h: float, fresh: bool) -> Control:
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(sub)
-	t.gui_input.connect(func(e: InputEvent):
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			_pick(id))
-	t.mouse_entered.connect(func(): t.modulate = Color(1.1, 1.06, 1.0))
-	t.mouse_exited.connect(func(): t.modulate = Color.WHITE)
+	StationKit.pickable(t, func(): _pick(id), "tile:" + id)
+	if on:
+		t.set_meta("start", true)
 	return t
 
 func _pick(id: String) -> void:
@@ -288,6 +287,7 @@ func _detail() -> void:
 	col.add_child(StationKit.kicker(_tab_name(tab)))
 	col.add_child(StationKit.heading(Loc.t(String(it.name)), 22 if compact else 26))
 	var sc := ScrollContainer.new()
+	sc.follow_focus = true
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.custom_minimum_size.y = 36.0
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -321,7 +321,7 @@ func _detail() -> void:
 	buy_btn = null
 	if after > 0:
 		row.add_child(StationKit.spacer())
-		var later := UIStyle.button(Loc.t("After the boss of bout %d") % after, func(): pass)
+		var later := StationKit.button(Loc.t("After the boss of bout %d") % after, func(): pass)
 		later.disabled = true
 		row.add_child(later)
 		return
@@ -337,7 +337,8 @@ func _detail() -> void:
 	var label := Loc.t("Buy · %d denarii") % total
 	if most <= 0:
 		label = StationKit.carry_short(carry)
-	buy_btn = UIStyle.button(label, _buy, can_pay and most > 0)
+	buy_btn = StationKit.button(label, _buy, can_pay and most > 0)
+	buy_btn.set_meta("key", "buy")
 	buy_btn.disabled = not can_pay or most <= 0
 	if most <= 0:
 		buy_btn.tooltip_text = StationKit.carry_line(carry)
@@ -347,20 +348,22 @@ func _detail() -> void:
 func _stepper(most: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
-	var minus := UIStyle.button("−", func():
+	var minus := StationKit.button("−", func():
 		qty = maxi(1, qty - 1)
 		_detail())
 	minus.disabled = qty <= 1
+	minus.set_meta("key", "minus")
 	row.add_child(minus)
 	var n := UIStyle.label("%d" % qty, 18, UIStyle.TEXT)
 	n.custom_minimum_size.x = 28.0
 	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	n.autowrap_mode = TextServer.AUTOWRAP_OFF
 	row.add_child(n)
-	var plus := UIStyle.button("+", func():
+	var plus := StationKit.button("+", func():
 		qty = mini(most, qty + 1)
 		_detail())
 	plus.disabled = qty >= most
+	plus.set_meta("key", "plus")
 	row.add_child(plus)
 	return row
 
@@ -427,6 +430,7 @@ func _road() -> void:
 	col.add_child(head)
 	var px := 34.0 if compact else 46.0
 	var scroll := ScrollContainer.new()
+	scroll.follow_focus = true
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size.y = px + 18.0 + 10.0
@@ -470,7 +474,7 @@ func _road_tile(r: Dictionary, px: float) -> Control:
 	slot.add_child(tex)
 	tex.tree_entered.connect(func(): Thumbs.item(tex, id), CONNECT_ONE_SHOT)
 	box.add_child(slot)
-	var n := UIStyle.label(str(int(r.bout)), 11, UIStyle.GOLD if bool(r.next) else UIStyle.MUTED)
+	var n := UIStyle.label(str(int(r.bout)), 12, UIStyle.GOLD if bool(r.next) else UIStyle.MUTED)
 	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	n.autowrap_mode = TextServer.AUTOWRAP_OFF
 	box.add_child(n)
@@ -483,6 +487,7 @@ func _bag() -> void:
 	bag_host.add_child(StationKit.bag_strip(kit, 40 if compact else 54))
 
 func _empty(c: Node) -> void:
+	StationKit.keep_focus(c)
 	for x in c.get_children():
 		c.remove_child(x)
 		x.queue_free()

@@ -54,6 +54,7 @@ const LOOK_SLOTS := {
 func _ready() -> void:
 	theme = UIStyle.theme()
 	UIStyle.hook(get_tree())
+	StationKit.pad_menu_keys()
 	apply_display(Save.get_value("settings", {}))
 	apply_picture(Save.get_value("settings", {}))
 	apply_frame(Save.get_value("settings", {}))
@@ -385,8 +386,12 @@ func set_kit(k: Dictionary) -> void:
 	if match_ and is_instance_valid(match_) and match_.me and match_.mode == "yard":
 		match_.me.inventory = clean.duplicate()
 
+## The stalls of the yard: with the keys in use they open on something to press.
+const STALL_SCREENS := ["market", "yard", "physician", "trainer", "circus_market"]
+
 func show_screen(s: String, msg := "") -> void:
 	var was := screen
+	var focus_was := StationKit.focus_key(panel)
 	if s == "main":
 		# Back at the main menu he has left the yard: a fight picked from here ends here.
 		if in_yard():
@@ -404,7 +409,9 @@ func show_screen(s: String, msg := "") -> void:
 	var v := _clear()
 	if in_yard() or s == "yard":
 		# The one way out of a stall; the smith seen from anywhere else leads into the yard.
-		v.add_child(UIStyle.button(Loc.t({"market": "◀  Leave the market  (Esc)", "yard": "◀  Leave the smith  (Esc)", "physician": "◀  Leave the physician  (Esc)", "missions": "◀  Leave the board  (Esc)", "gate": "◀  Leave the gate  (Esc)"}.get(s, "◀  Leave the stall  (Esc)")), _close_overlay if in_yard() else func(): enter_yard(), true))
+		var way_out := StationKit.button(Loc.t({"market": "◀  Leave the market  (Esc)", "yard": "◀  Leave the smith  (Esc)", "physician": "◀  Leave the physician  (Esc)", "missions": "◀  Leave the board  (Esc)", "gate": "◀  Leave the gate  (Esc)"}.get(s, "◀  Leave the stall  (Esc)")), _close_overlay if in_yard() else func(): enter_yard(), true)
+		way_out.set_meta("leave", true)
+		v.add_child(way_out)
 		if in_yard() and hud:
 			hud.visible = false
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else panel_style)
@@ -451,6 +458,7 @@ func show_screen(s: String, msg := "") -> void:
 		"ff_contest": _ff_contest(v)
 		"endless": _endless(v)
 		"endless_armour": _endless_armour(v)
+	StationKit.settle_focus(panel, "" if fresh else focus_was, STALL_SCREENS.has(s))
 	if fresh and s != "main":
 		var rows := v.get_children()
 		for i in rows.size():
@@ -3275,6 +3283,7 @@ static func set_fullscreen(on: bool) -> void:
 
 ## F11 anywhere (in a fight too): full screen or back to the window.
 func _input(e: InputEvent) -> void:
+	StationKit.note_input(e)
 	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_F11:
 		var on := DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN and DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
 		set_fullscreen(on)
@@ -4078,6 +4087,10 @@ func _unhandled_input(e: InputEvent) -> void:
 		start(last_start.duplicate(true))
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and (in_yard() or over_match) and visible and match_:
+		_close_overlay()
+		return
+	# (The pad's B leaves a stall as Esc does.)
+	if e is InputEventJoypadButton and e.pressed and e.is_action_pressed("ui_cancel") and (in_yard() or over_match) and visible and match_:
 		_close_overlay()
 		return
 	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE and match_ and not visible:
