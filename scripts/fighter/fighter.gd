@@ -7424,6 +7424,17 @@ func lift() -> void:
 # ---------- Wounds ----------
 
 const CRUSH_OF_LIMB := 0.6   # how wide a crater a crushing blow leaves at most, of the part's half thickness
+## What a part gives to one blow is held to a ceiling, and a blow past it still takes a little more of
+## it, the harder it came (user: a stronger and a faster swing destroys a bit more, by the physics of it
+## alone): the volume taken goes on growing as the root of how far past the ceiling the blow's own
+## force reaches (`dims`: how many dimensions the measure `x` is of, a depth 1, a radius 3), never more
+## than PAST_MAX times what the ceiling gave: a blow is still no more than one blow.
+const PAST_CAP := 0.5
+const PAST_MAX := 1.25
+static func past_cap(x: float, cap: float, dims := 1.0) -> float:
+	if x <= cap or cap <= 0.0:
+		return minf(x, cap)
+	return cap * minf(PAST_MAX, pow(x / cap, PAST_CAP / dims))
 ## A blow lands on `part` (the same hit as the web game's applyHit: impulse, type, hardness,
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
@@ -7568,7 +7579,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# (A beast's head, though, cuts as a limb does: behind its skull it is jaws and muscle, and
 		# the lion's, the bear's, the elephant's took a tenth of their voxels in twenty cuts, user.)
 		var trunk := 0.55 if part == torso or (part == head and not (self is Beast)) else 1.0
-		depth = minf(depth, thick * minf(1.0, wsz / maxf(1.0, _bone_s())) * (0.1 + 0.35 * clampf(bite / 60.0, 0.0, 1.0)) * trunk)
+		# (A blow past the 0.45 a hard one gets goes on a little deeper, the harder it came: past_cap.)
+		depth = minf(depth, thick * minf(1.0, wsz / maxf(1.0, _bone_s())) * past_cap(0.1 + 0.35 * maxf(0.0, bite) / 60.0, 0.45) * trunk)
 		# (Never narrower than a row of the part's own voxels: on a beast's voxels, three times a
 		# man's, the blade's own breadth fell between the rows and a cut that landed took nothing,
 		# from one side or another: a dragon's horn, the elephant's leg, user.)
@@ -7709,7 +7721,9 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# helmeted head clean off in one while the number on it said a bruise.) A crushing
 			# weapon's harm goes in, to the bone: the flesh is bruised and pulped, little of it
 			# knocked away (a mace took lumps out of a limb like an axe).
-			var r: float = (minf(0.09 + 0.04 * heavy, 0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy)) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0)) * (1.0 - 0.45 * ck)
+			# (A blow past the width a hard one is held to goes on a little wider, the harder it came: the
+			# same crater up to J 28, then more, as the root of the force: past_cap.)
+			var r: float = (past_cap(0.03 + maxf(0.0, J - 9.0) * 0.0028 * (1.0 + heavy), 0.09 + 0.04 * heavy, 3.0) + minf(0.03, hollow * 0.3)) * wsz * armor_f * float(hit.get("pull", 1.0)) * (1.0 - 0.45 * ck)
 			if ck > 0.0 and not detached:
 				part.wound(lp, minf(0.14, 0.05 + J * 0.002) * S, "bruise")
 			var at := lp + ld * hollow

@@ -32,6 +32,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   strength, the training's Vis, in proportion, and the weapon's weight): a knife to the belly hurts
   and bleeds him but does not kill him at once or go through him, and one lunge is one blow
   (`tests/test_thrust.gd`).
+  A harder and a faster swing takes more flesh, by the physics alone: the blow's momentum sets how
+  deep a cut goes and how wide a crushing blow's hollow is, and past the most a part gives to one
+  blow they go on growing, slowly, as the root of the force (`Fighter.past_cap`, `tests/test_blunt.gd`).
 - **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
   at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
   out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle
