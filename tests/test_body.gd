@@ -67,6 +67,7 @@ func test_prosthetics_work_worse_and_a_blade_arm_cannot_be_dropped() -> void:
 func test_the_rare_medicine_heals_one_scar() -> void:
 	var b := Body.empty()
 	b.scars = {"thighR": [1, 2, 3, 4, 5], "torso": [7, 8]}
+	b.fractures = {"thighR": 2}
 	var stocked := -1
 	for s in range(1, 9):
 		if Body.medicine_in_stock(s):
@@ -262,9 +263,33 @@ func test_the_rare_medicine_makes_the_worst_part_whole() -> void:
 	var fr := Body.sanitize({"scars": {"thighR": [1, 2, 3]}, "fresh": {"thighR": [1, 2, 3]}})
 	t.check(not Body.old_wound_closed(fr, Body.apply(fr, "stitch:all")), "stitching the last fight's wounds closes no old one")
 
+## The physician offers what the man needs and no more (user: he offered to heal what the man did
+## not need): old scars alone are a mark on his skin, so no rare medicine and no elixir for them, and a
+## scratch heals by itself and is not stitched; a bone broken under a scar, a lost limb and a real
+## wound are what he is for.
+func test_the_physician_offers_only_what_the_man_needs() -> void:
+	var stocked := 3
+	t.check(Body.medicine_in_stock(stocked), "the jar is in stock at the third bout")
+	var scars_only := Body.sanitize({"scars": {"torso": range(60), "thighR": range(30), "head": range(12)}})
+	t.check(Body.offers(scars_only, stocked).is_empty(), "a man with old scars alone is offered nothing (%s)" % str(Body.offers(scars_only, stocked).map(func(o): return o.id)))
+	t.eq(Body.worst_wound(scars_only), "", "and no part of him is the worst hurt")
+	var broken := Body.sanitize({"scars": {"forearmL": range(20), "torso": range(60)}, "fractures": {"forearmL": 2}})
+	var meds: Array = Body.offers(broken, stocked).filter(func(o): return String(o.id).begins_with("medicine"))
+	t.check(meds.size() == 1 and String(meds[0].id) == "medicine:forearmL", "a bone broken under a scar is what the jar is for (%s)" % str(meds.map(func(o): return o.id)))
+	t.check(not Body.offers(broken, stocked).any(func(o): return String(o.id) == "elixir:all"), "and a broken bone is no reason for the elixir: the splint sees to it")
+	var maimed := Body.sanitize({"missing": ["forearmR"], "scars": {"torso": range(20)}})
+	t.check(Body.offers(maimed, stocked).any(func(o): return String(o.id) == "elixir:all"), "a lost limb is what the elixir gives back")
+	t.check(not Body.offers(maimed, stocked).any(func(o): return String(o.id).begins_with("medicine")), "and no jar for the scar beside it")
+	# A scratch heals by itself; a real wound is for the needle.
+	var scratch := Body.merge(Body.empty(), {"lost": [], "holes": {"thighR": [1, 2, 3, 4, 5], "torso": [10, 11]}, "eyes_lost": [], "fractures": {}})
+	t.check((scratch.body.fresh as Dictionary).is_empty() and scratch.body.scars.has("thighR"), "a few voxels of scratch: a scar at once, nothing open")
+	t.check(not Body.offers(scratch.body, stocked).any(func(o): return String(o.id).begins_with("stitch")), "and nothing to stitch")
+	var cut := Body.merge(Body.empty(), {"lost": [], "holes": {"thighR": range(20)}, "eyes_lost": [], "fractures": {}})
+	t.check(not (cut.body.fresh as Dictionary).is_empty() and Body.offers(cut.body, stocked).any(func(o): return String(o.id) == "stitch:all"), "a real wound is open, for the needle")
+
 ## Bought in the yard, the rare medicine shows on him there and then: the old scar gone from his
 ## skin, the bone under it whole, the arm working (user: he bought it and nothing happened). An old
-## wound is a mark on the skin, not a dent (the last fight's open wounds are the dents).
+## wound is a mark on the skin and a tiny dent at most (the last fight's open wounds are the dents).
 func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 	var body0 = Save.get_value("body", {})
 	var n := int(Body.voxel_count("forearmL") * 0.2)
@@ -283,7 +308,8 @@ func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 			if g.by_name[part].colors[k] != was[k]:
 				c += 1
 		return c
-	t.check(gone.call(f, "forearmL") == 0 and gone.call(f, "upperArmR") == 0 and f.by_name.forearmL.fractured, "he walks in with the old wounds as scars on his skin, no dent, and the bone broken")
+	var arm_dent: int = gone.call(f, "upperArmR")
+	t.check(gone.call(f, "forearmL") <= 6 and arm_dent >= 1 and arm_dent <= 5 and f.by_name.forearmL.fractured, "he walks in with the old wounds as scars on his skin, a tiny dent at the most (%d, %d voxels), and the bone broken" % [gone.call(f, "forearmL"), arm_dent])
 	var arm_colours := []
 	for k in n:
 		arm_colours.append(f.by_name.forearmL.colors[k])
@@ -295,7 +321,7 @@ func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 	var g: Fighter = menu.match_.me.f
 	t.check(marks.call(g, "forearmL", arm_colours) > 0 and not (menu.body().scars as Dictionary).has("forearmL"), "the scar on the forearm gone from his skin at once")
 	t.check(g.by_name.forearmL.fracture == 0 and g.arm_func("L") > arm0 + 0.5, "and the bone whole: the arm works again (%.2f, was %.2f)" % [g.arm_func("L"), arm0])
-	t.check(gone.call(g, "upperArmR") == 0 and gone.call(g, "thighR") == 12, "the rest of him as he was")
+	t.check(gone.call(g, "upperArmR") == arm_dent and gone.call(g, "thighR") == 12, "the rest of him as he was")
 	# The upper arm: an old scar, no bone broken under it (nothing else of him changes).
 	menu.set_body(Body.apply(menu.body(), "medicine:upperArmR"))
 	for i in 10:
@@ -313,9 +339,9 @@ func test_the_rare_medicine_in_the_yard_heals_at_once() -> void:
 	Save.set_value("body", body0 if body0 is Dictionary else {})
 	await get_tree().process_frame
 
-## An old wound is a mark on the skin and nothing taken from him (user: a scar that leaves a dent is a
-## disadvantage to the man who has it); the last fight's wound is open, a dent, till the needle closes
-## it, and closed it heals into a scar there and then.
+## An old wound is a mark on the skin and a tiny dent at the most (user: a big dent is a disadvantage
+## to the man who has it); the last fight's wound is open, a dent, till the needle closes it, and
+## closed it heals into a scar there and then.
 func test_a_healed_wound_is_a_scar_not_a_dent() -> void:
 	var body0 = Save.get_value("body", {})
 	Save.set_value("body", Body.sanitize({"scars": {"torso": range(60), "thighR": range(30)}, "fresh": {"thighR": range(30)}}))
@@ -327,7 +353,7 @@ func test_a_healed_wound_is_a_scar_not_a_dent() -> void:
 		await get_tree().physics_frame
 	var f: Fighter = menu.match_.me.f
 	var gone := func(g: Fighter, part: String) -> int: return g.by_name[part].fx.size() - g.by_name[part].alive_count
-	t.eq(gone.call(f, "torso"), 0, "an old wound leaves no dent in his trunk")
+	t.check(gone.call(f, "torso") >= 1 and gone.call(f, "torso") <= 5, "an old wound leaves a tiny dent in his trunk (%d voxels of 60)" % gone.call(f, "torso"))
 	t.eq(gone.call(f, "thighR"), 30, "the last fight's wound is open: a dent")
 	var thigh_colours := []
 	for k in 30:
@@ -337,7 +363,7 @@ func test_a_healed_wound_is_a_scar_not_a_dent() -> void:
 	for i in 5:
 		await get_tree().physics_frame
 	var th: VoxelPart = menu.match_.me.f.by_name.thighR
-	t.eq(th.fx.size() - th.alive_count, 0, "stitched: the dent is filled")
+	t.check(th.fx.size() - th.alive_count <= 2, "stitched: the open dent is filled, a tiny one left (%d of 30 voxels)" % (th.fx.size() - th.alive_count))
 	var paler := 0
 	for k in 30:
 		if th.colors[k] != thigh_colours[k]:
@@ -348,6 +374,58 @@ func test_a_healed_wound_is_a_scar_not_a_dent() -> void:
 	menu.queue_free()
 	Save.set_value("body", body0 if body0 is Dictionary else {})
 	await get_tree().process_frame
+
+## Round a blow's hit, a part's voxels within `r` of its outermost voxel: a crater as a blow leaves it.
+func _crater(p: VoxelPart, r: float) -> Array:
+	var tip := 0
+	for i in p.fx.size():
+		if p.fx[i] > p.fx[tip]:
+			tip = i
+	var out := []
+	for i in p.fx.size():
+		if Vector3(p.fx[i] - p.fx[tip], p.fy[i] - p.fy[tip], p.fz[i] - p.fz[tip]).length() <= r:
+			out.append(i)
+	return out
+
+## An old wound that has healed shows as the middle of what the blow took, and a hard blow leaves a
+## tiny dent at its heart, by how hard it was (user: the scars were huge; a tiny dent where it hit
+## would do, depending on the blow): a small wound is marked whole and takes nothing, a big one is
+## marked over about half of it and takes a few voxels, never more than a hundredth of the part.
+func test_an_old_wound_shows_as_its_middle_and_a_hard_blow_leaves_a_tiny_dent() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(30)
+	var th: VoxelPart = f.by_name.thighR
+	var small := _crater(th, 1.5)
+	var medium := _crater(th, 3.0)
+	var big := _crater(th, 6.0)
+	t.check(small.size() < 12 and medium.size() > small.size() and big.size() > 3 * medium.size(), "craters of three sizes (%d, %d, %d voxels)" % [small.size(), medium.size(), big.size()])
+	var cs: Dictionary = th.scar_core(small)
+	var cm: Dictionary = th.scar_core(medium)
+	var cb: Dictionary = th.scar_core(big)
+	t.check((cs.dents as Array).is_empty() and cs.marks.size() == small.size(), "a small wound is marked all over and leaves no dent (%d of %d)" % [cs.marks.size(), small.size()])
+	t.check(cm.dents.size() >= 1 and cm.dents.size() <= 3 and cm.marks.size() + cm.dents.size() <= medium.size() and cm.marks.size() >= medium.size() / 3, "a middling one leaves a dent of a voxel or two (%d) and a mark over most of it (%d of %d)" % [cm.dents.size(), cm.marks.size(), medium.size()])
+	t.check(cb.dents.size() > cm.dents.size() and cb.dents.size() <= VoxelPart.DENT_MAX and cb.dents.size() <= th.fx.size() / 100, "a hard one a few voxels more, never past the cap (%d, cap %d)" % [cb.dents.size(), VoxelPart.DENT_MAX])
+	t.check(cb.marks.size() < big.size() * 0.55 and cb.marks.size() > big.size() / 5, "and is marked over about half of what it took (%d of %d voxels)" % [cb.marks.size(), big.size()])
+	# What is marked is the middle: nearer the heart of the wound than what is left out.
+	var mid := Vector3.ZERO
+	for i in big:
+		mid += Vector3(th.fx[i], th.fy[i], th.fz[i])
+	mid /= float(big.size())
+	var far := 0.0
+	for i in cb.marks:
+		far = maxf(far, Vector3(th.fx[i], th.fy[i], th.fz[i]).distance_to(mid))
+	t.check(far < 7.0 and cb.marks.size() < big.size(), "the mark keeps to the middle of it (out to %.1f voxels)" % far)
+	# Built into a man: the dent is taken, the mark is painted, and a wound still open is whole as before.
+	var b := Body.empty()
+	b.scars = {"thighR": big}
+	var m2 := _match()
+	m2.me.f.apply_body(b)
+	var thigh: VoxelPart = m2.me.f.by_name.thighR
+	var gone := thigh.fx.size() - thigh.alive_count
+	t.check(gone == cb.dents.size() and gone >= 2, "built into the man, the dent is only what it was worked out to be (%d voxels)" % gone)
+	m.queue_free()
+	m2.queue_free()
 
 ## A guest the physician saw to in the yard is whole on the host's side too, where his fighter
 ## lives: the host builds him again with the body he has now (Match.peer_body).

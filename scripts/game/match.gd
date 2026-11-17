@@ -47,6 +47,13 @@ var mind_aim_until := -1.0   # while the local player may hold a man in the Hand
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.5
+## What a bout pays is a tenth more than that: he came to the boss with two knives, there had been
+## too little to buy better (user: a little, ten per cent). Only what is paid goes up: what follows the
+## list (the physician's prices, Body.price_unit) stays where it was.
+const PAY_RAISE := 1.1
+## What `points` of a stage's list are paid as.
+static func paid(points: float) -> int:
+	return int(round(points * PAY_SCALE * PAY_RAISE))
 ## The crowd's purse: up to this share of the stage's pay more for a lively bout (Spectacle.heat),
 ## nothing for a dull one. Small, so it spurs a man on without paying for the campaign.
 const CROWD_BONUS := 0.25
@@ -2282,7 +2289,7 @@ func _check_round(dt: float) -> void:
 		return
 	if alive_e.is_empty() and coming == 0:
 		if mode == "campaign":
-			round_pay += int(round(float(stage_info.get("roundPay", 10)) * PAY_SCALE))
+			round_pay += paid(float(stage_info.get("roundPay", 10)))
 			if round + 1 < int(stage_info.get("rounds", []).size()):
 				between = 2.5
 				feed.emit(Loc.t("Round %d won") % (round + 1))
@@ -2290,7 +2297,7 @@ func _check_round(dt: float) -> void:
 					_round_wounds()
 				_round_replay()
 				return
-			var base := int(round(float(stage_info.get("stagePay", 30)) * PAY_SCALE))
+			var base := paid(float(stage_info.get("stagePay", 30)))
 			var crowd := int(round(base * CROWD_BONUS * spectacle.heat(humans())))
 			# A party: the crowd crowns its favourite of them, who brings the purse a share more
 			# and wears the laurel through the next bout (PartyGlory).

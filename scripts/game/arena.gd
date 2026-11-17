@@ -129,9 +129,9 @@ func _build_visuals() -> void:
 	# Clear and easy on the eye: the sun a little lower and softer, the exposure down a touch so
 	# the sand no longer glares white, the colours kept bright (the "clear" look, E, of the
 	# lighting trials: tests/lightshots.gd).
-	e.ambient_light_energy = 0.6 if day else 0.27
+	e.ambient_light_energy = 0.6 if day else 0.5
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.8 if day else 0.88
+	e.tonemap_exposure = 0.8 if day else 1.0
 	e.tonemap_white = 6.0
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 1.05 if day else 1.08
@@ -148,7 +148,7 @@ func _build_visuals() -> void:
 	add_child(we)
 	env = e
 	sun = DirectionalLight3D.new()
-	sun.light_energy = 1.75 if day else 0.25
+	sun.light_energy = 1.75 if day else 0.45
 	sun.light_color = Color(1.0, 0.86, 0.7) if day else Color(0.5, 0.56, 0.75)
 	sun.rotation = Vector3(deg_to_rad(-38 if day else -48), deg_to_rad(35), 0)
 	add_child(sun)

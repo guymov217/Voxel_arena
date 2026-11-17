@@ -375,7 +375,10 @@ func set_body(b: Dictionary) -> void:
 			var closed: Array = (was.fresh[n] as Array).filter(func(i): return not open.has(i))
 			if p and not closed.is_empty():
 				p.restore_voxels(closed)
-				p.mark_scar(closed)   # (closed, they heal into scars: marks on the skin)
+				# (Closed by the needle they heal into scars: a mark on the skin, a tiny dent where it was
+				# hard; the rare medicine takes the scar away with the wound, and nothing is left.)
+				var kept: Array = (clean.scars.get(n, []) as Array)
+				p.heal_scar(closed.filter(func(i): return kept.has(i)))
 
 func set_kit(k: Dictionary) -> void:
 	var clean := Net.sanitize_kit(k)

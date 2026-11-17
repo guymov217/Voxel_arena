@@ -84,7 +84,7 @@ func test_the_bout_chosen_is_fought() -> void:
 	var crowd := Data.stage(5, 1, 5, true)
 	t.eq((crowd.rounds[0] as Array).size(), (own.rounds[0] as Array).size() + 1, "the crowd's fight: one more of them")
 	t.eq(int(crowd.stagePay), int(own.stagePay) * 2, "for double the prize")
-	t.eq(Body.bout_pay(5, true), int(round(float(own.stagePay) * 2.0 * Match.PAY_SCALE)) + int(round(float(own.roundPay) * 2.0 * Match.PAY_SCALE)), "and the board says so")
+	t.eq(Body.bout_pay(5, true), Match.paid(float(own.stagePay) * 2.0) + Match.paid(float(own.roundPay) * 2.0), "and the board says so")
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "campaign", "stage": 5, "bout": 6, "crowd": false, "headless": true, "seed": 3, "decrees": [], "hazards": []})

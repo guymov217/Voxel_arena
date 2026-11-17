@@ -778,8 +778,8 @@ func test_a_sharp_block_faces_the_way_it_was_put_on() -> void:
 	w.queue_free()
 	f.queue_free()
 
-## What he has and what the job costs are always in sight at the top of the view; it follows
-## every change.
+## What he has and what the job costs are always in sight, in the panel (not over the view, where it
+## hid the tools: user); it follows every change.
 func test_the_price_is_always_in_sight() -> void:
 	var f = load("res://scripts/ui/forge.gd").new()
 	add_child(f)
@@ -787,7 +787,9 @@ func test_the_price_is_always_in_sight() -> void:
 	f.open(Data.preset("gladius").duplicate(true), 1000, func(_d, _c): pass)
 	await get_tree().process_frame
 	var pay := Arms.design_price(f._design_now())
-	t.check(f.price_badge != null and f.price_badge.get_parent().visible, "a price badge over the view")
+	t.check(f.price_badge != null and f.price_badge.get_parent().visible, "a price badge in the panel")
+	var tools_box: Rect2 = f.tool_bar.get_global_rect()
+	t.check(not f.price_badge.get_parent().get_global_rect().intersects(tools_box), "and it is nowhere near the tools over the anvil")
 	t.check(f.price_badge.text.contains("You have 1000") and f.price_badge.text.contains("This costs %d" % pay), "it says what he has and what it costs (%s)" % f.price_badge.text)
 	t.eq(f.price_badge.get_parent().mouse_filter, Control.MOUSE_FILTER_IGNORE, "it never gets in the way of a click")
 	f.purse = 3

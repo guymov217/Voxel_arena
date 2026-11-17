@@ -51,6 +51,54 @@ func test_a_two_hander_is_taken_again_in_both_hands() -> void:
 ## Put into a hand hanging low (bought at the smith with the hand down), a long blade is not put
 ## in through the sand, and run with it stays on top of the sand (user: he ran with the new
 ## sword half under the floor).
+## A war hammer swept round in both hands, the hands and the elbows did not flicker (user: in two-handed
+## swings the hands shake with every swing, in the videos and generally). A head fifty times heavier
+## about the hands than about itself was turned by a torque the arms felt as a push, undone the next
+## step, at the step rate: a tremor of 5 mm a step. How much the off hand's place alternates from step
+## to step (the third difference of it, which a stroke's own smooth acceleration leaves little of) was
+## 41 mm rms; now it is a seventh of that, and the blade follows the mouse as closely as before. A sword
+## in both hands is driven exactly as it was.
+func _hand_flicker(weapon: String) -> Array:
+	var m := _match({"mode": "training", "training": {"enemy": "none", "respawn": false}, "loadout": {"main": weapon, "off": ""}})
+	var f: Fighter = m.me.f
+	var clock := {"t": 0.0, "sweep": false}
+	m.me.drive = func(_e):
+		var a: float = float(clock.t) * TAU / 2.2
+		var hand: Dictionary = {"x": 1.1 * cos(a), "y": 0.35 + 1.0 * sin(a)} if clock.sweep else {"x": 0.1, "y": 0.15}
+		return {"main": hand, "off": {"x": -0.35, "y": 0.1}, "power": bool(clock.sweep), "look": {"yaw": f.yaw, "pitch": 0.0}}
+	await _steps(120)
+	clock.sweep = true
+	var hand_l := []
+	var off_aim := 0.0
+	var n := 0
+	for i in 120 * 6:
+		await get_tree().physics_frame
+		clock.t = float(clock.t) + 1.0 / 120.0
+		var w: Weapon = f.weapons.R
+		if w == null:
+			break
+		hand_l.append(f.hand_world("L"))
+		var aq = f.aim_q["R"]
+		if aq != null:
+			off_aim += rad_to_deg((w.global_basis * Vector3.UP).angle_to((aq as Quaternion) * Vector3.UP))
+			n += 1
+	var ss := 0.0
+	for i in range(3, hand_l.size()):
+		var d: float = ((hand_l[i] as Vector3) - 3.0 * (hand_l[i - 1] as Vector3) + 3.0 * (hand_l[i - 2] as Vector3) - (hand_l[i - 3] as Vector3)).length() * 1000.0
+		ss += d * d
+	var out := [sqrt(ss / maxf(1.0, hand_l.size() - 3.0)), off_aim / maxf(1.0, n), f.two_handed]
+	m.queue_free()
+	await get_tree().physics_frame
+	return out
+
+func test_a_war_hammer_swept_in_both_hands_does_not_flicker() -> void:
+	var hammer: Array = await _hand_flicker("warhammer")
+	t.check(hammer[2], "the war hammer is in both hands")
+	t.check(hammer[0] < 12.0, "the off hand does not flicker from step to step (%.1f mm, it was 41)" % hammer[0])
+	t.check(hammer[1] < 5.0, "and the blade follows the mouse as it did (%.1f degrees off on average, 2.5 before)" % hammer[1])
+	var sword: Array = await _hand_flicker("longsword")
+	t.check(sword[0] < 3.0 and sword[1] < 4.0, "a sword in both hands as steady as before (%.1f mm, %.1f degrees)" % [sword[0], sword[1]])
+
 func test_a_weapon_in_hand_never_lies_in_the_sand() -> void:
 	for nm in ["zweihander", "longsword", "spear", "falx"]:
 		var m := _match({"mode": "yard", "loadout_override": {"main": "", "off": ""}})

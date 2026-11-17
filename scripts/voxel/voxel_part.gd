@@ -1911,17 +1911,27 @@ func resync_later() -> void:
 		resync()
 
 ## Old wounds (Body): the voxels a fight took stay gone, the hole healed over into a dent the
-## shape of the blow, its rim the pale, shiny pink of scar tissue. No blood, no smear; and not a
+## shape of the blow, its walls the pale, shiny skin of scar tissue. No blood, no smear; and not a
 ## wound dealt now (the fighter is not told): a scar over the heart or the liver re-tore them at
 ## every spawn, and a man won his bout and bled to death in the yard (user).
 const SCAR := Color(0.78, 0.5, 0.47)
 const DUST := Color(0.78, 0.66, 0.48)   # the arena's sand, on a body that went down in it
-var scarred := {}   # voxel -> true: the rim of an old wound, healed (drawn so by a finer look)
-func scar(indices: Array) -> void:
-	var gone := {}
+const SCAR_MARK := Color(0.93, 0.76, 0.70)
+const SCAR_PALE := 0.34
+## A scar's tone on skin `c`: that skin gone a little paler and pinker, so it follows the man's own
+## colour and runs into it (user: no border round a scar, it is part of the skin).
+static func scar_tone(c: Color) -> Color:
+	return c.lightened(SCAR_PALE).lerp(SCAR_MARK, 0.2)
+
+var scarred := {}   # voxel -> true: the wall of an old wound, healed (drawn so by a finer look)
+## The wound still open (or a tiny dent, healed): the voxels are gone and the walls round them left
+## as skin, a shade paler by `tint`, drawn as healed flesh and not as an open cut. With `skin`, what
+## the dent shows is the skin that was there, in a scar's tone, never the flesh or the bone under it.
+func scar(indices: Array, tint := 0.4, skin := false) -> void:
+	var gone := {}   # where each voxel taken stood: the colour it had
 	for i in indices:
 		if i >= 0 and i < fx.size():
-			gone[Vector3i(fx[i], fy[i], fz[i])] = true
+			gone[Vector3i(fx[i], fy[i], fz[i])] = colors[i]
 	if gone.is_empty():
 		return
 	remove_voxels(indices, false, false)
@@ -1931,45 +1941,125 @@ func scar(indices: Array) -> void:
 			continue
 		var c := Vector3i(fx[i], fy[i], fz[i])
 		var near := 0
-		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		var was := Color.WHITE
+		for d in SIDES:
 			if gone.has(c + d):
+				if near == 0:
+					was = gone[c + d]
 				near += 1
 		if near > 0:
-			colors[i] = colors[i].lerp(SCAR, 0.45 + 0.1 * minf(3.0, near))
+			if skin:
+				colors[i] = scar_tone(was)
+			elif tint > 0.0:
+				colors[i] = colors[i].lerp(scar_tone(colors[i]), tint + 0.05 * minf(3.0, float(near)))
 			scarred[i] = true
 			touched.append(i)
 	refresh_colors(touched)
 
-## An old wound healed over, as a mark on the skin and no more (user: a scar that leaves a dent is a
-## disadvantage to the man who has it): the voxels the blow took are still there, paler, with a fainter
-## rim round them. (`scar` is the wound still open: the dent, till the physician has closed it.)
-const SCAR_MARK := Color(0.93, 0.76, 0.70)
+## An old wound healed over, as a mark on the skin (user: a scar that leaves a big dent is a
+## disadvantage to the man who has it; and no border round it, it is part of the skin): each voxel
+## paler by its `weights` (1 at the heart of the scar, fading to nothing at its edge, so there is no
+## line where it stops), and nothing painted round it. (`scar` is the wound still open.)
+const SCAR_STRENGTH := 0.85
 const SIDES := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
-func mark_scar(indices: Array) -> void:
-	var marked := {}
+func mark_scar(indices: Array, weights := []) -> void:
+	var touched := []
+	for k in indices.size():
+		var i: int = indices[k]
+		if i < 0 or i >= fx.size() or alive[i] == 0:
+			continue
+		var w := clampf(float(weights[k]) if k < weights.size() else 1.0, 0.0, 1.0)
+		colors[i] = colors[i].lerp(scar_tone(colors[i]), SCAR_STRENGTH * w)
+		touched.append(i)
+	refresh_colors(touched)
+
+## How an old wound that has healed shows (user: the scars were huge; a tiny dent where the blow
+## fell would do, by how hard it was): the voxels a blow took, in clumps that touch; of each, only
+## the middle of what shows on the skin is a mark (a small wound nearly all of it, a big patch about
+## two fifths, a cut all its length), fading out towards its edge, and a wound of a dozen voxels or more leaves a dent at
+## its heart a voxel or two wide, a few at the very worst, all of a part's together never more than
+## a hundredth of it. {marks, weights, dents}: the voxels to paint and how strongly (`mark_scar`),
+## and the ones to take away (`scar`).
+const SCAR_MARK_K := 1.4
+const SCAR_MARK_P := 0.8
+const DENT_FROM := 12
+const DENT_STEP := 30
+const DENT_MAX := 4
+const DENT_SHARE := 0.01
+func scar_core(indices: Array) -> Dictionary:
+	var at := {}      # the wound's voxels: where -> which
+	var live := {}    # every voxel standing now: where
+	for i in fx.size():
+		if alive[i] != 0:
+			live[Vector3i(fx[i], fy[i], fz[i])] = true
 	for i in indices:
 		if i >= 0 and i < fx.size() and alive[i] != 0:
-			marked[Vector3i(fx[i], fy[i], fz[i])] = true
-	if marked.is_empty():
-		return
-	var touched := []
-	for i in fx.size():
-		if alive[i] == 0:
+			at[Vector3i(fx[i], fy[i], fz[i])] = i
+	var marks := []
+	var weights := []
+	var dents := []
+	var budget := maxi(1, int(DENT_SHARE * fx.size()))
+	var seen := {}
+	for start in at:
+		if seen.has(start):
 			continue
-		var c := Vector3i(fx[i], fy[i], fz[i])
-		var w := 0.0
-		if marked.has(c):
-			w = 0.7
-		else:
-			var near := 0
+		# One clump of it: the voxels that touch, edge or corner.
+		var clump := [start]
+		seen[start] = true
+		var head := 0
+		while head < clump.size():
+			var c: Vector3i = clump[head]
+			head += 1
+			for dx in range(-1, 2):
+				for dy in range(-1, 2):
+					for dz in range(-1, 2):
+						var nb := c + Vector3i(dx, dy, dz)
+						if at.has(nb) and not seen.has(nb):
+							seen[nb] = true
+							clump.append(nb)
+		# What shows on the skin of it: a voxel with a side open to the air.
+		var skin := []
+		for c in clump:
 			for d in SIDES:
-				if marked.has(c + d):
-					near += 1
-			w = 0.16 * minf(2.0, float(near))
-		if w > 0.0:
-			colors[i] = colors[i].lightened(0.1 * w).lerp(SCAR_MARK, w)
-			touched.append(i)
-	refresh_colors(touched)
+				if not live.has(c + d):
+					skin.append(c)
+					break
+		if skin.is_empty():
+			skin = clump
+		var mid := Vector3.ZERO
+		for c in skin:
+			mid += Vector3(c)
+		mid /= float(skin.size())
+		var order := []
+		for c in skin:
+			order.append([Vector3(c).distance_squared_to(mid), int(at[c])])
+		order.sort_custom(func(a, b): return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+		# A cut leaves a line and keeps its length; a crushed patch shrinks to its middle: how wide it
+		# is on average (a stroke is a few voxels, a patch more) says which.
+		var far := sqrt(float(order[order.size() - 1][0]))
+		var thin := clampf((6.0 - float(order.size()) / (2.0 * far + 1.0)) / 3.0, 0.0, 1.0)
+		var keep := mini(order.size(), ceili(lerpf(SCAR_MARK_K * pow(float(order.size()), SCAR_MARK_P), float(order.size()), thin)))
+		var hurt := 0
+		if clump.size() >= DENT_FROM:
+			hurt = mini(DENT_MAX, 1 + (clump.size() - DENT_FROM) / DENT_STEP)
+		hurt = maxi(0, mini(mini(hurt, budget - dents.size()), keep))
+		# The mark fades out over its radius: full at the heart, a third at the last voxel.
+		var reach := sqrt(float(order[keep - 1][0])) + 1.0
+		for k in keep:
+			if k < hurt:
+				dents.append(order[k][1])
+			else:
+				marks.append(order[k][1])
+				weights.append(lerpf(exp(-1.2 * float(order[k][0]) / (reach * reach)), 1.0, 0.7 * thin))
+	return {"marks": marks, "weights": weights, "dents": dents}
+
+## An old wound healed over, in the look above: a mark at its middle that runs into the skin and,
+## where the blow was a hard one, a tiny dent at its heart.
+func heal_scar(indices: Array) -> void:
+	var core := scar_core(indices)
+	if not (core.dents as Array).is_empty():
+		scar(core.dents, 0.0, true)
+	mark_scar(core.marks, core.weights)
 
 ## Blood runs from a wound at `lp` (part-local) for as long as the part bleeds: a dripping
 ## emitter there, at most a few per part (a new wound near an old one shares its drip).

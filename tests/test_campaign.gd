@@ -78,7 +78,24 @@ func test_a_campaign_stage_plays_through() -> void:
 		if result[0].won:
 			t.eq(rounds_seen.size(), 1, "the bout was fought")
 			t.check(result[0].pay > 0, "it paid")
+			t.check(int(result[0].pay) >= Body.bout_pay(1), "no less than the board said (%d against %d)" % [int(result[0].pay), Body.bout_pay(1)])
 	m.queue_free()
+
+## What a bout pays is a tenth more than its list (user: he came to the boss with two knives): the
+## stele and the gate say it and the purse is paid it, while what is counted in the list's pay (the
+## physician's prices) stands as it was.
+func test_a_bout_pays_a_tenth_more_and_the_physician_stands_as_he_was() -> void:
+	t.check(is_equal_approx(Match.PAY_RAISE, 1.1), "a tenth more")
+	t.eq(Match.paid(20.0), 11, "twenty points of the list pay eleven: its half, a tenth more")
+	t.eq(Match.paid(0.0), 0, "nothing pays nothing")
+	for st in [1, 2, 5, 12, 30, 60]:
+		var was := Body.price_unit(st)
+		var now := Body.bout_pay(st)
+		t.check(now > was and absf(float(now) / float(was) - 1.1) < 0.05, "stage %d pays %d, it paid %d (x%.2f)" % [st, now, was, float(now) / float(was)])
+		t.eq(Body.elixir_price(st), maxi(Body.ELIXIR_MIN, roundi(Body.ELIXIR_BOUTS * was)), "stage %d: the elixir costs what it did" % st)
+		t.eq(Body.medicine_price(st), maxi(Body.MEDICINE_MIN, roundi(Body.MEDICINE_BOUTS * was)), "the rare medicine too")
+		t.eq(Body.set_price("shinR", 2, st), maxi(Body.SET_MIN[2], roundi(Body.SET_BOUTS[2] * was)), "and a bone set")
+	t.eq(Body.bout_pay(5, true), Match.paid(float(Data.stage(5, 1, 0, true).stagePay)) + Match.paid(float(Data.stage(5, 1, 0, true).roundPay)), "the crowd's fight pays its double, a tenth more as well")
 
 ## What the bot-versus-bot survey made of each kind (tests/zz_balance: the plain swordsman's
 ## losses, blood lost, damage taken; see README): the ladder is checked against it.

@@ -547,6 +547,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		thrown = att.holder == null and att.thrown_t > 0.0
 		typ = "blunt" if g.type == "grip" else g.type
 		hardness = Data.material(g.mat).get("hardness", 0.5)
+		# (A soft weapon hits as soft as it is, not as hard as the bronze band that touched him.)
+		hardness = minf(hardness, 2.0 * att.mean_hardness)
 		sharpness = float(att.design.get("sharpness", 0.0)) * att.keenness()
 		var q := PD.quat_of(att)
 		axis = q * Vector3.UP

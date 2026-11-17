@@ -2,7 +2,8 @@ class_name Body
 extends RefCounted
 ## The gladiator's body between fights in the campaign (physician.js, extended): the limbs he
 ## has lost, what replaced them, every wound the fights left in him (open for the physician to close,
-## then healed over into a scar: a mark on the skin the shape of the blow, no dent), and his eyes. It is read off his fighter after every round, the physician
+## then healed over into a scar: a mark on the skin at the heart of the blow and, if it was a hard
+## one, a tiny dent: VoxelPart.scar_core), and his eyes. It is read off his fighter after every round, the physician
 ## sees to it for a price, and a new campaign (or a fall back to the checkpoint) starts him whole.
 ## Plain data, so it is saved as it is and sent over the network to the host in co-op.
 
@@ -43,13 +44,19 @@ const ELIXIR_MIN := 35
 ## What winning the bout at `stage` pays one man (its stage pay and its round, as Match pays them).
 static func bout_pay(stage: int, crowd := false) -> int:
 	var st := Data.stage(maxi(1, stage), 1, 0, crowd)
+	return Match.paid(float(st.get("stagePay", 30))) + Match.paid(float(st.get("roundPay", 10)))
+
+## What it paid before the raise (Match.PAY_RAISE): the pay the physician's prices are counted in,
+## kept as they were.
+static func price_unit(stage: int) -> int:
+	var st := Data.stage(maxi(1, stage), 1, 0, false)
 	return int(round(float(st.get("stagePay", 30)) * Match.PAY_SCALE)) + int(round(float(st.get("roundPay", 10)) * Match.PAY_SCALE))
 
 static func elixir_price(stage: int) -> int:
-	return maxi(ELIXIR_MIN, roundi(ELIXIR_BOUTS * bout_pay(stage)))
+	return maxi(ELIXIR_MIN, roundi(ELIXIR_BOUTS * price_unit(stage)))
 
 static func medicine_price(stage: int) -> int:
-	return maxi(MEDICINE_MIN, roundi(MEDICINE_BOUTS * bout_pay(stage)))
+	return maxi(MEDICINE_MIN, roundi(MEDICINE_BOUTS * price_unit(stage)))
 ## Broken bones carried out of a fight (`fractures`): a limb's by its part name, 1 cracked, 2
 ## broken through under the skin, 3 broken out through it; "skull" the same; "ribs" how many;
 ## "pelvis" 1. They stay as they are, a broken limb no use, until the physician sets them (no
@@ -78,12 +85,12 @@ const BONES := {"skull": "skull", "ribs": "ribs", "pelvis": "pelvis"}
 
 static func set_price(key: String, lv: int, stage: int) -> int:
 	if key == "ribs":
-		return maxi(6 * lv, roundi(RIB_BOUTS * lv * bout_pay(stage)))
+		return maxi(6 * lv, roundi(RIB_BOUTS * lv * price_unit(stage)))
 	if key == "pelvis":
 		lv = 2
 	lv = clampi(lv, 1, 3)
 	var k := 1.5 if key == "skull" else 1.0
-	return maxi(roundi(SET_MIN[lv] * k), roundi(SET_BOUTS[lv] * k * bout_pay(stage)))
+	return maxi(roundi(SET_MIN[lv] * k), roundi(SET_BOUTS[lv] * k * price_unit(stage)))
 
 static func bone_label(key: String) -> String:
 	return Loc.lower(String(BONES[key])) if BONES.has(key) else label(key)
@@ -95,6 +102,11 @@ static func break_words(key: String, lv: int) -> String:
 	if key == "pelvis":
 		return Loc.t("a cracked pelvis")
 	return Loc.t(["", "a cracked %s", "a broken %s", "an open break of the %s"][clampi(lv, 1, 3)]) % bone_label(key)
+
+## Fewer voxels than this taken from him in a fight, all told, are a scratch: it heals over by itself,
+## nothing is left open and there is nothing to stitch (a wound of a dozen is the first to leave even
+## a tiny dent: VoxelPart.DENT_FROM).
+const STITCH_MIN := 12
 
 ## The most of a part's voxels an old wound may leave missing for good.
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
@@ -351,6 +363,11 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 			b.fresh[n] = new_ones
 		if old.size() > had:
 			news.append(Loc.t("a new scar on the %s") % label(n))
+	var fresh_total := 0
+	for n in b.fresh:
+		fresh_total += (b.fresh[n] as Array).size()
+	if fresh_total < STITCH_MIN:
+		b.fresh = {}   # (a scratch heals by itself)
 	for s in snap.get("eyes_lost", []):
 		if not b.eyes.has(s):
 			b.eyes[s] = "lost"
@@ -408,15 +425,21 @@ static func bones_of(part: String) -> Array:
 
 ## The scarred part of him worst hurt, which the rare medicine is for: the one with the largest
 ## share of itself gone (by the count alone it was always the torso, the largest of him, with a
-## forearm half gone beside it), a broken bone in it counted. "" for a body with no scar.
+## forearm half gone beside it), a broken bone in it counted. Only a part hurt in truth, a bone
+## broken in it under its scar, is one: an old wound alone is a mark on his skin and a tiny dent, no
+## hurt, and the physician does not offer a cure for it (user: he offered to heal what the man did
+## not need). "" when there is no such part.
 static func worst_wound(body: Dictionary) -> String:
 	var b := sanitize(body)
 	var worst := ""
 	var most := -1.0
 	for n in b.scars:
-		var hurt := float((b.scars[n] as Array).size()) / maxf(1.0, voxel_count(n))
+		var broken := 0.0
 		for k in bones_of(n):
-			hurt += 0.2 * minf(3.0, float(b.fractures.get(k, 0)))
+			broken += 0.2 * minf(3.0, float(b.fractures.get(k, 0)))
+		if broken <= 0.0:
+			continue
+		var hurt := float((b.scars[n] as Array).size()) / maxf(1.0, voxel_count(n)) + broken
 		if hurt > most:
 			most = hurt
 			worst = n
@@ -482,13 +505,15 @@ static func offers(body: Dictionary, stage: int) -> Array:
 		fresh_n += b.fresh[n].size()
 	if fresh_n > 0:
 		out.append({"id": "stitch:all", "name": "Stitch and dress your wounds", "desc": "The cuts and the crushed flesh of your last fight, cleaned, stitched and bound: they heal without a mark. Left alone, they scar over for good.", "price": stitch_price(b)})
-	if not b.scars.is_empty() and medicine_in_stock(stage):
+	var worst := worst_wound(b)
+	if worst != "" and medicine_in_stock(stage):
 		# The part it is for is in its name (user: bought for a broken arm, and nothing happened:
 		# it was for another part of him, and said so only when pointed at).
-		var worst := worst_wound(b)
 		out.append({"id": "medicine:%s" % worst, "name": "%s (%s)" % [Loc.t("Rare medicine"), label(worst)], "desc": Loc.t("A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.") % label(worst), "price": medicine_price(stage)})
-	# The magic one: everything the campaign took, given back at once.
-	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or not b.scars.is_empty():
+	# The magic one: everything the campaign took, given back at once. For what the needle and the
+	# splints cannot give back (a limb, an eye, a part of him replaced), not for old scars: they are a
+	# mark on his skin, and no reason to pay a fortune.
+	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty():
 		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": elixir_price(stage)})
 	return out
 

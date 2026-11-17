@@ -50,6 +50,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   off), and at the grip the fist closes on it and brings it into line along one smooth curve,
   carried by the hand the whole way, then it is held. The "Pick up" prompt shows exactly when G
   would take something. J changes hands, H puts both on the haft; neither ever drops a weapon.
+  A head far heavier about the hands than about itself (the war hammer) is turned by a torque
+  averaged over two steps (`Fighter._drive_haft`), so the hands and elbows do not flicker with
+  every swing; a sword, a spear or an axe is driven exactly as before.
   Whatever lies still on the sand (a weapon, a severed limb, chips) is walked over, not tripped on.
 - **Glancing and lodged blows**: a weapon that meets a plate at a slant, or a blade that lands
   flat, skids off with sparks and a scrape and does little; a square cut chops in, bone crunches.
@@ -89,7 +92,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (it burns where it lands); the water skin, poured over oneself, puts out the fire on him and
   washes off acid; the smoke pot is the old sand pot and smoke pot in one; Greek fire is the old
   fireball pot, burning oil that pools on the sand; the beehive is gone (the honey pot's bees stay).
-  A bag from an older save keeps its wares under their new names.
+  A bag from an older save keeps its wares under their new names. The thunder pot's blast is
+  about two fifths weaker than it was (`Throwables.THUNDER`: power, reach, shove, ringing, and how
+  near a man must be to be put down); the Hot Potato's bomb goes off as the pot used to
+  (`Throwables.BOMB_BLAST`).
 - **Fists**: with both hands empty he stands in a boxer's guard (an empty hand beside a weapon
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight
@@ -142,7 +148,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   than the one before, the crocodile, the hoplite's phalanx and the brutes wait for the
   thirties, the kinds met alone come back later two and three kinds at once, and a boss of men
   past bout 36 comes in steel (`tests/test_campaign.gd` checks the climb, that nothing repeats,
-  and the gates). Pay, checkpoints and persistent weapon wear as before.
+  and the gates). Pay, checkpoints and persistent weapon wear as before, except that a bout pays a
+  tenth more than its list (`Match.PAY_RAISE`, `Match.paid`); what is counted in the list's pay,
+  the physician's prices, stays where it was (`Body.price_unit`).
 - **The fight chosen at the gate** (`scripts/game/gate_choice.gd`): before every bout the boards
   by the yard's gate offer two or three bouts of the stretch of eight the run has reached, none
   won yet this time round: the ladder's own, the crowd's fight (that bout with one more of its
@@ -224,7 +232,13 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the gladiator, in the new look, trying each piece on, and `armour_bench.gd` the bench for armour
   of your own making. The trainer (`trainer_screen.gd`): a radar of the six abilities that grows with
   each session. The physician (`physician_screen.gd`): the man stripped, what the arena left on him
-  in numbered pins on his body and in the list, the supplies for the fight. They are drawn with
+  in numbered pins on his body and in the list, the supplies for the fight; he offers only what the
+  man needs (old scars alone are no hurt: no rare medicine, no elixir for them; the jar is for a bone
+  broken under a scar, the elixir for a lost limb or eye, and a scratch of fewer than
+  `Body.STITCH_MIN` voxels heals by itself). An old wound shows as a soft, small mark of paler skin
+  that fades into it, no border, over the middle of what the blow took, and a hard blow leaves a tiny
+  dent at its heart (`VoxelPart.scar_core`: a cut keeps its length, a crushed patch shrinks; at most
+  four voxels, a hundredth of a part). They are drawn with
   `station_kit.gd` (cards, purse, bars, the price that rises from the purse, the red line that says
   why a deed cannot be done), `stage3d.gd` (the 3D view) and `menu_man.gd` (the player's gladiator
   for the dressing room); what is bought, mended or taught is Menu's, as it was. They fit the

@@ -143,7 +143,7 @@ func _near(p: Vector3, r: float) -> Array:
 ## A blast: every part of everyone in reach takes a blow on the side turned to it, harder the
 ## closer it is, and what was right where it went off is blown away.
 func blast(p: Vector3, radius := 3.5, power := 24.0, owner_ = null) -> void:
-	# The crater it blows out of what it went off against (a thunder pot's, 0.32 m wide); a
+	# The crater it blows out of what it went off against (a thunder pot's, 0.24 m wide); a
 	# part farther off loses less, and none half a metre away.
 	var rb := 0.06 + 0.006 * power
 	for e in m.entities:
@@ -700,7 +700,14 @@ func _chickens_out(chicken: Dictionary, p: Vector3) -> void:
 		if w:
 			w.linear_velocity = Vector3(randf_range(-3.5, 3.5), 4.0 + randf() * 4.0, randf_range(-3.5, 3.5))
 
-func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null, power := 1.0) -> void:
+## A thunder pot's blast (user: it was too strong): the force at the middle of it, how far the
+## blows carry, how near a man must be to be shoved, rung and put down, and how hard. About two
+## fifths less than it was (power 44, carrying 3.8 m, shoving 160, ringing 0.55, down inside 2.3 m).
+## The Hot Potato's bomb goes off as the pot used to (BOMB_BLAST): that was not what was said.
+const THUNDER := {"power": 30.0, "radius": 3.3, "reach": 3.0, "shove": 110.0, "stun": 0.4, "fell": 0.4}
+const BOMB_BLAST := {"power": 44.0, "radius": 3.8, "reach": 3.5, "shove": 160.0, "stun": 0.55, "fell": 0.35}
+
+func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null, power := 1.0, bomb := false) -> void:
 	var pot := type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
 	if pot:
 		shatter(p, type, dir)
@@ -715,16 +722,17 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.fx.burst("sparks", p, 120, Vector3.UP, 2.0)
 				m.fx.burst("debris", p, 50, Vector3.UP, 1.6)
 				m.fx.mark("scorch", p, 2.6)
-			blast(p, 3.8, 44.0, owner_)
-			for x in _near(p, 3.5):
+			var k: Dictionary = BOMB_BLAST if bomb else THUNDER
+			blast(p, k.radius, k.power, owner_)
+			for x in _near(p, k.reach):
 				var c = x.c
-				var f: float = 1.0 - x.d / 3.5
-				c.concussion = minf(1.0, c.concussion + 0.55 * f)
+				var f: float = 1.0 - x.d / k.reach
+				c.concussion = minf(1.0, c.concussion + k.stun * f)
 				var out: Vector3 = c.torso.global_position - p
 				out.y = 0.5
 				out = out.normalized()
-				c.torso.apply_central_impulse(Vector3(out.x * 160.0 * f, 60.0 * f, out.z * 160.0 * f))
-				if f > 0.35 and not c.mods.get("unstoppable", false):
+				c.torso.apply_central_impulse(Vector3(out.x * k.shove * f, 60.0 * f, out.z * k.shove * f))
+				if f > k.fell and not c.mods.get("unstoppable", false):
 					c.fall(1.6, true)
 				if owner_:
 					c.last_attacker = owner_

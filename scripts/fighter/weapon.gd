@@ -71,6 +71,9 @@ var chain_len := 0.07
 var chain_anchor := Vector3.ZERO
 var head_anchor := Vector3.ZERO
 var mass_scale := 1.0
+## How hard the whole weapon is, its voxels by their weight (a rubber chicken's bronze band is not a bronze
+## weapon): what a soft one hits like, whatever voxel touches.
+var mean_hardness := 0.5
 var is_hazard := false             # a trap: a weapon nobody holds, moved by the arena
 var hazard_vel := Vector3.ZERO
 var hazard_spin := Vector3.ZERO
@@ -102,11 +105,14 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	box_of.resize(vox.size())
 	# Weight, centre and inertia from the voxels.
 	var m := 0.0
+	var hm := 0.0
 	var com := Vector3.ZERO
 	for v in vox:
 		var mv: float = Data.material(v[3]).get("mass", 0.02) * scale_ * scale_ * mass_scale
 		m += mv
+		hm += mv * float(Data.material(v[3]).get("hardness", 0.5))
 		com += Vector3(v[0], v[1], v[2]) * vs * mv
+	mean_hardness = hm / m if m > 0.0 else 0.5
 	m = maxf(0.05, m)
 	com /= m
 	var ix := 0.0; var iy := 0.0; var iz := 0.0

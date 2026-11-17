@@ -30,11 +30,43 @@ func test_a_thunder_pot_is_a_real_blast() -> void:
 	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
 	await _steps(30)
 	var hp0 := v.total_hp()
-	m.throwables.explode("pot_thunder", v.torso.global_position + Vector3(0.6, -0.6, 0.0), m.me.f)
+	# (Burst against his flank, as a pot thrown at him bursts: the bite it takes is where it touches.)
+	var tp: VoxelPart = v.torso
+	m.throwables.explode("pot_thunder", tp.global_position + tp.global_basis.x.normalized() * (tp.half_ext.x + 0.05), m.me.f)
 	await _steps(20)
 	t.check(v.state != "stand", "he is blown off his feet")
 	t.check(hp0 - v.total_hp() > 60.0 and _lost(v) > 20, "and really hurt (%.0f hp, %d voxels)" % [hp0 - v.total_hp(), _lost(v)])
 	m.queue_free()
+
+## A pot goes off d metres from a bare man on the sand; what it does to him.
+func _blown(bomb: bool, d: float) -> Dictionary:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -14))
+	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
+	await _steps(40)
+	var hp0 := v.total_hp()
+	m.throwables.explode("pot_thunder", Vector3(d, 0.2, 0), m.me.f, null, null, null, 1.0, bomb)
+	var down := false
+	for i in 120:
+		await get_tree().physics_frame
+		down = down or v.state != "stand"
+	var out := {"hp": hp0 - v.total_hp(), "of": hp0, "down": down}
+	m.queue_free()
+	return out
+
+## A thunder pot's blast is about two fifths weaker than it was (user: too strong): a man a metre
+## off loses about a fifth of his strength where he lost nearly a third (312 of 1000 hp), it
+## carries no farther than 2.6 m where it hurt at 3.3, and puts a man down only inside 1.8 m. The
+## Hot Potato's bomb goes off as the pot did.
+func test_a_thunder_pot_is_weaker_than_it_was_and_reaches_less_far() -> void:
+	var near: Dictionary = await _blown(false, 0.9)
+	var bomb: Dictionary = await _blown(true, 0.9)
+	var mid: Dictionary = await _blown(false, 2.1)
+	var edge: Dictionary = await _blown(false, 2.9)
+	t.check(near.down and near.hp > 100.0 and near.hp < near.of * 0.26, "a man a metre off is put down and loses a fifth, not a third (%.0f of %.0f hp)" % [near.hp, near.of])
+	t.check(bomb.down and bomb.hp > near.hp * 1.3 and bomb.hp > bomb.of * 0.28, "the Hot Potato's bomb still goes off as the pot did (%.0f against %.0f hp)" % [bomb.hp, near.hp])
+	t.check(not mid.down, "two metres off he keeps his feet")
+	t.check(edge.hp < 1.0 and not edge.down, "and nearly three metres off nothing reaches him (%.0f hp)" % edge.hp)
 
 func test_nails_fly_all_round_and_stick() -> void:
 	seed(5)

@@ -186,7 +186,7 @@ func _potato(dt: float) -> void:
 		mat2.emission_energy_multiplier = 0.5 + 2.5 * (0.5 + 0.5 * sin(m.time * (6.0 + 30.0 / maxf(0.5, bomb.fuse))))
 	if bomb.fuse <= 0.0:
 		var p: Vector3 = h.torso.global_position
-		m.throwables.explode("pot_thunder", p, null)
+		m.throwables.explode("pot_thunder", p, null, null, null, null, 1.0, true)
 		m.throwables.explode("pot_nail", p, null)
 		bomb.holder = null
 		bomb.wait = 3.0

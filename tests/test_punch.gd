@@ -223,3 +223,26 @@ func test_fists_and_feet_strike_only_on_their_way() -> void:
 	me.kick_timer = 0.0
 	m.queue_free()
 	await get_tree().physics_frame
+
+## A hand that holds a weapon is no fist, however fast the weapon is swung (two sword arms touching
+## were punches that cracked bone: user): only an empty hand, swung, strikes as one.
+func test_a_hand_that_holds_a_weapon_is_not_a_fist() -> void:
+	for armed in [true, false]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius" if armed else "", "off": ""}})
+		var me: Fighter = m.me.f
+		var box := {"x": 0.0}
+		m.me.drive = func(_e): return {"main": {"x": box.x, "y": 0.15}, "power": true, "thrust": 0.0, "look": {"yaw": 0.0, "pitch": 0.0}, "mx": 0.0, "mz": 0.0}
+		await _steps(60)
+		var struck := 0
+		for i in 120:
+			box.x = 1.8 if (i / 6) % 2 == 0 else -1.8   # (whipped from side to side)
+			await get_tree().physics_frame
+			struck = maxi(struck, me.fist_strike("R"))
+		if armed:
+			t.eq(struck, 0, "the hand with a sword in it is no fist, however it is swung")
+		else:
+			t.check(struck > 0, "the empty hand swung so is a fist")
+		m.queue_free()
+		await get_tree().physics_frame

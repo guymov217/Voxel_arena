@@ -676,8 +676,9 @@ func apply_body(b: Dictionary) -> void:
 		var p: VoxelPart = by_name.get(n)
 		if p:
 			# The last fight's wounds are still open: dents, till the physician closes them. Every older
-			# one (and each he has had stitched) has healed over into a scar: a mark on the skin and no
-			# dent (user: a dent is a disadvantage to the man who has it).
+			# one (and each he has had stitched) has healed over into a scar: a mark on the skin at the
+			# heart of it and, if it was a hard blow, a tiny dent (user: a big dent is a disadvantage to
+			# the man who has it, and a big scar looked huge).
 			var open := {}
 			for i in body.get("fresh", {}).get(n, []):
 				open[int(i)] = true
@@ -688,7 +689,7 @@ func apply_body(b: Dictionary) -> void:
 			if not dents.is_empty():
 				p.scar(dents)
 			if not healed.is_empty():
-				p.mark_scar(healed)
+				p.heal_scar(healed)
 	# The last fight's wounds are still open: blood round each, not yet the pink of a scar.
 	for n in body.get("fresh", {}):
 		var fp: VoxelPart = by_name.get(n)
@@ -5350,7 +5351,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# out of the body's way, a swing). For the combat: fist_strike.
 	var m_was = mark_was[side]
 	mark_was[side] = target
-	if m_was != null and (target - (m_was as Vector3)).length() > FIST_SWING_V * S * dt:
+	# (An empty hand only: the forearm of a hand that holds a weapon or a pot is no fist, however fast
+	# the weapon is swung, else two sword arms touching were punches that cracked bone: user.)
+	if m_was != null and (target - (m_was as Vector3)).length() > FIST_SWING_V * S * dt and w == null and held_item == null:
 		fist_swing[side] = FIST_SWING_T
 	# Reaching for the haft (H pressed with its end behind him): to the grip, or to the nearest
 	# place in front of the body while the grip is behind it.
@@ -5666,6 +5669,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			_drive_haft(w, w_aim, strength, dt)
 		elif side == two_side:
 			haft_i = Vector3.ZERO
+			haft_lp = Vector3.ZERO
+			haft_raw = Vector3.ZERO
 		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
 		_free_wedged(side, w, dt)
 		if not throwing[side]:
@@ -7086,6 +7091,8 @@ func _lock_elbow(side: String, w: Weapon, fore_q: Quaternion, strength: float, d
 const HAFT_WN := 12.0
 const HAFT_KI := 6.0   # how hard a held error is worked off, per second of it
 var haft_i := Vector3.ZERO   # the haft drive's held correction (_drive_haft)
+var haft_lp := Vector3.ZERO    # its torque as eased over the last steps (a head far heavier than its own weight)
+var haft_raw := Vector3.ZERO   # and what it asked last step
 const HAFT_MAX := 70.0
 func _drive_haft(w: Weapon, w_aim: Quaternion, strength: float, dt: float) -> void:
 	var ax := PD.quat_of(w) * Vector3.UP
@@ -7107,6 +7114,20 @@ func _drive_haft(w: Weapon, w_aim: Quaternion, strength: float, dt: float) -> vo
 	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
 	var heft := clampf(i_wpn / (MS * S * S * 0.6), 0.0, 6.0)
 	var tq := PD.clamp_len(alpha * i_wpn, HAFT_MAX * strength * MS * S * float(mods.strength) * (1.0 + 0.45 * heft))
+	# A head far heavier about the hands than it is about itself (a war hammer: fifty times) is turned
+	# by a torque the light arms feel as a push of a metre a second in one step: the drive then
+	# overshoots and undoes it the next, at the step rate, and the hands and elbows flickered with every
+	# swing (user, videos; tremor of 5 mm a step in a hammer's hands, 0.1 in a sword's). What the stroke
+	# asks is smooth from step to step, so the torque is averaged over two steps, and eased on top: what
+	# alternates is gone, the blade follows the mouse as closely as before (2.5 degrees off on average, as
+	# 2.4 now), and the hands' flicker is an eighth of what it was. Only for such a head: a sword or a
+	# spear (up to five times) or an executioner's axe (twenty-four) is driven exactly as it was.
+	var calm := smoothstep(32.0, 46.0, i_wpn / PD.inertia_of(w))
+	var eased := haft_lp.lerp(tq, 0.5)
+	haft_lp = eased
+	var avg := (eased + haft_raw) * 0.5
+	haft_raw = eased
+	tq = tq.lerp(avg, calm)
 	w.apply_torque_impulse(tq * dt)
 	# The shoulders and the trunk turn it: half the reaction is the trunk's, a quarter each upper
 	# arm's (all on the trunk, a war hammer swung about leaned the whole man over with it; all on
@@ -7424,6 +7445,8 @@ func lift() -> void:
 # ---------- Wounds ----------
 
 const CRUSH_OF_LIMB := 0.6   # how wide a crater a crushing blow leaves at most, of the part's half thickness
+const BONE_FIST_J := 30.0    # the blow (J) a fist or a foot must reach to break a limb's bone: a giant's, not a man's
+const BONE_SOFT_H := 0.25    # a weapon that hits softer than this (rubber, leather, fish) breaks no bone
 ## What a part gives to one blow is held to a ceiling, and a blow past it still takes a little more of
 ## it, the harder it came (user: a stronger and a faster swing destroys a bit more, by the physics of it
 ## alone): the volume taken goes on growing as the root of how far past the ceiling the blow's own
@@ -7694,7 +7717,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# is, and the worse the break (user: blunt breaks, sharp cuts). Fists and kicks as before.
 		var ck := clampf(hardness, 0.0, 1.0) if hit.get("weapon", false) and not stopped else 0.0
 		var cr := part.fracture == 1
-		if not detached and J > ((10.0 if cr else 16.0) - 9.0 * ck) * big and not part.fractured and part != torso and part != head and randf() < (J - ((8.0 if cr else 14.0) - 9.0 * ck) * big) * 0.06 * (1.0 + heavy) * (1.0 + 1.2 * ck) / (float(mods.toughness) * big):
+		# A fist or a foot bruises, rocks and stuns a limb, it does not break its bone (a jab is felt, but
+		# an arm broke at the lightest touch: user) short of a giant's; nor does a soft weapon, a rubber
+		# chicken, a fish.
+		var bone_safe: bool = (bool(hit.get("unarmed", false)) and J < BONE_FIST_J * big) or (bool(hit.get("weapon", false)) and hardness < BONE_SOFT_H)
+		if not bone_safe and not detached and J > ((10.0 if cr else 16.0) - 9.0 * ck) * big and not part.fractured and part != torso and part != head and randf() < (J - ((8.0 if cr else 14.0) - 9.0 * ck) * big) * 0.06 * (1.0 + heavy) * (1.0 + 1.2 * ck) / (float(mods.toughness) * big):
 			# (The hard head makes the break worse, but out through the skin only a very hard
 			# blow goes, whatever struck it.)
 			var jb := J * (1.0 + 0.25 * ck)
@@ -7730,8 +7757,11 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# The skull spreads a blow to the head: the brain under it is shaken (bruised, the
 			# concussion above), not crushed away, until the skull has cracked.
 			for i in part.voxels_within(at, r):
-				if not (shielded and part.organ[i] == Anatomy.BRAIN):
-					remove.append(i)
+				if shielded and part.organ[i] == Anatomy.BRAIN:
+					continue
+				if bone_safe and part.bone[i] and part != torso and part != head:
+					continue   # (a fist's crater stops at the bone: it bruises it, it does not knock it out)
+				remove.append(i)
 			part.bleed += J * 0.02
 			# A crater down into the bone of a limb has broken it.
 			if not detached and not part.fractured and part != torso and part != head and remove.any(func(i): return part.bone[i]):

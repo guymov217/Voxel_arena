@@ -545,3 +545,54 @@ func test_a_break_without_a_screen_and_boxes_out_of_sight() -> void:
 	q.boxes_back()
 	t.check(q._boxes() and not q._boxes_stale, "and are written whole when they are drawn again")
 	m.queue_free()
+
+## A fist or a foot bruises, rocks and stuns a limb and never breaks its bone, short of a giant's
+## (user: an arm broke at the lightest touch, a foe's fist and a rubber chicken); a soft weapon breaks
+## none either, a hard one does.
+func test_a_fist_or_a_soft_weapon_does_not_break_an_arm() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	var blow := func(p: VoxelPart, h: Dictionary) -> void:
+		p.hp = 1000.0
+		var gt := p.global_transform
+		var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+		var hit := {"type": "blunt", "heavy": 0.0, "point": gt * Vector3(0, 0, p.half_ext.z), "dir": -bz, "wsz": 1.0}
+		hit.merge(h)
+		v.apply_hit(p, hit)
+	for n in ["upperArmR", "forearmR"]:
+		var p: VoxelPart = v.by_name[n]
+		for k in 14:
+			blow.call(p, {"impulse": 30.0, "hardness": 0.3, "unarmed": true})
+			await _steps(2)
+		t.eq(p.fracture, 0, "fourteen jabs at the full of a fist's strength leave the %s whole" % n)
+		for k in 14:
+			blow.call(p, {"impulse": 45.0, "hardness": 0.2, "weapon": true, "mass": 1.0})
+			await _steps(2)
+		t.eq(p.fracture, 0, "and fourteen blows of a rubber weapon too")
+	var arm: VoxelPart = v.by_name["upperArmL"]
+	for k in 6:
+		blow.call(arm, {"impulse": 70.0, "hardness": 0.3, "unarmed": true})
+		await _steps(2)
+	t.check(arm.fracture > 0, "a fist as hard as a giant's breaks it")
+	var leg: VoxelPart = v.by_name["thighL"]
+	for k in 6:
+		blow.call(leg, {"impulse": 45.0, "hardness": 0.85, "weapon": true, "mass": 2.5})
+		await _steps(2)
+	t.check(leg.fracture > 0, "and so does a mace a leg's")
+	m.queue_free()
+
+## What a weapon is made of, on the whole, is what it hits like: a rubber chicken is soft though its
+## band is bronze, a sword is hard.
+func test_a_weapon_hits_as_hard_as_it_is_made() -> void:
+	var chicken := Weapon.new()
+	add_child(chicken)
+	chicken.setup(Data.preset("chicken").duplicate(true))
+	var sword := Weapon.new()
+	add_child(sword)
+	sword.setup(Data.preset("gladius").duplicate(true))
+	t.check(chicken.mean_hardness < 0.2, "a rubber chicken is soft (%.2f)" % chicken.mean_hardness)
+	t.check(sword.mean_hardness > 0.8, "a gladius is hard (%.2f)" % sword.mean_hardness)
+	chicken.queue_free()
+	sword.queue_free()

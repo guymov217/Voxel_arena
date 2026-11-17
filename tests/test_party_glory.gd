@@ -72,7 +72,7 @@ func test_a_partys_bout_counts_and_crowns() -> void:
 		t.eq(int((r.party as Dictionary).get("Ann", {}).get("kills", 0)), 2, "Ann's kills on the bout's tally")
 		t.eq(int((r.party as Dictionary).get("Bob", {}).get("lifts", 0)), 1, "Bob's friend lifted")
 		t.eq((r.party as Dictionary).size(), 2, "the party only, not its foes")
-		var base := int(round(float(m.stage_info.get("stagePay", 30)) * Match.PAY_SCALE))
+		var base := Match.paid(float(m.stage_info.get("stagePay", 30)))
 		t.check(int(r.pay) >= base + PartyGlory.bonus(base), "his crown paid into the purse (%d, base %d)" % [int(r.pay), base])
 	t.check(said.any(func(x): return x.contains("crowns Bob")), "the arena is told")
 	m.queue_free()

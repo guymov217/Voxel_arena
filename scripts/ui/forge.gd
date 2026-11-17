@@ -243,6 +243,24 @@ func _build_ui() -> void:
 	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	verdict.custom_minimum_size = Vector2(420, 0)
 	col.add_child(verdict)
+	# What he has and what the job costs, always in sight (user: it covered the tools over the anvil, so
+	# it is in the panel now, over what the smith says of the work, and out of the way of the work).
+	var pb := PanelContainer.new()
+	var pbs := StyleBoxFlat.new()
+	pbs.bg_color = Color(0.07, 0.05, 0.035, 0.82)
+	pbs.border_color = UIStyle.BRONZE_DARK
+	pbs.set_border_width_all(1)
+	pbs.set_corner_radius_all(8)
+	pbs.content_margin_left = 12; pbs.content_margin_right = 12; pbs.content_margin_top = 5; pbs.content_margin_bottom = 5
+	pb.add_theme_stylebox_override("panel", pbs)
+	pb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_badge = UIStyle.label("", 17, UIStyle.GOLD)
+	price_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_badge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	price_badge.custom_minimum_size = Vector2(396, 0)
+	pb.add_child(price_badge)
+	pb.name = "PriceBadge"
+	col.add_child(pb)
 	cost_label = UIStyle.label("", 15, UIStyle.BRONZE)
 	cost_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cost_label.custom_minimum_size = Vector2(420, 0)
@@ -288,27 +306,6 @@ func _build_ui() -> void:
 	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	tool_bar.position.y = 12
 	right.add_child(tool_bar)
-	# What he has and what the job costs, always in sight at the top of the view (user: where it
-	# is seen), out of the way of the work.
-	var pb := PanelContainer.new()
-	var pbs := StyleBoxFlat.new()
-	pbs.bg_color = Color(0.07, 0.05, 0.035, 0.82)
-	pbs.border_color = UIStyle.BRONZE_DARK
-	pbs.set_border_width_all(1)
-	pbs.set_corner_radius_all(8)
-	pbs.content_margin_left = 14; pbs.content_margin_right = 14; pbs.content_margin_top = 6; pbs.content_margin_bottom = 6
-	pb.add_theme_stylebox_override("panel", pbs)
-	pb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pb.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	pb.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	pb.grow_vertical = Control.GROW_DIRECTION_END
-	pb.position.y += 14
-	price_badge = UIStyle.label("", 23, UIStyle.GOLD)
-	price_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	price_badge.autowrap_mode = TextServer.AUTOWRAP_OFF
-	pb.add_child(price_badge)
-	pb.name = "PriceBadge"
-	right.add_child(pb)
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
@@ -1230,7 +1227,8 @@ func _update_texts() -> void:
 	for c in mode_box.get_children():
 		if c.has_meta("checklist"):
 			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + Loc.t(String(i.text))))
-	cost_label.text = price_text(d)
+	# (What he has and what it costs is the badge's, over this line: here only what the badge does not say.)
+	cost_label.text = price_text(d) if (free_build and not scratch) or workshop else ""
 	var sharp := _sharp_blocks() > 0 or job == "edge" or job == "point"
 	for c in mode_box.get_children():
 		if c.has_meta("sharp_row"):
