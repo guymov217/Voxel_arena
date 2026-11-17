@@ -22,6 +22,8 @@ const TYPES := {
 	"pot_bolt": {"size": 0.08, "projectile": true, "dart": true}, "nail": {"size": 0.03, "projectile": true, "dart": true},
 	"pot_arrow": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_fire": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_arrow_poison": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_ice": {"size": 0.08, "projectile": true, "dart": true},
+	"pot_arrow_blast": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_barb": {"size": 0.08, "projectile": true, "dart": true},
+	"pot_arrow_pierce": {"size": 0.08, "projectile": true, "dart": true, "pierce": 3},
 	"pot_discus": {"size": 0.12, "projectile": true, "discus": true}, "pot_bignet": {"size": 0.3, "projectile": true},
 	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true, "roll_r": 0.21},
 	"arrow_loose": {"size": 0.06, "debris": true},
@@ -152,9 +154,19 @@ static func visual(type: String) -> Node3D:
 			_box(g, 0.025, 0.025, 0.22, 0x8a8f96); _box(g, 0.06, 0.06, 0.03, 0xd04a3a, 0, 0, -0.1)
 		"nail":
 			_box(g, 0.012, 0.012, 0.09, 0x6a6e74); _box(g, 0.03, 0.03, 0.008, 0x8a8f96, 0, 0, -0.045)
-		"pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "arrow_loose":
-			var tip: int = {"pot_arrow_fire": 0xff7a1a, "pot_arrow_poison": 0x7ae04a, "pot_arrow_ice": 0xa8e8ff}.get(type, 0xc9d1d9)
+		"pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_arrow_blast", "pot_arrow_pierce", "pot_arrow_barb", "arrow_loose":
+			var tip: int = {"pot_arrow_fire": 0xff7a1a, "pot_arrow_poison": 0x7ae04a, "pot_arrow_ice": 0xa8e8ff, "pot_arrow_blast": 0x4a2a22, "pot_arrow_pierce": 0x6c7480, "pot_arrow_barb": 0xb08a4a}.get(type, 0xc9d1d9)
 			_box(g, 0.02, 0.02, 0.6, 0xc9a86a); _box(g, 0.03, 0.03, 0.07, tip, 0, 0, 0.32); _box(g, 0.06, 0.02, 0.08, 0xe04040, 0, 0, -0.26); _box(g, 0.02, 0.06, 0.08, 0xe8e8e8, 0, 0, -0.26)
+			match type:
+				"pot_arrow_blast":
+					# A little charge lashed behind the head, its fuse alight.
+					_box(g, 0.055, 0.055, 0.08, 0x4a2a22, 0, 0, 0.25); _box(g, 0.06, 0.06, 0.012, 0xd04030, 0, 0, 0.29); _box(g, 0.012, 0.012, 0.04, 0xff9a2a, 0, 0.035, 0.34)
+				"pot_arrow_pierce":
+					# A long, narrow iron head.
+					_box(g, 0.016, 0.016, 0.1, 0x8a929e, 0, 0, 0.41)
+				"pot_arrow_barb":
+					# Barbs on both sides of the head.
+					_box(g, 0.08, 0.012, 0.025, 0xb08a4a, 0, 0, 0.29); _box(g, 0.012, 0.08, 0.025, 0xb08a4a, 0, 0, 0.29)
 		"pot_discus":
 			_box(g, 0.26, 0.025, 0.26, 0xc08a3e)
 		"boomerang":
@@ -344,6 +356,17 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 				it.vel = it.vel * 0.15
 				continue
 			if hit:
+				# A bodkin goes through the man and on into the next, up to `pierce` of them, slower and
+				# weaker for each it passes (and the one behind it hit once, not again as it passes).
+				var through := int(def.get("pierce", 0))
+				if through > 0 and (it.get("struck", {}) as Dictionary).size() + 1 < through:
+					_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized(), "through": true})
+					if not it.has("struck"):
+						it.struck = {}
+					it.struck[hit.char] = true
+					it.vel *= 0.82
+					it.power = float(it.get("power", 1.0)) * 0.75
+					continue
 				_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized()})
 				remove(it)
 				continue

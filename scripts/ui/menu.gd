@@ -2413,13 +2413,14 @@ func _circus_finished(r: Dictionary, inv: Dictionary) -> void:
 ## The market (yardUI.js): every product on a card with its own model, what it does, how it is
 ## used and what it costs; tabs by what a ware does (Market). A ware the trader has not brought
 ## yet lies on his table all the same, with the bout whose boss brings it.
-const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Its number takes it in hand; hold F to aim, let go to throw"}
-const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery", "torch"]
+const MARKET_USE := {"self": "Press its number: used on you at once", "place": "Press its number: laid or bowled in front of you", "throw": "Its number takes it in hand; hold F to aim, let go to throw",
+	"arrow": "Its number picks it for your bow: every arrow you loose is this one till they run out; its number again puts it back"}
+const FRIENDLY_FIRE := ["thunderPot", "nailPot", "caltrops", "oliveOil", "honey", "anvil", "greekFire", "vitriol", "mystery", "torch", "fireArrow", "blastArrow"]
 var market_tab := "fire"
 var market_sel := ""        # the ware on the trader's stand
 
 static func kit_use(id: String) -> String:
-	return "self" if ["bandage", "bread", "wine", "waterSkin"].has(id) else ("place" if ["bananas", "cheese"].has(id) else "throw")
+	return "self" if ["bandage", "bread", "wine", "waterSkin"].has(id) else ("place" if ["bananas", "cheese"].has(id) else ("arrow" if Throwables.ARROWS.has(id) else "throw"))
 
 func _market(v: VBoxContainer) -> void:
 	MarketScreen.build(self, v)

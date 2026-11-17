@@ -10,6 +10,14 @@ const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "greekFire": 
 	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
 ## The things a hand holds ready that are not pots (thrown with F all the same).
 const HELD := {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch"}
+## The special arrows (user: arrows for archers, bought one at a time and kept in the bag; its number
+## picks one for the bow, which looses it, a stack's worth, till it runs out, and its number again
+## puts it back): the kit id and the arrow it looses. ARROW_IDS numbers them on the wire (0: none).
+const ARROWS := {"fireArrow": "pot_arrow_fire", "poisonArrow": "pot_arrow_poison", "frostArrow": "pot_arrow_ice",
+	"blastArrow": "pot_arrow_blast", "bodkinArrow": "pot_arrow_pierce", "barbedArrow": "pot_arrow_barb"}
+const ARROW_IDS := ["", "fireArrow", "poisonArrow", "frostArrow", "blastArrow", "bodkinArrow", "barbedArrow"]
+## A blasting arrow's burst: a small blast that wounds what is round it (a thunder pot's is THUNDER).
+const BLAST_ARROW := {"power": 12.0, "radius": 1.8}
 ## Kit items that are no more, and what an old bag's are now (user: the sand pot and the smoke
 ## pot made one; the beehive and the fireball gone, the honey pot's bees and Greek fire in their
 ## place).
@@ -42,7 +50,7 @@ const STACK_HEAVY := ["anvil", "goat", "bigNet", "harpoon"]
 const STACK_LIGHT := ["bandage", "bread", "wine", "waterSkin", "bananas", "cheese", "darts", "caltrops", "discus"]
 
 static func stack_max(id: String) -> int:
-	return 1 if STACK_HEAVY.has(id) else (5 if STACK_LIGHT.has(id) else 3)
+	return 1 if STACK_HEAVY.has(id) else (5 if STACK_LIGHT.has(id) or ARROWS.has(id) else 3)
 
 ## Whether one more `id` fits in the bag: below its stack, and a new kind only while there are
 ## fewer than nine.
@@ -921,7 +929,7 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 					hv.fall(1.2)
 				m.feed.emit(Loc.t("%s reeled in %s!") % [owner_.display_name, hv.display_name])
 				m.crowd_add(owner_, 8, "catch of the day")
-		"pot_bolt", "pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_dart", "nail":
+		"pot_bolt", "pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_arrow_blast", "pot_arrow_pierce", "pot_arrow_barb", "pot_dart", "nail":
 			_dart(type, p, owner_, dir, hit_char, hit_part, power)
 		"pot_discus":
 			m.sfx("clang", p, 0.5)
@@ -1108,6 +1116,8 @@ func _nail_hits_tick() -> void:
 			part.wound(q[2], 0.02 * c.S, "blood")
 		part.apply_impulse(hd * 0.9, entry - part.global_position)
 
+var _arrow_through := false   # the arrow in `_dart` goes on through the man (a bodkin that has more to pass)
+var _arrow_struck := {}       # and the men it has been through already
 func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1.0) -> void:
 	# A nail only wounds what it actually met: one that reaches the sand lies there, a thing
 	# of iron on the sand (it bounces, rolls and stays), not gone.
@@ -1115,11 +1125,20 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		return
 	if type == "pot_arrow_fire":
 		add_zone("fire", Vector3(p.x, 0.0, p.z), 0.8, 3.0, owner_)
+	if type == "pot_arrow_blast":
+		# Bursts where it lands, on a man or on the sand: a small blast, a third of a thunder pot's.
+		m.sfx("boom", p, 0.55)
+		flash(p, Color(1.0, 0.72, 0.4), 6.0, 5.0)
+		if m.fx:
+			m.fx.burst("blastfire", p + Vector3(0, 0.15, 0), 24, Vector3.UP, 0.7)
+			m.fx.burst("sparks", p, 30, Vector3.UP, 1.2)
+			m.fx.burst("smoke", p + Vector3(0, 0.3, 0), 12, Vector3.UP, 0.9)
+		blast(p, float(BLAST_ARROW.radius), float(BLAST_ARROW.power), owner_)
 	# (A nail goes into whoever it met, the thrower too; the rest find the one they struck.)
 	var c = hit_char if hit_char and hit_char.alive and (hit_char != owner_ or type == "nail") else null
 	if c == null:
 		for x in _near(p, 0.9 if type == "pot_dart" else 1.0):
-			if x.c != owner_:
+			if x.c != owner_ and not _arrow_struck.has(x.c):   # (a bodkin that went through a man does not strike him again where it lands)
 				c = x.c
 				break
 	if c == null:
@@ -1174,7 +1193,8 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
 	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
-	_hit(c, part, J, "point", p, hdir, owner_)
+	# (A bodkin's head is narrow and hard: it goes in a little deeper.)
+	_hit(c, part, J, "point", p, hdir, owner_, {"hardness": 1.0, "sharpness": 1.0} if type == "pot_arrow_pierce" else {})
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + (0.2 if c.S >= 1.5 else 0.5))
 		var down_now: bool = was_alive and not c.alive
@@ -1187,7 +1207,11 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		part.stick("pot_bolt", p, hdir)
 	if arrow:
 		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.0)) / maxf(1.0, c.S * 0.6)
-		part.stick(type, p, hdir)
+		# (A bodkin that goes on through him stays in none of those it passes, only in the last.)
+		if not _arrow_through:
+			part.stick(type, p, hdir)
+	if type == "pot_arrow_barb":
+		part.bleed += 2.0   # (barbs that hold in the flesh: it bleeds on)
 	if type == "pot_arrow_fire":
 		m.add_spot(c, part, "fire", 4.0, owner_, p)
 	if type == "pot_arrow_poison":
@@ -1236,7 +1260,11 @@ func on_item(ev: Dictionary) -> void:
 					m.crowd_add(c, -2, "tomato")
 				burst(ev.p, Color(0.82, 0.16, 0.11), 10, 1.5, 0.5, 0.03)
 			else:
+				_arrow_through = bool(ev.get("through", false))
+				_arrow_struck = it.get("struck", {})
 				explode(ev.type, ev.p, owner_, ev.get("dir"), c, ev.get("part"), float(it.get("power", 1.0)))
+				_arrow_through = false
+				_arrow_struck = {}
 		"eat":
 			match ev.type:
 				"bread":
@@ -2005,6 +2033,11 @@ func use_item(e: Dictionary, slot: int) -> bool:
 	var c = e.f
 	if not c.alive:
 		return false
+	# An arrow: its number picks it for the bow (nothing is spent till it is loosed), its number
+	# again puts it back.
+	if ARROWS.has(id):
+		pick_arrow(e, id)
+		return true
 	# Its number again: back into the kit.
 	if c.held_item != null and c.held_item.id == id:
 		put_away(e)
@@ -2063,6 +2096,15 @@ func use_item(e: Dictionary, slot: int) -> bool:
 				aim = Social.aim_ahead(c, ia, e.get("input", {}).get("look"), e.get("last_aim_from"))   # a player's pot goes to the crosshair
 			throw_type(c, hand_type, aim, null, player)
 	return true
+
+## Picks the arrow of kit item `id` for the bow, or (if it is the one picked) puts it back: the
+## arrows loosed are plain again.
+func pick_arrow(e: Dictionary, id: String) -> void:
+	var c = e.f
+	c.arrow_pick = "" if String(c.arrow_pick) == id else id
+	if e.kind == "local":
+		var nm := Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id)))
+		m.feed.emit((Loc.t("%s ready: the bow looses it till it is used up (its number again puts it back)") % nm) if c.arrow_pick != "" else (Loc.t("%s put back: plain arrows again") % nm))
 
 ## A pot readied in the free hand (the left, or the right if the left is busy): held where it
 ## can be seen until F throws it.
@@ -2280,8 +2322,21 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		var t := maxf(0.15, dd.length() / speed)
 		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
 		from += dd.normalized() * 0.5
-	var gem = w.design.get("gem")
-	var type: String = ("pot_arrow_" + str(gem)) if gem != null and Items.TYPES.has("pot_arrow_" + str(gem)) else "pot_arrow"
+	var type: String = _nock_type(w, c)
+	# An arrow picked from the bag is loosed in place of the bow's own, one out of the bag a shot, and
+	# the bag running out puts plain arrows back.
+	var pick: String = c.arrow_pick
+	if pick != "":
+		var inv: Dictionary = e.get("inventory", {})
+		if int(inv.get(pick, 0)) > 0:
+			inv[pick] = int(inv[pick]) - 1
+			if int(inv[pick]) <= 0:
+				c.arrow_pick = ""
+				if e.kind == "local":
+					m.feed.emit(Loc.t("Out of %s: plain arrows again") % Loc.t(String(Data.shop.throwables.get(pick, {}).get("name", pick))))
+		else:
+			c.arrow_pick = ""
+			type = _nock_type(w, c)
 	var it: Dictionary = m.items.spawn(type, from, vel, c)
 	it.power = draw
 	m.sfx("twang", from)
@@ -2415,10 +2470,16 @@ func _show_draw(w: Weapon, c, d: float) -> void:
 	c.off_goal = w.global_transform * nock
 	if Fx.current == null or Fx.current.headless:
 		return
+	var want := _nock_type(w, c)
 	var vis: Node3D = w.get_node_or_null("DrawVis")
+	if vis != null and String(vis.get_meta("arrow", "")) != want:
+		w.remove_child(vis)   # (another arrow is picked: the one on the string is made anew)
+		vis.queue_free()
+		vis = null
 	if vis == null:
-		vis = _cords_node(w, Items.visual(("pot_arrow_" + str(w.design.gem)) if w.design.get("gem") != null else "pot_arrow"))
+		vis = _cords_node(w, Items.visual(want))
 		vis.name = "DrawVis"
+		vis.set_meta("arrow", want)
 		var ar: Node3D = vis.get_child(2)
 		ar.basis = Basis(Vector3.UP, PI / 2.0)   # its nose (+z) along the shot (+x)
 	vis.visible = d > 0.0
@@ -2426,6 +2487,15 @@ func _show_draw(w: Weapon, c, d: float) -> void:
 		return
 	_set_cords(vis, Vector3(sx, y0, 0), Vector3(sx, y1, 0), nock)
 	(vis.get_child(2) as Node3D).position = Vector3(pull + 0.3, ym, 0)
+
+## The arrow a bow looses now: the one picked from the bag (ARROWS) if there is one, else its own
+## gem's, else a plain one.
+func _nock_type(w: Weapon, c) -> String:
+	var pick: String = c.arrow_pick if c != null and c.get("arrow_pick") != null else ""
+	if pick != "" and ARROWS.has(pick):
+		return String(ARROWS[pick])
+	var gem = w.design.get("gem")
+	return ("pot_arrow_" + str(gem)) if gem != null and Items.TYPES.has("pot_arrow_" + str(gem)) else "pot_arrow"
 
 ## Two cords from the string's ends to the nock, and (third child) what lies on the string.
 func _cords_node(w: Weapon, load_vis: Node3D) -> Node3D:

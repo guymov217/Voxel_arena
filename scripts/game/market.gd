@@ -10,10 +10,12 @@ const TABS := [
 	["floor", "Floor traps", ["bananas", "caltrops", "oliveOil", "honey"]],
 	["snare", "Snares & tricks", ["smoke", "garum", "bola", "bigNet", "harpoon", "telekinesis"]],
 	["arms", "Thrown arms", ["darts", "discus", "boomerang", "anvil"]],
+	["bow", "For archers", ["fireArrow", "poisonArrow", "frostArrow", "blastArrow", "bodkinArrow", "barbedArrow"]],
 	["crowd", "For the crowd", ["goat", "cheese", "chickens", "mystery"]],
 ]
 ## On the table from the first visit: something of every tab.
-const BASIC := ["thunderPot", "nailPot", "smoke", "bananas", "caltrops", "oliveOil", "darts", "mystery"]
+const BASIC := ["thunderPot", "nailPot", "smoke", "bananas", "caltrops", "oliveOil", "darts", "mystery",
+	"fireArrow", "poisonArrow", "frostArrow", "blastArrow", "bodkinArrow", "barbedArrow"]
 ## One more brought after each boss beaten, in this order (the first after the first boss); the
 ## last boss's bout ends the campaign, and from the second time round everything is there.
 const AFTER_BOSS := ["torch", "goat", "bola", "greekFire", "cheese", "honey", "discus", "garum", "harpoon", "vitriol", "boomerang", "bigNet", "anvil", "chickens", "telekinesis"]

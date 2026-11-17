@@ -191,6 +191,8 @@ static func model(d: Dictionary) -> Node3D:
 static func item_type(id: String) -> Variant:
 	if Throwables.POTS.has(id):
 		return Throwables.POTS[id]
+	if Throwables.ARROWS.has(id):
+		return Throwables.ARROWS[id]
 	return {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "waterSkin": "waterskin", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
 
 func _ready() -> void:

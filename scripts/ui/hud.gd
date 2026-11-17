@@ -577,7 +577,11 @@ func _build_hotbar() -> void:
 		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		p.add_child(nm)
 		h.add_child(p)
-		slots.append({"panel": p, "name": nm, "pic": pic, "count": cnt, "id": ""})
+		# The slot of the arrow picked for the bow is edged in gold (the number again puts it back).
+		var picked := _plate(IRON_DEEP, GOLD_PALE, 3, 3)
+		picked.shadow_size = 6
+		picked.content_margin_left = 6; picked.content_margin_right = 6; picked.content_margin_top = 4; picked.content_margin_bottom = 4
+		slots.append({"panel": p, "name": nm, "pic": pic, "count": cnt, "id": "", "plain": sst, "picked": picked, "on": false})
 	held_label = _label("", 13, GOLD, false, true)
 	held_label.anchor_left = 0.5
 	held_label.anchor_right = 0.5
@@ -1068,11 +1072,15 @@ func _process(dt: float) -> void:
 				s.count.text = "×%d" % int(inv[id])
 				s.name.text = "" if s.pic.texture else Loc.t(String(Data.shop.throwables[id].name))
 				s.panel.tooltip_text = Loc.t(String(Data.shop.throwables[id].name))
+				var is_picked: bool = String(f.arrow_pick) == id
+				if is_picked != bool(s.on):
+					s.on = is_picked
+					s.panel.add_theme_stylebox_override("panel", s.picked if is_picked else s.plain)
 				s.panel.visible = true
 			else:
 				s.panel.visible = false
 		var held = f.held_item
-		held_label.text = (Loc.t("IN HAND: %s") % _held_name(f).to_upper()) if held else ""
+		held_label.text = (Loc.t("IN HAND: %s") % _held_name(f).to_upper()) if held else ((Loc.t("BOW: %s") % Loc.t(String(Data.shop.throwables.get(f.arrow_pick, {}).get("name", f.arrow_pick))).to_upper()) if String(f.arrow_pick) != "" else "")
 		_set_prompt(_prompt_for(f))
 	else:
 		vignette.modulate.a = 0.0

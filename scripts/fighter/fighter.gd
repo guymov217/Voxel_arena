@@ -263,6 +263,7 @@ const HELD_STILL := 0.6   # the hand's mark moving slower than this (pane a seco
 const STROKE_REACH := 0.97   # of the arm's length the back hand may be asked to reach in a stroke
 var twist_two := 0.0
 var net_two_handed := false   # a guest's copy: the host has both his hands on one haft (status)
+var arrow_pick := ""          # the special arrow picked from the bag for the bow (kit id, Throwables.ARROWS); "" plain arrows (status: a guest's copy)
 var two_front = null   # both hands on one haft: where the off hand should hold it this step
 var two_main = null    # and the main hand (for the tests)
 var two_gap = null     # the off hand's place from the main hand, along the blade's line
@@ -9512,7 +9513,7 @@ func status_packed() -> Array:
 	for p in parts:
 		any = any or p.fracture > 0
 	if not any:
-		return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), (1 if two_handed else 0) + (2 if two_side == "L" else 0), 0]
+		return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), _held_bits(), 0]
 	var fb := PackedByteArray()
 	fb.resize(parts.size() * 3)
 	for i in parts.size():
@@ -9523,7 +9524,12 @@ func status_packed() -> Array:
 			fb[i * 3] = p.fracture | (clampi(roundi(float(p.kink[5]) / 1.4 * 63.0), 1, 63) << 2)
 			fb[i * 3 + 1] = int(p.kink[4]) & 255
 			fb[i * 3 + 2] = clampi(roundi((float(p.kink[1]) / maxf(1e-4, p.half_ext[ax]) * 0.5 + 0.5) * 255.0), 0, 255)
-	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), (1 if two_handed else 0) + (2 if two_side == "L" else 0), fb]
+	return [snappedf(blood, 0.1), snappedf(stamina, 0.1), state, hp, snappedf(dying, 0.1), _held_bits(), fb]
+
+## What he holds, in a number for the wire: bit 0 both hands on one haft, bit 1 it is the left hand's,
+## the bits above the number of the special arrow picked for his bow (Throwables.ARROW_IDS).
+func _held_bits() -> int:
+	return (1 if two_handed else 0) + (2 if two_side == "L" else 0) + (maxi(0, Throwables.ARROW_IDS.find(arrow_pick)) << 2)
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -9542,6 +9548,7 @@ func apply_status(s) -> void:
 		if s.size() > 5:
 			net_two_handed = (int(s[5]) & 1) == 1
 			net_two_side = "L" if (int(s[5]) & 2) != 0 else "R"
+			arrow_pick = String(Throwables.ARROW_IDS[clampi(int(s[5]) >> 2, 0, Throwables.ARROW_IDS.size() - 1)])
 		if s.size() > 6 and s[6] is PackedByteArray and (s[6] as PackedByteArray).size() == parts.size() * 3:
 			var fb: PackedByteArray = s[6]
 			for i in parts.size():

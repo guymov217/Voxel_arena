@@ -80,8 +80,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   bout), the wheel draws him nearer or further, and F lets him fly with the mouse's sweep; a
   hard landing hurts. Its price follows the purses (`Market.price`: nine tenths of the best
   a bout has paid by then, in fives), so its two lifts a bout never cost next to nothing.
-- **The market** (`scripts/game/market.gd`): the trader's wares lie in five tabs by what they do
-  (Fire & blast, Floor traps, Snares & tricks, Thrown arms, For the crowd). Something of every
+- **The market** (`scripts/game/market.gd`): the trader's wares lie in six tabs by what they do
+  (Fire & blast, Floor traps, Snares & tricks, Thrown arms, For archers, For the crowd). Something of every
   tab is on the table from the first visit (`Market.BASIC`) and one more ware is brought after
   each boss beaten, in the order of `Market.AFTER_BOSS` (the torch after the first, then the goat,
   the bola, Greek fire...); a ware not yet come lies dim with the bout it comes after, and in the
@@ -222,11 +222,21 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   dummies that never fall, three throwing boards that score a throw, and by the gate a board
   for each fight on offer (the party's, in a room: the fight chosen at the gate). Three missions per fight pay denarii and reputation, and reputation
   earns ranks (Tiro up to Rudiarius). After a fight you come back to the yard.
+- **Special arrows** (`Throwables.ARROWS`): the market's For archers tab sells six kinds one at a time, five
+  to a bag: fire (alight on the man and the sand), poison (bleeds on, slows, eats like acid), frost
+  (slows), blasting (a small burst where it lands, `Throwables.BLAST_ARROW`: it hurts, nowhere near a
+  thunder pot, and the archer's friends and he himself are not spared), bodkin (goes through up to three
+  men, slower and weaker for each, `pierce` in `Items.TYPES`, and stays in the last) and barbed (bleeds
+  on). A number on the hotbar picks one for the bow (`Fighter.arrow_pick`; its slot is edged in gold and
+  the HUD reads BOW: ...): every arrow he looses is that one, one out of the bag a shot, till the bag runs
+  out (plain arrows again, or the bow's own gem), and the number again puts it back. The host spends
+  the arrows; the pick goes to guests with the grip number of the status row (`Fighter._held_bits`: bit 0
+  both hands on one haft, bit 1 the left side, the bits above the arrow's number in `Throwables.ARROW_IDS`).
 - **The yard's stalls**: G at a station opens its screen over the yard, each with a live 3D view
   (it draws only while it is on the screen). The market
   (`scripts/ui/market_screen.gd`): the ware on a stand that turns with Buy and a count under it, what
   he carries of it and how many more fit (or why none: the most he can hold, or every slot taken;
-  `StationKit.carry_of`, the same words at the physician's supplies), the five tabs, the trader's road of what each boss brings, the bag along the foot. The smith
+  `StationKit.carry_of`, the same words at the physician's supplies), the six tabs, the trader's road of what each boss brings, the bag along the foot. The smith
   (`smith_screen.gd`): the weapon on his anvil, the hammer coming down when a job is paid for; your
   arms, his wares, his masterworks and your own designs in four lists; `armour_shop.gd` the rack with
   the gladiator, in the new look, trying each piece on, and `armour_bench.gd` the bench for armour
