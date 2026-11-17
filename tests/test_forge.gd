@@ -778,6 +778,74 @@ func test_a_sharp_block_faces_the_way_it_was_put_on() -> void:
 	w.queue_free()
 	f.queue_free()
 
+## R at the anvil, the whole way: the mouse over a sharp block (it is haloed: it is the one R turns),
+## the key pressed (on a keyboard whose layout says another letter there: the other keys at the anvil
+## go by their place), and the block turns, the block the mirror made of it with it.
+func test_r_turns_the_block_under_the_mouse_and_its_mirror() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	var stick := {"name": "stick", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"], [0, 2, 0, "wood", "grip"], [0, 3, 0, "iron", "blunt"]]}
+	f.open(stick, 0, func(_d, _c): pass)
+	f._show_mode("voxels")
+	await get_tree().process_frame
+	f.mirror = true
+	f.mirror_z = false
+	f.mat = "steel"
+	f.job = "edge"
+	var right := Vector3i(1, 3, 0)
+	var left := Vector3i(-1, 3, 0)
+	f._place(f._mirrored([right]), ForgeLib.face_index(Vector3i(1, 0, 0)), right)
+	t.eq(f._face(right), 0, "put on the right face, the edge faces right")
+	t.eq(f._face(left), 1, "and the one the mirror made, left")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var px: Vector2 = f.cam.unproject_position(Vector3(right) * Data.weapon_voxel)
+	var mv := InputEventMouseMotion.new()
+	mv.position = px
+	f._on_view_input(mv)
+	var a: Dictionary = f._aim(px)
+	t.eq(a.get("hit"), right, "the mouse is on the block")
+	t.check(f.turn_ghost.visible and f.turn_ghost.position.distance_to(Vector3(right) * Data.weapon_voxel) < 1e-4, "which is haloed")
+	var key := InputEventKey.new()
+	key.pressed = true
+	key.keycode = KEY_UNKNOWN
+	key.physical_keycode = KEY_R
+	f._unhandled_key_input(key)
+	t.eq(f._face(right), 1, "R turns it to the next way")
+	t.eq(f._face(left), 0, "and the block the mirror made of it turns the mirrored way")
+	# Off the weapon, or on a block that does not turn, no halo, and R says so.
+	var haft: Vector2 = f.cam.unproject_position(Vector3(0, 1, 0) * Data.weapon_voxel)
+	mv = InputEventMouseMotion.new()
+	mv.position = haft
+	f._on_view_input(mv)
+	t.check(not f.turn_ghost.visible, "no halo on a block that does not turn")
+	f.queue_free()
+
+## A block of a ready-made weapon has no way set: it is drawn as the weapon's shape has it, and R
+## turns it from there, so that the first press shows (it turned it to the way it already faced).
+func test_the_first_r_on_a_ready_made_edge_changes_what_is_seen() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius").duplicate(true), 0, func(_d, _c): pass)
+	f._show_mode("voxels")
+	f.mirror = false
+	f.mirror_z = false
+	await get_tree().process_frame
+	var tried := 0
+	for k in f.cells.keys():
+		if tried >= 4 or not f._is_sharp(k) or f._face(k) >= 0:
+			continue
+		var look: int = f._look_face(k)
+		if look < 0:
+			continue
+		tried += 1
+		f.turn_face(k)
+		t.check(f._face(k) >= 0 and f._face(k) != look, "%s faced %d as drawn, and R turns it to %d" % [str(k), look, f._face(k)])
+	t.check(tried >= 1, "(some edge of the gladius has a way it is drawn facing: %d tried)" % tried)
+	f.queue_free()
+
 ## What he has and what the job costs are always in sight, in the panel (not over the view, where it
 ## hid the tools: user); it follows every change.
 func test_the_price_is_always_in_sight() -> void:

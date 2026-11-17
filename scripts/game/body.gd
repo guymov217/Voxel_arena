@@ -305,6 +305,8 @@ static func snapshot(f) -> Dictionary:
 	for p in f.parts:
 		var n := String(p.part_name)
 		if n != "torso" and n != "head" and not p.severed and not p.missing and p.prosthetic == "" and p.fracture > 0:
+			if p.fracture == 1 and f.has_method("sturdy_arm") and f.sturdy_arm(p):
+				continue   # (a hairline crack in a player's arm mends of itself: only a break needs the physician)
 			fr[n] = int(p.fracture)
 	if int(f.get("skull_fracture")) > 0 and not f.head.severed:
 		fr["skull"] = int(f.skull_fracture)

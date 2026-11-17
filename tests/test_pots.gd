@@ -283,6 +283,152 @@ func test_a_torch_burns_and_lights_oil_and_water_puts_it_out() -> void:
 	t.eq(int(me.inventory.get("waterSkin", 0)), 0, "and it is used up")
 	m.queue_free()
 
+## The torch in the hand is a weapon (user: swing it too, not only throw it, a burning weapon): a
+## stick with a burning head in the free hand (the right when both are empty), what it took the place
+## of put out of sight and back in the hand when it is put away or thrown; every blow of it, a tap
+## too, sets the man alight; thrown (F) it is used up out of the kit.
+func test_the_torch_is_a_weapon_in_the_hand_and_every_blow_sets_alight() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	var v := _victim(m, Vector3(0, 0, 0), func(_e): return {})
+	await _steps(30)
+	var me: Dictionary = m.me
+	var f: Fighter = me.f
+	me.inventory = {"torch": 2}
+	var sword = f.weapons.R
+	var shield = f.weapons.L
+	t.check(sword != null and shield != null and shield.is_shield, "he starts with a sword in the right hand and a shield in the left")
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	var tw = Throwables.torch_weapon(f)
+	t.check(tw != null and String(tw.design.get("name", "")) == "Torch" and String(tw.design.get("imbue", "")) == "fire", "the torch is a burning weapon in his hand")
+	t.check(f.weapons.L == tw and f.weapons.R == sword and f.stowed.L == shield, "in the left hand, the shield put out of sight and the sword where it was")
+	t.check(tw.mass > 0.25 and tw.mass < 1.0, "light as a stick of wood (%.2f kg)" % tw.mass)
+	t.check(not Fire.is_burning(f), "it does not burn the man who holds it")
+	# A blow of it, a light one: he is alight.
+	m._coating({"char": v, "part": v.torso, "attacker": f, "J": 1.0, "weapon": tw, "p": v.torso.global_position})
+	t.check(Fire.is_burning(v), "a tap of it sets him alight")
+	# A sword's tap of the same weight does nothing (a coated blade burns on a blow, not a touch).
+	var v2 := _victim(m, Vector3(3, 0, 0), func(_e): return {})
+	m._coating({"char": v2, "part": v2.torso, "attacker": f, "J": 1.0, "weapon": sword, "p": v2.torso.global_position})
+	t.check(not Fire.is_burning(v2), "a plain blade's tap does not")
+	# Put away: the torch is gone from the hand, the shield is back in it, and the kit still has the torch.
+	m.throwables.put_away(me)
+	await _steps(10)
+	t.check(f.held_item == null and Throwables.torch_weapon(f) == null and f.weapons.L == shield and f.weapons.R == sword, "put away, it is gone from the hand and the shield is back")
+	t.eq(int(me.inventory.get("torch", 0)), 2, "nothing of the kit is spent")
+	# Both hands empty: the torch goes in the right.
+	for sd in ["R", "L"]:
+		var lw = f.release(sd)
+		if lw != null:
+			if Combat.current:
+				Combat.current.loose_weapons.erase(lw)
+			lw.queue_free()
+	await _steps(5)
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	t.check(f.weapons.R != null and f.weapons.R == Throwables.torch_weapon(f), "with both hands empty it is in the right")
+	# Thrown (F): the weapon is gone from the hand, one torch of the kit is used up.
+	m.throwables.throw_held(me, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": 0.8})
+	await _steps(5)
+	t.check(f.held_item == null and f.weapons.R == null, "thrown, it is gone from the hand")
+	t.eq(int(me.inventory.get("torch", 0)), 1, "and one torch of the kit is used up")
+	# Knocked out of the hand: it is not his to hold any more.
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	t.check(Throwables.torch_weapon(f) != null, "taken in hand again")
+	var out = f.release("R")
+	if out != null and Combat.current:
+		Combat.current.loose_weapons.erase(out)
+	await _steps(5)
+	t.check(f.held_item == null, "knocked out of his hand, it is not held any more")
+	m.queue_free()
+
+## A torch does not burn for ever (user: it must be able to break at the end, it cannot be used without
+## end): it burns down in the hand (and a little more with every blow it lands), the rag of its head
+## burning away from the crown down; what is spent stays spent when it is put away and taken out
+## again; when it is all burnt one torch of the kit is used up and the weapon it took the hand's
+## place from is back.
+func test_a_torch_burns_down_and_is_spent() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	await _steps(30)
+	var me: Dictionary = m.me
+	var f: Fighter = me.f
+	me.inventory = {"torch": 2}
+	var shield = f.weapons.L
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	var tw = Throwables.torch_weapon(f)
+	t.check(tw != null, "the torch is in hand")
+	t.check(Throwables.torch_gone(tw) == 0.0 and tw.flame_size == 1.0, "whole at first: its head all there")
+	# Held, it burns down with time: half of its life, and the head is half gone (crown first).
+	me.torch_burn = Throwables.TORCH_LIFE * 0.5
+	await _steps(2)
+	var half := Throwables.torch_gone(tw)
+	t.check(half > 0.3 and half < 0.5, "half burnt, about 40%% of its head is gone (%.2f)" % half)
+	var top_alive := false
+	for i in tw.vox.size():
+		if int(tw.vox[i][1]) == 16 and tw.alive[i] == 1:
+			top_alive = true
+	t.check(not top_alive, "the crown burnt first")
+	t.check(tw.flame_size < 0.8, "and the flame is smaller (%.2f)" % tw.flame_size)
+	# Put away and taken out again: it is not whole again.
+	m.throwables.put_away(me)
+	await _steps(5)
+	t.eq(int(me.inventory.get("torch", 0)), 2, "put away, the kit still has both torches")
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	var tw2 = Throwables.torch_weapon(f)
+	t.check(tw2 != null and tw2 != tw and Throwables.torch_gone(tw2) > 0.3, "taken out again, it is as burnt as it was (%.2f)" % Throwables.torch_gone(tw2))
+	t.check(me.torch_burn >= Throwables.TORCH_LIFE * 0.5, "its burn is kept")
+	# A blow it lands costs it more than the time.
+	var before: float = me.torch_burn
+	m.throwables.torch_struck(f, 0.2)
+	t.eq(me.torch_burn, before, "a graze costs it nothing")
+	m.throwables.torch_struck(f, 6.0)
+	t.check(me.torch_burn >= before + Throwables.TORCH_BLOW - 0.001, "a blow costs it %.1f s of its life" % Throwables.TORCH_BLOW)
+	# Used up: out of the hand, one torch of the kit gone, the shield back.
+	me.torch_burn = Throwables.TORCH_LIFE - 0.01
+	await _steps(4)
+	t.check(f.held_item == null and Throwables.torch_weapon(f) == null, "burnt out, it is gone from his hand")
+	t.eq(int(me.inventory.get("torch", 0)), 1, "one torch of the kit is used up")
+	await _steps(10)
+	t.check(f.weapons.L == shield and f.stowed.L == null, "and the shield is back in the hand")
+	t.check(float(me.get("torch_burn", 0.0)) == 0.0, "the next torch is whole")
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	t.check(Throwables.torch_weapon(f) != null and Throwables.torch_gone(Throwables.torch_weapon(f)) == 0.0, "and it is, taken out")
+	# Thrown: the one in the hand goes, and the next is whole too.
+	me.torch_burn = Throwables.TORCH_LIFE * 0.3
+	m.throwables.throw_held(me, {"look": {"yaw": 0.0, "pitch": 0.0}, "throwPower": 0.8})
+	t.check(float(me.get("torch_burn", 0.0)) == 0.0, "thrown, its burn goes with it")
+	m.queue_free()
+
+## A torch knocked to pieces (a hard blow on its stick, an arm that swings it into a wall) is spent
+## as well, and it breaks into ash and splinters: no broken torch is left lying on the sand to pick up.
+func test_a_torch_knocked_to_pieces_is_spent_and_leaves_no_weapon() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -12))
+	await _steps(30)
+	var me: Dictionary = m.me
+	var f: Fighter = me.f
+	me.inventory = {"torch": 1}
+	m.throwables.use_item(me, Throwables.hotbar_of(me.inventory).find("torch"))
+	var tw = Throwables.torch_weapon(f)
+	t.check(tw != null, "the torch is in hand")
+	var loose_before: int = Combat.current.loose_weapons.size()
+	# Its stick snapped through: the head goes with the piece that falls.
+	var stick := []
+	for i in tw.vox.size():
+		if int(tw.vox[i][1]) == 8:
+			stick.append(i)
+	tw.remove_voxels(stick)
+	var made: Array = tw.split_plan()
+	t.check(not made.is_empty(), "the snapped stick falls into two pieces")
+	for pc in made:
+		t.check(tw._piece_weapon(pc).is_empty(), "and a piece of a torch is never a weapon of its own")
+		tw.remove_voxels(pc)
+	await _steps(4)
+	t.check(f.held_item == null and Throwables.torch_weapon(f) == null, "spent: it is gone from his hand")
+	t.eq(int(me.inventory.get("torch", 0)), 0, "and its torch is used up")
+	t.eq(Combat.current.loose_weapons.size(), loose_before, "nothing of it lies on the sand")
+	m.queue_free()
+
 ## The bees of a broken hive (a mystery amphora's): the swarm comes out short of the man and goes
 ## for him, and within a couple of seconds he is covered (a pot that broke on the sand five metres
 ## off did nothing: user).

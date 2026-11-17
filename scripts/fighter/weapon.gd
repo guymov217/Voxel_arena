@@ -153,6 +153,7 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 		_add_box(b)
 	_build_mesh()
 	_coat()
+	_torch_flame()
 
 ## A coated weapon looks it: the edge tinted, and flames, drips of venom or a breath of frost
 ## along it as it moves (left behind in the air by a swing).
@@ -170,6 +171,10 @@ func _coat() -> void:
 		for i in vox.size():
 			if vox[i][4] != "grip":
 				pts.append(i)
+	# (A torch burns at its head only: from the voxel row `coatFrom` up.)
+	var from_y := int(design.get("coatFrom", -9999))
+	if from_y > -9999:
+		pts = pts.filter(func(i): return int(vox[i][1]) >= from_y)
 	if pts.is_empty():
 		return
 	for i in pts:
@@ -199,6 +204,62 @@ func _coat() -> void:
 			var sm := Fx.current.emitter("fire_smoke", self, 10, vs * 2.0)
 			if sm:
 				sm.position = Vector3(vox[i][0], vox[i][1], vox[i][2]) * vs
+
+## A torch's flame (drawing only): a tapering stack of boxes of fire, lit from within, from deep
+## orange at the head to white-hot at the tip, standing up out of what is left of the head, each
+## growing and shrinking at its own pace and swaying a little more the higher it is, however the
+## torch is swung. It shrinks as the head burns away (`flame_size`, 1 whole to a little).
+var _flames: Array = []
+var flame_size := 1.0
+var _foot = null   # where the flame stands: the top of the head (local), null when it must be found again
+const FLAME_BOX := [Vector3(0.085, 0.07, 0.085), Vector3(0.07, 0.08, 0.07), Vector3(0.052, 0.085, 0.052), Vector3(0.036, 0.085, 0.036), Vector3(0.022, 0.07, 0.022)]
+const FLAME_COLOR := [Color(1.0, 0.36, 0.05), Color(1.0, 0.5, 0.08), Color(1.0, 0.68, 0.14), Color(1.0, 0.85, 0.34), Color(1.0, 0.96, 0.7)]
+const FLAME_UP := [0.0, 0.058, 0.118, 0.182, 0.245]   # (m, over the head, at full size)
+func _torch_flame() -> void:
+	if not design.get("torch", false) or Fx.current == null or Fx.current.headless:
+		return
+	for i in FLAME_BOX.size():
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = (FLAME_BOX[i] as Vector3) * wscale
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = FLAME_COLOR[i]
+		bm.material = mat
+		mi.mesh = bm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.top_level = true
+		mi.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # placed each frame, like `vis`
+		add_child(mi)
+		_flames.append(mi)
+
+## The top of the head as it is now (local): the flame stands on it.
+func _flame_foot() -> Vector3:
+	if _foot == null:
+		var from_y := int(design.get("headFrom", 0))
+		var top := -INF
+		for i in vox.size():
+			if alive[i] and int(vox[i][1]) >= from_y:
+				top = maxf(top, float(vox[i][1]))
+		_foot = Vector3(0.0, ((top if top > -INF else float(from_y)) + 0.5) * vs, 0.0)
+	return _foot
+
+func _flicker_flames(xf: Transform3D) -> void:
+	var foot: Vector3 = xf * _flame_foot()
+	var t := Time.get_ticks_msec() * 0.001
+	var k0 := float(get_instance_id() % 97)
+	var shown: bool = vis != null and vis.is_visible_in_tree()
+	for i in _flames.size():
+		var mi: MeshInstance3D = _flames[i]
+		if not is_instance_valid(mi):
+			continue
+		mi.visible = shown
+		var k := k0 + 1.7 * i
+		var sy := (1.0 + 0.24 * sin(t * (6.3 + 1.9 * i) + k) + 0.09 * sin(t * (15.0 + 3.0 * i) + 2.0 * k)) * flame_size
+		var sxz := (1.0 + 0.12 * sin(t * (9.0 + 1.3 * i) + 0.6 * k)) * flame_size
+		var sway := Vector3(sin(t * (2.6 + 0.7 * i) + k), 0.0, cos(t * (2.2 + 0.5 * i) + 1.3 * k)) * 0.007 * float(i) * wscale * flame_size
+		var h: float = (mi.mesh as BoxMesh).size.y
+		mi.global_transform = Transform3D(Basis.from_scale(Vector3(sxz, sy, sxz)), foot + sway + Vector3.UP * (float(FLAME_UP[i]) * wscale * flame_size + h * sy * 0.5))
 
 ## Where the other hand takes hold when both hands take it (local), or null when its grip is too
 ## short for two fists (ForgeLib.two_hand_points).
@@ -653,6 +714,7 @@ func remove_voxels(indices: Array) -> Array:
 			continue
 		alive[i] = 0
 		_box_cache = null
+		_foot = null
 		var v: Array = vox[i]
 		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3]))})
 		var b: int = i * 16
@@ -831,7 +893,8 @@ func spend(idx: Array) -> Array:
 const PIECE_MIN := 8        # voxels, at the least
 const PIECE_LONG := 4.0     # and at least this long (voxels), end to end
 func _piece_weapon(pc: Array) -> Dictionary:
-	if pc.size() < PIECE_MIN or design.get("chain") != null or is_shield or not is_inside_tree():
+	# (A torch broken is ash and splinters: no "Broken Torch" lies on the sand to be picked up.)
+	if pc.size() < PIECE_MIN or design.get("chain") != null or design.get("torch", false) or is_shield or not is_inside_tree():
 		return {}
 	var lo := Vector3.INF
 	var hi := -Vector3.INF
@@ -1094,6 +1157,8 @@ func _process(_dt: float) -> void:
 		t = draw_turn * t
 		t.origin += draw_shift
 		vis.global_transform = t
+		if not _flames.is_empty():
+			_flicker_flames(t)
 
 ## Drawn where it is now, with the game paused (the kill cam's replay).
 func draw_now() -> void:

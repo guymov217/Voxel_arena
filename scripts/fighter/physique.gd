@@ -833,21 +833,103 @@ static func _under_cape(p: VoxelPart, id: String) -> bool:
 			return true
 	return false
 
+## A cape hangs off the shoulders as cloth does (user: the cape did not look good, a board stuck on a
+## man; then: smooth, and with no holes): the further down a cell of it is, the further it stands off
+## his back, the whole width of it together (a slant, not a cone, so the cloth keeps the line of his
+## back across it). The cells are the same; only where each is drawn changes (drawing only: what the
+## cape stops is the cells'). Each cell is drawn as the run of the cloth from half way to the cell
+## beside it to half way to the next (_cape_xf), so the cells go on from one to the next however the
+## cloth hangs and no light shows between them, and the cloth bends so gently from row to row that
+## its tiles lie in one smooth sheet.
+const CAPE_FLARE := 1.6      # how far out the hem stands off his back (cells)
+const CAPE_CURVE := 0.25     # how much of that is in the lower part (the rest is a straight lean)
+const CAPE_THICK := 0.34     # how thick the cloth is (of a cell)
+const CAPE_SEAM := 1.05      # a cell's run a little over, so two of them close over one another
+
+static var _cape_spans := {}
+
+## The hanging cells of a cape on a part, as [first column, last column, lowest row, top row] (the
+## brooch in front is no part of the hang).
+static func _cape_span(p: VoxelPart, id: String) -> Array:
+	var key := "%s|%s" % [id, p.part_name]
+	if _cape_spans.has(key):
+		return _cape_spans[key]
+	var ext := [1 << 20, -(1 << 20), 1 << 20, -(1 << 20)]
+	for c in Data.armor.get(id, {}).get("parts", {}).get(String(p.part_name), []):
+		if int(c[2]) < 0:
+			ext[0] = mini(ext[0], int(c[0]))
+			ext[1] = maxi(ext[1], int(c[0]))
+			ext[2] = mini(ext[2], int(c[1]))
+			ext[3] = maxi(ext[3], int(c[1]))
+	_cape_spans[key] = ext
+	return ext
+
+## Where the cloth of one cell of a cape hangs: its place on his outline (FineBody.plate_at, `at` in
+## the part), moved out of him by how far down it is. [place, the way out].
+static func _cape_point(p: VoxelPart, id: String, span: Array, x: int, y: int, at: Vector3, cell: float) -> Array:
+	var xf := FineBody.plate_at(p, at)
+	var out := xf.basis.z.normalized()
+	var v := clampf(float(int(span[3]) - y) / maxf(1.0, float(int(span[3]) - int(span[2]))), 0.0, 1.0)   # 0 at the shoulders .. 1 at the hem
+	var o := xf.origin + Vector3(0.0, 0.0, -1.0) * CAPE_FLARE * ((1.0 - CAPE_CURVE) * v + CAPE_CURVE * v * v) * cell
+	# A cape is worn over the armour: with a cuirass's shell on the part it hangs a layer out,
+	# over it (it lay where the plates lie, and the cuirass came through it, user).
+	if _under_cape(p, id):
+		var h := Vector3(p.grid) * p.vf * p.part_scale * 0.5
+		var radial := Vector3(at.x, 0.0, at.z)
+		if at.y > h.y - cell * 0.25 and radial.length() < Vector2(h.x, h.z).length():
+			o.y += cell * CAPE_OVER
+		elif radial.length() > 0.0001:
+			o += radial.normalized() * cell * CAPE_OVER
+	return [o, out]
+
+## A cell of a cape hanging as cloth: a tile from half way to its neighbours' to half way to the next
+## ones', across and up (at the edge of the cape, as far as its one neighbour), turned to lie along
+## the cloth there.
+static func _cape_xf(p: VoxelPart, c: Array, at: Vector3, id: String) -> Transform3D:
+	var span := _cape_span(p, id)
+	var x := int(c[0])
+	var y := int(c[1])
+	var cell := p.vf * p.part_scale * float(Data.body_res)
+	var here := _cape_point(p, id, span, x, y, at, cell)
+	var xl := maxi(x - 1, int(span[0]))
+	var xr := mini(x + 1, int(span[1]))
+	var yd := maxi(y - 1, int(span[2]))
+	var yu := mini(y + 1, int(span[3]))
+	if xr == xl or yu == yd:
+		return Transform3D(Basis(), here[0])
+	var pl: Vector3 = here[0] if xl == x else _cape_point(p, id, span, xl, y, at + Vector3(float(xl - x) * cell, 0.0, 0.0), cell)[0]
+	var pr: Vector3 = here[0] if xr == x else _cape_point(p, id, span, xr, y, at + Vector3(float(xr - x) * cell, 0.0, 0.0), cell)[0]
+	var pd: Vector3 = here[0] if yd == y else _cape_point(p, id, span, x, yd, at + Vector3(0.0, float(yd - y) * cell, 0.0), cell)[0]
+	var pu: Vector3 = here[0] if yu == y else _cape_point(p, id, span, x, yu, at + Vector3(0.0, float(yu - y) * cell, 0.0), cell)[0]
+	var ex: Vector3 = (pr - pl) / float(xr - xl)
+	var ey: Vector3 = (pu - pd) / float(yu - yd)
+	var ez := ex.cross(ey)
+	if ez.length_squared() < 1e-12:
+		return Transform3D(Basis(), here[0])
+	ez = ez.normalized()
+	if ez.dot(here[1]) < 0.0:
+		ez = -ez
+		ex = -ex
+	return Transform3D(Basis(ex * (CAPE_SEAM / cell), ey * (CAPE_SEAM / cell), ez * CAPE_THICK), here[0])
+
 static func plate_xf(p: VoxelPart, c: Array, at: Vector3, id := "") -> Transform3D:
 	# The new look: on his outline there (FineBody.plate_at); on the fine head, round it (a helmet
 	# sits on the head, its rim over the brow and the ears, not on top like a bowl).
 	if p.fine.has("body"):
 		var xf := FineBody.plate_at(p, at)
-		# A cape is worn over the armour: with a cuirass's shell on the part it hangs a layer out,
-		# over it (it lay where the plates lie, and the cuirass came through it, user).
-		if id.begins_with("cape") and _under_cape(p, id):
-			var cell := p.vf * p.part_scale * float(Data.body_res)
-			var h := Vector3(p.grid) * p.vf * p.part_scale * 0.5
-			var out := Vector3(at.x, 0.0, at.z)
-			if at.y > h.y - cell * 0.25 and out.length() < Vector2(h.x, h.z).length():
-				xf.origin.y += cell * CAPE_OVER
-			elif out.length() > 0.0001:
-				xf.origin += out.normalized() * cell * CAPE_OVER
+		if id.begins_with("cape"):
+			if int(c[2]) < 0 and not (p.fine.get("d", {}) as Dictionary).is_empty():
+				return _cape_xf(p, c, at, id)   # (the brooch, in front, is no part of the hang)
+			# A cape is worn over the armour: with a cuirass's shell on the part it hangs a layer out,
+			# over it (it lay where the plates lie, and the cuirass came through it, user).
+			if _under_cape(p, id):
+				var cell := p.vf * p.part_scale * float(Data.body_res)
+				var h := Vector3(p.grid) * p.vf * p.part_scale * 0.5
+				var out := Vector3(at.x, 0.0, at.z)
+				if at.y > h.y - cell * 0.25 and out.length() < Vector2(h.x, h.z).length():
+					xf.origin.y += cell * CAPE_OVER
+				elif out.length() > 0.0001:
+					xf.origin += out.normalized() * cell * CAPE_OVER
 		return xf
 	if p.fine.has("wtab"):
 		return _plate_head(p, c, at, id)

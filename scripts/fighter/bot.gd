@@ -149,6 +149,18 @@ var hold_t := 0.0
 var hold_move := ""
 var follow_t := 0.0
 var hold_side := "L"            # the hand a man is held in (the hoist and throw follow it)
+## A colossus (a giant bare-handed over men a third his size: Polyphemus, mods.colossus) has no weapon's
+## blows: his are a fist hammered down from over his head ("crush"), the foot stamped down on a man
+## ("stamp") or swept low through him ("punt": Fighter `kick` and `punt`), and the grab, the hoist and
+## the throw (_wrestle). Each is shown in a wind-up the man can read and step out of.
+const CRUSH_RAISE := 0.9        # the fist drawn up over his head before it comes down (s)
+const CRUSH_HOLD := 0.5         # and how long he stands after it has come down (s)
+const CRUSH_STAND := 0.36       # how near the man he stands for it (x S)
+var cmove := ""                 # the colossus's move under way: "crush", "stamp" or "punt" ("": none)
+var cmove_t := 0.0              # how long it has been under way (s)
+var cmove_fired := false        # the blow of the move sent (the fist let go, the knee's kick asked for)
+var cmove_locked := false       # a crush laid on its mark: where the man was as the body went down, and no more
+var cmove_at := Vector3.ZERO    # that mark
 var ability_t := 1.0
 var swat_t := 0.0               # how long he has been swatting at bees on him
 var draw_t := -0.8
@@ -548,6 +560,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var big: bool = S > tS * 1.5 and w != null
 	# Bare-handed over a man that size, his fists go down at the man himself (`jabAt`, below).
 	var over_small: bool = S > tS * 1.5 and w == null and c.held_item == null
+	var colossal: bool = over_small and bool(c.mods.get("colossus", false)) and c.state == "stand" and c.can_stand()   # (down, or crawling on a leg gone, he fights with his fists as any bare-handed man does)
 	var aim_small = null
 	var swing_reach := reach
 	if big:
@@ -645,6 +658,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		var near_r: float = (tw.reach + 0.8 * tS) * 1.2 if big else reach * (1.1 + 0.4 * diff)
 		if sp > 4.5 - diff * 1.2 and d.length() < near_r and v.x * d.x + v.z * d.z > 0.0:
 			incoming = sp
+	if colossal:
+		incoming = 0.0   # (a colossus does not step aside from a man's blade, nor parry it with a bare hand)
 	dodge_t = maxf(0.0, dodge_t - dt)
 	dodge_cool = maxf(0.0, dodge_cool - dt)
 	# The other man's blow: how long it has been coming, and his weapon slowing after a stroke
@@ -732,6 +747,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	var step_in: bool = w != null and not big and keep_away == null and c.state == "stand" and dist < reach * (1.4 if style == "spear" else 1.7) and dist > reach * 0.9
 	var judge := reach * (1.15 + 0.35 * (1.0 - skill))   # (a novice misjudges his length and swings short)
 	var ready: bool = (dist < (judge if not big else swing_reach) or step_in or (rage and (dist < reach * 1.8 or air_t <= 0.0))) and c.stamina > (8.0 if rage else (20.0 + 15.0 * skill))
+	if colossal and not rage:
+		ready = false   # (his blows are the colossus's own, _colossus: no swing of a bare fist like a weapon's)
 	if state == "approach" or state == "guard":
 		# On guard the blade moves: it weaves on its line, and near the man it is drawn back to
 		# the shoulder, cocked for the blow, with a half-feint now and then.
@@ -951,8 +968,120 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	inp.main = hand.duplicate()
 	if dual():
 		_dual_hands(inp, gy, dt)
+	if colossal and not rage:
+		_colossus(dt, target, tp, dist, inp)
 	_react(dt0, inp)
 	return inp
+
+## The colossus's next move and the move under way (see `cmove`): picked by where the man is and how he
+## is (standing or down) once his pause is out; each held to its own wind-up (the fist up over his head,
+## the knee up and the foot behind), planted on his feet while it goes, then a short rest.
+func _colossus(dt: float, target: Node3D, tp: Vector3, dist: float, inp: Dictionary) -> void:
+	var S := c.S
+	# (None of the bare-handed man's jabs and kicks: his blows are these.)
+	inp.erase("jabR")
+	inp.erase("jabL")
+	inp.erase("jabAt")
+	inp.erase("kick")
+	if c.state != "stand" or c.holding != null or grab_reach > 0.0 or follow_t > 0.0 or c.stamina < 12.0:
+		cmove = ""
+		return
+	var foe_down: bool = target.get("state") != null and String(target.state) != "stand"
+	if cmove == "":
+		cmove_t = 0.0
+		if think > 0.0 or c.stamina < 25.0:
+			return
+		var opts := {}
+		if foe_down:
+			if dist < 0.78 * S:
+				opts["stamp"] = 3.0
+			if dist < 0.6 * S:
+				opts["crush"] = 1.0
+		else:
+			if dist < 0.6 * S:
+				opts["crush"] = 1.5
+			if dist < 0.62 * S:
+				opts["punt"] = 1.0
+			if dist < 0.78 * S:
+				opts["stamp"] = 1.0
+		if opts.is_empty():
+			return
+		var tot := 0.0
+		for k in opts:
+			tot += float(opts[k])
+		var r := rng.randf() * tot
+		for k in opts:
+			r -= float(opts[k])
+			cmove = String(k)
+			if r <= 0.0:
+				break
+		cmove_t = 0.0
+		cmove_fired = false
+		cmove_locked = false
+	cmove_t += dt
+	# Planted: no step while the fist is up or the knee is back.
+	inp.mx = 0.0
+	inp.mz = 0.0
+	inp.faceAt = tp
+	if cmove == "stamp" or cmove == "punt":
+		# (The right foot goes down the line of the right leg, half a metre off his middle: he turns a
+		# little to the left of the man, so the man is on it. His left is (cos yaw, 0, -sin yaw).)
+		inp.faceAt = tp + Vector3(cos(c.yaw), 0.0, -sin(c.yaw)) * 0.13 * S
+	var done := false
+	match cmove:
+		"crush":
+			# The fist drawn up over his head, higher as the moment comes; the knees bend in the last half
+			# second so the shoulder is down where the fist can reach him; the fist laid on his head where
+			# he is a quarter of a second before it falls (a little ahead of where he is going) and not
+			# followed after: a man who steps out as the body goes down is not hit. Then the fist is let go
+			# at him, a slow punch (Fighter.CRUSH_SLOW), down from where it is.
+			inp.main = {"x": 0.15, "y": 0.4 + 1.2 * clampf(cmove_t / CRUSH_RAISE, 0.0, 1.0)}
+			inp.power = true
+			if not cmove_locked:
+				inp.mz = clampf((dist - CRUSH_STAND * S) / (0.3 * S), 0.0, 0.6)   # (stepping in as the fist goes up)
+			if cmove_t >= CRUSH_RAISE - 0.55:
+				inp.crouch = true
+			if cmove_t >= CRUSH_RAISE - 0.25 and not cmove_locked:
+				cmove_locked = true
+				var hd = target.get("head")
+				cmove_at = (hd.global_position as Vector3) if hd is Node3D else tp
+				cmove_at += (target.torso.linear_velocity as Vector3) * 0.12
+			if cmove_t >= CRUSH_RAISE:
+				inp.crouch = true
+				inp.crush = true
+				inp.jabAt = cmove_at
+				if not cmove_fired:
+					cmove_fired = true
+					inp.jabR = true
+			done = cmove_fired and cmove_t > CRUSH_RAISE + Fighter.JAB_TIME * Fighter.CRUSH_SLOW + CRUSH_HOLD
+		"stamp":
+			# (Turned onto the man first: the foot goes down the line of the leg.)
+			if not cmove_fired:
+				if c.kick_timer > 0.0:
+					cmove_fired = true
+				elif cmove_t >= 0.2:
+					inp.stamp = true   # (the foot comes up as soon as the man is under it)
+				done = cmove_t > 1.2 and not cmove_fired   # (he could not get the man under his foot: no stamp)
+			else:
+				done = cmove_t > 0.45 and c.kick_timer <= 0.0
+		"punt":
+			if not cmove_fired:
+				var along: Vector3 = tp + Vector3(cos(c.yaw), 0.0, -sin(c.yaw)) * 0.13 * S - c.torso.global_position
+				if cmove_t >= 0.2 and (absf(wrapf(atan2(along.x, along.z) - c.yaw, -PI, PI)) < 0.12 or cmove_t > 0.7):
+					cmove_fired = true
+					inp.kick = true
+					inp.punt = tp
+				else:
+					done = cmove_t > 1.2
+			else:
+				inp.punt = tp
+				done = cmove_t > 0.45 and (c.kick_timer <= 0.0 or c.punt_at == null)
+		_:
+			done = true
+	if done:
+		cmove = ""
+		cmove_t = 0.0
+		think = (1.4 - 0.5 * diff) * (0.6 + 0.8 * rng.randf())
 
 ## The moves that are not swings: going for a weapon lying about when empty-handed, and the
 ## big men's grab, hoist and hurl (or slam). Returns the whole input when it takes over.
@@ -962,7 +1091,7 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 	var tp: Vector3 = target.torso.global_position
 	var dist := Vector2(tp.x - me.x, tp.z - me.z).length()
 	# Empty-handed with a weapon lying nearer than the enemy: go and pick it up.
-	if not c.weapons.R and c.holding == null and c.state == "stand" and c.kind != "beast" and not c.arm.R.fore.severed:
+	if not c.weapons.R and c.holding == null and c.state == "stand" and c.kind != "beast" and not c.arm.R.fore.severed and not bool(c.mods.get("colossus", false)):
 		var hand_p := c.hand_world("R")
 		var best = null
 		var bd := minf(8.0, dist + 1.0)
@@ -1004,7 +1133,7 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 	# on him), and takes longer about the reach (bent over).
 	var foe_down: bool = target.get("state") != null and String(target.state) != "stand"
 	var down_rate := GRAB_DOWN_RATE if not c.weapons.R and not c.weapons.L else GRAB_DOWN_RATE_ARMED
-	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and (state != "attack" or rage or foe_down) and c.state == "stand" and rng.randf() < dt * (0.5 if rage else (down_rate if foe_down else 0.12)):
+	if S >= 1.8 and c.holding == null and dist < 0.8 * S + 0.7 and grab_cool <= 0.0 and (state != "attack" or rage or foe_down) and c.state == "stand" and cmove == "" and rng.randf() < dt * (0.5 if rage else (down_rate if foe_down else (0.3 if bool(c.mods.get("colossus", false)) else 0.12))):
 		grab_cool = 4.0
 		grab_reach = GRAB_REACH * (GRAB_DOWN_REACH if foe_down else 1.0)
 		hold_t = 0.0
@@ -1025,8 +1154,8 @@ func _wrestle(dt: float, target: Node3D, world: Dictionary, inp: Dictionary):
 		var reach_to := {"x": 0.0, "y": clampf((tp.y - c.torso.global_position.y) / (0.45 * S), -1.4, 0.4)}
 		# A man down on the sand: the hand goes right down onto him, and he stoops to it (the
 		# fighter's `grabAt`; stood upright, the hand stopped a metre over him and closed on air).
-		if foe_down:
-			inp.grabAt = tp
+		if foe_down or bool(c.mods.get("colossus", false)):
+			inp.grabAt = tp   # (a colossus stoops to a man standing too: his hand does not reach down to one else)
 		# Out at arm's length and a step in, so the hand comes onto him (a hold now has to be
 		# a touch, and a half-reach closed a hand's breadth short).
 		if gs == "R":

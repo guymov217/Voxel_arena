@@ -27,6 +27,7 @@ const CLOT_K := 0.06
 const ARTERY_CORE := 5.0
 const ARTERY_LIMB := 4.0
 const JAB_TIME := 0.32
+const CRUSH_SLOW := 3.0   # a colossus's crush (bot `crush`) is a punch this many times slower: the fist has the length of him to come down
 const LEG_MASS := 0.5
 ## How hard the body is pulled back over its planted feet (14 in the web game, whose legs are
 ## stiff joint motors; torque-driven legs lag their targets, so less here).
@@ -119,6 +120,7 @@ var time := 0.0
 var gait_phase := 0.0
 var kick_timer := 0.0
 var stomp_at = null   # where a kick begun over a man lying at his feet comes down (a stamp), or null
+var punt_at = null    # where a colossus's low kick sweeps through a man standing before him (a punt), or null
 const KICK_TIME := 0.42      # a kick, from the knee coming up to the foot set down (s)
 var kick_wn := 1.0           # how fast the kicking leg goes to its pose this beat (of LEG_WN)
 ## A front kick's pose `e` seconds into it: [the thigh raised forward (rad), the knee's bend (rad),
@@ -137,7 +139,7 @@ static func kick_pose(e: float) -> Array:
 func kick_strike() -> bool:
 	if kick_timer <= 0.0:
 		return false
-	if stomp_at != null:
+	if stomp_at != null or punt_at != null:
 		return kick_timer <= STOMP_CHAMBER + 0.03
 	var e := KICK_TIME - kick_timer
 	return e >= 0.1 and e < 0.3
@@ -145,6 +147,15 @@ const STOMP_BELOW := 0.25     # how far under the hip what lies before him is fo
 const STOMP_CHAMBER := 0.26   # a stamp's knee is up until the kick's clock is down to this (of 0.42 s)
 const STOMP_LIFT := 0.45      # how high over the man the foot is drawn up (m, at S 1)
 const STOMP_DRIVE := 0.45     # how far into him it is driven (m, at S 1): still going hard when it lands
+## A colossus (a giant bare-handed over men a third his size: Polyphemus, mods.colossus) stamps on a man
+## standing before him as on one lying, and kicks low through one, a punt: the knee comes up slowly (a
+## man sees the foot rise over him, the wind-up of both runs at COLOSSUS_WIND of a man's pace) and then
+## it comes down, or sweeps through, as fast as any kick.
+const COLOSSUS_WIND := 0.35
+const COLOSSUS_SMALL := 1.8   # a man this many times smaller than he is is stamped on standing
+const PUNT_BACK := 0.45       # how far behind the hip the foot is swung back for a punt (x S)
+const PUNT_DROP := 0.78       # and how far under the hip it is held there (x S: a little off the sand)
+const PUNT_THROUGH := 0.4     # how far past the man's middle the foot is swept (x S)
 var push_t := 0.0
 var kills := 0
 var last_attacker: Node = null
@@ -156,6 +167,7 @@ var grabbed_by: Node = null
 var pinned_arm := ""
 var thrown_t := 0.0
 var player := false              # a man's own fighter, his or a guest's (not a bot's)
+var sturdy_arms := false         # a player's arm cracks before it breaks (Match sets it, not at Extreme): see ARM_CRACK_GRACE
 var struck_frame := -10          # the physics frame a foe's weapon last pressed on him (VoxelPart)
 var beast_frame := -10           # the physics frame a beast's body last struck him, not holding him (VoxelPart)
 var v_free := Vector3.ZERO       # his trunk's speed before it did
@@ -306,6 +318,7 @@ var hp_prev := {"R": Vector2(0.1, 0.1), "L": Vector2(-0.35, 0.1)}   # the hand's
 var hp_vel := {"R": Vector2.ZERO, "L": Vector2.ZERO}
 var handling := {"R": 1.0, "L": 1.0}
 var jab_t := {"R": 0.0, "L": 0.0}
+var jab_len := {"R": JAB_TIME, "L": JAB_TIME}   # how long that hand's punch takes (a colossus's crush is a slow one: CRUSH_SLOW)
 var fist_home := {"R": 0.0, "L": 0.0}   # a punch's way back to the guard, still to go (s)
 var jab_twist_was := 0.0   # the trunk's turn behind a punch, as it was asked the step before (rad)
 var jab_next := {"R": false, "L": false}   # a punch asked for while that hand's last was on its way home
@@ -1010,7 +1023,7 @@ static func jab_turn_at(k: float) -> float:
 func fist_strike(side: String) -> int:
 	var t: float = jab_t.get(side, 0.0)
 	if t > 0.0:
-		var k := 1.0 - t / JAB_TIME
+		var k := 1.0 - t / float(jab_len[side])
 		return 2 if k >= JAB_DRAW and k < JAB_BACK else 0
 	return 1 if float(fist_swing.get(side, 0.0)) > 0.0 else 0
 
@@ -1021,9 +1034,9 @@ func jab_landed(side: String) -> void:
 	var t: float = jab_t.get(side, 0.0)
 	if t <= 0.0:
 		return
-	var k := 1.0 - t / JAB_TIME
+	var k := 1.0 - t / float(jab_len[side])
 	if k >= JAB_DRAW and k < JAB_BACK:
-		jab_t[side] = JAB_TIME * (1.0 - JAB_BACK - 0.5 * JAB_HOME)
+		jab_t[side] = float(jab_len[side]) * (1.0 - JAB_BACK - 0.5 * JAB_HOME)
 
 ## The elbow's bend now (0: straight), the forearm's line against the upper arm's.
 func elbow_bend(side: String) -> float:
@@ -1120,7 +1133,7 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 	mesh.size = Vector3.ONE * V * S * 0.98
 	# Each cell its own colour and stuff (ArmorStyle): strands of hair, woven straw, plates
 	# with a rim and rivets, a crown's stones, a cape's folds. Only the look.
-	mesh.material = VoxelPart.body_material()
+	mesh.material = VoxelPart.cape_material() if id.begins_with("cape") else VoxelPart.body_material()
 	var bc := ArmorStyle.base_color(id, a, skin)
 	if id.begins_with("hair_") or id.begins_with("beard_"):
 		var hc = Physique.hair_choice(self)
@@ -2282,12 +2295,39 @@ func grab_nearest(list: Array, only_side := "") -> Weapon:
 		var best := takeable(list, side)
 		if best and reach_for(side, best):
 			return best
+	# His weapon arm out and his good hand on a shield: the shield is let go of and the hand takes the
+	# weapon lying by him (see swap_target).
+	var sw := swap_target(list)
+	if not sw.is_empty() and (only_side == "" or only_side == sw.side):
+		var shield: Weapon = release(sw.side)
+		if shield != null and reach_for(sw.side, sw.w):
+			return sw.w
 	return null
+
+## A player whose weapon arm is out (broken, hanging, cut off) and whose good hand holds only a shield
+## can do nothing but run (user: with the weapon arm gone he lived on and could not fight): G lets the
+## shield go and takes the weapon lying in that hand's reach, a sword or a spear, never another
+## shield. {side, w}, or {} when it does not apply (he has an arm to strike with, no good hand
+## on a shield, nothing lying by him).
+func swap_target(list: Array) -> Dictionary:
+	if not player or not alive:
+		return {}
+	for side in ["R", "L"]:
+		var w = weapons[side]
+		if hand_works(side) and (w == null or not w.is_shield):
+			return {}   # (a hand free, or striking with a weapon: nothing to swap)
+	for side in ["R", "L"]:
+		var sh = weapons[side]
+		if sh != null and sh.is_shield and hand_works(side) and not fixed_hand[side] and reach[side] == null:
+			var best := takeable(list, side, true)
+			if best != null and not best.is_shield:
+				return {"side": side, "w": best}
+	return {}
 
 ## The weapon in `list` that `side`'s hand would go for on G (null: none in its reach, or the hand
 ## is not free). The HUD's "Pick up" prompt asks this too, so it shows exactly when G would work.
-func takeable(list: Array, side: String) -> Weapon:
-	if not alive or weapons[side] or arm[side].fore.severed or arm[side].fore.hanging or (side == two_off() and two_handed) or (holding != null and holding.side == side):
+func takeable(list: Array, side: String, held_ok := false) -> Weapon:
+	if not alive or (weapons[side] and not held_ok) or arm[side].fore.severed or arm[side].fore.hanging or (side == two_off() and two_handed) or (holding != null and holding.side == side):
 		return null
 	var hand := hand_world(side)
 	var best: Weapon = null
@@ -2809,6 +2849,17 @@ func off_hand_free() -> bool:
 ## A bone of that arm broken: it hangs, and its hand holds nothing (user).
 func arm_broken(side: String) -> bool:
 	return arm[side].upper.fractured or arm[side].fore.fractured
+
+## Whether `part` is a bone of one of his arms.
+func is_arm_part(part: VoxelPart) -> bool:
+	for side in arm:
+		if part == arm[side].upper or part == arm[side].fore:
+			return true
+	return false
+
+## An arm bone that cracks before it breaks: a player's (ARM_CRACK_GRACE).
+func sturdy_arm(part: VoxelPart) -> bool:
+	return sturdy_arms and is_arm_part(part)
 
 ## A bone of that leg broken: it bears no weight and kicks nothing; he hops on the other.
 func leg_broken(side: String) -> bool:
@@ -3626,7 +3677,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# As the knee comes up the weight goes over the standing foot (sideways only, and only
 		# then: drawn on over it through the kick, the body went into the kick with the foot and
 		# it landed half as hard again).
-		if kick_timer > KICK_TIME - 0.12 and stomp_at == null and feet.L and not feet.L.swing and not by_name["shinL"].severed:
+		if kick_timer > KICK_TIME - 0.12 and stomp_at == null and punt_at == null and feet.L and not feet.L.swing and not by_name["shinL"].severed:
 			var side_k := yaw_q * Vector3(1, 0, 0)
 			var off_k := Vector3(feet.L.anchor.x - t_pos.x, 0, feet.L.anchor.z - t_pos.z)
 			move_world += PD.clamp_len(side_k * off_k.dot(side_k) * STANCE_K, 0.2)
@@ -3697,8 +3748,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# later of two punches has the trunk, the turn of the one before giving way to it as it
 		# comes (added up, a left on the heels of a right held the trunk square between them, and
 		# stiff); two thrown together turn it neither way, and it leans in behind both.
-		var jk_r: float = 1.0 - float(jab_t.R) / JAB_TIME if float(jab_t.R) > 0.0 else -1.0
-		var jk_l: float = 1.0 - float(jab_t.L) / JAB_TIME if float(jab_t.L) > 0.0 else -1.0
+		var jk_r: float = 1.0 - float(jab_t.R) / float(jab_len.R) if float(jab_t.R) > 0.0 else -1.0
+		var jk_l: float = 1.0 - float(jab_t.L) / float(jab_len.L) if float(jab_t.L) > 0.0 else -1.0
 		var turn_r := jab_turn_at(jk_r)
 		var turn_l := jab_turn_at(jk_l)
 		var jab_lean := maxf(turn_r, turn_l) * JAB_LEAN
@@ -3768,12 +3819,21 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		pd_relative(head, torso, look_q, 20.0 * neck, 0.95, 90.0 * neck * MS * S, dt)
 
 	# ----- Legs -----
-	kick_timer = maxf(0.0, kick_timer - dt)
-	# (Not on a broken leg, nor standing on one: it is no use at all, user.)
-	if inp.get("kick", false) and kick_timer <= 0.0 and stamina > 12.0 and standing and not leg_broken("R") and not leg_broken("L"):
-		kick_timer = KICK_TIME
-		stamina -= 12.0
-		stomp_at = _stomp_spot(yaw_q)
+	# (A colossus's stamp and punt: the knee comes up slowly, the wind-up seen before it falls.)
+	var kick_rate := COLOSSUS_WIND if (stomp_at != null or punt_at != null) and kick_timer > STOMP_CHAMBER and bool(mods.get("colossus", false)) else 1.0
+	kick_timer = maxf(0.0, kick_timer - dt * kick_rate)
+	# (Not on a broken leg, nor standing on one: it is no use at all, user.) A colossus's `stamp` kicks
+	# only with a man under the foot there and then, a `punt` low through the man's middle.
+	var stamp_in: bool = inp.get("stamp", false) and bool(mods.get("colossus", false))
+	if (inp.get("kick", false) or stamp_in) and kick_timer <= 0.0 and stamina > 12.0 and standing and not leg_broken("R") and not leg_broken("L"):
+		var pn = inp.get("punt")
+		var colossal_punt: bool = pn is Vector3 and bool(mods.get("colossus", false))
+		var spot = null if colossal_punt else _stomp_spot(yaw_q)
+		if spot != null or not stamp_in:
+			kick_timer = KICK_TIME
+			stamina -= 12.0
+			stomp_at = spot
+			punt_at = pn if colossal_punt else null
 	var move_amt: float = minf(1.0, h_speed / 2.5)
 	var t_inv := t_rot.inverse()
 	var move_dir := v_smooth.normalized() if v_smooth.length_squared() >= 0.04 else Vector3.ZERO
@@ -3794,7 +3854,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var thigh_q := Quaternion.IDENTITY
 		var bend := 0.2
 		if kicking:
-			var chamber := kick_timer > (STOMP_CHAMBER if stomp_at != null else 0.3)
+			var chamber := kick_timer > (STOMP_CHAMBER if stomp_at != null or punt_at != null else 0.3)
 			# A stamp follows the man under it while the knee is up: rolled or dragged aside, the
 			# foot comes down where he is now, not where he lay when the kick began.
 			if stomp_at != null and chamber:
@@ -3806,13 +3866,31 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				# not be kicked; out at hip height the foot went over him): the knee comes up high,
 				# the foot over him, then it is driven down onto him and through.
 				var spot: Vector3 = stomp_at
-				var mark: Vector3 = spot - Vector3(0, STOMP_DRIVE * S, 0)
+				var colossus_leg: bool = bool(mods.get("colossus", false))
+				var mark: Vector3 = spot - Vector3(0, STOMP_DRIVE * S * (1.8 if colossus_leg else 1.0), 0)   # (a colossus's foot is sent a long way through him)
 				if chamber:
 					mark = hip.lerp(spot, 0.6)
-					mark.y = spot.y + STOMP_LIFT * S
+					# (Over a man standing, a colossus's foot is drawn up half as high: the whole length of his
+					# leg out level was more than the leg could hold.)
+					mark.y = spot.y + STOMP_LIFT * S * (0.5 if bool(mods.get("colossus", false)) and spot.y > ground_y + 0.7 else 1.0)
 				var ik := _leg_aim(t_inv * (mark - hip), l1, l2)
 				thigh_q = ik[0]
 				bend = ik[1]
+				kick_wn = 1.8 if colossus_leg and not chamber else 1.0
+			elif punt_at != null:
+				# A colossus's kick at a man standing before him (a punt): the leg swung back, the foot
+				# behind him a little off the sand while the knee is held there (and laid on the man
+				# as long as it is asked: the bot's `punt`), then swept through him at the height of
+				# his middle and on past.
+				if chamber and inp.get("punt") is Vector3:
+					punt_at = inp.get("punt")
+				var behind: Vector3 = hip + yaw_q * Vector3(0, 0, -PUNT_BACK * S) + Vector3(0, -PUNT_DROP * S, 0)
+				var through: Vector3 = (punt_at as Vector3) + yaw_q * Vector3(0, 0, PUNT_THROUGH * S)
+				var mark_p: Vector3 = behind if chamber else behind.lerp(through, PD.smooth(0.0, 1.0, 1.0 - kick_timer / STOMP_CHAMBER))
+				var ik_p := _leg_aim(t_inv * (mark_p - hip), l1, l2)
+				thigh_q = ik_p[0]
+				bend = ik_p[1]
+				kick_wn = 1.0 if chamber else 1.5
 			else:
 				# A front kick's beats (kick_pose): the knee drawn up, the foot driven out, drawn
 				# back in, set down. (It went out and stayed out at hip height a quarter of a
@@ -3992,7 +4070,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var m2 := 1.0 / (1.0 / maxf(0.05, shin.mass) + r2.length_squared() / PD.inertia_of(shin))
 				var fy := clampf(-over * 0.25 * m2 / (dt * dt) - maxf(0.0, sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0)
 				shin.apply_impulse(Vector3(0, fy * dt, 0), r2)
-		var wn_k: float = kick_wn if kicking and stomp_at == null else 1.0
+		var wn_k: float = kick_wn if kicking and (stomp_at == null or bool(mods.get("colossus", false))) else 1.0
 		motor_rel(thigh, torso, thigh_q, LEG_WN * wn_k * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
 		if not shin.severed and not shin.hanging:
 			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * wn_k * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
@@ -5247,16 +5325,17 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# (Asked for again while that hand's punch is on its way home: kept, and thrown as it ends. The
 	# second click of a quick pair was lost, the fist not yet back.)
 	var jab_in: bool = inp.get("jabR" if side == "R" else "jabL", false)
-	if jab_in and jab_t[side] > 0.0 and 1.0 - float(jab_t[side]) / JAB_TIME >= JAB_BACK:
+	if jab_in and jab_t[side] > 0.0 and 1.0 - float(jab_t[side]) / float(jab_len[side]) >= JAB_BACK:
 		jab_next[side] = true
 	if not w and (jab_in or jab_next[side]) and jab_t[side] <= 0.0 and state == "stand" and stamina > 4.0:
-		jab_t[side] = JAB_TIME
+		jab_len[side] = JAB_TIME * (CRUSH_SLOW if inp.get("crush", false) else 1.0)
+		jab_t[side] = float(jab_len[side])
 		stamina -= 5.0
 		jab_next[side] = false
 	elif jab_t[side] <= 0.0 or w:
 		jab_next[side] = false
 	jab_t[side] = maxf(0.0, jab_t[side] - dt)
-	var jk: float = 1.0 - jab_t[side] / JAB_TIME if jab_t[side] > 0.0 else -1.0
+	var jk: float = 1.0 - jab_t[side] / float(jab_len[side]) if jab_t[side] > 0.0 else -1.0
 	if jk >= JAB_BACK:
 		fist_home[side] = JAB_HOME_TIME
 	elif jk >= 0.0 or w:
@@ -6574,7 +6653,8 @@ static func _leg_aim(hf: Vector3, l1: float, l2: float) -> Array:
 ## Where a kick comes down on a man (or a beast) down at his feet, lying, sitting or on his
 ## knees: the first of him a stride ahead of the kicking hip (rays straight down at a few
 ## distances), well under the hip; null when there is none, and the kick goes out at hip height
-## as a kick. (Not a man on his feet, whose leg stepping forward is low too; nor a dead one.)
+## as a kick. (Not a man on his feet, whose leg stepping forward is low too, unless the kicker is a
+## colossus and he a man a third his size; nor a dead one.)
 func _stomp_spot(yaw_q: Quaternion):
 	var thigh: VoxelPart = by_name["thighR"]
 	if thigh.severed:
@@ -6582,17 +6662,24 @@ func _stomp_spot(yaw_q: Quaternion):
 	var space := torso.get_world_3d().direct_space_state
 	var hip: Vector3 = torso.global_position + PD.quat_of(torso) * (thigh.pa as Vector3)
 	var fwd: Vector3 = yaw_q * Vector3(0, 0, 1)
+	var colossus: bool = bool(mods.get("colossus", false))
 	var q := PhysicsRayQueryParameters3D.create(hip, hip, VoxelPart.LAYER_BODY, _own_rids())
-	for k in [0.3, 0.45, 0.6, 0.75]:
+	# (A colossus's rays are closer together: a man a third his size between two of them was missed.)
+	for k in ([0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8] if colossus else [0.3, 0.45, 0.6, 0.75]):
 		var at: Vector3 = hip + fwd * k * S
 		q.from = at
 		q.to = at + Vector3(0, -2.0 * S, 0)
 		var h := space.intersect_ray(q)
 		if h and h.collider is VoxelPart:
 			var o = (h.collider as VoxelPart).fighter
-			if o != null and o != self and o is Fighter and (o as Fighter).alive and (o as Fighter).state != "stand" and float(h.position.y) < hip.y - STOMP_BELOW * S:
+			if o != null and o != self and o is Fighter and (o as Fighter).alive and ((o as Fighter).state != "stand" or (colossus and S > float((o as Fighter).S) * COLOSSUS_SMALL)) and float(h.position.y) < hip.y - STOMP_BELOW * S:
 				return h.position
 	return null
+
+## Whether a kick begun now would come down on a man (a stamp): one lies, sits or kneels on the line of
+## the kicking leg, or (for a colossus) stands there, a man a third his size.
+func stomp_ready() -> bool:
+	return _stomp_spot(Quaternion(UP, yaw)) != null
 
 ## The ground under a foot's spot: the sand, or a body lying on it there; `fallback` with
 ## nothing under it within reach.
@@ -6668,7 +6755,7 @@ func hand_target_local(side: String, hp: Dictionary, thrust: float) -> Vector3:
 		d = d.normalized() * lerpf(d.length(), maxf(d.length(), arm_reach * 0.92), float(swing_reach[side]))
 	# A fist thrown goes out to the end of the arm and a little past it on its way out: short of
 	# that, the hand's pull held the elbow bent and the punch never straightened.
-	var jkt: float = 1.0 - jab_t[side] / JAB_TIME
+	var jkt: float = 1.0 - jab_t[side] / float(jab_len[side])
 	d = PD.clamp_len(d, (UPPER_LEN + FORE_LEN) * (JAB_REACH if jkt >= JAB_DRAW and jkt < JAB_BACK else 0.97) * S if fist > 0.0 and jab_t[side] > 0.0 else arm_reach)
 	return d + sh
 
@@ -7183,7 +7270,15 @@ func _hold_thrust_line(side: String, w: Weapon, t_pos: Vector3, yaw_q: Quaternio
 	var v := fore.velocity_at(hand) - torso.linear_velocity
 	v -= d * v.dot(d)
 	var m := fore.nominal_mass + w.mass
-	var J := PD.clamp_len((off * wn * wn - v * 2.0 * wn) * m * dt, 1200.0 * maxf(0.3, strength) * MS * dt)
+	# The braking no harder than stops the hand in one step, as the hand's drive is (pushed at the
+	# hand the forearm answers as a much lighter mass than the arm and blade it stands for): braked
+	# as the whole of them its hand overshot at every step, a light blade's most, and the point
+	# trembled a few centimetres for as long as the stab was held (user: the hand trembles for no
+	# reason, holding a knife).
+	var r_h: Vector3 = hand - fore.global_position
+	var m_pt := 1.0 / (1.0 / maxf(0.05, fore.mass) + r_h.length_squared() / PD.inertia_of(fore))
+	var damp := minf(2.0 * wn * m, 1.2 * m_pt / dt)
+	var J := PD.clamp_len((off * wn * wn * m - v * damp) * dt, 1200.0 * maxf(0.3, strength) * MS * dt)
 	fore.apply_impulse(J, hand - fore.global_position)
 	torso.apply_central_impulse(-J * 0.5)
 	var ax := PD.quat_of(w) * Vector3.UP
@@ -9146,6 +9241,12 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 	var big := maxf(1.0, S)
 	if level < 0:
 		level = 3 if _opens(part, J) else (2 if J >= BREAK_J * big or part.fracture >= 1 else 1)
+	# A player's arm: a sound bone only cracks, a cracked one is not broken through in the same flurry.
+	if level >= 2 and sturdy_arm(part):
+		if part.fracture == 0:
+			level = 1
+		elif Engine.get_physics_frames() - int(part.get_meta("crack_f", -1000000)) < int(ARM_CRACK_GRACE * Engine.physics_ticks_per_second):
+			return
 	# Out through the skin only in an arm or a leg (user): anywhere else broken through at worst.
 	if level >= 3 and not can_break_open(part):
 		level = 2
@@ -9160,6 +9261,7 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 	pain = minf(1.0, pain + (0.12 if level == 1 else 0.35))
 	if level == 1:
 		res.cracked = part
+		part.set_meta("crack_f", Engine.get_physics_frames())
 		part.wound(lp, minf(0.1, 0.05 + J * 0.0015) * S, "bruise")
 		return
 	res.fractured = part
@@ -9212,7 +9314,7 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 	var big := maxf(1.0, S)
 	# Chopped through most of it, or a deep notch (a smaller one in a bone already cracked): broken
 	# through, under the skin.
-	if q >= 0.3 or (part.fracture == 1 and q >= 0.12):
+	if q >= 0.3 or (part.fracture == 1 and q >= (ARM_CRACK_CUT if sturdy_arm(part) else 0.12)):
 		_fracture(part, lp, J, res, 2, ld)
 	elif cut >= 2 or (res.get("bone", false) and J > 18.0 * big):   # (a notch, not a single grain of it)
 		_fracture(part, lp, J, res, 1, ld)
@@ -9221,6 +9323,14 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 ## rather than cracking it, past OPEN_J (and after many, _opens) out through the skin.
 const BREAK_J := 24.0
 const OPEN_J := 60.0
+## A player's arm (user: his hands broke far too easily, from one blow, and he was left with nothing
+## to fight with): a sound arm bone only cracks from a single blow, however hard and by whatever it
+## came (a crack: the arm works at three quarters and hurts), and it breaks through only under a
+## second, separate blow: not one in the same flurry (ARM_CRACK_GRACE s after the crack), and a
+## blade must cut ARM_CRACK_CUT of the cracked bone to break it (a nick no longer does). The rest
+## (bots, beasts, a player at Extreme) as they were. A hairline crack mends between bouts.
+const ARM_CRACK_GRACE := 2.5
+const ARM_CRACK_CUT := 0.25
 ## An open break, as it happens (user): a bone broken out through the skin is the work of many
 ## blunt blows on the one limb (OPEN_AFTER of them at least, each past BLOW_COUNTS_J: the bone
 ## cracked, then broken under them), ended by a very hard one (OPEN_J) that drives the broken

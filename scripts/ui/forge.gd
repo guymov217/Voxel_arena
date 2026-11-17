@@ -48,6 +48,7 @@ var weapon_root: Node3D
 var anvil: MeshInstance3D
 var floor_: MeshInstance3D
 var ghost: MeshInstance3D
+var turn_ghost: MeshInstance3D    # a halo on the sharp block the mouse is on: the one R turns
 var framed := false
 var fit_dist := 1.0   # how far back the camera must be for the whole weapon
 var fit_ext := 0.0    # how far the weapon reaches from its middle (m)
@@ -401,6 +402,17 @@ func _build_smithy() -> void:
 	ghost.mesh = gb
 	ghost.visible = false
 	viewport.add_child(ghost)
+	turn_ghost = MeshInstance3D.new()
+	var tb := BoxMesh.new()
+	tb.size = Vector3.ONE * Data.weapon_voxel * 1.16
+	var tm := StandardMaterial3D.new()
+	tm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tm.albedo_color = Color(1.0, 0.82, 0.3, 0.3)
+	tb.material = tm
+	turn_ghost.mesh = tb
+	turn_ghost.visible = false
+	viewport.add_child(turn_ghost)
 	line_ghost = MultiMeshInstance3D.new()
 	var lmm := MultiMesh.new()
 	lmm.transform_format = MultiMesh.TRANSFORM_3D
@@ -449,6 +461,7 @@ func _show_mode(m: String) -> void:
 		_:
 			_voxels_ui()
 	ghost.visible = false
+	turn_ghost.visible = false
 	line_from = null
 	_show_line([])
 	if tool_bar:
@@ -1671,6 +1684,11 @@ func _aim(at: Vector2) -> Dictionary:
 func _hover(at: Vector2) -> void:
 	var a := _aim(at)
 	var c = null
+	# The sharp block under the mouse is haloed: it is the one R turns.
+	var under = a.get("hit") if not a.is_empty() else null
+	turn_ghost.visible = under != null and cells.has(under) and _is_sharp(under)
+	if turn_ghost.visible:
+		turn_ghost.position = Vector3(under) * Data.weapon_voxel
 	if not a.is_empty():
 		c = a.get("hit") if tool == "erase" or tool == "hand" else a.get("place")
 	# The line from where it starts to where the mouse is: every block it would put down.
@@ -1824,19 +1842,53 @@ const FACE_LINES := {
 ## Turns the sharp block `k` to face the next way: each of the six in turn, then back to as the
 ## weapon's shape has it.
 func turn_face(k: Vector3i) -> void:
-	if not cells.has(k) or not (str(cells[k][1]) == "edge" or str(cells[k][1]) == "point"):
+	if not cells.has(k) or not _is_sharp(k):
 		cost_label.text = "Only a Cut or a Stab block turns: point at one and press R"
 		return
 	_push_undo()
-	var f := _face(k) + 1
+	# From the way it faces as drawn (a block of a ready-made weapon has no way set, and R turning it to
+	# the way it already faces looked like nothing done).
+	var f := _look_face(k) + 1
 	if f > 5:
 		f = -1
-	var c: Array = cells[k].duplicate()
-	c.resize(3)
-	c[2] = f
-	cells[k] = c
-	cost_label.text = Loc.t(FACE_LINES[str(c[1])][f] if f >= 0 else FACE_LINES[str(c[1])][6])
+	# The blocks the mirrors make of it turn with it, the mirrored way (as they were put on): a
+	# blade turned on one side and left on the other is not what the mirror is for.
+	for at in _mirrored([k]):
+		if not cells.has(at) or not _is_sharp(at):
+			continue
+		var fa := f
+		if fa >= 0:
+			if at.x != k.x and fa < 2:
+				fa = 1 - fa
+			if at.z != k.z and fa >= 4:
+				fa = 9 - fa
+		var cc: Array = cells[at].duplicate()
+		cc.resize(3)
+		cc[2] = fa
+		cells[at] = cc
+	cost_label.text = Loc.t(FACE_LINES[str(cells[k][1])][f] if f >= 0 else FACE_LINES[str(cells[k][1])][6])
 	_rebuild()
+
+## The way the sharp block `k` is drawn facing: the way the smith set, else the one open side the
+## weapon's shape has it narrow toward, else -1 (a tip, or a block with no one way).
+func _look_face(k: Vector3i) -> int:
+	if _face(k) >= 0:
+		return _face(k)
+	var jobs := {}
+	var faces := {}
+	for c in cells:
+		jobs[c] = str(cells[c][1])
+		if _face(c) >= 0:
+			faces[c] = _face(c)
+	var bits := VoxelPart.taper_code(jobs, k, -1, faces) & 63
+	for i in 6:
+		if bits == (1 << i):
+			return i
+	return -1
+
+## An Edge or a Point block: the two that have a way to face.
+func _is_sharp(k: Vector3i) -> bool:
+	return cells.has(k) and (str(cells[k][1]) == "edge" or str(cells[k][1]) == "point")
 
 const DULL := 0.2           # below it an edge cuts next to nothing
 const WORKING_EDGE := 0.6   # what the smith hones a first edge to on a dull weapon
@@ -1933,9 +1985,9 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if k and k.pressed and not k.echo and not k.ctrl_pressed and not k.alt_pressed and viewport and mode == "voxels" and _shortcut(k):
 		get_viewport().set_input_as_handled()
 		return
-	if e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_F and viewport:
+	if e is InputEventKey and e.pressed and not e.ctrl_pressed and _is_key(e, KEY_F) and viewport:
 		_frame()   # the whole weapon back in view
-	elif e is InputEventKey and e.pressed and not e.ctrl_pressed and e.keycode == KEY_R and viewport and mode == "voxels" and hover_at != null:
+	elif e is InputEventKey and e.pressed and not e.ctrl_pressed and _is_key(e, KEY_R) and viewport and mode == "voxels" and hover_at != null:
 		var a := _aim(hover_at)
 		if not a.is_empty() and a.get("hit") != null:
 			turn_face(a.hit)
@@ -1946,6 +1998,11 @@ func _unhandled_key_input(e: InputEvent) -> void:
 			_redo()
 		else:
 			_undo()
+
+## Is this the key `code`: by what it says, or by where it is (a Hebrew or Russian layout says
+## another letter there, and the other keys at the anvil already go by their place).
+static func _is_key(k: InputEventKey, code: Key) -> bool:
+	return k.keycode == code or k.physical_keycode == code
 
 ## A key at the anvil (TOOL_KEYS, JOB_KEYS, M and N for the mirrors, Q to take up a block's
 ## material and job): true if it did something.

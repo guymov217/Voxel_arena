@@ -133,3 +133,45 @@ func test_a_trained_thrust_does_more() -> void:
 	var plain := await _stab("gladius", 1.0, "down")
 	var trained := await _stab("gladius", 1.0, "down", 0, 1.0 + Training.effect(15.0) / 100.0)
 	t.check(trained.dmg > plain.dmg * 1.15, "fifteen points of Ictus: the same thrust does a fifth more (%.1f against %.1f)" % [trained.dmg, plain.dmg])
+
+## How much a blade's point shakes (mm, what is left of its track once the slow motion is taken out) and
+## the most it moves in one step (mm), held out at the end of a stab with the thrust held.
+func _held_stab_shake(wk: String) -> Array:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 3, "loadout": {"main": wk, "off": ""}})
+	var f: Fighter = m.me.f
+	var st := {"thrust": 0.0}
+	m.me.drive = func(_e): return {"main": {"x": 0.0, "y": 0.35}, "off": {"x": -0.35, "y": 0.1}, "power": true, "thrust": st.thrust, "look": {"yaw": 0.0, "pitch": 0.0}}
+	await _steps(240)
+	st.thrust = 1.0
+	await _steps(90)
+	var tips := []
+	for i in 360:
+		await _steps(1)
+		var w: Weapon = f.weapons.R
+		tips.append(w.global_position + PD.quat_of(w) * Vector3(0, w.reach, 0) - f.torso.global_position)
+	var hf := 0.0
+	var step := 0.0
+	var k := 15
+	for i in range(k, tips.size() - k):
+		var avg := Vector3.ZERO
+		for j in range(i - k, i + k + 1):
+			avg += tips[j]
+		avg /= float(2 * k + 1)
+		hf += (tips[i] - avg).length_squared()
+		step = maxf(step, (tips[i] - tips[i - 1]).length())
+	hf = sqrt(hf / float(tips.size() - 2 * k))
+	m.queue_free()
+	await _steps(2)
+	return [hf * 1000.0, step * 1000.0]
+
+## The point of a light blade held out at the end of a stab does not tremble (user: the hand trembles
+## for no reason, holding a knife): the thrust's hold braked the hand as hard as the arm and the blade
+## together would stand it, and a dagger's point rang by two or three centimetres at every step, a
+## gladius's by two millimetres.
+func test_a_knife_held_out_at_the_end_of_a_stab_does_not_tremble() -> void:
+	for wk in ["dagger", "gladius"]:
+		var s: Array = await _held_stab_shake(wk)
+		t.check(float(s[0]) < 8.0, "%s: its point shakes %.1f mm at most (8)" % [wk, float(s[0])])
+		t.check(float(s[1]) < 25.0, "%s: and moves %.1f mm a step at most (25)" % [wk, float(s[1])])

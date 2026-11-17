@@ -34,10 +34,15 @@ static func cells(id: String, a: Dictionary, cells_: Array, base: Color) -> Arra
 	var ylo := 1 << 20
 	var yhi := -(1 << 20)
 	var zhi := -(1 << 20)
+	var xlo := 1 << 20
+	var xhi := -(1 << 20)
 	for c in cells_:
 		ylo = mini(ylo, int(c[1]))
 		yhi = maxi(yhi, int(c[1]))
 		zhi = maxi(zhi, int(c[2]))
+		if int(c[2]) < 0:
+			xlo = mini(xlo, int(c[0]))
+			xhi = maxi(xhi, int(c[0]))
 	var span := float(maxi(1, yhi - ylo))
 	var hair := id.begins_with("hair_") or id.begins_with("beard_")
 	var metal := kind == 3 or kind == 4
@@ -77,14 +82,24 @@ static func cells(id: String, a: Dictionary, cells_: Array, base: Color) -> Arra
 				kd = 7
 			elif y == yhi:
 				k = 1.12
-		elif id == "cape":
+		elif id.begins_with("cape"):
+			# One smooth sheet of cloth (user: smooth, with no holes): the light falls off gently down
+			# it and across it in a few soft folds, no cell darker than its neighbour by more than a
+			# shade; the hem a shade darker, the lining darker at its edges, and the brooch at the
+			# throat in front.
 			kd = 1
-			k = (0.84 if posmod(x, 2) == 0 else 1.0) * (0.95 + 0.1 * n)
-			if y == ylo:
-				k *= 0.68
-			elif y == yhi and (x == 0 or x == int(cells_.map(func(cc): return cc[0]).max())):
-				col = Color(0.8, 0.62, 0.25)
+			var u := 0.0
+			if xhi > xlo:
+				u = float(x - xlo) / float(xhi - xlo) * 2.0 - 1.0
+			k = (0.82 + 0.18 * h) * (1.0 + 0.05 * sin(u * PI * 2.0 + 0.4 * PI))
+			if z > 0:
+				col = Color(0.88, 0.7, 0.26)
 				kd = 4
+				k = 1.0 + 0.1 * n
+			elif y == ylo:
+				k *= 0.8
+			elif x == xlo or x == xhi:
+				k *= 0.88
 		elif metal:
 			# Plates in rows, the rim bright, rivets along it.
 			if y == ylo or y == yhi:

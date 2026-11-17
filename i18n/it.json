@@ -2873,5 +2873,8 @@
  "%s ready: the bow looses it till it is used up (its number again puts it back)": "%s pronta: l'arco la scocca finché non finisce (il suo numero di nuovo la rimette a posto)",
  "%s put back: plain arrows again": "%s rimessa a posto: di nuovo frecce normali",
  "Out of %s: plain arrows again": "Niente più %s: di nuovo frecce normali",
- "BOW: %s": "ARCO: %s"
+ "BOW: %s": "ARCO: %s",
+ "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s accesa: brandiscila come un'arma, oppure tieni premuto F per mirare e rilascia per lanciare",
+ "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Pece ardente su un bastone, nella mano libera: brandiscila come una clava e ogni colpo dà fuoco all'avversario. Si consuma mentre combatti e sparisce quando è finita. Lanciata, brucia dove cade e incendia l'olio versato.",
+ "The torch burns out": "La torcia si è consumata"
 }

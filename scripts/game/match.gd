@@ -515,6 +515,7 @@ func _fighter_in(f: Fighter, spec: Dictionary) -> Dictionary:
 		f.mods.bleed = float(f.mods.get("bleed", 1.0)) * PLAYER_BLEED
 		f.spare = _may_spare
 		f.player = true
+		f.sturdy_arms = not _extreme()   # (his arms crack before they break: Fighter.ARM_CRACK_GRACE)
 	# The crowd's favourite of the bout before wears the laurel (the host's word; a guest draws it as
 	# the spawn says, a plain yes and nothing else).
 	if role != "guest" and (spec.kind == "remote" or spec.kind == "local") and crowned != "" and String(spec.get("name", "")) == crowned:
@@ -2292,6 +2293,7 @@ func _check_round(dt: float) -> void:
 			round_pay += paid(float(stage_info.get("roundPay", 10)))
 			if round + 1 < int(stage_info.get("rounds", []).size()):
 				between = 2.5
+				_settle_beaten(true)
 				feed.emit(Loc.t("Round %d won") % (round + 1))
 				if role != "guest":
 					_round_wounds()
@@ -2333,6 +2335,53 @@ func _tally(f, k: String, n := 1) -> void:
 	var row: Dictionary = party_tally.get(f.display_name, {})
 	row[k] = int(row.get(k, 0)) + n
 	party_tally[f.display_name] = row
+
+## The hardest setting (the trainer's Extreme): the old rules stand there, a player's arm breaks
+## as any man's does.
+func _extreme() -> bool:
+	if mode == "training":
+		return float(training.get("difficulty", 0.5)) >= 0.9
+	return modes != null and float(modes.difficulty) >= 0.9
+
+## The dead set down for the one who dealt it: the bout's kills and the tallies (PartyGlory, the
+## run's scroll), once for each of them however he died (user: the scroll read nothing for the foes
+## who bled out of a wound after the blow, or who were beaten and fell only after the bout was called).
+var kill_credited := {}
+func _credit_kill(victim, attacker, weapon = null) -> void:
+	if victim == null or attacker == null or victim == attacker or not is_instance_valid(victim) or not is_instance_valid(attacker) or kill_credited.has(victim):
+		return
+	kill_credited[victim] = true
+	kills[attacker.display_name] = int(kills.get(attacker.display_name, 0)) + 1
+	_tally(attacker, "kills")
+	if weapon != null and is_instance_valid(weapon) and String(weapon.design.get("name", "")) != "":
+		_tally(attacker, RunScroll.WEAPON + String(weapon.design.name).left(40))
+
+## A man or a beast gone (or beaten) is set down for whoever struck him last: the one who
+## bled him, burned him, poisoned him or shoved him to his fall gets the kill as he who dealt the
+## last blow does (see _credit_kill).
+func _credit_death(f) -> void:
+	if role == "guest" or f == null or not is_instance_valid(f):
+		return
+	var a = f.get("last_attacker")
+	if a != null and is_instance_valid(a):
+		_credit_kill(f, a, last_hit_of.get(f, {}).get("weapon"))
+
+## The round or the bout called: every foe dead or beaten is set down for whoever struck him last
+## (one beaten out of the fight never dies), and a beast beaten but still on its feet goes down and
+## dies now, not seconds later behind the kill cam (user: "you won", and the lion stood there, and
+## only after the replay did it fall). `finish`: the beaten beasts die.
+func _settle_beaten(finish: bool) -> void:
+	if role == "guest":
+		return
+	for e in entities:
+		var f = e.f
+		if not is_instance_valid(f) or e.kind == "local" or e.kind == "remote":
+			continue
+		if finish and mode == "campaign" and f is Beast and f.alive and e.team == ENEMY_TEAM:
+			f.die("beaten")
+		if f.alive and not (f.is_beaten() or e.get("beaten", false)):
+			continue
+		_credit_death(f)
 
 ## The party's tallies of the bout, every one of them in it (a man who did none of it, too).
 func party_tallies() -> Dictionary:
@@ -2462,6 +2511,9 @@ func wear_of(e: Dictionary) -> Dictionary:
 	if e and e.get("f") != null and is_instance_valid(e.f) and e.f is Fighter:
 		for side in ["R", "L"]:
 			var w = e.f.weapons.get(side)
+			# (A torch lent to the hand is not part of his arms: what it was put in the place of is.)
+			if w and is_instance_valid(w) and w.design.get("torch", false):
+				w = e.f.stowed.get(side)
 			if not (w and is_instance_valid(w)) and e.f.arm[side].fore.severed:
 				w = e.f.fell_with_arm.get(side)
 			if w and is_instance_valid(w):
@@ -2479,6 +2531,7 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	if attract:
 		return   # (the fight behind the menus never ends: the fallen are replaced one at a time)
 	over = true
+	_settle_beaten(won)
 	if Sfx.music and not headless and not attract:
 		Sfx.music.set_state("victory" if won else "defeat")
 		music_hot = false
@@ -2661,6 +2714,8 @@ func _on_hit(h: Dictionary) -> void:
 			Net.send_all("fx", msg, false)
 	if role != "guest" and h.get("weapon") and String(h.weapon.design.get("imbue", "")) != "":
 		_coating(h)
+		if h.weapon.design.get("torch", false):
+			throwables.torch_struck(h.get("attacker"), float(h.get("J", 0.0)))   # (a torch burns down with its blows)
 	if role != "guest" and h.get("weapon") and is_instance_valid(h.weapon):
 		_gems(h)
 		_gold(h)
@@ -2670,10 +2725,7 @@ func _on_hit(h: Dictionary) -> void:
 		if h.attacker:
 			_tally(h.attacker, "cut", (h.res.severed as Array).size())
 	if h.killed and h.attacker:
-		kills[h.attacker.display_name] = kills.get(h.attacker.display_name, 0) + 1
-		_tally(h.attacker, "kills")
-		if h.get("weapon") and is_instance_valid(h.weapon) and String(h.weapon.design.get("name", "")) != "":
-			_tally(h.attacker, RunScroll.WEAPON + String(h.weapon.design.name).left(40))
+		_credit_kill(h.char, h.attacker, h.get("weapon"))
 		feed.emit(Loc.t("%s kills %s") % [h.attacker.display_name, h.char.display_name])
 	elif h.get("rend", false):
 		feed.emit(Loc.t("%s TEARS %s APART!") % [h.attacker.display_name, h.char.display_name])
@@ -2741,7 +2793,9 @@ func _voices_on_hit(h: Dictionary) -> void:
 func _coating(h: Dictionary) -> void:
 	var c = h.get("char")
 	var part = h.get("part")
-	if not (c is Fighter) or not c.alive or not (part is VoxelPart) or part.severed or c == h.get("attacker") or float(h.get("J", 0.0)) < 4.0:
+	# (A torch sets alight whatever it touches, a tap too: a coated blade only a blow.)
+	var least := 0.5 if h.weapon.design.get("torch", false) else 4.0
+	if not (c is Fighter) or not c.alive or not (part is VoxelPart) or part.severed or c == h.get("attacker") or float(h.get("J", 0.0)) < least:
 		return
 	if time - float(c.get_meta("coat_t", -9.0)) < 0.5:
 		return
@@ -3018,7 +3072,10 @@ func _on_death(f: Fighter, cause: String) -> void:
 	if role != "guest":
 		spectacle.on_death(f)
 		_note_fall(f)
-	_tape_kill(f, cause)
+		_credit_death.call_deferred(f)   # (a killing blow credits itself, with its weapon, in _on_hit this very step)
+	var dead_e = _entity_of(f)
+	if dead_e == null or not dead_e.get("taped", false):   # (one beaten, out of the fight, is on the tape already)
+		_tape_kill(f, cause)
 	if me and f != me.f and f.last_attacker == me.f:
 		mission_event("kill")
 		var lw = last_hit_of.get(f, {}).get("weapon")

@@ -1159,6 +1159,18 @@ static func body_material(force := -1) -> ShaderMaterial:
 		_forced[force] = m
 	return _forced[force]
 
+## The cloth of a cape: the box edges that mark the blocks of a body hardly darker, and the grain
+## voxel to voxel faint, so its cells read as one smooth sheet and not a grid with dark seams between
+## the cells (user: the cape smooth, with no holes).
+static var _cape_material: ShaderMaterial = null
+static func cape_material() -> ShaderMaterial:
+	if _cape_material == null:
+		_cape_material = body_material().duplicate()
+		_cape_material.set_shader_parameter("edge_dark", 0.012)
+		_cape_material.set_shader_parameter("grain_k", 0.2)
+		_cape_material.set_shader_parameter("ao_strength", ao_strength)
+	return _cape_material
+
 ## The body material for a gladiator's look (Physique): his edges bevelled (the code over each
 ## voxel's kind is then its open faces, not a blade's taper), the skin oiled or not. Only the look.
 static var _looks := {}
@@ -1178,7 +1190,7 @@ static var ao_strength := AO_ON
 
 static func set_ao(on: bool) -> void:
 	ao_strength = AO_ON if on else 0.0
-	for mat in [_body_material] + _looks.values() + _forced.values():
+	for mat in [_body_material, _cape_material] + _looks.values() + _forced.values():
 		if mat:
 			mat.set_shader_parameter("ao_strength", ao_strength)
 	FineHead.material()   # (the fine head's, a shade less, follows too)

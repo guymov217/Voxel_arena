@@ -43,7 +43,15 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   in, hurt the lung. In the campaign the bones stay broken from fight to fight until the
   physician sets them (no elixir needed: a bone knits, a hand does not grow back). A break is
   seen: a broken limb is drawn bent, an open break has the splinter standing out of the skin,
-  the HUD figure marks the bone, the feed names it and it is heard over the blow.
+  the HUD figure marks the bone, the feed names it and it is heard over the blow. A player's
+  arm is the sturdier kind (`Fighter.sturdy_arms`, set by `Match` for the men's own fighters, not
+  at the trainer's Extreme, where the old rules stand): a sound arm bone only cracks from one
+  blow, however hard, and breaks through only under a second, separate blow (`ARM_CRACK_GRACE`
+  s after the crack, a blade having to cut `ARM_CRACK_CUT` of the cracked bone); a hairline crack
+  in an arm mends between bouts (`Body.snapshot`), a break stays until the physician sets it.
+  The bots' and the beasts' bones, and a player's legs, break as ever (`tests/test_arm_cracks.gd`).
+  With his weapon arm out and his good hand on a shield only, G lets the shield go and takes
+  the weapon lying by him (`Fighter.swap_target`; the HUD's "Pick up" shows it).
 - **Weapons**: built from the same voxel designs, with greedy-merged colliders and shields.
   Chain weapons, bows and crossbows, throwables and the market. A weapon is only ever taken up by
   hand (G): the hand reaches for the grip (he stoops for one on the sand, steps to one a pace
@@ -88,8 +96,17 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   second time round the campaign everything is there. The count is kept in the save (alone and in
   a party apart) and a death never takes a ware off the table. Training has every ware, free; the
   physician sells what is used on oneself (bandages, bread, wine, the water skin). The torch is
-  held in the free hand (what its flame touches catches fire, and spilled oil goes up) or thrown
-  (it burns where it lands); the water skin, poured over oneself, puts out the fire on him and
+  held in the free hand (the right one when both are empty) as a weapon of its own, a thin stick
+  with a bulb of burning rag on its end and a flame standing up out of it (`Throwables.torch_design`,
+  `Weapon._torch_flame`; lent to the hand and gone from it when put away or thrown; the weapon it
+  took the hand's place from is back in it then): every blow of it sets alight what it strikes
+  (`Match._coating`, a tap too), what its flame touches catches fire and spilled oil goes up; or
+  thrown (F: it burns where it lands). A torch does not burn for ever: held, it burns down in
+  `Throwables.TORCH_LIFE` seconds and each blow it lands takes `TORCH_BLOW` more, its head burning
+  away from the crown down and its flame shrinking with it; the burn is kept when it is put away
+  and taken out again (`torch_burn` of the man's entry), and when it is spent (or knocked to
+  pieces: no broken torch is left to pick up) one torch of the kit is used up and the weapon it
+  took the place of is back in the hand; the water skin, poured over oneself, puts out the fire on him and
   washes off acid; the smoke pot is the old sand pot and smoke pot in one; Greek fire is the old
   fireball pot, burning oil that pools on the sand; the beehive is gone (the honey pot's bees stay).
   A bag from an older save keeps its wares under their new names. The thunder pot's blast is
@@ -114,7 +131,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   a chop from above, sweeps from either side, a low sweep at the legs and a thrust. A man it
   has knocked down it goes on striking; it does not stand off and watch him. Now and then it
   stoops to him instead, its hand right down on him, takes hold of him where he lies and lifts
-  him to slam or throw him (`Bot.GRAB_DOWN_RATE`, `tests/giantpickprobe.gd`).
+  him to slam or throw him (`Bot.GRAB_DOWN_RATE`, `tests/giantpickprobe.gd`). A giant's hand
+  closes on the part of the man it touches and he is drawn the last of the way into the fist
+  (`Social._close_in`: the pin joint holds the two as they stand, so a man taken from a hand's
+  breadth off hung that far under the fist); while he is held the arm that holds him does not
+  strike him, nor for a moment after the throw the arm that threw him: the hold, the slam and the
+  throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`).
+  Polyphemus alone has no weapon and fights as the colossus he is (`mods.colossus`,
+  `Bot._colossus`, `tests/test_colossus.gd`), every move shown in a wind-up a man can read: a fist
+  drawn up over his head and brought down on a man's head (`crush`, `Fighter.CRUSH_SLOW`: the fist
+  has the length of him to come down), the foot stamped down on a man on his feet as on one
+  lying (`stamp`, `Fighter.COLOSSUS_SMALL`), a low kick swept through a man's middle that
+  knocks him back (`punt`), and the grab, with the lift and the throw.
 - **Bots** and all 24 **beast** species with their behaviours, including flying and breath. A
   beast's jaws, claws and horns bite only in a strike (the snap after the wind-up), never by
   brushing against a man, so a lunge can be dodged or taken on the shield; a bite goes in
@@ -263,7 +291,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   harder stuff wears slower and chips less, ice shatters, more blocks can lose more, a weapon made
   to last lasts). The smith's stock has bronze, a soft metal for edges, and bone, light and quick. The four tricks
   (explosive, spring, glue, magnet) are set aside for now (`ForgeLib.SET_ASIDE`): not on the anvil,
-  not dealt as twists; a weapon already made with them keeps them.
+  not dealt as twists; a weapon already made with them keeps them. An Edge or a Point block faces
+  away from the face it is put on; R turns the sharp block under the mouse to the next of its six
+  ways (a halo marks it, `Forge.turn_ghost`), and the blocks the mirrors made of it turn with it,
+  the mirrored way (`Forge.turn_face`). R and F go by where the key is as well as by what it says,
+  as the forge's other keys do, so they work on any keyboard layout (`tests/test_forge.gd`).
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's
@@ -289,7 +321,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **Achievements** (`scripts/game/achievements.gd`): fifteen, kept in the save and set on Steam
   when it runs (the list is in docs/DEMO.md).
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
-  A gladiator editor (name, skin, cloth, hat, hair, beard, cape). The HUD, menus and options
+  A gladiator editor (name, skin, cloth, hat, hair, beard, cape: the cape hangs from the shoulders
+  in one smooth sheet that flares a little toward the hem, its tiles each laid across their
+  neighbours so no gap shows, `Physique._cape_xf`). The HUD, menus and options
   (four tabs: game, controls, graphics, sound; VSync, an FPS cap and the interface scale among
   them). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the

@@ -29,11 +29,11 @@
 "scripts/ui/menu.gd:3550",
 "scripts/ui/menu.gd:3840",
 "scripts/ui/menu.gd:4269",
-"scripts/fighter/fighter.gd:77",
+"scripts/fighter/fighter.gd:78",
 "scripts/game/yard.gd:44",
 "scripts/game/modes.gd:73",
 "scripts/game/match.gd:357",
-"scripts/game/match.gd:894",
+"scripts/game/match.gd:895",
 "scripts/autoload/save.gd:5"
 ],
 "Could not reach the host": [
@@ -82,7 +82,7 @@
 "scripts/net/net.gd:604",
 "scripts/ui/weapon_view.gd:49",
 "scripts/ui/menu.gd:2791",
-"scripts/game/match.gd:2118"
+"scripts/game/match.gd:2119"
 ],
 "The host removed you from the room": [
 "scripts/net/net.gd:654"
@@ -197,7 +197,7 @@
 "scripts/ui/smith_screen.gd:654",
 "scripts/ui/smith_screen.gd:662",
 "scripts/ui/smith_screen.gd:712",
-"scripts/game/match.gd:2307"
+"scripts/game/match.gd:2309"
 ],
 "Your pick": [
 "scripts/ui/gate_screen.gd:1014"
@@ -273,73 +273,73 @@
 "scripts/ui/hud.gd:894"
 ],
 "Pick up the %s": [
-"scripts/ui/hud.gd:908"
+"scripts/ui/hud.gd:910"
 ],
 "Grab the %s": [
-"scripts/ui/hud.gd:914"
+"scripts/ui/hud.gd:916"
 ],
 "One hand · other side": [
-"scripts/ui/hud.gd:926"
+"scripts/ui/hud.gd:928"
 ],
 "Both hands · swap hands": [
-"scripts/ui/hud.gd:927"
+"scripts/ui/hud.gd:929"
 ],
 "THE ARENA": [
-"scripts/ui/hud.gd:950",
-"scripts/ui/hud.gd:965",
-"scripts/ui/hud.gd:968"
+"scripts/ui/hud.gd:952",
+"scripts/ui/hud.gd:967",
+"scripts/ui/hud.gd:970"
 ],
 "CO-OP · BOUT %d · %s": [
-"scripts/ui/hud.gd:953"
-],
-"BOUT %d · %s": [
-"scripts/ui/hud.gd:953"
-],
-"STAGE %d · ROUND %d OF 3": [
 "scripts/ui/hud.gd:955"
 ],
+"BOUT %d · %s": [
+"scripts/ui/hud.gd:955"
+],
+"STAGE %d · ROUND %d OF 3": [
+"scripts/ui/hud.gd:957"
+],
 "THE LUDUS YARD": [
-"scripts/ui/hud.gd:958",
+"scripts/ui/hud.gd:960",
 "scripts/ui/market_screen.gd:70",
 "scripts/ui/trainer_screen.gd:166",
 "scripts/ui/physician_screen.gd:110",
 "scripts/ui/smith_screen.gd:113"
 ],
 "THE GATE LEADS TO THE ARENA": [
-"scripts/ui/hud.gd:960"
-],
-"THE TRAINING GROUND": [
 "scripts/ui/hud.gd:962"
 ],
+"THE TRAINING GROUND": [
+"scripts/ui/hud.gd:964"
+],
 "Hold a mouse button and push the mouse to stab · %s to switch off": [
-"scripts/ui/hud.gd:1005"
+"scripts/ui/hud.gd:1007"
 ],
 "right hand: %s": [
-"scripts/ui/hud.gd:1017"
+"scripts/ui/hud.gd:1019"
 ],
 "left hand: %s": [
-"scripts/ui/hud.gd:1017"
+"scripts/ui/hud.gd:1019"
 ],
 "nothing in hand": [
-"scripts/ui/hud.gd:1017"
+"scripts/ui/hud.gd:1019"
 ],
 "%s · left click: the other hand · right click: call it off": [
-"scripts/ui/hud.gd:1018"
+"scripts/ui/hud.gd:1020"
 ],
 "IN HAND: %s": [
-"scripts/ui/hud.gd:1083"
+"scripts/ui/hud.gd:1085"
 ],
 "BOW: %s": [
-"scripts/ui/hud.gd:1083"
+"scripts/ui/hud.gd:1085"
 ],
 "DECREES: %s": [
-"scripts/ui/hud.gd:1095"
+"scripts/ui/hud.gd:1097"
 ],
 "TUTORIAL · STEP %d OF %d": [
-"scripts/ui/hud.gd:1101"
+"scripts/ui/hud.gd:1103"
 ],
 "%s is out of the fight": [
-"scripts/ui/hud.gd:1118",
+"scripts/ui/hud.gd:1120",
 "scripts/game/killcam.gd:57"
 ],
 "Drag to turn him": [
@@ -433,28 +433,28 @@
 ],
 "Blue": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:996",
+"scripts/fighter/physique.gd:1078",
 "scripts/game/modes.gd:302",
 "scripts/game/modes.gd:468",
 "scripts/game/modes.gd:542"
 ],
 "Gold": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:997",
+"scripts/fighter/physique.gd:1079",
 "scripts/game/forge_lib.gd:893",
 "data/materials.json#name"
 ],
 "White": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:994"
+"scripts/fighter/physique.gd:1076"
 ],
 "Black": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:993"
+"scripts/fighter/physique.gd:1075"
 ],
 "Green": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:996"
+"scripts/fighter/physique.gd:1078"
 ],
 "Purple": [
 "scripts/ui/armour_forge.gd:25"
@@ -465,23 +465,23 @@
 ],
 "Undo": [
 "scripts/ui/armour_forge.gd:212",
-"scripts/ui/forge.gd:959",
+"scripts/ui/forge.gd:972",
 "scripts/ui/forge_lesson.gd:24"
 ],
 "Clear": [
 "scripts/ui/armour_forge.gd:216",
-"scripts/ui/forge.gd:965"
+"scripts/ui/forge.gd:978"
 ],
 "Cover all round": [
 "scripts/ui/armour_forge.gd:220"
 ],
 "Mirror ⟷": [
 "scripts/ui/armour_forge.gd:227",
-"scripts/ui/forge.gd:944"
+"scripts/ui/forge.gd:957"
 ],
 "Mirror ⇅": [
 "scripts/ui/armour_forge.gd:232",
-"scripts/ui/forge.gd:949"
+"scripts/ui/forge.gd:962"
 ],
 "Plain": [
 "scripts/ui/armour_forge.gd:245",
@@ -510,7 +510,7 @@
 ],
 "Name it": [
 "scripts/ui/armour_forge.gd:359",
-"scripts/ui/forge.gd:214"
+"scripts/ui/forge.gd:215"
 ],
 "Leave the bench": [
 "scripts/ui/armour_forge.gd:369"
@@ -583,7 +583,7 @@
 "scripts/ui/armour_shop.gd:9",
 "scripts/ui/armour_shop.gd:79",
 "scripts/ui/armour_shop.gd:92",
-"scripts/ui/forge.gd:193",
+"scripts/ui/forge.gd:194",
 "scripts/ui/menu.gd:1303",
 "scripts/ui/menu.gd:1895",
 "scripts/ui/menu.gd:1902"
@@ -658,124 +658,124 @@
 "Try it in the arena": [
 "scripts/ui/forge.gd:35",
 "scripts/ui/forge.gd:41",
-"scripts/ui/forge.gd:555"
+"scripts/ui/forge.gd:568"
 ],
 "Balanced": [
-"scripts/ui/forge.gd:98",
+"scripts/ui/forge.gd:99",
 "scripts/game/forge_lib.gd:684",
 "scripts/game/forge_lib.gd:889"
 ],
 "Head-heavy": [
-"scripts/ui/forge.gd:98",
+"scripts/ui/forge.gd:99",
 "scripts/game/forge_lib.gd:685"
 ],
 "Speed": [
-"scripts/ui/forge.gd:101",
+"scripts/ui/forge.gd:102",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Damage": [
-"scripts/ui/forge.gd:101",
+"scripts/ui/forge.gd:102",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Reach": [
-"scripts/ui/forge.gd:101",
+"scripts/ui/forge.gd:102",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Vs armour": [
-"scripts/ui/forge.gd:101",
+"scripts/ui/forge.gd:102",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Durability": [
-"scripts/ui/forge.gd:101",
+"scripts/ui/forge.gd:102",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Build": [
-"scripts/ui/forge.gd:116",
+"scripts/ui/forge.gd:117",
 "scripts/ui/forge_lesson.gd:18"
 ],
 "Click a face: a voxel goes on it (hold and drag for more)  [B]": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Erase": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Click voxels: take them off (right click erases too)  [X]": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Line": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "✋ Move hand": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]": [
-"scripts/ui/forge.gd:116"
+"scripts/ui/forge.gd:117"
 ],
 "Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one; Q takes up the block under the mouse)": [
-"scripts/ui/forge.gd:123"
-],
-"Erase: click blocks, or hold the right button anywhere": [
 "scripts/ui/forge.gd:124"
 ],
-"Line: click where it starts": [
+"Erase: click blocks, or hold the right button anywhere": [
 "scripts/ui/forge.gd:125"
 ],
-"Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand": [
+"Line: click where it starts": [
 "scripts/ui/forge.gd:126"
 ],
+"Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand": [
+"scripts/ui/forge.gd:127"
+],
 "THE FORGE": [
-"scripts/ui/forge.gd:185"
+"scripts/ui/forge.gd:186"
 ],
 "1 · Quick start": [
-"scripts/ui/forge.gd:193"
+"scripts/ui/forge.gd:194"
 ],
 "Pick a base weapon and up to two twists: done in two clicks.": [
-"scripts/ui/forge.gd:193"
+"scripts/ui/forge.gd:194"
 ],
 "2 · Shape by hand": [
-"scripts/ui/forge.gd:193"
+"scripts/ui/forge.gd:194"
 ],
 "Add, paint and take off single blocks on the anvil.": [
-"scripts/ui/forge.gd:193"
+"scripts/ui/forge.gd:194"
 ],
 "Weapons you saved as templates: load one onto the anvil.": [
-"scripts/ui/forge.gd:193"
+"scripts/ui/forge.gd:194"
 ],
 "Armour": [
-"scripts/ui/forge.gd:203",
+"scripts/ui/forge.gd:204",
 "scripts/ui/menu.gd:1494",
 "scripts/ui/menu.gd:1571",
 "scripts/ui/menu.gd:2688",
 "scripts/ui/smith_screen.gd:124"
 ],
 "Make a piece of armour, plate by plate: where it goes, what it is made of": [
-"scripts/ui/forge.gd:204"
+"scripts/ui/forge.gd:205"
 ],
 "Name": [
-"scripts/ui/forge.gd:210",
+"scripts/ui/forge.gd:211",
 "scripts/ui/menu.gd:3556"
 ],
 "Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point.": [
-"scripts/ui/forge.gd:236"
+"scripts/ui/forge.gd:237"
 ],
 "Take it": [
-"scripts/ui/forge.gd:274"
+"scripts/ui/forge.gd:275"
 ],
 "Pay and take it": [
-"scripts/ui/forge.gd:274"
+"scripts/ui/forge.gd:275"
 ],
 "Swing it": [
-"scripts/ui/forge.gd:275",
+"scripts/ui/forge.gd:276",
 "scripts/ui/forge_lesson.gd:27"
 ],
 "Save design": [
-"scripts/ui/forge.gd:283"
+"scripts/ui/forge.gd:284"
 ],
 "Back": [
-"scripts/ui/forge.gd:284",
+"scripts/ui/forge.gd:285",
 "scripts/ui/trainer_screen.gd:257",
 "scripts/ui/menu.gd:1061",
 "scripts/ui/menu.gd:1309",
@@ -790,426 +790,426 @@
 "scripts/ui/menu.gd:3009"
 ],
 "Leave it as it was": [
-"scripts/ui/forge.gd:284"
+"scripts/ui/forge.gd:285"
 ],
 "Next": [
-"scripts/ui/forge.gd:492",
-"scripts/ui/forge.gd:523"
+"scripts/ui/forge.gd:505",
+"scripts/ui/forge.gd:536"
 ],
 "Skip the lesson": [
-"scripts/ui/forge.gd:497"
+"scripts/ui/forge.gd:510"
 ],
 "FORGE LESSON · STEP %d OF %d": [
-"scripts/ui/forge.gd:519"
+"scripts/ui/forge.gd:532"
 ],
 "Close": [
-"scripts/ui/forge.gd:523",
+"scripts/ui/forge.gd:536",
 "scripts/ui/weapon_view.gd:52"
 ],
 "A gladiator": [
-"scripts/ui/forge.gd:535"
-],
-"What stands in front of the weapon": [
 "scripts/ui/forge.gd:548"
 ],
+"What stands in front of the weapon": [
+"scripts/ui/forge.gd:561"
+],
 "Fights back": [
-"scripts/ui/forge.gd:551",
+"scripts/ui/forge.gd:564",
 "scripts/ui/menu.gd:1016"
 ],
 "It needs somewhere to be held: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:558",
-"scripts/ui/forge.gd:2003"
+"scripts/ui/forge.gd:571",
+"scripts/ui/forge.gd:2060"
 ],
 "Last try against %s: no blow landed": [
-"scripts/ui/forge.gd:571"
+"scripts/ui/forge.gd:584"
 ],
 "Last try against %s: %d hits · best blow %d · %d limbs off · %d kills": [
-"scripts/ui/forge.gd:573"
+"scripts/ui/forge.gd:586"
 ],
 "1 · PICK A BASE": [
-"scripts/ui/forge.gd:579"
+"scripts/ui/forge.gd:592"
 ],
 "2 · ADD UP TO %d TWISTS": [
-"scripts/ui/forge.gd:593"
+"scripts/ui/forge.gd:606"
 ],
 "Deal again": [
-"scripts/ui/forge.gd:618"
+"scripts/ui/forge.gd:631"
 ],
 "Customize the voxels": [
-"scripts/ui/forge.gd:623"
+"scripts/ui/forge.gd:636"
 ],
 "New weapon": [
-"scripts/ui/forge.gd:636",
+"scripts/ui/forge.gd:649",
 "scripts/ui/menu.gd:2556",
 "scripts/game/forge_lib.gd:17"
 ],
 "Cut": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "sharp edge": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "Stab": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "Crush": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "head, body": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "Hold": [
-"scripts/ui/forge.gd:681"
+"scripts/ui/forge.gd:694"
 ],
 "Metals": [
-"scripts/ui/forge.gd:683"
+"scripts/ui/forge.gd:696"
 ],
 "Wood, bone, stone": [
-"scripts/ui/forge.gd:683"
+"scripts/ui/forge.gd:696"
 ],
 "Gems": [
-"scripts/ui/forge.gd:683",
+"scripts/ui/forge.gd:696",
 "scripts/ui/forge_lesson.gd:26"
 ],
 "Blank anvil · build from nothing": [
-"scripts/ui/forge.gd:733"
+"scripts/ui/forge.gd:746"
 ],
 "Forge a new weapon from nothing": [
-"scripts/ui/forge.gd:735",
+"scripts/ui/forge.gd:748",
 "scripts/ui/smith_screen.gd:167"
 ],
 "%d%% · honing %d (%d Cut/Stab block)": [
-"scripts/ui/forge.gd:752"
+"scripts/ui/forge.gd:765"
 ],
 "%d%% · honing %d (%d Cut/Stab blocks)": [
-"scripts/ui/forge.gd:752"
+"scripts/ui/forge.gd:765"
 ],
 "1 · WHAT THE BLOCK DOES": [
-"scripts/ui/forge.gd:759"
+"scripts/ui/forge.gd:772"
 ],
 "2 · MATERIAL": [
-"scripts/ui/forge.gd:784"
+"scripts/ui/forge.gd:797"
 ],
 "  (soft: a poor edge)": [
-"scripts/ui/forge.gd:812"
+"scripts/ui/forge.gd:825"
 ],
 "Held in": [
-"scripts/ui/forge.gd:827"
-],
-"One hand": [
-"scripts/ui/forge.gd:831"
-],
-"Two hands": [
-"scripts/ui/forge.gd:831"
-],
-"The grip is too short for two hands: two fists need a grip of 5 blocks or more": [
 "scripts/ui/forge.gd:840"
 ],
+"One hand": [
+"scripts/ui/forge.gd:844"
+],
+"Two hands": [
+"scripts/ui/forge.gd:844"
+],
+"The grip is too short for two hands: two fists need a grip of 5 blocks or more": [
+"scripts/ui/forge.gd:853"
+],
 "Swung in both hands: slower to start, much more behind each blow": [
-"scripts/ui/forge.gd:849"
+"scripts/ui/forge.gd:862"
 ],
 "In one hand: quick, the other hand free for a shield": [
-"scripts/ui/forge.gd:849"
+"scripts/ui/forge.gd:862"
 ],
 "✋ Main hand": [
-"scripts/ui/forge.gd:852"
+"scripts/ui/forge.gd:865"
 ],
 "✋ Other hand": [
-"scripts/ui/forge.gd:854"
+"scripts/ui/forge.gd:867"
 ],
 "Click the block where the main hand holds it (its ring: gold)": [
-"scripts/ui/forge.gd:864"
+"scripts/ui/forge.gd:877"
 ],
 "Click the block where the other hand holds it (its ring: bronze)": [
-"scripts/ui/forge.gd:864"
+"scripts/ui/forge.gd:877"
 ],
 "Put the main hand on a block: click it on the weapon": [
-"scripts/ui/forge.gd:869"
+"scripts/ui/forge.gd:882"
 ],
 "Put the other hand on a block: click it on the weapon": [
-"scripts/ui/forge.gd:869"
+"scripts/ui/forge.gd:882"
 ],
 "Throwable": [
-"scripts/ui/forge.gd:874",
+"scripts/ui/forge.gd:887",
 "scripts/game/forge_lib.gd:892"
 ],
 "Sharpness": [
-"scripts/ui/forge.gd:889"
+"scripts/ui/forge.gd:902"
 ],
 "Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\\nHoning each Cut or Stab block costs, by the sharpness set:\\n%s": [
-"scripts/ui/forge.gd:899"
+"scripts/ui/forge.gd:912"
 ],
 "  %d%%: %.1f denarii a block": [
-"scripts/ui/forge.gd:899"
+"scripts/ui/forge.gd:912"
 ],
 "Sharpness: only for Cut and Stab blocks (none on it yet)": [
-"scripts/ui/forge.gd:910"
+"scripts/ui/forge.gd:923"
 ],
 "Left and right alike": [
-"scripts/ui/forge.gd:945"
+"scripts/ui/forge.gd:958"
 ],
 "Front and back alike": [
-"scripts/ui/forge.gd:950"
-],
-"Redo": [
-"scripts/ui/forge.gd:960"
-],
-"Turn sharp block (R)": [
-"scripts/ui/forge.gd:961"
-],
-"Point at an Edge or a Point block and press R: it turns to face each way in turn": [
-"scripts/ui/forge.gd:962"
-],
-"An Edge or Point block faces away from the face you put it on; R turns the one under the mouse": [
 "scripts/ui/forge.gd:963"
 ],
+"Redo": [
+"scripts/ui/forge.gd:973"
+],
+"Turn sharp block (R)": [
+"scripts/ui/forge.gd:974"
+],
+"Point at an Edge or a Point block and press R: it turns to face each way in turn": [
+"scripts/ui/forge.gd:975"
+],
+"An Edge or Point block faces away from the face you put it on; R turns the one under the mouse": [
+"scripts/ui/forge.gd:976"
+],
 "Surprise me": [
-"scripts/ui/forge.gd:977"
+"scripts/ui/forge.gd:990"
 ],
 "Say where it is held before you save it: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:1009"
-],
-"Saved to My designs: \\\"%s\\\"": [
-"scripts/ui/forge.gd:1017"
-],
-"MY DESIGNS": [
 "scripts/ui/forge.gd:1022"
 ],
+"Saved to My designs: \\\"%s\\\"": [
+"scripts/ui/forge.gd:1030"
+],
+"MY DESIGNS": [
+"scripts/ui/forge.gd:1035"
+],
 "Nothing saved yet": [
-"scripts/ui/forge.gd:1025"
+"scripts/ui/forge.gd:1038"
 ],
 "Load": [
-"scripts/ui/forge.gd:1047"
+"scripts/ui/forge.gd:1060"
 ],
 "Buy · %d": [
-"scripts/ui/forge.gd:1051"
+"scripts/ui/forge.gd:1064"
 ],
 "Delete": [
-"scripts/ui/forge.gd:1056"
+"scripts/ui/forge.gd:1069"
 ],
 "Edge: cuts. Put it along the side of a blade or an axe head.": [
-"scripts/ui/forge.gd:1082"
-],
-"Point: stabs and pierces armour. Put it at the tip.": [
-"scripts/ui/forge.gd:1083"
-],
-"Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.": [
-"scripts/ui/forge.gd:1084"
-],
-"Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.": [
-"scripts/ui/forge.gd:1085"
-],
-"The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.": [
-"scripts/ui/forge.gd:1088"
-],
-"The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.": [
-"scripts/ui/forge.gd:1089"
-],
-"Softer and heavier: a fair edge that dulls sooner; good weight for a head.": [
-"scripts/ui/forge.gd:1090"
-],
-"Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.": [
-"scripts/ui/forge.gd:1091"
-],
-"Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.": [
-"scripts/ui/forge.gd:1092"
-],
-"Light and fairly hard: quick little blades and points, but they chip and snap.": [
-"scripts/ui/forge.gd:1093"
-],
-"Light and cheap: fast handles and long shafts that keep the weight out of the hand; no edge.": [
-"scripts/ui/forge.gd:1094"
-],
-"Next to weightless and soft: wraps a grip; hurts no one by itself.": [
 "scripts/ui/forge.gd:1095"
 ],
-"The densest: a few blocks in a head give it a crushing weight and pull the balance out to it; in a pommel they balance a long blade.": [
+"Point: stabs and pierces armour. Put it at the tip.": [
 "scripts/ui/forge.gd:1096"
 ],
-"Light, soft and squeaky: bounces off and barely hurts. For laughs.": [
+"Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.": [
 "scripts/ui/forge.gd:1097"
 ],
-"Soft and slappy: knocks a man about with a loud slap, cuts nothing.": [
+"Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.": [
 "scripts/ui/forge.gd:1098"
 ],
-"Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.": [
-"scripts/ui/forge.gd:1099"
-],
-"Goes off when it strikes hard: a blast that hurts everyone close, you as well.": [
-"scripts/ui/forge.gd:1100"
-],
-"Bouncy: a blow springs back hard and knocks the man away. Boing.": [
+"The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.": [
 "scripts/ui/forge.gd:1101"
 ],
-"Sticks to what it hits: the weapon stays in him, or he stays on it.": [
+"The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.": [
 "scripts/ui/forge.gd:1102"
 ],
-"Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.": [
+"Softer and heavier: a fair edge that dulls sooner; good weight for a head.": [
 "scripts/ui/forge.gd:1103"
 ],
-"Pulls iron and steel to it: blades and armour are dragged in.": [
+"Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.": [
 "scripts/ui/forge.gd:1104"
 ],
-"A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.": [
+"Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.": [
 "scripts/ui/forge.gd:1105"
 ],
-"A gem socket of frost: a blow may freeze the limb it strikes stiff and give it frostbite: the flesh there whitens, blackens and dies away, bloodless. More sapphires, a deeper frost. Costly.": [
+"Light and fairly hard: quick little blades and points, but they chip and snap.": [
 "scripts/ui/forge.gd:1106"
 ],
-"A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.": [
+"Light and cheap: fast handles and long shafts that keep the weight out of the hand; no edge.": [
 "scripts/ui/forge.gd:1107"
 ],
-"%s   Hardness %s   Weight %s": [
+"Next to weightless and soft: wraps a grip; hurts no one by itself.": [
+"scripts/ui/forge.gd:1108"
+],
+"The densest: a few blocks in a head give it a crushing weight and pull the balance out to it; in a pommel they balance a long blade.": [
+"scripts/ui/forge.gd:1109"
+],
+"Light, soft and squeaky: bounces off and barely hurts. For laughs.": [
+"scripts/ui/forge.gd:1110"
+],
+"Soft and slappy: knocks a man about with a loud slap, cuts nothing.": [
+"scripts/ui/forge.gd:1111"
+],
+"Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.": [
+"scripts/ui/forge.gd:1112"
+],
+"Goes off when it strikes hard: a blast that hurts everyone close, you as well.": [
+"scripts/ui/forge.gd:1113"
+],
+"Bouncy: a blow springs back hard and knocks the man away. Boing.": [
 "scripts/ui/forge.gd:1114"
 ],
-"%s: %s  Hardness %s  Weight %s": [
+"Sticks to what it hits: the weapon stays in him, or he stays on it.": [
+"scripts/ui/forge.gd:1115"
+],
+"Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.": [
+"scripts/ui/forge.gd:1116"
+],
+"Pulls iron and steel to it: blades and armour are dragged in.": [
+"scripts/ui/forge.gd:1117"
+],
+"A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.": [
+"scripts/ui/forge.gd:1118"
+],
+"A gem socket of frost: a blow may freeze the limb it strikes stiff and give it frostbite: the flesh there whitens, blackens and dies away, bloodless. More sapphires, a deeper frost. Costly.": [
+"scripts/ui/forge.gd:1119"
+],
+"A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.": [
 "scripts/ui/forge.gd:1120"
 ],
+"%s   Hardness %s   Weight %s": [
+"scripts/ui/forge.gd:1127"
+],
+"%s: %s  Hardness %s  Weight %s": [
+"scripts/ui/forge.gd:1133"
+],
 "Weight": [
-"scripts/ui/forge.gd:1126",
-"scripts/ui/forge.gd:1146"
+"scripts/ui/forge.gd:1139",
+"scripts/ui/forge.gd:1159"
 ],
 "%.2f kg": [
-"scripts/ui/forge.gd:1147"
+"scripts/ui/forge.gd:1160"
 ],
 "%+.2f kg": [
-"scripts/ui/forge.gd:1158"
+"scripts/ui/forge.gd:1171"
 ],
 "BALANCE": [
-"scripts/ui/forge.gd:1184"
+"scripts/ui/forge.gd:1197"
 ],
 "The smith: \\\"%s\\\"": [
-"scripts/ui/forge.gd:1225"
+"scripts/ui/forge.gd:1238"
 ],
 "The dummy: %s  ·  %d voxels": [
-"scripts/ui/forge.gd:1226"
+"scripts/ui/forge.gd:1239"
 ],
 "Free in training": [
-"scripts/ui/forge.gd:1250"
+"scripts/ui/forge.gd:1263"
 ],
 "Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii.": [
-"scripts/ui/forge.gd:1252"
+"scripts/ui/forge.gd:1265"
 ],
 "You have %d · you get %d back": [
-"scripts/ui/forge.gd:1256"
+"scripts/ui/forge.gd:1269"
 ],
 "You have %d · this costs %d (%d more needed)": [
-"scripts/ui/forge.gd:1258"
+"scripts/ui/forge.gd:1271"
 ],
 "You have %d · this costs %d": [
-"scripts/ui/forge.gd:1259"
+"scripts/ui/forge.gd:1272"
 ],
 "At the smith: %d denarii": [
-"scripts/ui/forge.gd:1284"
+"scripts/ui/forge.gd:1297"
 ],
 "You have %d   ·   You get %d back": [
-"scripts/ui/forge.gd:1290"
+"scripts/ui/forge.gd:1303"
 ],
 "You have %d   ·   This costs %d   (%d more needed)": [
-"scripts/ui/forge.gd:1293"
+"scripts/ui/forge.gd:1306"
 ],
 "You have %d   ·   This costs %d": [
-"scripts/ui/forge.gd:1296"
+"scripts/ui/forge.gd:1309"
 ],
 "MAIN": [
-"scripts/ui/forge.gd:1418"
+"scripts/ui/forge.gd:1431"
 ],
 "OTHER": [
-"scripts/ui/forge.gd:1418"
+"scripts/ui/forge.gd:1431"
 ],
 "Line: now click where it ends (right click: start again)": [
-"scripts/ui/forge.gd:1765"
+"scripts/ui/forge.gd:1783"
 ],
 "Too close to the other hand: two fists need 3 blocks between them": [
-"scripts/ui/forge.gd:1789"
+"scripts/ui/forge.gd:1807"
 ],
 "The main hand holds it here": [
-"scripts/ui/forge.gd:1794"
+"scripts/ui/forge.gd:1812"
 ],
 "The other hand holds it here": [
-"scripts/ui/forge.gd:1794"
+"scripts/ui/forge.gd:1812"
 ],
 "The hand holds it here": [
-"scripts/ui/forge.gd:1794"
+"scripts/ui/forge.gd:1812"
 ],
 "This edge faces right (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces left (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces up (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces down (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces front (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces back (R: turn it again)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This edge faces as the weapon's shape has it (R: turn it)": [
-"scripts/ui/forge.gd:1820"
+"scripts/ui/forge.gd:1838"
 ],
 "This point faces right (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces left (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces up (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces down (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces front (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces back (R: turn it again)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "This point faces as the weapon's shape has it (R: turn it)": [
-"scripts/ui/forge.gd:1821"
+"scripts/ui/forge.gd:1839"
 ],
 "Only a Cut or a Stab block turns: point at one and press R": [
-"scripts/ui/forge.gd:1828"
+"scripts/ui/forge.gd:1846"
 ],
 "A new block must touch the weapon": [
-"scripts/ui/forge.gd:1858"
+"scripts/ui/forge.gd:1910"
 ],
 "That is the most the anvil holds (%d voxels)": [
-"scripts/ui/forge.gd:1861"
+"scripts/ui/forge.gd:1913"
 ],
 "Not enough denarii for that": [
-"scripts/ui/forge.gd:1868"
+"scripts/ui/forge.gd:1920"
 ],
 "Cut through: %d blocks fall away": [
-"scripts/ui/forge.gd:1899"
+"scripts/ui/forge.gd:1951"
 ],
 "Next blocks: %s, %s": [
-"scripts/ui/forge.gd:1969"
+"scripts/ui/forge.gd:2026"
 ],
 "Mirror ⟷ %s, mirror ⇅ %s": [
-"scripts/ui/forge.gd:1977"
+"scripts/ui/forge.gd:2034"
 ],
 "On": [
-"scripts/ui/forge.gd:1977",
-"scripts/ui/forge.gd:1977"
+"scripts/ui/forge.gd:2034",
+"scripts/ui/forge.gd:2034"
 ],
 "Off": [
-"scripts/ui/forge.gd:1977",
-"scripts/ui/forge.gd:1977",
+"scripts/ui/forge.gd:2034",
+"scripts/ui/forge.gd:2034",
 "scripts/ui/menu.gd:3190",
 "scripts/ui/menu.gd:3266"
 ],
 "Taken up: %s, %s (the next blocks are made of it)": [
-"scripts/ui/forge.gd:1986"
+"scripts/ui/forge.gd:2043"
 ],
 "Not enough denarii for that (a keener edge costs more)": [
-"scripts/ui/forge.gd:2008"
+"scripts/ui/forge.gd:2065"
 ],
 "Quick start": [
 "scripts/ui/forge_lesson.gd:12"
@@ -2057,12 +2057,12 @@
 ],
 "III": [
 "scripts/ui/menu.gd:2237",
-"scripts/game/match.gd:1010",
+"scripts/game/match.gd:1011",
 "scripts/game/masterworks.gd:113"
 ],
 "VII": [
 "scripts/ui/menu.gd:2237",
-"scripts/game/match.gd:1010"
+"scripts/game/match.gd:1011"
 ],
 "SEVEN DAYS · THE EMPEROR'S GAMES": [
 "scripts/ui/menu.gd:2241"
@@ -2615,7 +2615,7 @@
 "You fell. Back to the last checkpoint: bout %d, as you left it.": [
 "scripts/ui/menu.gd:3781",
 "scripts/ui/menu.gd:3880",
-"scripts/game/match.gd:2287"
+"scripts/game/match.gd:2288"
 ],
 "Stage %d cleared: %d denarii.": [
 "scripts/ui/menu.gd:3824"
@@ -3124,41 +3124,41 @@
 "scripts/fighter/weapon.gd:95"
 ],
 "Broken %s": [
-"scripts/fighter/weapon.gd:858"
+"scripts/fighter/weapon.gd:921"
 ],
 "Blade arm": [
-"scripts/fighter/fighter.gd:660",
+"scripts/fighter/fighter.gd:673",
 "scripts/game/body.gd:16"
 ],
 "Armor_": [
-"scripts/fighter/fighter.gd:1147"
+"scripts/fighter/fighter.gd:1160"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:2982"
+"scripts/fighter/fighter.gd:3033"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:3269"
+"scripts/fighter/fighter.gd:3320"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3271"
+"scripts/fighter/fighter.gd:3322"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3271"
+"scripts/fighter/fighter.gd:3322"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:3277"
+"scripts/fighter/fighter.gd:3328"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:3277"
+"scripts/fighter/fighter.gd:3328"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7427"
+"scripts/fighter/fighter.gd:7522"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7443"
+"scripts/fighter/fighter.gd:7538"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9426",
+"scripts/fighter/fighter.gd:9536",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3212,184 +3212,184 @@
 ],
 "Champion %s": [
 "scripts/fighter/physique.gd:79",
-"scripts/game/match.gd:897"
+"scripts/game/match.gd:898"
 ],
 "Wide eyes": [
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:1064"
 ],
 "Side-eye": [
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:1064"
 ],
 "Cross-eyed": [
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:1064"
 ],
 "Angry brows": [
-"scripts/fighter/physique.gd:982"
+"scripts/fighter/physique.gd:1064"
 ],
 "Sleepy": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:1065"
 ],
 "Blue eyes": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:1065"
 ],
 "Green eyes": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:1065"
 ],
 "Mad stare": [
-"scripts/fighter/physique.gd:983"
+"scripts/fighter/physique.gd:1065"
 ],
 "Wink": [
-"scripts/fighter/physique.gd:984"
+"scripts/fighter/physique.gd:1066"
 ],
 "Brown eyes": [
-"scripts/fighter/physique.gd:984"
+"scripts/fighter/physique.gd:1066"
 ],
 "Scarred eye": [
-"scripts/fighter/physique.gd:984"
+"scripts/fighter/physique.gd:1066"
 ],
 "Tired": [
-"scripts/fighter/physique.gd:984"
+"scripts/fighter/physique.gd:1066"
 ],
 "Missing tooth": [
-"scripts/fighter/physique.gd:985"
+"scripts/fighter/physique.gd:1067"
 ],
 "Full grin": [
-"scripts/fighter/physique.gd:985"
+"scripts/fighter/physique.gd:1067"
 ],
 "Snarl": [
-"scripts/fighter/physique.gd:985"
+"scripts/fighter/physique.gd:1067"
 ],
 "Stern": [
-"scripts/fighter/physique.gd:985"
+"scripts/fighter/physique.gd:1067"
 ],
 "War cry": [
-"scripts/fighter/physique.gd:986"
+"scripts/fighter/physique.gd:1068"
 ],
 "Tongue out": [
-"scripts/fighter/physique.gd:986"
+"scripts/fighter/physique.gd:1068"
 ],
 "One tooth left": [
-"scripts/fighter/physique.gd:986"
+"scripts/fighter/physique.gd:1068"
 ],
 "Smirk": [
-"scripts/fighter/physique.gd:986"
+"scripts/fighter/physique.gd:1068"
 ],
 "Buck teeth": [
-"scripts/fighter/physique.gd:987"
+"scripts/fighter/physique.gd:1069"
 ],
 "Frown": [
-"scripts/fighter/physique.gd:987"
+"scripts/fighter/physique.gd:1069"
 ],
 "Gold tooth": [
-"scripts/fighter/physique.gd:987"
+"scripts/fighter/physique.gd:1069"
 ],
 "Grimace": [
-"scripts/fighter/physique.gd:987"
+"scripts/fighter/physique.gd:1069"
 ],
 "Freckles": [
-"scripts/fighter/physique.gd:988"
+"scripts/fighter/physique.gd:1070"
 ],
 "Stubble": [
-"scripts/fighter/physique.gd:988",
+"scripts/fighter/physique.gd:1070",
 "data/armor.json#name"
 ],
 "Scarred cheek": [
-"scripts/fighter/physique.gd:988"
+"scripts/fighter/physique.gd:1070"
 ],
 "Split lip": [
-"scripts/fighter/physique.gd:988"
+"scripts/fighter/physique.gd:1070"
 ],
 "Scar through the brow": [
-"scripts/fighter/physique.gd:989"
+"scripts/fighter/physique.gd:1071"
 ],
 "Heavy brows": [
-"scripts/fighter/physique.gd:989"
+"scripts/fighter/physique.gd:1071"
 ],
 "One brow": [
-"scripts/fighter/physique.gd:989"
+"scripts/fighter/physique.gd:1071"
 ],
 "Blue woad": [
-"scripts/fighter/physique.gd:990"
+"scripts/fighter/physique.gd:1072"
 ],
 "War stripes": [
-"scripts/fighter/physique.gd:990"
+"scripts/fighter/physique.gd:1072"
 ],
 "Red ochre band": [
-"scripts/fighter/physique.gd:990"
+"scripts/fighter/physique.gd:1072"
 ],
 "Tattooed cheek": [
-"scripts/fighter/physique.gd:990"
+"scripts/fighter/physique.gd:1072"
 ],
 "Rosy cheeks": [
-"scripts/fighter/physique.gd:991"
+"scripts/fighter/physique.gd:1073"
 ],
 "Skull paint": [
-"scripts/fighter/physique.gd:991"
+"scripts/fighter/physique.gd:1073"
 ],
 "Clown paint": [
-"scripts/fighter/physique.gd:991"
+"scripts/fighter/physique.gd:1073"
 ],
 "Straight nose": [
-"scripts/fighter/physique.gd:992"
+"scripts/fighter/physique.gd:1074"
 ],
 "Roman nose": [
-"scripts/fighter/physique.gd:992"
+"scripts/fighter/physique.gd:1074"
 ],
 "Broken nose": [
-"scripts/fighter/physique.gd:992"
+"scripts/fighter/physique.gd:1074"
 ],
 "Small nose": [
-"scripts/fighter/physique.gd:992"
+"scripts/fighter/physique.gd:1074"
 ],
 "Dark brown": [
-"scripts/fighter/physique.gd:993"
+"scripts/fighter/physique.gd:1075"
 ],
 "Brown": [
-"scripts/fighter/physique.gd:993",
-"scripts/fighter/physique.gd:996"
+"scripts/fighter/physique.gd:1075",
+"scripts/fighter/physique.gd:1078"
 ],
 "Auburn": [
-"scripts/fighter/physique.gd:993"
+"scripts/fighter/physique.gd:1075"
 ],
 "Ginger": [
-"scripts/fighter/physique.gd:993"
+"scripts/fighter/physique.gd:1075"
 ],
 "Blond": [
-"scripts/fighter/physique.gd:994"
+"scripts/fighter/physique.gd:1076"
 ],
 "Platinum": [
-"scripts/fighter/physique.gd:994"
+"scripts/fighter/physique.gd:1076"
 ],
 "Grey": [
-"scripts/fighter/physique.gd:994",
-"scripts/fighter/physique.gd:996"
+"scripts/fighter/physique.gd:1076",
+"scripts/fighter/physique.gd:1078"
 ],
 "Dyed blue": [
-"scripts/fighter/physique.gd:995"
+"scripts/fighter/physique.gd:1077"
 ],
 "Dyed green": [
-"scripts/fighter/physique.gd:995"
+"scripts/fighter/physique.gd:1077"
 ],
 "Dyed pink": [
-"scripts/fighter/physique.gd:995"
+"scripts/fighter/physique.gd:1077"
 ],
 "Dyed purple": [
-"scripts/fighter/physique.gd:995"
+"scripts/fighter/physique.gd:1077"
 ],
 "Hazel": [
-"scripts/fighter/physique.gd:996"
+"scripts/fighter/physique.gd:1078"
 ],
 "Amber": [
-"scripts/fighter/physique.gd:997"
+"scripts/fighter/physique.gd:1079"
 ],
 "Demon red": [
-"scripts/fighter/physique.gd:997"
+"scripts/fighter/physique.gd:1079"
 ],
 "Violet": [
-"scripts/fighter/physique.gd:997"
+"scripts/fighter/physique.gd:1079"
 ],
 "Ghost white": [
-"scripts/fighter/physique.gd:997"
+"scripts/fighter/physique.gd:1079"
 ],
 "attacker id:victim id": [
 "scripts/fighter/combat.gd:34"
@@ -3399,12 +3399,12 @@
 "scripts/fighter/combat.gd:82"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2835",
-"scripts/voxel/voxel_part.gd:3213",
-"scripts/voxel/voxel_part.gd:3227"
+"scripts/voxel/voxel_part.gd:2847",
+"scripts/voxel/voxel_part.gd:3225",
+"scripts/voxel/voxel_part.gd:3239"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:3134"
+"scripts/voxel/voxel_part.gd:3146"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:21"
@@ -3705,11 +3705,11 @@
 ],
 "You are ready": [
 "scripts/game/tutorial.gd:81",
-"scripts/game/match.gd:1221"
+"scripts/game/match.gd:1222"
 ],
 "Next, the forge: how to make a weapon of your own.": [
 "scripts/game/tutorial.gd:81",
-"scripts/game/match.gd:1221"
+"scripts/game/match.gd:1222"
 ],
 "Training dummy": [
 "scripts/game/tutorial.gd:86",
@@ -4308,7 +4308,7 @@
 ],
 "Veteran": [
 "scripts/game/yard.gd:45",
-"scripts/game/match.gd:897"
+"scripts/game/match.gd:898"
 ],
 "Heavy armour is for sale to you.": [
 "scripts/game/yard.gd:45"
@@ -4316,7 +4316,7 @@
 "Champion": [
 "scripts/game/yard.gd:46",
 "scripts/game/match.gd:151",
-"scripts/game/match.gd:897"
+"scripts/game/match.gd:898"
 ],
 "Missions pay half again.": [
 "scripts/game/yard.gd:46"
@@ -4556,7 +4556,7 @@
 ],
 "%s left": [
 "scripts/game/modes.gd:560",
-"scripts/game/match.gd:729"
+"scripts/game/match.gd:730"
 ],
 "to the death": [
 "scripts/game/modes.gd:560"
@@ -4662,131 +4662,131 @@
 ],
 "Your right hand is full": [
 "scripts/game/social.gd:66",
-"scripts/game/social.gd:151"
+"scripts/game/social.gd:186"
 ],
 "Your left hand is full": [
 "scripts/game/social.gd:66",
-"scripts/game/social.gd:151"
+"scripts/game/social.gd:186"
 ],
 "%s grabbed %s by the %s with both hands": [
-"scripts/game/social.gd:128"
+"scripts/game/social.gd:163"
 ],
 "%s grabbed %s by the %s": [
-"scripts/game/social.gd:128"
+"scripts/game/social.gd:163"
 ],
 "%s grabbed %s's %s with both hands!": [
-"scripts/game/social.gd:130"
+"scripts/game/social.gd:165"
 ],
 "%s grabbed %s's %s!": [
-"scripts/game/social.gd:130"
+"scripts/game/social.gd:165"
 ],
 "%s pins %s's sword arm!": [
-"scripts/game/social.gd:140"
+"scripts/game/social.gd:175"
 ],
 "%s pins %s's shield arm!": [
-"scripts/game/social.gd:140"
+"scripts/game/social.gd:175"
 ],
 "Your right hand cannot reach him": [
-"scripts/game/social.gd:155"
+"scripts/game/social.gd:190"
 ],
 "Your left hand cannot reach him": [
-"scripts/game/social.gd:155"
+"scripts/game/social.gd:190"
 ],
 "%s gets both hands on %s": [
-"scripts/game/social.gd:158"
+"scripts/game/social.gd:193"
 ],
 "%s picked up their own %s and is going to hit people with it": [
-"scripts/game/social.gd:194"
+"scripts/game/social.gd:229"
 ],
 "%s picked up %s's %s and is going to hit people with it": [
-"scripts/game/social.gd:194"
+"scripts/game/social.gd:229"
 ],
 "armed with your own arm": [
-"scripts/game/social.gd:195"
+"scripts/game/social.gd:230"
 ],
 "improvised weapon": [
-"scripts/game/social.gd:195"
+"scripts/game/social.gd:230"
 ],
 "%s threw a %s!": [
-"scripts/game/social.gd:213"
+"scripts/game/social.gd:248"
 ],
 "%s SLAMS %s into the sand!": [
-"scripts/game/social.gd:266"
+"scripts/game/social.gd:301"
 ],
 "%s strains against %s's weight": [
-"scripts/game/social.gd:309"
+"scripts/game/social.gd:344"
 ],
 "%s CATAPULTED %s!": [
-"scripts/game/social.gd:319"
+"scripts/game/social.gd:354"
 ],
 "%s tossed %s": [
-"scripts/game/social.gd:319"
+"scripts/game/social.gd:354"
 ],
 "human catapult": [
-"scripts/game/social.gd:323"
+"scripts/game/social.gd:358"
 ],
 "%s landed on %s!": [
-"scripts/game/social.gd:368"
+"scripts/game/social.gd:403"
 ],
 "human cannonball": [
-"scripts/game/social.gd:369"
+"scripts/game/social.gd:404"
 ],
 "%s lands hard!": [
-"scripts/game/social.gd:392",
-"scripts/game/social.gd:911"
+"scripts/game/social.gd:427",
+"scripts/game/social.gd:946"
 ],
 "%s shoved %s to the sand": [
-"scripts/game/social.gd:440"
+"scripts/game/social.gd:475"
 ],
 "%s plays dead. Very convincing.": [
-"scripts/game/social.gd:520"
+"scripts/game/social.gd:555"
 ],
 "%s tore free of %s's grip!": [
-"scripts/game/social.gd:678"
+"scripts/game/social.gd:713"
 ],
 "Grabbed! Mash SPACE or hit his arm": [
-"scripts/game/social.gd:682"
+"scripts/game/social.gd:717"
 ],
 "%s let go": [
-"scripts/game/social.gd:704"
+"scripts/game/social.gd:739"
 ],
 "%s wriggled free": [
-"scripts/game/social.gd:712"
+"scripts/game/social.gd:747"
 ],
 "The Hand of Jupiter is spent for this bout": [
-"scripts/game/social.gd:757"
+"scripts/game/social.gd:792"
 ],
 "The grip needs a moment (%d s)": [
-"scripts/game/social.gd:760"
+"scripts/game/social.gd:795"
 ],
 "The grip closes on nothing: look at a foe (no giants)": [
-"scripts/game/social.gd:786"
+"scripts/game/social.gd:821"
 ],
 "%s seizes %s in an unseen grip! He hangs where you look: F hurls him.": [
-"scripts/game/social.gd:797"
+"scripts/game/social.gd:832"
 ],
 "%s seizes %s in an unseen grip!": [
-"scripts/game/social.gd:797"
+"scripts/game/social.gd:832"
 ],
 "the hand of Jupiter": [
-"scripts/game/social.gd:801"
+"scripts/game/social.gd:836"
 ],
 "The grip on %s lets go": [
-"scripts/game/social.gd:848"
+"scripts/game/social.gd:883"
 ],
 "%s HURLS %s!": [
-"scripts/game/social.gd:889"
+"scripts/game/social.gd:924"
 ],
 "BOOM!": [
 "scripts/game/throwables.gd:747",
-"scripts/game/match.gd:2945"
+"scripts/game/match.gd:2999"
 ],
 "Caltrops all over the sand. Watch your step.": [
 "scripts/game/throwables.gd:778"
 ],
 "%s is covered in bees!": [
 "scripts/game/throwables.gd:788",
-"scripts/game/throwables.gd:1954"
+"scripts/game/throwables.gd:2090"
 ],
 "The hive breaks open: the swarm goes for %s!": [
 "scripts/game/throwables.gd:816"
@@ -4896,41 +4896,51 @@
 "%s caught the boomerang": [
 "scripts/game/throwables.gd:1326"
 ],
+"Torch": [
+"scripts/game/throwables.gd:1713",
+"data/shop.json#name"
+],
+"The torch burns out": [
+"scripts/game/throwables.gd:1813"
+],
 "The oil goes up in flames!": [
-"scripts/game/throwables.gd:1798"
+"scripts/game/throwables.gd:1934"
 ],
 "%s slipped in the olive oil": [
-"scripts/game/throwables.gd:1903"
+"scripts/game/throwables.gd:2039"
 ],
 "%s bandages %s and helps them up": [
-"scripts/game/throwables.gd:2070"
+"scripts/game/throwables.gd:2206"
 ],
 "%s bandaged up": [
-"scripts/game/throwables.gd:2072"
+"scripts/game/throwables.gd:2208"
 ],
 "%s empties a water skin over the burns": [
-"scripts/game/throwables.gd:2079"
+"scripts/game/throwables.gd:2215"
 ],
 "%s bowled a cheese wheel": [
-"scripts/game/throwables.gd:2084"
+"scripts/game/throwables.gd:2220"
 ],
 "%s laid a banana trap": [
-"scripts/game/throwables.gd:2090"
+"scripts/game/throwables.gd:2226"
 ],
 "%s ready: the bow looses it till it is used up (its number again puts it back)": [
-"scripts/game/throwables.gd:2107"
+"scripts/game/throwables.gd:2243"
 ],
 "%s put back: plain arrows again": [
-"scripts/game/throwables.gd:2107"
+"scripts/game/throwables.gd:2243"
+],
+"%s lit: swing it like a weapon, or hold F to aim and let go to throw": [
+"scripts/game/throwables.gd:2269"
 ],
 "%s ready: hold F to aim, let go to throw": [
-"scripts/game/throwables.gd:2132"
+"scripts/game/throwables.gd:2280"
 ],
 "%s put away": [
-"scripts/game/throwables.gd:2143"
+"scripts/game/throwables.gd:2291"
 ],
 "Out of %s: plain arrows again": [
-"scripts/game/throwables.gd:2336"
+"scripts/game/throwables.gd:2511"
 ],
 "Fx": [
 "scripts/game/fx.gd:29"
@@ -5077,103 +5087,103 @@
 "scripts/game/body.gd:148"
 ],
 "lost the %s": [
-"scripts/game/body.gd:341"
+"scripts/game/body.gd:343"
 ],
 "the %s was knocked off": [
-"scripts/game/body.gd:341"
+"scripts/game/body.gd:343"
 ],
 "a new scar on the %s": [
-"scripts/game/body.gd:365"
+"scripts/game/body.gd:367"
 ],
 "lost the right eye": [
-"scripts/game/body.gd:374"
+"scripts/game/body.gd:376"
 ],
 "lost the left eye": [
-"scripts/game/body.gd:374"
+"scripts/game/body.gd:376"
 ],
 "no %s": [
-"scripts/game/body.gd:404"
+"scripts/game/body.gd:406"
 ],
 "glass right eye": [
-"scripts/game/body.gd:408"
+"scripts/game/body.gd:410"
 ],
 "glass left eye": [
-"scripts/game/body.gd:408"
+"scripts/game/body.gd:410"
 ],
 "blind in the right eye": [
-"scripts/game/body.gd:408"
+"scripts/game/body.gd:410"
 ],
 "blind in the left eye": [
-"scripts/game/body.gd:408"
+"scripts/game/body.gd:410"
 ],
 "%d scarred parts": [
-"scripts/game/body.gd:412"
+"scripts/game/body.gd:414"
 ],
 "%d scarred part": [
-"scripts/game/body.gd:412"
+"scripts/game/body.gd:414"
 ],
 "Treat everything": [
-"scripts/game/body.gd:470"
+"scripts/game/body.gd:472"
 ],
 "Every broken bone set and splinted, every fresh wound cleaned and stitched, all at once: whole by the next bout, and cheaper than one at a time.": [
-"scripts/game/body.gd:470"
+"scripts/game/body.gd:472"
 ],
 "Glass eye (right)": [
-"scripts/game/body.gd:481"
+"scripts/game/body.gd:483"
 ],
 "Glass eye (left)": [
-"scripts/game/body.gd:481"
+"scripts/game/body.gd:483"
 ],
 "Set the %s": [
-"scripts/game/body.gd:486"
+"scripts/game/body.gd:488"
 ],
 "The bone pulled straight, set and splinted: it knits by the next bout. Left alone it stays broken, and the limb no use.": [
-"scripts/game/body.gd:487"
-],
-"Bind the ribs": [
 "scripts/game/body.gd:489"
 ],
-"The broken ribs bound tight: you breathe freely again by the next bout. Left alone, every breath is short.": [
-"scripts/game/body.gd:490"
+"Bind the ribs": [
+"scripts/game/body.gd:491"
 ],
-"Mend the skull": [
+"The broken ribs bound tight: you breathe freely again by the next bout. Left alone, every breath is short.": [
 "scripts/game/body.gd:492"
 ],
-"The cracked bone lifted and bound, the head kept still: the ringing and the blurring stop. Left alone, every knock to the head goes straight to the brain.": [
-"scripts/game/body.gd:493"
+"Mend the skull": [
+"scripts/game/body.gd:494"
 ],
-"Bind the pelvis": [
+"The cracked bone lifted and bound, the head kept still: the ringing and the blurring stop. Left alone, every knock to the head goes straight to the brain.": [
 "scripts/game/body.gd:495"
 ],
-"The hips bound tight in linen: the legs bear you again. Left alone, they buckle.": [
-"scripts/game/body.gd:496"
+"Bind the pelvis": [
+"scripts/game/body.gd:497"
 ],
-"Splint the cracked %s": [
+"The hips bound tight in linen: the legs bear you again. Left alone, they buckle.": [
 "scripts/game/body.gd:498"
 ],
-"The crack splinted until it holds: whole again by the next bout. Left alone it stays weak, and a lesser blow breaks it through.": [
-"scripts/game/body.gd:499"
+"Splint the cracked %s": [
+"scripts/game/body.gd:500"
 ],
-"The bone that came out through the skin cleaned, pushed back, set and the wound sewn over it: it knits by the next bout. Left alone it stays broken, and the limb no use.": [
+"The crack splinted until it holds: whole again by the next bout. Left alone it stays weak, and a lesser blow breaks it through.": [
 "scripts/game/body.gd:501"
 ],
+"The bone that came out through the skin cleaned, pushed back, set and the wound sewn over it: it knits by the next bout. Left alone it stays broken, and the limb no use.": [
+"scripts/game/body.gd:503"
+],
 "Stitch and dress your wounds": [
-"scripts/game/body.gd:507"
+"scripts/game/body.gd:509"
 ],
 "The cuts and the crushed flesh of your last fight, cleaned, stitched and bound: they heal without a mark. Left alone, they scar over for good.": [
-"scripts/game/body.gd:507"
+"scripts/game/body.gd:509"
 ],
 "Rare medicine": [
-"scripts/game/body.gd:512"
+"scripts/game/body.gd:514"
 ],
 "A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.": [
-"scripts/game/body.gd:512"
+"scripts/game/body.gd:514"
 ],
 "Elixir of Asclepius": [
-"scripts/game/body.gd:517"
+"scripts/game/body.gd:519"
 ],
 "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.": [
-"scripts/game/body.gd:517"
+"scripts/game/body.gd:519"
 ],
 "Ground": [
 "scripts/game/arena.gd:22"
@@ -5789,195 +5799,195 @@
 "scripts/game/match.gd:387"
 ],
 "%s beats its chest and roars!": [
-"scripts/game/match.gd:638"
+"scripts/game/match.gd:639"
 ],
 "%s raises its spiked tail!": [
-"scripts/game/match.gd:638"
+"scripts/game/match.gd:639"
 ],
 "%s trumpets and charges!": [
-"scripts/game/match.gd:638"
+"scripts/game/match.gd:639"
 ],
 "%s's eye is put out: he goes berserk!": [
-"scripts/game/match.gd:664"
+"scripts/game/match.gd:665"
 ],
 "%s came into the yard": [
-"scripts/game/match.gd:710"
+"scripts/game/match.gd:711"
 ],
 "Veteran %s": [
-"scripts/game/match.gd:897"
+"scripts/game/match.gd:898"
 ],
 "The other gate opens: %s!": [
-"scripts/game/match.gd:956"
+"scripts/game/match.gd:957"
 ],
 "Bout": [
-"scripts/game/match.gd:981"
+"scripts/game/match.gd:982"
 ],
 "Day %s · bout %d": [
-"scripts/game/match.gd:1010"
+"scripts/game/match.gd:1011"
 ],
 "Sparring partner": [
-"scripts/game/match.gd:1067"
+"scripts/game/match.gd:1068"
 ],
 "Lions' Den! Here comes the Emperor's pet.": [
-"scripts/game/match.gd:1227"
+"scripts/game/match.gd:1228"
 ],
 "%s patched up %s": [
-"scripts/game/match.gd:1503"
+"scripts/game/match.gd:1504"
 ],
 "%s is on fire!": [
-"scripts/game/match.gd:1542"
+"scripts/game/match.gd:1543"
 ],
 "The poison eats into %s!": [
-"scripts/game/match.gd:1542"
+"scripts/game/match.gd:1543"
 ],
 "%s picks up a %s": [
-"scripts/game/match.gd:2118"
+"scripts/game/match.gd:2119"
 ],
 "%s's %s is stuck fast in %s!": [
-"scripts/game/match.gd:2131"
+"scripts/game/match.gd:2132"
 ],
 "Round %d of 3": [
-"scripts/game/match.gd:2229"
+"scripts/game/match.gd:2230"
 ],
 "None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:2282"
+"scripts/game/match.gd:2283"
 ],
 "None of you can stand. The crowd moves on.": [
-"scripts/game/match.gd:2282"
+"scripts/game/match.gd:2283"
 ],
 "The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:2282"
+"scripts/game/match.gd:2283"
 ],
 "The crowd moves on.": [
-"scripts/game/match.gd:2282"
+"scripts/game/match.gd:2283"
 ],
 "You can fight no more": [
-"scripts/game/match.gd:2288"
+"scripts/game/match.gd:2289"
 ],
 "You fall": [
-"scripts/game/match.gd:2288"
+"scripts/game/match.gd:2289"
 ],
 "Round %d won": [
-"scripts/game/match.gd:2295"
+"scripts/game/match.gd:2297"
 ],
 "%d denarii to the party's purse": [
-"scripts/game/match.gd:2307"
-],
-", %d of them the crowd's": [
 "scripts/game/match.gd:2309"
 ],
-", %d for its favourite, %s": [
+", %d of them the crowd's": [
 "scripts/game/match.gd:2311"
 ],
+", %d for its favourite, %s": [
+"scripts/game/match.gd:2313"
+],
 "The crowd crowns %s its favourite": [
-"scripts/game/match.gd:2312"
+"scripts/game/match.gd:2314"
 ],
 "Bout %d won": [
-"scripts/game/match.gd:2313"
-],
-"Stage %d cleared": [
-"scripts/game/match.gd:2313"
-],
-"%s. Back to the yard: spend, mend, gear up.": [
-"scripts/game/match.gd:2313"
-],
-"Victory": [
 "scripts/game/match.gd:2315"
 ],
+"Stage %d cleared": [
+"scripts/game/match.gd:2315"
+],
+"%s. Back to the yard: spend, mend, gear up.": [
+"scripts/game/match.gd:2315"
+],
+"Victory": [
+"scripts/game/match.gd:2317"
+],
 "%s lifts %s": [
-"scripts/game/match.gd:2371"
+"scripts/game/match.gd:2420"
 ],
 "DEFEAT": [
-"scripts/game/match.gd:2442",
-"scripts/game/match.gd:2447"
+"scripts/game/match.gd:2491",
+"scripts/game/match.gd:2496"
 ],
 "The Emperor turns his thumb down": [
-"scripts/game/match.gd:2442",
-"scripts/game/match.gd:2447"
+"scripts/game/match.gd:2491",
+"scripts/game/match.gd:2496"
 ],
 "VICTORY!": [
-"scripts/game/match.gd:2449"
+"scripts/game/match.gd:2498"
 ],
 "The crowd roars your name": [
-"scripts/game/match.gd:2449"
+"scripts/game/match.gd:2498"
 ],
 "%s is carried off the sand": [
-"scripts/game/match.gd:2500"
+"scripts/game/match.gd:2553"
 ],
 "%s kills %s": [
-"scripts/game/match.gd:2677"
+"scripts/game/match.gd:2729"
 ],
 "%s TEARS %s APART!": [
-"scripts/game/match.gd:2679"
+"scripts/game/match.gd:2731"
 ],
 "%s loses the %s!": [
-"scripts/game/match.gd:2681"
+"scripts/game/match.gd:2733"
 ],
 "%s's %s is BROKEN%s!": [
-"scripts/game/match.gd:2687"
+"scripts/game/match.gd:2739"
 ],
 ", the bone out through the skin": [
-"scripts/game/match.gd:2687"
+"scripts/game/match.gd:2739"
 ],
 "%s's skull is cracked!": [
-"scripts/game/match.gd:2689"
+"scripts/game/match.gd:2741"
 ],
 "%s's skull is broken!": [
-"scripts/game/match.gd:2689"
+"scripts/game/match.gd:2741"
 ],
 "%s is set alight!": [
-"scripts/game/match.gd:2758"
+"scripts/game/match.gd:2812"
 ],
 "%s is poisoned!": [
-"scripts/game/match.gd:2769"
-],
-"%s is chilled to the bone!": [
-"scripts/game/match.gd:2776"
-],
-"The ruby flares: %s's %s catches fire!": [
-"scripts/game/match.gd:2811"
-],
-"The sapphire bites cold: frostbite in %s's %s!": [
 "scripts/game/match.gd:2823"
 ],
+"%s is chilled to the bone!": [
+"scripts/game/match.gd:2830"
+],
+"The ruby flares: %s's %s catches fire!": [
+"scripts/game/match.gd:2865"
+],
+"The sapphire bites cold: frostbite in %s's %s!": [
+"scripts/game/match.gd:2877"
+],
 "The emerald's poison eats into %s's %s!": [
-"scripts/game/match.gd:2833"
+"scripts/game/match.gd:2887"
 ],
 "a golden blow": [
-"scripts/game/match.gd:2852"
+"scripts/game/match.gd:2906"
 ],
 "BOING! %s goes flying!": [
-"scripts/game/match.gd:2890"
+"scripts/game/match.gd:2944"
 ],
 "Stuck! The glue holds %s fast.": [
-"scripts/game/match.gd:2902"
+"scripts/game/match.gd:2956"
 ],
 "%s giggles helplessly!": [
-"scripts/game/match.gd:2915"
+"scripts/game/match.gd:2969"
 ],
 "The magnet tears the %s out of %s's hand!": [
-"scripts/game/match.gd:3008"
+"scripts/game/match.gd:3062"
 ],
 "%s is dead": [
-"scripts/game/match.gd:3043"
+"scripts/game/match.gd:3100"
 ],
 "%s is beheaded": [
-"scripts/game/match.gd:3043"
+"scripts/game/match.gd:3100"
 ],
 "%s is back on his feet": [
-"scripts/game/match.gd:3213"
+"scripts/game/match.gd:3270"
 ],
 "%s spits venom!": [
-"scripts/game/match.gd:3326"
+"scripts/game/match.gd:3383"
 ],
 "%s breathes FIRE!": [
-"scripts/game/match.gd:3326"
+"scripts/game/match.gd:3383"
 ],
 "%s is poisoned by the %s!": [
-"scripts/game/match.gd:3473"
+"scripts/game/match.gd:3530"
 ],
 "Broken weapon": [
-"scripts/game/match.gd:3723"
+"scripts/game/match.gd:3780"
 ],
 "Legionary": [
 "scripts/game/campaign_run.gd:10"
@@ -9002,10 +9012,7 @@
 "Burning oil: it sprays over whoever it breaks on and pools on the sand.": [
 "data/shop.json#desc"
 ],
-"Torch": [
-"data/shop.json#name"
-],
-"Burning pitch on a stick, held in your free hand: what its flame touches catches fire. Thrown, it burns where it lands and sets spilled oil ablaze.": [
+"Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": [
 "data/shop.json#desc"
 ],
 "Vitriol pot": [

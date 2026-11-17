@@ -323,3 +323,67 @@ func test_a_bodkin_goes_through_three_men_and_stays_in_the_last() -> void:
 	await _steps(90)
 	t.check(hurt.get(0, 0) == 1 and hurt.get(1, 0) == 0, "a plain arrow stops in the first (%s)" % str(hurt))
 	m.queue_free()
+
+# ---------- the bow and the strength stats ----------
+
+## The speed an arrow has just as the bow looses it at a full draw, for an archer of that strength (the
+## trainer's Vis).
+func _arrow_leaving(strength: float) -> float:
+	var m := _match()
+	var phase := [0]
+	var a := _man(m, Vector3(0, 0, -5), 0.0, {"main": "bow"}, "Archer", 0, func(_e):
+		return {"main": {"x": 0.3, "y": 0.45}, "power": phase[0] == 1, "look": {"yaw": 0.0, "pitch": 0.0}})
+	a.is_archer = true
+	a.kind = "local"
+	a.f.mods.strength = strength
+	await _steps(60)
+	var w: Weapon = a.f.weapons.R
+	phase[0] = 1
+	for i in 600:
+		await get_tree().physics_frame
+		if float(w.get_meta("draw", 0.0)) >= 1.0:
+			break
+	phase[0] = 2
+	await _steps(3)
+	var v := 0.0
+	for it in m.items.list:
+		if String(it.type).begins_with("pot_arrow"):
+			v = (it.vel as Vector3).length()
+	m.queue_free()
+	await _steps(2)
+	return v
+
+## A stronger man draws a stiffer bow: the arrow leaves it faster, the more of Vis the more (user: the
+## shooting of arrows must grow with the stats of strength as they are raised).
+func test_a_stronger_archer_looses_a_faster_arrow() -> void:
+	seed(3)
+	var plain := await _arrow_leaving(1.0)
+	var trained := await _arrow_leaving(1.2)
+	var best := await _arrow_leaving(1.36)
+	t.check(plain > 50.0 and plain < 60.0, "a plain man's full draw: %.1f m/s" % plain)
+	t.check(trained > plain * 1.07 and trained < plain * 1.13, "a fifth more Vis: the arrow %.1f m/s, a tenth faster than %.1f" % [trained, plain])
+	t.check(best > trained * 1.03 and best < plain * 1.2, "the most the trainer teaches: %.1f m/s" % best)
+
+## The arrow strikes as hard as a blow of his weapon does: half of his strength and the whole of his
+## Ictus, a man of no training as before.
+func test_a_stronger_archers_arrow_strikes_harder() -> void:
+	var m := _match()
+	var plain: Fighter = _man(m, Vector3(-4, 0, -9), 0.0, {}, "Plain", 0, _idle).f
+	var strong: Fighter = _man(m, Vector3(4, 0, -9), 0.0, {}, "Strong", 0, _idle).f
+	strong.mods.strength = 1.3
+	strong.mods.blow = 1.2
+	var v1: Fighter = _man(m, Vector3(-4, 0, 0), PI, {}, "V1", 1, _idle).f
+	var v2: Fighter = _man(m, Vector3(4, 0, 0), PI, {}, "V2", 1, _idle).f
+	await _steps(40)
+	var js := {}
+	m.combat.hit.connect(func(h):
+		if h.get("char") != null and String(h.get("type", "")) == "point":
+			js[h.char] = float(h.J))
+	m.throwables._dart("pot_arrow", _front(v1), plain, Vector3(0, 0, 1), v1, v1.torso, 1.0)
+	m.throwables._dart("pot_arrow", _front(v2), strong, Vector3(0, 0, 1), v2, v2.torso, 1.0)
+	t.check(js.has(v1) and js.has(v2), "both arrows landed")
+	if js.has(v1) and js.has(v2):
+		var k: float = float(js[v2]) / maxf(0.01, float(js[v1]))
+		t.check(absf(k - 1.15 * 1.2) < 0.02, "the strong man's arrow lands %.2f times as hard (a half of his 30 per cent of strength and all of his 20 of Ictus: 1.38)" % k)
+		t.check(float(js[v1]) > 15.0 and float(js[v1]) < 17.0, "and a plain man's is what it was (%.1f)" % float(js[v1]))
+	m.queue_free()

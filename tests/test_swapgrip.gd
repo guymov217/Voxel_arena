@@ -85,6 +85,7 @@ func test_j_with_the_other_arm_broken_keeps_the_weapon_in_the_good_hand() -> voi
 		var m: Match = s[0]
 		var f: Fighter = s[1]
 		var q: Array = s[2]
+		f.sturdy_arms = false   # (the arm is broken outright here: a player's sound arm bone only cracks under a first blow)
 		var p: VoxelPart = f.arm[broken].fore
 		f._fracture(p, Vector3(0, 0, p.half_ext.z), 30.0, {}, 2, Vector3(0, 0, -1))
 		await _steps(10)

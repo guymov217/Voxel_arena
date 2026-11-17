@@ -275,6 +275,16 @@ func process_contacts(_dt: float) -> Array:
 				continue
 			if att.fighter.state != "stand" or not att.fighter.alive or att.severed:
 				continue
+			# The man a giant holds is not struck by his holder: what the arm does to him is the hold, the
+			# slam and the throw (Social). (Brought into the fist, the man hung in the swinging arm was
+			# beaten by it, forearm and trunk, before he was ever thrown.)
+			var held = att.fighter.holding
+			if held != null and held.get("target") != null and held.target.f == vic.fighter:
+				continue
+			# (Nor the man he has just let go of, while the arm is still following through: he leaves the
+			# hand with the speed it gave him, and the landing is what hurts him.)
+			if vic.fighter.thrown_by == att.fighter and vic.fighter.thrown_t > Social.THROW_CLEAR:
+				continue
 			# A beast's jaws, claws and horns bite only in a strike (the snap of the jaws, the
 			# swipe, the toss: Beast.strikes, telegraphed by the wind-up before it): a head that
 			# merely bumps into a man as it mauls or turns is no bite. (Every touch of the jaws
@@ -386,6 +396,13 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
 	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_strike()
+	# A giant's foot is not slowed by the small man it comes down on: the blow's speed is the foot's own
+	# (read after the step, with the man already carried along under it, there was hardly a speed
+	# between the two, and a stamp that threw a man to the sand hurt him not at all).
+	if kick and float(att.fighter.S) > 1.8 * float(vic_char.get("S") if vic_char.get("S") != null else 1.0):
+		rel = _vel_at(att, p)
+		speed = rel.length()
+		dir = rel.normalized()
 	var tusk: bool = not is_weapon and not club and _tusk(att)
 	var bite: bool = not is_weapon and not club and (att.def.get("bite", false) or att.def.get("point", false) or tusk)
 	var punch: bool = not is_weapon and not club and not bite and not kick
@@ -428,6 +445,9 @@ func _blow(g: Dictionary) -> Dictionary:
 		# jab up to 30, a swung fist 24, a giant's fist with a giant's weight behind it.
 		cap = 20.0 if kick else (30.0 if jabbing else 24.0)
 		if punch:
+			cap *= clampf(float(att.fighter.S), 1.0, 2.5)
+		# A colossus's stamp or punt comes down with the whole weight of him (his foot is no man's kick that shoves).
+		if kick and bool(att.fighter.mods.get("colossus", false)) and (att.fighter.stomp_at != null or att.fighter.punt_at != null):
 			cap *= clampf(float(att.fighter.S), 1.0, 2.5)
 	if tusk:
 		# A tusk is no bite (an elephant's bite is nil, and every gore landed at nothing): its blow

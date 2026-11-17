@@ -904,6 +904,8 @@ func _prompt_for(f) -> Array:
 			break
 		if best == null:
 			best = f.takeable(match_.combat.loose_weapons, side)
+	if best == null and f.reach.R == null and f.reach.L == null:
+		best = f.swap_target(match_.combat.loose_weapons).get("w")   # (his weapon arm out, his good hand on a shield: G swaps them)
 	if best != null:
 		return [["grab"], Loc.t("Pick up the %s") % Loc.lower(String(best.design.get("name", "weapon")))]
 	for o in match_.entities:

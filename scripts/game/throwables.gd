@@ -1192,7 +1192,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 			nail_hits_due.append([c, part, lp - ld * back, ld, owner_])
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
-	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
+	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) * arrow_blow(owner_) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	# (A bodkin's head is narrow and hard: it goes in a little deeper.)
 	_hit(c, part, J, "point", p, hdir, owner_, {"hardness": 1.0, "sharpness": 1.0} if type == "pot_arrow_pierce" else {})
 	if headshot:
@@ -1678,10 +1678,139 @@ var _laid_torches: Array = []   # thrown torches lying burning (drawing only)
 const TORCH_HEAD := 0.36     # the rag round the torch's head, up its stick (Items: "torch")
 var _oil_t := 0.0
 
+## The torch in the hand as a weapon (user: it can be swung, not only thrown, a burning weapon): a
+## thin stick with a bulb of pitch-soaked rag on its end, the flame standing up out of it (Weapon's
+## flame boxes), lent to the hand it is held in (Throwables.hold_item) and gone from it when it is
+## put away or thrown. Every blow of it sets alight what it strikes (Match._coating).
+##
+## It does not burn for ever (user: it must be able to break, never be used without end): it burns
+## down while it is held (TORCH_LIFE s) and every blow it lands costs it more (TORCH_BLOW s), the
+## rag of its head burning away from the crown down and its flame shrinking with it; what is spent
+## stays spent when it is put away and taken out again (`torch_burn` of the man's entry); and when
+## it is all burnt, or knocked to pieces, one torch of the kit is used up and the weapon he put
+## out of sight for it is back in his hand.
+const TORCH_LIFE := 60.0     # s a torch burns in the hand before it is spent
+const TORCH_BLOW := 2.0      # s of that each blow it lands costs it
+const TORCH_GONE := 0.8      # of its head knocked off or burnt away: it is spent (burnt right down, this much of it is gone)
+const TORCH_HEAD_FROM := 12  # the voxel row where the rag of its head begins
+static var _torch_design: Dictionary = {}
+static func torch_design() -> Dictionary:
+	if _torch_design.is_empty():
+		var vox := []
+		for y in 4:
+			vox.append([0, y, 0, "leather", "grip"])
+		for y in range(4, TORCH_HEAD_FROM):
+			vox.append([0, y, 0, "wood", "blunt"])
+		# The head: rag wound thick round the end of the haft, a bulb: narrow at the neck and at
+		# the crown, a full three voxels across in the belly (2 whole, 1 without its corners, 0 one).
+		var rows := {12: 1, 13: 2, 14: 2, 15: 1, 16: 0}
+		for y in rows:
+			for x in range(-1, 2):
+				for z in range(-1, 2):
+					var k := absi(x) + absi(z)
+					if rows[y] == 2 or (rows[y] == 1 and k <= 1) or (rows[y] == 0 and k == 0):
+						vox.append([x, y, z, "leather", "blunt"])
+		_torch_design = {"name": "Torch", "kind": "weapon", "twoHanded": false, "sharpness": 0.0, "voxels": vox, "imbue": "fire", "torch": true, "headFrom": TORCH_HEAD_FROM, "coatFrom": 15, "tip": [0, 14, 0]}
+	return _torch_design.duplicate(true)
+
+## The torch the man holds as a weapon, or null.
+static func torch_weapon(c) -> Variant:
+	if c == null or not is_instance_valid(c) or not ("held_item" in c) or c.held_item == null:
+		return null
+	var w = c.held_item.get("weapon")
+	return w if w != null and is_instance_valid(w) else null
+
 ## Where the flame of a held torch is.
 static func torch_tip(c) -> Vector3:
+	var w = torch_weapon(c)
+	if w != null:
+		var t: Array = w.design.get("tip", [0, 12, 0])
+		return w.global_transform * (Vector3(float(t[0]), float(t[1]), float(t[2])) * w.vs)
 	var side: String = c.held_item.get("side", "")
 	return (c.hand_world(side) if side != "" else c.head.global_position) + Vector3.UP * TORCH_TIP
+
+## How many voxels a torch's head had and how many of them are gone (burnt away or knocked off).
+static func _torch_head(w) -> Vector2i:
+	var from_y := int(w.design.get("headFrom", TORCH_HEAD_FROM))
+	var total := 0
+	var dead := 0
+	for i in w.vox.size():
+		if int(w.vox[i][1]) >= from_y:
+			total += 1
+			if w.alive[i] == 0:
+				dead += 1
+	return Vector2i(total, dead)
+
+## How much of a torch's head is gone, 0 to 1.
+static func torch_gone(w) -> float:
+	var hd := _torch_head(w)
+	return float(hd.y) / float(maxi(1, hd.x))
+
+## The head burnt away to `share` of it, from the crown down (the outer voxels of a row first), and
+## the flame as small as what is left of it.
+static func torch_trim(w, share: float) -> void:
+	share = clampf(share, 0.0, 1.0)
+	w.flame_size = lerpf(1.0, 0.45, share)
+	var hd := _torch_head(w)
+	var want := int(floor(share * TORCH_GONE * float(hd.x)))   # (burnt right down, TORCH_GONE of its head is gone)
+	if hd.y >= want:
+		return
+	var from_y := int(w.design.get("headFrom", TORCH_HEAD_FROM))
+	var idx := []
+	for i in w.vox.size():
+		if int(w.vox[i][1]) >= from_y and w.alive[i] == 1:
+			idx.append(i)
+	idx.sort_custom(func(a, b):
+		var va: Array = w.vox[a]
+		var vb: Array = w.vox[b]
+		if int(va[1]) != int(vb[1]):
+			return int(va[1]) > int(vb[1])
+		var ra: int = absi(int(va[0])) + absi(int(va[2]))
+		var rb: int = absi(int(vb[0])) + absi(int(vb[2]))
+		if ra != rb:
+			return ra > rb
+		if int(va[0]) != int(vb[0]):
+			return int(va[0]) < int(vb[0])
+		return int(va[2]) < int(vb[2]))
+	w.remove_voxels(idx.slice(0, want - hd.y))
+
+## A blow of the torch that lands wears it down (TORCH_BLOW), a graze not.
+func torch_struck(attacker, impact: float) -> void:
+	if impact < 0.5 or attacker == null or not is_instance_valid(attacker) or torch_weapon(attacker) == null:
+		return
+	var e = m.entity_of(attacker)
+	if e != null:
+		e.torch_burn = minf(float(e.get("torch_burn", 0.0)) + TORCH_BLOW, TORCH_LIFE)
+
+## A torch in the hand burns down a little (see TORCH_LIFE); true when it is spent.
+func _torch_burns(e: Dictionary, w, dt: float) -> bool:
+	var share := maxf((float(e.get("torch_burn", 0.0)) + dt) / TORCH_LIFE, torch_gone(w) / TORCH_GONE)
+	e.torch_burn = minf(share, 1.0) * TORCH_LIFE
+	if share >= 1.0:
+		_burn_out(e)
+		return true
+	torch_trim(w, share)
+	return false
+
+## The torch burnt out or knocked to pieces: out of his hand (the weapon he put away for it is back
+## in it), and one torch of the kit used up.
+func _burn_out(e: Dictionary) -> void:
+	var c = e.f
+	var h = c.held_item
+	if h == null:
+		return
+	var id := String(h.get("id", ""))
+	var at := torch_tip(c)
+	drop_held(c)
+	e.torch_burn = 0.0
+	var inv: Dictionary = e.get("inventory", {})
+	if id != "" and int(inv.get(id, 0)) > 0:
+		inv[id] = int(inv[id]) - 1
+	if m.fx:
+		m.fx.burst("fire_smoke", at, 6, Vector3.UP, 0.8)
+		m.fx.burst("sparks", at, 8, Vector3.UP, 0.5)
+	if e.kind == "local":
+		m.feed.emit(Loc.t("The torch burns out"))
 
 ## Flames and a little light on a torch's head (drawing only).
 func light_torch(node: Node3D) -> void:
@@ -1755,6 +1884,13 @@ func _torches(dt: float) -> void:
 		var c = e.f
 		if not is_instance_valid(c) or not ("held_item" in c) or c.held_item == null or c.held_item.get("type") != "torch" or not c.alive:
 			continue
+		# A torch that has left the hand (knocked out of it, the arm cut off) is not his to hold any more.
+		var lent = c.held_item.get("weapon")
+		if lent != null and (not is_instance_valid(lent) or (c.weapons.R != lent and c.weapons.L != lent)):
+			c.held_item = null
+			continue
+		if lent != null and _torch_burns(e, lent, dt):
+			continue   # (it is spent: gone from his hand)
 		var tip := torch_tip(c)
 		if tip.y < 0.6:
 			for z in zones.duplicate():
@@ -2114,12 +2250,24 @@ func hold_item(e: Dictionary, type: String, id: String) -> void:
 	var side: String = c.item_hand()
 	if side == "":
 		return   # no hand left to hold it
+	# A torch is a weapon too: with both hands empty it goes in the right, the one the main button swings.
+	if type == "torch" and side == "L" and c.weapons.get("R") == null and c.hand_works("R") and not c.two_handed:
+		side = "R"
 	if side == c.two_off() and c.two_handed:
 		c.toggle_grip()   # the off hand lets go of the haft to take the pot (H takes it back)
 	# Both hands full: that hand puts what it holds out of sight and takes the pot instead; the
 	# weapon is back in it once the pot is thrown or put away (user).
 	if c.weapons.get(side):
 		c.stow(side)
+	if type == "torch":
+		c.equip(side, torch_design())
+		var tw = c.weapons.get(side)
+		if tw != null:
+			torch_trim(tw, float(e.get("torch_burn", 0.0)) / TORCH_LIFE)   # (what burnt of it is gone still)
+			c.held_item = {"type": type, "id": id, "node": null, "side": side, "weapon": tw}
+			if e.kind == "local":
+				m.feed.emit(Loc.t("%s lit: swing it like a weapon, or hold F to aim and let go to throw") % Loc.t(String(Data.shop.throwables.get(id, {}).get("name", id))))
+			return
 	var node = null
 	if not headless:
 		node = Items.visual(type)
@@ -2147,6 +2295,18 @@ func drop_held(c) -> void:
 		return
 	if c.held_item.node and is_instance_valid(c.held_item.node):
 		c.held_item.node.queue_free()
+	# A torch lent to the hand as a weapon goes from it, and is not left lying about.
+	var tw = torch_weapon(c)
+	if tw != null:
+		for sd in ["R", "L"]:
+			if c.weapons[sd] == tw:
+				var lw = c.release(sd)
+				if lw != null:
+					if Combat.current:
+						Combat.current.loose_weapons.erase(lw)
+					lw.queue_free()
+		if is_instance_valid(tw) and not tw.is_queued_for_deletion():
+			tw.queue_free()
 	c.held_item = null
 
 ## Throws the readied pot where the player looks (power from the wind-up).
@@ -2161,6 +2321,8 @@ func throw_held(e: Dictionary, inp: Dictionary) -> void:
 	if int(inv.get(h.id, 0)) <= 0:
 		return   # the kit ran out under it (shared purse, a sale): nothing to throw
 	inv[h.id] = int(inv[h.id]) - 1
+	if h.type == "torch":
+		e.torch_burn = 0.0   # (the one thrown was the one in his hand: the next is whole)
 	var look = inp.get("look", {"yaw": c.yaw, "pitch": 0.0})
 	var power := clampf(float(inp.get("throwPower", 0.8)), 0.3, 1.0)
 	var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch), cos(look.yaw) * cos(look.pitch))
@@ -2184,6 +2346,18 @@ static func arm_speed(c) -> float:
 
 static func arm_blow(c) -> float:
 	return 1.0 + 0.5 * (arm_speed(c) - 1.0)
+
+## The archer's strength (the trainer's Vis) draws a stiffer bow: the arrow leaves it faster, by the
+## root of the strength (what a bow pushes with is the force that draws it, and the speed an arrow
+## has of that push goes as its root); and what he looses strikes as hard as a blow of his weapon
+## does (Combat._blow): half of his strength and the whole of his Ictus (user: the shooting of arrows
+## must grow with the stats of strength as they are raised).
+static func arrow_pull(c) -> float:
+	return sqrt(arm_speed(c))
+
+static func arrow_blow(c) -> float:
+	var ictus := float(c.mods.get("blow", 1.0)) if is_instance_valid(c) and "mods" in c else 1.0
+	return arm_blow(c) * ictus
 
 ## `straight`: a player's throw flies along the line to the crosshair (the flat one of the two
 ## arcs that reach it, or along the line itself when it is out of reach), never a lob.
@@ -2255,6 +2429,7 @@ func update_shooters(dt: float) -> void:
 
 func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var c = e.f
+	var pull := arrow_pull(c)   # (a strong arm's draw: faster arrows)
 	var held: bool = inp.get("power", false)
 	var ys := []
 	for v in w.design.voxels:
@@ -2292,7 +2467,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	if player and inp.get("aimAt") is Vector3:
 		# Where the crosshair sits, allowing for the drop over the distance (weaponFx.js): a
 		# short draw, a long hold or a tired arm scatters it a little.
-		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
 		from = _on_sight(from, inp)
 		var dd: Vector3 = (inp.aimAt as Vector3) - from
 		var dist := dd.length()
@@ -2307,7 +2482,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		vel = Items.flat_shot(dd, speed, 9.81)
 		from += dd.normalized() * 0.5
 	elif player and look != null:
-		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
 		var wobble := _bow_wobble(c, draw, hold_t)
 		var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch) + 0.06, cos(look.yaw) * cos(look.pitch)).normalized()
 		dir = dir.rotated(Vector3.UP, randf_range(-wobble, wobble)).normalized()
@@ -2316,7 +2491,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		from += dir * 0.5
 	else:
 		var tgt = m.nearest_enemy(e)
-		var speed := ARROW_SPEED.x + ARROW_SPEED.y * draw
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
 		var aim: Vector3 = bot_aim(e, tgt.f, from, speed, _bow_wobble(c, draw, hold_t)) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
 		var dd := aim - from
 		var t := maxf(0.15, dd.length() / speed)

@@ -1,6 +1,7 @@
 extends Node
 ## The giants of myth land their weapons on a man a third their size: each is let at a man for
-## a while and must hit him with what it carries, not swing over his head.
+## a while and must hit him with what it carries, not swing over his head. (Polyphemus carries
+## nothing: his fists, feet and grip are tests/test_colossus.gd.)
 
 var t
 
@@ -46,7 +47,7 @@ func _bout(kind: String, seconds: float, down: bool) -> Dictionary:
 
 func test_every_giant_lands_its_weapon_on_a_man() -> void:
 	seed(7)
-	for kind in ["cyclops", "giant", "minotaur", "troll", "titan"]:
+	for kind in ["cyclops", "minotaur", "troll", "titan"]:
 		# (Sixteen seconds: the titan is slow, and now and then its first swing came after ten.)
 		var h := await _bout(kind, 16.0, false)
 		var msg := "%s (S %.1f, %s) lands its weapon on a standing man (first hit at %.1fs, J %.0f)" % [kind, h.S, h.weapon_name, h.first, h.J]
@@ -59,7 +60,7 @@ func test_every_giant_lands_its_weapon_on_a_man() -> void:
 
 func test_every_giant_reaches_a_man_on_the_sand() -> void:
 	seed(8)
-	for kind in ["cyclops", "giant", "titan"]:
+	for kind in ["cyclops", "titan"]:
 		# (Eighteen seconds: the man on the sand keeps getting up and is put down again, and a
 		# giant's first blow at him comes at four to eleven seconds over ten seeds.)
 		var h := await _bout(kind, 18.0, true)
@@ -67,14 +68,14 @@ func test_every_giant_reaches_a_man_on_the_sand() -> void:
 		printerr("   : " + msg)
 		t.check(h.weapon >= 1 and h.first < 16.0, msg)
 
-## A giant with a long-hafted weapon fought as a spear (the giant's nail plank) brings it down on
+## A giant with a long-hafted weapon fought as a spear (the troll's nail plank) brings it down on
 ## a man on the sand, whatever way the fight goes (three seeds). The rule that sends a spearman
 ## back out past his point kept the giant from striking from where he stood over the man: no blow
 ## at all in fourteen seconds in three seeds of ten.
 func test_a_giant_with_a_long_haft_strikes_a_man_on_the_sand() -> void:
 	for sd in [1, 2, 9]:
 		seed(sd)
-		var h := await _bout("giant", 16.0, true)
+		var h := await _bout("troll", 16.0, true)
 		t.check(h.weapon >= 1, "seed %d: the giant (%s) strikes the man on the sand (first hit at %.1fs)" % [sd, h.weapon_name, h.first])
 
 ## Every foe stands still (they come in through the gate over time: each step).

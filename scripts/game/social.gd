@@ -96,6 +96,39 @@ func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 func hand_joint(c: Fighter, side: String, part: VoxelPart) -> Joint3D:
 	return c._joint_at(c.arm[side].fore, part, c.hand_world(side), false)
 
+## The point of `part`'s box nearest `p`.
+static func box_point(part: VoxelPart, p: Vector3) -> Vector3:
+	var xf := part.global_transform
+	var l: Vector3 = xf.affine_inverse() * p
+	var he: Vector3 = part.half_ext
+	return xf * Vector3(clampf(l.x, -he.x, he.x), clampf(l.y, -he.y, he.y), clampf(l.z, -he.z, he.z))
+
+## How far into the giant's fist (x S) the part he has taken hold of is drawn: the pin joint lets the
+## two overlap (it keeps them from colliding), and a man held with a hand's breadth of daylight
+## between his head and the fist, however near, did not look held.
+const GRIP_SINK := 0.03
+const THROW_CLEAR := 1.2   # a man thrown (thrown_t counts down from 1.5 s) is clear of his thrower's blows after 0.3 s
+
+## A giant's hand closes on what it is on, and the man is brought the last of the way into the fist:
+## the pin joint holds the two as they stand, so a man taken from a hand's breadth off (the hand
+## only has to be near the part it touched) hung that far under the fist, from nothing (user: no
+## physical contact to be seen when the giant lifts him). The whole of him goes, as one, till the
+## part held lies in the fist's end (GRIP_SINK).
+func _close_in(c: Fighter, side: String, t: Fighter, part: VoxelPart) -> void:
+	var hand := c.hand_world(side)
+	var inward: Vector3 = c.arm[side].fore.global_transform.basis.y.normalized()   # (the hand point is the forearm's -y end: the fist lies back along +y)
+	var shift := hand + inward * GRIP_SINK * c.S - box_point(part, hand)
+	if shift.length() < 0.01 * c.S:
+		return
+	var bodies: Array = t.parts.duplicate()
+	for w in t.weapons.values():
+		if w:
+			bodies.append(w)
+	for b in bodies:
+		if is_instance_valid(b) and not (b is VoxelPart and (b as VoxelPart).severed):
+			b.global_position += shift
+			b.snap_drawing()
+
 func _free_joint(j) -> void:
 	if j and is_instance_valid(j):
 		j.queue_free()
@@ -115,6 +148,8 @@ func grab_person(e: Dictionary, inp: Dictionary):
 	var best = nearest_part(c, side, others, touch)
 	if best == null:
 		return null
+	if touch:
+		_close_in(c, side, best.e.f, best.part)
 	c.holding = {"side": side, "target": best.e, "part": best.part, "joint": hand_joint(c, side, best.part), "t": 0.0, "extra": null, "limb": null}
 	if sides.size() > 1:
 		var second = nearest_part(c, sides[1], [best.e], touch)

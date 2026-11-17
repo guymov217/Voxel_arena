@@ -2873,5 +2873,8 @@
  "%s ready: the bow looses it till it is used up (its number again puts it back)": "%s พร้อม: ธนูจะยิงดอกนี้จนกว่าจะหมด (กดหมายเลขซ้ำเพื่อเก็บคืน)",
  "%s put back: plain arrows again": "เก็บ %s คืนแล้ว: กลับไปใช้ลูกธนูธรรมดา",
  "Out of %s: plain arrows again": "%s หมดแล้ว: กลับไปใช้ลูกธนูธรรมดา",
- "BOW: %s": "ธนู: %s"
+ "BOW: %s": "ธนู: %s",
+ "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s ติดไฟแล้ว: เหวี่ยงเหมือนอาวุธ หรือกด F ค้างเพื่อเล็งแล้วปล่อยเพื่อขว้าง",
+ "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "ยางสนลุกไหม้บนปลายไม้ ถือในมือที่ว่าง: เหวี่ยงเหมือนกระบอง ทุกครั้งที่ฟาดจะจุดไฟเผาศัตรู ยิ่งสู้ก็ยิ่งไหม้หมดไป และจะหายไปเมื่อไหม้จนหมด ขว้างออกไปจะลุกไหม้ตรงที่ตก และจุดน้ำมันที่หกอยู่ให้ลุกเป็นไฟ",
+ "The torch burns out": "คบเพลิงไหม้หมดแล้ว"
 }

@@ -2876,5 +2876,8 @@
  "%s ready: the bow looses it till it is used up (its number again puts it back)": "%s已就绪：弓会一直射它，直到用完（再按一次数字即放回）",
  "%s put back: plain arrows again": "%s已放回：又是普通箭",
  "Out of %s: plain arrows again": "%s已用完：又是普通箭",
- "BOW: %s": "弓：%s"
+ "BOW: %s": "弓：%s",
+ "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s已点燃：像武器一样挥舞，或按住 F 瞄准，松开即投掷",
+ "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "棒头燃烧的松脂，拿在空着的手里：像棍棒一样挥舞，每一击都会点燃对手。战斗中它会不断烧短，烧尽就没了。扔出去，落在哪里就在哪里燃烧，还会点燃洒在地上的油。",
+ "The torch burns out": "火把烧尽了"
 }

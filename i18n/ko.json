@@ -2873,5 +2873,8 @@
  "%s ready: the bow looses it till it is used up (its number again puts it back)": "%s 준비됨: 다 쓸 때까지 활이 이 화살을 쏩니다 (번호를 다시 누르면 되돌립니다)",
  "%s put back: plain arrows again": "%s 되돌림: 다시 일반 화살",
  "Out of %s: plain arrows again": "%s 소진: 다시 일반 화살",
- "BOW: %s": "활: %s"
+ "BOW: %s": "활: %s",
+ "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s 점화: 무기처럼 휘두르거나, F를 누른 채 조준하고 놓아서 던지세요",
+ "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "막대 끝에서 타는 송진을 빈손에 든다: 곤봉처럼 휘두르면 타격마다 적에게 불이 붙는다. 싸우는 동안 타들어 가며, 다 타면 사라진다. 던지면 떨어진 곳에서 타오르고, 쏟아진 기름에 불을 붙인다.",
+ "The torch burns out": "횃불이 다 타 버렸다"
 }
