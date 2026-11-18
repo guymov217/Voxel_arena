@@ -3457,8 +3457,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# A hard landing (thrown by a giant, tossed by a bull, off a crate) breaks on the legs if
 	# he comes down on them, on whatever hits first if he does not: the faster, the worse.
 	# (The fastest he fell since he left the ground, cashed in when the fall is over.)
+	# (Not a trunk sinking as he stoops to a grip or slams a man he holds: a giant bent over the man he
+	# had taken by the head came to the end of his stoop at seven metres a second and "landed hard"
+	# on his own legs, and fell.)
 	if lv0.y < -3.0:
-		prev_vy = minf(prev_vy, lv0.y)
+		if stoop < 0.05 and holding == null:
+			prev_vy = minf(prev_vy, lv0.y)
 	elif prev_vy < -5.5 and lv0.y > -1.0:
 		if live:
 			_land_hard(-prev_vy)

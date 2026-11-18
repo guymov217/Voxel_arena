@@ -71,23 +71,31 @@ func grab_hands(e: Dictionary, inp: Dictionary) -> Array:
 		return ["L"]
 	return []
 
+## A giant's hand is on a man only where the fist has touched him (user: the giant took hold of a man
+## from half a metre off, and he was drawn across to the fist). With the physics' touch of the forearm on
+## that part on record the fist has to be at it, FIST_REACH (x the giant's size, a forearm's half-width
+## and a little: lying flat on a man the hand is that far off his surface); with none on record (the
+## contacts come and go between steps) only a fist at the surface, TOUCH_GAP (m: the few centimetres the
+## physics keeps a fist off a body, whatever the giant's size). Tests may set TOUCH_GAP.
+static var TOUCH_GAP := 0.06
+const FIST_REACH := 0.12
+
 ## The nearest part of any of `targets` to `side`'s hand, within reach (a giant's hand must
 ## actually touch the body: `touch`).
 func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 	var hand := c.hand_world(side)
 	var best = null
-	var bd := 0.14 * c.S if touch else 0.7 * maxf(1.0, c.S * 0.85)
+	var bd := INF if touch else 0.7 * maxf(1.0, c.S * 0.85)
 	for o in targets:
 		# A giant's hand takes only what it is on: the part his forearm touches (the physics'
-		# contact), at the hand.
-		# (With no contact on the record this step, the part whose surface is at the hand, a
-		# touch's width off: the contacts come and go between steps, and a hand on a man's
-		# shoulder closed on nothing.)
+		# contact), at the hand, or one whose surface is at the hand (a touch's width off).
 		var on: VoxelPart = m.combat.touch_by(c.arm[side].fore, o.f, 0.3) if touch else null
 		for part in o.f.parts:
-			if part.severed or part.missing or (touch and on != null and part != on):
+			if part.severed or part.missing:
 				continue
 			var d: float = box_distance(part, hand) if touch else part.global_position.distance_to(hand)
+			if touch and d >= (FIST_REACH * c.S if part == on else TOUCH_GAP):
+				continue
 			if d < bd:
 				bd = d
 				best = {"e": o, "part": part}

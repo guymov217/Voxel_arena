@@ -25,7 +25,7 @@ func _scene(gap: float) -> Dictionary:
 		await get_tree().physics_frame
 	ge.erase("drive")
 	ge.bot.think = 99.0
-	var out := {"m": m, "man": man, "g": ge.f, "bot": ge.bot, "hits": []}
+	var out := {"m": m, "man": man, "g": ge.f, "bot": ge.bot, "e": ge, "hits": []}
 	var g: Fighter = ge.f
 	m.combat.hit.connect(func(h):
 		if h.get("char") == man and h.get("attacker") == g:
@@ -42,6 +42,24 @@ func _move(sc: Dictionary, move: String) -> void:
 func _run(seconds: float) -> void:
 	for i in int(seconds * Engine.physics_ticks_per_second):
 		await get_tree().physics_frame
+
+## How far the nearest part of a man is from a point (m).
+func _gap(man: Fighter, p: Vector3) -> float:
+	var best := INF
+	for part in man.parts:
+		if not part.severed and not part.missing:
+			best = minf(best, Social.box_distance(part, p))
+	return best
+
+## The man moved, whole and straight toward (or from) a point, till `part` of him is `d` m from it.
+func _put_apart(man: Fighter, part: VoxelPart, p: Vector3, d: float) -> void:
+	var bp := Social.box_point(part, p)
+	var dist := bp.distance_to(p)
+	var shift := (p - bp) / dist * (dist - d)
+	for b in man.parts:
+		if not b.severed:
+			b.global_position += shift
+			b.snap_drawing()
 
 func test_polyphemus_goes_bare_handed_and_he_alone() -> void:
 	var m := Match.new()
@@ -104,13 +122,19 @@ func test_the_colossus_takes_a_man_in_his_fist_and_throws_him() -> void:
 	bot.grab_reach = Bot.GRAB_REACH
 	bot.hold_t = 0.0
 	var held := false
+	var off := INF   # (how far the fist was from him the step before it closed, and where he stood then)
+	var stood := man.torso.global_position
 	for i in int(4.0 * Engine.physics_ticks_per_second):
 		await get_tree().physics_frame
 		if g.holding != null:
 			held = true
 			break
+		off = _gap(man, g.hand_world("R"))
+		stood = man.torso.global_position
 	t.check(held, "the hand closes on the man")
 	if held:
+		t.check(off < 0.1, "with the fist on him, not half a metre short of him (%.0f cm off)" % (off * 100.0))
+		t.check(man.torso.global_position.distance_to(stood) < 0.25, "and he is not drawn across to it (%.0f cm)" % (man.torso.global_position.distance_to(stood) * 100.0))
 		bot.hold_move = "throw"
 		await _run(0.4)
 		var part: VoxelPart = g.holding.part if g.holding != null else null
@@ -125,6 +149,7 @@ func test_the_colossus_takes_a_man_in_his_fist_and_throws_him() -> void:
 				struck = sc.hits.size()
 			elif released_at < 0.0:
 				released_at = sc.m.time
+				t.check(g.state == "stand", "he lets go on his feet, the throw's, not a fall of his (%s)" % g.state)
 		t.eq(struck, 0, "no blow on a man while he is held")
 		t.check(released_at > 0.0, "the throw lets him go")
 		# On to where he lands.
@@ -134,4 +159,42 @@ func test_the_colossus_takes_a_man_in_his_fist_and_throws_him() -> void:
 		if not landings.is_empty():
 			t.check(float(landings[0].J) >= 8.0, "by the speed he was stopped from, J %.0f" % float(landings[0].J))
 		t.check(man.torso.global_position.distance_to(g.torso.global_position) > 6.0, "a long way from the giant (%.1f m)" % man.torso.global_position.distance_to(g.torso.global_position))
+	sc.m.queue_free()
+
+## A giant's hand takes hold only of what the fist is on (user: the giant must grab only if his hand
+## actually touches the man): one half a metre from it, near enough for the reach it had, is left, and
+## is not drawn across to the fist; one the fist is at is taken, and sits in it.
+func test_the_colossus_takes_only_a_man_his_fist_is_on() -> void:
+	var sc := await _scene(2.13)
+	var g: Fighter = sc.g
+	var man: Fighter = sc.man
+	var m: Match = sc.m
+	var hand := g.hand_world("R")
+	for d in [0.5, 0.2, 0.12, 0.08]:
+		_put_apart(man, man.head, hand, d)
+		var was := man.torso.global_position
+		var none = m.social.grab_person(sc.e, {"grab": true, "grabHands": "R"})
+		t.check(none == null and g.holding == null, "a man %.0f cm from the fist is not taken" % (d * 100.0))
+		t.check(man.torso.global_position.distance_to(was) < 0.001, "and not drawn across to it")
+	_put_apart(man, man.head, hand, 0.01)
+	var at := man.torso.global_position
+	var took = m.social.grab_person(sc.e, {"grab": true, "grabHands": "R"})
+	t.check(took == man and g.holding != null, "a man the fist is on is taken")
+	if g.holding != null:
+		t.check(g.holding.part == man.head, "by the part it was on")
+		t.check(man.torso.global_position.distance_to(at) < 0.25, "and brought no more than a hand's breadth into the fist (%.0f cm)" % (man.torso.global_position.distance_to(at) * 100.0))
+	sc.m.queue_free()
+
+## The reach at a man too far to touch closes on air: nobody is taken and nobody is drawn to the fist.
+func test_a_colossus_reaching_at_a_man_out_of_reach_takes_nobody() -> void:
+	var sc := await _scene(9.0)
+	var g: Fighter = sc.g
+	var bot = sc.bot
+	var man: Fighter = sc.man
+	bot.grab_cool = 0.0
+	bot.grab_reach = Bot.GRAB_REACH
+	var at := man.torso.global_position
+	await _run(1.2)
+	t.check(g.holding == null, "the hand closed on air")
+	t.check(man.torso.global_position.distance_to(at) < 0.05, "and he stood where he was (%.0f cm)" % (man.torso.global_position.distance_to(at) * 100.0))
 	sc.m.queue_free()

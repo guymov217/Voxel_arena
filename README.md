@@ -132,9 +132,15 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   has knocked down it goes on striking; it does not stand off and watch him. Now and then it
   stoops to him instead, its hand right down on him, takes hold of him where he lies and lifts
   him to slam or throw him (`Bot.GRAB_DOWN_RATE`, `tests/giantpickprobe.gd`). A giant's hand
-  closes on the part of the man it touches and he is drawn the last of the way into the fist
-  (`Social._close_in`: the pin joint holds the two as they stand, so a man taken from a hand's
-  breadth off hung that far under the fist); while he is held the arm that holds him does not
+  closes only on what the fist has touched: a part the physics has the forearm on, with the fist
+  at it (`Social.FIST_REACH`), or one the fist is at the surface of (`Social.TOUCH_GAP`, the few
+  centimetres the physics keeps a fist off a body); a man half a metre off, near enough for the
+  reach it once had, is neither taken nor drawn across (`tests/test_colossus.gd`: Polyphemus now
+  takes hold with the fist within 6 cm of the man, where it took hold from 50 cm). The man is
+  then brought the last of the way into the fist (`Social._close_in`: the pin joint holds the two
+  as they stand, so a man taken from a hand's breadth off hung that far under the fist, and now no
+  more than that breadth); a trunk sinking as the giant stoops to a grip or slams the man he holds
+  is not a fall that lands hard (`Fighter.prev_vy`); while he is held the arm that holds him does not
   strike him, nor for a moment after the throw the arm that threw him: the hold, the slam and the
   throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`).
   Polyphemus alone has no weapon and fights as the colossus he is (`mods.colossus`,
