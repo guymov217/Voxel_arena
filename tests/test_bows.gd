@@ -132,3 +132,40 @@ func test_a_bot_archer_does_not_shoot_every_arrow_at_the_middle_of_the_chest() -
 	t.check(near_chest < n / 5, "few within a hand of the chest's middle (%d of %d)" % [near_chest, n])
 	t.check(spread > 0.4, "the marks run from the legs to the head (%.2f m between the 10th and 90th)" % spread)
 	m.queue_free()
+
+## And they miss (user: the archers' arrows never missed): from seven paces a good archer's mark is on
+## a man standing still about every other time, on one who strafes about every third, a poor archer's
+## fewer still (three in four before, a man on the move as often as one standing). A mark is on him
+## if it is within a hand's breadth of his axis, between the sand and the top of his head, where he
+## will be when the arrow comes.
+func test_a_bot_archer_misses_a_man_now_and_then() -> void:
+	seed(11)
+	var m := _match()
+	var v := _victim(m, Vector3(0, 0, 0))
+	for i in 30:
+		await get_tree().physics_frame
+	var base: Vector3 = v.torso.global_position
+	var from := base + Vector3(0, 0.4, -7.5)
+	var share := func(diff: float, vel: Vector3) -> float:
+		v.torso.linear_velocity = vel
+		var e := {"bot": {"diff": diff}}
+		var n := 800
+		var hit := 0
+		for i in n:
+			var at: Vector3 = m.throwables.bot_aim(e, v, from, 50.0, 0.015)
+			var where: Vector3 = base + vel * (at.distance_to(from) / 50.0)
+			if Vector2(at.x - where.x, at.z - where.z).length() <= 0.25 and at.y > v.ground_level and at.y < v.ground_level + 1.75:
+				hit += 1
+		return float(hit) / float(n)
+	var good_still: float = share.call(0.9, Vector3.ZERO)
+	var good_strafe: float = share.call(0.9, Vector3(4.0, 0, 0))
+	var good_walk: float = share.call(0.9, Vector3(0, 0, 2.0))
+	var poor_still: float = share.call(0.5, Vector3.ZERO)
+	var poor_strafe: float = share.call(0.5, Vector3(4.0, 0, 0))
+	v.torso.linear_velocity = Vector3.ZERO
+	t.check(good_still > 0.35 and good_still < 0.68, "a good archer's marks are on a man standing still about every other time (%.0f%%)" % (100.0 * good_still))
+	t.check(good_strafe < good_still - 0.05 and good_strafe < 0.5, "on one who strafes, fewer (%.0f%%)" % (100.0 * good_strafe))
+	t.check(good_walk < good_still - 0.05 and good_walk < 0.55, "and on one who walks (%.0f%%)" % (100.0 * good_walk))
+	t.check(poor_still < good_still - 0.1 and poor_still < 0.42, "a poor archer's, fewer than his (%.0f%%)" % (100.0 * poor_still))
+	t.check(poor_strafe < good_strafe and poor_strafe < 0.35, "the poor one's at a man who strafes fewest (%.0f%%)" % (100.0 * poor_strafe))
+	m.queue_free()

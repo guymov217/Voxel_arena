@@ -599,9 +599,10 @@ func enter_yard(banner_text := "") -> void:
 func _open_station(id: String) -> void:
 	if visible:
 		return
-	# What his weapons and armour took about the yard (a swing at the post, a friend's blade) is
-	# the smith's to mend too, and goes with him through the gate (user: damage in the yard was
-	# not counted when mending).
+	# What his armour took about the yard (a swing at the post, a friend's blade) is the smith's to
+	# mend too, and goes with him through the gate (user: damage in the yard was not counted when
+	# mending). His weapons' chips are not: the smith counts only what a bout in the arena did to
+	# them (user: the lobby's fights never count at the smith's).
 	_keep_yard_wear()
 	# The gate: the gate's fights, a card each (GateScreen).
 	# (A room's host at the gate when the demo is over: the gate's menu, with the modes for the room.)
@@ -623,14 +624,13 @@ func _open_station(id: String) -> void:
 		"trainer": show_screen("trainer")
 		"gate": show_screen("gate")
 
-## The chips and dents the yard left in his gear, into the saved arms and armour (as a bout's are).
+## The dents the yard left in his armour, into the saved armour wear (as a bout's are). Not the
+## chips in his weapons: the smith counts those only from a bout in the arena, and what the yard
+## knocked out of a blade is gone with the next time he is built (the gate, a purchase).
 func _keep_yard_wear() -> void:
 	if not in_yard() or match_.me == null or not is_instance_valid(match_.me.get("f")):
 		return
 	var yw: Dictionary = match_.my_wear()
-	if yw.is_empty():
-		return
-	Save.set_value("arms", Arms.add_wear(arms(), yw))
 	if yw.get("armor") is Dictionary:
 		set_armor_wear(Armory.add_wear(armor_wear(), yw.armor, worn_armor()))
 
@@ -2731,7 +2731,7 @@ func _ff_quit() -> void:
 	_ff_timer_on(false)
 
 ## The time is up with the forge open: what is on the anvil is taken as it stands, if it can be
-## held and carried; else the hand keeps what it had. A piece half made at the bench is lost.
+## held; else the hand keeps what it had. A piece half made at the bench is lost.
 func _ff_close_open() -> void:
 	if ff_open == null or not is_instance_valid(ff_open):
 		ff_open = null
@@ -2741,7 +2741,7 @@ func _ff_close_open() -> void:
 	if f.has_method("_design_now"):
 		var d: Dictionary = f._design_now()
 		var st := ForgeLib.compute_stats(d)
-		if st.get("hasGrip", false) and ForgeLib.too_heavy(d, st) == "":
+		if st.get("hasGrip", false):
 			d.stats = st
 			ff.kit[ff_open_side] = d
 			_ff_changed(false)

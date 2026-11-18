@@ -361,7 +361,7 @@ func test_the_falx_is_on_the_smiths_rack() -> void:
 	t.eq(String(d.get("name", "")), "Falx", "by its name")
 	t.check(bool(d.get("twoHanded", false)), "held in both hands")
 	var st: Dictionary = ForgeLib.compute_stats(d)
-	t.eq(ForgeLib.too_heavy(d, st), "", "a man can carry it")
+	t.check(float(st.mass) < 10.0, "a man can carry it (%.1f kg)" % float(st.mass))
 	t.check(ForgeLib.two_hand_points(d) != null, "both hands find room on the haft")
 	t.check(int(st.edge) >= 12 and int(st.point) >= 1, "an edge and a point (%d, %d)" % [int(st.edge), int(st.point)])
 	t.check(absf(float(st.mass) - float(d.stats.mass)) < 0.01 and absf(float(st.reach) - float(d.stats.reach)) < 0.01 and absf(float(st.swingSpeed) - float(d.stats.swingSpeed)) < 0.01, "its stats as the forge reckons them")
@@ -537,9 +537,8 @@ func test_the_masterworks_grow_with_the_campaign() -> void:
 				kinds[d.oddity.kind] = true
 				cost[k] += Arms.oddity_price(d)
 				var st := ForgeLib.compute_stats(d)
-				var why := ForgeLib.too_heavy(d, st)
-				if why != "" or not d.twoHanded or ForgeLib.grip_points(d) == null or Masterworks.load_of(st) > Masterworks.LOAD[tier - 1] + 0.61:
-					bad.append("%s (%s, tier %d, load %.2f) %s" % [d.name, d.oddity.kind, tier, Masterworks.load_of(st), why])
+				if not d.twoHanded or ForgeLib.grip_points(d) == null or Masterworks.load_of(st) > Masterworks.LOAD[tier - 1] + 0.61:
+					bad.append("%s (%s, tier %d, load %.2f)" % [d.name, d.oddity.kind, tier, Masterworks.load_of(st)])
 				# (In a party the host takes a guest's weapon as the forge could make it, or he
 				# fights with a gladius: within its grid, of its stuff, no more blocks than it holds.)
 				if Net.clean_design(d) == null:

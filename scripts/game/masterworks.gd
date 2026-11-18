@@ -100,7 +100,7 @@ static func make(kind: String, tier: int, rng: RandomNumberGenerator) -> Diction
 		while L >= lo:
 			d = _design(_build(kind, t, L, o, sh), nm)
 			var st := ForgeLib.compute_stats(d)
-			if load_of(st) <= budget and ForgeLib.too_heavy(d, st) == "":
+			if load_of(st) <= budget:
 				ForgeLib.one_piece(d)
 				return d
 			L -= 1

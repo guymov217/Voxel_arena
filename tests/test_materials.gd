@@ -201,10 +201,7 @@ func test_a_man_on_the_sand_is_stamped_on() -> void:
 func test_room_on_the_anvil_to_experiment() -> void:
 	t.check(ForgeLib.in_grid(0, 80, 0) and ForgeLib.in_grid(14, 0, 5), "a 3 m pole and a wide head fit on the anvil")
 	t.check(ForgeLib.MAX_VOXELS >= 1500, "room for %d voxels" % ForgeLib.MAX_VOXELS)
-	var d := {"name": "Long pole", "voxels": []}
-	for y in 80:
-		d.voxels.append([0, y, 0, "wood", "grip" if y < 8 else "blunt"])
-	t.eq(ForgeLib.too_heavy(d), "", "a 3 m wooden pole can be lifted")
+	t.check(not ForgeLib.in_grid(0, 100, 0), "but the anvil ends at about 3.5 m: no 4 m pole")
 
 func test_a_held_blade_never_sticks_in_the_floor() -> void:
 	var m := _match()

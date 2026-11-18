@@ -225,3 +225,44 @@ func test_the_weapons_come_back_to_the_yard_as_the_bout_left_them() -> void:
 	menu.queue_free()
 	Save.set_value("arms", was)
 	await _steps(2)
+
+## What the yard knocks out of his blade (a swing at the post, a friend's sword) never counts at the
+## smith's (user: only the damage of a bout in the arena does): a stall or the gate opened there
+## leaves the saved wear as the arena left it, and the smith's bill is the arena's alone.
+func test_the_yards_knocks_do_not_count_at_the_smith() -> void:
+	var was = Save.get_value("arms", {})
+	var a := Arms.sanitize({})
+	a.main = Data.preset("gladius").duplicate(true)
+	a.off = null
+	var idx := []
+	for i in a.main.voxels.size():
+		if a.main.voxels[i][4] != "grip":
+			idx.append(i)
+	var bout: Array = idx.slice(0, 4)     # what the arena took out of it
+	var yard: Array = idx.slice(10, 18)   # what the yard took
+	Save.set_value("arms", Arms.add_wear(a, {"R": bout}))
+	var menu = load("res://scripts/ui/menu.gd").new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	await _steps(20)
+	var w: Weapon = menu.match_.me.f.weapons.R
+	t.check(w != null, "his sword in hand in the yard")
+	if w:
+		w.remove_voxels(yard)
+		t.eq(w.vox.size() - w.alive_count(), bout.size() + yard.size(), "the yard chipped it further")
+	var bill := Arms.repair_cost(menu.arms(), "R")
+	menu._open_station("smith")
+	await get_tree().process_frame
+	t.eq((menu.arms().wear.R as Array).size(), bout.size(), "the saved wear is the bout's alone")
+	t.eq(Arms.repair_cost(menu.arms(), "R"), bill, "and the smith's bill is what the arena made it")
+	menu._close_overlay()
+	await get_tree().process_frame
+	menu._open_station("market")
+	await get_tree().process_frame
+	t.eq((menu.arms().wear.R as Array).size(), bout.size(), "nor does another stall opened after count them")
+	menu._close_overlay()
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("arms", was)
+	await _steps(2)

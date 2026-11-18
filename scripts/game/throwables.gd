@@ -2523,6 +2523,11 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 ## if he is on the move, and the shot scatters as a man's does: more the farther, the shorter the
 ## draw (`wobble`), the worse the archer, so the arms, the legs and the sand get their share (all
 ## went to the dead centre of the chest, and a man who stood still was hit there every time: user).
+## And he misses: his hand is never quite steady (AIM_HAND, more the poorer he is), his eye is a
+## moment behind a man on the move and he does not lead him quite right, and now and then a shot
+## is simply bad (AIM_BAD): about half of a good archer's arrows strike a man standing still at
+## seven paces, a little fewer one who moves, fewer a poor archer's (it was three in four: they
+## never missed, user).
 func bot_aim(e: Dictionary, t, from: Vector3, speed: float, wobble: float) -> Vector3:
 	var marks := [["torso", 5.0], ["belly", 3.0], ["head", 1.0], ["thighR", 0.5], ["thighL", 0.5]]
 	var tot := 0.0
@@ -2544,20 +2549,26 @@ func bot_aim(e: Dictionary, t, from: Vector3, speed: float, wobble: float) -> Ve
 	var y0 := -0.55 if pick == "belly" else 0.0
 	var at: Vector3 = part.global_transform * Vector3(randf_range(-0.6, 0.6) * he.x, (y0 + randf_range(-0.45, 0.45)) * he.y, randf_range(-0.6, 0.6) * he.z)
 	var dist := at.distance_to(from)
-	# Led: where he will be when it arrives (a little short of it: no one leads perfectly).
+	# Led: where he will be when it arrives. No one leads perfectly, and his eye is a moment behind
+	# a man on the move: he sees him where he was a tenth of a second ago at the most.
 	var lv: Vector3 = t.torso.linear_velocity
-	at += Vector3(lv.x, 0, lv.z) * (dist / maxf(1.0, speed)) * randf_range(0.5, 1.0)
-	# The scatter: an angle off the line, the archer's own wobble and his skill.
+	at += Vector3(lv.x, 0, lv.z) * ((dist / maxf(1.0, speed)) * randf_range(0.6, 1.2) - randf_range(0.0, AIM_LAG))
+	# The scatter: an angle off the line, the archer's own wobble, his hand and his skill (the sight
+	# of a range is worse than of a side: it goes more up and down).
 	var diff := 0.7
 	if e.get("bot") != null and e.bot.get("diff") != null:
 		diff = float(e.bot.diff)
-	var spread := wobble + 0.02 + 0.035 * (1.0 - diff)
-	var a := randf() * TAU
-	var k := sqrt(randf()) * spread * dist
+	var spread := wobble + AIM_HAND[0] + AIM_HAND[1] * (1.0 - diff)
 	var dd := (at - from).normalized()
 	var sd := Vector3(dd.z, 0, -dd.x).normalized()
 	var upv := sd.cross(dd).normalized()
-	return at + sd * cos(a) * k + upv * sin(a) * k
+	var k := spread * dist * 0.6
+	at += sd * randfn(0.0, k) + upv * randfn(0.0, k) * 1.35
+	# A bad shot now and then: the release is early or late, the string catches the sleeve.
+	if randf() < AIM_BAD[0] + AIM_BAD[1] * (1.0 - diff):
+		var b := randf() * TAU
+		at += (sd * cos(b) + upv * sin(b)) * randf_range(0.35, 0.8)
+	return at
 
 ## Where a shot leaves from: on the crosshair's own line of sight, beside the bow (the nearest
 ## point of it), not at the bow out on the right shoulder. From there it flies under the
@@ -2576,6 +2587,13 @@ func _on_sight(from: Vector3, inp: Dictionary) -> Vector3:
 	var on: Vector3 = (af as Vector3) + n * t
 	# Only from beside the archer: a camera thrown far off (a free look) keeps the bow's own.
 	return on if on.distance_to(from) < 1.2 else from
+
+## What a bot archer's shot is off by (`bot_aim`): the angle his hand scatters it by, a steady one's and
+## what more a poor one's, the second he is behind a man on the move, and the chance of a plain bad
+## shot (a good archer's, and what more a poor one's).
+const AIM_HAND := [0.05, 0.1]
+const AIM_LAG := 0.1
+const AIM_BAD := [0.06, 0.2]
 
 ## Arrows fly fast and near straight (a dropping lob was the old slow arrow): speed at no draw
 ## plus what a full draw adds, m/s.

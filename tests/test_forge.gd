@@ -482,25 +482,34 @@ func _find_button(n: Node, text: String) -> Button:
 			return b
 	return null
 
-## A weapon too heavy to lift is not let out of the forge (it lay on the sand, the hand dragged
-## after it); the smith's oddities never come out that heavy; a weapon pushed through the sand
+## The forge puts no weight on what is made in it (user: do not limit weapon building by weight, let
+## the player find out for himself what is too heavy): a block of lead on a stick comes out of it as it
+## stands, and the heaviest the room holds, a whole anvil of lead, too. Length is the one thing it
+## holds a man to: the room (about 3.5 m), so no pole is built longer. A weapon pushed through the sand
 ## comes back up on it rather than being lost.
-func test_nothing_too_heavy_to_lift() -> void:
+func test_the_forge_puts_no_weight_on_a_weapon() -> void:
 	var heavy := {"name": "Anvil on a stick", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"]]}
 	ForgeLib.box(heavy, -3, 3, 2, 8, -2, 2, "lead", "blunt")
-	t.check(ForgeLib.too_heavy(heavy) != "", "a lead block of %.0f kg is too heavy" % ForgeLib.compute_stats(heavy).mass)
-	t.eq(ForgeLib.too_heavy(Data.preset("warhammer")), "", "a warhammer is not")
-	var f = load("res://scripts/ui/forge.gd").new()
-	add_child(f)
-	var got := []
-	f.free_build = true
-	f.open(heavy, 99999, func(d, _c): got.append(d))
-	f._take()
-	t.check(got.is_empty() and f.cost_label.text.begins_with("Too heavy"), "the forge will not let it out: %s" % f.cost_label.text)
-	f.queue_free()
-	for s in 6:
-		for d in Arms.oddities(s * 13 + 1, 1 + s * 3):
-			t.eq(ForgeLib.too_heavy(d), "", "oddity %s can be lifted" % d.name)
+	var whole := {"name": "All lead", "voxels": [[0, 0, 0, "wood", "grip"], [0, 1, 0, "wood", "grip"]]}
+	ForgeLib.box(whole, ForgeLib.GRID.minX, ForgeLib.GRID.maxX, 2, ForgeLib.GRID.maxY, ForgeLib.GRID.minZ, ForgeLib.GRID.maxZ, "lead", "blunt")
+	t.eq((whole.voxels as Array).size(), ForgeLib.MAX_VOXELS, "the room is filled with lead, as many blocks as it holds")
+	for d in [heavy, whole]:
+		var kg: float = ForgeLib.compute_stats(d).mass
+		t.check(kg > 40.0, "%s weighs %.0f kg, far past what a man swings" % [d.name, kg])
+		var f = load("res://scripts/ui/forge.gd").new()
+		add_child(f)
+		var got := []
+		f.free_build = true
+		f.open(d, 99999, func(dd, _c): got.append(dd))
+		f._take()
+		t.check(got.size() == 1 and not f.cost_label.text.to_lower().contains("heavy"), "the forge lets %s out: %s" % [d.name, f.cost_label.text])
+		f.queue_free()
+	var pole := {"name": "Pole", "voxels": []}
+	var built := 0
+	for y in 800:   # (a 32 m pole)
+		if ForgeLib.set_voxel(pole, 0, y, 0, "wood", "blunt"):
+			built += 1
+	t.check(float(built) * Data.weapon_voxel < 4.0 and built >= 80, "no pole is built past the room: %d blocks, %.1f m" % [built, float(built) * Data.weapon_voxel])
 	var w := Weapon.new()
 	w.setup(Data.preset("gladius"))
 	add_child(w)

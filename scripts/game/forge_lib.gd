@@ -47,36 +47,6 @@ static func box(d: Dictionary, x0: int, x1: int, y0: int, y1: int, z0: int, z1: 
 static func _mass(mat: String) -> float:
 	return float(Data.material(mat).get("mass", 0.02))
 
-## The most a gladiator can lift and swing (kg): heavier, it lies on the sand with the hand
-## dragged down after it.
-const MAX_KG_ONE := 14.0
-const MAX_KG_TWO := 26.0
-## And the most weight out at a distance from the hand (kg·m): a heavy head on a long haft
-## drags the arm down though the whole weighs little (a warhammer is 6.4 two-handed, a mace 1.8).
-const MAX_LEVER_ONE := 3.5
-const MAX_LEVER_TWO := 10.0
-
-## Why this design cannot be carried into a fight, or "" if it can.
-static func too_heavy(d: Dictionary, st := {}) -> String:
-	if st.is_empty():
-		st = compute_stats(d)
-	var two: bool = d.get("twoHanded", false)
-	var cap := MAX_KG_TWO if two else MAX_KG_ONE
-	if float(st.mass) > cap:
-		if two:
-			return Loc.t("Too heavy to lift: %.1f kg, the most is %d kg") % [st.mass, int(cap)]
-		return Loc.t("Too heavy to lift: %.1f kg, the most is %d kg (%d two-handed)") % [st.mass, int(cap), int(MAX_KG_TWO)]
-	var g = grip_points(d)
-	if g != null and st.get("com") is Array:
-		var gm: Vector3 = g.main
-		var lever: float = float(st.mass) * (Vector3(st.com[0], st.com[1], st.com[2]) - gm).length() * Data.weapon_voxel
-		var lcap := MAX_LEVER_TWO if two else MAX_LEVER_ONE
-		if lever > lcap:
-			if two:
-				return Loc.t("Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f). Lighter at the end, or nearer the hand") % [lever, lcap]
-			return Loc.t("Too much weight too far from the hand: the arm cannot hold it up (%.1f of %.1f; more two-handed). Lighter at the end, or nearer the hand") % [lever, lcap]
-	return ""
-
 ## The hand points (voxel units) for the main and the off hand, or null with no grip.
 static func grip_points(d: Dictionary) -> Variant:
 	# Where the builder put the hands (the forge's Move hand: on any block of it), while there
@@ -607,8 +577,6 @@ static func blacksmith_says(d: Dictionary, st := {}) -> String:
 		return "Is this a weapon or a toothpick? Even the rats are laughing."
 	if st.reach > 1.4:
 		return "You could poke someone in the next city with this."
-	if st.tooHeavy:
-		return "Too heavy for one hand, friend. Make it two-handed or lose the weight."
 	if st.balance > 0.5:
 		return "All the weight is at the far end. It will hit like a cart, and turn like one too."
 	if st.edge == 0 and st.point == 0 and st.crush < 0.15:

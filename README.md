@@ -35,6 +35,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A harder and a faster swing takes more flesh, by the physics alone: the blow's momentum sets how
   deep a cut goes and how wide a crushing blow's hollow is, and past the most a part gives to one
   blow they go on growing, slowly, as the root of the force (`Fighter.past_cap`, `tests/test_blunt.gd`).
+  Everyone bleeds by one law, a man, a giant, a beast, a boss: the blood a body loses is the bleeding
+  on it (its wounds, cut arteries and stumps) over its size, so a body twice a man's loses it half
+  as fast from the same wounds, never none (`Fighter.blood_lost`; it went with the size squared
+  and a cut artery's flow was cut by the size as well, so the lion boss lost 4 blood in 160 s of
+  cuts and a giant next to none, and none of them could bleed to death). A dozen hard cuts in the
+  limbs bled a man out in 4 s, a goat in 6, a lion in 7, the Big Lion in 10, a gorilla in 15, the
+  giants in 7 (the minotaur) to 17 s (Polyphemus); an elephant, a rhino or a dragon, whose hides take
+  little of a cut, kept two thirds of their blood from a dozen, and lost it all in under 20 s to
+  three dozen (`tests/test_bleed_out.gd`). What a torn organ runs out is by its share of the organ,
+  not by the voxel (`Fighter._organ_bleed`; a lion's heart is 150 voxels to a man's 27): half a
+  heart torn kills a man in 3 s, a lion in 8, a bear in 9, the Big Lion in 11, an elephant in 14
+  and a dragon in 18, none sooner than a man.
 - **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
   at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
   out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle
@@ -164,6 +176,12 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   flings poisoned spikes from its tail at one out of its reach, after raising the tail with a roar.
   The enemy's health plate reaches nothing when the fight with him is over, whatever ends it:
   head, trunk, blood, a broken neck, the brain or a torn heart, or down and spent.
+  A bot archer misses (`Throwables.bot_aim`): his hand is never quite steady (`AIM_HAND`, more
+  the poorer he is by the difficulty), his eye is a moment behind a man on the move and he does not
+  lead him quite right (`AIM_LAG`), and now and then a shot is plainly bad (`AIM_BAD`). From seven
+  paces about half of a good archer's arrows struck a man who stood still (65 of 141 in the arena
+  against the sagittarius, three in four before), and as many one who strafed (42 of 96); a poorer
+  archer's fall on him less often still (`tests/test_bows.gd`).
 - **Wounds change how they fight**: a hurt man grows wary (a longer distance, slower to begin
   a blow, fewer strung together) and, near the end of his blood, throws a desperate lunging
   blow now and then with all his weight in it; a boss has half the wariness. Of the beasts,
@@ -292,7 +310,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   why a deed cannot be done), `stage3d.gd` (the 3D view) and `menu_man.gd` (the player's gladiator
   for the dressing room); what is bought, mended or taught is Menu's, as it was. They fit the
   interface scale and the shape of the window (`tests/test_stations.gd`).
-- **The smith**: buy bases, mend, hone and temper. A voxel forge reshapes a weapon voxel by voxel.
+- **The smith**: buy bases, mend, hone and temper. What the smith mends in a weapon is what bouts in
+  the arena chipped out of it: the knocks it takes in the yard (the post, a friend's blade) are
+  never counted, and the next time he is built, at the gate or at a purchase, they are gone
+  (`Menu._keep_yard_wear` keeps only the yard's dents in his armour, `tests/test_yard.gd`).
+  A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
   (the rings are marked MAIN and OTHER). Two fists need 3 blocks (12 cm) between them, so a
   short grip (gladius, dagger, hammer) stays one-handed; a long one taken in two hands with H
@@ -307,6 +329,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   ways (a halo marks it, `Forge.turn_ghost`), and the blocks the mirrors made of it turn with it,
   the mirrored way (`Forge.turn_face`). R and F go by where the key is as well as by what it says,
   as the forge's other keys do, so they work on any keyboard layout (`tests/test_forge.gd`).
+  The forge puts no weight on a weapon: what is too heavy to lift the player finds out by trying
+  it (the arm cannot raise it, it drags on the sand, and a blow's force is capped, so a great
+  weight is no great blow). Only the room limits it: 1600 blocks within about 3.5 m by 1.3 by 0.5
+  (`ForgeLib.GRID`, `ForgeLib.MAX_VOXELS`), so no 30 m pole. The smith's own stock is still made
+  to be lifted (`Masterworks.load_of`).
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's

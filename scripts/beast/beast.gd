@@ -826,7 +826,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			p.flinch_t -= dt
 	if torso.stump:
 		bleed += 2.5
-	blood = maxf(0.0, blood - bleed * 0.3 / (S * S) * dt)
+	blood = maxf(0.0, blood - blood_lost(bleed, dt))
 	_organs_tick(dt)
 	# What fire or acid ate away from under a part (a leg's hip, a jaw's hinge) lets it fall, as on
 	# a man: nothing stays on a body it is not joined to (a burnt jaw hung on in the air).

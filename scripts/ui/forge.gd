@@ -570,9 +570,6 @@ func _try_row() -> HBoxContainer:
 		if not ForgeLib.compute_stats(d).hasGrip:
 			cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
 			return
-		if ForgeLib.too_heavy(d) != "":
-			cost_label.text = ForgeLib.too_heavy(d)
-			return
 		if get_parent() and get_parent().has_method("try_from_forge"):
 			get_parent().try_from_forge(self, d, dummy_pick, dummy_fights, String(names[maxi(0, keys.find(dummy_pick))]))))
 	return row
@@ -1015,9 +1012,6 @@ static func gallery() -> Array:
 
 func _save_design() -> void:
 	var d := _design_now()
-	if ForgeLib.too_heavy(d) != "":
-		cost_label.text = ForgeLib.too_heavy(d)
-		return
 	if not ForgeLib.compute_stats(d).hasGrip:
 		cost_label.text = "Say where it is held before you save it: build a Grip block, or ✋ Move hand"
 		return
@@ -1252,9 +1246,6 @@ func _update_texts() -> void:
 		elif c.has_meta("sharp_none"):
 			c.visible = not sharp
 	_price_badge()
-	var heavy := ForgeLib.too_heavy(d, st)
-	if heavy != "":
-		cost_label.text = heavy
 
 ## What the weapon on the anvil comes to, spelled out: what it is made of and the smith's work,
 ## what is paid now, and what is left in the purse after (or how much is missing).
@@ -2053,9 +2044,6 @@ func _job_name(j: String) -> String:
 func _take() -> void:
 	var d := _design_now()
 	var st := ForgeLib.compute_stats(d)
-	if ForgeLib.too_heavy(d, st) != "":
-		cost_label.text = ForgeLib.too_heavy(d, st)
-		return
 	if not st.hasGrip:
 		cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
 		return

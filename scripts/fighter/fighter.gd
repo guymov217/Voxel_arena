@@ -20,6 +20,13 @@ const ARM_REACH := 0.68
 const HIT_SCALE := 0.8
 const BLEED_RATE := 0.6
 const CLOT_K := 0.06
+## The blood a body loses in a step to the bleeding on it (`bleed`, the wounds, arteries and stumps
+## added up): a bigger body has more blood to lose and a cut flows as its own size, so a body twice
+## a man's loses it half as fast from the same wound, but never none. (It went with the square of the
+## size, and with the artery's own flow cut by the size on top of it: a lion boss lost 4 blood in
+## 160 s of cuts and a giant next to none, and none of them could bleed to death; user.)
+func blood_lost(bleed: float, dt: float) -> float:
+	return bleed * BLEED_RATE * float(mods.bleed) / S * dt
 ## How hard a cut artery bleeds (before BLEED_RATE): the throat's and the trunk's great vessels
 ## more than a limb's. At 6 for every one (and slow to close) a nick in a thigh bled a gladiator
 ## white in under half a minute, and the fight was over by it (user: one of them always bleeds
@@ -3372,7 +3379,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if p.stump:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
-	blood = maxf(0.0, blood - bleed * BLEED_RATE * float(mods.bleed) / (S * S) * dt)
+	blood = maxf(0.0, blood - blood_lost(bleed, dt))
 	if dying > 0.0:
 		# At death's door: no blood comes back, and the door shuts when the time is up.
 		blood = minf(blood, 12.0)
@@ -8047,7 +8054,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				cut_artery = true
 			if cut_artery:
 				res.artery = true
-			part.open_wound(lp.clamp(-part.half_ext, part.half_ext), -ld, cut_artery, (ARTERY_CORE if part == head or part == torso or part.part_name == "neck" else ARTERY_LIMB) / maxf(1.0, S))
+			part.open_wound(lp.clamp(-part.half_ext, part.half_ext), -ld, cut_artery, ARTERY_CORE if part == head or part == torso or part.part_name == "neck" else ARTERY_LIMB)
 		var voxels := part.remove_voxels(remove)
 		# Nothing cut away just vanishes: the slice a blade takes, the plug a point punches
 		# out, the flesh a blow crushes, all fall to the sand as pieces.
@@ -8947,6 +8954,24 @@ func organ_health(id: int) -> float:
 func lungs() -> float:
 	return (organ_health(Anatomy.LUNG_R) + organ_health(Anatomy.LUNG_L)) * 0.5
 
+## The voxels a man has of each organ that bleeds when it is torn (his lungs both together).
+const MAN_ORGAN_VOXELS := {Anatomy.HEART: 27, Anatomy.LIVER: 90, Anatomy.STOMACH: 48, Anatomy.GUTS: 420}
+const MAN_LUNG_VOXELS := 382
+
+## What running out of the organs torn (`lost`: organ -> voxels) adds to the trunk's bleeding: so much
+## to the voxel, as much as the same share of a man's would, however many more voxels a beast's heart
+## is made of (a lion's is 150 to a man's 27, and half of it torn ran out five times the blood a man's
+## did: the lion bled out in a second and a half, sooner than the man, whom a torn heart kills in
+## three).
+func _organ_bleed(lost: Dictionary) -> float:
+	var out := 0.0
+	for pair in [[Anatomy.HEART, 2.5], [Anatomy.LIVER, 0.7], [Anatomy.STOMACH, 0.3], [Anatomy.GUTS, 0.15]]:
+		var o: int = pair[0]
+		out += float(lost.get(o, 0)) * float(pair[1]) * minf(1.0, float(MAN_ORGAN_VOXELS[o]) / maxf(1.0, float(organ_total.get(o, 1))))
+	var lungs_total: int = int(organ_total.get(Anatomy.LUNG_R, 0)) + int(organ_total.get(Anatomy.LUNG_L, 0))
+	out += float(lost.get(Anatomy.LUNG_R, 0) + lost.get(Anatomy.LUNG_L, 0)) * 0.2 * minf(1.0, float(MAN_LUNG_VOXELS) / maxf(1.0, float(lungs_total)))
+	return out
+
 func _organ_lost(part: VoxelPart, indices: Array) -> void:
 	# (A many-headed beast's other heads have brains of their own: torn, they ring no bell in the
 	# head it fights with, or in its body.)
@@ -8966,7 +8991,7 @@ func _organ_lost(part: VoxelPart, indices: Array) -> void:
 	# What runs out of each (into the torso's bleeding), as much as was torn.
 	var n_heart: int = lost.get(Anatomy.HEART, 0)
 	var n_lung: int = lost.get(Anatomy.LUNG_R, 0) + lost.get(Anatomy.LUNG_L, 0)
-	torso.bleed += n_heart * 2.5 + lost.get(Anatomy.LIVER, 0) * 0.7 + n_lung * 0.2 + lost.get(Anatomy.STOMACH, 0) * 0.3 + lost.get(Anatomy.GUTS, 0) * 0.15
+	torso.bleed += _organ_bleed(lost)
 	if n_heart > 0 and heart_t < 0.0 and organ_health(Anatomy.HEART) < 0.75:
 		# A big beast's heart takes longer to stop than a man's.
 		heart_t = (3.0 if organ_health(Anatomy.HEART) > 0.4 else 1.2) * clampf(torso.nominal_mass / 32.0, 1.0, 6.0)
