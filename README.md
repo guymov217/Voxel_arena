@@ -140,7 +140,12 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   then brought the last of the way into the fist (`Social._close_in`: the pin joint holds the two
   as they stand, so a man taken from a hand's breadth off hung that far under the fist, and now no
   more than that breadth); a trunk sinking as the giant stoops to a grip or slams the man he holds
-  is not a fall that lands hard (`Fighter.prev_vy`); while he is held the arm that holds him does not
+  is not a fall that lands hard (`Fighter.prev_vy`); the stoop is a man's bending, not a collapse:
+  the hips are let down, and up again, at a pace the legs hold (`Fighter.STOOP_RATE`,
+  `Fighter.lowered`; dropped at the pace of a fall the soles went through the sand and the knees
+  onto it, and he sprang up at the end), the feet stay planted, and to a man lying on the sand he
+  leans on out over him (`Fighter.grab_deep`), with longer to reach him (`Bot.GRAB_DOWN_REACH`),
+  till the hand is down on him (`tests/test_stoop.gd`); while he is held the arm that holds him does not
   strike him, nor for a moment after the throw the arm that threw him: the hold, the slam and the
   throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`).
   Polyphemus alone has no weapon and fights as the colossus he is (`mods.colossus`,

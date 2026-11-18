@@ -220,6 +220,7 @@ var eye_cells: Array = []   # the head's voxels around the eyes, on the face (bi
 var strip_clock := 0.0
 var crawl_phase := 0.0
 var stance_h := 0.0     # the hip height the planted leg gives (world y of the torso)
+var lowered := -1.0     # a big man's hips let down to a stoop (and up out of it) at a pace the legs can hold, -1 when not stooping: see control
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var on_ground := true  # this step: the trunk held up by the legs over the sand (not in the air)
 var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x sharpness)
@@ -293,6 +294,7 @@ var haft_behind_t := 0.0    # how long the off hand on the haft has been dragged
 var reach := {"R": null, "L": null}   # G: a hand on its way to a weapon's grip, or closed on it and turning it into the fist
 var stoop := 0.0            # bent down to a grip low by his feet (0..1): the reach sets it every step
 var grab_bend := 0.0        # bent down to a man below him, to take hold of him or land a fist on him (0..1): see _drive_arm
+var grab_deep := 0.0        # bent right over to a man on the sand while the hand is still above him with the stoop at its fullest (0..1): the trunk leans farther out, see control
 var grab_low := false       # a hand sent down to him this step (the bend is let go of when none is)
 var arm_strain := {"R": 0.0, "L": 0.0}   # how far each hand is held off its mark (m): pulling on a weapon stuck fast
 var wrench_t := {"R": 0.0, "L": 0.0}     # how long that hand has been pulling on a weapon stuck in a body
@@ -305,6 +307,11 @@ var jump_t := 0.0         # a jump of his own under way: the one time his feet l
 ## Standing, a foot is always on the sand (user: never in the air unless thrown): both soles this
 ## far over the ground under them and the hips are brought down at once.
 const FOOT_AIR := 0.015
+## How fast (m/s, x the root of his size) a big man lets his hips down to a stoop and up out of it, and the
+## most the hips may lag the height they are being let to (m): the legs hold the trunk within a quarter of
+## a metre of it; farther off it was in the air, and fell.
+const STOOP_RATE := 0.72
+const STOOP_LAG := 0.2
 ## The gait's numbers (tuned with tests/feetlab.gd against the time both feet are off the sand):
 ## how far the planted leg may reach (of its length), the step's clearance (walking, more at a
 ## run), how far behind a foot is left before it comes off the sand, how high over its plant a
@@ -2354,6 +2361,8 @@ func takeable(list: Array, side: String, held_ok := false) -> Weapon:
 const REACH_T := 2.2      # how long a hand goes on reaching for a grip before it gives up (s)
 const CLOSE_R := 0.12     # the palm this near the grip (x S): the fingers take it
 const GRAB_BEND_NEAR := 0.9   # a man on the sand this near (x S, along the sand): he stoops to take hold of him
+const GRAB_DEEP_RATE := 1.2   # the hand still above a man on the sand with the stoop at its fullest: bent on over at this rate (per s)
+const GRAB_DEEP_LEAN := 0.3   # and the trunk leans this much farther (radians) when he is bent right over
 const TURN_T := 1.2       # how long the fist may take drawing it in and turning it into line (s)
 
 func reach_for(side: String, w: Weapon) -> bool:
@@ -2460,6 +2469,7 @@ func _reach_tick(dt: float) -> void:
 	stoop = maxf(0.0, stoop - dt * 2.5)
 	if not grab_low:
 		grab_bend = maxf(0.0, grab_bend - dt * 2.5)
+		grab_deep = maxf(0.0, grab_deep - dt * 2.5)
 	grab_low = false
 	stoop = maxf(stoop, grab_bend)
 	for side in ["R", "L"]:
@@ -3526,6 +3536,22 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			if stance_h > 0.0:
 				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
 		desired -= land_sag   # (after the planted leg's height: walking, that is what holds him up)
+		# A big man's stoop (and his rise out of it) is a lowering of the hips he holds, not a drop: the
+		# height asked of them went down faster than the legs hold the trunk (a quarter of a metre
+		# off it, and he was in the air), and he fell the rest of the way at more than a fall's
+		# speed with the soles in the sand and the knees on it, then sprang up at the end (user: he
+		# smeared on the floor instead of bending like a man). The height is let down, and up, at a
+		# pace the legs keep up with.
+		if S >= 1.3 and state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0 and not one_leg and (stoop > 0.02 or lowered >= 0.0):
+			if lowered < 0.0:
+				lowered = dist
+			lowered = clampf(move_toward(lowered, desired, STOOP_RATE * sqrt(S) * dt), dist - STOOP_LAG, dist + STOOP_LAG)
+			if absf(lowered - desired) < 0.01 and stoop <= 0.02:
+				lowered = -1.0
+			else:
+				desired = lowered
+		else:
+			lowered = -1.0
 		# The feet stand on the sand, never in it and never above it: standing, the legs do not
 		# meet the ground (the spring holds him), so the hips are set by where the soles are. A
 		# sole sunk in lifts him by as much (a cyclops with his shins hacked away stood knee-deep
@@ -3552,9 +3578,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 					sole_planted = minf(sole_planted, sp.y - minf(float((ftp.anchor as Vector3).y), ground_y))
 			if sole_planted < -0.03 * S:
 				desired = maxf(desired, dist - sole_planted - 0.01 * S)
-			elif sole_lo < INF and sole_lo > FOOT_AIR * S and jump_t <= 0.0:
+			elif sole_lo < INF and sole_lo > FOOT_AIR * S and jump_t <= 0.0 and lowered < 0.0:
 				# Both soles off the sand (a blow, a step, a stride): the hips down until one is on
-				# it, and nothing more that lifts him (the spring's push and the blow's lift).
+				# it, and nothing more that lifts him (the spring's push and the blow's lift). (Not
+				# in a stoop: the heel comes up as the shin leans on over the foot, and that was read
+				# as both feet in the air, the whole body driven down at once.)
 				desired = minf(desired, dist - sole_lo + 0.005 * S)
 				# Brought down within a few hundredths of a second, not as slowly as the spring
 				# lets the weight down (a man knocked off his feet hung there a fifth of a second).
@@ -3763,7 +3791,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			elif jk_l < jk_r:
 				turn_r *= 1.0 - turn_l
 		var jab_twist := (turn_r - turn_l) * JAB_TURN
-		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S)) + (crouch - crouch_h) * 0.6 + jab_lean
+		var lean_a := (0.2 if sprint else 0.1) * move_local.z + crouch * 0.25 / sqrt(maxf(1.0, S)) + (0.12 if one_leg else 0.0) + low_lean + stoop * 0.6 / sqrt(maxf(1.0, S)) + grab_deep * GRAB_DEEP_LEAN + (crouch - crouch_h) * 0.6 + jab_lean
 		if S < 1.3:
 			lean_a = minf(lean_a, LEAN_MAX)   # (a giant leans far out over a man on the sand to reach him)
 		var lean := Quaternion(Vector3(1, 0, 0), lean_a + kneel_lean)
@@ -5482,7 +5510,9 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var at: Vector3 = g_at
 		target = yaw_q.inverse() * (at - t_pos)
 		var near := Vector2(at.x - t_pos.x, at.z - t_pos.z).length() < GRAB_BEND_NEAR * S
-		grab_bend = clampf(grab_bend + dt * (2.2 if near and hand_world(side).y > at.y + 0.08 * S else -0.8), 0.0, 1.0)
+		var above: bool = near and hand_world(side).y > at.y + 0.08 * S
+		grab_bend = clampf(grab_bend + dt * (2.2 if above else -0.8), 0.0, 1.0)
+		grab_deep = clampf(grab_deep + dt * (GRAB_DEEP_RATE if above and grab_bend > 0.99 else -0.8), 0.0, 1.0)
 		grab_low = true
 	# A hurt arm sags, more the worse it is; it does not wander. A player's blade stays where he
 	# last aimed it: a hurt arm, a ringing head or wine had the hand going round in circles on
