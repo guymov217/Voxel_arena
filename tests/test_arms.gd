@@ -570,7 +570,9 @@ func test_a_dazed_or_drunk_mans_blade_holds_still() -> void:
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": "hammer", "off": ""}})
 		var f: Fighter = m.me.f
-		m.me.drive = func(_e): return {"main": {"x": 0.1, "y": 0.15}, "power": false}
+		# (The mark has the forearm hang clear of his trunk: at (0.1, 0.15) it rests on the edge of his chest, and a
+		# man shaken by a concussion slips it off once, a hammer's length of swing, which is not what is tested here.)
+		m.me.drive = func(_e): return {"main": {"x": 0.15, "y": 0.1}, "power": false}
 		for i in 240:
 			await get_tree().physics_frame
 			if cond == "drunk":
@@ -598,8 +600,9 @@ func test_a_dazed_or_drunk_mans_blade_holds_still() -> void:
 func test_a_blade_pulled_out_of_a_head_comes_free() -> void:
 	# (The axe lies where its mark asks, so the marks are those that bring it down against the
 	# head, both from his left of it: from (0.4, 0.9) it lay above the head, never in it, and the
-	# test was not testing what it says.)
-	for mark in [Vector2(-0.25, 0.5), Vector2(-0.15, 0.6)]:
+	# test was not testing what it says. From (-0.25, 0.5) it came down on his shoulder, the skin of
+	# his shoulder line now being there to be struck, and lay on that.)
+	for mark in [Vector2(-0.35, 0.5), Vector2(-0.15, 0.6)]:
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none"}, "decrees": [], "hazards": [], "headless": true, "seed": 3, "loadout": {"main": "axe", "off": ""}})

@@ -1038,6 +1038,96 @@ func fit_to(slabs: Array) -> void:
 	if main_shape != null:
 		fit_collider()
 
+## Boxes laid over the skin a man is drawn with where none of his colliders reaches (FineBody
+## shells: the shoulders and the trapezius of his sculpt stand a hand's breadth out of the boxes his
+## parts are made of, and a blade went through them untouched): shapes of their own on the part that
+## draws it, the part's collider as it was. A blow that lands on one is a blow on the part whose
+## flesh the skin lies on (host_part), which is where it is cut. Each carries that part's name
+## ("" the part's own) as its meta "host".
+var skin_shapes: Array = []   # CollisionShape3D
+
+## The shells as `list` ([AABB, host name]): the shapes there already moved and sized to them, and
+## only the difference made or freed.
+func skin_set(list: Array) -> void:
+	while skin_shapes.size() > list.size():
+		var gone: CollisionShape3D = skin_shapes.pop_back()
+		remove_child(gone)
+		gone.queue_free()
+	for i in list.size():
+		var box: AABB = list[i][0]
+		var cs: CollisionShape3D
+		if i < skin_shapes.size():
+			cs = skin_shapes[i]
+			var bs: BoxShape3D = cs.shape
+			if bs.size != box.size:
+				bs.size = box.size
+			var at := box.get_center()
+			if cs.position != at:
+				cs.position = at
+		else:
+			cs = CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			shape.size = box.size
+			cs.shape = shape
+			cs.position = box.get_center()
+			add_child(cs)
+			skin_shapes.append(cs)
+		cs.set_meta("host", String(list[i][1]))
+
+## The part a contact on this body's shape `shape_idx` is a blow on: the part whose flesh the skin
+## that shape stands over lies on (a shoulder's cap drawn by the trunk lies on the arm), or this
+## one (a shape of its own, a shell of its own flesh's, or none).
+func host_part(shape_idx: int) -> VoxelPart:
+	if skin_shapes.is_empty() or shape_idx < 0:
+		return self
+	var oid := shape_find_owner(shape_idx)
+	if oid < 0:
+		return self
+	var node = shape_owner_get_owner(oid)
+	if node is CollisionShape3D and node.has_meta("host"):
+		var h := String(node.get_meta("host"))
+		if h != "" and fighter != null and is_instance_valid(fighter) and "by_name" in fighter:
+			var q = fighter.by_name.get(h)
+			if q is VoxelPart and is_instance_valid(q) and not q.severed and not q.missing:
+				return q
+	return self
+
+## How far world point `p` is from the nearest of the shells (0 inside one), and the part a blow
+## there is on (host_part's answer for that shell). [INF, this part] if there are none.
+func skin_near(p: Vector3) -> Array:
+	var best := INF
+	var who: VoxelPart = self
+	if skin_shapes.is_empty():
+		return [best, who]
+	var l := global_transform.affine_inverse() * p
+	for cs: CollisionShape3D in skin_shapes:
+		var he := (cs.shape as BoxShape3D).size * 0.5
+		var c := l - cs.position
+		var d := Vector3(maxf(0.0, absf(c.x) - he.x), maxf(0.0, absf(c.y) - he.y), maxf(0.0, absf(c.z) - he.z)).length()
+		if d < best:
+			best = d
+			who = self
+			var h := String(cs.get_meta("host", ""))
+			if h != "" and fighter != null and is_instance_valid(fighter) and "by_name" in fighter:
+				var q = fighter.by_name.get(h)
+				if q is VoxelPart and is_instance_valid(q) and not q.severed and not q.missing:
+					who = q
+	return [best, who]
+
+## What is drawn changed over this part (voxels gone or back, skin gone with the flesh it lay on): its
+## shells follow, once a frame at most however many blows there were.
+var _shell_due := false
+func shells_due() -> void:
+	if _shell_due or not is_inside_tree():
+		return
+	_shell_due = true
+	call_deferred("_shells_now")
+
+func _shells_now() -> void:
+	_shell_due = false
+	if is_instance_valid(self) and fine.has("shell_map"):
+		FineBody.shells_refresh(self)
+
 static var _box_mesh_cache := {}
 static var _material: StandardMaterial3D
 ## The voxel boxes' look (shaders/voxel_body.gdshader): each voxel's kind of stuff in its
@@ -2831,6 +2921,7 @@ func set_shown(indices: Array, on: bool) -> void:
 	# (And what the parts beside it draw in the place of these voxels, their skin run on over the
 	# joint: gone with them, back with them.)
 	FineBody.guests(self, indices)
+	FineBody.shells_due(self)
 	if dangle_mm:
 		if dboxes:
 			_write_shown(dangle_mm, dang, on)

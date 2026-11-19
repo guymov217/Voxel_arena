@@ -311,6 +311,9 @@ func process_contacts(_dt: float) -> Array:
 					continue
 		else:
 			continue
+		# A shell laid over skin that no collider of his reaches (FineBody shells) is a blow on the part whose
+		# flesh that skin lies on, which is where it is cut.
+		vic = vic.host_part(int(c.sb) if vic == b else int(c.sa))
 		if vic.severed and not vic.fighter.alive and att is VoxelPart:
 			continue
 		var key := "%d:%d" % [att.get_instance_id(), vic.get_instance_id()]

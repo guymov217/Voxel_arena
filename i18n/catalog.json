@@ -3399,12 +3399,12 @@
 "scripts/fighter/combat.gd:82"
 ],
 "Tooth": [
-"scripts/voxel/voxel_part.gd:2850",
-"scripts/voxel/voxel_part.gd:3228",
-"scripts/voxel/voxel_part.gd:3242"
+"scripts/voxel/voxel_part.gd:2941",
+"scripts/voxel/voxel_part.gd:3319",
+"scripts/voxel/voxel_part.gd:3333"
 ],
 "Jaw": [
-"scripts/voxel/voxel_part.gd:3149"
+"scripts/voxel/voxel_part.gd:3240"
 ],
 "Boiled leather over the crown. Light; takes the sting out of a glancing blow.": [
 "scripts/game/armory.gd:21"
@@ -4652,134 +4652,134 @@
 "scripts/game/social.gd:11"
 ],
 "Only your right hand is free": [
-"scripts/game/social.gd:61"
+"scripts/game/social.gd:76"
 ],
 "Only your left hand is free": [
-"scripts/game/social.gd:61"
+"scripts/game/social.gd:76"
 ],
 "Both hands are full": [
-"scripts/game/social.gd:61"
+"scripts/game/social.gd:76"
 ],
 "Your right hand is full": [
-"scripts/game/social.gd:66",
-"scripts/game/social.gd:253",
-"scripts/game/social.gd:945"
+"scripts/game/social.gd:81",
+"scripts/game/social.gd:268",
+"scripts/game/social.gd:960"
 ],
 "Your left hand is full": [
-"scripts/game/social.gd:66",
-"scripts/game/social.gd:253",
-"scripts/game/social.gd:945"
+"scripts/game/social.gd:81",
+"scripts/game/social.gd:268",
+"scripts/game/social.gd:960"
 ],
 "%s grabbed %s by the %s with both hands": [
-"scripts/game/social.gd:229"
+"scripts/game/social.gd:244"
 ],
 "%s grabbed %s by the %s": [
-"scripts/game/social.gd:229"
+"scripts/game/social.gd:244"
 ],
 "%s grabbed %s's %s with both hands!": [
-"scripts/game/social.gd:231"
+"scripts/game/social.gd:246"
 ],
 "%s grabbed %s's %s!": [
-"scripts/game/social.gd:231"
+"scripts/game/social.gd:246"
 ],
 "%s pins %s's sword arm!": [
-"scripts/game/social.gd:241"
+"scripts/game/social.gd:256"
 ],
 "%s pins %s's shield arm!": [
-"scripts/game/social.gd:241"
+"scripts/game/social.gd:256"
 ],
 "Your right hand cannot reach him": [
-"scripts/game/social.gd:258",
-"scripts/game/social.gd:947"
+"scripts/game/social.gd:273",
+"scripts/game/social.gd:962"
 ],
 "Your left hand cannot reach him": [
-"scripts/game/social.gd:258",
-"scripts/game/social.gd:947"
+"scripts/game/social.gd:273",
+"scripts/game/social.gd:962"
 ],
 "%s gets both hands on %s": [
-"scripts/game/social.gd:263"
+"scripts/game/social.gd:278"
 ],
 "%s picked up their own %s and is going to hit people with it": [
-"scripts/game/social.gd:394"
+"scripts/game/social.gd:409"
 ],
 "%s picked up %s's %s and is going to hit people with it": [
-"scripts/game/social.gd:394"
+"scripts/game/social.gd:409"
 ],
 "armed with your own arm": [
-"scripts/game/social.gd:395"
+"scripts/game/social.gd:410"
 ],
 "improvised weapon": [
-"scripts/game/social.gd:395"
+"scripts/game/social.gd:410"
 ],
 "%s threw a %s!": [
-"scripts/game/social.gd:413"
+"scripts/game/social.gd:428"
 ],
 "%s SLAMS %s into the sand!": [
-"scripts/game/social.gd:466"
+"scripts/game/social.gd:481"
 ],
 "%s strains against %s's weight": [
-"scripts/game/social.gd:509"
+"scripts/game/social.gd:524"
 ],
 "%s CATAPULTED %s!": [
-"scripts/game/social.gd:519"
+"scripts/game/social.gd:534"
 ],
 "%s tossed %s": [
-"scripts/game/social.gd:519"
+"scripts/game/social.gd:534"
 ],
 "human catapult": [
-"scripts/game/social.gd:523"
+"scripts/game/social.gd:538"
 ],
 "%s landed on %s!": [
-"scripts/game/social.gd:568"
+"scripts/game/social.gd:583"
 ],
 "human cannonball": [
-"scripts/game/social.gd:569"
+"scripts/game/social.gd:584"
 ],
 "%s lands hard!": [
-"scripts/game/social.gd:597",
-"scripts/game/social.gd:1170"
+"scripts/game/social.gd:612",
+"scripts/game/social.gd:1185"
 ],
 "%s shoved %s to the sand": [
-"scripts/game/social.gd:645"
+"scripts/game/social.gd:660"
 ],
 "%s plays dead. Very convincing.": [
-"scripts/game/social.gd:725"
+"scripts/game/social.gd:740"
 ],
 "%s tore free of %s's grip!": [
-"scripts/game/social.gd:901"
+"scripts/game/social.gd:916"
 ],
 "Grabbed! Mash SPACE or hit his arm": [
-"scripts/game/social.gd:905"
+"scripts/game/social.gd:920"
 ],
 "%s let go": [
-"scripts/game/social.gd:963"
+"scripts/game/social.gd:978"
 ],
 "%s wriggled free": [
-"scripts/game/social.gd:971"
+"scripts/game/social.gd:986"
 ],
 "The Hand of Jupiter is spent for this bout": [
-"scripts/game/social.gd:1016"
+"scripts/game/social.gd:1031"
 ],
 "The grip needs a moment (%d s)": [
-"scripts/game/social.gd:1019"
+"scripts/game/social.gd:1034"
 ],
 "The grip closes on nothing: look at a foe (no giants)": [
-"scripts/game/social.gd:1045"
-],
-"%s seizes %s in an unseen grip! He hangs where you look: F hurls him.": [
-"scripts/game/social.gd:1056"
-],
-"%s seizes %s in an unseen grip!": [
-"scripts/game/social.gd:1056"
-],
-"the hand of Jupiter": [
 "scripts/game/social.gd:1060"
 ],
+"%s seizes %s in an unseen grip! He hangs where you look: F hurls him.": [
+"scripts/game/social.gd:1071"
+],
+"%s seizes %s in an unseen grip!": [
+"scripts/game/social.gd:1071"
+],
+"the hand of Jupiter": [
+"scripts/game/social.gd:1075"
+],
 "The grip on %s lets go": [
-"scripts/game/social.gd:1107"
+"scripts/game/social.gd:1122"
 ],
 "%s HURLS %s!": [
-"scripts/game/social.gd:1148"
+"scripts/game/social.gd:1163"
 ],
 "BOOM!": [
 "scripts/game/throwables.gd:747",

@@ -315,6 +315,7 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 	# (Drawn anew with wounds on him or a limb gone: what is gone of the parts beside this one
 	# takes this one's skin over it, and what is gone of this one theirs: guests.)
 	guests_anew(p)
+	shells_make(p)
 
 ## The parts `p` was built jointed to: the one it hangs from and those that hang from it, cut off
 ## since or not.
@@ -544,6 +545,255 @@ static func parted(c: VoxelPart) -> void:
 		var m2: Dictionary = _hosts(c).get(String(q.part_name), {})
 		for j: int in m2:
 			_guest_set(c, m2[j], false)
+	shells_due(c)
+
+## --- Shells: colliders where the skin is --------------------------------------------------------------
+## A man's sculpt stands out of the boxes his parts are made of: the deltoids and the trapezius, the
+## slope from his neck to his shoulder, are drawn four to nine centimetres outside every collider he
+## has, so a blade slashed across his shoulders went through them untouched and a blow from above
+## landed on the head's box or the arm's, never on what was drawn (user: the trapezius is not
+## destroyed by sword blows; it is very important that every voxel a gladiator is made of can be
+## destroyed). Skin that far out of every collider of his is covered by shells, boxes of their own on
+## the part that draws it (VoxelPart.skin_set), laid over it in bins of the part's fine voxel and
+## kept to the skin still drawn: they go with it as the flesh it lies on is cut away. A blow on one
+## is a blow on the part whose flesh the skin lies on (_hosts; VoxelPart.host_part), which is where
+## it is cut, and the part's own box, its weight and its joints are as they were.
+const SHELL_OUT := 0.02    # skin this far (m, at a man's size) or more from every collider of his
+const SHELL_TRIM := 0.007  # a shell lies a little inside the skin, as a part's box (0.95) does
+const SHELL_REACH := 4     # bins: how far from the skin the flesh it lies over is looked for
+static var _shell_maps := {}
+
+static func _box_away(o: Vector3, he: Vector3) -> float:
+	return Vector3(maxf(0.0, absf(o.x) - he.x), maxf(0.0, absf(o.y) - he.y), maxf(0.0, absf(o.z) - he.z)).length()
+
+## Where the skin of part `a` that no collider of his reaches lies, with the joints at rest (as
+## _hosts reads them), in bins of the part's fine voxel: {at: the bins, host: each one's host part
+## ("" its own), cells: the fine voxels in each, bsz}. Worked out once a build, a part and a size.
+static func _shell_map(a: VoxelPart) -> Dictionary:
+	var fa: Dictionary = a.fine
+	var over: PackedInt32Array = fa.get("over", PackedInt32Array())
+	if over.is_empty() or not fa.has("xf"):
+		return {}
+	var nbs := []
+	var sig := ""
+	for b: VoxelPart in _beside(a):
+		var child: VoxelPart = b if b.parent_part == a else a
+		var turn: Basis = child.get_meta("rest_on") if child.has_meta("rest_on") else Basis.IDENTITY
+		var hung := Transform3D(turn, child.pa - turn * child.ca)
+		nbs.append([hung.affine_inverse() if child == b else hung, b.half_ext])
+		sig += "%s%s|" % [str(b.grid), str(b.half_ext)]
+	var va := a.vf * a.part_scale
+	var key := "%s|%s|%s|%s|%s" % [String(fa.get("build", "")), String(a.part_name), str(snappedf(va, 0.00001)), str(a.grid), sig]
+	if _shell_maps.has(key):
+		return _shell_maps[key]
+	var host_of := {}
+	var hosts: Dictionary = _hosts(a)
+	for pn in hosts:
+		for j in (hosts[pn] as Dictionary):
+			for s in (hosts[pn][j] as Array):
+				host_of[s] = String(pn)
+	var x0: Array = fa.get("xf0", fa.xf)
+	var out_d := SHELL_OUT * a.part_scale
+	var at := []
+	var host := PackedStringArray()
+	var bin_cells := []
+	var index := {}
+	for s in over:
+		var o: Vector3 = (x0[s] as Transform3D).origin
+		var d := _box_away(o, a.half_ext)
+		if d < out_d:
+			continue
+		for nb in nbs:
+			d = minf(d, _box_away((nb[0] as Transform3D) * o, nb[1]))
+			if d < out_d:
+				break
+		if d < out_d:
+			continue
+		var hn := String(host_of.get(s, ""))
+		var bin := Vector3i(floori(o.x / va), floori(o.y / va), floori(o.z / va))
+		var k := "%s|%d,%d,%d" % [hn, bin.x, bin.y, bin.z]
+		if not index.has(k):
+			index[k] = at.size()
+			at.append(bin)
+			host.append(hn)
+			bin_cells.append([])
+		(bin_cells[index[k]] as Array).append(s)
+	var m := {"at": at, "host": host, "cells": bin_cells, "bsz": va}
+	if not at.is_empty():
+		# The bins that lie in a collider of his already, over the bounds of the skin's bins and a few
+		# more (a wall), and for each bin of skin the bins between it and the nearest wall along one of
+		# the three ways (what is laid between the skin and the flesh under it: a blade must not pass
+		# between them): its fill.
+		var lo: Vector3i = at[0]
+		var hi: Vector3i = at[0]
+		for b: Vector3i in at:
+			lo = lo.min(b)
+			hi = hi.max(b)
+		lo -= Vector3i.ONE * (SHELL_REACH + 1)
+		hi += Vector3i.ONE * (SHELL_REACH + 1)
+		var dim := hi - lo + Vector3i.ONE
+		var wall := PackedByteArray()
+		wall.resize(dim.x * dim.y * dim.z)
+		for z in dim.z:
+			for y in dim.y:
+				for x in dim.x:
+					var c := (Vector3(lo + Vector3i(x, y, z)) + Vector3(0.5, 0.5, 0.5)) * va
+					var d := _box_away(c, a.half_ext)
+					if d > 0.5 * va:
+						for nb in nbs:
+							d = minf(d, _box_away((nb[0] as Transform3D) * c, nb[1]))
+							if d <= 0.5 * va:
+								break
+					if d <= 0.5 * va:
+						wall[x + dim.x * (y + dim.y * z)] = 1
+		var at_gi := PackedInt32Array()
+		var fill := []
+		for b: Vector3i in at:
+			var g := b - lo
+			at_gi.append(g.x + dim.x * (g.y + dim.y * g.z))
+			var best := []
+			var best_n := SHELL_REACH + 1
+			for dir in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				var run := []
+				var q := g
+				var hit := false
+				for step in SHELL_REACH:
+					q += dir
+					if q.x < 0 or q.y < 0 or q.z < 0 or q.x >= dim.x or q.y >= dim.y or q.z >= dim.z:
+						break
+					var gi := q.x + dim.x * (q.y + dim.y * q.z)
+					if wall[gi] == 1:
+						hit = true
+						break
+					run.append(gi)
+				if hit and run.size() < best_n:
+					best = run
+					best_n = run.size()
+			fill.append(best)
+		m["lo"] = lo
+		m["dim"] = dim
+		m["wall"] = wall
+		m["gi"] = at_gi
+		m["fill"] = fill
+	_shell_maps[key] = m
+	return m
+
+## A man's part drawn: its shells laid over the skin it draws out of his colliders.
+static func shells_make(p: VoxelPart) -> void:
+	var fa: Dictionary = p.fine
+	if not BUILDS.has(String(fa.get("build", ""))):
+		return
+	var m := _shell_map(p)
+	if (m.get("at", []) as Array).is_empty():
+		return
+	fa.shell_map = m
+	fa.shell_sig = -1
+	shells_refresh(p)
+
+## The shells as the skin still drawn over them leaves them: a bin stands while a fine voxel in it
+## is drawn (its voxel there and the flesh it lies on, if that is another part's), the bins of a
+## host laid in boxes. Nothing is done while the bins left are the ones there were.
+static func shells_refresh(a: VoxelPart) -> void:
+	var fa: Dictionary = a.fine
+	var m: Dictionary = fa.get("shell_map", {})
+	if m.is_empty():
+		return
+	var at: Array = m.at
+	var host: PackedStringArray = m.host
+	var cells: Array = m.cells
+	var par: PackedInt32Array = fa.par
+	var gone: Dictionary = fa.get("gone", {})
+	var live := PackedByteArray()
+	live.resize(at.size())
+	for k in at.size():
+		for s: int in (cells[k] as Array):
+			var j := par[s]
+			if j >= 0 and a.alive[j] == 1 and not gone.has(s):
+				live[k] = 1
+				break
+	var sig: int = hash(live)
+	if sig == int(fa.get("shell_sig", -1)):
+		return
+	fa.shell_sig = sig
+	var by_host := {}
+	for k in at.size():
+		if live[k] == 1:
+			if not by_host.has(host[k]):
+				by_host[host[k]] = []
+			(by_host[host[k]] as Array).append(k)
+	var list := []
+	var bsz: float = m.bsz
+	var trim := SHELL_TRIM * a.part_scale
+	var glo: Vector3i = m.lo
+	var gdim: Vector3i = m.dim
+	var gi_of: PackedInt32Array = m.gi
+	var fill: Array = m.fill
+	for hn in by_host:
+		# This host's skin bins and the fill under each, laid in boxes.
+		var sel: Array = by_host[hn]
+		var grid := PackedByteArray()
+		grid.resize(gdim.x * gdim.y * gdim.z)
+		var lo := Vector3i(1 << 20, 1 << 20, 1 << 20)
+		var hi := Vector3i(-(1 << 20), -(1 << 20), -(1 << 20))
+		for k: int in sel:
+			var run: Array = [gi_of[k]] + (fill[k] as Array)
+			for gi: int in run:
+				grid[gi] = 1
+				var gx := gi % gdim.x
+				var gy := (gi / gdim.x) % gdim.y
+				var gz := gi / (gdim.x * gdim.y)
+				lo = Vector3i(mini(lo.x, gx), mini(lo.y, gy), mini(lo.z, gz))
+				hi = Vector3i(maxi(hi.x, gx), maxi(hi.y, gy), maxi(hi.z, gz))
+		var w := hi.x - lo.x + 1
+		var h := hi.y - lo.y + 1
+		var d := hi.z - lo.z + 1
+		var solid := PackedByteArray()
+		solid.resize(w * h * d)
+		for z in d:
+			for y in h:
+				for x in w:
+					if grid[(x + lo.x) + gdim.x * ((y + lo.y) + gdim.y * (z + lo.z))] == 1:
+						solid[x + w * (y + h * z)] = 1
+		var base := glo + lo
+		for bx in Greedy.boxes(w, h, d, solid):
+			# (A face is drawn in only where nothing of the shell is beyond it: boxes laid side by side
+			# stay side by side.)
+			var lo_f := Vector3(_shell_open(solid, w, h, d, bx, 0, -1), _shell_open(solid, w, h, d, bx, 1, -1), _shell_open(solid, w, h, d, bx, 2, -1)) * trim
+			var hi_f := Vector3(_shell_open(solid, w, h, d, bx, 0, 1), _shell_open(solid, w, h, d, bx, 1, 1), _shell_open(solid, w, h, d, bx, 2, 1)) * trim
+			var from := Vector3(base.x + bx[0], base.y + bx[1], base.z + bx[2]) * bsz + lo_f
+			var size := Vector3(bx[3] - bx[0] + 1, bx[4] - bx[1] + 1, bx[5] - bx[2] + 1) * bsz - lo_f - hi_f
+			list.append([AABB(from, size.max(Vector3.ONE * 0.004)), hn])
+	a.skin_set(list)
+
+## 1.0 if a face of box `bx` (axis 0..2, side -1 or 1) has a bin beside it that is not of the
+## shell, else 0.0.
+static func _shell_open(solid: PackedByteArray, w: int, h: int, d: int, bx, axis: int, side: int) -> float:
+	var lo := [int(bx[0]), int(bx[1]), int(bx[2])]
+	var hi := [int(bx[3]), int(bx[4]), int(bx[5])]
+	var at: int = (lo[axis] - 1) if side < 0 else (hi[axis] + 1)
+	var dims := [w, h, d]
+	if at < 0 or at >= int(dims[axis]):
+		return 1.0
+	var a1 := (axis + 1) % 3
+	var a2 := (axis + 2) % 3
+	for u in range(lo[a1], hi[a1] + 1):
+		for v in range(lo[a2], hi[a2] + 1):
+			var c := [0, 0, 0]
+			c[axis] = at
+			c[a1] = u
+			c[a2] = v
+			if solid[c[0] + w * (c[1] + h * c[2])] == 0:
+				return 1.0
+	return 0.0
+
+## Drawn skin changed over part `p` or the parts beside it (their skin lies on its flesh): their
+## shells follow.
+static func shells_due(p: VoxelPart) -> void:
+	if p.fine.has("shell_map"):
+		p.shells_due()
+	for q: VoxelPart in _beside(p):
+		if q.fine.has("shell_map"):
+			q.shells_due()
 
 ## A part drawn anew, with wounds on him or a limb gone: its skin on the parts beside it, and
 ## theirs on it, as what is there of each now.
@@ -1052,6 +1302,8 @@ static func clear(p: VoxelPart) -> void:
 		p.jaw_mesh.visible = true
 	# (What was not written to its own boxes while they were out of sight under this look.)
 	p.boxes_back()
+	if not p.skin_shapes.is_empty():
+		p.skin_set([])
 	for k in ["mi", "wmi", "jaw_mi"]:
 		var mi = p.fine.get(k)
 		if mi != null and is_instance_valid(mi):

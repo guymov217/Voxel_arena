@@ -437,6 +437,20 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   stump (`Match.guest_vox`). Only the drawing: every voxel, blow and wound is the game's.
   `tests/test_fine_body.gd` takes a man's neck, shoulders and hips apart and cuts him through at
   each of his nine joints, looking for skin left standing where no flesh is.
+- **Every voxel a man is drawn with can be hit**: his sculpt stands out of the boxes his parts are made
+  of at the shoulders (the slope from his neck to them, the deltoids), four to nine centimetres from
+  every collider he has, so a blade slashed across his shoulders went through the skin untouched and a
+  blow from above landed on the head's box or the arm's, never on what was drawn (the trapezius was not
+  destroyed by sword blows). Skin two centimetres or more from every collider of his
+  (`FineBody.SHELL_OUT`) is covered by shells: boxes of their own on the part that draws it
+  (`VoxelPart.skin_shapes`), laid over it in bins of the part's fine voxel together with what lies
+  between them and the flesh (`FineBody._shell_map`, worked out once a build, a part and a size) and
+  kept to the skin still drawn, so they go with it as the flesh it lies on is cut away
+  (`FineBody.shells_refresh`, once a frame after voxels are lost or put back). A blow on one is a blow
+  on the part whose flesh the skin lies on (`VoxelPart.host_part`, read in `Combat.process_contacts`;
+  an arrow's `Social.struck_part`; `Social.box_distance` reaches them for grabs and fire), which is
+  where it is cut. The part's own box, weight and joints are as they were; the classic look draws
+  nothing out of its boxes and has none. `tests/test_skin_shells.gd`.
 - **No beast is hollow**: a beast's organs and its trunk's bones were laid by its box of voxels,
   and the body it is drawn with (its sculpt) is slimmer than that here and there, a boar's by a
   third: a third of the boar's organs lay in its drawn skin or out of its drawn body altogether,

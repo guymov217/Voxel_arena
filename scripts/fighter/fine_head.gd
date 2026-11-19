@@ -417,6 +417,9 @@ static func outline(p: VoxelPart, d: Vector3) -> float:
 static func clear(p: VoxelPart) -> void:
 	if p.fine.is_empty():
 		return
+	# (A look taken off takes its shells with it: FineBody shells, laid by the body's look.)
+	if not p.skin_shapes.is_empty():
+		p.skin_set([])
 	var mi = p.fine.get("mi")
 	if mi != null and is_instance_valid(mi):
 		p.draw_with.erase(mi)

@@ -36,11 +36,26 @@ func _init(match_: Node) -> void:
 static func _ratio(a: Fighter, b: Fighter) -> float:
 	return (pow(a.S, 2.5) * float(a.mods.strength)) / pow(b.S, 2.5)
 
-## How far a point is from the surface of a body part's box (0 inside).
+## How far a point is from the surface of a body part's box (0 inside), or of the skin laid over
+## it (VoxelPart shells: a man's shoulders stand out of the boxes his parts are made of).
 static func box_distance(part: VoxelPart, p: Vector3) -> float:
 	var l: Vector3 = part.global_transform.affine_inverse() * p
 	var he: Vector3 = part.half_ext
-	return Vector3(maxf(0.0, absf(l.x) - he.x), maxf(0.0, absf(l.y) - he.y), maxf(0.0, absf(l.z) - he.z)).length()
+	var d := Vector3(maxf(0.0, absf(l.x) - he.x), maxf(0.0, absf(l.y) - he.y), maxf(0.0, absf(l.z) - he.z)).length()
+	if d > 0.0 and not part.skin_shapes.is_empty():
+		d = minf(d, float(part.skin_near(p)[0]))
+	return d
+
+## The part a thing that is at `p`, in `part`'s box or the skin laid over it, strikes: the part itself,
+## or the one whose flesh that skin lies on (a shoulder's cap the trunk draws lies on the arm).
+static func struck_part(part: VoxelPart, p: Vector3) -> VoxelPart:
+	if part.skin_shapes.is_empty():
+		return part
+	var l: Vector3 = part.global_transform.affine_inverse() * p
+	var he: Vector3 = part.half_ext
+	if absf(l.x) <= he.x and absf(l.y) <= he.y and absf(l.z) <= he.z:
+		return part
+	return part.skin_near(p)[1]
 
 static func hand_free(c: Fighter, s: String) -> bool:
 	var fore: VoxelPart = c.arm[s].fore
