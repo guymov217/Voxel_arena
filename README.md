@@ -35,6 +35,14 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A harder and a faster swing takes more flesh, by the physics alone: the blow's momentum sets how
   deep a cut goes and how wide a crushing blow's hollow is, and past the most a part gives to one
   blow they go on growing, slowly, as the root of the force (`Fighter.past_cap`, `tests/test_blunt.gd`).
+  A soft weapon (a rubber chicken, a fish, a goose on a stick: a thing softer as a whole than
+  `Fighter.BONE_SOFT_H`) gives way on what it strikes, so only a share of its blow goes in
+  (`Fighter.soft_share`: a tenth at the very softest, a sixth for the chicken, under a third for a
+  fish, all of it from `BONE_SOFT_H` up); the harm, the rocking, the hollow and the plates it
+  knocks off all go by that share, not by the weight swung (it was the whole blow: a chicken did
+  two thirds of a club's harm and hollowed a man like one; `tests/test_fractures.gd`). It is judged
+  by the weapon as a thing (the harder of the stuff that touched and the weapon's mean), so the
+  leather on a sword's grip and the stick under the goose hit as they always did.
   Everyone bleeds by one law, a man, a giant, a beast, a boss: the blood a body loses is the bleeding
   on it (its wounds, cut arteries and stumps) over its size, so a body twice a man's loses it half
   as fast from the same wounds, never none (`Fighter.blood_lost`; it went with the size squared
@@ -172,7 +180,13 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   like teeth, not a blade, and takes no more than 30 off a limb. Beasts and monsters chunk
   more under blows than men do (the giants of myth keep their own hide). The gorilla loses its
   nerve with every blow it takes (slower to come on, fewer blows and grabs, a solid one breaks
-  off its wind-up), and gathers it back when let be. The manticore stings a man at its flank and
+  off its wind-up), and gathers it back when let be. Its hold is a beating (`Beast._rag_doll`):
+  one hand closes on the very point of the man it touches (the other lets go), lifts him over
+  its head and brings him down on the sand, three times over (twice when it is cowed; a man
+  gone limp it drops sooner), then throws him aside. He hangs limp in its hand; every landing is
+  a blow by the speed the sand took off him, by the one law a thrown man lands by
+  (`Social.landing_blow`); a blow that staggers the ape, its arms ruined or the man slipped
+  out of its hand ends it (`tests/test_beast_attacks.gd`). The manticore stings a man at its flank and
   flings poisoned spikes from its tail at one out of its reach, after raising the tail with a roar.
   The enemy's health plate reaches nothing when the fight with him is over, whatever ends it:
   head, trunk, blood, a broken neck, the brain or a torn heart, or down and spent.
@@ -206,8 +220,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   thirties, the kinds met alone come back later two and three kinds at once, and a boss of men
   past bout 36 comes in steel (`tests/test_campaign.gd` checks the climb, that nothing repeats,
   and the gates). Pay, checkpoints and persistent weapon wear as before, except that a bout pays a
-  tenth more than its list (`Match.PAY_RAISE`, `Match.paid`); what is counted in the list's pay,
-  the physician's prices, stays where it was (`Body.price_unit`).
+  quarter more than its list (`Match.PAY_RAISE`, `Match.paid`; a tenth at first, then raised again:
+  the money hardly paid for the physician and a better weapon both); what is counted in the list's
+  pay, the physician's prices, stays where it was (`Body.price_unit`).
 - **The fight chosen at the gate** (`scripts/game/gate_choice.gd`): before every bout the boards
   by the yard's gate offer two or three bouts of the stretch of eight the run has reached, none
   won yet this time round: the ladder's own, the crowd's fight (that bout with one more of its
@@ -310,10 +325,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   why a deed cannot be done), `stage3d.gd` (the 3D view) and `menu_man.gd` (the player's gladiator
   for the dressing room); what is bought, mended or taught is Menu's, as it was. They fit the
   interface scale and the shape of the window (`tests/test_stations.gd`).
-- **The smith**: buy bases, mend, hone and temper. What the smith mends in a weapon is what bouts in
-  the arena chipped out of it: the knocks it takes in the yard (the post, a friend's blade) are
-  never counted, and the next time he is built, at the gate or at a purchase, they are gone
-  (`Menu._keep_yard_wear` keeps only the yard's dents in his armour, `tests/test_yard.gd`).
+- **The smith and the armourer**: buy bases, mend, hone and temper. What they mend in a weapon or in
+  armour is what bouts in the arena took out of it: the knocks they take in the yard (the post, a
+  friend's blade) are never counted, and the next time he is built, at the gate or at a purchase,
+  they are gone (`tests/test_yard.gd`: the blade and the armour both).
   A voxel forge reshapes a weapon voxel by voxel.
   In the forge, "Held in" one hand or two, and a button per hand puts it on the block you click
   (the rings are marked MAIN and OTHER). Two fists need 3 blocks (12 cm) between them, so a
@@ -356,6 +371,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   few millimetres under load; on screen each part is drawn against the part it hangs from and
   the weapon with its hand, so nothing floats off the body until it is really cut off
   (`Fighter._seat_drawing`).
+- **Every part comes apart, wherever it is struck**: a part's skin in the new look runs on over its
+  joints (a man's trunk draws his neck up into the foot of his head, the slopes of his shoulders,
+  the caps of his shoulders over his arms and his hips over his thighs), so a blow at a joint
+  falls on the part beside it and takes only that part's voxels. The fine voxels drawn out of a
+  part's own box are therefore tied to the voxels of the part beside them that they lie on
+  (`FineBody._hosts`: inside that part's box, or nearer to it than to the part's own) and are
+  not drawn while those voxels are gone (`FineBody.guests`, on every voxel lost or put back),
+  nor once the limb or the part they lay on is cut off (`FineBody.parted`); a figure drawn anew
+  with wounds on him takes the same (`FineBody.guests_anew`), and a guest mirrors the host's cut
+  stump (`Match.guest_vox`). Only the drawing: every voxel, blow and wound is the game's.
+  `tests/test_fine_body.gd` takes a man's neck, shoulders and hips apart and cuts him through at
+  each of his nine joints, looking for skin left standing where no flesh is.
 - **Achievements** (`scripts/game/achievements.gd`): fifteen, kept in the save and set on Steam
   when it runs (the list is in docs/DEMO.md).
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.

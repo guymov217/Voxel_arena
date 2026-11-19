@@ -933,7 +933,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 		torso.apply_central_impulse(Vector3(0, mass * (gravity + 6.0 * (want_y - pos.y) - 3.0 * lv.y) * dt, 0))
 	elif grounded:
 		want_y = hit.position.y + h_want
-		var legs_carry: bool = ik_legs >= maxi(1, int(ceil(legs.size() * 0.5))) and not collapsed and not down_t > 0.0 and not float(ai.get("rear", 0.0)) > 0.0 and legs_left >= maxi(1, int(ceil(legs.size() * 0.5)))
+		var legs_carry: bool = ik_legs >= maxi(1, int(ceil(legs.size() * 0.5))) and not collapsed and not down_t > 0.0 and not float(ai.get("rear", 0.0)) > 0.0 and not _ragging() and legs_left >= maxi(1, int(ceil(legs.size() * 0.5)))
 		if legs.size() <= 2 and legs.any(func(l): return strikes.has(l)):
 			legs_carry = false   # a two-legged runner kicking: the one leg under it gets help
 		if legs_carry:
@@ -971,7 +971,7 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 	var roll := 0.0
 	var pitch := 0.0
 	var K := 7.0
-	if legs.size() > 0 and hug == null:
+	if legs.size() > 0 and (hug == null or _ragging()):
 		var up := (q * UP).rotated(UP, -cur)
 		var cur_pitch := atan2(up.z, up.y)
 		var cur_roll := atan2(-up.x, up.y)
@@ -990,6 +990,11 @@ func control(dt: float, _inp: Dictionary = {}) -> void:
 			# Rearing: nose to the sky on the hind legs, then pitching forward onto the prey.
 			pitch = -0.95 if float(ai.rear) > 0.4 else 0.35
 			K = 6.0
+		elif _ragging():
+			# Beating a man (_rag_doll): up on its hind legs with him over its head, then thrown
+			# forward over him onto the sand.
+			pitch = RAG_REAR if String(hug.rag.ph) == "lift" else RAG_LEAN
+			K = 9.0
 		elif flying:
 			var wfl := wing_fns()
 			roll = -yaw_rate * 0.25 + (wfl.y - wfl.x) * 0.6   # a hurt wing drops that side
@@ -1586,6 +1591,9 @@ func _squeeze(dt: float) -> void:
 	hug.t -= dt
 	hug.tick -= dt
 	var tgt = hug.target
+	if hug.has("rag"):
+		_rag_doll(dt, tgt)
+		return
 	# Only the arms hold and crush: a paw or a fist on him (its belly against him is no squeeze).
 	var paws := _paws_on(tgt, 0.5)
 	var held := not paws.is_empty()
@@ -1605,23 +1613,17 @@ func _squeeze(dt: float) -> void:
 		ai.mode = "recover"
 		ai.t = 1.0
 		return
-	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and the man is
-	# torn in two. The hand not yet on him reaches for him (the arm's pull, like a blow's, only
-	# slower) and takes hold where it lands.
+	# The gorilla does not squeeze for long: a hand on an arm, a hand on a leg, and it lifts the man
+	# over its head and beats him on the sand like a rag doll (_rag_doll). The hand not yet on him
+	# reaches for him (the arm's pull, like a blow's, only slower) and takes hold where it lands.
 	if species == "gorilla":
 		_ape_reach(tgt)
-	var fists := _fists_on(tgt) if species == "gorilla" else []
-	# (Both fists on him for most of the hold before the tear: 2.4 s, was 1.4, in which a blow
-	# that staggers the ape breaks its hold: user, "the gorilla is so hard I have no idea".)
-	if fists.size() >= 2 and hug.t < 0.6 and not hug.get("rent", false) and tgt.alive and not (tgt is Beast):
-		hug.rent = true
-		_rend(tgt, fists)
-		hug = null
-		_free_holds()
-		ai.bite_cool = 4.0
-		ai.mode = "recover"
-		ai.t = 2.0
-		return
+		# (A moment of the hold first, in which a blow that staggers the ape breaks it: user, "the
+		# gorilla is so hard I have no idea".)
+		if hug.t < RAG_AT and tgt.alive and not (tgt is Beast) and float(tgt.S) <= S * RAG_SIZE and _grip_for_beating():
+			hug.rag = {"n": 0, "slams": RAG_SLAMS if rng.randf() < nerve else RAG_SLAMS - 1, "ph": "lift", "t": 0.0, "side": 1.0 if rng.randf() < 0.5 else -1.0, "peak": 0.0, "hit": false, "low": 0.0, "settle": 0.0, "drop": 0.0, "lost": 0.0, "at": torso.global_position}
+			hug.t = 99.0   # (the beating ends the hold, not the clock)
+			return
 	if hug.t <= 0.0 or not tgt.alive or stagger > hug.stagger0 + 0.35 or front_fn() < 0.3 or not part_ok(head, 0.1):
 		hug = null
 		_free_holds()
@@ -1629,8 +1631,6 @@ func _squeeze(dt: float) -> void:
 		ai.mode = "recover"
 		ai.t = 1.5
 
-## Torn in two: the held arm and the leg across from it come away, the trunk is wrenched open
-## between them, and what is left is flung down.
 ## The forepaws (a bear's paws, the ape's fists) on him within `within` seconds: the arms a
 ## hold is made with.
 func _paws_on(tgt, within: float) -> Array:
@@ -1674,41 +1674,256 @@ func _fists_on(tgt) -> Array:
 			out.append(fist)
 	return out
 
-func _rend(tgt, fists: Array) -> void:
-	var was: bool = tgt.alive
-	var res := {"removed": [], "severed": [], "dmg": 0.0}
-	var torn := []
-	# The arm in one fist, the leg across from it in the other: each torn where the hand is.
-	var f0: Vector3 = fists[0].global_position
-	var side := "R" if tgt.arm.R.upper.global_position.distance_to(f0) < tgt.arm.L.upper.global_position.distance_to(f0) else "L"
-	var arm: VoxelPart = tgt.arm[side].upper
-	if not arm.severed:
-		tgt.detach_limb(arm, res)
-		torn.append(arm)
-	var leg: VoxelPart = tgt.by_name.get("thighL" if side == "R" else "thighR")
-	if leg and not leg.severed:
-		tgt.detach_limb(leg, res)
-		torn.append(leg)
-	var fwd := PD.quat_of(torso) * Vector3(0, 0, 1)
-	for p in torn:
-		var s := 1.0 if p == arm else -1.0
-		p.linear_velocity = Vector3(fwd.z, 0, -fwd.x) * s * 5.0 + Vector3(0, 3.0, 0)
-		p.angular_velocity = Vector3(6, 2, 4) * s
-	var J := 40.0
-	var point: Vector3 = tgt.torso.global_position
-	var r2: Dictionary = tgt.apply_hit(tgt.torso, {"impulse": J, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "point": point, "dir": Vector3.DOWN, "axis": Vector3.RIGHT, "edge": Vector3.DOWN, "heavy": 1.0, "wsz": 2.0})
-	for k in ["removed", "severed"]:
-		r2[k] = r2.get(k, []) + res[k]
-	tgt.last_attacker = self
-	tgt.fall(4.0, true)
-	tgt.stagger = 1.0
-	for p in tgt.parts:
-		if not p.severed:
-			p.linear_velocity = fwd * 4.0 + Vector3(0, -2.0, 0)
+## Whether it is beating a man it holds (_rag_doll).
+func _ragging() -> bool:
+	return hug != null and hug.has("rag")
+
+## The fists with a hold on him: a joint to a part of his that is still his (a limb cut off the man
+## leaves the fist with the limb alone).
+func _holding() -> Array:
+	var out := []
+	for n in ["legFLLo", "legFRLo"]:
+		var fist: VoxelPart = by_name.get(n)
+		if fist == null or fist.severed or not fist.get_meta("gripped", false):
+			continue
+		var held = fist.get_meta("held") if fist.has_meta("held") else null
+		if is_instance_valid(held) and not held.severed:
+			out.append(fist)
+	return out
+
+## The point of the part held, in the part's own frame, that is nearest the fist, if the fist's box has
+## it (within RAG_GRIP_GAP of the ape's size): where the hand is on him, in fact. Null if it is not.
+func _grip_point(fist: VoxelPart, held: VoxelPart):
+	var l: Vector3 = held.global_transform.affine_inverse() * fist.global_position
+	var he: Vector3 = held.half_ext
+	var pl := Vector3(clampf(l.x, -he.x, he.x), clampf(l.y, -he.y, he.y), clampf(l.z, -he.z, he.z))
+	return pl if _grip_off(fist, held, pl) <= RAG_GRIP_GAP * S else null
+
+## How far a point of the held part (in its own frame) is from the fist's box (m): nought on it.
+static func _grip_off(fist: VoxelPart, held: VoxelPart, pl: Vector3) -> float:
+	var f: Vector3 = fist.global_transform.affine_inverse() * (held.global_transform * pl)
+	var fe: Vector3 = fist.half_ext
+	return Vector3(maxf(0.0, absf(f.x) - fe.x), maxf(0.0, absf(f.y) - fe.y), maxf(0.0, absf(f.z) - fe.z)).length()
+
+## The fists that hold him in a beating with the hand on him: the one point of him the hand took hold
+## of (_grip_point) is still on the hand, within RAG_GRIP_GAP of the ape's size of it, however the
+## joint is drawn out in a blow (user: the hand must touch the man it beats on the sand).
+func _gripping() -> Array:
+	var out := []
+	for fist in _holding():
+		var pl = fist.get_meta("grip_at") if fist.has_meta("grip_at") else null
+		if pl != null and _grip_off(fist, fist.get_meta("held"), pl) <= RAG_GRIP_GAP * S:
+			out.append(fist)
+	return out
+
+## It beats him with one hand, as one swings a rag doll by a limb: of the fists that have him, the one on
+## the heavier part of him keeps him and the other lets go. (Two grips, each at a place of its own on his
+## body, strained one against the other in the swing and were torn off him.) The grip is taken anew at the
+## very point of him the hand touches, where the two meet: a joint made at the fist's middle left the
+## part a hand's breadth off the fist, and as it swung it hung there in the air beside it (user: the
+## hand must touch the man it beats). False, and nothing changed, if no hand has him by a point it is
+## on yet.
+func _grip_for_beating() -> bool:
+	var fists := _holding()
+	fists.sort_custom(func(a, b): return (a.get_meta("held") as VoxelPart).mass > (b.get_meta("held") as VoxelPart).mass)
+	for f in fists:
+		var held: VoxelPart = f.get_meta("held")
+		var pl = _grip_point(f, held)
+		if pl == null:
+			continue
+		for o in fists:
+			if o != f:
+				_unclasp(o)
+		_unclasp(f)
+		var at: Vector3 = held.global_transform * pl
+		_hold(f, held, at)
+		f.set_meta("gripped", true)
+		f.set_meta("grip_at", pl)
+		# (On the fist's side the joint is set on the fist itself, at the nearest point of it: the
+		# hand closes on him, and what gap there was between the two is drawn shut.)
+		var j = f.get_meta("hold_joint") if f.has_meta("hold_joint") else null
+		if j is PinJoint3D:
+			var lf: Vector3 = f.global_transform.affine_inverse() * at
+			var fe: Vector3 = f.half_ext
+			PhysicsServer3D.pin_joint_set_local_a((j as PinJoint3D).get_rid(), Vector3(clampf(lf.x, -fe.x, fe.x), clampf(lf.y, -fe.y, fe.y), clampf(lf.z, -fe.z, fe.z)))
+		return true
+	return false
+
+## A fist lets go of what it holds (the other keeps its own hold).
+func _unclasp(fist: VoxelPart) -> void:
+	var j = fist.get_meta("hold_joint") if fist.has_meta("hold_joint") else null
+	if j != null and is_instance_valid(j):
+		holds.erase(j)
+		j.queue_free()
+	fist.set_meta("gripped", false)
+	fist.set_meta("held", null)
+	fist.set_meta("hold_joint", null)
+	fist.set_meta("grip_at", null)
+
+## Where the whole of a body is going: its parts' velocities by their masses.
+static func _cm_velocity(f) -> Vector3:
+	var p := Vector3.ZERO
+	var m := 0.0
+	for part in f.parts:
+		if not part.severed:
+			p += part.linear_velocity * part.mass
+			m += part.mass
+	return p / m if m > 0.0 else Vector3.ZERO
+
+## Whether any part of him is down by the sand: within RAG_LOW of it.
+func _on_sand(f) -> bool:
+	for part in f.parts:
+		if not part.severed and part.global_position.y - ground_level < RAG_LOW:
+			return true
+	return false
+
+## The gorilla's beating (user: in place of tearing the man in two, it takes hold of him and bangs
+## him on the sand like a rag doll). It has him by an arm and a leg; it lifts him up over its head
+## (RAG_LIFT), brings him down on the sand in front of it (RAG_DOWN) and holds him there a moment
+## (RAG_REST), side to side, RAG_SLAMS times (one less when its nerve is gone), and throws him aside;
+## a man gone limp past any more (RAG_BORED) it drops sooner. He hangs limp in its fists the whole
+## time; each landing is a blunt blow on his trunk and his skull by how hard he was stopped
+## (_rag_land), the way a man thrown lands (Social._throw_land). The hold breaks as it always did: a
+## blow that staggers the ape, its arms ruined, its head past use, the man dead.
+func _rag_doll(dt: float, tgt) -> void:
+	var rg: Dictionary = hug.rag
+	var fists := _holding()
+	# (The hand is on him the whole time. A blow's jerk draws the joint out for a moment; off him for
+	# longer than RAG_GRIP_LOST, he is out of its hand and the beating is over. And the hand on him
+	# is a touch, though the physics reports none between two bodies it holds together.)
+	var on := _gripping()
+	rg.lost = 0.0 if not on.is_empty() else float(rg.lost) + dt
 	if Combat.current:
-		Combat.current.hit.emit({"kind": "hit", "att_part": head, "p": point, "dir": Vector3.DOWN, "J": J, "type": "edge", "char": tgt, "part": tgt.torso, "attacker": self, "res": r2, "killed": was and not tgt.alive, "rend": true})
+		for fist in on:
+			var held: VoxelPart = fist.get_meta("held")
+			Combat.current._note_touch(fist, held, 0.0)
+			Combat.current._note_touch(held, fist, 0.0)
+	if not tgt.alive or fists.is_empty() or float(rg.lost) > RAG_GRIP_LOST or stagger > float(hug.stagger0) + RAG_STAGGER or front_fn() < 0.3 or not part_ok(head, 0.1):
+		_rag_end(tgt, false)
+		return
+	rg.t = float(rg.t) + dt
+	tgt.fall(0.5, true)   # (limp: he cannot stand in the air, nor fight it)
+	var carried: float = float(tgt.body_mass)
+	var fwd: Vector3 = PD.quat_of(torso) * Vector3(0, 0, 1)
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length_squared() > 1e-4 else Vector3.FORWARD
+	var side := Vector3(fwd.z, 0.0, -fwd.x) * float(rg.side)
+	var sq := sqrt(S)
+	var ramp := clampf(float(rg.t) / RAG_RAMP, RAG_RAMP_MIN, 1.0)
+	match String(rg.ph):
+		"lift":
+			# Up and a little behind its head.
+			for fist in fists:
+				var at: Vector3 = fist.parent_part.global_position + Vector3.UP * RAG_TOP * S - fwd * 0.3 * S
+				_rag_pull(fist, at, RAG_RISE_V * sq, carried, true, ramp)
+			if float(rg.t) >= RAG_LIFT:
+				rg.ph = "down"
+				rg.t = 0.0
+				rg.peak = 0.0
+				rg.hit = false
+				rg.settle = 0.0
+		"down":
+			# Brought down, through the sand's own height, in front and to one side.
+			for fist in fists:
+				var at: Vector3 = torso.global_position + fwd * RAG_REACH * S + side * 0.45 * S
+				at.y = ground_level - 0.3
+				_rag_pull(fist, at, RAG_FALL_V * sq, carried, false, ramp)
+			# He lands when the sand stops him: his body, with a part of it down by the sand, going at
+			# not much over half of the fastest it came down. How hard he lands is how much speed it
+			# took off him, read off him as he stops (a moment is let pass for the whole of it: his
+			# legs, his trunk, his head come down one after the other), and a slam that never meets
+			# the sand lands no blow at all.
+			var cmv: Vector3 = _cm_velocity(tgt)
+			var v: float = cmv.length()
+			if not rg.hit:
+				if cmv.y < 0.0:
+					rg.peak = maxf(float(rg.peak), v)
+				if float(rg.peak) > RAG_HARD and v < float(rg.peak) * RAG_STOP and _on_sand(tgt):
+					rg.hit = true
+					rg.low = v
+					rg.settle = 0.0
+			else:
+				rg.low = minf(float(rg.low), v)
+				rg.settle = float(rg.settle) + dt
+			if rg.hit and float(rg.settle) >= RAG_SETTLE or not rg.hit and float(rg.t) >= RAG_DOWN:
+				rg.drop = float(rg.peak) - float(rg.low) if rg.hit else 0.0
+				if rg.hit:
+					_rag_land(tgt, float(rg.drop), int(rg.n) == 0)
+				rg.n = int(rg.n) + 1
+				rg.ph = "rest"
+				rg.t = 0.0
+		"rest":
+			for fist in fists:
+				_rag_pull(fist, fist.global_position + Vector3.DOWN * 0.2, 2.0 * sq, carried, true, 1.0)
+			if float(rg.t) >= RAG_REST:
+				# (Over: the slams it has in it, or a man gone limp past anything more: it drops what
+				# is no sport.)
+				if int(rg.n) >= int(rg.slams) or tgt.vitality() < RAG_BORED:
+					_rag_end(tgt, true)
+					return
+				rg.ph = "lift"
+				rg.t = 0.0
+				rg.side = -float(rg.side)
+	# (The ape stays where it stands: what the arms push back with, its feet take up, and the trunk
+	# is held to the place it took hold of him at, as a spring with no overshoot.)
+	var lvh := Vector3(torso.linear_velocity.x, 0.0, torso.linear_velocity.z)
+	var off: Vector3 = (rg.at as Vector3) - torso.global_position
+	off.y = 0.0
+	torso.apply_central_force((off * RAG_ROOT * RAG_ROOT * 0.25 - lvh * RAG_ROOT) * torso.mass)
+	# (Nothing of him goes faster than the arms could carry him.)
+	for p in tgt.parts:
+		if not p.severed and p.linear_velocity.length() > RAG_VMAX:
+			p.linear_velocity = p.linear_velocity.normalized() * RAG_VMAX
+
+## A fist driven to `at`: the arm's pull, as a blow's, with the man it holds hung on it. `ramp`: how
+## much of its pull it is let at this moment (the grip is eased into the swing, not yanked).
+func _rag_pull(fist: VoxelPart, at: Vector3, speed: float, carried: float, ease_in: bool, ramp: float) -> void:
+	var tv: Vector3 = torso.linear_velocity
+	var to: Vector3 = at - fist.global_position
+	var want: Vector3 = to.normalized() * (minf(speed, to.length() * 8.0) if ease_in else speed)
+	var acc: Vector3 = ((want - (fist.linear_velocity - tv)) / maxf(0.02, get_physics_process_delta_time() * 4.0)).limit_length(RAG_PULL * sqrt(S) * ramp)
+	var f: Vector3 = acc * (fist.mass + carried)
+	fist.apply_central_force(f)
+	torso.apply_central_force(-f * RAG_BACK)
+
+## He lands: a blunt blow on his trunk and, less, his skull, by how much speed the sand took off him
+## (`drop`, m/s): the blow is the stopping, by the one law a man thrown lands by (Social.landing_blow).
+## `first`: the one the feed is told of.
+func _rag_land(tgt, drop: float, first: bool) -> void:
+	var J := Social.landing_blow(drop)
+	var was: bool = tgt.alive
+	for pk in [[tgt.torso, 1.0], [tgt.head, 0.45]]:
+		var part: VoxelPart = pk[0]
+		if part == null or part.severed or not tgt.alive:
+			continue
+		var at: Vector3 = part.global_position
+		var res: Dictionary = tgt.apply_hit(part, {"impulse": J * pk[1], "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": Vector3.DOWN})
+		tgt.last_attacker = self
+		if Combat.current:
+			Combat.current.hit.emit({"kind": "hit", "att_part": by_name.get("legFLLo"), "p": at, "dir": Vector3.DOWN, "J": J * pk[1], "type": "blunt", "char": tgt, "part": part, "attacker": self, "res": res, "killed": was and not tgt.alive, "rag": first and part == tgt.torso, "landing": true})
+	if tgt.alive:
+		tgt.concussion = minf(1.0, float(tgt.concussion) + 0.25 * J / 52.0)
+		tgt.stamina = maxf(0.0, tgt.stamina - J * 0.5)
+	if on_thump.is_valid():
+		on_thump.call(self)
 	if on_strike.is_valid():
 		on_strike.call(self, head)
+
+## The beating is over (or broken): the hold is let go, and a man still alive is thrown aside.
+func _rag_end(tgt, thrown: bool) -> void:
+	var away: Vector3 = tgt.torso.global_position - torso.global_position if is_instance_valid(tgt) else Vector3.FORWARD
+	away.y = 0.0
+	away = away.normalized() if away.length_squared() > 1e-4 else Vector3.FORWARD
+	hug = null
+	_free_holds()
+	if thrown and is_instance_valid(tgt) and tgt.alive:
+		for p in tgt.parts:
+			if not p.severed:
+				p.linear_velocity = away * RAG_TOSS_V + Vector3(0, RAG_TOSS_UP, 0)
+		tgt.fall(2.5, true)
+	ai.bite_cool = 4.0
+	ai.mode = "recover"
+	ai.t = 2.0
 
 ## A crocodile's jaws close on a limb and do not let go: it rolls on its length with the limb
 ## held, wrenching it round until it comes away. He is dragged down and held while it rolls;
@@ -1930,6 +2145,14 @@ func _drive_legs(dt: float, speed: float, collapsed: bool, down: bool, moving: b
 					if winding: hip = -2.3; knee = 0.6
 					else: hip = 0.5; knee = 0.25
 			wn = 55.0 if winding else 70.0
+			planted = false
+		elif _ragging() and _foreleg(leg):
+			# The beating (_rag_doll): both arms up over the head with him, then down.
+			if String(hug.rag.ph) == "lift":
+				hip = -2.3; knee = 0.6
+			else:
+				hip = 0.5; knee = 0.25
+			wn = 70.0
 			planted = false
 		elif strikes.has(leg):
 			# Drawn up and back first, then lashed forward.
@@ -3204,7 +3427,10 @@ func _touch_force(c) -> float:
 func _hold(a: VoxelPart, b: VoxelPart, at: Vector3) -> void:
 	if a == null or b == null or a.severed or b.severed:
 		return
-	holds.append(_joint_at(a, b, at, false))
+	var j := _joint_at(a, b, at, false)
+	holds.append(j)
+	a.set_meta("held", b)
+	a.set_meta("hold_joint", j)
 	# The man held knows it (his own arm drives stand back: a hand pushed round to the front
 	# against an ape's grip on it flung him into the air).
 	var held = b.fighter
@@ -3227,6 +3453,9 @@ func _free_holds() -> void:
 	for n in ["legFLLo", "legFRLo"]:
 		if by_name.has(n):
 			by_name[n].set_meta("gripped", false)
+			by_name[n].set_meta("held", null)
+			by_name[n].set_meta("hold_joint", null)
+			by_name[n].set_meta("grip_at", null)
 
 ## The ape's blows, each a swing of its own and each as hard as the swing (APE_BLOWS: the wind-up,
 ## the blow, the rest after, how fast the arm drives the fist (m/s, for an ape of scale 1), and
@@ -3240,6 +3469,45 @@ const APE_BLOWS := {
 	"slam": {"wind": 0.5, "t": 0.4, "cool": 3.2, "speed": 9.0, "power": 1.8},
 }
 const APE_PULL := 160.0   # the most the arm accelerates its fist, m/s² (a man's arm is near 100)
+
+# The ape's beating of a man it holds (_rag_doll): it starts when the hold is RAG_AT seconds from its end
+# (0.45 s of it gone), on a man no bigger than RAG_SIZE of its own size, with a hand on him: the point
+# of him nearest a fist that holds him within RAG_GRIP_GAP (of the ape's size) of the fist itself, and
+# the beating goes on while it stays so (out of the hand for RAG_GRIP_LOST, it is over). The man is
+# lifted for RAG_LIFT, brought down (RAG_DOWN at most for him to meet the sand), held on the sand
+# RAG_REST, RAG_SLAMS times over. The fist goes up RAG_TOP (of the ape's size) over the shoulder, at
+# RAG_RISE_V and RAG_FALL_V (m/s for an ape of scale 1), a blow's strength at most RAG_PULL.
+# How hard he lands is read off him: he lands when the sand stops him (a part of him within RAG_LOW
+# of it, his body, going faster than RAG_HARD, down to RAG_STOP of that speed), and RAG_SETTLE later
+# the speed it took off him is the blow (Social.landing_blow, a thrown man's law).
+const RAG_AT := 2.55
+const RAG_SIZE := 0.8
+const RAG_SLAMS := 3   # (two while its nerve is gone: a cowed ape tires of it sooner)
+const RAG_BORED := 0.3   # (the man's vitality below which a landing is the last: the ape drops him)
+const RAG_LIFT := 0.55
+const RAG_RAMP := 0.2   # (s over which the arm's pull builds up at the start of a lift and of a blow)
+const RAG_RAMP_MIN := 0.3
+const RAG_DOWN := 0.9
+const RAG_REST := 0.2
+const RAG_TOP := 0.8
+const RAG_BACK := 0.1   # (of the fists' pull, the trunk takes back)
+const RAG_ROOT := 10.0   # (how hard its feet hold the trunk where it stands, 1/s)
+const RAG_REACH := 0.9
+const RAG_GRIP_GAP := 0.05
+const RAG_GRIP_LOST := 0.1
+const RAG_RISE_V := 6.0
+const RAG_FALL_V := 11.0
+const RAG_PULL := 120.0
+const RAG_VMAX := 22.0
+const RAG_STAGGER := 0.35
+const RAG_LOW := 0.4
+const RAG_HARD := 6.0
+const RAG_STOP := 0.6
+const RAG_SETTLE := 0.06
+const RAG_REAR := -0.8   # (the trunk's pitch, rad: up on its hind legs for the lift, thrown forward for the blow)
+const RAG_LEAN := 0.35
+const RAG_TOSS_V := 5.0
+const RAG_TOSS_UP := 2.5
 
 func _ape_blows(dt: float, t, to: Vector3, dist: float, facing: float) -> void:
 	if float(ai.get("beat", 0.0)) > 0.0:

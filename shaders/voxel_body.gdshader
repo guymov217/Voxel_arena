@@ -426,8 +426,7 @@ void fragment() {
 		c = mix(c, c * 1.4 + vec3(0.03), rv);
 	}
 	float cs = box_half.x <= 0.0 ? corner_shade(a, box_pos, m) : 0.0;
-	// (Flesh and organs lie in shadow in the creases of a wound already: half the corner shade.)
-	c *= 1.0 - ao_strength * cs * (k == 9 ? 0.5 : 1.0);
+	c *= 1.0 - ao_strength * cs;
 	// Bronze (not gold: it is brighter) going green where it is shut in, and in spots.
 	if (k == 4 && patina > 0.0 && dot(c, vec3(0.2126, 0.7152, 0.0722)) < 0.3) {
 		c = mix(c, vec3(0.1, 0.24, 0.18), clamp(cs * 0.7 + (seed2 > 0.82 ? 0.3 : 0.0), 0.0, 0.7) * patina);
@@ -475,11 +474,6 @@ void fragment() {
 	}
 	if (k == 12) {
 		EMISSION += c * (2.2 + 0.4 * sin(TIME * 2.0 + seed * 6.0));
-	}
-	if (k == 9 || k == 6) {
-		// What a wound bares, flesh and organs and bone, is never a black hole: in the shade of a crater it
-		// still shows as itself, dark red or ivory (user: the boar, and the shoulders, look hollow inside).
-		EMISSION += c * (k == 9 ? 0.22 : 0.12);
 	}
 	if (k == 0) {
 		// Skin: light through the thin edges, warm.

@@ -2876,5 +2876,6 @@
  "BOW: %s": "弓：%s",
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%sに点火：武器のように振るか、Fを押し続けて狙い、離して投げる",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "棒の先で燃える松脂。空いた手に持ち、棍棒のように振るえば、一撃ごとに相手に火がつく。戦ううちに燃え尽き、尽きれば消えてなくなる。投げれば落ちた所で燃え、こぼれた油に火をつける。",
- "The torch burns out": "松明が燃え尽きた"
+ "The torch burns out": "松明が燃え尽きた",
+ "%s SLAMS %s INTO THE SAND!": "%sが%sを砂の上に叩きつける！"
 }

@@ -7584,6 +7584,17 @@ func lift() -> void:
 const CRUSH_OF_LIMB := 0.6   # how wide a crater a crushing blow leaves at most, of the part's half thickness
 const BONE_FIST_J := 30.0    # the blow (J) a fist or a foot must reach to break a limb's bone: a giant's, not a man's
 const BONE_SOFT_H := 0.25    # a weapon that hits softer than this (rubber, leather, fish) breaks no bone
+## A soft weapon (a rubber chicken, a fish, a goose on a stick) gives way on what it strikes: its
+## blow is spread over a long touch and little of it goes in. Of the force it came in with it
+## delivers soft_share(its hardness): a tenth at the very softest, all of it from BONE_SOFT_H up
+## (user: the fish and the rubber chicken did far too much damage). The harm, the rocking, the
+## crater and the plates knocked off all go by what it delivers. Its hardness is the weapon's as a
+## thing, the blow's "weapon_h" (Combat: the harder of the stuff that touched him and the weapon's
+## mean), so the leather on a sword's grip is still a sword's and hits as it always did.
+const SOFT_FLOOR := 0.1
+static func soft_share(hardness: float) -> float:
+	var s := clampf(hardness / BONE_SOFT_H, 0.0, 1.0)
+	return SOFT_FLOOR + (1.0 - SOFT_FLOOR) * s * s * s
 ## What a part gives to one blow is held to a ceiling, and a blow past it still takes a little more of
 ## it, the harder it came (user: a stronger and a faster swing destroys a bit more, by the physics of it
 ## alone): the volume taken goes on growing as the root of how far past the ceiling the blow's own
@@ -7615,6 +7626,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var sharpness: float = hit.get("sharpness", 0.0)
 	var heavy: float = clampf(hit.get("heavy", 0.0), 0.0, 1.0)
 	var J: float = float(hit.get("impulse", 0.0)) * HIT_SCALE
+	if type == "blunt" and bool(hit.get("weapon", false)):
+		J *= soft_share(float(hit.get("weapon_h", hardness)))
 	var inv := part.global_transform.affine_inverse()
 	var lp: Vector3 = inv * (hit.point as Vector3)
 	# How much bigger the wound is than a man's: a beast's (Beast.CHUNK, set on the blow), a giant
@@ -8820,6 +8833,8 @@ func detach_limb(part: VoxelPart, res: Dictionary) -> void:
 		part.joint.node_b = NodePath()
 		part.joint.queue_free()
 		part.joint = null
+	# (The skin the part it hung from drew on it, and the skin it drew on that part: gone with it.)
+	FineBody.parted(part)
 	if part.parent_part:
 		# (It bleeds from the cut across what of the limb stays on him, if any: sever.)
 		var at: Vector3 = part.get_meta("cut_face") if part.has_meta("cut_face") else part.parent_part.anchor_point(part)

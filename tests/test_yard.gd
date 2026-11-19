@@ -226,9 +226,9 @@ func test_the_weapons_come_back_to_the_yard_as_the_bout_left_them() -> void:
 	Save.set_value("arms", was)
 	await _steps(2)
 
-## What the yard knocks out of his blade (a swing at the post, a friend's sword) never counts at the
-## smith's (user: only the damage of a bout in the arena does): a stall or the gate opened there
-## leaves the saved wear as the arena left it, and the smith's bill is the arena's alone.
+## What the yard knocks out of his blade or his armour (a swing at the post, a friend's sword) never
+## counts at the smith's (user: only the damage of a bout in the arena does): a stall or the gate
+## opened there leaves the saved wear as the arena left it, and the smith's bill is the arena's alone.
 func test_the_yards_knocks_do_not_count_at_the_smith() -> void:
 	var was = Save.get_value("arms", {})
 	var a := Arms.sanitize({})
@@ -265,4 +265,44 @@ func test_the_yards_knocks_do_not_count_at_the_smith() -> void:
 	menu._end_match()
 	menu.queue_free()
 	Save.set_value("arms", was)
+	await _steps(2)
+
+## And his armour, the same (user: the rule at the smith's holds for the armour too): the plates the
+## yard knocks off him are not saved as worn, the armourer's bill is what the arena made it, and he
+## is built whole of them the next time.
+func test_the_yards_knocks_to_armour_do_not_count_at_the_smith() -> void:
+	var was_worn = Save.get_value("armor_worn", [])
+	var was_wear = Save.get_value("armor_wear", {})
+	var bout := {"steelLorica": {"torso": [0, 1]}}   # what the arena took off it
+	Save.set_value("armor_worn", ["steelLorica"])
+	Save.set_value("armor_wear", bout)
+	var menu = load("res://scripts/ui/menu.gd").new()
+	menu.backdrop_off = true
+	add_child(menu)
+	await get_tree().process_frame
+	menu.enter_yard()
+	await _steps(20)
+	var f: Fighter = menu.match_.me.f
+	t.eq(f.armor_wear().get("steelLorica", {}).get("torso", []), [0, 1], "he comes into the yard with the bout's plates off")
+	var tor: VoxelPart = f.torso
+	var at: Vector3 = tor.global_transform * Vector3(0, 0, tor.half_ext.z)
+	var dir := -(tor.global_transform.basis * Vector3.BACK).normalized()
+	f.apply_hit(tor, {"point": at, "dir": dir, "type": "blunt", "hardness": 1.0, "sharpness": 0.0, "impulse": 80.0, "heavy": 0.8})
+	var now: Array = f.armor_wear().get("steelLorica", {}).get("torso", [])
+	t.check(now.size() > 2, "the yard knocked more plates off him (%d off)" % now.size())
+	var bill := Armory.mend_cost("steelLorica", menu.armor_wear())
+	menu._open_station("smith")
+	await get_tree().process_frame
+	t.eq(menu.armor_wear().get("steelLorica", {}).get("torso", []), [0, 1], "the saved wear is the bout's alone")
+	t.eq(Armory.mend_cost("steelLorica", menu.armor_wear()), bill, "and the armourer's bill is what the arena made it")
+	menu._close_overlay()
+	await get_tree().process_frame
+	menu._open_station("market")
+	await get_tree().process_frame
+	t.eq(menu.armor_wear().get("steelLorica", {}).get("torso", []), [0, 1], "nor does another stall opened after count them")
+	menu._close_overlay()
+	menu._end_match()
+	menu.queue_free()
+	Save.set_value("armor_worn", was_worn)
+	Save.set_value("armor_wear", was_wear)
 	await _steps(2)

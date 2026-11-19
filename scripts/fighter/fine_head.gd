@@ -909,11 +909,13 @@ static func shown(p: VoxelPart, indices: Array, on: bool) -> void:
 	var mm: MultiMesh = fine.mm
 	var cxf: Array = fine.xf
 	var tucked: Dictionary = fine.get("tucked", {})
+	# (What a giant's head draws on his trunk and the trunk has lost under it: FineBody.guests.)
+	var gone: Dictionary = fine.get("gone", {})
 	for i in indices:
 		if not of.has(i):
 			continue
 		for s in of[i]:
-			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 and not tucked.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
+			mm.set_instance_transform(s, cxf[s] if on and p.alive[i] == 1 and not tucked.has(s) and not gone.has(s) else Transform3D(Basis().scaled(Vector3.ZERO), (cxf[s] as Transform3D).origin))
 
 ## A fine voxel's colour as it is drawn now (_paint): what a face piece or his mood draws on it,
 ## else its own; the mark on the voxel it lies on if that was marked since (blood, a burn).
@@ -948,6 +950,7 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 	var cxf: Array = fine.xf
 	var tpl: Array = fine.cells
 	var tucked: Dictionary = fine.get("tucked", {})
+	var gone: Dictionary = fine.get("gone", {})   # (not drawn: the trunk under them gone, FineBody.guests)
 	var hid: PackedByteArray = fine.hid
 	var hs: float = fine.get("hs", 1.0)
 	var pivot: Vector3 = fine.get("pivot", Vector3.ZERO)
@@ -978,7 +981,7 @@ static func taken(p: VoxelPart, idx: PackedInt32Array) -> Dictionary:
 		var n := 0
 		var inner := float(res)
 		for s in (of.get(i, []) as Array):
-			if tucked.has(s):
+			if tucked.has(s) or gone.has(s):
 				continue
 			var t: Transform3D = cxf[s]
 			# (As it is drawn, read off the drawing where there is one to read: the same, quicker.)

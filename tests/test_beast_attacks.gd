@@ -346,56 +346,255 @@ func test_the_ostrich_winds_up_and_hops_into_its_kick() -> void:
 	t.check(hopped[0], "it hopped into its kick")
 	s[0].queue_free()
 
-func test_the_gorilla_hugs_and_tears_a_man_in_two() -> void:
+## The gorilla's hold is a beating (user: in place of tearing the man in two, it takes hold of him and
+## bangs him on the sand like a rag doll; the hand must touch the man it beats, it beats him several
+## times, and the harm is worked out from how hard he meets the sand): it lifts him up over its head
+## and brings him down on the sand, over and over, its hand on him the whole time; every landing is
+## a blow by the speed the sand took off him at that moment (Social.landing_blow); then it throws
+## him aside, whole.
+func test_the_gorilla_beats_a_man_on_the_sand_like_a_rag_doll() -> void:
 	seed(12)
-	var s = await _setup("gorilla", 2.4)
+	var s = await _setup("gorilla", 2.4, {"main": "", "off": ""})
+	var m: Match = s[0]
+	var man: Fighter = s[1]
 	var b: Beast = s[2]
 	t.check(b.legs.size() == 4 and b.by_name.has("legFLLo"), "an ape on four limbs, fists and feet")
-	var hugged := [false]
-	var rent := [false]
 	var punches := [0]
 	var powers := {}
-	s[0].combat.hit.connect(func(h):
-		if h.attacker == b and h.char == s[1]:
-			if h.get("rend", false):
-				rent[0] = true
-			if h.type == "blunt" and h.get("att_part") != null and String(h.att_part.part_name).begins_with("legF"):
-				punches[0] += 1
-				var arm = h.att_part.parent_part
-				if arm and h.get("bite", false) and b.strikes.has(arm) and String(arm.get_meta("ape", "")) != "":
-					var pw := float(h.att_part.get_meta("power", 1.0))
-					powers[pw] = maxf(float(powers.get(pw, 0.0)), h.J))
+	var lands := []   # each: {J, drop, on, low}
+	var told := [0]
+	m.combat.hit.connect(func(h):
+		if h.attacker != b or h.char != man:
+			return
+		if h.get("landing", false):
+			if h.get("rag", false):
+				told[0] += 1
+			if h.part == man.torso and b.hug != null and b.hug.has("rag"):
+				var low := 99.0
+				for p in man.parts:
+					if not p.severed:
+						low = minf(low, p.global_position.y)
+				lands.append({"J": float(h.J), "drop": float(b.hug.rag.drop), "on": b._gripping().size(), "low": low, "touch": m.combat.touching(b, man, 0.05)})
+		elif h.type == "blunt" and h.get("att_part") != null and String(h.att_part.part_name).begins_with("legF"):
+			punches[0] += 1
+			var arm = h.att_part.parent_part
+			if arm and h.get("bite", false) and b.strikes.has(arm) and String(arm.get_meta("ape", "")) != "":
+				var pw := float(h.att_part.get_meta("power", 1.0))
+				powers[pw] = maxf(float(powers.get(pw, 0.0)), h.J))
 	var kinds := {}
-	var thrown := [0]
+	var thrown := 0
 	var was_k := {"legFL": "", "legFR": ""}
-	await _run(s[0], s[1], b, 24.0, func(i):
+	var hugged := false
+	var top := 0.0
+	var beat_ticks := 0
+	var one_hand := true
+	var off_sum := 0.0
+	var off_max := 0.0
+	var over_at := -1
+	var toss := Vector3.ZERO
+	var from_ape := Vector3.ZERO
+	for i in 22 * 120:
+		man.blood = 100.0
+		man.head.hp = maxf(man.head.hp, 40.0)
+		man.torso.hp = maxf(man.torso.hp, 40.0)
+		b.target = man
+		await get_tree().physics_frame
 		# Whether the ape's own stride brings him to the hold in time hangs on the physics'
 		# chaos: past eight seconds without one, a hand is put on the man (as his own would
-		# be, at line "a hand on him"), and the tearing is what is tested.
-		if b.hug == null and i == 8 * 120 and b.alive and s[1].alive and not hugged[0] and b.torso.global_position.distance_to(s[1].torso.global_position) < 2.2 * b.S:
-			b.hug = {"target": s[1], "t": 3.0, "tick": 0.3, "stagger0": b.stagger}
+		# be, at line "a hand on him"), and the beating is what is tested.
+		if b.hug == null and i == 8 * 120 and b.alive and man.alive and not hugged and b.torso.global_position.distance_to(man.torso.global_position) < 2.2 * b.S:
+			b.hug = {"target": man, "t": 3.0, "tick": 0.3, "stagger0": b.stagger}
 		if b.hug != null:
-			hugged[0] = true
+			hugged = true
+		if b._ragging():
+			beat_ticks += 1
+			top = maxf(top, man.torso.global_position.y)
+			var hold: Array = b._holding()
+			one_hand = one_hand and hold.size() == 1
+			if hold.size() == 1 and (hold[0] as VoxelPart).has_meta("grip_at"):
+				var off := Beast._grip_off(hold[0], (hold[0] as VoxelPart).get_meta("held"), (hold[0] as VoxelPart).get_meta("grip_at"))
+				off_sum += off
+				off_max = maxf(off_max, off)
+		elif beat_ticks > 0 and over_at < 0:
+			over_at = i
+			toss = man.torso.linear_velocity
+			from_ape = man.torso.global_position - b.torso.global_position
 		for n in ["legFL", "legFR"]:
 			var k := String(b.by_name[n].get_meta("ape", ""))
 			if k != "":
 				kinds[k] = true
 				if was_k[n] != k:
-					thrown[0] += 1
-			was_k[n] = k)
-	t.check(hugged[0], "it took hold of him")
-	t.check(rent[0], "and tore him in two")
-	# (Each blow is a jab two times in five: a man whose arms it broke early is torn in two after
-	# a few blows, and four jabs running is no fault. Enough blows, and they are not all one kind.)
-	t.check(kinds.size() >= 2 or thrown[0] < 6, "it threw more than one kind of blow: %s of %d" % [str(kinds.keys()), thrown[0]])
+					thrown += 1
+			was_k[n] = k
+		if over_at >= 0 and i > over_at + 60:
+			break
+	t.check(hugged, "it took hold of him")
+	t.check(beat_ticks > 0, "and began to beat him")
+	t.check(top > 1.2 * b.S, "it lifted him up over its head (his trunk %.1f m over the sand)" % top)
+	t.check(lands.size() >= 2 and lands.size() <= Beast.RAG_SLAMS, "and brought him down on the sand several times (%d landings)" % lands.size())
+	for l in lands:
+		t.check(absf(float(l.J) - Social.landing_blow(float(l.drop))) < 0.01 and float(l.drop) > Beast.RAG_HARD * (1.0 - Beast.RAG_STOP), "a landing is a blow by the speed the sand took off him: J %.0f for %.1f m/s" % [float(l.J), float(l.drop)])
+		t.check(int(l.on) == 1 and bool(l.touch), "with its hand on him as he lands (%d, touching %s)" % [int(l.on), str(l.touch)])
+		t.check(float(l.low) < Beast.RAG_LOW, "on the sand (the lowest of him %.2f m over it)" % float(l.low))
+	t.check(one_hand, "it beats him with one hand")
+	t.check(beat_ticks > 0 and off_sum / maxf(1.0, float(beat_ticks)) < 0.05 and off_max < Beast.RAG_GRIP_GAP * b.S * 2.0, "the hand stays on him: the point of him it holds is %.3f m off the fist on average, %.3f at most" % [off_sum / maxf(1.0, float(beat_ticks)), off_max])
+	t.eq(told[0], 1, "the feed is told of the beating once")
+	t.check(over_at >= 0 and b.hug == null and b.holds.is_empty(), "then it let go of him")
+	from_ape.y = 0.0
+	t.check(Vector2(toss.x, toss.z).length() > 2.0 and from_ape.length() > 0.01 and Vector3(toss.x, 0.0, toss.z).normalized().dot(from_ape.normalized()) > 0.5, "and threw him aside (%.1f m/s)" % Vector2(toss.x, toss.z).length())
+	t.eq(man.parts.filter(func(p): return p.severed).size(), 0, "nothing of him was torn off")
+	t.check(man.alive, "and he lives, kept on his feet between the blows as he was")
+	# (Each blow is a jab two times in five: four jabs running is no fault. Enough blows, and they
+	# are not all one kind.)
+	t.check(kinds.size() >= 2 or thrown < 6, "it threw more than one kind of blow: %s of %d" % [str(kinds.keys()), thrown])
 	t.check(punches[0] >= 1, "and its fists landed (%d blows)" % punches[0])
 	t.check(b.base_bite * 0.9 >= 45.0, "a gorilla's lightest blow is three men's punches (%.0f)" % (b.base_bite * 0.9))
 	var cap_jab: float = b.base_bite * 0.9
 	t.check(powers.values().all(func(j): return j <= b.base_bite * 1.8 + 0.01), "no blow lands harder than a slam may (%s)" % str(powers))
 	t.check(not powers.has(0.9) or powers[0.9] <= cap_jab + 0.01, "a jab lands no harder than a jab may (bite %.1f, %s)" % [b.base_bite, str(powers)])
-	var off: int = s[1].parts.filter(func(p): return p.severed).size()
-	t.check(off >= 2, "an arm and a leg came away (%d parts off)" % off)
-	s[0].queue_free()
+	m.queue_free()
+
+## The scene run till the beating begins (`b.hug` has "rag" in it): the hold is put on him at six
+## seconds if the ape's own stride has not brought it by then; `secs` at most. `each`: called every
+## step, before it.
+func _begin_beating(s: Array, secs: float, each := Callable()) -> bool:
+	var man: Fighter = s[1]
+	var b: Beast = s[2]
+	for i in int(secs * 120):
+		man.blood = 100.0
+		man.head.hp = maxf(man.head.hp, 40.0)
+		man.torso.hp = maxf(man.torso.hp, 40.0)
+		b.target = man
+		if each.is_valid():
+			each.call()
+		await get_tree().physics_frame
+		if b.hug == null and i == 6 * 120 and b.alive and man.alive and b.torso.global_position.distance_to(man.torso.global_position) < 2.2 * b.S:
+			b.hug = {"target": man, "t": 3.0, "tick": 0.3, "stagger0": b.stagger}
+		if b._ragging():
+			return true
+	return false
+
+## How hard a landing is, is how hard the sand stopped him (user: the harm worked out from the
+## strength of the blow on the ground): a blunt blow on his trunk and, less, on his skull, by the one
+## law a man thrown lands by, and the harder he is stopped the more of him it takes.
+func test_a_landing_hurts_by_how_hard_the_sand_stopped_him() -> void:
+	seed(13)
+	var s = await _setup("gorilla", 6.0, {"main": "", "off": ""})
+	var m: Match = s[0]
+	var man: Fighter = s[1]
+	var b: Beast = s[2]
+	man.mods.toughness = 1.0
+	var got := []
+	m.combat.hit.connect(func(h):
+		if h.attacker == b and h.char == man and h.get("landing", false):
+			got.append([String(h.part.part_name), float(h.J), bool(h.get("rag", false))]))
+	var drops := [2.0, 6.0, 12.0, 30.0]
+	var lost := []
+	for k in drops.size():
+		man.blood = 100.0
+		man.torso.hp = 100.0
+		man.head.hp = 100.0
+		var v0 := man.vitality()
+		b._rag_land(man, drops[k], k == 0)
+		lost.append(v0 - man.vitality())
+	t.eq(got.size(), 2 * drops.size(), "a trunk and a skull to a landing")
+	for k in drops.size():
+		if got.size() < 2 * k + 2:
+			break
+		var want := Social.landing_blow(drops[k])
+		t.check(got[2 * k][0] == "torso" and absf(got[2 * k][1] - want) < 0.01, "stopped from %.0f m/s, his trunk takes J %.1f (%s, %.1f)" % [drops[k], want, got[2 * k][0], got[2 * k][1]])
+		t.check(got[2 * k + 1][0] == "head" and absf(got[2 * k + 1][1] - 0.45 * want) < 0.01, "and his skull 0.45 of it (%s, %.1f)" % [got[2 * k + 1][0], got[2 * k + 1][1]])
+	t.check(is_equal_approx(Social.landing_blow(12.0), 12.0 * 2.6) and is_equal_approx(Social.landing_blow(1.0), 8.0) and is_equal_approx(Social.landing_blow(99.0), 52.0), "the law: 2.6 to the m/s, no landing under 8, none over 52")
+	# (The harm saturates from about J 30, and what a landing breaks is by chance: the hardest of
+	# the four is more than the middle of them, not always more than the one before it.)
+	t.check(lost[0] > 0.0 and lost[1] > lost[0] + 0.01 and lost[2] > lost[1] + 0.01 and lost[3] > lost[1] + 0.01, "the harder the sand stops him the more it takes of him: %s" % str(lost.map(func(x): return snappedf(x, 0.01))))
+	t.check(got.size() == 2 * drops.size() and got[0][2] and not got[2][2] and not got[4][2] and not got[6][2], "the feed is told of the first landing only")
+	m.queue_free()
+
+## The beating is a hold like any of the ape's: one hand has him by the very point of him it
+## touches, and a blow that staggers the ape breaks it there and then, he is let go where he is. A
+## fist holds only what is still his: a limb cut off the man leaves it with the limb alone.
+func test_a_blow_that_staggers_the_ape_ends_the_beating() -> void:
+	seed(14)
+	var s = await _setup("gorilla", 2.4, {"main": "", "off": ""})
+	var m: Match = s[0]
+	var man: Fighter = s[1]
+	var b: Beast = s[2]
+	var began: bool = await _begin_beating(s, 14.0)
+	t.check(began, "the beating began")
+	if not began:
+		m.queue_free()
+		return
+	var hold: Array = b._holding()
+	t.eq(hold.size(), 1, "one hand has him")
+	if hold.size() == 1:
+		var fist: VoxelPart = hold[0]
+		var held: VoxelPart = fist.get_meta("held")
+		t.check(held.fighter == man and not held.severed and fist.has_meta("grip_at"), "by a part of him (his %s), at a point of it" % String(held.part_name))
+		var off := Beast._grip_off(fist, held, fist.get_meta("grip_at"))
+		t.check(off <= Beast.RAG_GRIP_GAP * b.S and b._gripping().size() == 1, "that the fist is on (%.3f m off the fist)" % off)
+		t.eq(b.holds.size(), 1, "the other hand has let go of him")
+	var landings := [0]
+	m.combat.hit.connect(func(h):
+		if h.attacker == b and h.char == man and h.get("landing", false) and h.part == man.torso:
+			landings[0] += 1)
+	b.stagger = float(b.hug.stagger0) + Beast.RAG_STAGGER + 0.1
+	var v0: Vector3 = man.torso.linear_velocity
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(b.hug == null and not b._ragging(), "staggered, it let go of him")
+	t.check(b.holds.is_empty() and b._holding().is_empty() and b._gripping().is_empty(), "no fist holds him")
+	t.check(not man.has_meta("beast_hold"), "and he knows it")
+	t.check((man.torso.linear_velocity - v0).length() < 3.0, "let go, not thrown (his speed changed by %.1f m/s)" % (man.torso.linear_velocity - v0).length())
+	for i in 60:
+		await get_tree().physics_frame
+	t.eq(landings[0], 0, "and no landing is dealt him after it")
+	# A fist holds only what is still his.
+	var arm: VoxelPart = man.by_name.upperArmR
+	var fr: VoxelPart = b.by_name.legFRLo
+	b._hold(fr, arm, fr.global_position)
+	fr.set_meta("gripped", true)
+	t.eq(b._holding().size(), 1, "a fist with a hold on his arm holds him")
+	arm.severed = true
+	t.eq(b._holding().size(), 0, "his arm cut off, it holds a limb, not him")
+	arm.severed = false
+	b._free_holds()
+	t.check(b.holds.is_empty() and not fr.get_meta("gripped", false) and not fr.has_meta("held") and not fr.has_meta("grip_at"), "a hold let go is gone from the fist")
+	m.queue_free()
+
+## A cowed ape tires of it sooner (one slam less), and a man gone limp past any more is no sport to
+## it: the landing that leaves him under RAG_BORED is the last, and it drops him.
+func test_the_ape_drops_a_man_gone_limp() -> void:
+	seed(16)
+	var s = await _setup("gorilla", 2.4, {"main": "", "off": ""})
+	var m: Match = s[0]
+	var man: Fighter = s[1]
+	var b: Beast = s[2]
+	var landings := [0]
+	m.combat.hit.connect(func(h):
+		if h.attacker == b and h.char == man and h.get("landing", false) and h.part == man.torso:
+			landings[0] += 1)
+	# (Its nerve gone from the moment it has him.)
+	var began: bool = await _begin_beating(s, 14.0, func():
+		if b.hug != null:
+			b.nerve = 0.0)
+	t.check(began, "the beating began")
+	if began:
+		t.eq(int(b.hug.rag.slams), Beast.RAG_SLAMS - 1, "its nerve gone, it has one slam less in it")
+		# His blood at a fifth of its fill from here on: his vitality is the least of his blood,
+		# his trunk and his skull.
+		for i in int(3.0 * 120):
+			man.blood = 20.0
+			man.head.hp = 100.0
+			man.torso.hp = 100.0
+			t.check(man.vitality() < Beast.RAG_BORED, "he is limp") if i == 0 else null
+			await get_tree().physics_frame
+			if b.hug == null:
+				break
+		t.check(b.hug == null, "it is over")
+		t.eq(landings[0], 1, "after the one landing, though it had two in it")
+		t.check(man.alive, "and he is alive")
+	m.queue_free()
 
 func test_a_hold_needs_a_touch() -> void:
 	seed(21)

@@ -596,3 +596,54 @@ func test_a_weapon_hits_as_hard_as_it_is_made() -> void:
 	t.check(sword.mean_hardness > 0.8, "a gladius is hard (%.2f)" % sword.mean_hardness)
 	chicken.queue_free()
 	sword.queue_free()
+
+## A soft weapon gives way on what it strikes and delivers only a share of its force: the harm, the
+## rocking, the crater and the plates knocked off all go by that share (user: the fish and the
+## rubber chicken did far too much damage). A hard weapon delivers all of it, as it always did.
+func test_a_soft_weapon_delivers_little_of_its_force() -> void:
+	t.check(is_equal_approx(Fighter.soft_share(0.0), Fighter.SOFT_FLOOR) and is_equal_approx(Fighter.soft_share(Fighter.BONE_SOFT_H), 1.0) and is_equal_approx(Fighter.soft_share(0.9), 1.0), "a tenth of its force at no hardness, all of it from the hardness a weapon breaks bone at")
+	var prev := 0.0
+	var rising := true
+	for h in [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.4]:
+		rising = rising and Fighter.soft_share(h) >= prev
+		prev = Fighter.soft_share(h)
+	t.check(rising, "the softer, the less")
+	# The same blow of J 30 on a standing man's trunk, then on his head, from a rubber chicken, a fish
+	# and a club of hard wood: what each did to him.
+	var seen := {}
+	# (And from the leather on the grip of a hard sword: leather touched him, but a sword struck him.)
+	for w in [["chicken", 0.06], ["fish", 0.15], ["club", 0.6], ["leather", 0.1], ["grip", 0.1, 0.9]]:
+		var r := _victim()
+		var m: Match = r[0]
+		var v: Fighter = r[1]
+		await _steps(20)
+		var out := {"dmg": 0.0, "voxels": 0, "stagger": 0.0, "conc": 0.0}
+		for pn in ["torso", "head"]:
+			var p: VoxelPart = v.by_name[pn]
+			p.hp = 1000.0
+			var gt := p.global_transform
+			var bz := gt.basis.orthonormalized() * Vector3(0, 0, 1)
+			var blow := {"impulse": 30.0, "type": "blunt", "hardness": w[1], "weapon": true, "mass": 1.2, "heavy": 0.0, "wsz": 1.0, "point": gt * Vector3(0, 0, p.half_ext.z), "dir": -bz}
+			if w.size() > 2:
+				blow["weapon_h"] = w[2]
+			var res: Dictionary = v.apply_hit(p, blow)
+			out.dmg += float(res.get("dmg", 0.0))
+			for rr in res.get("removed", []):
+				out.voxels += (rr.indices as Array).size()
+		out.stagger = v.stagger
+		out.conc = v.concussion
+		seen[w[0]] = out
+		m.queue_free()
+		await _steps(2)
+	var c: Dictionary = seen.chicken
+	var f: Dictionary = seen.fish
+	var k: Dictionary = seen.club
+	t.check(float(k.dmg) > 20.0 and int(k.voxels) > 0, "a club of hard wood does what it did (harm %.1f, %d voxels)" % [k.dmg, k.voxels])
+	t.check(float(c.dmg) < 0.2 * float(k.dmg), "a rubber chicken does a fifth of its harm or less (%.1f of %.1f)" % [c.dmg, k.dmg])
+	t.check(float(f.dmg) < 0.45 * float(k.dmg), "a fish less than half of it (%.1f of %.1f)" % [f.dmg, k.dmg])
+	t.eq(int(c.voxels), 0, "the chicken takes no voxel out of him")
+	t.check(int(f.voxels) < int(k.voxels), "and the fish fewer than the club (%d of %d)" % [f.voxels, k.voxels])
+	t.check(float(c.stagger) < 0.2 * float(k.stagger) and float(c.conc) < 0.2 * float(k.conc), "nor does it rock or stun him (%.2f, %.2f of %.2f, %.2f)" % [c.stagger, c.conc, k.stagger, k.conc])
+	var soft: Dictionary = seen.leather
+	var grip: Dictionary = seen.grip
+	t.check(float(grip.dmg) > 3.0 * float(soft.dmg) and float(grip.dmg) > 0.5 * float(k.dmg), "the leather grip of a hard sword hits as a sword's grip did, not as a thing of leather (%.1f; a thing of leather %.1f, the club %.1f)" % [grip.dmg, soft.dmg, k.dmg])

@@ -599,11 +599,10 @@ func enter_yard(banner_text := "") -> void:
 func _open_station(id: String) -> void:
 	if visible:
 		return
-	# What his armour took about the yard (a swing at the post, a friend's blade) is the smith's to
-	# mend too, and goes with him through the gate (user: damage in the yard was not counted when
-	# mending). His weapons' chips are not: the smith counts only what a bout in the arena did to
-	# them (user: the lobby's fights never count at the smith's).
-	_keep_yard_wear()
+	# What the yard knocks out of his blade or his armour (a swing at the post, a friend's sword) is
+	# never counted at the smith's: only what a bout in the arena did to them is (user: the lobby's
+	# fights never count). Opening a stall saves nothing of it, and it is gone the next time he is
+	# built, at the gate or at a purchase.
 	# The gate: the gate's fights, a card each (GateScreen).
 	# (A room's host at the gate when the demo is over: the gate's menu, with the modes for the room.)
 	if id == "gate" and not (Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
@@ -623,16 +622,6 @@ func _open_station(id: String) -> void:
 		"physician": show_screen("physician")
 		"trainer": show_screen("trainer")
 		"gate": show_screen("gate")
-
-## The dents the yard left in his armour, into the saved armour wear (as a bout's are). Not the
-## chips in his weapons: the smith counts those only from a bout in the arena, and what the yard
-## knocked out of a blade is gone with the next time he is built (the gate, a purchase).
-func _keep_yard_wear() -> void:
-	if not in_yard() or match_.me == null or not is_instance_valid(match_.me.get("f")):
-		return
-	var yw: Dictionary = match_.my_wear()
-	if yw.get("armor") is Dictionary:
-		set_armor_wear(Armory.add_wear(armor_wear(), yw.armor, worn_armor()))
 
 func _close_overlay() -> void:
 	visible = false

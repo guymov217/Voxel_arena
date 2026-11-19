@@ -480,3 +480,209 @@ func test_nothing_of_a_stump_hangs_in_the_air() -> void:
 			left += 1
 			t.check(not r.get("chunk", false), "the side by his trunk stays on him as the stump")
 	t.check(fell == 1 and left == 1 and arm.severed, "the arm cut off: what touched nothing of him fell, what touched him stayed (%d, %d)" % [fell, left])
+
+## The fine voxels `a` draws out of its own part's box (its skin run on over a joint: the neck, the
+## slopes of his shoulders, his hips) that are drawn now.
+func _skin_over(a: VoxelPart) -> Array:
+	var out := []
+	var fine: Dictionary = a.fine
+	if fine.is_empty() or not fine.has("body"):
+		return out
+	var par: PackedInt32Array = fine.par
+	var gone: Dictionary = fine.get("gone", {})
+	for s: int in fine.get("over", PackedInt32Array()):
+		var j := par[s]
+		if j >= 0 and a.alive[j] == 1 and not gone.has(s):
+			out.append(s)
+	return out
+
+func test_the_skin_over_a_joint_goes_with_the_flesh_under_it() -> void:
+	# (User: the trapezius and the neck were not destroyed any more; every part of every figure can
+	# be destroyed, from every side and at every point.) A man's trunk draws his neck up into the foot
+	# of his head, the slopes of his shoulders, the caps of his shoulders over the tops of his arms, his
+	# hips over the tops of his thighs: where the flesh under that skin is hacked away, it goes with it.
+	var w := _world()
+	var f := _man(w, "human")
+	var torso: VoxelPart = f.torso
+	var head: VoxelPart = f.head
+	var whole := _skin_over(torso).size()
+	t.check(whole > 1000, "his trunk draws skin out of its own box, over the parts beside it (%d fine voxels)" % whole)
+	var hosts: Dictionary = FineBody._hosts(torso)
+	for pn in ["head", "upperArmL", "upperArmR", "thighL", "thighR"]:
+		t.check(hosts.has(pn) and not (hosts[pn] as Dictionary).is_empty(), "%s: some of it is drawn on his trunk's skin" % pn)
+	# The foot of his head hacked away (the three layers by his neck): the neck drawn over it goes.
+	var foot := []
+	for i in head.fx.size():
+		if head.alive[i] == 1 and head.fy[i] < 3:
+			foot.append(i)
+	var expect := 0
+	for i: int in foot:
+		expect += ((hosts.head as Dictionary).get(i, []) as Array).size()
+	t.check(foot.size() > 20 and expect > 20, "the head's foot has a neck drawn over it (%d voxels, %d fine voxels)" % [foot.size(), expect])
+	head.remove_voxels(foot, false)
+	t.eq(whole - _skin_over(torso).size(), expect, "the neck over those voxels is gone with them, and no other skin of his trunk")
+	head.restore_voxels(foot)
+	t.eq(_skin_over(torso).size(), whole, "put back, it is drawn again")
+	# The slope of his shoulder (the trunk's own top layers) and the cap of his shoulder (the top of
+	# his arm): voxels of the arm taken from the top, the trunk's skin over them with them.
+	var arm: VoxelPart = f.by_name["upperArmL"]
+	var top := []
+	for i in arm.fx.size():
+		if arm.alive[i] == 1 and arm.fy[i] >= arm.grid.y - 3:
+			top.append(i)
+	var cap := 0
+	for i: int in top:
+		cap += ((hosts.upperArmL as Dictionary).get(i, []) as Array).size()
+	t.check(cap > 20, "the top of his arm has his shoulder's cap drawn over it (%d fine voxels)" % cap)
+	arm.remove_voxels(top, false)
+	t.eq(whole - _skin_over(torso).size(), cap, "taken from the top of his arm, the cap of his shoulder goes")
+	arm.restore_voxels(top)
+	t.eq(_skin_over(torso).size(), whole, "put back, it is drawn again")
+	# And what the arm draws over his trunk goes with the trunk's flesh there.
+	var arm_over := _skin_over(arm).size()
+	var under := Array(torso.voxels_within(arm.pa, 5.0 * torso.vf * torso.part_scale))
+	torso.remove_voxels(under, false)
+	t.check(_skin_over(arm).size() < arm_over, "the skin the arm draws into his trunk goes where the trunk is hacked away (%d -> %d)" % [arm_over, _skin_over(arm).size()])
+
+## For each part, each fine voxel it draws out of its own box and how near the nearest flesh of the
+## parts beside it (and its own) is, in voxels: {part name: {fine voxel: how near}}.
+func _flesh_base(f: Fighter) -> Dictionary:
+	var out := {}
+	for a: VoxelPart in f.parts:
+		var fine: Dictionary = a.fine
+		if fine.is_empty() or not fine.has("body"):
+			continue
+		var va := a.vf * a.part_scale
+		var half := Vector3(a.grid) * va * 0.5
+		var xf: Array = fine.get("xf0", fine.xf)
+		var rs := {}
+		var every := 0
+		for s in xf.size():
+			var o: Vector3 = (xf[s] as Transform3D).origin
+			if absf(o.x) <= half.x and absf(o.y) <= half.y and absf(o.z) <= half.z:
+				continue   # (in its own part's box: its own voxels are under it)
+			every += 1
+			if every % 3 != 0:
+				continue   # (every third: enough to read it by)
+			rs[s] = _flesh_near(a.global_transform * o, a, false, va)
+		out[String(a.part_name)] = rs
+	return out
+
+const _FLESH_LADDER := [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 9.0, 13.0]
+## How near, in voxels of `a`, the nearest flesh of a and the parts jointed to it that are his (`piece`
+## false) or that were cut off with it (true) lies to `at`; 99 if none within thirteen.
+func _flesh_near(at: Vector3, a: VoxelPart, piece: bool, va: float) -> float:
+	var parts := [a]
+	if a.parent_part != null and is_instance_valid(a.parent_part):
+		parts.append(a.parent_part)
+	for c in a.child_parts:
+		if c != null and is_instance_valid(c):
+			parts.append(c)
+	parts = parts.filter(func(q): return (q as VoxelPart).severed == piece and not (q as VoxelPart).missing)
+	for k: float in _FLESH_LADDER:
+		for q: VoxelPart in parts:
+			if not q.voxels_within(q.global_transform.affine_inverse() * at, k * va, 1).is_empty():
+				return k
+	return 99.0
+
+## How many fine voxels the parts of `f` (his, or what was cut off him) draw out of their boxes that
+## are drawn now, with no flesh nearer than it was when he was whole (and a voxel's width more).
+func _hanging(f: Fighter, base: Dictionary, piece: bool) -> Array:
+	var checked := 0
+	var bad := 0
+	for a: VoxelPart in f.parts:
+		if a.severed != piece or a.missing or not base.has(String(a.part_name)):
+			continue
+		var va := a.vf * a.part_scale
+		var xf: Array = a.fine.get("xf0", a.fine.xf)
+		var par: PackedInt32Array = a.fine.par
+		var gone: Dictionary = a.fine.get("gone", {})
+		for s: int in (base[String(a.part_name)] as Dictionary):
+			if par[s] < 0 or a.alive[par[s]] == 0 or gone.has(s):
+				continue
+			checked += 1
+			var at: Vector3 = a.global_transform * (xf[s] as Transform3D).origin
+			if _flesh_near(at, a, piece, va) > float(base[String(a.part_name)][s]) + 1.0:
+				bad += 1
+	return [checked, bad]
+
+func test_nothing_of_him_hangs_in_the_air_where_a_limb_was_cut_off() -> void:
+	# (User: voxels of a gladiator hung in the air where a hand was cut off; none may, for any
+	# gladiator and any part cut off.) Each joint of a man, cut through: on him and on the piece,
+	# no fine voxel of the skin run on over the joint is left drawn with no flesh under it.
+	var w := _world()
+	var base := _flesh_base(_man(w, "human", Vector3(-6, 1.2, 0)))
+	var joints := []
+	for p: VoxelPart in _man(w, "human", Vector3(-12, 1.2, 0)).parts:
+		if p.parent_part != null and p.joint != null:
+			joints.append(String(p.part_name))
+	t.check(joints.size() == 9, "nine joints to cut at (%d)" % joints.size())
+	var seen := 0
+	for jn: String in joints:
+		var f := _man(w, "human", Vector3(0, 1.2, 0))
+		var c: VoxelPart = f.by_name[jn]
+		var keep := PackedInt32Array()
+		for i in c.fx.size():
+			if c.alive[i] == 1:
+				keep.append(i)
+		f.sever(c, {"removed": [], "severed": []}, keep)
+		var on_him := _hanging(f, base, false)
+		var on_it := _hanging(f, base, true)
+		seen += int(on_him[0]) + int(on_it[0])
+		t.eq(int(on_him[1]) + int(on_it[1]), 0, "%s cut off at its joint: no skin left hanging (%d of his, %d of the piece's drawn out of their boxes)" % [jn, on_him[0], on_it[0]])
+		f.queue_free()
+		await get_tree().physics_frame
+	t.check(seen > 3000, "the audit looked at the skin of every joint (%d fine voxels)" % seen)
+
+## How many of the fine voxels part `parent_name` of `f` draws over part `child_name` are not drawn
+## now: [how many lie there, how many of them are gone].
+func _hosted_gone(f: Fighter, parent_name: String, child_name: String) -> Array:
+	var q: VoxelPart = f.by_name[parent_name]
+	var hosts: Dictionary = FineBody._hosts(q).get(child_name, {})
+	var gone: Dictionary = q.fine.get("gone", {})
+	var n := 0
+	var off := 0
+	for j in hosts:
+		for s: int in hosts[j]:
+			n += 1
+			if gone.has(s):
+				off += 1
+	return [n, off]
+
+func _cut_at_joint(f: Fighter, part_name: String) -> void:
+	var c: VoxelPart = f.by_name[part_name]
+	var keep := PackedInt32Array()
+	for i in c.fx.size():
+		if c.alive[i] == 1:
+			keep.append(i)
+	f.sever(c, {"removed": [], "severed": []}, keep)
+
+func test_the_skin_over_a_joint_goes_on_a_beast_and_a_giant_too() -> void:
+	var w := _world()
+	# A lion's body draws its mane up over the foot of its head; its head cut off, that goes.
+	var lion := Beast.new()
+	w.add_child(lion)
+	Physique.forced = "human"
+	lion.build_beast("lion", Vector3(0, 0.5, 0), PI, {"seed": 11})
+	Physique.forced = ""
+	for p in lion.parts:
+		p.freeze = true
+	var on_lion := _hosted_gone(lion, "beastBody", "beastHead")
+	t.check(int(on_lion[0]) > 10 and int(on_lion[1]) == 0, "a lion's body draws skin over its head, all drawn while the head is on (%s)" % str(on_lion))
+	_cut_at_joint(lion, "beastHead")
+	on_lion = _hosted_gone(lion, "beastBody", "beastHead")
+	t.eq(int(on_lion[1]), int(on_lion[0]), "its head cut off, the skin its body drew over it goes with it")
+	# A giant's trunk draws his neck and the slopes of his shoulders; his arm cut off at the shoulder.
+	for look in ["troll", "minotaur"]:
+		var g := w.fighter(Vector3(6, 1.2, 0), 0.0, {}, {"skin": 0x6f8458, "mods": {"look": look}})
+		for p in g.parts:
+			p.freeze = true
+		t.eq(Physique.giant_of(g), look, "%s: drawn as his own build" % look)
+		var on_arm := _hosted_gone(g, "torso", "upperArmL")
+		t.check(int(on_arm[0]) > 20 and int(on_arm[1]) == 0, "%s: his trunk draws skin over the top of his arm (%s)" % [look, str(on_arm)])
+		_cut_at_joint(g, "upperArmL")
+		on_arm = _hosted_gone(g, "torso", "upperArmL")
+		t.eq(int(on_arm[1]), int(on_arm[0]), "%s: his arm cut off at the shoulder, the skin his trunk drew over it goes" % look)
+		var head_foot := _hosted_gone(g, "head", "torso") if g.head.fine.has("hosts") or not FineBody._hosts(g.head).is_empty() else [0, 0]
+		if int(head_foot[0]) > 0:
+			t.eq(int(head_foot[1]), 0, "%s: the skin his head draws down over his trunk stays while the trunk is whole" % look)

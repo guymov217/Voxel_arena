@@ -237,7 +237,7 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		base[j] = p.colors[j]
 	var fine := {"body": true, "build": bn, "par": par, "own": own, "shade": shade, "xf": L.xf, "of": of, "base": base, "na": na,
 		"hid": L.hid, "code": L.code, "sub": d.sub, "fsz": fsz, "sk": sk_lin, "wound": {}, "wfree": [], "wn": 0, "cells": cells, "d": d, "beast": beast,
-		"smooth": L.skin != null, "jaw_corners": L.jaw_corners}
+		"smooth": L.skin != null, "jaw_corners": L.jaw_corners, "over": L.get("over", PackedInt32Array())}
 	p.fine = fine
 	if _drawing():
 		var mm := MultiMesh.new()
@@ -311,6 +311,274 @@ static func build(f, p: VoxelPart, bn: String, on := true, staged := false) -> v
 		dangle_on(p)
 		if p.dangle_mesh:
 			p.dangle_mesh.visible = false
+	# (Drawn anew with wounds on him or a limb gone: what is gone of the parts beside this one
+	# takes this one's skin over it, and what is gone of this one theirs: guests.)
+	guests_anew(p)
+
+## The parts `p` was built jointed to: the one it hangs from and those that hang from it, cut off
+## since or not.
+static func _beside(p: VoxelPart) -> Array:
+	var out := []
+	if p.parent_part != null and is_instance_valid(p.parent_part):
+		out.append(p.parent_part)
+	for c in p.child_parts:
+		if c != null and is_instance_valid(c):
+			out.append(c)
+	return out
+
+## Whether two parts built jointed still are: the one that hangs from the other not cut off it
+## (nor lost in an earlier fight).
+static func _joined(a: VoxelPart, b: VoxelPart) -> bool:
+	var child: VoxelPart = b if b.parent_part == a else a
+	return child.joint != null
+
+## The fine voxels a part draws out of its own box (its skin run on over a joint, a bulge of its
+## sculpt): kept with its layout; a giant's own head's (FineHead) worked out here, once a head.
+static var _head_over := {}
+static func _over(a: VoxelPart) -> PackedInt32Array:
+	var fa: Dictionary = a.fine
+	if fa.has("over"):
+		return fa.over
+	var out := PackedInt32Array()
+	if not fa.has("xf") or String(fa.get("giant", "")) == "":
+		return out   # (a man's own head ends at his jaw: nothing of it lies on the parts beside it)
+	var va := a.vf * a.part_scale
+	var key := "%s|%s|%s" % [String(fa.giant), str(snappedf(float(fa.get("hs", 1.0)), 0.0001)), str(snappedf(va, 0.00001))]
+	if _head_over.has(key):
+		out = _head_over[key]
+	else:
+		var ha := Vector3(a.grid) * va * 0.5
+		var xf: Array = fa.xf
+		for s in xf.size():
+			var o: Vector3 = (xf[s] as Transform3D).origin
+			if absf(o.x) > ha.x or absf(o.y) > ha.y or absf(o.z) > ha.z:
+				out.append(s)
+		_head_over[key] = out
+	fa.over = out
+	return out
+
+## The fine voxels part `a` draws on the parts built jointed to it, by the voxel of that part each
+## lies on with the joint at rest: {the part's name: {voxel of it: [fine voxels of a]}}. A fine
+## voxel out of its own part's box lies on the part beside it if it is inside that part's box, or
+## nearer to it than to its own (the neck a man's trunk draws up into the foot of his head, the
+## slope of his shoulder round it, the cap of his shoulder over the top of his arm, his hips over
+## the tops of his thighs, both sides of an elbow and a knee; a beast's mane over its shoulders),
+## on the voxel of it nearest. Worked out once a build, a part and a size, when the first voxel of a
+## part beside it goes.
+static var _host_maps := {}
+static func _hosts(a: VoxelPart) -> Dictionary:
+	var fa: Dictionary = a.fine
+	if fa.has("hosts"):
+		return fa.hosts
+	var over := _over(a)
+	if over.is_empty():
+		fa.hosts = {}
+		return fa.hosts
+	var va := a.vf * a.part_scale
+	var key := "%s|%s|%s|%s" % [String(fa.get("build", "head:" + String(fa.get("giant", "")) + str(snappedf(float(fa.get("hs", 1.0)), 0.0001)))), String(a.part_name), str(snappedf(va, 0.00001)), str(a.grid)]
+	if _host_maps.has(key):
+		fa.hosts = _host_maps[key]
+		return fa.hosts
+	var ha := Vector3(a.grid) * va * 0.5
+	var x0: Array = fa.get("xf0", fa.xf)
+	# Where each part beside it lies, at rest: the hanging part's own frame in the frame of the part
+	# it hangs from, its joint's two points one (a beast's parts are turned on one another at rest:
+	# rest_on).
+	var nb := []
+	for b: VoxelPart in _beside(a):
+		var child: VoxelPart = b if b.parent_part == a else a
+		var turn: Basis = child.get_meta("rest_on") if child.has_meta("rest_on") else Basis.IDENTITY
+		var hung := Transform3D(turn, child.pa - turn * child.ca)
+		var vb := b.vf * b.part_scale
+		nb.append([b, hung.affine_inverse() if child == b else hung, vb, Vector3(b.grid) * vb * 0.5, {}])
+	var out := {}
+	for s in over:
+		var o: Vector3 = (x0[s] as Transform3D).origin
+		var best := -1
+		var host := -1
+		var least := Vector3(maxf(0.0, absf(o.x) - ha.x), maxf(0.0, absf(o.y) - ha.y), maxf(0.0, absf(o.z) - ha.z)).length()   # (how far out of its own box)
+		for k in nb.size():
+			var b: VoxelPart = nb[k][0]
+			var vb: float = nb[k][2]
+			var hb: Vector3 = nb[k][3]
+			var q: Vector3 = (nb[k][1] as Transform3D) * o
+			var d := Vector3(maxf(0.0, absf(q.x) - hb.x), maxf(0.0, absf(q.y) - hb.y), maxf(0.0, absf(q.z) - hb.z)).length()
+			if d >= least - 1e-5:
+				continue
+			# The voxel of it there: the one whose place the fine voxel is in (the nearest of its box,
+			# from outside it), or, a sculpted part not filling its box, the nearest within two of that.
+			var gb := b.grid
+			var c: Vector3 = ((q + hb) / vb).floor()
+			var ci := Vector3i(clampi(int(c.x), 0, gb.x - 1), clampi(int(c.y), 0, gb.y - 1), clampi(int(c.z), 0, gb.z - 1))
+			var j := b._cell(ci.x, ci.y, ci.z)
+			if j < 0:
+				var near := INF
+				for dx in range(-2, 3):
+					for dy in range(-2, 3):
+						for dz in range(-2, 3):
+							var k2 := b._cell(ci.x + dx, ci.y + dy, ci.z + dz)
+							if k2 < 0:
+								continue
+							var away := ((Vector3(ci.x + dx, ci.y + dy, ci.z + dz) + Vector3(0.5, 0.5, 0.5)) * vb - hb).distance_to(q)
+							if away < near:
+								near = away
+								j = k2
+				if j < 0:
+					continue   # (none of its flesh near: its box is empty there)
+				d = maxf(d, near - vb * 0.5)
+				if d >= least - 1e-5:
+					continue
+			least = d
+			best = k
+			host = j
+		if best < 0:
+			continue
+		var m: Dictionary = nb[best][4]
+		if not m.has(host):
+			m[host] = []
+		(m[host] as Array).append(s)
+	for e in nb:
+		if not (e[4] as Dictionary).is_empty():
+			out[String((e[0] as VoxelPart).part_name)] = e[4]
+	_host_maps[key] = out
+	fa.hosts = out
+	return out
+
+## A part's own copy of where its fine voxels are drawn (the build's are every man's of it): for a
+## bruise's swelling (swell), and for what the parts beside it took of its skin (guests).
+static func _own_places(fine: Dictionary) -> void:
+	if not fine.has("xf0"):
+		fine.xf0 = fine.xf
+		fine.xf = (fine.xf as Array).duplicate()
+		fine.swell = {}
+	if not fine.has("gone"):
+		fine.gone = {}
+
+## Fine voxels `cells` of part `a` drawn (`there`) or not: those that lie on a part beside it
+## (_hosts), with the flesh of that part they lie on. A fine voxel not drawn so stays not drawn
+## whatever is done to its own part (a bruise's swelling, a voxel shown again) till it is drawn again.
+static func _guest_set(a: VoxelPart, cells: Array, there: bool) -> void:
+	var fine: Dictionary = a.fine
+	var gone: Dictionary = fine.get("gone", {})
+	var touched := false
+	var par: PackedInt32Array = fine.par
+	for s: int in cells:
+		if there == not gone.has(s):
+			continue
+		if not fine.has("body"):
+			# (A giant's own head: FineHead.shown leaves what is in `gone` not drawn.)
+			if not fine.has("gone"):
+				fine.gone = gone
+			if there:
+				gone.erase(s)
+			else:
+				gone[s] = true
+			var hm: MultiMesh = fine.get("mm")
+			if hm != null:
+				var t: Transform3D = (fine.xf as Array)[s]
+				var hj: int = par[s]
+				hm.set_instance_transform(s, t if there and hj >= 0 and a.alive[hj] == 1 and not (fine.get("tucked", {}) as Dictionary).has(s) else Transform3D(Basis().scaled(Vector3.ZERO), t.origin))
+			continue
+		_own_places(fine)
+		gone = fine.gone
+		var x0: Transform3D = (fine.xf0 as Array)[s]
+		if there:
+			gone.erase(s)
+			(fine.swell as Dictionary).erase(s)
+			(fine.xf as Array)[s] = x0
+		else:
+			gone[s] = true
+			(fine.xf as Array)[s] = Transform3D(Basis.from_scale(Vector3.ZERO), x0.origin)
+		touched = true
+		if fine.get("mm") != null:
+			var j: int = par[s]
+			var at := _slot(fine, s)
+			(at[0] as MultiMesh).set_instance_transform(at[1], at[2] if there and j >= 0 and a.alive[j] == 1 else Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
+	if touched and fine.has("far_mm"):
+		fine.band_was = INF
+
+## What is drawn where a blow took a voxel is gone, whichever part drew it (user: every part of the
+## body of every gladiator, every figure and foe, can be destroyed, from every side, at every point).
+## A part's skin runs on over its joints onto the parts beside it (_hosts): the neck is the trunk's,
+## drawn up into the foot of the head, and it stood whole while the head's foot was hacked away
+## inside it; so with the hips over a thigh's top, a shoulder, an elbow, a knee. The fine voxels the
+## parts beside `p` draw on its voxels `indices` are not drawn while those voxels are gone, and are
+## drawn again with them. Only the drawing: every voxel, every blow and every wound is as it was.
+## (Not what a cut leaves on him as the limb's stump, VoxelPart.leave_on_stump: that is drawn on
+## him still, the skin over it with it.)
+static func guests(p: VoxelPart, indices: Array) -> void:
+	if p.has_meta("stump_end"):
+		return
+	var whole: bool = p.alive_count >= p.fx.size()
+	for a: VoxelPart in _beside(p):
+		var fine: Dictionary = a.fine
+		if fine.is_empty() or not fine.has("xf"):
+			continue
+		# (All of it there and none of that part's skin taken: nothing to do, as whenever a whole
+		# man is drawn or dressed.)
+		if whole and (fine.get("gone", {}) as Dictionary).is_empty():
+			continue
+		var m: Dictionary = _hosts(a).get(String(p.part_name), {})
+		if m.is_empty():
+			continue
+		var joined := _joined(a, p)
+		for i in indices:
+			if m.has(i):
+				_guest_set(a, m[i], joined and p.alive[i] == 1)
+
+## A limb cut off (or lost in an earlier fight): the skin the part it hung from drew on it goes
+## with it, and the skin it drew on that part (user: voxels of a man hung in the air where his arm
+## was cut off; none may, for any figure and any part cut off). Not the skin over what the cut left
+## on him as the limb's stump (sever): those voxels are gone from the limb already.
+static func parted(c: VoxelPart) -> void:
+	var q: VoxelPart = c.parent_part
+	if q == null or not is_instance_valid(q):
+		return
+	if not q.fine.is_empty() and q.fine.has("xf"):
+		var m: Dictionary = _hosts(q).get(String(c.part_name), {})
+		for j: int in m:
+			if c.alive[j] == 1:
+				_guest_set(q, m[j], false)
+	if not c.fine.is_empty() and c.fine.has("xf"):
+		var m2: Dictionary = _hosts(c).get(String(q.part_name), {})
+		for j: int in m2:
+			_guest_set(c, m2[j], false)
+
+## A part drawn anew, with wounds on him or a limb gone: its skin on the parts beside it, and
+## theirs on it, as what is there of each now.
+static func guests_anew(p: VoxelPart) -> void:
+	for b: VoxelPart in _beside(p):
+		var joined := _joined(p, b)
+		if not joined or b.alive_count < b.fx.size():
+			var m: Dictionary = _hosts(p).get(String(b.part_name), {})
+			for j: int in m:
+				if not joined or b.alive[j] == 0:
+					_guest_set(p, m[j], false)
+		if b.fine.is_empty() or not b.fine.has("xf"):
+			continue
+		if not joined or p.alive_count < p.fx.size() or not (b.fine.get("gone", {}) as Dictionary).is_empty():
+			var m2: Dictionary = _hosts(b).get(String(p.part_name), {})
+			for j: int in m2:
+				_guest_set(b, m2[j], joined and p.alive[j] == 1)
+
+## The fine voxels over voxels `voxels` of `p` that the parts beside it took (guests) stay not drawn
+## after what moved or redrew them (a bruise's swelling works from where the build drew them).
+static func _keep_gone(p: VoxelPart, voxels) -> void:
+	var fine: Dictionary = p.fine
+	var gone: Dictionary = fine.get("gone", {})
+	if gone.is_empty():
+		return
+	var of: Dictionary = fine.of
+	for i in voxels:
+		if not of.has(i):
+			continue
+		for s: int in (of[i] as Array):
+			if not gone.has(s):
+				continue
+			(fine.xf as Array)[s] = Transform3D(Basis.from_scale(Vector3.ZERO), ((fine.xf0 as Array)[s] as Transform3D).origin)
+			if fine.get("mm") != null:
+				var at := _slot(fine, s)
+				(at[0] as MultiMesh).set_instance_transform(at[1], Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 
 ## A giant of myth is drawn slimmer than his boxes (his build's sculpt): each part's collider is
 ## kept to it (VoxelPart.fit_to), layer by layer along the part, so that what strikes and is struck
@@ -472,10 +740,15 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 	var buf := PackedFloat32Array()
 	buf.resize(n * 20)
 	var far_out := 0    # how far out of the part's own grid its fine voxels lie, the furthest of them
+	var over := PackedInt32Array()   # and which of them lie out of it at all (its skin run on over a joint: _over_map)
 	for s in n:
+		var out_of := 0
 		for a in 3:
 			var c := cells[s * CELL + a]
-			far_out = maxi(far_out, maxi(-c, c - g[a] * res + 1))
+			out_of = maxi(out_of, maxi(-c, c - g[a] * res + 1))
+		if out_of > 0:
+			over.append(s)
+		far_out = maxi(far_out, out_of)
 	var pal: Array = d.get("palette", [])
 	var cloth: Array = d.get("cloth", [])
 	var smooth := key.contains("|smooth")
@@ -563,7 +836,7 @@ static func _layout(p: VoxelPart, d: Dictionary, key: String, beast: bool) -> Di
 		if skinned:
 			var shape := FineSmooth.blurred(sol, FineSmooth.GEO_REACH)
 			skin = FineSmooth.skin(FineSmooth.corners(at, sol, shape, light, own, shape if alone else FineSmooth.blurred(own, FineSmooth.GEO_REACH), own_light), FineHead.material())
-	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code, "na": na, "skin": skin, "jaw_corners": jaw_corners, "far_out": far_out}
+	var L := {"n": n, "fsz": fsz, "par": par, "shade": shade, "xf": cxf, "of": of, "buf": buf, "hid": hid, "vxf": vxf, "code": code, "na": na, "skin": skin, "jaw_corners": jaw_corners, "far_out": far_out, "over": over}
 	_layouts[key] = L
 	return L
 
@@ -1324,11 +1597,8 @@ static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
 		return
 	if p.bent_drawn():
 		return   # (a limb drawn bent at a break: its skin is laid round the bend, not here)
-	if not fine.has("xf0"):
-		# (The layout's places are shared by every man of the build: his own copy, to swell.)
-		fine.xf0 = fine.xf
-		fine.xf = (fine.xf as Array).duplicate()
-		fine.swell = {}
+	# (The layout's places are shared by every man of the build: his own copy, to swell.)
+	_own_places(fine)
 	var g := p.grid
 	var ax := 0 if g.x >= g.y and g.x >= g.z else (1 if g.y >= g.z else 2)
 	var n := lp
@@ -1340,7 +1610,9 @@ static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
 	var nc = _core(fine)
 	if nc != null and nc.has_method("fine_swell"):
 		# (In the C++ core: a bruise's few hundred fine voxels were 5 ms of the blow here.)
-		nc.fine_swell(p, p.voxels_within(lp, r), lp, r, k, n, vox, SWELL_MAX)
+		var under := p.voxels_within(lp, r)
+		nc.fine_swell(p, under, lp, r, k, n, vox, SWELL_MAX)
+		_keep_gone(p, under)
 		return
 	var x0s: Array = fine.xf0
 	var xs: Array = fine.xf
@@ -1357,6 +1629,8 @@ static func swell(p: VoxelPart, lp: Vector3, r: float, k: float) -> void:
 			f = f * f * (3.0 - 2.0 * f)
 			var w := minf(SWELL_MAX, float(sw.get(s, 0.0)) + k * f)
 			sw[s] = w
+			if (fine.gone as Dictionary).has(s):
+				continue   # (taken with the voxel of the part beside it that lay under it: guests)
 			xs[s] = Transform3D(x0.basis.scaled(Vector3.ONE * (1.0 + 0.3 * w)), x0.origin + n * w * vox)
 			if p.alive[i] == 1:
 				var at := _slot(fine, s)

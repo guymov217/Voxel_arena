@@ -2879,5 +2879,6 @@
  "BOW: %s": "弓：%s",
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s已点燃：像武器一样挥舞，或按住 F 瞄准，松开即投掷",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "棒头燃烧的松脂，拿在空着的手里：像棍棒一样挥舞，每一击都会点燃对手。战斗中它会不断烧短，烧尽就没了。扔出去，落在哪里就在哪里燃烧，还会点燃洒在地上的油。",
- "The torch burns out": "火把烧尽了"
+ "The torch burns out": "火把烧尽了",
+ "%s SLAMS %s INTO THE SAND!": "%s 狠狠地把 %s 砸进了沙地！"
 }

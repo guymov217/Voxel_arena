@@ -2879,5 +2879,6 @@
  "BOW: %s": "BOGEN: %s",
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s brennt: Schwing sie wie eine Waffe, oder halte F zum Zielen und lass zum Werfen los",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Brennendes Pech an einem Stock, in der freien Hand: Schwing sie wie eine Keule, und jeder Schlag setzt den Gegner in Brand. Sie brennt im Kampf herunter und ist danach verbraucht. Geworfen brennt sie, wo sie landet, und setzt verschüttetes Öl in Brand.",
- "The torch burns out": "Die Fackel ist heruntergebrannt"
+ "The torch burns out": "Die Fackel ist heruntergebrannt",
+ "%s SLAMS %s INTO THE SAND!": "%s SCHMETTERT %s IN DEN SAND!"
 }

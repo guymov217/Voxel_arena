@@ -2876,5 +2876,6 @@
  "BOW: %s": "YAY: %s",
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s yandı: onu bir silah gibi salla ya da nişan almak için F'yi basılı tut ve fırlatmak için bırak",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Bir sopanın ucunda yanan zift, boş elinde: onu gürz gibi salla, her darbe rakibi tutuşturur. Dövüştükçe yanıp tükenir ve bitince ortadan kalkar. Fırlatılırsa düştüğü yerde yanar ve dökülmüş yağı tutuşturur.",
- "The torch burns out": "Meşale yanıp bitti"
+ "The torch burns out": "Meşale yanıp bitti",
+ "%s SLAMS %s INTO THE SAND!": "%s, %s kişisini KUMA ÇARPIYOR!"
 }

@@ -413,11 +413,16 @@ func flying_hits(dt: float) -> void:
 			c.thrown_t = 0.0
 			break
 
+## What stopping a man does to him, the sand's blow or a wall's: by the speed it took off him (m/s).
+## One law for a man thrown and for a man an ape beats on the sand (Beast._rag_land).
+static func landing_blow(drop: float) -> float:
+	return clampf(drop * 2.6, 8.0, 52.0)
+
 ## The landing of a man thrown: a blunt blow on the trunk and the skull by how hard he was
 ## stopped (as the Hand of Jupiter's, _mind_land), charged to whoever threw him.
 func _throw_land(t: Fighter, drop: float, pv: Vector3) -> void:
 	var by = t.thrown_by if t.thrown_by != null and is_instance_valid(t.thrown_by) else null
-	var J := clampf(drop * 2.6, 8.0, 52.0)
+	var J := landing_blow(drop)
 	var dir: Vector3 = -pv.normalized() if pv.length_squared() > 1e-4 else Vector3.DOWN
 	var was_alive := t.alive
 	for pk in [[t.torso, 1.0], [t.head, 0.45]]:

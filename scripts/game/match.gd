@@ -47,10 +47,11 @@ var mind_aim_until := -1.0   # while the local player may hold a man in the Hand
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
 const PAY_SCALE := 0.5
-## What a bout pays is a tenth more than that: he came to the boss with two knives, there had been
-## too little to buy better (user: a little, ten per cent). Only what is paid goes up: what follows the
+## What a bout pays is a quarter more than that: he came to the boss with two knives, there had been
+## too little to buy better (user: a little, ten per cent; then, a little more yet: the money hardly
+## paid for the physician and a better weapon both). Only what is paid goes up: what follows the
 ## list (the physician's prices, Body.price_unit) stays where it was.
-const PAY_RAISE := 1.1
+const PAY_RAISE := 1.25
 ## What `points` of a stage's list are paid as.
 static func paid(points: float) -> int:
 	return int(round(points * PAY_SCALE * PAY_RAISE))
@@ -2727,8 +2728,8 @@ func _on_hit(h: Dictionary) -> void:
 	if h.killed and h.attacker:
 		_credit_kill(h.char, h.attacker, h.get("weapon"))
 		feed.emit(Loc.t("%s kills %s") % [h.attacker.display_name, h.char.display_name])
-	elif h.get("rend", false):
-		feed.emit(Loc.t("%s TEARS %s APART!") % [h.attacker.display_name, h.char.display_name])
+	elif h.get("rag", false):
+		feed.emit(Loc.t("%s SLAMS %s INTO THE SAND!") % [h.attacker.display_name, h.char.display_name])
 	elif h.res.get("severed", []).size() > 0:
 		feed.emit(Loc.t("%s loses the %s!") % [h.char.display_name, Loc.lower(String(h.res.severed[0].label))])
 	elif h.res.get("fractured") is VoxelPart and h.char is Fighter:
@@ -3762,6 +3763,11 @@ func guest_vox(m: Dictionary) -> void:
 		var p: VoxelPart = e.f.parts[int(m.part)]
 		if m.get("end", false) == true and m.idx is Array:
 			p.leave_on_stump(m.idx)   # (what of a limb cut through stays on his stump)
+			# (And the skin the part it hangs from draws over it, as on the host: FineBody.guests.)
+			p.set_meta("stump_end", true)
+			p.remove_voxels(m.idx, false)
+			p.remove_meta("stump_end")
+			return
 		p.remove_voxels(m.idx, false)
 
 ## A broken-off piece the host describes, taken only as voxels of known stuff and a grip on one

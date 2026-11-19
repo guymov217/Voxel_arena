@@ -233,7 +233,10 @@ func test_attacks_stay_physical() -> void:
 						ymax = maxf(ymax, pos.y)
 					if p.joint and p.parent_part and not p.parent_part.severed and p.def.get("ca") != null:
 						gap = maxf(gap, (p.parent_part.global_transform * p.pa).distance_to(p.global_transform * p.ca))
-		if not finite or vmax > 20.0 or vpart > 40.0 or ymax > 3.0 or gap > 0.12 * maxf(1.0, b.S):
+		# (The gorilla's beating swings him up over its shoulder and down into the sand on purpose,
+		# the hardest of the blows here: Beast._rag_doll, no part of him faster than RAG_VMAX.)
+		var swing: bool = k == "gorilla"
+		if not finite or vmax > (26.0 if swing else 20.0) or vpart > 40.0 or ymax > (6.5 if swing else 3.0) or gap > 0.12 * maxf(1.0, b.S):
 			bad.append("%s v %.1f (a part %.1f) y %.1f gap %.2f at %s%s" % [k, vmax, vpart, ymax, gap, gap_at, "" if finite else " NaN"])
 		w.queue_free()
 		await get_tree().process_frame
@@ -263,7 +266,7 @@ func test_every_blow_is_a_touch() -> void:
 			if h.get("attacker") == b and h.get("char") == man:
 				blows[0] += 1
 				if not w.combat.touching(b, man, 0.3):
-					untouched.append(str(h.keys().filter(func(x): return x in ["bite", "ram", "trample", "rend", "roll", "fall"]))))
+					untouched.append(str(h.keys().filter(func(x): return x in ["bite", "ram", "trample", "rag", "landing", "roll", "fall"]))))
 		for s in int(6.0 / DT):
 			man.blood = 100.0
 			man.head.hp = maxf(man.head.hp, 40.0)

@@ -2828,6 +2828,9 @@ func set_shown(indices: Array, on: bool) -> void:
 		FineBody.shown(self, indices, on)
 	elif not fine.is_empty():
 		FineHead.shown(self, indices, on)
+	# (And what the parts beside it draw in the place of these voxels, their skin run on over the
+	# joint: gone with them, back with them.)
+	FineBody.guests(self, indices)
 	if dangle_mm:
 		if dboxes:
 			_write_shown(dangle_mm, dang, on)

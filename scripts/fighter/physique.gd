@@ -183,6 +183,9 @@ static func dress(f, style := "", staged := false) -> void:
 				return
 		else:
 			FineHead.build(f, f.head, true, FineBody.head_scale(bn), giant_of(f))
+		# (A giant's own head runs on down over his trunk: not drawn where the trunk under it is gone.)
+		if not (f.head as VoxelPart).fine.is_empty():
+			FineBody.guests_anew(f.head)
 	f.set_meta("physique", style)
 	f.set_meta("build", bn)
 	if f.has_method("place_armor"):
