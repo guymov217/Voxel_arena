@@ -3999,10 +3999,30 @@ func set_poison(on: bool) -> void:
 				poison_fx.position = s.lp
 				break
 
+const ARROW_TIP := 0.46     # an arrow model's point, from its origin (a bodkin's head ends there)
+const THROUGH_OUT := 0.1    # how far a bodkin that went through stands out of the far side
+const THROUGH_MAX := 0.5    # the thickest a part can be for a bodkin to go right through it (the arrow is 0.72 m long)
+
+## How far along `ld` from `lp` (both in the part's own frame) the line leaves the part's box.
+func leave_box(lp: Vector3, ld: Vector3) -> float:
+	var far := INF
+	for k in 3:
+		var v := ld[k]
+		if absf(v) > 1e-4:
+			far = minf(far, maxf(0.0, ((half_ext[k] if v > 0.0 else -half_ext[k]) - lp[k]) / v))
+	return far
+
+## How far the line through `lp` along `ld` runs in the part's box: back to where it came in (an arrow's
+## own step, 0.3 at most) and on to where it leaves.
+func chord(lp: Vector3, ld: Vector3) -> float:
+	return minf(0.3, leave_box(lp, -ld)) + leave_box(lp, ld)
+
 ## An arrow (or a dart) left standing in the part where it went in.
 ## Something sharp left in the part where it went in, along the way it was going: an arrow
-## stands well out of the wound, a nail is driven in up to its head.
-func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
+## stands well out of the wound, a nail is driven in up to its head. `through`: the arrow has
+## gone right through the part (a bodkin's channel came out of its far side): its point stands
+## out of that side, its fletching out of the side it went in.
+func stick(type: String, world_p: Vector3, dir: Vector3, through := false) -> void:
 	var nail := type == "nail"
 	if stuck.size() >= (40 if nail else 12):
 		return
@@ -4022,11 +4042,7 @@ func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
 	# Where it entered: back along its line to the surface of the part's box, then on along it to
 	# the flesh, past the box's empty corners to the first voxel there is (a neck is round in its
 	# box: stuck where the box began, an arrow's point stood in the air short of it, user).
-	var back := 0.3
-	for k in 3:
-		var v := -ld[k]
-		if absf(v) > 1e-4:
-			back = minf(back, maxf(0.0, ((half_ext[k] if v > 0.0 else -half_ext[k]) - lp[k]) / v))
+	var back := minf(0.3, leave_box(lp, -ld))
 	var entry := lp - ld * back
 	var step := maxf(0.005, vf * part_scale)
 	var went := 0.0
@@ -4037,6 +4053,11 @@ func stick(type: String, world_p: Vector3, dir: Vector3) -> void:
 	# first into the wound, the head, fletching or butt standing out.
 	var out := 0.025 if nail else (0.24 if type.begins_with("pot_arrow") else (0.1 if type == "pot_bolt" else 0.12))
 	var up := Vector3.UP if absf(ld.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+	if through and type.begins_with("pot_arrow") and chord(lp, ld) <= THROUGH_MAX:
+		# (The arrow's model has its point ARROW_TIP from its origin: out of the far side by THROUGH_OUT.)
+		vis.transform = Transform3D(Basis.looking_at(-ld, up), entry + ld * (leave_box(entry, ld) + THROUGH_OUT - ARROW_TIP))
+		stuck.append(vis)
+		return
 	vis.transform = Transform3D(Basis.looking_at(-ld, up), entry - ld * out)
 	stuck.append(vis)
 

@@ -7986,8 +7986,16 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var stab_full := 70.0 + 30.0 * th
 		var thick_p := 2.0 * (absf(la.x) * part.half_ext.x + absf(la.y) * part.half_ext.y + absf(la.z) * part.half_ext.z) * minf(1.0, wsz / maxf(1.0, _bone_s()))
 		depth = minf(depth, thick_p * (0.2 + 0.4 * clampf(stab / stab_full, 0.0, 1.0) + 0.2 * th) * (0.75 if hit.get("thrown", false) else 1.0) * ((0.6 + 0.1 * th) if part == torso or (part == head and not (self is Beast)) else 1.0))
+		# A bodkin goes right through a part it can: a narrow channel from where it went in to the far side
+		# of it (and a little past), where a stab goes in a share of the way. What bone is in its way still
+		# turns it (below), and then it did not get through. (A part thicker than the arrow is long is
+		# not gone through, a giant's trunk: it goes in as a stab does.)
+		var far := INF
+		if hit.get("through", false) and not detached and part.chord(lp, la) <= VoxelPart.THROUGH_MAX:
+			far = part.leave_box(lp, la)
+			depth = far + V * S * 0.5
 		if J * eff > 2.5:
-			var r := V * wsz * lerpf(1.2 + 0.5 * heavy, 0.7 + 0.3 * heavy, th)
+			var r := (vfs * 1.1 * wsz) if far < INF else V * wsz * lerpf(1.2 + 0.5 * heavy, 0.7 + 0.3 * heavy, th)
 			var open := 0.0 if detached else _wound(part, lp, la, Vector3.ZERO, r, Vector3.ZERO, 0.0, depth)
 			# (Only the live voxels round the channel: the whole part voxel by voxel, for each nail
 			# of a pot's hail, was a hitch.)
@@ -8001,6 +8009,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			# A point goes between the ribs more often than not (a chop meets them flat): the bones
 			# turn it only when it comes in weakly, a thrust hardly at all.
 			remove = _stop_at_bone(part, remove, lp, la, stab * (2.2 + 2.5 * th), res)
+			if far < INF and not remove.is_empty():
+				# Through if the channel's last voxels are at the far side: its way out (and a smear of blood
+				# round it, where the point came out).
+				var deepest := 0.0
+				for i in remove:
+					deepest = maxf(deepest, (lps[i] - lp).dot(la))
+				if deepest >= far - vfs * 2.5:
+					res.through = true
+					part.wound(lp + la * far, r * 2.2, "blood")
 	else:
 		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
 		# hammer in earnest is as dangerous as a blade, only in a different way.

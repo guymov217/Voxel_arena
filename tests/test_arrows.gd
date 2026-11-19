@@ -324,6 +324,66 @@ func test_a_bodkin_goes_through_three_men_and_stays_in_the_last() -> void:
 	t.check(hurt.get(0, 0) == 1 and hurt.get(1, 0) == 0, "a plain arrow stops in the first (%s)" % str(hurt))
 	m.queue_free()
 
+## Where the arrow standing in a man is, against the part it stands in: how far out of that part's far side its point
+## is and how far out of the near side its fletching (metres along the way it flew; the box is the part's own, a
+## little less than the flesh), and whether the shot's channel came out of the far side.
+func _through_and_through(type: String, aim: Vector3) -> Dictionary:
+	var m := _match()
+	var shooter: Fighter = _man(m, Vector3(0, 0, -6), 0.0, {}, "Archer", 0, _idle).f
+	var v: Fighter = _man(m, Vector3(0, 0, 0), PI, {}, "V", 1, _idle).f
+	await _steps(60)
+	var seen := []
+	v.hit_taken.connect(func(_f, res): seen.append(res))
+	var from: Vector3 = v.torso.global_position + aim
+	from.z = -3.0
+	var it: Dictionary = m.items.spawn(type, from, Vector3(0, 0, 55.0), shooter)
+	it.power = 1.0
+	await _steps(60)
+	var out := {"blows": seen.size(), "through": seen.any(func(r): return r.get("through", false)), "stuck": _stuck(v), "point": -9.0, "fletching": 9.0}
+	for p in v.parts:
+		for vis in p.stuck:
+			var tf: Transform3D = p.global_transform.affine_inverse() * (vis as Node3D).global_transform
+			var d: Vector3 = (p.global_basis.orthonormalized().inverse() * Vector3(0, 0, 1)).normalized()
+			var half: float = absf(d.x) * p.half_ext.x + absf(d.y) * p.half_ext.y + absf(d.z) * p.half_ext.z
+			out.point = (tf * Vector3(0, 0, VoxelPart.ARROW_TIP)).dot(d) - half
+			out.fletching = -(tf * Vector3(0, 0, -0.26)).dot(d) - half
+	m.queue_free()
+	return out
+
+func test_a_bodkin_with_no_man_behind_goes_through_and_through_the_one_it_strikes() -> void:
+	seed(21)
+	var rows := []
+	# (Where it lands on his chest, either side of the breastbone: the bone in the middle is what turns a point.)
+	for aim in [Vector3(0.08, 0.05, 0), Vector3(-0.08, 0.05, 0), Vector3(0.1, -0.05, 0)]:
+		var r: Dictionary = await _through_and_through("pot_arrow_pierce", aim)
+		rows.append(r)
+		t.eq(r.blows, 1, "%s: it strikes him once" % str(aim))
+		t.eq(r.stuck, 1, "%s: and stays in him" % str(aim))
+		if r.through:
+			t.check(r.point > 0.0, "%s: its point stands out of his far side (%.2f m)" % [str(aim), r.point])
+			t.check(r.fletching > 0.0, "%s: its fletching out of the side it went in (%.2f m)" % [str(aim), r.fletching])
+		else:
+			t.check(r.point < 0.0, "%s: turned by a bone it stands short of his far side (%.2f m)" % [str(aim), r.point])
+	t.check(rows.any(func(r): return r.through), "at least one of the three came out of his far side (%s)" % str(rows.map(func(r): return r.through)))
+	# A plain arrow stops in the first flesh it meets, never out of the far side.
+	var plain: Dictionary = await _through_and_through("pot_arrow", Vector3(0.08, 0.05, 0))
+	t.eq(plain.stuck, 1, "a plain arrow stays in him")
+	t.check(not plain.through and plain.point < 0.0, "and goes no way through (%.2f m)" % plain.point)
+
+## A man five metres behind the first is still in the line: the bodkin goes through the near one and stays in the far one.
+func test_a_bodkin_goes_on_through_a_man_into_one_five_metres_behind_him() -> void:
+	seed(21)
+	var m := _match()
+	var shooter: Fighter = _man(m, Vector3(0, 0, -6), 0.0, {}, "Archer", 0, _idle).f
+	var near_man: Fighter = _man(m, Vector3(0, 0, 0), PI, {}, "Near", 1, _idle).f
+	var far_man: Fighter = _man(m, Vector3(0, 0, 5), PI, {}, "Far", 1, _idle).f
+	await _steps(60)
+	var it: Dictionary = m.items.spawn("pot_arrow_pierce", Vector3(0, near_man.torso.global_position.y, -3.0), Vector3(0, 0, 55.0), shooter)
+	it.power = 1.0
+	await _steps(90)
+	t.eq([_stuck(near_man), _stuck(far_man)], [0, 1], "it stays in the far man and in none of the near one")
+	m.queue_free()
+
 # ---------- the bow and the strength stats ----------
 
 ## The speed an arrow has just as the bow looses it at a full draw, for an archer of that strength (the

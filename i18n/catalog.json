@@ -3158,7 +3158,7 @@
 "scripts/fighter/fighter.gd:7723"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9826",
+"scripts/fighter/fighter.gd:9843",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -4782,169 +4782,169 @@
 "scripts/game/social.gd:1163"
 ],
 "BOOM!": [
-"scripts/game/throwables.gd:747",
+"scripts/game/throwables.gd:749",
 "scripts/game/match.gd:3000"
 ],
 "Caltrops all over the sand. Watch your step.": [
-"scripts/game/throwables.gd:778"
+"scripts/game/throwables.gd:780"
 ],
 "%s is covered in bees!": [
-"scripts/game/throwables.gd:788",
-"scripts/game/throwables.gd:2090"
+"scripts/game/throwables.gd:790",
+"scripts/game/throwables.gd:2096"
 ],
 "The hive breaks open: the swarm goes for %s!": [
-"scripts/game/throwables.gd:816"
+"scripts/game/throwables.gd:818"
 ],
 "The crowd laughs. Every beast wants the goat.": [
-"scripts/game/throwables.gd:821"
+"scripts/game/throwables.gd:823"
 ],
 "%s's legs are tied up": [
-"scripts/game/throwables.gd:831"
+"scripts/game/throwables.gd:833"
 ],
 "Rotten fish sauce! %s": [
-"scripts/game/throwables.gd:850"
+"scripts/game/throwables.gd:852"
 ],
 "%d weapons dropped in disgust.": [
-"scripts/game/throwables.gd:850"
+"scripts/game/throwables.gd:852"
 ],
 "%d weapon dropped in disgust.": [
-"scripts/game/throwables.gd:850"
+"scripts/game/throwables.gd:852"
 ],
 "The crowd holds its nose.": [
-"scripts/game/throwables.gd:850"
+"scripts/game/throwables.gd:852"
 ],
 "%s is dripping honey, and the bees have found him!": [
-"scripts/game/throwables.gd:864"
+"scripts/game/throwables.gd:866"
 ],
 "The mystery amphora was... thunder!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... nails!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... a goat!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... bees!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... chickens!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... confetti!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... a grape!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "The mystery amphora was... oil!": [
-"scripts/game/throwables.gd:888"
+"scripts/game/throwables.gd:890"
 ],
 "A single grape rolls out. The crowd is silent.": [
-"scripts/game/throwables.gd:897"
-],
-"a grape": [
 "scripts/game/throwables.gd:899"
 ],
+"a grape": [
+"scripts/game/throwables.gd:901"
+],
 "CHICKENS EVERYWHERE!": [
-"scripts/game/throwables.gd:909"
+"scripts/game/throwables.gd:911"
 ],
 "%s reeled in %s!": [
-"scripts/game/throwables.gd:930"
+"scripts/game/throwables.gd:932"
 ],
 "catch of the day": [
-"scripts/game/throwables.gd:931"
+"scripts/game/throwables.gd:933"
 ],
 "%s got hit by their own discus": [
-"scripts/game/throwables.gd:945"
+"scripts/game/throwables.gd:947"
 ],
 "%d caught in the big net": [
-"scripts/game/throwables.gd:955"
+"scripts/game/throwables.gd:957"
 ],
 "HEADSHOT! %s puts one in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1202"
+"scripts/game/throwables.gd:1205"
 ],
 "HEADSHOT! %s puts one in %s's head": [
-"scripts/game/throwables.gd:1202"
+"scripts/game/throwables.gd:1205"
 ],
 "HEADSHOT! Right in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1204"
+"scripts/game/throwables.gd:1207"
 ],
 "HEADSHOT! Right in %s's head": [
-"scripts/game/throwables.gd:1204"
+"scripts/game/throwables.gd:1207"
 ],
 "An anvil hits %s. Classic.": [
-"scripts/game/throwables.gd:1248"
+"scripts/game/throwables.gd:1252"
 ],
 "SPLAT! A tomato hits %s": [
-"scripts/game/throwables.gd:1259"
+"scripts/game/throwables.gd:1263"
 ],
 "%s eats the bread": [
-"scripts/game/throwables.gd:1272"
+"scripts/game/throwables.gd:1278"
 ],
 "%s downs the wine": [
-"scripts/game/throwables.gd:1275"
+"scripts/game/throwables.gd:1281"
 ],
 "%s pockets a gold coin": [
-"scripts/game/throwables.gd:1277"
+"scripts/game/throwables.gd:1283"
 ],
 "%s steps on a caltrop!": [
-"scripts/game/throwables.gd:1293"
+"scripts/game/throwables.gd:1299"
 ],
 "%s slipped on a banana peel!": [
-"scripts/game/throwables.gd:1302"
+"scripts/game/throwables.gd:1308"
 ],
 "%s is bowled over by a cheese wheel": [
-"scripts/game/throwables.gd:1322"
+"scripts/game/throwables.gd:1328"
 ],
 "%s caught the boomerang": [
-"scripts/game/throwables.gd:1326"
+"scripts/game/throwables.gd:1332"
 ],
 "Torch": [
-"scripts/game/throwables.gd:1713",
+"scripts/game/throwables.gd:1719",
 "data/shop.json#name"
 ],
 "The torch burns out": [
-"scripts/game/throwables.gd:1813"
+"scripts/game/throwables.gd:1819"
 ],
 "The oil goes up in flames!": [
-"scripts/game/throwables.gd:1934"
+"scripts/game/throwables.gd:1940"
 ],
 "%s slipped in the olive oil": [
-"scripts/game/throwables.gd:2039"
+"scripts/game/throwables.gd:2045"
 ],
 "%s bandages %s and helps them up": [
-"scripts/game/throwables.gd:2206"
+"scripts/game/throwables.gd:2212"
 ],
 "%s bandaged up": [
-"scripts/game/throwables.gd:2208"
+"scripts/game/throwables.gd:2214"
 ],
 "%s empties a water skin over the burns": [
-"scripts/game/throwables.gd:2215"
+"scripts/game/throwables.gd:2221"
 ],
 "%s bowled a cheese wheel": [
-"scripts/game/throwables.gd:2220"
-],
-"%s laid a banana trap": [
 "scripts/game/throwables.gd:2226"
 ],
+"%s laid a banana trap": [
+"scripts/game/throwables.gd:2232"
+],
 "%s ready: the bow looses it till it is used up (its number again puts it back)": [
-"scripts/game/throwables.gd:2243"
+"scripts/game/throwables.gd:2249"
 ],
 "%s put back: plain arrows again": [
-"scripts/game/throwables.gd:2243"
+"scripts/game/throwables.gd:2249"
 ],
 "%s lit: swing it like a weapon, or hold F to aim and let go to throw": [
-"scripts/game/throwables.gd:2269"
+"scripts/game/throwables.gd:2275"
 ],
 "%s ready: hold F to aim, let go to throw": [
-"scripts/game/throwables.gd:2280"
+"scripts/game/throwables.gd:2286"
 ],
 "%s put away": [
-"scripts/game/throwables.gd:2291"
+"scripts/game/throwables.gd:2297"
 ],
 "Out of %s: plain arrows again": [
-"scripts/game/throwables.gd:2511"
+"scripts/game/throwables.gd:2517"
 ],
 "Fx": [
 "scripts/game/fx.gd:29"

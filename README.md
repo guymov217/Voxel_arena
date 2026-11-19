@@ -342,8 +342,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   to a bag: fire (alight on the man and the sand), poison (bleeds on, slows, eats like acid), frost
   (slows), blasting (a small burst where it lands, `Throwables.BLAST_ARROW`: it hurts, nowhere near a
   thunder pot, and the archer's friends and he himself are not spared), bodkin (goes through up to three
-  men, slower and weaker for each, `pierce` in `Items.TYPES`, and stays in the last) and barbed (bleeds
-  on). A number on the hotbar picks one for the bow (`Fighter.arrow_pick`; its slot is edged in gold and
+  men, slower and weaker for each, `pierce` in `Items.TYPES`, and stays in the last, or in the one man it
+  strikes when none stands behind him: right through him, its point out of his far side and its fletching
+  out of the near, `VoxelPart.stick`) and barbed (bleeds on). A number on the hotbar picks one for the bow
+  (`Fighter.arrow_pick`; its slot is edged in gold and
   the HUD reads BOW: ...): every arrow he looses is that one, one out of the bag a shot, till the bag runs
   out (plain arrows again, or the bow's own gem), and the number again puts it back. The host spends
   the arrows; the pick goes to guests with the grip number of the status row (`Fighter._held_bits`: bit 0
