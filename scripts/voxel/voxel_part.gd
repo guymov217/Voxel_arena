@@ -3819,6 +3819,52 @@ func thin_ratio() -> float:
 			thin_layer = [ax, i]
 	return mn
 
+## How much of a limb is left across the plane through `lp` with the normal `n` (its voxels within
+## `width` of the plane), once `gone` are taken: 0..1. 1 where the plane is no section of the limb
+## between its joint and its far end: it runs along it, or out through one of its ends.
+func left_across(lp: Vector3, n: Vector3, width: float, gone: Array) -> float:
+	if def.get("ca") == null:
+		return 1.0
+	var ax: int = _root_axis()[0]
+	if absf(n[ax]) < 0.5:
+		return 1.0
+	var last: int = [grid.x, grid.y, grid.z][ax] - 1
+	var out := PackedByteArray()
+	out.resize(fx.size())
+	for i in gone:
+		out[i] = 1
+	var lps := local_positions()
+	var all := 0
+	var left := 0
+	for i in fx.size():
+		if absf((lps[i] - lp).dot(n)) >= width:
+			continue
+		var k: int = fx[i] if ax == 0 else (fy[i] if ax == 1 else fz[i])
+		if k == 0 or k == last:
+			return 1.0
+		all += 1
+		if alive[i] and out[i] == 0:
+			left += 1
+	return float(left) / float(all) if all > 0 else 1.0
+
+## What a clean cut across this limb's bone takes: the voxels of bone a layer of it holds, on average
+## (its bone over the layers of its length that have any), when the plane with the normal `n` runs
+## across the limb (square to its length, or within a slant of it). 0 when the plane runs along it,
+## or the part has no length to speak of: no cut of that kind goes through its bone.
+func bone_across(n: Vector3) -> float:
+	if def.get("ca") == null:
+		return 0.0
+	var ax: int = _root_axis()[0]
+	if absf(n[ax]) < 0.5:
+		return 0.0
+	var layers := {}
+	var count := 0
+	for i in fx.size():
+		if alive[i] and bone[i]:
+			count += 1
+			layers[fx[i] if ax == 0 else (fy[i] if ax == 1 else fz[i])] = true
+	return float(count) / float(layers.size()) if count > 0 else 0.0
+
 ## Voxels whose centre is within `r` of a local point.
 func voxels_near(lp: Vector3, r: float) -> Array:
 	var out := []

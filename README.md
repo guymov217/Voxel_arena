@@ -35,6 +35,21 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A harder and a faster swing takes more flesh, by the physics alone: the blow's momentum sets how
   deep a cut goes and how wide a crushing blow's hollow is, and past the most a part gives to one
   blow they go on growing, slowly, as the root of the force (`Fighter.past_cap`, `tests/test_blunt.gd`).
+  A cut is the size of the blade that made it: as wide as the blade is thick where it landed
+  (`Weapon.blade_at`: the voxels through it across its flat, one on nearly every blade, so a row or
+  two of a man's fine voxels, and never less than a row of a beast's or a giant's bigger ones), as
+  long as its own keen run reaches from the place it touched, towards the hand and away from it (the
+  rows that carry an edge or a point, unbroken: a dagger's cut across a chest is a dagger long, a
+  longsword's runs right across it, a cut with the end of the edge runs back from there), and as deep
+  as the blow drove it, as ever; the harm and the bleeding are the blow's and are what they were. (A
+  cut was a hand's breadth across and half a metre long whatever opened it: one hard cut down an
+  upper arm took a third of the arm.) An open cut within a hand's breadth still draws the next blade
+  in, down its middle (`Fighter._slot_draws`), so a limb is chopped off by blows about one place and
+  the cut stays as thin as the blade to the last; a cut across a limb is through its bone when it
+  has taken `BLADE_THROUGH` of the bone's width there, however small a share of the whole bone that
+  is (`_edge_on_bone`, `VoxelPart.bone_across`; a graze of its edge is no break); and a limb it has
+  gone most of the way through hangs at whatever slant the cut runs (`VoxelPart.left_across`). A paw's claws, which are no blade, open what they did, and a
+  crushing blow's hollow and a point's hole are as they were (`tests/test_blade_cuts.gd`).
   A soft weapon (a rubber chicken, a fish, a goose on a stick: a thing softer as a whole than
   `Fighter.BONE_SOFT_H`) gives way on what it strikes, so only a share of its blow goes in
   (`Fighter.soft_share`: a tenth at the very softest, a sixth for the chicken, under a third for a

@@ -231,6 +231,7 @@ var lowered := -1.0     # a big man's hips let down to a stoop (and up out of it
 var hop_phase := 0.0   # on one leg he hops: 0..1 through each hop
 var on_ground := true  # this step: the trunk held up by the legs over the sand (not in the air)
 var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x sharpness)
+var _cut_left := 1.0   # how much of the limb is left across the blade's cut being dealt with (apply_hit, break_loose)
 var throwing := {"R": false, "L": false}   # that arm winding up or letting go a throw
 var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust (0 none)
 var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
@@ -7897,10 +7898,16 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		var trunk := 0.55 if part == torso or (part == head and not (self is Beast)) else 1.0
 		# (A blow past the 0.45 a hard one gets goes on a little deeper, the harder it came: past_cap.)
 		depth = minf(depth, thick * minf(1.0, wsz / maxf(1.0, _bone_s())) * past_cap(0.1 + 0.35 * maxf(0.0, bite) / 60.0, 0.45) * trunk)
+		# A cut is the size of the blade that made it (user: a wound was a hand's breadth across
+		# whatever opened it, a third of an upper arm at one hard blow): as wide as the blade is thick
+		# where it landed, and as long as its own keen run reaches from there, towards its low end
+		# and towards its high end (hit.blade: Weapon.blade_at). A paw's claws, which are no blade,
+		# open a paw's breadth a forearm's length each way, as they did.
+		var blade: Vector3 = hit.get("blade", Vector3.ZERO)
 		# (Never narrower than a row of the part's own voxels: on a beast's voxels, three times a
 		# man's, the blade's own breadth fell between the rows and a cut that landed took nothing,
 		# from one side or another: a dragon's horn, the elephant's leg, user.)
-		var width := maxf(V * wsz * (0.75 + 0.5 * heavy), vfs * 0.55)
+		var width := maxf(blade.x * 0.5 if blade.x > 0.0 else V * wsz * (0.75 + 0.5 * heavy), vfs * 0.55)
 		# A blow that cuts at all goes at least one layer of voxels deeper into the wound: shorter
 		# than a voxel, the same light blows only ever scraped the same mouth of it.
 		depth = maxf(depth, vfs * 1.1)
@@ -7909,16 +7916,28 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if n.length_squared() < 1e-4:
 				n = Vector3(1, 0, 0)
 			n = n.normalized()
-			var span := (0.24 + 0.08 * heavy) * wsz
+			# How far along the blade the cut reaches from the place it touched: back along it and on.
+			var reach_lo := (0.24 + 0.08 * heavy) * wsz
+			var reach_hi := reach_lo
+			if blade.x > 0.0:
+				reach_lo = blade.y
+				reach_hi = blade.z
+			var span := (reach_lo + reach_hi) * 0.5
+			var mid := (reach_hi - reach_lo) * 0.5
 			# A blade landing beside an open slot slides into it (a giant's voxels are wider than
 			# a man's cut: blows a hand's breadth apart on him opened a new slot each, and none
-			# of them ever got through).
+			# of them ever got through). A blade's own cut is as thin as the blade, and a slot
+			# within a hand's breadth draws it in (_slot_draws), as far off as cuts ran together
+			# when each was a hand's breadth wide: a limb is still chopped off by blows about one place.
 			if not detached:
-				lp += n * _slot_beside(part, lp, ld, n, width, la, span, vfs)
+				if blade.x > 0.0:
+					lp += n * _slot_draws(part, lp, ld, n, width, la, span, vfs, mid, V * wsz * (0.75 + 0.5 * heavy) + vfs * 1.1)
+				else:
+					lp += n * _slot_beside(part, lp, ld, n, width, la, span, vfs)
 			# A blade follows the wound: a second blow into an open cut starts where the first
 			# one stopped, so a thick limb is chopped through blow by blow instead of each one
 			# only scraping the same mouth of the wound.
-			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth)
+			var open := 0.0 if detached else _wound(part, lp, ld, n, width, la, span, depth, mid)
 			# A slot already out of the far side of a limb too broad for the blade (a giant's
 			# thigh under a man's sword: the cut was through, and the leg hung on by its sides
 			# for good) widens instead of deepening: the blade in the slot takes the flesh
@@ -7926,7 +7945,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			if not detached and part != torso:
 				var slot := _slot(part, lp, ld, n, width, la, vfs)
 				if slot.y <= 0.0:
-					span = maxf(span, slot.x + depth)
+					reach_lo = maxf(reach_lo, slot.x + depth)
+					reach_hi = maxf(reach_hi, slot.x + depth)
 			var lps := part.local_positions()
 			var al := part.alive
 			var back := -V * S
@@ -7936,11 +7956,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 					continue
 				var d := lps[i] - lp
 				var a := d.dot(ld)
-				if a > back and a < deep and absf(d.dot(n)) < width and absf(d.dot(la)) < span:
+				var along := d.dot(la)
+				if a > back and a < deep and absf(d.dot(n)) < width and along > -reach_lo and along < reach_hi:
 					remove.append(i)
 			remove = _stop_at_bone(part, remove, lp, ld, bite, res)
 			if not detached:
-				_edge_on_bone(part, remove, lp, ld, J, res)
+				_edge_on_bone(part, remove, lp, ld, J, res, n if blade.x > 0.0 else Vector3.ZERO)
+				# (And how much of a limb the blade's own cut leaves across it: break_loose.)
+				if blade.x > 0.0 and part != torso and not remove.is_empty():
+					_cut_left = part.left_across(lp, n, width, remove)
 	elif type == "point":
 		var eff := hardness * sharpness * maxf(0.15, la.dot(ld))
 		# Driven home in a thrust the point goes in deep, the body's weight behind it: a
@@ -8230,6 +8254,7 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 			_check_eye()
 			_pop_eyes(lp, J, res)
 		break_loose(part, res, hit.dir, detached)
+		_cut_left = 1.0
 		_check_flaps(res)
 		if part == torso and not detached and type != "blunt":
 			_check_belly(res)
@@ -8370,7 +8395,8 @@ func _shield_takes(hit: Dictionary) -> bool:
 ## How deep a wound already goes in from `lp` along `ld` (character.js wound): the farthest dead
 ## voxel inside the blade's slab (or the point's bore, when `n` is zero), counted only while the
 ## hole is open all the way from the surface (a cavity deeper in, from another cut, is not reached).
-func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, step: float) -> float:
+## (The slab: `width` to either side of the blade, and `span` along it to either side of `mid`.)
+func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, step: float, mid := 0.0) -> float:
 	var seen := []
 	var slab := n != Vector3.ZERO
 	var lps := part.local_positions()
@@ -8380,7 +8406,7 @@ func _wound(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float,
 		if along <= 0.0:
 			continue
 		if slab:
-			if absf(d.dot(n)) >= width or absf(d.dot(la)) >= span:
+			if absf(d.dot(n)) >= width or absf(d.dot(la) - mid) >= span:
 				continue
 		elif (d - ld * along).length() >= width:
 			continue
@@ -8417,6 +8443,38 @@ func _slot_beside(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: 
 			best_d = off
 			best = side
 	return best
+
+## A blade's cut is as thin as its blade (apply_hit "blade"), and an open slot within `pull` of where
+## it lands draws it in, down the slot's own middle: how far along `n` (across the blade) the blow at
+## `lp` shifts for that (0: no slot that near). The slot: the dead voxels at the mouth of the wound
+## nearest the blow and those within a blade's thickness of them. (On the slot's nearest row alone,
+## blows from either side of a slot two rows wide deepened a row each, and none of them the slot.)
+func _slot_draws(part: VoxelPart, lp: Vector3, ld: Vector3, n: Vector3, width: float, la: Vector3, span: float, vfs: float, mid: float, pull: float) -> float:
+	var sides := PackedFloat32Array()
+	var near := INF
+	var at := 0.0
+	var lps := part.local_positions()
+	for i in part.dead_voxels():
+		var d := lps[i] - lp
+		var along := d.dot(ld)
+		if along <= 0.0 or along > vfs * 2.5 or absf(d.dot(la) - mid) >= span:
+			continue
+		var side := d.dot(n)
+		if absf(side) >= pull + 2.0 * width:
+			continue
+		sides.append(side)
+		if absf(side) < near:
+			near = absf(side)
+			at = side
+	if near >= pull:
+		return 0.0
+	var lo := at
+	var hi := at
+	for s in sides:
+		if absf(s - at) < 2.0 * width:
+			lo = minf(lo, s)
+			hi = maxf(hi, s)
+	return (lo + hi) * 0.5
 
 ## The slot a blow at `lp` heading `ld` lands in: x, how far along the blade (`la`) its dead
 ## voxels already reach, so a blow into it can widen it from there; y, how much flesh is left
@@ -8658,7 +8716,10 @@ func break_loose(part: VoxelPart, res: Dictionary, dir: Vector3, detached := fal
 		sever(part, res, cut_off)
 	elif not detached and _make_flaps(part, res):
 		pass   # what was nearly off hangs on as a flap; the rest of the part is whole enough
-	elif not detached and part != torso and not part.hanging and part.thin_ratio() < float(mods.get("sever", 0.3)) and may_hang(part):
+	# (Thin by the layers of its voxels, or across the cut of a blade: a cut as thin as its blade
+	# thins no whole layer of them unless it runs square across the limb, and a limb cut most of
+	# the way through at a slant never hung.)
+	elif not detached and part != torso and not part.hanging and minf(part.thin_ratio(), _cut_left) < float(mods.get("sever", 0.3)) and may_hang(part):
 		hang(part, res)
 	# A head's lower jaw cut from it falls (and it bites no more): VoxelPart.drop_jaw.
 	if not detached and not part.severed and part.jaw_pivot != null:
@@ -9507,12 +9568,20 @@ func _fracture(part: VoxelPart, lp: Vector3, J: float, res: Dictionary, level :=
 			elif weapons[side]:
 				release(side)
 
+## How much of the width of a limb's bone a thin cut across it has to take to be through it
+## (_edge_on_bone).
+const BLADE_THROUGH := 0.8
 ## An edge on a limb's bone: a notch in it cracks it (it works, less well), and a chop through much
 ## of it (or into one already cracked) breaks it, the limb of no use after (user). Never out
 ## through the skin: a blade that cuts through a bone has broken it, not driven its ends out (an
 ## open break takes blunt blows, _opens). A blade stopped by the bone at a hard blow cracks it all
 ## the same.
-func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: float, res: Dictionary) -> void:
+## `across`: the normal of the plane a blade's own cut (as thin as its blade, Fighter.apply_hit "blade")
+## makes in the part: where that runs across the limb the bone is through when the cut has taken
+## BLADE_THROUGH of its width there (VoxelPart.bone_across), however small a share of the whole bone
+## that is, and a graze of its edge is no break; along the limb, or zero (a cut a paw's breadth wide),
+## the share of the whole bone it took decides, as it always did.
+func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: float, res: Dictionary, across := Vector3.ZERO) -> void:
 	if part == torso or part == head or part.fractured:
 		return
 	var cut := 0
@@ -9528,6 +9597,10 @@ func _edge_on_bone(part: VoxelPart, remove: Array, lp: Vector3, ld: Vector3, J: 
 	if all == 0:
 		return
 	var q := float(cut) / float(all)
+	if across != Vector3.ZERO:
+		var width_b := part.bone_across(across)
+		if width_b > 0.0:
+			q = 0.3 * float(cut) / maxf(1.0, BLADE_THROUGH * width_b)   # (0.3: clean through, as the whole bone's share)
 	var big := maxf(1.0, S)
 	# Chopped through most of it, or a deep notch (a smaller one in a bone already cracked): broken
 	# through, under the skin.

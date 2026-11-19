@@ -393,6 +393,43 @@ func voxel_near(b: Dictionary, p: Vector3) -> int:
 			best = i
 	return best
 
+## The blade a cut was made with, measured where it touched (its voxel `index`, at the world point
+## `p`): x, how thick it is there across its flat (the voxels through it, side to side); y and z,
+## how far its keen run reaches along the weapon from `p`, towards its low end and towards its high
+## end (the rows that carry an edge or a point, unbroken from that voxel's row). In metres; zero for
+## a voxel that is gone. (A cut is the size of the blade that made it: Fighter.apply_hit "blade".)
+func blade_at(index: int, p: Vector3) -> Vector3:
+	if index < 0 or index >= vox.size() or alive[index] == 0:
+		return Vector3.ZERO
+	var v0: Array = vox[index]
+	var through := {}
+	var keen := {}
+	for i in vox.size():
+		if alive[i] == 0:
+			continue
+		var v: Array = vox[i]
+		if int(v[0]) == int(v0[0]) and int(v[1]) == int(v0[1]):
+			through[int(v[2])] = true
+		if v[4] == "edge" or v[4] == "point":
+			keen[int(v[1])] = true
+	var thick := 1
+	var z := int(v0[2]) + 1
+	while through.has(z):
+		thick += 1
+		z += 1
+	z = int(v0[2]) - 1
+	while through.has(z):
+		thick += 1
+		z -= 1
+	var y0 := int(v0[1])
+	var y1 := y0
+	while keen.has(y0 - 1):
+		y0 -= 1
+	while keen.has(y1 + 1):
+		y1 += 1
+	var at := clampf((global_transform.affine_inverse() * p).y / vs, y0 - 0.5, y1 + 0.5)
+	return Vector3(thick, at - (y0 - 0.5), (y1 + 0.5) - at) * vs
+
 # ---------- Drawing ----------
 
 static func voxel_color(mat: String, type: String) -> Color:

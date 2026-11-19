@@ -560,6 +560,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var sharpness := 0.0
 	var axis := dir
 	var edge := Vector3.ZERO
+	var blade := Vector3.ZERO   # (the blade a cut is made with, where it touched: Weapon.blade_at)
 	var attacker = null
 	var thrown := false
 	if is_weapon:
@@ -575,6 +576,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		edge = q * Vector3.RIGHT
 		if typ == "point" and dir.dot(axis) < 0.0:
 			axis = -axis
+		if typ == "edge" and not g.box.is_empty():
+			blade = att.blade_at(att.voxel_near(g.box, p), p)
 	elif club:
 		hardness = 0.4
 		attacker = att.wielder if att.wielder else att.thrown_by
@@ -648,7 +651,7 @@ func _blow(g: Dictionary) -> Dictionary:
 	var dealt = cool.get(dealt_key)
 	if is_weapon and typ == "point" and thrust_k > 0.3 and dealt != null and time - float(dealt[0]) < 0.32:
 		prior = float(dealt[1])
-	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "tpower": tpow if typ == "point" else 1.0, "prior": prior, "might": float(attacker.mods.get("blow", 1.0)) if attacker and "mods" in attacker and not bite else 1.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "weapon_h": maxf(hardness, att.mean_hardness) if is_weapon else 1.0, "mass": att.mass if is_weapon else 0.0, "unarmed": punch or kick})
+	var res: Dictionary = vic_char.apply_hit(vic, {"impulse": J, "type": typ, "hardness": hardness, "sharpness": sharpness, "point": p, "dir": dir, "axis": axis, "edge": edge, "blade": blade, "heavy": heavy, "thrown": thrown, "serrated": is_weapon and att.design.get("serrated", false), "crush": crush, "pull": pull, "thrust": thrust_k if typ == "point" else 0.0, "tpower": tpow if typ == "point" else 1.0, "prior": prior, "might": float(attacker.mods.get("blow", 1.0)) if attacker and "mods" in attacker and not bite else 1.0, "bump": punch and not jabbing, "wsz": att.wscale if is_weapon else minf(1.4, float(attacker.S)) if attacker and "S" in attacker else 1.0, "bite": bite and not tusk and not att.def.get("fist", false), "weapon": is_weapon, "weapon_h": maxf(hardness, att.mean_hardness) if is_weapon else 1.0, "mass": att.mass if is_weapon else 0.0, "unarmed": punch or kick})
 	if is_weapon and typ == "point" and thrust_k > 0.3:
 		cool[dealt_key] = [float(dealt[0]) if prior > 0.0 else time, prior + float(res.get("dmg", 0.0))]
 	# Skidding off a plate: the blade goes on along it, not into it (its push into the plate
