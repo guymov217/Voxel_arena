@@ -944,8 +944,11 @@ static func _plate_head(p: VoxelPart, c: Array, at: Vector3, id: String) -> Tran
 	# A giant's fine head has its horns, its tusks, its crown and its beard of its own.
 	if String(p.fine.get("giant", "")) != "" and (id.begins_with("mon_") or id == "hat_crown" or id.begins_with("beard_")):
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
-	if id.begins_with("beard_") and int(c[1]) >= 0:
-		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (drawn on the fine jaw)
+	if id.begins_with("beard_"):
+		# (His beard is the fine head's own hair, on his jaw and hanging from his chin: FineHead
+		# "beards". Its cells below the chin, drawn as blocks of their own, hung loose under his
+		# head, joined to nothing: user.)
+		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	if id.begins_with("hair_") and String(p.fine.get("giant", "")) == "":
 		return Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)   # (his hair is the fine head's own: FineHead "hairs")
 	var lies := FineArmor.hair_or_hat(p, id) and not stands(p, c, id)

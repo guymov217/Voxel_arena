@@ -433,28 +433,28 @@
 ],
 "Blue": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:1081",
+"scripts/fighter/physique.gd:1084",
 "scripts/game/modes.gd:302",
 "scripts/game/modes.gd:468",
 "scripts/game/modes.gd:542"
 ],
 "Gold": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:1082",
+"scripts/fighter/physique.gd:1085",
 "scripts/game/forge_lib.gd:861",
 "data/materials.json#name"
 ],
 "White": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:1079"
+"scripts/fighter/physique.gd:1082"
 ],
 "Black": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:1078"
+"scripts/fighter/physique.gd:1081"
 ],
 "Green": [
 "scripts/ui/armour_forge.gd:25",
-"scripts/fighter/physique.gd:1081"
+"scripts/fighter/physique.gd:1084"
 ],
 "Purple": [
 "scripts/ui/armour_forge.gd:25"
@@ -3215,181 +3215,181 @@
 "scripts/game/match.gd:899"
 ],
 "Wide eyes": [
-"scripts/fighter/physique.gd:1067"
+"scripts/fighter/physique.gd:1070"
 ],
 "Side-eye": [
-"scripts/fighter/physique.gd:1067"
+"scripts/fighter/physique.gd:1070"
 ],
 "Cross-eyed": [
-"scripts/fighter/physique.gd:1067"
+"scripts/fighter/physique.gd:1070"
 ],
 "Angry brows": [
-"scripts/fighter/physique.gd:1067"
+"scripts/fighter/physique.gd:1070"
 ],
 "Sleepy": [
-"scripts/fighter/physique.gd:1068"
+"scripts/fighter/physique.gd:1071"
 ],
 "Blue eyes": [
-"scripts/fighter/physique.gd:1068"
+"scripts/fighter/physique.gd:1071"
 ],
 "Green eyes": [
-"scripts/fighter/physique.gd:1068"
+"scripts/fighter/physique.gd:1071"
 ],
 "Mad stare": [
-"scripts/fighter/physique.gd:1068"
+"scripts/fighter/physique.gd:1071"
 ],
 "Wink": [
-"scripts/fighter/physique.gd:1069"
+"scripts/fighter/physique.gd:1072"
 ],
 "Brown eyes": [
-"scripts/fighter/physique.gd:1069"
+"scripts/fighter/physique.gd:1072"
 ],
 "Scarred eye": [
-"scripts/fighter/physique.gd:1069"
+"scripts/fighter/physique.gd:1072"
 ],
 "Tired": [
-"scripts/fighter/physique.gd:1069"
+"scripts/fighter/physique.gd:1072"
 ],
 "Missing tooth": [
-"scripts/fighter/physique.gd:1070"
-],
-"Full grin": [
-"scripts/fighter/physique.gd:1070"
-],
-"Snarl": [
-"scripts/fighter/physique.gd:1070"
-],
-"Stern": [
-"scripts/fighter/physique.gd:1070"
-],
-"War cry": [
-"scripts/fighter/physique.gd:1071"
-],
-"Tongue out": [
-"scripts/fighter/physique.gd:1071"
-],
-"One tooth left": [
-"scripts/fighter/physique.gd:1071"
-],
-"Smirk": [
-"scripts/fighter/physique.gd:1071"
-],
-"Buck teeth": [
-"scripts/fighter/physique.gd:1072"
-],
-"Frown": [
-"scripts/fighter/physique.gd:1072"
-],
-"Gold tooth": [
-"scripts/fighter/physique.gd:1072"
-],
-"Grimace": [
-"scripts/fighter/physique.gd:1072"
-],
-"Freckles": [
 "scripts/fighter/physique.gd:1073"
 ],
+"Full grin": [
+"scripts/fighter/physique.gd:1073"
+],
+"Snarl": [
+"scripts/fighter/physique.gd:1073"
+],
+"Stern": [
+"scripts/fighter/physique.gd:1073"
+],
+"War cry": [
+"scripts/fighter/physique.gd:1074"
+],
+"Tongue out": [
+"scripts/fighter/physique.gd:1074"
+],
+"One tooth left": [
+"scripts/fighter/physique.gd:1074"
+],
+"Smirk": [
+"scripts/fighter/physique.gd:1074"
+],
+"Buck teeth": [
+"scripts/fighter/physique.gd:1075"
+],
+"Frown": [
+"scripts/fighter/physique.gd:1075"
+],
+"Gold tooth": [
+"scripts/fighter/physique.gd:1075"
+],
+"Grimace": [
+"scripts/fighter/physique.gd:1075"
+],
+"Freckles": [
+"scripts/fighter/physique.gd:1076"
+],
 "Stubble": [
-"scripts/fighter/physique.gd:1073",
+"scripts/fighter/physique.gd:1076",
 "data/armor.json#name"
 ],
 "Scarred cheek": [
-"scripts/fighter/physique.gd:1073"
+"scripts/fighter/physique.gd:1076"
 ],
 "Split lip": [
-"scripts/fighter/physique.gd:1073"
+"scripts/fighter/physique.gd:1076"
 ],
 "Scar through the brow": [
-"scripts/fighter/physique.gd:1074"
+"scripts/fighter/physique.gd:1077"
 ],
 "Heavy brows": [
-"scripts/fighter/physique.gd:1074"
+"scripts/fighter/physique.gd:1077"
 ],
 "One brow": [
-"scripts/fighter/physique.gd:1074"
+"scripts/fighter/physique.gd:1077"
 ],
 "Blue woad": [
-"scripts/fighter/physique.gd:1075"
+"scripts/fighter/physique.gd:1078"
 ],
 "War stripes": [
-"scripts/fighter/physique.gd:1075"
+"scripts/fighter/physique.gd:1078"
 ],
 "Red ochre band": [
-"scripts/fighter/physique.gd:1075"
+"scripts/fighter/physique.gd:1078"
 ],
 "Tattooed cheek": [
-"scripts/fighter/physique.gd:1075"
+"scripts/fighter/physique.gd:1078"
 ],
 "Rosy cheeks": [
-"scripts/fighter/physique.gd:1076"
+"scripts/fighter/physique.gd:1079"
 ],
 "Skull paint": [
-"scripts/fighter/physique.gd:1076"
+"scripts/fighter/physique.gd:1079"
 ],
 "Clown paint": [
-"scripts/fighter/physique.gd:1076"
+"scripts/fighter/physique.gd:1079"
 ],
 "Straight nose": [
-"scripts/fighter/physique.gd:1077"
+"scripts/fighter/physique.gd:1080"
 ],
 "Roman nose": [
-"scripts/fighter/physique.gd:1077"
+"scripts/fighter/physique.gd:1080"
 ],
 "Broken nose": [
-"scripts/fighter/physique.gd:1077"
+"scripts/fighter/physique.gd:1080"
 ],
 "Small nose": [
-"scripts/fighter/physique.gd:1077"
+"scripts/fighter/physique.gd:1080"
 ],
 "Dark brown": [
-"scripts/fighter/physique.gd:1078"
+"scripts/fighter/physique.gd:1081"
 ],
 "Brown": [
-"scripts/fighter/physique.gd:1078",
-"scripts/fighter/physique.gd:1081"
+"scripts/fighter/physique.gd:1081",
+"scripts/fighter/physique.gd:1084"
 ],
 "Auburn": [
-"scripts/fighter/physique.gd:1078"
+"scripts/fighter/physique.gd:1081"
 ],
 "Ginger": [
-"scripts/fighter/physique.gd:1078"
+"scripts/fighter/physique.gd:1081"
 ],
 "Blond": [
-"scripts/fighter/physique.gd:1079"
+"scripts/fighter/physique.gd:1082"
 ],
 "Platinum": [
-"scripts/fighter/physique.gd:1079"
+"scripts/fighter/physique.gd:1082"
 ],
 "Grey": [
-"scripts/fighter/physique.gd:1079",
-"scripts/fighter/physique.gd:1081"
+"scripts/fighter/physique.gd:1082",
+"scripts/fighter/physique.gd:1084"
 ],
 "Dyed blue": [
-"scripts/fighter/physique.gd:1080"
+"scripts/fighter/physique.gd:1083"
 ],
 "Dyed green": [
-"scripts/fighter/physique.gd:1080"
+"scripts/fighter/physique.gd:1083"
 ],
 "Dyed pink": [
-"scripts/fighter/physique.gd:1080"
+"scripts/fighter/physique.gd:1083"
 ],
 "Dyed purple": [
-"scripts/fighter/physique.gd:1080"
+"scripts/fighter/physique.gd:1083"
 ],
 "Hazel": [
-"scripts/fighter/physique.gd:1081"
+"scripts/fighter/physique.gd:1084"
 ],
 "Amber": [
-"scripts/fighter/physique.gd:1082"
+"scripts/fighter/physique.gd:1085"
 ],
 "Demon red": [
-"scripts/fighter/physique.gd:1082"
+"scripts/fighter/physique.gd:1085"
 ],
 "Violet": [
-"scripts/fighter/physique.gd:1082"
+"scripts/fighter/physique.gd:1085"
 ],
 "Ghost white": [
-"scripts/fighter/physique.gd:1082"
+"scripts/fighter/physique.gd:1085"
 ],
 "attacker id:victim id": [
 "scripts/fighter/combat.gd:34"

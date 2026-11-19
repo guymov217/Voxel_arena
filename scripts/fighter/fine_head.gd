@@ -51,6 +51,15 @@ const CHIN := 64
 const LIP_TOP := 128
 const GOATEE := 256
 const HAIR_EXTRA := 512   # (a hair cell of a knot, a braid, a fall: kept on a receding man)
+const BEARD := 1024       # (a cell of his beard: its colour his beard's)
+
+## A beard is the hair of his jaw, his chin and his lip, standing off them: the template's own
+## cells for it ("beards", tools/gen_fine_head.py), each lying on his skin or on another of them
+## that does, whatever hangs from the chin (a long beard, a fork, a braid) grown out of the hair on
+## it (user: some beards were not joined to the man at all: what hung below the chin was drawn as
+## loose blocks under his head). One he wears (a "beard_" piece) drawn so; a bot's own by the kind
+## of beard he has (stubble is only the colour of his jaw).
+const BOT_BEARDS := {2: "beard_full", 3: "beard_goatee", 4: "beard_moustache"}
 
 ## The man bald and each hairstyle of the arena's day sitting on him (user): their hair is the
 ## template's own cells for it ("hairs", tools/gen_fine_head.py), round his scalp as his head is
@@ -141,7 +150,7 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 			xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), (xf[i] as Transform3D).origin)
 	p.set_shape(xf)
 	# The fine voxels (the face with the nose he chose).
-	var cells: Array = t.cells if giant != "" else _cells_for(t, look.ids, String(look.get("style", "")))
+	var cells: Array = t.cells if giant != "" else _cells_for(t, look.ids, String(look.get("style", "")), String(look.get("beard_id", "")))
 	var n := cells.size()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -273,21 +282,29 @@ static func build(f, p: VoxelPart, on := true, hs := 1.0, giant := "", staged :=
 ## nose, a broad one, without), each worked out once from what that nose changes of the face.
 static var _nose_cells := {}
 static var _hair_cells := {}
-static func _cells_for(t: Dictionary, ids: Array, style := "") -> Array:
+static func _cells_for(t: Dictionary, ids: Array, style := "", beard := "") -> Array:
 	var face := _nose_for(t, ids)
 	var hairs: Dictionary = t.get("hairs", {})
-	if style == "" or not hairs.has(style):
+	var beards: Dictionary = t.get("beards", {})
+	if not hairs.has(style):
+		style = ""
+	if not beards.has(beard):
+		beard = ""
+	if style == "" and beard == "":
 		return face
-	# His hair over it (a receding man's temples bare: the cells over them not his).
+	# His hair over it (a receding man's temples bare: the cells over them not his), and his beard.
 	var rec := ids.has("hair_receding")
-	var key := "%d|%s|%s" % [face.size(), style, rec]
+	var key := "%d|%s|%s|%s" % [face.size(), style, rec, beard]
 	if _hair_cells.has(key) and (_hair_cells[key] as Array)[0] == face:
 		return (_hair_cells[key] as Array)[1]
 	var out := face.duplicate()
-	for c in hairs[style]:
-		if rec and (int(c[4]) & CAP_RECEDE_OFF) != 0 and (int(c[4]) & HAIR_EXTRA) == 0:
-			continue
-		out.append(c)
+	if style != "":
+		for c in hairs[style]:
+			if rec and (int(c[4]) & CAP_RECEDE_OFF) != 0 and (int(c[4]) & HAIR_EXTRA) == 0:
+				continue
+			out.append(c)
+	if beard != "":
+		out.append_array(beards[beard])
 	_hair_cells[key] = [face, out]
 	return out
 
@@ -478,7 +495,9 @@ static func _look(f, p: VoxelPart) -> Dictionary:
 	var chosen = Physique.iris_choice(ids)
 	if chosen != null:
 		iris = chosen
-	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55), "style": style}
+	# (The hair of his beard: the one he wears, or a bot's own.)
+	var beard_id := worn if worn != "" else String(BOT_BEARDS.get(beard, ""))
+	return {"skin": skin, "hair": hair, "bald": bald, "beard": beard, "beard_c": beard_c, "beard_id": beard_id, "ids": ids, "iris": iris, "brow": hair.darkened(0.42) if not bald else skin.darkened(0.55), "style": style}
 
 const BOT_EYES := ["eyes_angry", "eyes_tired", "eyes_scar", "eyes_blue", "eyes_green", "eyes_brown"]
 const BOT_MOUTHS := ["mouth_stern", "mouth_snarl", "mouth_frown", "mouth_grimace", "mouth_gap", "mouth_smirk", "mouth_gold"]
@@ -568,7 +587,8 @@ static func _color(c: Array, look: Dictionary) -> Color:
 			return skin.darkened(0.12)
 		HAIR:
 			# His hair: its strands lighter and darker as the template combs it (a curl's top lit).
-			var hc: Color = look.hair
+			# (His beard's in his beard's colour.)
+			var hc: Color = look.beard_c if (bits & BEARD) != 0 else look.hair
 			var hk := k * (1.0 + (grain - 1.0) * 2.0)
 			return Color(clampf(hc.r * hk, 0.0, 1.0), clampf(hc.g * hk, 0.0, 1.0), clampf(hc.b * hk, 0.0, 1.0), 1.0)
 	var col := skin

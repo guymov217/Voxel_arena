@@ -467,6 +467,181 @@ def hair_cells(name, occ_head, base_par):
         cells.append([ix + int(HX), iy + int(HY), iz + int(HZ), FEAT.index("hair"), bits, round(k, 3)] + par + [ao])
     return cells
 
+# --- The beards -----------------------------------------------------------------------------------
+# A beard a man wears (Your gladiator, a foe's own) is the hair of his jaw, his chin and his lip,
+# standing off them (user: some beards were not joined to the man at all: what hung below the chin
+# was drawn as loose blocks under his head). Each is written as the cells of its hair on his face
+# ("beards"), made from his head's own shape so it lies on it, and whatever hangs from it (a long
+# beard, a fork, a braid) grows out of the hair on his chin:
+#   beard_short        cropped close, over the jaw, the chin and the lip
+#   beard_full         a full beard, rounded under the chin
+#   beard_philosopher  a full beard grown long, down to the chest
+#   beard_forked       a full beard parted into two points
+#   beard_braided      a full beard with a braid hanging from the chin, tied at its end
+#   beard_goatee       the lip and the chin, joined round the mouth, a tuft under the chin
+#   beard_moustache    the lip, its ends hanging beside the mouth
+#   beard_mutton       the sides of the face down to the jaw, the chin bare
+#   beard_chinstrap    a narrow line of beard along the edge of the jaw and under the chin
+# (Stubble is no more than the colour of his jaw: FineHead.)
+BEARD = 1024   # (a cell of his beard: in his beard's colour)
+BEARDS = {
+    "beard_short": {"jaw": 0.9, "chin": 0.9, "lip": 0.9},
+    "beard_full": {"jaw": 1.6, "chin": 2.0, "lip": 1.2, "under": 3.2},
+    "beard_philosopher": {"jaw": 1.6, "chin": 2.0, "lip": 1.2, "under": 3.2, "hang": "long"},
+    "beard_forked": {"jaw": 1.5, "chin": 1.8, "lip": 1.2, "under": 2.4, "hang": "fork"},
+    "beard_braided": {"jaw": 1.5, "chin": 1.8, "lip": 1.2, "under": 2.4, "hang": "braid"},
+    "beard_goatee": {"goatee": 1.4, "lip": 1.1, "hang": "tuft"},
+    "beard_moustache": {"lip": 1.3, "hang": "droop"},
+    "beard_mutton": {"chops": 1.7},
+    "beard_chinstrap": {"strap": 1.0},
+}
+
+def beard_extra(name, p):
+    """What stands off or hangs from the beard's own layer (the mass under the chin, a long beard, a
+    fork, a braid, a tuft, a moustache's ends), as one distance: <= 0 inside."""
+    x, y, z = p
+    st = BEARDS[name]
+    d = 1e9
+    if st.get("under"):
+        # Rounded under the chin and the jaw, a little before the chin.
+        d = ell(p, (0, -17.0, 8.6), (6.0, st["under"], 4.4))
+    hang = st.get("hang")
+    if hang == "long":
+        # Down to the chest, narrowing, flat front to back, its end ragged.
+        q = (x, y, (z - 8.4) / 0.72 + 8.4)
+        dd = cap_sdf(q, (0, -17.0, 8.6), (0, -29.0, 8.0), 5.2, 2.3)
+        dd = max(dd, (-30.0 - 1.5 * _hash3(int(math.floor(x + 50.0)), 9, 2)) - y)
+        d = smin(d, dd, 1.5)
+    elif hang == "fork":
+        # Parted under the chin into two points.
+        for sx in (-1, 1):
+            d = smin(d, cap_sdf(p, (sx * 1.9, -16.5, 9.0), (sx * 3.7, -27.0, 8.6), 2.5, 1.0), 1.2)
+    elif hang == "braid":
+        # One braid from the chin: its plaits a lobe each side by turns, a tie and a tuft at its end.
+        a, b = (0.0, -17.0, 9.2), (0.0, -28.5, 8.8)
+        d = smin(d, cap_sdf(p, a, b, 1.7, 1.2), 1.0)
+        for k in range(10):
+            tt = (k + 0.5) / 10.0
+            c = (a[0] + (0.7 if k % 2 else -0.7), a[1] + (b[1] - a[1]) * tt, a[2] + (b[2] - a[2]) * tt)
+            d = min(d, ell(p, c, (1.45, 1.1, 1.35)))
+        d = min(d, ell(p, (0, -30.0, 8.8), (1.0, 1.5, 1.0)))
+    elif hang == "tuft":
+        # A tuft under the chin, to a blunt point.
+        d = min(d, cap_sdf(p, (0, -15.6, 10.0), (0, -20.4, 9.4), 2.7, 1.2))
+    elif hang == "droop":
+        # A moustache's ends, down beside the corners of the mouth.
+        for sx in (-1, 1):
+            d = min(d, cap_sdf(p, (sx * 4.3, -7.0, 11.0), (sx * 5.1, -10.6, 10.4), 1.15, 0.8))
+    return d
+
+def _beard_thick(name, ps, n):
+    """How far the beard stands off his skin at ps (a point on his head, its normal n): 0, none."""
+    st = BEARDS[name]
+    x, y, z = ps
+    ax = abs(x)
+    bits = cover(ps, "skin")
+    # (Not on the throat, nor behind the corner of the jaw.)
+    jaw = bool(bits & JAW) and z > (1.0 if n[1] > -0.6 else 3.5)
+    chin = bool(bits & CHIN)
+    th = 0.0
+    if st.get("lip") and bits & LIP_TOP:
+        th = max(th, st["lip"])
+    if st.get("goatee"):
+        if bits & GOATEE or (chin and ax < 4.6):
+            th = max(th, st["goatee"])
+        # (Joined to the moustache down each side of the mouth.)
+        if 2.8 < ax < 4.8 and -12.0 < y < -7.2 and z > 8.6:
+            th = max(th, 1.0)
+    if st.get("jaw") and jaw:
+        # (The side-whiskers thinner up toward the ear.)
+        th = max(th, st["jaw"] * (0.55 + 0.45 * min(1.0, max(0.0, (-3.0 - y) / 3.5))))
+    if st.get("chin") and chin:
+        th = max(th, st["chin"])
+    if st.get("chops") and jaw and not chin and ax > 5.4 and y > -15.5:
+        th = max(th, st["chops"] * (0.5 + 0.5 * min(1.0, max(0.0, (-3.0 - y) / 3.0))))
+    if st.get("strap") and (jaw or chin):
+        if (ax > 9.4 and y > -13.5) or y < -13.2:
+            th = max(th, st["strap"])
+    return th
+
+def beard_cells(name, occ_head, occ_nose, base_par):
+    """The cells of a beard on his face (exposed ones only), as the head's cells. Every one of them
+    lies on his skin or on another of them that does: none stands loose."""
+    lo = (-int(HX) - 2, -int(HY) - 14, -3)
+    hi = (int(HX) + 2, 0, int(HZ) + 5)
+    st = BEARDS[name]
+    tmax = max([float(v) for k, v in st.items() if k not in ("hang", "under")] + [0.0])
+    occ = {}
+    info = {}
+    for ix in range(lo[0], hi[0]):
+        for iy in range(lo[1], hi[1]):
+            for iz in range(lo[2], hi[2]):
+                if occ_head.get((ix, iy, iz), False) or occ_nose.get((ix, iy, iz), False):
+                    continue
+                p = (ix + 0.5, iy + 0.5, iz + 0.5)
+                d = sdf(p)
+                if d <= 0.0:
+                    continue
+                if beard_extra(name, p) <= 0.0:
+                    occ[(ix, iy, iz)] = True
+                    info[(ix, iy, iz)] = None
+                    continue
+                if d > tmax + 0.01:
+                    continue
+                n = _grad(p)
+                ps = (p[0] - n[0] * d, p[1] - n[1] * d, p[2] - n[2] * d)
+                if d <= _beard_thick(name, ps, n):
+                    occ[(ix, iy, iz)] = True
+                    info[(ix, iy, iz)] = ps
+    # Only what is joined to him, through his beard's own cells, stays.
+    near = ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1))
+    seen = set(k for k in occ if any(occ_head.get((k[0]+dx, k[1]+dy, k[2]+dz), False) for dx, dy, dz in near))
+    todo = list(seen)
+    while todo:
+        k = todo.pop()
+        for dx, dy, dz in near:
+            nb = (k[0]+dx, k[1]+dy, k[2]+dz)
+            if nb in occ and nb not in seen:
+                seen.add(nb)
+                todo.append(nb)
+    loose = [k for k in occ if k not in seen]
+    for k in loose:
+        del occ[k]
+    chin_par = base_par((0.0, -15.0, 10.0))
+    cells = []
+    for key in sorted(occ):
+        ix, iy, iz = key
+        if all(occ.get((ix+dx, iy+dy, iz+dz), False) or occ_head.get((ix+dx, iy+dy, iz+dz), False) for dx, dy, dz in near):
+            continue
+        ps = info[key]
+        # Its strands: lighter and darker down it; a braid's plaits by turns.
+        if st.get("hang") == "braid" and ps is None and iy < -HY - 1:
+            k = 0.82 + 0.26 * (((iy + 60) // 1) % 2) * (1.0 if ix >= 0 else 0.6) + 0.06 * _hash3(ix, iy, iz)
+        else:
+            k = 0.86 + 0.24 * _hash3(ix, 11, iz)
+        # The head voxel it lies over (what hangs from the chin goes with the chin).
+        if ps is None:
+            par = chin_par
+        else:
+            q = (min(max(ps[0], -HX + 0.01), HX - 0.01), min(max(ps[1], -HY + 0.01), HY - 0.01), min(max(ps[2], -HZ + 0.01), HZ - 0.01))
+            par = base_par(q)
+        ao = 0
+        for fi, (fn, ua, va) in enumerate(AO_FACES):
+            nb = (ix + fn[0], iy + fn[1], iz + fn[2])
+            if occ.get(nb, False) or occ_head.get(nb, False):
+                continue
+            for c in range(4):
+                su = 1 if c & 1 else -1
+                sv = 1 if c & 2 else -1
+                du = [0, 0, 0]; du[ua] = su
+                dv = [0, 0, 0]; dv[va] = sv
+                for nn in ((nb[0]+du[0], nb[1]+du[1], nb[2]+du[2]), (nb[0]+dv[0], nb[1]+dv[1], nb[2]+dv[2]), (nb[0]+du[0]+dv[0], nb[1]+du[1]+dv[1], nb[2]+du[2]+dv[2])):
+                    if occ.get(nn, False) or occ_head.get(nn, False):
+                        ao |= 1 << (fi * 4 + c)
+                        break
+        cells.append([ix + int(HX), iy + int(HY), iz + int(HZ), FEAT.index("hair"), BEARD | HAIR_EXTRA, round(k, 3)] + par + [ao])
+    return cells, len(loose)
+
 def _par_of(q):
     """The head voxel under a point of his scalp: out along the normal to the last of his voxels."""
     n = _grad(q)
@@ -522,7 +697,21 @@ def main(out):
     for nm in HAIRS:
         hairs[nm] = hair_cells(nm, occ_head, _par_of)
         print("hair %s: %d cells" % (nm, len(hairs[nm])), flush=True)
-    data = {"res": RES, "grid": [GX, GY, GZ], "eye": [EYE_X, EYE_Y], "feats": FEAT, "cells": cells, "keep": keep, "nose": NOSE, "noses": noses, "hairs": hairs}
+    # The beards, each on the face as it is: none of their cells where any of the noses has one.
+    occ_nose = {}
+    for nm in NOSES:
+        if nm == NOSE:
+            continue
+        for ix in range(-7, 7):
+            for iy in range(-9, 6):
+                for iz in range(8, int(HZ) + 5):
+                    if sdf((ix + 0.5, iy + 0.5, iz + 0.5), nm) <= 0.0:
+                        occ_nose[(ix, iy, iz)] = True
+    beards = {}
+    for nm in BEARDS:
+        beards[nm], loose = beard_cells(nm, occ_head, occ_nose, _par_of)
+        print("beard %s: %d cells (%d loose ones left out)" % (nm, len(beards[nm]), loose), flush=True)
+    data = {"res": RES, "grid": [GX, GY, GZ], "eye": [EYE_X, EYE_Y], "feats": FEAT, "cells": cells, "keep": keep, "nose": NOSE, "noses": noses, "hairs": hairs, "beards": beards}
     with open(out, "w") as fh:
         json.dump(data, fh, separators=(",", ":"))
     print("%d cells -> %s" % (len(cells), out))

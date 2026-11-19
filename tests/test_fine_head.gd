@@ -302,6 +302,119 @@ func test_hair_under_a_helmet() -> void:
 					k._knock_plate(k.head, ad, ci, Vector3.UP, 1.0, false)
 	t.eq(knot.call(), 0, "and comes out again as the helmet's plates are knocked off")
 
+## A beard is the hair of his jaw, his chin and his lip, joined to him (user: some beards were not
+## joined to the man at all: what hung below the chin was drawn as loose blocks under his head).
+## Every beard of the game is its own cells on his face, each of them on his skin or on another of
+## them that is, down to the end of a long beard, a fork or a braid; over the head's own voxels, so
+## it goes with them; in his beard's colour; the piece's own blocks not drawn, not one; stubble no
+## more than the colour of his jaw; and a bot's own beard his in the same way.
+func test_every_beard_is_his_own_hair_joined_to_him() -> void:
+	var w := _world()
+	var beards := []
+	for id in Data.armor.keys():
+		if String(id).begins_with("beard_"):
+			beards.append(String(id))
+	beards.sort()
+	t.check(beards.size() >= 10, "the game's beards (%d)" % beards.size())
+	# The cells of his beard, and of his head and beard together, by where they are.
+	var sort_cells := func(f: Fighter) -> Array:
+		var beard := {}
+		var all := {}
+		var cells: Array = f.head.fine.cells
+		for s in cells.size():
+			var c: Array = cells[s]
+			var k := Vector3i(int(c[0]), int(c[1]), int(c[2]))
+			if int(c[3]) == FineHead.HAIR and (int(c[4]) & FineHead.BEARD) != 0:
+				beard[k] = s
+			elif int(c[3]) != FineHead.HAIR:
+				all[k] = s
+		return [beard, all]
+	# How many of his beard's cells no chain of them touching one another leads back to his skin.
+	var loose := func(beard: Dictionary, skin: Dictionary) -> int:
+		var seen := {}
+		var todo := []
+		for k in beard:
+			var on := false
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for dz in [-1, 0, 1]:
+						if skin.has(k + Vector3i(dx, dy, dz)):
+							on = true
+			if on:
+				seen[k] = true
+				todo.append(k)
+		while not todo.is_empty():
+			var k: Vector3i = todo.pop_back()
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for dz in [-1, 0, 1]:
+						var nb: Vector3i = k + Vector3i(dx, dy, dz)
+						if beard.has(nb) and not seen.has(nb):
+							seen[nb] = true
+							todo.append(nb)
+		return beard.size() - seen.size()
+	var x := 0.0
+	for id in beards:
+		Physique.forced = "human"
+		var f := w.fighter(Vector3(x, 1.2, 0), 0.0, {"armor": [id]}, {"skin": 0xc68e5e})
+		Physique.forced = ""
+		x += 3.0
+		var h: VoxelPart = f.head
+		if not t.check(not h.fine.is_empty(), "%s: a fine head" % id):
+			continue
+		var sorted: Array = sort_cells.call(f)
+		var beard: Dictionary = sorted[0]
+		# The piece's own blocks not drawn (they hung loose under his head).
+		for ad in h.get_meta("armor", []):
+			if String(ad.id) == id:
+				var shown := 0
+				for ci in (ad.cells as Array).size():
+					if Physique.plate_xf(h, ad.cells[ci], ad.pts[ci] as Vector3, id).basis.get_scale().length() > 0.001:
+						shown += 1
+				t.eq(shown, 0, "%s: the piece's own blocks not drawn" % id)
+		if id == "beard_stubble":
+			t.eq(beard.size(), 0, "stubble: no more than the colour of his jaw")
+			t.eq(int(h.fine.look.beard), 7, "stubble: his jaw painted")
+			continue
+		t.check(beard.size() > 20, "%s: the hair of his face (%d cells)" % [id, beard.size()])
+		t.eq(String(h.fine.look.beard_id), id, "%s read as the beard he wears" % id)
+		t.eq(loose.call(beard, sorted[1]), 0, "%s: every cell of it joined to him" % id)
+		var off := 0
+		var wrong := 0
+		var bc: Color = h.fine.look.beard_c
+		var sk: Color = h.fine.look.skin
+		var low := 1000
+		for k in beard:
+			var s: int = beard[k]
+			if int(h.fine.par[s]) < 0:
+				off += 1
+			var c: Color = h.fine.own[s]
+			if absf(c.r - bc.r) + absf(c.g - bc.g) + absf(c.b - bc.b) > absf(c.r - sk.r) + absf(c.g - sk.g) + absf(c.b - sk.b):
+				wrong += 1
+			low = mini(low, k.y)
+		t.eq(off, 0, "%s: each cell over one of the head's own voxels, and goes with it" % id)
+		t.eq(wrong, 0, "%s: in his beard's colour" % id)
+		if id in ["beard_philosopher", "beard_forked", "beard_braided"]:
+			t.check(low <= -7, "%s hangs from his chin toward his chest (%d fine voxels below his head)" % [id, -low])
+	# A bot's own beard (a full one, a goatee, a moustache by his name): the same hair on his face.
+	var kinds := {}
+	for i in 40:
+		if kinds.size() >= 3:
+			break
+		Physique.forced = "human"
+		var b := w.fighter(Vector3(x, 1.2, 0), 0.0, {}, {"skin": 0xc68e5e, "bot": true, "name": "Bot %d" % i, "slot": i})
+		Physique.forced = ""
+		x += 3.0
+		var kind := int(b.head.fine.look.beard)
+		if not FineHead.BOT_BEARDS.has(kind) or kinds.has(kind):
+			continue
+		kinds[kind] = true
+		var sorted_b: Array = sort_cells.call(b)
+		t.eq(String(b.head.fine.look.beard_id), String(FineHead.BOT_BEARDS[kind]), "a bot's beard (kind %d) his own hair" % kind)
+		t.check((sorted_b[0] as Dictionary).size() > 20 and int(loose.call(sorted_b[0], sorted_b[1])) == 0, "and joined to him (%d cells)" % (sorted_b[0] as Dictionary).size())
+	t.check(kinds.size() >= 2, "bots with beards of their own found (%d kinds)" % kinds.size())
+	w.queue_free()
+
 ## An older save's hairstyle (its index into the list as it was) read as the same style, or the
 ## arena's nearest for one no longer offered, and saved so.
 func test_an_old_saves_hairstyle() -> void:

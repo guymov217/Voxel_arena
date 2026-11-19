@@ -430,7 +430,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
   A gladiator editor (name, skin, cloth, hat, hair, beard, cape: the cape hangs from the shoulders
   in one smooth sheet that flares a little toward the hem, its tiles each laid across their
-  neighbours so no gap shows, `Physique._cape_xf`). The HUD, menus and options
+  neighbours so no gap shows, `Physique._cape_xf`; a beard is his own hair, fine voxels grown on
+  his jaw, his chin and his lip, and whatever hangs from the chin, a long beard, a fork, a braid,
+  grows out of the hair on it: none of it loose blocks under his head, `tools/gen_fine_head.py`,
+  `tests/test_fine_head.gd`). The HUD, menus and options
   (four tabs: game, controls, graphics, sound; VSync, an FPS cap and the interface scale among
   them). The menus in one imperial look (`scripts/ui/style.gd`):
   Cinzel capitals and Alegreya Sans (both OFL, `art/fonts`) on stone plates framed in gold; the
