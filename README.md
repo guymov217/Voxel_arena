@@ -378,6 +378,16 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   weight is no great blow). Only the room limits it: 1600 blocks within about 3.5 m by 1.3 by 0.5
   (`ForgeLib.GRID`, `ForgeLib.MAX_VOXELS`), so no 30 m pole. The smith's own stock is still made
   to be lifted (`Masterworks.load_of`).
+  The anvil stands in a smithy (`Forge._dress_smithy`, the models from `tools/gen_voxel_art.py`):
+  a room of tufa, brick and smoked plaster under a roof of beams, its floor laid in basalt round
+  the anvil and in brick herringbone out to the walls; the hearth with a blade heating in its
+  coals, the bellows, the charcoal, the quenching trough under the smith's tools, his own anvil
+  on its stump, a rack of arms and a banner, the bench and the grindstone under the windows, a
+  little shrine to Vulcan, and the way out to the yard between two braziers. It is drawing only.
+  The weapon stands in the light it always stood in: the room's fires light the room alone, and
+  the room throws no shadow. A wall, or the roof, is put away while the camera is out beyond it
+  (backed off from a long weapon it looks into the room as into a doll's house), and a thing on
+  the floor while the camera is in it or it stands before the anvil (`tests/test_forge.gd`).
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's

@@ -61,6 +61,9 @@ var focus := Vector3.ZERO     # what the camera looks at: set when a weapon is f
 var moved := false            # the player has placed the camera: no more turning by itself
 var idle_t := 0.0
 var fog_env: Environment       # the smithy's: its haze is laid from the weapon back (_place_camera)
+var room_sides := {}           # the smithy's walls and roof by name (ROOM_SIDES): each put away while the camera is out beyond it
+var decor: Array = []          # what stands on its floor: each put away while the camera is in it, or it hides the anvil
+var fire_lights: Array = []    # the hearth's and the braziers' lights, flickering ([light, its energy])
 var swing_t := -1.0
 var swing_st := {}       # the swing preview's stats and grip, read once when it starts
 # What is on the anvil, kept from one change to the next (each block put on or taken off only
@@ -353,6 +356,9 @@ func _build_smithy() -> void:
 	light.light_color = Color(1.0, 0.95, 0.88)
 	light.light_energy = 1.2
 	light.shadow_enabled = true
+	# (On the weapon, the anvil and the floor they stand on: the room round them is lit by its
+	# own fires, _dress_smithy.)
+	light.light_cull_mask = 1
 	viewport.add_child(light)
 	var glow := OmniLight3D.new()
 	glow.light_color = Color(1.0, 0.45, 0.15)
@@ -381,12 +387,15 @@ func _build_smithy() -> void:
 	am.material = stone
 	anvil.mesh = am
 	viewport.add_child(anvil)
+	# The ground the smithy stands on: trodden earth out to the dark (seen through its door and
+	# its windows, and round it from outside), a little under its own floor.
 	floor_ = MeshInstance3D.new()
 	var fp := PlaneMesh.new()
 	fp.size = Vector2(60, 60)
+	fp.center_offset = Vector3(0, -0.04, 0)
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.3, 0.24, 0.2)
-	fm.roughness = 0.95
+	fm.albedo_color = Color(0.17, 0.13, 0.1)
+	fm.roughness = 1.0
 	fp.material = fm
 	floor_.mesh = fp
 	viewport.add_child(floor_)
@@ -420,32 +429,135 @@ func _build_smithy() -> void:
 	line_ghost.multimesh = lmm
 	viewport.add_child(line_ghost)
 
-## The voxel smithy round the anvil (art/voxel): a stone anvil block in place of the plain box,
-## a flagstone floor, and in the gloom behind it the hearth, a rack of arms, jars and crates.
-## They ride on the floor, which follows the weapon's height.
+## The smithy the anvil stands in (art/voxel, tools/gen_voxel_art.py: the room's numbers are the
+## same there): a room of tufa, brick and smoked plaster under a roof of beams, its floor laid in
+## basalt round the anvil and in brick out to the walls; the hearth against the north wall with a
+## blade heating in its coals, the bellows and the charcoal by it, the quenching trough under the
+## smith's tools, his own anvil on its stump, a rack of arms and a banner on the west wall, the
+## bench and the grindstone under the south windows, the way out to the yard in the east wall
+## between two braziers (user: there was only a huge tiled floor without end; the forge's
+## background should fit the game and a smithy, and its floor too). All of it rides on the floor,
+## which follows the weapon's height. Drawing only: nothing in it is touched by the mouse.
+const ROOM := Vector3(4.8, 4.0, 4.4)   # half its width (x), the height of its beams, half its depth (z)
+const ROOM_SIDES := ["n", "s", "e", "w", "roof"]
+const ROOM_EDGE := 0.45                # a side is put away from this far inside it
+const ROOM_LAYER := 2                  # the room's own layer: its fires light it and not the weapon
 func _dress_smithy() -> void:
 	var block := VoxelArt.make("forge_anvil")
 	if block:
 		anvil.mesh = null
 		anvil.add_child(block)
-	var tex := Arena.load_texture("res://art/textures/flagstone_voxel.png")
-	if tex:
-		var fm := StandardMaterial3D.new()
-		fm.albedo_texture = tex
-		fm.uv1_triplanar = true
-		fm.uv1_world_triplanar = true
-		fm.uv1_scale = Vector3.ONE / 6.4
-		fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
-		fm.roughness = 0.92
-		(floor_.mesh as PlaneMesh).material = fm
-	# Behind the anvil as the camera first looks at it, so the smithy is the weapon's backdrop.
-	VoxelArt.place(floor_, "smithy", Vector3(-3.1, 0, -2.7), deg_to_rad(50))
-	VoxelArt.place(floor_, "weapon_rack", Vector3(3.3, 0, -2.7), deg_to_rad(-50))
-	VoxelArt.place(floor_, "amphora", Vector3(2.0, 0, -3.6), PI - 0.4)
-	VoxelArt.place(floor_, "amphora_wide", Vector3(2.5, 0, -3.4), PI - 1.2)
-	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0, -3.7), PI - 0.3)
-	VoxelArt.place(floor_, "crate", Vector3(-0.9, 0, -4.0), PI - 1.0)
-	VoxelArt.place(floor_, "crate", Vector3(-1.6, 0.6, -3.7), PI - 0.9)
+	var room := VoxelArt.make("forge_room")
+	if room == null:
+		return
+	floor_.add_child(room)
+	for k in ROOM_SIDES:
+		var side := Node3D.new()
+		side.name = "side_" + k
+		floor_.add_child(side)
+		room_sides[k] = side
+	for c in room.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		var nm := String(mi.name).to_lower()
+		# (The floor in the anvil's own light as well, the weapon's shadow on it. The room throws
+		# no shadow of its own: the anvil stands in the light it always stood in.)
+		mi.layers = ROOM_LAYER | (1 if nm == "floor" else 0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for k in ROOM_SIDES:
+			if nm == k or nm == "wall_" + k:
+				mi.reparent(room_sides[k])
+	_hang("w", "banner", Vector3(-ROOM.x + 0.08, 0.95, 1.3), PI * 0.5)
+	# North: the hearth, the bellows at its side, the trough under the tools, jars under the niche.
+	var hx := -2.4
+	_stand("forge_hearth", Vector3(hx, 0, -ROOM.z + 0.6), 0.0)
+	_stand("forge_bellows", Vector3(hx - 1.08 - 0.63, 0, -ROOM.z + 0.5), 0.0)
+	_stand("forge_trough", Vector3(0.15, 0, -ROOM.z + 0.34), 0.0)
+	_stand("forge_stump", Vector3(-1.45, 0, -2.55), 0.6)
+	_stand("amphora", Vector3(1.85, 0, -ROOM.z + 0.4), 0.4)
+	_stand("amphora_wide", Vector3(2.45, 0, -ROOM.z + 0.45), 1.2)
+	_stand("amphora", Vector3(3.0, 0, -ROOM.z + 0.38), 2.0)
+	_stand("crate", Vector3(3.95, 0, -ROOM.z + 0.42), 0.2)
+	# West: the charcoal, the rack of arms.
+	_stand("forge_coal", Vector3(-ROOM.x + 0.5, 0, -2.75), PI * 0.5)
+	_stand("weapon_rack", Vector3(-ROOM.x + 0.3, 0, -1.3), PI * 0.5)
+	_stand("crate", Vector3(-ROOM.x + 0.45, 0, 3.95), 0.1)
+	_stand("crate", Vector3(-ROOM.x + 1.15, 0, 4.0), -0.25)
+	_stand("crate", Vector3(-ROOM.x + 0.5, 0.6, 3.95), 0.5)
+	# South: the bench under one window, the grindstone under the other, crates between.
+	_stand("forge_bench", Vector3(-2.4, 0, ROOM.z - 0.37), PI)
+	_stand("forge_grindstone", Vector3(2.4, 0, ROOM.z - 0.75), PI)
+	_stand("crate", Vector3(-0.45, 0, ROOM.z - 0.4), 0.15)
+	_stand("amphora_wide", Vector3(0.35, 0, ROOM.z - 0.4), 0.7)
+	_stand("forge_sacks", Vector3(4.2, 0, ROOM.z - 0.45), PI)
+	# East: a brazier either side of the way out, a barrel of blanks.
+	_stand("brazier", Vector3(ROOM.x - 0.6, 0, -1.95), 0.0)
+	_stand("brazier", Vector3(ROOM.x - 0.6, 0, 1.95), 0.0)
+	_stand("forge_barrel", Vector3(ROOM.x - 0.45, 0, -3.45), 0.3)
+	_stand("amphora", Vector3(ROOM.x - 0.4, 0, 3.4), 2.6)
+	# Out in the yard, seen through the door: a marble gladiator on his pedestal, a brazier by him.
+	_stand("statue", Vector3(ROOM.x + 5.2, 0, 0.5), -PI * 0.5)
+	_stand("brazier", Vector3(ROOM.x + 3.8, 0, -1.5), 0.0)
+	# The fires' light, on the room alone: the hearth's (on what is in it, and spilt out before
+	# it), the braziers', the torches' on the south and west walls.
+	_fire(Vector3(hx - 0.2, 1.45, -ROOM.z + 0.75), Color(1.0, 0.5, 0.19), 2.4, 3.5)
+	_fire(Vector3(hx, 1.35, -ROOM.z + 1.9), Color(1.0, 0.52, 0.22), 2.4, 7.5, 0.3)
+	_fire(Vector3(ROOM.x - 0.6, 1.8, -1.95), Color(1.0, 0.6, 0.28), 1.6, 5.0)
+	_fire(Vector3(ROOM.x - 0.6, 1.8, 1.95), Color(1.0, 0.6, 0.28), 1.6, 5.0)
+	_fire(Vector3(0.0, 2.5, ROOM.z - 0.9), Color(1.0, 0.62, 0.3), 1.1, 5.5, 0.3)
+	_fire(Vector3(-ROOM.x + 0.9, 2.5, 2.8), Color(1.0, 0.62, 0.3), 0.9, 4.5, 0.3)
+	_fire(Vector3(ROOM.x + 3.8, 1.8, -1.5), Color(1.0, 0.6, 0.28), 2.2, 6.0)
+
+## A model stood on the smithy's floor (`at`: in the room, the anvil at its middle), turned `yaw`.
+func _stand(model: String, at: Vector3, yaw: float) -> Node3D:
+	var n := VoxelArt.place(floor_, model, at, yaw)
+	if n == null:
+		return null
+	var box := AABB()
+	var first := true
+	for c in n.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		mi.layers = ROOM_LAYER
+		var b: AABB = (n.transform * mi.transform) * mi.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	n.set_meta("decor_box", box)
+	decor.append(n)
+	return n
+
+## A model hung on a wall: put away with it.
+func _hang(side: String, model: String, at: Vector3, yaw: float) -> void:
+	var n := VoxelArt.place(room_sides[side], model, at, yaw)
+	if n:
+		for c in n.find_children("*", "MeshInstance3D", true, false):
+			(c as MeshInstance3D).layers = ROOM_LAYER
+
+func _fire(at: Vector3, col: Color, energy: float, reach: float, shine := 0.5) -> void:
+	var l := OmniLight3D.new()
+	l.light_color = col
+	l.light_energy = energy
+	l.light_specular = shine
+	l.omni_range = reach
+	l.omni_attenuation = 1.2
+	l.light_cull_mask = ROOM_LAYER
+	floor_.add_child(l)
+	l.position = at
+	fire_lights.append([l, energy])
+
+## Whether a side of the room (ROOM_SIDES) is put away for a camera at `lp` (in the room: the
+## anvil's foot at its middle): the camera is out beyond it, or all but in it.
+static func room_side_hidden(side: String, lp: Vector3) -> bool:
+	match side:
+		"n":
+			return lp.z < -ROOM.z + ROOM_EDGE
+		"s":
+			return lp.z > ROOM.z - ROOM_EDGE
+		"w":
+			return lp.x < -ROOM.x + ROOM_EDGE
+		"e":
+			return lp.x > ROOM.x - ROOM_EDGE
+		"roof":
+			return lp.y > ROOM.y - ROOM_EDGE
+	return false
 
 func _show_mode(m: String) -> void:
 	mode = m
@@ -1482,29 +1594,18 @@ func _view_fov() -> float:
 	var h := rad_to_deg(2.0 * atan(tan(deg_to_rad(cam.fov * 0.5)) * aspect))
 	return minf(cam.fov, h)
 
-## The smithy round the anvil (the hearth, the racks, the jars) stands about 3 m off, and stays
-## in view behind the weapon however far the camera is drawn in or backed off; only a piece the
-## camera has backed into, or one standing between it and the weapon, is put away while it is.
+## The smithy stands round the anvil whatever the camera does, and never in its way: a wall, or
+## the roof, is put away while the camera is out beyond it (backed far off from a long weapon, it
+## looks into the room as into a doll's house), and a thing standing on the floor while the camera
+## is in it, or while it stands between the camera and what the camera looks at.
 func _decor_update() -> void:
-	var cp := cam.global_position
-	var seg := focus - cp
-	for c in floor_.get_children():
-		if not (c is Node3D):
-			continue
-		if not c.has_meta("decor_r"):
-			var box := AABB()
-			var first := true
-			for vi in c.find_children("*", "VisualInstance3D", true, false):
-				var b: AABB = (vi as VisualInstance3D).global_transform * (vi as VisualInstance3D).get_aabb()
-				box = b if first else box.merge(b)
-				first = false
-			c.set_meta("decor_c", box.get_center())
-			c.set_meta("decor_r", box.size.length() * 0.5)
-		var cc: Vector3 = c.get_meta("decor_c")
-		var r: float = c.get_meta("decor_r")
-		var t := clampf((cc - cp).dot(seg) / maxf(seg.length_squared(), 1e-6), 0.0, 1.0)
-		var in_way := t > 0.0 and t < 1.0 and (cp + seg * t).distance_to(cc) < r * 0.85
-		c.visible = cp.distance_to(cc) > r + 0.3 and not in_way
+	var lp: Vector3 = cam.global_position - floor_.global_position   # (the room is never turned)
+	var lf: Vector3 = focus - floor_.global_position
+	for k in room_sides:
+		(room_sides[k] as Node3D).visible = not room_side_hidden(k, lp)
+	for c in decor:
+		var box: AABB = (c as Node3D).get_meta("decor_box")
+		(c as Node3D).visible = not (box.grow(0.8).has_point(lp) or box.grow(0.12).intersects_segment(lp, lf) != null)
 
 ## The whole weapon in view: the camera aimed at its middle and backed off to take it all in.
 func _frame() -> void:
@@ -1574,6 +1675,10 @@ func _process(dt: float) -> void:
 		elif taper_t <= 0.0:
 			taper_t = 0.05
 	idle_t += dt
+	# (The fires breathe.)
+	var ft := Time.get_ticks_msec() / 1000.0
+	for i in fire_lights.size():
+		(fire_lights[i][0] as OmniLight3D).light_energy = float(fire_lights[i][1]) * (0.9 + 0.1 * sin(ft * 9.0 + i * 1.7) + 0.05 * sin(ft * 21.0 + i * 0.6))
 	_walk_camera(dt)
 	if lesson:
 		lesson.update(dt)

@@ -465,23 +465,23 @@
 ],
 "Undo": [
 "scripts/ui/armour_forge.gd:212",
-"scripts/ui/forge.gd:969",
+"scripts/ui/forge.gd:1081",
 "scripts/ui/forge_lesson.gd:24"
 ],
 "Clear": [
 "scripts/ui/armour_forge.gd:216",
-"scripts/ui/forge.gd:975"
+"scripts/ui/forge.gd:1087"
 ],
 "Cover all round": [
 "scripts/ui/armour_forge.gd:220"
 ],
 "Mirror ⟷": [
 "scripts/ui/armour_forge.gd:227",
-"scripts/ui/forge.gd:954"
+"scripts/ui/forge.gd:1066"
 ],
 "Mirror ⇅": [
 "scripts/ui/armour_forge.gd:232",
-"scripts/ui/forge.gd:959"
+"scripts/ui/forge.gd:1071"
 ],
 "Plain": [
 "scripts/ui/armour_forge.gd:245",
@@ -510,7 +510,7 @@
 ],
 "Name it": [
 "scripts/ui/armour_forge.gd:359",
-"scripts/ui/forge.gd:215"
+"scripts/ui/forge.gd:218"
 ],
 "Leave the bench": [
 "scripts/ui/armour_forge.gd:369"
@@ -583,7 +583,7 @@
 "scripts/ui/armour_shop.gd:9",
 "scripts/ui/armour_shop.gd:79",
 "scripts/ui/armour_shop.gd:92",
-"scripts/ui/forge.gd:194",
+"scripts/ui/forge.gd:197",
 "scripts/ui/menu.gd:1292",
 "scripts/ui/menu.gd:1884",
 "scripts/ui/menu.gd:1891"
@@ -658,124 +658,124 @@
 "Try it in the arena": [
 "scripts/ui/forge.gd:35",
 "scripts/ui/forge.gd:41",
-"scripts/ui/forge.gd:568"
+"scripts/ui/forge.gd:680"
 ],
 "Balanced": [
-"scripts/ui/forge.gd:99",
+"scripts/ui/forge.gd:102",
 "scripts/game/forge_lib.gd:652",
 "scripts/game/forge_lib.gd:857"
 ],
 "Head-heavy": [
-"scripts/ui/forge.gd:99",
+"scripts/ui/forge.gd:102",
 "scripts/game/forge_lib.gd:653"
 ],
 "Speed": [
-"scripts/ui/forge.gd:102",
+"scripts/ui/forge.gd:105",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Damage": [
-"scripts/ui/forge.gd:102",
+"scripts/ui/forge.gd:105",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Reach": [
-"scripts/ui/forge.gd:102",
+"scripts/ui/forge.gd:105",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Vs armour": [
-"scripts/ui/forge.gd:102",
+"scripts/ui/forge.gd:105",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Durability": [
-"scripts/ui/forge.gd:102",
+"scripts/ui/forge.gd:105",
 "scripts/ui/smith_screen.gd:467"
 ],
 "Build": [
-"scripts/ui/forge.gd:117",
+"scripts/ui/forge.gd:120",
 "scripts/ui/forge_lesson.gd:18"
 ],
 "Click a face: a voxel goes on it (hold and drag for more)  [B]": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Erase": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Click voxels: take them off (right click erases too)  [X]": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Line": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "✋ Move hand": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]": [
-"scripts/ui/forge.gd:117"
+"scripts/ui/forge.gd:120"
 ],
 "Build: click a face of the weapon, or hold and drag (an Edge or Point faces away from it; R turns one; Q takes up the block under the mouse)": [
-"scripts/ui/forge.gd:124"
-],
-"Erase: click blocks, or hold the right button anywhere": [
-"scripts/ui/forge.gd:125"
-],
-"Line: click where it starts": [
-"scripts/ui/forge.gd:126"
-],
-"Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand": [
 "scripts/ui/forge.gd:127"
 ],
+"Erase: click blocks, or hold the right button anywhere": [
+"scripts/ui/forge.gd:128"
+],
+"Line: click where it starts": [
+"scripts/ui/forge.gd:129"
+],
+"Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand": [
+"scripts/ui/forge.gd:130"
+],
 "THE FORGE": [
-"scripts/ui/forge.gd:186"
+"scripts/ui/forge.gd:189"
 ],
 "1 · Quick start": [
-"scripts/ui/forge.gd:194"
+"scripts/ui/forge.gd:197"
 ],
 "Pick a base weapon and up to two twists: done in two clicks.": [
-"scripts/ui/forge.gd:194"
+"scripts/ui/forge.gd:197"
 ],
 "2 · Shape by hand": [
-"scripts/ui/forge.gd:194"
+"scripts/ui/forge.gd:197"
 ],
 "Add, paint and take off single blocks on the anvil.": [
-"scripts/ui/forge.gd:194"
+"scripts/ui/forge.gd:197"
 ],
 "Weapons you saved as templates: load one onto the anvil.": [
-"scripts/ui/forge.gd:194"
+"scripts/ui/forge.gd:197"
 ],
 "Armour": [
-"scripts/ui/forge.gd:204",
+"scripts/ui/forge.gd:207",
 "scripts/ui/menu.gd:1483",
 "scripts/ui/menu.gd:1560",
 "scripts/ui/menu.gd:2677",
 "scripts/ui/smith_screen.gd:124"
 ],
 "Make a piece of armour, plate by plate: where it goes, what it is made of": [
-"scripts/ui/forge.gd:205"
+"scripts/ui/forge.gd:208"
 ],
 "Name": [
-"scripts/ui/forge.gd:211",
+"scripts/ui/forge.gd:214",
 "scripts/ui/menu.gd:3545"
 ],
 "Speed: how fast it swings and comes back. Damage: how hard a blow lands on bare skin. Reach: how far it hits from the hand. Vs armour: how hard it still lands through an iron plate (an edge skids off unless the blade is heavy; a point finds the joins; a heavy head carries through). The dot on the weapon is its balance point.": [
-"scripts/ui/forge.gd:237"
+"scripts/ui/forge.gd:240"
 ],
 "Take it": [
-"scripts/ui/forge.gd:275"
+"scripts/ui/forge.gd:278"
 ],
 "Pay and take it": [
-"scripts/ui/forge.gd:275"
+"scripts/ui/forge.gd:278"
 ],
 "Swing it": [
-"scripts/ui/forge.gd:276",
+"scripts/ui/forge.gd:279",
 "scripts/ui/forge_lesson.gd:27"
 ],
 "Save design": [
-"scripts/ui/forge.gd:284"
+"scripts/ui/forge.gd:287"
 ],
 "Back": [
-"scripts/ui/forge.gd:285",
+"scripts/ui/forge.gd:288",
 "scripts/ui/trainer_screen.gd:257",
 "scripts/ui/menu.gd:1050",
 "scripts/ui/menu.gd:1298",
@@ -790,426 +790,426 @@
 "scripts/ui/menu.gd:2998"
 ],
 "Leave it as it was": [
-"scripts/ui/forge.gd:285"
+"scripts/ui/forge.gd:288"
 ],
 "Next": [
-"scripts/ui/forge.gd:505",
-"scripts/ui/forge.gd:536"
+"scripts/ui/forge.gd:617",
+"scripts/ui/forge.gd:648"
 ],
 "Skip the lesson": [
-"scripts/ui/forge.gd:510"
+"scripts/ui/forge.gd:622"
 ],
 "FORGE LESSON · STEP %d OF %d": [
-"scripts/ui/forge.gd:532"
+"scripts/ui/forge.gd:644"
 ],
 "Close": [
-"scripts/ui/forge.gd:536",
+"scripts/ui/forge.gd:648",
 "scripts/ui/weapon_view.gd:52"
 ],
 "A gladiator": [
-"scripts/ui/forge.gd:548"
+"scripts/ui/forge.gd:660"
 ],
 "What stands in front of the weapon": [
-"scripts/ui/forge.gd:561"
+"scripts/ui/forge.gd:673"
 ],
 "Fights back": [
-"scripts/ui/forge.gd:564",
+"scripts/ui/forge.gd:676",
 "scripts/ui/menu.gd:1005"
 ],
 "It needs somewhere to be held: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:571",
-"scripts/ui/forge.gd:2048"
+"scripts/ui/forge.gd:683",
+"scripts/ui/forge.gd:2153"
 ],
 "Last try against %s: no blow landed": [
-"scripts/ui/forge.gd:581"
+"scripts/ui/forge.gd:693"
 ],
 "Last try against %s: %d hits · best blow %d · %d limbs off · %d kills": [
-"scripts/ui/forge.gd:583"
+"scripts/ui/forge.gd:695"
 ],
 "1 · PICK A BASE": [
-"scripts/ui/forge.gd:589"
+"scripts/ui/forge.gd:701"
 ],
 "2 · ADD UP TO %d TWISTS": [
-"scripts/ui/forge.gd:603"
+"scripts/ui/forge.gd:715"
 ],
 "Deal again": [
-"scripts/ui/forge.gd:628"
+"scripts/ui/forge.gd:740"
 ],
 "Customize the voxels": [
-"scripts/ui/forge.gd:633"
+"scripts/ui/forge.gd:745"
 ],
 "New weapon": [
-"scripts/ui/forge.gd:646",
+"scripts/ui/forge.gd:758",
 "scripts/ui/menu.gd:2545",
 "scripts/game/forge_lib.gd:17"
 ],
 "Cut": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "sharp edge": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "Stab": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "Crush": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "head, body": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "Hold": [
-"scripts/ui/forge.gd:691"
+"scripts/ui/forge.gd:803"
 ],
 "Metals": [
-"scripts/ui/forge.gd:693"
+"scripts/ui/forge.gd:805"
 ],
 "Wood, bone, stone": [
-"scripts/ui/forge.gd:693"
+"scripts/ui/forge.gd:805"
 ],
 "Gems": [
-"scripts/ui/forge.gd:693",
+"scripts/ui/forge.gd:805",
 "scripts/ui/forge_lesson.gd:26"
 ],
 "Blank anvil · build from nothing": [
-"scripts/ui/forge.gd:743"
+"scripts/ui/forge.gd:855"
 ],
 "Forge a new weapon from nothing": [
-"scripts/ui/forge.gd:745",
+"scripts/ui/forge.gd:857",
 "scripts/ui/smith_screen.gd:167"
 ],
 "%d%% · honing %d (%d Cut/Stab block)": [
-"scripts/ui/forge.gd:762"
+"scripts/ui/forge.gd:874"
 ],
 "%d%% · honing %d (%d Cut/Stab blocks)": [
-"scripts/ui/forge.gd:762"
+"scripts/ui/forge.gd:874"
 ],
 "1 · WHAT THE BLOCK DOES": [
-"scripts/ui/forge.gd:769"
+"scripts/ui/forge.gd:881"
 ],
 "2 · MATERIAL": [
-"scripts/ui/forge.gd:794"
+"scripts/ui/forge.gd:906"
 ],
 "  (soft: a poor edge)": [
-"scripts/ui/forge.gd:822"
+"scripts/ui/forge.gd:934"
 ],
 "Held in": [
-"scripts/ui/forge.gd:837"
+"scripts/ui/forge.gd:949"
 ],
 "One hand": [
-"scripts/ui/forge.gd:841"
+"scripts/ui/forge.gd:953"
 ],
 "Two hands": [
-"scripts/ui/forge.gd:841"
+"scripts/ui/forge.gd:953"
 ],
 "The grip is too short for two hands: two fists need a grip of 5 blocks or more": [
-"scripts/ui/forge.gd:850"
+"scripts/ui/forge.gd:962"
 ],
 "Swung in both hands: slower to start, much more behind each blow": [
-"scripts/ui/forge.gd:859"
+"scripts/ui/forge.gd:971"
 ],
 "In one hand: quick, the other hand free for a shield": [
-"scripts/ui/forge.gd:859"
+"scripts/ui/forge.gd:971"
 ],
 "✋ Main hand": [
-"scripts/ui/forge.gd:862"
+"scripts/ui/forge.gd:974"
 ],
 "✋ Other hand": [
-"scripts/ui/forge.gd:864"
+"scripts/ui/forge.gd:976"
 ],
 "Click the block where the main hand holds it (its ring: gold)": [
-"scripts/ui/forge.gd:874"
+"scripts/ui/forge.gd:986"
 ],
 "Click the block where the other hand holds it (its ring: bronze)": [
-"scripts/ui/forge.gd:874"
+"scripts/ui/forge.gd:986"
 ],
 "Put the main hand on a block: click it on the weapon": [
-"scripts/ui/forge.gd:879"
+"scripts/ui/forge.gd:991"
 ],
 "Put the other hand on a block: click it on the weapon": [
-"scripts/ui/forge.gd:879"
+"scripts/ui/forge.gd:991"
 ],
 "Throwable": [
-"scripts/ui/forge.gd:884",
+"scripts/ui/forge.gd:996",
 "scripts/game/forge_lib.gd:860"
 ],
 "Sharpness": [
-"scripts/ui/forge.gd:899"
+"scripts/ui/forge.gd:1011"
 ],
 "Sharpness: how easily the Cut and Stab blocks get into flesh and how deep they wound. Crush and Hold blocks have no edge: it does nothing for them and they cost no honing.\\nHoning each Cut or Stab block costs, by the sharpness set:\\n%s": [
-"scripts/ui/forge.gd:909"
+"scripts/ui/forge.gd:1021"
 ],
 "  %d%%: %.1f denarii a block": [
-"scripts/ui/forge.gd:909"
+"scripts/ui/forge.gd:1021"
 ],
 "Sharpness: only for Cut and Stab blocks (none on it yet)": [
-"scripts/ui/forge.gd:920"
-],
-"Left and right alike": [
-"scripts/ui/forge.gd:955"
-],
-"Front and back alike": [
-"scripts/ui/forge.gd:960"
-],
-"Redo": [
-"scripts/ui/forge.gd:970"
-],
-"Turn sharp block (R)": [
-"scripts/ui/forge.gd:971"
-],
-"Point at an Edge or a Point block and press R: it turns to face each way in turn": [
-"scripts/ui/forge.gd:972"
-],
-"An Edge or Point block faces away from the face you put it on; R turns the one under the mouse": [
-"scripts/ui/forge.gd:973"
-],
-"Surprise me": [
-"scripts/ui/forge.gd:987"
-],
-"Say where it is held before you save it: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:1016"
-],
-"Saved to My designs: \\\"%s\\\"": [
-"scripts/ui/forge.gd:1024"
-],
-"MY DESIGNS": [
-"scripts/ui/forge.gd:1029"
-],
-"Nothing saved yet": [
 "scripts/ui/forge.gd:1032"
 ],
-"Load": [
-"scripts/ui/forge.gd:1054"
+"Left and right alike": [
+"scripts/ui/forge.gd:1067"
 ],
-"Buy · %d": [
-"scripts/ui/forge.gd:1058"
+"Front and back alike": [
+"scripts/ui/forge.gd:1072"
 ],
-"Delete": [
-"scripts/ui/forge.gd:1063"
+"Redo": [
+"scripts/ui/forge.gd:1082"
 ],
-"Edge: cuts. Put it along the side of a blade or an axe head.": [
-"scripts/ui/forge.gd:1089"
+"Turn sharp block (R)": [
+"scripts/ui/forge.gd:1083"
 ],
-"Point: stabs and pierces armour. Put it at the tip.": [
-"scripts/ui/forge.gd:1090"
+"Point at an Edge or a Point block and press R: it turns to face each way in turn": [
+"scripts/ui/forge.gd:1084"
 ],
-"Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.": [
-"scripts/ui/forge.gd:1091"
+"An Edge or Point block faces away from the face you put it on; R turns the one under the mouse": [
+"scripts/ui/forge.gd:1085"
 ],
-"Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.": [
-"scripts/ui/forge.gd:1092"
-],
-"The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.": [
-"scripts/ui/forge.gd:1095"
-],
-"The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.": [
-"scripts/ui/forge.gd:1096"
-],
-"Softer and heavier: a fair edge that dulls sooner; good weight for a head.": [
-"scripts/ui/forge.gd:1097"
-],
-"Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.": [
-"scripts/ui/forge.gd:1098"
-],
-"Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.": [
+"Surprise me": [
 "scripts/ui/forge.gd:1099"
 ],
+"Say where it is held before you save it: build a Grip block, or ✋ Move hand": [
+"scripts/ui/forge.gd:1128"
+],
+"Saved to My designs: \\\"%s\\\"": [
+"scripts/ui/forge.gd:1136"
+],
+"MY DESIGNS": [
+"scripts/ui/forge.gd:1141"
+],
+"Nothing saved yet": [
+"scripts/ui/forge.gd:1144"
+],
+"Load": [
+"scripts/ui/forge.gd:1166"
+],
+"Buy · %d": [
+"scripts/ui/forge.gd:1170"
+],
+"Delete": [
+"scripts/ui/forge.gd:1175"
+],
+"Edge: cuts. Put it along the side of a blade or an axe head.": [
+"scripts/ui/forge.gd:1201"
+],
+"Point: stabs and pierces armour. Put it at the tip.": [
+"scripts/ui/forge.gd:1202"
+],
+"Blunt: the body of the weapon. It crushes and bruises, and holds the rest together.": [
+"scripts/ui/forge.gd:1203"
+],
+"Grip: where the hands hold it. Every weapon needs a few in a row at the bottom.": [
+"scripts/ui/forge.gd:1204"
+],
+"The blade metal: the keenest edge and point, holds them longest, rarely chips. Costs twice iron.": [
+"scripts/ui/forge.gd:1207"
+],
+"The cheap strong metal: a fair edge that dulls sooner than steel's, a little heavier; good for guards and heads.": [
+"scripts/ui/forge.gd:1208"
+],
+"Softer and heavier: a fair edge that dulls sooner; good weight for a head.": [
+"scripts/ui/forge.gd:1209"
+],
+"Heavy, soft and dazzling: the crowd roars at every blow it lands, the more gold the louder. A poor edge.": [
+"scripts/ui/forge.gd:1210"
+],
+"Heavy and brittle: a crushing hammer or mace head; an edge of it chips away.": [
+"scripts/ui/forge.gd:1211"
+],
 "Light and fairly hard: quick little blades and points, but they chip and snap.": [
-"scripts/ui/forge.gd:1100"
+"scripts/ui/forge.gd:1212"
 ],
 "Light and cheap: fast handles and long shafts that keep the weight out of the hand; no edge.": [
-"scripts/ui/forge.gd:1101"
+"scripts/ui/forge.gd:1213"
 ],
 "Next to weightless and soft: wraps a grip; hurts no one by itself.": [
-"scripts/ui/forge.gd:1102"
+"scripts/ui/forge.gd:1214"
 ],
 "The densest: a few blocks in a head give it a crushing weight and pull the balance out to it; in a pommel they balance a long blade.": [
-"scripts/ui/forge.gd:1103"
+"scripts/ui/forge.gd:1215"
 ],
 "Light, soft and squeaky: bounces off and barely hurts. For laughs.": [
-"scripts/ui/forge.gd:1104"
+"scripts/ui/forge.gd:1216"
 ],
 "Soft and slappy: knocks a man about with a loud slap, cuts nothing.": [
-"scripts/ui/forge.gd:1105"
+"scripts/ui/forge.gd:1217"
 ],
 "Hard and sharp, and chills whoever it cuts (he slows down); but it shatters fast.": [
-"scripts/ui/forge.gd:1106"
+"scripts/ui/forge.gd:1218"
 ],
 "Goes off when it strikes hard: a blast that hurts everyone close, you as well.": [
-"scripts/ui/forge.gd:1107"
+"scripts/ui/forge.gd:1219"
 ],
 "Bouncy: a blow springs back hard and knocks the man away. Boing.": [
-"scripts/ui/forge.gd:1108"
+"scripts/ui/forge.gd:1220"
 ],
 "Sticks to what it hits: the weapon stays in him, or he stays on it.": [
-"scripts/ui/forge.gd:1109"
+"scripts/ui/forge.gd:1221"
 ],
 "Weighs nothing, hurts no one: it tickles, and a laughing man drops his guard.": [
-"scripts/ui/forge.gd:1110"
+"scripts/ui/forge.gd:1222"
 ],
 "Pulls iron and steel to it: blades and armour are dragged in.": [
-"scripts/ui/forge.gd:1111"
+"scripts/ui/forge.gd:1223"
 ],
 "A gem socket of fire: a blow may set the part it strikes alight. More rubies, surer and fiercer flames. Costly.": [
-"scripts/ui/forge.gd:1112"
+"scripts/ui/forge.gd:1224"
 ],
 "A gem socket of frost: a blow may freeze the limb it strikes stiff and give it frostbite: the flesh there whitens, blackens and dies away, bloodless. More sapphires, a deeper frost. Costly.": [
-"scripts/ui/forge.gd:1113"
+"scripts/ui/forge.gd:1225"
 ],
 "A gem socket of venom: a blow may poison the wound, which festers and eats into the flesh. More emeralds, a stronger venom. Costly.": [
-"scripts/ui/forge.gd:1114"
+"scripts/ui/forge.gd:1226"
 ],
 "%s   Hardness %s   Weight %s": [
-"scripts/ui/forge.gd:1121"
-],
-"%s: %s  Hardness %s  Weight %s": [
-"scripts/ui/forge.gd:1127"
-],
-"Weight": [
-"scripts/ui/forge.gd:1133",
-"scripts/ui/forge.gd:1153"
-],
-"%.2f kg": [
-"scripts/ui/forge.gd:1154"
-],
-"%+.2f kg": [
-"scripts/ui/forge.gd:1165"
-],
-"BALANCE": [
-"scripts/ui/forge.gd:1191"
-],
-"The smith: \\\"%s\\\"": [
-"scripts/ui/forge.gd:1232"
-],
-"The dummy: %s  ·  %d voxels": [
 "scripts/ui/forge.gd:1233"
 ],
+"%s: %s  Hardness %s  Weight %s": [
+"scripts/ui/forge.gd:1239"
+],
+"Weight": [
+"scripts/ui/forge.gd:1245",
+"scripts/ui/forge.gd:1265"
+],
+"%.2f kg": [
+"scripts/ui/forge.gd:1266"
+],
+"%+.2f kg": [
+"scripts/ui/forge.gd:1277"
+],
+"BALANCE": [
+"scripts/ui/forge.gd:1303"
+],
+"The smith: \\\"%s\\\"": [
+"scripts/ui/forge.gd:1344"
+],
+"The dummy: %s  ·  %d voxels": [
+"scripts/ui/forge.gd:1345"
+],
 "Free in training": [
-"scripts/ui/forge.gd:1254"
+"scripts/ui/forge.gd:1366"
 ],
 "Kept in My designs, free. Made at the smith in the campaign it would cost %d denarii.": [
-"scripts/ui/forge.gd:1256"
+"scripts/ui/forge.gd:1368"
 ],
 "You have %d · you get %d back": [
-"scripts/ui/forge.gd:1260"
+"scripts/ui/forge.gd:1372"
 ],
 "You have %d · this costs %d (%d more needed)": [
-"scripts/ui/forge.gd:1262"
+"scripts/ui/forge.gd:1374"
 ],
 "You have %d · this costs %d": [
-"scripts/ui/forge.gd:1263"
+"scripts/ui/forge.gd:1375"
 ],
 "At the smith: %d denarii": [
-"scripts/ui/forge.gd:1288"
+"scripts/ui/forge.gd:1400"
 ],
 "You have %d   ·   You get %d back": [
-"scripts/ui/forge.gd:1294"
+"scripts/ui/forge.gd:1406"
 ],
 "You have %d   ·   This costs %d   (%d more needed)": [
-"scripts/ui/forge.gd:1297"
+"scripts/ui/forge.gd:1409"
 ],
 "You have %d   ·   This costs %d": [
-"scripts/ui/forge.gd:1300"
+"scripts/ui/forge.gd:1412"
 ],
 "MAIN": [
-"scripts/ui/forge.gd:1422"
+"scripts/ui/forge.gd:1534"
 ],
 "OTHER": [
-"scripts/ui/forge.gd:1422"
+"scripts/ui/forge.gd:1534"
 ],
 "Line: now click where it ends (right click: start again)": [
-"scripts/ui/forge.gd:1774"
+"scripts/ui/forge.gd:1879"
 ],
 "Too close to the other hand: two fists need 3 blocks between them": [
-"scripts/ui/forge.gd:1798"
+"scripts/ui/forge.gd:1903"
 ],
 "The main hand holds it here": [
-"scripts/ui/forge.gd:1803"
+"scripts/ui/forge.gd:1908"
 ],
 "The other hand holds it here": [
-"scripts/ui/forge.gd:1803"
+"scripts/ui/forge.gd:1908"
 ],
 "The hand holds it here": [
-"scripts/ui/forge.gd:1803"
+"scripts/ui/forge.gd:1908"
 ],
 "This edge faces right (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces left (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces up (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces down (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces front (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces back (R: turn it again)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This edge faces as the weapon's shape has it (R: turn it)": [
-"scripts/ui/forge.gd:1829"
+"scripts/ui/forge.gd:1934"
 ],
 "This point faces right (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces left (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces up (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces down (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces front (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces back (R: turn it again)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "This point faces as the weapon's shape has it (R: turn it)": [
-"scripts/ui/forge.gd:1830"
+"scripts/ui/forge.gd:1935"
 ],
 "Only a Cut or a Stab block turns: point at one and press R": [
-"scripts/ui/forge.gd:1837"
-],
-"A new block must touch the weapon": [
-"scripts/ui/forge.gd:1901"
-],
-"That is the most the anvil holds (%d voxels)": [
-"scripts/ui/forge.gd:1904"
-],
-"Not enough denarii for that": [
-"scripts/ui/forge.gd:1911"
-],
-"Cut through: %d blocks fall away": [
 "scripts/ui/forge.gd:1942"
 ],
+"A new block must touch the weapon": [
+"scripts/ui/forge.gd:2006"
+],
+"That is the most the anvil holds (%d voxels)": [
+"scripts/ui/forge.gd:2009"
+],
+"Not enough denarii for that": [
+"scripts/ui/forge.gd:2016"
+],
+"Cut through: %d blocks fall away": [
+"scripts/ui/forge.gd:2047"
+],
 "Next blocks: %s, %s": [
-"scripts/ui/forge.gd:2017"
+"scripts/ui/forge.gd:2122"
 ],
 "Mirror ⟷ %s, mirror ⇅ %s": [
-"scripts/ui/forge.gd:2025"
+"scripts/ui/forge.gd:2130"
 ],
 "On": [
-"scripts/ui/forge.gd:2025",
-"scripts/ui/forge.gd:2025"
+"scripts/ui/forge.gd:2130",
+"scripts/ui/forge.gd:2130"
 ],
 "Off": [
-"scripts/ui/forge.gd:2025",
-"scripts/ui/forge.gd:2025",
+"scripts/ui/forge.gd:2130",
+"scripts/ui/forge.gd:2130",
 "scripts/ui/menu.gd:3179",
 "scripts/ui/menu.gd:3255"
 ],
 "Taken up: %s, %s (the next blocks are made of it)": [
-"scripts/ui/forge.gd:2034"
+"scripts/ui/forge.gd:2139"
 ],
 "Not enough denarii for that (a keener edge costs more)": [
-"scripts/ui/forge.gd:2053"
+"scripts/ui/forge.gd:2158"
 ],
 "Quick start": [
 "scripts/ui/forge_lesson.gd:12"

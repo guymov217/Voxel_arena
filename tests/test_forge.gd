@@ -556,6 +556,107 @@ func test_the_whole_weapon_is_always_in_view() -> void:
 		t.check(_all_in_view(f), "%s built out long: F brings all of it into view (camera %.2f m off)" % [d.name, f.dist])
 		f.queue_free()
 
+## The forge's anvil stands in a smithy (user: there was only a huge tiled floor without end; the
+## background should fit the game and a smithy, the floor too): a room with a floor of its own,
+## four walls and a roof, the hearth and the rest stood in it, all riding on the floor under the
+## weapon. The weapon is lit as it always was: the room's fires light the room alone, the light
+## on the anvil lights of the room only its floor, and the room throws no shadow. A wall, or the
+## roof, is put away while the camera is out beyond it, and a thing on the floor while the camera
+## is in it or it stands before what the camera looks at. Nothing of it can be clicked.
+func test_the_anvil_stands_in_a_smithy() -> void:
+	var F = load("res://scripts/ui/forge.gd")
+	var missing := []
+	for m in ["forge_room", "forge_hearth", "forge_bellows", "forge_coal", "forge_trough", "forge_bench", "forge_grindstone", "forge_stump", "forge_barrel", "forge_sacks"]:
+		var n := VoxelArt.make(m)
+		if n == null:
+			missing.append(m)
+		else:
+			n.free()
+	t.check(missing.is_empty(), "every model of the smithy is there %s" % str(missing))
+	if not missing.is_empty():
+		return
+	var f = F.new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius").duplicate(true), 99999, func(_d, _c): pass)
+	await get_tree().process_frame
+	# The room: a floor that ends at its walls, the walls and the roof each on their own.
+	t.eq(f.room_sides.size(), F.ROOM_SIDES.size(), "its four walls and its roof")
+	var floors: Array = f.floor_.find_children("floor", "MeshInstance3D", true, false)
+	t.eq(floors.size(), 1, "one floor")
+	if floors.size() == 1:
+		var fb: AABB = (floors[0] as MeshInstance3D).get_aabb()
+		t.check(fb.size.x < F.ROOM.x * 2.0 + 1.2 and fb.size.z < F.ROOM.z * 2.0 + 1.2 and fb.size.x > F.ROOM.x * 2.0 and fb.size.z > F.ROOM.z * 2.0, "the floor is the room's own, wall to wall (%.1f by %.1f m)" % [fb.size.x, fb.size.z])
+		t.check(absf(fb.end.y) < 0.06, "its top where the anvil stands (%.2f)" % fb.end.y)
+	var bare := []
+	for k in F.ROOM_SIDES:
+		var side: Node3D = f.room_sides[k]
+		if side.get_parent() != f.floor_ or side.find_children("*", "MeshInstance3D", true, false).is_empty():
+			bare.append(k)
+	t.check(bare.is_empty(), "each of them built, and riding on the floor %s" % str(bare))
+	t.check(f.decor.size() >= 20, "the hearth and the rest stand in it (%d things)" % f.decor.size())
+	t.check(f.floor_.find_children("*", "CollisionObject3D", true, false).is_empty(), "nothing in it for the mouse to touch")
+	# The light: the weapon in the light it always stood in.
+	var lit_wrong := []
+	for c in f.floor_.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		var is_floor := String(mi.name) == "floor"
+		if (mi.layers & F.ROOM_LAYER) == 0 or ((mi.layers & 1) != 0) != is_floor:
+			lit_wrong.append(String(mi.name))
+	t.check(lit_wrong.is_empty(), "the room on its own layer, only its floor in the anvil's light as well %s" % str(lit_wrong.slice(0, 4)))
+	for k in F.ROOM_SIDES:
+		for c in (f.room_sides[k] as Node3D).get_children():
+			if c is MeshInstance3D:
+				t.eq((c as MeshInstance3D).cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the %s side throws no shadow" % k)
+	t.check((f.vox_mi.layers & F.ROOM_LAYER) == 0, "the weapon is not on the room's layer")
+	var suns: Array = f.viewport.find_children("*", "DirectionalLight3D", true, false)
+	t.check(suns.size() == 1 and ((suns[0] as Light3D).light_cull_mask & F.ROOM_LAYER) == 0, "the light on the anvil leaves the room's walls alone")
+	t.check(f.fire_lights.size() >= 3, "the hearth and the braziers give light (%d fires)" % f.fire_lights.size())
+	for fl in f.fire_lights:
+		t.eq((fl[0] as Light3D).light_cull_mask, F.ROOM_LAYER, "a fire lights the room alone")
+	# A wall put away while the camera is out beyond it.
+	t.check(F.room_side_hidden("n", Vector3(0, 1, -F.ROOM.z - 1.0)) and not F.room_side_hidden("n", Vector3(0, 1, 0)), "the north wall: away from beyond it, there from inside")
+	t.check(F.room_side_hidden("roof", Vector3(0, F.ROOM.y + 1.0, 0)) and not F.room_side_hidden("roof", Vector3(0, 1.5, 0)), "the roof: away from above it")
+	f.moved = true
+	f.orbit = Vector2(0.0, 0.2)
+	f.dist = 9.0
+	f._place_camera()
+	var seen := func() -> String:
+		var out := ""
+		for k in F.ROOM_SIDES:
+			out += k + " " if (f.room_sides[k] as Node3D).visible else ""
+		return out.strip_edges()
+	t.eq(seen.call(), "n e w roof", "backed out to the south: the south wall is put away, the rest stand")
+	f.orbit = Vector2(PI * 0.5, 0.3)
+	f._place_camera()
+	t.eq(seen.call(), "n s w", "backed up and out to the east: the roof and the east wall put away")
+	f.orbit = Vector2(0.6, 1.3)
+	f._place_camera()
+	t.eq(seen.call(), "n s e w", "straight up over the anvil: only the roof")
+	f.orbit = Vector2(0.6, 0.35)
+	f.dist = 1.5
+	f._place_camera()
+	t.eq(seen.call(), "n s e w roof", "up close again: all of it stands")
+	# A thing on the floor put away while the camera is in it, or it hides the anvil.
+	var hearth: Node3D = null
+	for c in f.decor:
+		if ((c as Node3D).get_meta("decor_box") as AABB).has_point(Vector3(-2.4, 1.0, -F.ROOM.z + 0.6)):
+			hearth = c
+	t.check(hearth != null and hearth.visible, "the hearth stands against the north wall, in view")
+	if hearth:
+		var home: Vector3 = f.floor_.global_position
+		f.cam.global_position = home + Vector3(-2.4, 1.0, -F.ROOM.z + 0.6)
+		f._decor_update()
+		t.check(not hearth.visible, "the camera in the hearth: it is put away")
+		f.focus = home + Vector3(0, 0.5, 0)
+		f.cam.global_position = home + Vector3(-2.4, 1.2, -F.ROOM.z - 2.0)
+		f._decor_update()
+		t.check(not hearth.visible, "the hearth between the camera and the anvil: put away")
+		f.cam.global_position = home + Vector3(2.5, 1.2, 2.5)
+		f._decor_update()
+		t.check(hearth.visible, "and back where it does not hide the anvil")
+	f.queue_free()
+
 func _all_in_view(f) -> bool:
 	var vs: float = Data.weapon_voxel
 	for k in f.cells:

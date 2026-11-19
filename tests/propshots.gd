@@ -5,7 +5,8 @@ extends Node3D
 
 const NAMES := ["brazier", "gate_door", "statue", "amphora", "amphora_wide", "crate", "weapon_rack",
 	"throne", "sign_post", "target", "smithy", "market_stall", "notice_board", "physician", "column",
-	"banner", "spike_plate", "bomb", "forge_anvil"]
+	"banner", "spike_plate", "bomb", "forge_anvil", "forge_hearth", "forge_bellows", "forge_coal", "forge_trough",
+	"forge_bench", "forge_grindstone", "forge_stump", "forge_barrel", "forge_sacks"]
 
 var cam: Camera3D
 
