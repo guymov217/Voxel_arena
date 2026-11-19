@@ -761,16 +761,26 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			var side: String = c.item_hand() if c.held_item != null else throw_side(c, inp)
 			if c.held_item != null or c.weapons.get(side):
 				var player: bool = e.kind == "local" or e.kind == "remote"
-				e.throw_q = {"inp": inp.duplicate(), "t": 0.09 if player else 0.45, "side": side}
-				c.throw_anim = {"side": side, "phase": "follow" if player else "wind", "t": 0.4 if player else 0.45}
+				# A spear leaves the hand over the shoulder, at the top of the hand's speed. A bot's
+				# too: it left the bot's drawn-back hand before the arm had moved, so its wind-up is
+				# that much shorter and the spear leaves as long after the bot chose to throw as ever.
+				var go: float = SPEAR_GO if c.held_item == null and c.weapons[side].point_first() else 0.0
+				e.throw_q = {"inp": inp.duplicate(), "t": (go if go > 0.0 else 0.09) if player else 0.45 - go, "side": side, "go": 0.0 if player else go}
+				c.throw_anim = {"side": side, "phase": "follow" if player else "wind", "t": 0.4 if player else 0.45 - go}
 		if e.has("throw_q"):
 			e.throw_q.t -= dt
 			if e.throw_q.t <= 0.0:
 				var q: Dictionary = e.throw_q
-				e.erase("throw_q")
-				if c.alive:
-					_throw(e, q.inp, q.side)
-					c.throw_anim = {"side": q.side, "phase": "follow", "t": 0.35}
+				if float(q.get("go", 0.0)) > 0.0 and c.alive:
+					# (A bot's spear, drawn back: now the arm drives, and it leaves the hand on the way.)
+					q.t = q.go
+					q.go = 0.0
+					c.throw_anim = {"side": q.side, "phase": "follow", "t": 0.4}
+				else:
+					e.erase("throw_q")
+					if c.alive:
+						_throw(e, q.inp, q.side)
+						c.throw_anim = {"side": q.side, "phase": "follow", "t": 0.35}
 	if inp.get("taunt", false):
 		taunt(e)
 	if inp.get("shove", false):
@@ -833,6 +843,7 @@ static func throw_side(c, inp: Dictionary) -> String:
 ## sky (user: each throw at another angle). It is drawn in along the line it is seen along
 ## (`from`, the crosshair's eye), so it stays under the crosshair.
 const THROW_MARK := 18.0
+const SPEAR_GO := 0.07   # s from the arm's drive forward to a spear leaving the hand
 static func aim_ahead(c, at: Vector3, look, from = null) -> Vector3:
 	if look == null:
 		return at

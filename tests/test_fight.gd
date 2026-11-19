@@ -187,12 +187,17 @@ func test_throws_wind_up_and_fly_true() -> void:
 		t.check(spins[k][0] > 5.0 and spins[k][1] < 0.2, "the %s turns end over end (spin %.1f, along the flight %.2f)" % [k, spins[k][0], spins[k][1]])
 	w.queue_free()
 
-## A spear is thrown from where it balances, the arm drawn back and then driven forward (user: the
-## javelin was held a third of the way up its shaft where it balances two thirds of the way, the arm
-## stayed stretched out before the shoulder through the whole wind-up, and the spear left a hand
-## that had hardly moved). The wind-up shifts the hold up the shaft and draws the hand back to the
-## shoulder, a throw called off puts the hold back at the grip, and the throw drives the hand out.
-func test_a_spear_is_held_at_its_balance_and_thrown_from_a_drawn_back_arm() -> void:
+## A spear is thrown as a javelin is, over the shoulder, from where it balances (user: the javelin
+## was held a third of the way up its shaft where it balances two thirds of the way, the arm stayed
+## stretched out before the shoulder through the whole wind-up, and the spear left a hand that had
+## hardly moved; then, of a hold drawn back at the shoulder's height: spears are thrown over the
+## shoulder). The wind-up shifts the hold up the shaft and takes the hand up over the shoulder and
+## behind it, the spear level on the line it will fly, beside the head, the forearm standing up to
+## it; the throw drives the hand forward over the shoulder, the spear still on its line; a throw
+## called off puts the hold back at the grip, the fist closed on the shaft as it was. That hold is
+## the throw's alone (user: only when the player presses to throw the spear): carried, the spear
+## is held as it always was, at its grip, low before the shoulder, down the forearm's line.
+func test_a_spear_is_thrown_over_the_shoulder_from_its_balance() -> void:
 	var w := _world()
 	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "javelin"}, {"name": "A"})
 	var rest := func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}}
@@ -202,6 +207,7 @@ func test_a_spear_is_held_at_its_balance_and_thrown_from_a_drawn_back_arm() -> v
 	if sp == null:
 		w.queue_free()
 		return
+	var aim := Vector3(0, 1.3, 14.0)
 	var shaft := func() -> Array:   # [butt, unit vector up the shaft, its length]
 		var box := sp.local_box()
 		var c := box.get_center()
@@ -211,34 +217,54 @@ func test_a_spear_is_held_at_its_balance_and_thrown_from_a_drawn_back_arm() -> v
 	var along := func(p: Vector3) -> float:   # (how far up the shaft: 0 the butt, 1 the point)
 		var sh: Array = shaft.call()
 		return ((p - (sh[0] as Vector3)).dot(sh[1]) / float(sh[2]))
-	var ahead := func() -> float:   # (the hand before the right shoulder)
-		return (f.hand_world("R") - f.torso.global_transform * (f.shoulder["R"] as Vector3)).z
+	var from_shoulder := func() -> Vector3:   # (the hand from the right shoulder: y up, z ahead)
+		return f.hand_world("R") - f.torso.global_transform * (f.shoulder["R"] as Vector3)
+	var fore_line := func() -> Vector3:   # (the forearm's line, elbow to hand)
+		return (PD.quat_of(f.arm.R.fore) * Vector3.DOWN).normalized()
+	var off_line := func() -> float:   # (deg between the shaft and the line from the hand to the mark)
+		return rad_to_deg(((shaft.call() as Array)[1] as Vector3).angle_to((aim - f.hand_world("R")).normalized()))
 	var balance: float = along.call(sp.global_transform * sp.center_of_mass)
 	var carried: float = along.call(f.hand_world("R"))
-	var ahead0: float = ahead.call()
 	t.check(balance > carried + 0.2, "it balances well up the shaft from where it is carried (%.2f against %.2f)" % [balance, carried])
-	var aim := Vector3(0, 1.3, 14.0)
+	var low: Vector3 = from_shoulder.call()
+	var lay0: float = rad_to_deg((fore_line.call() as Vector3).angle_to((shaft.call() as Array)[1]))
+	t.check(float(f.throw_hold["R"]) == 0.0 and not f.throw_loose["R"] and low.y < 0.0 and low.z > 0.2 * f.S and lay0 < 10.0, "carried, it is held at the grip, low before the shoulder, down the forearm (the hand %.2f m under the shoulder, %.2f m before it; %.0f deg off the forearm's line)" % [-low.y, low.z, lay0])
 	await _step(w, 132, func(_f, i): return {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}, "charging": minf(1.0, float(i + 1) / 132.0), "aimAt": aim})
 	var held: float = along.call(f.hand_world("R"))
 	var sh1: Array = shaft.call()
-	var off_shaft: float = (f.hand_world("R") - (sh1[0] as Vector3) - (sh1[1] as Vector3) * held * float(sh1[2])).length()
+	var axis: Vector3 = sh1[1]
+	var off_shaft: float = (f.hand_world("R") - (sh1[0] as Vector3) - axis * held * float(sh1[2])).length()
 	t.check(absf(held - balance) < 0.1, "wound up, the hand holds it at its balance (%.2f, balance %.2f)" % [held, balance])
 	t.check(off_shaft < 0.03 and f.weapons.R == sp, "still in the fist (%.0f cm off the shaft)" % (off_shaft * 100.0))
-	var drawn: float = ahead.call()
-	t.check(drawn < 0.3 and drawn < ahead0 - 0.15, "and the arm is drawn back to the shoulder (the hand %.2f m before it, from %.2f)" % [drawn, ahead0])
-	# Driven forward: the hand goes out fast ahead of the shoulder.
+	var up0: Vector3 = from_shoulder.call()
+	t.check(up0.y > 0.18 * f.S and up0.z < -0.1 * f.S, "the hand is up over the shoulder and behind it (%.2f m over, %.2f m behind)" % [up0.y, -up0.z])
+	var line: Vector3 = fore_line.call()
+	t.check(line.y > 0.7 and rad_to_deg(line.angle_to(axis)) > 45.0, "the forearm stands up to the spear, across it (its line %.2f up, %.0f deg from the shaft)" % [line.y, rad_to_deg(line.angle_to(axis))])
+	t.check(float(off_line.call()) < 10.0, "the spear lies on the line to the mark (%.0f deg off)" % float(off_line.call()))
+	var to_head: Vector3 = f.head.global_position - f.hand_world("R")
+	var clear: float = (to_head - axis * to_head.dot(axis)).length()
+	t.check(clear > 0.2 * f.S, "beside the head, clear of it (%.0f cm from its middle)" % (clear * 100.0))
+	# Driven forward over the shoulder: the hand goes out fast, the spear still on its line.
 	f.throw_anim = {"side": "R", "phase": "follow", "t": 0.4}
 	var top := 0.0
-	for i in 10:
+	var strayed := 0.0
+	for i in 8:
 		f.control(1.0 / 120.0, {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}, "aimAt": aim})
 		await get_tree().physics_frame
 		top = maxf(top, f.arm.R.fore.velocity_at(f.hand_world("R")).length())
-	t.check(top > 5.0 and float(ahead.call()) > drawn + 0.25, "the throw drives the hand out (%.1f m/s; %.2f m further out)" % [top, float(ahead.call()) - drawn])
-	# A throw called off: the hold goes back to the grip.
+		strayed = maxf(strayed, float(off_line.call()))
+	var out: Vector3 = from_shoulder.call()
+	t.check(top > 7.0 and out.z > up0.z + 0.3 * f.S and out.y > 0.18 * f.S, "the throw drives the hand forward over the shoulder (%.1f m/s; %.2f m further on, %.2f m over it)" % [top, out.z - up0.z, out.y])
+	t.check(strayed < 12.0 and f.weapons.R == sp, "the spear on its line all the way (%.0f deg off at most)" % strayed)
+	# A throw called off: the hold goes back to the grip, and the fist closes on the shaft again.
 	f.throw_anim = null
-	await _step(w, 100, rest)
+	await _step(w, 130, rest)
 	var back: float = along.call(f.hand_world("R"))
 	t.check(absf(back - carried) < 0.06 and f.weapons.R == sp, "a throw called off, the hold is back at the grip (%.2f, from %.2f)" % [back, carried])
+	var lay: float = rad_to_deg((fore_line.call() as Vector3).angle_to((shaft.call() as Array)[1]))
+	t.check(not f.throw_loose["R"] and lay < 10.0, "and the spear lies along the forearm again, the fist closed on it (%.0f deg off)" % lay)
+	var again: Vector3 = from_shoulder.call()
+	t.check(again.y < 0.0 and again.z > 0.2 * f.S, "carried again as it was, low before the shoulder (the hand %.2f m under it, %.2f m before it)" % [-again.y, again.z])
 	w.queue_free()
 
 ## A weapon held in both hands is thrown with one: while it is wound up the other hand lets go of

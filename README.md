@@ -145,15 +145,23 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   whatever parts of him it crosses. A front kick shifts the weight onto the standing foot as the
   knee comes up, drives the foot out, draws it back in and sets it down (`kick_pose`); it
   strikes only on its way out (`kick_strike`).
-- **A spear is thrown as one is** (user: the javelin was held a third of the way up its shaft where
-  it balances two thirds of the way, and its wind-up never drew the arm back): winding up (F held,
-  or a bot's wind-up) the hand shifts its hold up the shaft to just behind the balance point over
-  0.12 s, the spear coming through the fist (`Weapon.throw_point`, `Fighter._throw_hold`: the weapon's
-  end of the grip's 6-DOF joint is moved along the shaft), and back at the grip if the throw is
-  not made; the arm swings back round the outside of the body, up and out, to the shoulder (an
-  arm turned that far was sent round the front by `Fighter._route_front`, and stayed there, the
-  hand stretched out before the shoulder through the whole wind-up: `out_x`), and the throw drives
-  the hand out, the spear leaving it at the peak of its speed (`tests/test_fight.gd`).
+- **A spear is thrown as a javelin is, over the shoulder** (user: the javelin was held a third of
+  the way up its shaft where it balances two thirds of the way, and its wind-up never drew the arm
+  back; then, of a hold drawn back at the shoulder's height: spears are thrown over the shoulder;
+  and that hold only when the player presses to throw). Carried, a spear is held as it always was.
+  Only while winding up to throw (F held, or a bot's wind-up) the hand shifts its hold up the
+  shaft to just behind the balance point over 0.12 s, the spear coming through the fist
+  (`Weapon.throw_point`, `Fighter._throw_hold`, `_throw_grip`: the grip's 6-DOF joint is made
+  again with its weapon end moved along the shaft), and goes up over the shoulder and behind it,
+  by the head (`THROW_HAND`), the spear level on the line it will fly and the forearm standing up
+  to it from an elbow back and out (`throw_fore`; the elbow goes round the outside of the body,
+  `Fighter._route_front`'s `out_x`). The shaft lies across the fist there, not down the forearm:
+  the fist is loose on it (the joint a ball while the throw lasts) and the wrist holds the spear
+  on its line (`_drive_shaft`). The throw drives the hand forward over the shoulder (`THROW_OUT`)
+  and the spear leaves it at the top of its speed, 0.07 s on (`Social.SPEAR_GO`); a bot's too,
+  which left its drawn-back hand before the arm had moved. A throw called off, the hold goes back
+  to the grip and the fist closes on the shaft when it lies along the forearm again
+  (`THROW_LOCK_ANGLE`). (`tests/test_fight.gd`, `tests/test_social.gd`.)
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A kick at a man down at
   one's feet (lying, sitting, on his knees) is a stamp: the knee comes up and the foot is driven
   down onto him, where he is while the knee is up (`tests/stompprobe.gd`). A giant's blows vary:

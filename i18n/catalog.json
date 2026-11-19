@@ -3127,38 +3127,38 @@
 "scripts/fighter/weapon.gd:921"
 ],
 "Blade arm": [
-"scripts/fighter/fighter.gd:688",
+"scripts/fighter/fighter.gd:691",
 "scripts/game/body.gd:16"
 ],
 "Armor_": [
-"scripts/fighter/fighter.gd:1175"
+"scripts/fighter/fighter.gd:1178"
 ],
 "Eyeball": [
-"scripts/fighter/fighter.gd:3091"
+"scripts/fighter/fighter.gd:3149"
 ],
 "The grip is too short for two hands": [
-"scripts/fighter/fighter.gd:3378"
+"scripts/fighter/fighter.gd:3436"
 ],
 "Your left hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3380"
+"scripts/fighter/fighter.gd:3438"
 ],
 "Your right hand holds the %s: swap hands (J) or throw it (F) first": [
-"scripts/fighter/fighter.gd:3380"
+"scripts/fighter/fighter.gd:3438"
 ],
 "Your right arm is broken: the weapon stays in your left hand": [
-"scripts/fighter/fighter.gd:3386"
+"scripts/fighter/fighter.gd:3444"
 ],
 "Your left arm is broken: the weapon stays in your right hand": [
-"scripts/fighter/fighter.gd:3386"
+"scripts/fighter/fighter.gd:3444"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7610"
+"scripts/fighter/fighter.gd:7706"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7626"
+"scripts/fighter/fighter.gd:7722"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9657",
+"scripts/fighter/fighter.gd:9753",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -4663,12 +4663,12 @@
 "Your right hand is full": [
 "scripts/game/social.gd:66",
 "scripts/game/social.gd:253",
-"scripts/game/social.gd:934"
+"scripts/game/social.gd:945"
 ],
 "Your left hand is full": [
 "scripts/game/social.gd:66",
 "scripts/game/social.gd:253",
-"scripts/game/social.gd:934"
+"scripts/game/social.gd:945"
 ],
 "%s grabbed %s by the %s with both hands": [
 "scripts/game/social.gd:229"
@@ -4690,11 +4690,11 @@
 ],
 "Your right hand cannot reach him": [
 "scripts/game/social.gd:258",
-"scripts/game/social.gd:936"
+"scripts/game/social.gd:947"
 ],
 "Your left hand cannot reach him": [
 "scripts/game/social.gd:258",
-"scripts/game/social.gd:936"
+"scripts/game/social.gd:947"
 ],
 "%s gets both hands on %s": [
 "scripts/game/social.gd:263"
@@ -4737,7 +4737,7 @@
 ],
 "%s lands hard!": [
 "scripts/game/social.gd:597",
-"scripts/game/social.gd:1159"
+"scripts/game/social.gd:1170"
 ],
 "%s shoved %s to the sand": [
 "scripts/game/social.gd:645"
@@ -4746,40 +4746,40 @@
 "scripts/game/social.gd:725"
 ],
 "%s tore free of %s's grip!": [
-"scripts/game/social.gd:890"
+"scripts/game/social.gd:901"
 ],
 "Grabbed! Mash SPACE or hit his arm": [
-"scripts/game/social.gd:894"
+"scripts/game/social.gd:905"
 ],
 "%s let go": [
-"scripts/game/social.gd:952"
+"scripts/game/social.gd:963"
 ],
 "%s wriggled free": [
-"scripts/game/social.gd:960"
+"scripts/game/social.gd:971"
 ],
 "The Hand of Jupiter is spent for this bout": [
-"scripts/game/social.gd:1005"
+"scripts/game/social.gd:1016"
 ],
 "The grip needs a moment (%d s)": [
-"scripts/game/social.gd:1008"
+"scripts/game/social.gd:1019"
 ],
 "The grip closes on nothing: look at a foe (no giants)": [
-"scripts/game/social.gd:1034"
+"scripts/game/social.gd:1045"
 ],
 "%s seizes %s in an unseen grip! He hangs where you look: F hurls him.": [
-"scripts/game/social.gd:1045"
+"scripts/game/social.gd:1056"
 ],
 "%s seizes %s in an unseen grip!": [
-"scripts/game/social.gd:1045"
+"scripts/game/social.gd:1056"
 ],
 "the hand of Jupiter": [
-"scripts/game/social.gd:1049"
+"scripts/game/social.gd:1060"
 ],
 "The grip on %s lets go": [
-"scripts/game/social.gd:1096"
+"scripts/game/social.gd:1107"
 ],
 "%s HURLS %s!": [
-"scripts/game/social.gd:1137"
+"scripts/game/social.gd:1148"
 ],
 "BOOM!": [
 "scripts/game/throwables.gd:747",

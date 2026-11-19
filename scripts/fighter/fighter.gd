@@ -235,6 +235,9 @@ var throwing := {"R": false, "L": false}   # that arm winding up or letting go a
 var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust (0 none)
 var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
 var throw_hold := {"R": 0.0, "L": 0.0}       # how far that hand has shifted its hold on a spear to throw it: 0 its grip .. 1 its balance
+var throw_fore := {"R": Vector3.ZERO, "L": Vector3.ZERO}   # the line that forearm lies on, elbow to hand, with a spear held to be thrown (the body's frame)
+var throw_loose := {"R": false, "L": false}   # that fist is loose on a spear held to be thrown: the shaft turns in it (_throw_grip), the wrist holds its line (_drive_shaft)
+var throw_loose_t := {"R": 0.0, "L": 0.0}     # for how long it has been loose with the throw given up
 var thrust_aim := {"R": null, "L": null}   # {dir, k}: the line a thrust holds the blade on
 var thrust_line := {"R": null, "L": null}   # {o, dir, t}: a thrust's line in the body's frame
 var spear_true := {"R": 0.0, "L": 0.0}   # a couched spear's line turned by what it misses by aside (_spear_trued)
@@ -1936,6 +1939,7 @@ func release(side: String) -> Weapon:
 	if fixed_hand[side] and not arm[side].fore.severed:
 		return null
 	throw_hold[side] = 0.0
+	throw_loose[side] = false
 	if weapon_joints[side]:
 		weapon_joints[side].queue_free()
 		weapon_joints[side] = null
@@ -2718,33 +2722,67 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 			_attach_off_hand(w)
 	return true
 
-## A spear thrown is held where it balances (user: the spear held at the right point). As the arm
-## draws back to throw, the hand shifts its hold along the shaft from the grip to the spear's
-## point of balance (Weapon.throw_point), and back again if the throw is not made. The fist holds
-## the shaft at one point (the weapon's end of the grip joint, _grip_joint): that point is moved
-## along it, a little a step, and the spear comes through the fist to it.
+## A spear thrown is held where it balances, across the hand (user: the spear held at the right
+## point; and over the shoulder, as a javelin is thrown). As the arm draws back to throw, the hand
+## shifts its hold along the shaft from the grip to the spear's point of balance
+## (Weapon.throw_point), and the fist goes loose on it: carried, a weapon is welded down the
+## forearm's line, and held at its middle that way half the shaft ran back through the arm; held
+## to be thrown the shaft turns in the fist (the grip joint holds its one point, _throw_grip), the
+## wrist keeping it on the line it will fly (_drive_shaft) while the forearm stands up to the hand
+## from the elbow and then comes over with the throw. The throw given up, the hold goes back to
+## the grip and, with the forearm down the shaft's line again, the fist closes on it as it was.
 const THROW_SHIFT_T := 0.12
+const THROW_HAND := Vector3(0.02, 0.33, 0.0)   # the hand wound up, from its shoulder (of S): out, up, forward; and
+const THROW_HAND_BACK := -0.2                   # as far back as this at the full wind-up
+const THROW_OUT := Vector3(0.05, 0.42, 0.55)   # where the throw drives it
+const THROW_LOCK_ANGLE := 0.14   # rad: the forearm this near the shaft's line, the fist closes on it again
+const THROW_LOCK_T := 0.7        # s: or after this long
 const G6_GET_PARAM := ["get_param_x", "get_param_y", "get_param_z"]
 const G6_GET_FLAG := ["get_flag_x", "get_flag_y", "get_flag_z"]
 func _throw_hold(side: String, w, on: bool, dt: float) -> void:
-	var k: float = throw_hold[side]
 	if w == null or not is_instance_valid(w) or weapon_joints[side] == null or not is_instance_valid(weapon_joints[side]):
 		throw_hold[side] = 0.0
+		throw_loose[side] = false
 		return
-	var want := 1.0 if on else 0.0
-	if is_equal_approx(k, want):
-		return
+	throw_hold[side] = move_toward(float(throw_hold[side]), 1.0 if on else 0.0, dt / THROW_SHIFT_T)
+
+## How far that hand's hold is the throw's (0 the carry's .. 1), eased.
+func _throw_over(side: String) -> float:
+	var k: float = throw_hold[side]
+	return k * k * (3.0 - 2.0 * k)
+
+## The forearm's turn on the line `f_dir` (elbow to hand) from an upper arm on `u_dir`: its hinge
+## across the two, no twist in the elbow.
+func _fore_across(fore: VoxelPart, f_dir: Vector3, u_dir: Vector3) -> Quaternion:
+	var x := f_dir.cross(u_dir)
+	if x.length_squared() < 1e-4:
+		x = PD.quat_of(fore) * Vector3.RIGHT
+		x -= f_dir * x.dot(f_dir)
+		if x.length_squared() < 1e-6:
+			x = f_dir.cross(Vector3.UP if absf(f_dir.y) < 0.9 else Vector3.FORWARD)
+	x = x.normalized()
+	return PD.quat_from_axes(x, -f_dir, x.cross(-f_dir))
+
+## The grip joint made again for a spear held to be thrown: its hold moved along the shaft by how
+## far the throw's hold is taken (_throw_over), and `loose`, a ball there (the shaft free to turn
+## in the fist every way) where it is a weld down the forearm's line.
+func _throw_grip(side: String, w: Weapon, loose: bool) -> void:
 	var j = weapon_joints[side]
 	if not (j is Generic6DOFJoint3D) or not j.has_meta("frame_b"):
 		return
-	k = move_toward(k, want, dt / THROW_SHIFT_T)
-	throw_hold[side] = k
-	var e := k * k * (3.0 - 2.0 * k)
-	var fb: Transform3D = j.get_meta("frame_b")
-	fb.origin += ((w as Weapon).throw_point() - (w as Weapon).grip_main) * e
 	var g := j as Generic6DOFJoint3D
+	var e := _throw_over(side)
+	var was = g.get_meta("grip_now") if g.has_meta("grip_now") else [0.0, false]
+	if is_equal_approx(float(was[0]), e) and bool(was[1]) == loose:
+		return
+	if e <= 0.0 and not loose:
+		g.remove_meta("grip_now")
+	else:
+		g.set_meta("grip_now", [e, loose])
+	var fb: Transform3D = g.get_meta("frame_b")
+	fb.origin += (w.throw_point() - w.grip_main) * e
 	var rid: RID = g.get_rid()
-	PhysicsServer3D.joint_make_generic_6dof(rid, arm[side].fore.get_rid(), g.get_meta("frame_a"), (w as Weapon).get_rid(), fb)
+	PhysicsServer3D.joint_make_generic_6dof(rid, arm[side].fore.get_rid(), g.get_meta("frame_a"), w.get_rid(), fb)
 	# (A joint made through the server has none of the node's settings, its locked axes and its
 	# free wrist among them: they are given it again.)
 	for axis in 3:
@@ -2752,6 +2790,26 @@ func _throw_hold(side: String, w, on: bool, dt: float) -> void:
 			PhysicsServer3D.generic_6dof_joint_set_param(rid, axis as Vector3.Axis, p as PhysicsServer3D.G6DOFJointAxisParam, g.call(G6_GET_PARAM[axis], p))
 		for f in 6:
 			PhysicsServer3D.generic_6dof_joint_set_flag(rid, axis as Vector3.Axis, f as PhysicsServer3D.G6DOFJointAxisFlag, g.call(G6_GET_FLAG[axis], f))
+		if loose:
+			PhysicsServer3D.generic_6dof_joint_set_flag(rid, axis as Vector3.Axis, PhysicsServer3D.G6DOF_JOINT_FLAG_ENABLE_ANGULAR_LIMIT, false)
+
+## A spear loose in the fist to be thrown is held on its line by the wrist: turned onto the line the
+## aim gives it (where it will fly) and kept there while the forearm goes round it, its own weight
+## about the fist carried. The push goes into the trunk.
+const SHAFT_WN := 24.0
+func _drive_shaft(side: String, w: Weapon, w_aim: Quaternion, strength: float, dt: float) -> void:
+	var ax := PD.quat_of(w) * Vector3.UP
+	var want := w_aim * Vector3.UP
+	var c := ax.cross(want)
+	var err := c.normalized() * ax.angle_to(want) if c.length_squared() > 1e-10 else Vector3.ZERO
+	var rel := w.angular_velocity - (aim_w[side] as Vector3)
+	rel -= ax * rel.dot(ax)
+	var lever := (w.global_transform * w.center_of_mass) - hand_world(side)
+	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
+	var tq := (err * SHAFT_WN * SHAFT_WN - rel * (2.0 * SHAFT_WN)) * i_wpn + lever.cross(Vector3(0, w.mass * gravity, 0))
+	tq = PD.clamp_len(tq, 160.0 * maxf(0.3, strength) * MS * S * float(mods.strength))
+	w.apply_torque_impulse(tq * dt)
+	torso.apply_torque_impulse(-tq * dt)
 
 ## The arm model of any throw (launchVelocity): how fast the hand can send `mass` off, and the
 ## elevation that lands it on `aim_at` (the lower of the two arcs), with a little scatter.
@@ -5473,12 +5531,24 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var spear: bool = w != null and w.point_first() and held_item == null
 	throw_pose[side] = spear and down_hp == null and (winding or following)
 	_throw_hold(side, w, throw_pose[side], dt)
+	var throw_mark = null   # (a spear held to be thrown: where its hand is, from its shoulder)
 	if down_hp == null and (winding or following):
 		if spear:
-			# A spear: drawn back level above the shoulder, point at the mark, then driven
-			# straight forward and a little down along the line it will fly.
+			# A spear is thrown as a javelin is, over the shoulder (user: not held at the shoulder
+			# with the arm folded and the shaft down the forearm): the hand up by the head, over
+			# and a little behind its shoulder, the spear level across it, the forearm standing
+			# up to it from an elbow out and back at the shoulder's height; then driven forward
+			# and up over the shoulder along the line it will fly.
 			down_hp = {"x": (0.45 if side == "R" else -0.45), "y": 1.05} if winding else {"x": (-0.15 if side == "R" else 0.15), "y": 0.55}
-			thrust = -1.3 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.4
+			var wound := clampf(charging if ta == null else 1.0 - float(ta.t) / 0.45, 0.0, 1.0)
+			thrust = -1.3 * maxf(0.5, wound) if winding else 1.4
+			var out_x := -1.0 if side == "R" else 1.0
+			if winding:
+				throw_mark = Vector3(out_x * THROW_HAND.x, THROW_HAND.y, lerpf(THROW_HAND.z, THROW_HAND_BACK, wound)) * S
+				throw_fore[side] = Vector3(-out_x * 0.30, 0.90, 0.32).normalized()
+			else:
+				throw_mark = Vector3(out_x * THROW_OUT.x, THROW_OUT.y, THROW_OUT.z) * S
+				throw_fore[side] = Vector3(-out_x * 0.10, 0.75, 0.65).normalized()
 		else:
 			down_hp = {"x": (0.55 if side == "R" else -0.55), "y": 1.5} if winding else {"x": (-0.7 if side == "R" else 0.7), "y": -0.25}
 			thrust = -1.5 * maxf(0.5, charging if ta == null else 1.0 - ta.t / 0.45) if winding else 1.3
@@ -5506,6 +5576,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	var reach_on: bool = w != null and not w.is_shield and absf(thr_used) < 0.05 and (power_now or swing_hold[side] > 0.0)
 	swing_reach[side] = move_toward(float(swing_reach[side]), 1.0 if reach_on else 0.0, (12.0 if reach_on else 2.5) * dt)
 	var target := hand_target_local(side, hp_used, thr_used)
+	if throw_mark != null:
+		target = shoulder[side] + (throw_mark as Vector3)
 	# Whether its owner is swinging this empty hand himself (the mouse, a bot's aim): how fast he
 	# sends its mark over his body, not how fast the hand goes (an arm knocked aside by a blow
 	# moves fast, and its mark not at all; nor is a mark shaken by a knock on the head, or moved
@@ -5743,6 +5815,21 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			two_gap = front - target_w if tl2 == null else null   # (a thrust drives the front hand along its line)
 		var fore_q := w_aim * hold_q(side, w).inverse()
 		var fore_dir := fore_q * Vector3(0, -1, 0)
+		# A spear held to be thrown lies across the hand: the forearm on its own line, not the shaft's.
+		var aim_fore_q := fore_q
+		var over := _throw_over(side) if (throw_fore[side] as Vector3) != Vector3.ZERO else 0.0
+		# (The fist is loose on it from then till the throw, or, the throw given up, till the forearm
+		# is back down the shaft's line.)
+		var loose: bool = throw_loose[side]
+		if over > 0.0:
+			loose = true
+			throw_loose_t[side] = 0.0
+			fore_dir = fore_dir.slerp(yaw_q * (throw_fore[side] as Vector3), over).normalized()
+		elif loose:
+			throw_loose_t[side] = float(throw_loose_t[side]) + dt
+			if (PD.quat_of(fore) * Vector3.DOWN).angle_to(PD.quat_of(w) * Vector3.UP) < THROW_LOCK_ANGLE or float(throw_loose_t[side]) > THROW_LOCK_T:
+				loose = false
+		throw_loose[side] = loose
 		var lu := UPPER_LEN * S
 		var lf := FORE_LEN * S
 		var side_sign := -1.0 if side == "R" else 1.0
@@ -5756,6 +5843,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
+		if over > 0.0:
+			fore_q = _fore_across(fore, fore_dir, elbow_dir)
+		if loose or (weapon_joints[side] as Node).has_meta("grip_now"):
+			_throw_grip(side, w, loose)
 		if side == two_side and two_gap != null:
 			# The off hand's place is taken off where the main arm is really driven (its elbow and
 			# forearm as the blade's line has them), not off the mouse's mark: the arm cannot always
@@ -5796,7 +5887,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# is what holds a long blade out there.)
 		var moving: bool = in_spd > HELD_STILL if two_handed else target_vel[side].length() > 0.3 * S
 		var high_guard: bool = not moving and float(hp_now.get("y", 0.0)) > 0.6
-		var swinging: bool = ((power and not high_guard) or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots")
+		var swinging: bool = ((power and not high_guard) or swing_hold[side] > 0.0) and state == "stand" and thrust < 0.05 and w.design.get("chain") == null and not w.design.has("shoots") and not throw_pose[side]
 		# A swing is made with the arm near straight, light weapon or heavy. Held still with the
 		# button down (a guard, no blow yet) the arm takes the bend the guard needs: kept near
 		# straight there as well, a short blade held level from a low hand, or a hammer held out
@@ -5834,7 +5925,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			haft_i = Vector3.ZERO
 			haft_lp = Vector3.ZERO
 			haft_raw = Vector3.ZERO
-		_unjam_blade(side, w, fore_q, t_pos, t_rot, dt)
+		_unjam_blade(side, w, aim_fore_q, t_pos, t_rot, dt)
 		_free_wedged(side, w, dt)
 		if not throwing[side]:
 			_keep_blade_front(side, w, yaw_q, dt)
@@ -5852,6 +5943,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		# wheel set, until it slowed of itself (user: the angle I chose does not hold).
 		if has_wrist(w):
 			_drive_wrist(side, w, w_aim, strength, dt)
+		if loose:
+			_drive_shaft(side, w, w_aim, strength, dt)
 	elif not w and jk >= JAB_DRAW and jk < JAB_BACK:
 		# On its way out a punch drives both halves of the arm along the line to the mark: the
 		# bent elbow opens as the fist goes, and is straight when it gets there. (Drawn back and
@@ -7203,7 +7296,10 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	var com_w := w.global_transform * w.center_of_mass
 	var lever := com_w - hand_w
 	var i_fore := PD.inertia_of(fore) + fore.nominal_mass * pow(FORE_LEN * S * 0.5, 2)
-	var i_wpn := PD.inertia_of(w) + w.mass * lever.length_squared()
+	# (A spear loose in the fist to be thrown is not turned by the forearm, nor its weight carried
+	# by it: _drive_shaft.)
+	var welded_k := 0.0 if throw_loose[side] else 1.0
+	var i_wpn := (PD.inertia_of(w) + w.mass * lever.length_squared()) * welded_k
 	var i_asm := i_fore + i_wpn
 	var along := rot * Vector3(0, -1, 0)
 	var twist_a := along * alpha.dot(along)
@@ -7213,7 +7309,7 @@ func _drive_forearm(side: String, w: Weapon, fore_q: Quaternion, strength: float
 	# control instead of trailing behind them.
 	var heft := clampf(i_wpn / (MS * S * S * 0.6), 0.0, 6.0)
 	tq = PD.clamp_len(tq, 90.0 * hold * strength * MS * S * float(mods.strength) * (1.0 + 0.45 * heft))
-	var mg := w.mass * gravity * minf(1.0, strength * 2.0)
+	var mg := w.mass * gravity * minf(1.0, strength * 2.0) * welded_k
 	tq += Vector3(-lever.z * mg, 0, lever.x * mg)
 	var f := i_fore / i_asm
 	var tw := tq * (1.0 - f)
@@ -7243,7 +7339,7 @@ func _lock_elbow(side: String, w: Weapon, fore_q: Quaternion, strength: float, d
 	var hand_w := hand_world(side)
 	var lever := (w.global_transform * w.center_of_mass) - hand_w
 	var i_fore := PD.inertia_of(fore) + fore.nominal_mass * pow(FORE_LEN * S * 0.5, 2)
-	var i_asm := i_fore + PD.inertia_of(w) + w.mass * lever.length_squared()
+	var i_asm := i_fore + (0.0 if throw_loose[side] else PD.inertia_of(w) + w.mass * lever.length_squared())
 	# The bend is between two bodies: sized on their combined (reduced) inertia, the upper arm's
 	# about its own middle (a torque turns it there; sized about the shoulder, the damper
 	# overdrove it and the arm buzzed at full reach).

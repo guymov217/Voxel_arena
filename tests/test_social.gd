@@ -292,6 +292,45 @@ func test_a_dropped_weapon_is_picked_up_and_thrown() -> void:
 	t.check(w.global_position.z - x0 > 2.0, "forward, a good way (%.1f m)" % (w.global_position.z - x0))
 	m.queue_free()
 
+## A bot's spear leaves its hand as a player's does: on the way forward, over the shoulder (it left
+## the bot's drawn-back hand before the arm had moved), and as long after the bot chose to throw.
+func test_a_bots_spear_leaves_its_hand_on_the_way_forward() -> void:
+	var m := _match()
+	m.me.f.state = "dead"
+	var act := [""]
+	var a := _man(m, Vector3(0, 0, 0), 0.0, {"main": "javelin"}, "A", 0, func(_e):
+		var i := {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}}
+		if act[0] != "":
+			i[act[0]] = true
+			i.throwPower = 1.0
+			act[0] = ""
+		return i)
+	await _steps(150)
+	var w: Weapon = a.f.weapons.R
+	t.check(w != null and w.point_first(), "he holds a javelin")
+	if w == null:
+		m.queue_free()
+		return
+	act[0] = "throw"
+	var left := -1
+	var phase := ""
+	var hand := Vector3.ZERO
+	var back := 0.0   # (the farthest the hand was drawn back behind the shoulder)
+	for i in 80:
+		await get_tree().physics_frame
+		var rel: Vector3 = a.f.hand_world("R") - a.f.torso.global_transform * (a.f.shoulder["R"] as Vector3)
+		if w.holder != a.f:
+			left = i
+			hand = rel
+			break
+		back = minf(back, rel.z)
+		phase = str(a.f.throw_anim.phase) if a.f.throw_anim != null else ""
+	t.check(left >= 0 and absi(left - 54) <= 2, "the spear leaves 0.45 s after he chose to throw (step %d)" % left)
+	t.check(phase == "follow", "with the arm on its way forward (%s)" % phase)
+	t.check(back < -0.12, "from a hand drawn back behind the shoulder (%.2f m)" % back)
+	t.check(hand.z > 0.2 and hand.y > 0.18, "and it leaves the hand ahead of the shoulder and over it (%.2f m ahead, %.2f m over)" % [hand.z, hand.y])
+	m.queue_free()
+
 func test_a_giant_grabs_and_hurls_or_slams() -> void:
 	seed(11)
 	var m := _match()
