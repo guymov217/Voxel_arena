@@ -234,6 +234,7 @@ var cut_force := 99.0   # how hard the blow being dealt with cut (J x hardness x
 var throwing := {"R": false, "L": false}   # that arm winding up or letting go a throw
 var thrust_amt := {"R": 0.0, "L": 0.0}   # how far that hand is driving a thrust (0 none)
 var throw_pose := {"R": false, "L": false}   # a spear in the throwing hand, wound up or let go
+var throw_hold := {"R": 0.0, "L": 0.0}       # how far that hand has shifted its hold on a spear to throw it: 0 its grip .. 1 its balance
 var thrust_aim := {"R": null, "L": null}   # {dir, k}: the line a thrust holds the blade on
 var thrust_line := {"R": null, "L": null}   # {o, dir, t}: a thrust's line in the body's frame
 var spear_true := {"R": 0.0, "L": 0.0}   # a couched spear's line turned by what it misses by aside (_spear_trued)
@@ -1814,6 +1815,10 @@ func _grip_joint(fore: VoxelPart, w: Weapon, hand: Vector3) -> Joint3D:
 		j.global_position = hand
 	j.node_a = fore.get_path()
 	j.node_b = w.get_path()
+	# (Where it holds the two, in each body's own frame: _throw_hold moves the weapon's end of it.)
+	var fr: Transform3D = j.global_transform
+	j.set_meta("frame_a", fore.global_transform.affine_inverse() * fr)
+	j.set_meta("frame_b", w.global_transform.affine_inverse() * fr)
 	return j
 
 ## A long pointed shaft (spear, javelin, trident): held and thrust point first.
@@ -1930,6 +1935,7 @@ func release(side: String) -> Weapon:
 		return null
 	if fixed_hand[side] and not arm[side].fore.severed:
 		return null
+	throw_hold[side] = 0.0
 	if weapon_joints[side]:
 		weapon_joints[side].queue_free()
 		weapon_joints[side] = null
@@ -2711,6 +2717,41 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 			two_handed = true
 			_attach_off_hand(w)
 	return true
+
+## A spear thrown is held where it balances (user: the spear held at the right point). As the arm
+## draws back to throw, the hand shifts its hold along the shaft from the grip to the spear's
+## point of balance (Weapon.throw_point), and back again if the throw is not made. The fist holds
+## the shaft at one point (the weapon's end of the grip joint, _grip_joint): that point is moved
+## along it, a little a step, and the spear comes through the fist to it.
+const THROW_SHIFT_T := 0.12
+const G6_GET_PARAM := ["get_param_x", "get_param_y", "get_param_z"]
+const G6_GET_FLAG := ["get_flag_x", "get_flag_y", "get_flag_z"]
+func _throw_hold(side: String, w, on: bool, dt: float) -> void:
+	var k: float = throw_hold[side]
+	if w == null or not is_instance_valid(w) or weapon_joints[side] == null or not is_instance_valid(weapon_joints[side]):
+		throw_hold[side] = 0.0
+		return
+	var want := 1.0 if on else 0.0
+	if is_equal_approx(k, want):
+		return
+	var j = weapon_joints[side]
+	if not (j is Generic6DOFJoint3D) or not j.has_meta("frame_b"):
+		return
+	k = move_toward(k, want, dt / THROW_SHIFT_T)
+	throw_hold[side] = k
+	var e := k * k * (3.0 - 2.0 * k)
+	var fb: Transform3D = j.get_meta("frame_b")
+	fb.origin += ((w as Weapon).throw_point() - (w as Weapon).grip_main) * e
+	var g := j as Generic6DOFJoint3D
+	var rid: RID = g.get_rid()
+	PhysicsServer3D.joint_make_generic_6dof(rid, arm[side].fore.get_rid(), g.get_meta("frame_a"), (w as Weapon).get_rid(), fb)
+	# (A joint made through the server has none of the node's settings, its locked axes and its
+	# free wrist among them: they are given it again.)
+	for axis in 3:
+		for p in 22:
+			PhysicsServer3D.generic_6dof_joint_set_param(rid, axis as Vector3.Axis, p as PhysicsServer3D.G6DOFJointAxisParam, g.call(G6_GET_PARAM[axis], p))
+		for f in 6:
+			PhysicsServer3D.generic_6dof_joint_set_flag(rid, axis as Vector3.Axis, f as PhysicsServer3D.G6DOFJointAxisFlag, g.call(G6_GET_FLAG[axis], f))
 
 ## The arm model of any throw (launchVelocity): how fast the hand can send `mass` off, and the
 ## elevation that lands it on `aim_at` (the lower of the two arcs), with a little scatter.
@@ -5431,6 +5472,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	thrust_amt[side] = clampf(thrust, 0.0, 1.5) if down_hp == null else 0.0
 	var spear: bool = w != null and w.point_first() and held_item == null
 	throw_pose[side] = spear and down_hp == null and (winding or following)
+	_throw_hold(side, w, throw_pose[side], dt)
 	if down_hp == null and (winding or following):
 		if spear:
 			# A spear: drawn back level above the shoulder, point at the mark, then driven
@@ -5710,7 +5752,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
 		# The elbow never folds in through the chest: in the body's frame it stays on its own
 		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
-		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot, -(t_rot.inverse() * fore_dir).y * lf), t_rot)
+		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot, -(t_rot.inverse() * fore_dir).y * lf), t_rot, (-1.0 if side == "R" else 1.0) if throw_pose[side] else 0.0)
 		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
@@ -6875,15 +6917,20 @@ func _thrust_ext(tl: Dictionary, o_l: Vector3, sh: Vector3, chest_z := INF, dept
 ## and stuck there. So such a turn goes round by the front of the body, and the direction
 ## asked is never more than AIM_AHEAD ahead of where the thing really points: the next step
 ## from `cur` toward `want` (unit directions, `frame` the body's facing).
+## `out_x`: a throwing arm's way (-1 right, 1 left, 0 any other): drawn back past its own shoulder
+## (user: the spear's wind-up never drew the arm back: every turn that far was sent round the front
+## and stayed there, the hand stretched out ahead) it goes round the outside of the body, up and
+## back, which is not through it.
 const AIM_AHEAD := 1.6
-static func _route_front(cur: Vector3, want: Vector3, frame: Quaternion) -> Vector3:
+static func _route_front(cur: Vector3, want: Vector3, frame: Quaternion, out_x := 0.0) -> Vector3:
 	var ahead := cur.angle_to(want)
 	var go := want
 	if ahead > 0.9:
 		var mid := frame.inverse() * (cur + want)
 		if mid.length_squared() < 0.0025:
 			mid = Vector3(0, 0, 1)
-		if mid.normalized().z < 0.45:
+		var aside: bool = out_x != 0.0 and mid.normalized().x * out_x > 0.5
+		if mid.normalized().z < 0.45 and not aside:
 			mid.z = maxf(mid.z, 1.2)
 			go = frame * mid.normalized()
 	if ahead <= AIM_AHEAD and go == want:

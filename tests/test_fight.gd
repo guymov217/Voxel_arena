@@ -187,6 +187,60 @@ func test_throws_wind_up_and_fly_true() -> void:
 		t.check(spins[k][0] > 5.0 and spins[k][1] < 0.2, "the %s turns end over end (spin %.1f, along the flight %.2f)" % [k, spins[k][0], spins[k][1]])
 	w.queue_free()
 
+## A spear is thrown from where it balances, the arm drawn back and then driven forward (user: the
+## javelin was held a third of the way up its shaft where it balances two thirds of the way, the arm
+## stayed stretched out before the shoulder through the whole wind-up, and the spear left a hand
+## that had hardly moved). The wind-up shifts the hold up the shaft and draws the hand back to the
+## shoulder, a throw called off puts the hold back at the grip, and the throw drives the hand out.
+func test_a_spear_is_held_at_its_balance_and_thrown_from_a_drawn_back_arm() -> void:
+	var w := _world()
+	var f := w.fighter(Vector3.ZERO, 0.0, {"main": "javelin"}, {"name": "A"})
+	var rest := func(_f, _i): return {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}}
+	await _step(w, 150, rest)
+	var sp: Weapon = f.weapons.R
+	t.check(sp != null, "he holds the javelin")
+	if sp == null:
+		w.queue_free()
+		return
+	var shaft := func() -> Array:   # [butt, unit vector up the shaft, its length]
+		var box := sp.local_box()
+		var c := box.get_center()
+		var butt: Vector3 = sp.global_transform * Vector3(c.x, box.position.y, c.z)
+		var tip: Vector3 = sp.global_transform * Vector3(c.x, box.end.y, c.z)
+		return [butt, (tip - butt).normalized(), butt.distance_to(tip)]
+	var along := func(p: Vector3) -> float:   # (how far up the shaft: 0 the butt, 1 the point)
+		var sh: Array = shaft.call()
+		return ((p - (sh[0] as Vector3)).dot(sh[1]) / float(sh[2]))
+	var ahead := func() -> float:   # (the hand before the right shoulder)
+		return (f.hand_world("R") - f.torso.global_transform * (f.shoulder["R"] as Vector3)).z
+	var balance: float = along.call(sp.global_transform * sp.center_of_mass)
+	var carried: float = along.call(f.hand_world("R"))
+	var ahead0: float = ahead.call()
+	t.check(balance > carried + 0.2, "it balances well up the shaft from where it is carried (%.2f against %.2f)" % [balance, carried])
+	var aim := Vector3(0, 1.3, 14.0)
+	await _step(w, 132, func(_f, i): return {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}, "charging": minf(1.0, float(i + 1) / 132.0), "aimAt": aim})
+	var held: float = along.call(f.hand_world("R"))
+	var sh1: Array = shaft.call()
+	var off_shaft: float = (f.hand_world("R") - (sh1[0] as Vector3) - (sh1[1] as Vector3) * held * float(sh1[2])).length()
+	t.check(absf(held - balance) < 0.1, "wound up, the hand holds it at its balance (%.2f, balance %.2f)" % [held, balance])
+	t.check(off_shaft < 0.03 and f.weapons.R == sp, "still in the fist (%.0f cm off the shaft)" % (off_shaft * 100.0))
+	var drawn: float = ahead.call()
+	t.check(drawn < 0.3 and drawn < ahead0 - 0.15, "and the arm is drawn back to the shoulder (the hand %.2f m before it, from %.2f)" % [drawn, ahead0])
+	# Driven forward: the hand goes out fast ahead of the shoulder.
+	f.throw_anim = {"side": "R", "phase": "follow", "t": 0.4}
+	var top := 0.0
+	for i in 10:
+		f.control(1.0 / 120.0, {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}, "aimAt": aim})
+		await get_tree().physics_frame
+		top = maxf(top, f.arm.R.fore.velocity_at(f.hand_world("R")).length())
+	t.check(top > 5.0 and float(ahead.call()) > drawn + 0.25, "the throw drives the hand out (%.1f m/s; %.2f m further out)" % [top, float(ahead.call()) - drawn])
+	# A throw called off: the hold goes back to the grip.
+	f.throw_anim = null
+	await _step(w, 100, rest)
+	var back: float = along.call(f.hand_world("R"))
+	t.check(absf(back - carried) < 0.06 and f.weapons.R == sp, "a throw called off, the hold is back at the grip (%.2f, from %.2f)" % [back, carried])
+	w.queue_free()
+
 ## A weapon held in both hands is thrown with one: while it is wound up the other hand lets go of
 ## the haft and keeps clear of it, and takes hold again if the throw is called off. (It went after
 ## the haft, drawn back over the shoulder and out of its reach, for the whole wind-up: user, a throw

@@ -59,6 +59,7 @@ uniform float sky_hold : hint_range(0.0, 1.0) = 0.0;     // ARMOUR_LIGHT: how fa
 instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
 instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
 instance uniform float pallor = 0.0;      // the skin gone pale from blood lost, 0..1 (Physique.pale)
+instance uniform float bare_glow = 0.0;   // a beast's wound (FineBody._wound_mm): what it bares shows as itself in the shade too
 // A knee or an elbow under the smooth skin (Fighter._bend_drawing): the two parts that meet there
 // are drawn as one skin bent round the joint, not as two stiff pieces turned on one another. All
 // that is drawn with the part within bend_at.w of the joint along its length is turned about the
@@ -474,6 +475,11 @@ void fragment() {
 	}
 	if (k == 12) {
 		EMISSION += c * (2.2 + 0.4 * sin(TIME * 2.0 + seed * 6.0));
+	}
+	if (bare_glow > 0.0 && (k == 9 || k == 6)) {
+		// The flesh and the bone a beast's wound bares are never a black hole: in the shade of the
+		// wound they still show as themselves, red or ivory (user: the boar looks hollow).
+		EMISSION += c * bare_glow * (k == 9 ? 1.0 : 0.55);
 	}
 	if (k == 0) {
 		// Skin: light through the thin edges, warm.

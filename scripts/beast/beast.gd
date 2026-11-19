@@ -191,6 +191,7 @@ func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> v
 			_bone_core(str(d.name), voxels)
 			if d.get("parent") == null:
 				_bury_bones(voxels, 3)
+			_fit_insides(species, d, voxels)
 			have = {"d": d, "voxels": voxels}
 			listed[str(d.name)] = have
 		p.setup(self, dd, voxels, float(d.scale) * k, m_part * MS, have)
@@ -400,6 +401,83 @@ static func _bury_bones(voxels: Array, depth: int) -> void:
 				break
 		if shallow:
 			v[4] = false
+
+## A beast's insides lie under the body it is DRAWN with (user: a great part of the boar is hollow,
+## and no beast or monster may be). Its organs and its trunk's bones were laid by its box of voxels,
+## and the body it is drawn with (its sculpt, FineBody.beast_data) is slimmer than that here and
+## there, a boar's by a third: a third of the boar's organs lay in the drawn skin or out of the drawn
+## body altogether, its ribs with them, and the first cut in its flank bared a dark hollow with a
+## rib in it, and tore a lung. So, by the drawn body: an organ keeps only the voxels that have
+## INSIDE_COVER voxels of drawn flesh over them on every side (one, if that would leave it under
+## ORGAN_LEAST voxels: a small or a thin body), and a trunk's bone the same; what they give up is
+## plain flesh, to look at and to cut. Every look and every machine has the same beast: the sculpt
+## is read whichever look is drawn. A part with no sculpt is left as it is.
+const INSIDE_COVER := 2
+const ORGAN_LEAST := 6
+static func _fit_insides(species_: String, d: Dictionary, voxels: Array) -> void:
+	var fd := FineBody.beast_data(species_, str(d.name))
+	var g: Array = d.get("grid", [])
+	if fd.is_empty() or not fd.has("sub") or g.size() != 3:
+		return
+	var sub: PackedInt32Array = fd.sub
+	var gx := int(g[0])
+	var gy := int(g[1])
+	var gz := int(g[2])
+	if sub.size() != gx * gy * gz:
+		return
+	# How deep each voxel lies in the drawn body: 0 not of it, 1 of its surface, 2 one voxel
+	# under... (the least way out along the six axes), as far as is asked about.
+	var most := INSIDE_COVER + 1
+	var dirs := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+	var depth := func(v: Array) -> int:
+		var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+		if c.x < 0 or c.y < 0 or c.z < 0 or c.x >= gx or c.y >= gy or c.z >= gz or sub[(c.x * gy + c.y) * gz + c.z] == 0:
+			return 0
+		var out := most
+		for dv: Vector3i in dirs:
+			for n in range(1, out):
+				var q: Vector3i = c + dv * n
+				if q.x < 0 or q.y < 0 or q.z < 0 or q.x >= gx or q.y >= gy or q.z >= gz or sub[(q.x * gy + q.y) * gz + q.z] == 0:
+					out = n
+					break
+		return out
+	var flesh := func(v: Array) -> void:
+		v[3] = BeastStyle.FLESH_B if (int(v[0]) + int(v[1]) * 3 + int(v[2]) * 5) % 3 == 0 else BeastStyle.FLESH_A
+		v[4] = false
+		v[5] = 9
+		if v.size() > 6:
+			v[6] = Anatomy.NONE
+	# (Its skeleton: bone that is under the box's own surface. What is modelled on that surface in
+	# bone, a spine, a plate, is its hide's and stays.)
+	var filled := {}
+	for v in voxels:
+		filled[Vector3i(int(v[0]), int(v[1]), int(v[2]))] = true
+	var within := func(v: Array) -> bool:
+		var c := Vector3i(int(v[0]), int(v[1]), int(v[2]))
+		for dv: Vector3i in dirs:
+			if not filled.has(c + dv):
+				return false
+		return true
+	var organs := {}   # organ id -> [[its voxel, how deep], ...]
+	var trunk: bool = d.get("parent") == null
+	for v in voxels:
+		var id: int = int(v[6]) if v.size() > 6 else Anatomy.NONE
+		if id != Anatomy.NONE:
+			if not organs.has(id):
+				organs[id] = []
+			(organs[id] as Array).append([v, depth.call(v)])
+		elif trunk and (bool(v[4]) or int(v[5]) == 6) and within.call(v) and depth.call(v) < most:
+			flesh.call(v)
+	for id in organs:
+		var all: Array = organs[id]
+		var need := most
+		if all.filter(func(e): return int(e[1]) >= need).size() < ORGAN_LEAST:
+			need = 2
+			if all.filter(func(e): return int(e[1]) >= need).is_empty():
+				continue   # (nowhere under its skin to lie: as it was)
+		for e in all:
+			if int(e[1]) < need:
+				flesh.call(e[0])
 
 ## A limb, tail or wing modelled with no bone in it (the gorilla's arms and legs) gets one: a core
 ## down its length, under the flesh, so it can break like any other (an arthropod's legs are shell

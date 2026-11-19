@@ -330,7 +330,9 @@ struct FinePart {
 		}
 		const int64_t kind = kinds[i];
 		const bool even = ((k & 1) + ((k >> 2) & 1)) % 2 == 0;
-		if (kind == 0 || kind == 1 || kind == 2 || kind == 8 || kind == 10 || kind == 11) {
+		// (A beast's own flesh, deep in it, is muscle as well; its organs keep their colours.)
+		const bool meat = kind == 9 && beast && !(organ.size() > i && organ[i] != 0);
+		if (kind == 0 || kind == 1 || kind == 2 || kind == 8 || kind == 10 || kind == 11 || meat) {
 			const double stripe = even ? 0.86 : 1.05;
 			return Color((float)((double)FN_MUSCLE.r * stripe * (0.92 + 0.16 * h)), (float)((double)FN_MUSCLE.g * stripe * (0.9 + 0.2 * h)), (float)((double)FN_MUSCLE.b * stripe * (0.9 + 0.2 * h)));
 		}

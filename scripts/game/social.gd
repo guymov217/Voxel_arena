@@ -79,13 +79,16 @@ func grab_hands(e: Dictionary, inp: Dictionary) -> Array:
 ## physics keeps a fist off a body, whatever the giant's size). Tests may set TOUCH_GAP.
 static var TOUCH_GAP := 0.06
 const FIST_REACH := 0.12
+const MAN_REACH := 0.09   # a man's hand, sent to him (grab_go): this near the part it touches (m: a forearm's half-width and the little the physics keeps two bodies apart)
 
 ## The nearest part of any of `targets` to `side`'s hand, within reach (a giant's hand must
 ## actually touch the body: `touch`).
-func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
+func nearest_part(c: Fighter, side: String, targets: Array, touch: bool, on_gap := -1.0):
 	var hand := c.hand_world(side)
 	var best = null
 	var bd := INF if touch else 0.7 * maxf(1.0, c.S * 0.85)
+	if on_gap < 0.0:
+		on_gap = FIST_REACH * c.S
 	for o in targets:
 		# A giant's hand takes only what it is on: the part his forearm touches (the physics'
 		# contact), at the hand, or one whose surface is at the hand (a touch's width off).
@@ -94,7 +97,7 @@ func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 			if part.severed or part.missing:
 				continue
 			var d: float = box_distance(part, hand) if touch else part.global_position.distance_to(hand)
-			if touch and d >= (FIST_REACH * c.S if part == on else TOUCH_GAP):
+			if touch and d >= (on_gap if part == on else TOUCH_GAP):
 				continue
 			if d < bd:
 				bd = d
@@ -103,6 +106,48 @@ func nearest_part(c: Fighter, side: String, targets: Array, touch: bool):
 
 func hand_joint(c: Fighter, side: String, part: VoxelPart) -> Joint3D:
 	return c._joint_at(c.arm[side].fore, part, c.hand_world(side), false)
+
+## A man's hand closes on what it has taken (user: no physical contact; held as the reach left
+## the two, the fist stood a finger's breadth off the arm it held, daylight between them, for as
+## long as it held it). The joint that holds the part is the hand's own point pinned to a point
+## of the part: that point is moved, over GRIP_CLOSE_T, from where the hand touched him to the
+## point of the part nearest it that is well inside it, and the hand comes onto him with it. A
+## limb (a part much longer than it is thick, whose box is half again as thick as the limb drawn
+## in it) is clasped round its middle line, GRIP_END in from its end: a wrist is held, not a
+## fist met with a fist. The trunk or the head: GRIP_IN under whichever of its faces the hand is
+## at. As a giant's fist has its man (_close_in), without the man being moved.
+const GRIP_IN := 0.06
+const GRIP_END := 0.1
+const GRIP_CLOSE_T := 0.12
+func _grip_onto(c: Fighter, side: String, part: VoxelPart) -> Dictionary:
+	var l: Vector3 = part.global_transform.affine_inverse() * c.hand_world(side)
+	var he: Vector3 = part.half_ext
+	var g := Vector3.ONE * GRIP_IN * c.S
+	var long := he.max_axis_index()
+	var thick := 0.0
+	for i in 3:
+		if i != long:
+			thick = maxf(thick, he[i])
+	if he[long] > 1.6 * thick:
+		g = he
+		g[long] = GRIP_END * c.S
+	var to := l
+	for i in 3:
+		var lim := maxf(0.0, he[i] - g[i])
+		to[i] = clampf(l[i], -lim, lim)
+	return {"t": 0.0, "from": l, "to": to}
+
+func _grip_close(hold: Dictionary, dt: float) -> void:
+	var cl = hold.get("close")
+	if cl == null:
+		return
+	cl.t += dt
+	var k := clampf(float(cl.t) / GRIP_CLOSE_T, 0.0, 1.0)
+	var j = hold.get("joint")
+	if j != null and is_instance_valid(j):
+		PhysicsServer3D.pin_joint_set_local_b((j as Joint3D).get_rid(), (cl.from as Vector3).lerp(cl.to, k * k * (3.0 - 2.0 * k)))
+	if k >= 1.0:
+		hold.erase("close")
 
 ## The point of `part`'s box nearest `p`.
 static func box_point(part: VoxelPart, p: Vector3) -> Vector3:
@@ -141,7 +186,12 @@ func _free_joint(j) -> void:
 	if j and is_instance_valid(j):
 		j.queue_free()
 
-func grab_person(e: Dictionary, inp: Dictionary):
+## Whose hand takes only what it is on, of its own accord: a giant's, and any big bot's (its bot
+## holds the button down through its reach). A man's hand is sent to him first: grab_go.
+static func big_hands(c: Fighter, e: Dictionary) -> bool:
+	return c.mods.get("grabby", false) or (c.S >= 1.8 and e.has("bot"))
+
+func grab_person(e: Dictionary, inp: Dictionary, on_him := false, whom = null, gap := MAN_REACH):
 	var c: Fighter = e.f
 	if not c.alive or c.holding != null:
 		return null
@@ -149,20 +199,28 @@ func grab_person(e: Dictionary, inp: Dictionary):
 	if sides.is_empty():
 		return null
 	var side: String = sides[0]
-	# A giant's hand (and any big bot's) takes only what it is on: a hold from a stride off read
-	# as the man pulled up by nothing (user).
-	var touch: bool = c.mods.get("grabby", false) or (c.S >= 1.8 and e.has("bot"))
-	var others: Array = m.entities.filter(func(o): return o != e and o.f.alive)
-	var best = nearest_part(c, side, others, touch)
+	# A hand takes only what it is on: a hold from a stride off read as the man pulled up by
+	# nothing (user: the giant's; then every man's, there was no touch at all when a player took
+	# hold of a foe). A giant's hand (and any big bot's) by itself; a man's when his reach has
+	# brought it onto him (`on_him`: grab_go).
+	var big := big_hands(c, e)
+	var touch: bool = big or on_him
+	var others: Array = [whom] if whom != null else m.entities.filter(func(o): return o != e and o.f.alive)
+	var best = nearest_part(c, side, others, touch, -1.0 if big else gap)
 	if best == null:
 		return null
-	if touch:
+	if big:
 		_close_in(c, side, best.e.f, best.part)
+	var onto: bool = on_him and not big
 	c.holding = {"side": side, "target": best.e, "part": best.part, "joint": hand_joint(c, side, best.part), "t": 0.0, "extra": null, "limb": null}
+	if onto:
+		c.holding["close"] = _grip_onto(c, side, best.part)
 	if sides.size() > 1:
-		var second = nearest_part(c, sides[1], [best.e], touch)
+		var second = nearest_part(c, sides[1], [best.e], touch, -1.0 if big else gap)
 		if second:
 			c.holding.extra = {"side": sides[1], "part": second.part, "joint": hand_joint(c, sides[1], second.part)}
+			if onto:
+				c.holding.extra["close"] = _grip_onto(c, sides[1], second.part)
 	var friend: bool = best.e.team == e.team
 	var t: Fighter = best.e.f
 	var lbl := Loc.lower(String(best.part.label))
@@ -184,23 +242,122 @@ func grab_person(e: Dictionary, inp: Dictionary):
 	return t
 
 ## The other hand takes hold too, of the same man, wherever it reaches him.
-func add_second_hand(e: Dictionary) -> bool:
+func add_second_hand(e: Dictionary, on_him := false, gap := MAN_REACH) -> bool:
 	var c: Fighter = e.f
 	var h = c.holding
 	if h == null or h.limb != null or h.extra != null:
 		return false
 	var side := "L" if h.side == "R" else "R"
 	if not hand_free(c, side):
-		_hint(e, Loc.t("Your right hand is full" if side == "R" else "Your left hand is full"))
+		if not on_him:
+			_hint(e, Loc.t("Your right hand is full" if side == "R" else "Your left hand is full"))
 		return false
-	var best = nearest_part(c, side, [h.target], c.mods.get("grabby", false))
+	var best = nearest_part(c, side, [h.target], big_hands(c, e) or on_him, -1.0 if big_hands(c, e) else gap)
 	if best == null:
-		_hint(e, Loc.t("Your right hand cannot reach him" if side == "R" else "Your left hand cannot reach him"))
+		if not on_him:
+			_hint(e, Loc.t("Your right hand cannot reach him" if side == "R" else "Your left hand cannot reach him"))
 		return false
 	h.extra = {"side": side, "part": best.part, "joint": hand_joint(c, side, best.part)}
+	if on_him and not big_hands(c, e):
+		h.extra["close"] = _grip_onto(c, side, best.part)
 	m.feed.emit(Loc.t("%s gets both hands on %s") % [c.display_name, h.target.f.display_name])
 	m.sfx("slap", c.hand_world(side))
 	return true
+
+## G at a man: a man's hand goes out to him, and closes on him where it touches him (user: there
+## was no physical contact at all when a player pressed the grab button on a foe; the hand took
+## whatever part of him had its middle within 70 cm of it, from where it hung, and he was held on
+## nothing). The nearest of him within the arm's reach of that shoulder is reached for, for
+## GRAB_TRY_T at most, the hand sent to the spot on him nearest it (Fighter's `grabAt`: he stoops
+## to a man on the sand), and the hold is taken the moment the hand is on him (grab_person's
+## touch, the giants' own: the hand MAN_REACH from the part its forearm touches; in the last
+## third of the reach a fist's width, GRAB_LAST, when the forearm lies along him and its end cannot
+## come nearer). Nobody in reach: no reach (G is then for what lies on the sand). A giant's hand
+## needs none of this (big_hands).
+const GRAB_TRY_T := 0.6
+const GRAB_TRY_DOWN := 2.0   # for a man on the sand: he has to stoop to him first
+const GRAB_LAST := 0.12
+const GRAB_ARM := 1.1      # how far from the shoulder the spot on him may be (x the arm's length), and
+const GRAB_LEAN := 0.25    # a lean more (m x S)
+const GRAB_INTO := 0.05    # the hand is sent this far into him (m), so that it comes onto him
+const GRAB_STOOP := 0.4    # to a man below him, near along the sand, he stoops (Fighter's grabAt): his shoulder comes this much lower (x S)
+func grab_go(e: Dictionary, inp: Dictionary):
+	var c: Fighter = e.f
+	if big_hands(c, e):
+		return grab_person(e, inp)
+	if not c.alive or c.holding != null or c.state != "stand":
+		return null
+	var sides := grab_hands(e, inp)
+	if sides.is_empty():
+		return null
+	var spot = _spot_on(c, sides[0], m.entities.filter(func(o): return o != e and o.f.alive))
+	if spot == null:
+		return null
+	var secs := GRAB_TRY_T if String(spot.e.f.get("state")) == "stand" else GRAB_TRY_DOWN
+	e.grab_try = {"t": secs, "all": secs, "side": sides[0], "target": spot.e, "both": sides.size() > 1, "second": false}
+	return spot.e.f
+
+## The nearest of `targets` to `side`'s hand that the arm can reach: {e, part, at (the spot on it)}.
+func _spot_on(c: Fighter, side: String, targets: Array):
+	var hand := c.hand_world(side)
+	var up: VoxelPart = c.arm[side].upper
+	var sh: Vector3 = up.global_transform * up.ca   # (its shoulder)
+	var far := (Fighter.UPPER_LEN + Fighter.FORE_LEN) * c.S * GRAB_ARM + GRAB_LEAN * c.S
+	var mid: Vector3 = c.torso.global_position
+	var best = null
+	var bd := INF
+	for o in targets:
+		if not is_instance_valid(o.f):
+			continue
+		for part in o.f.parts:
+			if part.severed or part.missing:
+				continue
+			var at := box_point(part, hand)
+			var from := sh
+			if Vector2(at.x - mid.x, at.z - mid.z).length() < Fighter.GRAB_BEND_NEAR * c.S:
+				from.y = clampf(at.y, sh.y - GRAB_STOOP * c.S, sh.y)
+			if at.distance_to(from) > far:
+				continue
+			var d := at.distance_to(hand)
+			if d < bd:
+				bd = d
+				best = {"e": o, "part": part, "at": at}
+	return best
+
+## A reach under way (grab_go, or the other hand's): the hand sent to him, and the hold taken
+## when it is on him. Returns the input he acts on this step.
+func _grab_reach(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
+	var tr: Dictionary = e.grab_try
+	var c: Fighter = e.f
+	var side: String = tr.side
+	tr.t -= dt
+	var te = tr.target
+	var holds: bool = c.holding != null
+	if tr.t <= 0.0 or not c.alive or c.state != "stand" or te == null or not is_instance_valid(te.f) or not hand_free(c, side) or holds != bool(tr.second) or (holds and c.holding.target != te):
+		e.erase("grab_try")
+		return inp
+	var spot = _spot_on(c, side, [te])
+	if spot == null:
+		e.erase("grab_try")
+		return inp
+	var out := inp.duplicate()
+	var hand := c.hand_world(side)
+	var to: Vector3 = (spot.at as Vector3) - hand
+	out.grab = true
+	out.grabHands = side
+	out.grabAt = (spot.at as Vector3) + (to.normalized() * GRAB_INTO if to.length() > 0.01 else Vector3.ZERO)
+	var gap := GRAB_LAST * c.S if float(tr.t) < float(tr.all) / 3.0 else MAN_REACH * c.S
+	if tr.second:
+		if add_second_hand(e, true, gap):
+			e.erase("grab_try")
+	elif grab_person(e, out, true, te, gap) != null:
+		e.erase("grab_try")
+		# (Both buttons held: the other hand goes to him next.)
+		if tr.both and c.holding != null and c.holding.extra == null:
+			var other := "L" if side == "R" else "R"
+			if hand_free(c, other):
+				e.grab_try = {"t": GRAB_TRY_T, "all": GRAB_TRY_T, "side": other, "target": te, "both": false, "second": true}
+	return out
 
 ## G near a limb lying on the sand: pick it up and fight with it.
 func grab_limb(e: Dictionary):
@@ -583,10 +740,12 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 				took = true
 			elif tear_out(c):
 				took = true
+			elif e.has("grab_try"):
+				took = true   # (his hand is on its way to a man already)
 			elif gh == null:
 				took = c.grab_nearest(m.combat.loose_weapons)
 			else:
-				took = grab_person(e, inp)
+				took = grab_go(e, inp)
 				# Nobody in that hand's reach: it takes a weapon lying there instead (G with the
 				# button down near a sword once did nothing at all).
 				if took == null and gh != "both":
@@ -595,7 +754,7 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 			if took == null:
 				took = grab_limb(e)
 			if took == null and gh == null:
-				took = grab_person(e, inp)
+				took = grab_go(e, inp)
 		# A throw is a movement, not a teleport: the arm (already drawn back while F was held, or
 		# drawn back now for a bot) whips forward and the thing leaves the hand partway through.
 		if inp.get("throw", false) and c.alive and not e.has("throw_q"):
@@ -616,6 +775,9 @@ func before(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 		taunt(e)
 	if inp.get("shove", false):
 		shove(e)
+	# (After all that G did this step: the reach's own G is not a press.)
+	if e.has("grab_try"):
+		inp = _grab_reach(e, inp, dt)
 	return inp
 
 ## G with someone's blade stuck in him: he tears it out of himself (it comes out on its next step,
@@ -689,6 +851,8 @@ static func aim_ahead(c, at: Vector3, look, from = null) -> Vector3:
 		at = o + line / dist * most
 	return at
 
+const HEAVE_T := 0.34      # s from F to the man leaving the hands
+const HEAVE_BACK := 0.38   # of it drawing him back
 func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 	var c: Fighter = e.f
 	var h: Dictionary = c.holding
@@ -737,12 +901,48 @@ func _holding(e: Dictionary, inp: Dictionary, dt: float) -> Dictionary:
 	if gone:
 		let_go(c)
 		return inp
+	_grip_close(h, dt)
+	if h.extra != null:
+		_grip_close(h.extra, dt)
 	var gh = inp.get("grabHands")
+	var man: bool = not big_hands(c, e)
+	# A man thrown is heaved: the arms that hold him draw him back and drive him out the way he
+	# goes, and he leaves them at the end of the drive (he flew from still arms the step F was
+	# pressed: user, the throws). A giant's hoist and hurl are his bot's own.
+	if h.has("heave"):
+		var hv: Dictionary = h.heave
+		hv.t += dt
+		var k := float(hv.t) / HEAVE_T
+		var out := inp.duplicate()
+		var back := k < HEAVE_BACK
+		for sd in ([h.side, h.extra.side] if h.extra != null else [h.side]):
+			var pose := {"x": (0.55 if sd == "R" else -0.55), "y": 0.25} if back else {"x": (0.1 if sd == "R" else -0.1), "y": 0.75}
+			if sd == "R":
+				out.main = pose
+				out.thrust = -0.9 if back else 1.4
+			else:
+				out.off = pose
+				out.offThrust = -0.9 if back else 1.4
+		out.power = true
+		if k >= 1.0:
+			throw_person(e, hv.inp)
+		return out
 	if inp.get("grab", false) and gh != null and h.limb == null and h.extra == null and h.t > 0.2 and (gh == "both" or gh != h.side):
-		add_second_hand(e)
+		if man:
+			var other := "L" if h.side == "R" else "R"
+			if not hand_free(c, other):
+				_hint(e, Loc.t("Your right hand is full" if other == "R" else "Your left hand is full"))
+			elif _spot_on(c, other, [h.target]) == null:
+				_hint(e, Loc.t("Your right hand cannot reach him" if other == "R" else "Your left hand cannot reach him"))
+			elif not e.has("grab_try"):
+				e.grab_try = {"t": GRAB_TRY_T, "all": GRAB_TRY_T, "side": other, "target": h.target, "both": false, "second": true}
+		else:
+			add_second_hand(e)
 	elif inp.get("throw", false):
 		if h.limb != null:
 			_throw_limb(e, inp)
+		elif man:
+			h["heave"] = {"t": 0.0, "inp": inp.duplicate()}
 		else:
 			throw_person(e, inp)
 	elif inp.get("slam", false) and h.limb == null:

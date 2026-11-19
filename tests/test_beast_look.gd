@@ -229,3 +229,112 @@ func test_a_beast_drawn_new_comes_apart_with_its_drawing() -> void:
 	t.check(checked > Data.beasts.size() / 2, "the drawing cut away with the voxels on most of them (%d parts)" % checked)
 	t.eq(off_drawn, off_n, "every part cut off keeps its look (%d of %d)" % [off_drawn, off_n])
 	w.queue_free()
+
+## How deep a voxel lies in the body the part is DRAWN with (its sculpt): 0 not of it, 1 of its
+## surface, 2 one voxel under... the least way out along the six axes, up to 3.
+func _drawn_depth(p: VoxelPart, i: int) -> int:
+	var code: PackedInt32Array = p.fine.code
+	if code[i] == 0:
+		return 0
+	var c := Vector3i(p.fx[i], p.fy[i], p.fz[i])
+	var out := 3
+	for dv: Vector3i in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+		for n in range(1, out):
+			var q: Vector3i = c + dv * n
+			var k := p._cell(q.x, q.y, q.z)
+			if k < 0 or code[k] == 0:
+				out = n
+				break
+	return out
+
+## A beast's insides lie under the body it is drawn with (user: a great part of the boar is hollow,
+## and no beast or monster may be). Its organs and its trunk's bones were laid by its box of voxels,
+## and it is drawn slimmer than that here and there: a third of the boar's organs lay in its drawn
+## skin or out of its drawn body, its ribs with them, and the first cut in its flank bared a dark
+## hollow with a rib in it. Every organ of every beast now has drawn flesh over it on every side
+## (two voxels of it, one in a body too small or thin for that), a trunk's bones the same, and no
+## beast has lost an organ by it. The flesh a wound bares is drawn as flesh, red, not in the dark
+## of the blood run over it; and a blow that only opens the boar's flank bares no organ and no bone.
+func test_a_beasts_insides_lie_under_the_flesh_it_is_drawn_with() -> void:
+	var w := _world()
+	var shallow := []
+	var lost := []
+	var ribs := []
+	var one_under := 0
+	var organs_all := 0
+	for k in Data.beasts:
+		var b := _beast(w, k, "human")
+		var have := {}
+		for p: VoxelPart in b.parts:
+			if p.fine.is_empty() or not p.fine.has("code"):
+				continue
+			var trunk := p.parent_part == null
+			for i in p.fx.size():
+				var organ := int(p.organ[i]) if p.organ.size() > i else 0
+				if organ != 0:
+					have[organ] = true
+					organs_all += 1
+					var d := _drawn_depth(p, i)
+					if d < 2:
+						shallow.append("%s %s" % [k, Anatomy.organ_name(organ)])
+					elif d == 2:
+						one_under += 1
+				elif trunk and p.kinds[i] == 6 and _drawn_depth(p, i) < 3:
+					# (its skeleton: bone under the box's own surface)
+					var inside := true
+					for dv: Vector3i in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+						if p._cell(p.fx[i] + dv.x, p.fy[i] + dv.y, p.fz[i] + dv.z) < 0:
+							inside = false
+							break
+					if inside:
+						ribs.append(k)
+		# (Every organ its data gives it, still in it.)
+		for d in Data.beasts[k].parts:
+			for v in d.voxels:
+				if v.size() > 5 and int(v[5]) != 0 and not have.has(int(v[5])):
+					have[int(v[5])] = false
+		for o in have:
+			if have[o] == false:
+				lost.append("%s %s" % [k, Anatomy.organ_name(o)])
+		_gone(w, b)
+		await get_tree().process_frame
+	t.check(shallow.is_empty(), "no organ in the drawn skin or out of the drawn body (%d: %s)" % [shallow.size(), ", ".join(shallow.slice(0, 4))])
+	t.check(ribs.is_empty(), "no bone of a trunk's skeleton within two voxels of its drawn skin (%d: %s)" % [ribs.size(), ", ".join(ribs.slice(0, 4))])
+	t.check(lost.is_empty(), "every beast has every organ it had (%s)" % ", ".join(lost.slice(0, 6)))
+	t.check(organs_all > 20000 and one_under < organs_all / 50, "all but the smallest bodies' organs lie two voxels under (%d of %d one under)" % [one_under, organs_all])
+	# The user's boar: a blow on its flank as a man with a club deals it (a very hard one digs two
+	# voxels deep, to where its organs lie now), then what it bares.
+	var boar := _beast(w, "boar", "human")
+	var body: VoxelPart = boar.by_name["beastBody"]
+	for i in body.fx.size():
+		var organ := int(body.organ[i]) if body.organ.size() > i else 0
+		if organ != 0 and _drawn_depth(body, i) < 3:
+			t.check(false, "the boar's %s lies two voxels under its drawn skin" % Anatomy.organ_name(organ))
+			break
+	var at: Vector3 = body.global_transform * (Vector3(1.02, 0.1, 0.1) * body.half_ext)
+	var dir: Vector3 = (body.global_transform.basis * Vector3(-1, 0, 0)).normalized()
+	var res: Dictionary = boar.apply_hit(body, {"impulse": 24.0, "type": "blunt", "hardness": 0.6, "sharpness": 0.0, "point": at, "dir": dir, "axis": body.global_transform.basis * Vector3(0, 0, 1), "edge": dir, "heavy": 0.2, "weapon": true})
+	var took := 0
+	for r in res.get("removed", []):
+		took += (r.indices as Array).size()
+	var bared: Dictionary = body.fine.wound
+	t.check(took > 6 and bared.size() >= 4, "the blow opened its flank (%d voxels, %d bared)" % [took, bared.size()])
+	var inside_seen := []
+	for i: int in bared:
+		var organ := int(body.organ[i]) if body.organ.size() > i else 0
+		if organ != 0 or body.kinds[i] == 6:
+			inside_seen.append("(%d,%d,%d) kind %d organ %d, %d deep" % [body.fx[i], body.fy[i], body.fz[i], body.kinds[i], organ, _drawn_depth(body, i)])
+	t.check(inside_seen.is_empty(), "it bares no organ and no bone (%d: %s)" % [inside_seen.size(), ", ".join(inside_seen.slice(0, 8))])
+	# Its flesh, wherever a wound comes to bare it: red, as a man's.
+	var flesh := 0
+	var red := 0
+	for i in body.fx.size():
+		if body.kinds[i] != 9 or (body.organ.size() > i and body.organ[i] != 0) or int((body.fine.code as PackedInt32Array)[i]) != FineBody.DEEP or bared.has(i):
+			continue
+		flesh += 1
+		var c := FineBody.wound_color(body, i, i % 8, 3)
+		if c.r > 0.45 and c.r > 4.0 * c.g and c.r > 4.0 * c.b:
+			red += 1
+	t.check(flesh > 300 and red == flesh, "and its flesh, bared, is drawn red, as flesh (%d of %d voxels)" % [red, flesh])
+	_gone(w, boar)
+	w.queue_free()

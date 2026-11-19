@@ -1068,6 +1068,16 @@ func _out_of_the_floor() -> void:
 func grip_world() -> Vector3:
 	return global_transform * grip_main
 
+## Where a hand holds it to throw it point first (local): on its shaft just behind where it
+## balances, so the point leads (a javelin is thrown from its balance; held by its grip, a
+## third of the way up from the butt, it went as a dart held by its tail: user). Never behind
+## its grip.
+const THROW_BEHIND := 0.05   # of its length
+func throw_point() -> Vector3:
+	var box := local_box()
+	var y := center_of_mass.y - THROW_BEHIND * box.size.y
+	return Vector3(grip_main.x, maxf(grip_main.y, y), grip_main.z)
+
 func velocity_at(p: Vector3) -> Vector3:
 	return linear_velocity + angular_velocity.cross(p - global_transform * center_of_mass)
 

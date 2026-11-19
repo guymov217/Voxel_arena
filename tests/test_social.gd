@@ -77,19 +77,182 @@ func test_grab_hold_and_throw_a_man() -> void:
 	for p in b.f.parts:
 		p.global_position += shift
 	phase[0] = "grab"
-	await _steps(30)
+	for i in 72:
+		await get_tree().physics_frame
+		if a.f.holding != null:
+			break
 	t.check(a.f.holding != null, "the hand closed on him")
 	if a.f.holding == null:
 		m.queue_free()
 		return
 	t.check(b.f.grabbed_by == a.f, "he knows he is held")
+	# The hand is on what it holds (user: no physical contact at all when a player pressed the grab
+	# button on a foe: the hold was taken, and kept, with the hand a hand's breadth and more off him).
+	await _steps(20)
+	t.check(a.f.holding != null, "he is held still")
+	if a.f.holding == null:
+		m.queue_free()
+		return
+	var gap := Social.box_distance(a.f.holding.part, a.f.hand_world("R"))
+	t.check(gap < 0.005, "with the hand closed on the part it holds (%.1f cm off its surface)" % (gap * 100.0))
+	# F heaves him: the arm draws him back and drives him out, and he leaves the hand at the end
+	# of the drive (he flew from a still arm the step F was pressed).
 	phase[0] = "throw"
+	await _steps(12)
+	t.check(a.f.holding != null, "the throw is a heave: a tenth of a second after F he is still in the hand")
+	var travel := 0.0
+	var prev: Vector3 = a.f.hand_world("R")
+	var left := -1
+	for i in 60:
+		await get_tree().physics_frame
+		var hand: Vector3 = a.f.hand_world("R")
+		travel += hand.distance_to(prev)
+		prev = hand
+		if a.f.holding == null:
+			left = i
+			break
+	t.check(left >= 0, "and let go at the end of it")
+	t.check(travel > 0.08, "the arm drove him out (the hand moved %.0f cm with him)" % (travel * 100.0))
 	await _steps(2)
-	t.check(a.f.holding == null, "let go with the throw")
 	var v: Vector3 = b.f.torso.linear_velocity
 	t.check(v.length() > 2.0, "he flies (%.1f m/s)" % v.length())
 	await _steps(30)
 	t.check(b.f.state != "stand", "and lands on the sand")
+	m.queue_free()
+
+## A man's grab is a reach (user: no physical contact at all when a player pressed the grab button
+## on a foe; the hand took whatever part of him had its middle within 70 cm of it, from where it
+## hung): the hand goes out to him and takes hold only when it is on him; a man out of the arm's
+## reach is not reached for; both buttons, both hands, each onto him.
+func _reacher(m: Match, press: Array, foe_at: Vector3) -> Array:
+	var a := _man(m, Vector3(0, 0, 0), 0.0, {}, "A", 0, func(_e):
+		var i := {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}}
+		if press[0] != "":
+			i.grab = true
+			i.grabHands = press[0]
+			press[0] = ""
+		return i)
+	var b := _man(m, foe_at, PI, {}, "B", 1, _idle)
+	return [a, b]
+
+func test_a_mans_grab_reaches_only_what_the_arm_can() -> void:
+	seed(4)
+	var m := _match()
+	m.me.f.state = "dead"
+	var press := [""]
+	var ab := _reacher(m, press, Vector3(0, 0, 2.4))
+	var a: Dictionary = ab[0]
+	await _steps(150)
+	press[0] = "R"
+	await _steps(3)
+	t.check(not a.has("grab_try") and a.f.holding == null, "a man out of the arm's reach is not reached for")
+	await _steps(80)
+	t.check(a.f.holding == null, "nor held")
+	m.queue_free()
+
+func test_a_mans_grab_is_a_reach_that_closes_on_touch() -> void:
+	seed(4)
+	var m := _match()
+	m.me.f.state = "dead"
+	var press := [""]
+	var ab := _reacher(m, press, Vector3(0, 0, 1.4))   # (a forearm's length, and a little, from the hand)
+	var a: Dictionary = ab[0]
+	var b: Dictionary = ab[1]
+	await _steps(150)
+	var hand0: Vector3 = a.f.hand_world("R")
+	var gap0 := INF
+	for p in b.f.parts:
+		gap0 = minf(gap0, Social.box_distance(p, hand0))
+	t.check(gap0 > 0.15, "the hand hangs well off him (%.0f cm)" % (gap0 * 100.0))
+	press[0] = "R"
+	await _steps(2)
+	t.check(a.has("grab_try") and a.f.holding == null, "G sends the hand out to him: no hold from where it hung")
+	var held := -1
+	for i in 90:
+		await get_tree().physics_frame
+		if a.f.holding != null:
+			held = i
+			break
+	t.check(held >= 0, "the hand took hold of him when it came onto him")
+	if a.f.holding != null:
+		var moved: float = a.f.hand_world("R").distance_to(hand0)
+		t.check(moved > 0.1, "having gone out to him (%.0f cm)" % (moved * 100.0))
+		var first := Social.box_distance(a.f.holding.part, a.f.hand_world("R"))
+		t.check(first < Social.GRAB_LAST + 0.02, "taken with the hand at him (%.1f cm off the part)" % (first * 100.0))
+		await _steps(20)
+		if a.f.holding != null:
+			# (A limb is clasped round its middle line, a hand's breadth in from its end.)
+			var part: VoxelPart = a.f.holding.part
+			var l: Vector3 = part.global_transform.affine_inverse() * a.f.hand_world("R")
+			var he: Vector3 = part.half_ext
+			var inside := minf(he.x - absf(l.x), minf(he.y - absf(l.y), he.z - absf(l.z)))
+			t.check(inside > 0.04, "and closed on it: the hand lies %.1f cm inside the %s" % [inside * 100.0, part.part_name])
+		m.social.let_go(a.f)
+	m.queue_free()
+
+func test_both_buttons_take_hold_with_both_hands() -> void:
+	seed(4)
+	var m := _match()
+	m.me.f.state = "dead"
+	var press := [""]
+	var ab := _reacher(m, press, Vector3(0, 0, 1.0))
+	var a: Dictionary = ab[0]
+	await _steps(150)
+	press[0] = "both"
+	var both := -1
+	for i in 240:
+		await get_tree().physics_frame
+		if a.f.holding != null and a.f.holding.extra != null:
+			both = i
+			break
+	t.check(both >= 0, "with both buttons both hands take hold")
+	if both >= 0:
+		await _steps(20)
+		if a.f.holding != null and a.f.holding.extra != null:
+			var g1 := Social.box_distance(a.f.holding.part, a.f.hand_world(a.f.holding.side))
+			var g2 := Social.box_distance(a.f.holding.extra.part, a.f.hand_world(a.f.holding.extra.side))
+			t.check(g1 < 0.005 and g2 < 0.005, "each closed on him (%.1f and %.1f cm off)" % [g1 * 100.0, g2 * 100.0])
+	m.queue_free()
+
+## A man down on the sand at his feet: he stoops to him and takes hold of him there (the hand at
+## his guard, a metre over the man, never took hold of anything).
+func test_a_man_stoops_to_take_hold_of_a_man_on_the_sand() -> void:
+	seed(4)
+	var m := _match()
+	m.me.f.state = "dead"
+	var press := [false]
+	var a := _man(m, Vector3(0, 0, 0), 0.0, {}, "A", 0, func(_e):
+		var i := {"main": {"x": 0.1, "y": 0.1}, "look": {"yaw": 0.0, "pitch": 0.0}}
+		if press[0]:
+			press[0] = false
+			i.grab = true
+			i.grabHands = "R"
+		return i)
+	var b := _man(m, Vector3(0, 0, 0.7), PI, {}, "B", 1, func(_e): return {"limp": true})   # (he stays down)
+	await _steps(120)
+	b.f.fall(60.0)
+	await _steps(240)
+	var top := 0.0
+	for p in b.f.parts:
+		top = maxf(top, p.global_position.y)
+	t.check(b.f.state != "stand" and top < 1.1, "he lies on the sand (his highest part %.2f m up)" % top)
+	var up: float = a.f.hand_world("R").y
+	press[0] = true
+	var held := -1
+	for i in 280:
+		await get_tree().physics_frame
+		if a.f.holding != null:
+			held = i
+			break
+	t.check(held >= 0, "the hand took hold of the man on the sand")
+	if a.f.holding != null:
+		var hand: Vector3 = a.f.hand_world("R")
+		t.check(hand.y < up - 0.25, "he bent down to him (the hand %.2f m up, from %.2f)" % [hand.y, up])
+		await _steps(20)
+		if a.f.holding != null:
+			var gap := Social.box_distance(a.f.holding.part, a.f.hand_world("R"))
+			t.check(gap < 0.005, "the hand closed on the part it holds (%.1f cm off its surface)" % (gap * 100.0))
+	t.check(a.f.state == "stand", "and he is on his feet")
 	m.queue_free()
 
 func test_a_dropped_weapon_is_picked_up_and_thrown() -> void:

@@ -32,6 +32,7 @@ const WET_BONE := 0.45
 ## Fresh blood on the skin: as glossy as there is blood on it.
 const WET_SMEAR := 0.6
 const BONE := Color(0.93, 0.89, 0.8)
+const BARE_GLOW := 0.22   # how much of its own colour a beast's bared flesh gives off in the shade of its wound
 ## Blood as the new look draws it, over the skin and in a cut: a brighter red than the body's own
 ## mark (VoxelPart.SMEAR), which the fine voxels' shading took down to a brown that read as shadow
 ## on the new men's muscles (user: the damage did not show on the new gladiators as it had).
@@ -1315,6 +1316,9 @@ static func _wound_mm(p: VoxelPart) -> MultiMesh:
 	p.draw_with.append(mi)
 	mi.global_transform = p.global_transform
 	mi.transparency = p.see_through
+	# (A beast's wound is never a black hole: the shader's bare_glow.)
+	if fine.get("beast", false):
+		mi.set_instance_shader_parameter("bare_glow", BARE_GLOW)
 	fine.wmm = wm
 	fine.wmi = mi
 	return wm
@@ -1405,7 +1409,11 @@ static func _layer(p: VoxelPart, i: int, k: int, code: int, h: float) -> Color:
 		2:
 			return FAT.darkened(0.12 * h)
 	var kind: int = p.kinds[i]
-	if kind == 0 or kind == 1 or kind == 2 or kind == 8 or kind == 10 or kind == 11:
+	# (A beast's own flesh, deep in it, is muscle as well: drawn in the voxel's dark red, with the
+	# blood run over it, a wound in a boar was a black hole with a rib in it, and the boar read as
+	# hollow: user. Its organs keep their own colours, below.)
+	var meat: bool = kind == 9 and fine.get("beast", false) and not (p.organ.size() > i and p.organ[i] != 0)
+	if kind == 0 or kind == 1 or kind == 2 or kind == 8 or kind == 10 or kind == 11 or meat:
 		# Under the skin (a hide, scales, a shell) of a voxel that is skin: the muscle, in its fibres.
 		var stripe := 0.86 if ((k & 1) + ((k >> 2) & 1)) % 2 == 0 else 1.05
 		return Color(MUSCLE.r * stripe * (0.92 + 0.16 * h), MUSCLE.g * stripe * (0.9 + 0.2 * h), MUSCLE.b * stripe * (0.9 + 0.2 * h))

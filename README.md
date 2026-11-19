@@ -145,6 +145,15 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   whatever parts of him it crosses. A front kick shifts the weight onto the standing foot as the
   knee comes up, drives the foot out, draws it back in and sets it down (`kick_pose`); it
   strikes only on its way out (`kick_strike`).
+- **A spear is thrown as one is** (user: the javelin was held a third of the way up its shaft where
+  it balances two thirds of the way, and its wind-up never drew the arm back): winding up (F held,
+  or a bot's wind-up) the hand shifts its hold up the shaft to just behind the balance point over
+  0.12 s, the spear coming through the fist (`Weapon.throw_point`, `Fighter._throw_hold`: the weapon's
+  end of the grip's 6-DOF joint is moved along the shaft), and back at the grip if the throw is
+  not made; the arm swings back round the outside of the body, up and out, to the shoulder (an
+  arm turned that far was sent round the front by `Fighter._route_front`, and stayed there, the
+  hand stretched out before the shoulder through the whole wind-up: `out_x`), and the throw drives
+  the hand out, the spear leaving it at the peak of its speed (`tests/test_fight.gd`).
 - **Wrestling**: grabs, shoves, trips, and the giant's lift and throw. A kick at a man down at
   one's feet (lying, sitting, on his knees) is a stamp: the knee comes up and the foot is driven
   down onto him, where he is while the knee is up (`tests/stompprobe.gd`). A giant's blows vary:
@@ -168,6 +177,18 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   till the hand is down on him (`tests/test_stoop.gd`); while he is held the arm that holds him does not
   strike him, nor for a moment after the throw the arm that threw him: the hold, the slam and the
   throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`).
+  A man's grab is a reach, not a snatch (user: no physical contact was to be seen when a player
+  pressed G at a foe; the hand took whatever part of him had its middle within 70 cm, from where
+  it hung, and he was held on nothing): G sends the hand out to the nearest part of him the arm
+  can reach, the man stooping to one on the sand (`Social.grab_go`, `Social._spot_on`,
+  `Social.GRAB_STOOP`, `Fighter.grab_bend`), and the hold is taken the moment the hand is on him
+  (`Social.MAN_REACH`: a forearm's half-width and the little the physics keeps two bodies apart;
+  `Social.GRAB_LAST` for a forearm that lies along him, in the last third of the reach); the other
+  hand the same. The hand then closes on the part over a tenth of a second (`Social._grip_onto`:
+  a limb is clasped round its middle line, a hand's breadth in from its end), so a hold is a
+  hand on the man for as long as it lasts. F is a heave: the arms draw him back, then drive him
+  out, and he leaves them at the end of the drive, 0.34 s after F (`Social.HEAVE_T`; he flew from
+  still arms the step F was pressed). `tests/test_social.gd`.
   Polyphemus alone has no weapon and fights as the colossus he is (`mods.colossus`,
   `Bot._colossus`, `tests/test_colossus.gd`), every move shown in a wind-up a man can read: a fist
   drawn up over his head and brought down on a man's head (`crush`, `Fighter.CRUSH_SLOW`: the fist
@@ -383,6 +404,19 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   stump (`Match.guest_vox`). Only the drawing: every voxel, blow and wound is the game's.
   `tests/test_fine_body.gd` takes a man's neck, shoulders and hips apart and cuts him through at
   each of his nine joints, looking for skin left standing where no flesh is.
+- **No beast is hollow**: a beast's organs and its trunk's bones were laid by its box of voxels,
+  and the body it is drawn with (its sculpt) is slimmer than that here and there, a boar's by a
+  third: a third of the boar's organs lay in its drawn skin or out of its drawn body altogether,
+  its ribs with them, and the first cut in its flank bared a dark hollow with a rib in it. Its
+  insides are fitted to the body it is drawn with (`Beast._fit_insides`, whichever look is drawn,
+  so every machine has the same beast): an organ keeps the voxels with two voxels of drawn flesh
+  over them on every side (one, in a body too small or thin for that), a trunk's bones the same,
+  and what they give up is plain flesh. The flesh a wound bares in a beast is drawn as flesh, red
+  muscle like a man's, not in the dark of the blood run over it (`FineBody._layer`, and the same in
+  the C++ core), and shows as itself in the shade of the wound too (`bare_glow` in the body's
+  shader, set on a beast's wound: `FineBody._wound_mm`). `tests/test_beast_look.gd` goes over every
+  beast: no organ in its drawn skin, none lost, and a club's blow on the boar's flank bares red
+  flesh, no organ and no rib.
 - **Achievements** (`scripts/game/achievements.gd`): fifteen, kept in the save and set on Steam
   when it runs (the list is in docs/DEMO.md).
 - **Interface**: a title screen with a live fight behind it and a champion who wears your look.
