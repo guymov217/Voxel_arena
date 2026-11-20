@@ -681,8 +681,8 @@ var gate_screen: GateScreen = null
 
 ## The gate's cards over the yard, the first forward (the host's: his pick, if he has one).
 ## Alone: through the gate to the one he takes. In a room each one's pick is on the cards (a
-## guest's pick is told to the host), and the host leads them through (or into another mode for
-## the room). At the demo's end there is nothing to choose: straight to its end.
+## guest's pick is told to the host), and the host's own pick leads them through (or he takes them
+## into another mode for the room). At the demo's end there is nothing to choose: straight to its end.
 func _gate_open() -> void:
 	if gate_screen and is_instance_valid(gate_screen):
 		return

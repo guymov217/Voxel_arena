@@ -154,9 +154,6 @@
 "Bout %s of the ladder · each of you picks a fight, and the host leads you to the one most of you picked": [
 "scripts/ui/gate_screen.gd:210"
 ],
-"Lead the party through": [
-"scripts/ui/gate_screen.gd:229"
-],
 "◀  Back to the yard  (Esc)": [
 "scripts/ui/gate_screen.gd:253"
 ],

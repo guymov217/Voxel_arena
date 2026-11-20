@@ -471,6 +471,7 @@ func leave() -> void:
 	purse_credit.clear()
 	ping_ms = -1.0
 	host_rate = -1.0
+	host_fps = -1.0
 	guest_pings.clear()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
@@ -479,6 +480,7 @@ func leave() -> void:
 	peers.clear()
 	inputs.clear()
 	_held.clear()
+	_pace()   # (alone again: the engine's own cap)
 
 func set_lobby_info(mode: String) -> void:
 	if steam_ready and lobby_id and is_host():
@@ -581,6 +583,7 @@ var ping_ms := -1.0             # guest: round trip to the host
 var host_rate := -1.0           # guest: the host's physics steps a second, as it says
 var guest_pings := {}           # host: id -> that guest's round trip
 var step_rate := 120.0          # this game's physics steps over the last second
+var host_fps := -1.0            # guest: the host's frames a second, as it says
 var snap_rate := 0.0            # snapshot messages a second (guest)
 var snap_gap := 0               # the longest wait between two snapshots in the last second (ms)
 var _snaps := 0
@@ -590,7 +593,54 @@ var _meter_t := 0.0
 var _frames0 := -1
 var _wall0 := 0
 
+# ---------- A room keeps time ----------
+# Godot runs at most `max_physics_steps_per_frame` (4 of 120 a second) in one frame and lets the game fall behind the
+# clock when a frame takes longer than that: below 30 frames a second the whole game runs in slow motion. Alone that
+# is the safe thing (a heavy moment never snowballs). In a room it is the worst: two windows on one computer, one
+# of them behind the other, a first-time shader build, and the host's world, which every guest draws, ran at
+# half speed (measured: frames of 45 ms, the guest saw 68 of 120 steps a second and 22 snapshots, not 40). So a room
+# lets a frame catch up as far as the physics allows: as many steps as fit in PHYSICS_BUDGET_MS of the frame at the
+# cost one step has been taking, never fewer than the engine's own cap and never more than ROOM_STEPS_MAX. A room
+# whose steps already cost more than the 8.3 ms there is for each (too many fighters for the computer) keeps the
+# engine's cap: more steps would only make each frame longer, and the host's own picture a slide show.
+const ROOM_STEPS_MAX := 12
+const PHYSICS_BUDGET_MS := 50.0
+
+var step_ms := 0.0              # what one physics step has been costing here (ms, smoothed)
+var _steps_alone := -1          # the engine's cap before a room raised it (-1: not raised)
+var _frame_steps := 0
+var _frame_t0 := 0
+
+static func steps_cap(step_cost_ms: float, base: int) -> int:
+	if step_cost_ms <= 0.0:
+		return base
+	return clampi(int(PHYSICS_BUDGET_MS / step_cost_ms), base, maxi(base, ROOM_STEPS_MAX))
+
+func _physics_process(_dt: float) -> void:
+	if _frame_steps == 0:
+		_frame_t0 = Time.get_ticks_usec()
+	_frame_steps += 1
+
+## Every frame, after its physics steps (this node's _process comes before every other's): what they cost each.
+func _time_steps() -> void:
+	if _frame_steps <= 0:
+		return
+	var ms := float(Time.get_ticks_usec() - _frame_t0) / 1000.0 / _frame_steps
+	step_ms = ms if step_ms <= 0.0 else lerpf(step_ms, ms, 0.05)
+	_frame_steps = 0
+
+## Once a second: the room's cap (and back to the engine's own when the room closes).
+func _pace() -> void:
+	if transport != "":
+		if _steps_alone < 0:
+			_steps_alone = Engine.max_physics_steps_per_frame
+		Engine.max_physics_steps_per_frame = steps_cap(step_ms, _steps_alone)
+	elif _steps_alone >= 0:
+		Engine.max_physics_steps_per_frame = _steps_alone
+		_steps_alone = -1
+
 func _meter(dt: float) -> void:
+	_time_steps()
 	_meter_t += dt
 	if _meter_t < 1.0:
 		return
@@ -605,6 +655,7 @@ func _meter(dt: float) -> void:
 	_snaps = 0
 	snap_gap = _gap
 	_gap = 0
+	_pace()
 	if active() and not is_host():
 		send_host("_ping", {"t": now, "p": ping_ms}, false)
 
@@ -888,12 +939,13 @@ func _receive(type: String, data, from: int) -> void:
 	if type == "_ping":
 		if is_host() and data is Dictionary:
 			guest_pings[from] = clampf(num(data.get("p", -1.0), -1.0), -1.0, 9999.0)
-			send_to(from, "_pong", {"t": int(num(data.get("t", 0))), "s": snappedf(step_rate, 0.1)}, false)
+			send_to(from, "_pong", {"t": int(num(data.get("t", 0))), "s": snappedf(step_rate, 0.1), "f": roundi(Engine.get_frames_per_second())}, false)
 		return
 	if type == "_pong":
 		if not is_host() and data is Dictionary:
 			ping_ms = clampf(float(Time.get_ticks_msec() - int(num(data.get("t", 0)))), 0.0, 9999.0)
 			host_rate = clampf(num(data.get("s", -1.0), -1.0), -1.0, 1000.0)
+			host_fps = clampf(num(data.get("f", -1.0), -1.0), -1.0, 10000.0)
 		return
 	if is_host():
 		match type:

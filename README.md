@@ -294,7 +294,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   and turns with a drag; its button, a double click, Enter or E goes through the gate, Esc back to
   the yard. A boss's day is one big card. In a room each one's pick is the card he picked on his own
   screen or the board he last walked up to, the names of those for each fight are on its card,
-  and the host leads the party to the one most of them picked (his own when as many pick two).
+  and the host's own pick (its button, a double click, Enter) leads the party to the one most of them
+  picked (his own when as many pick two); there is no button of its own for leading them through.
 - **A party's own glory** (`scripts/game/party_glory.gd`): in the co-op campaign, after every bout
   won the crowd crowns the one of the party it loved most (the most favour, above indifference):
   he brings the party's purse a fifth of the bout's prize more and wears a laurel wreath through
@@ -717,6 +718,14 @@ reports, each second, how many physics steps the host keeps up (of 120), its CPU
 (by message type) and the size of a snapshot; each guest says how often snapshots came and the
 longest wait between two. All of them share the one machine's CPU, so the times are worse than in
 a real game, where each player has a computer of his own; the bytes are the same.
+
+A room keeps time (`Net.steps_cap`, `Net._pace`). The engine runs at most 4 physics steps in a frame and lets the
+game fall behind the clock beyond that, so below 30 frames a second a game runs in slow motion; alone that stops a
+heavy moment snowballing, in a room it made the host's world, which every guest draws, run slow for all of them (two
+windows on one computer, one behind the other, or a first-time shader build: with frames of 45 ms the guest saw the
+host at 68 of 120 steps and 22 snapshots a second, not 40). A room lets a frame run as many steps as fit in 50 ms of
+physics at the cost one step has been taking (at most 12; with steps dearer than 8 ms, the engine's 4, as more of them
+would only slow the picture), and F3 shows the frames a second of each side with the steps.
 
 ENet's packet throttle is off: whenever the round trip wobbled it threw away unreliable packets on
 purpose, up to a quarter of the voice and the snapshots on a jittery line. Without it a guest gets

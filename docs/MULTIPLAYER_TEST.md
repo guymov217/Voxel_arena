@@ -83,9 +83,10 @@ before the demo goes out:
    country) at least once.
 3. **The meter.** Everyone presses **F3** in the room. In the corner:
    - **ping**: the round trip to the host. Green under 80 ms, amber to 150, red over.
-   - **host keeps up**: the host's physics steps a second, of 120. Green from 112. Under 95
-     (red) the host's computer cannot keep up and the whole game slows for everyone: fewer
-     players or enemies, or a stronger host.
+   - **host keeps up**: the host's physics steps a second, of 120, and the frames a second it
+     draws them in. Steps green from 112; under 95 (red) the host's computer cannot keep up and
+     the whole game slows for everyone: fewer players or enemies, or a stronger host. Frames
+     green from 45, red under 30. **my game** (guests) says the same of your own window.
    - **snapshots** (guests): about 40 a second, fewer in a full room; **longest wait** under
      90 ms is smooth, over 200 ms is a stutter.
    - **in / out**: KB a second. The host's "out" is his upload: it must stay well under his
@@ -100,6 +101,23 @@ before the demo goes out:
 
 Before that, on one computer: `sh tools/net_load.sh 7` plays a full room of bots over localhost
 and says what the host sends and whether it keeps up (README, Load test).
+
+## If everything looks slow (slow motion)
+
+Press **F3** in both windows (the host's and the guest's) and read two lines.
+
+- **host keeps up N/120 steps**: under 100 means the host's world itself is slow, and so is what the guest sees.
+  Next to it the frames a second: **red (under 30)** means the host's window draws slowly (two windows on one
+  computer, the window behind the other, the first minute after a new build compiling its shaders), and a room
+  now lets the game catch up from that (a frame runs up to 12 physics steps, as many as they cost allows, instead
+  of the engine's 4); if it is still short, the steps themselves cost too much for the computer (too many fighters:
+  `tools/host_bench.bat` says how many it hosts). Close one of the windows, or give the host the stronger computer.
+- **my game** (on the guest): the same for the guest's own window; a slow guest is a choppy picture, not a slow game.
+- The network is not the usual cause: a guest costs the host about 45 KB a second, a snapshot comes 40 times a second,
+  and on one computer the ping is under 10 ms.
+
+Send `net_log.csv` (below) from both windows with the time it looked slow: it has the steps, the frames a second and
+the cost of one step (ms) of each side every second.
 
 ## If something is wrong
 

@@ -12,10 +12,10 @@ extends Control
 ## through the gate; Esc, or the button in the corner, goes back to the yard. Each view is behind
 ## the gate's bars until its foes stand in it; then they are seen through the bars, and the gate
 ## is drawn up. In a room each of the
-## party picks a card, the names of those for it are on each card, and the host leads them through
-## to the one most of them picked (GateChoice.majority).
+## party picks a card, the names of those for it are on each card, and the host's own pick (its button, a double click,
+## Enter) leads them through to the one most of them picked (GateChoice.majority; his own when it is a tie).
 
-signal chosen(i: int)   # through the gate: alone to card i; the host leads the party (his own pick i, -1 none)
+signal chosen(i: int)   # through the gate: alone to card i; the host's pick i leads the party
 signal voted(i: int)    # in a room: card i is my pick
 signal closed
 
@@ -51,7 +51,6 @@ var cards: Array = []      # a Dictionary a card (see _card)
 var world: SubViewport     # the cards' arena and their foes: a world of its own
 var arena: Arena
 var fade: ColorRect
-var lead: Button
 var glows: Array = []      # the torchlight in the corners
 var done := false
 var lead_to := -1          # the card the party is led to (a room)
@@ -220,19 +219,11 @@ func _build() -> void:
 	col.add_child(row)
 	for i in offers.size():
 		cards.append(_card(row, i, offers[i]))
-	# Below the cards: the party led through (the host), where else the gate leads, what the keys do.
+	# Below the cards: where else the gate leads, what the keys do.
 	var foot := HBoxContainer.new()
 	foot.alignment = BoxContainer.ALIGNMENT_CENTER
 	foot.add_theme_constant_override("separation", 14)
 	foot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if party and host:
-		lead = UIStyle.button(Loc.t("Lead the party through"), func(): _go(mine), true)
-		lead.focus_mode = Control.FOCUS_NONE
-		lead.custom_minimum_size = Vector2(320, 46)
-		if lead_block != "":
-			lead.disabled = true
-			lead.tooltip_text = lead_block
-		foot.add_child(lead)
 	for x in extras:
 		if x is Array and (x as Array).size() == 2 and x[1] is Callable:
 			var b := UIStyle.button(String(x[0]), x[1])
@@ -286,7 +277,7 @@ func _keys() -> HBoxContainer:
 	bar.add_theme_constant_override("separation", 22)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var go_text := "through the gate"
-	if party:
+	if party and not host:
 		go_text = "this fight is my pick"
 	var keys := [[["Enter"], go_text], [["Esc"], "back to the yard"], [[], "drag a card to turn its foes"]]
 	if offers.size() > 1:
@@ -1010,7 +1001,7 @@ func _style(j: int, tween := true) -> void:
 	p.z_index = 1 if lit else 0
 	if c.has("go"):
 		var go: Button = c.go
-		if party:
+		if party and not host:
 			go.text = Loc.t("Your pick") if j == mine else Loc.t("Pick this fight")
 		else:
 			go.text = Loc.t("Fight")
@@ -1027,13 +1018,18 @@ func _style(j: int, tween := true) -> void:
 	for ch in ["r", "g", "b"]:
 		tw.tween_property(p, "modulate:" + ch, v, 0.16)
 
-## A card's button (or a double click on it): alone, through the gate to it; in a room, it is my pick.
+## A card's button (or a double click on it): alone, through the gate to it; in a room, it is my pick, and
+## the host's pick takes the party through (there is no button of its own for that).
 func _press(i: int) -> void:
 	if done:
 		return
 	_focus(i, false)
 	if party:
 		_vote(i)
+		if host:
+			if refresh.is_valid():
+				refresh.call(self)   # (the card they are led to, his pick counted)
+			_go(i)
 		return
 	_go(i)
 
@@ -1052,7 +1048,7 @@ func _vote(i: int) -> void:
 func _go(i: int) -> void:
 	if done or (party and not host):
 		return
-	if party and lead != null and lead.disabled:
+	if party and lead_block != "":
 		return
 	if not party:
 		_focus(i, false)

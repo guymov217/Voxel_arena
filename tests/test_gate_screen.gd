@@ -124,10 +124,33 @@ func test_a_party_picks_its_fight() -> void:
 	t.check(went.is_empty() and not g.done, "a guest leads nobody through")
 	await _gone(g)
 	var h := _screen({"party": true, "host": true, "lead_block": "Too many"})
-	t.check(h.lead != null and h.lead.disabled, "too many in the room: the party is not led through")
+	h._press(1)
+	t.check(h.mine == 1 and not h.done, "too many in the room: his pick is a pick, the party is not led through")
 	h._go(0)
 	t.check(not h.done, "not even with the keys")
 	await _gone(h)
+
+## The host's own pick on a card is the way through for the party: no button of its own for it any more.
+func test_the_hosts_pick_leads_the_party() -> void:
+	var h := _screen({"party": true, "host": true})
+	t.check(h.find_children("*", "Button", true, false).all(func(b): return String(b.text) != "Lead the party through"), "no button to lead the party through")
+	t.eq(String((h.cards[0].go as Button).text), Loc.t("Fight"), "his cards say Fight, as they do when alone")
+	var picks := []
+	var went := []
+	h.voted.connect(func(i): picks.append(i))
+	h.chosen.connect(func(i): went.append(i))
+	_key(h, "ui_right")
+	_key(h, "ui_accept")
+	t.eq(picks, [1], "his pick is told")
+	t.check(h.done, "and the party goes through the gate")
+	var t0 := Time.get_ticks_msec()
+	while went.is_empty() and Time.get_ticks_msec() - t0 < 3000:
+		await get_tree().process_frame
+	t.eq(went, [1], "to the second card's fight")
+	await _gone(h)
+	var g := _screen({"party": true, "host": false})
+	t.eq(String((g.cards[0].go as Button).text), Loc.t("Pick this fight"), "a guest's card is still a pick, no more")
+	await _gone(g)
 
 ## The party's picks at the host's: each one's the card he picked last; a pick that is not a card
 ## is none.
