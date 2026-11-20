@@ -62,6 +62,12 @@ gdscript/warnings/confusable_local_declaration=0
 gdscript/warnings/incompatible_ternary=0
 gdscript/warnings/static_called_on_instance=0
 
+[importer_defaults]
+
+wav={
+"compress/mode": 0
+}
+
 [internationalization]
 
 locale/include_text_server_data=true

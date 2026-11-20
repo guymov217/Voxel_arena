@@ -63,6 +63,10 @@ func _fill_bank() -> void:
 		if _bank_stop:
 			return
 		_voice_takes(key)
+	for key in POT_SOUNDS:
+		if _bank_stop:
+			return
+		_pot_stream(key)
 
 ## Every rendered voice there is a file of ("<key>_<take>.ogg" in VOICE_DIR; in an exported game
 ## the files are listed by what they were imported to).
@@ -652,6 +656,51 @@ func _voice_takes(key: String) -> Array:
 		_voices[key] = takes
 	_voices_lock.unlock()
 	return takes
+
+## The sound of a pot bursting, one for each kind of pot (art/audio/pots/<kind>.wav, made for the game from nothing but
+## synthesis, see art/CREDITS.md): the clay giving way, then what was in it (the fire catching and crackling, the poison
+## bubbling, the bees, the bleat of the goat, the chime of the mystery pot...); the thunder pot's is the blast too, with the
+## pot bursting in it (user, from three: the soft boom and the pot loud over it). "pot_clay" is the clay alone, for a kind of
+## pot that has no sound of its own yet.
+const POT_DIR := "res://art/audio/pots/"
+const POT_SOUNDS := ["pot_clay", "pot_thunder", "pot_fire", "pot_acid", "pot_oil", "pot_honey", "pot_garum", "pot_smoke", "pot_bees", "pot_mystery", "pot_nail", "pot_caltrops", "pot_chickens", "pot_goat", "pot_confetti", "pot_grape"]
+var _pots := {}   # sound -> its stream (null: no such file in this build), loaded once
+
+## Which of POT_SOUNDS a pot of this kind is heard as.
+static func pot_key(type: String) -> String:
+	return type if POT_SOUNDS.has(type) else "pot_clay"
+
+## A pot's stream, loaded once: by the bank's thread before the first pot bursts (_fill_bank), or here when asked for first.
+func _pot_stream(key: String) -> AudioStream:
+	_voices_lock.lock()
+	var known := _pots.has(key)
+	var got: AudioStream = _pots.get(key)
+	_voices_lock.unlock()
+	if known:
+		return got
+	var path := POT_DIR + key + ".wav"
+	var st: AudioStream = load(path) if ResourceLoader.exists(path) else null
+	_voices_lock.lock()
+	_pots[key] = st
+	_voices_lock.unlock()
+	return st
+
+## A pot bursting at `at`: its sound (pitch and level vary a little with each pot, as the blows' do). Without the file, the shatter made here.
+func pot(type: String, at: Vector3, gain := 1.0) -> void:
+	if _players.is_empty() or gain < 0.05 or backdrop_mul <= 0.0:
+		return
+	var st := _pot_stream(pot_key(type))
+	if st == null:
+		play("shatter", at, gain * 0.6)
+		return
+	for p in _players:
+		if not p.playing:
+			p.stream = st
+			p.global_position = at
+			p.volume_db = linear_to_db(clampf(gain * volume * backdrop_mul, 0.01, 1.0)) + _vary.randf_range(-1.0, 1.0)
+			p.pitch_scale = _vary.randf_range(0.96, 1.04)
+			p.play()
+			return
 
 ## A character's voice: `pitch` 1.0 for a man, lower for the big (a giant at 0.6, an elephant at
 ## 0.5), higher for the small. `file` names a rendered voice ("lion_call"); without one, or

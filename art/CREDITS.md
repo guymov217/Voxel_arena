@@ -86,6 +86,13 @@ mammoth's trumpets and rumbles (`tools/elephant_voice.py`: the folds buzzing thr
 trunk, its brass, its rattle, the roar and the rumble under it), the gorilla's chest beat and the
 bull's snort are made in code.
 
+## Pot sounds (`audio/pots/*.wav`)
+
+The sound of each kind of pot bursting (the clay giving way, then what was in it: fire, poison, oil, honey, garum,
+smoke, bees, the mystery pot's chime, nails, caltrops, chickens, the goat, confetti, the grape; the thunder pot's
+has the blast in it) was synthesised for this game, one file each, with no recording and no outside source; same
+licence as the game.
+
 ## Music (`audio/music/*.ogg`)
 
 Every piece is played by real instruments, note by note from recorded samples

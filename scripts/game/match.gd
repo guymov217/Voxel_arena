@@ -1885,6 +1885,10 @@ func guest_message(type: String, data) -> void:
 						fx.pool(fp, 1.4 * clampf(float(data.get("s", 1.0)), 0.3, 4.0), 8.0)
 					"boom":
 						_boom_fx(fp, clampi(int(data.get("n", 4)), 1, 60))
+					"pot":
+						# (Only a sound there is a file of: what else a host sends is not played.)
+						if Sfx and not headless and Sfx.POT_SOUNDS.has(str(data.get("t", ""))):
+							Sfx.pot(str(data.t), fp, clampf(float(data.get("g", 1.0)), 0.0, 1.5))
 					"nails":
 						var nd := Vector3(data.d[0], data.d[1], data.d[2]).limit_length(1.0) if data.get("d") is Array and (data.d as Array).size() == 3 else Vector3.ZERO
 						throwables.nail_burst(fp, nd, int(data.get("n", 0)), null, true)
@@ -1943,6 +1947,17 @@ func _exit_tree() -> void:
 func sfx(kind: String, at: Vector3, gain := 1.0) -> void:
 	if Sfx and not headless:
 		Sfx.play(kind, at, gain)
+
+## The name of the sound the last pot to burst was heard as (a test looks at it where no sound is played).
+var last_pot_sound := ""
+
+## A pot bursting at `at`: the sound of its kind (Sfx.pot), heard here and by the guests.
+func pot_sound(type: String, at: Vector3, gain := 1.0) -> void:
+	last_pot_sound = Sfx.pot_key(type) if Sfx else type
+	if Sfx and not headless:
+		Sfx.pot(type, at, gain)
+	if role == "host":
+		Net.send_all("fx", {"k": "pot", "t": last_pot_sound, "p": [snappedf(at.x, 0.01), snappedf(at.y, 0.01), snappedf(at.z, 0.01)], "g": snappedf(gain, 0.01)}, false)
 
 ## A character's voice from his mouth (Voices): heard here, and by the guests.
 func say(f, kind: String, gain := 1.0, event := "") -> void:

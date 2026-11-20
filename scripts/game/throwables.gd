@@ -685,13 +685,15 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 ## Every pot breaks like a pot, whatever was in it: glazed shards flung off the way it was going
 ## and bouncing on the sand, a puff of clay dust, a splash of what it held, a crack of clay.
 const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5)}
-## How loud a pot's breaking is heard: laid under the pot's own sound where it has one (the boom of the powder, the
-## flare of the fire), both at full strength at once were a din.
-static func shatter_gain(type: String) -> float:
-	return 0.5 if type == "pot_thunder" else (0.6 if type == "pot_fire" else 1.0)
+## A thing that breaks as a pot does: not a bolt, an arrow, a dart, a discus, a harpoon, a bola, a net or an anvil.
+static func is_pot(type: String) -> bool:
+	return type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
 
+## What is heard of a pot bursting is the sound of its kind (Sfx.pot: the clay, then what was in it; the thunder pot's
+## has the blast in it too), whole, with nothing laid over it: a pot made a clang, a slash or a boom of its own on top.
+## A mystery pot's own sound is the chime of the surprise, the pot it turns out to be then bursts as well.
 func shatter(p: Vector3, type: String, dir = null) -> void:
-	m.sfx("shatter", p, shatter_gain(type))
+	m.pot_sound(type, p, 0.8 if type == "pot_mystery" else 1.0)
 	var fx: Fx = m.fx
 	if fx == null:
 		return
@@ -725,12 +727,10 @@ const THUNDER := {"power": 30.0, "radius": 3.3, "reach": 3.0, "shove": 110.0, "s
 const BOMB_BLAST := {"power": 44.0, "radius": 3.8, "reach": 3.5, "shove": 160.0, "stun": 0.55, "fell": 0.35}
 
 func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = null, hit_part = null, power := 1.0, bomb := false) -> void:
-	var pot := type.begins_with("pot_") and not ["pot_bolt", "pot_dart", "pot_discus", "pot_harpoon", "pot_bola", "pot_bignet", "pot_anvil"].has(type) and not type.begins_with("pot_arrow")
-	if pot:
+	if is_pot(type):
 		shatter(p, type, dir)
 	match type:
 		"pot_thunder":
-			m.sfx("boom", p, 1.0)
 			flash(p, Color(1.0, 0.8, 0.55), 14.0, 10.0)
 			if m.fx:
 				m.fx.burst("blastfire", p + Vector3(0, 0.25, 0), 70, Vector3.UP)
@@ -755,7 +755,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 					c.last_attacker = owner_
 			m.feed.emit("BOOM!")
 		"pot_nail":
-			m.sfx("clang", p, 0.6)
 			# The pot bursts into a hail of nails flying out every way, up, down and all round
 			# (a few carried on with the pot). Each
 			# is a real little dart: it goes in only where it meets a body and stays in it. The
@@ -771,7 +770,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				for k in 9:
 					add_liquid("fire", Vector3(p.x + randf_range(-0.25, 0.25), _floor_y(p), p.z + randf_range(-0.25, 0.25)), 0.25, owner_)
 			splash_burning(p, dir, 48, owner_, hit_part if hit_char and hit_char.alive else null, hit_char if hit_char and hit_char.alive else null)
-			m.sfx("slash", p, 1.0)
 		"pot_acid":
 			if p.y < 0.35 or hit_char == null:
 				for k in 9:
@@ -786,7 +784,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.items.spawn("caltrop", Vector3(p.x + cos(a) * 0.08, maxf(0.2, p.y), p.z + sin(a) * 0.08), Vector3(cos(a) * out, 1.0 + randf() * 2.5, sin(a) * out), owner_)
 			m.feed.emit("Caltrops all over the sand. Watch your step.")
 		"pot_bees":
-			m.sfx("slap", p)
 			var stung := false
 			for x in _near(p, 3.0):
 				if x.c == owner_:
@@ -874,8 +871,6 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 		"pot_smoke":
 			# Sand and smoke (the sand pot and the smoke pot made one, user): a cloud that blinds.
 			add_zone("smoke", Vector3(p.x, 0, p.z), 3.2, 8.0, owner_)
-			m.sfx("whoosh", p)
-			m.sfx("slap", p, 0.6)
 		"torch":
 			# A torch thrown: what it strikes catches fire; on the sand it lies burning a while,
 			# and spilled oil it falls in (or beside) goes up in flames.
