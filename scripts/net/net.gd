@@ -307,6 +307,14 @@ func invite_friends() -> void:
 	if steam_ready and lobby_id and steam.has_method("activateGameOverlayInviteDialog"):
 		steam.call("activateGameOverlayInviteDialog", lobby_id)
 
+## Whether the multiplayer extension has a call. The class is asked, not an instance: making a peer before Steam is up may reach
+## for Steam's networking too early. (Where a test has put a factory in its place, the peer the factory makes.)
+func _peer_has(method: String) -> bool:
+	if ClassDB.class_exists("SteamMultiplayerPeer"):
+		return ClassDB.class_has_method("SteamMultiplayerPeer", method)
+	var p = steam_peer_factory.call() if steam_peer_factory.is_valid() else null
+	return p != null and p.has_method(method)
+
 ## What this game finds of Steam, line by line (`-- --steam-check`): that the library, the running client, the multiplayer
 ## extension and the lobby calls are all there, before two people try a room.
 func steam_report() -> Array:
@@ -316,7 +324,13 @@ func steam_report() -> Array:
 		out.append("Steam client: running, signed in as %s (%d)" % [my_name, steam_user])
 	else:
 		out.append("Steam client: NOT READY (%s)" % (steam_problem if steam_problem != "" else "no Steam library, or this is a download without Steam"))
-	out.append("Multiplayer extension (SteamMultiplayerPeer): %s" % ("found" if ClassDB.class_exists("SteamMultiplayerPeer") else "NOT FOUND"))
+	var peer_there := steam_peer_factory.is_valid() or ClassDB.class_exists("SteamMultiplayerPeer")
+	out.append("Multiplayer extension (SteamMultiplayerPeer): %s" % ("found" if peer_there else "NOT FOUND"))
+	if peer_there:
+		# The two calls that open and join a room (tools/package.py reads these lines too); the third is the kick's memory of who was turned away.
+		for m in ["create_host", "create_client"]:
+			out.append("  peer call %s: %s" % [m, "yes" if _peer_has(m) else "MISSING"])
+		out.append("  peer call get_steam64_from_peer_id: %s" % ("yes" if _peer_has("get_steam64_from_peer_id") else "no (optional: a guest who was turned away could come back)"))
 	if steam != null:
 		for m in ["steamInitEx", "createLobby", "joinLobby", "leaveLobby", "setLobbyData", "getLobbyData", "setLobbyJoinable", "getLobbyOwner", "getNumLobbyMembers", "requestLobbyList", "addRequestLobbyListStringFilter", "addRequestLobbyListDistanceFilter", "setRichPresence", "clearRichPresence", "activateGameOverlayInviteDialog", "initRelayNetworkAccess", "run_callbacks"]:
 			out.append("  call %s: %s" % [m, "yes" if steam.has_method(m) else "MISSING"])

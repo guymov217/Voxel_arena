@@ -80,6 +80,11 @@ class FakePeer extends OfflineMultiplayerPeer:
 		made = "client:%d" % host_id
 		return OK
 
+## A multiplayer extension that can open a room but not join one (another extension's API, or an old one).
+class PartialPeer extends OfflineMultiplayerPeer:
+	func create_host(_vport) -> int:
+		return OK
+
 var _name := ""
 
 func _steam(peer_works := true) -> FakeSteam:
@@ -326,6 +331,15 @@ func test_the_steam_report_says_what_is_there_and_what_is_not() -> void:
 	var text := "\n".join(Net.steam_report())
 	t.check(text.contains("signed in as Tester") and text.contains("Steam multiplayer: READY"), "ready: %s" % text.substr(0, 200))
 	t.check(not text.contains("MISSING"), "every call it needs is there")
+	t.check(text.contains("Multiplayer extension (SteamMultiplayerPeer): found") and text.contains("peer call create_host: yes") and text.contains("peer call create_client: yes"), "the peer's two calls are there: %s" % text.substr(0, 400))
 	_done(fake)
 	var bare := "\n".join(Net.steam_report())
 	t.check(bare.contains("NOT FOUND") and bare.contains("not available"), "without Steam: says so (%s)" % bare.replace("\n", " | ").substr(0, 160))
+
+func test_the_steam_report_names_a_peer_that_lacks_a_call_the_game_makes() -> void:
+	var fake := _steam()
+	Net.steam_peer_factory = func(): return PartialPeer.new()
+	var text := "\n".join(Net.steam_report())
+	t.check(text.contains("peer call create_host: yes") and text.contains("peer call create_client: MISSING"), "says which one: %s" % text.substr(0, 400))
+	t.check(text.contains("peer call get_steam64_from_peer_id: no (optional"), "the kick's call is optional and says so")
+	_done(fake)

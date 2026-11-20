@@ -36,7 +36,7 @@ func _ready() -> void:
 
 ## `-- --steam-check`: what this game finds of Steam (steam_check.bat), in the console, in a window and in
 ## user://steam_check.txt, so that on one's own PC the library, the client, the multiplayer extension and the lobby
-## calls can be seen to be there before two people try a room. Exit 0 when Steam multiplayer is ready.
+## calls can be seen to be there before two people try a room. Exit 0 when Steam multiplayer is ready and nothing it calls is MISSING.
 func _steam_check() -> void:
 	var text := "\n".join(Net.steam_report())
 	print(text)
@@ -46,4 +46,4 @@ func _steam_check() -> void:
 		f.close()
 	if DisplayServer.get_name() != "headless":
 		OS.alert(text, "WRECKSMITH: Steam check")
-	get_tree().quit(0 if Net.steam_available() else 1)
+	get_tree().quit(0 if Net.steam_available() and not text.contains("MISSING") else 1)

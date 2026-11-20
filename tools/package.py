@@ -396,14 +396,22 @@ def steam_addons(root=ROOT):
     return out
 
 
+STEAM_WORDS = ("GodotSteam (the overlay, lobbies, rich presence, achievements and cloud saves)",
+               "the Steam multiplayer peer (SteamMultiplayerPeer: playing together through Steam's lobbies)")
+# What `-- --steam-check` (scripts/net/net.gd steam_report) prints when each is there.
+STEAM_CHECK_LIB = "Steam library (GodotSteam): found"
+STEAM_CHECK_PEER = "Multiplayer extension (SteamMultiplayerPeer): found"
+
+
 def steam_addons_missing(root=ROOT):
-    """What the Steam builds still lack of Steam's two extensions, in words; [] when both are in addons/."""
+    """What the Steam builds still lack of Steam's two extensions, in words, by the names of the folders in addons/ ([] when both are
+    there). Names say little (GodotSteam's download may carry the peer inside it): Packager.steam_missing asks the game itself first."""
     names = list(steam_addons(root))
     miss = []
     if not any("godotsteam" in n.lower() and not is_steam_peer(n) for n in names):
-        miss.append("GodotSteam (the overlay, lobbies, rich presence, achievements and cloud saves)")
+        miss.append(STEAM_WORDS[0])
     if not any(is_steam_peer(n) for n in names):
-        miss.append("the Steam multiplayer peer (SteamMultiplayerPeer: playing together through Steam's lobbies)")
+        miss.append(STEAM_WORDS[1])
     return miss
 
 
@@ -423,6 +431,16 @@ def copyright_holder(root=ROOT):
         return str(json.loads((Path(root) / "data" / "legal.json").read_text(encoding="utf-8")).get("holder", "")).strip()
     except (OSError, ValueError):
         return ""
+
+
+def copyright_line(root=ROOT):
+    """'Copyright (c) 2026 Edella Studios' from data/legal.json, or '' while no holder is named (plain ASCII: it goes on a command line)."""
+    try:
+        legal = json.loads((Path(root) / "data" / "legal.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    holder, year = str(legal.get("holder", "")).strip(), str(legal.get("year", "")).strip()
+    return ("Copyright (c) %s %s" % (year, holder)).replace("  ", " ") if holder else ""
 
 
 def steam_depot_gaps(root, platform, depot):
@@ -864,6 +882,25 @@ class Packager:
 
     # -- export --
 
+    def steam_extensions_found(self):
+        """(GodotSteam is loaded, the multiplayer peer is loaded and has the calls the game makes) as the game itself sees them: it is run
+        headless with `-- --steam-check`, which loads what is in addons/ and asks the engine. None when it could not be run. The
+        folder names say less: one download may carry both extensions, or the peer may be another one's."""
+        env = dict(os.environ, SteamAppId="480", SteamGameId="480")
+        code, out = run([self.godot, "--headless", "--path", self.root, "--", "--steam-check"], timeout=240, env=env)
+        if "WRECKSMITH" not in out:
+            return None
+        peer = STEAM_CHECK_PEER in out and "MISSING" not in "\n".join(l for l in out.splitlines() if "peer call" in l)
+        return (STEAM_CHECK_LIB in out, peer)
+
+    def steam_missing(self):
+        """What the Steam builds lack of Steam's two extensions, in words: [] when both are there. Asked of the game; by folder names when it cannot be run."""
+        found = self.steam_extensions_found()
+        self.steam_asked = found is not None
+        if found is None:
+            return steam_addons_missing(self.root)
+        return [words for ok, words in zip(found, STEAM_WORDS) if not ok]
+
     def make_licenses(self):
         """THIRD_PARTY_LICENSES.txt for the packages: the game's credits written by the game itself (`-- --probe licenses_dump`: with the
         Godot that exports it, so the engine's licence terms are those of the build), and for the Steam builds the licence files of the
@@ -1049,6 +1086,7 @@ class Packager:
             "  Windows  %APPDATA%\\Godot\\app_userdata\\WRECKSMITH",
             "  Linux    ~/.local/share/godot/app_userdata/WRECKSMITH",
             "  macOS    ~/Library/Application Support/Godot/app_userdata/WRECKSMITH", "",
+            *([copyright_line(self.root), ""] if copyright_line(self.root) else []),
             "Build %s." % self.rev, ""])
 
     def stage_standalone(self, preset, exe):
@@ -1117,7 +1155,9 @@ class Packager:
         if not nsis:
             return None             # ensure_nsis said why
         exe = find_preset(self.presets, edition, "standalone", "windows").exe
-        cmd = [nsis, "-V2", "-DPRODUCT=%s" % TITLE[edition], "-DVERSION=%s" % self.version, "-DEXE=%s" % exe, "-DSRC=%s" % stage,
+        holder = copyright_holder(self.root)
+        who = (["-DPUBLISHER=%s" % holder, "-DCOPYRIGHT=%s" % copyright_line(self.root)] if holder else [])
+        cmd = [nsis, "-V2", "-DPRODUCT=%s" % TITLE[edition], "-DVERSION=%s" % self.version, "-DEXE=%s" % exe, "-DSRC=%s" % stage, *who,
                "-DOUT=%s" % out_file, "-DSLUG=%s" % SLUG[edition], "-DICON=%s" % (self.root / "art" / "icon" / "wrecksmith.ico"),
                "-DWELCOME_BMP=%s" % (self.root / "tools" / "installer" / "welcome.bmp"), "-DHEADER_BMP=%s" % (self.root / "tools" / "installer" / "header.bmp"),
                str(self.root / "tools" / "installer" / "wrecksmith.nsi")]
@@ -1164,7 +1204,9 @@ class Packager:
             self.nsis = self.ensure_nsis()      # asked now, not after the exports, so the questions are over before the long part
         for src in a.godotsteam or []:
             self.install_steam_addons(src)
-        miss = steam_addons_missing(self.root) if steam_eds else []
+        if not a.skip_export or self.need_import:      # (the game is asked below which extensions it loads: they load once imported)
+            self.ensure_imported()
+        miss = self.steam_missing() if steam_eds else []
         if miss:
             msg = ("the Steam builds lack %s. They are made without, so they run, but %s. Put the extension in addons/ "
                    "(or pass --godotsteam <its zip or folder>, once for each) and run again; docs/PACKAGING.md says where to get them."
@@ -1172,11 +1214,12 @@ class Packager:
                       "through Steam (by address still works)" if len(miss) == 2 else
                       "without Steam's overlay, lobbies, achievements and cloud saves" if "GodotSteam" in miss[0] else
                       "with no playing together through Steam's lobbies (by address still works)"))
+            if getattr(self, "steam_asked", False) and steam_addons(self.root):
+                msg += (" (The game itself was asked what it loads from addons/, headless; a folder that is there and still is not "
+                        "found is one the engine does not load: `godot --headless --path . -- --steam-check` prints what it says.)")
             if a.require_steam_lib:
                 raise Fail(msg)
             self.warn(msg)
-        if not a.skip_export:
-            self.ensure_imported()
         self.make_licenses()
         steam_done = {}
         # The systems the game is sold for on Steam (tools/steam/steam_ids.json "platforms"; a --platforms list overrides it).

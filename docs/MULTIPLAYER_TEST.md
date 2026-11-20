@@ -125,7 +125,7 @@ its own build.
 1. Steam is running and signed in (a different account on each PC).
 2. The game, one of two ways:
    - **Your PC (the project):** the project folder with Godot, and in it `addons/godotsteam/` and the multiplayer peer's
-     folder (`tools\package.bat --godotsteam <zip> <zip>` puts them in). Double-click **`steam_check.bat`**.
+     folder (`tools\package.bat --godotsteam <zip> <zip>` puts them in; `PACKAGING.md` says where to download them). Double-click **`steam_check.bat`**.
    - **The other person's PC (the built game):** copy the folder `dist/steam/content/full/windows/` (or the Linux one). Put a text
      file `steam_appid.txt` containing `480` beside the program, open a Command Prompt in that folder and run
      `WRECKSMITH.exe -- --steam-check` (Linux: `./WRECKSMITH.x86_64 -- --steam-check`).

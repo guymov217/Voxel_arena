@@ -36,7 +36,27 @@ what each check found) and `dist/standalone/SHA256SUMS.txt`.
    achievements, and with no playing together through Steam (by address still works); the report says so, and
    `--require-steam-lib` turns that warning into a stop, for a release. After the export it checks that each Steam depot holds
    the extensions' own libraries and Steam's (`steam_api64.dll`, `libsteam_api.so`), and warns when one is missing.
-   On the PC, `steam_check.bat` says whether the game finds them all.
+   On the PC, `steam_check.bat` says whether the game finds them all, and the packager itself asks the game (`-- --steam-check`,
+   after the import) which of the two it loads: one download that carries both is fine, a peer without `create_host` or
+   `create_client` counts as missing.
+
+   **Where to get them** (read on 20 Nov 2026 from a machine that could open GitHub but not Codeberg or godotsteam.com):
+   - *GodotSteam*: in the Godot editor, the **AssetLib** tab, search "GodotSteam GDExtension 4.4+" (asset 2445,
+     <https://godotengine.org/asset-library/asset/2445>, MIT; the listing can lag the newest release), or the project's releases
+     page <https://codeberg.org/godotsteam/godotsteam/releases> (newest then: v4.24, built on Steamworks 1.65). Take the
+     **GDExtension** zip (for Godot 4.4 or newer), not the engine-module build or the source. Docs: <https://godotsteam.com>. The
+     GitHub mirror (github.com/GodotSteam/GodotSteam) holds only overflow archives, not the GDExtension zip. A good download has
+     `addons/godotsteam/` with `win64/` and `linux64/` in it, and Steam's own `steam_api64.dll` / `libsteam_api.so`.
+   - *The Steam multiplayer peer*: the GodotSteam team keeps a repository named MultiplayerPeer
+     (<https://github.com/GodotSteam/MultiplayerPeer>, a mirror; the project lives on codeberg.org/godotsteam). A compiled one that
+     is known to exist is the `addon` branch of <https://github.com/expressobits/steam-multiplayer-peer> (zip:
+     <https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip>, MIT; `addons/steam-multiplayer-peer/`
+     with Windows, Linux and macOS libraries). Its author paused work in Dec 2025 and recommends GodotSteam where possible, so
+     look at GodotSteam's own repository first.
+   - *Not checked from here*: the exact file names on Codeberg, whether either loads in Godot 4.7, whether a peer download brings
+     the `steam_api` libraries (GodotSteam's are the ones to use; the packager warns when a depot lacks them) and the peer's real method
+     names (the game calls `create_host(0)` and `create_client(steam_id, 0)`; `steam_check.bat` prints each as yes or MISSING).
+     A zip downloaded from a GitHub branch has a wrapper folder around `addons/`: the packager looks inside it.
 4. **For the Steam upload: your ids**, in `tools/steam/steam_ids.json` (below).
 5. **NSIS** (`makensis`) for the Windows installer (a real `Setup.exe`). On Windows the packager asks, the first time, whether
    to fetch it: a 2 MB zip from nsis.sourceforge.io, checked against a checksum kept in `tools/package.py` and unpacked into
@@ -188,7 +208,8 @@ the pieces are: `EMBLEM_CENTRE` and `LOGO_BOX` in `intro.gd` must follow, `tests
 - Every package carries **`THIRD_PARTY_LICENSES.txt`**: the game writes it (`-- --probe licenses_dump`, from `scripts/game/credits.gd`,
   with the Godot that exports, so Godot's licence terms are those of the build), and for the Steam depots the licence files that
   came with Steam's extensions are added word for word. The same text is the menu's **Credits** screen. The © line takes its holder from
-  `data/legal.json`; while that is empty the packager says so.
+  `data/legal.json` (**Edella Studios**; while it is empty the packager says so). The same name is the installer's publisher, the
+  copyright of the Windows programs' file details (`export_presets.cfg`) and the line in the downloads' README.
 
 ## Not done yet
 

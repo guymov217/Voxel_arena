@@ -10,6 +10,11 @@ itself: `docs/store/screenshots/` and `docs/store/capsules/` (how to remake them
 
 **WRECKSMITH**
 
+## Developer and publisher
+
+**Edella Studios**, both fields (Steamworks → *Store presence → Edit store page → Basic info*); the same name is the game's
+copyright holder (`data/legal.json`), so the Credits screen, the installer and the page agree.
+
 ## Release
 
 **Version 1.0**, a full release (not Early Access), for **Windows and Linux** (64-bit; the Linux build runs in Steam's Linux

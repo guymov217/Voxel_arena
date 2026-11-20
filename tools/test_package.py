@@ -276,8 +276,31 @@ class Nsis(unittest.TestCase):
             for need in ("-DICON=", "-DWELCOME_BMP=", "-DHEADER_BMP=", "-DPRODUCT=WRECKSMITH"):
                 self.assertTrue(any(c.startswith(need) for c in seen["cmd"]), need)
             self.assertEqual(pk.notes, [])
+            self.assertIn("-DPUBLISHER=Edella Studios", seen["cmd"], "the installer names who made the game")
+            self.assertIn("-DCOPYRIGHT=Copyright (c) 2026 Edella Studios", seen["cmd"])
         finally:
             shutil.rmtree(tmp)
+
+    def test_without_a_named_holder_the_installer_is_given_none_to_print(self):
+        pk = self._packager()
+        pk.nsis = "/somewhere/makensis"
+        pk.root = Path(tempfile.mkdtemp())
+        (pk.root / "data").mkdir()
+        (pk.root / "data" / "legal.json").write_text('{"holder": "", "year": "2026"}')
+        seen = {}
+
+        def fake_run(cmd, cwd=None, timeout=None):
+            seen["cmd"] = [str(c) for c in cmd]
+            Path([c for c in seen["cmd"] if c.startswith("-DOUT=")][0].split("=", 1)[1]).write_bytes(b"MZ")
+            return 0, ""
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            with mock.patch.object(P, "run", fake_run):
+                pk.make_installer("full", tmp, tmp / "x-setup.exe")
+            self.assertFalse(any(c.startswith(("-DPUBLISHER=", "-DCOPYRIGHT=")) for c in seen["cmd"]), seen["cmd"])
+        finally:
+            shutil.rmtree(tmp)
+            shutil.rmtree(pk.root)
 
     def test_no_installer_flag_and_the_option_parse(self):
         a = P.parse_args([])
@@ -462,6 +485,20 @@ class Archives(unittest.TestCase):
             self.assertIn(needle, t)
             self.assertIn("never connects to Steam", t)
         self.assertIn("The full game", pk.readme_text("full", "linux"))
+
+    def test_the_readme_carries_the_copyright_line_once_a_holder_is_named(self):
+        pk = P.Packager(P.parse_args([]))
+        self.assertIn("Copyright (c) 2026 Edella Studios", pk.readme_text("full", "windows"))
+        pk.root = Path(tempfile.mkdtemp())
+        try:
+            (pk.root / "data").mkdir()
+            (pk.root / "data" / "legal.json").write_text('{"holder": "", "year": "2026"}')
+            self.assertNotIn("Copyright (c)", pk.readme_text("full", "windows"), "no holder, no line")
+            self.assertEqual(P.copyright_line(pk.root), "")
+            (pk.root / "data" / "legal.json").write_text('{"holder": "  Some Studio ", "year": ""}')
+            self.assertEqual(P.copyright_line(pk.root), "Copyright (c) Some Studio", "no year, no double space")
+        finally:
+            shutil.rmtree(pk.root)
 
     def test_sha256_matches_the_tool(self):
         tmp = Path(tempfile.mkdtemp())
@@ -708,6 +745,82 @@ class SteamAddons(unittest.TestCase):
             self.assertTrue(P.is_steam_peer(n), n)
         for n in ("godotsteam", "GodotSteam"):
             self.assertFalse(P.is_steam_peer(n), n)
+
+    def test_a_zip_from_a_github_branch_has_a_wrapper_folder_and_a_hyphenated_name(self):
+        base = "steam-multiplayer-peer-addon/addons/steam-multiplayer-peer/"
+        ext = ('[configuration]\nentry_symbol = "x"\ncompatibility_minimum = "4.4"\n\n[libraries]\n'
+               'windows.release.x86_64 = "res://addons/steam-multiplayer-peer/windows/libx.dll"\n'
+               'linux.release.x86_64 = "res://addons/steam-multiplayer-peer/linux/libx.so"\n')
+        z = self._zip("branch.zip", {base + "steam-multiplayer-peer.gdextension": ext,
+                                     base + "windows/libx.dll": b"dll", base + "linux/libx.so": b"so"})
+        self.pk.install_steam_addons(z)
+        self.assertEqual(sorted(P.steam_addons(self.pk.root)), ["steam-multiplayer-peer"])
+        self.assertTrue(P.is_steam_peer("steam-multiplayer-peer"))
+        self.assertTrue((self.pk.root / "addons" / "steam-multiplayer-peer" / "linux" / "libx.so").exists())
+        self.assertEqual(len(P.steam_addons_missing(self.pk.root)), 1, "the peer is there; GodotSteam is still wanted")
+
+    STEAM_CHECK = ("WRECKSMITH 1.0.1.1.full\n"
+                   "Steam library (GodotSteam): %s\n"
+                   "Steam client: NOT READY (Steam is not running)\n"
+                   "Multiplayer extension (SteamMultiplayerPeer): %s\n%s"
+                   "Steam multiplayer: not available\n")
+    PEER_CALLS = ("  peer call create_host: yes\n  peer call create_client: %s\n  peer call get_steam64_from_peer_id: yes\n")
+
+    def _game_says(self, lib=True, peer=True, join="yes", output=None):
+        """The packager's run of `-- --steam-check`, answered as the game would; returns (what was run, the patch)."""
+        seen = {}
+
+        def fake_run(cmd, cwd=None, timeout=None, env=None):
+            seen["cmd"], seen["env"] = [str(c) for c in cmd], env
+            if output is not None:
+                return 0, output
+            return 0, self.STEAM_CHECK % ("found" if lib else "NOT FOUND (addons/godotsteam is missing, or not loaded)",
+                                          "found" if peer else "NOT FOUND", (self.PEER_CALLS % join) if peer else "")
+        self.pk.godot = "/fake/godot"
+        return seen, mock.patch.object(P, "run", fake_run)
+
+    def test_the_game_itself_says_which_extensions_it_loads(self):
+        seen, patch = self._game_says()
+        with patch:
+            self.assertEqual(self.pk.steam_extensions_found(), (True, True))
+            self.assertEqual(self.pk.steam_missing(), [], "both are loaded: nothing is said missing, whatever the folders are called")
+        self.assertEqual(seen["cmd"][-2:], ["--", "--steam-check"])
+        self.assertIn("--headless", seen["cmd"])
+        self.assertEqual(seen["env"]["SteamAppId"], "480", "the test app's id, so that a Steam client that is open does not matter")
+
+    def test_a_download_that_carries_both_needs_no_second_one(self):
+        # one zip holding both extensions under one name: the folder names would call the peer missing, the game does not
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        self.assertEqual(len(P.steam_addons_missing(self.pk.root)), 1)
+        seen, patch = self._game_says()
+        with patch:
+            self.assertEqual(self.pk.steam_missing(), [])
+
+    def test_the_game_names_what_it_does_not_find(self):
+        for lib, peer, want in ((False, True, ["GodotSteam"]), (True, False, ["multiplayer peer"]), (False, False, ["GodotSteam", "multiplayer peer"])):
+            seen, patch = self._game_says(lib=lib, peer=peer)
+            with patch:
+                miss = self.pk.steam_missing()
+            self.assertEqual(len(miss), len(want), miss)
+            for w in want:
+                self.assertTrue(any(w in m for m in miss), (w, miss))
+
+    def test_a_peer_without_the_calls_that_open_and_join_a_room_counts_as_missing(self):
+        seen, patch = self._game_says(join="MISSING")
+        with patch:
+            self.assertEqual(self.pk.steam_extensions_found(), (True, False))
+            miss = self.pk.steam_missing()
+        self.assertEqual(len(miss), 1)
+        self.assertIn("multiplayer peer", miss[0])
+
+    def test_when_the_game_cannot_be_run_the_folder_names_decide(self):
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        seen, patch = self._game_says(output="could not run /fake/godot: no such file")
+        with patch:
+            self.assertIsNone(self.pk.steam_extensions_found())
+            miss = self.pk.steam_missing()
+        self.assertEqual(len(miss), 1)
+        self.assertIn("multiplayer peer", miss[0])
 
     def test_the_options_take_several_downloads(self):
         a = P.parse_args(["--godotsteam", "a.zip", "b.zip", "--require-steam-lib"])

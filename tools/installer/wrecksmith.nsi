@@ -1,5 +1,5 @@
 ; The Windows installer of the download for people without Steam (NSIS 3). tools/package.py builds it, with
-;   makensis -DPRODUCT="WRECKSMITH Demo" -DSLUG=WRECKSMITH-Demo -DVERSION=0.1 -DEXE=WRECKSMITH_Demo.exe -DSRC=<folder> -DOUT=<setup.exe> wrecksmith.nsi
+;   makensis -DPRODUCT="WRECKSMITH Demo" -DSLUG=WRECKSMITH-Demo -DVERSION=0.1 -DEXE=WRECKSMITH_Demo.exe -DSRC=<folder> -DOUT=<setup.exe> [-DPUBLISHER=<name> -DCOPYRIGHT=<line>] wrecksmith.nsi
 ; It installs for the current user (no administrator rights), into %LOCALAPPDATA%\Programs\<product>, with a Start
 ; menu entry, an optional desktop shortcut, and an uninstaller listed under Installed apps. Nothing is signed.
 ; Its icon and pictures are the game's (-DICON, -DWELCOME_BMP, -DHEADER_BMP, else the ones next to this file).
@@ -17,6 +17,12 @@ Unicode true
 !endif
 !ifndef EXE
   !define EXE "WRECKSMITH_Demo.exe"
+!endif
+!ifndef PUBLISHER
+  !define PUBLISHER "WRECKSMITH"
+!endif
+!ifndef COPYRIGHT
+  !define COPYRIGHT ""
 !endif
 !ifndef SRC
   !error "pass -DSRC=<the folder to install>"
@@ -47,7 +53,8 @@ VIProductVersion "${VERSION}.0.0"
 VIAddVersionKey "ProductName" "${PRODUCT}"
 VIAddVersionKey "FileDescription" "${PRODUCT} installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" ""
+VIAddVersionKey "CompanyName" "${PUBLISHER}"
+VIAddVersionKey "LegalCopyright" "${COPYRIGHT}"
 
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"
@@ -78,7 +85,7 @@ Section "${PRODUCT}" SecGame
   WriteRegStr HKCU "Software\${SLUG}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "DisplayName" "${PRODUCT}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "Publisher" "WRECKSMITH"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "Publisher" "${PUBLISHER}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "DisplayIcon" "$INSTDIR\${EXE}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${SLUG}" "UninstallString" '"$INSTDIR\Uninstall.exe"'

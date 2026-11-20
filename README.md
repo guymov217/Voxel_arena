@@ -593,7 +593,8 @@ The CI workflow builds it for all three platforms before exporting.
 `scripts/net/net.gd` reaches GodotSteam only through `Engine.get_singleton("Steam")` and
 `ClassDB`, so the project runs on stock Godot. It falls back to ENet on port 7777.
 
-To use Steam, put **two** GDExtensions in `addons/` (the packager does it: `tools/package.py --godotsteam <zip> <zip>`):
+To use Steam, put **two** GDExtensions in `addons/` (the packager does it: `tools/package.py --godotsteam <zip> <zip>`;
+`docs/PACKAGING.md` says where to download them):
 
 - **GodotSteam** (Godot 4.7; godotsteam.com): the `Steam` singleton: overlay, lobbies, rich presence, achievements, cloud.
 - **The Steam multiplayer peer** (`SteamMultiplayerPeer`): carries the game's online traffic over Steam's relay. Without it
@@ -768,7 +769,7 @@ For a Steam build, ship both Steam extensions' `addons/` folders (GodotSteam bri
 `tools/package.py --godotsteam <GodotSteam zip> <multiplayer peer zip>` puts them in (`--require-steam-lib` stops the run when
 one is missing), and the downloads without Steam leave `addons/` out. The packager's SteamPipe scripts upload the result.
 Every package carries `THIRD_PARTY_LICENSES.txt`, which the game writes itself (the menu's **Credits** screen shows the same
-text); the line of the copyright holder is in `data/legal.json`.
+text); the line of the copyright holder (Edella Studios) is in `data/legal.json`, and from there in the installer and the downloads' README.
 
 Store screenshots: `xvfb-run -s "-screen 0 1920x1080x24" godot --rendering-driver vulkan
 --resolution 1920x1080 --path . -- --probe steamshots` with `SHOT_DIR` set saves 1920×1080

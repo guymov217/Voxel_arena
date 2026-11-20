@@ -76,7 +76,7 @@
 - [ ] **שמירה וענן:** מחיקת שמירה, שמירה ישנה, שני מחשבים עם אותו חשבון Steam (Steam Cloud, `DEMO.md` סעיף 4).
 - [ ] **קריסות:** Godot שומר לוג ב־`user://logs/godot.log` (ב־Windows: `%APPDATA%\Godot\app_userdata\WRECKSMITH\logs\`). כשמישהו מדווח על תקלה, מבקשים את הקובץ הזה.
 - [ ] **שפות:** יש 16 שפות (`i18n/`). בחנות מסמנים רק את אלה שמתורגמות במלואן ובדוק על ידי דובר שפה.
-- [x] **רישיונות (נעשה):** מסך **Credits** בתפריט הראשי (תוכן הרישיון של Godot נלקח מהמנוע עצמו, רישיונות הגופנים OFL, קרדיטים לסאונד ולמוזיקה, ו־GodotSteam), וקובץ `THIRD_PARTY_LICENSES.txt` בכל חבילה. נשאר: **לבחור שם לשורת ה־©** ב־`data/legal.json` (שלב 0), ולהחליט אם להוסיף EULA (לא חובה ב־Steam).
+- [x] **רישיונות (נעשה):** מסך **Credits** בתפריט הראשי (תוכן הרישיון של Godot נלקח מהמנוע עצמו, רישיונות הגופנים OFL, קרדיטים לסאונד ולמוזיקה, ו־GodotSteam), וקובץ `THIRD_PARTY_LICENSES.txt` בכל חבילה. שם בעל הזכויות נבחר: **Edella Studios** (`data/legal.json`; הוא מופיע בשורת ה־© של מסך Credits, ב־README של ההורדות, ובשדות Publisher ו־Copyright של ה־Installer ושל פרטי קובץ ה־exe). נשאר רק להחליט אם להוסיף EULA (לא חובה ב־Steam).
 - [ ] **פרטיות:** המשחק לא שולח נתונים לשרת שלך. מולטיפלייר ישיר לפי כתובת חושף כתובות IP בין שחקנים; Steam חושף מזהי Steam. כדאי עמוד קצר שמסביר את זה. לא מחייב אצלך כרגע, אבל חנויות אחרות ו־GDPR באירופה מצפים לזה אם אתה אוסף נתונים.
 - [ ] **שם בחלון, אייקון, מסך פתיחה:** נעשה (`PACKAGING.md`, "The game's own look").
 
@@ -118,12 +118,25 @@ Steam לא מריצה `setup.exe`. היא מעתיקה **תיקיית משחק �
 
 ### הצעדים
 
-1. **שני התוספים של Steam.** GodotSteam (אתר: godotsteam.com) ו־**SteamMultiplayerPeer** (התוסף שמעביר את המולטיפלייר של המשחק דרך Steam). מורידים את שני ה־zip מדפי ההורדה שלהם ומריצים: `tools\package.bat --godotsteam godotsteam.zip steam_peer.zip --require-steam-lib`. הדגל האחרון עוצר את הצינור אם אחד מהם חסר. בלי התוספים הבילד עדיין רץ, אבל בלי ה־overlay, הלובי וההזמנות, ובלי משחק משותף דרך Steam (כתובת ישירה עדיין עובדת).
+1. **שני התוספים של Steam.** GodotSteam (אתר: godotsteam.com) ו־**SteamMultiplayerPeer** (התוסף שמעביר את המולטיפלייר של המשחק דרך Steam). מורידים את שני ה־zip (מאיפה: מיד אחרי הרשימה הזאת, תחת "מאיפה מורידים את שני התוספים") ומריצים: `tools\package.bat --godotsteam godotsteam.zip steam_peer.zip --require-steam-lib`. הדגל האחרון עוצר את הצינור אם אחד מהם חסר. בלי התוספים הבילד עדיין רץ, אבל בלי ה־overlay, הלובי וההזמנות, ובלי משחק משותף דרך Steam (כתובת ישירה עדיין עובדת).
 2. **בדיקת Steam על המחשב שלך (שתי דקות):** בתיקיית המשחק עם `addons/`, כש־Steam פתוח ומחובר: `steam_check.bat`. היא כותבת READY אם הספרייה, הלקוח, התוסף של המולטיפלייר וקריאות הלובי כולם נמצאים, ומפרטת מה חסר אם לא.
 3. **מזהים:** בסיום שלב 1 יש לך App ID, ובכל אפליקציה Depot ID ל־Windows ו־Linux. נכנסים ל־`tools/steam/steam_ids.json` (`PACKAGING.md`, "Put the ids in").
 4. `tools\package.bat --channel steam`, אחר כך `dist\steam\upload.bat full preview` שמראה מה יעלה בלי להעלות, ואז ההעלאה האמיתית (steamcmd מבקש את הסיסמה ואת קוד Steam Guard שלך; את זה אני לא יכול לעשות במקומך).
 5. **בדיקה דרך Steam:** מגדירים את הבילד על branch פרטי, מתקינים דרך לקוח Steam, **ומשחקים לפחות חמש דקות** (Valve דורשת לפני שליחה, כדי לתפוס הגדרות הפעלה שגויות). רק אז branch ה־`default`.
 6. **שליחת הבילד לבדיקה.** Valve בודקת בדרך כלל 3–5 ימי עבודה, מבקשת לתכנן 7. כל תכונה שכתובה בדף החנות חייבת להיות בבילד. אפשר לעדכן אחרי האישור; הבדיקה היא חד־פעמית.
+
+### מאיפה מורידים את שני התוספים
+
+(נבדק ב־20.11.2026. מהסביבה שלי הצלחתי לפתוח את GitHub אבל לא את Codeberg ולא את godotsteam.com, ולכן את שמות הקבצים המדויקים שם לא ראיתי. מה שלא נבדק מסומן.)
+
+- **GodotSteam:**
+  - הדרך הקלה: בעורך של Godot, לשונית **AssetLib**, חיפוש `GodotSteam GDExtension 4.4+`, Download ואז Install. עמוד התוסף: https://godotengine.org/asset-library/asset/2445 (רישיון MIT; ייתכן שהרשימה שם מפגרת אחרי הגרסה האחרונה). התוסף נכנס ישר ל־`addons/godotsteam/`, ואז לא צריך להעביר אותו ל־`--godotsteam`.
+  - או מדף ההפצות של הפרויקט: https://codeberg.org/godotsteam/godotsteam/releases (נכון להיום האחרונה היא v4.24, על Steamworks 1.65). צריך את קובץ ה־**GDExtension** (לא את "המנוע המקומפל" ולא את קוד המקור). התיעוד: https://godotsteam.com. ב־GitHub (github.com/GodotSteam/GodotSteam) יש רק העתק, בלי קובץ ה־GDExtension.
+- **SteamMultiplayerPeer:**
+  - הצוות של GodotSteam מחזיק מאגר בשם MultiplayerPeer: https://github.com/GodotSteam/MultiplayerPeer (העתק; הבית שלו ב־codeberg.org/godotsteam, וזה לא נבדק).
+  - גרסה מקומפלת שנבדק שהיא קיימת: הענף `addon` של https://github.com/expressobits/steam-multiplayer-peer, כ־zip: https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip (רישיון MIT; יש בו `addons/steam-multiplayer-peer/` עם ספריות ל־Windows, Linux ו־macOS). המחבר הפסיק פיתוח בדצמבר 2025 והמליץ להשתמש ב־GodotSteam כשאפשר, ולכן קודם מחפשים אצל GodotSteam.
+- **לא נבדק, ולכן יש `steam_check.bat`:** שהם נטענים ב־Godot 4.7; ששמות הקריאות של ה־peer הם `create_host` ו־`create_client` (כך המשחק קורא להם); ושההורדה של ה־peer מביאה גם את ספריות `steam_api` (אם לא, ה־packager מזהיר, ואת הספריות לוקחים מ־GodotSteam). `steam_check.bat` כותב ליד כל קריאה yes או MISSING, ושולחים לי את הפלט.
+- **zip מ־GitHub** מגיע עם תיקיית עטיפה לפני `addons/`: ה־packager מחפש בפנים, אז אין צורך לפרוק ידנית.
 
 ## שלב 4ב — מולטיפלייר דרך Steam: בדיקה אחת עם אדם נוסף
 
@@ -201,8 +214,8 @@ Next Fest הוא פסטיבל דמואים של Steam: המשחק מקבל חש�
 ## השבוע: חמישה צעדים
 
 1. **לחכות לאישור של Valve** (אתה). בינתיים אפשר להתקדם בכל השאר.
-2. **לבחור את שם בעל הזכויות** לשורת ה־© (`data/legal.json`), ולהגיד לי.
-3. **להוריד את שני תוספי Steam** (GodotSteam ו־SteamMultiplayerPeer), להריץ `steam_check.bat`, ולשלוח לי את הפלט.
+2. ~~לבחור את שם בעל הזכויות~~ **נעשה:** Edella Studios.
+3. **להוריד את שני תוספי Steam** (GodotSteam ו־SteamMultiplayerPeer; הקישורים בשלב 4, "מאיפה מורידים את שני התוספים"), להריץ `steam_check.bat`, ולשלוח לי את הפלט.
 4. **בדיקת Steam אחת עם אדם נוסף** (שלב 4ב), עם מזהה 480.
 5. אני: צילומי מסך וקפסולות עדכניים, ודף "מה לשים בדף החנות" צעד אחרי צעד, כשהאפליקציה אושרה.
 
