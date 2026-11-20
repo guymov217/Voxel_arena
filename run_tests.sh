@@ -47,4 +47,19 @@ wait $hp
 hs=$?
 grep -E "^(HOST|GUEST)" /tmp/va_net_host.log /tmp/va_net_guest.log
 if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net: FAIL (host $hs, guest $gs)"; fail=1; else echo "net: ok"; fi
+# The same bout over the Steam path: the room is a Steam lobby (Steam itself stands in: tests/steam_loopback.gd, a folder the
+# two games share; the bytes go over ENet on localhost). The game's own Steam code is what runs: the lobby and its data,
+# the list and its filters, the join, the build check, the hello, the bout. Valve's real calls and relay are only seen with Steam.
+export STEAM_FAKE_DIR=$(mktemp -d)
+export NET_PORT=$((NET_PORT + 1))
+timeout 120 "$G" --headless --path . -- --probe net_steam_host > /tmp/va_netsteam_host.log 2>&1 &
+hp=$!
+sleep 2
+timeout 110 "$G" --headless --path . -- --probe net_steam_guest > /tmp/va_netsteam_guest.log 2>&1
+gs=$?
+wait $hp
+hs=$?
+rm -rf "$STEAM_FAKE_DIR"
+grep -E "^(HOST|GUEST)" /tmp/va_netsteam_host.log /tmp/va_netsteam_guest.log
+if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (steam path): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (steam path): ok"; fi
 exit $fail

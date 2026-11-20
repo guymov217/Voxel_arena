@@ -12,7 +12,7 @@ var mouth_max := 0
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17777
-	print("HOST listen ", Net.host_enet(port))
+	print("HOST listen ", await _open(port))
 	# (Headless, the voice node leaves the wire alone: joined to it by hand here.)
 	vc = VoiceChat.new()
 	add_child(vc)
@@ -100,6 +100,10 @@ func _ready() -> void:
 	Net.send_all("bye", {})
 	await get_tree().create_timer(0.5).timeout
 	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 and gear_in == ["helmet"] and told.has("forearmL") else 1)
+
+## How the room is opened: on a port (ENet). tests/net_steam_host.gd opens it as a Steam lobby instead and plays the same bout.
+func _open(port: int) -> Variant:
+	return Net.host_enet(port)
 
 ## 40 ms of a 300 Hz tone at half scale, as the microphone's capture would hand it over.
 func _tone() -> PackedVector2Array:

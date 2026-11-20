@@ -110,3 +110,44 @@ and says what the host sends and whether it keeps up (README, Load test).
 - The guest never joins: something else holds port 7777, or an antivirus blocks it. Try again
   after a reboot, or run only option 2.
 - Send a screenshot of each window's room screen; that is enough to tell what happened.
+
+## Steam: one test with a second person
+
+What `run_tests.sh` plays is the game's own Steam code with a stand-in for Steam (README, "What is tested, and what is
+not"). What only Steam shows is Valve's real calls, its relay and the invites, so that needs **two Steam accounts at the same
+time**: a friend, a relative, or a second PC with another account (one account cannot join its own lobby). About 15
+minutes, and it works **before** Valve has approved the app, with the test app id 480 (Spacewar). Nothing here is shown to the
+public: with 480 everybody's test lobbies share one list, which is why the game only lists rooms that carry its own tag and
+its own build.
+
+**Once, on each PC**
+
+1. Steam is running and signed in (a different account on each PC).
+2. The game, one of two ways:
+   - **Your PC (the project):** the project folder with Godot, and in it `addons/godotsteam/` and the multiplayer peer's
+     folder (`tools\package.bat --godotsteam <zip> <zip>` puts them in). Double-click **`steam_check.bat`**.
+   - **The other person's PC (the built game):** copy the folder `dist/steam/content/full/windows/` (or the Linux one). Put a text
+     file `steam_appid.txt` containing `480` beside the program, open a Command Prompt in that folder and run
+     `WRECKSMITH.exe -- --steam-check` (Linux: `./WRECKSMITH.x86_64 -- --steam-check`).
+3. The check opens a window and writes `steam_check.txt` (in the game's user folder). It must say
+   **`Steam multiplayer: READY`**. If it says what is missing instead, stop there and send that text.
+
+**The test** (A hosts, B joins)
+
+| # | A | B | You should see |
+|---|---|---|---|
+| 1 | Multiplayer → Host a Steam lobby | | A is in a room; Steam shows A as "In an arena" to friends |
+| 2 | | Multiplayer → the room list | A's room is listed with A's name and 1 player |
+| 3 | | Join it | B appears in A's room; both see each other walk in the yard |
+| 4 | Start a bout (the gate) | | both fight; damage and voxels show on both screens; the round ends for both |
+| 5 | | Esc → Leave | A sees B go; B lands on the multiplayer screen |
+| 6 | **Invite friends (Steam)** | accepts the invite in Steam's overlay | Steam's invite window opens; B lands in A's room |
+| 7 | | closes the game; A invites again; B accepts | the game starts by itself and B lands in A's room (`+connect_lobby`) |
+| 8 | Esc → Close the room | | B is told the host left; the room is gone from the list |
+| 9 | Send me `user://steam_check.txt` and what felt wrong (a hitch, a delay, a voice that stuttered) | same | |
+
+With **different builds** (one PC with an older copy) the room must not be listed for the older one, and an invite must be
+refused with "That room runs another version of the game". If both PCs are far apart, note the ping in the F3 meter.
+
+**Before launch**, once more with the real app: upload the build to a private beta branch, install it through Steam on
+both PCs, and repeat steps 1 to 8 with no `steam_appid.txt` and no 480 (Steam gives the real id).

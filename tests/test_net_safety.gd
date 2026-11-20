@@ -92,8 +92,8 @@ func test_a_guest_cannot_speak_for_the_host() -> void:
 	for type in ["snap", "spawn", "banner", "end", "start", "kicked", "purse", "body"]:
 		Net._receive(type, {}, 9)
 	t.eq(heard, [], "nothing but what guests may say gets through")
-	Net._receive("hello", {"name": "[b]Eve[/b]", "loadout": {"main": "axe"}}, 9)
-	Net._receive("hello", {"name": "Eve again", "loadout": {"main": "axe"}}, 9)
+	Net._receive("hello", {"name": "[b]Eve[/b]", "ver": Net.build_tag(), "loadout": {"main": "axe"}}, 9)
+	Net._receive("hello", {"name": "Eve again", "ver": Net.build_tag(), "loadout": {"main": "axe"}}, 9)
 	t.eq(joined, [9], "one hello, one fighter")
 	t.eq(Net.peers[9].name, "(b)Eve(/b)", "his name, cleaned")
 	Net._receive("doctor_done", {}, 9)

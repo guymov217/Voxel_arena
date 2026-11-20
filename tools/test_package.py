@@ -2,9 +2,11 @@
 """Checks of tools/package.py that need no Godot: the export presets, the SteamPipe scripts, the archives.
 Run:  python tools/test_package.py        (run_tests.sh runs it when Python is there)"""
 import os
+import json
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -38,7 +40,7 @@ class Presets(unittest.TestCase):
 
     def test_standalone_builds_leave_steam_out_and_steam_builds_keep_it(self):
         for p in self.presets:
-            leaves_out = "addons/godotsteam/*" in p.exclude
+            leaves_out = "addons/*" in p.exclude
             self.assertEqual(leaves_out, p.channel == "standalone", p.name)
             self.assertIn("standalone" if p.channel == "standalone" else "steam", p.features, p.name)
             self.assertNotIn("steam" if p.channel == "standalone" else "standalone", p.features, p.name)
@@ -469,6 +471,378 @@ class Archives(unittest.TestCase):
             self.assertEqual(P.sha256(f), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
         finally:
             shutil.rmtree(tmp)
+
+
+def make_elf(*names):
+    """A minimal 64-bit little-endian ELF whose version needs (.gnu.version_r) name the given versions ('GLIBC_2.27', ...)."""
+    strs = b"\0libc.so.6\0"
+    offs = []
+    for n in names:
+        offs.append(len(strs))
+        strs += n.encode() + b"\0"
+    verneed = struct.pack("<HHIII", 1, len(names), 1, 16, 0)
+    for i, o in enumerate(offs):
+        verneed += struct.pack("<IHHII", 0, 0, 2 + i, o, 16 if i + 1 < len(names) else 0)
+    dynstr_off = 64
+    verneed_off = dynstr_off + len(strs)
+    shoff = verneed_off + len(verneed)
+
+    def shdr(typ, off, size, link=0, info=0):
+        return struct.pack("<IIQQQQIIQQ", 0, typ, 0, 0, off, size, link, info, 1, 0)
+
+    table = shdr(0, 0, 0) + shdr(3, dynstr_off, len(strs)) + shdr(0x6ffffffe, verneed_off, len(verneed), 1, 1)
+    head = b"\x7fELF\x02\x01\x01" + b"\0" * 9 + struct.pack("<HHIQQQIHHHHHH", 3, 62, 1, 0, 0, shoff, 0, 64, 0, 0, 64, 3, 0)
+    return head + strs + verneed + table
+
+
+class LinuxRuntime(unittest.TestCase):
+    """Steam runs a Linux game in its Linux runtime (Debian 11, glibc 2.31): a library built on a newer system does not load there."""
+
+    def _file(self, data):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(d), True)
+        f = d / "lib.so"
+        f.write_bytes(data)
+        return f
+
+    def test_the_newest_version_of_each_system_library_is_read_from_the_file(self):
+        f = self._file(make_elf("GLIBC_2.2.5", "GLIBC_2.27", "GLIBC_2.14", "GLIBC_PRIVATE", "GLIBCXX_3.4.26", "CXXABI_1.3.11"))
+        self.assertEqual(P.elf_version_needs(f), {"GLIBC": (2, 27), "GLIBCXX": (3, 4, 26), "CXXABI": (1, 3, 11)})
+
+    def test_versions_compare_as_numbers_not_as_text(self):
+        f = self._file(make_elf("GLIBC_2.9", "GLIBC_2.14", "GLIBC_2.4"))
+        self.assertEqual(P.elf_version_needs(f)["GLIBC"], (2, 14))
+
+    def test_a_library_from_a_newer_system_is_flagged_and_an_older_one_is_not(self):
+        self.assertEqual(P.too_new_for_steam(self._file(make_elf("GLIBC_2.31", "GLIBCXX_3.4.28", "CXXABI_1.3.12"))), [])
+        self.assertEqual(P.too_new_for_steam(self._file(make_elf("GLIBC_2.2.5"))), [])
+        bad = P.too_new_for_steam(self._file(make_elf("GLIBC_2.38", "GLIBC_2.17")))
+        self.assertEqual(len(bad), 1)
+        self.assertIn("GLIBC_2.38", bad[0])
+        self.assertIn("2.31", bad[0])
+        self.assertEqual(len(P.too_new_for_steam(self._file(make_elf("GLIBCXX_3.4.30")))), 1)
+
+    def test_what_is_not_a_64_bit_elf_is_left_alone(self):
+        self.assertEqual(P.too_new_for_steam(self._file(b"")), [])
+        self.assertEqual(P.too_new_for_steam(self._file(b"MZ" + b"\0" * 200)), [])
+        self.assertEqual(P.too_new_for_steam(self._file(b"\x7fELF\x01\x01\x01" + b"\0" * 100)), [])      # 32-bit
+        self.assertEqual(P.too_new_for_steam(self._file(make_elf("GLIBC_2.38")[:90])), [])                  # cut short: no crash
+
+    def test_the_committed_linux_library_fits_the_steam_runtime(self):
+        for lib in P.native_libraries(P.ROOT)["linux"]:
+            self.assertTrue(lib.exists(), lib)
+            self.assertEqual(P.too_new_for_steam(lib), [],
+                             "%s was built on a system newer than Steam's Linux runtime: build it in the Ubuntu 20.04 container "
+                             "(.github/workflows/build.yml) and commit that one" % lib.name)
+
+    def test_godots_own_linux_template_fits_it_too(self):
+        found = 0
+        for base in (Path.home() / ".local" / "share" / "godot" / "export_templates").glob("*"):
+            exe = base / "linux_release.x86_64"
+            if exe.exists():
+                found += 1
+                self.assertEqual(P.too_new_for_steam(exe), [], str(exe))
+        if not found:
+            self.skipTest("Godot's Linux export template is not installed here")
+
+    def test_the_builds_workflow_makes_the_linux_library_in_an_old_enough_system(self):
+        wf = (P.ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+        self.assertIn("ubuntu:20.04", wf)
+
+    def _smoke(self, channel, lib_needs):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(tmp), True)
+        pk = P.Packager(P.parse_args(["--skip-tests"]))
+        out = tmp / "export"
+        out.mkdir()
+        exe = out / "WRECKSMITH.x86_64"
+        exe.write_bytes(b"not elf")
+        for lib in P.native_libraries(P.ROOT)["linux"]:
+            (out / lib.name).write_bytes(make_elf(*lib_needs))
+        preset = P.find_preset(pk.presets, "full", channel, "linux")
+        return pk, pk.smoke(preset, exe)
+
+    def test_a_steam_linux_build_that_asks_for_too_much_is_not_packed(self):
+        with self.assertRaises(P.Fail) as cm:
+            self._smoke("steam", ["GLIBC_2.38"])
+        self.assertIn("glibc 2.31", str(cm.exception))
+        self.assertIn("GLIBC_2.38", str(cm.exception))
+
+    def test_a_download_for_people_without_steam_is_warned_about_not_stopped(self):
+        pk, verdict = self._smoke("standalone", ["GLIBC_2.38"])
+        self.assertTrue(any("GLIBC_2.38" in n for n in pk.notes), pk.notes)
+        self.assertNotIn("asks for no more", verdict)
+
+    def test_a_fitting_build_says_so(self):
+        pk, verdict = self._smoke("steam", ["GLIBC_2.27", "GLIBCXX_3.4.26"])
+        self.assertEqual(pk.notes, [])
+        self.assertIn("no more than glibc 2.31", verdict)
+
+
+GODOTSTEAM_EXT = """[configuration]
+entry_symbol = "godotsteam_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+windows.debug.x86_64 = "res://addons/godotsteam/win64/libgodotsteam.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/godotsteam/win64/libgodotsteam.windows.template_release.x86_64.dll"
+linux.debug.x86_64 = "res://addons/godotsteam/linux64/libgodotsteam.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://addons/godotsteam/linux64/libgodotsteam.linux.template_release.x86_64.so"
+
+[dependencies]
+windows.release.x86_64 = {"res://addons/godotsteam/win64/steam_api64.dll": ""}
+linux.release.x86_64 = {"res://addons/godotsteam/linux64/libsteam_api.so": ""}
+"""
+
+PEER_EXT = """[configuration]
+entry_symbol = "steam_multiplayer_peer_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+windows.release.x86_64 = "res://addons/steam_multiplayer_peer/win64/libsteam_multiplayer_peer.windows.template_release.x86_64.dll"
+linux.release.x86_64 = "res://addons/steam_multiplayer_peer/linux64/libsteam_multiplayer_peer.linux.template_release.x86_64.so"
+"""
+
+
+class SteamAddons(unittest.TestCase):
+    """Steam's two GDExtensions (GodotSteam, and the multiplayer peer) are two downloads; the packager puts both in addons/."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.pk = P.Packager(P.parse_args(["--out", str(self.tmp / "dist")]))
+        self.pk.root = self.tmp / "proj"
+        self.pk.root.mkdir()
+
+    def _zip(self, name, files):
+        path = self.tmp / name
+        with zipfile.ZipFile(str(path), "w") as z:
+            for n, data in files.items():
+                z.writestr(n, data)
+        return path
+
+    def _godotsteam_zip(self, top="godotsteam-4.x/"):
+        a = "addons/godotsteam/"
+        return self._zip("gs.zip", {
+            top + a + "godotsteam.gdextension": GODOTSTEAM_EXT,
+            top + a + "win64/libgodotsteam.windows.template_release.x86_64.dll": b"dll",
+            top + a + "win64/steam_api64.dll": b"api",
+            top + a + "linux64/libgodotsteam.linux.template_release.x86_64.so": b"so",
+            top + a + "linux64/libsteam_api.so": b"api",
+            top + "examples/" + a + "godotsteam.gdextension": GODOTSTEAM_EXT,      # a copy inside an example project
+        })
+
+    def _peer_zip(self):
+        a = "addons/steam_multiplayer_peer/"
+        return self._zip("peer.zip", {
+            a + "steam_multiplayer_peer.gdextension": PEER_EXT,
+            a + "win64/libsteam_multiplayer_peer.windows.template_release.x86_64.dll": b"dll",
+            a + "linux64/libsteam_multiplayer_peer.linux.template_release.x86_64.so": b"so",
+        })
+
+    def test_a_download_is_copied_whole_under_the_folder_its_own_paths_name(self):
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        base = self.pk.root / "addons" / "godotsteam"
+        self.assertTrue((base / "godotsteam.gdextension").exists())
+        self.assertTrue((base / "win64" / "steam_api64.dll").exists())
+        self.assertTrue((base / "linux64" / "libsteam_api.so").exists())
+        self.assertEqual(sorted(p.name for p in (self.pk.root / "addons").iterdir()), ["godotsteam"], "the example copy must not become a second addon")
+
+    def test_each_of_the_two_downloads_adds_its_own_and_keeps_the_other(self):
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        self.assertEqual(len(P.steam_addons_missing(self.pk.root)), 1)
+        self.assertIn("multiplayer peer", P.steam_addons_missing(self.pk.root)[0])
+        self.pk.install_steam_addons(self._peer_zip())
+        self.assertEqual(sorted(P.steam_addons(self.pk.root)), ["godotsteam", "steam_multiplayer_peer"])
+        self.assertEqual(P.steam_addons_missing(self.pk.root), [])
+
+    def test_one_zip_with_both_gives_both(self):
+        both = self._zip("both.zip", {"addons/godotsteam/godotsteam.gdextension": GODOTSTEAM_EXT,
+                                      "addons/steam_multiplayer_peer/steam_multiplayer_peer.gdextension": PEER_EXT})
+        self.pk.install_steam_addons(both)
+        self.assertEqual(P.steam_addons_missing(self.pk.root), [])
+
+    def test_an_unpacked_folder_works_too_even_when_it_is_named_otherwise(self):
+        src = self.tmp / "GodotSteam 4.x download"
+        (src / "win64").mkdir(parents=True)
+        (src / "godotsteam.gdextension").write_text(GODOTSTEAM_EXT)
+        (src / "win64" / "steam_api64.dll").write_bytes(b"api")
+        self.pk.install_steam_addons(src)
+        self.assertTrue((self.pk.root / "addons" / "godotsteam" / "win64" / "steam_api64.dll").exists())
+
+    def test_installing_again_replaces_the_old_copy(self):
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        stale = self.pk.root / "addons" / "godotsteam" / "old_leftover.txt"
+        stale.write_text("x")
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        self.assertFalse(stale.exists())
+
+    def test_what_is_not_a_download_of_theirs_is_a_clear_stop(self):
+        with self.assertRaises(P.Fail):
+            self.pk.install_steam_addons(self.tmp / "missing.zip")
+        notzip = self.tmp / "x.zip"
+        notzip.write_text("not a zip")
+        with self.assertRaises(P.Fail):
+            self.pk.install_steam_addons(notzip)
+        with self.assertRaises(P.Fail) as cm:
+            self.pk.install_steam_addons(self._zip("empty.zip", {"readme.txt": "hi"}))
+        self.assertIn("GDExtension", str(cm.exception))
+        with self.assertRaises(P.Fail):
+            self.pk.install_steam_addons(self._zip("slip.zip", {"../escape.txt": "x", "addons/godotsteam/godotsteam.gdextension": GODOTSTEAM_EXT}))
+        self.assertFalse((self.tmp / "escape.txt").exists())
+
+    def test_what_is_missing_is_said_in_words(self):
+        miss = P.steam_addons_missing(self.pk.root)
+        self.assertEqual(len(miss), 2)
+        self.assertTrue(any("GodotSteam" in m for m in miss))
+        self.assertTrue(any("multiplayer peer" in m for m in miss))
+        d = self.pk.root / "addons" / "steam_multiplayer_peer"
+        d.mkdir(parents=True)
+        (d / "steam_multiplayer_peer.gdextension").write_text(PEER_EXT)
+        miss = P.steam_addons_missing(self.pk.root)
+        self.assertEqual(len(miss), 1)
+        self.assertIn("GodotSteam", miss[0])      # the peer alone is not GodotSteam
+
+    def test_the_peer_is_told_from_godotsteam_by_its_name(self):
+        for n in ("steam_multiplayer_peer", "godotsteam_multiplayerpeer", "SteamMultiplayerPeer"):
+            self.assertTrue(P.is_steam_peer(n), n)
+        for n in ("godotsteam", "GodotSteam"):
+            self.assertFalse(P.is_steam_peer(n), n)
+
+    def test_the_options_take_several_downloads(self):
+        a = P.parse_args(["--godotsteam", "a.zip", "b.zip", "--require-steam-lib"])
+        self.assertEqual(a.godotsteam, ["a.zip", "b.zip"])
+        self.assertEqual(P.parse_args(["--steam-addons", "x.zip"]).godotsteam, ["x.zip"])
+        self.assertIsNone(P.parse_args([]).godotsteam)
+
+    def test_a_depot_without_steams_library_is_told(self):
+        self.pk.install_steam_addons(self._godotsteam_zip())
+        self.pk.install_steam_addons(self._peer_zip())
+        depot = self.tmp / "depot"
+        depot.mkdir()
+        (depot / "WRECKSMITH.exe").write_bytes(b"MZ")
+        gaps = P.steam_depot_gaps(self.pk.root, "windows", depot)
+        self.assertIn("steam_api64.dll", gaps)
+        self.assertIn("libgodotsteam.windows.template_release.x86_64.dll", gaps)
+        self.assertIn("libsteam_multiplayer_peer.windows.template_release.x86_64.dll", gaps)
+        for n in gaps:
+            (depot / n).write_bytes(b"x")
+        self.assertEqual(P.steam_depot_gaps(self.pk.root, "windows", depot), [])
+        self.assertIn("libsteam_api.so", P.steam_depot_gaps(self.pk.root, "linux", depot))
+
+    def test_with_no_steam_extension_in_the_project_no_depot_is_faulted(self):
+        depot = self.tmp / "depot"
+        depot.mkdir()
+        self.assertEqual(P.steam_depot_gaps(self.pk.root, "windows", depot), [])
+
+    def test_steam_is_for_windows_and_linux_unless_the_ids_file_says_more(self):
+        self.assertEqual(P.steam_platforms(P.load_steam_ids(P.ROOT)), ["windows", "linux"])
+        self.assertEqual(P.steam_platforms({}), list(P.PLATFORMS))
+        self.assertEqual(P.steam_platforms({"platforms": ["linux", "amiga"]}), ["linux"])
+        self.assertEqual(P.steam_platforms({"platforms": []}), list(P.PLATFORMS))
+
+
+class Licences(unittest.TestCase):
+    """Every package carries THIRD_PARTY_LICENSES.txt; the game writes it (its Credits), so it holds the engine's own terms."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.pk = P.Packager(P.parse_args(["--out", str(self.tmp / "dist")]))
+        self.pk.root = self.tmp / "proj"
+        self.pk.build = self.tmp / "build"
+        (self.pk.root / "data").mkdir(parents=True)
+        (self.pk.root / "data" / "legal.json").write_text('{"holder": "", "year": "2026"}')
+        self.pk.godot = "godot"
+
+    def _probe(self, code=0, write=True):
+        def fake(cmd, cwd=None, timeout=None, env=None):
+            self.assertIn("licenses_dump", [str(c) for c in cmd])
+            if write:
+                Path(env["LICENSES_OUT"]).write_text("THE GAME\nGODOT ENGINE ... Permission is hereby granted\n")
+            return code, ""
+        return mock.patch.object(P, "run", side_effect=fake)
+
+    def _extension(self, name="godotsteam", licence="MIT Licence\nCopyright (c) the GodotSteam contributors"):
+        d = self.pk.root / "addons" / name
+        d.mkdir(parents=True)
+        (d / (name + ".gdextension")).write_text("[configuration]\n")
+        if licence:
+            (d / "LICENSE").write_text(licence)
+
+    def test_the_credits_files_travel_in_every_export(self):
+        text = (P.ROOT / "export_presets.cfg").read_text(encoding="utf-8")
+        lines = [l for l in text.splitlines() if l.startswith("include_filter=")]
+        self.assertEqual(len(lines), 12)
+        for l in lines:
+            for need in ("data/*.json", "art/CREDITS.md", "art/fonts/OFL-*.txt"):
+                self.assertIn(need, l)
+        self.assertTrue((P.ROOT / "art" / "CREDITS.md").exists())
+
+    def test_the_game_writes_the_file_and_the_downloads_get_it_as_it_is(self):
+        with self._probe():
+            self.pk.make_licenses()
+        self.assertIn("Permission is hereby granted", self.pk.licenses["standalone"].read_text())
+        self.assertEqual(self.pk.licenses["standalone"].name, P.LICENSES_FILE)
+        dest = self.tmp / "stage"
+        dest.mkdir()
+        self.pk.put_licenses("standalone", dest)
+        self.assertEqual((dest / P.LICENSES_FILE).read_text(), self.pk.licenses["standalone"].read_text())
+
+    def test_the_steam_extensions_licences_ride_with_the_steam_builds_only(self):
+        self._extension()
+        self._extension("steam_multiplayer_peer", "The peer's own licence text")
+        with self._probe():
+            self.pk.make_licenses()
+        base = self.pk.licenses["standalone"].read_text()
+        steam = self.pk.licenses["steam"].read_text()
+        self.assertNotIn("GodotSteam contributors", base, "the downloads have no Steam extension")
+        self.assertIn("Copyright (c) the GodotSteam contributors", steam)
+        self.assertIn("The peer's own licence text", steam)
+        self.assertIn("Permission is hereby granted", steam, "and the Steam file holds the rest as well")
+        dest = self.tmp / "depot"
+        dest.mkdir()
+        self.pk.put_licenses("steam", dest)
+        self.assertIn("GodotSteam contributors", (dest / P.LICENSES_FILE).read_text())
+
+    def test_the_depot_gets_the_file(self):
+        with self._probe():
+            self.pk.make_licenses()
+        out = self.tmp / "export"
+        out.mkdir()
+        (out / "WRECKSMITH.exe").write_bytes(b"MZ")
+        preset = P.find_preset(self.pk.presets, "full", "steam", "windows")
+        dest = self.pk.stage_steam(preset, out / "WRECKSMITH.exe")
+        self.assertTrue((dest / P.LICENSES_FILE).exists())
+
+    def test_no_copyright_holder_is_said_once_and_a_holder_silences_it(self):
+        with self._probe():
+            self.pk.make_licenses()
+        self.assertTrue(any("copyright holder" in n for n in self.pk.notes), self.pk.notes)
+        self.pk.notes.clear()
+        (self.pk.root / "data" / "legal.json").write_text('{"holder": "Acme Ltd", "year": "2026"}')
+        with self._probe():
+            self.pk.make_licenses()
+        self.assertEqual(self.pk.notes, [])
+        self.assertEqual(P.copyright_holder(self.pk.root), "Acme Ltd")
+        (self.pk.root / "data" / "legal.json").write_text("not json")
+        self.assertEqual(P.copyright_holder(self.pk.root), "")
+
+    def test_a_probe_that_fails_stops_the_packing_unless_only_repacking(self):
+        with self._probe(code=1, write=False):
+            with self.assertRaises(P.Fail):
+                self.pk.make_licenses()
+        self.pk.a.skip_export = True
+        with self._probe(code=1, write=False):
+            self.pk.make_licenses()
+        self.assertTrue(any("without it" in n for n in self.pk.notes), self.pk.notes)
+
+    def test_the_project_ships_a_legal_file_and_the_probe(self):
+        legal = json.loads((P.ROOT / "data" / "legal.json").read_text(encoding="utf-8"))
+        for k in ("holder", "year", "site"):
+            self.assertIn(k, legal)
+        self.assertTrue((P.ROOT / "tests" / "licenses_dump.gd").exists())
+        self.assertTrue((P.ROOT / "scripts" / "game" / "credits.gd").exists())
 
 
 if __name__ == "__main__":

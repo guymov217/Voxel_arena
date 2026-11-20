@@ -26,6 +26,15 @@ const MAX_PLAYERS := 8
 ## and every other way to fight in it, takes eight (user).
 const CAMPAIGN_PLAYERS := 4
 const LOBBY_KEY := "voxelarena"
+## Bumped when what two games say to each other changes in a way an older game cannot follow.
+const PROTOCOL := 1
+
+## What every player of a room must be running: the game's version, the net protocol and the edition (the demo and
+## the full game are separate apps on Steam and never meet there, but a join by address could mix them). A guest
+## whose "hello" says another is sent away with the reason, and a Steam lobby carries its host's, so a friend on an
+## older or newer build is told before he joins: an update rolling out never puts two builds in one fight.
+static func build_tag() -> String:
+	return "%s.%d.%s" % [ProjectSettings.get_setting("application/config/version", "0"), PROTOCOL, "demo" if Edition.demo() else "full"]
 
 var transport := ""             # "" | enet | steam
 var peers := {}                 # id -> {name, loadout}
@@ -38,6 +47,8 @@ var steam: Object = null
 var steam_ready := false
 var lobby_id := 0
 var steam_user := 0
+var launch_lobby := 0           # a lobby Steam asked this game to join as it started (a friend's invite: +connect_lobby)
+var steam_problem := ""         # why Steam multiplayer is not there, in a line for the player ("" when it is, or when Steam is not meant to be)
 # A pretend bad connection, on one machine: incoming messages held back `lag_ms` (± jitter)
 # and some unreliable ones dropped. `--lag 120 --loss 3` on the command line, or NET_LAG/NET_LOSS.
 var lag_ms := 0
@@ -105,29 +116,62 @@ func _hold(type: String, data, from: int, reliable: bool) -> bool:
 
 # ---------- Steam ----------
 
+## Steam lobbies can be used: Steam runs and the multiplayer extension (SteamMultiplayerPeer) is in this build.
 func steam_available() -> bool:
-	return steam_ready
+	return steam_ready and (steam_peer_factory.is_valid() or ClassDB.class_exists("SteamMultiplayerPeer"))
+
+## The Steam transport's peer (the SteamMultiplayerPeer extension), or null where this build has none. Tests put
+## their own factory here.
+var steam_peer_factory := Callable()
+func _steam_peer() -> Object:
+	if steam_peer_factory.is_valid():
+		return steam_peer_factory.call()
+	return ClassDB.instantiate("SteamMultiplayerPeer") if ClassDB.class_exists("SteamMultiplayerPeer") else null
 
 func _init_steam() -> void:
 	# The download for people without Steam (the "standalone" feature, tools/package.py) never starts Steam, even
 	# if the library is about: with the Steam client open it would show the player as playing Valve's test app 480.
-	if OS.has_feature("standalone") or not Engine.has_singleton("Steam"):
+	if OS.has_feature("standalone"):
+		return
+	if not Engine.has_singleton("Steam"):
 		return
 	steam = Engine.get_singleton("Steam")
 	var app_id := int(OS.get_environment("SteamAppId")) if OS.get_environment("SteamAppId") != "" else 480
 	var res = steam.call("steamInitEx", app_id, true) if steam.has_method("steamInitEx") else steam.call("steamInit")
 	var ok: bool = (res is Dictionary and int(res.get("status", 1)) == 0) or res == true
 	if not ok:
+		steam_problem = "Steam is not running"
 		push_warning("Steam is not running; multiplayer falls back to direct connections.")
 		return
 	steam_ready = true
 	steam_user = int(steam.call("getSteamID"))
 	my_name = String(steam.call("getPersonaName"))
+	if not (steam_peer_factory.is_valid() or ClassDB.class_exists("SteamMultiplayerPeer")):
+		steam_problem = "Steam is running but this game has no Steam multiplayer library"
+		push_warning("SteamMultiplayerPeer is missing: Steam lobbies are off, joining by address still works.")
 	steam.connect("lobby_created", _on_lobby_created)
 	steam.connect("lobby_joined", _on_lobby_joined)
 	steam.connect("lobby_match_list", func(list): lobbies.emit(_describe(list)))
 	if steam.has_signal("join_requested"):
 		steam.connect("join_requested", func(lobby, _friend): join_steam(int(lobby)))
+	# Valve's advice: ask for the relay network at the start, so the first lobby is not slowed by it finding its servers.
+	if steam.has_method("initRelayNetworkAccess"):
+		steam.call("initRelayNetworkAccess")
+	# Steam starts the game with "+connect_lobby <id>" when a friend's invite (or "Join Game") is taken while it is closed.
+	launch_lobby = lobby_from_args(OS.get_cmdline_args())
+
+## The lobby id after "+connect_lobby" in these arguments, 0 where there is none.
+static func lobby_from_args(args: PackedStringArray) -> int:
+	var li := args.find("+connect_lobby")
+	if li >= 0 and args.size() > li + 1 and args[li + 1].is_valid_int():
+		return int(args[li + 1])
+	return 0
+
+## The lobby a friend's invite started this game for, once (the menu joins it when it is up).
+func take_launch_lobby() -> int:
+	var l := launch_lobby
+	launch_lobby = 0
+	return l
 
 ## A marker on the Steam game recording's timeline (a kill, the kill cam's pick): the player
 ## finds the moment there and clips it in a click. `clip` 0 none, 1 standard, 2 featured.
@@ -141,9 +185,11 @@ func timeline_event(title: String, desc: String, clip := 1, icon := "steam_comba
 		steam.call("addTimelineEvent", icon, title, desc, 0, 0.0, 0.0, clip)
 
 func host_steam(public := true) -> void:
-	if not steam_ready:
-		connection_failed.emit("Steam is not running")
+	if not steam_available():
+		connection_failed.emit(Loc.t(steam_problem if steam_problem != "" else "Steam is not running"))
 		return
+	if transport != "" or lobby_id:
+		leave()
 	steam.call("createLobby", 2 if public else 1, MAX_PLAYERS) # LOBBY_TYPE_PUBLIC = 2, FRIENDS_ONLY = 1
 
 func _on_lobby_created(result: int, id: int) -> void:
@@ -152,22 +198,34 @@ func _on_lobby_created(result: int, id: int) -> void:
 		return
 	lobby_id = id
 	steam.call("setLobbyData", id, "game", LOBBY_KEY)
+	steam.call("setLobbyData", id, "ver", build_tag())
 	steam.call("setLobbyData", id, "name", Loc.t("%s's arena") % my_name)
 	steam.call("setLobbyJoinable", id, true)
-	var p = ClassDB.instantiate("SteamMultiplayerPeer")
-	var err = p.call("create_host", 0)
+	var p = _steam_peer()
+	var err = p.call("create_host", 0) if p != null else ERR_UNAVAILABLE
 	if err != OK:
+		steam.call("leaveLobby", id)
+		lobby_id = 0
 		connection_failed.emit(Loc.t("Steam networking failed (%d)") % err)
 		return
 	multiplayer.multiplayer_peer = p
 	transport = "steam"
+	_presence()
 	connected.emit()
 
 func list_steam_lobbies() -> void:
-	if not steam_ready:
+	if not steam_available():
 		lobbies.emit([])
 		return
-	steam.call("addRequestLobbyListStringFilter", "game", LOBBY_KEY, 0)
+	steam.call("addRequestLobbyListStringFilter", "game", LOBBY_KEY, 0)   # (0: equal)
+	steam.call("addRequestLobbyListStringFilter", "ver", build_tag(), 0)
+	# Rooms anywhere, with a place free, not just the ones near this player (Steam's default).
+	if steam.has_method("addRequestLobbyListDistanceFilter"):
+		steam.call("addRequestLobbyListDistanceFilter", 3)   # (3: worldwide)
+	if steam.has_method("addRequestLobbyListFilterSlotsAvailable"):
+		steam.call("addRequestLobbyListFilterSlotsAvailable", 1)
+	if steam.has_method("addRequestLobbyListResultCountFilter"):
+		steam.call("addRequestLobbyListResultCountFilter", 50)
 	steam.call("requestLobbyList")
 
 func _describe(list: Array) -> Array:
@@ -177,10 +235,18 @@ func _describe(list: Array) -> Array:
 		out.append({"id": int(id), "name": clean_name(steam.call("getLobbyData", id, "name"), 40), "players": int(steam.call("getNumLobbyMembers", id)), "mode": clean_name(steam.call("getLobbyData", id, "mode"), 20, "")})
 	return out
 
+## Join a Steam lobby: from the room list, or a friend's invite ("Join Game", or the overlay's). In a room already, that
+## one is left first.
 func join_steam(id: int) -> void:
-	if not steam_ready:
-		connection_failed.emit("Steam is not running")
+	if not steam_available():
+		connection_failed.emit(Loc.t(steam_problem if steam_problem != "" else "Steam is not running"))
 		return
+	if id == lobby_id and transport != "":
+		return
+	if transport != "" or lobby_id:
+		leave()
+		leave_reason = Loc.t("Joining a friend's room...")
+		disconnected.emit()
 	steam.call("joinLobby", id)
 
 func _on_lobby_joined(id: int, _perm: int, _locked: bool, response: int) -> void:
@@ -191,13 +257,64 @@ func _on_lobby_joined(id: int, _perm: int, _locked: bool, response: int) -> void
 	var owner := int(steam.call("getLobbyOwner", id))
 	if owner == steam_user:
 		return # our own lobby
-	var p = ClassDB.instantiate("SteamMultiplayerPeer")
-	var err = p.call("create_client", owner, 0)
+	# The host's build must be this one (a friend's invite brings a player to a room that the list's filter never vetted).
+	var theirs := str(steam.call("getLobbyData", id, "ver"))
+	if theirs != build_tag():
+		steam.call("leaveLobby", id)
+		lobby_id = 0
+		connection_failed.emit(Loc.t("That room runs another version of the game (%s; yours is %s): update the game and join again.") % [theirs if theirs != "" else "?", build_tag()])
+		return
+	var p = _steam_peer()
+	var err = p.call("create_client", owner, 0) if p != null else ERR_UNAVAILABLE
 	if err != OK:
+		steam.call("leaveLobby", id)
+		lobby_id = 0
 		connection_failed.emit(Loc.t("Steam networking failed (%d)") % err)
 		return
 	multiplayer.multiplayer_peer = p
 	transport = "steam"
+	_presence()
+
+## What friends see of the player on Steam, and the "Join Game" that goes with it: in a lobby, a connect string Steam hands
+## to the game when a friend joins (+connect_lobby), and the room's size; out of it, nothing.
+func _presence(on := true) -> void:
+	if not steam_ready:
+		return
+	if not on or lobby_id == 0:
+		if steam.has_method("clearRichPresence"):
+			steam.call("clearRichPresence")
+		return
+	steam.call("setRichPresence", "connect", "+connect_lobby %d" % lobby_id)
+	steam.call("setRichPresence", "status", Loc.t("In an arena"))
+	steam.call("setRichPresence", "steam_player_group", str(lobby_id))
+	_presence_size()
+
+func _presence_size() -> void:
+	if steam_ready and lobby_id and is_host():
+		steam.call("setRichPresence", "steam_player_group_size", str(peers.size() + 1))
+
+## Steam's invite window over the game: the friends list, with this room to invite them to.
+func invite_friends() -> void:
+	if steam_ready and lobby_id and steam.has_method("activateGameOverlayInviteDialog"):
+		steam.call("activateGameOverlayInviteDialog", lobby_id)
+
+## What this game finds of Steam, line by line (`-- --steam-check`): that the library, the running client, the multiplayer
+## extension and the lobby calls are all there, before two people try a room.
+func steam_report() -> Array:
+	var out := ["WRECKSMITH %s" % build_tag()]
+	out.append("Steam library (GodotSteam): %s" % ("found" if Engine.has_singleton("Steam") else "NOT FOUND (addons/godotsteam is missing, or not loaded)"))
+	if steam_ready:
+		out.append("Steam client: running, signed in as %s (%d)" % [my_name, steam_user])
+	else:
+		out.append("Steam client: NOT READY (%s)" % (steam_problem if steam_problem != "" else "no Steam library, or this is a download without Steam"))
+	out.append("Multiplayer extension (SteamMultiplayerPeer): %s" % ("found" if ClassDB.class_exists("SteamMultiplayerPeer") else "NOT FOUND"))
+	if steam != null:
+		for m in ["steamInitEx", "createLobby", "joinLobby", "leaveLobby", "setLobbyData", "getLobbyData", "setLobbyJoinable", "getLobbyOwner", "getNumLobbyMembers", "requestLobbyList", "addRequestLobbyListStringFilter", "addRequestLobbyListDistanceFilter", "setRichPresence", "clearRichPresence", "activateGameOverlayInviteDialog", "initRelayNetworkAccess", "run_callbacks"]:
+			out.append("  call %s: %s" % [m, "yes" if steam.has_method(m) else "MISSING"])
+		for sg in ["lobby_created", "lobby_joined", "lobby_match_list", "join_requested"]:
+			out.append("  signal %s: %s" % [sg, "yes" if steam.has_signal(sg) else "MISSING"])
+	out.append("Steam multiplayer: %s" % ("READY" if steam_available() else "not available"))
+	return out
 
 # ---------- ENet ----------
 
@@ -261,6 +378,7 @@ func leave() -> void:
 	if steam_ready and lobby_id:
 		steam.call("leaveLobby", lobby_id)
 	lobby_id = 0
+	_presence(false)
 	_banned.clear()
 	_rate.clear()
 	purse_credit.clear()
@@ -306,8 +424,10 @@ func kick(id: int) -> void:
 	_turn_away(id)
 
 ## Tells a guest he is not wanted here, and lets him go a moment later (the word goes first).
-func _turn_away(id: int) -> void:
-	send_to(id, "kicked", {})
+func _turn_away(id: int, why := "") -> void:
+	if not multiplayer.get_peers().has(id):
+		return
+	send_to(id, "kicked", {"why": why, "ver": build_tag()})
 	var mp := multiplayer.multiplayer_peer
 	get_tree().create_timer(0.3).timeout.connect(func():
 		# (Unless he has gone already, as a guest told to go does.)
@@ -327,6 +447,7 @@ func _peer_key(id: int) -> String:
 func _on_peer_disconnected(id: int) -> void:
 	guest_pings.erase(id)
 	if peers.erase(id):
+		_presence_size()
 		peer_left.emit(id)
 	inputs.erase(id)
 
@@ -343,7 +464,7 @@ func _on_connected() -> void:
 		if hp:
 			_no_throttle(hp)
 	connected.emit()
-	send_host("hello", {"name": my_name, "loadout": my_loadout, "kit": my_kit, "body": my_body})
+	send_host("hello", {"name": my_name, "ver": build_tag(), "loadout": my_loadout, "kit": my_kit, "body": my_body})
 
 # ---------- How the connection is doing (the F3 meter, and the load test) ----------
 # Every guest asks the host once a second ("_ping"); the host answers at once ("_pong") with
@@ -653,7 +774,10 @@ func _receive(type: String, data, from: int) -> void:
 	if is_host() and from != 1 and (not FROM_GUESTS.has(type) or _flooding(from)):
 		return
 	if type == "kicked" and not is_host():
-		leave_reason = "The host removed you from the room"
+		if data is Dictionary and str(data.get("why", "")) == "version":
+			leave_reason = Loc.t("The host's game is another version (%s; yours is %s): update the game and join again.") % [clean_name(data.get("ver", "?"), 24), build_tag()]
+		else:
+			leave_reason = "The host removed you from the room"
 		leave()
 		disconnected.emit()
 		return
@@ -673,8 +797,12 @@ func _receive(type: String, data, from: int) -> void:
 			"hello":
 				# Once a guest: a second hello would have walked a second fighter of his in.
 				if data is Dictionary and not peers.has(from) and not _banned.has(_peer_key(from)):
+					if str(data.get("ver", "")) != build_tag():
+						_turn_away(from, "version")   # (another build in the room would be a different game)
+						return
 					var info := {"name": clean_name(data.get("name", "Guest")), "loadout": sanitize_loadout(data.get("loadout")), "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
 					peers[from] = info
+					_presence_size()
 					peer_joined.emit(from, info)
 				return
 			"me":

@@ -27,7 +27,7 @@ func _ready() -> void:
 	# NO_DTLS=1: a guest that does not speak the host's encryption (it must not get in).
 	if OS.get_environment("NO_DTLS") != "":
 		Net.dtls = false
-	print("GUEST join ", Net.join_enet("127.0.0.1", port))
+	print("GUEST join ", await _join(port))
 	Net.message.connect(_on)
 	# KICK=1: turned out by the host, he knocks again and is turned away again.
 	if OS.get_environment("KICK") != "":
@@ -39,7 +39,7 @@ func _ready() -> void:
 			Net.leave_reason = ""
 			if kicks[0] == 1:
 				await get_tree().create_timer(1.0).timeout
-				print("GUEST joins again ", Net.join_enet("127.0.0.1", port))
+				print("GUEST joins again ", await _join(port))
 			else:
 				get_tree().quit(0 if why != "" else 1))
 	var t0 := Time.get_ticks_msec()
@@ -106,6 +106,10 @@ func _on(type: String, data, _from: int) -> void:
 			# The host's voice came through (a little loss allowed: it rides the unreliable channel).
 			var voice_ok := vc_heard >= 40 and vc_peak > 0.3
 			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 and Net.ping_ms >= 0.0 and Net.host_rate > 0.0 and voice_ok else 1)
+
+## How the room is joined: by address (ENet). tests/net_steam_guest.gd finds the host's lobby in Steam's list and joins that.
+func _join(port: int) -> Variant:
+	return Net.join_enet("127.0.0.1", port)
 
 ## 40 ms of a 300 Hz tone at half scale, as the microphone's capture would hand it over (stereo, 44.1 kHz).
 func _tone() -> PackedVector2Array:

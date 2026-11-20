@@ -28,10 +28,15 @@ what each check found) and `dist/standalone/SHA256SUMS.txt`.
    (1.3 GB), or `package.bat --install-templates`, which fetches only the Windows, Linux and macOS release templates it
    needs (about 200 MB; 70 MB for Windows and Linux). Run by hand with templates missing, the packager asks whether to
    fetch them and goes on.
-3. **For the Steam builds: the GodotSteam GDExtension** (4.x for Godot 4.7, from godotsteam.com or its GitHub releases).
-   Put its `addons/godotsteam` folder in the project, or pass the zip: `package.bat --godotsteam C:\Downloads\godotsteam.zip`.
-   Without it the Steam builds still run, but with no overlay, lobbies, achievements or cloud saves, and the report says so
-   (`--require-steam-lib` turns that warning into a stop, for a release).
+3. **For the Steam builds: Steam's two GDExtensions**, both for Godot 4.7: **GodotSteam** (godotsteam.com: the overlay, lobbies,
+   invites, achievements, cloud) and **the Steam multiplayer peer** (`SteamMultiplayerPeer`: the game's online traffic over Steam's
+   relay). Each comes as a zip with `addons/<name>/<name>.gdextension` in it. Pass both, each a zip or an unpacked folder:
+   `package.bat --godotsteam C:\Downloads\godotsteam.zip C:\Downloads\steam_peer.zip`. The packager copies every extension it
+   finds into `addons/` (and keeps them there for the next run). Without them the Steam builds still run, but with no overlay or
+   achievements, and with no playing together through Steam (by address still works); the report says so, and
+   `--require-steam-lib` turns that warning into a stop, for a release. After the export it checks that each Steam depot holds
+   the extensions' own libraries and Steam's (`steam_api64.dll`, `libsteam_api.so`), and warns when one is missing.
+   On the PC, `steam_check.bat` says whether the game finds them all.
 4. **For the Steam upload: your ids**, in `tools/steam/steam_ids.json` (below).
 5. **NSIS** (`makensis`) for the Windows installer (a real `Setup.exe`). On Windows the packager asks, the first time, whether
    to fetch it: a 2 MB zip from nsis.sourceforge.io, checked against a checksum kept in `tools/package.py` and unpacked into
@@ -60,6 +65,10 @@ Edit `tools/steam/steam_ids.json`: each app's id and its depots' ids (Steamworks
 `0` means "not yet": the scripts are still written, with placeholders, and `upload.bat` refuses to run until they are
 real. After editing, `package.bat --skip-export` writes the scripts again without exporting.
 
+The file's `"platforms"` is what the game is sold for on Steam: `["windows", "linux"]`. The Steam channel makes a depot for those
+only, whatever else was built (a macOS build for the downloads does not turn into a macOS depot with a placeholder id); add
+`"macos"` there when there is a Mac build and a depot for it. `--platforms` on the command line overrides it.
+
 ### 3. Pack, then preview, then upload
 
 ```
@@ -73,14 +82,21 @@ dist\steam\upload.bat full
 SDK's `tools\ContentBuilder\builder\steamcmd.exe` will do). Then, in Steamworks → *SteamPipe → Builds*, set the build live
 on a beta branch, test it through the Steam client, and only then on `default`. The scripts do not set anything live.
 
-What goes into a depot is exactly `dist/steam/content/<edition>/<platform>/`: the game's program and the voxel core
-library beside it, nothing else. **`steam_appid.txt` is never in it** (Steam gives the app id itself when it starts the
-game; the file is only for running outside Steam while testing).
+What goes into a depot is exactly `dist/steam/content/<edition>/<platform>/`: the game's program, the voxel core library
+beside it, the Steam extensions' libraries, and `THIRD_PARTY_LICENSES.txt`. **`steam_appid.txt` is never in it** (Steam gives the
+app id itself when it starts the game; the file is only for running outside Steam while testing).
 
 Worth knowing:
 
-- **Linux depots: upload from Linux or macOS** (`upload.sh`), so the program's executable bit is kept. A Linux build
-  uploaded from Windows may not start on a player's machine ("permission denied").
+- **Linux depots: upload from Linux or macOS** (`upload.sh`; from Windows, inside WSL), so the program's executable bit is
+  kept. A Linux build uploaded from Windows may not start on a player's machine ("permission denied").
+- **Linux and Steam's runtime.** A Linux game on Steam runs in the Steam Linux Runtime 3.0 "sniper" (Debian 11: glibc 2.31,
+  GCC 10's C++ library); select it for the app in Steamworks (*Installation*; the older default, "scout", is Ubuntu 12.04).
+  A library built on a newer system asks for newer glibc versions and does not load there. The committed Linux voxel core is
+  built in an Ubuntu 20.04 container (it asks for glibc 2.27 at most), the Builds workflow builds it the same way, and the
+  packager reads the version needs of every Linux library and program in a build (`elf_version_needs`, pure Python): a Steam
+  build that asks for more than glibc 2.31, GLIBCXX 3.4.28 or CXXABI 1.3.12 is **not packed**, and a download is warned about.
+  `tools/test_package.py` holds the committed library to the same limit.
 - **The scripts follow the SteamPipe sample layout** (`AppBuild` + one `DepotBuildConfig` per depot, `ContentRoot`
   `../content/<edition>/`, paths relative to the script). That page of Valve's documentation could not be read while this
   was written, so run the **preview** first: it shows the file list SteamPipe would take, and nothing is uploaded.
@@ -128,13 +144,18 @@ Everything the player sees before the game's menu is the game's, not Godot's:
 the pieces are: `EMBLEM_CENTRE` and `LOGO_BOX` in `intro.gd` must follow, `tests/test_intro.gd` checks them). The
 `art/icon/` files are for the packager and are not packed into the game.
 
-## The Builds workflow (all three platforms)
+## The Builds workflow
 
-`.github/workflows/build.yml` builds the C++ core for Windows, Linux and macOS, runs the tests and then `tools/package.py`
-with all three platforms, and attaches `wrecksmith-steam`, `wrecksmith-standalone` and `package-report` to the run. Start it
-from the repository's *Actions* tab, or push a tag such as `v0.1`. To put GodotSteam in the Steam builds there, set the
-repository variable `GODOTSTEAM_URL` (Settings → Secrets and variables → Actions → Variables) to the address of the
-GodotSteam GDExtension zip.
+`.github/workflows/build.yml` builds the C++ core, runs the tests and then `tools/package.py`, and attaches `wrecksmith-steam`,
+`wrecksmith-standalone` and `package-report` to the run. Start it from the repository's *Actions* tab, or push a tag such as `v1.0`.
+
+- **Linux's core is built in an `ubuntu:20.04` container** on purpose (glibc 2.31, Steam's own runtime's); the job then runs
+  the glibc check of `tools/test_package.py` on what it built. Windows's is MinGW on Ubuntu. **macOS is built only when asked**
+  (the run form's *macos* box): the game is sold for Windows and Linux.
+- Each job uploads only the library it built, so the committed copy of another system's cannot win the merge.
+- To put Steam's extensions in the Steam builds there, set the repository variables `GODOTSTEAM_URL` and `STEAM_PEER_URL`
+  (Settings → Secrets and variables → Actions → Variables) to the addresses of their zips. With both set, the run stops if the
+  packager cannot find them (`--require-steam-lib`).
 
 ## The options
 
@@ -149,8 +170,8 @@ GodotSteam GDExtension zip.
 --no-installer                      no Windows installer
 --install-nsis                      fetch NSIS (2 MB, Windows) when it is missing, for the installer
 --install-templates                 fetch the missing export templates (only the needed ones)
---godotsteam PATH                   the GodotSteam zip or folder, put in addons/ for the Steam builds
---require-steam-lib                 stop if the Steam builds would have no GodotSteam
+--godotsteam ZIP [ZIP ...]          Steam's extensions (GodotSteam, the multiplayer peer): zips or folders, put in addons/
+--require-steam-lib                 stop if the Steam builds would lack either extension
 --clean                             empty build/ and dist/ first
 ```
 
@@ -158,14 +179,22 @@ GodotSteam GDExtension zip.
 
 - Every export must finish with no `ERROR` line from Godot, and its program must exist.
 - **Linux builds are run** (headless, 150 frames): exit 0 and no error line, which also catches a missing voxel core
-  library. Windows builds are run when packaging on Windows; elsewhere they are checked for the library beside the exe.
+  library; and, on any system, every Linux library and program is read for the glibc it asks for (see above). Windows builds are run when packaging on Windows; elsewhere they are checked for the library beside the exe.
   macOS zips are checked for the `.app` (and its framework).
 - `python tools/test_package.py` (also in `run_tests.sh`) pins the presets (twelve: full and demo × Windows, Linux, macOS ×
   Steam, standalone), the SteamPipe scripts, the archives (a Linux program stays executable), that `net.gd` guards Steam,
   the icon and the start-up picture, and the NSIS fetch (checksum, unpacking, a zip that reaches outside its folder).
+
+- Every package carries **`THIRD_PARTY_LICENSES.txt`**: the game writes it (`-- --probe licenses_dump`, from `scripts/game/credits.gd`,
+  with the Godot that exports, so Godot's licence terms are those of the build), and for the Steam depots the licence files that
+  came with Steam's extensions are added word for word. The same text is the menu's **Credits** screen. The © line takes its holder from
+  `data/legal.json`; while that is empty the packager says so.
 
 ## Not done yet
 
 - No code signing (`RELEASE_HE.md` says what it costs and when it matters); no Windows run of the packaged exe was possible where this was written (a Linux machine): the Windows
   build was checked for its files, the Linux one was run. Try the Windows zip once on a real PC.
 - A Steam build was never uploaded (no Steam account here): use the preview.
+- **Steam's two extensions could not be fetched or run where this was written** (their download sites are not reachable from
+  there). The Steam path was played with a stand-in for Steam, in two real processes (README, "What is tested, and what is not");
+  what remains is one test with a second person and a real Steam (`MULTIPLAYER_TEST.md`, "Steam: one test with a second person").

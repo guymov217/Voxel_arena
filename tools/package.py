@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -51,6 +52,7 @@ TITLE = {"full": "WRECKSMITH", "demo": "WRECKSMITH Demo"}
 SLUG = {"full": "WRECKSMITH", "demo": "WRECKSMITH-Demo"}
 JUNK = ("steam_appid.txt", ".DS_Store", "Thumbs.db")
 JUNK_SUFFIX = (".pdb", ".debug", ".dSYM")
+LICENSES_FILE = "THIRD_PARTY_LICENSES.txt"       # in every package, beside the game: the licences of what it is made with
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
@@ -79,11 +81,11 @@ def sha256(path):
     return h.hexdigest()
 
 
-def run(cmd, cwd=None, timeout=None):
+def run(cmd, cwd=None, timeout=None, env=None):
     """(exit code, output) of a command, its error output folded in; a timeout is exit code -1."""
     try:
         p = subprocess.run([str(c) for c in cmd], cwd=str(cwd) if cwd else None, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                           timeout=timeout)
+                           timeout=timeout, env=env)
         return p.returncode, ANSI.sub("", p.stdout.decode("utf-8", "replace"))
     except subprocess.TimeoutExpired as e:
         return -1, ANSI.sub("", (e.stdout or b"").decode("utf-8", "replace")) + "\nTIMED OUT after %s s" % timeout
@@ -264,14 +266,14 @@ def git_rev(root=ROOT):
     return rev + ("-dirty" if code == 0 and st.strip() else "")
 
 
-def native_libraries(root=ROOT):
-    """{platform: [paths]} of the voxel core libraries native/voxel_core.gdextension loads."""
-    ext = Path(root) / "native" / "voxel_core.gdextension"
+def extension_libraries(ext, root=ROOT):
+    """{platform: [paths]} of the libraries one .gdextension file loads (its [libraries] section)."""
+    ext = Path(ext)
     libs = {p: [] for p in PLATFORMS}
     if not ext.exists():
         return libs
     in_libs = False
-    for line in ext.read_text(encoding="utf-8").splitlines():
+    for line in ext.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if line.startswith("["):
             in_libs = line == "[libraries]"
@@ -282,9 +284,161 @@ def native_libraries(root=ROOT):
     return libs
 
 
+def native_libraries(root=ROOT):
+    """{platform: [paths]} of the voxel core libraries native/voxel_core.gdextension loads."""
+    return extension_libraries(Path(root) / "native" / "voxel_core.gdextension", root)
+
+
 def platforms_with_library(root=ROOT):
     libs = native_libraries(root)
     return [p for p in PLATFORMS if libs[p] and all(x.exists() for x in libs[p])]
+
+
+# ---------- Linux libraries: the oldest system they must run on ----------
+
+# What a Linux game on Steam may ask of the system: Steam runs it in the Steam Linux Runtime 3.0 "sniper" (Debian 11),
+# which has glibc 2.31 and GCC 10's C++ library. A library built on a newer system (say Ubuntu 22.04: glibc 2.35) names
+# newer versions in its needs and does not load there: the game then starts with no voxel core, or not at all.
+STEAM_RUNTIME_LIMITS = {"GLIBC": (2, 31), "GLIBCXX": (3, 4, 28), "CXXABI": (1, 3, 12)}
+
+
+def elf_version_needs(path):
+    """{'GLIBC': (2, 27), 'GLIBCXX': (3, 4, 26), ...}: the newest version of each system library an ELF 64-bit little-endian
+    file asks for (its .gnu.version_r). {} when it asks for none, or is not such a file. Pure Python, so it runs anywhere."""
+    with open(str(path), "rb") as f:
+        head = f.read(64)
+        if len(head) < 64 or head[:4] != b"\x7fELF" or head[4] != 2 or head[5] != 1:
+            return {}
+        shoff = struct.unpack_from("<Q", head, 0x28)[0]
+        shentsize, shnum = struct.unpack_from("<HH", head, 0x3A)
+        if not shoff or not shnum or shentsize < 64:
+            return {}
+        f.seek(shoff)
+        table = f.read(shentsize * shnum)
+        # Each section header: name, type, flags, addr, offset, size, link, info, align, entry size.
+        secs = [struct.unpack_from("<IIQQQQIIQQ", table, i * shentsize) for i in range(shnum)]
+        found = {}
+        for sec in secs:
+            if sec[1] != 0x6ffffffe:                 # SHT_GNU_verneed
+                continue
+            f.seek(sec[4])
+            data = f.read(sec[5])
+            link = secs[sec[6]]
+            f.seek(link[4])
+            strs = f.read(link[5])
+            pos = 0
+            for _ in range(sec[7]):                  # sh_info: how many files it needs versions of
+                _ver, cnt, _file, aux, nxt = struct.unpack_from("<HHIII", data, pos)
+                apos = pos + aux
+                for _ in range(cnt):
+                    _hash, _flags, _other, nameoff, anext = struct.unpack_from("<IHHII", data, apos)
+                    name = strs[nameoff:strs.index(b"\0", nameoff)].decode("ascii", "replace")
+                    m = re.fullmatch(r"(GLIBCXX|GLIBC|CXXABI)_(\d+(?:\.\d+)+)", name)
+                    if m:
+                        v = tuple(int(x) for x in m.group(2).split("."))
+                        if v > found.get(m.group(1), ()):
+                            found[m.group(1)] = v
+                    if not anext:
+                        break
+                    apos += anext
+                if not nxt:
+                    break
+                pos += nxt
+        return found
+
+
+def too_new_for_steam(path):
+    """What an ELF file asks for that the Steam Linux Runtime does not have, as readable lines ([] when it is fine)."""
+    try:
+        needs = elf_version_needs(path)
+    except (OSError, ValueError, IndexError, struct.error):
+        return []
+    return ["%s_%s (the Steam Linux Runtime has %s)" % (k, ".".join(map(str, v)), ".".join(map(str, STEAM_RUNTIME_LIMITS[k])))
+            for k, v in sorted(needs.items()) if v > STEAM_RUNTIME_LIMITS[k]]
+
+
+# ---------- Steam's two GDExtensions: GodotSteam, and the multiplayer peer ----------
+
+def is_steam_peer(name):
+    """SteamMultiplayerPeer's folder (steam_multiplayer_peer, godotsteam_multiplayerpeer...), not GodotSteam's own."""
+    n = name.lower()
+    return "multiplayer" in n or "peer" in n
+
+
+def addon_name(ext):
+    """The folder an addon has to sit in: the one its own paths name (res://addons/<name>/...), else its .gdextension's name."""
+    names = re.findall(r"res://addons/([^/\"']+)/", Path(ext).read_text(encoding="utf-8", errors="replace"))
+    return max(set(names), key=names.count) if names else Path(ext).stem
+
+
+def find_addons(src):
+    """{addon folder name: the folder to copy} for every GDExtension in an unpacked download (the shallowest one of a name)."""
+    src = Path(src)
+    found = {}
+    for ext in sorted(src.rglob("*.gdextension"), key=lambda p: (len(p.parts), str(p))):
+        name = addon_name(ext)
+        folder = ext.parent
+        for up in [folder] + list(folder.parents):       # the .gdextension may sit deeper than addons/<name>/
+            if up.name == name:
+                folder = up
+                break
+            if up == src:
+                break
+        found.setdefault(name, folder)
+    return found
+
+
+def steam_addons(root=ROOT):
+    """{addon folder name: its .gdextension} of what addons/ holds."""
+    out = {}
+    for ext in sorted((Path(root) / "addons").glob("*/*.gdextension")):
+        out.setdefault(ext.parent.name, ext)
+    return out
+
+
+def steam_addons_missing(root=ROOT):
+    """What the Steam builds still lack of Steam's two extensions, in words; [] when both are in addons/."""
+    names = list(steam_addons(root))
+    miss = []
+    if not any("godotsteam" in n.lower() and not is_steam_peer(n) for n in names):
+        miss.append("GodotSteam (the overlay, lobbies, rich presence, achievements and cloud saves)")
+    if not any(is_steam_peer(n) for n in names):
+        miss.append("the Steam multiplayer peer (SteamMultiplayerPeer: playing together through Steam's lobbies)")
+    return miss
+
+
+def addon_licences(root):
+    """[(addon name, text)]: the licence files that came with the extensions in addons/ (LICENSE, LICENCE, COPYING, NOTICE)."""
+    out = []
+    for name, ext in steam_addons(root).items():
+        for f in sorted(ext.parent.iterdir()):
+            if f.is_file() and re.match(r"(?i)(licen[sc]e|copying|notice)", f.name):
+                out.append((name, f.read_text(encoding="utf-8", errors="replace").strip()))
+    return out
+
+
+def copyright_holder(root=ROOT):
+    """The holder named in data/legal.json for the Credits screen's © line ('' while the owner has not said)."""
+    try:
+        return str(json.loads((Path(root) / "data" / "legal.json").read_text(encoding="utf-8")).get("holder", "")).strip()
+    except (OSError, ValueError):
+        return ""
+
+
+def steam_depot_gaps(root, platform, depot):
+    """What a Steam depot of this platform lacks of the Steam extensions that are in addons/: file names. The extension's own
+    release library and Steam's (steam_api64.dll / libsteam_api.so) must be beside the game's program."""
+    have = {p.name for p in Path(depot).rglob("*") if p.is_file()}
+    lacking = []
+    for name, ext in steam_addons(root).items():
+        for lib in extension_libraries(ext, root)[platform]:
+            if ".release." in lib.name or ".template_release." in lib.name:
+                if lib.name not in have and lib.name not in lacking and lib.exists():
+                    lacking.append(lib.name)
+    api = {"windows": "steam_api64.dll", "linux": "libsteam_api.so"}.get(platform)
+    if api and steam_addons(root) and api not in have:
+        lacking.append(api)
+    return lacking
 
 
 # ---------- Godot and its export templates ----------
@@ -455,6 +609,12 @@ def load_steam_ids(root=ROOT):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
+def steam_platforms(ids):
+    """The systems the game is sold for on Steam: steam_ids.json "platforms" (every system when the file says nothing)."""
+    got = [p for p in ids.get("platforms", PLATFORMS) if p in PLATFORMS]
+    return got or list(PLATFORMS)
+
+
 def steam_id(ids, edition, what, platform=None):
     """The App id (what='app') or a platform's depot id of an edition; a clear placeholder while it is not set yet."""
     e = ids.get(edition, {})
@@ -623,6 +783,7 @@ class Packager:
         self.results = []        # (channel, edition, platform, exe path, size, smoke text)
         self.godot = None
         self.gver = None
+        self.licenses = {"standalone": None, "steam": None}     # the THIRD_PARTY_LICENSES.txt of each channel, once make_licenses has written them
         self.nsis = False        # NSIS's compiler once ensure_nsis has looked (a path, or None when there is none); False = not looked yet
 
     # -- setup --
@@ -657,29 +818,37 @@ class Packager:
                            "  or in the Godot editor: Editor > Manage Export Templates > Download and Install (1.3 GB)."
                            % (self.gver, ", ".join(f for _, f in miss), templates_dir(self.gver), cmd))
 
-    def install_godotsteam(self, src):
-        """Copy a GodotSteam GDExtension download (a zip, or its folder) into addons/godotsteam."""
+    def install_steam_addons(self, src):
+        """Copy the GDExtensions of a download (a zip, or its folder) into addons/. Steam's two come as two downloads
+        (GodotSteam, and the Steam multiplayer peer), each a zip with addons/<name>/<name>.gdextension in it; this takes
+        whatever it finds, so it is run once for each (or the one zip, if it holds both)."""
         src = Path(src)
-        dest = self.root / "addons"
-        if src.is_file() and src.suffix == ".zip":
-            tmp = Path(tempfile.mkdtemp(prefix="godotsteam_"))
+        if not src.exists():
+            raise Fail("%s is not there (--godotsteam takes the downloaded zip, or the folder it was unpacked to)" % src)
+        tmp = None
+        if src.is_file():
+            if not zipfile.is_zipfile(str(src)):
+                raise Fail("%s is not a zip file (the GodotSteam and the Steam multiplayer peer downloads are zips)" % src)
+            tmp = Path(tempfile.mkdtemp(prefix="steam_addons_"))
             with zipfile.ZipFile(str(src)) as z:
-                z.extractall(str(tmp))
+                extract_safely(z, tmp)
             src = tmp
-        found = [p for p in src.rglob("godotsteam") if p.is_dir() and p.parent.name == "addons"] or \
-                ([src] if (src / "godotsteam.gdextension").exists() or list(src.glob("*.gdextension")) else [])
-        if not found:
-            raise Fail("%s does not look like the GodotSteam GDExtension (no addons/godotsteam folder in it)" % src)
-        target = dest / "godotsteam"
-        if target.exists():
-            shutil.rmtree(target)
-        dest.mkdir(exist_ok=True)
-        shutil.copytree(str(found[0]), str(target))
-        say("GodotSteam copied into %s" % target)
+        try:
+            found = find_addons(src)
+            if not found:
+                raise Fail("%s holds no GDExtension (no *.gdextension in it): the download has addons/<name>/<name>.gdextension" % src)
+            dest = self.root / "addons"
+            dest.mkdir(exist_ok=True)
+            for name, folder in found.items():
+                target = dest / name
+                if target.exists():
+                    shutil.rmtree(str(target))
+                shutil.copytree(str(folder), str(target))
+                say("%s copied into %s" % (name, target))
+        finally:
+            if tmp:
+                shutil.rmtree(str(tmp), ignore_errors=True)
         self.need_import = True
-
-    def have_godotsteam(self):
-        return any((self.root / "addons" / "godotsteam").glob("*.gdextension"))
 
     def ensure_imported(self):
         cache = self.root / ".godot" / "global_script_class_cache.cfg"
@@ -694,6 +863,42 @@ class Packager:
             self.warn("importing the project printed %d error line(s), the first: %s" % (len(errs), errs[0]))
 
     # -- export --
+
+    def make_licenses(self):
+        """THIRD_PARTY_LICENSES.txt for the packages: the game's credits written by the game itself (`-- --probe licenses_dump`: with the
+        Godot that exports it, so the engine's licence terms are those of the build), and for the Steam builds the licence files of the
+        extensions in addons/, verbatim. build/THIRD_PARTY_LICENSES.txt for the downloads, build/THIRD_PARTY_LICENSES.steam.txt for Steam."""
+        self.licenses = {"standalone": None, "steam": None}
+        base = self.build / LICENSES_FILE
+        self.build.mkdir(parents=True, exist_ok=True)
+        if base.exists():
+            base.unlink()
+        env = dict(os.environ, LICENSES_OUT=str(base))
+        code, out = run([self.godot, "--headless", "--path", self.root, "--", "--probe", "licenses_dump"], timeout=300, env=env)
+        errs = error_lines(out)
+        if code != 0 or errs or not base.exists():
+            msg = "could not write %s (exit %s)%s" % (LICENSES_FILE, code, (": " + "; ".join(errs[:3])) if errs else "")
+            if self.a.skip_export:
+                self.warn(msg + ": the packages are made without it")
+                return
+            raise Fail(msg)
+        text = base.read_text(encoding="utf-8")
+        steam = self.build / "THIRD_PARTY_LICENSES.steam.txt"
+        extra = addon_licences(self.root)
+        parts = [text.rstrip(), ""]
+        for name, lic in extra:
+            parts += ["=" * 78, "STEAM EXTENSION: %s" % name.upper(), "=" * 78, "", lic, ""]
+        write_file(steam, "\n".join(parts) + "\n")
+        self.licenses = {"standalone": base, "steam": steam}
+        if not copyright_holder(self.root):
+            self.warn("data/legal.json has no copyright holder: the Credits screen and %s have no (c) line. Put the name that should stand "
+                      "there (a person or a company) in it, and run again." % LICENSES_FILE)
+
+    def put_licenses(self, kind, dest):
+        """The licences file of a package, into the folder that is packed (or uploaded)."""
+        src = getattr(self, "licenses", {}).get(kind)
+        if src and Path(src).exists():
+            shutil.copy2(str(src), str(Path(dest) / LICENSES_FILE))
 
     def export_dir(self, preset):
         return self.root / Path(preset.path).parent
@@ -741,15 +946,29 @@ class Packager:
             if not any(".framework" in n for n in names):
                 self.warn("%s: no voxel core framework inside the macOS zip (the game runs without the C++ core, slower)" % preset.name)
             return "checked (macOS build: the .app is in the zip; not run on this machine)"
+        absent = [l.name for l in libs if not (out_dir / l.name).exists()]
+        if absent:
+            raise Fail("%s: the voxel core library is not next to the program: %s" % (preset.name, ", ".join(absent)))
+        # Looked at on every system (a file read, no running): does anything ask for more than Steam's Linux runtime has?
+        new = ["%s asks for %s" % (p.name, line) for p in sorted(out_dir.iterdir()) if p.is_file() and (p.suffix == ".so" or p == exe)
+               for line in too_new_for_steam(p)]
+        if new:
+            msg = ("%s: this Linux build does not fit Steam's Linux runtime (Debian 11, glibc 2.31): %s. Players on Steam or on an older "
+                   "Linux would not get the game started. Rebuild the library on an older system: the Builds workflow does it in "
+                   "an Ubuntu 20.04 container (docs/PACKAGING.md)." % (preset.name, "; ".join(new)))
+            if preset.channel == "steam":
+                raise Fail(msg)
+            self.warn(msg)
+        fits = "" if new else "asks for no more than glibc %s" % ".".join(map(str, STEAM_RUNTIME_LIMITS["GLIBC"]))
         if self.a.skip_tests:
-            return "not run (--skip-tests)"
+            return "not run (--skip-tests)" + ("; " + fits if fits else "")
         if not sys.platform.startswith("linux"):
-            return "not run (a Linux build, on another system)"
+            return "not run (a Linux build, on another system)" + ("; " + fits if fits else "")
         code, out = run([exe, "--headless", "--quit-after", "150"], cwd=out_dir, timeout=300)
         errs = error_lines(out)
         if code != 0 or errs:
             raise Fail("%s starts badly (exit %s):\n  %s" % (preset.name, code, "\n  ".join(errs[:6] or out.splitlines()[-6:])))
-        return "ran headless for 150 frames: exit 0, no errors"
+        return "ran headless for 150 frames: exit 0, no errors" + ("; " + fits if fits else "")
 
     # -- steam --
 
@@ -767,6 +986,7 @@ class Packager:
                 elif p.name not in JUNK and not p.name.endswith(JUNK_SUFFIX):
                     (dest / rel).parent.mkdir(parents=True, exist_ok=True)
                     link_or_copy(p, dest / rel)
+        self.put_licenses("steam", dest)
         return dest
 
     def write_steam_scripts(self, editions_platforms):
@@ -849,6 +1069,7 @@ class Packager:
                     if p.name not in JUNK and not p.name.endswith(JUNK_SUFFIX):
                         (shutil.copytree(str(p), str(stage / p.name)) if p.is_dir() else shutil.copy2(str(p), str(stage / p.name)))
             write_file(stage / "README.txt", self.readme_text(ed, pl), "\r\n" if pl == "windows" else "\n")
+            self.put_licenses("standalone", stage)
             if pl == "linux":
                 pack_targz(stage, sdir / (top + ".tar.gz"), top)
             else:
@@ -941,29 +1162,45 @@ class Packager:
         self.check_setup(plats)
         if stand_eds and "windows" in plats and not a.no_installer:
             self.nsis = self.ensure_nsis()      # asked now, not after the exports, so the questions are over before the long part
-        if a.godotsteam:
-            self.install_godotsteam(a.godotsteam)
-        if steam_eds and not self.have_godotsteam():
-            msg = ("addons/godotsteam is not in the project: the Steam builds are made without the GodotSteam library, so they run, "
-                   "but without Steam's overlay, lobbies, achievements or cloud. Put the GodotSteam GDExtension in addons/ "
-                   "(or pass --godotsteam <its zip or folder>) and run again.")
+        for src in a.godotsteam or []:
+            self.install_steam_addons(src)
+        miss = steam_addons_missing(self.root) if steam_eds else []
+        if miss:
+            msg = ("the Steam builds lack %s. They are made without, so they run, but %s. Put the extension in addons/ "
+                   "(or pass --godotsteam <its zip or folder>, once for each) and run again; docs/PACKAGING.md says where to get them."
+                   % (" and ".join(miss), "without Steam's overlay, lobbies, achievements and cloud saves, and with no playing together "
+                      "through Steam (by address still works)" if len(miss) == 2 else
+                      "without Steam's overlay, lobbies, achievements and cloud saves" if "GodotSteam" in miss[0] else
+                      "with no playing together through Steam's lobbies (by address still works)"))
             if a.require_steam_lib:
                 raise Fail(msg)
             self.warn(msg)
         if not a.skip_export:
             self.ensure_imported()
+        self.make_licenses()
         steam_done = {}
+        # The systems the game is sold for on Steam (tools/steam/steam_ids.json "platforms"; a --platforms list overrides it).
+        shipped = steam_platforms(load_steam_ids(self.root))
+        steam_plats = plats if a.platforms else [p for p in plats if p in shipped]
+        left_out = [p for p in plats if p not in steam_plats]
+        if steam_eds and left_out:
+            say("Not for Steam (steam_ids.json \"platforms\" lists %s): %s." % (", ".join(shipped), ", ".join(left_out)))
         for channel, eds in (("steam", steam_eds), ("standalone", stand_eds)):
             for ed in eds:
-                for pl in plats:
+                for pl in (steam_plats if channel == "steam" else plats):
                     preset = find_preset(self.presets, ed, channel, pl)
                     exe = self.export(preset)
                     verdict = self.smoke(preset, exe)
                     say("    %s" % verdict)
                     self.results.append((channel, ed, pl, exe, verdict))
                     if channel == "steam":
-                        self.stage_steam(preset, exe)
+                        depot = self.stage_steam(preset, exe)
                         steam_done.setdefault(ed, []).append(pl)
+                        gaps = steam_depot_gaps(self.root, pl, depot) if pl != "macos" else []
+                        if gaps:
+                            self.warn("the %s %s Steam depot lacks %s: Steam's extension was not exported with the game, so its Steam "
+                                      "features would not start there. Check addons/ (the extension's own .gdextension names what it needs)."
+                                      % (ed, pl, ", ".join(gaps)))
                     else:
                         self.stage_standalone(preset, exe)
         if steam_done:
@@ -1027,8 +1264,9 @@ def parse_args(argv=None):
     ap.add_argument("--install-nsis", action="store_true", help="fetch NSIS (a 2 MB zip, Windows only) when it is missing, for the Windows installer")
     ap.add_argument("--clean", action="store_true", help="empty build/ and dist/ first")
     ap.add_argument("--install-templates", action="store_true", help="fetch missing export templates (only the needed ones)")
-    ap.add_argument("--godotsteam", help="the GodotSteam GDExtension (zip or folder) to put in addons/ for the Steam builds")
-    ap.add_argument("--require-steam-lib", action="store_true", help="fail when the Steam builds would have no GodotSteam")
+    ap.add_argument("--godotsteam", "--steam-addons", dest="godotsteam", nargs="+", metavar="ZIP_OR_FOLDER",
+                    help="the Steam GDExtensions (GodotSteam, and the Steam multiplayer peer: a zip or a folder each) to put in addons/ for the Steam builds")
+    ap.add_argument("--require-steam-lib", action="store_true", help="fail when the Steam builds would lack GodotSteam or the Steam multiplayer peer")
     return ap.parse_args(argv)
 
 

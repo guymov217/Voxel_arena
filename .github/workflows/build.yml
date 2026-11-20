@@ -1,10 +1,15 @@
 name: Builds
 
-# Builds the C++ voxel core, tests the game, exports it for Windows, Linux and macOS and packs it (tools/package.py):
-# for Steam (depots + SteamPipe scripts) and as downloads for people without Steam. Run it from the Actions tab
-# (or push a tag like v0.1); the packages are attached to the run as downloads.
+# Builds the C++ voxel core, tests the game, exports it for Windows and Linux (macOS when asked) and packs it
+# (tools/package.py): for Steam (depots + SteamPipe scripts) and as downloads for people without Steam. Run it from the
+# Actions tab (or push a tag like v1.0); the packages are attached to the run as downloads. docs/PACKAGING.md.
 on:
   workflow_dispatch:
+    inputs:
+      macos:
+        description: "Also build for macOS (the Steam release is Windows + Linux; a Mac runner costs ten times as much)"
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 
@@ -12,16 +17,36 @@ env:
   GODOT_VERSION: 4.7.2
 
 jobs:
-  # The C++ voxel core (extension/): Linux and Windows (MinGW) on Ubuntu, a universal library on macOS.
-  native:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platforms: linux windows
-          - os: macos-latest
-            platforms: macos
-    runs-on: ${{ matrix.os }}
+  # The C++ voxel core (extension/). Linux is built in an Ubuntu 20.04 container on purpose: its glibc (2.31) is the one
+  # of Steam's Linux runtime ("sniper", Debian 11), and a library built on a newer system asks for newer glibc
+  # versions and does not load on Steam's. tools/test_package.py fails when the library asks for more.
+  native-linux:
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
+    steps:
+      - name: Compiler and tools
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git python3 python3-pip
+          pip3 install scons==4.8.1
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: extension
+        run: |
+          git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
+          scons -j4 platform=linux target=template_release
+      - name: The library asks for no more than Steam's Linux runtime has
+        run: python3 tools/test_package.py LinuxRuntime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux
+          # only the library this job built (the checkout holds the committed ones too, and a stale copy must not
+          # win when the artifacts are merged)
+          path: native/bin/libvoxelcore.linux.*
+
+  # Windows: MinGW on Ubuntu.
+  native-windows:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,19 +57,41 @@ jobs:
         run: |
           pip install scons==4.8.1
           git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
-          if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update -qq && sudo apt-get install -y -qq mingw-w64; fi
-          for p in ${{ matrix.platforms }}; do
-            extra=""; [ "$p" = "windows" ] && extra="use_mingw=yes"
-            [ "$p" = "macos" ] && extra="arch=universal"
-            scons -j4 platform=$p target=template_release $extra
-          done
+          sudo apt-get update -qq && sudo apt-get install -y -qq mingw-w64
+          scons -j4 platform=windows target=template_release use_mingw=yes
       - uses: actions/upload-artifact@v4
         with:
-          name: native-${{ matrix.os }}
-          path: native/bin/
+          name: native-windows
+          # only the library this job built (the checkout holds the committed ones too, and a stale copy must not
+          # win when the artifacts are merged)
+          path: native/bin/libvoxelcore.windows.*
+
+  # macOS: a universal library; only when asked (the game is not sold for macOS yet).
+  native-macos:
+    if: ${{ inputs.macos }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build
+        working-directory: extension
+        run: |
+          pip install scons==4.8.1
+          git clone -b 4.4 --depth 1 https://github.com/godotengine/godot-cpp
+          scons -j4 platform=macos target=template_release arch=universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-macos
+          # only the library this job built (the checkout holds the committed ones too, and a stale copy must not
+          # win when the artifacts are merged)
+          path: native/bin/libvoxelcore.macos.*
 
   export:
-    needs: native
+    needs: [native-linux, native-windows, native-macos]
+    # macOS is optional: its job is skipped unless asked, and the others must have worked.
+    if: ${{ !cancelled() && needs.native-linux.result == 'success' && needs.native-windows.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.native-macos.result) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +100,7 @@ jobs:
           pattern: native-*
           path: native/bin/
           merge-multiple: true
-      - name: Load the native library (it is built for every platform here)
+      - name: Load the native library (it is built for every system here)
         run: cp native/voxel_core.gdextension.in native/voxel_core.gdextension
       - name: Install Godot and the export templates
         run: |
@@ -67,24 +114,29 @@ jobs:
         run: |
           godot --headless --path . --import || true
           GODOT=/usr/local/bin/godot sh run_tests.sh
-      - name: GodotSteam for the Steam builds (optional)
-        # Set the repository variable GODOTSTEAM_URL to the address of the GodotSteam GDExtension zip; without it the
-        # Steam builds are made with no Steam library (they run, but without the overlay, lobbies or achievements).
-        if: ${{ vars.GODOTSTEAM_URL != '' }}
+      - name: Steam's two GDExtensions for the Steam builds (optional)
+        # Set the repository variables GODOTSTEAM_URL (the GodotSteam GDExtension zip) and STEAM_PEER_URL (the Steam
+        # multiplayer peer's zip; it holds the SteamMultiplayerPeer class that online play through Steam uses).
+        # Without them the Steam builds are made without that library (they run, but have no overlay, lobbies or
+        # achievements, and no playing together through Steam); with both, the packager must find them (--require-steam-lib).
         env:
           GODOTSTEAM_URL: ${{ vars.GODOTSTEAM_URL }}
+          STEAM_PEER_URL: ${{ vars.STEAM_PEER_URL }}
         run: |
-          curl -sSLo godotsteam.zip "$GODOTSTEAM_URL"
-          echo "GODOTSTEAM_ZIP=$PWD/godotsteam.zip" >> "$GITHUB_ENV"
+          zips=""
+          if [ -n "$GODOTSTEAM_URL" ]; then curl -sSLo godotsteam.zip "$GODOTSTEAM_URL"; zips="$PWD/godotsteam.zip"; fi
+          if [ -n "$STEAM_PEER_URL" ]; then curl -sSLo steampeer.zip "$STEAM_PEER_URL"; zips="$zips $PWD/steampeer.zip"; fi
+          echo "STEAM_ADDON_ZIPS=$zips" >> "$GITHUB_ENV"
+          if [ -n "$GODOTSTEAM_URL" ] && [ -n "$STEAM_PEER_URL" ]; then echo "STEAM_ADDON_REQUIRE=--require-steam-lib" >> "$GITHUB_ENV"; fi
       - name: Install NSIS (the Windows installer)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
       - name: Package
-        # Exports the full game and the demo for Windows, Linux and macOS, and packs them: dist/steam (the depots and the
-        # SteamPipe scripts) and dist/standalone (zip, tar.gz, installer: for people without Steam). docs/PACKAGING.md.
+        # Exports the full game and the demo for Windows and Linux (and macOS, when asked), and packs them: dist/steam (the
+        # depots and the SteamPipe scripts) and dist/standalone (zip, tar.gz, installer: for people without Steam).
         run: |
           args=""
-          [ -n "$GODOTSTEAM_ZIP" ] && args="--godotsteam $GODOTSTEAM_ZIP"
-          python3 tools/package.py --clean --godot /usr/local/bin/godot $args
+          [ -n "$STEAM_ADDON_ZIPS" ] && args="--godotsteam $STEAM_ADDON_ZIPS"
+          python3 tools/package.py --clean --godot /usr/local/bin/godot $args $STEAM_ADDON_REQUIRE
           cat dist/PACKAGE_REPORT.md
       - uses: actions/upload-artifact@v4
         with:

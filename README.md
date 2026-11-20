@@ -593,16 +593,25 @@ The CI workflow builds it for all three platforms before exporting.
 `scripts/net/net.gd` reaches GodotSteam only through `Engine.get_singleton("Steam")` and
 `ClassDB`, so the project runs on stock Godot. It falls back to ENet on port 7777.
 
-To use Steam:
+To use Steam, put **two** GDExtensions in `addons/` (the packager does it: `tools/package.py --godotsteam <zip> <zip>`):
 
-1. Install the **GodotSteam GDExtension** for Godot 4.7 (GodotSteam 4.22 or later) from the Asset Library or godotsteam.com,
-   or use the prebuilt GodotSteam editor.
-2. Run with Steam open. During development the app id is 480 (Spacewar), or whatever the
-   `SteamAppId` environment variable says. For release, put your own app id there and in
-   `steam_appid.txt` next to the executable.
-3. **Multiplayer → Host a Steam lobby** creates a lobby. Public lobbies show up in the room list,
-   and friends can join from the Steam overlay. Traffic goes through Steam's relay, so no ports
-   need opening.
+- **GodotSteam** (Godot 4.7; godotsteam.com): the `Steam` singleton: overlay, lobbies, rich presence, achievements, cloud.
+- **The Steam multiplayer peer** (`SteamMultiplayerPeer`): carries the game's online traffic over Steam's relay. Without it
+  lobbies are off (`steam_check.bat` and the multiplayer screen say so) and joining by address still works.
+
+Then:
+
+1. Run with Steam open. During development the app id is 480 (Spacewar), or whatever the `SteamAppId` environment variable
+   says. Outside Steam, a `steam_appid.txt` next to the program does the same; it is never put in a depot.
+2. **Multiplayer → Host a Steam lobby** makes a room. Public lobbies show up in the room list (only those of this game and
+   this build), a friend joins from the Steam overlay, and **Invite friends (Steam)** in the room screen opens Steam's invite
+   window. A friend who accepts an invite while the game is closed starts it with `+connect_lobby <id>` and lands in the room.
+   Traffic goes through Steam's relay, so no ports need opening.
+3. **One build to a room.** The host's lobby and every guest's hello carry `Net.build_tag()` (version, net protocol, edition);
+   a guest on another build is not listed and, if invited, told to update. Bump `Net.PROTOCOL` when what two games say to
+   each other changes in a way an older game cannot follow.
+4. **`steam_check.bat`** (or `-- --steam-check`) says what the game finds on this PC: the library, the Steam client, the
+   multiplayer extension and every call the lobbies use; READY when all are there. It writes `user://steam_check.txt`.
 
 **Room size.** A room holds 8 players (the host and 7 guests, over Steam and ENet alike), and every
 arena and party mode takes them all. The co-op campaign is for 4 at most (`Net.CAMPAIGN_PLAYERS`;
@@ -614,9 +623,13 @@ loud up close and gone by 22 m, and his mouth moves with your voice (a crack, op
 teeth and tongue showing, against your own microphone's loudest), timed to when the sound comes out
 of the listener's speaker. Every player can be muted from the room screen.
 
-The Steam path was written against the GodotSteam 4.x API. It is untested here because the test
-machine has no Steam client. The ENet path is covered by `run_tests.sh`: a host and a guest
-process play a campaign round over localhost, the guest's fighter played by a bot.
+**What is tested, and what is not.** `run_tests.sh` plays a campaign round between two real game processes twice: over ENet
+on localhost (a host and a guest by address), and over the Steam path (`tests/net_steam_host.gd` and `net_steam_guest.gd`).
+In the second, Steam itself is a stand-in (`tests/steam_loopback.gd`: the folder both processes share plays Valve's servers, and
+`FakePeer` carries the bytes over ENet), so everything of the game's own that sits between runs for real: the lobby and its
+data, the filtered list, the join, the build check, the hello, the bout, a kick. `tests/test_net_steam.gd` holds the rest in
+one process (a different build, a missing extension, a failing peer, an invite while in a room, `+connect_lobby`). What only
+Steam can show is Valve's real calls and relay: one test with a second person, in `docs/MULTIPLAYER_TEST.md`.
 
 ### The endless arena
 
@@ -740,7 +753,7 @@ is built behind its last frame (`tests/test_intro.gd`; not played in the tests o
 `-- --no-intro`). The `.exe`'s icon, the installer's pictures and these pieces are made by `tools/make_app_icon.py`.
 
 `.github/workflows/build.yml` does it for Windows, Linux and macOS. Run **Builds** from the repository's Actions tab, or
-push a tag such as `v0.1`; the packages appear as downloads on the run page.
+push a tag such as `v1.0`; the packages appear as downloads on the run page.
 
 To export by hand, install the export templates for 4.7.2 (Editor → Manage Export Templates), then run this
 (`export_presets.cfg` has twelve presets: full game and demo × Windows, Linux, macOS × Steam and standalone):
@@ -751,8 +764,11 @@ godot --headless --path . --export-release "Windows Desktop" build/steam/full/wi
 
 The macOS build is not signed. On a Mac, right-click it and choose Open the first time.
 
-For a Steam build, ship the GodotSteam extension's `addons/` folder (it brings the `steam_api` library);
-`tools/package.py --godotsteam <its zip>` puts it in. The packager's SteamPipe scripts upload the result.
+For a Steam build, ship both Steam extensions' `addons/` folders (GodotSteam brings the `steam_api` library);
+`tools/package.py --godotsteam <GodotSteam zip> <multiplayer peer zip>` puts them in (`--require-steam-lib` stops the run when
+one is missing), and the downloads without Steam leave `addons/` out. The packager's SteamPipe scripts upload the result.
+Every package carries `THIRD_PARTY_LICENSES.txt`, which the game writes itself (the menu's **Credits** screen shows the same
+text); the line of the copyright holder is in `data/legal.json`.
 
 Store screenshots: `xvfb-run -s "-screen 0 1920x1080x24" godot --rendering-driver vulkan
 --resolution 1920x1080 --path . -- --probe steamshots` with `SHOT_DIR` set saves 1920×1080

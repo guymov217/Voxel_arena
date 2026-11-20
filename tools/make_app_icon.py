@@ -83,6 +83,19 @@ def make_splash(icon, logo):
                                                                       lg.width, lg.height, lg_at))
 
 
+def make_steam_icons(icon):
+    """The two small pictures Steamworks asks for besides the capsules (Graphical Assets): the community icon (184 x 184, JPG:
+    the emblem on the menus' dark brown) and the client icon (32 x 32 .ico, the emblem alone). In docs/store/capsules/."""
+    caps = ROOT / "docs" / "store" / "capsules"
+    caps.mkdir(parents=True, exist_ok=True)
+    tile = gradient(184, 184)
+    em = fit(icon, 152, 152)
+    tile.paste(em, ((184 - em.width) // 2, (184 - em.height) // 2), em)
+    tile.convert("RGB").save(caps / "community_icon_184x184.jpg", format="JPEG", quality=95)
+    icon.resize((32, 32), Image.LANCZOS).save(caps / "client_icon_32.ico", format="ICO", sizes=[(32, 32)])
+    return [caps / "community_icon_184x184.jpg", caps / "client_icon_32.ico"]
+
+
 def main():
     icon = Image.open(ICON).convert("RGBA")
     out = ROOT / "art" / "icon"
@@ -115,7 +128,8 @@ def main():
     header.save(inst / "header.bmp", format="BMP")
 
     make_splash(icon, logo)
-    for p in (out / "wrecksmith.ico", out / "wrecksmith.icns", inst / "welcome.bmp", inst / "header.bmp", SPLASH, INTRO / "emblem.png", INTRO / "logo.png"):
+    store = make_steam_icons(icon)
+    for p in (*store, out / "wrecksmith.ico", out / "wrecksmith.icns", inst / "welcome.bmp", inst / "header.bmp", SPLASH, INTRO / "emblem.png", INTRO / "logo.png"):
         print("wrote %s (%d bytes)" % (p.relative_to(ROOT), p.stat().st_size))
 
 

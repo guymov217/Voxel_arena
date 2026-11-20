@@ -172,6 +172,11 @@ func _ready() -> void:
 	Net.lobbies.connect(_on_lobbies)
 	Net.my_name = Save.get_value("name", "Gladiator")
 	show_screen("main")
+	# A friend's invite taken while the game was closed: Steam started it for that room.
+	var invited := Net.take_launch_lobby()
+	if invited != 0:
+		show_screen("mp", Loc.t("Joining your friend's room..."))
+		Net.join_steam(invited)
 
 func _clear() -> VBoxContainer:
 	for c in panel.get_children():
@@ -445,6 +450,7 @@ func show_screen(s: String, msg := "") -> void:
 		"mp": _mp(v)
 		"room": _room(v)
 		"options": _options(v)
+		"credits": _credits(v)
 		"gladiator": _gladiator(v)
 		"circus": _circus(v)
 		"controls": _controls(v)
@@ -561,6 +567,7 @@ func _main(v: VBoxContainer) -> void:
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 0)
 	foot.add_child(UIStyle.menu_entry("Settings", func(): show_screen("options"), 16))
+	foot.add_child(UIStyle.menu_entry("Credits", func(): show_screen("credits"), 16))
 	foot.add_child(UIStyle.menu_entry("Quit", func(): get_tree().quit(), 16))
 	rows.append(foot)
 	# Who he is and what he has, small, at the foot.
@@ -811,6 +818,8 @@ func _gate(v: VBoxContainer) -> void:
 		_end_match()
 		show_screen("fights")))
 	if Net.active():
+		if Net.transport == "steam" and Net.is_host():
+			v.add_child(UIStyle.button("Invite friends (Steam)", func(): Net.invite_friends()))
 		v.add_child(UIStyle.button("Close the room (main menu)" if Net.is_host() else "Leave the room (main menu)", func(): _leave_room()))
 	else:
 		v.add_child(UIStyle.button("Leave the yard (main menu)", func(): show_screen("main")))
@@ -2864,7 +2873,10 @@ func _mp(v: VBoxContainer) -> void:
 		v.add_child(room_list)
 		Net.list_steam_lobbies()
 	else:
-		v.add_child(UIStyle.label(Loc.t("Steam is not running: host or join by address (LAN, or a forwarded port %d).") % Net.PORT, 14, UIStyle.MUTED))
+		var line := Loc.t("Steam is not running: host or join by address (LAN, or a forwarded port %d).") % Net.PORT
+		if Net.steam_problem.begins_with("Steam is running"):
+			line = Loc.t("Steam is running, but this game has no Steam multiplayer library: host or join by address (LAN, or a forwarded port %d).") % Net.PORT
+		v.add_child(UIStyle.label(line, 14, UIStyle.MUTED))
 	var addr := LineEdit.new()
 	addr.placeholder_text = "Host address, e.g. 192.168.1.20"
 	addr.custom_minimum_size = Vector2(300, 0)
@@ -3000,6 +3012,41 @@ func _options(v: VBoxContainer) -> void:
 			_close_overlay()
 		else:
 			show_screen("main")))
+
+## The credits and the licences of what the game is made with (scripts/game/credits.gd): a tab for each part, the text of the open one
+## in a read-only box that scrolls (Godot's own components are a hundred kilobytes) and can be selected and copied.
+var credits_section := "game"
+func _credits(v: VBoxContainer) -> void:
+	v.add_child(UIStyle.title("Credits & licences", 34))
+	var tabs := HFlowContainer.new()
+	tabs.add_theme_constant_override("h_separation", 6)
+	tabs.add_theme_constant_override("v_separation", 6)
+	for sd in Credits.SECTIONS:
+		var key: String = sd[0]
+		var tb := UIStyle.button(sd[1], func():
+			credits_section = key
+			show_screen("credits"))
+		tb.toggle_mode = true
+		tb.button_pressed = credits_section == key
+		tabs.add_child(tb)
+	v.add_child(tabs)
+	var box := TextEdit.new()
+	box.text = Credits.text_of(credits_section)
+	box.editable = false
+	box.context_menu_enabled = false
+	box.virtual_keyboard_enabled = false
+	box.caret_blink = false
+	box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	box.custom_minimum_size = Vector2(0, 380)
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED     # (licence texts are read as they are written)
+	box.add_theme_font_override("font", UIStyle.body())
+	box.add_theme_font_size_override("font_size", 15)
+	for c in ["font_color", "font_readonly_color"]:
+		box.add_theme_color_override(c, UIStyle.TEXT)
+	box.add_theme_color_override("background_color", Color(0, 0, 0, 0.28))
+	v.add_child(box)
+	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
 
 func _slider(lo: float, hi: float, step: float, val: float, cb: Callable) -> HSlider:
 	var sl := HSlider.new()

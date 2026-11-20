@@ -13,7 +13,7 @@ Unicode true
   !define SLUG "WRECKSMITH-Demo"
 !endif
 !ifndef VERSION
-  !define VERSION "0.1"
+  !define VERSION "1.0"
 !endif
 !ifndef EXE
   !define EXE "WRECKSMITH_Demo.exe"

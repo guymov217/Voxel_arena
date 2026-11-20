@@ -1,0 +1,6 @@
+{
+	"_about": "Who holds the game's copyright, for the Credits screen and THIRD_PARTY_LICENSES.txt (the line reads: (c) year holder). Left empty until the owner says who it is: tools/package.py warns while it is.",
+	"holder": "",
+	"year": "2026",
+	"site": ""
+}
