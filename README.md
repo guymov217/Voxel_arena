@@ -150,7 +150,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A bag from an older save keeps its wares under their new names. The thunder pot's blast is
   about two fifths weaker than it was (`Throwables.THUNDER`: power, reach, shove, ringing, and how
   near a man must be to be put down); the Hot Potato's bomb goes off as the pot used to
-  (`Throwables.BOMB_BLAST`).
+  (`Throwables.BOMB_BLAST`). A pot breaks with the sound of a pot (`Sfx` "shatter": the pot's knock,
+  a crack and single shards ringing down, no rattle of noise: that was a static at every impact),
+  laid under the thunder pot's boom and the fire pot's flare (`Throwables.shatter_gain`).
 - **Fists**: with both hands empty he stands in a boxer's guard (an empty hand beside a weapon
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight

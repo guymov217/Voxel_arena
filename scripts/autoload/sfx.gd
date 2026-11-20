@@ -222,7 +222,15 @@ func _render(kind: String, take: int) -> AudioStreamWAV:
 	var ph := 0.0    # a phase run up sample by sample (a pitch that moves without a jump)
 	_vph = 0.0
 	_vph2 = 0.0
-	_crk_n = 0
+	# A pot breaking: the shards that fall from it, each at its moment [when, pitch, how fast it dies away, how loud].
+	var shards := []
+	if kind == "shatter":
+		var ts := 0.012
+		for j in rng.randi_range(10, 14):
+			shards.append([ts, rng.randf_range(1300.0, 3800.0), rng.randf_range(110.0, 240.0), rng.randf_range(0.35, 0.9) * exp(-ts * 7.0)])
+			ts += rng.randf_range(0.008, 0.04) * (1.0 + ts * 4.0)
+			if ts > 0.36:
+				break
 	var buf := PackedFloat32Array()
 	buf.resize(n)
 	for i in n:
@@ -278,20 +286,21 @@ func _render(kind: String, take: int) -> AudioStreamWAV:
 			"twang":
 				s = (sin(TAU * 196.0 * tone * t) + 0.5 * sin(TAU * 392.0 * tone * t) * exp(-t * 18.0)) * exp(-t * 11.0) * 0.55
 			"shatter":
-				# Clay giving way: a dull knock, then a rattle of little cracks, each a short burst
-				# rounded off (bursts switched on and off sample by sample were static).
-				if _crk_n <= 0 and rng.randf() < 0.012 * exp(-t * 6.0):
-					_crk_n = rng.randi_range(60, 140)
-					_crk_len = _crk_n
-					_crk_a = rng.randf_range(0.4, 1.0)
-				var cr := 0.0
-				if _crk_n > 0:
-					_crk_n -= 1
-					cr = rng.randf_range(-1, 1) * _crk_a * sin(PI * float(_crk_n) / _crk_len)
-				var k := _lp_k(2600.0)
-				lp += (cr - lp) * k
-				lp2 += (lp - lp2) * k
-				s = sin(TAU * 130.0 * tone * t) * exp(-t * 30.0) * 0.7 + lp2 * 2.4 * exp(-t * 5.0)
+				# Clay giving way: the pot's own knock, a crack in the first few thousandths of a second, and the
+				# shards clattering down, each a short ring of clay at its own pitch and moment. (A rattle of noise
+				# over it all, a third of a second of it, was a static at every pot that broke: user, three pots.)
+				ph += TAU * (200.0 - 70.0 * minf(1.0, t / 0.05)) * tone / RATE
+				var knock := sin(ph) * exp(-t * 38.0) * 0.7 + sin(ph * 1.9) * exp(-t * 55.0) * 0.25
+				var kk := _lp_k(3000.0)
+				lp += (rng.randf_range(-1, 1) - lp) * kk
+				lp2 += (lp - lp2) * kk
+				var crack := lp2 * 2.2 * exp(-t * 420.0)
+				var rings := 0.0
+				for sh in shards:
+					var u: float = t - float(sh[0])
+					if u >= 0.0 and u < 0.06:
+						rings += (sin(TAU * float(sh[1]) * tone * u) + 0.4 * sin(TAU * float(sh[1]) * 2.76 * tone * u)) * float(sh[3]) * exp(-u * float(sh[2])) * minf(1.0, u * 2500.0)
+				s = knock + crack + rings * 0.5
 			"grunt", "pain", "scream", "growl", "hiss", "trumpet", "screech", "roar":
 				s = _voice_sample(kind, t, rng, take)
 			"thump":
@@ -358,9 +367,6 @@ const PEAK := 0.7   # no other sound made here goes higher (a few at once must n
 
 ## Every made sound: a 2 ms onset and a 6 ms close (no click at either end: a sound that starts
 ## or stops on a full sample clicks), and no peak over PEAK.
-var _crk_n := 0
-var _crk_len := 1
-var _crk_a := 0.0
 static func _finish(buf: PackedFloat32Array) -> void:
 	var n := buf.size()
 	var a := maxi(1, int(0.002 * RATE))

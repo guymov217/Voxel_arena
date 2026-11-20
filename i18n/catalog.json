@@ -82,7 +82,7 @@
 "scripts/net/net.gd:604",
 "scripts/ui/weapon_view.gd:49",
 "scripts/ui/menu.gd:2780",
-"scripts/game/match.gd:2120"
+"scripts/game/match.gd:2122"
 ],
 "The host removed you from the room": [
 "scripts/net/net.gd:654"
@@ -197,7 +197,7 @@
 "scripts/ui/smith_screen.gd:654",
 "scripts/ui/smith_screen.gd:662",
 "scripts/ui/smith_screen.gd:712",
-"scripts/game/match.gd:2310"
+"scripts/game/match.gd:2325"
 ],
 "Your pick": [
 "scripts/ui/gate_screen.gd:1014"
@@ -2615,7 +2615,7 @@
 "You fell. Back to the last checkpoint: bout %d, as you left it.": [
 "scripts/ui/menu.gd:3770",
 "scripts/ui/menu.gd:3869",
-"scripts/game/match.gd:2289"
+"scripts/game/match.gd:2304"
 ],
 "Stage %d cleared: %d denarii.": [
 "scripts/ui/menu.gd:3813"
@@ -3152,13 +3152,13 @@
 "scripts/fighter/fighter.gd:3445"
 ],
 "%s is at death's door": [
-"scripts/fighter/fighter.gd:7707"
+"scripts/fighter/fighter.gd:7718"
 ],
 "%s is lifted": [
-"scripts/fighter/fighter.gd:7723"
+"scripts/fighter/fighter.gd:7734"
 ],
 "ribs into the lung": [
-"scripts/fighter/fighter.gd:9843",
+"scripts/fighter/fighter.gd:9882",
 "scripts/game/spectacle.gd:158"
 ],
 "Detailed gladiators": [
@@ -3486,37 +3486,37 @@
 "scripts/game/armory.gd:205"
 ],
 "Leather jerkin": [
-"scripts/game/armory.gd:206"
-],
-"Bronze cuisses": [
-"scripts/game/armory.gd:207"
-],
-"Iron pauldrons": [
-"scripts/game/armory.gd:208"
-],
-"Manica (shield arm)": [
 "scripts/game/armory.gd:209"
 ],
-"Steel greaves": [
+"Bronze cuisses": [
 "scripts/game/armory.gd:210"
 ],
-"Scale mail": [
+"Iron pauldrons": [
 "scripts/game/armory.gd:211"
 ],
-"Steel lorica": [
+"Manica (shield arm)": [
 "scripts/game/armory.gd:212"
 ],
-"Murmillo helm": [
+"Steel greaves": [
 "scripts/game/armory.gd:213"
 ],
-"The armourer has no such thing": [
-"scripts/game/armory.gd:386"
+"Scale mail": [
+"scripts/game/armory.gd:214"
 ],
-"You already wear it": [
+"Steel lorica": [
+"scripts/game/armory.gd:215"
+],
+"Murmillo helm": [
+"scripts/game/armory.gd:216"
+],
+"The armourer has no such thing": [
 "scripts/game/armory.gd:389"
 ],
+"You already wear it": [
+"scripts/game/armory.gd:392"
+],
 "You do not wear it": [
-"scripts/game/armory.gd:403"
+"scripts/game/armory.gd:406"
 ],
 "To the last breath!": [
 "scripts/game/endless.gd:162"
@@ -4782,169 +4782,169 @@
 "scripts/game/social.gd:1163"
 ],
 "BOOM!": [
-"scripts/game/throwables.gd:749",
-"scripts/game/match.gd:3000"
+"scripts/game/throwables.gd:756",
+"scripts/game/match.gd:3015"
 ],
 "Caltrops all over the sand. Watch your step.": [
-"scripts/game/throwables.gd:780"
+"scripts/game/throwables.gd:787"
 ],
 "%s is covered in bees!": [
-"scripts/game/throwables.gd:790",
-"scripts/game/throwables.gd:2096"
+"scripts/game/throwables.gd:797",
+"scripts/game/throwables.gd:2095"
 ],
 "The hive breaks open: the swarm goes for %s!": [
-"scripts/game/throwables.gd:818"
+"scripts/game/throwables.gd:825"
 ],
 "The crowd laughs. Every beast wants the goat.": [
-"scripts/game/throwables.gd:823"
+"scripts/game/throwables.gd:830"
 ],
 "%s's legs are tied up": [
-"scripts/game/throwables.gd:833"
+"scripts/game/throwables.gd:840"
 ],
 "Rotten fish sauce! %s": [
-"scripts/game/throwables.gd:852"
+"scripts/game/throwables.gd:859"
 ],
 "%d weapons dropped in disgust.": [
-"scripts/game/throwables.gd:852"
+"scripts/game/throwables.gd:859"
 ],
 "%d weapon dropped in disgust.": [
-"scripts/game/throwables.gd:852"
+"scripts/game/throwables.gd:859"
 ],
 "The crowd holds its nose.": [
-"scripts/game/throwables.gd:852"
+"scripts/game/throwables.gd:859"
 ],
 "%s is dripping honey, and the bees have found him!": [
-"scripts/game/throwables.gd:866"
+"scripts/game/throwables.gd:873"
 ],
 "The mystery amphora was... thunder!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... nails!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... a goat!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... bees!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... chickens!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... confetti!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... a grape!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "The mystery amphora was... oil!": [
-"scripts/game/throwables.gd:890"
+"scripts/game/throwables.gd:897"
 ],
 "A single grape rolls out. The crowd is silent.": [
-"scripts/game/throwables.gd:899"
+"scripts/game/throwables.gd:906"
 ],
 "a grape": [
-"scripts/game/throwables.gd:901"
+"scripts/game/throwables.gd:908"
 ],
 "CHICKENS EVERYWHERE!": [
-"scripts/game/throwables.gd:911"
+"scripts/game/throwables.gd:918"
 ],
 "%s reeled in %s!": [
-"scripts/game/throwables.gd:932"
+"scripts/game/throwables.gd:939"
 ],
 "catch of the day": [
-"scripts/game/throwables.gd:933"
+"scripts/game/throwables.gd:940"
 ],
 "%s got hit by their own discus": [
-"scripts/game/throwables.gd:947"
+"scripts/game/throwables.gd:954"
 ],
 "%d caught in the big net": [
-"scripts/game/throwables.gd:957"
+"scripts/game/throwables.gd:964"
 ],
 "HEADSHOT! %s puts one in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1205"
+"scripts/game/throwables.gd:1210"
 ],
 "HEADSHOT! %s puts one in %s's head": [
-"scripts/game/throwables.gd:1205"
+"scripts/game/throwables.gd:1210"
 ],
 "HEADSHOT! Right in %s's head. Down and out.": [
-"scripts/game/throwables.gd:1207"
+"scripts/game/throwables.gd:1212"
 ],
 "HEADSHOT! Right in %s's head": [
-"scripts/game/throwables.gd:1207"
+"scripts/game/throwables.gd:1212"
 ],
 "An anvil hits %s. Classic.": [
-"scripts/game/throwables.gd:1252"
+"scripts/game/throwables.gd:1255"
 ],
 "SPLAT! A tomato hits %s": [
-"scripts/game/throwables.gd:1263"
+"scripts/game/throwables.gd:1266"
 ],
 "%s eats the bread": [
-"scripts/game/throwables.gd:1278"
+"scripts/game/throwables.gd:1277"
 ],
 "%s downs the wine": [
-"scripts/game/throwables.gd:1281"
+"scripts/game/throwables.gd:1280"
 ],
 "%s pockets a gold coin": [
-"scripts/game/throwables.gd:1283"
+"scripts/game/throwables.gd:1282"
 ],
 "%s steps on a caltrop!": [
-"scripts/game/throwables.gd:1299"
+"scripts/game/throwables.gd:1298"
 ],
 "%s slipped on a banana peel!": [
-"scripts/game/throwables.gd:1308"
+"scripts/game/throwables.gd:1307"
 ],
 "%s is bowled over by a cheese wheel": [
-"scripts/game/throwables.gd:1328"
+"scripts/game/throwables.gd:1327"
 ],
 "%s caught the boomerang": [
-"scripts/game/throwables.gd:1332"
+"scripts/game/throwables.gd:1331"
 ],
 "Torch": [
-"scripts/game/throwables.gd:1719",
+"scripts/game/throwables.gd:1718",
 "data/shop.json#name"
 ],
 "The torch burns out": [
-"scripts/game/throwables.gd:1819"
+"scripts/game/throwables.gd:1818"
 ],
 "The oil goes up in flames!": [
-"scripts/game/throwables.gd:1940"
+"scripts/game/throwables.gd:1939"
 ],
 "%s slipped in the olive oil": [
-"scripts/game/throwables.gd:2045"
+"scripts/game/throwables.gd:2044"
 ],
 "%s bandages %s and helps them up": [
-"scripts/game/throwables.gd:2212"
+"scripts/game/throwables.gd:2211"
 ],
 "%s bandaged up": [
-"scripts/game/throwables.gd:2214"
+"scripts/game/throwables.gd:2213"
 ],
 "%s empties a water skin over the burns": [
-"scripts/game/throwables.gd:2221"
+"scripts/game/throwables.gd:2220"
 ],
 "%s bowled a cheese wheel": [
-"scripts/game/throwables.gd:2226"
+"scripts/game/throwables.gd:2225"
 ],
 "%s laid a banana trap": [
-"scripts/game/throwables.gd:2232"
+"scripts/game/throwables.gd:2231"
 ],
 "%s ready: the bow looses it till it is used up (its number again puts it back)": [
-"scripts/game/throwables.gd:2249"
+"scripts/game/throwables.gd:2248"
 ],
 "%s put back: plain arrows again": [
-"scripts/game/throwables.gd:2249"
+"scripts/game/throwables.gd:2248"
 ],
 "%s lit: swing it like a weapon, or hold F to aim and let go to throw": [
-"scripts/game/throwables.gd:2275"
+"scripts/game/throwables.gd:2274"
 ],
 "%s ready: hold F to aim, let go to throw": [
-"scripts/game/throwables.gd:2286"
+"scripts/game/throwables.gd:2285"
 ],
 "%s put away": [
-"scripts/game/throwables.gd:2297"
+"scripts/game/throwables.gd:2296"
 ],
 "Out of %s: plain arrows again": [
-"scripts/game/throwables.gd:2517"
+"scripts/game/throwables.gd:2516"
 ],
 "Fx": [
 "scripts/game/fx.gd:29"
@@ -5845,153 +5845,153 @@
 "scripts/game/match.gd:1544"
 ],
 "%s picks up a %s": [
-"scripts/game/match.gd:2120"
+"scripts/game/match.gd:2122"
 ],
 "%s's %s is stuck fast in %s!": [
-"scripts/game/match.gd:2133"
+"scripts/game/match.gd:2135"
 ],
 "Round %d of 3": [
-"scripts/game/match.gd:2231"
+"scripts/game/match.gd:2246"
 ],
 "None of you can stand. The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:2284"
+"scripts/game/match.gd:2299"
 ],
 "None of you can stand. The crowd moves on.": [
-"scripts/game/match.gd:2284"
+"scripts/game/match.gd:2299"
 ],
 "The crowd moves on. Your campaign ends here: the next begins at the first bout.": [
-"scripts/game/match.gd:2284"
+"scripts/game/match.gd:2299"
 ],
 "The crowd moves on.": [
-"scripts/game/match.gd:2284"
+"scripts/game/match.gd:2299"
 ],
 "You can fight no more": [
-"scripts/game/match.gd:2290"
+"scripts/game/match.gd:2305"
 ],
 "You fall": [
-"scripts/game/match.gd:2290"
+"scripts/game/match.gd:2305"
 ],
 "Round %d won": [
-"scripts/game/match.gd:2298"
+"scripts/game/match.gd:2313"
 ],
 "%d denarii to the party's purse": [
-"scripts/game/match.gd:2310"
+"scripts/game/match.gd:2325"
 ],
 ", %d of them the crowd's": [
-"scripts/game/match.gd:2312"
+"scripts/game/match.gd:2327"
 ],
 ", %d for its favourite, %s": [
-"scripts/game/match.gd:2314"
+"scripts/game/match.gd:2329"
 ],
 "The crowd crowns %s its favourite": [
-"scripts/game/match.gd:2315"
+"scripts/game/match.gd:2330"
 ],
 "Bout %d won": [
-"scripts/game/match.gd:2316"
+"scripts/game/match.gd:2331"
 ],
 "Stage %d cleared": [
-"scripts/game/match.gd:2316"
+"scripts/game/match.gd:2331"
 ],
 "%s. Back to the yard: spend, mend, gear up.": [
-"scripts/game/match.gd:2316"
+"scripts/game/match.gd:2331"
 ],
 "Victory": [
-"scripts/game/match.gd:2318"
+"scripts/game/match.gd:2333"
 ],
 "%s lifts %s": [
-"scripts/game/match.gd:2421"
+"scripts/game/match.gd:2436"
 ],
 "DEFEAT": [
-"scripts/game/match.gd:2492",
-"scripts/game/match.gd:2497"
+"scripts/game/match.gd:2507",
+"scripts/game/match.gd:2512"
 ],
 "The Emperor turns his thumb down": [
-"scripts/game/match.gd:2492",
-"scripts/game/match.gd:2497"
+"scripts/game/match.gd:2507",
+"scripts/game/match.gd:2512"
 ],
 "VICTORY!": [
-"scripts/game/match.gd:2499"
+"scripts/game/match.gd:2514"
 ],
 "The crowd roars your name": [
-"scripts/game/match.gd:2499"
+"scripts/game/match.gd:2514"
 ],
 "%s is carried off the sand": [
-"scripts/game/match.gd:2554"
+"scripts/game/match.gd:2569"
 ],
 "%s kills %s": [
-"scripts/game/match.gd:2730"
+"scripts/game/match.gd:2745"
 ],
 "%s SLAMS %s INTO THE SAND!": [
-"scripts/game/match.gd:2732"
+"scripts/game/match.gd:2747"
 ],
 "%s loses the %s!": [
-"scripts/game/match.gd:2734"
+"scripts/game/match.gd:2749"
 ],
 "%s's %s is BROKEN%s!": [
-"scripts/game/match.gd:2740"
+"scripts/game/match.gd:2755"
 ],
 ", the bone out through the skin": [
-"scripts/game/match.gd:2740"
+"scripts/game/match.gd:2755"
 ],
 "%s's skull is cracked!": [
-"scripts/game/match.gd:2742"
+"scripts/game/match.gd:2757"
 ],
 "%s's skull is broken!": [
-"scripts/game/match.gd:2742"
+"scripts/game/match.gd:2757"
 ],
 "%s is set alight!": [
-"scripts/game/match.gd:2813"
+"scripts/game/match.gd:2828"
 ],
 "%s is poisoned!": [
-"scripts/game/match.gd:2824"
+"scripts/game/match.gd:2839"
 ],
 "%s is chilled to the bone!": [
-"scripts/game/match.gd:2831"
+"scripts/game/match.gd:2846"
 ],
 "The ruby flares: %s's %s catches fire!": [
-"scripts/game/match.gd:2866"
+"scripts/game/match.gd:2881"
 ],
 "The sapphire bites cold: frostbite in %s's %s!": [
-"scripts/game/match.gd:2878"
+"scripts/game/match.gd:2893"
 ],
 "The emerald's poison eats into %s's %s!": [
-"scripts/game/match.gd:2888"
+"scripts/game/match.gd:2903"
 ],
 "a golden blow": [
-"scripts/game/match.gd:2907"
+"scripts/game/match.gd:2922"
 ],
 "BOING! %s goes flying!": [
-"scripts/game/match.gd:2945"
+"scripts/game/match.gd:2960"
 ],
 "Stuck! The glue holds %s fast.": [
-"scripts/game/match.gd:2957"
+"scripts/game/match.gd:2972"
 ],
 "%s giggles helplessly!": [
-"scripts/game/match.gd:2970"
+"scripts/game/match.gd:2985"
 ],
 "The magnet tears the %s out of %s's hand!": [
-"scripts/game/match.gd:3063"
+"scripts/game/match.gd:3078"
 ],
 "%s is dead": [
-"scripts/game/match.gd:3101"
+"scripts/game/match.gd:3116"
 ],
 "%s is beheaded": [
-"scripts/game/match.gd:3101"
+"scripts/game/match.gd:3116"
 ],
 "%s is back on his feet": [
-"scripts/game/match.gd:3271"
+"scripts/game/match.gd:3286"
 ],
 "%s spits venom!": [
-"scripts/game/match.gd:3384"
+"scripts/game/match.gd:3399"
 ],
 "%s breathes FIRE!": [
-"scripts/game/match.gd:3384"
+"scripts/game/match.gd:3399"
 ],
 "%s is poisoned by the %s!": [
-"scripts/game/match.gd:3531"
+"scripts/game/match.gd:3546"
 ],
 "Broken weapon": [
-"scripts/game/match.gd:3786"
+"scripts/game/match.gd:3801"
 ],
 "Legionary": [
 "scripts/game/campaign_run.gd:10"
@@ -9169,7 +9169,7 @@
 "Bodkin arrow": [
 "data/shop.json#name"
 ],
-"A narrow iron head that goes through a man and on into the next, up to three.": [
+"A narrow hardened head made for armour: it punches through the plate that stops a plain arrow, and the man under it.": [
 "data/shop.json#desc"
 ],
 "Barbed arrow": [

@@ -685,8 +685,13 @@ func _wall_mark(p: Vector3, n: Vector3, acid: bool) -> void:
 ## Every pot breaks like a pot, whatever was in it: glazed shards flung off the way it was going
 ## and bouncing on the sand, a puff of clay dust, a splash of what it held, a crack of clay.
 const CONTENTS := {"pot_fire": Color(1.0, 0.5, 0.12), "pot_acid": Color(0.56, 0.86, 0.22), "pot_oil": Color(0.25, 0.22, 0.08), "pot_honey": Color(0.95, 0.66, 0.12), "pot_garum": Color(0.55, 0.4, 0.18), "pot_smoke": Color(0.5, 0.5, 0.52), "pot_bees": Color(0.95, 0.75, 0.15), "pot_mystery": Color(0.85, 0.3, 0.7), "pot_nail": Color(0.55, 0.57, 0.6), "pot_caltrops": Color(0.3, 0.3, 0.3), "pot_chickens": Color(1.0, 0.95, 0.85), "pot_goat": Color(0.9, 0.88, 0.8), "pot_thunder": Color(0.4, 0.3, 0.5)}
+## How loud a pot's breaking is heard: laid under the pot's own sound where it has one (the boom of the powder, the
+## flare of the fire), both at full strength at once were a din.
+static func shatter_gain(type: String) -> float:
+	return 0.5 if type == "pot_thunder" else (0.6 if type == "pot_fire" else 1.0)
+
 func shatter(p: Vector3, type: String, dir = null) -> void:
-	m.sfx("shatter", p, 1.0)
+	m.sfx("shatter", p, shatter_gain(type))
 	var fx: Fx = m.fx
 	if fx == null:
 		return
