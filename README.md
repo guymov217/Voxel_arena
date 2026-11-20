@@ -99,6 +99,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   Whatever lies still on the sand (a weapon, a severed limb, chips) is walked over, not tripped on.
 - **Glancing and lodged blows**: a weapon that meets a plate at a slant, or a blade that lands
   flat, skids off with sparks and a scrape and does little; a square cut chops in, bone crunches.
+  Two weapons that meet ring (`Combat.clang`) but throw sparks only when they meet hard and fast
+  (`Match.clang_sparks`: an impulse of 5 or more at 3 m/s or more, the speed the two came together at
+  there, `v` of the signal); blades laid together or a parry that barely moves ring and spark nothing.
   A heavy keen blade driven hard can stay in the wound, still in the hand: it is wrenched out
   by pulling (the man it is in comes with it) or let go of (G), and taken back the same way.
   None holds a man for good: the man it is in tears it out with G, pulling away frees it

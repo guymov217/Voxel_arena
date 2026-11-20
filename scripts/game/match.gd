@@ -1873,7 +1873,9 @@ func guest_message(type: String, data) -> void:
 								if sn is Array and sn.size() == 2 and HIT_SOUNDS.has(str(sn[0])):
 									sfx(str(sn[0]), fp, clampf(float(sn[1]), 0.0, 1.0))
 					"clang":
-						fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
+						# (A host that sends no flag threw its sparks always: kept so for it.)
+						if bool(data.get("sp", true)):
+							fx.burst("sparks", fp, int(clampf(float(data.get("J", 5.0)) * 3.0, 6.0, 90.0)))
 						sfx("clang", fp, minf(1.0, clampf(float(data.get("J", 5.0)), 0.0, 80.0) / 8.0))
 					"pickup":
 						sfx("pickup", fp)
@@ -2194,13 +2196,26 @@ func glance_fx(p: Vector3, dir: Vector3, J: float) -> void:
 		return
 	fx.burst("sparks", p, int(clampf(J * 2.5, 8.0, 70.0)), dir, 0.9 + J / 30.0)
 
+## Two weapons throw sparks only when they meet hard and fast (user: sparks flew off every touch of two
+## blades): the clash's impulse at least SPARK_J and the two coming together at SPARK_V m/s or more at
+## the spot. (Bots' clashes, 279 measured: blades laid against each other, a parry that barely moves, a
+## shield rim brushed, mostly J 1.3 to 2.4 at under 3 m/s; the blows that were meant, J 6 to 43 at 4 m/s
+## and more. 66 of the 279 threw sparks, 7 do now.)
+const SPARK_J := 5.0
+const SPARK_V := 3.0
+
+static func clang_sparks(J: float, v: float) -> bool:
+	return J >= SPARK_J and v >= SPARK_V
+
 func _on_clang(c: Dictionary) -> void:
 	if Sfx:
 		Sfx.play("clang", c.p, minf(1.0, c.J / 8.0))
-	if c.J > 2.0:
+	var sparks := clang_sparks(c.J, float(c.get("v", INF)))
+	if sparks:
 		fx.burst("sparks", c.p, int(clampf(c.J * 3.0, 6.0, 90.0)), Vector3.UP, 0.8 + c.J / 30.0)
-		if role == "host":
-			Net.send_all("fx", {"k": "clang", "p": [snappedf(c.p.x, 0.01), snappedf(c.p.y, 0.01), snappedf(c.p.z, 0.01)], "J": snappedf(c.J, 0.1)}, false)
+	# (The guests hear the clash as the host's ear does, past a touch; they see the sparks only if it threw any.)
+	if c.J > 2.0 and role == "host":
+		Net.send_all("fx", {"k": "clang", "p": [snappedf(c.p.x, 0.01), snappedf(c.p.y, 0.01), snappedf(c.p.z, 0.01)], "J": snappedf(c.J, 0.1), "sp": sparks}, false)
 
 ## A blow that did not come through the physics contacts (a slam, a man landing on another).
 func report_hit(h: Dictionary) -> void:

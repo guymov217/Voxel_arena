@@ -8444,7 +8444,7 @@ func _shield_takes(hit: Dictionary) -> bool:
 				Combat.current.chip.emit({"kind": "chip", "weapon": sh, "indices": k.indices, "voxels": k.voxels, "p": p, "broke": k.broke})
 		stagger = minf(1.0, stagger + J / float(mods.get("footing", 1.0)) * 0.004)
 		if Combat.current:
-			Combat.current.clang.emit({"p": p, "J": J, "metal": 1.0})
+			Combat.current.clang.emit({"p": p, "J": J, "metal": 1.0, "v": float(hit.get("speed", INF))})
 		return true
 	return false
 
