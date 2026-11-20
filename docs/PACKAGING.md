@@ -26,7 +26,8 @@ what each check found) and `dist/standalone/SHA256SUMS.txt`.
    Close the editor while packaging.
 2. **Godot's export templates** for the same version. Editor → *Manage Export Templates* → *Download and Install*
    (1.3 GB), or `package.bat --install-templates`, which fetches only the Windows, Linux and macOS release templates it
-   needs (about 200 MB).
+   needs (about 200 MB; 70 MB for Windows and Linux). Run by hand with templates missing, the packager asks whether to
+   fetch them and goes on.
 3. **For the Steam builds: the GodotSteam GDExtension** (4.x for Godot 4.7, from godotsteam.com or its GitHub releases).
    Put its `addons/godotsteam` folder in the project, or pass the zip: `package.bat --godotsteam C:\Downloads\godotsteam.zip`.
    Without it the Steam builds still run, but with no overlay, lobbies, achievements or cloud saves, and the report says so

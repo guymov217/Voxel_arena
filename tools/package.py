@@ -554,15 +554,27 @@ class Packager:
         self.godot = find_godot(self.a.godot)
         self.gver = godot_version(self.godot)
         say("Godot %s (%s)" % (self.gver, self.godot))
+        if sys.platform.startswith("win") and "console" not in Path(self.godot).name.lower():
+            self.warn("this is Godot's plain exe: it shows no engine messages here, so an export error would be hard to read. "
+                      "Godot_v%s-stable_win64_console.exe (in the same zip) shows them: put it beside it, or point GODOT at it." % self.gver.split(".stable")[0])
         if not self.a.skip_export:
             miss = missing_templates(self.gver, platforms)
+            cmd = "tools\\package.bat --install-templates" if sys.platform.startswith("win") else "python3 tools/package.py --install-templates"
+            if miss and not self.a.install_templates and sys.stdin is not None and sys.stdin.isatty():
+                say("Godot's export templates for %s are not installed (%s missing in %s)." % (self.gver, ", ".join(f for _, f in miss), templates_dir(self.gver)))
+                try:
+                    ans = input("Fetch just the ones needed now (a few tens of MB per system, not the whole 1.3 GB)? [Y/n] ").strip().lower()
+                except EOFError:
+                    ans = "n"
+                self.a.install_templates = ans in ("", "y", "yes")
             if miss and self.a.install_templates:
                 install_templates(self.gver, sorted(set(p for p, _ in miss)))
                 miss = missing_templates(self.gver, platforms)
             if miss:
                 raise Fail("Godot's export templates for %s are not installed (%s missing in %s).\n"
-                           "  Editor > Manage Export Templates > Download and Install, or run:  python tools/package.py --install-templates"
-                           % (self.gver, ", ".join(f for _, f in miss), templates_dir(self.gver)))
+                           "  Run:  %s     (fetches only what is needed)\n"
+                           "  or in the Godot editor: Editor > Manage Export Templates > Download and Install (1.3 GB)."
+                           % (self.gver, ", ".join(f for _, f in miss), templates_dir(self.gver), cmd))
 
     def install_godotsteam(self, src):
         """Copy a GodotSteam GDExtension download (a zip, or its folder) into addons/godotsteam."""
