@@ -23,7 +23,7 @@ const TYPES := {
 	"pot_arrow": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_fire": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_arrow_poison": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_ice": {"size": 0.08, "projectile": true, "dart": true},
 	"pot_arrow_blast": {"size": 0.08, "projectile": true, "dart": true}, "pot_arrow_barb": {"size": 0.08, "projectile": true, "dart": true},
-	"pot_arrow_pierce": {"size": 0.08, "projectile": true, "dart": true, "pierce": 3},
+	"pot_arrow_pierce": {"size": 0.08, "projectile": true, "dart": true, "pierce": true},
 	"pot_discus": {"size": 0.12, "projectile": true, "discus": true}, "pot_bignet": {"size": 0.3, "projectile": true},
 	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true, "roll_r": 0.21},
 	"arrow_loose": {"size": 0.06, "debris": true},
@@ -302,18 +302,6 @@ func hit_char(p: Vector3, chars: Array, r: float, owner_, any_part: bool):
 				return {"char": c, "part": Social.struck_part(part, p) if any_part else part}
 	return null
 
-## Whether a man other than `struck` (and those the item has been through) stands in the line it flies
-## on, within six metres: a bodkin goes on into him, else it stays in the one it has struck.
-func _man_ahead(it: Dictionary, struck, chars: Array) -> bool:
-	var dir: Vector3 = (it.vel as Vector3).normalized()
-	var done: Dictionary = it.get("struck", {})
-	for k in 20:
-		var q: Vector3 = it.p + dir * (0.3 * float(k + 1))
-		var h = hit_char(q, chars, 0.16, it.owner, true)
-		if h != null and h.char != struck and not done.has(h.char):
-			return true
-	return false
-
 ## One step: flight, landing, hits. `chars` are the fighters and beasts in the arena.
 func update(dt: float, chars: Array, gravity := 9.81) -> void:
 	_free_ghosts()
@@ -368,20 +356,9 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 				it.vel = it.vel * 0.15
 				continue
 			if hit:
-				# A bodkin goes through the man and on into the next, up to `pierce` of them, slower and
-				# weaker for each it passes (and the one behind it hit once, not again as it passes).
-				var through := int(def.get("pierce", 0))
-				if through > 0 and (it.get("struck", {}) as Dictionary).size() + 1 < through and _man_ahead(it, hit.char, chars):
-					_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized(), "through": true})
-					if not it.has("struck"):
-						it.struck = {}
-					it.struck[hit.char] = true
-					it.vel *= 0.82
-					it.power = float(it.get("power", 1.0)) * 0.75
-					continue
-				# (A bodkin with no man behind the one it has struck stays in him, through and through: the
-				# point out of his far side, the fletching out of the near: "pierced".)
-				_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized(), "pierced": through > 0})
+				# (A bodkin stays in the man it has struck, through and through, the point out of his far side and
+				# the fletching out of the near: "pierced". What it is made to go through is his armour, Fighter.apply_hit.)
+				_emit({"kind": "splat", "type": it.type, "char": hit.char, "part": hit.part, "item": it, "p": it.p, "dir": it.vel.normalized(), "pierced": bool(def.get("pierce", false))})
 				remove(it)
 				continue
 			if it.p.y <= size / 2.0 and def.has("heavy"):

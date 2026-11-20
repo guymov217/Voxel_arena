@@ -341,10 +341,12 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 - **Special arrows** (`Throwables.ARROWS`): the market's For archers tab sells six kinds one at a time, five
   to a bag: fire (alight on the man and the sand), poison (bleeds on, slows, eats like acid), frost
   (slows), blasting (a small burst where it lands, `Throwables.BLAST_ARROW`: it hurts, nowhere near a
-  thunder pot, and the archer's friends and he himself are not spared), bodkin (goes through up to three
-  men, slower and weaker for each, `pierce` in `Items.TYPES`, and stays in the last, or in the one man it
-  strikes when none stands behind him: right through him, its point out of his far side and its fletching
-  out of the near, `VoxelPart.stick`) and barbed (bleeds on). A number on the hotbar picks one for the bow
+  thunder pot, and the archer's friends and he himself are not spared), bodkin (made for armour: a plate stops a
+  plain arrow, a bodkin goes through it, punching out the plate it met (one for each layer, three layers
+  at most) and the one it comes out through, and wounding the man under it with three quarters of its weight through steel against a plain
+  point's quarter, `pierce_armor` on the blow, `Fighter.PIERCE_*`, `Fighter.armour_pass`; it stays in the
+  man it strikes, right through him, its point out of his far side and its fletching out of the near,
+  `VoxelPart.stick`) and barbed (bleeds on). A number on the hotbar picks one for the bow
   (`Fighter.arrow_pick`; its slot is edged in gold and
   the HUD reads BOW: ...): every arrow he looses is that one, one out of the bag a shot, till the bag runs
   out (plain arrows again, or the bow's own gem), and the number again puts it back. The host spends

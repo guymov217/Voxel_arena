@@ -7657,8 +7657,11 @@ const GLANCE_INTO := 0.35   # a weapon coming in at less than this (cosine to th
 ## (only half of what the plate stops); a blade carries a share of that, the heavier the more: a
 ## great sword or a broad axe drives the plate into the man as a club does, a light blade rings
 ## on it.
-static func armour_pass(type: String, h: float, weapon_mass: float, layers := 1) -> float:
+static func armour_pass(type: String, h: float, weapon_mass: float, layers := 1, piercing := false) -> float:
 	var absorb := minf(0.92, 0.3 + 0.55 * h + LAYER_ABSORB * (layers - 1))
+	# An armour-piercing point (a bodkin) goes through the plate it was made for, most of its weight with it.
+	if piercing and type == "point":
+		return (1.0 - absorb * PIERCE_HELD) * pow(LAYER_PASS, layers - 1)
 	# (Each plate beneath the struck one takes its share of the weight too: two layers of steel
 	# soften a blow more than one, a club's as well as a blade's.)
 	var through := (1.0 - absorb * 0.55) * pow(LAYER_PASS, layers - 1)
@@ -7668,6 +7671,14 @@ static func armour_pass(type: String, h: float, weapon_mass: float, layers := 1)
 	return through * (BLADE_ON_PLATE + (1.0 - BLADE_ON_PLATE) * heavy_blade)
 const BLADE_ON_PLATE := 0.45   # what of a light blade's weight a plate passes on (a heavy one's all)
 const PLATE_OVER := 1.25       # a plate this near the spot (in voxels) lies over it: it stops a blade
+## An armour-piercing point (`pierce_armor` on the blow: a bodkin) is the one point a plate does not stop: it punches
+## out the plates over its spot (one for each layer it goes through, PIERCE_HOLES of them at most), and goes on into
+## the man still a point, with all but PIERCE_HELD of what the armour would stop of a blunt blow (a plain point's share
+## through steel is a quarter, a bodkin's three quarters), through PIERCE_LAYERS layers of plate; a plate beyond those
+## stops it as it stops any point.
+const PIERCE_HELD := 0.3
+const PIERCE_HOLES := 2
+const PIERCE_LAYERS := 3
 const DYING_T := 20.0
 const LIFT_T := 2.5
 var dying := 0.0         # seconds left at death's door (0: not there)
@@ -7846,7 +7857,8 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				in_most = minf(in_most, along)
 				out_most = maxf(out_most, along)
 		var layers := 1 + (int(round((out_most - in_most) / (V * S))) if out_most > in_most else 0)
-		armor_f = armour_pass(type, h, float(hit.get("mass", 0.0)), layers)
+		var piercing := type == "point" and bool(hit.get("pierce_armor", false)) and layers <= PIERCE_LAYERS
+		armor_f = armour_pass(type, h, float(hit.get("mass", 0.0)), layers, piercing)
 		J *= armor_f
 		res.armor = true
 		# A plate over the spot takes the edge or the point (it is worn by it, above, and flies off
@@ -7854,10 +7866,28 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		# and it opens nothing. Where it has gone, the gap it left lets the next blade in (the
 		# plates round the gap still take some of its weight, as before).
 		if type != "blunt" and float(near[0][2]) < V * S * PLATE_OVER:
-			type = "blunt"
-			hardness = minf(hardness, h)
-			stopped = true
-			res.stopped = true
+			if piercing:
+				# An armour-piercing point is not taken: it goes through the plates over its spot, leaving each a hole
+				# (a plate gone, as a blow's, flying off), and into the man as the point it is.
+				var holes := 0
+				_tuck_hold += 1
+				for k in near.size():
+					if holes >= mini(PIERCE_HOLES, layers) or float(near[k][2]) >= V * S * PLATE_OVER:
+						break
+					var pad: Dictionary = near[k][0]
+					if pad.on[near[k][1]] == 1:
+						_knock_plate(part, pad, int(near[k][1]), hit.dir, force)
+						gone += 1
+					holes += 1
+				_tuck_end()
+				if gone > 0:
+					res.armor_hit = gone
+				res.pierced_armor = true
+			else:
+				type = "blunt"
+				hardness = minf(hardness, h)
+				stopped = true
+				res.stopped = true
 	var bleed_before := part.bleed
 	var dmg := 0.0
 	# What the trainer's Ictus puts behind the blow reaches the damage a blow is held to as well (a blow
@@ -8018,6 +8048,15 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 				if deepest >= far - vfs * 2.5:
 					res.through = true
 					part.wound(lp + la * far, r * 2.2, "blood")
+					# (An armour-piercing point comes out through the plate over its way out as it went in through the one it met:
+					# a hole there too.)
+					if hit.get("pierce_armor", false):
+						var out_pl := _armor_near(part, lp + la * far, V * S * PLATE_OVER)
+						if not out_pl.is_empty():
+							_tuck_hold += 1
+							_knock_plate(part, out_pl[0][0], int(out_pl[0][1]), hit.dir, J)
+							_tuck_end()
+							res.armor_hit = int(res.get("armor_hit", 0)) + 1
 	else:
 		# A blunt blow does its harm inside: bruising, crushed flesh and broken bone. A club or a
 		# hammer in earnest is as dangerous as a blade, only in a different way.

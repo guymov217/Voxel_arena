@@ -294,34 +294,26 @@ func test_a_blasting_arrow_bursts_on_the_sand_where_it_lands() -> void:
 	t.check(plain.hp < 1.0 and blast.hp > 5.0, "it hurts the man it lands beside, a plain arrow does not (%.1f against %.1f hp)" % [blast.hp, plain.hp])
 	t.check(not blast.left and blast.stuck == 0, "and it is spent, in nobody")
 
-func test_a_bodkin_goes_through_three_men_and_stays_in_the_last() -> void:
+## What a bodkin is for is armour, not men: it stays in the first man it strikes, whoever stands behind him.
+func test_a_bodkin_stays_in_the_first_man_it_strikes() -> void:
 	seed(21)
 	var m := _match()
 	var shooter: Fighter = _man(m, Vector3(0, 0, -6), 0.0, {}, "Archer", 0, _idle).f
 	var men := []
-	for i in 4:
+	for i in 3:
 		men.append(_man(m, Vector3(0, 0, 1.2 * i), PI, {}, "M%d" % i, 1, _idle).f)
 	await _steps(60)
 	var hurt := {}
-	var js := []
 	m.combat.hit.connect(func(h):
 		if h.type == "point" and men.has(h.char):
-			hurt[men.find(h.char)] = int(hurt.get(men.find(h.char), 0)) + 1
-			js.append(float(h.J)))
+			hurt[men.find(h.char)] = int(hurt.get(men.find(h.char), 0)) + 1)
 	var y: float = men[0].torso.global_position.y
 	var it: Dictionary = m.items.spawn("pot_arrow_pierce", Vector3(0, y, -3.0), Vector3(0, 0, 55.0), shooter)
 	it.power = 1.0
 	await _steps(90)
-	t.eq([hurt.get(0, 0), hurt.get(1, 0), hurt.get(2, 0), hurt.get(3, 0)], [1, 1, 1, 0], "three men struck once each, the fourth not")
-	t.eq(men.map(func(f): return _stuck(f)), [0, 0, 1, 0], "and it stays in the third only")
-	t.check(js.size() == 3 and js[0] > js[1] and js[1] > js[2], "slower and weaker for each it passes (%s)" % str(js))
+	t.eq([hurt.get(0, 0), hurt.get(1, 0), hurt.get(2, 0)], [1, 0, 0], "the first man is struck once, the two behind him not")
+	t.eq(men.map(func(f): return _stuck(f)), [1, 0, 0], "and it stays in him")
 	t.check(not m.items.list.any(func(i): return i.type == "pot_arrow_pierce"), "and it is spent")
-	# A plain arrow, shot the same way, stops in the first.
-	var it2: Dictionary = m.items.spawn("pot_arrow", Vector3(0, y, -3.0), Vector3(0, 0, 55.0), shooter)
-	it2.power = 1.0
-	hurt.clear()
-	await _steps(90)
-	t.check(hurt.get(0, 0) == 1 and hurt.get(1, 0) == 0, "a plain arrow stops in the first (%s)" % str(hurt))
 	m.queue_free()
 
 ## Where the arrow standing in a man is, against the part it stands in: how far out of that part's far side its point
@@ -350,7 +342,7 @@ func _through_and_through(type: String, aim: Vector3) -> Dictionary:
 	m.queue_free()
 	return out
 
-func test_a_bodkin_with_no_man_behind_goes_through_and_through_the_one_it_strikes() -> void:
+func test_a_bodkin_goes_through_and_through_the_one_it_strikes() -> void:
 	seed(21)
 	var rows := []
 	# (Where it lands on his chest, either side of the breastbone: the bone in the middle is what turns a point.)
@@ -370,19 +362,67 @@ func test_a_bodkin_with_no_man_behind_goes_through_and_through_the_one_it_strike
 	t.eq(plain.stuck, 1, "a plain arrow stays in him")
 	t.check(not plain.through and plain.point < 0.0, "and goes no way through (%.2f m)" % plain.point)
 
-## A man five metres behind the first is still in the line: the bodkin goes through the near one and stays in the far one.
-func test_a_bodkin_goes_on_through_a_man_into_one_five_metres_behind_him() -> void:
-	seed(21)
+## One arrow shot at the chest of a man in `armor` (an aim off the breastbone): the harm, the voxels it took, the plates it
+## knocked off, whether the plate stopped it or it went through the plate, and whether it went right through him.
+func _on_armour(type: String, armor: Array, aim: Vector3) -> Dictionary:
 	var m := _match()
 	var shooter: Fighter = _man(m, Vector3(0, 0, -6), 0.0, {}, "Archer", 0, _idle).f
-	var near_man: Fighter = _man(m, Vector3(0, 0, 0), PI, {}, "Near", 1, _idle).f
-	var far_man: Fighter = _man(m, Vector3(0, 0, 5), PI, {}, "Far", 1, _idle).f
+	var v: Fighter = _man(m, Vector3(0, 0, 0), PI, {"armor": armor}, "V", 1, _idle).f
 	await _steps(60)
-	var it: Dictionary = m.items.spawn("pot_arrow_pierce", Vector3(0, near_man.torso.global_position.y, -3.0), Vector3(0, 0, 55.0), shooter)
+	var seen := []
+	v.hit_taken.connect(func(_f, res): seen.append(res))
+	var plates := func() -> int:
+		var n := 0
+		for p in v.parts:
+			for ad in p.get_meta("armor", []):
+				n += int(ad.alive)
+		return n
+	var before: int = plates.call()
+	var from: Vector3 = v.torso.global_position + aim
+	from.z = -3.0
+	var it: Dictionary = m.items.spawn(type, from, Vector3(0, 0, 55.0), shooter)
 	it.power = 1.0
-	await _steps(90)
-	t.eq([_stuck(near_man), _stuck(far_man)], [0, 1], "it stays in the far man and in none of the near one")
+	await _steps(60)
+	var out := {"dmg": 0.0, "voxels": 0, "plates": before - int(plates.call()), "stopped": seen.any(func(r): return r.get("stopped", false)), "pierced": seen.any(func(r): return r.get("pierced_armor", false)), "through": seen.any(func(r): return r.get("through", false)), "stuck": _stuck(v)}
+	for r in seen:
+		out.dmg += float(r.get("dmg", 0.0))
+		for rr in r.get("removed", []):
+			out.voxels += (rr.indices as Array).size()
 	m.queue_free()
+	return out
+
+## What the bodkin is for (user): armour. A plain arrow is stopped by a breastplate and leaves a bruise; a bodkin goes
+## through the plate, punching out the one it met, and wounds the man under it as it would a bare man.
+func test_a_bodkin_goes_through_armour_a_plain_arrow_does_not() -> void:
+	seed(21)
+	for armor in [["steelLorica"], ["lorica"], ["scaleMail"], ["leatherJerkin"]]:
+		var plain: Dictionary = await _on_armour("pot_arrow", armor, Vector3(0.08, 0.05, 0))
+		var bodkin: Dictionary = await _on_armour("pot_arrow_pierce", armor, Vector3(0.08, 0.05, 0))
+		var name_ := String(armor[0])
+		t.check(plain.stopped and not plain.pierced and plain.voxels == 0, "%s stops a plain arrow: a bruise, no wound (%.1f hp, %d voxels)" % [name_, plain.dmg, plain.voxels])
+		t.check(bodkin.pierced and not bodkin.stopped, "%s does not stop a bodkin" % name_)
+		t.check(bodkin.voxels >= 30, "which wounds the man under it (%d voxels, a bare man's is about 40)" % bodkin.voxels)
+		t.check(bodkin.dmg > plain.dmg * 3.0, "and does far more harm than the plain arrow (%.1f hp against %.1f)" % [bodkin.dmg, plain.dmg])
+		t.check(bodkin.through, "%s: right through him" % name_)
+		t.eq(bodkin.plates, 2, "%s: it punches out the plate it met and the one it came out through, no more" % name_)
+		t.eq(bodkin.stuck, 1, "and stays in him")
+	# On a bare man the two are not so far apart: the bodkin is what armour is for.
+	var bare_plain: Dictionary = await _on_armour("pot_arrow", [], Vector3(0.08, 0.05, 0))
+	var bare_bodkin: Dictionary = await _on_armour("pot_arrow_pierce", [], Vector3(0.08, 0.05, 0))
+	var steel_bodkin: Dictionary = await _on_armour("pot_arrow_pierce", ["steelLorica"], Vector3(0.08, 0.05, 0))
+	t.check(bare_bodkin.dmg < bare_plain.dmg * 1.6, "on a bare man a bodkin is not so much worse than a plain arrow (%.1f against %.1f hp)" % [bare_bodkin.dmg, bare_plain.dmg])
+	t.check(steel_bodkin.dmg > bare_bodkin.dmg * 0.6 and steel_bodkin.dmg < bare_bodkin.dmg, "in steel it keeps most of its harm, not all of it (%.1f of %.1f hp)" % [steel_bodkin.dmg, bare_bodkin.dmg])
+
+## What of a point's weight a plate lets through: a quarter of a plain point's through steel, three quarters of a bodkin's;
+## the more plates, the less of it, and past the third a bodkin is stopped as any point is.
+func test_what_armour_lets_through_of_a_bodkin() -> void:
+	var plain := Fighter.armour_pass("point", 1.0, 0.0, 1)
+	var bodkin := Fighter.armour_pass("point", 1.0, 0.0, 1, true)
+	t.check(plain < 0.3 and bodkin > 0.7 and bodkin < 0.85, "steel passes %.2f of a plain point and %.2f of a bodkin" % [plain, bodkin])
+	t.check(Fighter.armour_pass("point", 0.1, 0.0, 1, true) > bodkin, "leather lets more through than steel")
+	t.check(Fighter.armour_pass("point", 1.0, 0.0, 2, true) < bodkin and Fighter.armour_pass("point", 1.0, 0.0, 3, true) < Fighter.armour_pass("point", 1.0, 0.0, 2, true), "each layer under the first takes its share")
+	t.check(Fighter.armour_pass("blunt", 1.0, 0.0, 1, true) == Fighter.armour_pass("blunt", 1.0, 0.0, 1), "and a blow that is no point is passed as it was")
+	t.check(Fighter.PIERCE_LAYERS >= 2, "a bodkin goes through more than one plate")
 
 # ---------- the bow and the strength stats ----------
 

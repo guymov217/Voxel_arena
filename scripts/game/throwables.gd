@@ -125,6 +125,8 @@ func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vecto
 	var h := {"impulse": J, "type": type, "hardness": extra.get("hardness", 0.9 if type == "point" else 0.6), "sharpness": extra.get("sharpness", 0.9 if type == "point" else 0.0), "point": point, "dir": dir, "axis": dir, "crush": extra.get("crush", 0.0), "heavy": extra.get("heavy", 0.0)}
 	if extra.has("through"):
 		h.through = true   # (a bodkin: the channel it makes runs right through the part, Fighter.apply_hit)
+	if extra.has("pierce_armor"):
+		h.pierce_armor = true   # (and goes through the plate over it, leaving a hole: Fighter.apply_hit)
 	if extra.has("blast"):
 		h.blast = extra.blast
 		h.blast_r = extra.blast_r
@@ -1118,9 +1120,7 @@ func _nail_hits_tick() -> void:
 			part.wound(q[2], 0.02 * c.S, "blood")
 		part.apply_impulse(hd * 0.9, entry - part.global_position)
 
-var _arrow_pierced := false   # the arrow in `_dart` stays in the man it has gone through (a bodkin with none behind him)
-var _arrow_through := false   # the arrow in `_dart` goes on through the man (a bodkin that has more to pass)
-var _arrow_struck := {}       # and the men it has been through already
+var _arrow_pierced := false   # the arrow in `_dart` stays in the man it has gone through (a bodkin)
 func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1.0) -> void:
 	# A nail only wounds what it actually met: one that reaches the sand lies there, a thing
 	# of iron on the sand (it bounces, rolls and stays), not gone.
@@ -1141,7 +1141,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 	var c = hit_char if hit_char and hit_char.alive and (hit_char != owner_ or type == "nail") else null
 	if c == null:
 		for x in _near(p, 0.9 if type == "pot_dart" else 1.0):
-			if x.c != owner_ and not _arrow_struck.has(x.c):   # (a bodkin that went through a man does not strike him again where it lands)
+			if x.c != owner_:
 				c = x.c
 				break
 	if c == null:
@@ -1196,8 +1196,8 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
 	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) * arrow_blow(owner_) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
-	# (A bodkin's head is narrow and hard: it goes in a little deeper.)
-	var through_res: Dictionary = _hit(c, part, J, "point", p, hdir, owner_, {"hardness": 1.0, "sharpness": 1.0, "through": true} if type == "pot_arrow_pierce" else {})
+	# (A bodkin's head is narrow and hard: it goes in a little deeper, through his armour, and through him.)
+	var through_res: Dictionary = _hit(c, part, J, "point", p, hdir, owner_, {"hardness": 1.0, "sharpness": 1.0, "through": true, "pierce_armor": true} if type == "pot_arrow_pierce" else {})
 	if headshot:
 		c.concussion = minf(1.0, c.concussion + (0.2 if c.S >= 1.5 else 0.5))
 		var down_now: bool = was_alive and not c.alive
@@ -1210,10 +1210,8 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		part.stick("pot_bolt", p, hdir)
 	if arrow:
 		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.0)) / maxf(1.0, c.S * 0.6)
-		# (A bodkin that goes on through him stays in none of those it passes, only in the last, and there
-		# through and through if its channel went out of his far side: its point stands out of it.)
-		if not _arrow_through:
-			part.stick(type, p, hdir, _arrow_pierced and bool(through_res.get("through", false)))
+		# (A bodkin stays in him through and through if its channel went out of his far side: its point stands out of it.)
+		part.stick(type, p, hdir, _arrow_pierced and bool(through_res.get("through", false)))
 	if type == "pot_arrow_barb":
 		part.bleed += 2.0   # (barbs that hold in the flesh: it bleeds on)
 	if type == "pot_arrow_fire":
@@ -1264,13 +1262,9 @@ func on_item(ev: Dictionary) -> void:
 					m.crowd_add(c, -2, "tomato")
 				burst(ev.p, Color(0.82, 0.16, 0.11), 10, 1.5, 0.5, 0.03)
 			else:
-				_arrow_through = bool(ev.get("through", false))
 				_arrow_pierced = bool(ev.get("pierced", false))
-				_arrow_struck = it.get("struck", {})
 				explode(ev.type, ev.p, owner_, ev.get("dir"), c, ev.get("part"), float(it.get("power", 1.0)))
-				_arrow_through = false
 				_arrow_pierced = false
-				_arrow_struck = {}
 		"eat":
 			match ev.type:
 				"bread":
