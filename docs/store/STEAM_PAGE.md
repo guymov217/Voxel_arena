@@ -194,6 +194,11 @@ by and what each shows: `tools/TRAILER.md`.
 
 ## Remaking the screenshots and capsules
 
+On a PC with a graphics card, double-click **`tools\make_screenshots.bat`** (a few minutes; `make_screenshots.bat 03_clash` makes one).
+The title, your-gladiator and forge pictures here are in the current look; the fights were last made before the characters were
+redrawn, so **run the batch once on a PC with a GPU, pick the best eight to ten, and replace the rest** before the page goes up
+(a machine with no GPU needs many minutes for each fight).
+
 ```
 # screenshots (needs a display or xvfb-run), 1920x1080
 SHOT_DIR=docs/store/screenshots godot --resolution 1920x1080 --path . -- --probe steamshots

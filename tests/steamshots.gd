@@ -40,7 +40,22 @@ func _ready() -> void:
 		{"name": "10_cyclops", "opts": {"mode": "training", "training": {"enemy": "foe:cyclops", "immortal": true}, "loadout_override": {"main": "spear", "off": "scutum"}}, "J": 30.0, "cam": "wide"},
 		{"name": "11_elephant", "opts": {"mode": "training", "training": {"enemy": "elephant", "immortal": true}, "loadout_override": {"main": "warhammer", "off": ""}}, "J": 25.0, "cam": "wide"},
 		{"name": "12_crocodile", "opts": {"mode": "training", "training": {"enemy": "crocodile", "immortal": true}, "loadout_override": {"main": "axe", "off": ""}}, "J": 25.0, "cam": "close"},
+		# The forge's sillier side: a swordfish and a goose for weapons, swung in earnest.
+		{"name": "14_swordfish", "opts": {"mode": "duel", "loadout_override": {"main": "swordfish", "off": ""}}, "J": 15.0, "cam": "close"},
+		{"name": "15_goose", "opts": {"mode": "duel", "loadout_override": {"main": "goose", "off": ""}}, "J": 12.0, "cam": "close"},
+		# The game as it is played: the player's own camera behind him, the HUD on (no staging).
+		{"name": "16_play_cyclops", "opts": {"mode": "training", "training": {"enemy": "foe:cyclops", "immortal": true}, "loadout_override": {"main": "executionerAxe", "off": ""}}, "J": 18.0, "cam": "player"},
+		{"name": "17_play_lion", "opts": {"mode": "training", "training": {"enemy": "lion", "immortal": true}, "loadout_override": {"main": "spear", "off": "roundShield"}}, "J": 15.0, "cam": "player"},
+		{"name": "18_play_teams", "opts": {"mode": "teams"}, "J": 20.0, "cam": "player"},
+		{"name": "19_play_swordfish", "opts": {"mode": "duel", "loadout_override": {"main": "swordfish", "off": ""}}, "J": 12.0, "cam": "player"},
 	]
+	if only == "yard":
+		# The Ludus yard, walked as the player walks it: the smith's stall, the physician, the
+		# trainer about him, the player's own camera.
+		menu.enter_yard()
+		for i in 120 * 4:
+			await get_tree().physics_frame
+		await _save("20_play_yard")
 	if only == "" or only == "forge":
 		# The forge: a two-handed axe on the anvil, half built.
 		var fg = load("res://scripts/ui/forge.gd").new()
@@ -124,7 +139,8 @@ func _scene(sc: Dictionary) -> void:
 		for f in [a, v]:
 			if f is Fighter and is_instance_valid(f):
 				big_s = maxf(big_s, float(f.S))
-		var dist := (2.4 + pa.distance_to(pv) * 0.7 + (2.5 if sc.cam == "wide" else 0.0)) * (1.0 + 0.55 * (big_s - 1.0))
+		# (A wide shot only a little farther back: from 2.5 m more, the men were small in the frame.)
+		var dist := (2.4 + pa.distance_to(pv) * 0.7 + (1.0 if sc.cam == "wide" else 0.0)) * (1.0 + 0.55 * (big_s - 1.0))
 		c.y += 0.35 * (big_s - 1.0)
 		# Take the side with nobody standing between the camera and the fight; with both clear,
 		# the arena's middle side, looking out at the crowd.
@@ -141,7 +157,7 @@ func _scene(sc: Dictionary) -> void:
 		if score.call(-side) > score.call(side):
 			side = -side
 		cam.fov = 48.0 if sc.cam == "close" else 56.0
-		cam.global_position = c + side * dist + Vector3(0, 0.35 if sc.cam == "close" else 1.4, 0)
+		cam.global_position = c + side * dist + Vector3(0, 0.35 if sc.cam == "close" else 0.9, 0)
 		cam.look_at(c + Vector3(0, 0.05, 0), Vector3.UP)
 	await get_tree().process_frame
 	await get_tree().process_frame
