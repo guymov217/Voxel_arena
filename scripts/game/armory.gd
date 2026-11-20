@@ -203,7 +203,10 @@ static func extra(body_parts: Array) -> Dictionary:
 		return {a: f.call(dims[a]), b: f.call(dims[b])}
 	piece.call("leatherCap", "Leather cap", "leather", {"head": _wrap(dims.head, 4, 5, "all") + _cap(dims.head)})
 	piece.call("vambraces", "Leather vambraces", "leather", both.call("forearmR", "forearmL", func(d): return _wrap(d, 0, 4, "all")))
-	piece.call("leatherJerkin", "Leather jerkin", "leather", {"torso": _wrap(dims.torso, 2, 9, "all")})
+	# (A whole vest: from the hip to the top of the shoulders, and over them, a hole left at the neck. As a tube from the
+	# ribs to the armpits, with nothing over the shoulders, it was a bra, user. The old tube's cells come first, in their
+	# old order: what a save holds of a knocked-off plate is the number of its cell.)
+	piece.call("leatherJerkin", "Leather jerkin", "leather", {"torso": _wrap(dims.torso, 2, 9, "all") + _wrap(dims.torso, 1, 1, "all") + _wrap(dims.torso, 10, 10, "all") + _cap(dims.torso, 1)})
 	piece.call("cuisses", "Bronze cuisses", "bronze", both.call("thighR", "thighL", func(d): return _wrap(d, 1, 7, "front")))
 	piece.call("pauldrons", "Iron pauldrons", "iron", both.call("upperArmR", "upperArmL", func(d): return _wrap(d, 4, 6, "all") + _cap(d)))
 	piece.call("manicaL", "Manica (shield arm)", "iron", {"upperArmL": _wrap(dims.upperArmL, 2, 6, "all"), "forearmL": _wrap(dims.forearmL, 2, 6, "all")})

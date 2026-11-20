@@ -18,6 +18,26 @@ func test_the_rack_and_what_clashes() -> void:
 	t.eq(Armory.sanitize(["lorica", "steelLorica", "nonsense", "lorica", "hat_crown"]), ["lorica"], "a save wears each piece once, no clashes, nothing that is not sold")
 	t.eq(int(Armory.take_off(["greaves"], "greaves").cost), -Armory.price("greaves") / 2, "taken off, it sells back for half")
 
+## The leather jerkin is a whole vest (user: from behind it was a bra, a tube from the ribs to the armpits with nothing over the
+## shoulders): from the hip up to the top of the shoulders and capped over them, the neck left open, as the scale mail is cut.
+## The old tube's plates come first, in their old order (a save keeps the numbers of its knocked-off plates).
+func test_the_leather_jerkin_is_a_whole_vest() -> void:
+	var cells: Array = Data.armor.leatherJerkin.parts.torso
+	var dims: Array = Armory._dims("torso")
+	var rows := {}
+	for c in cells:
+		rows[int(c[1])] = true
+	t.check(rows.has(1) and rows.has(int(dims[1]) - 1), "from the hip row up to the top row of the chest")
+	t.check(cells.any(func(c): return int(c[1]) >= int(dims[1])), "with plates over the shoulders")
+	var mid_x := (float(dims[0]) - 1.0) * 0.5
+	var mid_z := (float(dims[2]) - 1.0) * 0.5
+	t.check(not cells.any(func(c): return int(c[1]) == int(dims[1]) and absf(float(c[0]) - mid_x) <= 1.0 and absf(float(c[2]) - mid_z) <= 1.0), "and the neck left open")
+	var old := Armory._wrap(dims, 2, 9, "all")
+	t.check(cells.size() > old.size() and cells.slice(0, old.size()) == old, "the old tube's plates keep their places in the list")
+	var top := func(cs: Array) -> int:
+		return cs.filter(func(c): return int(c[1]) >= int(dims[1])).size()
+	t.eq(top.call(cells), top.call(Data.armor.scaleMail.parts.torso), "as many plates over the shoulders as the scale mail has")
+
 func test_coatings_are_no_longer_sold() -> void:
 	var a := Arms.empty()
 	a.main = Data.preset("gladius").duplicate(true)
