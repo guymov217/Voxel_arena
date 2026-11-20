@@ -743,7 +743,10 @@ enemies asks a strong CPU of the host.
 
 No command line: put the Godot 4.7.2 exe in the game's folder and double-click
 **`multiplayer_test.bat`** (Windows); it opens the windows and asks what to try. The steps and
-what to check are in `docs/MULTIPLAYER_TEST.md`. The long way:
+what to check are in `docs/MULTIPLAYER_TEST.md`. The windows open small (`-- --keep-window` keeps the
+window the engine's `--position`/`--resolution` made, instead of the saved display mode, which is full
+screen unless the player chose otherwise: two full-screen windows share one graphics card and the one
+behind draws a fraction of the frames). The long way:
 
 `tools/mp_local.sh` (Linux/macOS) or `tools/mp_local.bat` (Windows, after
 `set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window already

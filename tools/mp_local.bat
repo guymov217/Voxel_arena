@@ -17,10 +17,10 @@ if not "%LAG%"=="" set EXTRA=--lag %LAG% --loss %LOSS%
 set BOTFLAG=
 if not "%BOT%"=="" set BOTFLAG=--bot
 cd /d "%~dp0\.."
-start "WRECKSMITH host" "%GODOT%" --path . --position 40,60 --resolution 1100x650 -- --host --name Host %EXTRA%
+start "WRECKSMITH host" "%GODOT%" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host --name Host %EXTRA%
 timeout /t 3 /nobreak >nul
 for /l %%i in (1,1,%N%) do (
-	start "WRECKSMITH guest %%i" "%GODOT%" --path . --position 480,180 --resolution 1100x650 -- --join 127.0.0.1 --name "Guest %%i" %BOTFLAG% %EXTRA%
+	start "WRECKSMITH guest %%i" "%GODOT%" --path . --position 480,180 --resolution 1100x650 -- --keep-window --join 127.0.0.1 --name "Guest %%i" %BOTFLAG% %EXTRA%
 	timeout /t 1 /nobreak >nul
 )
 endlocal

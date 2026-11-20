@@ -64,11 +64,11 @@ rem ---- 4. Open the windows: the host first, then the guests join it. The host 
 rem         yard (the online lobby with the stalls) when the first guest is in.
 echo.
 echo Opening the host window...
-start "WRECKSMITH host" "!G!" --path . --position 40,60 --resolution 1100x650 -- --host --name Host %EXTRA%
+start "WRECKSMITH host" "!G!" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host --name Host %EXTRA%
 timeout /t 4 /nobreak >nul
 for /l %%i in (1,1,%N%) do (
 	echo Opening guest %%i...
-	start "WRECKSMITH guest %%i" "!G!" --path . --position 480,180 --resolution 1100x650 -- --join 127.0.0.1 --name "Guest %%i" %BOT% %EXTRA%
+	start "WRECKSMITH guest %%i" "!G!" --path . --position 480,180 --resolution 1100x650 -- --keep-window --join 127.0.0.1 --name "Guest %%i" %BOT% %EXTRA%
 	timeout /t 2 /nobreak >nul
 )
 echo.

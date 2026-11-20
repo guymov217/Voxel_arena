@@ -11,13 +11,13 @@ cd "$(dirname "$0")/.." || exit 1
 n=${1:-1}
 extra=""
 [ -n "$LAG" ] && extra="--lag $LAG --loss ${LOSS:-0}"
-"$G" --path . --position 40,60 --resolution 1100x650 -- --host --name Host $extra &
+"$G" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host --name Host $extra &
 sleep 3
 i=1
 while [ "$i" -le "$n" ]; do
 	bot=""
 	[ -n "$BOT" ] && bot="--bot"
-	"$G" --path . --position $((60 + i * 420)),$((120 + i * 60)) --resolution 1100x650 -- --join 127.0.0.1 --name "Guest $i" $bot $extra &
+	"$G" --path . --position $((60 + i * 420)),$((120 + i * 60)) --resolution 1100x650 -- --keep-window --join 127.0.0.1 --name "Guest $i" $bot $extra &
 	i=$((i + 1))
 	sleep 1
 done

@@ -115,6 +115,13 @@ Press **F3** in both windows (the host's and the guest's) and read two lines.
 - **my game** (on the guest): the same for the guest's own window; a slow guest is a choppy picture, not a slow game.
 - The network is not the usual cause: a guest costs the host about 45 KB a second, a snapshot comes 40 times a second,
   and on one computer the ping is under 10 ms.
+- **Two windows on one computer share one graphics card.** In a test video both windows were full screen at 1440p (9 ms
+  of graphics card to a frame each): the window in front drew 90 frames a second and the one behind it, the host's, 17;
+  the host kept its 120 steps, but it took input and sent the world in bursts every 60 ms, and the guest felt every
+  answer late. The game starts full screen unless the player chose otherwise, so the launchers
+  (`multiplayer_test.bat`, `tools/mp_local.bat`/`.sh`) now start the windows with `-- --keep-window`: the window stays as
+  their `--position`/`--resolution` made it (1100x650, side by side) instead of the saved display mode. Do not maximise
+  both; a window at 1100x650 has a fifth of the pixels of one at 1440p.
 
 Send `net_log.csv` (below) from both windows with the time it looked slow: it has the steps, the frames a second and
 the cost of one step (ms) of each side every second.

@@ -55,7 +55,7 @@ func _ready() -> void:
 	theme = UIStyle.theme()
 	UIStyle.hook(get_tree())
 	StationKit.pad_menu_keys()
-	apply_display(Save.get_value("settings", {}))
+	apply_display(Save.get_value("settings", {}), true)
 	apply_picture(Save.get_value("settings", {}))
 	apply_frame(Save.get_value("settings", {}))
 	apply_ui_scale(Save.get_value("settings", {}))
@@ -3278,12 +3278,25 @@ static func display_mode(st: Dictionary) -> String:
 		return "fullscreen" if st.fullscreen else "windowed"
 	return "fullscreen"
 
-static func apply_display(st: Dictionary) -> void:
+## `-- --keep-window`: the window stays as the engine's own flags made it (`--position 40,60 --resolution 1100x650`; the
+## engine takes those for itself and does not show them to scripts) instead of the saved display mode, which is full
+## screen unless the player chose otherwise. The multiplayer test's windows carry it: without it both opened full screen
+## at 1440p on one graphics card, and the one behind drew 17 frames a second (9 ms of graphics card to a frame each), so
+## the host's window, and with it the guest's whole game, answered late.
+const KEEP_WINDOW := "--keep-window"
+
+static func window_asked(user_args: Array) -> bool:
+	return user_args.has(KEEP_WINDOW)
+
+## `startup`: the game is opening (a window the command line asked to keep is left as it is).
+static func apply_display(st: Dictionary, startup := false) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	# Smaller than this nothing on the screen can be read.
 	DisplayServer.window_set_min_size(Vector2i(960, 540))
 	apply_render_scale.call_deferred(st)
+	if startup and window_asked(OS.get_cmdline_user_args()):
+		return
 	match display_mode(st):
 		"fullscreen":
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
