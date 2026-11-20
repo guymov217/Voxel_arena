@@ -728,8 +728,16 @@ run: `godot --path . -- --host`, `--join <address>`, `--name <name>`, `--bot`, `
 `tools/package.py` (on Windows, double-click `tools\package.bat`) exports the game and packs it two ways, for the demo
 and for the full game: for **Steam** (`dist/steam/`: the files of each depot, the SteamPipe scripts and `upload.bat`) and
 as a download for **people without Steam** (`dist/standalone/`: a zip, a tar.gz and a Windows installer; these builds never
-start Steam). It needs Godot 4.7 with its export templates (`--install-templates` fetches them). `docs/PACKAGING.md` has
-the whole story: the ids to fill in, the upload, what it checks, what is not done.
+start Steam). It needs Godot 4.7 with its export templates (`--install-templates` fetches them), and for the Windows
+installer NSIS (fetched for you on Windows, `--install-nsis`). `docs/PACKAGING.md` has the whole story: the ids to fill in,
+the upload, what it checks, what is not done. `docs/RELEASE_HE.md` (in Hebrew) is the road from a working build to a
+release, step by step: the Steamworks account, tax, the store page, review, Next Fest, launch.
+
+The game opens with its own picture, not Godot's logo: `art/splash.png` is the boot splash (`project.godot`:
+`application/boot_splash/*`), and `scripts/ui/intro.gd` takes it up as the first scene and brings it to life for two
+seconds and a half (the swords strike, a gleam runs across the logo, embers drift up; any key skips it) while the menu
+is built behind its last frame (`tests/test_intro.gd`; not played in the tests or probes, headless, or with
+`-- --no-intro`). The `.exe`'s icon, the installer's pictures and these pieces are made by `tools/make_app_icon.py`.
 
 `.github/workflows/build.yml` does it for Windows, Linux and macOS. Run **Builds** from the repository's Actions tab, or
 push a tag such as `v0.1`; the packages appear as downloads on the run page.

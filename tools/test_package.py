@@ -12,6 +12,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import package as P  # noqa: E402
@@ -57,7 +58,237 @@ class Presets(unittest.TestCase):
         self.assertTrue(any(l.name.endswith(".so") for l in libs["linux"]))
 
 
+    def test_the_windows_program_carries_the_games_icon_and_name_not_godots(self):
+        proj = P.project_version(P.ROOT)
+        for p in self.presets:
+            if p.platform != "windows":
+                continue
+            o = p.options
+            self.assertEqual(o.get("application/modify_resources"), "true", p.name)
+            self.assertEqual(o.get("application/icon"), "res://art/icon/wrecksmith.ico", p.name)
+            self.assertEqual(o.get("application/product_name"), P.TITLE[p.edition], p.name)
+            self.assertEqual(o.get("application/file_description"), P.TITLE[p.edition], p.name)
+            self.assertTrue(o.get("application/company_name"), p.name)
+            for k in ("application/file_version", "application/product_version"):
+                self.assertTrue(o.get(k, "").startswith(proj + "."), "%s: %s should start with the project's version %s" % (p.name, k, proj))
+
+    def test_the_mac_app_carries_the_games_icon(self):
+        for p in self.presets:
+            if p.platform == "macos":
+                self.assertEqual(p.options.get("application/icon"), "res://art/icon/wrecksmith.icns", p.name)
+
+    def test_the_icon_files_exist_and_the_ico_holds_every_size(self):
+        ico = P.ROOT / "art" / "icon" / "wrecksmith.ico"
+        data = ico.read_bytes()
+        self.assertEqual(data[:4], b"\x00\x00\x01\x00")
+        n = int.from_bytes(data[4:6], "little")
+        sizes = sorted((data[6 + 16 * i] or 256) for i in range(n))
+        for want in (16, 32, 48, 256):
+            self.assertIn(want, sizes)
+        self.assertTrue((P.ROOT / "art" / "icon" / "wrecksmith.icns").exists())
+        self.assertTrue((P.ROOT / "icon.png").exists())
+
+    def test_the_icon_files_are_not_packed_into_the_game(self):
+        for p in self.presets:
+            self.assertIn("art/icon/*", p.exclude, p.name)
+
+    def test_the_installer_wears_the_games_icon_and_pictures(self):
+        nsi = (P.ROOT / "tools" / "installer" / "wrecksmith.nsi").read_text(encoding="utf-8")
+        for need in ("MUI_ICON", "MUI_UNICON", "MUI_WELCOMEFINISHPAGE_BITMAP", "MUI_HEADERIMAGE_BITMAP"):
+            self.assertIn(need, nsi)
+        for f in ("welcome.bmp", "header.bmp"):
+            self.assertTrue((P.ROOT / "tools" / "installer" / f).exists(), f)
+
+
+class Splash(unittest.TestCase):
+    def _application(self):
+        text = (P.ROOT / "project.godot").read_text(encoding="utf-8")
+        sec = text[text.index("[application]"):]
+        sec = sec[:sec.index("\n[", 5)] if "\n[" in sec[5:] else sec
+        return dict(l.split("=", 1) for l in sec.splitlines() if "=" in l)
+
+    def test_the_game_starts_with_its_own_picture_not_godots_logo(self):
+        app = self._application()
+        self.assertEqual(app.get("boot_splash/image"), '"res://art/splash.png"')
+        self.assertNotEqual(app.get("boot_splash/show_image"), "false", "show_image=false would show no picture at all")
+        self.assertEqual(app.get("boot_splash/fullsize"), "true")
+        r, g, b = [float(x) for x in re.search(r"Color\(([^)]*)\)", app["boot_splash/bg_color"]).group(1).split(",")[:3]]
+        self.assertLess(max(r, g, b), 0.2, "the bars round the picture must be as dark as the picture's edge")
+
+    def test_the_splash_picture_is_a_big_enough_png(self):
+        data = (P.ROOT / "art" / "splash.png").read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        w, h = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        self.assertGreaterEqual((w, h), (1280, 720))
+        self.assertAlmostEqual(w / h, 16 / 9, places=2)
+
+    def test_the_splash_is_not_dropped_by_an_export_filter(self):
+        for p in P.read_presets(P.ROOT):
+            self.assertNotIn("art/splash.png", p.exclude, p.name)
+            self.assertNotIn("art/*", p.exclude, p.name)
+
+
+class Nsis(unittest.TestCase):
+    """The Windows installer needs NSIS; on a machine without it the packager fetches it (Windows) or says how."""
+
+    def _zip(self, path, names):
+        with zipfile.ZipFile(str(path), "w") as z:
+            for n in names:
+                z.writestr(n, b"x")
+        return path
+
+    def test_the_pinned_download_is_the_official_zip(self):
+        self.assertIn("sourceforge.net/project/nsis/", P.NSIS_URL)
+        self.assertIn("nsis-%s.zip" % P.NSIS_VERSION, P.NSIS_URL)
+        self.assertRegex(P.NSIS_SHA256, r"^[0-9a-f]{64}$")
+
+    def test_a_downloaded_nsis_is_checked_unpacked_and_leaves_nothing_behind(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            z = self._zip(tmp / "src.zip", ["nsis-%s/makensis.exe" % P.NSIS_VERSION, "nsis-%s/Bin/makensis.exe" % P.NSIS_VERSION])
+            base = tmp / "cache"
+            exe = P.fetch_nsis(url=z.as_uri(), sha=P.sha256(z), base=base)
+            self.assertEqual(Path(exe), base / ("nsis-%s" % P.NSIS_VERSION) / "makensis.exe")
+            self.assertTrue(Path(exe).exists())
+            self.assertTrue((base / ("nsis-%s" % P.NSIS_VERSION) / "Bin" / "makensis.exe").exists())
+            self.assertEqual(sorted(p.name for p in base.iterdir()), ["nsis-%s" % P.NSIS_VERSION], "no .part or .unpacking left")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_a_download_with_the_wrong_checksum_is_not_used(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            z = self._zip(tmp / "src.zip", ["nsis-%s/makensis.exe" % P.NSIS_VERSION])
+            with mock.patch.object(P.time, "sleep"):
+                with self.assertRaises(P.Fail) as cm:
+                    P.fetch_nsis(url=z.as_uri(), sha="0" * 64, base=tmp / "cache")
+            self.assertIn("checksum", str(cm.exception))
+            self.assertEqual([p.name for p in (tmp / "cache").iterdir()], [], "the bad file is deleted")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_an_unreachable_address_is_a_clear_stop_not_a_crash(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            with mock.patch.object(P.time, "sleep"):
+                with self.assertRaises(P.Fail) as cm:
+                    P.fetch_nsis(url=(tmp / "nothing.zip").as_uri(), sha="0" * 64, base=tmp / "cache")
+            self.assertIn("could not download", str(cm.exception))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_a_zip_that_reaches_outside_its_folder_is_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            z = self._zip(tmp / "evil.zip", ["nsis-%s/makensis.exe" % P.NSIS_VERSION, "../evil.txt"])
+            with zipfile.ZipFile(str(z)) as zf:
+                with self.assertRaises(P.Fail):
+                    P.extract_safely(zf, tmp / "out")
+            self.assertFalse((tmp / "evil.txt").exists())
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_a_zip_without_makensis_is_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            z = self._zip(tmp / "odd.zip", ["something/else.txt"])
+            with self.assertRaises(P.Fail):
+                P.fetch_nsis(url=z.as_uri(), sha=P.sha256(z), base=tmp / "cache")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_the_fetched_copy_is_found_on_windows_and_never_elsewhere(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            exe = tmp / ("nsis-%s" % P.NSIS_VERSION) / "makensis.exe"
+            exe.parent.mkdir()
+            exe.write_bytes(b"MZ")
+            with mock.patch.object(P, "cache_dir", return_value=tmp), mock.patch.object(P.shutil, "which", return_value=None), \
+                    mock.patch.dict(os.environ, {"ProgramFiles": str(tmp / "none"), "ProgramFiles(x86)": str(tmp / "none")}):
+                with mock.patch.object(sys, "platform", "win32"):
+                    self.assertEqual(P.find_makensis(), str(exe))
+                with mock.patch.object(sys, "platform", "linux"):
+                    self.assertIsNone(P.find_makensis(), "a Windows program is of no use on Linux")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_the_cache_is_the_users_not_the_checkouts(self):
+        self.assertFalse(str(P.cache_dir()).startswith(str(P.ROOT)))
+
+    def _packager(self, *flags):
+        pk = P.Packager(P.parse_args(list(flags)))
+        pk.notes.clear()
+        return pk
+
+    def test_without_a_terminal_it_asks_nothing_and_says_how_to_get_nsis(self):
+        pk = self._packager()
+        with mock.patch.object(sys, "platform", "win32"), mock.patch.object(P, "find_makensis", return_value=None), \
+                mock.patch.object(P, "fetch_nsis") as fetch, mock.patch.object(sys, "stdin", mock.Mock(isatty=lambda: False)):
+            self.assertIsNone(pk.ensure_nsis())
+        fetch.assert_not_called()
+        self.assertTrue(any("--install-nsis" in n for n in pk.notes), pk.notes)
+
+    def test_install_nsis_fetches_it_without_asking(self):
+        pk = self._packager("--install-nsis")
+        with mock.patch.object(sys, "platform", "win32"), mock.patch.object(P, "find_makensis", return_value=None), \
+                mock.patch.object(P, "fetch_nsis", return_value="C:/cache/nsis/makensis.exe") as fetch:
+            self.assertEqual(pk.ensure_nsis(), "C:/cache/nsis/makensis.exe")
+        fetch.assert_called_once()
+        self.assertEqual(pk.notes, [])
+
+    def test_a_failed_fetch_still_leaves_the_zip(self):
+        pk = self._packager("--install-nsis")
+        with mock.patch.object(sys, "platform", "win32"), mock.patch.object(P, "find_makensis", return_value=None), \
+                mock.patch.object(P, "fetch_nsis", side_effect=P.Fail("NSIS: could not download")):
+            self.assertIsNone(pk.ensure_nsis())
+        self.assertTrue(any("only the zip" in n for n in pk.notes), pk.notes)
+
+    def test_an_nsis_that_is_there_is_just_used(self):
+        pk = self._packager()
+        with mock.patch.object(P, "find_makensis", return_value="/usr/bin/makensis"), mock.patch.object(P, "fetch_nsis") as fetch:
+            self.assertEqual(pk.ensure_nsis(), "/usr/bin/makensis")
+        fetch.assert_not_called()
+
+    def test_on_linux_and_mac_it_says_to_install_it_with_the_package_manager(self):
+        pk = self._packager("--install-nsis")
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(P, "find_makensis", return_value=None), mock.patch.object(P, "fetch_nsis") as fetch:
+            self.assertIsNone(pk.ensure_nsis())
+        fetch.assert_not_called()
+        self.assertTrue(any("apt install nsis" in n for n in pk.notes), pk.notes)
+
+    def test_the_installer_is_built_with_the_compiler_found_up_front_and_the_games_pictures(self):
+        pk = self._packager()
+        pk.nsis = "/somewhere/makensis"
+        tmp = Path(tempfile.mkdtemp())
+        seen = {}
+
+        def fake_run(cmd, cwd=None, timeout=None):
+            seen["cmd"] = [str(c) for c in cmd]
+            Path(seen["cmd"][[i for i, c in enumerate(seen["cmd"]) if c.startswith("-DOUT=")][0]].split("=", 1)[1]).write_bytes(b"MZ")
+            return 0, ""
+        try:
+            with mock.patch.object(P, "run", fake_run):
+                out = pk.make_installer("full", tmp, tmp / "WRECKSMITH-0.1-windows-setup.exe")
+            self.assertEqual(out, tmp / "WRECKSMITH-0.1-windows-setup.exe")
+            self.assertEqual(seen["cmd"][0], "/somewhere/makensis")
+            for need in ("-DICON=", "-DWELCOME_BMP=", "-DHEADER_BMP=", "-DPRODUCT=WRECKSMITH"):
+                self.assertTrue(any(c.startswith(need) for c in seen["cmd"]), need)
+            self.assertEqual(pk.notes, [])
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_no_installer_flag_and_the_option_parse(self):
+        a = P.parse_args([])
+        self.assertFalse(a.install_nsis)
+        self.assertTrue(P.parse_args(["--install-nsis"]).install_nsis)
+
+
 class Basics(unittest.TestCase):
+    def test_the_download_without_steam_is_made_for_the_demo_and_the_full_game(self):
+        a = P.parse_args([])
+        self.assertEqual(sorted(a.standalone_editions.split(",")), ["demo", "full"])
+        self.assertEqual(sorted(a.steam_editions.split(",")), ["demo", "full"])
+
     def test_godot_versions_name_the_templates_folder(self):
         self.assertEqual(P.parse_godot_version("4.7.2.stable.official.ed1daf0bf"), "4.7.2.stable")
         self.assertEqual(P.parse_godot_version("4.7.stable.official.abc"), "4.7.stable")

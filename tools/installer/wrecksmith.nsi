@@ -2,6 +2,7 @@
 ;   makensis -DPRODUCT="WRECKSMITH Demo" -DSLUG=WRECKSMITH-Demo -DVERSION=0.1 -DEXE=WRECKSMITH_Demo.exe -DSRC=<folder> -DOUT=<setup.exe> wrecksmith.nsi
 ; It installs for the current user (no administrator rights), into %LOCALAPPDATA%\Programs\<product>, with a Start
 ; menu entry, an optional desktop shortcut, and an uninstaller listed under Installed apps. Nothing is signed.
+; Its icon and pictures are the game's (-DICON, -DWELCOME_BMP, -DHEADER_BMP, else the ones next to this file).
 Unicode true
 !include "MUI2.nsh"
 
@@ -23,6 +24,16 @@ Unicode true
 !ifndef OUT
   !define OUT "${SLUG}-${VERSION}-windows-setup.exe"
 !endif
+; The game's own icon and pictures (tools/make_app_icon.py makes them), not NSIS's.
+!ifndef ICON
+  !define ICON "${__FILEDIR__}/../../art/icon/wrecksmith.ico"
+!endif
+!ifndef WELCOME_BMP
+  !define WELCOME_BMP "${__FILEDIR__}/welcome.bmp"
+!endif
+!ifndef HEADER_BMP
+  !define HEADER_BMP "${__FILEDIR__}/header.bmp"
+!endif
 
 Name "${PRODUCT} ${VERSION}"
 OutFile "${OUT}"
@@ -38,6 +49,12 @@ VIAddVersionKey "FileDescription" "${PRODUCT} installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "LegalCopyright" ""
 
+!define MUI_ICON "${ICON}"
+!define MUI_UNICON "${ICON}"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${WELCOME_BMP}"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${WELCOME_BMP}"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_BITMAP "${HEADER_BMP}"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Play ${PRODUCT}"

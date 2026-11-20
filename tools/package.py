@@ -2,7 +2,7 @@
 """WRECKSMITH packaging: the game exported and packed for Steam, and for people who do not have Steam.
 
     python tools/package.py                       everything the checkout can build (see below)
-    python tools/package.py --channel standalone  only the downloads for people without Steam
+    python tools/package.py --channel standalone  only the downloads for people without Steam (the demo and the full game)
     python tools/package.py --channel steam --steam-editions demo --platforms windows
     python tools/package.py --skip-export         pack again what is already in build/ (new Steam ids, say)
     python tools/package.py --install-templates   fetch the export templates it needs (only those, not 1.3 GB)
@@ -12,9 +12,10 @@ Two channels, each for the full game and for the demo (the same game with the "d
   steam       dist/steam/content/<edition>/<platform>/   exactly what goes into each Steam depot, plus the SteamPipe
               scripts (dist/steam/scripts/*.vdf: the real build, and a "preview" one that uploads nothing) and
               upload.bat / upload.sh. Steam's App and depot ids come from tools/steam/steam_ids.json.
-  standalone  dist/standalone/: a zip (Windows), a tar.gz (Linux), a zip with the .app (macOS) and, where NSIS is
-              installed, a Windows installer, for people who download the game and try it without Steam. These
-              builds never start Steam (the "standalone" feature, scripts/net/net.gd), and have no Steam library.
+  standalone  dist/standalone/: a zip (Windows), a tar.gz (Linux), a zip with the .app (macOS) and a Windows installer
+              (a Setup.exe, made with NSIS: on Windows it is fetched for you the first time, 2 MB), for people who
+              download the game and try it without Steam. These builds never start Steam (the "standalone" feature,
+              scripts/net/net.gd), and have no Steam library.
 
 It needs Godot 4.7 with its export templates (Editor > Manage Export Templates, or --install-templates), and the
 voxel core library for each platform (native/bin/; macOS's is only built on a Mac, by the Builds workflow). Python
@@ -101,8 +102,25 @@ def write_file(path, text, newline="\n"):
         f.write(text)
 
 
+NSIS_VERSION = "3.10"
+NSIS_URL = "https://downloads.sourceforge.net/project/nsis/NSIS%%203/%s/nsis-%s.zip" % (NSIS_VERSION, NSIS_VERSION)
+# The portable zip as nsis.sourceforge.io serves it (2,358,406 bytes; the MD5 SourceForge lists for it is e3e2803a13ead75e4471a51069d04c20).
+NSIS_SHA256 = "fcdce3229717a2a148e7cda0ab5bdb667f39d8fb33ede1da8dabc336bd5ad110"
+
+
+def cache_dir():
+    """Where the packager keeps what it fetches for itself: the user's cache, not the checkout (--clean empties build/ and dist/)."""
+    if sys.platform.startswith("win"):
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches"
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    return base / "WRECKSMITH" / "tools"
+
+
 def find_makensis():
-    """NSIS's compiler: on the PATH, or where its Windows installer puts it."""
+    """NSIS's compiler: on the PATH, where its Windows installer puts it, or where fetch_nsis unpacked it (Windows)."""
     found = shutil.which("makensis")
     if found:
         return found
@@ -110,7 +128,67 @@ def find_makensis():
         base = os.environ.get(var)
         if base and (Path(base) / "NSIS" / "makensis.exe").exists():
             return str(Path(base) / "NSIS" / "makensis.exe")
+    cached = cache_dir() / ("nsis-%s" % NSIS_VERSION) / "makensis.exe"
+    if sys.platform.startswith("win") and cached.exists():
+        return str(cached)
     return None
+
+
+def extract_safely(zf, dest):
+    """Extract a zip, refusing any entry that would land outside `dest` (a "zip slip")."""
+    root = os.path.realpath(str(dest))
+    for info in zf.infolist():
+        target = os.path.realpath(os.path.join(root, info.filename))
+        if target != root and not target.startswith(root + os.sep):
+            raise Fail("the archive holds an entry outside its folder (%s): not unpacking it" % info.filename)
+    zf.extractall(str(dest))
+
+
+def fetch_nsis(url=None, sha=None, base=None):
+    """Download NSIS's portable zip (2 MB), check its checksum and unpack it into the user's cache; the path of its makensis.exe.
+    Nothing is installed: no administrator, no registry, nothing outside the cache folder."""
+    import urllib.request
+    url, sha = url or NSIS_URL, sha or NSIS_SHA256
+    base = Path(base) if base else cache_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    part = base / ("nsis-%s.zip.part" % NSIS_VERSION)
+    problem = None
+    for attempt in range(3):        # a mirror can be down or serve a page instead of the file: the next try may land on another
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "WRECKSMITH-packager"})
+            with urllib.request.urlopen(req, timeout=60) as r, open(str(part), "wb") as out:
+                shutil.copyfileobj(r, out, 1 << 20)
+        except OSError as e:
+            problem = "could not download %s: %s" % (url, e)
+        else:
+            got = sha256(part)
+            if got == sha:
+                problem = None
+                break
+            problem = "the download has the wrong checksum (%s, expected %s)" % (got[:16], sha[:16])
+        time.sleep(2 * (attempt + 1))
+    if problem:
+        if part.exists():
+            part.unlink()
+        raise Fail("NSIS: %s" % problem)
+    tmp = base / ("nsis-%s.unpacking" % NSIS_VERSION)
+    if tmp.exists():
+        shutil.rmtree(str(tmp))
+    try:
+        with zipfile.ZipFile(str(part)) as z:
+            extract_safely(z, tmp)
+        inner = tmp / ("nsis-%s" % NSIS_VERSION)
+        if not (inner / "makensis.exe").exists():
+            raise Fail("NSIS: the zip does not hold nsis-%s/makensis.exe" % NSIS_VERSION)
+        target = base / ("nsis-%s" % NSIS_VERSION)
+        if target.exists():
+            shutil.rmtree(str(target))
+        inner.replace(target)
+    finally:
+        shutil.rmtree(str(tmp), ignore_errors=True)
+        if part.exists():
+            part.unlink()
+    return str(target / "makensis.exe")
 
 
 def link_or_copy(src, dst):
@@ -131,9 +209,10 @@ def fresh_dir(path):
 # ---------- the project ----------
 
 class Preset:
-    def __init__(self, name, platform, edition, channel, path, features, exclude=""):
+    def __init__(self, name, platform, edition, channel, path, features, exclude="", options=None):
         self.name, self.platform, self.edition, self.channel, self.path, self.features = name, platform, edition, channel, path, features
         self.exclude = [x.strip() for x in exclude.split(",") if x.strip()]
+        self.options = options or {}      # the preset's [preset.N.options] (icon, product name, version...), quotes removed
 
     @property
     def exe(self):
@@ -158,8 +237,9 @@ def read_presets(root=ROOT):
         if plat is None:
             continue
         feats = set(f for f in get("custom_features").split(",") if f)
+        opts = {k: v.strip().strip('"') for k, v in cp.items(sec + ".options")} if cp.has_section(sec + ".options") else {}
         out.append(Preset(get("name"), plat, "demo" if "demo" in feats else "full", "standalone" if "standalone" in feats else "steam",
-                          get("export_path"), feats, get("exclude_filter")))
+                          get("export_path"), feats, get("exclude_filter"), opts))
     return out
 
 
@@ -543,6 +623,7 @@ class Packager:
         self.results = []        # (channel, edition, platform, exe path, size, smoke text)
         self.godot = None
         self.gver = None
+        self.nsis = False        # NSIS's compiler once ensure_nsis has looked (a path, or None when there is none); False = not looked yet
 
     # -- setup --
 
@@ -777,15 +858,48 @@ class Packager:
         finally:
             shutil.rmtree(str(stage), ignore_errors=True)
 
-    def make_installer(self, edition, stage, out_file):
-        nsis = find_makensis()
-        if not nsis:
-            self.warn("makensis (NSIS) is not installed: no Windows installer, only the zip. Install NSIS to get "
-                      "WRECKSMITH-<version>-windows-setup.exe (apt install nsis; on Windows: nsis.sourceforge.io).")
+    def ensure_nsis(self):
+        """NSIS's compiler, for the Windows installer: found, or (on Windows, when the user says yes or passes --install-nsis)
+        fetched into the user's cache. None, with a warning that says why, when there is none: the zip is made all the same."""
+        found = find_makensis()
+        if found:
+            return found
+        if not sys.platform.startswith("win"):
+            self.warn("makensis (NSIS) is not installed: no Windows installer, only the zip (Linux: apt install nsis; macOS: brew install makensis).")
             return None
+        want = self.a.install_nsis
+        if not want and sys.stdin is not None and sys.stdin.isatty():
+            say("The Windows installer (a real Setup.exe) is made with NSIS, which is not installed here.")
+            try:
+                ans = input("Fetch NSIS %s now (a 2 MB zip from nsis.sourceforge.io, unpacked into %s: nothing is installed on the system)? [Y/n] "
+                            % (NSIS_VERSION, cache_dir())).strip().lower()
+            except EOFError:
+                ans = "n"
+            want = ans in ("", "y", "yes")
+        if not want:
+            self.warn("NSIS is not installed: no Windows installer, only the zip. Run again with --install-nsis to fetch it (2 MB), "
+                      "or install it from nsis.sourceforge.io.")
+            return None
+        say("Fetching NSIS %s ..." % NSIS_VERSION)
+        try:
+            path = fetch_nsis()
+        except (Fail, OSError, zipfile.BadZipFile) as e:
+            self.warn("could not fetch NSIS (%s): no Windows installer, only the zip." % e)
+            return None
+        say("  NSIS is in %s" % Path(path).parent)
+        return path
+
+    def make_installer(self, edition, stage, out_file):
+        if self.nsis is False:
+            self.nsis = self.ensure_nsis()
+        nsis = self.nsis
+        if not nsis:
+            return None             # ensure_nsis said why
         exe = find_preset(self.presets, edition, "standalone", "windows").exe
         cmd = [nsis, "-V2", "-DPRODUCT=%s" % TITLE[edition], "-DVERSION=%s" % self.version, "-DEXE=%s" % exe, "-DSRC=%s" % stage,
-               "-DOUT=%s" % out_file, "-DSLUG=%s" % SLUG[edition], str(self.root / "tools" / "installer" / "wrecksmith.nsi")]
+               "-DOUT=%s" % out_file, "-DSLUG=%s" % SLUG[edition], "-DICON=%s" % (self.root / "art" / "icon" / "wrecksmith.ico"),
+               "-DWELCOME_BMP=%s" % (self.root / "tools" / "installer" / "welcome.bmp"), "-DHEADER_BMP=%s" % (self.root / "tools" / "installer" / "header.bmp"),
+               str(self.root / "tools" / "installer" / "wrecksmith.nsi")]
         code, out = run(cmd, timeout=1200)
         if code != 0 or not out_file.exists():
             self.warn("the Windows installer was not built (makensis exit %s): %s" % (code, " | ".join(out.strip().splitlines()[-4:])))
@@ -825,6 +939,8 @@ class Packager:
         say("Platforms: %s" % ", ".join(plats))
         self.need_import = False
         self.check_setup(plats)
+        if stand_eds and "windows" in plats and not a.no_installer:
+            self.nsis = self.ensure_nsis()      # asked now, not after the exports, so the questions are over before the long part
         if a.godotsteam:
             self.install_godotsteam(a.godotsteam)
         if steam_eds and not self.have_godotsteam():
@@ -900,7 +1016,7 @@ def parse_args(argv=None):
     ap = argparse.ArgumentParser(description="Export and pack WRECKSMITH for Steam and for download without Steam.")
     ap.add_argument("--channel", choices=("steam", "standalone", "both"), default="both")
     ap.add_argument("--steam-editions", default="demo,full", help="editions for the Steam depots (default demo,full)")
-    ap.add_argument("--standalone-editions", default="demo", help="editions for the download without Steam (default demo)")
+    ap.add_argument("--standalone-editions", default="demo,full", help="editions for the download without Steam (default demo,full)")
     ap.add_argument("--platforms", default="", help="windows,linux,macos (default: every platform whose voxel core library is here)")
     ap.add_argument("--godot", help="the Godot 4.7 executable (else $GODOT, the PATH, the usual places)")
     ap.add_argument("--version", help="the version in file names (default: config/version of project.godot)")
@@ -908,6 +1024,7 @@ def parse_args(argv=None):
     ap.add_argument("--skip-export", action="store_true", help="pack what build/ already holds")
     ap.add_argument("--skip-tests", action="store_true", help="do not run the Linux build to check it")
     ap.add_argument("--no-installer", action="store_true", help="no Windows installer (needs NSIS) beside the zip")
+    ap.add_argument("--install-nsis", action="store_true", help="fetch NSIS (a 2 MB zip, Windows only) when it is missing, for the Windows installer")
     ap.add_argument("--clean", action="store_true", help="empty build/ and dist/ first")
     ap.add_argument("--install-templates", action="store_true", help="fetch missing export templates (only the needed ones)")
     ap.add_argument("--godotsteam", help="the GodotSteam GDExtension (zip or folder) to put in addons/ for the Steam builds")

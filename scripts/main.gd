@@ -20,5 +20,13 @@ func _ready() -> void:
 	# The player's language (Options, else the system's): the tests and probes above stay in the
 	# game's own English.
 	Loc.apply()
+	# A player's start opens with the boot splash's picture brought to life (scripts/ui/intro.gd). The menu is
+	# built when it has played, behind its last still frame, which hides the stall the build makes; the tests,
+	# the probes (above) and headless runs go straight on.
+	var intro_script = load("res://scripts/ui/intro.gd")
+	if intro_script.wanted(args):
+		var intro = intro_script.new()
+		add_child(intro)
+		await intro.covered
 	var menu = load("res://scripts/ui/menu.gd").new()
 	add_child(menu)
