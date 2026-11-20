@@ -136,9 +136,18 @@ func _init_steam() -> void:
 	if not Engine.has_singleton("Steam"):
 		return
 	steam = Engine.get_singleton("Steam")
+	# The app id goes to Steam's library the way Steam itself gives it to a game it starts, in the environment (a game Steam starts
+	# has it set already; one started by hand is Valve's test app 480 unless SteamAppId says otherwise), and the library's init is
+	# called with no arguments: which argument of it is the id has changed between GodotSteam's versions.
 	var app_id := int(OS.get_environment("SteamAppId")) if OS.get_environment("SteamAppId") != "" else 480
-	var res = steam.call("steamInitEx", app_id, true) if steam.has_method("steamInitEx") else steam.call("steamInit")
-	var ok: bool = (res is Dictionary and int(res.get("status", 1)) == 0) or res == true
+	if OS.get_environment("SteamAppId") == "":
+		OS.set_environment("SteamAppId", str(app_id))
+	if OS.get_environment("SteamGameId") == "":
+		OS.set_environment("SteamGameId", str(app_id))
+	var modern := steam.has_method("steamInitEx")
+	var res = steam.call("steamInitEx") if modern else steam.call("steamInit")
+	# (steamInitEx answers {status: 0} when it worked, the older steamInit {status: 1}.)
+	var ok: bool = (res is Dictionary and int(res.get("status", -1)) == (0 if modern else 1)) or res == true
 	if not ok:
 		steam_problem = "Steam is not running"
 		push_warning("Steam is not running; multiplayer falls back to direct connections.")

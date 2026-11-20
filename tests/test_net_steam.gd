@@ -18,7 +18,7 @@ class FakeSteam extends Object:
 	var owner := {}
 	var rich := {}
 	var next_lobby := 1001
-	func steamInitEx(app_id, _embed) -> Dictionary:
+	func steamInitEx(app_id := 0, _embed := false) -> Dictionary:
 		calls.append(["steamInitEx", app_id])
 		return {"status": 0, "verbal": "ok"}
 	func getSteamID() -> int:
@@ -132,6 +132,59 @@ func test_a_room_is_made_with_its_build_its_name_and_the_friends_join_string() -
 	Net.host_steam(false)
 	t.check(_called(fake, ["createLobby", 1, 8]), "friends only is Steam's friends-only lobby")
 	_done(fake)
+
+func test_the_app_id_goes_by_the_environment_and_init_takes_no_guesses() -> void:
+	var had_app := OS.get_environment("SteamAppId")
+	var had_game := OS.get_environment("SteamGameId")
+	OS.unset_environment("SteamAppId")
+	OS.unset_environment("SteamGameId")
+	var fake := _steam()
+	t.check(_called(fake, ["steamInitEx", 0]), "the library's init is called with no id of its own (no argument order to get wrong)")
+	t.eq(OS.get_environment("SteamAppId"), "480", "a game started by hand is Valve's test app")
+	t.eq(OS.get_environment("SteamGameId"), "480", "under both names")
+	_done(fake)
+	OS.set_environment("SteamAppId", "123456")
+	OS.unset_environment("SteamGameId")
+	fake = _steam()
+	t.eq(OS.get_environment("SteamAppId"), "123456", "an id Steam (or the player) has set is kept")
+	t.eq(OS.get_environment("SteamGameId"), "123456", "and the other name follows it")
+	_done(fake)
+	for pair in [["SteamAppId", had_app], ["SteamGameId", had_game]]:
+		if pair[1] == "":
+			OS.unset_environment(pair[0])
+		else:
+			OS.set_environment(pair[0], pair[1])
+
+func test_the_older_init_is_read_by_its_own_answer() -> void:
+	# GodotSteam's older steamInit answers {status: 1} when it worked (steamInitEx {status: 0}).
+	var old_steam := OldSteam.new()
+	Net.leave()
+	Engine.register_singleton("Steam", old_steam)
+	Net.steam = null
+	Net.steam_ready = false
+	Net.steam_problem = ""
+	Net.steam_peer_factory = func(): return FakePeer.new()
+	Net._init_steam()
+	t.check(Net.steam_ready, "an older GodotSteam that answers 1 is up")
+	Net.steam = null
+	Net.steam_ready = false
+	Net.steam_peer_factory = Callable()
+	Engine.unregister_singleton("Steam")
+	old_steam.free()
+
+## A GodotSteam from before steamInitEx: steamInit only, its answer 1 for "it worked".
+class OldSteam extends Object:
+	signal lobby_created(result, id)
+	signal lobby_joined(id, perm, locked, response)
+	signal lobby_match_list(list)
+	func steamInit() -> Dictionary:
+		return {"status": 1, "verbal": "Steamworks active"}
+	func getSteamID() -> int:
+		return 7002
+	func getPersonaName() -> String:
+		return "Old"
+	func run_callbacks() -> void:
+		pass
 
 func test_the_list_asks_for_this_build_anywhere_with_a_place_free() -> void:
 	var fake := _steam()
