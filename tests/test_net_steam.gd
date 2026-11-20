@@ -80,6 +80,40 @@ class FakePeer extends OfflineMultiplayerPeer:
 		made = "client:%d" % host_id
 		return OK
 
+const Loop := preload("res://tests/steam_loopback.gd")
+
+## Extensions that name the call that says whose Steam id a peer is in their own way.
+class PeerOld extends Object:
+	func get_steam64_from_peer_id(id: int) -> int:
+		return 1
+class PeerNew extends Object:
+	func get_steam_id_from_peer_id(id: int) -> int:
+		return 2
+class PeerOdd extends Object:
+	func get_steam_identity_from_peer(id: int) -> int:
+		return 3
+class PeerBackwards extends Object:
+	func get_peer_id_from_steam64(steam_id: int) -> int:
+		return 4
+class PeerTwoArgs extends Object:
+	func get_steam_thing_from_peer(a: int, b: int) -> int:
+		return 5
+## A peer of the Steam kind that names the call its own way, for the turned-away list.
+class PeerNamedNew extends OfflineMultiplayerPeer:
+	func get_steam_id_from_peer_id(id: int) -> int:
+		return 76561190000000000 + id
+## Room calls that do not do what the game asks of them.
+class PeerRefuses extends OfflineMultiplayerPeer:
+	func create_host(_vport) -> int:
+		return ERR_UNAVAILABLE
+	func create_client(_host_id, _vport) -> int:
+		return OK
+class PeerReturnsNothing extends OfflineMultiplayerPeer:
+	func create_host(_vport) -> void:
+		pass
+	func create_client(_host_id, _vport) -> void:
+		pass
+
 ## A multiplayer extension that can open a room but not join one (another extension's API, or an old one).
 class PartialPeer extends OfflineMultiplayerPeer:
 	func create_host(_vport) -> int:
@@ -342,4 +376,57 @@ func test_the_steam_report_names_a_peer_that_lacks_a_call_the_game_makes() -> vo
 	var text := "\n".join(Net.steam_report())
 	t.check(text.contains("peer call create_host: yes") and text.contains("peer call create_client: MISSING"), "says which one: %s" % text.substr(0, 400))
 	t.check(text.contains("peer call get_steam64_from_peer_id: no (optional"), "the kick's call is optional and says so")
+	_done(fake)
+
+func test_the_calls_of_the_multiplayer_extension_are_listed_by_name_and_arguments() -> void:
+	var text := Net.api_text([{"name": "create_host", "args": [{"name": "n_local_virtual_port"}, {"name": "options"}]}, {"name": "_poll", "args": []},
+		{"name": "get_peer_id_from_steam64", "args": [{"name": "steam_id"}]}, {"name": "", "args": []}, {"name": "close"}])
+	t.eq(text, "create_host(n_local_virtual_port, options); get_peer_id_from_steam64(steam_id); close()", "each call with its arguments, no private ones")
+
+func test_the_call_that_names_a_peers_steam_id_is_found_by_its_name() -> void:
+	for pair in [[PeerOld, "get_steam64_from_peer_id"], [PeerNew, "get_steam_id_from_peer_id"], [PeerOdd, "get_steam_identity_from_peer"]]:
+		var o = pair[0].new()
+		t.eq(Net.steam_id_call(o), pair[1], "%s" % pair[1])
+		o.free()
+	for cls in [PeerBackwards, PeerTwoArgs]:
+		var o2 = cls.new()
+		t.eq(Net.steam_id_call(o2), "", "the opposite call, or one with two arguments, is not it")
+		o2.free()
+
+func test_a_guest_turned_away_is_remembered_by_his_steam_id_whatever_the_call_is_named() -> void:
+	var fake := _steam()
+	var peer := PeerNamedNew.new()
+	Net.multiplayer.multiplayer_peer = peer
+	Net.transport = "steam"
+	t.eq(Net._peer_key(5), "steam:76561190000000005", "the key is his Steam id")
+	Net.transport = ""
+	_done(fake)
+
+func test_the_live_room_test_opens_a_room_and_a_guest_joins_it_and_a_packet_goes_through() -> void:
+	var fake := _steam()
+	Net.steam_peer_factory = func():
+		var p := Loop.FakePeer.new()
+		p.port = 18011
+		return p
+	var lines: Array = await Net.steam_selftest(3000)
+	var text := "\n".join(lines)
+	t.check(text.contains("create_host(0): OK (0)") and text.contains("create_client(7001, 0): OK (0)"), "both calls answered OK: %s" % text)
+	t.check(text.contains("joined after") and text.contains("a packet sent by the guest arrived: [7, 7, 7]"), "the guest joined and its packet arrived: %s" % text)
+	t.check(not text.contains("FAILED"), "nothing failed")
+	_done(fake)
+
+func test_the_live_room_test_says_so_when_nobody_can_join() -> void:
+	var fake := _steam()
+	var text := "\n".join(await Net.steam_selftest(300))
+	t.check(text.contains("nobody joined") and not text.contains("FAILED"), "no fault, and it says a second PC is the test: %s" % text)
+	_done(fake)
+
+func test_the_live_room_test_fails_a_room_that_does_not_open_or_a_call_that_answers_no_error() -> void:
+	var fake := _steam()
+	Net.steam_peer_factory = func(): return PeerRefuses.new()
+	var text := "\n".join(await Net.steam_selftest(100))
+	t.check(text.contains("FAILED: the room did not open"), "a room that does not open is a FAILED: %s" % text)
+	Net.steam_peer_factory = func(): return PeerReturnsNothing.new()
+	text = "\n".join(await Net.steam_selftest(100))
+	t.check(text.contains("not an Error") and text.contains("FAILED"), "a call that answers nothing where the game reads an Error is a FAILED: %s" % text)
 	_done(fake)

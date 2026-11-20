@@ -399,6 +399,9 @@ def steam_addons(root=ROOT):
 STEAM_WORDS = ("GodotSteam (the overlay, lobbies, rich presence, achievements and cloud saves)",
                "the Steam multiplayer peer (SteamMultiplayerPeer: playing together through Steam's lobbies)")
 # What `-- --steam-check` (scripts/net/net.gd steam_report) prints when each is there.
+STEAM_DUPLICATE_ADVICE = ("two extensions in addons/ both define SteamMultiplayerPeer (recent GodotSteam builds carry their own, so a separate Steam "
+                          "multiplayer peer fights it: the engine prints 'already registered' errors, and whichever loaded first is the one used). "
+                          "Delete the extra one (addons/steam-multiplayer-peer) and run again.")
 STEAM_CHECK_LIB = "Steam library (GodotSteam): found"
 STEAM_CHECK_PEER = "Multiplayer extension (SteamMultiplayerPeer): found"
 
@@ -802,6 +805,7 @@ class Packager:
         self.godot = None
         self.gver = None
         self.licenses = {"standalone": None, "steam": None}     # the THIRD_PARTY_LICENSES.txt of each channel, once make_licenses has written them
+        self.steam_duplicate = False      # the game said two extensions define SteamMultiplayerPeer (steam_extensions_found)
         self.nsis = False        # NSIS's compiler once ensure_nsis has looked (a path, or None when there is none); False = not looked yet
 
     # -- setup --
@@ -890,6 +894,9 @@ class Packager:
         code, out = run([self.godot, "--headless", "--path", self.root, "--", "--steam-check"], timeout=240, env=env)
         if "WRECKSMITH" not in out:
             return None
+        # Recent GodotSteam builds carry a SteamMultiplayerPeer of their own: a separate peer extension defines the same class, the
+        # engine prints that it "appears to be already registered", and the one that loaded first wins.
+        self.steam_duplicate = "extension class 'SteamMultiplayerPeer', which appears to be already registered" in out
         peer = STEAM_CHECK_PEER in out and "MISSING" not in "\n".join(l for l in out.splitlines() if "peer call" in l)
         return (STEAM_CHECK_LIB in out, peer)
 
@@ -925,6 +932,10 @@ class Packager:
             return 1
         for name, ok in zip(names, found):
             say("  %-28s %s" % (name, "loaded" if ok else "NOT loaded"))
+        if self.steam_duplicate:
+            say("")
+            say("PROBLEM: " + STEAM_DUPLICATE_ADVICE)
+            return 1
         if all(found):
             say("")
             say("Both are in addons/ and the game loads them. Next, with Steam open and signed in: steam_check.bat.")
@@ -1253,6 +1264,10 @@ class Packager:
             if a.require_steam_lib:
                 raise Fail(msg)
             self.warn(msg)
+        if steam_eds and self.steam_duplicate:
+            if a.require_steam_lib:
+                raise Fail(STEAM_DUPLICATE_ADVICE)
+            self.warn(STEAM_DUPLICATE_ADVICE)
         self.make_licenses()
         steam_done = {}
         # The systems the game is sold for on Steam (tools/steam/steam_ids.json "platforms"; a --platforms list overrides it).

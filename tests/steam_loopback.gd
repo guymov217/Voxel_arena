@@ -47,13 +47,18 @@ class FakePeer extends MultiplayerPeerExtension:
 		_wire()
 		return err
 
+	var _on_connected := Callable()
+	var _on_disconnected := Callable()
+
 	func _wire() -> void:
-		_enet.peer_connected.connect(func(id: int):
+		_on_connected = func(id: int):
 			var pp := _enet.get_peer(id)
 			if pp:
 				pp.throttle_configure(5000, 2, 0)      # (Steam's line sheds nothing for being slow to answer)
-			peer_connected.emit(id))
-		_enet.peer_disconnected.connect(func(id: int): peer_disconnected.emit(id))
+			peer_connected.emit(id)
+		_on_disconnected = func(id: int): peer_disconnected.emit(id)
+		_enet.peer_connected.connect(_on_connected)
+		_enet.peer_disconnected.connect(_on_disconnected)
 
 	## Who a peer is, as SteamMultiplayerPeer tells it (the host's turned-away list is kept by this).
 	func get_steam64_from_peer_id(id: int) -> int:
@@ -90,6 +95,13 @@ class FakePeer extends MultiplayerPeerExtension:
 		_enet.poll()
 	func _close() -> void:
 		_enet.close()
+		# (The two connections held this peer and this peer held them: let go, or a test that makes one leaks it.)
+		if _on_connected.is_valid() and _enet.peer_connected.is_connected(_on_connected):
+			_enet.peer_connected.disconnect(_on_connected)
+		if _on_disconnected.is_valid() and _enet.peer_disconnected.is_connected(_on_disconnected):
+			_enet.peer_disconnected.disconnect(_on_disconnected)
+		_on_connected = Callable()
+		_on_disconnected = Callable()
 	func _disconnect_peer(peer: int, force: bool) -> void:
 		_enet.disconnect_peer(peer, force)
 	func _get_unique_id() -> int:

@@ -315,6 +315,67 @@ func _peer_has(method: String) -> bool:
 	var p = steam_peer_factory.call() if steam_peer_factory.is_valid() else null
 	return p != null and p.has_method(method)
 
+## The calls of the multiplayer extension, each with the names of its arguments, on one line: the extensions do not all
+## name things alike, and this is how a difference is seen (steam_check prints it).
+static func api_text(methods: Array) -> String:
+	var names := PackedStringArray()
+	for d in methods:
+		var n := String(d.get("name", ""))
+		if n == "" or n.begins_with("_"):
+			continue
+		var args := PackedStringArray()
+		for a in d.get("args", []):
+			args.append(String(a.get("name", "?")))
+		names.append("%s(%s)" % [n, ", ".join(args)])
+	return "; ".join(names)
+
+## What a call returned, in words (an Error is named; anything else says what it was).
+static func call_result(v) -> String:
+	return "%s (%d)" % [error_string(v), v] if typeof(v) == TYPE_INT else "returned %s, not an Error" % [str(v)]
+
+## `-- --steam-check`'s live test of the multiplayer extension, on this PC alone: a room is opened (create_host), this same Steam id
+## joins it (create_client; Steam may not let one join oneself, and then it says so: a second PC is the real test), a packet goes
+## through, and both are closed. A line that says FAILED is a call that did not do what the game asks of it.
+func steam_selftest(wait_ms := 6000) -> Array:
+	var out := ["Live test of a room (this PC alone):"]
+	var host = _steam_peer()
+	if host == null:
+		return out + ["  FAILED: no multiplayer extension to test"]
+	var err = host.call("create_host", 0)
+	out.append("  open a room, create_host(0): %s" % call_result(err))
+	if typeof(err) != TYPE_INT or err != OK:
+		out.append("  FAILED: the room did not open")
+		return out
+	var guest = _steam_peer()
+	var joined := [0]
+	host.peer_connected.connect(func(id: int): joined[0] = id)
+	var gerr = guest.call("create_client", steam_user, 0)
+	out.append("  join it as yourself, create_client(%d, 0): %s" % [steam_user, call_result(gerr)])
+	if typeof(gerr) == TYPE_INT and gerr == OK:
+		var t0 := Time.get_ticks_msec()
+		while joined[0] == 0 and Time.get_ticks_msec() - t0 < wait_ms:
+			host.poll()
+			guest.poll()
+			await get_tree().process_frame
+		if joined[0] != 0:
+			out.append("  joined after %d ms (the guest is peer %d)" % [Time.get_ticks_msec() - t0, joined[0]])
+			guest.set_target_peer(1)
+			guest.put_packet(PackedByteArray([7, 7, 7]))
+			t0 = Time.get_ticks_msec()
+			while host.get_available_packet_count() == 0 and Time.get_ticks_msec() - t0 < 2000:
+				host.poll()
+				guest.poll()
+				await get_tree().process_frame
+			if host.get_available_packet_count() > 0:
+				out.append("  a packet sent by the guest arrived: %s" % str(host.get_packet()))
+			else:
+				out.append("  the guest's packet did not arrive within 2 s")
+		else:
+			out.append("  nobody joined within %d s: Steam may not let one join oneself, and that is no fault; a second PC is the real test (docs/MULTIPLAYER_TEST.md)" % [wait_ms / 1000])
+	host.close()
+	guest.close()
+	return out
+
 ## What this game finds of Steam, line by line (`-- --steam-check`): that the library, the running client, the multiplayer
 ## extension and the lobby calls are all there, before two people try a room.
 func steam_report() -> Array:
@@ -330,7 +391,10 @@ func steam_report() -> Array:
 		# The two calls that open and join a room (tools/package.py reads these lines too); the third is the kick's memory of who was turned away.
 		for m in ["create_host", "create_client"]:
 			out.append("  peer call %s: %s" % [m, "yes" if _peer_has(m) else "MISSING"])
-		out.append("  peer call get_steam64_from_peer_id: %s" % ("yes" if _peer_has("get_steam64_from_peer_id") else "no (optional: a guest who was turned away could come back)"))
+		out.append("  peer call get_steam64_from_peer_id: %s" % ("yes" if _peer_has("get_steam64_from_peer_id") else "no (optional: a guest who was turned away could come back; the game looks for the call by its name)"))
+		var api := api_text(ClassDB.class_get_method_list("SteamMultiplayerPeer", true)) if ClassDB.class_exists("SteamMultiplayerPeer") else ""
+		if api != "":
+			out.append("  peer API: " + api)
 	if steam != null:
 		for m in ["steamInitEx", "createLobby", "joinLobby", "leaveLobby", "setLobbyData", "getLobbyData", "setLobbyJoinable", "getLobbyOwner", "getNumLobbyMembers", "requestLobbyList", "addRequestLobbyListStringFilter", "addRequestLobbyListDistanceFilter", "setRichPresence", "clearRichPresence", "activateGameOverlayInviteDialog", "initRelayNetworkAccess", "run_callbacks"]:
 			out.append("  call %s: %s" % [m, "yes" if steam.has_method(m) else "MISSING"])
@@ -463,8 +527,24 @@ func _peer_key(id: int) -> String:
 	if transport == "enet" and mp is ENetMultiplayerPeer:
 		var pp: ENetPacketPeer = (mp as ENetMultiplayerPeer).get_peer(id)
 		return ("ip:" + pp.get_remote_address()) if pp else ""
-	if transport == "steam" and mp != null and mp.has_method("get_steam64_from_peer_id"):
-		return "steam:%d" % int(mp.call("get_steam64_from_peer_id", id))
+	if transport == "steam" and mp != null:
+		var fn := steam_id_call(mp)
+		if fn != "":
+			return "steam:%d" % int(mp.call(fn, id))
+	return ""
+
+## The call of the multiplayer extension that says whose Steam id a peer is. The extensions name it differently
+## (get_steam64_from_peer_id, get_steam_id_from_peer_id...): the known names first, then any "get_" call that has "steam" before
+## "peer" in its name and takes the one argument (the opposite, get_peer_id_from_steam64, has "peer" first). "" when there is none.
+static func steam_id_call(mp: Object) -> String:
+	for m in ["get_steam64_from_peer_id", "get_steam_id_from_peer_id", "get_steamid_from_peer_id", "get_steam64_from_peer", "get_steam_id_from_peer"]:
+		if mp.has_method(m):
+			return m
+	for d in mp.get_method_list():
+		var n := String(d.get("name", ""))
+		var at_steam := n.find("steam")
+		if n.begins_with("get_") and at_steam >= 0 and n.find("peer") > at_steam and (d.get("args", []) as Array).size() == 1:
+			return n
 	return ""
 
 func _on_peer_disconnected(id: int) -> void:

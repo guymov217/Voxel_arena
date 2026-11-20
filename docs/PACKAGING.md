@@ -42,24 +42,27 @@ what each check found) and `dist/standalone/SHA256SUMS.txt`.
 
    **Where to get them** (read on 20 Nov 2026 from a machine that could open GitHub but not Codeberg or godotsteam.com):
    - Godot 4.7's editor has the new **Asset Store** tab in place of AssetLib (the old library is kept read-only for older editors),
-     and not every old asset was moved. GodotSteam can be installed from it (search "GodotSteam"; the asset library's old entry
-     was "GodotSteam GDExtension 4.4+", <https://godotengine.org/asset-library/asset/2445>). A search there for "Steam Multiplayer
-     Peer" finds only GD-Sync's plugin, which is not it: take the zip below.
-   - The peer: the `addon` branch of <https://github.com/expressobits/steam-multiplayer-peer> (zip:
+     and not every old asset was moved. **GodotSteam** can be installed from it (search "GodotSteam"; the old library's entry was
+     "GodotSteam GDExtension 4.4+", <https://godotengine.org/asset-library/asset/2445>). The build installed from the store on
+     20 Nov **already carries a `SteamMultiplayerPeer`** (and a `SteamPacketPeer`): adding the separate peer below made Godot print
+     "Attempt to register extension class 'SteamMultiplayerPeer', which appears to be already registered", and the first extension
+     to load (GodotSteam) kept the class. So install GodotSteam, run `steam_check.bat`, and add a separate peer **only** if it says
+     the multiplayer extension is NOT FOUND. With two, delete `addons/steam-multiplayer-peer`: the packager says so too (a warning,
+     a stop under `--require-steam-lib`).
+   - A separate peer, if needed: the `addon` branch of <https://github.com/expressobits/steam-multiplayer-peer> (zip:
      <https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip>; `addons/steam-multiplayer-peer/` with
-     `windows/`, `linux/` and `macos/`; MIT). `install_steam_addons.bat` (drag the zip onto it) or
-     `python tools/package.py --addons-only --godotsteam <zip ...>` copies it into `addons/`, imports the project and says whether the
-     game loads it; or copy the folder `addons/steam-multiplayer-peer` from the zip by hand. A zip from a GitHub branch has a wrapper
-     folder around `addons/`: the packager looks inside it.
+     `windows/`, `linux/` and `macos/`; MIT). The asset store search for "Steam Multiplayer Peer" finds only GD-Sync's plugin, which
+     is not it. `install_steam_addons.bat` (drag the zip onto it) or `python tools/package.py --addons-only --godotsteam <zip ...>`
+     copies it into `addons/`, imports the project and says whether the game loads it; or copy the folder by hand. A zip from a GitHub
+     branch has a wrapper folder around `addons/`: the packager looks inside it. Its author paused work in Dec 2025.
    - GodotSteam as a zip (`--godotsteam <zip> ...`): <https://codeberg.org/godotsteam/godotsteam/releases> (newest on 20 Nov: v4.24,
      Steamworks 1.65; the GitHub repository is archived and has no GDExtension zip).
-   - The peer to take is that GDExtension, which works with the stock Godot. The GodotSteam team's own MultiplayerPeer (archived on
-     GitHub in Nov 2025, now <https://codeberg.org/godotsteam/multiplayerpeer>) is described in the expressobits README as a C++
-     module that needs a Godot compiled with it: not checked, and if so not usable with the stock export templates. The expressobits
-     author paused work in Dec 2025 (his README says to try GodotSteam where possible): look for a maintained fork if it stops loading.
-   - Not checked: the file names on Codeberg, whether either extension loads in Godot 4.7, whether the peer brings the `steam_api`
-     libraries (GodotSteam's are the ones to use; the packager warns when a depot lacks them) and the peer's real method names (the
-     game calls `create_host(0)` and `create_client(steam_id, 0)`; `steam_check.bat` prints each as yes or MISSING).
+   - The GodotSteam team's own MultiplayerPeer repository (archived on GitHub in Nov 2025, now
+     <https://codeberg.org/godotsteam/multiplayerpeer>) is described in the expressobits README as a C++ module that needs a Godot
+     compiled with it: not checked, and if so not usable with the stock export templates.
+   - Not checked: the file names on Codeberg, and the real argument lists of the bundled peer (`steam_check.bat` prints them on its
+     `peer API` line, and runs a live test: it opens a room with `create_host(0)`, joins it as the same Steam id with
+     `create_client(id, 0)` and sends a packet; a line with FAILED is a call that does not do what the game asks of it).
 4. **For the Steam upload: your ids**, in `tools/steam/steam_ids.json` (below).
 5. **NSIS** (`makensis`) for the Windows installer (a real `Setup.exe`). On Windows the packager asks, the first time, whether
    to fetch it: a 2 MB zip from nsis.sourceforge.io, checked against a checksum kept in `tools/package.py` and unpacked into

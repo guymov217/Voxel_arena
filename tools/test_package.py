@@ -788,6 +788,33 @@ class SteamAddons(unittest.TestCase):
         self.assertIn("--headless", seen["cmd"])
         self.assertEqual(seen["env"]["SteamAppId"], "480", "the test app's id, so that a Steam client that is open does not matter")
 
+    DUPLICATE_ERRORS = ("ERROR: Attempt to register extension class 'SteamPacketPeer', which appears to be already registered.\n"
+                        "ERROR: Attempt to register extension class 'SteamMultiplayerPeer', which appears to be already registered.\n"
+                        "ERROR: Attempt to register extension method 'create_host' for unexisting class 'SteamMultiplayerPeer'.\n")
+
+    def test_two_extensions_that_both_define_the_peer_are_told(self):
+        output = self.DUPLICATE_ERRORS + self.STEAM_CHECK % ("found", "found", self.PEER_CALLS % "yes")
+        seen, patch = self._game_says(output=output)
+        with patch:
+            self.assertEqual(self.pk.steam_extensions_found(), (True, True), "the game does find both")
+            self.assertTrue(self.pk.steam_duplicate)
+        seen, patch = self._game_says()
+        with patch:
+            self.pk.steam_extensions_found()
+            self.assertFalse(self.pk.steam_duplicate, "and a clean run clears it")
+
+    def test_addons_only_stops_on_two_extensions_that_both_define_the_peer(self):
+        self.pk.a.godotsteam = [str(self._godotsteam_zip())]
+        said = []
+        output = self.DUPLICATE_ERRORS + self.STEAM_CHECK % ("found", "found", self.PEER_CALLS % "yes")
+        seen, patch = self._game_says(output=output)
+        with patch, mock.patch.object(P, "find_godot", return_value="/fake/godot"), mock.patch.object(P, "godot_version", return_value="4.7.2.stable"), \
+                mock.patch.object(P, "say", lambda m="": said.append(m)), mock.patch.object(self.pk, "ensure_imported"):
+            self.assertEqual(self.pk.install_addons_only(), 1)
+        text = "\n".join(said)
+        self.assertIn("PROBLEM", text)
+        self.assertIn("addons/steam-multiplayer-peer", text, "it says which folder to delete")
+
     def test_a_download_that_carries_both_needs_no_second_one(self):
         # one zip holding both extensions under one name: the folder names would call the peer missing, the game does not
         self.pk.install_steam_addons(self._godotsteam_zip())

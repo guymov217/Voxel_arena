@@ -597,12 +597,14 @@ The CI workflow builds it for all three platforms before exporting.
 `scripts/net/net.gd` reaches GodotSteam only through `Engine.get_singleton("Steam")` and
 `ClassDB`, so the project runs on stock Godot. It falls back to ENet on port 7777.
 
-To use Steam, put **two** GDExtensions in `addons/` (the packager does it: `tools/package.py --godotsteam <zip> <zip>`;
-`docs/PACKAGING.md` says where to download them):
+To use Steam, put **GodotSteam** in `addons/` (from the editor's Asset Store, or by hand: `tools/package.py --godotsteam <zip>`,
+`docs/PACKAGING.md` says where to download it):
 
 - **GodotSteam** (Godot 4.7; godotsteam.com): the `Steam` singleton: overlay, lobbies, rich presence, achievements, cloud.
-- **The Steam multiplayer peer** (`SteamMultiplayerPeer`): carries the game's online traffic over Steam's relay. Without it
-  lobbies are off (`steam_check.bat` and the multiplayer screen say so) and joining by address still works.
+- **The Steam multiplayer peer** (`SteamMultiplayerPeer`): carries the game's online traffic over Steam's relay. The GodotSteam
+  build from the Asset Store already carries one; only if `steam_check.bat` says it is NOT FOUND is a separate extension added
+  (two of them clash: Godot prints "already registered"). Without a peer, lobbies are off (`steam_check.bat` and the multiplayer
+  screen say so) and joining by address still works.
 
 Then:
 
@@ -616,7 +618,9 @@ Then:
    a guest on another build is not listed and, if invited, told to update. Bump `Net.PROTOCOL` when what two games say to
    each other changes in a way an older game cannot follow.
 4. **`steam_check.bat`** (or `-- --steam-check`) says what the game finds on this PC: the library, the Steam client, the
-   multiplayer extension and every call the lobbies use; READY when all are there. It writes `user://steam_check.txt`.
+   multiplayer extension (with its calls and their arguments: the `peer API` line) and every call the lobbies use; READY when
+   all are there. Then it runs a live test: opens a room (`create_host`), joins it as the same Steam id (`create_client`; Steam may
+   not allow that, and it says so) and sends a packet. It writes `user://steam_check.txt`.
 
 **Room size.** A room holds 8 players (the host and 7 guests, over Steam and ENet alike), and every
 arena and party mode takes them all. The co-op campaign is for 4 at most (`Net.CAMPAIGN_PLAYERS`;
