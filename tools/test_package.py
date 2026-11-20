@@ -822,6 +822,45 @@ class SteamAddons(unittest.TestCase):
         self.assertEqual(len(miss), 1)
         self.assertIn("multiplayer peer", miss[0])
 
+    def test_addons_only_puts_the_downloads_in_and_says_whether_the_game_loads_them(self):
+        a = P.parse_args(["--addons-only", "--godotsteam", "a.zip", "b.zip"])
+        self.assertTrue(a.addons_only)
+        self.assertFalse(P.parse_args([]).addons_only)
+        self.pk.a.godotsteam = [str(self._godotsteam_zip()), str(self._peer_zip())]
+        said = []
+        seen, patch = self._game_says()
+        with patch, mock.patch.object(P, "find_godot", return_value="/fake/godot"), mock.patch.object(P, "godot_version", return_value="4.7.2.stable"), \
+                mock.patch.object(P, "say", lambda m="": said.append(m)), mock.patch.object(self.pk, "ensure_imported") as imp:
+            self.assertEqual(self.pk.install_addons_only(), 0)
+        self.assertEqual(sorted(P.steam_addons(self.pk.root)), ["godotsteam", "steam_multiplayer_peer"])
+        imp.assert_called_once()
+        self.assertTrue(self.pk.need_import, "the new extensions are imported before the game is asked")
+        text = "\n".join(said)
+        self.assertIn("loaded", text)
+        self.assertNotIn("NOT loaded", text)
+        self.assertIn("steam_check.bat", text, "it says what to do next")
+
+    def test_addons_only_says_which_one_does_not_load(self):
+        self.pk.a.godotsteam = [str(self._godotsteam_zip())]
+        said = []
+        seen, patch = self._game_says(peer=False)
+        with patch, mock.patch.object(P, "find_godot", return_value="/fake/godot"), mock.patch.object(P, "godot_version", return_value="4.7.2.stable"), \
+                mock.patch.object(P, "say", lambda m="": said.append(m)), mock.patch.object(self.pk, "ensure_imported"):
+            self.assertEqual(self.pk.install_addons_only(), 1)
+        lines = [l for l in said if "loaded" in l]
+        self.assertTrue(any("GodotSteam" in l and "NOT" not in l for l in lines), lines)
+        self.assertTrue(any("multiplayer peer" in l and "NOT loaded" in l for l in lines), lines)
+
+    def test_addons_only_without_downloads_is_a_clear_stop(self):
+        self.pk.a.godotsteam = None
+        with self.assertRaises(P.Fail):
+            self.pk.install_addons_only()
+
+    def test_the_drag_and_drop_file_passes_every_zip_on(self):
+        bat = (P.ROOT / "install_steam_addons.bat").read_bytes().decode("ascii")
+        self.assertIn("--addons-only --godotsteam %*", bat)
+        self.assertIn("\r\n", bat, "a batch file has Windows line ends")
+
     def test_the_options_take_several_downloads(self):
         a = P.parse_args(["--godotsteam", "a.zip", "b.zip", "--require-steam-lib"])
         self.assertEqual(a.godotsteam, ["a.zip", "b.zip"])

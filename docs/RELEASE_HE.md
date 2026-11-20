@@ -127,29 +127,25 @@ Steam לא מריצה `setup.exe`. היא מעתיקה **תיקיית משחק �
 
 ### מאיפה מורידים את שני התוספים
 
-הם חינמיים, ושניהם נכנסים לתיקייה `addons` של הפרויקט. **GodotSteam** מדבר עם Steam (חלון ה־overlay, החדרים וההזמנות). **Steam Multiplayer Peer** מעביר דרך Steam את התעבורה של המשחק עצמו.
+ב־Godot 4.7 הלשונית AssetLib הוחלפה ב־**Asset Store** (חנות חדשה), ולא כל התוספים הישנים עברו אליה.
 
-**הדרך הפשוטה, מתוך Godot, בלי קבצי zip ובלי פקודות:**
+- **GodotSteam** (מדבר עם Steam: ה־overlay, החדרים וההזמנות): מתקינים מתוך Godot, חיפוש `GodotSteam`. את זה כבר עשית.
+- **Steam Multiplayer Peer** (מעביר דרך Steam את התעבורה של המשחק עצמו): בחיפוש בחנות יוצא רק תוסף אחר, של GD-Sync, והוא לא מתאים. לכן מורידים אותו ישירות:
 
-1. פותחים את הפרויקט ב־Godot, כמו תמיד.
-2. למעלה לוחצים על הלשונית **AssetLib**.
-3. בחיפוש כותבים `GodotSteam GDExtension`, פותחים את התוצאה **GodotSteam GDExtension 4.4+** ולוחצים **Download**, אחר כך **Install** ושוב **Install** (משאירים הכול מסומן). אם Godot מציע להפעיל את העורך מחדש, מאשרים.
-4. חוזרים ל־AssetLib, מחפשים `Steam Multiplayer Peer`, ועושים את אותם צעדים.
-5. סוגרים את Godot, פותחים את Steam ומתחברים, ולוחצים פעמיים על `steam_check.bat` בתיקיית הפרויקט.
-6. שולחים לי את הטקסט שהוא מדפיס (או צילום מסך של החלון).
+1. מורידים את הקובץ https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip (הוא נשמר בשם `steam-multiplayer-peer-addon.zip`).
+2. קליק ימני עליו, **Extract All**.
+3. בתיקייה שנפתחה נכנסים ל־`addons`. בפנים יש תיקייה בשם `steam-multiplayer-peer`. מעתיקים אותה לתיקייה `addons` של הפרויקט, אותה תיקייה שבה נמצאת `godotsteam`.
+4. פותחים את הפרויקט ב־Godot פעם אחת, מחכים שיסיים לטעון, וסוגרים.
+5. פותחים Steam ומתחברים, ולוחצים פעמיים על `steam_check.bat` בתיקיית הפרויקט.
+6. שולחים לי את הטקסט שהוא מדפיס, או צילום מסך של החלון.
 
 אם הכול בסדר, ליד שני התוספים כתוב `found`, ובסוף `Steam multiplayer: READY`.
 
-עמודי התוספים בדפדפן: GodotSteam https://godotengine.org/asset-library/asset/2445 ו־Steam Multiplayer Peer https://godotengine.org/asset-library/asset/2258.
+**חלופה בלי העתקה ידנית** (צריך Python 3 במחשב): סוגרים את Godot וגוררים את קובץ ה־zip על `install_steam_addons.bat` בתיקיית הפרויקט. הוא מעתיק, מייבא את הפרויקט ואומר אם המשחק טוען את שני התוספים. (אותו דבר בשורת פקודה: `tools\package.bat --addons-only --godotsteam <zip או zip־ים>`.)
 
-**אם אחד מהם לא נמצא ב־AssetLib או לא נטען** (`steam_check.bat` אומר איזה), יש קבצי zip:
+**אם GodotSteam לא מותקן** ורוצים קובץ zip במקום החנות: https://codeberg.org/godotsteam/godotsteam/releases (צריך את קובץ ה־**GDExtension**, לא קוד מקור). את שמות הקבצים שם לא ראיתי: Codeberg חסום לי.
 
-- Steam Multiplayer Peer: https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip
-- GodotSteam: דף ההפצות https://codeberg.org/godotsteam/godotsteam/releases (צריך את קובץ ה־**GDExtension**).
-
-ואז מריצים `tools\package.bat --godotsteam <zip אחד> <zip שני>` (הנתיב המלא של כל קובץ), והוא מעתיק אותם ל־`addons`.
-
-**מה לא נבדק:** מהסביבה שלי לא הצלחתי לפתוח את Codeberg ואת godotsteam.com, ולכן לא ראיתי את שמות הקבצים שם, ולא בדקתי שהתוספים נטענים ב־Godot 4.7 (זה בדיוק מה ש־`steam_check.bat` בודק). את ה־MultiplayerPeer של צוות GodotSteam עצמו (עבר ל־Codeberg) לא כדאי לקחת: לפי ה־README של התוסף השני הוא מודול שדורש גרסת Godot שמקומפלת איתו, ולא תוסף לגרסה הרגילה (לא אומת). התוסף השני, של expressobits, הפסיק להתעדכן בדצמבר 2025, ולכן אם הוא יפסיק להיטען אחפש גרסה מתוחזקת.
+**מה לא נבדק:** שהתוספים נטענים ב־Godot 4.7 (זה מה ש־`steam_check.bat` בודק). את ה־MultiplayerPeer של צוות GodotSteam עצמו (עבר ל־Codeberg) לא כדאי לקחת: לפי ה־README של התוסף של expressobits הוא מודול שדורש גרסת Godot שמקומפלת איתו, ולא תוסף לגרסה הרגילה (לא אומת). התוסף של expressobits הפסיק להתעדכן בדצמבר 2025, ואם הוא לא ייטען אחפש גרסה מתוחזקת.
 
 ## שלב 4ב — מולטיפלייר דרך Steam: בדיקה אחת עם אדם נוסף
 

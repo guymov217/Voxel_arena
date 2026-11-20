@@ -41,15 +41,18 @@ what each check found) and `dist/standalone/SHA256SUMS.txt`.
    `create_client` counts as missing.
 
    **Where to get them** (read on 20 Nov 2026 from a machine that could open GitHub but not Codeberg or godotsteam.com):
-   - Easiest: both are in the Godot editor's **AssetLib** tab: "GodotSteam GDExtension 4.4+" (asset 2445,
-     <https://godotengine.org/asset-library/asset/2445>, MIT) and "Steam Multiplayer Peer" (asset 2258,
-     <https://godotengine.org/asset-library/asset/2258>, MIT). They install straight into `addons/`, so no `--godotsteam` is needed
-     then. The listings can lag the newest releases.
-   - As zips (`--godotsteam <zip> <zip>`): GodotSteam's GDExtension from <https://codeberg.org/godotsteam/godotsteam/releases>
-     (newest on 20 Nov: v4.24, Steamworks 1.65; the GitHub repository is archived and has no GDExtension zip), and the peer from the
-     `addon` branch of <https://github.com/expressobits/steam-multiplayer-peer> (zip:
+   - Godot 4.7's editor has the new **Asset Store** tab in place of AssetLib (the old library is kept read-only for older editors),
+     and not every old asset was moved. GodotSteam can be installed from it (search "GodotSteam"; the asset library's old entry
+     was "GodotSteam GDExtension 4.4+", <https://godotengine.org/asset-library/asset/2445>). A search there for "Steam Multiplayer
+     Peer" finds only GD-Sync's plugin, which is not it: take the zip below.
+   - The peer: the `addon` branch of <https://github.com/expressobits/steam-multiplayer-peer> (zip:
      <https://github.com/expressobits/steam-multiplayer-peer/archive/refs/heads/addon.zip>; `addons/steam-multiplayer-peer/` with
-     `windows/`, `linux/` and `macos/`). A zip from a GitHub branch has a wrapper folder around `addons/`: the packager looks inside it.
+     `windows/`, `linux/` and `macos/`; MIT). `install_steam_addons.bat` (drag the zip onto it) or
+     `python tools/package.py --addons-only --godotsteam <zip ...>` copies it into `addons/`, imports the project and says whether the
+     game loads it; or copy the folder `addons/steam-multiplayer-peer` from the zip by hand. A zip from a GitHub branch has a wrapper
+     folder around `addons/`: the packager looks inside it.
+   - GodotSteam as a zip (`--godotsteam <zip> ...`): <https://codeberg.org/godotsteam/godotsteam/releases> (newest on 20 Nov: v4.24,
+     Steamworks 1.65; the GitHub repository is archived and has no GDExtension zip).
    - The peer to take is that GDExtension, which works with the stock Godot. The GodotSteam team's own MultiplayerPeer (archived on
      GitHub in Nov 2025, now <https://codeberg.org/godotsteam/multiplayerpeer>) is described in the expressobits README as a C++
      module that needs a Godot compiled with it: not checked, and if so not usable with the stock export templates. The expressobits
@@ -192,6 +195,7 @@ the pieces are: `EMBLEM_CENTRE` and `LOGO_BOX` in `intro.gd` must follow, `tests
 --install-templates                 fetch the missing export templates (only the needed ones)
 --godotsteam ZIP [ZIP ...]          Steam's extensions (GodotSteam, the multiplayer peer): zips or folders, put in addons/
 --require-steam-lib                 stop if the Steam builds would lack either extension
+--addons-only                      only put the --godotsteam downloads in addons/, import, and say whether the game loads them (no export)
 --clean                             empty build/ and dist/ first
 ```
 

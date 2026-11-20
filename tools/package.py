@@ -901,6 +901,39 @@ class Packager:
             return steam_addons_missing(self.root)
         return [words for ok, words in zip(found, STEAM_WORDS) if not ok]
 
+    def install_addons_only(self):
+        """`--addons-only`: put the Steam extensions in addons/ (what --godotsteam does), import the project and say what the game loads of
+        them; nothing is exported. For the person who has just downloaded the two zips (install_steam_addons.bat: drag them onto it).
+        Exit code 0 when the game loads both."""
+        a = self.a
+        if not a.godotsteam:
+            raise Fail("--addons-only needs the downloads: --godotsteam <zip or folder> <zip or folder>")
+        self.godot = find_godot(a.godot)
+        self.gver = godot_version(self.godot)
+        say("Godot %s (%s)" % (self.gver, self.godot))
+        for src in a.godotsteam:
+            self.install_steam_addons(src)
+        say("Importing the project, so that the game can load them (a minute or two the first time)...")
+        self.need_import = True
+        self.ensure_imported()
+        found = self.steam_extensions_found()
+        say("")
+        names = ("GodotSteam", "the Steam multiplayer peer")
+        if found is None:
+            say("The game could not be run to ask it what it loads. In addons/ there is now: %s." % (", ".join(sorted(steam_addons(self.root))) or "nothing"))
+            say("Close the Godot editor if it is open, and run this again.")
+            return 1
+        for name, ok in zip(names, found):
+            say("  %-28s %s" % (name, "loaded" if ok else "NOT loaded"))
+        if all(found):
+            say("")
+            say("Both are in addons/ and the game loads them. Next, with Steam open and signed in: steam_check.bat.")
+            return 0
+        say("")
+        say("Not all of them load. What is in addons/: %s." % (", ".join(sorted(steam_addons(self.root))) or "nothing"))
+        say("Run  godot --headless --path . -- --steam-check  (or steam_check.bat) for the details, and send the output.")
+        return 1
+
     def make_licenses(self):
         """THIRD_PARTY_LICENSES.txt for the packages: the game's credits written by the game itself (`-- --probe licenses_dump`: with the
         Godot that exports it, so the engine's licence terms are those of the build), and for the Steam builds the licence files of the
@@ -1310,13 +1343,15 @@ def parse_args(argv=None):
     ap.add_argument("--godotsteam", "--steam-addons", dest="godotsteam", nargs="+", metavar="ZIP_OR_FOLDER",
                     help="the Steam GDExtensions (GodotSteam, and the Steam multiplayer peer: a zip or a folder each) to put in addons/ for the Steam builds")
     ap.add_argument("--require-steam-lib", action="store_true", help="fail when the Steam builds would lack GodotSteam or the Steam multiplayer peer")
+    ap.add_argument("--addons-only", action="store_true", help="only put the --godotsteam downloads in addons/ and say whether the game loads them (no export)")
     return ap.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
     try:
-        return Packager(args).run()
+        pk = Packager(args)
+        return pk.install_addons_only() if args.addons_only else pk.run()
     except Fail as e:
         say("\nSTOPPED: %s" % e)
         return 2
