@@ -5,3 +5,4 @@ build/
 override.cfg
 docs/store/clips/
 __pycache__/
+dist/

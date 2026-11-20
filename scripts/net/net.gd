@@ -109,7 +109,9 @@ func steam_available() -> bool:
 	return steam_ready
 
 func _init_steam() -> void:
-	if not Engine.has_singleton("Steam"):
+	# The download for people without Steam (the "standalone" feature, tools/package.py) never starts Steam, even
+	# if the library is about: with the Steam client open it would show the player as playing Valve's test app 480.
+	if OS.has_feature("standalone") or not Engine.has_singleton("Steam"):
 		return
 	steam = Engine.get_singleton("Steam")
 	var app_id := int(OS.get_environment("SteamAppId")) if OS.get_environment("SteamAppId") != "" else 480

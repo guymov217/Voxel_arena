@@ -22,7 +22,7 @@ long campaign on real hardware before a release date is set.
 
 1. **Steamworks** (docs/DEMO.md has the steps): the full game's app and its *Coming soon* page
    (a demo cannot be public before its game's page), the demo app, depots, launch options,
-   the real App IDs in `tools/steam/*.vdf`. Without `SteamAppId`, the game falls back to 480
+   the real App and depot ids in `tools/steam/steam_ids.json`. Without `SteamAppId`, the game falls back to 480
    (Valve's test app), which is right for development only.
 2. **Store review assets**: upload the capsules and screenshots from `docs/store/`, write the
    short and long description from `STEAM_PAGE.md`, fill in the content survey (violence and
@@ -30,9 +30,12 @@ long campaign on real hardware before a release date is set.
    questionnaire, and the system requirements once measured (below).
 3. **A trailer**: `tools\make_trailer75.bat` makes the 75-second trailer from the game on a PC
    with a graphics card (`tools/TRAILER.md`).
-4. **Builds**: the *Builds* workflow exports Windows, Linux and macOS, full game and demo. macOS
-   builds are not signed or notarized (Steam does not require it for Windows/Linux; for macOS
-   it does, with an Apple developer account), so ship Windows (and Linux) first.
+4. **Builds**: `tools/package.py` (`tools\package.bat`, `docs/PACKAGING.md`) exports and packs the demo and the full game for
+   Steam (depots, SteamPipe scripts, `upload.bat`) and for download without Steam (zip, tar.gz, Windows installer); the
+   *Builds* workflow does it for Windows, Linux and macOS. Still to do by a person: the Steam ids in `tools/steam/steam_ids.json`,
+   GodotSteam in `addons/`, the first upload (run its `preview` first), and trying the Windows zip on a real PC. macOS
+   builds are not signed or notarized (Steam does not require it for Windows/Linux; for macOS it does, with an Apple
+   developer account), so ship Windows (and Linux) first.
 5. **Measure on real hardware**: frame rate in a full arena (8 fighters, a beast, the crowd)
    on a low, a mid and a high PC, with and without the C++ voxel core. That gives the minimum
    and recommended requirements for the page and checks the "Low" performance mode.

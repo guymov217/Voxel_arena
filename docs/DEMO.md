@@ -21,8 +21,8 @@ The demo is the same game exported with the `demo` feature (`scripts/game/editio
 
 Try it without exporting: double-click `play_demo.bat` (Windows; set `GODOT` to your Godot exe if
 it is not on the PATH) or run `./play_demo.sh`, or `godot --path . -- --demo`, or `WRECKSMITH_DEMO=1`.
-The *Builds* workflow also exports the demo itself (artifacts `wrecksmith-demo-windows` and
-`wrecksmith-demo-linux`), from whatever is on the branch.
+The *Builds* workflow also exports and packs the demo itself (artifacts `wrecksmith-steam` and
+`wrecksmith-standalone`), from whatever is on the branch (`docs/PACKAGING.md`).
 
 ## Shipping it on Steam
 
@@ -49,29 +49,23 @@ The *Builds* workflow also exports the demo itself (artifacts `wrecksmith-demo-w
    testing outside Steam. Do not ship that file in the depot: when launched by Steam, Steam
    passes the App ID itself.
 
-### 3. Build
+### 3. Build and upload
 
-Run the *Builds* workflow (Actions tab, or push a `v*` tag). Besides the full game, it exports
-`wrecksmith-demo-windows`, `wrecksmith-demo-linux` and `wrecksmith-demo-macos`.
+`docs/PACKAGING.md` has the whole story; in short:
 
-Locally:
 ```
-godot --headless --path . --export-release "Windows Desktop (Demo)" build/demo/windows/WRECKSMITH_Demo.exe
-godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECKSMITH_Demo.x86_64
+tools\package.bat --channel steam --steam-editions demo     exports the demo and packs it into dist/steam/
+(put the demo's App id and its depot ids in tools/steam/steam_ids.json, then: tools\package.bat --skip-export)
+dist\steam\upload.bat demo preview                          lists what would go up, uploads nothing
+dist\steam\upload.bat demo                                  the upload (steamcmd asks the password and the Steam Guard code)
 ```
 
-### 4. Upload (SteamPipe)
+Then in Steamworks, *SteamPipe → Builds*: set the uploaded build live on a private beta branch, test it through the Steam
+client, and only then on the `default` branch. The *Builds* workflow (Actions tab, or push a `v*` tag) does the same for all
+three systems and attaches the result (`wrecksmith-steam`, `wrecksmith-standalone`) to the run. The same command makes the
+free download for people without Steam (`dist/standalone/`: a zip, a tar.gz, a Windows installer).
 
-1. Put the exported folders in `build/demo/windows/` and `build/demo/linux/`.
-2. In `tools/steam/`, replace `DEMO_APP_ID` and the depot IDs in the three `.vdf` files.
-3. With the Steamworks SDK's `steamcmd`:
-   ```
-   steamcmd +login <builder account> +run_app_build ../tools/steam/app_build_demo.vdf +quit
-   ```
-4. In Steamworks, *SteamPipe → Builds*: set the uploaded build live on the `default` branch.
-   Before that, test it on a private beta branch through the Steam client.
-
-### 4b. Steam Cloud, achievements and the content survey
+### 4. Steam Cloud, achievements and the content survey
 
 - **Steam Cloud.** The game keeps one save file, `user://save.json` (with `save.json.bak` beside
   it; see `scripts/autoload/save.gd`), so Steam Auto-Cloud covers it without code. In Steamworks,

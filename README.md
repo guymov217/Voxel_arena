@@ -725,22 +725,26 @@ run: `godot --path . -- --host`, `--join <address>`, `--name <name>`, `--bot`, `
 
 ## Exporting
 
-`.github/workflows/build.yml` builds the game for Windows, Linux and macOS. Run **Godot builds**
-from the repository's Actions tab, or push a tag such as `godot-v0.1`. Each build appears as a
-download on the run page. The presets live in `export_presets.cfg`.
+`tools/package.py` (on Windows, double-click `tools\package.bat`) exports the game and packs it two ways, for the demo
+and for the full game: for **Steam** (`dist/steam/`: the files of each depot, the SteamPipe scripts and `upload.bat`) and
+as a download for **people without Steam** (`dist/standalone/`: a zip, a tar.gz and a Windows installer; these builds never
+start Steam). It needs Godot 4.7 with its export templates (`--install-templates` fetches them). `docs/PACKAGING.md` has
+the whole story: the ids to fill in, the upload, what it checks, what is not done.
 
-To export by hand, install the export templates for 4.7.2 (Editor → Manage Export Templates),
-then run this:
+`.github/workflows/build.yml` does it for Windows, Linux and macOS. Run **Builds** from the repository's Actions tab, or
+push a tag such as `v0.1`; the packages appear as downloads on the run page.
+
+To export by hand, install the export templates for 4.7.2 (Editor → Manage Export Templates), then run this
+(`export_presets.cfg` has twelve presets: full game and demo × Windows, Linux, macOS × Steam and standalone):
 
 ```bash
-godot --headless --path . --export-release "Windows Desktop" build/windows/WRECKSMITH.exe
+godot --headless --path . --export-release "Windows Desktop" build/steam/full/windows/WRECKSMITH.exe
 ```
 
 The macOS build is not signed. On a Mac, right-click it and choose Open the first time.
 
-For a Steam build, ship the GodotSteam extension's `addons/` folder and the `steam_api` library.
-They come with the GodotSteam download. Upload the export through SteamPipe as described in
-the Steamworks documentation.
+For a Steam build, ship the GodotSteam extension's `addons/` folder (it brings the `steam_api` library);
+`tools/package.py --godotsteam <its zip>` puts it in. The packager's SteamPipe scripts upload the result.
 
 Store screenshots: `xvfb-run -s "-screen 0 1920x1080x24" godot --rendering-driver vulkan
 --resolution 1920x1080 --path . -- --probe steamshots` with `SHOT_DIR` set saves 1920×1080

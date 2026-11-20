@@ -1,7 +1,8 @@
 name: Builds
 
-# Builds the C++ voxel core and exports the game for Windows, Linux and macOS. Run it from the
-# Actions tab (or push a tag like v0.1); each build is attached to the run as a download.
+# Builds the C++ voxel core, tests the game, exports it for Windows, Linux and macOS and packs it (tools/package.py):
+# for Steam (depots + SteamPipe scripts) and as downloads for people without Steam. Run it from the Actions tab
+# (or push a tag like v0.1); the packages are attached to the run as downloads.
 on:
   workflow_dispatch:
   push:
@@ -66,39 +67,34 @@ jobs:
         run: |
           godot --headless --path . --import || true
           GODOT=/usr/local/bin/godot sh run_tests.sh
-      - name: Export
+      - name: GodotSteam for the Steam builds (optional)
+        # Set the repository variable GODOTSTEAM_URL to the address of the GodotSteam GDExtension zip; without it the
+        # Steam builds are made with no Steam library (they run, but without the overlay, lobbies or achievements).
+        if: ${{ vars.GODOTSTEAM_URL != '' }}
+        env:
+          GODOTSTEAM_URL: ${{ vars.GODOTSTEAM_URL }}
         run: |
-          mkdir -p build/windows build/linux build/macos
-          godot --headless --path . --export-release "Windows Desktop" build/windows/WRECKSMITH.exe
-          godot --headless --path . --export-release "Linux" build/linux/WRECKSMITH.x86_64
-          godot --headless --path . --export-release "macOS" build/macos/WRECKSMITH.zip
-          # The free demo (its own Steam app): the same game with the "demo" feature on.
-          mkdir -p build/demo/windows build/demo/linux build/demo/macos
-          godot --headless --path . --export-release "Windows Desktop (Demo)" build/demo/windows/WRECKSMITH_Demo.exe
-          godot --headless --path . --export-release "Linux (Demo)" build/demo/linux/WRECKSMITH_Demo.x86_64
-          godot --headless --path . --export-release "macOS (Demo)" build/demo/macos/WRECKSMITH_Demo.zip
-          ls -la build/* build/demo/*
+          curl -sSLo godotsteam.zip "$GODOTSTEAM_URL"
+          echo "GODOTSTEAM_ZIP=$PWD/godotsteam.zip" >> "$GITHUB_ENV"
+      - name: Install NSIS (the Windows installer)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
+      - name: Package
+        # Exports the full game and the demo for Windows, Linux and macOS, and packs them: dist/steam (the depots and the
+        # SteamPipe scripts) and dist/standalone (zip, tar.gz, installer: for people without Steam). docs/PACKAGING.md.
+        run: |
+          args=""
+          [ -n "$GODOTSTEAM_ZIP" ] && args="--godotsteam $GODOTSTEAM_ZIP"
+          python3 tools/package.py --clean --godot /usr/local/bin/godot $args
+          cat dist/PACKAGE_REPORT.md
       - uses: actions/upload-artifact@v4
         with:
-          name: wrecksmith-windows
-          path: build/windows/
+          name: wrecksmith-steam
+          path: dist/steam/
       - uses: actions/upload-artifact@v4
         with:
-          name: wrecksmith-linux
-          path: build/linux/
+          name: wrecksmith-standalone
+          path: dist/standalone/
       - uses: actions/upload-artifact@v4
         with:
-          name: wrecksmith-macos
-          path: build/macos/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wrecksmith-demo-windows
-          path: build/demo/windows/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wrecksmith-demo-linux
-          path: build/demo/linux/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wrecksmith-demo-macos
-          path: build/demo/macos/
+          name: package-report
+          path: dist/PACKAGE_REPORT.md

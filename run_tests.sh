@@ -12,6 +12,10 @@ cd "$(dirname "$0")" || exit 1
 fail=0
 errs=$(sh ./check.sh)
 if [ -n "$errs" ]; then echo "$errs"; fail=1; else echo "parse: ok"; fi
+# The packaging tool's own checks (presets, SteamPipe scripts, archives; no Godot in them). Skipped where there is no Python.
+if python3 -c "import sys" >/dev/null 2>&1; then
+	if python3 tools/test_package.py > /tmp/va_package_test.log 2>&1; then echo "package tool: ok"; else echo "package tool: FAIL"; tail -20 /tmp/va_package_test.log; fail=1; fi
+fi
 # --fixed-fps: one physics step to every frame, however fast the machine, so what runs per frame
 # and what runs per step keep in step and a run comes out the same every time. And one worker
 # thread: the physics' jobs ran in parallel on the pool, and with many bodies about (the fight

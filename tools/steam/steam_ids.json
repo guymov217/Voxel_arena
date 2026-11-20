@@ -1,0 +1,5 @@
+{
+	"_about": "Steam's ids for tools/package.py's SteamPipe scripts. 0 = not set yet (the scripts then hold placeholders and upload.bat refuses to run). The full game's app and the demo's app are two apps, each with its own depots (one per system). docs/PACKAGING.md says where Steamworks shows them.",
+	"full": { "app_id": 0, "depots": { "windows": 0, "linux": 0, "macos": 0 } },
+	"demo": { "app_id": 0, "depots": { "windows": 0, "linux": 0, "macos": 0 } }
+}
