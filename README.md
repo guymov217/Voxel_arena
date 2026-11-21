@@ -719,6 +719,21 @@ reports, each second, how many physics steps the host keeps up (of 120), its CPU
 longest wait between two. All of them share the one machine's CPU, so the times are worse than in
 a real game, where each player has a computer of his own; the bytes are the same.
 
+`tools/net_load.sh` takes more: `NET_MODE=ffa|teams|pvp|chaos|king` plays that arena mode (8 players: free-for-all is 11
+fighters with its 3 bots, teams and pvp 8), `HOST_CPUS=0 GUEST_CPUS=1-3` pins the host to its own core and the guests to the
+others (so the guests' work does not take the host's time, as in a real room), `NET_LAG=100 NET_LOSS=3` makes every line poor,
+`NET_NOSTAGE=1` builds fighters in one frame as before. The host reports how long its physics steps took one after another
+(median, 99th, worst, how many over a frame at 60 and at 30 and over a tenth of a second: a stall is a long step, not a high
+mean), each guest the same for its own steps and how long it was held up taking in each kind of message. Measured here (a
+4-vCPU 2.1 GHz Xeon, the host on one core of it, about half of a gaming PC's core): 8 players in a free-for-all, 11 fighters:
+steps 9.1-9.7 ms median, 18-19 ms at the 99th, 29-37 ms worst, none over 100 ms; 95-103 of 120 steps a second at 100% of that
+core; 500 KB/s up from the host (70 KB/s a guest); a guest 25-28% of a core without drawing, snapshots 28 ms apart at the 95th.
+Teams, 8 players, 100 ms and 3% loss: 8.2 ms median, 114 steps, 21-23 ms apart. A guest used to build every fighter the host
+spawned in the frame the message came in (a man 130-440 ms, the eleven of a free-for-all 1.6-2.4 s of a stopped game); it now
+builds them one at a time over the frames (`Match.guest_staging`: his own man at once, what the host says of the others meanwhile
+kept and said again, a spawn the host takes back before its turn never built), as the host does for a wave, and a player who
+joins is built over the frames on the host too.
+
 A room keeps time (`Net.steps_cap`, `Net._pace`). The engine runs at most 4 physics steps in a frame and lets the
 game fall behind the clock beyond that, so below 30 frames a second a game runs in slow motion; alone that stops a
 heavy moment snowballing, in a room it made the host's world, which every guest draws, run slow for all of them (two

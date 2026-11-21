@@ -102,6 +102,21 @@ before the demo goes out:
 Before that, on one computer: `sh tools/net_load.sh 7` plays a full room of bots over localhost
 and says what the host sends and whether it keeps up (README, Load test).
 
+## What a full room needs (8 players)
+
+Measured with `NET_MODE=ffa sh tools/net_load.sh 7` (README, Load test), on a computer about half as fast per core as a
+gaming PC:
+
+- **The host's computer does the work.** Every fighter on the sand costs the host about 0.8 ms of each 8.3 ms physics step on
+  that reference core: 8 fighters about 8 ms, the 11 of a free-for-all (8 players and 3 bots) about 9-10 ms, so that core held 95-103
+  of 120 steps. A core twice as fast hosts them with room to spare. `tools/host_bench.bat` says how many fighters a computer
+  hosts, and F3 says in the room whether it keeps up (green from 112 of 120 steps).
+- **The host's line:** about 70 KB a second to each guest, 500 KB/s (4 Mbit/s) for 7 guests: an upload of 6 Mbit/s or more.
+  A guest needs a tenth of that.
+- **A guest's computer** needs little: 25-30% of a core without drawing, snapshots 28 ms apart at the 95th.
+- **Nothing stops a guest's game now** when fighters are spawned (a man built in one frame was 130-440 ms, the eleven at the
+  start of a free-for-all 1.6-2.4 s): they come in one at a time over the frames, his own man first.
+
 ## If everything looks slow (slow motion)
 
 Press **F3** in both windows (the host's and the guest's) and read two lines.

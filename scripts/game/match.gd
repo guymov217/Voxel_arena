@@ -84,6 +84,10 @@ var headless := false
 var guest_bot_on := false
 var input_acc := 0.0
 var puppets := {}           # guest: body -> [from, to, t0, length]: drawn between the host's snapshots
+var guest_pending := {}     # guest: id -> the spawn of a fighter not built yet (its "_said": what the host said of him meanwhile, said again once he is in)
+var _guest_queue: Array = []   # guest: the host's spawns still to build, one at a time
+var _joining := 0           # host: players whose fighters are being built (over the frames) as they join: their places are kept
+var _guest_building := false
 var snap_t := -1.0
 var snap_gap := SNAP_EVERY / 120.0
 var guest_bot: Bot
@@ -444,6 +448,13 @@ var stage_always := false   # (a test's: staged without a screen too, from the f
 func staging() -> bool:
 	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless" and time > 1.0))
 
+## A guest builds what the host spawns the same way: one after another, a part a frame, and not all in the frame the
+## spawn message came in. Built in one go a man was 130 ms, an armoured one up to 700, a lion half a second, and the
+## eleven of a free-for-all at its start stopped a guest's game for 1.6 to 2.4 seconds (the load test, `net_load.sh`);
+## a wave in a bout stopped every guest at once, in the middle of the fight.
+func guest_staging() -> bool:
+	return role == "guest" and stage_in and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
+
 func bring_in(specs: Array, on_in := Callable()) -> void:
 	if not staging():
 		for spec in specs:
@@ -704,7 +715,17 @@ func add_peer(id: int, p: Dictionary) -> void:
 	for e in entities:
 		if is_instance_valid(e.f):
 			Net.send_to(id, "spawn", _spawn_msg(e))
-	var pe = spawn_fighter({"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * entities.size() - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if mode == "yard" or mode == "campaign" else {}, "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null})
+	var pspec := {"kind": "remote", "peer": id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size() + _joining) - 3.0, 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if mode == "yard" or mode == "campaign" else {}, "body": Body.sanitize(p.get("body", {})) if mode == "yard" or mode == "campaign" else null}
+	# (A man built in one frame was a stop of the host's game, and so of every guest's: over the frames, as a wave is.)
+	var pe = null
+	if staging():
+		_joining += 1
+		pe = await spawn_fighter_staged(pspec)
+		_joining -= 1
+	else:
+		pe = spawn_fighter(pspec)
+	if pe == null:
+		return   # (the match went first)
 	pe.inventory = Net.sanitize_kit(p.get("kit", {}))
 	for e in entities:
 		e.erase("held_sig")   # (what everyone holds ready, to him too)
@@ -1692,7 +1713,12 @@ func guest_end(data: Dictionary) -> void:
 	# (Dead on the sand as the bout ended: carried off it, if the party won.)
 	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0)), "fell": me != null and is_instance_valid(me.f) and not me.f.alive})
 
+## The host's messages that name a fighter by his id (kept for one not built yet: guest_spawn).
+const PENDING_TYPES := ["bone", "gutp", "guts", "held", "wloose", "wpick", "breath", "douse", "spot"]
+
 func guest_message(type: String, data) -> void:
+	if not guest_pending.is_empty() and data is Dictionary and PENDING_TYPES.has(type) and _guest_keep(int(data.get("id", -1)), type, data):
+		return
 	match type:
 		"bone":
 			# (Taken only as a part of someone, a point near it and a reach.)
@@ -3337,6 +3363,11 @@ func _remove_entity(e: Dictionary) -> void:
 
 ## A guest drops the fighter the host is about to send again.
 func guest_despawn(id: int) -> void:
+	if guest_pending.has(id):
+		# (Not built yet, or being built just now: he is dropped before his turn, or the moment he is in.)
+		(guest_pending[id] as Dictionary)["_cancelled"] = true
+		guest_pending.erase(id)
+		return
 	var e = entity_by_id(id)
 	if e:
 		_remove_entity(e)
@@ -3773,13 +3804,25 @@ func apply_snapshot(s: Array) -> void:
 					bwp.set_meta("hold_t", maxf(0.0, float(bw[2])))
 					throwables._show_draw(bwp, e.f, d)
 
-## A guest builds what the host spawned.
+## A guest builds what the host spawned: his own man at once (he must be able to act), the others over the
+## frames that follow (guest_staging), what the host says of one of them meanwhile kept and said again when he is in.
 func guest_spawn(spec: Dictionary) -> void:
-	if entity_by_id(int(spec.id)) != null:
+	if entity_by_id(int(spec.id)) != null or guest_pending.has(int(spec.id)):
 		return
 	spec.pos = Vector3(spec.pos[0], spec.pos[1], spec.pos[2]) if spec.pos is Array else spec.pos
 	if spec.has("worn"):
 		spec.worn = clean_worn(spec.worn)
+	var mine: bool = spec.kind == "remote" and int(spec.get("peer", -1)) == Net.my_id()
+	if mine or not guest_staging():
+		_guest_build(spec)
+		return
+	spec["_said"] = []
+	guest_pending[int(spec.id)] = spec
+	_guest_queue.append(spec)
+	if not _guest_building:
+		_guest_build_queue()
+
+func _guest_build(spec: Dictionary) -> void:
 	if spec.kind == "beast":
 		spawn_beast(spec)
 	else:
@@ -3787,7 +3830,47 @@ func guest_spawn(spec: Dictionary) -> void:
 		if spec.kind == "remote" and int(spec.get("peer", -1)) == Net.my_id():
 			me = e
 
+func _guest_build_queue() -> void:
+	_guest_building = true
+	while not _guest_queue.is_empty() and is_inside_tree() and not over:
+		var spec: Dictionary = _guest_queue.pop_front()
+		if spec.get("_cancelled", false):
+			continue   # (the host dropped him before his turn)
+		var e = null
+		if spec.kind == "beast":
+			e = await spawn_beast_staged(spec)
+		else:
+			e = await spawn_fighter_staged(spec)
+		if not is_inside_tree():
+			return
+		var said: Array = spec.get("_said", [])
+		spec.erase("_said")
+		if is_same(guest_pending.get(int(spec.id)), spec):
+			guest_pending.erase(int(spec.id))
+		if e == null:
+			continue
+		if spec.get("_cancelled", false):
+			_remove_entity(e)   # (dropped while he was being built)
+			continue
+		for h in said:
+			if h[0] == "vox":
+				guest_vox(h[1])
+			else:
+				guest_message(h[0], h[1])
+	_guest_building = false
+
+## Said of a fighter the guest has not built yet: kept (not too many) for when he is in.
+func _guest_keep(id: int, type: String, data) -> bool:
+	if not guest_pending.has(id):
+		return false
+	var said: Array = (guest_pending[id] as Dictionary).get("_said", [])
+	if said.size() < 400:
+		said.append([type, data])
+	return true
+
 func guest_vox(m: Dictionary) -> void:
+	if not guest_pending.is_empty() and _guest_keep(int(m.get("id", -1)), "vox", m):
+		return
 	var e = entity_by_id(int(m.id))
 	if e and int(m.part) >= 0 and int(m.part) < e.f.parts.size():
 		var p: VoxelPart = e.f.parts[int(m.part)]

@@ -69,6 +69,7 @@ func _on(type: String, data, _from: int) -> void:
 		"start":
 			m = Match.new()
 			add_child(m)
+			m.stage_always = true   # (a guest with a screen builds the host's fighters one at a time over the frames: Match.guest_staging)
 			m.setup({"mode": data.mode, "stage": data.stage, "role": "guest", "headless": true, "autopilot": true})
 			Net.my_body = {"missing": ["forearmL"]}
 			Net.push_me()
