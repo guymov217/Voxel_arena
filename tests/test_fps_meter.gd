@@ -19,6 +19,13 @@ func test_the_meter_reads_the_frames() -> void:
 	t.check(plain.contains("16.7 ms a frame"), "the last second's mean frame (%s)" % plain)
 	t.check(plain.contains("worst in 5 s 41.0 ms") and plain.contains("1 frames over 33 ms"), "the worst of the last five seconds, and how many were slow (%s)" % plain)
 	t.eq(String(out[1]), "physics 2.5 ms a step · frame without physics 3.3 ms (drawing 4.0 ms) · graphics card 6.5 ms", "and what the last frame's work took")
+	# The C++ core, when the work says so: green when it is there, red when the game runs without it.
+	var with_core: Array = FpsMeter.lines(frames, now, 60.0, {"physics": 2.5, "frame": 3.3, "draw": 4.0, "gpu": 6.5, "native": true})
+	var plain_on := RegEx.create_from_string("\\[[^\\]]*\\]").sub(String(with_core[1]), "", true)
+	t.check(plain_on.ends_with("native core on"), "the native core on (%s)" % plain_on)
+	var no_core: Array = FpsMeter.lines(frames, now, 60.0, {"physics": 2.5, "frame": 3.3, "draw": 4.0, "gpu": 6.5, "native": false})
+	var plain_off := RegEx.create_from_string("\\[[^\\]]*\\]").sub(String(no_core[1]), "", true)
+	t.check(plain_off.ends_with("native core OFF (slower)") and String(no_core[1]).contains("#d9534f"), "and off, in red (%s)" % plain_off)
 	# (Nothing slow: no frame counted.)
 	var calm := RegEx.create_from_string("\\[[^\\]]*\\]").sub(String(FpsMeter.lines(frames.slice(1), now, 60.0, {})[0]), "", true)
 	t.check(calm.contains("0 frames over 33 ms"), "nothing slow, nothing counted (%s)" % calm)

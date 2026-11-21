@@ -337,7 +337,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the right stick looks, and a held trigger turns the right stick into that hand. F11 is full
   screen, F12 a screenshot, F3 the frame rate in the corner (`scripts/ui/fps_meter.gd`: frames
   a second, the mean and the longest frame, the longest physics step and frame without physics,
-  and the drawing and the graphics card's time in ms; in a room the connection's meter with it).
+  and the drawing and the graphics card's time in ms, and whether the C++ core is loaded: without it a
+  step costs a fifth more; in a room the connection's meter with it).
   The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
   pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
   the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a

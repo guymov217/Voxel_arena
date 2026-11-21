@@ -86,7 +86,7 @@ func _process(_dt: float) -> void:
 ## The work (ms), by the engine's own measures: the longest physics step and the longest frame
 ## without physics of the last second, the last frame's drawing.
 func _work() -> Dictionary:
-	var w := {"physics": Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, "frame": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, "draw": 0.0, "gpu": 0.0}
+	var w := {"physics": Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, "frame": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, "draw": 0.0, "gpu": 0.0, "native": Greedy.core() != null}
 	if DisplayServer.get_name() != "headless" and is_inside_tree():
 		var rid := get_viewport().get_viewport_rid()
 		w.draw = RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
@@ -116,6 +116,10 @@ static func lines(frames: Array, now: float, fps: float, work: Dictionary) -> Ar
 		_grade("%.1f" % worst, worst, 25.0, 50.0, false),
 		_grade("%d" % slow, float(slow), 0.0, 5.0, false)] + "   [color=#9a8f80](F3)[/color]")
 	out.append(Loc.t("physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms") % [float(work.get("physics", 0.0)), float(work.get("frame", 0.0)), float(work.get("draw", 0.0)), float(work.get("gpu", 0.0))])
+	# (Whether the C++ core is loaded: without it, a step costs a fifth more and the machine looks slow for no reason one could see.)
+	if work.has("native"):
+		var on: bool = bool(work.get("native"))
+		out[1] = String(out[1]) + "   [color=%s]%s[/color]" % ["#7ac36a" if on else "#d9534f", "native core on" if on else "native core OFF (slower)"]
 	return out
 
 ## Green when it is good, amber when it is getting bad, red when it is bad (`up`: more is better).
