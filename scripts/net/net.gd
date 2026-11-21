@@ -136,6 +136,9 @@ func _init_steam() -> void:
 	# if the library is about: with the Steam client open it would show the player as playing Valve's test app 480.
 	if OS.has_feature("standalone"):
 		return
+	# A friend who is not there (Friends) joins by address and has no Steam: the player's Steam is the host's alone.
+	if OS.get_cmdline_user_args().has("--friend"):
+		return
 	if not Engine.has_singleton("Steam"):
 		return
 	steam = Engine.get_singleton("Steam")

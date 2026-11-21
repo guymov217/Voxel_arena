@@ -14,6 +14,13 @@ func _ready() -> void:
 		path = "user://test_save.json"
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 		return
+	# A friend who is not there (Friends, FriendPilot: a game the host's opens to try a room with) plays on a save of his own,
+	# new each time, never on the player's.
+	if args.has("--friend"):
+		var i := args.find("--persona")
+		path = "user://friend_%s.json" % (args[i + 1] if i >= 0 and args.size() > i + 1 else "0")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		return
 	load_save()
 
 ## Back to a new player's save (the test runner, before each test).

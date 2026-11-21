@@ -90,6 +90,7 @@ var next_id := 1
 var training: Dictionary = {}
 var headless := false
 var guest_bot_on := false
+var guest_bot_target = null   # an entity the guest's bot goes for, in place of the nearest enemy (FriendPilot's quarrels in the yard)
 var input_acc := 0.0
 var probe_input := {}      # a test's own hands for a guest without a screen (tests/net_lat_guest.gd); empty: none
 var _players_by_frame := false   # host: the players' fighters go out from _process, once a frame
@@ -1509,6 +1510,9 @@ func _guest_bot_input(dt: float) -> Dictionary:
 	if guest_bot == null or guest_bot.c != me.f:
 		guest_bot = Bot.new(me.f, 0.9, "standard", 99)
 	var tgt = nearest_enemy(me)
+	# (A friend who is not there picks a quarrel in the yard: FriendPilot names whom the bot goes for.)
+	if guest_bot_target != null and is_instance_valid(guest_bot_target.f) and guest_bot_target.f.alive:
+		tgt = guest_bot_target
 	var inp: Dictionary = guest_bot.update(dt, tgt.f if tgt else null, _world_of(me))
 	var yaw: float = me.f.yaw
 	if tgt:

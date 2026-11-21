@@ -118,4 +118,14 @@ if timeout 1500 "$G" --headless --path . -- --probe e2e_run --port "$NET_PORT" $
 else
 	echo "net (end to end): FAIL"; grep -E "FAIL|RESULT|checks," /tmp/va_e2e.log | tail -25; fail=1
 fi
+# Friends who are not there (Friends, FriendPilot, FriendsStrip; tests/friend_probe.gd): a room opened as a host opens it, two friends
+# brought in by the strip's own + button and F6 (each a game of this project, joining by address), who walk the yard, go into a stall
+# when told (the host holds a man at a stall untouchable), pick a quarrel, fight in a free for all, and one is asked to leave and
+# one is cut off. What the host sees is what a real friend's game shows him.
+export NET_PORT=$((NET_PORT + 1))
+if timeout 700 "$G" --headless --path . -- --probe friend_probe --port "$NET_PORT" > /tmp/va_friends.log 2>&1; then
+	echo "net (friends): ok ($(grep -E '^FRIENDS' /tmp/va_friends.log))"
+else
+	echo "net (friends): FAIL"; grep -E "FAIL|RESULT|FRIENDS" /tmp/va_friends.log | tail -25; fail=1
+fi
 exit $fail

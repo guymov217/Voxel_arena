@@ -93,6 +93,20 @@ the fight for everyone and after the bout everyone is back in the yard.
 - A guest who joins late walks into the yard; one who closes the game is gone from it within about ten seconds.
 - With option 3, the guest's movement should feel a little late but never freeze or jump.
 
+## By hand: one window, with friends who are not there
+
+Double-click **`multiplayer_playtest.bat`** (`sh tools/mp_playtest.sh` elsewhere) for one window, yours, as the host of a room
+(an Arena room, a campaign room, or straight into the yard). Top right of the game is a small strip: **+** (F6) a friend comes
+in, **−** (F7) the newest says goodbye and goes, **×** (F8) the newest one's connection is cut at once, as a game that
+crashes, **~** (F9) the friends who come now come over a poor connection (120 ms, 3% lost).
+
+Each friend is a game of his own with a name, arms and a face of his own (Brutus, Cassia, Decimus...). He joins by your
+room's address as a friend's game does and plays: in the yard he wanders, goes up to the stalls and into them, now and then
+picks a quarrel with whoever is near (so a stall is the place to stand if you want to be left alone); in a fight a bot plays
+his fighter; the endless arena's rewards, the rudis and the forge's ready he answers after a moment's thought. Up to seven.
+He does not talk, and he does not forge. Try the room as a host does: bring one in while you are in the lobby, two more
+in the yard, send one away in the middle of a bout, cut one off and watch the room find him gone.
+
 ## Two real computers on one network
 
 On the host computer double-click `multiplayer_test.bat` and pick 1, then close the guest window

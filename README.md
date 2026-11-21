@@ -905,6 +905,21 @@ LOSS=3` holds every incoming message back 120 ms (±30) and drops 3% of the unre
 pretend poor connection to see how the game feels at that latency. The same flags work on a plain
 run: `godot --path . -- --host`, `--join <address>`, `--name <name>`, `--bot`, `--lag 120 --loss 3`.
 
+### Friends who are not there: trying a room by yourself
+
+To try multiplayer by hand with no one to play with, double-click **`multiplayer_playtest.bat`** (Windows; `sh tools/mp_playtest.sh`
+elsewhere). One window opens, yours, on an Arena room's lobby (`ROOM=campaign` for a campaign room, `YARD=1` to go straight
+into the yard), with a small strip in its top corner: **F6** (or the **+** button) a friend comes in, **F7** (−) the newest one
+says goodbye and goes, **F8** (×) the newest one's line is cut at once, as a game that crashes or a cable pulled, **F9** (~) the friends
+who come now come over a poor line (120 ms each way, 3% lost). Each friend is a game of this project of his own (`scripts/net/friends.gd`
+opens them with no window, `-- --friend --join 127.0.0.1 --port N --persona I`) that joins the room by its address as a friend's
+game does, with a name, arms and a face of his own (seven personas, Brutus, Cassia, Decimus...), and plays one (`friend_pilot.gd`):
+in the yard he wanders, goes up to the stalls and into them, now and then picks a quarrel with whoever is near; in a fight a bot plays
+his fighter; the endless arena's rewards, the rudis and the forge's ready he answers after a moment's thought. What he does is only
+what a player's hands and the game's own calls do, so what you see is what a friend's game would show you. Up to seven at once.
+`tests/test_friends.gd` is the table and the strip; `tests/friend_probe.gd` (in `run_tests.sh`, "net (friends)") opens a room, brings
+two in with the strip's own button and key, and looks at all of the above, a free for all and a leaving included.
+
 ## Exporting
 
 `tools/package.py` (on Windows, double-click `tools\package.bat`) exports the game and packs it two ways, for the demo

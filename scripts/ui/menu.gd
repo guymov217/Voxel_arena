@@ -3164,7 +3164,9 @@ func _join_address(text: String) -> void:
 ## `--host` opens a room by address (`--arena` for the friends' Arena, else the co-op campaign's; `--yard` goes into the yard
 ## at once instead of waiting in the lobby), `--join 127.0.0.1` joins one, `--name Guest` names you,
 ## `--bot` lets a bot play this window's fighter, `--lag 120 --loss 3` fakes a poor connection
-## (multiplayer_test.bat).
+## (multiplayer_test.bat), `--port N` the room's port. `--host ... --playtest` adds the friends who are not there (FriendsStrip: F6
+## a friend comes in, F7 goes, F8 is cut off, F9 a poor line for the next); `--friend --join 127.0.0.1 --persona I` is one of them
+## (Friends opens these: multiplayer_playtest.bat).
 func _cmdline_room() -> void:
 	await get_tree().process_frame   # (the world root is added deferred too: a yard needs it in the tree)
 	var args := OS.get_cmdline_user_args()
@@ -3176,18 +3178,52 @@ func _cmdline_room() -> void:
 	var i := args.find("--name")
 	if i >= 0 and args.size() > i + 1:
 		Net.my_name = args[i + 1]
+	var room_port := Net.PORT
+	i = args.find("--port")
+	if i >= 0 and args.size() > i + 1:
+		room_port = int(args[i + 1])
+	if args.has("--friend"):
+		_friend_mode(args, room_port)
+		return
 	if args.has("--host"):
 		Net.room_kind = Net.KIND_ARENA if args.has("--arena") else Net.KIND_CAMPAIGN
-		if Net.host_enet() != OK:   # `connected` takes the host to the lobby
-			show_screen("mp", Loc.t("Could not open port %d") % Net.PORT)
+		if Net.host_enet(room_port) != OK:   # `connected` takes the host to the lobby
+			show_screen("mp", Loc.t("Could not open port %d") % room_port)
 		elif args.has("--yard"):
 			enter_yard()
+		if args.has("--playtest") and Net.is_host():
+			var strip := FriendsStrip.new()
+			get_tree().root.add_child(strip)
+			strip.friends.port = room_port
 		return
 	i = args.find("--join")
 	if i >= 0:
 		var addr := args[i + 1] if args.size() > i + 1 and not args[i + 1].begins_with("--") else "127.0.0.1"
-		if Net.join_enet(addr) != OK:
+		if Net.join_enet(addr, room_port) != OK:
 			show_screen("mp", Loc.t("Could not connect to %s") % addr)
+
+## A friend who is not there: a persona's name, arms and face, a save of his own (Save), his room's address, and FriendPilot to play him.
+func _friend_mode(args: Array, room_port: int) -> void:
+	var pi := 0
+	var k := args.find("--persona")
+	if k >= 0 and args.size() > k + 1:
+		pi = clampi(int(args[k + 1]), 0, Friends.PERSONAS.size() - 1)
+	var p: Dictionary = Friends.PERSONAS[pi]
+	Save.set_value("name", String(p.name))
+	Net.my_name = String(p.name)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(String(p.name))
+	var lk := {"skin": rng.randi_range(0, Fighter.SKINS.size() - 1), "cloth": rng.randi_range(0, CLOTH.size() - 1), "v": LOOK_V}
+	for slot in LOOK_SLOTS:
+		lk[slot] = rng.randi_range(0, (LOOK_SLOTS[slot] as Array).size() - 1)
+	Save.set_value("look", lk)
+	set_arms(Friends.arms_of(pi))   # (and what the room is told of him: _net_loadout; FriendPilot dresses him again in an Arena room's sandbox)
+	Net.my_kit = kit()
+	Net.my_body = body()
+	cmd_bot = true
+	var pilot := FriendPilot.new()
+	pilot.setup(self, pi, "127.0.0.1", room_port)
+	add_child(pilot)
 
 func _on_lobbies(list: Array) -> void:
 	if room_list == null or not is_instance_valid(room_list):
