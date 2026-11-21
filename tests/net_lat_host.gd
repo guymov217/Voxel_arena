@@ -32,11 +32,28 @@ func _ready() -> void:
 			ge = e
 	# What the host itself sees of each press: the step its input was in, and the step his man had moved 2 cm (his answer to it).
 	var lats := []
+	var hand_lats := []
+	var h_in := -1.0
+	var h_p0 := Vector3.ZERO
 	var t_in := -1.0
 	var p0 := Vector3.ZERO
 	while Time.get_ticks_msec() - t1 < secs * 1000:
 		await get_tree().physics_frame
 		if ge != null and is_instance_valid(ge.f):
+			# (NET_HAND on the guest: the weapon of his right hand 3 cm on after his hand's mark went across the pane)
+			var wr = ge.f.weapons.get("R")
+			var mkx := float(((Net.inputs.get(gid, {}) as Dictionary).get("main", {"x": 0.0}) as Dictionary).get("x", 0.0))
+			if wr != null and is_instance_valid(wr):
+				if h_in == -1.0:
+					if mkx > 0.5:
+						h_in = Time.get_ticks_usec()
+						h_p0 = wr.global_position
+				elif h_in == -2.0:
+					if mkx < 0.3:
+						h_in = -1.0
+				elif (wr.global_position - h_p0).length() > 0.03:
+					hand_lats.append((Time.get_ticks_usec() - h_in) / 1000.0)
+					h_in = -2.0
 			var mz := float((Net.inputs.get(gid, {}) as Dictionary).get("mz", 0.0))
 			var pos: Vector3 = ge.f.torso.global_position
 			if t_in == -1.0:
@@ -48,6 +65,7 @@ func _ready() -> void:
 					t_in = -1.0
 			elif Vector2(pos.x - p0.x, pos.z - p0.z).length() > 0.02:
 				lats.append((Time.get_ticks_usec() - t_in) / 1000.0)
+				print("MOVED %d %.6f" % [lats.size() - 1, Time.get_unix_time_from_system()])
 				t_in = -2.0
 			elif mz < 0.5:
 				t_in = -1.0   # (let go before he moved: not counted)
@@ -60,6 +78,9 @@ func _ready() -> void:
 		for v in lats:
 			sum += v
 		print("HOST his input in, his man 2 cm on: n=%d min %.0f median %.0f mean %.0f worst %.0f ms" % [lats.size(), lats[0], lats[lats.size() / 2], sum / lats.size(), lats[-1]])
+	hand_lats.sort()
+	if not hand_lats.is_empty():
+		print("HOST his hand's mark in, his weapon 3 cm on: n=%d min %.0f median %.0f worst %.0f ms" % [hand_lats.size(), hand_lats[0], hand_lats[hand_lats.size() / 2], hand_lats[-1]])
 	print("HOST done (the guest ", "left" if left else "was still here", ")")
 	Net.send_all("bye", {})
 	await get_tree().create_timer(0.5).timeout

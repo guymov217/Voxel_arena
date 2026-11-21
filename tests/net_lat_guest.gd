@@ -47,6 +47,39 @@ func _torso() -> Vector3:
 func _wait(secs: float) -> void:
 	await get_tree().create_timer(secs).timeout
 
+func _hand(reps: int) -> void:
+	var look := {"yaw": 0.0, "pitch": 0.0}
+	var rest := {"mx": 0.0, "mz": 0.0, "look": look, "main": {"x": 0.1, "y": 0.15}}
+	var swing := {"mx": 0.0, "mz": 0.0, "look": look, "main": {"x": 0.7, "y": 0.5}}
+	var out := []
+	for rep in reps:
+		m.probe_input = rest
+		await _wait(1.6)
+		var w = m.me.f.weapons.get("R")
+		if w == null or not is_instance_valid(w):
+			print("GUEST HAND no weapon in his right hand")
+			return
+		await _wait(randf_range(0.0, 0.05))
+		var p0: Vector3 = w.global_position
+		var t0 := Time.get_ticks_usec()
+		m.probe_input = swing
+		var ms := -1.0
+		while Time.get_ticks_usec() - t0 < 2000000:
+			await get_tree().physics_frame
+			if (w.global_position - p0).length() > 0.03:
+				ms = (Time.get_ticks_usec() - t0) / 1000.0
+				break
+		print("HAND %d %.1f ms" % [rep, ms])
+		if ms >= 0.0:
+			out.append(ms)
+	m.probe_input = rest
+	out.sort()
+	if not out.is_empty():
+		var sum := 0.0
+		for v in out:
+			sum += v
+		print("GUEST HAND SUMMARY n=%d min %.0f median %.0f mean %.0f worst %.0f ms" % [out.size(), out[0], out[out.size() / 2], sum / out.size(), out[-1]])
+
 func _measure() -> void:
 	var reps := int(OS.get_environment("NET_REPS")) if OS.get_environment("NET_REPS") != "" else 30
 	var move := float(OS.get_environment("NET_MOVE")) if OS.get_environment("NET_MOVE") != "" else 0.02
@@ -70,6 +103,7 @@ func _measure() -> void:
 		await _wait(randf_range(0.0, 0.05))   # (the time of the press is no multiple of anyone's frame)
 		var p0 := _torso()
 		var t0 := Time.get_ticks_usec()
+		var wall0 := Time.get_unix_time_from_system()
 		m.probe_input = press
 		var ms := -1.0
 		while Time.get_ticks_usec() - t0 < 2500000:
@@ -78,11 +112,19 @@ func _measure() -> void:
 			if Vector2(p.x - p0.x, p.z - p0.z).length() > move:
 				ms = (Time.get_ticks_usec() - t0) / 1000.0
 				break
+		# (The key is held a quarter of a second in all, whatever his own screen showed: the host's man needs that long to move, and the
+		# host times it from the same clock: `PRESS` here, `MOVED` there, both the system clock's seconds.)
+		while Time.get_ticks_usec() - t0 < 250000:
+			await get_tree().physics_frame
 		m.probe_input = hands
+		print("PRESS %d %.6f" % [rep, wall0])
 		print("LAT %d %.1f ms (ping %d)" % [rep, ms, Net.ping_ms])
 		if ms >= 0.0:
 			lats.append(ms)
 		await _wait(1.6)   # (he stops, and stands)
+	# NET_HAND=n: and n times his main hand is sent across the pane, timed to the weapon's moving 3 cm on his own screen (a swing's delay).
+	if OS.get_environment("NET_HAND") != "":
+		await _hand(int(OS.get_environment("NET_HAND")))
 	lats.sort()
 	var limit := float(OS.get_environment("NET_MAX_MEDIAN")) if OS.get_environment("NET_MAX_MEDIAN") != "" else 0.0
 	if lats.is_empty():

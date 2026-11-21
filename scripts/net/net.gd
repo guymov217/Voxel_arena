@@ -28,8 +28,9 @@ const MAX_PLAYERS := 8
 ## and every other way to fight in it, takes eight (user).
 const CAMPAIGN_PLAYERS := 4
 const LOBBY_KEY := "voxelarena"
-## Bumped when what two games say to each other changes in a way an older game cannot follow.
-const PROTOCOL := 1
+## Bumped when what two games say to each other changes in a way an older game cannot follow. (2: a guest's inputs carry a number and
+## the snapshot row of his man the host's word on it, so that his own man is walked ahead of the host's picture: Match._predict_own.)
+const PROTOCOL := 2
 
 ## What every player of a room must be running: the game's version, the net protocol and the edition (the demo and
 ## the full game are separate apps on Steam and never meet there, but a join by address could mix them). A guest

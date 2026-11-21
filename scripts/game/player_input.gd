@@ -480,6 +480,9 @@ static func pack(inp: Dictionary) -> Array:
 	bits |= (1 if inp.get("depthOn", false) else 0) << 20
 	var aim = inp.get("aimAt")
 	bits |= (1 if aim is Vector3 else 0) << 18
+	# The number this input goes by (7 bits above the flags): the host says which it had got to, and a guest's own man is walked
+	# ahead of the host's word on what he sent since (MovePredictor).
+	bits |= (int(inp.get("seq", 0)) & 0x7F) << 24
 	var out := [snappedf(inp.get("mx", 0.0), 0.01), snappedf(inp.get("mz", 0.0), 0.01), snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(o.x, 0.001), snappedf(o.y, 0.001), snappedf(inp.get("thrust", 0.0), 0.01), snappedf(inp.get("offThrust", 0.0), 0.01), snappedf(inp.get("twist", 0.0), 0.01), snappedf(lk.yaw, 0.001), snappedf(lk.pitch, 0.001), bits, snappedf(inp.get("throwPower", 0.0), 0.01), int(inp.get("useItem", -1)), snappedf(inp.get("offTwist", 0.0), 0.01), snappedf(float(inp.get("charging", 0.0)), 0.01)]
 	# Where his crosshair sits (his camera's ray into the world): the bow, the thrust, a throw
 	# and a pot all go there, as they do for the host's own player.
@@ -525,6 +528,7 @@ static func unpack(a: Array) -> Dictionary:
 	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0
 	out.grip = bits & (1 << 17) != 0
 	out.revive = bits & (1 << 19) != 0
+	out.seq = (bits >> 24) & 0x7F
 	if a.size() > 15 and float(a[15]) > 0.0:
 		out.charging = clampf(float(a[15]), 0.0, 1.0)
 	if bits & (1 << 18) != 0 and a.size() > 18:

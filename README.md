@@ -848,7 +848,34 @@ second is one frame then two (a gap of 17 ms then 33 ms): they now go from `Matc
 last step, at most 60 a second, while the room is not full (the others, and a full room, as before); a guest takes gaps as
 short as two steps (`Match.MIN_SNAP_GAP`) and his hands go every frame (`Match.INPUT_EVERY`; a frame a hair short of a
 sixtieth was left out). Now 64 ms at 60 frames a second, 66 at 45, 62 at 144, for about 10% more on the wire and 1-2% more of
-a guest's CPU. `run_tests.sh` runs it ("net (delay)", the median may not pass 95 ms).
+a guest's CPU.
+
+What was left was the round trip itself: the keys, the host's step, the snapshot back; with a line of 100 ms it was 100 ms more.
+A guest's own man is therefore walked ahead of the host's word, on a model of the host's walking (`MovePredictor`, DOM-free;
+`Match._predict_own`, `_reconcile_own`, `_show_own`). Every input goes out with a number (7 bits above the flags of
+`PlayerInput.pack`); the host sends in his snapshot row (its last element, 6 numbers: `Match.snapshot`) the number it had got
+to, for how many of its steps it had walked by that input, where his torso was and how fast it went, which way he faces and
+his pace (`Fighter.walk_pace`: his speed over the plain walk's or run's, 0 when he is not on his own legs: down, held, in
+the air, hopping). The guest puts the model there and walks it on through the inputs sent since (the log of what it sent),
+up to now, and shows his man where the model has him: all his bodies by the same along-the-sand shift over the host's picture
+of him, a limb he lost where it fell. The model is his velocity closing on what the keys ask at 40 a second (measured on the
+host's own walking with `tests/walkresp.gd`: 63% of the pace in 25-33 ms); a host that does not agree (a wall, another man:
+the host's velocity along the keys' way is under what they ask, after they have been held a tenth of a second) is believed,
+and the model's walk is cut by as much along that way, so a man pushing on a wall is not shown into it; what the host's
+word moves the picture by is taken up over 60 ms, not in a jump, and when he cannot walk (down, held) the shift is eased out
+over 0.15 s. The guest's hands are also read in the first physics step of each frame (`Match._send_guest_input`), not in the
+frame's process after the steps: the keys were taken a frame after the steps that could walk his man by them. Together:
+32 ms at 60 frames a second, and the same with a pretend 30 ms each way (`NET_LAG=30`; ping about 100 ms), where it was 165 ms
+without. His man is within 1-3 mm of where the host has him once the keys are let go, never steps back while he walks, and runs
+on at most a hand's breadth into a wall (`tests/test_move_predictor.gd`, `tests/test_predict_own.gd`). `run_tests.sh` runs the
+probe plain and with the lag ("net (delay)", the medians may not pass 55 and 60 ms). The others (the host's man, bots, other
+guests) are the host's picture a snapshot behind, as before.
+
+What the host sees of the guest's man (the probes stamp the press and the move with the system clock; `python3 tools/lat_join.py
+host.log guest.log` joins them): from the key going down on the guest to his man 2 cm on in the host's game, 58 ms before,
+49 ms now (the keys are read a frame earlier; the rest is the host's step and the wait for its next frame). `NET_HAND=12` on the
+guest times a swing as well (his hand's mark across the pane to his weapon 3 cm on): the host's own arm takes 34 ms of that, and
+about 66-82 ms in all on his screen. The hand is not walked ahead, as the body is.
 
 What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a
 second, the dead once a second, and in a full room (4 guests or more, or more than 10 fighters) the

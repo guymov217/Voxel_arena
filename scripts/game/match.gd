@@ -18,7 +18,7 @@ signal doctor(e: Dictionary, body: Dictionary, news: Array)
 const ENEMY_TEAM := 1
 const TICK := 1.0 / 120.0
 const SNAP_EVERY := 3           # snapshots at 40 Hz (the guest draws between them)
-const INPUT_EVERY := 0.009       # a guest's hands to the host at most this often (s)
+const INPUT_EVERY := 0.008       # a guest's hands to the host at most this often (s)
 const MIN_SNAP_GAP := 2.0 / 120.0   # a guest takes snapshots to come no closer than this (the players' fighters can come every other step)
 const PLAYER_SNAP_EVERY := 0.0125   # the players' fighters at most this often (s of game time: 60 a second at most)
 
@@ -94,6 +94,10 @@ var input_acc := 0.0
 var probe_input := {}      # a test's own hands for a guest without a screen (tests/net_lat_guest.gd); empty: none
 var _players_by_frame := false   # host: the players' fighters go out from _process, once a frame
 var _player_snap_t := -1.0
+var predictor := MovePredictor.new()   # guest: his own man walked ahead of the host's word (see _predict_own)
+var pred_f = null           # the fighter the predictor is for
+var pred_w := 0.0           # how far the prediction is shown (0..1: it eases in and out as he can and cannot walk on his own legs)
+var pred_baked := {}        # his bodies (parts, weapons) -> what is added to where the host's snapshots have them
 var puppets := {}           # guest: body -> [from, to, t0, length]: drawn between the host's snapshots
 var guest_pending := {}     # guest: id -> the spawn of a fighter not built yet (its "_said": what the host said of him meanwhile, said again once he is in)
 var _guest_queue: Array = []   # guest: the host's spawns still to build, one at a time
@@ -1137,7 +1141,9 @@ func _physics_process(dt: float) -> void:
 		for e in entities:
 			if is_instance_valid(e.f) and _any_spots(e.f):
 				Fire.tick(e.f, dt, false)
+		_send_guest_input(dt)
 		_drive_puppets()
+		_predict_own(dt)
 		if yard:
 			yard.update(dt, last_local_inp)
 		if modes:
@@ -1182,6 +1188,13 @@ func _physics_process(dt: float) -> void:
 						f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 			"remote":
 				inp = Net.input_of(e.peer)
+				# Which of his inputs he is walking by and for how many steps: his guest's model of him goes on from there
+				# (the snapshot's last element; MovePredictor).
+				var sq := int(inp.get("seq", -1))
+				if sq != int(e.get("in_seq", -2)):
+					e.in_seq = sq
+					e.in_ticks = 0
+				e.in_ticks = int(e.get("in_ticks", 0)) + 1
 				if inp.has("look"):
 					f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 					# A guest sends his own crosshair; an older guest without one thrusts along his eyes.
@@ -3834,7 +3847,14 @@ func snapshot(all := true, who := 0) -> Array:
 			st = f.status_packed()
 			e.st_tick = tick
 			e.st_state = String(f.state)
-		out.append([e.id, pb, w, st, bows])
+		var row := [e.id, pb, w, st, bows]
+		if e.kind == "remote":
+			# The word his guest's model of him is put to (MovePredictor.reconcile): the input he is walking by, for how many
+			# steps, where his torso goes and how fast, which way he faces, the pace he walks at (0: not on his own legs) and
+			# whether he is in the air.
+			var tv: Vector3 = f.torso.linear_velocity
+			row.append(PackedFloat32Array([float(e.get("in_seq", -1)), float(e.get("in_ticks", 0)), snappedf(tv.x, 0.01), snappedf(tv.z, 0.01), snappedf(f.yaw, 0.001), snappedf(f.walk_pace(), 0.01), 1.0 if f.in_air() else 0.0]))
+		out.append(row)
 	return out
 
 ## Guest: a body is moved to where the host had it over the time until the next snapshot is due,
@@ -3844,10 +3864,14 @@ func _puppet_to(b: Node3D, to: Transform3D, gap := -1.0, run_on := false) -> voi
 	if not is_instance_valid(b):
 		return
 	var from: Transform3D = b.global_transform
+	if pred_baked.has(b):
+		from.origin -= pred_baked[b]   # (his own man's: where the host's snapshots had him, without the model's lead)
 	if from.origin.distance_squared_to(to.origin) > 9.0:
 		b.global_transform = to   # a jump (a spawn, a throw across the arena): straight there
 		b.reset_physics_interpolation()
 		puppets.erase(b)
+		if pred_baked.has(b):
+			pred_baked[b] = Vector3.ZERO
 		return
 	puppets[b] = [from, to, time, snap_gap if gap <= 0.0 else gap, run_on]
 
@@ -3862,6 +3886,8 @@ func _drive_puppets() -> void:
 		if not is_instance_valid(b):
 			puppets.erase(b)
 			continue
+		if pred_baked.has(b):
+			continue   # (his own man's bodies: _predict_own moves them, with the model's lead)
 		var r: Array = puppets[b]
 		var gap := maxf(0.005, float(r[3]))
 		var t: float = time - float(r[2])
@@ -3882,6 +3908,116 @@ func _drive_puppets() -> void:
 static func puppet_weight(over: float, gap: float) -> float:
 	var o := clampf(over, 0.0, EXTRAP)
 	return 1.0 + (o / maxf(0.005, gap)) * (1.0 - o / (2.0 * EXTRAP))
+
+## A guest's hands go to the host from the first physics step of every frame, with at least INPUT_EVERY since the last (a frame of 60
+## a second a hair short of a sixtieth is not left out, and a game at 30 sends at 30): not from the frame's own process, which
+## comes after that frame's steps, so the keys were read a frame after the steps that could walk his man by them. Read here, his
+## man's model (MovePredictor) takes them in the very step that reads them.
+var _input_frame := -1
+func _send_guest_input(dt: float) -> void:
+	if not Net.active():
+		return
+	input_acc += dt
+	var fr := Engine.get_process_frames()
+	if fr == _input_frame or input_acc < INPUT_EVERY:
+		return
+	_input_frame = fr
+	var step := minf(input_acc, 0.1)
+	input_acc = 0.0
+	var gi := {}
+	if guest_bot_on:
+		gi = _guest_bot_input(step)
+		last_local_inp = gi
+	elif not probe_input.is_empty():
+		gi = probe_input
+	elif me and is_instance_valid(me.f):
+		gi = _player_input(me.f, step)
+	elif input:
+		gi = input.sample(step)
+	if gi.is_empty():
+		return
+	var gs := gi.duplicate()   # (a test's hands are one dictionary, used again)
+	gs.seq = predictor.sent(time - dt, gs)   # (in force from the start of this step, as the host's walks by it)
+	Net.send_host("input", PlayerInput.pack(gs), PlayerInput.has_one_shot(gs))
+
+## Where a puppet's record has its body now (the same as _drive_puppets draws it, never erasing it).
+func _puppet_xf(r: Array) -> Transform3D:
+	var gap := maxf(0.005, float(r[3]))
+	var t: float = time - float(r[2])
+	var run_on: bool = r.size() > 4 and bool(r[4])
+	if t <= gap or not run_on:
+		return (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, clampf(t / gap, 0.0, 1.0))
+	return (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, puppet_weight(minf(t - gap, EXTRAP), gap))
+
+## A guest's own man is shown where the host's snapshots have him moved on by what the model of his walking (MovePredictor) has
+## him ahead of them: along the sand only, all his bodies by the same, so he stays whole. The host's snapshot of him is a round
+## trip behind his keys (the keys, the host's step, the snapshot back), and the picture of him started to move that long after
+## he pressed. Off, and eased out over 0.15 s, while he is not walking on his own legs (down, held, in the air): then he is
+## the host's picture alone.
+const PRED_EASE := 0.15
+func _predict_own(dt: float) -> void:
+	var f = me.f if me != null and is_instance_valid(me.f) else null
+	if f == null or role != "guest":
+		pred_baked.clear()
+		pred_f = null
+		return
+	if f != pred_f:
+		pred_f = f   # (a new man: the model starts over)
+		predictor.reset()
+		pred_baked.clear()
+		pred_w = 0.0
+	predictor.stamina_ok = f.stamina > 5.0
+	predictor.advance(time)
+	var rec = puppets.get(f.torso)
+	var tx: Transform3D = _puppet_xf(rec) if rec != null else f.torso.global_transform
+	if rec == null:
+		tx.origin -= pred_baked.get(f.torso, Vector3.ZERO)
+	var want := Vector3.ZERO
+	var on: bool = predictor.live and predictor.pace > 0.0 and f.alive and f.state == "stand"
+	if predictor.live:
+		var d := predictor.shown() - Vector2(tx.origin.x, tx.origin.z)
+		if d.length() > MovePredictor.LEAD_MAX:
+			on = false
+			pred_w = 0.0   # (the model and the host far apart: not believed at all, the host's picture alone)
+		else:
+			want = Vector3(d.x, 0.0, d.y)   # (kept while it eases out: the model's own lead has gone with his pace, in the model, as it goes here)
+	pred_w = move_toward(pred_w, 1.0 if on else 0.0, dt / PRED_EASE)
+	var off := want * pred_w
+	var mine := {}
+	for p in f.parts:
+		_show_own(p, Vector3.ZERO if p.severed else off)   # (a limb he lost lies where it fell)
+		mine[p] = true
+	for w in f.weapons.values():
+		if w != null and is_instance_valid(w):
+			_show_own(w, off)
+			mine[w] = true
+	for b in pred_baked.keys():
+		if not mine.has(b):
+			pred_baked.erase(b)   # (a weapon he let go: the host's snapshots have it from here)
+
+## The host's word of his own man (the last element of his snapshot row): where his torso is in it, and what it had got to of his inputs.
+func _reconcile_own(f: Fighter, packed: PackedByteArray, ctl: PackedFloat32Array) -> void:
+	var ti := f.parts.find(f.torso)
+	if ti < 0 or ctl.size() < 7 or packed.size() < (ti + 1) * 14:
+		return
+	if f != pred_f:
+		return   # (not yet taken up by _predict_own)
+	var tp := unpack_xf(packed, ti * 14).origin
+	predictor.stamina_ok = f.stamina > 5.0
+	predictor.reconcile(time, int(ctl[0]), int(ctl[1]), Vector2(tp.x, tp.z), Vector2(ctl[2], ctl[3]), ctl[4], ctl[5], ctl[6] > 0.5)
+
+func _show_own(b: Node3D, off: Vector3) -> void:
+	var r = puppets.get(b)
+	var base := Vector3.ZERO if r != null else pred_baked.get(b, Vector3.ZERO)
+	if r == null and off == Vector3.ZERO and base == Vector3.ZERO:
+		pred_baked[b] = Vector3.ZERO   # (not driven by the host's snapshots, and nothing to add: left where it is)
+		return
+	var xf: Transform3D = _puppet_xf(r) if r != null else b.global_transform
+	if r == null:
+		xf.origin -= base
+	xf.origin += off
+	b.global_transform = xf
+	pred_baked[b] = off
 
 static func _xf(a, o: int) -> Transform3D:
 	return Transform3D(Basis(Quaternion(float(a[o + 3]), float(a[o + 4]), float(a[o + 5]), float(a[o + 6])).normalized()), Vector3(float(a[o]), float(a[o + 1]), float(a[o + 2])))
@@ -3928,6 +4064,8 @@ func apply_snapshot(s: Array) -> void:
 				_puppet_to(wp, unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1), eg, alive_row)
 		if row[3] is Dictionary or row[3] is Array:
 			e.f.apply_status(row[3])
+		if row.size() > 5 and row[5] is PackedFloat32Array and is_same(e, me) and a is PackedByteArray:
+			_reconcile_own(e.f, a, row[5])
 		if row.size() > 4:
 			for bw in row[4]:
 				var bwp = e.f.weapons.get(bw[0]) if bw is Array and bw.size() >= 3 else null
@@ -4147,24 +4285,4 @@ func _process(dt: float) -> void:
 		var held_side: String = "" if f == null or not is_instance_valid(f) else String(f.net_two_side if role == "guest" else f.two_side)
 		cam.view_side = -1.0 if held_side == "L" else 1.0
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe, tip_i)
-	# A guest's hands go to the host at least 60 times a second whatever his frame rate (once every
-	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps), a frame of 60 fps
-	# or any other not left out for being a hair short of a sixtieth (at most about 110 a second).
-	if role == "guest" and Net.active():
-		input_acc += dt
-		if input_acc >= INPUT_EVERY:
-			var step := minf(input_acc, 0.1)
-			input_acc = 0.0
-			var gi := {}
-			if guest_bot_on:
-				gi = _guest_bot_input(step)
-				last_local_inp = gi
-			elif not probe_input.is_empty():
-				gi = probe_input
-			elif me and is_instance_valid(me.f):
-				gi = _player_input(me.f, step)
-			elif input:
-				gi = input.sample(step)
-			if not gi.is_empty():
-				Net.send_host("input", PlayerInput.pack(gi), PlayerInput.has_one_shot(gi))
 	tick += 1 if role == "guest" else 0

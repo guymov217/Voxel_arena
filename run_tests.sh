@@ -87,18 +87,26 @@ hs=$?
 grep -E "^(HOST|GUEST)" /tmp/va_netroom_host.log /tmp/va_netroom_guest.log
 if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (room): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (room): ok"; fi
 # The delay a guest feels (tests/net_lat_host.gd, net_lat_guest.gd): two games at 60 frames a second, he presses forward and times
-# how long until his man moves on his own screen. 115 ms before the network was read at the start of each physics step and the
-# players' fighters went out every frame, 65 ms after; the median may not pass 95.
-export NET_PORT=$((NET_PORT + 1))
-NET_REPS=12 NET_MAX_MEDIAN=95 timeout 120 "$G" --headless --path . -- --probe net_lat_host > /tmp/va_netlat_host.log 2>&1 &
-hp=$!
-sleep 3
-NET_REPS=12 NET_MAX_MEDIAN=95 timeout 110 "$G" --headless --path . -- --probe net_lat_guest > /tmp/va_netlat_guest.log 2>&1
-gs=$?
-wait $hp
-hs=$?
-grep -E "^(HOST|GUEST)" /tmp/va_netlat_host.log /tmp/va_netlat_guest.log | grep -E "SUMMARY|FAIL|his input"
-if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (delay): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (delay): ok ($(grep -E 'GUEST SUMMARY' /tmp/va_netlat_guest.log | sed -e 's/.*median \([0-9]*\).*/median \1 ms/'))"; fi
+# how long until his man moves on his own screen. 115 ms before the network was read at the start of each physics step, 65 ms
+# when the players' fighters went out every frame, about 32 ms now that his own man is walked ahead of the host's word
+# (MovePredictor) and his hands are read in the physics step. Run again with a pretend 30 ms each way (a ping near 100 ms), where
+# the walk ahead is the whole of it: 165 ms without, about 32 with. The medians may not pass 55 and 60.
+delay_run() {   # delay_run MAX_MEDIAN REPS [env...]: prints the guest's median, returns 1 if over
+	dmax=$1; dreps=$2; shift 2
+	export NET_PORT=$((NET_PORT + 1))
+	env NET_REPS=$dreps NET_MAX_MEDIAN=$dmax "$@" timeout 140 "$G" --headless --path . -- --probe net_lat_host > /tmp/va_netlat_host.log 2>&1 &
+	hp=$!
+	sleep 3
+	env NET_REPS=$dreps NET_MAX_MEDIAN=$dmax "$@" timeout 130 "$G" --headless --path . -- --probe net_lat_guest > /tmp/va_netlat_guest.log 2>&1
+	gs=$?
+	wait $hp
+	hs=$?
+	grep -E "^(HOST|GUEST)" /tmp/va_netlat_host.log /tmp/va_netlat_guest.log | grep -E "SUMMARY|FAIL|his input"
+	dmed=$(grep -E 'GUEST SUMMARY' /tmp/va_netlat_guest.log | sed -e 's/.*median \([0-9]*\).*/median \1 ms/')
+	[ $gs -eq 0 ] && [ $hs -eq 0 ]
+}
+if delay_run 55 12; then echo "net (delay): ok ($dmed)"; else echo "net (delay): FAIL (host $hs, guest $gs)"; fail=1; fi
+if delay_run 60 8 NET_LAG=30; then echo "net (delay, 30 ms each way): ok ($dmed)"; else echo "net (delay, 30 ms each way): FAIL (host $hs, guest $gs)"; fail=1; fi
 # All of multiplayer played out by three games through the game's own screens (tests/e2e_run.gd, e2e_host.gd, e2e_guest.gd): the
 # lobby, the yard, the smith, the fights, the endless arena with three, a removal, a campaign room. The short version here
 # (E2E=full for every mode of the Arena too: another three minutes).

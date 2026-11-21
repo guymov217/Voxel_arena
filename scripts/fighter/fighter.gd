@@ -333,6 +333,24 @@ const STOOP_LAG := 0.2
 ## foot counts as not yet down.
 static var GAIT := {"reach": 0.94, "arc": 0.04, "arc_run": 0.03, "behind": 0.97, "down": 0.012, "touch": 0.01, "run_stride": 1.0, "walk_stride": 0.66}
 var last_move := Vector3.ZERO   # where he is trying to go this step (world), for whatever holds him
+var pace_now := 1.0   # his speed this step as a share of the plain walk (2.1 m/s) or run (3.8): everything in `speed` but the base
+
+## What a guest's model of him walks by (MovePredictor): `pace_now` while he walks on his own legs, 0 when he does not (down or
+## getting up, held, rolled, netted, staggering, hopping on one leg). In the air (a jump) the pace is still his: the walk is not
+## steered there, and the model goes on as he was going (`in_air`).
+func walk_pace() -> float:
+	if state != "stand" or hop_phase > 0.0 or net_timer > 0.0 or stagger > 0.25:
+		return 0.0
+	if grabbed_by != null and is_instance_valid(grabbed_by):
+		return 0.0
+	for m in ["beast_hold", "rolled_by"]:
+		if has_meta(m) and is_instance_valid(get_meta(m)):
+			return 0.0
+	return pace_now
+
+## Off the sand for long enough to be in a jump or a fall, not a stride's flight: nothing steers him there.
+func in_air() -> bool:
+	return not on_ground and air_time > 0.1
 var aim_w := {"R": Vector3.ZERO, "L": Vector3.ZERO}     # how fast the aim is turning (rad/s)
 var elbow_prev := {"R": null, "L": null}
 var hand_input := {"R": {"x": 0.1, "y": 0.1}, "L": {"x": -0.35, "y": 0.1}}
@@ -3786,6 +3804,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
 	var load_ := Armory.burden(carried_kg())
 	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	pace_now = speed / (3.8 if sprint else 2.1)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
 	last_move = yaw_q * move_local if live else Vector3.ZERO
