@@ -30,12 +30,25 @@ func _ready() -> void:
 	await _run()
 	if strip:
 		strip.friends.kill_all()
+	if k.fails > 0:
+		_dump_logs()
 	print("FRIENDS %d ok, %d failed" % [k.passes, k.fails])
 	await k.pause(0.5)
 	get_tree().quit(1 if k.fails > 0 else 0)
 
 func m() -> Match:
 	return menu.match_
+
+## What each friend's game said of what he did (his log), to read why a check did not hold.
+func _dump_logs() -> void:
+	for p in Friends.PERSONAS:
+		var f := FileAccess.open("user://friend_%s.log" % String(p.name).to_lower(), FileAccess.READ)
+		if f == null:
+			continue
+		while not f.eof_reached():
+			var line := f.get_line()
+			if line.begins_with("FRIEND "):
+				print("LOG ", line)
 
 func _entity_of(name: String):
 	if m() == null:

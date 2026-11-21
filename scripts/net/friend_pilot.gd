@@ -35,6 +35,10 @@ var _wait := {}               # a prompt -> how long before he answers it
 var _menu_t := 0.0
 var _leaving := false
 var _quarrel_now := false
+var _was_down := false
+var _ordered := false         # the errand he is on is the host's word, not his own idea: he does not give it up
+var _detour := Vector3.ZERO   # a few steps to the side, when something is in his way
+var _detour_t := 0.0
 
 func setup(menu_: Node, persona_index_: int, addr: String, port: int) -> void:
 	menu = menu_
@@ -65,6 +69,13 @@ func _on_message(type: String, data, _from: int) -> void:
 			target = p - p.normalized() * 1.6
 			state = "walk"
 			_act_t = 40.0
+			_ordered = true
+			_stuck = 0
+			_detour_t = 0.0
+			_say("told to go to the %s" % s)
+			# (A stall's screen he is in now is left first.)
+			if menu != null and menu.has_method("in_yard") and menu.in_yard() and menu.visible:
+				menu._close_overlay()
 	elif cmd == "brawl":
 		_act_t = 0.0
 		_quarrel_now = true
@@ -101,6 +112,10 @@ func _process(dt: float) -> void:
 		state = "idle"
 		_act_t = randf_range(2.0, 5.0)
 		_menu_t = 0.0
+
+## What he does goes to his log (the file the host's Friends gave his game), for whoever looks to see why a friend did what he did.
+func _say(what: String) -> void:
+	print("FRIEND %s: %s" % [String(persona.get("name", "?")), what])
 
 # ---------- Getting into the room, and out of it ----------
 
@@ -170,8 +185,14 @@ func _yard(dt: float, m) -> void:
 	m.guest_bot_on = state == "brawl"
 	m.guest_bot_target = victim if state == "brawl" else null
 	if not f.alive:
+		if not _was_down:
+			_was_down = true
+			_say("is down")
 		m.probe_input = {}
 		return
+	if _was_down:
+		_was_down = false
+		_say("is up again")
 	var here := f.torso.global_position
 	# A screen of the game over the yard: a stall he went into, or one he did not open and leaves after a while.
 	if menu.visible:
@@ -206,20 +227,33 @@ func _yard(dt: float, m) -> void:
 					state = "idle"
 					_act_t = randf_range(1.5, 6.0)
 				return
-			m.probe_input = _hands(0.0, 1.0, atan2(d.x, d.y), d.length() > 9.0)
+			var aim := d
+			if _detour_t > 0.0:
+				_detour_t -= dt
+				aim = Vector2(_detour.x - here.x, _detour.z - here.z)
+			m.probe_input = _hands(0.0, 1.0, atan2(aim.x, aim.y), d.length() > 9.0)
 			if _act_t <= 0.0:
+				_say("gave up the way to %s" % (stall if stall != "" else "somewhere"))
 				state = "idle"
+				stall = ""
+				_ordered = false
 				_act_t = 0.5
-			# (Stuck on something in the way: another way.)
+			# (Stuck on something in the way: his own idea he drops, the host's word he goes round.)
 			if _think_t >= 1.0:
 				_think_t = 0.0
 				if (here - _last_pos).length() < 0.25:
 					_stuck += 1
 					if _stuck >= 2:
 						_stuck = 0
-						state = "idle"
-						stall = ""
-						_act_t = 0.1
+						if _ordered:
+							var side := Vector3(-d.y, 0.0, d.x).normalized() * (1.0 if randf() < 0.5 else -1.0)
+							_detour = here + side * 3.0
+							_detour_t = 1.2
+							_say("something in the way at (%.1f, %.1f): a few steps aside" % [here.x, here.z])
+						else:
+							state = "idle"
+							stall = ""
+							_act_t = 0.1
 				else:
 					_stuck = 0
 				_last_pos = here
@@ -243,6 +277,7 @@ func _choose(m) -> void:
 		victim = others[0]
 		state = "brawl"
 		_act_t = randf_range(5.0, 10.0)
+		_say("picks a quarrel with %s" % String(victim.f.display_name))
 		return
 	if r < temper * 0.2 + shops * 0.35:
 		var options := STALLS.duplicate()
@@ -270,10 +305,14 @@ func _enter_stall() -> void:
 	_stall_t = randf_range(4.0, 9.0)
 	menu._open_station(stall)
 	if not menu.visible:
+		_say("the %s would not open" % stall)
 		state = "idle"
 		stall = ""
+		_ordered = false
 		_act_t = randf_range(2.0, 5.0)
 		return
+	_say("in the %s" % stall)
+	_ordered = false
 	state = "stall"
 	# At the smith of an Arena room (money is no object there) he sometimes swaps what he carries for another weapon.
 	if stall == "smith" and Net.room_kind == Net.KIND_ARENA and randf() < 0.5:

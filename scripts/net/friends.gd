@@ -114,6 +114,8 @@ func leave_one() -> bool:
 		Net.send_to(id, "friend_cmd", "leave")
 	else:
 		OS.kill(int(f.pid))
+		friends.pop_back()
+		changed.emit()
 	return true
 
 ## The newest friend's connection is lost: his game is stopped at once, without a word, as a game that crashes or a line that
@@ -123,6 +125,8 @@ func drop_one() -> bool:
 		return false
 	var f: Dictionary = friends[friends.size() - 1]
 	OS.kill(int(f.pid))
+	friends.pop_back()   # (stopped and gone at once: asking the system after a game it has reaped is an error)
+	changed.emit()
 	return true
 
 func kill_all() -> void:

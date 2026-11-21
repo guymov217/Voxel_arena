@@ -33,8 +33,12 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 8)
 	panel.add_child(row)
 	var title := UIStyle.label("FRIENDS", 13, UIStyle.GOLD)
+	title.autowrap_mode = TextServer.AUTOWRAP_OFF   # (one line each: a label that may wrap is as narrow as one letter in a row that is not told its width)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(title)
 	names_label = UIStyle.label("", 13, UIStyle.TEXT)
+	names_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	names_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(names_label)
 	row.add_child(_button("+", "add", "F6"))
 	row.add_child(_button("−", "leave", "F7"))
@@ -50,6 +54,7 @@ func _button(text: String, what: String, key: String) -> Button:
 	var b := UIStyle.button(text, func(): act(what))
 	b.name = "Friend_" + what
 	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 18)
 	b.custom_minimum_size = Vector2(34, 28)
 	b.tooltip_text = key
 	return b

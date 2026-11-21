@@ -126,6 +126,6 @@ export NET_PORT=$((NET_PORT + 1))
 if timeout 700 "$G" --headless --path . -- --probe friend_probe --port "$NET_PORT" > /tmp/va_friends.log 2>&1; then
 	echo "net (friends): ok ($(grep -E '^FRIENDS' /tmp/va_friends.log))"
 else
-	echo "net (friends): FAIL"; grep -E "FAIL|RESULT|FRIENDS" /tmp/va_friends.log | tail -25; fail=1
+	echo "net (friends): FAIL"; grep -E "FAIL|RESULT|FRIENDS|^LOG " /tmp/va_friends.log | tail -40; fail=1
 fi
 exit $fail
