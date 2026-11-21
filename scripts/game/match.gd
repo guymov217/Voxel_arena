@@ -18,6 +18,9 @@ signal doctor(e: Dictionary, body: Dictionary, news: Array)
 const ENEMY_TEAM := 1
 const TICK := 1.0 / 120.0
 const SNAP_EVERY := 3           # snapshots at 40 Hz (the guest draws between them)
+const INPUT_EVERY := 0.009       # a guest's hands to the host at most this often (s)
+const MIN_SNAP_GAP := 2.0 / 120.0   # a guest takes snapshots to come no closer than this (the players' fighters can come every other step)
+const PLAYER_SNAP_EVERY := 0.0125   # the players' fighters at most this often (s of game time: 60 a second at most)
 
 var mode := "campaign"
 var stage := 1
@@ -88,6 +91,9 @@ var training: Dictionary = {}
 var headless := false
 var guest_bot_on := false
 var input_acc := 0.0
+var probe_input := {}      # a test's own hands for a guest without a screen (tests/net_lat_guest.gd); empty: none
+var _players_by_frame := false   # host: the players' fighters go out from _process, once a frame
+var _player_snap_t := -1.0
 var puppets := {}           # guest: body -> [from, to, t0, length]: drawn between the host's snapshots
 var guest_pending := {}     # guest: id -> the spawn of a fighter not built yet (its "_said": what the host said of him meanwhile, said again once he is in)
 var _guest_queue: Array = []   # guest: the host's spawns still to build, one at a time
@@ -1279,6 +1285,9 @@ func _physics_process(dt: float) -> void:
 		_sync_held()
 	if role == "host" and tick % 30 == 11:
 		_send_fstat()
+	if role == "host":
+		# A room that is not full: the players' fighters go out once a frame (_send_player_rows), the rest as below.
+		_players_by_frame = Net.peers.size() > 0 and Net.peers.size() < 4 and entities.size() <= 10
 	if role == "host" and tick % SNAP_EVERY == 0:
 		# One fighter to a message: each fits in one packet (a whole snapshot was split into
 		# fragments, and one lost fragment lost all of it).
@@ -1286,7 +1295,7 @@ func _physics_process(dt: float) -> void:
 		# enemies every other time, which halves what goes up the host's line.
 		var full := Net.peers.size() >= 4 or entities.size() > 10
 		var odd := (tick / SNAP_EVERY) % 2 == 1
-		for row in snapshot(false):
+		for row in snapshot(false, 2 if _players_by_frame else 0):
 			if full and odd:
 				var re = entity_by_id(int(row[0]))
 				if re != null and re.kind != "remote" and re.kind != "local":
@@ -3736,12 +3745,15 @@ static func _moved(a: PackedByteArray, b: PackedByteArray) -> bool:
 			return true
 	return false
 
-## Every fighter's row (`all`: none left out, for a guest who has just come in).
-func snapshot(all := true) -> Array:
+## Every fighter's row (`all`: none left out, for a guest who has just come in). `who`: 0 everyone, 1 the players' fighters
+## only, 2 everyone but them.
+func snapshot(all := true, who := 0) -> Array:
 	var out := []
 	for e in entities:
 		var f = e.f
 		if not is_instance_valid(f):
+			continue
+		if who != 0 and (e.kind == "local" or e.kind == "remote") != (who == 1):
 			continue
 		var w := []
 		var bows := []
@@ -3823,7 +3835,7 @@ func apply_snapshot(s: Array) -> void:
 	# (The fighters of one snapshot come as separate messages in the same moment.)
 	if snap_t < 0.0 or time - snap_t > 0.006:
 		if snap_t >= 0.0:
-			snap_gap = lerpf(snap_gap, clampf(time - snap_t, SNAP_EVERY / 120.0, 0.2), 0.25)
+			snap_gap = lerpf(snap_gap, clampf(time - snap_t, MIN_SNAP_GAP, 0.2), 0.25)
 		snap_t = time
 	for row in s:
 		if not (row is Array) or row.size() < 4:
@@ -3835,7 +3847,7 @@ func apply_snapshot(s: Array) -> void:
 		# host sends the enemies at half the rate of the players).
 		var eg := snap_gap
 		if e.has("snap_seen"):
-			eg = clampf(time - float(e.snap_seen), SNAP_EVERY / 120.0, 0.25)
+			eg = clampf(time - float(e.snap_seen), MIN_SNAP_GAP, 0.25)
 			e.snap_gap = lerpf(float(e.get("snap_gap", eg)), eg, 0.3)
 			eg = float(e.snap_gap)
 		e.snap_seen = time
@@ -3972,7 +3984,19 @@ func guest_wvox(m: Dictionary) -> void:
 	if e and e.f.weapons.get(m.side):
 		e.f.weapons[m.side].remove_voxels(m.idx)
 
+## The host sends the players' fighters once a frame, after the frame's last physics step, at most 60 times a second: the
+## freshest state, at even gaps. (Every third physics step, 40 a second, two steps to a frame at 60 frames a second, came as
+## a gap of one frame then of two, and as late as the step it fell on; a guest saw his man a snapshot behind and in lurches.)
+func _send_player_rows() -> void:
+	if time - _player_snap_t < PLAYER_SNAP_EVERY:
+		return
+	_player_snap_t = time
+	for row in snapshot(false, 1):
+		Net.send_all("snap", [row], false)
+
 func _process(dt: float) -> void:
+	if role == "host" and _players_by_frame and Net.active():
+		_send_player_rows()
 	_update_breaths(dt)
 	_update_tags()
 	if not headless:
@@ -4067,17 +4091,20 @@ func _process(dt: float) -> void:
 		var held_side: String = "" if f == null or not is_instance_valid(f) else String(f.net_two_side if role == "guest" else f.two_side)
 		cam.view_side = -1.0 if held_side == "L" else 1.0
 		cam.follow(f, yaw, pitch, dt, aiming or sighting, foe, tip_i)
-	# A guest's hands go to the host 60 times a second whatever his frame rate (once every
-	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps).
+	# A guest's hands go to the host at least 60 times a second whatever his frame rate (once every
+	# fourth frame was 7 a second at 30 fps: his fighter answered late and in steps), a frame of 60 fps
+	# or any other not left out for being a hair short of a sixtieth (at most about 110 a second).
 	if role == "guest" and Net.active():
 		input_acc += dt
-		if input_acc >= 1.0 / 60.0:
+		if input_acc >= INPUT_EVERY:
 			var step := minf(input_acc, 0.1)
 			input_acc = 0.0
 			var gi := {}
 			if guest_bot_on:
 				gi = _guest_bot_input(step)
 				last_local_inp = gi
+			elif not probe_input.is_empty():
+				gi = probe_input
 			elif me and is_instance_valid(me.f):
 				gi = _player_input(me.f, step)
 			elif input:

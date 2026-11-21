@@ -758,6 +758,12 @@ static func steps_cap(step_cost_ms: float, base: int) -> int:
 	return clampi(int(PHYSICS_BUDGET_MS / step_cost_ms), base, maxi(base, ROOM_STEPS_MAX))
 
 func _physics_process(_dt: float) -> void:
+	# What came in is read at the start of every physics step, before the game's own (this node comes first), and not only once a
+	# frame after them: the engine reads the line in the frame's idle part, so a guest's hands and the host's snapshots were
+	# taken up by the physics steps of the NEXT frame: a whole frame late on each side of the round trip (measured, two games
+	# at 60 frames a second: 115 ms from pressing forward to the man moving on the guest's screen, 81 ms with this).
+	if (transport == "enet" or transport == "steam") and multiplayer.multiplayer_peer != null:
+		multiplayer.poll()
 	if _frame_steps == 0:
 		_frame_t0 = Time.get_ticks_usec()
 	_frame_steps += 1

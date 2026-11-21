@@ -823,6 +823,18 @@ purpose, up to a quarter of the voice and the snapshots on a jittery line. Witho
 every snapshot the line carries (about 12% more of them in the load test, the longest wait down from
 over 300 ms to about 220 ms) and the voice whole.
 
+The delay a guest feels (his hands to his man moving on his own screen) is measured by `tests/net_lat_host.gd` +
+`net_lat_guest.gd` (two games held to 60 frames a second in the host's yard; the guest presses forward and times it; F3's
+ping is only the line): 115 ms, of which the host's own physics answer is about 21. Three things were in the rest.
+The engine reads the line in the idle part of a frame, after that frame's physics steps, so a guest's hands and the host's
+snapshots were taken up a whole frame later, on each side of the round trip: `Net._physics_process` now reads it at the start
+of every physics step (before the game's own: 81 ms). The players' fighters went out every third step, which at 60 frames a
+second is one frame then two (a gap of 17 ms then 33 ms): they now go from `Match._send_player_rows`, once a frame after the
+last step, at most 60 a second, while the room is not full (the others, and a full room, as before); a guest takes gaps as
+short as two steps (`Match.MIN_SNAP_GAP`) and his hands go every frame (`Match.INPUT_EVERY`; a frame a hair short of a
+sixtieth was left out). Now 64 ms at 60 frames a second, 66 at 45, 62 at 144, for about 10% more on the wire and 1-2% more of
+a guest's CPU. `run_tests.sh` runs it ("net (delay)", the median may not pass 95 ms).
+
 What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a
 second, the dead once a second, and in a full room (4 guests or more, or more than 10 fighters) the
 enemies at half the rate of the players. Measured: about 1.6 Mbit/s up from the host for 4

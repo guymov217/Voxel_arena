@@ -123,6 +123,79 @@ func test_a_guest_puppet_follows_the_snapshot() -> void:
 	host.queue_free()
 	guest.queue_free()
 
+## The players' fighters go out once a frame from the host (Match._send_player_rows), the others every third step: the two
+## lists, `who` 1 and 2, are every fighter between them and none twice.
+func test_the_players_are_one_list_and_the_others_another() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "host"})
+	var f = m.spawn_fighter({"kind": "remote", "peer": 2, "name": "Friend", "loadout": {"main": "gladius"}, "team": 0, "pos": Vector3(-2, 0, 2), "yaw": 0.0})
+	var b = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(2, 0, 2), "yaw": 0.0})
+	await _steps(5)
+	var ids := func(rows: Array) -> Array: return rows.map(func(r): return int(r[0]))
+	var all: Array = ids.call(m.snapshot(true))
+	var players: Array = ids.call(m.snapshot(true, 1))
+	var others: Array = ids.call(m.snapshot(true, 2))
+	t.check(players.has(f.id) and players.has(m.me.id) and not players.has(b.id), "the players' list holds the host's man and the friend's, not the bot")
+	t.check(others.has(b.id) and not others.has(f.id) and not others.has(m.me.id), "the other list holds the bot only")
+	t.eq(players.size() + others.size(), all.size(), "between them every fighter, none twice")
+	m.queue_free()
+
+## At most every 12.5 ms of game time (60 a second): a frame with two steps of 8 ms sends, a frame with none of its own
+## (a game drawn at 144 frames a second) or one step in three at most does not send on every one.
+func test_the_players_rows_are_not_sent_faster_than_sixty_a_second() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "host"})
+	m.time = 5.0
+	m._player_snap_t = -1.0
+	m._send_player_rows()
+	t.eq(m._player_snap_t, 5.0, "the first goes at once")
+	m.time = 5.0 + 1.0 / 120.0
+	m._send_player_rows()
+	t.eq(m._player_snap_t, 5.0, "a step later it does not (8 ms)")
+	m.time = 5.0 + 2.0 / 120.0
+	m._send_player_rows()
+	t.check(is_equal_approx(m._player_snap_t, 5.0 + 2.0 / 120.0), "two steps later it does (16.7 ms)")
+	m.queue_free()
+
+## A guest takes the gaps between a man's snapshots as they come, to as short as two steps (the players' fighters come every
+## frame), not no shorter than 25 ms, so his puppet is where the host said as soon as the next is due.
+func test_a_guest_reads_a_gap_of_a_frame_as_a_frame() -> void:
+	var host := Match.new()
+	add_child(host)
+	host.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "host"})
+	var e = host.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": Vector3(2, 0, 2), "yaw": 0.0})
+	e.erase("bot")
+	e.drive = func(_e): return {}
+	await _steps(5)
+	var guest := Match.new()
+	add_child(guest)
+	guest.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "guest"})
+	guest.guest_spawn(host._spawn_msg(e))
+	var ge = guest.entity_by_id(e.id)
+	t.check(ge != null, "the guest has him")
+	if ge != null:
+		var rows: Array = host.snapshot(true).filter(func(r): return r[0] == e.id)
+		guest.time = 3.0
+		guest.apply_snapshot(rows)
+		guest.time = 3.0 + 2.0 / 120.0
+		guest.apply_snapshot(rows)
+		t.check(float(ge.snap_gap) < 0.02, "a snapshot a frame after the last is a gap of a frame (%.1f ms)" % (float(ge.snap_gap) * 1000.0))
+		# (A gap is smoothed with the ones before it: three steps, 25 ms, again and again, comes to 25 ms.)
+		for i in 30:
+			guest.time += 3.0 / 120.0
+			guest.apply_snapshot(rows)
+		t.check(float(ge.snap_gap) > 0.024 and float(ge.snap_gap) < 0.026, "and one every three steps comes to 25 ms (%.1f ms)" % (float(ge.snap_gap) * 1000.0))
+	host.queue_free()
+	guest.queue_free()
+
+## A guest's hands go to the host every frame of a game at 60 frames a second, even one a hair short of a sixtieth (the old
+## threshold left every so often a frame out, and the hands came late and in lumps).
+func test_a_frame_of_sixty_a_second_is_never_left_out() -> void:
+	t.check(1.0 / 60.0 - 0.0005 >= Match.INPUT_EVERY, "a frame a half-millisecond short of 16.7 ms still sends")
+	t.check(Match.INPUT_EVERY >= 1.0 / 240.0, "and a game at 240 frames a second does not send on every one")
+
 ## A snapshot that comes late (the host's game hitched, a packet was lost): the bodies had stopped where the last one put
 ## them, the whole world for as long as it was late, in a game drawn at 100 frames a second. They go on the way they were
 ## going, a little way (Match.EXTRAP), easing to a stop.
