@@ -91,9 +91,9 @@ func why_not() -> String:
 ## The one line on the screen, for the host and for every guest (from `state`: the guest reads what the host said).
 static func line_of(st: Dictionary, host: bool) -> String:
 	if bool(st.get("ok", false)):
-		return Loc.t("Everyone is in a circle · E: begin") if host else Loc.t("Everyone is in a circle · the host begins")
+		return Loc.t("Everyone is in a circle · E: begin") if host else Loc.t("Everyone is in a circle")
 	var w: Array = st.get("w", [])
-	return (Loc.t("Walk into a circle to pick your team · waiting for %s") % ", ".join(w.slice(0, 3))) if not w.is_empty() else Loc.t("Walk into a circle to pick your team")
+	return (Loc.t("Waiting for %s") % ", ".join(w.slice(0, 3))) if not w.is_empty() else ""
 
 func line(host: bool) -> String:
 	return line_of(state(), host)

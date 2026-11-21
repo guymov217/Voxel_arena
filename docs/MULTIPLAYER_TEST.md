@@ -1,55 +1,104 @@
 # Trying multiplayer on one computer
 
-No command line. Three things to do once, then one double-click each time.
+No command line. Once, then a double-click each time. Two ways, and the first is the one to start with:
+
+- **`multiplayer_e2e.bat`**: the game plays all of multiplayer by itself and tells you what worked.
+- **`multiplayer_test.bat`**: you play it, in two windows, and look at what you like.
 
 ## Once
 
 1. Download **Godot 4.7.2** (Windows, 64-bit, the plain build, not .NET) from
    https://godotengine.org/download/windows/ and unzip it. You get a file called
-   `Godot_v4.7.2-stable_win64.exe`.
+   `Godot_v4.7.2-stable_win64.exe` (and, beside it, `..._win64_console.exe`: with that one the check shows each
+   line as it passes).
 2. Put that file **in the game's folder**, next to `project.godot` and `multiplayer_test.bat`.
    (Downloads or the Desktop also work; the script looks there too.) An older Godot, such as
    4.4.1, is refused: the game is made for 4.7.
 
 That is all. The first run imports the project by itself (a minute or two).
 
-## Each time
+## The automatic check: all of multiplayer, played by itself
 
-Double-click **`multiplayer_test.bat`** in the game's folder. It finds Godot and asks:
+Double-click **`multiplayer_e2e.bat`** (Linux: `sh tools/mp_e2e.sh`). Three games of this project open, **a host and
+two friends**, and play a whole evening of multiplayer **through the game's own screens and buttons**, one step after
+another. Each step is checked on the side that does it and on the side that sees it, and every check is shown as it passes
+or fails. At the end the whole list is written to **`e2e_report.txt`** in the game's folder: each line is a ✔ or ✘ and
+what it was.
+
+| Choice | What it does |
+|---|---|
+| 1 | All of it in three windows you can watch (about 6 minutes). Leave them alone. |
+| 2 | The short version: leaves out the tournament and the single modes (about 3 minutes). |
+| 3 | Like 1, over a pretend poor connection (120 ms, 3% of the messages lost). |
+| 4 | The same with no windows. |
+
+What it goes through, in order (the report is grouped the same way):
+
+1. **The Multiplayer screen** offers the two kinds of room and a way to host.
+2. **The room's lobby.** The host opens an Arena room and lands on its lobby; a friend joins by address and appears on a
+   card (name, crown on the host, his connection measured); the friend's own lobby shows the same list and waits; the
+   host can mute him, the friend can mute the host but not remove him. The friend is told it is an Arena room: the
+   sandbox, money no object, and **neither campaign purse is touched** (150 and 77, checked to the end).
+3. **The yard.** The host presses *Enter the yard*; both stand in it and see each other. The friend buys an axe at the smith
+   and it reaches the host. The pause menu's door to the room lists the friends, with *Remove* and the way on to the gate.
+4. **Free for all with rounds and bots.** From the card at the gate, three rounds with two bots; the score carries from
+   round to round; when it is decided everyone is back in the yard.
+5. **Red vs Blue.** The circles on the sand; the host cannot begin while one is out of them; the friend stands in the
+   other circle; the fight begins with each on the team of his circle.
+6. **The tournament**, then **each other fight of the Arena** (duel, king of the arena, monster hunt, the Emperor, king of
+   the hill, last limb standing), each begun from its card, drawn on both screens, and ended by the host calling everyone
+   back to the yard from the pause menu.
+7. **A third friend comes late** while the yard is up: he walks in, and the lobby lists three.
+8. **The endless arena with three**: each wave beaten holds out rewards to each of them, each picks on his own screen
+   (the friends from the cards, the host from his), and the next wave comes when all have picked.
+9. **Removing a friend.** *Remove* asks twice; he is told, lands at the Multiplayer screen, and cannot come back in.
+10. **Closing the room**: the friend is told the host left and is himself again; then **a campaign room**: no sandbox, the
+    party's purse is the host's (150), the lobby offers *Begin bout 1* and how death is dealt with; the co-op bout is
+    played, won, and the party's purse grows on both screens.
+
+If something fails the report says what it saw. The games' own logs are in the game's data folder, `e2e` (Windows:
+`%APPDATA%\Godot\app_userdata\WRECKSMITH\e2e`, Linux: `~/.local/share/godot/app_userdata/WRECKSMITH/e2e`).
+The check never touches your own save: tests play on a save of their own.
+
+## By hand: two windows, played by you
+
+Double-click **`multiplayer_test.bat`**. It finds Godot and asks:
 
 | Key | What opens |
-|-----|------------|
-| 1 | A host window and a guest window, both yours. Alt+Tab between them. |
-| 2 | A host window for you and a guest played by a bot: a real online bout with one pair of hands. |
+|---|---|
+| 1 | An **Arena** room: a host window and a guest window, both yours. Alt+Tab between them. |
+| 2 | An Arena room with a bot as the friend: a real online bout with one pair of hands. |
 | 3 | Like 2, with a pretend poor connection (120 ms delay, 3% packet loss). |
-| 4 | A host and two bot guests. |
+| 4 | A **campaign** room: a host window and a guest window, both yours. |
+| 5 | The automatic check above. |
 
-The host's window is in the **yard** from the first moment: the online lobby with the smith, the
-physician, the mission board, the practice dummies and the gate. Each guest walks into that
-yard as it joins. At the gate the host picks what everyone plays next, the co-op campaign or one
-of the arena modes, and after the bout everyone is back in the yard.
+The host's window opens on the **room's lobby**. The guest's window joins it and appears on a card; press **Enter the
+yard** (in a campaign room, **Begin bout 1** or **Into the yard**) and the guest walks in. At the gate the host picks
+the fight for everyone and after the bout everyone is back in the yard.
 
-## What to check
+### What to look at
 
-- Both players are in the yard and see each other walk about; E by a keeper opens his stall in
-  either window, and the purse shown is the same in both.
-- The host walks into the gate and picks a bout; the guest's window follows into it.
-- Esc in either window: **Settings** (keys, mouse, sound) for every player; for the host also
-  **Back to the yard (everyone)** in the middle of a bout; **Leave the room** / **Close the room**.
-- A guest who joins late walks into the yard; one who closes the game is gone from it within
-  about ten seconds.
-- In the fight, both fighters are drawn in both windows; the guest moves and strikes.
-- Damage (voxels flying, blood) shows in the other window too.
-- The round ends for both at once.
-- In the yard, the purse is shared: buying in one window changes the coins in the other.
+- **The lobby.** Each player is a card (a crown on the host, his connection in bars and milliseconds). A dashed ring with
+  a + is a free place, and for the host it is a button: it copies the address of this computer for a friend to join by.
+  *Mute* is for you alone; *Remove* asks twice and the friend cannot come back until a new room is opened.
+  Esc in the yard opens the pause menu: *The room* is the same lobby over the game.
+- Both players are in the yard and see each other walk about; E by a keeper opens his stall in either window.
+- **Arena room:** each has a gladiator of his own, money is no object (the purse shows ∞), and the campaign is not touched
+  in either window. **Campaign room:** the purse is the host's and limited, and the guest's own purse is the same number.
+- The host walks into the gate and picks a fight; the guest's window follows into it. Rounds and bots are set on the
+  fight's own screen. Red vs Blue: each walks into a circle; the host begins when all stand in one.
+- In the fight both fighters are drawn in both windows; damage (voxels flying, blood) shows in both; the round ends for both.
+- Esc in either window: **Settings** for every player; for the host also **Back to the yard (everyone)** in the middle of a
+  bout; **Close the room** / **Leave the room**.
+- A guest who joins late walks into the yard; one who closes the game is gone from it within about ten seconds.
 - With option 3, the guest's movement should feel a little late but never freeze or jump.
 
 ## Two real computers on one network
 
 On the host computer double-click `multiplayer_test.bat` and pick 1, then close the guest window
 it opened. On the second computer open the game in Godot, go to **Multiplayer**, and join
-`192.168.x.x` (the host's address: on the host, `ipconfig` in a command prompt shows it as
-IPv4 Address). If Windows asks about the firewall, allow it. Over the internet the host also
+the address the host's lobby shows on its first free place (or `ipconfig` in a command prompt: IPv4 Address).
+If Windows asks about the firewall, allow it. Over the internet the host also
 needs port 7777 (UDP) forwarded on the router; Steam lobbies avoid that.
 
 ## Before any players: what a computer can host
@@ -156,8 +205,8 @@ the cost of one step (ms) of each side every second.
 - A black window and a wall of "Identifier not declared" errors: the project was not imported.
   Delete the `.godot` folder inside the game's folder and run the .bat again; it imports first.
 - The guest never joins: something else holds port 7777, or an antivirus blocks it. Try again
-  after a reboot, or run only option 2.
-- Send a screenshot of each window's room screen; that is enough to tell what happened.
+  after a reboot, or pick 1.
+- Send a screenshot of each window's lobby, and `e2e_report.txt` if it was the automatic check; that is enough to tell what happened.
 
 ## Steam: one test with a second person
 

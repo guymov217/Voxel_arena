@@ -12,6 +12,8 @@ var fight_seen := ""
 var fight_rounds := 0
 var _bye := false
 var sandbox_seen := false
+var lobby_seen := false
+var lobby_names := []
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17781
@@ -32,6 +34,9 @@ func _ready() -> void:
 		await get_tree().process_frame
 		if Save.boxed and menu.coins() == Save.UNLIMITED:
 			sandbox_seen = true
+		if not lobby_seen and menu.screen == "room" and menu.find_child("LobbyWait", true, false) != null and Net.room_list().size() == 2 and String(Net.room_list()[0].name) != "The host":
+			lobby_seen = true   # (the host's lobby, as the guest sees it: the two of them, and he waits)
+			lobby_names = Net.room_list().map(func(r): return "%s%s" % [r.name, "*" if r.host else ""])
 		var m = menu.match_
 		if m != null and is_instance_valid(m):
 			if m.mode == "yard" and m.yard != null and m.yard.teams_on() and not circles_seen:
@@ -44,6 +49,7 @@ func _ready() -> void:
 	print("GUEST the room was for ", Net.room_kind, "; the sandbox was on for him ", sandbox_seen)
 	print("GUEST circles seen ", circles_seen, ": ", team_line, "; the fight: ", fight_seen, " over ", fight_rounds, " rounds")
 	print("GUEST his campaign's purse ", Save.data.coins)
-	ok = ok and sandbox_seen and circles_seen and fight_rounds == 3 and int(Save.data.coins) == 77 and fight_seen != ""
+	print("GUEST the lobby he waited in listed ", lobby_names)
+	ok = ok and sandbox_seen and lobby_seen and circles_seen and fight_rounds == 3 and int(Save.data.coins) == 77 and fight_seen != ""
 	print("GUEST ", "ok" if ok else "FAIL")
 	get_tree().quit(0 if ok else 1)

@@ -192,15 +192,19 @@ func test_the_co_op_campaign_takes_four_at_most() -> void:
 	t.check(not Net.campaign_full(), "four in the room: the campaign takes them")
 	menu.show_screen("room")
 	await get_tree().process_frame
-	t.eq(held.call("Start the co-op campaign"), [false], "four: it can be started from the room")
+	var begin := func() -> Array:
+		var b = menu.find_child("LobbyCampaign", true, false)   # (the lobby's Begin bout button)
+		return [b.disabled] if b != null else []
+	t.eq(begin.call(), [false], "four: it can be started from the room")
 	Net.peers[12] = {"name": "Friend 12", "loadout": {"main": "gladius"}}
 	t.check(Net.campaign_full(), "five: one too many")
 	menu.show_screen("room")
 	await get_tree().process_frame
-	t.eq(held.call("Start the co-op campaign"), [true], "five: held back in the room")
+	t.eq(begin.call(), [true], "five: held back in the room")
 	var why: String = menu.campaign_full_text()
 	t.check(why.contains("4") and why.contains("5") and why.contains("8"), "the reason names the numbers: " + why)
-	t.eq(menu.find_children("*", "Label", true, false).filter(func(l): return l.text == why).size(), 1, "and is shown under it")
+	t.eq(menu.find_child("LobbyCampaign", true, false).tooltip_text, why, "and is on the button")
+	t.eq(menu.find_children("*", "Label", true, false).filter(func(l): return l.visible and l.text == "4 at most").size(), 1, "with the number beside it")
 	if not Edition.demo_over(int(Save.get_value("coop_stage", 1))):
 		menu.show_screen("gate")
 		await get_tree().process_frame

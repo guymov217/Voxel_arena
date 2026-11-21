@@ -77,6 +77,7 @@ func _on(type: String, data, _from: int) -> void:
 			print("GUEST offer ", offers.back(), " time ", data.get("t") if data is Dictionary else "-")
 			# The first wave's: picks the second of the cards at once; the second wave's is left to run out.
 			if offers.size() == 1 and rs.size() >= 2:
+				await get_tree().create_timer(1.5).timeout   # (a moment to read them: the host sees both rewards on offer first)
 				Net.send_host("endless_pick", 1)
 		"endless_done":
 			dones += 1

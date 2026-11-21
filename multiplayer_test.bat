@@ -46,25 +46,30 @@ if not exist ".godot\global_script_class_cache.cfg" (
 )
 
 rem ---- 3. What to try
-echo  1. Two windows, both played by you ^(Alt+Tab between them^)
-echo  2. Host + a bot guest: you play the host, the bot fights beside you
-echo  3. Like 2, over a pretend poor connection ^(120 ms, 3%% loss^)
-echo  4. Host + two bot guests
+echo  1. Arena with friends: two windows, both played by you (Alt+Tab between them)
+echo  2. Arena with friends: you host, a bot is the friend
+echo  3. Arena with friends over a pretend poor connection ^(120 ms, 3%% lost^)
+echo  4. Campaign together: two windows, both played by you
+echo  5. Everything, played and checked by the game itself ^(about 6 minutes, nothing to press^)
 echo.
-choice /c 1234 /n /m "Pick 1-4: "
+choice /c 12345 /n /m "Pick 1-5: "
 set "pick=%errorlevel%"
+if "%pick%"=="5" (
+	call "%~dp0multiplayer_e2e.bat"
+	exit /b
+)
 set "N=1"
 set "BOT="
 set "EXTRA="
+set "ROOM=--arena"
 if "%pick%"=="2" set "BOT=--bot"
 if "%pick%"=="3" set "BOT=--bot" & set "EXTRA=--lag 120 --loss 3"
-if "%pick%"=="4" set "BOT=--bot" & set "N=2"
+if "%pick%"=="4" set "ROOM="
 
-rem ---- 4. Open the windows: the host first, then the guests join it. The host starts the
-rem         yard (the online lobby with the stalls) when the first guest is in.
+rem ---- 4. Open the windows: the host first (it opens on the room's lobby), then the guest joins it.
 echo.
 echo Opening the host window...
-start "WRECKSMITH host" "!G!" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host --name Host %EXTRA%
+start "WRECKSMITH host" "!G!" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host %ROOM% --name Host %EXTRA%
 timeout /t 4 /nobreak >nul
 for /l %%i in (1,1,%N%) do (
 	echo Opening guest %%i...
@@ -72,8 +77,7 @@ for /l %%i in (1,1,%N%) do (
 	timeout /t 2 /nobreak >nul
 )
 echo.
-echo The host is in the yard (the online lobby) and each guest walks into it as it joins. The
-echo host picks the campaign or an arena mode at the gate; everyone comes back to the yard after.
-echo Close this window when done.
+echo The host window is on the room's lobby: the guest appears on a card. Press ENTER THE YARD
+echo ^(or BEGIN BOUT in a campaign room^) and the guest walks in. Close this window when done.
 pause
 endlocal

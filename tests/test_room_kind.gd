@@ -220,7 +220,7 @@ func test_the_campaign_room_has_no_arena_to_enter() -> void:
 	t.eq(_buttons(menu, "Fights and party modes").size(), 0, "nor a way to the fights list")
 	menu.show_screen("room")
 	await _steps(2)
-	t.eq(_buttons(menu, "Start the co-op campaign").size(), 1, "the room screen leads into the co-op campaign")
+	t.check(menu.find_child("LobbyCampaign", true, false) is Button, "the room screen leads into the co-op campaign")
 	_leave_room_menu(pair)
 
 func test_the_friends_room_has_no_campaign_to_start() -> void:
@@ -228,8 +228,8 @@ func test_the_friends_room_has_no_campaign_to_start() -> void:
 	var menu: Node = pair[0]
 	menu.show_screen("room")
 	await _steps(2)
-	t.eq(_buttons(menu, "Start the co-op campaign").size(), 0, "no campaign to start in the friends' room")
-	t.eq(_buttons(menu, "Into the yard together").size(), 1, "the yard to go into")
+	t.check(menu.find_child("LobbyCampaign", true, false) == null, "no campaign to start in the friends' room")
+	t.check(menu.find_child("LobbyEnter", true, false) is Button, "the yard to go into")
 	menu.start({"mode": "coop", "role": "host"})
 	await _steps(2)
 	t.check(menu.match_ == pair[1], "asked anyway, the campaign does not begin (the yard goes on)")
@@ -251,9 +251,8 @@ func test_the_pause_menu_says_where_he_is_and_never_offers_to_wipe_the_campaign(
 	t.eq(_buttons(menu, "Restart the campaign").size(), 0, "no restart of the campaign from the friends' room")
 	t.eq(_buttons(menu, "The Arena: pick a fight").size(), 1, "the host can pick a fight from the pause menu")
 	t.eq(_buttons(menu, "Back to the yard").size(), 1, "and the way back is named")
-	var lines: Array = menu.find_children("*", "Label", true, false).map(func(l): return String(l.text))
-	t.check(lines.any(func(s): return s.contains("Arena room")), "the kind of room is said")
-	t.check(lines.any(func(s): return s.contains("Cato") and s.contains("Brutus")), "and who is in it: %s" % str(lines.filter(func(s): return s.contains("Cato"))))
+	t.eq(_buttons(menu, "The room").size(), 1, "and a door to the room's own screen, which says who is in it")
+	t.check(String(_buttons(menu, "The room")[0].text).contains("2 of 8"), "with how many: %s" % _buttons(menu, "The room")[0].text)
 	menu._toggle_pause()
 	Net.peers.erase(9)
 	_leave_room_menu(pair)
@@ -272,6 +271,5 @@ func test_the_arena_list_in_the_friends_yard_goes_back_to_the_yard() -> void:
 	await _steps(2)
 	t.check(_buttons(menu, "◀  Back to the yard").size() == 1, "the way out at the top says where it leads")
 	t.eq(_buttons(menu, "Back to the yard, all of you").size(), 0, "and is the only one (the yard went on behind)")
-	t.check(menu.find_children("*", "Label", true, false).any(func(l): return String(l.text).contains("money is no object")), "the screen says what the room means")
 	t.eq(_buttons(menu, "Co-op").size(), 0, "no co-op campaign card among the fights")
 	_leave_room_menu(pair)

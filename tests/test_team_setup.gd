@@ -100,7 +100,7 @@ func test_the_yard_reads_who_stands_in_a_circle() -> void:
 	await _steps(3)
 	m.yard.update(0.2, {})
 	t.eq(m.yard.team_setup.team_of(1), -1, "standing between: in none")
-	t.check(not m.yard.team_setup.ready() and m.yard.team_line().contains("circle"), "not ready (%s)" % m.yard.team_line())
+	t.check(not m.yard.team_setup.ready() and m.yard.team_line().contains("Waiting for"), "not ready, and who is awaited (%s)" % m.yard.team_line())
 	m.yard.update(0.2, {"talk": true})
 	t.check(not went.has("team_go"), "E does not begin it")
 	m.me.f.teleport(Vector3(TeamSetup.CENTRES[1].x, 0, TeamSetup.CENTRES[1].z))

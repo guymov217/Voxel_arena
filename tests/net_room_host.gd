@@ -1,7 +1,7 @@
 extends Node
 ## Two-process test of an Arena room through the game's own menus, host side (`-- --probe net_room_host`): the host opens an
 ## Arena room (Menu._host_room), a guest comes in and is told what the room is, both have the sandbox (the campaign's purse
-## untouched, money no object), the yard is the lobby, the host sets a team fight (the circles in the yard), the guest walks into
+## untouched, money no object), the room opens on its lobby and the host opens the yard from it, the host sets a team fight (the circles in the yard), the guest walks into
 ## the other circle, the host begins, and the fight starts on both sides with each on his own team.
 
 const MenuScript := preload("res://scripts/ui/menu.gd")
@@ -20,12 +20,22 @@ func _ready() -> void:
 	menu._set_mp_kind(Net.KIND_ARENA)
 	menu._host_room(func(): print("HOST listen ", Net.host_enet(port)))
 	var ok := true
-	ok = await _until(func(): return menu.in_yard(), 10.0, "the host's yard") and ok
-	print("HOST in the yard ", menu.in_yard(), " room kind ", Net.room_kind, " sandbox ", Save.boxed, " purse ", menu.coins())
-	ok = ok and Save.boxed and menu.coins() == Save.UNLIMITED
+	# A room opens on its lobby: the host waits there for his friends and opens the yard when they are in.
+	ok = await _until(func(): return menu.screen == "room", 10.0, "the host's lobby") and ok
+	print("HOST in the lobby ", menu.screen == "room", " (yard ", menu.in_yard(), ") room kind ", Net.room_kind, " sandbox ", Save.boxed, " purse ", menu.coins())
+	ok = ok and not menu.in_yard() and Save.boxed and menu.coins() == Save.UNLIMITED
 	ok = await _until(func(): return not Net.peers.is_empty(), 25.0, "a guest") and ok
 	var gid: int = Net.peers.keys()[0]
-	ok = await _until(func(): return menu.match_ != null and menu.match_.humans().size() == 2, 10.0, "the guest in the yard") and ok
+	await get_tree().create_timer(1.5).timeout   # (the roster goes to the guest, his connection is measured)
+	var listed: Array = Net.room_list().map(func(r): return r.name)
+	print("HOST the lobby lists ", listed, " and has his card ", menu.find_child("Slot1", true, false) != null)
+	ok = ok and listed.size() == 2 and menu.find_child("Slot1", true, false) != null
+	var enter: Button = menu.find_child("LobbyEnter", true, false)
+	print("HOST the way into the yard is a button ", enter != null)
+	ok = ok and enter != null
+	if enter != null:
+		enter.pressed.emit()
+	ok = await _until(func(): return menu.in_yard() and menu.match_ != null and menu.match_.humans().size() == 2, 20.0, "the guest in the yard") and ok
 	print("HOST the room: ", menu.match_.humans().size(), " in the yard; the guest's arms ", Net.peers[gid].get("loadout", {}).get("main", "?"))
 	# The Arena's list: the team fight, two rounds, two bots. The circles are drawn in the yard; the guest is told.
 	menu._set_fight_opt("teams", "rounds", 3)

@@ -17,6 +17,7 @@ signal peer_joined(id: int, info: Dictionary)
 signal peer_left(id: int)
 signal connected
 signal room_kind_known(kind: String)   # (a guest) the host has said what the room is for
+signal roster_changed                  # (a guest) the host has said who is in the room
 signal connection_failed(reason: String)
 signal disconnected
 signal lobbies(list: Array)
@@ -203,6 +204,90 @@ var room_kind := KIND_CAMPAIGN
 
 static func clean_kind(v) -> String:
 	return KIND_ARENA if (v is String and v == KIND_ARENA) else KIND_CAMPAIGN
+
+## ---------- Who is in the room ----------
+## A guest knows only the host and himself (the host's books, `peers`, are the host's alone): so the host tells every guest who is in
+## the room ("roster": id, name and round trip of each, when someone comes or goes and every ROSTER_EVERY seconds for the pings), and
+## room_list() gives each side the same list for the lobby screen to draw.
+const ROSTER_EVERY := 2.0
+var _roster: Array = []         # (a guest) what the host last said: [{id, name, ping}]
+var _roster_t := 0.0
+
+## Everyone in the room, the host first and then the guests as they came: [{id, name, host, you, ping}]. `ping` is that guest's
+## round trip to the host in ms (-1: not known yet; 0: the host himself). Empty when there is no room.
+func room_list() -> Array:
+	var out := []
+	if not active():
+		return out
+	if is_host():
+		out.append({"id": 1, "name": my_name, "host": true, "you": true, "ping": 0.0})
+		var ids := peers.keys()
+		ids.sort()
+		for id in ids:
+			out.append({"id": int(id), "name": String(peers[id].get("name", "Guest")), "host": false, "you": false, "ping": float(guest_pings.get(id, -1.0))})
+		return out
+	var me := my_id()
+	for r in _roster:
+		out.append({"id": int(r.id), "name": String(r.name), "host": int(r.id) == 1, "you": int(r.id) == me, "ping": ping_ms if int(r.id) == me else float(r.ping)})
+	if out.is_empty():
+		# (Before the host's first word: the host as a stranger, and me.)
+		out = [{"id": 1, "name": Loc.t("The host"), "host": true, "you": false, "ping": 0.0}, {"id": me, "name": my_name, "host": false, "you": true, "ping": ping_ms}]
+	return out
+
+## The host tells his guests who is in the room.
+func send_roster() -> void:
+	if not active() or not is_host():
+		return
+	_roster_t = 0.0
+	if peers.is_empty():
+		return
+	var list := [[1, my_name, 0]]
+	var ids := peers.keys()
+	ids.sort()
+	for id in ids:
+		list.append([int(id), String(peers[id].get("name", "Guest")), int(roundf(float(guest_pings.get(id, -1.0))))])
+	send_all("roster", {"p": list})
+
+## A roster from the wire as it may be kept: eight at most, names without markup, numbers that are numbers.
+static func clean_roster(v) -> Array:
+	var out := []
+	if v is Dictionary and v.get("p") is Array:
+		for r in (v.p as Array).slice(0, MAX_PLAYERS):
+			if r is Array and r.size() >= 3:
+				out.append({"id": int(num(r[0], -1.0)), "name": clean_name(r[1]), "ping": clampf(num(r[2], -1.0), -1.0, 9999.0)})
+	return out
+
+## This computer's addresses a friend on the same network can join by: IPv4 only, never the loopback or a link-local one, the
+## private ranges first (192.168, then 10., then 172.16-31) as the likeliest to be the LAN.
+static func lan_addresses() -> Array:
+	return lan_from(IP.get_local_addresses())
+
+## `lan_addresses` of a list of addresses (a test hands its own).
+static func lan_from(raw: Array) -> Array:
+	var out := []
+	for a in raw:
+		var s := String(a)
+		var parts := s.split(".")
+		if parts.size() != 4 or s.begins_with("127.") or s.begins_with("169.254.") or s.begins_with("0."):
+			continue
+		var ok := true
+		for q in parts:
+			if not q.is_valid_int() or int(q) < 0 or int(q) > 255:
+				ok = false
+		if ok and not out.has(s):
+			out.append(s)
+	out.sort_custom(func(a, b): return _addr_rank(a) < _addr_rank(b))
+	return out
+
+static func _addr_rank(a: String) -> int:
+	if a.begins_with("192.168."):
+		return 0
+	if a.begins_with("10."):
+		return 1
+	if a.begins_with("172."):
+		var second := int(a.split(".")[1])
+		return 2 if second >= 16 and second <= 31 else 3
+	return 3
 
 func host_steam(public := true) -> void:
 	if not steam_available():
@@ -488,6 +573,7 @@ func leave() -> void:
 	host_rate = -1.0
 	host_fps = -1.0
 	guest_pings.clear()
+	_roster.clear()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
@@ -608,6 +694,7 @@ func _on_peer_disconnected(id: int) -> void:
 	if peers.erase(id):
 		_presence_size()
 		peer_left.emit(id)
+		send_roster()
 	inputs.erase(id)
 
 ## ENet sheds unreliable packets on purpose whenever the round trip wobbles (its "throttle"):
@@ -695,6 +782,10 @@ func _pace() -> void:
 
 func _meter(dt: float) -> void:
 	_time_steps()
+	if not peers.is_empty() and is_host():
+		_roster_t += dt
+		if _roster_t >= ROSTER_EVERY:
+			send_roster()   # (the pings move: each guest sees how the others are doing)
 	_meter_t += dt
 	if _meter_t < 1.0:
 		return
@@ -987,6 +1078,11 @@ func _receive(type: String, data, from: int) -> void:
 			room_kind = clean_kind(data.get("k"))
 			room_kind_known.emit(room_kind)
 		return
+	if type == "roster":
+		if not is_host():
+			_roster = clean_roster(data)
+			roster_changed.emit()
+		return
 	if type == "kicked" and not is_host():
 		if data is Dictionary and str(data.get("why", "")) == "version":
 			leave_reason = Loc.t("The host's game is another version (%s; yours is %s): update the game and join again.") % [clean_name(data.get("ver", "?"), 24), build_tag()]
@@ -1026,6 +1122,7 @@ func _receive(type: String, data, from: int) -> void:
 					_presence_size()
 					send_to(from, "room", {"k": room_kind})
 					peer_joined.emit(from, info)
+					send_roster()
 				return
 			"me":
 				# A guest's gladiator as he is now (push_me), read as his hello was.

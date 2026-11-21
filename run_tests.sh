@@ -86,4 +86,15 @@ wait $hp
 hs=$?
 grep -E "^(HOST|GUEST)" /tmp/va_netroom_host.log /tmp/va_netroom_guest.log
 if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (room): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (room): ok"; fi
+# All of multiplayer played out by three games through the game's own screens (tests/e2e_run.gd, e2e_host.gd, e2e_guest.gd): the
+# lobby, the yard, the smith, the fights, the endless arena with three, a removal, a campaign room. The short version here
+# (E2E=full for every mode of the Arena too: another three minutes).
+export NET_PORT=$((NET_PORT + 1))
+e2e_args="--quick"
+[ "$E2E" = full ] && e2e_args=""
+if timeout 1500 "$G" --headless --path . -- --probe e2e_run --port "$NET_PORT" $e2e_args > /tmp/va_e2e.log 2>&1; then
+	echo "net (end to end): ok ($(grep -E '^[0-9]+ checks' /tmp/va_e2e.log))"
+else
+	echo "net (end to end): FAIL"; grep -E "FAIL|RESULT|checks," /tmp/va_e2e.log | tail -25; fail=1
+fi
 exit $fail

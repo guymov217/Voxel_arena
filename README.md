@@ -641,7 +641,9 @@ on localhost (a host and a guest by address), and over the Steam path (`tests/ne
 In the second, Steam itself is a stand-in (`tests/steam_loopback.gd`: the folder both processes share plays Valve's servers, and
 `FakePeer` carries the bytes over ENet), so everything of the game's own that sits between runs for real: the lobby and its
 data, the filtered list, the join, the build check, the hello, the bout, a kick. `tests/test_net_steam.gd` holds the rest in
-one process (a different build, a missing extension, a failing peer, an invite while in a room, `+connect_lobby`). What only
+one process (a different build, a missing extension, a failing peer, an invite while in a room, `+connect_lobby`). `run_tests.sh` also runs the end-to-end check (`tests/e2e_run.gd`: a host and two friends play the lobby, the yard, the fights,
+the endless arena, a removal and a campaign room through the game's own screens); `E2E=full sh run_tests.sh` leaves nothing of
+the Arena out. What only
 Steam can show is Valve's real calls and relay: one test with a second person, in `docs/MULTIPLAYER_TEST.md`.
 
 ### The two kinds of room
@@ -817,16 +819,19 @@ enemies asks a strong CPU of the host.
 ### Trying an online game on one machine
 
 No command line: put the Godot 4.7.2 exe in the game's folder and double-click
-**`multiplayer_test.bat`** (Windows); it opens the windows and asks what to try. The steps and
-what to check are in `docs/MULTIPLAYER_TEST.md`. The windows open small (`-- --keep-window` keeps the
+**`multiplayer_e2e.bat`** (Windows; `sh tools/mp_e2e.sh` elsewhere) and the game plays all of multiplayer by itself, three
+games (a host and two friends) through its own screens: the lobby, the yard, the smith, every fight of the Arena, the endless
+arena, a removal, a campaign room (`tests/e2e_run.gd`, `e2e_host.gd`, `e2e_guest.gd`, `e2e_kit.gd`); each check is shown as it
+passes and the list is written to `e2e_report.txt`. To play it yourself double-click **`multiplayer_test.bat`**; it opens the
+windows and asks what to try. The steps and what to check are in `docs/MULTIPLAYER_TEST.md`. The windows open small (`-- --keep-window` keeps the
 window the engine's `--position`/`--resolution` made, instead of the saved display mode, which is full
 screen unless the player chose otherwise: two full-screen windows share one graphics card and the one
 behind draws a fraction of the frames). The long way:
 
 `tools/mp_local.sh` (Linux/macOS) or `tools/mp_local.bat` (Windows, after
-`set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window already
-in the host's yard over ENet (online, the yard is the lobby: the host picks the next bout at the
-gate). With `BOT=1`
+`set GODOT=D:\godot\Godot_v4.7.2-stable_win64.exe`) opens a host window and a guest window over ENet: the host on its
+room's lobby (a card for each player), the guest joining it, and a press of Enter the yard walks them into the yard, the
+place where the host picks the next bout at the gate (`--yard` goes in at once). With `BOT=1`
 the guests are played by bots, so you can host, play and watch a real online bout alone. `LAG=120
 LOSS=3` holds every incoming message back 120 ms (±30) and drops 3% of the unreliable ones, a
 pretend poor connection to see how the game feels at that latency. The same flags work on a plain

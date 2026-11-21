@@ -6,7 +6,9 @@ rem   tools\mp_local.bat            (host + one guest, both played by you)
 rem   tools\mp_local.bat 2          (host + two guests)
 rem   set BOT=1                     (before running: the guests are played by bots)
 rem   set LAG=120 & set LOSS=3      (pretend a 120 ms connection losing 3%% of packets)
-rem In the host window: Start the co-op campaign (or Into the yard together).
+rem   set ROOM=campaign             (a campaign room; the default is the friends' Arena)
+rem The host window opens on the room's lobby: press ENTER THE YARD (BEGIN BOUT in a campaign room) once the guests are on it.
+rem For all of it played and checked by the game itself: multiplayer_e2e.bat
 setlocal
 if "%GODOT%"=="" set GODOT=godot
 set N=%1
@@ -14,10 +16,12 @@ if "%N%"=="" set N=1
 set EXTRA=
 if "%LOSS%"=="" set LOSS=0
 if not "%LAG%"=="" set EXTRA=--lag %LAG% --loss %LOSS%
+set ROOMFLAG=--arena
+if "%ROOM%"=="campaign" set ROOMFLAG=
 set BOTFLAG=
 if not "%BOT%"=="" set BOTFLAG=--bot
 cd /d "%~dp0\.."
-start "WRECKSMITH host" "%GODOT%" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host --name Host %EXTRA%
+start "WRECKSMITH host" "%GODOT%" --path . --position 40,60 --resolution 1100x650 -- --keep-window --host %ROOMFLAG% --name Host %EXTRA%
 timeout /t 3 /nobreak >nul
 for /l %%i in (1,1,%N%) do (
 	start "WRECKSMITH guest %%i" "%GODOT%" --path . --position 480,180 --resolution 1100x650 -- --keep-window --join 127.0.0.1 --name "Guest %%i" %BOTFLAG% %EXTRA%
