@@ -390,6 +390,8 @@ static func _tusk(p) -> bool:
 func _blow(g: Dictionary) -> Dictionary:
 	var vic: VoxelPart = g.vic
 	var vic_char = vic.fighter
+	if vic_char != null and bool(vic_char.get("untouchable")):
+		return {}   # (a man at a stall of the yard: the blade meets him as it would a wall, and no more)
 	var p: Vector3 = g.p
 	var att = g.att
 	var is_weapon: bool = att is Weapon

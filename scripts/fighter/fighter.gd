@@ -85,6 +85,9 @@ signal lodged(fighter: Fighter, w: Weapon, what: String, at: Vector3)   # "in" a
 var display_name := "Gladiator"
 var slot := 0
 var team := 0
+## A man at a stall of the yard (its menu is open: the shop, the smith, the physician, the trainer, the gate) cannot be hurt: no
+## blow, blast, arrow or fall touches him (Match.set_stall; the guests are told in his grip number).
+var untouchable := false
 var team_color := Color(0.627, 0.125, 0.125)
 var skin := Color(0.878, 0.706, 0.549)
 var is_bot := false
@@ -7765,6 +7768,9 @@ static func past_cap(x: float, cap: float, dims := 1.0) -> float:
 ## sharpness, point, dir, axis, edge, heavy...). Returns what it did.
 func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 	var res := {"removed": [], "severed": [], "dmg": 0.0}
+	if untouchable:
+		res.blocked = true
+		return res
 	if float(hit.get("impulse", 0.0)) > 2.0:
 		jolt_t = time   # (a blow, a bite, a blast, a fall: a cause to go over by)
 	if _shield_takes(hit):
@@ -9985,7 +9991,10 @@ func status_packed() -> Array:
 ## What he holds, in a number for the wire: bit 0 both hands on one haft, bit 1 it is the left hand's,
 ## the bits above the number of the special arrow picked for his bow (Throwables.ARROW_IDS).
 func _held_bits() -> int:
-	return (1 if two_handed else 0) + (2 if two_side == "L" else 0) + (maxi(0, Throwables.ARROW_IDS.find(arrow_pick)) << 2)
+	return (1 if two_handed else 0) + (2 if two_side == "L" else 0) + (maxi(0, Throwables.ARROW_IDS.find(arrow_pick)) << 2) + (UNTOUCHABLE_BIT if untouchable else 0)
+
+## (The bit above the arrow's number: a man at a yard stall.)
+const UNTOUCHABLE_BIT := 256
 
 func apply_status(s) -> void:
 	if s is Array:
@@ -10004,7 +10013,8 @@ func apply_status(s) -> void:
 		if s.size() > 5:
 			net_two_handed = (int(s[5]) & 1) == 1
 			net_two_side = "L" if (int(s[5]) & 2) != 0 else "R"
-			arrow_pick = String(Throwables.ARROW_IDS[clampi(int(s[5]) >> 2, 0, Throwables.ARROW_IDS.size() - 1)])
+			arrow_pick = String(Throwables.ARROW_IDS[clampi((int(s[5]) >> 2) & 63, 0, Throwables.ARROW_IDS.size() - 1)])
+			untouchable = (int(s[5]) & UNTOUCHABLE_BIT) != 0
 		if s.size() > 6 and s[6] is PackedByteArray and (s[6] as PackedByteArray).size() == parts.size() * 3:
 			var fb: PackedByteArray = s[6]
 			for i in parts.size():

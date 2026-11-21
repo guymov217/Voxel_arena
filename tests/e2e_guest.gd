@@ -89,7 +89,7 @@ func _run_guest() -> void:
 	if not joined:
 		return
 	var steps := [
-		["lobby", _lobby], ["yard", _yard], ["shop", _shop],
+		["lobby", _lobby], ["yard", _yard], ["shop", _shop], ["stall", _stall], ["respawn", _respawn],
 		["ffa.start", _ffa_start], ["ffa.round2", _ffa_round2], ["ffa.end", _back_in_yard],
 		["teams.circles", _teams_circles], ["teams.fight", _teams_fight], ["teams.end", _back_in_yard]]
 	if not quick:
@@ -131,6 +131,32 @@ func _shop() -> void:
 		menu.set_arms(r.arms)
 	var main: Dictionary = menu.arms().main
 	k.check("shop.buy", bought and String(main.get("name", "")).to_lower().contains("axe") and menu.coins() == Save.UNLIMITED and int(Save.data.coins) == 77, "he buys an axe at the smith: nothing comes off any purse", str(r.get("error", main.get("name", ""))))
+
+## A stall's menu open over the yard: the host holds him untouchable until he leaves it.
+func _stall() -> void:
+	menu._open_station("market")
+	await k.pause(0.5)
+	k.check("stall.open", menu.visible and menu.screen == "market", "he opens the market's stall", "screen %s" % menu.screen)
+	await k.wait_line("host", "CUE", "stall.close", 30.0)
+	menu._close_overlay()
+	await k.pause(0.3)
+
+## R, the key: up again by the gate; a second press at once does nothing (a wait of ten seconds).
+func _respawn() -> void:
+	var old = m().me.f if m() != null and m().me != null else null
+	_press_r()
+	var ok: bool = await k.until(func(): return m() != null and m().me != null and is_instance_valid(m().me.f) and m().me.f != old and m().me.f.alive, 15.0, "himself again")
+	k.check("respawn.seen", ok, "R brings him up again by the gate, built anew here from the host's word")
+	var mid = m().me.f if m() != null and m().me != null else null
+	_press_r()
+	await k.pause(1.5)
+	k.check("respawn.wait", m() != null and m().me != null and m().me.f == mid, "R again at once changes nothing: he waits ten seconds")
+
+func _press_r() -> void:
+	var ev := InputEventAction.new()
+	ev.action = "va_restart"
+	ev.pressed = true
+	menu._unhandled_input(ev)
 
 func _ffa_start() -> void:
 	var ok: bool = await k.until(func(): return m() != null and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all")

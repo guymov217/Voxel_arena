@@ -4515,6 +4515,14 @@ func _on_net(type: String, data, _from: int) -> void:
 			# his own screen and hung broken on everyone's until the next bout).
 			if Net.is_host() and in_yard() and Net.peers.has(_from):
 				match_.peer_body(_from, Net.peers[_from].get("body", {}), _peer_spec(_from, true).get("loadout", {}))
+		"stall":
+			# A guest at a stall of the yard (its menu open) cannot be hurt there: his word, said again every second (Match.stall_peer).
+			if match_ and Net.is_host() and in_yard() and data is Dictionary:
+				match_.stall_peer(_from, data.get("on") == true)
+		"respawn":
+			# A guest's R in the yard: up again by the gate, at most every ten seconds (Match.respawn_peer).
+			if match_ and Net.is_host() and in_yard():
+				match_.respawn_peer(_from)
 		"gate_pick":
 			# A guest's pick of the gate's fights (a card's number, anything else none).
 			if match_ and Net.is_host() and match_.yard:
@@ -4611,6 +4619,45 @@ func _on_net(type: String, data, _from: int) -> void:
 				# (The pay went into the party's purse on the host's side.)
 				match_.guest_end(data)
 
+## At a stall of the yard (a menu open over it: the shop, the smith, the physician, the trainer, the gate; not the pause menu's
+## screens) a man cannot be hurt. The host's man is marked at once; a guest says so to the host when it changes and every
+## second after (the host lets it lapse a few seconds after the last word, Match.STALL_TTL).
+var _at_stall := false
+var _stall_beat := 0.0
+var _respawn_at := 0.0   # a guest's own count of the time until R can bring him up again (the host keeps the true one)
+
+func _process(dt: float) -> void:
+	var on := match_ != null and is_instance_valid(match_) and match_.mode == "yard" and visible and not over_match
+	if on and not Net.is_host() and Net.active():
+		_stall_beat -= dt
+		if _stall_beat <= 0.0:
+			_stall_beat = 1.0
+			Net.send_host("stall", {"on": true}, false)
+	if on == _at_stall:
+		return
+	_at_stall = on
+	_stall_beat = 1.0
+	if match_ == null or not is_instance_valid(match_) or match_.mode != "yard":
+		return
+	if Net.active() and not Net.is_host():
+		Net.send_host("stall", {"on": on})
+	elif match_.me != null:
+		match_.set_stall(match_.me, on)
+
+## R in the yard: up again by the gate, whole, with the kit he came in with, at most every ten seconds.
+func _respawn_key() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var guest := Net.active() and not Net.is_host()
+	var wait: float = (_respawn_at - now) if guest else (match_.respawn_wait(match_.me) if match_.me != null else 0.0)
+	if wait > 0.0:
+		match_.feed.emit(Loc.t("Up again in %d s") % ceili(wait))
+		return
+	if guest:
+		_respawn_at = now + Match.RESPAWN_COOLDOWN
+		Net.send_host("respawn", {})
+	elif match_.me != null:
+		match_.respawn_request(match_.me)
+
 func _unhandled_input(e: InputEvent) -> void:
 	# F12: a screenshot (with Steam running, Steam takes its own on the same key).
 	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F12 and not Net.steam_ready:
@@ -4620,6 +4667,10 @@ func _unhandled_input(e: InputEvent) -> void:
 	# and closing that unpaused the arena in the middle of the replay; R started the bout again
 	# under it.
 	if match_ and is_instance_valid(match_) and match_.killcam and match_.killcam.playing:
+		return
+	# R in the yard (a room's, or alone): up again by the gate (_respawn_key).
+	if e.is_action_pressed("va_restart") and not e.is_echo() and in_yard() and not visible and pause_layer == null and hub:
+		_respawn_key()
 		return
 	# R: the stage (the bout, the training) again from the start. Alone only: in a room the
 	# host's match is everyone's.

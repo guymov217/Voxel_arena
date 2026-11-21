@@ -166,6 +166,137 @@ func test_a_man_killed_in_the_yard_is_back_in_three_seconds() -> void:
 	t.eq(m.humans().size(), 1, "and only once")
 	m.queue_free()
 
+## A man at a stall of the yard (its menu open) cannot be hurt: a blow that would take a good piece of him does nothing there.
+func test_a_man_at_a_stall_cannot_be_hurt() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	await _steps(30)
+	var f: Fighter = m.me.f
+	var blow := {"impulse": 60.0, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "point": f.torso.global_position, "dir": Vector3.BACK, "axis": Vector3.RIGHT, "edge": Vector3.BACK}
+	var open: Dictionary = f.apply_hit(f.torso, blow.duplicate())
+	t.check(float(open.get("dmg", 0.0)) > 0.0 or not (open.removed as Array).is_empty(), "in the yard's open a blow hurts him (%s)" % str(open.get("dmg")))
+	m.set_stall(m.me, true)
+	t.check(f.untouchable, "at a stall he is untouchable")
+	var hp0 := f.torso.hp
+	var shut: Dictionary = f.apply_hit(f.torso, blow.duplicate())
+	t.check(bool(shut.get("blocked", false)) and float(shut.get("dmg", 0.0)) == 0.0 and (shut.removed as Array).is_empty() and f.torso.hp == hp0, "and the same blow does nothing to him")
+	m.set_stall(m.me, false)
+	t.check(not f.untouchable, "he leaves the stall and he is not")
+	m.queue_free()
+
+## A guest's word that he is at a stall stands for a few seconds and is said again every second; unsaid, it lapses (a game
+## that stops or is lost does not leave him untouchable). And nowhere but the yard.
+func test_a_guests_word_that_he_is_at_a_stall_lapses() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 7, "name": "Friend", "loadout": {"main": "axe"}}]})
+	await _steps(30)
+	var fe = null
+	for e in m.humans():
+		if e.kind == "remote":
+			fe = e
+	t.check(fe != null, "the friend is in the yard")
+	if fe == null:
+		m.queue_free()
+		return
+	m.stall_peer(7, true)
+	t.check(fe.f.untouchable, "his word is taken")
+	await _steps(int(Match.STALL_TTL * 120.0 * 0.6))
+	t.check(fe.f.untouchable, "it stands a while")
+	m.stall_peer(7, true)   # (said again)
+	await _steps(int(Match.STALL_TTL * 120.0 * 0.6))
+	t.check(fe.f.untouchable, "said again, it stands on")
+	await _steps(int(Match.STALL_TTL * 120.0 * 0.6))
+	t.check(not fe.f.untouchable, "unsaid, it lapses")
+	m.stall_peer(7, true)
+	m.stall_peer(7, false)
+	t.check(not fe.f.untouchable, "and he says he has left, and he has")
+	m.queue_free()
+
+## R in the yard: up again by the gate whole, with his kit, a man down at once; at most every ten seconds; never at a stall.
+func test_r_brings_a_man_up_again_every_ten_seconds() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "inventory": {"bread": 2}})
+	await _steps(30)
+	var old: Fighter = m.me.f
+	old.torso.global_position = Vector3(6, 1, 6)   # (wherever he has wandered to)
+	var spawn: Vector3 = m.me.spec.pos
+	var id: int = m.me.id
+	old.head.hp = 10.0   # (hurt)
+	t.check(m.respawn_request(m.me), "R is taken")
+	t.check(m.me.f != old and is_instance_valid(m.me.f) and m.me.f.alive and m.me.id == id, "he is a new man, the same player")
+	t.check(Vector2(m.me.f.torso.global_position.x - spawn.x, m.me.f.torso.global_position.z - spawn.z).length() < 1.0, "by the gate where he came in")
+	t.check(m.me.f.head.hp > 50.0, "whole (his head %.0f)" % m.me.f.head.hp)
+	t.eq(int(m.me.get("inventory", {}).get("bread", 0)), 2, "with his kit")
+	t.check(not m.respawn_request(m.me), "R again at once does nothing")
+	t.check(m.respawn_wait(m.me) > 9.0 and m.respawn_wait(m.me) <= Match.RESPAWN_COOLDOWN, "ten seconds to wait (%.1f)" % m.respawn_wait(m.me))
+	await _steps(int(5.0 * 120.0))
+	t.check(not m.respawn_request(m.me), "nor at five")
+	# Killed meanwhile and up again by himself after three seconds: that does not set the clock back.
+	var mid: Fighter = m.me.f
+	mid.head.hp = 0.0
+	mid.die("test")
+	await _steps(int(3.5 * 120.0))
+	t.check(m.me.f != mid and m.me.f.alive, "killed, he is up again by himself")
+	t.check(m.respawn_wait(m.me) < 3.0, "and R is near (%.1f s left)" % m.respawn_wait(m.me))
+	await _steps(int(3.0 * 120.0))
+	m.set_stall(m.me, true)
+	t.check(not m.respawn_request(m.me), "at a stall R is not his")
+	m.set_stall(m.me, false)
+	var down: Fighter = m.me.f
+	down.head.hp = 0.0
+	down.die("test")
+	t.check(m.respawn_request(m.me) and m.me.f != down and m.me.f.alive, "a man lying dead is up at once, ten seconds gone")
+	m.queue_free()
+
+## A guest's R reaches the host as a message; the host keeps the clock.
+func test_a_guests_r_is_the_hosts_to_judge() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 7, "name": "Friend", "loadout": {"main": "axe"}}]})
+	await _steps(30)
+	var before = null
+	for e in m.humans():
+		if e.kind == "remote":
+			before = e.f
+	t.check(m.respawn_peer(7), "the friend's R is taken")
+	var after = null
+	for e in m.humans():
+		if e.kind == "remote":
+			after = e.f
+	t.check(after != before and is_instance_valid(after), "he is a new man by the gate")
+	t.check(not m.respawn_peer(7), "and again at once is not")
+	t.check(not m.respawn_peer(99), "nor is a friend who is not here")
+	m.queue_free()
+	t.check("stall" in Net.FROM_GUESTS and "respawn" in Net.FROM_GUESTS, "a guest may say both")
+
+## The guests see a man at a stall as he is: the flag goes with his status.
+func test_the_status_carries_the_stall() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 2, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	await _steps(10)
+	var f: Fighter = m.me.f
+	t.eq(int(f.status_packed()[5]) & Fighter.UNTOUCHABLE_BIT, 0, "not at a stall: no flag")
+	m.set_stall(m.me, true)
+	var st: Array = f.status_packed()
+	t.eq(int(st[5]) & Fighter.UNTOUCHABLE_BIT, Fighter.UNTOUCHABLE_BIT, "at one: the flag")
+	t.eq(st.size(), 7, "and the status is the length it was")
+	var g := Match.new()
+	add_child(g)
+	g.setup({"mode": "yard", "role": "guest", "headless": true, "seed": 2, "decrees": [], "hazards": []})
+	g.guest_spawn(m._spawn_msg(m.me))
+	var ge = g.entity_by_id(m.me.id)
+	t.check(ge != null, "the guest has him")
+	if ge != null:
+		ge.f.apply_status(st)
+		t.check(ge.f.untouchable, "and sees him at a stall")
+		ge.f.apply_status(f.status_packed().duplicate())
+	m.queue_free()
+	g.queue_free()
+
 ## The stele names every foe of the next bout, the second wave through the other gate too (user:
 ## it said two hyenas, and three came out).
 func test_the_board_counts_the_second_wave() -> void:

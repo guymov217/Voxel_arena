@@ -592,6 +592,7 @@ func _update_tags() -> void:
 		l.visible = f.alive and not own
 		if not l.visible:
 			continue
+		l.modulate = Color(1.0, 0.86, 0.5, 0.7) if f.get("untouchable") else Color.WHITE   # (a man at a stall: gold, and faint)
 		var top: VoxelPart = f.head if f.get("head") and is_instance_valid(f.head) and not f.head.severed else f.torso
 		l.global_position = top.global_position + Vector3(0, top.half_ext.y + 0.3 * float(f.S), 0)
 
@@ -1305,6 +1306,10 @@ func _physics_process(dt: float) -> void:
 		# Nobody bleeds in the yard: the wounds a bout left (and a friend's blade there) are
 		# staunched, for the physician to see to (user: won the bout, bled to death in the yard).
 		for e in entities:
+			if e.has("stall_until"):
+				if float(e.stall_until) <= time:
+					e.erase("stall_until")
+				_apply_stall(e)
 			if is_instance_valid(e.f) and e.f is Fighter and e.f.alive:
 				(e.f as Fighter).staunch()
 	_read_fallen()
@@ -3371,13 +3376,64 @@ func respawn_player(e: Dictionary) -> Dictionary:
 	if role == "host":
 		Net.send_all("despawn", {"id": e.id})
 	var ne = spawn_fighter(spec)
-	for k in ["inventory", "peer", "gadgets"]:
+	for k in ["inventory", "peer", "gadgets", "respawned_at"]:
 		if e.has(k):
 			ne[k] = e[k]
 	if me == e:
 		me = ne
 	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
 	return ne
+
+const RESPAWN_COOLDOWN := 10.0   # R in the yard: back on his feet by the gate, at most every ten seconds
+const STALL_TTL := 3.0           # a guest's word that he is at a stall stands this long unless he says it again
+
+## The seconds until R can put him back on his feet again (0: now).
+func respawn_wait(e: Dictionary) -> float:
+	return maxf(0.0, float(e.get("respawned_at", -1000.0)) + RESPAWN_COOLDOWN - time)
+
+## R in the yard (the host's own man's word, or a guest's by message): up again by the gate, whole, with the body he came
+## into the yard with and every piece of his kit (respawn_player), at once if he is down, every RESPAWN_COOLDOWN seconds.
+## Not at a stall (its menu is open: R is not his then). True when it was done.
+func respawn_request(e) -> bool:
+	if e == null or role == "guest" or mode != "yard" or not is_instance_valid(e.get("f")):
+		return false
+	if float(e.get("stall_until", -1.0)) > time or respawn_wait(e) > 0.0:
+		return false
+	var ne = respawn_player(e)
+	ne["respawned_at"] = time
+	return true
+
+func respawn_peer(peer: int) -> bool:
+	for e in humans():
+		if e.kind == "remote" and int(e.peer) == peer:
+			return respawn_request(e)
+	return false
+
+## The yard's stalls: a man at one (its menu is open) cannot be hurt. The host's own man is told by the menu (Menu._stall_tick);
+## a guest says so every second (the "stall" message) and it lapses STALL_TTL after the last word, so that a game that stops
+## or is lost does not leave him untouchable.
+func set_stall(e, on: bool, ttl := -1.0) -> void:
+	if e == null or role == "guest":
+		return
+	if on:
+		e["stall_until"] = INF if ttl < 0.0 else time + ttl
+	else:
+		e.erase("stall_until")
+	_apply_stall(e)
+
+func _apply_stall(e: Dictionary) -> void:
+	var f = e.get("f")
+	if not (f is Fighter) or not is_instance_valid(f):
+		return
+	var on: bool = mode == "yard" and float(e.get("stall_until", -1.0)) > time
+	if f.untouchable != on:
+		f.untouchable = on
+		e.erase("st_tick")   # (his status goes to the guests with the next snapshot, who see him as he is)
+
+func stall_peer(peer: int, on: bool) -> void:
+	for e in humans():
+		if e.kind == "remote" and int(e.peer) == peer:
+			set_stall(e, on, STALL_TTL)
 
 ## The same man spawned again with another body (a prosthetic fitted between rounds): where he
 ## stood, with the blood he had (the physician stopped the bleeding).

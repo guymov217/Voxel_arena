@@ -132,6 +132,15 @@ func _lobby() -> bool:
 
 # ---------- The yard ----------
 
+## The friend's fighter in the host's match.
+func _guest_entity():
+	if m() == null:
+		return null
+	for e in m().humans():
+		if e.kind == "remote" and int(e.peer) == gid:
+			return e
+	return null
+
 func _yard() -> void:
 	k.check("yard.button", Kit.press(Kit.button_named(menu, "LobbyEnter")), "the host presses Enter the yard")
 	var ok: bool = await k.until(func(): return _in_yard_with(2), 30.0, "both in the yard")
@@ -148,6 +157,35 @@ func _yard() -> void:
 		return (main is Dictionary and String(main.get("name", "")).to_lower().contains("axe")) or (main is String and String(main).to_lower().contains("axe")), 20.0, "his new weapon")
 	k.check("yard.shop", armed, "what the friend buys in the yard reaches the host (an axe in his hand)")
 	await k.wait_line("guest", "DONE", "shop", 30.0)
+	# A friend at a stall (its menu open) cannot be hurt; R brings a man up again by the gate, but not twice in ten seconds.
+	k.cue("stall")
+	var ge = null
+	var hid: bool = await k.until(func():
+		var e = _guest_entity()
+		return e != null and is_instance_valid(e.f) and e.f.untouchable, 15.0, "the friend at a stall")
+	ge = _guest_entity()   # (a lambda keeps what it sets to itself)
+	var res := {}
+	if hid:
+		res = ge.f.apply_hit(ge.f.torso, {"impulse": 60.0, "type": "edge", "hardness": 0.9, "sharpness": 0.8, "point": ge.f.torso.global_position, "dir": Vector3.BACK, "axis": Vector3.RIGHT, "edge": Vector3.BACK})
+	k.check("stall.guest", hid and bool(res.get("blocked", false)), "a friend whose stall is open (the market) cannot be hurt")
+	k.cue("stall.close")
+	await k.wait_line("guest", "DONE", "stall", 30.0)
+	var left: bool = await k.until(func():
+		var e = _guest_entity()
+		return e != null and is_instance_valid(e.f) and not e.f.untouchable, 10.0, "the friend out of it")
+	k.check("stall.left", left, "and when he leaves it he can be hurt again")
+	k.cue("respawn")
+	ge = _guest_entity()
+	var old_f = ge.f if ge != null else null
+	var up: bool = await k.until(func():
+		var e = _guest_entity()
+		return e != null and is_instance_valid(e.f) and e.f != old_f and e.f.alive, 15.0, "the friend up again")
+	k.check("respawn.guest", up, "R brings the friend up again by the gate")
+	ge = _guest_entity()
+	var again_f = ge.f if ge != null else null
+	await k.wait_line("guest", "DONE", "respawn", 30.0)
+	ge = _guest_entity()
+	k.check("respawn.cooldown", ge != null and ge.f == again_f, "and a second R at once changes nothing: ten seconds between")
 	# The pause menu's door to the room, over the yard.
 	menu._toggle_pause()
 	await k.pause(0.3)

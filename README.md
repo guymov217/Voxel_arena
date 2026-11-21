@@ -678,6 +678,21 @@ host tells every guest who is in the room (`Net` "roster": id, name and round tr
 someone comes or goes and every two seconds); `Net.room_list()` gives either side the same list, and the lobby follows it by
 itself. `tests/test_lobby.gd`; the whole of it, with two games, in `tests/e2e_*.gd`.
 
+### Friends in the yard
+
+The yard is open between friends: a blade there hurts, and a man killed is up again by the gate three seconds later
+(`Match.respawn_player`: the body he came into the yard with, his kit, full of blood; nobody bleeds there). Two rules go with it
+(`tests/test_yard.gd`, and in the end-to-end run). **A man at a stall cannot be hurt**: while a stall's menu is open over the yard
+(the market, the smith and its forge, the physician, the trainer, the gate; not the pause menu's screens) his fighter is
+`untouchable` (`Fighter.apply_hit` takes no blow, blast, arrow or fall; `Combat._blow` lets the blade meet him as a wall). The
+host's own man is marked by the menu at once (`Menu._process`); a guest says so with a "stall" message when it changes and every
+second after, and the host lets it lapse `Match.STALL_TTL` (3 s) after the last word, so that a game that is lost does not leave
+him untouchable. Everyone sees it as the name above a man turned gold and faint (the flag rides in the grip number of his status).
+**R** in the yard (the key that restarts a fight alone) puts a man back on his feet by the gate whole, with the body and the kit he
+came in with, at once if he is down, every `Match.RESPAWN_COOLDOWN` (10 s) and never at a stall; a guest's R is a "respawn"
+message, and the host keeps the clock. (In a campaign room it is the body he came into the yard with: the wounds of the last bout
+are the physician's, not free.)
+
 ### Rounds, bots and decrees
 
 Every Arena fight is set on its own screen (`scripts/game/fight_opts.gd`; the host's last choice per fight is kept in the
