@@ -11,6 +11,7 @@ var despawns := 0
 var stats := []           # the host's state line as it changed
 var snaps := 0
 var _fed := 0
+var kind_seen := ""
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17779
@@ -19,6 +20,13 @@ func _ready() -> void:
 	Net.my_body = Body.empty()
 	print("GUEST join ", Net.join_enet("127.0.0.1", port))
 	Net.message.connect(_on)
+	# Told what the room is for, he takes up the gladiator of the friends' sandbox (as Menu does): other arms, sent as "me".
+	Net.room_kind_known.connect(func(kind):
+		print("GUEST the room is for: ", kind)
+		kind_seen = kind
+		if kind == Net.KIND_ARENA:
+			Net.my_loadout = {"main": "axe"}
+			Net.push_me())
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 90000:
 		await get_tree().physics_frame
@@ -78,6 +86,6 @@ func _on(type: String, data, _from: int) -> void:
 			var waved := stats.any(func(s): return String(s).begins_with("Wave"))
 			print("GUEST offers ", offers.size(), " dones ", dones, " my spawns ", spawns_of_mine, " my despawns ", despawns, " me alive ", me_ok, " feed lines ", _fed)
 			print("GUEST state lines ", stats)
-			var ok: bool = offers.size() >= 2 and dones >= 1 and spawns_of_mine >= 2 and despawns >= 1 and me_ok and waved and snaps > 10
+			var ok: bool = kind_seen == Net.KIND_ARENA and offers.size() >= 2 and dones >= 1 and spawns_of_mine >= 2 and despawns >= 1 and me_ok and waved and snaps > 10
 			print("GUEST ", "ok" if ok else "FAIL")
 			get_tree().quit(0 if ok else 1)

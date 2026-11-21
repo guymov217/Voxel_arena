@@ -172,6 +172,27 @@ func test_a_room_is_made_with_its_build_its_name_and_the_friends_join_string() -
 	t.check(_called(fake, ["createLobby", 1, 8]), "friends only is Steam's friends-only lobby")
 	_done(fake)
 
+func test_a_lobby_says_what_the_room_is_for() -> void:
+	var fake := _steam()
+	Net.room_kind = Net.KIND_ARENA
+	Net.host_steam(true)
+	var id := Net.lobby_id
+	t.eq(fake.data[id].get("kind"), "arena", "an Arena room's lobby says so, for the list")
+	Net.leave()
+	t.eq(Net.room_kind, Net.KIND_CAMPAIGN, "leaving a room forgets what it was for")
+	Net.room_kind = Net.KIND_ARENA
+	Net.host_steam(true)   # (over a room still open: the kind asked for is kept)
+	t.eq(Net.room_kind, Net.KIND_ARENA, "the kind asked for survives the old room's leaving")
+	Net.host_steam(true)
+	t.eq(fake.data[Net.lobby_id].get("kind"), "arena", "and the new lobby says it")
+	fake.data[4001] = {"game": Net.LOBBY_KEY, "ver": Net.build_tag(), "name": "A", "kind": "arena", "mode": "Arena"}
+	fake.data[4002] = {"game": Net.LOBBY_KEY, "ver": Net.build_tag(), "name": "B", "mode": "Campaign · stage 3"}
+	var rows: Array = Net._describe([4001, 4002])
+	t.eq(rows.map(func(r): return r.kind), ["arena", "campaign"], "the list tells which is which (a lobby that says nothing is the campaign's)")
+	Net.leave()
+	Net.room_kind = Net.KIND_CAMPAIGN
+	_done(fake)
+
 func test_the_app_id_goes_by_the_environment_and_init_takes_no_guesses() -> void:
 	var had_app := OS.get_environment("SteamAppId")
 	var had_game := OS.get_environment("SteamGameId")

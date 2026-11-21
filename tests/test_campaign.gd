@@ -209,7 +209,8 @@ func test_the_co_op_campaign_takes_four_at_most() -> void:
 	await get_tree().process_frame
 	var cards: Array = menu.find_children("*", "Button", true, false).filter(func(b): return b.custom_minimum_size == Vector2(262, 104))
 	t.check(cards.size() > 8, "the fights for the room (%d)" % cards.size())
-	t.eq(cards.filter(func(b): return b.disabled).map(func(b): return b.tooltip_text), [why], "among the fights only the co-op campaign's card is held back")
+	t.eq(cards.filter(func(b): return b.disabled).size(), 0, "no fight of the Arena is held back: the co-op campaign is not among them (it is the campaign room's)")
+	t.eq(menu.find_children("*", "Button", true, false).filter(func(b): return String(b.text).begins_with("The co-op campaign")).size(), 0, "there is no card for it in the Arena")
 	menu.start({"mode": "coop", "role": "host"})
 	await get_tree().process_frame
 	t.check(menu.match_ == null, "asked anyway, it does not begin")

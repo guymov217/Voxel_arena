@@ -74,4 +74,16 @@ wait $hp
 hs=$?
 grep -E "^(HOST|GUEST)" /tmp/va_netparty_host.log /tmp/va_netparty_guest.log
 if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (party): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (party): ok"; fi
+# An Arena room through the game's own menus (tests/net_room_host.gd, net_room_guest.gd): the room's kind told to the guest, the
+# sandbox (each one's campaign purse untouched), the yard, the team circles and the fight begun on both sides.
+export NET_PORT=$((NET_PORT + 1))
+timeout 150 "$G" --headless --path . -- --probe net_room_host > /tmp/va_netroom_host.log 2>&1 &
+hp=$!
+sleep 3
+timeout 140 "$G" --headless --path . -- --probe net_room_guest > /tmp/va_netroom_guest.log 2>&1
+gs=$?
+wait $hp
+hs=$?
+grep -E "^(HOST|GUEST)" /tmp/va_netroom_host.log /tmp/va_netroom_guest.log
+if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (room): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (room): ok"; fi
 exit $fail

@@ -3,6 +3,8 @@ extends Node
 ## with the guest as a second fighter; each wave beaten holds out a reward to each of them (the guest's goes to him over the
 ## wire and his pick comes back), the fallen guest stands up again for the next wave, and the guest reads the host's state line.
 ## (The guest's pick is taken here as Menu takes it: Net "endless_pick" -> Endless.take_for.)
+## The room is an Arena room: the guest is told so as he comes in, the host takes nothing of his campaign gladiator from his
+## hello (he comes in plain), and the gladiator of his sandbox arrives as "me".
 
 var m: Match
 var en: Endless
@@ -10,6 +12,9 @@ var gid := 0
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17779
+	Net.room_kind = Net.KIND_ARENA
+	var plain := [false]
+	Net.peer_joined.connect(func(_id, info): plain[0] = (info.loadout as Dictionary).is_empty() and (info.kit as Dictionary).is_empty())
 	print("HOST listen ", Net.host_enet(port))
 	Net.my_name = "Host"
 	var t0 := Time.get_ticks_msec()
@@ -20,6 +25,9 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	gid = Net.peers.keys()[0]
+	# His sandbox gladiator arrives as "me" (he swapped his campaign's arms for the Arena profile's).
+	var me_ok := await _until(func(): return String(Net.peers[gid].get("loadout", {}).get("main", "")) == "axe", 6.0, "his sandbox gladiator")
+	print("HOST the guest came in plain ", plain[0], "; his arena arms arrived ", me_ok, " (", Net.peers[gid].get("loadout", {}).get("main", ""), ")")
 	# (What Menu does with a guest's pick.)
 	var picks_taken := [0]
 	Net.message.connect(func(type, data, from):
@@ -34,7 +42,7 @@ func _ready() -> void:
 	add_child(m)
 	m.setup({"mode": "endless", "role": "host", "headless": true, "seed": 9, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": peers, "endless": {"seed": 11}})
 	en = m.modes.endless
-	var ok := true
+	var ok: bool = plain[0] and me_ok
 	# Wave 1: two foes for two; beaten.
 	ok = await _until(func(): return en.wave >= 1 and en.phase == "fight", 12.0, "wave 1") and ok
 	print("HOST wave 1 foes ", m.enemies().size(), " (plan ", en.plan(1, 2).size(), ")")

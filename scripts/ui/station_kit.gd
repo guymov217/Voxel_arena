@@ -168,6 +168,10 @@ class Coin extends Control:
 		draw_arc(c, r - 4.5, 0.0, TAU, 28, Color(0.55, 0.38, 0.1), 1.4)
 		draw_circle(c, r * 0.28, Color(0.55, 0.38, 0.1))
 
+## A purse as it reads: the number, or an infinity for the friends' (an Arena room's) which has no limit.
+static func coin_text(n: int) -> String:
+	return "∞" if n >= Save.UNLIMITED else str(n)
+
 ## The purse: a coin and the denarii he has. A number that changes counts to it, and flashes red
 ## (less) or green (more).
 class Purse extends HBoxContainer:
@@ -182,7 +186,7 @@ class Purse extends HBoxContainer:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var c := StationKit.Coin.new(px + 4)
 		add_child(c)
-		num = UIStyle.label(str(n), px, UIStyle.GOLD)
+		num = UIStyle.label(StationKit.coin_text(n), px, UIStyle.GOLD)
 		num.autowrap_mode = TextServer.AUTOWRAP_OFF
 		add_child(num)
 		unit = UIStyle.label(Loc.t("denarii"), maxi(11, px - 8), UIStyle.MUTED)
@@ -196,10 +200,11 @@ class Purse extends HBoxContainer:
 		if n == value:
 			return
 		var up := n > value
+		var was := value
 		value = n
-		if not animate or not is_inside_tree():
+		if not animate or not is_inside_tree() or n >= Save.UNLIMITED or was >= Save.UNLIMITED:
 			shown = float(n)
-			num.text = str(n)
+			num.text = StationKit.coin_text(n)
 			return
 		if _tw != null and _tw.is_valid():
 			_tw.kill()

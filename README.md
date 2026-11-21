@@ -429,9 +429,12 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   bands), so what is built there is what he wears.
   The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
   (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
-- **Modes**: training and 15 fight and party modes (duel, best of three, free for all, chaos, co-op,
-  gauntlet, monster hunt, teams, king of the arena, the Emperor, king of the hill, last limb,
-  head football, players' brawl, the endless arena).
+- **Modes**: training and the Arena's fights: best of three (the duel), king of the arena, the
+  tournament, free for all (with a choice of bots and of the Emperor's decrees), teams (red against
+  blue), forge and fight, the endless arena, monster hunt, the Emperor, king of the hill and last
+  limb; and the co-op campaign, which is the campaign room's. Each fight has its own settings (how
+  many rounds, how many bots, how many decrees: `scripts/game/fight_opts.gd`), set on a screen
+  of its own before it begins.
 - **The spectacle**: the Emperor's decrees, arena hazards, the crowd's favour and the announcer,
   and drops from the stands. A lively bout earns a small crowd bonus on the pay, in proportion
   to how much fighting the crowd saw.
@@ -641,10 +644,59 @@ data, the filtered list, the join, the build check, the hello, the bout, a kick.
 one process (a different build, a missing extension, a failing peer, an invite while in a room, `+connect_lobby`). What only
 Steam can show is Valve's real calls and relay: one test with a second person, in `docs/MULTIPLAYER_TEST.md`.
 
+### The two kinds of room
+
+A room is opened for one of two things, chosen on the Multiplayer screen (`Net.room_kind`, kept in the
+settings; the guest is told it as he comes in, with a `room` message from the host, and the Steam list shows it):
+
+- **Campaign together.** The co-op campaign, bout after bout. The party's purse is the host's, so money is limited as in
+  the campaign, and the gate leads to the campaign's bouts (it no longer offers the Arena's fights).
+- **Arena with friends.** Fights, tournaments, teams and the endless arena. Every player has a gladiator of his own for
+  the room, kept apart from the campaign's: his purse, arms, bag, armour, wounds and training (`Save.BOX_KEYS`) are read
+  and written in an *arena profile* (`Save.box_begin`: one key of the save, `arena_profile`), never in the campaign's,
+  and his purse has no limit (shown as an infinity). Nothing he buys, spends, wears out or loses there reaches the
+  campaign, and nothing the campaign holds is spent there. Everyone fights with the arms and armour he took in the
+  room's yard (the endless arena and Forge and Fight give their own). The gate opens the Arena's list of fights (the
+  host's), there is no campaign, and the guest's campaign gladiator is not even sent (the host takes nothing of him from
+  his hello: he comes in plain and his arena profile follows as `me`). Menu starts the sandbox when the room opens (the
+  host) or when the guest is told what the room is (`Menu._box_on`), and ends it by any way out of the room;
+  `Menu.start` refuses the campaign while it is on. `tests/test_room_kind.gd`.
+
+### Rounds, bots and decrees
+
+Every Arena fight is set on its own screen (`scripts/game/fight_opts.gd`; the host's last choice per fight is kept in the
+settings under `fight_opts`): the **rounds** (`scripts/game/series.gd`: a match over several bouts, most rounds wins, a
+level score is settled by up to two deciding rounds; the duel's best-of, the king's reign and the hunt's waves have their
+own meaning), the **bots** beside the players (none to seven; the team fights and the tournament may fill their sides and
+bracket), and, for the free-for-all, the number of the Emperor's **decrees** (none, one, three: it is where chaos went).
+The screen says what the sand will hold ("You and 2 friends, with 3 bots"); a room of eight and the bots with them never
+pass 12 fighters (`FightOpts.MAX_FIGHTERS`). The host keeps the score between bouts (`Menu._series_after`) and tells the
+guests (`series` message, read back made safe: `Series.clean`); a guest is also told the fight's state line (the wave, the
+round, the hill's leader) by the host (`fstat`).
+
+### Team fights: the circles
+
+A team fight begins in the yard (`scripts/game/team_setup.gd`, `YardPlay.begin_teams`): two circles on the sand, red and
+blue, each player walks into the one he plays for, and the host begins with E when everybody stands in one; a team with
+nobody in it is filled with bots. Everyone reads who stands in each circle and who is still out (`teams` message).
+
+### The tournament
+
+One-on-one bouts, single elimination (`scripts/game/tourney.gd`, `Menu._tournament*`): the players and the bots that
+fill the bracket are drawn in pairs, the pair fights a bout (a duel, over as many rounds as the host set) while the room
+watches, the winner goes on, until one is crowned. A bout of two bots is settled unseen; a player who leaves forfeits his.
+
 ### The endless arena
 
-Alone, from the main menu (rules in `scripts/game/endless.gd`, the screens in `menu.gd`'s
-`_endless*`):
+Alone from the main menu, or with friends in an Arena room (rules in `scripts/game/endless.gd`, the screens in `menu.gd`'s
+`_endless*`). With friends: the host sets the kit for the whole room; the waves grow with the party (`Endless.plan` takes
+the number of players); each wave beaten, the fallen (and those at death's door) stand up again, everyone is patched up
+and picks a reward of his own on his own screen (`endless_offer` to him, `endless_pick` back, `endless_done` to close the
+screens; a pick not made in 25 s is the first), and the next wave is called when all have picked; the run is over when
+everybody is down, and it is nobody's lone best wave or leaderboard entry. `tests/test_endless_party.gd`, and
+`tests/net_party_host.gd` / `net_party_guest.gd` play it between two real processes.
+
+Alone:
 
 1. Before the run: a weapon for each hand (off the rack, or forged there, free), ready-made
    armour, and up to three kinds of pot, two of each.
@@ -685,8 +737,8 @@ dropped, and a weapon that does not hold up leaves the hand empty.
   a key for the session, and a game that does not speak it cannot join.
 - **Host-authoritative.** Guests send only their input. The host runs the physics, so a modified
   game cannot move its fighter faster, hit harder or teleport.
-- **A short list of what guests may say.** Hello, input, voice, ping, the purse, the Forge and Fight kit and the
-  physician are allowed. Anything else from a guest (a snapshot, a spawn, a banner) is dropped.
+- **A short list of what guests may say.** Hello, input, voice, ping, the purse, the Forge and Fight kit, the
+  physician, the gate's pick, the Emperor's vote and the endless arena's reward pick are allowed. Anything else from a guest (a snapshot, a spawn, a banner) is dropped.
   Guests talk only to the host, never to each other through him.
 - **Everything from a guest is checked.**
   - Names: no markup, 24 letters at most.
@@ -719,7 +771,7 @@ reports, each second, how many physics steps the host keeps up (of 120), its CPU
 longest wait between two. All of them share the one machine's CPU, so the times are worse than in
 a real game, where each player has a computer of his own; the bytes are the same.
 
-`tools/net_load.sh` takes more: `NET_MODE=ffa|teams|pvp|chaos|king` plays that arena mode (8 players: free-for-all is 11
+`tools/net_load.sh` takes more: `NET_MODE=ffa|teams|hill|lastLimb|king` plays that arena mode (8 players: free-for-all is 11
 fighters with its 3 bots, teams and pvp 8), `HOST_CPUS=0 GUEST_CPUS=1-3` pins the host to its own core and the guests to the
 others (so the guests' work does not take the host's time, as in a real room), `NET_LAG=100 NET_LOSS=3` makes every line poor,
 `NET_NOSTAGE=1` builds fighters in one frame as before. The host reports how long its physics steps took one after another

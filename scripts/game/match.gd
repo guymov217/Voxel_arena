@@ -396,7 +396,10 @@ func setup(opts: Dictionary) -> void:
 		yard = YardPlay.new(self)
 		yard.setup()
 		_send_yard_next()
-		_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer")
+		if Net.active() and Net.room_kind == Net.KIND_ARENA:
+			_banner("The friends' yard", "Shop and train as you like: money is no object here, your campaign is not touched · the gate opens the Arena's fights")
+		else:
+			_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer")
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
 	spectacle.on_round_start()

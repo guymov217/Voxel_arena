@@ -3,7 +3,7 @@
 # localhost) play a campaign bout together (or an arena mode); each reports what it cost. All of them
 # share this machine's CPU, so the times are worse than over a real network, where each has its own.
 #   sh tools/net_load.sh [guests=7] [seconds=20] [stage=6]
-# NET_MODE=ffa|teams|pvp|chaos|king|... plays that arena mode instead of the campaign (stage is then unused).
+# NET_MODE=ffa|teams|hill|lastLimb|king|... plays that arena mode instead of the campaign (stage is then unused).
 # HOST_CPUS=0 GUEST_CPUS=1-3 pins the host to its own core(s) and the guests to the others (taskset), so the
 # guests' work does not take the host's time: nearer to a real room, where every player has a computer.
 # NET_LAG=100 NET_LOSS=3 makes every guest's line poor (a pretend 100 ms and 3% loss, both ways).

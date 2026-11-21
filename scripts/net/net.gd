@@ -16,6 +16,7 @@ signal message(type: String, data, from: int)
 signal peer_joined(id: int, info: Dictionary)
 signal peer_left(id: int)
 signal connected
+signal room_kind_known(kind: String)   # (a guest) the host has said what the room is for
 signal connection_failed(reason: String)
 signal disconnected
 signal lobbies(list: Array)
@@ -193,12 +194,24 @@ func timeline_event(title: String, desc: String, clip := 1, icon := "steam_comba
 	elif steam.has_method("addTimelineEvent") and steam.get_method_argument_count("addTimelineEvent") == 7:
 		steam.call("addTimelineEvent", icon, title, desc, 0, 0.0, 0.0, clip)
 
+## What a room is for: the party's co-op campaign (its purse the host's, and limited) or the friends' Arena (everyone has a
+## sandbox of his own with no limit on money: the campaign is never touched). The host chooses it when he opens the room; a guest
+## is told when he comes in (Menu keeps the sandbox for the Arena).
+const KIND_CAMPAIGN := "campaign"
+const KIND_ARENA := "arena"
+var room_kind := KIND_CAMPAIGN
+
+static func clean_kind(v) -> String:
+	return KIND_ARENA if (v is String and v == KIND_ARENA) else KIND_CAMPAIGN
+
 func host_steam(public := true) -> void:
 	if not steam_available():
 		connection_failed.emit(Loc.t(steam_problem if steam_problem != "" else "Steam is not running"))
 		return
+	var kind := room_kind   # (leaving an old room forgets its kind; the one asked for is kept)
 	if transport != "" or lobby_id:
 		leave()
+	room_kind = kind
 	steam.call("createLobby", 2 if public else 1, MAX_PLAYERS) # LOBBY_TYPE_PUBLIC = 2, FRIENDS_ONLY = 1
 
 func _on_lobby_created(result: int, id: int) -> void:
@@ -208,6 +221,7 @@ func _on_lobby_created(result: int, id: int) -> void:
 	lobby_id = id
 	steam.call("setLobbyData", id, "game", LOBBY_KEY)
 	steam.call("setLobbyData", id, "ver", build_tag())
+	steam.call("setLobbyData", id, "kind", room_kind)
 	steam.call("setLobbyData", id, "name", Loc.t("%s's arena") % my_name)
 	steam.call("setLobbyJoinable", id, true)
 	var p = _steam_peer()
@@ -241,7 +255,7 @@ func _describe(list: Array) -> Array:
 	var out := []
 	for id in list:
 		# (A stranger's lobby names itself: shown as a name, never as markup.)
-		out.append({"id": int(id), "name": clean_name(steam.call("getLobbyData", id, "name"), 40), "players": int(steam.call("getNumLobbyMembers", id)), "mode": clean_name(steam.call("getLobbyData", id, "mode"), 20, "")})
+		out.append({"id": int(id), "name": clean_name(steam.call("getLobbyData", id, "name"), 40), "players": int(steam.call("getNumLobbyMembers", id)), "mode": clean_name(steam.call("getLobbyData", id, "mode"), 20, ""), "kind": clean_kind(steam.call("getLobbyData", id, "kind"))})
 	return out
 
 ## Join a Steam lobby: from the room list, or a friend's invite ("Join Game", or the overlay's). In a room already, that
@@ -478,6 +492,7 @@ func leave() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	transport = ""
+	room_kind = KIND_CAMPAIGN
 	peers.clear()
 	inputs.clear()
 	_held.clear()
@@ -966,6 +981,12 @@ func _receive(type: String, data, from: int) -> void:
 		return
 	if is_host() and from != 1 and (not FROM_GUESTS.has(type) or _flooding(from)):
 		return
+	# The host says what the room is for (a guest keeps the sandbox of an Arena room: Menu).
+	if type == "room":
+		if not is_host() and data is Dictionary:
+			room_kind = clean_kind(data.get("k"))
+			room_kind_known.emit(room_kind)
+		return
 	if type == "kicked" and not is_host():
 		if data is Dictionary and str(data.get("why", "")) == "version":
 			leave_reason = Loc.t("The host's game is another version (%s; yours is %s): update the game and join again.") % [clean_name(data.get("ver", "?"), 24), build_tag()]
@@ -995,8 +1016,15 @@ func _receive(type: String, data, from: int) -> void:
 						_turn_away(from, "version")   # (another build in the room would be a different game)
 						return
 					var info := {"name": clean_name(data.get("name", "Guest")), "loadout": sanitize_loadout(data.get("loadout")), "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
+					if room_kind == KIND_ARENA:
+						# An Arena room takes nothing of a guest's campaign gladiator (his arms, bag, wounds): he comes in plain, and the
+						# gladiator of his sandbox follows as "me" as soon as he has been told what the room is.
+						info.loadout = {}
+						info.kit = {}
+						info.body = Body.sanitize({})
 					peers[from] = info
 					_presence_size()
+					send_to(from, "room", {"k": room_kind})
 					peer_joined.emit(from, info)
 				return
 			"me":

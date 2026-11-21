@@ -5,9 +5,9 @@ The demo is the same game exported with the `demo` feature (`scripts/game/editio
 - **Campaign:** bouts 1 to 8, alone or as a co-op party, up to the second boss (the Big Lion at
   bout 4, the Cyclops at bout 8). Then a plain "The end of the demo" screen: play it again from
   bout 1, or back to the menu.
-- **Arena:** alone, the duel, best of three, the free-for-all and the endless arena. In a room,
-  the players' brawl (everyone against everyone) and the free-for-all. The other modes are not on
-  the menu.
+- **Arena:** alone, best of three, the free-for-all and the endless arena. In a friends' Arena room,
+  the free-for-all (with the bots of the host's choice, or none: everyone against everyone) and the
+  endless arena, together. The other modes are not on the menu.
 - **The endless arena** (main menu, and The Arena → Beasts and waves): its waves come from the
   demo's own men and beasts, and its great foes, every fifth wave, are the Big Lion and the
   Cyclops. When the player falls, the last screen says how many more great foes the full game

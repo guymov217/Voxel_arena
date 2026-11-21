@@ -957,9 +957,10 @@ func _place() -> void:
 				sub = Loc.t("STAGE %d · ROUND %d OF 3") % [m.stage, m.round + 1]
 			place_sub.text = sub
 		"yard":
-			place_label.text = "THE LUDUS YARD"
+			var friends_yard: bool = Net.active() and Net.room_kind == Net.KIND_ARENA
+			place_label.text = "THE FRIENDS' YARD" if friends_yard else "THE LUDUS YARD"
 			var at := Yard.station_at(m.me.f.torso.global_position) if m.me and is_instance_valid(m.me.f) else ""
-			place_sub.text = Loc.t(String(Yard.STATIONS[at].label)).to_upper() if at != "" else Loc.t("THE GATE LEADS TO THE ARENA")
+			place_sub.text = Loc.t(String(Yard.STATIONS[at].label)).to_upper() if at != "" else Loc.t("THE GATE OPENS THE ARENA'S FIGHTS" if friends_yard else "THE GATE LEADS TO THE ARENA")
 			if m.yard and m.yard.teams_on():
 				place_label.text = "CHOOSE YOUR TEAM"
 				place_sub.text = m.yard.team_line().to_upper()

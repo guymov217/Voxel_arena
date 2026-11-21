@@ -19,6 +19,8 @@ func _ready() -> void:
 ## Back to a new player's save (the test runner, before each test).
 func reset() -> void:
 	data = DEFAULTS.duplicate(true)
+	boxed = false
+	_box = {}
 
 func load_save() -> void:
 	if not FileAccess.file_exists(path):
@@ -57,17 +59,55 @@ func save() -> void:
 	DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), abs_path)
 
 func get_value(key: String, default = null):
+	if boxed and BOX_KEYS.has(key):
+		return _box.get(key, default)
 	return data.get(key, default)
 
 func set_value(key: String, value) -> void:
+	if boxed and BOX_KEYS.has(key):
+		_box[key] = value
+		save()
+		return
 	data[key] = value
 	save()
 
 ## The key gone from the save (read again as its default).
 func erase(key: String) -> void:
+	if boxed and BOX_KEYS.has(key):
+		_box.erase(key)
+		save()
+		return
 	if data.has(key):
 		data.erase(key)
 		save()
+
+# ---------- The friends' sandbox (an Arena room) ----------
+# In a room made for the friends' fights the gladiator is another man from the campaign's: his purse, arms, kit, armour, wounds
+# and training (the BOX_KEYS) are read and written in a profile of their own (`arena_profile`, kept in this save under that one
+# key), never in the campaign's. Nothing he buys, spends, wears out or loses there reaches the campaign, and nothing the campaign
+# holds is spent there.
+
+const UNLIMITED := 999999      # (the friends' purse: no limit, shown as an infinity)
+const BOX_KEY := "arena_profile"
+const BOX_KEYS := ["coins", "arms", "kit", "armor_worn", "armor_wear", "body", "trainer", "virtus", "oddities_sold", "missions", "rep", "market_open", "coop_market_open"]
+var boxed := false
+var _box := {}
+
+## Into the sandbox: the arena profile kept from the last time (or a new one made of `fresh`), on top of which `fresh` is laid
+## for what it has not got.
+func box_begin(fresh := {}) -> void:
+	var kept = data.get(BOX_KEY, {})
+	_box = (kept as Dictionary) if kept is Dictionary else {}
+	for k in fresh:
+		if not _box.has(k):
+			_box[k] = fresh[k]
+	data[BOX_KEY] = _box
+	boxed = true
+
+## Out of it: the campaign's own values are read again.
+func box_end() -> void:
+	boxed = false
+	_box = {}
 
 ## The game was called Voxel Arena: Godot keeps user:// by the project's name, so the old save
 ## sits in a sibling folder. Copied over once, it keeps the campaign through the rename.

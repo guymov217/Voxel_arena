@@ -147,7 +147,8 @@ func _ready() -> void:
 	add_child(vc)
 	Net.peer_joined.connect(func(id, _info):
 		if Net.is_host():
-			Net.send_to(int(id), "purse", coins())
+			if not Save.boxed:
+				Net.send_to(int(id), "purse", coins())
 			# The yard is the room: whoever joins walks in through the gate.
 			if in_yard() and match_.role == "host":
 				match_.add_peer(int(id), _peer_spec(int(id), true))
@@ -163,12 +164,23 @@ func _ready() -> void:
 		# Online the lobby is the yard: the host walks in at once and the others join him
 		# there; the gate is where he picks the campaign or an arena mode for everyone.
 		if Net.is_host():
+			if Net.room_kind == Net.KIND_ARENA:
+				_box_on()   # (the friends' room: the arena gladiator, not the campaign's)
 			enter_yard()
 		else:
+			show_screen("room"))
+	# A guest is told what the room is for as he comes in (before the yard): the friends' room has a sandbox of its own for him too.
+	Net.room_kind_known.connect(func(kind):
+		if kind == Net.KIND_ARENA:
+			_box_on()
+		else:
+			_box_off()
+		if screen == "room":
 			show_screen("room"))
 	Net.connection_failed.connect(func(r): show_screen("mp", r))
 	Net.disconnected.connect(func():
 		in_room = false
+		_box_off()
 		_end_match()
 		var why := Net.leave_reason if Net.leave_reason != "" else "The host left"
 		Net.leave_reason = ""
@@ -211,11 +223,15 @@ var shared_purse := 0
 const START_COINS := 60
 
 func coins() -> int:
+	if Save.boxed:
+		return Save.UNLIMITED   # (the friends' Arena: money is no object, and never the campaign's)
 	if Net.active() and not Net.is_host():
 		return shared_purse
 	return int(Save.get_value("coins", START_COINS))
 
 func add_coins(n: int) -> void:
+	if Save.boxed:
+		return
 	if Net.active() and not Net.is_host():
 		shared_purse = maxi(0, shared_purse + n)
 		Net.send_host("purse_add", n)
@@ -403,6 +419,8 @@ func set_kit(k: Dictionary) -> void:
 const STALL_SCREENS := ["market", "yard", "physician", "trainer", "circus_market"]
 
 func show_screen(s: String, msg := "") -> void:
+	if Save.boxed and not Net.active():
+		_box_off()   # (out of the friends' room by any way: the campaign's own gladiator again)
 	var was := screen
 	var focus_was := StationKit.focus_key(panel)
 	if s == "main":
@@ -422,7 +440,7 @@ func show_screen(s: String, msg := "") -> void:
 	var v := _clear()
 	if in_yard() or s == "yard":
 		# The one way out of a stall; the smith seen from anywhere else leads into the yard.
-		var way_out := StationKit.button(Loc.t({"market": "◀  Leave the market  (Esc)", "yard": "◀  Leave the smith  (Esc)", "physician": "◀  Leave the physician  (Esc)", "missions": "◀  Leave the board  (Esc)", "gate": "◀  Leave the gate  (Esc)"}.get(s, "◀  Leave the stall  (Esc)")), _close_overlay if in_yard() else func(): enter_yard(), true)
+		var way_out := StationKit.button(Loc.t({"market": "◀  Leave the market  (Esc)", "yard": "◀  Leave the smith  (Esc)", "physician": "◀  Leave the physician  (Esc)", "missions": "◀  Leave the board  (Esc)", "gate": "◀  Leave the gate  (Esc)", "fights": "◀  Back to the yard  (Esc)"}.get(s, "◀  Leave the stall  (Esc)")), _close_overlay if in_yard() else func(): enter_yard(), true)
 		way_out.set_meta("leave", true)
 		v.add_child(way_out)
 		if in_yard() and hud:
@@ -622,7 +640,12 @@ func _open_station(id: String) -> void:
 	# built, at the gate or at a purchase.
 	# The gate: the gate's fights, a card each (GateScreen).
 	# (A room's host at the gate when the demo is over: the gate's menu, with the modes for the room.)
-	if id == "gate" and not (Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
+	var arena_room: bool = Net.active() and Net.room_kind == Net.KIND_ARENA
+	if id == "gate" and arena_room and not Net.is_host():
+		# (The friends' room has no campaign to lead through the gate: the host picks the fight from the Arena's list.)
+		match_._banner("The arena gate", "The host picks the fight for the room")
+		return
+	if id == "gate" and not arena_room and not (Net.active() and Net.is_host() and Edition.demo_over(int(Save.get_value("coop_stage", 1)))):
 		_gate_open()
 		return
 	visible = true
@@ -638,7 +661,7 @@ func _open_station(id: String) -> void:
 		"board": show_screen("missions")
 		"physician": show_screen("physician")
 		"trainer": show_screen("trainer")
-		"gate": show_screen("gate")
+		"gate": show_screen("fights" if arena_room else "gate")
 
 func _close_overlay() -> void:
 	visible = false
@@ -666,11 +689,40 @@ func _open_over_match(s: String) -> void:
 		hud.visible = false
 	show_screen(s)
 
+## The friends' room (Net.KIND_ARENA): the gladiator is the arena profile's, never the campaign's, and his purse has no limit (Save.box_begin).
+func _box_on() -> void:
+	if Save.boxed:
+		return
+	var fresh := {"coins": Save.UNLIMITED, "market_open": Market.AFTER_BOSS.size(), "coop_market_open": Market.AFTER_BOSS.size()}
+	# The first time a man comes into a friends' room he is not left with the training stick: a gladius, a round shield and a
+	# helmet (he buys what he likes in the yard, money no object; later times he has what he kept there).
+	var start_arms := Arms.empty()
+	for key in ["gladius", "roundShield"]:
+		var r := Arms.buy(start_arms, key)
+		if r.has("arms"):
+			start_arms = r.arms
+	fresh["arms"] = start_arms
+	fresh["armor_worn"] = ["helmet"]
+	Save.box_begin(fresh)
+	Net.my_kit = kit()
+	Net.my_body = body()
+	_net_loadout()   # (the host sees the arena gladiator)
+
+## Out of it: the campaign's own gladiator is read again.
+func _box_off() -> void:
+	if not Save.boxed:
+		return
+	Save.box_end()
+	Net.my_kit = kit()
+	Net.my_body = body()
+	_net_loadout()
+
 ## Out of the room: the host closes it (his guests are told the host left), a guest goes.
 func _leave_room() -> void:
 	get_tree().paused = false
 	_end_match()
 	Net.leave()
+	_box_off()
 	in_room = false
 	hub = false
 	over_match = false
@@ -721,10 +773,7 @@ func _gate_open() -> void:
 	if coop and not guest:
 		if Net.campaign_full():
 			o.lead_block = campaign_full_text()
-		o.extras = [[Loc.t("An arena mode for the room"), func():
-			_gate_shut()
-			_end_match()
-			show_screen("fights")], [Loc.t("Close the room (main menu)"), func():
+		o.extras = [[Loc.t("Close the room (main menu)"), func():
 			_gate_shut()
 			_leave_room()]]
 	visible = true
@@ -824,9 +873,10 @@ func _gate(v: VBoxContainer) -> void:
 		v.add_child(UIStyle.button("Bread & Circuses", func():
 			_end_match()
 			show_screen("circus")))
-	v.add_child(UIStyle.button("An arena mode for the room" if Net.active() else "Fights and party modes", func():
-		_end_match()
-		show_screen("fights")))
+	if not Net.active():
+		v.add_child(UIStyle.button("Fights and party modes", func():
+			_end_match()
+			show_screen("fights")))
 	if Net.active():
 		if Net.transport == "steam" and Net.is_host():
 			v.add_child(UIStyle.button("Invite friends (Steam)", func(): Net.invite_friends()))
@@ -2187,8 +2237,11 @@ const FIGHT_BLURBS := {
 
 func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The Arena", 34))
-	v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	var in_room := Net.active()
+	if in_room and Net.room_kind == Net.KIND_ARENA:
+		v.add_child(UIStyle.label(Loc.t("Everyone fights with the arms and armour he took in the yard, and money is no object here: your campaign is not touched.") + "  " + Loc.t("In the room: %d") % (1 + Net.peers.size()), 15, UIStyle.MUTED))
+	else:
+		v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
 	for g in FIGHT_GROUPS:
 		# (The friends' fights only in a room; the endless arena only alone.)
 		var keys: Array = (g[1] as Array).filter(func(k): return (k != "forgefight" or in_room) and Edition.mode_open(k, in_room))
@@ -2202,7 +2255,9 @@ func _fights(v: VBoxContainer) -> void:
 		v.add_child(grid)
 		for k in keys:
 			grid.add_child(_fight_card(k))
-	if Net.active() and Net.is_host() and not Net.peers.is_empty():
+	if in_yard():
+		pass   # (the way out is the button at the top: the yard went on behind this screen)
+	elif Net.active() and Net.is_host():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
 		v.add_child(UIStyle.button("Back", func(): show_screen("main")))
@@ -3011,30 +3066,94 @@ func _ff_fight() -> void:
 
 # ---------- Multiplayer ----------
 
+## What the room about to be opened is for (kept in the settings): the friends' Arena (the first time) or the co-op campaign.
+var mp_kind := ""
+
+func _mp_kind() -> String:
+	if mp_kind == "":
+		var saved = Save.get_value("settings", {}).get("room_kind")
+		mp_kind = Net.clean_kind(saved) if saved is String else Net.KIND_ARENA
+	return mp_kind
+
+func _set_mp_kind(k: String) -> void:
+	mp_kind = Net.clean_kind(k)
+	var st: Dictionary = Save.get_value("settings", {})
+	st["room_kind"] = mp_kind
+	Save.set_value("settings", st)
+
+## A room is opened of the kind chosen on the screen (the guests are told it as they come in).
+func _host_room(open: Callable) -> void:
+	Net.room_kind = _mp_kind()
+	open.call()
+
+## One of the two kinds of room, as a card to pick.
+func _kind_card(k: String) -> Button:
+	var on := _mp_kind() == k
+	var b := Button.new()
+	b.toggle_mode = true
+	b.button_pressed = on
+	b.custom_minimum_size = Vector2(330, 118)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(func():
+		_set_mp_kind(k)
+		show_screen("mp"))
+	var m := MarginContainer.new()
+	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + side, 12)
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(m)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.add_child(col)
+	var head := UIStyle.label(("● " if on else "○ ") + Loc.t("ARENA WITH FRIENDS" if k == Net.KIND_ARENA else "CAMPAIGN TOGETHER"), 16, UIStyle.GOLD_LIGHT if on else UIStyle.TEXT)
+	head.add_theme_font_override("font", UIStyle.serif(1, 700))
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(head)
+	var blurb := UIStyle.label(Loc.t("Fights, tournaments, teams and the endless arena. Everyone has a gladiator of his own here and money is no object; your campaign is never touched.") if k == Net.KIND_ARENA else Loc.t("The co-op campaign, bout after bout. The party's purse is the host's, so money is limited as in the campaign."), 13, UIStyle.TEXT if on else UIStyle.MUTED)
+	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(blurb)
+	return b
+
 func _mp(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("Multiplayer", 34))
-	v.add_child(UIStyle.label("Fight the campaign together. The host's game runs the fight; friends join the room.", 14, UIStyle.MUTED))
+	v.add_child(UIStyle.label("Pick what the room is for, open one or join a friend's. The host's game runs the fight.", 14, UIStyle.MUTED))
+	var kinds := HBoxContainer.new()
+	kinds.add_theme_constant_override("separation", 12)
+	kinds.add_child(_kind_card(Net.KIND_ARENA))
+	kinds.add_child(_kind_card(Net.KIND_CAMPAIGN))
+	v.add_child(kinds)
+	v.add_child(UIStyle.label("OPEN A ROOM", 13, UIStyle.BRONZE))
 	if Net.steam_available():
-		_row(v, [UIStyle.button("Host a Steam lobby", func(): Net.host_steam(true), true), UIStyle.button("Friends only", func(): Net.host_steam(false)), UIStyle.button("Refresh rooms", func(): Net.list_steam_lobbies())])
-		room_list = VBoxContainer.new()
-		v.add_child(room_list)
-		Net.list_steam_lobbies()
+		_row(v, [UIStyle.button("Host a Steam lobby", func(): _host_room(func(): Net.host_steam(true)), true), UIStyle.button("Friends only", func(): _host_room(func(): Net.host_steam(false)))])
 	else:
 		var line := Loc.t("Steam is not running: host or join by address (LAN, or a forwarded port %d).") % Net.PORT
 		if Net.steam_problem.begins_with("Steam is running"):
 			line = Loc.t("Steam is running, but this game has no Steam multiplayer library: host or join by address (LAN, or a forwarded port %d).") % Net.PORT
 		v.add_child(UIStyle.label(line, 14, UIStyle.MUTED))
+	v.add_child(UIStyle.button("Host by address", func():
+		_host_room(func():
+			var err := Net.host_enet()
+			if err != OK:
+				show_screen("mp", Loc.t("Could not open port %d") % Net.PORT))))
+	v.add_child(UIStyle.label("JOIN A ROOM", 13, UIStyle.BRONZE))
+	if Net.steam_available():
+		v.add_child(UIStyle.button("Refresh rooms", func(): Net.list_steam_lobbies()))
+		room_list = VBoxContainer.new()
+		v.add_child(room_list)
+		Net.list_steam_lobbies()
 	var addr := LineEdit.new()
 	addr.placeholder_text = "Host address, e.g. 192.168.1.20"
 	addr.custom_minimum_size = Vector2(300, 0)
-	_row(v, [UIStyle.button("Host by address", func():
-		var err := Net.host_enet()
-		if err != OK:
-			show_screen("mp", Loc.t("Could not open port %d") % Net.PORT)), addr, UIStyle.button("Join", func():
-		var err := Net.join_enet(addr.text.strip_edges() if addr.text.strip_edges() != "" else "127.0.0.1")
-		if err != OK:
-			show_screen("mp", "Could not connect"))])
+	addr.text_submitted.connect(func(_t): _join_address(addr.text))
+	_row(v, [addr, UIStyle.button("Join", func(): _join_address(addr.text))])
 	v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+
+func _join_address(text: String) -> void:
+	var err := Net.join_enet(text.strip_edges() if text.strip_edges() != "" else "127.0.0.1")
+	if err != OK:
+		show_screen("mp", "Could not connect")
 
 ## Straight into a room from the command line, for testing with two windows on one machine:
 ## `--host` opens a room by address, `--join 127.0.0.1` joins one, `--name Guest` names you,
@@ -3052,6 +3171,7 @@ func _cmdline_room() -> void:
 	if i >= 0 and args.size() > i + 1:
 		Net.my_name = args[i + 1]
 	if args.has("--host"):
+		Net.room_kind = Net.KIND_ARENA if args.has("--arena") else Net.KIND_CAMPAIGN
 		if Net.host_enet() != OK:   # `connected` takes the host into the yard
 			show_screen("mp", Loc.t("Could not open port %d") % Net.PORT)
 		return
@@ -3069,7 +3189,8 @@ func _on_lobbies(list: Array) -> void:
 	if list.is_empty():
 		room_list.add_child(UIStyle.label("No open rooms. Host one and invite your friends.", 14, UIStyle.MUTED))
 	for l in list:
-		_row(room_list, [UIStyle.label("%s · %d/8 · %s" % [l.name, l.players, l.mode], 15), UIStyle.button("Join", func(): Net.join_steam(l.id))])
+		var tag := Loc.t("Arena") if String(l.get("kind", "")) == Net.KIND_ARENA else Loc.t("Campaign")
+		_row(room_list, [UIStyle.label("[%s]  %s · %d/8 · %s" % [tag, l.name, l.players, l.mode], 15), UIStyle.button("Join", func(): Net.join_steam(l.id))])
 
 ## The other players of the room, each with Mute (his voice not played here) and, for the host,
 ## Remove (out of the room for this session): user, playing with friends safely. `redraw` brings
@@ -3102,9 +3223,12 @@ func _player_rows(v: VBoxContainer, redraw: Callable) -> void:
 func _room(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The room", 34))
 	v.add_child(UIStyle.label("You are the host." if Net.is_host() else "Joining the host's yard...", 15, UIStyle.MUTED))
+	v.add_child(UIStyle.label("Arena room: fights, tournaments and the endless arena; money is no object and your campaign is not touched." if Net.room_kind == Net.KIND_ARENA else "Campaign room: the co-op campaign, and the party's purse is the host's.", 15, UIStyle.GOLD))
 	v.add_child(UIStyle.label(Loc.t("· %s (you)") % Net.my_name, 16))
 	_player_rows(v, func(): show_screen("room"))
-	if Net.is_host():
+	if Net.is_host() and Net.room_kind == Net.KIND_ARENA:
+		v.add_child(UIStyle.button("Into the yard together (shop, train, play)", func(): enter_yard(), true))
+	elif Net.is_host():
 		var cs := int(Save.get_value("coop_stage", 1))
 		var nb := Data.stage(cs, mini(1 + Net.peers.size(), Net.CAMPAIGN_PLAYERS))
 		v.add_child(UIStyle.label(Loc.t("Co-op campaign: bout %d · %s · %s") % [cs, nb.get("foe_name", ""), Loc.t(String(CampaignRun.MODES[CampaignRun.mode(true)].name))], 15, UIStyle.GOLD))
@@ -3527,6 +3651,10 @@ var series_look_ms := 3200    # how long the end of a round is looked at in a ma
 var series_score_ms := 3600
 
 func start(opts: Dictionary) -> void:
+	# The friends' room has no campaign: whatever asks for one (a stale button, a message) is refused, never run on the
+	# campaign's own save.
+	if Save.boxed and (opts.get("mode") == "coop" or opts.get("mode") == "campaign"):
+		return
 	# Co-op is the campaign for a party: the same ladder of bouts, foes for every friend, its
 	# own progress (it does not move your solo campaign on).
 	if opts.get("mode") == "coop":
@@ -3575,6 +3703,9 @@ func start(opts: Dictionary) -> void:
 			opts.erase("series")
 	last_start = opts.duplicate(true)
 	_end_match()
+	# In a friends' room the fights are fought with the arms and armour of its yard (not the endless arena's kit for all, the forges'
+	# own making, nor the campaign, the yard, the training ground).
+	var arena_gear: bool = Save.boxed and not ["campaign", "yard", "endless", "forgefight", "training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false)
 	var a := arms()
 	var lo := Arms.loadout(a)
 	var checkpoint_bout := false
@@ -3591,12 +3722,16 @@ func start(opts: Dictionary) -> void:
 		CampaignRun.walk_in(int(opts.get("stage", 1)), bool(opts.get("coop", false)))
 	else:
 		opts.loadout = opts.get("loadout_override", {"main": "gladius", "off": "roundShield"})
+		if arena_gear:
+			# The friends' room: each fights with the arms and armour he took in its yard (money was no object there).
+			var alo := Arms.loadout(arms())
+			opts.loadout = {"main": alo.main if alo.main else "", "off": alo.off if alo.off else ""}
 	if opts.get("autopilot", false) or cmd_bot:
 		opts.autopilot = true
 	var lk := look()
 	opts.loadout = opts.loadout.duplicate()
 	opts.loadout.armor = opts.loadout.get("armor", []) + look_armor(lk)
-	var geared: bool = opts.mode == "campaign" or opts.mode == "yard"
+	var geared: bool = opts.mode == "campaign" or opts.mode == "yard" or arena_gear
 	if geared:
 		opts.loadout.armor += worn_armor()
 		opts.loadout["armor_defs"] = Armory.defs_of(worn_armor())
@@ -3639,7 +3774,10 @@ func start(opts: Dictionary) -> void:
 			peers.append(spec)
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
-		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
+		if Net.room_kind == Net.KIND_ARENA:
+			Net.set_lobby_info(Loc.t("Arena") + (" · " + Modes.title_of(String(opts.mode)) if opts.mode != "yard" else ""))
+		else:
+			Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
 	# The crowd's favourite of the party's last bout wears the laurel, in the yard and through the
 	# next bout (PartyGlory; the host's save).
 	if opts.get("role", "local") == "host" and (opts.mode == "yard" or bool(opts.get("coop", false))):
@@ -4784,6 +4922,8 @@ func _screenshot() -> String:
 
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:
+	if Save.boxed:
+		return   # (the friends' room has no campaign to begin again)
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
 	Save.set_value("run_scroll", {})
 	GateChoice.clear(false)
@@ -4865,12 +5005,27 @@ func _toggle_pause() -> void:
 	p.add_child(v)
 	UIStyle.frame_over(p)
 	v.add_child(UIStyle.title("Paused", 30))
-	v.add_child(UIStyle.button("Back to the fight", _toggle_pause, true))
+	if Net.active():
+		# Where he is: the kind of room, and who is in it.
+		v.add_child(UIStyle.label("%s · %s" % [Loc.t("Arena room: money is no object") if Net.room_kind == Net.KIND_ARENA else Loc.t("Campaign room"), (Loc.t("%d in the room") % (1 + Net.peers.size())) if Net.is_host() else Loc.t("the host's room")], 14, UIStyle.MUTED))
+		if Net.is_host():
+			var who := [Loc.t("%s (you)") % Net.my_name]
+			for id in Net.peers:
+				who.append(String(Net.peers[id].name))
+			var wl := UIStyle.label(", ".join(who), 14, UIStyle.TEXT)
+			wl.autowrap_mode = TextServer.AUTOWRAP_WORD
+			wl.custom_minimum_size = Vector2(420, 0)
+			v.add_child(wl)
+	v.add_child(UIStyle.button("Back to the yard" if in_yard() else "Back to the fight", _toggle_pause, true))
+	if Net.active() and Net.is_host() and Net.room_kind == Net.KIND_ARENA and in_yard():
+		v.add_child(UIStyle.button("The Arena: pick a fight for the room", func():
+			_toggle_pause()
+			_open_station("gate")))
 	if forge_trying != null:
 		v.add_child(UIStyle.button("Back to the forge", func():
 			_toggle_pause()
 			back_to_forge(), true))
-	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()):
+	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()) and not Save.boxed:
 		# Twice, to be sure: the whole campaign over from bout 1, whole of body, bare of arms.
 		var rb := UIStyle.button("Restart the campaign", func(): pass)
 		rb.pressed.connect(func():
@@ -4895,6 +5050,8 @@ func _toggle_pause() -> void:
 			_toggle_pause()
 			_toggle_pause())
 	if Net.active():
+		if Net.transport == "steam" and Net.is_host():
+			v.add_child(UIStyle.button("Invite friends (Steam)", func(): Net.invite_friends()))
 		v.add_child(UIStyle.button("Close the room (main menu)" if Net.is_host() else "Leave the room (main menu)", func():
 			_toggle_pause()
 			_leave_room()))
