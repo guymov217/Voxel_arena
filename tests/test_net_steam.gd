@@ -160,7 +160,7 @@ func test_a_room_is_made_with_its_build_its_name_and_the_friends_join_string() -
 	t.eq(Net.transport, "steam", "over Steam")
 	t.eq(fake.data[id].game, Net.LOBBY_KEY, "tagged as this game's")
 	t.eq(fake.data[id].ver, Net.build_tag(), "and with the host's build, so a friend on another one is told before he joins")
-	t.eq(fake.data[id].name, "Tester's arena", "named for its host")
+	t.eq(fake.data[id].name, "Tester's party", "named for its host (a campaign room is the host's party, as its lobby says)")
 	t.eq(fake.rich.get("connect", ""), "+connect_lobby %d" % id, "friends get a Join Game that starts this game for the room")
 	t.eq(fake.rich.get("steam_player_group", ""), str(id), "and see the player in that group")
 	Net.invite_friends()
@@ -178,6 +178,7 @@ func test_a_lobby_says_what_the_room_is_for() -> void:
 	Net.host_steam(true)
 	var id := Net.lobby_id
 	t.eq(fake.data[id].get("kind"), "arena", "an Arena room's lobby says so, for the list")
+	t.eq(fake.data[id].get("name"), "Tester's arena", "and is named an arena, as the lobby screen's title is")
 	Net.leave()
 	t.eq(Net.room_kind, Net.KIND_CAMPAIGN, "leaving a room forgets what it was for")
 	Net.room_kind = Net.KIND_ARENA

@@ -307,7 +307,7 @@ func _on_lobby_created(result: int, id: int) -> void:
 	steam.call("setLobbyData", id, "game", LOBBY_KEY)
 	steam.call("setLobbyData", id, "ver", build_tag())
 	steam.call("setLobbyData", id, "kind", room_kind)
-	steam.call("setLobbyData", id, "name", Loc.t("%s's arena") % my_name)
+	steam.call("setLobbyData", id, "name", (Loc.t("%s's arena") if room_kind == KIND_ARENA else Loc.t("%s's party")) % my_name)   # (as the lobby screen's title says)
 	steam.call("setLobbyJoinable", id, true)
 	var p = _steam_peer()
 	var err = p.call("create_host", 0) if p != null else ERR_UNAVAILABLE

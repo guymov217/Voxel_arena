@@ -664,6 +664,20 @@ settings; the guest is told it as he comes in, with a `room` message from the ho
   host) or when the guest is told what the room is (`Menu._box_on`), and ends it by any way out of the room;
   `Menu.start` refuses the campaign while it is on. `tests/test_room_kind.gd`.
 
+### The room's lobby
+
+A room opens on its lobby (`scripts/ui/lobby_screen.gd`, `LobbyScreen`, drawn by `Menu._room`), for the host and for every guest.
+It has no written instructions, only what a player acts on: a card for each of the eight places (a medallion with the first letter
+of the name, a crown on the host, the connection in bars and milliseconds, **Mute** and, for the host, **Remove**, which asks
+twice), the places still free as dashed rings (to the host a ring is a button that gives a friend the way in: the address of this
+computer, copied, or Steam's invite window), and a row of big buttons: the host's **Enter the yard** (in a campaign room **Begin
+bout N**, **Into the yard** and how death is dealt with), a guest's pulsing "Waiting for the host...", and **Close the room** /
+**Leave the room**. The yard is entered from it for everyone at once; a friend who comes later walks in by himself. The pause menu's
+**The room** opens the same lobby over the yard (the host's **Go to the gate**). A guest knows only the host and himself, so the
+host tells every guest who is in the room (`Net` "roster": id, name and round trip of each, made safe on arrival, sent when
+someone comes or goes and every two seconds); `Net.room_list()` gives either side the same list, and the lobby follows it by
+itself. `tests/test_lobby.gd`; the whole of it, with two games, in `tests/e2e_*.gd`.
+
 ### Rounds, bots and decrees
 
 Every Arena fight is set on its own screen (`scripts/game/fight_opts.gd`; the host's last choice per fight is kept in the

@@ -3,6 +3,7 @@ extends Node
 ## in late, which play a whole evening of multiplayer through the game's own screens (e2e_host.gd, e2e_guest.gd), shows each thing
 ## they check as it is checked and, at the end, the whole list with what failed, and writes it to e2e_report.txt.
 ##   --visible        the games open in windows you can watch (else they run without a picture)
+##   --watch guest    only that game (host, guest or late) gets a window
 ##   --quick          leaves out the tournament and the single modes (about half the time)
 ##   --lag 120 --loss 3   pretend a poor connection (milliseconds, percent) for every game
 ##   --port 17900     the port of the room
@@ -13,6 +14,7 @@ const ROLES := ["host", "guest", "late"]
 const TITLES := {"mp": "The Multiplayer screen", "lobby": "The room's lobby", "yard": "The yard and the smith", "pause": "The pause menu's door to the room", "fights": "The Arena's fights", "ffa": "Free for all: rounds and bots", "teams": "Red vs Blue: the team circles", "tourney": "The tournament", "mode": "The other fights of the Arena", "late": "A friend who comes late", "endless": "The endless arena with friends", "kick": "Removing a friend", "close": "Closing the room", "campaign": "A campaign room: the co-op campaign", "join": "Joining", "cue": "Waiting for each other", "run": "The run itself"}
 
 var visible_games := false
+var watch := ""
 var quick := false
 var port := 17900
 var lag := 0
@@ -30,6 +32,8 @@ var _t := 0.0
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	visible_games = args.has("--visible")
+	if args.has("--watch") and args.size() > args.find("--watch") + 1:
+		watch = args[args.find("--watch") + 1]
 	quick = args.has("--quick")
 	port = int(args[args.find("--port") + 1]) if args.has("--port") and args.size() > args.find("--port") + 1 else 17900
 	if args.has("--lag") and args.size() > args.find("--lag") + 1:
@@ -55,7 +59,8 @@ func _ready() -> void:
 
 func _spawn(role: String, at: Vector2i) -> int:
 	var a := PackedStringArray(["--path", proj])
-	if visible_games:
+	var windowed := visible_games or watch == role
+	if windowed:
 		a.append_array(["--resolution", "1100x650", "--position", "%d,%d" % [at.x, at.y]])
 	else:
 		a.append("--headless")
@@ -67,7 +72,7 @@ func _spawn(role: String, at: Vector2i) -> int:
 		a.append("--quick")
 	if lag > 0:
 		a.append_array(["--lag", str(lag), "--loss", str(loss)])
-	if visible_games:
+	if windowed:
 		a.append("--keep-window")
 	var pid := OS.create_process(exe, a)
 	if pid <= 0:
