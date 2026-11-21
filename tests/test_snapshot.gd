@@ -105,6 +105,7 @@ func test_a_guest_puppet_follows_the_snapshot() -> void:
 	var guest := Match.new()
 	add_child(guest)
 	guest.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "guest"})
+	guest.lead_on = false   # (the picture ahead of the snapshot is tests/test_lead_view.gd's: here the puppet comes to the snapshot itself)
 	guest.guest_spawn(host._spawn_msg(e))
 	var ge = guest.entity_by_id(e.id)
 	t.check(ge != null, "the guest has him")

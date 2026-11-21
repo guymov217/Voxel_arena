@@ -877,13 +877,39 @@ frame's process after the steps: the keys were taken a frame after the steps tha
 without. His man is within 1-3 mm of where the host has him once the keys are let go, never steps back while he walks, and runs
 on at most a hand's breadth into a wall (`tests/test_move_predictor.gd`, `tests/test_predict_own.gd`). `run_tests.sh` runs the
 probe plain and with the lag ("net (delay)", the medians may not pass 55 and 60 ms). The others (the host's man, bots, other
-guests) are the host's picture a snapshot behind, as before.
+guests) are the host's picture a trip and a snapshot behind, drawn on by their pace (see "The others ahead" below).
 
 What the host sees of the guest's man (the probes stamp the press and the move with the system clock; `python3 tools/lat_join.py
 host.log guest.log` joins them): from the key going down on the guest to his man 2 cm on in the host's game, 58 ms before,
 49 ms now (the keys are read a frame earlier; the rest is the host's step and the wait for its next frame). `NET_HAND=12` on the
 guest times a swing as well (his hand's mark across the pane to his weapon 3 cm on): the host's own arm takes 34 ms of that, and
 about 66-82 ms in all on his screen. The hand is not walked ahead, as the body is.
+
+**No host advantage** (user: in a fight of people against each other the host must have none). A guest's hands reach the host's physics
+a trip of the line after his keys, the host's at once: measured in the host's physics (`tools/lat_join.py`; `NET_OWN=12` makes the host's
+own man swing the way the guest's is made to), a guest's swing starts 12 / 36 / 61 ms after the host's own at a ping of 14 / 51 / 86 ms
+(`NET_LAG` 0 / 15 / 30 ms each way). In a fight of people against each other (two of them on different sides: a free for all, teams,
+duels, the tournament, the party modes; not the yard, not the campaign's bouts, where the people are one side against the foes) every
+man's hands are held on the host (`Match._fair_active`, `_fair_update`, `_fair_input` over `InputDelay`, DOM-free): the physics acts on
+the input of so many ticks ago. The host's wait is the slowest friend's trip one way (half the round trip each guest measures and tells
+the host about once a second, `Net.guest_pings`) and 4 ms for the line's wobble, 90 ms at most; each guest's is what is left of it
+after his own trip. A press (a jump, a kick, a grab, an item) rides with its tick: none is lost when the wait is made shorter, none
+repeated when it is made longer (`tests/test_input_delay.gd`). Now the guest's swing is -5 / +3 / +5 ms from the host's own, and
+`run_tests.sh` ("net (fair hands)") keeps it within 15 ms. The price is the host's own hands, 18 / 32 / 49 ms slower in such a fight
+(his swing 42 -> 60, 44 -> 76, 44 -> 93 ms in the physics); the guests' are as they were. What the wait cannot take away is the
+view: the host sees a guest's blow start as it starts, a guest sees the host's a trip and a snapshot later (about 40-60 ms at a ping of 60-100).
+
+**The others ahead.** On a guest's screen the others (men, foes, beasts, giants) are the host's picture a trip and a snapshot behind (57 ms
+at 15 ms each way, 75 at 30), and a blow of his lands a trip after he made it: against a man walking at 2.5 m/s the picture is 14-18 cm
+off by then, against a charging beast more. `Lead` (DOM-free; `Match._lead_for`, in `apply_snapshot`) keeps the pace of each other
+fighter's torso from the rows of his snapshots, and every body of his (and what he holds) is drawn on from where the snapshot has it by
+that pace over the round trip and the snapshot's wait, 0.8 of it, along the sand, at most 30 cm, coming and going by easing (at most
+2.5 m/s of change); not for a man who is down, rising or dead, a limb he lost, or the guest's own man (`MovePredictor` has him).
+Measured with the host's man walking to and fro (`NET_TGT=25 NET_TGT_ONLY=15`, `tools/lat_tgt.py`): the picture 57 -> 4 ms behind
+and 14 -> 6 cm off from where a blow lands at 15 ms each way, 75 -> -10 ms and 18 -> 6 cm at 30 ms each way (`run_tests.sh` "net (the
+others ahead)"). The price: a man who stops is drawn on past his stop, 8 cm on average (16 cm at 30 ms each way), and eased back in
+a tenth of a second. `Match.lead_on` switches it off. Not done: the hand and the weapon (a man's swing is shown late as it was, and a
+guest's own weapon is the host's picture of it, 80-180 ms after his hand moved).
 
 What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a
 second, the dead once a second, and in a full room (4 guests or more, or more than 10 fighters) the

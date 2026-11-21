@@ -107,6 +107,25 @@ delay_run() {   # delay_run MAX_MEDIAN REPS [env...]: prints the guest's median,
 }
 if delay_run 55 12; then echo "net (delay): ok ($dmed)"; else echo "net (delay): FAIL (host $hs, guest $gs)"; fail=1; fi
 if delay_run 60 8 NET_LAG=30; then echo "net (delay, 30 ms each way): ok ($dmed)"; else echo "net (delay, 30 ms each way): FAIL (host $hs, guest $gs)"; fail=1; fi
+# No host advantage (Match._fair_*, InputDelay; tools/lat_join.py): in a fight of people against each other the host's own hands wait for
+# the slowest friend's trip as well, so that a guest's blow starts in the host's physics when the host's own would. NET_FAIR=1 takes the
+# yard to be such a fight; with a pretend 15 ms each way (a ping near 60 ms) the guest's swing is 36 ms behind the host's own without it,
+# a few ms with it: it may not be more than 15 ms from it either way.
+if python3 -c "import sys" >/dev/null 2>&1; then
+	if delay_run 70 4 NET_FAIR=1 NET_OWN=8 NET_HAND=8 NET_LAG=15 && python3 tools/lat_join.py /tmp/va_netlat_host.log /tmp/va_netlat_guest.log --max-gap 15 > /tmp/va_netfair.log 2>&1; then
+		echo "net (fair hands, 15 ms each way): ok ($(grep 'behind the host' /tmp/va_netfair.log | sed -e 's/^ *//'))"
+	else
+		echo "net (fair hands, 15 ms each way): FAIL (host $hs, guest $gs)"; cat /tmp/va_netfair.log; fail=1
+	fi
+	# The others ahead of the host's snapshots (Match._lead_for, Lead): the host's man walks to and fro in the yard, and the guest's picture
+	# of him is set against where he is one way of the line on, when a blow of the guest's would reach him. Without the lead the picture is
+	# 57 ms behind and 14 cm off while he walks, with it 4 ms behind and 6 cm off: it may be no more than 30 ms behind and 9 cm off.
+	if delay_run 70 4 NET_TGT=25 NET_TGT_ONLY=15 NET_LAG=15 && python3 tools/lat_tgt.py /tmp/va_netlat_host.log /tmp/va_netlat_guest.log --max-mean-cm 9 --max-shift-ms 30 > /tmp/va_nettgt.log 2>&1; then
+		echo "net (the others ahead, 15 ms each way): ok ($(grep 'blow landing' /tmp/va_nettgt.log | sed -e 's/.*picture is //'))"
+	else
+		echo "net (the others ahead, 15 ms each way): FAIL (host $hs, guest $gs)"; cat /tmp/va_nettgt.log; fail=1
+	fi
+fi
 # All of multiplayer played out by three games through the game's own screens (tests/e2e_run.gd, e2e_host.gd, e2e_guest.gd): the
 # lobby, the yard, the smith, the fights, the endless arena with three, a removal, a campaign room. The short version here
 # (E2E=full for every mode of the Arena too: another three minutes).

@@ -93,6 +93,13 @@ var guest_bot_on := false
 var guest_bot_target = null   # an entity the guest's bot goes for, in place of the nearest enemy (FriendPilot's quarrels in the yard)
 var input_acc := 0.0
 var probe_input := {}      # a test's own hands for a guest without a screen (tests/net_lat_guest.gd); empty: none
+var fair_force := false    # a test's: the room is taken to be people fighting each other (see _fair_active)
+var _fair_lines := {}      # host: entity id -> the wait on his hands (InputDelay)
+var _fair_hold := {}       # host: peer id (1: the host) -> how long his hands are held, in a fight of people against each other
+var _fair_ping := {}       # host: peer id -> his round trip as the host reads it (smoothed, ms)
+var _fair_t := 0.0
+const FAIR_EVERY := 0.25
+const FAIR_STEP := 0.004   # a wait is changed only by this much or more (the line's round trip wobbles by a few ms)
 var _players_by_frame := false   # host: the players' fighters go out from _process, once a frame
 var _player_snap_t := -1.0
 var predictor := MovePredictor.new()   # guest: his own man walked ahead of the host's word (see _predict_own)
@@ -1153,6 +1160,7 @@ func _physics_process(dt: float) -> void:
 	var local_inp := {}
 	if modes and me == null and input:
 		local_inp = input.sample(dt)
+	_fair_update(dt)
 	for e in entities:
 		var f = e.f
 		if not is_instance_valid(f):
@@ -1184,11 +1192,11 @@ func _physics_process(dt: float) -> void:
 						f.yaw = atan2(dl.x, dl.z)
 					inp = e.bot.update(dt, tl.f if tl else null, _world_of(e))
 				else:
-					inp = _player_input(f, dt)
+					inp = _fair_input(e, _player_input(f, dt))
 					if inp.has("look"):
 						f.yaw = ease_yaw(f.yaw, float(inp.look.yaw), dt)
 			"remote":
-				inp = Net.input_of(e.peer)
+				inp = _fair_input(e, Net.input_of(e.peer))
 				# Which of his inputs he is walking by and for how many steps: his guest's model of him goes on from there
 				# (the snapshot's last element; MovePredictor).
 				var sq := int(inp.get("seq", -1))
@@ -1459,6 +1467,68 @@ func _idle_bodies(f) -> Array:
 ## and the crosshair his camera looks along for a bow, a thrust, a throw or a pot.
 var faced_for = null
 
+## Fair hands: in a fight of people against each other (two of them on different sides, not the yard) every man's hands wait for the
+## slowest friend's trip before they reach the physics, the host's as well (InputDelay), so that the host's blade starts when a guest's
+## does and nobody's is quicker; against beasts and bots, in the yard and for the party of a campaign nothing is held.
+func _fair_active() -> bool:
+	if role != "host" or over:
+		return false
+	if fair_force:
+		return true
+	if not Net.active() or modes == null:
+		return false
+	var side = null
+	for e in entities:
+		if (e.kind == "local" or e.kind == "remote") and is_instance_valid(e.f) and e.f.alive:
+			if side != null and e.team != side:
+				return true
+			side = e.team
+	return false
+
+## Four times a second: whether hands are held, and by how much (the host's, and each guest's: what is left of the slowest's trip).
+func _fair_update(dt: float) -> void:
+	_fair_t -= dt
+	if _fair_t > 0.0:
+		return
+	_fair_t = FAIR_EVERY
+	for id in _fair_lines.keys():
+		if entity_by_id(int(id)) == null:
+			_fair_lines.erase(id)   # (a man who has gone)
+	if not _fair_active():
+		_fair_hold.clear()
+		_fair_ping.clear()
+		return
+	var pings := {}
+	for e in entities:
+		if e.kind != "remote":
+			continue
+		var id := int(e.peer)
+		var raw := float(Net.guest_pings.get(id, -1.0))
+		if raw >= 0.0:
+			_fair_ping[id] = lerpf(float(_fair_ping.get(id, raw)), raw, 0.35)
+			pings[id] = _fair_ping[id]
+	var want := InputDelay.holds(pings)
+	for id in want:
+		if not _fair_hold.has(id) or absf(float(_fair_hold[id]) - float(want[id])) >= FAIR_STEP:
+			_fair_hold[id] = want[id]
+	for id in _fair_hold.keys():
+		if not want.has(id):
+			_fair_hold.erase(id)
+
+## One man's hands for this tick, after the wait (his own: the host's by 1, a guest's by his peer id).
+func _fair_input(e: Dictionary, inp: Dictionary) -> Dictionary:
+	var hold := float(_fair_hold.get(1 if e.kind == "local" else int(e.peer), 0.0))
+	var line = _fair_lines.get(e.id)
+	if hold <= 0.0 and line == null:
+		return inp
+	if line == null:
+		line = InputDelay.new()
+		_fair_lines[e.id] = line
+	var out: Dictionary = line.step(inp, int(roundf(hold * float(Engine.physics_ticks_per_second))))
+	if hold <= 0.0 and line.idle():
+		_fair_lines.erase(e.id)
+	return out
+
 func _player_input(f, dt: float) -> Dictionary:
 	var shooter := _shooter_of(f)
 	# A new fighter of ours (a bout starting, a respawn): the camera starts where he faces,
@@ -1487,6 +1557,8 @@ func _player_input(f, dt: float) -> Dictionary:
 			input.set_unarmed(f.weapons[ms] == null and item_side != ms, f.weapons[os] == null and item_side != os)
 		_bow_sway(f, shooter, dt)
 	var inp: Dictionary = input.sample(dt) if input else {}
+	if not probe_input.is_empty():
+		inp = probe_input.duplicate()   # (a test's hands for the host's own man too: tests/net_lat_host.gd)
 	if yard and inp.get("kick", false) and yard.station_here(f.torso.global_position) != "":
 		inp.kick = false
 		inp.talk = true
@@ -3861,6 +3933,27 @@ func snapshot(all := true, who := 0) -> Array:
 		out.append(row)
 	return out
 
+## Guest: the others (men, foes, beasts) are drawn on from where the host's snapshots have them by the way they are going over the time
+## their picture is behind where his blows will meet them (the line's round trip and a snapshot's wait): see Lead. Off, they are drawn as
+## the host's snapshots have them.
+var lead_on := true
+var _rtt_s := -1.0   # the line's round trip, smoothed (s)
+
+func _lead_for(e: Dictionary, a: PackedByteArray, eg: float) -> Vector3:
+	if role != "guest" or not lead_on or is_same(e, me) or not is_instance_valid(e.f):
+		return Vector3.ZERO
+	var f: Fighter = e.f
+	var ti := f.parts.find(f.torso)
+	if ti < 0 or a.size() < (ti + 1) * 14:
+		return Vector3.ZERO
+	if Net.ping_ms >= 0.0:
+		_rtt_s = Net.ping_ms / 1000.0 if _rtt_s < 0.0 else lerpf(_rtt_s, Net.ping_ms / 1000.0, 0.05)
+	var l: Lead = e.get("lead")
+	if l == null:
+		l = Lead.new()
+		e["lead"] = l
+	return l.step(unpack_xf(a, ti * 14).origin, time, f.state == "stand" and not f.torso.severed, maxf(0.0, _rtt_s) + eg)
+
 ## Guest: a body is moved to where the host had it over the time until the next snapshot is due,
 ## in the physics step (so the engine's own interpolation smooths every frame between): his
 ## screen moves as smoothly as the host's, a snapshot behind.
@@ -4049,10 +4142,15 @@ func apply_snapshot(s: Array) -> void:
 		e.snap_seen = time
 		var alive_row: bool = String(e.f.state) != "dead"
 		var a = row[1]
+		var lead := Vector3.ZERO
 		if a is PackedByteArray:
 			var bparts: Array = e.f.parts
+			lead = _lead_for(e, a, eg)
 			for i in mini(a.size() / 14, bparts.size()):
-				_puppet_to(bparts[i], unpack_xf(a, i * 14), eg, alive_row)
+				var pxf := unpack_xf(a, i * 14)
+				if lead != Vector3.ZERO and not (bparts[i] as VoxelPart).severed:
+					pxf.origin += lead   # (a limb he lost lies where it fell)
+				_puppet_to(bparts[i], pxf, eg, alive_row)
 		elif a is PackedFloat32Array:
 			var parts: Array = e.f.parts
 			for i in mini(a.size() / 7, parts.size()):
@@ -4065,7 +4163,9 @@ func apply_snapshot(s: Array) -> void:
 				if not wp.freeze:
 					wp.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 					wp.freeze = true
-				_puppet_to(wp, unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1), eg, alive_row)
+				var wxf: Transform3D = unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1)
+				wxf.origin += lead   # (what he holds goes on with him)
+				_puppet_to(wp, wxf, eg, alive_row)
 		if row[3] is Dictionary or row[3] is Array:
 			e.f.apply_status(row[3])
 		if row.size() > 5 and row[5] is PackedFloat32Array and is_same(e, me) and a is PackedByteArray:

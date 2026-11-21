@@ -26,6 +26,8 @@ func _on(type: String, data, _from: int) -> void:
 				m = Match.new()
 				add_child(m)
 				m.setup({"mode": data.mode, "role": "guest", "headless": true, "seed": 1, "decrees": [], "hazards": []})
+				if OS.get_environment("NET_NOLEAD") != "":
+					m.lead_on = false   # (the others as the host's snapshots have them: what the lead is measured against)
 		"spawn":
 			if m:
 				m.guest_spawn(data)
@@ -62,6 +64,7 @@ func _hand(reps: int) -> void:
 		await _wait(randf_range(0.0, 0.05))
 		var p0: Vector3 = w.global_position
 		var t0 := Time.get_ticks_usec()
+		print("HPRESS %d %.6f" % [rep, Time.get_unix_time_from_system()])   # (the host stamps when its own picture of his weapon has moved: tools/lat_join.py)
 		m.probe_input = swing
 		var ms := -1.0
 		while Time.get_ticks_usec() - t0 < 2000000:
@@ -87,6 +90,10 @@ func _measure() -> void:
 	var press := {"mx": 0.0, "mz": 1.0, "look": {"yaw": 0.0, "pitch": 0.0}}
 	m.probe_input = hands
 	await _wait(3.0)   # (the yard's men come in, he settles on his feet)
+	if OS.get_environment("NET_TGT_ONLY") != "":
+		await _track(float(OS.get_environment("NET_TGT_ONLY")))
+		get_tree().quit(0)
+		return
 	# How still he stands: the measure is a move past that.
 	var lo := _torso()
 	var hi := lo
@@ -141,3 +148,23 @@ func _measure() -> void:
 		get_tree().quit(1)
 		return
 	get_tree().quit(0)
+
+## NET_TGT_ONLY=seconds: no presses, no swings: his own screen's picture of the host's man, who is walking to and fro (net_lat_host.gd
+## _target_walk), logged every physics step with the system clock (TGT_G: x and z of the torso as drawn), and the game's ping (TGT_PING,
+## ms): tools/lat_tgt.py sets it against where the host's man is.
+func _track(secs: float) -> void:
+	var host_e = null
+	for e in m.entities:
+		if e.kind == "remote" and int(e.get("peer", -1)) == 1:
+			host_e = e
+	if host_e == null:
+		print("GUEST TGT no host man")
+		return
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < int(secs * 1000.0):
+		await get_tree().physics_frame
+		if not is_instance_valid(host_e.f):
+			break
+		var p: Vector3 = host_e.f.torso.global_position
+		print("TGT_G %.6f %.4f %.4f" % [Time.get_unix_time_from_system(), p.x, p.z])
+	print("TGT_PING %.1f" % Net.ping_ms)
