@@ -702,7 +702,7 @@ level score is settled by up to two deciding rounds; the duel's best-of, the kin
 own meaning), the **bots** beside the players (none to seven; the team fights and the tournament may fill their sides and
 bracket), and, for the free-for-all, the number of the Emperor's **decrees** (none, one, three: it is where chaos went).
 The screen says what the sand will hold ("You and 2 friends, with 3 bots"); a room of eight and the bots with them never
-pass 12 fighters (`FightOpts.MAX_FIGHTERS`). The host keeps the score between bouts (`Menu._series_after`) and tells the
+pass 8 fighters (`FightOpts.MAX_FIGHTERS`: one man with seven bots, a room of eight with none). The host keeps the score between bouts (`Menu._series_after`) and tells the
 guests (`series` message, read back made safe: `Series.clean`); a guest is also told the fight's state line (the wave, the
 round, the hill's leader) by the host (`fstat`).
 

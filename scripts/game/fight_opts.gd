@@ -7,8 +7,9 @@ extends RefCounted
 
 const BOT_MODES := ["ffa", "teams", "hill", "lastLimb", "emperor"]
 const MOST_BOTS := 7
-## A room of eight and the bots with them: more than that is more than a host's physics keeps up with.
-const MAX_FIGHTERS := 12
+## What the sand holds: a room of eight fills it, and a smaller room has its bots up to it (one man, seven bots). More fighters than this
+## is more than a host's physics keeps up with (a step costs about a millisecond a man on a slow core, and more than that past eight).
+const MAX_FIGHTERS := 8
 const DECREES := [0, 1, 3]
 const FILL := -1              # (the teams, the tournament) the bots that make the sides even, the bracket full
 

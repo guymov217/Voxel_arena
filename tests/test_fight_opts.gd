@@ -41,7 +41,9 @@ func test_a_setting_is_made_safe() -> void:
 
 func test_the_bots_the_sand_holds() -> void:
 	t.eq(FightOpts.bots_allowed(1, 7), 7, "one man: seven bots")
-	t.eq(FightOpts.bots_allowed(8, 7), FightOpts.MAX_FIGHTERS - 8, "a full room: what is left of the twelve")
+	t.eq(FightOpts.bots_allowed(8, 7), 0, "a full room fills the sand: no bots")
+	t.eq(FightOpts.bots_allowed(5, 7), 3, "five in the room: three bots")
+	t.eq(FightOpts.MAX_FIGHTERS, 8, "the sand holds eight")
 	t.eq(FightOpts.bots_allowed(12, 5), 0, "none when the room fills it")
 	t.eq(FightOpts.bots_allowed(3, -1), 0, "never below none")
 
@@ -85,7 +87,7 @@ func test_the_bots_never_crowd_the_sand_past_what_it_holds() -> void:
 	for i in 7:
 		peers.append({"id": 60 + i, "name": "G%d" % i, "loadout": {}})
 	var m := _match("ffa", {"bots": 7, "peers": peers})
-	t.eq(m.entities.size(), FightOpts.MAX_FIGHTERS, "eight players and four bots")
+	t.eq(m.entities.size(), FightOpts.MAX_FIGHTERS, "eight players fill the sand: the bots asked for do not come")
 	m.queue_free()
 
 func test_red_against_blue_takes_its_bots() -> void:
