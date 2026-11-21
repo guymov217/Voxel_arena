@@ -62,4 +62,16 @@ hs=$?
 rm -rf "$STEAM_FAKE_DIR"
 grep -E "^(HOST|GUEST)" /tmp/va_netsteam_host.log /tmp/va_netsteam_guest.log
 if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (steam path): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (steam path): ok"; fi
+# The endless arena with a friend over ENet: the waves grow with the party, each one's rewards go to him over the wire and his pick
+# comes back, the fallen stand up again, and the guest reads the host's state line (tests/net_party_host.gd, net_party_guest.gd).
+export NET_PORT=$((NET_PORT + 1))
+timeout 150 "$G" --headless --path . -- --probe net_party_host > /tmp/va_netparty_host.log 2>&1 &
+hp=$!
+sleep 2
+timeout 140 "$G" --headless --path . -- --probe net_party_guest > /tmp/va_netparty_guest.log 2>&1
+gs=$?
+wait $hp
+hs=$?
+grep -E "^(HOST|GUEST)" /tmp/va_netparty_host.log /tmp/va_netparty_guest.log
+if [ $gs -ne 0 ] || [ $hs -ne 0 ]; then echo "net (party): FAIL (host $hs, guest $gs)"; fail=1; else echo "net (party): ok"; fi
 exit $fail

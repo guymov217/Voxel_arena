@@ -1324,9 +1324,6 @@ func on_item(ev: Dictionary) -> void:
 				m.crowd_add(owner_, 6, "cheese")
 		"return":
 			m.feed.emit(Loc.t("%s caught the boomerang") % c.display_name)
-		"kick":
-			if m.modes:
-				m.modes.kick_ball(ev)
 
 # ---------- Zones ----------
 

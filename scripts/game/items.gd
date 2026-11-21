@@ -28,7 +28,6 @@ const TYPES := {
 	"boomerang": {"size": 0.14, "projectile": true, "boomerang": true}, "cheese": {"size": 0.24, "rolling": true, "roll_r": 0.21},
 	"arrow_loose": {"size": 0.06, "debris": true},
 	"caltrop": {"size": 0.06},
-	"ball": {"size": 0.28, "rolling": true, "ball": true},
 }
 
 var list: Array = []
@@ -189,8 +188,6 @@ static func visual(type: String) -> Node3D:
 			_box(g, 0.014, 0.014, 0.07, 0x5b5f66, -0.01, -0.01, 0.02)
 		"bandage":
 			_box(g, 0.16, 0.12, 0.12, 0xf2ecdc); _box(g, 0.17, 0.04, 0.04, 0xd8cfb8); _box(g, 0.06, 0.012, 0.2, 0xf2ecdc, 0.03, -0.065, 0.06)
-		"ball":
-			_box(g, 0.26, 0.28, 0.26, 0xd9a37a); _box(g, 0.27, 0.08, 0.27, 0x2b1d14, 0, 0.12, 0); _box(g, 0.05, 0.05, 0.03, 0x111111, 0.06, 0.02, 0.13); _box(g, 0.05, 0.05, 0.03, 0x111111, -0.06, 0.02, 0.13)
 		_:
 			# A clay pot: a round belly, shoulders, a neck, a painted band and a sealed lid in
 			# the colour of what is inside.
@@ -397,27 +394,6 @@ func update(dt: float, chars: Array, gravity := 9.81) -> void:
 		if it.age > 60.0:
 			remove(it)
 			continue
-		if def.get("ball", false):
-			# The head: anyone's leg can kick it, moving or not.
-			for c in chars:
-				if not c.alive or c.kind == "beast":
-					continue
-				var kicked := false
-				for n in ["shinL", "shinR"]:
-					var sp = c.by_name.get(n)
-					if sp == null or sp.severed:
-						continue
-					if Vector2(sp.global_position.x - it.p.x, sp.global_position.z - it.p.z).length() > 0.42 or absf(sp.global_position.y - it.p.y) > 0.6:
-						continue
-					var lv: Vector3 = sp.linear_velocity
-					var spd := Vector2(lv.x, lv.z).length()
-					if spd < 1.2:
-						continue
-					_emit({"kind": "kick", "type": it.type, "char": c, "item": it, "p": it.p, "dir": Vector3(lv.x, 0, lv.z).normalized(), "speed": minf(9.0, spd)})
-					kicked = true
-					break
-				if kicked:
-					break
 		if def.get("rolling", false) and it.vel.length_squared() > 0.05:
 			it.vel *= pow(0.4, dt)
 			it.p += it.vel * dt

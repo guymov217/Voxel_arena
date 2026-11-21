@@ -33,7 +33,7 @@ func _ready() -> void:
 		{"name": "03_clash", "opts": {"mode": "duel"}, "J": 30.0, "cam": "close"},
 		{"name": "04_bloodbath", "opts": {"mode": "ffa"}, "J": 40.0, "cam": "close"},
 		{"name": "05_monster_hunt", "opts": {"mode": "hunt"}, "J": 25.0, "cam": "wide"},
-		{"name": "06_chaos_decrees", "opts": {"mode": "chaos"}, "J": 30.0, "cam": "close"},
+		{"name": "06_chaos_decrees", "opts": {"mode": "ffa", "decrees_n": 3}, "J": 30.0, "cam": "close"},
 		{"name": "07_red_vs_blue", "opts": {"mode": "teams"}, "J": 30.0, "cam": "wide"},
 		{"name": "08_in_the_fight", "opts": {"mode": "duel"}, "J": 20.0, "cam": "player"},
 		{"name": "09_gorilla", "opts": {"mode": "training", "training": {"enemy": "gorilla", "immortal": true}, "loadout_override": {"main": "gladius", "off": "roundShield"}}, "J": 30.0, "cam": "close"},
@@ -96,7 +96,7 @@ func _on_hit(h: Dictionary) -> void:
 func _scene(sc: Dictionary) -> void:
 	var o: Dictionary = sc.opts.duplicate()
 	o["autopilot"] = true
-	if o.mode != "chaos":
+	if int(o.get("decrees_n", 0)) <= 0:
 		o["decrees"] = []
 		o["hazards"] = []
 	menu.start(o)

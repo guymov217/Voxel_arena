@@ -70,7 +70,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 	await _save("blood_sparks")
 	# Items from the stands lying on the sand, the bomb.
-	var types := ["bread", "wine", "tomato", "banana", "coin", "rock", "pot_fire", "pot_thunder", "cheese", "bandage", "ball"]
+	var types := ["bread", "wine", "tomato", "banana", "coin", "rock", "pot_fire", "pot_thunder", "cheese", "bandage"]
 	for i in types.size():
 		m.items.spawn(types[i], Vector3(-2.0 + (i % 6) * 0.45, 0.12, -6.0 - (i / 6) * 0.5))
 	var bomb := VoxelArt.place(m, "bomb", Vector3(1.0, 0.16, -6.2))

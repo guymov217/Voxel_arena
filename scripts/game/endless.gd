@@ -5,6 +5,9 @@ extends RefCounted
 ## falls. Between waves he is patched up a little and takes one of three rewards (`offer`: the
 ## menu shows it, take() gives it). Today's challenge (`daily`) draws the same waves for everyone
 ## on the same day. The best wave is kept (Save "endless") and, with Steam, put on its board.
+## With friends in the room (the party) the waves grow with their number, the fallen stand up again as each wave is beaten,
+## every one of them is patched up and takes a reward of his own (picked on his own screen; a pick not made in time is the first),
+## and the run is over when all of them are down. (The best wave and the board are a lone player's.)
 ## In the demo the waves come from the demo's own men and beasts and its two great foes
 ## (Edition): what the full game holds beyond them is only counted, on the last screen. Host side;
 ## `m` is the Match.
@@ -12,6 +15,7 @@ extends RefCounted
 const BOSS_EVERY := 5
 const REST_HEAL := 35.0      # blood back as a wave is beaten (the breath all, the wounds closed)
 const START_DELAY := 3.0     # from the pick to the horn
+const MOST_FOES := 8         # (a party's wave is no bigger than this: the host's physics has to keep up)
 const KEEP_LOOSE := 12       # weapons left lying on the sand, the newest (the rest are cleared)
 ## The weapons a gladiator of the waves may be handed: the campaign's ladder of arms (what the
 ## demo's own bouts already show), one-handed and two-handed, the second blade of a man with two,
@@ -38,6 +42,9 @@ const POTS := ["thunderPot", "nailPot", "greekFire", "smoke", "vitriol", "bola"]
 const PIECES := ["helmet", "manica", "greaves", "lorica"]
 
 signal offered(rewards: Array)
+signal picked_all            # every reward of the rest is taken: the next wave is called (the screens of the rewards close)
+
+const PICK_TIME := 25.0      # a party's time to pick (alone, as long as he likes)
 
 var m: Node
 var daily := false
@@ -46,7 +53,9 @@ var seed_base := 0
 var wave := 0
 var phase := "next"           # "next": the horn to come; "fight"; "rest": the offer up; "over"
 var next_t := START_DELAY
-var offer: Array = []         # the rewards on offer while resting
+var offer: Array = []         # the rewards on offer while resting (the host's own, or the lone player's)
+var offers := {}              # the party: each one's rewards while resting, by who (1 the host, else his peer id)
+var rest_t := 0.0
 var slain := 0
 var rng := RandomNumberGenerator.new()
 
@@ -90,21 +99,22 @@ static func held_back() -> int:
 
 ## Wave `n` as Match.enemy_spec entries ({"e": type} a man, {"beast": key} a beast, "boss"),
 ## the same for the same seed and wave (today's challenge is everyone's).
-func plan(n: int) -> Array:
+func plan(n: int, players := 1) -> Array:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([seed_base, n])
 	var p := pool()
 	var out := []
+	var more := maxi(0, players - 1)   # (a friend more, a foe more; a great foe has an escort more for every two)
 	if n % BOSS_EVERY == 0 and not p.bosses.is_empty():
 		var b: Dictionary = (p.bosses[(n / BOSS_EVERY - 1) % p.bosses.size()] as Dictionary).duplicate(true)
 		b.erase("title")
 		b.boss = true
 		out.append(b)
 		# From the second great foe on, he does not come alone.
-		for k in mini(2, (n - BOSS_EVERY) / BOSS_EVERY):
+		for k in mini(2, (n - BOSS_EVERY) / BOSS_EVERY) + more / 2:
 			out.append(_one(r, n, p))
 		return out
-	for k in clampi(1 + (n - 1) / 3, 1, 4):
+	for k in mini(MOST_FOES, clampi(1 + (n - 1) / 3, 1, 4) + more):
 		out.append(_one(r, n, p))
 	return out
 
@@ -166,6 +176,31 @@ func update(dt: float) -> void:
 		next_t -= dt
 		if next_t <= 0.0:
 			_spawn_wave()
+	elif phase == "rest" and party():
+		# One who does not pick in time takes the first of his rewards.
+		rest_t -= dt
+		if rest_t <= 0.0:
+			for key in offers.keys():
+				take_for(int(key), 0)
+
+## Friends in the room.
+func party() -> bool:
+	return m.humans().size() > 1
+
+## One playing on his own machine, in his own game: his best wave and the board are his; a room's run (a party, even one
+## whose friends have not come yet) is not counted.
+func is_solo() -> bool:
+	return m.role == "local"
+
+## Who a player is as the rewards keep him: the host (or the lone player) 1, a guest by his peer id.
+static func key_of(e: Dictionary) -> int:
+	return 1 if e.kind == "local" else int(e.get("peer", -1))
+
+func entity_of(key: int):
+	for e in m.humans():
+		if key_of(e) == key and is_instance_valid(e.f):
+			return e
+	return null
 
 func check(_dt: float, alive: Array, humans_alive: Array) -> void:
 	if phase == "over":
@@ -184,6 +219,8 @@ func check(_dt: float, alive: Array, humans_alive: Array) -> void:
 func status() -> String:
 	match phase:
 		"rest":
+			if party() and not offers.is_empty():
+				return Loc.t("Wave %d beaten! · %d still choosing") % [wave, offers.size()]
 			return Loc.t("Wave %d beaten!") % wave
 		"next":
 			return Loc.t("Wave %d in %d") % [wave + 1, ceili(maxf(0.0, next_t))]
@@ -193,7 +230,7 @@ func _spawn_wave() -> void:
 	wave += 1
 	phase = "fight"
 	_clear_old()
-	var list := plan(wave)
+	var list := plan(wave, m.humans().size())
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([seed_base, wave, "arms"])
 	var names := []
@@ -230,7 +267,7 @@ func _spawn_wave() -> void:
 	var boss: bool = list.any(func(x): return x.get("boss", false))
 	m._banner(Loc.t("Wave %d") % wave, ", ".join(names))
 	if boss:
-		m.feed.emit(Loc.t("A great foe walks in: %s!") % names[0])
+		m.feed_all(Loc.t("A great foe walks in: %s!") % names[0])
 	# The music the wave calls for (as Menu.fight_mood): a great foe's, a beast hunt's, a fight's.
 	if Sfx.music and not m.headless:
 		Sfx.music.set_state("boss" if boss else ("beast" if list.all(func(x): return x.has("beast")) else "fight"))
@@ -274,24 +311,47 @@ func _beaten() -> void:
 		if is_instance_valid(e.f) and e.f.alive:
 			e.f.die("wounds")
 	slain += m.entities.filter(func(e): return int(e.get("endless_wave", 0)) == wave).size()
-	var you = m.me
-	if you and is_instance_valid(you.f):
-		var f: Fighter = you.f
-		f.blood = minf(100.0, f.blood + REST_HEAL)
-		f.stamina = 100.0
-		for p in f.parts:
-			if not p.severed:
-				p.bleed = 0.0
-				p.artery = 0.0
-	_record()
-	offer = rewards()
+	# The fallen of a party stand up again (those at death's door too: nobody lies there through the rest);
+	# every one of them is patched up a little.
+	if party():
+		for e in m.humans():
+			if is_instance_valid(e.f) and (not e.f.alive or e.f.dying > 0.0):
+				m.respawn_player(e)
+	for e in m.humans():
+		_patch(e)
+	if is_solo():
+		_record()
+	offers = {}
+	for e in m.humans():
+		if is_instance_valid(e.f):
+			offers[key_of(e)] = rewards(e)
+	offer = offers.get(1, [])
+	rest_t = PICK_TIME
 	m.sfx("horn", Vector3.ZERO)
-	offered.emit(offer)
+	if m.role == "host":
+		for key in offers:
+			if int(key) != 1:
+				Net.send_to(int(key), "endless_offer", {"r": offer_wire(offers[key]), "w": wave, "t": PICK_TIME})
+	if m.me != null and not offer.is_empty():
+		offered.emit(offer)
+
+## A man after a wave: some blood back, his breath all, his wounds closed.
+func _patch(e: Dictionary) -> void:
+	var f = e.f
+	if not is_instance_valid(f) or not f.alive:
+		return
+	f.blood = minf(100.0, f.blood + REST_HEAL)
+	f.stamina = 100.0
+	for p in f.parts:
+		if not p.severed:
+			p.bleed = 0.0
+			p.artery = 0.0
 
 ## Three of the rewards, as they may be had now: no mending of whole weapons, no armour already
 ## worn. Each {id, title, text, arg}.
-func rewards() -> Array:
-	var f = m.me.f if m.me and is_instance_valid(m.me.f) else null
+func rewards(e = null) -> Array:
+	var you = e if e != null else m.me
+	var f = you.f if you and is_instance_valid(you.f) else null
 	var can := ["bind", "pot"]
 	if f and _free_right(f):
 		can.append("blade")
@@ -301,35 +361,80 @@ func rewards() -> Array:
 	if not pieces.is_empty():
 		can.append("armour")
 	var r := RandomNumberGenerator.new()
-	r.seed = hash([seed_base, wave, "rewards"])
+	var key := key_of(you) if you != null else 1
+	r.seed = hash([seed_base, wave, "rewards"]) if key == 1 else hash([seed_base, wave, "rewards", key])
 	var out := []
 	while out.size() < 3 and not can.is_empty():
 		var id: String = can.pop_at(r.randi_range(0, can.size() - 1))
 		match id:
-			"bind":
-				out.append({"id": id, "title": "Bind your wounds", "text": "Your bones set, your wounds bound, all your blood back"})
-			"mend":
-				out.append({"id": id, "title": "Mend your weapons", "text": "Every chip and crack made good"})
 			"pot":
-				var pot: String = POTS[r.randi_range(0, POTS.size() - 1)]
-				out.append({"id": id, "arg": pot, "title": "A gift from the stands", "text": Loc.t("Two × %s") % Loc.t(String(Data.shop.throwables.get(pot, {}).get("name", pot)))})
+				out.append(card(id, POTS[r.randi_range(0, POTS.size() - 1)]))
 			"blade":
-				var key := prize(r, wave)
-				out.append({"id": id, "arg": key, "title": "A new weapon", "text": Loc.t("%s in your right hand (yours is left on the sand)") % Loc.t(String(Data.preset(key).get("name", key)))})
+				out.append(card(id, prize(r, wave)))
 			"armour":
-				var piece: String = pieces[r.randi_range(0, pieces.size() - 1)]
-				out.append({"id": id, "arg": piece, "title": "A piece of armour", "text": Loc.t(String(Data.armor.get(piece, {}).get("name", piece)))})
+				out.append(card(id, pieces[r.randi_range(0, pieces.size() - 1)]))
+			_:
+				out.append(card(id))
 	return out
 
-## The reward picked (0, 1 or 2): given, and the next wave called.
+const REWARD_IDS := ["bind", "mend", "pot", "blade", "armour"]
+
+## A reward as its card reads: {id, arg, title, text} (the words in the player's own language: a guest makes the card of
+## what the host offered himself, `clean_offer`).
+static func card(id: String, arg := "") -> Dictionary:
+	match id:
+		"bind":
+			return {"id": id, "arg": arg, "title": "Bind your wounds", "text": "Your bones set, your wounds bound, all your blood back"}
+		"mend":
+			return {"id": id, "arg": arg, "title": "Mend your weapons", "text": "Every chip and crack made good"}
+		"pot":
+			return {"id": id, "arg": arg, "title": "A gift from the stands", "text": Loc.t("Two × %s") % Loc.t(String(Data.shop.throwables.get(arg, {}).get("name", arg)))}
+		"blade":
+			return {"id": id, "arg": arg, "title": "A new weapon", "text": Loc.t("%s in your right hand (yours is left on the sand)") % Loc.t(String(Data.preset(arg).get("name", arg)))}
+		"armour":
+			return {"id": id, "arg": arg, "title": "A piece of armour", "text": Loc.t(String(Data.armor.get(arg, {}).get("name", arg)))}
+	return {}
+
+## What the host tells a guest of his rewards: only which each is.
+static func offer_wire(list: Array) -> Array:
+	return list.map(func(rw): return [String(rw.id), String(rw.get("arg", ""))])
+
+## A guest's reading of the rewards the host holds out, made safe: up to three known ones, each with the thing it gives made
+## sure to be one the game has.
+static func clean_offer(v) -> Array:
+	var out := []
+	if not (v is Array):
+		return out
+	for row in (v as Array).slice(0, 3):
+		if not (row is Array) or (row as Array).size() != 2 or not (row[0] is String) or not (row[1] is String):
+			continue
+		var id: String = row[0]
+		var arg: String = (row[1] as String).left(40)
+		if not REWARD_IDS.has(id):
+			continue
+		if (id == "pot" and not POTS.has(arg)) or (id == "blade" and not PRIZE_ARMS.has(arg)) or (id == "armour" and not PIECES.has(arg)):
+			continue
+		out.append(card(id, arg))
+	return out
+
+## The lone player's (or the host's) reward picked (0, 1 or 2).
 func take(i: int) -> void:
-	if phase != "rest" or i < 0 or i >= offer.size():
+	take_for(1, i)
+
+## A reward picked by one of the party (0, 1 or 2): given to him; when all have picked, the next wave is called.
+func take_for(key: int, i: int) -> void:
+	if phase != "rest" or not offers.has(key):
 		return
-	var rw: Dictionary = offer[i]
-	offer = []
-	var you = m.me
-	var f: Fighter = you.f if you and is_instance_valid(you.f) else null
-	if f:
+	var mine: Array = offers[key]
+	if i < 0 or i >= mine.size():
+		return
+	var rw: Dictionary = mine[i]
+	offers.erase(key)
+	if key == 1:
+		offer = []
+	var you = entity_of(key)
+	var f: Fighter = you.f if you != null else null
+	if f and f.alive:
 		match String(rw.id):
 			"bind":
 				f.bind_wounds()
@@ -344,9 +449,13 @@ func take(i: int) -> void:
 					f.equip("R", Data.preset(String(rw.arg)))
 			"armour":
 				f.set_armor_pieces(_worn(f) + [String(rw.arg)])
-	m.feed.emit(Loc.t("Taken: %s") % Loc.t(String(rw.title)))
-	phase = "next"
-	next_t = START_DELAY
+		m.feed_all((Loc.t("Taken: %s") % Loc.t(String(rw.title))) if not party() else (Loc.t("%s took: %s") % [f.display_name, Loc.t(String(rw.title))]))
+	if offers.is_empty():
+		phase = "next"
+		next_t = START_DELAY
+		picked_all.emit()
+		if m.role == "host":
+			Net.send_all("endless_done", {})
 
 ## Weapons as they were made: what is in his hands taken up afresh from its own design
 ## (Fighter.rearm), held as it was.
@@ -388,13 +497,19 @@ func _pieces_left(f: Fighter) -> Array:
 func _fall() -> void:
 	phase = "over"
 	var reached := maxi(0, wave - 1) if wave > 0 else 0
-	var best := _record()
+	var solo := is_solo()
 	var held := held_back()
-	var sub := Loc.t("Best: wave %d") % best
+	var sub := ""
+	if solo:
+		sub = Loc.t("Best: wave %d") % _record()
+	else:
+		sub = Loc.t("Waves beaten: %d") % reached
 	if held > 0:
 		sub += " · " + Loc.t("%d more great foes wait in the full game") % held
-	m._end(false, Loc.t("You fell in wave %d") % wave, sub, 0)
-	submit(reached)
+	var head := Loc.t("You fell in wave %d") if solo else Loc.t("The party fell in wave %d")
+	m._end(false, head % wave, sub, 0)
+	if solo:
+		submit(reached)
 
 ## The run as far as it went, kept: the best wave ever, and today's for the day's challenge.
 ## Returns the best.

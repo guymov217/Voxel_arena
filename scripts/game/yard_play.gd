@@ -296,7 +296,7 @@ func _keeper_input(e, work: String, home: Vector3, work_yaw: float, ph: float) -
 			inp.off = {"x": -0.12, "y": -0.8}
 	return inp
 
-func _ring(p: Vector3, r: float, color: Color) -> void:
+func _ring(p: Vector3, r: float, color: Color) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var tm := TorusMesh.new()
 	tm.inner_radius = r - 0.07
@@ -312,6 +312,7 @@ func _ring(p: Vector3, r: float, color: Color) -> void:
 	mi.mesh = tm
 	m.add_child(mi)
 	mi.global_position = p + Vector3(0, 0.03, 0)
+	return mi
 
 ## The stations' furniture, just behind each station's ring (toward the wall), facing the
 ## middle: the smith's hearth and anvil, the market stall, the mission board, the physician's
@@ -394,8 +395,126 @@ func _board(p: Vector3) -> void:
 	m.add_child(leg)
 	leg.global_position = Vector3(p.x, p.y * 0.5 - 0.3, p.z)
 
+# ---------- The teams of a team fight, chosen in the lobby ----------
+# A circle on the sand for each team (TeamSetup), the host's and each guest's walk into the one he plays for; a sign over a circle
+# says who is in it; when everybody stands in one the host may begin (E, as a stall is spoken to; Menu._team_go). The host reads
+# who stands where, the guests are told what the host reads (the "teams" message) and see the same circles and signs.
+
+var team_setup: TeamSetup = null   # (the host's) the teams being chosen
+var team_seen := {}                # (a guest's) what the host said of them, made safe (TeamSetup.clean_state)
+var _team_nodes: Array = []
+var _team_signs: Array = []
+var _team_sent := {}
+var _team_t := 0.0
+var _team_age := 0.0
+
+func teams_on() -> bool:
+	return team_setup != null or not team_seen.is_empty()
+
+## The host: the teams are to be chosen (the guests are told, at once).
+func begin_teams(mode: String, opts: Dictionary) -> void:
+	if m.role == "guest":
+		return
+	end_teams(false)
+	team_setup = TeamSetup.new(mode, opts)
+	_team_scenery()
+	_team_t = 0.0
+	_team_sent = {}
+
+## Over: the circles taken up, the guests told.
+func end_teams(tell := true) -> void:
+	var was := teams_on()
+	for n in _team_nodes:
+		if is_instance_valid(n):
+			n.queue_free()
+	_team_nodes.clear()
+	_team_signs.clear()
+	team_setup = null
+	team_seen = {}
+	_team_sent = {}
+	if tell and was and m.role == "host" and Net.active():
+		Net.send_all("teams", {})
+
+func _team_scenery() -> void:
+	for i in TeamSetup.TEAMS:
+		var c: Vector3 = TeamSetup.CENTRES[i]
+		var col: Color = TeamSetup.COLORS[i]
+		var disc := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = TeamSetup.RADIUS
+		cm.bottom_radius = TeamSetup.RADIUS
+		cm.height = 0.02
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(col.r, col.g, col.b, 0.22)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		cm.material = mat
+		disc.mesh = cm
+		m.add_child(disc)
+		disc.global_position = c + Vector3(0, 0.02, 0)
+		_team_nodes.append(disc)
+		_team_nodes.append(_ring(c, TeamSetup.RADIUS, Color(col.r, col.g, col.b, 0.85)))
+		_label(c + Vector3(0, 2.7, 0), TeamSetup.sign_text(i, []))
+		var lab: Label3D = signs.pop_back()
+		lab.modulate = col.lightened(0.35)
+		_team_signs.append(lab)
+		_team_nodes.append(lab)
+
+func _team_signs_to(t: Array) -> void:
+	for i in mini(_team_signs.size(), t.size()):
+		(_team_signs[i] as Label3D).text = TeamSetup.sign_text(i, t[i])
+
+## The host, once a tick: who stands where, the signs, and what the guests are told when it changes (and now and then, for one
+## who came in later).
+func _teams_tick(dt: float) -> void:
+	_team_t -= dt
+	if _team_t > 0.0:
+		return
+	_team_t = 0.1
+	var here := {}
+	for e in m.humans():
+		if is_instance_valid(e.f):
+			var who := _peer_of(e)
+			var p: Vector3 = e.f.torso.global_position
+			team_setup.set_place(who, String(e.f.display_name), p.x, p.z)
+			here[who] = true
+	for who in team_setup.places.keys():
+		if not here.has(who):
+			team_setup.forget(int(who))
+	var st := team_setup.state()
+	_team_signs_to(st.t)
+	_team_age += 0.1
+	if st != _team_sent or _team_age >= 4.0:
+		_team_sent = st
+		_team_age = 0.0
+		if Net.active():
+			Net.send_all("teams", st)
+
+## A guest: what the host said of the teams (made safe); the circles are put on the sand when the first word comes.
+func take_teams(v) -> void:
+	var st := TeamSetup.clean_state(v)
+	if st.is_empty():
+		end_teams(false)
+		return
+	team_seen = st
+	if _team_nodes.is_empty():
+		_team_scenery()
+	_team_signs_to(st.t)
+
+## The line on the screen while the teams are chosen ("" when they are not).
+func team_line() -> String:
+	if team_setup != null:
+		return team_setup.line(true)
+	if not team_seen.is_empty():
+		return TeamSetup.line_of(team_seen, false)
+	return ""
+
 ## Once a tick on the host: nobody bleeds out, the stations, the throwing boards, the ring.
 func update(_dt: float, local_inp: Dictionary) -> void:
+	if team_setup != null and m.role != "guest":
+		_teams_tick(_dt)
+		if local_inp.get("talk", false) and team_setup.ready():
+			m.station.emit("team_go")
 	if m.role != "guest":   # (a guest only reads the stalls; the host keeps the yard's people)
 		for d in dummies + keepers:
 			if is_instance_valid(d):

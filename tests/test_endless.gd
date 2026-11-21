@@ -167,6 +167,7 @@ func test_each_reward_gives_what_it_says() -> void:
 	var give := func(rw: Dictionary) -> void:
 		en.phase = "rest"
 		en.offer = [rw]
+		en.offers = {1: [rw]}
 		en.take(0)
 	me.blood = 30.0
 	give.call({"id": "bind", "title": "Bind your wounds"})

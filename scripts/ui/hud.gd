@@ -960,6 +960,9 @@ func _place() -> void:
 			place_label.text = "THE LUDUS YARD"
 			var at := Yard.station_at(m.me.f.torso.global_position) if m.me and is_instance_valid(m.me.f) else ""
 			place_sub.text = Loc.t(String(Yard.STATIONS[at].label)).to_upper() if at != "" else Loc.t("THE GATE LEADS TO THE ARENA")
+			if m.yard and m.yard.teams_on():
+				place_label.text = "CHOOSE YOUR TEAM"
+				place_sub.text = m.yard.team_line().to_upper()
 		"training":
 			place_label.text = "THE TRAINING GROUND"
 			place_sub.text = ""
@@ -968,7 +971,7 @@ func _place() -> void:
 			place_sub.text = m.circus_status().to_upper()
 		_:
 			place_label.text = "THE ARENA"
-			place_sub.text = (m.modes.status() if m.modes else m.mode.capitalize()).to_upper()
+			place_sub.text = m.fight_status().to_upper()
 
 var bench_hid := false   # hidden while a forge was open, to come back when it goes
 

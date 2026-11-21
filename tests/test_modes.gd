@@ -142,17 +142,6 @@ func test_last_limb_takes_a_limb_from_everyone() -> void:
 		t.check(e.f.parts.any(func(p): return p.severed), "%s lost a limb" % e.f.display_name)
 	m.queue_free()
 
-func test_head_football_scores_a_goal() -> void:
-	var m := _match("headball")
-	await _steps(2)
-	var it = m.modes.ball_item()
-	t.check(it != null, "the head is on the field")
-	it.p = Vector3(-Modes.GOAL_X - 0.5, 0.2, 0)
-	it.grounded = true
-	await _steps(3)
-	t.eq(m.modes.ball.score[1], 1, "a goal for Blue in Red's goal")
-	m.queue_free()
-
 func test_the_emperor_meddles_from_his_box() -> void:
 	var m := _match("emperor")
 	t.check(m.me == null, "the Emperor does not fight")

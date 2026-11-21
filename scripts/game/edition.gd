@@ -6,11 +6,11 @@ class_name Edition
 ## bouts and the demo's arena modes, and nothing else.
 
 const DEMO_STAGES := 8
-## The arena modes the demo plays: alone, a duel, the free-for-all and the endless arena (its
-## waves from the demo's own foes, Endless); in a room, the players' brawl (everyone against
-## everyone) and the free-for-all. (The co-op campaign is at the gate.)
-const DEMO_MODES_SOLO := ["duel", "bo3", "ffa", "endless"]
-const DEMO_MODES_ROOM := ["pvp", "ffa"]
+## The arena modes the demo plays: alone, the duel, the free-for-all and the endless arena (its
+## waves from the demo's own foes, Endless); in a room, the free-for-all (with no bots, everyone
+## against everyone, or with them) and the endless arena. (The co-op campaign is at the gate.)
+const DEMO_MODES_SOLO := ["bo3", "ffa", "endless"]
+const DEMO_MODES_ROOM := ["ffa", "endless"]
 ## Beasts the demo lets a player face in the training and the arena beyond its bouts' own: one
 ## big monster to show off with (the gorilla that tears men in two) and a bear.
 const DEMO_EXTRA_BEASTS := ["bear", "gorilla"]

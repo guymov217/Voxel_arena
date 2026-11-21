@@ -43,6 +43,11 @@ var tick := 0
 var stage_info: Dictionary = {}
 var players_count := 1
 var round_pay := 0
+## A fight of several rounds (Series): where the match stands, as the host tells it (Series.to_dict) and as the HUD reads it.
+var series := {}
+var series_text := ""
+var fstat := ""                 # (a guest's) the line the host gives the fight's state in (wave, round, score), fight_status
+var _fstat_sent := ""
 var mind_aim_until := -1.0   # while the local player may hold a man in the Hand of Jupiter
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
@@ -294,6 +299,7 @@ func setup(opts: Dictionary) -> void:
 	training = opts.get("training", {})
 	circus = opts.get("circus", {})
 	headless = opts.get("headless", false)
+	set_series(opts.get("series"))
 	rng.seed = int(opts.get("seed", stage * 1009 + 7))
 	fx = Fx.new(headless)
 	add_child(fx)
@@ -319,8 +325,9 @@ func setup(opts: Dictionary) -> void:
 	add_child(hazards)
 	# The Emperor's decrees: chosen by the host (or the test), told to the guests with "start".
 	var ids: Array = opts.get("decrees", [])
-	if not opts.has("decrees") and role != "guest" and (mode == "duel" or mode == "chaos") and opts.get("decree_setting", "sometimes") != "off":
-		ids = Decrees.roll(1.0 if mode == "chaos" or opts.get("decree_setting") == "always" else 0.6, 3 if mode == "chaos" else 1, rng).map(func(d): return d.id)
+	var decree_n := Modes.decree_count(mode, opts)
+	if not opts.has("decrees") and role != "guest" and decree_n > 0 and (mode == "ffa" or opts.get("decree_setting", "sometimes") != "off"):
+		ids = Decrees.roll(1.0 if mode == "ffa" or opts.get("decree_setting") == "always" else 0.6, decree_n, rng).map(func(d): return d.id)
 	decrees = ids.map(func(i): return Decrees.by_id(str(i))).filter(func(d): return not d.is_empty())
 	dec = Decrees.combine(decrees)
 	PhysicsServer3D.area_set_param(get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, dec.gravity)
@@ -333,7 +340,7 @@ func setup(opts: Dictionary) -> void:
 	hazards.build(hspecs)
 	hazard_specs = hspecs
 	lion_t = 5.0 if dec.lions else -1.0
-	spectacle.drops_on = role != "guest" and (mode == "duel" or mode == "chaos")
+	spectacle.drops_on = role != "guest" and decree_n > 0
 	combat.hit.connect(_on_hit)
 	combat.chip.connect(func(c): if role == "host": _send_weapon_vox(c.weapon, c.indices))
 	combat.clang.connect(_on_clang)
@@ -732,6 +739,8 @@ func add_peer(id: int, p: Dictionary) -> void:
 	players_count = humans().size()
 	feed.emit(Loc.t("%s came into the yard") % p.name)
 	_send_yard_next()
+	if yard and yard.team_setup != null:
+		Net.send_to(id, "teams", yard.team_setup.state())   # (the circles are on the sand for him too)
 
 ## The fights on offer at the gate (GateChoice), as many as the party is now (a friend more, a
 ## friend less, each bout is sized again), on the host's cards and on every guest's.
@@ -1201,14 +1210,6 @@ func _physics_process(dt: float) -> void:
 					var kin := entities.filter(func(o): return o.kind == "beast" and is_instance_valid(o.f) and o.f.alive and o.f.get("species") == f.species).size()
 					f.set_meta("voice_gap", rng.randf_range(12.0, 24.0) * maxf(1.0, kin))
 					say(f, Voices.beast_call(f.species), 0.7, "call")
-		if e.kind == "bot" and e.get("ball_target") is Vector3:
-			var bt: Vector3 = e.ball_target
-			var bd := Vector2(bt.x - f.torso.global_position.x, bt.z - f.torso.global_position.z).length()
-			inp.faceAt = bt
-			inp.mz = 1.0 if bd > 0.9 else 0.2
-			inp.mx = 0.0
-			inp.sprint = bd > 2.0
-			inp.kick = bd < 1.1 and rng.randf() < 0.25
 		if modes and modes.frozen():
 			inp = {"main": inp.get("main", {"x": 0.1, "y": 0.15}), "off": inp.get("off", {"x": -0.35, "y": 0.1}), "look": inp.get("look"), "throw": inp.get("throw", false), "charging": inp.get("charging", 0.0)}
 			if inp.look == null:
@@ -1273,6 +1274,8 @@ func _physics_process(dt: float) -> void:
 		Net.send_all("lsnap", {"w": ls, "h": hazards.snapshot()}, false)
 	if role == "host" and tick % SNAP_EVERY == 1:
 		_sync_held()
+	if role == "host" and tick % 30 == 11:
+		_send_fstat()
 	if role == "host" and tick % SNAP_EVERY == 0:
 		# One fighter to a message: each fits in one packet (a whole snapshot was split into
 		# fragments, and one lost fragment lost all of it).
@@ -1739,6 +1742,12 @@ func guest_message(type: String, data) -> void:
 				else:
 					yard.set_next(str(data.get("t", "")))
 				yard.gate_info = YardPlay.clean_gate(data.get("g"))
+		"teams":
+			if yard:
+				yard.take_teams(data)
+		"fstat":
+			if data is String:
+				fstat = data.left(120)
 		"gate_picks":
 			if yard:
 				yard.picks_seen = YardPlay.clean_picks(data)
@@ -2584,6 +2593,34 @@ func wear_of(e: Dictionary) -> Dictionary:
 		wear["armor"] = e.f.armor_wear()
 	return wear
 
+## Where a match of several rounds stands (the host's word, made safe); {} for a fight of one.
+func set_series(v) -> void:
+	series = Series.clean(v)
+	series_text = Series.from_dict(series).hud_line() if not series.is_empty() else ""
+
+## The line under the arena's name on the HUD: the fight's own state, and where the match of several rounds stands.
+## (A guest has no Modes of his own: he reads the line the host gives, `fstat`.)
+func fight_status() -> String:
+	if role == "guest" and fstat != "":
+		return fstat
+	var s := modes.status() if modes else Modes.title_of(mode)
+	return "%s · %s" % [s, series_text] if series_text != "" else s
+
+## A line for the feed on the host's screen and on every guest's.
+func feed_all(line: String) -> void:
+	feed.emit(line)
+	if role == "host":
+		Net.send_all("feed", line)
+
+## The host tells the guests the fight's state line when it changes (twice a second at most).
+func _send_fstat() -> void:
+	if role != "host" or modes == null or mode == "yard":
+		return
+	var s := fight_status()
+	if s != _fstat_sent:
+		_fstat_sent = s
+		Net.send_all("fstat", s.left(120))
+
 func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> void:
 	if attract:
 		return   # (the fight behind the menus never ends: the fallen are replaced one at a time)
@@ -2601,6 +2638,9 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		result["favourite"] = favourite_now if won else ""
 	if modes and modes.last_winner != null and is_instance_valid(modes.last_winner):
 		result["winner"] = String(modes.last_winner.display_name)   # (the one rudis fought for: PartyGlory)
+	if modes:
+		result["round_key"] = modes.round_key     # (who the round is for: the match of several rounds counts it, Series)
+		result["round_name"] = modes.round_name
 	if mode == "campaign" and role != "guest":
 		# A fall sends everyone back to the checkpoint whole; a cleared stage, as they are (the
 		# dead among them carried off the sand as they died: final_bodies).

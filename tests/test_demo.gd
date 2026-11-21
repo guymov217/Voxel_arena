@@ -19,8 +19,8 @@ func test_the_demo_shows_its_own_foes_and_locks_the_rest() -> void:
 	t.check(f.beasts.has("lion") and f.men.has("cyclops"), "its bosses are in: the lion and the cyclops")
 	t.check(not Edition.foe_open("dragon") and not Edition.foe_open("hydra") and not Edition.foe_open("foe:titan"), "the dragon, the hydra and the titan wait for the full game")
 	t.check(Edition.foe_open("foe:recruit") and Edition.foe_open("gladiator"), "the men of its bouts are there")
-	t.check(Edition.mode_open("ffa", true) and Edition.mode_open("pvp", true), "in a room: everyone against everyone")
-	t.check(Edition.mode_open("duel", false) and not Edition.mode_open("hunt", false), "alone: the duel, not the monster hunt")
+	t.check(Edition.mode_open("ffa", true) and Edition.mode_open("endless", true) and not Edition.mode_open("hunt", true), "in a room: the free for all and the endless arena")
+	t.check(Edition.mode_open("bo3", false) and not Edition.mode_open("hunt", false), "alone: the duel, not the monster hunt")
 	Edition.forced = false
 	t.check(Edition.foe_open("dragon") and Edition.mode_open("hunt", false), "the full game locks nothing")
 	Edition.forced = null

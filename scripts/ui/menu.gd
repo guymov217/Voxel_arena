@@ -451,6 +451,7 @@ func show_screen(s: String, msg := "") -> void:
 		"physician": _physician(v)
 		"trainer": _trainer(v)
 		"fights": _fights(v)
+		"fight_setup": _fight_setup(v)
 		"mp": _mp(v)
 		"room": _room(v)
 		"options": _options(v)
@@ -558,7 +559,9 @@ func _main(v: VBoxContainer) -> void:
 		entries.append(["The Ludus yard (admin)", enter_yard])
 	entries.append_array([
 		["Arena", func(): show_screen("fights")],
-		["The endless arena", func(): show_screen("endless")],
+		["The endless arena", func():
+			endless_back = "main"
+			show_screen("endless")],
 		["Training", func(): show_screen("training")],
 		["The forge", _workshop_forge],
 		["Multiplayer", func(): show_screen("mp")],
@@ -608,6 +611,9 @@ func enter_yard(banner_text := "") -> void:
 		match_._banner("Back in the yard", banner_text)
 
 func _open_station(id: String) -> void:
+	if id == "team_go":
+		_team_go()
+		return
 	if visible:
 		return
 	# What the yard knocks out of his blade or his armour (a swing at the post, a friend's sword) is
@@ -1392,6 +1398,8 @@ func _training_forge(hand := "R") -> void:
 
 # ---------- The endless arena ----------
 
+var endless_back := "main"   # the screen its Back goes to (the main menu's own entry, or the Arena's card)
+
 ## What the endless arena is entered with (Save "endless_kit"): the arms (a weapon off the rack,
 ## or "built": forged here, Save "endless_weapon" / "endless_off_weapon"), ready-made armour,
 ## a few pots, and today's challenge or a free run.
@@ -1440,6 +1448,10 @@ func _endless(v: VBoxContainer) -> void:
 	head.add_child(tt)
 	v.add_child(head)
 	v.add_child(UIStyle.label(Loc.t("Wave after wave of men and beasts, drawn at random, until you fall.") + " " + Loc.t("A great foe every fifth wave; between the waves a breath, and a reward to pick."), 15, UIStyle.MUTED))
+	if Net.active():
+		# (In a room the kit is the room's: everyone begins the waves with it, and the run is the party's.)
+		var n := 1 + Net.peers.size()
+		v.add_child(UIStyle.label(Loc.t("Your friends fight beside you with this same kit: the waves grow with the party, the fallen stand up again after each wave, and every one picks a reward of his own.") if n > 1 else Loc.t("Nobody else is in the room yet: friends who come in later join the next run."), 14, UIStyle.TEXT))
 	var best := int(rec.get("best", 0))
 	var today: Dictionary = rec.get("daily", {})
 	var lines := []
@@ -1558,7 +1570,7 @@ func _endless(v: VBoxContainer) -> void:
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(nm)
 		Thumbs.item(tex, id)
-	var go := _row(v, [UIStyle.button("Into the arena", _start_endless, true), UIStyle.button("Back", func(): show_screen("main"))])
+	var go := _row(v, [UIStyle.button("Into the arena", _start_endless, true), UIStyle.button("Back", func(): show_screen(endless_back))])
 	go.alignment = BoxContainer.ALIGNMENT_END
 
 ## The armour for the endless arena: the armourer's ready pieces, worn or taken off at a click
@@ -1628,11 +1640,19 @@ func _start_endless() -> void:
 ## Between the waves: the three rewards on cards, the arena held still while one is picked
 ## (a click, or 1, 2 or 3).
 var endless_layer: CanvasLayer = null
-func _endless_offer(rewards: Array) -> void:
+var endless_deadline := 0   # (ms) when a party's time to pick runs out
+## `wave` and `pick_time` only for a guest's (the host's word, `remote`): his pick goes to the host.
+func _endless_offer(rewards: Array, wave := -1, pick_time := -1.0, remote := false) -> void:
 	_endless_close()
-	if match_ == null or match_.modes == null or match_.modes.endless == null:
+	if match_ == null:
 		return
-	var en: Endless = match_.modes.endless
+	var en: Endless = match_.modes.endless if match_.modes and match_.modes.endless else null
+	if en == null and not remote:
+		return
+	if not remote and en.party():
+		pick_time = en.rest_t
+	if wave < 0:
+		wave = en.wave
 	endless_layer = CanvasLayer.new()
 	endless_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(endless_layer)
@@ -1646,8 +1666,22 @@ func _endless_offer(rewards: Array) -> void:
 	v.add_theme_constant_override("separation", 12)
 	p.add_child(v)
 	UIStyle.frame_over(p)
-	v.add_child(UIStyle.title(Loc.t("Wave %d beaten!") % en.wave, 32))
+	v.add_child(UIStyle.title(Loc.t("Wave %d beaten!") % wave, 32))
 	v.add_child(UIStyle.label("Pick a reward: 1, 2 or 3", 15, UIStyle.MUTED))
+	if pick_time > 0.0:
+		# A party does not wait for the slowest: past this the first reward is taken for him.
+		endless_deadline = Time.get_ticks_msec() + int(pick_time * 1000.0)
+		var clock := UIStyle.label("", 15, UIStyle.GOLD)
+		v.add_child(clock)
+		var tick_clock := func():
+			clock.text = Loc.t("%d s to pick, else the first is taken") % ceili(maxf(0.0, float(endless_deadline - Time.get_ticks_msec()) / 1000.0))
+		tick_clock.call()
+		var tm := Timer.new()
+		tm.wait_time = 0.25
+		tm.autostart = true
+		tm.process_mode = Node.PROCESS_MODE_ALWAYS
+		tm.timeout.connect(tick_clock)
+		endless_layer.add_child(tm)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	v.add_child(row)
@@ -1662,7 +1696,7 @@ func _endless_offer(rewards: Array) -> void:
 		b.shortcut = sc
 		b.shortcut_in_tooltip = false
 		var at := i
-		b.pressed.connect(func(): _endless_take(at))
+		b.pressed.connect(func(): _endless_take(at, remote))
 		var m := MarginContainer.new()
 		m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		for side in ["left", "right", "top", "bottom"]:
@@ -1685,13 +1719,23 @@ func _endless_offer(rewards: Array) -> void:
 	if not Net.active():
 		get_tree().paused = true
 
-func _endless_take(i: int) -> void:
+func _endless_take(i: int, remote := false) -> void:
 	var en = match_.modes.endless if match_ and match_.modes else null
 	_endless_close()
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	if en:
+	if remote:
+		Net.send_host("endless_pick", i)   # (the host gives it, and tells me when every one has picked)
+	elif en:
 		en.take(i)
+
+## Every reward of the rest is taken (or the time ran out): the screen of the rewards goes, if it is still up.
+func _endless_done() -> void:
+	if endless_layer == null:
+		return
+	_endless_close()
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _endless_close() -> void:
 	if endless_layer and is_instance_valid(endless_layer):
@@ -2122,27 +2166,22 @@ func _forge_armour(final: Dictionary) -> void:
 ## Every other way to fight (game.js modes, partyModes.js).
 ## The fights, as cards in four groups: each says in a line what the bout is.
 const FIGHT_GROUPS := [
-	["Single combat", ["duel", "bo3", "king", "gauntlet"]],
-	["The melee", ["ffa", "chaos", "teams", "pvp", "forgefight"]],
-	["Beasts and waves", ["endless", "hunt", "coop"]],
-	["Games for the Emperor", ["emperor", "hill", "lastLimb", "headball"]],
+	["Single combat", ["bo3", "king", "tourney"]],
+	["The melee", ["ffa", "teams", "forgefight"]],
+	["Beasts and waves", ["endless", "hunt"]],
+	["Games for the Emperor", ["emperor", "hill", "lastLimb"]],
 ]
 const FIGHT_BLURBS := {
-	"duel": "One against one, a quick bout. The Emperor may throw in a decree.",
 	"endless": "Wave after wave of men and beasts, drawn at random, until you fall.",
-	"bo3": "Three bouts with one rival. Floored: yield, or fight on wounded for double the stake.",
+	"bo3": "One against one. Floored: yield, or fight on wounded for double the stake.",
 	"king": "The winner stays and the next challenger walks in. Reign for seven.",
-	"gauntlet": "One foe after another, wave after wave. How long do you last?",
-	"ffa": "Four gladiators on one sand. The last one standing wins.",
-	"chaos": "Everyone against everyone, under three of the Emperor's decrees at once.",
-	"teams": "Red against Blue: players and bots split into two sides.",
-	"pvp": "Players only, no bots: settle it among yourselves.",
+	"tourney": "One on one, the winner goes on to the next round, until one is crowned.",
+	"ffa": "Everyone on one sand, the last one standing wins. Bots and decrees as you choose.",
+	"teams": "Red against Blue: friends walk into a circle to pick a side, bots fill the rest.",
 	"hunt": "Beasts pour through the gates in waves. Each wave beaten heals you.",
-	"coop": "Waves of gladiators against you and your friends, side by side.",
 	"emperor": "You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.",
 	"hill": "Hold the circle alone for 20 seconds.",
 	"lastLimb": "Every 15 seconds the Emperor takes a limb from everyone.",
-	"headball": "Kick a severed head into the other goal. First to three.",
 	"forgefight": "Everyone forges weapons and armour against the clock, then all fight to the death with what they made.",
 }
 
@@ -2152,7 +2191,7 @@ func _fights(v: VBoxContainer) -> void:
 	var in_room := Net.active()
 	for g in FIGHT_GROUPS:
 		# (The friends' fights only in a room; the endless arena only alone.)
-		var keys: Array = (g[1] as Array).filter(func(k): return (not ["pvp", "coop", "forgefight"].has(k) or in_room) and not (k == "endless" and in_room) and Edition.mode_open(k, in_room))
+		var keys: Array = (g[1] as Array).filter(func(k): return (k != "forgefight" or in_room) and Edition.mode_open(k, in_room))
 		if keys.is_empty():
 			continue
 		v.add_child(UIStyle.label(Loc.t(String(g[0])).to_upper(), 13, UIStyle.BRONZE))
@@ -2162,14 +2201,120 @@ func _fights(v: VBoxContainer) -> void:
 		grid.add_theme_constant_override("v_separation", 10)
 		v.add_child(grid)
 		for k in keys:
-			var card := _fight_card(k)
-			grid.add_child(card)
-			if k == "coop":
-				_campaign_cap(card, v)
+			grid.add_child(_fight_card(k))
 	if Net.active() and Net.is_host() and not Net.peers.is_empty():
 		v.add_child(UIStyle.button("Back to the yard, all of you", func(): enter_yard()))
 	else:
 		v.add_child(UIStyle.button("Back", func(): show_screen("main")))
+
+## What a fight is started with, as the host last set it (per fight, in the settings: "fight_opts"): each setting one of the
+## numbers the fight offers (FightOpts).
+func _fight_opts_of(k: String) -> Dictionary:
+	var all = Save.get_value("settings", {}).get("fight_opts")
+	return FightOpts.clean(k, (all as Dictionary).get(k) if all is Dictionary else {})
+
+func _set_fight_opt(k: String, key: String, v: int) -> void:
+	var st: Dictionary = Save.get_value("settings", {})
+	var all: Dictionary = st.get("fight_opts") if st.get("fight_opts") is Dictionary else {}
+	var mine: Dictionary = all.get(k) if all.get(k) is Dictionary else {}
+	mine[key] = v
+	all[k] = mine
+	st["fight_opts"] = all
+	Save.set_value("settings", st)
+
+## The settings as a start takes them: the rounds, the bots, the decrees (named as Match and Modes read them).
+func _fight_start_opts(k: String) -> Dictionary:
+	var o := _fight_opts_of(k)
+	var out := {"mode": k}
+	for key in o:
+		out[{"rounds": "rounds", "bots": "bots", "decrees": "decrees_n"}[key]] = o[key]
+	return out
+
+var fight_pick := ""   # the fight whose settings are on the screen (fight_setup)
+
+## A fight's card: the fights with settings open them first (fight_setup), the others begin.
+func _fight_press(k: String) -> void:
+	if k == "endless":
+		endless_back = "fights"
+		show_screen("endless")
+	elif FightOpts.offers(k).is_empty():
+		start({"mode": k})
+	else:
+		fight_pick = k
+		show_screen("fight_setup")
+
+## The settings of a fight (rounds, bots, decrees, as the fight offers them), what that makes of the sand, and the start.
+func _fight_setup(v: VBoxContainer) -> void:
+	var k := fight_pick
+	v.add_child(UIStyle.title(Loc.t(String(Modes.TITLES.get(k, k))).trim_suffix("!"), 32))
+	v.add_child(UIStyle.label(FIGHT_BLURBS.get(k, Modes.LABELS.get(k, "")), 15, UIStyle.MUTED))
+	var mine := _fight_opts_of(k)
+	for key in FightOpts.offers(k):
+		var on := FightOpts.choices(k, key)
+		var lab := UIStyle.label(FightOpts.label(k, key, int(mine[key])), 17, UIStyle.GOLD_LIGHT)
+		lab.custom_minimum_size = Vector2(230, 0)
+		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var step := func(d: int):
+			var i := on.find(int(_fight_opts_of(k)[key]))
+			_set_fight_opt(k, key, int(on[posmod(i + d, on.size())]))
+			show_screen("fight_setup")
+		var less := UIStyle.button("◀", func(): step.call(-1))
+		var more := UIStyle.button("▶", func(): step.call(1))
+		less.tooltip_text = "Fewer"
+		more.tooltip_text = "More"
+		_row(v, [UIStyle.label(FightOpts.title(key), 16, UIStyle.MUTED), less, lab, more])
+	var humans := 1 + (Net.peers.size() if Net.active() else 0)
+	var bots := _bots_of(k, humans)
+	v.add_child(UIStyle.label(FightOpts.fighters_text(humans, bots), 15, UIStyle.TEXT))
+	var lonely := mine.has("bots") and humans + bots < 2
+	if lonely:
+		v.add_child(UIStyle.label("A fight needs at least two: add a bot.", 14, Color(0.95, 0.4, 0.3)))
+	var go := UIStyle.button("Begin", func(): _fight_go(k), true)
+	go.disabled = lonely
+	_row(v, [go, UIStyle.button("Back", func(): show_screen("fights"))])
+
+## How many bots the settings put on the sand beside `humans` (a fight's usual when none was set).
+func _bots_of(k: String, humans: int) -> int:
+	var m := Modes.new(null, k)
+	var mine := _fight_opts_of(k)
+	if k == "tourney":
+		return maxi(0, Tourney.entrant_count(humans, int(mine.get("bots", FightOpts.FILL))) - humans)
+	if mine.has("bots") and int(mine.bots) >= 0:
+		return FightOpts.bots_allowed(humans, int(mine.bots))
+	return m.bot_count(humans if k != "emperor" else humans - 1) if k != "teams" else maxi(0, 4 - humans)
+
+## A team fight in a room: the friends pick their sides first, each walking into the circle on the sand (in the yard) of the
+## team he plays for; the host begins (E) when all stand in one (_team_go).
+func _team_setup(k: String, opts: Dictionary) -> void:
+	enter_yard()
+	if match_ and is_instance_valid(match_) and match_.yard:
+		match_.yard.begin_teams(k, opts)
+		match_._banner(Modes.title_of(k), Loc.t("Walk into a circle to pick your team"))
+
+## All stand in a circle and the host begins: the fight, each on the side of his circle.
+func _team_go() -> void:
+	if not (match_ and is_instance_valid(match_) and match_.yard and match_.yard.team_setup != null and Net.is_host()):
+		return
+	var ts: TeamSetup = match_.yard.team_setup
+	if not ts.ready():
+		return
+	var opts: Dictionary = ts.opts.duplicate()
+	opts.mode = ts.mode
+	opts.teams = ts.assignment()
+	match_.yard.end_teams()
+	start(opts)
+
+## The settings are in: the fight begins (the team fights first have the friends pick their sides in the yard).
+func _fight_go(k: String) -> void:
+	var opts := _fight_start_opts(k)
+	if k == "tourney":
+		_tourney_begin(opts)
+	elif k == "forgefight":
+		ff_setup()
+	elif TeamSetup.is_team_mode(k) and Net.active() and Net.is_host():
+		_team_setup(k, opts)
+	else:
+		start(opts)
 
 ## One fight's card: its name in capitals, under it what it is, the whole card a button.
 func _fight_card(k: String) -> Button:
@@ -2178,10 +2323,8 @@ func _fight_card(k: String) -> Button:
 	b.pressed.connect(func():
 		if k == "forgefight":
 			ff_setup()
-		elif k == "endless":
-			show_screen("endless")
 		else:
-			start({"mode": k}))
+			_fight_press(k))
 	b.tooltip_text = Modes.LABELS.get(k, "")
 	var m := MarginContainer.new()
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2864,7 +3007,7 @@ func _ff_fight() -> void:
 	var limit := float(ff.times.fight) * 60.0
 	ff = {}
 	_ff_timer_on(false)
-	start({"mode": "forgefight", "role": "host", "kits": kits, "fight_s": limit, "loadout_override": {"main": mine.main, "off": mine.off, "armor": mine.armor, "armor_defs": Armory.defs_of(mine.armor)}, "decrees": [], "hazards": []})
+	start({"mode": "forgefight", "role": "host", "rounds": int(_fight_opts_of("forgefight").get("rounds", 1)), "kits": kits, "fight_s": limit, "loadout_override": {"main": mine.main, "off": mine.off, "armor": mine.armor, "armor_defs": Armory.defs_of(mine.armor)}, "decrees": [], "hazards": []})
 
 # ---------- Multiplayer ----------
 
@@ -3379,6 +3522,9 @@ func _set_opt(k: String, val) -> void:
 # ---------- Matches ----------
 
 var last_start := {}   # what the match running now was started with (R plays it again)
+var series_note := {}  # (a guest's) what the host said of the round that just ended in a match of several rounds: {next}
+var series_look_ms := 3200    # how long the end of a round is looked at in a match of several rounds, then the score is shown this long
+var series_score_ms := 3600
 
 func start(opts: Dictionary) -> void:
 	# Co-op is the campaign for a party: the same ladder of bouts, foes for every friend, its
@@ -3402,11 +3548,31 @@ func start(opts: Dictionary) -> void:
 		return
 	# Hosting a room, every fight (and the yard) takes the whole room along, not only the
 	# campaign: the guests are sent the start and join as themselves.
-	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus", "endless"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
+	if not opts.has("role") and Net.active() and Net.is_host() and not ["training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false):
 		opts.role = "host"   # (alone in the room too: whoever joins is brought into what runs)
 	# The time of day it is fought under (only the look; the guests are told it).
 	if not opts.has("sky"):
 		opts.sky = Arena.pick_sky(String(opts.get("mode", "")))
+	# The rounds of the fight (its own count, or the host's), and a match of several rounds begun: each round after the
+	# first comes through here again with the match's score carried in `series` (_series_after).
+	if String(opts.get("mode", "")) != "tourney":
+		tourney = null   # (any other fight ends the tournament)
+	if opts.has("bots") or opts.has("decrees_n"):
+		var cleaned := FightOpts.clean(String(opts.get("mode", "")), {"bots": opts.get("bots"), "decrees": opts.get("decrees_n")})
+		opts.erase("bots")
+		opts.erase("decrees_n")
+		if cleaned.has("bots"):
+			opts.bots = cleaned.bots
+		if cleaned.has("decrees"):
+			opts.decrees_n = cleaned.decrees
+	var round_kind := Series.kind(String(opts.get("mode", "")))
+	if round_kind != "":
+		opts.rounds = Series.clean_rounds(String(opts.mode), opts.get("rounds"))
+		if round_kind == "series" and int(opts.rounds) > 1:
+			if not (opts.get("series") is Dictionary):
+				opts.series = Series.new(int(opts.rounds)).to_dict()
+		else:
+			opts.erase("series")
 	last_start = opts.duplicate(true)
 	_end_match()
 	var a := arms()
@@ -3446,11 +3612,12 @@ func start(opts: Dictionary) -> void:
 	opts.color = CLOTH[lk.cloth]
 	opts.inventory = opts.get("inventory_override", kit())
 	# The decrees are drawn here, so the guests can be told them before anyone is spawned.
-	if (opts.mode == "duel" or opts.mode == "chaos") and not opts.has("decrees"):
+	var decree_n := Modes.decree_count(String(opts.mode), opts)
+	if decree_n > 0 and not opts.has("decrees"):
 		var setting: String = Save.get_value("settings", {}).get("decrees", "sometimes")
 		var rng2 := RandomNumberGenerator.new()
 		rng2.randomize()
-		var picked: Array = [] if setting == "off" else Decrees.roll(1.0 if opts.mode == "chaos" or setting == "always" else 0.6, 3 if opts.mode == "chaos" else 1, rng2)
+		var picked: Array = [] if (setting == "off" and opts.mode != "ffa") else Decrees.roll(1.0 if opts.mode == "ffa" or setting == "always" else 0.6, decree_n, rng2)
 		opts.decrees = picked.map(func(d): return d.id)
 		opts.hazards = Hazards.random_specs(Decrees.combine(picked).hazards, rng2)
 	if opts.get("role", "local") == "host":
@@ -3463,9 +3630,15 @@ func start(opts: Dictionary) -> void:
 				var made: Dictionary = kit.duplicate(true)
 				made.armor = (spec.loadout.get("armor", []) as Array) + (kit.get("armor", []) as Array)
 				spec.loadout = made
+			elif opts.mode == "endless":
+				# The waves are met with the host's kit, the same for everyone (his choice for the room), each in his own look.
+				var made2: Dictionary = (opts.get("loadout_override", {}) as Dictionary).duplicate(true)
+				made2.armor = (made2.get("armor", []) as Array) + (spec.loadout.get("armor", []) as Array)
+				spec.loadout = made2
+				spec.kit = (opts.get("inventory_override", {}) as Dictionary).duplicate()
 			peers.append(spec)
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
 		Net.set_lobby_info(Loc.t("Campaign · stage %d") % opts.get("stage", 1))
 	# The crowd's favourite of the party's last bout wears the laurel, in the yard and through the
 	# next bout (PartyGlory; the host's save).
@@ -3479,6 +3652,7 @@ func start(opts: Dictionary) -> void:
 	match_.lost.connect(_campaign_lost)
 	if match_.modes and match_.modes.endless:
 		match_.modes.endless.offered.connect(_endless_offer)
+		match_.modes.endless.picked_all.connect(_endless_done)
 	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
 	world_root.add_child(hud)
@@ -3814,17 +3988,177 @@ func _campaign_lost(r: Dictionary) -> void:
 	if Net.active():
 		Net.send_all("purse", coins())
 
+## A round of a match of several rounds is over. The host (or the one playing alone) counts it, tells the guests, shows how
+## the match stands and brings the next round, or declares the match's end; a guest waits for the host's word and for the
+## round he is sent. True when the match goes on or the screen has changed (the caller is to stop), false when the match is
+## over and the flow after any bout takes him on.
+func _series_after(r: Dictionary, was: Match) -> bool:
+	if was.role == "guest":
+		var t0 := Time.get_ticks_msec()
+		while series_note.is_empty() and match_ == was and Time.get_ticks_msec() - t0 < 6000:
+			await get_tree().process_frame
+		if match_ != was:
+			return true
+		if series_note.is_empty():
+			return false   # (the host said nothing: out of the match as after any bout)
+		var next: bool = bool(series_note.get("next", false))
+		series_note = {}
+		var t1 := Time.get_ticks_msec()
+		while match_ == was and Time.get_ticks_msec() - t1 < (20000 if next else series_score_ms):
+			await get_tree().process_frame
+		return match_ != was
+	var winner := String(r.get("round_key", ""))
+	if not was.series.is_empty():
+		var s := Series.from_dict(last_start.get("series"))
+		s.record(String(r.get("round_key", "")), String(r.get("round_name", "")))
+		last_start.series = s.to_dict()
+		was.set_series(last_start.series)
+		var done := s.decided()
+		var text := s.final_text() if done else s.score_line()
+		var sub := s.score_line() if done else (Loc.t("Round %d of %d next") % [s.round_now(), s.rounds] if s.played < s.rounds else Loc.t("A deciding round next"))
+		was._banner(text, sub)
+		if Net.active() and Net.is_host():
+			Net.send_all("series", {"s": s.to_dict(), "next": not done or tourney != null, "t": text, "sub": sub})
+		var t2 := Time.get_ticks_msec()
+		while match_ == was and Time.get_ticks_msec() - t2 < series_score_ms:
+			await get_tree().process_frame
+		if match_ != was:
+			return true   # (restarted, or left, in the meantime)
+		if not done:
+			var again: Dictionary = last_start.duplicate(true)
+			again.erase("sky")   # (another hour of the day for the next round)
+			start(again)
+			return true
+		winner = s.winner()
+		if tourney == null:
+			return false
+	if was.mode == "tourney" and tourney != null:
+		return await _tourney_after(winner, was)
+	return false
+
+# ---------- The tournament ----------
+# One on one, single elimination (Tourney): the room's players, and the bots that fill the bracket, drawn into pairs; each pair
+# fights a bout in the arena, the rest of the room look on; the winner goes on, until one is crowned. Bouts of two bots are
+# settled unseen. The host (or the one alone) plays it out, bout by bout, and tells the guests how it stands.
+
+var tourney: Tourney = null
+var tourney_opts := {}
+
+func _tourney_begin(opts: Dictionary) -> void:
+	var list := [{"key": Series.human_key(1), "name": String(Save.get_value("name", "Gladiator")), "peer": 1, "bot": false}]
+	if Net.active():
+		for id in Net.peers:
+			list.append({"key": Series.human_key(int(id)), "name": String(Net.peers[id].name), "peer": int(id), "bot": false})
+	var total := Tourney.entrant_count(list.size(), int(opts.get("bots", FightOpts.FILL)))
+	var names: Array = Data.modes.get("botNames", ["Crixus"])
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var used := {}
+	for e in list:
+		used[String(e.name)] = true
+	var at := rng.randi() % maxi(1, names.size())
+	while list.size() < total:
+		var nm := String(names[at % names.size()])
+		at += 1
+		if used.has(nm):
+			nm = "%s %d" % [nm, list.size()]
+		used[nm] = true
+		list.append({"key": Series.bot_key(nm), "name": nm, "peer": -1, "bot": true})
+	tourney = Tourney.make(list, rng.randi(), int(opts.get("rounds", 1)))
+	tourney_opts = opts.duplicate()
+	if not _tourney_go():
+		_tourney_over()
+
+## The next bout that is to be seen is begun. False when the tournament is over (decided, or no player left in it).
+func _tourney_go() -> bool:
+	var mt := _tourney_plan()
+	if mt.is_empty():
+		return false
+	start(_tourney_bout(mt))
+	return true
+
+## Forfeits and the bouts of bots settled, the rounds carried on: the next bout to be seen ({} when there is none).
+func _tourney_plan() -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for guard in 16:
+		for e in tourney.entrants:
+			if not bool(e.bot) and int(e.peer) != 1 and not Net.peers.has(int(e.peer)) and not bool(e.get("gone", false)):
+				tourney.forfeit(String(e.key))   # (a player who left: the other goes on)
+		tourney.settle_bots(rng)
+		if tourney.finished() or tourney.humans_left() == 0:
+			return {}
+		var mt := tourney.open_match()
+		if not mt.is_empty():
+			return mt
+		if not tourney.advance():
+			return {}
+	return {}
+
+func _tourney_bout(mt: Dictionary) -> Dictionary:
+	return {"mode": "tourney", "rounds": int(tourney_opts.get("rounds", 1)), "pair": [tourney.entrant(String(mt.a)), tourney.entrant(String(mt.b))],
+		"tourney_line": "%s · %s" % [tourney.round_name(), tourney.match_text(mt)]}
+
+## The bout is over (host, or alone): the winner goes on; how it stands is shown (and told); the next bout, or the end.
+func _tourney_after(winner: String, was: Match) -> bool:
+	var mt := tourney.open_match()
+	if mt.is_empty():
+		return false
+	if winner != String(mt.a) and winner != String(mt.b):
+		winner = String(mt.a) if randf() < 0.5 else String(mt.b)   # (a drawn bout: the coin decides)
+	var out_of := tourney.name_of(String(mt.b) if winner == String(mt.a) else String(mt.a))
+	tourney.report(mt, winner)
+	var next := _tourney_plan()
+	var text := Loc.t("%s goes on") % tourney.name_of(winner)
+	var sub := Loc.t("%s is out") % out_of
+	if tourney.finished():
+		text = Loc.t("%s is the champion!") % tourney.name_of(tourney.champion())
+		sub = Loc.t("The tournament is won")
+	elif next.is_empty():
+		text = Loc.t("The tournament is over")
+		sub = Loc.t("No player is left in it")
+	else:
+		sub = "%s · %s · %s" % [sub, tourney.round_name(), tourney.match_text(next)]
+	was._banner(text, sub)
+	if Net.active() and Net.is_host():
+		Net.send_all("series", {"s": {}, "next": not next.is_empty(), "t": text, "sub": sub})
+	var t0 := Time.get_ticks_msec()
+	while match_ == was and Time.get_ticks_msec() - t0 < series_score_ms + 800:
+		await get_tree().process_frame
+	if match_ != was:
+		return true
+	if next.is_empty():
+		tourney = null
+		return false
+	start(_tourney_bout(next))
+	return true
+
+## No player is left in it (or it never began): back to where a fight ends.
+func _tourney_over() -> void:
+	tourney = null
+	if Net.active() and Net.is_host():
+		enter_yard()
+	else:
+		show_screen("fights")
+
 func _on_finished(r: Dictionary) -> void:
 	var was := match_
 	# Five seconds on the banner over the arena, to take in how the bout ended (Space or Enter
 	# goes on sooner, but not in the first moment, nor a mouse button still held from the fight).
-	var wait_until := Time.get_ticks_msec() + 5000
+	# A round of a match of several rounds: a shorter look, then the match's score (_series_after).
+	var in_series: bool = was != null and (not was.series.is_empty() or was.mode == "tourney")
+	var began := Time.get_ticks_msec()
+	var wait_until := began + (series_look_ms if in_series else 5000)
 	while Time.get_ticks_msec() < wait_until and match_ == was:
 		await get_tree().process_frame
-		if Time.get_ticks_msec() > wait_until - 3500 and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER)):
+		if Time.get_ticks_msec() > began + 1500 and (Input.is_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_ENTER)):
 			break
 	if match_ != was:
 		return   # restarted (R) in the meantime
+	if in_series and await _series_after(r, was):
+		return
+	if match_ != was:
+		return
 	var mode := match_.mode if match_ else "campaign"
 	var to_lesson: bool = match_ != null and match_.tut != null and match_.tut.finished
 	if to_lesson:
@@ -3999,7 +4333,8 @@ func _on_net(type: String, data, _from: int) -> void:
 				if data.mode == "campaign" and data.get("keep") == true:
 					# Into the checkpoint's bout (the host's word): what a fall brings me back to.
 					CampaignRun.keep_own(int(Net.num(data.get("stage"))), int(Net.num(data.get("run"))))
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky"))})
+				series_note = {}
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "rounds": Series.clean_rounds(String(data.mode), data.get("rounds")), "series": Series.clean(data.get("series")), "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky"))})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
 				match_.lost.connect(_campaign_lost)
@@ -4027,6 +4362,19 @@ func _on_net(type: String, data, _from: int) -> void:
 			# The plates the bout knocked off my armour (the host saw them go).
 			if data is Dictionary and not Net.is_host():
 				set_armor_wear(Armory.add_wear(armor_wear(), data, worn_armor()))
+		"endless_offer":
+			# The rewards the host holds out to me after a wave (made safe: Endless.clean_offer); my pick goes back to him.
+			if not Net.is_host() and match_ and match_.mode == "endless" and data is Dictionary:
+				var rs := Endless.clean_offer(data.get("r"))
+				if not rs.is_empty():
+					_endless_offer(rs, clampi(int(Net.num(data.get("w"))), 0, 9999), clampf(Net.num(data.get("t"), Endless.PICK_TIME), 1.0, 60.0), true)
+		"endless_done":
+			if not Net.is_host():
+				_endless_done()
+		"endless_pick":
+			# A guest's pick of his rewards (0, 1 or 2).
+			if Net.is_host() and match_ and match_.modes and match_.modes.endless and (data is int or data is float) and is_finite(float(data)):
+				match_.modes.endless.take_for(_from, int(data))
 		"fell_back":
 			# The party fell after the checkpoint and the host goes back to it: so do I.
 			if not Net.is_host() and data is Dictionary:
@@ -4073,7 +4421,16 @@ func _on_net(type: String, data, _from: int) -> void:
 		"banner":
 			if match_:
 				match_.banner.emit(data.text, data.sub)
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "bone", "held":
+		"series":
+			# How a round of a match of several rounds went and where the match stands (the host's word, made safe): shown, and
+			# the guest stays in his arena until the host brings the next round (or the match's end).
+			if not Net.is_host() and match_ and data is Dictionary:
+				var sd := Series.clean(data.get("s"))
+				if not sd.is_empty():
+					match_.set_series(sd)
+				series_note = {"next": data.get("next") == true}
+				match_.banner.emit(str(data.get("t", "")).left(60), str(data.get("sub", "")).left(140))
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "teams", "bone", "held", "fstat":
 			if match_:
 				match_.guest_message(type, data)
 		"music":
