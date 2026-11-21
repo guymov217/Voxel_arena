@@ -106,7 +106,10 @@ func _on(type: String, data, _from: int) -> void:
 			# The meter's round trip came back: the guest knows its ping and how the host keeps up.
 			# The host's voice came through (a little loss allowed: it rides the unreliable channel).
 			var voice_ok := vc_heard >= 40 and vc_peak > 0.3
-			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 and Net.ping_ms >= 0.0 and Net.host_rate > 0.0 and voice_ok else 1)
+			# He joined 127.0.0.1: a room of windows of this one computer, which he knows (and draws a lower picture).
+			print("GUEST room of windows of this computer ", Net.local_room)
+			var windows_ok: bool = Net.transport != "enet" or Net.local_room
+			get_tree().quit(0 if frames > 0 and float(moved) / frames > 0.5 and Net.ping_ms >= 0.0 and Net.host_rate > 0.0 and voice_ok and windows_ok else 1)
 
 ## How the room is joined: by address (ENet). tests/net_steam_guest.gd finds the host's lobby in Steam's list and joins that.
 func _join(port: int) -> Variant:

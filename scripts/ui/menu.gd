@@ -59,6 +59,10 @@ func _ready() -> void:
 	apply_picture(Save.get_value("settings", {}))
 	apply_frame(Save.get_value("settings", {}))
 	apply_ui_scale(Save.get_value("settings", {}))
+	# A room between windows of this one computer (Net.local_room) draws a lower picture, and a room closed gives it back.
+	Net.local_room_changed.connect(func():
+		apply_render_scale(Save.get_value("settings", {}))
+		apply_frame(Save.get_value("settings", {})))
 	# Resized, moved to another screen, or full screen: the automatic resolution follows.
 	get_tree().root.size_changed.connect(func(): apply_render_scale(Save.get_value("settings", {})))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -3254,6 +3258,16 @@ static func window_sizes() -> Array:
 		out.append(scr)
 	return out
 
+## What a room between windows of this one computer draws (Net.local_room): they share one graphics card.
+const LOCAL_ROOM_SCALE := 0.7
+const LOCAL_ROOM_FPS := 60
+
+static func room_scale(k: float, local: bool) -> float:
+	return minf(k, LOCAL_ROOM_SCALE) if local else k
+
+static func room_fps(cap: int, local: bool) -> int:
+	return LOCAL_ROOM_FPS if local and (cap == 0 or cap > LOCAL_ROOM_FPS) else cap
+
 ## The 3D picture's resolution: the whole of it up to about 1440p, then drawn smaller and
 ## sharpened up (FSR) so a 4K or a 5K screen keeps its frame rate; the menus stay sharp.
 static func apply_render_scale(st: Dictionary) -> void:
@@ -3267,6 +3281,7 @@ static func apply_render_scale(st: Dictionary) -> void:
 		k = clampf(sqrt(2560.0 * 1440.0 / maxf(1.0, px)), 0.6, 1.0)
 	else:
 		k = clampf(float(pick), 0.5, 1.0)
+	k = room_scale(k, Net.local_room)
 	root.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR if k >= 0.999 else Viewport.SCALING_3D_MODE_FSR
 	root.scaling_3d_scale = k
 
@@ -3320,7 +3335,7 @@ static func apply_frame(st: Dictionary) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(st.get("vsync", true)) else DisplayServer.VSYNC_DISABLED)
-	Engine.max_fps = clampi(int(st.get("fpsCap", 0)), 0, 500)
+	Engine.max_fps = room_fps(clampi(int(st.get("fpsCap", 0)), 0, 500), Net.local_room)
 
 ## The size of everything drawn flat (menus, HUD) from the settings: the window's content scale.
 static func apply_ui_scale(st: Dictionary) -> void:

@@ -137,6 +137,14 @@ Press **F3** in both windows (the host's and the guest's) and read two lines.
   (`multiplayer_test.bat`, `tools/mp_local.bat`/`.sh`) now start the windows with `-- --keep-window`: the window stays as
   their `--position`/`--resolution` made it (1100x650, side by side) instead of the saved display mode. Do not maximise
   both; a window at 1100x650 has a fifth of the pixels of one at 1440p.
+  A room whose windows are on one computer (the guest joined 127.0.0.1) also lowers the picture by itself, in both
+  windows, to 0.7 of the resolution and 60 frames a second at most (the meter says so: "two windows on one computer:
+  the picture is lowered"); it comes back when the room closes. A room between two computers is never touched.
+- **The meter opens by itself.** With F3 on (the frame rate's meter stays on from the last time), the connection's meter
+  now opens as soon as a room is open: no need to press F3 again in the room. In a video the host's numbers
+  (frames a second, steps of 120, longest wait between snapshots) are what say whether the host's window was starved.
+- **A late snapshot no longer freezes the world.** The guest's bodies go on the way they were going for up to 50 ms,
+  easing to a stop, and the next snapshot takes them from there.
 
 Send `net_log.csv` (below) from both windows with the time it looked slow: it has the steps, the frames a second and
 the cost of one step (ms) of each side every second.

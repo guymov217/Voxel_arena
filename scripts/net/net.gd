@@ -444,6 +444,7 @@ func join_enet(address: String, port := PORT) -> Error:
 	p.host.compress(ENetConnection.COMPRESS_RANGE_CODER)
 	multiplayer.multiplayer_peer = p
 	transport = "enet"
+	_set_local(is_this_computer(address))
 	return OK
 
 # ---------- Both ----------
@@ -480,6 +481,8 @@ func leave() -> void:
 	peers.clear()
 	inputs.clear()
 	_held.clear()
+	_peer_local.clear()
+	_set_local(false)
 	_pace()   # (alone again: the engine's own cap)
 
 func set_lobby_info(mode: String) -> void:
@@ -498,6 +501,40 @@ func _on_peer_connected(id: int) -> void:
 		if pp:
 			pp.set_timeout(0, 4000, 8000)
 			_no_throttle(pp)
+			_peer_local[id] = is_this_computer(pp.get_remote_address())
+			_set_local(_peer_local.values().has(true))
+
+# ---------- Two windows on one computer ----------
+# A room whose players are windows of this one computer (a guest joined 127.0.0.1, or this computer's own address) shares
+# one graphics card, and the window in front takes nearly all of it. From a test video: two full-screen windows at 1440p,
+# 9 ms of graphics card to a frame each, the front one drawing 90 frames a second and the host's behind it 17, so that
+# the host took its input and sent the world in bursts every 60 ms and every answer came late. Such a room lowers the
+# picture of both (Menu.room_scale, Menu.room_fps) so that each keeps up. A room between computers is never touched.
+
+signal local_room_changed
+
+var local_room := false
+var _peer_local := {}           # host: id -> that guest's game is on this computer
+
+## Is `address` this computer: loopback, or one of its own addresses?
+static func is_this_computer(address: String) -> bool:
+	var a := address.strip_edges().to_lower()
+	if a.begins_with("::ffff:") and a.contains("."):
+		a = a.substr(7)   # an IPv4 address in its IPv6 dress
+	if a == "":
+		return false
+	if a == "localhost" or a == "::1" or a.begins_with("127."):
+		return true
+	for own in IP.get_local_addresses():
+		if own.to_lower() == a:
+			return true
+	return false
+
+func _set_local(on: bool) -> void:
+	if on == local_room:
+		return
+	local_room = on
+	local_room_changed.emit()
 
 var leave_reason := ""   # why a guest's game ended, for the screen he lands on ("": the host left)
 var _banned := {}        # turned out of this room: "ip:..." or "steam:..." -> true
@@ -551,6 +588,8 @@ static func steam_id_call(mp: Object) -> String:
 
 func _on_peer_disconnected(id: int) -> void:
 	guest_pings.erase(id)
+	if _peer_local.erase(id):
+		_set_local(_peer_local.values().has(true))
 	if peers.erase(id):
 		_presence_size()
 		peer_left.emit(id)

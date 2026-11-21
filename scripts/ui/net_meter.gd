@@ -75,6 +75,8 @@ func _process(dt: float) -> void:
 		lines.append(Loc.t("snapshots %s, longest wait %s") % [_grade("%d/s" % roundi(Net.snap_rate), Net.snap_rate, 25.0, 12.0, true), _grade(Loc.t("%d ms") % Net.snap_gap, float(Net.snap_gap), 90.0, 200.0, false)])
 		lines.append(Loc.t("my game %s") % (_grade(Loc.t("%d/120 steps") % roundi(Net.step_rate), Net.step_rate, 112.0, 95.0, true) + _fps(fps)))
 	lines.append(Loc.t("in %.0f KB/s   out %.0f KB/s") % [in_k, out_k])
+	if Net.local_room:
+		lines.append("[color=#9a8f80]%s[/color]" % Loc.t("two windows on one computer: the picture is lowered"))
 	label.text = "\n".join(lines)
 	var f := FileAccess.open(LOG, FileAccess.READ_WRITE)
 	if f:

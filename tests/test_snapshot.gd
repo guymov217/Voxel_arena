@@ -9,6 +9,9 @@ func _steps(n: int) -> void:
 	for i in n:
 		await get_tree().physics_frame
 
+func _near(a: float, b: float, tol: float, what: String) -> void:
+	t.check(absf(a - b) <= tol, "%s (%.4f, wanted %.4f)" % [what, a, b])
+
 func test_a_body_packs_to_within_two_millimetres() -> void:
 	var b := PackedByteArray()
 	b.resize(14)
@@ -114,11 +117,71 @@ func test_a_guest_puppet_follows_the_snapshot() -> void:
 		if i % 3 == 0:
 			guest.apply_snapshot(host.snapshot(false).filter(func(r): return r[0] == e.id))
 			at = e.f.torso.global_position
-	await _steps(4)
+	await _steps(1)   # (the next snapshot is due: three steps after the last)
 	var d: float = ge.f.torso.global_position.distance_to(at)
 	t.check(d < 0.03, "the guest's puppet comes to where the host's man was in the last snapshot (%.2f m off)" % d)
 	host.queue_free()
 	guest.queue_free()
+
+## A snapshot that comes late (the host's game hitched, a packet was lost): the bodies had stopped where the last one put
+## them, the whole world for as long as it was late, in a game drawn at 100 frames a second. They go on the way they were
+## going, a little way (Match.EXTRAP), easing to a stop.
+func test_a_late_snapshot_lets_the_puppets_go_on_a_little() -> void:
+	var guest := Match.new()
+	add_child(guest)
+	guest.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "role": "guest"})
+	var b := Node3D.new()
+	add_child(b)
+	var gap := 0.025
+	var from := Transform3D(Basis.IDENTITY, Vector3.ZERO)
+	var to := Transform3D(Basis(Vector3.UP, 0.1), Vector3(0.25, 0, 0))   # 10 m/s and 4 rad/s, as a 25 ms snapshot said
+	var t0: float = guest.time
+	guest.puppets[b] = [from, to, t0, gap, true]
+	guest.time = t0 + gap / 2.0
+	guest._drive_puppets()
+	_near(b.global_position.x, 0.125, 0.001, "on time, half way between snapshots: half way")
+	guest.time = t0 + gap
+	guest._drive_puppets()
+	_near(b.global_position.x, 0.25, 0.001, "on time, at the end: where the snapshot said")
+	t.check(guest.puppets.has(b), "(and still driven: the next one may be late)")
+	guest.time = t0 + gap + 0.01
+	guest._drive_puppets()
+	_near(b.global_position.x, 0.25 * Match.puppet_weight(0.01, gap), 0.001, "10 ms late: on, by the way it was going")
+	t.check(b.global_position.x > 0.3 and b.global_position.x < 0.4, "(0.3 to 0.4 m, %.3f)" % b.global_position.x)
+	guest.time = t0 + gap + Match.EXTRAP
+	guest._drive_puppets()
+	var far: float = b.global_position.x
+	_near(far, 0.25 * (1.0 + 0.5 * Match.EXTRAP / gap), 0.001, "as late as it is let go on: half as far again as a whole snapshot's way, at most")
+	_near(b.global_transform.basis.get_euler().y, 0.1 * (1.0 + 0.5 * Match.EXTRAP / gap), 0.002, "his turn went on the same way")
+	t.check(not guest.puppets.has(b), "then no longer driven: he stands")
+	guest.time = t0 + 1.0
+	guest._drive_puppets()
+	_near(b.global_position.x, far, 0.0001, "and stays where he stopped, however late")
+	# One that is not sent while it lies still (the dead) stops where the snapshot said, however late.
+	b.global_transform = from
+	guest.puppets[b] = [from, to, t0, gap, false]
+	guest.time = t0 + gap + 0.04
+	guest._drive_puppets()
+	_near(b.global_position.x, 0.25, 0.0001, "the dead do not go on past the snapshot")
+	t.check(not guest.puppets.has(b), "(and are driven no longer)")
+	b.queue_free()
+	guest.queue_free()
+
+func test_the_way_on_eases_to_nothing() -> void:
+	var gap := 0.025
+	_near(Match.puppet_weight(0.0, gap), 1.0, 0.0001, "at the snapshot's time: where it said")
+	var last := 1.0
+	var rising := true
+	for i in 51:
+		var w: float = Match.puppet_weight(i / 1000.0, gap)
+		rising = rising and w >= last - 0.000001
+		last = w
+	t.check(rising, "never turning back")
+	var v0: float = (Match.puppet_weight(0.001, gap) - Match.puppet_weight(0.0, gap)) / 0.001
+	_near(v0, 1.0 / gap, 1.0, "it goes on at the speed it came in with (%.1f/s, %.1f/s)" % [v0, 1.0 / gap])
+	var v1: float = (Match.puppet_weight(Match.EXTRAP, gap) - Match.puppet_weight(Match.EXTRAP - 0.001, gap)) / 0.001
+	t.check(v1 < v0 * 0.05, "and has slowed to a stop at the end (%.2f/s)" % v1)
+	_near(Match.puppet_weight(5.0, gap), Match.puppet_weight(Match.EXTRAP, gap), 0.0001, "never further than the end of it")
 
 ## A beast's status goes out packed like a man's (with its jaw), and a guest takes it in.
 func test_a_beasts_packed_status_comes_through() -> void:

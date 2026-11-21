@@ -97,9 +97,12 @@ func _ready() -> void:
 	# What the guest told of himself since his hello ("me"): the forearm he lost.
 	var told: Array = (Net.peers[gid].get("body", {}) as Dictionary).get("missing", [])
 	print("HOST the guest as he is now: missing ", told)
+	# A guest on this very computer (127.0.0.1): the host knows its room is one of windows (it draws a lower picture, Menu.room_scale).
+	print("HOST room of windows of this computer ", Net.local_room)
+	var windows_ok: bool = Net.transport != "enet" or Net.local_room
 	Net.send_all("bye", {})
 	await get_tree().create_timer(0.5).timeout
-	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 and gear_in == ["helmet"] and told.has("forearmL") else 1)
+	get_tree().quit(0 if vc_heard >= 40 and from_head >= 0.0 and from_head < 0.05 and mouth_max >= 2 and gear_in == ["helmet"] and told.has("forearmL") and windows_ok else 1)
 
 ## How the room is opened: on a port (ENet). tests/net_steam_host.gd opens it as a Steam lobby instead and plays the same bout.
 func _open(port: int) -> Variant:

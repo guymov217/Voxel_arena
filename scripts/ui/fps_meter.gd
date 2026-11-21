@@ -61,6 +61,14 @@ func _unhandled_input(e: InputEvent) -> void:
 		if Net.active():
 			Net.show_meter(visible)
 
+## The connection's meter goes with the frame rate's whenever a room is open. (The frame rate's stays on from the last time,
+## and the connection's only came with a press of F3 in the room: a video of a game that stuttered had every number but the
+## ones that say why.)
+func _sync_net() -> void:
+	var want := visible and Net.active()
+	if want != (Net.meter != null and is_instance_valid(Net.meter)):
+		Net.show_meter(want)
+
 func _process(_dt: float) -> void:
 	var now_us := Time.get_ticks_usec()
 	var now := now_us / 1e6
@@ -72,6 +80,7 @@ func _process(_dt: float) -> void:
 	if now_us < _refresh_us:
 		return
 	_refresh_us = now_us + 250000
+	_sync_net()
 	label.text = "\n".join(lines(_frames, now, Engine.get_frames_per_second(), _work()))
 
 ## The work (ms), by the engine's own measures: the longest physics step and the longest frame

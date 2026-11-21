@@ -742,6 +742,14 @@ host at 68 of 120 steps and 22 snapshots a second, not 40). A room lets a frame 
 physics at the cost one step has been taking (at most 12; with steps dearer than 8 ms, the engine's 4, as more of them
 would only slow the picture), and F3 shows the frames a second of each side with the steps.
 
+A room of windows of one computer (`Net.local_room`: the guest joined 127.0.0.1 or this computer's own address, or the
+host has a guest that did) lowers the picture of both windows (`Menu.room_scale`: at most 0.7 of the resolution,
+`Menu.room_fps`: at most 60 frames a second) while the room is open, so that two windows on one graphics card both keep
+up; a room between computers is never touched, and the picture comes back when the room closes. When a snapshot is late
+a guest's bodies go on the way they were going for up to 50 ms, easing to a stop (`Match.EXTRAP`, `Match.puppet_weight`),
+instead of standing still until it comes. The connection's meter (NetMeter) opens by itself with the frame rate's
+whenever a room is open.
+
 ENet's packet throttle is off: whenever the round trip wobbled it threw away unreliable packets on
 purpose, up to a quarter of the voice and the snapshots on a jittery line. Without it a guest gets
 every snapshot the line carries (about 12% more of them in the load test, the longest wait down from

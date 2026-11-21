@@ -3729,7 +3729,7 @@ func snapshot(all := true) -> Array:
 ## Guest: a body is moved to where the host had it over the time until the next snapshot is due,
 ## in the physics step (so the engine's own interpolation smooths every frame between): his
 ## screen moves as smoothly as the host's, a snapshot behind.
-func _puppet_to(b: Node3D, to: Transform3D, gap := -1.0) -> void:
+func _puppet_to(b: Node3D, to: Transform3D, gap := -1.0, run_on := false) -> void:
 	if not is_instance_valid(b):
 		return
 	var from: Transform3D = b.global_transform
@@ -3738,7 +3738,13 @@ func _puppet_to(b: Node3D, to: Transform3D, gap := -1.0) -> void:
 		b.reset_physics_interpolation()
 		puppets.erase(b)
 		return
-	puppets[b] = [from, to, time, snap_gap if gap <= 0.0 else gap]
+	puppets[b] = [from, to, time, snap_gap if gap <= 0.0 else gap, run_on]
+
+## A snapshot that is late (the host's game hitched, a packet was lost): the bodies had stopped where the last one sent
+## them, the whole world for as long as it was late, in a game that drew 100 frames a second. The living (`run_on`: every
+## snapshot has a row for them) go on the way they were going for up to this long, easing to a stop; the next snapshot takes
+## them from there. The dead are not sent while they lie still, so one that has stopped would stand where it overshot.
+const EXTRAP := 0.05
 
 func _drive_puppets() -> void:
 	for b in puppets.keys():
@@ -3746,10 +3752,25 @@ func _drive_puppets() -> void:
 			puppets.erase(b)
 			continue
 		var r: Array = puppets[b]
-		var k := clampf((time - float(r[2])) / maxf(0.005, float(r[3])), 0.0, 1.0)
-		b.global_transform = (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, k)
-		if k >= 1.0:
+		var gap := maxf(0.005, float(r[3]))
+		var t: float = time - float(r[2])
+		var run_on: bool = r.size() > 4 and bool(r[4])
+		if t <= gap or not run_on:
+			var k := clampf(t / gap, 0.0, 1.0)
+			b.global_transform = (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, k)
+			if k >= 1.0 and not run_on:
+				puppets.erase(b)
+			continue
+		var over := minf(t - gap, EXTRAP)
+		b.global_transform = (r[0] as Transform3D).interpolate_with(r[1] as Transform3D, puppet_weight(over, gap))
+		if t - gap >= EXTRAP:
 			puppets.erase(b)
+
+## How far along its move a body is `over` seconds after it should have arrived: past the end by the way it was going,
+## its speed easing to nothing over EXTRAP (1: where the snapshot said; a move of `gap` seconds).
+static func puppet_weight(over: float, gap: float) -> float:
+	var o := clampf(over, 0.0, EXTRAP)
+	return 1.0 + (o / maxf(0.005, gap)) * (1.0 - o / (2.0 * EXTRAP))
 
 static func _xf(a, o: int) -> Transform3D:
 	return Transform3D(Basis(Quaternion(float(a[o + 3]), float(a[o + 4]), float(a[o + 5]), float(a[o + 6])).normalized()), Vector3(float(a[o]), float(a[o + 1]), float(a[o + 2])))
@@ -3775,11 +3796,12 @@ func apply_snapshot(s: Array) -> void:
 			e.snap_gap = lerpf(float(e.get("snap_gap", eg)), eg, 0.3)
 			eg = float(e.snap_gap)
 		e.snap_seen = time
+		var alive_row: bool = String(e.f.state) != "dead"
 		var a = row[1]
 		if a is PackedByteArray:
 			var bparts: Array = e.f.parts
 			for i in mini(a.size() / 14, bparts.size()):
-				_puppet_to(bparts[i], unpack_xf(a, i * 14), eg)
+				_puppet_to(bparts[i], unpack_xf(a, i * 14), eg, alive_row)
 		elif a is PackedFloat32Array:
 			var parts: Array = e.f.parts
 			for i in mini(a.size() / 7, parts.size()):
@@ -3792,7 +3814,7 @@ func apply_snapshot(s: Array) -> void:
 				if not wp.freeze:
 					wp.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 					wp.freeze = true
-				_puppet_to(wp, unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1), eg)
+				_puppet_to(wp, unpack_xf(w[1], 0) if w.size() == 2 and w[1] is PackedByteArray else _xf(w, 1), eg, alive_row)
 		if row[3] is Dictionary or row[3] is Array:
 			e.f.apply_status(row[3])
 		if row.size() > 4:
