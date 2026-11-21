@@ -4449,9 +4449,32 @@ func control(dt: float, inp_in: Dictionary) -> void:
 ## width out from the chest, and a raised arm pivots there, its top a hand off the chest); the
 ## others turn with the part the limb hangs from.
 var joint_caps := {}
+## A man asleep (Match._human_idle, _stands_idle: nothing of him moves) is drawn as he lies: three frames after he lay down, so that the drawing
+## has caught up with where his bodies came to rest, nothing of him is drawn again (his parts' own drawing too: VoxelPart._process) until he is awake.
+## His trunk is still drawn, for the breath that Physique.live gives it.
+var draw_rest := false
+var draw_rest_ready := false
+var _rest_frames := 0
+static var process_in_headless := false   # (tests: the drawing's rest is looked at in a game with no screen)
 func _process(_dt: float) -> void:
-	if DisplayServer.get_name() == "headless":
+	if FpsMeter.prof_on:
+		var t0 := Time.get_ticks_usec()
+		_process_frame(_dt)
+		FpsMeter.prof_men_us += Time.get_ticks_usec() - t0
+	else:
+		_process_frame(_dt)
+
+func _process_frame(_dt: float) -> void:
+	if DisplayServer.get_name() == "headless" and not process_in_headless:
 		return
+	if draw_rest and torso.sleeping:
+		if _rest_frames >= 3:
+			draw_rest_ready = true
+			return
+		_rest_frames += 1
+	elif draw_rest_ready or _rest_frames > 0:
+		draw_rest_ready = false
+		_rest_frames = 0
 	# (A bone broken in the step just done: the piece past the break set swinging now, before
 	# the limb below it is seated on its end: VoxelPart.start_due.)
 	for p in parts:

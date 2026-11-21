@@ -1379,26 +1379,29 @@ func _stands_idle(e: Dictionary, f, dt: float) -> bool:
 		return false
 	var idle: bool = e.get("idle", false)
 	var at: Vector3 = f.torso.global_position
-	var reach := IDLE_FAR if not idle else IDLE_NEAR
-	var near := false
-	for h in entities:
-		if (h.kind == "local" or h.kind == "remote") and is_instance_valid(h.f) and Vector2(h.f.torso.global_position.x - at.x, h.f.torso.global_position.z - at.z).length_squared() < reach * reach:
-			near = true
-			break
-	if not near and e.get("works", false):
-		near = _in_sight(at)
+	# (Whether a player is near: looked at every fourth step, a man walks a hand's breadth in that.)
+	var near: bool = bool(e.get("knear", false))
+	if tick - int(e.get("knear_tick", -99)) >= 4:
+		e.knear_tick = tick
+		var reach := IDLE_FAR if not idle else IDLE_NEAR
+		near = false
+		for h in entities:
+			if (h.kind == "local" or h.kind == "remote") and is_instance_valid(h.f) and Vector2(h.f.torso.global_position.x - at.x, h.f.torso.global_position.z - at.z).length_squared() < reach * reach:
+				near = true
+				break
+		if not near and e.get("works", false):
+			near = _in_sight(at)
+		e.knear = near
 	if idle:
-		# (Touched, his parts are awake again: a part of his own, or what he holds.)
-		var woken := near
-		if not woken:
-			for p in f.parts:
-				if not p.severed and not p.sleeping:
-					woken = true
-					break
+		# (Touched, his parts are awake again: a part of his own, or what he holds. The bodies tell it, `hwake`.)
+		var woken: bool = near or bool(e.get("hwake", false))
 		if not woken:
 			return true
 		e.idle = false
 		e.idle_t = 0.0
+		f.draw_rest = false
+		f.draw_rest_ready = false
+		_unwatch_sleeper(e, f)
 		for b in _idle_bodies(f):
 			b.can_sleep = false
 			b.sleeping = false
@@ -1416,6 +1419,8 @@ func _stands_idle(e: Dictionary, f, dt: float) -> bool:
 	if e.idle_t < IDLE_AFTER:
 		return false
 	e.idle = true
+	f.draw_rest = true
+	_watch_sleeper(e, f)
 	for b in _idle_bodies(f):
 		b.can_sleep = true
 		b.sleeping = true
@@ -1423,9 +1428,33 @@ func _stands_idle(e: Dictionary, f, dt: float) -> bool:
 			b.stands_idle = true
 	return true
 
+## The bodies of a man put to sleep tell when the engine wakes one of them (a blow, a man walked into: the physics' own word, never ours): `hwake`
+## is read in place of looking at every part of him every step.
+func _watch_sleeper(e: Dictionary, f) -> void:
+	e.hwake = false
+	var cb := _on_sleeper_woke.bind(int(e.id))
+	for b in _idle_bodies(f):
+		if not b.sleeping_state_changed.is_connected(cb):
+			b.sleeping_state_changed.connect(cb)
+
+func _unwatch_sleeper(e: Dictionary, f) -> void:
+	var cb := _on_sleeper_woke.bind(int(e.id))
+	for b in _idle_bodies(f):
+		if b.sleeping_state_changed.is_connected(cb):
+			b.sleeping_state_changed.disconnect(cb)
+	e.hwake = false
+
+func _on_sleeper_woke(id: int) -> void:
+	var e = entity_by_id(id)
+	if e != null:
+		e.hwake = true
+
 func _wake_sleeper(e: Dictionary, f) -> void:
 	e.hidle = false
 	e.hidle_t = 0.0
+	f.draw_rest = false
+	f.draw_rest_ready = false
+	_unwatch_sleeper(e, f)
 	for b in _idle_bodies(f):
 		b.can_sleep = false
 		b.sleeping = false
@@ -1440,6 +1469,21 @@ func _wake_sleeper(e: Dictionary, f) -> void:
 const HUMAN_NEAR := 2.5
 const HUMAN_IDLE_AFTER := 0.5           # (he sleeps sooner than a keeper: a word wakes him in the very step it comes)
 static var human_idle_on := true       # (tests that hold two builds to the bit: off)
+## Whether another man who may strike him is within HUMAN_NEAR: looked at every fourth step (a man walks a hand's breadth in that).
+func _human_near(e: Dictionary, at: Vector3) -> bool:
+	if tick - int(e.get("hnear_tick", -99)) < 4:
+		return bool(e.get("hnear", false))
+	e.hnear_tick = tick
+	var near := false
+	for h in entities:
+		if h != e and (h.kind == "local" or h.kind == "remote" or h.kind == "bot") and is_instance_valid(h.f) and h.f.alive:
+			var hp: Vector3 = h.f.torso.global_position
+			if Vector2(hp.x - at.x, hp.z - at.z).length_squared() < HUMAN_NEAR * HUMAN_NEAR:
+				near = true
+				break
+	e.hnear = near
+	return near
+
 func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
 	if not human_idle_on or mode != "yard" or role == "guest" or not (f is Fighter):
 		return false
@@ -1466,28 +1510,24 @@ func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
 				quiet = false
 				break
 	var idle: bool = e.get("hidle", false)
-	var at: Vector3 = f.torso.global_position
-	var near := false
-	if quiet:
-		for h in entities:
-			if h != e and (h.kind == "local" or h.kind == "remote" or h.kind == "bot") and is_instance_valid(h.f) and h.f.alive:
-				var hp: Vector3 = h.f.torso.global_position
-				if Vector2(hp.x - at.x, hp.z - at.z).length_squared() < HUMAN_NEAR * HUMAN_NEAR:
-					near = true
-					break
+	var near: bool = _human_near(e, f.torso.global_position) if quiet else false
 	if idle:
-		# (What the physics does not tell: a blow wakes the bodies it touches, but a poison's or a fire's harm, a hold, a fall are in what he has.)
-		var woken: bool = not quiet or near or f.state != "stand" or f.grabbed_by != null or f.blood != float(e.hblood) or f.pain != float(e.hpain) \
-				or f.stagger > 0.0 or f.jolt_t != float(e.hjolt) or f.stamina != float(e.hstam)
-		if not woken:
-			var hp_sum := 0.0
-			for p in f.parts:
-				if not p.severed:
-					if not p.sleeping or not p.spots.is_empty() or p.bleed > 0.0 or p.artery > 0.0:
-						woken = true
-						break
-					hp_sum += p.hp
-			woken = woken or hp_sum != float(e.hhp)
+		# (A blow or a man walked into wakes the bodies, and they tell it (`hwake`). What the physics does not tell, a poison's or a fire's harm,
+		# a hold, a fall, is in what he has: looked at every eighth step.)
+		var woken: bool = not quiet or near or bool(e.get("hwake", false))
+		if not woken and tick - int(e.get("hslow", -99)) >= 8:
+			e.hslow = tick
+			woken = f.state != "stand" or f.grabbed_by != null or f.blood != float(e.hblood) or f.pain != float(e.hpain) \
+					or f.stagger > 0.0 or f.jolt_t != float(e.hjolt) or f.stamina != float(e.hstam)
+			if not woken:
+				var hp_sum := 0.0
+				for p in f.parts:
+					if not p.severed:
+						if not p.sleeping or not p.spots.is_empty() or p.bleed > 0.0 or p.artery > 0.0:
+							woken = true
+							break
+						hp_sum += p.hp
+				woken = woken or hp_sum != float(e.hhp)
 		if not woken:
 			return true
 		_wake_sleeper(e, f)
@@ -1512,6 +1552,9 @@ func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
 	e.hstam = f.stamina
 	e.hhp = hp_now
 	e.hidle = true
+	e.hslow = tick - (int(e.id) & 7)   # (the men's slow looks are not all in one step)
+	f.draw_rest = true   # (nothing of him is drawn again until he wakes: Fighter.draw_rest)
+	_watch_sleeper(e, f)
 	for b in _idle_bodies(f):
 		b.can_sleep = true
 		b.sleeping = true
@@ -3957,6 +4000,7 @@ func _stomp_fx(p: Vector3, size: float) -> void:
 const POS_Q := 512.0
 const STATUS_EVERY := 15      # physics ticks between a fighter's status (8 a second)
 const STILL_EVERY := 120      # and between snapshots of one that has not moved (once a second)
+const SLEEP_EVERY := 15       # and of a man asleep, nothing of him moving (8 a second: his row is not even packed in between)
 const STILL_POS := 6          # how far a corpse may drift (int16 steps, 2 mm each) and still be still
 const STILL_ROT := 400        # and turn (1/32767 of the quaternion: about 0.7 degree)
 
@@ -4000,6 +4044,9 @@ func snapshot(all := true, who := 0) -> Array:
 		if not is_instance_valid(f):
 			continue
 		if who != 0 and (e.kind == "local" or e.kind == "remote") != (who == 1):
+			continue
+		# A man asleep (_human_idle, _stands_idle) has not moved a hair: his row goes 8 a second, and is not made in between.
+		if not all and (e.get("hidle", false) or e.get("idle", false)) and e.has("snap_b") and f.state == "stand" and tick - int(e.get("snap_tick", -9999)) < SLEEP_EVERY:
 			continue
 		var w := []
 		var bows := []
@@ -4394,6 +4441,14 @@ func _send_player_rows() -> void:
 		Net.send_all("snap", [row], false)
 
 func _process(dt: float) -> void:
+	if FpsMeter.prof_on:
+		var t0 := Time.get_ticks_usec()
+		_process_frame(dt)
+		FpsMeter.prof_match_us += Time.get_ticks_usec() - t0
+	else:
+		_process_frame(dt)
+
+func _process_frame(dt: float) -> void:
 	if role == "host" and _players_by_frame and Net.active():
 		_send_player_rows()
 	_update_breaths(dt)

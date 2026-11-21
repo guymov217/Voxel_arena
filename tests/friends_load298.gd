@@ -89,6 +89,9 @@ func _run() -> void:
 	await k.pause(15.0)   # (they spread out)
 	times.clear()
 	spans.clear()
+	var enet = (multiplayer.multiplayer_peer as ENetMultiplayerPeer).host if multiplayer.multiplayer_peer is ENetMultiplayerPeer else null
+	if enet != null:
+		enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA)
 	measuring = true
 	var t0 := Time.get_ticks_msec()
 	var asleep_sum := 0.0
@@ -102,6 +105,10 @@ func _run() -> void:
 		asleep_sum += asl
 		samples += 1
 	measuring = false
+	var wall_s := float(Time.get_ticks_msec() - t0) / 1000.0
+	if enet != null:
+		var sent: float = enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA) / 1024.0 / wall_s
+		print("FRIENDS WIRE: the host sent %.0f KB/s (%.0f KB/s to each of %d friends)" % [sent, sent / maxf(1.0, float(n)), n])
 	var s := Array(times)
 	s.sort()
 	var mean := 0.0

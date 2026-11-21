@@ -62,11 +62,17 @@ func snap_drawing() -> void:
 func _process(_dt: float) -> void:
 	if mmi == null and skin == null:
 		return
+	# (A part of a man asleep, in the place it was drawn in: Fighter.draw_rest_ready. His trunk is drawn on, for his breath.)
+	if sleeping and fighter != null and fighter.draw_rest_ready and fighter.torso != self:
+		return
+	var t0 := Time.get_ticks_usec() if FpsMeter.prof_on else 0
 	if _dangle_due:
 		start_due()
 	if dangle_mesh:
 		swing_now(_dt)
 	_draw_at(global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated())
+	if t0 > 0:
+		FpsMeter.prof_men_us += Time.get_ticks_usec() - t0
 
 ## Drawn where the body is now, with the game paused (the kill cam puts the bodies back where
 ## they were and plays them forward while nothing else runs: _process with it).

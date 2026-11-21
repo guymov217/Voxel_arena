@@ -13,11 +13,20 @@ extends CanvasLayer
 const SLOW_MS := 1000.0 / 30.0
 const WINDOW_S := 5.0
 
+## What the frame's own scripts take, counted only while the meter is shown (each of them looks at the clock only then): the men's
+## drawing (Fighter, VoxelPart, Weapon) and the match's, in microseconds since the meter last read them.
+static var prof_on := false
+static var prof_men_us := 0
+static var prof_match_us := 0
+
 var panel: PanelContainer
 var label: RichTextLabel
 var _frames: Array = []   # [when (s), how long (ms)] for the last WINDOW_S seconds
 var _last_us := 0
 var _refresh_us := 0   # when the text is next written, by the wall clock (slow motion slows the game's)
+var _prof_frames := 0   # the frames since the scripts' times were last read
+var _prof := {"men": 0.0, "match": 0.0}   # and what they came to a frame (ms)
+var _steps: Array = []   # [when (us), the physics steps taken so far] over the last second: the steps a second the game really keeps
 
 func _ready() -> void:
 	layer = 50
@@ -46,11 +55,18 @@ func _ready() -> void:
 func show_meter(on: bool) -> void:
 	visible = on
 	set_process(on)
+	prof_on = on
+	prof_men_us = 0
+	prof_match_us = 0
+	_prof_frames = 0
 	_frames.clear()
 	_last_us = 0
 	_refresh_us = 0
 	if DisplayServer.get_name() != "headless" and is_inside_tree():
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), on)
+
+func _exit_tree() -> void:
+	prof_on = false
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F3:
@@ -75,18 +91,32 @@ func _process(_dt: float) -> void:
 	if _last_us > 0:
 		_frames.append([now, (now_us - _last_us) / 1000.0])
 	_last_us = now_us
+	_prof_frames += 1
 	while not _frames.is_empty() and now - float(_frames[0][0]) > WINDOW_S:
 		_frames.pop_front()
 	if now_us < _refresh_us:
 		return
 	_refresh_us = now_us + 250000
+	_prof = {"men": prof_men_us / 1000.0 / _prof_frames, "match": prof_match_us / 1000.0 / _prof_frames}
+	_steps.append([now_us, Engine.get_physics_frames()])
+	while _steps.size() > 2 and now_us - int(_steps[0][0]) > 1100000:
+		_steps.pop_front()
+	prof_men_us = 0
+	prof_match_us = 0
+	_prof_frames = 0
 	_sync_net()
 	label.text = "\n".join(lines(_frames, now, Engine.get_frames_per_second(), _work()))
 
 ## The work (ms), by the engine's own measures: the longest physics step and the longest frame
 ## without physics of the last second, the last frame's drawing.
 func _work() -> Dictionary:
-	var w := {"physics": Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, "frame": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, "draw": 0.0, "gpu": 0.0, "native": Greedy.core() != null}
+	var w := {"physics": Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, "frame": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, "draw": 0.0, "gpu": 0.0, "native": Greedy.core() != null,
+		"men": float(_prof.men), "match": float(_prof.match), "calls": int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))}
+	# (The steps the game really takes a second of the 120 it is meant to: under it the host cannot keep up, and everything runs slow.)
+	if _steps.size() >= 2:
+		var span := float(int(_steps[_steps.size() - 1][0]) - int(_steps[0][0])) / 1e6
+		if span > 0.4:
+			w["steps"] = float(int(_steps[_steps.size() - 1][1]) - int(_steps[0][1])) / span
 	if DisplayServer.get_name() != "headless" and is_inside_tree():
 		var rid := get_viewport().get_viewport_rid()
 		w.draw = RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
@@ -116,10 +146,21 @@ static func lines(frames: Array, now: float, fps: float, work: Dictionary) -> Ar
 		_grade("%.1f" % worst, worst, 25.0, 50.0, false),
 		_grade("%d" % slow, float(slow), 0.0, 5.0, false)] + "   [color=#9a8f80](F3)[/color]")
 	out.append(Loc.t("physics %.1f ms a step · frame without physics %.1f ms (drawing %.1f ms) · graphics card %.1f ms") % [float(work.get("physics", 0.0)), float(work.get("frame", 0.0)), float(work.get("draw", 0.0)), float(work.get("gpu", 0.0))])
+	if work.has("steps"):
+		var rate := float(work.get("steps"))
+		var want := float(Engine.physics_ticks_per_second)
+		out[1] = String(out[1]) + " · " + _grade("%d" % roundi(rate), rate, want * 0.97, want * 0.85, true) + " of %d steps a second" % roundi(want)
 	# (Whether the C++ core is loaded: without it, a step costs a fifth more and the machine looks slow for no reason one could see.)
 	if work.has("native"):
 		var on: bool = bool(work.get("native"))
 		out[1] = String(out[1]) + "   [color=%s]%s[/color]" % ["#7ac36a" if on else "#d9534f", "native core on" if on else "native core OFF (slower)"]
+	# (Where the frame without physics goes: the men's drawing, the match's own work, and all the rest: the other scripts, the engine and
+	# the waiting on the graphics card. The draw calls beside them: what a slow graphics card is asked.)
+	if work.has("men"):
+		var frame := float(work.get("frame", 0.0))
+		var men := float(work.get("men", 0.0))
+		var mat := float(work.get("match", 0.0))
+		out.append("in the frame: the men %.1f ms · the match %.1f ms · all the rest %.1f ms · %d draw calls" % [men, mat, maxf(0.0, frame - men - mat), int(work.get("calls", 0))])
 	return out
 
 ## Green when it is good, amber when it is getting bad, red when it is bad (`up`: more is better).

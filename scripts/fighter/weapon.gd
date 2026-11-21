@@ -1199,13 +1199,18 @@ var draw_turn := Transform3D()    # and turned so (a hand below a broken bone sw
 func _process(_dt: float) -> void:
 	if not bloodied.is_empty():
 		_dry_blood(_dt)
+	elif _flames.is_empty() and sleeping and holder is Fighter and holder.draw_rest_ready:
+		return   # (in the hand of a man asleep, drawn where it lies: Fighter.draw_rest)
 	if vis:
+		var t0 := Time.get_ticks_usec() if FpsMeter.prof_on else 0
 		var t := global_transform if Engine.get_physics_frames() < _snap_until else get_global_transform_interpolated()
 		t = draw_turn * t
 		t.origin += draw_shift
 		vis.global_transform = t
 		if not _flames.is_empty():
 			_flicker_flames(t)
+		if t0 > 0:
+			FpsMeter.prof_men_us += Time.get_ticks_usec() - t0
 
 ## Drawn where it is now, with the game paused (the kill cam's replay).
 func draw_now() -> void:

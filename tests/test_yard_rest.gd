@@ -76,6 +76,45 @@ func test_a_man_near_another_does_not_sleep_and_a_blow_wakes_him() -> void:
 	Net.inputs.erase(77)
 	m.queue_free()
 
+## The same blow on a man asleep and on one awake (the way of sparing the host off and on): the trunk goes where it goes and he stands as the
+## other does. What is struck is woken by the physics in the step of the blow, and his balance is seen to from the next: the blow's own effect
+## (the first half second) is the same to a few centimetres. A second on, a staggering man is not the same man twice from one run to the next
+## (a hundredth more or less in the shove and he has stepped back or not: the awake man twice gives 17 cm and 30 cm a second on).
+func test_a_blow_on_a_man_asleep_is_what_it_is_on_a_man_awake() -> void:
+	var tracks := {}
+	for asleep in [false, true]:
+		for shove in [400.0, 1000.0]:
+			Match.human_idle_on = asleep
+			var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}])
+			var host: Dictionary = m.me
+			host.drive = func(_e): return {}
+			var friend: Dictionary = m.entities.filter(func(e): return e.kind == "remote")[0]
+			host.f.teleport(Vector3(-9.0, 0.0, -5.0))
+			friend.f.teleport(Vector3(6.0, 0.0, 6.0))
+			Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
+			await _steps(330)
+			t.check(_asleep(friend) == asleep, "he sleeps when the sleeping is on, and not when it is off (%s)" % str(asleep))
+			var at: Vector3 = friend.f.torso.global_position
+			friend.f.torso.apply_central_impulse(Vector3(shove, 0.0, 0.0))
+			var track := []
+			for i in 5:
+				await _steps(24)
+				track.append([friend.f.torso.global_position - at, friend.f.state])
+			tracks["%s %s" % [str(asleep), str(shove)]] = track
+			Net.inputs.erase(77)
+			m.queue_free()
+	Match.human_idle_on = true
+	for shove in [400.0, 1000.0]:
+		var awake: Array = tracks["false %s" % str(shove)]
+		var slept: Array = tracks["true %s" % str(shove)]
+		t.check((awake[0][0] as Vector3).length() > 0.2, "the blow of %.0f moves the man awake (%.2f m a fifth of a second on)" % [shove, (awake[0][0] as Vector3).length()])
+		for i in 5:
+			t.check(String(awake[i][1]) == "stand" and String(slept[i][1]) == "stand", "after a shove of %.0f he stands, awake and asleep, %d tenths of a second on" % [shove, (i + 1) * 2])
+		for i in 2:
+			var moved: float = (awake[i][0] as Vector3).length()
+			var gap: float = (awake[i][0] as Vector3).distance_to(slept[i][0] as Vector3)
+			t.check(gap < 0.03 + 0.08 * moved, "a shove of %.0f, %d tenths on: the trunk is %.1f cm from where it is awake (moved %.2f m)" % [shove, (i + 1) * 2, gap * 100.0, moved])
+
 func test_arms_at_rest_are_seen_to_every_other_step_and_every_step_when_ordered() -> void:
 	Match.human_idle_on = false   # (the whole man awake: it is his arms that are looked at)
 	var m := _yard()
@@ -166,7 +205,7 @@ func test_a_man_killed_asleep_is_not_left_standing() -> void:
 	m.queue_free()
 
 ## What `control` brings on a step at a time (the blood leaving a cut, the breath coming back) would stop with a man let sleep: he is let sleep once it has passed.
-func test_a_man_bleeding_or_winded_is_let_sleep_only_when_it_has_passed() -> void:
+func test_a_man_winded_or_in_pain_is_let_sleep_only_when_it_has_passed() -> void:
 	var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}])
 	var host: Dictionary = m.me
 	host.drive = func(_e): return {}
@@ -179,7 +218,7 @@ func test_a_man_bleeding_or_winded_is_let_sleep_only_when_it_has_passed() -> voi
 	t.check(_asleep(friend), "he sleeps")
 	# Winded: wakes at once (his breath is not what it was) and does not sleep until it is back.
 	f.stamina = 20.0
-	await _steps(4)
+	await _steps(10)   # (what the physics does not tell is looked at every eighth step)
 	t.check(not friend.get("hidle", false), "his breath gone, he is awake")
 	await _steps(120)
 	t.check(not friend.get("hidle", false) and f.stamina > 20.0, "and awake while it comes back (%.0f of %.0f)" % [f.stamina, f.breath_cap()])
@@ -188,17 +227,16 @@ func test_a_man_bleeding_or_winded_is_let_sleep_only_when_it_has_passed() -> voi
 		await _steps(12)
 		n += 12
 	t.check(friend.get("hidle", false) and float(friend.get("hstam", 0.0)) >= f.breath_cap() - 0.3, "he sleeps once it is full (%.1f s on; %.1f of %.1f)" % [n / 120.0, float(friend.get("hstam", 0.0)), f.breath_cap()])
-	# A cut: blood goes while it bleeds, and he sleeps when it has stopped.
-	var blood0 := f.blood
-	f.torso.bleed = 0.4
-	await _steps(4)
-	t.check(not friend.get("hidle", false), "a wound bleeding, he is awake")
+	# A sting of pain (the yard staunches every wound each step, so the bleeding is not seen here; what runs down with the time is):
+	# awake while it runs down, asleep when it has.
+	f.pain = 0.5
+	await _steps(10)
+	t.check(not friend.get("hidle", false), "pain in him, he is awake")
 	n = 0
-	while (f.torso.bleed > 0.0 or not friend.get("hidle", false)) and n < 2400:
+	while (f.pain > 0.001 or not friend.get("hidle", false)) and n < 2400:
 		await _steps(12)
 		n += 12
-	t.check(f.torso.bleed <= 0.0 and friend.get("hidle", false), "he sleeps when it has stopped (%.1f s on)" % (n / 120.0))
-	t.check(f.blood < blood0, "and the blood it took went from him, he was not seen asleep with it (%.4f to %.4f)" % [blood0, f.blood])
+	t.check(f.pain <= 0.001 and friend.get("hidle", false), "he sleeps when it has run down (%.1f s on)" % (n / 120.0))
 	# At ease: the call itself.
 	t.check(f.at_ease(), "nothing left in him to run down")
 	f.pain = 0.5
@@ -208,4 +246,62 @@ func test_a_man_bleeding_or_winded_is_let_sleep_only_when_it_has_passed() -> voi
 	t.check(not f.at_ease(), "so is a wine's drunkenness")
 	f.wine_timer = 0.0
 	Net.inputs.erase(77)
+	m.queue_free()
+
+## The rows a host sends of the men in the yard (the match makes them itself, every few steps: `snap_tick` is the tick of a man's last): a man
+## asleep has not moved a hair, and his row is made 8 a second, not every time; a full snapshot (a late joiner's) has him always; a man awake
+## has his every time.
+func _row_ticks(m: Match, e: Dictionary, steps: int) -> int:
+	var seen := {}
+	for i in steps:
+		await _steps(1)
+		seen[int(e.get("snap_tick", -1))] = true
+	return seen.size()
+
+func test_a_man_asleep_has_his_row_8_a_second_and_one_awake_every_time() -> void:
+	var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}])
+	var host: Dictionary = m.me
+	host.drive = func(_e): return {}
+	var friend: Dictionary = m.entities.filter(func(e): return e.kind == "remote")[0]
+	friend.f.teleport(Vector3(6.0, 0.0, 6.0))
+	host.f.teleport(Vector3(-9.0, 0.0, -5.0))
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
+	await _steps(300)
+	t.check(_asleep(friend), "he sleeps")
+	var rows: int = await _row_ticks(m, friend, 120)
+	t.check(rows >= 7 and rows <= 10, "asleep, his row was made %d times in a second (8 a second)" % rows)
+	var full := 0
+	for row in m.snapshot(true, 0):
+		if int(row[0]) == int(friend.id):
+			full += 1
+	t.check(full == 1, "and a full snapshot has him")
+	# Awake (a key held): his row is made every time the match makes the others'.
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"mz": 1.0, "look": {"yaw": 0.0, "pitch": 0.0}}))
+	await _steps(4)
+	var awake: int = await _row_ticks(m, friend, 120)
+	t.check(awake >= 30, "awake, his row was made %d times in a second (every few steps)" % awake)
+	Net.inputs.erase(77)
+	m.queue_free()
+
+## His drawing rests when he sleeps (three frames after, so that it has caught up with where he lies) and is at once drawn again when he wakes.
+func test_the_drawing_of_a_man_asleep_rests_and_wakes_with_him() -> void:
+	Fighter.process_in_headless = true
+	var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}])
+	var host: Dictionary = m.me
+	host.drive = func(_e): return {}
+	var friend: Dictionary = m.entities.filter(func(e): return e.kind == "remote")[0]
+	friend.f.teleport(Vector3(6.0, 0.0, 6.0))
+	host.f.teleport(Vector3(-9.0, 0.0, -5.0))
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
+	await _steps(300)
+	t.check(_asleep(friend) and friend.f.draw_rest, "asleep: his drawing is let rest")
+	for i in 6:
+		await get_tree().process_frame
+	t.check(friend.f.draw_rest_ready, "and three frames on nothing of him is drawn")
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"mz": 1.0, "look": {"yaw": 0.0, "pitch": 0.0}}))
+	await _steps(3)
+	await get_tree().process_frame
+	t.check(not friend.f.draw_rest and not friend.f.draw_rest_ready, "a key held, he is drawn again at once")
+	Net.inputs.erase(77)
+	Fighter.process_in_headless = false
 	m.queue_free()

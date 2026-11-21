@@ -12,6 +12,7 @@ var last_us := 0
 var times := PackedInt32Array()
 var snap_us := 0
 var snap_n := 0
+var snap_bytes := 0   # what the rows come to on the wire (as the engine packs a value), for a guest
 
 func _env(k: String, d: String) -> String:
 	var v := OS.get_environment(k)
@@ -90,6 +91,7 @@ func _ready() -> void:
 	times.clear()
 	snap_us = 0
 	snap_n = 0
+	snap_bytes = 0
 	var t0 := Time.get_ticks_usec()
 	var steps := int(secs * 120.0)
 	var last_pos := {}
@@ -112,11 +114,15 @@ func _ready() -> void:
 					min_y = minf(min_y, pnow.y)
 		if snap and i % 2 == 1:
 			var a := Time.get_ticks_usec()
-			m.snapshot(false, 1)
-			if i % 6 == 1:
-				m.snapshot(false, 2)
+			var rows: Array = m.snapshot(false, 1)
+			var rows2: Array = m.snapshot(false, 2) if i % 6 == 1 else []
 			snap_us += Time.get_ticks_usec() - a
+			snap_bytes += var_to_bytes(rows).size() + var_to_bytes(rows2).size()
 			snap_n += 1
+			# (The rows are the frame's work, not the step's: the clocks of the step go on from where the rows were done.)
+			var spent := Time.get_ticks_usec() - a
+			last_us += spent
+			b_at += spent
 	var wall := float(Time.get_ticks_usec() - t0) / 1000.0
 	var s := Array(times)
 	s.sort()
@@ -127,6 +133,8 @@ func _ready() -> void:
 	print("LOBBY n=%d %s: a step %.2f ms (median %.2f, p99 %.2f, worst %.2f) -> the host keeps up %.0f/120 steps; snapshot rows %.2f ms a frame (%d frames)" % [
 		n_men, behavior, mean / 1000.0, s[s.size() / 2] / 1000.0, s[int(s.size() * 0.99)] / 1000.0, s[s.size() - 1] / 1000.0,
 		minf(120.0, 1000000.0 / maxf(1.0, mean)), snap_us / 1000.0 / maxf(1.0, snap_n), snap_n])
+	if snap:
+		print("   WIRE: the rows a guest is sent come to %.1f KB a second" % (snap_bytes / 1024.0 / secs))
 	print("   MONITOR: the engine counts %.2f ms a physics frame" % (mon / maxf(1.0, float(steps)) * 1000.0))
 	print("   SPLIT: the scripts' step %.2f ms, the engine's %.2f ms (a step in all %.2f ms of wall time with the rest)" % [a_us / 1000.0 / maxf(1.0, n_steps), b_us / 1000.0 / maxf(1.0, n_steps), wall / maxf(1.0, n_steps)])
 	var up_n := 0
