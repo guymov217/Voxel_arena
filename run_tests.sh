@@ -119,7 +119,7 @@ if python3 -c "import sys" >/dev/null 2>&1; then
 	fi
 	# The others ahead of the host's snapshots (Match._lead_for, Lead): the host's man walks to and fro in the yard, and the guest's picture
 	# of him is set against where he is one way of the line on, when a blow of the guest's would reach him. Without the lead the picture is
-	# 57 ms behind and 14 cm off while he walks, with it 4 ms behind and 6 cm off: it may be no more than 30 ms behind and 9 cm off.
+	# 57 ms behind and 14 cm off while he walks, with it about level and 5 cm off: it may be no more than 30 ms behind and 9 cm off.
 	if delay_run 70 4 NET_TGT=25 NET_TGT_ONLY=15 NET_LAG=15 && python3 tools/lat_tgt.py /tmp/va_netlat_host.log /tmp/va_netlat_guest.log --max-mean-cm 9 --max-shift-ms 30 > /tmp/va_nettgt.log 2>&1; then
 		echo "net (the others ahead, 15 ms each way): ok ($(grep 'blow landing' /tmp/va_nettgt.log | sed -e 's/.*picture is //'))"
 	else

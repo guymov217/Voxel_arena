@@ -903,12 +903,14 @@ view: the host sees a guest's blow start as it starts, a guest sees the host's a
 at 15 ms each way, 75 at 30), and a blow of his lands a trip after he made it: against a man walking at 2.5 m/s the picture is 14-18 cm
 off by then, against a charging beast more. `Lead` (DOM-free; `Match._lead_for`, in `apply_snapshot`) keeps the pace of each other
 fighter's torso from the rows of his snapshots, and every body of his (and what he holds) is drawn on from where the snapshot has it by
-that pace over the round trip and the snapshot's wait, 0.8 of it, along the sand, at most 30 cm, coming and going by easing (at most
+that pace over the round trip and the snapshot's wait, 0.9 of it, along the sand, at most 30 cm, coming and going by easing (at most
 2.5 m/s of change); not for a man who is down, rising or dead, a limb he lost, or the guest's own man (`MovePredictor` has him).
-Measured with the host's man walking to and fro (`NET_TGT=25 NET_TGT_ONLY=15`, `tools/lat_tgt.py`): the picture 57 -> 4 ms behind
-and 14 -> 6 cm off from where a blow lands at 15 ms each way, 75 -> -10 ms and 18 -> 6 cm at 30 ms each way (`run_tests.sh` "net (the
-others ahead)"). The price: a man who stops is drawn on past his stop, 8 cm on average (16 cm at 30 ms each way), and eased back in
-a tenth of a second. `Match.lead_on` switches it off. Not done: the hand and the weapon (a man's swing is shown late as it was, and a
+Measured with the host's man walking to and fro (`NET_TGT=25 NET_TGT_ONLY=15`, `tools/lat_tgt.py`): the picture 57 -> 0 ms behind
+and 14 -> 5 cm off from where a blow lands at 15 ms each way, 75 -> 0 ms and 18 -> 7 cm at 30 ms each way (`run_tests.sh` "net (the
+others ahead)"). The price: a man who stops is drawn on past his stop, 9 cm on average (14 cm at 30 ms each way), and eased back in
+a tenth of a second. The pace is measured from the rows' arrival times, which a line and the guest's own steps jitter: a short gap
+between two rows weighs less in it (else the jitter makes it 20-30% too fast), a gap of over 80 ms (a stall) is left out, and rows that
+come together after a stall do not make him run a whole stall's way (`tests/test_lead.gd`). `Match.lead_on` switches it off. Not done: the hand and the weapon (a man's swing is shown late as it was, and a
 guest's own weapon is the host's picture of it, 80-180 ms after his hand moved).
 
 What goes on the wire: each fighter's bodies in 14 bytes each (int16s, 2 mm), his state 8 times a

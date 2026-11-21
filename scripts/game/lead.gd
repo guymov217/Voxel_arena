@@ -7,7 +7,7 @@ extends RefCounted
 ## pace over `ahead` seconds, along the sand, by a share of it (GAIN) and no more than MAX, eased in and out. A man who is down, rising
 ## or dead is not walked on: nothing is added then.
 
-const GAIN := 0.8            # the share of the way to where the host will have him that he is drawn on
+const GAIN := 0.9            # the share of the way to where the host will have him that he is drawn on
 const MAX := 0.3             # m: the most that is added (a long way would show as a man in two places)
 const SLEW := 2.5            # m/s: how fast what is added may change (a struck man's pace jumps; his picture must not)
 const PACE_LO := 0.25        # m/s: below this he stands (rows of 2 mm steps and a frame's jitter are no walk)
@@ -15,6 +15,8 @@ const PACE_HI := 0.7         # m/s: from this the whole is added
 const EMA := 0.3             # the share of each row's pace that is taken into the pace kept
 const JUMP := 3.0            # m: a row this far from the last is a spawn or a throw across the sand, of which no pace is known
 const LATE := 0.25           # s: a row this long after the last tells nothing of his pace
+const SLOW := 0.08           # s: a row this long after the last (a stall, a packet lost) is no measure of his pace either: the next is measured from it
+const SURE := 0.0167         # s: a pace measured over less than this is taken in by that much less (a sixtieth of a second)
 
 var vel := Vector3.ZERO      # his pace along the sand (m/s)
 var cur := Vector3.ZERO      # what is added now (m)
@@ -37,12 +39,19 @@ func step(pos: Vector3, now: float, standing: bool, ahead: float) -> Vector3:
 		_p = p
 		_t = now
 		dt = 0.0
+	elif dt > SLOW:
+		_p = p   # (the pace stays as it was; the next row is measured from this one)
+		_t = now
+		dt = 0.0
 	elif dt >= 0.004:
-		vel = vel.lerp((p - _p) / dt, EMA)
+		vel = vel.lerp((p - _p) / dt, EMA * minf(1.0, dt / SURE))
 		_p = p
 		_t = now
 	else:
-		dt = 0.0   # (two rows in the same moment: the next one is measured from the first)
+		# Rows that come together (a line that stalled and let its packets go at once): his place is the last's, and the time is the same
+		# moment, so that the next row is measured from the last and not from the first of them, which would show him run a whole stall's way.
+		_p = p
+		dt = 0.0
 	var want := Vector3.ZERO
 	if standing:
 		want = vel * (maxf(0.0, ahead) * GAIN * smoothstep(PACE_LO, PACE_HI, vel.length()))

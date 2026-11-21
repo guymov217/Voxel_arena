@@ -111,6 +111,38 @@ func test_two_rows_in_one_moment() -> void:
 	l.step(Vector3(2.0 + 0.001, 1.0, 0.0), 1.0 + 0.0001, true, 0.08)
 	t.check((l.vel - v0).length() < 1e-6, "a row in the very moment of the last is not measured from it")
 
+## A line that stalls and lets its packets go at once: twelve rows in one moment, a stall's worth of his way between the first and the last. The row
+## after them is measured from the last of them, and he is not shown running on 12 times as fast for it.
+func test_a_burst_after_a_stall_does_not_throw_him_ahead() -> void:
+	var l := Lead.new()
+	var steady := _walk(l, 2.0, 1.0)
+	var worst := 0.0
+	var now := 1.0
+	var x := 2.0
+	# a stall of 200 ms: rows 1/60 s apart are sent all the while, and come together
+	for i in 12:
+		x += 2.0 * DT
+		var c := l.step(Vector3(x, 1.0, 0.0), now + 0.2, true, 0.08)
+		worst = maxf(worst, c.length())
+	now += 0.2
+	for i in 60:
+		now += DT
+		x += 2.0 * DT
+		var c2 := l.step(Vector3(x, 1.0, 0.0), now, true, 0.08)
+		worst = maxf(worst, c2.length())
+	t.check(worst < steady.length() * 1.25, "after the burst he is drawn on no more than %.1f cm, as he was before the stall (%.1f cm); the most was %.1f cm" % [steady.length() * 125.0, steady.length() * 100.0, worst * 100.0])
+	t.check(absf(l.cur.length() - steady.length()) < 0.01, "and he is back at it a second on (%.1f cm)" % (l.cur.length() * 100.0))
+
+## A row a long while after the last (the host's game hitched): no measure of his pace, which stays as it was.
+func test_a_late_row_leaves_the_pace_as_it_was() -> void:
+	var l := Lead.new()
+	_walk(l, 2.0, 1.0)
+	var v0 := l.vel
+	l.step(Vector3(2.0 + 2.0 * 0.12, 1.0, 0.0), 1.0 + 0.12, true, 0.08)   # (120 ms late: his way over it, 24 cm)
+	t.check((l.vel - v0).length() < 1e-6, "a row 120 ms after the last tells nothing: his pace is as it was")
+	var c := _walk(l, 2.0, 0.5, 0.08, true, 1.12, 2.0 + 2.0 * 0.12)
+	t.check(absf(c.x - 2.0 * 0.08 * Lead.GAIN) < 0.01, "and the rows that follow are measured from it (%.1f cm)" % (c.x * 100.0))
+
 ## The rows of a line with a jitter: the pace is kept from arrival times that are not the host's, and what is added must not tremble.
 func test_a_jittering_line_does_not_tremble() -> void:
 	var l := Lead.new()
