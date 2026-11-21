@@ -128,4 +128,15 @@ if timeout 700 "$G" --headless --path . -- --probe friend_probe --port "$NET_POR
 else
 	echo "net (friends): FAIL"; grep -E "FAIL|RESULT|FRIENDS|^LOG " /tmp/va_friends.log | tail -40; fail=1
 fi
+# The friends through every mode of a room (tests/friend_modes.gd): the circles of a team fight (the friends walk into them), forge and
+# fight, the endless arena's rewards, a campaign room's bout and gate votes; FRIENDS=full adds the tournament and the six single modes
+# (another four minutes).
+export NET_PORT=$((NET_PORT + 1))
+friend_args="--quick"
+[ "$FRIENDS" = full ] && friend_args=""
+if timeout 2400 "$G" --headless --path . -- --probe friend_modes --port "$NET_PORT" $friend_args > /tmp/va_friend_modes.log 2>&1; then
+	echo "net (friends, every mode): ok ($(grep -E '^FRIENDMODES' /tmp/va_friend_modes.log))"
+else
+	echo "net (friends, every mode): FAIL"; grep -E "FAIL|RESULT|FRIENDMODES|^LOG " /tmp/va_friend_modes.log | tail -40; fail=1
+fi
 exit $fail

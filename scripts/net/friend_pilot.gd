@@ -19,7 +19,7 @@ var persona_index := 0
 var address := "127.0.0.1"
 var room_port := 0
 
-var state := "idle"           # idle | walk | stall | brawl
+var state := "idle"           # idle | walk | stall | brawl | circle
 var target := Vector3.ZERO
 var stall := ""
 var victim = null
@@ -210,9 +210,19 @@ func _yard(dt: float, m) -> void:
 	if state == "stall":
 		state = "idle"   # (its screen closed by itself)
 		_act_t = randf_range(1.0, 3.0)
+	# The circles of a team fight are on the sand: he goes into one and stands in it until the host has begun.
+	var circles: bool = m.yard != null and m.yard.teams_on()
+	if circles and state != "circle":
+		_to_circle(m, here)
+	elif not circles and state == "circle":
+		state = "idle"
+		_act_t = randf_range(1.0, 3.0)
 	_act_t -= dt
 	_think_t += dt
 	match state:
+		"circle":
+			var d := Vector2(target.x - here.x, target.z - here.z)
+			m.probe_input = _hands(0.0, 1.0, atan2(d.x, d.y), d.length() > 9.0) if d.length() > 0.5 else _hands(0.0, 0.0, f.yaw)
 		"idle":
 			m.probe_input = _hands(0.0, 0.0, f.yaw)
 			if _act_t <= 0.0:
@@ -263,6 +273,24 @@ func _yard(dt: float, m) -> void:
 				victim = null
 				state = "idle"
 				_act_t = randf_range(3.0, 8.0)
+
+## Into a circle of the team fight: the one he is standing in already, else the one with fewer in it (the host's word of who stands
+## where is what a guest sees), else the one by his place in the table.
+func _to_circle(m, here: Vector3) -> void:
+	var side := TeamSetup.ring_at(here.x, here.z)
+	if side < 0:
+		var st: Dictionary = m.yard.team_seen if not m.yard.team_seen.is_empty() else (m.yard.team_setup.state() if m.yard.team_setup != null else {})
+		var t: Array = st.get("t", [[], []])
+		var a := (t[0] as Array).size() if t.size() > 1 else 0
+		var b := (t[1] as Array).size() if t.size() > 1 else 0
+		side = (0 if a < b else 1) if a != b else persona_index % 2
+	var c: Vector3 = TeamSetup.CENTRES[side]
+	target = c + Vector3(randf_range(-0.8, 0.8), 0.0, randf_range(-0.8, 0.8))
+	stall = ""
+	_ordered = false
+	victim = null
+	state = "circle"
+	_say("goes into the %s circle" % TeamSetup.team_name(side))
 
 ## What he does next: a quarrel with one of the others, a stall, the gate (a campaign room), or a stroll.
 func _choose(m) -> void:

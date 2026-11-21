@@ -817,6 +817,14 @@ builds them one at a time over the frames (`Match.guest_staging`: his own man at
 kept and said again, a spawn the host takes back before its turn never built), as the host does for a wave, and a player who
 joins is built over the frames on the host too.
 
+After the guest-delay work (a player's row every frame, his own man walked ahead: the section on the delay a guest feels), the same
+room on the same machine (`NET_MODE=ffa HOST_CPUS=0 GUEST_CPUS=1-3 sh tools/net_load.sh 7 25`, the old numbers from f8b1707 in
+brackets): 8 players and 3 bots, 11 fighters: a step 10.5 ms median (9.7), 21 ms at the 99th (22), 92 of 120 steps a second (95);
+489 KB/s up from the host, 70 a guest (462, 66); a snapshot 4073 B (3765); a guest 29-30% of a core (28-29%), snapshots 228 a
+second, 33-34 ms apart at the 95th (32-33). Teams, 8 players, 100 ms and 3% loss: 8.1 ms median (8.6), 114 steps a second (106), 483
+KB/s (459), a guest 25-26% of a core (24-25%). That is about 5-8% more on the wire, within the run-to-run spread of the host's
+steps, and a point more of a guest's CPU, for a guest's own man answering in 32 ms instead of 115.
+
 A room keeps time (`Net.steps_cap`, `Net._pace`). The engine runs at most 4 physics steps in a frame and lets the
 game fall behind the clock beyond that, so below 30 frames a second a game runs in slow motion; alone that stops a
 heavy moment snowballing, in a room it made the host's world, which every guest draws, run slow for all of them (two

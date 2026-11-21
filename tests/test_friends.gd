@@ -5,6 +5,27 @@ extends Node
 
 var t
 
+## A menu as far as a friend's hands reach it: what he looks at (the screen it shows, the rudis, the forge's state, the endless arena's
+## cards, the gate's) and what he presses (a vote, ready).
+class StubMenu extends Node:
+	var screen := "main"
+	var rudis_mine := ""
+	var ff := {}
+	var endless_layer = null
+	var gate_screen = null
+	var voted := []
+	var readied := []
+	func _rudis_vote(c: String) -> void:
+		voted.append(c)
+	func _ff_ready(on: bool) -> void:
+		readied.append(on)
+
+class StubGate extends RefCounted:
+	var cards := [10, 20, 30]
+	var picked := []
+	func _vote(i: int) -> void:
+		picked.append(i)
+
 ## The game a friend plays is this project's, run with no window; what makes it a friend comes after `--` (the game's own arguments).
 func test_a_friends_game_is_started_with_its_room_and_its_persona() -> void:
 	var a := Friends.args_for(2, 17950, "/the/project", true, 0, 0, "/tmp/f.log")
@@ -126,3 +147,53 @@ func test_a_friend_obeys_the_hosts_word() -> void:
 	pilot._on_message("friend_cmd", "stall:nowhere", 1)
 	t.eq(pilot.state, "walk", "a stall the yard has not is no new errand")
 	pilot.free()
+
+## What the room asks of a friend he answers, after a moment's thought and once: the rudis (share the glory or fight for it), the
+## forge's ready, a reward of the endless arena, a card at the gate.
+func test_a_friend_answers_what_the_room_asks() -> void:
+	var pilot := FriendPilot.new()
+	var menu := StubMenu.new()
+	pilot.setup(menu, 0, "127.0.0.1", 17950)
+	# Nothing asked: nothing answered.
+	pilot._prompts(10.0)
+	t.check(menu.voted.is_empty() and menu.readied.is_empty(), "nothing is asked, nothing is answered")
+	# The rudis.
+	menu.screen = "rudis"
+	pilot._prompts(0.1)
+	t.check(menu.voted.is_empty(), "he does not answer the rudis the moment it comes: he thinks")
+	pilot._prompts(10.0)
+	t.check(menu.voted.size() == 1 and (menu.voted[0] == "share" or menu.voted[0] == "fight"), "then he votes to share the glory or to fight for it", str(menu.voted))
+	menu.rudis_mine = "share"
+	pilot._prompts(10.0)
+	t.eq(menu.voted.size(), 1, "and once he has said it he does not say it again")
+	menu.screen = "main"
+	# The forge: ready, when the contest is on and he is not yet.
+	menu.ff = {"ready": false, "phase": "weapons"}
+	menu.screen = "ff_contest"
+	pilot._prompts(10.0)
+	t.eq(menu.readied, [true], "in Forge and Fight he says he is ready with what he has")
+	menu.ff = {"ready": true}
+	pilot._prompts(10.0)
+	t.eq(menu.readied.size(), 1, "once")
+	menu.ff = {}
+	menu.screen = "main"
+	# The endless arena's cards: one of them.
+	var layer := CanvasLayer.new()
+	var hits := []
+	for i in 3:
+		var b := Button.new()
+		b.pressed.connect(func(): hits.append(i))
+		layer.add_child(b)
+	menu.endless_layer = layer
+	pilot._prompts(10.0)
+	t.eq(hits.size(), 1, "of the endless arena's rewards he picks one")
+	menu.endless_layer = null
+	layer.free()
+	# The gate's cards: a vote for one.
+	var gate := StubGate.new()
+	menu.gate_screen = gate
+	pilot._prompts(10.0)
+	t.check(gate.picked.size() == 1 and int(gate.picked[0]) >= 0 and int(gate.picked[0]) < 3, "at the gate he votes for one of the cards", str(gate.picked))
+	menu.gate_screen = null
+	pilot.free()
+	menu.free()
