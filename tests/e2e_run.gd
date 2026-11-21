@@ -11,7 +11,7 @@ extends Node
 ## Exit code 0: everything checked passed and every game finished.
 
 const ROLES := ["host", "guest", "late"]
-const TITLES := {"mp": "The Multiplayer screen", "lobby": "The room's lobby", "yard": "The yard and the smith", "pause": "The pause menu's door to the room", "fights": "The Arena's fights", "ffa": "Free for all: rounds and bots", "teams": "Red vs Blue: the team circles", "tourney": "The tournament", "mode": "The other fights of the Arena", "late": "A friend who comes late", "endless": "The endless arena with friends", "kick": "Removing a friend", "close": "Closing the room", "campaign": "A campaign room: the co-op campaign", "join": "Joining", "cue": "Waiting for each other", "run": "The run itself"}
+const TITLES := {"mp": "The Multiplayer screen", "lobby": "The room's lobby", "yard": "The yard and the smith", "pause": "The pause menu's door to the room", "fights": "The Arena's fights", "ffa": "Free for all: rounds and bots", "teams": "Red vs Blue: the team circles", "tourney": "The tournament", "mode": "The other fights of the Arena", "forge": "Forge and Fight: the forges lit for everyone", "late": "A friend who comes late", "endless": "The endless arena with friends", "kick": "Removing a friend", "close": "Closing the room", "campaign": "A campaign room: the co-op campaign", "join": "Joining", "cue": "Waiting for each other", "run": "The run itself"}
 
 var visible_games := false
 var watch := ""
