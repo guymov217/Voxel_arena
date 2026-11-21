@@ -3409,6 +3409,109 @@ func _no_fling() -> void:
 	v_free = tv
 	w_free = torso.angular_velocity
 
+## The arms of a man who stands about with nothing to do (#298: the yard with eight men in it cost the host more than a step had, and
+## the arms are more than half of what a man costs a step, held at their guard as they are in a yard). While nothing orders a hand about
+## (no button of the hands, no press, the marks of the hands where they were) and the arms lie all but still on the man, the drive of an arm
+## with no weapon in its hand (a shield's, an empty one's) and the push of both arms out of the trunk and the head are seen to every other step
+## with the time of both (so the same drive and the same push, at half the rate): a guard that is held, held. The weapon arm's drive is seen
+## to every step: at half the rate it comes to rest a hand's breadth off, in another place. The step the hands are ordered, struck or taken
+## everything is seen to every step again, at once. Only where the Match says (`arm_lod_ok`: the yard, not a fight), a man standing.
+static var arm_lod_on := true     # (tests that hold two builds to the bit: off)
+var arm_lod_ok := false
+var arm_skips := 0                # (the steps the arms were not seen to: what a test counts)
+var _arm_quiet := 0               # steps in a row the arms have been at rest
+var _arm_wait_drive := {"R": 0.0, "L": 0.0}   # the time since each arm was driven
+var _arm_wait_keep := {"R": 0.0, "L": 0.0}    # and since it was kept out of the body
+var _arm_turn := 0                # (which of two steps this man's arms are seen to on: not all on the same)
+var _arm_marks := [0.0, 0.0, 0.0, 0.0]
+const ARM_QUIET_STEPS := 24       # a fifth of a second at rest before they are seen to every other step
+const ARM_QUIET_V := 1.0          # (m/s)^2: how fast a forearm may move on the trunk and be at rest still (a walk's swing is a third of it)
+const ARM_QUIET_W := 9.0          # (rad/s)^2: and a weapon turn on it
+const ARM_ORDERS := ["power", "thrust", "offThrust", "depthOn", "jabR", "jabL", "twist", "offTwist", "grab", "throw", "throwOther", "charging", "taunt", "shove", "emote", "grip", "swap", "limp", "kick", "wheel", "revive", "talk", "ability"]
+
+## Whether an input orders nothing of the hands: none of their buttons and one-shot presses, no item, no grab, no crosshair (walking
+## about, looking round, a jump or a crouch are no orders to them).
+static func orders_quiet(inp: Dictionary) -> bool:
+	for k in ARM_ORDERS:
+		var v = inp.get(k)
+		if v == null:
+			continue
+		if v is bool:
+			if v:
+				return false
+		elif v is float or v is int:
+			if v != 0:
+				return false
+		else:
+			return false
+	if int(inp.get("useItem", -1)) >= 0 or inp.get("grabHands") != null or inp.get("aimAt") is Vector3 or inp.get("faceAt") is Vector3:
+		return false
+	return true
+
+## Whether nothing orders the arms this step: the marks of the hands are where they were, nothing in the input orders them, and the man stands
+## unhurt with nothing in his hands to do (no throw, thrust, punch, grab or reach, no two hands on a haft, no held pot).
+func _arms_unordered(inp: Dictionary, live: bool) -> bool:
+	var mk := [0.0, 0.0, 0.0, 0.0]
+	var m = inp.get("main")
+	var o = inp.get("off")
+	if m is Dictionary:
+		mk[0] = float(m.get("x", 0.0))
+		mk[1] = float(m.get("y", 0.0))
+	if o is Dictionary:
+		mk[2] = float(o.get("x", 0.0))
+		mk[3] = float(o.get("y", 0.0))
+	var same := true
+	for i in 4:
+		if absf(float(mk[i]) - float(_arm_marks[i])) > 0.0005:
+			same = false
+	_arm_marks = mk
+	if not same or not live or limp or state != "stand" or two_handed or held_item != null or holding != null or grabbed_by != null:
+		return false
+	if stagger > 0.05 or time - jolt_t < 0.6 or push_t > 0.0 or S >= 1.3 or not orders_quiet(inp) or arms_busy():
+		return false
+	for sd in ["R", "L"]:
+		var a: Dictionary = arm[sd]
+		if a.upper.severed or a.fore.severed or a.upper.hanging or a.fore.hanging:
+			return false
+	return true
+
+## Whether a hand is in the middle of what it was sent to do: a throw, a thrust, a punch, a reach for a weapon or for a man.
+func arms_busy() -> bool:
+	for sd in ["R", "L"]:
+		if throwing[sd] or throw_pose[sd] or thrust_line[sd] != null or reach[sd] != null or jab_t[sd] > 0.0 or fist_home[sd] > 0.0:
+			return true
+	return false
+
+## Whether nothing of him is still running down or building up with the time, which `control` brings on a step at a time: his breath full, no wound
+## bleeding or stinging, nothing burning on him, no daze, drunkenness, net, bees, shove, kick or jump left, nothing thrown, reached for, lodged or
+## hanging. A man let sleep (Match._human_idle) is not seen to and keeps what he has as it is, so he is let sleep when that is what he is to keep.
+func at_ease() -> bool:
+	if state != "stand" or limp or dying > 0.0 or heart_t >= 0.0 or stagger > 0.0 or daze_t > 0.0 or pain > 0.001 or tilt_t > 0.0 or rise_t < 1.0:
+		return false
+	if push_t > 0.0 or shove_t > 0.0 or slow_timer > 0.0 or swarmed > 0.0 or net_timer > 0.0 or bee_timer > 0.0 or wine_timer > 0.0 or help_t > 0.0 or thrown_t > 0.0:
+		return false
+	if kick_timer > 0.0 or jump_t > 0.0 or throw_anim != null or stuck_load > 0.0 or concussion > float(mods.drunk) + 0.001 or eye_hurt > eye_floor + 0.0001:
+		return false
+	if stamina < breath_cap() - 0.3 or arms_busy() or lodged_side() != "":
+		return false
+	for p in parts:
+		if p.bleed > 0.0 or p.artery > 0.0 or p.flinch_t > 0.0 or p.hanging or not p.spots.is_empty() or (p.stump and p.stump_t < 12.0):
+			return false
+	return true
+
+## Whether the forearms and the weapons are all but still on the trunk (what a walk swings them by is well under it): checked the step they
+## would be let go by, which is then seen to however long they have been unordered.
+func _arms_still() -> bool:
+	var tv := torso.linear_velocity
+	var tw := torso.angular_velocity
+	for sd in ["R", "L"]:
+		if ((arm[sd].fore as VoxelPart).linear_velocity - tv).length_squared() > ARM_QUIET_V:
+			return false
+		var w = weapons[sd]
+		if w != null and (w.angular_velocity - tw).length_squared() > ARM_QUIET_W:
+			return false
+	return true
+
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
 	space = get_world_3d().direct_space_state
@@ -4264,8 +4367,26 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	_sculpt_memo.clear()
 	_limb_memo.clear()
 	_plate_memo = null
+	# Arms at rest: what is seen to every other step is the drive of an arm with no weapon in its hand (a shield's, an empty one's) and the push
+	# of each out of the trunk and the head (the weapon arm's drive finds another place to rest in at half the rate, a hand's breadth off: it
+	# is seen to every step). Each with the time since it was last seen to.
+	var rest := false
+	if arm_lod_on and arm_lod_ok:
+		_arm_quiet = _arm_quiet + 1 if _arms_unordered(inp, live) else 0
+		_arm_turn += 1
+		rest = _arm_quiet > ARM_QUIET_STEPS and (_arm_turn + (get_instance_id() & 1)) & 1 == 1 and _arms_still()
+		if rest:
+			arm_skips += 1
+	else:
+		_arm_quiet = 0
 	for side in [two_side, two_off()]:
-		_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt)
+		var weapon_arm: bool = weapons[side] != null and not weapons[side].is_shield
+		_arm_wait_drive[side] += dt
+		_arm_wait_keep[side] += dt
+		if not rest or weapon_arm:
+			var dd: float = _arm_wait_drive[side]
+			_arm_wait_drive[side] = 0.0
+			_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dd)
 		# The breath goes with the work of the swing while the button is down: how far the hand
 		# is sent across the pane and how sharply it is turned, more with a heavy weapon in it.
 		# Held still it costs little; whirled hard it winds him fast.
@@ -4285,9 +4406,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			hp_prev[side] = Vector2(float(hp_now2.get("x", 0.0)), float(hp_now2.get("y", 0.0)))
 		# Whatever the arm is doing (swinging, limp, hanging by a strip, on a corpse), it never
 		# passes into its own chest or head.
-		if not arm[side].upper.severed:
-			_keep_arm_out(side, dt)
-			_keep_elbow_low(side, dt)
+		if not rest:
+			var dk: float = _arm_wait_keep[side]
+			_arm_wait_keep[side] = 0.0
+			if not arm[side].upper.severed:
+				_keep_arm_out(side, dk)
+				_keep_elbow_low(side, dk)
 	_arm_phase = false
 
 	# A blade whirled hard winds him: the swing's own speed, the weapon turning against his

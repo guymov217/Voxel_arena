@@ -1260,8 +1260,13 @@ func _physics_process(dt: float) -> void:
 		if e.kind == "beast":
 			f.control(dt)
 		else:
+			# (The players, and a test's driven men; the yard's keepers are seen to by _stands_idle.)
+			var player_like: bool = e.kind != "npc" and (kind_ == "local" or kind_ == "remote" or kind_ == "drive")
+			if player_like and _human_idle(e, f, inp, dt):
+				continue
 			e.input = inp
 			inp = social.before(e, inp, dt)
+			f.arm_lod_ok = player_like and mode == "yard" and role != "guest"   # (the yard's men's arms at rest are seen to every other step: Fighter.arm_lod_ok)
 			f.control(dt, inp)
 	social.after(dt)
 	if modes:
@@ -1411,6 +1416,102 @@ func _stands_idle(e: Dictionary, f, dt: float) -> bool:
 	if e.idle_t < IDLE_AFTER:
 		return false
 	e.idle = true
+	for b in _idle_bodies(f):
+		b.can_sleep = true
+		b.sleeping = true
+		if b is VoxelPart:
+			b.stands_idle = true
+	return true
+
+func _wake_sleeper(e: Dictionary, f) -> void:
+	e.hidle = false
+	e.hidle_t = 0.0
+	for b in _idle_bodies(f):
+		b.can_sleep = false
+		b.sleeping = false
+		if b is VoxelPart:
+			b.stands_idle = false
+
+## The yard's men at a stall, away from the keys or left standing (#298: eight men cost the host more than a step has): one who stands where
+## he is, unhurt, nothing ordered of his keys and hands, his view held where it was, nobody who may strike him within HUMAN_NEAR and nothing
+## burning on him, for HUMAN_IDLE_AFTER, is let sleep as he stands (as the keepers are, _stands_idle) and is not driven at all until anything orders
+## him, comes near him or touches him: then he is at once the man he was (the step it happens in is his as ever: nothing waits on him). On the
+## host, as all of him is: a guest draws him as he is told.
+const HUMAN_NEAR := 2.5
+const HUMAN_IDLE_AFTER := 0.5           # (he sleeps sooner than a keeper: a word wakes him in the very step it comes)
+static var human_idle_on := true       # (tests that hold two builds to the bit: off)
+func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
+	if not human_idle_on or mode != "yard" or role == "guest" or not (f is Fighter):
+		return false
+	if not f.alive:
+		# (One killed asleep, by a blow or a rule: his parts are awake to fall, and he is looked after as the dead are.)
+		if e.get("hidle", false):
+			_wake_sleeper(e, f)
+		return false
+	# (What he is ordered, and whether his view and his hands are where they were.)
+	var look = inp.get("look")
+	var m = inp.get("main")
+	var o = inp.get("off")
+	var sig := [
+		float(look.get("yaw", 0.0)) if look is Dictionary else 0.0, float(look.get("pitch", 0.0)) if look is Dictionary else 0.0,
+		float(m.get("x", 0.0)) if m is Dictionary else 0.0, float(m.get("y", 0.0)) if m is Dictionary else 0.0,
+		float(o.get("x", 0.0)) if o is Dictionary else 0.0, float(o.get("y", 0.0)) if o is Dictionary else 0.0]
+	var was = e.get("hsig")
+	e.hsig = sig
+	var quiet: bool = was is Array and Fighter.orders_quiet(inp) and absf(float(inp.get("mx", 0.0))) < 0.05 and absf(float(inp.get("mz", 0.0))) < 0.05 \
+			and not inp.get("jump", false) and not inp.get("crouch", false) and not inp.get("sprint", false)
+	if quiet:
+		for i in 6:
+			if absf(float(sig[i]) - float((was as Array)[i])) > (0.002 if i < 2 else 0.0005):
+				quiet = false
+				break
+	var idle: bool = e.get("hidle", false)
+	var at: Vector3 = f.torso.global_position
+	var near := false
+	if quiet:
+		for h in entities:
+			if h != e and (h.kind == "local" or h.kind == "remote" or h.kind == "bot") and is_instance_valid(h.f) and h.f.alive:
+				var hp: Vector3 = h.f.torso.global_position
+				if Vector2(hp.x - at.x, hp.z - at.z).length_squared() < HUMAN_NEAR * HUMAN_NEAR:
+					near = true
+					break
+	if idle:
+		# (What the physics does not tell: a blow wakes the bodies it touches, but a poison's or a fire's harm, a hold, a fall are in what he has.)
+		var woken: bool = not quiet or near or f.state != "stand" or f.grabbed_by != null or f.blood != float(e.hblood) or f.pain != float(e.hpain) \
+				or f.stagger > 0.0 or f.jolt_t != float(e.hjolt) or f.stamina != float(e.hstam)
+		if not woken:
+			var hp_sum := 0.0
+			for p in f.parts:
+				if not p.severed:
+					if not p.sleeping or not p.spots.is_empty() or p.bleed > 0.0 or p.artery > 0.0:
+						woken = true
+						break
+					hp_sum += p.hp
+			woken = woken or hp_sum != float(e.hhp)
+		if not woken:
+			return true
+		_wake_sleeper(e, f)
+		return false
+	var still: bool = quiet and not near and f.state == "stand" and not f.limp and f.holding == null and f.grabbed_by == null and f.held_item == null and f.stagger < 0.05 \
+			and f.emote_t <= 0.0 and f.taunt_t <= 0.0 and f.taunt_pose <= 0.0 and f.torso.linear_velocity.length_squared() < 0.04 \
+			and not e.has("grab_try") and not e.has("throw_q")
+	e.hidle_t = float(e.get("hidle_t", 0.0)) + dt if still else 0.0
+	if float(e.hidle_t) < HUMAN_IDLE_AFTER:
+		return false
+	# (Once he has stood so a while, a look at all of him, not every step: is anything still running down or building up in him? Then not yet.)
+	if not f.at_ease():
+		e.hidle_t = 0.0
+		return false
+	var hp_now := 0.0
+	for p in f.parts:
+		if not p.severed:
+			hp_now += p.hp
+	e.hblood = f.blood
+	e.hpain = f.pain
+	e.hjolt = f.jolt_t
+	e.hstam = f.stamina
+	e.hhp = hp_now
+	e.hidle = true
 	for b in _idle_bodies(f):
 		b.can_sleep = true
 		b.sleeping = true

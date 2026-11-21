@@ -920,6 +920,55 @@ players and 8 fighters, about 7 Mbit/s for 8 players and 16 fighters. The host s
 fighter: about 1.5 ms of a physics step each on the test machine, so a full room with many
 enemies asks a strong CPU of the host.
 
+### The yard with a full room (#298)
+
+The host plays every man in the yard, at 120 steps a second, and a man costs a step about a millisecond (armoured and active; 0.7 bare):
+eight friends in the yard asked for more than the 8.3 ms a step has. F3 then says "keeps up 57/120", the world runs in slow motion for
+everybody, and a frame holds up to four steps (`Net.steps_cap`) so the picture drops to 14 frames a second. Two things are spared in the
+Ludus yard now, on the host only (a guest draws what he is told), and neither touches a fight, the campaign's bouts or the arena modes:
+
+- **A man who stands sleeps** (`Match._human_idle`; the yard's keepers have `_stands_idle`). A player's man (his own, a friend's) who has
+  had nothing ordered of him for half a second (no key, no button or press of the hands, the marks of his hands and his view where they were),
+  who stands on his feet with no man within 2.5 m, and in whom nothing is still running down or building up (`Fighter.at_ease`: his breath
+  full, nothing bleeding, burning or stinging, no daze, drunkenness, net, bees, shove, kick or jump, no throw or reach under way; looked
+  at once, after the half second, not every step) is put to sleep where he stands: his bodies sleep and `control` is not called. He is awake
+  in the very step a key, his view or a hand moves, a man comes within 2.5 m, a blow touches him, a hold takes him, or anything of what
+  he has changes without the physics saying so (his blood, pain, breath, hit points, a fire, a wound), and one killed asleep falls
+  (`tests/test_yard_rest.gd`).
+- **The arms of a man at rest** (`Fighter._arms_unordered`, `_arms_still`; the Match says `arm_lod_ok`). A man walking about with his hands
+  unordered for a fifth of a second (no button or press, the marks of the hands where they were, nothing thrown, thrust, grabbed or held),
+  whose forearms and weapon lie all but still on his trunk, has the drive of the arm with no weapon in it (a shield's, an empty one's) and
+  the push of both arms out of the trunk and the head seen to every other step, with the time of both. The weapon arm is driven every step
+  (at half the rate it came to rest a hand's breadth off). The step anything orders the arms or strikes them, all is seen to every step.
+  A guard held is held: hands within 1 cm and a blade's tip within 2 of where they lie at the full rate.
+
+`Match.human_idle_on` and `Fighter.arm_lod_on` switch the two off; off, the build plays the yard and the 40 fights of `tools/replay_check.sh`
+to the last bit as before (`sh tools/lobby_load.sh` prints a fingerprint of every body; the same one with both off as on the build before).
+`tools/lobby_load.sh [men] [idle|walk|brawl] [seconds]` puts N men in the yard on one physics thread and prints what a step costs;
+`tools/friends_load.sh [friends] [seconds]` does it with a real room: friends' games (FriendPilot) join the host's yard and wander it,
+and the host reports its scripts' steps, how many men sleep and how many arm turns were let rest (those games take the host's CPU, as
+they would not on a room of computers, and the friends do different things from run to run: a sanity check, not a figure).
+
+What a step costs with eight men in the yard (this machine, a 2.1 GHz Xeon core, release build, medians of three; off -> on):
+
+| the eight | before | after |
+|---|---|---|
+| standing | 8.20 ms | 1.18 ms |
+| walking about, armoured | 8.53 ms | 7.70 ms |
+| walking about, bare | 7.15 ms | 6.17 ms |
+| four walking about | 4.62 ms | 3.51 ms |
+| bots fighting (only the host's own idle man sleeps) | 11.28 ms | 9.81 ms |
+
+Seven friends in a real room: the host's scripts took 8.0 and 8.3 ms a step with both off and 7.8 and 3.5 with them on (1.3-1.4 of the
+eight men asleep on average, 4000-7000 arm turns let rest a run).
+
+What is not solved: men who fight, or walk about with their hands busy, cost what they cost: about a millisecond a step each, and eight of
+them are 9-11 ms here, more than the 8.3 a step has, so the host keeps up 88-100 of 120 steps. A frame must fit `120 x step + FPS x
+the frame's own work <= 1000 ms`; with a step of 9 ms and the frame's own work (F3: "frame without physics") 16 ms that is about 14 frames
+a second, what F3 showed in an eight-player room. F3's "physics" figure is the longest step of the last second, not the mean. The next
+things to spare are the arm drive of a man who fights (`_drive_arm`, `_keep_arm_out`, `_clear_body`, `_elbow_clear` are over half of
+`control`, which is 86% of a step: a native version, to the bit as `drive.cpp` is) and the frame's own work.
+
 ### Trying an online game on one machine
 
 No command line: put the Godot 4.7.2 exe in the game's folder and double-click
