@@ -1067,6 +1067,8 @@ What each way of sparing the step is worth, measured here where it can be and mo
   the step 9.3 ms median and 19.3 at the 99th; the host that does not draw keeps up 115, the step 8.2 and 15.8. A guest that does not draw takes 25% of a core. Only the drawing in the
   scripts is in that gap (11% of the steps); the engine's own drawing and the wait on the graphics card, the larger part on a real machine, are not, and they are what the process of its
   own would take off the steps.
+- (The model of the next bullet is the first one; `tools/loopsim.py` and docs/PERF_RESEARCH.md section 5 replace it with one that is checked against real-time runs and carries armour, the process of its
+  own and the governor; the armour findings, section 3 there, are the larger result: armour is +19% of a step and x2.3 of the men's drawing.)
 - A model of what holds 60 frames and all 120 steps a second with every fighter fighting: a step is 0.36 + 1.33 (N-1) ms (release build, this core), a frame's own work (0.075 N + g) ms with
   g = 4.5 ms (F3's "all the rest" in the example above, to be read off the real machine), both divided by k, the machine's core against this one (0.8 a weak laptop, 1.15 an average
   gamer's, 1.5 a good mid-range, 2.0 a 13600KF). Fighters held, for k = 0.8 / 1.15 / 1.5 / 2.0: as it is (two steps and a frame on one thread) 3.9 / 6.1 / 8.2 / 11.2; the ports of the pieces

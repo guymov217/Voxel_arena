@@ -32,6 +32,8 @@ func _ready() -> void:
 	var m := Match.new()
 	add_child(m)
 	var lo := {"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"] if _env("ARMOR", "1") != "0" else []}
+	if _env("ARMOR_IDS", "") != "":
+		lo["armor"] = [] if _env("ARMOR_IDS", "") == "none" else Array(_env("ARMOR_IDS", "").split(","))   # (just these pieces, e.g. "lorica": which one costs what)
 	m.setup({"mode": "yard", "headless": false, "seed": 7, "decrees": [], "hazards": [], "loadout": lo, "role": "host"})
 	m.me.drive = func(_e): return {}
 	if _env("NONPC", "0") == "1":
@@ -67,6 +69,7 @@ func _ready() -> void:
 	for i in int(_env("WARM", "360")):
 		await get_tree().process_frame
 	spans.clear()
+	# profile_funcs.py: clear
 	FpsMeter.prof_on = true   # (what F3 reads: the men's drawing and the match's, in microseconds)
 	FpsMeter.prof_men_us = 0
 	FpsMeter.prof_match_us = 0
@@ -87,4 +90,5 @@ func _ready() -> void:
 	print("FRAME n=%d %s: the scripts' frame %.2f ms (median %.2f, p99 %.2f, worst %.2f); the men's drawing %.2f ms, the match %.2f ms; %d of the men drawn at rest" % [
 		n_men, behavior, mean / 1000.0, s[s.size() / 2] / 1000.0, s[int(s.size() * 0.99)] / 1000.0, s[s.size() - 1] / 1000.0,
 		FpsMeter.prof_men_us / 1000.0 / float(frames), FpsMeter.prof_match_us / 1000.0 / float(frames), asleep])
+	# profile_funcs.py: print
 	get_tree().quit()

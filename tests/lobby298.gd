@@ -116,6 +116,7 @@ func _ready() -> void:
 	snap_n = 0
 	snap_bytes = 0
 	var t0 := Time.get_ticks_usec()
+	# profile_funcs.py: clear
 	var steps := int(secs * 120.0)
 	var last_pos := {}
 	var path := {}
@@ -192,4 +193,5 @@ func _ready() -> void:
 			if w:
 				ctx.update(Match.pack_parts([w]))
 	print("LOBBYHASH n=%d %s alive=%d %s" % [n_men, behavior, alive, ctx.finish().hex_encode()])
+	# profile_funcs.py: print
 	get_tree().quit()

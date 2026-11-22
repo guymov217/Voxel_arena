@@ -79,6 +79,7 @@ func _ready() -> void:
 	for k in 120:
 		await get_tree().physics_frame
 	var steps := int(SECONDS * 120.0)
+	# profile_funcs.py: clear
 	var gaps := []
 	var t_prev := Time.get_ticks_usec()
 	for k in steps:
@@ -93,6 +94,7 @@ func _ready() -> void:
 	var mean: float = sum / gaps.size()
 	var alive := m.entities.filter(func(e): return is_instance_valid(e.f) and e.f.alive).size()
 	print("MIX %-34s %2d on the sand (%2d alive at the end): a step %.2f ms (median %.2f, p99 %.2f, worst %.2f) -> keeps up %.0f/120" % [spec, m.entities.size(), alive, mean, gaps[gaps.size() / 2], gaps[int(gaps.size() * 0.99)], gaps[-1], minf(120.0, 1000.0 / mean)])
+	# profile_funcs.py: print
 	get_tree().quit(0)
 
 func _real_time(spec: String, m: Match) -> void:
