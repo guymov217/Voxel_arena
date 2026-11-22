@@ -1,7 +1,7 @@
 extends Node
 ## Network load test, host side (`-- --probe net_load_host`, with NET_GUESTS guests running
 ## `-- --probe net_load_guest`): a campaign bout (or, with NET_MODE=ffa|teams|pvp|..., that arena mode) with
-## every guest in it, run for NET_SECONDS, and each second what it costs the host: physics time per step,
+## every guest in it (NET_BOTS: how many bots beside them, as the host's fight screen sets; unset: the fight's usual), run for NET_SECONDS, and each second what it costs the host: physics time per step,
 ## what goes out on the wire, the size of a snapshot. Prints LOAD lines and a summary, and how long
 ## the steps took one after another (STEPS: the median, the 99th, the worst, and how many were over a
 ## frame at 60, at 30 and over a tenth of a second: a stall is a step that is long, not a mean that is high).
@@ -14,6 +14,8 @@ func _ready() -> void:
 	var secs := int(OS.get_environment("NET_SECONDS")) if OS.get_environment("NET_SECONDS") != "" else 20
 	var stage := int(OS.get_environment("NET_STAGE")) if OS.get_environment("NET_STAGE") != "" else 6
 	var mode := OS.get_environment("NET_MODE") if OS.get_environment("NET_MODE") != "" else "campaign"
+	if OS.get_environment("NET_FPS") != "":
+		Engine.max_fps = int(OS.get_environment("NET_FPS"))   # (a window's vsync: 60 frames a second at most)
 	print("HOST listen ", Net.host_enet(port))
 	Net.my_name = "Host"
 	var t0 := Time.get_ticks_msec()
@@ -27,7 +29,10 @@ func _ready() -> void:
 	m = Match.new()
 	add_child(m)
 	m.stage_always = OS.get_environment("NET_NOSTAGE") == ""   # (a host with a screen brings a wave in over the frames; NET_NOSTAGE=1 builds as before)
-	m.setup({"mode": mode, "stage": stage, "role": "host", "headless": true, "autopilot": true, "peers": peers, "seed": 9})
+	var opts := {"mode": mode, "stage": stage, "role": "host", "headless": true, "autopilot": true, "peers": peers, "seed": 9}
+	if OS.get_environment("NET_BOTS") != "":
+		opts["bots"] = int(OS.get_environment("NET_BOTS"))   # (without it the fight's usual bots come too: 3 in a free for all, past the eight the sand holds)
+	m.setup(opts)
 	var enet := (multiplayer.multiplayer_peer as ENetMultiplayerPeer).host
 	Net.stats_on = true
 	enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA)
@@ -36,10 +41,12 @@ func _ready() -> void:
 	var cpus := []
 	var rates := []
 	var gaps := []   # ms from one physics step to the next, over the whole run
+	var frame_rates := []   # frames a second, each second
 	var last_step := Time.get_ticks_usec()
 	for s in secs:
 		var w0 := Time.get_ticks_usec()
 		var c0 := cpu_seconds()
+		var fr0 := Engine.get_process_frames()
 		var ticks := 0
 		while Time.get_ticks_usec() - w0 < 1000000:
 			await get_tree().physics_frame
@@ -48,6 +55,7 @@ func _ready() -> void:
 			gaps.append((now_us - last_step) / 1000.0)
 			last_step = now_us
 		var wall := (Time.get_ticks_usec() - w0) / 1e6
+		frame_rates.append(float(Engine.get_process_frames() - fr0) / wall)
 		var cpu := (cpu_seconds() - c0) / wall * 100.0
 		var sent: float = enet.pop_statistic(ENetConnection.HOST_TOTAL_SENT_DATA) / 1024.0 / wall
 		var sb := var_to_bytes(m.snapshot()).size()
@@ -73,6 +81,7 @@ func _ready() -> void:
 		steps_total += r
 	print("HOST BYTES per step: ", ", ".join(by.slice(0, 10).map(func(k): return "%s %d" % [k, Net.stats[k] / maxf(1.0, steps_total)])))
 	print("HOST SUMMARY guests=%d entities=%d steps %.0f/s cpu %.0f%% of a core | sent avg %.0f KB/s, %.0f KB/s per guest | snapshot avg %d B" % [Net.peers.size(), m.entities.size(), _avg(rates), _avg(cpus), _avg(all_kb), _avg(all_kb) / maxf(1, Net.peers.size()), int(_avg(snap_b))])
+	print("HOST FRAMES %.0f a second on average (lowest second %.0f)" % [_avg(frame_rates), frame_rates.min() if not frame_rates.is_empty() else 0.0])
 	Net.send_all("bye", {})
 	await get_tree().create_timer(1.0).timeout
 	get_tree().quit(0)

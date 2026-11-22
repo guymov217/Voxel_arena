@@ -959,7 +959,7 @@ eight fighters at most (`FightOpts.MAX_FIGHTERS`: a room of eight has no bots, o
 `Match.human_idle_on` and `Fighter.arm_lod_on` switch the two off; off, the build plays the yard and the 40 fights of `tools/replay_check.sh`
 to the last bit as the build before them did (`sh tools/lobby_load.sh` prints a fingerprint of every body). Tools, each one physics thread and
 one step to a frame: `tools/lobby_load.sh [men] [idle|walk|brawl] [seconds]` puts N men in the yard and prints what a step costs;
-`tools/frame_load.sh` what the frame's scripts cost; `tools/wire_load.sh` what the host sends each guest; `tools/friends_load.sh [friends]`
+`tools/frame_load.sh` what the frame's scripts cost; `tools/wire_load.sh` what the host sends each guest; `tools/offline_load.sh` a fight of eight offline, to set against a room's; `tools/friends_load.sh [friends]`
 does it with a real room (friends' games join the host's yard and wander it; they take the host's CPU, as they would not on a room of
 computers, and do different things from run to run: a sanity check, not a figure); `tools/net_load.sh` with `HOST_CPUS=0 GUEST_CPUS=1-3` pins
 the host to a core of its own.
@@ -995,8 +995,12 @@ The frame's own scripts (`tools/frame_load.sh`: the men's drawing and the match'
 What is not solved: men who fight, or walk about, cost what they cost, about a millisecond a step each on this core
 (about half that on a gaming PC's core, the reckoning of this README above, not measured here): the sand's eight, walking, are 7.5 ms a step here and fighting 9.5, the
 latter more than the 8.3 a step has, so the host keeps up 101 of 120 steps (a lone man who stands is now 0.4 ms, so the climb from one man to eight is no
-smaller than it was, only lower). A room of eight friends who really fight each other, each in a game of his own and the host's on a core of its own
-(`tools/net_load.sh`), keeps up 71-81 of 120 before and 77-90 after (two runs each): the same.
+smaller than it was, only lower). A room of exactly eight fighting each other, each in a game of his own and the host's on a core of its own (`NET_BOTS=0
+HOST_CPUS=0 GUEST_CPUS=1-3 NET_MODE=ffa sh tools/net_load.sh 7`), takes 92-96% of that core and keeps up 117-118 of 120, before and after alike (two fighters
+take 25% of the core, four 60%: about a millisecond a fighter). The same eight offline, one man and seven bots (`tools/offline_load.sh`), keep up 112-119: the
+network's share is about a seventh of a frame (at 60 frames a second at most, on this core, the room's host gets 40-45 and the offline game 46-54, 26-33 in its
+worst second), and the slow motion and the dropped frames of a fight of eight are the same offline as in a room. With the fight's three usual bots beside the eight
+(the fight screen cannot ask for them: `FightOpts.MAX_FIGHTERS`) the room keeps up 75-90: the cap is worth its eight.
 A frame must fit `120 x step + FPS x the frame's own work <= 1000 ms`. F3's "physics" figure is the longest step of the last second, not
 the mean. What would spare them is a native version of the arm drive and the control (`_drive_arm`, `_keep_arm_out`, `_clear_body`,
 `_elbow_clear` are over half of `control`, which is 86% of a step: to the bit, as `drive.cpp` is), or the host's fighters on a computer of

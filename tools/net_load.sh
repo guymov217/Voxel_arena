@@ -4,6 +4,9 @@
 # share this machine's CPU, so the times are worse than over a real network, where each has its own.
 #   sh tools/net_load.sh [guests=7] [seconds=20] [stage=6]
 # NET_MODE=ffa|teams|hill|lastLimb|king|... plays that arena mode instead of the campaign (stage is then unused).
+# NET_BOTS=0 puts no bots beside the guests (a room of eight is then eight fighters, as the fight screen makes it: without NET_BOTS the fight's usual
+# three bots come too, 11 fighters in a room of eight, which the sand does not hold, FightOpts.MAX_FIGHTERS); NET_FPS=60 caps the host's frames a second
+# as a window's vsync does (the host prints the frames it really made).
 # HOST_CPUS=0 GUEST_CPUS=1-3 pins the host to its own core(s) and the guests to the others (taskset), so the
 # guests' work does not take the host's time: nearer to a real room, where every player has a computer.
 # NET_LAG=100 NET_LOSS=3 makes every guest's line poor (a pretend 100 ms and 3% loss, both ways).
