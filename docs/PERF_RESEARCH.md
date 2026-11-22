@@ -52,12 +52,35 @@ calls of 1-3 us each); the geometry itself, already in the C++ core, is the smal
 not worked out afresh each step) in place of those calls would take about 55-65 us a man and step off (6-8% of an armoured step, to the bit); the native functions taking that record
 in place of the dictionaries would add 10.
 
+*Tried* (scratch copy, not merged): the armour state kept across steps (`_armored`, `_outline`, the band: filled when a man's armour changes, `armor_changed()` bumped by
+`add_armor`, `set_armor_pieces` and the forge, instead of cleared every step) took `control` from 808.8 to 785.0 us a man and step (-2.9%, two runs each, armoured eight walking) with the same
+fingerprint of the fight to the bit. Checking the armour lists of the five parts by identity instead of a counter cost 23 us a step (the engine's `get_meta` is about 1.5 us a call) and
+ate all of it: the counter is the way. What is left of the 64 us after it is the call overhead of the same memos (33 calls of 1-3 us): handing the natives one per-arm record in place
+of the six calls would take about as much again (-45 to -50 us in all, 6%).
+
 **Building:** a first armoured man costs 750 ms of scripts, the next 364 (the shell layouts are cached): the hitch when a wave of armoured foes is brought in. Staged over the frames
 (#182) it is spread, not removed.
 
 What it would take to bring an armoured man to a bare man's price, in order of what it buys: the step's armour record (above, to the bit, 55-65 us a man and step), the frame's clip
 pass in the C++ core (60-100 us a man and frame, drawing only), fewer cube instances in the shell (the largest part of the card's extra, a change of how the armour is drawn), and the
 shell's multimeshes merged where nothing of them is knocked off.
+
+## 3b. The card's side: what the knobs save (software Vulkan, 8 armoured men standing, 320x180, `tools/render_load.sh`)
+
+| run | draw calls | primitives (all passes) | the software rasteriser's time |
+|---|---|---|---|
+| default (high) | 720 | 7.14 M | 5.0 s |
+| the same, bare | 610 (-15%) | 5.50 M (-23%) | 4.3 s (-14%) |
+| `SHADOWS=0` | 272 (-62%) | 2.92 M (-59%) | 4.3 s (-13%) |
+| `QUALITY=low` (the game's own low level) | 713 (-1%) | 7.35 M (+3%) | 3.9 s (-21%) |
+| `QUALITY=low SHADOWS=0 FOG=0` | 272 (-62%) | 2.92 M (-59%) | 3.3 s (-35%) |
+
+What is drawn is the men, nearly all of it (the arena alone with one man is 2.0 M primitives and 390 draw calls; a man is 0.54 M bare, 0.74 M in armour), and **the sun's shadow passes
+are 59% of the triangles**: every man's 15-24 thousand cube instances are drawn again in each of the shadow cascades. The game's `low` quality level (`Arena.apply_quality`) takes out the
+pixel work (SSAO, SSIL, fog, glow: the rasteriser's time falls a fifth) and leaves the geometry exactly as it was (+3% primitives: the shadow distance of 25 m takes in every fighter), so on a card
+that is held back by the triangles `low` does nothing. Drawing only, so free to change: fewer shadow cascades (or none) on `low`, a cheaper mesh for the men's shadow pass, shadows only from
+the men near the camera, fewer cube instances in the armour's shell. What the real card makes of any of it is F3's "graphics card" figure; the rasteriser's time here is not a card's. The
+engine's recording of the frame on the processor is 1.0-1.7 ms in every run (it does not grow with the draw calls).
 
 ## 4. The ways tried
 
@@ -70,6 +93,8 @@ shell's multimeshes merged where nothing of them is knocked off.
 | `control` in parallel | not possible to the bit: the same fight with the fighters seen to in the reverse order has another fingerprint (120 and 480 steps), also with the dice seeded afresh for every fighter every step: the fighters see one another's changes within a step. And the physics calls (impulses, rays) belong to the main thread | scratch loop over `Match.entities` |
 | The engine rebuilt with profile-guided optimisation | not testable here: the engine's source cannot be fetched from this machine (403 from the proxy); `clang` and `gcc` are here. Worth trying on a machine that can; to the bit as far as the scripts go, but the physics engine's floats may differ from the stock build's | |
 | The fighters in a process of their own | the picture on its own core at the vsync interval whatever the steps cost; the game runs slow only if the steps alone do not fit. A room of 8 free-for-all, host on core 0: the host that draws its men (scripts only) keeps up 102 of the 120 steps (42 frames, worst second 26), the host that does not 115 | `tools/net_load.sh`, `HOSTDRAW=1` scratch |
+| Shadow cascades / `low` quality (drawing only) | shadows are 59% of the triangles and `low` leaves them; changing it changes no fight | section 3b |
+| The armour state kept across steps (prototype) | -2.9% of `control` for an armoured man, to the bit (-5-6% with the per-arm record) | section 3 |
 | A load governor (shedding far men's work under overload) | changes far men's physics: not to the bit, outside this document's rule | #304 |
 
 ## 5. The model
@@ -80,8 +105,8 @@ shell's multimeshes merged where nothing of them is knocked off.
 |---|---|---|---|---|
 | no armour at all | 43 / 71% | 55 / 100% | 60 / 100% | 60 / 100% |
 | as it is, in armour | 33 / 55% | 28 / 93% | 57 / 100% | 60 / 100% |
-| armour fixes (step -6%, frame -0.7 ms) | 36 / 60% | 32 / 98% | 59 / 100% | 60 / 100% |
-| + the ports left (-8% more) | 38 / 63% | 42 / 100% | 60 / 100% | 60 / 100% |
+| armour fixes (step -5%, frame -0.7 ms) | 36 / 59% | 31 / 97% | 59 / 100% | 60 / 100% |
+| + the ports left (-8% more) | 38 / 63% | 40 / 100% | 60 / 100% | 60 / 100% |
 | all of `control` in C++ (-40%) + armour frame fix | 31 / 98% | 60 / 100% | 60 / 100% | 60 / 100% |
 | the fighters in a process of their own | 60 / 77% | 60 / 100% | 60 / 100% | 60 / 100% |
 | own process + all of `control` in C++ | 60 / 100% | 60 / 100% | 60 / 100% | 60 / 100% |
@@ -92,8 +117,8 @@ computer to 60 with eight armoured men.
 
 ## 6. What to do, in order
 
-1. The armour's frame clip pass and the step's armour record (section 3): the cheapest cuts that are not a rewrite, aimed at the thing the player sees (armoured fights); to the bit
-   for the step, drawing only for the frame.
+1. The armour's frame clip pass and the step's armour record (section 3; the record is measured, -3% now and -5-6% with the per-arm record, to the bit): the cheapest cuts that are not a
+   rewrite, aimed at the thing the player sees (armoured fights). With them, the card's side of armour and of every man (section 3b: shadows are 59% of the triangles, and `low` does not touch them).
 2. A real reading from a real machine before anything larger: `tools\host_bench.bat` and F3 ("physics", "frame without physics", "drawing", "graphics card") in a full room, on the
    owner's computer and on an average one. They say whether a computer is held back by the steps (then 3 and 4), by the processor's drawing, or by the card (then the quality level,
    the resolution scale and fewer triangles: what `tests/render298.gd` counts).

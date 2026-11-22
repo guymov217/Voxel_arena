@@ -103,11 +103,11 @@ def run(n, k, step_mult=1.0, frame_cut=0.0, decoupled=False, armoured=True, seed
 WAYS = [
     ("no armour at all (the price of armour: this row against the next)", dict(armoured=False)),
     ("as it is, in armour", dict()),
-    ("armour fixes: the step's keep-out in a pack (-6% step), the frame's clipping native (-0.7 ms)", dict(step_mult=0.94, frame_cut=0.7)),
-    ("armour fixes + the ports of the pieces left (-8% step more)", dict(step_mult=0.94 * 0.92, frame_cut=0.7)),
+    ("armour fixes: the armour state kept across steps (-5% step), the frame's clipping native (-0.7 ms)", dict(step_mult=0.95, frame_cut=0.7)),
+    ("armour fixes + the ports of the pieces left (-8% step more)", dict(step_mult=0.95 * 0.92, frame_cut=0.7)),
     ("all of control in C++ (-40% step) + the armour frame fix", dict(step_mult=0.6, frame_cut=0.7)),
     ("the fighters in a process of their own", dict(decoupled=True)),
-    ("own process + the armour fixes", dict(decoupled=True, step_mult=0.94, frame_cut=0.7)),
+    ("own process + the armour fixes", dict(decoupled=True, step_mult=0.95, frame_cut=0.7)),
     ("own process + all of control in C++", dict(decoupled=True, step_mult=0.6, frame_cut=0.7)),
 ]
 
