@@ -53,11 +53,14 @@ func _on(type: String, data, _from: int) -> void:
 			if m: m.guest_spawn(data)
 			_took("spawn", t_us)
 		"snap":
-			snaps += 1
+			# (The rows of one snapshot come in messages in the same moment, one fighter or two to a message: a snapshot is
+			# the first message after a pause of 6 ms, as Net counts them.)
 			var now := Time.get_ticks_msec()
-			if snaps > 40:
-				gaps.append(now - last_snap)
-				worst_gap = maxi(worst_gap, now - last_snap)
+			if now - last_snap > 6:
+				snaps += 1
+				if snaps > 40:
+					gaps.append(now - last_snap)
+					worst_gap = maxi(worst_gap, now - last_snap)
 			last_snap = now
 			var t_us := Time.get_ticks_usec()
 			if m: m.apply_snapshot(data)
@@ -77,7 +80,7 @@ func _on(type: String, data, _from: int) -> void:
 				parts.append("%s n=%d total %.0f ms worst %.1f ms" % [k, took[k][0], took[k][1], took[k][2]])
 			if not step_gaps.is_empty():
 				print("GUEST STEPS %s median %.1f ms, p99 %.1f ms, worst %.1f ms, over 33 ms: %d, over 100 ms: %d | took in: %s" % [Net.my_name, step_gaps[step_gaps.size() / 2], step_gaps[int(step_gaps.size() * 0.99)], step_gaps[-1], step_gaps.filter(func(g): return g > 33.3).size(), step_gaps.filter(func(g): return g > 100.0).size(), "; ".join(parts)])
-			print("GUEST SUMMARY %s snapshot msgs %.0f/s gap p95 %d ms worst %d ms | received %.0f KB/s | cpu %.0f%% of a core" % [Net.my_name, snaps / maxf(1.0, secs), gaps[int(gaps.size() * 0.95)] if gaps.size() else -1, worst_gap, got / maxf(1.0, secs), cpu])
+			print("GUEST SUMMARY %s snapshots %.0f/s gap p95 %d ms worst %d ms | received %.0f KB/s | cpu %.0f%% of a core" % [Net.my_name, snaps / maxf(1.0, secs), gaps[int(gaps.size() * 0.95)] if gaps.size() else -1, worst_gap, got / maxf(1.0, secs), cpu])
 			get_tree().quit(0)
 
 static func _avg(a: Array) -> float:

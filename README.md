@@ -1023,9 +1023,55 @@ What the room itself costs the host on the network side (`tests/net_load_host.gd
 `NET_BOTS=0`, this core, the timers cost a little): about 0.9 ms a step, a ninth of the 8.3 there is. Sending 0.39 ms (an RPC to every guest costs about 36 us and 11 us
 more for each guest, and 2.7 of them go out a step: a fighter's row to a message), reading the line and handing the messages on 0.43 (the guests' hands, about 34 us
 a message in the script), packing the rows 0.07. With three guests it was 0.54 ms, so each guest is about 90 us of every step. On the wire it is 79-83 KB/s to each
-guest in a fight of eight (580 KB/s up from the host, 4.6 Mbit/s). None of it touches the game, so what would spare it is free of the bit-for-bit rule: two or three
-fighters to a message (one packet; a third of the RPCs, about 2% of the step), the rows as raw bytes (`send_bytes`) and not RPCs (about 4%), and a row sent as what
-changed since the last (a third less on the wire). Not done.
+guest in a fight of eight (580 KB/s up from the host, 4.6 Mbit/s). None of it touches the game, so what would spare it is free of the bit-for-bit rule, and
+there is little to be had. Two fighters to a message (a row is 272 bytes, 376-420 with its status: a pair 816 at most, one packet) was built and timed with seven
+real guests, one against two to a message: the messages a step went from 2.1-2.7 to 1.1-1.3, and the time in the sends from 275 and 320 us to 265 and 295, 10-25 us of
+the 8333 (0.2%, inside the spread from run to run). What a send costs goes with the guests and the bytes, not the messages (ENet already puts the messages of one step in
+one datagram). Not kept. ENet's range coder is the larger part of it: with it off (a scratch build) the sends fell from 306 and 332 us to 122 and 127 (2.2-2.5% of a step)
+and the wire grew by a third (82 to 110 KB/s to each guest, 4.6 to 6.2 Mbit/s up from the host): not worth it for a host with a modest line. A row sent as what changed
+since the last would put a third less on the wire and spare the host nothing.
+
+### The same tests again, before and after (#298)
+
+This core (a 2.1 GHz Xeon that runs at about 2.85 GHz, no graphics card, one core to a game), release build, three builds: before the work (`e1a3a8a`), the work as pushed
+before the C++ arms (`a0fb7e7`) and with them (`0811ba5`). What a step costs with armoured men in the yard (`tools/lobby_load.sh`, medians of two runs) and, in
+brackets, how many of the 120 steps a second the host keeps up:
+
+| men in the yard | before | pushed | now |
+|---|---|---|---|
+| 1 standing | 1.58 ms | 0.45 | 0.55 |
+| 8 standing | 8.63 (116) | 1.10 | 1.02 (120) |
+| 8 walking about | 8.54 (117) | 7.50 (120) | 7.04 (120) |
+| 4 fighting | 5.54 | 4.44 | 4.43 |
+| 8 fighting | 10.96 (91) | 9.61 (104) | 8.96 (111) |
+
+A room of eight players, the host on a core of its own and seven guests on the other three (`NET_MODE=ffa HOST_CPUS=0 GUEST_CPUS=1-3 NET_FPS=60 sh tools/net_load.sh 7 20`),
+as the game made it before the sand held eight (the fight's three bots came too: 11 fighters, `NET_BOTS` unset) and as it makes it now (8, `NET_BOTS=0`), two runs each:
+the host kept up 84 of 120 steps and drew 20 frames a second, now 116 and 41; the longest step was 96 ms, now 22; the guests' wait between two snapshots, 95th 48 ms and
+longest 231, is now 34 and 72.
+
+The same eight fighters, before and now, come out alike. The first eight seconds of a fight of eight offline on one core (`CPUS=0 tools/offline_load.sh 8 8 60`, four
+runs): 113 steps a second and 38 frames before, 113 and 38 now; a room of eight (three runs of twelve seconds): 109 and 31, now 107 and 29; the worst second 26 frames
+offline and 16-19 in the room, in all three builds. What was spared is the men who stand and walk about and the arms of armoured men; the bots of these fights wear little and
+are never at rest. A room with a poor line (100 ms and 3% lost each way, one run) came out the same in the three: 108-116 steps a second, the guests' snapshots 50-52 a
+second, 95th gap 33-35 ms, longest 71-89.
+
+Who is on the sand (`tools/mix_load.sh`, `tests/mix298.gd`; each run has the host's own man standing apart, one more than it says). The cap of eight
+(`FightOpts.MAX_FIGHTERS`) is on an Arena fight's bots; a campaign room (four at most) meets at most four foes with four players (the campaign's data), eight on the sand; and
+the endless arena's party waves are the one place past it: a wave is a foe for each friend beyond the first, up to eight (`Endless.MOST_FOES`), so a room of eight meets
+eight, sixteen fighters.
+
+| on the sand | a step | the host keeps up |
+|---|---|---|
+| 8 bots | 7.0 ms | 120 of 120 |
+| 4 players and 4 of the campaign's armoured men (a campaign room at most) | 9.6 | 105 |
+| 4 friends and 7 foes (an endless wave, later) | 13.8 | 72 |
+| 8 friends and a boss wave (a great foe and 4 men) | 17.1 | 59 |
+| 8 friends and 8 foes (an endless wave at most) | 20.3 | 49 |
+| 8 friends, 5 foes and 3 wolves | 20.7 | 48 |
+
+A beast costs a man's step and 0.6-1.4 ms more (wolf +0.6, lion +1.1, hydra +1.4, dragon +0.8, a great man +0.75). `tools/host_bench.bat` (double-click; it finds Godot in the
+game's folder and keeps its answer in `host_check.txt`) plays fights of 2, 4, 6 and 8 and says whether a computer hosts a full room.
 
 ### Trying an online game on one machine
 
