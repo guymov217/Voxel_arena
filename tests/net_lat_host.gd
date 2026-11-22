@@ -8,6 +8,10 @@ var m: Match
 var _tgt_on := false
 
 func _ready() -> void:
+	# NET_FAIR: the yard stands in for a fight of people against each other, and in a fight no man is let sleep (Match._human_idle is the yard's own):
+	# what is measured is the hold of the host's hands and the road of the guest's, nothing else.
+	if OS.get_environment("NET_FAIR") != "":
+		Match.human_idle_on = false
 	Engine.max_fps = int(OS.get_environment("NET_FPS")) if OS.get_environment("NET_FPS") != "" else 60
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17781
 	var secs := int(OS.get_environment("NET_SECONDS")) if OS.get_environment("NET_SECONDS") != "" else 90

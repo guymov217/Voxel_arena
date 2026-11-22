@@ -3512,6 +3512,24 @@ func _arms_still() -> bool:
 			return false
 	return true
 
+## Whether the forearms and the weapons have come to rest on the trunk, as a man's do who has stood a while (#298): a man put to sleep (Match._human_idle) is
+## held as he was caught, and his bodies are woken still: with an arm yet going back to its place (a third of a metre a second is what it still moves at half a
+## second after a swing was let go) he would be woken somewhere a man awake never is, and answer the first order of his hands a step late. So he is let sleep
+## once they are at rest. (A man whose arm is off, or who holds nothing, has none to wait for.)
+const SLEEP_V := 0.04        # (m/s)^2: a forearm or a weapon on the trunk at 0.2 m/s or less
+const SLEEP_W := 1.0         # (rad/s)^2: and a weapon turning on it at 1 rad/s or less
+func arms_settled() -> bool:
+	var tv := torso.linear_velocity
+	var tw := torso.angular_velocity
+	for sd in ["R", "L"]:
+		var fo: VoxelPart = arm[sd].fore
+		if not fo.severed and (fo.linear_velocity - tv).length_squared() > SLEEP_V:
+			return false
+		var w = weapons[sd]
+		if w != null and ((w.linear_velocity - tv).length_squared() > SLEEP_V or (w.angular_velocity - tw).length_squared() > SLEEP_W):
+			return false
+	return true
+
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
 	space = get_world_3d().direct_space_state

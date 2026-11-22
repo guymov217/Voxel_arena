@@ -1476,7 +1476,9 @@ func _human_near(e: Dictionary, at: Vector3) -> bool:
 	e.hnear_tick = tick
 	var near := false
 	for h in entities:
-		if h != e and (h.kind == "local" or h.kind == "remote" or h.kind == "bot") and is_instance_valid(h.f) and h.f.alive:
+		# (A neighbour who stands quiet as he is, nothing ordered of him, is no man who may strike him: two of them side by side let each other sleep.
+		# The step either is ordered anything he is no such man, and the other is looked at again within a few steps, long before a blow could come.)
+		if h != e and (h.kind == "local" or h.kind == "remote" or h.kind == "bot") and not h.get("hcalm", false) and is_instance_valid(h.f) and h.f.alive:
 			var hp: Vector3 = h.f.torso.global_position
 			if Vector2(hp.x - at.x, hp.z - at.z).length_squared() < HUMAN_NEAR * HUMAN_NEAR:
 				near = true
@@ -1510,6 +1512,7 @@ func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
 				quiet = false
 				break
 	var idle: bool = e.get("hidle", false)
+	e.hcalm = quiet and f.state == "stand" and not f.limp and f.stagger < 0.05 and f.torso.linear_velocity.length_squared() < 0.04
 	var near: bool = _human_near(e, f.torso.global_position) if quiet else false
 	if idle:
 		# (A blow or a man walked into wakes the bodies, and they tell it (`hwake`). What the physics does not tell, a poison's or a fire's harm,
@@ -1541,6 +1544,10 @@ func _human_idle(e: Dictionary, f, inp: Dictionary, dt: float) -> bool:
 	# (Once he has stood so a while, a look at all of him, not every step: is anything still running down or building up in him? Then not yet.)
 	if not f.at_ease():
 		e.hidle_t = 0.0
+		return false
+	# (And his arms at rest: asleep with one still going back to its place, he would be woken where no man awake ever is: Fighter.arms_settled. He waits
+	# for them, the time he has stood still kept, and is let sleep the step they are.)
+	if not f.arms_settled():
 		return false
 	var hp_now := 0.0
 	for p in f.parts:

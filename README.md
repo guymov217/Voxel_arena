@@ -337,8 +337,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the right stick looks, and a held trigger turns the right stick into that hand. F11 is full
   screen, F12 a screenshot, F3 the frame rate in the corner (`scripts/ui/fps_meter.gd`: frames
   a second, the mean and the longest frame, the longest physics step and frame without physics,
-  and the drawing and the graphics card's time in ms, and whether the C++ core is loaded: without it a
-  step costs a fifth more; in a room the connection's meter with it).
+  and the drawing and the graphics card's time in ms, the physics steps the game really takes a second of
+  the 120 it is meant to, and whether the C++ core is loaded: without it a step costs a fifth more; a third
+  line says where the frame goes: the men's drawing, the match's own work, all the rest, and the draw calls;
+  in a room the connection's meter with it).
   The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
   pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
   the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a
@@ -923,19 +925,30 @@ enemies asks a strong CPU of the host.
 
 ### The yard with a full room (#298)
 
-The host plays every man in the yard, at 120 steps a second, and a man costs a step about a millisecond (armoured and active; 0.7 bare):
-eight friends in the yard asked for more than the 8.3 ms a step has. F3 then says "keeps up 57/120", the world runs in slow motion for
-everybody, and a frame holds up to four steps (`Net.steps_cap`) so the picture drops to 14 frames a second. Two things are spared in the
-Ludus yard now, on the host only (a guest draws what he is told), and neither touches a fight, the campaign's bouts or the arena modes:
+The host plays every man in the yard, at 120 steps a second, and a man costs a step about a millisecond (armoured and walking; 0.7 bare): eight
+friends standing in the yard asked for more than the 8.3 ms a step has. F3 then said "keeps up 57/120", the world ran in slow motion for
+everybody, and a frame held up to four steps (`Net.steps_cap`) so the picture dropped to 14 frames a second. What is spared in the Ludus yard
+now is on the host only (a guest draws what he is told) and touches no fight, no bout of the campaign and no arena mode; the sand holds
+eight fighters at most (`FightOpts.MAX_FIGHTERS`: a room of eight has no bots, one man has seven):
 
 - **A man who stands sleeps** (`Match._human_idle`; the yard's keepers have `_stands_idle`). A player's man (his own, a friend's) who has
   had nothing ordered of him for half a second (no key, no button or press of the hands, the marks of his hands and his view where they were),
-  who stands on his feet with no man within 2.5 m, and in whom nothing is still running down or building up (`Fighter.at_ease`: his breath
-  full, nothing bleeding, burning or stinging, no daze, drunkenness, net, bees, shove, kick or jump, no throw or reach under way; looked
-  at once, after the half second, not every step) is put to sleep where he stands: his bodies sleep and `control` is not called. He is awake
-  in the very step a key, his view or a hand moves, a man comes within 2.5 m, a blow touches him, a hold takes him, or anything of what
-  he has changes without the physics saying so (his blood, pain, breath, hit points, a fire, a wound), and one killed asleep falls
-  (`tests/test_yard_rest.gd`).
+  who stands on his feet with no man within 2.5 m who is not himself at rest (men who stand quiet side by side let one another sleep: a ring
+  of friends stood still round the gate all sleep, and the step one of them is ordered anything the others are awake within a few steps, long
+  before a blow could come), and in whom nothing is still running down or building up (`Fighter.at_ease`: his breath
+  full, nothing bleeding, burning or stinging, no daze, drunkenness, net, bees, shove, kick or jump, no throw or reach under way) and whose
+  forearms and weapons have come to rest on his trunk (`Fighter.arms_settled`: one put to sleep with an arm still going back to its place is
+  held where no man awake ever is, and, woken, answered the first order of his hands a step, 8 ms, later) is put to
+  sleep where he stands: his bodies sleep and `control` is not called. He is awake in the very step a key, his view or a hand moves, a man
+  comes within 2.5 m, a blow touches him, a hold takes him, or anything of what he has changes without the physics saying so, and one
+  killed asleep falls. The engine's own word wakes him (`sleeping_state_changed` of his bodies: a blow, a man walked into: `hwake`); what the
+  physics does not tell (his blood, pain, breath, hit points, a fire, a hold, a fall) is looked at every eighth step, who is near him every
+  fourth. A blow on a sleeper moves him as it moves a man awake, and so does an order of his hands: woken by one, his weapon is 3 cm on in the
+  steps a man awake's is, and within 0.8 cm of its way at the fourth (`tests/test_yard_rest.gd`).
+- **A sleeper costs the frame and the wire nothing either.** From three frames after he lay down nothing of him is drawn by the scripts
+  (`Fighter.draw_rest`: his parts' and his weapons' `_process` return at once; the engine still shows him where he lies; his trunk is drawn
+  on for his breath), and his row goes out 8 a second instead of 40 and is not packed in between (`Match.SLEEP_EVERY`). Awake men's rows are
+  as they were.
 - **The arms of a man at rest** (`Fighter._arms_unordered`, `_arms_still`; the Match says `arm_lod_ok`). A man walking about with his hands
   unordered for a fifth of a second (no button or press, the marks of the hands where they were, nothing thrown, thrust, grabbed or held),
   whose forearms and weapon lie all but still on his trunk, has the drive of the arm with no weapon in it (a shield's, an empty one's) and
@@ -944,31 +957,50 @@ Ludus yard now, on the host only (a guest draws what he is told), and neither to
   A guard held is held: hands within 1 cm and a blade's tip within 2 of where they lie at the full rate.
 
 `Match.human_idle_on` and `Fighter.arm_lod_on` switch the two off; off, the build plays the yard and the 40 fights of `tools/replay_check.sh`
-to the last bit as before (`sh tools/lobby_load.sh` prints a fingerprint of every body; the same one with both off as on the build before).
-`tools/lobby_load.sh [men] [idle|walk|brawl] [seconds]` puts N men in the yard on one physics thread and prints what a step costs;
-`tools/friends_load.sh [friends] [seconds]` does it with a real room: friends' games (FriendPilot) join the host's yard and wander it,
-and the host reports its scripts' steps, how many men sleep and how many arm turns were let rest (those games take the host's CPU, as
-they would not on a room of computers, and the friends do different things from run to run: a sanity check, not a figure).
+to the last bit as the build before them did (`sh tools/lobby_load.sh` prints a fingerprint of every body). Tools, each one physics thread and
+one step to a frame: `tools/lobby_load.sh [men] [idle|walk|brawl] [seconds]` puts N men in the yard and prints what a step costs;
+`tools/frame_load.sh` what the frame's scripts cost; `tools/wire_load.sh` what the host sends each guest; `tools/friends_load.sh [friends]`
+does it with a real room (friends' games join the host's yard and wander it; they take the host's CPU, as they would not on a room of
+computers, and do different things from run to run: a sanity check, not a figure); `tools/net_load.sh` with `HOST_CPUS=0 GUEST_CPUS=1-3` pins
+the host to a core of its own.
 
-What a step costs with eight men in the yard (this machine, a 2.1 GHz Xeon core, release build, medians of three; off -> on):
+F3 shows where the time goes: the steps the game really takes a second ("118 of 120": under it the host cannot keep up and everything is
+slow), and a third line, "in the frame: the men 1.5 ms · the match 0.4 ms · all the rest 5.1 ms · 600 draw calls" (the men's drawing, the
+match's own work, the rest of the frame without physics, and what the graphics card is asked). The clock is read only while the meter is shown.
 
-| the eight | before | after |
-|---|---|---|
-| standing | 8.20 ms | 1.18 ms |
-| walking about, armoured | 8.53 ms | 7.70 ms |
-| walking about, bare | 7.15 ms | 6.17 ms |
-| four walking about | 4.62 ms | 3.51 ms |
-| bots fighting (only the host's own idle man sleeps) | 11.28 ms | 9.81 ms |
+What a step costs with N men in the yard (this machine, a 2.1 GHz Xeon core, release build, one physics thread, medians of three; a step's
+budget is 8.33 ms, a 120th of a second; "before" is the build before this work, to the commit):
 
-Seven friends in a real room: the host's scripts took 8.0 and 8.3 ms a step with both off and 7.8 and 3.5 with them on (1.3-1.4 of the
-eight men asleep on average, 4000-7000 arm turns let rest a run).
+| the host's step, ms (the sand's 8 men: the host's and 7 more) | before, 1 man | before, 8 | after, 1 | after, 8 |
+|---|---|---|---|---|
+| all standing | 1.5 | 7.7 | 0.4 | 0.9 |
+| all standing close together (a ring, 1.8 m between neighbours) | 1.5 | 7.8 | 0.4 | 1.0 |
+| friends as in a room (each stands 1-3 s, walks about 1-3 s, and so on) | 1.5 | 8.3 | 0.4 | 6.9 |
+| all walking about | 1.6 | 8.3 | 0.4 | 7.5 |
+| all fighting | 1.6 | 9.8 | 0.4 | 9.5 |
 
-What is not solved: men who fight, or walk about with their hands busy, cost what they cost: about a millisecond a step each, and eight of
-them are 9-11 ms here, more than the 8.3 a step has, so the host keeps up 88-100 of 120 steps. A frame must fit `120 x step + FPS x
-the frame's own work <= 1000 ms`; with a step of 9 ms and the frame's own work (F3: "frame without physics") 16 ms that is about 14 frames
-a second, what F3 showed in an eight-player room. F3's "physics" figure is the longest step of the last second, not the mean. The next
-things to spare are the arm drive of a man who fights (`_drive_arm`, `_keep_arm_out`, `_clear_body`, `_elbow_clear` are over half of
-`control`, which is 86% of a step: a native version, to the bit as `drive.cpp` is) and the frame's own work.
+What the host sends each guest (`tools/wire_load.sh`, the rule of a full room; the probe's walkers and fighters are bots, whose rows go out every other time, so for
+friends who walk or fight the figures are about half as large again, before and after alike: real guests in `tools/net_load.sh` take 50-80 KB/s each in a fight,
+before and after; the saving is in the men who stand):
+
+| KB a second the host sends each guest | before, 2 men | before, 8 | after, 2 | after, 8 |
+|---|---|---|---|---|
+| all standing | 79 | 81 | 21 | 21 |
+| all standing close together | – | 81 | – | 21 |
+| all walking about | 79 | 81 | 30 | 52 |
+| all fighting | 79 | 79 | 37 | 50 |
+
+The frame's own scripts (`tools/frame_load.sh`: the men's drawing and the match's work, without the engine's drawing): with 8 men walking about 3.3 ms a frame before, 2.5 ms after; standing 2.9 ms before, 0.6 ms after.
+
+What is not solved: men who fight, or walk about, cost what they cost, about a millisecond a step each on this core
+(about half that on a gaming PC's core, the reckoning of this README above, not measured here): the sand's eight, walking, are 7.5 ms a step here and fighting 9.5, the
+latter more than the 8.3 a step has, so the host keeps up 101 of 120 steps (a lone man who stands is now 0.4 ms, so the climb from one man to eight is no
+smaller than it was, only lower). A room of eight friends who really fight each other, each in a game of his own and the host's on a core of its own
+(`tools/net_load.sh`), keeps up 71-81 of 120 before and 77-90 after (two runs each): the same.
+A frame must fit `120 x step + FPS x the frame's own work <= 1000 ms`. F3's "physics" figure is the longest step of the last second, not
+the mean. What would spare them is a native version of the arm drive and the control (`_drive_arm`, `_keep_arm_out`, `_clear_body`,
+`_elbow_clear` are over half of `control`, which is 86% of a step: to the bit, as `drive.cpp` is), or the host's fighters on a computer of
+their own.
 
 ### Trying an online game on one machine
 

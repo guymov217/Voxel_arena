@@ -4,7 +4,7 @@ extends Node
 ## and their wall time is their cost). Prints the steps' wall time (mean, median, the worst hundredth, the worst), how many of the 120 a
 ## second the host could keep up, how much of a step the scripts and how much the engine take, and a fingerprint of every body at the end:
 ## two builds that print the same one have played it the same way, to the last bit (as tools/replay_check.sh).
-## env: N (men, 8), BEHAVIOR (idle|walk|brawl), SECS (game seconds, 6), SNAP (1: also pack the snapshot rows as the host's frame does),
+## env: N (men, 8), BEHAVIOR (idle|walk|brawl|huddle: standing in a close ring, two paces from one another, the host's man in the middle|mixed: each man stands one to three seconds, walks about as long, and so on), SECS (game seconds, 6), SNAP (1: also pack the snapshot rows as the host's frame does),
 ## ARM_LOD, IDLE (0: the arms at rest seen to every step / the men standing still not let sleep), ARMOR (1: helmet, lorica, manica, greaves; 0: bare), OFF (the left hand: scutum), MAIN (the right hand: gladius), NONPC (1: the yard's
 ## keepers sent away: their idle ways are not the same from run to run, and a fingerprint is to be).
 
@@ -61,15 +61,34 @@ func _ready() -> void:
 	var heading := {}
 	var rng := RandomNumberGenerator.new()   # (the men's own: the keepers draw on the game's, and not at the same steps from run to run)
 	rng.seed = 7
+	var ring := 3.0
+	if behavior == "huddle":
+		# (A close ring: neighbours 1.8 m apart, the host's man in the middle of it: a room of friends stood round the gate.)
+		ring = 1.8 / (2.0 * sin(PI / float(maxi(2, n_men - 1))))
+		m.me.f.teleport(Vector3(0.0, 0.0, 4.0))
 	for i in n_men - 1:
 		var a := TAU * float(i) / float(maxi(1, n_men - 1))
-		var spec := {"kind": "bot", "name": "F%d" % i, "loadout": lo.duplicate(true), "team": 10 + i, "pos": Vector3(cos(a) * 3.0, 0.1, sin(a) * 3.0 + 4.0), "yaw": a + PI}
+		var spec := {"kind": "bot", "name": "F%d" % i, "loadout": lo.duplicate(true), "team": 10 + i, "pos": Vector3(cos(a) * ring, 0.1, sin(a) * ring + 4.0), "yaw": a + PI}
 		var e = m.spawn_fighter(spec)
 		if behavior != "brawl":
 			e.erase("bot")
 			heading[e.id] = rng.randf() * TAU
-			if behavior == "idle":
+			if behavior == "idle" or behavior == "huddle":
 				e.drive = func(_e): return {}
+			elif behavior == "mixed":
+				# (Friends as they are in a room: each stands for one to three seconds, walks about for as long, and so on.)
+				var phase := [bool(rng.randf() < 0.5), int((1.0 + rng.randf() * 2.0) * 120.0)]
+				e.drive = func(en):
+					var id: int = en.id
+					if n_steps >= int(phase[1]):
+						phase[0] = not bool(phase[0])
+						phase[1] = n_steps + int((1.0 + rng.randf() * 2.0) * 120.0)
+						heading[id] = rng.randf() * TAU
+					if bool(phase[0]):
+						if rng.randf() < 0.01:
+							heading[id] = rng.randf() * TAU
+						return {"mz": 1.0, "look": {"yaw": heading[id], "pitch": 0.0}}
+					return {}
 			else:
 				e.drive = func(en):
 					var id: int = en.id

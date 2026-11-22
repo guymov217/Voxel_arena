@@ -3,7 +3,7 @@ extends Node
 ## (brawl): the snapshot rows the Match's own loop sends, one fighter to a message, counted as the engine packs a value (`-- --probe wire298`,
 ## headless, one frame to a step). A room of four friends or more sends the players' fighters 40 times a second and the rest every other time
 ## (Match._physics_process); the rows are counted with that same rule, so it is the rate of a full room. The host's line carries as many copies
-## as it has guests. env: N (men, 8), BEHAVIOR (idle|walk|brawl), SECS (6), IDLE (0: the men who stand are not let sleep), ARM_LOD, NONPC (1: no keepers).
+## as it has guests. env: N (men, 8), BEHAVIOR (idle|walk|brawl|huddle: standing in a close ring, two paces from one another, the host's man in the middle), SECS (6), IDLE (0: the men who stand are not let sleep), ARM_LOD, NONPC (1: no keepers).
 
 class CountingMatch extends Match:
 	var wire_bytes := 0
@@ -48,13 +48,17 @@ func _ready() -> void:
 	var heading := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
+	var ring := 3.0
+	if behavior == "huddle":
+		ring = 1.8 / (2.0 * sin(PI / float(maxi(2, n_men - 1))))
+		m.me.f.teleport(Vector3(0.0, 0.0, 4.0))
 	for i in n_men - 1:
 		var a := TAU * float(i) / float(maxi(1, n_men - 1))
-		var e = m.spawn_fighter({"kind": "bot", "name": "F%d" % i, "loadout": lo.duplicate(true), "team": 10 + i, "pos": Vector3(cos(a) * 3.0, 0.1, sin(a) * 3.0 + 4.0), "yaw": a + PI})
+		var e = m.spawn_fighter({"kind": "bot", "name": "F%d" % i, "loadout": lo.duplicate(true), "team": 10 + i, "pos": Vector3(cos(a) * ring, 0.1, sin(a) * ring + 4.0), "yaw": a + PI})
 		if behavior != "brawl":
 			e.erase("bot")
 			heading[e.id] = rng.randf() * TAU
-			if behavior == "idle":
+			if behavior == "idle" or behavior == "huddle":
 				e.drive = func(_e): return {}
 			else:
 				e.drive = func(en):

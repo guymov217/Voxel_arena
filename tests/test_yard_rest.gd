@@ -57,13 +57,16 @@ func test_a_man_who_stands_with_nothing_ordered_sleeps_and_wakes_at_a_word() -> 
 func test_a_man_near_another_does_not_sleep_and_a_blow_wakes_him() -> void:
 	var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}])
 	var host: Dictionary = m.me
-	host.drive = func(_e): return {}
+	var yaw := [0.0]
+	host.drive = func(_e):
+		yaw[0] += 0.01   # (his view turns: he is no man at rest)
+		return {"look": {"yaw": yaw[0], "pitch": 0.0}}
 	var friend: Dictionary = m.entities.filter(func(e): return e.kind == "remote")[0]
 	friend.f.teleport(Vector3(6.0, 0.0, 6.0))
 	host.f.teleport(Vector3(6.0, 0.0, 4.5))   # (a pace and a half off him)
 	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
 	await _steps(300)
-	t.check(not friend.get("hidle", false) and not host.get("hidle", false), "two men within reach of each other do not sleep")
+	t.check(not friend.get("hidle", false), "a man at rest within reach of one who is not does not sleep")
 	host.f.teleport(Vector3(-9.0, 0.0, -5.0))
 	await _steps(300)
 	t.check(_asleep(friend), "the other gone, he sleeps")
@@ -74,6 +77,28 @@ func test_a_man_near_another_does_not_sleep_and_a_blow_wakes_him() -> void:
 	await _steps(120)
 	t.check(friend.f.alive and friend.f.state == "stand", "and he stands")
 	Net.inputs.erase(77)
+	m.queue_free()
+
+## Men who stand together, nothing ordered of any, let one another sleep (a room of friends stood round the gate is no room of men awake); the step one is
+## ordered anything the others are awake within a few steps, and a man walking up to them wakes them as he comes.
+func test_men_standing_together_all_sleep_and_wake_when_one_moves() -> void:
+	var m := _yard([{"id": 77, "name": "Friend", "loadout": {"main": "axe"}}, {"id": 78, "name": "Other", "loadout": {"main": "gladius"}}])
+	var host: Dictionary = m.me
+	host.drive = func(_e): return {}
+	var friends: Array = m.entities.filter(func(e): return e.kind == "remote")
+	host.f.teleport(Vector3(6.0, 0.0, 6.0))
+	friends[0].f.teleport(Vector3(7.6, 0.0, 6.0))   # (a pace and a half from him)
+	friends[1].f.teleport(Vector3(6.8, 0.0, 7.4))
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
+	Net.inputs[78] = PlayerInput.unpack(PlayerInput.pack({"look": {"yaw": 0.0, "pitch": 0.0}}))
+	await _steps(360)
+	t.check(_asleep(host) and _asleep(friends[0]) and _asleep(friends[1]), "three men standing a pace and a half from each other, nothing ordered, all sleep")
+	# One of them is ordered a key: the other two are awake within five steps (a blow takes longer to come).
+	Net.inputs[77] = PlayerInput.unpack(PlayerInput.pack({"mz": 1.0, "look": {"yaw": PI, "pitch": 0.0}}))
+	await _steps(6)
+	t.check(not friends[0].get("hidle", false) and not host.get("hidle", false) and not friends[1].get("hidle", false), "one moves, the others are awake within six steps")
+	Net.inputs.erase(77)
+	Net.inputs.erase(78)
 	m.queue_free()
 
 ## The same blow on a man asleep and on one awake (the way of sparing the host off and on): the trunk goes where it goes and he stands as the
@@ -114,6 +139,82 @@ func test_a_blow_on_a_man_asleep_is_what_it_is_on_a_man_awake() -> void:
 			var moved: float = (awake[i][0] as Vector3).length()
 			var gap: float = (awake[i][0] as Vector3).distance_to(slept[i][0] as Vector3)
 			t.check(gap < 0.03 + 0.08 * moved, "a shove of %.0f, %d tenths on: the trunk is %.1f cm from where it is awake (moved %.2f m)" % [shove, (i + 1) * 2, gap * 100.0, moved])
+
+## What a man asleep costs the first answer of his hand: the steps from the mark of his hand going across to his weapon being 3 cm on, asleep and awake (the
+## sparing off), each after a swing let go and left standing. The same, the median: the sleep is let come once the arms are at rest (Fighter.arms_settled; a
+## man put to sleep with an arm still going back to its place is held where no man awake ever is, and answered a step later: 5 steps against 4, and the weapon
+## 1.2 cm behind at the fourth). Woken, his bodies begin from rest, as those of a man awake who stood still do, and the same in every man in the yard, whoever hosts.
+func test_a_man_woken_by_his_hand_answers_as_a_man_awake_does() -> void:
+	var medians := {}
+	var at4 := {}
+	for asleep in [false, true]:
+		Match.human_idle_on = asleep
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "role": "host", "peers": []})
+		var rest := {"mx": 0.0, "mz": 0.0, "look": {"yaw": 0.0, "pitch": 0.0}, "main": {"x": 0.1, "y": 0.15}}
+		var swing := {"mx": 0.0, "mz": 0.0, "look": {"yaw": 0.0, "pitch": 0.0}, "main": {"x": 0.7, "y": 0.5}}
+		m.probe_input = rest
+		await _steps(300)
+		var counts := []
+		var fourths := []
+		for rep in 5:
+			m.probe_input = rest
+			await _steps(200)
+			var n_wait := 0
+			while asleep and not bool(m.me.get("hidle", false)) and n_wait < 400:
+				await get_tree().physics_frame
+				n_wait += 1
+			var w = m.me.f.weapons.get("R")
+			t.check(bool(m.me.get("hidle", false)) == asleep, "he lies asleep when the sparing is on (%s)" % str(asleep))
+			var p0: Vector3 = w.global_position
+			m.probe_input = swing
+			var n := 0
+			var four := 0.0
+			while n < 240:
+				await get_tree().physics_frame
+				n += 1
+				if n == 4:
+					four = (w.global_position - p0).length()
+				if n >= 4 and (w.global_position - p0).length() > 0.03:
+					break
+			counts.append(n)
+			fourths.append(four)
+			m.probe_input = rest
+			await _steps(120)
+		counts.sort()
+		fourths.sort()
+		medians[asleep] = counts[counts.size() / 2]
+		at4[asleep] = fourths[fourths.size() / 2]
+		m.queue_free()
+	Match.human_idle_on = true
+	t.check(int(medians[true]) <= int(medians[false]), "woken by his hand, the weapon is 3 cm on in %d steps, a man awake's in %d" % [medians[true], medians[false]])
+	t.check(absf(float(at4[true]) - float(at4[false])) < 0.008, "and at the fourth step it is %.1f cm on against %.1f for a man awake (under 0.8 cm between them)" % [float(at4[true]) * 100.0, float(at4[false]) * 100.0])
+
+## A man whose arm is still going back to its place is not put to sleep (he would be woken where no man awake ever is, Fighter.arms_settled): he waits for
+## it, with the time he has stood kept, and sleeps the step it is at rest.
+func test_a_man_with_an_arm_still_going_is_let_sleep_only_when_it_is_at_rest() -> void:
+	var m := _yard()
+	var host: Dictionary = m.me
+	var f: Fighter = host.f
+	host.drive = func(_e): return {}
+	f.teleport(Vector3(-9.0, 0.0, -5.0))
+	await _steps(360)
+	t.check(_asleep(host), "left standing, he sleeps")
+	m._wake_sleeper(host, f)
+	t.check(f.arms_settled(), "his arms are at rest")
+	var fo := f.arm["R"].fore as VoxelPart
+	var slept := false
+	for i in 150:   # (a forearm kept going at 0.6 m/s on his trunk for a second and a quarter: more than half a second of standing still)
+		fo.linear_velocity = f.torso.linear_velocity + Vector3(0.0, 0.0, 0.6)
+		if i == 0:
+			t.check(not f.arms_settled(), "an arm going at 0.6 m/s on his trunk is not at rest")
+		await get_tree().physics_frame
+		slept = slept or bool(host.get("hidle", false))
+	t.check(not slept, "with an arm still going he is not let sleep, though he has stood still (%s)" % str(slept))
+	await _steps(240)
+	t.check(_asleep(host), "and he sleeps once it is at rest")
+	m.queue_free()
 
 func test_arms_at_rest_are_seen_to_every_other_step_and_every_step_when_ordered() -> void:
 	Match.human_idle_on = false   # (the whole man awake: it is his arms that are looked at)
