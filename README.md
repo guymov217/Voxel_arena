@@ -1039,6 +1039,40 @@ one datagram). Not kept. ENet's range coder is the larger part of it: with it of
 and the wire grew by a third (82 to 110 KB/s to each guest, 4.6 to 6.2 Mbit/s up from the host): not worth it for a host with a modest line. A row sent as what changed
 since the last would put a third less on the wire and spare the host nothing.
 
+### What is left to spare, and what each way is worth (#298k, #298l)
+
+Where a man's step goes, timed a function at a time (a wrapper with one `Time.get_ticks_usec()` pair round each function in a scratch copy of the project, about 0.3 us a
+call; the 8-man brawl of `tests/lobby298.gd` with `NONPC=1 ARM_LOD=0 IDLE=0`, one physics thread, `--fixed-fps 120`, this core; 10.8 ms a step; the times are inclusive,
+microseconds a man and step, with the calls a man and step): `control` 806 (60% of the step) · `_drive_arm` 417 (2 calls) · `_keep_arm_out` 66 (1.95; `_keep_hand_front`
+25 of it) · `_clear_body` 52 (1.93) · `leg_func` 32 (13 calls: 2.4 us each) · `weapon_aim` 28 · `_ground_ray` 24 (4.6 rays) · `_drive_forearm` 23 · `_no_fling` 20 ·
+`_elbow_clear` 18 · `_hold_elbow` 16 (1.93) · `_keep_elbow_low` 13 (1.95) · `hand_target_local` 12 (1.93) · `_unwedge` 10 · `_lock_elbow` 10 · `_beast_has_me` 9 (3.9) · `arm_func` 7 ·
+`_free_wedged` 6 · `_keep_weapon_out` 6 · `_unjam_blade` 5; the memos of the arms' keeping out (`_trunk_sculpt`, `_outline_m`, `_armored_m`, `_plate_band_now`) 55 for their 33 calls
+(a call is 1-3 us). Of the 10.8 ms: `control` 6.1, the rest of `Match._physics_process` 1.4 (the snapshot 0.12), Combat's contacts and blows 0.8 (`process_contacts`
+0.66, `report` 3.3 calls a man at 16 us), the `_integrate_forces` of the parts and the weapons 0.55, the physics engine proper about 1.9. With eight bots and six armoured men
+(15 on the sand, 20.1 ms a step, `tests/mix298.gd`): `control` 10.4 ms (52%), the bots' `update` 1.1 ms (0.4 of it `nearest_enemy`, a scan of every fighter for each bot),
+contacts 1.4, `_integrate_forces` 1.2. The tail is flat: forty functions of 2-60 us, which is why the first native port took 7% and not a third.
+
+What each way of sparing the step is worth, measured here where it can be and modelled where it cannot:
+- Script-level changes (the memos into fields, the guards of the calls that do nothing inlined): 1-2% of the step; not made. Native ports of what is left to port (`weapon_aim`,
+  `_drive_forearm`, `_hold_elbow`, `_lock_elbow`, `hand_target_local`, `_elbow_clear`: 108 us a man, and the memos 15): at best 6-8% of the step, two days with the differential
+  tests and the 47 fingerprints. All of `control` and the arm drive in C++, to the bit (`_drive_arm` alone is 31% of the step; the whole 35-45%): weeks, and the only way to a large cut that keeps every fight.
+- The men's drawing in the scripts (option 2, visual LOD; `pacehash298` with `DRAW=1` against `DRAW=0`, `--fixed-fps 120`): +0.6 ms a frame for 9 fighters (9.6 -> 10.2 ms), +0.9
+  for 15 (17.9 -> 18.8): 6% and 5% of the step, half of it at best. What the engine and the graphics card add (F3's "drawing" and "graphics card") is not in this machine's reach.
+- The fighters' `control` in parallel (option 3): the fight depends on the order the fighters are seen to in. The same 8 bots and 6 armoured men for 120 and for 480 steps, seen to in the
+  reverse order (a scratch loop over `Match.entities`), end with another fingerprint (the same order twice, and the order turned one place, give the same): the dice and the physics
+  state are shared. So it cannot be to the bit, and the physics calls (impulses, rays) have to stay on the main thread. (Jolt itself does not spread this: all the worker threads
+  or one, the same step.)
+- The host's fighters in a process of their own (option 5): a room of 8 in a free-for-all, seven guests, the host on core 0 and the guests on cores 1-3 (`tools/net_load.sh`, a scratch
+  `HOSTDRAW=1` that draws the host's men in its scripts as a window does, 60 frames at most): the host that draws keeps up 102 of the 120 steps, 42 frames a second (lowest second 26),
+  the step 9.3 ms median and 19.3 at the 99th; the host that does not draw keeps up 115, the step 8.2 and 15.8. A guest that does not draw takes 25% of a core. Only the drawing in the
+  scripts is in that gap (11% of the steps); the engine's own drawing and the wait on the graphics card, the larger part on a real machine, are not, and they are what the process of its
+  own would take off the steps.
+- A model of what holds 60 frames and all 120 steps a second with every fighter fighting: a step is 0.36 + 1.33 (N-1) ms (release build, this core), a frame's own work (0.075 N + g) ms with
+  g = 4.5 ms (F3's "all the rest" in the example above, to be read off the real machine), both divided by k, the machine's core against this one (0.8 a weak laptop, 1.15 an average
+  gamer's, 1.5 a good mid-range, 2.0 a 13600KF). Fighters held, for k = 0.8 / 1.15 / 1.5 / 2.0: as it is (two steps and a frame on one thread) 3.9 / 6.1 / 8.2 / 11.2; the ports of the pieces
+  left (-8% of a step) 4.2 / 6.6 / 8.9 / 12.1; the fighters in a process of their own (a step has to fit 8.33 ms, the picture on its own core) 5.7 / 7.9 / 10.1 / 13.3; all of `control` in
+  C++ (-40%) 6.0 / 9.2 / 12.9 / 17.9; both of the last two 9.0 / 12.4 at k = 0.8 / 1.15. The numbers of a real machine decide which: `tools\host_bench.bat` and F3 in a full room.
+
 ### The same tests again, before and after (#298)
 
 This core (a 2.1 GHz Xeon that runs at about 2.85 GHz, no graphics card, one core to a game), release build, three builds: before the work (`e1a3a8a`), the work as pushed
