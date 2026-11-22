@@ -555,8 +555,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
 The hot voxel loops run in C++ when the extension is built: greedy box merging for the
 colliders (about 8× faster), the flood fill that finds the lumps a blow knocks loose, and the
 searches over a part's voxels (wounds, craters, the flesh a joint hangs on, blood running down
-the skin). With them the host's step is about 15–25% cheaper. The source
-is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
+the skin). With them the host's step is about 15–25% cheaper. A man's arms kept out of his own
+body (`arm.cpp`: the pushes out of his trunk and head, the elbow's and the hand's way round them) run in it too,
+to the bit (#298). The source is in `extension/`. `scripts/voxel/greedy.gd` falls back to GDScript when it is absent, so a
 plain checkout runs without it (and the editor does not complain about a missing library).
 `tests/test_native.gd` checks that both give the same results, and `tools/replay_check.sh`
 plays fixed 10-second fights single-threaded (16 and 6 fighters, and two of 24 with bows, two
@@ -1007,6 +1008,24 @@ computer of their own. Where a man's step goes (`tests/lobby298.gd`, `Fighter.co
 walking about, 7.75 ms a step with the host's own asleep; the timers cost a little): `control` 5.4 ms, 0.77 a man (the two arms' drive 0.36, their keeping out
 of the body 0.09, the legs, the trunk and the rays to the ground 0.32), the other scripts 1.1 ms, the engine 1.3 (fighting: 2.1). `control` is 83% of what the
 scripts take and 69% of the step, and the arm drive is the one piece that has no hot spot: some forty small calls.
+The arms' keeping out of the body (`_keep_arm_out`, `_keep_hand_front`, `_keep_elbow_low`, `_clear_body`, `_elbow_off_trunk`, `_hand_off_trunk`: a third of a
+man's `control` in a cuirass) now runs in the C++ core (`extension/src/arm.cpp`), to the bit, and the script stays as the fallback and the reference.
+`tests/test_native.gd` throws a man's trunk, head and arm into random places at random speeds, in a cuirass and bare, one hand on a haft or two, and holds the
+speeds that come out of the C++ to the script's (6000 pushes and 3000 asks of the reach compared, none differ; a change of two parts in ten million in one impulse
+fails it), and the eight-man fight of `tests/lobby298.gd` prints the same fingerprint with `ARM_NATIVE=0` and `ARM_NATIVE=1`. What it buys
+(`tests/arm_micro298.gd`, a call at a time, the first of a step, this core): in a cuirass `_keep_arm_out` 76 -> 28 us, `_elbow_clear` 44 -> 13,
+`_hand_off_trunk` 47 -> 16; bare, next to nothing (a call from a script costs 5-10 us with its arguments, so a function pays only if it is worth some 20 us of
+script). A fight of eight: the median step 10.7 -> 9.9 ms (three runs each, taken in turn: 7%, about what a seventh of the step was). What is left of
+`control` is a long flat tail, no piece above 5%: its own body 41%, the arm drive's own 33%, then `weapon_aim`, `_drive_forearm`, `hand_target_local` and
+`_hold_elbow` at 3-5% each, so each port after this one is worth a few percent. A core older than this README's (the committed Linux one is built
+for Steam's runtime; a checkout whose library lacks these calls) runs the script's arms, the same fight and the old cost (`Greedy.arm_ok`).
+What the room itself costs the host on the network side (`tests/net_load_host.gd` with `Net` and `Match.snapshot` timed, seven guests, a fight of eight,
+`NET_BOTS=0`, this core, the timers cost a little): about 0.9 ms a step, a ninth of the 8.3 there is. Sending 0.39 ms (an RPC to every guest costs about 36 us and 11 us
+more for each guest, and 2.7 of them go out a step: a fighter's row to a message), reading the line and handing the messages on 0.43 (the guests' hands, about 34 us
+a message in the script), packing the rows 0.07. With three guests it was 0.54 ms, so each guest is about 90 us of every step. On the wire it is 79-83 KB/s to each
+guest in a fight of eight (580 KB/s up from the host, 4.6 Mbit/s). None of it touches the game, so what would spare it is free of the bit-for-bit rule: two or three
+fighters to a message (one packet; a third of the RPCs, about 2% of the step), the rows as raw bytes (`send_bytes`) and not RPCs (about 4%), and a row sent as what
+changed since the last (a third less on the wire). Not done.
 
 ### Trying an online game on one machine
 
@@ -1028,6 +1047,12 @@ the guests are played by bots, so you can host, play and watch a real online bou
 LOSS=3` holds every incoming message back 120 ms (±30) and drops 3% of the unreliable ones, a
 pretend poor connection to see how the game feels at that latency. The same flags work on a plain
 run: `godot --path . -- --host`, `--join <address>`, `--name <name>`, `--bot`, `--lag 120 --loss 3`.
+
+"WARNING: Buffer full, dropping packets!" (`packet_peer_udp.cpp`) in the log of a game on its way to a room: the editor's build says so (a game exported with a release template
+drops the same packets and says nothing) when a game has not read its line for about a second: Godot's UDP receive ring is 64 KB and a guest is sent 50-80 KB a second, and the
+rest of what came is dropped. Seen (hundreds of lines, all from the guests) when a host and seven friends share one computer and the friends' games are starved of the processor
+(`multiplayer_playtest.bat`); between computers it takes a guest that stops for a second. The ring cannot be made larger from a script for ENet, so what spares it is a
+guest that is sent less (see the network side of the host's step, above).
 
 ### Friends who are not there: trying a room by yourself
 

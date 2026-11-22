@@ -189,6 +189,149 @@ func test_native_trunk_matches_the_gdscript() -> void:
 	m.queue_free()
 
 
+## (#298) A man's arms kept out of his own body (_keep_arm_out, _keep_hand_front, _keep_elbow_low): the C++ core gives the very
+## impulses the script gives, to the bit. The four bodies (trunk, head, upper arm, forearm) are thrown into random places round him
+## with random speeds; out of the script's run and out of the C++ they come with the same speeds, to the last bit, in a cuirass
+## (the trunk as it is drawn) and bare (its box), with one hand on a haft or two, a hand or no hand.
+func _arm_bodies(f: Fighter, side: String) -> Array:
+	return [f.torso, f.head, f.arm[side].upper, f.arm[side].fore]
+
+func _arm_live(bodies: Array) -> Array:
+	var out := []
+	for b: RigidBody3D in bodies:
+		out.append(PhysicsServer3D.body_get_state(b.get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY))
+		out.append(PhysicsServer3D.body_get_state(b.get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY))
+	return out
+
+func _arm_set_speeds(bodies: Array, speeds: Array) -> void:
+	for i in bodies.size():
+		(bodies[i] as RigidBody3D).linear_velocity = speeds[i * 2]
+		(bodies[i] as RigidBody3D).angular_velocity = speeds[i * 2 + 1]
+
+func test_native_arms_keep_out_like_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.arm_ok:
+		t.check(true, "no native core with the arms built: the GDScript fallback runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 31
+	var bad := []
+	var pushed := {"out": 0, "front": 0, "low": 0, "clear": 0, "hand": 0}
+	var drawn_seen := [0, 0]
+	for armour in [true, false]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"] if armour else []}})
+		for k in 30:
+			await get_tree().physics_frame
+		var f: Fighter = m.me.f
+		var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+		for k in 500:
+			var side := "R" if k % 2 == 0 else "L"
+			var bodies := _arm_bodies(f, side)
+			var up: VoxelPart = bodies[2]
+			var fo: VoxelPart = bodies[3]
+			# (what is put back after: where each was and how fast it went)
+			var saved := []
+			for b: RigidBody3D in bodies:
+				saved.append([b.global_transform, b.linear_velocity, b.angular_velocity])
+			var he: Vector3 = f.torso.half_ext
+			var tb: Transform3D = f.torso.global_transform
+			for part: VoxelPart in [up, fo]:
+				var q := Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.1, 3.1))
+				var at: Vector3 = tb.origin + tb.basis * Vector3(rng.randf_range(-1.5, 1.5) * he.x, rng.randf_range(-1.3, 1.3) * he.y, rng.randf_range(-1.7, 1.7) * he.z)
+				part.global_transform = Transform3D(Basis(q), at)
+			var speeds := []
+			for i in 4:
+				speeds.append((rv.call(1.0 if i == 0 else 3.0) as Vector3) if k % 5 != 0 else Vector3.ZERO)
+				speeds.append((rv.call(8.0) as Vector3) if k % 5 != 0 else Vector3.ZERO)
+			var was_two := f.two_handed
+			f.two_handed = k % 3 == 0
+			var was_severed := fo.severed
+			fo.severed = k % 11 == 0
+			var dt := 1.0 / 120.0 if k % 4 != 0 else rng.randf_range(0.005, 0.03)
+			for which in ["out", "front", "low"]:
+				f._arm_phase = true
+				f._sculpt_memo.clear()
+				f._limb_memo.clear()
+				f._plate_memo = null
+				f._beast_memo = -1
+				_arm_set_speeds(bodies, speeds)
+				Greedy.use_native = false
+				if which == "out":
+					f._keep_arm_out(side, dt)
+				elif which == "front":
+					f._keep_hand_front(side, dt)
+				else:
+					f._keep_elbow_low(side, dt)
+				var a := _arm_live(bodies)
+				_arm_set_speeds(bodies, speeds)
+				f._sculpt_memo.clear()
+				f._limb_memo.clear()
+				f._plate_memo = null
+				f._beast_memo = -1
+				Greedy.use_native = true
+				if which == "out":
+					f._keep_arm_out(side, dt)
+				elif which == "front":
+					f._keep_hand_front(side, dt)
+				else:
+					f._keep_elbow_low(side, dt)
+				var b2 := _arm_live(bodies)
+				f._arm_phase = false
+				if a != b2:
+					bad.append("%s %s k=%d" % [which, side, k])
+				if a != speeds:
+					pushed[which] += 1
+				if which == "out" and f._trunk_sculpt(side) is Dictionary:
+					drawn_seen[0] += 1
+				elif which == "out":
+					drawn_seen[1] += 1
+			# (And what is asked of the arm's reach: a hand's mark out of the trunk and the head, the elbow's way, the hand's goal.)
+			var yq := Quaternion(Vector3.UP, rng.randf_range(-PI, PI))
+			var tp: Vector3 = f.torso.global_position
+			var lu: float = Fighter.UPPER_LEN * f.S
+			var lf: float = Fighter.FORE_LEN * f.S
+			var sh: Vector3 = tb * f.shoulder[side]
+			for rep in 3:
+				var tgt := Vector3(rng.randf_range(-1.6, 1.6) * he.x, rng.randf_range(-1.3, 1.3) * he.y, rng.randf_range(-1.7, 1.7) * he.z)
+				var edir: Vector3 = tb.basis * Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 0.3), rng.randf_range(-1.0, 1.0)).normalized()
+				var goal: Vector3 = tb * Vector3(rng.randf_range(-1.7, 1.7) * he.x, rng.randf_range(-1.3, 1.3) * he.y, rng.randf_range(-1.8, 1.8) * he.z)
+				var elb: Vector3 = sh + edir * lu
+				var res := []
+				for native in [false, true]:
+					Greedy.use_native = native
+					f._arm_phase = rep != 1
+					f._sculpt_memo.clear()
+					f._limb_memo.clear()
+					f._plate_memo = null
+					f._armor_memo.clear()
+					f._outline_memo.clear()
+					var face0: String = f.elbow_face[side]
+					var sc = f._trunk_sculpt(side)
+					var row := [f._clear_body(tgt, yq, tp, side), f._elbow_clear(side, sh, edir, lu), f._hand_off_trunk(side, sc, sh, elb, goal, lu, lf, k % 2 == 0) if sc != null else goal, f._elbow_off_trunk(side, sc, sh, edir, lu) if sc != null else edir]
+					f.elbow_face[side] = face0
+					res.append(row)
+				f._arm_phase = false
+				Greedy.use_native = true
+				if res[0] != res[1]:
+					bad.append("reach %s k=%d rep=%d" % [side, k, rep])
+				if (res[0][0] as Vector3) != tgt:
+					pushed["clear"] += 1
+				if (res[0][2] as Vector3) != goal:
+					pushed["hand"] += 1
+			f.two_handed = was_two
+			fo.severed = was_severed
+			for i in 4:
+				(bodies[i] as RigidBody3D).global_transform = saved[i][0]
+				(bodies[i] as RigidBody3D).linear_velocity = saved[i][1]
+				(bodies[i] as RigidBody3D).angular_velocity = saved[i][2]
+		m.queue_free()
+	Greedy.use_native = true
+
+	t.check(bad.is_empty(), "the arms are kept out of the body the same in C++ and GDScript, to the bit (off: %s of %d)" % [bad.slice(0, 4), bad.size()])
+	t.check(pushed.out > 300 and pushed.front > 40 and pushed.low > 30 and pushed.clear > 200 and pushed.hand > 100, "and the bodies tried were pushed as well as let alone (pushed: %s of 1000 a kind, 3000 asked of the reach)" % [pushed])
+	t.check(drawn_seen[0] > 200 and drawn_seen[1] > 200, "in a cuirass (the trunk as it is drawn) and bare (its box): %s" % [drawn_seen])
+
 func test_native_smooth_matches_the_gdscript() -> void:
 	# (#151) The men's smooth skin (FineSmooth: a part's solid, the part beside it joined on at the
 	# joint, the blurred shapes, the way each fine voxel faces, where its corners are drawn): the

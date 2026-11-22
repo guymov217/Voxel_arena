@@ -4385,6 +4385,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	_sculpt_memo.clear()
 	_limb_memo.clear()
 	_plate_memo = null
+	_beast_memo = -1
+	_armor_memo.clear()
+	_outline_memo.clear()
 	# Arms at rest: what is seen to every other step is the drive of an arm with no weapon in its hand (a shield's, an empty one's) and the push
 	# of each out of the trunk and the head (the weapon arm's drive finds another place to rest in at half the rate, a hand's breadth off: it
 	# is seen to every step). Each with the time since it was last seen to.
@@ -6212,6 +6215,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 const ARM_OUT_K := 900.0
 const UPPER_OUT := 4.0   # the upper arm's middle pushed out of the drawn trunk this much harder
 func _keep_arm_out(side: String, dt: float) -> void:
+	var nc := Greedy.core()
+	if nc != null and Greedy.arm_ok:
+		_keep_arm_out_nc(nc, side, dt)
+		return
 	var up: VoxelPart = arm[side].upper
 	var fo: VoxelPart = arm[side].fore
 	var out_x := -1.0 if side == "R" else 1.0
@@ -6274,6 +6281,17 @@ func _keep_arm_out(side: String, dt: float) -> void:
 			var jo: Vector3 = (bq as Quaternion) * push.normalized() * acc * m_eff * dt
 			part.apply_impulse(jo, (pp[1] as Vector3) - part.global_position)
 			body.apply_central_impulse(-jo)   # (the arm pushes off his own body, not off the air)
+	_keep_hand_front(side, dt)
+
+## _keep_arm_out in the C++ core (VoxelCore.keep_arm_out): what the script knows of him is handed over (the thickness each limb is
+## drawn with, where the cuirass lies, his masses), the pushes are the same to the bit (tests/test_native.gd).
+func _keep_arm_out_nc(nc, side: String, dt: float) -> void:
+	var up: VoxelPart = arm[side].upper
+	var fo: VoxelPart = arm[side].fore
+	var sculpt = _trunk_sculpt(side)
+	var drawn_on: bool = sculpt != null
+	var b: Array = _plate_band_now() if drawn_on else _NO_BAND
+	nc.keep_arm_out(up, fo, torso, head, up.half_ext, torso.half_ext, head.half_ext, hand_point, -1.0 if side == "R" else 1.0, S, dt, two_handed, fo.severed, torso.severed, head.severed, up.nominal_mass, fo.nominal_mass, weapons[side].mass if weapons[side] else 0.0, ARM_OUT_K, UPPER_OUT, drawn_on, sculpt if drawn_on else _NO_SCULPT, b[0], b[1], b[2], _outline_m(up) if drawn_on else _NO_SCULPT, _armored_m(up) if drawn_on else false, _outline_m(fo) if drawn_on else _NO_SCULPT, _armored_m(fo) if drawn_on else false, LIMB_PLATE, up.joint != null, fo.joint != null, up.pa, up.ca, fo.pa, fo.ca)
 	_keep_hand_front(side, dt)
 
 ## What of him his arms are kept out of is what is drawn of him (user: his arms went in through
@@ -6372,6 +6390,32 @@ var _arm_phase := false
 var _sculpt_memo := {}   # side -> the trunk's outline for that arm, or null
 var _limb_memo := {}     # part -> {where along it -> how thick it is drawn there}
 var _plate_memo = null   # [from, to, how thick]: the cuirass on the trunk (_plate_band)
+var _beast_memo := -1    # whether a beast has hold of him (_beast_has_me), asked once in an arm phase (-1: not yet)
+var _armor_memo := {}    # part -> _armored(part), asked once in an arm phase
+var _outline_memo := {}  # part -> _outline(part) (or an empty dictionary: none), asked once in an arm phase
+
+## _armored and _outline of a part for the C++ core (an arm phase asks them once; outside one, afresh): the outline, or {} where there is none.
+func _armored_m(p: VoxelPart) -> bool:
+	if not _arm_phase:
+		return _armored(p)
+	var v = _armor_memo.get(p)
+	if v == null:
+		v = _armored(p)
+		_armor_memo[p] = v
+	return v
+
+func _outline_m(p: VoxelPart) -> Dictionary:
+	if not _arm_phase:
+		var o0 = _outline(p)
+		return o0 if o0 != null else _NO_SCULPT
+	var v = _outline_memo.get(p)
+	if v == null:
+		var o = _outline(p)
+		v = o if o != null else _NO_SCULPT
+		_outline_memo[p] = v
+	return v
+const _NO_BAND := [INF, -INF, 0.0]   # (_plate_band's answer where he wears no cuirass)
+const _NO_SCULPT := {}
 
 ## The sculpt's row (fractional, within the rows he is in) at `y` along the part.
 static func _sculpt_row(o: Dictionary, y: float) -> float:
@@ -6541,6 +6585,11 @@ func _keep_hand_front(side: String, dt: float) -> void:
 	# back with the sword in them and stayed there (user, against a crocodile).
 	if _beast_has_me():
 		return
+	var nc := Greedy.core()
+	if nc != null and Greedy.arm_ok:
+		var haft: bool = side == two_off() and two_handed and weapon_joints[side] != null
+		nc.keep_hand_front(up, fo, torso, up.half_ext, torso.half_ext, hand_point, -1.0 if side == "R" else 1.0, S, dt, fo.severed, up.nominal_mass, fo.nominal_mass, weapons[side].mass if weapons[side] else 0.0, weapons[two_side].mass * 0.5 if haft and weapons[two_side] else 0.0, ARM_OUT_K)
+		return
 	var out_x := -1.0 if side == "R" else 1.0
 	var bt: Transform3D = torso.global_transform
 	var inv := bt.affine_inverse()
@@ -6599,6 +6648,10 @@ func _keep_elbow_low(side: String, dt: float) -> void:
 	# Only while he has his body to himself, on his feet (as _keep_hand_front).
 	if torso.severed or not alive or limp or not (state == "stand" or state == "rising") or (state == "stand" and stagger > 0.35) or torso.linear_velocity.length() > 3.0 or throwing[side] or (pinned_arm == side and is_instance_valid(grabbed_by)) or _beast_has_me():
 		return
+	var nc := Greedy.core()
+	if nc != null and Greedy.arm_ok:
+		nc.keep_elbow_low(up, fo, torso, up.pa, fo.pa, hand_point, side == "R", S, dt, up.nominal_mass, fo.nominal_mass, ELBOW_OVER, ELBOW_OVER_HAND, ELBOW_SOFT, ELBOW_LOW_K)
+		return
 	var bt: Transform3D = torso.global_transform
 	var up_b: Vector3 = bt.basis.y.normalized()
 	var sh: Vector3 = bt * up.pa
@@ -6633,6 +6686,13 @@ func _keep_elbow_low(side: String, dt: float) -> void:
 ## Whether a beast has hold of him now: an ape's grip, a crocodile's jaws in its roll, a python's
 ## coils round him.
 func _beast_has_me() -> bool:
+	if _arm_phase:
+		if _beast_memo < 0:
+			_beast_memo = 1 if _beast_has_me_now() else 0
+		return _beast_memo == 1
+	return _beast_has_me_now()
+
+func _beast_has_me_now() -> bool:
 	for m in ["beast_hold", "rolled_by"]:
 		if has_meta(m) and is_instance_valid(get_meta(m)):
 			return true
@@ -6733,6 +6793,11 @@ func _elbow_clear(side: String, shoulder_w: Vector3, e_dir: Vector3, lu: float) 
 ## shoulder is in the shoulder's own flesh: that is where it grows out of him.) Swung across him,
 ## the arm's middle went a hand's breadth into the chest drawn round it.
 func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_dir: Vector3, lu: float) -> Vector3:
+	var nc0 := Greedy.core()
+	if nc0 != null and Greedy.arm_ok:
+		var up0: VoxelPart = arm[side].upper
+		var b0: Array = _plate_band_now()
+		return nc0.elbow_off(torso, sculpt, _outline_m(up0), _armored_m(up0), shoulder_w, e_dir, lu, b0[0], b0[1], b0[2], LIMB_PLATE)
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var up: VoxelPart = arm[side].upper
@@ -6761,6 +6826,12 @@ func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_d
 ## line from the shoulder (the upper arm from its middle, and the forearm); else the forearm along
 ## the line from the elbow.
 func _hand_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, elbow_w: Vector3, goal: Vector3, lu: float, lf: float, straight: bool) -> Vector3:
+	var nc0 := Greedy.core()
+	if nc0 != null and Greedy.arm_ok:
+		var up0: VoxelPart = arm[side].upper
+		var fo0: VoxelPart = arm[side].fore
+		var b0: Array = _plate_band_now()
+		return nc0.hand_off(torso, sculpt, _outline_m(up0), _armored_m(up0), _outline_m(fo0), _armored_m(fo0), shoulder_w, elbow_w, goal, lu, lf, straight, fo0.severed, S, b0[0], b0[1], b0[2], LIMB_PLATE)
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var up: VoxelPart = arm[side].upper
@@ -6824,6 +6895,13 @@ func _elbow_dir(side: String, e_local: Vector3, lu: float, t_rot: Quaternion, dr
 ## A hand's mark (in the yaw frame, from the torso) moved out of the torso and the head to the
 ## front of them: neither hand is ever pulled in through its own body.
 func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3, side := "R") -> Vector3:
+	var nc := Greedy.core()
+	if nc != null and Greedy.arm_ok:
+		var fo: VoxelPart = arm[side].fore
+		var sculpt = _trunk_sculpt(side)
+		var on: bool = sculpt != null and not torso.severed and not fo.severed
+		var b: Array = _plate_band_now() if on else _NO_BAND
+		return nc.clear_body(target, yaw_q, t_pos, torso, head, torso.half_ext, head.half_ext, S, torso.severed, head.severed, fo.severed, on, sculpt if on else _NO_SCULPT, b[0], b[1], b[2], _outline_m(fo) if on else _NO_SCULPT, _armored_m(fo) if on else false, LIMB_PLATE, hand_point.y)
 	var th: Vector3 = torso.half_ext
 	var tz := th.z + 0.09 * S
 	if target.y < th.y and target.y > -th.y * 1.1 and absf(target.x) < th.x + 0.05 * S and target.z < tz:

@@ -5,6 +5,7 @@
 // normalize (with its guard for numbers that are not finite) stands in for godot-cpp's.
 
 #include "voxel_core.h"
+#include "engine_math.h"
 
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -13,53 +14,10 @@
 
 using namespace godot;
 
+using namespace vc;
+
 namespace {
 
-Vector3 eng_normalized(Vector3 v) {
-	if (!v.is_finite()) {
-		return Vector3();
-	}
-	real_t l = v.length_squared();
-	if (l == 0) {
-		return Vector3();
-	}
-	l = Math::sqrt(l);
-	v.x /= l;
-	v.y /= l;
-	v.z /= l;
-	return v;
-}
-
-Basis eng_orthonormalized(const Basis &b) {
-	Vector3 x = b.get_column(0);
-	Vector3 y = b.get_column(1);
-	Vector3 z = b.get_column(2);
-	x = eng_normalized(x);
-	y = (y - x * (x.dot(y)));
-	y = eng_normalized(y);
-	z = (z - x * (x.dot(z)) - y * (y.dot(z)));
-	z = eng_normalized(z);
-	Basis c = b;
-	c.set_column(0, x);
-	c.set_column(1, y);
-	c.set_column(2, z);
-	return c;
-}
-
-// Basis.get_rotation_quaternion().
-Quaternion eng_rotation_quaternion(const Basis &b) {
-	Basis m = eng_orthonormalized(b);
-	real_t det = m.determinant();
-	if (det < 0) {
-		m.scale(Vector3(-1, -1, -1));
-	}
-	return m.get_quaternion();
-}
-
-// PD.quat_of: body.global_transform.basis.orthonormalized().get_rotation_quaternion()
-Quaternion pd_quat_of(Node3D *body) {
-	return eng_rotation_quaternion(eng_orthonormalized(body->get_global_transform().basis));
-}
 
 // PD.rot_error
 Vector3 pd_rot_error(const Quaternion &to, const Quaternion &from) {

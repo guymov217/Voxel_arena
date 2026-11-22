@@ -45,6 +45,12 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sculpt_out", "o", "l", "limb_r", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_out);
 	ClassDB::bind_method(D_METHOD("sculpt_elbow", "o", "bt", "bi", "shoulder_w", "e_dir", "lu", "r_half", "r_three", "r_whole", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_elbow);
 	ClassDB::bind_method(D_METHOD("sculpt_hand", "o", "bt", "bi", "from", "goal", "size", "marks", "band_lo", "band_hi", "band_pad"), &VoxelCore::sculpt_hand);
+	ClassDB::bind_method(D_METHOD("keep_arm_out", "up", "fo", "torso", "head", "up_half", "torso_half", "head_half", "hand_point", "out_x", "s", "dt", "two_handed", "fo_severed", "torso_severed", "head_severed", "up_mass", "fo_mass", "weapon_mass", "out_k", "upper_out", "drawn_on", "sculpt", "band_lo", "band_hi", "band_pad", "o_up", "armored_up", "o_fo", "armored_fo", "limb_plate", "up_joint", "fo_joint", "up_pa", "up_ca", "fo_pa", "fo_ca"), &VoxelCore::keep_arm_out);
+	ClassDB::bind_method(D_METHOD("clear_body", "target", "yaw_q", "t_pos", "torso", "head", "torso_half", "head_half", "s", "torso_severed", "head_severed", "fo_severed", "drawn_on", "sculpt", "band_lo", "band_hi", "band_pad", "o_fo", "armored_fo", "limb_plate", "hand_y"), &VoxelCore::clear_body);
+	ClassDB::bind_method(D_METHOD("elbow_off", "torso", "sculpt", "o_up", "armored_up", "shoulder_w", "e_dir", "lu", "band_lo", "band_hi", "band_pad", "limb_plate"), &VoxelCore::elbow_off);
+	ClassDB::bind_method(D_METHOD("hand_off", "torso", "sculpt", "o_up", "armored_up", "o_fo", "armored_fo", "shoulder_w", "elbow_w", "goal", "lu", "lf", "straight", "fo_severed", "s", "band_lo", "band_hi", "band_pad", "limb_plate"), &VoxelCore::hand_off);
+	ClassDB::bind_method(D_METHOD("keep_hand_front", "up", "fo", "torso", "up_half", "torso_half", "hand_point", "out_x", "s", "dt", "fo_severed", "up_mass", "fo_mass", "side_weapon_mass", "haft_half_mass", "out_k"), &VoxelCore::keep_hand_front);
+	ClassDB::bind_method(D_METHOD("keep_elbow_low", "up", "fo", "torso", "up_pa", "fo_pa", "hand_point", "right", "s", "dt", "up_mass", "fo_mass", "elbow_over", "elbow_over_hand", "elbow_soft", "low_k"), &VoxelCore::keep_elbow_low);
 	ClassDB::bind_method(D_METHOD("smooth_solid", "at", "inner", "res", "seal_lo", "seal_hi", "pad"), &VoxelCore::smooth_solid);
 	ClassDB::bind_method(D_METHOD("smooth_joined", "sol", "beside"), &VoxelCore::smooth_joined);
 	ClassDB::bind_method(D_METHOD("smooth_blur", "f", "sx", "sy", "sz", "r"), &VoxelCore::smooth_blur);

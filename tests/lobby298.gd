@@ -5,7 +5,7 @@ extends Node
 ## second the host could keep up, how much of a step the scripts and how much the engine take, and a fingerprint of every body at the end:
 ## two builds that print the same one have played it the same way, to the last bit (as tools/replay_check.sh).
 ## env: N (men, 8), BEHAVIOR (idle|walk|brawl|huddle: standing in a close ring, two paces from one another, the host's man in the middle|mixed: each man stands one to three seconds, walks about as long, and so on), SECS (game seconds, 6), SNAP (1: also pack the snapshot rows as the host's frame does),
-## ARM_LOD, IDLE (0: the arms at rest seen to every step / the men standing still not let sleep), ARMOR (1: helmet, lorica, manica, greaves; 0: bare), OFF (the left hand: scutum), MAIN (the right hand: gladius), NONPC (1: the yard's
+## ARM_NATIVE (0: the arms kept out of the body by the script instead of the C++ core), ARM_LOD, IDLE (0: the arms at rest seen to every step / the men standing still not let sleep), ARMOR (1: helmet, lorica, manica, greaves; 0: bare), OFF (the left hand: scutum), MAIN (the right hand: gladius), NONPC (1: the yard's
 ## keepers sent away: their idle ways are not the same from run to run, and a fingerprint is to be).
 
 var last_us := 0
@@ -48,6 +48,10 @@ func _ready() -> void:
 	# (The two ways of sparing the host in the yard are on, as in the game; ARM_LOD=0 / IDLE=0 for a build held to the bit.)
 	Fighter.arm_lod_on = _env("ARM_LOD", "1") != "0"
 	Match.human_idle_on = _env("IDLE", "1") != "0"
+	# (ARM_NATIVE=0: the arms kept out of the body by the script, not the C++ core: the two to set side by side.)
+	if _env("ARM_NATIVE", "1") == "0":
+		Greedy.core()
+		Greedy.arm_ok = false
 	var m := Match.new()
 	add_child(m)
 	var lo := {"main": _env("MAIN", "gladius"), "off": _env("OFF", "scutum"), "armor": ["helmet", "lorica", "manica", "greaves"] if _env("ARMOR", "1") != "0" else []}
