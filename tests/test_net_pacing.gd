@@ -17,9 +17,21 @@ func test_the_cap_follows_what_a_step_costs() -> void:
 	t.eq(Net.steps_cap(2.0, 16), 16, "a cap of the player's own above the room's stays")
 
 func test_a_room_raises_the_cap_and_gives_it_back() -> void:
-	var was: int = Engine.max_physics_steps_per_frame
+	var orig: int = Engine.max_physics_steps_per_frame
 	var cost: float = Net.step_ms
 	var room: String = Net.transport
+	var over: bool = Net.overloaded
+	var hot: int = Net._hot_looks
+	var alone: int = Net._steps_alone
+	var on: bool = Net.overload_on
+	Net.overload_on = true
+	# (A heavy test before this one may have left the game over its budget with two steps to a frame, as it does while it is:
+	# this one starts from a host that keeps up, with the engine's own cap.)
+	Net.overloaded = false
+	Net._hot_looks = 0
+	Net._steps_alone = -1
+	Engine.max_physics_steps_per_frame = int(ProjectSettings.get_setting("physics/common/max_physics_steps_per_frame", 4))
+	var was: int = Engine.max_physics_steps_per_frame
 	Net.step_ms = 3.0
 	Net.transport = "enet"
 	Net._pace()
@@ -35,8 +47,11 @@ func test_a_room_raises_the_cap_and_gives_it_back() -> void:
 	t.eq(Engine.max_physics_steps_per_frame, was, "out of the room: the cap it was")
 	Net.step_ms = cost
 	Net.transport = room
-	Net._pace()
-	Engine.max_physics_steps_per_frame = was
+	Net.overloaded = over
+	Net._hot_looks = hot
+	Net._steps_alone = alone
+	Net.overload_on = on
+	Engine.max_physics_steps_per_frame = orig
 
 func test_the_game_reads_its_own_step_cost() -> void:
 	# (The suite runs one step to a frame: Net's own clock of a frame's steps comes out as the cost of one.)

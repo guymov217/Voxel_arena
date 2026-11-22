@@ -746,20 +746,46 @@ var _wall0 := 0
 # half speed (measured: frames of 45 ms, the guest saw 68 of 120 steps a second and 22 snapshots, not 40). So a room
 # lets a frame catch up as far as the physics allows: as many steps as fit in PHYSICS_BUDGET_MS of the frame at the
 # cost one step has been taking, never fewer than the engine's own cap and never more than ROOM_STEPS_MAX. A room
-# whose steps already cost more than the 8.3 ms there is for each (too many fighters for the computer) keeps the
-# engine's cap: more steps would only make each frame longer, and the host's own picture a slide show.
+# whose steps already cost more than the 8.3 ms there is for each (too many fighters for the computer) does not
+# raise it: more steps would only make each frame longer, and the host's own picture a slide show (and see OVERLOAD_ON_MS).
 const ROOM_STEPS_MAX := 12
 const PHYSICS_BUDGET_MS := 50.0
+# A host whose steps cost more than the 8.3 ms there is for each, and keep costing it (too many fighters for the computer, in a room or
+# alone), cannot keep the game at its speed whatever the cap: it runs behind the clock all the time, and a frame of the engine's 4 steps
+# leaves the picture at a quarter of the steps a second (a wave of 8 friends and 8 foes: 50 steps, 12 frames a second, measured). Two steps
+# to a frame there give about twice the frames (47 steps, 23 frames: `tests/mix298.gd`) for a few percent of the game's speed (a tenth at
+# most, with a frame's whole drawing in it: the README has the table), so that is the cap while it lasts. The steps themselves are the same
+# (a step is always 1/120 s: the cap is only how many a frame may take), and a host that keeps up is not touched. The line is where four
+# steps stop fitting in a frame of 30 a second (4 x 8.6 ms = 34 ms). Not on a spike (a first-time shader, one heavy step: the smoothed
+# cost jumps and comes back within a second): the cost must be over OVERLOAD_ON_MS at OVERLOAD_LOOKS looks (once a second) in a row, and
+# it is over when it comes under OVERLOAD_OFF_MS.
+const OVERLOAD_ON_MS := 8.6
+const OVERLOAD_OFF_MS := 7.8
+const OVERLOAD_LOOKS := 2
+const OVERLOAD_STEPS := 2
 
 var step_ms := 0.0              # what one physics step has been costing here (ms, smoothed)
-var _steps_alone := -1          # the engine's cap before a room raised it (-1: not raised)
+var overload_on := true         # (a switch for tests and probes: off, the cap is the room's or the engine's own, as it was before the two steps)
+var overloaded := false         # the steps cost more than there is for them, for good (see OVERLOAD_ON_MS)
+var _hot_looks := 0             # the looks in a row at which they did
+var _steps_alone := -1          # the engine's cap before a room (or an overload) changed it (-1: not changed)
 var _frame_steps := 0
 var _frame_t0 := 0
 
-static func steps_cap(step_cost_ms: float, base: int) -> int:
+static func steps_cap(step_cost_ms: float, base: int, over := false) -> int:
+	if over:
+		return mini(base, OVERLOAD_STEPS)
 	if step_cost_ms <= 0.0:
 		return base
 	return clampi(int(PHYSICS_BUDGET_MS / step_cost_ms), base, maxi(base, ROOM_STEPS_MAX))
+
+## One look (once a second) at what a step costs: whether the host is over its budget for good, given whether it was, how many looks in a
+## row the cost has been high and what it is now. Returns [over, looks in a row].
+static func overload_after(was: bool, hot: int, step_cost_ms: float) -> Array:
+	hot = hot + 1 if step_cost_ms >= OVERLOAD_ON_MS else 0
+	if was:
+		return [step_cost_ms > OVERLOAD_OFF_MS, hot]
+	return [hot >= OVERLOAD_LOOKS, hot]
 
 func _physics_process(_dt: float) -> void:
 	# What came in is read at the start of every physics step, before the game's own (this node comes first), and not only once a
@@ -780,12 +806,19 @@ func _time_steps() -> void:
 	step_ms = ms if step_ms <= 0.0 else lerpf(step_ms, ms, 0.05)
 	_frame_steps = 0
 
-## Once a second: the room's cap (and back to the engine's own when the room closes).
+## Once a second: the room's cap, or the two steps of an overloaded host (and back to the engine's own when neither is so).
 func _pace() -> void:
-	if transport != "":
+	if overload_on:
+		var look := overload_after(overloaded, _hot_looks, step_ms)
+		overloaded = look[0]
+		_hot_looks = look[1]
+	else:
+		overloaded = false
+		_hot_looks = 0
+	if transport != "" or overloaded:
 		if _steps_alone < 0:
 			_steps_alone = Engine.max_physics_steps_per_frame
-		Engine.max_physics_steps_per_frame = steps_cap(step_ms, _steps_alone)
+		Engine.max_physics_steps_per_frame = steps_cap(step_ms, _steps_alone, overloaded)
 	elif _steps_alone >= 0:
 		Engine.max_physics_steps_per_frame = _steps_alone
 		_steps_alone = -1

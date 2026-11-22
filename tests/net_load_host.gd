@@ -26,6 +26,8 @@ func _ready() -> void:
 	for id in Net.peers:
 		peers.append({"id": id, "name": Net.peers[id].name, "loadout": {"main": ["axe", "gladius", "spear", "mace"][peers.size() % 4]}})
 	Net.send_all("start", {"mode": mode, "stage": stage})
+	if OS.get_environment("PACE") == "0":
+		Net.overload_on = false   # (the engine's cap, as before the two steps of a host over its budget)
 	m = Match.new()
 	add_child(m)
 	m.stage_always = OS.get_environment("NET_NOSTAGE") == ""   # (a host with a screen brings a wave in over the frames; NET_NOSTAGE=1 builds as before)
@@ -63,7 +65,7 @@ func _ready() -> void:
 		cpus.append(cpu)
 		rates.append(ticks / wall)
 		all_kb.append(sent)
-		print("LOAD s=%d entities=%d steps %.0f/s (of 120) cpu %.0f%% of a core | sent %.0f KB/s (%.0f per guest) | snapshot %d B" % [s, m.entities.size(), ticks / wall, cpu, sent, sent / maxf(1, Net.peers.size()), sb])
+		print("LOAD s=%d entities=%d steps %.0f/s (of 120) %.0f frames/s cpu %.0f%% of a core | the engine's cap %d%s | sent %.0f KB/s (%.0f per guest) | snapshot %d B" % [s, m.entities.size(), ticks / wall, float(Engine.get_process_frames() - fr0) / wall, cpu, Engine.max_physics_steps_per_frame, " (over its budget)" if Net.get("overloaded") == true else "", sent, sent / maxf(1, Net.peers.size()), sb])
 	gaps.sort()
 	var over16 := 0
 	var over33 := 0

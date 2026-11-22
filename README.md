@@ -837,6 +837,14 @@ host at 68 of 120 steps and 22 snapshots a second, not 40). A room lets a frame 
 physics at the cost one step has been taking (at most 12; with steps dearer than 8 ms, the engine's 4, as more of them
 would only slow the picture), and F3 shows the frames a second of each side with the steps.
 
+A host that cannot keep up gets two steps a frame instead of four (`Net.OVERLOAD_ON_MS`, `Net.overload_after`, `Net._pace`; in a room or alone, #298). While one step keeps
+costing more than the 8.3 ms there is for it the game runs behind the clock for good, and the engine's four steps to a frame left the picture at a quarter of the steps a
+second (8 friends and 8 foes in the endless arena: 12 frames a second). While the smoothed cost of a step is over 8.6 ms at two looks in a row (a look a second; four steps
+then no longer fit in a frame of 30 a second), and until it is back under 7.8, a frame takes two: about twice the frames for the same number of steps a second, give or take
+a tenth (the tables in the section on the same tests again). A spike (a first-time shader, one heavy step) is forgotten within the second, and a host that keeps up is never
+touched. A step is a 120th of a second whatever the cap and nothing in it is told of the cap, so the fight is the same fight (`tests/test_pacing.gd`; the same fight played
+four ways, further on). `Net.overload_on = false` (`PACE=0` in the probes) puts the engine's four back. The endless arena is not limited by it: its waves are as big as they were.
+
 A room of windows of one computer (`Net.local_room`: the guest joined 127.0.0.1 or this computer's own address, or the
 host has a guest that did) lowers the picture of both windows (`Menu.room_scale`: at most 0.7 of the resolution,
 `Menu.room_fps`: at most 60 frames a second) while the room is open, so that two windows on one graphics card both keep
@@ -1072,6 +1080,33 @@ eight, sixteen fighters.
 
 A beast costs a man's step and 0.6-1.4 ms more (wolf +0.6, lion +1.1, hydra +1.4, dragon +0.8, a great man +0.75). `tools/host_bench.bat` (double-click; it finds Godot in the
 game's folder and keeps its answer in `host_check.txt`) plays fights of 2, 4, 6 and 8 and says whether a computer hosts a full room.
+
+When the host cannot keep up (two steps a frame: the paragraph on a room keeping time, further up). `RT=1 sh tools/mix_load.sh "men:8,foe:8"` plays a mix in real time on one
+core with the men's drawing on (what the graphics card and the engine's own drawing add to a frame is not in it), six seconds to settle and ten measured; `PACE=0` puts the
+engine's four steps a frame back. Steps a second of 120 and frames a second (the lowest second in brackets), one run each on this core. A fight is not the same fight twice, so the steps
+a second move by a tenth or more either way (94 against 113 in the second row); the frames are what two steps change.
+
+| on the sand | four steps a frame | two (the governor) | frames |
+|---|---|---|---|
+| 8 bots (the host keeps up: not touched) | 120 steps, 58 frames (51) | 118 steps, 54 frames (43) | |
+| 4 players and 4 of the campaign's armoured men | 94 steps, 24 frames (17) | 113 steps, 46 frames (25) | x1.9 |
+| 4 friends and 7 foes | 68 steps, 17 frames (13) | 65 steps, 33 frames (25) | x1.9 |
+| 8 friends and a boss wave (a great foe and 4 men) | 48 steps, 12 frames (10) | 53 steps, 27 frames (23) | x2.2 |
+| 8 friends and 8 foes | 47 steps, 12 frames (8) | 45 steps, 22 frames (19) | x1.8 |
+
+A real room, the host on a core of its own and seven guests on the other three, 11 fighters (`NET_BOTS` unset; `NET_MODE=ffa HOST_CPUS=0 GUEST_CPUS=1-3 NET_FPS=60 sh tools/net_load.sh 7 20`, `PACE=0`
+for the engine's four; two runs each): the host drew 18 and 21 frames a second (the worst second 14 and 15), now 37 and 37 (22 and 27); it kept 73 and 82 steps a second, now 77 and 78.
+What the guests get is the same: 22-26 snapshots a second, now 24, the wait between two 53-61 ms at the 95th, now 54-58.
+
+The same fight, however the frames share the steps (`sh tools/pace_check.sh`, `tests/pacehash298.gd`). One fight (8 bots and 6 of the campaign's armoured men, 15 on the sand,
+seed 7) played for exactly 720 steps four ways, a step to a frame (`--fixed-fps 120`) and in real time on one core with four steps a frame, with two and with the governor
+(1.0, 4.0, 2.0 and 2.4 steps a frame), comes out with one fingerprint of every body in all four. A longer, bloodier one (8 bots and 8 armoured men, `STEPS=1200 MEN=8 FOES=8 EVERY=60`:
+a fingerprint every 60 steps; 14 standing after 600 steps, 11 after 960): eleven runs (four a step to a frame, with and without the men's drawing, three at four a frame, three
+at two and one with the governor) have the same fingerprint at each of the first 16 checkpoints, 960 steps, eight seconds of the game. After that the runs part: the four a step to
+a frame all at step 1020, from one another too; the three at four a frame hold together to 1200, the three at two part from one another at 1080 and from the three at four at the same
+step. So once a fight is that old what the cap changes cannot be told from what the game does by itself from one run to the next (something in it is not repeatable; it is not the
+dice: with them seeded afresh at every step, `SEEDSTEP=1`, eight runs keep together to 780 steps and part at 840-1020; not looked into further). The 47 fingerprints of the
+lobby and replay probes (`tools/replay_check.sh` and the yard probe's: a lobby of eight in four ways of arming, the replays), taken with the governor in the tree, are the same as before.
 
 ### Trying an online game on one machine
 
