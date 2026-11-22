@@ -1002,9 +1002,11 @@ network's share is about a seventh of a frame (at 60 frames a second at most, on
 worst second), and the slow motion and the dropped frames of a fight of eight are the same offline as in a room. With the fight's three usual bots beside the eight
 (the fight screen cannot ask for them: `FightOpts.MAX_FIGHTERS`) the room keeps up 75-90: the cap is worth its eight.
 A frame must fit `120 x step + FPS x the frame's own work <= 1000 ms`. F3's "physics" figure is the longest step of the last second, not
-the mean. What would spare them is a native version of the arm drive and the control (`_drive_arm`, `_keep_arm_out`, `_clear_body`,
-`_elbow_clear` are over half of `control`, which is 86% of a step: to the bit, as `drive.cpp` is), or the host's fighters on a computer of
-their own.
+the mean. What would spare them is a native version of the arm drive and the control, to the bit as `drive.cpp` is, or the host's fighters on a
+computer of their own. Where a man's step goes (`tests/lobby298.gd`, `Fighter.control`, `_drive_arm` and `_keep_arm_out` timed, one physics thread, eight men
+walking about, 7.75 ms a step with the host's own asleep; the timers cost a little): `control` 5.4 ms, 0.77 a man (the two arms' drive 0.36, their keeping out
+of the body 0.09, the legs, the trunk and the rays to the ground 0.32), the other scripts 1.1 ms, the engine 1.3 (fighting: 2.1). `control` is 83% of what the
+scripts take and 69% of the step, and the arm drive is the one piece that has no hot spot: some forty small calls.
 
 ### Trying an online game on one machine
 
