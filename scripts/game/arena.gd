@@ -106,6 +106,12 @@ static func apply_quality(e: Environment, sun_: DirectionalLight3D, q: String) -
 	if sun_:
 		sun_.shadow_enabled = true
 		sun_.directional_shadow_max_distance = 40.0 if lv >= 2 else 25.0
+		# How many times the sun's shadow map is cut up along the view (drawing only). Every fighter's
+		# cube instances are drawn again in each cascade he stands in, and the shadow passes are most of
+		# the triangles a frame asks of the card (59% with eight men on the sand). One cascade over
+		# these 25 metres is 6 mm a texel of the 4096, finer than a voxel; the four of high and up give
+		# the feet more still, and draw the men over again in each (a third more triangles in all).
+		sun_.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if lv == 0 else (DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if lv == 1 else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS)
 		sun_.shadow_blur = 1.0
 		sun_.light_volumetric_fog_energy = 1.1
 		# The sun a disc, not a point (ultra only: it is the one thing here that costs): shadows

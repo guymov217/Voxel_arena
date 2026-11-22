@@ -401,6 +401,8 @@ func test_native_drawing_matches_the_gdscript() -> void:
 	# An arm's reach (Fighter._arm_reach's table, some of it empty), a guard's voxels round it.
 	var off := 0
 	var cut_off := 0
+	var near_off := 0
+	var near_asked := 0
 	var chg_off := 0
 	for k in 30:
 		var rows := rng.randi_range(0, 9)
@@ -436,6 +438,19 @@ func test_native_drawing_matches_the_gdscript() -> void:
 			mask[i] = 1 if rng.randf() < 0.3 else 0
 		if nc.guard_cut(mask, flat, at, lk[1]) != Fighter._cut_off(mask.duplicate(), lk[0], lk[1]):
 			cut_off += 1
+		if nc.has_method("guard_cut_near"):
+			# (The same worked out round the voxels under the arm only, from the guard's own base: masks of every thickness.)
+			var none := PackedByteArray()
+			none.resize(pts.size())
+			var base: PackedByteArray = nc.guard_cut(none, flat, at, lk[1])
+			for dens in [0.0, 0.01, 0.03, 0.1, 0.3, 0.6, 0.9, 1.0]:
+				var mk := PackedByteArray()
+				mk.resize(pts.size())
+				for i in pts.size():
+					mk[i] = 1 if rng.randf() < dens else 0
+				near_asked += 1
+				if nc.guard_cut_near(mk, flat, at, lk[1], base) != Fighter._cut_off(mk.duplicate(), lk[0], lk[1]):
+					near_off += 1
 		var turned := PackedInt32Array()
 		for i in pts.size():
 			if mask[i] != want[i]:
@@ -444,8 +459,99 @@ func test_native_drawing_matches_the_gdscript() -> void:
 			chg_off += 1
 	t.eq(off, 0, "the same voxels of a guard within an arm's reach")
 	t.eq(cut_off, 0, "the same cut off by them from the rest of the shell")
+	if nc.has_method("guard_cut_near"):
+		# A guard as the voxels of a shell are laid (a lattice, each voxel next to twenty-six; the outer rim held on the rest of the shell): small masks, the likeliest.
+		var pts2 := PackedVector3Array()
+		var rest2 := PackedVector3Array()
+		var hv := 0.01
+		for ix in 9:
+			for iy in 7:
+				for iz in 4:
+					pts2.append(Vector3(ix, iy, iz) * hv)
+		for iy in 7:
+			for iz in 4:
+				rest2.append(Vector3(-1, iy, iz) * hv)   # (held on the shell at one end only: a wall across it cuts the rest off)
+		var lk2 := Fighter._guard_links(pts2, rest2, hv)
+		var flat2 := PackedInt32Array()
+		var at2 := PackedInt32Array([0])
+		for nb in lk2[0]:
+			flat2.append_array(nb)
+			at2.append(flat2.size())
+		var none2 := PackedByteArray()
+		none2.resize(pts2.size())
+		var base2: PackedByteArray = nc.guard_cut(none2, flat2, at2, lk2[1])
+		var held := 0
+		for b in lk2[1]:
+			held += b
+		t.check(held > 10 and held < pts2.size() / 2, "some of the lattice held on the shell (%d of %d)" % [held, pts2.size()])
+		var lat_off := 0
+		var orphaned := 0
+		for k in 400:
+			var mk2 := PackedByteArray()
+			mk2.resize(pts2.size())
+			var cnt := rng.randi_range(0, 40) if k % 4 else rng.randi_range(40, pts2.size())
+			for c in cnt:
+				mk2[rng.randi_range(0, pts2.size() - 1)] = 1
+			if k % 2 == 0:
+				# (A wall across the lattice, a layer thick, with a hole or two in it now and then.)
+				var wx := rng.randi_range(1, 7)
+				for i in pts2.size():
+					if int(roundf(pts2[i].x / hv)) == wx:
+						mk2[i] = 1
+				for hole in rng.randi_range(0, 2) if k % 4 == 0 else 0:
+					for i in pts2.size():
+						if int(roundf(pts2[i].x / hv)) == wx and int(roundf(pts2[i].y / hv)) == rng.randi_range(0, 6) and int(roundf(pts2[i].z / hv)) == rng.randi_range(0, 3):
+							mk2[i] = 0
+			near_asked += 1
+			var want2 := Fighter._cut_off(mk2.duplicate(), lk2[0], lk2[1])
+			if nc.guard_cut_near(mk2, flat2, at2, lk2[1], base2) != want2 or nc.guard_cut(mk2, flat2, at2, lk2[1]) != want2:
+				lat_off += 1
+			if want2 != mk2:
+				orphaned += 1
+		t.eq(lat_off, 0, "on a lattice, the same cut off by a few voxels or by many")
+		t.check(orphaned > 20, "masks that cut some voxels off from the shell (%d of 400)" % orphaned)
+	t.eq(near_off, 0, "the same cut off as the whole guard's search finds, by the search round the voxels under the arm (%d masks)" % near_asked)
 	t.eq(chg_off, 0, "and the same places where one mask is not the other")
 	t.check(nc.bytes_changed(PackedByteArray([1]), PackedByteArray([1, 0, 1])) == PackedInt32Array([0, 1, 2]), "against a mask of another length, every place")
+	# An arm's plates against the box of the chest's armour (Fighter._clip_arm_armor): the plates the script has anything to decide on.
+	if nc.has_method("clip_plates"):
+		var plate_off := 0
+		var asked := 0
+		for k in 60:
+			var n := rng.randi_range(0, 220)
+			var origins := PackedVector3Array()
+			var on := PackedByteArray()
+			var clip := PackedByteArray()
+			on.resize(n)
+			clip.resize(n)
+			for i in n:
+				origins.append(rv.call(0.15))
+				on[i] = 0 if rng.randf() < 0.15 else 1
+				clip[i] = 1 if rng.randf() < 0.2 else 0
+			var to_t := Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))), rv.call(0.2))
+			var box := AABB(rv.call(0.2), Vector3(rng.randf_range(0.02, 0.4), rng.randf_range(0.02, 0.4), rng.randf_range(0.02, 0.4)))
+			if k % 5 == 0:
+				# (On the faces and corners of the box, and a hair outside them, in the box's own frame; and a point that is not a number.)
+				to_t = Transform3D.IDENTITY
+				origins = PackedVector3Array([box.position, box.position + box.size, box.position - Vector3.ONE * 1e-6, box.position + box.size + Vector3.ONE * 1e-6, Vector3(NAN, 0.0, 0.0), box.position + Vector3(box.size.x, 0.0, 0.0), box.get_center()])
+				n = origins.size()
+				on.resize(n)
+				clip.resize(n)
+				on.fill(1)
+				clip.fill(0)
+			var want := PackedInt32Array()
+			for i in n:
+				if on[i] == 0:
+					continue
+				if box.has_point(to_t * origins[i]) or clip[i] == 1:
+					want.append(i)
+			asked += want.size()
+			var got: PackedInt32Array = nc.clip_plates(to_t, origins, on, clip, box)
+			if got != want:
+				plate_off += 1
+		t.eq(plate_off, 0, "the same plates of an arm's armour for the script to decide on")
+		t.check(asked > 500, "some plates in the box (%d)" % asked)
+		t.check(nc.clip_plates(Transform3D.IDENTITY, PackedVector3Array(), PackedByteArray([1, 1, 0]), PackedByteArray([0, 0, 0]), AABB()) == PackedInt32Array([0, 1, 2]), "against arrays of another length, every place")
 	# A limb bent at a break: what is drawn on its voxels, where the bend has each.
 	var m := Match.new()
 	add_child(m)

@@ -548,6 +548,7 @@ func _clear_shell() -> void:
 				p.draw_with.erase(nd)
 				nd.queue_free()
 		p.set_meta("armor", keep)
+	man.armor_changed()   # (the man's own memos of what armour makes of his arms: Fighter._arm_rec)
 	if plates_mi and is_instance_valid(plates_mi):
 		plates_mi.visible = true
 

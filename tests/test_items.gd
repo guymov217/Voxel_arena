@@ -550,3 +550,149 @@ func test_the_chest_armours_box_follows_the_plates_left() -> void:
 	t.check(box1.is_equal_approx(box2), "from the places kept, the same box as worked out anew")
 	t.check(box1.end.y < box0.end.y - 0.001, "lower than it was (%.3f, was %.3f)" % [box1.end.y, box0.end.y])
 	m.queue_free()
+
+## (#298k) What a man's armour makes of his arms for the C++ core (Fighter._arm_rec: which limbs wear armour, the outline each is kept out of) is worked out once while his armour stays as it
+## is, across the steps, and afresh once it changes (armor_changed: _add_armor, set_armor_pieces): the same as asked afresh every time, bare and in each set of armour put on and taken off.
+func _rec_digest(rec: Array) -> String:
+	return "%d %s %d %s %d %d" % [(rec[0] as Dictionary).size(), str(rec[1]), (rec[2] as Dictionary).size(), str(rec[3]), (rec[0] as Dictionary).hash(), (rec[2] as Dictionary).hash()]
+
+func _recs_now(f: Fighter) -> Array:
+	var out := []
+	f._arm_phase_begin()
+	var kept := [f._arm_rec("L"), f._arm_rec("R")]
+	var again := [f._arm_rec("L"), f._arm_rec("R")]
+	f._arm_phase = false
+	var fresh := [f._arm_rec("L"), f._arm_rec("R")]
+	for i in 2:
+		out.append(_rec_digest(kept[i]) == _rec_digest(fresh[i]) and is_same(kept[i], again[i]))
+	out.append(_rec_digest(fresh[0]) + " / " + _rec_digest(fresh[1]))
+	return out
+
+func test_the_arm_records_follow_his_armour() -> void:
+	var m := _match()
+	var e := _man(m, Vector3(0, 0, 0), PI, {"armor": []}, "Bare", 1, _idle)
+	await _steps(10)
+	var f: Fighter = e.f
+	var bare := _recs_now(f)
+	t.check(bare[0] and bare[1], "a bare man's records are as worked out afresh, and kept")
+	var seen := {bare[2]: true}
+	# (Kept across arm phases while nothing changes: the same record object, not one worked out again.)
+	f._arm_phase_begin()
+	var r0 = f._arm_rec("R")
+	f._arm_phase_begin()
+	t.check(is_same(r0, f._arm_rec("R")), "the record is kept from one arm phase to the next")
+	f._arm_phase = false
+	for ids in [["lorica", "manica"], ["manicaL", "vambraces"], ["lorica", "manica", "manicaL", "vambraces"], []]:
+		f.set_armor_pieces(ids)
+		await _steps(3)
+		var now := _recs_now(f)
+		t.check(now[0] and now[1], "after %s, the records are as worked out afresh" % str(ids))
+		seen[now[2]] = true
+	t.check(seen.size() >= 3, "the records changed with the armour put on and taken off (%d different)" % seen.size())
+	# (A cuirass on a man at a station of the yard: the same by the forge's bench, which says so with armor_changed.)
+	var before := f._armor_ver
+	f.armor_changed()
+	t.check(f._armor_ver == before + 1, "armor_changed counts a change")
+	m.queue_free()
+
+## What Fighter._clip_arm_armor leaves of an arm's plates, as the old pass over every plate of every
+## piece of it did (the C++ core now names the few plates it has anything to decide on, VoxelCore.
+## clip_plates; without the core every plate is looked at): the same plates hidden after each frame,
+## for boxes of every size and place, some plates knocked off, the arms swung about.
+func _clip_pass_old(f: Fighter) -> Array:
+	var out := []
+	var box: AABB = f.torso.get_meta("armor_box", AABB())
+	var ol: Dictionary = f.torso.get_meta("armor_outline", {})
+	var ol_pad: float = f.torso.vf * f.torso.part_scale * 0.25
+	var tinv := f.torso.get_global_transform_interpolated().affine_inverse()
+	for n in ["upperArmL", "upperArmR"]:
+		var p: VoxelPart = f.by_name.get(n)
+		if p == null or p.severed or p.missing:
+			continue
+		var to_t := tinv * p.get_global_transform_interpolated()
+		for ad in p.get_meta("armor", []):
+			if Fighter._cosmetic(String(ad.id)) or ad.node == null or not is_instance_valid(ad.node) or not ad.has("xf"):
+				continue
+			var want: PackedByteArray = (ad.clip as PackedByteArray).duplicate()
+			for ci in ad.cells.size():
+				if ad.on[ci] == 0:
+					continue
+				var q: Vector3 = to_t * (ad.xf[ci] as Transform3D).origin
+				want[ci] = 1 if box.has_point(q) and (ol.is_empty() or FineArmor.in_outline(ol, q, ol_pad)) else 0
+			out.append([ad, want])
+	return out
+
+func test_the_arm_armours_clip_pass_is_the_old_pass() -> void:
+	var m := _match()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var turn := [0]
+	var drive := func(_e) -> Dictionary:
+		turn[0] += 1
+		var k: int = turn[0] / 12
+		var r2 := RandomNumberGenerator.new()
+		r2.seed = k
+		return {"main": {"x": r2.randf_range(-1.0, 1.0), "y": r2.randf_range(-1.0, 1.0)}, "off": {"x": r2.randf_range(-1.0, 1.0), "y": r2.randf_range(-1.0, 1.0)}}
+	var e := _man(m, Vector3(0, 0, 0), PI, {"armor": ["helmet", "lorica", "manica", "greaves"]}, "Armoured", 1, drive)
+	await _steps(20)
+	var f: Fighter = e.f
+	f._clip_arm_armor()   # (what it keeps: the box, the outline, where each plate is drawn)
+	var he: Vector3 = f.torso.half_ext
+	var real_outline: Dictionary = f.torso.get_meta("armor_outline", {})
+	var frames := 0
+	var differ := 0
+	var turned := 0
+	var hid_most := 0
+	var pieces := 0
+	for k in 90:
+		await _steps(1)
+		# (The chest's box anywhere about him, and now and then a plate of an arm knocked off.)
+		var sz := Vector3(he.x * rng.randf_range(0.3, 3.0), he.y * rng.randf_range(0.3, 3.0), he.z * rng.randf_range(0.3, 3.0))
+		var c := Vector3(rng.randf_range(-1.0, 1.0) * he.x * 2.0, rng.randf_range(-1.0, 1.0) * he.y, rng.randf_range(-1.0, 1.0) * he.z * 2.0)
+		f.torso.set_meta("armor_box", AABB(c - sz * 0.5, sz))
+		# (Under the box, his outline: a plate is hidden when it is within both. Half the frames, the box alone.)
+		f.torso.set_meta("armor_outline", real_outline if k % 2 == 1 else {})
+		if k % 7 == 3:
+			for n in ["upperArmL", "upperArmR"]:
+				for ad in f.by_name[n].get_meta("armor", []):
+					if ad.get("xf") != null:
+						var on: PackedByteArray = ad.on
+						on[rng.randi_range(0, on.size() - 1)] = 0
+						ad["on"] = on
+		var old := _clip_pass_old(f)
+		var was := []
+		for pr in old:
+			was.append((pr[0].clip as PackedByteArray).duplicate())
+		f._clip_arm_armor()
+		frames += 1
+		pieces = maxi(pieces, old.size())
+		for i in old.size():
+			var now: PackedByteArray = old[i][0].clip
+			if now != old[i][1]:
+				differ += 1
+			for ci in now.size():
+				if now[ci] != was[i][ci]:
+					turned += 1
+			hid_most = maxi(hid_most, now.count(1))
+	t.check(pieces >= 1, "an armoured man's arm wears a piece (%d)" % pieces)
+	t.eq(differ, 0, "after every frame, the plates hidden are the ones the old pass over every plate hid")
+	t.check(turned > 100 and hid_most > 3, "plates went into the box and came out of it (%d turns, up to %d hidden)" % [turned, hid_most])
+	# (And with no core to name them, the same.)
+	Greedy.use_native = false
+	for k in 20:
+		await _steps(1)
+		var old := _clip_pass_old(f)
+		f._clip_arm_armor()
+		for pr in old:
+			if (pr[0].clip as PackedByteArray) != pr[1]:
+				differ += 1
+	Greedy.use_native = true
+	t.eq(differ, 0, "and the same without the C++ core")
+	# (What his arms are told to his shells, asked of him every frame: kept per arm, the cone the same as worked out from the look.)
+	for n in ["upperArmL", "upperArmR"]:
+		var up: VoxelPart = f.by_name[n]
+		var c1 := f._limb_cone(up)
+		var d := FineBody.part_data(String(up.fine.get("build", "")), String(up.part_name))
+		var fresh := Fighter.limb_cone(d.cells, -Vector3(up.grid) * up.vf * up.part_scale * 0.5, up.vf * up.part_scale / float(Data.body_res)) if not d.is_empty() else {}
+		t.check(not c1.is_empty() and c1 == fresh and is_same(c1, f._limb_cone(up)), "the cone of %s: as the look has it, and kept" % n)
+	m.queue_free()

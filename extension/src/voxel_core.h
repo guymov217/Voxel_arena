@@ -5,6 +5,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/rigid_body3d.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
+#include <godot_cpp/variant/aabb.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -61,7 +62,9 @@ public:
 	// on the voxels of a limb bent at a break, set where the bend has each (FineBody.lay).
 	PackedByteArray guard_reach(const PackedVector3Array &pts, const Transform3D &to_arm, const PackedFloat32Array &reach, int rows, int na, double y0, double dy, double pad) const;
 	PackedByteArray guard_cut(const PackedByteArray &hide_in, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc) const;
+	PackedByteArray guard_cut_near(const PackedByteArray &under, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc, const PackedByteArray &base) const;
 	PackedInt32Array bytes_changed(const PackedByteArray &was, const PackedByteArray &now) const;
+	PackedInt32Array clip_plates(const Transform3D &to_t, const PackedVector3Array &origins, const PackedByteArray &on, const PackedByteArray &clip, const AABB &box) const;
 	void lay_plates(Object *plates, Object *shell, const PackedFloat32Array &base, const PackedByteArray &on, const PackedByteArray &clip, const PackedInt32Array &of_at, const PackedInt32Array &of, const PackedFloat32Array &rel, const PackedByteArray &vclip, Dictionary now, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	void lay_cells(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &slots, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	// What a blow changes of a man's fine look (fine.cpp; `part` a VoxelPart with FineBody's look on

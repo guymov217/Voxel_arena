@@ -139,6 +139,120 @@ PackedByteArray VoxelCore::guard_cut(const PackedByteArray &hide_in, const Packe
 	return hide;
 }
 
+// Fighter._clip_arm_armor's pass over the plates of an arm's armour, the part of it that comes to
+// nothing nearly every plate in nearly every frame: `origins` where each plate is drawn on the arm
+// (the part's frame), `to_t` the arm's frame into the trunk's, `box` the box of the trunk's armour
+// (its frame), `on` the plates still on him, `clip` the plates left undrawn as the last frame had
+// them. The places, in order, of the plates the script has anything to decide on: on, and in the
+// box or left undrawn. Every other plate is outside the box and drawn, and stays so. A plate
+// counts as in the box as AABB.has_point has it (a point that is not a number is in it).
+PackedInt32Array VoxelCore::clip_plates(const Transform3D &to_t, const PackedVector3Array &origins, const PackedByteArray &on, const PackedByteArray &clip, const AABB &box) const {
+	PackedInt32Array out;
+	const int64_t count = on.size();
+	if (origins.size() < count || clip.size() < count) {
+		// (Not what the script was given: every place, and it deals with it as it did.)
+		out.resize(count);
+		int32_t *o = out.ptrw();
+		for (int64_t k = 0; k < count; k++) {
+			o[k] = (int32_t)k;
+		}
+		return out;
+	}
+	const uint8_t *a = on.ptr();
+	const uint8_t *c = clip.ptr();
+	const Vector3 *p = origins.ptr();
+	const Vector3 begin = box.position;
+	const Vector3 end = box.position + box.size;
+	for (int64_t k = 0; k < count; k++) {
+		if (a[k] == 0) {
+			continue;
+		}
+		bool in_box = true;
+		const Vector3 q = to_t.xform(p[k]);
+		if (q.x < begin.x || q.y < begin.y || q.z < begin.z || q.x > end.x || q.y > end.y || q.z > end.z) {
+			in_box = false;
+		}
+		if (in_box || c[k] == 1) {
+			out.push_back((int32_t)k);
+		}
+	}
+	return out;
+}
+
+// The same as guard_cut for a mask `under` of the voxels the arm's armour is over, but worked out from what is
+// known of the guard on its own: `base` is guard_cut of a mask with nothing in it (the voxels the shell holds
+// on to nothing, always cut off). A voxel is cut off by `under` only if every way from it to the shell
+// goes through a voxel of `under`, so the only places to look are the unhidden neighbours of those: each is
+// searched from until a voxel the shell holds is reached (it and all it passed are held), or the searching
+// runs out (all it passed are cut off). The few voxels `under` has make that a few steps, where guard_cut goes
+// over the whole guard (the frame of a man walking in a lorica and a manica, a few hundred voxels each).
+// Needs `adj` to hold both ways (a neighbour of a voxel has it as one: Fighter._guard_links makes it so).
+PackedByteArray VoxelCore::guard_cut_near(const PackedByteArray &under, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc, const PackedByteArray &base) const {
+	const int64_t count = under.size();
+	if (base.size() != count || adj_at.size() < count + 1 || anc.size() < count) {
+		return guard_cut(under, adj, adj_at, anc);
+	}
+	const uint8_t *u = under.ptr();
+	for (int64_t k = 0; k < count; k++) {
+		if (u[k] > 1) {
+			return guard_cut(under, adj, adj_at, anc);   // (a mask of something else than 0 and 1: as it was)
+		}
+	}
+	PackedByteArray hide = base;
+	uint8_t *h = hide.ptrw();
+	const int32_t *at = adj_at.ptr();
+	const int32_t *nb = adj.ptr();
+	const uint8_t *an = anc.ptr();
+	const int64_t n_adj = adj.size();
+	std::vector<int32_t> under_at;
+	for (int64_t k = 0; k < count; k++) {
+		if (u[k] == 1) {
+			h[k] = 1;
+			under_at.push_back((int32_t)k);
+		}
+	}
+	// 0: not searched, 1: held (the shell holds it), 2: in the search going on. (Those cut off are hidden: h.)
+	std::vector<uint8_t> state(count, 0);
+	std::vector<int32_t> seen;
+	for (const int32_t v : under_at) {
+		for (int64_t e = at[v]; e < at[v + 1] && e < n_adj; e++) {
+			const int32_t s = nb[e];
+			if (s < 0 || s >= count || h[s] != 0 || state[s] != 0) {
+				continue;
+			}
+			seen.clear();
+			seen.push_back(s);
+			state[s] = 2;
+			bool held = an[s] == 1;
+			for (size_t i = 0; i < seen.size() && !held; i++) {
+				const int32_t x = seen[i];
+				for (int64_t e2 = at[x]; e2 < at[x + 1] && e2 < n_adj; e2++) {
+					const int32_t j = nb[e2];
+					if (j < 0 || j >= count || h[j] != 0 || state[j] == 2) {
+						continue;
+					}
+					if (state[j] == 1 || an[j] == 1) {
+						held = true;
+						break;
+					}
+					state[j] = 2;
+					seen.push_back(j);
+				}
+			}
+			if (held) {
+				for (const int32_t x : seen) {
+					state[x] = 1;
+				}
+			} else {
+				for (const int32_t x : seen) {
+					h[x] = 1;
+				}
+			}
+		}
+	}
+	return hide;
+}
+
 // Where two masks of a length differ (the places, in order): what a new mask changes of the old.
 PackedInt32Array VoxelCore::bytes_changed(const PackedByteArray &was, const PackedByteArray &now) const {
 	PackedInt32Array out;

@@ -339,3 +339,18 @@ func test_effects_are_made_before_the_fight() -> void:
 	t.check(p.colors == was, "and colours none")
 	t.check(p.wound(Vector3(0.0, 0.0, p.half_ext.z), p.vf * p.part_scale * 3.0, "blood") > 0 and p.colors != was, "one that lands on it soaks in")
 	w.queue_free()
+
+## (#298k) The sun's shadow map is cut into fewer cascades on the lower quality levels (Arena.apply_quality; drawing only): every fighter's cube instances are drawn again in each cascade
+## he stands in, and the shadow passes are most of the triangles a frame asks of the graphics card. One on low, two on medium, the four of high and up (what they have always been).
+func test_the_suns_cascades_follow_the_quality_level() -> void:
+	var e := Environment.new()
+	var sun := DirectionalLight3D.new()
+	var want := {"low": DirectionalLight3D.SHADOW_ORTHOGONAL, "medium": DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, "high": DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "ultra": DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS}
+	for q in want:
+		Arena.apply_quality(e, sun, q)
+		t.check(sun.shadow_enabled and sun.directional_shadow_mode == want[q], "%s: the sun casts shadows, in mode %d (want %d)" % [q, sun.directional_shadow_mode, want[q]])
+	# (Back up from low: the four again.)
+	Arena.apply_quality(e, sun, "low")
+	Arena.apply_quality(e, sun, "high")
+	t.check(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "turned back up to high, the four cascades return")
+	sun.free()

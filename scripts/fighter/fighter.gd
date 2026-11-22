@@ -1217,6 +1217,7 @@ func _add_armor(p: VoxelPart, id: String) -> void:
 		ks.append(int(lk[1]))
 	var ad := {"id": id, "mat": a.get("mat", "iron"), "cells": cells, "pts": pts, "on": on, "alive": cells.size(), "node": inst, "cols": cols, "kinds": ks}
 	p.set_meta("armor", p.get_meta("armor", []) + [ad])
+	armor_changed()
 	FineArmor.build(self, p, ad)
 	_armor_dirty = true
 
@@ -1701,6 +1702,7 @@ func set_armor_pieces(ids: Array) -> void:
 			else:
 				keep.append(ad)
 		p.set_meta("armor", keep)
+	armor_changed()
 	_armor_dirty = true
 	for id in ids:
 		var on := false
@@ -4381,13 +4383,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	two_front = null
 	two_gap = null
 	# (The guard hand first: it sets where the other is to hold the haft this step.)
-	_arm_phase = true
-	_sculpt_memo.clear()
-	_limb_memo.clear()
-	_plate_memo = null
-	_beast_memo = -1
-	_armor_memo.clear()
-	_outline_memo.clear()
+	_arm_phase_begin()
 	# Arms at rest: what is seen to every other step is the drive of an arm with no weapon in its hand (a shield's, an empty one's) and the push
 	# of each out of the trunk and the head (the weapon arm's drive finds another place to rest in at half the rate, a hand's breadth off: it
 	# is seen to every step). Each with the time since it was last seen to.
@@ -4554,6 +4550,11 @@ func _clip_arm_armor() -> void:
 	var ol_pad: float = torso.vf * torso.part_scale * 0.25
 	if box.size == Vector3.ZERO:
 		return
+	# (The plates that lie nowhere near his chest are most of them, nearly always: the C++ core
+	# names the few the script has anything to decide on, VoxelCore.clip_plates.)
+	var nc := Greedy.core()
+	if nc != null and not nc.has_method("clip_plates"):
+		nc = null
 	for n in ["upperArmL", "upperArmR"]:
 		var p: VoxelPart = by_name.get(n)
 		if p == null or p.severed or p.missing:
@@ -4565,14 +4566,19 @@ func _clip_arm_armor() -> void:
 			var m: MultiMesh = ad.node.multimesh
 			if not ad.has("xf"):
 				var xf := []
+				var xo := PackedVector3Array()
 				for ci in ad.cells.size():
-					xf.append(m.get_instance_transform(ci))
+					var t0 := m.get_instance_transform(ci)
+					xf.append(t0)
+					xo.append(t0.origin)
 				ad["xf"] = xf
+				ad["xo"] = xo   # (where each is drawn on the arm, as the core wants them)
 				var fresh := PackedByteArray()
 				fresh.resize(ad.cells.size())
 				ad["clip"] = fresh
 			var clip: PackedByteArray = ad.clip
-			for ci in ad.cells.size():
+			var turn: PackedInt32Array = nc.clip_plates(to_t, ad.xo, ad.on, clip, box) if nc != null else PackedInt32Array(range(ad.cells.size()))
+			for ci in turn:
 				if ad.on[ci] == 0:
 					continue
 				var q: Vector3 = to_t * (ad.xf[ci] as Transform3D).origin
@@ -4627,19 +4633,27 @@ func _limbs_in_armor(interp := true) -> void:
 ## two ends' middles, r_top, r_end: how far out its skin is round each}, from the fine look's
 ## drawing of it (FineBody), worked out once a build's part. Empty: not drawn in the fine look.
 static var _limb_cones := {}
+var _cone_memo := {}   # part's instance id -> [build, size of a fine cell, grid, name, its cone]: asked of both his arms in every frame he is drawn in armour
 func _limb_cone(p: VoxelPart) -> Dictionary:
-	if not p.fine.has("body"):
+	var fine: Dictionary = p.fine
+	if not fine.has("body"):
 		return {}
-	var bn := String(p.fine.get("build", ""))
+	var bn := String(fine.get("build", ""))
 	var fv := p.vf * p.part_scale / float(Data.body_res)
+	var pid := p.get_instance_id()
+	var kept = _cone_memo.get(pid)
+	if kept != null and kept[0] == bn and kept[1] == fv and kept[2] == p.grid and kept[3] == p.part_name:
+		return kept[4]
 	var key := "%s|%s|%.5f|%s" % [bn, p.part_name, fv, str(p.grid)]
 	if _limb_cones.has(key):
+		_cone_memo[pid] = [bn, fv, p.grid, p.part_name, _limb_cones[key]]
 		return _limb_cones[key]
 	var out := {}
 	var d := FineBody.part_data(bn, String(p.part_name))
 	if not d.is_empty():
 		out = limb_cone(d.cells, -Vector3(p.grid) * p.vf * p.part_scale * 0.5, fv)
 	_limb_cones[key] = out
+	_cone_memo[pid] = [bn, fv, p.grid, p.part_name, out]
 	return out
 
 ## The cone of a limb drawn as fine cells `cells` (FineBody.CELL numbers each; a cell's middle at
@@ -4808,7 +4822,20 @@ static func guard_hidden(gd: Dictionary, side: String, reach: Dictionary, to_arm
 	var cut = gd.get("cut" + side)
 	if cut is Array and (cut[0] as PackedByteArray) == under:
 		return cut[1]
-	var hide: PackedByteArray = nc.guard_cut(under, gd["adjF" + side], gd["adjA" + side], gd["anc" + side]) if nc != null else _cut_off(under.duplicate(), gd["adj" + side], gd["anc" + side])
+	var hide: PackedByteArray
+	if nc == null:
+		hide = _cut_off(under.duplicate(), gd["adj" + side], gd["anc" + side])
+	elif nc.has_method("guard_cut_near"):
+		# (Looked for only round the voxels under his arm, from what a mask with none under it cuts off, kept: VoxelCore.guard_cut_near.)
+		var base = gd.get("base" + side)
+		if not (base is PackedByteArray):
+			var none := PackedByteArray()
+			none.resize(pts.size())
+			base = nc.guard_cut(none, gd["adjF" + side], gd["adjA" + side], gd["anc" + side])
+			gd["base" + side] = base
+		hide = nc.guard_cut_near(under, gd["adjF" + side], gd["adjA" + side], gd["anc" + side], base)
+	else:
+		hide = nc.guard_cut(under, gd["adjF" + side], gd["adjA" + side], gd["anc" + side])
 	gd["cut" + side] = [under, hide]
 	return hide
 
@@ -6291,7 +6318,8 @@ func _keep_arm_out_nc(nc, side: String, dt: float) -> void:
 	var sculpt = _trunk_sculpt(side)
 	var drawn_on: bool = sculpt != null
 	var b: Array = _plate_band_now() if drawn_on else _NO_BAND
-	nc.keep_arm_out(up, fo, torso, head, up.half_ext, torso.half_ext, head.half_ext, hand_point, -1.0 if side == "R" else 1.0, S, dt, two_handed, fo.severed, torso.severed, head.severed, up.nominal_mass, fo.nominal_mass, weapons[side].mass if weapons[side] else 0.0, ARM_OUT_K, UPPER_OUT, drawn_on, sculpt if drawn_on else _NO_SCULPT, b[0], b[1], b[2], _outline_m(up) if drawn_on else _NO_SCULPT, _armored_m(up) if drawn_on else false, _outline_m(fo) if drawn_on else _NO_SCULPT, _armored_m(fo) if drawn_on else false, LIMB_PLATE, up.joint != null, fo.joint != null, up.pa, up.ca, fo.pa, fo.ca)
+	var rec: Array = _arm_rec(side) if drawn_on else _NO_REC
+	nc.keep_arm_out(up, fo, torso, head, up.half_ext, torso.half_ext, head.half_ext, hand_point, -1.0 if side == "R" else 1.0, S, dt, two_handed, fo.severed, torso.severed, head.severed, up.nominal_mass, fo.nominal_mass, weapons[side].mass if weapons[side] else 0.0, ARM_OUT_K, UPPER_OUT, drawn_on, sculpt if drawn_on else _NO_SCULPT, b[0], b[1], b[2], rec[0], rec[1], rec[2], rec[3], LIMB_PLATE, up.joint != null, fo.joint != null, up.pa, up.ca, fo.pa, fo.ca)
 	_keep_hand_front(side, dt)
 
 ## What of him his arms are kept out of is what is drawn of him (user: his arms went in through
@@ -6374,12 +6402,13 @@ func _trunk_sculpt(side: String):
 	return _trunk_sculpt_worn(side)
 
 func _trunk_sculpt_worn(side: String):
-	if not (_armored(torso) or _armored(arm[side].upper) or _armored(arm[side].fore)):
+	if not (_armored_m(torso) or _armored_m(arm[side].upper) or _armored_m(arm[side].fore)):
 		return null
 	for m in ["beast_hold", "rolled_by"]:
 		if has_meta(m) and is_instance_valid(get_meta(m)):
 			return null
-	return _outline(torso)
+	var o: Dictionary = _outline_m(torso)
+	return null if o.is_empty() else o
 
 ## The arms' part of a step (control). What its many askers ask is the same all through it (the
 ## trunk's outline his arms are kept out of, how thick each limb is drawn, where his cuirass
@@ -6393,6 +6422,41 @@ var _plate_memo = null   # [from, to, how thick]: the cuirass on the trunk (_pla
 var _beast_memo := -1    # whether a beast has hold of him (_beast_has_me), asked once in an arm phase (-1: not yet)
 var _armor_memo := {}    # part -> _armored(part), asked once in an arm phase
 var _outline_memo := {}  # part -> _outline(part) (or an empty dictionary: none), asked once in an arm phase
+## (#298k) What armour makes of those memos is worked out once while his armour stays as it is, not afresh every step: which of his trunk and arms wear armour, the outline each is
+## kept out of, the cuirass's band, and for each arm the four of its two limbs (_arm_rec). His build and the scale of his parts are fixed when he is made, and his armour changes only
+## by a new list put on a part (_add_armor, set_armor_pieces, the forge's bench): whoever puts one on says so (armor_changed), and the memos are worked out afresh at the next step.
+## (A plate knocked off changes no list: nothing of this reads which plates are on.) Three milliseconds of eight armoured men's steps (docs/PERF_RESEARCH.md).
+var _armor_ver := 0
+var _kc_ver := -1
+var _rec_memo := {}      # side -> _arm_rec(side), asked once while his armour stays as it is
+func armor_changed() -> void:
+	_armor_ver += 1
+## An arm phase begins (control): what holds for this step alone is cleared, and what holds while his armour stays as it is (_armor_ver) when it has changed.
+func _arm_phase_begin() -> void:
+	_arm_phase = true
+	_sculpt_memo.clear()
+	_limb_memo.clear()
+	_beast_memo = -1
+	if _kc_ver != _armor_ver:
+		_kc_ver = _armor_ver
+		_plate_memo = null
+		_armor_memo.clear()
+		_outline_memo.clear()
+		_rec_memo.clear()
+const _NO_REC := [_NO_SCULPT, false, _NO_SCULPT, false]
+## The two limbs of an arm for the C++ core, as the memos have them: [the upper arm's outline ({} none), whether it wears armour, the forearm's outline, whether it wears armour].
+func _arm_rec(side: String) -> Array:
+	if not _arm_phase:
+		var up0: VoxelPart = arm[side].upper
+		var fo0: VoxelPart = arm[side].fore
+		return [_outline_m(up0), _armored_m(up0), _outline_m(fo0), _armored_m(fo0)]
+	var r = _rec_memo.get(side)
+	if r == null:
+		var up: VoxelPart = arm[side].upper
+		var fo: VoxelPart = arm[side].fore
+		r = [_outline_m(up), _armored_m(up), _outline_m(fo), _armored_m(fo)]
+		_rec_memo[side] = r
+	return r
 
 ## _armored and _outline of a part for the C++ core (an arm phase asks them once; outside one, afresh): the outline, or {} where there is none.
 func _armored_m(p: VoxelPart) -> bool:
@@ -6795,9 +6859,9 @@ func _elbow_clear(side: String, shoulder_w: Vector3, e_dir: Vector3, lu: float) 
 func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_dir: Vector3, lu: float) -> Vector3:
 	var nc0 := Greedy.core()
 	if nc0 != null and Greedy.arm_ok:
-		var up0: VoxelPart = arm[side].upper
+		var rec0: Array = _arm_rec(side)
 		var b0: Array = _plate_band_now()
-		return nc0.elbow_off(torso, sculpt, _outline_m(up0), _armored_m(up0), shoulder_w, e_dir, lu, b0[0], b0[1], b0[2], LIMB_PLATE)
+		return nc0.elbow_off(torso, sculpt, rec0[0], rec0[1], shoulder_w, e_dir, lu, b0[0], b0[1], b0[2], LIMB_PLATE)
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var up: VoxelPart = arm[side].upper
@@ -6828,10 +6892,10 @@ func _elbow_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, e_d
 func _hand_off_trunk(side: String, sculpt: Dictionary, shoulder_w: Vector3, elbow_w: Vector3, goal: Vector3, lu: float, lf: float, straight: bool) -> Vector3:
 	var nc0 := Greedy.core()
 	if nc0 != null and Greedy.arm_ok:
-		var up0: VoxelPart = arm[side].upper
+		var rec0: Array = _arm_rec(side)
 		var fo0: VoxelPart = arm[side].fore
 		var b0: Array = _plate_band_now()
-		return nc0.hand_off(torso, sculpt, _outline_m(up0), _armored_m(up0), _outline_m(fo0), _armored_m(fo0), shoulder_w, elbow_w, goal, lu, lf, straight, fo0.severed, S, b0[0], b0[1], b0[2], LIMB_PLATE)
+		return nc0.hand_off(torso, sculpt, rec0[0], rec0[1], rec0[2], rec0[3], shoulder_w, elbow_w, goal, lu, lf, straight, fo0.severed, S, b0[0], b0[1], b0[2], LIMB_PLATE)
 	var bt: Transform3D = torso.global_transform
 	var bi := bt.affine_inverse()
 	var up: VoxelPart = arm[side].upper
@@ -6901,7 +6965,8 @@ func _clear_body(target: Vector3, yaw_q: Quaternion, t_pos: Vector3, side := "R"
 		var sculpt = _trunk_sculpt(side)
 		var on: bool = sculpt != null and not torso.severed and not fo.severed
 		var b: Array = _plate_band_now() if on else _NO_BAND
-		return nc.clear_body(target, yaw_q, t_pos, torso, head, torso.half_ext, head.half_ext, S, torso.severed, head.severed, fo.severed, on, sculpt if on else _NO_SCULPT, b[0], b[1], b[2], _outline_m(fo) if on else _NO_SCULPT, _armored_m(fo) if on else false, LIMB_PLATE, hand_point.y)
+		var rec: Array = _arm_rec(side) if on else _NO_REC
+		return nc.clear_body(target, yaw_q, t_pos, torso, head, torso.half_ext, head.half_ext, S, torso.severed, head.severed, fo.severed, on, sculpt if on else _NO_SCULPT, b[0], b[1], b[2], rec[2], rec[3], LIMB_PLATE, hand_point.y)
 	var th: Vector3 = torso.half_ext
 	var tz := th.z + 0.09 * S
 	if target.y < th.y and target.y > -th.y * 1.1 and absf(target.x) < th.x + 0.05 * S and target.z < tz:

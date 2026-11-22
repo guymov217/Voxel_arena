@@ -1436,10 +1436,17 @@ static func _band_rows(ad: Dictionary, org: PackedVector3Array, o: Vector3, sp: 
 static func _over_top(ad: Dictionary, p: VoxelPart) -> bool:
 	if String(p.part_name) != "torso":
 		return false
+	# (Asked of every piece on his chest in every frame he is drawn; a piece's cells do not change, so once.)
+	var have = ad.get("over_top")
+	if have != null:
+		return have
+	var over := false
 	for c in ad.cells:
 		if int(c[1]) >= p.dims.y:
-			return true
-	return false
+			over = true
+			break
+	ad["over_top"] = over
+	return over
 
 ## A colour lit by `k` (in light, not in the colour's own numbers).
 static func _lit(col: Color, k: float) -> Color:

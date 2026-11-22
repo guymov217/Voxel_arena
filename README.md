@@ -1075,6 +1075,12 @@ What each way of sparing the step is worth, measured here where it can be and mo
   left (-8% of a step) 4.2 / 6.6 / 8.9 / 12.1; the fighters in a process of their own (a step has to fit 8.33 ms, the picture on its own core) 5.7 / 7.9 / 10.1 / 13.3; all of `control` in
   C++ (-40%) 6.0 / 9.2 / 12.9 / 17.9; both of the last two 9.0 / 12.4 at k = 0.8 / 1.15. The numbers of a real machine decide which: `tools\host_bench.bat` and F3 in a full room.
 
+Done from that list (#298k, the armour: the first pick of the owner's list, nothing in it changes a fight; the figures and the tests in docs/PERF_RESEARCH.md, sections 3 and 3b): the armour
+state is kept across steps instead of worked out afresh (`Fighter.armor_changed`, `_arm_rec`: the step of eight armoured men about -5%, the same fight to the bit, 47 fingerprints of 47); the
+armour's clip pass in the frame is cut, in the scripts and in the C++ core (`VoxelCore.clip_plates`, `guard_cut_near`, `FineArmor._over_top` and the limbs' cones kept: eight armoured men's drawing
+-19% walking and -27% fighting, 0.4-0.7 ms a frame); and the sun's shadow map is cut into one cascade on the `low` quality level and two on `medium` (`Arena.apply_quality`: the triangles drawn
+-25% and -18%; `high` and `ultra` as they were). Left of it: the process of its own, and all of `control` in C++ (docs/PERF_RESEARCH.md section 6).
+
 ### The same tests again, before and after (#298)
 
 This core (a 2.1 GHz Xeon that runs at about 2.85 GHz, no graphics card, one core to a game), release build, three builds: before the work (`e1a3a8a`), the work as pushed

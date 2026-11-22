@@ -24,7 +24,9 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("lay_band", "multimesh", "rows", "ix", "alive", "veil", "q", "n", "theta", "b", "b_was", "k", "axis", "pv", "tip", "inv"), &VoxelCore::lay_band);
 	ClassDB::bind_method(D_METHOD("guard_reach", "pts", "to_arm", "reach", "rows", "na", "y0", "dy", "pad"), &VoxelCore::guard_reach);
 	ClassDB::bind_method(D_METHOD("guard_cut", "hide", "adj", "adj_at", "anc"), &VoxelCore::guard_cut);
+	ClassDB::bind_method(D_METHOD("guard_cut_near", "under", "adj", "adj_at", "anc", "base"), &VoxelCore::guard_cut_near);
 	ClassDB::bind_method(D_METHOD("bytes_changed", "was", "now"), &VoxelCore::bytes_changed);
+	ClassDB::bind_method(D_METHOD("clip_plates", "to_t", "origins", "on", "clip", "box"), &VoxelCore::clip_plates);
 	ClassDB::bind_method(D_METHOD("lay_plates", "plates", "shell", "base", "on", "clip", "of_at", "of", "rel", "vclip", "now", "q", "n", "theta", "b", "k", "axis", "pv", "tip", "far_x"), &VoxelCore::lay_plates);
 	ClassDB::bind_method(D_METHOD("lay_cells", "multimesh", "rows", "slots", "q", "n", "theta", "b", "k", "axis", "pv", "tip", "far_x"), &VoxelCore::lay_cells);
 	ClassDB::bind_method(D_METHOD("fine_ready", "part"), &VoxelCore::fine_ready);
