@@ -822,6 +822,8 @@ func _time_steps() -> void:
 func _pace() -> void:
 	if overload_on:
 		var look := overload_after(overloaded, _hot_looks, step_ms)
+		if bool(look[0]) != overloaded:
+			FpsMeter.note("room %s: a step costs %.1f ms of the 8.3 there is" % ["over its budget (two steps a frame, the game runs slow)" if bool(look[0]) else "back within its budget", step_ms])
 		overloaded = look[0]
 		_hot_looks = look[1]
 	else:

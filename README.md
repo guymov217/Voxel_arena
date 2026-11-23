@@ -353,9 +353,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   and the drawing and the graphics card's time in ms, the physics steps the game really takes a second of
   the 120 it is meant to, and whether the C++ core is loaded: without it a step costs a fifth more; a third
   line says where the frame goes: the men's drawing, the match's own work, all the rest, and the draw calls;
-  in a room the connection's meter with it). With it on, any frame over 60 ms is also written to `user://hitches.txt`
-  (what the frame did: the physics steps, the nodes that came and went, the network messages of that frame): the file to
-  send when the game stalls.
+  in a room the connection's meter with it). The game keeps a record in `user://hitches.txt` whether or not F3 is on
+  (the machine at the head; a line for every stretch of two seconds in which it ran under 97% of its speed or under 45 frames a second,
+  for every frame over 60 ms, and for each match's start and how long it took): the file to send when the game stalls or runs slow
+  (in the editor: Project, Open User Data Folder; the game prints the path as it starts).
   The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
   pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
   the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a
@@ -681,7 +682,8 @@ settings; the guest is told it as he comes in, with a `room` message from the ho
   in the next bout, as for the host (the host's word at the bout's end: `body`, `armor_wear`, `kit`, the pay). The single
   campaign's gladiator is never touched. A run that ends (a death with no checkpoint to go back to, or the campaign begun
   again) takes a new number and begins everyone anew: the host's `new_run` word (the same group of friends: its slot goes on under
-  the new number). For every player more in the room the bout's men (or its beast) are one more, on every card of the gate; a boss
+  the new number). A party meets a few more of the bout's men (or its beast) than one man does, on every card of the gate: one more for two or three players,
+  two more for four, and never more than six foes in all, the second wave counted (`Data.PARTY_EXTRA`, `PARTY_FOES_MAX`); a boss
   is alone, tougher for each friend (`Data.duel`).
 
   **One campaign for each group of friends.** The host plays it with different friends at different times, and each group has its

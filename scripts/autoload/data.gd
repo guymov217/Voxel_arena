@@ -91,10 +91,13 @@ func stage(n: int, players: int = 1, bout: int = 0, crowd := false) -> Dictionar
 ## The campaign is a ladder of single bouts, authored bout by bout in Ladder (scripts/game/
 ## ladder.gd): each stage one bout, its men with the stage's gear, weapons and skill (the
 ## tables'), a beast at its species' size, a boss on every fourth stage, and on some a second
-## wave through the other gate ("late"). A party (co-op) fights it together: for every player
-## more in the room, one more of the bout's own men (or of its beast), on every choice at the gate
-## (two foes for two where one man stood alone, three for three, four for four); a boss comes
-## alone, the tougher for each friend. The second wave comes as authored, for a party as for one man.
+## wave through the other gate ("late"). A party (co-op) fights it together: not one foe more for
+## every friend (four players met four where one man met one: user), but a few more of the bout's own
+## men (or of its beast), on every choice at the gate: one more for two or three players, two more
+## for four, and never more than six foes in all, the second wave counted (six against four). A boss
+## comes alone, the tougher for each friend. The second wave comes as authored, for a party as for one man.
+const PARTY_EXTRA := [0, 1, 1, 2]   # foes a party adds to the bout's own, by its players (one to four)
+const PARTY_FOES_MAX := 6           # the most foes a party meets, the second wave counted
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var n := int(st.get("n", 1))
 	var b := Ladder.bout(int(st.get("bout", n)))
@@ -120,7 +123,8 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 			f["mods"] = m
 	elif players > 1:
 		var own := foes.size()
-		for i in players - 1:
+		var extra := mini(int(PARTY_EXTRA[clampi(players, 1, PARTY_EXTRA.size()) - 1]), maxi(0, PARTY_FOES_MAX - own - late.size()))
+		for i in extra:
 			foes.append((foes[i % own] as Dictionary).duplicate(true))
 	st["rounds"] = [foes]
 	st["late"] = late

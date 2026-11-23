@@ -304,6 +304,32 @@ static func label(text: String, size := 16, color := TEXT) -> Label:
 		l.add_theme_font_size_override("font_size", size + 1)
 	return l
 
+## A clock at the screen's bottom edge, in the middle, on a dark pill so it reads over a forge, a smith and the sand alike. A label that keeps to one line however little room it
+## is given: `label` wraps at the control's width, which a label anchored to a point has none of until its text is set (the contest's clock at the top, in the middle, stood a
+## letter to a line, over the forge's own buttons). Hidden until it has something to say.
+static func clock_pill(size := 28) -> Label:
+	var l := label("", size, GOLD_LIGHT)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.05, 0.036, 0.028, 0.88)
+	s.border_color = BRONZE_DARK
+	s.set_border_width_all(2)
+	s.set_corner_radius_all(10)
+	s.content_margin_left = 22
+	s.content_margin_right = 22
+	s.content_margin_top = 6
+	s.content_margin_bottom = 6
+	l.add_theme_stylebox_override("normal", s)
+	l.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.offset_top = -20
+	l.offset_bottom = -20
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.visible = false
+	return l
+
 static func button(text: String, cb: Callable, primary := false) -> Button:
 	var b := Button.new()
 	b.text = text

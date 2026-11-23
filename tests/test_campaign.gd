@@ -164,18 +164,35 @@ func test_the_ladder_climbs_and_never_repeats_itself() -> void:
 		var k := _kind(Data.stage(n, 1).rounds[0][0])
 		t.check(k != "hoplite" and k != "brute" and k != "crocodile" and k != "troll", "no %s before bout 25 (bout %d)" % [k, n])
 
-func test_coop_gives_every_friend_a_foe_and_bosses_come_alone() -> void:
+func test_a_party_meets_a_few_more_foes_not_one_for_every_friend_and_bosses_come_alone() -> void:
 	for n in [1, 2, 3, 5, 6]:
 		var st := Data.stage(n, 3)
 		t.eq(st.rounds.size(), 1, "co-op bout %d is one fight" % n)
-		t.eq(st.rounds[0].size(), Data.stage(n, 1).rounds[0].size() + 2, "three players, two foes more than alone, in bout %d" % n)
+		t.eq(st.rounds[0].size(), Data.stage(n, 1).rounds[0].size() + 1, "three players, one foe more than alone, in bout %d" % n)
+		t.eq(Data.stage(n, 2).rounds[0].size(), Data.stage(n, 1).rounds[0].size() + 1, "two players, one foe more, in bout %d" % n)
 		# (And in every choice at the gate: the bout another of the stretch brings, the crowd's fight.)
 		for pick in [[0, false], [n + 1, false], [0, true]]:
 			var alone: Dictionary = Data.stage(n, 1, int(pick[0]), bool(pick[1]))
 			if (alone.rounds[0] as Array).any(func(f): return f.get("boss", false)):
 				continue   # (a boss comes alone)
 			var party: Dictionary = Data.stage(n, 4, int(pick[0]), bool(pick[1]))
-			t.eq(party.rounds[0].size(), alone.rounds[0].size() + 3, "four players, three foes more, at bout %d (pick %s)" % [n, str(pick)])
+			t.eq(party.rounds[0].size(), alone.rounds[0].size() + 2, "four players, two foes more, at bout %d (pick %s)" % [n, str(pick)])
+	# Never more than six foes in all against four, the second wave counted, on any bout and any card of the gate; never fewer than one man meets.
+	var worst := 0
+	var over := []
+	for n in range(1, 65):
+		for pick in [[0, false], [0, true]]:
+			var alone: Dictionary = Data.stage(n, 1, int(pick[0]), bool(pick[1]))
+			for players in [2, 3, 4]:
+				var party: Dictionary = Data.stage(n, players, int(pick[0]), bool(pick[1]))
+				var all: int = (party.rounds[0] as Array).size() + (party.late as Array).size()
+				var one: int = (alone.rounds[0] as Array).size() + (alone.late as Array).size()
+				if players == 4:
+					worst = maxi(worst, all)
+				if all > maxi(Data.PARTY_FOES_MAX, one) or all < one or all > one + 2:
+					over.append("%d/%dp/%s: %d (alone %d)" % [n, players, str(pick[1]), all, one])
+	t.eq(over.size(), 0, "a party meets at most six foes in all and never more than two more than a man alone (%s)" % str(over.slice(0, 4)))
+	t.check(worst <= 6, "six against four at the most (the worst is %d)" % worst)
 	t.eq(Data.stage(5, 3).late.size(), 1, "the second wave comes as authored, for a party as for one")
 	var boss := Data.stage(4, 3)
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
@@ -713,18 +730,18 @@ func test_a_player_bleeds_slower() -> void:
 			t.eq(float(e.f.mods.bleed), 1.0, "a foe bleeds as before")
 	m.queue_free()
 
-## A party has the numbers: one foe more for every player more, on a men's bout (and a beast's), and a boss
-## tougher by a third for each friend, not more, and never a foe more (user).
+## A party has the numbers: a foe more for two or three players, two for four (not one for every friend: four met four where one
+## man met one, user), on a men's bout (and a beast's), and a boss tougher by a third for each friend, not more, and never a foe more.
 func test_a_party_has_the_better_of_it() -> void:
 	var count := func(st): return st.rounds.reduce(func(a, r): return a + r.size(), 0)
 	t.eq(count.call(Data.stage(2, 1)), 1, "alone: one man")
 	t.eq(count.call(Data.stage(2, 2)), 2, "two players: two men")
-	t.eq(count.call(Data.stage(2, 3)), 3, "three players: three men")
-	t.eq(count.call(Data.stage(2, 4)), 4, "four players: four men")
+	t.eq(count.call(Data.stage(2, 3)), 2, "three players: still two, not three")
+	t.eq(count.call(Data.stage(2, 4)), 3, "four players: three, not four")
 	var boss3: Dictionary = Data.stage(8, 3).rounds[0][0]
 	t.check(is_equal_approx(float(boss3.mods.toughness), 1.0 + 0.35 * 2), "a boss for three is 70%% tougher (%.2f)" % float(boss3.mods.toughness))
 	t.eq(Data.stage(8, 4).rounds[0].size(), 1, "and a boss is alone for four")
-	t.eq(Data.stage(3, 3).rounds[0].size(), 3, "a beast's bout for three: three of them")
+	t.eq(Data.stage(3, 3).rounds[0].size(), 2, "a beast's bout for three: two of them")
 
 ## A party's man and one friend, a campaign bout of foes standing still (nothing else can hurt either of them).
 func _pair() -> Array:

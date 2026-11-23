@@ -139,3 +139,25 @@ func test_a_yard_left_before_its_people_are_in_is_let_go() -> void:
 	m.queue_free()
 	await _steps(30)
 	t.check(not is_instance_valid(m), "the yard is gone")
+
+## With a screen a campaign bout's first foes come through the gates over the frames that follow its start (the players are in at once), not
+## all built before its first frame: and the second wave is not called while the first is still on its way in, nor the bout won.
+func test_a_bouts_first_foes_come_in_over_the_frames_after_its_start() -> void:
+	var m := Match.new()
+	m.stage_always = true
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 5, "role": "host", "headless": true, "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 2, "name": "Bob", "loadout": {"main": "axe"}}], "seed": 4})
+	t.eq(m.humans().size(), 2, "the two players are in at once")
+	t.eq(m.enemies().size(), 0, "no foe is built before the first frame")
+	var want: int = (Data.stage(5, 2).rounds[0] as Array).size()
+	t.eq(m.coming, want, "the first wave is on its way in")
+	t.check(not m.late_wave.is_empty(), "the second wave is kept back")
+	await _steps(2)
+	t.check(not m.late_wave.is_empty(), "and not called for while the first is not yet in")
+	t.check(not m.over, "nor the bout won")
+	var took := await _until(func(): return m.enemies().size() == want and m.coming == 0, 3000)
+	t.check(took > 2, "the foes come over the frames (%d)" % took)
+	t.eq(m.enemies().size(), want, "all of the first wave in the end")
+	t.check(not m.late_wave.is_empty() or m.time > Ladder.LATE_AFTER, "the second wave still waits its turn")
+	m.queue_free()
+	await get_tree().physics_frame

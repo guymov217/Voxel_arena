@@ -17,6 +17,13 @@ const WINDOW_S := 5.0
 ## told apart from a slow stretch and its cause looked for (the steps the frame had to take, a man built or freed, a message of the room).
 const HITCH_MS := 60.0
 const HITCH_FILE_MAX := 200000
+## The record is kept whether or not the meter is shown (the stops of a game nobody had F3 on for are the ones to look at): a frame past HITCH_MS, a stretch of
+## SLOW_WINDOW_S seconds in which the game ran under SLOW_SPEED of its speed or under SLOW_FPS frames a second (a game in slow motion has no long frame to show
+## for it: its frames are all a little long), and the notes the game makes of its own starts (FpsMeter.note). The file is made at the game's start.
+const LOG_PATH := "user://hitches.txt"
+const SLOW_WINDOW_S := 2.0
+const SLOW_SPEED := 0.97
+const SLOW_FPS := 45.0
 
 ## What the frame's own scripts take, counted only while the meter is shown (each of them looks at the clock only then): the men's
 ## drawing (Fighter, VoxelPart, Weapon) and the match's, in microseconds since the meter last read them.
@@ -38,6 +45,12 @@ var _hitch_steps := 0       # the physics frames at the last frame's start
 var _hitch_nodes := 0       # and the nodes then
 var _hitch_t := -10.0       # when the last hitch was written (s)
 var _hitch_n := 0
+var _sw_t0 := -1.0          # the slow-stretch window: when it began (s), the physics steps then, the frames and the longest of them, those over 33 ms
+var _sw_steps0 := 0
+var _sw_frames := 0
+var _sw_worst := 0.0
+var _sw_over := 0
+var _sw_n := 0              # the stretches written
 
 func _ready() -> void:
 	layer = 50
@@ -61,11 +74,13 @@ func _ready() -> void:
 	label.add_theme_font_size_override("bold_font_size", 14)
 	panel.add_child(label)
 	show_meter(bool(Save.get_value("settings", {}).get("fps_meter", false)))
+	if DisplayServer.get_name() != "headless":
+		_log_session()
 
 ## Shown or put away (and the graphics card's own timing on only while it is shown: it costs).
 func show_meter(on: bool) -> void:
 	visible = on
-	set_process(on)
+	set_process(true)   # (the record is kept with the meter put away; only its text is not made)
 	prof_on = on
 	prof_men_us = 0
 	prof_match_us = 0
@@ -104,9 +119,10 @@ func _process(_dt: float) -> void:
 	_last_us = now_us
 	_prof_frames += 1
 	_hitch_check(now)
+	_slow_check(now)
 	while not _frames.is_empty() and now - float(_frames[0][0]) > WINDOW_S:
 		_frames.pop_front()
-	if now_us < _refresh_us:
+	if not visible or now_us < _refresh_us:
 		return
 	_refresh_us = now_us + 250000
 	_prof = {"men": prof_men_us / 1000.0 / _prof_frames, "match": prof_match_us / 1000.0 / _prof_frames}
@@ -145,19 +161,97 @@ func _hitch_check(now: float) -> void:
 	var line := "%s  game %.1f s  frame %.0f ms  steps %d  nodes %+d  physics(max) %.1f  frame-no-physics %.1f (drawing %.1f, card %.1f)  men %.1f match %.1f  draws %d  room %s  msgs [%s]" % [
 		Time.get_datetime_string_from_system(), now, ms, d_steps, d_nodes, float(w.get("physics", 0.0)), float(w.get("frame", 0.0)), float(w.get("draw", 0.0)), float(w.get("gpu", 0.0)),
 		float(w.get("men", 0.0)), float(w.get("match", 0.0)), int(w.get("calls", 0)), ("%d peers" % Net.peers.size()) if Net.active() else "none", ", ".join(msgs)]
-	var path := "user://hitches.txt"
-	var f := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
+	_log(line)
+	_hitch_n += 1
+
+## A stretch of SLOW_WINDOW_S seconds, written if the game ran under its speed or its frames under SLOW_FPS (the physics steps it took against the
+## 120 a second it is meant to, at the engine's time scale; what the machine was asked: the men on the sand, the bodies awake, the draw calls, and
+## whether the room is over its budget and how many steps a frame it lets itself take). A window in which the game was not in front is no stretch.
+func _slow_check(now: float) -> void:
+	var ms := 0.0
+	if _frames.size() > 0:
+		ms = float((_frames[_frames.size() - 1] as Array)[1])
+	if _sw_t0 < 0.0:
+		_sw_t0 = now
+		_sw_steps0 = Engine.get_physics_frames()
+		return
+	_sw_frames += 1
+	_sw_worst = maxf(_sw_worst, ms)
+	if ms > SLOW_MS:
+		_sw_over += 1
+	var span := now - _sw_t0
+	if span < SLOW_WINDOW_S:
+		return
+	var steps := Engine.get_physics_frames() - _sw_steps0
+	var frames := _sw_frames
+	var worst := _sw_worst
+	var over := _sw_over
+	_sw_t0 = now
+	_sw_steps0 = Engine.get_physics_frames()
+	_sw_frames = 0
+	_sw_worst = 0.0
+	_sw_over = 0
+	if DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused():
+		return   # (behind another window the engine slows itself down)
+	var speed := slow_speed(steps, span, float(Engine.physics_ticks_per_second), Engine.time_scale)
+	var fps := float(frames) / span
+	if speed >= SLOW_SPEED and fps >= SLOW_FPS:
+		return
+	var w := _work()
+	var men := int(Combat.current.fighters.size()) if Combat.current != null else 0
+	var room := ("%d peers%s, steps a frame %d" % [Net.peers.size(), " OVER BUDGET" if Net.overloaded else "", Engine.max_physics_steps_per_frame]) if Net.active() else "none"
+	_log("%s  SLOW %.1f s  game speed %.0f%% (%.0f of %.0f steps a second)  %.0f frames a second, %d of %d over 33 ms, worst %.0f ms  physics(max) %.1f ms (a step %.1f)  frame-no-physics %.1f ms  men %d  bodies awake %d  draws %d  room %s" % [
+		Time.get_datetime_string_from_system(), span, speed * 100.0, float(steps) / span, float(Engine.physics_ticks_per_second) * Engine.time_scale, fps, over, frames, worst,
+		float(w.get("physics", 0.0)), Net.step_ms, float(w.get("frame", 0.0)), men, int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), int(w.get("calls", 0)), room])
+	_sw_n += 1
+
+## How much of its speed the game kept: the physics steps taken over the steps a second of the clock there should have been (the engine's
+## ticks a second at its time scale: a replay in slow motion is not a game running slow).
+static func slow_speed(steps: int, span: float, ticks: float, time_scale: float) -> float:
+	if span <= 0.0 or ticks <= 0.0 or time_scale <= 0.0:
+		return 1.0
+	return float(steps) / span / (ticks * time_scale)
+
+## A line in the record (the game's own start and end of a thing, from anywhere: `FpsMeter.note("match setup ...")`); not in the tests.
+static func note(text: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	_log("%s  NOTE %s" % [Time.get_datetime_string_from_system(), text])
+
+## The file `user://hitches.txt` made (or begun again, past HITCH_FILE_MAX) with what the machine is, then a line added.
+static func _log(line: String) -> void:
+	var f := FileAccess.open(LOG_PATH, FileAccess.READ_WRITE if FileAccess.file_exists(LOG_PATH) else FileAccess.WRITE)
 	if f == null:
 		return
 	if f.get_length() > HITCH_FILE_MAX:
 		f.close()
-		f = FileAccess.open(path, FileAccess.WRITE)   # (the oldest go: a new record from here)
+		f = FileAccess.open(LOG_PATH, FileAccess.WRITE)   # (the oldest go: a new record from here)
 		if f == null:
 			return
+		f.store_line(_machine())
 	f.seek_end()
 	f.store_line(line)
 	f.close()
-	_hitch_n += 1
+
+## The game's start: the file is there from now on, with what the machine is and where the file lies.
+func _log_session() -> void:
+	var f := FileAccess.open(LOG_PATH, FileAccess.READ_WRITE if FileAccess.file_exists(LOG_PATH) else FileAccess.WRITE)
+	if f == null:
+		return
+	if f.get_length() > HITCH_FILE_MAX:
+		f.close()
+		f = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+		if f == null:
+			return
+	f.seek_end()
+	f.store_line("")
+	f.store_line("%s  SESSION START  %s" % [Time.get_datetime_string_from_system(), _machine()])
+	f.close()
+	print("Performance log (frames over %.0f ms, stretches under %.0f%% speed, match starts): %s" % [HITCH_MS, SLOW_SPEED * 100.0, ProjectSettings.globalize_path(LOG_PATH)])
+
+static func _machine() -> String:
+	var gpu := RenderingServer.get_video_adapter_name() if DisplayServer.get_name() != "headless" else "none"
+	return "%s, %s (%d threads), graphics %s, Godot %s, game %s, window %s" % [OS.get_name(), OS.get_processor_name(), OS.get_processor_count(), gpu, String(Engine.get_version_info().get("string", "?")), String(ProjectSettings.get_setting("application/config/version", "?")), str(DisplayServer.window_get_size()) if DisplayServer.get_name() != "headless" else "none"]
 
 ## The work (ms), by the engine's own measures: the longest physics step and the longest frame
 ## without physics of the last second, the last frame's drawing.

@@ -279,6 +279,23 @@ What is left, with the host staged and three friends in the yard (60 s): no sing
 network's messages; what stops a window is the start of a game: the host's `Match.setup` (the own man and the friends' men, built at once: 0.6-2.2 s cold), a guest's own man (0.3-0.65 s, built at once: he must be
 able to act) and its `setup` (0.45 s), the station screen's first showing (0.3 s). Moving those means a start behind a cover, or a man whose first frames are not his own.
 
-**The F3 hitch record.** Any frame over 60 ms with F3 on is written to `user://hitches.txt` (at most four a second, the file started over past 200 KB): the frame's length, the physics steps it took, how many nodes the tree gained or lost,
-the longest physics step and the frame without physics of the last second, what the men and the match took, the draw calls, and the network messages that came in that frame (`type xN`). A user's own stalls, on his
-own machine, come back as this file: `%APPDATA%\Godot\app_userdata\<the game>\hitches.txt`.
+**The performance record** (`user://hitches.txt`, kept whether or not F3 is on: the first version wrote only a frame over 60 ms, with F3 on, and a game in slow motion has no such frame, its frames are all
+a little long: the file never appeared). Made at the game's start with a head line (`SESSION START`: the system, the processor and its threads, the graphics card, Godot's and the game's version, the window),
+and from then on: `NOTE` lines the game makes of its own starts (`match setup: campaign as host, 4 men in 302 ms`, `the first of the bout's foes are all in: 4 in 3171 ms`, `room over its budget
+(two steps a frame, the game runs slow): a step costs 9.4 ms of the 8.3 there is`), a `SLOW` line for every stretch of two seconds in which the game kept under 97% of its speed or ran under 45 frames a
+second (`game speed 62% (74 of 120 steps a second)`, the frames over 33 ms and the worst, the longest physics step and frame without physics, the men on the sand, the bodies awake, the draw calls, the
+room and whether it is over its budget), and, as before, a line for a frame over 60 ms (the steps it took, the nodes made or freed, the messages of the room that came in: those only with F3 on). The file
+is begun again past 200 KB. On Windows from the editor: Project, Open User Data Folder (`%APPDATA%\Godot\app_userdata\WRECKSMITH\hitches.txt`); the game prints the path in the Output as it starts.
+
+**A bout's start** (a campaign bout, a host and three friends, 4 foes; `tests/startbout`): the first wave was built before the first frame, the stop of "some seconds" at the start of a stage (user). With a screen
+its foes now come through the gates over the frames that follow, one after another, as a later wave's do (`Match._spawn_round`, `bring_in(... at_start)`): `Match.setup` 2855 ms -> 1058 ms cold, and 1415 -> 302 ms
+after a yard of the same men (a game's usual way into a bout); the foes are in some seconds later (3.4 s when every look is new to the game, the worst frame in it 85 ms). The second wave is not called, nor the
+bout won, while the first is on its way in (`coming`). A larger share of each frame for building them (as the gate's cards have) brings them in no sooner: a cold look is made of chunks of 30-46 ms that a
+frame's budget does not split, and the worst frame grows to 115 ms; not done.
+
+**The playtest's windows**: the friends' games run with their match told it has no screen (`headless`) cost 26% of a core against 27%: what they cost is the simulation (their own man's steps, the
+puppets, the physics), not the drawing. Seven of them are some two cores, whatever the host does: on a machine of fewer than eight cores the playtest's eight-player fight runs in slow motion because of
+the playtest. Where a window's 30% goes (20 s of one, the scripts' functions timed): `Match._physics_process` 6.5% of a core (540 us a step: the puppets), the room's poll in `Net._physics_process` 3.8% (the messages
+and their snapshots in it), `Combat._physics_process` 2.3% (190 us a step, on a game whose combat is off), `Match._process` 1.3%, the parts' `_process` and `_integrate_forces` 1.9%: a little over half in all, the
+engine's own steps and network the rest. At 60 physics steps a second instead of 120 a window costs 21%, not half of 27%: not worth what it takes from its likeness to a friend's game. To play eight without
+them, a friend that only sends hands and reads positions would have to stand in for these (not made).

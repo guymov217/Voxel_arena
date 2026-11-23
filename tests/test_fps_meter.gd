@@ -107,3 +107,42 @@ func test_a_long_frame_is_written_to_the_hitch_record() -> void:
 	DirAccess.remove_absolute(path)
 	fm.queue_free()
 	await get_tree().process_frame
+
+## A game in slow motion has no long frame to show for it (its frames are all a little long): a stretch in which it kept under 97% of its speed
+## is written whether or not the meter is shown (user: the file never appeared; no frame was over 60 ms).
+func test_a_stretch_under_speed_is_written_with_the_meter_put_away() -> void:
+	var path := FpsMeter.LOG_PATH
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+	t.check(is_equal_approx(FpsMeter.slow_speed(240, 2.0, 120.0, 1.0), 1.0), "240 steps in 2 s of 120 a second: the whole speed")
+	t.check(is_equal_approx(FpsMeter.slow_speed(48, 2.0, 120.0, 0.2), 1.0), "a replay at a fifth of the time is not a game running slow")
+	t.check(FpsMeter.slow_speed(100, 2.0, 120.0, 1.0) < 0.5, "100 steps in 2 s: under half")
+	var fm := FpsMeter.new()
+	add_child(fm)
+	fm.show_meter(false)
+	t.check(fm.is_processing(), "the meter put away still keeps the record")
+	fm._frames = [[0.0, 40.0]]
+	fm._slow_check(0.0)   # (the window begins)
+	fm._frames = [[2.5, 40.0]]
+	fm._slow_check(2.5)   # (it ends: no physics step in it)
+	t.check(FileAccess.file_exists(path), "the stretch is written")
+	var text := FileAccess.get_file_as_string(path)
+	t.check(text.contains("SLOW 2.5 s") and text.contains("game speed 0%") and text.contains("men 0") and text.contains("room none"), "with its length, its speed and what was asked of the machine (%s)" % text.left(160))
+	DirAccess.remove_absolute(path)
+	FpsMeter.note("a note in the tests goes nowhere")
+	t.check(not FileAccess.file_exists(path), "and a note is written only by a game with a screen")
+	fm.queue_free()
+	await get_tree().process_frame
+
+## The file is begun again past its size, with what the machine is at the head.
+func test_the_record_begins_again_past_its_size_with_the_machine_at_its_head() -> void:
+	var path := FpsMeter.LOG_PATH
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("x".repeat(FpsMeter.HITCH_FILE_MAX + 10))
+	f.close()
+	FpsMeter._log("a line")
+	var lines := FileAccess.get_file_as_string(path).split("\n", false)
+	t.eq(lines.size(), 2, "the old record is gone, a head and the line are there")
+	t.check(String(lines[0]).contains("Godot") and String(lines[0]).contains("threads"), "the head says what the machine is (%s)" % String(lines[0]).left(100))
+	t.eq(String(lines[1]), "a line", "and the line follows")
+	DirAccess.remove_absolute(path)

@@ -2990,11 +2990,7 @@ func _ff_timer_on(on: bool) -> void:
 		ff_clock_layer = CanvasLayer.new()
 		ff_clock_layer.layer = 90
 		add_child(ff_clock_layer)
-		ff_clock = UIStyle.label("", 30, UIStyle.GOLD_LIGHT)
-		ff_clock.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-		ff_clock.position.y = 8
-		ff_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		ff_clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ff_clock = UIStyle.clock_pill()
 		ff_clock_layer.add_child(ff_clock)
 	elif not on and ff_timer != null:
 		ff_timer.queue_free()

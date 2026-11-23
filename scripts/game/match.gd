@@ -304,7 +304,13 @@ func _freeze_hero(on: bool) -> void:
 ## voxels whatever the saved setting. True brings back the menu option and the smooth default.
 const SMOOTH_BODIES_OFFERED := false
 
+## The match's start, with a note in the performance record of what the players waited for (FpsMeter.note).
 func setup(opts: Dictionary) -> void:
+	var t0 := Time.get_ticks_usec()
+	_setup(opts)
+	FpsMeter.note("match setup: %s as %s, %d men in %.0f ms%s" % [mode, role, entities.size(), float(Time.get_ticks_usec() - t0) / 1000.0, (", %d more on their way in" % coming) if coming > 0 else ""])
+
+func _setup(opts: Dictionary) -> void:
 	# Bodies smooth-skinned or as plain voxels (Settings, Graphics; VA_BODIES overrides).
 	var bodies := OS.get_environment("VA_BODIES") if OS.has_environment("VA_BODIES") else (str(Save.get_value("settings", {}).get("bodies", "smooth")) if SMOOTH_BODIES_OFFERED else "blocky")
 	VoxelPart.smooth_skin = bodies == "smooth"
@@ -501,8 +507,8 @@ func stage_start() -> bool:
 func guest_staging() -> bool:
 	return role == "guest" and stage_in and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
 
-func bring_in(specs: Array, on_in := Callable()) -> void:
-	if not staging():
+func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
+	if not (staging() or (at_start and stage_start())):
 		for spec in specs:
 			var e0 = spawn_beast(spec) if spec.get("kind", "") == "beast" else spawn_fighter(spec)
 			if e0 and on_in.is_valid():
@@ -510,6 +516,7 @@ func bring_in(specs: Array, on_in := Callable()) -> void:
 		return
 	coming += specs.size()
 	var left := specs.size()
+	var t_in := Time.get_ticks_usec()
 	for spec in specs:
 		if over or not is_inside_tree():
 			break
@@ -523,6 +530,8 @@ func bring_in(specs: Array, on_in := Callable()) -> void:
 		if e and on_in.is_valid():
 			on_in.call(e)
 	coming -= left
+	if at_start and left == 0:
+		FpsMeter.note("the first of the bout's foes are all in: %d in %.0f ms" % [specs.size(), float(Time.get_ticks_usec() - t_in) / 1000.0])
 
 ## A fighter made for `spec` (in the tree, not yet built) and how he is to be built.
 func _new_fighter(spec: Dictionary) -> Array:
@@ -994,12 +1003,14 @@ func _spawn_round(r: int) -> void:
 	if r >= rounds.size():
 		return
 	var list: Array = rounds[r]
-	if staging():
-		# (A later round's foes, while the players stand on the sand: over the frames that follow.)
+	if staging() or (r == 0 and stage_start()):
+		# (A later round's foes, while the players stand on the sand: over the frames that follow. The first round's too, with a screen: the
+		# gates swing open and the foes come through them one after another, not all built before the bout's first frame, a stop of
+		# some seconds at its start (user): the players are in at once, the foes within the first seconds.)
 		var specs := []
 		for i in list.size():
 			specs.append(enemy_spec(list[i], i, list.size()))
-		bring_in(specs)
+		bring_in(specs, Callable(), r == 0)
 	else:
 		for i in list.size():
 			var spec := enemy_spec(list[i], i, list.size())
@@ -2575,7 +2586,7 @@ func _check_round(dt: float) -> void:
 	var alive_h := humans().filter(func(x): return not x.f.is_beaten() and x.f.dying <= 0.0 and not _unfit(x, dt))
 	_lift_tick(dt)
 	var alive_e := enemies().filter(func(x): return not x.get("beaten", false) and not x.f.is_beaten() and not _unfit(x, dt))
-	if role != "guest" and not late_wave.is_empty() and (time >= late_at or alive_e.is_empty()):
+	if role != "guest" and not late_wave.is_empty() and (time >= late_at or (alive_e.is_empty() and coming == 0)):   # (not while the first wave is still being brought in)
 		_spawn_late()
 		return
 	# Once the round is called (every foe dead or out of it), a foe it counted beaten stays
