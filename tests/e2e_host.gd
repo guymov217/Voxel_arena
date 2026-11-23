@@ -281,7 +281,8 @@ func _tourney() -> void:
 	k.check("tourney.start", ok and began, "a tournament is drawn and its first bout begins", menu.tourney.round_name() if menu.tourney else "")
 	k.cue("tourney.start")
 	k.check("tourney.guest_saw", await k.wait_line("guest", "DONE", "tourney.start", 40.0), "the friend is in the room for it (in the bout or looking on)")
-	# One falls: the winner goes on.
+	# One falls: the winner goes on. (With a screen the men of a bout come in over the frames that follow its start: all of them are in first.)
+	await k.until(func(): return m() != null and m().coming == 0, 30.0, "the men of the bout in")
 	var first = m()
 	var fallen := 0
 	for e in m().entities.duplicate():

@@ -241,7 +241,7 @@ func _spawn_wave() -> void:
 	phase = "fight"
 	_gone = 0
 	_clear_old()
-	var list := plan(wave, m.humans().size())
+	var list := plan(wave, maxi(m.humans().size(), m.players_count))   # (the party's size: a friend's man may be on his way in, built over the frames after the start)
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([seed_base, wave, "arms"])
 	var names := []
@@ -351,10 +351,34 @@ func _beaten() -> void:
 	_gone = 0
 	# The fallen of a party stand up again (those at death's door too: nobody lies there through the rest);
 	# every one of them is patched up a little.
+	var fallen := []
 	if party():
 		for e in m.humans():
 			if is_instance_valid(e.f) and (not e.f.alive or e.f.dying > 0.0):
-				m.respawn_player(e)
+				fallen.append(e)
+	if m.staging() and not fallen.is_empty():
+		# With a screen: one after another, each built apart over the frames and in his place in the one (a man built in a frame was 130 to 400 ms: the user's record, "frame 536 ms" at a wave's end
+		# with three of the party down). The rewards, which are for the men as they stand, are offered when the last is up.
+		offers = {}
+		offer = []
+		_rise(fallen)
+		return
+	for e in fallen:
+		m.respawn_player(e)
+	_offer()
+
+## The fallen of a party stand up one at a time (Match._respawn_apart), then the rest begins.
+func _rise(fallen: Array) -> void:
+	for e in fallen:
+		if m.over or not is_instance_valid(m) or not m.is_inside_tree() or phase != "rest":
+			return
+		await m._respawn_apart(e)
+	if m.over or not is_instance_valid(m) or not m.is_inside_tree() or phase != "rest":
+		return
+	_offer()
+
+## The rest after a wave: the men patched up, a reward held out to each (the host's own on his screen, a guest's sent to him).
+func _offer() -> void:
 	for e in m.humans():
 		_patch(e)
 	if is_solo():

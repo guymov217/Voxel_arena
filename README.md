@@ -868,7 +868,7 @@ Teams, 8 players, 100 ms and 3% loss: 8.2 ms median, 114 steps, 21-23 ms apart. 
 spawned in the frame the message came in (a man 130-440 ms, the eleven of a free-for-all 1.6-2.4 s of a stopped game); it now
 builds them one at a time over the frames (`Match.guest_staging`: his own man at once, what the host says of the others meanwhile
 kept and said again, a spawn the host takes back before its turn never built), as the host does for a wave, and a player who
-joins is built over the frames on the host too, and so are the friends' men and the yard's people at the yard's start (`YardPlay._setup_staged`: the host's own man at once, a start with seven friends 1.7 s shorter).
+joins is built over the frames on the host too, and so are the friends' men and the yard's people at the yard's start (`YardPlay._setup_staged`: the host's own man at once, a start with seven friends 1.7 s shorter); a fight's start likewise (`Modes.setup`), a match that is over is taken down over the frames (`Match.let_go`), the fallen of a party stand up one at a time as a wave is beaten (`Endless._rise`), and the menu builds one man as the player's own while it stands, so that the first fight of a game does not pay for the caches of the first build (`Menu._prewarm`).
 
 After the guest-delay work (a player's row every frame, his own man walked ahead: the section on the delay a guest feels), the same
 room on the same machine (`NET_MODE=ffa HOST_CPUS=0 GUEST_CPUS=1-3 sh tools/net_load.sh 7 25`, the old numbers from f8b1707 in

@@ -344,3 +344,35 @@ cause yet). The room as it went:
   slower machine with its suite running beside: setup 2788 ms before, 1056 ms now (the colosseum 210, the host's man 550, the first friend's first piece 200), the friends all in after 1.5 s and everyone after 4.5 s, no frame over 100 ms.
 - **The console's `Buffer full, dropping packets!`** came from a process that did not read its socket for half a second or more (the friend windows building their worlds, 1-3.7 s each, as they came into a
   yard or an arena): the packets of that time are lost, the reliable ones sent again. Harmless to the host's game; noise.
+
+## 13. The second record, with the new build: the stops that are left, and where the speed goes (#310, #321)
+
+His next `hitches.txt` (the same machine, the build of section 12 with the log in the game's folder; eight players and seven friend windows, a free-for-all, the yard, the endless arena, a free-for-all):
+
+| where | before | now |
+|---|---|---|
+| the yard's start (`match setup: yard as host`) | 1484 ms (8 men in the one frame) | **188 ms**, then the friends' men over about four seconds in frames of 60-130 ms |
+| the endless arena's start | 918 ms of setup (the eight players built at once) and 1129 ms the frame it is in (with the yard's 1371 nodes freed in it) | cut in this section |
+| the endless arena's end | 896 ms (2054 nodes freed, the next match's 344 ms built in the same frame) | cut |
+| a wave beaten with friends down | a frame of 536 ms (three or four men built in the one frame to stand up) | cut |
+| the first fight of a game | 1229 ms (4 men; 344 ms the next time) | cut |
+
+**Where the speed goes** (the endless arena, 11-12 men on the sand): a step costs 9.3 ms by the clock (`Net.step_ms`), of which the nodes' scripts are 5.4 and the physics engine's own work the rest; there is 8.33. 120 steps need
+1116 ms of every second, so the game cannot be at its speed whatever the frames cost: with the engine's catch-up allowed (6-8 steps a frame) it ran at 82-90% and 16-18 frames a second, and over its budget the two-steps cap
+gives 35 frames and 58% (35 x 2 / 120). The speed with c steps allowed a frame is `1000c / (120 (9.3c + 10))`: c = 2 is 58%, 4 is 71%, 12 is 82%, and no cap gets past 90%. The card is not the bound: 6-24 ms
+in frames of 28-58 ms, 700-2900 draw calls; nor the friend windows (seven of them took 250-660% of a core on his twenty threads). Jolt's solver is not what the step is made of either: with eight men and three foes
+(`tools/mix_load.sh`) a step is 13.4 ms at 10 position steps and 12 velocity steps (the project's), 13.7 at 6, 13.1 at 3, 12.5 at 1 and 1, 14.8 at 30 and 30. What would bring it under 8.33 is a cheaper `control` (section 6, the
+only large cut that keeps every fight) or the load governor (#304).
+
+**Made.**
+- *The friends' men at a fight's start* (`Modes.setup`): with a screen the host's own man is built at once and the friends' over the frames that follow (`Match.bring_in`, as in the yard, section 12); the first wave of the endless arena and a hunt are
+  sized for the whole party (`players_count`), and none of the rules that end a round is asked while a man is on his way (`Modes.check`). A friend who left on the way is not left standing in the fight. Eight men: 1081 ms of setup before, 542 now (headless, `tests/teardown_probe.gd`; a screen's colosseum and drawing come on top of both).
+- *A match let go of* (`Match.let_go`, the menu's `_end_match` and the backdrop's): the match is out of the world at once (disabled, hidden), its systems go at the end of the frame as ever, its men and what they left a few a frame (6 ms of a frame, one at least), the match last.
+  A fight of eight is 1400 to 2100 nodes (1411 collision shapes, 193 bodies, 239 multimeshes, 168 joints): freed it is 50 ms headless or on software Vulkan and 210-960 ms on his card, which is the drawing's and the physics' bookkeeping of every resource, so it is spread.
+  Found with it, and mended: the old match's late leaving (`_exit_tree`, at the end of the frame the next match is built in) put the next match's time scale and gravity back to the world's (an Emperor's decree of gravity or of slow time was lost from the yard on) and put the crowd's murmur out (`Arena._murmur_of`: the second match of a session had none).
+- *The fallen of a party stand up one at a time* (`Endless._rise`, `Match._respawn_apart`) with a screen, and the rewards, which are for the men as they stand, are offered when the last is up (a pick before it would have found him dead and been lost).
+- *The first man of a game* (`Menu._prewarm`): built apart while the menu stands, as the player's own would be (his arms, his armour, his look), then let go; the caches a build keeps are warm for the first fight: 632 ms for the first build of an armoured man, 84 for the second, 103 after the warm-up (`tests/coldwarm_probe.gd`).
+- `STAGED=1 sh tools/mp_e2e.sh` plays the whole of multiplayer with every game building as one with a screen does (`Match.screen_emulated`): the friends' men, the waves, the match let go of, against real guests. It found the two assumptions of the e2e's own made right in section 12, and, before the `let_go` waited for a whole frame, the HUD reading the men of a match let go of in the frame it was let go in.
+
+**Left.** The step (above). The friends' men in the yard still come in frames of 60-130 ms for four seconds: a part of a man is the least a frame builds, and the warm-up covers the player's own armour, not a friend's. What the card's first
+draw of a new material costs cannot be seen here (the software renderer takes 1-4 s a frame of the yard whatever is built).

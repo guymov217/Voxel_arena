@@ -612,7 +612,7 @@ func _new_fighter(spec: Dictionary) -> Array:
 		spec.mods = mods
 	var f := Fighter.new()
 	add_child(f)
-	var opts := {"name": spec.name, "slot": entities.size(), "team": spec.team, "mods": spec.get("mods", {}), "boss": spec.get("boss", false), "bot": spec.kind == "bot"}
+	var opts := {"name": spec.name, "slot": int(spec.get("slot", entities.size())), "team": spec.team, "mods": spec.get("mods", {}), "boss": spec.get("boss", false), "bot": spec.kind == "bot"}
 	if spec.get("skin") != null:
 		opts["skin"] = int(spec.skin)
 	if spec.get("build") is String:
@@ -2340,14 +2340,72 @@ func nearest_enemy(e: Dictionary):
 			best = o
 	return best
 
-func _exit_tree() -> void:
+## What the match's leaving the world does: the time scale and the sun's gravity put back, a replay's pause let go (left in the middle of a replay, which pauses the game and lets go only at
+## its end, the game would be frozen behind the menu).
+func _leave_world() -> void:
 	Engine.time_scale = 1.0
 	if is_inside_tree():
 		PhysicsServer3D.area_set_param(get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, 9.81)
-		# Left in the middle of a replay (it pauses the game and lets go only at its end): the
-		# game goes on, not frozen behind the menu.
 		if killcam and killcam.playing:
 			get_tree().paused = false
+
+func _exit_tree() -> void:
+	if not _let_go:
+		_leave_world()
+
+## A match let go of (`let_go`): its leaving the world is done, and what is left of it is being taken down.
+var _let_go := false
+## How many nodes a frame takes down of a match let go of (0: as many as fit in `let_go_budget_us`; a test's: a number, for the same every time).
+var let_go_each := 0
+var let_go_budget_us := 6000
+
+## Whether a match that is over is taken down over the frames that follow (with a screen: freeing the 1400 to 2400 nodes of a fight of eight, the sand, its men and the dead, all in the frame the
+## next match is built in, was a stop of 0.2 to 0.9 s: the user's record, "nodes -2054": the drawing's and the physics' own bookkeeping of every body and every cube instance).
+func staged_exit() -> bool:
+	return stage_in and (stage_always or (not headless and _has_screen()))
+
+## The match is over and whoever held it lets go of it. At once the world is rid of it: nothing of it moves, is drawn, struck or heard, and what its leaving used to do at the end of the
+## frame (the time scale and gravity put back) is done now, not over the next match's own, built in the same frame (an Emperor's decree of gravity or of slow time was put back to the
+## world's by the old match's late leaving; the crowd's murmur likewise, Arena). Its systems (the sand and its lights, the combat, the effects) go as they always went, at the end of the
+## frame; its men, their weapons and what they left lie out of the world until each is taken down, a few a frame, and the match itself goes last.
+func let_go() -> void:
+	if _let_go:
+		return
+	if not staged_exit() or not is_inside_tree():
+		queue_free()
+		return
+	_let_go = true
+	over = true   # (what is still being built for it stops: bring_in, a guest's queue)
+	_leave_world()
+	process_mode = Node.PROCESS_MODE_DISABLED
+	visible = false
+	var systems := {}
+	for sys in [fx, arena, combat, items, throwables, hazards, killcam, input, cam, tut]:
+		if sys != null and is_instance_valid(sys):
+			systems[sys.get_instance_id()] = true
+	var bulk: Array = []
+	for c in get_children():
+		if systems.has(c.get_instance_id()):
+			c.queue_free()
+		else:
+			bulk.append(c)
+	# (Not in this frame: what held the match, its HUD, looks at it once more before it is freed at the end of the frame. A frame is over when the engine's count of them has moved on: a
+	# `process_frame` asked for from a timer's or a coroutine's turn comes in the frame it is asked in.)
+	var frame0 := Engine.get_process_frames()
+	while Engine.get_process_frames() == frame0 and is_inside_tree():
+		await get_tree().process_frame
+	while not bulk.is_empty() and is_inside_tree():
+		var t0 := Time.get_ticks_usec()
+		var n := 0
+		while not bulk.is_empty() and ((let_go_each > 0 and n < let_go_each) or (let_go_each <= 0 and (n == 0 or Time.get_ticks_usec() - t0 < let_go_budget_us))):
+			var c = bulk.pop_back()
+			n += 1
+			if is_instance_valid(c):
+				(c as Node).free()
+		if bulk.is_empty():
+			break
+		await get_tree().process_frame
+	queue_free()
 
 func sfx(kind: String, at: Vector3, gain := 1.0) -> void:
 	if Sfx and not headless:
@@ -3884,9 +3942,9 @@ func _rebuild_apart(e: Dictionary, body_: Dictionary) -> void:
 
 ## The yard's respawn (R, or three seconds after a fall) the same way: the fallen man lies where he is until the new one, built apart, takes
 ## his place. (`respawned_at` is stamped on the fallen: it goes to the new man with the rest.)
-func _respawn_apart(e: Dictionary) -> void:
+func _respawn_apart(e: Dictionary):
 	if e.get("swapping", false):
-		return
+		return null
 	e["swapping"] = true
 	var spec: Dictionary = e.spec.duplicate(true)
 	spec.id = e.id
@@ -3895,7 +3953,7 @@ func _respawn_apart(e: Dictionary) -> void:
 		if f != null:
 			f.queue_free()
 		e.erase("swapping")
-		return
+		return null
 	_remove_entity(e)
 	if role == "host":
 		Net.send_all("despawn", {"id": e.id})
@@ -3906,6 +3964,7 @@ func _respawn_apart(e: Dictionary) -> void:
 	if me == e:
 		me = ne
 	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
+	return ne
 
 ## A body carried off the sand (the host's word: every guest is told, and drops the one he has): the fallen foes of the endless arena
 ## (Endless._sweep). What it held stays lying, if it let go.

@@ -131,15 +131,35 @@ func setup(opts: Dictionary) -> void:
 	if mode != "emperor" and not teams_chosen and players.size() + bots < 2:
 		bots = 1
 	var total := players.size() + bots
+	# With a screen the friends' men are built over the frames that follow the start, the player's own at once (Match.bring_in, as in the yard): eight men built in the one frame were a stop of
+	# 0.9 s (the user's record: "match setup: endless as host, 8 men in 918 ms"). Each is in the place he would have had and has his kit when he is in; none of the rules that end a round
+	# is asked while any is on his way (Modes.check). Only where the player is one of them (a fight with nobody of the host's own in it is built as it was).
+	var late_in: bool = m.stage_start() and players.any(func(q): return q.kind == "local")
+	var staged := []
+	var kits := {}
 	for i in players.size():
 		var p: Dictionary = players[i]
 		var team := int(side_of[i]) if teams_chosen else player_team(mode, i)
 		var pos := _side_pos(team) if teams_chosen else spawn_pos(i, total)
-		var e = m.spawn_fighter({"kind": p.kind, "peer": p.get("peer", -1), "name": p.name, "loadout": p.loadout, "team": team, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "color": TEAM_COLORS[team % TEAM_COLORS.size()], "skin": p.get("skin"), "build": p.get("build", "")})
+		var spec := {"kind": p.kind, "peer": p.get("peer", -1), "name": p.name, "loadout": p.loadout, "team": team, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "color": TEAM_COLORS[team % TEAM_COLORS.size()], "skin": p.get("skin"), "build": p.get("build", ""), "slot": i}
+		if late_in and p.kind == "remote":
+			staged.append(spec)
+			kits[int(p.get("peer", -1))] = Net.sanitize_kit(p.get("kit", {}))
+			continue
+		var e = m.spawn_fighter(spec)
 		e.inventory = opts.get("inventory", {}) if p.kind == "local" else Net.sanitize_kit(p.get("kit", {}))
 		if p.kind == "local":
 			m.me = e
 	m.players_count = players.size()
+	if not staged.is_empty():
+		var mm: Match = m
+		var on_in := func(e):
+			var id := int(e.get("peer", -1))
+			if Net.active() and not Net.peers.has(id):
+				mm.drop_peer(id)   # (he left while his man was being built: Net.peer_left found no man of his to take away)
+				return
+			e.inventory = kits.get(id, {})
+		mm.bring_in(staged, on_in, true)
 	if opts.get("autopilot", false) and m.me:
 		m.me.bot = Bot.new(m.me.f, float(opts.get("autopilot_diff", 0.9)), "standard", 99)
 	wave = 1 if coop_like(mode) else 0
@@ -230,7 +250,7 @@ func hunt_wave(n: int) -> Array:
 
 func spawn_hunt_wave() -> void:
 	var groups := hunt_wave(wave)
-	var players := maxi(1, m.humans().size())
+	var players := maxi(1, maxi(m.humans().size(), m.players_count))   # (the party's size: a friend's man may be on his way in)
 	var total := 0
 	for g in groups:
 		total += 1 if g.get("boss", false) else int(g.n) + int((players - 1) / 2)

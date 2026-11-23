@@ -3913,6 +3913,29 @@ func _backdrop_on() -> void:
 	Sfx.backdrop_mul = 0.0   # the fight behind the menus is seen, not heard
 	bg.visible = false
 	shade.visible = true
+	_prewarm()
+
+var _prewarmed := false
+
+## The first man a game builds costs half a second more than any after him (what a build leaves for the next: the body's shells, the armour's, the weapons' meshes: 632 ms the first, 84 the
+## second, `tests/coldwarm_probe.gd`), and it was paid at the first fight's start, in one stop (the user's record: "match setup: ffa as local, 4 men in 1229 ms", 344 the next time). While
+## the menu stands there is nothing else to do: one man is built as the player's own would be in the yard or a fight (his arms, his armour, his look), apart from any match, a part a
+## frame, and let go. The first fight then begins as the second does. Once a game; given up if a match begins first (Match.let_go stops what is still being built).
+func _prewarm(delay := 1.5) -> void:
+	if _prewarmed or backdrop == null:
+		return
+	_prewarmed = true
+	await get_tree().create_timer(delay).timeout   # (after the menu's own first frames)
+	var b := backdrop
+	if b == null or not is_instance_valid(b) or match_ != null:
+		return
+	var lk := look()
+	var lo := Arms.loadout(arms())
+	var spec := {"kind": "bot", "name": "Warm", "team": 0, "pos": Vector3.ZERO, "yaw": 0.0, "skin": Fighter.SKINS[lk.skin], "build": FineBody.BUILDS[lk.build], "color": CLOTH[lk.cloth], "body": Body.sanitize(body()),
+		"loadout": {"main": lo.main if lo.main else "", "off": lo.off if lo.off else "", "armor": look_armor(lk) + worn_armor(), "armor_defs": Armory.defs_of(worn_armor())}}
+	var f = await b._build_apart(spec)
+	if f != null and is_instance_valid(f):
+		f.queue_free()
 
 ## The title shot: a champion in bronze stands close to the camera on the right, the fight goes
 ## on behind him, embers and petals drift past, and a column with an SPQR banner frames the left.
@@ -4125,8 +4148,11 @@ func _backdrop_restart() -> void:
 
 func _backdrop_off() -> void:
 	if backdrop:
-		backdrop.queue_free()
-		world_root.remove_child(backdrop)
+		if backdrop.staged_exit():
+			backdrop.let_go()   # (taken down over the frames that follow, as a match is: it stays where it is until the last of it is gone)
+		else:
+			backdrop.queue_free()
+			world_root.remove_child(backdrop)
 		backdrop = null
 	Sfx.backdrop_mul = 1.0
 	bg.visible = true
@@ -4149,7 +4175,7 @@ func _end_match() -> void:
 	# game until its end) left the next screen and the next fight frozen.
 	get_tree().paused = false
 	if match_:
-		match_.queue_free()
+		match_.let_go()   # (taken down over the frames that follow, with a screen: Match.let_go)
 		match_ = null
 	if hud:
 		hud.queue_free()

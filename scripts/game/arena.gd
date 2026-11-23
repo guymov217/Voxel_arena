@@ -13,11 +13,16 @@ var theme := "colosseum"
 var time_of_day := "noon"
 const SKIES := ["noon", "golden", "overcast", "evening"]
 
+## The arena whose crowd the murmur is: a match begun over another in one frame (the old one leaves the tree at the end of that frame) takes it over, and the old arena's leaving no
+## longer puts it out (it did: the crowd was silent from the second match of a session on).
+static var _murmur_of = null
+
 func build(theme_ := "colosseum", visuals := true, sky_ := "noon") -> void:
 	theme = theme_
 	time_of_day = clean_sky(sky_)
 	if visuals:
 		Sfx.ambience(true)
+		_murmur_of = self
 	var ground := StaticBody3D.new()
 	ground.name = "Ground"
 	ground.collision_layer = VoxelPart.LAYER_WORLD
@@ -1796,7 +1801,8 @@ func open_gate(side: int, hold := 3.5) -> void:
 	tw.tween_property(door, "rotation:y", 0.0, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _exit_tree() -> void:
-	if crowd_mat:
+	if crowd_mat and is_same(_murmur_of, self):
+		_murmur_of = null
 		Sfx.ambience(false)
 
 func _physics_process(_dt: float) -> void:
