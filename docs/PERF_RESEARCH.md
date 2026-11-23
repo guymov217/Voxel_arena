@@ -210,3 +210,38 @@ other games on it. The 8.3 ms a step that 120 Hz allows is out of reach for eigh
 goes slower. What would cut it, in the order the measures point: the arms' drive in C++ (a quarter of the step, to the bit; section 8), the governor (#304: far men's physics eased
 only while the step is over budget), and the card (13.5 ms at 3k draw calls with the picture already lowered: section 3b). What the playtest itself adds is the pilots' games on the same
 cores (`Engine.max_fps = 60` for each, `friend_pilot.gd`): a room of eight real machines does not pay it.
+
+## 10. Inside the arm drive, statement by statement (#312)
+
+`tools/profile_lines.py` marks the statements of one function (the ones of its own level, with `--depth 2` the ones one level in) in a scratch copy of the project and prints what each
+costs a man and a step (`tools/profile_funcs.py` does the same for whole functions). The 8-man brawl of `tests/lobby298.gd` (`NONPC=1 ARM_LOD=0 IDLE=0`, one worker thread; 10.28 ms a step at
+this commit), the figures in microseconds a man and a step, each mark costing about half a microsecond (read them against one another):
+
+| where | us | what it is |
+|---|---|---|
+| `control`, the loop over the two arms (`for side in [two_side, two_off()]`) | 423 of 756 | 56% of `control`, a third of the step |
+| `control`, the loop over the two legs | 94 | feet, kicks, the gait |
+| `control`, `_no_fling` / the ground ray / the `for p in parts` passes | 22 / 12 / 16 + 9 | |
+| `_drive_arm` (two calls) | 449 (depth 2) | the arm loop's own |
+| of it `_clear_body` | 36 | already a native call: 18.7 us a call, the memos and the 20 arguments are what it costs |
+| `weapon_aim` / `_drive_forearm` / `_hold_elbow` | 30 / 22 / 19 | an armed arm only |
+| `hand_target_local` / `_elbow_clear` / `_unwedge` | 14 / 12 / 11 | |
+| `arm_straight` (an elbow's angle asked of every arm, to be thrown away by an `and`) | 10 | cut, below |
+| `_lock_elbow` / `arm_func` / `_free_wedged` / `_route_front` / `_keep_weapon_out` | 9 / 9 / 8 / 7 / 6 | |
+| the other two hundred statements | about 170 | each 0.5-1.5 us: a dictionary, a vector, a call |
+
+It is flat: no statement is a tenth of the arm drive but `_clear_body`, and that one is the cost of the way a script hands a native call its arguments, not of what the native does.
+What that means for the ways of sparing it:
+- A native port of one piece is worth what is left once its arguments are paid for: `_drive_forearm` (22 us, a dozen values in, two impulses out) saves about 15, `hand_target_local`
+  about 8, the six pieces together the 6-8% of the step this document gave before. Cuts at the script level (the dead work of a statement whose answer an `and` throws away: `arm_straight`;
+  a list built where it is not used: `_unwedge`'s three parts) are to the bit (the 8-man brawl, the 6-man mix and the 25 s replay give the same fingerprints) and come to about 1% of
+  `control`: below what two runs of the same tree differ by (the step 10.28 ms before and after, the median 10.11 and 9.76).
+- The large cut that keeps every fight is the whole armed arm's drive in C++ in one call (a fast path for the common arm, a sword or an axe on a standing man, with the script's drive as the
+  fallback for a bow, a thrown spear, a thrust line): it pays its arguments once. About 280 of the 449 us would go: a fifth of the step. It is some 800 lines of C++ that must do the
+  script's arithmetic to the bit (doubles for scalars, floats for vectors, the same order), checked against the script call for call; days of work, and nothing of it pays until the whole
+  tree under `weapon_aim` is native.
+- Even so, 8 men in one clump on this core are 10.3 ms a step against the 8.3 that 120 steps a second allow: with the whole arm drive native about 8.0 (10.28 less 8 x 0.28), just inside it.
+  Section 5's model puts it for an average gamer's core (k = 1.15) at 6 fighters held at full speed today and 9 with all of `control` native. A slower core, or the playtest's seven other games on
+  the same one, is that much further.
+- What does not help to the bit and cannot be had by other means: the physics rate (60 steps a second for the room under load). A blow's harm reads the contact impulse of a step
+  (`Combat.report`'s `J`), which is a force times the step's length: at half the rate every impulse is double, and the damage numbers with it. It would have to be retuned.

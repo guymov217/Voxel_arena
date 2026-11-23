@@ -5710,7 +5710,8 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# the blow and bends it again on the way back; an empty hand with its button held stays
 	# locked while it is out straight.
 	var fist_on: bool = not w and state == "stand" and af > 0.25 and held_item == null and not crawling
-	var arm_straight: bool = bool(arm[side].fore.get_meta("elbow_locked", false)) or elbow_bend(side) < PUNCH_LOCK_BEND
+	# (Asked only of a fist that is on: an armed arm was asked the elbow's angle every step for an answer the `and` threw away.)
+	var arm_straight: bool = fist_on and (bool(arm[side].fore.get_meta("elbow_locked", false)) or elbow_bend(side) < PUNCH_LOCK_BEND)
 	_lock_elbow_straight(side, fist_on and arm_straight and ((jk >= JAB_DRAW and jk < JAB_BACK) if jk >= 0.0 else power))
 	if not (w and not w.is_shield and weapon_joints[side]):
 		_hold_elbow(side, 0.0, false, dt)
@@ -6591,12 +6592,11 @@ func _unwedge(side: String, dt: float, yaw_q: Quaternion, t_pos: Vector3) -> voi
 	var te: Vector3 = torso.half_ext
 	var behind: bool = hl.z < -0.7 * te.z and absf(hl.x) < te.x + 0.15 * S and hl.y > -te.y - 0.12 * S and hl.y < te.y + 0.2 * S   # (from the hips up: a hand down at the thigh is no matter)
 	var free_hand: bool = state == "stand" and not weapons[side] and not (side == two_off() and two_handed) and not throwing[side] and held_item == null
-	var mates := [torso, by_name["thigh" + side], by_name["thigh" + ("L" if side == "R" else "R")]]
 	if wedged[side] < 0.0:
 		wedged[side] = minf(0.0, wedged[side] + dt)
 		if hl.z > te.z or wedged[side] >= 0.0 or not free_hand:
 			wedged[side] = 0.0
-			for p in mates:
+			for p in [torso, by_name["thigh" + side], by_name["thigh" + ("L" if side == "R" else "R")]]:
 				if not p.severed:
 					fo.remove_collision_exception_with(p)
 		return
@@ -6606,7 +6606,8 @@ func _unwedge(side: String, dt: float, yaw_q: Quaternion, t_pos: Vector3) -> voi
 	wedged[side] += dt
 	if wedged[side] > 0.05:
 		wedged[side] = -0.6
-		for p in mates:
+		# (The three parts it keeps its fist from catching on: built where they are used, not every step.)
+		for p in [torso, by_name["thigh" + side], by_name["thigh" + ("L" if side == "R" else "R")]]:
 			if not p.severed:
 				fo.add_collision_exception_with(p)
 
