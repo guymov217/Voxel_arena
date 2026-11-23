@@ -392,9 +392,31 @@ func _setup(opts: Dictionary) -> void:
 	var campaign := mode == "campaign"
 	me = spawn_fighter({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": lo, "team": 0, "pos": Vector3(0, 0, -6), "yaw": 0.0, "worn": opts.get("worn", {}), "skin": opts.get("skin"), "build": opts.get("build", ""), "color": opts.get("color"), "mods": opts.get("mods", {}), "body": Body.sanitize(opts.get("body", {})) if campaign or mode == "yard" else null})
 	me.inventory = opts.get("inventory", {})
+	# The yard with a screen: the friends' men are built over the frames that follow its start, not all before its first frame (the user's record: "match setup: yard as host,
+	# 8 men in 1484 ms", a stop of 1.6 s); the host's own man is in at once. Each is in the place he would have had (the host's man first, then the friends in order) and has his kit
+	# when he is in, and the boards by the gate are written again for the party when the last is. Without a screen, and in a fight, every man is built in the frame that asks, as before.
+	var friends_staged: bool = mode == "yard" and stage_start() and not opts.get("peers", []).is_empty()
+	var staged_peers := []
+	var kits := {}
 	for p in opts.get("peers", []):
-		var pe = spawn_fighter({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * (entities.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if campaign or mode == "yard" else {}, "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null})
+		var pspec := {"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "team": 0, "pos": Vector3(1.2 * float(entities.size() + staged_peers.size()), 0, -6), "yaw": 0.0, "skin": p.get("skin"), "build": p.get("build", ""), "worn": clean_worn(p.get("worn")) if campaign or mode == "yard" else {}, "body": Body.sanitize(p.get("body", {})) if campaign or mode == "yard" else null}
+		if friends_staged:
+			staged_peers.append(pspec)
+			kits[int(p.id)] = Net.sanitize_kit(p.get("kit", {}))
+			continue
+		var pe = spawn_fighter(pspec)
 		pe.inventory = Net.sanitize_kit(p.get("kit", {}))
+	if friends_staged:
+		var on_peer := func(pe):
+			var id := int(pe.get("peer", -1))
+			if Net.active() and not Net.peers.has(id):
+				drop_peer(id)   # (he left while his man was being built: Net.peer_left found no man of his to take away)
+				return
+			pe.inventory = kits.get(id, {})
+			if coming == 0:
+				players_count = humans().size()   # (the party as it is now, one who left on the way not counted)
+				_send_yard_next()
+		bring_in(staged_peers, on_peer, true)
 	players_count = 1 + opts.get("peers", []).size()
 	# Tests and attract mode: the player's fighter fights by itself.
 	if opts.get("autopilot", false):
@@ -491,21 +513,26 @@ func _respawn_staged(spec: Dictionary, training_: String) -> void:
 var coming := 0
 var stage_in := true        # (false: never staged)
 var stage_always := false   # (a test's: staged without a screen too, from the first frame)
+## (The e2e's `--staged`: a game without a screen builds as one with a screen does, to see the staged builds against real guests.)
+static var screen_emulated := false
+static func _has_screen() -> bool:
+	return screen_emulated or DisplayServer.get_name() != "headless"
+
 func staging() -> bool:
-	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless" and time > 1.0))
+	return stage_in and role != "guest" and (stage_always or (not headless and _has_screen() and time > 1.0))
 
 ## The yard's own people (its dummies and the keepers of its stalls: YardPlay.setup) are built over the first frames of the
 ## yard, not all before its first frame: with a screen from the start (a fight's first foes are there at its first
 ## frame, the yard's people need not be), on the host's or a lone player's game only.
 func stage_start() -> bool:
-	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
+	return stage_in and role != "guest" and (stage_always or (not headless and _has_screen()))
 
 ## A guest builds what the host spawns the same way: one after another, a part a frame, and not all in the frame the
 ## spawn message came in. Built in one go a man was 130 ms, an armoured one up to 700, a lion half a second, and the
 ## eleven of a free-for-all at its start stopped a guest's game for 1.6 to 2.4 seconds (the load test, `net_load.sh`);
 ## a wave in a bout stopped every guest at once, in the middle of the fight.
 func guest_staging() -> bool:
-	return role == "guest" and stage_in and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
+	return role == "guest" and stage_in and (stage_always or (not headless and _has_screen()))
 
 ## A foe waits at the gate while the host cannot afford one more (user: the endless arena with eight players ran at 40% of its speed with sixteen on the sand, a step of 12 to 14 ms for the
 ## 8.3 there is, whatever the processor: his record's SLOW lines). With what a step costs now (Net.step_ms) and one man's share of it, if one more man would take the step over GATE_BUDGET_MS (or the
@@ -565,7 +592,7 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 			on_in.call(e)
 	coming -= left
 	if at_start and left == 0:
-		FpsMeter.note("the first of the bout's foes are all in: %d in %.0f ms" % [specs.size(), float(Time.get_ticks_usec() - t_in) / 1000.0])
+		FpsMeter.note("%s are all in: %d in %.0f ms" % ["the friends' men" if mode == "yard" else "the first of the bout's foes", specs.size(), float(Time.get_ticks_usec() - t_in) / 1000.0])
 
 ## A fighter made for `spec` (in the tree, not yet built) and how he is to be built.
 func _new_fighter(spec: Dictionary) -> Array:

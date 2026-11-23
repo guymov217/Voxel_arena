@@ -44,6 +44,10 @@ func setup() -> void:
 func _setup_staged() -> void:
 	set_boards(board_texts(m.humans().size()))
 	scenery()
+	while m.coming > 0 and is_instance_valid(m) and m.is_inside_tree():   # (the friends' men first: two men built in one frame are two chunks in it)
+		await m.get_tree().process_frame
+	if not is_instance_valid(m) or not m.is_inside_tree():
+		return
 	for p in Yard.DUMMIES:
 		var e = await m.spawn_fighter_staged(_dummy_spec(p))
 		if e == null:

@@ -5,6 +5,7 @@ extends Node
 ##   --visible        the games open in windows you can watch (else they run without a picture)
 ##   --watch guest    only that game (host, guest or late) gets a window
 ##   --quick          leaves out the tournament and the single modes (about half the time)
+##   --staged         every game builds as one with a screen does (the friends' men, the yard's people and the waves come in over the frames: Match.screen_emulated)
 ##   --lag 120 --loss 3   pretend a poor connection (milliseconds, percent) for every game
 ##   --port 17900     the port of the room
 ##   --shots folder   a picture of each game at the main steps, into the folder (with windows)
@@ -16,6 +17,7 @@ const TITLES := {"mp": "The Multiplayer screen", "lobby": "The room's lobby", "y
 var visible_games := false
 var watch := ""
 var quick := false
+var staged := false
 var port := 17900
 var lag := 0
 var loss := 0
@@ -35,6 +37,7 @@ func _ready() -> void:
 	if args.has("--watch") and args.size() > args.find("--watch") + 1:
 		watch = args[args.find("--watch") + 1]
 	quick = args.has("--quick")
+	staged = args.has("--staged")
 	port = int(args[args.find("--port") + 1]) if args.has("--port") and args.size() > args.find("--port") + 1 else 17900
 	if args.has("--lag") and args.size() > args.find("--lag") + 1:
 		lag = int(args[args.find("--lag") + 1])
@@ -49,7 +52,7 @@ func _ready() -> void:
 	for f in DirAccess.get_files_at(dir):
 		DirAccess.remove_absolute("%s/%s" % [dir, f])
 	print("")
-	print("WRECKSMITH multiplayer, from the first click to the last: a host, a friend and a late friend play it out%s%s%s" % [" (quick)" if quick else "", " on a poor connection (%d ms, %d%% lost)" % [lag, loss] if lag > 0 else "", ", in windows" if visible_games else ""])
+	print("WRECKSMITH multiplayer, from the first click to the last: a host, a friend and a late friend play it out%s%s%s" % [(" (quick)" if quick else "") + (" (staged)" if staged else ""), " on a poor connection (%d ms, %d%% lost)" % [lag, loss] if lag > 0 else "", ", in windows" if visible_games else ""])
 	print("")
 	started_at = Time.get_ticks_msec()
 	pids["host"] = _spawn("host", Vector2i(30, 40))
@@ -70,6 +73,8 @@ func _spawn(role: String, at: Vector2i) -> int:
 		a.append_array(["--role", "late"])
 	if quick:
 		a.append("--quick")
+	if staged:
+		a.append("--staged")
 	if lag > 0:
 		a.append_array(["--lag", str(lag), "--loss", str(loss)])
 	if windowed:
@@ -130,7 +135,7 @@ func _finish() -> void:
 	_show_new()
 	var out := PackedStringArray()
 	out.append("WRECKSMITH multiplayer: the end-to-end run")
-	out.append("%s, %s%s" % [Time.get_datetime_string_from_system(), "quick" if quick else "everything", " on a poor connection (%d ms, %d%% lost)" % [lag, loss] if lag > 0 else ""])
+	out.append("%s, %s%s" % [Time.get_datetime_string_from_system(), ("quick" if quick else "everything") + (", staged" if staged else ""), " on a poor connection (%d ms, %d%% lost)" % [lag, loss] if lag > 0 else ""])
 	out.append("")
 	# By area: the part of an id before its first dot.
 	var areas: Array = []

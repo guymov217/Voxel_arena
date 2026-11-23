@@ -17,6 +17,14 @@ func _until(cond: Callable, most := 1500) -> int:
 		await get_tree().physics_frame
 	return 0 if cond.call() else -1
 
+## Whether every one of the yard's own people (its dummies and the keepers of its stalls) is in.
+func _people_in(m: Match) -> bool:
+	var keepers := 0
+	for id in Yard.stations():
+		if Yard.STATIONS[id].has("npc"):
+			keepers += 1
+	return m.yard.dummies.size() == Yard.DUMMIES.size() and m.yard.keepers.size() == keepers
+
 func _yard(seed_: int, lo := {"main": "gladius", "off": ""}, peers := []) -> Match:
 	var m := Match.new()
 	add_child(m)
@@ -139,6 +147,77 @@ func test_a_yard_left_before_its_people_are_in_is_let_go() -> void:
 	m.queue_free()
 	await _steps(30)
 	t.check(not is_instance_valid(m), "the yard is gone")
+
+## The friends' men come in over the frames that follow the yard's start as well (the user's record: "match setup: yard as host, 8 men in 1484 ms"): the host's man
+## is in at once, the friends after him in the order they came and each in his place and with his kit, the boards by the gate are written again for the whole party
+## when the last is in, and the yard's own people (dummies, keepers) after the friends.
+func test_the_friends_men_come_into_the_yard_before_its_people() -> void:
+	var m := Match.new()
+	m.stage_always = true
+	add_child(m)
+	var peers := []
+	for i in 3:
+		peers.append({"id": 2 + i, "name": ["Bob", "Cat", "Dan"][i], "loadout": {"main": "axe", "off": ""}, "kit": {"nailPot": 1 + i}})
+	m.setup({"mode": "yard", "role": "host", "headless": true, "name": "Ann", "seed": 8, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": peers})
+	t.eq(m.entities.size(), 1, "in the frame the yard starts in only the host's man is in it")
+	t.eq(m.coming, 3, "the three friends are on their way")
+	t.eq(m.players_count, 4, "the party is four from the start (the bouts are sized by it)")
+	var took := await _until(func(): return m.coming == 0, 4000)
+	t.check(took > 2, "they come over the frames that follow (%d frames)" % took)
+	t.eq(m.humans().size(), 4, "the four of them in the yard")
+	t.eq(m.yard.dummies.size() + m.yard.keepers.size(), 0, "the yard's own people not yet: the friends first")
+	var names := []
+	var in_order := true
+	var last_id := -1
+	for e in m.humans():
+		names.append(String(e.f.display_name))
+		in_order = in_order and int(e.id) > last_id
+		last_id = int(e.id)
+	t.eq(names, ["Ann", "Bob", "Cat", "Dan"], "the host's man and the friends in the order they came in")
+	t.check(in_order, "with their ids in that order")
+	for i in 3:
+		var e: Dictionary = m.humans()[1 + i]
+		t.eq(int(e.peer), 2 + i, "%s is his friend's man" % names[1 + i])
+		t.eq(int(e.inventory.get("nailPot", 0)), 1 + i, "%s has his kit" % names[1 + i])
+		t.check(absf(e.f.torso.global_position.x - 1.2 * float(1 + i)) < 1.0, "%s stands where the sync start would have put him (x %.1f)" % [names[1 + i], e.f.torso.global_position.x])
+	t.eq(m.yard.board_texts_now, YardPlay.board_texts(4), "the boards by the gate are written for the party of four")
+	var done := await _until(func(): return _people_in(m), 4000)
+	t.check(done >= 0, "and then the yard's own people come in")
+	var kids := m.find_children("*", "Fighter", false, false)
+	t.eq(kids.filter(func(f): return is_instance_valid(f) and not f.is_queued_for_deletion()).size(), m.entities.size(), "no man built twice, none left standing about")
+	m.queue_free()
+	await get_tree().physics_frame
+
+## A friend who leaves while his man is being built is not left in the yard: the room has no peer of that id by the time his man is in, and `Net.peer_left` found no man of his to take away.
+func test_a_friend_who_leaves_while_his_man_is_built_is_not_left_in_the_yard() -> void:
+	var dt: bool = Net.dtls
+	Net.dtls = false
+	var err: int = Net.host_enet(28617)
+	Net.dtls = dt
+	if err != OK:
+		t.check(false, "a room could not be opened for the test (%d)" % err)
+		return
+	Net.peers[2] = {"name": "Bob", "loadout": {"main": "axe"}}
+	Net.peers[3] = {"name": "Cat", "loadout": {"main": "axe"}}
+	var m := Match.new()
+	m.stage_always = true
+	add_child(m)
+	m.setup({"mode": "yard", "role": "host", "headless": true, "name": "Ann", "seed": 9, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 2, "name": "Bob", "loadout": {"main": "axe", "off": ""}}, {"id": 3, "name": "Cat", "loadout": {"main": "axe", "off": ""}}]})
+	t.eq(m.coming, 2, "both are on their way")
+	Net.peers.erase(3)   # (Cat's line goes while Bob's man is being built, and his own man is not yet one of the match's)
+	m.drop_peer(3)
+	var took := await _until(func(): return m.coming == 0, 4000)
+	t.check(took >= 0, "the others come in all the same")
+	t.eq(m.humans().size(), 2, "Ann and Bob in the yard, no ghost of Cat")
+	t.eq(m.players_count, 2, "and the party is two")
+	var left_over := m.entities.filter(func(e): return e.kind == "remote" and int(e.peer) == 3)
+	t.eq(left_over.size(), 0, "no man of the peer who left")
+	await _until(func(): return _people_in(m), 4000)
+	var kids := m.find_children("*", "Fighter", false, false)
+	t.eq(kids.filter(func(f): return is_instance_valid(f) and not f.is_queued_for_deletion()).size(), m.entities.size(), "and his man is not left standing about unregistered")
+	m.queue_free()
+	await get_tree().physics_frame
+	Net.leave()
 
 ## With a screen a campaign bout's first foes come through the gates over the frames that follow its start (the players are in at once), not
 ## all built before its first frame: and the second wave is not called while the first is still on its way in, nor the bout won.

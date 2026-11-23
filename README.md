@@ -868,7 +868,7 @@ Teams, 8 players, 100 ms and 3% loss: 8.2 ms median, 114 steps, 21-23 ms apart. 
 spawned in the frame the message came in (a man 130-440 ms, the eleven of a free-for-all 1.6-2.4 s of a stopped game); it now
 builds them one at a time over the frames (`Match.guest_staging`: his own man at once, what the host says of the others meanwhile
 kept and said again, a spawn the host takes back before its turn never built), as the host does for a wave, and a player who
-joins is built over the frames on the host too.
+joins is built over the frames on the host too, and so are the friends' men and the yard's people at the yard's start (`YardPlay._setup_staged`: the host's own man at once, a start with seven friends 1.7 s shorter).
 
 After the guest-delay work (a player's row every frame, his own man walked ahead: the section on the delay a guest feels), the same
 room on the same machine (`NET_MODE=ffa HOST_CPUS=0 GUEST_CPUS=1-3 sh tools/net_load.sh 7 25`, the old numbers from f8b1707 in
@@ -1205,7 +1205,7 @@ No command line: put the Godot 4.7.2 exe in the game's folder and double-click
 **`multiplayer_e2e.bat`** (Windows; `sh tools/mp_e2e.sh` elsewhere) and the game plays all of multiplayer by itself, three
 games (a host and two friends) through its own screens: the lobby, the yard, the smith, every fight of the Arena, the endless
 arena, a removal, a campaign room (`tests/e2e_run.gd`, `e2e_host.gd`, `e2e_guest.gd`, `e2e_kit.gd`); each check is shown as it
-passes and the list is written to `e2e_report.txt`. To play it yourself double-click **`multiplayer_test.bat`**; it opens the
+passes and the list is written to `e2e_report.txt` (`STAGED=1 sh tools/mp_e2e.sh`: every game builds as one with a screen does, the friends' men, the yard's people and the waves coming in over the frames). To play it yourself double-click **`multiplayer_test.bat`**; it opens the
 windows and asks what to try. The steps and what to check are in `docs/MULTIPLAYER_TEST.md`. The windows open small (`-- --keep-window` keeps the
 window the engine's `--position`/`--resolution` made, instead of the saved display mode, which is full
 screen unless the player chose otherwise: two full-screen windows share one graphics card and the one

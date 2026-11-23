@@ -338,5 +338,9 @@ cause yet). The room as it went:
 - **Found with it:** `Match._sync_loose` assigned a weapon freed with the dead carried off to a typed variable, which stopped the function there on every step from the first one (a script error a step, and the
   loose weapons' picks not sent); and the loose weapons' snapshot of eight friends' weapons lying about was 1464 bytes, over ENet's 1392 for an unreliable packet (the host's console: "Sending 1464 bytes
   unreliably which is above the MTU"): it goes in parts that fit now (`lsnap_messages`), the hazards with the first.
+- **Made: the yard's start** (`Match._setup`, `YardPlay._setup_staged`). The 1484 ms of `match setup: yard as host, 8 men` was the host's man and seven friends' men built before the yard's first frame. With a
+  screen the host's man is still built at once (the camera is on him), the friends' are built over the frames that follow, each in his place and with his kit (the boards by the gate are written again for the party when
+  the last is in; a friend who left on the way is not brought in), and the yard's own people (dummies, keepers) after them. `tests/yardstart.gd` (`-- --probe yardstart`, STAGE=0 or 1, FRIENDS=7), on the 1.6 times
+  slower machine with its suite running beside: setup 2788 ms before, 1056 ms now (the colosseum 210, the host's man 550, the first friend's first piece 200), the friends all in after 1.5 s and everyone after 4.5 s, no frame over 100 ms.
 - **The console's `Buffer full, dropping packets!`** came from a process that did not read its socket for half a second or more (the friend windows building their worlds, 1-3.7 s each, as they came into a
   yard or an arena): the packets of that time are lost, the reliable ones sent again. Harmless to the host's game; noise.

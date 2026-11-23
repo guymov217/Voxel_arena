@@ -22,6 +22,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	port = int(args[args.find("--port") + 1]) if args.has("--port") and args.size() > args.find("--port") + 1 else 17900
 	quick = args.has("--quick")
+	Match.screen_emulated = args.has("--staged")
 	k = Kit.new("host", self)
 	Save.data["coins"] = 150            # (the campaign's purse: it must be 150 until the campaign room)
 	Save.data["name"] = "Aulus"
@@ -237,6 +238,7 @@ func _teams() -> void:
 	var ts_ok: bool = await k.until(func(): return m() != null and m().yard != null and m().yard.team_setup != null, 20.0, "the circles")
 	k.check("teams.circles", ok and ts_ok, "the team fight lays two circles on the sand of the yard")
 	k.cue("teams.circles")
+	await k.until(func(): return _in_yard_with(2), 30.0, "the friend's man in the yard")   # (with a screen the friends' men are built over the frames that follow the yard's start)
 	var ts: TeamSetup = m().yard.team_setup
 	var host_e = m().me
 	var guest_e = null
@@ -358,8 +360,13 @@ func _endless() -> void:
 	k.cue("endless.start")
 	await k.wait_line("guest", "DONE", "endless.start", 40.0)
 	await k.pause(1.0)
-	for e in m().enemies():
-		e.f.die("wounds")
+	# (With a screen a wave comes in over the frames: the foes still on their way are killed as they come, until the wave is beaten.)
+	var slain_at := Time.get_ticks_msec()
+	while en.phase != "rest" and Time.get_ticks_msec() - slain_at < 30000:
+		for e in m().enemies():
+			if e.f.alive:
+				e.f.die("wounds")
+		await k.pause(0.25)
 	var rest: bool = await k.until(func(): return en.phase == "rest", 30.0, "the rest after wave 1")
 	k.check("endless.offers", rest and en.offers.size() == 3, "a wave beaten holds out a reward to each of the three", "offers %s" % str(en.offers.keys()))
 	k.cue("endless.offer")

@@ -25,6 +25,7 @@ func _ready() -> void:
 		role = args[args.find("--role") + 1]
 	port = int(args[args.find("--port") + 1]) if args.has("--port") and args.size() > args.find("--port") + 1 else 17900
 	quick = args.has("--quick")
+	Match.screen_emulated = args.has("--staged")
 	my_name = "Cassia" if role == "late" else "Brutus"
 	k = Kit.new(role, self)
 	Save.data["coins"] = 77              # (his campaign's purse: it must be 77 until the campaign room)
