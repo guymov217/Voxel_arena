@@ -726,25 +726,53 @@ func test_a_party_has_the_better_of_it() -> void:
 	t.eq(Data.stage(8, 4).rounds[0].size(), 1, "and a boss is alone for four")
 	t.eq(Data.stage(3, 3).rounds[0].size(), 3, "a beast's bout for three: three of them")
 
-## In a party a player's death is not the end: he falls to death's door, his bleeding stopped,
-## and a friend who holds the revive key beside him lifts him back into the fight. The door
-## shuts after DYING_T seconds, or at once when nobody else stands.
-func test_a_friend_lifts_a_man_from_deaths_door() -> void:
+## A party's man and one friend, a campaign bout of foes standing still (nothing else can hurt either of them).
+func _pair() -> Array:
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "campaign", "stage": 1, "role": "host", "headless": true, "peers": [{"id": 2, "name": "Friend", "loadout": {"main": "axe"}}], "seed": 9})
 	for e in m.enemies():
 		e.erase("bot")
 		e.drive = func(_e): return {"limp": true}
-	var a: Fighter = m.me.f
-	var friend: Dictionary = m.humans().filter(func(x): return x.kind == "remote")[0]
-	var fr: Fighter = friend.f
 	for i in 30:
 		await get_tree().physics_frame
+	var friend: Dictionary = m.humans().filter(func(x): return x.kind == "remote")[0]
+	return [m, m.me.f, friend]
+
+## In a party a man bleeds to death as he does alone, in every mode (user: players had stopped bleeding to death in a room): his
+## blood gone beside a friend who stands, he is dead, and stays so. (The party's edge, death's door, is for a man beaten down, not for
+## the blood gone.)
+func test_in_a_party_a_man_bleeds_to_death_as_he_does_alone() -> void:
+	var pair: Array = await _pair()
+	var m: Match = pair[0]
+	var a: Fighter = pair[1]
 	a.blood = 0.0
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	t.check(a.alive and a.dying > 0.0 and a.state != "stand", "bled white beside a friend, he is at death's door, not dead (dying %.1f)" % a.dying)
+	t.check(not a.alive and a.dying <= 0.0 and a.state == "dead", "bled white beside a friend, he is dead (dying %.1f)" % a.dying)
+	t.check(pair[2].f.alive, "and his friend stands")
+	# The same rule in every mode of a room: the blood gone is never spared, a beating is (while a friend stands).
+	for mode in ["campaign", "endless", "ffa", "pvp", "hunt", "teams", "king", "duel", "bo3", "lastLimb", "hill"]:
+		m.mode = mode
+		t.check(not m._may_spare(a, "bleed"), "%s: bleeding to death is final" % mode)
+		t.check(m._may_spare(a, "wounds") == (mode != "yard" and mode != "training"), "%s: a beating leaves a man at the door while his friend stands" % mode)
+	m.mode = "yard"
+	t.check(not m._may_spare(a, "wounds"), "yard: nobody stays dead there, no door")
+	m.queue_free()
+
+## A man beaten down (his torso spent, not his blood) in a party is not at the end: he falls to death's door, his bleeding stopped,
+## and a friend who holds the revive key beside him lifts him back into the fight. The door
+## shuts after DYING_T seconds, or at once when nobody else stands.
+func test_a_friend_lifts_a_man_from_deaths_door() -> void:
+	var pair: Array = await _pair()
+	var m: Match = pair[0]
+	var a: Fighter = pair[1]
+	var friend: Dictionary = pair[2]
+	var fr: Fighter = friend.f
+	a.torso.hp = 0.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(a.alive and a.dying > 0.0 and a.state != "stand", "beaten down beside a friend, he is at death's door, not dead (dying %.1f)" % a.dying)
 	t.check(a.blood > 0.0, "his bleeding is stopped")
 	fr.teleport(a.torso.global_position + Vector3(0.8, 0, 0))
 	friend.drive = func(_e): return {"revive": true}
@@ -755,11 +783,58 @@ func test_a_friend_lifts_a_man_from_deaths_door() -> void:
 	friend.drive = func(_e): return {}
 	fr.die("test")
 	await get_tree().physics_frame
-	a.blood = 0.0
+	a.torso.hp = 0.0
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	t.check(not a.alive, "with no friend standing, his death is his own")
 	m.queue_free()
+
+## A man hurt past any saving is not spared nor lifted, however many friends stand (user: damage too great for a man to move or work
+## at all, irreversible brain damage or a head cut off, is not undone in a party): the head cut off, the brain torn through, the
+## skull a ruin, the heart torn, the trunk a wreck, each dies where he falls.
+func test_nobody_is_lifted_from_damage_past_saving() -> void:
+	for case in ["decap", "brain", "heart", "torn heart", "skull ruined", "head severed", "trunk wreck"]:
+		var pair: Array = await _pair()
+		var m: Match = pair[0]
+		var a: Fighter = pair[1]
+		var cause := "wounds"
+		match case:
+			"decap", "brain", "heart":
+				cause = case
+			"torn heart":
+				a.heart_t = 4.0
+			"skull ruined":
+				a.organ_total[Anatomy.BRAIN] = 100
+				a.organ_lost[Anatomy.BRAIN] = 90
+			"head severed":
+				a.head.severed = true
+			"trunk wreck":
+				a.torso.alive_count = int(float(a.torso.fx.size()) * 0.3)
+		t.check(a.beyond_saving(cause), "%s: past saving" % case)
+		a.die(cause)
+		await get_tree().physics_frame
+		t.check(not a.alive and a.dying <= 0.0 and a.state == "dead", "%s: dead where he falls, not at death's door (dying %.1f)" % [case, a.dying])
+		m.queue_free()
+	# One beaten down and still whole is spared and lifted (the contrast), and one at the door who is then hurt past saving
+	# is not lifted by anyone's hands: he dies as the blow lands.
+	var pair2: Array = await _pair()
+	var m2: Match = pair2[0]
+	var b: Fighter = pair2[1]
+	t.check(not b.beyond_saving(), "a whole man is not past saving")
+	b.torso.hp = 0.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	t.check(b.alive and b.dying > 0.0, "beaten down: at death's door")
+	t.check(m2.dying_friend_of(pair2[2]) != null, "a friend beside him may lift him")
+	b.heart_t = 3.0
+	t.check(m2.dying_friend_of(pair2[2]) == null, "not once his heart is torn")
+	var door: float = b.dying
+	b.lift()
+	t.check(b.dying == door and b.alive, "a lift on a man past saving does nothing")
+	for i in 400:
+		await get_tree().physics_frame
+	t.check(not b.alive, "and his heart's last seconds end him (alive %s)" % str(b.alive))
+	m2.queue_free()
 
 ## A boss of men past the 36th bout comes better armed: the steel set and his own coating on his
 ## weapon, where the bosses of men before it wear bronze and iron. (Any foe's weapon may come

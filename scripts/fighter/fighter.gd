@@ -8020,7 +8020,7 @@ var spare: Callable      # the match's say: may this man be spared now?
 func die(cause := "") -> void:
 	if state == "dead":
 		return
-	if cause != "decap" and not head.severed and not spared and spare.is_valid() and spare.call(self, cause):
+	if not spared and spare.is_valid() and not beyond_saving(cause) and spare.call(self, cause):
 		_fall_dying()
 		return
 	state = "dead"
@@ -8030,6 +8030,21 @@ func die(cause := "") -> void:
 		unstow(side)
 		release(side)
 	died.emit(self, cause)
+
+## The deaths no friend's hands undo: the head cut off, the brain torn through, the heart torn (a man falls to these, he is not
+## beaten by them).
+const UNSAVED_CAUSES := ["decap", "brain", "heart", "neck"]
+## The trunk so far gone (this share of it left, as apply_hit counts a torso dead) that no one lifts what is left of him.
+const TRUNK_RUIN := 0.4
+
+## Hurt past any friend's saving: the head gone, the skull a ruin or the brain torn past living (_head_ruined), the heart torn
+## (heart_t running, or `cause` says it was), the trunk a wreck. A man so hurt dies where he falls, as he does alone: he is not
+## spared at death's door (Match._may_spare), nor lifted from it (lift). (User: when the damage is too great for a man to move or
+## work at all, irreversible brain damage or a head cut off, he cannot be brought back in a party.)
+func beyond_saving(cause := "") -> bool:
+	if UNSAVED_CAUSES.has(cause) or head.severed or heart_t >= 0.0 or _head_ruined():
+		return true
+	return not torso.severed and torso.integrity < TRUNK_RUIN
 
 func _fall_dying() -> void:
 	spared = true
@@ -8050,7 +8065,7 @@ func _fall_dying() -> void:
 
 ## A friend's hands: up from death's door with a little blood, able to fight on.
 func lift() -> void:
-	if dying <= 0.0:
+	if dying <= 0.0 or beyond_saving():
 		return
 	dying = 0.0
 	spared = false

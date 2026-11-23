@@ -70,6 +70,19 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   not by the voxel (`Fighter._organ_bleed`; a lion's heart is 150 voxels to a man's 27): half a
   heart torn kills a man in 3 s, a lion in 8, a bear in 9, the Big Lion in 11, an elephant in 14
   and a dragon in 18, none sooner than a man.
+- **Dying in a party** (`Match._may_spare`, `Fighter.beyond_saving`): a man bleeds to death in every mode, alone or beside
+  friends, as he does in the single campaign (`tests/bleed314.gd`: 14 modes, one human and two, all die of the blood at the same
+  second; a party's edge once spared him at death's door and stopped his bleeding: user, players had stopped bleeding to death).
+  What a friend can still undo is a beating: a player whose trunk or head is spent, the blood not gone, falls to death's door
+  while a friend stands, and is lifted by the revive key held beside him (`Fighter.DYING_T`, `lift`). Never what no hands undo
+  (`Fighter.beyond_saving`): the head cut off, the brain torn through or most of the skull gone, the heart torn, the trunk left
+  under 40% of itself: he dies where he falls and a lift on him does nothing (`tests/test_campaign.gd`; user: irreversible brain
+  damage or a severed head cannot be revived in a room).
+- **A bout hangs on no man who cannot hurt anyone** (`Match._unfit`, `Match._spent`): a man who cannot stand and has nothing in
+  his hands (no weapon, no pot, no man held) hurts no one, since a fist and a foot land only from the feet (`Combat`), and a grab and
+  a throw too; crawling at the foe or not, he is out of the bout after `UNFIT_OUT` seconds as one with no arm left is. A giant who
+  lost his weapon and his legs no longer holds a party in a bout nobody can finish (`tests/test_giants.gd`; user: a wounded
+  Cyclops, weaponless, and everyone too wounded to end it). Armed, he still fights on from the sand.
 - **Broken bones**: a blow cracks a bone or breaks it, as hard as it was: cracked, the limb works
   at a little over half and a lesser blow breaks it through; broken under the skin (closed) or
   out through it (open, the bone showing), the limb is no use: not driven, held on by its muscle
@@ -756,6 +769,12 @@ and picks a reward of his own on his own screen (`endless_offer` to him, `endles
 screens; a pick not made in 25 s is the first), and the next wave is called when all have picked; the run is over when
 everybody is down, and it is nobody's lone best wave or leaderboard entry. `tests/test_endless_party.gd`, and
 `tests/net_party_host.gd` / `net_party_guest.gd` play it between two real processes.
+
+The sand keeps no heap of the dead (`Endless._sweep`, `Match.remove_corpse`): a fallen foe is carried off 8 s after he falls (a
+little longer while a player stands within 2.5 m of him), on the host's sand and every guest's (the `despawn` message), and still
+counts as slain; a player's own body stays where it fell. The arms the dead dropped stay, the newest dozen (`_clear_old`). Before, the
+dead of the last two waves lay where they fell (up to sixteen bodies at the eight foes a wave of a full party) and the game crawled
+with them (user: a room of four hung late in a run).
 
 Alone:
 

@@ -123,6 +123,43 @@ func test_the_fallen_stand_up_when_a_wave_is_beaten() -> void:
 	t.eq(en.offers.size(), 2, "and he is offered a reward too")
 	m.queue_free()
 
+## The fallen foes of the waves are carried off a few seconds after they fall (a long run filled the sand with them and the game
+## hung, user), each of them slain all the same; a player's own body stays where it fell; a player standing over a foe keeps him a
+## little longer.
+func test_the_fallen_foes_are_carried_off_and_a_players_body_stays() -> void:
+	var m := _party()
+	var en: Endless = m.modes.endless
+	en.corpse_linger = 1.0
+	en.wave = 11
+	en.update(Endless.START_DELAY + 0.1)   # (the twelfth: several foes)
+	var foes := m.enemies()
+	t.check(foes.size() >= 3, "a wave of several foes (%d)" % foes.size())
+	var ids := foes.map(func(e): return int(e.id))
+	var friend = en.entity_of(7)
+	var friend_id: int = int(friend.id)
+	# One foe dies, and a player stands over another who dies too.
+	foes[0].f.die("wounds")
+	foes[1].f.die("wounds")
+	m.me.f.teleport(foes[1].f.torso.global_position + Vector3(1.0, 0.1, 0.0))
+	friend.f.die("decap")   # (dead for good)
+	await _steps(30)
+	t.check(m.entity_by_id(ids[0]) != null, "a body lies where he fell for its linger (not yet carried off)")
+	await _steps(120)
+	t.check(m.entity_by_id(ids[0]) == null, "then the foe is carried off")
+	t.check(m.entity_by_id(ids[1]) != null, "the one a player stands over is let lie a while longer")
+	t.check(m.entity_by_id(friend_id) != null and not friend.f.alive, "a friend's own body stays where it fell")
+	m.me.f.teleport(Vector3(0, 0.1, -20.0))
+	await _steps(120 * 3)
+	t.check(m.entity_by_id(ids[1]) == null, "and he is carried off too, the player gone or the longer wait up")
+	t.check(m.entity_by_id(friend_id) != null, "the friend's body is still there")
+	t.eq(en._gone, 2, "both are counted as slain")
+	for e in m.enemies():
+		e.f.die("wounds")
+	await _steps(3)
+	t.eq(en.phase, "rest", "the wave is beaten")
+	t.eq(en.slain, foes.size(), "all of its foes slain, those carried off too (%d of %d)" % [en.slain, foes.size()])
+	m.queue_free()
+
 func test_one_at_deaths_door_is_up_for_the_rest() -> void:
 	var m := _party()
 	var en: Endless = m.modes.endless

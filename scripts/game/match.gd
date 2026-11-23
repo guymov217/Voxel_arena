@@ -2639,10 +2639,14 @@ func _check_round(dt: float) -> void:
 		else:
 			_end(true, "Victory", "")
 
-## A party: a player whose wounds would kill him is spared at death's door while a friend still
-## stands to lift him (Fighter.dying). Alone, or the last one up, he dies as he always did.
-func _may_spare(f: Fighter, _cause: String) -> bool:
-	if role == "guest" or mode == "yard" or mode == "training":
+## A party's edge: a player beaten down (his torso or his head spent, not the blood gone) is spared at death's door while a friend
+## still stands to lift him (Fighter.dying). Not one who bleeds to death: as alone in the campaign, in every mode, the blood gone is
+## the end of him (user: players had stopped bleeding to death in a room). Nor one hurt past any saving, the head gone or the brain
+## torn through, the heart torn, the trunk a wreck (Fighter.beyond_saving; user): he dies where he falls and no one lifts him.
+## Alone, or the last one up, he dies as he always did.
+var deaths_door := true
+func _may_spare(f: Fighter, cause: String) -> bool:
+	if not deaths_door or role == "guest" or mode == "yard" or mode == "training" or cause == "bleed":
 		return false
 	return humans().any(func(x): return x.f != f and x.f is Fighter and x.f.alive and x.f.dying <= 0.0 and not x.f.is_beaten())
 
@@ -2748,7 +2752,7 @@ func dying_friend_of(e: Dictionary):
 	var best = null
 	var bd := 1.8 * float(e.f.S)
 	for o in humans():
-		if o == e or not (o.f is Fighter) or not o.f.alive or o.f.dying <= 0.0:
+		if o == e or not (o.f is Fighter) or not o.f.alive or o.f.dying <= 0.0 or o.f.beyond_saving():
 			continue
 		var d: float = o.f.torso.global_position.distance_to(p)
 		if d < bd:
@@ -2780,7 +2784,7 @@ func _unfit(e: Dictionary, dt: float) -> bool:
 	# no arm that can swing or hold and no legs to get up and kick on, a beast with no bite,
 	# horn, claw, sting or fire and no legs to run a man down with (user: one of them could
 	# not fight any more, nor could the other, and the bout went on).
-	var spent := _spent(f)
+	var spent := _spent(f, e)
 	if (down and not f.can_stand() and (not f.crawling or spent)) or (spent and not down):
 		e.unfit_t = float(e.get("unfit_t", 0.0)) + dt
 	else:
@@ -2789,15 +2793,28 @@ func _unfit(e: Dictionary, dt: float) -> bool:
 		e.unfit_t = maxf(float(e.unfit_t), UNFIT_OUT)
 	return float(e.unfit_t) >= UNFIT_OUT
 
-## Can do no harm to anyone any more (_unfit): see there.
-func _spent(f) -> bool:
+## Can do no harm to anyone any more (_unfit): see there. (`e`: his entry, where a man's pots are.)
+func _spent(f, e = null) -> bool:
 	if not is_instance_valid(f) or not f.alive:
 		return false
 	if f is Beast:
 		return f.disarmed() and f.leg_power() < 0.2 and not bool(f.sp.get("flies", false))
 	if f is Fighter:
-		return f.arm_func("L") < 0.08 and f.arm_func("R") < 0.08 and not f.can_stand()
+		if f.arm_func("L") < 0.08 and f.arm_func("R") < 0.08 and not f.can_stand():
+			return true
+		# Down for good with nothing in his hands: a fist and a foot land only from the feet (Combat), and so do a grab and a
+		# throw, so one who lies or crawls bare-handed hurts no one, whatever his arms can still do (user: a Cyclops, wounded and
+		# weaponless, crawled at a party too wounded to finish him, and the fight hung on him).
+		return f.state != "stand" and not f.can_stand() and not _hurts_from_the_sand(f, e)
 	return false
+
+## Whether a man down on the sand can still hurt: a weapon in either hand (swung from where he lies), a pot readied or in his bag
+## (thrown from there), a man held.
+func _hurts_from_the_sand(f: Fighter, e) -> bool:
+	if f.weapons.R != null or f.weapons.L != null or f.held_item != null or f.holding != null:
+		return true
+	var inv = e.get("inventory") if e is Dictionary else null
+	return inv is Dictionary and not Throwables.hotbar_of(inv).is_empty()
 
 ## The bout called against them, the men it counted beaten stay down: one out cold who came
 ## round got up after the kill cam and fought on into a bout already lost (user, a cyclops).
@@ -3694,6 +3711,13 @@ func rebuild(e: Dictionary, body_: Dictionary) -> void:
 			ne[k] = e[k]
 	if me == e:
 		me = ne
+
+## A body carried off the sand (the host's word: every guest is told, and drops the one he has): the fallen foes of the endless arena
+## (Endless._sweep). What it held stays lying, if it let go.
+func remove_corpse(e: Dictionary) -> void:
+	_remove_entity(e)
+	if role == "host":
+		Net.send_all("despawn", {"id": e.id})
 
 func _remove_entity(e: Dictionary) -> void:
 	entities.erase(e)

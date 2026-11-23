@@ -42,6 +42,7 @@ func _ready() -> void:
 	add_child(m)
 	m.setup({"mode": "endless", "role": "host", "headless": true, "seed": 9, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": peers, "endless": {"seed": 11}})
 	en = m.modes.endless
+	en.corpse_linger = 1.5   # (a foe's body is carried off 1.5 s after he falls, here and on the guest's side: Endless._sweep)
 	var ok: bool = plain[0] and me_ok
 	# Wave 1: two foes for two; beaten.
 	ok = await _until(func(): return en.wave >= 1 and en.phase == "fight", 12.0, "wave 1") and ok
@@ -52,6 +53,10 @@ func _ready() -> void:
 		e.f.die("wounds")
 	ok = await _until(func(): return en.phase == "rest", 6.0, "rest 1") and ok
 	print("HOST rest 1: offers ", en.offers.keys(), " time ", snappedf(en.rest_t, 0.1))
+	# The two foes of the wave lie dead: carried off a moment later (the guest is sent the despawn of each), the players' bodies stay.
+	var foes_left := await _until(func(): return m.entities.filter(func(x): return x.team == Match.ENEMY_TEAM).is_empty(), 6.0, "the foes carried off")
+	print("HOST the wave's dead carried off: ", foes_left, "; both players still on the sand ", m.humans().size())
+	ok = ok and foes_left and m.humans().size() == 2
 	ok = ok and en.offers.has(1) and (en.offers.size() == 2 or picks_taken[0] > 0)   # (the guest may have picked already)
 	# The guest picks within the time (his pick comes over the wire): his offer is taken, the host's still open.
 	ok = await _until(func(): return not en.offers.has(gid), 10.0, "the guest's pick") and ok

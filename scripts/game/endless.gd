@@ -17,6 +17,9 @@ const REST_HEAL := 35.0      # blood back as a wave is beaten (the breath all, t
 const START_DELAY := 3.0     # from the pick to the horn
 const MOST_FOES := 8         # (a party's wave is no bigger than this: the host's physics has to keep up)
 const KEEP_LOOSE := 12       # weapons left lying on the sand, the newest (the rest are cleared)
+const CORPSE_LINGER := 8.0   # s a fallen foe lies where he fell before he is carried off (a player's own body stays)
+const CORPSE_STAY := 1.75    # times that, at the most, while a player stands over him (CORPSE_NEAR)
+const CORPSE_NEAR := 2.5     # m
 ## The weapons a gladiator of the waves may be handed: the campaign's ladder of arms (what the
 ## demo's own bouts already show), one-handed and two-handed, the second blade of a man with two,
 ## and the shields.
@@ -57,6 +60,9 @@ var offer: Array = []         # the rewards on offer while resting (the host's o
 var offers := {}              # the party: each one's rewards while resting, by who (1 the host, else his peer id)
 var rest_t := 0.0
 var slain := 0
+var corpse_linger := CORPSE_LINGER
+var _sweep_t := 0.0
+var _gone := 0                # the foes of this wave carried off already (they are slain all the same)
 var rng := RandomNumberGenerator.new()
 
 func _init(match_: Node, opts: Dictionary) -> void:
@@ -172,6 +178,10 @@ func begin() -> void:
 	m._banner("To the last breath!", Loc.t("Today's challenge: the same waves for everyone") if daily else "Wave after wave, until you fall")
 
 func update(dt: float) -> void:
+	_sweep_t += dt
+	if _sweep_t >= 0.5:
+		_sweep(_sweep_t)
+		_sweep_t = 0.0
 	if phase == "next":
 		next_t -= dt
 		if next_t <= 0.0:
@@ -229,6 +239,7 @@ func status() -> String:
 func _spawn_wave() -> void:
 	wave += 1
 	phase = "fight"
+	_gone = 0
 	_clear_old()
 	var list := plan(wave, m.humans().size())
 	var r := RandomNumberGenerator.new()
@@ -291,12 +302,38 @@ func _arm(spec: Dictionary, en: Dictionary, r: RandomNumberGenerator) -> void:
 	mods.toughness = float(mods.get("toughness", 1.0)) * (1.0 + minf(0.6, 0.03 * (wave - 1)))
 	spec.mods = mods
 
-## The fallen of two waves back are carried off, and the oldest weapons lying about cleared (a
+## The fallen foes of the waves are carried off a few seconds after they fall, here and on every guest's screen (a run is long: the
+## dead of a room of four filled the sand and the game hung, user): a player's own body stays where it fell. Each is slain all the
+## same (_gone). The arms they dropped stay, the newest few (_clear_old).
+func _sweep(dt: float) -> void:
+	for e in m.entities.duplicate():
+		if int(e.get("endless_wave", 0)) <= 0 or e.kind == "local" or e.kind == "remote":
+			continue
+		if not is_instance_valid(e.f) or e.f.alive:
+			continue
+		e.corpse_t = float(e.get("corpse_t", 0.0)) + dt
+		if e.corpse_t < corpse_linger:
+			continue
+		if e.corpse_t < corpse_linger * CORPSE_STAY and _player_near(e.f):
+			continue
+		if int(e.endless_wave) == wave:
+			_gone += 1
+		m.remove_corpse(e)
+
+## A player standing over (or within a few paces of) a body: he is let look at it a while longer.
+func _player_near(f) -> bool:
+	var at: Vector3 = f.torso.global_position
+	for h in m.humans():
+		if is_instance_valid(h.f) and h.f.alive and h.f.torso.global_position.distance_to(at) < CORPSE_NEAR:
+			return true
+	return false
+
+## The fallen of two waves back are carried off (those the sweep left), and the oldest weapons lying about cleared (a
 ## run is long: the sand was a heap of bodies and blades and the game crawled).
 func _clear_old() -> void:
 	for e in m.entities.duplicate():
 		if int(e.get("endless_wave", 0)) > 0 and int(e.endless_wave) <= wave - 2 and not e.f.alive:
-			m._remove_entity(e)
+			m.remove_corpse(e)
 	var loose: Array = m.combat.loose_weapons.filter(func(w): return is_instance_valid(w) and w.holder == null)
 	while loose.size() > KEEP_LOOSE:
 		var w = loose.pop_front()
@@ -310,7 +347,8 @@ func _beaten() -> void:
 	for e in m.enemies():
 		if is_instance_valid(e.f) and e.f.alive:
 			e.f.die("wounds")
-	slain += m.entities.filter(func(e): return int(e.get("endless_wave", 0)) == wave).size()
+	slain += m.entities.filter(func(e): return int(e.get("endless_wave", 0)) == wave).size() + _gone
+	_gone = 0
 	# The fallen of a party stand up again (those at death's door too: nobody lies there through the rest);
 	# every one of them is patched up a little.
 	if party():

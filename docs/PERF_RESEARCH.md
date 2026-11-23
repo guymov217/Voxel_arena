@@ -167,7 +167,12 @@ leave and the weapons they drop keep Jolt's islands awake and fill the callbacks
 |---|---|---|
 | Parts of two fallen men in contact are not asked who touched whom (`Combat.report`) | **made, to the bit** | a heap of the dead no longer costs a pass for every touching pair (`tests/test_corpse_touch.gd`) |
 | The struck-by-a-weapon scan folded into `Combat.report`'s one pass over a part's contacts (it was a second loop in `VoxelPart._integrate_forces`) | **made, to the bit** | one pass instead of two; the fingerprints of `tools/replay_check.sh` and of the dead-among-the-living runs (`REPLAY_BARE=1 REPLAY_KILL=2`) are the same as before |
-| Pieces of voxels (`Chunk`) and loose weapons (`Combat._rest_weapons`) that have lain still for 1.5 s are put to sleep, as the dead's parts are (`Match._at_rest`) | **made, not to the bit** | the late Endless probe: the step -25 to -33%, the dead's parts awake 97 -> 22-41 |
+| Pieces of voxels (`Chunk`) and loose weapons (`Combat._rest_weapons`) that have lain still for 1.5 s are put to sleep, as the dead's parts are (`Match._at_rest`) | **made, not to the bit** | the late Endless probe (measured below): the step -18% on average (-8 to -31% over three seeds), p99 -18%; what is awake of the dead's parts, loose weapons and pieces 127 -> 61 |
+
+Measured with `tests/endless_fps.gd` (`MIX="men:8,foe:6,beast:wolf*2,beast:lion" SECS=60 EVERY=10 DRAW=0`, one worker thread, seeds 7, 8 and 9, the tree before (d6dddee) and the tree after taken in turn), the mean of the
+prints at 40, 50 and 60 s of game time: the step 18.3 -> 15.1 ms (by seed 20.1 -> 13.9, 16.4 -> 14.3, 18.6 -> 17.1), p99 29.3 -> 24.2 ms, the nodes' phase 8.2 -> 7.5 ms; at 60 s the awake bodies of the dead,
+the loose weapons and the pieces 127 -> 61. The two trees do not play the same fight (the sleeping is not to the bit, and the bots have their whims), hence three seeds and a spread this wide; the figures are
+for this machine, one core, no drawing. Not measured: bouts of two to four men with few dead about, where there is little to put to sleep, and the frame.
 
 How the sleeping goes: the physics wakes what is touched or pushed; what sleeps looks under itself every 0.5 s (what it lay on carried off, it falls); a weapon taken up is made sleepless
 (`Fighter.pick_up`); a weapon in a hand is its man's and is left to him (the yard puts it to sleep with him and wakes it with him, `Match._stands_idle`: `tests/test_yard_rest.gd` is what
@@ -178,3 +183,30 @@ the `can_sleep = false` line in `Fighter.pick_up` (`tests/test_rest_sleep.gd` go
 
 What is left of the step is the arms' drive, about a quarter of it: only the port to C++ keeps every fight. What changes fights (the physics rate, Jolt's iterations, the governor of #304,
 freezing the dead for good: about 7% more than the sleeping) waits for a decision.
+
+## 9. The dead carried off, and what a brawl of eight costs (#316, #317)
+
+**The Endless Arena carries its dead off** (`Endless._sweep`, `Match.remove_corpse`): a fallen foe is taken off the sand 8 s after he falls (a little longer while a player
+stands within 2.5 m), on the host and on every guest (the `despawn` message), and still counts as slain; a player's own body stays. Before, the dead of the last two waves lay where
+they fell (`_clear_old` took the ones two waves back), up to sixteen bodies with a full party's eight foes a wave. Measured with `tests/endless_fps.gd` (`SWEEP=0` against `SWEEP=8`,
+`MIX="men:8,foe:6,beast:wolf*2,beast:lion" SECS=60 EVERY=20 DRAW=0`, one worker thread, seeds 7, 8 and 9; the pairs ran side by side and three games at once on four cores, so the milliseconds
+are a loaded machine's, and the comparison is the pair's):
+
+| game time | step, dead left lying | step, dead carried off | p99 | steps a second |
+|---|---|---|---|---|
+| 20 s | 26.1 ms | 24.7 ms (-5%) | 45.4 -> 42.6 ms | 38 -> 41 |
+| 40 s | 20.1 ms | 15.7 ms (-22%) | 33.2 -> 30.4 ms | 51 -> 66 |
+| 60 s | 15.5 ms | 11.9 ms (-23%) | 25.2 -> 21.1 ms | 65 -> 84 |
+
+At 60 s the bodies awake (men, dead, weapons, pieces) went 148-188 -> 122-127. Not to the bit, and meant not to be: the dead of a wave are not on the sand to be stepped, nor to be
+struck; the arms they dropped stay (the newest dozen, `_clear_old`). Not measured: a real run with waves and players (the probe has no waves: the heap there is what one fight leaves,
+a real run leaves more), and what the frame saves in draw calls.
+
+**The eight in a clump** (the user's video of a friends' playtest, #317: seven pilot games and the host's on one PC, a quarrel of all eight in the arena). The meter reads: physics
+17.1-19.7 ms a step and 46 of 120 steps a second (the game at 38% of its speed: "slow motion"), the frame without physics 16.5-16.8 ms of which the drawing 3.1-3.6 ms and the card
+13.5-13.9 ms, the men 3.4 ms, the match 0.5-0.6 ms, all the rest 12.6-12.9 ms (the wait on the card, mostly), 2971-3273 draw calls, the line out 1.18-1.29 MB/s and in 167-176 KB/s,
+and "two windows on one computer: the picture is lowered" already on. On this machine eight men fighting cost 10.8 ms a step (section 2): the user's PC pays 1.6-1.8 times that, with seven
+other games on it. The 8.3 ms a step that 120 Hz allows is out of reach for eight men in one clump here and there both; the game falls back to two steps a frame (#307) and the world
+goes slower. What would cut it, in the order the measures point: the arms' drive in C++ (a quarter of the step, to the bit; section 8), the governor (#304: far men's physics eased
+only while the step is over budget), and the card (13.5 ms at 3k draw calls with the picture already lowered: section 3b). What the playtest itself adds is the pilots' games on the same
+cores (`Engine.max_fps = 60` for each, `friend_pilot.gd`): a room of eight real machines does not pay it.

@@ -197,6 +197,50 @@ func test_a_man_down_for_good_is_out_of_the_bout() -> void:
 	t.check(m.over and res.get("won", true) == false, "after twelve he is out and the bout is lost (state %s down_t %.1f unfit %.1f over %s)" % [f.state, float(m.me.get("down_t", -1.0)), float(m.me.get("unfit_t", -1.0)), m.over])
 	m.queue_free()
 
+## A giant who has lost his weapon and cannot stand any more hurts no one (a fist and a foot land only from the feet, Combat, a grab
+## and a throw too), so crawling at the party with nothing in his hands he is out of the bout after the count as one with no arm
+## left is (user: a wounded Cyclops who had lost his weapon crawled at a party too wounded to finish him, and the fight hung).
+## Armed, he fights on from the sand as before.
+func test_a_bare_handed_giant_who_cannot_stand_is_out_of_the_bout() -> void:
+	for armed in [true, false]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "campaign", "stage": 1, "headless": true, "seed": 5})
+		for e in m.enemies():
+			e.f.die("wounds")
+		m.me.drive = func(_e): return {}
+		var spec: Dictionary = m.enemy_spec({"e": "cyclops"}, 0, 1)
+		spec.pos = Vector3(0, 0.1, 9.0)
+		spec.yaw = PI
+		var ge = m.spawn_fighter(spec)
+		var g: Fighter = ge.f
+		for i in 30:
+			m.me.f.blood = 100.0
+			await get_tree().physics_frame
+		if not armed:
+			for side in ["R", "L"]:
+				var w = g.release(side)
+				if w != null:
+					m.combat.loose_weapons.erase(w)
+					w.queue_free()
+		g.cord_legs = 0.0
+		g.fall(60.0, true)
+		var out_at := -1.0
+		for i in 120 * 12:
+			m.me.f.blood = 100.0
+			g.blood = maxf(g.blood, 60.0)
+			await get_tree().physics_frame
+			if out_at < 0.0 and (ge.get("beaten", false) or m.over):
+				out_at = i / 120.0
+		var has_weapon: bool = g.weapons.R != null or g.weapons.L != null
+		t.check(not g.can_stand() and g.alive, "%s: he cannot stand and lives (state %s)" % ["armed" if armed else "bare-handed", g.state])
+		if armed:
+			t.check(has_weapon and out_at < 0.0 and not m.over, "armed: he still fights from the sand and the bout goes on (out at %.1f, over %s)" % [out_at, m.over])
+		else:
+			t.check(not has_weapon and m._spent(g, ge), "bare-handed: nothing left to hurt anyone with")
+			t.check(out_at > 0.0 and out_at < 10.0, "bare-handed: out of the bout within the count (after %.1f s, state %s, crawling %s)" % [out_at, g.state, g.crawling])
+		m.queue_free()
+
 ## A man with nothing left to hurt anyone with is out of the bout, crawling or not: no arm that
 ## swings or holds, no legs to get up and kick on (user: one of them could not fight any more, nor
 ## could the other, and the bout went on). A man who still has an arm fights on from the sand,

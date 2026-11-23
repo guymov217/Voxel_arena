@@ -7,7 +7,8 @@ extends Node
 ##   godot --path . -- --probe endless_fps                        on a screen: the FPS and the steps a second are what the room sees
 ##   godot --headless --fixed-fps 120 --path . -- --probe endless_fps     as fast as the machine goes: steps and scripts only, no drawing
 ##   xvfb-run -a godot --fixed-fps 120 --path . -- --probe endless_fps    a software renderer: the draw calls count right, the times do not
-## env: MIX, SECS (60), EVERY (10), SEED (7), DRAW (1: the game draws, 0: not).
+## env: MIX, SECS (60), EVERY (10), SEED (7), DRAW (1: the game draws, 0: not), SWEEP (0: the foes' dead lie as they fall; 8: carried off after 8 s,
+## as the Endless arena does it: Endless._sweep).
 
 const Kit := preload("res://tests/e2e_kit.gd")
 
@@ -41,12 +42,29 @@ class PhysEnd extends Node:
 		if owner_.t_ph > 0:
 			owner_.phys.append(Time.get_ticks_usec() - owner_.t_ph)
 
+var sweep_m: Match = null   # SWEEP: the match whose fallen foes are carried off
+var sweep_s := 0.0
+var sweep_gone := 0
+
+## SWEEP=8: a foe lying dead for 8 s (game time) is carried off as Endless does (Match.remove_corpse), the men's bodies stay.
+func _sweep_tick() -> void:
+	for e in sweep_m.entities.duplicate():
+		if e.kind == "local" or e.kind == "remote" or e.team != Match.ENEMY_TEAM or not is_instance_valid(e.f) or e.f.alive:
+			continue
+		if not e.has("dead_at"):
+			e["dead_at"] = sweep_m.time
+		elif sweep_m.time - float(e.dead_at) >= sweep_s:
+			sweep_m.remove_corpse(e)
+			sweep_gone += 1
+
 func _physics_process(_dt: float) -> void:
 	var now := Time.get_ticks_usec()
 	if t_prev > 0:
 		gaps.append(float(now - t_prev) / 1000.0)
 	t_prev = now
 	steps += 1
+	if sweep_m != null and steps % 60 == 0:
+		_sweep_tick()
 
 func _env(k: String, d: String) -> String:
 	var v := OS.get_environment(k)
@@ -186,6 +204,9 @@ func _ready() -> void:
 	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": (headless or not draw) and not visuals, "seed": int(_env("SEED", "7")), "decrees": [], "hazards": []})
 	m.me.drive = func(_e): return {}
 	m.me.f.teleport(Vector3(0, 0, -9))
+	sweep_s = float(_env("SWEEP", "0"))
+	if sweep_s > 0.0:
+		sweep_m = m
 	var weapons := ["gladius", "axe", "mace", "spear"]
 	var foes := ["recruit", "shieldbearer", "brute", "murmillo"]
 	var list := []

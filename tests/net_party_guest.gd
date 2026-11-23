@@ -12,6 +12,7 @@ var stats := []           # the host's state line as it changed
 var snaps := 0
 var _fed := 0
 var kind_seen := ""
+var foe_despawns := []    # the ids of the foes' bodies the host had carried off (not his own man's)
 
 func _ready() -> void:
 	var port := int(OS.get_environment("NET_PORT")) if OS.get_environment("NET_PORT") != "" else 17779
@@ -55,6 +56,8 @@ func _on(type: String, data, _from: int) -> void:
 			if m and data is Dictionary:
 				if m.me != null and int(data.get("id", -1)) == int(m.me.id):
 					despawns += 1
+				else:
+					foe_despawns.append(int(data.get("id", -1)))
 				m.guest_despawn(int(data.get("id", -1)))
 		"snap":
 			snaps += 1
@@ -85,8 +88,10 @@ func _on(type: String, data, _from: int) -> void:
 		"bye":
 			var me_ok: bool = m != null and m.me != null and is_instance_valid(m.me.f) and m.me.f.alive
 			var waved := stats.any(func(s): return String(s).begins_with("Wave"))
+			var dropped: bool = foe_despawns.size() >= 2 and foe_despawns.all(func(id): return m != null and m.entity_by_id(id) == null)
+			print("GUEST foes' bodies carried off ", foe_despawns, " and gone from his sand ", dropped)
 			print("GUEST offers ", offers.size(), " dones ", dones, " my spawns ", spawns_of_mine, " my despawns ", despawns, " me alive ", me_ok, " feed lines ", _fed)
 			print("GUEST state lines ", stats)
-			var ok: bool = kind_seen == Net.KIND_ARENA and offers.size() >= 2 and dones >= 1 and spawns_of_mine >= 2 and despawns >= 1 and me_ok and waved and snaps > 10
+			var ok: bool = kind_seen == Net.KIND_ARENA and offers.size() >= 2 and dones >= 1 and spawns_of_mine >= 2 and despawns >= 1 and me_ok and waved and snaps > 10 and dropped
 			print("GUEST ", "ok" if ok else "FAIL")
 			get_tree().quit(0 if ok else 1)
