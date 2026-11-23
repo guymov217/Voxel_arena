@@ -87,7 +87,8 @@ func test_f3_shows_the_meter_and_it_is_remembered() -> void:
 ## A frame past a tenth of a second is written to user://hitches.txt with what the game knows of it (to be sent on with a video of a
 ## game that stopped); a smooth stretch writes nothing, and four a second at most are kept.
 func test_a_long_frame_is_written_to_the_hitch_record() -> void:
-	var path := "user://hitches.txt"
+	FpsMeter.force_record = true
+	var path := FpsMeter.log_path()
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 	var fm := FpsMeter.new()
@@ -105,13 +106,15 @@ func test_a_long_frame_is_written_to_the_hitch_record() -> void:
 	fm._hitch_check(5.1)
 	t.eq(FileAccess.get_file_as_string(path).split("\n", false).size(), 1, "another within a quarter of a second adds nothing")
 	DirAccess.remove_absolute(path)
+	FpsMeter.force_record = false
 	fm.queue_free()
 	await get_tree().process_frame
 
 ## A game in slow motion has no long frame to show for it (its frames are all a little long): a stretch in which it kept under 97% of its speed
 ## is written whether or not the meter is shown (user: the file never appeared; no frame was over 60 ms).
 func test_a_stretch_under_speed_is_written_with_the_meter_put_away() -> void:
-	var path := FpsMeter.LOG_PATH
+	FpsMeter.force_record = true
+	var path := FpsMeter.log_path()
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 	t.check(is_equal_approx(FpsMeter.slow_speed(240, 2.0, 120.0, 1.0), 1.0), "240 steps in 2 s of 120 a second: the whole speed")
@@ -129,6 +132,7 @@ func test_a_stretch_under_speed_is_written_with_the_meter_put_away() -> void:
 	var text := FileAccess.get_file_as_string(path)
 	t.check(text.contains("SLOW 2.5 s") and text.contains("game speed 0%") and text.contains("men 0") and text.contains("room none"), "with its length, its speed and what was asked of the machine (%s)" % text.left(160))
 	DirAccess.remove_absolute(path)
+	FpsMeter.force_record = false
 	FpsMeter.note("a note in the tests goes nowhere")
 	t.check(not FileAccess.file_exists(path), "and a note is written only by a game with a screen")
 	fm.queue_free()
@@ -136,7 +140,8 @@ func test_a_stretch_under_speed_is_written_with_the_meter_put_away() -> void:
 
 ## The file is begun again past its size, with what the machine is at the head.
 func test_the_record_begins_again_past_its_size_with_the_machine_at_its_head() -> void:
-	var path := FpsMeter.LOG_PATH
+	FpsMeter.force_record = true
+	var path := FpsMeter.log_path()
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("x".repeat(FpsMeter.HITCH_FILE_MAX + 10))
 	f.close()
@@ -146,3 +151,57 @@ func test_the_record_begins_again_past_its_size_with_the_machine_at_its_head() -
 	t.check(String(lines[0]).contains("Godot") and String(lines[0]).contains("threads"), "the head says what the machine is (%s)" % String(lines[0]).left(100))
 	t.eq(String(lines[1]), "a line", "and the line follows")
 	DirAccess.remove_absolute(path)
+	FpsMeter.force_record = false
+
+## A slow stretch says what it came of (the slow-motion's diagnosis): steps dearer than the 8.3 ms there is, frames dearer than the steps, or neither
+## (the game was not getting the processor).
+func test_a_slow_stretch_says_what_it_came_of() -> void:
+	t.check(FpsMeter.slow_cause(60, 2.0, 1200.0, 120.0).begins_with("STEPS TOO COSTLY"), "60 steps of 20 ms in two seconds: the steps")
+	t.check(FpsMeter.slow_cause(240, 2.0, 400.0, 120.0).begins_with("FRAMES TOO COSTLY"), "steps of 1.7 ms and a fifth of the time: the frames")
+	t.check(FpsMeter.slow_cause(200, 2.0, 1400.0, 120.0).begins_with("NEITHER"), "steps of 7 ms, most of the time, behind all the same: not getting the processor")
+	t.check(FpsMeter.slow_cause(0, 2.0, 0.0, 120.0).begins_with("no physics step"), "no step at all says so")
+	var text := FpsMeter.slow_cause(60, 2.0, 1200.0, 120.0)
+	t.check(text.contains("20.0 ms") and text.contains("8.3"), "with the step's cost and the budget (%s)" % text)
+
+## The processor's census as a line: who had it.
+func test_the_census_names_who_had_the_processor() -> void:
+	var samples := [["godot", 100, 98], ["godot", 101, 27], ["godot", 102, 27], ["obs64", 200, 41], ["chrome", 300, 12], ["chrome", 301, 10]]
+	var line := FpsMeter.census_line(samples, 8, PackedInt32Array([101, 102]), 100)
+	t.check(line.contains("27% busy") and line.contains("8 threads"), "the machine's fullness: 215 of 800 (%s)" % line)
+	t.check(line.contains("this game 98%"), "this game")
+	t.check(line.contains("friend windows 54% (2)"), "the friends' games by their pids, together")
+	t.check(line.contains("obs64 41%") and line.contains("chrome x2 22%"), "the others by name, several of a name together")
+	t.check(FpsMeter.census_line([], 4, PackedInt32Array(), 1).contains("none over 2%"), "an empty machine says so")
+	if OS.get_name() == "Linux":
+		var j := FpsMeter._proc_jiffies()
+		t.check(j.has(OS.get_process_id()) and String(j[OS.get_process_id()][0]) != "", "on Linux the census reads /proc: this game is in it")
+
+## What the frame's steps took, by the wall clock: read between this node's first physics step of a frame and its process (it comes first in both).
+func test_the_steps_of_a_frame_are_timed_between_the_first_step_and_the_process() -> void:
+	var fm := FpsMeter.new()
+	add_child(fm)
+	t.eq(fm.process_priority, -100000, "first in every frame")
+	fm._process(0.0)   # (the first frame begins the stretch's window)
+	fm._physics_process(0.0)
+	OS.delay_usec(3000)
+	fm._physics_process(0.0)
+	fm._process(0.0)
+	t.check(fm._sw_phys_us >= 3000, "the frame's steps took at least the 3 ms they were held for (%d us)" % fm._sw_phys_us)
+	t.eq(fm._ps_n, 0, "and the count starts anew")
+	fm.queue_free()
+	var fr := Friends.new()
+	add_child(fr)
+	fr.friends.append({"pid": 4000000, "persona": 0, "name": "x", "at": 0})
+	fr.changed.emit()
+	t.eq(Array(Friends.live_pids), [4000000], "the friends' games' pids are kept for the census")
+	fr.friends.clear()   # (kill_all would stop a game of that pid)
+	fr.queue_free()
+	await get_tree().process_frame
+	t.eq(Friends.live_pids.size(), 0, "and let go with the friends")
+
+## The record lies in the game's folder (the project's, run from the editor; the executable's, exported), not in the user data folder where nobody finds it.
+func test_the_record_is_kept_in_the_games_folder() -> void:
+	var p := FpsMeter.log_path()
+	t.check(p.get_file() == "hitches.txt", "it is called hitches.txt (%s)" % p)
+	t.check(p.get_base_dir() == ProjectSettings.globalize_path("res://").trim_suffix("/"), "in the project's folder (%s)" % p.get_base_dir())
+	t.check(not FpsMeter.recording(), "and a game without a screen (the friends' games, these tests) keeps none of its own: it would write in the host's")

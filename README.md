@@ -353,10 +353,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   and the drawing and the graphics card's time in ms, the physics steps the game really takes a second of
   the 120 it is meant to, and whether the C++ core is loaded: without it a step costs a fifth more; a third
   line says where the frame goes: the men's drawing, the match's own work, all the rest, and the draw calls;
-  in a room the connection's meter with it). The game keeps a record in `user://hitches.txt` whether or not F3 is on
-  (the machine at the head; a line for every stretch of two seconds in which it ran under 97% of its speed or under 45 frames a second,
-  for every frame over 60 ms, and for each match's start and how long it took): the file to send when the game stalls or runs slow
-  (in the editor: Project, Open User Data Folder; the game prints the path as it starts).
+  in a room the connection's meter with it). The game keeps a record in `hitches.txt` in the game's own folder whether or not F3 is on
+  (the machine at the head; a line for every stretch of two seconds in which it ran under 97% of its speed or under 45 frames a second, with what a
+  step and a frame cost and what it came of, and who else had the processor; for every frame over 60 ms; and for each match's start and how long it took):
+  the file to send when the game stalls or runs slow (the game prints its path as it starts).
   The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
   pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
   the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a

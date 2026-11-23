@@ -20,7 +20,28 @@ const HITCH_FILE_MAX := 200000
 ## The record is kept whether or not the meter is shown (the stops of a game nobody had F3 on for are the ones to look at): a frame past HITCH_MS, a stretch of
 ## SLOW_WINDOW_S seconds in which the game ran under SLOW_SPEED of its speed or under SLOW_FPS frames a second (a game in slow motion has no long frame to show
 ## for it: its frames are all a little long), and the notes the game makes of its own starts (FpsMeter.note). The file is made at the game's start.
-const LOG_PATH := "user://hitches.txt"
+## In the game's own folder (user: where it can be found, as `host_check.txt` is): the project's, run from the editor or its .bat files, the executable's in an exported
+## game; the user data folder (`user://`) if that one cannot be written. A game without a screen (the friends' games, the tests) keeps no record: they would write into
+## the host's file (`force_record` is the tests' to say otherwise).
+const LOG_FILE := "hitches.txt"
+static var force_record := false
+static var _log_path := ""
+
+static func recording() -> bool:
+	return force_record or DisplayServer.get_name() != "headless"
+
+static func log_path() -> String:
+	if _log_path != "":
+		return _log_path
+	var dir := OS.get_executable_path().get_base_dir() if (OS.has_feature("template") and not OS.has_feature("editor")) else ProjectSettings.globalize_path("res://").trim_suffix("/")
+	var p := dir.path_join(LOG_FILE)
+	var f := FileAccess.open(p, FileAccess.READ_WRITE if FileAccess.file_exists(p) else FileAccess.WRITE)
+	if f == null:
+		p = ProjectSettings.globalize_path("user://" + LOG_FILE)   # (a folder the game may not write in: Program Files)
+	else:
+		f.close()
+	_log_path = p
+	return p
 const SLOW_WINDOW_S := 2.0
 const SLOW_SPEED := 0.97
 const SLOW_FPS := 45.0
@@ -51,10 +72,16 @@ var _sw_frames := 0
 var _sw_worst := 0.0
 var _sw_over := 0
 var _sw_n := 0              # the stretches written
+var _sw_phys_us := 0        # in the window: what the frames' physics steps took by the wall clock (scripts and the engine's own steps)
+var _ps_n := 0              # the physics steps of this frame so far, and when the first began (us): this node comes first in every frame
+var _ps_t0 := 0
+var _census_t := -100.0     # when the processor's census was last asked for (s)
+var _census_thread: Thread = null
 
 func _ready() -> void:
 	layer = 50
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	process_priority = -100000   # (first in every frame's steps and in its process: the steps' cost is read between the two)
 	panel = PanelContainer.new()
 	panel.position = Vector2(12, 12)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -111,9 +138,17 @@ func _sync_net() -> void:
 	if want != (Net.meter != null and is_instance_valid(Net.meter)):
 		Net.show_meter(want)
 
+func _physics_process(_dt: float) -> void:
+	if _ps_n == 0:
+		_ps_t0 = Time.get_ticks_usec()
+	_ps_n += 1
+
 func _process(_dt: float) -> void:
 	var now_us := Time.get_ticks_usec()
 	var now := now_us / 1e6
+	if _ps_n > 0:
+		_sw_phys_us += now_us - _ps_t0   # (this frame's steps, from the first one's start to here: all of them are done before any _process)
+		_ps_n = 0
 	if _last_us > 0:
 		_frames.append([now, (now_us - _last_us) / 1000.0])
 	_last_us = now_us
@@ -139,6 +174,8 @@ func _process(_dt: float) -> void:
 ## steps it took, the nodes made or freed in it, the longest physics step and the frame without physics of the last second, drawing and the
 ## graphics card, the messages of the room that came in, the men's drawing and the match's.)
 func _hitch_check(now: float) -> void:
+	if not recording():
+		return
 	var steps := Engine.get_physics_frames()
 	var nodes := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 	var ms := 0.0
@@ -168,12 +205,15 @@ func _hitch_check(now: float) -> void:
 ## 120 a second it is meant to, at the engine's time scale; what the machine was asked: the men on the sand, the bodies awake, the draw calls, and
 ## whether the room is over its budget and how many steps a frame it lets itself take). A window in which the game was not in front is no stretch.
 func _slow_check(now: float) -> void:
+	if not recording():
+		return
 	var ms := 0.0
 	if _frames.size() > 0:
 		ms = float((_frames[_frames.size() - 1] as Array)[1])
 	if _sw_t0 < 0.0:
 		_sw_t0 = now
 		_sw_steps0 = Engine.get_physics_frames()
+		_sw_phys_us = 0
 		return
 	_sw_frames += 1
 	_sw_worst = maxf(_sw_worst, ms)
@@ -186,11 +226,13 @@ func _slow_check(now: float) -> void:
 	var frames := _sw_frames
 	var worst := _sw_worst
 	var over := _sw_over
+	var phys_ms := float(_sw_phys_us) / 1000.0
 	_sw_t0 = now
 	_sw_steps0 = Engine.get_physics_frames()
 	_sw_frames = 0
 	_sw_worst = 0.0
 	_sw_over = 0
+	_sw_phys_us = 0
 	if DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused():
 		return   # (behind another window the engine slows itself down)
 	var speed := slow_speed(steps, span, float(Engine.physics_ticks_per_second), Engine.time_scale)
@@ -200,10 +242,121 @@ func _slow_check(now: float) -> void:
 	var w := _work()
 	var men := int(Combat.current.fighters.size()) if Combat.current != null else 0
 	var room := ("%d peers%s, steps a frame %d" % [Net.peers.size(), " OVER BUDGET" if Net.overloaded else "", Engine.max_physics_steps_per_frame]) if Net.active() else "none"
-	_log("%s  SLOW %.1f s  game speed %.0f%% (%.0f of %.0f steps a second)  %.0f frames a second, %d of %d over 33 ms, worst %.0f ms  physics(max) %.1f ms (a step %.1f)  frame-no-physics %.1f ms  men %d  bodies awake %d  draws %d  room %s" % [
+	if Friends.live_pids.size() > 0:
+		room += ", %d friend windows on this machine" % Friends.live_pids.size()
+	var step_ms := phys_ms / float(maxi(1, steps))                         # what a step cost by the wall clock, the engine's own part and a preempted one in it
+	var frame_ms := (span * 1000.0 - phys_ms) / float(maxi(1, frames))     # and a frame's rest: scripts, drawing, waiting on the card
+	_log("%s  SLOW %.1f s  game speed %.0f%% (%.0f of %.0f steps a second)  %.0f frames a second, %d of %d over 33 ms, worst %.0f ms  a step %.1f ms, the rest of a frame %.1f ms (card %.1f)  men %d  bodies awake %d  draws %d  room %s  => %s" % [
 		Time.get_datetime_string_from_system(), span, speed * 100.0, float(steps) / span, float(Engine.physics_ticks_per_second) * Engine.time_scale, fps, over, frames, worst,
-		float(w.get("physics", 0.0)), Net.step_ms, float(w.get("frame", 0.0)), men, int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), int(w.get("calls", 0)), room])
+		step_ms, frame_ms, float(w.get("gpu", 0.0)), men, int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), int(w.get("calls", 0)), room,
+		slow_cause(steps, span, phys_ms, float(Engine.physics_ticks_per_second))])
 	_sw_n += 1
+	_census_ask(now)
+
+## What a slow stretch came of, by where its seconds went: the steps' share of the second (`phys_ms` of `span` s, the steps a second there should be at
+## `ticks`), and what is left for the frames. A step dearer than the 8.3 ms there is for it, however it came to be (too many fighters for the processor, the
+## processor shared: the CPU line that follows says which) is what slows the game; with steps within it and the frames not too dear, it was not getting the
+## processor or was waiting.
+static func slow_cause(steps: int, span: float, phys_ms: float, ticks: float) -> String:
+	if steps <= 0 or span <= 0.0 or ticks <= 0.0:
+		return "no physics step in the stretch"
+	var step := phys_ms / float(steps)
+	var budget := 1000.0 / ticks
+	var share := phys_ms / (span * 1000.0)
+	if step > budget * 1.05:
+		return "STEPS TOO COSTLY: a step %.1f ms of the %.1f there is (%.0f ms of every second at full speed) and the steps are %.0f%% of the time" % [step, budget, step * ticks, share * 100.0]
+	if share < 0.5:
+		return "FRAMES TOO COSTLY: the steps are %.0f%% of the time, the frames the rest (drawing, scripts, waiting on the card)" % (share * 100.0)
+	return "NEITHER: steps (%.1f ms) and frames are within what the machine does, yet it fell behind: it was not getting the processor (see the CPU line) or the card held it" % step
+
+## The processor, as the processes of the machine share it: whom to ask is the system's (Windows: PowerShell's Get-Process, twice, three seconds apart; Linux: /proc), in a thread of
+## its own, once in CENSUS_EVERY_S seconds and only in a slow stretch; the line comes after the stretch's.
+const CENSUS_EVERY_S := 20.0
+func _census_ask(now: float) -> void:
+	if DisplayServer.get_name() == "headless" or _census_thread != null or now - _census_t < CENSUS_EVERY_S:
+		return
+	if not ["Windows", "Linux"].has(OS.get_name()):
+		return
+	_census_t = now
+	_census_thread = Thread.new()
+	_census_thread.start(_census_run.bind(Friends.live_pids))
+
+func _census_run(friend_pids: PackedInt32Array) -> void:
+	var samples := []   # [name, pid, % of one thread]
+	if OS.get_name() == "Windows":
+		var script := "$ErrorActionPreference='SilentlyContinue'; $a=@{}; Get-Process | ForEach-Object { $a[$_.Id] = $_.CPU }; Start-Sleep -Seconds 3; Get-Process | ForEach-Object { if ($a.ContainsKey($_.Id) -and $_.CPU -ne $null -and $a[$_.Id] -ne $null) { $d = [math]::Round(($_.CPU - $a[$_.Id]) * 100 / 3); if ($d -ge 2) { '{0}:{1}:{2}' -f $_.ProcessName, $_.Id, $d } } }"
+		var out := []
+		OS.execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], out, false)
+		for chunk in out:
+			for l in String(chunk).split("\n", false):
+				var f := l.strip_edges().split(":")
+				if f.size() == 3 and String(f[1]).is_valid_int() and String(f[2]).is_valid_int():
+					samples.append([String(f[0]), int(f[1]), int(f[2])])
+	else:
+		var a := _proc_jiffies()
+		OS.delay_msec(3000)
+		var b := _proc_jiffies()
+		for pid in b:
+			if a.has(pid):
+				var d := int(round(float(int(b[pid][1]) - int(a[pid][1])) / 3.0))   # (jiffies of 1/100 s: a hundredth of a second a second is a percent)
+				if d >= 2:
+					samples.append([String(b[pid][0]), int(pid), d])
+	call_deferred("_census_done", samples, friend_pids)
+
+## Linux: pid -> [command, user + system jiffies], read off /proc.
+static func _proc_jiffies() -> Dictionary:
+	var out := {}
+	var d := DirAccess.open("/proc")
+	if d == null:
+		return out
+	for name in d.get_directories():
+		if not String(name).is_valid_int():
+			continue
+		var f := FileAccess.open("/proc/%s/stat" % name, FileAccess.READ)
+		if f == null:
+			continue
+		var line := f.get_line()
+		var r := line.rfind(")")
+		var l := line.find("(")
+		if r < 0 or l < 0:
+			continue
+		var rest := line.substr(r + 2).split(" ")
+		if rest.size() > 13:
+			out[int(name)] = [line.substr(l + 1, r - l - 1), int(rest[11]) + int(rest[12])]
+	return out
+
+func _census_done(samples: Array, friend_pids: PackedInt32Array) -> void:
+	if _census_thread != null:
+		_census_thread.wait_to_finish()
+		_census_thread = null
+	_log("%s  CPU %s" % [Time.get_datetime_string_from_system(), census_line(samples, OS.get_processor_count(), friend_pids, OS.get_process_id())])
+
+## The census as a line: how full the machine was (the busy processes' percent of one thread, together, of all its threads), this game, the friends' games
+## (their pids, from Friends), and the busiest others by name (several of one name together), the way a slow stretch's CPU line reads.
+static func census_line(samples: Array, threads: int, friend_pids: PackedInt32Array, self_pid: int) -> String:
+	var total := 0
+	var mine := 0
+	var friends := 0
+	var n_friends := 0
+	var others := {}   # name -> [percent, how many]
+	for s in samples:
+		var pct := int(s[2])
+		total += pct
+		if int(s[1]) == self_pid:
+			mine += pct
+		elif friend_pids.has(int(s[1])):
+			friends += pct
+			n_friends += 1
+		else:
+			var o: Array = others.get(String(s[0]), [0, 0])
+			others[String(s[0])] = [int(o[0]) + pct, int(o[1]) + 1]
+	var names := others.keys()
+	names.sort_custom(func(a, b): return int(others[a][0]) > int(others[b][0]))
+	var parts := []
+	for nm in names.slice(0, 6):
+		parts.append("%s%s %d%%" % [nm, (" x%d" % int(others[nm][1])) if int(others[nm][1]) > 1 else "", int(others[nm][0])])
+	var busy := float(total) / float(maxi(1, threads) * 100)
+	return "over 3 s: the machine %.0f%% busy (%d threads; a percent here is of one thread)  this game %d%%  friend windows %d%% (%d)  others: %s" % [busy * 100.0, threads, mine, friends, n_friends, ", ".join(parts) if not parts.is_empty() else "none over 2%"]
 
 ## How much of its speed the game kept: the physics steps taken over the steps a second of the clock there should have been (the engine's
 ## ticks a second at its time scale: a replay in slow motion is not a game running slow).
@@ -214,18 +367,18 @@ static func slow_speed(steps: int, span: float, ticks: float, time_scale: float)
 
 ## A line in the record (the game's own start and end of a thing, from anywhere: `FpsMeter.note("match setup ...")`); not in the tests.
 static func note(text: String) -> void:
-	if DisplayServer.get_name() == "headless":
+	if not recording():
 		return
 	_log("%s  NOTE %s" % [Time.get_datetime_string_from_system(), text])
 
 ## The file `user://hitches.txt` made (or begun again, past HITCH_FILE_MAX) with what the machine is, then a line added.
 static func _log(line: String) -> void:
-	var f := FileAccess.open(LOG_PATH, FileAccess.READ_WRITE if FileAccess.file_exists(LOG_PATH) else FileAccess.WRITE)
+	var f := FileAccess.open(log_path(), FileAccess.READ_WRITE if FileAccess.file_exists(log_path()) else FileAccess.WRITE)
 	if f == null:
 		return
 	if f.get_length() > HITCH_FILE_MAX:
 		f.close()
-		f = FileAccess.open(LOG_PATH, FileAccess.WRITE)   # (the oldest go: a new record from here)
+		f = FileAccess.open(log_path(), FileAccess.WRITE)   # (the oldest go: a new record from here)
 		if f == null:
 			return
 		f.store_line(_machine())
@@ -235,19 +388,19 @@ static func _log(line: String) -> void:
 
 ## The game's start: the file is there from now on, with what the machine is and where the file lies.
 func _log_session() -> void:
-	var f := FileAccess.open(LOG_PATH, FileAccess.READ_WRITE if FileAccess.file_exists(LOG_PATH) else FileAccess.WRITE)
+	var f := FileAccess.open(log_path(), FileAccess.READ_WRITE if FileAccess.file_exists(log_path()) else FileAccess.WRITE)
 	if f == null:
 		return
 	if f.get_length() > HITCH_FILE_MAX:
 		f.close()
-		f = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+		f = FileAccess.open(log_path(), FileAccess.WRITE)
 		if f == null:
 			return
 	f.seek_end()
 	f.store_line("")
 	f.store_line("%s  SESSION START  %s" % [Time.get_datetime_string_from_system(), _machine()])
 	f.close()
-	print("Performance log (frames over %.0f ms, stretches under %.0f%% speed, match starts): %s" % [HITCH_MS, SLOW_SPEED * 100.0, ProjectSettings.globalize_path(LOG_PATH)])
+	print("Performance log (frames over %.0f ms, stretches under %.0f%% speed, match starts): %s" % [HITCH_MS, SLOW_SPEED * 100.0, log_path()])
 
 static func _machine() -> String:
 	var gpu := RenderingServer.get_video_adapter_name() if DisplayServer.get_name() != "headless" else "none"

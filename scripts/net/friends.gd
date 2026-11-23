@@ -24,12 +24,19 @@ signal changed
 var port := 0                # the room's port (0: Net.PORT)
 var poor := false            # friends who come now come over a poor line
 var friends: Array = []      # [{"pid", "persona", "name", "at"}]: the games started and still running
+## Their processes (the performance record tells how much of the processor they take: FpsMeter.census_line).
+static var live_pids := PackedInt32Array()
 
 func _ready() -> void:
 	set_process(true)
+	changed.connect(_sync_pids)
+
+func _sync_pids() -> void:
+	live_pids = PackedInt32Array(friends.map(func(f): return int(f.pid)))
 
 func _exit_tree() -> void:
 	kill_all()
+	live_pids = PackedInt32Array()
 
 func _process(_dt: float) -> void:
 	var gone := false

@@ -162,7 +162,7 @@ func test_a_friend_answers_what_the_room_asks() -> void:
 	pilot._prompts(0.1)
 	t.check(menu.voted.is_empty(), "he does not answer the rudis the moment it comes: he thinks")
 	pilot._prompts(10.0)
-	t.check(menu.voted.size() == 1 and (menu.voted[0] == "share" or menu.voted[0] == "fight"), "then he votes to share the glory or to fight for it", str(menu.voted))
+	t.check(menu.voted.size() == 1 and (menu.voted[0] == "share" or menu.voted[0] == "fight"), "then he votes to share the glory or to fight for it (%s)" % str(menu.voted))
 	menu.rudis_mine = "share"
 	pilot._prompts(10.0)
 	t.eq(menu.voted.size(), 1, "and once he has said it he does not say it again")
@@ -193,7 +193,7 @@ func test_a_friend_answers_what_the_room_asks() -> void:
 	var gate := StubGate.new()
 	menu.gate_screen = gate
 	pilot._prompts(10.0)
-	t.check(gate.picked.size() == 1 and int(gate.picked[0]) >= 0 and int(gate.picked[0]) < 3, "at the gate he votes for one of the cards", str(gate.picked))
+	t.check(gate.picked.size() == 1 and int(gate.picked[0]) >= 0 and int(gate.picked[0]) < 3, "at the gate he votes for one of the cards (%s)" % str(gate.picked))
 	menu.gate_screen = null
 	pilot.free()
 	menu.free()
