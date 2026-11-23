@@ -48,7 +48,13 @@ func setup(menu_: Node, persona_index_: int, addr: String, port: int) -> void:
 	room_port = port
 
 func _ready() -> void:
-	Engine.max_fps = 60   # (a game without a window runs as fast as it can else, and a game of it a core)
+	# He is a guest in the host's computer and takes only what the host leaves: a game without a window runs as fast as it can else (a
+	# core), and one at 60 frames a second took about two fifths of one (measured: seven of them were two and a half cores of the host's
+	# machine, which the person at the keyboard felt as a slower game than a room of real friends' machines would be). He sees nothing and
+	# decides little, so thirty frames a second are plenty; his physics steps (the 120 a second of the room, and the hands he sends with
+	# each) are the engine's own whatever the frames. And his whole process runs below normal priority: the host's game never waits for him.
+	Engine.max_fps = 30
+	_below_normal()
 	Net.message.connect(_on_message)
 	# The room says what it is for (an Arena room gives him a sandbox gladiator of its own, Menu): he puts on what is his again. In the
 	# party's campaign he is a man like any other, with the stick a new campaign gives, as every player begins it.
@@ -56,6 +62,16 @@ func _ready() -> void:
 		if kind == Net.KIND_ARENA:
 			menu.set_arms(Friends.arms_of(persona_index)))
 	_act_t = randf_range(1.5, 4.0)
+
+## His process below normal priority, by what the system has for it (fired and forgotten: a system without it, or one that refuses, leaves him
+## as he was): the host's game, and whatever else the person runs, are served first, and he gets what is left.
+func _below_normal() -> void:
+	var pid := OS.get_process_id()
+	match OS.get_name():
+		"Windows":
+			OS.create_process("powershell", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "(Get-Process -Id %d).PriorityClass = 'BelowNormal'" % pid])
+		"Linux", "macOS", "FreeBSD", "NetBSD", "OpenBSD", "BSD":
+			OS.create_process("renice", ["-n", "10", "-p", str(pid)])
 
 ## What the host's Friends tells him: "leave", or (the test's) "stall[:smith]" to go into a stall now, "brawl" to pick a quarrel now.
 func _on_message(type: String, data, _from: int) -> void:
@@ -96,6 +112,10 @@ func _leave() -> void:
 func _process(dt: float) -> void:
 	if _leaving:
 		return
+	# Nobody looks at his HUD (a window nobody sees): it is not driven, a match's after a match's, as each is made.
+	var hud = menu.get("hud") if menu != null else null
+	if hud != null and is_instance_valid(hud) and hud.is_processing():
+		hud.set_process(false)
 	if not Net.active():
 		_offline(dt)
 		return

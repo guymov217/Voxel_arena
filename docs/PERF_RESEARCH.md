@@ -245,3 +245,40 @@ What that means for the ways of sparing it:
   the same one, is that much further.
 - What does not help to the bit and cannot be had by other means: the physics rate (60 steps a second for the room under load). A blow's harm reads the contact impulse of a step
   (`Combat.report`'s `J`), which is a force times the step's length: at half the rate every impulse is double, and the damage numbers with it. It would have to be retuned.
+
+## 11. The friends' game: stalls, and what the playtest's own windows cost (#319, #321)
+
+The user's video of a game with three friend windows on the same PC ("it feels slower"), F3 on: 13-29 ms a physics step, 14-33 frames a second, the steps-per-frame cap letting go to 5-6 steps a frame
+(fps 14-17), the card at 7-17 ms. What it is and what it is not:
+
+- **Not a regression.** The 8-man brawl of `tests/lobby298.gd` (`NONPC=1 ARM_LOD=0 IDLE=0`, one worker thread) at the four builds d6dddee / f7b267a / 4d826d1 / the head: 10.1 to 10.6 ms a step in each, within
+  the run-to-run spread.
+- **The playtest's own windows.** The three (in the other playtests seven) friend windows are whole games on the one machine. Each cost 41% of a core (`tools/friends_load.sh`'s pilots: `scripts/net/friend_pilot.gd`):
+  the 120 physics steps of their own men, the HUD, a 60 frames a second of drawing nobody sees. Now 29%: a window of 30 frames a second (`Engine.max_fps`), its HUD's `_process` off, and the process at below-normal
+  priority (`renice` / PowerShell's `PriorityClass`), so the host's window gets the core when the two meet. Still, seven pilots roughly double the host's step on a 4-core box:
+  **a playtest on one machine is not what the game costs on separate machines**, and its F3 numbers are the rig's. The pilots keep 120 physics steps a second: `MovePredictor.DT` assumes 120 ticks.
+- **What is the game's own: the stalls**, a frame of 100 to 650 ms in the middle of play, each a man built in one frame. Found with the longest-single-call profile (`tools/profile_funcs.py`: `BLKMAX <function> <longest ms>
+  <calls> <total ms>`; `tools/profile_lines.py`: `LNMAX <line> <longest ms> ...`, the same for the statements of one function) over the host and three pilots in the yard (`friends_load298`), and, in a
+  real game, the F3 hitch record below.
+
+| what | before (one frame) | now |
+|---|---|---|
+| a friend's armour or body changed at the smith or the physician's (`Match.peer_body` -> `rebuild`) | 425-556 ms | built apart, swapped in the one frame: 20-29 ms the worst frame (`_rebuild_apart`) |
+| R in the yard, the yard's auto-respawn (`respawn_request`, `_respawn_apart`) | 121 ms | the fallen man lies until the new one is built over the frames that follow, 20-29 ms |
+| the dressing room's man (`MenuMan.stand`, `ArmourStage.dress`: each card of the smith, the gate) | a man built in one frame (60-500 ms) | built over the frames (a staged build, latest asked wins, one at a time) |
+| the yard's start: the two dummies and the four keepers (`YardPlay._setup_staged`) | `Match.setup` 2.46 s (host and three friends, one machine, cold) | 1.28 s; the six come in over the next two seconds, worst frame 69 ms |
+
+All of it only with a screen (`Match.staging()`, `stage_start()`: not a guest's, not headless): without one (the tests, `tools/sim.mjs`) every man is built in the frame that asks, as before, so a fight plays out to the bit.
+A staged man is built out of the world (`process_mode` disabled, not drawn, not in the physics space) and made one of the match's in the frame he is whole (`_build_apart`, `_bring_in`).
+
+Where a man's build goes (10 men of a yard, cold caches, the first build of a game; 236 ms a man): `Physique.dress` 182 ms (`place_armor` 106, `FineHead.build` 43, `FineBody.build` 29), the parts' voxels 54. The caches
+(`Fighter._listed`, `FineBody._shell_maps`, `FineArmor._shells`) make the second man of a look cheap: what is left in a staged build is the first time a build, a helmet, a hairstyle is seen, in chunks of up to 46 ms
+(`FineBody._layout`; `shells_make` 36, `_shell_map` 34, a weapon's `equip` 14). The dressing room's man at the menu warms the player's own look before he joins anything.
+
+What is left, with the host staged and three friends in the yard (60 s): no single call over 35 ms on the host in play (`match._physics_process` 34.9 at the worst, the step under the pilots' load), none of the
+network's messages; what stops a window is the start of a game: the host's `Match.setup` (the own man and the friends' men, built at once: 0.6-2.2 s cold), a guest's own man (0.3-0.65 s, built at once: he must be
+able to act) and its `setup` (0.45 s), the station screen's first showing (0.3 s). Moving those means a start behind a cover, or a man whose first frames are not his own.
+
+**The F3 hitch record.** Any frame over 60 ms with F3 on is written to `user://hitches.txt` (at most four a second, the file started over past 200 KB): the frame's length, the physics steps it took, how many nodes the tree gained or lost,
+the longest physics step and the frame without physics of the last second, what the men and the match took, the draw calls, and the network messages that came in that frame (`type xN`). A user's own stalls, on his
+own machine, come back as this file: `%APPDATA%\Godot\app_userdata\<the game>\hitches.txt`.

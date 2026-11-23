@@ -86,8 +86,8 @@ func test_a_fighter_dropped_before_his_turn_is_never_built() -> void:
 func test_players_who_join_together_get_places_of_their_own() -> void:
 	var m := Match.new()
 	add_child(m)
-	m.stage_always = true
 	m.setup({"mode": "yard", "role": "host", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}})
+	m.stage_always = true   # (after the start: the yard's own people stand in it already, not still on their way in)
 	await get_tree().physics_frame
 	var base := m.entities.size()
 	m.add_peer(101, {"name": "A", "loadout": {"main": "gladius"}})

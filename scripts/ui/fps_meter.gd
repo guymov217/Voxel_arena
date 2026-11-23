@@ -12,6 +12,11 @@ extends CanvasLayer
 
 const SLOW_MS := 1000.0 / 30.0
 const WINDOW_S := 5.0
+## A frame longer than this, with the meter on, is written to `user://hitches.txt` with what the game knows of it (a line a frame, four a
+## second at most, the file kept under HITCH_FILE_MAX bytes): to be sent on with the video of a game that stopped, so that a stop can be
+## told apart from a slow stretch and its cause looked for (the steps the frame had to take, a man built or freed, a message of the room).
+const HITCH_MS := 60.0
+const HITCH_FILE_MAX := 200000
 
 ## What the frame's own scripts take, counted only while the meter is shown (each of them looks at the clock only then): the men's
 ## drawing (Fighter, VoxelPart, Weapon) and the match's, in microseconds since the meter last read them.
@@ -27,6 +32,12 @@ var _refresh_us := 0   # when the text is next written, by the wall clock (slow 
 var _prof_frames := 0   # the frames since the scripts' times were last read
 var _prof := {"men": 0.0, "match": 0.0}   # and what they came to a frame (ms)
 var _steps: Array = []   # [when (us), the physics steps taken so far] over the last second: the steps a second the game really keeps
+## What the room said this frame, by kind of message (Net._count_in, only while the meter is on): the hitch record's.
+static var msg_seen := {}
+var _hitch_steps := 0       # the physics frames at the last frame's start
+var _hitch_nodes := 0       # and the nodes then
+var _hitch_t := -10.0       # when the last hitch was written (s)
+var _hitch_n := 0
 
 func _ready() -> void:
 	layer = 50
@@ -92,6 +103,7 @@ func _process(_dt: float) -> void:
 		_frames.append([now, (now_us - _last_us) / 1000.0])
 	_last_us = now_us
 	_prof_frames += 1
+	_hitch_check(now)
 	while not _frames.is_empty() and now - float(_frames[0][0]) > WINDOW_S:
 		_frames.pop_front()
 	if now_us < _refresh_us:
@@ -106,6 +118,46 @@ func _process(_dt: float) -> void:
 	_prof_frames = 0
 	_sync_net()
 	label.text = "\n".join(lines(_frames, now, Engine.get_frames_per_second(), _work()))
+
+## A frame past HITCH_MS goes to the record with what is known of it. (The numbers are the engine's, read at the start of the frame after: the
+## steps it took, the nodes made or freed in it, the longest physics step and the frame without physics of the last second, drawing and the
+## graphics card, the messages of the room that came in, the men's drawing and the match's.)
+func _hitch_check(now: float) -> void:
+	var steps := Engine.get_physics_frames()
+	var nodes := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var ms := 0.0
+	if _frames.size() > 0:
+		ms = float((_frames[_frames.size() - 1] as Array)[1])
+	var d_steps := steps - _hitch_steps
+	var d_nodes := nodes - _hitch_nodes
+	_hitch_steps = steps
+	_hitch_nodes = nodes
+	var seen := msg_seen
+	msg_seen = {}
+	if ms < HITCH_MS or now - _hitch_t < 0.25 or _frames.size() < 3:
+		return
+	_hitch_t = now
+	var w := _work()
+	var msgs := []
+	for k in seen:
+		msgs.append("%s x%d" % [k, int(seen[k])])
+	msgs.sort()
+	var line := "%s  game %.1f s  frame %.0f ms  steps %d  nodes %+d  physics(max) %.1f  frame-no-physics %.1f (drawing %.1f, card %.1f)  men %.1f match %.1f  draws %d  room %s  msgs [%s]" % [
+		Time.get_datetime_string_from_system(), now, ms, d_steps, d_nodes, float(w.get("physics", 0.0)), float(w.get("frame", 0.0)), float(w.get("draw", 0.0)), float(w.get("gpu", 0.0)),
+		float(w.get("men", 0.0)), float(w.get("match", 0.0)), int(w.get("calls", 0)), ("%d peers" % Net.peers.size()) if Net.active() else "none", ", ".join(msgs)]
+	var path := "user://hitches.txt"
+	var f := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
+	if f == null:
+		return
+	if f.get_length() > HITCH_FILE_MAX:
+		f.close()
+		f = FileAccess.open(path, FileAccess.WRITE)   # (the oldest go: a new record from here)
+		if f == null:
+			return
+	f.seek_end()
+	f.store_line(line)
+	f.close()
+	_hitch_n += 1
 
 ## The work (ms), by the engine's own measures: the longest physics step and the longest frame
 ## without physics of the last second, the last frame's drawing.

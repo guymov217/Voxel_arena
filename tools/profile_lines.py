@@ -132,6 +132,7 @@ out.extend(src[end:])
 helper = '''
 static var _ln_t := PackedInt64Array()
 static var _ln_c := PackedInt64Array()
+static var _ln_m := PackedInt64Array()   # the longest single stretch of each (a stall, not a sum)
 static var _ln_last := 0
 static var _ln_t0 := 0
 const _LN_LINES := %s
@@ -142,24 +143,46 @@ static func _ln_begin() -> void:
 	if _ln_t.is_empty():
 		_ln_t.resize(%d)
 		_ln_c.resize(%d)
+		_ln_m.resize(%d)
 	_ln_last = 0
 	_ln_t0 = Time.get_ticks_usec()
 static func _ln_cp(id: int) -> void:
 	var now := Time.get_ticks_usec()
-	_ln_t[_ln_last] += now - _ln_t0
+	var d := now - _ln_t0
+	_ln_t[_ln_last] += d
 	_ln_c[_ln_last] += 1
+	if d > _ln_m[_ln_last]:
+		_ln_m[_ln_last] = d
 	_ln_last = _LN_LINES.find(id) + 1
 	_ln_t0 = Time.get_ticks_usec()
 static func _ln_end() -> void:
 	var now := Time.get_ticks_usec()
-	_ln_t[_ln_last] += now - _ln_t0
+	var d := now - _ln_t0
+	_ln_t[_ln_last] += d
 	_ln_c[_ln_last] += 1
+	if d > _ln_m[_ln_last]:
+		_ln_m[_ln_last] = d
 static func ln_clear() -> void:
 	if _ln_t.is_empty():
 		_ln_t.resize(%d)
 		_ln_c.resize(%d)
+		_ln_m.resize(%d)
 	_ln_t.fill(0)
 	_ln_c.fill(0)
+	_ln_m.fill(0)
+## The statements with the longest single stretch (`LNMAX <line> <longest ms> <calls> <statement>`), those over `min_us`.
+static func ln_max_text(top: int, min_us := 1500) -> String:
+	var ids := []
+	for k in _ln_m.size():
+		if _ln_m[k] >= min_us:
+			ids.append(k)
+	ids.sort_custom(func(a, b): return _ln_m[a] > _ln_m[b])
+	var lines := []
+	for k in ids.slice(0, top):
+		var ln: int = _LN_LINES[k - 1] if k > 0 else 0
+		var tx: String = _LN_TEXT[k - 1] if k > 0 else "(entry)"
+		lines.append("   LNMAX %%d %%.2f %%d %%s" %% [ln, float(_ln_m[k]) / 1000.0, _ln_c[k], tx])
+	return "\n".join(lines)
 static func ln_text(steps: int, men: int, top: int) -> String:
 	var ids := []
 	for k in _ln_t.size():
@@ -180,7 +203,7 @@ static func ln_text(steps: int, men: int, top: int) -> String:
 		var tx: String = _LN_TEXT[k - 1] if k > 0 else "(entry)"
 		lines.append("   LNPROF %%d %%.2f %%.2f %%.2f %%s" %% [ln, float(_ln_c[k]) / ms, float(_ln_t[k]) / ms, float(_ln_t[k]) / maxf(1.0, float(_ln_c[k])), tx])
 	return "\\n".join(lines)
-''' % ("[" + ", ".join(str(a) for a, _ in marks) + "]", "[" + ", ".join(json.dumps(t, ensure_ascii=True) for _, t in marks) + "]", len(marks) + 1, len(marks) + 1, len(marks) + 1, len(marks) + 1)
+''' % ("[" + ", ".join(str(a) for a, _ in marks) + "]", "[" + ", ".join(json.dumps(t, ensure_ascii=True) for _, t in marks) + "]", len(marks) + 1, len(marks) + 1, len(marks) + 1, len(marks) + 1, len(marks) + 1, len(marks) + 1)
 open(path, "w").write("\n".join(out) + helper)
 
 # the probes: the markers become the calls
@@ -200,9 +223,12 @@ for fn in sorted(os.listdir(tdir)):
         elif l.strip() == "# profile_funcs.py: print":
             if fn.startswith("mix298"):
                 lines[i] = ind + 'print(Fighter.ln_text(steps, m.entities.size(), int(_env("TOPN", "80"))))'
+                lines[i] += "\n" + ind + 'print(Fighter.ln_max_text(30))'
             elif fn.startswith("frame298"):
                 lines[i] = ind + 'print(Fighter.ln_text(frames, n_men, int(_env("TOPN", "80"))))'
+                lines[i] += "\n" + ind + 'print(Fighter.ln_max_text(30))'
             else:
                 lines[i] = ind + 'print(Fighter.ln_text(steps, n_men, int(_env("TOPN", "80"))))'
+                lines[i] += "\n" + ind + 'print(Fighter.ln_max_text(30))'
     open(p, "w").write("\n".join(lines))
 print("marked %d statements of %s (depth %d)" % (len(marks), fname, depth))

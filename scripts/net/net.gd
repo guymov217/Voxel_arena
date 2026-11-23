@@ -860,6 +860,8 @@ func _meter(dt: float) -> void:
 		send_host("_ping", {"t": now, "p": ping_ms}, false)
 
 func _count_in(type: String, data) -> void:
+	if FpsMeter.prof_on:
+		FpsMeter.msg_seen[type] = int(FpsMeter.msg_seen.get(type, 0)) + 1   # (the hitch record's: what came in this frame)
 	if stats_on:
 		stats_in[type] = int(stats_in.get(type, 0)) + var_to_bytes(data).size()
 	if type == "snap":

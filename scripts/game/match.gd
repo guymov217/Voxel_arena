@@ -436,6 +436,14 @@ func spawn_fighter(spec: Dictionary):
 ## in one frame, a man was a stop of a quarter of a second (user: the frames dropped as men bled
 ## and burnt to death). The entity when he is in, null if the match went first.
 func spawn_fighter_staged(spec: Dictionary):
+	var f = await _build_apart(spec)
+	if f == null:
+		return null
+	return _bring_in(f, spec)
+
+## A man built over the frames that follow, out of the world (not moving, not drawn, not struck) and not yet one of the match's:
+## `_bring_in` makes him one when it is time. Null if the match went first.
+func _build_apart(spec: Dictionary):
 	var mk := _new_fighter(spec)
 	var f: Fighter = mk[0]
 	f.process_mode = Node.PROCESS_MODE_DISABLED
@@ -447,6 +455,10 @@ func spawn_fighter_staged(spec: Dictionary):
 		if is_instance_valid(f):
 			f.queue_free()
 		return null
+	return f
+
+## A man built apart, into the world (and into the match), in the one frame.
+func _bring_in(f: Fighter, spec: Dictionary):
 	f.process_mode = Node.PROCESS_MODE_INHERIT
 	f.visible = true
 	for p in f.parts:
@@ -475,6 +487,12 @@ var stage_in := true        # (false: never staged)
 var stage_always := false   # (a test's: staged without a screen too, from the first frame)
 func staging() -> bool:
 	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless" and time > 1.0))
+
+## The yard's own people (its dummies and the keepers of its stalls: YardPlay.setup) are built over the first frames of the
+## yard, not all before its first frame: with a screen from the start (a fight's first foes are there at its first
+## frame, the yard's people need not be), on the host's or a lone player's game only.
+func stage_start() -> bool:
+	return stage_in and role != "guest" and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
 
 ## A guest builds what the host spawns the same way: one after another, a part a frame, and not all in the frame the
 ## spawn message came in. Built in one go a man was 130 ms, an armoured one up to 700, a lion half a second, and the
@@ -2595,7 +2613,10 @@ func _check_round(dt: float) -> void:
 			if not e.f.alive:
 				e.dead_t = float(e.get("dead_t", 0.0)) + dt
 				if e.dead_t >= YARD_RESPAWN:
-					respawn_player(e)
+					if staging():
+						_respawn_apart(e)
+					else:
+						respawn_player(e)
 		return
 	if mode == "circus":
 		_check_circus(alive_h, alive_e)
@@ -3618,7 +3639,7 @@ func peer_body(peer: int, body_, lo := {}) -> void:
 				e.spec["loadout"] = nl
 				again = true
 			if again:
-				rebuild(e, nb)
+				rebuild(e, nb, true)
 			return
 
 const YARD_RESPAWN := 3.0
@@ -3655,6 +3676,10 @@ func respawn_request(e) -> bool:
 		return false
 	if float(e.get("stall_until", -1.0)) > time or respawn_wait(e) > 0.0:
 		return false
+	if staging():
+		e["respawned_at"] = time
+		_respawn_apart(e)
+		return true
 	var ne = respawn_player(e)
 	ne["respawned_at"] = time
 	return true
@@ -3693,7 +3718,10 @@ func stall_peer(peer: int, on: bool) -> void:
 
 ## The same man spawned again with another body (a prosthetic fitted between rounds): where he
 ## stood, with the blood he had (the physician stopped the bleeding).
-func rebuild(e: Dictionary, body_: Dictionary) -> void:
+func rebuild(e: Dictionary, body_: Dictionary, stage := false) -> void:
+	if stage and staging() and is_instance_valid(e.get("f")) and e.f.alive and e.f.torso != null:
+		_rebuild_apart(e, body_)
+		return
 	var old: Fighter = e.f
 	var spec: Dictionary = e.spec.duplicate(true)
 	spec.body = body_
@@ -3711,6 +3739,78 @@ func rebuild(e: Dictionary, body_: Dictionary) -> void:
 			ne[k] = e[k]
 	if me == e:
 		me = ne
+
+## `rebuild` while the game goes on (a friend's armour bought or mended at the smith, a limb given back at the physician's, in the yard): the
+## new man is built apart over the frames that follow, the old one stays as he is meanwhile, and in the one frame they change places. Built in
+## one frame he was a stop of the host's game, and so of every guest's, of a tenth of a second to a third (tests/buildcost). Not when there is
+## no screen to stop (the tests, the benchmark fights: as before, so that a fight plays out the same to the bit).
+func _rebuild_apart(e: Dictionary, body_: Dictionary) -> void:
+	if e.get("swapping", false):
+		e["swap_again"] = body_   # (one is on its way: this is done when it is in, with what the first left)
+		return
+	e["swapping"] = true
+	var old: Fighter = e.f
+	var spec: Dictionary = e.spec.duplicate(true)
+	spec.body = body_
+	spec.id = e.id
+	var at: Vector3 = old.torso.global_position
+	spec.pos = Vector3(at.x, 0, at.z)
+	spec.yaw = old.yaw
+	var f = await _build_apart(spec)
+	if f == null or not entities.has(e) or e.f != old or not is_instance_valid(old):
+		if f != null:
+			f.queue_free()   # (he went meanwhile, or the match did)
+		e.erase("swapping")
+		return
+	# He may have walked on while the new man was built (not in the world yet: moved to where the old one stands).
+	var now: Vector3 = old.torso.global_position
+	var shift := Vector3(now.x - at.x, 0, now.z - at.z)
+	if shift != Vector3.ZERO:
+		for p in f.parts:
+			p.global_position += shift
+	spec.pos = Vector3(now.x, 0, now.z)
+	spec.yaw = old.yaw
+	var blood := maxf(old.blood, 55.0)
+	var again = e.get("swap_again")
+	var wish: Dictionary = e.spec.get("loadout", {}) if e.spec.get("loadout") is Dictionary else {}
+	_remove_entity(e)
+	if role == "host":
+		Net.send_all("despawn", {"id": e.id})
+	var ne = _bring_in(f, spec)
+	ne.f.blood = blood
+	for k in ["inventory", "peer", "bot", "gadgets"]:
+		if e.has(k):
+			ne[k] = e[k]
+	if me == e:
+		me = ne
+	if again != null:
+		ne.spec["loadout"] = wish
+		_rebuild_apart(ne, again)
+
+## The yard's respawn (R, or three seconds after a fall) the same way: the fallen man lies where he is until the new one, built apart, takes
+## his place. (`respawned_at` is stamped on the fallen: it goes to the new man with the rest.)
+func _respawn_apart(e: Dictionary) -> void:
+	if e.get("swapping", false):
+		return
+	e["swapping"] = true
+	var spec: Dictionary = e.spec.duplicate(true)
+	spec.id = e.id
+	var f = await _build_apart(spec)
+	if f == null or not entities.has(e):
+		if f != null:
+			f.queue_free()
+		e.erase("swapping")
+		return
+	_remove_entity(e)
+	if role == "host":
+		Net.send_all("despawn", {"id": e.id})
+	var ne = _bring_in(f, spec)
+	for k in ["inventory", "peer", "gadgets", "respawned_at"]:
+		if e.has(k):
+			ne[k] = e[k]
+	if me == e:
+		me = ne
+	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
 
 ## A body carried off the sand (the host's word: every guest is told, and drops the one he has): the fallen foes of the endless arena
 ## (Endless._sweep). What it held stays lying, if it let go.

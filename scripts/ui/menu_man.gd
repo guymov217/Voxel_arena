@@ -5,9 +5,14 @@ extends RefCounted
 ## whatever armour is given, held still. The same man the armour bench puts its plates on
 ## (ArmourForge._body_man), at his own size.
 
-## Stands him under `parent` (a Stage3D's pivot) and returns him. `armour`: the ids of the pieces
-## he wears. `opts`: `body` (Body.sanitize'd wounds, the physician's), `plain` (his look
-## but for hat and hair: plating his head).
+## (A test's: made over the frames that follow without a screen too.)
+static var staged_always := false
+
+## Stands him under `parent` (a Stage3D's pivot) and returns him (`await` it: with a screen he is made over the
+## frames that follow, out of the world until whole, not in one frame, which was a stop of a tenth of a second to
+## a third each time a piece was put on him or taken off, and in a room the whole room's; null if he was dropped
+## meanwhile). `armour`: the ids of the pieces he wears. `opts`: `body` (Body.sanitize'd wounds, the physician's),
+## `plain` (his look but for hat and hair: plating his head).
 static func stand(parent: Node3D, armour: Array, opts := {}) -> Fighter:
 	var lk: Dictionary = Save.get_value("look", {}) if Save.get_value("look", {}) is Dictionary else {}
 	var menu_s = load("res://scripts/ui/menu.gd")
@@ -31,7 +36,14 @@ static func stand(parent: Node3D, armour: Array, opts := {}) -> Fighter:
 		"mods": {}}
 	if opts.get("body") is Dictionary:
 		o["body"] = opts.body
-	f.build(Vector3.ZERO, 0.0, {"main": "", "off": "", "armor": armour + worn}, o)
+	var staged := staged_always or DisplayServer.get_name() != "headless"   # (no screen, no stop to spare: the tests and the benchmarks build him as before)
+	if staged:
+		f.process_mode = Node.PROCESS_MODE_DISABLED
+		f.visible = false
+		o["staged"] = true
+	await f.build(Vector3.ZERO, 0.0, {"main": "", "off": "", "armor": armour + worn}, o)
+	if not is_instance_valid(f) or not f.is_inside_tree():
+		return null
 	for p in f.parts:
 		p.freeze = true
 		p.collision_layer = 0
@@ -41,4 +53,7 @@ static func stand(parent: Node3D, armour: Array, opts := {}) -> Fighter:
 		if p.has_method("snap_drawing"):
 			p.snap_drawing()
 	f.set_physics_process(false)
+	if staged:
+		f.process_mode = Node.PROCESS_MODE_INHERIT
+		f.visible = true
 	return f

@@ -83,3 +83,27 @@ func test_f3_shows_the_meter_and_it_is_remembered() -> void:
 	t.check(again.visible, "shown when the game starts if it was left shown")
 	again.queue_free()
 	await get_tree().process_frame
+
+## A frame past a tenth of a second is written to user://hitches.txt with what the game knows of it (to be sent on with a video of a
+## game that stopped); a smooth stretch writes nothing, and four a second at most are kept.
+func test_a_long_frame_is_written_to_the_hitch_record() -> void:
+	var path := "user://hitches.txt"
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+	var fm := FpsMeter.new()
+	add_child(fm)
+	fm.show_meter(true)
+	fm._frames = [[0.0, 16.0], [0.1, 16.0], [0.2, 17.0]]
+	fm._hitch_check(0.2)
+	t.check(not FileAccess.file_exists(path), "smooth frames write nothing")
+	FpsMeter.msg_seen = {"spawn": 1, "snap": 8}
+	fm._frames = [[0.0, 16.0], [0.1, 16.0], [0.4, 150.0]]
+	fm._hitch_check(5.0)
+	t.check(FileAccess.file_exists(path), "a frame of 150 ms is written")
+	var text := FileAccess.get_file_as_string(path)
+	t.check(text.contains("frame 150 ms") and text.contains("steps ") and text.contains("snap x8") and text.contains("spawn x1"), "with its length, its steps and the messages that came in (%s)" % text.left(200))
+	fm._hitch_check(5.1)
+	t.eq(FileAccess.get_file_as_string(path).split("\n", false).size(), 1, "another within a quarter of a second adds nothing")
+	DirAccess.remove_absolute(path)
+	fm.queue_free()
+	await get_tree().process_frame

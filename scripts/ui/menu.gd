@@ -293,7 +293,7 @@ func _sync_my_spec() -> void:
 func _armour_on_him() -> void:
 	_sync_my_spec()
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and match_.me.f.alive:
-		match_.rebuild(match_.me, body())
+		match_.rebuild(match_.me, body(), true)   # (apart, over the frames: the room does not stop for it)
 
 ## The player's own gladiator: skin, cloth colour and the cosmetic pieces (no armour: that is
 ## bought). Saved as indices, so an old or hand-edited save cannot name anything that is not there.
@@ -381,7 +381,7 @@ func set_body(b: Dictionary) -> void:
 	# medicine and nothing happened: the scar stayed on him until the next bout).
 	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up or Body.old_wound_closed(was, clean)):
 		_sync_my_spec()
-		match_.rebuild(match_.me, clean)
+		match_.rebuild(match_.me, clean, true)
 		return
 	# Stitched in the yard: the wounds close on him there and then (each fresh wound that is closed
 	# now: the rare medicine closes one part's and leaves the others open).

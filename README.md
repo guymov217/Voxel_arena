@@ -353,7 +353,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   and the drawing and the graphics card's time in ms, the physics steps the game really takes a second of
   the 120 it is meant to, and whether the C++ core is loaded: without it a step costs a fifth more; a third
   line says where the frame goes: the men's drawing, the match's own work, all the rest, and the draw calls;
-  in a room the connection's meter with it).
+  in a room the connection's meter with it). With it on, any frame over 60 ms is also written to `user://hitches.txt`
+  (what the frame did: the physics steps, the nodes that came and went, the network messages of that frame): the file to
+  send when the game stalls.
   The stalls (the market, the smith, the trainer, the physician) are as easy with the keys or a
   pad as with the mouse: the arrows, the stick or the D-pad move from card to button, Enter, Space or
   the pad's A press, Esc or the pad's B leave; a bold ring shows where the keys are (not after a

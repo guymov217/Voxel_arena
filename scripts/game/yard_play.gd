@@ -23,39 +23,78 @@ func _init(match_: Node) -> void:
 	m = match_
 
 func setup() -> void:
+	if m.stage_start():
+		_setup_staged()   # (not waited for: the first of them is begun, the rest follow over the frames)
+		return
 	for p in Yard.DUMMIES:
-		var e = m.spawn_fighter({"kind": "npc", "name": Loc.t("Training dummy"), "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,
-			"pos": p + Vector3(0, 0.02, 0), "yaw": 0.0, "mods": {"toughness": 3.0}, "color": 0xb08a5a})
-		e.drive = func(_e): return {}
-		e.harmless = true
-		dummies.append(e.f)
-	# The smith, the trader and the physician, each dressed for his trade, beside his stall's
-	# sign (not inside its post) between it and his workplace, at work: the smith stands by
-	# his hearth, the trader sorts his wares, the physician bends over his table; whoever comes
-	# up to the stall, he turns to.
+		_dummy_in(m.spawn_fighter(_dummy_spec(p)))
 	for id in Yard.stations():
-		var s: Dictionary = Yard.STATIONS[id]
-		if not s.has("npc"):
-			continue
-		var out := Vector3(s.p.x, 0, s.p.z).normalized()
-		var side := Vector3(-out.z, 0, out.x)
-		var p: Vector3 = s.p + out * 1.5 + side * 0.9
-		var work_yaw := atan2(out.x, out.z) + 0.5
-		var face_yaw := atan2(-p.x, -p.z)
-		var n = m.spawn_fighter({"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": "", "armor": s.npc.get("armor", [])}, "team": Match.ENEMY_TEAM,
-			"pos": p + Vector3(0, 0.02, 0), "yaw": face_yaw, "mods": {"toughness": 5.0}, "color": s.npc.color})
-		n.drive = _keeper_input.bind(String(s.npc.get("work", "")), p, work_yaw, randf() * TAU)
-		n.harmless = true
-		n.works = String(s.npc.get("work", "")) != ""   # (he moves at it: while he may be seen, he is at it, Match._stands_idle)
-		# A keeper is at his work, not there to be fenced with: a visitor's blades pass through
-		# him, his body does not (swords held out at the physician lay on his working arms, cut
-		# him and shook in the man's hands, user video 1135).
-		for kp in n.f.parts:
-			kp.collision_layer = KEEPER_LAYER
-			kp.collision_mask &= ~VoxelPart.LAYER_WEAPON
-		keepers.append(n.f)
+		var k := _keeper_spec(id)
+		if not k.is_empty():
+			_keeper_in(m.spawn_fighter(k.spec), k)
 	set_boards(board_texts(m.humans().size()))
 	scenery()
+
+## With a screen the dummies and the keepers are built apart, one after another, over the frames that
+## follow the yard's start (Match.stage_start), not all six before its first frame: a man is a fifth
+## of a second of work (twice that the first time a look is seen), and the six were a stop of a second
+## and more before anyone could move (the yard's start in the friends' game). The yard is up at once,
+## the dummies and the stall keepers come in one after another within the first seconds, and a
+## guest sees each as the host brings him in (Match._register).
+func _setup_staged() -> void:
+	set_boards(board_texts(m.humans().size()))
+	scenery()
+	for p in Yard.DUMMIES:
+		var e = await m.spawn_fighter_staged(_dummy_spec(p))
+		if e == null:
+			return
+		_dummy_in(e)
+	for id in Yard.stations():
+		var k := _keeper_spec(id)
+		if k.is_empty():
+			continue
+		var n = await m.spawn_fighter_staged(k.spec)
+		if n == null:
+			return
+		_keeper_in(n, k)
+
+func _dummy_spec(p: Vector3) -> Dictionary:
+	return {"kind": "npc", "name": Loc.t("Training dummy"), "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,
+		"pos": p + Vector3(0, 0.02, 0), "yaw": 0.0, "mods": {"toughness": 3.0}, "color": 0xb08a5a}
+
+func _dummy_in(e) -> void:
+	e.drive = func(_e): return {}
+	e.harmless = true
+	dummies.append(e.f)
+
+## The smith, the trader and the physician, each dressed for his trade, beside his stall's
+## sign (not inside its post) between it and his workplace, at work: the smith stands by
+## his hearth, the trader sorts his wares, the physician bends over his table; whoever comes
+## up to the stall, he turns to. `spec` for the man, `p`, `work_yaw` where and how he works (empty
+## for a station without a keeper).
+func _keeper_spec(id: String) -> Dictionary:
+	var s: Dictionary = Yard.STATIONS[id]
+	if not s.has("npc"):
+		return {}
+	var out := Vector3(s.p.x, 0, s.p.z).normalized()
+	var side := Vector3(-out.z, 0, out.x)
+	var p: Vector3 = s.p + out * 1.5 + side * 0.9
+	var work_yaw := atan2(out.x, out.z) + 0.5
+	var face_yaw := atan2(-p.x, -p.z)
+	return {"p": p, "work_yaw": work_yaw, "work": String(s.npc.get("work", "")), "spec": {"kind": "npc", "name": s.npc.name, "loadout": {"main": s.npc.main, "off": "", "armor": s.npc.get("armor", [])}, "team": Match.ENEMY_TEAM,
+		"pos": p + Vector3(0, 0.02, 0), "yaw": face_yaw, "mods": {"toughness": 5.0}, "color": s.npc.color}}
+
+func _keeper_in(n, k: Dictionary) -> void:
+	n.drive = _keeper_input.bind(String(k.work), k.p, k.work_yaw, randf() * TAU)
+	n.harmless = true
+	n.works = String(k.work) != ""   # (he moves at it: while he may be seen, he is at it, Match._stands_idle)
+	# A keeper is at his work, not there to be fenced with: a visitor's blades pass through
+	# him, his body does not (swords held out at the physician lay on his working arms, cut
+	# him and shook in the man's hands, user video 1135).
+	for kp in n.f.parts:
+		kp.collision_layer = KEEPER_LAYER
+		kp.collision_mask &= ~VoxelPart.LAYER_WEAPON
+	keepers.append(n.f)
 
 ## What stands in the yard for the eye (on the host and on every guest alike): the stations'
 ## signs, rings and furniture, and the throwing boards.

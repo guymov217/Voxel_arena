@@ -15,6 +15,8 @@ var man: Fighter = null     # the man now standing on it
 var _token := 0
 var spin := 0.35
 var _wait: Label
+var _busy := false          # a man is being made (over the frames that follow, MenuMan): what is asked meanwhile waits for him
+var _again := false         # and something else was asked meanwhile: the last asked for is made when he is whole
 
 signal built
 
@@ -32,21 +34,39 @@ static func make(tag: String) -> ArmourStage:
 	(s.frame.get_meta("layer") as Control).add_child(s._wait)
 	return s
 
-## Stands him in `new_ids` (the armour on him): now if he is not dressed so already.
+## Stands him in `new_ids` (the armour on him): now if he is not dressed so already. A man is made over the frames that follow (MenuMan),
+## and one asked for while another is being made is made when that one is whole, not beside it: the last asked for.
 func dress(new_ids: Array) -> void:
-	if stage.model != null and new_ids == ids:
+	if new_ids == ids and (stage.model != null or _busy):
 		return
 	ids = new_ids.duplicate()
 	_token += 1
-	var mine := _token
 	_wait.visible = true
-	# (Two frames first: the screen is on the display before the man is made.)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	if mine != _token or not is_inside_tree():
+	if _busy:
+		_again = true
 		return
-	var yaw := stage.yaw if stage.model != null else 0.0
-	man = MenuMan.stand(stage.pivot, ids, {"body": body} if not body.is_empty() else {})
-	stage.show_model(man, {"box": MAN_BOX, "centre": false, "orbit": true, "stand": "plinth", "yaw": yaw, "pitch": 0.08, "k": 1.12, "lift": -0.02, "spin": spin})
-	_wait.visible = false
-	built.emit()
+	_busy = true
+	while is_inside_tree():
+		_again = false
+		var mine := _token
+		# (Two frames first: the screen is on the display before the man is made.)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if not is_inside_tree():
+			break
+		var yaw := stage.yaw if stage.model != null else 0.0
+		var made = await MenuMan.stand(stage.pivot, ids, {"body": body} if not body.is_empty() else {})
+		if made != null and (_again or mine != _token or not is_inside_tree()):
+			if is_instance_valid(made):
+				made.queue_free()
+			made = null
+		if made == null:
+			if _again and is_inside_tree():
+				continue
+			break
+		man = made
+		stage.show_model(man, {"box": MAN_BOX, "centre": false, "orbit": true, "stand": "plinth", "yaw": yaw, "pitch": 0.08, "k": 1.12, "lift": -0.02, "spin": spin})
+		_wait.visible = false
+		built.emit()
+		break
+	_busy = false

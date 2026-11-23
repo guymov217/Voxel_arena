@@ -83,19 +83,36 @@ n = len(names) + 2
 helper = '''
 static var _ft := PackedInt64Array()
 static var _fc := PackedInt64Array()
+static var _fm := PackedInt64Array()   # the longest single call of each, in us (the stalls)
 const _FNAMES := %s
 static func _fadd(slot: int, us: int) -> void:
 	if _ft.is_empty():
 		_ft.resize(%d)
 		_fc.resize(%d)
+		_fm.resize(%d)
 	_ft[slot] += us
 	_fc[slot] += 1
+	if us > _fm[slot]:
+		_fm[slot] = us
 static func blk_clear() -> void:
 	if _ft.is_empty():
 		_ft.resize(%d)
 		_fc.resize(%d)
+		_fm.resize(%d)
 	_ft.fill(0)
 	_fc.fill(0)
+	_fm.fill(0)
+## The calls that took longest (one call, not a sum): `BLKMAX <function> <longest call ms> <calls> <total ms>`, those over `min_us`.
+static func blk_max_text(top: int, min_us := 5000) -> String:
+	var ids := []
+	for k in _fm.size():
+		if _fm[k] >= min_us:
+			ids.append(k)
+	ids.sort_custom(func(a, b): return _fm[a] > _fm[b])
+	var lines := []
+	for k in ids.slice(0, top):
+		lines.append("   BLKMAX %%s %%.1f %%d %%.1f" %% [_FNAMES[k], float(_fm[k]) / 1000.0, _fc[k], float(_ft[k]) / 1000.0])
+	return "\n".join(lines)
 static func blk_text(steps: int, men: int, top: int) -> String:
 	var ids := []
 	for k in _ft.size():
@@ -111,7 +128,7 @@ static func blk_text(steps: int, men: int, top: int) -> String:
 		shown += 1
 		lines.append("   BLKF %%s %%.2f %%.2f %%.2f" %% [_FNAMES[k], float(_fc[k]) / ms, float(_ft[k]) / ms, float(_ft[k]) / maxf(1.0, float(_fc[k]))])
 	return "\\n".join(lines)
-''' % (json.dumps(names), n, n, n, n)
+''' % (json.dumps(names), n, n, n, n, n, n)
 open(os.path.join(root, collector), "a").write(helper)
 
 # the probes: the markers become the calls
