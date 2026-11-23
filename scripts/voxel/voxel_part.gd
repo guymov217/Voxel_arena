@@ -4153,24 +4153,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if severed:
 		_lie(state.step)
 	if Combat.current and state.get_contact_count() > 0:
+		# (Its contacts are looked at once: what the combat makes of them, and what the man is told of them: Combat.report.)
 		Combat.current.report(self, state)
-		# Pressed on by someone else's weapon this step, or by a giant's body (Fighter.control
-		# caps what that adds to his speed: a man's shins caught in a giant's striding legs were
-		# flung at 25 m/s and sent him into the sky, user).
-		if fighter and "struck_frame" in fighter:
-			# (Most of what a part touches is the sand, or his own parts: let go at once.)
-			for i in state.get_contact_count():
-				var o = state.get_contact_collider_object(i)
-				if o is Weapon:
-					if o.holder != null and o.holder != fighter:
-						fighter.struck_frame = Engine.get_physics_frames()
-						break
-				elif o is VoxelPart and o.fighter != null and o.fighter != fighter:
-					if Fighter.is_giant_over(o, fighter):
-						fighter.struck_frame = Engine.get_physics_frames()
-						break
-					if Fighter.is_beast_on(o, fighter):
-						fighter.beast_frame = Engine.get_physics_frames()
 	# (After the contacts are told: a blow it lands is as hard as it came.)
 	if severed:
 		_calm(state)

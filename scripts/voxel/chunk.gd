@@ -5,6 +5,11 @@ extends RigidBody3D
 ## and then sinks away. Held in a mouth (`hold`), it rides on the jaw first and drops after a while.
 
 const LIFE := 26.0
+## Lying still this long, it is put to sleep: a heap of the dead and the gore lying on it was never let rest (a lump awake on a
+## corpse kept the whole heap awake, every step, as long as it lay: a third of an Endless step late in a big fight).
+const REST_AFTER := 1.5
+## Asleep, it looks under itself now and then (as VoxelPart does): what it lay on gone from under it, it wakes and falls.
+const UNDER_EVERY := 0.5
 static var all: Array = []
 
 var t := 0.0
@@ -15,6 +20,8 @@ var flap_of: Node3D = null      # still hanging off this part by a strip of fles
 var boxes := 0                  # how many of its voxels are drawn as the part's own boxes
 var cells := 0                  # and how many cells of a finer look it is drawn of (spawn)
 var flap_joint: Joint3D = null
+var _still_t := 0.0             # s it has lain still
+var _under_t := 0.0             # s since it last looked under itself, asleep
 ## What it was set to pass through, kept here: asked of the physics server instead (its
 ## collision exceptions), every one of them freed since printed an error, a dozen at a time
 ## (user: chunk.gd _in_a_body(): Parameter "body" is null).
@@ -245,6 +252,23 @@ func _physics_process(dt: float) -> void:
 		linear_velocity = Vector3(0, -0.5, 0)
 		t = 0.0
 		return
+	if sleeping:
+		_under_t += dt
+		if _under_t >= UNDER_EVERY:
+			_under_t = 0.0
+			if not freeze and not test_move(global_transform, Vector3(0.0, -0.05, 0.0)):
+				_still_t = 0.0
+				sleeping = false
+	elif not freeze and collision_layer != 0:
+		# (Still a spell, it is put to sleep again each step it is still while whatever it touches wakes it: what a corpse at rest does,
+		# Match._at_rest. Moved by more than a nudge, the spell starts over.)
+		if linear_velocity.length_squared() < 0.04 and angular_velocity.length_squared() < 0.09:
+			_still_t += dt
+			if _still_t > REST_AFTER:
+				_under_t = 0.0
+				sleeping = true
+		else:
+			_still_t = 0.0
 	if t > LIFE - 2.0:
 		freeze = true
 		position.y -= dt * 0.15

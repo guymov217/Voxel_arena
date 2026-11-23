@@ -43,6 +43,10 @@ func _ready() -> void:
 		print("HOST kicked ", gid, ", in the room after: ", Net.peers.keys(), " banned ", Net._banned.keys())
 		get_tree().quit(0 if Net.peers.is_empty() else 1)
 		return
+	# (He comes in plain; his gladiator for the room follows as "me" in the same breath.)
+	var t_me := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t_me < 4000 and (Net.peers.values()[0].loadout.get("gear", []) as Array).is_empty():
+		await get_tree().process_frame
 	var gear_in: Array = Net.peers.values()[0].loadout.get("gear", [])
 	print("HOST the guest's armour from his hello ", gear_in, " his teaching ", Net.peers.values()[0].loadout.get("stats", {}))
 	var peers := []

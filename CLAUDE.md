@@ -41,8 +41,12 @@ fight came out one way after one set of tests and another way after a different 
 - Full-screen Controls: use `set_anchors_and_offsets_preset`, not `set_anchors_preset`.
 - Multiplayer is host-authoritative: anything the host changes mid-round goes to guests in a
   message (Match.guest_message) and is sanitized on arrival. A guest's own gladiator (arms,
-  armour, look, teaching, bag, body) lives in his own save: he tells the host in his hello and
-  again whenever it changes ("me", Net.push_me), and the host fights him as that (Net.peers).
+  armour, look, teaching, bag, body, purse) lives in his own save, in the room's profile
+  (Save.box_begin: the Arena's sandbox, or the party campaign's gladiator of the run, host and
+  guests alike; the host keeps one campaign for each group of friends, Save.coop_* slots, and tells
+  the guests which run is open with the "room" message): he tells the host as he comes in and again whenever it changes ("me",
+  Net.push_me), and the host fights him as that (Net.peers). What a bout does to a guest
+  (pay, wounds, plates, bag) is the host's word, and every guest keeps it as the host does.
 - `scripts/voxel/greedy.gd` uses the C++ VoxelCore when it is loaded and falls back to GDScript;
   keep both in step (tests/test_native.gd).
 - The arena's art is voxel models (art/voxel/*.glb) built by `python3 tools/gen_voxel_art.py`

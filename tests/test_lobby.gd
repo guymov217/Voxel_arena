@@ -28,6 +28,8 @@ func _room_menu(kind: String) -> Array:
 	Net.my_name = "Aulus"
 	if kind == Net.KIND_ARENA:
 		menu._box_on()
+	else:
+		menu._coop_on(4242)
 	return [menu, fake]
 
 func _leave_room_menu(pair: Array) -> void:
@@ -183,7 +185,7 @@ func test_the_host_of_an_arena_room_has_the_yard_to_enter() -> void:
 	menu.show_screen("room")
 	await _steps(3)
 	t.check(_named(menu, "LobbyEnter") is Button, "the way into the yard")
-	t.check(_named(menu, "LobbyCampaign") == null and _named(menu, "LobbyYard") == null, "no campaign to start in the friends' room")
+	t.check(_named(menu, "LobbyCampaign") == null, "no campaign to start in the friends' room")
 	t.check(_named(menu, "LobbyLeave") is Button and String(_named(menu, "LobbyLeave").text).contains("CLOSE"), "and the room to close")
 	t.check(_named(menu, "LobbyInvite0") != null or Net.lan_addresses().is_empty(), "the first free place gives a friend the way in (the address, copied) when this computer has one")
 	t.check(_named(menu, "LobbyWait") == null, "he waits for no one")
@@ -197,24 +199,103 @@ func test_the_host_of_a_campaign_room_has_the_campaign_to_start() -> void:
 	menu.match_ = null
 	menu.show_screen("room")
 	await _steps(3)
-	t.check(_named(menu, "LobbyCampaign") is Button and _named(menu, "LobbyYard") is Button, "the campaign to start, or the yard first")
-	t.check(_named(menu, "LobbyEnter") == null, "the yard is one way in, not the main one")
+	t.check(_named(menu, "LobbyCampaign") is Button, "the campaign to begin")
+	t.check(_named(menu, "LobbyYard") == null and _named(menu, "LobbyEnter") == null, "and no other way in: it begins in the yard, as it does alone")
+	t.check(String(_named(menu, "LobbyCampaign").text).to_lower().contains("campaign"), "named for the campaign")
 	t.eq(menu.find_children("*", "OptionButton", true, false).size(), 1, "before the first bout he says how death is dealt with")
 	var cap: Button = _named(menu, "LobbyCampaign")
 	t.check(not cap.disabled, "alone, the campaign can begin")
-	# A fifth in the room: the campaign takes four at most.
-	for i in 4:
+	# Pressed, it begins in the yard (the lobby), never in a bout.
+	cap.pressed.emit()
+	await _steps(4)
+	t.check(menu.in_yard() and menu.match_ != pair[1], "pressed, the campaign begins in the yard")
+	menu._end_match()
+	menu.match_ = null
+	# The room takes four: its places are four, and a fifth is turned away.
+	t.eq(Net.room_cap(), 4, "a campaign room has four places")
+	for i in 3:
 		Net.peers[20 + i] = {"name": "Friend%d" % i, "loadout": {"main": "gladius"}}
+	menu.show_screen("room")
 	await _steps(40)
-	t.check(Net.campaign_full(), "five in the room are too many")
-	t.check(cap.disabled, "the campaign's button is held back")
-	t.check(menu.find_children("*", "Label", true, false).any(func(l): return l.visible and String(l.text) == "4 at most"), "with the reason on the screen")
-	t.check(String(cap.tooltip_text).contains("takes 4 players at most"), "and in full on the button")
-	t.eq(_slots(menu).size(), 5, "and all five are on cards")
-	Net.peers.erase(23)
-	await _steps(40)
-	t.check(not cap.disabled, "one fewer and it can begin")
+	t.eq(_slots(menu).size(), 4, "and all four are on cards")
+	t.check(not Net.campaign_full(), "four in the room: the campaign takes them")
+	Net._receive("hello", {"name": "Fifth", "ver": Net.build_tag(), "loadout": {}, "kit": {}, "body": {}}, 99)
+	t.check(not Net.peers.has(99), "a fifth is not let in")
+	for i in 3:
+		Net.peers.erase(20 + i)
 	menu.match_ = pair[1]
+	_leave_room_menu(pair)
+
+## The host of a campaign room keeps a campaign for every group of friends he plays with: a card for each (the friends who play it as
+## medallions, the bout it has reached in digits, the open one ringed), a plus for a new group's, and a card opens that campaign for the room.
+func test_the_host_of_a_campaign_room_has_a_card_for_each_campaign_he_keeps() -> void:
+	Save.data["coop_run"] = 4242
+	Save.set_value("coop_stage", 6)
+	Save.coop_note_members(["Cassia"])
+	Save.coop_open(5151)   # (another group's: 4242 is put away as it is)
+	Save.set_value("coop_stage", 2)
+	Save.coop_open(4242)
+	var pair := _room_menu(Net.KIND_CAMPAIGN)
+	var menu: Node = pair[0]
+	menu.match_ = null
+	menu.show_screen("room")
+	await _steps(3)
+	t.check(_named(menu, "LobbySaves") is ScrollContainer, "the host's campaigns are a row of their own")
+	var open_card: Button = _named(menu, "LobbySave4242")
+	var other: Button = _named(menu, "LobbySave5151")
+	t.check(open_card != null and other != null and _named(menu, "LobbyNewSave") is Button, "a card for each, and a plus for a new one")
+	t.eq(open_card.find_children("*", "Label", true, false).size(), 0, "no writing on a card: the friends are drawn, the bout is a number")
+	var mk: LobbyScreen.SaveMark = open_card.get_child(0)
+	t.check(mk.names == ["Cassia"] and mk.stage == 6, "the open one: Cassia plays it, at bout 6")
+	var mk2: LobbyScreen.SaveMark = other.get_child(0)
+	t.check(mk2.names.is_empty() and mk2.stage == 2, "the other: nobody has played it yet, at bout 2")
+	t.check(open_card.get_theme_stylebox("normal") != other.get_theme_stylebox("normal"), "and the open one is ringed apart")
+	# The friends in the room are the open campaign's.
+	Net.peers[20] = {"name": "Friend", "loadout": {"main": "gladius"}}
+	await _steps(60)
+	mk = _named(menu, "LobbySave4242").get_child(0)
+	t.check(mk.names.has("Friend") and mk.names.has("Cassia"), "the friends in the room are shown on the open campaign's card")
+	Net.peers.erase(20)
+	# A card opens its campaign for the room.
+	other = _named(menu, "LobbySave5151")
+	other.pressed.emit()
+	await _steps(3)
+	t.check(Net.coop_run == 5151 and menu.screen == "room" and Save.box_run == 5151, "a card opens that campaign: its run, its gladiator, the lobby again")
+	t.eq(int(Save.get_value("coop_stage", 1)), 2, "at its bout")
+	t.check(String(_named(menu, "LobbyCampaign").text).to_lower().contains("continue"), "to continue")
+	t.check(_named(menu, "LobbyDeath") == null, "and how death is dealt with is not asked again, past the first bout")
+	# The plus is a campaign for a new group: a run of its own, begun as a campaign begins.
+	_named(menu, "LobbyNewSave").pressed.emit()
+	await _steps(3)
+	var made: int = Net.coop_run
+	t.check(made != 5151 and made != 4242 and made > 0 and _named(menu, "LobbySave%d" % made) != null, "the plus opens a campaign of a new group, with a card of its own")
+	t.eq(menu.find_children("LobbySave*", "Button", true, false).size(), 3, "three campaigns are kept")
+	t.check(String(_named(menu, "LobbyCampaign").text).to_lower().contains("begin") and _named(menu, "LobbyDeath") != null, "it begins, and how death is dealt with is asked")
+	menu.match_ = pair[1]
+	_leave_room_menu(pair)
+
+func test_the_saves_row_is_the_campaign_hosts_alone() -> void:
+	Save.data["coop_run"] = 4242
+	var pair := _room_menu(Net.KIND_ARENA)
+	var menu: Node = pair[0]
+	menu.match_ = null
+	menu.show_screen("room")
+	await _steps(3)
+	t.check(_named(menu, "LobbySaves") == null and _named(menu, "LobbyNewSave") == null, "the friends' Arena room has no campaigns to choose from")
+	pair[0].match_ = pair[1]
+	_leave_room_menu(pair)
+	pair = _room_menu(Net.KIND_CAMPAIGN)
+	menu = pair[0]
+	menu._toggle_pause()
+	await _steps(2)
+	var door := _buttons(menu, "The room")
+	t.eq(door.size(), 1, "the pause menu has a door to the room")
+	if door.size() == 1:
+		door[0].pressed.emit()
+		await _steps(3)
+		t.check(menu.over_match and menu.screen == "room", "the room's screen, over the game")
+		t.check(_named(menu, "LobbySaves") == null, "over the yard the campaign cannot be changed")
+	menu._close_overlay()
 	_leave_room_menu(pair)
 
 func test_over_the_yard_the_room_leads_back_or_to_the_gate() -> void:

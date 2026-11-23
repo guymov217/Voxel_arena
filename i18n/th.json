@@ -34,7 +34,6 @@
  "%d caught in the big net": "%d คนติดตาข่ายใหญ่",
  "%d denarii": "%d เดนาริอุส",
  "%d denarii at the smith": "%d เดนาริอุสที่ร้านช่างตีเหล็ก",
- "%d denarii to the party's purse": "%d เดนาริอุสเข้าถุงเงินของกลุ่ม",
  "%d denarii%s": "%d เดนาริอุส%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "โดน %d ครั้ง · ครั้งล่าสุด %d · ดีที่สุด %d · ตัดขาด %d ชิ้น · สังหาร %d",
  "%d min": "%d นาที",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s ติดไฟแล้ว: เหวี่ยงเหมือนอาวุธ หรือกด F ค้างเพื่อเล็งแล้วปล่อยเพื่อขว้าง",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "ยางสนลุกไหม้บนปลายไม้ ถือในมือที่ว่าง: เหวี่ยงเหมือนกระบอง ทุกครั้งที่ฟาดจะจุดไฟเผาศัตรู ยิ่งสู้ก็ยิ่งไหม้หมดไป และจะหายไปเมื่อไหม้จนหมด ขว้างออกไปจะลุกไหม้ตรงที่ตก และจุดน้ำมันที่หกอยู่ให้ลุกเป็นไฟ",
  "The torch burns out": "คบเพลิงไหม้หมดแล้ว",
- "%s SLAMS %s INTO THE SAND!": "%sฟาด%sลงกับพื้นทราย!"
+ "%s SLAMS %s INTO THE SAND!": "%sฟาด%sลงกับพื้นทราย!",
+ "%d denarii to each of you": "คนละ %d เดนาริอุส",
+ "The room is full": "ห้องเต็มแล้ว"
 }

@@ -5871,8 +5871,8 @@
 "Round %d won": [
 "scripts/game/match.gd:2313"
 ],
-"%d denarii to the party's purse": [
-"scripts/game/match.gd:2325"
+"%d denarii to each of you": [
+"scripts/game/match.gd:2632"
 ],
 ", %d of them the crowd's": [
 "scripts/game/match.gd:2327"
@@ -9174,5 +9174,8 @@
 ],
 "Barbs that hold in the flesh: the wound bleeds hard.": [
 "data/shop.json#desc"
+],
+"The room is full": [
+"scripts/net/net.gd:1146"
 ]
 }

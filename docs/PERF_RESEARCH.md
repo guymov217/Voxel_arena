@@ -1,4 +1,4 @@
-# Performance research (#298k, #298l): where a fight's time goes and what each way of sparing it is worth
+# Performance research (#298k, #298l, #310, #312): where a fight's time goes and what each way of sparing it is worth
 
 Rule kept throughout: the game as played must not change. A way that changes a fight (not to the bit, and not only in how it is drawn) is listed as such and not recommended
 without the owner's word. Every figure is from this repository's own probes on one core of the build machine (a Xeon that runs at about 2.85 GHz, no graphics card), release
@@ -114,6 +114,7 @@ engine's recording of the frame on the processor is 1.0-1.7 ms in every run (it 
 | Shadow cascades / `low` quality (drawing only) | **made**: one cascade on `low`, two on `medium`: -25% and -18% of the triangles; changes no fight | section 3b |
 | The armour state kept across steps | **made**: about -5% of the step for an armoured man, to the bit (47 fingerprints) | section 3 |
 | The armour's clip pass in the frame | **made**: the men's drawing -19% walking, -27% fighting (eight armoured men), drawing only | section 3 |
+| The dead's contacts, the pieces and the loose weapons (the late Endless Arena) | **made**: two cuts to the bit and the sleeping of what lies still, which is not to the bit (gameplay unchanged) | section 8 |
 | A load governor (shedding far men's work under overload) | changes far men's physics: not to the bit, outside this document's rule | #304 |
 
 ## 5. The model
@@ -153,4 +154,27 @@ RT=1 sh tools/mix_load.sh "men:8,foe:8"    a real-time run on one core (CPU=n pi
 tools/render_load.sh                       a frame drawn for real (software Vulkan under Xvfb when there is no card): draw calls, primitives
 IDS=lorica,manica godot --headless --path . -- --probe nodes298     what a man is made of, and what building him costs
 python3 tools/loopsim.py                   the model
+godot --headless --fixed-fps 120 --path . -- --probe endless_fps     the late Endless Arena's step, scripts and counts (env MIX, SECS, EVERY, SEED)
 ```
+
+## 8. The late Endless Arena: the dead, the pieces and the loose weapons (#310, #312)
+
+`tests/endless_fps.gd` plays the Endless Arena of a full room wave after wave, the dead left where they fall. On this machine, late in a run, a step is Jolt about 40%, the nodes'
+phase about 45% (94% of it the entity loop: a living man's `control` 5.7 ms, the arms 52% of that) and the bodies' `_integrate_forces` callbacks 10-18%. The dead, the pieces they
+leave and the weapons they drop keep Jolt's islands awake and fill the callbacks with contacts nobody reads.
+
+| change | kind | what it did |
+|---|---|---|
+| Parts of two fallen men in contact are not asked who touched whom (`Combat.report`) | **made, to the bit** | a heap of the dead no longer costs a pass for every touching pair (`tests/test_corpse_touch.gd`) |
+| The struck-by-a-weapon scan folded into `Combat.report`'s one pass over a part's contacts (it was a second loop in `VoxelPart._integrate_forces`) | **made, to the bit** | one pass instead of two; the fingerprints of `tools/replay_check.sh` and of the dead-among-the-living runs (`REPLAY_BARE=1 REPLAY_KILL=2`) are the same as before |
+| Pieces of voxels (`Chunk`) and loose weapons (`Combat._rest_weapons`) that have lain still for 1.5 s are put to sleep, as the dead's parts are (`Match._at_rest`) | **made, not to the bit** | the late Endless probe: the step -25 to -33%, the dead's parts awake 97 -> 22-41 |
+
+How the sleeping goes: the physics wakes what is touched or pushed; what sleeps looks under itself every 0.5 s (what it lay on carried off, it falls); a weapon taken up is made sleepless
+(`Fighter.pick_up`); a weapon in a hand is its man's and is left to him (the yard puts it to sleep with him and wakes it with him, `Match._stands_idle`: `tests/test_yard_rest.gd` is what
+holds that). Gameplay is unchanged, but a body that sleeps is not stepped, so the fingerprints of a fight with pieces or weapons lying about differ from the old ones; the same run twice
+still gives the same fingerprints (25 s, `REPLAY_BARE=1 REPLAY_KILL=2 REPLAY_SECS=25`; the armoured runs of `replay_check.sh` are not alike after 7-10 s whatever the build, their
+staged builds being paced by the clock). To undo it: the REST block in `chunk.gd`, the sleep check at the top of `Weapon._physics_process`, `Combat._rest_weapons` and its call, and
+the `can_sleep = false` line in `Fighter.pick_up` (`tests/test_rest_sleep.gd` goes with them).
+
+What is left of the step is the arms' drive, about a quarter of it: only the port to C++ keeps every fight. What changes fights (the physics rate, Jolt's iterations, the governor of #304,
+freezing the dead for good: about 7% more than the sleeping) waits for a decision.

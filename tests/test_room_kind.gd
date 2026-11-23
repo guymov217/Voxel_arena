@@ -1,7 +1,7 @@
 extends Node
-## The two kinds of room: the party's campaign (its purse the host's, limited) and the friends' Arena (a gladiator of his own
-## kept apart from the campaign's, money no object). What the sandbox keeps away from the campaign, what the menu does in it,
-## and that every way out of the room gives the campaign's own gladiator back.
+## The two kinds of room: the party's campaign (a gladiator and a purse of the run's own for every player, the host too) and the
+## friends' Arena (a gladiator of his own kept apart from the campaign's, money no object). What the sandbox keeps away from the
+## campaign, what the menu does in it, and that every way out of the room gives the campaign's own gladiator back.
 
 var t
 
@@ -175,6 +175,8 @@ func _room_menu(kind: String) -> Array:
 	Net.room_kind = kind
 	if kind == Net.KIND_ARENA:
 		menu._box_on()
+	else:
+		menu._coop_on(4242)
 	return [menu, fake]
 
 func _leave_room_menu(pair: Array) -> void:

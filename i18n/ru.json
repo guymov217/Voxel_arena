@@ -34,7 +34,6 @@
  "%d caught in the big net": "В большую сеть попались: %d",
  "%d denarii": "%d денариев",
  "%d denarii at the smith": "%d денариев у кузнеца",
- "%d denarii to the party's purse": "%d денариев в общий кошелёк",
  "%d denarii%s": "%d денариев%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "Попаданий: %d · последний удар %d · лучший %d · отрублено конечностей: %d · убито: %d",
  "%d min": "%d мин",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s зажжён: размахивайте им, как оружием, или удерживайте F, чтобы прицелиться, и отпустите, чтобы бросить",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Горящая смола на палке, в свободной руке: размахивайте ею, как дубиной, и каждый удар поджигает врага. В бою он выгорает и исчезает, когда прогорит. Брошенный, горит там, где упадёт, и поджигает разлитое масло.",
  "The torch burns out": "Факел догорел",
- "%s SLAMS %s INTO THE SAND!": "%s ВБИВАЕТ %s В ПЕСОК!"
+ "%s SLAMS %s INTO THE SAND!": "%s ВБИВАЕТ %s В ПЕСОК!",
+ "%d denarii to each of you": "по %d денариев каждому",
+ "The room is full": "Комната заполнена"
 }

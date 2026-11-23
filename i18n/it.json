@@ -34,7 +34,6 @@
  "%d caught in the big net": "Presi nella grande rete: %d",
  "%d denarii": "%d denari",
  "%d denarii at the smith": "%d denari dal fabbro",
- "%d denarii to the party's purse": "%d denari nella borsa del gruppo",
  "%d denarii%s": "%d denari%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "%d colpi · ultimo %d · migliore %d · %d arti mozzati · %d uccisioni",
  "%d min": "%d min",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s accesa: brandiscila come un'arma, oppure tieni premuto F per mirare e rilascia per lanciare",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Pece ardente su un bastone, nella mano libera: brandiscila come una clava e ogni colpo dà fuoco all'avversario. Si consuma mentre combatti e sparisce quando è finita. Lanciata, brucia dove cade e incendia l'olio versato.",
  "The torch burns out": "La torcia si è consumata",
- "%s SLAMS %s INTO THE SAND!": "%s SBATTE %s NELLA SABBIA!"
+ "%s SLAMS %s INTO THE SAND!": "%s SBATTE %s NELLA SABBIA!",
+ "%d denarii to each of you": "%d denari a testa",
+ "The room is full": "La stanza è piena"
 }

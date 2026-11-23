@@ -17,6 +17,7 @@ var port := 17900
 var quick := false
 var snaps := 0
 var my_name := "Brutus"
+var slot_a := 0                      # (the host's campaign he came into: the run his gladiator is kept under)
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -99,7 +100,7 @@ func _run_guest() -> void:
 			steps.append(["mode.%s.end" % mode, _back_in_yard])
 		steps.append_array([["forge", _forge_lit], ["forge.end", _back_in_yard]])
 	steps.append_array([["late", _late_seen], ["endless.start", _endless_start], ["endless.offer", _endless_offer], ["endless.done", _endless_done], ["endless.end", _back_in_yard3],
-		["kick", _kick_seen], ["campaign.closed", _host_left], ["campaign.lobby", _campaign_lobby], ["campaign.fight", _campaign_fight], ["campaign.end", _campaign_end]])
+		["kick", _kick_seen], ["campaign.closed", _host_left], ["campaign.lobby", _campaign_lobby], ["campaign.slot_new", _slot_new], ["campaign.slot_back", _slot_back], ["campaign.fight", _campaign_fight], ["campaign.end", _campaign_end]])
 	await _steps(steps)
 
 func _lobby() -> void:
@@ -235,10 +236,25 @@ func _campaign_lobby() -> void:
 	k.check("campaign.join", joined, "he joins the campaign room")
 	if not joined:
 		return
-	await k.until(func(): return Net.room_kind == Net.KIND_CAMPAIGN and menu.screen == "room" and menu.shared_purse == 150, 15.0, "told it is a campaign room")
+	await k.until(func(): return Net.room_kind == Net.KIND_CAMPAIGN and menu.screen == "room" and Save.coop(), 15.0, "told it is a campaign room")
 	var list: Array = Net.room_list()
-	k.check("campaign.lobby", Net.room_kind == Net.KIND_CAMPAIGN and not Save.boxed and menu.coins() == 150 and list.size() == 2 and menu.find_child("LobbyWait", true, false) != null, "a campaign room: no sandbox, the purse is the host's (150), the host's lobby listed", "kind %s, purse %d" % [Net.room_kind, menu.coins()])
+	k.check("campaign.lobby", Net.room_kind == Net.KIND_CAMPAIGN and Save.coop() and menu.coins() == 150 and int(Save.data.coins) == 77 and list.size() == 2 and menu.find_child("LobbyWait", true, false) != null, "a campaign room: a gladiator of the run's own, a purse of his own (150) and the single campaign's untouched (77), the host's lobby listed", "kind %s, purse %d" % [Net.room_kind, menu.coins()])
 	await k.shot("campaign_lobby")
+	slot_a = Net.coop_run
+	k.check("campaign.guest_saves", menu.find_child("LobbySaves", true, false) == null and Kit.button_named(menu, "LobbyNewSave") == null, "the campaigns are the host's to choose: the friend's lobby has no cards for them")
+	menu.add_coins(25)   # (his gladiator of this run, as he will be when the host comes back to it)
+
+## The host opens a campaign for another group: the friend is told which run it is and begins a man there, as a first campaign begins him.
+func _slot_new() -> void:
+	var ok: bool = await k.until(func(): return Net.coop_run != slot_a and Net.coop_run > 0 and Save.coop() and Save.box_run == Net.coop_run, 15.0, "told the host's other campaign")
+	await k.pause(0.3)
+	k.check("slots.guest_new", ok and menu.coins() == 150 and menu.screen == "room", "the host opens another campaign: the friend is told which run it is and has a new man there", "run %d (was %d), purse %d" % [Net.coop_run, slot_a, menu.coins()])
+
+## The host opens the first campaign again: the friend has his gladiator of it as he left it.
+func _slot_back() -> void:
+	var ok: bool = await k.until(func(): return Net.coop_run == slot_a and Save.box_run == slot_a, 15.0, "told the first campaign again")
+	await k.pause(0.3)
+	k.check("slots.guest_back", ok and menu.coins() == 175 and menu.screen == "room", "the host opens the first campaign again: the friend has his gladiator of it as he left it (his purse of 175)", "run %d, purse %d" % [Net.coop_run, menu.coins()])
 
 func _campaign_fight() -> void:
 	var ok: bool = await k.until(func(): return m() != null and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
@@ -247,7 +263,10 @@ func _campaign_fight() -> void:
 func _campaign_end() -> void:
 	var ok: bool = await k.until(func(): return _yard_of(2), 60.0, "the yard")
 	await k.pause(1.0)
-	k.check("campaign.end", ok and menu.coins() == int(menu.shared_purse) and menu.coins() > 150, "the bout won, he is in the yard and the party's purse (the host's) has grown", "purse %d" % menu.coins())
+	var kept: Dictionary = Body.sanitize(Save.get_value("body", {}))
+	k.check("campaign.wound", (kept.missing as Array).has("forearmL"), "the forearm he lost in the bout is kept in his own save, as the host's would be", "missing %s" % str(kept.missing))
+	k.check("campaign.told", (Net.my_body.get("missing", []) as Array).has("forearmL"), "and the host is told him so", "told %s" % str(Net.my_body.get("missing", [])))
+	k.check("campaign.end", ok and menu.coins() > 150 and int(Save.data.coins) == 77, "the bout won, he is in the yard and his own purse has grown by the bout's pay; his single campaign's is as it was", "purse %d, single %s" % [menu.coins(), str(Save.data.coins)])
 
 # ---------- The friend who comes in late ----------
 

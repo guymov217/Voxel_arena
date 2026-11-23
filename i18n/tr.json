@@ -34,7 +34,6 @@
  "%d caught in the big net": "Büyük ağa yakalanan: %d",
  "%d denarii": "%d dinar",
  "%d denarii at the smith": "Demircide %d dinar",
- "%d denarii to the party's purse": "Grubun kesesine %d dinar",
  "%d denarii%s": "%d dinar%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "%d isabet · son darbe %d · en iyi %d · %d uzuv koptu · %d öldürme",
  "%d min": "%d dk",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s yandı: onu bir silah gibi salla ya da nişan almak için F'yi basılı tut ve fırlatmak için bırak",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Bir sopanın ucunda yanan zift, boş elinde: onu gürz gibi salla, her darbe rakibi tutuşturur. Dövüştükçe yanıp tükenir ve bitince ortadan kalkar. Fırlatılırsa düştüğü yerde yanar ve dökülmüş yağı tutuşturur.",
  "The torch burns out": "Meşale yanıp bitti",
- "%s SLAMS %s INTO THE SAND!": "%s, %s kişisini KUMA ÇARPIYOR!"
+ "%s SLAMS %s INTO THE SAND!": "%s, %s kişisini KUMA ÇARPIYOR!",
+ "%d denarii to each of you": "herkese %d dinar",
+ "The room is full": "Oda dolu"
 }

@@ -34,7 +34,6 @@
  "%d caught in the big net": "W wielką sieć złapani: %d",
  "%d denarii": "%d denarów",
  "%d denarii at the smith": "%d denarów u kowala",
- "%d denarii to the party's purse": "%d denarów do wspólnej sakiewki",
  "%d denarii%s": "%d denarów%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "Trafienia: %d · ostatni cios %d · najlepszy %d · odcięte kończyny: %d · zabici: %d",
  "%d min": "%d min",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s zapalona: wymachuj nią jak bronią albo przytrzymaj F, aby celować, i puść, aby rzucić",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Płonąca smoła na kiju, w wolnej ręce: wymachuj nią jak maczugą, a każdy cios podpala przeciwnika. Wypala się w walce i znika, gdy się wypali. Rzucona płonie tam, gdzie spadnie, i podpala rozlaną oliwę.",
  "The torch burns out": "Pochodnia wypaliła się",
- "%s SLAMS %s INTO THE SAND!": "%s WALI %s O PIASEK!"
+ "%s SLAMS %s INTO THE SAND!": "%s WALI %s O PIASEK!",
+ "%d denarii to each of you": "%d denarów dla każdego",
+ "The room is full": "Pokój jest pełny"
 }

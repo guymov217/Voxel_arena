@@ -298,7 +298,7 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   picked (his own when as many pick two); there is no button of its own for leading them through.
 - **A party's own glory** (`scripts/game/party_glory.gd`): in the co-op campaign, after every bout
   won the crowd crowns the one of the party it loved most (the most favour, above indifference):
-  he brings the party's purse a fifth of the bout's prize more and wears a laurel wreath through
+  he brings his purse a fifth of the bout's prize more and wears a laurel wreath through
   the next bout and in the yard (`Fighter.set_wreath`: leaves in two greens round his head or
   his helmet, tied at the back). The run's scroll counts each man's kills, the friends he lifted,
   the limbs he left on the sand and his crowns, bout by bout, and is unrolled for the party when
@@ -655,8 +655,31 @@ Steam can show is Valve's real calls and relay: one test with a second person, i
 A room is opened for one of two things, chosen on the Multiplayer screen (`Net.room_kind`, kept in the
 settings; the guest is told it as he comes in, with a `room` message from the host, and the Steam list shows it):
 
-- **Campaign together.** The co-op campaign, bout after bout. The party's purse is the host's, so money is limited as in
-  the campaign, and the gate leads to the campaign's bouts (it no longer offers the Arena's fights).
+- **Campaign together.** The co-op campaign, bout after bout, for four at most (`Net.room_cap`: the transport's own limit,
+  the Steam lobby's and the room's cards are four). It begins as the campaign does alone, in the yard (the room's one button
+  goes there; the gate leads to the campaign's bouts and no longer offers the Arena's fights). Every player, the host as much
+  as a guest, plays it with a gladiator of the run's own, begun as a new campaign begins a man (the stick, the purse of a new
+  save, a whole body, no armour, no bag, no teaching) and kept in his own save under the run's number (`Save.box_begin` kind
+  `coop`, key `coop_profiles`, the last forty runs kept; the host's save holds the open run's number, `coop_run`, and tells it to a
+  guest in the `room` message). His purse, bag, arms, armour, wounds and training are his alone: what a bout pays goes to each of
+  them, what he buys comes out of his own purse, what he threw is gone from his bag, and what a blow took off him is on him
+  in the next bout, as for the host (the host's word at the bout's end: `body`, `armor_wear`, `kit`, the pay). The single
+  campaign's gladiator is never touched. A run that ends (a death with no checkpoint to go back to, or the campaign begun
+  again) takes a new number and begins everyone anew: the host's `new_run` word (the same group of friends: its slot goes on under
+  the new number). For every player more in the room the bout's men (or its beast) are one more, on every card of the gate; a boss
+  is alone, tougher for each friend (`Data.duel`).
+
+  **One campaign for each group of friends.** The host plays it with different friends at different times, and each group has its
+  own: how far it has got (the `coop_` keys of the save: the bout, the lap, the checkpoint, how death is dealt with, the gate's wins,
+  the run's scroll, the favourite) is put away in `coop_slots` under the run's number with the friends who play it
+  (`Save.coop_*`: `coop_slots`, `coop_open`, `coop_begin_new`, `coop_note_members`, `coop_restart`; the last forty are kept, and the
+  open one's keys are the save's own, as every part of the game reads them). The campaign room's lobby shows the host a row of
+  cards, one for each (the friends who play it as small medallions, the bout it has reached in digits, the open one ringed in gold)
+  and a plus for a campaign of a new group; a card opens that campaign (`Menu._coop_open_slot`: his gladiator of it, and every guest
+  told which run it is by the same `room` message, `Net.announce_room`, so a guest has his gladiator of that run as he left it, or
+  a new man there) and the plus begins a new one (`Menu._coop_new_slot`: a run of its own, begun as a campaign begins). The friends
+  in the room are noted as the group of the open campaign when the campaign begins or a friend walks in. Only the host sees the row,
+  and only before the yard: the campaign cannot be changed under the party.
 - **Arena with friends.** Fights, tournaments, teams and the endless arena. Every player has a gladiator of his own for
   the room, kept apart from the campaign's: his purse, arms, bag, armour, wounds and training (`Save.BOX_KEYS`) are read
   and written in an *arena profile* (`Save.box_begin`: one key of the save, `arena_profile`), never in the campaign's,
@@ -664,7 +687,9 @@ settings; the guest is told it as he comes in, with a `room` message from the ho
   campaign, and nothing the campaign holds is spent there. Everyone fights with the arms and armour he took in the
   room's yard (the endless arena and Forge and Fight give their own). The gate opens the Arena's list of fights (the
   host's), there is no campaign, and the guest's campaign gladiator is not even sent (the host takes nothing of him from
-  his hello: he comes in plain and his arena profile follows as `me`). Menu starts the sandbox when the room opens (the
+  his hello: he comes in plain and his arena profile follows as `me`; the campaign room's guest comes in plain too, and the
+  run's gladiator follows as `me`). The endless arena of a room has no picking of arms and bag: each goes in with what he
+  bought and built in the yard. Menu starts the sandbox when the room opens (the
   host) or when the guest is told what the room is (`Menu._box_on`), and ends it by any way out of the room;
   `Menu.start` refuses the campaign while it is on. `tests/test_room_kind.gd`.
 
@@ -680,7 +705,8 @@ bout N**, **Into the yard** and how death is dealt with), a guest's pulsing "Wai
 **The room** opens the same lobby over the yard (the host's **Go to the gate**). A guest knows only the host and himself, so the
 host tells every guest who is in the room (`Net` "roster": id, name and round trip of each, made safe on arrival, sent when
 someone comes or goes and every two seconds); `Net.room_list()` gives either side the same list, and the lobby follows it by
-itself. `tests/test_lobby.gd`; the whole of it, with two games, in `tests/e2e_*.gd`.
+itself. A campaign room's host also has, under the cards, the row of his campaigns (one for each group of friends he plays
+with: see above). `tests/test_lobby.gd`, `tests/test_coop_slots.gd`; the whole of it, with two games, in `tests/e2e_*.gd`.
 
 ### Friends in the yard
 
@@ -772,7 +798,7 @@ dropped, and a weapon that does not hold up leaves the hand empty.
   a key for the session, and a game that does not speak it cannot join.
 - **Host-authoritative.** Guests send only their input. The host runs the physics, so a modified
   game cannot move its fighter faster, hit harder or teleport.
-- **A short list of what guests may say.** Hello, input, voice, ping, the purse, the Forge and Fight kit, the
+- **A short list of what guests may say.** Hello, input, voice, ping, the Forge and Fight kit, the
   physician, the gate's pick, the Emperor's vote and the endless arena's reward pick are allowed. Anything else from a guest (a snapshot, a spawn, a banner) is dropped.
   Guests talk only to the host, never to each other through him.
 - **Everything from a guest is checked.**
@@ -781,8 +807,8 @@ dropped, and a weapon that does not hold up leaves the hand empty.
   - Armour, kits, bodies and input: no NaNs, every value clamped.
   - Volume: more than 240 messages a second from one guest are dropped, and a second hello is
     ignored.
-- **The shared purse.** A guest adds no more than he spent, what his fights' missions paid, and a
-  little for what he brought to sell.
+- **Every player's purse is his own.** It lives in his own save (the room's profile) and is never sent to the host or
+  taken from it: what the host says of a bout (its pay) is added to each purse by its own owner's game.
 - **Muting and removal.** Every player can be muted, and the host can remove one (room screen
   or pause menu). A removed player cannot rejoin that room.
 - **Privacy.** Voice is push-to-talk (N). Steam lobbies can be friends-only. Nothing personal is

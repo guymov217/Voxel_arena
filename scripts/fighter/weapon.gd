@@ -1218,7 +1218,23 @@ func draw_now() -> void:
 		vis.global_transform = global_transform
 	snap_drawing()
 
+var rest_t := 0.0     # s it has lain still, loose (Combat._rest_weapons puts it to sleep)
+var _under_t := 0.0   # s since it last looked under itself, asleep
+
 func _physics_process(dt: float) -> void:
+	# Asleep (lying loose, still: Combat._rest_weapons) it looks under itself now and then, as a part of a corpse does (VoxelPart): what
+	# it lay on gone from under it (a body carried off the sand), it wakes and falls. (One in a hand is its man's: the yard puts it to
+	# sleep with him and wakes it with him, Match._stands_idle; picking one up makes it sleepless, Fighter.pick_up.)
+	if can_sleep and holder == null:
+		if sleeping:
+			_under_t += dt
+			if _under_t >= 0.5:
+				_under_t = 0.0
+				if not freeze and not test_move(global_transform, Vector3(0.0, -0.05, 0.0)):
+					rest_t = 0.0
+					sleeping = false
+		else:
+			_under_t = 0.0
 	# Through the sand (a heavy thing pressed or thrown into it): back up on top, at rest, not
 	# lost for good under the arena.
 	if global_position.y < -1.0 and not freeze:

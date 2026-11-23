@@ -27,6 +27,7 @@ func _ready() -> void:
 	# NO_DTLS=1: a guest that does not speak the host's encryption (it must not get in).
 	if OS.get_environment("NO_DTLS") != "":
 		Net.dtls = false
+	Net.room_kind_known.connect(func(_kind): Net.push_me())   # (as Menu does: his gladiator for the room follows the host's word on what it is)
 	print("GUEST join ", await _join(port))
 	Net.message.connect(_on)
 	# KICK=1: turned out by the host, he knocks again and is turned away again.

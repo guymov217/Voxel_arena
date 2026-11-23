@@ -34,7 +34,6 @@
  "%d caught in the big net": "%d人被大網罩住",
  "%d denarii": "%d 第納爾",
  "%d denarii at the smith": "鐵匠處 %d 第納爾",
- "%d denarii to the party's purse": "%d 第納爾存入隊伍錢袋",
  "%d denarii%s": "%d 第納爾%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "命中%d次 · 上一擊%d · 最佳%d · 斬斷%d肢 · 擊殺%d",
  "%d min": "%d 分鐘",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s已點燃：像武器一樣揮舞，或按住 F 瞄準，鬆開即投擲",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "棒頭燃燒的松脂，拿在空著的手裡：像棍棒一樣揮舞，每一擊都會點燃對手。戰鬥中它會不斷燒短，燒盡就沒了。扔出去，落在哪裡就在哪裡燃燒，還會點燃灑在地上的油。",
  "The torch burns out": "火把燒盡了",
- "%s SLAMS %s INTO THE SAND!": "%s 狠狠地把 %s 砸進了沙地！"
+ "%s SLAMS %s INTO THE SAND!": "%s 狠狠地把 %s 砸進了沙地！",
+ "%d denarii to each of you": "每人 %d 第納爾",
+ "The room is full": "房間已滿"
 }

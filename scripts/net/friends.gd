@@ -84,7 +84,7 @@ static func args_for(persona: int, room_port: int, project: String, headless := 
 func add() -> bool:
 	# (The places of the room: the host's, those of the players in it, those of friends on their way in.)
 	var on_their_way := friends.filter(func(f): return peer_of(String(f.name)) < 0).size()
-	if friends.size() >= MAX_FRIENDS or 1 + Net.peers.size() + on_their_way >= Net.MAX_PLAYERS:
+	if friends.size() >= MAX_FRIENDS or 1 + Net.peers.size() + on_their_way >= Net.room_cap():
 		return false
 	var persona := next_persona()
 	var proj := "" if OS.has_feature("template") else ProjectSettings.globalize_path("res://").trim_suffix("/")

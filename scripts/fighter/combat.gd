@@ -89,18 +89,40 @@ func _exit_tree() -> void:
 	if current == self:
 		current = null
 
+## Pressed on by someone else's weapon this step, or by a giant's body or a beast's, a man is told of it
+## (Fighter._no_fling caps what that adds to his speed: a man's shins caught in a giant's striding legs
+## were flung at 25 m/s and sent him into the sky, user). This is that look, alone, for when the combat
+## is off (report tells him in the same pass over the contacts that it makes of them).
+func _struck_only(f, state: PhysicsDirectBodyState3D) -> void:
+	for i in state.get_contact_count():
+		var o = state.get_contact_collider_object(i)
+		if o is Weapon:
+			if o.holder != null and o.holder != f:
+				f.struck_frame = Engine.get_physics_frames()
+				break
+		elif o is VoxelPart and o.fighter != null and o.fighter != f:
+			if Fighter.is_giant_over(o, f):
+				f.struck_frame = Engine.get_physics_frames()
+				break
+			if Fighter.is_beast_on(o, f):
+				f.beast_frame = Engine.get_physics_frames()
+
 ## Called from a body's _integrate_forces with its contacts.
 func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
-	if not enabled:
-		return
 	# The body is looked at once, and each contact let go at the first thing that rules it out:
 	# most are a foot on the sand, or a body's own parts against each other, every step.
 	var bw := body is Weapon
 	var bp := not bw and body is VoxelPart
 	if not (bw or bp):
 		return
-	var bid := body.get_instance_id()
 	var bf = body.fighter if bp else null
+	# (A part's man is told what presses on him in this same pass, the combat on or not: `told` while he still may be.)
+	var told: bool = bp and bf != null and is_instance_valid(bf) and "struck_frame" in bf
+	if not enabled:
+		if told:
+			_struck_only(bf, state)
+		return
+	var bid := body.get_instance_id()
 	var holder = body.holder if bw else null
 	for i in state.get_contact_count():
 		var other = state.get_contact_collider_object(i)
@@ -110,6 +132,17 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 		var ow := not op and other is Weapon
 		if not (op or ow):
 			continue
+		if told:
+			if ow:
+				if other.holder != null and other.holder != bf:
+					bf.struck_frame = Engine.get_physics_frames()
+					told = false
+			elif other.fighter != null and other.fighter != bf:
+				if Fighter.is_giant_over(other, bf):
+					bf.struck_frame = Engine.get_physics_frames()
+					told = false
+				elif Fighter.is_beast_on(other, bf):
+					bf.beast_frame = Engine.get_physics_frames()
 		if bp:
 			if ow:
 				# A trap does not move under physics, so the part it meets reports the contact
@@ -119,6 +152,11 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				continue
 			# (A limb cut off is a club, even in the hands of the man it came off.)
 			if bf != null and other.fighter == bf and not body.severed and not other.severed:
+				continue
+			# The parts of two fallen men against each other (a heap of the dead is a hundred such contacts a step, each
+			# seen from both sides): nobody asks who touched whom among the dead (a hold, a squeeze or a stomp is the
+			# living's), and a blow wants a living hand (process_contacts lets go of it): nothing to note, let go at once.
+			if bf != null and other.fighter != null and not bf.alive and not other.fighter.alive and not body.severed and not other.severed:
 				continue
 			var cj := state.get_contact_impulse(i).length()
 			if canonical:
@@ -136,6 +174,27 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				continue
 			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
 
+## A weapon lying loose (dropped, thrown, left by the dead) that has lain still a spell is put to sleep, and again each step it is
+## still, as a corpse at rest is (Match._at_rest): one never let sleep kept every body it touched awake, the heap of the dead it lay
+## on with them. The physics wakes it the moment anything touches or pushes it; pushed harder than a nudge it moves, and has to lie
+## still a spell again; picking it up (Fighter.pick_up) makes it awake and sleepless. Not one on a chain, a trap, one burning,
+## impaled or in flight.
+const WEAPON_REST_AFTER := 1.5   # s
+func _rest_weapons(dt: float) -> void:
+	for w in loose_weapons:
+		if not is_instance_valid(w) or w.sleeping:
+			continue
+		if w.holder != null or w.freeze or w.is_hazard or w.chain_head != null or not w.chain_links.is_empty() \
+				or w.stuck != null or w.lodge_pending != null or w.thrown_t > 0.0 or not w._flames.is_empty():
+			continue
+		if w.linear_velocity.length_squared() < 0.04 and w.angular_velocity.length_squared() < 0.09:
+			w.rest_t += dt
+			if w.rest_t > WEAPON_REST_AFTER:
+				w.can_sleep = true
+				w.sleeping = true
+		else:
+			w.rest_t = 0.0
+
 func _physics_process(dt: float) -> void:
 	if canonical:
 		_settle()
@@ -146,6 +205,7 @@ func _physics_process(dt: float) -> void:
 			hit.emit(h)
 		else:
 			chip.emit(h)
+	_rest_weapons(dt)
 	record_velocities()
 
 func record_velocities() -> void:

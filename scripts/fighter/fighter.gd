@@ -2707,6 +2707,7 @@ func pick_up(side: String, w: Weapon, by_hand := false) -> bool:
 		if b is RigidBody3D:
 			b.freeze = false
 			b.sleeping = false
+			b.can_sleep = false   # (one that lay loose may have been let sleep: Combat._rest_weapons)
 	w.linear_damp = 0.0   # (the world's own damping again; -1 is not a value Godot 4.7 takes)
 	w.angular_damp = 0.0
 	var rot: Quaternion = Quaternion(UP, yaw) if w.is_shield else PD.quat_of(fore) * grip_q(w)

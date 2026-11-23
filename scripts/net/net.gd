@@ -24,8 +24,8 @@ signal lobbies(list: Array)
 
 const PORT := 7777
 const MAX_PLAYERS := 8
-## The co-op campaign is fought by four at most (its bouts are made for one to four); the room,
-## and every other way to fight in it, takes eight (user).
+## The co-op campaign is fought by four at most (its bouts are made for one to four): a room opened for it takes four, a
+## room opened for the friends' Arena (every other way to fight) takes eight (user).
 const CAMPAIGN_PLAYERS := 4
 const LOBBY_KEY := "voxelarena"
 ## Bumped when what two games say to each other changes in a way an older game cannot follow. (2: a guest's inputs carry a number and
@@ -199,15 +199,21 @@ func timeline_event(title: String, desc: String, clip := 1, icon := "steam_comba
 	elif steam.has_method("addTimelineEvent") and steam.get_method_argument_count("addTimelineEvent") == 7:
 		steam.call("addTimelineEvent", icon, title, desc, 0, 0.0, 0.0, clip)
 
-## What a room is for: the party's co-op campaign (its purse the host's, and limited) or the friends' Arena (everyone has a
-## sandbox of his own with no limit on money: the campaign is never touched). The host chooses it when he opens the room; a guest
+## What a room is for: the party's co-op campaign (every player, the host too, has a gladiator and a purse of his own, begun as a
+## single campaign is: Save.box_begin "coop") or the friends' Arena (everyone has a sandbox of his own with no limit on money: the
+## campaign is never touched). The host chooses it when he opens the room; a guest
 ## is told when he comes in (Menu keeps the sandbox for the Arena).
 const KIND_CAMPAIGN := "campaign"
 const KIND_ARENA := "arena"
 var room_kind := KIND_CAMPAIGN
+var coop_run := 0               # the run of the party's campaign the room plays (the host's number, told to a guest as he comes in)
 
 static func clean_kind(v) -> String:
 	return KIND_ARENA if (v is String and v == KIND_ARENA) else KIND_CAMPAIGN
+
+## How many a room takes (the host and his guests): four for a campaign room, eight for an Arena room.
+func room_cap() -> int:
+	return CAMPAIGN_PLAYERS if room_kind == KIND_CAMPAIGN else MAX_PLAYERS
 
 ## ---------- Who is in the room ----------
 ## A guest knows only the host and himself (the host's books, `peers`, are the host's alone): so the host tells every guest who is in
@@ -239,6 +245,12 @@ func room_list() -> Array:
 	return out
 
 ## The host tells his guests who is in the room.
+## The host tells every guest in the room what it is for and which run of the party's campaign it plays (as each is told as he comes in):
+## a guest keeps the gladiator of that run, as he left it, or begins a new one's.
+func announce_room() -> void:
+	if is_host():
+		send_all("room", {"k": room_kind, "run": coop_run})
+
 func send_roster() -> void:
 	if not active() or not is_host():
 		return
@@ -301,7 +313,7 @@ func host_steam(public := true) -> void:
 	if transport != "" or lobby_id:
 		leave()
 	room_kind = kind
-	steam.call("createLobby", 2 if public else 1, MAX_PLAYERS) # LOBBY_TYPE_PUBLIC = 2, FRIENDS_ONLY = 1
+	steam.call("createLobby", 2 if public else 1, room_cap()) # LOBBY_TYPE_PUBLIC = 2, FRIENDS_ONLY = 1
 
 func _on_lobby_created(result: int, id: int) -> void:
 	if result != 1:
@@ -517,7 +529,7 @@ var dtls := true
 
 func host_enet(port := PORT) -> Error:
 	var p := ENetMultiplayerPeer.new()
-	var err := p.create_server(port, MAX_PLAYERS - 1)   # (the guests: the host is one of the eight)
+	var err := p.create_server(port, room_cap() - 1)   # (the guests: the host is one of the room's four or eight)
 	if err != OK:
 		return err
 	if dtls:
@@ -572,7 +584,6 @@ func leave() -> void:
 	_presence(false)
 	_banned.clear()
 	_rate.clear()
-	purse_credit.clear()
 	ping_ms = -1.0
 	host_rate = -1.0
 	host_fps = -1.0
@@ -583,6 +594,7 @@ func leave() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	transport = ""
 	room_kind = KIND_CAMPAIGN
+	coop_run = 0
 	peers.clear()
 	inputs.clear()
 	_held.clear()
@@ -945,7 +957,7 @@ func _umsg(type: String, data) -> void:
 const MSG_PER_S := 240
 ## What a guest may say to the host at all: anything else (a snapshot, a spawn, a banner, the
 ## end of a bout) is the host's word alone and is dropped when a guest sends it.
-const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "purse_add", "doctor_done", "ff_kit", "ff_ready", "rudis_vote", "gate_pick", "endless_pick", "stall", "respawn"]
+const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "doctor_done", "ff_kit", "ff_ready", "rudis_vote", "gate_pick", "endless_pick", "stall", "respawn"]
 var _rate := {}   # peer id -> [the second's start (ms), messages in it]
 
 func _flooding(from: int) -> bool:
@@ -956,37 +968,6 @@ func _flooding(from: int) -> bool:
 	r[1] = int(r[1]) + 1
 	_rate[from] = r
 	return int(r[1]) > MSG_PER_S
-
-## The party's purse is the host's own (his save): a guest puts into it no more than he has
-## taken out of it (a sale fetches half a price; a cheaper piece of armour for a dearer one),
-## what a fight's missions pay him, and a little for what he brought to sell. A game changed
-## to send more than that adds nothing more.
-const PURSE_JOIN := 400
-const PURSE_PER_FIGHT := 400   # three missions at the best rank pay 360
-var purse_credit := {}         # a guest ("ip:..."/"steam:...") -> denarii he may still put in
-
-func _purse_key(id: int) -> String:
-	var k := _peer_key(id)
-	return k if k != "" else "id:%d" % id
-
-## A guest spent `n` denarii of the purse (what it really lost): as much may come back.
-func purse_spent(id: int, n: int) -> void:
-	var k := _purse_key(id)
-	purse_credit[k] = int(purse_credit.get(k, PURSE_JOIN)) + maxi(0, n)
-
-## What of the `n` denarii a guest puts in the purse it takes.
-func purse_take(id: int, n: int) -> int:
-	var k := _purse_key(id)
-	var c := int(purse_credit.get(k, PURSE_JOIN))
-	var ok := clampi(n, 0, c)
-	purse_credit[k] = c - ok
-	return ok
-
-## A fight is over: its missions may pay every guest.
-func purse_fight_over() -> void:
-	for id in peers:
-		var k := _purse_key(int(id))
-		purse_credit[k] = int(purse_credit.get(k, PURSE_JOIN)) + PURSE_PER_FIGHT
 
 ## A name from the wire as it may be shown: no markup (a name is drawn in the feed's rich
 ## text), no control characters, 24 letters at most.
@@ -1119,6 +1100,7 @@ func _receive(type: String, data, from: int) -> void:
 	if type == "room":
 		if not is_host() and data is Dictionary:
 			room_kind = clean_kind(data.get("k"))
+			coop_run = clampi(int(num(data.get("run", 0))), 0, 2147483647)
 			room_kind_known.emit(room_kind)
 		return
 	if type == "roster":
@@ -1129,6 +1111,8 @@ func _receive(type: String, data, from: int) -> void:
 	if type == "kicked" and not is_host():
 		if data is Dictionary and str(data.get("why", "")) == "version":
 			leave_reason = Loc.t("The host's game is another version (%s; yours is %s): update the game and join again.") % [clean_name(data.get("ver", "?"), 24), build_tag()]
+		elif data is Dictionary and str(data.get("why", "")) == "full":
+			leave_reason = Loc.t("The room is full")
 		else:
 			leave_reason = "The host removed you from the room"
 		leave()
@@ -1154,16 +1138,20 @@ func _receive(type: String, data, from: int) -> void:
 					if str(data.get("ver", "")) != build_tag():
 						_turn_away(from, "version")   # (another build in the room would be a different game)
 						return
+					if peers.size() + 1 >= room_cap():
+						_turn_away(from, "full")   # (the campaign's room takes four: the transport's own limit is the same, this is for a lobby that let one more through)
+						return
 					var info := {"name": clean_name(data.get("name", "Guest")), "loadout": sanitize_loadout(data.get("loadout")), "kit": sanitize_kit(data.get("kit")), "body": Body.sanitize(data.get("body"))}
-					if room_kind == KIND_ARENA:
-						# An Arena room takes nothing of a guest's campaign gladiator (his arms, bag, wounds): he comes in plain, and the
-						# gladiator of his sandbox follows as "me" as soon as he has been told what the room is.
-						info.loadout = {}
-						info.kit = {}
-						info.body = Body.sanitize({})
+					# A room takes nothing of a guest's single campaign (his arms, bag, wounds): he comes in plain, and his gladiator for the
+					# room (the Arena's sandbox, the run's gladiator of the party's campaign) follows as "me" as soon as he has been told
+					# what the room is (the same breath: Menu). So a man of the single campaign in his armour is never built in the yard
+					# for a moment and again.
+					info.loadout = {}
+					info.kit = {}
+					info.body = Body.sanitize({})
 					peers[from] = info
 					_presence_size()
-					send_to(from, "room", {"k": room_kind})
+					send_to(from, "room", {"k": room_kind, "run": coop_run})
 					peer_joined.emit(from, info)
 					send_roster()
 				return

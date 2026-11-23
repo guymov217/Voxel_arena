@@ -108,16 +108,3 @@ func test_a_guest_cannot_speak_for_the_host() -> void:
 	Net.peers.erase(9)
 	Net._rate.clear()
 	Net.transport = ""
-
-func test_the_purse_takes_no_more_than_a_guest_may_put_in() -> void:
-	Net.purse_credit.clear()
-	t.eq(Net.purse_take(9, 100000), Net.PURSE_JOIN, "a newcomer: a little, for what he brought to sell")
-	t.eq(Net.purse_take(9, 50), 0, "then nothing from nothing")
-	Net.purse_spent(9, 300)
-	t.eq(Net.purse_take(9, 500), 300, "what he spent may come back (a sale)")
-	Net.peers[9] = {"name": "Eve"}
-	Net.purse_fight_over()
-	t.eq(Net.purse_take(9, 1000), Net.PURSE_PER_FIGHT, "a fight's missions pay")
-	t.eq(Net.purse_take(9, -20), 0, "a negative put-in is no put-in")
-	Net.peers.erase(9)
-	Net.purse_credit.clear()

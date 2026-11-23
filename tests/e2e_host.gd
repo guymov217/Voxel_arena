@@ -348,10 +348,10 @@ func _late() -> void:
 func _endless() -> void:
 	var ok := await _pick_fight("The endless arena", false)
 	await k.pause(0.4)
-	var kit_screen: bool = menu.screen == "endless" and Kit.button_with(menu, "Into the arena") != null
-	Kit.press(Kit.button_with(menu, "Into the arena"))
+	# (A room picks no arms and bag at the gate: each goes in with what he bought and built in the yard, so no kit screen comes up.)
+	var no_kit_screen: bool = menu.screen != "endless" and Kit.button_with(menu, "Into the arena") == null
 	var began: bool = await k.until(func(): return m() != null and m().mode == "endless" and m().modes != null and m().modes.endless != null and m().modes.endless.wave >= 1, 40.0, "the first wave")
-	k.check("endless.start", ok and kit_screen and began, "the endless arena begins for the three of them from its kit screen")
+	k.check("endless.start", ok and no_kit_screen and began, "the endless arena begins for the three of them at once from the gate, with no kit screen in a room")
 	if not began:
 		return
 	var en: Endless = m().modes.endless
@@ -422,7 +422,7 @@ func _campaign() -> void:
 	menu._set_mp_kind(Net.KIND_CAMPAIGN)
 	menu._host_room(func(): k.check("campaign.open", Net.host_enet(port) == OK, "a campaign room is opened"))
 	await k.pause(0.4)
-	k.check("campaign.lobby", menu.screen == "room" and Net.room_kind == Net.KIND_CAMPAIGN and not Save.boxed and Kit.button_named(menu, "LobbyCampaign") != null and Kit.button_named(menu, "LobbyDeath") != null, "the campaign's lobby starts the co-op campaign and asks how death is dealt with, and the purse is the host's")
+	k.check("campaign.lobby", menu.screen == "room" and Net.room_kind == Net.KIND_CAMPAIGN and Save.coop() and menu.coins() == 150 and Kit.button_named(menu, "LobbyCampaign") != null and Kit.button_named(menu, "LobbyDeath") != null, "the campaign's lobby starts the co-op campaign and asks how death is dealt with, and the purse is the host's")
 	k.cue("campaign.lobby")
 	var joined: bool = await k.until(func(): return Net.peers.size() >= 1, 60.0, "the friend again")
 	k.check("campaign.joined", joined, "the friend joins the campaign room")
@@ -430,15 +430,42 @@ func _campaign() -> void:
 		return
 	await k.wait_line("guest", "DONE", "campaign.lobby", 40.0)
 	await k.pause(0.5)
-	k.check("campaign.start", Kit.press(Kit.button_named(menu, "LobbyCampaign")), "the host begins bout 1 of the co-op campaign")
+	# A campaign for another group of friends, and back: the lobby keeps a card for each campaign and the plus begins a new one; the
+	# friend is told which run is open and has his gladiator of it.
+	var run_a: int = Net.coop_run
+	k.check("slots.row", Kit.button_named(menu, "LobbySave%d" % run_a) != null and Kit.button_named(menu, "LobbyNewSave") != null, "the lobby has a card for the campaign that is open and a plus for another group's", "run %d" % run_a)
+	k.check("slots.new", Kit.press(Kit.button_named(menu, "LobbyNewSave")), "the host presses the plus: a campaign for another group of friends")
+	await k.pause(0.6)
+	var run_b: int = Net.coop_run
+	k.check("slots.opened", run_b != run_a and run_b > 0 and Save.coop() and Save.box_run == run_b and int(Save.get_value("coop_stage", 1)) == 1 and menu.coins() == 150 and Kit.button_named(menu, "LobbySave%d" % run_a) != null and Kit.button_named(menu, "LobbySave%d" % run_b) != null, "the other campaign is open at bout 1 with a new man, and each has its card", "run %d -> %d, purse %d" % [run_a, run_b, menu.coins()])
+	k.cue("campaign.slot_new")
+	await k.wait_line("guest", "DONE", "campaign.slot_new", 40.0)
+	k.check("slots.back", Kit.press(Kit.button_named(menu, "LobbySave%d" % run_a)), "the host presses the first campaign's card")
+	await k.pause(0.6)
+	k.check("slots.reopened", Net.coop_run == run_a and Save.box_run == run_a and menu.coins() == 150, "the first campaign is open again, with his gladiator of it", "run %d, purse %d" % [Net.coop_run, menu.coins()])
+	k.cue("campaign.slot_back")
+	await k.wait_line("guest", "DONE", "campaign.slot_back", 40.0)
+	await k.pause(0.3)
+	k.check("campaign.start", Kit.press(Kit.button_named(menu, "LobbyCampaign")), "the host begins the co-op campaign")
+	var in_yard: bool = await k.until(func(): return menu.in_yard() and _in_yard_with(2), 40.0, "the yard")
+	k.check("campaign.yard", in_yard, "it begins in the yard, the lobby, as it does alone")
+	menu.start({"mode": "coop", "role": "host"})   # (the gate's pick, in a word)
 	var fight: bool = await k.until(func(): return m() != null and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
 	k.check("campaign.bout", fight, "the bout begins with foes for two", "%d foes" % (m().enemies().size() if m() else 0))
 	k.cue("campaign.fight")
 	await k.wait_line("guest", "DONE", "campaign.fight", 40.0)
 	await k.pause(1.0)
+	# The friend loses a forearm in the bout (the host's own copy of him: where the blows fall): what the host's own man would keep, he keeps.
+	var friend_e: Variant = null
+	for e in m().humans():
+		if e.kind == "remote":
+			friend_e = e
+	if friend_e != null and is_instance_valid(friend_e.f):
+		friend_e.f.detach_limb(friend_e.f.by_name.forearmL, {"removed": [], "severed": []})
 	for e in m().enemies():
 		e.f.die("wounds")
 	var yard: bool = await k.until(func(): return _in_yard_with(2), 60.0, "back in the yard")
 	k.check("campaign.won", yard and int(Save.get_value("coop_stage", 1)) == 2, "the bout won, the party is back in the yard and the campaign has moved on", "stage %s" % str(Save.get_value("coop_stage", 1)))
+	k.check("campaign.purse", yard and menu.coins() > 150 and int(Save.data.coins) == 150, "his purse is his own and grew with the bout's pay; the single campaign's is as it was", "run purse %d, single %s" % [menu.coins(), str(Save.data.coins)])
 	k.cue("campaign.end")
-	k.check("campaign.guest_end", await k.wait_line("guest", "DONE", "campaign.end", 40.0), "the friend is back in the yard with the party's purse")
+	k.check("campaign.guest_end", await k.wait_line("guest", "DONE", "campaign.end", 40.0), "the friend is back in the yard with a purse of his own")

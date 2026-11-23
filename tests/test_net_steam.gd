@@ -154,7 +154,7 @@ func test_a_room_is_made_with_its_build_its_name_and_the_friends_join_string() -
 	t.check(Net.steam_ready and Net.steam_available(), "Steam is up")
 	t.check(_called(fake, ["initRelayNetworkAccess"]), "the relay network is asked for at the start, as Valve advises")
 	Net.host_steam(true)
-	t.check(_called(fake, ["createLobby", 2, 8]), "a public lobby for eight")
+	t.check(_called(fake, ["createLobby", 2, 4]), "a public lobby for four (a campaign's party is four at most)")
 	var id := 1001
 	t.eq(Net.lobby_id, id, "the room is that lobby")
 	t.eq(Net.transport, "steam", "over Steam")
@@ -169,7 +169,7 @@ func test_a_room_is_made_with_its_build_its_name_and_the_friends_join_string() -
 	t.check(_called(fake, ["leaveLobby", id]), "leaving leaves the lobby")
 	t.check(fake.rich.is_empty(), "and the friends' Join Game goes with it")
 	Net.host_steam(false)
-	t.check(_called(fake, ["createLobby", 1, 8]), "friends only is Steam's friends-only lobby")
+	t.check(_called(fake, ["createLobby", 1, 4]), "friends only is Steam's friends-only lobby")
 	_done(fake)
 
 func test_a_lobby_says_what_the_room_is_for() -> void:
@@ -177,6 +177,7 @@ func test_a_lobby_says_what_the_room_is_for() -> void:
 	Net.room_kind = Net.KIND_ARENA
 	Net.host_steam(true)
 	var id := Net.lobby_id
+	t.check(_called(fake, ["createLobby", 2, 8]), "an Arena room's lobby has the eight seats")
 	t.eq(fake.data[id].get("kind"), "arena", "an Arena room's lobby says so, for the list")
 	t.eq(fake.data[id].get("name"), "Tester's arena", "and is named an arena, as the lobby screen's title is")
 	Net.leave()

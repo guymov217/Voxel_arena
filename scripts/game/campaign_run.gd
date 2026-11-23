@@ -16,9 +16,10 @@ const MODES := {
 ## training ground's settings, a death left him what he had been taught since the checkpoint.)
 const KEPT := ["coins", "body", "arms", "armor_worn", "armor_wear", "trainer", "virtus", "kit", "run_seed", "oddities_sold"]
 
-## What a guest in the co-op campaign keeps of his own (the purse, the run and the smith's
-## oddities are the host's): his body, his arms, his armour, his teaching, his bag.
-const OWN := ["body", "arms", "armor_worn", "armor_wear", "trainer", "virtus", "kit"]
+## What a guest in the co-op campaign keeps of his own (the run is the host's; all the rest is
+## each player's, the host's as much as a guest's: Save.box_begin "coop"): his purse, his body, his
+## arms, his armour, his teaching, his bag, the oddities he has bought at the smith.
+const OWN := ["coins", "body", "arms", "armor_worn", "armor_wear", "trainer", "virtus", "kit", "oddities_sold"]
 
 static func _k(key: String, coop: bool) -> String:
 	return ("coop_" + key) if coop else key

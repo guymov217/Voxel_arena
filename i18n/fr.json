@@ -34,7 +34,6 @@
  "%d caught in the big net": "Pris dans le grand filet : %d",
  "%d denarii": "%d deniers",
  "%d denarii at the smith": "%d deniers chez le forgeron",
- "%d denarii to the party's purse": "%d deniers dans la bourse du groupe",
  "%d denarii%s": "%d deniers%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "%d coups · dernier %d · meilleur %d · %d membres tranchés · %d tués",
  "%d min": "%d min",
@@ -2876,5 +2875,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s allumée : brandissez-la comme une arme, ou maintenez F pour viser et relâchez pour lancer",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "De la poix enflammée au bout d'un bâton, dans votre main libre : brandissez-la comme une massue, et chaque coup embrase l'adversaire. Elle se consume à mesure que vous combattez, et disparaît une fois épuisée. Lancée, elle brûle là où elle tombe et embrase l'huile répandue.",
  "The torch burns out": "La torche est consumée",
- "%s SLAMS %s INTO THE SAND!": "%s ÉCRASE %s CONTRE LE SABLE !"
+ "%s SLAMS %s INTO THE SAND!": "%s ÉCRASE %s CONTRE LE SABLE !",
+ "%d denarii to each of you": "%d deniers pour chacun de vous",
+ "The room is full": "La salle est pleine"
 }

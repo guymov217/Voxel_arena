@@ -147,11 +147,10 @@ func _ready() -> void:
 	add_child(vc)
 	Net.peer_joined.connect(func(id, _info):
 		if Net.is_host():
-			if not Save.boxed:
-				Net.send_to(int(id), "purse", coins())
 			# The yard is the room: whoever joins walks in through the gate.
 			if in_yard() and match_.role == "host":
 				match_.add_peer(int(id), _peer_spec(int(id), true))
+				_coop_note_friends()   # (a friend who comes into the campaign's yard is one of the group it is)
 		if screen == "ff_setup":
 			show_screen(screen))   # (the waiting room follows the room by itself)
 	Net.peer_left.connect(func(id):
@@ -166,14 +165,17 @@ func _ready() -> void:
 		if Net.is_host():
 			if Net.room_kind == Net.KIND_ARENA:
 				_box_on()   # (the friends' room: the arena gladiator, not the campaign's)
+			else:
+				_coop_on(_coop_run_id())   # (the party's campaign: a gladiator of the run's own, begun as a single campaign begins)
 			Net.set_lobby_info(Loc.t("In the lobby"))
 		show_screen("room"))
-	# A guest is told what the room is for as he comes in (before the yard): the friends' room has a sandbox of its own for him too.
+	# A guest is told what the room is for as he comes in (before the yard): the friends' room has a sandbox of its own for him too, and
+	# the party's campaign the gladiator of the run (the host's number) he plays it with.
 	Net.room_kind_known.connect(func(kind):
 		if kind == Net.KIND_ARENA:
 			_box_on()
 		else:
-			_box_off()
+			_coop_on(Net.coop_run)
 		if screen == "room":
 			show_screen("room"))
 	Net.connection_failed.connect(func(r): show_screen("mp", r))
@@ -212,32 +214,23 @@ func _row(parent: Control, items: Array) -> HBoxContainer:
 	parent.add_child(h)
 	return h
 
-## The purse. In a room it is one purse for the party, the host's: what any of them earns goes
-## into it and what any of them buys comes out of it; the host keeps the count and tells the
-## rest (a guest's own purse waits for him at home).
-var shared_purse := 0
+## The purse: the gladiator's own. Alone it is the campaign's; in the party's campaign every player, the host as much as a guest,
+## has a purse of his own (what he earns goes into it, what he buys comes out of it: Save.box_begin "coop"); in the friends'
+## Arena there is no limit.
 
 ## A beginner's purse: a dagger (35) or a leather cap and a few blocks on the stick at the forge,
 ## not a proper weapon from the rack.
 const START_COINS := 60
 
 func coins() -> int:
-	if Save.boxed:
+	if Save.arena():
 		return Save.UNLIMITED   # (the friends' Arena: money is no object, and never the campaign's)
-	if Net.active() and not Net.is_host():
-		return shared_purse
 	return int(Save.get_value("coins", START_COINS))
 
 func add_coins(n: int) -> void:
-	if Save.boxed:
-		return
-	if Net.active() and not Net.is_host():
-		shared_purse = maxi(0, shared_purse + n)
-		Net.send_host("purse_add", n)
+	if Save.arena():
 		return
 	Save.set_value("coins", maxi(0, coins() + n))
-	if Net.active():
-		Net.send_all("purse", coins())
 
 func arms() -> Dictionary:
 	return Arms.sanitize(Save.get_value("arms", {}))
@@ -622,6 +615,7 @@ func in_yard() -> bool:
 ## The Ludus yard: walk between the stations; G at one opens it over the yard.
 func enter_yard(banner_text := "") -> void:
 	hub = true
+	_coop_note_friends()   # (the campaign begins, or goes on, with the friends who are here: the group its slot is)
 	var lo := Arms.loadout(arms())
 	# He walks about the yard as the last fight left him: his wounds on him (nobody bleeds out
 	# here), for the physician to see to, and his weapons with the chips the fight took out of
@@ -713,7 +707,7 @@ func _box_on() -> void:
 	Net.my_body = body()
 	_net_loadout()   # (the host sees the arena gladiator)
 
-## Out of it: the campaign's own gladiator is read again.
+## Out of it (either room's): the campaign's own gladiator is read again.
 func _box_off() -> void:
 	if not Save.boxed:
 		return
@@ -721,6 +715,87 @@ func _box_off() -> void:
 	Net.my_kit = kit()
 	Net.my_body = body()
 	_net_loadout()
+
+## The party's campaign (Net.KIND_CAMPAIGN): every player, the host as much as a guest, fights it with a gladiator of the run's own,
+## begun as a single campaign begins (the stick, the purse a new save has, a whole body, no armour, no bag, no teaching) and kept in his
+## own save under the run's number (Save.box_begin "coop"). His purse, bag, arms, armour, body and training are his alone, and the single
+## campaign's are never touched. The run is the host's (his save keeps its number); a guest comes into it by the number the host tells
+## him, and one he has played before is as he left it.
+func _coop_on(run: int, purse := -1) -> void:
+	run = clampi(run, 1, 2147483647)
+	if Save.coop() and Save.box_run == run:
+		return
+	if Save.boxed:
+		Save.box_end()
+	Net.coop_run = run
+	Save.box_begin(_coop_fresh(purse), "coop", run)
+	Net.my_kit = kit()
+	Net.my_body = body()
+	_net_loadout()   # (a guest's hello carried none: the room is told the gladiator of the run as soon as he knows what the room is)
+
+## What a run's gladiator begins with: what a new campaign begins a man with, nothing of the single campaign's.
+func _coop_fresh(purse := -1) -> Dictionary:
+	return {"coins": int(Save.DEFAULTS.coins) if purse < 0 else purse, "arms": Arms.empty(), "kit": {}, "body": Body.empty(), "armor_worn": [], "armor_wear": {},
+		"trainer": {}, "virtus": 0, "oddities_sold": {}, "missions": [], "rep": 0}
+
+## The number of the party's run, the host's: kept in his save, made the first time he opens a campaign room.
+func _coop_run_id() -> int:
+	var r := int(Net.num(Save.get_value("coop_run", 0)))
+	if r <= 0:
+		r = randi_range(1, 2147483000)
+		Save.set_value("coop_run", r)
+	return r
+
+## A new run of the party's campaign (the old one lost with no checkpoint to go back to, or begun again), the host's doing: a new
+## number, and every player's gladiator begun anew as a new campaign begins him (the stick, the beginner's purse, a whole body, no
+## armour): the host's now, each guest's on the host's word. The same group of friends: the slot is theirs still.
+func _coop_new_run() -> void:
+	var old := Net.coop_run
+	var run := randi_range(1, 2147483000)
+	Save.coop_restart(run)
+	_coop_on(run, START_COINS)
+	if old > 0 and old != run:
+		Save.coop_forget(old)
+	if Net.active() and Net.is_host():
+		Net.send_all("new_run", {"run": run})
+
+## The names of the friends in the room (the host not among them): who the party's campaign of this room is played with.
+func _room_friends() -> Array:
+	var out := []
+	for r in Net.room_list():
+		if not bool(r.get("host", false)):
+			out.append(String(r.get("name", "")))
+	return out
+
+## The host's other campaign opened (one for each group of friends he plays with, each as far as it got): his gladiator of that run,
+## and every guest in the room told which run it is (the same word a guest is given as he comes in: his gladiator of that run, as he
+## left it, or a new one's).
+func _coop_open_slot(run: int) -> void:
+	if not Net.is_host() or Net.room_kind != Net.KIND_CAMPAIGN or run <= 0 or run == Net.coop_run:
+		return
+	if Save.boxed:
+		Save.box_end()
+	Save.coop_open(run)
+	_coop_on(run)
+	if Net.active():
+		Net.announce_room()
+	show_screen("room")
+
+## A campaign for a new group of friends: a run of its own, begun as a campaign begins (the others are kept as they are).
+func _coop_new_slot() -> void:
+	if not Net.is_host() or Net.room_kind != Net.KIND_CAMPAIGN:
+		return
+	if Save.boxed:
+		Save.box_end()
+	_coop_on(Save.coop_begin_new())   # (as the first campaign of a new save begins, which is how a guest who has not played it is begun too)
+	if Net.active():
+		Net.announce_room()
+	show_screen("room")
+
+## Who plays the open campaign, noted in its slot (the friends in the room now).
+func _coop_note_friends() -> void:
+	if Net.active() and Net.is_host() and Net.room_kind == Net.KIND_CAMPAIGN:
+		Save.coop_note_members(_room_friends())
 
 ## Out of the room: the host closes it (his guests are told the host left), a guest goes.
 func _leave_room() -> void:
@@ -2293,8 +2368,12 @@ var fight_pick := ""   # the fight whose settings are on the screen (fight_setup
 ## A fight's card: the fights with settings open them first (fight_setup), the others begin.
 func _fight_press(k: String) -> void:
 	if k == "endless":
-		endless_back = "fights"
-		show_screen("endless")
+		if Net.active() and Net.is_host():
+			# A room does not pick arms and bag here: everyone has bought and built what he has in the yard, and goes in with it.
+			start({"mode": "endless", "decrees": [], "hazards": [], "endless": {"daily": false}})
+		else:
+			endless_back = "fights"
+			show_screen("endless")
 	elif FightOpts.offers(k).is_empty():
 		start({"mode": k})
 	else:
@@ -2646,7 +2725,7 @@ func _market_at() -> Vector2i:
 func _physician(v: VBoxContainer) -> void:
 	var yard := in_yard()
 	PhysicianScreen.build(self, v, panel, {
-		"body": body(), "stage": int(Save.get_value("stage", 1)), "supplies": true,
+		"body": body(), "stage": _market_at().x, "supplies": true,   # (the stage of the campaign he plays: the party's in a room, host and guest alike)
 		"done_text": "" if yard else "Back",
 		"done": func(nb):
 			set_body(nb)
@@ -3233,8 +3312,9 @@ func _on_lobbies(list: Array) -> void:
 	if list.is_empty():
 		room_list.add_child(UIStyle.label("No open rooms. Host one and invite your friends.", 14, UIStyle.MUTED))
 	for l in list:
-		var tag := Loc.t("Arena") if String(l.get("kind", "")) == Net.KIND_ARENA else Loc.t("Campaign")
-		_row(room_list, [UIStyle.label("[%s]  %s · %d/8 · %s" % [tag, l.name, l.players, l.mode], 15), UIStyle.button("Join", func(): Net.join_steam(l.id))])
+		var arena_kind: bool = String(l.get("kind", "")) == Net.KIND_ARENA
+		var tag := Loc.t("Arena") if arena_kind else Loc.t("Campaign")
+		_row(room_list, [UIStyle.label("[%s]  %s · %d/%d · %s" % [tag, l.name, l.players, Net.MAX_PLAYERS if arena_kind else Net.CAMPAIGN_PLAYERS, l.mode], 15), UIStyle.button("Join", func(): Net.join_steam(l.id))])
 
 ## The room's waiting room (LobbyScreen): who is in it, how friends come in, and what is done next. The host sees it first
 ## after opening a room and opens the gates (the yard) when everyone is here; a guest waits in it until he does. Over a running game
@@ -3244,13 +3324,14 @@ func _room(v: VBoxContainer) -> void:
 		"overlay": over_match,
 		"in_yard": in_yard(),
 		"enter": func(): enter_yard(),
-		"campaign": func(): start({"mode": "coop", "role": "host"}),
 		"gate": func():
 			_close_overlay()
 			_open_station("gate"),
 		"back": _close_overlay,
 		"leave": _lobby_leave,
 		"cap_text": campaign_full_text,
+		"slot": _coop_open_slot,
+		"new_slot": _coop_new_slot,
 	}))
 
 ## Out of the room from its screen: over a running game that is the way out of the room, else back to the Multiplayer screen.
@@ -3666,7 +3747,7 @@ var series_score_ms := 3600
 func start(opts: Dictionary) -> void:
 	# The friends' room has no campaign: whatever asks for one (a stale button, a message) is refused, never run on the
 	# campaign's own save.
-	if Save.boxed and (opts.get("mode") == "coop" or opts.get("mode") == "campaign"):
+	if Save.arena() and (opts.get("mode") == "coop" or opts.get("mode") == "campaign"):
 		return
 	# Co-op is the campaign for a party: the same ladder of bouts, foes for every friend, its
 	# own progress (it does not move your solo campaign on).
@@ -3716,9 +3797,9 @@ func start(opts: Dictionary) -> void:
 			opts.erase("series")
 	last_start = opts.duplicate(true)
 	_end_match()
-	# In a friends' room the fights are fought with the arms and armour of its yard (not the endless arena's kit for all, the forges'
-	# own making, nor the campaign, the yard, the training ground).
-	var arena_gear: bool = Save.boxed and not ["campaign", "yard", "endless", "forgefight", "training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false)
+	# In a friends' room the fights are fought with the arms and armour of its yard (the endless arena too: each goes in with what he
+	# bought and built there; not the forges' own making, nor the campaign, the yard, the training ground).
+	var arena_gear: bool = Save.arena() and not ["campaign", "yard", "forgefight", "training", "circus"].has(String(opts.get("mode", ""))) and not opts.get("tutorial", false)
 	var a := arms()
 	var lo := Arms.loadout(a)
 	var checkpoint_bout := false
@@ -3771,19 +3852,13 @@ func start(opts: Dictionary) -> void:
 	if opts.get("role", "local") == "host":
 		var peers := []
 		for id in Net.peers:
-			var spec := _peer_spec(int(id), geared, int(opts.get("stage", 1)) > 1)
+			var spec := _peer_spec(int(id), geared, int(opts.get("stage", 1)) > 1 or opts.mode == "yard")   # (the yard: as the last fight left him, a guest as the host)
 			if opts.mode == "forgefight":
 				# What he forged and made (sent as he made it, made safe on arrival), and his look.
 				var kit: Dictionary = (opts.get("kits", {}) as Dictionary).get(int(id), {"main": ""})
 				var made: Dictionary = kit.duplicate(true)
 				made.armor = (spec.loadout.get("armor", []) as Array) + (kit.get("armor", []) as Array)
 				spec.loadout = made
-			elif opts.mode == "endless":
-				# The waves are met with the host's kit, the same for everyone (his choice for the room), each in his own look.
-				var made2: Dictionary = (opts.get("loadout_override", {}) as Dictionary).duplicate(true)
-				made2.armor = (made2.get("armor", []) as Array) + (spec.loadout.get("armor", []) as Array)
-				spec.loadout = made2
-				spec.kit = (opts.get("inventory_override", {}) as Dictionary).duplicate()
 			peers.append(spec)
 		opts.peers = peers
 		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
@@ -4113,13 +4188,11 @@ func _campaign_lost(r: Dictionary) -> void:
 	if back > 0:
 		Net.my_body = body()   # (the checkpoint's, put back in the save: what a room is told)
 		_net_loadout()
-		if Net.active():
-			Net.send_all("purse", coins())
-			if Net.is_host() and not r.get("told", false):
-				# The party goes back with me: each guest puts himself back as he walked into the
-				# checkpoint's bout (called again as the result is read: told once).
-				r["told"] = true
-				Net.send_all("fell_back", {"stage": back, "run": int(Save.get_value("run_seed", 0))})
+		if Net.active() and Net.is_host() and not r.get("told", false):
+			# The party goes back with me: each guest puts himself back as he walked into the
+			# checkpoint's bout (called again as the result is read: told once).
+			r["told"] = true
+			Net.send_all("fell_back", {"stage": back, "run": int(Save.get_value("run_seed", 0))})
 		return
 	var sk := "coop_stage" if r.get("coop", false) else "stage"
 	var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -4129,6 +4202,13 @@ func _campaign_lost(r: Dictionary) -> void:
 	GateChoice.clear(bool(r.get("coop", false)))
 	Save.set_value("oddities_sold", {})
 	Save.set_value(ck, 1)
+	if Save.coop() and Net.active() and Net.is_host():
+		# The party's run is over: a new number, and every player begins anew as a new campaign begins him (the host's own now, each
+		# guest's on the host's word; called again as the result is read: done once).
+		if not r.get("renewed", false):
+			r["renewed"] = true
+			_coop_new_run()
+		return
 	Save.set_value("coins", START_COINS)
 	set_body(Body.empty())
 	set_arms(Arms.empty())
@@ -4136,8 +4216,6 @@ func _campaign_lost(r: Dictionary) -> void:
 	set_worn_armor([])
 	set_armor_wear({})
 	set_training_stats({})
-	if Net.active():
-		Net.send_all("purse", coins())
 
 ## A round of a match of several rounds is over. The host (or the one playing alone) counts it, tells the guests, shows how
 ## the match stands and brings the next round, or declares the match's end; a guest waits for the host's word and for the
@@ -4323,16 +4401,33 @@ func _on_finished(r: Dictionary) -> void:
 	# (A kit lent for the bout, training's bag or the tutorial's pot, is not the one kept.)
 	if match_ and match_.me and match_.role != "guest" and mode != "circus" and not last_start.has("inventory_override"):
 		set_kit(match_.me.get("inventory", kit()))
+		# Each guest's bag as the bout left it (what he threw is spent, as the host's is): the host's word, kept in his own save.
+		if match_.role == "host":
+			for e in match_.entities:
+				if e.kind == "remote" and Net.peers.has(int(e.peer)):
+					var left := Net.sanitize_kit(e.get("inventory", {}))
+					Net.peers[int(e.peer)].kit = left
+					Net.send_to(int(e.peer), "kit", left)
 	if mode == "campaign" and match_ and match_.role == "guest":
 		if not r.get("won", false) and fell_back > 0:
 			# Back at the checkpoint with the party, as I walked into its bout: the lost bout's
 			# chips are not in my blade.
 			last_result = {"text": Loc.t("You fell. Back to the last checkpoint: bout %d, as you left it.") % fell_back}
 		else:
-			# A guest's own sword takes its knocks too: the host does not keep it, he does.
+			# A guest's own sword takes its knocks too, as the host's does (his body and his armour's plates come as the host's word).
 			set_arms(Arms.add_wear(arms(), match_.my_wear()))
-			if r.get("won", false) and r.get("fell", false):
-				last_result = {"text": Loc.t(CARRIED_OFF)}
+			# A hand lost in the bout: the weapon into the hand he has left, or up on the smith's rack (as the host's).
+			var fitted_g := Arms.fit_hands(arms(), body())
+			if not (fitted_g.moved as Array).is_empty():
+				set_arms(fitted_g.arms)
+			if r.get("won", false):
+				# The bout's pay is every player's own, as it is the host's.
+				add_coins(int(r.get("pay", 0)))
+				last_result = {"text": Loc.t("Stage %d cleared: %d denarii.") % [int(r.get("stage", 0)), int(r.get("pay", 0))]}
+				if r.get("fell", false):
+					last_result.text += " " + Loc.t(CARRIED_OFF)
+				if not (fitted_g.moved as Array).is_empty():
+					last_result.text += " " + ". ".join(fitted_g.moved) + "."
 	if mode == "campaign" and match_ and match_.role != "guest":
 		var sk := "coop_stage" if r.get("coop", false) else "stage"
 		var ck := "coop_checkpoint" if r.get("coop", false) else "checkpoint"
@@ -4595,12 +4690,19 @@ func _on_net(type: String, data, _from: int) -> void:
 		"music":
 			if not Net.is_host() and data is String and Music.MOODS.has(data) and Sfx.music:
 				Sfx.music.set_state(data)
-		"purse":
-			# The party's purse, as the host counts it.
-			if not Net.is_host() and (data is int or data is float):
-				shared_purse = maxi(0, int(data))
-				if screen != "" and visible:
-					show_screen(screen)
+		"kit":
+			# My bag as the bout left it (the host's word: what I threw is spent, as the host's is).
+			if not Net.is_host() and data is Dictionary:
+				set_kit(Net.sanitize_kit(data))
+		"new_run":
+			# The party's run is over and a new one begun (the host's word): my gladiator for it begins anew, as the host's did.
+			if not Net.is_host() and Net.room_kind == Net.KIND_CAMPAIGN and data is Dictionary:
+				var old := Net.coop_run
+				var run := clampi(int(Net.num(data.get("run"))), 1, 2147483647)
+				_coop_on(run, START_COINS)
+				if old > 0 and old != run:
+					Save.coop_forget(old)
+				fell_back = 0
 		"demo_end":
 			if not Net.is_host():
 				_end_match()
@@ -4639,20 +4741,8 @@ func _on_net(type: String, data, _from: int) -> void:
 		"rudis_vote":
 			if Net.is_host() and data is String:
 				rudis_take(_from, String(data))
-		"purse_add":
-			# What a guest spent comes off the purse; what he puts in, only as much as he may
-			# (Net.purse_take: no more than he took out, and what his fights paid).
-			if Net.is_host() and (data is int or data is float) and is_finite(float(data)):
-				var n := clampi(int(data), -5000, 5000)
-				if n < 0:
-					var before := coins()
-					add_coins(n)
-					Net.purse_spent(_from, before - coins())
-				else:
-					add_coins(Net.purse_take(_from, n))
 		"end":
 			if match_:
-				# (The pay went into the party's purse on the host's side.)
 				match_.guest_end(data)
 
 ## At a stall of the yard (a menu open over it: the shop, the smith, the physician, the trainer, the gate; not the pause menu's
@@ -4986,8 +5076,24 @@ func _screenshot() -> String:
 
 ## A new campaign: back to bout 1, the body whole, the arms and the bag as for a beginner.
 func restart_campaign() -> void:
-	if Save.boxed:
+	if Save.arena():
 		return   # (the friends' room has no campaign to begin again)
+	if Save.coop():
+		# The party's campaign begun again (the host's doing): bout 1, a new run, every gladiator as a new campaign begins him.
+		if not Net.is_host():
+			return
+		Save.set_value("run_seed", randi())
+		Save.set_value("coop_stage", 1)
+		Save.set_value("coop_checkpoint", 1)
+		Save.set_value("coop_lap", 1)
+		Save.set_value("coop_scroll", {})
+		Save.set_value("coop_favourite", "")
+		GateChoice.clear(true)
+		_coop_new_run()
+		if match_:
+			_end_match()
+		show_screen("campaign_mode")
+		return
 	Save.set_value("run_seed", randi())   # a new run: other oddities at the smith
 	Save.set_value("run_scroll", {})
 	GateChoice.clear(false)
@@ -5078,7 +5184,7 @@ func _toggle_pause() -> void:
 		v.add_child(UIStyle.button("Back to the forge", func():
 			_toggle_pause()
 			back_to_forge(), true))
-	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()) and not Save.boxed:
+	if match_ and (match_.mode == "campaign" or match_.mode == "yard") and (not Net.active() or Net.is_host()) and not Save.arena():
 		# Twice, to be sure: the whole campaign over from bout 1, whole of body, bare of arms.
 		var rb := UIStyle.button("Restart the campaign", func(): pass)
 		rb.pressed.connect(func():

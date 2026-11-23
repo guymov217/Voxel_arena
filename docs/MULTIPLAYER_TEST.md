@@ -52,9 +52,13 @@ What it goes through, in order (the report is grouped the same way):
 8. **The endless arena with three**: each wave beaten holds out rewards to each of them, each picks on his own screen
    (the friends from the cards, the host from his), and the next wave comes when all have picked.
 9. **Removing a friend.** *Remove* asks twice; he is told, lands at the Multiplayer screen, and cannot come back in.
-10. **Closing the room**: the friend is told the host left and is himself again; then **a campaign room**: no sandbox, the
-    party's purse is the host's (150), the lobby offers *Begin bout 1* and how death is dealt with; the co-op bout is
-    played, won, and the party's purse grows on both screens.
+10. **Closing the room**: the friend is told the host left and is himself again; then **a campaign room**: a gladiator of
+    the run's own for each (the stick, a purse of 150 of his own, the single campaign's 150 and 77 untouched), the lobby
+    offers *Begin the campaign* (into the yard, as alone) and how death is dealt with, and a row of the host's campaigns (a
+    card for each group of friends he plays with, and a plus): the plus opens a campaign for another group and the friend is
+    told which run it is (a new man there), the first card opens the first again and the friend has his gladiator of it as he
+    left it (his purse of 175); then the co-op bout is played and won, each purse grows by the bout's pay, and the forearm the
+    friend lost in it is kept in his own save.
 
 If something fails the report says what it saw. The games' own logs are in the game's data folder, `e2e` (Windows:
 `%APPDATA%\Godot\app_userdata\WRECKSMITH\e2e`, Linux: `~/.local/share/godot/app_userdata/WRECKSMITH/e2e`).
@@ -84,7 +88,8 @@ the fight for everyone and after the bout everyone is back in the yard.
   Esc in the yard opens the pause menu: *The room* is the same lobby over the game.
 - Both players are in the yard and see each other walk about; E by a keeper opens his stall in either window.
 - **Arena room:** each has a gladiator of his own, money is no object (the purse shows ∞), and the campaign is not touched
-  in either window. **Campaign room:** the purse is the host's and limited, and the guest's own purse is the same number.
+  in either window. **Campaign room:** each has a purse of his own (150 to begin), a stick and a whole body, the room takes four,
+  and the single campaign's purse is not touched in either window.
 - The host walks into the gate and picks a fight; the guest's window follows into it. Rounds and bots are set on the
   fight's own screen. Red vs Blue: each walks into a circle; the host begins when all stand in one.
 - In the fight both fighters are drawn in both windows; damage (voxels flying, blood) shows in both; the round ends for both.

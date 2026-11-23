@@ -34,7 +34,6 @@
  "%d caught in the big net": "Im großen Netz gefangen: %d",
  "%d denarii": "%d Denare",
  "%d denarii at the smith": "%d Denare beim Schmied",
- "%d denarii to the party's purse": "%d Denare in den Gruppenbeutel",
  "%d denarii%s": "%d Denare%s",
  "%d hits · last blow %d · best %d · %d limbs off · %d kills": "%d Treffer · letzter Hieb %d · bester %d · %d Glieder ab · %d getötet",
  "%d min": "%d Min.",
@@ -2879,5 +2878,7 @@
  "%s lit: swing it like a weapon, or hold F to aim and let go to throw": "%s brennt: Schwing sie wie eine Waffe, oder halte F zum Zielen und lass zum Werfen los",
  "Burning pitch on a stick, held in your free hand: swing it like a club, and every blow sets the foe alight. It burns down as you fight with it, and is gone when it is spent. Thrown, it burns where it lands and sets spilled oil ablaze.": "Brennendes Pech an einem Stock, in der freien Hand: Schwing sie wie eine Keule, und jeder Schlag setzt den Gegner in Brand. Sie brennt im Kampf herunter und ist danach verbraucht. Geworfen brennt sie, wo sie landet, und setzt verschüttetes Öl in Brand.",
  "The torch burns out": "Die Fackel ist heruntergebrannt",
- "%s SLAMS %s INTO THE SAND!": "%s SCHMETTERT %s IN DEN SAND!"
+ "%s SLAMS %s INTO THE SAND!": "%s SCHMETTERT %s IN DEN SAND!",
+ "%d denarii to each of you": "%d Denare für jeden von euch",
+ "The room is full": "Der Raum ist voll"
 }

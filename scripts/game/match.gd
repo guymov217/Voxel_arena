@@ -2629,7 +2629,7 @@ func _check_round(dt: float) -> void:
 			favourite_now = PartyGlory.favourite(party_favour()) if coop else ""
 			var fav := PartyGlory.bonus(base) if favourite_now != "" else 0
 			var pay := base + round_pay + crowd + fav
-			var purse := ("%d denarii to the party's purse" if players_count > 1 else "%d denarii") % pay
+			var purse := ("%d denarii to each of you" if players_count > 1 else "%d denarii") % pay
 			if crowd > 0:
 				purse += Loc.t(", %d of them the crowd's") % crowd
 			if fav > 0:
@@ -2944,7 +2944,6 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 		if killcam:
 			var ve = _entity_of(killcam.best.get("victim")) if show else null
 			msg["kc_v"] = ve.id if ve != null else -1
-		Net.purse_fight_over()
 		Net.send_all("end", msg)
 	if show:
 		await killcam.play(func(): pass)

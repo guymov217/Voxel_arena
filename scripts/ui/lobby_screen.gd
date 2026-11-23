@@ -3,28 +3,33 @@ extends VBoxContainer
 ## The waiting room of a multiplayer room, for the host and for every guest. A card for each of the eight places (a medallion with
 ## the first letter of the name, a crown on the host's, the connection in bars, Mute and, for the host, Remove); the places still
 ## free are dashed rings, and to the host a ring is a button that gives a friend the way in (the address to copy, or Steam's
-## invite); under them the few buttons there are: the host opens the yard (the campaign's host starts it), everyone can leave.
+## invite); under them the few buttons there are: the host opens the yard (a campaign room's host begins the campaign there), everyone can leave.
 ## No instructions: a button does what it says. The screen follows the room by itself: a friend who comes or goes, a connection
 ## that changes.
 ##
 ## It is also what the pause menu opens over the yard ("The room"), so the host sees who is there, invites and removes from
 ## anywhere. `acts` are the menu's doings, so that this stays a picture of the room and nothing more:
-##   enter (the host opens the yard), campaign (the host starts the co-op campaign), gate (the host to the gate, over the yard),
-##   back (close this screen over the game), leave (out of the room), cap_text (why the campaign cannot begin), and two facts:
+##   enter (the host opens the yard: for a campaign room that is how the campaign begins), gate (the host to the gate, over the yard),
+##   back (close this screen over the game), leave (out of the room), cap_text (why the campaign cannot begin), slot (the host opens
+##   one of his campaigns kept for the groups of friends he plays with: its run), new_slot (a campaign for a new group), and two facts:
 ##   overlay (opened over a running game) and in_yard (that game is the yard).
 ## Buttons keep names the tests (and a tester's script) find them by: LobbyEnter, LobbyCampaign, LobbyYard, LobbyGate,
-## LobbyBack, LobbyLeave, LobbyWait, LobbyInvite0 (the first free place), and for a guest in place n: Mute<n>, Remove<n>.
+## LobbyBack, LobbyLeave, LobbyWait, LobbyInvite0 (the first free place), and for a guest in place n: Mute<n>, Remove<n>; a campaign
+## room's host also has LobbySaves (the row of his campaigns), LobbySave<run> for each and LobbyNewSave.
+## (LobbyCampaign is the campaign room's way into the yard; LobbyYard is gone.)
 
-const SLOTS := Net.MAX_PLAYERS
+## (The places a room has: four in a campaign room, eight in an Arena room: Net.room_cap.)
 ## The medallions' colours, one for each place (cloth dyes: crimson, indigo, olive, purple, ochre, teal, rust, slate).
 const TINTS := [Color(0.62, 0.17, 0.12), Color(0.17, 0.29, 0.58), Color(0.3, 0.44, 0.17), Color(0.45, 0.22, 0.52), Color(0.74, 0.54, 0.16), Color(0.12, 0.44, 0.44), Color(0.72, 0.34, 0.12), Color(0.36, 0.39, 0.44)]
 const CARD := Vector2(268, 214)
+const SAVE_COINS := 3           # (the friends of a saved campaign shown on its card: a campaign room has places for three besides the host)
 
 var acts := {}
 var _title: Label
 var _grid: GridContainer
 var _count: Label
 var _cap: Label
+var _saves: HBoxContainer        # (the host's campaigns, in a campaign room's lobby)
 var _start: Button
 var _t := 1.0
 var _sig := ""
@@ -125,6 +130,54 @@ class Bars extends Control:
 			var h := 6.0 + float(i) * 4.0
 			draw_rect(Rect2(float(i) * 6.0, size.y - h, 4.0, h), col if i < level else Color(UIStyle.BRONZE_DARK, 0.5))
 
+## A saved campaign's face: the friends who play it as small coins of their cloth colours (overlapped; one dashed coin while none has
+## played it yet), and the bout it has reached in digits. The card for a new campaign is a dashed ring with a plus.
+class SaveMark extends Control:
+	var names: Array = []
+	var stage := 1
+	var plus := false
+	var _font: Font
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(150, 56)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_font = UIStyle.serif(0, 700)
+
+	func _draw() -> void:
+		var r := 19.0
+		var cy := size.y * 0.5
+		if plus:
+			var c0 := Vector2(size.x * 0.5, cy)
+			var n := 14
+			for i in n:
+				var a := TAU * float(i) / float(n)
+				draw_arc(c0, r - 1.0, a, a + TAU / float(n) * 0.55, 5, Color(UIStyle.BRONZE_DARK, 0.8), 2.0, true)
+			var col := Color(UIStyle.BRONZE, 0.7)
+			draw_line(c0 + Vector2(-9, 0), c0 + Vector2(9, 0), col, 3.0, true)
+			draw_line(c0 + Vector2(0, -9), c0 + Vector2(0, 9), col, 3.0, true)
+			return
+		var shown := names.slice(maxi(0, names.size() - LobbyScreen.SAVE_COINS))
+		if shown.is_empty():
+			var c1 := Vector2(r + 3.0, cy)
+			for i in 14:
+				var a := TAU * float(i) / 14.0
+				draw_arc(c1, r - 1.0, a, a + TAU / 14.0 * 0.55, 5, Color(UIStyle.BRONZE_DARK, 0.8), 2.0, true)
+		for i in shown.size():
+			var who := String(shown[i])
+			var c := Vector2(r + 3.0 + float(i) * r * 1.6, cy)   # (overlapped, a letter of each still whole)
+			var tint := LobbyScreen.tint_of(absi(hash(who)))
+			draw_circle(c, r, tint.darkened(0.4))
+			draw_circle(c, r - 2.0, tint)
+			draw_arc(c, r - 0.5, 0.0, TAU, 32, UIStyle.BRONZE_DARK.lightened(0.3), 2.0, true)
+			var fs := 22
+			var letter := LobbyScreen.initial_of(who)
+			var ts := _font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+			draw_string(_font, Vector2(c.x - ts.x * 0.5, c.y + fs * 0.34), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 0.95, 0.82))
+		var fs2 := 28
+		var digits := str(stage)
+		var ds := _font.get_string_size(digits, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2)
+		draw_string(_font, Vector2(size.x - ds.x - 4.0, cy + fs2 * 0.34), digits, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, UIStyle.GOLD_LIGHT)
+
 func _init(acts_ := {}) -> void:
 	acts = acts_
 	add_theme_constant_override("separation", 18)
@@ -160,6 +213,9 @@ func _ready() -> void:
 	_grid.add_theme_constant_override("h_separation", 14)
 	_grid.add_theme_constant_override("v_separation", 14)
 	add_child(_grid)
+	# The host's campaigns, one for each group of friends he plays with (the lobby before the campaign, not the pause menu's room).
+	if host and not arena and not bool(acts.get("overlay", false)):
+		add_child(_saves_row())
 	# The buttons.
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 14)
@@ -243,7 +299,8 @@ func _build_bar(bar: HBoxContainer, arena: bool, host: bool) -> Button:
 	bar.add_child(_action("Close the room" if host else "Leave the room", acts.get("leave", func(): pass), "LobbyLeave", false))
 	return first
 
-## The host of a campaign room: how death is dealt with before the first bout, then the bout, or the yard first.
+## The host of a campaign room: how death is dealt with before the first bout, then the campaign, which begins as it does alone,
+## in the yard (the lobby: the smith, the market, the physician, and the gate to the bout).
 func _campaign_bar(bar: HBoxContainer) -> Button:
 	var cs := int(Save.get_value("coop_stage", 1))
 	if cs <= 1:
@@ -256,11 +313,9 @@ func _campaign_bar(bar: HBoxContainer) -> Button:
 		mo.custom_minimum_size = Vector2(150, 62)
 		mo.name = "LobbyDeath"
 		bar.add_child(mo)
-	_start = _action(Loc.t("Begin bout %d") % cs, acts.campaign, "LobbyCampaign", true)
+	_start = _action("Begin the campaign" if cs <= 1 else "Continue the campaign", acts.enter, "LobbyCampaign", true)
 	_start.custom_minimum_size.x = 340
 	bar.add_child(_start)
-	var yard := _action("Into the yard", acts.enter, "LobbyYard", false)
-	bar.add_child(yard)
 	_cap = Label.new()
 	_cap.text = Loc.t("%d at most") % Net.CAMPAIGN_PLAYERS
 	_cap.add_theme_font_size_override("font_size", 16)
@@ -269,6 +324,90 @@ func _campaign_bar(bar: HBoxContainer) -> Button:
 	_cap.visible = false
 	bar.add_child(_cap)
 	return _start
+
+## The row of the host's campaigns: a scrolling strip, one card for each (filled by _fill_saves).
+func _saves_row() -> Control:
+	var sc := ScrollContainer.new()
+	sc.name = "LobbySaves"
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.custom_minimum_size = Vector2(0, 92)
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_saves = HBoxContainer.new()
+	_saves.add_theme_constant_override("separation", 12)
+	sc.add_child(_saves)
+	return sc
+
+## One card for each campaign kept (the open one ringed in gold: its friends are those in the room now, and those who have played it
+## before) and a plus for a campaign of a new group. A card opens its campaign for the room.
+func _fill_saves(list: Array) -> void:
+	if _saves == null:
+		return
+	for c in _saves.get_children():
+		c.queue_free()
+		_saves.remove_child(c)
+	var here := []
+	for r in list:
+		if not r.host:
+			here.append(String(r.name))
+	var open_card: Control = null
+	for sv in Save.coop_slots():
+		var names: Array = (sv.members as Array).duplicate()
+		if bool(sv.active):
+			for n in here:
+				if not names.has(n):
+					names.append(n)
+		var card := _save_card(int(sv.run), names, int(sv.stage), bool(sv.active))
+		_saves.add_child(card)
+		if bool(sv.active):
+			open_card = card
+	var nb := _save_button("LobbyNewSave", _card_style("guest"), func(): _act("new_slot"))
+	var pm := SaveMark.new()
+	pm.plus = true
+	_in_button(nb, pm)
+	_saves.add_child(nb)
+	if open_card != null:
+		_show_card.call_deferred(open_card)
+
+## The strip scrolled to the card of the campaign that is open (the strip is laid out a frame after it is filled).
+func _show_card(card: Control) -> void:
+	if is_instance_valid(card) and card.get_parent() != null and card.get_parent().get_parent() is ScrollContainer:
+		(card.get_parent().get_parent() as ScrollContainer).ensure_control_visible(card)
+
+func _save_card(run: int, names: Array, stage: int, active: bool) -> Button:
+	var b := _save_button("LobbySave%d" % run, _card_style("host" if active else "guest"), func(): _act("slot", run))
+	var mk := SaveMark.new()
+	mk.names = names
+	mk.stage = stage
+	_in_button(b, mk)
+	b.tooltip_text = ", ".join(PackedStringArray(names))
+	return b
+
+func _save_button(button_name: String, base: StyleBoxFlat, cb: Callable) -> Button:
+	var b := Button.new()
+	b.name = button_name
+	b.custom_minimum_size = Vector2(176, 80)
+	for st in ["normal", "disabled"]:
+		b.add_theme_stylebox_override(st, base)
+	for st in ["hover", "pressed", "hover_pressed", "focus"]:
+		b.add_theme_stylebox_override(st, _card_style("free_hover"))
+	b.pressed.connect(cb)
+	return b
+
+func _in_button(b: Button, mk: Control) -> void:
+	mk.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mk.offset_left = 12
+	mk.offset_right = -12
+	b.add_child(mk)
+
+## The menu's doing named `what`, with its arguments (nothing happens if the menu has none).
+func _act(what: String, arg = null) -> void:
+	var cb = acts.get(what)
+	if cb is Callable and (cb as Callable).is_valid():
+		if arg == null:
+			(cb as Callable).call()
+		else:
+			(cb as Callable).call(arg)
 
 func _small_button(text: String, cb: Callable) -> Button:
 	var b := UIStyle.button(text, cb)
@@ -309,7 +448,8 @@ func _rebuild(list: Array) -> void:
 	_live.clear()
 	var now := {}
 	var free := 0
-	for i in SLOTS:
+	var slots := Net.room_cap()
+	for i in slots:
 		var card: Control
 		if i < list.size():
 			var r: Dictionary = list[i]
@@ -326,7 +466,8 @@ func _rebuild(list: Array) -> void:
 			free += 1
 		_grid.add_child(card)
 	_shown = now
-	_count.text = "%d / %d" % [list.size(), SLOTS]
+	_fill_saves(list)
+	_count.text = "%d / %d" % [list.size(), slots]
 	for r in list:
 		if r.host:
 			_title.text = _title_of(Net.room_kind == Net.KIND_ARENA, String(r.name))   # (a guest learns the host's name from the first roster)

@@ -278,7 +278,10 @@ func _campaign() -> void:
 	k.check("close.friends", gone, "and the friends, finding it gone, close their games", "%d games" % strip.friends.count())
 	if not await _room(Net.KIND_CAMPAIGN):
 		return
-	k.check("campaign.start", Kit.press(Kit.button_named(menu, "LobbyCampaign")), "the host begins bout 1 of the co-op campaign")
+	k.check("campaign.start", Kit.press(Kit.button_named(menu, "LobbyCampaign")), "the host begins the co-op campaign")
+	var in_yard: bool = await k.until(func(): return menu.in_yard(), 40.0, "the yard")
+	k.check("campaign.yard", in_yard, "it begins in the yard, as it does alone")
+	menu.start({"mode": "coop", "role": "host"})   # (the gate's pick, in a word)
 	var fight: bool = await k.until(func(): return m() != null and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 60.0, "the bout")
 	k.check("campaign.bout", fight, "the bout begins with foes for the three")
 	if not fight:

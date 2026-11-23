@@ -50,8 +50,11 @@ func setup(menu_: Node, persona_index_: int, addr: String, port: int) -> void:
 func _ready() -> void:
 	Engine.max_fps = 60   # (a game without a window runs as fast as it can else, and a game of it a core)
 	Net.message.connect(_on_message)
-	# The room says what it is for (an Arena room gives him a sandbox gladiator of its own, Menu): he puts on what is his again.
-	Net.room_kind_known.connect(func(_kind): menu.set_arms(Friends.arms_of(persona_index)))
+	# The room says what it is for (an Arena room gives him a sandbox gladiator of its own, Menu): he puts on what is his again. In the
+	# party's campaign he is a man like any other, with the stick a new campaign gives, as every player begins it.
+	Net.room_kind_known.connect(func(kind):
+		if kind == Net.KIND_ARENA:
+			menu.set_arms(Friends.arms_of(persona_index)))
 	_act_t = randf_range(1.5, 4.0)
 
 ## What the host's Friends tells him: "leave", or (the test's) "stall[:smith]" to go into a stall now, "brawl" to pick a quarrel now.
