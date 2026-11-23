@@ -313,3 +313,30 @@ the playtest. Where a window's 30% goes (20 s of one, the scripts' functions tim
 and their snapshots in it), `Combat._physics_process` 2.3% (190 us a step, on a game whose combat is off), `Match._process` 1.3%, the parts' `_process` and `_integrate_forces` 1.9%: a little over half in all, the
 engine's own steps and network the rest. At 60 physics steps a second instead of 120 a window costs 21%, not half of 27%: not worth what it takes from its likeness to a friend's game. To play eight without
 them, a friend that only sends hands and reads positions would have to stand in for these (not made).
+
+## 12. The user's record: the endless arena with eight players (#310, #321)
+
+His `hitches.txt` (a host with an i5-14600KF, 20 threads, an RTX 4070, and seven friend windows on the same machine; the version that wrote it to the user data folder, with `SLOW` lines and no
+cause yet). The room as it went:
+
+| where | men alive | a step | game speed | frames a second |
+|---|---|---|---|---|
+| the yard (8 players, 6 stall people standing) | 14 | 5.8-6.8 ms | 100% | 35-45 |
+| the endless arena, first foes | 11 | 7.6-8.5 | 93%, 83% | 23, 17 |
+| one more foe in: the room goes over its budget (two steps a frame) | 12 | 9.8 | 66% | 16 |
+| the wave of eight foes against the eight players | 14-16 | 11.6-14.2 | 38-46% (45-56 steps a second) | 23-28 |
+
+- **The slow motion is not a stall.** It is every step costing 12-14 ms of the 8.3 there are: 120 of them need 1.5 s of every second whatever the frames are. The stalls of the session are two
+  (1647 ms at the yard's start, the 1484 ms of `match setup` in it; 923 ms at the arena's start) and 22 frames of 60-100 ms in a hundred seconds.
+- **It is the game's own cost, not the friend windows'.** His `host_check.txt` (the machine alone, no friends): 8 plain fighters 7.6 ms a step, 6 of them 6.1. The README's table has 8 players and 8 foes at
+  20.3 ms on the machine it was made on, which is 1.6 times slower than his by `host_check` (12.1 against 7.6 ms for eight): 20.3 / 1.6 = 12.7 ms, what his record says. Twenty threads leave seven friend windows room.
+- **Made: the foes' gate** (`Match.foe_gate_holds`, `bring_in`). A foe of a wave waits outside while one more man would take the step over 7.6 ms (the record's 7.6 ms was 93% of the speed, 8.5 was 83%, 9.8 was
+  66%) or the room is over its budget, never while fewer than two foes are on the sand, and the foes come in as the others fall: the wave is all of it, not all of it at once; nothing is held on a host that keeps up, and
+  only a foe (not a goat out of a pot, not the first wave of a bout). `tests/gate298.gd` (eight bot players, the arena's waves of eight, `--fixed-fps 120`, on the 1.6 times slower machine): gate off, sixteen on the
+  sand, a step of 14.4 ms on average and 89% of the steps over the 8.33; gate on, two or three foes at a time and the wave coming in as they fall. Where eight players alone are over the budget (a slower
+  processor) nothing can be held but the foes; the step itself has to get cheaper (sections 6 and 10).
+- **Found with it:** `Match._sync_loose` assigned a weapon freed with the dead carried off to a typed variable, which stopped the function there on every step from the first one (a script error a step, and the
+  loose weapons' picks not sent); and the loose weapons' snapshot of eight friends' weapons lying about was 1464 bytes, over ENet's 1392 for an unreliable packet (the host's console: "Sending 1464 bytes
+  unreliably which is above the MTU"): it goes in parts that fit now (`lsnap_messages`), the hazards with the first.
+- **The console's `Buffer full, dropping packets!`** came from a process that did not read its socket for half a second or more (the friend windows building their worlds, 1-3.7 s each, as they came into a
+  yard or an arena): the packets of that time are lost, the reliable ones sent again. Harmless to the host's game; noise.

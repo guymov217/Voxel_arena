@@ -507,6 +507,31 @@ func stage_start() -> bool:
 func guest_staging() -> bool:
 	return role == "guest" and stage_in and (stage_always or (not headless and DisplayServer.get_name() != "headless"))
 
+## A foe waits at the gate while the host cannot afford one more (user: the endless arena with eight players ran at 40% of its speed with sixteen on the sand, a step of 12 to 14 ms for the
+## 8.3 there is, whatever the processor: his record's SLOW lines). With what a step costs now (Net.step_ms) and one man's share of it, if one more man would take the step over GATE_BUDGET_MS (or the
+## room is over its budget already) the foe is held back, never while fewer than GATE_MIN_FOES are on the sand, and only a foe: the players are not held. The foes come in as the others fall: the wave is all of it, not all of it at
+## once. A host that keeps up is not touched (and the tests', without a screen, never ask: bring_in builds them at once).
+const GATE_BUDGET_MS := 7.6   # the 8.3 ms a step has, less what a heavy moment asks (the record: 7.6 ms a step was 93% of the speed, 8.5 was 83%, 9.8 was 66%)
+const GATE_MIN_FOES := 2
+var gate_cost_ms := -1.0   # (a test's: the step's cost to hold the gate by, instead of the room's)
+var gate_held := 0         # the foes held at the gate now
+
+## Whether a foe is held: the steps cost `step_ms` with `men` alive on the sand, `foes` of them foes; `over`: the room is over its budget for good (Net.overloaded).
+static func foe_gate_holds(step_ms: float, men: int, foes: int, over := false) -> bool:
+	if step_ms <= 0.0 or men < 2 or foes < GATE_MIN_FOES:
+		return false
+	return over or step_ms * (1.0 + 1.0 / float(men)) > GATE_BUDGET_MS
+
+func _foe_gate_holds() -> bool:
+	var men := 0
+	var foes := 0
+	for e in entities:
+		if is_instance_valid(e.f) and e.f.alive:
+			men += 1
+			if int(e.team) == ENEMY_TEAM:
+				foes += 1
+	return foe_gate_holds(gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, men, foes, gate_cost_ms < 0.0 and Net.overload_on and Net.overloaded)
+
 func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 	if not (staging() or (at_start and stage_start())):
 		for spec in specs:
@@ -520,6 +545,15 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 	for spec in specs:
 		if over or not is_inside_tree():
 			break
+		# (A foe, not the goat out of a pot nor the first round's, comes in when the host can afford him.)
+		if not at_start and int(spec.get("team", -1)) == ENEMY_TEAM and not bool(spec.get("harmless", false)) and _foe_gate_holds():
+			gate_held += 1
+			FpsMeter.note("foes held at the gate: a step costs %.1f ms, %d men on the sand" % [gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, entities.filter(func(x): return is_instance_valid(x.f) and x.f.alive).size()])
+			while _foe_gate_holds() and not over and is_inside_tree():
+				await get_tree().create_timer(0.25).timeout
+			gate_held -= 1
+			if over or not is_inside_tree():
+				break
 		var e = null
 		if spec.get("kind", "") == "beast":
 			e = await spawn_beast_staged(spec)
@@ -1333,11 +1367,13 @@ func _physics_process(dt: float) -> void:
 		Net.send_all("isnap", items.snapshot(), false)
 		var ls := []
 		for id in loose_ids:
-			var lw: Weapon = loose_ids[id]
-			if is_instance_valid(lw):
+			var lw0 = loose_ids[id]
+			if is_instance_valid(lw0):
+				var lw: Weapon = lw0
 				var lq := lw.global_transform.basis.get_rotation_quaternion()
 				ls.append([id, snappedf(lw.global_position.x, 0.001), snappedf(lw.global_position.y, 0.001), snappedf(lw.global_position.z, 0.001), snappedf(lq.x, 0.001), snappedf(lq.y, 0.001), snappedf(lq.z, 0.001), snappedf(lq.w, 0.001)])
-		Net.send_all("lsnap", {"w": ls, "h": hazards.snapshot()}, false)
+		for part in lsnap_messages(ls, hazards.snapshot()):
+			Net.send_all("lsnap", part, false)
 	if role == "host" and tick % SNAP_EVERY == 1:
 		_sync_held()
 	if role == "host" and tick % 30 == 11:
@@ -1889,6 +1925,25 @@ func _sync_held() -> void:
 		e.held_sig = sig
 		Net.send_all("held", {"id": e.id, "t": t, "s": sd, "st": [f.stowed.R != null, f.stowed.L != null]})
 
+## The loose weapons' snapshot in packets that fit the line: one over the MTU (1392 bytes for ENet) is cut in pieces and lost with any one of them, and eight friends' weapons lying
+## about made one of 1464 bytes (the host's console, user: "Sending 1464 bytes unreliably which is above the MTU"). The hazards go with the first; each part is a snapshot of its own rows.
+const MTU_SAFE := 1300
+static func lsnap_messages(rows: Array, haz) -> Array:
+	var out := []
+	var chunk := []
+	var size := 32 + var_to_bytes(haz).size()
+	for r in rows:
+		var rs := var_to_bytes(r).size()
+		if size + rs > MTU_SAFE and not chunk.is_empty():
+			out.append({"w": chunk})
+			chunk = []
+			size = 32
+		chunk.append(r)
+		size += rs
+	out.append({"w": chunk})
+	out[0]["h"] = haz
+	return out
+
 func _sync_loose() -> void:
 	for w in combat.loose_weapons:
 		if not is_instance_valid(w) or w.net_id >= 0:
@@ -1906,10 +1961,11 @@ func _sync_loose() -> void:
 				msg["d"] = {"name": w.design.get("name", ""), "voxels": w.design.get("voxels", []), "grips": w.design.get("grips", {}), "kind": w.design.get("kind", "weapon")}
 			Net.send_all("wspawn", msg)
 	for id in loose_ids.keys():
-		var w: Weapon = loose_ids[id]
-		if not is_instance_valid(w):
+		var w0 = loose_ids[id]   # (untyped: a weapon freed with the dead carried off is not assigned to a Weapon, that stopped this function at its first one, every step)
+		if not is_instance_valid(w0):
 			loose_ids.erase(id)
 			continue
+		var w: Weapon = w0
 		if w.holder != null:
 			var he = entity_of(w.holder)
 			if he:
@@ -2130,7 +2186,8 @@ func guest_message(type: String, data) -> void:
 					var lw = loose_ids.get(int(r[0])) if r is Array and r.size() >= 8 else null
 					if lw and is_instance_valid(lw):
 						_puppet_to(lw, _xf(r, 1))
-				hazards.apply_snapshot(data.get("h", []))
+				if data.has("h"):   # (only the first part of a snapshot carries them)
+					hazards.apply_snapshot(data.h)
 		"isnap":
 			if data is Array:
 				items.apply_snapshot(data)
