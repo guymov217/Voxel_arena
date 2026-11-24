@@ -1186,6 +1186,20 @@ eight, sixteen fighters.
 A beast costs a man's step and 0.6-1.4 ms more (wolf +0.6, lion +1.1, hydra +1.4, dragon +0.8, a great man +0.75). `tools/host_bench.bat` (double-click; it finds Godot in the
 game's folder and keeps its answer in `host_check.txt`) plays fights of 2, 4, 6 and 8 and says whether a computer hosts a full room.
 
+**The diagnostic test** (#325; `tools\diagnose.bat`, double-click, or `sh tools/diagnose.sh`): everything that decides why a computer cannot hold a full room, measured in ONE run by itself,
+with ONE report to send (`diagnose_report.txt`, in the game's folder; `-- --diag`, `scripts/diag/`). About 25 minutes with a window that shows the list and the time left (`--quick`: a few
+minutes, for a look; `--size 1920x1080`, `--skip room`, `--only steps,fight` and `--keep` for the odd run). It plays, each part in a game of its own (the engine's thread count, renderer
+and caches are fixed at its start, so they take a restart; the test writes an `override.cfg` for a part and takes it away, and puts the player's own file back): the physics step with 2 to 16
+fighters, beasts and a great foe (split into the nodes' scripts and the engine's part, the native core on and off, bare men, a minute's drift, a fixed piece of script work that says how fast the
+core is), then with 1, 2, 4 and 8 physics worker threads, and with seven other games busy beside it (what the friend windows take of the processor, with no network); the same in a **release build** made on the spot from the project's pack and Godot's release template (the build a player runs: this run is the
+editor's binary, a debug build); a fight of eight in the endless arena drawn for real, what each frame is made of (steps, between them and the scripts, scripts, drawing and waiting, the card, the
+draw calls, the stalls with what the game had just said), and again with the shader and pipeline caches off (a first launch), with Godot's render thread, on the other renderer, with physics
+interpolation off, full screen at the screen's own size, at high priority, and in the release build; eight men walking, under settings changed one at a time (the men, the HUD, the sun's
+shadows, the 3D resolution, the anti-aliasing, the quality levels, the fog and occlusion, vsync not drawn); and the game's own room (the playtest's: eight players with seven friend windows, the
+endless arena from the gate, four minutes, the network's traffic counted) with the game's record of it (`hitches.txt`) copied in. Each part's log is read for errors and for a line written over and over
+(a game that logs thousands of lines is slowed by it). The report opens with a summary of the numbers that decide; `docs/PERF_RESEARCH.md` section 14 says what each reading means and what it
+would send us to do. Close every other program first (a recorder, a browser): the test says how busy the machine was before it began.
+
 When the host cannot keep up (two steps a frame: the paragraph on a room keeping time, further up). `RT=1 sh tools/mix_load.sh "men:8,foe:8"` plays a mix in real time on one
 core with the men's drawing on (what the graphics card and the engine's own drawing add to a frame is not in it), six seconds to settle and ten measured; `PACE=0` puts the
 engine's four steps a frame back. Steps a second of 120 and frames a second (the lowest second in brackets), one run each on this core. A fight is not the same fight twice, so the steps

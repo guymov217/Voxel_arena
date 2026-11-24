@@ -17,12 +17,22 @@ func _ready() -> void:
 		var probe = load("res://tests/%s.gd" % (args[args.find("--probe") + 1] if args.size() > args.find("--probe") + 1 else "probe")).new()
 		add_child(probe)
 		return
+	if args.has("--diag"):
+		# The diagnostic test (tools/diagnose.bat): everything measured in one run, one report (scripts/diag/diag.gd).
+		add_child(load("res://scripts/diag/diag.gd").new())
+		return
+	if args.has("--diag-phase"):
+		# One part of it, in a game of its own. The room's is played beside the menu, which is built below as ever.
+		add_child(DiagPhase.new())
+		if DiagPhase.kind_of(args) != "room":
+			return
 	if args.has("--steam-check"):
 		_steam_check()
 		return
 	# The player's language (Options, else the system's): the tests and probes above stay in the
 	# game's own English.
-	Loc.apply()
+	if not args.has("--diag-phase"):
+		Loc.apply()   # (a part of the diagnostic test stays in the game's own English)
 	# A player's start opens with the boot splash's picture brought to life (scripts/ui/intro.gd). The menu is
 	# built when it has played, behind its last still frame, which hides the stall the build makes; the tests,
 	# the probes (above) and headless runs go straight on.

@@ -9,3 +9,5 @@ dist/
 e2e_report.txt
 host_check.txt
 hitches.txt
+diagnose_report.txt
+override.cfg.diag_backup

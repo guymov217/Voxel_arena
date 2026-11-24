@@ -388,3 +388,48 @@ only large cut that keeps every fight) or the load governor (#304).
   The same experiment played with the cap of the steps a frame (`tests/stepcost_probe.gd`, one core, ten bots, a frame's own 8 ms): a step cost 9.3, 9.6, 10.1, 8.2 and 8.5 ms at caps of 2, 3, 4, 6 and 12 (the fight is not the same twice), so the catch-up does not make a step dearer; the speed went 57, 63, 65, 84 and 89% and the frames 34, 25, 20, 17 and 9 a second.
 
 **Left.** The step (above). The first draw of a new material on a card (the veil now fades over the first frame of the map, 0.35 s, so a stop there is behind it) cannot be seen here (the software renderer takes 1-4 s a frame of the yard whatever is built).
+
+## 14. The one test (#325): what it measures, and what each reading says to do
+
+`tools\diagnose.bat` (`sh tools/diagnose.sh`; `scripts/diag/`: `Diag` the test, `DiagPhase` a part, `DiagFrames` the reading of a stretch of frames, `DiagStats` the arithmetic; `tests/test_diag.gd`) is the reading of a real
+machine that sections 6 and 11 ask for, as one run and one file (`diagnose_report.txt`). Each part is a game of its own (`-- --diag-phase NAME`): the engine's thread count, its renderer, its caches and
+its physics interpolation are settings read at its start, so the test writes an `override.cfg` (marked as its own, the player's put aside and back) or engine flags for each. A part writes a line a result
+in a file; the test reads them back, copes with a part that crashes or does not end (a timeout kills it and the report says so, and shows the first errors of its log), and writes the report as it goes.
+
+| part (ids in the report) | what it plays | the reading |
+|---|---|---|
+| `facts` | the machine, the game, the saved settings, what else is busy (a three-second census, the same as the record's CPU line), Windows' power plan | a computer already over 25% busy is a problem named in the report |
+| `steps_auto` | 2, 4, 6, 8 men, 8 men and 3 foes, 8 men and 8 foes, 8 men and 3 lions, 8 men and a cyclops, in armour; 8 men bare; the scripts' own ways (native core off); a minute's drift; a fixed script loop | a step in ms, split into the nodes' scripts, the engine's step after them, and what comes before them; the curve of cost against men; what armour and the native core are worth; whether the step grows as the machine warms |
+| `steps_t1/t2/t4/t8` | the same fights with 1, 2, 4, 8 worker threads (`threading/worker_pool/max_threads`), the engine's own pick being `steps_auto` | what threads are worth to the engine's part |
+| `steps_burners` | the same fights with seven other games beside it (`DiagPhase._burn`: a third of a core each at below-normal priority, as the playtest's friend windows are, no network) | what the friend windows' share of the processor costs the host's step, apart from everything else a room is (the hybrid cores' scheduling shows here) |
+| `release_*` | a pack made with `--export-pack`, a copy of Godot's release template and the native library beside it (no installer, no icon editing: nothing the packager needs); the step and a fight in it | what the build a player runs costs against the editor's debug build (measured here: 8 men and 3 foes 13.0-14.2 ms against 15.4-17.7, 10-20% less) |
+| `fight_*` | the endless arena, eight bot players (`tests/gate298.gd`'s) with the foes' gate off (the load is the same every run and every wave comes in whole), drawn, 12 s then 24 s, one window each, muted (`fight_sound` is not) | the frame's make-up (steps, between, scripts, drawing and waiting), the card, the draw calls, a frame over 50 ms with the notes the game had just made, the nodes and resources and pipelines made in it |
+| `fight_cold` | the same with the pipeline and shader caches off | what a player's first launch costs: the pipelines compiled in the first seconds, the frames over 100 ms |
+| `fight_render_thread`, `fight_<other renderer>`, `fight_no_interpolation`, `fight_fullscreen`, `fight_high_priority` | one setting each | the frame in ms against `fight_base` |
+| `render_steady` | eight armoured men walking in the yard (nothing changes from second to second), 5 s a setting | what the men's drawing, the HUD, the sun's shadows, a half-size picture, no anti-aliasing, the quality levels, the fog and occlusion, vsync each are worth to the frame |
+| `room_eight` | the game's own menu as the playtest runs it: a host (`--bot`), seven friend windows, the yard, the endless arena from the gate, 4 minutes in half-minute windows, the counters every few seconds, the host's network traffic, the record the game made of it (the room draws the 3D at 70% and caps the frames at 60, `Menu.room_scale`) | the real thing: speed and frames, the valve (`Net.overloaded`), the gate, nodes, orphans and memory over the minutes, KB/s, who had the processor |
+
+**What a reading sends us to do.** (The ways are those of sections 4 to 6; the report gives the figure that decides each.)
+
+| reading | what it says | what it sends us to |
+|---|---|---|
+| `RELEASE BUILD` -10% or more on the step | the editor's binary is the slow part of the owner's playtests; the player's game is that much cheaper | measure and playtest in the release build; no code to change; the models of section 5 hold for the player |
+| the scripts' part 70% or more of a step, the engine's 10-20% | the step is the scripts' | the native ports of section 4 (the arm drive, then all of `control`); threads and the engine's settings are worth little |
+| the engine's part 40% or more, or `steps_t4`/`t8` clearly under `t1` and the engine's pick | the engine's step | worker threads set in the project; the physics settings; fewer contact pairs |
+| `NATIVE CORE` off, or `native core OFF` in a part's first line | the library is not loaded on this machine | find why (the extension file, the system's DLL loading); a fifth of every step |
+| `THE FRAME` "between them and the scripts" over 2 ms | work that runs after the steps and before the first process (coroutines that wait for the frame, internal processes) | find it (`fight_no_interpolation` against `fight_base` says whether it is the interpolation of every moving node) |
+| `fight_render_thread` faster than `fight_base` | the main thread waits on the engine's drawing | `rendering/driver/threads/thread_model=2` in the project (one frame of latency) |
+| the other renderer faster, or a part with errors in its log | the driver's own cost or fault | the renderer the game starts on, per system |
+| `render_steady`: "3D not drawn" far under the base, "the men not drawn" most of it | drawing is the frame's cost, and the men are most of the drawing | the men's shadow pass, their cube instances (section 3b); the card's own time says whether it is the card or the recording |
+| `fight_cold` against `fight_base`: many pipelines compiled, frames over 100 ms in its first seconds | first-draw stalls (the first launch of a player) | a warm-up of the materials behind the start's veil (`StartVeil`), or the shader baker at export |
+| `room_eight` against `fight_base` | what seven friend windows and the network cost the host | the playtest's windows (section 11) against the game's own costs; the valve and the gate's behaviour in a real room |
+| `FRIEND WINDOWS` a step dearer with the seven busy games beside it | the processor is shared (too few cores, or the scheduler puts the host's thread on a slow core) | the friend windows' own cost (section 11), or a priority for the host (`fight_high_priority` says whether it helps) |
+| `fight_sound` slower than `fight_base` | the sound costs the main thread | the sound's own way (the number of voices, the 3D sound's work) |
+| a part's log: a line written thousands of times (`PROBLEM ... the same line`) | a message in the step or the frame (a console build prints each of them: slow) | stop it at its source |
+| `DRIFT` upward over the minute | the processor slows as it warms (power plan, cooling, a laptop) | nothing in the game: the owner's machine, and the reading of every other part with it |
+| a step under the budget but `THE FRAME` over it | the frames, not the steps | section 6's items 2 and 3 |
+
+The quick run (`--quick`) is the same list with every part cut to a few seconds, for a look at whether a computer gets through the test at all (and `HEADLESS=1 sh tools/diagnose.sh --quick` plays the parts that need no window:
+it is a check of `run_tests.sh`). What the test does not play: a guest's computer (it draws what the host sends: `tools/net_load.sh`, `tests/net_load_guest.gd`), the network's own latency (`net (delay)`), audio, and a game
+longer than four minutes.
+

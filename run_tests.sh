@@ -158,4 +158,13 @@ if timeout 2400 "$G" --headless --path . -- --probe friend_modes --port "$NET_PO
 else
 	echo "net (friends, every mode): FAIL"; grep -E "FAIL|RESULT|FRIENDMODES|^LOG " /tmp/va_friend_modes.log | tail -40; fail=1
 fi
+# The diagnostic test (tools/diagnose.sh, scripts/diag/), quick and with no window: the plan, each part's game (the steps with their thread settings, the native core off), the release
+# build made from the project's pack and Godot's release template where the templates are installed, the report with its summary. A part that needs a window is told as not run.
+rm -f diagnose_report.txt
+if HEADLESS=1 timeout 900 sh tools/diagnose.sh --quick > /tmp/va_diag.log 2>&1 && grep -q "== SUMMARY ==" diagnose_report.txt && grep -q "THE STEP" diagnose_report.txt && ! grep -E "PROBLEM|DID NOT FINISH" diagnose_report.txt | grep -qv "before the test began"; then
+	echo "diag (the one test, quick, no window): ok ($(grep -c '^== [0-9]' diagnose_report.txt) parts, $(grep -c 'NOT RUN' diagnose_report.txt) not run here)"
+else
+	echo "diag (the one test, quick, no window): FAIL"; tail -30 /tmp/va_diag.log; grep -E "PROBLEM|NOT RUN|DID NOT FINISH" diagnose_report.txt | head -10; fail=1
+fi
+rm -f diagnose_report.txt
 exit $fail

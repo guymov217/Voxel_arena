@@ -356,6 +356,11 @@ func _census_ask(now: float) -> void:
 	_census_thread.start(_census_run.bind(Friends.live_pids))
 
 func _census_run(friend_pids: PackedInt32Array) -> void:
+	call_deferred("_census_done", census_samples(), friend_pids)
+
+## Who had the processor over three seconds, as [name, pid, percent of one thread] of each process that took any (Windows: PowerShell's Get-Process, twice; Linux: /proc). It takes the
+## three seconds (the meter runs it in a thread of its own, the diagnostic test at its start).
+static func census_samples() -> Array:
 	var samples := []   # [name, pid, % of one thread]
 	if OS.get_name() == "Windows":
 		var script := "$ErrorActionPreference='SilentlyContinue'; $a=@{}; Get-Process | ForEach-Object { $a[$_.Id] = $_.CPU }; Start-Sleep -Seconds 3; Get-Process | ForEach-Object { if ($a.ContainsKey($_.Id) -and $_.CPU -ne $null -and $a[$_.Id] -ne $null) { $d = [math]::Round(($_.CPU - $a[$_.Id]) * 100 / 3); if ($d -ge 2) { '{0}:{1}:{2}' -f $_.ProcessName, $_.Id, $d } } }"
@@ -375,7 +380,7 @@ func _census_run(friend_pids: PackedInt32Array) -> void:
 				var d := int(round(float(int(b[pid][1]) - int(a[pid][1])) / 3.0))   # (jiffies of 1/100 s: a hundredth of a second a second is a percent)
 				if d >= 2:
 					samples.append([String(b[pid][0]), int(pid), d])
-	call_deferred("_census_done", samples, friend_pids)
+	return samples
 
 ## Linux: pid -> [command, user + system jiffies], read off /proc.
 static func _proc_jiffies() -> Dictionary:
@@ -439,8 +444,13 @@ static func slow_speed(steps: int, span: float, ticks: float, time_scale: float)
 		return 1.0
 	return float(steps) / span / (ticks * time_scale)
 
+## Who else hears the notes (the diagnostic test, DiagFrames: it names the last of them beside a frame that stopped).
+static var tap := Callable()
+
 ## A line in the record (the game's own start and end of a thing, from anywhere: `FpsMeter.note("match setup ...")`); not in the tests.
 static func note(text: String) -> void:
+	if tap.is_valid():
+		tap.call(text)
 	if not recording():
 		return
 	_log("%s  NOTE %s" % [Time.get_datetime_string_from_system(), text])
