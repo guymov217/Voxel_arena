@@ -95,7 +95,7 @@ func test_the_plan_of_a_whole_run() -> void:
 	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12"})
 	var ids := _ids(p)
 	t.check(ids[0] == "facts" and ids.size() == (ids as Array).size() and ids.count("facts") == 1, "the facts come first")
-	for id in ["steps_auto", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "room_eight"]:
+	for id in ["steps_auto", "steps_window", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "room_eight"]:
 		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
 	t.check(not ids.has("fight_d3d12"), "the other renderer is the one that is not in use")
 	t.check(ids.find("steps_auto") < ids.find("release_export") and ids.find("release_export") < ids.find("release_steps") and ids.find("release_steps") < ids.find("fight_base") and ids.find("fight_base") < ids.find("room_eight"), "in the order: the step, the release build, the frame, the room")
@@ -121,7 +121,7 @@ func test_the_plan_of_a_whole_run() -> void:
 
 func test_the_plan_of_other_runs() -> void:
 	var quick := _ids(Diag.plan({"quick": true, "windowed": true, "editor": true, "os": "Linux", "driver": "vulkan"}))
-	t.check(quick.has("steps_t1") and not quick.has("steps_t4") and not quick.has("steps_burners") and quick.has("room_eight") and not quick.has("fight_high_priority") and not quick.has("fight_d3d12"), "a quick run has fewer thread parts, and the Windows ones only on Windows (%s)" % ", ".join(PackedStringArray(quick)))
+	t.check(quick.has("steps_t1") and not quick.has("steps_t4") and not quick.has("steps_burners") and not quick.has("steps_window") and quick.has("room_eight") and not quick.has("fight_high_priority") and not quick.has("fight_d3d12"), "a quick run has fewer thread parts, and the Windows ones only on Windows (%s)" % ", ".join(PackedStringArray(quick)))
 	var none := _ids(Diag.plan({"windowed": true, "editor": false, "os": "Windows", "driver": "d3d12"}))
 	t.check(not none.has("release_export") and not none.has("release_steps") and not none.has("release_fight"), "an exported game makes no release build of itself")
 	var only := _ids(Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "only": PackedStringArray(["steps", "fight_cold"])}))
@@ -226,6 +226,7 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 	var res := {
 		"steps_auto": [step.call("men:8", "", 6.6), step.call("men:8", "gd", 7.9), step.call("men:8", "bare", 5.0), step.call("men:8,foe:3", "", 9.4), step.call("men:8,foe:3", "", 9.4, {"win": [9.0, 9.2, 9.8], "label": "men:8,foe:3@30", "secs": 30.0}), {"kind": "cpu_loop", "ms": 33.0, "ref_ms": 66.0}],
 		"steps_t1": [step.call("men:8,foe:3", "", 10.1)], "steps_t4": [step.call("men:8,foe:3", "", 9.0)], "steps_burners": [step.call("men:8,foe:3", "", 10.7)],
+		"steps_window": [step.call("men:8,foe:3", "", 7.0), {"kind": "cpu_loop", "ms": 70.0, "ref_ms": 66.0}],
 		"fight_render_thread": [{"kind": "frames", "label": "fight, the rest", "ms": {"mean": 26.0, "max": 80.0}, "speed": 0.9, "comp": {"steps": 12.0, "step_scripts": 3.5, "step_engine": 2.0, "per_frame": 2.0, "between": 4.0, "scripts": 4.0, "draw_wait": 2.0}, "gpu": 5.0, "calls": 900}],
 		"release_steps": [step.call("men:8", "", 5.6), step.call("men:8,foe:3", "", 7.9)],
 		"fight_base": [{"kind": "frames", "label": "fight, the rest", "ms": {"mean": 30.0, "max": 90.0}, "speed": 0.8, "comp": {"steps": 14.0, "step_scripts": 4.0, "step_engine": 2.0, "per_frame": 2.0, "between": 5.0, "scripts": 4.0, "draw_wait": 7.0}, "gpu": 5.0, "calls": 900},
@@ -241,6 +242,7 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 	t.check(all.contains("DRIFT") and all.contains("CORE SPEED") and all.contains("2.00 times as fast"), "the drift and the core's speed")
 	t.check(all.contains("THE FRAME") and all.contains("STALLS") and all.contains("7 frames over 50 ms") and all.contains("12 pipelines compiled") and all.contains("THE ROOM") and all.contains("62%") and all.contains("PROBLEM        something went wrong"), "the frame, the stalls, the room, the problems")
 	t.check(all.contains("FRIEND WINDOWS") and all.contains("(+14%)"), "the friend windows' share: 10.7 with seven games beside it, 9.4 alone")
+	t.check(all.contains("WINDOWLESS") and all.contains("7.00 ms with a window of its own, 9.40 ms with none (-26%)") and all.contains("70 ms in the small one, 33 ms with none"), "a game with a window against one with none (%s)" % all)
 	t.check(all.contains("FIGHT A/B") and all.contains("render_thread: speed 90% (+10 points), a step 6.0 ms (-14%), the rest of a frame 10.0 ms (-38%)"), "a fight against the base: the speed, the step and the rest of the frame (%s)" % all)
 	t.check(Diag.summary({}, {}, PackedStringArray()).size() == 1, "a run that measured nothing says so")
 

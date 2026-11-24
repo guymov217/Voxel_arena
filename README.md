@@ -1269,6 +1269,11 @@ what a player's hands and the game's own calls do, so what you see is what a fri
 `tests/test_friends.gd` is the table and the strip; `tests/friend_probe.gd` (in `run_tests.sh`, "net (friends)") opens a room, brings
 two in with the strip's own button and key, and looks at all of the above, a free for all and a leaving included.
 
+**`multiplayer_playtest_release.bat`** (`sh tools/mp_playtest_release.sh`) is the same playtest in a **release build**, the build a player runs: it makes the project's pack (`--export-pack`, a few
+seconds) in `build/play` beside a copy of Godot's release template and the native core's library, and opens the game from there (the friends are the same exe). The editor's own exe, which the
+other playtest runs, is a debug build whose scripts cost a physics step 15 to 20% more (the diagnostic test's first report: the same fight at 58% of its speed against 77%), so what slows
+there is not what a player meets; F3 and `build/play/hitches.txt` here are the player's. It needs Godot's export templates for 4.7.
+
 ## Exporting
 
 `tools/package.py` (on Windows, double-click `tools\package.bat`) exports the game and packs it two ways, for the demo

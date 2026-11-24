@@ -433,3 +433,67 @@ The quick run (`--quick`) is the same list with every part cut to a few seconds,
 it is a check of `run_tests.sh`). What the test does not play: a guest's computer (it draws what the host sends: `tools/net_load.sh`, `tests/net_load_guest.gd`), the network's own latency (`net (delay)`), audio, and a game
 longer than four minutes.
 
+## 15. The first report from the owner's machine (#325)
+
+`diagnose_report.txt` of 24 November: an i5-14600KF (14 cores, 20 threads), an RTX 4070 on Vulkan (driver 32.0.16.1088), 32 GB, Windows 11 (26200) on the Balanced plan, a 165 Hz screen at 2560x1440, the player's saved
+settings quality ultra and MSAA 8x, run from the editor's exe (a debug build): 22 minutes, 3% busy before it began, nothing in the way. What it says, and what it does not.
+
+**Where the time goes** (the fight of eight in the endless arena, drawn, gate off; the real game's foreground): a frame of 32 ms at 58% of the game's speed is **the steps 21.8 ms** (2.2 a frame of 9.9 ms each: the nodes'
+scripts 7.9, the engine's step 1.9) and **10.1 ms that are not steps** (the scripts' `_process` 4.2, drawing and waiting 5.6, between the steps and the scripts 0.4). The card is 10.4 ms of 32 and does not wait for anything.
+The steps are 68% of the frame and the scripts 80% of a step (headless: 6.5 of 8.1 ms for nine men, 10.1 of 13.0 for twelve). The "between them and the scripts" of section 13 (5.5 ms in the meter's record) is
+0.4 ms here: whatever it was lay in the room's own menu and builds, not in a fight.
+
+**What is not it** (each against the base fight, the speed of a window and the step of the same load):
+
+| tried | result |
+|---|---|
+| the engine's worker threads 1, 2, 4, 8, its own pick | the step 13.8 / 12.4 / 13.2 / 12.7 / 13.0 ms (men:8,foe:3): noise; the engine's part is 10-14% of a step |
+| seven other games busy beside the step (the friend windows' share) | 12.8 against 13.0 ms: nothing (the friend windows take 2.4-3.3 cores of 20 in the room, and the host does not feel it) |
+| physics interpolation off | 9.5 against 9.8 ms: nothing |
+| sound on | +3%: noise |
+| full screen at 2560x1440 | the same frame (the card 11.2 against 10.4 ms) |
+| the game at high priority | no better (53% against 58%, noise) |
+| the picture's settings (3D at half size, no anti-aliasing, low and ultra quality, no fog/occlusion/glow, vsync off) | the rest of a frame moves by 0.3 ms or less; the card's time moves 8-15 ms and nothing waits for it |
+| the sun's shadows off, the men not drawn | -0.8 and -0.2 ms of the rest of a frame |
+| the HUD not drawn, the 3D not drawn | -1.9 and -1.9 ms of the rest of a frame |
+
+**What is**
+- **The debug build: 12 to 23% of a step.** The release build made from the pack and Godot's release template: a step of nine men 6.50 against 8.09 ms (-20%), of twelve 11.16 against 13.04 (-14%); in the fight, at equal numbers
+  alive (14-16), 8.15 against 9.2-10.8 ms; the whole fight 77% of the game's speed against 58% (that fight happened to be a lighter one: at equal load it is about 10 points). A player runs the release build. The owner's playtests
+  (the editor's exe) are 15-20% worse than the game as shipped: `multiplayer_playtest_release.bat` plays them in the release build.
+- **The native core is worth 23%** (nine men 8.09 against 10.46 ms with the scripts' own ways): it is loaded (`native core ON`).
+- **The room, at ten to twelve men, is just over the budget**: 8.0-9.5 ms a step against the 8.33 there is, 0.8 ms a man (the bots' fight: 0.6, 15 men 9.3 ms). The room says so in its record: "foes held at the gate: a step costs
+  8.0-8.4 ms, 10-13 men on the sand", "room over its budget (two steps a frame, the game runs slow): 9.1 ms". With the valve on: 55-71% of the speed at 33 frames; with it off (fewer men) 88-98% at 20 frames, five to ten steps a frame,
+  frames of 60-90 ms. So the owner sees two kinds of bad: slow motion at 10-12 men, and a choppy game below 10. The network's share of the host's step is small: with seven friends in the yard (`tools/friends_load.sh`, profiled)
+  `Net.send_all` 0.39 ms, `snapshot` 0.08, the poll 0.1, `input_of` 0.07: about 0.6 of 7.0 ms (9%); `Fighter.control` is 4.85 ms of it (70%).
+- **The match's start (section 13)**: eight men built in 750-780 ms, the game begins 0.9-1.1 s after the start for all of them at once; the yard with 14 men 2.0-2.2 s; the worst frames at the changes 273, 153 and 106 ms.
+- **The first 3D frame of a process costs 1.9 s** (174 pipelines compiled, 51 more in the next frame; 2.5 s with the caches off; a fullscreen run that waited 1.5 s first paid 0.29 s) and on the D3D12 renderer the first frame took 14 s: stay on Vulkan.
+  The game as played does not meet it where it matters (his record of the game's start: the worst frame 134 ms: the title's backdrop takes it); a guest who comes straight into a room may. New pipelines later cost 50-85 ms for three or four.
+- **The render thread** (`thread_model=2`): drawing and waiting fell from 5.6 to 2.8 ms, but that run's log held `Condition "p_image.is_null() || p_image->is_empty()"` and 159,606 lines (18,608 script backtraces from `apply_hit` <- `_blow`):
+  something in a hit asks for an image the render thread does not have, 250 times a second; the run's speed fell to 49%. Not to be judged before that is mended (it may be a per-hit texture: `FineSmooth.skin` makes a 2048-wide float texture and a
+  duplicate of the material for every part rebuilt).
+
+**What the test did badly** (to mend in the next one): the games with no window seem to run slower than the real game: a fixed piece of script work took 118 ms against 66 on the build machine's core (0.56 times as fast), and a
+step of eleven men took 13.0 ms headless where the window's fight of fourteen to sixteen men took 9.8. The likely cause is that Windows gives a process with no window a slower core or clock (the owner's own host_check, eight bare
+men 7.6 ms, is one of those), but it is not confirmed. If it holds the windowless figures are up to 1.6 times too dear and only their ratios (release, threads, the native core) are to be trusted. Also: the drift over a minute
+(13.4 to 6.7 ms) was the fight thinning out, not a clock (now a fight with nobody to kill); the D3D12 part's first window held no frame, so its fight began late; the first window of the render A/B carried 4.7 ms of start-up (a
+longer warm-up now); `ram_free_mb` counted the page file (mended). The next run has `steps_window` (the same fights with a window of their own) and the core's speed in the fight's own window to settle the first.
+
+**What it sends us to.** The model that fits the fight above (58%, 31.7 ms against the 32.0 measured) is speed = 1000 c / (120 (c s + r)) for c steps a frame of s ms and r ms of everything else. With the room at ten men (s 8.5 ms,
+r 9.7 ms, the valve's two steps a frame) and what each cut is worth (the release build: the step -17%, the rest -13%; the arms' drive in C++: a fifth of a step, to the bit, sections 8 and 10; the rest's cuts from above):
+
+| | a step | the rest | speed | frames a second |
+|---|---|---|---|---|
+| now | 8.5 | 9.7 | 62% | 37 |
+| the release build | 7.1 | 8.4 | 74% | 44 |
+| the arms' drive native | 6.8 | 9.7 | 72% | 43 |
+| both (what is left of the scripts gains less in release) | 5.8 | 8.4 | 83% | 50 |
+| and the frame's rest cut by 3 ms (the HUD 1.9, the render thread 2.8 once mended) | 5.8 | 5.4 | 98% | 59 |
+
+With the last, the valve could be let off (2.15 steps a frame are enough for 100% at 56 frames). Without the port the release build and the rest's cuts alone reach about 85% (s 7.1, r 5.4: 2000 / (120 x 19.6)).
+1. Play and measure in the release build (done: `multiplayer_playtest_release.bat`).
+2. The arms' drive in C++ (#320): the one large cut that keeps every fight.
+3. The frame's rest: the HUD's 1.9 ms, the render thread once its error is found, the men's `_process` (4.2 ms a frame).
+4. The valve: a cap of three steps (71% at 28 frames by the model, for a step of 8.5 ms) in place of two (62% at 37 by the model; the room's own record 55-71% at 33), or aiming at 24 frames rather than 30 (the owner's choice: speed or frames).
+5. Half the controllers' rate, or 60 steps a second for the room under load, are the only cuts that reach 100% on a 10-12 man room without the port (the release build and the rest's cuts reach about 85%), and they change every blow (section 10): the owner's word.
+

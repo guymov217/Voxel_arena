@@ -57,11 +57,13 @@ static func plan(o: Dictionary) -> Array:
 	var sk := 2.0 if quick else 6.0   # (seconds of a fight's steps in a mix)
 	p.append({"id": "facts", "title": "what this computer is, and what else is busy on it", "part": "facts", "est": 8, "timeout": 60})
 	# --- the step ---
-	var curve := "men:2+men:4+men:6+men:8+men:8,foe:3+men:8,foe:8+men:8,beast:lion*3+men:8,great:cyclops+men:8#bare+men:8#gd+men:8,foe:3#gd+men:8,foe:3@%d" % (6 if quick else 30)
-	curve = curve.replace("@%d" % (6 if quick else 30), "@%d" % (6 if quick else 60))
+	var curve := "men:2+men:4+men:6+men:8+men:8,foe:3+men:8,foe:8+men:8,beast:lion*3+men:8,great:cyclops+men:8#bare+men:8#gd+men:8,foe:3#gd+men:8@%d" % (6 if quick else 60)   # (the long one with nobody to kill: a fight thins out, and its step with it; a clock that slows would show)
 	if quick:
 		curve = "men:4+men:8,foe:3+men:8,foe:3#gd"
 	p.append({"id": "steps_auto", "title": "a physics step under 2 to 16 fighters (the threads the engine picks)", "part": "steps", "engine": headless_flags, "cfg": {"mixes": curve, "secs": sk, "cpu": 1}, "est": 20 if quick else 145, "timeout": 120 if quick else 460})
+	if not quick:
+		p.append({"id": "steps_window", "title": "the same fights with a small window of their own (does the system give a game with no window less of the processor?)", "part": "steps", "window": true,
+			"engine": ["--fixed-fps", "120", "--disable-vsync", "--position", "0,0", "--resolution", "160x90"], "cfg": {"mixes": "men:8+men:8,foe:3", "secs": sk, "cpu": 1}, "est": 30, "timeout": 150})
 	var threads := [1] if quick else [1, 2, 4, 8]
 	for n in threads:
 		p.append({"id": "steps_t%d" % n, "title": "the step with %d physics worker thread%s" % [n, "" if n == 1 else "s"], "part": "steps", "engine": headless_flags, "settings": {"threading/worker_pool/max_threads": n},
@@ -76,7 +78,7 @@ static func plan(o: Dictionary) -> Array:
 	# --- the frame, drawn for real ---
 	var fs := 10.0 if quick else 36.0
 	var fight := {"secs": fs, "first": 4.0 if quick else 12.0}
-	p.append({"id": "fight_base", "title": "a fight of eight in the endless arena, drawn: what a frame is made of", "part": "fight", "window": true, "engine": window_flags, "cfg": fight, "est": 30 if quick else 62, "timeout": 200})
+	p.append({"id": "fight_base", "title": "a fight of eight in the endless arena, drawn: what a frame is made of", "part": "fight", "window": true, "engine": window_flags, "cfg": fight.merged({"cpu": 1}), "est": 30 if quick else 62, "timeout": 200})
 	if editor:
 		p.append({"id": "release_fight", "title": "the same fight in the release build", "part": "fight", "window": true, "release": true, "engine": window_flags, "cfg": fight, "est": 30 if quick else 62, "timeout": 200})
 	p.append({"id": "fight_sound", "title": "the same fight with the sound on (it is muted in the others)", "part": "fight", "window": true, "engine": window_flags, "cfg": fight.merged({"sound": 1}), "est": 30 if quick else 62, "timeout": 200})
@@ -94,7 +96,7 @@ static func plan(o: Dictionary) -> Array:
 	if windows_os:
 		p.append({"id": "fight_high_priority", "title": "the same fight with the game at high priority", "part": "fight", "window": true, "engine": window_flags, "priority": "high", "cfg": fight, "est": 30 if quick else 62, "timeout": 200})
 	p.append({"id": "render_steady", "title": "eight men walking in the yard, under settings changed one at a time", "part": "render", "window": true, "engine": window_flags,
-		"cfg": {"secs": 2.0 if quick else 5.0, "variants": "3D not drawn+the men not drawn+no sun shadows" if quick else "+".join(DiagPhase.RENDER_VARIANTS)}, "est": 25 if quick else 120, "timeout": 360})
+		"cfg": {"secs": 2.0 if quick else 5.0, "warm": 6.0, "variants": "3D not drawn+the men not drawn+no sun shadows" if quick else "+".join(DiagPhase.RENDER_VARIANTS)}, "est": 25 if quick else 120, "timeout": 360})
 	# --- the room ---
 	p.append({"id": "room_eight", "title": "the game's own room: eight players with seven friend windows, the endless arena", "part": "room", "window": true, "engine": window_flags,
 		"user": ["--keep-window", "--host", "--arena", "--yard", "--playtest", "--bot", "--no-intro", "--name", "Diag", "--port", "17961"],
@@ -551,7 +553,7 @@ static func summary(results: Dictionary, facts: Dictionary, problems: PackedStri
 		if String(d.get("kind", "")) == "step" and d.has("win"):
 			var w: Array = d.win
 			if w.size() >= 2:
-				out.append("DRIFT          %s over %d s: %.2f ms in the first five seconds, %.2f in the last (%s)" % [String(d.label), int(d.secs), float(w[0]), float(w[w.size() - 1]), DiagStats.change(float(w[0]), float(w[w.size() - 1]))])
+				out.append("DRIFT          %s over %d s: %.2f ms in the first five seconds, %.2f in the last (%s; a fight that thins out falls by itself, men standing still would show a clock that slows)" % [String(d.label), int(d.secs), float(w[0]), float(w[w.size() - 1]), DiagStats.change(float(w[0]), float(w[w.size() - 1]))])
 		if String(d.get("kind", "")) == "cpu_loop":
 			out.append("CORE SPEED     a fixed piece of script work took %.0f ms (the test's own machine: %.0f ms): %.2f times as fast" % [float(d.ms), float(d.ref_ms), float(d.ref_ms) / maxf(0.01, float(d.ms))])
 	# the threads
@@ -572,6 +574,22 @@ static func summary(results: Dictionary, facts: Dictionary, problems: PackedStri
 	var rel8 := _step_of(results.get("release_steps", []), "men:8", "")
 	if not rel8.is_empty() and not base8.is_empty():
 		out.append("               men:8 %.2f ms against the editor's %.2f ms (%s)" % [float(rel8.ms), float(base8.ms), DiagStats.change(float(base8.ms), float(rel8.ms))])
+	var win3 := _step_of(results.get("steps_window", []), "men:8,foe:3", "")
+	if not win3.is_empty() and not auto3.is_empty():
+		var wl := "%.2f ms with a window of its own, %.2f ms with none (%s)" % [float(win3.ms), float(auto3.ms), DiagStats.change(float(auto3.ms), float(win3.ms))]
+		var loop_w := 0.0
+		var loop_h := 0.0
+		var loop_f := 0.0
+		for d in results.get("steps_window", []):
+			if String(d.get("kind", "")) == "cpu_loop":
+				loop_w = float(d.ms)
+		for d in steps:
+			if String(d.get("kind", "")) == "cpu_loop":
+				loop_h = float(d.ms)
+		for d in results.get("fight_base", []):
+			if String(d.get("kind", "")) == "cpu_loop":
+				loop_f = float(d.ms)
+		out.append("WINDOWLESS     men:8,foe:3 %s; a fixed piece of script work %.0f ms in the fight's window, %.0f ms in the small one, %.0f ms with none" % [wl, loop_f, loop_w, loop_h])
 	var burn := _step_of(results.get("steps_burners", []), "men:8,foe:3", "")
 	if not burn.is_empty() and not auto3.is_empty():
 		out.append("FRIEND WINDOWS men:8,foe:3 %.2f ms with seven busy games beside it (a third of a core each, no network), %.2f ms alone (%s)" % [float(burn.ms), float(auto3.ms), DiagStats.change(float(auto3.ms), float(burn.ms))])

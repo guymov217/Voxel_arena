@@ -88,10 +88,14 @@ func _until(cond: Callable, secs: float) -> bool:
 static func facts() -> Dictionary:
 	var windowed_ := DisplayServer.get_name() != "headless"
 	var mem := OS.get_memory_info()
+	var ram_b := int(mem.get("physical", 0))
+	var free_b := int(mem.get("available", 0))
+	if free_b <= 0 or free_b > ram_b:
+		free_b = int(mem.get("free", 0))   # (Windows' "available" counts the page file too: more than the memory there is)
 	var d := {
 		"godot": String(Engine.get_version_info().get("string", "?")), "game": String(ProjectSettings.get_setting("application/config/version", "?")),
 		"os": OS.get_name(), "os_version": OS.get_version(), "distribution": OS.get_distribution_name(),
-		"cpu": OS.get_processor_name(), "threads": OS.get_processor_count(), "ram_mb": int(mem.get("physical", 0)) / 1048576, "ram_free_mb": int(mem.get("available", 0)) / 1048576,
+		"cpu": OS.get_processor_name(), "threads": OS.get_processor_count(), "ram_mb": ram_b / 1048576, "ram_free_mb": free_b / 1048576,
 		"os_alias": OS.get_version_alias(),
 		"exe": OS.get_executable_path(), "editor_binary": OS.has_feature("editor"), "export_template": OS.has_feature("template"), "debug_build": OS.is_debug_build(),
 		"screen": DisplayServer.get_name(), "ticks": Engine.physics_ticks_per_second, "max_steps_a_frame": Engine.max_physics_steps_per_frame,
@@ -327,6 +331,8 @@ func _fight() -> void:
 	if DiagStats.cfg_i(cfg, "sound", 0) == 0:
 		_quiet()
 	await _player_graphics()
+	if DiagStats.cfg_i(cfg, "cpu", 0) == 1:
+		say(_cpu_loop())   # (the core's speed in a game with a window: against the windowless parts')
 	rec = DiagFrames.new()
 	add_child(rec)
 	seed(7)
