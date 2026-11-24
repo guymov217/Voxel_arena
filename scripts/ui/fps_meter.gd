@@ -75,6 +75,17 @@ var _sw_n := 0              # the stretches written
 var _sw_phys_us := 0        # in the window: what the frames' physics steps took by the wall clock (scripts and the engine's own steps)
 var _ps_n := 0              # the physics steps of this frame so far, and when the first began (us): this node comes first in every frame
 var _ps_t0 := 0
+var _ps_prev := 0           # when the last of them began
+var _pf_at := 0             # when this frame's steps were over and its idle part began (the engine's `process_frame`, which this node listens to before any coroutine of the game's)
+var _fr_has := false        # this frame had steps, and what of it is known so far (us): the first step's start, the steps' end, this node's own process, the steps' count, the last step's length
+var _fr_t0 := 0
+var _fr_pf := 0
+var _fr_own := 0
+var _fr_steps := 0
+var _fr_tail := 0
+## Where the frames of a slow stretch went (us, summed over the frames that had steps): the steps (first step's start to the steps' end), what lay between the steps and this node's process (the coroutines that waited
+## for the frame, the internal processes, the messages and transforms flushed), the scripts' process (this node's to the last node's), and the steps' own gaps (the first steps of a frame and the last one).
+var _fc := {"n": 0, "steps": 0, "pf": 0, "between": 0, "scripts": 0, "inner": 0, "tail": 0}
 var _census_t := -100.0     # when the processor's census was last asked for (s)
 var _census_thread: Thread = null
 
@@ -82,6 +93,10 @@ func _ready() -> void:
 	layer = 50
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = -100000   # (first in every frame's steps and in its process: the steps' cost is read between the two)
+	get_tree().process_frame.connect(_on_pf)
+	var fe := FrameEnd.new()
+	fe.meter = self
+	add_child(fe)
 	panel = PanelContainer.new()
 	panel.position = Vector2(12, 12)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -139,15 +154,54 @@ func _sync_net() -> void:
 		Net.show_meter(want)
 
 func _physics_process(_dt: float) -> void:
+	var t := Time.get_ticks_usec()
 	if _ps_n == 0:
-		_ps_t0 = Time.get_ticks_usec()
+		_ps_t0 = t
+	else:
+		_fc.inner += t - _ps_prev   # (the gap from one step's start to the next's: a step's own cost but for the first of the frame's preparing)
+	_ps_prev = t
 	_ps_n += 1
+
+func _on_pf() -> void:
+	_pf_at = Time.get_ticks_usec()
+
+## The last node of a frame's process says so (FrameEnd).
+func frame_ended() -> void:
+	if not _fr_has:
+		return
+	_fr_has = false
+	var end := Time.get_ticks_usec()
+	_fc.n += 1
+	_fc.steps += _fr_steps
+	_fc.pf += _fr_pf - _fr_t0
+	_fc.between += _fr_own - _fr_pf
+	_fc.scripts += end - _fr_own
+	_fc.tail += _fr_tail
+
+## The node whose process is the last of every frame's, so that the scripts' time can be told from the engine's.
+class FrameEnd extends Node:
+	var meter
+	func _init() -> void:
+		process_priority = 100000
+		process_mode = Node.PROCESS_MODE_ALWAYS
+	func _process(_dt: float) -> void:
+		if meter != null and is_instance_valid(meter):
+			meter.frame_ended()
 
 func _process(_dt: float) -> void:
 	var now_us := Time.get_ticks_usec()
 	var now := now_us / 1e6
 	if _ps_n > 0:
-		_sw_phys_us += now_us - _ps_t0   # (this frame's steps, from the first one's start to here: all of them are done before any _process)
+		# (This frame's steps, from the first one's start to where the frame's own work begins: all of them are done before any _process. Not to here: between the two the coroutines that waited
+		# for the frame and the internal processes ran, and read as the steps' their cost made every step look dearer, the more so the fewer steps a frame took.)
+		var end_us := _pf_at if _pf_at >= _ps_t0 else now_us
+		_sw_phys_us += end_us - _ps_t0
+		_fr_has = true
+		_fr_t0 = _ps_t0
+		_fr_pf = end_us
+		_fr_own = now_us
+		_fr_steps = _ps_n
+		_fr_tail = end_us - _ps_prev
 		_ps_n = 0
 	if _last_us > 0:
 		_frames.append([now, (now_us - _last_us) / 1000.0])
@@ -214,6 +268,7 @@ func _slow_check(now: float) -> void:
 		_sw_t0 = now
 		_sw_steps0 = Engine.get_physics_frames()
 		_sw_phys_us = 0
+		_fc = {"n": 0, "steps": 0, "pf": 0, "between": 0, "scripts": 0, "inner": 0, "tail": 0}
 		return
 	_sw_frames += 1
 	_sw_worst = maxf(_sw_worst, ms)
@@ -227,6 +282,8 @@ func _slow_check(now: float) -> void:
 	var worst := _sw_worst
 	var over := _sw_over
 	var phys_ms := float(_sw_phys_us) / 1000.0
+	var fc := _fc
+	_fc = {"n": 0, "steps": 0, "pf": 0, "between": 0, "scripts": 0, "inner": 0, "tail": 0}
 	_sw_t0 = now
 	_sw_steps0 = Engine.get_physics_frames()
 	_sw_frames = 0
@@ -246,12 +303,29 @@ func _slow_check(now: float) -> void:
 		room += ", %d friend windows on this machine" % Friends.live_pids.size()
 	var step_ms := phys_ms / float(maxi(1, steps))                         # what a step cost by the wall clock, the engine's own part and a preempted one in it
 	var frame_ms := (span * 1000.0 - phys_ms) / float(maxi(1, frames))     # and a frame's rest: scripts, drawing, waiting on the card
-	_log("%s  SLOW %.1f s  game speed %.0f%% (%.0f of %.0f steps a second)  %.0f frames a second, %d of %d over 33 ms, worst %.0f ms  a step %.1f ms, the rest of a frame %.1f ms (card %.1f)  men %d  bodies awake %d  draws %d  room %s  => %s" % [
+	_log("%s  SLOW %.1f s  game speed %.0f%% (%.0f of %.0f steps a second)  %.0f frames a second, %d of %d over 33 ms, worst %.0f ms  a step %.1f ms, the rest of a frame %.1f ms (card %.1f)  men %d  bodies awake %d  draws %d  room %s  [%s]  => %s" % [
 		Time.get_datetime_string_from_system(), span, speed * 100.0, float(steps) / span, float(Engine.physics_ticks_per_second) * Engine.time_scale, fps, over, frames, worst,
 		step_ms, frame_ms, float(w.get("gpu", 0.0)), men, int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), int(w.get("calls", 0)), room,
-		slow_cause(steps, span, phys_ms, float(Engine.physics_ticks_per_second))])
+		compose_text(fc, frames, span), slow_cause(steps, span, phys_ms, float(Engine.physics_ticks_per_second))])
 	_sw_n += 1
 	_census_ask(now)
+
+## Where a slow stretch's frames went (`fc`, in microseconds summed over the stretch's frames that had steps, `frames` frames in `span` seconds): the steps (the first one's start to where the frame's own work
+## begins), what lay between them and the first process (the coroutines that waited for the frame, the internal processes), the scripts' process (the first node's to the last's), and all the rest of
+## the frame: the engine's drawing, presenting and waiting. And a step's own gap: the first steps of a frame (start to start) and the last one (its start to the steps' end).
+static func compose_text(fc: Dictionary, frames: int, span: float) -> String:
+	var n := int(fc.get("n", 0))
+	if n <= 0 or frames <= 0 or span <= 0.0:
+		return "frame composition: no step in the stretch"
+	var per := 1000.0 * float(n)
+	var pf := float(fc.get("pf", 0)) / per
+	var between := float(fc.get("between", 0)) / per
+	var scripts := float(fc.get("scripts", 0)) / per
+	var frame_ms := span * 1000.0 / float(frames)
+	var inner_n := int(fc.get("steps", 0)) - n
+	var inner := "%.1f" % (float(fc.get("inner", 0)) / 1000.0 / float(inner_n)) if inner_n > 0 else "-"
+	return "a frame of %.1f ms: steps %.1f (%.1f of them; a step's gap %s, the last of a frame %.1f), between them and the scripts %.1f, scripts %.1f, drawing and waiting %.1f" % [
+		frame_ms, pf, float(fc.get("steps", 0)) / float(n), inner, float(fc.get("tail", 0)) / per, between, scripts, frame_ms - pf - between - scripts]
 
 ## What a slow stretch came of, by where its seconds went: the steps' share of the second (`phys_ms` of `span` s, the steps a second there should be at
 ## `ticks`), and what is left for the frames. A step dearer than the 8.3 ms there is for it, however it came to be (too many fighters for the processor, the

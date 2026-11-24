@@ -66,6 +66,7 @@ func _ready() -> void:
 	# host's checks.
 	if multiplayer is SceneMultiplayer:
 		(multiplayer as SceneMultiplayer).server_relay = false
+	get_tree().process_frame.connect(_on_frame_begins)   # (the first listener there is: the end of the frame's steps, see _time_steps)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -811,14 +812,22 @@ func _physics_process(_dt: float) -> void:
 		_frame_t0 = Time.get_ticks_usec()
 	_frame_steps += 1
 
-## Every frame, after its physics steps (this node's _process comes before every other's): what they cost each.
+## The frame's physics steps are over and its idle part begins (the engine's `process_frame`, before any `_process`, any internal process or any coroutine that waited for it).
+var _frame_end_us := 0
+func _on_frame_begins() -> void:
+	_frame_end_us = Time.get_ticks_usec()
+
+## Every frame, after its physics steps: what they cost each, from the first one's start to where the frame's own work begins. (Read at this node's `_process`, as it was, it took in whatever ran
+## between the two: the coroutines that waited for the frame, the internal processes, the nodes before this one: by the user's record about 5.5 ms of every frame, which at the two steps a frame of an
+## overloaded host made every step look 2.7 ms dearer than it was and held the host in its slow motion for 38 s after the fight had eased: 9.4 ms read where the steps' own were 5.9.)
 func _time_steps() -> void:
 	if sim_held:
 		_frame_steps = 0
 		return
 	if _frame_steps <= 0:
 		return
-	var ms := float(Time.get_ticks_usec() - _frame_t0) / 1000.0 / _frame_steps
+	var end := _frame_end_us if _frame_end_us >= _frame_t0 else Time.get_ticks_usec()
+	var ms := float(end - _frame_t0) / 1000.0 / _frame_steps
 	step_ms = ms if step_ms <= 0.0 else lerpf(step_ms, ms, 0.05)
 	_frame_steps = 0
 

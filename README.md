@@ -903,6 +903,10 @@ then no longer fit in a frame of 30 a second), and until it is back under 7.8, a
 a tenth (the tables in the section on the same tests again). A spike (a first-time shader, one heavy step) is forgotten within the second, and a host that keeps up is never
 touched. A step is a 120th of a second whatever the cap and nothing in it is told of the cap, so the fight is the same fight (`tests/test_pacing.gd`; the same fight played
 four ways, further on). `Net.overload_on = false` (`PACE=0` in the probes) puts the engine's four back. The endless arena is not limited by it: its waves are as big as they were.
+What a step costs is read from the first step's start to the moment the frame's own work begins (the engine's `process_frame`, `Net._time_steps`), as the figures above were drawn: it used to be read
+at `Net`'s own process, and took in whatever ran in between (by the user's record about 5.5 ms of every frame), which made a step look 2.7 ms dearer at the two steps a frame of an overloaded host and held it
+in its slow motion for 38 s after the fight had eased (`tests/test_step_cost.gd`). The record's SLOW lines say where a slow stretch's frames went: the steps, what lay between them and the scripts,
+the scripts, drawing and waiting (`FpsMeter.compose_text`).
 
 A room of windows of one computer (`Net.local_room`: the guest joined 127.0.0.1 or this computer's own address, or the
 host has a guest that did) lowers the picture of both windows (`Menu.room_scale`: at most 0.7 of the resolution,
