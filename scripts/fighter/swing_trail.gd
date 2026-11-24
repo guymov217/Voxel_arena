@@ -4,13 +4,19 @@ extends MeshInstance3D
 ## and the arc of the blow. Nothing at all while the weapon moves slowly, lies on the sand or
 ## flies thrown; never made in a headless game (Weapon._build_mesh).
 
-const LIFE := 0.16          # how long a stretch of the sweep stays, seconds
+const LIFE := 0.16          # how long a stretch of the sweep stays, seconds (of a weapon the size of a long sword's: see size_k)
 const MIN_SPEED := 5.5      # m/s at the tip before any of it shows
 const FULL_SPEED := 15.0    # m/s at which it is as plain as it gets
-const ALPHA := 0.5
+const ALPHA := 0.5          # how plain the tip's edge of it is at most (of a weapon that size)
+const SMALL_REACH := 0.5    # the reach (grip to tip, metres) of a dagger: the sweep is at its smallest from here down
+const FULL_REACH := 1.5     # the reach of a long sword or a spear: the sweep is whole from here up
+const SMALL_LIFE := 0.4     # what a dagger's sweep keeps of the whole one's time ...
+const SMALL_ALPHA := 0.45   # ... and of its strength
 const TINT := Color(1.0, 0.96, 0.88)
 
 var w   # the Weapon whose sweep it draws
+var life := LIFE             # how long a stretch of its sweep stays, and how plain it is at most: from the weapon's reach
+var alpha := ALPHA
 var tip_l := Vector3.ZERO    # the tip and the root of what cuts, in the weapon's own frame
 var root_l := Vector3.ZERO
 var samples: Array = []      # [time, root, tip, strength]
@@ -39,6 +45,11 @@ func _init(weapon) -> void:
 	material_override = _mat
 	_measure()
 
+## How much of a whole sweep a weapon of this reach leaves: nothing taken off a long sword's, a dagger's cut to SMALL_LIFE of the time and SMALL_ALPHA of the strength, the
+## ones between by their length (every weapon's sweep stayed as long and showed as plain, and a small weapon's halo was out of all proportion to it: user).
+static func size_k(reach: float) -> float:
+	return clampf((reach - SMALL_REACH) / (FULL_REACH - SMALL_REACH), 0.0, 1.0)
+
 ## The tip: the sharp voxel furthest from the grip (any voxel, a club); the root: the sharp one
 ## nearest it, or a stretch back from the tip when what cuts is short (a spear's head, a club).
 func _measure() -> void:
@@ -61,6 +72,9 @@ func _measure() -> void:
 			near = p
 	tip_l = far
 	root_l = near if sharp.size() >= 2 and far.distance_to(near) > 4.0 * float(w.vs) else far * 0.72
+	var k := size_k(tip_l.length())
+	life = LIFE * lerpf(SMALL_LIFE, 1.0, k)
+	alpha = ALPHA * lerpf(SMALL_ALPHA, 1.0, k)
 
 func _process(dt: float) -> void:
 	if not is_instance_valid(w) or w.vis == null or not is_instance_valid(w.vis):
@@ -77,7 +91,7 @@ func _process(dt: float) -> void:
 	var held: bool = w.holder != null and w.vis.visible
 	var k := clampf((speed - MIN_SPEED) / (FULL_SPEED - MIN_SPEED), 0.0, 1.0) if held else 0.0
 	samples.push_back([t, root, tip, k])
-	while not samples.is_empty() and t - float(samples[0][0]) > LIFE:
+	while not samples.is_empty() and t - float(samples[0][0]) > life:
 		samples.pop_front()
 	var any := false
 	for s in samples:
@@ -95,13 +109,13 @@ func _process(dt: float) -> void:
 	for i in samples.size() - 1:
 		var a: Array = samples[i]
 		var b: Array = samples[i + 1]
-		var fa := (1.0 - (t - float(a[0])) / LIFE) * float(a[3])
-		var fb := (1.0 - (t - float(b[0])) / LIFE) * float(b[3])
+		var fa := (1.0 - (t - float(a[0])) / life) * float(a[3])
+		var fb := (1.0 - (t - float(b[0])) / life) * float(b[3])
 		if fa <= 0.0 and fb <= 0.0:
 			continue
 		# Strongest at the tip, nothing at the root: a smear, not a sheet.
-		var ta := Color(TINT.r, TINT.g, TINT.b, ALPHA * maxf(fa, 0.0))
-		var tb := Color(TINT.r, TINT.g, TINT.b, ALPHA * maxf(fb, 0.0))
+		var ta := Color(TINT.r, TINT.g, TINT.b, alpha * maxf(fa, 0.0))
+		var tb := Color(TINT.r, TINT.g, TINT.b, alpha * maxf(fb, 0.0))
 		var ra := Color(TINT.r, TINT.g, TINT.b, 0.0)
 		verts.append_array(PackedVector3Array([a[1], a[2], b[2], a[1], b[2], b[1]]))
 		cols.append_array(PackedColorArray([ra, ta, tb, ra, tb, ra]))

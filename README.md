@@ -539,8 +539,10 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   banners from the arcade, rippling in the wind (`shaders/cloth.gdshader`); by day the shadows of
   clouds drifting over the arena; metal that shows the bowl round it (a reflection of the arena
   taken once); a film's colour grade (a 3D table: the shade a touch cooler, the sunlight a touch
-  more gold) and, at high and ultra, a sharpening pass; a faint sweep behind a fast swing
-  (`scripts/fighter/swing_trail.gd`); blood that stays on the blade or the fist that drew it and
+  more gold) and, at high and ultra, a sharpening pass; a faint sweep behind a fast swing, as
+  big as the weapon (`scripts/fighter/swing_trail.gd`: a dagger's stays 0.4 of a long sword's
+  time and shows at 0.45 of its strength, the weapons between by their reach; the long sword's
+  and the longer ones' are whole); blood that stays on the blade or the fist that drew it and
   dries brown; footprints, a peg's round marks and the furrow of a dragged body in the sand; faces
   that blink, screw up at a blow that hurts and breathe, quicker and deeper out of breath.
   The arena's materials and life, drawing only too: stone streaked with grime, damp at its foot,

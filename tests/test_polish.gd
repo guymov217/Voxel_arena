@@ -78,6 +78,44 @@ func test_a_fast_swing_leaves_a_sweep_that_fades() -> void:
 	trail.free()
 	w.queue_free()
 
+## The sweep is as big as the weapon (user: the halo about a swinging weapon stayed the same whatever its size): a dagger's stays a moment and shows faintly, a long sword's is whole,
+## the weapons between by their reach, and a sweep that has been left alone for the moment it lasts is gone after as many frames.
+func test_the_sweep_is_as_big_as_the_weapon() -> void:
+	var T = load("res://scripts/fighter/swing_trail.gd")
+	t.eq(T.size_k(0.1), 0.0, "shorter than a dagger: the smallest sweep")
+	t.eq(T.size_k(T.FULL_REACH), 1.0, "a long sword's reach: the whole of it")
+	t.eq(T.size_k(3.0), 1.0, "and nothing more for a longer one")
+	var dt := 1.0 / 60.0
+	var lives := {}
+	var alphas := {}
+	var frames := {}
+	for key in ["dagger", "gladius", "longsword"]:
+		var w := _weapon(key)
+		w.holder = self
+		var trail = T.new(w)
+		lives[key] = float(trail.life)
+		alphas[key] = float(trail.alpha)
+		var turn := func(a: float): w.vis.global_transform = Transform3D(Basis(Vector3.RIGHT, a), Vector3(0, 1, 0))
+		for i in 3:
+			trail._process(dt)
+		for i in 6:
+			turn.call(i * 0.4)   # (fast for the smallest of them too: a turn of 24 rad/s, 12 m/s at a dagger's tip)
+			trail._process(dt)
+		var left := 0
+		while trail.visible and left < 40:
+			trail._process(dt)
+			left += 1
+		frames[key] = left
+		trail.free()
+		w.queue_free()
+	t.check(lives["dagger"] < lives["gladius"] and lives["gladius"] < lives["longsword"], "the longer the weapon the longer its sweep stays (%s)" % [lives])
+	t.check(alphas["dagger"] < alphas["gladius"] and alphas["gladius"] < alphas["longsword"], "and the plainer it shows (%s)" % [alphas])
+	t.check(is_equal_approx(lives["longsword"], T.LIFE), "a long sword's lasts as the sweep always did (%s)" % lives["longsword"])
+	t.check(is_equal_approx(alphas["longsword"], T.ALPHA), "and shows as plain (%s)" % alphas["longsword"])
+	t.check(float(lives["dagger"]) <= T.LIFE * T.SMALL_LIFE + 0.02 and float(alphas["dagger"]) <= T.ALPHA * T.SMALL_ALPHA + 0.02, "a dagger's is the small one's (%s, %s)" % [lives["dagger"], alphas["dagger"]])
+	t.check(int(frames["dagger"]) < int(frames["gladius"]) and int(frames["gladius"]) < int(frames["longsword"]), "and it is gone after fewer frames: %s" % [frames])
+	await get_tree().physics_frame
+
 ## A face alive: a blink shuts the eyes with his eyelids, a blow that hurts screws it up (brows
 ## down, eyes squeezed, teeth bared), and each comes off again leaving his own face; talking takes
 ## the grimace's teeth off first; he blinks on his own, winces when the pain leaps, breathes
