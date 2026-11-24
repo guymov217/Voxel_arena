@@ -783,6 +783,7 @@ var _hot_looks := 0             # the looks in a row at which they did
 var _steps_alone := -1          # the engine's cap before a room (or an overload) changed it (-1: not changed)
 var _frame_steps := 0
 var _frame_t0 := 0
+var sim_held := false           # the game's start waits for everyone to be built (Match.hold): its steps are empty ones, so what they cost is not read, and the cap is left as it was
 
 static func steps_cap(step_cost_ms: float, base: int, over := false) -> int:
 	if over:
@@ -812,6 +813,9 @@ func _physics_process(_dt: float) -> void:
 
 ## Every frame, after its physics steps (this node's _process comes before every other's): what they cost each.
 func _time_steps() -> void:
+	if sim_held:
+		_frame_steps = 0
+		return
 	if _frame_steps <= 0:
 		return
 	var ms := float(Time.get_ticks_usec() - _frame_t0) / 1000.0 / _frame_steps
@@ -820,6 +824,8 @@ func _time_steps() -> void:
 
 ## Once a second: the room's cap, or the two steps of an overloaded host (and back to the engine's own when neither is so).
 func _pace() -> void:
+	if sim_held:
+		return
 	if overload_on:
 		var look := overload_after(overloaded, _hot_looks, step_ms)
 		if bool(look[0]) != overloaded:
@@ -961,7 +967,7 @@ func _umsg(type: String, data) -> void:
 const MSG_PER_S := 240
 ## What a guest may say to the host at all: anything else (a snapshot, a spawn, a banner, the
 ## end of a bout) is the host's word alone and is dropped when a guest sends it.
-const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "doctor_done", "ff_kit", "ff_ready", "rudis_vote", "gate_pick", "endless_pick", "stall", "respawn"]
+const FROM_GUESTS := ["hello", "me", "input", "vc", "_ping", "doctor_done", "ff_kit", "ff_ready", "rudis_vote", "gate_pick", "endless_pick", "stall", "respawn", "ready"]
 var _rate := {}   # peer id -> [the second's start (ms), messages in it]
 
 func _flooding(from: int) -> bool:

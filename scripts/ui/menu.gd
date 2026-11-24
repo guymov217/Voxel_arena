@@ -3845,6 +3845,7 @@ func start(opts: Dictionary) -> void:
 		var picked: Array = [] if (setting == "off" and opts.mode != "ffa") else Decrees.roll(1.0 if opts.mode == "ffa" or setting == "always" else 0.6, decree_n, rng2)
 		opts.decrees = picked.map(func(d): return d.id)
 		opts.hazards = Hazards.random_specs(Decrees.combine(picked).hazards, rng2)
+	var hold_told := false
 	if opts.get("role", "local") == "host":
 		var peers := []
 		for id in Net.peers:
@@ -3857,7 +3858,8 @@ func start(opts: Dictionary) -> void:
 				spec.loadout = made
 			peers.append(spec)
 		opts.peers = peers
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0))})
+		hold_told = Match.start_hold_expected(opts)   # (a start in a room with a screen waits for everyone to be built: the guests are told, and wait for the host's "go")
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0)), "hold": hold_told})
 		if Net.room_kind == Net.KIND_ARENA:
 			Net.set_lobby_info(Loc.t("Arena") + (" · " + Modes.title_of(String(opts.mode)) if opts.mode != "yard" else ""))
 		else:
@@ -3878,6 +3880,10 @@ func start(opts: Dictionary) -> void:
 	match_.doctor.connect(func(e, b, news): _doctor_visit(b, news, match_.stage, func(nb): match_.doctor_done(e.id, nb)))
 	hud = Hud.new(match_)
 	world_root.add_child(hud)
+	if match_.hold:
+		world_root.add_child(StartVeil.new(match_))   # (the map is shown when everyone is in: Match.hold)
+	elif hold_told:
+		Net.send_all("go", {})   # (the guests were told to wait for a start that, in the end, holds nothing)
 	if forge_trying != null:
 		_try_line()
 	visible = false
@@ -4602,7 +4608,7 @@ func _on_net(type: String, data, _from: int) -> void:
 					# Into the checkpoint's bout (the host's word): what a fall brings me back to.
 					CampaignRun.keep_own(int(Net.num(data.get("stage"))), int(Net.num(data.get("run"))))
 				series_note = {}
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "rounds": Series.clean_rounds(String(data.mode), data.get("rounds")), "series": Series.clean(data.get("series")), "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky"))})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "rounds": Series.clean_rounds(String(data.mode), data.get("rounds")), "series": Series.clean(data.get("series")), "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky")), "hold": data.get("hold") == true})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
 				match_.lost.connect(_campaign_lost)
@@ -4614,11 +4620,17 @@ func _on_net(type: String, data, _from: int) -> void:
 						Sfx.music.set_state("yard")
 				hud = Hud.new(match_)
 				world_root.add_child(hud)
+				if match_.hold:
+					world_root.add_child(StartVeil.new(match_))   # (until the host says go: Match.hold)
 				visible = false
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		"spawn":
 			if match_:
 				match_.guest_spawn(data)
+		"ready":
+			# A guest has built the men of the start (the host holds the start until all have: Match.hold).
+			if Net.is_host() and match_:
+				match_.hold_ready(_from)
 		"despawn":
 			if match_ and data is Dictionary:
 				match_.guest_despawn(int(data.get("id", -1)))
@@ -4706,7 +4718,7 @@ func _on_net(type: String, data, _from: int) -> void:
 					match_.set_series(sd)
 				series_note = {"next": data.get("next") == true}
 				match_.banner.emit(str(data.get("t", "")).left(60), str(data.get("sub", "")).left(140))
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "teams", "bone", "held", "fstat":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "teams", "bone", "held", "fstat", "assembled", "go":
 			if match_:
 				match_.guest_message(type, data)
 		"music":

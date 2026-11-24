@@ -727,6 +727,14 @@ someone comes or goes and every two seconds); `Net.room_list()` gives either sid
 itself. A campaign room's host also has, under the cards, the row of his campaigns (one for each group of friends he plays
 with: see above). `tests/test_lobby.gd`, `tests/test_coop_slots.gd`; the whole of it, with two games, in `tests/e2e_*.gd`.
 
+**A start waits for everyone** (`Match.hold`, `StartVeil`; user: "why can't they all be there before the map is shown? that they come in one by one makes the start unequal"). In a room, with a
+screen, the friends' men (and the yard's own people) are built over the frames that follow a start, and the map used to be on the screen, and the fight on, while they were: the first man in could walk
+and the last came in four or five seconds after, a guest's screen later still. Now the world is held from the first frame (the physics asleep, none of the match asked, the picture not drawn, the men built
+a good share of every frame: `Match.HOLD_BUILD_US`), a veil says "The gladiators gather" with how many are in, and when the host has every man in he says "assembled"; each guest says "ready" when he has
+built them too, and the host says "go": the veil fades and the game begins for everyone at once, its banner and the announcer's word with it. A guest who does not answer is waited for 20 s, a start not done in
+a minute begins as it stands, one who leaves is not waited for, and a match left while held wakes the world it put to sleep. The host tells the guests in "start" (`hold`) that the start is held; one that holds
+nothing says "go" at once. No room, no friends or no screen (the tests, a lone player): nothing is held, as it was. `tests/test_start_hold.gd`; `STAGED=1 sh tools/mp_e2e.sh` plays it against real guests.
+
 ### Friends in the yard
 
 The yard is open between friends: a blade there hurts, and a man killed is up again by the gate three seconds later

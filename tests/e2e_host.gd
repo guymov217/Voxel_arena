@@ -94,7 +94,7 @@ func _call_back() -> bool:
 	return ok
 
 func _in_yard_with(n: int) -> bool:
-	return menu.in_yard() and m() != null and m().humans().size() == n
+	return menu.in_yard() and m() != null and not m().hold and m().humans().size() == n   # (not held: with a screen the yard's start waits for everyone to be built, Match.hold)
 
 # ---------- The lobby ----------
 
@@ -146,6 +146,10 @@ func _yard() -> void:
 	k.check("yard.button", Kit.press(Kit.button_named(menu, "LobbyEnter")), "the host presses Enter the yard")
 	var ok: bool = await k.until(func(): return _in_yard_with(2), 30.0, "both in the yard")
 	k.check("yard.both", ok, "the host and the friend stand in the yard", "humans %d" % (m().humans().size() if m() != null else 0))
+	# With a screen (or a game that builds as one does, `--staged`) the yard's start was held until the friend said he had built the men too, and began at his word: the men came in together.
+	var held_over: bool = await k.until(func(): return m() != null and not m().hold, 30.0, "the start's hold over")
+	var why := String(m().hold_stats.get("why", "")) if m() != null else ""
+	k.check("yard.held", held_over and (not Match.screen_emulated or (why == "everyone is ready" and int(m().hold_stats.get("men", 0)) >= 2)), "the yard's start waited for the friend to say he had built the men, and began at his word", "hold %s" % [str(m().hold_stats) if m() != null else ""])
 	k.check("yard.campaign_untouched", int(Save.data.coins) == 150 and menu.coins() == Save.UNLIMITED, "the campaign's purse is untouched and money is no object here", "campaign %s" % str(Save.data.coins))
 	k.cue("yard")
 	await k.shot("yard")
@@ -212,14 +216,15 @@ func _ffa() -> void:
 	await k.pause(0.3)
 	k.check("ffa.setup", menu.screen == "fight_setup" and Kit.button_with(menu, "Begin") != null, "a fight with settings opens them first (rounds, bots)")
 	Kit.press(Kit.button_with(menu, "Begin"))
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all")
 	k.check("ffa.start", ok and int(m().series.get("n", 0)) == 3, "a free for all of three rounds with two bots begins", "%d fighters, series %s" % [m().entities.size() if m() else 0, str(m().series) if m() else ""])
+	k.check("ffa.held", not Match.screen_emulated or (m() != null and String(m().hold_stats.get("why", "")) == "everyone is ready"), "the fight's start waited for the friend to have built the men: they came in together", "hold %s" % [str(m().hold_stats) if m() != null else ""])
 	k.cue("ffa.start")
 	k.check("ffa.guest_start", await k.wait_line("guest", "DONE", "ffa.start", 40.0), "the friend is in the same fight, drawn from the host's snapshots")
 	# The round is won: the next begins, and when the match is decided everyone is back in the yard.
 	var first = m()
 	_kill_others()
-	var next: bool = await k.until(func(): return m() != first and m() != null and m().mode == "ffa" and int(m().series.get("p", 0)) == 1, 40.0, "round 2")
+	var next: bool = await k.until(func(): return m() != first and m() != null and not m().hold and m().mode == "ffa" and int(m().series.get("p", 0)) == 1, 40.0, "round 2")
 	k.check("ffa.round2", next, "a round won, the next begins with the score carried", "series %s" % str(m().series) if m() else "")
 	k.cue("ffa.round2")
 	k.check("ffa.guest_round2", await k.wait_line("guest", "DONE", "ffa.round2", 40.0), "the friend is brought into the next round")
@@ -253,7 +258,7 @@ func _teams() -> void:
 	k.check("teams.ready", ready, "when everyone stands in a circle the host may begin", ts.line(true))
 	k.check("teams.guest_saw", await k.wait_line("guest", "DONE", "teams.circles", 40.0), "the friend sees the circles and who stands in them")
 	m().station.emit("team_go")
-	var fight: bool = await k.until(func(): return m() != null and m().mode == "teams", 30.0, "the team fight")
+	var fight: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "teams", 30.0, "the team fight")
 	await k.pause(1.0)
 	var host_team: int = int(m().me.team) if fight else -1
 	var guest_team := -1
@@ -277,12 +282,12 @@ func _teams() -> void:
 func _tourney() -> void:
 	menu._set_fight_opt("tourney", "rounds", 1)
 	var ok := await _pick_fight("The Tournament")
-	var began: bool = await k.until(func(): return menu.tourney != null and m() != null and m().mode == "tourney", 40.0, "a bout of the tournament")
+	var began: bool = await k.until(func(): return menu.tourney != null and m() != null and not m().hold and m().mode == "tourney", 40.0, "a bout of the tournament")
 	k.check("tourney.start", ok and began, "a tournament is drawn and its first bout begins", menu.tourney.round_name() if menu.tourney else "")
 	k.cue("tourney.start")
 	k.check("tourney.guest_saw", await k.wait_line("guest", "DONE", "tourney.start", 40.0), "the friend is in the room for it (in the bout or looking on)")
 	# One falls: the winner goes on. (With a screen the men of a bout come in over the frames that follow its start: all of them are in first.)
-	await k.until(func(): return m() != null and m().coming == 0, 30.0, "the men of the bout in")
+	await k.until(func(): return m() != null and m().coming == 0 and not m().hold, 30.0, "the men of the bout in")
 	var first = m()
 	var fallen := 0
 	for e in m().entities.duplicate():
@@ -301,7 +306,7 @@ func _tourney() -> void:
 
 func _smoke(mode: String, title: String) -> void:
 	var ok := await _pick_fight(title)
-	var began: bool = await k.until(func(): return m() != null and m().mode == mode, 40.0, mode)
+	var began: bool = await k.until(func(): return m() != null and not m().hold and m().mode == mode, 40.0, mode)
 	k.check("mode.%s" % mode, ok and began, "%s begins from its card at the gate" % title, "mode %s" % (m().mode if m() else "none"))
 	k.cue("mode.%s" % mode)
 	k.check("mode.%s.guest" % mode, await k.wait_line("guest", "DONE", "mode.%s" % mode, 50.0), "and the friend is in it too")
@@ -353,7 +358,7 @@ func _endless() -> void:
 	await k.pause(0.4)
 	# (A room picks no arms and bag at the gate: each goes in with what he bought and built in the yard, so no kit screen comes up.)
 	var no_kit_screen: bool = menu.screen != "endless" and Kit.button_with(menu, "Into the arena") == null
-	var began: bool = await k.until(func(): return m() != null and m().mode == "endless" and m().modes != null and m().modes.endless != null and m().modes.endless.wave >= 1, 40.0, "the first wave")
+	var began: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "endless" and m().modes != null and m().modes.endless != null and m().modes.endless.wave >= 1, 40.0, "the first wave")
 	k.check("endless.start", ok and no_kit_screen and began, "the endless arena begins for the three of them at once from the gate, with no kit screen in a room")
 	if not began:
 		return
@@ -458,7 +463,7 @@ func _campaign() -> void:
 	var in_yard: bool = await k.until(func(): return menu.in_yard() and _in_yard_with(2), 40.0, "the yard")
 	k.check("campaign.yard", in_yard, "it begins in the yard, the lobby, as it does alone")
 	menu.start({"mode": "coop", "role": "host"})   # (the gate's pick, in a word)
-	var fight: bool = await k.until(func(): return m() != null and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
+	var fight: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
 	k.check("campaign.bout", fight, "the bout begins with foes for two", "%d foes" % (m().enemies().size() if m() else 0))
 	k.cue("campaign.fight")
 	await k.wait_line("guest", "DONE", "campaign.fight", 40.0)

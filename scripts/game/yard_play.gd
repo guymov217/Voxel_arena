@@ -44,6 +44,12 @@ func setup() -> void:
 func _setup_staged() -> void:
 	set_boards(board_texts(m.humans().size()))
 	scenery()
+	# A room's start is held until everyone is in (Match.hold): the yard's own people are among them, counted now, before any frame has passed.
+	var people := Yard.DUMMIES.size()
+	for id in Yard.stations():
+		if not _keeper_spec(id).is_empty():
+			people += 1
+	m.hold_count(people)
 	while m.coming > 0 and is_instance_valid(m) and m.is_inside_tree():   # (the friends' men first: two men built in one frame are two chunks in it)
 		await m.get_tree().process_frame
 	if not is_instance_valid(m) or not m.is_inside_tree():
@@ -53,6 +59,7 @@ func _setup_staged() -> void:
 		if e == null:
 			return
 		_dummy_in(e)
+		m.hold_count(-1)
 	for id in Yard.stations():
 		var k := _keeper_spec(id)
 		if k.is_empty():
@@ -61,6 +68,7 @@ func _setup_staged() -> void:
 		if n == null:
 			return
 		_keeper_in(n, k)
+		m.hold_count(-1)
 
 func _dummy_spec(p: Vector3) -> Dictionary:
 	return {"kind": "npc", "name": Loc.t("Training dummy"), "loadout": {"main": "", "off": ""}, "team": Match.ENEMY_TEAM,

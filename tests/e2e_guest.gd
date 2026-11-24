@@ -73,7 +73,7 @@ func m() -> Match:
 	return menu.match_
 
 func _yard_of(n: int) -> bool:
-	return menu.in_yard() and m() != null and m().humans().size() == n
+	return menu.in_yard() and m() != null and not m().hold and m().humans().size() == n   # (not held: the start waits for the host's go, Match.hold)
 
 func _flow() -> float:
 	var s0 := snaps
@@ -123,6 +123,9 @@ func _yard() -> void:
 	var ok: bool = await k.until(func(): return _yard_of(2), 40.0, "the yard")
 	var names: Array = m().humans().map(func(e): return String(e.f.display_name)) if m() != null else []
 	k.check("yard.both", ok and names.has("Aulus") and names.has(my_name), "he walks into the host's yard and sees the host's gladiator there", str(names))
+	# (With a screen, or a game that builds as one does, `--staged`: the start was held for him until the host said go.)
+	var go: bool = await k.until(func(): return m() != null and not m().hold, 30.0, "the host's go")
+	k.check("yard.go", go and (not Match.screen_emulated or String(m().hold_stats.get("why", "")) == "the host said go"), "the yard's start was held for him until the host said go", "hold %s" % [str(m().hold_stats) if m() != null else ""])
 	k.check("yard.purses", int(Save.data.coins) == 77 and menu.coins() == Save.UNLIMITED, "his campaign's purse is untouched, and money is no object here", "campaign %s" % str(Save.data.coins))
 	await k.shot("yard")
 
@@ -161,13 +164,14 @@ func _press_r() -> void:
 	menu._unhandled_input(ev)
 
 func _ffa_start() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all")
+	k.check("ffa.go", not Match.screen_emulated or (m() != null and String(m().hold_stats.get("why", "")) == "the host said go"), "the fight's start was held for him until the host said go", "hold %s" % [str(m().hold_stats) if m() != null else ""])
 	var flow := await _flow()
 	k.check("ffa.guest", ok and int(m().series.get("n", 0)) == 3 and m().fight_status() != "" and flow > 5.0, "the free for all is drawn here from the host's snapshots: three rounds, a state line", "%d fighters, series %s, '%s', %d snapshots a second" % [m().entities.size() if m() else 0, str(m().series) if m() else "", m().fight_status() if m() else "", int(flow)])
 	await k.shot("ffa")
 
 func _ffa_round2() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "ffa" and int(m().series.get("p", 0)) == 1, 40.0, "round 2")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and int(m().series.get("p", 0)) == 1, 40.0, "round 2")
 	k.check("ffa.round2", ok, "he is brought into the next round with the score carried", "series %s" % str(m().series) if m() else "")
 
 func _back_in_yard() -> void:
@@ -184,17 +188,17 @@ func _teams_circles() -> void:
 	await k.shot("circles")
 
 func _teams_fight() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "teams", 40.0, "the team fight")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "teams", 40.0, "the team fight")
 	await k.pause(0.5)
 	var team := int(m().me.team) if ok and m().me != null else -1
 	k.check("teams.fight", ok and team == 1 and m().fight_status() != "", "he is in the fight on the team of the circle he stood in", "team %d, '%s'" % [team, m().fight_status() if m() else ""])
 
 func _tourney_start() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "tourney", 40.0, "the tournament")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "tourney", 40.0, "the tournament")
 	k.check("tourney.guest", ok, "he is in the room for the tournament's bout (in it, or looking on)", m().fight_status() if m() else "")
 
 func _mode(mode: String) -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == mode, 40.0, mode)
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == mode, 40.0, mode)
 	var flow := await _flow()
 	k.check("mode.%s.guest" % mode, ok and flow > 5.0, "%s is drawn here from the host's snapshots" % mode, "%d snapshots a second" % int(flow))
 
@@ -207,7 +211,7 @@ func _late_seen() -> void:
 	k.check("late.guest", ok, "the late friend walks in and the lobby lists three", str(Net.room_list().map(func(r): return r.name)))
 
 func _endless_start() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "endless" and String(m().fight_status()).begins_with("Wave"), 40.0, "the first wave")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "endless" and String(m().fight_status()).begins_with("Wave"), 40.0, "the first wave")
 	k.check("endless.guest", ok, "the endless arena begins for him too, with the host's state line", m().fight_status() if m() else "")
 
 func _endless_offer() -> void:
@@ -258,7 +262,7 @@ func _slot_back() -> void:
 	k.check("slots.guest_back", ok and menu.coins() == 175 and menu.screen == "room", "the host opens the first campaign again: the friend has his gladiator of it as he left it (his purse of 175)", "run %d, purse %d" % [Net.coop_run, menu.coins()])
 
 func _campaign_fight() -> void:
-	var ok: bool = await k.until(func(): return m() != null and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "campaign" and m().coop and m().enemies().size() > 0, 40.0, "the bout")
 	k.check("campaign.guest", ok, "the co-op campaign's bout begins for him with the foes", "%d foes" % (m().enemies().size() if m() else 0))
 
 func _campaign_end() -> void:

@@ -379,13 +379,18 @@ func _setup(opts: Dictionary) -> void:
 		if mode == "yard":
 			yard = YardPlay.new(self)   # the stalls and their prompts; the host spawns the keepers
 			yard.scenery()              # (the board by the gate reads what the host sends: yard_next)
+		if bool(opts.get("hold", false)):
+			# The host holds his start for everyone (his "start" said so): this guest builds the men he is told of behind the veil and says when he has, then the host says "go".
+			hold = true
+			_hold_on()
+			get_tree().create_timer(HOLD_MOST_S).timeout.connect(_hold_timeout)
 		return
 	if Modes.handles(mode):
 		modes = Modes.new(self, mode)
 		modes.setup(opts)
 		if not decrees.is_empty():
 			_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
-		spectacle.on_round_start()
+		_round_start_said()
 		return
 	# Players: the local one, then a fighter for every friend in the room.
 	var lo: Dictionary = opts.get("loadout", {"main": "gladius", "off": "roundShield"})
@@ -448,7 +453,7 @@ func _setup(opts: Dictionary) -> void:
 			_banner("The Ludus yard", "Walk to a station and press G · dummies and throwing boards to play · the gate shows the fights on offer")
 	if not decrees.is_empty():
 		_banner("The Emperor decrees", ", ".join(dec.names.map(func(dn): return Loc.t(String(dn)))))
-	spectacle.on_round_start()
+	_round_start_said()
 
 # ---------- Spawning ----------
 
@@ -566,6 +571,11 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 			if e0 and on_in.is_valid():
 				on_in.call(e0)
 		return
+	# The start of a game in a room waits for everyone (see `hold`): the men of the start are counted, and the world does not begin until they are all in and every guest has built them too.
+	var held_start := at_start and _hold_wanted()
+	if held_start:
+		_begin_hold()
+		start_coming += specs.size()
 	coming += specs.size()
 	var left := specs.size()
 	var t_in := Time.get_ticks_usec()
@@ -590,9 +600,141 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 		coming -= 1
 		if e and on_in.is_valid():
 			on_in.call(e)
+		if held_start:
+			start_coming -= 1
+			_check_assembled()
 	coming -= left
+	if held_start and left > 0:
+		start_coming -= left
+		_check_assembled()
 	if at_start and left == 0:
-		FpsMeter.note("%s are all in: %d in %.0f ms" % ["the friends' men" if mode == "yard" else "the first of the bout's foes", specs.size(), float(Time.get_ticks_usec() - t_in) / 1000.0])
+		FpsMeter.note("%s are all in: %d in %.0f ms" % ["the friends' men" if specs.all(func(s): return s.get("kind", "") == "remote") else "the first of the bout's foes", specs.size(), float(Time.get_ticks_usec() - t_in) / 1000.0])
+
+## The start of a game in a room waits for everyone (user: "why can't they all be there before the map is shown, and only then the screen change to it? that they come in one by one makes
+## the start unequal"). The friends' men of a start are built over the frames that follow it (`bring_in`: eight men built in the one frame were a stop of 1.5 s), and while they were, the map was
+## on the screen and the fight on: the first man in could walk, the last came in four or five seconds after, and a guest saw it all later still. Now the world is held from the first frame
+## (the physics asleep and nothing of the match asked, `_physics_process`), the menu's veil is on the screen (`StartVeil`), and the men are built a good share of every frame (the veil hides
+## it and the picture is not drawn: `HOLD_BUILD_US`). When the host has every man in he says "assembled"; each guest says "ready" when he has built them all too; the host says "go": the veil
+## comes off and the fight begins for everyone at once. A guest who does not answer is waited for `HOLD_GUESTS_S`; a start not done in `HOLD_MOST_S` is begun as it stands. Only in a room, with
+## a screen (a game without one builds every man in the frame that asks and has nothing to wait for), and only for the men a start brings in (`bring_in`'s `at_start`).
+signal released             # the hold is over: the game begins (the menu takes its veil off)
+var hold := false
+var hold_always := false    # (a test's: held as a room's host does, without a room)
+var start_coming := 0       # the men of the start still being built
+var _assembled := false     # (the host's) every man of the start is in
+var _hold_waiting := {}     # (the host's) the guests who have not said they are ready
+var _hold_t0 := 0
+var _hold_used := false     # (a match is held once, at its start: not again when a bout's first round is called a second time)
+var hold_stats := {}        # how the hold ended: {why, men, ms} (what the e2e reads, and the record says)
+var _held_calls: Array = [] # what the start would have said (its banner, the announcer's word), said when it begins
+var _hold_budget := 0
+var _assembled_seen := false   # (a guest's) the host has said every man is in
+var _ready_sent := false
+const HOLD_BUILD_US := 30000
+const HOLD_GUESTS_S := 20.0
+const HOLD_MOST_S := 60.0
+
+## Whether the host's start will be held, told to the guests in "start" (`opts` as `Menu._start_match` has them): a room and a screen.
+static func start_hold_expected(opts: Dictionary) -> bool:
+	return String(opts.get("role", "local")) == "host" and not bool(opts.get("headless", false)) and _has_screen() and Net.active() and not (opts.get("peers", []) as Array).is_empty()
+
+func _hold_wanted() -> bool:
+	return role == "host" and stage_start() and not _hold_used and (hold_always or (Net.active() and not Net.peers.is_empty()))
+
+func _begin_hold() -> void:
+	if hold:
+		return
+	hold = true
+	_hold_used = true
+	_hold_on()
+	get_tree().create_timer(HOLD_MOST_S).timeout.connect(_hold_timeout)
+
+## The world asleep and not drawn, the staged builds given the frames (a guest's too).
+func _hold_on() -> void:
+	_hold_t0 = Time.get_ticks_msec()
+	PhysicsServer3D.set_active(false)
+	Net.sim_held = true
+	_hold_budget = Physique.budget_us
+	Physique.budget_us = HOLD_BUILD_US
+	if is_inside_tree():
+		get_viewport().disable_3d = true
+
+func _hold_off() -> void:
+	PhysicsServer3D.set_active(true)
+	Net.sim_held = false
+	Physique.budget_us = _hold_budget
+	if is_inside_tree():
+		get_viewport().disable_3d = false
+
+func _hold_timeout() -> void:
+	_release("it took too long")
+
+func _guests_timeout() -> void:
+	_release("the guests were waited for long enough")
+
+## How far the start is: the men in, and the men the start has (the guest's: the men the host said that he has built and has still to build).
+func hold_progress() -> Vector2i:
+	var built := entities.filter(func(e): return is_instance_valid(e.f)).size()
+	return Vector2i(built, built + (guest_pending.size() if role == "guest" else start_coming))
+
+## The start has `n` more men to wait for (the yard's own people, who are built after the friends), or `-n` of them are in: counted with the others while the start is held.
+func hold_count(n: int) -> void:
+	if not hold:
+		return
+	start_coming = maxi(0, start_coming + n)
+	if n < 0:
+		_check_assembled()
+
+## The host: every man of the start is in. Said to the guests, who answer when they have built them too.
+func _check_assembled() -> void:
+	if not hold or _assembled or start_coming > 0 or over or not is_inside_tree():
+		return
+	_assembled = true
+	_hold_waiting = {}
+	if Net.active():
+		for id in Net.peers:
+			_hold_waiting[int(id)] = true
+		Net.send_all("assembled", {})
+	FpsMeter.note("the start is built: %d men in %.0f ms, %d guests to say they have built them too" % [entities.size(), float(Time.get_ticks_msec() - _hold_t0), _hold_waiting.size()])
+	if _hold_waiting.is_empty():
+		_release("everyone is in")
+	else:
+		get_tree().create_timer(HOLD_GUESTS_S).timeout.connect(_guests_timeout)
+
+## A guest says he has built them all (the host's).
+func hold_ready(from: int) -> void:
+	_hold_waiting.erase(from)
+	if hold and _assembled and _hold_waiting.is_empty():
+		_release("everyone is ready")
+
+## The game begins: for the host and for a guest who is told so. What the start would have said is said now.
+func _release(why := "") -> void:
+	if not hold:
+		return
+	hold = false
+	_hold_off()
+	if role == "host" and Net.active():
+		Net.send_all("go", {})
+	hold_stats = {"why": why, "men": entities.size(), "ms": Time.get_ticks_msec() - _hold_t0}
+	FpsMeter.note("the game begins (%s): %d men, %d ms after the start" % [why, entities.size(), int(hold_stats.ms)])
+	var calls := _held_calls
+	_held_calls = []
+	for c in calls:
+		c.call()
+	released.emit()
+
+## A guest: the host has said every man is in; when this guest has built them he says so.
+func _guest_ready_check() -> void:
+	if _assembled_seen and not _ready_sent and guest_pending.is_empty() and not _guest_building:
+		_ready_sent = true
+		Net.send_host("ready", {})
+
+## The announcer's word of a round's start: at the start of a held game, when it begins.
+func _round_start_said() -> void:
+	if hold:
+		_held_calls.append(func(): spectacle.on_round_start())
+	else:
+		spectacle.on_round_start()
 
 ## A fighter made for `spec` (in the tree, not yet built) and how he is to be built.
 func _new_fighter(spec: Dictionary) -> Array:
@@ -874,6 +1016,7 @@ func drop_peer(id: int) -> void:
 				Net.send_all("despawn", {"id": e.id})
 	players_count = humans().size()
 	_send_yard_next()
+	hold_ready(id)   # (a start waiting for him waits for him no more)
 
 func _spawn_msg(e: Dictionary) -> Dictionary:
 	var s: Dictionary = e.spec.duplicate(true)
@@ -1217,6 +1360,9 @@ func _spawn_training() -> void:
 func _physics_process(dt: float) -> void:
 	if social == null:
 		return   # not set up (a Match made only to read its tables)
+	if hold:
+		PhysicsServer3D.set_active(false)   # (the start waits for everyone: nothing of the game is asked, and nothing wakes the world, a pause menu's closing included)
+		return
 	time += dt
 	tick += 1
 	if attract:
@@ -2119,6 +2265,13 @@ func guest_message(type: String, data) -> void:
 		"fstat":
 			if data is String:
 				fstat = data.left(120)
+		"assembled":
+			# The host has every man of the start in: I say when I have built them too.
+			_assembled_seen = true
+			_guest_ready_check()
+		"go":
+			# The host's word that the game begins (the veil comes off with it).
+			_release("the host said go")
 		"gate_picks":
 			if yard:
 				yard.picks_seen = YardPlay.clean_picks(data)
@@ -2346,6 +2499,9 @@ func nearest_enemy(e: Dictionary):
 ## its end, the game would be frozen behind the menu).
 func _leave_world() -> void:
 	Engine.time_scale = 1.0
+	if hold:
+		hold = false   # (left before the game began: the world is woken and drawn again, the veil goes with the match)
+		_hold_off()
 	if is_inside_tree():
 		PhysicsServer3D.area_set_param(get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, 9.81)
 		if killcam and killcam.playing:
@@ -3190,6 +3346,9 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 # ---------- Events ----------
 
 func _banner(text: String, sub: String) -> void:
+	if hold:
+		_held_calls.append(func(): _banner(text, sub))   # (the start's banner is for when the game begins, not for the veil)
+		return
 	banner.emit(text, sub)
 	if role == "host":
 		Net.send_all("banner", {"text": text, "sub": sub})
@@ -4712,6 +4871,7 @@ func _guest_build_queue() -> void:
 			else:
 				guest_message(h[0], h[1])
 	_guest_building = false
+	_guest_ready_check()
 
 ## Said of a fighter the guest has not built yet: kept (not too many) for when he is in.
 func _guest_keep(id: int, type: String, data) -> bool:
