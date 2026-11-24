@@ -1405,6 +1405,8 @@ func _physics_process(dt: float) -> void:
 		_sync_held()
 	if role == "host" and tick % 30 == 11:
 		_send_fstat()
+	if role != "guest" and tick % 120 == 37:
+		_note_load()
 	if role == "host":
 		# A room that is not full: the players' fighters go out once a frame (_send_player_rows), the rest as below.
 		_players_by_frame = Net.peers.size() > 0 and Net.peers.size() < 4 and entities.size() <= 10
@@ -3052,7 +3054,52 @@ func fight_status() -> String:
 	if role == "guest" and fstat != "":
 		return fstat
 	var s := modes.status() if modes else Modes.title_of(mode)
+	var note := load_note()
+	if note != "":
+		s += " · " + note
 	return "%s · %s" % [s, series_text] if series_text != "" else s
+
+## What the host's own cost does to the fight, said on the state line (to the host, and to every guest, for the line goes to them): foes kept outside the gate (`bring_in`: the sand is as full
+## as the computer can keep up with) and the world slowed (the room over its budget, two steps a frame: `Net.overloaded`), with its speed. Both were silent (a line in the log), and a fight that
+## slowed down looked like a fault (the user: "it appeared without warning").
+func load_note() -> String:
+	if role == "guest":
+		return ""
+	var parts := []
+	if gate_held == 1:
+		parts.append(Loc.t("a foe waits outside"))
+	elif gate_held > 1:
+		parts.append(Loc.t("%d foes wait outside") % gate_held)
+	if Net.overload_on and Net.overloaded and Net.step_rate > 0.0:
+		var speed := Net.step_rate / (float(Engine.physics_ticks_per_second) * maxf(0.01, Engine.time_scale))
+		var on_sand := entities.filter(func(e): return is_instance_valid(e.f) and e.f.alive and not e.get("harmless", false)).size()
+		parts.append(Loc.t("game at %d%% speed: %s on the sand") % [clampi(int(roundf(speed * 20.0)) * 5, 5, 100), Loc.t("1 man") if on_sand == 1 else Loc.t("%d men") % on_sand])
+	return " · ".join(parts)
+
+var _was_heavy := false
+
+## Once a second, on the host: when the room turns heavy or light again (`Net.overloaded`), what it was made of at that moment goes into the performance record, so that a game that slowed down
+## has its reason written beside it (the men alive and who they are, those on their way or held at the gate, the bits of flesh and the weapons lying about, the fallen).
+func _note_load() -> void:
+	if Net.overloaded == _was_heavy:
+		return
+	_was_heavy = Net.overloaded
+	var mine := 0
+	var foes := 0
+	var fallen := 0
+	for e in entities:
+		if not is_instance_valid(e.f) or e.get("harmless", false):
+			continue
+		if not e.f.alive:
+			fallen += 1
+		elif e.kind == "local" or e.kind == "remote":
+			mine += 1
+		else:
+			foes += 1
+	var loose := 0
+	if combat != null:
+		loose = combat.loose_weapons.filter(func(w): return is_instance_valid(w)).size()
+	FpsMeter.note("the room turned %s: %d players and %d foes alive, %d fallen lying, %d on their way in, %d held at the gate, %d bits of flesh, %d weapons loose, a step %.1f ms" % ["heavy" if _was_heavy else "light", mine, foes, fallen, coming, gate_held, Chunk.all.size(), loose, Net.step_ms])
 
 ## A line for the feed on the host's screen and on every guest's.
 func feed_all(line: String) -> void:

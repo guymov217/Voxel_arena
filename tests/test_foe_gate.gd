@@ -116,3 +116,64 @@ func test_the_loose_weapons_snapshot_is_cut_to_fit_the_line() -> void:
 	var few := Match.lsnap_messages([rows[0]], haz)
 	t.eq(few.size(), 1, "a few weapons are the one packet they were")
 	t.eq(Match.lsnap_messages([], haz).size(), 1, "and none still says the hazards")
+
+## What the room's cost does to the fight is said on the state line (to the host and, as the line goes to them, to every guest): foes kept outside the gate, and the world slowed with its speed.
+func test_the_state_line_says_when_foes_wait_and_when_the_game_runs_slow() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "endless", "role": "host", "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "endless": {"seed": 11}})
+	t.eq(m.load_note(), "", "a room within its budget: nothing is added")
+	m.gate_held = 1
+	t.eq(m.load_note(), "a foe waits outside", "one foe held outside")
+	m.gate_held = 3
+	var was_over: bool = Net.overloaded
+	var was_rate: float = Net.step_rate
+	Net.overloaded = true
+	Net.step_rate = 70.0
+	t.eq(m.load_note(), "3 foes wait outside · game at 60% speed: 1 man on the sand", "three held, and the world at 58% (said in fives), with who is on the sand")
+	t.check(m.fight_status().contains("game at 60% speed: 1 man on the sand") and m.fight_status().begins_with("Wave"), "on the state line, after the wave's own words (%s)" % m.fight_status())
+	Net.step_rate = 120.0
+	t.eq(m.load_note(), "3 foes wait outside · game at 100% speed: 1 man on the sand", "a speed is never said above the whole of it")
+	Net.overloaded = false
+	m.gate_held = 0
+	var g := Match.new()
+	g.role = "guest"
+	g.fstat = "Wave 2 · 4 slain · game at 60% speed: 5 men on the sand"
+	t.eq(g.fight_status(), "Wave 2 · 4 slain · game at 60% speed: 5 men on the sand", "a guest reads what the host said, as it was")
+	t.eq(g.load_note(), "", "and adds nothing of his own")
+	g.free()
+	Net.overloaded = was_over
+	Net.step_rate = was_rate
+	m.queue_free()
+	await get_tree().physics_frame
+
+## When the room turns heavy (or light again) what it was made of at that moment is written beside it in the performance record: who was alive, what was on its way or held, what lay about.
+func test_the_room_turning_heavy_is_written_with_what_it_was_made_of() -> void:
+	FpsMeter.force_record = true
+	var path := FpsMeter.log_path()
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "endless", "role": "host", "headless": true, "seed": 3, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "endless": {"seed": 11}})
+	var was_over: bool = Net.overloaded
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)   # (the match's own start was written: not what is looked at here)
+	m._note_load()
+	t.check(not FileAccess.file_exists(path), "a room that stays light writes nothing")
+	m.gate_held = 2
+	Net.overloaded = true
+	m._note_load()
+	var text := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
+	t.check(text.contains("the room turned heavy: 1 players and 0 foes alive") and text.contains("2 held at the gate"), "going over its budget it says who was in it (%s)" % text.left(200))
+	m._note_load()
+	t.eq(text.split("\n", false).size(), FileAccess.get_file_as_string(path).split("\n", false).size(), "and once, not every second it stays so")
+	Net.overloaded = false
+	m._note_load()
+	t.check(FileAccess.get_file_as_string(path).contains("the room turned light"), "coming back it says so")
+	Net.overloaded = was_over
+	m.gate_held = 0
+	DirAccess.remove_absolute(path)
+	FpsMeter.force_record = false
+	m.queue_free()
+	await get_tree().physics_frame
