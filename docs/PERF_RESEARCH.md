@@ -391,6 +391,9 @@ only large cut that keeps every fight) or the load governor (#304).
 
 ## 14. The one test (#325): what it measures, and what each reading says to do
 
+**Version 2** (after the first report, section 15): the parts that report answered (the threads' number, seven games beside it, the sound, the caches, the other renderer, interpolation, full screen, priority, most of the
+picture's settings) are run only with `--all`; in their place the test asks what only the player's own computer can say: `cores`, `steps_fast`, `fight_fast`, `readback`, `release_room`, and the core's speed in every sample. About 27 minutes.
+
 `tools\diagnose.bat` (`sh tools/diagnose.sh`; `scripts/diag/`: `Diag` the test, `DiagPhase` a part, `DiagFrames` the reading of a stretch of frames, `DiagStats` the arithmetic; `tests/test_diag.gd`) is the reading of a real
 machine that sections 6 and 11 ask for, as one run and one file (`diagnose_report.txt`). Each part is a game of its own (`-- --diag-phase NAME`): the engine's thread count, its renderer, its caches and
 its physics interpolation are settings read at its start, so the test writes an `override.cfg` (marked as its own, the player's put aside and back) or engine flags for each. A part writes a line a result
@@ -408,11 +411,19 @@ in a file; the test reads them back, copes with a part that crashes or does not 
 | `fight_render_thread`, `fight_<other renderer>`, `fight_no_interpolation`, `fight_fullscreen`, `fight_high_priority` | one setting each | the frame in ms against `fight_base` |
 | `render_steady` | eight armoured men walking in the yard (nothing changes from second to second), 5 s a setting | what the men's drawing, the HUD, the sun's shadows, a half-size picture, no anti-aliasing, the quality levels, the fog and occlusion, vsync each are worth to the frame |
 | `room_eight` | the game's own menu as the playtest runs it: a host (`--bot`), seven friend windows, the yard, the endless arena from the gate, 4 minutes in half-minute windows, the counters every few seconds, the host's network traffic, the record the game made of it (the room draws the 3D at 70% and caps the frames at 60, `Menu.room_scale`) | the real thing: speed and frames, the valve (`Net.overloaded`), the gate, nodes, orphans and memory over the minutes, KB/s, who had the processor |
+| `cores` (version 2) | a game with no window held to each logical processor in turn (`DiagPhase.pin`: PowerShell's `ProcessorAffinity`, `taskset` on Linux), an eighth of the fixed script work on each, then let go | whether the processor has two kinds of core and how much slower the slow kind is (`Diag.core_classes`); "let go" says which kind a game with no window is given. Every `sample` of a fight and of the room carries the same work timed on the game's own thread (`core_ms`): which kind the game is on while it is played |
+| `steps_fast`, `fight_fast` (version 2) | the step with no window, and the fight, held to the fast cores (skipped where the cores are of one speed) | the windowless figures as they would be on the cores the game really gets; and whether holding the game to the fast cores (the engine's worker threads with it) is worth doing for the player |
+| `readback` (version 2) | 48 MultiMeshes of 1200 instances given as one buffer and drawn; then one instance's colour read, one written, the whole buffer read, the first time and again, a frame between each | what `get_instance_color`/`custom_data` and `buffer` cost on a real card (the engine fetches the buffer back and waits for the card): the game asks at every chip off a part (section 15, the render thread) |
+| `release_room` (version 2) | `room_eight` again from the release build's pack (the friends are the same exe) | the room as a player's game runs it: the first report had it in the editor's debug build only |
 
 **What a reading sends us to do.** (The ways are those of sections 4 to 6; the report gives the figure that decides each.)
 
 | reading | what it says | what it sends us to |
 |---|---|---|
+| `CORES` two kinds, `IN PLAY` near the slow kind's time (or far apart from sample to sample) | the system runs the game's own thread on the slow cores, some or all of the time: a step costs up to twice what it need | hold the game to the fast cores from inside it (the native library can ask Windows: thread affinity or a CPU set), and see `fight_fast` for what it is worth |
+| `fight_fast` faster than `fight_base` | the same, or the engine's worker threads on slow cores hold the step's parallel part back | the same |
+| `READ-BACK` the first time over a millisecond | every part's first chip stops the frame for that long (the card must finish what it is drawing) | keep the voxels' colours and marks on the CPU's side and never ask the card (task #327): they are written from there |
+| `ROOM, RELEASE` at 100% where `THE ROOM` is not | the owner's playtests in the editor's exe are the slow thing; the player's game holds the room | play the playtests in the release build (`multiplayer_playtest_release.bat`) |
 | `RELEASE BUILD` -10% or more on the step | the editor's binary is the slow part of the owner's playtests; the player's game is that much cheaper | measure and playtest in the release build; no code to change; the models of section 5 hold for the player |
 | the scripts' part 70% or more of a step, the engine's 10-20% | the step is the scripts' | the native ports of section 4 (the arm drive, then all of `control`); threads and the engine's settings are worth little |
 | the engine's part 40% or more, or `steps_t4`/`t8` clearly under `t1` and the engine's pick | the engine's step | worker threads set in the project; the physics settings; fewer contact pairs |
@@ -469,10 +480,13 @@ The steps are 68% of the frame and the scripts 80% of a step (headless: 6.5 of 8
 - **The match's start (section 13)**: eight men built in 750-780 ms, the game begins 0.9-1.1 s after the start for all of them at once; the yard with 14 men 2.0-2.2 s; the worst frames at the changes 273, 153 and 106 ms.
 - **The first 3D frame of a process costs 1.9 s** (174 pipelines compiled, 51 more in the next frame; 2.5 s with the caches off; a fullscreen run that waited 1.5 s first paid 0.29 s) and on the D3D12 renderer the first frame took 14 s: stay on Vulkan.
   The game as played does not meet it where it matters (his record of the game's start: the worst frame 134 ms: the title's backdrop takes it); a guest who comes straight into a room may. New pipelines later cost 50-85 ms for three or four.
-- **The render thread** (`thread_model=2`): drawing and waiting fell from 5.6 to 2.8 ms, but that run's log held `Condition "p_image.is_null() || p_image->is_empty()"` and 159,606 lines (18,608 script backtraces from `apply_hit` <- `_blow`):
-  something in a hit asks for an image the render thread does not have, 250 times a second; the run's speed fell to 49%. Not to be judged before that is mended (it may be a per-hit texture: `FineSmooth.skin` makes a 2048-wide float texture and a
-  duplicate of the material for every part rebuilt).
-
+- **The render thread** (`thread_model=2`): drawing and waiting fell from 5.6 to 2.8 ms, but the speed fell from 58% to 49% (the scripts' time in a step 17.6 to 20.1 ms, the frame's `_process` 4.2 to 7.4 ms). The log of that run held
+  159,606 lines, and they are not the `Condition "p_image.is_null() || p_image->is_empty()"` error (5 times, once at the start): they are 18,608 warnings of `multimesh_instance_get_color` and
+  `multimesh_instance_get_custom_data` "causing RenderingServer synchronizations on every frame", each with a script backtrace (`apply_hit` <- `_blow`, `taken`, `spawn` <- `piece_cells`). The game reads
+  the voxels' colours and custom data back out of the MultiMeshes (`FineBody.taken`, `FineArmor`, `FineHead`, `Chunk.spawn` through `VoxelPart.piece_cells`, `Fighter` 1533 and 4572, about fifteen places), and with the render thread
+  each read waits for the other thread to catch up: that wait is the time the thread was to save. (Reproduced here under a virtual display with 3D switched off: the same warnings from the same calls.) The way
+  through: keep the colours and custom data of a part's voxels on the CPU side (they are written from there, `buffer` and `set_instance_*`) and read them from that copy; then the render thread is a gain, and the
+  read-backs (a GPU read-back the first time, a second copy of the buffer after) are gone from the default model as well.
 **What the test did badly** (to mend in the next one): the games with no window seem to run slower than the real game: a fixed piece of script work took 118 ms against 66 on the build machine's core (0.56 times as fast), and a
 step of eleven men took 13.0 ms headless where the window's fight of fourteen to sixteen men took 9.8. The likely cause is that Windows gives a process with no window a slower core or clock (the owner's own host_check, eight bare
 men 7.6 ms, is one of those), but it is not confirmed. If it holds the windowless figures are up to 1.6 times too dear and only their ratios (release, threads, the native core) are to be trusted. Also: the drift over a minute
@@ -493,7 +507,24 @@ r 9.7 ms, the valve's two steps a frame) and what each cut is worth (the release
 With the last, the valve could be let off (2.15 steps a frame are enough for 100% at 56 frames). Without the port the release build and the rest's cuts alone reach about 85% (s 7.1, r 5.4: 2000 / (120 x 19.6)).
 1. Play and measure in the release build (done: `multiplayer_playtest_release.bat`).
 2. The arms' drive in C++ (#320): the one large cut that keeps every fight.
-3. The frame's rest: the HUD's 1.9 ms, the render thread once its error is found, the men's `_process` (4.2 ms a frame).
+3. The frame's rest: the HUD's 1.9 ms (done: section 16), the render thread once the MultiMesh read-backs are gone, the men's `_process` (4.2 ms a frame).
 4. The valve: a cap of three steps (71% at 28 frames by the model, for a step of 8.5 ms) in place of two (62% at 37 by the model; the room's own record 55-71% at 33), or aiming at 24 frames rather than 30 (the owner's choice: speed or frames).
 5. Half the controllers' rate, or 60 steps a second for the room under load, are the only cuts that reach 100% on a 10-12 man room without the port (the release build and the rest's cuts reach about 85%), and they change every blow (section 10): the owner's word.
+
+## 16. After the first report: what was cut, and what the second test asks
+
+**The HUD** (`scripts/ui/hud.gd`, `tests/test_hud_cost.gd`). The report's "the HUD not drawn" was 1.9 ms of a frame, and its scripts are half of that: timed here in the same fight with no window (`Hud._process` and the
+figure's own drawing), 1.2 to 1.4 ms a frame, now 0.4:
+- the figure's columns (every voxel of every part walked, to count what is left of each column) were counted over again every half second whether or not a voxel had gone, 6 ms of that frame: now a part's columns are
+  counted again only when its voxels have changed (`_col_sig`: the part, its grid, a hash of its `alive` bytes), 0.2 ms;
+- the figure was drawn anew every frame (a few hundred rectangles of script): now 20 times a second, and every frame while the plate is knocked (its shake is quick);
+- each gauge put its label's colour on again and asked for its icon to be drawn again every frame: now when it goes low or comes back, and the gauge itself is drawn when it has moved or pulses;
+- the prompt's and the place's texts were built every frame: now 10 times a second.
+Nothing of it is seen: `tests/hudshots.gd`'s pictures before and after are the same figure, gauges and plates.
+
+**The render thread, read again** (section 15, corrected there): the log's 159,606 lines are the engine's warnings of MultiMesh read-backs, not the image error. The second test's `readback` part says what one costs on the card.
+
+**The second test** (section 14, version 2) asks what this machine cannot say: the speed of each core of the owner's processor (six fast cores of two threads and eight slow ones: the games with no window of the first report
+were given the slow ones, which is why their steps cost what this 2.1 GHz machine's do and the window's fight 1.6 times less), which kind the game's own thread is on while it plays (every sample), what the fight and
+the step are worth held to the fast ones, the room in the release build, and a read-back's cost on the card.
 

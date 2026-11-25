@@ -89,6 +89,9 @@ var font_caps: Font
 var columns := {}           # part -> {w, h, cells: PackedFloat32Array (alive share per column)}
 var columns_t := 0.0
 var columns_dirty := true
+var _col_sig := {}          # part -> what its columns were counted from (the part, its grid, its voxels' state)
+var fig_t := 0.0            # seconds until the figure is drawn again (it is drawn 20 times a second, at once when he is knocked)
+var slow_t := 0.0           # seconds until the slow texts (the prompt, the place) are written again (10 times a second)
 var ui_scale := 1.0
 var hands_seen := []          # what was in each hand last frame, and when that changed
 var hands_t := -100.0
@@ -388,11 +391,18 @@ func _build_body_panel() -> void:
 ## The columns of each part: for every (x, y) of its fine grid, the share of voxels still
 ## there through its depth (1 whole, 0 a hole right through). Rebuilt when he loses voxels.
 func _rebuild_columns(f) -> void:
-	columns.clear()
+	# (Counted again only for a part whose voxels have changed since: a part's columns are a loop over every one of its voxels, and the whole
+	# figure was walked every half second, 6 ms of a frame on the diagnostic test's machine, for a result that was the same as the last time.)
+	var kept := {}
 	for k in LAYOUT:
 		var p = f.by_name.get(k)
 		if p == null:
 			continue
+		var sig := [p.get_instance_id(), p.grid, hash(p.alive)]
+		if columns.has(k) and _col_sig.get(k) == sig:
+			kept[k] = columns[k]
+			continue
+		_col_sig[k] = sig
 		var w: int = p.grid.x
 		var h: int = p.grid.y
 		var tot := PackedInt32Array()
@@ -408,7 +418,8 @@ func _rebuild_columns(f) -> void:
 		cells.resize(w * h)
 		for ci in w * h:
 			cells[ci] = (float(live[ci]) / float(tot[ci])) if tot[ci] > 0 else -1.0
-		columns[k] = {"w": w, "h": h, "cells": cells}
+		kept[k] = {"w": w, "h": h, "cells": cells}
+	columns = kept
 
 ## The figure: every part drawn as its own voxels (seen from the front, each column of them a
 ## cell: whole, chipped, or a hole), so every piece knocked off him shows where it was. A part
@@ -820,25 +831,35 @@ func popup(text: String) -> void:
 func _ease_bar(key: String, v: float, dt: float) -> void:
 	var b: Control = bars[key]
 	var shown: float = b.get_meta("shown")
+	var was_shown := shown
 	shown += (clampf(v, 0.0, 1.0) - shown) * minf(1.0, dt * 6.0)
 	b.set_meta("shown", shown)
 	var trail: float = b.get_meta("trail")
-	b.set_meta("trail", shown if shown > trail else maxf(shown, trail - dt * 0.35))
-	var num: Label = b.get_meta("num", null)
+	var was_trail := trail
+	trail = shown if shown > trail else maxf(shown, trail - dt * 0.35)
+	b.set_meta("trail", trail)
 	var low := v < 0.25
+	# (The colours and words are put on a gauge's labels when it goes low or comes back, not every frame: each is a change of theme to the label. And the gauge is drawn
+	# again when it has moved or while it pulses, its icon never: it is the same picture every time.)
+	var low_changed: bool = b.get_meta("low", null) != low
+	b.set_meta("low", low)
+	var num: Label = b.get_meta("num", null)
 	if num:
 		num.text = str(roundi(clampf(v, 0.0, 1.0) * 100.0))
-		num.add_theme_color_override("font_color", BLOOD_BRIGHT if low else GOLD_PALE)
+		if low_changed:
+			num.add_theme_color_override("font_color", BLOOD_BRIGHT if low else GOLD_PALE)
 	var word: Label = b.get_meta("word", null)
-	if word:
+	if word and low_changed:
 		var crit := "BLOOD · CRITICAL" if key == "blood" else "WINDED"
 		var base := "BLOOD" if key == "blood" else ("BREATH" if key == "stamina" else "THE CROWD")
 		word.text = crit if low and key != "favor" else base
 		word.add_theme_color_override("font_color", BLOOD_BRIGHT if low and key != "favor" else MUTED)
-	b.queue_redraw()
-	var icon: Control = b.get_meta("icon", null)
-	if icon:
-		icon.queue_redraw()
+	if shown != was_shown or trail != was_trail or shown < 0.25 or low_changed:
+		b.queue_redraw()
+	if low_changed:
+		var icon: Control = b.get_meta("icon", null)
+		if icon:
+			icon.queue_redraw()
 
 ## The key for an action, as the player has it bound.
 func _key(id: String) -> String:
@@ -1031,6 +1052,11 @@ func _process(dt: float) -> void:
 			banner_box.modulate.a = clampf(banner_t / 0.6, 0.0, 1.0)
 	knock = maxf(0.0, knock - dt * 4.0)
 	plate_flash = maxf(0.0, plate_flash - dt * 3.0)
+	# (The prompt and the place change slowly and building them is script: written 10 times a second, not every frame.)
+	slow_t -= dt
+	var slow := slow_t <= 0.0
+	if slow:
+		slow_t = 0.1
 	var me = match_.me
 	var f = me.f if me and is_instance_valid(me.f) else null
 	if f:
@@ -1055,12 +1081,19 @@ func _process(dt: float) -> void:
 		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3, 0.0, 0.95)
 		# The figure's voxels: rebuilt when he loses some, and now and then regardless.
 		columns_t -= dt
+		var columns_was_rebuilt := false
 		if columns_dirty or columns_t <= 0.0:
 			_rebuild_columns(f)
 			columns_dirty = false
 			columns_t = 0.5
-		fig.queue_redraw()
-		body_panel.queue_redraw()
+			columns_was_rebuilt = true
+		# (The figure is a few hundred rectangles of script every time it is drawn: 20 times a second is as often as it changes to the eye,
+		# and at once while he is knocked about, its shake being quick.)
+		fig_t -= dt
+		if fig_t <= 0.0 or knock > 0.0 or columns_was_rebuilt:
+			fig.queue_redraw()
+			body_panel.queue_redraw()
+			fig_t = 0.05
 		# The crowd's cheers for you.
 		for ev in match_.spectacle.events:
 			if ev.f == f and ev.amount > 0:
@@ -1087,7 +1120,8 @@ func _process(dt: float) -> void:
 				s.panel.visible = false
 		var held = f.held_item
 		held_label.text = (Loc.t("IN HAND: %s") % _held_name(f).to_upper()) if held else ((Loc.t("BOW: %s") % Loc.t(String(Data.shop.throwables.get(f.arrow_pick, {}).get("name", f.arrow_pick))).to_upper()) if String(f.arrow_pick) != "" else "")
-		_set_prompt(_prompt_for(f))
+		if slow:
+			_set_prompt(_prompt_for(f))
 	else:
 		vignette.modulate.a = 0.0
 		sight.modulate.a = 0.0
@@ -1095,7 +1129,8 @@ func _process(dt: float) -> void:
 			s.panel.visible = false
 		_set_prompt([])
 	match_.spectacle.events.clear()
-	_place()
+	if slow:
+		_place()
 	var status: Label = bars.status
 	status.text = ""   # (the yard's place is in the corner and what to do there in the prompt: the plate stays the fight's size)
 	decree_label.text = (Loc.t("DECREES: %s") % " · ".join(match_.dec.names.map(func(nm): return Loc.t(nm)))).to_upper() if not match_.dec.names.is_empty() else ""
