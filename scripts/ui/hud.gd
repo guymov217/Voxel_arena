@@ -841,8 +841,8 @@ func _ease_bar(key: String, v: float, dt: float) -> void:
 	var low := v < 0.25
 	# (The colours and words are put on a gauge's labels when it goes low or comes back, not every frame: each is a change of theme to the label. And the gauge is drawn
 	# again when it has moved or while it pulses, its icon never: it is the same picture every time.)
-	var low_changed: bool = b.get_meta("low", null) != low
-	b.set_meta("low", low)
+	var low_changed: bool = int(b.get_meta("low", -1)) != int(low)   # (-1: not yet said; a default of null is an error to the engine)
+	b.set_meta("low", int(low))
 	var num: Label = b.get_meta("num", null)
 	if num:
 		num.text = str(roundi(clampf(v, 0.0, 1.0) * 100.0))
