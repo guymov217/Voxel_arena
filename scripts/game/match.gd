@@ -1657,6 +1657,18 @@ func _at_rest(e: Dictionary, f, dt: float) -> bool:
 			if not p.severed and not p.sleeping:
 				p.can_sleep = true
 				p.sleeping = true
+		# And what hangs on him by a strip or a joint (a flap of flesh, the links of his guts: Chunk.flap_of), with him: each is a body on a joint that never slept, and one
+		# awake kept the parts it hung from awake with it, every step, for as long as he lay there (the second diagnostic report: late in a wave a room's step cost the same
+		# with eight alive as with twelve; here, 57 of them on four dead men were 2.7 ms of a 9.5 ms step). Touched or pushed they wake and swing as they did.
+		if int(e.get("hang_n", -1)) != Chunk.made:
+			e.hang_n = Chunk.made
+			e.hangers = Chunk.hanging_on(f)
+		for c in e.hangers:
+			if is_instance_valid(c) and c.flap_of != null and not c.sleeping and not c.freeze:
+				c.sleeping = true
+	elif e.has("hangers"):
+		e.erase("hangers")
+		e.erase("hang_n")
 	return resting
 
 ## Whether a man who harms nobody and only stands where he is put (`harmless`: a stall's keeper,

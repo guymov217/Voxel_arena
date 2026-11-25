@@ -237,6 +237,21 @@ func _bout(token: String, default_secs: float) -> Dictionary:
 	_fill(m, spec, not flags.has("bare"))
 	for k in 120:
 		await get_tree().physics_frame
+	# #deadN: N of the men are killed where they stand, to lie among the fighting as the fallen of a long wave do (the second report: a room's step cost the same with two
+	# thirds of its men dead as with all of them alive).
+	for fl in flags:
+		if fl.begins_with("dead"):
+			var n_dead := int(fl.trim_prefix("dead"))
+			for e in m.entities:
+				if n_dead <= 0:
+					break
+				if e != m.me and int(e.team) != Match.ENEMY_TEAM and is_instance_valid(e.f) and e.f.alive:
+					e.erase("bot")
+					e.f.set("spared", true)   # (no death's door: dead)
+					e.f.die("diag")
+					n_dead -= 1
+			for k in 180:
+				await get_tree().physics_frame
 	var steps := int(secs * 120.0)
 	var gaps := PackedFloat32Array()
 	rec.begin(token)

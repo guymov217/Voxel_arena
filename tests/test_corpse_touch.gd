@@ -75,9 +75,22 @@ func test_the_dead_are_not_asked_who_touched_whom() -> void:
 	var c: Fighter = s[1][2]
 	for i in 30:
 		await get_tree().physics_frame
-	# Alive, pressed on one another: noted touching, as ever.
+	# Alive, pressed on one another: what a hand that grabs asks for is noted (a forearm's touches: Combat._asked), and nothing else of a man's is (nobody asks what
+	# his thigh touched: nearly all of a melee's touches, each spelt out and written twice a step and never read).
 	var r: Array = await _press(m, b, a, 40)
-	t.check(int(r[0]) > 0 and int(r[1]) > 0, "men pressed on one another are noted touching (%d noted, %d contacts seen)" % [r[0], r[1]])
+	t.check(int(r[1]) > 0, "men pressed on one another touch (%d contacts seen)" % r[1])
+	var fore := 0
+	var other := 0
+	for key in m.combat.touches:
+		var rec = m.combat.touches[key]
+		if is_instance_valid(rec.a) and (rec.a.fighter == a or rec.a.fighter == b):
+			if String(key).begins_with("p") and String(rec.a.part_name).begins_with("forearm"):
+				fore += 1
+			else:
+				other += 1
+	t.check(other == 0, "of two men's touches only their forearms' are noted (%d others, %d forearms')" % [other, fore])
+	t.check(Combat._asked(a.arm.R.fore) and Combat._asked(a.arm.L.fore) and not Combat._asked(a.torso) and not Combat._asked(a.by_name["thighR"]), "a forearm is asked about (the hand that grabs), a trunk or a thigh is not")
+	t.check(Combat._may_strike(a.by_name["shinR"]) and Combat._may_strike(a.head) and Combat._may_strike(a.arm.R.fore) and not Combat._may_strike(a.torso) and not Combat._may_strike(a.by_name["thighL"]), "a shin, a head and a forearm may land a blow, a trunk or a thigh may not")
 	_put_down(a)
 	_put_down(b)
 	for i in 120:

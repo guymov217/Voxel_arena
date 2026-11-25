@@ -221,9 +221,44 @@ func release() -> void:
 	links = []
 	queue_free()
 
+## A dead man's guts lying still with him are let lie: every length of them looked at who touched it and was pushed out of his trunk at every step for as long as he lay there (a
+## table made and a search of the trunk's voxels for each of up to 28 lengths), and the push woke the lengths and the trunk it pushed back on, so neither ever slept: two such men
+## were a quarter of a step late in a fight of sixteen (the second diagnostic report's room: a step the same with eight alive as with twelve). Still for REST_AFTER, the lengths are
+## put to sleep and only watched: one that a blade, a foot or a pull moves wakes (the physics wakes what is touched), and the rope is at once what it was, in the same step as ever.
+const REST_AFTER := 1.5
+var _still_t := 0.0
+func _lies_still(dt: float) -> bool:
+	if fighter == null or not is_instance_valid(fighter) or bool(fighter.get("alive")):
+		_still_t = 0.0
+		return false
+	if not torso.sleeping and (torso.linear_velocity.length_squared() >= 0.04 or torso.angular_velocity.length_squared() >= 0.09):
+		_still_t = 0.0
+		return false
+	var hung := []
+	for ch in links:
+		if not is_instance_valid(ch) or ch.flap_of == null:
+			break
+		if not ch.sleeping and (ch.linear_velocity.length_squared() >= 0.04 or ch.angular_velocity.length_squared() >= 0.09):
+			_still_t = 0.0
+			return false
+		hung.append(ch)
+	# (Not while more of it is still to pour out: the end hanging clear of the sand.)
+	if not hung.is_empty() and hung.size() == links.size() and links.size() < MAX_LINKS and (hung[-1] as Chunk).global_position.y > torso.vf * torso.part_scale * 3.0:
+		_still_t = 0.0
+		return false
+	_still_t += dt
+	if _still_t <= REST_AFTER:
+		return false
+	for ch in hung:
+		if not ch.sleeping and not ch.freeze:
+			ch.sleeping = true
+	return true
+
 func _physics_process(dt: float) -> void:
 	if not is_instance_valid(torso) or not torso.is_inside_tree():
 		release()
+		return
+	if _lies_still(dt):
 		return
 	var attached := 0
 	for ch in links:

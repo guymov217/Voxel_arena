@@ -566,3 +566,44 @@ What stands between it and the game:
   run on a thread). The test's parts report every error of their logs.
 - Beasts are not on the threads yet (their `control` has not been read for this).
 
+
+## 18. The second report from the owner's machine (test version 2), and what lies on the sand
+
+**What it settled** (i5-14600KF, RTX 4070, Windows 11, the editor's binary and the release build):
+- **The cores.** 12 logical processors are fast (the fixed loop's eighth in 7.2 ms) and 8 slow (15.5 ms, 2.15 times as long); a game with no window is put between them (11.2). So the first report's windowless figures were the slow
+  cores'. In play the game's own thread has a fast one: 7.1-7.4 ms in the fights, 8.4-8.8 in the room (seven friends' games beside it). Held to the fast cores the fight gains 2 points of speed: not where the time is.
+- **The release build**: a step 14-18% cheaper (men:8 3.28 against 3.88 ms; the fight 8.4 against 9.8), the rest of a frame the same (9.2 against 9.3).
+- **The controls on threads** (section 17): men:8 -13%, with 3 foes -8%, with 8 foes +3%; in the fight the speed fell to 32% (42,176 engine errors: a wound's blood added to the scene from a thread, a case the list of plain
+  steps missed, and each error printed with its trace). On twenty threads, eight of them slow, a script's work does not spread: not for the game as built.
+- **The render thread**: drawing and waiting 5.4 -> 2.4 ms, but the steps cost 15% more and the frame's scripts 3.7 -> 6.0: the game's reads of its MultiMeshes each wait for that thread. (The first read of a MultiMesh given whole
+  costs 5.8 ms on this card, the worst 9.6; the game's own are kept in memory from the start, `FineBody._keep_in_memory`, and never pay it.) Its 3 ms are there to be had once the reads are of the game's own copies.
+- **The HUD** (section 16): the yard's frame 8.4 ms with it, 7.8 without: 0.6 where the first report had 1.9.
+- "WINDOWLESS +57%" is not a finding: a step's gap in a window holds the frame's drawing as well (the scripts' part is 3.44 against 3.24).
+
+**The room in the release build** is the report's news. A step, in each half minute of a wave of eight players (the scripts' and the engine's part):
+
+| when | alive | the scripts | the engine | drawing and waiting | draw calls |
+|---|---|---|---|---|---|
+| the yard | 8 men | 4.08 | 0.62 | 5.7 | 841 |
+| 0-30 s | 8 men, 2-5 foes | 6.25 | 1.73 | 6.7 | 1583 |
+| 30-60 s | 7-8 men, 2-3 foes | 6.84 | 2.70 | 8.7 | 3296 |
+| 60-90 s | 5-6 men, 2-3 foes | 5.76 | 2.60 | 9.6 | 3946 |
+| 90-120 s | 1-4 men, 3-4 foes | 5.17 | 2.53 | 9.0 | 2707 |
+
+With seven or eight alive a step costs 8.4 ms where eight in the yard cost 4.7, and it is over the 8.33 there is from the tenth second to the hundredth: what the fight leaves on the sand costs as much as the living.
+
+**The cause, found here** (`FX_ON=1` and the endless fight of eight played to 45 s with no window: 5-6 alive of 9-10, 57 pieces hanging, 155 bodies awake). A dead man's guts are a rope of up to 28 jointed pieces, his flaps
+hang by joints; none of them was ever put to sleep, the rope pushed its links and his trunk out of each other every step (`GutRope._keep_out`), and a body awake on a joint keeps what it hangs on awake: the dead never rested,
+however long they lay. Now the rope of a dead man lies still with him (`GutRope._lies_still`: his trunk and every link slow for 1.5 s, nothing left to pour) and `Match._at_rest` puts what hangs on a resting corpse to
+sleep with it (`Chunk.hanging_on`). Before and after, the same fight: a step 9.1-9.9 -> 7.7-8.2 ms, bodies awake 155 -> 78, all 40 parts of the dead asleep. A blade laid on the guts still cuts them
+(`test_organs`). The fingerprints of `tools/replay_check.sh` are the same on every line that repeats.
+
+With it in this batch:
+- **Contacts nobody reads are not written down** (`Combat.report`): a touch is noted only for a beast's part or a forearm (their only readers), a pair kept only if one of the two can strike. 3% of a step in a clump of sixteen.
+- **Blood and sparks throw no shadow** (`Fx.make_burst`, `emitter`): 67 emitters late in a fight, each drawn again into each of the sun's shadow maps.
+
+**What is left**, by size (the function profile of the same late fight, eight alive): the living men's `control` is three quarters of the scripts (778 us a man, `_drive_arm` 46% of it: section 10); thirty weapons, held and
+lying, 0.75 ms (`_process`, `_dry_blood`, `_physics_process`); 50-90 pieces 1.3 ms of a step and its frame; the pieces' and the dead's draw items (two shadow-casting MultiMeshes a piece).
+
+**The sum for the goal** (eight players and their foes at sixty frames): two steps and the frame's rest in 16.7 ms. Today, release, sixteen fighting: 2 x 8.4 + 9.2 = 26 ms. The arm drive native (section 10) brings a step to about
+6.5; the render thread, its reads gone, the rest to about 6; so 19 ms, 52 frames at the full speed, before anything of sections 4 and 17. The rate of the physics is the other half of it and is the owner's to choose.

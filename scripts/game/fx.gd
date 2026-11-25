@@ -345,6 +345,7 @@ func make_burst(kind: String, p: Vector3, n: int, dir := Vector3.UP, speed_mul :
 	if quality == "low":
 		n = maxi(1, n / 3)
 	var ps := GPUParticles3D.new()
+	ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # (a spray of blood or sparks throws no shadow that is seen; each one that did was drawn again into every shadow map)
 	ps.one_shot = true
 	ps.explosiveness = 0.9
 	ps.amount = mini(n, 400)
@@ -384,6 +385,7 @@ func emitter(kind: String, parent: Node3D, amount := 24, radius := 0.06) -> GPUP
 	if headless:
 		return null
 	var ps := GPUParticles3D.new()
+	ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # (nor a wound's drip: sixty of them late in a fight were sixty more things in each of the sun's four shadow maps)
 	ps.amount = amount
 	ps.lifetime = KINDS[kind].life
 	var pm: ParticleProcessMaterial = _sphere_mat(kind).duplicate()

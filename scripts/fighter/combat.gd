@@ -67,12 +67,30 @@ func touch_impulse(a, b, within := 0.25) -> float:
 		return 0.0
 	return float(r.J)
 
+## Whether anyone ever asks what this part touched. touch_part, touching and touch_impulse are asked of a beast (its hug, its coil, its stomp, what it gripped), touch_by of a
+## beast's part or of a forearm (the hand that grabs is on its forearm: Social.nearest_part). Of a man's thigh on another man's shin nobody asks, and those are nearly all of a
+## melee's touches: with ten men pressed on one another 440 notes a step were written, two keys spelt out and a table looked up for each, and never read (the second
+## diagnostic report: a room's step cost the same with eight alive as with twelve).
+static func _asked(p: VoxelPart) -> bool:
+	var v: int = p.touch_asked
+	if v < 0:
+		v = 1 if (p.fighter is Beast or String(p.part_name).begins_with("forearm")) else 0
+		p.touch_asked = v
+	return v == 1
+
+## Whether this part can ever be the one that lands a blow on another's part (process_contacts lets go of a touch of two parts neither of which can): cut off (a club, perhaps),
+## a striking part, a jaw, a point, a tusk.
+static func _may_strike(p: VoxelPart) -> bool:
+	return p.severed or STRIKING.has(p.part_name) or p.def.get("bite", false) or p.def.get("point", false) or _tusk(p)
+
 func _note_touch(a: VoxelPart, b: VoxelPart, J: float) -> void:
 	var fa = a.fighter
 	var fb = b.fighter
 	if fa == null or fb == null or fa == fb:
 		return
-	for key in ["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()], "p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]]:
+	if not _asked(a):
+		return
+	for key in (["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()], "p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]] if fa is Beast else ["p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]]):
 		var r = touches.get(key)
 		if r != null and float(r.t) == time:
 			r.J += J   # another contact of the same step: the impulses add up
@@ -124,6 +142,8 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 		return
 	var bid := body.get_instance_id()
 	var holder = body.holder if bw else null
+	var b_asked: bool = bp and bf != null and _asked(body)
+	var b_strikes: bool = bp and _may_strike(body)
 	for i in state.get_contact_count():
 		var other = state.get_contact_collider_object(i)
 		if other == null:
@@ -158,13 +178,19 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 			# living's), and a blow wants a living hand (process_contacts lets go of it): nothing to note, let go at once.
 			if bf != null and other.fighter != null and not bf.alive and not other.fighter.alive and not body.severed and not other.severed:
 				continue
+			# (Noted only where somebody may ask (_asked), kept only where one of the two may land a blow (_may_strike): the rest, which is most of a melee, is let go here.)
+			var noted: bool = b_asked or (other.fighter != null and _asked(other))
+			var kept: bool = bid <= other.get_instance_id() and (b_strikes or _may_strike(other))
+			if not (noted or kept):
+				continue
 			var cj := state.get_contact_impulse(i).length()
-			if canonical:
-				touch_q.append([body, other, cj])
-			else:
-				_note_touch(body, other, cj)
-				_note_touch(other, body, cj)
-			if bid > other.get_instance_id():
+			if noted:
+				if canonical:
+					touch_q.append([body, other, cj])
+				else:
+					_note_touch(body, other, cj)
+					_note_touch(other, body, cj)
+			if not kept:
 				continue
 			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": cj})
 		else:

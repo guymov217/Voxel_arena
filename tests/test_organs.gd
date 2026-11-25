@@ -350,6 +350,47 @@ func test_an_opened_belly_spills_the_guts_as_a_hanging_chain() -> void:
 	t.check(cut, "a blade through the chain cuts it")
 	m.queue_free()
 
+## A dead man's guts lie still with him (GutRope._lies_still, Match._at_rest): asleep, every length of them and every part of him, where each length was looked at and
+## pushed at every step and the push kept him and them awake for as long as he lay there. A blade through a length wakes it and cuts the chain as it ever did.
+func test_a_dead_mans_guts_lie_still_with_him_and_a_blade_still_cuts_them() -> void:
+	var r := _victim()
+	var m: Match = r[0]
+	var v: Fighter = r[1]
+	await _steps(30)
+	await _open_belly(v)
+	var rope: GutRope = GutRope.ropes.back() if not GutRope.ropes.is_empty() else null
+	t.check(v.guts_out and rope != null, "his belly is open and the guts hang out")
+	if rope == null:
+		m.queue_free()
+		return
+	await _steps(120 * 2)
+	t.check(v.alive and rope._still_t == 0.0 and rope.links.any(func(c): return is_instance_valid(c) and not c.sleeping), "alive, the rope is at its work every step (nothing of it is let lie)")
+	v.set("spared", true)   # (no death's door: dead)
+	v.die("test")
+	await _steps(120 * 9)
+	var hung := rope.links.filter(func(c): return is_instance_valid(c) and c.flap_of != null)
+	t.check(not v.alive and hung.size() >= GutRope.FIRST_LINKS, "dead, and the guts still hang on him (%d lengths)" % hung.size())
+	t.check(rope._still_t > GutRope.REST_AFTER and hung.all(func(c): return c.sleeping), "nine seconds on every length of them is asleep (%d of %d)" % [hung.filter(func(c): return c.sleeping).size(), hung.size()])
+	t.check(v.parts.all(func(p): return p.severed or p.sleeping), "and every part of him (%d of %d)" % [v.parts.filter(func(p): return p.sleeping).size(), v.parts.size()])
+	# A blade swung through a length: it wakes, and the chain is cut there.
+	var mid: Chunk = hung[hung.size() / 2]
+	var w: Weapon = m.spawn_loose_weapon(Data.preset("gladius"), mid.global_position + Vector3(0.4, 0, 0))
+	var blade := Vector3.ZERO
+	for vv in w.vox:
+		blade += Vector3(vv[0], vv[1], vv[2]) * w.vs
+	blade /= float(w.vox.size())
+	var cut := false
+	for i in 40:
+		w.global_position = mid.global_position + Vector3(0.3 - i * 0.03, 0, 0) - w.global_transform.basis * blade
+		w.thrown_t = 1.0
+		w.linear_velocity = Vector3(-8, 0, 0)
+		await get_tree().physics_frame
+		if rope.links.any(func(c): return is_instance_valid(c) and c.flap_of == null):
+			cut = true
+			break
+	t.check(cut, "a blade through the sleeping chain cuts it as it ever did")
+	m.queue_free()
+
 ## The lengths of gut (all but the first, in the wound) whose middles lie among the live flesh of
 ## his trunk.
 func _guts_in_trunk(v: Fighter, rope: GutRope) -> int:

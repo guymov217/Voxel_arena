@@ -29,6 +29,7 @@ const BRUISE := Color(0.29, 0.157, 0.282)
 var fighter: Node = null          # the Fighter or Beast it belongs to
 var def: Dictionary = {}
 var part_name := ""
+var touch_asked := -1             # whether anyone asks what it touched (Combat._asked): -1 not yet told, 0, 1
 var label := ""
 var dims := Vector3i.ONE          # body voxels
 var grid := Vector3i.ONE          # fine voxels

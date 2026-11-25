@@ -11,6 +11,23 @@ const REST_AFTER := 1.5
 ## Asleep, it looks under itself now and then (as VoxelPart does): what it lay on gone from under it, it wakes and falls.
 const UNDER_EVERY := 0.5
 static var all: Array = []
+static var made := 0            # how many have ever been made (who keeps a list of some of them knows by it when to look again)
+
+## The chunks that hang on a fighter's parts by a strip or a joint, straight off one or off another that does (a flap, the links of the guts): Match._at_rest puts them to
+## sleep with the dead man they hang on.
+static func hanging_on(f: Node) -> Array:
+	var out := []
+	for c in all:
+		if not is_instance_valid(c) or c.flap_of == null:
+			continue
+		var q: Node = c.flap_of
+		var depth := 0
+		while q is Chunk and is_instance_valid(q) and (q as Chunk).flap_of != null and depth < 64:
+			q = (q as Chunk).flap_of
+			depth += 1
+		if q is VoxelPart and is_instance_valid(q) and (q as VoxelPart).fighter == f:
+			out.append(c)
+	return out
 
 var t := 0.0
 var held_for := 0.0
@@ -166,6 +183,7 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 		ch.collision_layer = 0
 		ch._come_clear(0)
 	all.append(ch)
+	made += 1
 	var cap := 40 if Fx.current and Fx.current.quality == "low" else 160
 	while all.size() > cap:
 		# The oldest that lies on the sand goes first; a flap still hanging on a body stays.
