@@ -1357,6 +1357,58 @@ func _spawn_training() -> void:
 
 # ---------- The loop ----------
 
+# ---------- EXPERIMENTAL: the men's controls on the engine's worker threads ----------
+## A fighter's control is four fifths of a step's scripts and the game runs it for one man after another on one core of a processor that has many. With this on (`-- --control-threads`,
+## and the diagnostic test's steps_threads and fight_threads) the controls of the men who are only fighting (_threadable) are gathered while the loop goes over everyone and run
+## together on the worker pool when it is done; the rest run where they always did. On four threads (two cores) a step of sixteen men costs a third less (docs/PERF_RESEARCH.md,
+## section 17); a processor of six cores and more is what the test is to say.
+## OFF by default, and for measuring only, for two reasons. The fight is not the same fight: every control held back to the loop's end and run in the same order is the same to the
+## bit (tools/replay_check.sh), but the men's controls run in another order are not (no dice are drawn in a control: something one writes another reads, or the order their forces reach the physics in), so
+## with threads no two runs are alike: a fair fight still, not a repeatable one. And what a control may not do from a thread (add a node, as picking a weapon up does; emit to the
+## game's own listeners; fill a shared table for the first time) is kept off the threads by _threadable's list of the plain cases, which is a list made by hand and not yet a proof.
+static var control_threads := false
+var _jobs := []          # [fighter, input] of this step, for the threads
+var _job_dt := 0.0
+static var pool_space: PhysicsDirectSpaceState3D = null   # (the space's state cannot be asked for from a thread: it is handed over)
+
+## The physics space's state for a fighter's rays: the one handed to the threads while they run, else the world's own.
+static func dss(n: Node3D) -> PhysicsDirectSpaceState3D:
+	return pool_space if pool_space != null else n.get_world_3d().direct_space_state
+
+## Whether a man's control this step is the plain work of standing and fighting, with none of the rare things in it that change the scene or speak to the rest of the game: a hand
+## reaching for a weapon or wrenching one free, a grip or a swap asked for, something readied to throw, a net on him, a fall, a death near. And not in his first second (the tables
+## that are filled at a first use are filled on the main thread).
+func _threadable(f, inp: Dictionary) -> bool:
+	if not (f is Fighter) or f is Beast or not f.alive or f.state != "stand" or f.limp or f.time < 1.0 or f.blood < 25.0:
+		return false
+	if f.reach.R != null or f.reach.L != null or f.held_item != null or f.throw_anim != null or f.net_timer > 0.0 or f.stowed.R != null or f.stowed.L != null:
+		return false
+	if inp.get("grip", false) or inp.get("swap", false):
+		return false
+	for w in f.weapons.values():
+		if w != null and is_instance_valid(w) and w.stuck != null:
+			return false
+	return true
+
+func _job(i: int) -> void:
+	Thread.set_thread_safety_checks_enabled(false)   # (each thread touches its own man's bodies and no other's: the engine cannot know that)
+	var j: Array = _jobs[i]
+	(j[0] as Fighter).control(_job_dt, j[1])
+
+func _run_jobs(dt: float) -> void:
+	_job_dt = dt
+	if _jobs.size() == 1:
+		(_jobs[0][0] as Fighter).control(dt, _jobs[0][1])
+	else:
+		pool_space = (_jobs[0][0] as Node3D).get_world_3d().direct_space_state
+		var id := WorkerThreadPool.add_group_task(_job, _jobs.size(), -1, true)
+		WorkerThreadPool.wait_for_group_task_completion(id)
+		pool_space = null
+		# (What the threads asked of the physics waits in its queue until the main thread next speaks to it, and the step itself does not empty it first: the forces came a
+		# step late. Emptied here, before anything else is done to those bodies.)
+		PhysicsServer3D.get_process_info(PhysicsServer3D.INFO_ACTIVE_OBJECTS)
+	_jobs.clear()
+
 func _physics_process(dt: float) -> void:
 	if social == null:
 		return   # not set up (a Match made only to read its tables)
@@ -1494,7 +1546,7 @@ func _physics_process(dt: float) -> void:
 			var fd: Vector3 = inp.faceAt - f.torso.global_position
 			f.yaw = atan2(fd.x, fd.z)
 		if e.kind == "beast":
-			f.control(dt)
+			f.control(dt)   # (a beast's control stays on the main thread: _threadable is the men's)
 		else:
 			# (The players, and a test's driven men; the yard's keepers are seen to by _stands_idle.)
 			var player_like: bool = e.kind != "npc" and (kind_ == "local" or kind_ == "remote" or kind_ == "drive")
@@ -1503,7 +1555,12 @@ func _physics_process(dt: float) -> void:
 			e.input = inp
 			inp = social.before(e, inp, dt)
 			f.arm_lod_ok = player_like and mode == "yard" and role != "guest"   # (the yard's men's arms at rest are seen to every other step: Fighter.arm_lod_ok)
-			f.control(dt, inp)
+			if control_threads and _threadable(f, inp):
+				_jobs.append([f, inp])
+			else:
+				f.control(dt, inp)
+	if not _jobs.is_empty():
+		_run_jobs(dt)
 	social.after(dt)
 	if modes:
 		modes.update(dt, local_inp)

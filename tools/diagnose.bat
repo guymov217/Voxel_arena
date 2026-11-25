@@ -8,6 +8,9 @@ rem   diagnose.bat                   the whole test
 rem   diagnose.bat --quick           the same, shortened (a few minutes), for a look first
 rem   diagnose.bat --size 1920x1080  the size of the windows the parts are drawn in (1280x720 by default, as the playtest)
 rem   diagnose.bat --skip room       leave a part out (steps, release, fight, render, room, or an id from the report)
+rem   diagnose.bat --all             every part there is, the ones the first report has answered too (threads, sound, caches, the other renderer, full screen, priority): 35 minutes
+rem The second version (after the first report) asks what only this computer can say: how fast each of the processor's cores is and which of them Windows gives the game
+rem (a part held to the fast ones, by Windows' own affinity setting of that one game, gone when it closes), the room in the release build, what a read-back costs on this card, and an experiment: the fighters' controls spread over all the processor's cores.
 rem Close every other program first (browsers, recorders, other games) and leave the computer alone until the window says it is done.
 rem Godot 4.7 is found by itself (put Godot_v4.7.2-stable_win64.exe in the game's folder). For the release build Godot's export templates must be installed
 rem (Editor, Manage Export Templates, Download; or tools\package.bat --install-templates): without them that part says so and the rest runs.

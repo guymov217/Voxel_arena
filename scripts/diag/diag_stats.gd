@@ -220,11 +220,24 @@ static func result_text(d: Dictionary) -> String:
 		"sample":
 			return "  at %5.1f s: wave %d, %d men and %d foes alive, %d held at the gate, %d on their way in, step %.1f ms%s, %.0f fps, %d nodes (%d orphans), %d MB, %d bodies awake%s" % [float(d.get("t", 0.0)), int(d.get("wave", 0)), int(d.get("men", 0)), int(d.get("foes", 0)),
 				int(d.get("held", 0)), int(d.get("coming", 0)), float(d.get("step_ms", 0.0)), " OVER BUDGET" if bool(d.get("over", false)) else "", float(d.get("fps", 0.0)), int(d.get("nodes", 0)), int(d.get("orphans", 0)), int(d.get("mem_mb", 0)), int(d.get("awake", 0)),
-				(", %d friend windows" % int(d.friends)) if d.has("friends") else ""]
+				((", %d friend windows" % int(d.friends)) if d.has("friends") else "") + ((", its core %.1f ms" % float(d.core_ms)) if d.has("core_ms") else "")]
 		"setup":
 			return "  %s: %.0f ms" % [String(d.get("label", "?")), float(d.get("ms", 0.0))]
 		"cpu_loop":
 			return "  a fixed piece of script work: %.0f ms (the machine the test was made on: %.0f ms)" % [float(d.get("ms", 0.0)), float(d.get("ref_ms", 0.0))]
+		"cores":
+			var ms: Array = d.get("ms", [])
+			var out_c := "  an eighth of that work on each logical processor in turn (%s; the machine the test was made on: %.1f ms):" % ["a game with a window" if bool(d.get("window", false)) else "a game with no window", float(d.get("ref_ms", 0.0))]
+			for i in ms.size():
+				out_c += "%s%5.1f" % ["\n    " if i % 10 == 0 else " ", float(ms[i])]
+			return out_c + "\n    let go, where the system puts it by itself: %.1f ms" % float(d.get("free_ms", 0.0))
+		"readback":
+			var out_r := "  asking a MultiMesh of %d instances for one of them, %d MultiMeshes each way (ms: the first time, the worst first time, the time after):" % [int(d.get("instances", 0)), int(d.get("of", 0))]
+			for a in [["get", "reading one instance's colour"], ["set", "writing one instance's colour"], ["buffer", "reading the whole buffer"]]:
+				var f1: Dictionary = d.get(String(a[0]) + "_first", {})
+				var f2: Dictionary = d.get(String(a[0]) + "_next", {})
+				out_r += "\n    %-30s %7.3f %7.3f %7.3f" % [String(a[1]), float(f1.get("median", 0.0)), float(f1.get("worst", 0.0)), float(f2.get("median", 0.0))]
+			return out_r
 		"room":
 			return "  room: %s" % ", ".join(PackedStringArray((d.keys() as Array).filter(func(k): return k != "kind" and k != "t").map(func(k): return "%s %s" % [k, str(d[k])])))
 		"record":

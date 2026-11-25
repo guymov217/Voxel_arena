@@ -3535,7 +3535,7 @@ func arms_settled() -> bool:
 
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
-	space = get_world_3d().direct_space_state
+	space = Match.dss(self)
 	_no_fling()
 	_unground("R")
 	_unground("L")
@@ -7168,7 +7168,7 @@ func _stomp_spot(yaw_q: Quaternion):
 	var thigh: VoxelPart = by_name["thighR"]
 	if thigh.severed:
 		return null
-	var space := torso.get_world_3d().direct_space_state
+	var space := Match.dss(torso)
 	var hip: Vector3 = torso.global_position + PD.quat_of(torso) * (thigh.pa as Vector3)
 	var fwd: Vector3 = yaw_q * Vector3(0, 0, 1)
 	var colossus: bool = bool(mods.get("colossus", false))
@@ -7193,7 +7193,7 @@ func stomp_ready() -> bool:
 ## The ground under a foot's spot: the sand, or a body lying on it there; `fallback` with
 ## nothing under it within reach.
 func _ground_under(at: Vector3, fallback: float) -> float:
-	var h := _ground_ray(torso.get_world_3d().direct_space_state, Vector3(at.x, torso.global_position.y, at.z))
+	var h := _ground_ray(Match.dss(torso), Vector3(at.x, torso.global_position.y, at.z))
 	return float(h.position.y) if h else fallback
 
 ## The ground under `from`, 2.2 S down: the sand, or a dead man or beast lying still on it.

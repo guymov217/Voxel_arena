@@ -91,18 +91,18 @@ func test_the_words_of_a_window() -> void:
 func _ids(p: Array) -> Array:
 	return p.map(func(s): return String(s.id))
 
-func test_the_plan_of_a_whole_run() -> void:
-	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12"})
+func test_the_plan_of_every_part() -> void:
+	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "all": true})
 	var ids := _ids(p)
 	t.check(ids[0] == "facts" and ids.size() == (ids as Array).size() and ids.count("facts") == 1, "the facts come first")
-	for id in ["steps_auto", "steps_window", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "room_eight"]:
+	for id in ["cores", "steps_fast", "fight_fast", "readback", "release_room", "steps_auto", "steps_window", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "room_eight"]:
 		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
 	t.check(not ids.has("fight_d3d12"), "the other renderer is the one that is not in use")
 	t.check(ids.find("steps_auto") < ids.find("release_export") and ids.find("release_export") < ids.find("release_steps") and ids.find("release_steps") < ids.find("fight_base") and ids.find("fight_base") < ids.find("room_eight"), "in the order: the step, the release build, the frame, the room")
 	var seen := {}
 	var ok := true
 	for st in p:
-		if seen.has(st.id) or not ["facts", "steps", "fight", "render", "room", "export"].has(String(st.part)) or float(st.get("est", 0)) <= 0.0 or float(st.get("timeout", 0)) <= 0.0:
+		if seen.has(st.id) or not ["facts", "steps", "fight", "render", "room", "export", "cores", "readback"].has(String(st.part)) or float(st.get("est", 0)) <= 0.0 or float(st.get("timeout", 0)) <= 0.0:
 			ok = false
 		seen[st.id] = true
 		if bool(st.get("release", false)) and (st.has("settings") or not (st.get("engine", []) as Array).has("--headless") and String(st.part) == "steps"):
@@ -119,14 +119,61 @@ func test_the_plan_of_a_whole_run() -> void:
 	var snd: Dictionary = p[ids.find("fight_sound")]
 	t.check(int(DiagStats.cfg_i(snd.cfg, "sound", 0)) == 1 and int(DiagStats.cfg_i(p[ids.find("fight_base")].cfg, "sound", 0)) == 0, "the sound is on in one fight and off in the rest")
 
+## The whole test as it is run by default: what only the player's own computer can say (its cores, the system's choice of them, its card, the game's room in both builds), without
+## the parts the first report has answered.
+func test_the_plan_of_a_whole_run() -> void:
+	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "vulkan"})
+	var ids := _ids(p)
+	for id in ["facts", "cores", "steps_auto", "steps_window", "steps_fast", "steps_threads", "fight_threads", "steps_t1", "release_export", "release_steps", "fight_base", "release_fight", "fight_fast", "fight_render_thread", "readback", "render_steady", "room_eight", "release_room", "room_threads"]:
+		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
+	for id in ["steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "fight_cold", "fight_d3d12", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority"]:
+		t.check(not ids.has(id), "what the first report answered is left to --all: %s" % id)
+	t.check(ids.find("cores") == 1 and ids.find("cores") < ids.find("steps_fast") and ids.find("steps_fast") < ids.find("fight_fast"), "the cores are told apart before the parts held to the fast ones")
+	var fast: Dictionary = p[ids.find("steps_fast")]
+	var ffast: Dictionary = p[ids.find("fight_fast")]
+	t.check(String(fast.affinity) == "fast" and (fast.engine as Array).has("--headless") and String(ffast.affinity) == "fast" and bool(ffast.window), "held to the fast cores: the step with no window, and the fight")
+	var rr: Dictionary = p[ids.find("release_room")]
+	var r1: Dictionary = p[ids.find("room_eight")]
+	t.check(bool(rr.release) and (rr.user as Array).has("--host") and (rr.user as Array).has("--playtest") and (rr.user as Array)[-1] != (r1.user as Array)[-1] and not rr.has("settings"), "the room again in the release build, on a port of its own")
+	var rs: Dictionary = p[ids.find("render_steady")]
+	t.check(String(rs.cfg.variants).contains("the HUD not drawn") and not String(rs.cfg.variants).contains("quality low"), "the picture's settings that moved the frame, not the ones that did not")
+	var secs := 0.0
+	for st in p:
+		secs += float(st.est)
+	t.check(secs < 30.0 * 60.0, "half an hour at most (%d s)" % int(secs))
+	var rt: Dictionary = p[ids.find("room_threads")]
+	t.check((rt.user as Array).has("--control-threads") and not (r1.user as Array).has("--control-threads") and not rt.has("release"), "the room once more with the experiment on, in the same build as the first")
+	t.check(((p[1] as Dictionary).engine as Array).has("--headless") and not (p[1] as Dictionary).has("window"), "the cores are measured by a game with no window (one held to a single processor would share it with its own drawing)")
+
+func test_the_cores_are_told_apart_by_their_speed() -> void:
+	# (Six fast cores of two threads each and eight slow ones: Intel's 14600.)
+	var ms := []
+	for i in 12:
+		ms.append(5.0 + 0.1 * (i % 3))
+	for i in 8:
+		ms.append(8.6 + 0.1 * (i % 2))
+	var cc := Diag.core_classes(ms)
+	t.check(bool(cc.two) and (cc.fast as Array).size() == 12 and (cc.slow as Array).size() == 8 and int(cc.mask) == 0xFFF, "two kinds: twelve fast, eight slow, and the mask of the fast ones (%s)" % str(cc))
+	t.check(absf(float(cc.fast_ms) - 5.1) < 0.11 and absf(float(cc.slow_ms) - 8.65) < 0.11, "each kind's own time")
+	var one := Diag.core_classes([8.0, 8.3, 8.1, 9.0])
+	t.check(not bool(one.two) and int(one.mask) == 0, "cores of one speed (a noisy one among them is not a kind of its own)")
+	var odd := Diag.core_classes([5.0, 5.1, 5.0, 9.5])
+	t.check(not bool(odd.two) and int(odd.mask) == 0, "one slow reading alone is not a second kind")
+	t.check(not bool(Diag.core_classes([7.3, 7.1, 10.5, 10.2]).two), "a machine whose cores differ by less than a slow core does (a rented one, a busy one) is not called two kinds")
+	t.check(not bool(Diag.core_classes([]).two), "nothing measured: nothing said")
+	t.check(Diag.fast_mask({"cores": [{"kind": "start"}, {"kind": "cores", "ms": ms}]}) == 0xFFF and Diag.fast_mask({}) == 0 and Diag.fast_mask({"cores": [{"kind": "skipped", "what": "x"}]}) == 0, "the mask from a run's results")
+	# The work itself is the same work every time.
+	var a := DiagPhase.core_ms()
+	t.check(a > 0.2 and a < 400.0, "an eighth of the fixed work takes a measurable time here (%.1f ms)" % a)
+
 func test_the_plan_of_other_runs() -> void:
 	var quick := _ids(Diag.plan({"quick": true, "windowed": true, "editor": true, "os": "Linux", "driver": "vulkan"}))
 	t.check(quick.has("steps_t1") and not quick.has("steps_t4") and not quick.has("steps_burners") and not quick.has("steps_window") and quick.has("room_eight") and not quick.has("fight_high_priority") and not quick.has("fight_d3d12"), "a quick run has fewer thread parts, and the Windows ones only on Windows (%s)" % ", ".join(PackedStringArray(quick)))
 	var none := _ids(Diag.plan({"windowed": true, "editor": false, "os": "Windows", "driver": "d3d12"}))
 	t.check(not none.has("release_export") and not none.has("release_steps") and not none.has("release_fight"), "an exported game makes no release build of itself")
-	var only := _ids(Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "only": PackedStringArray(["steps", "fight_cold"])}))
+	var only := _ids(Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "all": true, "only": PackedStringArray(["steps", "fight_cold"])}))
 	t.check(only.has("facts") and only.has("steps_auto") and only.has("steps_t8") and only.has("fight_cold") and not only.has("fight_base") and not only.has("room_eight"), "--only: the facts, and what was named (a word before an underscore names its family)")
-	var skip := _ids(Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "skip": PackedStringArray(["fight", "room"])}))
+	var skip := _ids(Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "all": true, "skip": PackedStringArray(["fight", "room"])}))
 	t.check(skip.has("steps_auto") and not skip.has("fight_base") and not skip.has("fight_cold") and not skip.has("room_eight") and skip.has("render_steady") and skip.has("release_fight"), "--skip: a family goes with all its parts, the rest stay (release_fight is of the release family)")
 	var nowin := Diag.plan({"windowed": false, "editor": true, "os": "Linux", "driver": ""})
 	var windows_needed := nowin.filter(func(s): return bool(s.get("window", false))).size()
@@ -231,7 +278,13 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 		"release_steps": [step.call("men:8", "", 5.6), step.call("men:8,foe:3", "", 7.9)],
 		"fight_base": [{"kind": "frames", "label": "fight, the rest", "ms": {"mean": 30.0, "max": 90.0}, "speed": 0.8, "comp": {"steps": 14.0, "step_scripts": 4.0, "step_engine": 2.0, "per_frame": 2.0, "between": 5.0, "scripts": 4.0, "draw_wait": 7.0}, "gpu": 5.0, "calls": 900},
 			{"kind": "frames", "label": "fight, the first 12 s", "ms": {"mean": 40.0, "max": 400.0}, "over50": 7, "over100": 2, "pipes": 12}],
-		"room_eight": [{"kind": "frames", "label": "room, endless, 0-30 s", "speed": 0.62, "fps": 24.0, "step_ms": 10.2}]}
+		"room_eight": [{"kind": "frames", "label": "room, endless, 0-30 s", "speed": 0.62, "fps": 24.0, "step_ms": 10.2}, {"kind": "sample", "core_ms": 5.2}, {"kind": "sample", "core_ms": 5.0}, {"kind": "sample", "core_ms": 8.9}],
+		"release_room": [{"kind": "frames", "label": "room, endless, 0-30 s", "speed": 0.81, "fps": 31.0, "step_ms": 8.1}],
+		"cores": [{"kind": "cores", "ms": [5.0, 5.1, 5.0, 5.2, 8.6, 8.7, 8.6, 8.8], "free_ms": 8.7, "ref_ms": 8.25, "window": false}],
+		"steps_fast": [step.call("men:8,foe:3", "", 6.1)],
+		"steps_threads": [step.call("men:8", "thr", 3.3), step.call("men:8,foe:3", "thr", 4.7)],
+		"readback": [{"kind": "readback", "instances": 1200, "of": 16, "get_first": {"median": 3.21, "worst": 9.5}, "get_next": {"median": 0.004, "worst": 0.01}, "set_first": {"median": 2.9, "worst": 8.0}, "set_next": {"median": 0.003, "worst": 0.01},
+			"buffer_first": {"median": 3.0, "worst": 7.0}, "buffer_next": {"median": 2.9, "worst": 6.0}}]}
 	var lines := Diag.summary(res, {"cpu": "Fast CPU", "threads": 20, "ram_mb": 32000, "os": "Windows", "os_version": "10", "godot": "4.7.2", "editor_binary": true, "native_core": true, "adapter": "A card", "driver": "d3d12"}, PackedStringArray(["something went wrong"]))
 	var all := "\n".join(PackedStringArray(lines))
 	t.check(all.contains("Fast CPU") and all.contains("A card (d3d12)") and all.contains("the editor's binary"), "the computer: %s" % all)
@@ -244,6 +297,15 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 	t.check(all.contains("FRIEND WINDOWS") and all.contains("(+14%)"), "the friend windows' share: 10.7 with seven games beside it, 9.4 alone")
 	t.check(all.contains("WINDOWLESS") and all.contains("7.00 ms with a window of its own, 9.40 ms with none (-26%)") and all.contains("70 ms in the small one, 33 ms with none"), "a game with a window against one with none (%s)" % all)
 	t.check(all.contains("FIGHT A/B") and all.contains("render_thread: speed 90% (+10 points), a step 6.0 ms (-14%), the rest of a frame 10.0 ms (-38%)"), "a fight against the base: the speed, the step and the rest of the frame (%s)" % all)
+	t.check(all.contains("CORES          4 logical processors are fast") and all.contains("1.65 times the test's own machine") and all.contains("4 are slow (8.6 ms: 0.58 times as fast as the fast ones)") and all.contains("gave a game with no window 8.7 ms"), "the two kinds of core, and which a game with no window was given (%s)" % all)
+	t.check(all.contains("IN PLAY") and all.contains("room_eight 5.2 ms (5.0 to 8.9)"), "the core the game's own thread was on while it played")
+	t.check(all.contains("FAST CORES     men:8,foe:3 6.10 ms with no window held to the fast cores, 9.40 ms where the system puts a game with no window (-35%)"), "the step held to the fast cores")
+	t.check(all.contains("CONTROL THREADS") and all.contains("men:8 3.30 ms against 6.60 (-50%)") and all.contains("men:8,foe:3 4.70 ms against 9.40 (-50%)"), "the experiment: the controls on the worker threads against the game as it is")
+	t.check(all.contains("ROOM, RELEASE  game speed and frames in each half minute: 81% 31 fps (a step 8.1)") and all.contains("THE ROOM       game speed and frames in each half minute: 62% 24 fps (a step 10.2)"), "the room in both builds")
+	t.check(all.contains("READ-BACK") and all.contains("the first time: 3.21 ms (the worst 9.50)") and all.contains("the time after: 0.004 ms"), "what a read-back costs on the card")
+	var one := Diag.summary({"cores": [{"kind": "cores", "ms": [8.0, 8.2, 8.1, 8.4], "free_ms": 8.1, "ref_ms": 8.25, "window": true}]}, {}, PackedStringArray())
+	t.check("\n".join(PackedStringArray(one)).contains("the 4 logical processors are of one speed (an eighth of that work in 8.0 to 8.4 ms") and "\n".join(PackedStringArray(one)).contains("a game with a window 8.1 ms"), "cores of one speed are said to be (%s)" % str(one))
+	t.check(DiagStats.result_text({"kind": "cores", "ms": [5.0, 8.6], "free_ms": 5.1, "ref_ms": 8.25, "window": true}).contains("5.0") and DiagStats.result_text((res.readback as Array)[0]).contains("reading one instance's colour") and DiagStats.result_text({"kind": "sample", "core_ms": 5.25}).contains("its core 5.2 ms") or DiagStats.result_text({"kind": "sample", "core_ms": 5.25}).contains("its core 5.3 ms"), "the new results are told in the report's own words")
 	t.check(Diag.summary({}, {}, PackedStringArray()).size() == 1, "a run that measured nothing says so")
 
 # ---------- reading a frame ----------

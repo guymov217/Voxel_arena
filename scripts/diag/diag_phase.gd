@@ -54,6 +54,10 @@ func _ready() -> void:
 			await _room()
 		"burn":
 			await _burn()
+		"cores":
+			await _cores()
+		"readback":
+			await _readback()
 		_:
 			say({"kind": "error", "what": "no such part: '%s'" % kind})
 	say({"kind": "done"})
@@ -224,6 +228,7 @@ func _bout(token: String, default_secs: float) -> Dictionary:
 		secs = float(p2[1])
 	var gd := flags.has("gd")
 	Greedy.use_native = not gd
+	Match.control_threads = flags.has("thr")   # (#thr: the men's controls on the worker threads, the experiment of scripts/game/match.gd)
 	seed(7)
 	var m := Match.new()
 	add_child(m)
@@ -279,6 +284,122 @@ func _cpu_loop() -> Dictionary:
 		best = minf(best, float(Time.get_ticks_usec() - t0) / 1000.0)
 	return {"kind": "cpu_loop", "ms": best, "ref_ms": REF_LOOP_MS}
 
+## An eighth of that work, once: how fast the core this thread is on right now is. Taken with a part's samples (where the system has put the game while it plays) and for every
+## logical processor in turn (_cores).
+static func core_ms() -> float:
+	var t0 := Time.get_ticks_usec()
+	var acc := Vector3.ZERO
+	var b := Basis.IDENTITY
+	for i in 125000:
+		b = b.rotated(Vector3.UP, 0.001)
+		acc += b * Vector3(1.0, 2.0, 3.0) * 0.0001
+	return float(Time.get_ticks_usec() - t0) / 1000.0
+
+## Holds a game (all its threads) to the logical processors of `mask` (bit 0 the first). False where the system has no way to (or refused).
+static func pin(pid: int, mask: int) -> bool:
+	match OS.get_name():
+		"Windows":
+			return OS.execute("powershell", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; (Get-Process -Id %d).ProcessorAffinity = [IntPtr]%d" % [pid, mask]], [], true) == 0
+		"Linux":
+			return OS.execute("taskset", ["-a", "-p", "%x" % mask, str(pid)], [], true) == 0
+	return false
+
+## The speed of every logical processor: the same work with this game held to each in turn. A processor of two kinds of core (Intel's 12th generation on: fast ones and
+## slow ones) shows as two speeds, and the system decides which kind a game gets: a game with no window got the slow ones in the first report.
+func _cores() -> void:
+	var n := OS.get_processor_count()
+	if n > 62:
+		say({"kind": "skipped", "what": "%d logical processors: more than this part counts" % n})
+		return
+	var pid := OS.get_process_id()
+	var ms := []
+	var pinned := true
+	for i in n:
+		if not pin(pid, 1 << i):
+			pinned = false
+			break
+		OS.delay_msec(15)   # (the system moves the thread over)
+		var best := 1e9
+		for r in 5:
+			best = minf(best, core_ms())
+		ms.append(best)
+	pin(pid, (1 << n) - 1)
+	if not pinned:
+		say({"kind": "skipped", "what": "this system would not hold the game to one processor"})
+		return
+	var free := []   # (and let go: where the system puts it by itself)
+	for r in 5:
+		OS.delay_msec(15)
+		free.append(core_ms())
+	say({"kind": "cores", "ms": ms, "free_ms": DiagStats.median(free), "ref_ms": REF_LOOP_MS / 8.0, "window": windowed})
+
+## What it costs on this card to ask a MultiMesh for one of its instances. The game gives a part's voxels to the card as one buffer; a blow's chips, a part cut off and a wound then
+## ask for single voxels back (their colours and marks), and the first such call on a MultiMesh has the engine fetch the whole buffer from the card, waiting for the card to finish
+## what it is drawing. With no card (a run with no window) it costs nothing, so only a real one can say.
+func _readback() -> void:
+	var holder := Node3D.new()
+	add_child(holder)
+	var cam := Camera3D.new()
+	cam.position = Vector3(0.0, 2.5, 14.0)
+	holder.add_child(cam)
+	cam.current = true
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-50.0, 30.0, 0.0)
+	holder.add_child(light)
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3.ONE * 0.04
+	var per := 1200
+	var mms := []
+	for i in 48:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.use_custom_data = true
+		mm.instance_count = per
+		mm.mesh = mesh
+		var buf := PackedFloat32Array()
+		buf.resize(per * 20)
+		for k in per:
+			var o := k * 20
+			buf[o] = 1.0
+			buf[o + 3] = float(k % 12) * 0.05
+			buf[o + 5] = 1.0
+			buf[o + 7] = float((k / 12) % 10) * 0.05
+			buf[o + 10] = 1.0
+			buf[o + 11] = float(k / 120) * 0.05
+			buf[o + 12] = 0.8
+			buf[o + 13] = 0.7
+			buf[o + 14] = 0.6
+			buf[o + 15] = 1.0
+		mm.buffer = buf
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = mm
+		inst.position = Vector3(float(i % 8) * 1.2 - 4.2, float(i / 8) * 0.9, 0.0)
+		holder.add_child(inst)
+		mms.append(mm)
+	for f in 40:
+		await get_tree().process_frame
+	var got := {"get_first": [], "get_next": [], "set_first": [], "set_next": [], "buffer_first": [], "buffer_next": []}
+	for i in 48:
+		var mm: MultiMesh = mms[i]
+		var a := ["get", "set", "buffer"][i / 16] as String
+		for pass_i in 2:
+			var t0 := Time.get_ticks_usec()
+			match a:
+				"get":
+					mm.get_instance_color(5 + pass_i)
+				"set":
+					mm.set_instance_color(5 + pass_i, Color(1, 0, 0))
+				"buffer":
+					mm.buffer.size()
+			(got[a + ("_first" if pass_i == 0 else "_next")] as Array).append(float(Time.get_ticks_usec() - t0) / 1000.0)
+		await get_tree().process_frame   # (each asked with a frame of the card's work under way, as in a fight)
+	var d := {"kind": "readback", "instances": per, "of": 16}
+	for k in got:
+		d[k] = {"median": DiagStats.median(got[k]), "worst": DiagStats.worst(got[k])}
+	say(d)
+	holder.queue_free()
+
 func _steps() -> void:
 	rec = DiagFrames.new()
 	add_child(rec)
@@ -313,7 +434,7 @@ func _sample(m: Match, t0_ms: int) -> Dictionary:
 	var wave := 0
 	if m.modes != null and m.modes.endless != null:
 		wave = int(m.modes.endless.wave)
-	return {"kind": "sample", "t": float(Time.get_ticks_msec() - t0_ms) / 1000.0, "wave": wave, "men": men, "foes": foes, "held": int(m.gate_held), "coming": int(m.coming),
+	return {"kind": "sample", "t": float(Time.get_ticks_msec() - t0_ms) / 1000.0, "wave": wave, "men": men, "foes": foes, "held": int(m.gate_held), "coming": int(m.coming), "core_ms": core_ms(),
 		"step_ms": Net.step_ms, "over": Net.overloaded, "fps": Engine.get_frames_per_second(), "nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		"orphans": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)), "mem_mb": int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0),
 		"awake": int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), "bodies_pairs": int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))}
@@ -333,6 +454,7 @@ func _fight() -> void:
 	await _player_graphics()
 	if DiagStats.cfg_i(cfg, "cpu", 0) == 1:
 		say(_cpu_loop())   # (the core's speed in a game with a window: against the windowless parts')
+	Match.control_threads = DiagStats.cfg_i(cfg, "threads", 0) == 1
 	rec = DiagFrames.new()
 	add_child(rec)
 	seed(7)

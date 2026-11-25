@@ -415,6 +415,7 @@ in a file; the test reads them back, copes with a part that crashes or does not 
 | `steps_fast`, `fight_fast` (version 2) | the step with no window, and the fight, held to the fast cores (skipped where the cores are of one speed) | the windowless figures as they would be on the cores the game really gets; and whether holding the game to the fast cores (the engine's worker threads with it) is worth doing for the player |
 | `readback` (version 2) | 48 MultiMeshes of 1200 instances given as one buffer and drawn; then one instance's colour read, one written, the whole buffer read, the first time and again, a frame between each | what `get_instance_color`/`custom_data` and `buffer` cost on a real card (the engine fetches the buffer back and waits for the card): the game asks at every chip off a part (section 15, the render thread) |
 | `release_room` (version 2) | `room_eight` again from the release build's pack (the friends are the same exe) | the room as a player's game runs it: the first report had it in the editor's debug build only |
+| `steps_threads`, `fight_threads` (version 2) | the fights of `steps_auto` and the fight of `fight_base` with `Match.control_threads` on (section 17) | what the men's controls cost on this processor's many cores: `CONTROL THREADS` in the summary, `threads` in `FIGHT A/B`, and the errors of their logs, which say whether the hand-made list of plain cases holds |
 
 **What a reading sends us to do.** (The ways are those of sections 4 to 6; the report gives the figure that decides each.)
 
@@ -423,6 +424,7 @@ in a file; the test reads them back, copes with a part that crashes or does not 
 | `CORES` two kinds, `IN PLAY` near the slow kind's time (or far apart from sample to sample) | the system runs the game's own thread on the slow cores, some or all of the time: a step costs up to twice what it need | hold the game to the fast cores from inside it (the native library can ask Windows: thread affinity or a CPU set), and see `fight_fast` for what it is worth |
 | `fight_fast` faster than `fight_base` | the same, or the engine's worker threads on slow cores hold the step's parallel part back | the same |
 | `READ-BACK` the first time over a millisecond | every part's first chip stops the frame for that long (the card must finish what it is drawing) | keep the voxels' colours and marks on the CPU's side and never ask the card (task #327): they are written from there |
+| `CONTROL THREADS` and `fight_threads` far under the base, their logs clean | the step's largest part can be spread over the cores | section 17's two pieces of work (the couplings between controls, the list of plain cases) are worth their days: do them, then turn it on |
 | `ROOM, RELEASE` at 100% where `THE ROOM` is not | the owner's playtests in the editor's exe are the slow thing; the player's game holds the room | play the playtests in the release build (`multiplayer_playtest_release.bat`) |
 | `RELEASE BUILD` -10% or more on the step | the editor's binary is the slow part of the owner's playtests; the player's game is that much cheaper | measure and playtest in the release build; no code to change; the models of section 5 hold for the player |
 | the scripts' part 70% or more of a step, the engine's 10-20% | the step is the scripts' | the native ports of section 4 (the arm drive, then all of `control`); threads and the engine's settings are worth little |
@@ -527,4 +529,40 @@ Nothing of it is seen: `tests/hudshots.gd`'s pictures before and after are the s
 **The second test** (section 14, version 2) asks what this machine cannot say: the speed of each core of the owner's processor (six fast cores of two threads and eight slow ones: the games with no window of the first report
 were given the slow ones, which is why their steps cost what this 2.1 GHz machine's do and the window's fight 1.6 times less), which kind the game's own thread is on while it plays (every sample), what the fight and
 the step are worth held to the fast ones, the room in the release build, and a read-back's cost on the card.
+
+## 17. The men's controls on the worker threads (an experiment, off in the game)
+
+A fighter's `control` is 70 to 80% of a step's scripts (sections 8, 10, 15) and the game runs it for one man after another on one core. The owner's processor has twenty threads. `Match.control_threads`
+(`-- --control-threads`; `scripts/game/match.gd`, `tests/test_control_threads.gd`): the loop of `_physics_process` still goes over everyone (wishes, AI, items), but the control of a man who is only fighting
+(`_threadable`) is put on a list, and the list is run on the engine's worker pool when the loop is done (`WorkerThreadPool.add_group_task`); beasts and the men in a rare state run where they always did.
+
+What it took to make the engine let it:
+- the engine's checks on touching nodes from a thread are for the debug build only and can be put off for a thread (`Thread.set_thread_safety_checks_enabled(false)`), each thread touching its own man's bodies;
+- the physics space's state cannot be asked for from a thread ("!Thread::is_main_thread()"): it is handed over (`Match.dss`), and rays through it from a thread are answered;
+- what a thread asks of the physics server (a torque, an impulse) goes into a queue that the main thread empties when it next speaks to the server, and the step itself does NOT empty it first: the forces
+  of every control came a step late and the men thrashed. The main thread asks the server a question when the threads are done (`get_process_info`), and they land;
+- a node cannot be added to the tree from a thread at all (`pick_up` -> `_grip_joint`): such steps are not the threads' (`_threadable`: no hand reaching or wrenching, no grip or swap asked, nothing readied
+  to throw, no net, on his feet, not near death, past his first second).
+
+What it gives, here (four threads: two cores; the diagnostic test's `steps` part, `#thr`):
+
+| | as it is | on the threads | |
+|---|---|---|---|
+| 8 men | 7.7-8.1 ms | 5.5 ms | -30% |
+| 8 men and 3 foes | 13.7-15.6 | 11.0 | -20 to -29% |
+| 8 men and 8 foes | 21.3-22.1 | 15.5-16.4 | -27% |
+
+and with every control on the threads, the beasts' too (the first sketch): 7.7 to 4.7, 12.9 to 9.5, 21.0 to 13.6 ms (-39, -26, -36%). Two cores halve the controls at best; six fast cores and eight slow ones should
+take them to a fifth or less, which would be a step of the room's ten to twelve men at about 4 ms where it is 8 to 9.5. That is the one cut found that is larger than everything else on the list together,
+and only the owner's machine can say what it is there: the test's `steps_threads` and `fight_threads` (version 2).
+
+What stands between it and the game:
+- **It is not the same fight.** All the controls held back to the loop's end and run in the same order: the same to the bit (`tools/replay_check.sh`'s fingerprints). The men's controls in another order, still one
+  after another: another fight from the first step they are run so (three of seven men differ in that step, then all). No dice are drawn in a control, so it is something one man's control writes that another's
+  reads in the same step, or the order in which their forces reach the physics; not found yet. On threads the order is the threads' own, so no two runs are alike: a fair fight, not a repeatable one. The tests
+  are run without it. To ship it the coupling is to be found and given to each man for himself (or the order made not to matter), which the fingerprints can then prove: forwards and backwards the same.
+- **The list of plain cases is made by hand.** 217 functions can be reached from `control`; those that add nodes, free them, emit to the game's listeners or draw dice are in the rare branches (a reach, a wrench,
+  a fall, a death, eyes and ribs), and `_threadable` keeps those steps on the main thread by their signs. A sign missed is an engine error in the log (adding a node) or a race with no error (a listener
+  run on a thread). The test's parts report every error of their logs.
+- Beasts are not on the threads yet (their `control` has not been read for this).
 
