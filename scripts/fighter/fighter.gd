@@ -3541,6 +3541,119 @@ func arms_settled() -> bool:
 			return false
 	return true
 
+## The end of a leg's step (control's loop over the legs): a planted foot held to its place on the sand, or a stepping foot kept no higher than its
+## step; the thigh and the shin driven to the pose the step has worked out (`thigh_q`, `bend`); the sole kept out of the sand. In one call of the C++
+## core where that is there (VoxelCore.leg_tail, to the bit what follows it here; tests/test_native.gd holds the two to it), but for the ground
+## asked under a foot that stands higher than its plant, a ray, which is asked here.
+var _leg_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.leg_tail, in the order it reads them
+func _leg_end(side: String, thigh: VoxelPart, shin: VoxelPart, thigh_q: Quaternion, bend: float, f: float, leg_f: float, kicking: bool, standing: bool, grounded: bool, rising: bool, on_hit: bool, ground_y: float, dt: float) -> void:
+	var ft = feet[side]
+	var nc := Greedy.core() if Greedy.leg_ok else null
+	if nc != null:
+		var whole: bool = not shin.severed and not shin.hanging
+		var foot_down: bool = standing and grounded and not kicking and ft and whole and not rising
+		var mode := 0.0
+		var goal_n := Vector3.ZERO
+		if foot_down and not ft.swing:
+			mode = 1.0
+			goal_n = ft.anchor
+		elif foot_down and ft.swing and ft.has("target_y") and jump_t <= 0.0:
+			mode = 2.0
+			_leg_k[5] = float(ft.target_y)
+		_leg_k[0] = S
+		_leg_k[1] = MS
+		_leg_k[2] = f
+		_leg_k[3] = dt
+		_leg_k[4] = mode
+		_leg_k[6] = kick_wn if kicking and (stomp_at == null or bool(mods.get("colossus", false))) else 1.0
+		_leg_k[7] = 1.0 if kicking else 0.0
+		_leg_k[8] = 1.0 if whole else 0.0
+		_leg_k[9] = 1.0 if standing and (grounded or (rising and on_hit) or (on_hit and leg_f < 0.6)) and not shin.severed else 0.0
+		_leg_k[10] = ground_y
+		_leg_k[11] = leg_f
+		_leg_k[12] = shin.nominal_mass
+		_leg_k[13] = thigh.nominal_mass
+		_leg_k[14] = V
+		_leg_k[15] = FOOT_HOLD
+		_leg_k[16] = LEG_WN
+		_leg_k[17] = LEG_REACT
+		_leg_k[18] = float(GAIT.down)
+		var shin_q := Quaternion(Vector3(1, 0, 0), bend)
+		if nc.leg_tail(thigh, shin, torso, thigh_q, shin_q, goal_n, _leg_k):
+			# Planted on something higher than its plant (a body lying there, a dropped shield): it stands on that.
+			var sole_n := shin.global_transform * Vector3(0, -4 * V * S, 0)
+			var under_n := _ground_under(sole_n, goal_n.y)
+			if under_n > goal_n.y + 0.01 * S:
+				goal_n.y = minf(under_n, sole_n.y)
+				ft.anchor = goal_n
+			_leg_k[4] = 3.0
+			nc.leg_tail(thigh, shin, torso, thigh_q, shin_q, goal_n, _leg_k)
+		return
+	var snap: bool = kicking
+	# A foot down holds the sand (friction): it stays where it was put while the body goes
+	# over it, instead of skating along under it.
+	if standing and grounded and not kicking and ft and not ft.swing and not shin.severed and not shin.hanging and not rising:
+		var sole := shin.global_transform * Vector3(0, -4 * V * S, 0)
+		var goal: Vector3 = ft.anchor
+		# Planted on something higher than its plant (a body lying there, a dropped shield): it
+		# stands on that. (Held to the sand under it, it read as never down, the other foot
+		# waited on it for good, and he stood leaning on into the body till he fell over it.)
+		if sole.y - goal.y > float(GAIT.down) * S:
+			var under := _ground_under(sole, goal.y)
+			if under > goal.y + 0.01 * S:
+				goal.y = minf(under, sole.y)
+				ft.anchor = goal
+		var sv := shin.velocity_at(sole)
+		# Held and braked no harder than the sole itself answers to: pushed at the sole the
+		# shin turns about it, much lighter than the leg it stands for, and braked as the
+		# whole leg it overshot every step and the legs buzzed while he stood still.
+		var r_s: Vector3 = sole - shin.global_position
+		var m_sole := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_s.length_squared() / PD.inertia_of(shin))
+		var m_leg := shin.nominal_mass + thigh.nominal_mass * 0.5
+		var k_hold := minf(FOOT_HOLD * m_leg, 0.25 * m_sole / (dt * dt))
+		var c_hold := minf(60.0 * m_leg, 0.8 * m_sole / dt)
+		var fh := Vector3((goal.x - sole.x) * k_hold - sv.x * c_hold, 0.0, (goal.z - sole.z) * k_hold - sv.z * c_hold)
+		fh = PD.clamp_len(fh, 260.0 * f * MS * S)
+		# Down onto the sand harder than along it: the planted foot stays on the ground while
+		# the body goes over it and the knee bends (it rose two fingers off it every stride).
+		# (The gap closed in three steps at the sole's own mass: a stiffness, at the leg's, was
+		# a fraction of what the knee lifted it with.)
+		var gap := sole.y - goal.y
+		fh.y = clampf(m_sole * (-maxf(0.0, gap) / (3.0 * dt) - sv.y) / dt, -600.0 * f * MS * S, 0.0) if gap > 0.002 * S else 0.0
+		shin.apply_impulse(fh * dt, sole - shin.global_position)
+	elif standing and grounded and not kicking and ft and ft.swing and ft.has("target_y") and not shin.severed and not shin.hanging and not rising and jump_t <= 0.0:
+		# A stepping foot no higher than its step: the shin swung back on its own and kicked
+		# the heel up a hand and a half, a step meant to clear the sand by a few fingers.
+		var sole2 := shin.global_transform * Vector3(0, -4 * V * S, 0)
+		var over := sole2.y - float(ft.target_y) - 0.02 * S
+		if over > 0.0:
+			var sv2 := shin.velocity_at(sole2)
+			var r2: Vector3 = sole2 - shin.global_position
+			var m2 := 1.0 / (1.0 / maxf(0.05, shin.mass) + r2.length_squared() / PD.inertia_of(shin))
+			var fy := clampf(-over * 0.25 * m2 / (dt * dt) - maxf(0.0, sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0)
+			shin.apply_impulse(Vector3(0, fy * dt, 0), r2)
+	var wn_k: float = kick_wn if kicking and (stomp_at == null or bool(mods.get("colossus", false))) else 1.0
+	motor_rel(thigh, torso, thigh_q, LEG_WN * wn_k * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
+	if not shin.severed and not shin.hanging:
+		motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * wn_k * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
+	# The sand is under the sole, standing as lying: the legs pass through the ground while
+	# he stands (the spring holds him), and a weak leg's step dragged its foot along under
+	# the sand (a cyclops with hacked shins stood knee-deep, user). Pushed up only, never
+	# along, so it does not catch. A weak leg's foot whatever the trunk's height: held up off
+	# the sand by its spring, the trunk read as not on the ground, and the foot swung along
+	# under the sand half a leg deep, nothing stopping it.
+	if standing and (grounded or (rising and on_hit) or (on_hit and leg_f < 0.6)) and not shin.severed:
+		var sole_f := shin.global_transform * Vector3(0, -4 * V * S, 0)
+		var pen := ground_y - sole_f.y
+		if pen > 0.005 * S:
+			var r_f: Vector3 = sole_f - shin.global_position
+			var m_f := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_f.length_squared() / PD.inertia_of(shin))
+			var vy_f := shin.velocity_at(sole_f).y
+			# (A weak leg's own motor holds it no better than its hurt: the sand then is what
+			# stops the sole, all of its fall and half of the depth it is in each step.)
+			var jy := m_f * (minf(pen, 0.2 * S) * (0.3 + 0.3 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)) / dt - minf(0.0, vy_f) * (0.8 + 0.2 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)))
+			shin.apply_impulse(Vector3(0, maxf(0.0, jy), 0), r_f)
+
 func control(dt: float, inp_in: Dictionary) -> void:
 	time += dt
 	space = Match.dss(self)
@@ -4323,70 +4436,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var k := PD.smooth(0.3, 0.9, rise_t)
 			thigh_q = Quaternion(Vector3(1, 0, 0), -0.75).slerp(thigh_q, k)
 			bend = 1.6 * (1.0 - k) + bend * k
-		var snap: bool = kicking
-		# A foot down holds the sand (friction): it stays where it was put while the body goes
-		# over it, instead of skating along under it.
-		if standing and grounded and not kicking and feet[side] and not feet[side].swing and not shin.severed and not shin.hanging and not rising:
-			var sole := shin.global_transform * Vector3(0, -4 * V * S, 0)
-			var goal: Vector3 = feet[side].anchor
-			# Planted on something higher than its plant (a body lying there, a dropped shield): it
-			# stands on that. (Held to the sand under it, it read as never down, the other foot
-			# waited on it for good, and he stood leaning on into the body till he fell over it.)
-			if sole.y - goal.y > float(GAIT.down) * S:
-				var under := _ground_under(sole, goal.y)
-				if under > goal.y + 0.01 * S:
-					goal.y = minf(under, sole.y)
-					feet[side].anchor = goal
-			var sv := shin.velocity_at(sole)
-			# Held and braked no harder than the sole itself answers to: pushed at the sole the
-			# shin turns about it, much lighter than the leg it stands for, and braked as the
-			# whole leg it overshot every step and the legs buzzed while he stood still.
-			var r_s: Vector3 = sole - shin.global_position
-			var m_sole := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_s.length_squared() / PD.inertia_of(shin))
-			var m_leg := shin.nominal_mass + thigh.nominal_mass * 0.5
-			var k_hold := minf(FOOT_HOLD * m_leg, 0.25 * m_sole / (dt * dt))
-			var c_hold := minf(60.0 * m_leg, 0.8 * m_sole / dt)
-			var fh := Vector3((goal.x - sole.x) * k_hold - sv.x * c_hold, 0.0, (goal.z - sole.z) * k_hold - sv.z * c_hold)
-			fh = PD.clamp_len(fh, 260.0 * f * MS * S)
-			# Down onto the sand harder than along it: the planted foot stays on the ground while
-			# the body goes over it and the knee bends (it rose two fingers off it every stride).
-			# (The gap closed in three steps at the sole's own mass: a stiffness, at the leg's, was
-			# a fraction of what the knee lifted it with.)
-			var gap := sole.y - goal.y
-			fh.y = clampf(m_sole * (-maxf(0.0, gap) / (3.0 * dt) - sv.y) / dt, -600.0 * f * MS * S, 0.0) if gap > 0.002 * S else 0.0
-			shin.apply_impulse(fh * dt, sole - shin.global_position)
-		elif standing and grounded and not kicking and feet[side] and feet[side].swing and feet[side].has("target_y") and not shin.severed and not shin.hanging and not rising and jump_t <= 0.0:
-			# A stepping foot no higher than its step: the shin swung back on its own and kicked
-			# the heel up a hand and a half, a step meant to clear the sand by a few fingers.
-			var sole2 := shin.global_transform * Vector3(0, -4 * V * S, 0)
-			var over := sole2.y - float(feet[side].target_y) - 0.02 * S
-			if over > 0.0:
-				var sv2 := shin.velocity_at(sole2)
-				var r2: Vector3 = sole2 - shin.global_position
-				var m2 := 1.0 / (1.0 / maxf(0.05, shin.mass) + r2.length_squared() / PD.inertia_of(shin))
-				var fy := clampf(-over * 0.25 * m2 / (dt * dt) - maxf(0.0, sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0)
-				shin.apply_impulse(Vector3(0, fy * dt, 0), r2)
-		var wn_k: float = kick_wn if kicking and (stomp_at == null or bool(mods.get("colossus", false))) else 1.0
-		motor_rel(thigh, torso, thigh_q, LEG_WN * wn_k * sqrt(f), (1400.0 if snap else 900.0) * f * MS * S, dt, LEG_REACT)
-		if not shin.severed and not shin.hanging:
-			motor_rel(shin, thigh, Quaternion(Vector3(1, 0, 0), bend), LEG_WN * wn_k * sqrt(f), (700.0 if snap else 600.0) * f * MS * S, dt)
-		# The sand is under the sole, standing as lying: the legs pass through the ground while
-		# he stands (the spring holds him), and a weak leg's step dragged its foot along under
-		# the sand (a cyclops with hacked shins stood knee-deep, user). Pushed up only, never
-		# along, so it does not catch. A weak leg's foot whatever the trunk's height: held up off
-		# the sand by its spring, the trunk read as not on the ground, and the foot swung along
-		# under the sand half a leg deep, nothing stopping it.
-		if standing and (grounded or (rising and hit) or (hit and leg_f < 0.6)) and not shin.severed:
-			var sole_f := shin.global_transform * Vector3(0, -4 * V * S, 0)
-			var pen := ground_y - sole_f.y
-			if pen > 0.005 * S:
-				var r_f: Vector3 = sole_f - shin.global_position
-				var m_f := 1.0 / (1.0 / maxf(0.05, shin.mass) + r_f.length_squared() / PD.inertia_of(shin))
-				var vy_f := shin.velocity_at(sole_f).y
-				# (A weak leg's own motor holds it no better than its hurt: the sand then is what
-				# stops the sole, all of its fall and half of the depth it is in each step.)
-				var jy := m_f * (minf(pen, 0.2 * S) * (0.3 + 0.3 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)) / dt - minf(0.0, vy_f) * (0.8 + 0.2 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)))
-				shin.apply_impulse(Vector3(0, maxf(0.0, jy), 0), r_f)
+		_leg_end(side, thigh, shin, thigh_q, bend, f, leg_f, kicking, standing, grounded, rising, not hit.is_empty(), ground_y, dt)
 
 	# ----- Arms and weapons -----
 	var power: bool = inp.get("power", false) and stamina > 3.0
@@ -5658,8 +5708,9 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	_arm_f[57] = FORE_LEN * S
 	_arm_f[58] = 1.0 if w.welded else 0.0
 	_arm_f[59] = 1.0 if w.holder == self else 0.0
+	# (hold_q and grip_q for a weapon that is no bow, which this one is not: asked above.)
 	var res: Array = nc.arm_armed(upper, fore, torso, head, w, fore.joint if fore.joint is Generic6DOFJoint3D else null, inp.get("main" if side == two_side else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}),
-			(e_was as Vector3) if e_was != null else Vector3.ZERO, hold_q(side, w), grip_q(w), t_pos, t_rot, yaw_q, shoulder[side], hand_point, torso.half_ext, head.half_ext,
+			(e_was as Vector3) if e_was != null else Vector3.ZERO, MIRROR_GRIP_Q if side == "L" and two_side == "L" else GRIP_Q, GRIP_Q, t_pos, t_rot, yaw_q, shoulder[side], hand_point, torso.half_ext, head.half_ext,
 			sc if on else _NO_SCULPT, rec[0], rec[2], _arm_refs, side, upper.half_ext, upper.pa, upper.ca, fore.pa, fore.ca, _arm_f)
 	if res.is_empty():
 		return false
@@ -7347,8 +7398,14 @@ func _free_wedged(side: String, w: Weapon, dt: float) -> void:
 				(u[0] as Weapon).remove_collision_exception_with(u[1])
 			unwedge.remove_at(k)
 	var held: Dictionary = wedge_t[side]
+	var touched: Array = _touch_w[w] if _touch_frame == Engine.get_physics_frames() and _touch_w.has(w) else w.get_colliding_bodies()
+	if touched.is_empty():
+		# (Nothing touches the blade, as most steps: none is held. The lines below come to the same, the long way round.)
+		if not held.is_empty():
+			held.clear()
+		return
 	var touching := {}
-	for b in (_touch_w[w] if _touch_frame == Engine.get_physics_frames() and _touch_w.has(w) else w.get_colliding_bodies()):
+	for b in touched:
 		if b is VoxelPart and b.fighter != null and b.fighter != self:
 			touching[b] = true
 	for b in held.keys():

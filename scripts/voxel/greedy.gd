@@ -9,6 +9,8 @@ static var _checked := false
 static var use_native := true
 static var arm_ok := false   # the loaded core has the arms' natives (an older build does not: the script keeps the arms out)
 static var arm_drive_ok := false   # and the arm's drive itself, as far as it has been moved there (VoxelCore.arm_plain; docs/PERF_RESEARCH.md, section 20)
+static var leg_ok := false   # and the end of a leg's step (VoxelCore.leg_tail)
+const DRIVE_API := 4   # the arguments the arms' and the legs' calls take, as this script hands them over (VoxelCore.drive_api: a library of another build is not asked)
 
 static func core() -> Object:
 	if not _checked:
@@ -16,7 +18,9 @@ static func core() -> Object:
 		if ClassDB.class_exists("VoxelCore"):
 			native = ClassDB.instantiate("VoxelCore")
 			arm_ok = native.has_method("keep_arm_out") and native.has_method("keep_hand_front") and native.has_method("keep_elbow_low") and native.has_method("clear_body") and native.has_method("elbow_off") and native.has_method("hand_off")
-			arm_drive_ok = arm_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_armed")
+			var api_ok: bool = native.has_method("drive_api") and int(native.drive_api()) == DRIVE_API
+			arm_drive_ok = arm_ok and api_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_armed")
+			leg_ok = arm_ok and api_ok and native.has_method("leg_tail")
 	return native if use_native else null
 
 static func boxes(w: int, h: int, d: int, solid: PackedByteArray) -> Array:

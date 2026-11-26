@@ -719,3 +719,25 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
   the core; `tools/replay_check.sh`: the same fingerprints.
 - **What it is worth**: a man's `control` 503 -> 454 us (the middle of five runs each way in a slow sitting): another 10%. Since the first three pieces a man's `control` is about a third cheaper, and the controls of a
   14 ms step about 2.3 ms less: a sixth of the step.
+
+**Asked once a step, and the end of a leg's step** (after the arms):
+- Three askings cut in the script, to the bit: whether a beast has hold of him (each man looked through every fighter for the beasts, every step: `Combat.beasts()` picks them out once a step), what his weapons touch
+  (`_no_fling` and `_free_wedged` asked the same of the physics twice in one `control`), and what each leg can do (asked at every line of the legs' loop that read it). By a profile of the 8-man brawl: 8, 4 and 5 us a man.
+- `VoxelCore.leg_tail`: the end of a leg's step (`Fighter._leg_end`: a planted foot held to its place, or a stepping foot kept no higher than its step; `motor_rel` for the thigh and the shin; the sole kept out of the
+  sand) in one call. The ground asked under a foot that stands higher than its plant is a ray: the core hands that step back, the script asks the ray and calls again. The plants' own working out (where each foot goes,
+  when it steps: a ray a foot every step, two more for a stepping one) is still the script's: the rays are a third of the legs' loop (34 of 89 us a man) and stay whoever asks them.
+- The blade arm's script side trimmed where it was plain: `_free_wedged` leaves at once where nothing touches the blade (most steps), and `hold_q` / `grip_q` are not asked of a weapon already known to be no bow.
+- The core says which arguments its calls take (`VoxelCore.drive_api`, `Greedy.DRIVE_API`): a library left from another build is not called with the wrong ones, the script's own lines run.
+- **To the bit**: `tests/test_native.gd` (a new test: 900 leg steps through the script's lines and the core's; kicks, a man getting up, a weak leg, a foot on a heap) and `tools/replay_check.sh`.
+- **What it is worth**: a man's `control` 533 -> 503 us (the middle of five runs each way; the machine a fifth slower than in the morning, so each pair is its own): about 6% for the four together.
+
+**Where a man's step is now** (the same brawl, by `tools/profile_funcs.py` and clocks inside the core; a slow sitting, read the shares):
+- A blade's arm: the core's own work 44 us (the mark 14, the swing read and the elbow's set 10, `arm_blade` 7, `weapon_aim` 5, the elbow 5, the keeping 3), the script round it about 80 (the scalars handed over 14, `_free_wedged` 8,
+  `arm_func` 4, the trunk's sculpt and the arm's record 6, `_beast_has_me` 2, and sixty statements of a microsecond). A shield's or an empty hand's: 20 in the core, about 22 round it. What is left of the arms is the
+  script's side of the call, not the call.
+- Of the 10 us the elbow's set costs, most is the hinge's two limits written to the physics every step a swing is held, the same two numbers as the step before. Whether writing them only when they change leaves the
+  fight the same is not known yet (the physics may make the hinge anew at every write).
+- The rest of the step (the endless fight of sixteen, the scripts' 15 ms of a slow sitting's 19): `control` 55%, the combat 20% (`process_contacts` 1.15 ms, `report` 1.3 ms for 71 bodies a step, `record_velocities` 0.2),
+  the bots 7% (87 us a bot), the Match's own lines 7% (a round's check, the snapshot every third step, materials, items, throwables: none over 1%).
+- **The frame's side**: a man's drawing is 263 us a frame (the brawl of eight in armour: 2.1 ms a frame, sixteen men 4.2): `_clip_shoulder_guards` 68, `_seat_drawing` 41, `_draw_joint_caps` 29, `_limbs_in_armor` 21,
+  `_bend_drawing` 21, his parts' `_process` 24, the swing's trails 21. The shoulder guards are worked out again every frame an arm has moved on the trunk, which in a fight is every frame.

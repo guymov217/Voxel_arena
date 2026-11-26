@@ -527,6 +527,84 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
 	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 3600 steps" % kept)
 
+## The end of a leg's step in the C++ core (VoxelCore.leg_tail; docs/PERF_RESEARCH.md, section 20): from the same man in the same state the script's own lines and the
+## core's leave his trunk, the thigh and the shin the same speeds and the foot's plant the same, to the bit.
+func test_native_leg_end_matches_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.leg_ok:
+		t.check(true, "no native core with the leg's end built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 91
+	var bad := []
+	var held := 0
+	var capped := 0
+	var pushed := 0
+	var raised := 0
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "scutum"}})
+	for k in 30:
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	for k in 900:
+		var side := "L" if k % 2 == 0 else "R"
+		var thigh: VoxelPart = f.by_name["thigh" + side]
+		var shin: VoxelPart = f.by_name["shin" + side]
+		var bodies := [f.torso, thigh, shin]
+		var speeds := []
+		for i in 3:
+			speeds.append(rv.call(1.5) as Vector3)
+			speeds.append(rv.call(5.0) as Vector3)
+		var sole: Vector3 = shin.global_transform * Vector3(0, -4 * Fighter.V * f.S, 0)
+		# (The foot's plant about the sole, by turns well under it: the ground under the foot is asked then. A stepping foot by turns, its step's height about the sole's.)
+		var ft := {"anchor": sole + Vector3(rng.randf_range(-0.1, 0.1), rng.randf_range(-0.03, 0.01) - (0.2 if k % 9 == 0 else 0.0), rng.randf_range(-0.1, 0.1)), "from": sole, "swing": k % 3 == 0, "s": 0.3, "land": sole, "half": 0, "slip": 0.0}
+		if k % 3 == 0 and k % 4 != 0:
+			ft["target_y"] = sole.y + rng.randf_range(-0.08, 0.04)
+		var thigh_q := Quaternion(Vector3(1, 0, 0).rotated(Vector3.UP, rng.randf_range(-0.5, 0.5)), rng.randf_range(-1.0, 0.6))
+		var bend := rng.randf_range(0.0, 1.8)
+		var strength := rng.randf_range(0.03, 1.0)
+		var leg_f := rng.randf_range(0.0, 1.0)
+		var kicking := k % 11 == 0
+		var standing := k % 13 != 0
+		var grounded := k % 7 != 0
+		var rising := k % 17 == 0
+		var on_hit := k % 5 != 0
+		var ground_y: float = f.ground_level + rng.randf_range(-0.03, 0.06)
+		var dt := 1.0 / 120.0 if k % 6 != 0 else rng.randf_range(0.005, 0.02)
+		f.kick_wn = 1.5 if k % 22 == 0 else 1.0
+		f.jump_t = 0.2 if k % 19 == 0 else 0.0
+		var res := []
+		for native in [false, true]:
+			f.feet[side] = ft.duplicate(true) if k % 23 != 0 else null
+			_arm_set_speeds(bodies, speeds)
+			Greedy.leg_ok = native
+			f._leg_end(side, thigh, shin, thigh_q, bend, strength, leg_f, kicking, standing, grounded, rising, on_hit, ground_y, dt)
+			res.append([_arm_live(bodies), (f.feet[side] as Dictionary).duplicate(true) if f.feet[side] != null else null])
+		Greedy.leg_ok = true
+		if res[0][0] != res[1][0]:
+			bad.append("speeds, k=%d" % k)
+		elif res[0][1] != res[1][1]:
+			bad.append("the foot, k=%d" % k)
+		if res[1][0] != speeds:
+			pushed += 1
+		var down: bool = standing and grounded and not kicking and not rising and k % 23 != 0
+		if down and not ft.swing:
+			held += 1
+			if res[1][1] != null and (res[1][1].anchor as Vector3) != (ft.anchor as Vector3):
+				raised += 1
+		elif down and ft.has("target_y") and f.jump_t <= 0.0:
+			capped += 1
+		_arm_set_speeds(bodies, speeds.map(func(_v): return Vector3.ZERO))
+	f.kick_wn = 1.0
+	f.jump_t = 0.0
+	f.feet["L"] = null
+	f.feet["R"] = null
+	m.queue_free()
+	await get_tree().physics_frame
+	t.check(bad.is_empty(), "the core's end of a leg's step leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
+	t.check(pushed > 800 and held > 250 and capped > 60 and raised > 15, "and it was at work: %d of 900 steps pushed a body, %d held a planted foot (%d of them stood on what lay under it), %d kept a stepping foot down" % [pushed, held, raised, capped])
+
 func test_native_smooth_matches_the_gdscript() -> void:
 	# (#151) The men's smooth skin (FineSmooth: a part's solid, the part beside it joined on at the
 	# joint, the blurred shapes, the way each fine voxel faces, where its corners are drawn): the

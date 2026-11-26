@@ -1179,3 +1179,79 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 	r[1] = low;
 	return r;
 }
+
+// The end of a leg's step in Fighter.control (from `var snap` to the loop's end): a planted foot held to its place on the sand, or a stepping foot
+// kept no higher than its step; the thigh and the shin driven to where the step has them (motor_rel twice); the sole kept out of the sand. The
+// script has worked out the leg's pose (`thigh_q`, `shin_q`) and which of these the step asks, as before. Returns true, having done nothing, where
+// a planted foot stands higher than its plant: the script then asks the ground under it (a ray), moves the plant, and asks again (mode 3).
+// k: 0 S, 1 MS, 2 f (the leg's strength this step), 3 dt, 4 mode (0: no hold; 1: a planted foot held to `goal`, its plant; 2: a stepping foot kept
+// under k 5; 3: a planted foot held, the ground under it already asked), 5 the step's height (feet.target_y), 6 wn_k, 7 a kick (snap; 1/0), 8 the
+// shin whole (not severed, not hanging; 1/0), 9 the sole kept out of the sand this step (1/0), 10 ground_y, 11 leg_func, 12 the shin's nominal
+// mass, 13 the thigh's, 14 V, 15 FOOT_HOLD, 16 LEG_WN, 17 LEG_REACT, 18 GAIT.down.
+bool VoxelCore::leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const PackedFloat64Array &k) const {
+	if (thigh == nullptr || shin == nullptr || torso == nullptr || k.size() < 19) {
+		return false;
+	}
+	const double *kk = k.ptr();
+	const double S = kk[0], MS = kk[1], f = kk[2], dt = kk[3];
+	const int mode = (int)kk[4];
+	const Vector3 sole_l(0, (real_t)(-4.0 * kk[14] * S), 0);
+	if (mode == 1 || mode == 3) {
+		// A foot down holds the sand: it stays where it was put while the body goes over it.
+		const Vector3 sole = shin->get_global_transform().xform(sole_l);
+		if (mode == 1 && (double)sole.y - (double)goal.y > kk[18] * S) {
+			return true;
+		}
+		const Vector3 sv = ad_velocity_at(shin, sole);
+		const Vector3 r_s = sole - shin->get_global_position();
+		const double m_sole = 1.0 / (1.0 / gd_maxf(0.05, (double)shin->get_mass()) + (double)r_s.length_squared() / ad_inertia_of(shin));
+		const double m_leg = kk[12] + kk[13] * 0.5;
+		const double k_hold = gd_minf(kk[15] * m_leg, 0.25 * m_sole / (dt * dt));
+		const double c_hold = gd_minf(60.0 * m_leg, 0.8 * m_sole / dt);
+		Vector3 fh((real_t)(((double)goal.x - (double)sole.x) * k_hold - (double)sv.x * c_hold), 0, (real_t)(((double)goal.z - (double)sole.z) * k_hold - (double)sv.z * c_hold));
+		fh = clamp_len(fh, 260.0 * f * MS * S);
+		// Down onto the sand harder than along it.
+		const double gap = (double)sole.y - (double)goal.y;
+		fh.y = gap > 0.002 * S ? (real_t)ad_clampf(m_sole * (-gd_maxf(0.0, gap) / (3.0 * dt) - (double)sv.y) / dt, -600.0 * f * MS * S, 0.0) : (real_t)0.0;
+		shin->apply_impulse(fh * (real_t)dt, sole - shin->get_global_position());
+	} else if (mode == 2) {
+		// A stepping foot no higher than its step.
+		const Vector3 sole2 = shin->get_global_transform().xform(sole_l);
+		const double over = (double)sole2.y - kk[5] - 0.02 * S;
+		if (over > 0.0) {
+			const Vector3 sv2 = ad_velocity_at(shin, sole2);
+			const Vector3 r2 = sole2 - shin->get_global_position();
+			const double m2 = 1.0 / (1.0 / gd_maxf(0.05, (double)shin->get_mass()) + (double)r2.length_squared() / ad_inertia_of(shin));
+			const double fy = ad_clampf(-over * 0.25 * m2 / (dt * dt) - gd_maxf(0.0, (double)sv2.y) * 0.8 * m2 / dt, -400.0 * f * MS * S, 0.0);
+			shin->apply_impulse(Vector3(0, (real_t)(fy * dt), 0), r2);
+		}
+	}
+	const bool snap = kk[7] != 0.0;
+	const double wn = kk[16] * kk[6] * std::sqrt(f);
+	if (wn > 0.0) {
+		motor_rel(thigh, torso, thigh_q, wn, (snap ? 1400.0 : 900.0) * f * MS * S, dt, kk[17]);
+		if (kk[8] != 0.0) {
+			motor_rel(shin, thigh, shin_q, wn, (snap ? 700.0 : 600.0) * f * MS * S, dt, 1.0);
+		}
+	}
+	// The sand is under the sole, standing as lying: pushed up only, never along.
+	if (kk[9] != 0.0) {
+		const Vector3 sole_f = shin->get_global_transform().xform(sole_l);
+		const double pen = kk[10] - (double)sole_f.y;
+		if (pen > 0.005 * S) {
+			const Vector3 r_f = sole_f - shin->get_global_position();
+			const double m_f = 1.0 / (1.0 / gd_maxf(0.05, (double)shin->get_mass()) + (double)r_f.length_squared() / ad_inertia_of(shin));
+			const double vy_f = ad_velocity_at(shin, sole_f).y;
+			const double weak = ad_clampf((0.8 - kk[11]) / 0.5, 0.0, 1.0);
+			const double jy = m_f * (gd_minf(pen, 0.2 * S) * (0.3 + 0.3 * weak) / dt - gd_minf(0.0, vy_f) * (0.8 + 0.2 * weak));
+			shin->apply_impulse(Vector3(0, (real_t)gd_maxf(0.0, jy), 0), r_f);
+		}
+	}
+	return false;
+}
+
+// Which arguments the arms' and the legs' calls take (the script asks before it uses them: a library left over from an older build would be called
+// with the wrong ones).
+int VoxelCore::drive_api() const {
+	return 4;
+}
