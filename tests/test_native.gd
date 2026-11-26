@@ -527,6 +527,108 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
 	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 3600 steps" % kept)
 
+## What is asked of every body in one go, in the C++ core (VoxelCore.pack_parts, record_vel; docs/PERF_RESEARCH.md, section 20): a snapshot's rows of the bodies' places are to the
+## byte what Match.pack_xf writes (the bodies of a fight, and places and turns made up: far off, scaled, mirrored, turned right round), and the velocities the combat keeps of
+## every body before a step are the same entries in the same order (a chain's head and what lies loose with them).
+func test_native_bulk_matches_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.bulk_ok:
+		t.check(true, "no native core with the calls for every body built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 23
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "scutum"}})
+	var arms := [{"main": "flail"}, {"main": "spear"}, {"main": "gladius", "off": "scutum"}]
+	for i in arms.size():
+		m.spawn_fighter({"kind": "bot", "name": "V%d" % i, "loadout": arms[i], "team": 1, "pos": Vector3(-2.0 + 2.0 * i, 0, 3.0), "yaw": PI})
+	m.spawn_loose_weapon(Data.preset("flail"), Vector3(4, 1.5, 0))
+	m.spawn_loose_weapon(Data.preset("gladius"), Vector3(-4, 1.5, 0))
+	var bad := []
+	var rows := 0
+	var vels := 0
+	var moving := 0
+	var chains := 0
+	for k in 480:
+		await get_tree().physics_frame
+		if k % 4 != 0:
+			continue
+		for e in m.entities:
+			if not is_instance_valid(e.f):
+				continue
+			var bodies: Array = e.f.parts.duplicate()
+			for w in e.f.weapons.values():
+				if w:
+					bodies.append(w)
+			Greedy.bulk_ok = false
+			var a := Match.pack_parts(bodies)
+			Greedy.bulk_ok = true
+			var b := Match.pack_parts(bodies)
+			rows += bodies.size()
+			if a != b or b.size() != bodies.size() * 14:
+				bad.append("rows, k=%d" % k)
+		Greedy.bulk_ok = false
+		m.combat.record_velocities()
+		var va: Dictionary = m.combat.vel.duplicate(true)
+		Greedy.bulk_ok = true
+		m.combat.record_velocities()
+		var vb: Dictionary = m.combat.vel
+		vels += vb.size()
+		if va.keys() != vb.keys() or va.values() != vb.values():
+			bad.append("velocities, k=%d" % k)
+		for v in vb.values():
+			if (v[0] as Vector3).length() > 0.3:
+				moving += 1
+		for e in m.entities:
+			if is_instance_valid(e.f):
+				for w in e.f.weapons.values():
+					if w and w.chain_head and vb.has(w.chain_head.get_instance_id()):
+						chains += 1
+		for w in m.combat.loose_weapons:
+			if is_instance_valid(w) and w.chain_head and vb.has(w.chain_head.get_instance_id()):
+				chains += 1
+	# Places and turns made up.
+	var probe := Node3D.new()
+	add_child(probe)
+	var made := 0
+	var clamped := 0
+	for k in 900:
+		var axis := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
+		if axis.length() < 0.05:
+			axis = Vector3.UP
+		var bs := Basis(Quaternion(axis.normalized(), rng.randf_range(-PI, PI)))
+		match k % 12:
+			1: bs = Basis.IDENTITY
+			2: bs = Basis(Quaternion([Vector3.RIGHT, Vector3.UP, Vector3.BACK][(k / 12) % 3], PI))
+			3: bs = bs.scaled(Vector3(rng.randf_range(0.3, 2.5), rng.randf_range(0.3, 2.5), rng.randf_range(0.3, 2.5)))
+			4: bs = bs.scaled(Vector3(-1, 1, 1))
+			5: bs = bs.scaled(Vector3(-1.3, -0.7, -1.1))
+			6: bs = Basis(bs.x + Vector3(0.02, -0.01, 0.015), bs.y, bs.z + Vector3(0.0, 0.03, 0.0))
+			7: bs = Basis(Quaternion(axis.normalized(), PI - rng.randf_range(0.0, 0.0002)))
+		var r := 8.0
+		if k % 6 == 0:
+			r = 150.0
+		elif k % 6 == 1:
+			r = 0.004
+		var org := Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+		if k % 10 == 9:
+			org = (org * 512.0).round() / 512.0 + Vector3(0.5, -0.5, 1.5) / 512.0   # (on the halves: where the rounding turns)
+		probe.global_transform = Transform3D(bs, org)
+		Greedy.bulk_ok = false
+		var a := Match.pack_parts([probe, probe])
+		Greedy.bulk_ok = true
+		var b := Match.pack_parts([probe, probe])
+		made += 1
+		if absi(b.decode_s16(0)) == 32767:
+			clamped += 1
+		if a != b:
+			bad.append("a made-up place, k=%d" % k)
+	Greedy.bulk_ok = true
+	probe.queue_free()
+	m.queue_free()
+	t.check(bad.is_empty(), "the calls for every body are the script's lines to the byte (%d rows, %d velocities, %d made-up places; unlike: %s)" % [rows, vels, made, str(bad.slice(0, 6))])
+	t.check(rows > 5000 and vels > 5000 and moving > 500 and chains > 100 and clamped > 30, "what was asked covers the cases (%d rows, %d velocities, %d of them moving, %d chain heads, %d places past the int16's end)" % [rows, vels, moving, chains, clamped])
+
 ## The end of a leg's step in the C++ core (VoxelCore.leg_tail; docs/PERF_RESEARCH.md, section 20): from the same man in the same state the script's own lines and the
 ## core's leave his trunk, the thigh and the shin the same speeds and the foot's plant the same, to the bit.
 func test_native_leg_end_matches_the_gdscript() -> void:

@@ -4620,6 +4620,10 @@ static func unpack_xf(b: PackedByteArray, o: int) -> Transform3D:
 	return Transform3D(Basis(q.normalized()), Vector3(b.decode_s16(o), b.decode_s16(o + 2), b.decode_s16(o + 4)) / POS_Q)
 
 static func pack_parts(parts: Array) -> PackedByteArray:
+	# (The lot in one call of the C++ core, to the byte what the lines below write: a snapshot's rows were a million instructions of a fight of eight.)
+	var nc := Greedy.core()
+	if nc != null and Greedy.bulk_ok:
+		return nc.pack_parts(parts)
 	var b := PackedByteArray()
 	b.resize(parts.size() * 14)
 	for i in parts.size():

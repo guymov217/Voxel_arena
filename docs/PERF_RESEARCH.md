@@ -748,3 +748,50 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
   The part's function kept and the report's two askings put off: 19.49 -> 18.47 million instructions a step of that fight, all of the step counted, the engine's own part too: -5.2%.
 - **The frame's side**: a man's drawing is 263 us a frame (the brawl of eight in armour: 2.1 ms a frame, sixteen men 4.2): `_clip_shoulder_guards` 68, `_seat_drawing` 41, `_draw_joint_caps` 29, `_limbs_in_armor` 21,
   `_bend_drawing` 21, his parts' `_process` 24, the swing's trails 21. The shoulder guards are worked out again every frame an arm has moved on the trunk, which in a fight is every frame.
+
+## 21. Counted in instructions: where a step goes, function by function and line by line
+
+**The way.** A clock on a shared machine cannot tell five per cent (the same tree, five runs: a tenth apart), and what is left to cut is a per cent at a time. The fight is the same
+fight step for step, so valgrind counts the same instructions for it whatever else runs: `tools/ir_profile/ir_profile.py` (its head says how) wraps script functions so that each runs
+inside a native function of its own name (callgrind's inclusive count of it is the function's cost, with what it calls), or puts a mark before every statement of a function and
+counts one statement at a time. A copy of the core built with the counting calls in it (never the game's library), a copy of the project, `tests/irfight.gd` (the diagnostic test's
+eight in the endless arena). Instructions are not time (a call into the physics is few instructions and many cache misses), so the shares are read as shares of the scripts' work,
+and a change is still checked for what it is worth by the whole step's count (`valgrind --tool=cachegrind --cache-sim=no`, a second of the fight less the first).
+
+**The second second of that fight** (eight men closing in, before the first blow; 18.47 million instructions a step, the engine's part in it about 3):
+- `Fighter.control`: 1.35 million a man, 10.8 a step: **six tenths of everything**. In it the two arms 467 thousand (35%), the legs' loop 222 (16%), and 664 in some ninety
+  statements of its own: the ground under his feet 92, the bleeding of each part 83, the feet's plant 35, the body's mass 32, `keep_above_ground` 32, his breath 29, the head 19,
+  the weapon kept off the sand 24, the ray under him 18, `_no_fling` 17, his burden asked twice 25, `can_stand` 21, the legs' function asked six times a step 51.
+- An arm: a blade's 261 thousand, of which the core's own work 108 and the script round it 153 (the scalars handed over 47, the trunk's outline 15, the call's own
+  twenty-eight arguments 20, `arm_func` 9, the weapon's check 10, `_free_wedged` 6.5, `is_spear` 4.5, the fifteen statements before the call 29); a shield's or an empty hand's 172,
+  the core 67 of it. **The script round the call costs more than the call.**
+- What a script statement costs: a line of the man's own numbers 65 to 200 instructions; a number read off another object 400; a call of a script function 2000 before it has
+  done anything; a dictionary asked by a word 300 to 700. What is dear in `control` is not arithmetic: it is calls of small functions and readings of other objects, thousands a step.
+- The rest of a step: the combat's keeping of every body's velocity 0.52 million, the weapons' own step 0.37 (23 thousand a weapon: the eight corners of its box, the lying
+  check), a snapshot's rows 0.37 (1.1 million every third step), the bots 0.34 (43 thousand each), the round's check 0.28, the magnets' look over every weapon 0.28 (3.3 million
+  every tenth of a second, in a fight with no magnet in it), each bot's list of allies 0.23, its nearest foe 0.18, the holds 0.26.
+
+**Cut on these counts, to the bit** (the same fingerprints, `tools/replay_check.sh`; the tests named):
+- The magnets' look: a weapon's count of its voxels of a stuff is kept until voxels come off it (`Weapon.material_count`; `tests/test_materials.gd`).
+- Every body's velocity for the combat, and a snapshot's rows of the parts' places, each in one call of the core (`VoxelCore.record_vel`, `pack_parts`, `extension/src/bulk.cpp`;
+  `tests/test_native.gd`: the same entries in the same order, the same bytes, for the bodies of a fight and for places made up: far off, scaled, mirrored).
+- The arm's script side: the trunk's outline for an arm kept while his armour stays as it is (it was asked of three memos and an outline every arm every step;
+  `tests/test_items.gd`), `arm_func` in its line where both parts are known to be on him, a blade's design read once.
+- In `control`: a part that does not bleed is not written and its two blood functions are not called where they would come straight back; each part's share of the body's
+  mass kept while the part's mass stays; a part well above the sand not handed to `_lift_out`; the lungs asked once for the breath that comes back and the most there can be.
+- A weapon's lowest corner (asked of every weapon every step, and of the blade in his hand again in `control`): the one corner that takes the lower end along each of the box's
+  axes, in place of the eight worked out one by one. The least of the eight to the bit, since a sum is never smaller for a larger term (`Weapon.box_low_y`; twenty thousand
+  boxes placed every way, `tests/test_materials.gd`).
+- **What it is worth**: counted function by function on the tree before and the tree after (the same wrappers on both): the scripts' work of a step (the Match's step,
+  the combat's, the weapons') 15.07 -> 13.65 million instructions, **-9.4%**, which is about 7.7% of the whole step. `control` 11.02 -> 10.31 (an arm 219 -> 207 thousand, the
+  rest from the bleeding, the mass, the lungs, `keep_above_ground`, the weapon off the sand); the magnets' look 0.278 -> 0.015; a snapshot 0.366 -> 0.206; the velocities
+  0.511 -> 0.343; the weapons' own step 0.561 -> 0.453.
+- **Two things the count taught.** (1) The core is no cheaper than the script at making lists: of the velocities' 0.343 the core's call is 0.211 (a list of two vectors
+  put in a dictionary for each of 96 bodies is some 2200 instructions a body through the extension's interface). It pays where there is arithmetic, not where there are
+  containers; a cheaper keeping of the velocities (two packed arrays) is left to do. (2) The whole program's count is not as steady as it was taken to be: for the first half
+  of this batch it read -0.32 million a step where the functions' counts add up to -0.77 (the physics' worker threads wait in loops, and their waiting is counted). So the
+  -5.2% given above for the part's function kept is good to two or three points either way; changes are read from the main thread's functions from here on.
+
+**A fault of the last batch found by the suite's own diagnostic check, and put right** (f460914): the list of beasts the combat keeps since 66ca6f1 was picked out by whichever man
+asked first in a step; with the men's controls on worker threads (the test's experiment, off in the game) several picked it out at once, and the engine reported the list let go
+under a reader. It is picked out on the main thread before the threads start. With it right, that experiment reads -28% of a step in the quick check (it read -12% with the fault).

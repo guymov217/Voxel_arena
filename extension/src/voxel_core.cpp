@@ -59,6 +59,8 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("arm_armed", "upper", "fore", "torso", "head", "w", "elbow_joint", "hp", "e_was", "hold_q", "grip_q", "t_pos", "t_rot", "yaw_q", "shoulder_l", "hand_point", "torso_half", "head_half", "sculpt", "o_up", "o_fo", "refs", "side", "up_half", "up_pa", "up_ca", "fo_pa", "fo_ca", "k"), &VoxelCore::arm_armed);
 	ClassDB::bind_method(D_METHOD("leg_tail", "thigh", "shin", "torso", "thigh_q", "shin_q", "goal", "k"), &VoxelCore::leg_tail);
 	ClassDB::bind_method(D_METHOD("drive_api"), &VoxelCore::drive_api);
+	ClassDB::bind_method(D_METHOD("pack_parts", "parts"), &VoxelCore::pack_parts);
+	ClassDB::bind_method(D_METHOD("record_vel", "bodies", "vel"), &VoxelCore::record_vel);
 	ClassDB::bind_method(D_METHOD("arm_free", "upper", "fore", "torso", "head", "shield", "hp", "t_pos", "t_rot", "yaw_q", "shoulder_l", "hand_point", "torso_half", "head_half", "sculpt", "o_up", "o_fo", "refs", "side", "up_half", "up_pa", "up_ca", "fo_pa", "fo_ca", "k"), &VoxelCore::arm_free);
 	ClassDB::bind_method(D_METHOD("smooth_solid", "at", "inner", "res", "seal_lo", "seal_hi", "pad"), &VoxelCore::smooth_solid);
 	ClassDB::bind_method(D_METHOD("smooth_joined", "sol", "beside"), &VoxelCore::smooth_joined);

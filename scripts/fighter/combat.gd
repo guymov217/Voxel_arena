@@ -261,6 +261,29 @@ func _physics_process(dt: float) -> void:
 
 func record_velocities() -> void:
 	vel.clear()
+	# (Every body's two velocities in one call of the C++ core, the bodies in the order the lines below take them: the same entries.)
+	var nc := Greedy.core()
+	if nc != null and Greedy.bulk_ok:
+		var bodies := []
+		for f in fighters:
+			if not is_instance_valid(f):
+				continue
+			bodies.append_array(f.parts)
+			for w in f.weapons.values():
+				if w:
+					bodies.append(w)
+					if w.chain_head:
+						bodies.append(w.chain_head)
+		for w in loose_weapons:
+			if not is_instance_valid(w):
+				loose_weapons = loose_weapons.filter(func(x): return is_instance_valid(x))
+				break
+		for w in loose_weapons:
+			bodies.append(w)
+			if w.chain_head:
+				bodies.append(w.chain_head)
+		nc.record_vel(bodies, vel)
+		return
 	for f in fighters:
 		if not is_instance_valid(f):
 			continue

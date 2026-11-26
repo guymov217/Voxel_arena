@@ -1791,14 +1791,11 @@ func _unground(side: String) -> void:
 	var w: Weapon = weapons[side]
 	if not unground_on or w == null or w.is_shield or w.stuck != null or w.design.get("chain") != null or state != "stand":
 		return
-	var box: AABB = w.local_box()
-	var lo := INF
-	for i in 8:
-		lo = minf(lo, (w.global_transform * box.get_endpoint(i)).y)
+	var xf: Transform3D = w.global_transform
+	var lo := Weapon.box_low_y(xf, w.local_box())
 	if ground_level - lo < 0.04:
 		return
 	# The box is in: is a cube of it? (Held aslant, the box's corner dips where no cube is.)
-	var xf: Transform3D = w.global_transform
 	lo = INF
 	var at := Vector3.ZERO
 	for i in w.vox.size():
@@ -3738,10 +3735,17 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var clot := dt * 0.08 / maxf(0.3, float(mods.bleed))
 	var clot_k := dt * CLOT_K / maxf(0.3, float(mods.bleed))
 	for p in parts:
-		bleed += p.bleed + p.artery
-		p.bleed = maxf(0.0, p.bleed - clot - p.bleed * clot_k)
-		p.update_drips()
-		p.update_blood(dt, beat)
+		# (A part that does not bleed is not written, and its drips and its blood are not called on where they would come straight back: a part with no
+		# drip on it, and one with no artery cut, no spurt and no run of blood. Ten parts a man every step, most of them dry.)
+		var pb: float = p.bleed
+		var pa: float = p.artery
+		bleed += pb + pa
+		if pb != 0.0:
+			p.bleed = maxf(0.0, pb - clot - pb * clot_k)
+		if not p.drips.is_empty():
+			p.update_drips()
+		if pa != 0.0 or not p.spurts.is_empty() or not p.runs.is_empty():
+			p.update_blood(dt, beat)
 		if p.stump:
 			p.stump_t += dt
 			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
@@ -3814,9 +3818,23 @@ func control(dt: float, inp_in: Dictionary) -> void:
 
 	# ----- Support spring -----
 	var total_mass := 0.0
-	for p in parts:
+	# (Each part's share of it kept while the part and its mass are what they were, added in the same order: whether a part is a leg was asked of its
+	# definition for every part every step.)
+	var np := parts.size()
+	if _share_m.size() != np:
+		_share_p.resize(np)
+		_share_m.resize(np)
+		_share_s.resize(np)
+		_share_m.fill(NAN)
+	for i in np:
+		var p: VoxelPart = parts[i]
 		if not p.severed:
-			total_mass += p.nominal_mass / (LEG_MASS if p.def.get("leg", false) else 1.0)
+			var nm: float = p.nominal_mass
+			if nm != _share_m[i] or not is_same(_share_p[i], p):
+				_share_p[i] = p
+				_share_m[i] = nm
+				_share_s[i] = nm / (LEG_MASS if p.def.get("leg", false) else 1.0)
+			total_mass += _share_s[i]
 	body_mass = total_mass
 	for w in weapons.values():
 		if w:
@@ -4521,7 +4539,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# A chest cut open or stove in: he gets his breath back slowly.
 	regen *= (0.35 + 0.65 * torso.function()) * float(mods.get("wind", 1.0))   # (wind: the trainer's)
 	# Torn lungs draw breath slower and fill no further than they still can.
-	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs()) * dt, 0.0, maxf(stamina - stamina_use, breath_cap()))
+	var lungs_now := lungs()   # (once for the breath that comes back and for the most there can be: breath_cap's own line)
+	stamina = clampf(stamina - stamina_use + regen * heavy * (0.35 + 0.65 * lungs_now) * dt, 0.0,
+			maxf(stamina - stamina_use, 100.0 * (0.3 + 0.7 * lungs_now) * (1.0 - 0.06 * mini(5, ribs_broken)) * float(mods.get("wind", 1.0))))
 
 ## Every joint drawn whole (drawing only): a block of the limb's own thickness and colour sits
 ## on the joint's pivot, hidden inside the two parts while the limb is straight, and filling
@@ -5679,7 +5699,11 @@ func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore:
 ## lines go on then. (What _drive_arm has seen to before it asks is where it asks; tests/test_native.gd holds the two ways to the same bits.)
 func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, e_was, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float, keep_dt := -1.0) -> bool:
 	var wj = weapon_joints[side]
-	if wj == null or not is_instance_valid(wj) or (wj as Node).has_meta("grip_now") or float(throw_hold[side]) > 0.0 or throw_loose[side] or w.design.has("shoots") or not has_wrist(w):
+	if wj == null or not is_instance_valid(wj) or (wj as Node).has_meta("grip_now") or float(throw_hold[side]) > 0.0 or throw_loose[side]:
+		return false
+	# (No bow, and a wrist to turn it by: has_wrist's own askings, the design read once.)
+	var ds: Dictionary = w.design
+	if w.is_shield or ds.has("shoots") or ds.get("chain") != null:
 		return false
 	var nc := Greedy.core()
 	if nc == null:
@@ -5754,7 +5778,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		if not fore.fractured:
 			motor_rel(fore, upper, Quaternion.IDENTITY, 2.0, 8.0 * MS * S, dt, 0.5)
 		return
-	var af := arm_func(side)
+	var af := pow(minf(upper.function(), fore.function()), 0.6) * cord_arms   # (arm_func(side): neither part is off him here)
 	# The arm's function, again below, is the same this step (unless a frost on it is thawing:
 	# that is read off the clock).
 	var af_now := af if upper.frozen_until <= 0.0 and fore.frozen_until <= 0.0 else -1.0
@@ -6709,9 +6733,30 @@ func _trunk_sculpt(side: String):
 		return null
 	if _arm_phase:
 		if not _sculpt_memo.has(side):
-			_sculpt_memo[side] = _trunk_sculpt_worn(side)
+			_sculpt_memo[side] = _trunk_sculpt_kept(side)
 		return _sculpt_memo[side]
 	return _trunk_sculpt_worn(side)
+
+## _trunk_sculpt_worn in an arm phase: what his armour makes of the answer (whether his trunk or that arm wears any, and the trunk's outline) is kept while his armour
+## stays as it is (_worn_memo, let go with the other such memos in _arm_phase_begin: it was asked of three memos and an outline every arm every step); who has hold of
+## him is asked at the moment, as there.
+var _worn_memo := {}   # side -> [the trunk's outline, or null where neither his trunk nor that arm wears armour or the trunk has no outline]
+func _trunk_sculpt_kept(side: String):
+	var k = _worn_memo.get(side)
+	if k == null:
+		var kept = null
+		if _armored_m(torso) or _armored_m(arm[side].upper) or _armored_m(arm[side].fore):
+			var od: Dictionary = _outline_m(torso)
+			if not od.is_empty():
+				kept = od
+		k = [kept]
+		_worn_memo[side] = k
+	if k[0] == null:
+		return null
+	for m in ["beast_hold", "rolled_by"]:
+		if has_meta(m) and is_instance_valid(get_meta(m)):
+			return null
+	return k[0]
 
 func _trunk_sculpt_worn(side: String):
 	if not (_armored_m(torso) or _armored_m(arm[side].upper) or _armored_m(arm[side].fore)):
@@ -6755,6 +6800,7 @@ func _arm_phase_begin() -> void:
 		_armor_memo.clear()
 		_outline_memo.clear()
 		_rec_memo.clear()
+		_worn_memo.clear()
 const _NO_REC := [_NO_SCULPT, false, _NO_SCULPT, false]
 ## The two limbs of an arm for the C++ core, as the memos have them: [the upper arm's outline ({} none), whether it wears armour, the forearm's outline, whether it wears armour].
 func _arm_rec(side: String) -> Array:
@@ -8190,6 +8236,9 @@ func _legs_touch_ground(on: bool) -> void:
 ## into the ground (a giant's weight coming down on it, a leg sunk while it passed through the sand)
 ## is set back on top, its fall stopped. Every other step; a part well clear is passed over at once.
 var _ground_n := 0
+var _share_p: Array = []                    # the body's mass (control): the part each share was worked out for,
+var _share_m := PackedFloat64Array()        # the mass it had then,
+var _share_s := PackedFloat64Array()        # and its share
 func keep_above_ground() -> void:
 	_ground_n += 1
 	if _ground_n % 2 != 0:
@@ -8200,6 +8249,9 @@ func keep_above_ground() -> void:
 			# presses into it (a stamping foot, a body thrown down), and a part lifted out of
 			# that on its own was torn from its joint (a rhino's leg a hand's width off its
 			# hip). A standing leg passes through the sand, held up by the support spring.
+			# (_lift_out's own first look, here: a part well above the sand, which is nearly all of them, is not called for.)
+			if (p.global_position as Vector3).y - (p.half_ext as Vector3).length() > -0.25 * S:
+				continue
 			_lift_out(p, 0.25 * S)
 
 func _lift_out(p: VoxelPart, allow: float) -> void:

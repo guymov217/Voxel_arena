@@ -556,19 +556,37 @@ func test_the_chest_armours_box_follows_the_plates_left() -> void:
 func _rec_digest(rec: Array) -> String:
 	return "%d %s %d %s %d %d" % [(rec[0] as Dictionary).size(), str(rec[1]), (rec[2] as Dictionary).size(), str(rec[3]), (rec[0] as Dictionary).hash(), (rec[2] as Dictionary).hash()]
 
+func _sculpt_digest(o) -> String:
+	return "none" if o == null else "%d %d" % [(o as Dictionary).size(), (o as Dictionary).hash()]
+
+## (And the trunk's outline each arm is kept out of, Fighter._trunk_sculpt, kept the same way: as worked out afresh, and none while someone has hold of him.)
 func _recs_now(f: Fighter) -> Array:
 	var out := []
 	f._arm_phase_begin()
 	var kept := [f._arm_rec("L"), f._arm_rec("R")]
 	var again := [f._arm_rec("L"), f._arm_rec("R")]
+	var sc_kept := [f._trunk_sculpt("L"), f._trunk_sculpt("R")]
+	f._arm_phase_begin()
+	var sc_again := [f._trunk_sculpt("L"), f._trunk_sculpt("R")]
+	f._arm_phase_begin()
+	f.set_meta("rolled_by", f)
+	var sc_held := [f._trunk_sculpt("L"), f._trunk_sculpt("R")]
 	f._arm_phase = false
+	var sc_held_fresh := [f._trunk_sculpt("L"), f._trunk_sculpt("R")]
+	f.remove_meta("rolled_by")
 	var fresh := [f._arm_rec("L"), f._arm_rec("R")]
+	var sc_fresh := [f._trunk_sculpt("L"), f._trunk_sculpt("R")]
 	for i in 2:
-		out.append(_rec_digest(kept[i]) == _rec_digest(fresh[i]) and is_same(kept[i], again[i]))
+		out.append(_rec_digest(kept[i]) == _rec_digest(fresh[i]) and is_same(kept[i], again[i])
+				and _sculpt_digest(sc_kept[i]) == _sculpt_digest(sc_fresh[i]) and _sculpt_digest(sc_again[i]) == _sculpt_digest(sc_fresh[i])
+				and sc_held[i] == null and sc_held_fresh[i] == null)
+	_sculpts_seen[_sculpt_digest(sc_fresh[0])] = true
 	out.append(_rec_digest(fresh[0]) + " / " + _rec_digest(fresh[1]))
 	return out
 
+var _sculpts_seen := {}
 func test_the_arm_records_follow_his_armour() -> void:
+	_sculpts_seen.clear()
 	var m := _match()
 	var e := _man(m, Vector3(0, 0, 0), PI, {"armor": []}, "Bare", 1, _idle)
 	await _steps(10)
@@ -589,6 +607,7 @@ func test_the_arm_records_follow_his_armour() -> void:
 		t.check(now[0] and now[1], "after %s, the records are as worked out afresh" % str(ids))
 		seen[now[2]] = true
 	t.check(seen.size() >= 3, "the records changed with the armour put on and taken off (%d different)" % seen.size())
+	t.check(_sculpts_seen.size() >= 2 and _sculpts_seen.has("none"), "and the trunk's outline with them: one in armour, none bare (%d different)" % _sculpts_seen.size())
 	# (A cuirass on a man at a station of the yard: the same by the forge's bench, which says so with armor_changed.)
 	var before := f._armor_ver
 	f.armor_changed()

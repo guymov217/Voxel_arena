@@ -99,6 +99,7 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	alive.resize(vox.size())
 	alive.fill(1)
 	_box_cache = null
+	_mat_n.clear()
 	_crusher = null
 	_durability = -1.0
 	_point_first = null
@@ -653,11 +654,16 @@ func voxels_near(p: Vector3, r: float, mat: String) -> Array:
 	return out
 
 func material_count(mats: Array) -> int:
+	var got = _mat_n.get(mats)
+	if got != null:
+		return got
 	var n := 0
 	for i in vox.size():
 		if alive[i] and mats.has(vox[i][3]):
 			n += 1
+	_mat_n[mats.duplicate()] = n
 	return n
+var _mat_n := {}   # material_count() by what was asked, until voxels come off (remove_voxels, setup): the magnets' look over every weapon asks it ten times a second
 
 ## Where the voxels of `mat` are, in the world (the middle of them).
 func material_centre(mat: String) -> Vector3:
@@ -751,6 +757,7 @@ func remove_voxels(indices: Array) -> Array:
 			continue
 		alive[i] = 0
 		_box_cache = null
+		_mat_n.clear()
 		_foot = null
 		var v: Array = vox[i]
 		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3]))})
@@ -1088,13 +1095,18 @@ static func chip_score(j: float, own_hardness: float, other_hardness: float) -> 
 ## it passes through the floor until the arm has it out, then meets the floor again, rather
 ## than jammed there with the hand stuck to it.
 var _through_floor := false
+## How low the lowest of a box's eight corners lies, the box placed by `xf`: the corner that takes, along each of the box's own axes, the end that lies lower.
+## To the bit the least of the eight worked out one by one, as it was every step for every weapon (a sum is never smaller for a larger term, and the eight
+## are sums of the same three terms): tests/test_materials.gd holds the two together.
+static func box_low_y(xf: Transform3D, box: AABB) -> float:
+	var bp := box.position
+	var be := box.end
+	return (xf * Vector3(bp.x if xf.basis.x.y >= 0.0 else be.x, bp.y if xf.basis.y.y >= 0.0 else be.y, bp.z if xf.basis.z.y >= 0.0 else be.z)).y
+
 func _out_of_the_floor() -> void:
 	if freeze or vox.is_empty():
 		return
-	var low := INF
-	var box := local_box()
-	for i in 8:
-		low = minf(low, (global_transform * box.get_endpoint(i)).y)
+	var low := box_low_y(global_transform, local_box())
 	var under := holder != null and low < -0.04
 	if under != _through_floor and (under or low > 0.02 or holder == null):
 		_through_floor = under

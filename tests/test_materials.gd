@@ -59,6 +59,73 @@ func test_an_explosive_head_blows_up_on_a_hard_blow() -> void:
 	t.eq(w2.material_count(["explosive"]), n2, "a light touch leaves it whole")
 	m.queue_free()
 
+## The count of a weapon's voxels of a stuff is kept until voxels come off it (the magnets' look over every weapon asked it of every voxel ten times a
+## second): kept or counted, the same number, before and after it loses some.
+func test_a_weapons_material_count_is_the_same_kept_or_counted() -> void:
+	var m := _match()
+	var w := m.spawn_loose_weapon(_club("iron"), Vector3(5, 1, 5))
+	await _steps(2)
+	var by_hand := func(mats: Array) -> int:
+		var n := 0
+		for i in w.vox.size():
+			if w.alive[i] and mats.has(w.vox[i][3]):
+				n += 1
+		return n
+	var asked := [["iron", "steel"], ["wood"], ["magnet"], ["iron"]]
+	for round in 3:
+		for mats in asked:
+			t.eq(w.material_count(mats), by_hand.call(mats), "round %d, %s: as counted" % [round, str(mats)])
+			t.eq(w.material_count(mats), by_hand.call(mats), "round %d, %s: and the same asked again" % [round, str(mats)])
+		# (Some of the head knocked off, then a piece of the haft: the kept counts are let go.)
+		var off := []
+		for i in w.vox.size():
+			if w.alive[i] and String(w.vox[i][3]) == ("iron" if round == 0 else "wood") and off.size() < 3:
+				off.append(i)
+		w.remove_voxels(off)
+	t.check(w.material_count(["iron"]) < 36 and w.material_count(["iron"]) > 0, "some of the head is gone (%d left)" % w.material_count(["iron"]))
+	var mine := ["iron"]
+	var n_iron: int = w.material_count(mine)
+	mine.append("wood")   # (the asker's own list changed after the asking: the kept count is not its)
+	t.eq(w.material_count(["iron"]), n_iron, "a list changed after it was asked with changes nothing kept")
+	t.eq(w.material_count(mine), by_hand.call(mine), "and the changed list is counted for itself")
+	m.queue_free()
+
+## The lowest corner of a weapon's box (Weapon.box_low_y: asked of every weapon every step, to keep it out of the floor and off the sand): the one corner it picks lies
+## exactly as low as the lowest of the eight worked out one by one, as it was, however the box is placed (turned, square to the world, scaled, mirrored) and shaped (flat).
+func test_the_lowest_corner_of_a_box_is_the_lowest_of_the_eight() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var bad := 0
+	var square := 0
+	var flat := 0
+	for k in 20000:
+		var axis := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
+		if axis.length() < 0.05:
+			axis = Vector3.UP
+		var bs := Basis(Quaternion(axis.normalized(), rng.randf_range(-PI, PI)))
+		match k % 8:
+			1:
+				bs = Basis.IDENTITY
+				square += 1
+			2:
+				bs = Basis(Quaternion([Vector3.RIGHT, Vector3.UP, Vector3.BACK][(k / 8) % 3], [PI / 2, PI, -PI / 2][(k / 24) % 3]))
+				square += 1
+			3: bs = bs.scaled(Vector3(rng.randf_range(0.3, 2.5), rng.randf_range(0.3, 2.5), rng.randf_range(0.3, 2.5)))
+			4: bs = bs.scaled(Vector3(-1, 1, 1))
+		var xf := Transform3D(bs, Vector3(rng.randf_range(-20, 20), rng.randf_range(-2, 3), rng.randf_range(-20, 20)))
+		var size := Vector3(rng.randf_range(0, 1.5), rng.randf_range(0, 1.5), rng.randf_range(0, 1.5))
+		if k % 16 == 5:
+			size.x = 0.0
+			flat += 1
+		var box := AABB(Vector3(rng.randf_range(-0.6, 0.2), rng.randf_range(-0.6, 0.2), rng.randf_range(-0.6, 0.2)), size)
+		var low := INF
+		for i in 8:
+			low = minf(low, (xf * box.get_endpoint(i)).y)
+		if Weapon.box_low_y(xf, box) != low:
+			bad += 1
+	t.check(bad == 0, "the corner picked is the lowest of the eight, to the bit (%d of 20000 unlike; %d placed square to the world, %d flat boxes)" % [bad, square, flat])
+	t.check(Weapon.box_low_y(Transform3D.IDENTITY, AABB()) == 0.0, "and a box of nothing lies where it is put")
+
 func test_a_spring_throws_him_back() -> void:
 	var m := _match()
 	var v: Fighter = _man(m, Vector3(0, 0, 0)).f
