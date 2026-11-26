@@ -8,6 +8,8 @@
 #include "voxel_core.h"
 #include "engine_math.h"
 
+#include <godot_cpp/classes/physics_direct_space_state3d.hpp>
+#include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
@@ -1192,7 +1194,11 @@ bool VoxelCore::leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *tor
 	if (thigh == nullptr || shin == nullptr || torso == nullptr || k.size() < 19) {
 		return false;
 	}
-	const double *kk = k.ptr();
+	return leg_tail_k(thigh, shin, torso, thigh_q, shin_q, goal, k.ptr());
+}
+
+// (leg_tail's work on the scalars where they lie: leg_plant below has them in an array of its own.)
+bool VoxelCore::leg_tail_k(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const double *kk) const {
 	const double S = kk[0], MS = kk[1], f = kk[2], dt = kk[3];
 	const int mode = (int)kk[4];
 	const Vector3 sole_l(0, (real_t)(-4.0 * kk[14] * S), 0);
@@ -1248,6 +1254,262 @@ bool VoxelCore::leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *tor
 		}
 	}
 	return false;
+}
+
+// A leg's step standing on the ground (Fighter._leg_plant, and Fighter._leg_end after it: control's loop over the legs for a leg that is not kicking, of a man
+// who stands on the ground and is not getting up) in one call: where the foot stands or steps to (its record `ft`, the script's own dictionary, written as the
+// script writes it), the thigh's turn and the knee's bend that put the sole there (Fighter._leg_aim), and leg_tail. The ground under a place is the script's
+// own two rays (Fighter._ground_ray: `ray_all` and `ray_sand`, made by it); what a ray hits that is a body is asked of the script (_is_dead_ground: rare).
+// k: 0 S, 1 MS, 2 the leg's strength f, 3 dt, 4 ground_y, 5 leg_f, 6 the shin's nominal mass, 7 the thigh's, 8 V, 9 FOOT_HOLD, 10 LEG_WN, 11 LEG_REACT,
+// 12 GAIT.down, 13 GAIT.touch, 14 GAIT.behind, 15 GAIT.arc, 16 GAIT.arc_run, 17 gait_phase, 18 h_speed, 19 hop_phase, 20 hop_k, 21 step_len, 22 move_amt,
+// 23 leg_avg, 24 land_sag, 25 the left leg (1/0), 26 sprint, 27 wants_move, 28 the other leg is one to stand on (1/0), 29 the shin severed, 30 the shin
+// hanging, 31 jump_t. Returns land_sag as the step leaves it.
+namespace {
+
+struct LegKeys {
+	Variant anchor, from, land, swing, s, half, slip, lift, gather, late, target_y, collider, position;
+	StringName is_dead_ground;
+	LegKeys() :
+			anchor(String("anchor")), from(String("from")), land(String("land")), swing(String("swing")), s(String("s")), half(String("half")), slip(String("slip")),
+			lift(String("lift")), gather(String("gather")), late(String("late")), target_y(String("target_y")), collider(String("collider")), position(String("position")),
+			is_dead_ground("_is_dead_ground") {}
+};
+
+// (Made at the first call and never unmade: at the library's end the engine's strings are gone before a static's destructor would run.)
+const LegKeys &leg_keys() {
+	static const LegKeys *keys = new LegKeys();
+	return *keys;
+}
+
+// Fighter._ground_ray from a place at the trunk's height: whether there is ground under it within reach, and how high.
+bool lp_ground(Object *fighter, PhysicsDirectSpaceState3D *space, const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, const Vector3 &from, double S,
+		const LegKeys &K, real_t &r_y) {
+	const Vector3 to = from + Vector3(0, (real_t)(-2.2 * S), 0);
+	ray_all->set_from(from);
+	ray_all->set_to(to);
+	Dictionary h = space->intersect_ray(ray_all);
+	if (!h.is_empty()) {
+		Object *c = h[K.collider];
+		// (_is_dead_ground: what is no body at all, the sand and the props, is ground; a body is asked of the script.)
+		const bool dead = Object::cast_to<RigidBody3D>(c) == nullptr ? true : (bool)fighter->call(K.is_dead_ground, c);
+		if (!dead) {
+			ray_sand->set_from(from);
+			ray_sand->set_to(to);
+			h = space->intersect_ray(ray_sand);
+		}
+	}
+	if (h.is_empty()) {
+		return false;
+	}
+	r_y = ((Vector3)h[K.position]).y;
+	return true;
+}
+
+} // namespace
+
+double VoxelCore::leg_plant(Object *fighter, RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *o_shin, RigidBody3D *torso, PhysicsDirectSpaceState3D *space,
+		const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, Dictionary ft, const Variant &o_ft, const Vector3 &t_pos,
+		const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &move_dir, const Vector3 &v_smooth, const Vector3 &pa, const Vector2 &stance, const PackedFloat64Array &k) const {
+	if (k.size() < 32) {
+		return 0.0;
+	}
+	const double *kk = k.ptr();
+	double land_sag = kk[24];
+	if (fighter == nullptr || thigh == nullptr || shin == nullptr || torso == nullptr || space == nullptr || ray_all.is_null() || ray_sand.is_null()) {
+		return land_sag;
+	}
+	const LegKeys &K = leg_keys();
+	const double S = kk[0], dt = kk[3], ground_y = kk[4], leg_f = kk[5], V = kk[8];
+	const double h_speed = kk[18], hop_phase = kk[19], hop_k = kk[20], step_len = kk[21], move_amt = kk[22], leg_avg = kk[23];
+	const bool side_l = kk[25] != 0.0, sprint = kk[26] != 0.0, wants_move = kk[27] != 0.0, shin_severed = kk[29] != 0.0, shin_hanging = kk[30] != 0.0;
+	const double l1 = 8.0 * V * S;
+	const double l2 = 8.0 * V * S;
+	const Vector3 hip = t_pos + t_rot.xform(pa);
+	const Quaternion t_inv = t_rot.inverse();
+	const Vector3 sole_l(0, (real_t)(-4.0 * V * S), 0);
+	const real_t trunk_y = torso->get_global_position().y;
+	real_t gy = 0;
+
+	// ----- Fighter._leg_plant -----
+	const double pax = (double)pa.x;
+	Vector3 neutral = t_pos + yaw_q.xform(Vector3((real_t)(pax * 1.15 + (pax > 0.0 ? 1.0 : (pax < 0.0 ? -1.0 : 0.0)) * (double)stance.y * S), 0, (real_t)((double)stance.x * S)));
+	neutral.y = lp_ground(fighter, space, ray_all, ray_sand, Vector3(neutral.x, trunk_y, neutral.z), S, K, gy) ? gy : (real_t)ground_y;
+	const int64_t half = (int64_t)std::floor(kk[17] / Math_PI);
+	const bool my_swing = ((half % 2) == 0) == side_l;
+	const bool moving = h_speed > 0.25;
+	bool other_up = false;
+	bool swing = (bool)ft[K.swing];
+	if (o_ft.get_type() == Variant::DICTIONARY && kk[28] != 0.0 && o_shin != nullptr) {
+		const Dictionary of = o_ft;
+		const Vector3 o_sole = o_shin->get_global_transform().xform(sole_l);
+		const Vector3 my_sole = shin->get_global_transform().xform(sole_l);
+		const bool me_up = !swing && (double)my_sole.y - (double)((Vector3)ft[K.anchor]).y > kk[12] * S;
+		other_up = (bool)of.get(K.swing, false) || ((double)o_sole.y - (double)((Vector3)of.get(K.anchor, Vector3())).y > kk[12] * S && !me_up);
+	}
+	if (hop_phase > 0.0) {
+		// Hopping: the good foot stays under him.
+		ft[K.swing] = false;
+		Vector3 at = neutral + move_dir * (real_t)step_len * (real_t)0.25;
+		ft[K.anchor] = at;
+		if (leg_f < 0.1) {
+			at = at + Vector3(0, (real_t)(0.25 * S), 0);
+			ft[K.anchor] = at;
+		}
+		ft[K.from] = at;
+		ft[K.land] = at;
+	} else if (moving && !swing && !other_up && (double)(hip - (Vector3)ft[K.anchor]).length() > (l1 + l2) * kk[14]) {
+		// Left behind farther than the leg reaches: it steps.
+		const Variant at_now = ft[K.anchor];
+		ft[K.half] = half;
+		ft[K.swing] = true;
+		ft[K.from] = at_now;
+		ft[K.s] = 0.0;
+	} else if (moving && my_swing && !swing && (int64_t)ft[K.half] != half && !other_up) {
+		const Variant at_now = ft[K.anchor];
+		ft[K.half] = half;
+		ft[K.swing] = true;
+		ft[K.from] = at_now;
+		ft[K.s] = 0.0;
+	}
+	swing = (bool)ft[K.swing];
+	if (swing) {
+		Vector3 land = neutral + move_dir * (real_t)step_len * (real_t)0.5;
+		ft[K.land] = land;
+		// Set down on what is where it lands.
+		land.y = lp_ground(fighter, space, ray_all, ray_sand, Vector3(land.x, trunk_y, land.z), S, K, gy) ? gy : neutral.y;
+		ft[K.land] = land;
+		// What is in the way between: the foot lifted over it.
+		const Vector3 from = ft[K.from];
+		const Vector3 mid_at = (from + land) * (real_t)0.5;
+		const double over_h = (lp_ground(fighter, space, ray_all, ray_sand, Vector3(mid_at.x, trunk_y, mid_at.z), S, K, gy) ? (double)gy : (double)mid_at.y) - (double)mid_at.y;
+		ft[K.lift] = over_h > 0.03 * S ? over_h + 0.06 * S : 0.0;
+		double rate = moving ? h_speed / step_len : 4.0;
+		const bool gather = (bool)ft.get(K.gather, false);
+		if (gather) {
+			rate = gd_maxf(rate, 2.5);
+		}
+		const double s = gd_minf(1.0, (double)ft[K.s] + dt * rate);
+		ft[K.s] = s;
+		const Vector3 sole_td = shin->get_global_transform().xform(sole_l);
+		const bool touched = s > 0.55 && !shin_severed && (double)sole_td.y - (double)land.y < kk[13] * S;
+		const double late = (double)ft.get(K.late, 0.0);
+		const bool high = !touched && !shin_severed && (double)from.y - (double)land.y > 0.08 * S && (double)sole_td.y - (double)land.y > 0.03 * S && late < 0.25;
+		const bool turn_over = moving && !my_swing && !gather;
+		if ((s >= 1.0 || turn_over) && high) {
+			ft[K.late] = late + dt;
+		} else if (s >= 1.0 || turn_over || touched) {
+			ft[K.swing] = false;
+			ft[K.gather] = false;
+			ft[K.late] = 0.0;
+			land_sag = gd_maxf(land_sag, (0.06 + 0.03 * gd_minf(1.0, h_speed / 3.0)) * S * ad_clampf((leg_avg - 0.6) / 0.3, 0.0, 1.0));
+			const Vector3 sole_at = shin->get_global_transform().xform(sole_l);
+			const double floor_at = lp_ground(fighter, space, ray_all, ray_sand, Vector3(sole_at.x, trunk_y, sole_at.z), S, K, gy) ? (double)gy : (double)land.y;
+			Vector3 anchor = (moving && wants_move && !shin_severed && (double)sole_at.distance_to(land) < 0.35 * S) ? Vector3(sole_at.x, (real_t)floor_at, sole_at.z) : land;
+			ft[K.anchor] = anchor;
+			if (!(moving && wants_move) && !shin_severed && (double)Vector2((real_t)((double)sole_at.x - (double)land.x), (real_t)((double)sole_at.z - (double)land.z)).length() > 0.12 * S) {
+				anchor = Vector3(sole_at.x, (real_t)floor_at, sole_at.z);
+				ft[K.anchor] = anchor;
+			}
+			ft[K.slip] = 0.0;
+		}
+	} else {
+		const Vector3 anchor = ft[K.anchor];
+		if ((double)ft[K.slip] > (moving ? (sprint ? 0.5 : 0.3) : 0.18) * S && !other_up) {
+			ft[K.swing] = true;
+			ft[K.from] = anchor;
+			ft[K.s] = 0.0;
+			ft[K.half] = half;
+			ft[K.land] = neutral + eng_normalized(Vector3(v_smooth.x, 0, v_smooth.z)) * (real_t)0.25 * (real_t)S;
+		} else if (!moving && (double)anchor.distance_to(neutral) > 0.3 * S && !other_up) {
+			ft[K.swing] = true;
+			ft[K.from] = anchor;
+			ft[K.s] = 0.0;
+			ft[K.land] = neutral;
+		} else if (S >= 1.3 && !other_up && (double)Vector2((real_t)((double)anchor.x - (double)neutral.x), (real_t)((double)anchor.z - (double)neutral.z)).length() > 0.4 * S) {
+			// A giant brings a foot left out wide back in under him.
+			ft[K.swing] = true;
+			ft[K.gather] = true;
+			ft[K.from] = anchor;
+			ft[K.s] = 0.0;
+			ft[K.half] = half;
+		}
+	}
+	swing = (bool)ft[K.swing];
+	const double s_now = (double)ft[K.s];
+	const double ease = s_now * s_now * (3.0 - 2.0 * s_now);
+	Vector3 target;
+	if (swing) {
+		target = ((Vector3)ft[K.from]).lerp((Vector3)ft[K.land], (real_t)ease) + Vector3(0, (real_t)(std::sin(Math_PI * s_now) * ((kk[15] + kk[16] * move_amt) * S + (double)ft.get(K.lift, 0.0))), 0);
+	} else {
+		target = ft[K.anchor];
+	}
+	const double target_y = (double)target.y;
+	ft[K.target_y] = target_y;
+	if (hop_phase > 0.0 && hop_k > 0.6) {
+		target.y = (real_t)((double)target.y + (hop_k - 0.6) * 0.2 * S);   // the foot tucks up at the top of the hop
+	}
+	// Fighter._leg_aim
+	Vector3 hf = t_inv.xform(target - hip);
+	double d = (double)hf.length();
+	const double max_d = (l1 + l2) * 0.985;
+	if (d > max_d) {
+		hf *= (real_t)(max_d / d);
+		d = max_d;
+	}
+	if (d < 0.05) {
+		hf = Vector3(0, (real_t)-0.05, 0);
+		d = 0.05;
+	}
+	const Vector3 dirv = hf / (real_t)d;
+	const double a = std::acos(ad_clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0));
+	const double bend = Math_PI - std::acos(ad_clampf((l1 * l1 + l2 * l2 - d * d) / (2.0 * l1 * l2), -1.0, 1.0));
+	Vector3 axis = dirv.cross(Vector3(0, 0, 1));
+	axis = (double)axis.length_squared() < 1e-6 ? Vector3(-1, 0, 0) : eng_normalized(axis);
+	const Quaternion thigh_q = eng_quat_arc(Vector3(0, -1, 0), dirv.rotated(axis, (real_t)a));
+
+	// ----- Fighter._leg_end (standing on the ground, not kicking, not getting up) -----
+	const bool whole = !shin_severed && !shin_hanging;
+	double lk[19];
+	Vector3 goal_n;
+	lk[4] = 0.0;
+	lk[5] = 0.0;
+	if (whole && !swing) {
+		lk[4] = 1.0;
+		goal_n = ft[K.anchor];
+	} else if (whole && swing && kk[31] <= 0.0) {
+		lk[4] = 2.0;
+		lk[5] = target_y;
+	}
+	lk[0] = S;
+	lk[1] = kk[1];
+	lk[2] = kk[2];
+	lk[3] = dt;
+	lk[6] = 1.0;
+	lk[7] = 0.0;
+	lk[8] = whole ? 1.0 : 0.0;
+	lk[9] = shin_severed ? 0.0 : 1.0;
+	lk[10] = ground_y;
+	lk[11] = leg_f;
+	lk[12] = kk[6];
+	lk[13] = kk[7];
+	lk[14] = V;
+	lk[15] = kk[9];
+	lk[16] = kk[10];
+	lk[17] = kk[11];
+	lk[18] = kk[12];
+	const Quaternion shin_q(Vector3(1, 0, 0), (real_t)bend);
+	if (leg_tail_k(thigh, shin, torso, thigh_q, shin_q, goal_n, lk)) {
+		// Planted on something higher than its plant (a body lying there, a dropped shield): it stands on that.
+		const Vector3 sole_n = shin->get_global_transform().xform(sole_l);
+		const double under_n = lp_ground(fighter, space, ray_all, ray_sand, Vector3(sole_n.x, trunk_y, sole_n.z), S, K, gy) ? (double)gy : (double)goal_n.y;
+		if (under_n > (double)goal_n.y + 0.01 * S) {
+			goal_n.y = (real_t)gd_minf(under_n, (double)sole_n.y);
+			ft[K.anchor] = goal_n;
+		}
+		lk[4] = 3.0;
+		leg_tail_k(thigh, shin, torso, thigh_q, shin_q, goal_n, lk);
+	}
+	return land_sag;
 }
 
 // Which arguments the arms' and the legs' calls take (the script asks before it uses them: a library left over from an older build would be called

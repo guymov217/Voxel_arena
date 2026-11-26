@@ -629,6 +629,164 @@ func test_native_bulk_matches_the_gdscript() -> void:
 	t.check(bad.is_empty(), "the calls for every body are the script's lines to the byte (%d rows, %d velocities, %d made-up places; unlike: %s)" % [rows, vels, made, str(bad.slice(0, 6))])
 	t.check(rows > 5000 and vels > 5000 and moving > 500 and chains > 100 and clamped > 30, "what was asked covers the cases (%d rows, %d velocities, %d of them moving, %d chain heads, %d places past the int16's end)" % [rows, vels, moving, chains, clamped])
 
+## A standing leg's whole step in the C++ core (VoxelCore.leg_plant: Fighter._leg_plant and the leg's end after it in one call; docs/PERF_RESEARCH.md, section 23): from the
+## same man in the same state the script's lines and the core's leave the foot's record the same (where it stands, where it steps from and to, how far through its step),
+## the other foot's untouched, the trunk, the thigh and the shin the same speeds and the knees' give the same, to the bit. Feet standing, stepping, landing, slipping,
+## hopping, left behind and gathered in; over the sand and over a man lying under them, alive and dead.
+func test_native_leg_plant_matches_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.plant_ok:
+		t.check(true, "no native core with the leg's step built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 73
+	var bad := []
+	var stepping := 0
+	var landed := 0
+	var lifted := 0
+	var hopped := 0
+	var pushed := 0
+	var on_body := 0
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "scutum"}})
+	for k in 30:
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	var e2 = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": f.torso.global_position + Vector3(0.1, 0, 0.1), "yaw": 0.0})
+	e2.erase("bot")
+	e2.drive = func(_e): return {}
+	var under: Fighter = e2.f
+	await get_tree().physics_frame
+	# (His trunk laid flat under the man's feet: what the rays for the ground meet there.)
+	# (Put there in the physics' own record, which is what a ray asks: a body's place set on its node reaches it at the next step.)
+	PhysicsServer3D.body_set_state(under.torso.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(f.torso.global_position.x, f.ground_level + 0.13, f.torso.global_position.z)))
+	under.torso.linear_velocity = Vector3.ZERO
+	under.torso.angular_velocity = Vector3.ZERO
+	var probe_ray := PhysicsRayQueryParameters3D.create(Vector3.ZERO, Vector3.DOWN, VoxelPart.LAYER_BODY | VoxelPart.LAYER_CORPSE, f._own_rids())
+	var on_live := 0
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	for k in 1600:
+		var side := "L" if k % 2 == 0 else "R"
+		var os := "R" if side == "L" else "L"
+		var thigh: VoxelPart = f.by_name["thigh" + side]
+		var shin: VoxelPart = f.by_name["shin" + side]
+		var bodies := [f.torso, thigh, shin]
+		var speeds := []
+		for i in 3:
+			speeds.append(rv.call(1.5) as Vector3)
+			speeds.append(rv.call(5.0) as Vector3)
+		var sole: Vector3 = shin.global_transform * Vector3(0, -4 * Fighter.V * f.S, 0)
+		var o_sole: Vector3 = f.by_name["shin" + os].global_transform * Vector3(0, -4 * Fighter.V * f.S, 0)
+		var on_sand := Vector3(sole.x, f.ground_level, sole.z)
+		var ft := {"anchor": on_sand + Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.02, 0.02) - (0.2 if k % 9 == 0 else 0.0), rng.randf_range(-0.2, 0.2)), "from": on_sand + Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(0.0, 0.12) if k % 5 == 0 else 0.0, rng.randf_range(-0.2, 0.2)),
+			"swing": k % 3 == 0, "s": rng.randf_range(0.0, 1.0) if k % 4 != 0 else 0.98, "land": on_sand + Vector3(rng.randf_range(-0.2, 0.2), 0, rng.randf_range(-0.2, 0.2)), "half": rng.randi_range(-1, 3), "slip": rng.randf_range(0.0, 0.6) if k % 6 == 0 else 0.0}
+		if k % 7 == 0:
+			ft["gather"] = k % 14 == 0
+		if k % 8 == 0:
+			ft["late"] = rng.randf_range(0.0, 0.3)
+		if k % 5 == 1:
+			ft["lift"] = rng.randf_range(0.0, 0.1)
+		if k % 3 != 1:
+			ft["target_y"] = sole.y + rng.randf_range(-0.08, 0.04)
+		var oft = {"anchor": Vector3(o_sole.x, f.ground_level + rng.randf_range(-0.03, 0.03), o_sole.z), "from": o_sole, "swing": k % 5 == 0, "s": 0.4, "land": o_sole, "half": 0, "slip": 0.0} if k % 11 != 0 else null
+		var leg_now := {side: rng.randf_range(0.0, 1.0) if k % 10 != 0 else 0.05, os: rng.randf_range(0.0, 1.0) if k % 13 != 0 else 0.05}
+		var leg_f: float = leg_now[side]
+		var strength := maxf(0.15, leg_f)
+		var t_pos: Vector3 = f.torso.global_position
+		var t_rot: Quaternion = PD.quat_of(f.torso)
+		var yaw_q := Quaternion(Vector3.UP, f.yaw + rng.randf_range(-0.4, 0.4))
+		var t_inv := t_rot.inverse()
+		var ground_y: float = f.ground_level + rng.randf_range(-0.03, 0.06)
+		var h_speed := rng.randf_range(0.0, 4.5) if k % 4 != 1 else rng.randf_range(0.0, 0.25)
+		var sprint := k % 6 == 0
+		var step_len: float = (minf(float(Fighter.GAIT.run_stride), 0.3 + 0.17 * h_speed) if sprint else minf(float(Fighter.GAIT.walk_stride), 0.28 + 0.12 * h_speed)) * f.S
+		var mdir := Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1))
+		var move_dir := mdir.normalized() if k % 4 != 1 else Vector3.ZERO
+		var hop_k := rng.randf_range(0.0, 1.0)
+		var wants_move := k % 3 != 2
+		var move_amt: float = minf(1.0, h_speed / 2.5)
+		var leg_avg := rng.randf_range(0.3, 1.0)
+		var dt := 1.0 / 120.0 if k % 6 != 0 else rng.randf_range(0.005, 0.02)
+		var hip := t_pos + t_rot * (thigh.pa)
+		var l1 := 8 * Fighter.V * f.S
+		var l2 := 8 * Fighter.V * f.S
+		var gait := rng.randf_range(0.0, 20.0)
+		var hop := rng.randf_range(0.01, 1.0) if k % 12 == 0 else 0.0
+		var vs := Vector3(rng.randf_range(-3, 3), rng.randf_range(-0.5, 0.5), rng.randf_range(-3, 3))
+		var sag := rng.randf_range(0.0, 0.05) if k % 2 == 0 else 0.0
+		var stance_was: Vector2 = f.stance[side]
+		var st := Vector2(rng.randf_range(-0.2, 0.3), rng.randf_range(-0.05, 0.15))
+		f.jump_t = 0.2 if k % 19 == 0 else 0.0
+		# (The other man underfoot by turns a live one, who is not ground, and a dead one, who is: what a ray hits there is asked of the script.)
+		under.state = "stand" if k % 3 != 0 else "dead"
+		f._ground_ray(f.space, t_pos)
+		probe_ray.from = Vector3(sole.x, t_pos.y, sole.z)
+		probe_ray.to = probe_ray.from + Vector3(0, -2.2 * f.S, 0)
+		if f.space.intersect_ray(probe_ray):
+			if under.alive:
+				on_live += 1
+			else:
+				on_body += 1
+		var res := []
+		for native in [false, true]:
+			f.feet[side] = ft.duplicate(true)
+			f.feet[os] = (oft as Dictionary).duplicate(true) if oft != null else null
+			f.gait_phase = gait
+			f.hop_phase = hop
+			f.v_smooth = vs
+			f.land_sag = sag
+			f.stance[side] = st
+			_arm_set_speeds(bodies, speeds)
+			if native:
+				f._leg_plant_native(side, thigh, shin, strength, leg_f, leg_now, t_pos, t_rot, yaw_q, ground_y, h_speed, step_len, move_dir, hop_k, sprint, wants_move, move_amt, leg_avg, dt)
+			else:
+				var pose := f._leg_plant(side, thigh, shin, leg_f, leg_now, hip, t_pos, yaw_q, t_inv, ground_y, h_speed, step_len, move_dir, hop_k, sprint, wants_move, move_amt, leg_avg, l1, l2, dt)
+				f._leg_end(side, thigh, shin, pose[0], pose[1], strength, leg_f, false, true, true, false, true, ground_y, dt)
+			res.append([_arm_live(bodies), (f.feet[side] as Dictionary).duplicate(true), (f.feet[os] as Dictionary).duplicate(true) if f.feet[os] != null else null, f.land_sag])
+		f.stance[side] = stance_was
+		if ft.swing:
+			stepping += 1
+			if not res[1][1].swing:
+				landed += 1
+		elif res[1][1].swing:
+			lifted += 1
+		if hop > 0.0:
+			hopped += 1
+		if res[1][0] != speeds:
+			pushed += 1
+		var what := ""
+		if res[0][1] != res[1][1]:
+			what = "foot"
+			for key in res[0][1]:
+				if not res[1][1].has(key) or res[0][1][key] != res[1][1][key]:
+					what += " " + str(key)
+			for key in res[1][1]:
+				if not res[0][1].has(key):
+					what += " +" + str(key)
+		elif res[0][0] != res[1][0]:
+			what = "speeds"
+			for i in 6:
+				if res[0][0][i] != res[1][0][i]:
+					what += " %d" % i
+		elif res[0][2] != res[1][2]:
+			what = "other foot"
+		elif res[0][3] != res[1][3]:
+			what = "land_sag"
+		if what != "":
+			bad.append("k=%d: %s" % [k, what])
+		_arm_set_speeds(bodies, speeds.map(func(_v): return Vector3.ZERO))
+	under.state = "stand"
+	f.jump_t = 0.0
+	f.hop_phase = 0.0
+	f.land_sag = 0.0
+	f.feet["L"] = null
+	f.feet["R"] = null
+	m.queue_free()
+	await get_tree().physics_frame
+	t.check(bad.is_empty(), "the core's step of a standing leg leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 5)))])
+	t.check(pushed > 1500 and stepping > 400 and landed > 100 and lifted > 100 and hopped > 80 and on_body > 300 and on_live > 600, "and it was at work: %d of 1600 pushed a body; %d feet stepping (%d set down), %d lifted to step, %d hopping; %d over a dead man lying under them (ground) and %d over a live one (not)" % [pushed, stepping, landed, lifted, hopped, on_body, on_live])
+
+
 ## The end of a leg's step in the C++ core (VoxelCore.leg_tail; docs/PERF_RESEARCH.md, section 20): from the same man in the same state the script's own lines and the
 ## core's leave his trunk, the thigh and the shin the same speeds and the foot's plant the same, to the bit.
 func test_native_leg_end_matches_the_gdscript() -> void:

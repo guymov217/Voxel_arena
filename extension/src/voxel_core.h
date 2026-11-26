@@ -2,6 +2,8 @@
 // The voxel hot paths in C++: greedy box merging for the colliders, flood fill for the
 // lumps that come off a part and the searches over a part's voxels. Same results as scripts/voxel/greedy.gd and VoxelPart._flood.
 
+#include <godot_cpp/classes/physics_direct_space_state3d.hpp>
+#include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/rigid_body3d.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
@@ -15,6 +17,7 @@
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector3i.hpp>
 
@@ -122,6 +125,11 @@ public:
 	// arm_free: the whole drive of a shield's or an empty hand's arm in the plain case (the mark worked out, then arm_plain); false, nothing changed, where it is not.
 	Array arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *w, Object *elbow_joint, const Dictionary &hp_in, const Vector3 &e_was, const Quaternion &hold_q, const Quaternion &grip_q, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const PackedFloat64Array &k) const;
 	bool leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const PackedFloat64Array &k) const;
+	bool leg_tail_k(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const double *kk) const;
+	// A standing leg's whole step (Fighter._leg_plant and _leg_end) in one call.
+	double leg_plant(Object *fighter, RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *o_shin, RigidBody3D *torso, PhysicsDirectSpaceState3D *space,
+			const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, Dictionary ft, const Variant &o_ft, const Vector3 &t_pos,
+			const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &move_dir, const Vector3 &v_smooth, const Vector3 &pa, const Vector2 &stance, const PackedFloat64Array &k) const;
 	int drive_api() const;
 	PackedByteArray pack_parts(const Array &parts) const;
 	void record_vel(const Array &bodies, Dictionary vel) const;

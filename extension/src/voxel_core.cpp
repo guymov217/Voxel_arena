@@ -58,6 +58,7 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("arm_elbow", "upper", "torso", "target_w", "shoulder_w", "fore_dir", "t_rot", "e_was", "sculpt", "o_up", "elbow_face", "torso_half", "k"), &VoxelCore::arm_elbow);
 	ClassDB::bind_method(D_METHOD("arm_armed", "upper", "fore", "torso", "head", "w", "elbow_joint", "hp", "e_was", "hold_q", "grip_q", "t_pos", "t_rot", "yaw_q", "shoulder_l", "hand_point", "torso_half", "head_half", "sculpt", "o_up", "o_fo", "refs", "side", "up_half", "up_pa", "up_ca", "fo_pa", "fo_ca", "k"), &VoxelCore::arm_armed);
 	ClassDB::bind_method(D_METHOD("leg_tail", "thigh", "shin", "torso", "thigh_q", "shin_q", "goal", "k"), &VoxelCore::leg_tail);
+	ClassDB::bind_method(D_METHOD("leg_plant", "fighter", "thigh", "shin", "o_shin", "torso", "space", "ray_all", "ray_sand", "ft", "o_ft", "t_pos", "t_rot", "yaw_q", "move_dir", "v_smooth", "pa", "stance", "k"), &VoxelCore::leg_plant);
 	ClassDB::bind_method(D_METHOD("drive_api"), &VoxelCore::drive_api);
 	ClassDB::bind_method(D_METHOD("pack_parts", "parts"), &VoxelCore::pack_parts);
 	ClassDB::bind_method(D_METHOD("record_vel", "bodies", "vel"), &VoxelCore::record_vel);

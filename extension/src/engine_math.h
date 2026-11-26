@@ -4,6 +4,7 @@
 // keeps its scalars in double and its vectors in float; a vector times a scalar takes the scalar as a float.
 
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/godot.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
@@ -58,6 +59,16 @@ inline Quaternion eng_rotation_quaternion(const Basis &b) {
 		m.scale(Vector3(-1, -1, -1));
 	}
 	return m.get_quaternion();
+}
+
+// Quaternion(arc_from, arc_to), the shortest turn from one to the other, by the running engine's own constructor: this library's copy of it (godot-cpp's, a 4.4 one)
+// is another version's and comes out a bit off in a few cases of a hundred.
+inline Quaternion eng_quat_arc(const Vector3 &from, const Vector3 &to) {
+	static const GDExtensionPtrConstructor make = internal::gdextension_interface_variant_get_ptr_constructor(GDEXTENSION_VARIANT_TYPE_QUATERNION, 4);
+	Quaternion q;
+	const GDExtensionConstTypePtr args[2] = { &from, &to };
+	make(&q, args);
+	return q;
 }
 
 // PD.quat_of: body.global_transform.basis.orthonormalized().get_rotation_quaternion()

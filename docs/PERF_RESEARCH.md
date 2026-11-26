@@ -851,3 +851,26 @@ of a zip and the report could not say, which `build_stamp.txt` now does). What i
 - What decides the room now is the step with a fight on: 7.2 to 7.5 ms with thirteen to fifteen fighting, against the 5.5 a step may cost for 45 frames. The gate keeps the
   count to what the step affords; to afford more of them at once the step has to cost less (the legs' and the ground's blocks in the core, section 21; the men's controls on
   threads, section 17).
+
+## 23. A standing leg's step in the core (`VoxelCore.leg_plant`)
+
+The legs' loop of `control`, for the leg of a man who stands on the ground and is not kicking or getting up (nearly every leg of every step): where the foot stands or steps
+to (its record in `feet`: the plant, the step's start and end, how far through it, the lift over what lies between), the two-bone aim that puts the sole there, and the leg's
+end (`_leg_end`: the planted foot held, the thigh and the shin driven, the sole kept out of the sand). It was 73 thousand instructions a leg; it is one call.
+
+- **What moved**: the branch became a function of its own, `Fighter._leg_plant` (the script's lines as they were: the script's path still runs them, for a man getting up, a
+  foot with no record yet, and where the library is an older one), and `VoxelCore.leg_plant` does it and `_leg_end` after it. The foot's record stays the script's own
+  dictionary, written key for key as the script writes it (others read it: the ground block, the balance, the drawing of the feet). The ground under a place is the script's
+  own two rays, handed over (`_ray_all`, `_ray_sand`); what a ray meets that is a body is asked of the script (`_is_dead_ground`: a dead man lying still is ground, a live
+  one is not), which is rare.
+- **One thing was not the same at first**: of 600 states 46 left the thigh a last bit off. The shortest turn from one direction to another (`Quaternion(from, to)`) is
+  another version's in the library's own copy of the engine's maths (godot-cpp's, a 4.4 one); the core now asks the running engine's constructor for it
+  (`vc::eng_quat_arc`). After that 3000 of 3000.
+- **Held to the script**: `tests/test_native.gd` (`test_native_leg_plant_matches_the_gdscript`): 1600 states of feet standing, stepping, set down, lifted, slipping, hopping,
+  over the sand and over a man lying under them, dead and alive: the foot's record, the other foot's, the speeds of trunk, thigh and shin and the knees' give, to the bit.
+  The fingerprints of the four fights: 0 lines of 39 differ.
+- **What it is worth** (`tools/ir_profile`, the fight of eight, second 1): `control` 1 214 482 -> 1 148 630 instructions a man a step, **-5.4%** (9.80 -> 9.27 million a step
+  for the eight); the call itself is 32.7 thousand a leg, 9.2 of them the leg's end, most of the rest the ray for the ground under the foot's place (the engine's, and its
+  answer a dictionary). About 4% of what the scripts do in a step. The estimate of section 21 (the legs and the ground block together a tenth) was high for the legs: a
+  third of a leg's cost was the ray and the leg's end, which were the engine's and the core's already.
+- **Left of the legs**: the ground block before the loop (the height the hips ride at: 92 thousand a man, three loops over the two feet), the kick's branch (rare).

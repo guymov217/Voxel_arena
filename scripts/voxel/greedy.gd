@@ -16,6 +16,7 @@ static var use_native := true:
 static var arm_ok := false   # the loaded core has the arms' natives (an older build does not: the script keeps the arms out)
 static var arm_drive_ok := false   # and the arm's drive itself, as far as it has been moved there (VoxelCore.arm_plain; docs/PERF_RESEARCH.md, section 20)
 static var leg_ok := false   # and the end of a leg's step (VoxelCore.leg_tail)
+static var plant_ok := false  # and a standing leg's whole step (VoxelCore.leg_plant)
 static var bulk_ok := false   # and what is asked of every body in one go (VoxelCore.pack_parts, record_vel)
 const DRIVE_API := 4   # the arguments the arms' and the legs' calls take, as this script hands them over (VoxelCore.drive_api: a library of another build is not asked)
 
@@ -28,6 +29,7 @@ static func core() -> Object:
 			var api_ok: bool = native.has_method("drive_api") and int(native.drive_api()) == DRIVE_API
 			arm_drive_ok = arm_ok and api_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_armed")
 			leg_ok = arm_ok and api_ok and native.has_method("leg_tail")
+			plant_ok = leg_ok and native.has_method("leg_plant")
 			bulk_ok = native.has_method("pack_parts") and native.has_method("record_vel")
 		nc = native if use_native else null
 	return native if use_native else null
