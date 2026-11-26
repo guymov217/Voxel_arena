@@ -5101,26 +5101,36 @@ func draw_now() -> void:
 const BEND_KNEE := 0.085    # how far each way along the limb from the joint the bend is spread (m)
 const BEND_ELBOW := 0.06
 var _bent := {}             # part -> what was last drawn bent with it
+var _bend_pairs: Array = []   # [the upper part, the lower, how far the bend is spread] for each knee and elbow (_bend_drawing)
+var _bend_pairs_n := -1
 func _bend_drawing(interp := true) -> void:
 	if _bent.is_empty() and not FineSmooth.skinned():
 		return
-	for side in ["R", "L"]:
-		for pair in [[by_name.get("thigh" + side), by_name.get("shin" + side), BEND_KNEE], [arm[side].upper, arm[side].fore, BEND_ELBOW]]:
-			var up: VoxelPart = pair[0]
-			var low: VoxelPart = pair[1]
-			if up == null or low == null:
-				continue
-			var on: bool = low.parent_part == up and low.joint != null and up.fine.get("smooth", false) and low.fine.get("smooth", false) and up.fine.has("mi") and low.fine.has("mi") \
-					and not (up.severed or low.severed or up.hanging or low.hanging or up.missing or low.missing or up.fractured or low.fractured)
-			if not on:
+	# (His two knees and two elbows, listed once: the list was made anew every frame, each knee's parts asked of by_name by a name put together.)
+	if _bend_pairs_n != by_name.size():
+		_bend_pairs_n = by_name.size()
+		_bend_pairs = []
+		for side in ["R", "L"]:
+			_bend_pairs.append([by_name.get("thigh" + side), by_name.get("shin" + side), BEND_KNEE])
+			_bend_pairs.append([arm[side].upper, arm[side].fore, BEND_ELBOW])
+	for pair in _bend_pairs:
+		var up: VoxelPart = pair[0]
+		var low: VoxelPart = pair[1]
+		if up == null or low == null:
+			continue
+		var on: bool = low.parent_part == up and low.joint != null and up.fine.get("smooth", false) and low.fine.get("smooth", false) and up.fine.has("mi") and low.fine.has("mi") \
+				and not (up.severed or low.severed or up.hanging or low.hanging or up.missing or low.missing or up.fractured or low.fractured)
+		if not on:
+			# (With nothing bent on him, _bend_set asked for no bend comes straight back: not called on then.)
+			if not _bent.is_empty():
 				_bend_set(up, Vector4.ZERO, Vector4.ZERO)
 				_bend_set(low, Vector4.ZERO, Vector4.ZERO)
-				continue
-			var tu := up.draw_turn * (up.get_global_transform_interpolated() if interp else up.global_transform)
-			var tl := low.draw_turn * (low.get_global_transform_interpolated() if interp else low.global_transform)
-			var b := bend_of(tu.basis, tl.basis, tl * low.ca + low.draw_shift, float(pair[2]) * S)
-			_bend_set(up, b[0], b[1])
-			_bend_set(low, b[2], b[3])
+			continue
+		var tu := up.draw_turn * (up.get_global_transform_interpolated() if interp else up.global_transform)
+		var tl := low.draw_turn * (low.get_global_transform_interpolated() if interp else low.global_transform)
+		var b := bend_of(tu.basis, tl.basis, tl * low.ca + low.draw_shift, float(pair[2]) * S)
+		_bend_set(up, b[0], b[1])
+		_bend_set(low, b[2], b[3])
 
 ## A bend's two shares (voxel_body.gdshader bend_at, bend_turn), the upper part's then the lower
 ## one's: the joint as it is drawn (`pivot`, world), how far each way along the limb the bend is

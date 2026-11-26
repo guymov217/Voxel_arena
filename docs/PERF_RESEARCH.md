@@ -814,3 +814,6 @@ and none of it has been counted before (the measurements had no screen, and the 
   `tests/test_seating.gd` and `test_smooth.gd` hold both ways). And `_seat_drawing` does not call on a parent for its broken piece's turn where nothing of it swings. A man's
   drawing **796 -> 625 thousand instructions a frame, -21.5%** (`_draw_joint_caps` 179 -> 19, `_seat_drawing` 193 -> 182). Left there, in order: the shoulder guards' two sides
   111, the knees' and elbows' bends 91, the grip's drawing 46, the limbs in armour 41, his parts' own `_process` 17 each.
+- **The bends**: `_bend_drawing` made the list of his two knees and two elbows anew every frame (the knees' parts asked of `by_name` by a name put together) and called
+  `_bend_set` twice a joint to say "no bend" to parts that had none. The list is made once, and with nothing bent on him those calls are not made. 98 -> 43 thousand a
+  man a frame; his drawing **796 -> 569 thousand, -28.5%** with the caps.
