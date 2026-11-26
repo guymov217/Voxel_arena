@@ -691,5 +691,19 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
 - **What it is worth**, timed at the calls in the same fight of sixteen (the least of five runs each way; two sittings, the machine a tenth slower in the second, so each pair is its own): with `arm_free`, a shield's or an
   empty hand's arm 59 -> 27 us a call and a man's `control` 495 -> 420 us (-15%); with `arm_mark` on top, a blade's arm 154 -> 120 us (-22%) and `control` 475 -> 444 us (-7%). Together a man's `control` is about a fifth
   cheaper than with the first three pieces alone, and a step's controls about 7.2 -> 5.7 ms.
-- **Left in a blade's 120 us**: `weapon_aim` (about 18), the scalars handed over and three calls where one would do (about 12), `_hold_elbow`, `_hand_off_trunk`'s own call and `_free_wedged` (about 10), and the natives' own
-  work. The next piece is the blade's arm in one call.
+
+**A blade's arm in one call** (`VoxelCore.arm_armed`; `arm_mark` as a call of its own is gone again):
+- The mark, then `weapon_aim` whole (the pane's line, a spear couched on the line he looks along and trued to it, the blade kept from pointing back past the shoulders, `_route_front`, the sand under a low blow, the edge
+  where the wheel set it, a bot's edge led by its stroke, the line held to the speed the weapon allows, the edge carried round with the blade), how fast the aim turns, the forearm's line, `arm_elbow`, the swing read and
+  `_hold_elbow` (the hinge's two limits set by name: the joint's class is not among the ones the core is built with), `hand_off`, and `arm_blade`. What is left in `Fighter._drive_blade_plain` is the scalars handed over,
+  `low_hand`, the off hand's place, the haft's memory and `_free_wedged`.
+- **The engine's shortest arc is not the library's.** `Quaternion(from, to)` in the 4.7.2 engine makes the two lines unit ones, answers "no turn" only where their dot is over 1 - 4 * 2^-24, and makes the turn itself a unit
+  one at the end; godot-cpp 4.4's leaves that last step out and answers "no turn" from 1 - 0.00001 on (two lines four thousandths of a radian apart). Read off the engine itself (`ad_arc` in `arm_drive.cpp`: 4400 pairs, every
+  one to the bit). The unit test passed with the library's arc and the fights did not: a blade held all but still turns its line a thousandth of a radian a step, which the test's leaping marks never did. The test now
+  holds a blade nearly still for a third of its steps (294 of them turn between 0.0007 and 0.004), and reads back the hinge's limits and `low_hand` as well.
+- **To the bit**: `tests/test_native.gd` (3600 steps: a bot's leading edge, the wheel, a look, the input's power by turns; 1390 of the 1500 steps of a blade that is no bow the core's own) and `tools/replay_check.sh` (the
+  same fingerprints on every line that repeats, with the library as it ships).
+- **What it is worth**, eight runs each way in the same sitting: a blade's arm 125 -> 90 us a call (-27%; the least of each 110 -> 86), a man's `control` about 6% cheaper again. Since the first three pieces: a shield's or
+  an empty hand's arm 59 -> 27 us, a blade's 154 -> 90 us, a man's `control` about a quarter cheaper (495 -> about 370 us at the first sitting's pace), a step's controls 7.2 -> about 5.4 ms of a 14 ms step: 13% of the step.
+- **Left of the arms**: about 90 us a blade's arm and 27 a free one, a man's two arms 117 us of his 370: the natives' own work (the PD drives, the body queries), `_free_wedged`, and what handing sixty scalars over costs
+  (about 8 us an arm). The rest of `control` is the legs' loop (about 85 us: the gait, the feet's plants, the kicks; ground rays from the script) and the stance and balance before it.
