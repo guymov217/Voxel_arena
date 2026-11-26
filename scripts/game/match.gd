@@ -557,6 +557,19 @@ static func gate_budget(rest_ms: float) -> float:
 	return minf(GATE_BUDGET_MS, (1000.0 - GATE_FPS * rest_ms) / 120.0)
 var gate_cost_ms := -1.0   # (a test's: the step's cost to hold the gate by, instead of the room's)
 var gate_held := 0         # the foes held at the gate now
+## Near what a step may cost, the foes come in one at a time. A foe let in costs little while he walks to the fight, and the step's cost is a smoothed one: all eight of a wave were
+## let in while the step read 4.0 ms of the 5.5 it might, and five seconds later, all of them fighting, it was 7.5 and the picture at 15 to 17 frames a second for eight seconds of every
+## wave (the owner's third report, docs/PERF_RESEARCH.md section 22). So where one more man would bring the step within a quarter of its budget, the next foe waits until the last one
+## let in has been on the sand GATE_SETTLE_S: by then the step says what he costs. A host far from its budget is not touched, nor the first GATE_MIN_FOES of a wave.
+const GATE_SETTLE_S := 4.0
+const GATE_NEAR := 0.75
+var _gate_in_t := -1000.0   # when the last foe was let in (the game's clock)
+
+## Whether the next foe waits his turn: the steps cost `step_ms` with `men` alive, `foes` of them foes, of the `budget` a step has, and the last foe was let in `since_s` ago.
+static func foe_gate_waits(step_ms: float, men: int, foes: int, budget: float, since_s: float) -> bool:
+	if step_ms <= 0.0 or men < 2 or foes < GATE_MIN_FOES or since_s >= GATE_SETTLE_S:
+		return false
+	return step_ms * (1.0 + 1.0 / float(men)) > budget * GATE_NEAR
 
 ## Whether a foe is held: the steps cost `step_ms` with `men` alive on the sand, `foes` of them foes; `over`: the room is over its budget for good (Net.overloaded).
 static func foe_gate_holds(step_ms: float, men: int, foes: int, over := false, budget := GATE_BUDGET_MS) -> bool:
@@ -573,7 +586,10 @@ func _foe_gate_holds() -> bool:
 			if int(e.team) == ENEMY_TEAM:
 				foes += 1
 	# (A test's own cost is held against the old budget; the room's against what leaves the frames their share.)
-	return foe_gate_holds(gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, men, foes, gate_cost_ms < 0.0 and Net.overload_on and Net.overloaded, GATE_BUDGET_MS if gate_cost_ms >= 0.0 else gate_budget(Net.rest_ms))
+	if foe_gate_holds(gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, men, foes, gate_cost_ms < 0.0 and Net.overload_on and Net.overloaded, GATE_BUDGET_MS if gate_cost_ms >= 0.0 else gate_budget(Net.rest_ms)):
+		return true
+	# (And near the budget, one at a time: the room's own cost only, a test's is what the test says it is.)
+	return gate_cost_ms < 0.0 and foe_gate_waits(Net.step_ms, men, foes, gate_budget(Net.rest_ms), time - _gate_in_t)
 
 func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 	if not (staging() or (at_start and stage_start())):
@@ -603,6 +619,8 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 			gate_held -= 1
 			if over or not is_inside_tree():
 				break
+		if not at_start and int(spec.get("team", -1)) == ENEMY_TEAM and not bool(spec.get("harmless", false)):
+			_gate_in_t = time
 		var e = null
 		if spec.get("kind", "") == "beast":
 			e = await spawn_beast_staged(spec)

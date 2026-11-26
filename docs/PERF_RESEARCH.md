@@ -817,3 +817,37 @@ and none of it has been counted before (the measurements had no screen, and the 
 - **The bends**: `_bend_drawing` made the list of his two knees and two elbows anew every frame (the knees' parts asked of `by_name` by a name put together) and called
   `_bend_set` twice a joint to say "no bend" to parts that had none. The list is made once, and with nothing bent on him those calls are not made. 98 -> 43 thousand a
   man a frame; his drawing **796 -> 569 thousand, -28.5%** with the caps.
+
+## 22. The owner's third report: the room holds its speed and loses its frames as a wave comes in
+
+The third `diagnose_report.txt` (the owner's computer: i5-14600KF, RTX 4070, the settings at their highest; the files somewhere between `dcfefbe` and `d0ca350`: the folder was out
+of a zip and the report could not say, which `build_stamp.txt` now does). What it reads:
+
+| the reading | editor | release |
+|---|---|---|
+| a step, eight men (no screen) | 5.82 ms | 4.56 |
+| eight men and three foes | 9.90 | 8.57 |
+| eight and eight | 14.91 | 12.63 |
+| the C++ core's worth, eight men | -38% | |
+| one fight on the screen (15 on the sand) | 29.7 fps at 69% of the speed | 26.7 fps at 86% (a step 7.24 ms) |
+| the room of eight, each half minute | | 98-100% of the speed; 36, 57, 41, 58, 60 fps |
+
+- **The room keeps the game's speed now** (98 to 100%, where the second report had 62%), and the yard sits at 60. What is lost is the picture, **as a wave comes in**: 15 to 17
+  frames a second for about eight seconds of each wave (frames of 60 to 76 ms: seven or eight steps of 6 to 7.5 ms, the frame's own 9 to 16, the card 16 to 25 with seven friend
+  windows drawing on it too). The arithmetic of section 19 says why: at 120 steps a second a step of 7.5 ms is 900 ms of every second, and the 100 left are thirteen frames of
+  7.6; a step of 5.5 leaves 340, forty-five frames. Each half millisecond a step costs over its budget is ten frames a second.
+- **The gate was right about the budget and late about the cost.** It let a step cost 5.5 ms, and all eight foes of the wave were let in while the step read 4.0: a foe costs
+  little while he is built and walks to the fight, and `Net.step_ms` is a smoothed reading. It began to hold at "6.0 ms of the 4.6 it may, 14 men on the sand", five seconds
+  too late, and the fight then cost 7.5 ms a step until enough had fallen.
+- **The fix: near its budget the gate lets the foes in one at a time** (`Match.foe_gate_waits`). Where one more man would bring the step within a quarter of what it may cost
+  (`GATE_NEAR` 0.75), the next foe waits until the last one let in has been on the sand four seconds (`GATE_SETTLE_S`): by then the step says what he costs, and the gate's own
+  rule holds or lets go on a true reading. A host far from its budget is not touched; the first two foes of a wave come as before (`GATE_MIN_FOES`); nothing of it is asked in a
+  game with no screen (the tests, the fingerprints: `bring_in` builds them at once). On this computer with eight players the eight alone cost 3.8 ms of the 5.5: the third foe
+  on comes four seconds after the second, and the gate holds where three or four are fighting (5.4 to 6 ms a step in the report's own lines) instead of at six. The wave is
+  still all of it; fewer of it at once, as the gate was asked to do (section 19). To be read in the next report: the room's second and fourth half minutes above 40 fps.
+- **Not from the code**: a single step of 92.9 ms once in the 150 seconds (nothing compiled, 31 nodes built: one man's build ending in a step, or the system's own with eight
+  games on it: not known); the first 3D frame's 1.8 s (173 pipelines: #329); the eight men's start, built behind the veil (frames of 143 to 231 ms that are not shown).
+- **Nothing left lying on the sand costs the frame** (`WRECK`: +0.0 ms for the pieces, their shadows and the dead alike): what a long fight costs is its living men's steps.
+- What decides the room now is the step with a fight on: 7.2 to 7.5 ms with thirteen to fifteen fighting, against the 5.5 a step may cost for 45 frames. The gate keeps the
+  count to what the step affords; to afford more of them at once the step has to cost less (the legs' and the ground's blocks in the core, section 21; the men's controls on
+  threads, section 17).

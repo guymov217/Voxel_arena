@@ -308,8 +308,21 @@ func _do(st: Dictionary, n: int) -> void:
 	_section(st, n, head, r.results, r)
 
 ## The first part: this computer, and what else is using it (three seconds' census of the processes: in a thread, the window stays alive).
+## Which of the game's commits the files are: a downloaded folder has no .git, and a report of it could not say what it measured (the owner's third report: a folder out of a zip, made
+## on a day of six commits). build_stamp.txt is filled in by the download itself (.gitattributes' export-subst: the commit and its date); a checkout answers by its own head.
+static func build_stamp(root := "res://") -> String:
+	var s := FileAccess.get_file_as_string(root + "build_stamp.txt").strip_edges()
+	if s != "" and not s.contains("$Format"):
+		return s
+	var head := FileAccess.get_file_as_string(root + ".git/HEAD").strip_edges()
+	if head.begins_with("ref: "):
+		var h := FileAccess.get_file_as_string(root + ".git/" + head.substr(5)).strip_edges()
+		return (h.left(7) + ", " if h != "" else "") + "the branch " + head.substr(5).trim_prefix("refs/heads/")
+	return head.left(7) if head != "" else "not known"
+
 func _facts() -> void:
 	facts = DiagPhase.facts()
+	facts["build"] = build_stamp()
 	var th := Thread.new()
 	th.start(FpsMeter.census_samples)
 	while th.is_alive():
@@ -627,7 +640,7 @@ static func summary(results: Dictionary, facts: Dictionary, problems: PackedStri
 	if not facts.is_empty():
 		out.append("THIS COMPUTER  %s, %d threads, %d MB of memory; %s %s; %s; %s" % [String(facts.get("cpu", "?")), int(facts.get("threads", 0)), int(facts.get("ram_mb", 0)), String(facts.get("os", "?")), String(facts.get("os_version", "")),
 			(String(facts.get("adapter", "")) + " (" + String(facts.get("driver", "?")) + ")") if facts.has("adapter") else "no window", String(facts.get("godot", "?")) + (", the editor's binary (a debug build)" if bool(facts.get("editor_binary", false)) else ", an exported game")])
-		out.append("               native core %s; busy before the test %.0f%%" % ["ON" if bool(facts.get("native_core", false)) else "OFF (a fifth dearer a step)", float(facts.get("busy_pct", 0.0))])
+		out.append("               native core %s; busy before the test %.0f%%; the game's files: %s" % ["ON" if bool(facts.get("native_core", false)) else "OFF (a fifth dearer a step)", float(facts.get("busy_pct", 0.0)), String(facts.get("build", "not known"))])
 	# the step
 	var steps: Array = results.get("steps_auto", [])
 	for d in steps:

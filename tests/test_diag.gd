@@ -261,6 +261,28 @@ func test_the_log_is_read_for_trouble() -> void:
 	t.check(int(r2.lines) == 125 and (r2.top as Array).size() == 1 and int(r2.top[0][0]) == 120 and String(r2.top[0][1]).contains("(#)"), "a line written 120 times is told, with its digits aside, and the part's own lines are not counted (%s)" % str(r2))
 	DirAccess.remove_absolute(p)
 
+## A report says which commit it measured: a downloaded folder by the stamp the download filled in, a checkout by its head, and a folder with neither says it does not know.
+func test_the_build_stamp_names_the_commit() -> void:
+	var root := "user://stamp_test/"
+	DirAccess.make_dir_recursive_absolute(root + ".git/refs/heads/perf")
+	var put := func(path: String, text: String) -> void:
+		var f := FileAccess.open(root + path, FileAccess.WRITE)
+		f.store_string(text)
+		f.close()
+	put.call("build_stamp.txt", "abc1234 2026-11-26T15:18:46+00:00\n")
+	t.check(Diag.build_stamp(root) == "abc1234 2026-11-26T15:18:46+00:00", "the stamp a download filled in" + ": " + Diag.build_stamp(root))
+	put.call("build_stamp.txt", "$" + "Format:%h %cI$\n")
+	put.call(".git/HEAD", "ref: refs/heads/perf/cpp-port\n")
+	put.call(".git/refs/heads/perf/cpp-port", "0123456789abcdef\n")
+	t.check(Diag.build_stamp(root) == "0123456, the branch perf/cpp-port", "a checkout's head (the stamp is not filled in there)" + ": " + Diag.build_stamp(root))
+	DirAccess.remove_absolute(root + ".git/refs/heads/perf/cpp-port")
+	t.check(Diag.build_stamp(root) == "the branch perf/cpp-port", "a head whose commit is packed away: the branch at least" + ": " + Diag.build_stamp(root))
+	DirAccess.remove_absolute(root + ".git/HEAD")
+	t.check(Diag.build_stamp(root) == "not known", "neither: not known" + ": " + Diag.build_stamp(root))
+	t.check(not Diag.build_stamp().contains("$Format"), "the project's own: %s" % Diag.build_stamp())
+	for path in ["build_stamp.txt", ".git/refs/heads/perf", ".git/refs/heads", ".git/refs", ".git", ""]:
+		DirAccess.remove_absolute(root + path)
+
 func test_the_report_is_written_with_its_summary() -> void:
 	var dir := ProjectSettings.globalize_path("user://diag_test_report")
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -307,9 +329,11 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 			{"kind": "frames", "label": "the pieces not drawn", "ms": {"mean": 6.5, "max": 9.0}, "gpu": 5.0, "calls": 2100, "took_away": 200},
 			{"kind": "frames", "label": "no sun shadows", "ms": {"mean": 7.0, "max": 9.0}, "gpu": 6.0, "calls": 1500, "took_away": 0},
 			{"kind": "frames", "label": "stopped where it is, again", "ms": {"mean": 9.1, "max": 12.0}, "gpu": 8.0, "calls": 3300}]}
-	var lines := Diag.summary(res, {"cpu": "Fast CPU", "threads": 20, "ram_mb": 32000, "os": "Windows", "os_version": "10", "godot": "4.7.2", "editor_binary": true, "native_core": true, "adapter": "A card", "driver": "d3d12"}, PackedStringArray(["something went wrong"]))
+	var lines := Diag.summary(res, {"cpu": "Fast CPU", "threads": 20, "ram_mb": 32000, "os": "Windows", "os_version": "10", "godot": "4.7.2", "editor_binary": true, "native_core": true, "adapter": "A card", "driver": "d3d12",
+		"build": "abc1234 2026-11-26T15:18:46+00:00"}, PackedStringArray(["something went wrong"]))
 	var all := "\n".join(PackedStringArray(lines))
 	t.check(all.contains("Fast CPU") and all.contains("A card (d3d12)") and all.contains("the editor's binary"), "the computer: %s" % all)
+	t.check(all.contains("the game's files: abc1234 2026-11-26T15:18:46+00:00"), "which commit the files are")
 	t.check(all.contains("NATIVE CORE") and all.contains("(-16%)"), "the native core's worth: 7.9 without, 6.6 with")
 	t.check(all.contains("ARMOUR") and all.contains("(+32%)"), "armour's: 5.0 bare, 6.6 in armour")
 	t.check(all.contains("RELEASE BUILD") and all.contains("(-16%)") and all.contains("7.90 ms against the editor's 9.40"), "the release build's: 7.9 against 9.4")
