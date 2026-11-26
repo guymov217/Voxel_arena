@@ -18,6 +18,20 @@ const TUSK_CAP := 85.0
 static var current: Combat = null
 
 var fighters: Array = []      # Fighter and Beast nodes in the match
+## The beasts among them, picked out once a step (and again whenever the list's length changes): each man asks every step whether a beast has hold of
+## him (Fighter._beast_has_me_now), and looked through the whole list for the beasts to ask: sixteen men, sixteen times sixteen, in a fight with no
+## beast in it at all. Which of them is alive and what it holds is still asked of each at the moment, as before.
+var _beasts: Array = []
+var _beasts_key := -1
+func beasts() -> Array:
+	var key := Engine.get_physics_frames() * 4096 + fighters.size()
+	if key != _beasts_key:
+		_beasts_key = key
+		_beasts = []
+		for o in fighters:
+			if is_instance_valid(o) and o.get("kind") == "beast":
+				_beasts.append(o)
+	return _beasts
 var loose_weapons: Array = [] # weapons nobody holds (thrown, dropped)
 var pending: Array = []
 var touch_q: Array = []          # [part, part, impulse] reported this step, noted at the next (see _settle)

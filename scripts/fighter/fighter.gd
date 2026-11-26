@@ -3363,12 +3363,20 @@ static func is_beast_on(o, f) -> bool:
 	var b = o.fighter
 	return not (b.hug != null and b.hug.get("target") == f) and not (f.has_meta("beast_hold") and f.get_meta("beast_hold") == b)
 
+## What each of his weapons touches, as _no_fling asked it at the head of this step's control: asked once a step (_free_wedged asks the same of the
+## blade in his hand later in the same control; the answer is the physics' own of the step before, and does not change between the two).
+var _touch_w := {}
+var _touch_frame := -1
 func _no_fling() -> void:
 	# His own weapon caught on a giant (on the forearm it raises) lifts him by the hand, or a
 	# giant's weapon bearing down on his drives him by it: the same.
+	_touch_w.clear()
+	_touch_frame = Engine.get_physics_frames()
 	for w in weapons.values():
 		if w and is_instance_valid(w) and w.contact_monitor:
-			for b in w.get_colliding_bodies():
+			var touched: Array = w.get_colliding_bodies()
+			_touch_w[w] = touched
+			for b in touched:
 				if is_giant_over(b, self) or (b is Weapon and b.holder != null and b.holder != self and "S" in b.holder and float(b.holder.S) > S * GIANT_OVER):
 					struck_frame = Engine.get_physics_frames()
 					break
@@ -4122,12 +4130,15 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var move_amt: float = minf(1.0, h_speed / 2.5)
 	var t_inv := t_rot.inverse()
 	var move_dir := v_smooth.normalized() if v_smooth.length_squared() >= 0.04 else Vector3.ZERO
+	# (What each leg can do, asked once for the two of them: nothing in the loop harms a leg.)
+	var leg_now := {"L": leg_func("L"), "R": leg_func("R")}
 	for side in ["L", "R"]:
 		var thigh: VoxelPart = by_name["thigh" + side]
 		var shin: VoxelPart = by_name["shin" + side]
 		if thigh.severed:
 			continue
-		var f := maxf(0.15, leg_func(side)) * (0.12 + 0.88 * e1 if rising else 1.0) if standing else 0.03
+		var leg_f: float = leg_now[side]
+		var f := maxf(0.15, leg_f) * (0.12 + 0.88 * e1 if rising else 1.0) if standing else 0.03
 		# A bone of the leg broken through: it is not driven (the muscle cannot move what the bone
 		# no longer holds), only held loosely; he hops on the other.
 		if thigh.fractured or shin.fractured:
@@ -4200,7 +4211,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			# running, he left the sand, user). A leg gone or useless does not hold the other.
 			var os := "R" if side == "L" else "L"
 			var other_up := false
-			if feet[os] != null and not by_name["shin" + os].severed and not by_name["thigh" + os].severed and leg_func(os) >= 0.1:
+			if feet[os] != null and not by_name["shin" + os].severed and not by_name["thigh" + os].severed and float(leg_now[os]) >= 0.1:
 				# Stepping, or set down but not yet on the sand (a step ends a little above it and
 				# the foot is brought down after): either way not yet a foot to stand on.
 				var o_sole: Vector3 = by_name["shin" + os].global_transform * Vector3(0, -4 * V * S, 0)
@@ -4215,7 +4226,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				# and lands a little ahead; the stump does not step.
 				ft.swing = false
 				ft.anchor = neutral + move_dir * step_len * 0.25
-				if leg_func(side) < 0.1:
+				if leg_f < 0.1:
 					ft.anchor = (ft.anchor as Vector3) + Vector3(0, 0.25 * S, 0)
 				ft.from = ft.anchor
 				ft.land = ft.anchor
@@ -4365,7 +4376,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		# along, so it does not catch. A weak leg's foot whatever the trunk's height: held up off
 		# the sand by its spring, the trunk read as not on the ground, and the foot swung along
 		# under the sand half a leg deep, nothing stopping it.
-		if standing and (grounded or (rising and hit) or (hit and leg_func(side) < 0.6)) and not shin.severed:
+		if standing and (grounded or (rising and hit) or (hit and leg_f < 0.6)) and not shin.severed:
 			var sole_f := shin.global_transform * Vector3(0, -4 * V * S, 0)
 			var pen := ground_y - sole_f.y
 			if pen > 0.005 * S:
@@ -4374,7 +4385,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				var vy_f := shin.velocity_at(sole_f).y
 				# (A weak leg's own motor holds it no better than its hurt: the sand then is what
 				# stops the sole, all of its fall and half of the depth it is in each step.)
-				var jy := m_f * (minf(pen, 0.2 * S) * (0.3 + 0.3 * clampf((0.8 - leg_func(side)) / 0.5, 0.0, 1.0)) / dt - minf(0.0, vy_f) * (0.8 + 0.2 * clampf((0.8 - leg_func(side)) / 0.5, 0.0, 1.0)))
+				var jy := m_f * (minf(pen, 0.2 * S) * (0.3 + 0.3 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)) / dt - minf(0.0, vy_f) * (0.8 + 0.2 * clampf((0.8 - leg_f) / 0.5, 0.0, 1.0)))
 				shin.apply_impulse(Vector3(0, maxf(0.0, jy), 0), r_f)
 
 	# ----- Arms and weapons -----
@@ -7011,8 +7022,8 @@ func _beast_has_me_now() -> bool:
 		if has_meta(m) and is_instance_valid(get_meta(m)):
 			return true
 	if Combat.current != null and kind != "beast":
-		for o in Combat.current.fighters:
-			if o != self and is_instance_valid(o) and o.get("kind") == "beast" and o.alive:
+		for o in Combat.current.beasts():   # (the beasts of Combat.fighters, picked out once a step)
+			if o != self and is_instance_valid(o) and o.alive:
 				var h = o.get("hug")
 				if h is Dictionary and h.get("target") == self:
 					return true
@@ -7337,7 +7348,7 @@ func _free_wedged(side: String, w: Weapon, dt: float) -> void:
 			unwedge.remove_at(k)
 	var held: Dictionary = wedge_t[side]
 	var touching := {}
-	for b in w.get_colliding_bodies():
+	for b in (_touch_w[w] if _touch_frame == Engine.get_physics_frames() and _touch_w.has(w) else w.get_colliding_bodies()):
 		if b is VoxelPart and b.fighter != null and b.fighter != self:
 			touching[b] = true
 	for b in held.keys():
