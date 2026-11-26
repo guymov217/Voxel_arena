@@ -629,6 +629,144 @@ func test_native_bulk_matches_the_gdscript() -> void:
 	t.check(bad.is_empty(), "the calls for every body are the script's lines to the byte (%d rows, %d velocities, %d made-up places; unlike: %s)" % [rows, vels, made, str(bad.slice(0, 6))])
 	t.check(rows > 5000 and vels > 5000 and moving > 500 and chains > 100 and clamped > 30, "what was asked covers the cases (%d rows, %d velocities, %d of them moving, %d chain heads, %d places past the int16's end)" % [rows, vels, moving, chains, clamped])
 
+## The ground under a man and the height his hips ride at in the C++ core (VoxelCore.ground_ride for Fighter._ground_ride; docs/PERF_RESEARCH.md, section 23): from the same
+## man in the same state the script's lines and the core's say the same of whether he stands on it, leave the hips' height, the stoop and the knees' give the same and every
+## part of him the same speed, to the bit. Standing, getting up and lying; feet planted, stepping and none; on a ledge, sunk in, both soles in the air; a big man stooping;
+## over the sand and over a man lying under his feet, dead and alive.
+func test_native_ground_ride_matches_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.ride_ok:
+		t.check(true, "no native core with the hips' height built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 57
+	var bad := []
+	var stood := 0
+	var in_air := 0
+	var held_up := 0
+	var let_down := 0
+	var stooped := 0
+	var on_ledge := 0
+	var asked := 0
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "scutum"}})
+	for k in 30:
+		await get_tree().physics_frame
+	var f: Fighter = m.me.f
+	var e2m = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {}, "team": 1, "pos": f.torso.global_position + Vector3(0.1, 0, 0.1), "yaw": 0.0})
+	e2m.erase("bot")
+	e2m.drive = func(_e): return {}
+	var under: Fighter = e2m.f
+	await get_tree().physics_frame
+	PhysicsServer3D.body_set_state(under.torso.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(f.torso.global_position.x, f.ground_level + 0.13, f.torso.global_position.z)))
+	under.torso.linear_velocity = Vector3.ZERO
+	under.torso.angular_velocity = Vector3.ZERO
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	var bodies: Array = f.parts.duplicate()
+	var s_was: float = f.S
+	var state_was: String = f.state
+	var t_pos: Vector3 = f.torso.global_position
+	var t_rot: Quaternion = PD.quat_of(f.torso)
+	f._ground_ray(f.space, t_pos)
+	for k in 1600:
+		var speeds := []
+		for i in bodies.size():
+			speeds.append(rv.call(1.5) as Vector3)
+			speeds.append(rv.call(3.0) as Vector3)
+		f.S = 1.5 if k % 10 == 0 else s_was
+		var rising := k % 9 == 0
+		var st := "rising" if rising else ("down" if k % 14 == 1 else "stand")
+		var feet_in := {}
+		for sd in ["L", "R"]:
+			var sole: Vector3 = f.by_name["shin" + sd].global_transform * Vector3(0, -4 * Fighter.V * f.S, 0)
+			# (A foot's plant about its sole: by turns well under it, sunk in; up on a ledge; none at all; stepping.)
+			var drop := rng.randf_range(-0.03, 0.03)
+			if k % 7 == (0 if sd == "L" else 3):
+				drop = rng.randf_range(0.04, 0.12)
+			elif k % 5 == 2:
+				drop = rng.randf_range(-0.08, -0.02)   # (both soles up off their plants)
+			feet_in[sd] = {"anchor": Vector3(sole.x + rng.randf_range(-0.2, 0.2), sole.y + drop, sole.z + rng.randf_range(-0.2, 0.2)), "from": sole, "swing": k % (3 if sd == "L" else 5) == 0, "s": 0.4, "land": sole, "half": 0, "slip": 0.0} if k % (11 if sd == "L" else 13) != 0 else null
+		var sole_l: Vector3 = f.by_name["shinL"].global_transform * Vector3(0, -4 * Fighter.V * f.S, 0)
+		# (The ground found under the trunk: about the soles, by turns well under them, or so far down that he is in the air.)
+		var gy: float = sole_l.y + rng.randf_range(-0.04, 0.04) - (rng.randf_range(0.11, 0.2) * f.S if k % 6 == 0 else 0.0) - (0.9 if k % 17 == 0 else 0.0) + (rng.randf_range(0.1, 0.45) if k % 4 == 3 else 0.0)
+		var hit := {"position": Vector3(t_pos.x, gy, t_pos.z), "collider": null}
+		var e2 := rng.randf_range(0.0, 1.0)
+		var walk_amt := rng.randf_range(0.0, 1.0)
+		var crouch_h := rng.randf_range(0.0, 1.0) if k % 4 == 0 else 0.0
+		var one_leg := k % 16 == 0
+		var support := rng.randf_range(0.2, 1.0) if k % 12 != 0 else 0.0
+		var bob := rng.randf_range(0.0, 0.03)
+		var lv0: Vector3 = speeds[bodies.find(f.torso) * 2]
+		var standing := st != "down"
+		var total_mass := rng.randf_range(60.0, 90.0)
+		var dt := 1.0 / 120.0 if k % 6 != 0 else rng.randf_range(0.005, 0.02)
+		var hop := rng.randf_range(0.01, 1.0) if k % 15 == 0 else 0.0
+		var jump := 0.2 if k % 19 == 0 else 0.0
+		var stoop_in := rng.randf_range(0.03, 0.9) if k % 5 == 0 else 0.0
+		var lowered_in := rng.randf_range(0.6, 1.3) if k % 8 == 0 else -1.0
+		var stance_in := rng.randf_range(0.8, 1.2) if k % 3 != 0 else 0.0
+		var sag := rng.randf_range(0.0, 0.05) if k % 2 == 0 else 0.0
+		var air := rng.randf_range(0.0, 0.3)
+		under.state = "stand" if k % 3 != 0 else "dead"
+		var res := []
+		for native in [false, true]:
+			f.state = st
+			f.feet["L"] = (feet_in.L as Dictionary).duplicate(true) if feet_in.L != null else null
+			f.feet["R"] = (feet_in.R as Dictionary).duplicate(true) if feet_in.R != null else null
+			f.hop_phase = hop
+			f.jump_t = jump
+			f.stoop = stoop_in
+			f.lowered = lowered_in
+			f.stance_h = stance_in
+			f.land_sag = sag
+			f.air_time = air
+			f.ground_level = -99.0
+			_arm_set_speeds(bodies, speeds)
+			var grounded: bool = f._ground_ride_native(hit, t_pos, t_rot, rising, e2, walk_amt, crouch_h, one_leg, support, bob, lv0, standing, total_mass, dt) if native else f._ground_ride(hit, t_pos, t_rot, rising, e2, walk_amt, crouch_h, one_leg, support, bob, lv0, standing, total_mass, dt)
+			res.append([_arm_live(bodies), grounded, f.ground_level, f.stance_h, f.lowered, f.land_sag, [f.feet.L, f.feet.R]])
+		var what := ""
+		if res[0][0] != res[1][0]:
+			what = "speeds"
+		for j in range(1, 7):
+			if res[0][j] != res[1][j]:
+				what += " %s" % ["", "grounded", "ground_level", "stance_h", "lowered", "land_sag", "feet"][j]
+		if what != "":
+			bad.append("k=%d:%s (%s | %s)" % [k, what, str(res[0].slice(1, 6)), str(res[1].slice(1, 6))])
+		var got: Array = res[1][0]
+		var ti := bodies.find(f.torso) * 2
+		if res[1][1]:
+			stood += 1
+		else:
+			in_air += 1
+		if (got[ti] as Vector3) != (speeds[ti] as Vector3):
+			held_up += 1
+		for i in bodies.size():
+			if bodies[i] != f.torso and (got[i * 2] as Vector3) != (speeds[i * 2] as Vector3):
+				let_down += 1
+				break
+		if float(res[1][4]) >= 0.0:
+			stooped += 1
+		if res[1][1] and float(t_pos.y - gy) >= float(f.torso_y) * 1.2:
+			on_ledge += 1
+		if st == "stand" and hop <= 0.0 and ((feet_in.L == null or feet_in.L.swing) or (feet_in.R == null or feet_in.R.swing)):
+			asked += 1
+		_arm_set_speeds(bodies, speeds.map(func(_v): return Vector3.ZERO))
+	under.state = "stand"
+	f.S = s_was
+	f.state = state_was
+	f.hop_phase = 0.0
+	f.jump_t = 0.0
+	f.stoop = 0.0
+	f.lowered = -1.0
+	f.land_sag = 0.0
+	f.air_time = 0.0
+	f.feet["L"] = null
+	f.feet["R"] = null
+	m.queue_free()
+	await get_tree().physics_frame
+	t.check(bad.is_empty(), "the core's height of the hips leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), "; ".join(PackedStringArray(bad.slice(0, 3)))])
+	t.check(stood > 800 and in_air > 80 and held_up > 400 and let_down > 20 and stooped > 20 and asked > 400 and on_ledge > 20, "and it was at work: %d of 1600 stood on the ground and %d did not; the trunk held up in %d, every part let down (both soles in the air) in %d, a big man's stoop in %d, a foot off its plant (the ground under it asked) in %d, held by a foot on a ledge in %d" % [stood, in_air, held_up, let_down, stooped, asked, on_ledge])
+
 ## A standing leg's whole step in the C++ core (VoxelCore.leg_plant: Fighter._leg_plant and the leg's end after it in one call; docs/PERF_RESEARCH.md, section 23): from the
 ## same man in the same state the script's lines and the core's leave the foot's record the same (where it stands, where it steps from and to, how far through its step),
 ## the other foot's untouched, the trunk, the thigh and the shin the same speeds and the knees' give the same, to the bit. Feet standing, stepping, landing, slipping,

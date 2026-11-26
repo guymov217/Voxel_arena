@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 
 #include <cmath>
+#include <limits>
 
 using namespace godot;
 using namespace vc;
@@ -1268,11 +1269,11 @@ namespace {
 
 struct LegKeys {
 	Variant anchor, from, land, swing, s, half, slip, lift, gather, late, target_y, collider, position;
-	StringName is_dead_ground;
+	StringName is_dead_ground, severed;
 	LegKeys() :
 			anchor(String("anchor")), from(String("from")), land(String("land")), swing(String("swing")), s(String("s")), half(String("half")), slip(String("slip")),
 			lift(String("lift")), gather(String("gather")), late(String("late")), target_y(String("target_y")), collider(String("collider")), position(String("position")),
-			is_dead_ground("_is_dead_ground") {}
+			is_dead_ground("_is_dead_ground"), severed("severed") {}
 };
 
 // (Made at the first call and never unmade: at the library's end the engine's strings are gone before a static's destructor would run.)
@@ -1510,6 +1511,165 @@ double VoxelCore::leg_plant(Object *fighter, RigidBody3D *thigh, RigidBody3D *sh
 		leg_tail_k(thigh, shin, torso, thigh_q, shin_q, goal_n, lk);
 	}
 	return land_sag;
+}
+
+// The ground under him and the height his hips ride at over it (Fighter._ground_ride: control, with the ground found under the trunk at `hit_y`): whether he
+// stands on it, the push that holds his weight up at that height (on the trunk), the give of his knees under a landing. The feet's records are read, not
+// written. k: 0 S, 1 V, 2 dt, 3 the ground's height under the trunk, 4 he is standing (state "stand", 1/0), 5 rising, 6 hop_phase, 7 jump_t, 8 walk_amt,
+// 9 burden_k, 10 torso_y, 11 crouch_h, 12 stoop, 13 one_leg, 14 support, 15 e2, 16 bob, 17 GAIT.reach, 18 stance_h, 19 land_sag, 20 lowered, 21 STOOP_RATE,
+// 22 STOOP_LAG, 23 FOOT_AIR, 24 air_time, 25 standing (or rising), 26 the trunk's fall speed lv0.y, 27 total_mass, 28 gravity, 29 the left thigh severed,
+// 30 the left shin, 31 the right thigh, 32 the right shin. Returns [grounded (1/0), stance_h, lowered, land_sag] as the step leaves them.
+PackedFloat64Array VoxelCore::ground_ride(Object *fighter, RigidBody3D *torso, RigidBody3D *thigh_l, RigidBody3D *shin_l, RigidBody3D *thigh_r, RigidBody3D *shin_r,
+		PhysicsDirectSpaceState3D *space, const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, const Variant &ft_l, const Variant &ft_r,
+		const Array &parts, const Vector3 &t_pos, const Quaternion &t_rot, const Vector3 &pa_l, const Vector3 &pa_r, const PackedFloat64Array &k) const {
+	PackedFloat64Array out;
+	out.resize(4);
+	double *o = out.ptrw();
+	o[0] = 0.0;
+	o[1] = 0.0;
+	o[2] = -1.0;
+	o[3] = 0.0;
+	if (k.size() < 33 || fighter == nullptr || torso == nullptr || thigh_l == nullptr || shin_l == nullptr || thigh_r == nullptr || shin_r == nullptr || space == nullptr || ray_all.is_null() || ray_sand.is_null()) {
+		return out;
+	}
+	const double *kk = k.ptr();
+	const LegKeys &K = leg_keys();
+	const double S = kk[0], V = kk[1], dt = kk[2], ground_y = kk[3];
+	const bool stand = kk[4] != 0.0, rising = kk[5] != 0.0, one_leg = kk[13] != 0.0, standing = kk[25] != 0.0;
+	const double hop_phase = kk[6], jump_t = kk[7], walk_amt = kk[8], burden_k = kk[9], torso_y = kk[10], crouch_h = kk[11], stoop = kk[12], support = kk[14], e2 = kk[15], bob = kk[16];
+	double stance_h = kk[18], land_sag = kk[19], lowered = kk[20];
+	const double INF_D = std::numeric_limits<double>::infinity();
+	const Vector3 sole_l(0, (real_t)(-4.0 * V * S), 0);
+	RigidBody3D *const thighs[2] = { thigh_l, thigh_r };
+	RigidBody3D *const shins[2] = { shin_l, shin_r };
+	const Variant *const fts[2] = { &ft_l, &ft_r };
+	const Vector3 pas[2] = { pa_l, pa_r };
+	const bool thigh_off[2] = { kk[29] != 0.0, kk[31] != 0.0 };
+	const bool shin_off[2] = { kk[30] != 0.0, kk[32] != 0.0 };
+	// (Each foot's record read once: whether it has one, whether it is stepping, where it is planted.)
+	bool has_ft[2], ft_swing[2];
+	Vector3 ft_anchor[2];
+	for (int i = 0; i < 2; i++) {
+		has_ft[i] = fts[i]->get_type() == Variant::DICTIONARY;
+		ft_swing[i] = false;
+		if (has_ft[i]) {
+			const Dictionary d = *fts[i];
+			ft_swing[i] = (bool)d.get(K.swing, false);
+			ft_anchor[i] = (Vector3)d.get(K.anchor, Vector3());
+		}
+	}
+	const double dist = (double)t_pos.y - ground_y;
+	// Stepping down off a ledge: the foot still planted up on it carries him.
+	bool ledge_held = false;
+	if (stand && !rising && hop_phase <= 0.0 && jump_t <= 0.0) {
+		for (int i = 0; i < 2; i++) {
+			if (!has_ft[i] || ft_swing[i] || shin_off[i] || thigh_off[i]) {
+				continue;
+			}
+			const Vector3 sp = shins[i]->get_global_transform().xform(sole_l);
+			if ((double)sp.y - (double)ft_anchor[i].y < 0.06 * S && (double)ft_anchor[i].y > ground_y + 0.1 * S) {
+				ledge_held = true;
+			}
+		}
+	}
+	const double run_low = 0.06 * gd_minf(1.0, walk_amt * 2.5 / 3.5);
+	double desired = torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch_h * 0.22 - stoop * 0.24 - (one_leg ? 0.12 : 0.0)) * (0.7 + 0.3 * support) * (rising ? 0.55 + 0.45 * e2 : 1.0) + bob;
+	// The weight is on the leg that is down: the hips ride as high as that leg reaches from its planted foot.
+	if (stand && !one_leg && hop_phase <= 0.0) {
+		double pend = INF_D;
+		const double reach_l = 16.0 * V * S * (kk[17] - crouch_h * 0.12 - stoop * 0.14 - run_low * 0.5);
+		for (int i = 0; i < 2; i++) {
+			if (!has_ft[i] || ft_swing[i] || shin_off[i]) {
+				continue;
+			}
+			const Vector3 hip_w = t_pos + t_rot.xform(pas[i]);
+			const double dxz = (double)Vector2((real_t)((double)hip_w.x - (double)ft_anchor[i].x), (real_t)((double)hip_w.z - (double)ft_anchor[i].z)).length();
+			const double hh = std::sqrt(gd_maxf(0.0, reach_l * reach_l - dxz * dxz));
+			pend = gd_minf(pend, (double)ft_anchor[i].y + hh + ((double)t_pos.y - (double)hip_w.y));
+		}
+		if (pend < INF_D) {
+			stance_h = gd_maxf(pend, ground_y + torso_y * (0.82 - crouch_h * 0.2 - stoop * 0.24));
+		}
+		if (stance_h > 0.0) {
+			desired = pend < INF_D ? gd_minf(desired, stance_h - ground_y) : desired;
+		}
+	}
+	desired -= land_sag;
+	// A big man's stoop is a lowering of the hips he holds, at a pace the legs keep up with.
+	if (S >= 1.3 && stand && !rising && hop_phase <= 0.0 && jump_t <= 0.0 && !one_leg && (stoop > 0.02 || lowered >= 0.0)) {
+		if (lowered < 0.0) {
+			lowered = dist;
+		}
+		const double step = kk[21] * std::sqrt(S) * dt;
+		const double moved = std::abs(desired - lowered) <= step ? desired : lowered + (desired - lowered > 0.0 ? 1.0 : (desired - lowered < 0.0 ? -1.0 : 0.0)) * step;
+		lowered = ad_clampf(moved, dist - kk[22], dist + kk[22]);
+		if (std::abs(lowered - desired) < 0.01 && stoop <= 0.02) {
+			lowered = -1.0;
+		} else {
+			desired = lowered;
+		}
+	} else {
+		lowered = -1.0;
+	}
+	// The feet stand on the sand, never in it and never above it.
+	const real_t trunk_y = torso->get_global_position().y;
+	real_t gy = 0;
+	if (stand && hop_phase <= 0.0 && !rising && dist < desired + 0.25) {
+		double sole_lo = INF_D;
+		double sole_planted = INF_D;
+		for (int i = 0; i < 2; i++) {
+			if (shin_off[i] || thigh_off[i]) {
+				continue;
+			}
+			const Vector3 sp = shins[i]->get_global_transform().xform(sole_l);
+			const bool planted = has_ft[i] && !ft_swing[i];
+			const double under = planted ? (double)ft_anchor[i].y : (lp_ground(fighter, space, ray_all, ray_sand, Vector3(sp.x, trunk_y, sp.z), S, K, gy) ? (double)gy : ground_y);
+			sole_lo = gd_minf(sole_lo, (double)sp.y - under);
+			if (planted) {
+				sole_planted = gd_minf(sole_planted, (double)sp.y - gd_minf((double)ft_anchor[i].y, ground_y));
+			}
+		}
+		if (sole_planted < -0.03 * S) {
+			desired = gd_maxf(desired, dist - sole_planted - 0.01 * S);
+		} else if (sole_lo < INF_D && sole_lo > kk[23] * S && jump_t <= 0.0 && lowered < 0.0) {
+			// Both soles off the sand: the hips down until one is on it.
+			desired = gd_minf(desired, dist - sole_lo + 0.005 * S);
+			const double vy_want = -ad_clampf((sole_lo - 0.005 * S) / 0.06, 0.0, 2.5 * std::sqrt(S));
+			for (int i = 0; i < parts.size(); i++) {
+				RigidBody3D *p = Object::cast_to<RigidBody3D>((Object *)parts[i]);
+				if (p != nullptr && !(bool)p->get(K.severed)) {
+					Vector3 lv = p->get_linear_velocity();
+					lv.y = (real_t)gd_minf((double)lv.y, vy_want);
+					p->set_linear_velocity(lv);
+				}
+			}
+		}
+	} else if (rising && dist < desired + 0.25) {
+		double sole_lo = INF_D;
+		for (int i = 0; i < 2; i++) {
+			if (!shin_off[i] && !thigh_off[i]) {
+				sole_lo = gd_minf(sole_lo, (double)shins[i]->get_global_transform().xform(sole_l).y - ground_y);
+			}
+		}
+		if (sole_lo < -0.03 * S) {
+			desired = gd_maxf(desired, dist - sole_lo - 0.01 * S);
+		}
+	}
+	const bool grounded = dist < desired + 0.25 || ledge_held;
+	if (grounded && kk[24] > 0.12 && standing && !rising) {
+		land_sag = gd_maxf(land_sag, ad_clampf((0.015 + 0.012 * gd_maxf(0.0, -kk[26])) * S, 0.025 * S, 0.07 * S));
+	}
+	if (grounded && support > 0.0) {
+		const double vy = (double)torso->get_linear_velocity().y;
+		double f = kk[27] * (kk[28] * gd_minf(1.0, support * 1.1) + 140.0 * (desired - dist) * support - 22.0 * vy * support);
+		f = ad_clampf(f, 0.0, kk[27] * 30.0);
+		torso->apply_central_impulse(Vector3(0, (real_t)(f * dt), 0));
+	}
+	o[0] = grounded ? 1.0 : 0.0;
+	o[1] = stance_h;
+	o[2] = lowered;
+	o[3] = land_sag;
+	return out;
 }
 
 // Which arguments the arms' and the legs' calls take (the script asks before it uses them: a library left over from an older build would be called

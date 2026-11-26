@@ -873,4 +873,13 @@ end (`_leg_end`: the planted foot held, the thigh and the shin driven, the sole 
   for the eight); the call itself is 32.7 thousand a leg, 9.2 of them the leg's end, most of the rest the ray for the ground under the foot's place (the engine's, and its
   answer a dictionary). About 4% of what the scripts do in a step. The estimate of section 21 (the legs and the ground block together a tenth) was high for the legs: a
   third of a leg's cost was the ray and the leg's end, which were the engine's and the core's already.
-- **Left of the legs**: the ground block before the loop (the height the hips ride at: 92 thousand a man, three loops over the two feet), the kick's branch (rare).
+- **The ground block the same way** (`VoxelCore.ground_ride` for `Fighter._ground_ride`: the block of `control` under "the ground found under the trunk"): whether he
+  stands on it, the height his hips ride at (the planted leg's reach, a big man's stoop let down at a pace, the soles neither in the sand nor over it), the push on the trunk
+  that holds his weight there, the knees' give under a landing. Three loops over the two feet in the script; in the core each foot's record is read once. It reads the
+  feet's records and writes none; what it leaves (`stance_h`, `lowered`, `land_sag`, whether he is on the ground) comes back in one array. To the bit at the first try:
+  `test_native_ground_ride_matches_the_gdscript`, 1600 states (standing, getting up, lying; feet planted, stepping, none; on a ledge, sunk in, both soles in the air; a
+  big man stooping; over a man lying under his feet), and the fingerprints again 0 of 39. `control` 1 154 117 -> 1 109 287 instructions a man a step, **-3.9%**; the call
+  itself is 4.8 thousand.
+- **The two together**: `control` 1 214 482 -> 1 109 287, **-8.7%** (9.80 -> 8.95 million a step for the eight), about 6.5% of what the scripts do in a step: the "tenth"
+  of section 21 at its lower end.
+- **Left of the legs**: the kick's branch (rare), and the script's side of the two calls (some thirty numbers handed over for each: 6 to 7 thousand a call).

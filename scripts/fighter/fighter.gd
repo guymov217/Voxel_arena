@@ -3539,6 +3539,176 @@ func arms_settled() -> bool:
 			return false
 	return true
 
+## The ground under him and the height his hips ride at over it (control, with the sand or a body found under the trunk, `hit`): whether he stands on it (returned), the
+## push that holds his weight up at that height, the give of his knees under a landing; `ground_level`, `stance_h`, `lowered` and `land_sag` are left as the step has them.
+## Its own function so that the C++ core's one call for it (VoxelCore.ground_ride, in `control`) can be held to these lines, to the bit (tests/test_native.gd).
+func _ground_ride(hit: Dictionary, t_pos: Vector3, t_rot: Quaternion, rising: bool, e2: float, walk_amt: float, crouch_h: float, one_leg: bool, support: float, bob: float, lv0: Vector3,
+		standing: bool, total_mass: float, dt: float) -> bool:
+	var dist = t_pos.y - hit.position.y
+	var ground_y: float = hit.position.y
+	# Stepping down off a ledge, the trunk goes out over the drop before the leading foot is
+	# down: the foot still planted up on the ledge carries him till it is (by the sand under
+	# the trunk he was in the air there, both legs let go, and he dropped).
+	var ledge_held := false
+	if state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0:
+		for sd in ["L", "R"]:
+			var ftp = feet[sd]
+			if ftp == null or ftp.swing or _legs[sd][1].severed or _legs[sd][0].severed:
+				continue
+			var sp: Vector3 = _legs[sd][1].global_transform * Vector3(0, -4 * V * S, 0)
+			if sp.y - float((ftp.anchor as Vector3).y) < 0.06 * S and float((ftp.anchor as Vector3).y) > ground_y + 0.1 * S:
+				ledge_held = true
+	ground_level = ground_y
+	var run_low := 0.06 * minf(1.0, walk_amt * 2.5 / 3.5)
+	# His weight is on his legs: the knees give a little under what he carries (armour, a
+	# heavy weapon), and for a moment under every footfall and landing (land_sag), more the
+	# harder he came down (user: he floated, the legs carried nothing).
+	var burden_k := clampf(carried_kg() / 25.0, 0.0, 1.0)
+	var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch_h * 0.22 - stoop * 0.24 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
+	# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
+	# reaches from the foot planted on the sand to the hip (an inverted pendulum: up as the body
+	# passes over the foot, down as the stride opens). Never higher than the legs reach, so
+	# a planted foot always stands on the sand.
+	if state == "stand" and not one_leg and hop_phase <= 0.0:
+		var pend := INF
+		var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch_h * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
+		for sd in ["L", "R"]:
+			var ftp = feet[sd]
+			if ftp == null or ftp.swing or _legs[sd][1].severed:
+				continue
+			var hip_w: Vector3 = t_pos + t_rot * _legs[sd][0].pa
+			var dxz := Vector2(hip_w.x - ftp.anchor.x, hip_w.z - ftp.anchor.z).length()
+			var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
+			pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
+		if pend < INF:
+			stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch_h * 0.2 - stoop * 0.24))
+		if stance_h > 0.0:
+			desired = minf(desired, stance_h - ground_y) if pend < INF else desired
+	desired -= land_sag   # (after the planted leg's height: walking, that is what holds him up)
+	# A big man's stoop (and his rise out of it) is a lowering of the hips he holds, not a drop: the
+	# height asked of them went down faster than the legs hold the trunk (a quarter of a metre
+	# off it, and he was in the air), and he fell the rest of the way at more than a fall's
+	# speed with the soles in the sand and the knees on it, then sprang up at the end (user: he
+	# smeared on the floor instead of bending like a man). The height is let down, and up, at a
+	# pace the legs keep up with.
+	if S >= 1.3 and state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0 and not one_leg and (stoop > 0.02 or lowered >= 0.0):
+		if lowered < 0.0:
+			lowered = dist
+		lowered = clampf(move_toward(lowered, desired, STOOP_RATE * sqrt(S) * dt), dist - STOOP_LAG, dist + STOOP_LAG)
+		if absf(lowered - desired) < 0.01 and stoop <= 0.02:
+			lowered = -1.0
+		else:
+			desired = lowered
+	else:
+		lowered = -1.0
+	# The feet stand on the sand, never in it and never above it: standing, the legs do not
+	# meet the ground (the spring holds him), so the hips are set by where the soles are. A
+	# sole sunk in lifts him by as much (a cyclops with his shins hacked away stood knee-deep
+	# in the arena, user); both soles up off it let him down by as much, until one touches
+	# (a man hit hard hovered with his feet clear of the sand, user). In a hop or getting up,
+	# no.
+	if state == "stand" and hop_phase <= 0.0 and not rising and dist < desired + 0.25:
+		var sole_lo := INF
+		var sole_planted := INF
+		for sd in ["L", "R"]:
+			var sh: VoxelPart = _legs[sd][1]
+			if sh.severed or _legs[sd][0].severed:
+				continue
+			# Over what is under that foot, not under the trunk: on a step, the foot up on it read as
+			# down while the other swung over the sand below, and he rose off both climbing it. (A
+			# planted foot's plant is on what is under it already.)
+			var ftp = feet[sd]
+			var sp := sh.global_transform * Vector3(0, -4 * V * S, 0)
+			var planted: bool = ftp != null and not ftp.swing
+			sole_lo = minf(sole_lo, sp.y - (float((ftp.anchor as Vector3).y) if planted else _ground_under(sp, ground_y)))
+			# Sunk in: under the sand under the trunk and under its plant both (a plant left high,
+			# after a hop, is not a foot in the sand; one stepped down off a ledge is not either).
+			if planted:
+				sole_planted = minf(sole_planted, sp.y - minf(float((ftp.anchor as Vector3).y), ground_y))
+		if sole_planted < -0.03 * S:
+			desired = maxf(desired, dist - sole_planted - 0.01 * S)
+		elif sole_lo < INF and sole_lo > FOOT_AIR * S and jump_t <= 0.0 and lowered < 0.0:
+			# Both soles off the sand (a blow, a step, a stride): the hips down until one is on
+			# it, and nothing more that lifts him (the spring's push and the blow's lift). (Not
+			# in a stoop: the heel comes up as the shin leans on over the foot, and that was read
+			# as both feet in the air, the whole body driven down at once.)
+			desired = minf(desired, dist - sole_lo + 0.005 * S)
+			# Brought down within a few hundredths of a second, not as slowly as the spring
+			# lets the weight down (a man knocked off his feet hung there a fifth of a second).
+			var vy_want := -clampf((sole_lo - 0.005 * S) / 0.06, 0.0, 2.5 * sqrt(S))
+			for p in parts:
+				if not p.severed:
+					p.linear_velocity.y = minf(p.linear_velocity.y, vy_want)
+	elif rising and dist < desired + 0.25:
+		# Getting up, the same floor under the soles, up only: on hacked legs the rise is
+		# low and long (little support), and the kneeling shins were pressed under the sand
+		# by the trunk coming down on them.
+		var sole_lo := INF
+		for sd in ["L", "R"]:
+			var sh: VoxelPart = _legs[sd][1]
+			if not sh.severed and not _legs[sd][0].severed:
+				sole_lo = minf(sole_lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y)
+		if sole_lo < -0.03 * S:
+			desired = maxf(desired, dist - sole_lo - 0.01 * S)
+	var grounded: bool = dist < desired + 0.25 or ledge_held
+	# Touching down after a jump or a flight, the knees take the fall.
+	if grounded and air_time > 0.12 and standing and not rising:
+		land_sag = maxf(land_sag, clampf((0.015 + 0.012 * maxf(0.0, -lv0.y)) * S, 0.025 * S, 0.07 * S))
+	if grounded and support > 0.0:
+		var vy := torso.linear_velocity.y
+		var f = total_mass * (gravity * minf(1.0, support * 1.1) + 140.0 * (desired - dist) * support - 22.0 * vy * support)
+		f = clampf(f, 0.0, total_mass * 30.0)
+		torso.apply_central_impulse(Vector3(0, f * dt, 0))
+	return grounded
+
+## _ground_ride in the C++ core's one call (VoxelCore.ground_ride): the step's scalars in the order it reads them, and what it leaves of the hips' height, the stoop and
+## the knees' give taken back.
+var _ride_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+func _ground_ride_native(hit: Dictionary, t_pos: Vector3, t_rot: Quaternion, rising: bool, e2: float, walk_amt: float, crouch_h: float, one_leg: bool, support: float, bob: float, lv0: Vector3,
+		standing: bool, total_mass: float, dt: float) -> bool:
+	var ground_y: float = hit.position.y
+	ground_level = ground_y
+	var leg_l: Array = _legs.L
+	var leg_r: Array = _legs.R
+	_ride_k[0] = S
+	_ride_k[1] = V
+	_ride_k[2] = dt
+	_ride_k[3] = ground_y
+	_ride_k[4] = 1.0 if state == "stand" else 0.0
+	_ride_k[5] = 1.0 if rising else 0.0
+	_ride_k[6] = hop_phase
+	_ride_k[7] = jump_t
+	_ride_k[8] = walk_amt
+	_ride_k[9] = clampf(carried_kg() / 25.0, 0.0, 1.0)
+	_ride_k[10] = torso_y
+	_ride_k[11] = crouch_h
+	_ride_k[12] = stoop
+	_ride_k[13] = 1.0 if one_leg else 0.0
+	_ride_k[14] = support
+	_ride_k[15] = e2
+	_ride_k[16] = bob
+	_ride_k[17] = float(GAIT.reach)
+	_ride_k[18] = stance_h
+	_ride_k[19] = land_sag
+	_ride_k[20] = lowered
+	_ride_k[21] = STOOP_RATE
+	_ride_k[22] = STOOP_LAG
+	_ride_k[23] = FOOT_AIR
+	_ride_k[24] = air_time
+	_ride_k[25] = 1.0 if standing else 0.0
+	_ride_k[26] = lv0.y
+	_ride_k[27] = total_mass
+	_ride_k[28] = gravity
+	_ride_k[29] = 1.0 if leg_l[0].severed else 0.0
+	_ride_k[30] = 1.0 if leg_l[1].severed else 0.0
+	_ride_k[31] = 1.0 if leg_r[0].severed else 0.0
+	_ride_k[32] = 1.0 if leg_r[1].severed else 0.0
+	var r: PackedFloat64Array = Greedy.nc.ground_ride(self, torso, leg_l[0], leg_l[1], leg_r[0], leg_r[1], space, _ray_all, _ray_sand, feet.L, feet.R, parts, t_pos, t_rot, leg_l[0].pa, leg_r[0].pa, _ride_k)
+	stance_h = r[1]
+	lowered = r[2]
+	land_sag = r[3]
+	return r[0] != 0.0
+
 ## A leg's step standing on the ground (control's loop over the legs, the leg not kicking): where its foot stands or steps to (the foot's own record, `feet`), and the thigh's
 ## turn and the knee's bend that put the sole there, as [thigh_q, bend]. Its own function so that the C++ core's one call for all of it (VoxelCore.leg_plant, in `control`) can be
 ## held to these lines, to the bit (tests/test_native.gd).
@@ -4051,121 +4221,12 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var grounded := false
 	var ground_y := 0.0
 	if hit:
-		var dist = t_pos.y - hit.position.y
 		ground_y = hit.position.y
-		# Stepping down off a ledge, the trunk goes out over the drop before the leading foot is
-		# down: the foot still planted up on the ledge carries him till it is (by the sand under
-		# the trunk he was in the air there, both legs let go, and he dropped).
-		var ledge_held := false
-		if state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0:
-			for sd in ["L", "R"]:
-				var ftp = feet[sd]
-				if ftp == null or ftp.swing or _legs[sd][1].severed or _legs[sd][0].severed:
-					continue
-				var sp: Vector3 = _legs[sd][1].global_transform * Vector3(0, -4 * V * S, 0)
-				if sp.y - float((ftp.anchor as Vector3).y) < 0.06 * S and float((ftp.anchor as Vector3).y) > ground_y + 0.1 * S:
-					ledge_held = true
-		ground_level = ground_y
-		var run_low := 0.06 * minf(1.0, walk_amt * 2.5 / 3.5)
-		# His weight is on his legs: the knees give a little under what he carries (armour, a
-		# heavy weapon), and for a moment under every footfall and landing (land_sag), more the
-		# harder he came down (user: he floated, the legs carried nothing).
-		var burden_k := clampf(carried_kg() / 25.0, 0.0, 1.0)
-		var desired := torso_y * (0.95 - run_low - 0.035 * burden_k) * (1.0 - crouch_h * 0.22 - stoop * 0.24 - (0.12 if one_leg else 0.0)) * (0.7 + 0.3 * support) * (0.55 + 0.45 * e2 if rising else 1.0) + bob
-		# The weight is on the leg that is down: the hips ride as high as that leg, a little bent,
-		# reaches from the foot planted on the sand to the hip (an inverted pendulum: up as the body
-		# passes over the foot, down as the stride opens). Never higher than the legs reach, so
-		# a planted foot always stands on the sand.
-		if state == "stand" and not one_leg and hop_phase <= 0.0:
-			var pend := INF
-			var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch_h * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
-			for sd in ["L", "R"]:
-				var ftp = feet[sd]
-				if ftp == null or ftp.swing or _legs[sd][1].severed:
-					continue
-				var hip_w: Vector3 = t_pos + t_rot * _legs[sd][0].pa
-				var dxz := Vector2(hip_w.x - ftp.anchor.x, hip_w.z - ftp.anchor.z).length()
-				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
-				pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
-			if pend < INF:
-				stance_h = maxf(pend, ground_y + torso_y * (0.82 - crouch_h * 0.2 - stoop * 0.24))
-			if stance_h > 0.0:
-				desired = minf(desired, stance_h - ground_y) if pend < INF else desired
-		desired -= land_sag   # (after the planted leg's height: walking, that is what holds him up)
-		# A big man's stoop (and his rise out of it) is a lowering of the hips he holds, not a drop: the
-		# height asked of them went down faster than the legs hold the trunk (a quarter of a metre
-		# off it, and he was in the air), and he fell the rest of the way at more than a fall's
-		# speed with the soles in the sand and the knees on it, then sprang up at the end (user: he
-		# smeared on the floor instead of bending like a man). The height is let down, and up, at a
-		# pace the legs keep up with.
-		if S >= 1.3 and state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0 and not one_leg and (stoop > 0.02 or lowered >= 0.0):
-			if lowered < 0.0:
-				lowered = dist
-			lowered = clampf(move_toward(lowered, desired, STOOP_RATE * sqrt(S) * dt), dist - STOOP_LAG, dist + STOOP_LAG)
-			if absf(lowered - desired) < 0.01 and stoop <= 0.02:
-				lowered = -1.0
-			else:
-				desired = lowered
+		# (In one call of the C++ core where that is there: VoxelCore.ground_ride, held to _ground_ride's lines by tests/test_native.gd.)
+		if Greedy.ride_ok and Greedy.nc != null:
+			grounded = _ground_ride_native(hit, t_pos, t_rot, rising, e2, walk_amt, crouch_h, one_leg, support, bob, lv0, standing, total_mass, dt)
 		else:
-			lowered = -1.0
-		# The feet stand on the sand, never in it and never above it: standing, the legs do not
-		# meet the ground (the spring holds him), so the hips are set by where the soles are. A
-		# sole sunk in lifts him by as much (a cyclops with his shins hacked away stood knee-deep
-		# in the arena, user); both soles up off it let him down by as much, until one touches
-		# (a man hit hard hovered with his feet clear of the sand, user). In a hop or getting up,
-		# no.
-		if state == "stand" and hop_phase <= 0.0 and not rising and dist < desired + 0.25:
-			var sole_lo := INF
-			var sole_planted := INF
-			for sd in ["L", "R"]:
-				var sh: VoxelPart = _legs[sd][1]
-				if sh.severed or _legs[sd][0].severed:
-					continue
-				# Over what is under that foot, not under the trunk: on a step, the foot up on it read as
-				# down while the other swung over the sand below, and he rose off both climbing it. (A
-				# planted foot's plant is on what is under it already.)
-				var ftp = feet[sd]
-				var sp := sh.global_transform * Vector3(0, -4 * V * S, 0)
-				var planted: bool = ftp != null and not ftp.swing
-				sole_lo = minf(sole_lo, sp.y - (float((ftp.anchor as Vector3).y) if planted else _ground_under(sp, ground_y)))
-				# Sunk in: under the sand under the trunk and under its plant both (a plant left high,
-				# after a hop, is not a foot in the sand; one stepped down off a ledge is not either).
-				if planted:
-					sole_planted = minf(sole_planted, sp.y - minf(float((ftp.anchor as Vector3).y), ground_y))
-			if sole_planted < -0.03 * S:
-				desired = maxf(desired, dist - sole_planted - 0.01 * S)
-			elif sole_lo < INF and sole_lo > FOOT_AIR * S and jump_t <= 0.0 and lowered < 0.0:
-				# Both soles off the sand (a blow, a step, a stride): the hips down until one is on
-				# it, and nothing more that lifts him (the spring's push and the blow's lift). (Not
-				# in a stoop: the heel comes up as the shin leans on over the foot, and that was read
-				# as both feet in the air, the whole body driven down at once.)
-				desired = minf(desired, dist - sole_lo + 0.005 * S)
-				# Brought down within a few hundredths of a second, not as slowly as the spring
-				# lets the weight down (a man knocked off his feet hung there a fifth of a second).
-				var vy_want := -clampf((sole_lo - 0.005 * S) / 0.06, 0.0, 2.5 * sqrt(S))
-				for p in parts:
-					if not p.severed:
-						p.linear_velocity.y = minf(p.linear_velocity.y, vy_want)
-		elif rising and dist < desired + 0.25:
-			# Getting up, the same floor under the soles, up only: on hacked legs the rise is
-			# low and long (little support), and the kneeling shins were pressed under the sand
-			# by the trunk coming down on them.
-			var sole_lo := INF
-			for sd in ["L", "R"]:
-				var sh: VoxelPart = _legs[sd][1]
-				if not sh.severed and not _legs[sd][0].severed:
-					sole_lo = minf(sole_lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y)
-			if sole_lo < -0.03 * S:
-				desired = maxf(desired, dist - sole_lo - 0.01 * S)
-		grounded = dist < desired + 0.25 or ledge_held
-		# Touching down after a jump or a flight, the knees take the fall.
-		if grounded and air_time > 0.12 and standing and not rising:
-			land_sag = maxf(land_sag, clampf((0.015 + 0.012 * maxf(0.0, -lv0.y)) * S, 0.025 * S, 0.07 * S))
-		if grounded and support > 0.0:
-			var vy := torso.linear_velocity.y
-			var f = total_mass * (gravity * minf(1.0, support * 1.1) + 140.0 * (desired - dist) * support - 22.0 * vy * support)
-			f = clampf(f, 0.0, total_mass * 30.0)
-			torso.apply_central_impulse(Vector3(0, f * dt, 0))
+			grounded = _ground_ride(hit, t_pos, t_rot, rising, e2, walk_amt, crouch_h, one_leg, support, bob, lv0, standing, total_mass, dt)
 
 	air_time = 0.0 if grounded else air_time + dt
 	jump_t = maxf(0.0, jump_t - dt)

@@ -126,6 +126,10 @@ public:
 	Array arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *w, Object *elbow_joint, const Dictionary &hp_in, const Vector3 &e_was, const Quaternion &hold_q, const Quaternion &grip_q, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const PackedFloat64Array &k) const;
 	bool leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const PackedFloat64Array &k) const;
 	bool leg_tail_k(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const double *kk) const;
+	// The ground under him and the height his hips ride at (Fighter._ground_ride).
+	PackedFloat64Array ground_ride(Object *fighter, RigidBody3D *torso, RigidBody3D *thigh_l, RigidBody3D *shin_l, RigidBody3D *thigh_r, RigidBody3D *shin_r,
+			PhysicsDirectSpaceState3D *space, const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, const Variant &ft_l, const Variant &ft_r,
+			const Array &parts, const Vector3 &t_pos, const Quaternion &t_rot, const Vector3 &pa_l, const Vector3 &pa_r, const PackedFloat64Array &k) const;
 	// A standing leg's whole step (Fighter._leg_plant and _leg_end) in one call.
 	double leg_plant(Object *fighter, RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *o_shin, RigidBody3D *torso, PhysicsDirectSpaceState3D *space,
 			const Ref<PhysicsRayQueryParameters3D> &ray_all, const Ref<PhysicsRayQueryParameters3D> &ray_sand, Dictionary ft, const Variant &o_ft, const Vector3 &t_pos,
