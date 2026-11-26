@@ -19,6 +19,7 @@ It REWRITES what it is given, so work on COPIES, never on a checkout (PROJ: a co
         about 3150: the mark's own cost, to be taken off each.)
 
 With IR_DRAW=1 in the environment the men's per-frame drawing work is done too (as with a screen: Fighter.process_in_headless), a frame a step.
+With IR_FX=1 the match is not a headless one: the effects of a fight are made as in play (blood, sparks, marks, sounds asked for), on a renderer that draws nothing.
 AT is the second of the fight the counting starts at (1: eight men closing in, before the first blow; later seconds have the blows and the foes in them, and cost about
 three minutes of valgrind each). The instructions of everything are counted, the engine's too; the main thread's only in the statements' way."""
 import json, os, re, subprocess, sys
@@ -172,7 +173,7 @@ def valgrind(root, env, args):
 
 def cmd_run_funcs(root, out, at="1", secs="1"):
     names = json.load(open(os.path.join(root, "ir_funcs.json")))
-    valgrind(root, {"IR_AT": at, "IR_SECS": secs}, ["--callgrind-out-file=" + out])
+    valgrind(root, {"IR_AT": at, "IR_SECS": secs}, ["--instr-atstart=no", "--callgrind-out-file=" + out])
     ids, calls, incl = {}, {}, {}
     lines = open(out, errors="replace").read().split("\n")
     for i, l in enumerate(lines):
@@ -206,7 +207,7 @@ def cmd_run_lines(root, namesfile, outdir, klist, b="4", at="1"):
         if len(p) == 2 and p[0].isdigit():
             names[int(p[0])] = p[1]
     os.makedirs(outdir, exist_ok=True)
-    valgrind(root, {"IR_LIST": klist, "IR_B": b, "IR_AT": at}, ["--collect-atstart=no", "--callgrind-out-file=" + os.path.join(outdir, "cg")])
+    valgrind(root, {"IR_LIST": klist, "IR_B": b, "IR_AT": at}, ["--instr-atstart=no", "--collect-atstart=no", "--callgrind-out-file=" + os.path.join(outdir, "cg")])
     rows = []
     for fn in os.listdir(outdir):
         if not fn.startswith("cg."):

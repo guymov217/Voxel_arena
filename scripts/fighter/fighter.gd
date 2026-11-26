@@ -101,10 +101,13 @@ var main_id := ""      # the weapon he came in with (Physique.build_of: a heavy 
 var boss := false
 
 var yaw := 0.0
-var state := "stand"           # stand | down | rising | dead
-var alive: bool:
-	get:
-		return state != "dead"
+var state := "stand":          # stand | down | rising | dead
+	set(v):
+		state = v
+		alive = v != "dead"
+## Whether he lives: kept with `state` as it is written (it was a function asked of `state` at every reading, and it is read some hundreds of times a step: by the
+## match's loop, the bots looking for a foe, the combat for every contact).
+var alive := true
 var down_timer := 0.0
 var rise_t := 1.0
 var rise_q0 = null

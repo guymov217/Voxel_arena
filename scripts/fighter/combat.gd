@@ -48,7 +48,9 @@ var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
 const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
 static var LODGE_K := 1.0        # how readily held blades stay in the wound (tests set it to 0 or 1e3)
-var touches := {}                # "attacker id:victim id" -> {t, a: attacker's part, b: victim's part}: who is touching whom
+var touches := {}                # a beast's (a man's) id -> {the other's id -> {t, a: the toucher's part, b: the touched part, J, Jmax}}: whose body is on whom
+var touches_p := {}              # a part's id -> {the other man's id -> the same}: what one part is on (a forearm, a beast's part)
+# (By the two ids, one table in another: they were one table by a key spelt out of the two ("12:34", "p12:34"), and the spelling was most of what a note cost.)
 
 ## The last touch of any part of `a` on any part of `b` within `within` seconds: the victim's
 ## part touched, or null. A grapple, a squeeze, a roll or a trample is only real while the body
@@ -56,7 +58,8 @@ var touches := {}                # "attacker id:victim id" -> {t, a: attacker's 
 func touch_part(a, b, within := 0.25) -> VoxelPart:
 	if a == null or b == null:
 		return null
-	var r = touches.get("%d:%d" % [a.get_instance_id(), b.get_instance_id()])
+	var row = touches.get(a.get_instance_id())
+	var r = row.get(b.get_instance_id()) if row != null else null
 	if r == null or time - float(r.t) > within:
 		return null
 	return r.b if is_instance_valid(r.b) else null
@@ -68,7 +71,8 @@ func touching(a, b, within := 0.25) -> bool:
 func touch_by(part: VoxelPart, b, within := 0.25) -> VoxelPart:
 	if part == null or b == null:
 		return null
-	var r = touches.get("p%d:%d" % [part.get_instance_id(), b.get_instance_id()])
+	var row = touches_p.get(part.get_instance_id())
+	var r = row.get(b.get_instance_id()) if row != null else null
 	if r == null or time - float(r.t) > within:
 		return null
 	return r.b if is_instance_valid(r.b) else null
@@ -79,7 +83,8 @@ func touch_by(part: VoxelPart, b, within := 0.25) -> VoxelPart:
 func touch_impulse(a, b, within := 0.25) -> float:
 	if a == null or b == null:
 		return 0.0
-	var r = touches.get("%d:%d" % [a.get_instance_id(), b.get_instance_id()])
+	var row = touches.get(a.get_instance_id())
+	var r = row.get(b.get_instance_id()) if row != null else null
 	if r == null or time - float(r.t) > within:
 		return 0.0
 	return float(r.J)
@@ -107,14 +112,34 @@ func _note_touch(a: VoxelPart, b: VoxelPart, J: float) -> void:
 		return
 	if not _asked(a):
 		return
-	for key in (["%d:%d" % [fa.get_instance_id(), fb.get_instance_id()], "p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]] if fa is Beast else ["p%d:%d" % [a.get_instance_id(), fb.get_instance_id()]]):
-		var r = touches.get(key)
-		if r != null and float(r.t) == time:
-			r.J += J   # another contact of the same step: the impulses add up
-			if J > float(r.get("Jmax", 0.0)):
-				r.Jmax = J; r.a = a; r.b = b   # the hardest contact names the parts
-		else:
-			touches[key] = {"t": time, "a": a, "b": b, "J": J, "Jmax": J}
+	var fbid: int = fb.get_instance_id()
+	if fa is Beast:
+		_note(touches, fa.get_instance_id(), fbid, a, b, J)
+	_note(touches_p, a.get_instance_id(), fbid, a, b, J)
+
+func _note(tab: Dictionary, ka: int, kb: int, a: VoxelPart, b: VoxelPart, J: float) -> void:
+	var row = tab.get(ka)
+	if row == null:
+		row = {}
+		tab[ka] = row
+	var r = row.get(kb)
+	if r != null and float(r.t) == time:
+		r.J += J   # another contact of the same step: the impulses add up
+		if J > float(r.get("Jmax", 0.0)):
+			r.Jmax = J; r.a = a; r.b = b   # the hardest contact names the parts
+	else:
+		row[kb] = {"t": time, "a": a, "b": b, "J": J, "Jmax": J}
+
+## Every note there is, as [of one part (true) or of a whole body (false), the note]: for the tests that look at what was noted.
+func touch_notes() -> Array:
+	var out := []
+	for row in touches.values():
+		for r in row.values():
+			out.append([false, r])
+	for row in touches_p.values():
+		for r in row.values():
+			out.append([true, r])
+	return out
 
 func _enter_tree() -> void:
 	current = self
@@ -176,12 +201,16 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				if other.holder != null and other.holder != bf:
 					bf.struck_frame = Engine.get_physics_frames()
 					told = false
-			elif other.fighter != null and other.fighter != bf:
-				if Fighter.is_giant_over(other, bf):
-					bf.struck_frame = Engine.get_physics_frames()
-					told = false
-				elif Fighter.is_beast_on(other, bf):
-					bf.beast_frame = Engine.get_physics_frames()
+			else:
+				var of = other.fighter
+				if of != null and of != bf:
+					# (Fighter.is_giant_over, else is_beast_on, in their own lines: the two were called for every touch of another man's part, and of two men neither is so.)
+					if of is Beast:
+						if not (bf is Beast) and not (of.hug != null and of.hug.get("target") == bf) and not (bf.has_meta("beast_hold") and bf.get_meta("beast_hold") == of):
+							bf.beast_frame = Engine.get_physics_frames()
+					elif float(of.S) > float(bf.S) * Fighter.GIANT_OVER:
+						bf.struck_frame = Engine.get_physics_frames()
+						told = false
 		if bp:
 			if ow:
 				# A trap does not move under physics, so the part it meets reports the contact
@@ -213,8 +242,12 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				if canonical:
 					touch_q.append([body, other, cj])
 				else:
-					_note_touch(body, other, cj)
-					_note_touch(other, body, cj)
+					# (Each way only where the part is one somebody asks about: _note_touch lets go of the other at once, and was called to do it.)
+					if b_asked == 1:
+						_note_touch(body, other, cj)
+					var o_asked: int = other.touch_asked
+					if o_asked == 1 or (o_asked < 0 and other.fighter != null and _asked(other)):
+						_note_touch(other, body, cj)
 			if not kept:
 				continue
 			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": cj})
@@ -450,7 +483,8 @@ func process_contacts(_dt: float) -> Array:
 		vic = vic.host_part(int(c.sb) if vic == b else int(c.sa))
 		if vic.severed and not vic.fighter.alive and att is VoxelPart:
 			continue
-		var key := "%d:%d" % [att.get_instance_id(), vic.get_instance_id()]
+		# (The pair as the two ids: it was a string spelt out of them for every contact, eighty a step in a melee. The groups keep the order they were first met in.)
+		var key := [att.get_instance_id(), vic.get_instance_id()]
 		var rank := 0
 		var typ := "blunt"
 		var mat := ""

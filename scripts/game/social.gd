@@ -1195,10 +1195,11 @@ func target_for(e: Dictionary, candidates: Array):
 	if e.kind != "local" and e.kind != "remote":
 		var awake := []
 		for o in candidates:
-			if o.f.get("limp"):
+			# (A fighter's own two fields, read as fields: asked by name of each candidate for every bot every step.)
+			var of: Fighter = o.f
+			if of.limp:
 				continue
-			var pd = o.f.get("played_dead")
-			if not (float(pd if pd != null else 0.0) > 0.0):
+			if not (of.played_dead > 0.0):
 				awake.append(o)
 		if not awake.is_empty() and awake.size() < candidates.size():
 			return {"only": awake}

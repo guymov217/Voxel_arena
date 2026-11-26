@@ -20,6 +20,9 @@ using namespace godot;
 IR_SECTIONS(SEC)
 
 void VoxelCore::ir_zero() {
+	// (The run begins with the counting off, --instr-atstart=no: the seconds before the one asked for run ten times as fast, which is what lets a second deep in a fight be
+	// counted. Where the counting is on already this starts nothing.)
+	CALLGRIND_START_INSTRUMENTATION;
 	CALLGRIND_ZERO_STATS;
 }
 
@@ -40,6 +43,8 @@ void VoxelCore::reg(int k) {
 }
 
 void VoxelCore::ir_select(int k) {
+	// (As in ir_zero: the run comes this far with the counting off, and fast.)
+	CALLGRIND_START_INSTRUMENTATION;
 	if (ir_col) {
 		CALLGRIND_TOGGLE_COLLECT;
 		ir_col = false;

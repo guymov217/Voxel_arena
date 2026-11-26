@@ -1501,6 +1501,7 @@ func _physics_process(dt: float) -> void:
 	if modes and me == null and input:
 		local_inp = input.sample(dt)
 	_fair_update(dt)
+	_roster_begin()
 	for e in entities:
 		var f = e.f
 		if not is_instance_valid(f):
@@ -1620,6 +1621,7 @@ func _physics_process(dt: float) -> void:
 				_jobs.append([f, inp])
 			else:
 				f.control(cdt, inp)
+	_roster_live = false
 	if not _jobs.is_empty():
 		_run_jobs(dt)
 	social.after(dt)
@@ -2115,8 +2117,20 @@ func _guest_bot_input(dt: float) -> Dictionary:
 	return inp
 
 func _world_of(e: Dictionary) -> Dictionary:
-	var allies := []
 	var team = e.team
+	# (In the step's loop over the men: his team's world, made once. Its allies are all of his team, he among them: the one who reads them, a medicus looking for the
+	# most hurt of his friends (Bot.update), passes himself over.)
+	if _roster_live and entities.size() == _roster_n:
+		var w = _roster_own.get(team)
+		if w == null:
+			var own := []
+			for o in entities:
+				if o.team == team:
+					own.append(o.f)
+			w = {"loose": combat.loose_weapons, "allies": own}
+			_roster_own[team] = w
+		return w
+	var allies := []
 	for o in entities:
 		if o.team == team and not is_same(o, e):
 			allies.append(o.f)
@@ -2595,6 +2609,36 @@ func guest_message(type: String, data) -> void:
 								vf = ""
 							Sfx.voice(str(data.v), fp, clampf(float(data.get("g", 1.0)), 0.0, 1.5), clampf(float(data.get("h", 1.0)), 0.3, 3.0), vf)
 
+## The roster for the step's loop over the men (_physics_process): for each team, those a man of it may go for (its foes: not of his team, not harmless) or a beast of it
+## (its prey: other beasts only where harmless, a goat), and the world a bot of it is given (its own men). nearest_enemy and _world_of asked every entity's record for its
+## team, its kind and whether it is harmless, for every bot, every step: two and a half million instructions of a fight of sixteen, and none of it changes while the loop
+## runs. Made at a team's first asking in the loop, good while the loop runs and nobody has come or gone (`entities` as long as it was); else the two ask as they did.
+var _roster_live := false
+var _roster_n := 0
+var _roster_foes := {}
+var _roster_prey := {}
+var _roster_own := {}
+func _roster_begin() -> void:
+	_roster_foes.clear()
+	_roster_prey.clear()
+	_roster_own.clear()
+	_roster_n = entities.size()
+	_roster_live = true
+
+func _roster_of(team, beast: bool) -> Array:
+	var tab: Dictionary = _roster_prey if beast else _roster_foes
+	var got = tab.get(team)
+	if got == null:
+		got = []
+		for o in entities:
+			if o.team == team:
+				continue
+			var harmless = o.get("harmless", false)
+			if not (o.kind == "beast" and beast and not harmless) and not (harmless and not beast):
+				got.append(o)
+		tab[team] = got
+	return got
+
 func nearest_enemy(e: Dictionary):
 	var best = null
 	var bd := INF
@@ -2602,12 +2646,17 @@ func nearest_enemy(e: Dictionary):
 	var cands := []
 	var team = e.team
 	var beast: bool = e.kind == "beast"
-	for o in entities:
-		if o.team == team or not o.f.alive:
-			continue
-		var harmless = o.get("harmless", false)
-		if not (o.kind == "beast" and beast and not harmless) and not (harmless and not beast):
-			cands.append(o)
+	if _roster_live and entities.size() == _roster_n:
+		for o in _roster_of(team, beast):
+			if o.f.alive:
+				cands.append(o)
+	else:
+		for o in entities:
+			if o.team == team or not o.f.alive:
+				continue
+			var harmless = o.get("harmless", false)
+			if not (o.kind == "beast" and beast and not harmless) and not (harmless and not beast):
+				cands.append(o)
 	# Predators cannot resist a goat.
 	if e.kind == "beast":
 		for o in cands:

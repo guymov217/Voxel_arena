@@ -883,3 +883,50 @@ end (`_leg_end`: the planted foot held, the thigh and the shin driven, the sole 
 - **The two together**: `control` 1 214 482 -> 1 109 287, **-8.7%** (9.80 -> 8.95 million a step for the eight), about 6.5% of what the scripts do in a step: the "tenth"
   of section 21 at its lower end.
 - **Left of the legs**: the kick's branch (rare), and the script's side of the two calls (some thirty numbers handed over for each: 6 to 7 thousand a call).
+
+## 24. The fourth report, and the half of a fighting step that had not been counted
+
+The owner's fourth `diagnose_report.txt` (the same computer; the files `86826be`, which the report now says). Against the third:
+
+| the reading | third | fourth |
+|---|---|---|
+| one fight on the screen, release (up to 15 on the sand) | 26.7 fps at 86% of the speed, a step 7.24 ms | **44.1 fps at 98%, a step 5.8** |
+| the room of eight, the half minutes with a wave in them | 36, 41 fps | 38, 35, 29 fps |
+| the room's lows | 15 to 17 fps | 16 to 25 fps |
+| the room's speed | 98 to 100% | 98 to 100% |
+
+- **The fight alone is two thirds faster; the room on one computer is not.** The forecast of section 22 (40 to 50 frames as a wave comes in) was wrong. The gate holds
+  at three or four foes now where it held at five or six, and it does not matter: **eight players fighting two or three foes cost 6.2 to 6.9 ms a step**, over the 5.5 a
+  step may cost before a single foe more is asked about. The forecast took the eight to cost what they cost standing in the yard (3.6 to 3.8 ms); fighting, they cost
+  about 5. At 6.5 ms a step thirty frames a second is all there is at the game's full speed, and thirty is what the room shows.
+- **The gate cannot mend that**, only trade foes for frames, and with eight players alive there is nothing left to trade (two foes are let in whatever a step costs). Its
+  rule for a step near its budget reads the step as it is when a wave comes in, the men standing: 3.9 ms with twelve on the sand, a fight of whom costs 6.9; and the
+  budget moves with every reading of the frame's rest (4.2 to 6.2 in one wave), so a foe waiting his turn is let in at the next low reading.
+- **A fighter in the room costs 0.58 ms a step, in the fight alone 0.45.** Most of that is the test's own: the seven friend windows on the same computer (the same fixed
+  piece of work takes the game's thread 8.5 ms in the room and 7.1 alone, a fifth more). A host whose friends are on computers of their own is nearer the fight alone
+  than the room of this test; that is an inference from these numbers, not a measurement.
+- **A fighting step costs half as much again as a standing one, and none of that had been counted.** The yard: the scripts' 3.12 ms and the engine's 0.49 a step with
+  eight men; a fight of eight and three: 4.75 and 1.26. Every count of `tools/ir_profile` so far was of the fight's second 1: the men closing in, before a blow, with no
+  effects. Counted now in second 6 (sixteen on the sand, 33 blows landing in it, the effects made as in play: `IR_FX`), **45 million instructions a step**:
+
+| | million a step | share |
+|---|---|---|
+| the men's `control` (sixteen) | 23.7 | 52% |
+| the contacts: `Combat.report` out of every body's `_integrate_forces`, `process_contacts`, the blows | 11.4 | 25% |
+| the bots' thinking (`Bot.update`) | 3.2 | 7% |
+| each bot's nearest foe and its team's world (`nearest_enemy`, `_world_of`) | 2.6 | 6% |
+| the rest of the match's step (the social rules, things thrown, the snapshot, the effects) | 4 | 9% |
+
+  In second 3 (the same sixteen walking in, no blow yet) the contacts are 1.8 million: a fight is the contacts.
+- **The first cuts there, each to the bit** (the fingerprints: 0 lines of 39):
+  - a fighter's `alive` is a flag kept with his `state`, not a function asked of it at each of some hundreds of readings a step;
+  - the step's roster (`Match._roster_begin`): for each team its possible foes and its own men, made once in the loop over the men, where every bot asked every
+    entity's record for its team, kind and harmlessness every step (`nearest_enemy` 2.07 -> 1.32 million a step, `_world_of` 0.57 -> 0.12);
+  - a touch is noted under the two ids, one table in another, not under a key spelt out of them, and only for the part somebody asks about; a blow's group likewise;
+    the two questions asked of every touch of another man's part (a giant over him? a beast on him?) are asked in the lines themselves (`Combat.report` 3.36 -> 2.91).
+  The fighting step **45.0 -> 43.0 million, -4.4%**.
+- **What is left there, in order**: the contacts' records (a dictionary of six made for each, 140 a step, read once and thrown away), the checks of a part's blow on a
+  part (`process_contacts`: 0.6 million), a blow that lands (`apply_hit`: 5 million instructions each, which is the step of 11 to 15 ms the game's own record shows),
+  the bots (`wound`, `_react`, `_wrestle`). To be worth it the contacts want the core, as the arms and the legs did.
+- **`tools/ir_profile` goes to a second deep in a fight** in a few minutes now (the counting is switched on at the second asked for), with the effects on (`IR_FX`),
+  and `tests/irfight.gd` says what each second holds (`IR_SAY`).

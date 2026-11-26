@@ -528,3 +528,56 @@ func test_the_foe_comes_straight_in() -> void:
 		off = maxf(off, absf(d.cross(line).y))
 	t.check(off < 0.3, "he comes on along the line to the man (%.2f m aside at most)" % off)
 	m.queue_free()
+
+## The step's roster (Match._roster_begin: each team's possible foes and its own men made once in the loop over the men) names for every man and beast the foe that
+## asking every entity names, and gives a bot the friends it would be given: with men of two teams, a beast, a goat nobody hunts but a beast, a dead man, a man gone
+## from the list (the roster is then not used), and one who plays dead.
+func test_the_steps_roster_names_the_same_foes_and_friends() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius"}})
+	var made := []
+	for i in 3:
+		made.append(m.spawn_fighter({"kind": "bot", "name": "A%d" % i, "loadout": {"main": "gladius"}, "team": 0, "pos": Vector3(-3.0 + i, 0.1, 2.0 + i), "yaw": 0.0}))
+	for i in 4:
+		made.append(m.spawn_fighter({"kind": "bot", "name": "B%d" % i, "loadout": {"main": "mace"}, "team": Match.ENEMY_TEAM, "pos": Vector3(2.0 + i, 0.1, -1.0 - i), "yaw": PI}))
+	var lion = m.spawn_beast({"beast": "lion", "team": 2, "pos": Vector3(0, 0.1, 9.0), "yaw": PI})
+	var goat = m.spawn_beast({"beast": "goat", "team": 3, "pos": Vector3(1.0, 0.1, 11.0), "yaw": 0.0, "harmless": true})
+	for k in 5:
+		await get_tree().physics_frame
+	var same := func() -> Array:
+		var bad := []
+		var asked := 0
+		for e in m.entities:
+			m._roster_live = false
+			var slow = m.nearest_enemy(e)
+			var slow_w: Dictionary = m._world_of(e)
+			m._roster_begin()
+			var fast = m.nearest_enemy(e)
+			var fast_w: Dictionary = m._world_of(e)
+			m._roster_live = false
+			asked += 1
+			if not is_same(slow, fast):
+				bad.append("%s: %s against %s" % [e.get("name", e.kind), str(slow.get("name", slow.kind)) if slow else "nobody", str(fast.get("name", fast.kind)) if fast else "nobody"])
+			var own: Array = (fast_w.allies as Array).filter(func(f): return f != e.f)
+			if own != (slow_w.allies as Array) or not is_same(fast_w.loose, slow_w.loose):
+				bad.append("%s: his friends" % e.get("name", e.kind))
+		return [bad, asked]
+	var r: Array = same.call()
+	t.check((r[0] as Array).is_empty() and int(r[1]) >= 10, "every one of %d is given the same foe and the same friends (%s)" % [r[1], "; ".join(PackedStringArray((r[0] as Array).slice(0, 3)))])
+	t.check(is_same(m.nearest_enemy(lion), goat) and not is_same(m.nearest_enemy(made[0]), goat), "the lion goes for the goat, and a man does not")
+	# (A man dies, one plays dead: the roster is of who is on the sand, and whether he lives is asked as it is read.)
+	(made[4].f as Fighter).die("test")
+	(made[5].f as Fighter).played_dead = 2.0
+	r = same.call()
+	t.check((r[0] as Array).is_empty(), "the same with a man dead and one playing dead (%s)" % "; ".join(PackedStringArray((r[0] as Array).slice(0, 3))))
+	m._roster_begin()
+	var who = m.nearest_enemy(made[0])
+	t.check(who != null and not is_same(who, made[4]) and (who.f as Fighter).alive, "nobody goes for the dead man")
+	# (One gone from the list in the middle of a loop: the roster is not the list's any more, and is not used.)
+	m.entities.erase(made[6])
+	t.check(not is_same(m.nearest_enemy(made[0]), made[6]) and not (m._world_of(made[3]).allies as Array).has(made[6].f), "a man taken off the list is in nobody's roster")
+	m._roster_live = false
+	m.combat.fighters.erase(made[6].f)
+	made[6].f.queue_free()
+	m.queue_free()

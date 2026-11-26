@@ -30,8 +30,8 @@ func _men() -> Array:
 ## How many touches between the two men were noted after `since`.
 func _noted_since(m: Match, a: Fighter, b: Fighter, since: float) -> int:
 	var n := 0
-	for key in m.combat.touches:
-		var r = m.combat.touches[key]
+	for note in m.combat.touch_notes():
+		var r = note[1]
 		if float(r.t) > since and is_instance_valid(r.a) and is_instance_valid(r.b):
 			if (r.a.fighter == a and r.b.fighter == b) or (r.a.fighter == b and r.b.fighter == a):
 				n += 1
@@ -40,8 +40,8 @@ func _noted_since(m: Match, a: Fighter, b: Fighter, since: float) -> int:
 ## How many touches among any two of the men were noted after `since`.
 func _noted_among(m: Match, men: Array, since: float) -> int:
 	var n := 0
-	for key in m.combat.touches:
-		var r = m.combat.touches[key]
+	for note in m.combat.touch_notes():
+		var r = note[1]
 		if float(r.t) > since and is_instance_valid(r.a) and is_instance_valid(r.b) and men.has(r.a.fighter) and men.has(r.b.fighter):
 			n += 1
 	return n
@@ -81,10 +81,10 @@ func test_the_dead_are_not_asked_who_touched_whom() -> void:
 	t.check(int(r[1]) > 0, "men pressed on one another touch (%d contacts seen)" % r[1])
 	var fore := 0
 	var other := 0
-	for key in m.combat.touches:
-		var rec = m.combat.touches[key]
+	for note in m.combat.touch_notes():
+		var rec = note[1]
 		if is_instance_valid(rec.a) and (rec.a.fighter == a or rec.a.fighter == b):
-			if String(key).begins_with("p") and String(rec.a.part_name).begins_with("forearm"):
+			if bool(note[0]) and String(rec.a.part_name).begins_with("forearm"):
 				fore += 1
 			else:
 				other += 1
