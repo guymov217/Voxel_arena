@@ -45,6 +45,66 @@ func test_wounds_are_read_off_and_kept() -> void:
 	t.check(g.eye_floor > 0.2, "one eye: the aim never quite steadies")
 	m.queue_free()
 
+## How well a part still works (VoxelPart.function) is kept between the writes of what it reads: asked, it is what working it out afresh gives, after
+## every kind of thing that changes it, and through a frost that thaws by the clock.
+func test_a_parts_function_is_the_same_kept_or_worked_out() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(20)
+	var th: VoxelPart = f.by_name.thighR
+	var off := []
+	var same := func(what: String) -> void:
+		var a := th.function()
+		var b := th.function()   # (the second answer is the kept one)
+		if a != th._function_now() or b != a:
+			off.append("%s: asked %s and %s, worked out %s" % [what, a, b, th._function_now()])
+	same.call("whole")
+	t.check(th._fn_at == th._fn_ver, "an answer is kept once asked")
+	th.hp = 62.0
+	t.check(th._fn_at != th._fn_ver, "and let go at a write of what it reads")
+	same.call("hurt")
+	th.remove_voxels([0, 1, 2, 3, 4, 5, 6, 7])
+	same.call("eight voxels gone")
+	th.fracture = 1
+	same.call("cracked")
+	th.fracture = 2
+	th.fractured = true
+	same.call("broken through")
+	th.fractured = false
+	th.fracture = 0
+	th.hanging = true
+	same.call("hanging")
+	th.hanging = false
+	th.prosthetic = "peg"
+	th.pro_full = th.alive_count
+	same.call("a peg")
+	th.pro_level = 2
+	same.call("a peg the smith has worked on")
+	th.remove_voxels([8, 9, 10, 11])
+	same.call("the peg chipped")
+	th.prosthetic = ""
+	th.pro_full = 0
+	th.pro_level = 0
+	# A frost on it: a fifth of what it was until the clock passes, asked afresh all the while, and whole again after.
+	var warm := th.function()
+	th.frozen_until = VoxelPart.clock() + 0.05
+	same.call("frozen")
+	t.check(is_equal_approx(th.function(), warm * 0.2), "frozen it hardly moves (%.3f of %.3f)" % [th.function(), warm])
+	await _steps(10)
+	same.call("thawed")
+	t.check(th.function() == warm, "and thawed by the clock it is as it was, with nothing written (%.3f, %.3f)" % [th.function(), warm])
+	th.severed = true
+	same.call("cut off")
+	th.severed = false
+	same.call("on again")
+	t.check(off.is_empty(), "a part's function asked is its function worked out, through every write of what it reads (off: %s)" % [off])
+	# And what is made of it: a leg's and an arm's, each the worse of its two parts.
+	var sh: VoxelPart = f.by_name.shinR
+	var leg0 := f.leg_func("R")
+	sh.hp = 40.0
+	t.check(f.leg_func("R") < leg0 and f.leg_func("R") == minf(th.function(), sh.function()) * f.cord_legs * f.pelvis_f, "a leg's follows its shin the step it is hurt (%.3f from %.3f)" % [f.leg_func("R"), leg0])
+	m.queue_free()
+
 func test_prosthetics_work_worse_and_a_blade_arm_cannot_be_dropped() -> void:
 	var m := _match()
 	var b := Body.empty()

@@ -982,7 +982,11 @@ var jaw_angle := 0.0
 var jaw_teeth := true          # the teeth still there (a jaw hacked mostly away loses them)
 var bone := PackedByteArray()
 var organ := PackedByteArray()     # per voxel, the organ it is part of (Anatomy; 0 none)
-var alive_count := 0
+var alive_count := 0:
+	set(v):
+		if v != alive_count:
+			_fn_ver += 1
+		alive_count = v
 ## Each grid cell's living voxel (its index + 1; 0 none, or gone) and each collider cell's count
 ## of living voxels (of total_coarse whole), kept up as voxels go and come back: worked out voxel
 ## by voxel for every blow (loose_lumps, fit_collider), they were most of what a nail of a pot's
@@ -991,14 +995,34 @@ var live_cell := PackedInt32Array()
 var live_coarse := PackedInt32Array()
 var total_coarse := PackedInt32Array()
 
-var hp := 100.0
+var hp := 100.0:
+	set(v):
+		if v != hp:
+			_fn_ver += 1
+		hp = v
 var bleed := 0.0
-var severed := false
-var hanging := false
-var fractured := false        # the bone broken right through: the limb is held on by its muscle only
+var severed := false:
+	set(v):
+		if v != severed:
+			_fn_ver += 1
+		severed = v
+var hanging := false:
+	set(v):
+		if v != hanging:
+			_fn_ver += 1
+		hanging = v
+var fractured := false:   # the bone broken right through: the limb is held on by its muscle only
+	set(v):
+		if v != fractured:
+			_fn_ver += 1
+		fractured = v
 ## How badly its bone is broken: 0 whole, 1 cracked (it holds, and hurts), 2 broken through under
 ## whole skin (closed), 3 broken through and out of the skin (open). `fractured` is 2 and over.
-var fracture := 0
+var fracture := 0:
+	set(v):
+		if v != fracture:
+			_fn_ver += 1
+		fracture = v
 ## Where the bone broke, drawn bent there: [axis, at (local, along the bone), the transform the
 ## far end is drawn with]; empty for a straight bone. Drawing only (the collider stays straight).
 var kink: Array = []
@@ -1007,9 +1031,21 @@ var drips: Array = []   # {node: GPUParticles3D, lp: Vector3}: where blood runs 
 var stump_t := 0.0
 var flinch_t := 0.0
 var missing := false
-var prosthetic := ""               # "peg", "hook", "blade": what the physician fitted in its place
-var pro_level := 0                 # the smith's steps on it (Body.PRO_STEPS)
-var pro_full := 0                  # its voxels as fitted: whole, it works as well as it can
+var prosthetic := "":   # "peg", "hook", "blade": what the physician fitted in its place
+	set(v):
+		if v != prosthetic:
+			_fn_ver += 1
+		prosthetic = v
+var pro_level := 0:   # the smith's steps on it (Body.PRO_STEPS)
+	set(v):
+		if v != pro_level:
+			_fn_ver += 1
+		pro_level = v
+var pro_full := 0:   # its voxels as fitted: whole, it works as well as it can
+	set(v):
+		if v != pro_full:
+			_fn_ver += 1
+		pro_full = v
 var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
 var hang_t := 0.0
 var spots: Array = []           # fire and acid where they struck (fire.gd)
@@ -2375,14 +2411,35 @@ var integrity: float:
 		return float(alive_count) / maxf(1, fx.size())
 
 ## How well it still works, 0..1 (0 when severed).
-var frozen_until := 0.0   # seconds (physics clock, VoxelPart.clock()) until a sapphire's frost lets go of it
+var frozen_until := 0.0:   # seconds (physics clock, VoxelPart.clock()) until a sapphire's frost lets go of it
+	set(v):
+		if v != frozen_until:
+			_fn_ver += 1
+		frozen_until = v
 
 ## The physics' own clock, seconds: the same however fast the frames come (a frost timed on
 ## the wall clock thawed sooner or later with the machine's load).
 static func clock() -> float:
 	return Engine.get_physics_frames() / float(Engine.physics_ticks_per_second)
 
+## Asked hundreds of times a step (every measure of what a man can still do reads it: Fighter.leg_func, arm_func, wound, a bot's wariness), and the
+## same from one blow to the next: the answer is kept until one of the things it reads is written (each says so, _fn_ver; the count of its voxels is
+## looked at here), and not at all while a frost on it thaws by the clock. tests/test_body.gd holds it to the working out below.
+var _fn_ver := 0
+var _fn_at := -1
+var _fn_n := -1
+var _fn_val := 0.0
 func function() -> float:
+	if _fn_at == _fn_ver and _fn_n == fx.size():
+		return _fn_val
+	var fn := _function_now()
+	if not (frozen_until > 0.0 and clock() < frozen_until):
+		_fn_val = fn   # (the answer before what it is kept under: one who reads between the two works it out for himself)
+		_fn_n = fx.size()
+		_fn_at = _fn_ver
+	return fn
+
+func _function_now() -> float:
 	if severed:
 		return 0.0
 	if hanging:

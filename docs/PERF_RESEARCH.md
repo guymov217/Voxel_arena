@@ -735,9 +735,16 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
 - A blade's arm: the core's own work 44 us (the mark 14, the swing read and the elbow's set 10, `arm_blade` 7, `weapon_aim` 5, the elbow 5, the keeping 3), the script round it about 80 (the scalars handed over 14, `_free_wedged` 8,
   `arm_func` 4, the trunk's sculpt and the arm's record 6, `_beast_has_me` 2, and sixty statements of a microsecond). A shield's or an empty hand's: 20 in the core, about 22 round it. What is left of the arms is the
   script's side of the call, not the call.
-- Of the 10 us the elbow's set costs, most is the hinge's two limits written to the physics every step a swing is held, the same two numbers as the step before. Whether writing them only when they change leaves the
-  fight the same is not known yet (the physics may make the hinge anew at every write).
+- Of the 10 us the elbow's set costs, most is the hinge's two limits written to the physics every step a swing is held: 69% of those writes are the two numbers that stood. Written only when they change, the fights
+  come out otherwise from their first second (the physics makes the hinge anew at every write, and a hinge left alone keeps what it had worked out): it is not the same game, for under 1% of a step. Left as it is.
 - The rest of the step (the endless fight of sixteen, the scripts' 15 ms of a slow sitting's 19): `control` 55%, the combat 20% (`process_contacts` 1.15 ms, `report` 1.3 ms for 71 bodies a step, `record_velocities` 0.2),
   the bots 7% (87 us a bot), the Match's own lines 7% (a round's check, the snapshot every third step, materials, items, throwables: none over 1%).
+- **How well a part works, kept** (`VoxelPart.function`): 372 calls a step in that fight (a leg's `leg_func` 135 times, eight a man: `control` three times over, his bot's `wound`, `can_stand`; an arm's 38), each working
+  the same answer out of the part's health, voxels, break and prosthetic. Kept now until one of those is written (each write says so through a setter; a frost thawing by the clock is asked afresh), and
+  `tests/test_body.gd` holds the kept answer to the working out through every kind of write. `Combat.report` asks of a body whether anybody may ask who touched it, and whether it may land a blow, only at a touch that
+  gets as far as needing to know (most have the sand under them and their own man's parts beside them). To the bit, both: the same fingerprints.
+- **Measured by instructions**, since the machine's clock is too unsteady today for a few per cent (five runs each way of the same tree differ by a tenth): the fight is the same fight step for step, so
+  `valgrind --tool=cachegrind --cache-sim=no` counts the same instructions whatever else the machine does; a second of the fight, less the first, is what a change is read against.
+  The part's function kept and the report's two askings put off: 19.49 -> 18.47 million instructions a step of that fight, all of the step counted, the engine's own part too: -5.2%.
 - **The frame's side**: a man's drawing is 263 us a frame (the brawl of eight in armour: 2.1 ms a frame, sixteen men 4.2): `_clip_shoulder_guards` 68, `_seat_drawing` 41, `_draw_joint_caps` 29, `_limbs_in_armor` 21,
   `_bend_drawing` 21, his parts' `_process` 24, the swing's trails 21. The shoulder guards are worked out again every frame an arm has moved on the trunk, which in a fight is every frame.

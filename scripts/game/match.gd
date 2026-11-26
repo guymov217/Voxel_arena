@@ -1430,6 +1430,8 @@ func _run_jobs(dt: float) -> void:
 		(_jobs[0][0] as Fighter).control(dt, _jobs[0][1])
 	else:
 		pool_space = (_jobs[0][0] as Node3D).get_world_3d().direct_space_state
+		if combat:
+			combat.beasts()   # (the one list every man's control reads, picked out here before the threads start: Combat.beasts)
 		var id := WorkerThreadPool.add_group_task(_job, _jobs.size(), -1, true)
 		WorkerThreadPool.wait_for_group_task_completion(id)
 		pool_space = null

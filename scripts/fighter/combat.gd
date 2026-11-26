@@ -21,16 +21,19 @@ var fighters: Array = []      # Fighter and Beast nodes in the match
 ## The beasts among them, picked out once a step (and again whenever the list's length changes): each man asks every step whether a beast has hold of
 ## him (Fighter._beast_has_me_now), and looked through the whole list for the beasts to ask: sixteen men, sixteen times sixteen, in a fight with no
 ## beast in it at all. Which of them is alive and what it holds is still asked of each at the moment, as before.
+## (One list for every man: where the men's controls run on worker threads (Match._run_jobs, an experiment) it is picked out on the main thread before
+## they start, and they only read it. Picked out by the first of them to ask, several at once made and let go of the list under one another.)
 var _beasts: Array = []
 var _beasts_key := -1
 func beasts() -> Array:
 	var key := Engine.get_physics_frames() * 4096 + fighters.size()
 	if key != _beasts_key:
-		_beasts_key = key
-		_beasts = []
+		var found := []
 		for o in fighters:
 			if is_instance_valid(o) and o.get("kind") == "beast":
-				_beasts.append(o)
+				found.append(o)
+		_beasts = found
+		_beasts_key = key
 	return _beasts
 var loose_weapons: Array = [] # weapons nobody holds (thrown, dropped)
 var pending: Array = []
@@ -156,8 +159,10 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 		return
 	var bid := body.get_instance_id()
 	var holder = body.holder if bw else null
-	var b_asked: bool = bp and bf != null and _asked(body)
-	var b_strikes: bool = bp and _may_strike(body)
+	# (Whether anybody may ask who touched this part, and whether it may land a blow: asked of it only by a touch that gets as far as needing to know,
+	# -1 until then. Most bodies with a contact have the sand under them and their own man's parts beside them, every step.)
+	var b_asked := -1
+	var b_strikes := -1
 	for i in state.get_contact_count():
 		var other = state.get_contact_collider_object(i)
 		if other == null:
@@ -193,8 +198,14 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 			if bf != null and other.fighter != null and not bf.alive and not other.fighter.alive and not body.severed and not other.severed:
 				continue
 			# (Noted only where somebody may ask (_asked), kept only where one of the two may land a blow (_may_strike): the rest, which is most of a melee, is let go here.)
-			var noted: bool = b_asked or (other.fighter != null and _asked(other))
-			var kept: bool = bid <= other.get_instance_id() and (b_strikes or _may_strike(other))
+			if b_asked < 0:
+				b_asked = 1 if bf != null and _asked(body) else 0
+			var noted: bool = b_asked == 1 or (other.fighter != null and _asked(other))
+			var kept := false
+			if bid <= other.get_instance_id():
+				if b_strikes < 0:
+					b_strikes = 1 if _may_strike(body) else 0
+				kept = b_strikes == 1 or _may_strike(other)
 			if not (noted or kept):
 				continue
 			var cj := state.get_contact_impulse(i).length()
