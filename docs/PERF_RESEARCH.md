@@ -642,3 +642,18 @@ it at once. That is the game's pace in a full room, so it is the owner's to choo
 begins to where its picture is handed over, the engine's `frame_post_draw`; the sleep of a frame cap comes after that and is not in it, so a game held to 30 or 60 frames by a cap is not read as a slow one), over 120 steps,
 never more than the old 7.6 ms. A frame's rest of 9.2 ms leaves a step 4.9 ms, of 6 ms 6.1; a game with no screen reads no frame and keeps the old budget (the tests are not touched). There are always the two foes of
 `GATE_MIN_FOES` on the sand; the rest of a wave come in as the others fall. The report's room samples say the rest and the budget beside the step (`a frame's rest ... (the gate lets a step cost ...)`).
+
+## 20. The arm's drive in C++ (#312b, the owner's word given): the plan
+
+What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` (177 us a call here in a late fight, two calls a man), about 60 us of it already in native calls that are paid their arguments one by one
+(`clear_body`, `keep_arm_out`, `keep_hand_front`, `hand_off`, `elbow_off`, `keep_elbow_low`), and the rest two hundred statements of half a microsecond to a microsecond and a half and thirty-odd script functions
+(`weapon_aim` 172 lines, `_drive_forearm` 52, `_free_wedged` 44, `hand_target_local` 40, `_elbow_clear` 33, `_lock_elbow` 29, `_drive_wrist` 28...: about 1300 lines under it).
+
+- **A fast path, the script the fallback.** One native call drives the plain arm whole: a man on his feet, the arm whole and unbroken, a blade or a shield or nothing in the hand, in one hand, no punch on its way, no throw, no
+  bow, no reach, no thrust line, no crawl. Any other step of any arm is the script's `_drive_arm` as it is. The native path must leave every field the script would have left (the ones it sets to nothing as well).
+- **The state is handed over once.** The per-side dictionaries are reference types: an array of them, made once for a fighter and kept, is one argument; the native reads and writes `d[side]` through it. The scalars of the step
+  go in one packed array. What the bodies say (transforms, velocities) is read once a body: within a step a node's own velocity and place do not change with the pushes given (they are the step's first state).
+- **To the bit, proved twice.** Each section is first run dry beside the script (it works its values out and gives nothing a push; the script, marked in a scratch copy, gives the same values at the same places, and the
+  two are compared bit for bit over real fights), then switched on and proved by `tools/replay_check.sh`'s fingerprints. The types are section 4's: scalars double, vectors float, a vector times a scalar taking the scalar as a float, the engine's own normalize.
+- **In this order**: the shield's and the empty hand's arm (the shorter drive: the mark, the elbow, four PD drives, the hand's pull), then the blade's (`weapon_aim` and the forearm, elbow and wrist drives under it), then two hands on a haft.
+  Expected when both of a man's arms are on it: about 230 us of his 780, a fifth of a step.
