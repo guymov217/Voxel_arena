@@ -3,6 +3,8 @@ extends Node
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
+	if args.has("--control-half"):
+		Match.control_half = true   # (experimental, off by default: a man's control every other step, scripts/game/match.gd)
 	if args.has("--control-threads"):
 		Match.control_threads = true   # (experimental, off by default: the men's controls on the worker threads, scripts/game/match.gd; before the tests and probes, which can be run with it)
 	if args.has("--test"):

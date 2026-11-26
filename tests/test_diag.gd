@@ -95,14 +95,14 @@ func test_the_plan_of_every_part() -> void:
 	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "d3d12", "all": true})
 	var ids := _ids(p)
 	t.check(ids[0] == "facts" and ids.size() == (ids as Array).size() and ids.count("facts") == 1, "the facts come first")
-	for id in ["cores", "steps_fast", "fight_fast", "readback", "release_room", "steps_auto", "steps_window", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "room_eight"]:
+	for id in ["cores", "steps_fast", "fight_fast", "readback", "release_room", "steps_auto", "steps_window", "steps_t1", "steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "release_export", "release_steps", "fight_base", "release_fight", "fight_cold", "fight_render_thread", "fight_vulkan", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority", "render_steady", "wreck", "room_eight", "steps_threads", "fight_threads", "room_threads", "steps_half", "fight_half", "room_half"]:
 		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
 	t.check(not ids.has("fight_d3d12"), "the other renderer is the one that is not in use")
 	t.check(ids.find("steps_auto") < ids.find("release_export") and ids.find("release_export") < ids.find("release_steps") and ids.find("release_steps") < ids.find("fight_base") and ids.find("fight_base") < ids.find("room_eight"), "in the order: the step, the release build, the frame, the room")
 	var seen := {}
 	var ok := true
 	for st in p:
-		if seen.has(st.id) or not ["facts", "steps", "fight", "render", "room", "export", "cores", "readback"].has(String(st.part)) or float(st.get("est", 0)) <= 0.0 or float(st.get("timeout", 0)) <= 0.0:
+		if seen.has(st.id) or not ["facts", "steps", "fight", "render", "room", "export", "cores", "readback", "wreck"].has(String(st.part)) or float(st.get("est", 0)) <= 0.0 or float(st.get("timeout", 0)) <= 0.0:
 			ok = false
 		seen[st.id] = true
 		if bool(st.get("release", false)) and (st.has("settings") or not (st.get("engine", []) as Array).has("--headless") and String(st.part) == "steps"):
@@ -118,32 +118,47 @@ func test_the_plan_of_every_part() -> void:
 	t.check(int(burn.burners) == 7 and not burn.has("settings") and String(burn.part) == "steps", "seven games are busy beside the step, with the engine's own thread pick")
 	var snd: Dictionary = p[ids.find("fight_sound")]
 	t.check(int(DiagStats.cfg_i(snd.cfg, "sound", 0)) == 1 and int(DiagStats.cfg_i(p[ids.find("fight_base")].cfg, "sound", 0)) == 0, "the sound is on in one fight and off in the rest")
-
-## The whole test as it is run by default: what only the player's own computer can say (its cores, the system's choice of them, its card, the game's room in both builds), without
-## the parts the first report has answered.
-func test_the_plan_of_a_whole_run() -> void:
-	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "vulkan"})
-	var ids := _ids(p)
-	for id in ["facts", "cores", "steps_auto", "steps_window", "steps_fast", "steps_threads", "fight_threads", "steps_t1", "release_export", "release_steps", "fight_base", "release_fight", "fight_fast", "fight_render_thread", "readback", "render_steady", "room_eight", "release_room", "room_threads"]:
-		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
-	for id in ["steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "fight_cold", "fight_d3d12", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority"]:
-		t.check(not ids.has(id), "what the first report answered is left to --all: %s" % id)
+	# What the second report answered (the cores, the fast ones, the threads) is here too.
 	t.check(ids.find("cores") == 1 and ids.find("cores") < ids.find("steps_fast") and ids.find("steps_fast") < ids.find("fight_fast"), "the cores are told apart before the parts held to the fast ones")
 	var fast: Dictionary = p[ids.find("steps_fast")]
 	var ffast: Dictionary = p[ids.find("fight_fast")]
 	t.check(String(fast.affinity) == "fast" and (fast.engine as Array).has("--headless") and String(ffast.affinity) == "fast" and bool(ffast.window), "held to the fast cores: the step with no window, and the fight")
 	var rr: Dictionary = p[ids.find("release_room")]
-	var r1: Dictionary = p[ids.find("room_eight")]
-	t.check(bool(rr.release) and (rr.user as Array).has("--host") and (rr.user as Array).has("--playtest") and (rr.user as Array)[-1] != (r1.user as Array)[-1] and not rr.has("settings"), "the room again in the release build, on a port of its own")
-	var rs: Dictionary = p[ids.find("render_steady")]
-	t.check(String(rs.cfg.variants).contains("the HUD not drawn") and not String(rs.cfg.variants).contains("quality low"), "the picture's settings that moved the frame, not the ones that did not")
+	t.check(bool(rr.release) and (rr.user as Array)[-1] != (room.user as Array)[-1] and not rr.has("settings"), "the room again in the release build, on a port of its own")
+	var rt: Dictionary = p[ids.find("room_threads")]
+	t.check((rt.user as Array).has("--control-threads") and not (room.user as Array).has("--control-threads") and not rt.has("release"), "the room once more with the experiment on, in the same build as the first")
+	t.check(((p[1] as Dictionary).engine as Array).has("--headless") and not (p[1] as Dictionary).has("window"), "the cores are measured by a game with no window (one held to a single processor would share it with its own drawing)")
+	# The experiment (a man's control every other step): the step, the fight and the room with it, each beside the same without.
+	var sh: Dictionary = p[ids.find("steps_half")]
+	var fh: Dictionary = p[ids.find("fight_half")]
+	var rh: Dictionary = p[ids.find("room_half")]
+	t.check(String(sh.cfg.mixes).contains("men:8,foe:8#half") and int(DiagStats.cfg_i(fh.cfg, "half", 0)) == 1 and not fh.has("release") and int(DiagStats.cfg_i(p[ids.find("fight_base")].cfg, "half", 0)) == 0,
+		"the step and the fight with the experiment on (the fight in the same build as the base it is read against)")
+	t.check(bool(rh.release) and (rh.user as Array).has("--control-half") and not (rr.user as Array).has("--control-half") and (rh.user as Array)[-2] != (rr.user as Array)[-1], "and the room, in the release build as the room without it, on a port of its own")
+
+## The whole test as it is run by default: what only the player's own computer can say now (the step and the fight in both builds, the room in the release build, and what the drawing of
+## a fight's leavings costs on its card), without the parts the first two reports have answered.
+func test_the_plan_of_a_whole_run() -> void:
+	var p := Diag.plan({"windowed": true, "editor": true, "os": "Windows", "driver": "vulkan"})
+	var ids := _ids(p)
+	for id in ["facts", "steps_auto", "release_export", "release_steps", "fight_base", "release_fight", "wreck", "release_room"]:
+		t.check(ids.has(id), "the plan has %s (%s)" % [id, ", ".join(PackedStringArray(ids))])
+	for id in ["cores", "steps_window", "steps_fast", "steps_threads", "steps_t1", "fight_fast", "fight_threads", "fight_render_thread", "readback", "render_steady", "room_eight", "room_threads", "steps_half", "fight_half", "room_half",
+			"steps_t2", "steps_t4", "steps_t8", "steps_burners", "fight_sound", "fight_cold", "fight_d3d12", "fight_no_interpolation", "fight_fullscreen", "fight_high_priority"]:
+		t.check(not ids.has(id), "what the reports answered is left to --all: %s" % id)
+	var wr: Dictionary = p[ids.find("wreck")]
+	t.check(String(wr.part) == "wreck" and bool(wr.release) and bool(wr.window) and (wr.engine as Array).has("--disable-vsync") and DiagStats.cfg_f(wr.cfg, "play", 0.0) == 45.0,
+		"the fight's leavings are drawn in the release build, not held to the screen's rate, after 45 s of the fight")
+	var rr: Dictionary = p[ids.find("release_room")]
+	t.check(bool(rr.release) and (rr.user as Array).has("--host") and (rr.user as Array).has("--playtest") and not rr.has("settings"), "the room in the release build: what a player's game does with eight in it")
 	var secs := 0.0
 	for st in p:
 		secs += float(st.est)
-	t.check(secs < 30.0 * 60.0, "half an hour at most (%d s)" % int(secs))
-	var rt: Dictionary = p[ids.find("room_threads")]
-	t.check((rt.user as Array).has("--control-threads") and not (r1.user as Array).has("--control-threads") and not rt.has("release"), "the room once more with the experiment on, in the same build as the first")
-	t.check(((p[1] as Dictionary).engine as Array).has("--headless") and not (p[1] as Dictionary).has("window"), "the cores are measured by a game with no window (one held to a single processor would share it with its own drawing)")
+	t.check(secs < 15.0 * 60.0, "a quarter of an hour at most (%d s)" % int(secs))
+	# An exported game has no release build to make: its own room and its own leavings.
+	var ex := Diag.plan({"windowed": true, "editor": false, "os": "Windows", "driver": "vulkan"})
+	var exi := _ids(ex)
+	t.check(exi.has("room_eight") and exi.has("wreck") and not exi.has("release_room") and not (ex[exi.find("wreck")] as Dictionary).has("release"), "an exported game plays the room and stops the fight as itself")
 
 func test_the_cores_are_told_apart_by_their_speed() -> void:
 	# (Six fast cores of two threads each and eight slow ones: Intel's 14600.)
@@ -177,7 +192,7 @@ func test_the_plan_of_other_runs() -> void:
 	t.check(skip.has("steps_auto") and not skip.has("fight_base") and not skip.has("fight_cold") and not skip.has("room_eight") and skip.has("render_steady") and skip.has("release_fight"), "--skip: a family goes with all its parts, the rest stay (release_fight is of the release family)")
 	var nowin := Diag.plan({"windowed": false, "editor": true, "os": "Linux", "driver": ""})
 	var windows_needed := nowin.filter(func(s): return bool(s.get("window", false))).size()
-	t.check(windows_needed >= 5 and not _ids(nowin).has("fight_vulkan"), "with no window the parts that need one stay in the plan (to be told as not run) but the renderer is not known")
+	t.check(windows_needed >= 4 and not _ids(nowin).has("fight_vulkan"), "with no window the parts that need one stay in the plan (to be told as not run) but the renderer is not known")
 	t.check(Diag._named("fight_cold", PackedStringArray(["fight"])) and Diag._named("steps_auto", PackedStringArray(["steps_auto"])) and not Diag._named("steps_auto", PackedStringArray(["step"])), "names")
 
 func test_the_release_template_is_looked_for_where_godot_keeps_it() -> void:
@@ -283,8 +298,15 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 		"cores": [{"kind": "cores", "ms": [5.0, 5.1, 5.0, 5.2, 8.6, 8.7, 8.6, 8.8], "free_ms": 8.7, "ref_ms": 8.25, "window": false}],
 		"steps_fast": [step.call("men:8,foe:3", "", 6.1)],
 		"steps_threads": [step.call("men:8", "thr", 3.3), step.call("men:8,foe:3", "thr", 4.7)],
+		"steps_half": [step.call("men:8", "half", 4.62), step.call("men:8,foe:3", "half", 6.58)],
+		"room_half": [{"kind": "frames", "label": "room, endless, 0-30 s", "speed": 0.97, "fps": 44.0, "step_ms": 5.6}],
 		"readback": [{"kind": "readback", "instances": 1200, "of": 16, "get_first": {"median": 3.21, "worst": 9.5}, "get_next": {"median": 0.004, "worst": 0.01}, "set_first": {"median": 2.9, "worst": 8.0}, "set_next": {"median": 0.003, "worst": 0.01},
-			"buffer_first": {"median": 3.0, "worst": 7.0}, "buffer_next": {"median": 2.9, "worst": 6.0}}]}
+			"buffer_first": {"median": 3.0, "worst": 7.0}, "buffer_next": {"median": 2.9, "worst": 6.0}}],
+		"wreck": [{"kind": "wreck", "pieces": 120, "piece_items": 200, "dead": 8, "dead_items": 400, "living": 6, "living_items": 300, "weapons_loose": 14, "marks": 180, "emitters": 60},
+			{"kind": "frames", "label": "stopped where it is", "ms": {"mean": 9.0, "max": 12.0}, "gpu": 8.0, "calls": 3300},
+			{"kind": "frames", "label": "the pieces not drawn", "ms": {"mean": 6.5, "max": 9.0}, "gpu": 5.0, "calls": 2100, "took_away": 200},
+			{"kind": "frames", "label": "no sun shadows", "ms": {"mean": 7.0, "max": 9.0}, "gpu": 6.0, "calls": 1500, "took_away": 0},
+			{"kind": "frames", "label": "stopped where it is, again", "ms": {"mean": 9.1, "max": 12.0}, "gpu": 8.0, "calls": 3300}]}
 	var lines := Diag.summary(res, {"cpu": "Fast CPU", "threads": 20, "ram_mb": 32000, "os": "Windows", "os_version": "10", "godot": "4.7.2", "editor_binary": true, "native_core": true, "adapter": "A card", "driver": "d3d12"}, PackedStringArray(["something went wrong"]))
 	var all := "\n".join(PackedStringArray(lines))
 	t.check(all.contains("Fast CPU") and all.contains("A card (d3d12)") and all.contains("the editor's binary"), "the computer: %s" % all)
@@ -302,7 +324,12 @@ func test_the_summary_says_what_each_way_is_worth() -> void:
 	t.check(all.contains("FAST CORES     men:8,foe:3 6.10 ms with no window held to the fast cores, 9.40 ms where the system puts a game with no window (-35%)"), "the step held to the fast cores")
 	t.check(all.contains("CONTROL THREADS") and all.contains("men:8 3.30 ms against 6.60 (-50%)") and all.contains("men:8,foe:3 4.70 ms against 9.40 (-50%)"), "the experiment: the controls on the worker threads against the game as it is")
 	t.check(all.contains("ROOM, RELEASE  game speed and frames in each half minute: 81% 31 fps (a step 8.1)") and all.contains("THE ROOM       game speed and frames in each half minute: 62% 24 fps (a step 10.2)"), "the room in both builds")
+	t.check(all.contains("CONTROL AT 60") and all.contains("men:8 4.62 ms against 6.60 (-30%)") and all.contains("men:8,foe:3 6.58 ms against 9.40 (-30%)") and all.contains("ROOM, AT 60    game speed and frames in each half minute: 97% 44 fps (a step 5.6)"),
+		"the other experiment: a man's control every other step, in the step and in the room (%s)" % all)
 	t.check(all.contains("READ-BACK") and all.contains("the first time: 3.21 ms (the worst 9.50)") and all.contains("the time after: 0.004 ms"), "what a read-back costs on the card")
+	t.check(all.contains("WRECK          a fight stopped where it is at 45 s: 9.0 ms a frame (card 8.0, 3300 draws); against it: the pieces not drawn -2.5 (200 things); no sun shadows -2.0") and not all.contains("stopped where it is, again -"),
+		"what the drawing of a fight's leavings costs, kind by kind (%s)" % all)
+	t.check(DiagStats.result_text((res.wreck as Array)[0]).contains("120 pieces (200 drawn things), 8 dead (400), 6 living (300), 14 weapons lying, 180 marks, 60 emitters"), "and what lay on the sand, counted")
 	var one := Diag.summary({"cores": [{"kind": "cores", "ms": [8.0, 8.2, 8.1, 8.4], "free_ms": 8.1, "ref_ms": 8.25, "window": true}]}, {}, PackedStringArray())
 	t.check("\n".join(PackedStringArray(one)).contains("the 4 logical processors are of one speed (an eighth of that work in 8.0 to 8.4 ms") and "\n".join(PackedStringArray(one)).contains("a game with a window 8.1 ms"), "cores of one speed are said to be (%s)" % str(one))
 	t.check(DiagStats.result_text({"kind": "cores", "ms": [5.0, 8.6], "free_ms": 5.1, "ref_ms": 8.25, "window": true}).contains("5.0") and DiagStats.result_text((res.readback as Array)[0]).contains("reading one instance's colour") and DiagStats.result_text({"kind": "sample", "core_ms": 5.25}).contains("its core 5.2 ms") or DiagStats.result_text({"kind": "sample", "core_ms": 5.25}).contains("its core 5.3 ms"), "the new results are told in the report's own words")

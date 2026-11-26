@@ -1367,6 +1367,23 @@ func _spawn_training() -> void:
 ## with threads no two runs are alike: a fair fight still, not a repeatable one. And what a control may not do from a thread (add a node, as picking a weapon up does; emit to the
 ## game's own listeners; fill a shared table for the first time) is kept off the threads by _threadable's list of the plain cases, which is a list made by hand and not yet a proof.
 static var control_threads := false
+## Another experiment, off in the game (`-- --control-half`; docs/PERF_RESEARCH.md, section 19): a man's control every other step, the step it runs standing for two (its `dt` doubled: the same
+## pushes in a second, given half as often), half of the men on the even steps and half on the odd so that a step costs the same as the next. The bodies, their contacts and a blow's harm are
+## stepped as ever, 120 times a second; what is thinned is how often a man's muscles are told what to do. A third off a step with sixteen fighting. It is not the same fight to the bit (the
+## fingerprints differ from the first step), so it is not on without the owner's word.
+static var control_half := false
+
+## The orders of the step a man's control left out, with this step's: an order given for one step only (a jab, a kick, a throw let go) is not lost with the step it fell in.
+static func merge_skipped(inp: Dictionary, skipped) -> Dictionary:
+	if not (skipped is Dictionary):
+		return inp
+	var out := inp
+	for k in skipped:
+		if skipped[k] is bool and skipped[k] and not (inp.get(k) is bool and inp[k]) and (inp.get(k) == null or inp[k] is bool):
+			if is_same(out, inp):
+				out = inp.duplicate()
+			out[k] = true
+	return out
 var _jobs := []          # [fighter, input] of this step, for the threads
 var _job_dt := 0.0
 static var pool_space: PhysicsDirectSpaceState3D = null   # (the space's state cannot be asked for from a thread: it is handed over)
@@ -1552,13 +1569,22 @@ func _physics_process(dt: float) -> void:
 			var player_like: bool = e.kind != "npc" and (kind_ == "local" or kind_ == "remote" or kind_ == "drive")
 			if player_like and _human_idle(e, f, inp, dt):
 				continue
+			var cdt := dt
+			if control_half:
+				if ((Engine.get_physics_frames() + int(e.id)) & 1) == 1:
+					e["inp_skipped"] = merge_skipped(inp, e.get("inp_skipped"))
+					continue
+				cdt = dt * 2.0
+				if e.has("inp_skipped"):
+					inp = merge_skipped(inp, e.inp_skipped)
+					e.erase("inp_skipped")
 			e.input = inp
-			inp = social.before(e, inp, dt)
+			inp = social.before(e, inp, cdt)
 			f.arm_lod_ok = player_like and mode == "yard" and role != "guest"   # (the yard's men's arms at rest are seen to every other step: Fighter.arm_lod_ok)
-			if control_threads and _threadable(f, inp):
+			if control_threads and not control_half and _threadable(f, inp):
 				_jobs.append([f, inp])
 			else:
-				f.control(dt, inp)
+				f.control(cdt, inp)
 	if not _jobs.is_empty():
 		_run_jobs(dt)
 	social.after(dt)

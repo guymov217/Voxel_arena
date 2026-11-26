@@ -394,6 +394,8 @@ only large cut that keeps every fight) or the load governor (#304).
 **Version 2** (after the first report, section 15): the parts that report answered (the threads' number, seven games beside it, the sound, the caches, the other renderer, interpolation, full screen, priority, most of the
 picture's settings) are run only with `--all`; in their place the test asks what only the player's own computer can say: `cores`, `steps_fast`, `fight_fast`, `readback`, `release_room`, and the core's speed in every sample. About 27 minutes.
 
+**Version 3** (after the second report, section 18): the cores, the fast ones, the threads, the read-back, the render thread, the yard's picture and the room in the editor's build go to `--all` as answered; the test keeps the step and the fight in both builds and the room in the release build (to be read against the second report's, the dead now resting), and adds `wreck`. About 13 minutes. (The parts of the experiment of section 19 are run with `--all`.)
+
 `tools\diagnose.bat` (`sh tools/diagnose.sh`; `scripts/diag/`: `Diag` the test, `DiagPhase` a part, `DiagFrames` the reading of a stretch of frames, `DiagStats` the arithmetic; `tests/test_diag.gd`) is the reading of a real
 machine that sections 6 and 11 ask for, as one run and one file (`diagnose_report.txt`). Each part is a game of its own (`-- --diag-phase NAME`): the engine's thread count, its renderer, its caches and
 its physics interpolation are settings read at its start, so the test writes an `override.cfg` (marked as its own, the player's put aside and back) or engine flags for each. A part writes a line a result
@@ -415,6 +417,8 @@ in a file; the test reads them back, copes with a part that crashes or does not 
 | `steps_fast`, `fight_fast` (version 2) | the step with no window, and the fight, held to the fast cores (skipped where the cores are of one speed) | the windowless figures as they would be on the cores the game really gets; and whether holding the game to the fast cores (the engine's worker threads with it) is worth doing for the player |
 | `readback` (version 2) | 48 MultiMeshes of 1200 instances given as one buffer and drawn; then one instance's colour read, one written, the whole buffer read, the first time and again, a frame between each | what `get_instance_color`/`custom_data` and `buffer` cost on a real card (the engine fetches the buffer back and waits for the card): the game asks at every chip off a part (section 15, the render thread) |
 | `release_room` (version 2) | `room_eight` again from the release build's pack (the friends are the same exe) | the room as a player's game runs it: the first report had it in the editor's debug build only |
+| `wreck` (version 3) | the endless fight of eight played for 45 s of the game in a window with vsync off, then the match stopped where it is (nothing steps, nothing moves) and each kind of thing taken out of the picture in turn: the pieces, their shadows, the dead, their shadows, the living, the weapons lying, the marks, the blood, the sun's shadows, the anti-aliasing, the HUD, all 3D; and what lay there, counted | what the drawing of a fight's leavings costs on this card, kind by kind: `WRECK` in the summary. The room's drawing and waiting grew from 5.7 to 9.6 ms as a wave went on (section 18) and this machine has no card to say of what |
+| `steps_half`, `fight_half`, `room_half` (version 3, with `--all`) | the fights of `steps_auto`, the fight of `fight_base` and the room of `release_room` with `Match.control_half` on (section 19) | what a man's control every other step is worth on this processor: `CONTROL AT 60`, `half` in `FIGHT A/B`, `ROOM, AT 60` |
 | `steps_threads`, `fight_threads` (version 2) | the fights of `steps_auto` and the fight of `fight_base` with `Match.control_threads` on (section 17) | what the men's controls cost on this processor's many cores: `CONTROL THREADS` in the summary, `threads` in `FIGHT A/B`, and the errors of their logs, which say whether the hand-made list of plain cases holds |
 
 **What a reading sends us to do.** (The ways are those of sections 4 to 6; the report gives the figure that decides each.)
@@ -607,3 +611,29 @@ lying, 0.75 ms (`_process`, `_dry_blood`, `_physics_process`); 50-90 pieces 1.3 
 
 **The sum for the goal** (eight players and their foes at sixty frames): two steps and the frame's rest in 16.7 ms. Today, release, sixteen fighting: 2 x 8.4 + 9.2 = 26 ms. The arm drive native (section 10) brings a step to about
 6.5; the render thread, its reads gone, the rest to about 6; so 19 ms, 52 frames at the full speed, before anything of sections 4 and 17. The rate of the physics is the other half of it and is the owner's to choose.
+
+## 19. A man's control every other step (an experiment, off in the game), and what the gate does with a saving
+
+**The experiment** (`Match.control_half`, `-- --control-half`): a man's `control` is run every other step with its `dt` doubled (the same pushes in a second, given half as often), half of the men on the even steps and half
+on the odd; the bodies, their contacts and a blow's harm are stepped as ever. An order given for one step only is carried over the step left out (`Match.merge_skipped`).
+- **What it saves** (the endless fight of eight with no window, two runs side by side on this machine): a step 15.2 -> 11.1 ms with fifteen or sixteen fighting (-27%), 7.7 -> 5.0 ms with eight men standing after the wave
+  (-33%). The wave was beaten in the same time by the same men (ten alive at 20 s, eight at 30 s, in both).
+- **What it breaks**: the whole test suite run with it on, 144 checks of 1205 fail in 24 suites. A weapon is not picked up off the sand (`test_pickup`, 6), a jump leaves the ground by a centimetre (`test_fight`), a guard's point
+  wanders 2 to 6 mm about its mark and two hands' blade lies 33 degrees off the mouse at the far marks (`test_arms`, 8), a light blade held low out to a side 16 to 19 degrees off (`test_aim`), a thrust 14 degrees off the
+  crosshair (`test_controls`, `test_thrust`), the yard's rest (`test_yard_rest`, 12). The drives are tuned to a push a step; some of what they do is counted in steps, not in seconds.
+- So it is not a switch to be thrown: it is off, its parts of the test are run only with `--all`. What could be made of it, each a piece of work of its own: the arms' drive every step and the rest of `control` every other
+  (the arm loop is half of `control`: about a fifth off a step; `control` has to be cut in two for it), or the foes' controls alone while the room is over its budget (half of the saving in a room of eight players, and foes
+  that strike less truly on a slow host).
+
+**What the gate does with a saving.** A foe is held at the gate until a step costs less than `GATE_BUDGET_MS`, 7.6 ms: 912 ms of every second for the steps and 88 for the frames. So whatever is saved in a step is spent
+on more foes on the sand at once, not on frames: the room sits at the edge of its slow motion by design, however fast the code. For f frames a second of r ms each beside the steps, a step may cost (1000 - f x r) / 120:
+
+| frames a second | the frame's rest | a step may cost | the owner's release build today |
+|---|---|---|---|
+| 30 | 9.2 ms | 6.0 ms | eight men fighting cost about 4.5: three foes with them |
+| 45 | 9.2 ms | 4.9 ms | one foe |
+| 60 | 9.2 ms | 3.7 ms | not eight men |
+| 60 | 6.0 ms (the render thread, section 18) | 5.3 ms | one or two foes |
+
+A gate that keeps the frames their share (a budget worked out from the frame's own rest and a frame rate to keep) holds more foes back on a slow host and lets them in as the others fall: the wave is the same, fewer of
+it at once. That is the game's pace in a full room, so it is the owner's to choose, with the frame rate to keep. With the arm drive native (section 10) a man costs a fifth less and every row gains a foe or two.

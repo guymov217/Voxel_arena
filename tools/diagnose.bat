@@ -3,13 +3,15 @@ rem WRECKSMITH: THE test. ONE double-click measures, on this computer, everythin
 rem diagnose_report.txt, in the game's folder. It runs by itself, part after part, each in a game of its own: what a physics step costs (with the thread settings one by one, the
 rem native core on and off), the same in a release build made from this project (what a player runs), a fight drawn for real (what each frame is made of; again with the shader
 rem caches off as on a first launch, with Godot's render thread, on the other renderer, with physics interpolation off, full screen, at high priority), the picture's settings changed
-rem one at a time, and the game's own room of eight with seven friend windows in the endless arena. About 25 minutes; a window shows the list and the time left.
+rem one at a time, and the game's own room of eight with seven friend windows in the endless arena. About 13 minutes; a window shows the list and the time left.
 rem   diagnose.bat                   the whole test
 rem   diagnose.bat --quick           the same, shortened (a few minutes), for a look first
 rem   diagnose.bat --size 1920x1080  the size of the windows the parts are drawn in (1280x720 by default, as the playtest)
 rem   diagnose.bat --skip room       leave a part out (steps, release, fight, render, room, or an id from the report)
-rem   diagnose.bat --all             every part there is, the ones the first report has answered too (threads, sound, caches, the other renderer, full screen, priority): 35 minutes
-rem The second version (after the first report) asks what only this computer can say: how fast each of the processor's cores is and which of them Windows gives the game
+rem   diagnose.bat --all             every part there is, the ones the reports have answered too (cores, threads, sound, caches, the other renderer, full screen, priority): 50 minutes
+rem The third version (after the second report) asks what is left to ask of this computer: the room in the release build again (the dead now rest), what the drawing of a fight's
+rem leavings costs on this card (a fight stopped where it is, each kind of thing taken out of the picture in turn).
+rem The second version (after the first report) asked what only this computer can say: how fast each of the processor's cores is and which of them Windows gives the game
 rem (a part held to the fast ones, by Windows' own affinity setting of that one game, gone when it closes), the room in the release build, what a read-back costs on this card, and an experiment: the fighters' controls spread over all the processor's cores.
 rem Close every other program first (browsers, recorders, other games) and leave the computer alone until the window says it is done.
 rem Godot 4.7 is found by itself (put Godot_v4.7.2-stable_win64.exe in the game's folder). For the release build Godot's export templates must be installed

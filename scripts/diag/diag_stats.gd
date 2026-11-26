@@ -238,6 +238,9 @@ static func result_text(d: Dictionary) -> String:
 				var f2: Dictionary = d.get(String(a[0]) + "_next", {})
 				out_r += "\n    %-30s %7.3f %7.3f %7.3f" % [String(a[1]), float(f1.get("median", 0.0)), float(f1.get("worst", 0.0)), float(f2.get("median", 0.0))]
 			return out_r
+		"wreck":
+			return "  on the sand: %d pieces (%d drawn things), %d dead (%d), %d living (%d), %d weapons lying, %d marks, %d emitters of blood and sparks" % [int(d.get("pieces", 0)), int(d.get("piece_items", 0)), int(d.get("dead", 0)),
+				int(d.get("dead_items", 0)), int(d.get("living", 0)), int(d.get("living_items", 0)), int(d.get("weapons_loose", 0)), int(d.get("marks", 0)), int(d.get("emitters", 0))]
 		"room":
 			return "  room: %s" % ", ".join(PackedStringArray((d.keys() as Array).filter(func(k): return k != "kind" and k != "t").map(func(k): return "%s %s" % [k, str(d[k])])))
 		"record":

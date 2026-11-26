@@ -58,6 +58,8 @@ func _ready() -> void:
 			await _cores()
 		"readback":
 			await _readback()
+		"wreck":
+			await _wreck()
 		_:
 			say({"kind": "error", "what": "no such part: '%s'" % kind})
 	say({"kind": "done"})
@@ -229,6 +231,7 @@ func _bout(token: String, default_secs: float) -> Dictionary:
 	var gd := flags.has("gd")
 	Greedy.use_native = not gd
 	Match.control_threads = flags.has("thr")   # (#thr: the men's controls on the worker threads, the experiment of scripts/game/match.gd)
+	Match.control_half = flags.has("half")     # (#half: a man's control every other step, the other experiment there)
 	seed(7)
 	var m := Match.new()
 	add_child(m)
@@ -470,6 +473,7 @@ func _fight() -> void:
 	if DiagStats.cfg_i(cfg, "cpu", 0) == 1:
 		say(_cpu_loop())   # (the core's speed in a game with a window: against the windowless parts')
 	Match.control_threads = DiagStats.cfg_i(cfg, "threads", 0) == 1
+	Match.control_half = DiagStats.cfg_i(cfg, "half", 0) == 1
 	rec = DiagFrames.new()
 	add_child(rec)
 	seed(7)
@@ -600,6 +604,130 @@ func _render() -> void:
 		_undo(name, c)
 		await _pause(0.5)
 	say(await rec.measure("as the player has it, again", secs))
+
+# ---------- what a fight leaves on the sand, drawn ----------
+
+const WRECK_VARIANTS := ["the pieces not drawn", "the pieces throw no shadow", "the dead not drawn", "the dead throw no shadow", "the living not drawn", "the weapons on the sand not drawn",
+	"the marks not drawn", "the blood not drawn", "no sun shadows", "no anti-aliasing", "the HUD not drawn", "3D not drawn"]
+
+## Every drawn thing under `n` that is shown (or throws a shadow) now: what a variant hides, and shows again after.
+static func _drawn_under(n: Node, shadows: bool) -> Array:
+	var out := []
+	if not is_instance_valid(n):
+		return out
+	var all: Array = n.find_children("*", "GeometryInstance3D", true, false)
+	if n is GeometryInstance3D:
+		all.append(n)
+	for g in all:
+		if shadows:
+			if (g as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				out.append([g, (g as GeometryInstance3D).cast_shadow])
+		elif (g as GeometryInstance3D).visible:
+			out.append([g, true])
+	return out
+
+func _wreck_list(name: String, c: Dictionary) -> Array:
+	var m: Match = c.m
+	var out := []
+	match name:
+		"the pieces not drawn", "the pieces throw no shadow":
+			for ch in Chunk.all:
+				out.append_array(_drawn_under(ch, name.ends_with("shadow")))
+		"the dead not drawn", "the dead throw no shadow", "the living not drawn":
+			for e in m.entities:
+				if is_instance_valid(e.f) and e.f.alive == (name == "the living not drawn"):
+					out.append_array(_drawn_under(e.f, name.ends_with("shadow")))
+		"the weapons on the sand not drawn":
+			for w in m.combat.loose_weapons:
+				if is_instance_valid(w) and w.holder == null:
+					out.append_array(_drawn_under(w, false))
+		"the marks not drawn":
+			for d in m.find_children("*", "Decal", true, false):
+				if (d as Decal).visible:
+					out.append([d, true])
+		"the blood not drawn":
+			for g in m.find_children("*", "GPUParticles3D", true, false):
+				if (g as GPUParticles3D).visible:
+					out.append([g, true])
+	return out
+
+## What lies on the sand, counted: the report reads each variant's saving against how many things it took away.
+func _wreck_census(m: Match) -> Dictionary:
+	var d := {"kind": "wreck", "pieces": 0, "piece_items": 0, "dead": 0, "dead_items": 0, "living": 0, "living_items": 0, "weapons_loose": 0, "marks": m.find_children("*", "Decal", true, false).size(),
+		"emitters": m.find_children("*", "GPUParticles3D", true, false).size()}
+	for ch in Chunk.all:
+		if is_instance_valid(ch):
+			d.pieces += 1
+			d.piece_items += _drawn_under(ch, false).size()
+	for e in m.entities:
+		if is_instance_valid(e.f):
+			var k := "living" if e.f.alive else "dead"
+			d[k] += 1
+			d[k + "_items"] += _drawn_under(e.f, false).size()
+	for w in m.combat.loose_weapons:
+		if is_instance_valid(w) and w.holder == null:
+			d.weapons_loose += 1
+	return d
+
+## The endless fight of eight played for `play` seconds of the game, then stopped where it is (nothing steps, nothing moves: what is left is the drawing of it), and each kind of thing on the
+## sand taken out of the picture in turn. The frames are not held to the screen's rate here (the launcher starts this part with vsync off): a frame is what the drawing costs.
+func _wreck() -> void:
+	if not windowed:
+		say({"kind": "skipped", "what": "needs a window"})
+		return
+	_quiet()
+	await _player_graphics()
+	Engine.max_fps = 0
+	rec = DiagFrames.new()
+	add_child(rec)
+	seed(7)
+	var lo := {"main": "gladius", "off": "scutum", "armor": ARMOUR}
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "endless", "role": "host", "headless": false, "autopilot": true, "seed": 7, "decrees": [], "hazards": [], "loadout": lo})
+	m.gate_cost_ms = 0.0
+	_party(m, lo)
+	var hud := Hud.new(m)
+	add_child(hud)
+	var play := DiagStats.cfg_f(cfg, "play", 45.0)
+	var secs := DiagStats.cfg_f(cfg, "secs", 3.0)
+	var from := Engine.get_physics_frames()
+	var t0 := Time.get_ticks_msec()
+	await _until(func(): return Engine.get_physics_frames() - from >= int(play * float(Engine.physics_ticks_per_second)), play * 3.0)
+	say(_sample(m, t0))
+	say(await rec.measure("the fight as it goes", secs))
+	say(_wreck_census(m))
+	# Stopped where it is: the match and all under it neither step nor draw themselves anew (its bodies leave the physics while it is so).
+	m.process_mode = Node.PROCESS_MODE_DISABLED
+	await _pause(1.0)
+	var c := {"m": m, "hud": hud, "env": m.arena.env, "sun": m.arena.sun, "quality": str(Save.get_value("settings", {}).get("quality", "high")),
+		"base": {"mode": get_viewport().scaling_3d_mode, "scale": get_viewport().scaling_3d_scale, "msaa": get_viewport().msaa_3d, "saa": get_viewport().screen_space_aa, "vsync": DisplayServer.window_get_vsync_mode(), "fps": Engine.max_fps}}
+	say(await rec.measure("stopped where it is", secs))
+	for name in DiagStats.plus_list(DiagStats.cfg_s(cfg, "variants", "+".join(WRECK_VARIANTS))):
+		var list := _wreck_list(name, c)
+		var shadow: bool = String(name).ends_with("shadow")
+		if RENDER_VARIANTS.has(name):
+			_apply(name, c)
+		for it in list:
+			if shadow:
+				(it[0] as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			else:
+				it[0].visible = false
+		await _pause(0.6)
+		var w: Dictionary = await rec.measure(name, secs)
+		w["took_away"] = list.size()
+		say(w)
+		if RENDER_VARIANTS.has(name):
+			_undo(name, c)
+		for it in list:
+			if not is_instance_valid(it[0]):
+				continue
+			if shadow:
+				(it[0] as GeometryInstance3D).cast_shadow = it[1]
+			else:
+				it[0].visible = true
+		await _pause(0.3)
+	say(await rec.measure("stopped where it is, again", secs))
 
 # ---------- the room ----------
 
