@@ -408,6 +408,7 @@ var space: PhysicsDirectSpaceState3D
 static var _listed := {}   # skin|colours|gore -> {part name -> {d, voxels, packed}}: build
 const LISTED_MAX := 24
 func build(spawn: Vector3, yaw_: float, loadout: Dictionary, opts := {}) -> void:
+	Greedy.core()   # (the C++ core looked for before his first step: his drives read it where it is kept, Greedy.nc)
 	display_name = opts.get("name", display_name)
 	slot = int(opts.get("slot", 0))
 	team = int(opts.get("team", slot))
@@ -3232,7 +3233,7 @@ func is_beaten() -> bool:
 func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta: float, max_t: float, dt: float, scale := 1.0, w_des := Vector3.ZERO) -> void:
 	if part.severed or wn <= 0.0 or max_t <= 0.0:
 		return
-	var nc := Greedy.core()
+	var nc := Greedy.nc
 	if nc:
 		nc.pd_axis(part, local_axis, des, wn, zeta, max_t, dt, scale, w_des)
 		return
@@ -3252,7 +3253,7 @@ func pd_axis(part: VoxelPart, local_axis: Vector3, des: Vector3, wn: float, zeta
 func pd_relative(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float, zeta: float, max_t: float, dt: float, boost := 1.0, react := 1.0) -> void:
 	if part.severed or wn <= 0.0:
 		return
-	var nc := Greedy.core()
+	var nc := Greedy.nc
 	if nc:
 		nc.pd_relative(part, parent, rel_q, wn, zeta, max_t, dt, boost, react)
 		return
@@ -3274,7 +3275,7 @@ func pd_relative(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: floa
 func motor_rel(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float, max_t: float, dt: float, react := 1.0) -> void:
 	if part.severed or wn <= 0.0:
 		return
-	var nc := Greedy.core()
+	var nc := Greedy.nc
 	if nc:
 		nc.motor_rel(part, parent, rel_q, wn, max_t, dt, react)
 		return
@@ -3290,7 +3291,7 @@ func motor_rel(part: VoxelPart, parent: VoxelPart, rel_q: Quaternion, wn: float,
 func pd_twist(part: VoxelPart, ref: RigidBody3D, kp: float, kd: float, max_t: float, dt: float) -> void:
 	if part.severed:
 		return
-	var nc := Greedy.core()
+	var nc := Greedy.nc
 	if nc:
 		nc.pd_twist(part, ref, kp, kd, max_t, dt)
 		return
@@ -3545,7 +3546,7 @@ func arms_settled() -> bool:
 var _leg_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.leg_tail, in the order it reads them
 func _leg_end(side: String, thigh: VoxelPart, shin: VoxelPart, thigh_q: Quaternion, bend: float, f: float, leg_f: float, kicking: bool, standing: bool, grounded: bool, rising: bool, on_hit: bool, ground_y: float, dt: float) -> void:
 	var ft = feet[side]
-	var nc := Greedy.core() if Greedy.leg_ok else null
+	var nc := Greedy.nc if Greedy.leg_ok else null
 	if nc != null:
 		var whole: bool = not shin.severed and not shin.hanging
 		var foot_down: bool = standing and grounded and not kicking and ft and whole and not rising
@@ -3714,7 +3715,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var t_rot: Quaternion = PD.quat_of(torso)
 	var yaw_q := Quaternion(UP, yaw)
 	var leg_l := leg_func("L")
-	var leg_r := leg_func("R")
+	var leg_r := leg_func("R")   # (and _legs holds each leg's thigh and shin from here on: what this function reads them from, not by_name asked by a name put together each time)
 	var leg_avg := (leg_l + leg_r) * 0.5
 	var blood_f: float = minf(1.0, 0.35 + blood / 100.0)
 	pain = maxf(0.0, pain - dt * 0.2)
@@ -3850,9 +3851,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var crouch_h: float = minf(crouch, maxf(low_hand * 0.45, stoop)) if S >= 1.3 and not rising and not inp.get("crouch", false) else crouch
 	var one_leg: bool = minf(leg_l, leg_r) < 0.1
 	var leg_flinch := 1.0
-	for n in ["thighL", "thighR", "shinL", "shinR"]:
-		if by_name[n].flinch_t > 0.0:
-			leg_flinch = 0.6
+	if _legs.L[0].flinch_t > 0.0 or _legs.R[0].flinch_t > 0.0 or _legs.L[1].flinch_t > 0.0 or _legs.R[1].flinch_t > 0.0:
+		leg_flinch = 0.6
 	var support: float = minf(1.0, leg_avg * 1.6) * (0.75 if one_leg else 1.0) * stand_f * leg_flinch if standing else 0.0
 	var lv0 := torso.linear_velocity
 	# A hard landing (thrown by a giant, tossed by a bull, off a crate) breaks on the legs if
@@ -3895,9 +3895,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if state == "stand" and not rising and hop_phase <= 0.0 and jump_t <= 0.0:
 			for sd in ["L", "R"]:
 				var ftp = feet[sd]
-				if ftp == null or ftp.swing or by_name["shin" + sd].severed or by_name["thigh" + sd].severed:
+				if ftp == null or ftp.swing or _legs[sd][1].severed or _legs[sd][0].severed:
 					continue
-				var sp: Vector3 = by_name["shin" + sd].global_transform * Vector3(0, -4 * V * S, 0)
+				var sp: Vector3 = _legs[sd][1].global_transform * Vector3(0, -4 * V * S, 0)
 				if sp.y - float((ftp.anchor as Vector3).y) < 0.06 * S and float((ftp.anchor as Vector3).y) > ground_y + 0.1 * S:
 					ledge_held = true
 		ground_level = ground_y
@@ -3916,9 +3916,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var reach_l := 16.0 * V * S * (float(GAIT.reach) - crouch_h * 0.12 - stoop * 0.14 - run_low * 0.5)   # (a knee never locked straight: at full stretch the lag of the leg left the planted foot short of the sand)
 			for sd in ["L", "R"]:
 				var ftp = feet[sd]
-				if ftp == null or ftp.swing or by_name["shin" + sd].severed:
+				if ftp == null or ftp.swing or _legs[sd][1].severed:
 					continue
-				var hip_w: Vector3 = t_pos + t_rot * by_name["thigh" + sd].pa
+				var hip_w: Vector3 = t_pos + t_rot * _legs[sd][0].pa
 				var dxz := Vector2(hip_w.x - ftp.anchor.x, hip_w.z - ftp.anchor.z).length()
 				var hh := sqrt(maxf(0.0, reach_l * reach_l - dxz * dxz))
 				pend = minf(pend, float((ftp.anchor as Vector3).y) + hh + (t_pos.y - hip_w.y))
@@ -3953,8 +3953,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			var sole_lo := INF
 			var sole_planted := INF
 			for sd in ["L", "R"]:
-				var sh: VoxelPart = by_name["shin" + sd]
-				if sh.severed or by_name["thigh" + sd].severed:
+				var sh: VoxelPart = _legs[sd][1]
+				if sh.severed or _legs[sd][0].severed:
 					continue
 				# Over what is under that foot, not under the trunk: on a step, the foot up on it read as
 				# down while the other swung over the sand below, and he rose off both climbing it. (A
@@ -3987,8 +3987,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			# by the trunk coming down on them.
 			var sole_lo := INF
 			for sd in ["L", "R"]:
-				var sh: VoxelPart = by_name["shin" + sd]
-				if not sh.severed and not by_name["thigh" + sd].severed:
+				var sh: VoxelPart = _legs[sd][1]
+				if not sh.severed and not _legs[sd][0].severed:
 					sole_lo = minf(sole_lo, (sh.global_transform * Vector3(0, -4 * V * S, 0)).y - ground_y)
 			if sole_lo < -0.03 * S:
 				desired = maxf(desired, dist - sole_lo - 0.01 * S)
@@ -4065,8 +4065,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if move_local.length_squared() > 1.0:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
-	var load_ := Armory.burden(carried_kg())
-	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * float(load_.pace) * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var load_pace := 1.0 - clampf((carried_kg() - 6.0) / 100.0, 0.0, 0.3)   # (Armory.burden's pace, by its own line: the call made a dictionary of pace and breath for the one)
+	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * load_pace * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	pace_now = speed / (3.8 if sprint else 2.1)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
@@ -4076,7 +4076,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	if standing and grounded:
 		for side in ["L", "R"]:
 			var ft = feet[side]
-			var shin: VoxelPart = by_name["shin" + side]
+			var shin: VoxelPart = _legs[side][1]
 			if ft == null or ft.swing or shin.severed:
 				continue
 			var foot := shin.global_transform * Vector3(0, -4 * V * S, 0)
@@ -4094,7 +4094,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if planted == 1 and move_local.length_squared() > 0.01:
 			for sd in ["L", "R"]:
 				var fs = feet[sd]
-				if fs and not fs.swing and not by_name["shin" + sd].severed:
+				if fs and not fs.swing and not _legs[sd][1].severed:
 					var side_w2 := yaw_q * Vector3(1, 0, 0)
 					var off1 := Vector3(fs.anchor.x - t_pos.x, 0, fs.anchor.z - t_pos.z)
 					move_world += PD.clamp_len(side_w2 * off1.dot(side_w2) * 0.6 * STANCE_K, 0.25)
@@ -4121,7 +4121,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		var mdir := Vector3(move_world.x, 0, move_world.z).normalized()
 		var front := -INF
 		for sd in ["L", "R"]:
-			var shf: VoxelPart = by_name["shin" + sd]
+			var shf: VoxelPart = _legs[sd][1]
 			if not shf.severed:
 				front = maxf(front, (shf.global_transform * Vector3(0, -4 * V * S, 0) - t_pos).dot(mdir))
 		if front > -INF and front < -0.45 * S:
@@ -4264,8 +4264,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# (What each leg can do, asked once for the two of them: nothing in the loop harms a leg.)
 	var leg_now := {"L": leg_func("L"), "R": leg_func("R")}
 	for side in ["L", "R"]:
-		var thigh: VoxelPart = by_name["thigh" + side]
-		var shin: VoxelPart = by_name["shin" + side]
+		var thigh: VoxelPart = _legs[side][0]
+		var shin: VoxelPart = _legs[side][1]
 		if thigh.severed:
 			continue
 		var leg_f: float = leg_now[side]
@@ -4330,7 +4330,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				feet[side].swing = true
 		elif standing and grounded:
 			var neutral := t_pos + yaw_q * Vector3(thigh.pa.x * 1.15 + signf(thigh.pa.x) * stance[side].y * S, 0, stance[side].x * S)
-			neutral.y = _ground_under(neutral, ground_y)
+			# (_ground_under(neutral, ground_y), its own two lines with the space this step's control already holds: asked for each leg every step.)
+			var gh_n := _ground_ray(space, Vector3(neutral.x, torso.global_position.y, neutral.z))
+			neutral.y = float(gh_n.position.y) if gh_n else ground_y
 			var ft = feet[side]
 			if ft == null:
 				ft = {"anchor": neutral, "from": neutral, "swing": false, "s": 0.0, "land": neutral, "half": -1, "slip": 0.0}
@@ -4342,10 +4344,10 @@ func control(dt: float, inp_in: Dictionary) -> void:
 			# running, he left the sand, user). A leg gone or useless does not hold the other.
 			var os := "R" if side == "L" else "L"
 			var other_up := false
-			if feet[os] != null and not by_name["shin" + os].severed and not by_name["thigh" + os].severed and float(leg_now[os]) >= 0.1:
+			if feet[os] != null and not _legs[os][1].severed and not _legs[os][0].severed and float(leg_now[os]) >= 0.1:
 				# Stepping, or set down but not yet on the sand (a step ends a little above it and
 				# the foot is brought down after): either way not yet a foot to stand on.
-				var o_sole: Vector3 = by_name["shin" + os].global_transform * Vector3(0, -4 * V * S, 0)
+				var o_sole: Vector3 = _legs[os][1].global_transform * Vector3(0, -4 * V * S, 0)
 				# (Both up off their plants, the one on something lying there, a sword, the other
 				# rolled onto its toe: each waited on the other, neither stepped, and he stood stuck
 				# leaning over them. Then either may.)
@@ -4528,7 +4530,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		stamina_use += 0.35 * maxf(0.0, tip - 3.0) * (0.6 + 0.25 * minf(6.0, sw.mass)) * dt
 	# Armour is carried: every exertion (sprinting, swinging, the struggle) costs more breath
 	# the more he has on.
-	stamina_use *= float(Armory.burden(carried_kg()).breath)
+	stamina_use *= 1.0 + maxf(0.0, carried_kg()) / 35.0   # (Armory.burden's breath, by its own line)
 	# A giant's lungs and muscle go with his size: the same swing of a weapon scaled to him
 	# costs him no more breath than a man's costs the man.
 	if S > 1.2:
@@ -5705,7 +5707,7 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	var ds: Dictionary = w.design
 	if w.is_shield or ds.has("shoots") or ds.get("chain") != null:
 		return false
-	var nc := Greedy.core()
+	var nc := Greedy.nc
 	if nc == null:
 		return false
 	# (The trunk as it is drawn, where he wears armour and is on his feet: his arm is kept out of that; else out of the trunk's box.)
@@ -5893,7 +5895,7 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			if _drive_blade_plain(side, inp, w, upper, fore, e_was, af, af_now, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt, keep_dt):
 				return
 		elif w != null or state != "stand" or not ((inp.get("jabAt") is Vector3) or (inp.get("grabAt") is Vector3 and inp.get("grab", false))):
-			var nc_f := Greedy.core()
+			var nc_f := Greedy.nc
 			if nc_f != null:
 				var sc_f = _trunk_sculpt(side)
 				var on_f: bool = sc_f != null
@@ -9945,7 +9947,12 @@ func organ_health(id: int) -> float:
 
 ## Both lungs together: how much breath he can still draw.
 func lungs() -> float:
-	return (organ_health(Anatomy.LUNG_R) + organ_health(Anatomy.LUNG_L)) * 0.5
+	# (organ_health of each lung, its own lines here: asked every step of every man.)
+	var nr: int = organ_total.get(Anatomy.LUNG_R, 0)
+	var nl: int = organ_total.get(Anatomy.LUNG_L, 0)
+	var hr := 1.0 if nr == 0 else clampf(1.0 - float(organ_lost.get(Anatomy.LUNG_R, 0)) / float(nr) - float(organ_bruise.get(Anatomy.LUNG_R, 0.0)), 0.0, 1.0)
+	var hl := 1.0 if nl == 0 else clampf(1.0 - float(organ_lost.get(Anatomy.LUNG_L, 0)) / float(nl) - float(organ_bruise.get(Anatomy.LUNG_L, 0.0)), 0.0, 1.0)
+	return (hr + hl) * 0.5
 
 ## The voxels a man has of each organ that bleeds when it is torn (his lungs both together).
 const MAN_ORGAN_VOXELS := {Anatomy.HEART: 27, Anatomy.LIVER: 90, Anatomy.STOMACH: 48, Anatomy.GUTS: 420}

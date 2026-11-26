@@ -795,3 +795,16 @@ and a change is still checked for what it is worth by the whole step's count (`v
 **A fault of the last batch found by the suite's own diagnostic check, and put right** (f460914): the list of beasts the combat keeps since 66ca6f1 was picked out by whichever man
 asked first in a step; with the men's controls on worker threads (the test's experiment, off in the game) several picked it out at once, and the engine reported the list let go
 under a reader. It is picked out on the main thread before the threads start. With it right, that experiment reads -28% of a step in the quick check (it read -12% with the fault).
+
+**A second pass over `control`'s small statements** (the counts of its blocks two and three levels in): a leg's thigh and shin read from the list `leg_func` keeps instead of
+`by_name` asked by a name put together each time (17 places a step, 1600 instructions each); `Armory.burden`'s pace and breath by their own lines (the call made a dictionary of
+both for the one wanted); the lungs' health in one function; the ground under a leg's neutral place asked with the space `control` already holds; the core read where it is kept
+(`Greedy.nc`, held right by `core()` and by `use_native`'s setter) in the drives called thousands of times a step. The scripts' work of a step 13.65 -> 13.42 million (-1.7%;
+`control` 10.31 -> 10.05). **Since f460914: 15.07 -> 13.42, -10.9%.** What a statement costs sets the floor now: a leg's ray for the ground 18 thousand (the engine's answer is a
+dictionary), a drive called through its wrapper 7 thousand round 3 of work, a flag read off another class 1200. The cuts left in `control` are a quarter of a per cent each;
+what is left to take is whole blocks moved to the core (the legs' 107 thousand a leg, the ground block's 92) or the men's controls on several threads (section 17).
+
+**The frame's side, counted the same way** (`IR_DRAW=1`: the men drawn as with a screen, a frame a step): a man's drawing is **0.80 million instructions a frame**, the same order
+as his control's 1.2 a step: `_clip_arm_armor` 255 thousand (the shoulder guards 135, the limbs in armour 63), `_seat_drawing` 193, `_draw_joint_caps` 179, `_bend_drawing` 98,
+`_foot_drawing` 23, and his ten parts' own `_process` 17 thousand each. At 45 frames and 120 steps a second with sixteen men that is a fifth of all the scripts do in a second,
+and none of it has been counted before (the measurements had no screen, and the drawing leaves at once without one).

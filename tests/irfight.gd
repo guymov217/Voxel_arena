@@ -1,12 +1,14 @@
 extends Node
 ## The fight tools/ir_profile counts in instructions under valgrind: the diagnostic test's eight in the endless arena, effects off, a step a frame, the same every run.
 ## IR_AT: the second of the game the counting starts at (1). For whole functions, IR_SECS: how long it goes on (1). For statements, IR_LIST: the regions counted in turn,
-## and IR_B: the steps each one gets (4). With a library that has no counting calls in it the fight just runs.
+## and IR_B: the steps each one gets (4). IR_DRAW: the men are drawn as with a screen (their per-frame work is done, one frame a step). With a library that has no
+## counting calls in it the fight just runs.
 func _ready() -> void:
 	var at := (int(OS.get_environment("IR_AT")) if OS.get_environment("IR_AT") != "" else 1) * 120
 	var secs := (int(OS.get_environment("IR_SECS")) if OS.get_environment("IR_SECS") != "" else 1) * 120
 	var per := int(OS.get_environment("IR_B")) if OS.get_environment("IR_B") != "" else 4
 	var list := OS.get_environment("IR_LIST").split(",", false)
+	Fighter.process_in_headless = OS.get_environment("IR_DRAW") != ""
 	seed(7)
 	var lo := {"main": "gladius", "off": "scutum", "armor": DiagPhase.ARMOUR}
 	var m := Match.new()

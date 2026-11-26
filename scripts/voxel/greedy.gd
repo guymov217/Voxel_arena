@@ -6,7 +6,13 @@ class_name Greedy
 
 static var native: Object = null
 static var _checked := false
-static var use_native := true
+## core()'s answer, kept (null until core() has been asked once: a fighter asks as he is made): what the calls made thousands of times a step read. A call of core()
+## is two thousand instructions before it answers; kept right by core() and by whoever sets use_native.
+static var nc: Object = null
+static var use_native := true:
+	set(v):
+		use_native = v
+		nc = native if v and _checked else null
 static var arm_ok := false   # the loaded core has the arms' natives (an older build does not: the script keeps the arms out)
 static var arm_drive_ok := false   # and the arm's drive itself, as far as it has been moved there (VoxelCore.arm_plain; docs/PERF_RESEARCH.md, section 20)
 static var leg_ok := false   # and the end of a leg's step (VoxelCore.leg_tail)
@@ -23,6 +29,7 @@ static func core() -> Object:
 			arm_drive_ok = arm_ok and api_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_armed")
 			leg_ok = arm_ok and api_ok and native.has_method("leg_tail")
 			bulk_ok = native.has_method("pack_parts") and native.has_method("record_vel")
+		nc = native if use_native else null
 	return native if use_native else null
 
 static func boxes(w: int, h: int, d: int, solid: PackedByteArray) -> Array:

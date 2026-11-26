@@ -18,6 +18,7 @@ It REWRITES what it is given, so work on COPIES, never on a checkout (PROJ: a co
         (one region is counted at a time, B steps each (4), so a run is as long as its list: split a long list over several runs side by side. An empty statement reads
         about 3150: the mark's own cost, to be taken off each.)
 
+With IR_DRAW=1 in the environment the men's per-frame drawing work is done too (as with a screen: Fighter.process_in_headless), a frame a step.
 AT is the second of the fight the counting starts at (1: eight men closing in, before the first blow; later seconds have the blows and the foes in them, and cost about
 three minutes of valgrind each). The instructions of everything are counted, the engine's too; the main thread's only in the statements' way."""
 import json, os, re, subprocess, sys

@@ -114,6 +114,7 @@ const ROLE_WN := {"tail": 16.0, "coil": 14.0, "neck": 24.0, "head": 26.0, "wing"
 static var _listed_beasts := {}   # kind|gore -> {part name -> {d, voxels, packed}}: build_beast
 const LISTED_BEASTS_MAX := 40
 func build_beast(species_: String, spawn: Vector3, yaw_: float, opts := {}) -> void:
+	Greedy.core()   # (as Fighter.build: the core looked for before its first step)
 	kind = "beast"
 	species = species_
 	sp = Data.beasts.get(species, Data.beasts.lion)
