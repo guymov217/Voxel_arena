@@ -364,6 +364,7 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	var plain := 0
 	var sets := 0
 	var stills := 0
+	var kept := 0
 	var reaches := {}
 	for lo in [{"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "gladius", "off": ""}, {"main": "mace", "off": "scutum"},
 			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}]:
@@ -417,6 +418,14 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			f.daze_t = 0.1 if k % 10 == 3 else 0.0
 			# (A man down by turns, his arm at a fallen man's mark; and the trunk turned by the other fist's punch.)
 			f.state = "down" if k % 6 == 5 and not still else "stand"
+			if k % 12 == 11 and not still:
+				f.state = "rising"
+			# (What the arm's keeping out of his body asks of him: staggering, limp, flung, by turns; and an arm at rest far off not kept this step.)
+			f.stagger = 0.5 if k % 14 == 5 else 0.0
+			f.limp = k % 16 == 7
+			if k % 15 == 4:
+				speeds[0] = Vector3(3.5, 0.0, 2.5)
+			var keep_dt: float = -1.0 if k % 5 == 4 else (1.0 / 120.0 if k % 3 != 0 else 1.0 / 60.0)
 			if still:
 				f.player = false
 				f.is_bot = false
@@ -467,7 +476,16 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				f._plate_memo = null
 				f._beast_memo = -1
 				Greedy.arm_drive_ok = native
-				f._drive_arm(side, inp, true, power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt)
+				# (As Fighter.control's loop over the arms does: the drive, then the arm kept out of his body unless the core's own call has done that.)
+				f._arm_kept = false
+				f._drive_arm(side, inp, true, power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt, keep_dt)
+				if keep_dt >= 0.0:
+					if f._arm_kept:
+						f._arm_kept = false
+						kept += 1
+					else:
+						f._keep_arm_out(side, keep_dt)
+						f._keep_elbow_low(side, keep_dt)
 				res.append([_arm_live(bodies), _arm_state(f), [(fore_k.get_meta("elbow_set") if fore_k.has_meta("elbow_set") else null),
 					hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)]])
 			Greedy.arm_drive_ok = true
@@ -478,6 +496,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			f.daze_t = 0.0
 			f.state = "stand"
 			f.jab_twist_was = 0.0
+			f.stagger = 0.0
+			f.limp = false
 			if res[0][0] != res[1][0]:
 				bad.append("speeds, k=%d" % k)
 			elif res[0][1] != res[1][1]:
@@ -502,9 +522,10 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 		m.queue_free()
 		await get_tree().physics_frame
 	t.check(bad.is_empty(), "the core's arm drive leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
-	t.check(driven > 3000 and homes > 120 and blades == 1800 and downs > 350, "and it was the drive at work: %d of 3600 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
+	t.check(driven > 3000 and homes > 120 and blades == 1800 and downs > 150, "and it was the drive at work: %d of 3600 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
 	t.check(plain > 900 and plain < 1500 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 1500 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
+	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 3600 steps" % kept)
 
 func test_native_smooth_matches_the_gdscript() -> void:
 	# (#151) The men's smooth skin (FineSmooth: a part's solid, the part beside it joined on at the

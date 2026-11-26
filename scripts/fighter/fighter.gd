@@ -4404,7 +4404,8 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if not rest or weapon_arm:
 			var dd: float = _arm_wait_drive[side]
 			_arm_wait_drive[side] = 0.0
-			_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dd)
+			_arm_kept = false
+			_drive_arm(side, inp, live and not limp, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dd, -1.0 if rest else float(_arm_wait_keep[side]))
 		# The breath goes with the work of the swing while the button is down: how far the hand
 		# is sent across the pane and how sharply it is turned, more with a heavy weapon in it.
 		# Held still it costs little; whirled hard it winds him fast.
@@ -4427,7 +4428,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		if not rest:
 			var dk: float = _arm_wait_keep[side]
 			_arm_wait_keep[side] = 0.0
-			if not arm[side].upper.severed:
+			if _arm_kept:
+				_arm_kept = false   # (kept out in the core's own call, after the drive: VoxelCore.arm_keep)
+			elif not arm[side].upper.severed:
 				_keep_arm_out(side, dk)
 				_keep_elbow_low(side, dk)
 	_arm_phase = false
@@ -5540,10 +5543,11 @@ static func _body_color(p: VoxelPart) -> Color:
 ## The per-side fields VoxelCore.arm_free and arm_armed read and write, in the order they know them (dictionaries are handed over as they are, not copied: made once,
 ## since none of them is ever put in another's place), and the step's scalars for it.
 var _arm_refs: Array = []
-var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own from 46 on)
+var _arm_kept := false   # the arm just driven was kept out of his body as well, in the same call of the core (control asks before it does that itself)
+var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59)
 var _arm_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_plain, arm_elbow and arm_blade, in the order they read them
 ## The step's scalars for VoxelCore.arm_free and arm_armed, in the order they read them (extension/src/arm_drive.cpp), and the fields they keep.
-func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, dt: float, on_f: bool, rec_f: Array, b_f: Array) -> void:
+func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, dt: float, on_f: bool, rec_f: Array, b_f: Array, keep_dt: float) -> void:
 	if _arm_refs.is_empty():
 		_arm_refs = [jab_t, jab_next, fist_home, throwing, thrust_amt, throw_pose, throw_hold, throw_loose, hand_input, swing_reach, mark_was, fist_swing, wedged, thrust_aim, thrust_ext,
 			thrust_line, hand_lead, lead_vel, handling, target_vel, prev_target, mark_eased, arm_strain, swing_hold,
@@ -5594,13 +5598,25 @@ func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore:
 	_arm_f[43] = 1.0 if w != null and fights_down() else 0.0
 	_arm_f[44] = jab_twist_was
 	_arm_f[45] = float(w.reach) if w else 0.0
+	_arm_f[55] = 1.0 if elbow_low_on else 0.0
+	# (The arm kept out of his body after its drive, in the same call: what _keep_hand_front and _keep_elbow_low ask of him before they push.)
+	_arm_f[64] = keep_dt
+	if keep_dt >= 0.0:
+		var upright: bool = (state == "stand" and stagger <= 0.35) or state == "rising"
+		var pinned: bool = pinned_arm == side and is_instance_valid(grabbed_by)
+		_arm_f[60] = 1.0 if upright else 0.0
+		_arm_f[61] = 1.0 if pinned else 0.0
+		_arm_f[62] = 1.0 if upright and not pinned and _beast_has_me() else 0.0
+		_arm_f[63] = 1.0 if alive and not limp else 0.0
+		_arm_f[65] = 1.0 if upper.joint != null else 0.0
+		_arm_f[66] = 1.0 if fore.joint != null else 0.0
 
 ## A blade's arm in a plain step (one hand on it, its joint whole and the fist firm, no throw, no thrust along the blade's line, nothing reached for), whole,
 ## in one call of the C++ core (VoxelCore.arm_armed: the hand's mark, the turn the weapon is asked, the elbow, the swing read and the elbow set for it, the
 ## drive from the forearm on), to the bit what _drive_arm's own lines do for such a step; what is left here is the little that is a field of his own
 ## (low_hand, the off hand's place, the haft's memory) and _free_wedged. False, having changed nothing, where the step is not a plain one: _drive_arm's own
 ## lines go on then. (What _drive_arm has seen to before it asks is where it asks; tests/test_native.gd holds the two ways to the same bits.)
-func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, e_was, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> bool:
+func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, e_was, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float, keep_dt := -1.0) -> bool:
 	var wj = weapon_joints[side]
 	if wj == null or not is_instance_valid(wj) or (wj as Node).has_meta("grip_now") or float(throw_hold[side]) > 0.0 or throw_loose[side] or w.design.has("shoots") or not has_wrist(w):
 		return false
@@ -5611,7 +5627,7 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	var sc = _trunk_sculpt(side)
 	var on: bool = sc != null
 	var rec: Array = _arm_rec(side) if on else _NO_REC
-	_arm_fill(side, inp, w, upper, fore, af, af_now, power, stam_f, blood_f, dt, on, rec, _plate_band_now() if on else _NO_BAND)
+	_arm_fill(side, inp, w, upper, fore, af, af_now, power, stam_f, blood_f, dt, on, rec, _plate_band_now() if on else _NO_BAND, keep_dt)
 	var spear := is_spear(w)
 	_arm_f[46] = 1.0 if spear else 0.0
 	_arm_f[47] = 0.0
@@ -5627,16 +5643,16 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	_arm_f[52] = 1.0 if leads else 0.0
 	_arm_f[53] = w.edge_side() if leads else 0.0
 	_arm_f[54] = 1.0 if inp.get("power", false) else 0.0
-	_arm_f[55] = 1.0 if elbow_low_on else 0.0
 	_arm_f[56] = 1.0 if e_was != null else 0.0
 	_arm_f[57] = FORE_LEN * S
 	_arm_f[58] = 1.0 if w.welded else 0.0
 	_arm_f[59] = 1.0 if w.holder == self else 0.0
 	var res: Array = nc.arm_armed(upper, fore, torso, head, w, fore.joint if fore.joint is Generic6DOFJoint3D else null, inp.get("main" if side == two_side else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}),
 			(e_was as Vector3) if e_was != null else Vector3.ZERO, hold_q(side, w), grip_q(w), t_pos, t_rot, yaw_q, shoulder[side], hand_point, torso.half_ext, head.half_ext,
-			sc if on else _NO_SCULPT, rec[0], rec[2], _arm_refs, side, _arm_f)
+			sc if on else _NO_SCULPT, rec[0], rec[2], _arm_refs, side, upper.half_ext, upper.pa, upper.ca, fore.pa, fore.ca, _arm_f)
 	if res.is_empty():
 		return false
+	_arm_kept = keep_dt >= 0.0
 	low_hand = maxf(low_hand, res[1])
 	if side == two_side:
 		if two_gap != null:
@@ -5648,7 +5664,7 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	_free_wedged(side, w, dt)
 	return true
 
-func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
+func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float, keep_dt := -1.0) -> void:
 	var a: Dictionary = arm[side]
 	var upper: VoxelPart = a.upper
 	var fore: VoxelPart = a.fore
@@ -5783,11 +5799,12 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# (A plain step's arm in the C++ core, to the bit what follows to this function's end, docs/PERF_RESEARCH.md section 20: a shield's or an empty
 	# hand's whole, in one call (VoxelCore.arm_free); a blade's as far as it has been moved there (_drive_blade_plain). Either answers false, having
 	# changed nothing, where the step is not a plain one after all (a punch, a throw, a hand caught behind the back...), and the script's own drive
-	# goes on from here.)
+	# goes on from here. With `keep_dt` given (control: the time since the arm was last kept out of his body) the core keeps it out as well, after the
+	# drive, and says so in _arm_kept.)
 	if Greedy.arm_drive_ok and not crawling and held_item == null and throw_anim == null and shove_t <= 0.0 \
 			and reach[side] == null and off_goal == null and grip_wait <= 0.0 and not two_handed:
 		if w != null and not w.is_shield:
-			if _drive_blade_plain(side, inp, w, upper, fore, e_was, af, af_now, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt):
+			if _drive_blade_plain(side, inp, w, upper, fore, e_was, af, af_now, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt, keep_dt):
 				return
 		elif w != null or state != "stand" or not ((inp.get("jabAt") is Vector3) or (inp.get("grabAt") is Vector3 and inp.get("grab", false))):
 			var nc_f := Greedy.core()
@@ -5795,9 +5812,10 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				var sc_f = _trunk_sculpt(side)
 				var on_f: bool = sc_f != null
 				var rec_f: Array = _arm_rec(side) if on_f else _NO_REC
-				_arm_fill(side, inp, w, upper, fore, af, af_now, power, stam_f, blood_f, dt, on_f, rec_f, _plate_band_now() if on_f else _NO_BAND)
+				_arm_fill(side, inp, w, upper, fore, af, af_now, power, stam_f, blood_f, dt, on_f, rec_f, _plate_band_now() if on_f else _NO_BAND, keep_dt)
 				if nc_f.arm_free(upper, fore, torso, head, w, inp.get("main" if side == two_side else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}), t_pos, t_rot, yaw_q, shoulder[side], hand_point, torso.half_ext, head.half_ext,
-						sc_f if on_f else _NO_SCULPT, rec_f[0], rec_f[2], _arm_refs, side, _arm_f):
+						sc_f if on_f else _NO_SCULPT, rec_f[0], rec_f[2], _arm_refs, side, upper.half_ext, upper.pa, upper.ca, fore.pa, fore.ca, _arm_f):
+					_arm_kept = keep_dt >= 0.0
 					return
 	# (Down with his legs gone he still fights from the ground, with less behind it: fights_down.)
 	var ground := w != null and fights_down()

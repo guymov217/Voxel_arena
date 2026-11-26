@@ -707,3 +707,15 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
   an empty hand's arm 59 -> 27 us, a blade's 154 -> 90 us, a man's `control` about a quarter cheaper (495 -> about 370 us at the first sitting's pace), a step's controls 7.2 -> about 5.4 ms of a 14 ms step: 13% of the step.
 - **Left of the arms**: about 90 us a blade's arm and 27 a free one, a man's two arms 117 us of his 370: the natives' own work (the PD drives, the body queries), `_free_wedged`, and what handing sixty scalars over costs
   (about 8 us an arm). The rest of `control` is the legs' loop (about 85 us: the gait, the feet's plants, the kicks; ground rays from the script) and the stance and balance before it.
+
+**The arm kept out of his body in the same call** (`VoxelCore.arm_keep`, the tail of `arm_free` and `arm_armed`):
+- `control`'s loop over the arms does more than drive them: after each drive the arm is kept out of his own trunk and head (`_keep_arm_out`, which ends in `_keep_hand_front`) and its elbow kept low (`_keep_elbow_low`): three
+  native calls an arm, each paid its twenty arguments and the script's memos and conditions before it. A profile of `control` one level in (the 8-man brawl, where 94% of the arms' steps are the core's own): the two
+  drives 170 us a man, the two keepings 64, the legs' loop 89.
+- The core's call now takes the time since the arm was last kept (`keep_dt`; under 0 where `control` rests a far man's arm this step) and does the three after its drive, under the script's own conditions (on his feet
+  or getting up and not staggering, the trunk not flung, the arm not pinned, no beast's hold; alive and not limp for the elbow), and says so in `_arm_kept`; `control` keeps the arm itself only where the core has not.
+  Nothing pushes those bodies between the drive and the keeping (the breath's sums read the pane; `_free_wedged` gives no push), so the order of every push on every body is as it was.
+- **To the bit**: `tests/test_native.gd` does what the loop does (the drive, then the keeping unless the core has done it; staggering, limp, flung and getting up by turns; one step in five not kept): 1658 steps kept in
+  the core; `tools/replay_check.sh`: the same fingerprints.
+- **What it is worth**: a man's `control` 503 -> 454 us (the middle of five runs each way in a slow sitting): another 10%. Since the first three pieces a man's `control` is about a third cheaper, and the controls of a
+  14 ms step about 2.3 ms less: a sixth of the step.

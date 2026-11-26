@@ -770,8 +770,8 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 }
 
 // The whole drive of a shield's or an empty hand's arm in the plain case: its mark (arm_mark_core), then its bones and the pull (arm_plain).
-bool VoxelCore::arm_free(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *shield, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const PackedFloat64Array &k) const {
-	if (upper == nullptr || fore == nullptr || torso == nullptr || head == nullptr || k.size() < 46 || refs.size() < 24) {
+bool VoxelCore::arm_free(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *shield, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const PackedFloat64Array &k) const {
+	if (upper == nullptr || fore == nullptr || torso == nullptr || head == nullptr || k.size() < 67 || refs.size() < 24) {
 		return false;
 	}
 	const double *kk = k.ptr();
@@ -791,7 +791,36 @@ bool VoxelCore::arm_free(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *tor
 	q[17] = kk[17]; q[18] = kk[18]; q[19] = kk[19]; q[20] = kk[20]; q[21] = kk[21]; q[22] = kk[22]; q[23] = kk[23]; q[24] = kk[24]; q[25] = kk[25];
 	Dictionary d_arm_strain = refs[22];
 	d_arm_strain[Variant(side)] = arm_plain(upper, fore, torso, shield, m.target_w, m.shoulder_w, m.dir, t_pos, t_rot, yaw_q, m.hand_w, m.hand_vel, m.target_vel, sculpt, o_up, k2);
+	arm_keep(upper, fore, torso, head, hand_point, torso_half, head_half, sculpt, o_up, o_fo, up_half, up_pa, up_ca, fo_pa, fo_ca, kk);
 	return true;
+}
+
+// The arm kept out of his own body after its drive, where the step asks it (k 64, the time since it was last kept; under 0: not this step), as
+// Fighter.control does after _drive_arm: _keep_arm_out (its own push and _keep_hand_front's) and _keep_elbow_low, each under the script's own
+// conditions. For an arm whole, one hand on what it holds, no throw. ARM_OUT_K 900, UPPER_OUT 4; ELBOW_OVER 0.06, ELBOW_OVER_HAND 0.04,
+// ELBOW_SOFT 0.03, ELBOW_LOW_K 900.
+// k as arm_mark_core's, and: 55 elbow_low_on (1/0), 60 on his feet or getting up and not staggering (state "stand" or "rising", and not "stand"
+// with stagger over 0.35; 1/0), 61 this arm pinned by one who has hold of him (1/0), 62 a beast has him (Fighter._beast_has_me; 1/0), 63 alive
+// and not limp (1/0), 64 the time since the arm was kept out, 65 the upper arm's joint is there (1/0), 66 the forearm's (1/0).
+void VoxelCore::arm_keep(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const double *kk) const {
+	const double dk = kk[64];
+	if (dk < 0.0) {
+		return;
+	}
+	const double S = kk[0];
+	const bool left = kk[10] != 0.0, drawn = kk[25] != 0.0, torso_severed = kk[40] != 0.0, head_severed = kk[41] != 0.0;
+	const double out_x = left ? 1.0 : -1.0;
+	const double w_mass = kk[15] != 0.0 ? kk[16] : 0.0;
+	keep_arm_out(upper, fore, torso, head, up_half, torso_half, head_half, hand_point, out_x, S, dk, false, false, torso_severed, head_severed, kk[17], kk[18], w_mass, 900.0, 4.0, drawn,
+			sculpt, kk[19], kk[20], kk[21], o_up, kk[22] != 0.0, o_fo, kk[26] != 0.0, kk[24], kk[65] != 0.0, kk[66] != 0.0, up_pa, up_ca, fo_pa, fo_ca);
+	// Only while he has his body to himself, on his feet or getting up.
+	if (torso_severed || kk[60] == 0.0 || (double)torso->get_linear_velocity().length() > 3.0 || kk[61] != 0.0 || kk[62] != 0.0) {
+		return;
+	}
+	keep_hand_front(upper, fore, torso, up_half, torso_half, hand_point, out_x, S, dk, false, kk[17], kk[18], w_mass, 0.0, 900.0);
+	if (kk[55] != 0.0 && S < 1.6 && kk[63] != 0.0) {
+		keep_elbow_low(upper, fore, torso, up_pa, fo_pa, hand_point, !left, S, dk, kk[17], kk[18], 0.06, 0.04, 0.03, 900.0);
+	}
 }
 
 namespace {
@@ -1055,17 +1084,18 @@ void ad_hold_elbow(RigidBody3D *upper, RigidBody3D *fore, Object *j, double want
 // A blade's arm in a plain step, whole (Fighter._drive_arm from `var w` to its weapon branch's end, but _free_wedged, the script's still): the hand's
 // mark (arm_mark_core), the turn the weapon is asked (weapon_aim) and how fast that turns, the forearm's line, the elbow's way and the upper arm driven
 // there (arm_elbow), the swing read and the elbow set for it (_hold_elbow), the hand's goal kept off the trunk as it is drawn (hand_off), and the drive
-// from the forearm on (arm_blade). Returns [the hand's goal, what low_hand is raised to], or nothing, having changed nothing, where the step is not a
+// from the forearm on (arm_blade), and the arm kept out of his body after it where the step asks that (arm_keep). Returns [the hand's goal, what
+// low_hand is raised to], or nothing, having changed nothing, where the step is not a
 // plain one. `elbow_joint`: the forearm's joint where it is a Generic6DOFJoint3D; `e_was`: the elbow's line of the step before (k 56: given).
 // refs as arm_mark_core's, and: 24 aim_q, 25 aim_w, 26 aim_tw, 27 chop_mem, 28 stroke_dir, 29 stroke_idle, 30 spear_true, 31 elbow_prev, 32 pane_prev,
 // 33 behind_t, 34 elbow_face.
 // k as arm_mark_core's, and: 46 a spear (Fighter.is_spear; 1/0), 47 a look given (1/0), 48 its pitch, 49 its yaw, 50 ground_level, 51 the wheel's twist
 // asked of this hand, 52 a bot's blade that leads its stroke (is_bot, no spear, Weapon.bites; 1/0), 53 its one sharp side (Weapon.edge_side), 54 the
 // input's power (1/0), 55 elbow_low_on (1/0), 56 `e_was` given (1/0), 57 lf (FORE_LEN * S), 58 the weapon welded to the hand (1/0), 59 held by him (1/0).
-Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *w, Object *elbow_joint, const Dictionary &hp_in, const Vector3 &e_was, const Quaternion &hold_q, const Quaternion &grip_q, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const PackedFloat64Array &k) const {
+Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *w, Object *elbow_joint, const Dictionary &hp_in, const Vector3 &e_was, const Quaternion &hold_q, const Quaternion &grip_q, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const PackedFloat64Array &k) const {
 	static const Variant k_y = String("y");
 	Array r;
-	if (upper == nullptr || fore == nullptr || torso == nullptr || head == nullptr || w == nullptr || k.size() < 60 || refs.size() < 35) {
+	if (upper == nullptr || fore == nullptr || torso == nullptr || head == nullptr || w == nullptr || k.size() < 67 || refs.size() < 35) {
 		return r;
 	}
 	const double *kk = k.ptr();
@@ -1143,6 +1173,7 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 		q[30] = kk[40]; q[31] = kk[41]; q[32] = (double)d_behind_t[side_key];
 	}
 	arm_blade(upper, fore, torso, head, w, fore_q, fore_q, w_aim, w_aim, grip_q, aim_w, hand_goal, m.hand_w, m.hand_vel, m.target_vel, t_pos, t_rot, yaw_q, d_behind_t, refs[22], side, k_bl);
+	arm_keep(upper, fore, torso, head, hand_point, torso_half, head_half, sculpt, o_up, o_fo, up_half, up_pa, up_ca, fo_pa, fo_ca, kk);
 	r.resize(2);
 	r[0] = hand_goal;
 	r[1] = low;
