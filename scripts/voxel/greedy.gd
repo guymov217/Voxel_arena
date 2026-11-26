@@ -16,7 +16,7 @@ static func core() -> Object:
 		if ClassDB.class_exists("VoxelCore"):
 			native = ClassDB.instantiate("VoxelCore")
 			arm_ok = native.has_method("keep_arm_out") and native.has_method("keep_hand_front") and native.has_method("keep_elbow_low") and native.has_method("clear_body") and native.has_method("elbow_off") and native.has_method("hand_off")
-			arm_drive_ok = arm_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow")
+			arm_drive_ok = arm_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_mark")
 	return native if use_native else null
 
 static func boxes(w: int, h: int, d: int, solid: PackedByteArray) -> Array:

@@ -675,3 +675,21 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
   (about 12), and the natives' own work (about 20). With the mark and the aim there too and the blade's arm one call: about 50 us a call, a man's `control` about 375 us (-25%), 13% of a step here and about 15% in the
   release build, where the scripts are more of a step. Not the fifth this document promised.
 - The Linux library is built in an Ubuntu 20.04 root (glibc 2.31, Steam's runtime: `tools/test_package.py` holds it to that); built on this machine's own system it asked for glibc 2.38.
+
+**The mark in the core** (the next two pieces; the same file):
+- `VoxelCore.arm_free`: a shield's or an empty hand's arm in a plain step, whole, in one call: the hand's mark worked out (the strength, the player's mark eased, `hand_target_local`, the hurt arm's sag, a bot's ringing head,
+  `_clear_body`, the hand's lead toward the mark, its speed, the handling) and then `arm_plain`. A man down or getting up as well (his arm at a fallen man's mark), a fist with its button held while the elbow is still bent,
+  and the guard hand carried round with the trunk by the other fist's punch. It answers false, having changed nothing, where the step is not a plain one (a punch asked for or on its way, a throw wound up, a frost on the
+  arm, a hand caught behind the back, an elbow still set), and the script's own lines run as before.
+- `VoxelCore.arm_mark`: the same working out for a blade's arm (the thrust's harder drive, the swung weapon out at the end of the arm, a short blade taken lower, a long one slower to its mark); `Fighter._drive_blade_plain`
+  asks it and then runs the lines of `_drive_arm`'s weapon branch a plain step runs (`weapon_aim`, the elbow, the swing read, `_hold_elbow`, `_hand_off_trunk`, `arm_blade`, `_free_wedged`). A thrust along the blade's line,
+  a bow, a throw, two hands on a haft and a reach are the script's as before.
+- `arm_elbow` now keeps the elbow out of the trunk's box as well (`_elbow_clear` where there is no sculpt: a man without armour, or off his feet). Until then a blade's arm took the core's way only in armour: of the
+  test's 1500 blade steps 166.
+- **To the bit**: `tests/test_native.gd` now drives 3600 steps (a spear, a dagger and a bow added; a man down, a bot's ringing head, thrusts asked, a stroke a moment ago) through the script's lines and the core's, and
+  compares every body's speeds, every field of his and the elbow's set; 1330 of the 1500 steps of a blade that is no bow are the core's own. `tools/replay_check.sh`: the same fingerprints on every line that repeats.
+- **What it is worth**, timed at the calls in the same fight of sixteen (the least of five runs each way; two sittings, the machine a tenth slower in the second, so each pair is its own): with `arm_free`, a shield's or an
+  empty hand's arm 59 -> 27 us a call and a man's `control` 495 -> 420 us (-15%); with `arm_mark` on top, a blade's arm 154 -> 120 us (-22%) and `control` 475 -> 444 us (-7%). Together a man's `control` is about a fifth
+  cheaper than with the first three pieces alone, and a step's controls about 7.2 -> 5.7 ms.
+- **Left in a blade's 120 us**: `weapon_aim` (about 18), the scalars handed over and three calls where one would do (about 12), `_hold_elbow`, `_hand_off_trunk`'s own call and `_free_wedged` (about 10), and the natives' own
+  work. The next piece is the blade's arm in one call.
