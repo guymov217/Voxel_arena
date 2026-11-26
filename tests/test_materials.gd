@@ -90,6 +90,109 @@ func test_a_weapons_material_count_is_the_same_kept_or_counted() -> void:
 	t.eq(w.material_count(mine), by_hand.call(mine), "and the changed list is counted for itself")
 	m.queue_free()
 
+## What is left of a weapon weighs what its voxels weigh (user: does a weapon's mass follow the voxels left on it once it breaks? It did not: mass, centre and inertia were
+## those it was made with). Its head knocked off, a club is its haft: the mass, the centre and the inertia of a weapon made of that haft alone, and lighter in the hand by the
+## measure of what is left. Weighed again with nothing gone it is to the bit what it was made.
+func test_what_is_left_of_a_weapon_weighs_what_its_voxels_weigh() -> void:
+	var m := _match()
+	var d := _club("iron")
+	var w := m.spawn_loose_weapon(d, Vector3(5, 1, 5))
+	await _steps(2)
+	var mass0: float = w.mass
+	var com0: Vector3 = w.center_of_mass
+	var in0: Vector3 = w.inertia
+	var swing0 := float(w.stats.inertia)
+	w.reweigh()
+	t.check(w.mass == mass0 and w.center_of_mass == com0 and w.inertia == in0 and float(w.stats.inertia) == swing0 and absf(float(w.stats.mass) - mass0) < 1e-6,
+		"weighed again whole, it is what it was made: %.4f kg, %s" % [w.mass, str(w.center_of_mass)])
+	var head := []
+	var head_kg := 0.0
+	var haft := {"name": "Haft", "voxels": [], "grips": d.get("grips", {})}
+	for i in w.vox.size():
+		if String(w.vox[i][3]) == "iron":
+			head.append(i)
+			head_kg += float(Data.material("iron").mass)
+		else:
+			haft.voxels.append(w.vox[i].duplicate())
+	var at0: Vector3 = w.global_position
+	var off: Array = w.remove_voxels(head)
+	var lump := Chunk.spawn(w, off, Vector3.UP)
+	t.check(lump != null and absf(lump.mass - head_kg) < 1e-6, "the head lying on the sand weighs what came off: %.4f kg" % (lump.mass if lump else -1.0))
+	t.check(absf(w.mass - (mass0 - head_kg)) < 1e-6 and w.mass < mass0 * 0.5, "the head off, it weighs what the haft does: %.4f of %.4f kg (the head %.4f)" % [w.mass, mass0, head_kg])
+	t.check(absf(float(w.stats.mass) - w.mass) < 1e-6, "its stats say the same (%.4f)" % float(w.stats.mass))
+	var alone := Weapon.new()
+	alone.setup(haft)
+	t.check(alone.mass == w.mass and alone.center_of_mass == w.center_of_mass and alone.inertia == w.inertia,
+		"as a weapon made of the haft alone: %.4f kg at %s, %s" % [alone.mass, str(alone.center_of_mass), str(alone.inertia)])
+	alone.free()
+	t.check(w.center_of_mass.y < com0.y - 0.05 and w.inertia.x < in0.x * 0.5, "its centre down the haft (%.3f from %.3f) and it turns easier (%.5f of %.5f)" % [w.center_of_mass.y, com0.y, w.inertia.x, in0.x])
+	t.check(float(w.stats.inertia) < swing0 * 0.3 and float(w.stats.inertia) > 0.0, "and it is lighter to swing: %.4f of %.4f about the hand" % [float(w.stats.inertia), swing0])
+	t.check(w.global_position.distance_to(at0) < 1e-6, "it has not moved for being weighed")
+	await _steps(3)
+	t.check(w.global_position.distance_to(at0) < 0.05 and w.linear_velocity.length() < 3.0, "nor jumped in the steps after (%.3f m, %.2f m/s)" % [w.global_position.distance_to(at0), w.linear_velocity.length()])
+	# (Every voxel gone: the least a weapon weighs, and no nonsense in its numbers.)
+	var rest := []
+	for i in w.vox.size():
+		if w.alive[i]:
+			rest.append(i)
+	w.remove_voxels(rest)
+	t.check(absf(w.mass - 0.05) < 1e-6 and w.center_of_mass == Vector3.ZERO and w.inertia.x > 0.0 and is_finite(w.inertia.x) and float(w.stats.inertia) == 0.0, "nothing left of it: %.2f kg, %s" % [w.mass, str(w.inertia)])
+	m.queue_free()
+
+## A weapon turning in the air as its head comes off: every point of what is left keeps the velocity it had (the centre it turns about moves down the haft, and the
+## body's own velocity is its centre's).
+func test_a_turning_weapon_keeps_its_points_velocities_when_it_is_weighed() -> void:
+	var m := _match()
+	var w := m.spawn_loose_weapon(_club("iron"), Vector3(5, 3, 5))
+	await _steps(2)
+	w.linear_velocity = Vector3(1.5, 0.5, -0.5)
+	w.angular_velocity = Vector3(3.0, 1.0, 9.0)
+	var spots := [w.global_transform * (Vector3(0, 0, 0) * w.vs), w.global_transform * (Vector3(0, 5, 0) * w.vs), w.global_transform * (Vector3(1, 3, -1) * w.vs)]
+	var was := []
+	for sp in spots:
+		was.append(w.velocity_at(sp))
+	var lv0: Vector3 = w.linear_velocity
+	var head := []
+	for i in w.vox.size():
+		if String(w.vox[i][3]) == "iron":
+			head.append(i)
+	w.remove_voxels(head)
+	var worst := 0.0
+	for k in spots.size():
+		worst = maxf(worst, (w.velocity_at(spots[k]) - was[k]).length())
+	t.check(worst < 1e-5, "each point of the haft as fast as it was (the most off %.7f m/s)" % worst)
+	t.check((w.linear_velocity - lv0).length() > 0.3, "its centre is another point now, with that point's velocity (%.2f m/s from the old centre's)" % (w.linear_velocity - lv0).length())
+	m.queue_free()
+
+## In a man's hand: the sword's blade gone, he carries its hilt's weight, and it stays in his hand.
+func test_a_weapon_broken_in_the_hand_is_lighter_there() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "loadout": {"main": "gladius"}})
+	var f: Fighter = m.me.f
+	m.me.drive = func(_e): return {}
+	await _steps(60)
+	var w: Weapon = f.weapons.R
+	var kg0: float = f.carried_kg()
+	var mass0: float = w.mass
+	var far := []
+	var gy: float = w.grip_main.y / w.vs
+	for i in w.vox.size():
+		if float(w.vox[i][1]) > gy + 6.0:
+			far.append(i)
+	t.check(far.size() > 20, "the gladius has a blade past the hand (%d voxels)" % far.size())
+	w.remove_voxels(far)
+	t.check(w.mass < mass0 * 0.7, "the blade gone, the sword weighs %.3f of its %.3f kg" % [w.mass, mass0])
+	t.check(absf((kg0 - f.carried_kg()) - (mass0 - w.mass)) < 1e-6, "and he carries that much less (%.3f of %.3f kg)" % [f.carried_kg(), kg0])
+	var worst := 0.0
+	for k in 120:
+		await get_tree().physics_frame
+		if f.weapons.R == w:
+			worst = maxf(worst, (w.global_transform * w.grip_main).distance_to(f.hand_world("R")))
+	t.check(f.weapons.R == w and worst < 0.12, "the hilt stays in his hand (the farthest from it %.3f m)" % worst)
+	t.check(f.alive and f.torso.global_position.y > 0.7 and w.linear_velocity.length() < 6.0, "and he stands as he stood (trunk at %.2f m)" % f.torso.global_position.y)
+	m.queue_free()
+
 ## The lowest corner of a weapon's box (Weapon.box_low_y: asked of every weapon every step, to keep it out of the floor and off the sand): the one corner it picks lies
 ## exactly as low as the lowest of the eight worked out one by one, as it was, however the box is placed (turned, square to the world, scaled, mirrored) and shaped (flat).
 func test_the_lowest_corner_of_a_box_is_the_lowest_of_the_eight() -> void:

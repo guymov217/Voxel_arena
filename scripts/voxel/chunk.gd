@@ -139,7 +139,11 @@ static func spawn(part: Node3D, voxels: Array, dir: Vector3, hold: Node3D = null
 	shape.position = (hi + lo) * 0.5
 	ch.add_child(shape)
 	if wpn:
-		ch.mass = maxf(0.05, part.mass * float(voxels.size()) / maxf(1.0, float(part.alive_count() + voxels.size())))
+		# (What came off a weapon weighs what its voxels do: the weapon is weighed again without them, Weapon.reweigh, and it and its chips together weigh what it did.)
+		var kg := 0.0
+		for v in voxels:
+			kg += float(v.get("kg", 0.0))
+		ch.mass = maxf(0.05, kg if kg > 0.0 else part.mass * float(voxels.size()) / maxf(1.0, float(part.alive_count())))
 	else:
 		ch.mass = maxf(0.05, voxels.size() * 0.0004 * pow(part.part_scale, 3.0) * float(part.fighter.MS if part.fighter else 1.0))
 	ch.collision_layer = VoxelPart.LAYER_DEBRIS

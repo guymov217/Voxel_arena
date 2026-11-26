@@ -108,8 +108,12 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	var m := 0.0
 	var hm := 0.0
 	var com := Vector3.ZERO
+	_kg.resize(vox.size())
+	var vi := 0
 	for v in vox:
 		var mv: float = Data.material(v[3]).get("mass", 0.02) * scale_ * scale_ * mass_scale
+		_kg[vi] = mv
+		vi += 1
 		m += mv
 		hm += mv * float(Data.material(v[3]).get("hardness", 0.5))
 		com += Vector3(v[0], v[1], v[2]) * vs * mv
@@ -138,6 +142,8 @@ func setup(d: Dictionary, scale_ := 1.0) -> void:
 	grip_off = grips[1] * vs
 	_tip_dir = _business_dir()
 	_far0 = _far_from_grip()
+	_swing0 = float(stats.get("inertia", 0.0))
+	_swing_all = _swing_sum()
 	can_sleep = false
 	contact_monitor = true
 	max_contacts_reported = 8
@@ -760,7 +766,7 @@ func remove_voxels(indices: Array) -> Array:
 		_mat_n.clear()
 		_foot = null
 		var v: Array = vox[i]
-		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3]))})
+		out.append({"p": global_transform * (Vector3(v[0], v[1], v[2]) * vs), "color": voxel_color(v[3], v[4]), "kind": VoxelPart.kind_of_material(str(v[3])), "kg": _kg[i]})
 		var b: int = i * 16
 		var buf_i := [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7, b + 8, b + 9, b + 10, b + 11]
 		hidden.append_array(buf_i)
@@ -781,7 +787,57 @@ func remove_voxels(indices: Array) -> Array:
 				left.append(i)
 		for nb in _build_boxes(left):
 			_add_box(nb)
+	if not out.is_empty():
+		reweigh()
 	return out
+
+## What is left of it weighs what its voxels weigh (user: does a weapon's mass follow the voxels left on it once it breaks? It did not: its mass, its centre and its inertia were
+## those it was made with, and a sword snapped off at the hilt fell, turned, burdened its man and asked as much of his arm as the whole sword; only its reach followed, and the
+## piece that fell off was weighed anew, so a broken sword and its piece weighed more together than the sword had). So when voxels come off it (a chip, a break, a torch burning
+## down, powder spent, the wear it comes to a fight with), its mass, centre and inertia are those of the voxels still on it, as `setup` has them of them all, and the inertia the
+## arm feels (its stats': about the hand) is what it was in the measure of what is left. Every point of it keeps the velocity it had: the centre moves within a body that may be turning.
+var _kg := PackedFloat64Array()   # what each voxel weighs (with the weapon's scale and its massScale)
+var _swing0 := 0.0                # its stats' inertia as made, and the voxels' own sum about the hand then
+var _swing_all := 0.0
+func reweigh() -> void:
+	var m := 0.0
+	var com := Vector3.ZERO
+	for i in vox.size():
+		if alive[i]:
+			var v: Array = vox[i]
+			m += _kg[i]
+			com += Vector3(v[0], v[1], v[2]) * vs * _kg[i]
+	m = maxf(0.05, m)
+	com /= m
+	var ix := 0.0; var iy := 0.0; var iz := 0.0
+	var swing := 0.0
+	for i in vox.size():
+		if alive[i]:
+			var v: Array = vox[i]
+			var q := Vector3(v[0], v[1], v[2]) * vs
+			var r := q - com
+			ix += _kg[i] * (r.y * r.y + r.z * r.z + vs * vs / 6.0)
+			iy += _kg[i] * (r.x * r.x + r.z * r.z + vs * vs / 6.0)
+			iz += _kg[i] * (r.x * r.x + r.y * r.y + vs * vs / 6.0)
+			swing += _kg[i] * (q - grip_main).length_squared()
+	if not freeze and is_inside_tree():
+		linear_velocity += angular_velocity.cross(global_transform.basis * (com - center_of_mass))
+	mass = m
+	center_of_mass = com
+	inertia = Vector3(maxf(ix, 1e-4), maxf(iy, 1e-4), maxf(iz, 1e-4))
+	stats["mass"] = m
+	# (A flail's is its head on its chain, a weapon of its own: the haft's chips do not make it lighter to swing.)
+	if _swing_all > 0.0 and not (design.get("chain") is Dictionary):
+		stats["inertia"] = _swing0 * clampf(swing / _swing_all, 0.0, 1.0)
+
+## The inertia of the voxels on it about the main hand's place (the plain sum: against what it was as made it says how much of the stats' own is left; `reweigh` sums the same).
+func _swing_sum() -> float:
+	var sum := 0.0
+	for i in vox.size():
+		if alive[i]:
+			var v: Array = vox[i]
+			sum += _kg[i] * (Vector3(v[0], v[1], v[2]) * vs - grip_main).length_squared()
+	return sum
 
 func alive_count() -> int:
 	var n := 0
