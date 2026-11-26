@@ -67,6 +67,7 @@ func _ready() -> void:
 	if multiplayer is SceneMultiplayer:
 		(multiplayer as SceneMultiplayer).server_relay = false
 	get_tree().process_frame.connect(_on_frame_begins)   # (the first listener there is: the end of the frame's steps, see _time_steps)
+	RenderingServer.frame_post_draw.connect(_on_frame_drawn)   # (and where the frame's own work ends: rest_ms)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -816,6 +817,21 @@ func _physics_process(_dt: float) -> void:
 var _frame_end_us := 0
 func _on_frame_begins() -> void:
 	_frame_end_us = Time.get_ticks_usec()
+
+## What a frame costs beside its physics steps (ms, smoothed): from where its idle part begins to where its picture is drawn and handed over (the engine's `frame_post_draw`). The sleep of a
+## frame cap comes after that and is not in it: a game held to 30 or 60 frames a second by a cap is not read as a slow one. The foes' gate keeps the frames their share by it
+## (Match.gate_budget).
+var rest_ms := 0.0
+func _on_frame_drawn() -> void:
+	if _frame_end_us <= 0:
+		return
+	rest_ms = rest_after(rest_ms, float(Time.get_ticks_usec() - _frame_end_us) / 1000.0)
+
+## The smoothed rest with one more frame's in it. (A frame of a quarter of a second or more is a stall, a window dragged, a first-time shader: not what a frame costs.)
+static func rest_after(was: float, ms: float) -> float:
+	if ms <= 0.0 or ms >= 250.0:
+		return was
+	return ms if was <= 0.0 else lerpf(was, ms, 0.05)
 
 ## Every frame, after its physics steps: what they cost each, from the first one's start to where the frame's own work begins. (Read at this node's `_process`, as it was, it took in whatever ran
 ## between the two: the coroutines that waited for the frame, the internal processes, the nodes before this one: by the user's record about 5.5 ms of every frame, which at the two steps a frame of an

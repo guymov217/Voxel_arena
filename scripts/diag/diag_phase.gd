@@ -453,7 +453,7 @@ func _sample(m: Match, t0_ms: int) -> Dictionary:
 	if m.modes != null and m.modes.endless != null:
 		wave = int(m.modes.endless.wave)
 	return {"kind": "sample", "t": float(Time.get_ticks_msec() - t0_ms) / 1000.0, "wave": wave, "men": men, "foes": foes, "held": int(m.gate_held), "coming": int(m.coming), "core_ms": core_ms(),
-		"step_ms": Net.step_ms, "over": Net.overloaded, "fps": Engine.get_frames_per_second(), "nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+		"step_ms": Net.step_ms, "rest_ms": Net.rest_ms, "gate_ms": Match.gate_budget(Net.rest_ms), "over": Net.overloaded, "fps": Engine.get_frames_per_second(), "nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		"orphans": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)), "mem_mb": int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0),
 		"awake": int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), "bodies_pairs": int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))}
 

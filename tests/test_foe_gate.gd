@@ -24,6 +24,41 @@ func test_the_gate_asks_what_one_more_man_would_cost() -> void:
 	t.check(not Match.foe_gate_holds(0.0, 12, 4), "a step not measured yet: no gate")
 	t.check(not Match.foe_gate_holds(5.0, 16, 8), "5 ms with sixteen: 5.3, nothing held")
 
+## The frames have their share (the owner's choice after the second diagnostic report: 45 frames a second kept room for): what a step may cost is what is left of a second
+## after GATE_FPS frames of the host's own measured rest.
+func test_the_gate_keeps_the_frames_their_share() -> void:
+	t.check(absf(Match.gate_budget(9.2) - 4.883) < 0.01, "a frame's rest of 9.2 ms (the owner's release build in a fight): a step may cost 4.9 ms (%.2f)" % Match.gate_budget(9.2))
+	t.check(absf(Match.gate_budget(6.0) - 6.083) < 0.01, "of 6 ms: 6.1 ms")
+	t.check(Match.gate_budget(1.0) == Match.GATE_BUDGET_MS and Match.gate_budget(0.0) == Match.GATE_BUDGET_MS, "a quick frame, or none read yet (a game with no screen): the old 7.6, never more")
+	t.check(Match.foe_gate_holds(4.5, 8, 2, false, Match.gate_budget(9.2)), "eight men at 4.5 ms and frames of 9.2: one more is 5.1 of the 4.9 there is: held")
+	t.check(not Match.foe_gate_holds(4.5, 8, 2, false, Match.gate_budget(6.0)), "with frames of 6 ms he comes in")
+	t.check(not Match.foe_gate_holds(4.5, 8, 1, false, Match.gate_budget(30.0)) and Match.foe_gate_holds(4.5, 8, 2, false, Match.gate_budget(30.0)), "a card that cannot draw 45 frames at all: the two foes there always are, and no more")
+	# What a frame costs beside its steps, smoothed.
+	t.check(Net.rest_after(0.0, 8.0) == 8.0 and absf(Net.rest_after(8.0, 10.0) - 8.1) < 1e-6, "the first frame's rest as it is, the next ones smoothed in")
+	t.check(Net.rest_after(8.0, 400.0) == 8.0 and Net.rest_after(8.0, 0.0) == 8.0, "a stall is not what a frame costs")
+	# The room's own gate reads the host's frames; a test's own cost is held against the old budget.
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "campaign", "stage": 1, "role": "host", "headless": true, "loadout": {"main": "gladius", "off": ""}, "seed": 6})
+	for i in 2:
+		var e = m.spawn_fighter(_foe(i))
+		e.erase("bot")
+		e.drive = func(_e): return {}
+	var step_was: float = Net.step_ms
+	var rest_was: float = Net.rest_ms
+	Net.step_ms = 4.5
+	Net.rest_ms = 9.2
+	t.check(m.enemies().size() >= 2 and m._foe_gate_holds(), "the room's gate holds a foe when the host's frames leave a step 4.9 ms and one more man makes it more")
+	Net.rest_ms = 3.0
+	t.check(not m._foe_gate_holds(), "and lets him in when the frames are quick")
+	Net.rest_ms = 9.2
+	m.gate_cost_ms = 4.5
+	t.check(not m._foe_gate_holds(), "a test's own cost is held against the old budget")
+	Net.step_ms = step_was
+	Net.rest_ms = rest_was
+	m.queue_free()
+	await get_tree().physics_frame
+
 func test_foes_wait_at_the_gate_and_come_in_when_the_host_can_afford_them() -> void:
 	var m := Match.new()
 	add_child(m)

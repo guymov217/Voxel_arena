@@ -220,7 +220,8 @@ static func result_text(d: Dictionary) -> String:
 		"sample":
 			return "  at %5.1f s: wave %d, %d men and %d foes alive, %d held at the gate, %d on their way in, step %.1f ms%s, %.0f fps, %d nodes (%d orphans), %d MB, %d bodies awake%s" % [float(d.get("t", 0.0)), int(d.get("wave", 0)), int(d.get("men", 0)), int(d.get("foes", 0)),
 				int(d.get("held", 0)), int(d.get("coming", 0)), float(d.get("step_ms", 0.0)), " OVER BUDGET" if bool(d.get("over", false)) else "", float(d.get("fps", 0.0)), int(d.get("nodes", 0)), int(d.get("orphans", 0)), int(d.get("mem_mb", 0)), int(d.get("awake", 0)),
-				((", %d friend windows" % int(d.friends)) if d.has("friends") else "") + ((", its core %.1f ms" % float(d.core_ms)) if d.has("core_ms") else "")]
+				((", %d friend windows" % int(d.friends)) if d.has("friends") else "") + ((", its core %.1f ms" % float(d.core_ms)) if d.has("core_ms") else "")
+				+ ((", a frame's rest %.1f ms (the gate lets a step cost %.1f)" % [float(d.rest_ms), float(d.get("gate_ms", 0.0))]) if float(d.get("rest_ms", 0.0)) > 0.0 else "")]
 		"setup":
 			return "  %s: %.0f ms" % [String(d.get("label", "?")), float(d.get("ms", 0.0))]
 		"cpu_loop":

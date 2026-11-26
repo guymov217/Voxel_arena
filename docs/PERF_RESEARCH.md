@@ -637,3 +637,8 @@ on more foes on the sand at once, not on frames: the room sits at the edge of it
 
 A gate that keeps the frames their share (a budget worked out from the frame's own rest and a frame rate to keep) holds more foes back on a slow host and lets them in as the others fall: the wave is the same, fewer of
 it at once. That is the game's pace in a full room, so it is the owner's to choose, with the frame rate to keep. With the arm drive native (section 10) a man costs a fifth less and every row gains a foe or two.
+
+**The owner's choice: 45 frames.** The gate now works its budget out (`Match.gate_budget`, `GATE_FPS`): what is left of a second after 45 frames of the host's own measured rest (`Net.rest_ms`: a frame from where its idle part
+begins to where its picture is handed over, the engine's `frame_post_draw`; the sleep of a frame cap comes after that and is not in it, so a game held to 30 or 60 frames by a cap is not read as a slow one), over 120 steps,
+never more than the old 7.6 ms. A frame's rest of 9.2 ms leaves a step 4.9 ms, of 6 ms 6.1; a game with no screen reads no frame and keeps the old budget (the tests are not touched). There are always the two foes of
+`GATE_MIN_FOES` on the sand; the rest of a wave come in as the others fall. The report's room samples say the rest and the budget beside the step (`a frame's rest ... (the gate lets a step cost ...)`).
