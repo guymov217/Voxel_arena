@@ -5216,7 +5216,7 @@ func _seat_drawing(interp := true, dt := 0.0) -> void:
 			continue
 		var tp := par.get_global_transform_interpolated() if interp else par.global_transform
 		var tc := p.get_global_transform_interpolated() if interp else p.global_transform
-		var bx := par.bend_of(p.pa)
+		var bx: Transform3D = Transform3D.IDENTITY if par.dangle_mm == null else par.bend_of(p.pa)   # (bend_of's own first answer: nothing of the parent swings)
 		if par.draw_turn == Transform3D() and bx == Transform3D():
 			p.draw_shift = tp * p.pa + par.draw_shift - tc * p.ca
 		else:
@@ -5552,7 +5552,36 @@ static func _fine_man(p: VoxelPart) -> bool:
 		return FineBody.BUILDS.has(bn) or FineBody.GIANTS.has(bn)
 	return String(p.fine.get("giant", "")) == ""
 
+## Whether every part of him is a fine man's (_fine_man), kept while each part's fine record is the very one it was: such a man has no joint cap to draw,
+## and _draw_joint_caps asked it of each part and its parent every frame (a part's record is made once and its build never written again: FineBody, FineHead).
+var _fine_all := false
+var _fine_all_of: Array = []
+func _all_fine_men() -> bool:
+	var n := parts.size()
+	var same := _fine_all_of.size() == n
+	if same:
+		for i in n:
+			if not is_same(_fine_all_of[i], parts[i].fine):
+				same = false
+				break
+	if not same:
+		_fine_all_of.resize(n)
+		_fine_all = true
+		for i in n:
+			_fine_all_of[i] = parts[i].fine
+			if not _fine_man(parts[i]):
+				_fine_all = false
+	return _fine_all
+
 func _draw_joint_caps(interp := true) -> void:
+	# (Every part a fine man's: each cap the lines below would hide is hidden, none is drawn. A part's parent is a part of his own, so both are fine.)
+	if _all_fine_men():
+		if not joint_caps.is_empty():
+			for p: VoxelPart in parts:
+				var cap_f: MeshInstance3D = joint_caps.get(p)
+				if cap_f:
+					cap_f.visible = false
+		return
 	for p: VoxelPart in parts:
 		var par: VoxelPart = p.parent_part
 		var cap: MeshInstance3D = joint_caps.get(p)

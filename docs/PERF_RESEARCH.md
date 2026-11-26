@@ -808,3 +808,9 @@ what is left to take is whole blocks moved to the core (the legs' 107 thousand a
 as his control's 1.2 a step: `_clip_arm_armor` 255 thousand (the shoulder guards 135, the limbs in armour 63), `_seat_drawing` 193, `_draw_joint_caps` 179, `_bend_drawing` 98,
 `_foot_drawing` 23, and his ten parts' own `_process` 17 thousand each. At 45 frames and 120 steps a second with sixteen men that is a fifth of all the scripts do in a second,
 and none of it has been counted before (the measurements had no screen, and the drawing leaves at once without one).
+- **The first cut on the frame's side**: a man drawn fine all over (the three builds and his head: nearly every man) has no joint caps, and `_draw_joint_caps` found that out
+  for every part and its parent every frame, by `_fine_man` asked twice a part (152 of his 796 thousand a frame, to draw nothing). Asked once while each part's fine record is
+  the very one it was (`_all_fine_men`: a record is made once and its build never written again; put aside for the voxel look, the caps are back the next frame, and
+  `tests/test_seating.gd` and `test_smooth.gd` hold both ways). And `_seat_drawing` does not call on a parent for its broken piece's turn where nothing of it swings. A man's
+  drawing **796 -> 625 thousand instructions a frame, -21.5%** (`_draw_joint_caps` 179 -> 19, `_seat_drawing` 193 -> 182). Left there, in order: the shoulder guards' two sides
+  111, the knees' and elbows' bends 91, the grip's drawing 46, the limbs in armour 41, his parts' own `_process` 17 each.
