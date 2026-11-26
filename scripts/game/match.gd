@@ -564,6 +564,7 @@ var gate_held := 0         # the foes held at the gate now
 const GATE_SETTLE_S := 4.0
 const GATE_NEAR := 0.75
 var _gate_in_t := -1000.0   # when the last foe was let in (the game's clock)
+var _gate_turn := false     # the gate's last "no" was a foe waiting his turn, not a step over its budget (the record says which)
 
 ## Whether the next foe waits his turn: the steps cost `step_ms` with `men` alive, `foes` of them foes, of the `budget` a step has, and the last foe was let in `since_s` ago.
 static func foe_gate_waits(step_ms: float, men: int, foes: int, budget: float, since_s: float) -> bool:
@@ -586,10 +587,12 @@ func _foe_gate_holds() -> bool:
 			if int(e.team) == ENEMY_TEAM:
 				foes += 1
 	# (A test's own cost is held against the old budget; the room's against what leaves the frames their share.)
+	_gate_turn = false
 	if foe_gate_holds(gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, men, foes, gate_cost_ms < 0.0 and Net.overload_on and Net.overloaded, GATE_BUDGET_MS if gate_cost_ms >= 0.0 else gate_budget(Net.rest_ms)):
 		return true
 	# (And near the budget, one at a time: the room's own cost only, a test's is what the test says it is.)
-	return gate_cost_ms < 0.0 and foe_gate_waits(Net.step_ms, men, foes, gate_budget(Net.rest_ms), time - _gate_in_t)
+	_gate_turn = gate_cost_ms < 0.0 and foe_gate_waits(Net.step_ms, men, foes, gate_budget(Net.rest_ms), time - _gate_in_t)
+	return _gate_turn
 
 func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 	if not (staging() or (at_start and stage_start())):
@@ -612,8 +615,8 @@ func bring_in(specs: Array, on_in := Callable(), at_start := false) -> void:
 		# (A foe, not the goat out of a pot nor the first round's, comes in when the host can afford him.)
 		if not at_start and int(spec.get("team", -1)) == ENEMY_TEAM and not bool(spec.get("harmless", false)) and _foe_gate_holds():
 			gate_held += 1
-			FpsMeter.note("foes held at the gate: a step costs %.1f ms of the %.1f it may (a frame's rest %.1f ms), %d men on the sand" % [gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, GATE_BUDGET_MS if gate_cost_ms >= 0.0 else gate_budget(Net.rest_ms), Net.rest_ms,
-				entities.filter(func(x): return is_instance_valid(x.f) and x.f.alive).size()])
+			FpsMeter.note("%s: a step costs %.1f ms of the %.1f it may (a frame's rest %.1f ms), %d men on the sand" % ["a foe waits his turn at the gate (one at a time near the budget)" if _gate_turn else "foes held at the gate",
+				gate_cost_ms if gate_cost_ms >= 0.0 else Net.step_ms, GATE_BUDGET_MS if gate_cost_ms >= 0.0 else gate_budget(Net.rest_ms), Net.rest_ms, entities.filter(func(x): return is_instance_valid(x.f) and x.f.alive).size()])
 			while _foe_gate_holds() and not over and is_inside_tree():
 				await get_tree().create_timer(0.25).timeout
 			gate_held -= 1

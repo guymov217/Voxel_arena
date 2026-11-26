@@ -62,9 +62,12 @@ func test_the_gate_keeps_the_frames_their_share() -> void:
 	if 3.8 * (1.0 + 1.0 / men_now) <= Match.gate_budget(7.5) and 3.8 * (1.0 + 1.0 / men_now) > Match.gate_budget(7.5) * Match.GATE_NEAR:
 		t.check(not m._foe_gate_holds(), "the room's gate: nobody let in lately, the next foe comes in")
 		m._gate_in_t = m.time
-		t.check(m._foe_gate_holds(), "one let in this moment: the next waits")
+		t.check(m._foe_gate_holds() and m._gate_turn, "one let in this moment: the next waits, and the gate says it is his turn he waits for")
 		m._gate_in_t = m.time - Match.GATE_SETTLE_S - 0.1
-		t.check(not m._foe_gate_holds(), "and comes in once the last has been on the sand long enough")
+		t.check(not m._foe_gate_holds() and not m._gate_turn, "and comes in once the last has been on the sand long enough")
+		Net.step_ms = 6.5
+		t.check(m._foe_gate_holds() and not m._gate_turn, "a step over its budget holds him, and that is not a turn waited for")
+		Net.step_ms = 3.8
 	else:
 		t.check(false, "the room's men (%d) do not put 3.8 ms a step near the budget: the test's numbers want another look" % men_now)
 	Net.rest_ms = 9.2
