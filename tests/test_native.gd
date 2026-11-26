@@ -332,6 +332,94 @@ func test_native_arms_keep_out_like_the_gdscript() -> void:
 	t.check(pushed.out > 300 and pushed.front > 40 and pushed.low > 30 and pushed.clear > 200 and pushed.hand > 100, "and the bodies tried were pushed as well as let alone (pushed: %s of 1000 a kind, 3000 asked of the reach)" % [pushed])
 	t.check(drawn_seen[0] > 200 and drawn_seen[1] > 200, "in a cuirass (the trunk as it is drawn) and bare (its box): %s" % [drawn_seen])
 
+## The arm's drive itself, as far as it has been moved to the C++ core (VoxelCore.arm_plain: the bones of a shield's or an empty hand's arm and the hand's pull;
+## docs/PERF_RESEARCH.md, section 20): from the same man in the same state the script's own branch and the core's leave every body the same speeds and every
+## field of his the same, to the bit.
+func _arm_state(f: Fighter) -> Dictionary:
+	var out := {}
+	for pr in f.get_script().get_script_property_list():
+		var v = f.get(pr.name)
+		if v is Dictionary and (v as Dictionary).size() == 2 and (v as Dictionary).has("L") and (v as Dictionary).has("R"):
+			out[pr.name] = (v as Dictionary).duplicate(true)
+	for nm in ["power_now", "stamina", "grab_bend", "grab_deep", "grab_low", "thrust_lean", "two_handed", "two_front", "two_main", "two_gap", "haft_i", "haft_lp", "haft_raw"]:
+		out[nm] = f.get(nm)
+	return out
+
+func _arm_restore(f: Fighter, st: Dictionary) -> void:
+	for k in st:
+		f.set(k, (st[k] as Dictionary).duplicate(true) if st[k] is Dictionary else st[k])
+
+func test_native_arm_drive_matches_the_gdscript() -> void:
+	if Greedy.core() == null or not Greedy.arm_drive_ok:
+		t.check(true, "no native core with the arm's drive built: the GDScript drive runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 37
+	var bad := []
+	var driven := 0
+	var homes := 0
+	var blades := 0
+	for lo in [{"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "gladius", "off": ""}, {"main": "mace", "off": "scutum"}]:
+		var m := Match.new()
+		add_child(m)
+		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": lo})
+		for k in 30:
+			await get_tree().physics_frame
+		var f: Fighter = m.me.f
+		var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+		for k in 600:
+			# (By turns the shield's or the empty hand's arm, and the blade's.)
+			var side: String = f.two_off() if k % 2 == 0 else f.two_side
+			var bodies := _arm_bodies(f, side)
+			if f.weapons[side] != null:
+				bodies.append(f.weapons[side])
+			var speeds := []
+			for i in bodies.size():
+				speeds.append((rv.call(1.0 if i == 0 else 3.0) as Vector3) if k % 5 != 0 else Vector3.ZERO)
+				speeds.append((rv.call(8.0) as Vector3) if k % 5 != 0 else Vector3.ZERO)
+			var inp := {"main": {"x": rng.randf_range(-1.6, 1.6), "y": rng.randf_range(-1.3, 1.5)}, "off": {"x": rng.randf_range(-1.6, 1.6), "y": rng.randf_range(-1.3, 1.5)},
+				"thrust": 0.0, "offThrust": 0.25 if k % 7 == 0 else 0.0}
+			var power := k % 4 == 0
+			var dt := 1.0 / 120.0 if k % 6 != 0 else rng.randf_range(0.005, 0.02)
+			var t_pos: Vector3 = f.torso.global_position
+			var t_rot := PD.quat_of(f.torso)
+			var yaw_q := Quaternion(Vector3.UP, f.yaw + rng.randf_range(-0.2, 0.2))
+			var st := _arm_state(f)
+			if k % 9 == 0:
+				(st["fist_home"] as Dictionary)[side] = 0.2   # (a fist on its way home: the brisker fold, the upper arm rolled)
+			if k % 7 == 1 and f.weapons[side] != null:
+				(st["behind_t"] as Dictionary)[side] = 1.5   # (a blade long behind him: it is turned back to the front)
+			var res := []
+			for native in [false, true]:
+				_arm_restore(f, st)
+				_arm_set_speeds(bodies, speeds)
+				f._arm_phase = true
+				f._sculpt_memo.clear()
+				f._limb_memo.clear()
+				f._rec_memo.clear()
+				f._plate_memo = null
+				f._beast_memo = -1
+				Greedy.arm_drive_ok = native
+				f._drive_arm(side, inp, true, power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt)
+				res.append([_arm_live(bodies), _arm_state(f)])
+			Greedy.arm_drive_ok = true
+			f._arm_phase = false
+			if res[0][0] != res[1][0]:
+				bad.append("speeds, k=%d" % k)
+			elif res[0][1] != res[1][1]:
+				bad.append("his fields, k=%d" % k)
+			if res[1][0] != speeds:
+				driven += 1
+			if side == f.two_side:
+				blades += 1
+			if float((res[1][1]["fist_home"] as Dictionary)[side]) > 0.0:
+				homes += 1
+			_arm_set_speeds(bodies, speeds.map(func(_v): return Vector3.ZERO))
+		m.queue_free()
+		await get_tree().physics_frame
+	t.check(bad.is_empty(), "the core's arm drive leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
+	t.check(driven > 1500 and homes > 60 and blades == 900, "and it was the drive at work: %d of 1800 steps pushed a body, %d with a fist on its way home, %d a blade's arm" % [driven, homes, blades])
+
 func test_native_smooth_matches_the_gdscript() -> void:
 	# (#151) The men's smooth skin (FineSmooth: a part's solid, the part beside it joined on at the
 	# joint, the blurred shapes, the way each fine voxel faces, where its corners are drawn): the

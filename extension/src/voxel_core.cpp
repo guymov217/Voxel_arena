@@ -53,6 +53,9 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("hand_off", "torso", "sculpt", "o_up", "armored_up", "o_fo", "armored_fo", "shoulder_w", "elbow_w", "goal", "lu", "lf", "straight", "fo_severed", "s", "band_lo", "band_hi", "band_pad", "limb_plate"), &VoxelCore::hand_off);
 	ClassDB::bind_method(D_METHOD("keep_hand_front", "up", "fo", "torso", "up_half", "torso_half", "hand_point", "out_x", "s", "dt", "fo_severed", "up_mass", "fo_mass", "side_weapon_mass", "haft_half_mass", "out_k"), &VoxelCore::keep_hand_front);
 	ClassDB::bind_method(D_METHOD("keep_elbow_low", "up", "fo", "torso", "up_pa", "fo_pa", "hand_point", "right", "s", "dt", "up_mass", "fo_mass", "elbow_over", "elbow_over_hand", "elbow_soft", "low_k"), &VoxelCore::keep_elbow_low);
+	ClassDB::bind_method(D_METHOD("arm_plain", "upper", "fore", "torso", "shield", "target_w", "shoulder_w", "dir", "t_pos", "t_rot", "yaw_q", "hand_w", "hand_vel", "target_vel", "sculpt", "o_up", "k"), &VoxelCore::arm_plain);
+	ClassDB::bind_method(D_METHOD("arm_blade", "upper", "fore", "torso", "head", "w", "fore_q", "aim_fore_q", "w_aim", "aim_q", "grip_q", "aim_w", "hand_goal", "hand_w", "hand_vel", "target_vel", "t_pos", "t_rot", "yaw_q", "behind_t", "arm_strain", "side", "k"), &VoxelCore::arm_blade);
+	ClassDB::bind_method(D_METHOD("arm_elbow", "upper", "torso", "target_w", "shoulder_w", "fore_dir", "t_rot", "e_was", "sculpt", "o_up", "k"), &VoxelCore::arm_elbow);
 	ClassDB::bind_method(D_METHOD("smooth_solid", "at", "inner", "res", "seal_lo", "seal_hi", "pad"), &VoxelCore::smooth_solid);
 	ClassDB::bind_method(D_METHOD("smooth_joined", "sol", "beside"), &VoxelCore::smooth_joined);
 	ClassDB::bind_method(D_METHOD("smooth_blur", "f", "sx", "sy", "sz", "r"), &VoxelCore::smooth_blur);

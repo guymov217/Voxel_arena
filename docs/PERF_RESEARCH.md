@@ -657,3 +657,21 @@ What section 10 measured holds: `_drive_arm` is 46% of a living man's `control` 
   two are compared bit for bit over real fights), then switched on and proved by `tools/replay_check.sh`'s fingerprints. The types are section 4's: scalars double, vectors float, a vector times a scalar taking the scalar as a float, the engine's own normalize.
 - **In this order**: the shield's and the empty hand's arm (the shorter drive: the mark, the elbow, four PD drives, the hand's pull), then the blade's (`weapon_aim` and the forearm, elbow and wrist drives under it), then two hands on a haft.
   Expected when both of a man's arms are on it: about 230 us of his 780, a fifth of a step.
+
+**The first three pieces** (`extension/src/arm_drive.cpp`; `Greedy.arm_drive_ok`):
+- `VoxelCore.arm_plain`: the bones of a shield's or an empty hand's arm and the hand's pull to its mark (the last branch of `_drive_arm` and its tail: `_elbow_dir`, `_limit_dir`, the elbow off the drawn trunk, four PD drives, `_twist_to`,
+  `_orient_shield`, the pull). The script works the mark out as before and hands it over.
+- `VoxelCore.arm_elbow`: the way a blade arm's elbow goes and its upper arm driven there (`_elbow_dir` with its drop, `_route_front`, the elbow off the drawn trunk, `pd_axis` with the load's scale and the elbow's own turn,
+  `pd_twist`), where the arm is a plain blade's and the trunk's sculpt is there. The swing's reading and the elbow's set (`_hold_elbow`) between it and the next are still the script's.
+- `VoxelCore.arm_blade`: a blade's arm from its forearm on, in the plain case (one hand on it, no thrust line, the fist firm, no throw): `_drive_forearm`, `_lock_elbow`, `_unjam_blade`, `_keep_blade_front`, the swing's cap,
+  `_drive_wrist`, the pull, `_keep_weapon_out`. `_free_wedged`, which gives no push and reads nothing the others change, stays the script's and runs after.
+- **To the bit**: `tests/test_native.gd` drives the same man from the same state through the script's branch and the core's, 1800 steps of a shield's, an empty hand's and a blade's arm (a fist on its way home, a blade long behind
+  him among them), and every body's speeds and every field of his come out the same; `tools/replay_check.sh` prints the same fingerprints on every line that repeats.
+- **What it is worth**, timed at the calls themselves (two clock reads a call) in the same fight of sixteen, three runs each: the arm's drive 112 -> 88 us a call (-21%), a man's `control` 499 -> 450 us (-10%), a step's
+  controls 7.2 -> 6.5 ms, the step 14.0 -> 13.4 ms (-4%). `arm_plain` and `arm_blade` are all of it; `arm_elbow` by itself is worth about a microsecond (what it spares the script it pays back in its own arguments): only
+  the large pieces pay, and it is kept for the one call the blade's arm is to become.
+- **The marks overstated it**, and the plan with them: sections 10 and 18 read the drive at 177 us a call and the step's gain at a fifth; a mark is half a microsecond and more, and the drive is 112 us. The controls are 52%
+  of a step here (7.2 of 14.0 ms). What is left in the 88 us: the mark's working out (about 35 us, both arms), `weapon_aim` (about 18, a blade's arm), the swing's reading, `_hold_elbow`, `_hand_off_trunk` and `_free_wedged`
+  (about 12), and the natives' own work (about 20). With the mark and the aim there too and the blade's arm one call: about 50 us a call, a man's `control` about 375 us (-25%), 13% of a step here and about 15% in the
+  release build, where the scripts are more of a step. Not the fifth this document promised.
+- The Linux library is built in an Ubuntu 20.04 root (glibc 2.31, Steam's runtime: `tools/test_package.py` holds it to that); built on this machine's own system it asked for glibc 2.38.

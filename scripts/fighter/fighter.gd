@@ -5537,6 +5537,7 @@ static func _body_color(p: VoxelPart) -> Color:
 			best = k
 	return Color.hex(best) if best != null else Color(0.8, 0.6, 0.45)
 
+var _arm_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_plain, arm_elbow and arm_blade, in the order they read them
 func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float) -> void:
 	var a: Dictionary = arm[side]
 	var upper: VoxelPart = a.upper
@@ -6053,14 +6054,41 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		var lu := UPPER_LEN * S
 		var lf := FORE_LEN * S
 		var side_sign := -1.0 if side == "R" else 1.0
-		var e_local = t_rot.inverse() * (target_w - fore_dir * lf - shoulder_w)
-		if e_local.length_squared() < 1e-6:
-			e_local = Vector3(side_sign * 0.3, -1, -0.3)
-		e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
-		# The elbow never folds in through the chest: in the body's frame it stays on its own
-		# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
-		var elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot, -(t_rot.inverse() * fore_dir).y * lf), t_rot, (-1.0 if side == "R" else 1.0) if throw_pose[side] else 0.0)
-		elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
+		var elbow_dir
+		# (The elbow's way and the upper arm's two drives in one call of the C++ core where the arm is a plain blade's and the trunk's sculpt is
+		# there, to the bit what follows here: VoxelCore.arm_elbow.)
+		var nc_el := Greedy.core()
+		var sc_el = _trunk_sculpt(side) if nc_el != null and Greedy.arm_drive_ok and not two_handed and not throw_pose[side] and over <= 0.0 and not loose and not (weapon_joints[side] as Node).has_meta("grip_now") else null
+		var elbow_n: bool = sc_el != null
+		if elbow_n:
+			var rec_e: Array = _arm_rec(side)
+			var b_e: Array = _plate_band_now()
+			_arm_k[0] = S
+			_arm_k[1] = MS
+			_arm_k[2] = af
+			_arm_k[6] = dt
+			_arm_k[10] = 1.0 if side == "L" else 0.0
+			_arm_k[16] = w.mass
+			_arm_k[18] = fore.nominal_mass
+			_arm_k[19] = b_e[0]
+			_arm_k[20] = b_e[1]
+			_arm_k[21] = b_e[2]
+			_arm_k[22] = 1.0 if rec_e[1] else 0.0
+			_arm_k[23] = lu
+			_arm_k[24] = LIMB_PLATE
+			_arm_k[26] = lf
+			_arm_k[33] = 1.0 if elbow_low_on else 0.0
+			_arm_k[34] = 1.0 if e_was != null else 0.0
+			elbow_dir = nc_el.arm_elbow(upper, torso, target_w, shoulder_w, fore_dir, t_rot, (e_was as Vector3) if e_was != null else Vector3.ZERO, sc_el, rec_e[0], _arm_k)
+		else:
+			var e_local = t_rot.inverse() * (target_w - fore_dir * lf - shoulder_w)
+			if e_local.length_squared() < 1e-6:
+				e_local = Vector3(side_sign * 0.3, -1, -0.3)
+			e_local = e_local.normalized().lerp(Vector3(side_sign * 0.5, -0.7, -0.5).normalized(), 0.06 if two_handed else 0.18).normalized()
+			# The elbow never folds in through the chest: in the body's frame it stays on its own
+			# side of the shoulder (at most 0.22 S across the shoulder line) and at most 0.28 S above it.
+			elbow_dir = _route_front(PD.quat_of(upper) * Vector3(0, -1, 0), _elbow_dir(side, e_local, lu, t_rot, -(t_rot.inverse() * fore_dir).y * lf), t_rot, (-1.0 if side == "R" else 1.0) if throw_pose[side] else 0.0)
+			elbow_dir = _elbow_clear(side, shoulder_w, elbow_dir, lu)
 		var elbow = shoulder_w + elbow_dir * lu
 		hand_goal = elbow + fore_dir * lf
 		if over > 0.0:
@@ -6076,14 +6104,15 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 			# long as in one hand.
 			two_front = hand_goal + (two_gap as Vector3)
 			two_front += _out_front(two_front)
-		var m_load := (fore.nominal_mass + w.mass) * lu * lu
-		var k_up := 1.0 + m_load / PD.inertia_of(upper)
-		var up_ff: Vector3 = PD.clamp_len((e_was as Vector3).cross(elbow_dir) / dt, 25.0) if e_was != null else Vector3.ZERO
 		elbow_prev[side] = elbow_dir
-		pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up), up_ff)
-		# The upper arm does not roll on its own length under a swing: the elbow keeps pointing
-		# down and out, the hinge where it belongs.
-		pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 25.0 * MS, dt)
+		if not elbow_n:   # (driven in arm_elbow otherwise)
+			var m_load := (fore.nominal_mass + w.mass) * lu * lu
+			var k_up := 1.0 + m_load / PD.inertia_of(upper)
+			var up_ff: Vector3 = PD.clamp_len((e_was as Vector3).cross(elbow_dir) / dt, 25.0) if e_was != null else Vector3.ZERO
+			pd_axis(upper, Vector3(0, -1, 0), elbow_dir, 16.0, 1.0, 260.0 * af * MS * S, dt, minf(5.0 if two_handed else 12.0, k_up), up_ff)
+			# The upper arm does not roll on its own length under a swing: the elbow keeps pointing
+			# down and out, the hinge where it belongs.
+			pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 25.0 * MS, dt)
 		# A swing locks the elbow: the whole time the swing button is held, and through any fast
 		# stroke of the hand (button or not) and a moment after it, so the weight of the head
 		# (a warhammer most) is carried round on the straight arm from the shoulder instead of
@@ -6137,6 +6166,39 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 				if side == two_side and two_gap != null:
 					two_front = hand_goal + (two_gap as Vector3)
 					two_front += _out_front(two_front)
+		# (From here on in one call of the C++ core where the arm is a plain blade's: one hand on it, no thrust line, the fist firm, no throw.
+		# To the bit what follows here and below, VoxelCore.arm_blade; _free_wedged, which gives no push, is still this script's.)
+		var nc_arm := Greedy.core()
+		if nc_arm != null and Greedy.arm_drive_ok and not two_handed and thrust_line[side] == null and not loose and not throwing[side] and not throw_pose[side] and throw_anim == null and has_wrist(w):
+			if side == two_side:
+				haft_i = Vector3.ZERO
+				haft_lp = Vector3.ZERO
+				haft_raw = Vector3.ZERO
+			_arm_k[0] = S
+			_arm_k[1] = MS
+			_arm_k[2] = af
+			_arm_k[3] = strength
+			_arm_k[4] = hnd
+			_arm_k[5] = m_eff
+			_arm_k[6] = dt
+			_arm_k[7] = gravity
+			_arm_k[8] = body_mass
+			_arm_k[9] = float(mods.strength)
+			_arm_k[11] = fist_home[side]
+			_arm_k[12] = 1.0 if power else 0.0
+			_arm_k[13] = 1.0 if on_ground else 0.0
+			_arm_k[17] = upper.nominal_mass
+			_arm_k[18] = fore.nominal_mass
+			_arm_k[26] = FORE_LEN * S
+			_arm_k[27] = float(w.reach)
+			_arm_k[28] = 1.0 if w.welded else 0.0
+			_arm_k[29] = 1.0 if w.holder == self else 0.0
+			_arm_k[30] = 1.0 if torso.severed else 0.0
+			_arm_k[31] = 1.0 if head.severed else 0.0
+			_arm_k[32] = behind_t[side]
+			nc_arm.arm_blade(upper, fore, torso, head, w, fore_q, aim_fore_q, w_aim, aim_q[side], grip_q(w), aim_w[side], hand_goal, hand_w, hand_vel, target_vel[side], t_pos, t_rot, yaw_q, behind_t, arm_strain, side, _arm_k)
+			_free_wedged(side, w, dt)
+			return
 		_drive_forearm(side, w, fore_q, strength, dt)
 		_lock_elbow(side, w, fore_q, strength, dt)
 		if side == two_side and two_handed and weapon_joints[two_off()] and thrust_line[side] == null:
@@ -6179,6 +6241,44 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 		else:
 			pd_twist(upper, torso, 4.0 * MS, 0.6 * MS, 30.0 * MS, dt)
 	else:
+		# (Its bones and the hand's pull in one call of the C++ core, to the bit what follows here and below: VoxelCore.arm_plain,
+		# docs/PERF_RESEARCH.md section 20.)
+		var nc_arm := Greedy.core()
+		if nc_arm != null and Greedy.arm_drive_ok and thrust_line[side] == null:
+			var sc_n = _trunk_sculpt(side)
+			var on_n: bool = sc_n != null
+			var rec_n: Array = _arm_rec(side) if on_n else _NO_REC
+			var b_n: Array = _plate_band_now() if on_n else _NO_BAND
+			_arm_k[0] = S
+			_arm_k[1] = MS
+			_arm_k[2] = af
+			_arm_k[3] = strength
+			_arm_k[4] = hnd
+			_arm_k[5] = m_eff
+			_arm_k[6] = dt
+			_arm_k[7] = gravity
+			_arm_k[8] = body_mass
+			_arm_k[9] = float(mods.strength)
+			_arm_k[10] = 1.0 if side == "L" else 0.0
+			_arm_k[11] = fist_home[side]
+			_arm_k[12] = 1.0 if power else 0.0
+			_arm_k[13] = 1.0 if on_ground else 0.0
+			_arm_k[14] = jab_t[side]
+			_arm_k[15] = 1.0 if w else 0.0
+			_arm_k[16] = w.mass if w else 0.0
+			_arm_k[17] = upper.nominal_mass
+			_arm_k[18] = fore.nominal_mass
+			_arm_k[19] = b_n[0]
+			_arm_k[20] = b_n[1]
+			_arm_k[21] = b_n[2]
+			_arm_k[22] = 1.0 if rec_n[1] else 0.0
+			_arm_k[23] = UPPER_LEN * S
+			_arm_k[24] = LIMB_PLATE
+			_arm_k[25] = 1.0 if on_n else 0.0
+			arm_strain[side] = nc_arm.arm_plain(upper, fore, torso, w if (w and w.is_shield) else null, target_w, shoulder_w, dir, t_pos, t_rot, yaw_q, hand_w, hand_vel, target_vel[side], sc_n if on_n else _NO_SCULPT, rec_n[0], _arm_k)
+			if w and w.holder == self and not w.is_shield:
+				_keep_weapon_out(w, dt)
+			return
 		# A shield or an empty hand: the same elbow as a weapon arm, mirrored for the left, so
 		# the arm never folds in through the chest whichever hand it is.
 		var lu := UPPER_LEN * S

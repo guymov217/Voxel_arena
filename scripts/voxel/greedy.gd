@@ -8,6 +8,7 @@ static var native: Object = null
 static var _checked := false
 static var use_native := true
 static var arm_ok := false   # the loaded core has the arms' natives (an older build does not: the script keeps the arms out)
+static var arm_drive_ok := false   # and the arm's drive itself, as far as it has been moved there (VoxelCore.arm_plain; docs/PERF_RESEARCH.md, section 20)
 
 static func core() -> Object:
 	if not _checked:
@@ -15,6 +16,7 @@ static func core() -> Object:
 		if ClassDB.class_exists("VoxelCore"):
 			native = ClassDB.instantiate("VoxelCore")
 			arm_ok = native.has_method("keep_arm_out") and native.has_method("keep_hand_front") and native.has_method("keep_elbow_low") and native.has_method("clear_body") and native.has_method("elbow_off") and native.has_method("hand_off")
+			arm_drive_ok = arm_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow")
 	return native if use_native else null
 
 static func boxes(w: int, h: int, d: int, solid: PackedByteArray) -> Array:
