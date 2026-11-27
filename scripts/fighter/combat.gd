@@ -485,7 +485,9 @@ func process_contacts(_dt: float) -> Array:
 		if vic.severed and not vic.fighter.alive and att is VoxelPart:
 			continue
 		# (The pair as the two ids: it was a string spelt out of them for every contact, eighty a step in a melee. The groups keep the order they were first met in.)
-		var key := [att.get_instance_id(), vic.get_instance_id()]
+		var att_o: Object = att   # (asked as the objects they are: their ids at a sixth of the cost)
+		var vic_o: Object = vic
+		var key := [att_o.get_instance_id(), vic_o.get_instance_id()]
 		var rank := 0
 		var typ := "blunt"
 		var mat := ""

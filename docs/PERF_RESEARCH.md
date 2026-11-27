@@ -947,10 +947,12 @@ The fight's second 6 again (section 24), each of `control`'s statements counted,
 | what his legs can do (`leg_func`), asked eight times a step by `control`, `can_stand`, `wound`, the bot's `_react` | 1.0 | |
 | the mass his legs carry, the parts sunk in the sand, his weapons unburied, wrenched, reached for | 1.5 | |
 
-- **What a statement costs.** A member of the man's own read or written: 65 to 150 instructions (the 67 numbers handed to the core for an arm are 7 thousand, not
-  the cost that was feared). A member of ANOTHER object read through a variable with no type (`for p in parts: p.bleed`): 400 to 1000, and a method called on it
-  1500 and more; the same through a typed variable, or from inside the object, a fifth of that. A dictionary made (`{"x": .., "y": ..}`, an input's default included,
-  made whether it is used or not): 2 to 4 thousand and five to ten trips to the allocator. The allocator is 6 of the 68 million instructions a fighting step costs
+- **What a statement costs.** A member of the object's own read or written: 30 to 150 instructions (the 67 numbers handed to the core for an arm are 7 thousand,
+  not the cost that was feared). A member of ANOTHER object (`for p in parts: p.bleed`): 400 to 1200, and a method called on it 1500 and more. A type on the
+  variable buys little: a fifth off the engine's own properties (`p.global_position`), nothing off a script's (`o.f.alive` through a typed `Fighter` came out 1%
+  dearer, for the check the assignment makes, and was taken out again). What pays is the question asked from INSIDE the object, once (`bleed_step`: 1.7 thousand a
+  part where the loop outside paid 9), and the answer kept. A dictionary made (`{"x": .., "y": ..}`, an input's default included, made whether it is used or not):
+  2 to 4 thousand and five to ten trips to the allocator. The allocator is 6 of the 68 million instructions a fighting step costs
   the whole process (the scripts' calls are 43 of the 68, the script machine's own loop 18 of those).
 - **The cuts of this round, each to the bit** (the fingerprints: 0 lines of 39):
   - `VoxelPart.bleed_step`: a part's step of bleeding in the part's own lines, where the man's loop asked each of ten parts six things from outside;
@@ -958,12 +960,14 @@ The fight's second 6 again (section 24), each of `control`'s statements counted,
     `_fn_ver`) and his spine and pelvis are as they were; never while a frost thaws on the leg, which goes by the clock;
   - the mass his legs carry and the limbs `_no_fling` holds back are kept while no part is cut off (`body_ver`, counted by `VoxelPart.severed` and `nominal_mass`);
   - a contact that may be a blow is a list of six, not a table of six names (`Combat.pending`: 140 made a step, read once and thrown away);
-  - the parts sunk in the sand are looked for through a typed variable.
+  - the parts sunk in the sand are looked for through a typed variable (a sixth off that loop, no more).
   The fighting step **43.0 -> 40.4 million, -6.0%** (`control` -6.8%, `Combat.report` -13%, a weapon's contacts -29%, `Bot.update` -10%); with section 24, **-10.1%**
   of what a fighting step cost this morning. The whole process: 68.0 -> 65.4 million a step.
 - **The arms the core does not drive are the dearest thing left.** In second 6, of the 17.7 arms with a weapon a step: 12.4 are driven whole in the core
   (`arm_armed`, about 165 thousand instructions each with the handing over), and 5.3 fall to the script's own lines at about 600 thousand each: **a thrust along
   the blade's line** (2.3 a step: `arm_mark_core` sends back every arm whose thrust is over a half), **both hands on a haft** (a two-hander's two arms, every step),
   an archer's arms, a shove, a man crawling. A man with a two-handed weapon costs four times a man with sword and shield in his arms; a spearman thrusting, three
-  times. **Next: the thrust's line and the two-handed drive in the core** (`_thrust_ext`, `_hold_thrust_line`, `_drive_haft`, the guard hand's place), about 4 of
+  times. After it, small: a weapon's box by the shape touched is kept while its shapes are what they were (`Weapon.box_for_shape`, four questions of the engine
+  sixty times a step), the ids of a blow's pair asked of typed objects: `process_contacts` -3.6%, the step 40.45 -> 40.27.
+  **Next: the thrust's line and the two-handed drive in the core** (`_thrust_ext`, `_hold_thrust_line`, `_drive_haft`, the guard hand's place), about 4 of
   the 40 million; then the contacts.

@@ -359,6 +359,7 @@ func _build_boxes(indices: Array) -> Array:
 	return out
 
 func _add_box(b: Dictionary) -> void:
+	_box_memo.clear()
 	for i in b.indices:
 		box_of[i] = b
 	var cs := CollisionShape3D.new()
@@ -372,17 +373,25 @@ func _add_box(b: Dictionary) -> void:
 	b.shape = cs
 
 func _drop_box(b: Dictionary) -> void:
+	_box_memo.clear()
 	if b.shape:
 		b.shape.queue_free()
 		remove_child(b.shape)
 		b.shape = null
 
-## The box a contact touched (from a shape index on this body).
+## The box a contact touched (from a shape index on this body). Kept by the shape's index while the weapon's shapes are the ones it was asked of (_add_box and
+## _drop_box are all that change them): a blade in a melee is asked sixty times a step, four questions of the engine each.
+var _box_memo := {}
 func box_for_shape(shape_idx: int) -> Dictionary:
+	var kept = _box_memo.get(shape_idx)
+	if kept != null:
+		return kept
 	var owner_id := shape_find_owner(shape_idx)
 	var node = shape_owner_get_owner(owner_id)
 	if node and node.has_meta("box"):
-		return node.get_meta("box")
+		var b: Dictionary = node.get_meta("box")
+		_box_memo[shape_idx] = b
+		return b
 	return {}
 
 ## The voxel of a box nearest a world point (which one a blow chipped).
