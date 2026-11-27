@@ -2880,8 +2880,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s SCHMETTERT %s IN DEN SAND!",
  "%d denarii to each of you": "%d Denare für jeden von euch",
  "The room is full": "Der Raum ist voll",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tritt (und stampft auf einen, der am Boden liegt), %s schubst. Halte %s, um zum Tritt auszuholen, und lass los, um ihn durchzuziehen: er verletzt und wirft einen Mann zurück. Tritt oder schubse die Puppe.",
- "Push kick: let go of %s to drive it home": "Stoßtritt: lass %s los, um ihn durchzuziehen",
  "Bout time %s": "Kampfdauer %s",
  "Damage dealt": "Schaden verursacht",
  "Hardest blow": "Härtester Schlag",
@@ -2973,5 +2971,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Die gewählten Blöcke neu machen: aus dem links gewählten Material oder mit der dort gewählten Aufgabe",
  "a damaged brain": "ein geschädigtes Gehirn",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Ein zerrissenes oder gequetschtes Gehirn hinterlässt ein Dröhnen, das nicht vergeht: langsamer auf den Beinen, schwächer im Arm, zu spät, einen Schlag kommen zu sehen. Keine Nadel und keine Schiene heilt es. Nur das Heilmittel des Gottes gibt es zurück.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Verschwommene, doppelte Sicht nach einem Schlag auf den Kopf (ab dem nächsten Kampf)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Verschwommene, doppelte Sicht nach einem Schlag auf den Kopf (ab dem nächsten Kampf)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s tritt (und stampft auf einen, der am Boden liegt), %s schubst. Halte %s für einen harten Tritt in den Bauch: er verletzt und wirft einen Mann zurück. Tritt oder schubse die Puppe."
 }

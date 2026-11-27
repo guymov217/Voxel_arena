@@ -78,7 +78,6 @@ var blind := {}
 var charge_bar: Control
 var charge_hint: Label
 var charge := 0.0
-var kick_held := 0.0   # how long his kick's key has been held (s): a push kick winding up shows on the charge bar
 ## The thrust switched on (C): the crosshair turns into a spear's point with the stab's depth
 ## beside it, and a tag under it says so and how to stab and leave (user: a toggle, with a sign
 ## the player sees).
@@ -1062,20 +1061,9 @@ func _process(dt: float) -> void:
 		thrust_tag.visible = on
 		thrust_hint.text = Loc.t("Hold a mouse button and push the mouse to stab · %s to switch off") % _key("thrust")
 	var ch := float(match_.last_local_inp.get("charging", 0.0)) if match_.last_local_inp is Dictionary else 0.0
-	# (A push kick wound up, the kick's key held past the knee coming up: the same bar fills, as far as a full wind-up. From his own key, so a guest's bar fills as the host's does.)
-	var fk = match_.me.f if match_.me and is_instance_valid(match_.me.f) else null
-	if fk != null and fk.alive and fk.state == "stand" and bool(li.get("kickHold", false)):
-		kick_held += dt
-	else:
-		kick_held = 0.0
-	var winding: bool = ch <= 0.0 and kick_held > Fighter.PUSH_AT + 0.03 and (match_.role == "guest" or int(fk.kick_wind) == 1)
-	if winding:
-		ch = clampf((kick_held - Fighter.PUSH_AT) / Fighter.PUSH_WIND, 0.02, 1.0)
 	charge_bar.visible = ch > 0.0
 	charge_hint.visible = ch > 0.0
-	if winding:
-		charge_hint.text = Loc.t("Push kick: let go of %s to drive it home") % _key("kick")
-	elif ch > 0.0 and match_.me and is_instance_valid(match_.me.f):
+	if ch > 0.0 and match_.me and is_instance_valid(match_.me.f):
 		var fh = match_.me.f
 		var hand := ""
 		if fh.held_item != null:

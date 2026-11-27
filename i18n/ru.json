@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s ВБИВАЕТ %s В ПЕСОК!",
  "%d denarii to each of you": "по %d денариев каждому",
  "The room is full": "Комната заполнена",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s — пинок (и топтание лежачего), %s — толчок. Удерживайте %s, чтобы замахнуться ногой, и отпустите, чтобы нанести удар: он ранит и отбрасывает противника. Пните или толкните манекен.",
- "Push kick: let go of %s to drive it home": "Мощный пинок: отпустите %s, чтобы ударить",
  "Bout time %s": "Длительность боя %s",
  "Damage dealt": "Нанесённый урон",
  "Hardest blow": "Сильнейший удар",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Переделать выбранные блоки: из материала, выбранного слева, или с выбранной там ролью",
  "a damaged brain": "повреждённый мозг",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Разорванный или ушибленный мозг оставляет звон, который не проходит: ноги медленнее, рука слабее, удар замечаешь с опозданием. Ни игла, ни шина его не исцелят. Вернуть его может только лекарство самого бога.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Размытое, двоящееся изображение после удара по голове (со следующего боя)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Размытое, двоящееся изображение после удара по голове (со следующего боя)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s — пинок (и топтание лежачего), %s — толчок. Удерживайте %s для сильного удара ногой в живот: он ранит и отбрасывает противника. Пните или толкните манекен."
 }

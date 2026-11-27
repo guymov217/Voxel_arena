@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s ÉCRASE %s CONTRE LE SABLE !",
  "%d denarii to each of you": "%d deniers pour chacun de vous",
  "The room is full": "La salle est pleine",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s donne un coup de pied (et piétine un homme à terre), %s bouscule. Maintenez %s pour armer le coup de pied et relâchez pour le porter de toutes vos forces : il blesse et projette un homme en arrière. Frappez ou bousculez le mannequin.",
- "Push kick: let go of %s to drive it home": "Coup de pied de poussée : relâchez %s pour le porter",
  "Bout time %s": "Durée du combat %s",
  "Damage dealt": "Dégâts infligés",
  "Hardest blow": "Coup le plus violent",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Refait les blocs choisis : dans la matière choisie à gauche, ou avec le rôle choisi là",
  "a damaged brain": "un cerveau endommagé",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Un cerveau déchiré ou contusionné laisse un bourdonnement qui ne passe pas : plus lent sur ses jambes, plus faible du bras, tardif à voir venir un coup. Ni aiguille ni attelle n'y peut rien. Seul le remède du dieu lui-même le rend.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Vue floue et dédoublée après un coup à la tête (dès le prochain combat)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Vue floue et dédoublée après un coup à la tête (dès le prochain combat)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s donne un coup de pied (et piétine un homme à terre), %s bouscule. Maintenez %s pour un coup de pied violent au ventre : il blesse et projette un homme en arrière. Frappez ou bousculez le mannequin."
 }

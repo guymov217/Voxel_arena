@@ -2880,8 +2880,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s 狠狠地把 %s 砸进了沙地！",
  "%d denarii to each of you": "每人 %d 第纳尔",
  "The room is full": "房间已满",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 踢（对倒地的人则是踩踏），%s 推。按住 %s 蓄力，松开时全力踢出：能重创对手并把他踢飞。踢或推一下木人。",
- "Push kick: let go of %s to drive it home": "重踢：松开 %s 全力踢出",
  "Bout time %s": "战斗时长 %s",
  "Damage dealt": "造成伤害",
  "Hardest blow": "最重一击",
@@ -2973,5 +2971,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "重做选中的方块：改用左边选的材料，或改作那里选的用途",
  "a damaged brain": "受损的大脑",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "撕裂或挫伤的大脑会留下挥之不去的耳鸣：脚步变慢，手臂变弱，也更晚察觉袭来的一击。针线和夹板都治不好它，只有神明亲授的疗法才能把它还给你。",
- "Blurred, doubled view after a blow to the head (from the next fight)": "头部受击后视野模糊、重影（下一场战斗起生效）"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "头部受击后视野模糊、重影（下一场战斗起生效）",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s 踢（对倒地的人则是踩踏），%s 推。长按 %s 踢出一记猛踹腹部的重脚：能重创对手并把他踢退。踢或推一下木人。"
 }

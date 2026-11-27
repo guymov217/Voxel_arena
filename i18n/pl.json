@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s WALI %s O PIASEK!",
  "%d denarii to each of you": "%d denarów dla każdego",
  "The room is full": "Pokój jest pełny",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s – kopnięcie (i deptanie leżącego), %s – pchnięcie. Przytrzymaj %s, by zamachnąć się do kopniaka, i puść, by go wyprowadzić: rani i odrzuca przeciwnika. Kopnij albo pchnij manekina.",
- "Push kick: let go of %s to drive it home": "Kopniak odrzucający: puść %s, by uderzyć",
  "Bout time %s": "Czas walki %s",
  "Damage dealt": "Zadane obrażenia",
  "Hardest blow": "Najmocniejszy cios",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Przerób zaznaczone bloki: na materiał wybrany po lewej albo na zadanie wybrane tam",
  "a damaged brain": "uszkodzony mózg",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Rozerwany lub potłuczony mózg zostawia szum, który nie mija: wolniejsze nogi, słabsze ramię, spóźnione dostrzeganie nadchodzącego ciosu. Żadna igła ani szyna go nie naprawi. Tylko lek samego boga go przywraca.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Rozmyty, podwojony obraz po ciosie w głowę (od następnej walki)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Rozmyty, podwojony obraz po ciosie w głowę (od następnej walki)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s – kopnięcie (i deptanie leżącego), %s – pchnięcie. Przytrzymaj %s, by mocno kopnąć w brzuch: rani i odrzuca przeciwnika. Kopnij albo pchnij manekina."
 }

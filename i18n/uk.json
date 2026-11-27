@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s ВБИВАЄ %s У ПІСОК!",
  "%d denarii to each of you": "по %d денаріїв кожному",
  "The room is full": "Кімната заповнена",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s — копняк (і топтання лежачого), %s — поштовх. Утримуйте %s, щоб замахнутися ногою, і відпустіть, щоб завдати удару: він ранить і відкидає супротивника. Копніть або штовхніть манекен.",
- "Push kick: let go of %s to drive it home": "Потужний копняк: відпустіть %s, щоб вдарити",
  "Bout time %s": "Тривалість бою %s",
  "Damage dealt": "Завдана шкода",
  "Hardest blow": "Найсильніший удар",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Переробіть вибрані блоки: з матеріалу, вибраного ліворуч, або з вибраною там роллю",
  "a damaged brain": "пошкоджений мозок",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Розірваний або забитий мозок залишає дзвін, що не минає: ноги повільніші, рука слабша, удар помічаєш із запізненням. Жодна голка чи шина його не вилікує. Повернути його може лише ліки самого бога.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Розмитий, подвоєний зір після удару по голові (з наступного бою)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Розмитий, подвоєний зір після удару по голові (з наступного бою)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s — копняк (і топтання лежачого), %s — поштовх. Утримуйте %s для сильного удару ногою в живіт: він ранить і відкидає супротивника. Копніть або штовхніть манекен."
 }

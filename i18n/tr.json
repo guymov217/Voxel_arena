@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s, %s kişisini KUMA ÇARPIYOR!",
  "%d denarii to each of you": "herkese %d dinar",
  "The room is full": "Oda dolu",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tekme atar (ve yerdeki adamı ezer), %s iter. %s tuşunu basılı tutarak tekmeyi hazırla, bırakınca var gücünle indir: yaralar ve adamı geriye fırlatır. Kuklayı tekmele ya da it.",
- "Push kick: let go of %s to drive it home": "İtici tekme: vurmak için %s tuşunu bırak",
  "Bout time %s": "Dövüş süresi %s",
  "Damage dealt": "Verilen hasar",
  "Hardest blow": "En sert darbe",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Seçili blokları yeniden yap: solda seçilen malzemeden ya da orada seçilen görevle",
  "a damaged brain": "hasarlı bir beyin",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Yırtılmış ya da ezilmiş bir beyin geçmeyen bir çınlama bırakır: ayaklar yavaşlar, kol zayıflar, gelen darbe geç fark edilir. Hiçbir iğne ya da ateli onu onarmaz. Yalnızca tanrının kendi şifası onu geri verir.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Kafaya darbe alınca bulanık, çift görüntü (bir sonraki dövüşten itibaren)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Kafaya darbe alınca bulanık, çift görüntü (bir sonraki dövüşten itibaren)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s tekme atar (ve yerdeki adamı ezer), %s iter. %s tuşunu basılı tutarsan karna güçlü bir tekme gider: yaralar ve adamı geriye fırlatır. Kuklayı tekmele ya da it."
 }

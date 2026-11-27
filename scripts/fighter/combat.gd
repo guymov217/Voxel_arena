@@ -47,13 +47,13 @@ var time := 0.0
 var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
 const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
-## A push kick at full wind-up (Fighter.kick_push 1) against a plain kick: how much more of the foot's speed is the blow (x), how much higher the blow may go (the cap), the least it lands
-## with (the hips are behind it, whatever the foot's own speed when it meets him), how much more of an impulse is put on his trunk (N s) and how fast the whole of him is sent back over it
-## (m/s, by a man's own weight against his), and how likely he is to be felled by it.
+## A push kick (Fighter.kick_push 1: a long press of the kick's key, one strength) against a plain kick: how much more of the foot's speed is the blow (x), how much higher the blow may go (the
+## cap), the least it lands with (the weight of the man is behind it, whatever the foot's own speed when it meets him), how much more of an impulse is put on his trunk (N s) and how fast the
+## whole of him is sent back over it (m/s, by a man's own weight against his: sent back, not launched), and how likely he is to be felled by it.
 const PUSH_BLOW := 0.9
 const PUSH_CAP := 28.0
 const PUSH_JMIN := 40.0
-const PUSH_SHOVE := 150.0
+const PUSH_SHOVE := 40.0
 const PUSH_DV := 1.0
 const PUSH_FELL := 0.8
 static var LODGE_K := 1.0        # how readily held blades stay in the wound (tests set it to 0 or 1e3)
@@ -669,7 +669,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
 	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_strike()
-	# A push kick wound up with the key held (Fighter.kick_push, 0 a plain kick .. 1 a full one) lands harder and shoves farther.
+	# A push kick (the key held for a long press, Fighter.kick_push: 0 a plain kick, 1 a push kick) lands harder and shoves farther.
 	var kpush: float = float(att.fighter.kick_push) if kick else 0.0
 	# A giant's foot is not slowed by the small man it comes down on: the blow's speed is the foot's own
 	# (read after the step, with the man already carried along under it, there was hardly a speed
@@ -996,7 +996,7 @@ func _blow(g: Dictionary) -> Dictionary:
 			var away: Vector3 = vic_char.torso.global_position - att.fighter.torso.global_position
 			away.y = 0.0
 			sdir = away.normalized() if away.length_squared() > 1e-4 else Vector3(sin(att.fighter.yaw), 0.0, cos(att.fighter.yaw))
-		vic_char.torso.apply_central_impulse(Vector3(sdir.x * m, 10.0 + 30.0 * kpush, sdir.z * m))
+		vic_char.torso.apply_central_impulse(Vector3(sdir.x * m, 10.0 + 10.0 * kpush, sdir.z * m))
 		if kpush > 0.0 and vic_char is Fighter and not (vic_char is Beast):
 			# And the whole of him goes back with it, his feet let off the sand to stumble (as a two-handed shove does it, Social.shove), the bigger and stronger the kicker against him, the farther.
 			var kf: Fighter = att.fighter

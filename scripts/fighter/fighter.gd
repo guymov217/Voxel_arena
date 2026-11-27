@@ -133,13 +133,14 @@ var pain := 0.0
 var time := 0.0
 var gait_phase := 0.0
 var kick_timer := 0.0
-## A push kick (the kick's key held down past the knee coming up, tests/test_push_kick.gd): the kick waits with the knee up and the heel drawn in, a little more of it the longer the
-## key is held, and goes out as it is let go, the harder the longer it was held. `kick_wind` 0: no wind-up (the plain kick), 1: held now, 2: let go (the kick going out);
-## `kick_hold` how long it was held (s); `kick_push` how hard it goes out (0 a plain kick .. 1 a full push kick: Combat reads it).
+## A push kick (user, #352: a long press of the kick's key is a hard kick to the belly, not a charged one; tests/test_push_kick.gd): the key still down as the knee comes up holds the kick there,
+## the knee up and the heel drawn in, and past PUSH_ARM s of the press it goes out by itself, at its one strength; let go before that it is the plain kick. `kick_wind` 0: not held (the plain
+## kick), 1: held now, 2: going out; `kick_hold` how long it has been held past the knee (s); `kick_push` 1 for a push kick, 0 a plain kick (Combat reads it).
 var kick_wind := 0
 var kick_hold := 0.0
 var kick_push := 0.0
 var kick_e0 := 0.0   # the kick's clock (s into it) as it was let go
+var kick_key := false   # the kick's key was down at the last step of a kick: the foot does not strike while the knee comes up to be held (kick_strike)
 var kick_landed := false   # a push kick has landed (it is one blow: the foot pressed on the man goes on to no more, Combat)
 var stomp_at = null   # where a kick begun over a man lying at his feet comes down (a stamp), or null
 var punt_at = null    # where a colossus's low kick sweeps through a man standing before him (a punt), or null
@@ -157,32 +158,31 @@ static func kick_pose(e: float) -> Array:
 		return [1.05, 1.6, 1.2]
 	return [0.35, 0.5, 0.8]
 const PUSH_AT := 0.11        # the kick's clock (s into it) where a held key stops it: the knee is up, the foot not yet driven out
-const PUSH_WIND := 0.6       # how long the key is held for a full wind-up (s)
-const PUSH_MIN := 0.12       # held less than this past the knee, it is a plain kick's (no push)
-const PUSH_BREATH := 22.0    # a full wind-up's breath, taken as the key is held (on top of the kick's twelve)
+const PUSH_ARM := 0.30       # a key held this long (s from the press) is a long press: the push kick goes out by itself, nothing grows with the hold
+const PUSH_HOLD := PUSH_ARM - PUSH_AT   # that, held past the knee coming up
+const PUSH_COST := 10.0      # the breath a push kick takes over the kick's twelve
 const PUSH_DRIVE := 1.4      # how much faster the leg is driven out for a full push (of a plain kick's)
 const PUSH_THRUST := 0.03    # how long the knee takes to be whipped out to straight (s): all but at once, the motor does the rest (it drives a joint no faster than 16 rad/s)
 const PUSH_OUT := 0.30       # the clock (s into the kick) the foot stays out to, and after it is drawn back
-const PUSH_KNEE := 2.5       # how high the thigh is held in a full wind-up (rad from hanging: 143 degrees, the knee up over the hip by a third of the thigh)
-const PUSH_FOLD := 1.9       # and how far the knee is bent in it (the shin hanging forward and down from the knee)
+const PUSH_KNEE := 2.2       # how high the thigh is held in the wind-up (rad from hanging: 126 degrees, the knee up over the hip by 0.26 m)
+const PUSH_FOLD := 2.4       # and how far the knee is bent in it (the heel drawn in under the knee, the foot near the hip: the foot comes out of it at his belly)
 const PUSH_STRAIGHT := -0.1  # and what it is driven out to
-const PUSH_THIGH_OUT := 1.75 # the thigh comes down to this (rad: a hand's breadth over level) as the knee is whipped out, the foot going out at a man's waist and not up at his chest
+const PUSH_THIGH_OUT := 1.9  # the thigh comes down to this (rad: a quarter turn and a bit over level) as the knee is whipped out, the foot going out at a man's belly and not up at his chest
 const PUSH_DROP := 0.14      # in this long (s)
 const PUSH_LEAN := 0.35      # how far back the trunk leans (rad) at a full wind-up, and
 const PUSH_LEAN_IN := 0.15   # how far in it leans as the foot is driven out
-const PUSH_LUNGE := 45.0      # the hips' drive into a full push kick as it is let go (an impulse on his trunk, N s at his own scale)
 ## How far his trunk leans (rad, forward positive) for a push kick: back as the knee is drawn up (the leg can be raised the higher for it, and the wind-up is seen to swing), and in
 ## behind the foot as it is driven out.
 func _push_lean() -> float:
 	if kick_wind == 1:
-		return -PUSH_LEAN * PD.smooth(0.0, 1.0, kick_hold / (PUSH_WIND * 0.5))
+		return -PUSH_LEAN * PD.smooth(0.0, 1.0, kick_hold / (PUSH_HOLD * 0.5))
 	if kick_wind == 2 and kick_push > 0.0:
 		return PUSH_LEAN_IN * kick_push * (1.0 - PD.smooth(PUSH_OUT - 0.1, PUSH_OUT + 0.05, KICK_TIME - kick_timer))
 	return 0.0
-## How far a push kick's knee is drawn up to the height of his waist, `w` (0..1) of the way to a full wind-up: all the way by two fifths of it.
+## How far a push kick's knee is drawn up to the height of his waist, `w` (0..1) of the way to the held pose: all the way by two fifths of it.
 static func kick_raise(w: float) -> float:
 	return PD.smooth(0.0, 0.4, w)
-## The wind-up of a push kick, `w` (0..1) of the way to a full one: the knee drawn up high, over the height of his hip, the heel in, the leg coiled to be driven out at a man's waist.
+## The held pose of a push kick, `w` (0..1) of the way to it: the knee drawn up high, over the height of his hip, the heel in, the leg coiled to be driven out at a man's waist.
 static func kick_wind_pose(w: float) -> Array:
 	return [lerpf(1.15, PUSH_KNEE, kick_raise(w)), lerpf(1.8, PUSH_FOLD, PD.smooth(0.0, 1.0, w)), 1.0]
 ## Whether the kicking foot strikes now: on its way out and out (not as the knee comes up, nor
@@ -194,7 +194,10 @@ func kick_strike() -> bool:
 		return kick_timer <= STOMP_CHAMBER + 0.03
 	var e := KICK_TIME - kick_timer
 	if kick_wind == 2 and kick_push > 0.0:
-		return e >= 0.1 and e < PUSH_OUT + 0.04 and not kick_landed
+		return e >= PUSH_AT and e < PUSH_OUT + 0.04 and not kick_landed
+	# (Not before the knee is up while the key is down: it winds the kick up there, and a foot still drawn up that touched a man a pace off landed a plain blow before the push kick.)
+	if kick_wind == 0 and kick_key and e < PUSH_AT:
+		return false
 	return e >= 0.1 and e < 0.3
 const STOMP_BELOW := 0.25     # how far under the hip what lies before him is for a stamp (m, at S 1)
 const STOMP_CHAMBER := 0.26   # a stamp's knee is up until the kick's clock is down to this (of 0.42 s)
@@ -4576,24 +4579,24 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# (A colossus's stamp and punt: the knee comes up slowly, the wind-up seen before it falls.)
 	var kick_rate := COLOSSUS_WIND if (stomp_at != null or punt_at != null) and kick_timer > STOMP_CHAMBER and bool(mods.get("colossus", false)) else 1.0
 	kick_timer = maxf(0.0, kick_timer - dt * kick_rate)
-	# (A push kick: the key still down as the knee comes up, the kick waits there while it is held, up to a full wind-up and as long as there is breath for it, and goes out as it is
-	# let go, or as he falls or the leg is hurt. A tap of the key never comes to it: the knee is not up yet.)
+	# (A push kick: the key still down as the knee comes up, the kick waits there while it is held; held to PUSH_ARM s of the press it goes out by itself, one hard kick, at one strength
+	# (a long press, not a charge). Let go before that, or as he falls, runs out of breath or the leg is hurt, it is the plain kick, from where the knee is. A tap of the key never comes
+	# to it: the knee is not up yet; nor does one begun later in the kick (a breath got back as it goes out). The man himself is not driven by it: only the foot is.)
 	if kick_wind != 2 and kick_timer > 0.0 and stomp_at == null and punt_at == null:
-		var holding: bool = bool(inp.get("kickHold", false)) and standing and stamina > 4.0 and not leg_broken("R") and not leg_broken("L")
-		if kick_wind == 0 and holding and kick_timer <= KICK_TIME - PUSH_AT:
+		kick_key = bool(inp.get("kickHold", false))
+		var holding: bool = kick_key and standing and stamina >= PUSH_COST and not leg_broken("R") and not leg_broken("L")
+		if kick_wind == 0 and holding and kick_timer <= KICK_TIME - PUSH_AT and kick_timer > KICK_TIME - PUSH_AT - 0.05:
 			kick_wind = 1
 		if kick_wind == 1:
 			if holding:
 				kick_timer = KICK_TIME - PUSH_AT
 				kick_hold += dt
-				stamina_use += PUSH_BREATH / PUSH_WIND * dt
-			else:
+			if not holding or kick_hold >= PUSH_HOLD:
 				kick_wind = 2
-				kick_push = clampf((kick_hold - PUSH_MIN) / (PUSH_WIND - PUSH_MIN), 0.0, 1.0)
-				# (The body goes into it: the hips drive forward as the foot is let go.)
-				if kick_push > 0.0:
-					torso.apply_central_impulse(yaw_q * Vector3(0.0, 0.0, 1.0) * PUSH_LUNGE * kick_push * MS)
+				if holding:
+					kick_push = 1.0
 					kick_e0 = KICK_TIME - kick_timer
+					stamina -= PUSH_COST
 	elif kick_timer <= 0.0 and (kick_wind != 0 or kick_hold > 0.0 or kick_push > 0.0):
 		kick_wind = 0
 		kick_hold = 0.0
@@ -4683,11 +4686,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 				if kick_wind == 2 and kick_push > 0.0 and e_k < PUSH_OUT:
 					# A push kick let go: the knee is whipped out from where it was held (at once, the joint's own speed is what limits it: 16 rad/s), and the thigh comes down to just over level
 					# under it as it goes, so the foot, wherever the man stands, goes out at his waist: from the knee up at his belly it crosses his belt, and does not go up at his chest.
-					thigh_q = Quaternion(Vector3(-1, 0, 0), lerpf(lerpf(1.15, PUSH_KNEE, kick_raise(kick_hold / PUSH_WIND)), PUSH_THIGH_OUT, PD.smooth(kick_e0, kick_e0 + PUSH_DROP, e_k)))
-					bend = lerpf(lerpf(1.8, PUSH_FOLD, PD.smooth(0.0, 1.0, kick_hold / PUSH_WIND)), PUSH_STRAIGHT, PD.smooth(kick_e0, kick_e0 + PUSH_THRUST, e_k))
+					thigh_q = Quaternion(Vector3(-1, 0, 0), lerpf(lerpf(1.15, PUSH_KNEE, kick_raise(kick_hold / PUSH_HOLD)), PUSH_THIGH_OUT, PD.smooth(kick_e0, kick_e0 + PUSH_DROP, e_k)))
+					bend = lerpf(lerpf(1.8, PUSH_FOLD, PD.smooth(0.0, 1.0, kick_hold / PUSH_HOLD)), PUSH_STRAIGHT, PD.smooth(kick_e0, kick_e0 + PUSH_THRUST, e_k))
 					kick_wn = 1.25 * (1.0 + PUSH_DRIVE * kick_push)
 				else:
-					var kp := kick_wind_pose(kick_hold / PUSH_WIND) if kick_wind == 1 else kick_pose(e_k)
+					var kp := kick_wind_pose(kick_hold / PUSH_HOLD) if kick_wind == 1 else kick_pose(e_k)
 					thigh_q = Quaternion(Vector3(-1, 0, 0), kp[0])
 					bend = kp[1]
 					kick_wn = float(kp[2]) * (1.0 + PUSH_DRIVE * kick_push) if kick_wind == 2 else float(kp[2])

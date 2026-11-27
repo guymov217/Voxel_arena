@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s이(가) %s을(를) 모래 바닥에 내동댕이칩니다!",
  "%d denarii to each of you": "각자 %d 데나리우스",
  "The room is full": "방이 가득 찼습니다",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 키로 발차기(쓰러진 상대는 짓밟기), %s 키로 밀치기. %s 키를 누르고 있으면 발차기를 크게 준비하고, 떼면 힘껏 내지릅니다. 상대에게 상처를 입히고 뒤로 날려 버립니다. 허수아비를 차거나 밀쳐 보세요.",
- "Push kick: let go of %s to drive it home": "밀어차기: %s 키를 떼면 강하게 찹니다",
  "Bout time %s": "전투 시간 %s",
  "Damage dealt": "가한 피해",
  "Hardest blow": "가장 강한 일격",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "선택한 블록을 다시 만듭니다: 왼쪽에서 고른 재료로, 또는 거기서 고른 역할로",
  "a damaged brain": "손상된 뇌",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "찢어지거나 멍든 뇌는 가시지 않는 이명을 남깁니다. 발걸음은 느려지고, 팔은 약해지며, 날아오는 일격을 늦게 알아챕니다. 바늘이나 부목으로는 낫지 않습니다. 신 자신의 치료약만이 되돌려 줍니다.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "머리를 맞으면 시야가 흐려지고 겹쳐 보임 (다음 전투부터)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "머리를 맞으면 시야가 흐려지고 겹쳐 보임 (다음 전투부터)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s 키로 발차기(쓰러진 상대는 짓밟기), %s 키로 밀치기. %s 키를 길게 누르면 배를 향한 강한 발차기가 나갑니다. 상대에게 상처를 입히고 뒤로 날려 버립니다. 허수아비를 차거나 밀쳐 보세요."
 }

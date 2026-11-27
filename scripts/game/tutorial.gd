@@ -19,7 +19,7 @@ const STEPS := [
 	{"id": "twist", "title": "Turn the blade", "text": "Roll the wheel: the sword turns in your hand, so the edge leads the cut and not the flat. Roll it a few notches."},
 	{"id": "thrust", "title": "Thrust", "text": "Press %s: the blade is laid on the crosshair and driven straight out, your weight behind it, and comes back. Hold %s and the point stays out. Aim with the mouse: the stab goes where you look.", "keys": ["thrust", "thrust"]},
 	{"id": "guard", "title": "Guard", "text": "Hold the %s button: now the mouse moves the shield. Raise it up for a moment.", "mouse": ["off"]},
-	{"id": "kick", "title": "Kick and shove", "text": "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.", "keys": ["kick", "shove", "kick"]},
+	{"id": "kick", "title": "Kick and shove", "text": "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.", "keys": ["kick", "shove", "kick"]},
 	{"id": "swap", "title": "Swap hands", "text": "%s swaps what your hands hold: the sword to the left, the shield to the right. Swap, then swap back.", "keys": ["swap"]},
 	{"id": "throw", "title": "Throw", "text": "Hold %s to aim, let go to throw: the right hand first, then the left. Throw the sword, then the shield, at the dummy.", "keys": ["throw"]},
 	{"id": "fists", "title": "Fists", "text": "With empty hands you box: the fists come up in a guard. Hold a button and sweep, as with the sword: punch the dummy twice."},

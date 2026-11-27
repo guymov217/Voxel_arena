@@ -9173,12 +9173,6 @@
 "The room is full": [
 "scripts/net/net.gd:1146"
 ],
-"%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": [
-"scripts/game/tutorial.gd:22"
-],
-"Push kick: let go of %s to drive it home": [
-"scripts/ui/hud.gd:1047"
-],
 "Bout time %s": [
 "scripts/ui/report_screen.gd:40"
 ],
@@ -9461,5 +9455,8 @@
 ],
 "Blurred, doubled view after a blow to the head (from the next fight)": [
 "scripts/ui/menu.gd:3492"
+],
+"%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": [
+"scripts/game/tutorial.gd:22"
 ]
 }

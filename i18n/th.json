@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%sฟาด%sลงกับพื้นทราย!",
  "%d denarii to each of you": "คนละ %d เดนาริอุส",
  "The room is full": "ห้องเต็มแล้ว",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s เพื่อเตะ (และกระทืบคนที่ล้มอยู่) %s เพื่อผลัก กด %s ค้างไว้เพื่อง้างเท้า แล้วปล่อยเพื่อเตะเต็มแรง: เจ็บหนักและเตะคนให้กระเด็นถอยหลัง ลองเตะหรือผลักหุ่นซ้อม",
- "Push kick: let go of %s to drive it home": "เตะผลักแรง: ปล่อย %s เพื่อเตะเต็มแรง",
  "Bout time %s": "ระยะเวลาการต่อสู้ %s",
  "Damage dealt": "ความเสียหายที่ก่อ",
  "Hardest blow": "การโจมตีที่หนักที่สุด",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "ทำบล็อกที่เลือกใหม่: ด้วยวัสดุที่เลือกทางซ้าย หรือด้วยหน้าที่ที่เลือกที่นั่น",
  "a damaged brain": "สมองที่เสียหาย",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "สมองที่ฉีกขาดหรือช้ำจะทิ้งเสียงอื้อที่ไม่หายไป: เท้าช้าลง แขนอ่อนแรง และเห็นการโจมตีที่พุ่งเข้ามาช้าไป เข็มและเฝือกก็รักษาไม่ได้ มีเพียงยารักษาของเทพเจ้าเองเท่านั้นที่คืนให้",
- "Blurred, doubled view after a blow to the head (from the next fight)": "ภาพเบลอและซ้อนหลังถูกตีที่ศีรษะ (เริ่มในการต่อสู้ครั้งถัดไป)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "ภาพเบลอและซ้อนหลังถูกตีที่ศีรษะ (เริ่มในการต่อสู้ครั้งถัดไป)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s เพื่อเตะ (และกระทืบคนที่ล้มอยู่) %s เพื่อผลัก กด %s ค้างไว้เพื่อเตะท้องแรงๆ: เจ็บหนักและเตะคนให้กระเด็นถอยหลัง ลองเตะหรือผลักหุ่นซ้อม"
 }

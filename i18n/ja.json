@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%sが%sを砂の上に叩きつける！",
  "%d denarii to each of you": "一人あたり %d デナリウス",
  "The room is full": "ルームは満員です",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s で蹴る（倒れた相手は踏みつける）、%s で突き飛ばす。%s を押したままで足を引いて構え、離すと渾身の蹴りが出る。相手に傷を負わせて吹き飛ばす。人形を蹴るか突き飛ばそう。",
- "Push kick: let go of %s to drive it home": "押し蹴り：%s を離して蹴り込む",
  "Bout time %s": "戦闘時間 %s",
  "Damage dealt": "与えたダメージ",
  "Hardest blow": "最強の一撃",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "選んだブロックを作り直す：左で選んだ素材にするか、そこで選んだ役割にする",
  "a damaged brain": "損傷した脳",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "裂けたり打ち身を負ったりした脳には、消えない耳鳴りが残る。足は遅く、腕は弱くなり、迫る一撃に気づくのも遅れる。針も添え木も脳は治せない。神みずからの薬だけが取り戻してくれる。",
- "Blurred, doubled view after a blow to the head (from the next fight)": "頭に一撃を受けた後、視界がぼやけて二重になる（次の戦いから）"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "頭に一撃を受けた後、視界がぼやけて二重になる（次の戦いから）",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s で蹴る（倒れた相手は踏みつける）、%s で突き飛ばす。%s を押し続けると腹への強烈な蹴りが出る。相手に傷を負わせて後ろへ吹き飛ばす。人形を蹴るか突き飛ばそう。"
 }

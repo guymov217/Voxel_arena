@@ -2877,8 +2877,6 @@
  "%s SLAMS %s INTO THE SAND!": "%s SBATTE %s NELLA SABBIA!",
  "%d denarii to each of you": "%d denari a testa",
  "The room is full": "La stanza è piena",
- "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tira un calcio (e calpesta chi è a terra), %s spinge. Tieni premuto %s per caricare il calcio e rilascia per scagliarlo con forza: ferisce e getta indietro l'avversario. Calcia o spingi il fantoccio.",
- "Push kick: let go of %s to drive it home": "Calcio di spinta: rilascia %s per scagliarlo",
  "Bout time %s": "Durata dello scontro %s",
  "Damage dealt": "Danni inflitti",
  "Hardest blow": "Colpo più duro",
@@ -2970,5 +2968,6 @@
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Rifà i blocchi scelti: del materiale scelto a sinistra, o con il compito scelto lì",
  "a damaged brain": "un cervello danneggiato",
  "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Un cervello lacerato o contuso lascia un ronzio che non passa: più lento sulle gambe, più debole nel braccio, tardivo a vedere arrivare un colpo. Nessun ago né stecca lo guarisce. Solo la cura del dio in persona lo restituisce.",
- "Blurred, doubled view after a blow to the head (from the next fight)": "Vista sfocata e sdoppiata dopo un colpo alla testa (dal prossimo combattimento)"
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Vista sfocata e sdoppiata dopo un colpo alla testa (dal prossimo combattimento)",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s tira un calcio (e calpesta chi è a terra), %s spinge. Tieni premuto %s per un calcio forte alla pancia: ferisce e getta indietro l'avversario. Calcia o spingi il fantoccio."
 }
