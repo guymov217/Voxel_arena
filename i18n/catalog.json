@@ -705,8 +705,8 @@
 "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]": [
 "scripts/ui/forge.gd:120"
 ],
-"✋ Move hand": [
-"scripts/ui/forge.gd:120"
+"Move hand": [
+"scripts/ui/forge.gd:139"
 ],
 "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]": [
 "scripts/ui/forge.gd:120"
@@ -813,9 +813,10 @@
 "scripts/ui/forge.gd:676",
 "scripts/ui/menu.gd:1005"
 ],
-"It needs somewhere to be held: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:683",
-"scripts/ui/forge.gd:2153"
+"It needs somewhere to be held: build a Grip block, or Move hand": [
+"scripts/ui/forge.gd:737",
+"scripts/ui/forge.gd:2904",
+"scripts/game/weapon_rating.gd:56"
 ],
 "Last try against %s: no blow landed": [
 "scripts/ui/forge.gd:693"
@@ -908,11 +909,15 @@
 "In one hand: quick, the other hand free for a shield": [
 "scripts/ui/forge.gd:971"
 ],
-"✋ Main hand": [
-"scripts/ui/forge.gd:974"
+"Main hand": [
+"scripts/ui/menu.gd:1018",
+"scripts/ui/menu.gd:1346",
+"scripts/ui/menu.gd:1475",
+"scripts/ui/smith_screen.gd:328",
+"scripts/ui/smith_screen.gd:629"
 ],
-"✋ Other hand": [
-"scripts/ui/forge.gd:976"
+"Other hand": [
+"scripts/ui/forge.gd:1241"
 ],
 "Click the block where the main hand holds it (its ring: gold)": [
 "scripts/ui/forge.gd:986"
@@ -963,8 +968,8 @@
 "Surprise me": [
 "scripts/ui/forge.gd:1099"
 ],
-"Say where it is held before you save it: build a Grip block, or ✋ Move hand": [
-"scripts/ui/forge.gd:1128"
+"Say where it is held before you save it: build a Grip block, or Move hand": [
+"scripts/ui/forge.gd:1275"
 ],
 "Saved to My designs: \\\"%s\\\"": [
 "scripts/ui/forge.gd:1136"
@@ -1693,13 +1698,6 @@
 ],
 "YOU": [
 "scripts/ui/menu.gd:1015"
-],
-"Main hand": [
-"scripts/ui/menu.gd:1018",
-"scripts/ui/menu.gd:1346",
-"scripts/ui/menu.gd:1475",
-"scripts/ui/smith_screen.gd:328",
-"scripts/ui/smith_screen.gd:629"
 ],
 "Forged: %s": [
 "scripts/ui/menu.gd:1018",
@@ -9231,5 +9229,226 @@
 ],
 "MVP": [
 "scripts/ui/report_screen.gd:177"
+],
+"Select": [
+"scripts/ui/forge.gd:138"
+],
+"Click a block to pick it; drag a box round blocks to pick every block inside it, the ones behind too (Shift adds, Ctrl takes away); double-click picks the whole part, the blocks of one stuff joined together. Then move, copy, turn, flip or remake what is picked  [V]": [
+"scripts/ui/forge.gd:138"
+],
+"Select: click a block, or drag a box round blocks (Shift adds, Ctrl takes away, double-click picks the whole part, right click lets go)": [
+"scripts/ui/forge.gd:149"
+],
+"Pin it": [
+"scripts/ui/forge.gd:242"
+],
+"Pin the weapon as it is now: the bars then show what you change against it (a white mark on each bar, ▲ better and ▼ worse at the right) until you unpin it": [
+"scripts/ui/forge.gd:243"
+],
+"Unpin": [
+"scripts/ui/forge.gd:245"
+],
+"Take the comparison away": [
+"scripts/ui/forge.gd:246"
+],
+"Pin": [
+"scripts/ui/forge.gd:1204"
+],
+"Pin this design: the bars show how the weapon on the anvil compares with it": [
+"scripts/ui/forge.gd:1205"
+],
+"Pinned: %s": [
+"scripts/ui/forge.gd:1295",
+"scripts/ui/forge.gd:1371"
+],
+"RATING": [
+"scripts/ui/forge.gd:2190"
+],
+"Rate it": [
+"scripts/ui/forge.gd:2193"
+],
+"Fight it: a bot with this weapon duels standard gladiators (%d bouts, a few minutes) and it is ranked among the arsenal's weapons, which were rated the same way. It goes on in the background: go on forging.": [
+"scripts/ui/forge.gd:2194"
+],
+"Stop": [
+"scripts/ui/forge.gd:2196"
+],
+"Rating: bout %d of %d": [
+"scripts/ui/forge.gd:2229"
+],
+"The rating failed: %s": [
+"scripts/ui/forge.gd:2231"
+],
+"The rating stopped before it was done": [
+"scripts/ui/forge.gd:2231",
+"scripts/ui/forge.gd:2313"
+],
+"For the weapon as it was, not as it is now: rate it again": [
+"scripts/ui/forge.gd:2235"
+],
+"Rated %d out of 100": [
+"scripts/ui/forge.gd:2237"
+],
+"Won %d of %d bouts · dealt %d damage, took %d": [
+"scripts/ui/forge.gd:2238"
+],
+"Better than %d of the arsenal's %d weapons": [
+"scripts/ui/forge.gd:2241"
+],
+"Between the %s and the %s": [
+"scripts/ui/forge.gd:2243"
+],
+"The rating could not be started": [
+"scripts/ui/forge.gd:2272",
+"scripts/ui/forge.gd:2283"
+],
+"Move the picked blocks left  [←]": [
+"scripts/ui/forge.gd:2368"
+],
+"Move the picked blocks right  [→]": [
+"scripts/ui/forge.gd:2369"
+],
+"Move the picked blocks up  [↑]": [
+"scripts/ui/forge.gd:2370"
+],
+"Move the picked blocks down  [↓]": [
+"scripts/ui/forge.gd:2371"
+],
+"Move the picked blocks to the front  [Page Down]": [
+"scripts/ui/forge.gd:2372"
+],
+"Move the picked blocks to the back  [Page Up]": [
+"scripts/ui/forge.gd:2373"
+],
+"Turn ↻": [
+"scripts/ui/forge.gd:2376"
+],
+"Turn the picked blocks a quarter, like a clock hand (Shift: the other way)": [
+"scripts/ui/forge.gd:2376"
+],
+"Roll": [
+"scripts/ui/forge.gd:2377"
+],
+"Roll the picked blocks a quarter round the weapon's length (Shift: the other way)": [
+"scripts/ui/forge.gd:2377"
+],
+"Tilt": [
+"scripts/ui/forge.gd:2378"
+],
+"Tilt the picked blocks a quarter toward you or away (Shift: the other way)": [
+"scripts/ui/forge.gd:2378"
+],
+"Flip ⟷": [
+"scripts/ui/forge.gd:2381"
+],
+"Flip the picked blocks left for right": [
+"scripts/ui/forge.gd:2381"
+],
+"Flip ⇕": [
+"scripts/ui/forge.gd:2503"
+],
+"Flip the picked blocks upside down": [
+"scripts/ui/forge.gd:2382"
+],
+"Flip ⇅": [
+"scripts/ui/forge.gd:2383"
+],
+"Flip the picked blocks front for back": [
+"scripts/ui/forge.gd:2383"
+],
+"Select all": [
+"scripts/ui/forge.gd:2394"
+],
+"Select none": [
+"scripts/ui/forge.gd:2395"
+],
+"Copy": [
+"scripts/ui/forge.gd:2400"
+],
+"Leave the picked blocks where they are: the next move carries a copy of them": [
+"scripts/ui/forge.gd:2401"
+],
+"Shift: five blocks at a time": [
+"scripts/ui/forge.gd:2408"
+],
+"Make them %s": [
+"scripts/ui/forge.gd:2429",
+"scripts/ui/forge.gd:2433"
+],
+"Every picked block becomes %s, the material picked on the left": [
+"scripts/ui/forge.gd:2430"
+],
+"Every picked block gets the job %s, the one picked on the left": [
+"scripts/ui/forge.gd:2434"
+],
+"%d block picked": [
+"scripts/ui/forge.gd:2464"
+],
+"%d blocks picked": [
+"scripts/ui/forge.gd:2464"
+],
+"That would tear the weapon in two": [
+"scripts/ui/forge.gd:2570"
+],
+"That will not fit on the anvil": [
+"scripts/ui/forge.gd:2573"
+],
+"There is nothing to rate yet": [
+"scripts/game/weapon_rating.gd:50"
+],
+"Duels are fought with a weapon in the hand: a shield is not rated": [
+"scripts/game/weapon_rating.gd:52"
+],
+"Duels are fought with a weapon in the hand: a bow is not rated": [
+"scripts/game/weapon_rating.gd:54"
+],
+"The weapon would not do": [
+"scripts/game/rating_runner.gd:39"
+],
+"The rating was cut short": [
+"scripts/game/rating_runner.gd:47"
+],
+"Mirror: off": [
+"scripts/ui/forge.gd:1118"
+],
+"Mirror ⟷ ⇅": [
+"scripts/ui/forge.gd:1118"
+],
+"A block built on one side goes on the other side too: left and right (⟷), front and back (⇅), or both  [M, Shift+M]": [
+"scripts/ui/forge.gd:1128"
+],
+"Take back the last change  [Ctrl+Z]": [
+"scripts/ui/forge.gd:1105"
+],
+"Put back what was taken back  [Ctrl+Y]": [
+"scripts/ui/forge.gd:1107"
+],
+"More": [
+"scripts/ui/forge.gd:1144",
+"scripts/ui/menu.gd:2417"
+],
+"Take every block off but the grip": [
+"scripts/ui/forge.gd:1142"
+],
+"Take every block off but the grip, or let the forge surprise you": [
+"scripts/ui/forge.gd:1144"
+],
+"Turn": [
+"scripts/ui/forge.gd:2486"
+],
+"Flip": [
+"scripts/ui/forge.gd:2487"
+],
+"Change": [
+"scripts/ui/forge.gd:2488"
+],
+"Turn the picked blocks a quarter (Shift: the other way)": [
+"scripts/ui/forge.gd:2486"
+],
+"Flip the picked blocks over: left for right, upside down or front for back": [
+"scripts/ui/forge.gd:2487"
+],
+"Remake the picked blocks: of the material picked on the left, or with the job picked there": [
+"scripts/ui/forge.gd:2488"
 ]
 }

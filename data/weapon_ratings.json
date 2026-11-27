@@ -1,0 +1,376 @@
+{
+ "presets": {
+  "axe": {
+   "big": 40,
+   "dmg": 3741,
+   "hits": 356,
+   "of": 18,
+   "score": 55.5,
+   "secs": 266.2,
+   "taken": 3949,
+   "won": 11.0
+  },
+  "badIdea": {
+   "big": 40,
+   "dmg": 5101,
+   "hits": 273,
+   "of": 18,
+   "score": 74.3,
+   "secs": 239.1,
+   "taken": 2441,
+   "won": 14.0
+  },
+  "boing": {
+   "big": 40,
+   "dmg": 3613,
+   "hits": 333,
+   "of": 18,
+   "score": 48.2,
+   "secs": 335.4,
+   "taken": 4400,
+   "won": 9.0
+  },
+  "chair": {
+   "big": 40,
+   "dmg": 2955,
+   "hits": 294,
+   "of": 18,
+   "score": 37.1,
+   "secs": 255.1,
+   "taken": 4076,
+   "won": 6.0
+  },
+  "chicken": {
+   "big": 40,
+   "dmg": 1706,
+   "hits": 283,
+   "of": 18,
+   "score": 13.3,
+   "secs": 257.3,
+   "taken": 5691,
+   "won": 1.0
+  },
+  "dagger": {
+   "big": 40,
+   "dmg": 3420,
+   "hits": 374,
+   "of": 18,
+   "score": 29.3,
+   "secs": 362.1,
+   "taken": 5404,
+   "won": 4.0
+  },
+  "executionerAxe": {
+   "big": 40,
+   "dmg": 2582,
+   "hits": 232,
+   "of": 18,
+   "score": 26.5,
+   "secs": 177.5,
+   "taken": 5641,
+   "won": 4.0
+  },
+  "falx": {
+   "big": 40,
+   "dmg": 1813,
+   "hits": 178,
+   "of": 18,
+   "score": 18.0,
+   "secs": 172.1,
+   "taken": 5292,
+   "won": 2.0
+  },
+  "fish": {
+   "big": 40,
+   "dmg": 1867,
+   "hits": 323,
+   "of": 18,
+   "score": 21.3,
+   "secs": 285.3,
+   "taken": 5454,
+   "won": 3.0
+  },
+  "fishStick": {
+   "big": 40,
+   "dmg": 2527,
+   "hits": 300,
+   "of": 18,
+   "score": 31.2,
+   "secs": 256.9,
+   "taken": 4394,
+   "won": 5.0
+  },
+  "flail": {
+   "big": 40,
+   "dmg": 2633,
+   "hits": 298,
+   "of": 18,
+   "score": 25.9,
+   "secs": 313.5,
+   "taken": 4065,
+   "won": 3.0
+  },
+  "gladius": {
+   "big": 40,
+   "dmg": 3491,
+   "hits": 422,
+   "of": 18,
+   "score": 44.7,
+   "secs": 255.5,
+   "taken": 4323,
+   "won": 8.0
+  },
+  "goldenSpork": {
+   "big": 40,
+   "dmg": 4187,
+   "hits": 354,
+   "of": 18,
+   "score": 44.2,
+   "secs": 227.9,
+   "taken": 4048,
+   "won": 7.0
+  },
+  "goose": {
+   "big": 40,
+   "dmg": 1905,
+   "hits": 320,
+   "of": 18,
+   "score": 19.5,
+   "secs": 271.6,
+   "taken": 4663,
+   "won": 2.0
+  },
+  "hammer": {
+   "big": 40,
+   "dmg": 3609,
+   "hits": 369,
+   "of": 18,
+   "score": 27.2,
+   "secs": 306.7,
+   "taken": 4382,
+   "won": 2.0
+  },
+  "icicle": {
+   "big": 40,
+   "dmg": 3094,
+   "hits": 318,
+   "of": 18,
+   "score": 34.5,
+   "secs": 223.2,
+   "taken": 4101,
+   "won": 5.0
+  },
+  "imperialFlail": {
+   "big": 40,
+   "dmg": 2553,
+   "hits": 419,
+   "of": 18,
+   "score": 23.0,
+   "secs": 286.0,
+   "taken": 3935,
+   "won": 2.0
+  },
+  "javelin": {
+   "big": 40,
+   "dmg": 3060,
+   "hits": 356,
+   "of": 18,
+   "score": 41.1,
+   "secs": 307.3,
+   "taken": 3583,
+   "won": 7.0
+  },
+  "longsword": {
+   "big": 40,
+   "dmg": 1684,
+   "hits": 179,
+   "of": 18,
+   "score": 20.6,
+   "secs": 139.6,
+   "taken": 5278,
+   "won": 3.0
+  },
+  "mace": {
+   "big": 40,
+   "dmg": 5013,
+   "hits": 383,
+   "of": 18,
+   "score": 59.7,
+   "secs": 293.8,
+   "taken": 3426,
+   "won": 11.0
+  },
+  "magnet": {
+   "big": 40,
+   "dmg": 3095,
+   "hits": 318,
+   "of": 18,
+   "score": 46.1,
+   "secs": 228.5,
+   "taken": 4126,
+   "won": 9.0
+  },
+  "meteorHammer": {
+   "big": 40,
+   "dmg": 2583,
+   "hits": 215,
+   "of": 18,
+   "score": 19.9,
+   "secs": 295.0,
+   "taken": 4337,
+   "won": 1.0
+  },
+  "plank": {
+   "big": 40,
+   "dmg": 2832,
+   "hits": 402,
+   "of": 18,
+   "score": 28.7,
+   "secs": 286.2,
+   "taken": 4569,
+   "won": 4.0
+  },
+  "ram": {
+   "big": 40,
+   "dmg": 3453,
+   "hits": 223,
+   "of": 18,
+   "score": 42.3,
+   "secs": 294.7,
+   "taken": 3961,
+   "won": 7.0
+  },
+  "rudis": {
+   "big": 40,
+   "dmg": 3137,
+   "hits": 354,
+   "of": 18,
+   "score": 29.9,
+   "secs": 303.0,
+   "taken": 4837,
+   "won": 4.0
+  },
+  "scepter": {
+   "big": 40,
+   "dmg": 4159,
+   "hits": 374,
+   "of": 18,
+   "score": 40.5,
+   "secs": 304.9,
+   "taken": 4283,
+   "won": 6.0
+  },
+  "spear": {
+   "big": 36,
+   "dmg": 957,
+   "hits": 151,
+   "of": 18,
+   "score": 6.3,
+   "secs": 178.3,
+   "taken": 5553,
+   "won": 0.0
+  },
+  "sticky": {
+   "big": 40,
+   "dmg": 2261,
+   "hits": 273,
+   "of": 18,
+   "score": 22.6,
+   "secs": 331.0,
+   "taken": 5396,
+   "won": 3.0
+  },
+  "swissSpear": {
+   "big": 40,
+   "dmg": 945,
+   "hits": 135,
+   "of": 18,
+   "score": 6.9,
+   "secs": 145.1,
+   "taken": 5146,
+   "won": 0.0
+  },
+  "swordfish": {
+   "big": 40,
+   "dmg": 2858,
+   "hits": 366,
+   "of": 18,
+   "score": 39.5,
+   "secs": 253.7,
+   "taken": 4690,
+   "won": 7.0
+  },
+  "telescopicSpear": {
+   "big": 40,
+   "dmg": 1812,
+   "hits": 222,
+   "of": 18,
+   "score": 17.8,
+   "secs": 174.9,
+   "taken": 5034,
+   "won": 2.0
+  },
+  "tickler": {
+   "big": 40,
+   "dmg": 1621,
+   "hits": 202,
+   "of": 18,
+   "score": 17.6,
+   "secs": 323.4,
+   "taken": 4730,
+   "won": 2.0
+  },
+  "trident": {
+   "big": 36,
+   "dmg": 1527,
+   "hits": 174,
+   "of": 18,
+   "score": 10.1,
+   "secs": 176.0,
+   "taken": 5184,
+   "won": 0.0
+  },
+  "twoPersonSword": {
+   "big": 40,
+   "dmg": 4217,
+   "hits": 367,
+   "of": 18,
+   "score": 55.4,
+   "secs": 263.2,
+   "taken": 3566,
+   "won": 10.0
+  },
+  "warhammer": {
+   "big": 40,
+   "dmg": 3600,
+   "hits": 222,
+   "of": 18,
+   "score": 37.2,
+   "secs": 322.5,
+   "taken": 5001,
+   "won": 6.0
+  },
+  "whip": {
+   "big": 40,
+   "dmg": 1697,
+   "hits": 209,
+   "of": 18,
+   "score": 17.8,
+   "secs": 235.6,
+   "taken": 4937,
+   "won": 2.0
+  },
+  "zweihander": {
+   "big": 40,
+   "dmg": 3450,
+   "hits": 264,
+   "of": 18,
+   "score": 47.6,
+   "secs": 175.5,
+   "taken": 4643,
+   "won": 9.0
+  }
+ },
+ "stamp": "1-4a6328a1",
+ "version": 1
+}

@@ -41,6 +41,25 @@ var dummy_fights := false
 var try_result: Label               # what the last "Try it in the arena" came to (show_try_result)
 var try_text := ""
 var line_from = null       # the first cell of a line or a box being drawn
+## The weapon pinned for comparison (kept while the game runs, so the forge's next opening shows it too): {name, design, vals}. The bars show the weapon on the anvil against it.
+static var pinned := {}
+var pin_button: Button
+var undo_button: Button
+var redo_button: Button
+## The ratings made while the game runs, by the weapon's key (WeaponRating.key): what the anvil shows again when the same weapon comes back to it.
+static var rated := {}
+var rating := {}                # the rating under way, or the last made: {key, pid, job, out, state ("running", "done", "failed"), done, of, t, result}
+var rating_button: Button
+var rating_stop: Button
+var rating_label: Label
+var rating_strip: Control
+var rate_alive := Callable()    # whether the game that fights the bouts is still there (a test's own answer; else the system's)
+const RATE_POLL_S := 0.5        # how often the game that fights the bouts is asked how far it is (s)
+var sel := {}                          # the Select tool's pick: Vector3i -> true (what Move, Turn, Flip and Make work on)
+var sel_mi: MultiMeshInstance3D = null # its tint on the weapon
+var sel_drag := {}                     # a box being dragged over the view: {from, to, moved, add, sub}
+var sel_copy := false                  # Copy ticked: the next move leaves the picked blocks where they are and carries a copy
+var marquee: Control = null            # draws the dragged box over the view
 
 var viewport: SubViewport
 var cam: Camera3D
@@ -117,10 +136,10 @@ var hover_at = null      # where the mouse is over the anvil (R turns the sharp 
 ## for now, user: ForgeLib.SET_ASIDE.)
 const MATS := ["steel", "iron", "bronze", "wood", "bone", "stone", "lead", "gold", "ruby", "sapphire", "emerald"]
 const JOBS := ["edge", "point", "blunt", "grip"]
-const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)  [B]"], ["erase", "Erase", "Click voxels: take them off (right click erases too)  [X]"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]"], ["hand", "✋ Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]"]]
+const TOOLS := [["build", "Build", "Click a face: a voxel goes on it (hold and drag for more)  [B]"], ["erase", "Erase", "Click voxels: take them off (right click erases too)  [X]"], ["line", "Line", "Click where it starts, then where it ends, any way you like: the path shows as you aim  [L]"], ["hand", "Move hand", "Drag the gold ring (and the bronze one of a two-handed weapon) onto any block: the fighter holds it there  [H]"], ["select", "Select", "Click a block to pick it; drag a box round blocks to pick every block inside it, the ones behind too (Shift adds, Ctrl takes away); double-click picks the whole part, the blocks of one stuff joined together. Then move, copy, turn, flip or remake what is picked  [V]"]]
 ## The keys at the anvil (shown on the tools' tips and in the tutorial): a tool each, a job each,
 ## the two mirrors, and Q to take up the material and job of the block under the mouse.
-const TOOL_KEYS := {KEY_B: "build", KEY_X: "erase", KEY_L: "line", KEY_H: "hand"}
+const TOOL_KEYS := {KEY_B: "build", KEY_X: "erase", KEY_L: "line", KEY_H: "hand", KEY_V: "select"}
 const JOB_KEYS := {KEY_1: "edge", KEY_2: "point", KEY_3: "blunt", KEY_4: "grip"}
 ## What each tool asks for, shown under the anvil while it is in hand.
 const TOOL_HINT := {
@@ -128,6 +147,7 @@ const TOOL_HINT := {
 	"erase": "Erase: click blocks, or hold the right button anywhere",
 	"line": "Line: click where it starts",
 	"hand": "Move hand: click a block (or drag the gold ring): the main hand goes there; the bronze ring is the other hand",
+	"select": "Select: click a block, or drag a box round blocks (Shift adds, Ctrl takes away, double-click picks the whole part, right click lets go)",
 }
 
 func open(d: Dictionary, coins: int, cb: Callable) -> void:
@@ -220,6 +240,8 @@ func _build_ui() -> void:
 	name_edit.text = str(design.get("name", ""))
 	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nr.add_child(name_edit)
+	pin_button = UIStyle.button("Pin it", _pin_toggle)
+	nr.add_child(pin_button)
 	col.add_child(nr)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -309,12 +331,41 @@ func _build_ui() -> void:
 	tool_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	tool_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	tool_bar.position.y = 12
+	tool_bar.theme = _compact_theme()
 	right.add_child(tool_bar)
+	# (The box dragged with the Select tool: drawn over the view, never in the mouse's way.)
+	marquee = Control.new()
+	marquee.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	marquee.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	marquee.draw.connect(_draw_marquee)
+	right.add_child(marquee)
 	viewport = SubViewport.new()
 	viewport.own_world_3d = true
 	svc.add_child(viewport)
 	viewport.msaa_3d = Viewport.MSAA_4X
 	_build_smithy()
+	_pin_refresh()
+
+## The theme of the tools over the view: the buttons' slabs cut close, so that a row of them is no wider than the view in a language that spells its words long.
+static func _compact_theme() -> Theme:
+	var t: Theme = UIStyle.theme().duplicate()
+	for kind in ["Button", "OptionButton", "MenuButton"]:
+		for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+			var sb := t.get_stylebox(state, kind)
+			if sb is StyleBoxFlat:
+				var c: StyleBoxFlat = (sb as StyleBoxFlat).duplicate()
+				c.content_margin_left = 8
+				c.content_margin_right = 8
+				c.content_margin_top = 6
+				c.content_margin_bottom = 6
+				t.set_stylebox(state, kind, c)
+	t.set_font_size("font_size", "Button", 15)
+	# (The pull-downs read like the buttons beside them.)
+	for kind in ["OptionButton", "MenuButton"]:
+		t.set_font("font", kind, t.get_font("font", "Button"))
+		t.set_font_size("font_size", kind, 15)
+		t.set_constant("outline_size", kind, 2)
+	return t
 
 ## A smithy at night: a dark room, the forge's orange glow from one side, a cool rim light from
 ## behind, and the weapon standing over a stone anvil.
@@ -572,9 +623,12 @@ func _show_mode(m: String) -> void:
 			_gallery_ui()
 		_:
 			_voxels_ui()
+	if m != "gallery":
+		_rating_ui()
 	ghost.visible = false
 	turn_ghost.visible = false
 	line_from = null
+	sel_drag = {}
 	_show_line([])
 	if tool_bar:
 		_toolbar_ui()
@@ -642,7 +696,7 @@ func _lesson_show() -> void:
 		return
 	lesson_key = key
 	lesson_bits.step.text = Loc.t("FORGE LESSON · STEP %d OF %d") % [mini(int(lv.step) + 1, int(lv.total)), int(lv.total)]
-	lesson_bits.title.text = ("✔ " if lv.ok else "") + Loc.t(String(lv.title))
+	lesson_bits.title.text = Loc.t(String(lv.title))
 	lesson_bits.title.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if lv.ok else UIStyle.GOLD_LIGHT)
 	lesson_bits.text.text = String(lv.text)
 	lesson_bits.next.text = Loc.t("Close") if lv.get("done", false) else Loc.t("Next")
@@ -680,7 +734,7 @@ func _try_row() -> HBoxContainer:
 	row.add_child(UIStyle.button("Try it in the arena", func():
 		var d := _design_now()
 		if not ForgeLib.compute_stats(d).hasGrip:
-			cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
+			cost_label.text = "It needs somewhere to be held: build a Grip block, or Move hand"
 			return
 		if get_parent() and get_parent().has_method("try_from_forge"):
 			get_parent().try_from_forge(self, d, dummy_pick, dummy_fights, String(names[maxi(0, keys.find(dummy_pick))]))))
@@ -730,7 +784,7 @@ func _cards_ui() -> void:
 		for bk in ["speed", "damage", "reach"]:
 			var dv: float = after[bk] - now[bk]
 			arrows += ("▲" if dv > 0.03 else ("▼" if dv < -0.03 else "·"))
-		var b := UIStyle.button("%s  %s" % [Loc.t(String(mdef.label)), "✔" if picks.has(key) else arrows], func(): _toggle_pick(key))
+		var b := UIStyle.button("%s  %s" % [Loc.t(String(mdef.label)), "●" if picks.has(key) else arrows], func(): _toggle_pick(key))
 		b.tooltip_text = mdef.blurb
 		b.toggle_mode = true
 		b.button_pressed = picks.has(key)
@@ -845,6 +899,53 @@ static func _job_icon(j: String, px := 26) -> ImageTexture:
 			if on:
 				img.set_pixel(x, y, d if dark else g)
 	return ImageTexture.create_from_image(img)
+
+## A small drawn arrow for a button that has no words (the pad that moves the pick, Undo, Redo): an arrow pointing `dir` (left, right, up, down, front or back: a diagonal), or a curved one over the top, its head at the left (undo) or the right (redo). Drawn here
+## and not set in a font: no font has to have the glyph, and none can put a coloured picture in its place.
+static func _arrow_icon(kind: String, px := 18) -> ImageTexture:
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := UIStyle.GOLD_LIGHT
+	var dir := Vector2.ZERO
+	match kind:
+		"left": dir = Vector2(-1, 0)
+		"right": dir = Vector2(1, 0)
+		"up": dir = Vector2(0, 1)
+		"down": dir = Vector2(0, -1)
+		"front": dir = Vector2(-1, -1).normalized()
+		"back": dir = Vector2(1, 1).normalized()
+	var c := float(px - 1) * 0.5
+	for y in px:
+		for x in px:
+			# (The picture's own axes: x to the right, y up.)
+			var p := Vector2((x - c) / c, (c - y) / c)
+			var on := false
+			if kind == "undo" or kind == "redo":
+				var q := Vector2(p.x if kind == "undo" else -p.x, p.y)
+				# A top semicircle from the right round to the left, its head at the left end pointing down.
+				var r := (q - Vector2(0, -0.15)).length()
+				var ang := rad_to_deg(atan2(q.y + 0.15, q.x))
+				on = r > 0.42 and r < 0.7 and ang > -5.0 and ang < 175.0
+				on = on or (q.y < -0.05 and q.y > -0.78 and absf(q.x + 0.56) < (q.y + 0.78) * 0.62)
+			else:
+				var a := p.dot(dir)
+				var b := p.dot(Vector2(-dir.y, dir.x))
+				# The head is a triangle, the shaft a short bar behind it.
+				on = (a > 0.05 and a < 0.88 and absf(b) < (0.88 - a) * 0.95) or (a <= 0.05 and a > -0.8 and absf(b) < 0.2)
+			if on:
+				img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+## A button with a drawn arrow on it and no words (dimmed with the rest while it cannot be pressed).
+func _icon_button(kind: String, cb: Callable) -> Button:
+	var b := UIStyle.button("", cb)
+	b.icon = _arrow_icon(kind)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.expand_icon = false
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size.x = 34
+	b.add_theme_color_override("icon_disabled_color", Color(1, 1, 1, 0.3))
+	return b
 
 ## Building from nothing, under Quick start and Shape by hand alike: a blank anvil where the
 ## weapon is new anyway (training, the workshop, a new one at the smith); reshaping your own
@@ -970,26 +1071,6 @@ func _voxels_ui() -> void:
 		hb.button_pressed = two_now == want
 		hb.tooltip_text = "Swung in both hands: slower to start, much more behind each blow" if want else "In one hand: quick, the other hand free for a shield"
 		held.add_child(hb)
-	held.add_child(VSeparator.new())
-	var hands := [["main", "✋ Main hand", UIStyle.GOLD]]
-	if two_now:
-		hands.append(["off", "✋ Other hand", UIStyle.BRONZE])
-	for hd in hands:
-		var which: String = hd[0]
-		var pb := UIStyle.button(hd[1], func():
-			tool = "hand"
-			hand_pick = which
-			line_from = null
-			_show_line([])
-			_toolbar_ui()
-			_show_mode("voxels")
-			cost_label.text = Loc.t("Click the block where the main hand holds it (its ring: gold)" if which == "main" else "Click the block where the other hand holds it (its ring: bronze)"))
-		pb.toggle_mode = true
-		pb.button_pressed = tool == "hand" and (hand_pick if hand_pick != "" else "main") == which
-		pb.add_theme_color_override("font_color", hd[2])
-		pb.add_theme_color_override("font_pressed_color", hd[2])
-		pb.tooltip_text = Loc.t("Put the main hand on a block: click it on the weapon" if which == "main" else "Put the other hand on a block: click it on the weapon")
-		held.add_child(pb)
 	mode_box.add_child(held)
 	var opts := HBoxContainer.new()
 	var thr := CheckBox.new()
@@ -1047,6 +1128,8 @@ func _toolbar_ui() -> void:
 	var rows := VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 4)
 	tool_bar.add_child(rows)
+	# One row: the tools, the mirror, the way back and what is asked for seldom (user: far too many buttons). What belongs to one tool only,
+	# the pick's or the two hands', comes in a row of its own under it while that tool is in hand, and not before.
 	var trow := HBoxContainer.new()
 	trow.add_theme_constant_override("separation", 4)
 	for td in TOOLS:
@@ -1062,51 +1145,116 @@ func _toolbar_ui() -> void:
 		b.button_pressed = tool == key
 		b.tooltip_text = td[2]
 		trow.add_child(b)
-	var mir := CheckBox.new()
-	mir.text = "Mirror ⟷"
-	mir.tooltip_text = "Left and right alike"
-	mir.button_pressed = mirror
-	mir.toggled.connect(func(x): mirror = x)
-	var mirz := CheckBox.new()
-	mirz.text = "Mirror ⇅"
-	mirz.tooltip_text = "Front and back alike"
-	mirz.button_pressed = mirror_z
-	mirz.toggled.connect(func(x): mirror_z = x)
 	trow.add_child(VSeparator.new())
-	trow.add_child(mir)
-	trow.add_child(mirz)
+	trow.add_child(_mirror_menu())
+	trow.add_child(VSeparator.new())
+	# (Two drawn arrows, not the words: the words are long in some languages, and every editor's Undo and Redo are these.)
+	undo_button = _icon_button("undo", _undo)
+	undo_button.tooltip_text = "Take back the last change  [Ctrl+Z]"
+	redo_button = _icon_button("redo", _redo)
+	redo_button.tooltip_text = "Put back what was taken back  [Ctrl+Y]"
+	trow.add_child(undo_button)
+	trow.add_child(redo_button)
+	_history_buttons()
+	trow.add_child(_more_menu())
 	rows.add_child(trow)
-	var ar := HBoxContainer.new()
-	ar.add_theme_constant_override("separation", 4)
-	ar.add_child(UIStyle.button("Undo", _undo))
-	ar.add_child(UIStyle.button("Redo", _redo))
-	var turn := UIStyle.button("Turn sharp block (R)", func():
-		cost_label.text = "Point at an Edge or a Point block and press R: it turns to face each way in turn")
-	turn.tooltip_text = "An Edge or Point block faces away from the face you put it on; R turns the one under the mouse"
-	ar.add_child(turn)
-	ar.add_child(UIStyle.button("Clear", func():
-		_push_undo()
-		var keep: Dictionary = {}
-		for k in cells:
-			if cells[k][1] == "grip":
-				keep[k] = cells[k]
-		if keep.is_empty() and not cells.is_empty():
-			var first = cells.keys()[0]
-			keep[first] = cells[first]
-		cells = keep
-		_rebuild()))
+	var under := _tool_row()
+	if under != null:
+		rows.add_child(under)
+
+## Both mirrors in one pull-down (they were two boxes): off, left and right alike, front and back alike, both. M and Shift+M turn them one at a time.
+const MIRRORS := [["Mirror: off", false, false], ["Mirror ⟷", true, false], ["Mirror ⇅", false, true], ["Mirror ⟷ ⇅", true, true]]
+func _mirror_index() -> int:
+	return (1 if mirror else 0) + (2 if mirror_z else 0)
+
+func _mirror_menu() -> OptionButton:
+	var ob := OptionButton.new()
+	for m in MIRRORS:
+		ob.add_item(m[0])
+	ob.select(_mirror_index())
+	ob.focus_mode = Control.FOCUS_NONE
+	ob.tooltip_text = "A block built on one side goes on the other side too: left and right (⟷), front and back (⇅), or both  [M, Shift+M]"
+	ob.item_selected.connect(func(i):
+		mirror = MIRRORS[i][1]
+		mirror_z = MIRRORS[i][2]
+		cost_label.text = Loc.t("Mirror ⟷ %s, mirror ⇅ %s") % [Loc.t("On") if mirror else Loc.t("Off"), Loc.t("On") if mirror_z else Loc.t("Off")])
+	return ob
+
+## What is asked for seldom, behind one button: Clear and, in training, Surprise me (Clear alone is a button of its own).
+func _more_menu() -> Control:
+	var items: Array = [["Clear", _clear_blocks]]
 	if free_build:
-		ar.add_child(UIStyle.button("Surprise me", func():
-			_push_undo()
-			var d := ForgeLib.surprise_weapon(rng)
-			for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
-				design.erase(k)
-			design.merge(d, true)
-			_load_cells(d)
-			name_edit.text = d.name
-			framed = false
-			_rebuild()))
-	rows.add_child(ar)
+		items.append(["Surprise me", _surprise_me])
+	if items.size() == 1:
+		var only := UIStyle.button(items[0][0], items[0][1])
+		only.tooltip_text = "Take every block off but the grip"
+		return only
+	return _pull_menu("More", "Take every block off but the grip, or let the forge surprise you", items.map(func(it): return it[0]), func(id): (items[id][1] as Callable).call())
+
+func _clear_blocks() -> void:
+	_push_undo()
+	var keep: Dictionary = {}
+	for k in cells:
+		if cells[k][1] == "grip":
+			keep[k] = cells[k]
+	if keep.is_empty() and not cells.is_empty():
+		var first = cells.keys()[0]
+		keep[first] = cells[first]
+	cells = keep
+	_rebuild()
+
+func _surprise_me() -> void:
+	_push_undo()
+	var d := ForgeLib.surprise_weapon(rng)
+	for k in ["kind", "shoots", "stats", "chain", "balance", "grips"]:
+		design.erase(k)
+	design.merge(d, true)
+	_load_cells(d)
+	name_edit.text = d.name
+	framed = false
+	_rebuild()
+
+## A button that opens a short list: its caption (and a ▾), a tip and the lines; `pick` gets the number of the line chosen.
+func _pull_menu(caption: String, tip: String, lines: Array, pick: Callable) -> MenuButton:
+	var mb := MenuButton.new()
+	mb.text = Loc.t(caption) + " ▾"
+	mb.flat = false
+	mb.focus_mode = Control.FOCUS_NONE
+	mb.tooltip_text = tip
+	var pm := mb.get_popup()
+	for l in lines:
+		pm.add_item(l)
+	pm.id_pressed.connect(pick)
+	return mb
+
+## The row under the tools, for the tool in hand when it has more to ask: null for the rest.
+func _tool_row() -> Control:
+	if tool == "select":
+		return _select_row()
+	if tool == "hand" and bool(design.get("twoHanded", false)):
+		return _hands_row()
+	return null
+
+## The two hands of a two-handed weapon (the Move hand tool): a button for each puts that hand on the next block clicked, wherever its ring is; neither pressed, the click takes the hand whose ring is nearest.
+func _hands_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	for hd in [["main", "Main hand", UIStyle.GOLD], ["off", "Other hand", UIStyle.BRONZE]]:
+		var which: String = hd[0]
+		var pb := UIStyle.button(hd[1], func():
+			hand_pick = "" if hand_pick == which else which
+			line_from = null
+			_show_line([])
+			_toolbar_ui()
+			cost_label.text = Loc.t("Click the block where the main hand holds it (its ring: gold)" if which == "main" else "Click the block where the other hand holds it (its ring: bronze)") if hand_pick == which else TOOL_HINT.hand)
+		pb.toggle_mode = true
+		pb.button_pressed = hand_pick == which
+		pb.focus_mode = Control.FOCUS_NONE
+		pb.add_theme_color_override("font_color", hd[2])
+		pb.add_theme_color_override("font_pressed_color", hd[2])
+		pb.tooltip_text = Loc.t("Put the main hand on a block: click it on the weapon" if which == "main" else "Put the other hand on a block: click it on the weapon")
+		row.add_child(pb)
+	return row
 
 # ---------- My designs: weapons saved as templates ----------
 
@@ -1125,7 +1273,7 @@ static func gallery() -> Array:
 func _save_design() -> void:
 	var d := _design_now()
 	if not ForgeLib.compute_stats(d).hasGrip:
-		cost_label.text = "Say where it is held before you save it: build a Grip block, or ✋ Move hand"
+		cost_label.text = "Say where it is held before you save it: build a Grip block, or Move hand"
 		return
 	var g := gallery().filter(func(o): return str(o.get("name", "")) != str(d.get("name", "")))
 	d.erase("imbue")
@@ -1164,6 +1312,9 @@ func _gallery_ui() -> void:
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_child(UIStyle.button("Load", func(): _load_design(d)))
+		var pin_b := UIStyle.button("Pin", func(): _pin(d))
+		pin_b.tooltip_text = "Pin this design: the bars show how the weapon on the anvil compares with it"
+		row.add_child(pin_b)
 		if scratch:
 			# At the smith: have it made as it is, for what it is worth.
 			var price := Arms.design_price(d)
@@ -1245,15 +1396,31 @@ func _draw_bars() -> void:
 	for r in BAR_ROWS + [["", "Weight"]]:
 		lw = maxf(lw, font.get_string_size(Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
 	var x0 := lw + 12.0
-	var w := maxf(120.0, bars.size.x - x0 - 70.0)
+	# With a weapon pinned the figures against it take a column at the right of the bars, and its name a line over them.
+	var pv: Dictionary = pinned.get("vals", {}) if not pinned.is_empty() else {}
+	var pin_col := PIN_COL if not pv.is_empty() else 0.0
+	var w := maxf(120.0, bars.size.x - x0 - 70.0 - pin_col)
 	var fade := _delta_fade()
 	var y := 2.0
+	if not pv.is_empty():
+		bars.draw_string(font, Vector2(0, y + 12), Loc.t("Pinned: %s") % str(pinned.get("name", "?")), HORIZONTAL_ALIGNMENT_LEFT, bars.size.x, 13, UIStyle.GOLD)
+		y += PIN_LINE
 	for r in BAR_ROWS:
 		var k: String = r[0]
 		bars.draw_string(font, Vector2(0, y + 14), Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
 		bars.draw_rect(Rect2(x0, y + 3, w, 12), Color(0, 0, 0, 0.5))
 		var col: Color = Color(0.85, 0.32, 0.2) if k == "damage" else (UIStyle.BRONZE if k == "armour" else (DURABILITY_C if k == "durability" else UIStyle.GOLD))
 		bars.draw_rect(Rect2(x0, y + 3, w * float(bar_vals.get(k, 0.0)), 12), col)
+		# The pinned weapon's mark on the bar, and how far this one is from it: the whole time, not only after a change.
+		if not pv.is_empty():
+			bars.draw_rect(Rect2(x0 + w * float(pv.bars.get(k, 0.0)) - 1.0, y + 1, 2, 16), Color(0.96, 0.95, 0.9))
+			var dp := pin_delta(float(stat_now.get(k, 0.0)), float(pv.now.get(k, 0.0)))
+			var pc: Color = UIStyle.MUTED
+			var pt := "="
+			if absf(dp) >= 1.0:
+				pc = UP_C if dp > 0.0 else DOWN_C
+				pt = "%s %d%%" % ["▲" if dp > 0.0 else "▼", int(round(absf(dp)))]
+			bars.draw_string(font, Vector2(bars.size.x - PIN_COL, y + 14), pt, HORIZONTAL_ALIGNMENT_RIGHT, PIN_COL, 13, pc)
 		# What the last change did to it, for a moment: ▲ 6% or ▼ 4%.
 		var dv := float(stat_delta.get(k, 0.0))
 		if fade > 0.0 and absf(dv) >= 1.0:
@@ -1270,15 +1437,78 @@ func _draw_bars() -> void:
 		var fs := "·  " + Loc.t(weight_feel)
 		bars.draw_string(font, Vector2(xr, y + 14), fs, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.GOLD)
 		xr += font.get_string_size(fs, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 10.0
+	if not pv.is_empty():
+		var dk := float(stat_now.get("mass", 0.0)) - float(pv.now.get("mass", 0.0))
+		bars.draw_string(font, Vector2(bars.size.x - PIN_COL, y + 14), Loc.t("%+.2f kg") % dk, HORIZONTAL_ALIGNMENT_RIGHT, PIN_COL, 13, UIStyle.MUTED)
 	var dm := float(stat_delta.get("mass", 0.0))
 	if fade > 0.0 and absf(dm) >= 0.005:
 		var mc := UIStyle.MUTED
 		mc.a = fade
-		bars.draw_string(font, Vector2(maxf(xr, x0 + w + 8.0), y + 14), Loc.t("%+.2f kg") % dm, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, mc)
+		var mt := Loc.t("%+.2f kg") % dm
+		var mx := maxf(xr, x0 + w + 8.0)
+		# (With a weapon pinned, its figure has the right-hand end of the line: this one is left out where the two would meet.)
+		if mx + font.get_string_size(mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x <= bars.size.x - pin_col - 4.0:
+			bars.draw_string(font, Vector2(mx, y + 14), mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, mc)
 
 ## How much of a change's ▲ / ▼ is still shown: whole for DELTA_HOLD after it, then gone.
 func _delta_fade() -> float:
 	return clampf((DELTA_HOLD - (Time.get_ticks_msec() / 1000.0 - stat_t)) / 0.6, 0.0, 1.0)
+
+const PIN_LINE := 16.0   # the line over the bars that names the pinned weapon (px)
+const PIN_COL := 62.0    # the column at the right of the bars for its per cent (px)
+
+## What a design comes to on the bars, as _update_texts counts the weapon on the anvil: the five bars (0 to 1) and the figures the changes are counted on (the swing speed, the reach in metres, the weight).
+static func bars_of(d: Dictionary) -> Dictionary:
+	var st := ForgeLib.compute_stats(d)
+	var b := ForgeLib.three_bars(st)
+	var dur := ForgeLib.durability_bar(d)
+	return {
+		"bars": {"speed": float(b.speed), "damage": float(b.damage), "reach": float(b.reach), "armour": float(b.armour), "durability": dur},
+		"now": {"speed": float(st.swingSpeed), "damage": float(b.damage), "reach": float(st.reach), "armour": float(b.armour), "durability": dur, "mass": float(st.mass)},
+	}
+
+## How much more (or less, negative) this is than the pinned figure, in per cent (100 where the pinned is nothing and this is something).
+static func pin_delta(now: float, was: float) -> float:
+	if was > 0.001:
+		return (now / was - 1.0) * 100.0
+	return 100.0 if now > 0.001 else 0.0
+
+## Pin a design for comparison (the weapon on the anvil, or one of My designs): the bars show the weapon on the anvil against it from now on.
+func _pin(d: Dictionary, label := "") -> void:
+	var dd := d.duplicate(true)
+	dd.erase("stats")
+	pinned = {"name": (label if label != "" else str(d.get("name", "?"))).substr(0, 32), "design": dd, "vals": bars_of(dd)}
+	_pin_refresh()
+	cost_label.text = Loc.t("Pinned: %s") % str(pinned.name)
+
+func _pin_now() -> void:
+	var d := _design_now()
+	if (d.voxels as Array).is_empty():
+		return
+	_pin(d)
+
+func _unpin() -> void:
+	pinned = {}
+	_pin_refresh()
+
+## The one button: Pin it, and Unpin while something is pinned.
+func _pin_toggle() -> void:
+	if pinned.is_empty():
+		_pin_now()
+	else:
+		_unpin()
+
+const PIN_TIP := "Pin the weapon as it is now: the bars then show what you change against it (a white mark on each bar, ▲ better and ▼ worse at the right) until you unpin it"
+const UNPIN_TIP := "Take the comparison away"
+
+## The pin's button and the room for its line over the bars.
+func _pin_refresh() -> void:
+	if pin_button and is_instance_valid(pin_button):
+		pin_button.text = "Pin it" if pinned.is_empty() else "Unpin"
+		pin_button.tooltip_text = PIN_TIP if pinned.is_empty() else UNPIN_TIP
+	if bars and is_instance_valid(bars):
+		bars.custom_minimum_size.y = 122.0 + (PIN_LINE if not pinned.is_empty() else 0.0)
+		bars.queue_redraw()
 
 ## The balance point on the weapon: a small white dot where its weight sits, seen through the
 ## blocks, named beside it (user: see where the weight is).
@@ -1345,7 +1575,7 @@ func _update_texts() -> void:
 	verdict.text = Loc.t("The dummy: %s  ·  %d voxels") % [Loc.t(ForgeLib.dummy_verdict(d, st)), cells.size()]
 	for c in mode_box.get_children():
 		if c.has_meta("checklist"):
-			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("✔ " if i.done else "○ ") + Loc.t(String(i.text))))
+			c.text = "\n".join(ForgeLib.checklist(d, st).map(func(i): return ("● " if i.done else "○ ") + Loc.t(String(i.text))))
 	# (What he has and what it costs is the badge's, over this line: here only what the badge does not say.)
 	cost_label.text = price_text(d) if (free_build and not scratch) or workshop else ""
 	var sharp := _sharp_blocks() > 0 or job == "edge" or job == "point"
@@ -1358,6 +1588,7 @@ func _update_texts() -> void:
 		elif c.has_meta("sharp_none"):
 			c.visible = not sharp
 	_price_badge()
+	_rating_refresh(d, st)
 
 ## What the weapon on the anvil comes to, spelled out: what it is made of and the smith's work,
 ## what is paid now, and what is left in the purse after (or how much is missing).
@@ -1560,6 +1791,14 @@ func _rebuild() -> void:
 		if not framed:
 			_frame()
 	_place_camera()
+	# What was picked and is gone (taken off, cut away, undone) is not picked any more.
+	var picked := sel.size()
+	for k in sel.keys():
+		if not cells.has(k):
+			sel.erase(k)
+	_show_sel()
+	if sel.size() != picked and tool == "select":
+		_toolbar_ui()
 	texts_due = true   # (once a frame, however many blocks a stroke put on in it: _process)
 
 ## Every block's taper worked out again and drawn (after a change, once the hand has stopped).
@@ -1664,6 +1903,13 @@ func _process(dt: float) -> void:
 	if texts_due:
 		texts_due = false
 		_update_texts()
+	if rating.get("state", "") == "running":
+		rating["t"] = float(rating.get("t", 0.0)) + dt
+		if float(rating.t) >= RATE_POLL_S:
+			rating["t"] = 0.0
+			_rate_poll()
+	if sel_mi and is_instance_valid(sel_mi):
+		sel_mi.visible = tool == "select"   # (the pick is shown while the tool is in hand)
 	if bars and Time.get_ticks_msec() / 1000.0 - stat_t < DELTA_HOLD + 0.7:
 		bars.queue_redraw()   # (a change's ▲ / ▼ fading out)
 	# The whole weapon's taper once the hand has stopped (only that round each change was
@@ -1721,6 +1967,8 @@ func _on_view_input(e: InputEvent) -> void:
 		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			moved = true
 			_zoom(e.position, 1.0 / 0.88)
+		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels" and not e.alt_pressed and tool == "select":
+			_select_press(e)
 		elif e.button_index == MOUSE_BUTTON_LEFT and mode == "voxels" and not e.alt_pressed:
 			stroke = {"erase": false, "done": {}, "undo": false}
 			_click(e.position)
@@ -1728,11 +1976,17 @@ func _on_view_input(e: InputEvent) -> void:
 			line_from = null
 			_show_line([])
 			cost_label.text = TOOL_HINT.line
+		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels" and tool == "select":
+			sel_drag = {}
+			_select_redraw()
+			_set_sel({})
 		elif e.button_index == MOUSE_BUTTON_RIGHT and mode == "voxels":
 			stroke = {"erase": true, "done": {}, "undo": false}
 			_erase_at(e.position)
 	if e is InputEventMouseButton and not e.pressed and (e.button_index == MOUSE_BUTTON_LEFT or e.button_index == MOUSE_BUTTON_RIGHT):
 		stroke = {}
+		if e.button_index == MOUSE_BUTTON_LEFT and not sel_drag.is_empty():
+			_select_release()
 	# The middle button turns the camera round the weapon; with Shift held it slides it instead.
 	# (Alt and the left button do the same: a touchpad has no middle button.)
 	if e is InputEventMouseButton and (e.button_index == MOUSE_BUTTON_MIDDLE or (e.button_index == MOUSE_BUTTON_LEFT and (mode == "cards" or e.alt_pressed or (not e.pressed and dragging)))):
@@ -1749,6 +2003,8 @@ func _on_view_input(e: InputEvent) -> void:
 		elif mode == "voxels":
 			hover_at = e.position
 			_hover(e.position)
+			if not sel_drag.is_empty():
+				_select_drag(e.position)
 			# Held down and dragged, the tool goes on working: a stroke of voxels built, painted
 			# or cleared under the mouse (one undo for the whole stroke).
 			if not stroke.is_empty() and tool != "line":
@@ -1786,14 +2042,14 @@ func _hover(at: Vector2) -> void:
 	if turn_ghost.visible:
 		turn_ghost.position = Vector3(under) * Data.weapon_voxel
 	if not a.is_empty():
-		c = a.get("hit") if tool == "erase" or tool == "hand" else a.get("place")
+		c = a.get("hit") if tool == "erase" or tool == "hand" or tool == "select" else a.get("place")
 	# The line from where it starts to where the mouse is: every block it would put down.
 	if tool == "line" and line_from != null and c != null:
 		_show_line(_mirrored(ForgeLib.line_path(line_from, c)))
-	ghost.visible = c != null
+	ghost.visible = c != null and not bool(sel_drag.get("moved", false))
 	if c != null:
 		ghost.position = Vector3(c) * Data.weapon_voxel
-		var col := Color(1, 0.3, 0.3, 0.45) if tool == "erase" else Weapon.voxel_color(mat, job)
+		var col := Color(1, 0.3, 0.3, 0.45) if tool == "erase" else (Color(0.35, 0.8, 1.0) if tool == "select" else Weapon.voxel_color(mat, job))
 		col.a = 0.5
 		(ghost.mesh.material as StandardMaterial3D).albedo_color = col
 
@@ -2048,33 +2304,527 @@ func _remove(list: Array) -> void:
 		cells = kept
 	_rebuild()
 
+# ---------- The weapon's rating: duels against standard foes, ranked among the arsenal's ----------
+
+## The rating's place at the foot of what is made on the anvil: a button to rate the weapon, how far the bouts have got, and what they came to.
+func _rating_ui() -> void:
+	mode_box.add_child(HSeparator.new())
+	mode_box.add_child(UIStyle.label("RATING", 13, UIStyle.BRONZE))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	rating_button = UIStyle.button("Rate it", _rate_start)
+	rating_button.tooltip_text = Loc.t("Fight it: a bot with this weapon duels standard gladiators (%d bouts, a few minutes) and it is ranked among the arsenal's weapons, which were rated the same way. It goes on in the background: go on forging.") % WeaponRating.battery().size()
+	row.add_child(rating_button)
+	rating_stop = UIStyle.button("Stop", _rate_stop)
+	row.add_child(rating_stop)
+	mode_box.add_child(row)
+	rating_label = UIStyle.label("", 14, UIStyle.TEXT)
+	rating_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mode_box.add_child(rating_label)
+	rating_strip = RatingStrip.new()
+	rating_strip.custom_minimum_size = Vector2(380, 38)
+	mode_box.add_child(rating_strip)
+	_rating_refresh()
+
+## What the rating's place says, from what the rating is: nothing yet, under way, made (for this weapon or one it was), or not made.
+func _rating_refresh(d: Dictionary = {}, st: Dictionary = {}) -> void:
+	if rating_label == null or not is_instance_valid(rating_label) or rating_button == null or not is_instance_valid(rating_button):
+		return
+	if d.is_empty():
+		d = _design_now()
+	# A weapon rated before, in this game, comes back to the anvil with its rating.
+	if rating.is_empty() and not rated.is_empty() and not (d.voxels as Array).is_empty():
+		var seen := WeaponRating.key(d)
+		if rated.has(seen):
+			rating = (rated[seen] as Dictionary).duplicate(true)
+	var state := str(rating.get("state", ""))
+	var running := state == "running"
+	var why := WeaponRating.unrateable(d, st)
+	rating_button.disabled = running or why != ""
+	rating_stop.visible = running
+	var lines := []
+	var res: Dictionary = rating.get("result", {})
+	# A rating of the weapon that is on the anvil, or of one it has been changed from.
+	var mine := not rating.is_empty() and not d.is_empty() and (d.voxels as Array).size() > 0 and str(rating.get("key", "")) == WeaponRating.key(d)
+	var shown := false
+	if running:
+		lines.append(Loc.t("Rating: bout %d of %d") % [mini(int(rating.get("done", 0)) + 1, int(rating.get("of", 1))), int(rating.get("of", 1))])
+	elif state == "failed":
+		lines.append(Loc.t("The rating failed: %s") % Loc.t(str(res.get("error", "The rating stopped before it was done"))))
+	elif state == "done" and res.get("summary") is Dictionary:
+		shown = true
+		if not mine:
+			lines.append(Loc.t("For the weapon as it was, not as it is now: rate it again"))
+		var sm: Dictionary = res.summary
+		lines.append(Loc.t("Rated %d out of 100") % roundi(float(sm.score)))
+		lines.append(Loc.t("Won %d of %d bouts · dealt %d damage, took %d") % [int(floor(float(sm.won))), int(sm.of), int(sm.dmg), int(sm.taken)])
+		var rk: Dictionary = res.get("rank", {})
+		if not rk.is_empty():
+			lines.append(Loc.t("Better than %d of the arsenal's %d weapons") % [int(rk.better), int(rk.of)])
+			if String(rk.below) != "" and String(rk.above) != "":
+				lines.append(Loc.t("Between the %s and the %s") % [Loc.t(str(Data.presets.get(String(rk.below), {}).get("name", rk.below))), Loc.t(str(Data.presets.get(String(rk.above), {}).get("name", rk.above)))])
+	if lines.is_empty() and why != "":
+		lines.append(Loc.t(why))
+	rating_label.text = "\n".join(lines)
+	rating_label.add_theme_color_override("font_color", UIStyle.GOLD if shown and mine else UIStyle.TEXT)
+	var strip := rating_strip as RatingStrip
+	if strip:
+		strip.arsenal = WeaponRating.scores()
+		strip.score = float((res.get("summary", {}) as Dictionary).get("score", -1.0)) if shown else -1.0
+		strip.stale = shown and not mine
+		strip.visible = shown and not strip.arsenal.is_empty()
+		strip.queue_redraw()
+
+## Start the game that fights the bouts: the weapon as it is on the anvil, written to a job file, a headless game (this one's own executable) told to do it, the answer read from a file as it comes.
+func _rate_start() -> void:
+	if str(rating.get("state", "")) == "running":
+		return
+	var d := _design_now()
+	var why := WeaponRating.unrateable(d)
+	if why != "":
+		cost_label.text = why
+		return
+	var dir := ProjectSettings.globalize_path("user://rating")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var id := "%d_%d" % [OS.get_process_id(), Time.get_ticks_msec()]
+	var job_path := dir.path_join("job_%s.json" % id)
+	var out_path := dir.path_join("out_%s.json" % id)
+	var f := FileAccess.open(job_path, FileAccess.WRITE)
+	if f == null:
+		cost_label.text = "The rating could not be started"
+		return
+	f.store_string(JSON.stringify({"design": d, "out": out_path}))
+	f.close()
+	var args := PackedStringArray(["--headless", "--fixed-fps", "120"])
+	if OS.has_feature("editor"):
+		args.append_array(["--path", ProjectSettings.globalize_path("res://")])   # (a game run from the editor's own program has to be told where it is)
+	args.append_array(["--", "--rate", job_path])
+	var pid := OS.create_process(OS.get_executable_path(), args)
+	if pid <= 0:
+		DirAccess.remove_absolute(job_path)
+		cost_label.text = "The rating could not be started"
+		return
+	rating = {"key": WeaponRating.key(d), "pid": pid, "job": job_path, "out": out_path, "state": "running", "done": 0, "of": WeaponRating.battery().size(), "t": 0.0, "result": {}}
+	_rating_refresh(d)
+
+## The rating given up on (the button, or the forge closing): the game that fights it is ended and its files go.
+func _rate_stop() -> void:
+	if str(rating.get("state", "")) != "running":
+		return
+	if int(rating.get("pid", 0)) > 0 and _rate_running(int(rating.pid)):
+		OS.kill(int(rating.pid))
+	_rate_files_away()
+	rating = {}
+	_rating_refresh()
+
+## How far the bouts have got, from the file the other game writes; done, failed, or gone without a word.
+func _rate_poll() -> void:
+	var res := {}
+	var out_path := str(rating.get("out", ""))
+	if out_path != "" and FileAccess.file_exists(out_path):
+		res = WeaponRating.clean_result(JSON.parse_string(FileAccess.get_file_as_string(out_path)))
+	if res.get("state", "") == "done" or res.get("state", "") == "failed":
+		_rate_finish(res)
+	elif not _rate_running(int(rating.get("pid", 0))):
+		# (It may have written its last words between the two looks.)
+		if out_path != "" and FileAccess.file_exists(out_path):
+			var last := WeaponRating.clean_result(JSON.parse_string(FileAccess.get_file_as_string(out_path)))
+			if last.state == "done" or last.state == "failed":
+				_rate_finish(last)
+				return
+		_rate_finish({"state": "failed", "error": "The rating stopped before it was done", "bouts": []})
+	else:
+		if not res.is_empty():
+			rating["done"] = int(res.done)
+			rating["of"] = maxi(int(res.of), int(rating.get("of", 0)))
+		_rating_refresh()
+
+func _rate_finish(res: Dictionary) -> void:
+	rating["state"] = str(res.get("state", "failed"))
+	rating["result"] = res
+	rating["done"] = int(res.get("done", 0))
+	_rate_files_away()
+	if rating.state == "done":
+		rated[str(rating.key)] = rating.duplicate(true)
+	_rating_refresh()
+
+func _rate_running(pid: int) -> bool:
+	if rate_alive.is_valid():
+		return bool(rate_alive.call(pid))
+	return pid > 0 and OS.is_process_running(pid)
+
+func _rate_files_away() -> void:
+	for k in ["job", "out"]:
+		var p := str(rating.get(k, ""))
+		if p != "" and FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+
+## The arsenal's scores as ticks on a line, 0 to 100, and the weapon's own as a gold mark under it.
+class RatingStrip extends Control:
+	var arsenal: Array = []
+	var score := -1.0
+	var stale := false
+
+	func _draw() -> void:
+		if arsenal.is_empty() or score < 0.0:
+			return
+		var font := UIStyle.serif(1)
+		var w := size.x - 2.0
+		var y0 := 4.0
+		draw_rect(Rect2(1, y0, w, 12), Color(0, 0, 0, 0.5))
+		for sc in arsenal:
+			var x := 1.0 + w * clampf(float(sc) / 100.0, 0.0, 1.0)
+			draw_rect(Rect2(x - 0.5, y0 + 1, 1.5, 10), Color(UIStyle.MUTED, 0.75))
+		var x := 1.0 + w * clampf(score / 100.0, 0.0, 1.0)
+		var c := UIStyle.MUTED if stale else UIStyle.GOLD
+		draw_rect(Rect2(x - 1.5, y0 - 3, 3, 18), c)
+		draw_colored_polygon(PackedVector2Array([Vector2(x, y0 + 16), Vector2(x - 5, y0 + 23), Vector2(x + 5, y0 + 23)]), c)
+		var t := "%d" % roundi(score)
+		var tw := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		draw_string(font, Vector2(clampf(x - tw * 0.5, 0.0, size.x - tw), y0 + 36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, c)
+
+# ---------- Picked blocks: the Select tool ----------
+
+## What the Select tool's buttons do: the six ways to move (the arrow drawn on its button, a step, a tip), the three quarter turns (a label, the axis, a tip), the three flips.
+const MOVES := [
+	["left", Vector3i(-1, 0, 0), "Move the picked blocks left  [←]"],
+	["right", Vector3i(1, 0, 0), "Move the picked blocks right  [→]"],
+	["up", Vector3i(0, 1, 0), "Move the picked blocks up  [↑]"],
+	["down", Vector3i(0, -1, 0), "Move the picked blocks down  [↓]"],
+	["front", Vector3i(0, 0, 1), "Move the picked blocks to the front  [Page Down]"],
+	["back", Vector3i(0, 0, -1), "Move the picked blocks to the back  [Page Up]"],
+]
+const TURNS := [
+	["Turn ↻", 2, "Turn the picked blocks a quarter, like a clock hand (Shift: the other way)"],
+	["Roll", 1, "Roll the picked blocks a quarter round the weapon's length (Shift: the other way)"],
+	["Tilt", 0, "Tilt the picked blocks a quarter toward you or away (Shift: the other way)"],
+]
+const FLIPS := [
+	["Flip ⟷", 0, "Flip the picked blocks left for right"],
+	["Flip ⇕", 1, "Flip the picked blocks upside down"],
+	["Flip ⇅", 2, "Flip the picked blocks front for back"],
+]
+const MOVE_FAST := 5   # blocks a step with Shift held
+
+## The Select tool's row under the tools: with nothing picked, only the way to pick everything; with blocks picked, what can be done with them (Copy and the six moves, then Turn, Flip and Change, each a short list).
+func _select_row() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	if sel.is_empty():
+		row.add_child(UIStyle.button("Select all", _sel_all))
+		return row
+	row.add_child(UIStyle.button("Select none", func(): _set_sel({})))
+	row.add_child(VSeparator.new())
+	var cp := CheckBox.new()
+	cp.text = "Copy"
+	cp.tooltip_text = "Leave the picked blocks where they are: the next move carries a copy of them"
+	cp.button_pressed = sel_copy
+	cp.toggled.connect(func(x): sel_copy = x)
+	row.add_child(cp)
+	var pad := HBoxContainer.new()
+	pad.add_theme_constant_override("separation", 2)
+	for mv in MOVES:
+		var step: Vector3i = mv[1]
+		var b := _icon_button(String(mv[0]), func(): _sel_move(step))
+		b.tooltip_text = Loc.t(mv[2]) + "\n" + Loc.t("Shift: five blocks at a time")
+		b.set_meta("move", step)
+		pad.add_child(b)
+	row.add_child(pad)
+	row.add_child(VSeparator.new())
+	var turn := _pull_menu("Turn", "Turn the picked blocks a quarter (Shift: the other way)", TURNS.map(func(tn): return tn[0]), func(id): _sel_turn(int(TURNS[id][1]), -1 if Input.is_key_pressed(KEY_SHIFT) else 1))
+	var flip := _pull_menu("Flip", "Flip the picked blocks over: left for right, upside down or front for back", FLIPS.map(func(fl): return fl[0]), func(id): _sel_flip(int(FLIPS[id][1])))
+	var change := _pull_menu("Change", "Remake the picked blocks: of the material picked on the left, or with the job picked there",
+		[Loc.t("Make them %s") % Loc.t(mat.capitalize()), Loc.t("Make them %s") % Loc.t(_job_name(job))], _make_pick)
+	for i in TURNS.size():
+		turn.get_popup().set_item_tooltip(i, TURNS[i][2])
+	for i in FLIPS.size():
+		flip.get_popup().set_item_tooltip(i, FLIPS[i][2])
+	change.get_popup().set_item_tooltip(0, Loc.t("Every picked block becomes %s, the material picked on the left") % Loc.t(mat.capitalize()))
+	change.get_popup().set_item_tooltip(1, Loc.t("Every picked block gets the job %s, the one picked on the left") % Loc.t(_job_name(job)))
+	for m in [turn, flip, change]:
+		row.add_child(m)
+	for c in row.get_children():
+		if c is Button:
+			(c as Button).focus_mode = Control.FOCUS_NONE
+	return row
+
+## Change, the line chosen: the picked blocks made of the material picked on the left, or given the job picked there.
+func _make_pick(id: int) -> void:
+	if id == 0:
+		_sel_make(mat, "")
+	else:
+		_sel_make("", job)
+
+## The blocks to pick, put together with what is picked: added (Shift), taken away from it (Ctrl), or instead of it.
+func _pick_with(picked: Dictionary, add: bool, sub: bool) -> Dictionary:
+	var out := {}
+	if add or sub:
+		out = sel.duplicate()
+	for k in picked:
+		if sub:
+			out.erase(k)
+		else:
+			out[k] = true
+	return out
+
+func _set_sel(s: Dictionary) -> void:
+	sel = s
+	_show_sel()
+	if tool != "select":
+		return
+	_toolbar_ui()
+	if sel.is_empty():
+		cost_label.text = TOOL_HINT.select
+	else:
+		cost_label.text = Loc.t("%d block picked" if sel.size() == 1 else "%d blocks picked") % sel.size()
+
+func _sel_all() -> void:
+	var all := {}
+	for k in cells:
+		all[k] = true
+	_set_sel(all)
+
+## The pick tinted on the weapon (a box a little over each block).
+func _show_sel() -> void:
+	if weapon_root == null:
+		return
+	if sel_mi == null or not is_instance_valid(sel_mi):
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * Data.weapon_voxel * 1.06
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(0.35, 0.8, 1.0, 0.4)
+		bm.material = m
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = bm
+		sel_mi = MultiMeshInstance3D.new()
+		sel_mi.multimesh = mm
+		weapon_root.add_child(sel_mi)
+	sel_mi.visible = tool == "select"
+	var mm2 := sel_mi.multimesh
+	mm2.instance_count = sel.size()
+	var i := 0
+	for k in sel:
+		mm2.set_instance_transform(i, Transform3D(Basis(), Vector3(k) * Data.weapon_voxel))
+		i += 1
+
+## A press with the Select tool: a double-click picks the part under the mouse; otherwise a box begins (a click that goes nowhere picks the block under it, or lets go of the pick).
+func _select_press(e: InputEventMouseButton) -> void:
+	var add := e.shift_pressed
+	var sub := e.ctrl_pressed or e.meta_pressed
+	if e.double_click:
+		var a := _aim(e.position)
+		if not a.is_empty() and a.get("hit") != null:
+			_set_sel(_pick_with(ForgeLib.part_of(cells, a.hit), add, sub))
+			sel_drag = {"done": true}
+			return
+	sel_drag = {"from": e.position, "to": e.position, "moved": false, "add": add, "sub": sub}
+
+func _select_drag(at: Vector2) -> void:
+	if sel_drag.get("done", false) or not sel_drag.has("from"):
+		return
+	sel_drag["to"] = at
+	if not sel_drag.moved and at.distance_to(sel_drag.from) > 5.0:
+		sel_drag["moved"] = true
+		ghost.visible = false
+	_select_redraw()
+
+func _select_release() -> void:
+	var d := sel_drag
+	sel_drag = {}
+	_select_redraw()
+	if d.is_empty() or d.get("done", false):
+		return
+	var picked := {}
+	if d.moved:
+		picked = _blocks_in_rect(Rect2(d.from, d.to - d.from).abs())
+	else:
+		var a := _aim(d.from)
+		if not a.is_empty() and a.get("hit") != null:
+			picked[a.hit] = true
+	_set_sel(_pick_with(picked, d.add, d.sub))
+
+func _select_redraw() -> void:
+	if marquee and is_instance_valid(marquee):
+		marquee.queue_redraw()
+
+func _draw_marquee() -> void:
+	if not bool(sel_drag.get("moved", false)):
+		return
+	var r := Rect2(sel_drag.from, sel_drag.to - sel_drag.from).abs()
+	marquee.draw_rect(r, Color(0.35, 0.8, 1.0, 0.12))
+	marquee.draw_rect(r, Color(0.55, 0.85, 1.0, 0.9), false, 1.5)
+
+## The blocks whose middles lie inside the rectangle `r` of the view: every one of them, the ones behind others too.
+func _blocks_in_rect(r: Rect2) -> Dictionary:
+	var out := {}
+	if cam == null or weapon_root == null:
+		return out
+	for k in cells:
+		var w: Vector3 = weapon_root.to_global(Vector3(k) * Data.weapon_voxel)
+		if not cam.is_position_behind(w) and r.has_point(cam.unproject_position(w)):
+			out[k] = true
+	return out
+
+## What it costs to have `cs` as the weapon, honed at `sh` (the weapon's own price, as the smith counts it).
+func _value_of(cs: Dictionary, sh: float) -> int:
+	var s := 0
+	var jobs := []
+	for c in cs.values():
+		s += Arms.voxel_price(c[0])
+		jobs.append(String(c[1]))
+	return s + Arms.honing(jobs, clampf(sh, 0.0, 1.0))
+
+## The weapon `want` put on the anvil in place of the one there, as one step to undo, if it holds up (nothing off the grid, one piece, within the purse). The pick becomes `now`, the hands
+## go where `hands` says (null: as they are), `extra` is set on the design with it. False (and a word under the anvil) when it would not hold.
+func _commit_cells(want: Dictionary, now: Dictionary, hands = null, copy := false, extra := {}) -> bool:
+	var why := ForgeLib.fault(want)
+	if why == "pieces":
+		cost_label.text = "A new block must touch the weapon" if copy else "That would tear the weapon in two"
+		return false
+	if why == "grid":
+		cost_label.text = "That will not fit on the anvil"
+		return false
+	if why == "many":
+		cost_label.text = Loc.t("That is the most the anvil holds (%d voxels)") % ForgeLib.MAX_VOXELS
+		return false
+	if not free_build:
+		var sh := float(extra.get("sharpness", design.get("sharpness", 0.8)))
+		var v := _value_of(want, sh)
+		if v > _value_now() and v - original_value > purse:
+			cost_label.text = "Not enough denarii for that"
+			return false
+	_push_undo()
+	cells = want
+	sel = now
+	if hands != null:
+		design.grips = hands
+	for k in extra:
+		design[k] = extra[k]
+	_rebuild()
+	if tool == "select":
+		_toolbar_ui()
+	return true
+
+## Where the hands are once the picked blocks have gone through `op`: a hand that was on one goes with it (a copy leaves it where it was). Null when no hand moves.
+func _carry_hands(op: Dictionary, keep: bool):
+	var gs = design.get("grips")
+	if keep or not (gs is Dictionary) or not gs.has("main") or not gs.has("off"):
+		return null
+	var out := {}
+	var any := false
+	for h in ["main", "off"]:
+		var p := Vector3i(roundi(float(gs[h][0])), roundi(float(gs[h][1])), roundi(float(gs[h][2])))
+		if sel.has(p):
+			var q := ForgeLib.moved(op, p)
+			out[h] = [q.x, q.y, q.z]
+			any = true
+		else:
+			out[h] = gs[h]
+	return out if any else null
+
+## Move the pick a step (MOVE_FAST with Shift held); with Copy ticked, the original stays and the copy goes (the tick is spent).
+func _sel_move(by: Vector3i) -> void:
+	if sel.is_empty():
+		return
+	var op := ForgeLib.shift_op(by * (MOVE_FAST if Input.is_key_pressed(KEY_SHIFT) else 1))
+	var keep := sel_copy
+	var r := ForgeLib.carry(cells, sel, op, keep)
+	if _commit_cells(r.cells, r.sel, _carry_hands(op, keep), keep) and keep:
+		sel_copy = false
+		_toolbar_ui()
+
+## Turn the pick a quarter about the axis (0 x, 1 y, 2 z) through the middle of its box.
+func _sel_turn(axis: int, dir := 1) -> void:
+	if sel.is_empty():
+		return
+	var op := ForgeLib.turn_op(sel, axis, dir)
+	var r := ForgeLib.carry(cells, sel, op)
+	_commit_cells(r.cells, r.sel, _carry_hands(op, false))
+
+## Flip the pick over across the middle of its box (axis 0 left for right, 1 upside down, 2 front for back).
+func _sel_flip(axis: int) -> void:
+	if sel.is_empty():
+		return
+	var op := ForgeLib.flip_op(sel, axis)
+	var r := ForgeLib.carry(cells, sel, op)
+	_commit_cells(r.cells, r.sel, _carry_hands(op, false))
+
+## The pick made of `m` and/or doing `j` ("" leaves it): the first edge on a weapon honed to nothing is honed to a working one, as when it is built.
+func _sel_make(m: String, j: String) -> void:
+	if sel.is_empty():
+		return
+	var want := ForgeLib.remade(cells, sel, m, j)
+	var extra := {}
+	if (j == "edge" or j == "point") and float(design.get("sharpness", 0.8)) < DULL and _sharp_blocks() == 0:
+		extra["sharpness"] = WORKING_EDGE
+	if _commit_cells(want, sel.duplicate(), null, false, extra) and extra.has("sharpness"):
+		_set_sharp_slider(WORKING_EDGE)
+
+## The arrow keys and Page Up and Down nudge the pick while the mouse is over the anvil (the buttons are the same, for the mouse); Ctrl+A picks everything.
+func _input(e: InputEvent) -> void:
+	var k := e as InputEventKey
+	if k == null or not k.pressed or k.echo or viewport == null or mode != "voxels" or tool != "select" or view_mouse.x < 0.0 or not visible:
+		return
+	if k.ctrl_pressed or k.alt_pressed or not FlyCam.keys_free(self):
+		return
+	var by := Vector3i.ZERO
+	match k.keycode:
+		KEY_LEFT: by = Vector3i(-1, 0, 0)
+		KEY_RIGHT: by = Vector3i(1, 0, 0)
+		KEY_UP: by = Vector3i(0, 1, 0)
+		KEY_DOWN: by = Vector3i(0, -1, 0)
+		KEY_PAGEDOWN: by = Vector3i(0, 0, 1)
+		KEY_PAGEUP: by = Vector3i(0, 0, -1)
+	if by != Vector3i.ZERO:
+		get_viewport().set_input_as_handled()
+		_sel_move(by)
+
 func _push_undo() -> void:
 	if not stroke.is_empty():
 		if stroke.undo:
 			return
 		stroke.undo = true
-	undo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	undo_stack.append([cells.duplicate(true), design.duplicate(true), sel.duplicate()])
 	if undo_stack.size() > 80:
 		undo_stack.pop_front()
 	redo_stack.clear()
+	_history_buttons()
+
+## Undo and Redo dim while there is nothing to take back or put back.
+func _history_buttons() -> void:
+	if undo_button and is_instance_valid(undo_button):
+		undo_button.disabled = undo_stack.is_empty()
+	if redo_button and is_instance_valid(redo_button):
+		redo_button.disabled = redo_stack.is_empty()
 
 func _undo() -> void:
 	if undo_stack.is_empty():
 		return
-	redo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	redo_stack.append([cells.duplicate(true), design.duplicate(true), sel.duplicate()])
 	var s: Array = undo_stack.pop_back()
 	cells = s[0]
 	design = s[1]
+	sel = s[2] if s.size() > 2 else {}
 	_rebuild()
+	if tool == "select":
+		_toolbar_ui()
+	_history_buttons()
 
 func _redo() -> void:
 	if redo_stack.is_empty():
 		return
-	undo_stack.append([cells.duplicate(true), design.duplicate(true)])
+	undo_stack.append([cells.duplicate(true), design.duplicate(true), sel.duplicate()])
 	var s: Array = redo_stack.pop_back()
 	cells = s[0]
 	design = s[1]
+	sel = s[2] if s.size() > 2 else {}
 	_rebuild()
+	if tool == "select":
+		_toolbar_ui()
+	_history_buttons()
 
 func _unhandled_key_input(e: InputEvent) -> void:
 	var k := e as InputEventKey
@@ -2087,6 +2837,8 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		var a := _aim(hover_at)
 		if not a.is_empty() and a.get("hit") != null:
 			turn_face(a.hit)
+	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_A and viewport and mode == "voxels" and tool == "select":
+		_sel_all()
 	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Y:
 		_redo()
 	elif e is InputEventKey and e.pressed and e.ctrl_pressed and e.keycode == KEY_Z:
@@ -2150,7 +2902,7 @@ func _take() -> void:
 	var d := _design_now()
 	var st := ForgeLib.compute_stats(d)
 	if not st.hasGrip:
-		cost_label.text = "It needs somewhere to be held: build a Grip block, or ✋ Move hand"
+		cost_label.text = "It needs somewhere to be held: build a Grip block, or Move hand"
 		return
 	d.stats = st
 	var cost := 0 if free_build else _value_now() - original_value
@@ -2161,5 +2913,6 @@ func _take() -> void:
 
 ## Closed: the music goes back to what played before the forge.
 func _exit_tree() -> void:
+	_rate_stop()
 	if Sfx.music:
 		Sfx.music.bench(false)

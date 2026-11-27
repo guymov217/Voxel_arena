@@ -1152,7 +1152,7 @@ func _process(dt: float) -> void:
 		var tv: Dictionary = match_.tut.view()
 		tut_panel.visible = true
 		tut_step.text = Loc.t("TUTORIAL · STEP %d OF %d") % [mini(int(tv.step) + 1, int(tv.total)), int(tv.total)]
-		tut_title.text = ("✔ " if tv.get("ok", false) else "") + Loc.t(String(tv.title))
+		tut_title.text = Loc.t(String(tv.title))
 		tut_title.add_theme_color_override("font_color", Color(0.6, 0.95, 0.5) if tv.get("ok", false) else GOLD_PALE)
 		tut_text.text = String(tv.text)
 	# The enemy in front of you.
@@ -1168,7 +1168,7 @@ func _process(dt: float) -> void:
 		plate_val = val
 		plate_trail = maxf(plate_val, plate_trail - dt * 0.25)
 		plate_out = t.f.alive and t.f.is_beaten()
-		plate_name.text = ("☠ " if t.get("boss", false) else "") + ((Loc.t("%s is out of the fight") % t.f.display_name).to_upper() if plate_out else t.f.display_name.to_upper())
+		plate_name.text = (Loc.t("%s is out of the fight") % t.f.display_name).to_upper() if plate_out else t.f.display_name.to_upper()
 		plate_name.add_theme_color_override("font_color", BLOOD_BRIGHT if t.get("boss", false) else GOLD)
 		plate_bar.queue_redraw()
 		plate.queue_redraw()

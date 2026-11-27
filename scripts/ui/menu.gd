@@ -1007,7 +1007,7 @@ func _missions(v: VBoxContainer) -> void:
 		var d: Dictionary = Yard.MISSIONS.get(ms.id, {})
 		if d.is_empty():
 			continue
-		v.add_child(UIStyle.label(Loc.t("%s  %s  (%d/%d) · %d denarii, %d reputation") % ["✔" if ms.get("done", false) else "·", Loc.t(String(d.text)), int(ms.n), int(d.count), int(round(int(d.coins) * Yard.mission_pay(rep))), int(d.rep)], 15, Color(0.6, 0.95, 0.5) if ms.get("done", false) else UIStyle.TEXT))
+		v.add_child(UIStyle.label(Loc.t("%s  %s  (%d/%d) · %d denarii, %d reputation") % ["●" if ms.get("done", false) else "○", Loc.t(String(d.text)), int(ms.n), int(d.count), int(round(int(d.coins) * Yard.mission_pay(rep))), int(d.rep)], 15, Color(0.6, 0.95, 0.5) if ms.get("done", false) else UIStyle.TEXT))
 
 ## A fight is over: count what it did toward the missions, pay them, and the reputation.
 func _settle_missions(r: Dictionary, mode: String) -> String:
@@ -2564,7 +2564,7 @@ func _circus(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title(Loc.t("Day %s · %s") % [ROMAN[int(run.day)], Loc.t(String(day.get("theme", "")))], 26))
 	for i in day.bouts.size():
 		var b: Dictionary = day.bouts[i]
-		var mark := "✔" if i < int(run.bout) else ("▶" if i == int(run.bout) else "·")
+		var mark := "●" if i < int(run.bout) else ("◆" if i == int(run.bout) else "○")
 		var col := UIStyle.MUTED if i < int(run.bout) else (UIStyle.GOLD if i == int(run.bout) else UIStyle.TEXT)
 		v.add_child(UIStyle.label("%s  %s%s" % [mark, Loc.t(String(b.name)), Loc.t("  · boss") if b.get("boss", false) else ""], 16, col))
 	var bout := Circus.current(run)

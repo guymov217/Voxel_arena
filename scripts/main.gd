@@ -13,6 +13,13 @@ func _ready() -> void:
 		var i := args.find("--test")
 		runner.run(args[i + 1] if args.size() > i + 1 else "")
 		return
+	if args.has("--rate"):
+		# A rating's bouts (scripts/game/rating_runner.gd): the forge starts the game this way, headless, for the weapon it is to rate; tools/rate_presets.sh, for the arsenal's.
+		var runner := RatingRunner.new()
+		add_child(runner)
+		var ri := args.find("--rate")
+		runner.run(args[ri + 1] if args.size() > ri + 1 else "")
+		return
 	if args.has("--probe"):
 		# (A trailer is filmed in the game's own look, whatever this PC's player picked in his
 		# Options: the classic blocks on low graphics filmed old men into the new trailer, user.)

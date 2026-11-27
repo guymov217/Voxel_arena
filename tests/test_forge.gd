@@ -361,7 +361,12 @@ func test_each_hand_has_its_own_button() -> void:
 		return out
 	var tx: Array = texts.call()
 	t.check(tx.has("One hand") and tx.has("Two hands"), "held in one hand or two, said plainly")
-	t.check(tx.has("✋ Main hand") and tx.has("✋ Other hand"), "a button for each hand of a two-handed weapon")
+	t.check(not tx.has("Main hand") and not tx.has("Other hand"), "the hands' buttons wait for the hand tool (user: far too many buttons)")
+	f.tool = "hand"
+	f._toolbar_ui()
+	await get_tree().process_frame
+	tx = texts.call()
+	t.check(tx.has("Main hand") and tx.has("Other hand"), "a button for each hand of a two-handed weapon, with the hand tool in hand")
 	var grip: Array = f.cells.keys().filter(func(k): return f.cells[k][1] == "grip")
 	grip.sort_custom(func(a, b): return a.y < b.y)
 	f.tool = "hand"

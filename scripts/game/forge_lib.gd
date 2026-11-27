@@ -345,6 +345,144 @@ static func box_cells(a: Vector3i, b: Vector3i) -> Array:
 				out.append(Vector3i(x, y, z))
 	return out
 
+# ---------- Picked blocks: what the forge's Select tool does with them ----------
+# A weapon here is `cells` (Vector3i -> [mat, job, face]); a pick is a set of its cells (Vector3i -> true).
+
+## The blocks of `cells` inside the box between the corners `a` and `b` (in any order).
+static func blocks_in_box(cells: Dictionary, a: Vector3i, b: Vector3i) -> Dictionary:
+	var out := {}
+	var lo := Vector3i(mini(a.x, b.x), mini(a.y, b.y), mini(a.z, b.z))
+	var hi := Vector3i(maxi(a.x, b.x), maxi(a.y, b.y), maxi(a.z, b.z))
+	for k in cells:
+		if k.x >= lo.x and k.x <= hi.x and k.y >= lo.y and k.y <= hi.y and k.z >= lo.z and k.z <= hi.z:
+			out[k] = true
+	return out
+
+## The part of the weapon that the block `at` belongs to: the blocks of the same stuff doing the same job that are joined to it face to face (a guard, a head, a grip).
+static func part_of(cells: Dictionary, at: Vector3i) -> Dictionary:
+	var out := {}
+	if not cells.has(at):
+		return out
+	var mat = cells[at][0]
+	var job = cells[at][1]
+	out[at] = true
+	var stack := [at]
+	while not stack.is_empty():
+		var c: Vector3i = stack.pop_back()
+		for d in SIDES:
+			var n: Vector3i = c + d
+			if not out.has(n) and cells.has(n) and cells[n][0] == mat and cells[n][1] == job:
+				out[n] = true
+				stack.append(n)
+	return out
+
+## Corners of the box round a pick: [lowest, highest].
+static func pick_box(sel: Dictionary) -> Array:
+	var lo := Vector3i(1 << 20, 1 << 20, 1 << 20)
+	var hi := Vector3i(-(1 << 20), -(1 << 20), -(1 << 20))
+	for k in sel:
+		lo = Vector3i(mini(lo.x, k.x), mini(lo.y, k.y), mini(lo.z, k.z))
+		hi = Vector3i(maxi(hi.x, k.x), maxi(hi.y, k.y), maxi(hi.z, k.z))
+	return [lo, hi]
+
+## A change of place for picked blocks, as a small dictionary: {"kind": "shift", "by"}, {"kind": "turn", "axis", "dir", "c2"} (a quarter turn about the axis 0 x, 1 y, 2 z through the middle of the pick's box,
+## `c2` twice that middle; dir 1 or -1) or {"kind": "flip", "axis", "c2"} (the pick turned over across the middle of its box). Every change keeps the blocks on the grid's cells.
+static func shift_op(by: Vector3i) -> Dictionary:
+	return {"kind": "shift", "by": by}
+
+static func turn_op(sel: Dictionary, axis: int, dir := 1) -> Dictionary:
+	var bx := pick_box(sel)
+	return {"kind": "turn", "axis": axis, "dir": 1 if dir >= 0 else -1, "c2": (bx[0] as Vector3i) + (bx[1] as Vector3i)}
+
+static func flip_op(sel: Dictionary, axis: int) -> Dictionary:
+	var bx := pick_box(sel)
+	return {"kind": "flip", "axis": axis, "c2": (bx[0] as Vector3i) + (bx[1] as Vector3i)}
+
+## A quarter turn of the vector `v` about `axis` (right-handed), by `dir` (1 or -1).
+static func _quarter(v: Vector3i, axis: int, dir: int) -> Vector3i:
+	match axis:
+		0:
+			return Vector3i(v.x, -v.z, v.y) if dir > 0 else Vector3i(v.x, v.z, -v.y)
+		1:
+			return Vector3i(v.z, v.y, -v.x) if dir > 0 else Vector3i(-v.z, v.y, v.x)
+	return Vector3i(-v.y, v.x, v.z) if dir > 0 else Vector3i(v.y, -v.x, v.z)
+
+## Where the block `p` goes under the change `op`. (A turn about a middle between two cells puts a block half a cell off: it goes to the cell on the high side.)
+static func moved(op: Dictionary, p: Vector3i) -> Vector3i:
+	match String(op.get("kind", "")):
+		"shift":
+			return p + (op.by as Vector3i)
+		"turn":
+			var c2: Vector3i = op.c2
+			var r := _quarter(p * 2 - c2, int(op.axis), int(op.dir)) + c2
+			return Vector3i(floori((r.x + 1) / 2.0), floori((r.y + 1) / 2.0), floori((r.z + 1) / 2.0))
+		"flip":
+			var c2: Vector3i = op.c2
+			var q := p
+			q[int(op.axis)] = c2[int(op.axis)] - p[int(op.axis)]
+			return q
+	return p
+
+## Which way a direction `d` (a sharp block's way to face) points after the change `op`.
+static func moved_dir(op: Dictionary, d: Vector3i) -> Vector3i:
+	match String(op.get("kind", "")):
+		"turn":
+			return _quarter(d, int(op.axis), int(op.dir))
+		"flip":
+			var q := d
+			q[int(op.axis)] = -d[int(op.axis)]
+			return q
+	return d
+
+## The weapon `cells` with the picked blocks put through `op`: they leave where they were (`keep`: the originals stay, a copy is made) and take the place of whatever stands where they land;
+## a sharp block faces as its block was turned. {"cells": the new weapon, "sel": where the picked blocks are now}.
+static func carry(cells: Dictionary, sel: Dictionary, op: Dictionary, keep := false) -> Dictionary:
+	var out := cells.duplicate()
+	if not keep:
+		for k in sel:
+			out.erase(k)
+	var now := {}
+	for k in sel:
+		if not cells.has(k):
+			continue
+		var cc: Array = (cells[k] as Array).duplicate()
+		if cc.size() > 2 and int(cc[2]) >= 0 and int(cc[2]) < FACES.size():
+			cc[2] = face_index(moved_dir(op, FACES[int(cc[2])]))
+		var q := moved(op, k)
+		out[q] = cc
+		now[q] = true
+	return {"cells": out, "sel": now}
+
+## The weapon with the picked blocks made of `mat` and/or doing `job` ("" leaves it as it is). A block that no longer cuts or stabs forgets which way it faced; one that starts to, faces as its shape has it.
+static func remade(cells: Dictionary, sel: Dictionary, mat := "", job := "") -> Dictionary:
+	var out := cells.duplicate()
+	for k in sel:
+		if not cells.has(k):
+			continue
+		var c: Array = (cells[k] as Array).duplicate()
+		while c.size() < 3:
+			c.append(-1)
+		if mat != "":
+			c[0] = mat
+		if job != "":
+			var was_sharp := String(c[1]) == "edge" or String(c[1]) == "point"
+			c[1] = job
+			if not (job == "edge" or job == "point") or not was_sharp:
+				c[2] = -1
+		out[k] = c
+	return out
+
+## What is wrong with `cells` as a weapon, as a word: "grid" (a block off the grid), "many" (more blocks than the anvil holds), "pieces" (not one piece), or "" for a weapon that holds.
+static func fault(cells: Dictionary) -> String:
+	if cells.size() > MAX_VOXELS:
+		return "many"
+	for k in cells:
+		if not in_grid(k.x, k.y, k.z):
+			return "grid"
+	if pieces(cells).size() > 1:
+		return "pieces"
+	return ""
+
 ## Metal outline becomes edge, the very tip a point, the rest stays blunt; grips and non-metal
 ## voxels are left alone. Returns how many changed.
 static func auto_sharpen(d: Dictionary) -> int:
