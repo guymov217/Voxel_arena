@@ -4429,6 +4429,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		crawl_phase += dt * 4.5
 		crawling = true
 		stamina_use += 3.0 * dt
+	# A bot lying and fighting on turns himself on the sand with his head to his man (`lieFace`, Bot.update): his arms reach from the shoulders
+	# and the shoulders are at the head's end. Lying with his feet to the man (a man who fell on his back facing him), he crawled at him
+	# feet first, shoved him along with his own legs and swung at the air a metre short of him: twenty seconds, not one blow (user).
+	if live and state == "down" and inp.get("lieFace", false):
+		_lie_to_face(t_rot, dt)
 	v_smooth = v_smooth.lerp(Vector3(lv.x, 0, lv.z), minf(1.0, dt * 10.0))
 	var h_speed := Vector2(v_smooth.x, v_smooth.z).length()
 	# A stride no longer than the legs cover with a foot on the sand: longer, the body was past the
@@ -8501,6 +8506,20 @@ func _lift_out(p: VoxelPart, allow: float) -> void:
 	p.global_position = c + Vector3(0.0, -low, 0.0)
 	if p.linear_velocity.y < 0.0:
 		p.linear_velocity = Vector3(p.linear_velocity.x, 0.0, p.linear_velocity.z)
+
+## The turn of a man lying on the sand toward where he looks (`yaw`): his head's end brought round to it by a push on the trunk about the vertical, the legs following on
+## their joints, and slower the worse his arms are (it is they that drag him round). Not one sat or kneeling up (his head is not along the sand).
+const LIE_TURN_W := 5.0       # rad/s: how briskly he comes round
+const LIE_TURN_MAX := 900.0   # the most turning torque it is held to (a man's trunk is held upright with up to 1400)
+func _lie_to_face(t_rot: Quaternion, dt: float) -> void:
+	var head_dir: Vector3 = t_rot * UP
+	var flat := Vector3(head_dir.x, 0.0, head_dir.z)
+	if flat.length() < 0.6:
+		return
+	var err := flat.normalized().signed_angle_to(Vector3(sin(yaw), 0.0, cos(yaw)), UP)
+	var arms := 0.35 + 0.65 * (arm_func("L") + arm_func("R")) * 0.5
+	var tq := (err * (LIE_TURN_W * LIE_TURN_W) - torso.angular_velocity.y * (2.0 * LIE_TURN_W)) * 4.0 * MS * S * S * arms
+	torso.apply_torque_impulse(Vector3(0.0, clampf(tq, -LIE_TURN_MAX * MS * S, LIE_TURN_MAX * MS * S), 0.0) * dt)
 
 ## Rocked by a blow (a fist on the jaw, a kick): for `t` seconds his hands and his feet answer
 ## less (user: every punch must really be felt by the one who takes it).

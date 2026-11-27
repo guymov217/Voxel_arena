@@ -81,3 +81,62 @@ func test_a_blow_does_not_flip_a_man_lying_down() -> void:
 		worst = maxf(worst, f.torso.angular_velocity.length())
 	t.check(worst < 8.0, "a struck man's trunk turns slower than a somersault (%.1f rad/s, set at 18)" % worst)
 	m.queue_free()
+
+## A bot over (or beside) a man down on the sand, alive and held there, for `secs` seconds (user: where the players lay wounded on the sand and not dead, the bots
+## did not know how to hit the man lying there). `smashed`: the bot has both shins smashed, he fights from the sand too. What it landed on him and how his body lay.
+func _bot_on_a_man_down(weapon: String, secs: int, smashed := false) -> Dictionary:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none"}, "headless": true, "seed": 3, "decrees": [], "hazards": []})
+	m.me.f.state = "dead"
+	var e: Dictionary = m.spawn_fighter({"kind": "bot", "name": "B", "loadout": {"main": weapon, "off": ""}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": 0.0, "diff": 0.7, "personality": "standard"})
+	var ve: Dictionary = m.spawn_fighter({"kind": "bot", "name": "V", "loadout": {"main": "gladius", "off": ""}, "team": 0, "pos": Vector3(0, 0, 2.5), "yaw": PI})
+	ve.erase("bot")
+	ve.drive = func(_e): return {}
+	var f: Fighter = e.f
+	var v: Fighter = ve.f
+	if smashed:
+		for n in ["shinL", "shinR"]:
+			f.by_name[n].fractured = true
+			f.by_name[n].hp = 5.0
+	var r := {"hits": 0, "lost": 0.0, "angle": 0.0}
+	m.combat.hit.connect(func(h):
+		if h.get("attacker") == f and h.get("char") == v:
+			r.hits += 1)
+	var hp0 := 0.0
+	for i in secs * 120:
+		if v.state == "stand" and v.alive:
+			v.fall(30.0, true)
+		elif v.state == "down" and v.alive:
+			v.down_timer = maxf(v.down_timer, 5.0)
+		await get_tree().physics_frame
+		if i == 60:
+			hp0 = v.total_hp()
+		if not v.alive:
+			break
+	var head: Vector3 = f.torso.global_transform.basis * Vector3.UP
+	var to_him: Vector3 = v.torso.global_position - f.torso.global_position
+	r.angle = Vector2(head.x, head.z).angle_to(Vector2(to_him.x, to_him.z))
+	r.angle = absf(r.angle)
+	r.lost = hp0 - v.total_hp()
+	r.state = f.state
+	m.queue_free()
+	await get_tree().process_frame
+	return r
+
+## A spear's point is passed over a man lying on the sand when the spearman keeps off at the shaft's length: held at its own length and level, three hits in fifteen seconds
+## and a few points of harm. Nearer, the point comes down on him from above.
+func test_a_spearman_lands_blows_on_a_man_lying_on_the_sand() -> void:
+	for wn in ["spear", "trident"]:
+		var r: Dictionary = await _bot_on_a_man_down(wn, 15)
+		print("   %s over a man down: %d hits, %.0f hp lost" % [wn, r.hits, r.lost])
+		t.check(r.hits >= 5 and r.lost >= 100.0, "%s: his point comes down on the man on the sand (%d hits, %.0f hp)" % [wn, r.hits, r.lost])
+
+## A man with his legs gone fights on from the sand, and turns on it with his head to his man (his arms reach from his shoulders): lying with his feet to him, he crawled at
+## the man feet first, shoved him along with his own legs and swung at the air a metre short of him.
+func test_a_man_lying_on_the_sand_turns_his_head_to_the_man_he_fights() -> void:
+	var r: Dictionary = await _bot_on_a_man_down("gladius", 20, true)
+	print("   a crawler's head %.0f degrees off his man; %d hits, %.0f hp lost; he is %s" % [rad_to_deg(r.angle), r.hits, r.lost, r.state])
+	t.eq(r.state, "down", "he is down on the sand")
+	t.check(r.angle < 1.2, "his head is turned to the man (%.0f degrees off)" % rad_to_deg(r.angle))
+	t.check(r.hits >= 4, "and he lands blows from where he lies (%d hits)" % r.hits)

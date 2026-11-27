@@ -144,6 +144,7 @@ var grab_reach := 0.0           # a grab under way: the hand reaching for him (s
 const GRAB_REACH := 1.0
 const GRAB_DOWN_RATE := 0.35   # how often (per second, close by) he bends to pick up a man on the sand, empty-handed
 const GRAB_DOWN_RATE_ARMED := 0.2   # and with a weapon in his other hand (the weapon is the main threat)
+const FOE_DOWN_SPEAR := 1.55   # how far (of his size) a spear's reach is taken to be against a man down on the sand
 const GRAB_DOWN_REACH := 2.6   # and how much longer he gets to reach him, bent over (he lets his hips down at a pace his legs hold: seconds, for a man on the sand)
 var hold_t := 0.0
 var hold_move := ""
@@ -346,7 +347,7 @@ func _dual_hands(inp: Dictionary, gy: float, dt: float) -> void:
 ## pitches up or down twice as far as its mark asks, more on the move: spearaim.gd; the bots'
 ## spears were held over the other man's head and every stab went past him). `hold`: the
 ## correction kept as it is (the stab being driven out along its line).
-func _point_on(w: Weapon, at: Vector3, dt: float, hold := false) -> Vector2:
+func _point_on(w: Weapon, at: Vector3, dt: float, hold := false, down := false) -> Vector2:
 	var want := at - w.grip_world()
 	var now: Vector3 = PD.quat_of(w) * Vector3.UP
 	var flat := Vector2(want.x, want.z).length()
@@ -357,7 +358,7 @@ func _point_on(w: Weapon, at: Vector3, dt: float, hold := false) -> Vector2:
 	var spear := Fighter.is_spear(w)
 	var pitch := clampf(atan2(want.y, maxf(flat, 0.3)), -0.7, 0.6)
 	if spear and flat < 1.1:
-		pitch = clampf(pitch, -0.25, 0.25)   # (he is in past the point: the haft is kept level at him, not stood on end)
+		pitch = clampf(pitch, -0.9 if down else -0.25, 0.25)   # (he is in past the point: the haft is kept level at him, not stood on end; a man on the sand is stabbed from above)
 	var now_pitch := atan2(now.y, Vector2(now.x, now.z).length())
 	var ky := 0.85 if spear else PI / 2.0 / 1.6   # the pitch a unit of the mark gives
 	var kx := 0.6 if spear else PI / 4.0          # and the turn aside
@@ -542,9 +543,14 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		style_w = w
 		style = style_of(w)
 		aim_bias = Vector2.ZERO
+	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
+	# (The other man down on the sand, alive: the blows are brought down on him, and the spear's point at a slant, from nearer than its length.)
+	var foe_down: bool = target.get("state") != null and String(target.state) != "stand"
 	var reach := 0.55 * S + (w.reach if w else 0.25) * 0.85
 	if style == "spear":
 		reach = 0.7 * S + w.reach * 0.95   # (couched out in front, its point further off than a blade held up)
+		if foe_down and S <= tS * 1.5:
+			reach = minf(reach, FOE_DOWN_SPEAR * S)   # (held off at the whole length of the shaft, its point passed over a man lying on the sand: three hits in fifteen seconds, user)
 	# Stood off where the blade meets him with its outer part, the fast one (user: every blow as
 	# much momentum as the weapon can give): a man who presses in to a hand's breadth (the shield
 	# men, the berserker) struck with the inner half of his blade at a walk's speed, and two of
@@ -556,7 +562,6 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# A giant over a man a third his size: he steps in so the blade's length is over the man,
 	# and every blow is brought down to where the man actually is (standing, or on the sand),
 	# not swung at a giant's own height over his head.
-	var tS: float = float(target.get("S")) if target.get("S") != null else 1.0
 	var big: bool = S > tS * 1.5 and w != null
 	# Bare-handed over a man that size, his fists go down at the man himself (`jabAt`, below).
 	var over_small: bool = S > tS * 1.5 and w == null and c.held_item == null
@@ -629,6 +634,8 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		inp.mx = 0.0
 		inp.mz = 1.0 if dist > reach * 0.6 + 0.3 * S else 0.0
 		inp.faceAt = tp
+		# (Down for good he turns on the sand with his head to the man: Fighter._lie_to_face.)
+		inp.lieFace = c.fights_down()
 	# Ranged tricks: a rock, a net, a pot of Greek fire.
 	if p.has("ability") and p.ability != "heal" and ability_t <= 0.0 and c.state == "stand":
 		var rg: Array = p.get("range", [2.5, 9.0])
@@ -761,7 +768,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		if style == "spear" and w and not big:
 			# A spear is held couched, its point on the man's chest and never off him: who comes
 			# in comes onto it. Only the point plays a little about its mark.
-			var mk := _point_on(w, stab_mark(target, "chest"), dt)
+			var mk := _point_on(w, stab_mark(target, "chest"), dt, false, foe_down)
 			gx = mk.x + 0.06 * sin(weave)
 			gyy = mk.y + 0.05 * sin(weave * 1.31 + 1.0)
 		_lerp_hand(gx, gyy, dt * (2.0 + diff * 4.0))
@@ -831,7 +838,7 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 		if stab_at != "" and w and not big:
 			# A stab goes where its point is laid: on the mark, and held there while it is driven
 			# (the line is taken from where the blade lies as the drive begins).
-			var mk := _point_on(w, stab_mark(target, stab_at), dt, key == attack.size() - 1 and key_t > 0.35)
+			var mk := _point_on(w, stab_mark(target, stab_at), dt, key == attack.size() - 1 and key_t > 0.35, foe_down)
 			x = mk.x
 			y = mk.y
 		if aim_small != null and giant_kind != "" and giant_kind != "chop" and giant_kind != "thrust":

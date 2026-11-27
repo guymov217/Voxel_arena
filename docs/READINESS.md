@@ -87,6 +87,23 @@ long campaign on real hardware before a release date is set.
   seconds, swings, and the bout is still on. The rage test's swing at the air is a timer
   now (1.5 to 3 s between swings), not a chance a step: the chance left a cyclops standing
   nine seconds between swings.
+- Bots against a man lying on the sand, alive (user: where the players lay wounded on the
+  floor and not dead, the bots did not know how to hit the enemy lying there). Measured with
+  tests/botdown351.gd (a bot against a man held down, 15 to 20 s, three seeds): a spearman
+  (spear, trident, javelin, the Swiss spear) kept off at his reach against a man on the
+  sand, where the haft was held level (a spear in past 1.1 m was never let point down) and
+  its point passed over him: 66 hits and 515 hp in fifteen seconds over five weapons and
+  three seeds, five kills of fifteen. Against a man down his spear is now taken to reach
+  1.55 of his size (he stands nearer), and the point may pitch down 0.9 rad when he is in
+  past 1.1 m: 168 hits, 2531 hp, fifteen kills of fifteen. A bot who is himself down for
+  good (both shins smashed, awake: `fights_down`) lay as he fell, on his back with his feet
+  to the man more often than not, and crawled at him feet first, shoving him along with his
+  legs, a metre short of his sword (a gladius: no hit in twenty seconds). He now turns on the
+  sand with his head to the man (`lieFace` in the bot's input, `Fighter._lie_to_face`: a
+  push on the trunk about the vertical, slower with worse arms; a player's own lying controls
+  are as they were): two lying bots at each other land half as many blows again, and the one
+  lying against a man on his feet lands what he did. Tests (test_downs): the spearman's
+  point comes down on the man on the sand; a crawler's head is turned to his man.
 - Severing giants and beasts (user: could not cut the hands or legs off giants and cyclopes;
   check every limb and part of every enemy comes off): a probe put a man's sword (gladius
   size, a committed stroke) to every part of every human foe, every giant and every beast,
