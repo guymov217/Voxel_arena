@@ -2877,5 +2877,7 @@
  "The torch burns out": "La torche est consumée",
  "%s SLAMS %s INTO THE SAND!": "%s ÉCRASE %s CONTRE LE SABLE !",
  "%d denarii to each of you": "%d deniers pour chacun de vous",
- "The room is full": "La salle est pleine"
+ "The room is full": "La salle est pleine",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s donne un coup de pied (et piétine un homme à terre), %s bouscule. Maintenez %s pour armer le coup de pied et relâchez pour le porter de toutes vos forces : il blesse et projette un homme en arrière. Frappez ou bousculez le mannequin.",
+ "Push kick: let go of %s to drive it home": "Coup de pied de poussée : relâchez %s pour le porter"
 }

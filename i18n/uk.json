@@ -2877,5 +2877,7 @@
  "The torch burns out": "Смолоскип догорів",
  "%s SLAMS %s INTO THE SAND!": "%s ВБИВАЄ %s У ПІСОК!",
  "%d denarii to each of you": "по %d денаріїв кожному",
- "The room is full": "Кімната заповнена"
+ "The room is full": "Кімната заповнена",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s — копняк (і топтання лежачого), %s — поштовх. Утримуйте %s, щоб замахнутися ногою, і відпустіть, щоб завдати удару: він ранить і відкидає супротивника. Копніть або штовхніть манекен.",
+ "Push kick: let go of %s to drive it home": "Потужний копняк: відпустіть %s, щоб вдарити"
 }

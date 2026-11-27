@@ -47,6 +47,15 @@ var time := 0.0
 var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
 const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
+## A push kick at full wind-up (Fighter.kick_push 1) against a plain kick: how much more of the foot's speed is the blow (x), how much higher the blow may go (the cap), the least it lands
+## with (the hips are behind it, whatever the foot's own speed when it meets him), how much more of an impulse is put on his trunk (N s) and how fast the whole of him is sent back over it
+## (m/s, by a man's own weight against his), and how likely he is to be felled by it.
+const PUSH_BLOW := 0.9
+const PUSH_CAP := 28.0
+const PUSH_JMIN := 40.0
+const PUSH_SHOVE := 150.0
+const PUSH_DV := 1.0
+const PUSH_FELL := 0.8
 static var LODGE_K := 1.0        # how readily held blades stay in the wound (tests set it to 0 or 1e3)
 var touches := {}                # a beast's (a man's) id -> {the other's id -> [t, a: the toucher's part, b: the touched part, J, Jmax]}: whose body is on whom
 var touches_p := {}              # a part's id -> {the other man's id -> the same}: what one part is on (a forearm, a beast's part)
@@ -660,6 +669,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		return {}
 	var club: bool = not is_weapon and _is_club(att)
 	var kick: bool = not is_weapon and not club and att.part_name.begins_with("shin") and att.fighter.kick_strike()
+	# A push kick wound up with the key held (Fighter.kick_push, 0 a plain kick .. 1 a full one) lands harder and shoves farther.
+	var kpush: float = float(att.fighter.kick_push) if kick else 0.0
 	# A giant's foot is not slowed by the small man it comes down on: the blow's speed is the foot's own
 	# (read after the step, with the man already carried along under it, there was hardly a speed
 	# between the two, and a stamp that threw a man to the sand hurt him not at all).
@@ -692,6 +703,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		# a man's at the same speed).
 		if punch or kick:
 			m_eff *= clampf(float(att.fighter.S), 1.0, 2.5)
+		if kpush > 0.0:
+			m_eff *= 1.0 + PUSH_BLOW * kpush
 	var cap: float
 	if is_weapon:
 		cap = 70.0
@@ -707,7 +720,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		# (A kick shoves more than it harms: three of them felled a man in a row.)
 		# A fist that lands is felt (user: every punch, given or taken, must really be felt): a
 		# jab up to 30, a swung fist 24, a giant's fist with a giant's weight behind it.
-		cap = 20.0 if kick else (30.0 if jabbing else 24.0)
+		cap = (20.0 + PUSH_CAP * kpush) if kick else (30.0 if jabbing else 24.0)
 		if punch:
 			cap *= clampf(float(att.fighter.S), 1.0, 2.5)
 		# A colossus's stamp or punt comes down with the whole weight of him (his foot is no man's kick that shoves).
@@ -721,6 +734,8 @@ func _blow(g: Dictionary) -> Dictionary:
 		m_eff = TUSK_M if huge else 5.0
 		cap = TUSK_CAP if huge else maxf(20.0, float(att.fighter.get("bite_power")))
 	var J := minf(cap, m_eff * speed) if fist else minf(cap, maxf(g.J, m_eff * speed))
+	if kpush > 0.0:
+		J = maxf(J, minf(cap, lerpf(20.0, PUSH_JMIN, kpush)))
 	if bite and att.fighter is Beast:
 		# A beast's blow lands as hard as it is struck, as a weapon's does: what the contact reads
 		# off a great weight leaning into a man (a paw resting on his arm, jaws closing slowly) is
@@ -971,21 +986,45 @@ func _blow(g: Dictionary) -> Dictionary:
 			vic_char.daze(0.18 + 0.2 * minf(k, 1.5))
 			vic_char.jolt_t = vic_char.time
 	if kick and not vic.severed and vic_char.get("torso"):
-		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(55.0, J * 3.0)
-		vic_char.torso.apply_central_impulse(Vector3(dir.x * m, 10.0, dir.z * m))
+		var m := 260.0 if att.fighter.mods.get("superKick", false) else minf(55.0 + PUSH_SHOVE * kpush, J * (3.0 + 2.5 * kpush))
+		var sdir := Vector3(dir.x, 0.0, dir.z)
+		if kpush > 0.0:
+			# A push kick drives him straight back from the kicker, as the foot's own line is whatever way it happened to be going (up, as the knee came out) when it met him.
+			var away: Vector3 = vic_char.torso.global_position - att.fighter.torso.global_position
+			away.y = 0.0
+			sdir = away.normalized() if away.length_squared() > 1e-4 else Vector3(sin(att.fighter.yaw), 0.0, cos(att.fighter.yaw))
+		vic_char.torso.apply_central_impulse(Vector3(sdir.x * m, 10.0 + 30.0 * kpush, sdir.z * m))
+		if kpush > 0.0 and vic_char is Fighter and not (vic_char is Beast):
+			# And the whole of him goes back with it, his feet let off the sand to stumble (as a two-handed shove does it, Social.shove), the bigger and stronger the kicker against him, the farther.
+			var kf: Fighter = att.fighter
+			var ratio := minf(2.5, pow(kf.S, 2.5) * float(kf.mods.strength) / pow(vic_char.S, 2.5))
+			var dv := PUSH_DV * kpush * ratio
+			for vp in vic_char.parts:
+				if not vp.severed:
+					vp.apply_central_impulse(Vector3(sdir.x * dv, dv * 0.1, sdir.z * dv) * vp.mass)
+			for side in vic_char.feet:
+				if vic_char.feet[side]:
+					vic_char.feet[side].swing = true
+			vic_char.jolt_t = vic_char.time
 		# It rocks him a little, the same however hard it lands: kicks one after another do not
-		# pile up into a fall the way they did.
-		vic_char.stagger = minf(1.0, minf(vic_char.stagger, stag0 + 0.06) + 0.04)
+		# pile up into a fall the way they did. (A push kick sends him reeling.)
+		vic_char.stagger = minf(1.0, minf(vic_char.stagger, stag0 + 0.06) + 0.04 + 0.5 * kpush)
+		if kpush > 0.0 and vic_char is Fighter and not (vic_char is Beast):
+			vic_char.daze(0.2 + 0.4 * kpush)
 		var lv: Vector3 = vic_char.torso.linear_velocity
 		# A kick takes the legs from under a man only now and then: the harder it lands, the
 		# more he is on the move, out of breath or reeling, the likelier; never a sure thing.
 		var sweep: float = ((0.12 if Vector2(lv.x, lv.z).length() > 0.8 else 0.0) + (0.12 if vic_char.stamina < 30.0 else 0.0) + 0.15 * vic_char.stagger) * clampf(J / 22.0, 0.2, 1.0)
+		if kpush > 0.0:
+			# (A push kick throws the whole man, wherever it lands on him; the bigger he is against the kicker, the less.)
+			sweep += PUSH_FELL * kpush * clampf(float(att.fighter.S) / maxf(0.5, float(vic_char.S)), 0.0, 1.0)
+			att.fighter.kick_landed = true
 		# One chance a kick (a foot that lands twice in the one kick is still one kick).
 		var now := time
 		var rolled := now - float(vic_char.get_meta("sweep_roll", -10.0)) < 0.4
 		if not rolled:
 			vic_char.set_meta("sweep_roll", now)
-		if vic.def.get("leg", false) and vic_char.state == "stand" and not rolled and randf() < sweep:
+		if (vic.def.get("leg", false) or kpush > 0.0) and vic_char.state == "stand" and not rolled and randf() < sweep:
 			vic_char.fall(1.2)
 			res.tripped = true
 	var chip := {}
@@ -1002,7 +1041,7 @@ func _blow(g: Dictionary) -> Dictionary:
 		var k: Dictionary = att.knock(idx, Weapon.chip_score(J * maxf(0.25, brittle) * chip_mult, mat_h, vh))
 		if not k.is_empty():
 			chip = {"indices": k.indices, "voxels": k.voxels, "broke": k.broke}
-	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "bite": bite and not tusk, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
+	return {"kind": "hit", "att_part": att if not is_weapon else null, "p": p, "dir": dir, "J": J, "type": typ, "mat": g.mat, "punch": punch, "kick": kick, "push": kpush, "bite": bite and not tusk, "weapon": att if is_weapon else null, "char": vic_char, "part": vic, "attacker": attacker, "res": res, "killed": was_alive and not vic_char.alive, "chip": chip, "thrown": thrown}
 
 ## How likely a held weapon's blow is to stay in the wound: a weapon heavy at the head (an axe,
 ## a trident: the weight out at the blade drives it in and wedges it), or a long heavy blade

@@ -2877,5 +2877,7 @@
  "The torch burns out": "횃불이 다 타 버렸다",
  "%s SLAMS %s INTO THE SAND!": "%s이(가) %s을(를) 모래 바닥에 내동댕이칩니다!",
  "%d denarii to each of you": "각자 %d 데나리우스",
- "The room is full": "방이 가득 찼습니다"
+ "The room is full": "방이 가득 찼습니다",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 키로 발차기(쓰러진 상대는 짓밟기), %s 키로 밀치기. %s 키를 누르고 있으면 발차기를 크게 준비하고, 떼면 힘껏 내지릅니다. 상대에게 상처를 입히고 뒤로 날려 버립니다. 허수아비를 차거나 밀쳐 보세요.",
+ "Push kick: let go of %s to drive it home": "밀어차기: %s 키를 떼면 강하게 찹니다"
 }

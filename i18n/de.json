@@ -2880,5 +2880,7 @@
  "The torch burns out": "Die Fackel ist heruntergebrannt",
  "%s SLAMS %s INTO THE SAND!": "%s SCHMETTERT %s IN DEN SAND!",
  "%d denarii to each of you": "%d Denare für jeden von euch",
- "The room is full": "Der Raum ist voll"
+ "The room is full": "Der Raum ist voll",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tritt (und stampft auf einen, der am Boden liegt), %s schubst. Halte %s, um zum Tritt auszuholen, und lass los, um ihn durchzuziehen: er verletzt und wirft einen Mann zurück. Tritt oder schubse die Puppe.",
+ "Push kick: let go of %s to drive it home": "Stoßtritt: lass %s los, um ihn durchzuziehen"
 }

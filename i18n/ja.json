@@ -2877,5 +2877,7 @@
  "The torch burns out": "松明が燃え尽きた",
  "%s SLAMS %s INTO THE SAND!": "%sが%sを砂の上に叩きつける！",
  "%d denarii to each of you": "一人あたり %d デナリウス",
- "The room is full": "ルームは満員です"
+ "The room is full": "ルームは満員です",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s で蹴る（倒れた相手は踏みつける）、%s で突き飛ばす。%s を押したままで足を引いて構え、離すと渾身の蹴りが出る。相手に傷を負わせて吹き飛ばす。人形を蹴るか突き飛ばそう。",
+ "Push kick: let go of %s to drive it home": "押し蹴り：%s を離して蹴り込む"
 }

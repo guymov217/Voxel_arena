@@ -2877,5 +2877,7 @@
  "The torch burns out": "La torcia si è consumata",
  "%s SLAMS %s INTO THE SAND!": "%s SBATTE %s NELLA SABBIA!",
  "%d denarii to each of you": "%d denari a testa",
- "The room is full": "La stanza è piena"
+ "The room is full": "La stanza è piena",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tira un calcio (e calpesta chi è a terra), %s spinge. Tieni premuto %s per caricare il calcio e rilascia per scagliarlo con forza: ferisce e getta indietro l'avversario. Calcia o spingi il fantoccio.",
+ "Push kick: let go of %s to drive it home": "Calcio di spinta: rilascia %s per scagliarlo"
 }

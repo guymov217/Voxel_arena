@@ -2877,5 +2877,7 @@
  "The torch burns out": "火把燒盡了",
  "%s SLAMS %s INTO THE SAND!": "%s 狠狠地把 %s 砸進了沙地！",
  "%d denarii to each of you": "每人 %d 第納爾",
- "The room is full": "房間已滿"
+ "The room is full": "房間已滿",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 踢（對倒地的人則是踩踏），%s 推。按住 %s 蓄力，放開時全力踢出：能重創對手並把他踢飛。踢或推一下木人。",
+ "Push kick: let go of %s to drive it home": "重踢：放開 %s 全力踢出"
 }

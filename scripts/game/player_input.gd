@@ -426,6 +426,8 @@ func sample(dt: float) -> Dictionary:
 		"crouch": held("crouch"),
 		"jump": pressed("jump"),
 		"kick": pressed("kick"),
+		# (Held down: a kick whose key is not let go winds up into a push kick, Fighter.kick_wind.)
+		"kickHold": held("kick") or _pad_holds("kick"),
 		"grab": pressed("grab"),
 		# G with a mouse button held grabs with that hand (both buttons: both hands).
 		"grabHands": "both" if hand_r and hand_l else ("R" if hand_r else ("L" if hand_l else null)),
@@ -478,6 +480,7 @@ static func pack(inp: Dictionary) -> Array:
 	bits |= (1 if inp.get("grip", false) else 0) << 17
 	bits |= (1 if inp.get("revive", false) else 0) << 19
 	bits |= (1 if inp.get("depthOn", false) else 0) << 20
+	bits |= (1 if inp.get("kickHold", false) else 0) << 21
 	var aim = inp.get("aimAt")
 	bits |= (1 if aim is Vector3 else 0) << 18
 	# The number this input goes by (7 bits above the flags): the host says which it had got to, and a guest's own man is walked
@@ -528,6 +531,7 @@ static func unpack(a: Array) -> Dictionary:
 	out.offTwist = clampf(float(a[14]), -PI, PI) if a.size() > 14 else 0.0
 	out.grip = bits & (1 << 17) != 0
 	out.revive = bits & (1 << 19) != 0
+	out.kickHold = bits & (1 << 21) != 0
 	out.seq = (bits >> 24) & 0x7F
 	if a.size() > 15 and float(a[15]) > 0.0:
 		out.charging = clampf(float(a[15]), 0.0, 1.0)

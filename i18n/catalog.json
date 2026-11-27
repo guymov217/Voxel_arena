@@ -3619,9 +3619,6 @@
 "Kick and shove": [
 "scripts/game/tutorial.gd:22"
 ],
-"%s kicks (and stamps on a man who is down), %s shoves. Kick or shove the dummy.": [
-"scripts/game/tutorial.gd:22"
-],
 "Swap hands": [
 "scripts/game/tutorial.gd:23"
 ],
@@ -9177,5 +9174,11 @@
 ],
 "The room is full": [
 "scripts/net/net.gd:1146"
+],
+"%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": [
+"scripts/game/tutorial.gd:22"
+],
+"Push kick: let go of %s to drive it home": [
+"scripts/ui/hud.gd:1047"
 ]
 }

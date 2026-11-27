@@ -181,7 +181,17 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   lands solidly starts home at once, and one strike of a fist or a foot lands once on a man
   whatever parts of him it crosses. A front kick shifts the weight onto the standing foot as the
   knee comes up, drives the foot out, draws it back in and sets it down (`kick_pose`); it
-  strikes only on its way out (`kick_strike`).
+  strikes only on its way out (`kick_strike`). **The push kick** (user: hold E for a strong kick with
+  a swing that wounds and shoves): the key still down as the knee comes up holds the kick there
+  (`Fighter.kick_wind`, the clock frozen at `PUSH_AT`), the knee drawn up high and the trunk leaned
+  back (`kick_wind_pose`, `_push_lean`), up to `PUSH_WIND` s and as long as there is breath
+  (`PUSH_BREATH`); let go, the knee is whipped out under a thigh that comes down to just over level,
+  the hips drive in behind it (`PUSH_LUNGE`) and the foot lands at the man's waist, one blow a kick
+  (`kick_landed`). Its blow, shove and fall grow with the hold (`Fighter.kick_push` 0..1, read in
+  `Combat._blow`: `PUSH_JMIN`, `PUSH_CAP`, `PUSH_DV`, `PUSH_FELL`): it winds him, sends the whole of
+  him back from the kicker with his feet let off the sand, and fells him most times; a plain tap is
+  the kick it was. The held key rides in bit 21 of the input word (`PlayerInput`), the charge shows
+  in the HUD's bar; bots do not use it. (`tests/test_push_kick.gd`.)
 - **A spear is thrown as a javelin is, over the shoulder** (user: the javelin was held a third of
   the way up its shaft where it balances two thirds of the way, and its wind-up never drew the arm
   back; then, of a hold drawn back at the shoulder's height: spears are thrown over the shoulder;

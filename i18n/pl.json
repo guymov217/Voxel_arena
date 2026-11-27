@@ -2877,5 +2877,7 @@
  "The torch burns out": "Pochodnia wypaliła się",
  "%s SLAMS %s INTO THE SAND!": "%s WALI %s O PIASEK!",
  "%d denarii to each of you": "%d denarów dla każdego",
- "The room is full": "Pokój jest pełny"
+ "The room is full": "Pokój jest pełny",
+ "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s – kopnięcie (i deptanie leżącego), %s – pchnięcie. Przytrzymaj %s, by zamachnąć się do kopniaka, i puść, by go wyprowadzić: rani i odrzuca przeciwnika. Kopnij albo pchnij manekina.",
+ "Push kick: let go of %s to drive it home": "Kopniak odrzucający: puść %s, by uderzyć"
 }
