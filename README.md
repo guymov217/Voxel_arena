@@ -363,7 +363,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   wheel). Between runs you buy ludus upgrades. There are also the Daily Games and a Hall of Fame.
 - **The kill cam**: the match is recorded at 30 Hz. Every kill is scored for style (a head off,
   a throw, a punch, a giant brought down), and when the match ends the best one replays in slow
-  motion, letterboxed, with a caption (`scripts/game/killcam.gd`).
+  motion, letterboxed, with a caption (`scripts/game/killcam.gd`); its camera orbits the two men and is held on the sand side
+  of the wall wherever the kill was (`Killcam.orbit_fit`).
 - **Music**: a procedural band (frame drum, riq, drone, lyre, horn) in the Phrygian dominant. It
   has a loop for each state (menu, yard, fight, boss, victory), rendered on a thread and
   cross-faded (`scripts/autoload/music.gd`).

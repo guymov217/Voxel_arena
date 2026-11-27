@@ -387,3 +387,51 @@ func test_the_replay_draws_every_man_whole() -> void:
 	t.check(worst_cap < 0.25 * m.me.f.S, "and a block drawn on a joint sits on its joint (%d of them, worst %.2f m off)" % [caps, worst_cap])
 	m.queue_free()
 	await get_tree().process_frame
+
+## The replay's camera goes round the pair a little low, and stays on the sand's side of the wall (user, #349: it went into the arena's walls, and out past them, when the fight was close to the
+## edge): round a pair in the middle it is whole circle as ever; round a pair at the wall it goes round the part inside, turns about at its ends, and is never nearer the pair than its circle is.
+func test_the_replay_camera_never_goes_out_past_the_wall() -> void:
+	var lim: float = CameraRig.WALL_IN
+	# In the middle of the sand: untouched, the whole way round.
+	var orbit := 0.0
+	var dir := 1.0
+	for i in 400:
+		orbit += 0.05 * dir
+		var fit := KillCam.orbit_fit(Vector3(1, 1, 0), orbit, dir)
+		t.check(is_equal_approx(float(fit[0]), orbit) and float(fit[1]) == dir, "round a pair in the middle the camera goes round whole (step %d)" % i)
+		if not is_equal_approx(float(fit[0]), orbit):
+			break
+		orbit = fit[0]
+		dir = fit[1]
+	# At the wall, on every side of it: the camera never stands out past it, and keeps its distance.
+	for ang in [0.0, 0.9, 2.1, 3.14159, -1.3]:
+		for rho in [13.5, 14.5, 14.9]:
+			var c := Vector3(sin(ang) * rho, 1.0, cos(ang) * rho)
+			var o := 0.0
+			var d := 1.0
+			var worst := 0.0
+			var nearest := INF
+			var swept := 0.0
+			for i in 900:
+				o += 0.03 * d
+				var fit := KillCam.orbit_fit(c, o, d)
+				o = fit[0]
+				d = fit[1]
+				var p := c + Vector3(sin(o) * KillCam.CAM_R, 0.0, cos(o) * KillCam.CAM_R)
+				worst = maxf(worst, Vector2(p.x, p.z).length())
+				nearest = minf(nearest, Vector2(p.x - c.x, p.z - c.z).length())
+				swept = maxf(swept, absf(o))
+			t.check(worst <= lim + 0.001, "a pair at %.1f m from the middle, %.1f rad round: the camera never farther than %.2f of %.2f m (%.3f)" % [rho, ang, worst, lim, worst - lim])
+			t.check(nearest > KillCam.CAM_R - 0.001, "and never nearer the pair than its circle (%.2f m)" % nearest)
+	# A pair at the wall is seen from the sand's side, going to and fro: it does not stand still.
+	var c2 := Vector3(0, 1, 14.4)
+	var o2 := 0.0
+	var d2 := 1.0
+	var seen := {}
+	for i in 900:
+		o2 += 0.03 * d2
+		var fit2 := KillCam.orbit_fit(c2, o2, d2)
+		o2 = fit2[0]
+		d2 = fit2[1]
+		seen[snappedf(o2, 0.2)] = true
+	t.check(seen.size() > 8, "and it goes on moving round the part of its circle that is inside (%d places)" % seen.size())

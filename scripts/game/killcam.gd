@@ -252,6 +252,28 @@ func reset() -> void:
 ## moving as it was, whether the fight goes on (between rounds) or is over: left as the clip's
 ## last moment had them, the dead stood up again behind the result (user: a hyena killed before
 ## the kill cam was on its feet after it). `force` plays it in a headless match (the tests).
+## How far from the pair the replay's camera circles them (m).
+const CAM_R := 3.2
+
+## Where the replay's camera is to go round the pair at `c` (user, #349: it went into the arena's walls when the fight was close to its edge, and out past them): `orbit` is its angle round them,
+## `dir` the way it is going (1 or -1). The camera stands at (sin, cos) of the angle times CAM_R from the pair, and the circle it goes round is part outside the wall when the pair are near it:
+## at the end of the part that is inside it turns about and goes back (so it never stands past CameraRig.WALL_IN, and is never nearer the pair than the circle is). Returns [orbit, dir].
+static func orbit_fit(c: Vector3, orbit: float, dir: float, r := CAM_R) -> Array:
+	var rho := Vector2(c.x, c.z).length()
+	var lim := CameraRig.WALL_IN
+	if rho < 0.001:
+		return [orbit, dir]
+	var phi := atan2(c.x, c.z)   # (the way out to the wall from the middle of the sand, in the camera's own angle)
+	var k := (lim * lim - rho * rho - r * r) / (2.0 * rho * r)
+	if k >= 1.0:
+		return [orbit, dir]      # (the whole circle is inside)
+	var a := acos(clampf(k, -1.0, 1.0))   # (the camera is inside only where it is more than this far round from the way out)
+	var d := wrapf(orbit - phi, -PI, PI)
+	if absf(d) < a:
+		d = a if d >= 0.0 else -a
+		return [phi + d, 1.0 if d > 0.0 else -1.0]
+	return [orbit, dir]
+
 func play(done: Callable, force := false) -> void:
 	if best.is_empty() or (m.headless and not force):
 		done.call()
@@ -290,6 +312,7 @@ func play(done: Callable, force := false) -> void:
 	var tb: float = best.t_blow
 	var t := t0
 	var orbit := 0.0
+	var orbit_dir := 1.0   # which way the camera goes round (it turns about where the wall is: orbit_fit)
 	var cam: Camera3D = m.cam
 	# A skip is a fresh press: the key held down as the clip begins (the kick that killed) does
 	# not skip it unseen.
@@ -352,10 +375,13 @@ func play(done: Callable, force := false) -> void:
 		if armed and _skip_held():
 			break
 		armed = armed or not _skip_held()
-		orbit += dt * speed * 0.35
+		orbit += dt * speed * 0.35 * orbit_dir
+		var fit := orbit_fit(c, orbit, orbit_dir)
+		orbit = fit[0]
+		orbit_dir = fit[1]
 		if cam:
 			cam.fov = 45.0
-			cam.global_position = c + Vector3(sin(orbit) * 3.2, 0.7, cos(orbit) * 3.2)
+			cam.global_position = c + Vector3(sin(orbit) * CAM_R, 0.7, cos(orbit) * CAM_R)
 			cam.look_at(c, Vector3.UP)
 		await tree.process_frame
 	# The skip key let go before the game goes on (E held into the yard walked him out through
