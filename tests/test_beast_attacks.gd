@@ -252,7 +252,7 @@ func test_a_crocodiles_jaws_do_not_bite_at_a_touch() -> void:
 	var arm: VoxelPart = man.arm.L.fore
 	# Its head swung against his forearm at a run's speed (the contact as the physics reports it).
 	var touch := func() -> Array:
-		m.combat.pending = [{"a": b.head, "b": arm, "sa": 0, "sb": 0, "p": arm.global_position, "J": 30.0}]
+		m.combat.pending = [[b.head, arm, 0, 0, arm.global_position, 30.0]]
 		m.combat.vel[b.head.get_instance_id()] = [Vector3(0, 0, -5.0), Vector3.ZERO]
 		m.combat.vel[arm.get_instance_id()] = [Vector3.ZERO, Vector3.ZERO]
 		return m.combat.process_contacts(0.0)

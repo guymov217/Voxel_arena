@@ -105,6 +105,123 @@ func test_a_parts_function_is_the_same_kept_or_worked_out() -> void:
 	t.check(f.leg_func("R") < leg0 and f.leg_func("R") == minf(th.function(), sh.function()) * f.cord_legs * f.pelvis_f, "a leg's follows its shin the step it is hurt (%.3f from %.3f)" % [f.leg_func("R"), leg0])
 	m.queue_free()
 
+## What a man keeps of his parts between one change and the next (Fighter.leg_func's answers by fn_ver; the mass his legs carry and the limbs
+## _no_fling holds back by body_ver) is what he would work out, through every write that changes it.
+func test_what_a_man_keeps_of_his_parts_follows_every_change() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(10)
+	var th: VoxelPart = f.by_name.thighL
+	var sh: VoxelPart = f.by_name.shinL
+	var off := []
+	var same := func(what: String) -> void:
+		for side in ["L", "R"]:
+			var t2: VoxelPart = f.by_name["thigh" + side]
+			var s2: VoxelPart = f.by_name["shin" + side]
+			var want := 0.0 if t2.severed or s2.severed else minf(t2._function_now(), s2._function_now()) * f.cord_legs * f.pelvis_f
+			for k in 2:   # (the second asking is the kept answer, where one is kept)
+				if f.leg_func(side) != want:
+					off.append("%s (%s, asking %d: %.4f for %.4f)" % [what, side, k, f.leg_func(side), want])
+	same.call("whole")
+	var whole := f.leg_func("L")
+	sh.hp = 55.0
+	same.call("the shin hurt")
+	t.check(f.leg_func("L") < whole, "a hurt shin is a weaker leg at the next asking (%.3f from %.3f)" % [f.leg_func("L"), whole])
+	th.fracture = 1
+	same.call("the thigh cracked")
+	th.fractured = true
+	same.call("broken through")
+	th.fractured = false
+	th.fracture = 0
+	same.call("set")
+	th.hanging = true
+	same.call("hanging")
+	th.hanging = false
+	same.call("on again")
+	var some := []
+	for i in sh.fx.size():
+		if sh.fy[i] < 3:
+			some.append(i)
+	sh.remove_voxels(some)
+	same.call("voxels knocked off the shin")
+	f.cord_legs = 0.5
+	same.call("the cord half cut")
+	f.cord_legs = 1.0
+	f.pelvis_f = 0.5
+	same.call("the pelvis broken")
+	f.pelvis_f = 1.0
+	same.call("the pelvis whole")
+	var warm := f.leg_func("L")
+	sh.frozen_until = VoxelPart.clock() + 0.05
+	same.call("a frost on the shin")
+	t.check(f.leg_func("L") < warm, "a frozen shin is a weaker leg (%.3f of %.3f)" % [f.leg_func("L"), warm])
+	await _steps(10)
+	same.call("thawed by the clock")
+	t.check(f.leg_func("L") == warm, "and thawed, with nothing written, the leg is what it was (%.3f, %.3f)" % [f.leg_func("L"), warm])
+	sh.severed = true
+	same.call("the shin cut off")
+	t.check(f.leg_func("L") == 0.0, "a leg cut off is no leg")
+	sh.severed = false
+	same.call("on again")
+	t.check(off.is_empty(), "a leg's strength asked is its strength worked out, through every write of what it reads (off: %s)" % [off])
+	# The mass his legs carry, and the limbs held back when a weapon presses on him.
+	var mass := func() -> float:
+		var sum := 0.0
+		for p in f.parts:
+			if not p.severed:
+				sum += p.nominal_mass / (Fighter.LEG_MASS if p.def.get("leg", false) else 1.0)
+		return sum
+	var limbs := func() -> Array:
+		var out := []
+		for p in f.parts:
+			if not p.severed and p != f.torso:
+				out.append(p.part_name)
+		return out
+	var held := func() -> Array:
+		f.struck_frame = Engine.get_physics_frames()   # (a weapon on him: _no_fling goes over his limbs)
+		f._no_fling()
+		return f._limb_p.map(func(p): return p.part_name)
+	await _steps(2)
+	t.check(f.body_mass == mass.call(), "whole, his parts weigh what they add up to (%.4f, %.4f)" % [f.body_mass, mass.call()])
+	t.check(held.call() == limbs.call(), "and the limbs held back are his parts but the trunk (%d)" % f._limb_p.size())
+	var arm_l: VoxelPart = f.by_name.forearmL
+	arm_l.severed = true
+	await _steps(2)
+	t.check(f.body_mass == mass.call() and f.body_mass < m.me.f.torso.nominal_mass * 100.0, "a part cut off is not carried the step after (%.4f, %.4f)" % [f.body_mass, mass.call()])
+	t.check(held.call() == limbs.call() and not held.call().has("forearmL"), "nor held back (%d limbs)" % f._limb_p.size())
+	arm_l.severed = false
+	await _steps(2)
+	t.check(f.body_mass == mass.call() and held.call() == limbs.call(), "and on again it is both")
+	m.queue_free()
+
+## A part's step of bleeding in its own lines (VoxelPart.bleed_step) is the loop Fighter.control ran over his parts: the sum, the clot, the artery, the stump.
+func test_a_parts_bleeding_step_adds_up_as_the_loop_did() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(5)
+	var p: VoxelPart = f.by_name.forearmR
+	var dt := 1.0 / 120.0
+	var clot := dt * 0.08
+	var clot_k := dt * Fighter.CLOT_K
+	p.bleed = 0.7
+	p.artery = 0.4
+	p.stump = true
+	p.stump_t = 3.0
+	var sum := 0.3
+	sum += 0.7 + 0.4
+	var bleed_after := maxf(0.0, 0.7 - clot - 0.7 * clot_k)
+	var artery_after := maxf(0.0, 0.4 - dt * VoxelPart.ARTERY_CLOSE)
+	var stump_after := 3.0 + dt
+	sum += 2.5 * maxf(0.0, 1.0 - stump_after / 12.0)
+	var got := p.bleed_step(0.3, dt, 0.0, clot, clot_k)
+	t.check(got == sum, "the sum is the loop's (%.9f, %.9f)" % [got, sum])
+	t.check(p.bleed == bleed_after and p.artery == artery_after and p.stump_t == stump_after, "the wound closes, the artery and the stump's time run as they did (%.6f %.6f %.6f)" % [p.bleed, p.artery, p.stump_t])
+	var dry: VoxelPart = f.by_name.thighL
+	dry.bleed = 0.0
+	dry.artery = 0.0
+	t.check(dry.bleed_step(1.25, dt, 0.0, clot, clot_k) == 1.25 and dry.bleed == 0.0, "a dry part adds nothing and is not written")
+	m.queue_free()
+
 func test_prosthetics_work_worse_and_a_blade_arm_cannot_be_dropped() -> void:
 	var m := _match()
 	var b := Body.empty()

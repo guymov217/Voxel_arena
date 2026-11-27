@@ -2938,16 +2938,44 @@ func throw_weapon(side: String, target = null, power := 0.8, dir = null) -> Weap
 # ---------- Function of limbs ----------
 
 var _legs := {}   # side -> [thigh, shin], looked up once
+## (Asked eight times a step of every man: his walk, whether he can stand, how far gone he is. The answer for each leg is kept while none of his parts has changed
+## in what it can do (fn_ver: each part counts it up as it counts its own, VoxelPart._fn_ver) and his spine and his pelvis are as they were; not while a frost
+## thaws on the leg, which goes by the clock.)
+var fn_ver := 0
+var _legf_l := 0.0
+var _legf_l_at := -1
+var _legf_l_cord := 0.0
+var _legf_l_pelvis := 0.0
+var _legf_r := 0.0
+var _legf_r_at := -1
+var _legf_r_cord := 0.0
+var _legf_r_pelvis := 0.0
 func leg_func(side: String) -> float:
+	var left := side == "L"
+	if left:
+		if _legf_l_at == fn_ver and _legf_l_cord == cord_legs and _legf_l_pelvis == pelvis_f:
+			return _legf_l
+	elif _legf_r_at == fn_ver and _legf_r_cord == cord_legs and _legf_r_pelvis == pelvis_f:
+		return _legf_r
 	var l = _legs.get(side)
 	if l == null:
 		l = [by_name["thigh" + side], by_name["shin" + side]]
 		_legs[side] = l
 	var t: VoxelPart = l[0]
 	var s: VoxelPart = l[1]
-	if t.severed or s.severed:
-		return 0.0
-	return minf(t.function(), s.function()) * cord_legs * pelvis_f
+	var v := 0.0 if t.severed or s.severed else minf(t.function(), s.function()) * cord_legs * pelvis_f
+	if not (t.frozen_until > 0.0 or s.frozen_until > 0.0):
+		if left:
+			_legf_l = v
+			_legf_l_cord = cord_legs
+			_legf_l_pelvis = pelvis_f
+			_legf_l_at = fn_ver
+		else:
+			_legf_r = v
+			_legf_r_cord = cord_legs
+			_legf_r_pelvis = pelvis_f
+			_legf_r_at = fn_ver
+	return v
 
 ## Whether that hand can do anything at all: there, not hanging, not broken, not a hook.
 func hand_works(side: String) -> bool:
@@ -3364,6 +3392,24 @@ static func is_beast_on(o, f) -> bool:
 	var b = o.fighter
 	return not (b.hug != null and b.hug.get("target") == f) and not (f.has_meta("beast_hold") and f.get_meta("beast_hold") == b)
 
+## Counts every change to which of his parts are on him (VoxelPart.severed says so as it is written) and to what a part is said to weigh (nominal_mass): what is
+## worked out of those for all his parts is kept while it stands (the limbs _no_fling holds back, the mass his legs carry).
+var body_ver := 0
+var _limb_at := -1
+var _limb_np := -1
+var _limb_p: Array = []
+var _limb_arm := PackedByteArray()
+func _limbs_list() -> void:
+	_limb_at = body_ver
+	_limb_np = parts.size()
+	_limb_p.clear()
+	_limb_arm.clear()
+	for p in parts:
+		if p.severed or p == torso:
+			continue
+		_limb_p.append(p)
+		_limb_arm.append(1 if p == arm.L.upper or p == arm.L.fore or p == arm.R.upper or p == arm.R.fore else 0)
+
 ## What each of his weapons touches, as _no_fling asked it at the head of this step's control: asked once a step (_free_wedged asks the same of the
 ## blade in his hand later in the same control; the answer is the physics' own of the step before, and does not change between the two).
 var _touch_w := {}
@@ -3410,10 +3456,16 @@ func _no_fling() -> void:
 		# 26 m/s and pulled the neck open. Its speed over the trunk's is held to what a limb can
 		# go (an arm's to more: his own swing goes on through it).
 		var t_v: Vector3 = torso.linear_velocity
-		for p in parts:
-			if p.severed or p == torso:
-				continue
-			var lim: float = (STRUCK_ARM if p == arm.L.upper or p == arm.L.fore or p == arm.R.upper or p == arm.R.fore else STRUCK_LIMB) * sqrt(S)
+		# (His parts still on him, the trunk aside, and which of them are an arm's: a list kept while none is cut off (body_ver), not asked of every part of
+		# every struck man every step; and the two limits worked out once for the ten.)
+		if _limb_at != body_ver or _limb_np != parts.size():
+			_limbs_list()
+		var k_s := sqrt(S)
+		var lim_arm: float = STRUCK_ARM * k_s
+		var lim_limb: float = STRUCK_LIMB * k_s
+		for i in _limb_p.size():
+			var p: VoxelPart = _limb_p[i]
+			var lim := lim_arm if _limb_arm[i] != 0 else lim_limb
 			var rel: Vector3 = p.linear_velocity - t_v
 			if rel.length() > lim:
 				p.linear_velocity = t_v + rel.limit_length(lim)
@@ -4073,21 +4125,11 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# whole bout, and the fight was over in a few cuts (user: someone always bled to death fast).
 	var clot := dt * 0.08 / maxf(0.3, float(mods.bleed))
 	var clot_k := dt * CLOT_K / maxf(0.3, float(mods.bleed))
-	for p in parts:
-		# (A part that does not bleed is not written, and its drips and its blood are not called on where they would come straight back: a part with no
-		# drip on it, and one with no artery cut, no spurt and no run of blood. Ten parts a man every step, most of them dry.)
-		var pb: float = p.bleed
-		var pa: float = p.artery
-		bleed += pb + pa
-		if pb != 0.0:
-			p.bleed = maxf(0.0, pb - clot - pb * clot_k)
-		if not p.drips.is_empty():
-			p.update_drips()
-		if pa != 0.0 or not p.spurts.is_empty() or not p.runs.is_empty():
-			p.update_blood(dt, beat)
-		if p.stump:
-			p.stump_t += dt
-			bleed += 2.5 * maxf(0.0, 1.0 - p.stump_t / 12.0)
+	# (Each part's step of it in the part's own lines, VoxelPart.bleed_step: ten parts a man every step, most of them dry, and what a part reads of itself it
+	# reads at a fifth of what another pays to ask it.)
+	for i in parts.size():
+		var p: VoxelPart = parts[i]
+		bleed = p.bleed_step(bleed, dt, beat, clot, clot_k)
 	blood = maxf(0.0, blood - blood_lost(bleed, dt))
 	if dying > 0.0:
 		# At death's door: no blood comes back, and the door shuts when the time is up.
@@ -4160,20 +4202,26 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	# (Each part's share of it kept while the part and its mass are what they were, added in the same order: whether a part is a leg was asked of its
 	# definition for every part every step.)
 	var np := parts.size()
-	if _share_m.size() != np:
-		_share_p.resize(np)
-		_share_m.resize(np)
-		_share_s.resize(np)
-		_share_m.fill(NAN)
-	for i in np:
-		var p: VoxelPart = parts[i]
-		if not p.severed:
-			var nm: float = p.nominal_mass
-			if nm != _share_m[i] or not is_same(_share_p[i], p):
-				_share_p[i] = p
-				_share_m[i] = nm
-				_share_s[i] = nm / (LEG_MASS if p.def.get("leg", false) else 1.0)
-			total_mass += _share_s[i]
+	if _share_at == body_ver and _share_np == np:
+		total_mass = _share_sum   # (the sum itself, while no part has been cut off and none weighs otherwise: body_ver)
+	else:
+		if _share_m.size() != np:
+			_share_p.resize(np)
+			_share_m.resize(np)
+			_share_s.resize(np)
+			_share_m.fill(NAN)
+		for i in np:
+			var p: VoxelPart = parts[i]
+			if not p.severed:
+				var nm: float = p.nominal_mass
+				if nm != _share_m[i] or not is_same(_share_p[i], p):
+					_share_p[i] = p
+					_share_m[i] = nm
+					_share_s[i] = nm / (LEG_MASS if p.def.get("leg", false) else 1.0)
+				total_mass += _share_s[i]
+		_share_sum = total_mass
+		_share_at = body_ver
+		_share_np = np
 	body_mass = total_mass
 	for w in weapons.values():
 		if w:
@@ -8398,18 +8446,24 @@ var _ground_n := 0
 var _share_p: Array = []                    # the body's mass (control): the part each share was worked out for,
 var _share_m := PackedFloat64Array()        # the mass it had then,
 var _share_s := PackedFloat64Array()        # and its share
+var _share_sum := 0.0
+var _share_at := -1
+var _share_np := -1
 func keep_above_ground() -> void:
 	_ground_n += 1
 	if _ground_n % 2 != 0:
 		return
-	for p in parts:
-		if is_instance_valid(p) and not p.freeze and not p.missing:
+	for q in parts:
+		if not is_instance_valid(q):
+			continue
+		var p: VoxelPart = q   # (known for the part it is, what is asked of it below is asked at a third of the cost)
+		if not p.freeze and not p.missing:
 			# Only a part sunk far in: the physics pushes back out of the sand whatever only
 			# presses into it (a stamping foot, a body thrown down), and a part lifted out of
 			# that on its own was torn from its joint (a rhino's leg a hand's width off its
 			# hip). A standing leg passes through the sand, held up by the support spring.
 			# (_lift_out's own first look, here: a part well above the sand, which is nearly all of them, is not called for.)
-			if (p.global_position as Vector3).y - (p.half_ext as Vector3).length() > -0.25 * S:
+			if p.global_position.y - p.half_ext.length() > -0.25 * S:
 				continue
 			_lift_out(p, 0.25 * S)
 

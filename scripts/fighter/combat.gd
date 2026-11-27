@@ -36,7 +36,7 @@ func beasts() -> Array:
 		_beasts_key = key
 	return _beasts
 var loose_weapons: Array = [] # weapons nobody holds (thrown, dropped)
-var pending: Array = []
+var pending: Array = []          # the step's contacts that may be a blow, each [a, b, a's shape, b's shape, where, the impulse] (report; a list each, not a table of six names: 140 a step in a melee)
 var touch_q: Array = []          # [part, part, impulse] reported this step, noted at the next (see _settle)
 ## Contacts handled in an order of their own (see _in_order), not the physics' (off in play: the
 ## game is tuned to it; the trailer's recorder turns it on, its two passes then go the same way).
@@ -216,7 +216,7 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 				# A trap does not move under physics, so the part it meets reports the contact
 				# (any other weapon reports its own).
 				if other.is_hazard:
-					pending.append({"a": other, "b": body, "sa": state.get_contact_collider_shape(i), "sb": state.get_contact_local_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
+					pending.append([other, body, state.get_contact_collider_shape(i), state.get_contact_local_shape(i), state.get_contact_local_position(i), state.get_contact_impulse(i).length()])
 				continue
 			# (A limb cut off is a club, even in the hands of the man it came off.)
 			if bf != null and other.fighter == bf and not body.severed and not other.severed:
@@ -250,13 +250,13 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 						_note_touch(other, body, cj)
 			if not kept:
 				continue
-			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": cj})
+			pending.append([body, other, state.get_contact_local_shape(i), state.get_contact_collider_shape(i), state.get_contact_local_position(i), cj])
 		else:
 			if op and holder != null and other.fighter == holder:
 				continue   # a weapon on the man holding it
 			if ow and bid > other.get_instance_id():
 				continue
-			pending.append({"a": body, "b": other, "sa": state.get_contact_local_shape(i), "sb": state.get_contact_collider_shape(i), "p": state.get_contact_local_position(i), "J": state.get_contact_impulse(i).length()})
+			pending.append([body, other, state.get_contact_local_shape(i), state.get_contact_collider_shape(i), state.get_contact_local_position(i), state.get_contact_impulse(i).length()])
 
 ## A weapon lying loose (dropped, thrown, left by the dead) that has lain still a spell is put to sleep, and again each step it is
 ## still, as a corpse at rest is (Match._at_rest): one never let sleep kept every body it touched awake, the heap of the dead it lay
@@ -390,25 +390,26 @@ func _settle() -> void:
 func process_contacts(_dt: float) -> Array:
 	var groups := {}
 	if canonical:
-		pending = _in_order(pending, func(c): return [_id(c.a), _id(c.b), c.sa, c.sb, c.p.x, c.p.y, c.p.z, c.J])
+		pending = _in_order(pending, func(c): return [_id(c[0]), _id(c[1]), c[2], c[3], c[4].x, c[4].y, c[4].z, c[5]])
 	for c in pending:
-		var a = c.a
-		var b = c.b
+		var a = c[0]
+		var b = c[1]
 		if not is_instance_valid(a) or not is_instance_valid(b):
 			continue
+		var cj: float = c[5]
 		if a is Weapon and b is Weapon:
-			if c.J <= 1.2:
+			if cj <= 1.2:
 				continue
 			var k := "clang:%d:%d" % [a.get_instance_id(), b.get_instance_id()]
 			var g = groups.get(k)
-			if g == null or c.J > g.J:
-				groups[k] = {"clang": true, "a": a, "b": b, "sa": c.sa, "sb": c.sb, "p": c.p, "J": c.J}
+			if g == null or cj > g.J:
+				groups[k] = {"clang": true, "a": a, "b": b, "sa": c[2], "sb": c[3], "p": c[4], "J": cj}
 			continue
 		var att = null
 		var vic = null
 		var att_shape := -1
 		if a is Weapon and b is VoxelPart:
-			att = a; vic = b; att_shape = c.sa
+			att = a; vic = b; att_shape = c[2]
 		elif a is VoxelPart and b is VoxelPart and (_is_club(a) or _is_club(b)):
 			# A severed limb swung or thrown like a club.
 			if _is_club(a) and not _is_club(b):
@@ -480,7 +481,7 @@ func process_contacts(_dt: float) -> Array:
 			continue
 		# A shell laid over skin that no collider of his reaches (FineBody shells) is a blow on the part whose
 		# flesh that skin lies on, which is where it is cut.
-		vic = vic.host_part(int(c.sb) if vic == b else int(c.sa))
+		vic = vic.host_part(int(c[3]) if vic == b else int(c[2]))
 		if vic.severed and not vic.fighter.alive and att is VoxelPart:
 			continue
 		# (The pair as the two ids: it was a string spelt out of them for every contact, eighty a step in a melee. The groups keep the order they were first met in.)
@@ -496,11 +497,11 @@ func process_contacts(_dt: float) -> Array:
 			rank = TYPE_RANK.get(typ, 0)
 		var g2 = groups.get(key)
 		if g2 == null:
-			groups[key] = {"att": att, "vic": vic, "J": c.J, "rank": rank, "type": typ, "mat": mat, "box": box, "p": c.p}
+			groups[key] = {"att": att, "vic": vic, "J": cj, "rank": rank, "type": typ, "mat": mat, "box": box, "p": c[4]}
 		else:
-			g2.J += c.J
+			g2.J += cj
 			if rank > g2.rank:
-				g2.rank = rank; g2.type = typ; g2.mat = mat; g2.box = box; g2.p = c.p
+				g2.rank = rank; g2.type = typ; g2.mat = mat; g2.box = box; g2.p = c[4]
 	pending.clear()
 	var out := []
 	for g in groups.values():

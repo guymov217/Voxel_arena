@@ -27,6 +27,7 @@ const SMEAR := Color(0.306, 0.039, 0.039)
 const BRUISE := Color(0.29, 0.157, 0.282)
 
 var fighter: Node = null          # the Fighter or Beast it belongs to
+var _man: Fighter = null          # (the same, as the Fighter it is: told as this part's own state changes, Fighter.fn_ver and body_ver)
 var def: Dictionary = {}
 var part_name := ""
 var touch_asked := -1             # whether anyone asks what it touched (Combat._asked): -1 not yet told, 0, 1
@@ -36,7 +37,11 @@ var grid := Vector3i.ONE          # fine voxels
 var vf := 0.0275                  # fine voxel size, unscaled
 var part_scale := 1.0
 var mult := 1.0
-var nominal_mass := 1.0
+var nominal_mass := 1.0:
+	set(v):
+		nominal_mass = v
+		if _man != null:
+			_man.body_ver += 1
 
 var fx := PackedInt32Array()
 var fy := PackedInt32Array()
@@ -986,6 +991,8 @@ var alive_count := 0:
 	set(v):
 		if v != alive_count:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		alive_count = v
 ## Each grid cell's living voxel (its index + 1; 0 none, or gone) and each collider cell's count
 ## of living voxels (of total_coarse whole), kept up as voxels go and come back: worked out voxel
@@ -999,22 +1006,31 @@ var hp := 100.0:
 	set(v):
 		if v != hp:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		hp = v
 var bleed := 0.0
 var severed := false:
 	set(v):
 		if v != severed:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
+				_man.body_ver += 1   # (what he keeps of all his parts together is to be worked out again)
 		severed = v
 var hanging := false:
 	set(v):
 		if v != hanging:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		hanging = v
 var fractured := false:   # the bone broken right through: the limb is held on by its muscle only
 	set(v):
 		if v != fractured:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		fractured = v
 ## How badly its bone is broken: 0 whole, 1 cracked (it holds, and hurts), 2 broken through under
 ## whole skin (closed), 3 broken through and out of the skin (open). `fractured` is 2 and over.
@@ -1022,6 +1038,8 @@ var fracture := 0:
 	set(v):
 		if v != fracture:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		fracture = v
 ## Where the bone broke, drawn bent there: [axis, at (local, along the bone), the transform the
 ## far end is drawn with]; empty for a straight bone. Drawing only (the collider stays straight).
@@ -1035,16 +1053,22 @@ var prosthetic := "":   # "peg", "hook", "blade": what the physician fitted in i
 	set(v):
 		if v != prosthetic:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		prosthetic = v
 var pro_level := 0:   # the smith's steps on it (Body.PRO_STEPS)
 	set(v):
 		if v != pro_level:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		pro_level = v
 var pro_full := 0:   # its voxels as fitted: whole, it works as well as it can
 	set(v):
 		if v != pro_full:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		pro_full = v
 var thin_layer = null              # [axis, layer]: where thin_ratio found it thinnest
 var hang_t := 0.0
@@ -1203,6 +1227,10 @@ var _skin_dirty := false
 ## (user: the frame rate drops as a foe comes into a fight). Each part its own copy of them.
 func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_: float, kept = null) -> void:
 	fighter = owner_node
+	_man = owner_node as Fighter
+	if _man != null:
+		_man.fn_ver += 1
+		_man.body_ver += 1
 	def = d.duplicate()   # its own: what one creature sets on its part (a fist, a bite) is not every one's after it
 	part_name = d.get("name", "part")
 	label = d.get("label", part_name)
@@ -2262,6 +2290,23 @@ func add_stream(lp: Vector3) -> void:
 				var out: Vector3 = pt.global_transform.basis.orthonormalized() * o
 				fx_.blood_at(Vector3(at.x + out.x * 0.3, 0.0, at.z + out.z * 0.3), 0.28 * (1.0 - 0.05 * k)))
 
+## A step of the part's bleeding (Fighter.control's loop over his parts): what it bleeds added to `sum` as that loop added it, the wound closing by `clot` and
+## `clot_k`, its drips and the blood on it seen to where there are any, a stump's flow run down.
+func bleed_step(sum: float, dt: float, beat: float, clot: float, clot_k: float) -> float:
+	var pb := bleed
+	var pa := artery
+	sum += pb + pa
+	if pb != 0.0:
+		bleed = maxf(0.0, pb - clot - pb * clot_k)
+	if not drips.is_empty():
+		update_drips()
+	if pa != 0.0 or not spurts.is_empty() or not runs.is_empty():
+		update_blood(dt, beat)
+	if stump:
+		stump_t += dt
+		sum += 2.5 * maxf(0.0, 1.0 - stump_t / 12.0)
+	return sum
+
 ## The drips follow how hard the part bleeds: heavier while it pours, gone once it has closed.
 ## What they let fall pools on the sand under them (a man who stands bleeding stands in his blood;
 ## one who walks leaves a trail).
@@ -2415,6 +2460,8 @@ var frozen_until := 0.0:   # seconds (physics clock, VoxelPart.clock()) until a 
 	set(v):
 		if v != frozen_until:
 			_fn_ver += 1
+			if _man != null:
+				_man.fn_ver += 1
 		frozen_until = v
 
 ## The physics' own clock, seconds: the same however fast the frames come (a frost timed on
