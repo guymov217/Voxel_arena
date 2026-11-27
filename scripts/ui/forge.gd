@@ -113,6 +113,7 @@ var weight_feel := ""      # "Balanced", "Head-heavy"... (ForgeLib.feel)
 var com_mark: Node3D = null   # the balance point on the weapon
 const DELTA_HOLD := 2.5    # how long a change's ▲ / ▼ stays by the bars (s)
 const BAR_ROWS := [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"], ["durability", "Durability"]]
+var bar_rows: Array = BAR_ROWS   # the names of the bars for what is on the anvil: a bow's are what it shoots (ForgeLib.bar_rows)
 const DURABILITY_C := Color(0.56, 0.7, 0.8)   # (the durability bar: cold steel)
 const UP_C := Color(0.5, 0.82, 0.42)
 const DOWN_C := Color(0.92, 0.4, 0.3)
@@ -1407,7 +1408,7 @@ func _draw_bars() -> void:
 	var font := UIStyle.serif(1)
 	# (The names as wide as the language makes them.)
 	var lw := 64.0
-	for r in BAR_ROWS + [["", "Weight"]]:
+	for r in bar_rows + [["", "Weight"]]:
 		lw = maxf(lw, font.get_string_size(Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x)
 	var x0 := lw + 12.0
 	# With a weapon pinned the figures against it take a column at the right of the bars, and its name a line over them.
@@ -1419,7 +1420,7 @@ func _draw_bars() -> void:
 	if not pv.is_empty():
 		bars.draw_string(font, Vector2(0, y + 12), Loc.t("Pinned: %s") % str(pinned.get("name", "?")), HORIZONTAL_ALIGNMENT_LEFT, bars.size.x, 13, UIStyle.GOLD)
 		y += PIN_LINE
-	for r in BAR_ROWS:
+	for r in bar_rows:
 		var k: String = r[0]
 		bars.draw_string(font, Vector2(0, y + 14), Loc.t(r[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UIStyle.MUTED)
 		bars.draw_rect(Rect2(x0, y + 3, w, 12), Color(0, 0, 0, 0.5))
@@ -1476,9 +1477,10 @@ static func bars_of(d: Dictionary) -> Dictionary:
 	var st := ForgeLib.compute_stats(d)
 	var b := ForgeLib.three_bars(st)
 	var dur := ForgeLib.durability_bar(d)
+	var fig := ForgeLib.bar_figures(d, st, b)
 	return {
 		"bars": {"speed": float(b.speed), "damage": float(b.damage), "reach": float(b.reach), "armour": float(b.armour), "durability": dur},
-		"now": {"speed": float(st.swingSpeed), "damage": float(b.damage), "reach": float(st.reach), "armour": float(b.armour), "durability": dur, "mass": float(st.mass)},
+		"now": {"speed": float(fig.speed), "damage": float(fig.damage), "reach": float(fig.reach), "armour": float(fig.armour), "durability": dur, "mass": float(st.mass)},
 	}
 
 ## How much more (or less, negative) this is than the pinned figure, in per cent (100 where the pinned is nothing and this is something).
@@ -1567,9 +1569,11 @@ func _update_texts() -> void:
 	var st := ForgeLib.compute_stats(d)
 	bar_vals = ForgeLib.three_bars(st)
 	bar_vals["durability"] = ForgeLib.durability_bar(d)
+	bar_rows = ForgeLib.bar_rows(d)
 	# What this change did, counted from before the run of changes it belongs to (a stroke, or
 	# clicks close together): a quiet spell starts a new count.
-	var now := {"speed": float(st.swingSpeed), "damage": float(bar_vals.damage), "reach": float(st.reach), "armour": float(bar_vals.armour), "durability": float(bar_vals.durability), "mass": float(st.mass)}
+	var fig := ForgeLib.bar_figures(d, st, bar_vals)
+	var now := {"speed": float(fig.speed), "damage": float(fig.damage), "reach": float(fig.reach), "armour": float(fig.armour), "durability": float(bar_vals.durability), "mass": float(st.mass)}
 	var t_now := Time.get_ticks_msec() / 1000.0
 	if stat_now.is_empty():
 		stat_base = now

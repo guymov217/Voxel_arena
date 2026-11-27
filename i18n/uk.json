@@ -1102,7 +1102,6 @@
  "Hold the Circle": "Утримай коло",
  "Hold the circle alone for 20 s": "Утримайте коло самотужки 20 с",
  "Hold the circle alone for 20 seconds.": "Утримайте коло самотужки 20 секунд.",
- "Hold the left button to draw, let go to loose. Arrows stick and bleed.": "Утримуйте ліву кнопку, щоб натягнути, відпустіть — постріл. Стріли застрягають і пускають кров.",
  "Hold the left button to draw, release to shoot.": "Утримуйте ліву кнопку, щоб натягнути, відпустіть — постріл.",
  "Hold the middle button (or Alt and the left button) and drag: the view turns round the weapon. With Shift held, it slides.": "Утримуйте середню кнопку (або Alt і ліву кнопку) й тягніть: огляд обертається довкола зброї. Із затиснутим Shift він зсувається.",
  "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back.": "Утримуйте середню кнопку й рухайте мишею: огляд обертається довкола вас, а ви стоїте на місці. Відпустіть — і він повернеться.",
@@ -2953,5 +2952,11 @@
  "Blurred, doubled view after a blow to the head (from the next fight)": "Розмитий, подвоєний зір після удару по голові (з наступного бою)",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s — копняк (і топтання лежачого), %s — поштовх. Утримуйте %s для сильного удару ногою в живіт: він ранить і відкидає супротивника. Копніть або штовхніть манекен.",
  "or a simple one, with every twist": "або проста зброя, з будь-якими особливостями",
- "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "Зброя коваля, така, як він її робить: додайте особливість або доопрацюйте вручну."
+ "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "Зброя коваля, така, як він її робить: додайте особливість або доопрацюйте вручну.",
+ "Draw speed": "Швидкість натягу",
+ "Arrow power": "Сила стріли",
+ "Arrow speed": "Швидкість стріли",
+ "Steadiness": "Стійкість",
+ "A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.": "Натяг за %.1f с; при повному натягу стріла летить зі швидкістю %d м/с і б'є з силою %d%% від сили мисливського лука коваля. Тримайте ліву кнопку, щоб натягнути, відпустіть, щоб вистрілити.",
+ "Limbs above and below the handle (the stave's blocks)": "Плечі лука вище і нижче руків'я (блоки лука)"
 }

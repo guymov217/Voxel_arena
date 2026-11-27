@@ -464,7 +464,7 @@ func _stats() -> void:
 	card.add_child(col)
 	col.add_child(StationKit.kicker("What it does"))
 	var bars: Dictionary = ForgeLib.five_bars(d)
-	for r in [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"], ["durability", "Durability"]]:
+	for r in ForgeLib.bar_rows(d):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		var l := UIStyle.label(r[1], 13, UIStyle.MUTED)

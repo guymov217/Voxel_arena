@@ -1102,7 +1102,6 @@
  "Hold the Circle": "Defiende el círculo",
  "Hold the circle alone for 20 s": "Mantén el círculo tú solo 20 s",
  "Hold the circle alone for 20 seconds.": "Mantén el círculo tú solo durante 20 segundos.",
- "Hold the left button to draw, let go to loose. Arrows stick and bleed.": "Mantén el botón izquierdo para tensar y suelta para disparar. Las flechas se clavan y hacen sangrar.",
  "Hold the left button to draw, release to shoot.": "Mantén el botón izquierdo para tensar, suelta para disparar.",
  "Hold the middle button (or Alt and the left button) and drag: the view turns round the weapon. With Shift held, it slides.": "Mantén presionado el botón central (o Alt y el botón izquierdo) y arrastra: la vista gira alrededor del arma. Con Shift presionado, se desplaza.",
  "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back.": "Mantén presionado el botón central y mueve el mouse: la vista gira a tu alrededor mientras sigues quieto. Suéltalo y vuelve a su lugar.",
@@ -2953,5 +2952,11 @@
  "Blurred, doubled view after a blow to the head (from the next fight)": "Visión borrosa y doble tras un golpe en la cabeza (desde el próximo combate)",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s da una patada (y pisotea a quien está en el suelo), %s empuja. Mantén %s para una patada fuerte al vientre: hiere y lanza hacia atrás al rival. Patea o empuja al muñeco.",
  "or a simple one, with every twist": "o una sencilla, con todos los giros",
- "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "La obra del herrero, tal como la hace: agrégale un giro o modélala a mano."
+ "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "La obra del herrero, tal como la hace: agrégale un giro o modélala a mano.",
+ "Draw speed": "Velocidad de tensado",
+ "Arrow power": "Fuerza de la flecha",
+ "Arrow speed": "Velocidad de la flecha",
+ "Steadiness": "Estabilidad",
+ "A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.": "Tensado de %.1f s; a plena tensión la flecha sale a %d m/s y golpea con un %d%% de la fuerza del arco de caza del herrero. Mantén el botón izquierdo para tensar y suéltalo para disparar.",
+ "Limbs above and below the handle (the stave's blocks)": "Palas por encima y por debajo de la empuñadura (los bloques del arco)"
 }

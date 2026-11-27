@@ -9,6 +9,7 @@ const CHIP_THRESHOLDS := [24.0, 44.0, 68.0]   # (20, 38, 60: blades chipped too 
 
 var design: Dictionary = {}
 var bow_geo: Array = []             # what a bow's drawing asks of its design's voxels, worked out once (Throwables._bow_geo)
+var bow_stats: Array = []           # what a bow is by its blocks, worked out once and again when a block comes off (Throwables._bow_stats, BowDesign)
 var stats: Dictionary = {}
 var vs := 0.04                     # voxel size (scaled)
 var vox: Array = []                # [x, y, z, mat, type]

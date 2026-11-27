@@ -238,13 +238,17 @@ static func compute_stats(d: Dictionary) -> Dictionary:
 	for i in best_n:
 		avg_hard += float(hards[i]) / best_n
 	var sharpness := float(d.get("sharpness", 0.8))
-	return {
+	var out := {
 		"mass": mass, "com": [com.x, com.y, com.z], "balance": (com.y - g.y) * s, "inertia": inertia, "reach": reach,
 		"swingSpeed": minf(30.0, sqrt(strength / (inertia + 0.02))) if inertia > 0.0 else 30.0,
 		"edge": edge, "point": point, "voxelCount": d.voxels.size(), "counterweight": bl.k if bl != null else 0.0,
 		"cut": avg_hard * sharpness if edge > 0 else 0.0, "pierce": avg_hard * sharpness if point > 0 else 0.0,
 		"crush": minf(1.0, mass / 4.0), "tooHeavy": not d.get("twoHanded", false) and inertia > 1.2, "hasGrip": grips != null,
 	}
+	# A bow is what it shoots (BowDesign), not what it would do swung: its bars and its verdict are that.
+	if BowDesign.is_bow(d):
+		out["bow"] = BowDesign.stats(d)
+	return out
 
 # ---------- Drawing ----------
 
@@ -732,12 +736,26 @@ static func blacksmith_says(d: Dictionary, st := {}) -> String:
 ## The numbers a fighter cares about, 0..1: how fast, how hard, how far, and how hard still
 ## through an iron plate (vs_armour).
 static func three_bars(st: Dictionary) -> Dictionary:
+	if st.has("bow"):
+		return BowDesign.bars(st.bow)
 	return {
 		"speed": clampf(float(st.swingSpeed) / 14.0, 0.0, 1.0),
 		"damage": clampf(maxf(float(st.cut), maxf(float(st.pierce) * 0.9, float(st.crush) * 1.2)), 0.0, 1.0),
 		"reach": clampf(float(st.reach) / 1.5, 0.0, 1.0),
 		"armour": vs_armour(st),
 	}
+
+## The names of the five bars, in the words of what is made: a bow's are what it shoots (user: the forge's bow was only for looks), any other's what it swings.
+static func bar_rows(d: Dictionary) -> Array:
+	if BowDesign.is_bow(d):
+		return [["speed", "Draw speed"], ["damage", "Arrow power"], ["reach", "Arrow speed"], ["armour", "Steadiness"], ["durability", "Durability"]]
+	return [["speed", "Speed"], ["damage", "Damage"], ["reach", "Reach"], ["armour", "Vs armour"], ["durability", "Durability"]]
+
+## The four figures a change is counted on (per cent up or down, the forge's little arrows beside the bars), from the stats `st` and the bars `b` of the design `d`.
+static func bar_figures(d: Dictionary, st: Dictionary, b: Dictionary) -> Dictionary:
+	if st.has("bow"):
+		return BowDesign.figures(st.bow)
+	return {"speed": float(st.swingSpeed), "damage": float(b.damage), "reach": float(st.reach), "armour": float(b.armour)}
 
 ## The five bars of a weapon, each 0 to 1: speed, damage, reach, against armour, durability (the
 ## forge's, and the smith's showcase of a weapon).
@@ -796,7 +814,8 @@ static func dummy_verdict(d: Dictionary, st := {}) -> String:
 	if d.get("kind", "weapon") == "shield":
 		return "Blocks anything. Also blocks you from moving fast." if st.mass > 4.0 else "Blocks a sword. Bash with it when they get close."
 	if d.get("shoots", "") == "arrow":
-		return "Hold the left button to draw, let go to loose. Arrows stick and bleed."
+		var bw: Dictionary = st.get("bow", BowDesign.stats(d))
+		return Loc.t("A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.") % [float(bw.draw_s), roundi((Throwables.ARROW_SPEED.x + Throwables.ARROW_SPEED.y) * float(bw.speed_k)), roundi(100.0 * float(bw.power_k))]
 	if d.get("throwable", false):
 		var how := Loc.t("point first") if Weapon.flies_point_first(d) else Loc.t("end over end")
 		if st.mass > 3.5:
@@ -818,6 +837,11 @@ static func dummy_verdict(d: Dictionary, st := {}) -> String:
 static func checklist(d: Dictionary, st := {}) -> Array:
 	if st.is_empty():
 		st = compute_stats(d)
+	if st.has("bow"):
+		return [
+			{"done": st.hasGrip, "text": "Give it a handle (Hold blocks)"},
+			{"done": bool(st.bow.above) and bool(st.bow.below), "text": "Limbs above and below the handle (the stave's blocks)"},
+		]
 	return [
 		{"done": st.hasGrip, "text": "Give it a handle (Hold blocks)"},
 		{"done": st.edge + st.point > 0 or st.crush > 0.2, "text": "Add something that hurts (Cut, Stab or a heavy head)"},

@@ -1195,7 +1195,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 			nail_hits_due.append([c, part, lp - ld * back, ld, owner_])
 		part.stick("nail", entry + hd * 0.03, hd)
 		return
-	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.0)) * arrow_blow(owner_) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
+	var J := (17.0 if type == "pot_bolt" else ((3.0 + 13.0 * clampf(power, 0.0, 1.6)) * arrow_blow(owner_) if arrow else 10.0 * arm_blow(owner_))) * ((1.2 if c.S >= 1.5 else 1.8) if headshot else 1.0)
 	# (A bodkin's head is narrow and hard: it goes in a little deeper, through his armour, and through him.)
 	var through_res: Dictionary = _hit(c, part, J, "point", p, hdir, owner_, {"hardness": 1.0, "sharpness": 1.0, "through": true, "pierce_armor": true} if type == "pot_arrow_pierce" else {})
 	if headshot:
@@ -1209,7 +1209,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		part.bleed += 1.0
 		part.stick("pot_bolt", p, hdir)
 	if arrow:
-		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.0)) / maxf(1.0, c.S * 0.6)
+		part.bleed += (0.5 + 1.0 * clampf(power, 0.0, 1.6)) / maxf(1.0, c.S * 0.6)
 		# (A bodkin stays in him through and through if its channel went out of his far side: its point stands out of it.)
 		part.stick(type, p, hdir, _arrow_pierced and bool(through_res.get("through", false)))
 	if type == "pot_arrow_barb":
@@ -2430,7 +2430,8 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var held: bool = inp.get("power", false)
 	# A war bow is hard work: a long pull (longer the longer the limbs, slower tired), a pause to
 	# nock the next arrow after each shot, and a full draw held costs breath fast.
-	var draw_time := (0.9 + int(_bow_geo(w)[2]) * 0.035) * (1.0 + 0.6 * (1.0 - minf(1.0, c.stamina / 100.0)))
+	var bow: Dictionary = _bow_stats(w)   # (what its blocks make it: BowDesign; the smith's Hunting Bow is 1.0 in all of it)
+	var draw_time := float(bow.draw_s) * (1.0 + 0.6 * (1.0 - minf(1.0, c.stamina / 100.0)))
 	var nock: float = maxf(0.0, float(w.get_meta("nock", 0.0)) - dt)
 	w.set_meta("nock", nock)
 	var draw: float = w.get_meta("draw", 0.0)
@@ -2443,7 +2444,7 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		draw = minf(1.0, draw + dt / draw_time)
 		hold_t += dt
 		if draw >= 1.0:
-			c.stamina = maxf(0.0, c.stamina - 12.0 * dt)
+			c.stamina = maxf(0.0, c.stamina - 12.0 * float(bow.breath) * dt)
 		w.set_meta("draw", draw)
 		w.set_meta("hold_t", hold_t)
 		_show_draw(w, c, draw)
@@ -2461,11 +2462,11 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	if player and inp.get("aimAt") is Vector3:
 		# Where the crosshair sits, allowing for the drop over the distance (weaponFx.js): a
 		# short draw, a long hold or a tired arm scatters it a little.
-		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull * float(bow.speed_k)
 		from = _on_sight(from, inp)
 		var dd: Vector3 = (inp.aimAt as Vector3) - from
 		var dist := dd.length()
-		var wobble := _bow_wobble(c, draw, hold_t)
+		var wobble := _bow_wobble(c, draw, hold_t, float(bow.steady))
 		var a1 := randf() * TAU
 		var r1 := sqrt(randf()) * wobble
 		var sd := Vector3(dd.z, 0, -dd.x).normalized()
@@ -2476,8 +2477,8 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		vel = Items.flat_shot(dd, speed, 9.81)
 		from += dd.normalized() * 0.5
 	elif player and look != null:
-		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
-		var wobble := _bow_wobble(c, draw, hold_t)
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull * float(bow.speed_k)
+		var wobble := _bow_wobble(c, draw, hold_t, float(bow.steady))
 		var dir := Vector3(sin(look.yaw) * cos(look.pitch), sin(look.pitch) + 0.06, cos(look.yaw) * cos(look.pitch)).normalized()
 		dir = dir.rotated(Vector3.UP, randf_range(-wobble, wobble)).normalized()
 		dir.y += randf_range(-wobble, wobble)
@@ -2485,8 +2486,8 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 		from += dir * 0.5
 	else:
 		var tgt = m.nearest_enemy(e)
-		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull
-		var aim: Vector3 = bot_aim(e, tgt.f, from, speed, _bow_wobble(c, draw, hold_t)) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
+		var speed := (ARROW_SPEED.x + ARROW_SPEED.y * draw) * pull * float(bow.speed_k)
+		var aim: Vector3 = bot_aim(e, tgt.f, from, speed, _bow_wobble(c, draw, hold_t, float(bow.steady))) if tgt else from + Vector3(sin(c.yaw) * 8.0, 0.5, cos(c.yaw) * 8.0)
 		var dd := aim - from
 		var t := maxf(0.15, dd.length() / speed)
 		vel = Vector3(dd.x / t, (dd.y + 0.5 * 9.81 * t * t) / t, dd.z / t)
@@ -2507,10 +2508,10 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 			c.arrow_pick = ""
 			type = _nock_type(w, c)
 	var it: Dictionary = m.items.spawn(type, from, vel, c)
-	it.power = draw
+	it.power = draw * float(bow.power_k)   # (the harm goes with the bow: a stiff, long one strikes harder, a short, light one softer)
 	m.sfx("twang", from)
 	m.sfx("whoosh", from, 0.6)
-	c.stamina = maxf(0.0, c.stamina - 9.0)
+	c.stamina = maxf(0.0, c.stamina - 9.0 * float(bow.breath))
 
 ## Where a bot's arrow or bolt is aimed: a man's shot, not a machine's. He picks a mark on the man
 ## (the chest most often, the belly, now and then the head or a thigh), anywhere on it, leads him
@@ -2596,11 +2597,11 @@ const BOLT_SPEED := 58.0
 
 ## How far off the mark the arrow may go: a short draw, a full draw held too long (the arm
 ## shakes from about a second), a tired archer, one on the move or on the ground.
-func _bow_wobble(c, draw: float, hold_t: float) -> float:
+func _bow_wobble(c, draw: float, hold_t: float, steady := 1.0) -> float:
 	var tired: float = 1.0 - minf(1.0, c.stamina / 100.0)
 	var lv: Vector3 = c.torso.linear_velocity
 	var moving := minf(1.0, Vector2(lv.x, lv.z).length() / 3.0)
-	return (0.008 + 0.045 * (1.0 - draw) + 0.03 * minf(1.0, maxf(0.0, hold_t - 1.0) / 2.0) + 0.03 * tired + 0.03 * moving) * (1.0 if c.state == "stand" else 2.0)
+	return (0.008 + 0.045 * (1.0 - draw) + 0.03 * minf(1.0, maxf(0.0, hold_t - 1.0) / 2.0) + 0.03 * tired + 0.03 * moving) * (1.0 if c.state == "stand" else 2.0) / steady
 
 ## The crossbow's string and bolt: `k` 0 just shot (the string slack at the prod, no bolt) to
 ## 1 cocked and loaded. In between the free off hand works the string back to the latch.
@@ -2634,6 +2635,17 @@ func _show_cock(w: Weapon, c, k: float) -> void:
 ## once and kept on the bow: [the voxels they were worked out of, how many, the span of their heights, the lowest and the highest height of the leather behind the stave
 ## (2 and 18 where there is none), how far back it reaches]. A weapon's design is its own copy (Weapon.setup) and its voxels are never changed in it; the same array
 ## and the same count mean the same answers. (Worked out each step, a bow's hundred voxels were a hundred thousand instructions a step for each bowman.)
+## What a bow is by its blocks (BowDesign.stats), kept on the bow as `_bow_geo` is: the very answer again while its design is the same array of as many voxels, worked out anew when a block
+## comes off it (a limb chipped in a fight shoots the weaker for it).
+func _bow_stats(w: Weapon) -> Dictionary:
+	var vx: Array = w.design.voxels
+	var g: Array = w.bow_stats
+	if not g.is_empty() and is_same(g[0], vx) and g[1] == vx.size():
+		return g[2]
+	var b := BowDesign.stats(w.design)
+	w.bow_stats = [vx, vx.size(), b]
+	return b
+
 func _bow_geo(w: Weapon) -> Array:
 	var vx: Array = w.design.voxels
 	var g: Array = w.bow_geo

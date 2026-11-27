@@ -499,6 +499,13 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (`ForgeLib.WARE_TWISTS`: a razor edge, teeth, two hands, a throw, a head of gold or stone, a bow's arrows; `WARE_FAMILY` says what fits which) and not those that reshape one.
   The simple bases (Spatha, a throwing axe, something silly...) follow under their own line and take every twist, as they always did. The lobby's forge and the smith's are the one
   class (`scripts/ui/forge.gd`); the flags (`workshop`, `free_build`, `scratch`) change only the price lines and the buttons under them.
+- **A bow is what its blocks make it** (user: the forge's bow was only for looks; `scripts/game/bow_design.gd`, `tests/test_bow_design.gd`). Held against the smith's Hunting Bow (1.0 in all of it, so the bow he sells
+  shoots as it always did): the **draw weight** is how thick the limbs are (the blocks of the stave to a row) times how stiff their stuff is (`BowDesign.STIFF`: steel 1.35, iron 1.2, wood 1, bone 0.85, gold 0.35...),
+  the **length** is its height over the Hunting Bow's 20 blocks, and the two together are what it stores: the arrow's speed (`speed_k`, energy^0.3, 0.7 to 1.35 of 58 m/s) and the harm it carries (`power_k`,
+  energy^0.7, 0.5 to 1.6 of a plain full draw: `Throwables._dart` takes `power` to 1.6) go with the energy; the draw (`draw_s`: 0.9 s and 0.035 s a block of height, times the square root of the weight) and
+  the breath it costs (a full draw held, a shot) grow with the weight, a stiff bow is slower, a long bow steadier and a stiff one shakier (`steady` divides the scatter). A limb chipped off in a fight weakens it
+  (`Throwables._bow_stats`, kept on the bow as `_bow_geo` is). The forge shows a bow by that: Draw speed, Arrow power, Arrow speed, Steadiness and Durability on its bars (`ForgeLib.bar_rows`, `three_bars`),
+  the dummy says its draw and its arrow's speed and harm, and the checklist asks for limbs above and below the handle. The twists' words are true now: Heavy draw (a second layer: harder, slower), Short bow (faster, softer).
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's

@@ -1102,7 +1102,6 @@
  "Hold the Circle": "守住圓圈",
  "Hold the circle alone for 20 s": "獨自守住圓圈 20 秒",
  "Hold the circle alone for 20 seconds.": "獨自守住圓圈 20 秒。",
- "Hold the left button to draw, let go to loose. Arrows stick and bleed.": "按住左鍵拉弓，放開放箭。箭會扎進去並讓人流血。",
  "Hold the left button to draw, release to shoot.": "按住左鍵拉弓，放開射擊。",
  "Hold the middle button (or Alt and the left button) and drag: the view turns round the weapon. With Shift held, it slides.": "按住滑鼠中鍵（或 Alt 加左鍵）拖曳：視角繞著武器旋轉。按住 Shift 則平移。",
  "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back.": "按住滑鼠中鍵並移動滑鼠：你站著不動，視角繞著你轉。放開後視角會轉回來。",
@@ -2953,5 +2952,11 @@
  "Blurred, doubled view after a blow to the head (from the next fight)": "頭部受擊後視野模糊、重影（下一場戰鬥起生效）",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s 踢（對倒地的人則是踩踏），%s 推。長按 %s 踢出一記猛踹腹部的重腳：能重創對手並把他踢退。踢或推一下木人。",
  "or a simple one, with every twist": "或是一件簡易武器，可用所有變化",
- "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "鐵匠親手打造的原樣武器：加一個變化，或親手調整。"
+ "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "鐵匠親手打造的原樣武器：加一個變化，或親手調整。",
+ "Draw speed": "拉弓速度",
+ "Arrow power": "箭的威力",
+ "Arrow speed": "箭的速度",
+ "Steadiness": "穩定性",
+ "A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.": "拉弓需 %.1f 秒；拉滿時箭以 %d 公尺/秒飛出，威力是鐵匠獵弓的 %d%%。按住左鍵拉弓，放開射出。",
+ "Limbs above and below the handle (the stave's blocks)": "握把上方與下方的弓臂（弓身的方塊）"
 }

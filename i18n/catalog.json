@@ -6186,9 +6186,6 @@
 "Blocks a sword. Bash with it when they get close.": [
 "scripts/game/forge_lib.gd:659"
 ],
-"Hold the left button to draw, let go to loose. Arrows stick and bleed.": [
-"scripts/game/forge_lib.gd:661"
-],
 "point first": [
 "scripts/game/forge_lib.gd:663"
 ],
@@ -9408,5 +9405,23 @@
 ],
 "The smith's own, as he makes it: put a twist on it, or shape it by hand.": [
 "scripts/ui/forge.gd:752"
+],
+"Draw speed": [
+"scripts/game/forge_lib.gd:751"
+],
+"Arrow power": [
+"scripts/game/forge_lib.gd:751"
+],
+"Arrow speed": [
+"scripts/game/forge_lib.gd:751"
+],
+"Steadiness": [
+"scripts/game/forge_lib.gd:751"
+],
+"A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.": [
+"scripts/game/forge_lib.gd:818"
+],
+"Limbs above and below the handle (the stave's blocks)": [
+"scripts/game/forge_lib.gd:843"
 ]
 }

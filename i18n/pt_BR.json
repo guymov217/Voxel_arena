@@ -1102,7 +1102,6 @@
  "Hold the Circle": "Segure o círculo",
  "Hold the circle alone for 20 s": "Segure o círculo sozinho por 20 s",
  "Hold the circle alone for 20 seconds.": "Segure o círculo sozinho por 20 segundos.",
- "Hold the left button to draw, let go to loose. Arrows stick and bleed.": "Segure o botão esquerdo para puxar, solte para disparar. As flechas se cravam e fazem sangrar.",
  "Hold the left button to draw, release to shoot.": "Segure o botão esquerdo para puxar, solte para atirar.",
  "Hold the middle button (or Alt and the left button) and drag: the view turns round the weapon. With Shift held, it slides.": "Segure o botão do meio (ou Alt e o botão esquerdo) e arraste: a câmera gira em volta da arma. Com Shift pressionado, ela desliza.",
  "Hold the middle button and move the mouse: the view goes round you while you stand still. Let go and it swings back.": "Segure o botão do meio e mova o mouse: a câmera gira ao seu redor enquanto você fica parado. Solte e ela volta.",
@@ -2953,5 +2952,11 @@
  "Blurred, doubled view after a blow to the head (from the next fight)": "Visão borrada e dupla após um golpe na cabeça (a partir da próxima luta)",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": "%s chuta (e pisa em quem está no chão), %s empurra. Segure %s para um chute forte na barriga: fere e joga o adversário para trás. Chute ou empurre o boneco.",
  "or a simple one, with every twist": "ou uma simples, com todos os toques",
- "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "A obra do ferreiro, como ele a faz: dê-lhe um toque ou molde-a à mão."
+ "The smith's own, as he makes it: put a twist on it, or shape it by hand.": "A obra do ferreiro, como ele a faz: dê-lhe um toque ou molde-a à mão.",
+ "Draw speed": "Velocidade de puxada",
+ "Arrow power": "Força da flecha",
+ "Arrow speed": "Velocidade da flecha",
+ "Steadiness": "Estabilidade",
+ "A %.1f s draw; a full draw looses an arrow at %d m/s that strikes %d%% as hard as the smith's Hunting Bow's. Hold the left button to draw, let go to loose.": "Puxada de %.1f s; com a corda toda puxada, a flecha sai a %d m/s e atinge com %d%% da força do arco de caça do ferreiro. Segure o botão esquerdo para puxar e solte para atirar.",
+ "Limbs above and below the handle (the stave's blocks)": "Hastes acima e abaixo do punho (os blocos do arco)"
 }
