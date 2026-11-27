@@ -19,6 +19,7 @@ var life := LIFE             # how long a stretch of its sweep stays, and how pl
 var alpha := ALPHA
 var tip_l := Vector3.ZERO    # the tip and the root of what cuts, in the weapon's own frame
 var root_l := Vector3.ZERO
+var seen_ver := 0            # the weapon's voxel count of changes (Weapon.vox_ver) when its length was last measured
 var samples: Array = []      # [time, root, tip, strength]
 var im := ImmediateMesh.new()
 var last_tip = null
@@ -52,10 +53,16 @@ static func size_k(reach: float) -> float:
 
 ## The tip: the sharp voxel furthest from the grip (any voxel, a club); the root: the sharp one
 ## nearest it, or a stretch back from the tip when what cuts is short (a spear's head, a club).
+## Of the voxels still on the weapon: what has broken off it is no part of the sweep (user: the halo
+## did not shorten to the length that was left of a weapon that broke).
 func _measure() -> void:
+	seen_ver = int(w.vox_ver)
 	var sharp := []
 	var every := []
-	for v in w.vox:
+	for i in w.vox.size():
+		if w.alive[i] == 0:
+			continue
+		var v: Array = w.vox[i]
 		var p: Vector3 = Vector3(float(v[0]), float(v[1]), float(v[2])) * float(w.vs)
 		every.append(p)
 		if v[4] == "edge" or v[4] == "point":
@@ -81,6 +88,8 @@ func _process(dt: float) -> void:
 		queue_free()
 		return
 	t += dt
+	if int(w.vox_ver) != seen_ver:
+		_measure()   # (a piece has come off: the sweep is as long as what is left)
 	var xf: Transform3D = w.vis.global_transform
 	var tip := xf * tip_l
 	var root := xf * root_l

@@ -78,6 +78,32 @@ func test_a_fast_swing_leaves_a_sweep_that_fades() -> void:
 	trail.free()
 	w.queue_free()
 
+## A weapon that breaks leaves a sweep of what is left of it (user, #348: the halo did not shorten to the length that was left): the blade snapped half way, the tip is where the break is, and a
+## sweep that goes on being drawn is drawn to it.
+func test_the_sweep_shortens_to_what_is_left_of_a_weapon_that_breaks() -> void:
+	var w := _weapon("longsword")
+	w.holder = self
+	var trail = load("res://scripts/fighter/swing_trail.gd").new(w)
+	var tip0: float = trail.tip_l.length()
+	var life0: float = trail.life
+	var top := 0
+	for v in w.vox:
+		top = maxi(top, int(v[1]))
+	var gone := []
+	for i in w.vox.size():
+		if int(w.vox[i][1]) > top / 2:
+			gone.append(i)
+	w.remove_voxels(gone)
+	trail._process(1.0 / 60.0)
+	t.check(trail.tip_l.length() < tip0 * 0.75, "the tip is where the break is (%.2f m of %.2f)" % [trail.tip_l.length(), tip0])
+	t.check(trail.life <= life0, "and the sweep keeps no longer than a shorter weapon's")
+	t.eq(trail.seen_ver, w.vox_ver, "measured once for the change")
+	var tip1: float = trail.tip_l.length()
+	trail._process(1.0 / 60.0)
+	t.eq(trail.tip_l.length(), tip1, "and not again with nothing more broken off")
+	trail.free()
+	w.queue_free()
+
 ## The sweep is as big as the weapon (user: the halo about a swinging weapon stayed the same whatever its size): a dagger's stays a moment and shows faintly, a long sword's is whole,
 ## the weapons between by their reach, and a sweep that has been left alone for the moment it lasts is gone after as many frames.
 func test_the_sweep_is_as_big_as_the_weapon() -> void:

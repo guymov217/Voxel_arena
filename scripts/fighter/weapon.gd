@@ -13,6 +13,7 @@ var stats: Dictionary = {}
 var vs := 0.04                     # voxel size (scaled)
 var vox: Array = []                # [x, y, z, mat, type]
 var alive := PackedByteArray()
+var vox_ver := 0                   # counts the times voxels have come off it (the swing's halo is measured again then: SwingTrail)
 var box_of: Array = []             # voxel index -> box dict
 var holder: Node = null            # the Fighter holding it
 var thrower: Node = null
@@ -798,6 +799,7 @@ func remove_voxels(indices: Array) -> Array:
 		for nb in _build_boxes(left):
 			_add_box(nb)
 	if not out.is_empty():
+		vox_ver += 1
 		reweigh()
 	return out
 
