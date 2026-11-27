@@ -374,6 +374,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the edges. The brain in a man's head is pink with darker folds, a fissure between its halves and a lilac cerebellum low at the back
   (`Anatomy._brain_rgb`); it already fills the whole cranium (144 voxels), so it is made clearer, not larger: a larger one would be a thinner
   skull and a more deadly blow to the head.
+  In the campaign a brain hurt in a bout goes on into the next (`Body.brain`, 0 to 0.9: what `Fighter.organ_health(BRAIN)` has lost, torn and bruised
+  together, kept from `Body.BRAIN_KEEP`, 0.2; `Body.snapshot` reads it off him, `Fighter.apply_body` builds it back in as a bruise that does not
+  heal, so he rings from the first step; the yard's view stays clear). No needle or splint mends it (stitching, setting and "Treat everything" leave
+  it): the physician's table has a pin on his head for it and sells the Elixir of Asclepius there, the one cure (`tests/test_body.gd`,
+  `tests/test_stations.gd`).
 - **Music**: a procedural band (frame drum, riq, drone, lyre, horn) in the Phrygian dominant. It
   has a loop for each state (menu, yard, fight, boss, victory), rendered on a thread and
   cross-faded (`scripts/autoload/music.gd`).

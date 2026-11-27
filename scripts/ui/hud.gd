@@ -1118,8 +1118,10 @@ func _process(dt: float) -> void:
 		var low := clampf((35.0 - f.blood) / 35.0, 0.0, 1.0)
 		var beat := low * (0.35 + 0.25 * maxf(0.0, sin(Time.get_ticks_msec() / 1000.0 * 6.0)))
 		vignette.modulate.a = clampf(maxf(hurt * 0.8, beat) + (0.6 if not f.alive else 0.0), 0.0, 1.0)
-		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3 + f.ringing() * 0.12, 0.0, 0.95)
-		var dz := clampf(f.ringing() * 1.1 + float(f.eye_hurt) * 0.5, 0.0, 1.0)
+		# (In the yard he is shopping, not fighting: a head that rings there is the physician's to tell him, not a view that swims behind his menus.)
+		var ring: float = 0.0 if match_.yard != null else f.ringing()
+		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3 + ring * 0.12, 0.0, 0.95)
+		var dz := clampf(ring * 1.1 + float(f.eye_hurt) * 0.5, 0.0, 1.0)
 		daze_fx.visible = dz > 0.08
 		if daze_fx.visible:
 			var dm := daze_fx.material as ShaderMaterial

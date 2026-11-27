@@ -35,7 +35,7 @@ const PRO_STEP_PRICE := [0.7, 1.4]
 ## follow the pay.
 const MEDICINE_BOUTS := 0.75
 const MEDICINE_MIN := 20
-## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, old wounds).
+## The physician's dearest bottle: it gives back all a campaign took (limbs, eyes, a brain hurt, old wounds).
 ## It costs what a bout and a half at this point of the campaign pays (ELIXIR_BOUTS): within
 ## reach of a man who saves a little, early on as late (user: a full heal cost a fortune).
 const ELIXIR_BOUTS := 1.5
@@ -112,8 +112,18 @@ const STITCH_MIN := 12
 const SCAR_CAP := {"head": 0.18, "torso": 0.25}
 const SCAR_CAP_LIMB := 0.3
 
+## A brain hurt in a fight (`brain`: how much of it, torn and bruised together, 0 to 0.9: Fighter.organ_health) is carried into the next, a ringing that does not clear, till the Elixir gives it back
+## (no needle or splint mends a brain). Less than this much of it heals by itself, as a scratch does.
+const BRAIN_KEEP := 0.2
+
 static func empty() -> Dictionary:
-	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}, "fractures": {}, "pro_up": {}}
+	return {"missing": [], "prosthetics": {}, "scars": {}, "eyes": {}, "fights": 0, "fresh": {}, "fractures": {}, "pro_up": {}, "brain": 0.0}
+
+## How much of his brain a body has lost to the fights (0: none, or too little to keep).
+static func brain_hurt(body: Dictionary) -> float:
+	var v = body.get("brain", 0.0)
+	var f := float(v) if (v is int or v is float) and is_finite(float(v)) else 0.0
+	return f if f >= BRAIN_KEEP else 0.0
 
 ## The steps the smith has taken on the prosthetic of `part` (0: as the physician fitted it).
 static func pro_level(body: Dictionary, part: String) -> int:
@@ -227,6 +237,9 @@ static func sanitize(raw) -> Dictionary:
 				lv = 0
 			if lv > 0:
 				b.fractures[key] = lv
+	var br = raw.get("brain", 0.0)
+	if (br is int or br is float) and is_finite(float(br)) and float(br) >= BRAIN_KEEP:
+		b.brain = snappedf(minf(0.9, float(br)), 0.01)
 	# A part replaced is not missing; a part missing has no scar, and nor does what hangs off it.
 	for k in b.prosthetics.keys():
 		if k.begins_with("eye"):
@@ -321,6 +334,9 @@ static func snapshot(f) -> Dictionary:
 			var gone := ev.filter(func(i): return f.head.alive[i] == 0).size()
 			if not ev.is_empty() and gone * 2 > ev.size():
 				snap.eyes_lost.append(s)
+	# The brain, torn and bruised: as much of it as is hurt (what he carried into the fight is in it).
+	if f.has_method("organ_health") and not f.head.severed:
+		snap["brain"] = snappedf(1.0 - float(f.organ_health(Anatomy.BRAIN)), 0.01)
 	return snap
 
 ## Fold a snapshot into the body. Returns {body, news: [...], doctor: bool}: `doctor` when he
@@ -384,6 +400,13 @@ static func merge(body: Dictionary, snap: Dictionary) -> Dictionary:
 			news.append(break_words(k, lv))
 			# Broken through (a limb, the skull driven in, ribs in the lung's way): to the physician.
 			doctor = doctor or (k != "ribs" and lv >= 2) or (k == "ribs" and lv >= 3)
+	# A brain hurt in the fight (torn or bruised): carried into the next as a ringing that does not clear, till the Elixir; no needle or splint mends it.
+	var hurt := float(snap.get("brain", 0.0))
+	if hurt >= BRAIN_KEEP:
+		if hurt > brain_hurt(b) + 0.05:
+			news.append(Loc.t("a damaged brain"))
+			doctor = true
+		b.brain = maxf(float(b.get("brain", 0.0)), hurt)
 	b.fights = int(b.fights) + 1
 	return {"body": sanitize(b), "news": news, "doctor": doctor}
 
@@ -410,6 +433,8 @@ static func summary(body: Dictionary) -> String:
 		bits.append(Loc.t(("glass right eye" if s == "R" else "glass left eye") if b.eyes[s] == "glass" else ("blind in the right eye" if s == "R" else "blind in the left eye")))
 	for k in b.fractures:
 		bits.append(break_words(k, int(b.fractures[k])))
+	if brain_hurt(b) > 0.0:
+		bits.append(Loc.t("a damaged brain"))
 	if not b.scars.is_empty():
 		bits.append(Loc.t("%d scarred parts" if b.scars.size() > 1 else "%d scarred part") % b.scars.size())
 	return " · ".join(bits) if not bits.is_empty() else Loc.t("whole")
@@ -513,9 +538,9 @@ static func offers(body: Dictionary, stage: int) -> Array:
 		# it was for another part of him, and said so only when pointed at).
 		out.append({"id": "medicine:%s" % worst, "name": "%s (%s)" % [Loc.t("Rare medicine"), label(worst)], "desc": Loc.t("A jar of something black from the East. The physician has one today. It makes the worst hurt part of you (the %s) whole again, flesh and bone, as if it had never been hurt.") % label(worst), "price": medicine_price(stage)})
 	# The magic one: everything the campaign took, given back at once. For what the needle and the
-	# splints cannot give back (a limb, an eye, a part of him replaced), not for old scars: they are a
+	# splints cannot give back (a limb, an eye, a part of him replaced, a brain hurt), not for old scars: they are a
 	# mark on his skin, and no reason to pay a fortune.
-	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty():
+	if not b.missing.is_empty() or not b.prosthetics.is_empty() or not b.eyes.is_empty() or brain_hurt(b) > 0.0:
 		out.append({"id": "elixir:all", "name": "Elixir of Asclepius", "desc": "A small blue bottle, sealed with the god's serpent. One swallow and the body grows back as it was before the arena: lost hands and legs, a blind eye, every old wound. It costs a fortune, and it is worth it.", "price": elixir_price(stage)})
 	return out
 

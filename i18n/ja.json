@@ -2967,5 +2967,7 @@
  "Change": "変更",
  "Turn the picked blocks a quarter (Shift: the other way)": "選んだブロックを90度回す（Shift：逆向き）",
  "Flip the picked blocks over: left for right, upside down or front for back": "選んだブロックをひっくり返す：左右、上下、または前後",
- "Remake the picked blocks: of the material picked on the left, or with the job picked there": "選んだブロックを作り直す：左で選んだ素材にするか、そこで選んだ役割にする"
+ "Remake the picked blocks: of the material picked on the left, or with the job picked there": "選んだブロックを作り直す：左で選んだ素材にするか、そこで選んだ役割にする",
+ "a damaged brain": "損傷した脳",
+ "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "裂けたり打ち身を負ったりした脳には、消えない耳鳴りが残る。足は遅く、腕は弱くなり、迫る一撃に気づくのも遅れる。針も添え木も脳は治せない。神みずからの薬だけが取り戻してくれる。"
 }

@@ -1068,3 +1068,70 @@ func test_a_piece_cut_off_lies_still_by_its_living_owner() -> void:
 		await get_tree().physics_frame
 	t.check(top.low_y() < 0.05, "the block gone from under it, it falls to the sand (its underside %.2f m up, asleep %s)" % [top.low_y(), str(top.sleeping)])
 	m.queue_free()
+
+## A brain hurt in a fight (user: the potion that makes the whole body whole must treat brain damage): read off him after the fight, kept (the ringing it leaves does not clear, and
+## nor does the hurt between fights), built back into him in the next, and given back by the Elixir and nothing cheaper (no needle or splint mends a brain).
+func test_a_hurt_brain_is_kept_and_only_the_elixir_gives_it_back() -> void:
+	t.check(absf(float(Body.sanitize({"brain": 0.3}).brain) - 0.3) < 1e-6, "a brain hurt that much is kept")
+	t.eq(float(Body.sanitize({"brain": 0.05}).brain), 0.0, "a little heals of itself, as a scratch does")
+	t.check(absf(float(Body.sanitize({"brain": 7.0}).brain) - 0.9) < 1e-6, "and never more than 0.9")
+	for junk in ["x", -1.0, NAN, INF, null, [1], {}]:
+		t.eq(float(Body.sanitize({"brain": junk}).brain), 0.0, "garbage is no hurt (%s)" % str(junk))
+	t.eq(float(Body.empty().brain), 0.0, "a whole man's brain is whole")
+	var snap := {"lost": [], "holes": {}, "eyes_lost": [], "fractures": {}, "brain": 0.3}
+	var r := Body.merge(Body.empty(), snap)
+	t.check(absf(float(r.body.brain) - 0.3) < 1e-6, "the fight's harm to his brain is kept")
+	t.check(r.news.has(Loc.t("a damaged brain")) and r.doctor, "he is told so and taken to the physician (%s)" % str(r.news))
+	t.check(Body.summary(r.body).contains(Loc.t("a damaged brain")), "the summary says so: " + Body.summary(r.body))
+	var scratch := Body.merge(Body.empty(), {"lost": [], "holes": {}, "eyes_lost": [], "fractures": {}, "brain": 0.06})
+	t.check(float(scratch.body.brain) == 0.0 and not scratch.doctor and scratch.news.is_empty(), "a scratch of a brain is nothing")
+	# It does not mend of itself, and a worse hurt is kept.
+	var again := Body.merge(r.body, {"lost": [], "holes": {}, "eyes_lost": [], "fractures": {}, "brain": 0.0})
+	t.check(absf(float(again.body.brain) - 0.3) < 1e-6, "he does not mend between fights")
+	var worse := Body.merge(r.body, {"lost": [], "holes": {}, "eyes_lost": [], "fractures": {}, "brain": 0.55})
+	t.check(absf(float(worse.body.brain) - 0.55) < 1e-6 and worse.news.has(Loc.t("a damaged brain")) and worse.doctor, "a worse hurt is kept, and told again")
+	# The cure: the Elixir, for a man whose only hurt is his brain, and nothing cheaper.
+	var offers := Body.offers(r.body, 3)
+	t.eq(offers.filter(func(o): return String(o.id) == "elixir:all").size(), 1, "the Elixir is the physician's to sell him")
+	t.eq(offers.size(), 1, "and he has nothing else for it (%s)" % str(offers.map(func(o): return o.id)))
+	for id in ["stitch:all", "heal:all", "medicine:head", "set:skull"]:
+		t.check(absf(float(Body.apply(r.body, id).brain) - 0.3) < 1e-6, "%s leaves it as it was" % id)
+	var whole := Body.apply(Body.sanitize({"brain": 0.6, "fights": 5}), "elixir:all")
+	t.eq(float(whole.brain), 0.0, "the Elixir gives the brain back")
+	t.eq(int(whole.fights), 5, "the fights fought are still his")
+
+## The brain carried from one fight into the next: read off the man (bruised and torn together), and the man built with it rings as much from the first step, on top of what he is
+## dealt, till he has the Elixir.
+func test_a_hurt_brain_goes_into_the_next_fight_with_him() -> void:
+	var m := _match()
+	var f: Fighter = m.me.f
+	await _steps(20)
+	f.organ_bruise[Anatomy.BRAIN] = 0.2
+	f.organ_lost[Anatomy.BRAIN] = int(0.1 * float(f.organ_total[Anatomy.BRAIN]))
+	f._brain_changed()
+	var snap := Body.snapshot(f)
+	t.check(absf(float(snap.brain) - 0.3) < 0.02, "read off him: a bruise of 0.2 and a tenth torn make 0.3 (%.2f)" % float(snap.brain))
+	var r := Body.merge(Body.empty(), snap)
+	var spawn := func(body: Dictionary, x: float) -> Fighter:
+		var e = m.spawn_fighter({"kind": "bot", "name": "N", "loadout": {"main": "gladius", "off": "roundShield"}, "team": 0, "pos": Vector3(x, 0, 0), "yaw": 0.0, "body": body})
+		e.erase("bot")
+		e.drive = func(_e): return {}
+		return e.f
+	var g: Fighter = spawn.call(r.body, 3.0)
+	await _steps(30)
+	var want := 0.3 / Fighter.BRAIN_DEATH * Fighter.BRAIN_FLOOR
+	t.check(absf(g.brain_floor - want) < 0.02, "he goes in with the ringing that hurt leaves (%.3f of %.3f)" % [g.brain_floor, want])
+	t.check(g.ringing() >= g.brain_floor - 0.001 and g.ringing() > 0.25, "from the first step, and it does not clear (%.3f)" % g.ringing())
+	t.eq(g.organ_lost.get(Anatomy.BRAIN, 0), 0, "none of it is torn voxels he must lose again")
+	t.check(g.pace_now < f.pace_now * 0.99 or g.pace_now < 0.95, "and he walks slower for it (%.3f)" % g.pace_now)
+	# What he is dealt in the fight is on top of it, never past the most a brain can lose.
+	g.organ_bruise[Anatomy.BRAIN] = float(g.organ_bruise[Anatomy.BRAIN]) + 0.2
+	g._brain_changed()
+	t.check(g.brain_floor > want + 0.15, "a blow in the fight adds to it (%.3f)" % g.brain_floor)
+	var snap2 := Body.snapshot(g)
+	t.check(float(snap2.brain) > float(snap.brain) + 0.15, "and what is read off him then is all of it (%.2f)" % float(snap2.brain))
+	# With the Elixir he goes in whole.
+	var h: Fighter = spawn.call(Body.apply(r.body, "elixir:all"), -3.0)
+	await _steps(30)
+	t.check(h.brain_floor == 0.0 and h.ringing() < 0.01 and float(h.organ_bruise.get(Anatomy.BRAIN, 0.0)) == 0.0, "whole again, he rings no more (%.3f)" % h.ringing())
+	m.queue_free()

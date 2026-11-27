@@ -179,3 +179,23 @@ func test_a_ringing_head_sees_double_and_blurred_and_a_clear_one_sees_as_ever() 
 	t.check(not hud.daze_fx.visible, "cleared, the view is as it was")
 	hud.queue_free()
 	m.queue_free()
+
+## A brain hurt in the campaign goes into the next bout and into the yard with him (Body.brain); in the yard he rings (he walks slower) but the view stays clear behind his
+## menus: what a ringing head does to the view is for the fights, and the physician's table says it (a pin on his head).
+func test_a_brain_hurt_in_the_campaign_rings_in_the_yard_but_the_view_stays_clear() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "roundShield"}, "body": Body.sanitize({"brain": 0.5})})
+	var hud := Hud.new(m)
+	add_child(hud)
+	for i in 8:
+		await get_tree().physics_frame
+	await get_tree().process_frame
+	var f: Fighter = m.me.f
+	var want := 0.5 / Fighter.BRAIN_DEATH * Fighter.BRAIN_FLOOR
+	t.check(absf(f.brain_floor - want) < 0.02 and f.ringing() > 0.45, "he stands in the yard with the ringing his hurt left (%.3f of %.3f)" % [f.brain_floor, want])
+	await get_tree().process_frame
+	await get_tree().process_frame
+	t.check(m.yard != null and hud.daze_fx != null and not hud.daze_fx.visible, "and the view behind his menus is clear")
+	hud.queue_free()
+	m.queue_free()

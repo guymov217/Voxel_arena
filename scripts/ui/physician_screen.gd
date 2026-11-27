@@ -241,6 +241,14 @@ func _groups() -> void:
 			by_key[key] = g
 			groups.append(g)
 		by_key[key].offers.append(o)
+	# A brain hurt: no needle or splint mends it, only the Elixir. It is told by its own pin on his head, with the Elixir to buy there.
+	if Body.brain_hurt(b) > 0.0:
+		var elx := offers.filter(func(o): return String(o.id) == "elixir:all")
+		if not elx.is_empty():
+			var cure: Dictionary = (elx[0] as Dictionary).duplicate()
+			cure["desc"] = "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back."
+			var bt := Loc.t("a damaged brain")
+			groups.append({"key": "brain", "part": "brain", "title": bt.left(1).to_upper() + bt.substr(1), "offers": [cure]})
 	if sel == "" or not by_key.has(sel):
 		sel = String(groups[0].key) if not groups.is_empty() else ""
 
@@ -497,7 +505,7 @@ func _anchor(part: String) -> Vector3:
 	var p := part
 	if p == "wounds" or p == "ribs" or p == "pelvis":
 		p = "torso"
-	elif p == "skull" or p.begins_with("eye"):
+	elif p == "skull" or p == "brain" or p.begins_with("eye"):
 		p = "head"
 	var at := Vector3.ZERO
 	if have and man.by_name.has(p):
@@ -509,6 +517,7 @@ func _anchor(part: String) -> Vector3:
 		"eyeL": at += right * 0.04 + Vector3.UP * 0.03 + fwd * 0.1
 		"eyeR": at += right * -0.04 + Vector3.UP * 0.03 + fwd * 0.1
 		"skull": at += Vector3.UP * 0.1 + fwd * 0.02
+		"brain": at += Vector3.UP * 0.15 + fwd * -0.03
 		"ribs": at += Vector3.UP * 0.14 + fwd * 0.12 + right * -0.07
 		"pelvis": at += Vector3.UP * -0.2 + fwd * 0.1
 		"wounds": at += Vector3.UP * 0.02 + fwd * 0.12 + right * 0.1

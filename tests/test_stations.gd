@@ -149,6 +149,35 @@ func test_the_physician_treats_and_is_paid() -> void:
 	_gone(pair)
 	await _steps(2)
 
+## A brain hurt is on his table like any other hurt: a pin on his head, and the Elixir to buy there (it is the only cure: no needle or splint mends a brain).
+func test_the_physician_shows_a_damaged_brain_and_sells_the_cure() -> void:
+	Save.set_value("coins", 1000)
+	Save.set_value("stage", 4)
+	Save.set_value("body", Body.sanitize({"brain": 0.4}))
+	var pair := _menu()
+	var menu: Control = pair[0]
+	menu.show_screen("physician")
+	await _steps(5)
+	var ps: PhysicianScreen = _screen(menu, PhysicianScreen)
+	t.check(ps != null, "the physician's table is there")
+	if ps == null:
+		_gone(pair)
+		return
+	t.eq(ps.groups.map(func(g): return String(g.key)), ["brain"], "his brain is what the table has for him")
+	var g: Dictionary = ps.groups[0]
+	t.check(String(g.title).to_lower() == Loc.t("a damaged brain").to_lower() and String(g.part) == "brain", "named, and on his head (%s)" % String(g.title))
+	t.check(g.offers.size() == 1 and String(g.offers[0].id) == "elixir:all", "with the Elixir to buy there")
+	var price := int(g.offers[0].price)
+	t.eq(price, Body.elixir_price(4), "at the Elixir's own price")
+	ps._treat("elixir:all", price)
+	await _steps(5)
+	t.eq(menu.coins(), 1000 - price, "paid for once")
+	t.eq(float(Body.sanitize(menu.body()).brain), 0.0, "and his brain is whole")
+	ps = _screen(menu, PhysicianScreen)
+	t.check(ps != null and ps.groups.is_empty(), "nothing is left on the table")
+	_gone(pair)
+	await _steps(2)
+
 func test_the_physician_sells_his_supplies_into_the_bag() -> void:
 	Save.set_value("coins", 100)
 	Save.set_value("body", Body.empty())

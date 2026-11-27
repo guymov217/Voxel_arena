@@ -390,7 +390,7 @@ func set_body(b: Dictionary) -> void:
 	# A bone set by the physician the same: whole on him there and then (user: whatever he bought,
 	# the broken arm stayed broken). An old wound closed the same (user: he bought the rare
 	# medicine and nothing happened: the scar stayed on him until the next bout).
-	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up or Body.old_wound_closed(was, clean)):
+	if in_yard() and match_.me and is_instance_valid(match_.me.f) and (clean.missing != was.missing or clean.prosthetics != was.prosthetics or clean.eyes != was.eyes or clean.fractures != was.fractures or clean.pro_up != was.pro_up or clean.brain != was.brain or Body.old_wound_closed(was, clean)):
 		_sync_my_spec()
 		match_.rebuild(match_.me, clean, true)
 		return

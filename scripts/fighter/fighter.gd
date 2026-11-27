@@ -837,6 +837,12 @@ func apply_body(b: Dictionary) -> void:
 						_set_broken(bp, Vector3.ZERO, lv)
 						if lv == 3:
 							bp.show_bone(Vector3.ZERO)
+	# A brain hurt in an earlier fight and not made whole since (only the Elixir does it): as hurt as it was, a bruise that
+	# does not heal, and the ringing it leaves (_brain_changed).
+	var brain_was := Body.brain_hurt(body)
+	if brain_was > 0.0 and get("kind") != "beast":
+		organ_bruise[Anatomy.BRAIN] = minf(0.9, float(organ_bruise.get(Anatomy.BRAIN, 0.0)) + brain_was)
+		_brain_changed()
 	for p in parts:
 		if p.alive_count < p.fx.size() or p.prosthetic != "":
 			p.resync_later()

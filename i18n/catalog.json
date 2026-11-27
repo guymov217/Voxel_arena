@@ -9450,5 +9450,13 @@
 ],
 "Remake the picked blocks: of the material picked on the left, or with the job picked there": [
 "scripts/ui/forge.gd:2488"
+],
+"a damaged brain": [
+"scripts/ui/physician_screen.gd:250",
+"scripts/game/body.gd:407",
+"scripts/game/body.gd:437"
+],
+"A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": [
+"scripts/ui/physician_screen.gd:249"
 ]
 }
