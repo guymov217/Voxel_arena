@@ -1007,6 +1007,7 @@ func _voxels_ui() -> void:
 	mode_box.add_child(UIStyle.label("2 · MATERIAL", 13, UIStyle.BRONZE))
 	var mg := GridContainer.new()
 	mg.columns = 2
+	mg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mg.add_theme_constant_override("h_separation", 8)
 	mg.add_theme_constant_override("v_separation", 4)
 	for grp in MAT_GROUPS:
@@ -1014,8 +1015,11 @@ func _voxels_ui() -> void:
 		gl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		gl.custom_minimum_size = Vector2(92, 0)
 		mg.add_child(gl)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
+		# The swatches of a kind wrap at the panel's edge: five metals in one row were wider than the panel and Lead lay off the screen (user).
+		var row := HFlowContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("h_separation", 4)
+		row.add_theme_constant_override("v_separation", 4)
 		for m in grp[1]:
 			if not MATS.has(m):
 				continue

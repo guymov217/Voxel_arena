@@ -1101,6 +1101,13 @@ func test_a_weapon_tried_in_the_arena_brings_its_score_back() -> void:
 	menu._try_on_hit({"attacker": me, "weapon": me.weapons.R, "char": foe, "res": {"dmg": 12.0, "severed": []}, "killed": false})
 	menu._try_on_hit({"attacker": foe, "weapon": null, "char": me, "res": {"dmg": 50.0}, "killed": false})
 	t.check(menu.try_label.text.begins_with("2 hits · last blow 12 · best 31 · 1 limbs off"), "his blows counted, not the foe's: %s" % menu.try_label.text)
+	# The line is one line each, a panel wider than it is tall under the foe's plate, not a strip a letter wide down the whole screen (user: a column of single letters).
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var line := menu.try_label.get_parent().get_parent() as Control
+	t.check(line != null and line.size.x > 3.0 * line.size.y and line.size.y < 150.0, "the line is a small panel, not a strip (%s)" % str(line.size if line else Vector2.ZERO))
+	t.check(menu.try_label.size.x > 200.0 and menu.try_label.size.y < 40.0, "its score on one line (%s)" % str(menu.try_label.size))
+	t.check(line != null and line.get_global_rect().position.y >= 90.0, "and under the plate of the foe at the top (%.0f)" % (line.get_global_rect().position.y if line else 0.0))
 	var esc := InputEventKey.new()
 	esc.keycode = KEY_ESCAPE
 	esc.pressed = true
@@ -1112,6 +1119,47 @@ func test_a_weapon_tried_in_the_arena_brings_its_score_back() -> void:
 	menu.queue_free()
 	get_tree().paused = false
 	await get_tree().process_frame
+
+## The material swatches of the block's stuff are all in the panel (user: Lead lay off the screen): in every language, a kind's swatches wrap at the panel's edge instead of running out of it,
+## and no kind's row is wider than one swatch at the least, so the panel is never made wider to take it.
+func test_every_material_swatch_fits_the_panel() -> void:
+	var was := Loc.code()
+	for lang in ["en", "de", "ru", "fr", "ja", "es"]:
+		Loc.apply(lang)
+		var f = load("res://scripts/ui/forge.gd").new()
+		add_child(f)
+		f.free_build = true
+		f.open(Data.preset("gladius").duplicate(true), 0, func(_d, _c): pass)
+		f.job = "blunt"
+		f._show_mode("voxels")
+		for i in 3:
+			await get_tree().process_frame
+		var scroll: ScrollContainer = null
+		var n: Node = f.mode_box
+		while n != null and not (n is ScrollContainer):
+			n = n.get_parent()
+		scroll = n as ScrollContainer
+		var swatches := []
+		var stack := [f.mode_box]
+		while not stack.is_empty():
+			var c: Node = stack.pop_back()
+			for k in c.get_children():
+				stack.append(k)
+			if c is Button and c.get_parent() != null and c.get_parent().get_parent() is GridContainer and (c.get_parent().get_parent() as GridContainer).columns == 2:
+				swatches.append(c)
+		t.check(scroll != null and swatches.size() == 11, "%s: the panel and its eleven swatches (%d)" % [lang, swatches.size()])
+		var rows := {}
+		for b in swatches:
+			rows[(b as Node).get_parent()] = true
+		for row in rows:
+			t.check(row is HFlowContainer and (row as Control).get_combined_minimum_size().x < 150.0, "%s: a kind's swatches wrap (a row of %d wants %.0f px)" % [lang, row.get_child_count(), (row as Control).get_combined_minimum_size().x])
+		if scroll != null:
+			var edge := scroll.get_global_rect().end.x
+			var out := swatches.filter(func(b): return (b as Control).get_global_rect().end.x > edge + 1.0 or (b as Control).get_global_rect().position.x < scroll.get_global_rect().position.x - 1.0)
+			t.check(out.is_empty(), "%s: every swatch inside the panel (%d outside it, right edge %.0f: %s)" % [lang, out.size(), edge, str(out.map(func(b): return "%s %.0f" % [b.text, (b as Control).get_global_rect().end.x]))])
+		f.queue_free()
+		await get_tree().process_frame
+	Loc.apply(was)
 
 ## The durability bar beside the four (user: how long a weapon lasts): the harder its stuff the
 ## longer, a brittle one shatters, a tiny one has little to lose before it is spent.

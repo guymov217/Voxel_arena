@@ -1371,7 +1371,7 @@ func _try_line() -> void:
 	add_child(try_layer)
 	var top := CenterContainer.new()
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	top.offset_top = 10
+	top.offset_top = 92   # (under the foe's name and bar, which the HUD keeps at the top of the middle: Hud._build_plate)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.theme = UIStyle.theme()
 	try_layer.add_child(top)
@@ -1385,13 +1385,16 @@ func _try_line() -> void:
 	var head := UIStyle.label(Loc.t("Trying %s against %s") % [forge_try_name if forge_try_name != "" else Loc.t("the weapon"), Loc.t(forge_try_who)], 15, UIStyle.GOLD)
 	head.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.autowrap_mode = TextServer.AUTOWRAP_OFF   # (each is one line: a label that wraps has no width to wrap at in a box that sizes itself to its labels, and stood a letter to a line down the screen, UIStyle.clock_pill)
 	v.add_child(head)
 	try_label = UIStyle.label("", 14, UIStyle.TEXT)
 	try_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	try_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	try_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	v.add_child(try_label)
 	var keys := UIStyle.label("Esc: back to the forge · R: start again", 12, UIStyle.MUTED)
 	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	keys.autowrap_mode = TextServer.AUTOWRAP_OFF
 	v.add_child(keys)
 	try_stats = {"hits": 0, "last": 0.0, "best": 0.0, "limbs": 0, "kills": 0}
 	if match_ and match_.combat:
